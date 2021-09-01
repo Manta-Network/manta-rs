@@ -1,0 +1,23 @@
+[package]
+name = "manta-util"
+edition = "2018"
+version = "0.3.0"
+authors = ["Manta Network <contact@manta.network>"]
+readme = "README.md"
+license-file = "LICENSE" 
+repository = "https://github.com/Manta-Network/manta-rs"
+homepage = "https://github.com/Manta-Network"
+documentation = "https://github.com/Manta-Network/manta-rs"
+categories = [""]
+keywords = ["utilities"]
+description = "Basic utilities for manta-rs crates."
+publish = false
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[badges]
+is-it-maintained-issue-resolution = { repository = "Manta-Network/manta-rs" }
+is-it-maintained-open-issues = { repository = "Manta-Network/manta-rs" }
+maintenance = { status = "actively-developed" }
