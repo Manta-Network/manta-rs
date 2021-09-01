@@ -16,6 +16,9 @@
 
 //! Parity SCALE + Arkworks Codec System
 
+// FIXME: figure out how to "re-export" the `parity_scale_codec` crate so we don't have to explicitly
+// depend on it downstream
+
 #![cfg_attr(not(feature = "std"), no_std)]
 #![cfg_attr(docsrs, feature(doc_cfg), forbid(broken_intra_doc_links))]
 
