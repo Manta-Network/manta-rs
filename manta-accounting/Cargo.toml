@@ -1,5 +1,5 @@
 [package]
-name = "manta-crypto"
+name = "manta-accounting"
 edition = "2018"
 version = "0.3.0"
 authors = ["Manta Network <contact@manta.network>"]
@@ -10,7 +10,7 @@ homepage = "https://github.com/Manta-Network"
 documentation = "https://github.com/Manta-Network/manta-rs"
 categories = [""]
 keywords = [""]
-description = "Cryptographic Primitives and Interfaces for manta-rs."
+description = "Accounting Primitives for manta-rs."
 publish = false
 
 [package.metadata.docs.rs]
@@ -24,6 +24,9 @@ maintenance = { status = "actively-developed" }
 
 [dependencies]
 derivative = { version = "2.2.0", default-features = false, features = ["use_core"] }
+derive_more = { version = "0.99.16", default-features = false, features = ["add", "add_assign", "display", "from", "mul", "mul_assign", "sum"] }
 manta-codec = { path = "../manta-codec", default-features = false, features = ["derive"] }
+manta-crypto = { path = "../manta-crypto", default-features = false }
+manta-util = { path = "../manta-util", default-features = false }
 parity-scale-codec = { version = "2.2.0", default-features = false }
 rand = { version = "0.8.4", default-features = false }

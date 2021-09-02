@@ -14,33 +14,18 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Pseudorandom Function Families
+//! Accounting Primitives
 
-use core::borrow::Borrow;
+#![no_std]
+#![cfg_attr(docsrs, feature(doc_cfg), forbid(broken_intra_doc_links))]
 
-/// Pseudorandom Function Families (PRF) Trait
-pub trait PseudorandomFunctionFamily {
-    /// PRF Seed Type
-    type Seed: ?Sized;
+extern crate alloc;
+extern crate derive_more;
 
-    /// PRF Input Type
-    type Input: Default;
+mod account;
+mod asset;
+mod transfer;
 
-    /// PRF Output Type
-    type Output;
-
-    /// Evaluates the PRF at the `seed` and `input`.
-    fn evaluate<S, I>(seed: S, input: I) -> Self::Output
-    where
-        S: Borrow<Self::Seed>,
-        I: Borrow<Self::Input>;
-
-    /// Evaluates the PRF at the `seed` with the default input.
-    #[inline]
-    fn evaluate_zero<S>(seed: S) -> Self::Output
-    where
-        S: Borrow<Self::Seed>,
-    {
-        Self::evaluate(seed, Self::Input::default())
-    }
-}
+pub use account::*;
+pub use asset::*;
+pub use transfer::*;

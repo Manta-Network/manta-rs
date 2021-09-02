@@ -27,29 +27,29 @@ use manta_util::from_variant_impl;
 
 pub use ark_serialize::{Read, SerializationError as ArkCodecError, Write};
 pub use scale_codec::{
-	Decode as ScaleDecode, Encode as ScaleEncode, Error as ScaleCodecError, Input, Output,
+    Decode as ScaleDecode, Encode as ScaleEncode, Error as ScaleCodecError, Input, Output,
 };
 
 /// Codec Error Type
 #[derive(Debug, Display)]
 pub enum Error {
-	/// Arkworks Codec Error
-	#[displaydoc("Arkworks Codec Error: {0}")]
-	ArkCodecError(ArkCodecError),
+    /// Arkworks Codec Error
+    #[displaydoc("Arkworks Codec Error: {0}")]
+    ArkCodecError(ArkCodecError),
 
-	/// SCALE Codec Error
-	#[displaydoc("SCALE Codec Error: {0}")]
-	ScaleCodecError(ScaleCodecError),
+    /// SCALE Codec Error
+    #[displaydoc("SCALE Codec Error: {0}")]
+    ScaleCodecError(ScaleCodecError),
 }
 
 from_variant_impl!(Error, ArkCodecError, ArkCodecError);
 from_variant_impl!(Error, ScaleCodecError, ScaleCodecError);
 
 impl From<ark_std::io::Error> for Error {
-	#[inline]
-	fn from(err: ark_std::io::Error) -> Self {
-		Self::ArkCodecError(ArkCodecError::IoError(err))
-	}
+    #[inline]
+    fn from(err: ark_std::io::Error) -> Self {
+        Self::ArkCodecError(ArkCodecError::IoError(err))
+    }
 }
 
 impl ark_std::error::Error for Error {}
@@ -65,23 +65,23 @@ pub trait DefaultDecode: ScaleDecode {}
 
 /// Decoding Trait
 pub trait Decode: Sized {
-	/// Decodes `Self` from the reader.
-	fn decode<R>(reader: &mut R) -> DecodeResult<Self>
-	where
-		R: Input + Read;
+    /// Decodes `Self` from the reader.
+    fn decode<R>(reader: &mut R) -> DecodeResult<Self>
+    where
+        R: Input + Read;
 }
 
 impl<D> Decode for D
 where
-	D: DefaultDecode,
+    D: DefaultDecode,
 {
-	#[inline]
-	fn decode<R>(reader: &mut R) -> DecodeResult<Self>
-	where
-		R: Input + Read,
-	{
-		scale_decode(reader)
-	}
+    #[inline]
+    fn decode<R>(reader: &mut R) -> DecodeResult<Self>
+    where
+        R: Input + Read,
+    {
+        scale_decode(reader)
+    }
 }
 
 /// Default Encode Implementation Marker Trait
@@ -89,23 +89,23 @@ pub trait DefaultEncode: ScaleEncode {}
 
 /// Encoding Trait
 pub trait Encode {
-	/// Encodes `self` to the writer.
-	fn encode<W>(&self, writer: &mut W) -> EncodeResult
-	where
-		W: Output + Write;
+    /// Encodes `self` to the writer.
+    fn encode<W>(&self, writer: &mut W) -> EncodeResult
+    where
+        W: Output + Write;
 }
 
 impl<E> Encode for E
 where
-	E: DefaultEncode,
+    E: DefaultEncode,
 {
-	#[inline]
-	fn encode<W>(&self, writer: &mut W) -> EncodeResult
-	where
-		W: Output + Write,
-	{
-		scale_encode(self, writer)
-	}
+    #[inline]
+    fn encode<W>(&self, writer: &mut W) -> EncodeResult
+    where
+        W: Output + Write,
+    {
+        scale_encode(self, writer)
+    }
 }
 
 /// Codec Trait
@@ -117,18 +117,18 @@ impl<S> Codec for S where S: Decode + Encode {}
 #[inline]
 pub fn scale_decode<T, R>(reader: &mut R) -> DecodeResult<T>
 where
-	T: ScaleDecode,
-	R: Input,
+    T: ScaleDecode,
+    R: Input,
 {
-	Ok(T::decode(reader)?)
+    Ok(T::decode(reader)?)
 }
 
 /// Encodes a value `t` to `writer` using the SCALE codec.
 #[inline]
 pub fn scale_encode<T, W>(t: &T, writer: &mut W) -> EncodeResult
 where
-	T: ScaleEncode,
-	W: Write,
+    T: ScaleEncode,
+    W: Write,
 {
-	Ok(writer.write_all(t.encode().as_ref())?)
+    Ok(writer.write_all(t.encode().as_ref())?)
 }

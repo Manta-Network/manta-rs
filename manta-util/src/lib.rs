@@ -27,45 +27,45 @@ use core::convert::TryInto;
 /// Implements [`From`]`<$from>` for an enum `$to`, choosing the `$kind` variant.
 #[macro_export]
 macro_rules! from_variant_impl {
-	($to:tt, $kind:ident, $from:tt) => {
-		impl From<$from> for $to {
-			#[inline]
-			fn from(t: $from) -> Self {
-				Self::$kind(t)
-			}
-		}
-	};
+    ($to:tt, $kind:ident, $from:tt) => {
+        impl From<$from> for $to {
+            #[inline]
+            fn from(t: $from) -> Self {
+                Self::$kind(t)
+            }
+        }
+    };
 }
 
 /// Performs the [`TryInto`] conversion into an array without checking if the conversion succeeded.
 #[inline]
 pub fn try_into_array_unchecked<T, V, const N: usize>(v: V) -> [T; N]
 where
-	V: TryInto<[T; N]>,
+    V: TryInto<[T; N]>,
 {
-	match v.try_into() {
-		Ok(array) => array,
-		_ => unreachable!(),
-	}
+    match v.try_into() {
+        Ok(array) => array,
+        _ => unreachable!(),
+    }
 }
 
 /// Maps `f` over the `array`.
 #[inline]
 pub fn array_map<T, U, F, const N: usize>(array: [T; N], f: F) -> [U; N]
 where
-	F: FnMut(T) -> U,
+    F: FnMut(T) -> U,
 {
-	// TODO: get rid of this function when `array::map` is stabilized
-	try_into_array_unchecked(IntoIterator::into_iter(array).map(f).collect::<Vec<_>>())
+    // TODO: get rid of this function when `array::map` is stabilized
+    try_into_array_unchecked(IntoIterator::into_iter(array).map(f).collect::<Vec<_>>())
 }
 
 /// Maps `f` over the `array` by reference.
 #[inline]
 pub fn array_map_ref<T, U, F, const N: usize>(array: &[T; N], f: F) -> [U; N]
 where
-	F: FnMut(&T) -> U,
+    F: FnMut(&T) -> U,
 {
-	try_into_array_unchecked(array.iter().map(f).collect::<Vec<_>>())
+    try_into_array_unchecked(array.iter().map(f).collect::<Vec<_>>())
 }
 
 /// Maps `f` over the `array` returning the target array if all of the mappings succeeded, or
@@ -73,11 +73,11 @@ where
 #[inline]
 pub fn fallible_array_map<T, U, E, F, const N: usize>(array: [T; N], f: F) -> Result<[U; N], E>
 where
-	F: FnMut(T) -> Result<U, E>,
+    F: FnMut(T) -> Result<U, E>,
 {
-	Ok(try_into_array_unchecked(
-		IntoIterator::into_iter(array)
-			.map(f)
-			.collect::<Result<Vec<_>, _>>()?,
-	))
+    Ok(try_into_array_unchecked(
+        IntoIterator::into_iter(array)
+            .map(f)
+            .collect::<Result<Vec<_>, _>>()?,
+    ))
 }

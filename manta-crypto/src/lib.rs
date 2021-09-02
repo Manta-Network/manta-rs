@@ -16,8 +16,10 @@
 
 //! Cryptographic Primitives Library
 
-#![cfg_attr(not(feature = "std"), no_std)]
+#![no_std]
 #![cfg_attr(docsrs, feature(doc_cfg), forbid(broken_intra_doc_links))]
+
+extern crate alloc;
 
 mod commitment;
 mod concat;

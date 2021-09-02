@@ -16,36 +16,37 @@
 
 //! Commitments
 
-use ark_std::{borrow::Borrow, rand::Rng};
+use core::borrow::Borrow;
+use rand::RngCore;
 
 /// Commitment Scheme
 pub trait CommitmentScheme {
-	/// Commitment Randomness Parameter Type
-	type Randomness;
+    /// Commitment Randomness Parameter Type
+    type Randomness;
 
-	/// Commitment Output Type
-	type Output: PartialEq;
+    /// Commitment Output Type
+    type Output: PartialEq;
 
-	/// Samples random commitment paramters.
-	fn setup<R>(rng: &mut R) -> Self
-	where
-		R: Rng;
+    /// Samples random commitment paramters.
+    fn setup<R>(rng: &mut R) -> Self
+    where
+        R: RngCore;
 
-	/// Commits the `input` with the given `randomness` parameter.
-	fn commit<I, R>(&self, input: I, randomness: R) -> Self::Output
-	where
-		I: Borrow<[u8]>,
-		R: Borrow<Self::Randomness>;
+    /// Commits the `input` with the given `randomness` parameter.
+    fn commit<I, R>(&self, input: I, randomness: R) -> Self::Output
+    where
+        I: Borrow<[u8]>,
+        R: Borrow<Self::Randomness>;
 
-	/// Checks that the `output` matches the commitment of the `input` with the given `randomness`
-	/// parameter.
-	#[inline]
-	fn check_commitment<I, R, O>(&self, input: I, randomness: R, output: O) -> bool
-	where
-		I: Borrow<[u8]>,
-		R: Borrow<Self::Randomness>,
-		O: Borrow<Self::Output>,
-	{
-		&self.commit(input, randomness) == output.borrow()
-	}
+    /// Checks that the `output` matches the commitment of the `input` with the given `randomness`
+    /// parameter.
+    #[inline]
+    fn check_commitment<I, R, O>(&self, input: I, randomness: R, output: O) -> bool
+    where
+        I: Borrow<[u8]>,
+        R: Borrow<Self::Randomness>,
+        O: Borrow<Self::Output>,
+    {
+        &self.commit(input, randomness) == output.borrow()
+    }
 }
