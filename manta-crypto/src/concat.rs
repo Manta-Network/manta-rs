@@ -164,9 +164,9 @@ macro_rules! concatenate {
 	($($item:expr),*) => {
 		{
             extern crate alloc;
-			let mut accumulator = ::alloc::vec::Vec::new();
-			$($crate::ConcatBytes::reserve_concat($item, &mut accumulator);)*
-			$crate::Accumulator::finish(accumulator)
+            let mut accumulator = ::alloc::vec::Vec::new();
+            $($crate::ConcatBytes::reserve_concat($item, &mut accumulator);)*
+            $crate::Accumulator::finish(accumulator)
 		}
 	}
 }
