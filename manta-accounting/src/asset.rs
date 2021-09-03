@@ -20,6 +20,7 @@
 
 use alloc::vec::Vec;
 use core::{
+    convert::TryFrom,
     fmt::Debug,
     hash::Hash,
     ops::{Add, AddAssign, Mul, Sub, SubAssign},
@@ -29,12 +30,13 @@ use derive_more::{
 };
 use manta_codec::{ScaleDecode, ScaleEncode};
 use manta_crypto::{Accumulator, ConcatBytes};
-use manta_util::try_into_array_unchecked;
+use manta_util::{array_map, fallible_array_map, try_into_array_unchecked};
 use rand::{
     distributions::{Distribution, Standard},
     Rng, RngCore,
 };
 
+/// [`AssetId`] Base Type
 type AssetIdType = u32;
 
 /// Asset Id Type
@@ -112,6 +114,7 @@ impl Mul<AssetId> for AssetIdType {
     }
 }
 
+/// [`AssetBalance`] Base Type
 type AssetBalanceType = u128;
 
 /// Asset Balance Type
@@ -221,6 +224,12 @@ impl Asset {
         Self::new(self.id, value)
     }
 
+    /// Checks if the `rhs` asset has the same [`AssetId`].
+    #[inline]
+    pub const fn same_id(&self, rhs: &Asset) -> bool {
+        self.id.0 == rhs.id.0
+    }
+
     /// Converts `self` into a byte array.
     #[inline]
     pub fn into_bytes(self) -> [u8; Self::SIZE] {
@@ -317,6 +326,10 @@ impl Distribution<Asset> for Standard {
 }
 
 /// Asset Collection
+#[derive(
+    Clone, Copy, Debug, Eq, From, Hash, Ord, PartialEq, PartialOrd, ScaleDecode, ScaleEncode,
+)]
+#[from(forward)]
 pub struct AssetCollection<const N: usize> {
     /// Asset Id
     pub id: AssetId,
@@ -330,5 +343,50 @@ impl<const N: usize> AssetCollection<N> {
     #[inline]
     pub const fn new(id: AssetId, values: [AssetBalance; N]) -> Self {
         Self { id, values }
+    }
+}
+
+impl<const N: usize> Default for AssetCollection<N> {
+    #[inline]
+    fn default() -> Self {
+        Self::new(Default::default(), [Default::default(); N])
+    }
+}
+
+impl<const N: usize> From<AssetCollection<N>> for [Asset; N] {
+    #[inline]
+    fn from(collection: AssetCollection<N>) -> Self {
+        array_map(collection.values, move |v| Asset::new(collection.id, v))
+    }
+}
+
+impl<const N: usize> TryFrom<[Asset; N]> for AssetCollection<N> {
+    type Error = usize;
+
+    #[inline]
+    fn try_from(array: [Asset; N]) -> Result<Self, Self::Error> {
+        let mut counter: usize = 0;
+        let mut base_id = None;
+        let values = fallible_array_map(array, move |asset| {
+            let result = match base_id {
+                Some(id) => {
+                    if id == asset.id {
+                        Ok(asset.value)
+                    } else {
+                        Err(counter)
+                    }
+                }
+                _ => {
+                    base_id = Some(asset.id);
+                    Ok(asset.value)
+                }
+            };
+            counter += 1;
+            result
+        })?;
+        match base_id {
+            Some(id) => Ok(Self::new(id, values)),
+            _ => Err(0),
+        }
     }
 }

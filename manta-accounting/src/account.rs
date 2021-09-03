@@ -171,6 +171,43 @@ where
             utxo_randomness,
         }
     }
+
+    /// Generates a new void number commitment using `public_key`.
+    #[inline]
+    pub fn void_number_commitment(
+        &self,
+        commitment_scheme: &C::CommitmentScheme,
+        public_key: &PublicKey<C>,
+    ) -> VoidNumberCommitment<C>
+    where
+        PublicKey<C>: ConcatBytes,
+        VoidNumberGenerator<C>: ConcatBytes,
+    {
+        generate_void_number_commitment::<C>(
+            commitment_scheme,
+            public_key,
+            &self.void_number_generator,
+            &self.void_number_commitment_randomness,
+        )
+    }
+
+    /// Generates a [`Utxo`] from a given `asset`, `void_number_commitment`, and `utxo_randomness`.
+    pub fn utxo(
+        &self,
+        commitment_scheme: &C::CommitmentScheme,
+        asset: &Asset,
+        void_number_commitment: &VoidNumberCommitment<C>,
+    ) -> Utxo<C>
+    where
+        VoidNumberCommitment<C>: ConcatBytes,
+    {
+        generate_utxo::<C>(
+            commitment_scheme,
+            asset,
+            void_number_commitment,
+            &self.utxo_randomness,
+        )
+    }
 }
 
 impl<C> Distribution<AssetParameters<C>> for Standard
@@ -342,24 +379,6 @@ where
         )
     }
 
-    /// Generates a new void number commitment using `parameters`.
-    #[inline]
-    pub fn void_number_commitment_from_parameters(
-        &self,
-        commitment_scheme: &C::CommitmentScheme,
-        parameters: &AssetParameters<C>,
-    ) -> VoidNumberCommitment<C>
-    where
-        PublicKey<C>: ConcatBytes,
-        VoidNumberGenerator<C>: ConcatBytes,
-    {
-        self.void_number_commitment(
-            commitment_scheme,
-            &parameters.void_number_generator,
-            &parameters.void_number_commitment_randomness,
-        )
-    }
-
     /// Generates a [`Utxo`] for an `asset` using the `parameters`.
     #[inline]
     pub fn utxo(
@@ -376,7 +395,7 @@ where
         generate_utxo::<C>(
             commitment_scheme,
             asset,
-            &self.void_number_commitment_from_parameters(commitment_scheme, parameters),
+            &parameters.void_number_commitment(commitment_scheme, &self.public_key()),
             &parameters.utxo_randomness,
         )
     }
@@ -425,8 +444,8 @@ where
         let (asset_public_key, asset_secret_key) = asset_keypair.split();
         (
             ShieldedIdentity {
-                void_number_commitment: self
-                    .void_number_commitment_from_parameters(commitment_scheme, &parameters),
+                void_number_commitment: parameters
+                    .void_number_commitment(commitment_scheme, &self.public_key()),
                 utxo_randomness: parameters.utxo_randomness,
                 asset_public_key,
             },
