@@ -14,11 +14,11 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Transfer Protocol
+//! Transfer Protocols
 
 use crate::{
     account::{IdentityConfiguration, Receiver, Sender, Utxo},
-    asset::Asset,
+    asset::{Asset, AssetCollection},
 };
 use manta_crypto::{IntegratedEncryptionScheme, VerifiedSet};
 
@@ -31,7 +31,30 @@ pub trait TransferConfiguration: IdentityConfiguration {
     type UtxoSet: VerifiedSet<Item = Utxo<Self>>;
 }
 
-/// Private Transfer
+/// Transfer Protocol
+pub struct Transfer<
+    T,
+    const SOURCES: usize,
+    const SENDERS: usize,
+    const RECEIVERS: usize,
+    const SINKS: usize,
+> where
+    T: TransferConfiguration,
+{
+    /// Public Asset Sources
+    pub sources: AssetCollection<SOURCES>,
+
+    /// Secret Senders
+    pub senders: [Sender<T, T::UtxoSet>; SENDERS],
+
+    /// Secret Receivers
+    pub receivers: [Receiver<T, T::IntegratedEncryptionScheme>; RECEIVERS],
+
+    /// Public Asset Sinks
+    pub sinks: AssetCollection<SINKS>,
+}
+
+/// Private Transfer Protocol
 pub struct PrivateTransfer<T, const SENDERS: usize, const RECEIVERS: usize>
 where
     T: TransferConfiguration,

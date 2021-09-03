@@ -276,7 +276,7 @@ impl ConcatBytes for Asset {
     #[inline]
     fn concat<A>(&self, accumulator: &mut A)
     where
-        A: Accumulator<u8>,
+        A: Accumulator<u8> + ?Sized,
     {
         accumulator.extend(&self.id.into_bytes());
         accumulator.extend(&self.value.into_bytes());
@@ -313,5 +313,22 @@ impl Distribution<Asset> for Standard {
     #[inline]
     fn sample<R: RngCore + ?Sized>(&self, rng: &mut R) -> Asset {
         Asset::new(rng.gen(), rng.gen())
+    }
+}
+
+/// Asset Collection
+pub struct AssetCollection<const N: usize> {
+    /// Asset Id
+    pub id: AssetId,
+
+    /// Asset Values
+    pub values: [AssetBalance; N],
+}
+
+impl<const N: usize> AssetCollection<N> {
+    /// Generates a collection of assets with matching [`AssetId`].
+    #[inline]
+    pub const fn new(id: AssetId, values: [AssetBalance; N]) -> Self {
+        Self { id, values }
     }
 }

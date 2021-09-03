@@ -10,7 +10,7 @@ homepage = "https://github.com/Manta-Network"
 documentation = "https://github.com/Manta-Network/manta-rs"
 categories = [""]
 keywords = [""]
-description = "Accounting Primitives for manta-rs."
+description = "Accounting Primitives for Manta."
 publish = false
 
 [package.metadata.docs.rs]

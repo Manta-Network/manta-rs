@@ -16,8 +16,10 @@
 
 //! Sets and Verified Sets
 
-use core::{fmt::Debug, hash::Hash};
-use manta_codec::{ScaleDecode, ScaleEncode};
+pub(crate) mod prelude {
+    #[doc(inline)]
+    pub use crate::set::{Set, VerifiedSet};
+}
 
 /// Set Trait
 pub trait Set {
@@ -40,35 +42,30 @@ pub trait Set {
 }
 
 /// Verified Containment Trait
-pub trait VerifyContainment<Public, Item> {
+pub trait VerifyContainment<Public, Item>
+where
+    Public: ?Sized,
+    Item: ?Sized,
+{
     /// Verifies that `self` is a proof that `item` is contained in some [`VerifiedSet`].
     fn verify(&self, public: &Public, item: &Item) -> bool;
 }
 
 /// Containment Proof for a [`VerifiedSet`]
-#[derive(derivative::Derivative, ScaleDecode, ScaleEncode)]
-#[derivative(
-    Clone(bound = "S::Public: Clone, S::Secret: Clone"),
-    Debug(bound = "S::Public: Debug, S::Secret: Debug"),
-    Default(bound = "S::Public: Default, S::Secret: Default"),
-    Eq(bound = "S::Public: Eq, S::Secret: Eq"),
-    Hash(bound = "S::Public: Hash, S::Secret: Hash"),
-    PartialEq(bound = "S::Public: PartialEq, S::Secret: PartialEq")
-)]
-pub struct ContainmentProof<S: ?Sized>
+pub struct ContainmentProof<S>
 where
-    S: VerifiedSet,
+    S: VerifiedSet + ?Sized,
 {
     /// Public Input
     pub input: S::Public,
 
     /// Secret Witness
-    pub witness: S::Secret,
+    witness: S::Secret,
 }
 
 impl<S> ContainmentProof<S>
 where
-    S: VerifiedSet,
+    S: VerifiedSet + ?Sized,
 {
     /// Builds a new [`ContainmentProof`] from public `input` and secret `witness`.
     #[inline]
@@ -126,7 +123,7 @@ pub trait VerifiedSet {
 
 impl<S> Set for S
 where
-    S: VerifiedSet,
+    S: VerifiedSet + ?Sized,
 {
     type Item = S::Item;
 

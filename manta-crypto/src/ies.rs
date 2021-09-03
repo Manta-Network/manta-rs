@@ -16,40 +16,138 @@
 
 //! Integrated Encryption Schemes and Encrypted Messages
 
+// FIXME: add zeroize for secret keys
+
 use core::{fmt::Debug, hash::Hash};
 use manta_codec::{ScaleDecode, ScaleEncode};
 use rand::{CryptoRng, RngCore};
 
-/// [`IntegratedEncryptionScheme`] Key Pair
-#[derive(derivative::Derivative, ScaleDecode, ScaleEncode)]
-#[derivative(
-    Clone(bound = "I::PublicKey: Clone, I::SecretKey: Clone"),
-    Copy(bound = "I::PublicKey: Copy, I::SecretKey: Copy"),
-    Debug(bound = "I::PublicKey: Debug, I::SecretKey: Debug"),
-    Default(bound = "I::PublicKey: Default, I::SecretKey: Default"),
-    Eq(bound = "I::PublicKey: Eq, I::SecretKey: Eq"),
-    Hash(bound = "I::PublicKey: Hash, I::SecretKey: Hash"),
-    PartialEq(bound = "I::PublicKey: PartialEq, I::SecretKey: PartialEq")
-)]
-pub struct KeyPair<I: ?Sized>
+pub(crate) mod prelude {
+    #[doc(inline)]
+    pub use crate::ies::IntegratedEncryptionScheme;
+}
+
+/// [`IntegratedEncryptionScheme`] Public Key
+pub struct PublicKey<I>
 where
-    I: IntegratedEncryptionScheme,
+    I: IntegratedEncryptionScheme + ?Sized,
 {
     /// Public Key
-    pub public: I::PublicKey,
+    public_key: I::PublicKey,
+}
+
+impl<I> PublicKey<I>
+where
+    I: IntegratedEncryptionScheme + ?Sized,
+{
+    /// Generates a new [`PublicKey`] from a
+    /// [`I::PublicKey`](IntegratedEncryptionScheme::PublicKey).
+    #[inline]
+    pub fn new(public_key: I::PublicKey) -> Self {
+        Self { public_key }
+    }
+
+    /// Encrypts the `plaintext` with `self`, generating an [`EncryptedMessage`].
+    #[inline]
+    pub fn encrypt<R>(
+        self,
+        plaintext: I::Plaintext,
+        rng: &mut R,
+    ) -> Result<EncryptedMessage<I>, I::Error>
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        I::encrypt(plaintext, self.public_key, rng)
+    }
+}
+
+/// [`IntegratedEncryptionScheme`] Secret Key
+pub struct SecretKey<I>
+where
+    I: IntegratedEncryptionScheme + ?Sized,
+{
+    /// Secret Key
+    secret_key: I::SecretKey,
+}
+
+impl<I> SecretKey<I>
+where
+    I: IntegratedEncryptionScheme + ?Sized,
+{
+    /// Generates a new `SecretKey` from an `I::SecretKey`.
+    ///
+    /// # API Note
+    ///
+    /// This function is intentionally private so that secret keys are not part of the
+    /// public interface.
+    #[inline]
+    fn new(secret_key: I::SecretKey) -> Self {
+        Self { secret_key }
+    }
+
+    /// Decrypts the `message` with `self`.
+    #[inline]
+    pub fn decrypt(self, message: EncryptedMessage<I>) -> Result<I::Plaintext, I::Error> {
+        message.decrypt(self)
+    }
+}
+
+/// [`IntegratedEncryptionScheme`] Key Pair
+pub struct KeyPair<I>
+where
+    I: IntegratedEncryptionScheme + ?Sized,
+{
+    /// Public Key
+    public_key: I::PublicKey,
 
     /// Secret Key
-    pub secret: I::SecretKey,
+    secret_key: I::SecretKey,
 }
 
 impl<I> KeyPair<I>
 where
-    I: IntegratedEncryptionScheme,
+    I: IntegratedEncryptionScheme + ?Sized,
 {
-    /// Builds a new [`KeyPair`] from a `public` key and a `secret` key.
+    /// Builds a new [`KeyPair`] from a `public_key` and a `secret_key`.
     #[inline]
-    pub fn new(public: I::PublicKey, secret: I::SecretKey) -> Self {
-        Self { public, secret }
+    pub fn new(public_key: I::PublicKey, secret_key: I::SecretKey) -> Self {
+        Self {
+            public_key,
+            secret_key,
+        }
+    }
+
+    /// Generates a public/secret keypair.
+    #[inline]
+    pub fn generate<R>(rng: &mut R) -> Self
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        I::keygen(rng)
+    }
+
+    /// Splits the key pair into an [`I::PublicKey`](IntegratedEncryptionScheme::PublicKey)
+    /// and a [`SecretKey`].
+    #[inline]
+    pub fn split(self) -> (PublicKey<I>, SecretKey<I>) {
+        (
+            PublicKey::new(self.public_key),
+            SecretKey::new(self.secret_key),
+        )
+    }
+
+    /// Encrypts the `plaintext` with `self, generating an [`EncryptedMessage`].
+    #[inline]
+    pub fn encrypt<R>(
+        self,
+        plaintext: I::Plaintext,
+        rng: &mut R,
+    ) -> Result<(EncryptedMessage<I>, SecretKey<I>), I::Error>
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        let (public_key, secret_key) = self.split();
+        Ok((public_key.encrypt(plaintext, rng)?, secret_key))
     }
 }
 
@@ -70,109 +168,99 @@ pub trait IntegratedEncryptionScheme {
     /// Encryption/Decryption Error Type
     type Error;
 
-    /// Generates public/secret keypair.
+    /// Generates a public/secret keypair.
     fn keygen<R>(rng: &mut R) -> KeyPair<Self>
     where
-        R: CryptoRng + RngCore;
+        R: CryptoRng + RngCore + ?Sized;
 
-    /// Generates a new keypair and encrypts the `message`, generating an [`EncryptedMessage`],
-    /// and returning the keypair.
-    #[inline]
-    fn keygen_encrypt<R>(
-        message: &Self::Plaintext,
-        rng: &mut R,
-    ) -> Result<(KeyPair<Self>, EncryptedMessage<Self>), Self::Error>
-    where
-        R: CryptoRng + RngCore,
-    {
-        let keypair = Self::keygen(rng);
-        let encrypted_message = Self::encrypt(message, &keypair.public, rng)?;
-        Ok((keypair, encrypted_message))
-    }
-
-    /// Encrypts the `message` with `pk`, generating an [`EncryptedMessage`].
+    /// Encrypts the `plaintext` with the `public_key`, generating an [`EncryptedMessage`].
     fn encrypt<R>(
-        message: &Self::Plaintext,
-        pk: &Self::PublicKey,
+        plaintext: Self::Plaintext,
+        public_key: Self::PublicKey,
         rng: &mut R,
     ) -> Result<EncryptedMessage<Self>, Self::Error>
     where
-        R: CryptoRng + RngCore;
+        R: CryptoRng + RngCore + ?Sized;
 
-    /// Decrypts the `message` with `sk`.
+    /// Generates a public/secret keypair and then encrypts the `plaintext` with the generated
+    /// public key, generating an [`EncryptedMessage`] and a [`SecretKey`].
+    #[inline]
+    fn keygen_encrypt<R>(
+        plaintext: Self::Plaintext,
+        rng: &mut R,
+    ) -> Result<(EncryptedMessage<Self>, SecretKey<Self>), Self::Error>
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        Self::keygen(rng).encrypt(plaintext, rng)
+    }
+
+    /// Decrypts the `ciphertext` with the `secret_key`.
     fn decrypt(
-        message: &EncryptedMessage<Self>,
-        sk: &Self::SecretKey,
+        ciphertext: Self::Ciphertext,
+        secret_key: Self::SecretKey,
     ) -> Result<Self::Plaintext, Self::Error>;
 }
 
 /// Encrypted Message
 #[derive(derivative::Derivative, ScaleDecode, ScaleEncode)]
 #[derivative(
-    Clone(bound = "I::Ciphertext: Clone, I::PublicKey: Clone"),
-    Copy(bound = "I::Ciphertext: Copy, I::PublicKey: Copy"),
-    Debug(bound = "I::Ciphertext: Debug, I::PublicKey: Debug"),
-    Default(bound = "I::Ciphertext: Default, I::PublicKey: Default"),
-    Eq(bound = "I::Ciphertext: Eq, I::PublicKey: Eq"),
-    Hash(bound = "I::Ciphertext: Hash, I::PublicKey: Hash"),
-    PartialEq(bound = "I::Ciphertext: PartialEq, I::PublicKey: PartialEq")
+    Clone(bound = "I::Ciphertext: Clone"),
+    Copy(bound = "I::Ciphertext: Copy"),
+    Debug(bound = "I::Ciphertext: Debug"),
+    Default(bound = "I::Ciphertext: Default"),
+    Eq(bound = "I::Ciphertext: Eq"),
+    Hash(bound = "I::Ciphertext: Hash"),
+    PartialEq(bound = "I::Ciphertext: PartialEq")
 )]
-pub struct EncryptedMessage<I: ?Sized>
+pub struct EncryptedMessage<I>
 where
-    I: IntegratedEncryptionScheme,
+    I: IntegratedEncryptionScheme + ?Sized,
 {
-    /// Ciphertext of the Message
-    pub ciphertext: I::Ciphertext,
-
-    /// Ephemeral Public Key
-    pub ephemeral_public_key: I::PublicKey,
+    /// Message Ciphertext
+    ciphertext: I::Ciphertext,
 }
 
 impl<I> EncryptedMessage<I>
 where
-    I: IntegratedEncryptionScheme,
+    I: IntegratedEncryptionScheme + ?Sized,
 {
-    /// Builds a new [`EncryptedMessage`] from [`I::Ciphertext`] and an ephemeral [`I::PublicKey`].
-    ///
-    /// [`I::Ciphertext`]: IntegratedEncryptionScheme::Ciphertext
-    /// [`I::PublicKey`]: IntegratedEncryptionScheme::PublicKey
+    /// Builds a new [`EncryptedMessage`] from
+    /// [`I::Ciphertext`](IntegratedEncryptionScheme::Ciphertext).
     #[inline]
-    pub fn new(ciphertext: I::Ciphertext, ephemeral_public_key: I::PublicKey) -> Self {
-        Self {
-            ciphertext,
-            ephemeral_public_key,
-        }
+    pub fn new(ciphertext: I::Ciphertext) -> Self {
+        Self { ciphertext }
     }
 
-    /// Generates a new keypair and encrypts the `message`, generating an [`EncryptedMessage`],
-    /// and returning the keypair.
-    #[inline]
-    pub fn keygen_encrypt<R>(
-        message: &I::Plaintext,
-        rng: &mut R,
-    ) -> Result<(KeyPair<I>, Self), I::Error>
-    where
-        R: CryptoRng + RngCore,
-    {
-        I::keygen_encrypt(message, rng)
-    }
-
-    /// Encrypts the `message` with `pk`, generating an [`EncryptedMessage`].
+    /// Encrypts the `plaintext` with the `public_key`, generating an [`EncryptedMessage`].
     #[inline]
     pub fn encrypt<R>(
-        message: &I::Plaintext,
-        pk: &I::PublicKey,
+        plaintext: I::Plaintext,
+        public_key: I::PublicKey,
         rng: &mut R,
     ) -> Result<Self, I::Error>
     where
-        R: CryptoRng + RngCore,
+        R: CryptoRng + RngCore + ?Sized,
     {
-        I::encrypt(message, pk, rng)
+        I::encrypt(plaintext, public_key, rng)
     }
 
-    /// Decrypts the `message` with `sk`.
+    /// Generates a public/secret keypair and then encrypts the `plaintext` with the generated
+    /// public key, generating an [`EncryptedMessage`] and a [`SecretKey`].
     #[inline]
-    pub fn decrypt(&self, sk: &I::SecretKey) -> Result<I::Plaintext, I::Error> {
-        I::decrypt(self, sk)
+    pub fn keygen_encrypt<R>(
+        plaintext: I::Plaintext,
+        rng: &mut R,
+    ) -> Result<(Self, SecretKey<I>), I::Error>
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        I::keygen_encrypt(plaintext, rng)
+    }
+
+    /// Decrypts `self` with the `secret_key`.
+    #[inline]
+    pub fn decrypt(self, secret_key: SecretKey<I>) -> Result<I::Plaintext, I::Error> {
+        I::decrypt(self.ciphertext, secret_key.secret_key)
     }
 }

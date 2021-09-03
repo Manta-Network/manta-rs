@@ -23,15 +23,15 @@ extern crate alloc;
 
 mod commitment;
 mod concat;
-mod ies;
 mod prf;
-mod set;
 
 pub mod checksum;
 pub mod constraints;
+pub mod ies;
+pub mod set;
 
 pub use commitment::*;
 pub use concat::*;
-pub use ies::*;
+pub use ies::prelude::*;
 pub use prf::*;
-pub use set::*;
+pub use set::prelude::*;

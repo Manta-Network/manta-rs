@@ -10,7 +10,7 @@ homepage = "https://github.com/Manta-Network"
 documentation = "https://github.com/Manta-Network/manta-rs"
 categories = [""]
 keywords = ["utilities"]
-description = "Basic utilities for manta-rs crates."
+description = "Basic utilities for Manta crates."
 publish = false
 
 [package.metadata.docs.rs]

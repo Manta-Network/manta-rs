@@ -76,7 +76,7 @@ where
 
 impl<T> Accumulator<T> for Vec<T>
 where
-    T: Clone,
+    T: Clone + ?Sized,
 {
     #[inline]
     fn extend(&mut self, buffer: &[T]) {
@@ -105,7 +105,7 @@ pub trait ConcatBytes {
     /// is not efficient.
     fn concat<A>(&self, accumulator: &mut A)
     where
-        A: Accumulator<u8>;
+        A: Accumulator<u8> + ?Sized;
 
     /// Returns a hint to the possible number of bytes that will be accumulated when concatenating
     /// `self`.
@@ -118,7 +118,7 @@ pub trait ConcatBytes {
     #[inline]
     fn reserve_concat<A>(&self, accumulator: &mut A)
     where
-        A: Accumulator<u8>,
+        A: Accumulator<u8> + ?Sized,
     {
         if let Some(capacity) = self.size_hint() {
             accumulator.reserve(capacity);
@@ -141,12 +141,12 @@ pub trait ConcatBytes {
 
 impl<T> ConcatBytes for T
 where
-    T: Borrow<[u8]>,
+    T: Borrow<[u8]> + ?Sized,
 {
     #[inline]
     fn concat<A>(&self, accumulator: &mut A)
     where
-        A: Accumulator<u8>,
+        A: Accumulator<u8> + ?Sized,
     {
         accumulator.extend(self.borrow())
     }
@@ -163,6 +163,7 @@ where
 macro_rules! concatenate {
 	($($item:expr),*) => {
 		{
+            extern crate alloc;
 			let mut accumulator = ::alloc::vec::Vec::new();
 			$($crate::ConcatBytes::reserve_concat($item, &mut accumulator);)*
 			$crate::Accumulator::finish(accumulator)

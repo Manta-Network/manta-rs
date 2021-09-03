@@ -30,22 +30,24 @@ pub trait CommitmentScheme {
     /// Samples random commitment paramters.
     fn setup<R>(rng: &mut R) -> Self
     where
-        R: RngCore;
+        R: RngCore + ?Sized;
 
     /// Commits the `input` with the given `randomness` parameter.
-    fn commit<I, R>(&self, input: I, randomness: R) -> Self::Output
+    fn commit<I>(&self, input: I, randomness: &Self::Randomness) -> Self::Output
     where
-        I: Borrow<[u8]>,
-        R: Borrow<Self::Randomness>;
+        I: Borrow<[u8]>;
 
     /// Checks that the `output` matches the commitment of the `input` with the given `randomness`
     /// parameter.
     #[inline]
-    fn check_commitment<I, R, O>(&self, input: I, randomness: R, output: O) -> bool
+    fn check_commitment<I>(
+        &self,
+        input: I,
+        randomness: &Self::Randomness,
+        output: &Self::Output,
+    ) -> bool
     where
         I: Borrow<[u8]>,
-        R: Borrow<Self::Randomness>,
-        O: Borrow<Self::Output>,
     {
         &self.commit(input, randomness) == output.borrow()
     }

@@ -14,25 +14,19 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Pseudorandom Function Families
+//! The Manta Network
 
-/// Pseudorandom Function Families (PRF) Trait
-pub trait PseudorandomFunctionFamily {
-    /// PRF Seed Type
-    type Seed: ?Sized;
+#![cfg_attr(not(feature = "std"), no_std)]
+#![cfg_attr(docsrs, feature(doc_cfg), forbid(broken_intra_doc_links))]
 
-    /// PRF Input Type
-    type Input: Default;
+#[doc(inline)]
+pub use manta_accounting as accounting;
 
-    /// PRF Output Type
-    type Output;
+#[doc(inline)]
+pub use manta_codec as codec;
 
-    /// Evaluates the PRF at the `seed` and `input`.
-    fn evaluate(seed: &Self::Seed, input: &Self::Input) -> Self::Output;
+#[doc(inline)]
+pub use manta_crypto as crypto;
 
-    /// Evaluates the PRF at the `seed` with the default input.
-    #[inline]
-    fn evaluate_zero(seed: &Self::Seed) -> Self::Output {
-        Self::evaluate(seed, &Self::Input::default())
-    }
-}
+#[doc(inline)]
+pub use manta_pay as pay;

@@ -1,16 +1,16 @@
 [package]
-name = "manta-codec"
+name = "manta"
 edition = "2018"
 version = "0.3.0"
 authors = ["Manta Network <contact@manta.network>"]
 readme = "README.md"
-license-file = "LICENSE" 
+license-file = "LICENSE"
 repository = "https://github.com/Manta-Network/manta-rs"
 homepage = "https://github.com/Manta-Network"
 documentation = "https://github.com/Manta-Network/manta-rs"
 categories = [""]
 keywords = [""]
-description = "Serialization and Deserialization tools for Manta."
+description = "Manta Network main crate."
 publish = false
 
 [package.metadata.docs.rs]
@@ -25,11 +25,10 @@ maintenance = { status = "actively-developed" }
 [features]
 default = []
 std = []
-derive = ["scale-codec/derive"]
 
 [dependencies]
-ark-serialize = { version = "0.3.0", default-features = false }
-ark-std = { version = "0.3.0", default-features = false }
-scale-codec = { package = "parity-scale-codec", version = "2.2.0", default-features = false }
-displaydoc = { version = "0.2.3", default-features = false }
-manta-util = { path = "../manta-util", default-features = false }
+manta-accounting = { path = "../manta-accounting", default-features = false }
+manta-codec = { path = "../manta-codec", default-features = false }
+manta-crypto = { path = "../manta-crypto", default-features = false }
+manta-pay = { path = "../manta-pay", default-features = false }
+parity-scale-codec = { version = "2.2.0", default-features = false }
