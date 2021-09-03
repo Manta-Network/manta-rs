@@ -35,14 +35,11 @@ use rand::{
 
 /// Secret Key Generator Trait
 pub trait SecretKeyGenerator<SecretKey> {
-    /// Index Type
-    type Index;
-
     /// Key Generation Error
     type Error;
 
-    /// Generates a secret key for a given index starting from some root key.
-    fn generate_key(&self, index: &Self::Index) -> Result<SecretKey, Self::Error>;
+    /// Generates a new secret key.
+    fn generate_key(&mut self) -> Result<SecretKey, Self::Error>;
 }
 
 /// [`Identity`] Configuration Trait
@@ -62,12 +59,6 @@ pub trait IdentityConfiguration {
     /// Seedable Cryptographic Random Number Generator Type
     type Rng: CryptoRng + RngCore + SeedableRng<Seed = Self::SecretKey>;
 }
-
-/// [`SecretKeyGenerator::Index`] Type Alias
-pub type SecretKeyGeneratorIndex<C> =
-    <<C as IdentityConfiguration>::SecretKeyGenerator as SecretKeyGenerator<
-        <C as IdentityConfiguration>::SecretKey,
-    >>::Index;
 
 /// [`SecretKeyGenerator::Error`] Type Alias
 pub type SecretKeyGeneratorError<C> =
@@ -192,6 +183,7 @@ where
     }
 
     /// Generates a [`Utxo`] from a given `asset`, `void_number_commitment`, and `utxo_randomness`.
+    #[inline]
     pub fn utxo(
         &self,
         commitment_scheme: &C::CommitmentScheme,
@@ -250,10 +242,9 @@ where
     /// Generates a new [`Identity`] from a secret key generation source.
     #[inline]
     pub fn generate(
-        source: &C::SecretKeyGenerator,
-        index: &SecretKeyGeneratorIndex<C>,
+        source: &mut C::SecretKeyGenerator,
     ) -> Result<Self, SecretKeyGeneratorError<C>> {
-        source.generate_key(index).map(Self::new)
+        source.generate_key().map(Self::new)
     }
 
     /// Returns the public key associated with this identity.

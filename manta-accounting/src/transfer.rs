@@ -18,8 +18,9 @@
 
 use crate::{
     account::{IdentityConfiguration, Receiver, Sender, Utxo},
-    asset::{Asset, AssetCollection},
+    asset::{Asset, AssetBalance, AssetId},
 };
+use manta_codec::{ScaleDecode, ScaleEncode};
 use manta_crypto::{IntegratedEncryptionScheme, VerifiedSet};
 
 /// Transfer Configuration Trait
@@ -29,6 +30,31 @@ pub trait TransferConfiguration: IdentityConfiguration {
 
     /// Verified Set for [`Utxo`]
     type UtxoSet: VerifiedSet<Item = Utxo<Self>>;
+}
+
+/// Public Transfer Protocol
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, ScaleDecode, ScaleEncode)]
+pub struct PublicTransfer<const SOURCES: usize, const SINKS: usize> {
+    /// Asset Id
+    pub asset_id: AssetId,
+
+    /// Public Asset Sources
+    pub sources: [AssetBalance; SOURCES],
+
+    /// Public Asset Sinks
+    pub sinks: [AssetBalance; SINKS],
+}
+
+/// Secret Transfer Protocol
+pub struct SecretTrasfer<T, const SENDERS: usize, const RECEIVERS: usize>
+where
+    T: TransferConfiguration,
+{
+    /// Secret Senders
+    pub senders: [Sender<T, T::UtxoSet>; SENDERS],
+
+    /// Secret Receivers
+    pub receivers: [Receiver<T, T::IntegratedEncryptionScheme>; RECEIVERS],
 }
 
 /// Transfer Protocol
@@ -41,27 +67,9 @@ pub struct Transfer<
 > where
     T: TransferConfiguration,
 {
-    /// Public Asset Sources
-    pub sources: AssetCollection<SOURCES>,
+    /// Public Transfer
+    pub public: PublicTransfer<SOURCES, SINKS>,
 
-    /// Secret Senders
-    pub senders: [Sender<T, T::UtxoSet>; SENDERS],
-
-    /// Secret Receivers
-    pub receivers: [Receiver<T, T::IntegratedEncryptionScheme>; RECEIVERS],
-
-    /// Public Asset Sinks
-    pub sinks: AssetCollection<SINKS>,
-}
-
-/// Private Transfer Protocol
-pub struct PrivateTransfer<T, const SENDERS: usize, const RECEIVERS: usize>
-where
-    T: TransferConfiguration,
-{
-    /// Secret Senders
-    pub senders: [Sender<T, T::UtxoSet>; SENDERS],
-
-    /// Secret Receivers
-    pub receivers: [Receiver<T, T::IntegratedEncryptionScheme>; RECEIVERS],
+    /// Secret Trasfer
+    pub secret: SecretTrasfer<T, SENDERS, RECEIVERS>,
 }
