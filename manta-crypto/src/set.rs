@@ -33,8 +33,8 @@ pub trait Set {
     /// contained in `self`.
     fn try_insert(&mut self, item: Self::Item) -> Result<(), Self::Item>;
 
-    /// Inserts the `item` into `self`, returning `true` if the item was already contained in
-    /// `self`.
+    /// Inserts the `item` into `self`, returning `true` if the `item` was not contained and
+    /// `false` if the item was already contained in `self`.
     #[inline]
     fn insert(&mut self, item: Self::Item) -> bool {
         self.try_insert(item).is_err()
@@ -48,7 +48,7 @@ where
     Item: ?Sized,
 {
     /// Verifies that `self` is a proof that `item` is contained in some [`VerifiedSet`].
-    fn verify(&self, public: &Public, item: &Item) -> bool;
+    fn verify(&self, public_input: &Public, item: &Item) -> bool;
 }
 
 /// Containment Proof for a [`VerifiedSet`]
@@ -57,88 +57,55 @@ where
     S: VerifiedSet + ?Sized,
 {
     /// Public Input
-    pub input: S::Public,
+    pub public_input: S::Public,
 
     /// Secret Witness
-    witness: S::Secret,
+    secret_witness: S::Secret,
 }
 
 impl<S> ContainmentProof<S>
 where
     S: VerifiedSet + ?Sized,
 {
-    /// Builds a new [`ContainmentProof`] from public `input` and secret `witness`.
+    /// Builds a new [`ContainmentProof`] from `public_input` and `secret_witness`.
     #[inline]
-    pub fn new(input: S::Public, witness: S::Secret) -> Self {
-        Self { input, witness }
+    pub fn new(public_input: S::Public, secret_witness: S::Secret) -> Self {
+        Self {
+            public_input,
+            secret_witness,
+        }
     }
 
     /// Verifies that the `item` is contained in some [`VerifiedSet`].
     #[inline]
     pub fn verify(&self, item: &S::Item) -> bool {
-        self.witness.verify(&self.input, item)
+        self.secret_witness.verify(&self.public_input, item)
+    }
+
+    /// Returns `true` if `self.public_input` is a valid input for the current state of `set`.
+    #[inline]
+    pub fn check_public_input(&self, set: &S) -> bool {
+        set.check_public_input(&self.public_input)
     }
 }
 
 /// Verified Set Trait
-pub trait VerifiedSet {
-    /// Item Stored in the [`VerifiedSet`]
-    type Item;
-
-    /// Public Input for [`Item`](Self::Item) Containment
+pub trait VerifiedSet: Set {
+    /// Public Input for [`Item`](Set::Item) Containment
     type Public;
 
-    /// Secret Witness for [`Item`](Self::Item) Containment
+    /// Secret Witness for [`Item`](Set::Item) Containment
     type Secret: VerifyContainment<Self::Public, Self::Item>;
 
     /// Error Generating a [`ContainmentProof`]
     type ContainmentError;
 
-    /// Returns `true` if `public` is a valid input for the current state of `self`.
-    fn check_public_input(&self, public: &Self::Public) -> bool;
+    /// Returns `true` if `public_input` is a valid input for the current state of `self`.
+    fn check_public_input(&self, public_input: &Self::Public) -> bool;
 
     /// Generates a proof that the given `item` is stored in `self`.
     fn get_containment_proof(
         &self,
         item: &Self::Item,
     ) -> Result<ContainmentProof<Self>, Self::ContainmentError>;
-
-    /// Returns `true` if there exists a proof that `item` is stored in `self`.
-    #[inline]
-    fn contains(&self, item: &Self::Item) -> bool {
-        self.get_containment_proof(item).is_ok()
-    }
-
-    /// Tries to insert the `item` into `self`, returning the item back if it was already
-    /// contained in `self`.
-    fn try_insert(&mut self, item: Self::Item) -> Result<(), Self::Item>;
-
-    /// Inserts the `item` into `self`, returning `true` if the item was already contained in
-    /// `self`.
-    #[inline]
-    fn insert(&mut self, item: Self::Item) -> bool {
-        self.try_insert(item).is_err()
-    }
-}
-
-impl<S> Set for S
-where
-    S: VerifiedSet + ?Sized,
-{
-    type Item = S::Item;
-
-    #[inline]
-    fn contains(&self, item: &Self::Item) -> bool {
-        self.contains(item)
-    }
-
-    #[inline]
-    fn try_insert(&mut self, item: Self::Item) -> Result<(), Self::Item> {
-        self.try_insert(item)
-    }
-
-    #[inline]
-    fn insert(&mut self, item: Self::Item) -> bool {
-        self.insert(item)
-    }
 }

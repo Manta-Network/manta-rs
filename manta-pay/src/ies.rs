@@ -38,36 +38,40 @@ pub type PublicKey = [u8; 32];
 /// Secret Key Type
 pub type SecretKey = [u8; 32];
 
-/// Ciphertext Type
+/// Asset Ciphertext Type
 // FIXME: this should be automatically calculated from [`Asset`]
 // FIXME: is this calculation correct? how do we know?
-pub type Ciphertext = [u8; Asset::SIZE + 16];
+pub type AssetCiphertext = [u8; Asset::SIZE + 16];
 
 /// Ephemeral Public Key Type
 pub type EphemeralPublicKey = PublicKey;
 
-/// Augmented Ciphertext
-pub struct AugmentedCiphertext {
-    /// Base Ciphertext
-    pub ciphertext: Ciphertext,
+/// Augmented Asset Ciphertext
+pub struct AugmentedAssetCiphertext {
+    /// Asset Ciphertext
+    pub asset_ciphertext: AssetCiphertext,
 
     /// Ephemeral Public Key
     pub ephemeral_public_key: EphemeralPublicKey,
 }
 
-impl AugmentedCiphertext {
-    /// Builds a new [`AugmentedCiphertext`] from `ciphertext` and `ephemeral_public_key`.
+impl AugmentedAssetCiphertext {
+    /// Builds a new [`AugmentedAssetCiphertext`] from `asset_ciphertext`
+    /// and `ephemeral_public_key`.
     #[inline]
-    pub const fn new(ciphertext: Ciphertext, ephemeral_public_key: EphemeralPublicKey) -> Self {
+    pub const fn new(
+        asset_ciphertext: AssetCiphertext,
+        ephemeral_public_key: EphemeralPublicKey,
+    ) -> Self {
         Self {
-            ciphertext,
+            asset_ciphertext,
             ephemeral_public_key,
         }
     }
 }
 
 /// Encrypted Message for [`IES`]
-pub type EncryptedMessage = ies::EncryptedMessage<IES>;
+pub type EncryptedAsset = ies::EncryptedMessage<IES>;
 
 /// Implementation of [`IntegratedEncryptionScheme`]
 #[derive(
@@ -97,7 +101,7 @@ impl IntegratedEncryptionScheme for IES {
 
     type Plaintext = Asset;
 
-    type Ciphertext = AugmentedCiphertext;
+    type Ciphertext = AugmentedAssetCiphertext;
 
     type Error = aes_gcm::Error;
 
@@ -115,7 +119,7 @@ impl IntegratedEncryptionScheme for IES {
         plaintext: Self::Plaintext,
         public_key: Self::PublicKey,
         rng: &mut R,
-    ) -> Result<EncryptedMessage, Self::Error>
+    ) -> Result<EncryptedAsset, Self::Error>
     where
         R: CryptoRng + RngCore + ?Sized,
     {
@@ -126,13 +130,13 @@ impl IntegratedEncryptionScheme for IES {
         let aes_key = GenericArray::from_slice(&ss);
 
         // SAFETY: Using a deterministic nonce is ok since we never reuse keys.
-        let ciphertext = Aes256Gcm::new(aes_key).encrypt(
+        let asset_ciphertext = Aes256Gcm::new(aes_key).encrypt(
             Nonce::from_slice(Self::NONCE),
             plaintext.into_bytes().as_ref(),
         )?;
 
-        Ok(EncryptedMessage::new(AugmentedCiphertext::new(
-            try_into_array_unchecked(ciphertext),
+        Ok(EncryptedAsset::new(AugmentedAssetCiphertext::new(
+            try_into_array_unchecked(asset_ciphertext),
             ephemeral_public_key.to_bytes(),
         )))
     }
@@ -149,7 +153,7 @@ impl IntegratedEncryptionScheme for IES {
         // SAFETY: Using a deterministic nonce is ok since we never reuse keys.
         let plaintext = Aes256Gcm::new(aes_key).decrypt(
             Nonce::from_slice(Self::NONCE),
-            ciphertext.ciphertext.as_ref(),
+            ciphertext.asset_ciphertext.as_ref(),
         )?;
 
         Ok(Asset::from_bytes(try_into_array_unchecked(

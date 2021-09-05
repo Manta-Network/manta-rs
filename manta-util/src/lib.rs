@@ -25,6 +25,7 @@ use alloc::vec::Vec;
 use core::convert::TryInto;
 
 /// Implements [`From`]`<$from>` for an enum `$to`, choosing the `$kind` variant.
+// TODO: add `where` clauses
 #[macro_export]
 macro_rules! from_variant_impl {
     ($to:tt, $kind:ident, $from:tt) => {

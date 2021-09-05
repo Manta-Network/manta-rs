@@ -18,19 +18,14 @@
 
 use crate::{
     account::{IdentityConfiguration, Receiver, Sender, Utxo},
-    asset::{Asset, AssetBalance, AssetId},
+    asset::{sample_asset_balances, Asset, AssetBalances, AssetId},
 };
 use manta_codec::{ScaleDecode, ScaleEncode};
 use manta_crypto::{IntegratedEncryptionScheme, VerifiedSet};
-
-/// Transfer Configuration Trait
-pub trait TransferConfiguration: IdentityConfiguration {
-    /// Integrated Encryption Scheme for [`Asset`]
-    type IntegratedEncryptionScheme: IntegratedEncryptionScheme<Plaintext = Asset>;
-
-    /// Verified Set for [`Utxo`]
-    type UtxoSet: VerifiedSet<Item = Utxo<Self>>;
-}
+use rand::{
+    distributions::{Distribution, Standard},
+    Rng, RngCore,
+};
 
 /// Public Transfer Protocol
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, ScaleDecode, ScaleEncode)]
@@ -39,22 +34,72 @@ pub struct PublicTransfer<const SOURCES: usize, const SINKS: usize> {
     pub asset_id: AssetId,
 
     /// Public Asset Sources
-    pub sources: [AssetBalance; SOURCES],
+    pub sources: AssetBalances<SOURCES>,
 
     /// Public Asset Sinks
-    pub sinks: [AssetBalance; SINKS],
+    pub sinks: AssetBalances<SINKS>,
+}
+
+impl<const SOURCES: usize, const SINKS: usize> PublicTransfer<SOURCES, SINKS> {
+    /// Builds a new [`PublicTransfer`].
+    pub const fn new(
+        asset_id: AssetId,
+        sources: AssetBalances<SOURCES>,
+        sinks: AssetBalances<SINKS>,
+    ) -> Self {
+        Self {
+            asset_id,
+            sources,
+            sinks,
+        }
+    }
+}
+
+impl<const SOURCES: usize, const SINKS: usize> Distribution<PublicTransfer<SOURCES, SINKS>>
+    for Standard
+{
+    #[inline]
+    fn sample<R: RngCore + ?Sized>(&self, rng: &mut R) -> PublicTransfer<SOURCES, SINKS> {
+        PublicTransfer::new(
+            rng.gen(),
+            sample_asset_balances(rng),
+            sample_asset_balances(rng),
+        )
+    }
+}
+
+/// Secret Transfer Configuration Trait
+pub trait SecretTransferConfiguration: IdentityConfiguration {
+    /// Integrated Encryption Scheme for [`Asset`]
+    type IntegratedEncryptionScheme: IntegratedEncryptionScheme<Plaintext = Asset>;
+
+    /// Verified Set for [`Utxo`]
+    type UtxoSet: VerifiedSet<Item = Utxo<Self>>;
 }
 
 /// Secret Transfer Protocol
-pub struct SecretTrasfer<T, const SENDERS: usize, const RECEIVERS: usize>
+pub struct SecretTransfer<T, const SENDERS: usize, const RECEIVERS: usize>
 where
-    T: TransferConfiguration,
+    T: SecretTransferConfiguration,
 {
     /// Secret Senders
     pub senders: [Sender<T, T::UtxoSet>; SENDERS],
 
     /// Secret Receivers
     pub receivers: [Receiver<T, T::IntegratedEncryptionScheme>; RECEIVERS],
+}
+
+impl<T, const SENDERS: usize, const RECEIVERS: usize> SecretTransfer<T, SENDERS, RECEIVERS>
+where
+    T: SecretTransferConfiguration,
+{
+    /// Builds a new [`SecretTransfer`].
+    pub fn new(
+        senders: [Sender<T, T::UtxoSet>; SENDERS],
+        receivers: [Receiver<T, T::IntegratedEncryptionScheme>; RECEIVERS],
+    ) -> Self {
+        Self { senders, receivers }
+    }
 }
 
 /// Transfer Protocol
@@ -65,11 +110,11 @@ pub struct Transfer<
     const RECEIVERS: usize,
     const SINKS: usize,
 > where
-    T: TransferConfiguration,
+    T: SecretTransferConfiguration,
 {
     /// Public Transfer
     pub public: PublicTransfer<SOURCES, SINKS>,
 
-    /// Secret Trasfer
-    pub secret: SecretTrasfer<T, SENDERS, RECEIVERS>,
+    /// Secret Transfer
+    pub secret: SecretTransfer<T, SENDERS, RECEIVERS>,
 }

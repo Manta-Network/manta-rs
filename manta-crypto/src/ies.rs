@@ -126,14 +126,16 @@ where
         I::keygen(rng)
     }
 
-    /// Splits the key pair into an [`I::PublicKey`](IntegratedEncryptionScheme::PublicKey)
-    /// and a [`SecretKey`].
+    /// Returns the public side of the key pair.
     #[inline]
-    pub fn split(self) -> (PublicKey<I>, SecretKey<I>) {
-        (
-            PublicKey::new(self.public_key),
-            SecretKey::new(self.secret_key),
-        )
+    pub fn into_public(self) -> PublicKey<I> {
+        PublicKey::new(self.public_key)
+    }
+
+    /// Returns the secret side of the key pair.
+    #[inline]
+    pub fn into_secret(self) -> SecretKey<I> {
+        SecretKey::new(self.secret_key)
     }
 
     /// Encrypts the `plaintext` with `self, generating an [`EncryptedMessage`].
@@ -146,8 +148,21 @@ where
     where
         R: CryptoRng + RngCore + ?Sized,
     {
-        let (public_key, secret_key) = self.split();
+        let (public_key, secret_key) = self.into();
         Ok((public_key.encrypt(plaintext, rng)?, secret_key))
+    }
+}
+
+impl<I> From<KeyPair<I>> for (PublicKey<I>, SecretKey<I>)
+where
+    I: IntegratedEncryptionScheme + ?Sized,
+{
+    #[inline]
+    fn from(keypair: KeyPair<I>) -> Self {
+        (
+            PublicKey::new(keypair.public_key),
+            SecretKey::new(keypair.secret_key),
+        )
     }
 }
 

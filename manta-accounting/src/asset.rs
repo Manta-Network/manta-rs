@@ -17,6 +17,7 @@
 //! Assets
 
 // TODO: add macro to build `AssetId` and `AssetBalance`
+// TODO: implement all `rand` sampling traits
 
 use alloc::vec::Vec;
 use core::{
@@ -167,6 +168,24 @@ impl AssetBalance {
     pub const fn from_bytes(bytes: [u8; Self::SIZE]) -> Self {
         Self(AssetBalanceType::from_le_bytes(bytes))
     }
+
+    /// Checked integer addition. Computes `self + rhs`, returning `None` if overflow occurred.
+    #[inline]
+    pub const fn checked_add(self, rhs: Self) -> Option<Self> {
+        match self.0.checked_add(rhs.0) {
+            Some(result) => Some(Self(result)),
+            _ => None,
+        }
+    }
+
+    /// Checked integer subtraction. Computes `self - rhs`, returning `None` if overflow occurred.
+    #[inline]
+    pub const fn checked_sub(self, rhs: Self) -> Option<Self> {
+        match self.0.checked_sub(rhs.0) {
+            Some(result) => Some(Self(result)),
+            _ => None,
+        }
+    }
 }
 
 impl Distribution<AssetBalance> for Standard {
@@ -190,6 +209,19 @@ impl Mul<AssetBalance> for AssetBalanceType {
     fn mul(self, rhs: AssetBalance) -> Self::Output {
         self * rhs.0
     }
+}
+
+/// [`AssetBalance`] Array Type
+pub type AssetBalances<const N: usize> = [AssetBalance; N];
+
+#[inline]
+pub(crate) fn sample_asset_balances<R, const N: usize>(rng: &mut R) -> AssetBalances<N>
+where
+    R: RngCore + ?Sized,
+{
+    // FIXME: We have to use this implementation because of a bug in `rand`.
+    //        See `https://github.com/rust-random/rand/pull/1173`.
+    try_into_array_unchecked(rng.sample_iter(Standard).take(N).collect::<Vec<_>>())
 }
 
 /// Asset
