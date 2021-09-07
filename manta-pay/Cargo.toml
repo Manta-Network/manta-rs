@@ -28,12 +28,14 @@ std = []
 
 [dependencies]
 aes-gcm = { version = "0.9.4" }
-ark-std = { version = "0.3.0", default-features = false }
 blake2 = { version = "0.9.2", default-features = false }
 generic-array = { version = "0.14.4", default-features = false }
 manta-accounting = { path = "../manta-accounting", default-features = false }
-manta-codec = { path = "../manta-codec", default-features = false, features = ["derive"] }
 manta-crypto = { path = "../manta-crypto", default-features = false }
 manta-util = { path = "../manta-util", default-features = false }
-parity-scale-codec = { version = "2.2.0", default-features = false }
+rand = { version = "0.8.4", default-features = false }
 x25519-dalek = { git = "https://github.com/Manta-Network/x25519-dalek", default-features = false, features = ["u64_backend"] }
+
+[dev-dependencies]
+rand = "0.8.4"
+rand_chacha = "0.3.1"

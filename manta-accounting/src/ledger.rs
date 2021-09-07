@@ -16,69 +16,13 @@
 
 //! Ledger Abstraction
 
-use manta_crypto::{Set, VerifiedSet};
-
-pub(crate) mod prelude {
-    #[doc(inline)]
-    pub use crate::ledger::Ledger;
-}
-
-/// Ledger Error
-pub enum Error<L>
-where
-    L: Ledger + ?Sized,
-{
-    /// Asset has already been spent
-    AssetSpent(
-        /// Void Number
-        L::VoidNumber,
-    ),
-    /// Asset has already been registered
-    AssetRegistered(
-        /// Unspent Transaction Output
-        L::Utxo,
-    ),
-    /// Encrypted Asset has already been stored
-    EncryptedAssetStored(
-        /// Encrypted [`Asset`](crate::asset::Asset)
-        L::EncryptedAsset,
-    ),
-    /// Utxo [`ContainmentProof`](manta_crypto::set::ContainmentProof) has an invalid public input
-    InvalidUtxoState(
-        /// UTXO Containment Proof Public Input
-        <L::UtxoSet as VerifiedSet>::Public,
-    ),
-}
-
-/// Post Trait
-pub trait Post<L>
-where
-    L: Ledger + ?Sized,
-{
-    /// Posts an update to the ledger or returns an error if the update could not be
-    /// completed successfully.
-    fn post(self, ledger: &mut L) -> Result<(), Error<L>>;
-}
-
-/// Into Post Trait
-pub trait IntoPost<L>
-where
-    L: Ledger + ?Sized,
-{
-    /// Post Data
-    type IntoPost: Post<L>;
-
-    /// Converts from `self` into its ledger [`Post`] data.
-    fn into_post(self) -> Self::IntoPost;
-}
+use crate::account::{ReceiverPostError, SenderPostError};
+use manta_crypto::VerifiedSet;
 
 /// Ledger Trait
 pub trait Ledger {
     /// Void Number Type
     type VoidNumber;
-
-    /// Void Number Set Type
-    type VoidNumberSet: Set<Item = Self::VoidNumber>;
 
     /// Unspent Transaction Output Type
     type Utxo;
@@ -89,103 +33,95 @@ pub trait Ledger {
     /// Encrypted Asset Type
     type EncryptedAsset;
 
-    /// Encrypted Asset Set Type
-    type EncryptedAssetSet: Set<Item = Self::EncryptedAsset>;
-
-    /// Returns a shared reference to the [`VoidNumberSet`](Self::VoidNumberSet).
-    fn void_numbers(&self) -> &Self::VoidNumberSet;
-
-    /// Returns a mutable reference to the [`VoidNumberSet`](Self::VoidNumberSet).
-    fn void_numbers_mut(&mut self) -> &mut Self::VoidNumberSet;
-
     /// Returns a shared reference to the [`UtxoSet`](Self::UtxoSet).
     fn utxos(&self) -> &Self::UtxoSet;
 
-    /// Returns a mutable reference to the [`UtxoSet`](Self::UtxoSet).
-    fn utxos_mut(&mut self) -> &mut Self::UtxoSet;
+    /* TODO: do we want these methods?
 
-    /// Returns a shared reference to the [`EncryptedAssetSet`](Self::EncryptedAssetSet).
-    fn encrypted_assets(&self) -> &Self::EncryptedAssetSet;
+    /// Returns `true` if the `void_number` corresponding to some asset
+    /// __is not stored__ on `self`.
+    fn is_unspent(&self, void_number: &Self::VoidNumber) -> bool;
 
-    /// Returns a mutable reference to the [`EncryptedAssetSet`](Self::EncryptedAssetSet).
-    fn encrypted_assets_mut(&mut self) -> &mut Self::EncryptedAssetSet;
+    /// Returns `true` if the `utxo` corresponding to some asset
+    /// __is stored__ on `self`.
+    #[inline]
+    fn is_registered(&self, utxo: &Self::Utxo) -> bool {
+        self.utxos().contains(utxo)
+    }
+
+    /// Returns `true` if an asset's `utxo` __is stored__ on the `ledger` and that
+    /// its `void_number` __is not stored__ on `self`.
+    #[inline]
+    fn is_spendable(&self, utxo: &Self::Utxo, void_number: &Self::VoidNumber) -> bool {
+        self.is_registered(utxo) && self.is_unspent(void_number)
+    }
+
+    */
+
+    /// Checks if the `public_input` corresponding to a UTXO containment proof represents the current
+    /// state of the [`UtxoSet`](Self::UtxoSet), returning it back if not.
+    #[inline]
+    fn check_utxo_containment_proof_public_input(
+        &self,
+        public_input: <Self::UtxoSet as VerifiedSet>::Public,
+    ) -> Result<(), <Self::UtxoSet as VerifiedSet>::Public> {
+        if self.utxos().check_public_input(&public_input) {
+            Ok(())
+        } else {
+            Err(public_input)
+        }
+    }
+
+    /// Tries to post the `void_number` to `self` returning it back if the
+    /// `void_number` was already stored on `self`.
+    fn try_post_void_number(
+        &mut self,
+        void_number: Self::VoidNumber,
+    ) -> Result<(), Self::VoidNumber>;
+
+    /// Tries to post the `utxo` to `self` returning it back if the
+    /// `utxo` was already stored on `self`.
+    fn try_post_utxo(&mut self, utxo: Self::Utxo) -> Result<(), Self::Utxo>;
+
+    /// Tries to post the `encrypted_asset` to `self` returning it back
+    /// if the `encrypted_asset` was already stored on `self`.
+    fn try_post_encrypted_asset(
+        &mut self,
+        encrypted_asset: Self::EncryptedAsset,
+    ) -> Result<(), Self::EncryptedAsset>;
 }
 
-/// Returns `true` if the `void_number` corresponding to some asset
-/// __is not stored__ on the `ledger`.
-#[inline]
-pub fn is_unspent<L>(ledger: &L, void_number: &L::VoidNumber) -> bool
+/// Ledger Post Error
+pub enum PostError<L>
 where
     L: Ledger + ?Sized,
 {
-    !ledger.void_numbers().contains(void_number)
+    /// Sender Post Error
+    Sender(SenderPostError<L>),
+
+    /// Receiver Post Error
+    Receiver(ReceiverPostError<L>),
+
+    /// Invalid Secret Transfer
+    InvalidSecretTransfer,
 }
 
-/// Returns `true` if an asset's `utxo` __is stored__ on the `ledger` and that
-/// its `void_number` __is not stored__ on the `ledger`.
-#[inline]
-pub fn is_spendable<L>(ledger: &L, void_number: &L::VoidNumber, utxo: &L::Utxo) -> bool
+impl<L> From<SenderPostError<L>> for PostError<L>
 where
     L: Ledger + ?Sized,
 {
-    is_unspent(ledger, void_number) && ledger.utxos().contains(utxo)
+    #[inline]
+    fn from(err: SenderPostError<L>) -> Self {
+        Self::Sender(err)
+    }
 }
 
-/// Tries to post the `void_number` to the `ledger` returning [`Error::AssetSpent`] if the
-/// `void_number` was already stored on the `ledger`.
-#[inline]
-pub fn try_post_void_number<L>(ledger: &mut L, void_number: L::VoidNumber) -> Result<(), Error<L>>
+impl<L> From<ReceiverPostError<L>> for PostError<L>
 where
     L: Ledger + ?Sized,
 {
-    ledger
-        .void_numbers_mut()
-        .try_insert(void_number)
-        .map_err(Error::AssetSpent)
-}
-
-/// Tries to post the `utxo` to the `ledger` returning [`Error::AssetRegistered`] if the
-/// `utxo` was already stored on the `ledger`.
-#[inline]
-pub fn try_post_utxo<L>(ledger: &mut L, utxo: L::Utxo) -> Result<(), Error<L>>
-where
-    L: Ledger + ?Sized,
-{
-    ledger
-        .utxos_mut()
-        .try_insert(utxo)
-        .map_err(Error::AssetRegistered)
-}
-
-/// Tries to post the `encrypted_asset` to the `ledger` returning [`Error::EncryptedAssetStored`]
-/// if the `encrypted_asset` was already stored on the `ledger`.
-#[inline]
-pub fn try_post_encrypted_asset<L>(
-    ledger: &mut L,
-    encrypted_asset: L::EncryptedAsset,
-) -> Result<(), Error<L>>
-where
-    L: Ledger + ?Sized,
-{
-    ledger
-        .encrypted_assets_mut()
-        .try_insert(encrypted_asset)
-        .map_err(Error::EncryptedAssetStored)
-}
-
-/// Checks if the `public_input` corresponding to a UTXO containment proof represents the current
-/// state of the [`UtxoSet`](Ledger::UtxoSet), returning [`Error::InvalidUtxoState`] if not.
-#[inline]
-pub fn check_utxo_containment_proof_public_input<L>(
-    ledger: &mut L,
-    public_input: <L::UtxoSet as VerifiedSet>::Public,
-) -> Result<(), Error<L>>
-where
-    L: Ledger + ?Sized,
-{
-    if ledger.utxos().check_public_input(&public_input) {
-        Ok(())
-    } else {
-        Err(Error::InvalidUtxoState(public_input))
+    #[inline]
+    fn from(err: ReceiverPostError<L>) -> Self {
+        Self::Receiver(err)
     }
 }

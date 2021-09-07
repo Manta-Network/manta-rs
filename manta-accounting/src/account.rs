@@ -19,11 +19,10 @@
 // FIXME: ensure secret keys cannot be made public by some API call
 
 use crate::{
-    asset::Asset,
-    ledger::{self, IntoPost, Ledger, Post},
+    asset::{Asset, AssetBalance, AssetId},
+    ledger::Ledger,
 };
 use core::{convert::Infallible, fmt::Debug, hash::Hash, marker::PhantomData};
-use manta_codec::{ScaleDecode, ScaleEncode};
 use manta_crypto::{
     concatenate,
     ies::{self, EncryptedMessage},
@@ -39,8 +38,8 @@ use rand::{
 pub(crate) mod prelude {
     #[doc(inline)]
     pub use crate::account::{
-        Identity, IdentityConfiguration, Receiver, SecretKeyGeneratorError, Sender, SenderError,
-        ShieldedIdentity, Spend, SpendError, Utxo, VoidNumber,
+        Identity, IdentityConfiguration, Receiver, SecretKeyGenerator, SecretKeyGeneratorError,
+        Sender, SenderError, ShieldedIdentity, Spend, SpendError, Utxo, VoidNumber,
     };
 }
 
@@ -153,7 +152,7 @@ where
 }
 
 /// Public Parameters for using an [`Asset`]
-#[derive(derivative::Derivative, ScaleDecode, ScaleEncode)]
+#[derive(derivative::Derivative)]
 #[derivative(
     Clone(
         bound = "VoidNumberGenerator<C>: Clone, VoidNumberCommitmentRandomness<C>: Clone, UtxoRandomness<C>: Copy"
@@ -368,7 +367,7 @@ where
         I: IntegratedEncryptionScheme<Plaintext = Asset>,
         Standard: Distribution<AssetParameters<C>>,
     {
-        let (_, parameters, asset_keypair) = self.rng_and_parameters_and_asset_keypair::<I>();
+        let (_, parameters, asset_keypair) = self.rng_and_parameters_and_asset_keypair();
         (parameters, asset_keypair)
     }
 
@@ -379,7 +378,7 @@ where
         I: IntegratedEncryptionScheme<Plaintext = Asset>,
         Standard: Distribution<AssetParameters<C>>,
     {
-        let (_, asset_keypair) = self.parameters_and_asset_keypair::<I>();
+        let (_, asset_keypair) = self.parameters_and_asset_keypair();
         asset_keypair
     }
 
@@ -450,14 +449,13 @@ where
     {
         let parameters = self.parameters();
         let utxo = self.utxo(commitment_scheme, &asset, &parameters);
-        let utxo_containment_proof = utxo_set.get_containment_proof(&utxo)?;
         Ok(Sender {
-            asset,
+            utxo_containment_proof: utxo_set.get_containment_proof(&utxo)?,
             void_number: self.void_number(&parameters.void_number_generator),
+            identity: self,
+            asset,
             parameters,
             utxo,
-            utxo_containment_proof,
-            identity: self,
         })
     }
 
@@ -514,7 +512,7 @@ where
         PublicKey<C>: ConcatBytes,
         VoidNumberGenerator<C>: ConcatBytes,
     {
-        let (parameters, asset_keypair) = self.parameters_and_asset_keypair::<I>();
+        let (parameters, asset_keypair) = self.parameters_and_asset_keypair();
         self.build_shielded_identity(commitment_scheme, parameters, asset_keypair.into_public())
     }
 
@@ -542,7 +540,7 @@ where
         Standard: Distribution<AssetParameters<C>>,
     {
         Spend {
-            asset_secret_key: self.asset_keypair::<I>().into_secret(),
+            asset_secret_key: self.asset_keypair().into_secret(),
             identity: self,
         }
     }
@@ -572,7 +570,7 @@ where
         PublicKey<C>: ConcatBytes,
         VoidNumberGenerator<C>: ConcatBytes,
     {
-        let (parameters, asset_keypair) = self.parameters_and_asset_keypair::<I>();
+        let (parameters, asset_keypair) = self.parameters_and_asset_keypair();
         let (asset_public_key, asset_secret_key) = asset_keypair.into();
         (
             self.build_shielded_identity(commitment_scheme, parameters, asset_public_key),
@@ -892,23 +890,44 @@ where
     {
         Identity::generate_sender(source, commitment_scheme, asset, utxo_set)
     }
-}
 
-impl<C, S, L> IntoPost<L> for Sender<C, S>
-where
-    C: IdentityConfiguration,
-    S: VerifiedSet<Item = Utxo<C>>,
-    L: Ledger<VoidNumber = VoidNumber<C>, UtxoSet = S> + ?Sized,
-{
-    type IntoPost = SenderPost<C, S>;
-
+    /// Extracts ledger posting data for this sender.
     #[inline]
-    fn into_post(self) -> Self::IntoPost {
-        Self::IntoPost {
+    pub fn into_post(self) -> SenderPost<C, S> {
+        SenderPost {
             void_number: self.void_number,
             utxo_containment_proof_public_input: self.utxo_containment_proof.public_input,
         }
     }
+
+    /// Returns the asset id for this sender.
+    #[inline]
+    pub fn asset_id(&self) -> AssetId {
+        self.asset.id
+    }
+
+    /// Returns the asset value for this sender.
+    #[inline]
+    pub fn asset_value(&self) -> AssetBalance {
+        self.asset.value
+    }
+}
+
+/// Sender Post Error
+pub enum SenderPostError<L>
+where
+    L: Ledger + ?Sized,
+{
+    /// Asset has already been spent
+    AssetSpent(
+        /// Void Number
+        L::VoidNumber,
+    ),
+    /// Utxo [`ContainmentProof`](manta_crypto::set::ContainmentProof) has an invalid public input
+    InvalidUtxoState(
+        /// UTXO Containment Proof Public Input
+        <L::UtxoSet as VerifiedSet>::Public,
+    ),
 }
 
 /// Sender Post
@@ -924,19 +943,23 @@ where
     pub utxo_containment_proof_public_input: S::Public,
 }
 
-impl<C, S, L> Post<L> for SenderPost<C, S>
+impl<C, S> SenderPost<C, S>
 where
     C: IdentityConfiguration,
     S: VerifiedSet<Item = Utxo<C>>,
-    L: Ledger<VoidNumber = VoidNumber<C>, UtxoSet = S> + ?Sized,
 {
+    /// Posts the [`SenderPost`] data to the `ledger`.
     #[inline]
-    fn post(self, ledger: &mut L) -> Result<(), ledger::Error<L>> {
-        ledger::try_post_void_number(ledger, self.void_number)?;
-        ledger::check_utxo_containment_proof_public_input(
-            ledger,
-            self.utxo_containment_proof_public_input,
-        )?;
+    pub fn post<L>(self, ledger: &mut L) -> Result<(), SenderPostError<L>>
+    where
+        L: Ledger<VoidNumber = VoidNumber<C>, UtxoSet = S> + ?Sized,
+    {
+        ledger
+            .try_post_void_number(self.void_number)
+            .map_err(SenderPostError::AssetSpent)?;
+        ledger
+            .check_utxo_containment_proof_public_input(self.utxo_containment_proof_public_input)
+            .map_err(SenderPostError::InvalidUtxoState)?;
         Ok(())
     }
 }
@@ -982,23 +1005,44 @@ where
     {
         identity.into_receiver(commitment_scheme, asset, rng)
     }
-}
 
-impl<C, I, L> IntoPost<L> for ReceiverPost<C, I>
-where
-    C: IdentityConfiguration,
-    I: IntegratedEncryptionScheme<Plaintext = Asset>,
-    L: Ledger<Utxo = Utxo<C>, EncryptedAsset = EncryptedMessage<I>> + ?Sized,
-{
-    type IntoPost = ReceiverPost<C, I>;
-
+    /// Extracts ledger posting data for this receiver.
     #[inline]
-    fn into_post(self) -> Self::IntoPost {
-        Self::IntoPost {
+    pub fn into_post(self) -> ReceiverPost<C, I> {
+        ReceiverPost {
             utxo: self.utxo,
             encrypted_asset: self.encrypted_asset,
         }
     }
+
+    /// Returns the asset id for this receiver.
+    #[inline]
+    pub fn asset_id(&self) -> AssetId {
+        self.asset.id
+    }
+
+    /// Returns the asset value for this receiver.
+    #[inline]
+    pub fn asset_value(&self) -> AssetBalance {
+        self.asset.value
+    }
+}
+
+/// Receiver Post Error
+pub enum ReceiverPostError<L>
+where
+    L: Ledger + ?Sized,
+{
+    /// Asset has already been registered
+    AssetRegistered(
+        /// Unspent Transaction Output
+        L::Utxo,
+    ),
+    /// Encrypted Asset has already been stored
+    EncryptedAssetStored(
+        /// Encrypted [`Asset`](crate::asset::Asset)
+        L::EncryptedAsset,
+    ),
 }
 
 /// Receiver Post
@@ -1014,16 +1058,23 @@ where
     pub encrypted_asset: EncryptedMessage<I>,
 }
 
-impl<C, I, L> Post<L> for ReceiverPost<C, I>
+impl<C, I> ReceiverPost<C, I>
 where
     C: IdentityConfiguration,
     I: IntegratedEncryptionScheme<Plaintext = Asset>,
-    L: Ledger<Utxo = Utxo<C>, EncryptedAsset = EncryptedMessage<I>> + ?Sized,
 {
+    /// Posts the [`ReceiverPost`] data to the `ledger`.
     #[inline]
-    fn post(self, ledger: &mut L) -> Result<(), ledger::Error<L>> {
-        ledger::try_post_utxo(ledger, self.utxo)?;
-        ledger::try_post_encrypted_asset(ledger, self.encrypted_asset)?;
+    pub fn post<L>(self, ledger: &mut L) -> Result<(), ReceiverPostError<L>>
+    where
+        L: Ledger<Utxo = Utxo<C>, EncryptedAsset = EncryptedMessage<I>> + ?Sized,
+    {
+        ledger
+            .try_post_utxo(self.utxo)
+            .map_err(ReceiverPostError::AssetRegistered)?;
+        ledger
+            .try_post_encrypted_asset(self.encrypted_asset)
+            .map_err(ReceiverPostError::EncryptedAssetStored)?;
         Ok(())
     }
 }

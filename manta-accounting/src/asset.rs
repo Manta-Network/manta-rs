@@ -29,9 +29,8 @@ use core::{
 use derive_more::{
     Add, AddAssign, Display, Div, DivAssign, From, Mul, MulAssign, Product, Sub, SubAssign, Sum,
 };
-use manta_codec::{ScaleDecode, ScaleEncode};
 use manta_crypto::{Accumulator, ConcatBytes};
-use manta_util::{array_map, fallible_array_map, try_into_array_unchecked};
+use manta_util::{array_map, fallible_array_map, into_array_unchecked};
 use rand::{
     distributions::{Distribution, Standard},
     Rng, RngCore,
@@ -60,8 +59,6 @@ type AssetIdType = u32;
     PartialEq,
     PartialOrd,
     Product,
-    ScaleDecode,
-    ScaleEncode,
     Sub,
     SubAssign,
     Sum,
@@ -138,8 +135,6 @@ type AssetBalanceType = u128;
     PartialEq,
     PartialOrd,
     Product,
-    ScaleDecode,
-    ScaleEncode,
     Sub,
     SubAssign,
     Sum,
@@ -221,13 +216,11 @@ where
 {
     // FIXME: We have to use this implementation because of a bug in `rand`.
     //        See `https://github.com/rust-random/rand/pull/1173`.
-    try_into_array_unchecked(rng.sample_iter(Standard).take(N).collect::<Vec<_>>())
+    into_array_unchecked(rng.sample_iter(Standard).take(N).collect::<Vec<_>>())
 }
 
 /// Asset
-#[derive(
-    Clone, Copy, Debug, Default, Display, Eq, From, Hash, PartialEq, ScaleDecode, ScaleEncode,
-)]
+#[derive(Clone, Copy, Debug, Default, Display, Eq, From, Hash, PartialEq)]
 #[display(fmt = "{{id: {}, value: {}}}", id, value)]
 pub struct Asset {
     /// Asset Id
@@ -258,14 +251,14 @@ impl Asset {
 
     /// Checks if the `rhs` asset has the same [`AssetId`].
     #[inline]
-    pub const fn same_id(&self, rhs: &Asset) -> bool {
+    pub const fn same_id(&self, rhs: &Self) -> bool {
         self.id.0 == rhs.id.0
     }
 
     /// Converts `self` into a byte array.
     #[inline]
     pub fn into_bytes(self) -> [u8; Self::SIZE] {
-        try_into_array_unchecked(self.as_bytes::<Vec<u8>>())
+        into_array_unchecked(self.as_bytes::<Vec<u8>>())
     }
 
     /// Converts a byte array into `self`.
@@ -273,8 +266,8 @@ impl Asset {
     pub fn from_bytes(bytes: [u8; Self::SIZE]) -> Self {
         let split = (AssetId::BITS / 8) as usize;
         Self::new(
-            AssetId::from_bytes(try_into_array_unchecked(&bytes[..split])),
-            AssetBalance::from_bytes(try_into_array_unchecked(&bytes[split..])),
+            AssetId::from_bytes(into_array_unchecked(&bytes[..split])),
+            AssetBalance::from_bytes(into_array_unchecked(&bytes[split..])),
         )
     }
 }
@@ -358,9 +351,7 @@ impl Distribution<Asset> for Standard {
 }
 
 /// Asset Collection
-#[derive(
-    Clone, Copy, Debug, Eq, From, Hash, Ord, PartialEq, PartialOrd, ScaleDecode, ScaleEncode,
-)]
+#[derive(Clone, Copy, Debug, Eq, From, Hash, Ord, PartialEq, PartialOrd)]
 #[from(forward)]
 pub struct AssetCollection<const N: usize> {
     /// Asset Id

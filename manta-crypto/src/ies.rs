@@ -19,7 +19,6 @@
 // FIXME: add zeroize for secret keys
 
 use core::{fmt::Debug, hash::Hash};
-use manta_codec::{ScaleDecode, ScaleEncode};
 use rand::{CryptoRng, RngCore};
 
 pub(crate) mod prelude {
@@ -218,7 +217,7 @@ pub trait IntegratedEncryptionScheme {
 }
 
 /// Encrypted Message
-#[derive(derivative::Derivative, ScaleDecode, ScaleEncode)]
+#[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "I::Ciphertext: Clone"),
     Copy(bound = "I::Ciphertext: Copy"),

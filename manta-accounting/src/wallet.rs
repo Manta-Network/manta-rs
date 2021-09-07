@@ -17,17 +17,24 @@
 //! Wallet Abstractions
 
 use crate::{
-    account::ShieldedIdentity,
+    account::{Sender, ShieldedIdentity, VoidNumberCommitment},
     asset::{Asset, AssetBalance, AssetId},
     ledger::Ledger,
     transfer::{SecretTransfer, SecretTransferConfiguration},
 };
 use core::convert::Infallible;
+use manta_crypto::ConcatBytes;
 
 /// Asset Map
 pub trait AssetMap {
     /// Returns the current balance associated with this `id`.
     fn balance(&self, id: AssetId) -> AssetBalance;
+
+    /// Returns `true` if `self` contains at least `asset.value` of the asset of kind `asset.id`.
+    #[inline]
+    fn contains(&self, asset: Asset) -> bool {
+        self.balance(asset.id) >= asset.value
+    }
 
     /// Sets the asset balance for `id` to `value`.
     fn set_balance(&mut self, id: AssetId, value: AssetBalance);
@@ -147,21 +154,40 @@ where
     }
 
     /// Updates `self` with new information from the ledger.
-    pub fn update<L>(&mut self, ledger: &L)
+    pub fn pull_updates<L>(&mut self, ledger: &L)
     where
         L: Ledger,
     {
+        // TODO: pull updates from the ledger
+        //         - new void numbers?
+        //         - new utxos?
+        //         - new encrypted notes?
         let _ = ledger;
         todo!()
     }
 
     /// Builds a [`SecretTransfer`] transaction to send `asset` to `receiver`.
-    pub fn send(
+    pub fn secret_send(
         &self,
+        commitment_scheme: &T::CommitmentScheme,
         asset: Asset,
         receiver: ShieldedIdentity<T, T::IntegratedEncryptionScheme>,
-    ) -> SecretTransfer<T, 2, 2> {
-        let _ = (asset, receiver);
+    ) -> Option<SecretTransfer<T, 2, 2>>
+    where
+        VoidNumberCommitment<T>: ConcatBytes,
+    {
+        // TODO: spec:
+        // 1. check that we have enough `asset` in the secret_assets map
+        // 2. find out which keys have control over `asset`
+        // 3. build two senders and build a receiver and a change receiver for the extra change
+
+        // TODO: which `rng` do we use for the receivers?
+
+        /*
+        let sender = Sender::generate(self.secret_key_source, commitment_scheme);
+        let receiver = receiver.into_receiver(commitment_scheme, asset, rng);
+        */
+        let _ = (commitment_scheme, asset, receiver);
         todo!()
     }
 }

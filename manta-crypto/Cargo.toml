@@ -24,6 +24,4 @@ maintenance = { status = "actively-developed" }
 
 [dependencies]
 derivative = { version = "2.2.0", default-features = false, features = ["use_core"] }
-manta-codec = { path = "../manta-codec", default-features = false, features = ["derive"] }
-parity-scale-codec = { version = "2.2.0", default-features = false }
 rand = { version = "0.8.4", default-features = false }

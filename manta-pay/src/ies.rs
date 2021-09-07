@@ -16,20 +16,21 @@
 
 //! IES Implementation
 
+// FIXME: make sure secret keys are protected
+
 use aes_gcm::{
     aead::{Aead, NewAead},
     Aes256Gcm, Nonce,
 };
-use ark_std::rand::{CryptoRng, RngCore};
 use blake2::{Blake2s, Digest};
 use generic_array::GenericArray;
 use manta_accounting::Asset;
-use manta_codec::{ScaleDecode, ScaleEncode};
 use manta_crypto::{
     ies::{self, KeyPair},
     IntegratedEncryptionScheme,
 };
-use manta_util::try_into_array_unchecked;
+use manta_util::into_array_unchecked;
+use rand::{CryptoRng, RngCore};
 use x25519_dalek::{EphemeralSecret, PublicKey as PubKey, StaticSecret};
 
 /// Public Key Type
@@ -47,6 +48,7 @@ pub type AssetCiphertext = [u8; Asset::SIZE + 16];
 pub type EphemeralPublicKey = PublicKey;
 
 /// Augmented Asset Ciphertext
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct AugmentedAssetCiphertext {
     /// Asset Ciphertext
     pub asset_ciphertext: AssetCiphertext,
@@ -74,9 +76,7 @@ impl AugmentedAssetCiphertext {
 pub type EncryptedAsset = ies::EncryptedMessage<IES>;
 
 /// Implementation of [`IntegratedEncryptionScheme`]
-#[derive(
-    Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd, ScaleDecode, ScaleEncode,
-)]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct IES;
 
 impl IES {
@@ -87,10 +87,12 @@ impl IES {
     const KDF_SALT: &'static [u8] = b"manta kdf instantiated with blake2s hash function";
 
     /// Runs `blake2s::hkdf_extract(salt, seed)` with a fixed salt.
+    #[inline]
     fn blake2s_kdf(input: &[u8]) -> [u8; 32] {
         let mut hasher = Blake2s::new();
-        hasher.update([input, Self::KDF_SALT].concat());
-        try_into_array_unchecked(hasher.finalize())
+        hasher.update(input);
+        hasher.update(Self::KDF_SALT);
+        into_array_unchecked(hasher.finalize())
     }
 }
 
@@ -125,18 +127,20 @@ impl IntegratedEncryptionScheme for IES {
     {
         let ephemeral_secret_key = EphemeralSecret::new(rng);
         let ephemeral_public_key = PubKey::from(&ephemeral_secret_key);
-        let shared_secret = ephemeral_secret_key.diffie_hellman(&PubKey::from(public_key));
-        let ss = Self::blake2s_kdf(&shared_secret.to_bytes());
-        let aes_key = GenericArray::from_slice(&ss);
+        let shared_secret = Self::blake2s_kdf(
+            &ephemeral_secret_key
+                .diffie_hellman(&public_key.into())
+                .to_bytes(),
+        );
 
         // SAFETY: Using a deterministic nonce is ok since we never reuse keys.
-        let asset_ciphertext = Aes256Gcm::new(aes_key).encrypt(
+        let asset_ciphertext = Aes256Gcm::new(GenericArray::from_slice(&shared_secret)).encrypt(
             Nonce::from_slice(Self::NONCE),
             plaintext.into_bytes().as_ref(),
         )?;
 
         Ok(EncryptedAsset::new(AugmentedAssetCiphertext::new(
-            try_into_array_unchecked(asset_ciphertext),
+            into_array_unchecked(asset_ciphertext),
             ephemeral_public_key.to_bytes(),
         )))
     }
@@ -145,19 +149,41 @@ impl IntegratedEncryptionScheme for IES {
         ciphertext: Self::Ciphertext,
         secret_key: Self::SecretKey,
     ) -> Result<Self::Plaintext, Self::Error> {
-        let sk = StaticSecret::from(secret_key);
-        let shared_secret = sk.diffie_hellman(&PubKey::from(ciphertext.ephemeral_public_key));
-        let ss = Self::blake2s_kdf(&shared_secret.to_bytes());
-        let aes_key = GenericArray::from_slice(&ss);
+        let shared_secret = Self::blake2s_kdf(
+            &StaticSecret::from(secret_key)
+                .diffie_hellman(&ciphertext.ephemeral_public_key.into())
+                .to_bytes(),
+        );
 
         // SAFETY: Using a deterministic nonce is ok since we never reuse keys.
-        let plaintext = Aes256Gcm::new(aes_key).decrypt(
+        let plaintext = Aes256Gcm::new(GenericArray::from_slice(&shared_secret)).decrypt(
             Nonce::from_slice(Self::NONCE),
             ciphertext.asset_ciphertext.as_ref(),
         )?;
 
-        Ok(Asset::from_bytes(try_into_array_unchecked(
+        Ok(Asset::from_bytes(into_array_unchecked(
             &plaintext[..Asset::SIZE],
         )))
     }
+}
+
+/// Tests encryption/decryption of an asset.
+#[test]
+pub fn encryption_decryption() {
+    use rand::{thread_rng, Rng, SeedableRng};
+    use rand_chacha::ChaCha20Rng;
+
+    let mut rng = ChaCha20Rng::from_rng(&mut thread_rng()).expect("failed to seed ChaCha20Rng");
+
+    let (public_key, secret_key) = IES::keygen(&mut rng).into();
+    let asset = rng.gen();
+    let reconstructed_asset = secret_key
+        .decrypt(
+            public_key
+                .encrypt(asset, &mut rng)
+                .expect("unable to encrypt asset"),
+        )
+        .expect("unable to decrypt asset");
+
+    assert_eq!(asset, reconstructed_asset)
 }

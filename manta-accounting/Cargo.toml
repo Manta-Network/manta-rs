@@ -25,8 +25,6 @@ maintenance = { status = "actively-developed" }
 [dependencies]
 derivative = { version = "2.2.0", default-features = false, features = ["use_core"] }
 derive_more = { version = "0.99.16", default-features = false, features = ["add", "add_assign", "display", "from", "mul", "mul_assign", "sum"] }
-manta-codec = { path = "../manta-codec", default-features = false, features = ["derive"] }
 manta-crypto = { path = "../manta-crypto", default-features = false }
 manta-util = { path = "../manta-util", default-features = false }
-parity-scale-codec = { version = "2.2.0", default-features = false }
 rand = { version = "0.8.4", default-features = false }

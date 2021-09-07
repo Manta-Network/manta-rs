@@ -40,13 +40,13 @@ macro_rules! from_variant_impl {
 
 /// Performs the [`TryInto`] conversion into an array without checking if the conversion succeeded.
 #[inline]
-pub fn try_into_array_unchecked<T, V, const N: usize>(v: V) -> [T; N]
+pub fn into_array_unchecked<T, V, const N: usize>(v: V) -> [T; N]
 where
     V: TryInto<[T; N]>,
 {
     match v.try_into() {
         Ok(array) => array,
-        _ => unreachable!(),
+        _ => unreachable!("User was supposed to ensure that this branch is never reached."),
     }
 }
 
@@ -57,7 +57,7 @@ where
     F: FnMut(T) -> U,
 {
     // TODO: get rid of this function when `array::map` is stabilized
-    try_into_array_unchecked(IntoIterator::into_iter(array).map(f).collect::<Vec<_>>())
+    into_array_unchecked(IntoIterator::into_iter(array).map(f).collect::<Vec<_>>())
 }
 
 /// Maps `f` over the `array` by reference.
@@ -66,7 +66,7 @@ pub fn array_map_ref<T, U, F, const N: usize>(array: &[T; N], f: F) -> [U; N]
 where
     F: FnMut(&T) -> U,
 {
-    try_into_array_unchecked(array.iter().map(f).collect::<Vec<_>>())
+    into_array_unchecked(array.iter().map(f).collect::<Vec<_>>())
 }
 
 /// Maps `f` over the `array` returning the target array if all of the mappings succeeded, or
@@ -76,7 +76,7 @@ pub fn fallible_array_map<T, U, E, F, const N: usize>(array: [T; N], f: F) -> Re
 where
     F: FnMut(T) -> Result<U, E>,
 {
-    Ok(try_into_array_unchecked(
+    Ok(into_array_unchecked(
         IntoIterator::into_iter(array)
             .map(f)
             .collect::<Result<Vec<_>, _>>()?,
