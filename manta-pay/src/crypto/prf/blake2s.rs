@@ -14,12 +14,24 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Manta Pay Implementation
+//! Blake2s PRF Implementation
 
-#![cfg_attr(not(feature = "std"), no_std)]
-#![cfg_attr(docsrs, feature(doc_cfg), forbid(broken_intra_doc_links))]
+use ark_crypto_primitives::prf::{self, PRF};
+use manta_crypto::PseudorandomFunctionFamily;
 
-extern crate alloc;
+/// Blake2s Pseudorandom Function Family
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct Blake2s;
 
-pub mod accounting;
-pub mod crypto;
+impl PseudorandomFunctionFamily for Blake2s {
+    type Seed = <prf::Blake2s as PRF>::Seed;
+
+    type Input = <prf::Blake2s as PRF>::Input;
+
+    type Output = <prf::Blake2s as PRF>::Output;
+
+    #[inline]
+    fn evaluate(seed: &Self::Seed, input: &Self::Input) -> Self::Output {
+        prf::Blake2s::evaluate(seed, input).expect("As of arkworks 0.3.0, this never fails.")
+    }
+}

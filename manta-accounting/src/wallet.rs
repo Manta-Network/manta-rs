@@ -17,13 +17,17 @@
 //! Wallet Abstractions
 
 use crate::{
-    account::{Sender, ShieldedIdentity, VoidNumberCommitment},
+    account::{
+        AssetParameters, PublicKey, SecretKeyGeneratorError, Sender, ShieldedIdentity,
+        VoidNumberCommitment, VoidNumberGenerator,
+    },
     asset::{Asset, AssetBalance, AssetId},
     ledger::Ledger,
     transfer::{SecretTransfer, SecretTransferConfiguration},
 };
 use core::convert::Infallible;
 use manta_crypto::ConcatBytes;
+use rand::distributions::{Distribution, Standard};
 
 /// Asset Map
 pub trait AssetMap {
@@ -164,6 +168,23 @@ where
         //         - new encrypted notes?
         let _ = ledger;
         todo!()
+    }
+
+    /// Generates a new [`ShieldedIdentity`] to receive assets to this wallet.
+    #[inline]
+    pub fn generate_receiver(
+        &mut self,
+        commitment_scheme: &T::CommitmentScheme,
+    ) -> Result<ShieldedIdentity<T, T::IntegratedEncryptionScheme>, SecretKeyGeneratorError<T>>
+    where
+        Standard: Distribution<AssetParameters<T>>,
+        PublicKey<T>: ConcatBytes,
+        VoidNumberGenerator<T>: ConcatBytes,
+    {
+        // FIXME: shouldn't we also produce a `Spend`? since we are modifying the secret key source,
+        // we can't go back and discover what the actual "derived key path" was except to go into
+        // recovery mode
+        ShieldedIdentity::generate(&mut self.secret_key_source, commitment_scheme)
     }
 
     /// Builds a [`SecretTransfer`] transaction to send `asset` to `receiver`.

@@ -57,7 +57,7 @@ where
     S: VerifiedSet + ?Sized,
 {
     /// Public Input
-    pub public_input: S::Public,
+    public_input: S::Public,
 
     /// Secret Witness
     secret_witness: S::Secret,
@@ -74,6 +74,12 @@ where
             public_input,
             secret_witness,
         }
+    }
+
+    /// Returns [`S::Public`](VerifiedSet::Public) discarding the [`ContainmentProof`].
+    #[inline]
+    pub fn into_public_input(self) -> S::Public {
+        self.public_input
     }
 
     /// Verifies that the `item` is contained in some [`VerifiedSet`].

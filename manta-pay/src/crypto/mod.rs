@@ -14,21 +14,9 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Checksums
+//! Manta Pay Cryptographic Primitives Implementations
 
-// TODO: move this out of this crate, this is for `pallet-manta-pay` when we check local parameters
-// against stored ones. maybe this can go in `manta-pay`?
-
-/// Checksum Equality
-pub trait ChecksumEq<SumAlg, Rhs: ?Sized = Self> {
-    /// Returns `true` if `self` and `other` have the same checksum.
-    #[must_use]
-    fn checksum_eq(&self, other: &Rhs) -> bool;
-
-    /// Returns `true` if `self` and `other` have different checksums.
-    #[inline]
-    #[must_use]
-    fn checksum_ne(&self, other: &Rhs) -> bool {
-        !self.checksum_eq(other)
-    }
-}
+pub mod commitment;
+pub mod ies;
+pub mod merkle_tree;
+pub mod prf;

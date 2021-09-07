@@ -29,7 +29,7 @@ use core::{
 use derive_more::{
     Add, AddAssign, Display, Div, DivAssign, From, Mul, MulAssign, Product, Sub, SubAssign, Sum,
 };
-use manta_crypto::{Accumulator, ConcatBytes};
+use manta_crypto::{ByteAccumulator, ConcatBytes};
 use manta_util::{array_map, fallible_array_map, into_array_unchecked};
 use rand::{
     distributions::{Distribution, Standard},
@@ -310,7 +310,7 @@ impl ConcatBytes for Asset {
     #[inline]
     fn concat<A>(&self, accumulator: &mut A)
     where
-        A: Accumulator<u8> + ?Sized,
+        A: ByteAccumulator + ?Sized,
     {
         accumulator.extend(&self.id.into_bytes());
         accumulator.extend(&self.value.into_bytes());

@@ -30,7 +30,7 @@ pub trait CommitmentScheme {
     /// Samples random commitment paramters.
     fn setup<R>(rng: &mut R) -> Self
     where
-        R: RngCore + ?Sized;
+        R: RngCore;
 
     /// Commits the `input` with the given `randomness` parameter.
     fn commit<I>(&self, input: I, randomness: &Self::Randomness) -> Self::Output

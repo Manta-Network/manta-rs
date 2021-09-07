@@ -28,6 +28,8 @@ std = []
 
 [dependencies]
 aes-gcm = { version = "0.9.4" }
+ark-crypto-primitives = { version = "0.3.0", default-features = false }
+ark-ed-on-bls12-381 = { version = "0.3.0", default-features = false }
 blake2 = { version = "0.9.2", default-features = false }
 generic-array = { version = "0.14.4", default-features = false }
 manta-accounting = { path = "../manta-accounting", default-features = false }

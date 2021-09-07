@@ -19,10 +19,10 @@
 use alloc::vec::Vec;
 use core::borrow::Borrow;
 
-/// Accumulation Trait
-pub trait Accumulator<T> {
+/// Byte Accumulation Trait
+pub trait ByteAccumulator {
     /// Extends the current accumulator by a `buffer` of elements.
-    fn extend(&mut self, buffer: &[T]);
+    fn extend(&mut self, buffer: &[u8]);
 
     /// Reserves space in the accumulator for `additional` more elements.
     #[inline]
@@ -54,12 +54,12 @@ pub trait Accumulator<T> {
     }
 }
 
-impl<T, A> Accumulator<T> for &mut A
+impl<A> ByteAccumulator for &mut A
 where
-    A: Accumulator<T> + ?Sized,
+    A: ByteAccumulator + ?Sized,
 {
     #[inline]
-    fn extend(&mut self, buffer: &[T]) {
+    fn extend(&mut self, buffer: &[u8]) {
         (**self).extend(buffer)
     }
 
@@ -74,12 +74,9 @@ where
     }
 }
 
-impl<T> Accumulator<T> for Vec<T>
-where
-    T: Clone + ?Sized,
-{
+impl ByteAccumulator for Vec<u8> {
     #[inline]
-    fn extend(&mut self, buffer: &[T]) {
+    fn extend(&mut self, buffer: &[u8]) {
         self.extend_from_slice(buffer)
     }
 
@@ -105,7 +102,7 @@ pub trait ConcatBytes {
     /// is not efficient.
     fn concat<A>(&self, accumulator: &mut A)
     where
-        A: Accumulator<u8> + ?Sized;
+        A: ByteAccumulator + ?Sized;
 
     /// Returns a hint to the possible number of bytes that will be accumulated when concatenating
     /// `self`.
@@ -118,7 +115,7 @@ pub trait ConcatBytes {
     #[inline]
     fn reserve_concat<A>(&self, accumulator: &mut A)
     where
-        A: Accumulator<u8> + ?Sized,
+        A: ByteAccumulator + ?Sized,
     {
         if let Some(capacity) = self.size_hint() {
             accumulator.reserve(capacity);
@@ -131,7 +128,7 @@ pub trait ConcatBytes {
     #[inline]
     fn as_bytes<A>(&self) -> A
     where
-        A: Default + Accumulator<u8>,
+        A: Default + ByteAccumulator,
     {
         let mut accumulator = A::default();
         self.reserve_concat(&mut accumulator);
@@ -146,7 +143,7 @@ where
     #[inline]
     fn concat<A>(&self, accumulator: &mut A)
     where
-        A: Accumulator<u8> + ?Sized,
+        A: ByteAccumulator + ?Sized,
     {
         accumulator.extend(self.borrow())
     }
@@ -157,7 +154,7 @@ where
     }
 }
 
-/// Concatenates `$item`s together by building a [`Accumulator`] and running
+/// Concatenates `$item`s together by building a [`ByteAccumulator`] and running
 /// [`ConcatBytes::concat`] over each `$item`.
 #[macro_export]
 macro_rules! concatenate {
@@ -166,7 +163,15 @@ macro_rules! concatenate {
             extern crate alloc;
             let mut accumulator = ::alloc::vec::Vec::new();
             $($crate::ConcatBytes::reserve_concat($item, &mut accumulator);)*
-            $crate::Accumulator::finish(accumulator)
+            $crate::ByteAccumulator::finish(accumulator)
 		}
 	}
+}
+
+/// Returns byte vector representation of `$item`.
+#[macro_export]
+macro_rules! as_bytes {
+    ($item:expr) => {
+        $crate::concatenate!($item)
+    };
 }

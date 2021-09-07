@@ -25,7 +25,6 @@ mod commitment;
 mod concat;
 mod prf;
 
-pub mod checksum;
 pub mod constraints;
 pub mod ies;
 pub mod set;

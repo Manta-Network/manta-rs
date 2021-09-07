@@ -580,6 +580,7 @@ where
 
     /// Generates a new [`Identity`] from a secret key generation source and builds a new
     /// [`ShieldedIdentity`]-[`Spend`] pair from it.
+    #[allow(clippy::type_complexity)] // NOTE: It's the generic parameters that make this complex.
     #[inline]
     pub fn generate_receiver<I>(
         source: &mut C::SecretKeyGenerator,
@@ -896,7 +897,7 @@ where
     pub fn into_post(self) -> SenderPost<C, S> {
         SenderPost {
             void_number: self.void_number,
-            utxo_containment_proof_public_input: self.utxo_containment_proof.public_input,
+            utxo_containment_proof_public_input: self.utxo_containment_proof.into_public_input(),
         }
     }
 

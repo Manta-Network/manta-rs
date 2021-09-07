@@ -14,12 +14,6 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Manta Pay Implementation
+//! Pseudorandom Function Family Implementations
 
-#![cfg_attr(not(feature = "std"), no_std)]
-#![cfg_attr(docsrs, feature(doc_cfg), forbid(broken_intra_doc_links))]
-
-extern crate alloc;
-
-pub mod accounting;
-pub mod crypto;
+pub mod blake2s;
