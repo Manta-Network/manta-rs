@@ -219,14 +219,14 @@ where
         self.next_internal_key().map(Identity::new)
     }
 
-    ///
+    /// Returns an [`ExternalKeys`] generator starting from the given `index`.
     #[inline]
     fn external_keys_from_index(&self, index: D::Index) -> ExternalKeys<D> {
         self.secret_key_source
             .external_keys_from_index(&self.account, index)
     }
 
-    ///
+    /// Returns an [`InternalKeys`] generator starting from the given `index`.
     #[inline]
     fn internal_keys_from_index(&self, index: D::Index) -> InternalKeys<D> {
         self.secret_key_source
