@@ -39,10 +39,13 @@ impl<I> PublicKey<I>
 where
     I: IntegratedEncryptionScheme + ?Sized,
 {
-    /// Generates a new [`PublicKey`] from a
-    /// [`I::PublicKey`](IntegratedEncryptionScheme::PublicKey).
+    /// Generates a new [`PublicKey`] from `I::PublicKey`.
+    ///
+    /// # API Note
+    ///
+    /// This function is intentionally private so that only [`KeyPair`] can create this type.
     #[inline]
-    pub fn new(public_key: I::PublicKey) -> Self {
+    fn new(public_key: I::PublicKey) -> Self {
         Self { public_key }
     }
 
@@ -50,7 +53,7 @@ where
     #[inline]
     pub fn encrypt<R>(
         self,
-        plaintext: I::Plaintext,
+        plaintext: &I::Plaintext,
         rng: &mut R,
     ) -> Result<EncryptedMessage<I>, I::Error>
     where
@@ -73,12 +76,11 @@ impl<I> SecretKey<I>
 where
     I: IntegratedEncryptionScheme + ?Sized,
 {
-    /// Generates a new `SecretKey` from an `I::SecretKey`.
+    /// Generates a new [`SecretKey`] from `I::SecretKey`.
     ///
     /// # API Note
     ///
-    /// This function is intentionally private so that secret keys are not part of the
-    /// public interface.
+    /// This function is intentionally private, so that only `KeyPair` can create this type.
     #[inline]
     fn new(secret_key: I::SecretKey) -> Self {
         Self { secret_key }
@@ -86,7 +88,7 @@ where
 
     /// Decrypts the `message` with `self`.
     #[inline]
-    pub fn decrypt(self, message: EncryptedMessage<I>) -> Result<I::Plaintext, I::Error> {
+    pub fn decrypt(self, message: &EncryptedMessage<I>) -> Result<I::Plaintext, I::Error> {
         message.decrypt(self)
     }
 }
@@ -141,7 +143,7 @@ where
     #[inline]
     pub fn encrypt<R>(
         self,
-        plaintext: I::Plaintext,
+        plaintext: &I::Plaintext,
         rng: &mut R,
     ) -> Result<(EncryptedMessage<I>, SecretKey<I>), I::Error>
     where
@@ -189,7 +191,7 @@ pub trait IntegratedEncryptionScheme {
 
     /// Encrypts the `plaintext` with the `public_key`, generating an [`EncryptedMessage`].
     fn encrypt<R>(
-        plaintext: Self::Plaintext,
+        plaintext: &Self::Plaintext,
         public_key: Self::PublicKey,
         rng: &mut R,
     ) -> Result<EncryptedMessage<Self>, Self::Error>
@@ -200,7 +202,7 @@ pub trait IntegratedEncryptionScheme {
     /// public key, generating an [`EncryptedMessage`] and a [`SecretKey`].
     #[inline]
     fn keygen_encrypt<R>(
-        plaintext: Self::Plaintext,
+        plaintext: &Self::Plaintext,
         rng: &mut R,
     ) -> Result<(EncryptedMessage<Self>, SecretKey<Self>), Self::Error>
     where
@@ -211,7 +213,7 @@ pub trait IntegratedEncryptionScheme {
 
     /// Decrypts the `ciphertext` with the `secret_key`.
     fn decrypt(
-        ciphertext: Self::Ciphertext,
+        ciphertext: &Self::Ciphertext,
         secret_key: Self::SecretKey,
     ) -> Result<Self::Plaintext, Self::Error>;
 }
@@ -249,7 +251,7 @@ where
     /// Encrypts the `plaintext` with the `public_key`, generating an [`EncryptedMessage`].
     #[inline]
     pub fn encrypt<R>(
-        plaintext: I::Plaintext,
+        plaintext: &I::Plaintext,
         public_key: I::PublicKey,
         rng: &mut R,
     ) -> Result<Self, I::Error>
@@ -263,7 +265,7 @@ where
     /// public key, generating an [`EncryptedMessage`] and a [`SecretKey`].
     #[inline]
     pub fn keygen_encrypt<R>(
-        plaintext: I::Plaintext,
+        plaintext: &I::Plaintext,
         rng: &mut R,
     ) -> Result<(Self, SecretKey<I>), I::Error>
     where
@@ -274,7 +276,7 @@ where
 
     /// Decrypts `self` with the `secret_key`.
     #[inline]
-    pub fn decrypt(self, secret_key: SecretKey<I>) -> Result<I::Plaintext, I::Error> {
-        I::decrypt(self.ciphertext, secret_key.secret_key)
+    pub fn decrypt(&self, secret_key: SecretKey<I>) -> Result<I::Plaintext, I::Error> {
+        I::decrypt(&self.ciphertext, secret_key.secret_key)
     }
 }

@@ -21,14 +21,14 @@
 use crate::{
     asset::{Asset, AssetBalance, AssetId},
     identity::{
-        AssetParameters, IdentityConfiguration, OpenSpend, PublicKey, Sender, ShieldedIdentity,
-        Spend, VoidNumberCommitment, VoidNumberGenerator,
+        AssetParameters, Identity, IdentityConfiguration, OpenSpend, PublicKey, Receiver, Sender,
+        ShieldedIdentity, Spend, VoidNumberCommitment, VoidNumberGenerator,
     },
-    keys::DerivedSecretKeyGenerator,
+    keys::{self, DerivedSecretKeyGenerator},
     ledger::Ledger,
     transfer::{SecretTransfer, SecretTransferConfiguration},
 };
-use core::convert::Infallible;
+use core::{convert::Infallible, fmt::Debug, hash::Hash};
 use manta_crypto::{ies::EncryptedMessage, ConcatBytes, IntegratedEncryptionScheme};
 use rand::{
     distributions::{Distribution, Standard},
@@ -130,6 +130,12 @@ where
     /// Wallet Account
     account: D::Account,
 
+    /// External Transaction Running Index
+    external_index: D::Index,
+
+    /// Internal Transaction Running Index
+    internal_index: D::Index,
+
     /// Public Asset Map
     public_assets: M,
 
@@ -168,40 +174,74 @@ where
         Self {
             secret_key_source,
             account,
+            external_index: Default::default(),
+            internal_index: Default::default(),
             public_assets,
             secret_assets,
         }
     }
 
-    /// Looks for an [`OpenSpend`] for this `encrypted_asset`.
+    /// Generates the next external key for this wallet.
+    #[inline]
+    fn next_external_key(&mut self) -> Result<D::SecretKey, D::Error> {
+        keys::next_external(
+            &self.secret_key_source,
+            &self.account,
+            &mut self.external_index,
+        )
+    }
+
+    /// Generates the next internal key for this wallet.
+    #[inline]
+    fn next_internal_key(&mut self) -> Result<D::SecretKey, D::Error> {
+        keys::next_internal(
+            &self.secret_key_source,
+            &self.account,
+            &mut self.internal_index,
+        )
+    }
+
+    /// Generates the next external identity for this wallet.
+    #[inline]
+    fn next_external_identity<C>(&mut self) -> Result<Identity<C>, D::Error>
+    where
+        C: IdentityConfiguration<SecretKey = D::SecretKey>,
+    {
+        self.next_external_key().map(Identity::new)
+    }
+
+    /// Generates the next internal identity for this wallet.
+    #[inline]
+    fn next_internal_identity<C>(&mut self) -> Result<Identity<C>, D::Error>
+    where
+        C: IdentityConfiguration<SecretKey = D::SecretKey>,
+    {
+        self.next_internal_key().map(Identity::new)
+    }
+
+    /// Looks for an [`OpenSpend`] for this `encrypted_asset`, only trying `gap_limit`-many
+    /// external and internal keys.
     pub fn find_open_spend<C, I>(
         &self,
         encrypted_asset: EncryptedMessage<I>,
         gap_limit: usize,
-    ) -> Option<OpenSpend<C>>
+    ) -> Result<Option<OpenSpend<C>>, D::Error>
     where
         C: IdentityConfiguration<SecretKey = D::SecretKey>,
         I: IntegratedEncryptionScheme<Plaintext = Asset>,
         Standard: Distribution<AssetParameters<C>>,
     {
-        // TODO: Report a more useful error.
-
-        /* FIXME: Is this the right implementation?
         let mut external = self.secret_key_source.external_keys(&self.account);
         let mut internal = self.secret_key_source.internal_keys(&self.account);
         for _ in 0..gap_limit {
-            if let Ok(sender) = Spend::generate(&mut external).ok()?.into_sender() {
-                return Some(sender);
+            if let Ok(opened) = Spend::generate(&mut external)?.try_open(&encrypted_asset) {
+                return Ok(Some(opened));
             }
-            if let Ok(sender) = Spend::generate(&mut internal).ok()?.into_sender() {
-                return Some(sender);
+            if let Ok(opened) = Spend::generate(&mut internal)?.try_open(&encrypted_asset) {
+                return Ok(Some(opened));
             }
         }
-        None
-        */
-
-        let _ = (encrypted_asset, gap_limit);
-        todo!()
+        Ok(None)
     }
 
     /// Updates `self` with new information from the ledger.
@@ -219,35 +259,67 @@ where
         todo!()
     }
 
-    /// Generates a new [`ShieldedIdentity`] to receive assets to this wallet.
+    /// Generates a new [`ShieldedIdentity`] to receive assets to this wallet via an external
+    /// transaction.
     #[inline]
-    pub fn generate_receiver<T>(
+    pub fn generate_external_receiver<C, I>(
         &mut self,
-        commitment_scheme: &T::CommitmentScheme,
-    ) -> Result<ShieldedIdentity<T, T::IntegratedEncryptionScheme>, D::Error>
+        commitment_scheme: &C::CommitmentScheme,
+    ) -> Result<ShieldedIdentity<C, I>, D::Error>
     where
-        T: SecretTransferConfiguration,
-        Standard: Distribution<AssetParameters<T>>,
-        PublicKey<T>: ConcatBytes,
-        VoidNumberGenerator<T>: ConcatBytes,
+        C: IdentityConfiguration<SecretKey = D::SecretKey>,
+        I: IntegratedEncryptionScheme<Plaintext = Asset>,
+        Standard: Distribution<AssetParameters<C>>,
+        PublicKey<C>: ConcatBytes,
+        VoidNumberGenerator<C>: ConcatBytes,
     {
-        // FIXME: ShieldedIdentity::generate(&mut self.secret_key_source, commitment_scheme)
-        let _ = commitment_scheme;
-        todo!()
+        self.next_external_identity()
+            .map(move |identity| identity.into_shielded(commitment_scheme))
     }
 
-    /// Builds a [`SecretTransfer`] transaction to send `asset` to `receiver`.
+    /// Generates a new [`Receiver`]-[`Spend`] pair to receive `asset` to this wallet via an
+    /// internal transaction.
+    #[allow(clippy::type_complexity)] // NOTE: This is not very complex.
+    #[inline]
+    pub fn generate_internal_receiver<C, I, R>(
+        &mut self,
+        commitment_scheme: &C::CommitmentScheme,
+        asset: Asset,
+        rng: &mut R,
+    ) -> Result<(Receiver<C, I>, Spend<C, I>), InternalReceiverError<D, I>>
+    where
+        C: IdentityConfiguration<SecretKey = D::SecretKey>,
+        I: IntegratedEncryptionScheme<Plaintext = Asset>,
+        R: CryptoRng + RngCore + ?Sized,
+        Standard: Distribution<AssetParameters<C>>,
+        PublicKey<C>: ConcatBytes,
+        VoidNumberGenerator<C>: ConcatBytes,
+        VoidNumberCommitment<C>: ConcatBytes,
+    {
+        let (shielded_identity, spend) = self
+            .next_internal_identity()
+            .map_err(InternalReceiverError::SecretKeyGenerationError)?
+            .into_receiver(commitment_scheme);
+        Ok((
+            shielded_identity
+                .into_receiver(commitment_scheme, asset, rng)
+                .map_err(InternalReceiverError::EncryptionError)?,
+            spend,
+        ))
+    }
+
+    /// Builds a [`SecretTransfer`] transaction to send `asset` to an `external_receiver`.
     pub fn secret_send<T, R>(
         &self,
         commitment_scheme: &T::CommitmentScheme,
         asset: Asset,
-        receiver: ShieldedIdentity<T, T::IntegratedEncryptionScheme>,
+        external_receiver: ShieldedIdentity<T, T::IntegratedEncryptionScheme>,
         rng: &mut R,
     ) -> Option<SecretTransfer<T, 2, 2>>
     where
         T: SecretTransferConfiguration,
-        VoidNumberCommitment<T>: ConcatBytes,
         R: CryptoRng + RngCore + ?Sized,
+        VoidNumberCommitment<T>: ConcatBytes,
     {
         // TODO: spec:
         // 1. check that we have enough `asset` in the secret_assets map
@@ -257,7 +329,34 @@ where
         /*
         let sender = Sender::generate(self.secret_key_source, commitment_scheme);
         */
-        let _ = receiver.into_receiver(commitment_scheme, asset, rng);
+        let _ = external_receiver.into_receiver(commitment_scheme, asset, rng);
         todo!()
     }
+}
+
+/// Internal Receiver Error
+///
+/// This `enum` is the error state for the [`generate_internal_receiver`] method on [`Wallet`].
+/// See its documentation for more.
+///
+/// [`generate_internal_receiver`]: Wallet::generate_internal_receiver
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "D::Error: Clone, I::Error: Clone"),
+    Copy(bound = "D::Error: Copy, I::Error: Copy"),
+    Debug(bound = "D::Error: Debug, I::Error: Debug"),
+    Eq(bound = "D::Error: Eq, I::Error: Eq"),
+    Hash(bound = "D::Error: Hash, I::Error: Hash"),
+    PartialEq(bound = "D::Error: PartialEq, I::Error: PartialEq")
+)]
+pub enum InternalReceiverError<D, I>
+where
+    D: DerivedSecretKeyGenerator,
+    I: IntegratedEncryptionScheme<Plaintext = Asset>,
+{
+    /// Secret Key Generation Error
+    SecretKeyGenerationError(D::Error),
+
+    /// Encryption Error
+    EncryptionError(I::Error),
 }

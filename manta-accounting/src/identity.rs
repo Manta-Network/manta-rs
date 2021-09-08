@@ -256,14 +256,9 @@ impl<C> Identity<C>
 where
     C: IdentityConfiguration,
 {
-    /// Generates a new `Identity` from a `C::SecretKey`.
-    ///
-    /// # API Note
-    ///
-    /// This function is intentionally private so that secret keys are not part of the
-    /// public interface.
+    /// Generates a new [`Identity`] from a [`C::SecretKey`](IdentityConfiguration::SecretKey).
     #[inline]
-    fn new(secret_key: C::SecretKey) -> Self {
+    pub fn new(secret_key: C::SecretKey) -> Self {
         Self { secret_key }
     }
 
@@ -280,8 +275,8 @@ where
     ///
     /// # API Note
     ///
-    /// This function is intentionally private so that random number generators are not part of
-    /// the public interface. See [`Self::parameters`] for access to the associated
+    /// This function is intentionally private so that internal random number generator is
+    /// not part of the public interface. See [`Self::parameters`] for access to the associated
     /// `parameters`.
     ///
     /// # Implementation Note
@@ -323,9 +318,9 @@ where
     ///
     /// # API Note
     ///
-    /// This function is intentionally private so that random number generators are not part of
-    /// the public interface. See [`Self::parameters_and_asset_keypair`] for access to the
-    /// associated `parameters` and `asset_keypair`.
+    /// This function is intentionally private so that the internal random number generator is
+    /// not part of the public interface. See [`Self::parameters_and_asset_keypair`] for access to
+    /// the associated `parameters` and `asset_keypair`.
     ///
     /// # Implementation Note
     ///
@@ -565,7 +560,7 @@ where
 
     /// Generates a new [`Identity`] from a secret key generation source and builds a new
     /// [`ShieldedIdentity`]-[`Spend`] pair from it.
-    #[allow(clippy::type_complexity)] // NOTE: This really is not that complex.
+    #[allow(clippy::type_complexity)] // NOTE: This is not very complex.
     #[inline]
     pub fn generate_receiver<G, I>(
         source: &mut G,
@@ -661,7 +656,7 @@ where
             asset_public_key,
         } = self;
         Ok(Receiver {
-            encrypted_asset: asset_public_key.encrypt(asset, rng)?,
+            encrypted_asset: asset_public_key.encrypt(&asset, rng)?,
             utxo: generate_utxo::<C>(
                 commitment_scheme,
                 &asset,
@@ -675,7 +670,12 @@ where
     }
 }
 
-/// [`Spend`] Error
+/// Spend Error
+///
+/// This `enum` is the error state for the [`into_sender`] method on [`Spend`].
+/// See its documentation for more.
+///
+/// [`into_sender`]: Spend::into_sender
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "I::Error: Clone, S::ContainmentError: Clone"),
@@ -756,7 +756,7 @@ where
 
     /// Tries to open an `encrypted_asset` using `self`.
     #[inline]
-    pub fn open(self, encrypted_asset: EncryptedMessage<I>) -> Result<OpenSpend<C>, I::Error> {
+    pub fn try_open(self, encrypted_asset: &EncryptedMessage<I>) -> Result<OpenSpend<C>, I::Error> {
         Ok(OpenSpend {
             asset: self.asset_secret_key.decrypt(encrypted_asset)?,
             identity: self.identity,
@@ -778,7 +778,7 @@ where
         VoidNumberGenerator<C>: ConcatBytes,
         VoidNumberCommitment<C>: ConcatBytes,
     {
-        self.open(encrypted_asset)
+        self.try_open(&encrypted_asset)
             .map_err(SpendError::EncryptionError)?
             .into_sender(commitment_scheme, utxo_set)
             .map_err(SpendError::MissingUtxo)
@@ -833,6 +833,13 @@ where
 }
 
 /// Sender Error
+///
+/// This `enum` is the error state for the [`generate_sender`] method on [`Identity`]
+/// and the [`generate`] method on [`Sender`].
+/// See their documentation for more.
+///
+/// [`generate_sender`]: Identity::generate_sender
+/// [`generate`]: Sender::generate
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "G::Error: Clone, S::ContainmentError: Clone"),

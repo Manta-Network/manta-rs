@@ -118,7 +118,7 @@ impl IntegratedEncryptionScheme for IES {
     }
 
     fn encrypt<R>(
-        plaintext: Self::Plaintext,
+        plaintext: &Self::Plaintext,
         public_key: Self::PublicKey,
         rng: &mut R,
     ) -> Result<EncryptedAsset, Self::Error>
@@ -146,7 +146,7 @@ impl IntegratedEncryptionScheme for IES {
     }
 
     fn decrypt(
-        ciphertext: Self::Ciphertext,
+        ciphertext: &Self::Ciphertext,
         secret_key: Self::SecretKey,
     ) -> Result<Self::Plaintext, Self::Error> {
         let shared_secret = Self::blake2s_kdf(
@@ -179,8 +179,8 @@ fn encryption_decryption() {
     let asset = rng.gen();
     let reconstructed_asset = secret_key
         .decrypt(
-            public_key
-                .encrypt(asset, &mut rng)
+            &public_key
+                .encrypt(&asset, &mut rng)
                 .expect("unable to encrypt asset"),
         )
         .expect("unable to decrypt asset");

@@ -76,6 +76,51 @@ pub trait DerivedSecretKeyGenerator {
     }
 }
 
+/// Generates an internal or external secret key according to the [`DerivedSecretKeyGenerator`]
+/// protocol and increments the running `index`.
+#[inline]
+fn next_key<D>(
+    source: &D,
+    is_external: bool,
+    account: &D::Account,
+    index: &mut D::Index,
+) -> Result<D::SecretKey, D::Error>
+where
+    D: DerivedSecretKeyGenerator + ?Sized,
+{
+    let secret_key = source.generate_key(is_external, account, index)?;
+    index.increment();
+    Ok(secret_key)
+}
+
+/// Generates an external secret key according to the [`DerivedSecretKeyGenerator`] protocol
+/// and increments the running `index`.
+#[inline]
+pub fn next_external<D>(
+    source: &D,
+    account: &D::Account,
+    index: &mut D::Index,
+) -> Result<D::SecretKey, D::Error>
+where
+    D: DerivedSecretKeyGenerator + ?Sized,
+{
+    next_key(source, true, account, index)
+}
+
+/// Generates an internal secret key according to the [`DerivedSecretKeyGenerator`] protocol
+/// and increments the running `index`.
+#[inline]
+pub fn next_internal<D>(
+    source: &D,
+    account: &D::Account,
+    index: &mut D::Index,
+) -> Result<D::SecretKey, D::Error>
+where
+    D: DerivedSecretKeyGenerator + ?Sized,
+{
+    next_key(source, false, account, index)
+}
+
 /// Keys
 struct Keys<'d, D>
 where
@@ -98,36 +143,32 @@ where
     /// Builds a new [`Keys`] generator from a [`DerivedSecretKeyGenerator`] and an `account`.
     #[inline]
     fn new(derived_key_generator: &'d D, account: &'d D::Account) -> Self {
+        Self::from_index(derived_key_generator, account, Default::default())
+    }
+
+    /// Builds a new [`Keys`] generator from a [`DerivedSecretKeyGenerator`] and an `account`,
+    /// starting at `index`.
+    #[inline]
+    fn from_index(derived_key_generator: &'d D, account: &'d D::Account, index: D::Index) -> Self {
         Self {
             derived_key_generator,
             account,
-            index: Default::default(),
+            index,
         }
-    }
-
-    /// Generates a secret key according to the [`DerivedSecretKeyGenerator`] protocol and
-    /// increments the running `self.index`.
-    #[inline]
-    fn generate_key(&mut self, is_external: bool) -> Result<D::SecretKey, D::Error> {
-        let secret_key =
-            self.derived_key_generator
-                .generate_key(is_external, self.account, &self.index)?;
-        self.index.increment();
-        Ok(secret_key)
     }
 
     /// Generates an external secret key according to the [`DerivedSecretKeyGenerator`] protocol
     /// and increments the running `self.index`.
     #[inline]
     fn generate_external_key(&mut self) -> Result<D::SecretKey, D::Error> {
-        self.generate_key(true)
+        next_external(self.derived_key_generator, self.account, &mut self.index)
     }
 
     /// Generates an internal secret key according to the [`DerivedSecretKeyGenerator`] protocol
     /// and increments the running `self.index`.
     #[inline]
     fn generate_internal_key(&mut self) -> Result<D::SecretKey, D::Error> {
-        self.generate_key(false)
+        next_internal(self.derived_key_generator, self.account, &mut self.index)
     }
 }
 
@@ -144,6 +185,12 @@ where
     #[inline]
     pub fn new(source: &'d D, account: &'d D::Account) -> Self {
         Self(Keys::new(source, account))
+    }
+
+    /// Builds a new [`ExternalKeys`] generator for `account` from a `source`, starting at `index`.
+    #[inline]
+    pub fn from_index(source: &'d D, account: &'d D::Account, index: D::Index) -> Self {
+        Self(Keys::from_index(source, account, index))
     }
 }
 
@@ -186,6 +233,12 @@ where
     #[inline]
     pub fn new(source: &'d D, account: &'d D::Account) -> Self {
         Self(Keys::new(source, account))
+    }
+
+    /// Builds a new [`InternalKeys`] generator for `account` from a `source`, starting at `index`.
+    #[inline]
+    pub fn from_index(source: &'d D, account: &'d D::Account, index: D::Index) -> Self {
+        Self(Keys::from_index(source, account, index))
     }
 }
 
