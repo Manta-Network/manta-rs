@@ -17,6 +17,8 @@
 //! Wallet Abstractions
 
 // TODO: How to manage accounts? Wallet should have a fixed account or not?
+// TODO: Is recovery different than just building a fresh `Wallet` instance?
+// TODO: Add encrypt-to-disk and decrypt-from-disk methods to save the wallet state.
 
 use crate::{
     asset::{Asset, AssetBalance, AssetId},
@@ -246,6 +248,11 @@ where
         I: IntegratedEncryptionScheme<Plaintext = Asset>,
         Standard: Distribution<AssetParameters<C>>,
     {
+        // TODO: Maybe add a `try_open` method on `Identity` to make this more ergonomic?
+        // TODO: Return which kind of spend it was, internal or external.
+        // TODO: Have separate methods to search for internal and external keys since sometimes
+        //       we know which one we're looking for.
+
         let external = self.external_keys_from_index(index.clone());
         let internal = self.internal_keys_from_index(index);
         for (external_key, internal_key) in external.zip(internal).take(gap_limit) {
