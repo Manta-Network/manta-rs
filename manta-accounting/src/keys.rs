@@ -35,7 +35,7 @@ pub trait SecretKeyGenerator {
 }
 
 /// Derived Secret Key Parameter
-pub trait DerivedSecretKeyParameter: Default {
+pub trait DerivedSecretKeyParameter: Clone + Default {
     /// Increments the key parameter by one unit.
     fn increment(&mut self);
 }
@@ -73,6 +73,28 @@ pub trait DerivedSecretKeyGenerator {
     #[inline]
     fn internal_keys<'s>(&'s self, account: &'s Self::Account) -> InternalKeys<'s, Self> {
         InternalKeys::new(self, account)
+    }
+
+    /// Builds a [`SecretKeyGenerator`] for external keys associated to `account`, starting
+    /// from `index`.
+    #[inline]
+    fn external_keys_from_index<'s>(
+        &'s self,
+        account: &'s Self::Account,
+        index: Self::Index,
+    ) -> ExternalKeys<'s, Self> {
+        ExternalKeys::from_index(self, account, index)
+    }
+
+    /// Builds a [`SecretKeyGenerator`] for internal keys associated to `account`, starting
+    /// from `index`.
+    #[inline]
+    fn internal_keys_from_index<'s>(
+        &'s self,
+        account: &'s Self::Account,
+        index: Self::Index,
+    ) -> InternalKeys<'s, Self> {
+        InternalKeys::from_index(self, account, index)
     }
 }
 

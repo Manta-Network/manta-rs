@@ -280,3 +280,30 @@ where
         I::decrypt(&self.ciphertext, secret_key.secret_key)
     }
 }
+
+/// Testing Framework
+#[cfg(feature = "test")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
+pub mod test {
+    use super::*;
+    use core::fmt::Debug;
+
+    /// Tests encryption/decryption of a sample `plaintext`.
+    pub fn encryption_decryption<I, R>(plaintext: I::Plaintext, rng: &mut R)
+    where
+        I: IntegratedEncryptionScheme,
+        I::Plaintext: Debug + PartialEq,
+        I::Error: Debug,
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        let (public_key, secret_key) = I::keygen(rng).into();
+        let reconstructed_plaintext = secret_key
+            .decrypt(
+                &public_key
+                    .encrypt(&plaintext, rng)
+                    .expect("Unable to encrypt plaintext."),
+            )
+            .expect("Unable to decrypt plaintext.");
+        assert_eq!(plaintext, reconstructed_plaintext)
+    }
+}

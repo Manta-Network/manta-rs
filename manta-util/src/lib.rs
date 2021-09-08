@@ -17,7 +17,9 @@
 //! Utilities
 
 #![no_std]
-#![cfg_attr(docsrs, feature(doc_cfg), forbid(broken_intra_doc_links))]
+#![cfg_attr(doc_cfg, feature(doc_cfg))]
+#![forbid(rustdoc::broken_intra_doc_links)]
+#![forbid(missing_docs)]
 
 extern crate alloc;
 

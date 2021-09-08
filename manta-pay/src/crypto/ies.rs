@@ -167,23 +167,18 @@ impl IntegratedEncryptionScheme for IES {
     }
 }
 
-/// Tests encryption/decryption of an asset.
-#[test]
-fn encryption_decryption() {
-    use rand::{thread_rng, Rng, SeedableRng};
-    use rand_chacha::ChaCha20Rng;
+/// Testing Suite
+#[cfg(test)]
+mod test {
+    use super::*;
+    use manta_crypto::ies::test as ies_test;
 
-    let mut rng = ChaCha20Rng::from_rng(&mut thread_rng()).expect("failed to seed ChaCha20Rng");
-
-    let (public_key, secret_key) = IES::keygen(&mut rng).into();
-    let asset = rng.gen();
-    let reconstructed_asset = secret_key
-        .decrypt(
-            &public_key
-                .encrypt(&asset, &mut rng)
-                .expect("unable to encrypt asset"),
-        )
-        .expect("unable to decrypt asset");
-
-    assert_eq!(asset, reconstructed_asset)
+    /// Tests encryption/decryption of a random asset.
+    #[test]
+    fn encryption_decryption() {
+        use rand::{thread_rng, Rng, SeedableRng};
+        use rand_chacha::ChaCha20Rng;
+        let mut rng = ChaCha20Rng::from_rng(&mut thread_rng()).expect("failed to seed ChaCha20Rng");
+        ies_test::encryption_decryption::<IES, _>(rng.gen(), &mut rng);
+    }
 }

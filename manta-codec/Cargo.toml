@@ -14,8 +14,10 @@ description = "Serialization and Deserialization tools for Manta."
 publish = false
 
 [package.metadata.docs.rs]
+# To build locally:
+# RUSTDOCFLAGS="--cfg doc_cfg" cargo +nightly doc --all-features --no-deps --open
 all-features = true
-rustdoc-args = ["--cfg", "docsrs"]
+rustdoc-args = ["--cfg", "doc_cfg"]
 
 [badges]
 is-it-maintained-issue-resolution = { repository = "Manta-Network/manta-rs" }
@@ -30,6 +32,6 @@ derive = ["scale-codec/derive"]
 [dependencies]
 ark-serialize = { version = "0.3.0", default-features = false }
 ark-std = { version = "0.3.0", default-features = false }
-scale-codec = { package = "parity-scale-codec", version = "2.2.0", default-features = false }
 displaydoc = { version = "0.2.3", default-features = false }
 manta-util = { path = "../manta-util", default-features = false }
+scale-codec = { package = "parity-scale-codec", version = "2.2.0", default-features = false }

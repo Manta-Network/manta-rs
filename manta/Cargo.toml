@@ -14,8 +14,10 @@ description = "Manta Network main crate."
 publish = false
 
 [package.metadata.docs.rs]
+# To build locally:
+# RUSTDOCFLAGS="--cfg doc_cfg" cargo +nightly doc --all-features --no-deps --open
 all-features = true
-rustdoc-args = ["--cfg", "docsrs"]
+rustdoc-args = ["--cfg", "doc_cfg"]
 
 [badges]
 is-it-maintained-issue-resolution = { repository = "Manta-Network/manta-rs" }
@@ -25,6 +27,7 @@ maintenance = { status = "actively-developed" }
 [features]
 default = []
 std = []
+test = ["manta-accounting/test", "manta-crypto/test"]
 
 [dependencies]
 manta-accounting = { path = "../manta-accounting", default-features = false }
@@ -32,3 +35,7 @@ manta-codec = { path = "../manta-codec", default-features = false }
 manta-crypto = { path = "../manta-crypto", default-features = false }
 manta-pay = { path = "../manta-pay", default-features = false }
 parity-scale-codec = { version = "2.2.0", default-features = false }
+
+[dev-dependencies]
+manta-accounting = { path = "../manta-accounting", features = ["test"] }
+manta-crypto = { path = "../manta-crypto", features = ["test"] }

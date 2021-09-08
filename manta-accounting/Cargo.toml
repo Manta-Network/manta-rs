@@ -14,13 +14,18 @@ description = "Accounting Primitives for Manta."
 publish = false
 
 [package.metadata.docs.rs]
+# To build locally:
+# RUSTDOCFLAGS="--cfg doc_cfg" cargo +nightly doc --all-features --no-deps --open
 all-features = true
-rustdoc-args = ["--cfg", "docsrs"]
+rustdoc-args = ["--cfg", "doc_cfg"]
 
 [badges]
 is-it-maintained-issue-resolution = { repository = "Manta-Network/manta-rs" }
 is-it-maintained-open-issues = { repository = "Manta-Network/manta-rs" }
 maintenance = { status = "actively-developed" }
+
+[features]
+test = []
 
 [dependencies]
 derivative = { version = "2.2.0", default-features = false, features = ["use_core"] }

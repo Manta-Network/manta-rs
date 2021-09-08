@@ -724,8 +724,8 @@ where
     ///
     /// # API Note
     ///
-    /// This function is intentionally private so that secret keys are not part of the
-    /// public interface.
+    /// This function is intentionally private so that the `asset_secret_key` is not part
+    /// of the public interface.
     #[inline]
     fn new(identity: Identity<C>, asset_secret_key: ies::SecretKey<I>) -> Self {
         Self {
@@ -734,7 +734,7 @@ where
         }
     }
 
-    /// Builds a new [`ShieldedIdentity`] from an `identity`.
+    /// Builds a new [`Spend`] from an `identity`.
     #[inline]
     pub fn from_identity(identity: Identity<C>) -> Self
     where
@@ -754,7 +754,7 @@ where
         Identity::generate_spend(source)
     }
 
-    /// Tries to open an `encrypted_asset` using `self`.
+    /// Tries to open an `encrypted_asset`, returning an [`OpenSpend`] if successful.
     #[inline]
     pub fn try_open(self, encrypted_asset: &EncryptedMessage<I>) -> Result<OpenSpend<C>, I::Error> {
         Ok(OpenSpend {

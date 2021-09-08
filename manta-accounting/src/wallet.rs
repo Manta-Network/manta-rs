@@ -24,7 +24,7 @@ use crate::{
         AssetParameters, Identity, IdentityConfiguration, OpenSpend, PublicKey, Receiver, Sender,
         ShieldedIdentity, Spend, VoidNumberCommitment, VoidNumberGenerator,
     },
-    keys::{self, DerivedSecretKeyGenerator},
+    keys::{self, DerivedSecretKeyGenerator, ExternalKeys, InternalKeys},
     ledger::Ledger,
     transfer::{SecretTransfer, SecretTransferConfiguration},
 };
@@ -219,11 +219,26 @@ where
         self.next_internal_key().map(Identity::new)
     }
 
-    /// Looks for an [`OpenSpend`] for this `encrypted_asset`, only trying `gap_limit`-many
-    /// external and internal keys.
+    ///
+    #[inline]
+    fn external_keys_from_index(&self, index: D::Index) -> ExternalKeys<D> {
+        self.secret_key_source
+            .external_keys_from_index(&self.account, index)
+    }
+
+    ///
+    #[inline]
+    fn internal_keys_from_index(&self, index: D::Index) -> InternalKeys<D> {
+        self.secret_key_source
+            .internal_keys_from_index(&self.account, index)
+    }
+
+    /// Looks for an [`OpenSpend`] for this encrypted `asset`, only trying `gap_limit`-many
+    /// external and internal keys starting from `index`.
     pub fn find_open_spend<C, I>(
         &self,
-        encrypted_asset: EncryptedMessage<I>,
+        asset: EncryptedMessage<I>,
+        index: D::Index,
         gap_limit: usize,
     ) -> Result<Option<OpenSpend<C>>, D::Error>
     where
@@ -231,13 +246,13 @@ where
         I: IntegratedEncryptionScheme<Plaintext = Asset>,
         Standard: Distribution<AssetParameters<C>>,
     {
-        let mut external = self.secret_key_source.external_keys(&self.account);
-        let mut internal = self.secret_key_source.internal_keys(&self.account);
-        for _ in 0..gap_limit {
-            if let Ok(opened) = Spend::generate(&mut external)?.try_open(&encrypted_asset) {
+        let external = self.external_keys_from_index(index.clone());
+        let internal = self.internal_keys_from_index(index);
+        for (external_key, internal_key) in external.zip(internal).take(gap_limit) {
+            if let Ok(opened) = Spend::from(Identity::new(external_key)).try_open(&asset) {
                 return Ok(Some(opened));
             }
-            if let Ok(opened) = Spend::generate(&mut internal)?.try_open(&encrypted_asset) {
+            if let Ok(opened) = Spend::from(Identity::new(internal_key)).try_open(&asset) {
                 return Ok(Some(opened));
             }
         }

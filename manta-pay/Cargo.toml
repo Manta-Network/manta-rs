@@ -14,8 +14,10 @@ description = "The Manta-Pay protocol and implementaion."
 publish = false
 
 [package.metadata.docs.rs]
+# To build locally:
+# RUSTDOCFLAGS="--cfg doc_cfg" cargo +nightly doc --all-features --no-deps --open
 all-features = true
-rustdoc-args = ["--cfg", "docsrs"]
+rustdoc-args = ["--cfg", "doc_cfg"]
 
 [badges]
 is-it-maintained-issue-resolution = { repository = "Manta-Network/manta-rs" }
@@ -40,5 +42,6 @@ rand = { version = "0.8.4", default-features = false }
 x25519-dalek = { git = "https://github.com/Manta-Network/x25519-dalek", default-features = false, features = ["u64_backend"] }
 
 [dev-dependencies]
+manta-crypto = { path = "../manta-crypto", features = ["test"] }
 rand = "0.8.4"
 rand_chacha = "0.3.1"
