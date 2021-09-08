@@ -177,6 +177,13 @@ impl LedgerTrait for Ledger {
     }
 
     #[inline]
+    fn is_unspent(&self, void_number: &Self::VoidNumber) -> bool {
+        // TODO: !self.void_numbers.contains(void_number)
+        let _ = void_number;
+        todo!()
+    }
+
+    #[inline]
     fn try_post_void_number(
         &mut self,
         void_number: Self::VoidNumber,

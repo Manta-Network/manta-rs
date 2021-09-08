@@ -23,7 +23,7 @@ use rand::{CryptoRng, RngCore};
 
 pub(crate) mod prelude {
     #[doc(inline)]
-    pub use crate::ies::IntegratedEncryptionScheme;
+    pub use super::IntegratedEncryptionScheme;
 }
 
 /// [`IntegratedEncryptionScheme`] Public Key

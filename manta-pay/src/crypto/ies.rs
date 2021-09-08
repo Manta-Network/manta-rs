@@ -169,7 +169,7 @@ impl IntegratedEncryptionScheme for IES {
 
 /// Tests encryption/decryption of an asset.
 #[test]
-pub fn encryption_decryption() {
+fn encryption_decryption() {
     use rand::{thread_rng, Rng, SeedableRng};
     use rand_chacha::ChaCha20Rng;
 

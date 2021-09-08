@@ -20,6 +20,7 @@
 
 use crate::{
     asset::{Asset, AssetBalance, AssetId},
+    keys::SecretKeyGenerator,
     ledger::Ledger,
 };
 use core::{convert::Infallible, fmt::Debug, hash::Hash, marker::PhantomData};
@@ -37,28 +38,16 @@ use rand::{
 
 pub(crate) mod prelude {
     #[doc(inline)]
-    pub use crate::account::{
-        Identity, IdentityConfiguration, Receiver, SecretKeyGenerator, SecretKeyGeneratorError,
-        Sender, SenderError, ShieldedIdentity, Spend, SpendError, Utxo, VoidNumber,
+    pub use super::{
+        Identity, IdentityConfiguration, Receiver, Sender, SenderError, ShieldedIdentity, Spend,
+        SpendError, Utxo, VoidNumber,
     };
-}
-
-/// Secret Key Generator Trait
-pub trait SecretKeyGenerator<SecretKey> {
-    /// Key Generation Error
-    type Error;
-
-    /// Generates a new secret key.
-    fn generate_key(&mut self) -> Result<SecretKey, Self::Error>;
 }
 
 /// [`Identity`] Configuration Trait
 pub trait IdentityConfiguration {
     /// Secret Key Type
     type SecretKey: Clone;
-
-    /// Secret Key Generator Type
-    type SecretKeyGenerator: SecretKeyGenerator<Self::SecretKey>;
 
     /// Pseudorandom Function Family Type
     type PseudorandomFunctionFamily: PseudorandomFunctionFamily<Seed = Self::SecretKey>;
@@ -69,12 +58,6 @@ pub trait IdentityConfiguration {
     /// Seedable Cryptographic Random Number Generator Type
     type Rng: CryptoRng + RngCore + SeedableRng<Seed = Self::SecretKey>;
 }
-
-/// [`SecretKeyGenerator::Error`] Type Alias
-pub type SecretKeyGeneratorError<C> =
-    <<C as IdentityConfiguration>::SecretKeyGenerator as SecretKeyGenerator<
-        <C as IdentityConfiguration>::SecretKey,
-    >>::Error;
 
 /// [`PseudorandomFunctionFamily::Input`] Type Alias
 pub type PseudorandomFunctionFamilyInput<C> =
@@ -286,9 +269,10 @@ where
 
     /// Generates a new [`Identity`] from a secret key generation source.
     #[inline]
-    pub fn generate(
-        source: &mut C::SecretKeyGenerator,
-    ) -> Result<Self, SecretKeyGeneratorError<C>> {
+    pub fn generate<G>(source: &mut G) -> Result<Self, G::Error>
+    where
+        G: SecretKeyGenerator<SecretKey = C::SecretKey>,
+    {
         source.generate_key().map(Self::new)
     }
 
@@ -462,13 +446,14 @@ where
     /// Generates a new [`Identity`] from a secret key generation source and builds a new
     /// [`Sender`] from it.
     #[inline]
-    pub fn generate_sender<S>(
-        source: &mut C::SecretKeyGenerator,
+    pub fn generate_sender<G, S>(
+        source: &mut G,
         commitment_scheme: &C::CommitmentScheme,
         asset: Asset,
         utxo_set: &S,
-    ) -> Result<Sender<C, S>, SenderError<C, S>>
+    ) -> Result<Sender<C, S>, SenderError<C, G, S>>
     where
+        G: SecretKeyGenerator<SecretKey = C::SecretKey>,
         S: VerifiedSet<Item = Utxo<C>>,
         Standard: Distribution<AssetParameters<C>>,
         PublicKey<C>: ConcatBytes,
@@ -519,11 +504,12 @@ where
     /// Generates a new [`Identity`] from a secret key generation source and builds a new
     /// [`ShieldedIdentity`] from it.
     #[inline]
-    pub fn generate_shielded<I>(
-        source: &mut C::SecretKeyGenerator,
+    pub fn generate_shielded<G, I>(
+        source: &mut G,
         commitment_scheme: &C::CommitmentScheme,
-    ) -> Result<ShieldedIdentity<C, I>, SecretKeyGeneratorError<C>>
+    ) -> Result<ShieldedIdentity<C, I>, G::Error>
     where
+        G: SecretKeyGenerator<SecretKey = C::SecretKey>,
         I: IntegratedEncryptionScheme<Plaintext = Asset>,
         Standard: Distribution<AssetParameters<C>>,
         PublicKey<C>: ConcatBytes,
@@ -548,10 +534,9 @@ where
     /// Generates a new [`Identity`] from a secret key generation source and builds a new
     /// [`Spend`] from it.
     #[inline]
-    pub fn generate_spend<I>(
-        source: &mut C::SecretKeyGenerator,
-    ) -> Result<Spend<C, I>, SecretKeyGeneratorError<C>>
+    pub fn generate_spend<G, I>(source: &mut G) -> Result<Spend<C, I>, G::Error>
     where
+        G: SecretKeyGenerator<SecretKey = C::SecretKey>,
         I: IntegratedEncryptionScheme<Plaintext = Asset>,
         Standard: Distribution<AssetParameters<C>>,
     {
@@ -580,13 +565,14 @@ where
 
     /// Generates a new [`Identity`] from a secret key generation source and builds a new
     /// [`ShieldedIdentity`]-[`Spend`] pair from it.
-    #[allow(clippy::type_complexity)] // NOTE: It's the generic parameters that make this complex.
+    #[allow(clippy::type_complexity)] // NOTE: This really is not that complex.
     #[inline]
-    pub fn generate_receiver<I>(
-        source: &mut C::SecretKeyGenerator,
+    pub fn generate_receiver<G, I>(
+        source: &mut G,
         commitment_scheme: &C::CommitmentScheme,
-    ) -> Result<(ShieldedIdentity<C, I>, Spend<C, I>), SecretKeyGeneratorError<C>>
+    ) -> Result<(ShieldedIdentity<C, I>, Spend<C, I>), G::Error>
     where
+        G: SecretKeyGenerator<SecretKey = C::SecretKey>,
         I: IntegratedEncryptionScheme<Plaintext = Asset>,
         Standard: Distribution<AssetParameters<C>>,
         PublicKey<C>: ConcatBytes,
@@ -643,11 +629,12 @@ where
     /// Generates a new [`Identity`] from a secret key generation source and builds a
     /// [`ShieldedIdentity`] from it.
     #[inline]
-    pub fn generate(
-        source: &mut C::SecretKeyGenerator,
+    pub fn generate<G>(
+        source: &mut G,
         commitment_scheme: &C::CommitmentScheme,
-    ) -> Result<Self, SecretKeyGeneratorError<C>>
+    ) -> Result<Self, G::Error>
     where
+        G: SecretKeyGenerator<SecretKey = C::SecretKey>,
         I: IntegratedEncryptionScheme<Plaintext = Asset>,
         Standard: Distribution<AssetParameters<C>>,
         PublicKey<C>: ConcatBytes,
@@ -759,11 +746,21 @@ where
     /// Generates a new [`Identity`] from a secret key generation source and builds a
     /// [`Spend`] from it.
     #[inline]
-    pub fn generate(source: &mut C::SecretKeyGenerator) -> Result<Self, SecretKeyGeneratorError<C>>
+    pub fn generate<G>(source: &mut G) -> Result<Self, G::Error>
     where
+        G: SecretKeyGenerator<SecretKey = C::SecretKey>,
         Standard: Distribution<AssetParameters<C>>,
     {
         Identity::generate_spend(source)
+    }
+
+    /// Tries to open an `encrypted_asset` using `self`.
+    #[inline]
+    pub fn open(self, encrypted_asset: EncryptedMessage<I>) -> Result<OpenSpend<C>, I::Error> {
+        Ok(OpenSpend {
+            asset: self.asset_secret_key.decrypt(encrypted_asset)?,
+            identity: self.identity,
+        })
     }
 
     /// Builds a new [`Sender`] for the given `encrypted_asset`.
@@ -781,14 +778,9 @@ where
         VoidNumberGenerator<C>: ConcatBytes,
         VoidNumberCommitment<C>: ConcatBytes,
     {
-        self.identity
-            .into_sender(
-                commitment_scheme,
-                self.asset_secret_key
-                    .decrypt(encrypted_asset)
-                    .map_err(SpendError::EncryptionError)?,
-                utxo_set,
-            )
+        self.open(encrypted_asset)
+            .map_err(SpendError::EncryptionError)?
+            .into_sender(commitment_scheme, utxo_set)
             .map_err(SpendError::MissingUtxo)
     }
 }
@@ -805,26 +797,66 @@ where
     }
 }
 
+/// Open [`Spend`]
+pub struct OpenSpend<C>
+where
+    C: IdentityConfiguration,
+{
+    /// Spender Identity
+    identity: Identity<C>,
+
+    /// Unencrypted [`Asset`]
+    asset: Asset,
+}
+
+impl<C> OpenSpend<C>
+where
+    C: IdentityConfiguration,
+{
+    /// Builds a new [`Sender`] for `self`.
+    #[inline]
+    pub fn into_sender<S>(
+        self,
+        commitment_scheme: &C::CommitmentScheme,
+        utxo_set: &S,
+    ) -> Result<Sender<C, S>, S::ContainmentError>
+    where
+        S: VerifiedSet<Item = Utxo<C>>,
+        Standard: Distribution<AssetParameters<C>>,
+        PublicKey<C>: ConcatBytes,
+        VoidNumberGenerator<C>: ConcatBytes,
+        VoidNumberCommitment<C>: ConcatBytes,
+    {
+        self.identity
+            .into_sender(commitment_scheme, self.asset, utxo_set)
+    }
+}
+
 /// Sender Error
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "SecretKeyGeneratorError<C>: Clone, S::ContainmentError: Clone"),
-    Copy(bound = "SecretKeyGeneratorError<C>: Copy, S::ContainmentError: Copy"),
-    Debug(bound = "SecretKeyGeneratorError<C>: Debug, S::ContainmentError: Debug"),
-    Eq(bound = "SecretKeyGeneratorError<C>: Eq, S::ContainmentError: Eq"),
-    Hash(bound = "SecretKeyGeneratorError<C>: Hash, S::ContainmentError: Hash"),
-    PartialEq(bound = "SecretKeyGeneratorError<C>: PartialEq, S::ContainmentError: PartialEq")
+    Clone(bound = "G::Error: Clone, S::ContainmentError: Clone"),
+    Copy(bound = "G::Error: Copy, S::ContainmentError: Copy"),
+    Debug(bound = "G::Error: Debug, S::ContainmentError: Debug"),
+    Eq(bound = "G::Error: Eq, S::ContainmentError: Eq"),
+    Hash(bound = "G::Error: Hash, S::ContainmentError: Hash"),
+    PartialEq(bound = "G::Error: PartialEq, S::ContainmentError: PartialEq")
 )]
-pub enum SenderError<C, S>
+pub enum SenderError<C, G, S>
 where
     C: IdentityConfiguration,
+    G: SecretKeyGenerator<SecretKey = C::SecretKey>,
     S: VerifiedSet<Item = Utxo<C>>,
 {
     /// Secret Key Generator Error
-    SecretKeyError(SecretKeyGeneratorError<C>),
+    SecretKeyError(G::Error),
 
     /// Containment Error
     MissingUtxo(S::ContainmentError),
+
+    /// Parameter Marker
+    #[doc(hidden)]
+    __(Infallible, PhantomData<C>),
 }
 
 /// Sender
@@ -877,13 +909,14 @@ where
     /// Generates a new [`Identity`] from a secret key generation source and builds a new
     /// [`Sender`] from it.
     #[inline]
-    pub fn generate(
-        source: &mut C::SecretKeyGenerator,
+    pub fn generate<G>(
+        source: &mut G,
         commitment_scheme: &C::CommitmentScheme,
         asset: Asset,
         utxo_set: &S,
-    ) -> Result<Self, SenderError<C, S>>
+    ) -> Result<Self, SenderError<C, G, S>>
     where
+        G: SecretKeyGenerator<SecretKey = C::SecretKey>,
         Standard: Distribution<AssetParameters<C>>,
         PublicKey<C>: ConcatBytes,
         VoidNumberGenerator<C>: ConcatBytes,

@@ -17,10 +17,10 @@
 //! Transfer Protocols
 
 use crate::{
-    account::{
+    asset::{sample_asset_balances, Asset, AssetBalance, AssetBalances, AssetId},
+    identity::{
         IdentityConfiguration, Receiver, ReceiverPost, Sender, SenderPost, Utxo, VoidNumber,
     },
-    asset::{sample_asset_balances, Asset, AssetBalance, AssetBalances, AssetId},
     ledger::{Ledger, PostError},
 };
 use manta_crypto::{ies::EncryptedMessage, IntegratedEncryptionScheme, VerifiedSet};

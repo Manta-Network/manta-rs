@@ -44,7 +44,7 @@ pub trait ByteAccumulator {
         self
     }
 
-    /// Creates a "by mutable reference" adaptor for this instance of [`Accumulator`].
+    /// Creates a "by mutable reference" adaptor for this instance of [`ByteAccumulator`].
     #[inline]
     fn by_ref(&mut self) -> &mut Self
     where

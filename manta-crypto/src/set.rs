@@ -18,7 +18,7 @@
 
 pub(crate) mod prelude {
     #[doc(inline)]
-    pub use crate::set::{Set, VerifiedSet};
+    pub use super::{Set, VerifiedSet};
 }
 
 /// Set Trait

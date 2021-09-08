@@ -16,8 +16,8 @@
 
 //! Ledger Abstraction
 
-use crate::account::{ReceiverPostError, SenderPostError};
-use manta_crypto::VerifiedSet;
+use crate::identity::{ReceiverPostError, SenderPostError};
+use manta_crypto::{Set, VerifiedSet};
 
 /// Ledger Trait
 pub trait Ledger {
@@ -36,8 +36,6 @@ pub trait Ledger {
     /// Returns a shared reference to the [`UtxoSet`](Self::UtxoSet).
     fn utxos(&self) -> &Self::UtxoSet;
 
-    /* TODO: do we want these methods?
-
     /// Returns `true` if the `void_number` corresponding to some asset
     /// __is not stored__ on `self`.
     fn is_unspent(&self, void_number: &Self::VoidNumber) -> bool;
@@ -55,8 +53,6 @@ pub trait Ledger {
     fn is_spendable(&self, utxo: &Self::Utxo, void_number: &Self::VoidNumber) -> bool {
         self.is_registered(utxo) && self.is_unspent(void_number)
     }
-
-    */
 
     /// Checks if the `public_input` corresponding to a UTXO containment proof represents the current
     /// state of the [`UtxoSet`](Self::UtxoSet), returning it back if not.

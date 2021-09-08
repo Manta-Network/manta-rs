@@ -16,18 +16,24 @@
 
 //! Wallet Abstractions
 
+// TODO: How to manage accounts? Wallet should have a fixed account or not?
+
 use crate::{
-    account::{
-        AssetParameters, PublicKey, SecretKeyGeneratorError, Sender, ShieldedIdentity,
-        VoidNumberCommitment, VoidNumberGenerator,
-    },
     asset::{Asset, AssetBalance, AssetId},
+    identity::{
+        AssetParameters, IdentityConfiguration, OpenSpend, PublicKey, Sender, ShieldedIdentity,
+        Spend, VoidNumberCommitment, VoidNumberGenerator,
+    },
+    keys::DerivedSecretKeyGenerator,
     ledger::Ledger,
     transfer::{SecretTransfer, SecretTransferConfiguration},
 };
 use core::convert::Infallible;
-use manta_crypto::ConcatBytes;
-use rand::distributions::{Distribution, Standard};
+use manta_crypto::{ies::EncryptedMessage, ConcatBytes, IntegratedEncryptionScheme};
+use rand::{
+    distributions::{Distribution, Standard},
+    CryptoRng, RngCore,
+};
 
 /// Asset Map
 pub trait AssetMap {
@@ -113,13 +119,16 @@ pub trait AssetMap {
 }
 
 /// Wallet
-pub struct Wallet<T, M>
+pub struct Wallet<D, M>
 where
-    T: SecretTransferConfiguration,
+    D: DerivedSecretKeyGenerator,
     M: AssetMap,
 {
     /// Secret Key Source
-    secret_key_source: T::SecretKeyGenerator,
+    secret_key_source: D,
+
+    /// Wallet Account
+    account: D::Account,
 
     /// Public Asset Map
     public_assets: M,
@@ -128,33 +137,71 @@ where
     secret_assets: M,
 }
 
-impl<T, M> Wallet<T, M>
+impl<D, M> Wallet<D, M>
 where
-    T: SecretTransferConfiguration,
+    D: DerivedSecretKeyGenerator,
     M: AssetMap,
 {
-    /// Builds a new [`Wallet`] from a `secret_key_source`.
+    /// Builds a new [`Wallet`] for `account` from a `secret_key_source`.
     #[inline]
-    pub fn new(secret_key_source: T::SecretKeyGenerator) -> Self
+    pub fn new(secret_key_source: D, account: D::Account) -> Self
     where
         M: Default,
     {
-        Self::with_balances(secret_key_source, Default::default(), Default::default())
+        Self::with_balances(
+            secret_key_source,
+            account,
+            Default::default(),
+            Default::default(),
+        )
     }
 
-    /// Builds a new [`Wallet`] from a `secret_key_source` and pre-built
+    /// Builds a new [`Wallet`] for `account` from a `secret_key_source` and pre-built
     /// `public_assets` map and `secret_assets` map.
     #[inline]
     pub fn with_balances(
-        secret_key_source: T::SecretKeyGenerator,
+        secret_key_source: D,
+        account: D::Account,
         public_assets: M,
         secret_assets: M,
     ) -> Self {
         Self {
             secret_key_source,
+            account,
             public_assets,
             secret_assets,
         }
+    }
+
+    /// Looks for an [`OpenSpend`] for this `encrypted_asset`.
+    pub fn find_open_spend<C, I>(
+        &self,
+        encrypted_asset: EncryptedMessage<I>,
+        gap_limit: usize,
+    ) -> Option<OpenSpend<C>>
+    where
+        C: IdentityConfiguration<SecretKey = D::SecretKey>,
+        I: IntegratedEncryptionScheme<Plaintext = Asset>,
+        Standard: Distribution<AssetParameters<C>>,
+    {
+        // TODO: Report a more useful error.
+
+        /* FIXME: Is this the right implementation?
+        let mut external = self.secret_key_source.external_keys(&self.account);
+        let mut internal = self.secret_key_source.internal_keys(&self.account);
+        for _ in 0..gap_limit {
+            if let Ok(sender) = Spend::generate(&mut external).ok()?.into_sender() {
+                return Some(sender);
+            }
+            if let Ok(sender) = Spend::generate(&mut internal).ok()?.into_sender() {
+                return Some(sender);
+            }
+        }
+        None
+        */
+
+        let _ = (encrypted_asset, gap_limit);
+        todo!()
     }
 
     /// Updates `self` with new information from the ledger.
@@ -163,52 +210,54 @@ where
         L: Ledger,
     {
         // TODO: pull updates from the ledger
-        //         - new void numbers?
-        //         - new utxos?
-        //         - new encrypted notes?
+        //         1. Download the new encrypted notes and try to decrypt them using the latest
+        //            keys that haven't been used.
+        //         2. Download the new vns and utxos and check that we can still spend all the
+        //            tokens we think we can spend.
+        //         3. compute the new deposits and withdrawls
         let _ = ledger;
         todo!()
     }
 
     /// Generates a new [`ShieldedIdentity`] to receive assets to this wallet.
     #[inline]
-    pub fn generate_receiver(
+    pub fn generate_receiver<T>(
         &mut self,
         commitment_scheme: &T::CommitmentScheme,
-    ) -> Result<ShieldedIdentity<T, T::IntegratedEncryptionScheme>, SecretKeyGeneratorError<T>>
+    ) -> Result<ShieldedIdentity<T, T::IntegratedEncryptionScheme>, D::Error>
     where
+        T: SecretTransferConfiguration,
         Standard: Distribution<AssetParameters<T>>,
         PublicKey<T>: ConcatBytes,
         VoidNumberGenerator<T>: ConcatBytes,
     {
-        // FIXME: shouldn't we also produce a `Spend`? since we are modifying the secret key source,
-        // we can't go back and discover what the actual "derived key path" was except to go into
-        // recovery mode
-        ShieldedIdentity::generate(&mut self.secret_key_source, commitment_scheme)
+        // FIXME: ShieldedIdentity::generate(&mut self.secret_key_source, commitment_scheme)
+        let _ = commitment_scheme;
+        todo!()
     }
 
     /// Builds a [`SecretTransfer`] transaction to send `asset` to `receiver`.
-    pub fn secret_send(
+    pub fn secret_send<T, R>(
         &self,
         commitment_scheme: &T::CommitmentScheme,
         asset: Asset,
         receiver: ShieldedIdentity<T, T::IntegratedEncryptionScheme>,
+        rng: &mut R,
     ) -> Option<SecretTransfer<T, 2, 2>>
     where
+        T: SecretTransferConfiguration,
         VoidNumberCommitment<T>: ConcatBytes,
+        R: CryptoRng + RngCore + ?Sized,
     {
         // TODO: spec:
         // 1. check that we have enough `asset` in the secret_assets map
         // 2. find out which keys have control over `asset`
         // 3. build two senders and build a receiver and a change receiver for the extra change
 
-        // TODO: which `rng` do we use for the receivers?
-
         /*
         let sender = Sender::generate(self.secret_key_source, commitment_scheme);
-        let receiver = receiver.into_receiver(commitment_scheme, asset, rng);
         */
-        let _ = (commitment_scheme, asset, receiver);
+        let _ = receiver.into_receiver(commitment_scheme, asset, rng);
         todo!()
     }
 }

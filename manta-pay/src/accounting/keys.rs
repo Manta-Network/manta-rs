@@ -14,7 +14,18 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Accounting Implementations
+//! Secret Key Generator Implementations
 
-pub mod keys;
-pub mod ledger;
+// TODO: Use the `bip32` crate to implement wallet key generators
+
+/// BIP-0044 Purpose Id
+pub const BIP_44_PURPOSE_ID: u32 = 44;
+
+/// Manta Coin Type Id
+pub const MANTA_COIN_TYPE_ID: u32 = 611;
+
+/// Calamary Coin Type Id
+pub const CALAMARI_COIN_TYPE_ID: u32 = 612;
+
+/// Testnet Coin Type Id
+pub const TESTNET_COIN_TYPE_ID: u32 = 1;
