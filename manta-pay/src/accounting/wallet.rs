@@ -14,8 +14,4 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Accounting Implementations
-
-pub mod keys;
-pub mod ledger;
-pub mod wallet;
+//! Wallet Implementation
