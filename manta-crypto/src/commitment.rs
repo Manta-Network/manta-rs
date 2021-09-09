@@ -19,7 +19,7 @@
 /// Commitment Scheme
 pub trait CommitmentScheme {
     /// Commitment Input Buffer Type
-    type InputBuffer;
+    type InputBuffer: Default;
 
     /// Commitment Randomness Parameter Type
     type Randomness;
@@ -27,18 +27,10 @@ pub trait CommitmentScheme {
     /// Commitment Output Type
     type Output;
 
-    /// Returns a new [`InputBuffer`](Self::InputBuffer) for building commitments.
-    #[must_use = "the input buffer is the only way to build a commitment"]
-    fn start(&self) -> Self::InputBuffer;
-
-    /// Updates the `buffer` with `input`.
+    /// Returns a new [`CommitmentBuilder`] to build up a commitment.
     #[inline]
-    fn update<I>(&self, buffer: &mut Self::InputBuffer, input: &I) -> &Self
-    where
-        I: CommitmentInput<Self>,
-    {
-        CommitmentInput::extend(input, buffer);
-        self
+    fn start(&self) -> CommitmentBuilder<Self> {
+        CommitmentBuilder::new(self)
     }
 
     /// Commits the `input` buffer with the given `randomness` parameter.
@@ -52,4 +44,46 @@ where
 {
     /// Extends the input buffer.
     fn extend(&self, buffer: &mut C::InputBuffer);
+}
+
+/// Commitment Builder
+pub struct CommitmentBuilder<'c, C>
+where
+    C: CommitmentScheme + ?Sized,
+{
+    /// Commitment Scheme
+    commitment_scheme: &'c C,
+
+    /// Input Buffer
+    input_buffer: C::InputBuffer,
+}
+
+impl<'c, C> CommitmentBuilder<'c, C>
+where
+    C: CommitmentScheme + ?Sized,
+{
+    /// Returns a new [`CommitmentBuilder`] for this `commitment_scheme`.
+    #[inline]
+    pub fn new(commitment_scheme: &'c C) -> Self {
+        Self {
+            commitment_scheme,
+            input_buffer: Default::default(),
+        }
+    }
+
+    /// Updates the builder with new `input`.
+    #[inline]
+    pub fn update<I>(mut self, input: &I) -> Self
+    where
+        I: CommitmentInput<C>,
+    {
+        CommitmentInput::extend(input, &mut self.input_buffer);
+        self
+    }
+
+    /// Commits to the input stored in the builder with the given `randomness`.
+    #[inline]
+    pub fn commit(self, randomness: &C::Randomness) -> C::Output {
+        self.commitment_scheme.commit(self.input_buffer, randomness)
+    }
 }

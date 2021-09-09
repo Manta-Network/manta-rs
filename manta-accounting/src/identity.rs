@@ -115,17 +115,11 @@ where
     PublicKey<C>: CommitmentInput<C::CommitmentScheme>,
     VoidNumberGenerator<C>: CommitmentInput<C::CommitmentScheme>,
 {
-    let mut buffer = commitment_scheme.start();
     commitment_scheme
-        .update(&mut buffer, public_key)
-        .update(&mut buffer, void_number_generator)
-        .commit(buffer, void_number_commitment_randomness)
-    /* TODO[remove]:
-    commitment_scheme.commit(
-        concatenate!(public_key, void_number_generator),
-        void_number_commitment_randomness,
-    )
-    */
+        .start()
+        .update(public_key)
+        .update(void_number_generator)
+        .commit(void_number_commitment_randomness)
 }
 
 /// Generates a [`Utxo`] from a given `asset`, `void_number_commitment`, and `utxo_randomness`.
@@ -141,14 +135,11 @@ where
     Asset: CommitmentInput<C::CommitmentScheme>,
     VoidNumberCommitment<C>: CommitmentInput<C::CommitmentScheme>,
 {
-    let mut buffer = commitment_scheme.start();
     commitment_scheme
-        .update(&mut buffer, asset)
-        .update(&mut buffer, void_number_commitment)
-        .commit(buffer, utxo_randomness)
-    /* TODO[remove]:
-    commitment_scheme.commit(concatenate!(asset, void_number_commitment), utxo_randomness)
-    */
+        .start()
+        .update(asset)
+        .update(void_number_commitment)
+        .commit(utxo_randomness)
 }
 
 /// Public Parameters for using an [`Asset`]

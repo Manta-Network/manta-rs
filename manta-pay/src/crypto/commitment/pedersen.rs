@@ -56,11 +56,6 @@ impl CommitmentScheme for PedersenCommitment {
     type Output = <ArkPedersenCommitment as ArkCommitmentScheme>::Output;
 
     #[inline]
-    fn start(&self) -> Self::InputBuffer {
-        Default::default()
-    }
-
-    #[inline]
     fn commit(&self, input: Self::InputBuffer, randomness: &Self::Randomness) -> Self::Output {
         ArkPedersenCommitment::commit(&self.0, &input, randomness)
             .expect("As of arkworks 0.3.0, this never fails.")
