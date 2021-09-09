@@ -14,41 +14,42 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Commitments
-
-use core::borrow::Borrow;
-use rand::RngCore;
+//! Commitment Schemes
 
 /// Commitment Scheme
 pub trait CommitmentScheme {
+    /// Commitment Input Buffer Type
+    type InputBuffer;
+
     /// Commitment Randomness Parameter Type
     type Randomness;
 
     /// Commitment Output Type
-    type Output: PartialEq;
+    type Output;
 
-    /// Samples random commitment paramters.
-    fn setup<R>(rng: &mut R) -> Self
-    where
-        R: RngCore;
+    /// Returns a new [`InputBuffer`](Self::InputBuffer) for building commitments.
+    #[must_use = "the input buffer is the only way to build a commitment"]
+    fn start(&self) -> Self::InputBuffer;
 
-    /// Commits the `input` with the given `randomness` parameter.
-    fn commit<I>(&self, input: I, randomness: &Self::Randomness) -> Self::Output
-    where
-        I: Borrow<[u8]>;
-
-    /// Checks that the `output` matches the commitment of the `input` with the given `randomness`
-    /// parameter.
+    /// Updates the `buffer` with `input`.
     #[inline]
-    fn check_commitment<I>(
-        &self,
-        input: I,
-        randomness: &Self::Randomness,
-        output: &Self::Output,
-    ) -> bool
+    fn update<I>(&self, buffer: &mut Self::InputBuffer, input: &I) -> &Self
     where
-        I: Borrow<[u8]>,
+        I: CommitmentInput<Self>,
     {
-        &self.commit(input, randomness) == output.borrow()
+        CommitmentInput::extend(input, buffer);
+        self
     }
+
+    /// Commits the `input` buffer with the given `randomness` parameter.
+    fn commit(&self, input: Self::InputBuffer, randomness: &Self::Randomness) -> Self::Output;
+}
+
+/// Commitment Input
+pub trait CommitmentInput<C>
+where
+    C: CommitmentScheme + ?Sized,
+{
+    /// Extends the input buffer.
+    fn extend(&self, buffer: &mut C::InputBuffer);
 }

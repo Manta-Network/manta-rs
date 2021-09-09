@@ -16,14 +16,13 @@
 
 //! Pedersen Commitment Implementation
 
+use alloc::vec::Vec;
 use ark_crypto_primitives::commitment::{
     pedersen::{Commitment, Window},
     CommitmentScheme as ArkCommitmentScheme,
 };
 use ark_ed_on_bls12_381::EdwardsProjective;
-use core::borrow::Borrow;
 use manta_crypto::CommitmentScheme;
-use rand::RngCore;
 
 /// Implementation of [`CommitmentScheme`]
 #[derive(Clone)]
@@ -50,24 +49,20 @@ impl Window for PedersenWindow {
 pub type ArkPedersenCommitment = Commitment<EdwardsProjective, PedersenWindow>;
 
 impl CommitmentScheme for PedersenCommitment {
+    type InputBuffer = Vec<u8>;
+
     type Randomness = <ArkPedersenCommitment as ArkCommitmentScheme>::Randomness;
 
     type Output = <ArkPedersenCommitment as ArkCommitmentScheme>::Output;
 
     #[inline]
-    fn setup<R>(rng: &mut R) -> Self
-    where
-        R: RngCore,
-    {
-        Self(ArkPedersenCommitment::setup(rng).expect("As of arkworks 0.3.0, this never fails."))
+    fn start(&self) -> Self::InputBuffer {
+        Default::default()
     }
 
     #[inline]
-    fn commit<I>(&self, input: I, randomness: &Self::Randomness) -> Self::Output
-    where
-        I: Borrow<[u8]>,
-    {
-        ArkPedersenCommitment::commit(&self.0, input.borrow(), randomness)
+    fn commit(&self, input: Self::InputBuffer, randomness: &Self::Randomness) -> Self::Output {
+        ArkPedersenCommitment::commit(&self.0, &input, randomness)
             .expect("As of arkworks 0.3.0, this never fails.")
     }
 }

@@ -23,7 +23,10 @@ use crate::{
     },
     ledger::{Ledger, PostError},
 };
-use manta_crypto::{ies::EncryptedMessage, IntegratedEncryptionScheme, VerifiedSet};
+use alloc::vec::Vec;
+use manta_crypto::{
+    constraints::ProofSystem, ies::EncryptedMessage, IntegratedEncryptionScheme, VerifiedSet,
+};
 use manta_util::array_map;
 use rand::{
     distributions::{Distribution, Standard},
@@ -79,6 +82,9 @@ pub trait SecretTransferConfiguration: IdentityConfiguration {
 
     /// Verified Set for [`Utxo`]
     type UtxoSet: VerifiedSet<Item = Utxo<Self>>;
+
+    /// Proof System for [`SecretTransfer`]
+    type ProofSystem: ProofSystem;
 }
 
 /// Secret Transfer Protocol
@@ -97,12 +103,24 @@ impl<T, const SENDERS: usize, const RECEIVERS: usize> SecretTransfer<T, SENDERS,
 where
     T: SecretTransferConfiguration,
 {
+    /// Maximum Number of Senders
+    pub const MAXIMUM_SENDER_COUNT: usize = 10;
+
+    /// Maximum Number of Receivers
+    pub const MAXIMUM_RECEIVER_COUNT: usize = 10;
+
     /// Builds a new [`SecretTransfer`].
     #[inline]
     pub fn new(
         senders: [Sender<T, T::UtxoSet>; SENDERS],
         receivers: [Receiver<T, T::IntegratedEncryptionScheme>; RECEIVERS],
     ) -> Self {
+        if SENDERS > Self::MAXIMUM_SENDER_COUNT {
+            panic!("Allocated too many senders.");
+        }
+        if RECEIVERS > Self::MAXIMUM_RECEIVER_COUNT {
+            panic!("Allocated too many receivers.");
+        }
         Self { senders, receivers }
     }
 
@@ -137,21 +155,67 @@ where
         self.sender_sum().eq(&self.receiver_sum())
     }
 
+    fn build_proof_content(
+        proof_system: &mut T::ProofSystem,
+        senders: Vec<()>,
+        receivers: Vec<()>,
+    ) {
+        // FIXME: Build secret transfer zero knowledge proof:
+
+        /* TODO:
+        // 1. Check that all senders are well-formed.
+        proof_system.assert_all(senders.iter().map(|s| s.is_well_formed()));
+
+        // 2. Check that all receivers are well-formed.
+        proof_system.assert_all(receivers.iter().map(|r| r.is_well_formed()));
+
+        // 3. Check that there is a unique asset id for all the assets.
+        let sender_ids = senders.iter().map(|s| s.asset_id());
+        let receiver_ids = receivers.iter().map(|r| r.asset_id());
+        proof_system.assert_all_eq(sender_ids.chain(receiver_ids));
+
+        // 4. Check that the transaction is balanced.
+        proof_system.assert_eq(
+            senders.iter().map(|s| s.asset_value()).sum(),
+            receivers.iter().map(|r| r.asset_value()).sum(),
+        );
+        */
+
+        let _ = (proof_system, senders, receivers);
+    }
+
     #[inline]
-    fn generate_validity_proof(&self) {
-        // FIXME: build zkp
+    fn generate_validity_proof(&self) -> Option<<T::ProofSystem as ProofSystem>::Proof> {
+        // FIXME: Build secret transfer zero knowledge proof:
+
+        /*
+        let mut proof_system = T::ProofSystem::default();
+        let senders = self
+            .senders
+            .iter()
+            .map(|s| proof_system.register(s))
+            .collect::<Vec<_>>();
+        let receivers = self
+            .receivers
+            .iter()
+            .map(|r| proof_system.register(r))
+            .collect::<Vec<_>>();
+        Self::build_proof_content(&mut proof_system, senders, receivers);
+        proof_system.finish()
+        */
+
         todo!()
     }
 
     /// Converts `self` into its ledger post.
     #[inline]
-    pub fn into_post(self) -> SecretTransferPost<T, SENDERS, RECEIVERS> {
-        let validity_proof = self.generate_validity_proof();
-        SecretTransferPost {
+    pub fn into_post(self) -> Option<SecretTransferPost<T, SENDERS, RECEIVERS>> {
+        let validity_proof = self.generate_validity_proof()?;
+        Some(SecretTransferPost {
             sender_posts: array_map(self.senders, Sender::into_post),
             receiver_posts: array_map(self.receivers, Receiver::into_post),
             validity_proof,
-        }
+        })
     }
 }
 
@@ -167,7 +231,7 @@ where
     pub receiver_posts: [ReceiverPost<T, T::IntegratedEncryptionScheme>; RECEIVERS],
 
     /// Validity Proof
-    pub validity_proof: (),
+    pub validity_proof: <T::ProofSystem as ProofSystem>::Proof,
 }
 
 impl<T, const SENDERS: usize, const RECEIVERS: usize> SecretTransferPost<T, SENDERS, RECEIVERS>
@@ -194,6 +258,17 @@ where
         // FIXME: proof.post(ledger)?;
         //        - returns `PostError::InvalidSecretTransfer` on error?
         Ok(())
+    }
+}
+
+impl<T, const SENDERS: usize, const RECEIVERS: usize> From<SecretTransfer<T, SENDERS, RECEIVERS>>
+    for Option<SecretTransferPost<T, SENDERS, RECEIVERS>>
+where
+    T: SecretTransferConfiguration,
+{
+    #[inline]
+    fn from(secret_transfer: SecretTransfer<T, SENDERS, RECEIVERS>) -> Self {
+        secret_transfer.into_post()
     }
 }
 
@@ -230,11 +305,11 @@ where
 
     /// Converts `self` into its ledger post.
     #[inline]
-    pub fn into_post(self) -> TransferPost<T, SOURCES, SINKS, SENDERS, RECEIVERS> {
-        TransferPost {
+    pub fn into_post(self) -> Option<TransferPost<T, SOURCES, SINKS, SENDERS, RECEIVERS>> {
+        Some(TransferPost {
             public_transfer_post: self.public,
-            secret_transfer_post: self.secret.into_post(),
-        }
+            secret_transfer_post: self.secret.into_post()?,
+        })
     }
 }
 

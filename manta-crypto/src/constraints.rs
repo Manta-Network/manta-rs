@@ -16,6 +16,94 @@
 
 //! Constraint Systems and Zero Knowledge Proofs
 
+use core::borrow::Borrow;
+
+///
+pub trait Register<T>: ProofSystem {
+    ///
+    type Output;
+
+    ///
+    fn allocate<B, Opt>(&mut self, t: Opt) -> Self::Output
+    where
+        B: Borrow<T>,
+        Opt: Into<Option<B>>;
+
+    ///
+    #[inline]
+    fn variable(&mut self) -> Self::Output {
+        Register::allocate::<T, _>(self, None)
+    }
+}
+
+///
+pub trait ProofSystem: Default {
+    ///
+    type Variable;
+
+    ///
+    type Proof;
+
+    ///
+    type Error;
+
+    ///
+    #[inline]
+    fn allocate<T, B>(&mut self, t: impl Into<Option<B>>) -> <Self as Register<T>>::Output
+    where
+        B: Borrow<T>,
+        Self: Register<T>,
+    {
+        Register::allocate(self, t)
+    }
+
+    ///
+    fn assert(&mut self, b: ());
+
+    ///
+    #[inline]
+    fn assert_all<I>(&mut self, iter: I)
+    where
+        I: IntoIterator<Item = ()>,
+    {
+        for boolean in iter {
+            self.assert(boolean)
+        }
+    }
+
+    ///
+    #[inline]
+    fn assert_eq(&mut self, lhs: &Self::Variable, rhs: &Self::Variable) {
+        // TODO: self.assert(lhs.eq(rhs))
+        let _ = (lhs, rhs);
+        todo!()
+    }
+
+    ///
+    #[inline]
+    fn assert_all_eq<'i, I>(&mut self, iter: I)
+    where
+        Self::Variable: 'i,
+        I: IntoIterator<Item = &'i Self::Variable>,
+    {
+        let mut iter = iter.into_iter();
+        if let Some(base) = iter.next() {
+            for item in iter {
+                self.assert_eq(base, item);
+            }
+        }
+    }
+}
+
+///
+pub trait ProofBuilder {
+    ///
+    fn build<P>(&self, proof_system: &mut P)
+    where
+        P: ProofSystem;
+}
+
+/* TODO:
 use alloc::vec::Vec;
 
 ///
@@ -93,3 +181,4 @@ pub trait ConstraintSynthesizer<T> {
     ///
     fn input(&self) -> Vec<&T>;
 }
+*/

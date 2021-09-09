@@ -19,7 +19,7 @@
 /// Pseudorandom Function Families (PRF) Trait
 pub trait PseudorandomFunctionFamily {
     /// PRF Seed Type
-    type Seed: ?Sized;
+    type Seed;
 
     /// PRF Input Type
     type Input: Default;

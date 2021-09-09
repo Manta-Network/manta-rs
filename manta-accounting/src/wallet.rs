@@ -24,7 +24,7 @@
 use crate::{
     asset::{Asset, AssetBalance, AssetId},
     identity::{
-        AssetParameters, Identity, IdentityConfiguration, OpenSpend, PublicKey, Receiver, Sender,
+        AssetParameters, Identity, IdentityConfiguration, OpenSpend, PublicKey, Receiver,
         ShieldedIdentity, Spend, VoidNumberCommitment, VoidNumberGenerator,
     },
     keys::{self, DerivedSecretKeyGenerator, ExternalKeys, InternalKeys},
@@ -32,7 +32,7 @@ use crate::{
     transfer::{SecretTransfer, SecretTransferConfiguration},
 };
 use core::{convert::Infallible, fmt::Debug, hash::Hash};
-use manta_crypto::{ies::EncryptedMessage, ConcatBytes, IntegratedEncryptionScheme};
+use manta_crypto::{ies::EncryptedMessage, CommitmentInput, IntegratedEncryptionScheme};
 use rand::{
     distributions::{Distribution, Standard},
     CryptoRng, RngCore,
@@ -345,8 +345,8 @@ where
         C: IdentityConfiguration<SecretKey = D::SecretKey>,
         I: IntegratedEncryptionScheme<Plaintext = Asset>,
         Standard: Distribution<AssetParameters<C>>,
-        PublicKey<C>: ConcatBytes,
-        VoidNumberGenerator<C>: ConcatBytes,
+        PublicKey<C>: CommitmentInput<C::CommitmentScheme>,
+        VoidNumberGenerator<C>: CommitmentInput<C::CommitmentScheme>,
     {
         self.next_external_identity()
             .map(move |identity| identity.into_shielded(commitment_scheme))
@@ -367,9 +367,10 @@ where
         I: IntegratedEncryptionScheme<Plaintext = Asset>,
         R: CryptoRng + RngCore + ?Sized,
         Standard: Distribution<AssetParameters<C>>,
-        PublicKey<C>: ConcatBytes,
-        VoidNumberGenerator<C>: ConcatBytes,
-        VoidNumberCommitment<C>: ConcatBytes,
+        PublicKey<C>: CommitmentInput<C::CommitmentScheme>,
+        VoidNumberGenerator<C>: CommitmentInput<C::CommitmentScheme>,
+        Asset: CommitmentInput<C::CommitmentScheme>,
+        VoidNumberCommitment<C>: CommitmentInput<C::CommitmentScheme>,
     {
         let (shielded_identity, spend) = self
             .next_internal_identity()
@@ -394,7 +395,8 @@ where
     where
         T: SecretTransferConfiguration,
         R: CryptoRng + RngCore + ?Sized,
-        VoidNumberCommitment<T>: ConcatBytes,
+        Asset: CommitmentInput<T::CommitmentScheme>,
+        VoidNumberCommitment<T>: CommitmentInput<T::CommitmentScheme>,
     {
         // TODO: spec:
         // 1. check that we have enough `asset` in the secret_assets map

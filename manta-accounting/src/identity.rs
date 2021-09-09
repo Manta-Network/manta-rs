@@ -16,7 +16,10 @@
 
 //! Identities, Senders, and Receivers
 
-// FIXME: ensure secret keys cannot be made public by some API call
+// FIXME: Check the secret key APIs.
+// FIXME: Should the identity types have methods that expose their members? Or should it be
+//        completely opaque, and let the internal APIs handle all the logic?
+// TODO:  Since `IdentityConfiguration::SecretKey: Clone`, should `Identity: Clone`?
 
 use crate::{
     asset::{Asset, AssetBalance, AssetId},
@@ -25,10 +28,9 @@ use crate::{
 };
 use core::{convert::Infallible, fmt::Debug, hash::Hash, marker::PhantomData};
 use manta_crypto::{
-    concatenate,
     ies::{self, EncryptedMessage},
     set::ContainmentProof,
-    CommitmentScheme, ConcatBytes, IntegratedEncryptionScheme, PseudorandomFunctionFamily,
+    CommitmentInput, CommitmentScheme, IntegratedEncryptionScheme, PseudorandomFunctionFamily,
     VerifiedSet,
 };
 use rand::{
@@ -110,13 +112,20 @@ pub fn generate_void_number_commitment<C>(
 ) -> VoidNumberCommitment<C>
 where
     C: IdentityConfiguration,
-    PublicKey<C>: ConcatBytes,
-    VoidNumberGenerator<C>: ConcatBytes,
+    PublicKey<C>: CommitmentInput<C::CommitmentScheme>,
+    VoidNumberGenerator<C>: CommitmentInput<C::CommitmentScheme>,
 {
+    let mut buffer = commitment_scheme.start();
+    commitment_scheme
+        .update(&mut buffer, public_key)
+        .update(&mut buffer, void_number_generator)
+        .commit(buffer, void_number_commitment_randomness)
+    /* TODO[remove]:
     commitment_scheme.commit(
         concatenate!(public_key, void_number_generator),
         void_number_commitment_randomness,
     )
+    */
 }
 
 /// Generates a [`Utxo`] from a given `asset`, `void_number_commitment`, and `utxo_randomness`.
@@ -129,9 +138,17 @@ pub fn generate_utxo<C>(
 ) -> Utxo<C>
 where
     C: IdentityConfiguration,
-    VoidNumberCommitment<C>: ConcatBytes,
+    Asset: CommitmentInput<C::CommitmentScheme>,
+    VoidNumberCommitment<C>: CommitmentInput<C::CommitmentScheme>,
 {
+    let mut buffer = commitment_scheme.start();
+    commitment_scheme
+        .update(&mut buffer, asset)
+        .update(&mut buffer, void_number_commitment)
+        .commit(buffer, utxo_randomness)
+    /* TODO[remove]:
     commitment_scheme.commit(concatenate!(asset, void_number_commitment), utxo_randomness)
+    */
 }
 
 /// Public Parameters for using an [`Asset`]
@@ -199,8 +216,8 @@ where
         public_key: &PublicKey<C>,
     ) -> VoidNumberCommitment<C>
     where
-        PublicKey<C>: ConcatBytes,
-        VoidNumberGenerator<C>: ConcatBytes,
+        PublicKey<C>: CommitmentInput<C::CommitmentScheme>,
+        VoidNumberGenerator<C>: CommitmentInput<C::CommitmentScheme>,
     {
         generate_void_number_commitment::<C>(
             commitment_scheme,
@@ -219,7 +236,8 @@ where
         void_number_commitment: &VoidNumberCommitment<C>,
     ) -> Utxo<C>
     where
-        VoidNumberCommitment<C>: ConcatBytes,
+        Asset: CommitmentInput<C::CommitmentScheme>,
+        VoidNumberCommitment<C>: CommitmentInput<C::CommitmentScheme>,
     {
         generate_utxo::<C>(
             commitment_scheme,
@@ -385,8 +403,8 @@ where
         parameters: &AssetParameters<C>,
     ) -> VoidNumberCommitment<C>
     where
-        PublicKey<C>: ConcatBytes,
-        VoidNumberGenerator<C>: ConcatBytes,
+        PublicKey<C>: CommitmentInput<C::CommitmentScheme>,
+        VoidNumberGenerator<C>: CommitmentInput<C::CommitmentScheme>,
     {
         parameters.void_number_commitment(commitment_scheme, &self.public_key())
     }
@@ -400,9 +418,10 @@ where
         parameters: &AssetParameters<C>,
     ) -> Utxo<C>
     where
-        PublicKey<C>: ConcatBytes,
-        VoidNumberGenerator<C>: ConcatBytes,
-        VoidNumberCommitment<C>: ConcatBytes,
+        PublicKey<C>: CommitmentInput<C::CommitmentScheme>,
+        VoidNumberGenerator<C>: CommitmentInput<C::CommitmentScheme>,
+        Asset: CommitmentInput<C::CommitmentScheme>,
+        VoidNumberCommitment<C>: CommitmentInput<C::CommitmentScheme>,
     {
         parameters.utxo(
             commitment_scheme,
@@ -422,9 +441,10 @@ where
     where
         S: VerifiedSet<Item = Utxo<C>>,
         Standard: Distribution<AssetParameters<C>>,
-        PublicKey<C>: ConcatBytes,
-        VoidNumberGenerator<C>: ConcatBytes,
-        VoidNumberCommitment<C>: ConcatBytes,
+        PublicKey<C>: CommitmentInput<C::CommitmentScheme>,
+        VoidNumberGenerator<C>: CommitmentInput<C::CommitmentScheme>,
+        Asset: CommitmentInput<C::CommitmentScheme>,
+        VoidNumberCommitment<C>: CommitmentInput<C::CommitmentScheme>,
     {
         let parameters = self.parameters();
         let utxo = self.utxo(commitment_scheme, &asset, &parameters);
@@ -441,7 +461,7 @@ where
     /// Generates a new [`Identity`] from a secret key generation source and builds a new
     /// [`Sender`] from it.
     #[inline]
-    pub fn generate_sender<G, S>(
+    fn generate_sender<G, S>(
         source: &mut G,
         commitment_scheme: &C::CommitmentScheme,
         asset: Asset,
@@ -451,9 +471,10 @@ where
         G: SecretKeyGenerator<SecretKey = C::SecretKey>,
         S: VerifiedSet<Item = Utxo<C>>,
         Standard: Distribution<AssetParameters<C>>,
-        PublicKey<C>: ConcatBytes,
-        VoidNumberGenerator<C>: ConcatBytes,
-        VoidNumberCommitment<C>: ConcatBytes,
+        PublicKey<C>: CommitmentInput<C::CommitmentScheme>,
+        VoidNumberGenerator<C>: CommitmentInput<C::CommitmentScheme>,
+        Asset: CommitmentInput<C::CommitmentScheme>,
+        VoidNumberCommitment<C>: CommitmentInput<C::CommitmentScheme>,
     {
         Self::generate(source)
             .map_err(SenderError::SecretKeyError)?
@@ -473,8 +494,8 @@ where
     where
         I: IntegratedEncryptionScheme<Plaintext = Asset>,
         Standard: Distribution<AssetParameters<C>>,
-        PublicKey<C>: ConcatBytes,
-        VoidNumberGenerator<C>: ConcatBytes,
+        PublicKey<C>: CommitmentInput<C::CommitmentScheme>,
+        VoidNumberGenerator<C>: CommitmentInput<C::CommitmentScheme>,
     {
         ShieldedIdentity {
             void_number_commitment: self.void_number_commitment(commitment_scheme, &parameters),
@@ -489,8 +510,8 @@ where
     where
         I: IntegratedEncryptionScheme<Plaintext = Asset>,
         Standard: Distribution<AssetParameters<C>>,
-        PublicKey<C>: ConcatBytes,
-        VoidNumberGenerator<C>: ConcatBytes,
+        PublicKey<C>: CommitmentInput<C::CommitmentScheme>,
+        VoidNumberGenerator<C>: CommitmentInput<C::CommitmentScheme>,
     {
         let (parameters, asset_keypair) = self.parameters_and_asset_keypair();
         self.build_shielded_identity(commitment_scheme, parameters, asset_keypair.into_public())
@@ -499,7 +520,7 @@ where
     /// Generates a new [`Identity`] from a secret key generation source and builds a new
     /// [`ShieldedIdentity`] from it.
     #[inline]
-    pub fn generate_shielded<G, I>(
+    fn generate_shielded<G, I>(
         source: &mut G,
         commitment_scheme: &C::CommitmentScheme,
     ) -> Result<ShieldedIdentity<C, I>, G::Error>
@@ -507,8 +528,8 @@ where
         G: SecretKeyGenerator<SecretKey = C::SecretKey>,
         I: IntegratedEncryptionScheme<Plaintext = Asset>,
         Standard: Distribution<AssetParameters<C>>,
-        PublicKey<C>: ConcatBytes,
-        VoidNumberGenerator<C>: ConcatBytes,
+        PublicKey<C>: CommitmentInput<C::CommitmentScheme>,
+        VoidNumberGenerator<C>: CommitmentInput<C::CommitmentScheme>,
     {
         Ok(Self::generate(source)?.into_shielded(commitment_scheme))
     }
@@ -529,7 +550,7 @@ where
     /// Generates a new [`Identity`] from a secret key generation source and builds a new
     /// [`Spend`] from it.
     #[inline]
-    pub fn generate_spend<G, I>(source: &mut G) -> Result<Spend<C, I>, G::Error>
+    fn generate_spend<G, I>(source: &mut G) -> Result<Spend<C, I>, G::Error>
     where
         G: SecretKeyGenerator<SecretKey = C::SecretKey>,
         I: IntegratedEncryptionScheme<Plaintext = Asset>,
@@ -547,8 +568,8 @@ where
     where
         I: IntegratedEncryptionScheme<Plaintext = Asset>,
         Standard: Distribution<AssetParameters<C>>,
-        PublicKey<C>: ConcatBytes,
-        VoidNumberGenerator<C>: ConcatBytes,
+        PublicKey<C>: CommitmentInput<C::CommitmentScheme>,
+        VoidNumberGenerator<C>: CommitmentInput<C::CommitmentScheme>,
     {
         let (parameters, asset_keypair) = self.parameters_and_asset_keypair();
         let (asset_public_key, asset_secret_key) = asset_keypair.into();
@@ -570,8 +591,8 @@ where
         G: SecretKeyGenerator<SecretKey = C::SecretKey>,
         I: IntegratedEncryptionScheme<Plaintext = Asset>,
         Standard: Distribution<AssetParameters<C>>,
-        PublicKey<C>: ConcatBytes,
-        VoidNumberGenerator<C>: ConcatBytes,
+        PublicKey<C>: CommitmentInput<C::CommitmentScheme>,
+        VoidNumberGenerator<C>: CommitmentInput<C::CommitmentScheme>,
     {
         Ok(Self::generate(source)?.into_receiver(commitment_scheme))
     }
@@ -608,13 +629,13 @@ where
     I: IntegratedEncryptionScheme<Plaintext = Asset>,
 {
     /// UTXO Randomness
-    pub utxo_randomness: UtxoRandomness<C>,
+    utxo_randomness: UtxoRandomness<C>,
 
     /// Void Number Commitment
-    pub void_number_commitment: VoidNumberCommitment<C>,
+    void_number_commitment: VoidNumberCommitment<C>,
 
     /// Encrypted [`Asset`] Public Key
-    pub asset_public_key: ies::PublicKey<I>,
+    asset_public_key: ies::PublicKey<I>,
 }
 
 impl<C, I> ShieldedIdentity<C, I>
@@ -628,8 +649,8 @@ where
     where
         I: IntegratedEncryptionScheme<Plaintext = Asset>,
         Standard: Distribution<AssetParameters<C>>,
-        PublicKey<C>: ConcatBytes,
-        VoidNumberGenerator<C>: ConcatBytes,
+        PublicKey<C>: CommitmentInput<C::CommitmentScheme>,
+        VoidNumberGenerator<C>: CommitmentInput<C::CommitmentScheme>,
     {
         identity.into_shielded(commitment_scheme)
     }
@@ -645,10 +666,28 @@ where
         G: SecretKeyGenerator<SecretKey = C::SecretKey>,
         I: IntegratedEncryptionScheme<Plaintext = Asset>,
         Standard: Distribution<AssetParameters<C>>,
-        PublicKey<C>: ConcatBytes,
-        VoidNumberGenerator<C>: ConcatBytes,
+        PublicKey<C>: CommitmentInput<C::CommitmentScheme>,
+        VoidNumberGenerator<C>: CommitmentInput<C::CommitmentScheme>,
     {
         Identity::generate_shielded(source, commitment_scheme)
+    }
+
+    /// Returns the UTXO randomness for this shielded identity.
+    #[inline]
+    pub fn utxo_randomness(&self) -> &UtxoRandomness<C> {
+        &self.utxo_randomness
+    }
+
+    /// Returns the void number commitment for this shielded identity.
+    #[inline]
+    pub fn void_number_commitment(&self) -> &VoidNumberCommitment<C> {
+        &self.void_number_commitment
+    }
+
+    /// Returns the asset public key for this shielded identity.
+    #[inline]
+    pub fn asset_public_key(&self) -> &ies::PublicKey<I> {
+        &self.asset_public_key
     }
 
     /// Generates a [`Receiver`] from a [`ShieldedIdentity`].
@@ -661,7 +700,8 @@ where
     ) -> Result<Receiver<C, I>, I::Error>
     where
         R: CryptoRng + RngCore + ?Sized,
-        VoidNumberCommitment<C>: ConcatBytes,
+        Asset: CommitmentInput<C::CommitmentScheme>,
+        VoidNumberCommitment<C>: CommitmentInput<C::CommitmentScheme>,
     {
         let Self {
             utxo_randomness,
@@ -685,35 +725,47 @@ where
 
 /// Spend Error
 ///
-/// This `enum` is the error state for the [`into_sender`] method on [`Spend`].
-/// See its documentation for more.
-///
-/// [`into_sender`]: Spend::into_sender
-#[derive(derivative::Derivative)]
-#[derivative(
-    Clone(bound = "I::Error: Clone, S::ContainmentError: Clone"),
-    Copy(bound = "I::Error: Copy, S::ContainmentError: Copy"),
-    Debug(bound = "I::Error: Debug, S::ContainmentError: Debug"),
-    Eq(bound = "I::Error: Eq, S::ContainmentError: Eq"),
-    Hash(bound = "I::Error: Hash, S::ContainmentError: Hash"),
-    PartialEq(bound = "I::Error: PartialEq, S::ContainmentError: PartialEq")
-)]
-pub enum SpendError<C, I, S>
-where
-    C: IdentityConfiguration,
-    I: IntegratedEncryptionScheme<Plaintext = Asset>,
-    S: VerifiedSet<Item = Utxo<C>>,
-{
-    /// Encryption Error
-    EncryptionError(I::Error),
+/// This is a work-around for a `clippy` overreaction bug.
+/// See <https://github.com/mcarton/rust-derivative/issues/100>.
+#[allow(unreachable_code)]
+mod spend_error {
+    use super::*;
 
-    /// Missing UTXO Containment Proof
-    MissingUtxo(S::ContainmentError),
+    /// Spend Error
+    ///
+    /// This `enum` is the error state for the [`into_sender`] method on [`Spend`].
+    /// See its documentation for more.
+    ///
+    /// [`into_sender`]: Spend::into_sender
+    #[derive(derivative::Derivative)]
+    #[derivative(
+        Clone(bound = "I::Error: Clone, S::ContainmentError: Clone"),
+        Copy(bound = "I::Error: Copy, S::ContainmentError: Copy"),
+        Debug(bound = "I::Error: Debug, S::ContainmentError: Debug"),
+        Eq(bound = "I::Error: Eq, S::ContainmentError: Eq"),
+        Hash(bound = "I::Error: Hash, S::ContainmentError: Hash"),
+        PartialEq(bound = "I::Error: PartialEq, S::ContainmentError: PartialEq")
+    )]
+    pub enum SpendError<C, I, S>
+    where
+        C: IdentityConfiguration,
+        I: IntegratedEncryptionScheme<Plaintext = Asset>,
+        S: VerifiedSet<Item = Utxo<C>>,
+    {
+        /// Encryption Error
+        EncryptionError(I::Error),
 
-    /// Parameter Marker
-    #[doc(hidden)]
-    __(Infallible, PhantomData<C>),
+        /// Missing UTXO Containment Proof
+        MissingUtxo(S::ContainmentError),
+
+        /// Type Parameter Marker
+        #[doc(hidden)]
+        __(Infallible, PhantomData<C>),
+    }
 }
+
+#[doc(inline)]
+pub use spend_error::SpendError;
 
 /// Spending Information
 pub struct Spend<C, I>
@@ -787,9 +839,10 @@ where
     where
         S: VerifiedSet<Item = Utxo<C>>,
         Standard: Distribution<AssetParameters<C>>,
-        PublicKey<C>: ConcatBytes,
-        VoidNumberGenerator<C>: ConcatBytes,
-        VoidNumberCommitment<C>: ConcatBytes,
+        PublicKey<C>: CommitmentInput<C::CommitmentScheme>,
+        VoidNumberGenerator<C>: CommitmentInput<C::CommitmentScheme>,
+        Asset: CommitmentInput<C::CommitmentScheme>,
+        VoidNumberCommitment<C>: CommitmentInput<C::CommitmentScheme>,
     {
         self.try_open(&encrypted_asset)
             .map_err(SpendError::EncryptionError)?
@@ -836,9 +889,10 @@ where
     where
         S: VerifiedSet<Item = Utxo<C>>,
         Standard: Distribution<AssetParameters<C>>,
-        PublicKey<C>: ConcatBytes,
-        VoidNumberGenerator<C>: ConcatBytes,
-        VoidNumberCommitment<C>: ConcatBytes,
+        PublicKey<C>: CommitmentInput<C::CommitmentScheme>,
+        VoidNumberGenerator<C>: CommitmentInput<C::CommitmentScheme>,
+        Asset: CommitmentInput<C::CommitmentScheme>,
+        VoidNumberCommitment<C>: CommitmentInput<C::CommitmentScheme>,
     {
         self.identity
             .into_sender(commitment_scheme, self.asset, utxo_set)
@@ -847,37 +901,47 @@ where
 
 /// Sender Error
 ///
-/// This `enum` is the error state for the [`generate_sender`] method on [`Identity`]
-/// and the [`generate`] method on [`Sender`].
-/// See their documentation for more.
-///
-/// [`generate_sender`]: Identity::generate_sender
-/// [`generate`]: Sender::generate
-#[derive(derivative::Derivative)]
-#[derivative(
-    Clone(bound = "G::Error: Clone, S::ContainmentError: Clone"),
-    Copy(bound = "G::Error: Copy, S::ContainmentError: Copy"),
-    Debug(bound = "G::Error: Debug, S::ContainmentError: Debug"),
-    Eq(bound = "G::Error: Eq, S::ContainmentError: Eq"),
-    Hash(bound = "G::Error: Hash, S::ContainmentError: Hash"),
-    PartialEq(bound = "G::Error: PartialEq, S::ContainmentError: PartialEq")
-)]
-pub enum SenderError<C, G, S>
-where
-    C: IdentityConfiguration,
-    G: SecretKeyGenerator<SecretKey = C::SecretKey>,
-    S: VerifiedSet<Item = Utxo<C>>,
-{
-    /// Secret Key Generator Error
-    SecretKeyError(G::Error),
+/// This is a work-around for a `clippy` overreaction bug.
+/// See <https://github.com/mcarton/rust-derivative/issues/100>.
+#[allow(unreachable_code)]
+mod sender_error {
+    use super::*;
 
-    /// Containment Error
-    MissingUtxo(S::ContainmentError),
+    /// Sender Error
+    ///
+    /// This `enum` is the error state for the [`generate`] method on [`Sender`].
+    /// See its documentation for more.
+    ///
+    /// [`generate`]: Sender::generate
+    #[derive(derivative::Derivative)]
+    #[derivative(
+        Clone(bound = "G::Error: Clone, S::ContainmentError: Clone"),
+        Copy(bound = "G::Error: Copy, S::ContainmentError: Copy"),
+        Debug(bound = "G::Error: Debug, S::ContainmentError: Debug"),
+        Eq(bound = "G::Error: Eq, S::ContainmentError: Eq"),
+        Hash(bound = "G::Error: Hash, S::ContainmentError: Hash"),
+        PartialEq(bound = "G::Error: PartialEq, S::ContainmentError: PartialEq")
+    )]
+    pub enum SenderError<C, G, S>
+    where
+        C: IdentityConfiguration,
+        G: SecretKeyGenerator<SecretKey = C::SecretKey>,
+        S: VerifiedSet<Item = Utxo<C>>,
+    {
+        /// Secret Key Generator Error
+        SecretKeyError(G::Error),
 
-    /// Parameter Marker
-    #[doc(hidden)]
-    __(Infallible, PhantomData<C>),
+        /// Containment Error
+        MissingUtxo(S::ContainmentError),
+
+        /// Type Parameter Marker
+        #[doc(hidden)]
+        __(Infallible, PhantomData<C>),
+    }
 }
+
+#[doc(inline)]
+pub use sender_error::SenderError;
 
 /// Sender
 pub struct Sender<C, S>
@@ -886,22 +950,22 @@ where
     S: VerifiedSet<Item = Utxo<C>>,
 {
     /// Sender Identity
-    pub(crate) identity: Identity<C>,
+    identity: Identity<C>,
 
     /// Asset
-    pub asset: Asset,
+    asset: Asset,
 
     /// Asset Parameters
-    pub parameters: AssetParameters<C>,
+    parameters: AssetParameters<C>,
 
     /// Void Number
-    pub void_number: VoidNumber<C>,
+    void_number: VoidNumber<C>,
 
     /// Unspent Transaction Output
-    pub utxo: Utxo<C>,
+    utxo: Utxo<C>,
 
     /// UTXO Containment Proof
-    pub utxo_containment_proof: ContainmentProof<S>,
+    utxo_containment_proof: ContainmentProof<S>,
 }
 
 impl<C, S> Sender<C, S>
@@ -919,9 +983,10 @@ where
     ) -> Result<Self, S::ContainmentError>
     where
         Standard: Distribution<AssetParameters<C>>,
-        PublicKey<C>: ConcatBytes,
-        VoidNumberGenerator<C>: ConcatBytes,
-        VoidNumberCommitment<C>: ConcatBytes,
+        PublicKey<C>: CommitmentInput<C::CommitmentScheme>,
+        VoidNumberGenerator<C>: CommitmentInput<C::CommitmentScheme>,
+        Asset: CommitmentInput<C::CommitmentScheme>,
+        VoidNumberCommitment<C>: CommitmentInput<C::CommitmentScheme>,
     {
         identity.into_sender(commitment_scheme, asset, utxo_set)
     }
@@ -938,20 +1003,18 @@ where
     where
         G: SecretKeyGenerator<SecretKey = C::SecretKey>,
         Standard: Distribution<AssetParameters<C>>,
-        PublicKey<C>: ConcatBytes,
-        VoidNumberGenerator<C>: ConcatBytes,
-        VoidNumberCommitment<C>: ConcatBytes,
+        PublicKey<C>: CommitmentInput<C::CommitmentScheme>,
+        VoidNumberGenerator<C>: CommitmentInput<C::CommitmentScheme>,
+        Asset: CommitmentInput<C::CommitmentScheme>,
+        VoidNumberCommitment<C>: CommitmentInput<C::CommitmentScheme>,
     {
         Identity::generate_sender(source, commitment_scheme, asset, utxo_set)
     }
 
-    /// Extracts ledger posting data for this sender.
+    /// Returns the asset for this sender.
     #[inline]
-    pub fn into_post(self) -> SenderPost<C, S> {
-        SenderPost {
-            void_number: self.void_number,
-            utxo_containment_proof_public_input: self.utxo_containment_proof.into_public_input(),
-        }
+    pub fn asset(&self) -> Asset {
+        self.asset
     }
 
     /// Returns the asset id for this sender.
@@ -965,7 +1028,77 @@ where
     pub fn asset_value(&self) -> AssetBalance {
         self.asset.value
     }
+
+    /// Returns the asset parameters for this sender.
+    #[inline]
+    pub fn parameters(&self) -> &AssetParameters<C> {
+        &self.parameters
+    }
+
+    /// Returns the void number for this sender.
+    #[inline]
+    pub fn void_number(&self) -> &VoidNumber<C> {
+        &self.void_number
+    }
+
+    /// Returns the UTXO for this sender.
+    #[inline]
+    pub fn utxo(&self) -> &Utxo<C> {
+        &self.utxo
+    }
+
+    /// Returns the UTXO containment proof for this sender.
+    #[inline]
+    pub fn utxo_containment_proof(&self) -> &ContainmentProof<S> {
+        &self.utxo_containment_proof
+    }
+
+    /// Extracts ledger posting data for this sender.
+    #[inline]
+    pub fn into_post(self) -> SenderPost<C, S> {
+        SenderPost {
+            void_number: self.void_number,
+            utxo_containment_proof_public_input: self.utxo_containment_proof.into_public_input(),
+        }
+    }
 }
+
+/* TODO:
+/// Sender Proof Content
+pub struct SenderProofContent<C, S, P>
+where
+    C: IdentityConfiguration,
+    S: VerifiedSet<Item = Utxo<C>>,
+    P: ProofSystem
+        + Register<C::SecretKey>
+        + Register<Asset>
+        + Register<AssetParameters<C>>
+        + Register<VoidNumber<C>>
+        + Register<Utxo<C>>
+        + Register<ContainmentProof<S>>,
+{
+    /// Secret Key
+    secret_key: <P as Register<C::SecretKey>>::Output,
+
+    /// Asset
+    asset: <P as Register<Asset>>::Output,
+
+    /// Asset Parameters
+    parameters: <P as Register<AssetParameters<C>>>::Output,
+
+    /// Void Number
+    void_number: <P as Register<VoidNumber<C>>>::Output,
+
+    /// Unspent Transaction Output
+    utxo: <P as Register<Utxo<C>>>::Output,
+
+    /// UTXO Containment Proof
+    utxo_containment_proof: <P as Register<ContainmentProof<S>>>::Output,
+
+    /// Type Parameter Marker
+    __: PhantomData<(C, S, P)>,
+}
+*/
 
 /// Sender Post Error
 pub enum SenderPostError<L>
@@ -991,10 +1124,10 @@ where
     S: VerifiedSet<Item = Utxo<C>>,
 {
     /// Void Number
-    pub void_number: VoidNumber<C>,
+    void_number: VoidNumber<C>,
 
     /// UTXO Containment Proof Public Input
-    pub utxo_containment_proof_public_input: S::Public,
+    utxo_containment_proof_public_input: S::Public,
 }
 
 impl<C, S> SenderPost<C, S>
@@ -1018,6 +1151,17 @@ where
     }
 }
 
+impl<C, S> From<Sender<C, S>> for SenderPost<C, S>
+where
+    C: IdentityConfiguration,
+    S: VerifiedSet<Item = Utxo<C>>,
+{
+    #[inline]
+    fn from(sender: Sender<C, S>) -> Self {
+        sender.into_post()
+    }
+}
+
 /// Receiver
 pub struct Receiver<C, I>
 where
@@ -1025,19 +1169,19 @@ where
     I: IntegratedEncryptionScheme<Plaintext = Asset>,
 {
     /// Asset
-    pub asset: Asset,
+    asset: Asset,
 
     /// UTXO Randomness
-    pub utxo_randomness: UtxoRandomness<C>,
+    utxo_randomness: UtxoRandomness<C>,
 
     /// Void Number Commitment
-    pub void_number_commitment: VoidNumberCommitment<C>,
+    void_number_commitment: VoidNumberCommitment<C>,
 
     /// Unspent Transaction Output
-    pub utxo: Utxo<C>,
+    utxo: Utxo<C>,
 
     /// Encrypted [`Asset`]
-    pub encrypted_asset: EncryptedMessage<I>,
+    encrypted_asset: EncryptedMessage<I>,
 }
 
 impl<C, I> Receiver<C, I>
@@ -1055,18 +1199,16 @@ where
     ) -> Result<Self, I::Error>
     where
         R: CryptoRng + RngCore + ?Sized,
-        VoidNumberCommitment<C>: ConcatBytes,
+        Asset: CommitmentInput<C::CommitmentScheme>,
+        VoidNumberCommitment<C>: CommitmentInput<C::CommitmentScheme>,
     {
         identity.into_receiver(commitment_scheme, asset, rng)
     }
 
-    /// Extracts ledger posting data for this receiver.
+    /// Returns the asset for this receiver.
     #[inline]
-    pub fn into_post(self) -> ReceiverPost<C, I> {
-        ReceiverPost {
-            utxo: self.utxo,
-            encrypted_asset: self.encrypted_asset,
-        }
+    pub fn asset(&self) -> Asset {
+        self.asset
     }
 
     /// Returns the asset id for this receiver.
@@ -1080,7 +1222,60 @@ where
     pub fn asset_value(&self) -> AssetBalance {
         self.asset.value
     }
+
+    /// Returns the UTXO randomness for this receiver.
+    #[inline]
+    pub fn utxo_randomness(&self) -> &UtxoRandomness<C> {
+        &self.utxo_randomness
+    }
+
+    /// Returns the void number commitment for this receiver.
+    #[inline]
+    pub fn void_number_commitment(&self) -> &VoidNumberCommitment<C> {
+        &self.void_number_commitment
+    }
+
+    /// Returns the UTXO for this reciever.
+    #[inline]
+    pub fn utxo(&self) -> &Utxo<C> {
+        &self.utxo
+    }
+
+    /// Returns the encrypted asset for this receiver.
+    #[inline]
+    pub fn encrypted_asset(&self) -> &EncryptedMessage<I> {
+        &self.encrypted_asset
+    }
+
+    /// Extracts ledger posting data for this receiver.
+    #[inline]
+    pub fn into_post(self) -> ReceiverPost<C, I> {
+        ReceiverPost {
+            utxo: self.utxo,
+            encrypted_asset: self.encrypted_asset,
+        }
+    }
 }
+
+/* TODO:
+/// Receiver Proof Content
+pub struct ReceiverProofContent<C>
+where
+    C: IdentityConfiguration,
+{
+    /// Asset
+    asset: Asset,
+
+    /// UTXO Randomness
+    utxo_randomness: UtxoRandomness<C>,
+
+    /// Void Number Commitment
+    void_number_commitment: VoidNumberCommitment<C>,
+
+    /// Unspent Transaction Output
+    utxo: Utxo<C>,
+}
+*/
 
 /// Receiver Post Error
 pub enum ReceiverPostError<L>
@@ -1106,10 +1301,10 @@ where
     I: IntegratedEncryptionScheme<Plaintext = Asset>,
 {
     /// Unspent Transaction Output
-    pub utxo: Utxo<C>,
+    utxo: Utxo<C>,
 
     /// Encrypted [`Asset`]
-    pub encrypted_asset: EncryptedMessage<I>,
+    encrypted_asset: EncryptedMessage<I>,
 }
 
 impl<C, I> ReceiverPost<C, I>
@@ -1130,5 +1325,16 @@ where
             .try_post_encrypted_asset(self.encrypted_asset)
             .map_err(ReceiverPostError::EncryptedAssetStored)?;
         Ok(())
+    }
+}
+
+impl<C, I> From<Receiver<C, I>> for ReceiverPost<C, I>
+where
+    C: IdentityConfiguration,
+    I: IntegratedEncryptionScheme<Plaintext = Asset>,
+{
+    #[inline]
+    fn from(receiver: Receiver<C, I>) -> Self {
+        receiver.into_post()
     }
 }

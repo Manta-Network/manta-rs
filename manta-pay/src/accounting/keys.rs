@@ -160,7 +160,7 @@ where
     /// Derived Key Seed
     seed: Seed,
 
-    /// Parameter Marker
+    /// Type Parameter Marker
     __: PhantomData<C>,
 }
 

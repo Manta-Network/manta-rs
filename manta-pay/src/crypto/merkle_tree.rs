@@ -31,11 +31,8 @@ use ark_crypto_primitives::{
 };
 use ark_ed_on_bls12_381::EdwardsProjective;
 use core::marker::PhantomData;
-use manta_crypto::{
-    as_bytes,
-    set::{ContainmentProof, VerifiedSet, VerifyContainment},
-    ConcatBytes,
-};
+use manta_crypto::set::{ContainmentProof, VerifiedSet, VerifyContainment};
+use manta_util::{as_bytes, ConcatBytes};
 
 /// Merkle Tree Root
 pub type Root = TwoToOneDigest<MerkleTreeConfiguration>;
@@ -59,7 +56,7 @@ pub struct Path<T> {
     /// Path
     path: MerkleTreePath<MerkleTreeConfiguration>,
 
-    /// Marker
+    /// Type Parameter Marker
     __: PhantomData<T>,
 }
 
@@ -84,7 +81,7 @@ pub struct MerkleTree<T> {
     /// Merkle Tree
     tree: ArkMerkleTree<MerkleTreeConfiguration>,
 
-    /// Marker
+    /// Type Parameter Marker
     __: PhantomData<T>,
 }
 

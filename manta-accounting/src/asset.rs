@@ -29,8 +29,9 @@ use core::{
 use derive_more::{
     Add, AddAssign, Display, Div, DivAssign, From, Mul, MulAssign, Product, Sub, SubAssign, Sum,
 };
-use manta_crypto::{ByteAccumulator, ConcatBytes};
-use manta_util::{array_map, fallible_array_map, into_array_unchecked};
+use manta_util::{
+    array_map, fallible_array_map, into_array_unchecked, ByteAccumulator, ConcatBytes,
+};
 use rand::{
     distributions::{Distribution, Standard},
     Rng, RngCore,
@@ -258,7 +259,7 @@ impl Asset {
     /// Converts `self` into a byte array.
     #[inline]
     pub fn into_bytes(self) -> [u8; Self::SIZE] {
-        into_array_unchecked(self.as_bytes::<Vec<u8>>())
+        into_array_unchecked(self.as_bytes::<Vec<_>>())
     }
 
     /// Converts a byte array into `self`.
