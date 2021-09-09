@@ -575,6 +575,19 @@ where
     {
         Ok(Self::generate(source)?.into_receiver(commitment_scheme))
     }
+
+    /// Tries to open an `encrypted_asset`, returning an [`OpenSpend`] if successful.
+    #[inline]
+    pub fn try_open<I>(
+        self,
+        encrypted_asset: &EncryptedMessage<I>,
+    ) -> Result<OpenSpend<C>, I::Error>
+    where
+        I: IntegratedEncryptionScheme<Plaintext = Asset>,
+        Standard: Distribution<AssetParameters<C>>,
+    {
+        self.into_spend().try_open(encrypted_asset)
+    }
 }
 
 impl<C> Distribution<Identity<C>> for Standard

@@ -19,6 +19,7 @@
 // TODO: How to manage accounts? Wallet should have a fixed account or not?
 // TODO: Is recovery different than just building a fresh `Wallet` instance?
 // TODO: Add encrypt-to-disk and decrypt-from-disk methods to save the wallet state.
+// TODO: Add query builder for encrypted asset search (internal/external, gap_limit, start_index)
 
 use crate::{
     asset::{Asset, AssetBalance, AssetId},
@@ -235,35 +236,87 @@ where
             .internal_keys_from_index(&self.account, index)
     }
 
-    /// Looks for an [`OpenSpend`] for this encrypted `asset`, only trying `gap_limit`-many
+    /// Looks for an [`OpenSpend`] for this `encrypted_asset` by checking every secret key
+    /// in the iterator.
+    #[inline]
+    fn find_open_spend_from_iter<C, I, Iter>(
+        &self,
+        encrypted_asset: EncryptedMessage<I>,
+        iter: Iter,
+    ) -> Option<OpenSpend<C>>
+    where
+        C: IdentityConfiguration<SecretKey = D::SecretKey>,
+        I: IntegratedEncryptionScheme<Plaintext = Asset>,
+        Iter: IntoIterator<Item = D::SecretKey>,
+        Standard: Distribution<AssetParameters<C>>,
+    {
+        iter.into_iter()
+            .find_map(move |k| Identity::new(k).try_open(&encrypted_asset).ok())
+    }
+
+    /// Looks for an [`OpenSpend`] for this `encrypted_asset`, only trying `gap_limit`-many
     /// external and internal keys starting from `index`.
+    #[inline]
     pub fn find_open_spend<C, I>(
         &self,
-        asset: EncryptedMessage<I>,
+        encrypted_asset: EncryptedMessage<I>,
         index: D::Index,
         gap_limit: usize,
-    ) -> Result<Option<OpenSpend<C>>, D::Error>
+    ) -> Option<OpenSpend<C>>
     where
         C: IdentityConfiguration<SecretKey = D::SecretKey>,
         I: IntegratedEncryptionScheme<Plaintext = Asset>,
         Standard: Distribution<AssetParameters<C>>,
     {
-        // TODO: Maybe add a `try_open` method on `Identity` to make this more ergonomic?
         // TODO: Return which kind of spend it was, internal or external.
-        // TODO: Have separate methods to search for internal and external keys since sometimes
-        //       we know which one we're looking for.
 
-        let external = self.external_keys_from_index(index.clone());
-        let internal = self.internal_keys_from_index(index);
-        for (external_key, internal_key) in external.zip(internal).take(gap_limit) {
-            if let Ok(opened) = Spend::from(Identity::new(external_key)).try_open(&asset) {
-                return Ok(Some(opened));
-            }
-            if let Ok(opened) = Spend::from(Identity::new(internal_key)).try_open(&asset) {
-                return Ok(Some(opened));
-            }
-        }
-        Ok(None)
+        let interleaved_keys = self
+            .external_keys_from_index(index.clone())
+            .zip(self.internal_keys_from_index(index))
+            .flat_map(move |(e, i)| [e, i])
+            .take(gap_limit);
+
+        self.find_open_spend_from_iter(encrypted_asset, interleaved_keys)
+    }
+
+    /// Looks for an [`OpenSpend`] for this `encrypted_asset`, only trying `gap_limit`-many
+    /// external keys starting from `index`.
+    #[inline]
+    pub fn find_external_open_spend<C, I>(
+        &self,
+        encrypted_asset: EncryptedMessage<I>,
+        index: D::Index,
+        gap_limit: usize,
+    ) -> Option<OpenSpend<C>>
+    where
+        C: IdentityConfiguration<SecretKey = D::SecretKey>,
+        I: IntegratedEncryptionScheme<Plaintext = Asset>,
+        Standard: Distribution<AssetParameters<C>>,
+    {
+        self.find_open_spend_from_iter(
+            encrypted_asset,
+            self.external_keys_from_index(index).take(gap_limit),
+        )
+    }
+
+    /// Looks for an [`OpenSpend`] for this `encrypted_asset`, only trying `gap_limit`-many
+    /// internal keys starting from `index`.
+    #[inline]
+    pub fn find_internal_open_spend<C, I>(
+        &self,
+        encrypted_asset: EncryptedMessage<I>,
+        index: D::Index,
+        gap_limit: usize,
+    ) -> Option<OpenSpend<C>>
+    where
+        C: IdentityConfiguration<SecretKey = D::SecretKey>,
+        I: IntegratedEncryptionScheme<Plaintext = Asset>,
+        Standard: Distribution<AssetParameters<C>>,
+    {
+        self.find_open_spend_from_iter(
+            encrypted_asset,
+            self.internal_keys_from_index(index).take(gap_limit),
+        )
     }
 
     /// Updates `self` with new information from the ledger.
