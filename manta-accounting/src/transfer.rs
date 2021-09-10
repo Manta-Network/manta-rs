@@ -17,20 +17,18 @@
 //! Transfer Protocols
 
 use crate::{
-    asset::{
-        sample_asset_balances, Asset, AssetBalance, AssetBalanceVariable, AssetBalances, AssetId,
-    },
+    asset::{sample_asset_balances, Asset, AssetBalance, AssetBalanceVar, AssetBalances, AssetId},
     identity::{
-        IdentityConfiguration, Receiver, ReceiverPost, ReceiverVariable, Sender, SenderPost,
-        SenderVariable, Utxo, UtxoRandomness, VoidNumber, VoidNumberCommitment,
-        VoidNumberCommitmentRandomness, VoidNumberGenerator,
+        IdentityConfiguration, Receiver, ReceiverPost, ReceiverVar, Sender, SenderPost, SenderVar,
+        Utxo, UtxoRandomness, VoidNumber, VoidNumberCommitment, VoidNumberCommitmentRandomness,
+        VoidNumberGenerator,
     },
     ledger::{Ledger, PostError},
 };
 use alloc::vec::Vec;
 use core::iter::Sum;
 use manta_crypto::{
-    constraint::{Alloc, Assert, AssertEqual, Equal, ProofSystem},
+    constraint::{Equal, ProofSystem, Public, Secret, Var},
     ies::{EncryptedMessage, IntegratedEncryptionScheme},
     set::{ContainmentProof, VerifiedSet},
 };
@@ -67,6 +65,24 @@ impl<const SOURCES: usize, const SINKS: usize> PublicTransfer<SOURCES, SINKS> {
             sinks,
         }
     }
+
+    /// Returns the sum of the asset values of the sources.
+    #[inline]
+    pub fn source_sum(&self) -> AssetBalance {
+        self.sources.iter().sum()
+    }
+
+    /// Returns the sum of the asset values of the sinks.
+    #[inline]
+    pub fn sink_sum(&self) -> AssetBalance {
+        self.sinks.iter().sum()
+    }
+
+    /// Validates the transaction by checking that the source sum equals the sink sum.
+    #[inline]
+    pub fn is_valid(&self) -> bool {
+        self.source_sum() == self.sink_sum()
+    }
 }
 
 impl<const SOURCES: usize, const SINKS: usize> Distribution<PublicTransfer<SOURCES, SINKS>>
@@ -82,33 +98,47 @@ impl<const SOURCES: usize, const SINKS: usize> Distribution<PublicTransfer<SOURC
     }
 }
 
-/// Secret Transfer Configuration Trait
+/// Secret Transfer Configuration
 pub trait SecretTransferConfiguration: IdentityConfiguration {
     /// Integrated Encryption Scheme for [`Asset`]
     type IntegratedEncryptionScheme: IntegratedEncryptionScheme<Plaintext = Asset>;
 
     /// Verified Set for [`Utxo`]
     type UtxoSet: VerifiedSet<Item = Utxo<Self>>;
-
-    /// Proof System for [`SecretTransfer`]
-    type ProofSystem: ProofSystem;
 }
+
+/// Secret Transfer Proof System
+pub trait SecretTransferProofSystem: SecretTransferConfiguration + ProofSystem {}
+
+/// Secret Sender Type
+pub type SecretSender<T> = Sender<T, <T as SecretTransferConfiguration>::UtxoSet>;
+
+/// Secret Receiver Type
+pub type SecretReceiver<T> =
+    Receiver<T, <T as SecretTransferConfiguration>::IntegratedEncryptionScheme>;
+
+/// Secret Sender Variable Type
+pub type SecretSenderVar<T> = SenderVar<T, <T as SecretTransferConfiguration>::UtxoSet, T>;
+
+/// Secret Receiver Type
+pub type SecretReceiverVar<T> =
+    ReceiverVar<T, <T as SecretTransferConfiguration>::IntegratedEncryptionScheme, T>;
 
 /// Secret Transfer Protocol
 pub struct SecretTransfer<T, const SENDERS: usize, const RECEIVERS: usize>
 where
-    T: SecretTransferConfiguration,
+    T: SecretTransferProofSystem,
 {
     /// Secret Senders
-    pub senders: [Sender<T, T::UtxoSet>; SENDERS],
+    pub senders: [SecretSender<T>; SENDERS],
 
     /// Secret Receivers
-    pub receivers: [Receiver<T, T::IntegratedEncryptionScheme>; RECEIVERS],
+    pub receivers: [SecretReceiver<T>; RECEIVERS],
 }
 
 impl<T, const SENDERS: usize, const RECEIVERS: usize> SecretTransfer<T, SENDERS, RECEIVERS>
 where
-    T: SecretTransferConfiguration,
+    T: SecretTransferProofSystem,
 {
     /// Maximum Number of Senders
     pub const MAXIMUM_SENDER_COUNT: usize = 10;
@@ -119,8 +149,8 @@ where
     /// Builds a new [`SecretTransfer`].
     #[inline]
     pub fn new(
-        senders: [Sender<T, T::UtxoSet>; SENDERS],
-        receivers: [Receiver<T, T::IntegratedEncryptionScheme>; RECEIVERS],
+        senders: [SecretSender<T>; SENDERS],
+        receivers: [SecretReceiver<T>; RECEIVERS],
     ) -> Self {
         if SENDERS > Self::MAXIMUM_SENDER_COUNT {
             panic!("Allocated too many senders.");
@@ -131,6 +161,7 @@ where
         Self { senders, receivers }
     }
 
+    /* TODO: do we still want these?
     /// Checks that the asset ids of all the senders and receivers matches.
     #[inline]
     pub fn has_unique_asset_id(&self) -> bool {
@@ -161,50 +192,50 @@ where
     pub fn is_balanced(&self) -> bool {
         self.sender_sum().eq(&self.receiver_sum())
     }
+    */
 
+    /// Builds constraints for secret transfer validity proof.
+    #[inline]
     fn build_proof_content(
-        proof_system: &mut T::ProofSystem,
-        senders: Vec<SenderVariable<T, T::UtxoSet, T::ProofSystem>>,
-        receivers: Vec<ReceiverVariable<T, T::ProofSystem>>,
+        proof_system: &mut T,
+        senders: Vec<SecretSenderVar<T>>,
+        receivers: Vec<SecretReceiverVar<T>>,
     ) where
-        T::SecretKey: Alloc<T::ProofSystem>,
-        T::ProofSystem: AssertEqual<AssetId> + AssertEqual<AssetBalance>,
-        AssetId: Equal<T::ProofSystem>,
-        AssetBalance: Equal<T::ProofSystem>,
-        for<'i> &'i AssetBalanceVariable<T::ProofSystem>: Sum,
-        VoidNumberGenerator<T>: Alloc<T::ProofSystem>,
-        VoidNumberCommitmentRandomness<T>: Alloc<T::ProofSystem>,
-        UtxoRandomness<T>: Alloc<T::ProofSystem>,
-        VoidNumber<T>: Alloc<T::ProofSystem>,
-        VoidNumberCommitment<T>: Alloc<T::ProofSystem>,
-        Utxo<T>: Alloc<T::ProofSystem>,
-        ContainmentProof<T::UtxoSet>: Alloc<T::ProofSystem>,
-        bool: Alloc<T::ProofSystem>,
+        T::SecretKey: Var<T, Secret>,
+        AssetId: Equal<T, Secret>,
+        AssetBalance: Equal<T, Secret>,
+        for<'i> &'i AssetBalanceVar<T, Secret>: Sum,
+        VoidNumberGenerator<T>: Var<T, Secret>,
+        VoidNumberCommitmentRandomness<T>: Var<T, Secret>,
+        UtxoRandomness<T>: Var<T, Secret>,
+        VoidNumber<T>: Var<T, Public>,
+        VoidNumberCommitment<T>: Var<T, Secret>,
+        Utxo<T>: Var<T, Secret> + Var<T, Public>,
+        ContainmentProof<T::UtxoSet>: Var<T, Secret>,
     {
         // 1. Check that all senders are well-formed.
-        proof_system.assert_all(senders.iter().map(SenderVariable::is_well_formed));
+        proof_system.assert_all(senders.iter().map(SenderVar::is_well_formed));
 
         // 2. Check that all receivers are well-formed.
-        proof_system.assert_all(receivers.iter().map(ReceiverVariable::is_well_formed));
+        proof_system.assert_all(receivers.iter().map(ReceiverVar::is_well_formed));
 
         // 3. Check that there is a unique asset id for all the assets.
-        let sender_ids = senders.iter().map(SenderVariable::asset_id);
-        let receiver_ids = receivers.iter().map(ReceiverVariable::asset_id);
-        AssertEqual::<AssetId>::assert_all_eq(proof_system, sender_ids.chain(receiver_ids));
+        let sender_ids = senders.iter().map(SenderVar::asset_id);
+        let receiver_ids = receivers.iter().map(ReceiverVar::asset_id);
+        proof_system.assert_all_eq(sender_ids.chain(receiver_ids));
 
         // 4. Check that the transaction is balanced.
-        AssertEqual::<AssetBalance>::assert_eq(
-            proof_system,
-            senders.iter().map(SenderVariable::asset_value).sum(),
-            receivers.iter().map(ReceiverVariable::asset_value).sum(),
+        proof_system.assert_eq(
+            senders.iter().map(SenderVar::asset_value).sum(),
+            receivers.iter().map(ReceiverVar::asset_value).sum(),
         );
     }
 
     #[inline]
-    fn generate_validity_proof(&self) -> Option<<T::ProofSystem as ProofSystem>::Proof> {
+    fn generate_validity_proof(&self) -> Option<T::Proof> {
         // FIXME: Build secret transfer zero knowledge proof:
 
-        let proof_system = T::ProofSystem::default();
+        let proof_system = T::default();
 
         /* TODO:
 
@@ -250,24 +281,31 @@ where
     }
 }
 
+/// Secret Sender Post Type
+pub type SecretSenderPost<T> = SenderPost<T, <T as SecretTransferConfiguration>::UtxoSet>;
+
+/// Secret Receiver Post Type
+pub type SecretReceiverPost<T> =
+    ReceiverPost<T, <T as SecretTransferConfiguration>::IntegratedEncryptionScheme>;
+
 /// Secret Transfer Post
 pub struct SecretTransferPost<T, const SENDERS: usize, const RECEIVERS: usize>
 where
-    T: SecretTransferConfiguration,
+    T: SecretTransferProofSystem,
 {
     /// Sender Posts
-    pub sender_posts: [SenderPost<T, T::UtxoSet>; SENDERS],
+    pub sender_posts: [SecretSenderPost<T>; SENDERS],
 
     /// Receiver Posts
-    pub receiver_posts: [ReceiverPost<T, T::IntegratedEncryptionScheme>; RECEIVERS],
+    pub receiver_posts: [SecretReceiverPost<T>; RECEIVERS],
 
     /// Validity Proof
-    pub validity_proof: <T::ProofSystem as ProofSystem>::Proof,
+    pub validity_proof: T::Proof,
 }
 
 impl<T, const SENDERS: usize, const RECEIVERS: usize> SecretTransferPost<T, SENDERS, RECEIVERS>
 where
-    T: SecretTransferConfiguration,
+    T: SecretTransferProofSystem,
 {
     /// Posts the [`SecretTransferPost`] to the `ledger`.
     #[inline]
@@ -295,7 +333,7 @@ where
 impl<T, const SENDERS: usize, const RECEIVERS: usize> From<SecretTransfer<T, SENDERS, RECEIVERS>>
     for Option<SecretTransferPost<T, SENDERS, RECEIVERS>>
 where
-    T: SecretTransferConfiguration,
+    T: SecretTransferProofSystem,
 {
     #[inline]
     fn from(secret_transfer: SecretTransfer<T, SENDERS, RECEIVERS>) -> Self {
@@ -311,7 +349,7 @@ pub struct Transfer<
     const SENDERS: usize,
     const RECEIVERS: usize,
 > where
-    T: SecretTransferConfiguration,
+    T: SecretTransferProofSystem,
 {
     /// Public Transfer
     pub public: PublicTransfer<SOURCES, SINKS>,
@@ -323,7 +361,7 @@ pub struct Transfer<
 impl<T, const SOURCES: usize, const SINKS: usize, const SENDERS: usize, const RECEIVERS: usize>
     Transfer<T, SOURCES, SINKS, SENDERS, RECEIVERS>
 where
-    T: SecretTransferConfiguration,
+    T: SecretTransferProofSystem,
 {
     /// Builds a new [`Transfer`] from a [`PublicTransfer`] and a [`SecretTransfer`].
     #[inline]
@@ -352,7 +390,7 @@ pub struct TransferPost<
     const SENDERS: usize,
     const RECEIVERS: usize,
 > where
-    T: SecretTransferConfiguration,
+    T: SecretTransferProofSystem,
 {
     /// Public Transfer Post
     pub public_transfer_post: PublicTransfer<SOURCES, SINKS>,
@@ -364,7 +402,7 @@ pub struct TransferPost<
 impl<T, const SOURCES: usize, const SINKS: usize, const SENDERS: usize, const RECEIVERS: usize>
     TransferPost<T, SOURCES, SINKS, SENDERS, RECEIVERS>
 where
-    T: SecretTransferConfiguration,
+    T: SecretTransferProofSystem,
 {
     /// Posts the [`TransferPost`] to the `ledger`.
     #[inline]

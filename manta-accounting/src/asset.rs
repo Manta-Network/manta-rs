@@ -25,12 +25,13 @@ use core::{
     convert::TryFrom,
     fmt::Debug,
     hash::Hash,
+    iter::Sum,
     ops::{Add, AddAssign, Mul, Sub, SubAssign},
 };
 use derive_more::{
     Add, AddAssign, Display, Div, DivAssign, From, Mul, MulAssign, Product, Sub, SubAssign, Sum,
 };
-use manta_crypto::constraint::{Alloc, ProofSystem, Variable};
+use manta_crypto::constraint::{IsVariable, Secret, Var, Variable};
 use manta_util::{
     array_map, fallible_array_map, into_array_unchecked, ByteAccumulator, ConcatBytes,
 };
@@ -43,29 +44,7 @@ use rand::{
 type AssetIdType = u32;
 
 /// Asset Id Type
-#[derive(
-    Add,
-    AddAssign,
-    Clone,
-    Copy,
-    Debug,
-    Default,
-    Display,
-    Div,
-    DivAssign,
-    Eq,
-    From,
-    Hash,
-    Mul,
-    MulAssign,
-    Ord,
-    PartialEq,
-    PartialOrd,
-    Product,
-    Sub,
-    SubAssign,
-    Sum,
-)]
+#[derive(Clone, Copy, Debug, Default, Display, Eq, From, Hash, Ord, PartialEq, PartialOrd)]
 #[from(forward)]
 pub struct AssetId(
     /// [`Asset`] Id
@@ -103,15 +82,6 @@ impl From<AssetId> for [u8; AssetId::SIZE] {
     #[inline]
     fn from(entry: AssetId) -> Self {
         entry.into_bytes()
-    }
-}
-
-impl Mul<AssetId> for AssetIdType {
-    type Output = AssetIdType;
-
-    #[inline]
-    fn mul(self, rhs: AssetId) -> Self::Output {
-        self * rhs.0
     }
 }
 
@@ -206,6 +176,16 @@ impl Mul<AssetBalance> for AssetBalanceType {
     #[inline]
     fn mul(self, rhs: AssetBalance) -> Self::Output {
         self * rhs.0
+    }
+}
+
+impl<'a> Sum<&'a AssetBalance> for AssetBalance {
+    #[inline]
+    fn sum<I>(iter: I) -> Self
+    where
+        I: Iterator<Item = &'a AssetBalance>,
+    {
+        iter.copied().sum()
     }
 }
 
@@ -354,46 +334,52 @@ impl Distribution<Asset> for Standard {
 }
 
 /// Asset Id Variable
-pub type AssetIdVariable<P> = Variable<P, AssetId>;
+pub type AssetIdVar<P, M> = Variable<AssetId, P, M>;
 
 /// Asset Balance Variable
-pub type AssetBalanceVariable<P> = Variable<P, AssetBalance>;
+pub type AssetBalanceVar<P, M> = Variable<AssetBalance, P, M>;
 
 /// Asset Variable
-pub struct AssetVariable<P>
+pub struct AssetVar<P>
 where
-    P: ProofSystem,
-    AssetId: Alloc<P>,
-    AssetBalance: Alloc<P>,
+    AssetId: Var<P, Secret>,
+    AssetBalance: Var<P, Secret>,
 {
     /// Asset Id
-    pub id: AssetIdVariable<P>,
+    pub id: AssetIdVar<P, Secret>,
 
     /// Asset Value
-    pub value: AssetBalanceVariable<P>,
+    pub value: AssetBalanceVar<P, Secret>,
 }
 
-impl<P> Alloc<P> for Asset
+impl<P> IsVariable<P, Secret> for AssetVar<P>
 where
-    P: ProofSystem,
-    AssetId: Alloc<P>,
-    AssetBalance: Alloc<P>,
+    AssetId: Var<P, Secret>,
+    AssetBalance: Var<P, Secret>,
 {
-    type Output = AssetVariable<P>;
+    type Type = Asset;
+}
+
+impl<P> Var<P, Secret> for Asset
+where
+    AssetId: Var<P, Secret>,
+    AssetBalance: Var<P, Secret>,
+{
+    type Variable = AssetVar<P>;
 
     #[inline]
-    fn as_variable(&self, ps: &mut P) -> Self::Output {
-        Self::Output {
-            id: self.id.as_variable(ps),
-            value: self.value.as_variable(ps),
+    fn as_variable(&self, ps: &mut P, mode: Secret) -> Self::Variable {
+        Self::Variable {
+            id: self.id.as_variable(ps, mode),
+            value: self.value.as_variable(ps, mode),
         }
     }
 
     #[inline]
-    fn unknown(ps: &mut P) -> Self::Output {
-        Self::Output {
-            id: AssetId::unknown(ps),
-            value: AssetBalance::unknown(ps),
+    fn unknown(ps: &mut P, mode: Secret) -> Self::Variable {
+        Self::Variable {
+            id: AssetId::unknown(ps, mode),
+            value: AssetBalance::unknown(ps, mode),
         }
     }
 }

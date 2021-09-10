@@ -20,16 +20,17 @@
 // FIXME: Should the identity types have methods that expose their members? Or should it be
 //        completely opaque, and let the internal APIs handle all the logic?
 // TODO:  Since `IdentityConfiguration::SecretKey: Clone`, should `Identity: Clone`?
+// TODO:  Should we rename all uses of `C::SecretKey` to `SecretKey<C>` to be consistent?
 
 use crate::{
-    asset::{Asset, AssetBalance, AssetId},
+    asset::{Asset, AssetBalance, AssetBalanceVar, AssetId, AssetIdVar, AssetVar},
     keys::SecretKeyGenerator,
     ledger::Ledger,
 };
 use core::{convert::Infallible, fmt::Debug, hash::Hash, marker::PhantomData};
 use manta_crypto::{
     commitment::{CommitmentScheme, Input as CommitmentInput},
-    constraint::{Alloc, Bool, ProofSystem, Variable},
+    constraint::{Bool, BooleanSystem, Derived, IsVariable, Public, Secret, Var, Variable},
     ies::{self, EncryptedMessage, IntegratedEncryptionScheme},
     set::{ContainmentProof, VerifiedSet},
     PseudorandomFunctionFamily,
@@ -47,7 +48,7 @@ pub(crate) mod prelude {
     };
 }
 
-/// [`Identity`] Configuration Trait
+/// [`Identity`] Configuration
 pub trait IdentityConfiguration {
     /// Secret Key Type
     type SecretKey: Clone;
@@ -254,51 +255,61 @@ where
 }
 
 /// Asset Parameters Variable
-pub struct AssetParametersVariable<C, P>
+pub struct AssetParametersVar<C, P>
 where
     C: IdentityConfiguration,
-    P: ProofSystem,
-    VoidNumberGenerator<C>: Alloc<P>,
-    VoidNumberCommitmentRandomness<C>: Alloc<P>,
-    UtxoRandomness<C>: Alloc<P>,
+    VoidNumberGenerator<C>: Var<P, Secret>,
+    VoidNumberCommitmentRandomness<C>: Var<P, Secret>,
+    UtxoRandomness<C>: Var<P, Secret>,
 {
     /// Void Number Generator
-    pub void_number_generator: Variable<P, VoidNumberGenerator<C>>,
+    pub void_number_generator: Variable<VoidNumberGenerator<C>, P, Secret>,
 
     /// Void Number Commitment Randomness
-    pub void_number_commitment_randomness: Variable<P, VoidNumberCommitmentRandomness<C>>,
+    pub void_number_commitment_randomness: Variable<VoidNumberCommitmentRandomness<C>, P, Secret>,
 
     /// UTXO Randomness
-    pub utxo_randomness: Variable<P, UtxoRandomness<C>>,
+    pub utxo_randomness: Variable<UtxoRandomness<C>, P, Secret>,
 }
 
-impl<C, P> Alloc<P> for AssetParameters<C>
+impl<C, P> IsVariable<P, Secret> for AssetParametersVar<C, P>
 where
     C: IdentityConfiguration,
-    P: ProofSystem,
-    VoidNumberGenerator<C>: Alloc<P>,
-    VoidNumberCommitmentRandomness<C>: Alloc<P>,
-    UtxoRandomness<C>: Alloc<P>,
+    VoidNumberGenerator<C>: Var<P, Secret>,
+    VoidNumberCommitmentRandomness<C>: Var<P, Secret>,
+    UtxoRandomness<C>: Var<P, Secret>,
 {
-    type Output = AssetParametersVariable<C, P>;
+    type Type = AssetParameters<C>;
+}
+
+impl<C, P> Var<P, Secret> for AssetParameters<C>
+where
+    C: IdentityConfiguration,
+    VoidNumberGenerator<C>: Var<P, Secret>,
+    VoidNumberCommitmentRandomness<C>: Var<P, Secret>,
+    UtxoRandomness<C>: Var<P, Secret>,
+{
+    type Variable = AssetParametersVar<C, P>;
 
     #[inline]
-    fn as_variable(&self, ps: &mut P) -> Self::Output {
-        Self::Output {
-            void_number_generator: self.void_number_generator.as_variable(ps),
+    fn as_variable(&self, ps: &mut P, mode: Secret) -> Self::Variable {
+        Self::Variable {
+            void_number_generator: self.void_number_generator.as_variable(ps, mode),
             void_number_commitment_randomness: self
                 .void_number_commitment_randomness
-                .as_variable(ps),
-            utxo_randomness: self.utxo_randomness.as_variable(ps),
+                .as_variable(ps, mode),
+            utxo_randomness: self.utxo_randomness.as_variable(ps, mode),
         }
     }
 
     #[inline]
-    fn unknown(ps: &mut P) -> Self::Output {
-        Self::Output {
-            void_number_generator: VoidNumberGenerator::<C>::unknown(ps),
-            void_number_commitment_randomness: VoidNumberCommitmentRandomness::<C>::unknown(ps),
-            utxo_randomness: UtxoRandomness::<C>::unknown(ps),
+    fn unknown(ps: &mut P, mode: Secret) -> Self::Variable {
+        Self::Variable {
+            void_number_generator: VoidNumberGenerator::<C>::unknown(ps, mode),
+            void_number_commitment_randomness: VoidNumberCommitmentRandomness::<C>::unknown(
+                ps, mode,
+            ),
+            utxo_randomness: UtxoRandomness::<C>::unknown(ps, mode),
         }
     }
 }
@@ -1106,117 +1117,140 @@ where
 }
 
 /// Sender Variable
-pub struct SenderVariable<C, S, P>
+pub struct SenderVar<C, S, P>
 where
     C: IdentityConfiguration,
     S: VerifiedSet<Item = Utxo<C>>,
-    P: ProofSystem,
-    C::SecretKey: Alloc<P>,
-    AssetId: Alloc<P>,
-    AssetBalance: Alloc<P>,
-    AssetParameters<C>: Alloc<P>,
-    VoidNumber<C>: Alloc<P>,
-    Utxo<C>: Alloc<P>,
-    ContainmentProof<S>: Alloc<P>,
+    P: BooleanSystem,
+    C::SecretKey: Var<P, Secret>,
+    AssetId: Var<P, Secret>,
+    AssetBalance: Var<P, Secret>,
+    VoidNumberGenerator<C>: Var<P, Secret>,
+    VoidNumberCommitmentRandomness<C>: Var<P, Secret>,
+    UtxoRandomness<C>: Var<P, Secret>,
+    VoidNumber<C>: Var<P, Public>,
+    Utxo<C>: Var<P, Secret>,
+    ContainmentProof<S>: Var<P, Secret>,
 {
     /// Secret Key
-    secret_key: Variable<P, C::SecretKey>,
+    secret_key: Variable<C::SecretKey, P, Secret>,
 
     /// Asset
-    asset: Variable<P, Asset>,
+    asset: AssetVar<P>,
 
     /// Asset Parameters
-    parameters: Variable<P, AssetParameters<C>>,
+    parameters: AssetParametersVar<C, P>,
 
     /// Void Number
-    void_number: Variable<P, VoidNumber<C>>,
+    void_number: Variable<VoidNumber<C>, P, Public>,
 
     /// Unspent Transaction Output
-    utxo: Variable<P, Utxo<C>>,
+    utxo: Variable<Utxo<C>, P, Secret>,
 
     /// UTXO Containment Proof
-    utxo_containment_proof: Variable<P, ContainmentProof<S>>,
+    utxo_containment_proof: Variable<ContainmentProof<S>, P, Secret>,
 }
 
-impl<C, S, P> SenderVariable<C, S, P>
+impl<C, S, P> SenderVar<C, S, P>
 where
     C: IdentityConfiguration,
     S: VerifiedSet<Item = Utxo<C>>,
-    P: ProofSystem,
-    C::SecretKey: Alloc<P>,
-    AssetId: Alloc<P>,
-    AssetBalance: Alloc<P>,
-    AssetParameters<C>: Alloc<P>,
-    VoidNumber<C>: Alloc<P>,
-    Utxo<C>: Alloc<P>,
-    ContainmentProof<S>: Alloc<P>,
+    P: BooleanSystem,
+    C::SecretKey: Var<P, Secret>,
+    AssetId: Var<P, Secret>,
+    AssetBalance: Var<P, Secret>,
+    VoidNumberGenerator<C>: Var<P, Secret>,
+    VoidNumberCommitmentRandomness<C>: Var<P, Secret>,
+    UtxoRandomness<C>: Var<P, Secret>,
+    VoidNumber<C>: Var<P, Public>,
+    Utxo<C>: Var<P, Secret>,
+    ContainmentProof<S>: Var<P, Secret>,
 {
     /// Returns the asset id of this sender.
     #[inline]
-    pub fn asset_id(&self) -> &Variable<P, AssetId> {
+    pub fn asset_id(&self) -> &AssetIdVar<P, Secret> {
         &self.asset.id
     }
 
     /// Returns the asset value of this sender.
     #[inline]
-    pub fn asset_value(&self) -> &Variable<P, AssetBalance> {
+    pub fn asset_value(&self) -> &AssetBalanceVar<P, Secret> {
         &self.asset.value
     }
 
     /// Checks if `self` is a well-formed sender.
     #[inline]
-    pub fn is_well_formed(&self) -> Bool<P>
-    where
-        bool: Alloc<P>,
-    {
+    pub fn is_well_formed(&self) -> Bool<P> {
         // FIXME: Implement well-formedness check:
         //
-        // See `manta-api/src/zkp/circuit.rs`:
-        // 1. ValidSenderToken
-        // 2. ValidPrivateKey
-        // 3. ValidVoidNumber
-        // 4. StoredCommitment
+        // 1. pk = PRF(sk, 0)                           [public: (),     secret: (pk, sk)]
+        // 2. vn = PRF(sk, rho)                         [public: (vn),   secret: (sk, rho)]
+        // 3. k = COM(pk || rho, r)                     [public: (k),    secret: (pk, rho, r)]
+        // 4. cm = COM(asset_id || asset_value || k, s) [public: (),     secret: (cm, asset, k, s)]
+        // 5. merkle_path(cm, path, root) == true       [public: (root), secret: (cm, path)]
+        //
+        // FIXME: should `k` be private or not?
 
         todo!()
     }
 }
 
-impl<C, S, P> Alloc<P> for Sender<C, S>
+impl<C, S, P> IsVariable<P, Derived> for SenderVar<C, S, P>
 where
     C: IdentityConfiguration,
     S: VerifiedSet<Item = Utxo<C>>,
-    P: ProofSystem,
-    C::SecretKey: Alloc<P>,
-    AssetId: Alloc<P>,
-    AssetBalance: Alloc<P>,
-    AssetParameters<C>: Alloc<P>,
-    VoidNumber<C>: Alloc<P>,
-    Utxo<C>: Alloc<P>,
-    ContainmentProof<S>: Alloc<P>,
+    P: BooleanSystem,
+    C::SecretKey: Var<P, Secret>,
+    AssetId: Var<P, Secret>,
+    AssetBalance: Var<P, Secret>,
+    VoidNumberGenerator<C>: Var<P, Secret>,
+    VoidNumberCommitmentRandomness<C>: Var<P, Secret>,
+    UtxoRandomness<C>: Var<P, Secret>,
+    VoidNumber<C>: Var<P, Public>,
+    Utxo<C>: Var<P, Secret>,
+    ContainmentProof<S>: Var<P, Secret>,
 {
-    type Output = SenderVariable<C, S, P>;
+    type Type = Sender<C, S>;
+}
+
+impl<C, S, P> Var<P, Derived> for Sender<C, S>
+where
+    C: IdentityConfiguration,
+    S: VerifiedSet<Item = Utxo<C>>,
+    P: BooleanSystem,
+    C::SecretKey: Var<P, Secret>,
+    AssetId: Var<P, Secret>,
+    AssetBalance: Var<P, Secret>,
+    VoidNumberGenerator<C>: Var<P, Secret>,
+    VoidNumberCommitmentRandomness<C>: Var<P, Secret>,
+    UtxoRandomness<C>: Var<P, Secret>,
+    VoidNumber<C>: Var<P, Public>,
+    Utxo<C>: Var<P, Secret>,
+    ContainmentProof<S>: Var<P, Secret>,
+{
+    type Variable = SenderVar<C, S, P>;
 
     #[inline]
-    fn as_variable(&self, ps: &mut P) -> Self::Output {
-        Self::Output {
-            secret_key: self.identity.secret_key.as_variable(ps),
-            asset: self.asset.as_variable(ps),
-            parameters: self.parameters.as_variable(ps),
-            void_number: self.void_number.as_variable(ps),
-            utxo: self.utxo.as_variable(ps),
-            utxo_containment_proof: self.utxo_containment_proof.as_variable(ps),
+    fn as_variable(&self, ps: &mut P, mode: Derived) -> Self::Variable {
+        Self::Variable {
+            secret_key: self.identity.secret_key.as_variable(ps, mode.into()),
+            asset: self.asset.as_variable(ps, mode.into()),
+            parameters: self.parameters.as_variable(ps, mode.into()),
+            void_number: self.void_number.as_variable(ps, mode.into()),
+            utxo: self.utxo.as_variable(ps, mode.into()),
+            utxo_containment_proof: self.utxo_containment_proof.as_variable(ps, mode.into()),
         }
     }
 
     #[inline]
-    fn unknown(ps: &mut P) -> Self::Output {
-        Self::Output {
-            secret_key: C::SecretKey::unknown(ps),
-            asset: Asset::unknown(ps),
-            parameters: AssetParameters::<_>::unknown(ps),
-            void_number: VoidNumber::<C>::unknown(ps),
-            utxo: Utxo::<C>::unknown(ps),
-            utxo_containment_proof: ContainmentProof::<_>::unknown(ps),
+    fn unknown(ps: &mut P, mode: Derived) -> Self::Variable {
+        Self::Variable {
+            secret_key: C::SecretKey::unknown(ps, mode.into()),
+            asset: Asset::unknown(ps, mode.into()),
+            parameters: AssetParameters::<C>::unknown(ps, mode.into()),
+            void_number: VoidNumber::<C>::unknown(ps, mode.into()),
+            utxo: Utxo::<C>::unknown(ps, mode.into()),
+            utxo_containment_proof: ContainmentProof::<S>::unknown(ps, mode.into()),
         }
     }
 }
@@ -1379,96 +1413,131 @@ where
 }
 
 /// Receiver Proof Content
-pub struct ReceiverVariable<C, P>
+pub struct ReceiverVar<C, I, P>
 where
     C: IdentityConfiguration,
-    P: ProofSystem,
-    AssetId: Alloc<P>,
-    AssetBalance: Alloc<P>,
-    UtxoRandomness<C>: Alloc<P>,
-    VoidNumberCommitment<C>: Alloc<P>,
-    Utxo<C>: Alloc<P>,
+    I: IntegratedEncryptionScheme<Plaintext = Asset>,
+    P: BooleanSystem,
+    AssetId: Var<P, Secret>,
+    AssetBalance: Var<P, Secret>,
+    UtxoRandomness<C>: Var<P, Secret>,
+    VoidNumberCommitment<C>: Var<P, Secret>,
+    Utxo<C>: Var<P, Public>,
 {
     /// Asset
-    asset: Variable<P, Asset>,
+    asset: AssetVar<P>,
 
     /// UTXO Randomness
-    utxo_randomness: Variable<P, UtxoRandomness<C>>,
+    utxo_randomness: Variable<UtxoRandomness<C>, P, Secret>,
 
     /// Void Number Commitment
-    void_number_commitment: Variable<P, VoidNumberCommitment<C>>,
+    void_number_commitment: Variable<VoidNumberCommitment<C>, P, Secret>,
 
     /// Unspent Transaction Output
-    utxo: Variable<P, Utxo<C>>,
+    utxo: Variable<Utxo<C>, P, Public>,
+
+    /// Type Parameter Marker
+    __: PhantomData<I>,
 }
 
-impl<C, P> ReceiverVariable<C, P>
+impl<C, I, P> ReceiverVar<C, I, P>
 where
     C: IdentityConfiguration,
-    P: ProofSystem,
-    AssetId: Alloc<P>,
-    AssetBalance: Alloc<P>,
-    UtxoRandomness<C>: Alloc<P>,
-    VoidNumberCommitment<C>: Alloc<P>,
-    Utxo<C>: Alloc<P>,
+    I: IntegratedEncryptionScheme<Plaintext = Asset>,
+    P: BooleanSystem,
+    AssetId: Var<P, Secret>,
+    AssetBalance: Var<P, Secret>,
+    UtxoRandomness<C>: Var<P, Secret>,
+    VoidNumberCommitment<C>: Var<P, Secret>,
+    Utxo<C>: Var<P, Public>,
 {
     /// Returns the asset id of this receiver.
     #[inline]
-    pub fn asset_id(&self) -> &Variable<P, AssetId> {
+    pub fn asset_id(&self) -> &AssetIdVar<P, Secret> {
         &self.asset.id
     }
 
     /// Returns the asset value of this receiver.
     #[inline]
-    pub fn asset_value(&self) -> &Variable<P, AssetBalance> {
+    pub fn asset_value(&self) -> &AssetBalanceVar<P, Secret> {
         &self.asset.value
     }
 
     /// Checks if `self` is a well-formed receiver.
     #[inline]
-    pub fn is_well_formed(&self) -> Bool<P>
-    where
-        bool: Alloc<P>,
-    {
+    pub fn is_well_formed(&self) -> Bool<P> {
         // FIXME: Implement well-formedness check:
         //
-        // See `manta-api/src/zkp/circuit.rs`:
-        // 1. ValidReceiverToken
+        // 1. cm = COM(asset_id || asset_value || k, s) [public: (cm), secret: (asset, k, s)]
 
         todo!()
     }
 }
 
-impl<C, I, P> Alloc<P> for Receiver<C, I>
+impl<C, I, P> IsVariable<P, Derived> for ReceiverVar<C, I, P>
 where
     C: IdentityConfiguration,
     I: IntegratedEncryptionScheme<Plaintext = Asset>,
-    P: ProofSystem,
-    AssetId: Alloc<P>,
-    AssetBalance: Alloc<P>,
-    UtxoRandomness<C>: Alloc<P>,
-    VoidNumberCommitment<C>: Alloc<P>,
-    Utxo<C>: Alloc<P>,
+    P: BooleanSystem,
+    AssetId: Var<P, Secret>,
+    AssetBalance: Var<P, Secret>,
+    UtxoRandomness<C>: Var<P, Secret>,
+    VoidNumberCommitment<C>: Var<P, Secret>,
+    Utxo<C>: Var<P, Public>,
 {
-    type Output = ReceiverVariable<C, P>;
+    type Type = Receiver<C, I>;
+}
+
+impl<C, I, P> Var<P, Derived> for Receiver<C, I>
+where
+    C: IdentityConfiguration,
+    I: IntegratedEncryptionScheme<Plaintext = Asset>,
+    P: BooleanSystem,
+    AssetId: Var<P, Secret>,
+    AssetBalance: Var<P, Secret>,
+    UtxoRandomness<C>: Var<P, Secret>,
+    VoidNumberCommitment<C>: Var<P, Secret>,
+    Utxo<C>: Var<P, Public>,
+{
+    type Variable = ReceiverVar<C, I, P>;
 
     #[inline]
-    fn as_variable(&self, ps: &mut P) -> Self::Output {
-        Self::Output {
-            asset: self.asset.as_variable(ps),
-            utxo_randomness: self.utxo_randomness.as_variable(ps),
-            void_number_commitment: self.void_number_commitment.as_variable(ps),
-            utxo: self.utxo.as_variable(ps),
+    fn as_variable(&self, ps: &mut P, mode: Derived) -> Self::Variable {
+        // FIXME: Why can't we automatically derive the modes for all of them?
+        //
+        //   > It's because `Utxo` and `VoidNumberCommitment` are both `CommitmentSchemeOutput`
+        //     and so the type system automatically sees that this type should be secret
+        //     because `VoidNumberCommitment` comes first. We'll have to figure out a way to
+        //     fix this. The type system is just getting confused, there is no security issue
+        //     here since only the correct input type will work, it's just that `.into()` is not
+        //     helpful.
+        //
+        Self::Variable {
+            asset: self.asset.as_variable(ps, mode.into()),
+            utxo_randomness: self.utxo_randomness.as_variable(ps, mode.into()),
+            void_number_commitment: self.void_number_commitment.as_variable(ps, Secret),
+            utxo: self.utxo.as_variable(ps, Public),
+            __: PhantomData,
         }
     }
 
     #[inline]
-    fn unknown(ps: &mut P) -> Self::Output {
-        Self::Output {
-            asset: Asset::unknown(ps),
-            utxo_randomness: UtxoRandomness::<C>::unknown(ps),
-            void_number_commitment: VoidNumberCommitment::<C>::unknown(ps),
-            utxo: Utxo::<C>::unknown(ps),
+    fn unknown(ps: &mut P, mode: Derived) -> Self::Variable {
+        // FIXME: Why can't we automatically derive the modes for all of them?
+        //
+        //   > It's because `Utxo` and `VoidNumberCommitment` are both `CommitmentSchemeOutput`
+        //     and so the type system automatically sees that this type should be secret
+        //     because `VoidNumberCommitment` comes first. We'll have to figure out a way to
+        //     fix this. The type system is just getting confused, there is no security issue
+        //     here since only the correct input type will work, it's just that `.into()` is not
+        //     helpful.
+        //
+        Self::Variable {
+            asset: Asset::unknown(ps, mode.into()),
+            utxo_randomness: UtxoRandomness::<C>::unknown(ps, mode.into()),
+            void_number_commitment: VoidNumberCommitment::<C>::unknown(ps, Secret),
+            utxo: Utxo::<C>::unknown(ps, Public),
+            __: PhantomData,
         }
     }
 }
