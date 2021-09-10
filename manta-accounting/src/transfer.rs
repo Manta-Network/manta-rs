@@ -17,15 +17,22 @@
 //! Transfer Protocols
 
 use crate::{
-    asset::{sample_asset_balances, Asset, AssetBalance, AssetBalances, AssetId},
+    asset::{
+        sample_asset_balances, Asset, AssetBalance, AssetBalanceVariable, AssetBalances, AssetId,
+    },
     identity::{
-        IdentityConfiguration, Receiver, ReceiverPost, Sender, SenderPost, Utxo, VoidNumber,
+        IdentityConfiguration, Receiver, ReceiverPost, ReceiverVariable, Sender, SenderPost,
+        SenderVariable, Utxo, UtxoRandomness, VoidNumber, VoidNumberCommitment,
+        VoidNumberCommitmentRandomness, VoidNumberGenerator,
     },
     ledger::{Ledger, PostError},
 };
 use alloc::vec::Vec;
+use core::iter::Sum;
 use manta_crypto::{
-    constraints::ProofSystem, ies::EncryptedMessage, IntegratedEncryptionScheme, VerifiedSet,
+    constraint::{Alloc, Assert, AssertEqual, Equal, ProofSystem},
+    ies::{EncryptedMessage, IntegratedEncryptionScheme},
+    set::{ContainmentProof, VerifiedSet},
 };
 use manta_util::array_map;
 use rand::{
@@ -157,54 +164,78 @@ where
 
     fn build_proof_content(
         proof_system: &mut T::ProofSystem,
-        senders: Vec<()>,
-        receivers: Vec<()>,
-    ) {
-        // FIXME: Build secret transfer zero knowledge proof:
-
-        /* TODO:
+        senders: Vec<SenderVariable<T, T::UtxoSet, T::ProofSystem>>,
+        receivers: Vec<ReceiverVariable<T, T::ProofSystem>>,
+    ) where
+        T::SecretKey: Alloc<T::ProofSystem>,
+        T::ProofSystem: AssertEqual<AssetId> + AssertEqual<AssetBalance>,
+        AssetId: Equal<T::ProofSystem>,
+        AssetBalance: Equal<T::ProofSystem>,
+        for<'i> &'i AssetBalanceVariable<T::ProofSystem>: Sum,
+        VoidNumberGenerator<T>: Alloc<T::ProofSystem>,
+        VoidNumberCommitmentRandomness<T>: Alloc<T::ProofSystem>,
+        UtxoRandomness<T>: Alloc<T::ProofSystem>,
+        VoidNumber<T>: Alloc<T::ProofSystem>,
+        VoidNumberCommitment<T>: Alloc<T::ProofSystem>,
+        Utxo<T>: Alloc<T::ProofSystem>,
+        ContainmentProof<T::UtxoSet>: Alloc<T::ProofSystem>,
+        bool: Alloc<T::ProofSystem>,
+    {
         // 1. Check that all senders are well-formed.
-        proof_system.assert_all(senders.iter().map(|s| s.is_well_formed()));
+        proof_system.assert_all(senders.iter().map(SenderVariable::is_well_formed));
 
         // 2. Check that all receivers are well-formed.
-        proof_system.assert_all(receivers.iter().map(|r| r.is_well_formed()));
+        proof_system.assert_all(receivers.iter().map(ReceiverVariable::is_well_formed));
 
         // 3. Check that there is a unique asset id for all the assets.
-        let sender_ids = senders.iter().map(|s| s.asset_id());
-        let receiver_ids = receivers.iter().map(|r| r.asset_id());
-        proof_system.assert_all_eq(sender_ids.chain(receiver_ids));
+        let sender_ids = senders.iter().map(SenderVariable::asset_id);
+        let receiver_ids = receivers.iter().map(ReceiverVariable::asset_id);
+        AssertEqual::<AssetId>::assert_all_eq(proof_system, sender_ids.chain(receiver_ids));
 
         // 4. Check that the transaction is balanced.
-        proof_system.assert_eq(
-            senders.iter().map(|s| s.asset_value()).sum(),
-            receivers.iter().map(|r| r.asset_value()).sum(),
+        AssertEqual::<AssetBalance>::assert_eq(
+            proof_system,
+            senders.iter().map(SenderVariable::asset_value).sum(),
+            receivers.iter().map(ReceiverVariable::asset_value).sum(),
         );
-        */
-
-        let _ = (proof_system, senders, receivers);
     }
 
     #[inline]
     fn generate_validity_proof(&self) -> Option<<T::ProofSystem as ProofSystem>::Proof> {
         // FIXME: Build secret transfer zero knowledge proof:
 
-        /*
-        let mut proof_system = T::ProofSystem::default();
+        let proof_system = T::ProofSystem::default();
+
+        /* TODO:
+
+        // When we know the variables:
         let senders = self
             .senders
             .iter()
-            .map(|s| proof_system.register(s))
+            .map(|s| s.as_variable(&mut proof_system))
             .collect::<Vec<_>>();
         let receivers = self
             .receivers
             .iter()
-            .map(|r| proof_system.register(r))
+            .map(|r| r.as_variable(&mut proof_system))
             .collect::<Vec<_>>();
+
+        // When we don't:
+        let senders = self
+            .senders
+            .iter()
+            .map(|_| SenderVariable::unknown(&mut proof_system))
+            .collect::<Vec<_>>();
+        let receivers = self
+            .receivers
+            .iter()
+            .map(|_| ReceiverVariable::unknown(&mut proof_system))
+            .collect::<Vec<_>>();
+
         Self::build_proof_content(&mut proof_system, senders, receivers);
-        proof_system.finish()
         */
 
-        todo!()
+        proof_system.finish().ok()
     }
 
     /// Converts `self` into its ledger post.

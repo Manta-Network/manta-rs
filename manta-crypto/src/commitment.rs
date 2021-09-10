@@ -16,6 +16,11 @@
 
 //! Commitment Schemes
 
+pub(crate) mod prelude {
+    #[doc(inline)]
+    pub use super::CommitmentScheme;
+}
+
 /// Commitment Scheme
 pub trait CommitmentScheme {
     /// Commitment Input Buffer Type
@@ -27,10 +32,10 @@ pub trait CommitmentScheme {
     /// Commitment Output Type
     type Output;
 
-    /// Returns a new [`CommitmentBuilder`] to build up a commitment.
+    /// Returns a new [`Builder`] to build up a commitment.
     #[inline]
-    fn start(&self) -> CommitmentBuilder<Self> {
-        CommitmentBuilder::new(self)
+    fn start(&self) -> Builder<Self> {
+        Builder::new(self)
     }
 
     /// Commits the `input` buffer with the given `randomness` parameter.
@@ -38,7 +43,7 @@ pub trait CommitmentScheme {
 }
 
 /// Commitment Input
-pub trait CommitmentInput<C>
+pub trait Input<C>
 where
     C: CommitmentScheme + ?Sized,
 {
@@ -47,7 +52,7 @@ where
 }
 
 /// Commitment Builder
-pub struct CommitmentBuilder<'c, C>
+pub struct Builder<'c, C>
 where
     C: CommitmentScheme + ?Sized,
 {
@@ -58,11 +63,11 @@ where
     input_buffer: C::InputBuffer,
 }
 
-impl<'c, C> CommitmentBuilder<'c, C>
+impl<'c, C> Builder<'c, C>
 where
     C: CommitmentScheme + ?Sized,
 {
-    /// Returns a new [`CommitmentBuilder`] for this `commitment_scheme`.
+    /// Returns a new [`Builder`] for this `commitment_scheme`.
     #[inline]
     pub fn new(commitment_scheme: &'c C) -> Self {
         Self {
@@ -75,9 +80,9 @@ where
     #[inline]
     pub fn update<I>(mut self, input: &I) -> Self
     where
-        I: CommitmentInput<C>,
+        I: Input<C>,
     {
-        CommitmentInput::extend(input, &mut self.input_buffer);
+        input.extend(&mut self.input_buffer);
         self
     }
 

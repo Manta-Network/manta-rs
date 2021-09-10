@@ -32,7 +32,9 @@ use crate::{
     transfer::{SecretTransfer, SecretTransferConfiguration},
 };
 use core::{convert::Infallible, fmt::Debug, hash::Hash};
-use manta_crypto::{ies::EncryptedMessage, CommitmentInput, IntegratedEncryptionScheme};
+use manta_crypto::{
+    commitment::Input as CommitmentInput, ies::EncryptedMessage, IntegratedEncryptionScheme,
+};
 use rand::{
     distributions::{Distribution, Standard},
     CryptoRng, RngCore,

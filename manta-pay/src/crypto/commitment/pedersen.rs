@@ -22,7 +22,7 @@ use ark_crypto_primitives::commitment::{
     CommitmentScheme as ArkCommitmentScheme,
 };
 use ark_ed_on_bls12_381::EdwardsProjective;
-use manta_crypto::CommitmentScheme;
+use manta_crypto::commitment::CommitmentScheme;
 
 /// Implementation of [`CommitmentScheme`]
 #[derive(Clone)]

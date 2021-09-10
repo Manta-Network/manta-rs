@@ -28,10 +28,11 @@ use crate::{
 };
 use core::{convert::Infallible, fmt::Debug, hash::Hash, marker::PhantomData};
 use manta_crypto::{
-    ies::{self, EncryptedMessage},
-    set::ContainmentProof,
-    CommitmentInput, CommitmentScheme, IntegratedEncryptionScheme, PseudorandomFunctionFamily,
-    VerifiedSet,
+    commitment::{CommitmentScheme, Input as CommitmentInput},
+    constraint::{Alloc, Bool, ProofSystem, Variable},
+    ies::{self, EncryptedMessage, IntegratedEncryptionScheme},
+    set::{ContainmentProof, VerifiedSet},
+    PseudorandomFunctionFamily,
 };
 use rand::{
     distributions::{Distribution, Standard},
@@ -171,7 +172,7 @@ pub struct AssetParameters<C>
 where
     C: IdentityConfiguration,
 {
-    /// Void Number Generation Parameter
+    /// Void Number Generator
     pub void_number_generator: VoidNumberGenerator<C>,
 
     /// Void Number Commitment Randomness
@@ -249,6 +250,56 @@ where
     #[inline]
     fn sample<R: RngCore + ?Sized>(&self, rng: &mut R) -> AssetParameters<C> {
         AssetParameters::new(rng.gen(), rng.gen(), rng.gen())
+    }
+}
+
+/// Asset Parameters Variable
+pub struct AssetParametersVariable<C, P>
+where
+    C: IdentityConfiguration,
+    P: ProofSystem,
+    VoidNumberGenerator<C>: Alloc<P>,
+    VoidNumberCommitmentRandomness<C>: Alloc<P>,
+    UtxoRandomness<C>: Alloc<P>,
+{
+    /// Void Number Generator
+    pub void_number_generator: Variable<P, VoidNumberGenerator<C>>,
+
+    /// Void Number Commitment Randomness
+    pub void_number_commitment_randomness: Variable<P, VoidNumberCommitmentRandomness<C>>,
+
+    /// UTXO Randomness
+    pub utxo_randomness: Variable<P, UtxoRandomness<C>>,
+}
+
+impl<C, P> Alloc<P> for AssetParameters<C>
+where
+    C: IdentityConfiguration,
+    P: ProofSystem,
+    VoidNumberGenerator<C>: Alloc<P>,
+    VoidNumberCommitmentRandomness<C>: Alloc<P>,
+    UtxoRandomness<C>: Alloc<P>,
+{
+    type Output = AssetParametersVariable<C, P>;
+
+    #[inline]
+    fn as_variable(&self, ps: &mut P) -> Self::Output {
+        Self::Output {
+            void_number_generator: self.void_number_generator.as_variable(ps),
+            void_number_commitment_randomness: self
+                .void_number_commitment_randomness
+                .as_variable(ps),
+            utxo_randomness: self.utxo_randomness.as_variable(ps),
+        }
+    }
+
+    #[inline]
+    fn unknown(ps: &mut P) -> Self::Output {
+        Self::Output {
+            void_number_generator: VoidNumberGenerator::<C>::unknown(ps),
+            void_number_commitment_randomness: VoidNumberCommitmentRandomness::<C>::unknown(ps),
+            utxo_randomness: UtxoRandomness::<C>::unknown(ps),
+        }
     }
 }
 
@@ -1054,42 +1105,121 @@ where
     }
 }
 
-/* TODO:
-/// Sender Proof Content
-pub struct SenderProofContent<C, S, P>
+/// Sender Variable
+pub struct SenderVariable<C, S, P>
 where
     C: IdentityConfiguration,
     S: VerifiedSet<Item = Utxo<C>>,
-    P: ProofSystem
-        + Register<C::SecretKey>
-        + Register<Asset>
-        + Register<AssetParameters<C>>
-        + Register<VoidNumber<C>>
-        + Register<Utxo<C>>
-        + Register<ContainmentProof<S>>,
+    P: ProofSystem,
+    C::SecretKey: Alloc<P>,
+    AssetId: Alloc<P>,
+    AssetBalance: Alloc<P>,
+    AssetParameters<C>: Alloc<P>,
+    VoidNumber<C>: Alloc<P>,
+    Utxo<C>: Alloc<P>,
+    ContainmentProof<S>: Alloc<P>,
 {
     /// Secret Key
-    secret_key: <P as Register<C::SecretKey>>::Output,
+    secret_key: Variable<P, C::SecretKey>,
 
     /// Asset
-    asset: <P as Register<Asset>>::Output,
+    asset: Variable<P, Asset>,
 
     /// Asset Parameters
-    parameters: <P as Register<AssetParameters<C>>>::Output,
+    parameters: Variable<P, AssetParameters<C>>,
 
     /// Void Number
-    void_number: <P as Register<VoidNumber<C>>>::Output,
+    void_number: Variable<P, VoidNumber<C>>,
 
     /// Unspent Transaction Output
-    utxo: <P as Register<Utxo<C>>>::Output,
+    utxo: Variable<P, Utxo<C>>,
 
     /// UTXO Containment Proof
-    utxo_containment_proof: <P as Register<ContainmentProof<S>>>::Output,
-
-    /// Type Parameter Marker
-    __: PhantomData<(C, S, P)>,
+    utxo_containment_proof: Variable<P, ContainmentProof<S>>,
 }
-*/
+
+impl<C, S, P> SenderVariable<C, S, P>
+where
+    C: IdentityConfiguration,
+    S: VerifiedSet<Item = Utxo<C>>,
+    P: ProofSystem,
+    C::SecretKey: Alloc<P>,
+    AssetId: Alloc<P>,
+    AssetBalance: Alloc<P>,
+    AssetParameters<C>: Alloc<P>,
+    VoidNumber<C>: Alloc<P>,
+    Utxo<C>: Alloc<P>,
+    ContainmentProof<S>: Alloc<P>,
+{
+    /// Returns the asset id of this sender.
+    #[inline]
+    pub fn asset_id(&self) -> &Variable<P, AssetId> {
+        &self.asset.id
+    }
+
+    /// Returns the asset value of this sender.
+    #[inline]
+    pub fn asset_value(&self) -> &Variable<P, AssetBalance> {
+        &self.asset.value
+    }
+
+    /// Checks if `self` is a well-formed sender.
+    #[inline]
+    pub fn is_well_formed(&self) -> Bool<P>
+    where
+        bool: Alloc<P>,
+    {
+        // FIXME: Implement well-formedness check:
+        //
+        // See `manta-api/src/zkp/circuit.rs`:
+        // 1. ValidSenderToken
+        // 2. ValidPrivateKey
+        // 3. ValidVoidNumber
+        // 4. StoredCommitment
+
+        todo!()
+    }
+}
+
+impl<C, S, P> Alloc<P> for Sender<C, S>
+where
+    C: IdentityConfiguration,
+    S: VerifiedSet<Item = Utxo<C>>,
+    P: ProofSystem,
+    C::SecretKey: Alloc<P>,
+    AssetId: Alloc<P>,
+    AssetBalance: Alloc<P>,
+    AssetParameters<C>: Alloc<P>,
+    VoidNumber<C>: Alloc<P>,
+    Utxo<C>: Alloc<P>,
+    ContainmentProof<S>: Alloc<P>,
+{
+    type Output = SenderVariable<C, S, P>;
+
+    #[inline]
+    fn as_variable(&self, ps: &mut P) -> Self::Output {
+        Self::Output {
+            secret_key: self.identity.secret_key.as_variable(ps),
+            asset: self.asset.as_variable(ps),
+            parameters: self.parameters.as_variable(ps),
+            void_number: self.void_number.as_variable(ps),
+            utxo: self.utxo.as_variable(ps),
+            utxo_containment_proof: self.utxo_containment_proof.as_variable(ps),
+        }
+    }
+
+    #[inline]
+    fn unknown(ps: &mut P) -> Self::Output {
+        Self::Output {
+            secret_key: C::SecretKey::unknown(ps),
+            asset: Asset::unknown(ps),
+            parameters: AssetParameters::<_>::unknown(ps),
+            void_number: VoidNumber::<C>::unknown(ps),
+            utxo: Utxo::<C>::unknown(ps),
+            utxo_containment_proof: ContainmentProof::<_>::unknown(ps),
+        }
+    }
+}
 
 /// Sender Post Error
 pub enum SenderPostError<L>
@@ -1248,25 +1378,100 @@ where
     }
 }
 
-/* TODO:
 /// Receiver Proof Content
-pub struct ReceiverProofContent<C>
+pub struct ReceiverVariable<C, P>
 where
     C: IdentityConfiguration,
+    P: ProofSystem,
+    AssetId: Alloc<P>,
+    AssetBalance: Alloc<P>,
+    UtxoRandomness<C>: Alloc<P>,
+    VoidNumberCommitment<C>: Alloc<P>,
+    Utxo<C>: Alloc<P>,
 {
     /// Asset
-    asset: Asset,
+    asset: Variable<P, Asset>,
 
     /// UTXO Randomness
-    utxo_randomness: UtxoRandomness<C>,
+    utxo_randomness: Variable<P, UtxoRandomness<C>>,
 
     /// Void Number Commitment
-    void_number_commitment: VoidNumberCommitment<C>,
+    void_number_commitment: Variable<P, VoidNumberCommitment<C>>,
 
     /// Unspent Transaction Output
-    utxo: Utxo<C>,
+    utxo: Variable<P, Utxo<C>>,
 }
-*/
+
+impl<C, P> ReceiverVariable<C, P>
+where
+    C: IdentityConfiguration,
+    P: ProofSystem,
+    AssetId: Alloc<P>,
+    AssetBalance: Alloc<P>,
+    UtxoRandomness<C>: Alloc<P>,
+    VoidNumberCommitment<C>: Alloc<P>,
+    Utxo<C>: Alloc<P>,
+{
+    /// Returns the asset id of this receiver.
+    #[inline]
+    pub fn asset_id(&self) -> &Variable<P, AssetId> {
+        &self.asset.id
+    }
+
+    /// Returns the asset value of this receiver.
+    #[inline]
+    pub fn asset_value(&self) -> &Variable<P, AssetBalance> {
+        &self.asset.value
+    }
+
+    /// Checks if `self` is a well-formed receiver.
+    #[inline]
+    pub fn is_well_formed(&self) -> Bool<P>
+    where
+        bool: Alloc<P>,
+    {
+        // FIXME: Implement well-formedness check:
+        //
+        // See `manta-api/src/zkp/circuit.rs`:
+        // 1. ValidReceiverToken
+
+        todo!()
+    }
+}
+
+impl<C, I, P> Alloc<P> for Receiver<C, I>
+where
+    C: IdentityConfiguration,
+    I: IntegratedEncryptionScheme<Plaintext = Asset>,
+    P: ProofSystem,
+    AssetId: Alloc<P>,
+    AssetBalance: Alloc<P>,
+    UtxoRandomness<C>: Alloc<P>,
+    VoidNumberCommitment<C>: Alloc<P>,
+    Utxo<C>: Alloc<P>,
+{
+    type Output = ReceiverVariable<C, P>;
+
+    #[inline]
+    fn as_variable(&self, ps: &mut P) -> Self::Output {
+        Self::Output {
+            asset: self.asset.as_variable(ps),
+            utxo_randomness: self.utxo_randomness.as_variable(ps),
+            void_number_commitment: self.void_number_commitment.as_variable(ps),
+            utxo: self.utxo.as_variable(ps),
+        }
+    }
+
+    #[inline]
+    fn unknown(ps: &mut P) -> Self::Output {
+        Self::Output {
+            asset: Asset::unknown(ps),
+            utxo_randomness: UtxoRandomness::<C>::unknown(ps),
+            void_number_commitment: VoidNumberCommitment::<C>::unknown(ps),
+            utxo: Utxo::<C>::unknown(ps),
+        }
+    }
+}
 
 /// Receiver Post Error
 pub enum ReceiverPostError<L>

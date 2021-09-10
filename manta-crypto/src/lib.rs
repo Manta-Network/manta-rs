@@ -21,16 +21,14 @@
 #![forbid(rustdoc::broken_intra_doc_links)]
 #![forbid(missing_docs)]
 
-extern crate alloc;
-
-mod commitment;
 mod prf;
 
-pub mod constraints;
+pub mod commitment;
+pub mod constraint;
 pub mod ies;
 pub mod set;
 
-pub use commitment::*;
+pub use commitment::prelude::*;
 pub use ies::prelude::*;
 pub use prf::*;
 pub use set::prelude::*;

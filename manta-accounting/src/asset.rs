@@ -16,8 +16,9 @@
 
 //! Assets
 
-// TODO: add macro to build `AssetId` and `AssetBalance`
-// TODO: implement all `rand` sampling traits
+// TODO: Add macro to build `AssetId` and `AssetBalance`.
+// TODO: Implement all `rand` sampling traits.
+// TODO: Should we rename `AssetBalance` to `AssetValue` to be more consistent?
 
 use alloc::vec::Vec;
 use core::{
@@ -29,6 +30,7 @@ use core::{
 use derive_more::{
     Add, AddAssign, Display, Div, DivAssign, From, Mul, MulAssign, Product, Sub, SubAssign, Sum,
 };
+use manta_crypto::constraint::{Alloc, ProofSystem, Variable};
 use manta_util::{
     array_map, fallible_array_map, into_array_unchecked, ByteAccumulator, ConcatBytes,
 };
@@ -348,6 +350,51 @@ impl Distribution<Asset> for Standard {
     #[inline]
     fn sample<R: RngCore + ?Sized>(&self, rng: &mut R) -> Asset {
         Asset::new(rng.gen(), rng.gen())
+    }
+}
+
+/// Asset Id Variable
+pub type AssetIdVariable<P> = Variable<P, AssetId>;
+
+/// Asset Balance Variable
+pub type AssetBalanceVariable<P> = Variable<P, AssetBalance>;
+
+/// Asset Variable
+pub struct AssetVariable<P>
+where
+    P: ProofSystem,
+    AssetId: Alloc<P>,
+    AssetBalance: Alloc<P>,
+{
+    /// Asset Id
+    pub id: AssetIdVariable<P>,
+
+    /// Asset Value
+    pub value: AssetBalanceVariable<P>,
+}
+
+impl<P> Alloc<P> for Asset
+where
+    P: ProofSystem,
+    AssetId: Alloc<P>,
+    AssetBalance: Alloc<P>,
+{
+    type Output = AssetVariable<P>;
+
+    #[inline]
+    fn as_variable(&self, ps: &mut P) -> Self::Output {
+        Self::Output {
+            id: self.id.as_variable(ps),
+            value: self.value.as_variable(ps),
+        }
+    }
+
+    #[inline]
+    fn unknown(ps: &mut P) -> Self::Output {
+        Self::Output {
+            id: AssetId::unknown(ps),
+            value: AssetBalance::unknown(ps),
+        }
     }
 }
 
