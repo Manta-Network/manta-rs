@@ -17,18 +17,24 @@
 //! Transfer Protocols
 
 use crate::{
-    asset::{sample_asset_balances, Asset, AssetBalance, AssetBalanceVar, AssetBalances, AssetId},
+    asset::{
+        sample_asset_balances, Asset, AssetBalance, AssetBalanceVar, AssetBalances, AssetId,
+        AssetVar,
+    },
     identity::{
-        IdentityConfiguration, Receiver, ReceiverPost, ReceiverVar, Sender, SenderPost, SenderVar,
-        Utxo, UtxoRandomness, VoidNumber, VoidNumberCommitment, VoidNumberCommitmentRandomness,
-        VoidNumberGenerator,
+        CommitmentSchemeOutput, CommitmentSchemeOutputVar, CommitmentSchemeRandomness,
+        CommitmentSchemeRandomnessVar, CommitmentSchemeVar, IdentityConfiguration,
+        PseudorandomFunctionFamilyInput, PseudorandomFunctionFamilyOutput, PublicKeyVar, Receiver,
+        ReceiverPost, ReceiverVar, SecretKey, Sender, SenderPost, SenderVar, Utxo, VoidNumber,
+        VoidNumberCommitmentVar, VoidNumberGeneratorVar,
     },
     ledger::{Ledger, PostError},
 };
 use alloc::vec::Vec;
 use core::iter::Sum;
 use manta_crypto::{
-    constraint::{Equal, ProofSystem, Public, Secret, Var},
+    commitment::{CommitmentScheme, Input as CommitmentInput},
+    constraint::{Const, Constant, Equal, ProofSystem, PublicOrSecret, Secret, Var},
     ies::{EncryptedMessage, IntegratedEncryptionScheme},
     set::{ContainmentProof, VerifiedSet},
 };
@@ -196,36 +202,54 @@ where
 
     /// Builds constraints for secret transfer validity proof.
     #[inline]
-    fn build_proof_content(
-        proof_system: &mut T,
+    fn verify(
+        ps: &mut T,
+        commitment_scheme: &T::CommitmentScheme,
         senders: Vec<SecretSenderVar<T>>,
         receivers: Vec<SecretReceiverVar<T>>,
     ) where
-        T::SecretKey: Var<T, Secret>,
-        AssetId: Equal<T, Secret>,
-        AssetBalance: Equal<T, Secret>,
-        for<'i> &'i AssetBalanceVar<T, Secret>: Sum,
-        VoidNumberGenerator<T>: Var<T, Secret>,
-        VoidNumberCommitmentRandomness<T>: Var<T, Secret>,
-        UtxoRandomness<T>: Var<T, Secret>,
-        VoidNumber<T>: Var<T, Public>,
-        VoidNumberCommitment<T>: Var<T, Secret>,
-        Utxo<T>: Var<T, Secret> + Var<T, Public>,
+        T::CommitmentScheme: Const<T>,
+        AssetId: Equal<T, PublicOrSecret>,
+        AssetBalance: Equal<T, PublicOrSecret>,
+        for<'i> &'i AssetBalanceVar<T>: Sum,
+        SecretKey<T>: Var<T, Secret>,
+        PseudorandomFunctionFamilyInput<T>: Var<T, Secret>,
+        PseudorandomFunctionFamilyOutput<T>: Equal<T, PublicOrSecret>,
+        CommitmentSchemeRandomness<T>: Var<T, Secret>,
+        CommitmentSchemeOutput<T>: Equal<T, PublicOrSecret>,
         ContainmentProof<T::UtxoSet>: Var<T, Secret>,
+        Constant<T::CommitmentScheme, T>: CommitmentScheme<
+            Randomness = CommitmentSchemeRandomnessVar<T, T>,
+            Output = CommitmentSchemeOutputVar<T, T>,
+        >,
+        PublicKeyVar<T, T>: CommitmentInput<CommitmentSchemeVar<T, T>>,
+        VoidNumberGeneratorVar<T, T>: CommitmentInput<CommitmentSchemeVar<T, T>>,
+        AssetVar<T>: CommitmentInput<CommitmentSchemeVar<T, T>>,
+        VoidNumberCommitmentVar<T, T>: CommitmentInput<CommitmentSchemeVar<T, T>>,
     {
+        // TODO: find a way to do this without having to build intermediate `Vec<_>`
+
+        let commitment_scheme = commitment_scheme.as_constant(ps);
+
         // 1. Check that all senders are well-formed.
-        proof_system.assert_all(senders.iter().map(SenderVar::is_well_formed));
+        /* FIXME:
+        for sender in &senders {
+            sender.verify_well_formed(ps, &commitment_scheme);
+        }
+        */
 
         // 2. Check that all receivers are well-formed.
-        proof_system.assert_all(receivers.iter().map(ReceiverVar::is_well_formed));
+        for receiver in &receivers {
+            receiver.verify_well_formed(ps, &commitment_scheme);
+        }
 
         // 3. Check that there is a unique asset id for all the assets.
         let sender_ids = senders.iter().map(SenderVar::asset_id);
         let receiver_ids = receivers.iter().map(ReceiverVar::asset_id);
-        proof_system.assert_all_eq(sender_ids.chain(receiver_ids));
+        ps.assert_all_eq(sender_ids.chain(receiver_ids));
 
         // 4. Check that the transaction is balanced.
-        proof_system.assert_eq(
+        ps.assert_eq(
             senders.iter().map(SenderVar::asset_value).sum(),
             receivers.iter().map(ReceiverVar::asset_value).sum(),
         );

@@ -49,3 +49,4 @@ x25519-dalek = { git = "https://github.com/Manta-Network/x25519-dalek", default-
 
 [dev-dependencies]
 manta-crypto = { path = "../manta-crypto", features = ["test"] }
+rand = "0.8.4"

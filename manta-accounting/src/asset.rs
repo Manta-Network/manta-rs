@@ -31,7 +31,7 @@ use core::{
 use derive_more::{
     Add, AddAssign, Display, Div, DivAssign, From, Mul, MulAssign, Product, Sub, SubAssign, Sum,
 };
-use manta_crypto::constraint::{IsVariable, Secret, Var, Variable};
+use manta_crypto::constraint::{IsVariable, PublicOrSecret, Secret, Var, Variable};
 use manta_util::{
     array_map, fallible_array_map, into_array_unchecked, ByteAccumulator, ConcatBytes,
 };
@@ -334,52 +334,52 @@ impl Distribution<Asset> for Standard {
 }
 
 /// Asset Id Variable
-pub type AssetIdVar<P, M> = Variable<AssetId, P, M>;
+pub type AssetIdVar<P> = Variable<AssetId, P, PublicOrSecret>;
 
 /// Asset Balance Variable
-pub type AssetBalanceVar<P, M> = Variable<AssetBalance, P, M>;
+pub type AssetBalanceVar<P> = Variable<AssetBalance, P, PublicOrSecret>;
 
 /// Asset Variable
 pub struct AssetVar<P>
 where
-    AssetId: Var<P, Secret>,
-    AssetBalance: Var<P, Secret>,
+    AssetId: Var<P, PublicOrSecret>,
+    AssetBalance: Var<P, PublicOrSecret>,
 {
     /// Asset Id
-    pub id: AssetIdVar<P, Secret>,
+    pub id: AssetIdVar<P>,
 
     /// Asset Value
-    pub value: AssetBalanceVar<P, Secret>,
+    pub value: AssetBalanceVar<P>,
 }
 
 impl<P> IsVariable<P, Secret> for AssetVar<P>
 where
-    AssetId: Var<P, Secret>,
-    AssetBalance: Var<P, Secret>,
+    AssetId: Var<P, PublicOrSecret>,
+    AssetBalance: Var<P, PublicOrSecret>,
 {
     type Type = Asset;
 }
 
 impl<P> Var<P, Secret> for Asset
 where
-    AssetId: Var<P, Secret>,
-    AssetBalance: Var<P, Secret>,
+    AssetId: Var<P, PublicOrSecret>,
+    AssetBalance: Var<P, PublicOrSecret>,
 {
     type Variable = AssetVar<P>;
 
     #[inline]
     fn as_variable(&self, ps: &mut P, mode: Secret) -> Self::Variable {
         Self::Variable {
-            id: self.id.as_variable(ps, mode),
-            value: self.value.as_variable(ps, mode),
+            id: self.id.as_variable(ps, mode.into()),
+            value: self.value.as_variable(ps, mode.into()),
         }
     }
 
     #[inline]
     fn unknown(ps: &mut P, mode: Secret) -> Self::Variable {
         Self::Variable {
-            id: AssetId::unknown(ps, mode),
-            value: AssetBalance::unknown(ps, mode),
+            id: AssetId::unknown(ps, mode.into()),
+            value: AssetBalance::unknown(ps, mode.into()),
         }
     }
 }

@@ -27,6 +27,9 @@ pub type Bool<P> = <P as BooleanSystem>::Bool;
 /// Variable Type
 pub type Variable<T, P, K = (), U = K> = <T as Var<P, K, U>>::Variable;
 
+/// Constant Type
+pub type Constant<T, P> = <T as Var<P, Public, Infallible>>::Variable;
+
 /// Character Variable Type
 pub type Char<P, K = (), U = K> = Variable<char, P, K, U>;
 
@@ -59,6 +62,15 @@ pub type U64<P, K = (), U = K> = Variable<u64, P, K, U>;
 
 /// Unsigned 128-bit Integer Variable Type
 pub type U128<P, K = (), U = K> = Variable<u128, P, K, U>;
+
+/// Allocation Entry
+pub enum Allocation<T, Known = (), Unknown = Known> {
+    /// Known Value
+    Value(T, Known),
+
+    /// Unknown Value
+    Unknown(Unknown),
+}
 
 /// Variable Reflection Trait
 pub trait IsVariable<P, Known = (), Unknown = Known>: Sized
@@ -96,16 +108,23 @@ where
     fn unknown(ps: &mut P, mode: Unknown) -> Self::Variable;
 }
 
-/// Constant
-pub trait Const<P>: Var<P, (), Infallible>
+/// Constant Trait
+pub trait Const<P>: Var<P, Public, Infallible>
 where
     P: ?Sized,
 {
     /// Returns a new constant with value `self`.
     #[inline]
     fn as_constant(&self, ps: &mut P) -> Self::Variable {
-        self.as_variable(ps, ())
+        self.as_variable(ps, Public)
     }
+}
+
+impl<T, P> Const<P> for T
+where
+    T: Var<P, Public, Infallible>,
+    P: ?Sized,
+{
 }
 
 /// Boolean Constraint System
