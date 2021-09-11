@@ -14,10 +14,4 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Manta Pay Cryptographic Primitives Implementations
-
-pub mod commitment;
-pub mod constraint;
-pub mod ies;
-pub mod merkle_tree;
-pub mod prf;
+//! Proof System Implementation
