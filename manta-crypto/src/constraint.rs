@@ -19,16 +19,13 @@
 // TODO: Add derive trait to implement `Alloc` for structs (and enums?).
 // TODO: How to do verification systems? Should it be a separate trait or part of `ProofSystem`?
 
-use core::convert::{Infallible, TryFrom};
+use core::convert::TryFrom;
 
 /// Boolean Variable Type
 pub type Bool<P> = <P as BooleanSystem>::Bool;
 
 /// Variable Type
 pub type Variable<T, P, K = (), U = K> = <T as Var<P, K, U>>::Variable;
-
-/// Constant Type
-pub type Constant<T, P> = <T as Var<P, Public, Infallible>>::Variable;
 
 /// Character Variable Type
 pub type Char<P, K = (), U = K> = Variable<char, P, K, U>;
@@ -106,25 +103,6 @@ where
 
     /// Returns a new variable with an unknown value.
     fn unknown(ps: &mut P, mode: Unknown) -> Self::Variable;
-}
-
-/// Constant Trait
-pub trait Const<P>: Var<P, Public, Infallible>
-where
-    P: ?Sized,
-{
-    /// Returns a new constant with value `self`.
-    #[inline]
-    fn as_constant(&self, ps: &mut P) -> Self::Variable {
-        self.as_variable(ps, Public)
-    }
-}
-
-impl<T, P> Const<P> for T
-where
-    T: Var<P, Public, Infallible>,
-    P: ?Sized,
-{
 }
 
 /// Boolean Constraint System

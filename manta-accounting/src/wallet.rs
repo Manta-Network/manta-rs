@@ -29,7 +29,7 @@ use crate::{
     },
     keys::{self, DerivedSecretKeyGenerator, ExternalKeys, InternalKeys},
     ledger::Ledger,
-    transfer::{SecretTransfer, SecretTransferProofSystem},
+    transfer::{SecretTransfer, SecretTransferConfiguration},
 };
 use core::{convert::Infallible, fmt::Debug, hash::Hash};
 use manta_crypto::{
@@ -395,7 +395,7 @@ where
         rng: &mut R,
     ) -> Option<SecretTransfer<T, 2, 2>>
     where
-        T: SecretTransferProofSystem,
+        T: SecretTransferConfiguration,
         R: CryptoRng + RngCore + ?Sized,
         Asset: CommitmentInput<T::CommitmentScheme>,
         VoidNumberCommitment<T>: CommitmentInput<T::CommitmentScheme>,
