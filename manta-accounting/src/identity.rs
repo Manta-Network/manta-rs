@@ -22,7 +22,7 @@
 // TODO:  Since `IdentityConfiguration::SecretKey: Clone`, should `Identity: Clone`?
 
 use crate::{
-    asset::{Asset, AssetBalance, AssetBalanceVar, AssetId, AssetIdVar, AssetVar},
+    asset::{Asset, AssetBalance, AssetId, AssetVar},
     keys::SecretKeyGenerator,
     ledger::Ledger,
 };
@@ -30,8 +30,8 @@ use core::{convert::Infallible, fmt::Debug, hash::Hash, marker::PhantomData};
 use manta_crypto::{
     commitment::{CommitmentScheme, Input as CommitmentInput},
     constraint::{
-        BooleanSystem, Derived, Equal, IsVariable, ProofSystem, Public, PublicOrSecret, Secret,
-        Var, Variable,
+        Alloc, Allocation, BooleanSystem, Constant, Derived, Equal, HasVariable, ProofSystem,
+        Public, PublicOrSecret, Secret, Var, Variable,
     },
     ies::{self, EncryptedMessage, IntegratedEncryptionScheme},
     set::{ContainmentProof, VerifiedSet},
@@ -59,7 +59,11 @@ pub trait IdentityConfiguration {
     type PseudorandomFunctionFamily: PseudorandomFunctionFamily<Seed = Self::SecretKey>;
 
     /// Commitment Scheme Type
-    type CommitmentScheme: CommitmentScheme;
+    type CommitmentScheme: CommitmentScheme
+        + CommitmentInput<PublicKey<Self>>
+        + CommitmentInput<VoidNumberGenerator<Self>>
+        + CommitmentInput<Asset>
+        + CommitmentInput<VoidNumberCommitment<Self>>;
 
     /// Seedable Cryptographic Random Number Generator Type
     type Rng: CryptoRng + RngCore + SeedableRng<Seed = Self::SecretKey>;
@@ -68,52 +72,58 @@ pub trait IdentityConfiguration {
 /// [`Identity`] Proof System Configuration
 pub trait IdentityProofSystemConfiguration {
     /// Proof System
-    type ProofSystem: ProofSystem;
+    type ProofSystem: ProofSystem
+        + HasVariable<AssetId, Mode = PublicOrSecret>
+        + HasVariable<AssetBalance, Mode = PublicOrSecret>;
 
     /// Pseudorandom Function Family Seed
-    type PseudorandomFunctionFamilySeed: Clone + Var<Self::ProofSystem, Secret>;
+    type PseudorandomFunctionFamilySeed: Clone + Alloc<Self::ProofSystem, Mode = Secret>;
 
     /// Pseudorandom Function Family Input
-    type PseudorandomFunctionFamilyInput: Var<Self::ProofSystem, Secret>;
+    type PseudorandomFunctionFamilyInput: Alloc<Self::ProofSystem, Mode = Secret>;
 
     /// Pseudorandom Function Family Output
-    type PseudorandomFunctionFamilyOutput: Equal<Self::ProofSystem, PublicOrSecret>;
+    type PseudorandomFunctionFamilyOutput: Equal<Self::ProofSystem, Mode = PublicOrSecret>;
 
     /// Pseudorandom Function Family
     type PseudorandomFunctionFamily: PseudorandomFunctionFamily<
             Seed = Self::PseudorandomFunctionFamilySeed,
             Input = Self::PseudorandomFunctionFamilyInput,
             Output = Self::PseudorandomFunctionFamilyOutput,
-        > + Var<Self::ProofSystem, Public, Infallible, Variable = Self::PseudorandomFunctionFamilyVar>;
+        > + Alloc<Self::ProofSystem, Mode = Constant, Variable = Self::PseudorandomFunctionFamilyVar>;
 
     /// Pseudorandom Function Family Variable
     type PseudorandomFunctionFamilyVar: PseudorandomFunctionFamily<
-            Seed = Variable<Self::PseudorandomFunctionFamilySeed, Self::ProofSystem, Secret>,
-            Input = Variable<Self::PseudorandomFunctionFamilyInput, Self::ProofSystem, Secret>,
-            Output = Variable<
-                Self::PseudorandomFunctionFamilyOutput,
-                Self::ProofSystem,
-                PublicOrSecret,
-            >,
-        > + IsVariable<Self::ProofSystem, Public, Infallible, Type = Self::PseudorandomFunctionFamily>;
+            Seed = PseudorandomFunctionFamilySeedVar<Self>,
+            Input = PseudorandomFunctionFamilyInputVar<Self>,
+            Output = PseudorandomFunctionFamilyOutputVar<Self>,
+        > + Variable<Self::ProofSystem, Mode = Constant, Type = Self::PseudorandomFunctionFamily>;
 
     /// Commitment Scheme Randomness
-    type CommitmentSchemeRandomness: Var<Self::ProofSystem, Secret>;
+    type CommitmentSchemeRandomness: Alloc<Self::ProofSystem, Mode = Secret>;
 
     /// Commitment Scheme Output
-    type CommitmentSchemeOutput: Equal<Self::ProofSystem, PublicOrSecret>;
+    type CommitmentSchemeOutput: Equal<Self::ProofSystem, Mode = PublicOrSecret>;
 
     /// Commitment Scheme
     type CommitmentScheme: CommitmentScheme<
             Randomness = Self::CommitmentSchemeRandomness,
             Output = Self::CommitmentSchemeOutput,
-        > + Var<Self::ProofSystem, Public, Infallible, Variable = Self::CommitmentSchemeVar>;
+        > + CommitmentInput<PublicKey<Self>>
+        + CommitmentInput<VoidNumberGenerator<Self>>
+        + CommitmentInput<Asset>
+        + CommitmentInput<VoidNumberCommitment<Self>>
+        + Alloc<Self::ProofSystem, Mode = Constant, Variable = Self::CommitmentSchemeVar>;
 
     /// Commitment Scheme Variable
     type CommitmentSchemeVar: CommitmentScheme<
-            Randomness = Variable<Self::CommitmentSchemeRandomness, Self::ProofSystem, Secret>,
-            Output = Variable<Self::CommitmentSchemeOutput, Self::ProofSystem, PublicOrSecret>,
-        > + IsVariable<Self::ProofSystem, Public, Infallible, Type = Self::CommitmentScheme>;
+            Randomness = CommitmentSchemeRandomnessVar<Self>,
+            Output = CommitmentSchemeOutputVar<Self>,
+        > + CommitmentInput<PublicKeyVar<Self>>
+        + CommitmentInput<VoidNumberGeneratorVar<Self>>
+        + CommitmentInput<AssetVar<Self::ProofSystem>>
+        + CommitmentInput<VoidNumberCommitmentVar<Self>>
+        + Variable<Self::ProofSystem, Mode = Constant, Type = Self::CommitmentScheme>;
 
     /// Seedable Cryptographic Random Number Generator
     type Rng: CryptoRng + RngCore + SeedableRng<Seed = Self::PseudorandomFunctionFamilySeed>;
@@ -177,39 +187,24 @@ pub type UtxoRandomness<C> = CommitmentSchemeRandomness<C>;
 pub type Utxo<C> = CommitmentSchemeOutput<C>;
 
 /// [`PseudorandomFunctionFamily::Seed`] Variable Type
-pub type PseudorandomFunctionFamilySeedVar<C> = Variable<
-    PseudorandomFunctionFamilySeed<C>,
-    <C as IdentityProofSystemConfiguration>::ProofSystem,
-    Secret,
->;
+pub type PseudorandomFunctionFamilySeedVar<C> =
+    Var<PseudorandomFunctionFamilySeed<C>, <C as IdentityProofSystemConfiguration>::ProofSystem>;
 
 /// [`PseudorandomFunctionFamily::Input`] Variable Type
-pub type PseudorandomFunctionFamilyInputVar<C> = Variable<
-    PseudorandomFunctionFamilyInput<C>,
-    <C as IdentityProofSystemConfiguration>::ProofSystem,
-    Secret,
->;
+pub type PseudorandomFunctionFamilyInputVar<C> =
+    Var<PseudorandomFunctionFamilyInput<C>, <C as IdentityProofSystemConfiguration>::ProofSystem>;
 
 /// [`PseudorandomFunctionFamily::Output`] Variable Type
-pub type PseudorandomFunctionFamilyOutputVar<C> = Variable<
-    PseudorandomFunctionFamilyOutput<C>,
-    <C as IdentityProofSystemConfiguration>::ProofSystem,
-    PublicOrSecret,
->;
+pub type PseudorandomFunctionFamilyOutputVar<C> =
+    Var<PseudorandomFunctionFamilyOutput<C>, <C as IdentityProofSystemConfiguration>::ProofSystem>;
 
 /// [`CommitmentScheme::Randomness`] Variable Type
-pub type CommitmentSchemeRandomnessVar<C> = Variable<
-    CommitmentSchemeRandomness<C>,
-    <C as IdentityProofSystemConfiguration>::ProofSystem,
-    Secret,
->;
+pub type CommitmentSchemeRandomnessVar<C> =
+    Var<CommitmentSchemeRandomness<C>, <C as IdentityProofSystemConfiguration>::ProofSystem>;
 
 /// [`CommitmentScheme::Output`] Variable Type
-pub type CommitmentSchemeOutputVar<C> = Variable<
-    CommitmentSchemeOutput<C>,
-    <C as IdentityProofSystemConfiguration>::ProofSystem,
-    PublicOrSecret,
->;
+pub type CommitmentSchemeOutputVar<C> =
+    Var<CommitmentSchemeOutput<C>, <C as IdentityProofSystemConfiguration>::ProofSystem>;
 
 /// Secret Key Variable Type
 pub type SecretKeyVar<C> = PseudorandomFunctionFamilySeedVar<C>;
@@ -237,7 +232,7 @@ pub type UtxoVar<C> = CommitmentSchemeOutputVar<C>;
 
 /// UTXO Containment Proof Variable Type
 pub type UtxoContainmentProofVar<C, S> =
-    Variable<ContainmentProof<S>, <C as IdentityProofSystemConfiguration>::ProofSystem, Secret>;
+    Var<ContainmentProof<S>, <C as IdentityProofSystemConfiguration>::ProofSystem>;
 
 /// Generates a void number commitment from `public_key`, `void_number_generator`, and
 /// `void_number_commitment_randomness`.
@@ -249,9 +244,7 @@ pub fn generate_void_number_commitment<CS, PK, VNG>(
     void_number_commitment_randomness: &CS::Randomness,
 ) -> CS::Output
 where
-    CS: CommitmentScheme,
-    PK: CommitmentInput<CS>,
-    VNG: CommitmentInput<CS>,
+    CS: CommitmentScheme + CommitmentInput<PK> + CommitmentInput<VNG>,
 {
     commitment_scheme
         .start()
@@ -269,9 +262,7 @@ pub fn generate_utxo<CS, A, VNC>(
     utxo_randomness: &CS::Randomness,
 ) -> CS::Output
 where
-    CS: CommitmentScheme,
-    A: CommitmentInput<CS>,
-    VNC: CommitmentInput<CS>,
+    CS: CommitmentScheme + CommitmentInput<A> + CommitmentInput<VNC>,
 {
     commitment_scheme
         .start()
@@ -343,11 +334,7 @@ where
         &self,
         commitment_scheme: &C::CommitmentScheme,
         public_key: &PublicKey<C>,
-    ) -> VoidNumberCommitment<C>
-    where
-        PublicKey<C>: CommitmentInput<C::CommitmentScheme>,
-        VoidNumberGenerator<C>: CommitmentInput<C::CommitmentScheme>,
-    {
+    ) -> VoidNumberCommitment<C> {
         generate_void_number_commitment(
             commitment_scheme,
             public_key,
@@ -363,11 +350,7 @@ where
         commitment_scheme: &C::CommitmentScheme,
         asset: &Asset,
         void_number_commitment: &VoidNumberCommitment<C>,
-    ) -> Utxo<C>
-    where
-        Asset: CommitmentInput<C::CommitmentScheme>,
-        VoidNumberCommitment<C>: CommitmentInput<C::CommitmentScheme>,
-    {
+    ) -> Utxo<C> {
         generate_utxo(
             commitment_scheme,
             asset,
@@ -405,38 +388,45 @@ where
     pub utxo_randomness: UtxoRandomnessVar<C>,
 }
 
-impl<C> IsVariable<C::ProofSystem, Secret> for AssetParametersVar<C>
+impl<C> Variable<C::ProofSystem> for AssetParametersVar<C>
 where
     C: IdentityProofSystemConfiguration,
 {
+    type Mode = Secret;
     type Type = AssetParameters<C>;
 }
 
-impl<C> Var<C::ProofSystem, Secret> for AssetParameters<C>
+impl<C> Alloc<C::ProofSystem> for AssetParameters<C>
 where
     C: IdentityProofSystemConfiguration,
 {
+    type Mode = Secret;
+
     type Variable = AssetParametersVar<C>;
 
     #[inline]
-    fn as_variable(&self, ps: &mut C::ProofSystem, mode: Secret) -> Self::Variable {
-        Self::Variable {
-            void_number_generator: self.void_number_generator.as_variable(ps, mode),
-            void_number_commitment_randomness: self
-                .void_number_commitment_randomness
-                .as_variable(ps, mode),
-            utxo_randomness: self.utxo_randomness.as_variable(ps, mode),
-        }
-    }
-
-    #[inline]
-    fn unknown(ps: &mut C::ProofSystem, mode: Secret) -> Self::Variable {
-        Self::Variable {
-            void_number_generator: VoidNumberGenerator::<C>::unknown(ps, mode),
-            void_number_commitment_randomness: VoidNumberCommitmentRandomness::<C>::unknown(
-                ps, mode,
-            ),
-            utxo_randomness: UtxoRandomness::<C>::unknown(ps, mode),
+    fn variable<'t>(
+        ps: &mut C::ProofSystem,
+        allocation: impl Into<Allocation<'t, Self, C::ProofSystem>>,
+    ) -> Self::Variable
+    where
+        Self: 't,
+    {
+        match allocation.into() {
+            Allocation::Known(
+                AssetParameters {
+                    void_number_generator,
+                    void_number_commitment_randomness,
+                    utxo_randomness,
+                },
+                mode,
+            ) => Self::Variable {
+                void_number_generator: ps.allocate((void_number_generator, mode)),
+                void_number_commitment_randomness: ps
+                    .allocate((void_number_commitment_randomness, mode)),
+                utxo_randomness: ps.allocate((utxo_randomness, mode)),
+            },
+            _ => todo!(),
         }
     }
 }
@@ -581,11 +571,7 @@ where
         &self,
         commitment_scheme: &C::CommitmentScheme,
         parameters: &AssetParameters<C>,
-    ) -> VoidNumberCommitment<C>
-    where
-        PublicKey<C>: CommitmentInput<C::CommitmentScheme>,
-        VoidNumberGenerator<C>: CommitmentInput<C::CommitmentScheme>,
-    {
+    ) -> VoidNumberCommitment<C> {
         parameters.void_number_commitment(commitment_scheme, &self.public_key())
     }
 
@@ -596,13 +582,7 @@ where
         commitment_scheme: &C::CommitmentScheme,
         asset: &Asset,
         parameters: &AssetParameters<C>,
-    ) -> (PublicKey<C>, VoidNumberCommitment<C>, Utxo<C>)
-    where
-        PublicKey<C>: CommitmentInput<C::CommitmentScheme>,
-        VoidNumberGenerator<C>: CommitmentInput<C::CommitmentScheme>,
-        Asset: CommitmentInput<C::CommitmentScheme>,
-        VoidNumberCommitment<C>: CommitmentInput<C::CommitmentScheme>,
-    {
+    ) -> (PublicKey<C>, VoidNumberCommitment<C>, Utxo<C>) {
         let public_key = self.public_key();
         let void_number_commitment =
             parameters.void_number_commitment(commitment_scheme, &public_key);
@@ -621,10 +601,6 @@ where
     where
         S: VerifiedSet<Item = Utxo<C>>,
         Standard: Distribution<AssetParameters<C>>,
-        PublicKey<C>: CommitmentInput<C::CommitmentScheme>,
-        VoidNumberGenerator<C>: CommitmentInput<C::CommitmentScheme>,
-        Asset: CommitmentInput<C::CommitmentScheme>,
-        VoidNumberCommitment<C>: CommitmentInput<C::CommitmentScheme>,
     {
         let parameters = self.parameters();
         let (public_key, void_number_commitment, utxo) =
@@ -654,10 +630,6 @@ where
         G: SecretKeyGenerator<SecretKey = SecretKey<C>>,
         S: VerifiedSet<Item = Utxo<C>>,
         Standard: Distribution<AssetParameters<C>>,
-        PublicKey<C>: CommitmentInput<C::CommitmentScheme>,
-        VoidNumberGenerator<C>: CommitmentInput<C::CommitmentScheme>,
-        Asset: CommitmentInput<C::CommitmentScheme>,
-        VoidNumberCommitment<C>: CommitmentInput<C::CommitmentScheme>,
     {
         Self::generate(source)
             .map_err(SenderError::SecretKeyError)?
@@ -677,8 +649,6 @@ where
     where
         I: IntegratedEncryptionScheme<Plaintext = Asset>,
         Standard: Distribution<AssetParameters<C>>,
-        PublicKey<C>: CommitmentInput<C::CommitmentScheme>,
-        VoidNumberGenerator<C>: CommitmentInput<C::CommitmentScheme>,
     {
         ShieldedIdentity {
             void_number_commitment: self.void_number_commitment(commitment_scheme, &parameters),
@@ -693,8 +663,6 @@ where
     where
         I: IntegratedEncryptionScheme<Plaintext = Asset>,
         Standard: Distribution<AssetParameters<C>>,
-        PublicKey<C>: CommitmentInput<C::CommitmentScheme>,
-        VoidNumberGenerator<C>: CommitmentInput<C::CommitmentScheme>,
     {
         let (parameters, asset_keypair) = self.parameters_and_asset_keypair();
         self.build_shielded_identity(commitment_scheme, parameters, asset_keypair.into_public())
@@ -711,8 +679,6 @@ where
         G: SecretKeyGenerator<SecretKey = SecretKey<C>>,
         I: IntegratedEncryptionScheme<Plaintext = Asset>,
         Standard: Distribution<AssetParameters<C>>,
-        PublicKey<C>: CommitmentInput<C::CommitmentScheme>,
-        VoidNumberGenerator<C>: CommitmentInput<C::CommitmentScheme>,
     {
         Ok(Self::generate(source)?.into_shielded(commitment_scheme))
     }
@@ -751,8 +717,6 @@ where
     where
         I: IntegratedEncryptionScheme<Plaintext = Asset>,
         Standard: Distribution<AssetParameters<C>>,
-        PublicKey<C>: CommitmentInput<C::CommitmentScheme>,
-        VoidNumberGenerator<C>: CommitmentInput<C::CommitmentScheme>,
     {
         let (parameters, asset_keypair) = self.parameters_and_asset_keypair();
         let (asset_public_key, asset_secret_key) = asset_keypair.into();
@@ -774,8 +738,6 @@ where
         G: SecretKeyGenerator<SecretKey = SecretKey<C>>,
         I: IntegratedEncryptionScheme<Plaintext = Asset>,
         Standard: Distribution<AssetParameters<C>>,
-        PublicKey<C>: CommitmentInput<C::CommitmentScheme>,
-        VoidNumberGenerator<C>: CommitmentInput<C::CommitmentScheme>,
     {
         Ok(Self::generate(source)?.into_receiver(commitment_scheme))
     }
@@ -832,8 +794,6 @@ where
     where
         I: IntegratedEncryptionScheme<Plaintext = Asset>,
         Standard: Distribution<AssetParameters<C>>,
-        PublicKey<C>: CommitmentInput<C::CommitmentScheme>,
-        VoidNumberGenerator<C>: CommitmentInput<C::CommitmentScheme>,
     {
         identity.into_shielded(commitment_scheme)
     }
@@ -849,8 +809,6 @@ where
         G: SecretKeyGenerator<SecretKey = SecretKey<C>>,
         I: IntegratedEncryptionScheme<Plaintext = Asset>,
         Standard: Distribution<AssetParameters<C>>,
-        PublicKey<C>: CommitmentInput<C::CommitmentScheme>,
-        VoidNumberGenerator<C>: CommitmentInput<C::CommitmentScheme>,
     {
         Identity::generate_shielded(source, commitment_scheme)
     }
@@ -883,8 +841,6 @@ where
     ) -> Result<Receiver<C, I>, I::Error>
     where
         R: CryptoRng + RngCore + ?Sized,
-        Asset: CommitmentInput<C::CommitmentScheme>,
-        VoidNumberCommitment<C>: CommitmentInput<C::CommitmentScheme>,
     {
         let Self {
             utxo_randomness,
@@ -1022,10 +978,6 @@ where
     where
         S: VerifiedSet<Item = Utxo<C>>,
         Standard: Distribution<AssetParameters<C>>,
-        PublicKey<C>: CommitmentInput<C::CommitmentScheme>,
-        VoidNumberGenerator<C>: CommitmentInput<C::CommitmentScheme>,
-        Asset: CommitmentInput<C::CommitmentScheme>,
-        VoidNumberCommitment<C>: CommitmentInput<C::CommitmentScheme>,
     {
         self.try_open(&encrypted_asset)
             .map_err(SpendError::EncryptionError)?
@@ -1072,10 +1024,6 @@ where
     where
         S: VerifiedSet<Item = Utxo<C>>,
         Standard: Distribution<AssetParameters<C>>,
-        PublicKey<C>: CommitmentInput<C::CommitmentScheme>,
-        VoidNumberGenerator<C>: CommitmentInput<C::CommitmentScheme>,
-        Asset: CommitmentInput<C::CommitmentScheme>,
-        VoidNumberCommitment<C>: CommitmentInput<C::CommitmentScheme>,
     {
         self.identity
             .into_sender(commitment_scheme, self.asset, utxo_set)
@@ -1172,10 +1120,6 @@ where
     ) -> Result<Self, S::ContainmentError>
     where
         Standard: Distribution<AssetParameters<C>>,
-        PublicKey<C>: CommitmentInput<C::CommitmentScheme>,
-        VoidNumberGenerator<C>: CommitmentInput<C::CommitmentScheme>,
-        Asset: CommitmentInput<C::CommitmentScheme>,
-        VoidNumberCommitment<C>: CommitmentInput<C::CommitmentScheme>,
     {
         identity.into_sender(commitment_scheme, asset, utxo_set)
     }
@@ -1192,10 +1136,6 @@ where
     where
         G: SecretKeyGenerator<SecretKey = SecretKey<C>>,
         Standard: Distribution<AssetParameters<C>>,
-        PublicKey<C>: CommitmentInput<C::CommitmentScheme>,
-        VoidNumberGenerator<C>: CommitmentInput<C::CommitmentScheme>,
-        Asset: CommitmentInput<C::CommitmentScheme>,
-        VoidNumberCommitment<C>: CommitmentInput<C::CommitmentScheme>,
     {
         Identity::generate_sender(source, commitment_scheme, asset, utxo_set)
     }
@@ -1263,9 +1203,7 @@ pub struct SenderVar<C, S>
 where
     C: IdentityProofSystemConfiguration,
     S: VerifiedSet<Item = Utxo<C>>,
-    AssetId: Var<C::ProofSystem, PublicOrSecret>,
-    AssetBalance: Var<C::ProofSystem, PublicOrSecret>,
-    ContainmentProof<S>: Var<C::ProofSystem, Secret>,
+    ContainmentProof<S>: Alloc<C::ProofSystem, Mode = Secret>,
 {
     /// Secret Key
     secret_key: SecretKeyVar<C>,
@@ -1297,34 +1235,15 @@ impl<C, S> SenderVar<C, S>
 where
     C: IdentityProofSystemConfiguration,
     S: VerifiedSet<Item = Utxo<C>>,
-    AssetId: Var<C::ProofSystem, PublicOrSecret>,
-    AssetBalance: Var<C::ProofSystem, PublicOrSecret>,
-    ContainmentProof<S>: Var<C::ProofSystem, Secret>,
+    ContainmentProof<S>: Alloc<C::ProofSystem, Mode = Secret>,
 {
-    /// Returns the asset id of this sender.
+    /// Checks if `self` is a well-formed sender and returns its asset.
     #[inline]
-    pub fn asset_id(&self) -> &AssetIdVar<C::ProofSystem> {
-        &self.asset.id
-    }
-
-    /// Returns the asset value of this sender.
-    #[inline]
-    pub fn asset_value(&self) -> &AssetBalanceVar<C::ProofSystem> {
-        &self.asset.value
-    }
-
-    /// Checks if `self` is a well-formed sender.
-    #[inline]
-    pub fn verify_well_formed(
-        &self,
+    pub fn get_well_formed_asset(
+        self,
         ps: &mut C::ProofSystem,
         commitment_scheme: &C::CommitmentSchemeVar,
-    ) where
-        PublicKeyVar<C>: CommitmentInput<C::CommitmentSchemeVar>,
-        VoidNumberGeneratorVar<C>: CommitmentInput<C::CommitmentSchemeVar>,
-        AssetVar<C::ProofSystem>: CommitmentInput<C::CommitmentSchemeVar>,
-        VoidNumberCommitmentVar<C>: CommitmentInput<C::CommitmentSchemeVar>,
-    {
+    ) -> AssetVar<C::ProofSystem> {
         // FIXME: Implement well-formedness check:
         //
         // 1. pk = PRF(sk, 0)                           [public: (),     secret: (pk, sk)]
@@ -1394,57 +1313,62 @@ where
         // ```
         // where public: {root}, secret: {cm, path}.
         // FIXME: ps.assert(&self.utxo_containment_proof.verify(self.utxo));
+
+        self.asset
     }
 }
 
-impl<C, S> IsVariable<C::ProofSystem, Derived> for SenderVar<C, S>
+impl<C, S> Variable<C::ProofSystem> for SenderVar<C, S>
 where
     C: IdentityProofSystemConfiguration,
     S: VerifiedSet<Item = Utxo<C>>,
-    AssetId: Var<C::ProofSystem, PublicOrSecret>,
-    AssetBalance: Var<C::ProofSystem, PublicOrSecret>,
-    ContainmentProof<S>: Var<C::ProofSystem, Secret>,
+    ContainmentProof<S>: Alloc<C::ProofSystem, Mode = Secret>,
 {
+    type Mode = Derived;
     type Type = Sender<C, S>;
 }
 
-impl<C, S> Var<C::ProofSystem, Derived> for Sender<C, S>
+impl<C, S> Alloc<C::ProofSystem> for Sender<C, S>
 where
     C: IdentityProofSystemConfiguration,
     S: VerifiedSet<Item = Utxo<C>>,
-    AssetId: Var<C::ProofSystem, PublicOrSecret>,
-    AssetBalance: Var<C::ProofSystem, PublicOrSecret>,
-    ContainmentProof<S>: Var<C::ProofSystem, Secret>,
+    ContainmentProof<S>: Alloc<C::ProofSystem, Mode = Secret>,
 {
+    type Mode = Derived;
     type Variable = SenderVar<C, S>;
 
     #[inline]
-    fn as_variable(&self, ps: &mut C::ProofSystem, mode: Derived) -> Self::Variable {
-        // FIXME: Have one function where we do variable allocation instead of two.
-        Self::Variable {
-            secret_key: self.secret_key.as_variable(ps, mode.into()),
-            public_key: self.public_key.as_variable(ps, Secret.into()),
-            asset: self.asset.as_variable(ps, mode.into()),
-            parameters: self.parameters.as_variable(ps, mode.into()),
-            void_number: self.void_number.as_variable(ps, Public.into()),
-            void_number_commitment: self.void_number_commitment.as_variable(ps, Public.into()),
-            utxo: self.utxo.as_variable(ps, Secret.into()),
-            utxo_containment_proof: self.utxo_containment_proof.as_variable(ps, mode.into()),
-        }
-    }
-
-    #[inline]
-    fn unknown(ps: &mut C::ProofSystem, mode: Derived) -> Self::Variable {
-        // FIXME: Have one function where we do variable allocation instead of two.
-        Self::Variable {
-            secret_key: SecretKey::<C>::unknown(ps, mode.into()),
-            public_key: PublicKey::<C>::unknown(ps, Secret.into()),
-            asset: Asset::unknown(ps, mode.into()),
-            parameters: AssetParameters::<C>::unknown(ps, mode.into()),
-            void_number: VoidNumber::<C>::unknown(ps, Public.into()),
-            void_number_commitment: VoidNumberCommitment::<C>::unknown(ps, Public.into()),
-            utxo: Utxo::<C>::unknown(ps, Secret.into()),
-            utxo_containment_proof: ContainmentProof::<S>::unknown(ps, mode.into()),
+    fn variable<'t>(
+        ps: &mut C::ProofSystem,
+        allocation: impl Into<Allocation<'t, Self, C::ProofSystem>>,
+    ) -> Self::Variable
+    where
+        Self: 't,
+    {
+        match allocation.into() {
+            Allocation::Known(
+                Sender {
+                    secret_key,
+                    public_key,
+                    asset,
+                    parameters,
+                    void_number,
+                    void_number_commitment,
+                    utxo,
+                    utxo_containment_proof,
+                },
+                mode,
+            ) => Self::Variable {
+                secret_key: ps.allocate((secret_key, mode.into())),
+                public_key: ps.allocate((public_key, Secret.into())),
+                asset: ps.allocate((asset, mode.into())),
+                parameters: ps.allocate((parameters, mode.into())),
+                void_number: ps.allocate((void_number, Public.into())),
+                void_number_commitment: ps.allocate((void_number_commitment, Public.into())),
+                utxo: ps.allocate((utxo, Secret.into())),
+                utxo_containment_proof: ps.allocate((utxo_containment_proof, mode.into())),
+            },
+            _ => todo!(),
         }
     }
 }
@@ -1548,8 +1472,6 @@ where
     ) -> Result<Self, I::Error>
     where
         R: CryptoRng + RngCore + ?Sized,
-        Asset: CommitmentInput<C::CommitmentScheme>,
-        VoidNumberCommitment<C>: CommitmentInput<C::CommitmentScheme>,
     {
         identity.into_receiver(commitment_scheme, asset, rng)
     }
@@ -1611,8 +1533,6 @@ pub struct ReceiverVar<C, I>
 where
     C: IdentityProofSystemConfiguration,
     I: IntegratedEncryptionScheme<Plaintext = Asset>,
-    AssetId: Var<C::ProofSystem, PublicOrSecret>,
-    AssetBalance: Var<C::ProofSystem, PublicOrSecret>,
 {
     /// Asset
     asset: AssetVar<C::ProofSystem>,
@@ -1634,22 +1554,8 @@ impl<C, I> ReceiverVar<C, I>
 where
     C: IdentityProofSystemConfiguration,
     I: IntegratedEncryptionScheme<Plaintext = Asset>,
-    AssetId: Var<C::ProofSystem, PublicOrSecret>,
-    AssetBalance: Var<C::ProofSystem, PublicOrSecret>,
 {
-    /// Returns the asset id of this receiver.
-    #[inline]
-    pub fn asset_id(&self) -> &AssetIdVar<C::ProofSystem> {
-        &self.asset.id
-    }
-
-    /// Returns the asset value of this receiver.
-    #[inline]
-    pub fn asset_value(&self) -> &AssetBalanceVar<C::ProofSystem> {
-        &self.asset.value
-    }
-
-    /// Checks if `self` is a well-formed receiver.
+    /// Checks if `self` is a well-formed receiver and returns its asset.
     ///
     /// This [`ReceiverVar`] is well-formed whenever:
     /// ```text
@@ -1658,14 +1564,11 @@ where
     /// where `k` is `self.void_number_commitment` and `s` is `self.utxo_randomness`. In this
     /// equation we have `{ utxo } : Public`, `{ asset, k, s } : Secret`.
     #[inline]
-    pub fn verify_well_formed(
-        &self,
+    pub fn get_well_formed_asset(
+        self,
         ps: &mut C::ProofSystem,
         commitment_scheme: &C::CommitmentSchemeVar,
-    ) where
-        AssetVar<C::ProofSystem>: CommitmentInput<C::CommitmentSchemeVar>,
-        VoidNumberCommitmentVar<C>: CommitmentInput<C::CommitmentSchemeVar>,
-    {
+    ) -> AssetVar<C::ProofSystem> {
         ps.assert_eq(
             &self.utxo,
             &generate_utxo(
@@ -1675,49 +1578,54 @@ where
                 &self.utxo_randomness,
             ),
         );
+        self.asset
     }
 }
 
-impl<C, I> IsVariable<C::ProofSystem, Derived> for ReceiverVar<C, I>
+impl<C, I> Variable<C::ProofSystem> for ReceiverVar<C, I>
 where
     C: IdentityProofSystemConfiguration,
     I: IntegratedEncryptionScheme<Plaintext = Asset>,
-    AssetId: Var<C::ProofSystem, PublicOrSecret>,
-    AssetBalance: Var<C::ProofSystem, PublicOrSecret>,
 {
+    type Mode = Derived;
     type Type = Receiver<C, I>;
 }
 
-impl<C, I> Var<C::ProofSystem, Derived> for Receiver<C, I>
+impl<C, I> Alloc<C::ProofSystem> for Receiver<C, I>
 where
     C: IdentityProofSystemConfiguration,
     I: IntegratedEncryptionScheme<Plaintext = Asset>,
-    AssetId: Var<C::ProofSystem, PublicOrSecret>,
-    AssetBalance: Var<C::ProofSystem, PublicOrSecret>,
 {
+    type Mode = Derived;
+
     type Variable = ReceiverVar<C, I>;
 
     #[inline]
-    fn as_variable(&self, ps: &mut C::ProofSystem, mode: Derived) -> Self::Variable {
-        // FIXME: Have one function where we do variable allocation instead of two.
-        Self::Variable {
-            asset: self.asset.as_variable(ps, mode.into()),
-            utxo_randomness: self.utxo_randomness.as_variable(ps, mode.into()),
-            void_number_commitment: self.void_number_commitment.as_variable(ps, Secret.into()),
-            utxo: self.utxo.as_variable(ps, Public.into()),
-            __: PhantomData,
-        }
-    }
-
-    #[inline]
-    fn unknown(ps: &mut C::ProofSystem, mode: Derived) -> Self::Variable {
-        // FIXME: Have one function where we do variable allocation instead of two.
-        Self::Variable {
-            asset: Asset::unknown(ps, mode.into()),
-            utxo_randomness: UtxoRandomness::<C>::unknown(ps, mode.into()),
-            void_number_commitment: VoidNumberCommitment::<C>::unknown(ps, Secret.into()),
-            utxo: Utxo::<C>::unknown(ps, Public.into()),
-            __: PhantomData,
+    fn variable<'t>(
+        ps: &mut C::ProofSystem,
+        allocation: impl Into<Allocation<'t, Self, C::ProofSystem>>,
+    ) -> Self::Variable
+    where
+        Self: 't,
+    {
+        match allocation.into() {
+            Allocation::Known(
+                Receiver {
+                    asset,
+                    utxo_randomness,
+                    void_number_commitment,
+                    utxo,
+                    ..
+                },
+                mode,
+            ) => Self::Variable {
+                asset: ps.allocate((asset, mode.into())),
+                utxo_randomness: ps.allocate((utxo_randomness, mode.into())),
+                void_number_commitment: ps.allocate((void_number_commitment, Secret.into())),
+                utxo: ps.allocate((utxo, Public.into())),
+                __: PhantomData,
+            },
+            _ => todo!(),
         }
     }
 }

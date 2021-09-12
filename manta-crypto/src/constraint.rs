@@ -17,157 +17,335 @@
 //! Constraint Proof Systems
 
 // TODO: Add derive trait to implement `Alloc` for structs (and enums?).
+// TODO: Add more convenience functions for allocating unknown variables.
 // TODO: How to do verification systems? Should it be a separate trait or part of `ProofSystem`?
 
-use core::convert::TryFrom;
+use core::convert::{Infallible, TryFrom};
 
+/*
 /// Boolean Variable Type
 pub type Bool<P> = <P as BooleanSystem>::Bool;
+*/
 
 /// Variable Type
-pub type Variable<T, P, K = (), U = K> = <T as Var<P, K, U>>::Variable;
+pub type Var<T, P> = <P as HasVariable<T>>::Variable;
 
+/// Allocation Mode Type
+pub type Mode<T, P> = <Var<T, P> as Variable<P>>::Mode;
+
+/// Known Allocation Mode Type
+pub type KnownMode<T, P> = <Mode<T, P> as AllocationMode>::Known;
+
+/// Known Allocation Mode Type
+pub type UnknownMode<T, P> = <Mode<T, P> as AllocationMode>::Unknown;
+
+/// Boolean Variable Type
+pub type Bool<P> = Var<bool, P>;
+
+/* TODO:
 /// Character Variable Type
-pub type Char<P, K = (), U = K> = Variable<char, P, K, U>;
+pub type Char<P, K = (), U = K> = Var<char, P, K, U>;
 
 /// Signed 8-bit Integer Variable Type
-pub type I8<P, K = (), U = K> = Variable<i8, P, K, U>;
+pub type I8<P, K = (), U = K> = Var<i8, P, K, U>;
 
 /// Signed 16-bit Integer Variable Type
-pub type I16<P, K = (), U = K> = Variable<i16, P, K, U>;
+pub type I16<P, K = (), U = K> = Var<i16, P, K, U>;
 
 /// Signed 32-bit Integer Variable Type
-pub type I32<P, K = (), U = K> = Variable<i32, P, K, U>;
+pub type I32<P, K = (), U = K> = Var<i32, P, K, U>;
 
 /// Signed 64-bit Integer Variable Type
-pub type I64<P, K = (), U = K> = Variable<i64, P, K, U>;
+pub type I64<P, K = (), U = K> = Var<i64, P, K, U>;
 
 /// Signed 128-bit Integer Variable Type
-pub type I128<P, K = (), U = K> = Variable<i128, P, K, U>;
+pub type I128<P, K = (), U = K> = Var<i128, P, K, U>;
 
 /// Unsigned 8-bit Integer Variable Type
-pub type U8<P, K = (), U = K> = Variable<u8, P, K, U>;
+pub type U8<P, K = (), U = K> = Var<u8, P, K, U>;
 
 /// Unsigned 16-bit Integer Variable Type
-pub type U16<P, K = (), U = K> = Variable<u16, P, K, U>;
+pub type U16<P, K = (), U = K> = Var<u16, P, K, U>;
 
 /// Unsigned 32-bit Integer Variable Type
-pub type U32<P, K = (), U = K> = Variable<u32, P, K, U>;
+pub type U32<P, K = (), U = K> = Var<u32, P, K, U>;
 
 /// Unsigned 64-bit Integer Variable Type
-pub type U64<P, K = (), U = K> = Variable<u64, P, K, U>;
+pub type U64<P, K = (), U = K> = Var<u64, P, K, U>;
 
 /// Unsigned 128-bit Integer Variable Type
-pub type U128<P, K = (), U = K> = Variable<u128, P, K, U>;
+pub type U128<P, K = (), U = K> = Var<u128, P, K, U>;
+*/
+
+/// Allocation Mode
+pub trait AllocationMode {
+    /// Known Allocation Mode
+    type Known;
+
+    /// Unknown Allocation Mode
+    type Unknown;
+
+    /* TODO: Do we want this?
+    /// Upgrades the unknown allocation mode to the known allocation mode.
+    #[inline]
+    fn upgrade_mode(mode: Self::Unknown) -> Self::Known;
+
+    /// Upgrades the value from an unknown to known allocation.
+    #[inline]
+    fn upgrade<P, T>(value: &T, mode: Self::Unknown) -> Allocation<T, P>
+    where
+        T: Alloc<P, Mode = Self>,
+    {
+        Allocation::Known(value, Self::upgrade_mode(mode))
+    }
+    */
+}
 
 /// Allocation Entry
-pub enum Allocation<T, Known = (), Unknown = Known> {
+pub enum Allocation<'t, T, P>
+where
+    T: ?Sized,
+    P: HasVariable<T> + ?Sized,
+{
     /// Known Value
-    Value(T, Known),
-
+    Known(
+        /// Allocation Value
+        &'t T,
+        /// Allocation Mode
+        KnownMode<T, P>,
+    ),
     /// Unknown Value
-    Unknown(Unknown),
+    Unknown(
+        /// Allocation Mode
+        UnknownMode<T, P>,
+    ),
+}
+
+impl<'t, T, P> Allocation<'t, T, P>
+where
+    T: ?Sized,
+    P: HasVariable<T> + ?Sized,
+{
+    /// Returns `true` if `self` represents a known variable.
+    #[inline]
+    pub fn is_known(&self) -> bool {
+        matches!(self, Self::Known(..))
+    }
+
+    /// Returns `true` if `self` represents an unknown value.
+    #[inline]
+    pub fn is_unknown(&self) -> bool {
+        matches!(self, Self::Unknown(..))
+    }
+
+    /// Converts `self` into a possible known value.
+    #[inline]
+    pub fn known(self) -> Option<(&'t T, KnownMode<T, P>)> {
+        match self {
+            Self::Known(value, mode) => Some((value, mode)),
+            _ => None,
+        }
+    }
+
+    /// Converts `self` into a possibly unknown value.
+    #[inline]
+    pub fn unknown(self) -> Option<UnknownMode<T, P>> {
+        match self {
+            Self::Unknown(mode) => Some(mode),
+            _ => None,
+        }
+    }
+
+    /// Maps the underlying allocation value if it is known.
+    #[inline]
+    pub fn map<'u, U, Q, F>(self, f: F) -> Allocation<'u, U, Q>
+    where
+        U: Alloc<Q, Mode = Mode<T, P>>,
+        Q: ?Sized,
+        F: FnOnce(&'t T) -> &'u U,
+    {
+        match self {
+            Self::Known(value, mode) => Allocation::Known(f(value), mode),
+            Self::Unknown(mode) => Allocation::Unknown(mode),
+        }
+    }
+
+    /// Allocates a variable into `ps` using `self` as the allocation.
+    #[inline]
+    pub fn into_variable(self, ps: &mut P) -> Var<T, P> {
+        ps.allocate(self)
+    }
+}
+
+impl<'t, T, P> From<(&'t T, KnownMode<T, P>)> for Allocation<'t, T, P>
+where
+    T: ?Sized,
+    P: HasVariable<T> + ?Sized,
+{
+    #[inline]
+    fn from((value, mode): (&'t T, KnownMode<T, P>)) -> Self {
+        Self::Known(value, mode)
+    }
+}
+
+/// Variable Allocation Trait
+pub trait Alloc<P>
+where
+    P: ?Sized,
+{
+    /// Allocation Mode
+    type Mode: AllocationMode;
+
+    /// Variable Object Type
+    type Variable: Variable<P, Mode = Self::Mode, Type = Self>;
+
+    /// Allocates a new variable into `ps` with the given `allocation`.
+    fn variable<'t>(ps: &mut P, allocation: impl Into<Allocation<'t, Self, P>>) -> Self::Variable
+    where
+        Self: 't;
 }
 
 /// Variable Reflection Trait
-pub trait IsVariable<P, Known = (), Unknown = Known>: Sized
+pub trait Variable<P>: Sized
 where
     P: ?Sized,
 {
+    /// Allocation Mode
+    type Mode: AllocationMode;
+
     /// Origin Type of the Variable
-    type Type: Var<P, Known, Unknown, Variable = Self>;
+    type Type: Alloc<P, Mode = Self::Mode, Variable = Self>;
 
-    /// Returns a new variable with `value`.
+    /// Allocates a new variable into `ps` with the given `allocation`.
     #[inline]
-    fn new_variable(value: &Self::Type, ps: &mut P, mode: Known) -> Self {
-        value.as_variable(ps, mode)
-    }
-
-    /// Returns a new variable with an unknown value.
-    #[inline]
-    fn new_unknown(ps: &mut P, mode: Unknown) -> Self {
-        Self::Type::unknown(ps, mode)
+    fn new<'t>(ps: &mut P, allocation: impl Into<Allocation<'t, Self::Type, P>>) -> Self
+    where
+        Self::Type: 't,
+    {
+        Self::Type::variable(ps, allocation)
     }
 }
 
-/// Variable Trait
-pub trait Var<P, Known = (), Unknown = Known>
+/// Variable Reflection Trait
+pub trait HasVariable<T>
+where
+    T: ?Sized,
+{
+    /// Allocation Mode
+    type Mode: AllocationMode;
+
+    /// Variable Object Type
+    type Variable: Variable<Self, Mode = Self::Mode, Type = T>;
+
+    /// Allocates a new variable into `self` with the given `allocation`.
+    #[inline]
+    fn allocate<'t>(&mut self, allocation: impl Into<Allocation<'t, T, Self>>) -> Self::Variable
+    where
+        T: 't,
+    {
+        Self::Variable::new(self, allocation)
+    }
+
+    /// Allocates a new unknown variable into `self` with the given `mode`.
+    #[inline]
+    fn allocate_unknown(
+        &mut self,
+        mode: <Self::Mode as AllocationMode>::Unknown,
+    ) -> Self::Variable {
+        self.allocate(Allocation::Unknown(mode))
+    }
+}
+
+impl<P, T> HasVariable<T> for P
 where
     P: ?Sized,
+    T: Alloc<P> + ?Sized,
 {
-    /// Variable Object
-    type Variable: IsVariable<P, Known, Unknown, Type = Self>;
-
-    /// Returns a new variable with value `self`.
-    fn as_variable(&self, ps: &mut P, mode: Known) -> Self::Variable;
-
-    /// Returns a new variable with an unknown value.
-    fn unknown(ps: &mut P, mode: Unknown) -> Self::Variable;
+    type Mode = T::Mode;
+    type Variable = T::Variable;
 }
+
+/* TODO[remove]:
+impl<P, T> Alloc<P> for T
+where
+    P: ?Sized + HasVariable<T>,
+{
+    type Mode = <P as HasVariable<T>>::Mode;
+
+    type Variable = <P as HasVariable<T>>::Variable;
+
+    #[inline]
+    fn allocate<'t>(ps: &mut P, allocation: impl Into<Allocation<'t, Self, P>>) -> Self::Variable
+    where
+        Self: 't,
+    {
+        // TODO: Self::Variable::allocate(ps, allocation)
+        todo!()
+    }
+}
+*/
 
 /// Boolean Constraint System
-pub trait BooleanSystem {
+pub trait BooleanSystem: HasVariable<bool> {
+    /* TODO[remove]:
     /// Boolean Variable Type
-    type Bool: IsVariable<Self, Self::KnownBool, Self::UnknownBool, Type = bool>;
+    type Bool: Variable<Self, Type = bool>;
 
-    /// Known Boolean Allocation Mode Type
-    type KnownBool;
+    /// Allocates a new boolean into `self` with the given `allocation`.
+    fn allocate_bool<'t>(
+        &mut self,
+        allocation: impl Into<Allocation<'t, bool, Self>>,
+    ) -> Self::Bool;
 
-    /// Unknown Boolean Allocation Mode Type
-    type UnknownBool;
-
-    /// Allocates a known boolean with value `b` with the given `mode`.
-    fn known_bool(&mut self, b: bool, mode: Self::KnownBool) -> Self::Bool;
-
-    /// Allocates an unknown boolean with the given `mode`.
-    fn unknown_bool(&mut self, mode: Self::UnknownBool) -> Self::Bool;
-
-    /// Allocates a new variable with the given `value`.
+    /// Allocates a new variable into `self` with the given `allocation`.
     #[inline]
-    fn allocate_variable<T, K, U>(&mut self, value: T, mode: K) -> T::Variable
+    fn allocate<'t, T>(&mut self, allocation: impl Into<Allocation<'t, T, Self>>) -> T::Variable
     where
-        T: Var<Self, K, U>,
+        Self: HasVariable<T>,
+        T: 't,
     {
-        value.as_variable(self, mode)
+        T::allocate(self, allocation)
     }
-
-    /// Allocates a new variable with an unknown value.
-    #[inline]
-    fn allocate_unknown<T, K, U>(&mut self, mode: U) -> T::Variable
-    where
-        T: Var<Self, K, U>,
-    {
-        T::unknown(self, mode)
-    }
+    */
 
     /// Asserts that `b` is `true`.
-    fn assert(&mut self, b: Self::Bool);
+    fn assert(&mut self, b: Bool<Self>);
 
     /// Asserts that all the booleans in `iter` are `true`.
     #[inline]
     fn assert_all<I>(&mut self, iter: I)
     where
-        I: IntoIterator<Item = Self::Bool>,
+        I: IntoIterator<Item = Bool<Self>>,
     {
         iter.into_iter().for_each(move |b| self.assert(b))
     }
 
+    /// Generates a boolean that represents the fact that `lhs` and `rhs` may be equal.
+    #[inline]
+    fn eq<V>(&mut self, lhs: &V, rhs: &V) -> Bool<Self>
+    where
+        V: Variable<Self>,
+        V::Type: Equal<Self>,
+    {
+        V::Type::eq(self, lhs, rhs)
+    }
+
     /// Asserts that `lhs` and `rhs` are equal.
     #[inline]
-    fn assert_eq<V, K, U>(&mut self, lhs: &V, rhs: &V)
+    fn assert_eq<V>(&mut self, lhs: &V, rhs: &V)
     where
-        V: IsVariable<Self, K, U>,
-        V::Type: Equal<Self, K, U>,
+        V: Variable<Self>,
+        V::Type: Equal<Self>,
     {
         V::Type::assert_eq(self, lhs, rhs)
     }
 
     /// Asserts that all the elements in `iter` are equal to some `base` element.
     #[inline]
-    fn assert_all_eq_to_base<'t, V, K, U, I>(&mut self, base: &'t V, iter: I)
+    fn assert_all_eq_to_base<'t, V, I>(&mut self, base: &'t V, iter: I)
     where
-        V: 't + IsVariable<Self, K, U>,
-        V::Type: Equal<Self, K, U>,
+        V: 't + Variable<Self>,
+        V::Type: Equal<Self>,
         I: IntoIterator<Item = &'t V>,
     {
         V::Type::assert_all_eq_to_base(self, base, iter)
@@ -175,40 +353,39 @@ pub trait BooleanSystem {
 
     /// Asserts that all the elements in `iter` are equal.
     #[inline]
-    fn assert_all_eq<'t, V, K, U, I>(&mut self, iter: I)
+    fn assert_all_eq<'t, V, I>(&mut self, iter: I)
     where
-        V: 't + IsVariable<Self, K, U>,
-        V::Type: Equal<Self, K, U>,
+        V: 't + Variable<Self>,
+        V::Type: Equal<Self>,
         I: IntoIterator<Item = &'t V>,
     {
         V::Type::assert_all_eq(self, iter)
     }
 }
 
-impl<P> Var<P, P::KnownBool, P::UnknownBool> for bool
+/* TODO[remove]:
+impl<P> Alloc<P> for bool
 where
     P: BooleanSystem + ?Sized,
 {
+    type Mode = <P::Bool as Variable<P>>::Mode;
+
     type Variable = P::Bool;
 
     #[inline]
-    fn as_variable(&self, ps: &mut P, mode: P::KnownBool) -> Self::Variable {
-        ps.known_bool(*self, mode)
-    }
-
-    #[inline]
-    fn unknown(ps: &mut P, mode: P::UnknownBool) -> Self::Variable {
-        ps.unknown_bool(mode)
+    fn allocate<'t>(ps: &mut P, allocation: impl Into<Allocation<'t, bool, P>>) -> Self::Variable {
+        ps.allocate_bool(allocation)
     }
 }
+*/
 
 /// Equality Trait
-pub trait Equal<P, Known = (), Unknown = Known>: Var<P, Known, Unknown>
+pub trait Equal<P>: Alloc<P>
 where
     P: BooleanSystem + ?Sized,
 {
     /// Generates a boolean that represents the fact that `lhs` and `rhs` may be equal.
-    fn eq(ps: &mut P, lhs: &Self::Variable, rhs: &Self::Variable) -> P::Bool;
+    fn eq(ps: &mut P, lhs: &Self::Variable, rhs: &Self::Variable) -> Bool<P>;
 
     /// Asserts that `lhs` and `rhs` are equal.
     #[inline]
@@ -267,9 +444,33 @@ where
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Derived;
 
+impl AllocationMode for Derived {
+    type Known = Derived;
+    type Unknown = Derived;
+}
+
+/// Constant Allocation Mode
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct Constant<T = Public>(T)
+where
+    T: AllocationMode;
+
+impl<T> AllocationMode for Constant<T>
+where
+    T: AllocationMode,
+{
+    type Known = T::Known;
+    type Unknown = Infallible;
+}
+
 /// Always Public Allocation Mode
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Public;
+
+impl AllocationMode for Public {
+    type Known = Public;
+    type Unknown = Public;
+}
 
 impl From<Derived> for Public {
     #[inline]
@@ -282,6 +483,11 @@ impl From<Derived> for Public {
 /// Always Secret Allocation Mode
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Secret;
+
+impl AllocationMode for Secret {
+    type Known = Secret;
+    type Unknown = Secret;
+}
 
 impl From<Derived> for Secret {
     #[inline]
@@ -333,6 +539,11 @@ impl PublicOrSecret {
     }
 }
 
+impl AllocationMode for PublicOrSecret {
+    type Known = PublicOrSecret;
+    type Unknown = PublicOrSecret;
+}
+
 impl Default for PublicOrSecret {
     #[inline]
     fn default() -> Self {
@@ -377,5 +588,27 @@ impl TryFrom<PublicOrSecret> for Secret {
             PublicOrSecret::Secret => Ok(Self),
             PublicOrSecret::Public => Err(Public),
         }
+    }
+}
+
+impl<T> From<Constant<T>> for PublicOrSecret
+where
+    T: AllocationMode + Into<PublicOrSecret>,
+{
+    #[inline]
+    fn from(c: Constant<T>) -> Self {
+        c.0.into()
+    }
+}
+
+impl<T> TryFrom<PublicOrSecret> for Constant<T>
+where
+    T: AllocationMode + TryFrom<PublicOrSecret>,
+{
+    type Error = T::Error;
+
+    #[inline]
+    fn try_from(pos: PublicOrSecret) -> Result<Self, Self::Error> {
+        T::try_from(pos).map(Self)
     }
 }

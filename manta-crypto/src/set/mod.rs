@@ -16,6 +16,8 @@
 
 //! Sets and Verified Sets
 
+pub mod constraint;
+
 pub(crate) mod prelude {
     #[doc(inline)]
     pub use super::{Set, VerifiedSet};

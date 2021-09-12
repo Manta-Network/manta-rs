@@ -17,26 +17,24 @@
 //! Transfer Protocols
 
 use crate::{
-    asset::{
-        sample_asset_balances, Asset, AssetBalance, AssetBalanceVar, AssetBalances, AssetId,
-        AssetVar,
-    },
+    asset::{sample_asset_balances, Asset, AssetBalance, AssetBalanceVar, AssetBalances, AssetId},
     identity::{
-        IdentityProofSystemConfiguration, PublicKeyVar, Receiver, ReceiverPost, ReceiverVar,
-        Sender, SenderPost, SenderVar, Utxo, VoidNumber, VoidNumberCommitmentVar,
-        VoidNumberGeneratorVar,
+        IdentityProofSystemConfiguration, Receiver, ReceiverPost, ReceiverVar, Sender, SenderPost,
+        SenderVar, Utxo, VoidNumber,
     },
     ledger::{Ledger, PostError},
 };
 use alloc::vec::Vec;
 use core::ops::AddAssign;
 use manta_crypto::{
-    commitment::Input as CommitmentInput,
-    constraint::{BooleanSystem, Derived, Equal, ProofSystem, Public, PublicOrSecret, Secret, Var},
+    constraint::{
+        Alloc, BooleanSystem, Derived, Equal, HasVariable, ProofSystem, Public, PublicOrSecret,
+        Secret,
+    },
     ies::{EncryptedMessage, IntegratedEncryptionScheme},
     set::{ContainmentProof, VerifiedSet},
 };
-use manta_util::array_map;
+use manta_util::{array_map, mixed_chain, Either};
 use rand::{
     distributions::{Distribution, Standard},
     Rng, RngCore,
@@ -195,119 +193,95 @@ where
     }
     */
 
-    /* TODO:
     /// Builds constraints for secret transfer validity proof.
     #[inline]
-    fn verify(
+    fn verify<S, R>(
         ps: &mut T::ProofSystem,
         commitment_scheme: &T::CommitmentScheme,
-        senders: Vec<SecretSenderVar<T>>,
-        receivers: Vec<SecretReceiverVar<T>>,
+        senders: S,
+        receivers: R,
     ) where
-        AssetId: Equal<T::ProofSystem, PublicOrSecret>,
-        AssetBalance: Equal<T::ProofSystem, PublicOrSecret>,
+        S: IntoIterator<Item = SecretSenderVar<T>>,
+        R: IntoIterator<Item = SecretReceiverVar<T>>,
+        AssetId: Equal<T::ProofSystem, Mode = PublicOrSecret>,
+        AssetBalance: Equal<T::ProofSystem, Mode = PublicOrSecret>,
         for<'i> AssetBalanceVar<T::ProofSystem>: AddAssign<&'i AssetBalanceVar<T::ProofSystem>>,
-        PublicKeyVar<T>: CommitmentInput<T::CommitmentSchemeVar>,
-        VoidNumberGeneratorVar<T>: CommitmentInput<T::CommitmentSchemeVar>,
-        AssetVar<T::ProofSystem>: CommitmentInput<T::CommitmentSchemeVar>,
-        VoidNumberCommitmentVar<T>: CommitmentInput<T::CommitmentSchemeVar>,
-        ContainmentProof<T::UtxoSet>: Var<T::ProofSystem, Secret>,
+        ContainmentProof<T::UtxoSet>: Alloc<T::ProofSystem, Mode = Secret>,
     {
-        // TODO: find a way to do this without having to build intermediate `Vec<_>`
+        let commitment_scheme = ps.allocate((commitment_scheme, Public));
 
-        let commitment_scheme = commitment_scheme.as_variable(ps, Public);
+        let mut sender_sum = ps.allocate((&AssetBalance(0), Secret.into()));
+        let mut receiver_sum = ps.allocate((&AssetBalance(0), Secret.into()));
 
-        let mut sender_value_total = AssetBalance(0).as_variable(ps, PublicOrSecret::Secret);
-        let mut receiver_value_total = AssetBalance(0).as_variable(ps, PublicOrSecret::Secret);
+        #[allow(clippy::needless_collect)] // NOTE: `ps` is being mutated, we need to collect.
+        let asset_ids = mixed_chain(senders, receivers, |c| match c {
+            Either::Left(sender) => {
+                let asset = sender.get_well_formed_asset(ps, &commitment_scheme);
+                sender_sum += &asset.value;
+                asset.id
+            }
+            Either::Right(receiver) => {
+                let asset = receiver.get_well_formed_asset(ps, &commitment_scheme);
+                receiver_sum += &asset.value;
+                asset.id
+            }
+        })
+        .collect::<Vec<_>>();
 
-        // 1. Check that all senders are well-formed and sum their asset values..
-        /*
-        for sender in &senders {
-            sender.verify_well_formed(ps, &commitment_scheme);
-            sender_value_total += sender.asset_value();
-        }
-        */
-
-        let asset_ids = senders
-            .iter()
-            .map(|sender| {
-                sender.verify_well_formed(ps, &commitment_scheme);
-                sender_value_total += sender.asset_value();
-                sender.asset_id()
-            })
-            .chain(receivers.iter().map(|receiver| {
-                receiver.verify_well_formed(ps, &commitment_scheme);
-                receiver_value_total += receiver.asset_value();
-                receiver.asset_id()
-            }));
-
-        // 2. Check that all receivers are well-formed and sum their asset values.
-        /*
-        for receiver in &receivers {
-            receiver.verify_well_formed(ps, &commitment_scheme);
-            receiver_value_total += receiver.asset_value();
-        }
-        */
-
-        // 3. Check that there is a unique asset id for all the assets.
-        ps.assert_all_eq(asset_ids);
-
-        // 4. Check that the transaction is balanced.
-        ps.assert_eq(&sender_value_total, &receiver_value_total);
+        ps.assert_all_eq(asset_ids.iter());
+        ps.assert_eq(&sender_sum, &receiver_sum);
     }
-    */
 
     #[inline]
-    fn generate_validity_proof(&self) -> Option<<T::ProofSystem as ProofSystem>::Proof>
+    fn generate_validity_proof(
+        &self,
+        commitment_scheme: &T::CommitmentScheme,
+    ) -> Option<<T::ProofSystem as ProofSystem>::Proof>
     where
-        AssetId: Equal<T::ProofSystem, PublicOrSecret>,
-        AssetBalance: Equal<T::ProofSystem, PublicOrSecret>,
-        ContainmentProof<T::UtxoSet>: Var<T::ProofSystem, Secret>,
+        AssetId: Equal<T::ProofSystem, Mode = PublicOrSecret>,
+        AssetBalance: Equal<T::ProofSystem, Mode = PublicOrSecret>,
+        for<'i> AssetBalanceVar<T::ProofSystem>: AddAssign<&'i AssetBalanceVar<T::ProofSystem>>,
+        ContainmentProof<T::UtxoSet>: Alloc<T::ProofSystem, Mode = Secret>,
     {
-        // FIXME: Build secret transfer zero knowledge proof:
+        let mut ps = <T::ProofSystem as Default>::default();
 
-        let mut proof_system = <T::ProofSystem as Default>::default();
-
-        // When we know the variables:
+        #[allow(clippy::needless_collect)] // NOTE: `ps` is being mutated, we need to collect.
         let senders = self
             .senders
             .iter()
-            .map(|s| s.as_variable(&mut proof_system, Derived))
+            .map(|sender| ps.allocate((sender, Derived)))
             .collect::<Vec<_>>();
+
+        #[allow(clippy::needless_collect)] // NOTE: `ps` is being mutated, we need to collect.
         let receivers = self
             .receivers
             .iter()
-            .map(|r| r.as_variable(&mut proof_system, Derived))
+            .map(|receiver| ps.allocate((receiver, Derived)))
             .collect::<Vec<_>>();
 
-        /* TODO:
-        // When we don't:
-        let senders = self
-            .senders
-            .iter()
-            .map(|_| SenderVariable::unknown(&mut proof_system))
-            .collect::<Vec<_>>();
-        let receivers = self
-            .receivers
-            .iter()
-            .map(|_| ReceiverVariable::unknown(&mut proof_system))
-            .collect::<Vec<_>>();
+        Self::verify(
+            &mut ps,
+            commitment_scheme,
+            senders.into_iter(),
+            receivers.into_iter(),
+        );
 
-        Self::build_proof_content(&mut proof_system, senders, receivers);
-        */
-
-        proof_system.finish().ok()
+        ps.finish().ok()
     }
 
     /// Converts `self` into its ledger post.
     #[inline]
-    pub fn into_post(self) -> Option<SecretTransferPost<T, SENDERS, RECEIVERS>>
+    pub fn into_post(
+        self,
+        commitment_scheme: &T::CommitmentScheme,
+    ) -> Option<SecretTransferPost<T, SENDERS, RECEIVERS>>
     where
-        AssetId: Equal<T::ProofSystem, PublicOrSecret>,
-        AssetBalance: Equal<T::ProofSystem, PublicOrSecret>,
-        ContainmentProof<T::UtxoSet>: Var<T::ProofSystem, Secret>,
+        AssetId: Equal<T::ProofSystem, Mode = PublicOrSecret>,
+        AssetBalance: Equal<T::ProofSystem, Mode = PublicOrSecret>,
+        for<'i> AssetBalanceVar<T::ProofSystem>: AddAssign<&'i AssetBalanceVar<T::ProofSystem>>,
+        ContainmentProof<T::UtxoSet>: Alloc<T::ProofSystem, Mode = Secret>,
     {
-        let validity_proof = self.generate_validity_proof()?;
+        let validity_proof = self.generate_validity_proof(commitment_scheme)?;
         Some(SecretTransferPost {
             sender_posts: array_map(self.senders, Sender::into_post),
             receiver_posts: array_map(self.receivers, Receiver::into_post),
@@ -365,20 +339,6 @@ where
     }
 }
 
-impl<T, const SENDERS: usize, const RECEIVERS: usize> From<SecretTransfer<T, SENDERS, RECEIVERS>>
-    for Option<SecretTransferPost<T, SENDERS, RECEIVERS>>
-where
-    T: SecretTransferConfiguration,
-    AssetId: Equal<T::ProofSystem, PublicOrSecret>,
-    AssetBalance: Equal<T::ProofSystem, PublicOrSecret>,
-    ContainmentProof<T::UtxoSet>: Var<T::ProofSystem, Secret>,
-{
-    #[inline]
-    fn from(secret_transfer: SecretTransfer<T, SENDERS, RECEIVERS>) -> Self {
-        secret_transfer.into_post()
-    }
-}
-
 /// Transfer Protocol
 pub struct Transfer<
     T,
@@ -400,9 +360,6 @@ impl<T, const SOURCES: usize, const SINKS: usize, const SENDERS: usize, const RE
     Transfer<T, SOURCES, SINKS, SENDERS, RECEIVERS>
 where
     T: SecretTransferConfiguration,
-    AssetId: Equal<T::ProofSystem, PublicOrSecret>,
-    AssetBalance: Equal<T::ProofSystem, PublicOrSecret>,
-    ContainmentProof<T::UtxoSet>: Var<T::ProofSystem, Secret>,
 {
     /// Builds a new [`Transfer`] from a [`PublicTransfer`] and a [`SecretTransfer`].
     #[inline]
@@ -415,10 +372,19 @@ where
 
     /// Converts `self` into its ledger post.
     #[inline]
-    pub fn into_post(self) -> Option<TransferPost<T, SOURCES, SINKS, SENDERS, RECEIVERS>> {
+    pub fn into_post(
+        self,
+        commitment_scheme: &T::CommitmentScheme,
+    ) -> Option<TransferPost<T, SOURCES, SINKS, SENDERS, RECEIVERS>>
+    where
+        AssetId: Equal<T::ProofSystem, Mode = PublicOrSecret>,
+        AssetBalance: Equal<T::ProofSystem, Mode = PublicOrSecret>,
+        for<'i> AssetBalanceVar<T::ProofSystem>: AddAssign<&'i AssetBalanceVar<T::ProofSystem>>,
+        ContainmentProof<T::UtxoSet>: Alloc<T::ProofSystem, Mode = Secret>,
+    {
         Some(TransferPost {
             public_transfer_post: self.public,
-            secret_transfer_post: self.secret.into_post()?,
+            secret_transfer_post: self.secret.into_post(commitment_scheme)?,
         })
     }
 }

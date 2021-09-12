@@ -31,7 +31,9 @@ use core::{
 use derive_more::{
     Add, AddAssign, Display, Div, DivAssign, From, Mul, MulAssign, Product, Sub, SubAssign, Sum,
 };
-use manta_crypto::constraint::{IsVariable, PublicOrSecret, Secret, Var, Variable};
+use manta_crypto::constraint::{
+    Alloc, Allocation, HasVariable, PublicOrSecret, Secret, Var, Variable,
+};
 use manta_util::{
     array_map, fallible_array_map, into_array_unchecked, ByteAccumulator, ConcatBytes,
 };
@@ -334,16 +336,16 @@ impl Distribution<Asset> for Standard {
 }
 
 /// Asset Id Variable
-pub type AssetIdVar<P> = Variable<AssetId, P, PublicOrSecret>;
+pub type AssetIdVar<P> = Var<AssetId, P>;
 
 /// Asset Balance Variable
-pub type AssetBalanceVar<P> = Variable<AssetBalance, P, PublicOrSecret>;
+pub type AssetBalanceVar<P> = Var<AssetBalance, P>;
 
 /// Asset Variable
 pub struct AssetVar<P>
 where
-    AssetId: Var<P, PublicOrSecret>,
-    AssetBalance: Var<P, PublicOrSecret>,
+    P: HasVariable<AssetId, Mode = PublicOrSecret>
+        + HasVariable<AssetBalance, Mode = PublicOrSecret>,
 {
     /// Asset Id
     pub id: AssetIdVar<P>,
@@ -352,34 +354,38 @@ where
     pub value: AssetBalanceVar<P>,
 }
 
-impl<P> IsVariable<P, Secret> for AssetVar<P>
+impl<P> Variable<P> for AssetVar<P>
 where
-    AssetId: Var<P, PublicOrSecret>,
-    AssetBalance: Var<P, PublicOrSecret>,
+    P: HasVariable<AssetId, Mode = PublicOrSecret>
+        + HasVariable<AssetBalance, Mode = PublicOrSecret>,
 {
+    type Mode = Secret;
     type Type = Asset;
 }
 
-impl<P> Var<P, Secret> for Asset
+impl<P> Alloc<P> for Asset
 where
-    AssetId: Var<P, PublicOrSecret>,
-    AssetBalance: Var<P, PublicOrSecret>,
+    P: HasVariable<AssetId, Mode = PublicOrSecret>
+        + HasVariable<AssetBalance, Mode = PublicOrSecret>,
 {
+    type Mode = Secret;
+
     type Variable = AssetVar<P>;
 
     #[inline]
-    fn as_variable(&self, ps: &mut P, mode: Secret) -> Self::Variable {
-        Self::Variable {
-            id: self.id.as_variable(ps, mode.into()),
-            value: self.value.as_variable(ps, mode.into()),
-        }
-    }
-
-    #[inline]
-    fn unknown(ps: &mut P, mode: Secret) -> Self::Variable {
-        Self::Variable {
-            id: AssetId::unknown(ps, mode.into()),
-            value: AssetBalance::unknown(ps, mode.into()),
+    fn variable<'t>(ps: &mut P, allocation: impl Into<Allocation<'t, Self, P>>) -> Self::Variable
+    where
+        Self: 't,
+    {
+        match allocation.into() {
+            Allocation::Known(Asset { id, value }, mode) => Self::Variable {
+                id: ps.allocate((id, mode.into())),
+                value: ps.allocate((value, mode.into())),
+            },
+            Allocation::Unknown(mode) => Self::Variable {
+                id: <P as HasVariable<AssetId>>::allocate_unknown(ps, mode.into()),
+                value: <P as HasVariable<AssetBalance>>::allocate_unknown(ps, mode.into()),
+            },
         }
     }
 }

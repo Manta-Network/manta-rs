@@ -43,12 +43,9 @@ pub trait CommitmentScheme {
 }
 
 /// Commitment Input
-pub trait Input<C>
-where
-    C: CommitmentScheme + ?Sized,
-{
-    /// Extends the input buffer.
-    fn extend(&self, buffer: &mut C::InputBuffer);
+pub trait Input<T>: CommitmentScheme {
+    /// Extends the input buffer with `input`.
+    fn extend(buffer: &mut Self::InputBuffer, input: &T);
 }
 
 /// Commitment Builder
@@ -78,11 +75,11 @@ where
 
     /// Updates the builder with new `input`.
     #[inline]
-    pub fn update<I>(mut self, input: &I) -> Self
+    pub fn update<T>(mut self, input: &T) -> Self
     where
-        I: Input<C>,
+        C: Input<T>,
     {
-        input.extend(&mut self.input_buffer);
+        C::extend(&mut self.input_buffer, input);
         self
     }
 
