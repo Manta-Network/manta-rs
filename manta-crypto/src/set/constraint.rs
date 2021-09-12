@@ -14,25 +14,31 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Sets and Verified Set Constraint Systems
+//! Sets and Verified Set Proof Systems
 
 use crate::{
-    constraint::{Alloc, BooleanSystem, Var, Variable},
+    constraint::{AllocationMode, BooleanSystem, HasVariable, Var},
     set::{ContainmentProof, VerifiedSet},
 };
 
-/// Containment Proof Variable
-pub trait ContainmentProofVariable<P>:
-    Variable<P, Type = ContainmentProof<Self::VerifiedSet>>
+/// Verified Set Proof System
+pub trait VerifiedSetProofSystem<S>:
+    BooleanSystem
+    + HasVariable<S::Item, Mode = Self::ItemMode>
+    + HasVariable<ContainmentProof<S>, Mode = Self::ContainmentProofMode>
 where
-    P: BooleanSystem + ?Sized,
+    S: VerifiedSet,
 {
-    /// Item Type
-    type Item: Alloc<P>;
+    /// Item Allocation Mode
+    type ItemMode: AllocationMode;
 
-    /// Verified Set
-    type VerifiedSet: VerifiedSet<Item = Self::Item>;
+    /// Containment Proof Allocation Mode
+    type ContainmentProofMode: AllocationMode;
 
-    /// Asserts that `self` is a witness to the fact that `item` is stored in the verified set.
-    fn assert_verified(&self, item: &Var<Self::Item, P>, ps: &mut P);
+    /// Asserts that `proof` is a witness to the fact that `item` is stored in the verified set.
+    fn assert_verified(
+        &mut self,
+        proof: &Var<ContainmentProof<S>, Self>,
+        item: &Var<S::Item, Self>,
+    );
 }

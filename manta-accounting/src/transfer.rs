@@ -28,11 +28,10 @@ use alloc::vec::Vec;
 use core::ops::AddAssign;
 use manta_crypto::{
     constraint::{
-        Alloc, BooleanSystem, Derived, Equal, HasVariable, ProofSystem, Public, PublicOrSecret,
-        Secret,
+        BooleanSystem, Derived, Equal, HasVariable, ProofSystem, Public, PublicOrSecret, Secret,
     },
     ies::{EncryptedMessage, IntegratedEncryptionScheme},
-    set::{ContainmentProof, VerifiedSet},
+    set::{constraint::VerifiedSetProofSystem, VerifiedSet},
 };
 use manta_util::{array_map, mixed_chain, Either};
 use rand::{
@@ -206,7 +205,11 @@ where
         AssetId: Equal<T::ProofSystem, Mode = PublicOrSecret>,
         AssetBalance: Equal<T::ProofSystem, Mode = PublicOrSecret>,
         for<'i> AssetBalanceVar<T::ProofSystem>: AddAssign<&'i AssetBalanceVar<T::ProofSystem>>,
-        ContainmentProof<T::UtxoSet>: Alloc<T::ProofSystem, Mode = Secret>,
+        T::ProofSystem: VerifiedSetProofSystem<
+            T::UtxoSet,
+            ItemMode = PublicOrSecret,
+            ContainmentProofMode = Derived,
+        >,
     {
         let commitment_scheme = ps.allocate((commitment_scheme, Public));
 
@@ -241,7 +244,11 @@ where
         AssetId: Equal<T::ProofSystem, Mode = PublicOrSecret>,
         AssetBalance: Equal<T::ProofSystem, Mode = PublicOrSecret>,
         for<'i> AssetBalanceVar<T::ProofSystem>: AddAssign<&'i AssetBalanceVar<T::ProofSystem>>,
-        ContainmentProof<T::UtxoSet>: Alloc<T::ProofSystem, Mode = Secret>,
+        T::ProofSystem: VerifiedSetProofSystem<
+            T::UtxoSet,
+            ItemMode = PublicOrSecret,
+            ContainmentProofMode = Derived,
+        >,
     {
         let mut ps = <T::ProofSystem as Default>::default();
 
@@ -279,7 +286,11 @@ where
         AssetId: Equal<T::ProofSystem, Mode = PublicOrSecret>,
         AssetBalance: Equal<T::ProofSystem, Mode = PublicOrSecret>,
         for<'i> AssetBalanceVar<T::ProofSystem>: AddAssign<&'i AssetBalanceVar<T::ProofSystem>>,
-        ContainmentProof<T::UtxoSet>: Alloc<T::ProofSystem, Mode = Secret>,
+        T::ProofSystem: VerifiedSetProofSystem<
+            T::UtxoSet,
+            ItemMode = PublicOrSecret,
+            ContainmentProofMode = Derived,
+        >,
     {
         let validity_proof = self.generate_validity_proof(commitment_scheme)?;
         Some(SecretTransferPost {
@@ -380,7 +391,11 @@ where
         AssetId: Equal<T::ProofSystem, Mode = PublicOrSecret>,
         AssetBalance: Equal<T::ProofSystem, Mode = PublicOrSecret>,
         for<'i> AssetBalanceVar<T::ProofSystem>: AddAssign<&'i AssetBalanceVar<T::ProofSystem>>,
-        ContainmentProof<T::UtxoSet>: Alloc<T::ProofSystem, Mode = Secret>,
+        T::ProofSystem: VerifiedSetProofSystem<
+            T::UtxoSet,
+            ItemMode = PublicOrSecret,
+            ContainmentProofMode = Derived,
+        >,
     {
         Some(TransferPost {
             public_transfer_post: self.public,

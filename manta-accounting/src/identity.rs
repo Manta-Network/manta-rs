@@ -30,11 +30,11 @@ use core::{convert::Infallible, fmt::Debug, hash::Hash, marker::PhantomData};
 use manta_crypto::{
     commitment::{CommitmentScheme, Input as CommitmentInput},
     constraint::{
-        Alloc, Allocation, BooleanSystem, Constant, Derived, Equal, HasVariable, ProofSystem,
-        Public, PublicOrSecret, Secret, Var, Variable,
+        unknown, Alloc, Allocation, BooleanSystem, Constant, Derived, Equal, HasVariable,
+        ProofSystem, Public, PublicOrSecret, Secret, Var, Variable,
     },
     ies::{self, EncryptedMessage, IntegratedEncryptionScheme},
-    set::{ContainmentProof, VerifiedSet},
+    set::{constraint::VerifiedSetProofSystem, ContainmentProof, VerifiedSet},
     PseudorandomFunctionFamily,
 };
 use rand::{
@@ -388,6 +388,25 @@ where
     pub utxo_randomness: UtxoRandomnessVar<C>,
 }
 
+impl<C> AssetParametersVar<C>
+where
+    C: IdentityProofSystemConfiguration,
+{
+    /// Builds a new [`AssetParametersVar`] from parameter variables.
+    #[inline]
+    pub fn new(
+        void_number_generator: VoidNumberGeneratorVar<C>,
+        void_number_commitment_randomness: VoidNumberCommitmentRandomnessVar<C>,
+        utxo_randomness: UtxoRandomnessVar<C>,
+    ) -> Self {
+        Self {
+            void_number_generator,
+            void_number_commitment_randomness,
+            utxo_randomness,
+        }
+    }
+}
+
 impl<C> Variable<C::ProofSystem> for AssetParametersVar<C>
 where
     C: IdentityProofSystemConfiguration,
@@ -413,20 +432,16 @@ where
         Self: 't,
     {
         match allocation.into() {
-            Allocation::Known(
-                AssetParameters {
-                    void_number_generator,
-                    void_number_commitment_randomness,
-                    utxo_randomness,
-                },
-                mode,
-            ) => Self::Variable {
-                void_number_generator: ps.allocate((void_number_generator, mode)),
-                void_number_commitment_randomness: ps
-                    .allocate((void_number_commitment_randomness, mode)),
-                utxo_randomness: ps.allocate((utxo_randomness, mode)),
-            },
-            _ => todo!(),
+            Allocation::Known(this, mode) => Self::Variable::new(
+                this.void_number_generator.as_known(ps, mode),
+                this.void_number_commitment_randomness.as_known(ps, mode),
+                this.utxo_randomness.as_known(ps, mode),
+            ),
+            Allocation::Unknown(mode) => Self::Variable::new(
+                VoidNumberGenerator::<C>::unknown(ps, mode),
+                VoidNumberCommitmentRandomness::<C>::unknown(ps, mode),
+                UtxoRandomness::<C>::unknown(ps, mode),
+            ),
         }
     }
 }
@@ -1203,7 +1218,8 @@ pub struct SenderVar<C, S>
 where
     C: IdentityProofSystemConfiguration,
     S: VerifiedSet<Item = Utxo<C>>,
-    ContainmentProof<S>: Alloc<C::ProofSystem, Mode = Secret>,
+    C::ProofSystem:
+        VerifiedSetProofSystem<S, ItemMode = PublicOrSecret, ContainmentProofMode = Derived>,
 {
     /// Secret Key
     secret_key: SecretKeyVar<C>,
@@ -1235,7 +1251,8 @@ impl<C, S> SenderVar<C, S>
 where
     C: IdentityProofSystemConfiguration,
     S: VerifiedSet<Item = Utxo<C>>,
-    ContainmentProof<S>: Alloc<C::ProofSystem, Mode = Secret>,
+    C::ProofSystem:
+        VerifiedSetProofSystem<S, ItemMode = PublicOrSecret, ContainmentProofMode = Derived>,
 {
     /// Checks if `self` is a well-formed sender and returns its asset.
     #[inline]
@@ -1312,7 +1329,7 @@ where
         // is_path(cm, path, root) == true
         // ```
         // where public: {root}, secret: {cm, path}.
-        // FIXME: ps.assert(&self.utxo_containment_proof.verify(self.utxo));
+        // FIXME: self.utxo_containment_proof.assert_verified(&self.utxo, ps);
 
         self.asset
     }
@@ -1322,7 +1339,8 @@ impl<C, S> Variable<C::ProofSystem> for SenderVar<C, S>
 where
     C: IdentityProofSystemConfiguration,
     S: VerifiedSet<Item = Utxo<C>>,
-    ContainmentProof<S>: Alloc<C::ProofSystem, Mode = Secret>,
+    C::ProofSystem:
+        VerifiedSetProofSystem<S, ItemMode = PublicOrSecret, ContainmentProofMode = Derived>,
 {
     type Mode = Derived;
     type Type = Sender<C, S>;
@@ -1332,7 +1350,8 @@ impl<C, S> Alloc<C::ProofSystem> for Sender<C, S>
 where
     C: IdentityProofSystemConfiguration,
     S: VerifiedSet<Item = Utxo<C>>,
-    ContainmentProof<S>: Alloc<C::ProofSystem, Mode = Secret>,
+    C::ProofSystem:
+        VerifiedSetProofSystem<S, ItemMode = PublicOrSecret, ContainmentProofMode = Derived>,
 {
     type Mode = Derived;
     type Variable = SenderVar<C, S>;
@@ -1346,29 +1365,26 @@ where
         Self: 't,
     {
         match allocation.into() {
-            Allocation::Known(
-                Sender {
-                    secret_key,
-                    public_key,
-                    asset,
-                    parameters,
-                    void_number,
-                    void_number_commitment,
-                    utxo,
-                    utxo_containment_proof,
-                },
-                mode,
-            ) => Self::Variable {
-                secret_key: ps.allocate((secret_key, mode.into())),
-                public_key: ps.allocate((public_key, Secret.into())),
-                asset: ps.allocate((asset, mode.into())),
-                parameters: ps.allocate((parameters, mode.into())),
-                void_number: ps.allocate((void_number, Public.into())),
-                void_number_commitment: ps.allocate((void_number_commitment, Public.into())),
-                utxo: ps.allocate((utxo, Secret.into())),
-                utxo_containment_proof: ps.allocate((utxo_containment_proof, mode.into())),
+            Allocation::Known(this, mode) => Self::Variable {
+                secret_key: this.secret_key.as_known(ps, mode),
+                public_key: this.public_key.as_known(ps, Secret),
+                asset: this.asset.as_known(ps, mode),
+                parameters: this.parameters.as_known(ps, mode),
+                void_number: this.void_number.as_known(ps, Public),
+                void_number_commitment: ps.allocate_known(&this.void_number_commitment, Public),
+                utxo: ps.allocate_known(&this.utxo, Secret),
+                utxo_containment_proof: ps.allocate_known(&this.utxo_containment_proof, mode),
             },
-            _ => todo!(),
+            Allocation::Unknown(mode) => Self::Variable {
+                secret_key: SecretKey::<C>::unknown(ps, mode),
+                public_key: PublicKey::<C>::unknown(ps, Secret),
+                asset: Asset::unknown(ps, mode),
+                parameters: AssetParameters::unknown(ps, mode),
+                void_number: VoidNumber::<C>::unknown(ps, Public),
+                void_number_commitment: unknown::<VoidNumberCommitment<C>, _>(ps, Public.into()),
+                utxo: unknown::<Utxo<C>, _>(ps, Secret.into()),
+                utxo_containment_proof: unknown::<ContainmentProof<S>, _>(ps, mode),
+            },
         }
     }
 }
@@ -1609,23 +1625,20 @@ where
         Self: 't,
     {
         match allocation.into() {
-            Allocation::Known(
-                Receiver {
-                    asset,
-                    utxo_randomness,
-                    void_number_commitment,
-                    utxo,
-                    ..
-                },
-                mode,
-            ) => Self::Variable {
-                asset: ps.allocate((asset, mode.into())),
-                utxo_randomness: ps.allocate((utxo_randomness, mode.into())),
-                void_number_commitment: ps.allocate((void_number_commitment, Secret.into())),
-                utxo: ps.allocate((utxo, Public.into())),
+            Allocation::Known(this, mode) => Self::Variable {
+                asset: this.asset.as_known(ps, mode),
+                utxo_randomness: this.utxo_randomness.as_known(ps, mode),
+                void_number_commitment: this.void_number_commitment.as_known(ps, Secret),
+                utxo: this.utxo.as_known(ps, Public),
                 __: PhantomData,
             },
-            _ => todo!(),
+            Allocation::Unknown(mode) => Self::Variable {
+                asset: Asset::unknown(ps, mode),
+                utxo_randomness: UtxoRandomness::<C>::unknown(ps, mode),
+                void_number_commitment: VoidNumberCommitment::<C>::unknown(ps, Secret),
+                utxo: Utxo::<C>::unknown(ps, Public),
+                __: PhantomData,
+            },
         }
     }
 }

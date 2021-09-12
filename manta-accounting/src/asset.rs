@@ -32,7 +32,7 @@ use derive_more::{
     Add, AddAssign, Display, Div, DivAssign, From, Mul, MulAssign, Product, Sub, SubAssign, Sum,
 };
 use manta_crypto::constraint::{
-    Alloc, Allocation, HasVariable, PublicOrSecret, Secret, Var, Variable,
+    unknown, Alloc, Allocation, HasVariable, PublicOrSecret, Secret, Var, Variable,
 };
 use manta_util::{
     array_map, fallible_array_map, into_array_unchecked, ByteAccumulator, ConcatBytes,
@@ -345,7 +345,8 @@ pub type AssetBalanceVar<P> = Var<AssetBalance, P>;
 pub struct AssetVar<P>
 where
     P: HasVariable<AssetId, Mode = PublicOrSecret>
-        + HasVariable<AssetBalance, Mode = PublicOrSecret>,
+        + HasVariable<AssetBalance, Mode = PublicOrSecret>
+        + ?Sized,
 {
     /// Asset Id
     pub id: AssetIdVar<P>,
@@ -354,10 +355,24 @@ where
     pub value: AssetBalanceVar<P>,
 }
 
+impl<P> AssetVar<P>
+where
+    P: HasVariable<AssetId, Mode = PublicOrSecret>
+        + HasVariable<AssetBalance, Mode = PublicOrSecret>
+        + ?Sized,
+{
+    /// Builds a new [`AssetVar`] from an `id` and a `value`.
+    #[inline]
+    pub fn new(id: AssetIdVar<P>, value: AssetBalanceVar<P>) -> Self {
+        Self { id, value }
+    }
+}
+
 impl<P> Variable<P> for AssetVar<P>
 where
     P: HasVariable<AssetId, Mode = PublicOrSecret>
-        + HasVariable<AssetBalance, Mode = PublicOrSecret>,
+        + HasVariable<AssetBalance, Mode = PublicOrSecret>
+        + ?Sized,
 {
     type Mode = Secret;
     type Type = Asset;
@@ -366,7 +381,8 @@ where
 impl<P> Alloc<P> for Asset
 where
     P: HasVariable<AssetId, Mode = PublicOrSecret>
-        + HasVariable<AssetBalance, Mode = PublicOrSecret>,
+        + HasVariable<AssetBalance, Mode = PublicOrSecret>
+        + ?Sized,
 {
     type Mode = Secret;
 
@@ -378,14 +394,14 @@ where
         Self: 't,
     {
         match allocation.into() {
-            Allocation::Known(Asset { id, value }, mode) => Self::Variable {
-                id: ps.allocate((id, mode.into())),
-                value: ps.allocate((value, mode.into())),
-            },
-            Allocation::Unknown(mode) => Self::Variable {
-                id: <P as HasVariable<AssetId>>::allocate_unknown(ps, mode.into()),
-                value: <P as HasVariable<AssetBalance>>::allocate_unknown(ps, mode.into()),
-            },
+            Allocation::Known(this, mode) => Self::Variable::new(
+                ps.allocate_known(&this.id, mode),
+                ps.allocate_known(&this.value, mode),
+            ),
+            Allocation::Unknown(mode) => Self::Variable::new(
+                unknown::<AssetId, _>(ps, mode.into()),
+                unknown::<AssetBalance, _>(ps, mode.into()),
+            ),
         }
     }
 }
