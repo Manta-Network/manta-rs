@@ -16,6 +16,7 @@
 
 //! Accounting Implementations
 
+pub mod config;
 pub mod keys;
 pub mod ledger;
 pub mod wallet;

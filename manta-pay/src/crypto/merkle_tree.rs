@@ -20,7 +20,11 @@
 //       faillible interfaces so that we don't have to depend explicitly on implementation
 //       details of the `arkworks` project.
 
-use crate::crypto::commitment::pedersen::PedersenWindow;
+// TODO: We use the Pedersen commitment settings for `CRH` and `TwoToOneCRH`. We should write our
+//       own `CRH` and `TwoToOneCRH` traits and then in the configuration we align them with the
+//       Pedersen settings.
+
+use crate::crypto::commitment::pedersen::{PedersenWindow, ProjectiveCurve};
 use alloc::vec::Vec;
 use ark_crypto_primitives::{
     crh::pedersen::CRH,
@@ -29,41 +33,57 @@ use ark_crypto_primitives::{
         TwoToOneDigest, TwoToOneParam,
     },
 };
-use ark_ed_on_bls12_381::EdwardsProjective;
 use core::marker::PhantomData;
 use manta_crypto::set::{ContainmentProof, VerifiedSet, VerifyContainment};
-use manta_util::{as_bytes, ConcatBytes};
+use manta_util::{as_bytes, Concat};
 
 /// Merkle Tree Root
-pub type Root = TwoToOneDigest<MerkleTreeConfiguration>;
+pub type Root<W, C> = TwoToOneDigest<MerkleTreeConfiguration<W, C>>;
 
 /// Merkle Tree Parameters
-#[derive(Clone)]
-pub struct Parameters {
+#[derive(derivative::Derivative)]
+#[derivative(Clone(bound = ""))]
+pub struct Parameters<W, C>
+where
+    W: PedersenWindow,
+    C: ProjectiveCurve,
+{
     /// Leaf Hash Parameters
-    leaf: LeafParam<MerkleTreeConfiguration>,
+    leaf: LeafParam<MerkleTreeConfiguration<W, C>>,
 
     /// Two-to-One Hash Parameters
-    two_to_one: TwoToOneParam<MerkleTreeConfiguration>,
+    two_to_one: TwoToOneParam<MerkleTreeConfiguration<W, C>>,
 }
 
 /// Merkle Tree Path
-#[derive(Clone)]
-pub struct Path<T> {
+#[derive(derivative::Derivative)]
+#[derivative(Clone(bound = ""))]
+pub struct Path<W, C, T>
+where
+    W: PedersenWindow,
+    C: ProjectiveCurve,
+{
     /// Merkle Tree Parameters
-    parameters: Parameters,
+    parameters: Parameters<W, C>,
 
     /// Path
-    path: MerkleTreePath<MerkleTreeConfiguration>,
+    path: MerkleTreePath<MerkleTreeConfiguration<W, C>>,
 
     /// Type Parameter Marker
     __: PhantomData<T>,
 }
 
-impl<T> Path<T> {
+impl<W, C, T> Path<W, C, T>
+where
+    W: PedersenWindow,
+    C: ProjectiveCurve,
+{
     /// Builds a new [`Path`] from `parameters` and `path`.
     #[inline]
-    fn new(parameters: Parameters, path: MerkleTreePath<MerkleTreeConfiguration>) -> Self {
+    fn new(
+        parameters: Parameters<W, C>,
+        path: MerkleTreePath<MerkleTreeConfiguration<W, C>>,
+    ) -> Self {
         Self {
             parameters,
             path,
@@ -73,21 +93,28 @@ impl<T> Path<T> {
 }
 
 /// Merkle Tree
-#[derive(Clone)]
-pub struct MerkleTree<T> {
+#[derive(derivative::Derivative)]
+#[derivative(Clone(bound = ""))]
+pub struct MerkleTree<W, C, T>
+where
+    W: PedersenWindow,
+    C: ProjectiveCurve,
+{
     /// Merkle Tree Parameters
-    parameters: Parameters,
+    parameters: Parameters<W, C>,
 
     /// Merkle Tree
-    tree: ArkMerkleTree<MerkleTreeConfiguration>,
+    tree: ArkMerkleTree<MerkleTreeConfiguration<W, C>>,
 
     /// Type Parameter Marker
     __: PhantomData<T>,
 }
 
-impl<T> MerkleTree<T>
+impl<W, C, T> MerkleTree<W, C, T>
 where
-    T: ConcatBytes,
+    W: PedersenWindow,
+    C: ProjectiveCurve,
+    T: Concat<Item = u8>,
 {
     /// Builds a new [`MerkleTree`].
     ///
@@ -95,7 +122,7 @@ where
     ///
     /// The length of `leaves` must be a power of 2 or this function will panic.
     #[inline]
-    pub fn new(parameters: &Parameters, leaves: &[T]) -> Option<Self> {
+    pub fn new(parameters: &Parameters<W, C>, leaves: &[T]) -> Option<Self> {
         Some(Self {
             tree: ArkMerkleTree::new(
                 &parameters.leaf,
@@ -113,13 +140,13 @@ where
 
     /// Computes the [`Root`] of the [`MerkleTree`] built from the `leaves`.
     #[inline]
-    pub fn build_root(parameters: &Parameters, leaves: &[T]) -> Option<Root> {
+    pub fn build_root(parameters: &Parameters<W, C>, leaves: &[T]) -> Option<Root<W, C>> {
         Some(Self::new(parameters, leaves)?.root())
     }
 
     /// Returns the [`Root`] of this [`MerkleTree`].
     #[inline]
-    pub fn root(&self) -> Root {
+    pub fn root(&self) -> Root<W, C> {
         self.tree.root()
     }
 
@@ -127,7 +154,7 @@ where
     #[inline]
     pub fn get_containment_proof<S>(&self, index: usize) -> Option<ContainmentProof<S>>
     where
-        S: VerifiedSet<Public = Root, Secret = Path<T>>,
+        S: VerifiedSet<Public = Root<W, C>, Secret = Path<W, C, T>>,
     {
         Some(ContainmentProof::new(
             self.root(),
@@ -140,23 +167,30 @@ where
 }
 
 /// Merkle Tree Configuration
-#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct MerkleTreeConfiguration;
+#[derive(derivative::Derivative)]
+#[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct MerkleTreeConfiguration<W, C>(PhantomData<(W, C)>)
+where
+    W: PedersenWindow,
+    C: ProjectiveCurve;
 
-impl MerkleTreeConfig for MerkleTreeConfiguration {
-    type LeafHash = CRH<EdwardsProjective, PedersenWindow>;
-
-    // TODO: On the arkworks development branch `CRH` was fixed to `TwoToOneCRH`.
-    //       We will need to fix this in the next update.
-    type TwoToOneHash = CRH<EdwardsProjective, PedersenWindow>;
+impl<W, C> MerkleTreeConfig for MerkleTreeConfiguration<W, C>
+where
+    W: PedersenWindow,
+    C: ProjectiveCurve,
+{
+    type LeafHash = CRH<C, W>;
+    type TwoToOneHash = CRH<C, W>;
 }
 
-impl<T> VerifyContainment<Root, T> for Path<T>
+impl<W, C, T> VerifyContainment<Root<W, C>, T> for Path<W, C, T>
 where
-    T: ConcatBytes,
+    W: PedersenWindow,
+    C: ProjectiveCurve,
+    T: Concat<Item = u8>,
 {
     #[inline]
-    fn verify(&self, root: &Root, item: &T) -> bool {
+    fn verify(&self, root: &Root<W, C>, item: &T) -> bool {
         self.path
             .verify(
                 &self.parameters.leaf,

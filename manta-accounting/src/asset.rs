@@ -19,6 +19,7 @@
 // TODO: Add macro to build `AssetId` and `AssetBalance`.
 // TODO: Implement all `rand` sampling traits.
 // TODO: Should we rename `AssetBalance` to `AssetValue` to be more consistent?
+// TODO: Implement `Concat` for `AssetId` and `AssetBalance`.
 
 use alloc::vec::Vec;
 use core::{
@@ -34,9 +35,7 @@ use derive_more::{
 use manta_crypto::constraint::{
     unknown, Alloc, Allocation, HasVariable, PublicOrSecret, Secret, Var, Variable,
 };
-use manta_util::{
-    array_map, fallible_array_map, into_array_unchecked, ByteAccumulator, ConcatBytes,
-};
+use manta_util::{array_map, fallible_array_map, into_array_unchecked, Concat, ConcatAccumulator};
 use rand::{
     distributions::{Distribution, Standard},
     Rng, RngCore,
@@ -243,7 +242,7 @@ impl Asset {
     /// Converts `self` into a byte array.
     #[inline]
     pub fn into_bytes(self) -> [u8; Self::SIZE] {
-        into_array_unchecked(self.as_bytes::<Vec<_>>())
+        into_array_unchecked(self.accumulated::<Vec<_>>())
     }
 
     /// Converts a byte array into `self`.
@@ -291,11 +290,13 @@ impl SubAssign<AssetBalance> for Asset {
     }
 }
 
-impl ConcatBytes for Asset {
+impl Concat for Asset {
+    type Item = u8;
+
     #[inline]
     fn concat<A>(&self, accumulator: &mut A)
     where
-        A: ByteAccumulator + ?Sized,
+        A: ConcatAccumulator<Self::Item> + ?Sized,
     {
         accumulator.extend(&self.id.into_bytes());
         accumulator.extend(&self.value.into_bytes());
@@ -365,6 +366,26 @@ where
     #[inline]
     pub fn new(id: AssetIdVar<P>, value: AssetBalanceVar<P>) -> Self {
         Self { id, value }
+    }
+}
+
+impl<P> Concat for AssetVar<P>
+where
+    P: HasVariable<AssetId, Mode = PublicOrSecret>
+        + HasVariable<AssetBalance, Mode = PublicOrSecret>
+        + ?Sized,
+    AssetIdVar<P>: Concat,
+    AssetBalanceVar<P>: Concat<Item = <AssetIdVar<P> as Concat>::Item>,
+{
+    type Item = <AssetIdVar<P> as Concat>::Item;
+
+    #[inline]
+    fn concat<A>(&self, accumulator: &mut A)
+    where
+        A: ConcatAccumulator<Self::Item> + ?Sized,
+    {
+        self.id.concat(accumulator);
+        self.value.concat(accumulator);
     }
 }
 

@@ -16,6 +16,8 @@
 
 //! Commitment Schemes
 
+use manta_util::{Concat, ConcatAccumulator};
+
 pub(crate) mod prelude {
     #[doc(inline)]
     pub use super::CommitmentScheme;
@@ -46,6 +48,18 @@ pub trait CommitmentScheme {
 pub trait Input<T>: CommitmentScheme {
     /// Extends the input buffer with `input`.
     fn extend(buffer: &mut Self::InputBuffer, input: &T);
+}
+
+impl<C, I> Input<I> for C
+where
+    C: CommitmentScheme + ?Sized,
+    C::InputBuffer: ConcatAccumulator<I::Item>,
+    I: Concat,
+{
+    #[inline]
+    fn extend(buffer: &mut C::InputBuffer, input: &I) {
+        input.concat(buffer)
+    }
 }
 
 /// Commitment Builder

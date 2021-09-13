@@ -52,13 +52,13 @@ pub trait AllocationMode {
 }
 
 impl AllocationMode for Infallible {
-    type Known = Infallible;
-    type Unknown = Infallible;
+    type Known = Self;
+    type Unknown = Self;
 }
 
 impl AllocationMode for () {
-    type Known = ();
-    type Unknown = ();
+    type Known = Self;
+    type Unknown = Self;
 }
 
 /// Allocation Entry
@@ -441,8 +441,8 @@ where
 pub struct Derived;
 
 impl AllocationMode for Derived {
-    type Known = Derived;
-    type Unknown = Derived;
+    type Known = Self;
+    type Unknown = Self;
 }
 
 impl From<Derived> for () {
@@ -457,8 +457,8 @@ impl From<Derived> for () {
 pub struct Public;
 
 impl AllocationMode for Public {
-    type Known = Public;
-    type Unknown = Public;
+    type Known = Self;
+    type Unknown = Self;
 }
 
 impl From<Derived> for Public {
@@ -474,8 +474,8 @@ impl From<Derived> for Public {
 pub struct Secret;
 
 impl AllocationMode for Secret {
-    type Known = Secret;
-    type Unknown = Secret;
+    type Known = Self;
+    type Unknown = Self;
 }
 
 impl From<Derived> for Secret {
@@ -556,8 +556,8 @@ impl PublicOrSecret {
 }
 
 impl AllocationMode for PublicOrSecret {
-    type Known = PublicOrSecret;
-    type Unknown = PublicOrSecret;
+    type Known = Self;
+    type Unknown = Self;
 }
 
 impl Default for PublicOrSecret {

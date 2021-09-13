@@ -14,48 +14,123 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Proof System Implementation
+//! Arkworks Proof System Implementation
 
-use manta_crypto::constraint::{Alloc, Allocation, Bool, BooleanSystem, ProofSystem, Variable};
+use ark_ff::fields::Field;
+use ark_r1cs_std::{alloc::AllocVar, bits::boolean::Boolean, eq::EqGadget};
+use ark_relations::{
+    ns,
+    r1cs::{ConstraintSystem, ConstraintSystemRef, SynthesisError},
+};
+use manta_crypto::constraint::{
+    Alloc, Allocation, AllocationMode, Bool, BooleanSystem, ProofSystem, PublicOrSecret, Variable,
+};
+
+/// Returns a blank variable assignment.
+const fn blank<T>() -> Result<T, SynthesisError> {
+    Err(SynthesisError::AssignmentMissing)
+}
+
+/// Arkworks Allocation Mode
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum ArkAllocationMode {
+    /// Allocates a Constant Variable
+    Constant,
+
+    /// Allocates a Public Input Variable
+    Public,
+
+    /// Allocates a Secret Witness Variable
+    Secret,
+}
+
+impl AllocationMode for ArkAllocationMode {
+    type Known = Self;
+    type Unknown = PublicOrSecret;
+}
 
 /// Arkworks Proof System
-#[derive(Default)]
-pub struct ArkProofSystem;
+pub struct ArkProofSystem<F>
+where
+    F: Field,
+{
+    /// Constraint System
+    cs: ConstraintSystemRef<F>,
+}
 
-/// TODO
-pub struct BoolVar;
+impl<F> Default for ArkProofSystem<F>
+where
+    F: Field,
+{
+    #[inline]
+    fn default() -> Self {
+        Self {
+            cs: ConstraintSystem::new_ref(),
+        }
+    }
+}
 
-impl Variable<ArkProofSystem> for BoolVar {
-    type Mode = ();
+impl<F> Variable<ArkProofSystem<F>> for Boolean<F>
+where
+    F: Field,
+{
+    type Mode = ArkAllocationMode;
     type Type = bool;
 }
 
-impl Alloc<ArkProofSystem> for bool {
-    type Mode = ();
-    type Variable = BoolVar;
+impl<F> Alloc<ArkProofSystem<F>> for bool
+where
+    F: Field,
+{
+    type Mode = ArkAllocationMode;
+    type Variable = Boolean<F>;
 
     #[inline]
     fn variable<'t>(
-        ps: &mut ArkProofSystem,
-        allocation: impl Into<Allocation<'t, Self, ArkProofSystem>>,
+        ps: &mut ArkProofSystem<F>,
+        allocation: impl Into<Allocation<'t, Self, ArkProofSystem<F>>>,
     ) -> Self::Variable
     where
         Self: 't,
     {
-        let _ = (ps, allocation);
-        todo!()
+        use ArkAllocationMode::*;
+        match allocation.into() {
+            Allocation::Known(this, mode) => match mode {
+                Constant => Self::Variable::new_constant(ns!(ps.cs, "boolean constant"), this),
+                Public => Self::Variable::new_input(ns!(ps.cs, "boolean input"), move || Ok(this)),
+                Secret => {
+                    Self::Variable::new_witness(ns!(ps.cs, "boolean witness"), move || Ok(this))
+                }
+            },
+            Allocation::Unknown(mode) => match mode {
+                PublicOrSecret::Public => {
+                    Self::Variable::new_input(ns!(ps.cs, "boolean input"), blank::<bool>)
+                }
+                PublicOrSecret::Secret => {
+                    Self::Variable::new_witness(ns!(ps.cs, "boolean witness"), blank::<bool>)
+                }
+            },
+        }
+        .expect("Variable allocation is not allowed to fail.")
     }
 }
 
-impl BooleanSystem for ArkProofSystem {
+impl<F> BooleanSystem for ArkProofSystem<F>
+where
+    F: Field,
+{
     #[inline]
     fn assert(&mut self, b: Bool<Self>) {
-        let _ = b;
-        todo!()
+        // FIXME: Is there a more direct way to do assertions?
+        b.enforce_equal(&Boolean::TRUE)
+            .expect("This should never fail.")
     }
 }
 
-impl ProofSystem for ArkProofSystem {
+impl<F> ProofSystem for ArkProofSystem<F>
+where
+    F: Field,
+{
     type Proof = ();
 
     type Error = ();

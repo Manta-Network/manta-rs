@@ -18,10 +18,13 @@
 
 // FIXME: Use more type-safe definitions for `VoidNumber` and `Utxo`.
 
-use crate::crypto::{
-    constraint::ArkProofSystem,
-    ies::EncryptedAsset,
-    merkle_tree::{self, MerkleTree, Path, Root},
+use crate::{
+    accounting::config::{PedersenCommitmentProjectiveCurve, PedersenCommitmentWindowParameters},
+    crypto::{
+        constraint::ArkProofSystem,
+        ies::EncryptedAsset,
+        merkle_tree::{self, MerkleTree, Path, Root},
+    },
 };
 use alloc::{vec, vec::Vec};
 use blake2::{
@@ -42,7 +45,11 @@ type VoidNumber = [u8; 32];
 type Utxo = [u8; 32];
 
 /// UTXO Shard Root
-type UtxoShardRoot = Root;
+type UtxoShardRoot = Root<PedersenCommitmentWindowParameters, PedersenCommitmentProjectiveCurve>;
+
+/// Merkle Tree Parameters
+type Parameters =
+    merkle_tree::Parameters<PedersenCommitmentWindowParameters, PedersenCommitmentProjectiveCurve>;
 
 /// UTXO Shard
 #[derive(Clone, Debug, Default, Eq, Hash, PartialEq)]
@@ -61,7 +68,7 @@ pub struct UtxoSet {
     shards: [UtxoShard; Self::SHARD_COUNT],
 
     /// Merkle Tree Parameters
-    parameters: merkle_tree::Parameters,
+    parameters: Parameters,
 }
 
 impl UtxoSet {
@@ -69,7 +76,7 @@ impl UtxoSet {
 
     /// Builds a new [`UtxoSet`].
     #[inline]
-    pub fn new(parameters: merkle_tree::Parameters) -> Self {
+    pub fn new(parameters: Parameters) -> Self {
         Self {
             shards: into_array_unchecked(vec![Default::default(); Self::SHARD_COUNT]),
             parameters,
@@ -133,7 +140,7 @@ impl Set for UtxoSet {
 impl VerifiedSet for UtxoSet {
     type Public = UtxoShardRoot;
 
-    type Secret = Path<Utxo>;
+    type Secret = Path<PedersenCommitmentWindowParameters, PedersenCommitmentProjectiveCurve, Utxo>;
 
     // TODO: Give a more informative error.
     type ContainmentError = ();
@@ -171,6 +178,7 @@ pub struct Ledger {
     encrypted_assets: Vec<EncryptedAsset>,
 }
 
+/* TODO:
 impl LedgerTrait for Ledger {
     type VoidNumber = VoidNumber;
 
@@ -227,3 +235,4 @@ impl LedgerTrait for Ledger {
         todo!()
     }
 }
+*/

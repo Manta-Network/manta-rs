@@ -14,50 +14,495 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Pedersen Commitment Implementation
+//! Arkworks Pedersen Commitment Implementation
 
 use alloc::vec::Vec;
 use ark_crypto_primitives::commitment::{
-    pedersen::{Commitment, Window},
-    CommitmentScheme as ArkCommitmentScheme,
+    pedersen::Commitment as ArkPedersenCommitment, CommitmentScheme as ArkCommitmentScheme,
 };
-use ark_ed_on_bls12_381::EdwardsProjective;
+use ark_ff::bytes::ToBytes;
 use manta_crypto::commitment::CommitmentScheme;
+use manta_util::{Concat, ConcatAccumulator};
 
-/// Implementation of [`CommitmentScheme`]
-#[derive(Clone)]
-pub struct PedersenCommitment(<ArkPedersenCommitment as ArkCommitmentScheme>::Parameters);
+/// Pedersen Window Parameters Trait
+// TODO: Remove this comment once `arkworks` writes their own.
+pub use ark_crypto_primitives::commitment::pedersen::Window as PedersenWindow;
 
-impl PedersenCommitment {
+pub use ark_ec::ProjectiveCurve;
+
+/// Arkworks Pedersen Commitment Parameters
+type ArkPedersenCommitmentParameters<W, C> =
+    <ArkPedersenCommitment<C, W> as ArkCommitmentScheme>::Parameters;
+
+/// Arkworks Pedersen Commitment Randomness
+type ArkPedersenCommitmentRandomness<W, C> =
+    <ArkPedersenCommitment<C, W> as ArkCommitmentScheme>::Randomness;
+
+/// Arkworks Pedersen Commitment Output
+type ArkPedersenCommitmentOutput<W, C> =
+    <ArkPedersenCommitment<C, W> as ArkCommitmentScheme>::Output;
+
+/// Pedersen Commitment Randomness
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = ""),
+    Debug(bound = ""),
+    Default(bound = ""),
+    Eq(bound = ""),
+    PartialEq(bound = "")
+)]
+pub struct PedersenCommitmentRandomness<W, C>(ArkPedersenCommitmentRandomness<W, C>)
+where
+    W: PedersenWindow,
+    C: ProjectiveCurve;
+
+/// Pedersen Commitment Output
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = ""),
+    Debug(bound = ""),
+    Default(bound = ""),
+    Eq(bound = ""),
+    Hash(bound = ""),
+    PartialEq(bound = "")
+)]
+pub struct PedersenCommitmentOutput<W, C>(ArkPedersenCommitmentOutput<W, C>)
+where
+    W: PedersenWindow,
+    C: ProjectiveCurve;
+
+impl<W, C> Concat for PedersenCommitmentOutput<W, C>
+where
+    W: PedersenWindow,
+    C: ProjectiveCurve,
+{
+    type Item = u8;
+
+    #[inline]
+    fn concat<A>(&self, accumulator: &mut A)
+    where
+        A: ConcatAccumulator<Self::Item> + ?Sized,
+    {
+        // TODO: See if we can extend `ConcatAccumulator` to allow something like `Vec::append`,
+        //       to improve the efficiency here.
+        let mut buffer = Vec::new();
+        self.0
+            .write(&mut buffer)
+            .expect("This does not fail. See the implementation of `Write` for `Vec`.");
+        accumulator.extend(&buffer);
+    }
+}
+
+/// Implementation of [`CommitmentScheme`] for Pedersen Commitments
+#[derive(derivative::Derivative)]
+#[derivative(Clone(bound = ""))]
+pub struct PedersenCommitment<W, C>(ArkPedersenCommitmentParameters<W, C>)
+where
+    W: PedersenWindow,
+    C: ProjectiveCurve;
+
+impl<W, C> PedersenCommitment<W, C>
+where
+    W: PedersenWindow,
+    C: ProjectiveCurve,
+{
     /// Pedersen Window Size
-    pub const WINDOW_SIZE: usize = 4;
+    pub const WINDOW_SIZE: usize = W::WINDOW_SIZE;
 
     /// Pedersen Window Count
-    pub const NUM_WINDOWS: usize = 256;
+    pub const NUM_WINDOWS: usize = W::NUM_WINDOWS;
 }
 
-/// Pedersen Window Parameters
-#[derive(Clone, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct PedersenWindow;
-
-impl Window for PedersenWindow {
-    const WINDOW_SIZE: usize = PedersenCommitment::WINDOW_SIZE;
-    const NUM_WINDOWS: usize = PedersenCommitment::NUM_WINDOWS;
-}
-
-/// Arkworks Pedersen Commitment
-pub type ArkPedersenCommitment = Commitment<EdwardsProjective, PedersenWindow>;
-
-impl CommitmentScheme for PedersenCommitment {
+impl<W, C> CommitmentScheme for PedersenCommitment<W, C>
+where
+    W: PedersenWindow,
+    C: ProjectiveCurve,
+{
     type InputBuffer = Vec<u8>;
 
-    type Randomness = <ArkPedersenCommitment as ArkCommitmentScheme>::Randomness;
+    type Randomness = PedersenCommitmentRandomness<W, C>;
 
-    type Output = <ArkPedersenCommitment as ArkCommitmentScheme>::Output;
+    type Output = PedersenCommitmentOutput<W, C>;
 
     #[inline]
     fn commit(&self, input: Self::InputBuffer, randomness: &Self::Randomness) -> Self::Output {
-        ArkPedersenCommitment::commit(&self.0, &input, randomness)
-            .expect("As of arkworks 0.3.0, this never fails.")
+        // FIXME: Make a note about the failure properties of commitment schemes.
+        PedersenCommitmentOutput(
+            ArkPedersenCommitment::<_, W>::commit(&self.0, &input, &randomness.0)
+                .expect("Failure outcomes are not accepted."),
+        )
+    }
+}
+
+/// Pedersen Commitment Scheme Constraint System Implementation
+pub mod constraint {
+    use super::*;
+    use crate::crypto::constraint::ArkProofSystem;
+    use ark_crypto_primitives::{
+        commitment::pedersen::constraints::{CommGadget, ParametersVar, RandomnessVar},
+        CommitmentGadget,
+    };
+    use ark_ff::Field;
+    use ark_r1cs_std::{
+        groups::{CurveVar, GroupOpsBounds},
+        uint8::UInt8,
+    };
+    use core::marker::PhantomData;
+    use manta_crypto::constraint::{Alloc, Allocation, Constant, PublicOrSecret, Secret, Variable};
+
+    /// Constraint Field Type
+    pub type ConstraintField<C> = <<C as ProjectiveCurve>::BaseField as Field>::BasePrimeField;
+
+    /// Proof System Type
+    type ProofSystem<C> = ArkProofSystem<ConstraintField<C>>;
+
+    /// Input Buffer Type
+    type InputBuffer<F> = Vec<UInt8<F>>;
+
+    /// Pedersen Commitment Output Wrapper
+    #[derive(derivative::Derivative)]
+    #[derivative(Clone(bound = ""))]
+    pub struct PedersenCommitmentOutputWrapper<W, C, GG>
+    where
+        W: PedersenWindow,
+        C: ProjectiveCurve,
+        GG: CurveVar<C, ConstraintField<C>>,
+        for<'g> &'g GG: GroupOpsBounds<'g, C, GG>,
+    {
+        /// Commitment Output
+        output: PedersenCommitmentOutput<W, C>,
+
+        /// Type Parameter Marker
+        __: PhantomData<GG>,
+    }
+
+    impl<W, C, GG> From<PedersenCommitmentOutput<W, C>> for PedersenCommitmentOutputWrapper<W, C, GG>
+    where
+        W: PedersenWindow,
+        C: ProjectiveCurve,
+        GG: CurveVar<C, ConstraintField<C>>,
+        for<'g> &'g GG: GroupOpsBounds<'g, C, GG>,
+    {
+        #[inline]
+        fn from(output: PedersenCommitmentOutput<W, C>) -> Self {
+            Self {
+                output,
+                __: PhantomData,
+            }
+        }
+    }
+
+    impl<W, C, GG> From<PedersenCommitmentOutputWrapper<W, C, GG>> for PedersenCommitmentOutput<W, C>
+    where
+        W: PedersenWindow,
+        C: ProjectiveCurve,
+        GG: CurveVar<C, ConstraintField<C>>,
+        for<'g> &'g GG: GroupOpsBounds<'g, C, GG>,
+    {
+        #[inline]
+        fn from(wrapper: PedersenCommitmentOutputWrapper<W, C, GG>) -> Self {
+            wrapper.output
+        }
+    }
+
+    /// Pedersen Commitment Scheme Wrapper
+    #[derive(derivative::Derivative)]
+    #[derivative(Clone(bound = ""))]
+    pub struct PedersenCommitmentWrapper<W, C, GG>
+    where
+        W: PedersenWindow,
+        C: ProjectiveCurve,
+        GG: CurveVar<C, ConstraintField<C>>,
+        for<'g> &'g GG: GroupOpsBounds<'g, C, GG>,
+    {
+        /// Commitment Scheme
+        commitment_scheme: PedersenCommitment<W, C>,
+
+        /// Type Parameter Marker
+        __: PhantomData<GG>,
+    }
+
+    impl<W, C, GG> PedersenCommitmentWrapper<W, C, GG>
+    where
+        W: PedersenWindow,
+        C: ProjectiveCurve,
+        GG: CurveVar<C, ConstraintField<C>>,
+        for<'g> &'g GG: GroupOpsBounds<'g, C, GG>,
+    {
+        /// Pedersen Window Size
+        pub const WINDOW_SIZE: usize = W::WINDOW_SIZE;
+
+        /// Pedersen Window Count
+        pub const NUM_WINDOWS: usize = W::NUM_WINDOWS;
+    }
+
+    impl<W, C, GG> From<PedersenCommitment<W, C>> for PedersenCommitmentWrapper<W, C, GG>
+    where
+        W: PedersenWindow,
+        C: ProjectiveCurve,
+        GG: CurveVar<C, ConstraintField<C>>,
+        for<'g> &'g GG: GroupOpsBounds<'g, C, GG>,
+    {
+        #[inline]
+        fn from(commitment_scheme: PedersenCommitment<W, C>) -> Self {
+            Self {
+                commitment_scheme,
+                __: PhantomData,
+            }
+        }
+    }
+
+    impl<W, C, GG> From<PedersenCommitmentWrapper<W, C, GG>> for PedersenCommitment<W, C>
+    where
+        W: PedersenWindow,
+        C: ProjectiveCurve,
+        GG: CurveVar<C, ConstraintField<C>>,
+        for<'g> &'g GG: GroupOpsBounds<'g, C, GG>,
+    {
+        #[inline]
+        fn from(wrapper: PedersenCommitmentWrapper<W, C, GG>) -> Self {
+            wrapper.commitment_scheme
+        }
+    }
+
+    impl<W, C, GG> CommitmentScheme for PedersenCommitmentWrapper<W, C, GG>
+    where
+        W: PedersenWindow,
+        C: ProjectiveCurve,
+        GG: CurveVar<C, ConstraintField<C>>,
+        for<'g> &'g GG: GroupOpsBounds<'g, C, GG>,
+    {
+        type InputBuffer = <PedersenCommitment<W, C> as CommitmentScheme>::InputBuffer;
+
+        type Randomness = <PedersenCommitment<W, C> as CommitmentScheme>::Randomness;
+
+        type Output = <PedersenCommitment<W, C> as CommitmentScheme>::Output;
+
+        #[inline]
+        fn commit(&self, input: Self::InputBuffer, randomness: &Self::Randomness) -> Self::Output {
+            self.commitment_scheme.commit(input, randomness)
+        }
+    }
+
+    /// Pedersen Commitment Randomness Variable
+    #[derive(derivative::Derivative)]
+    #[derivative(Clone(bound = ""))]
+    pub struct PedersenCommitmentRandomnessVar<W, C>
+    where
+        W: PedersenWindow,
+        C: ProjectiveCurve,
+    {
+        /// Randomness Variable
+        randomness_var: RandomnessVar<ConstraintField<C>>,
+
+        /// Type Parameter Marker
+        __: PhantomData<W>,
+    }
+
+    impl<W, C> Variable<ProofSystem<C>> for PedersenCommitmentRandomnessVar<W, C>
+    where
+        W: PedersenWindow,
+        C: ProjectiveCurve,
+    {
+        type Mode = Secret;
+        type Type = PedersenCommitmentRandomness<W, C>;
+    }
+
+    impl<W, C> Alloc<ProofSystem<C>> for PedersenCommitmentRandomness<W, C>
+    where
+        W: PedersenWindow,
+        C: ProjectiveCurve,
+    {
+        type Mode = Secret;
+
+        type Variable = PedersenCommitmentRandomnessVar<W, C>;
+
+        #[inline]
+        fn variable<'t>(
+            ps: &mut ProofSystem<C>,
+            allocation: impl Into<Allocation<'t, Self, ProofSystem<C>>>,
+        ) -> Self::Variable
+        where
+            Self: 't,
+        {
+            // FIXME: implement
+            let _ = (ps, allocation);
+            todo!()
+        }
+    }
+
+    /// Pedersen Commitment Output Variable
+    #[derive(derivative::Derivative)]
+    #[derivative(Clone(bound = ""))]
+    pub struct PedersenCommitmentOutputVar<W, C, GG>
+    where
+        W: PedersenWindow,
+        C: ProjectiveCurve,
+        GG: CurveVar<C, ConstraintField<C>>,
+        for<'g> &'g GG: GroupOpsBounds<'g, C, GG>,
+    {
+        /// Output Variable
+        output_var: GG,
+
+        /// Type Parameter Marker
+        __: PhantomData<(W, C)>,
+    }
+
+    impl<W, C, GG> PedersenCommitmentOutputVar<W, C, GG>
+    where
+        W: PedersenWindow,
+        C: ProjectiveCurve,
+        GG: CurveVar<C, ConstraintField<C>>,
+        for<'g> &'g GG: GroupOpsBounds<'g, C, GG>,
+    {
+        /// Builds a new [`PedersenCommitmentOutputVar`] from `output_var`.
+        #[inline]
+        fn new(output_var: GG) -> Self {
+            Self {
+                output_var,
+                __: PhantomData,
+            }
+        }
+    }
+
+    impl<W, C, GG> Concat for PedersenCommitmentOutputVar<W, C, GG>
+    where
+        W: PedersenWindow,
+        C: ProjectiveCurve,
+        GG: CurveVar<C, ConstraintField<C>>,
+        for<'g> &'g GG: GroupOpsBounds<'g, C, GG>,
+    {
+        type Item = UInt8<ConstraintField<C>>;
+
+        #[inline]
+        fn concat<A>(&self, accumulator: &mut A)
+        where
+            A: ConcatAccumulator<Self::Item> + ?Sized,
+        {
+            accumulator.extend(
+                &self
+                    .output_var
+                    .to_bytes()
+                    .expect("This is not allowed to fail."),
+            );
+        }
+    }
+
+    impl<W, C, GG> Variable<ProofSystem<C>> for PedersenCommitmentOutputVar<W, C, GG>
+    where
+        W: PedersenWindow,
+        C: ProjectiveCurve,
+        GG: CurveVar<C, ConstraintField<C>>,
+        for<'g> &'g GG: GroupOpsBounds<'g, C, GG>,
+    {
+        type Mode = PublicOrSecret;
+        type Type = PedersenCommitmentOutputWrapper<W, C, GG>;
+    }
+
+    impl<W, C, GG> Alloc<ProofSystem<C>> for PedersenCommitmentOutputWrapper<W, C, GG>
+    where
+        W: PedersenWindow,
+        C: ProjectiveCurve,
+        GG: CurveVar<C, ConstraintField<C>>,
+        for<'g> &'g GG: GroupOpsBounds<'g, C, GG>,
+    {
+        type Mode = PublicOrSecret;
+
+        type Variable = PedersenCommitmentOutputVar<W, C, GG>;
+
+        #[inline]
+        fn variable<'t>(
+            ps: &mut ProofSystem<C>,
+            allocation: impl Into<Allocation<'t, Self, ProofSystem<C>>>,
+        ) -> Self::Variable
+        where
+            Self: 't,
+        {
+            // FIXME: implement
+            let _ = (ps, allocation);
+            todo!()
+        }
+    }
+
+    /// Pedersen Commitment Scheme Variable
+    #[derive(derivative::Derivative)]
+    #[derivative(Clone(bound = ""))]
+    pub struct PedersenCommitmentVar<W, C, GG>
+    where
+        W: PedersenWindow,
+        C: ProjectiveCurve,
+        GG: CurveVar<C, ConstraintField<C>>,
+        for<'g> &'g GG: GroupOpsBounds<'g, C, GG>,
+    {
+        /// Commitment Parameters Variable
+        parameters: ParametersVar<C, GG>,
+
+        /// Type Parameter Marker
+        __: PhantomData<W>,
+    }
+
+    impl<W, C, GG> Variable<ProofSystem<C>> for PedersenCommitmentVar<W, C, GG>
+    where
+        W: PedersenWindow,
+        C: ProjectiveCurve,
+        GG: CurveVar<C, ConstraintField<C>>,
+        for<'g> &'g GG: GroupOpsBounds<'g, C, GG>,
+    {
+        type Mode = Constant;
+        type Type = PedersenCommitmentWrapper<W, C, GG>;
+    }
+
+    impl<W, C, GG> Alloc<ArkProofSystem<ConstraintField<C>>> for PedersenCommitmentWrapper<W, C, GG>
+    where
+        W: PedersenWindow,
+        C: ProjectiveCurve,
+        GG: CurveVar<C, ConstraintField<C>>,
+        for<'g> &'g GG: GroupOpsBounds<'g, C, GG>,
+    {
+        type Mode = Constant;
+
+        type Variable = PedersenCommitmentVar<W, C, GG>;
+
+        #[inline]
+        fn variable<'t>(
+            ps: &mut ProofSystem<C>,
+            allocation: impl Into<Allocation<'t, Self, ProofSystem<C>>>,
+        ) -> Self::Variable
+        where
+            Self: 't,
+        {
+            match allocation.into() {
+                Allocation::Known(this, _) => {
+                    // FIXME: `this.parameters.new_constant(ps)`
+                    let _ = (ps, this);
+                    todo!()
+                }
+                _ => unreachable!(
+                    "Since we use a constant allocation mode, we always know the variable value."
+                ),
+            }
+        }
+    }
+
+    impl<W, C, GG> CommitmentScheme for PedersenCommitmentVar<W, C, GG>
+    where
+        W: PedersenWindow,
+        C: ProjectiveCurve,
+        GG: CurveVar<C, ConstraintField<C>>,
+        for<'g> &'g GG: GroupOpsBounds<'g, C, GG>,
+    {
+        type InputBuffer = InputBuffer<ConstraintField<C>>;
+
+        type Randomness = PedersenCommitmentRandomnessVar<W, C>;
+
+        type Output = PedersenCommitmentOutputVar<W, C, GG>;
+
+        #[inline]
+        fn commit(&self, input: Self::InputBuffer, randomness: &Self::Randomness) -> Self::Output {
+            PedersenCommitmentOutputVar::new(
+                CommGadget::<_, _, W>::commit(&self.parameters, &input, &randomness.randomness_var)
+                    .expect("Failure outcomes are not accepted."),
+            )
+        }
     }
 }

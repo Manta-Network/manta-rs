@@ -100,7 +100,18 @@ impl<const SOURCES: usize, const SINKS: usize> Distribution<PublicTransfer<SOURC
 }
 
 /// Secret Transfer Configuration
-pub trait SecretTransferConfiguration: IdentityProofSystemConfiguration {
+pub trait SecretTransferConfiguration:
+    IdentityProofSystemConfiguration<BooleanSystem = Self::ProofSystem>
+{
+    /// Proof System
+    type ProofSystem: ProofSystem
+        + VerifiedSetProofSystem<
+            Self::UtxoSet,
+            ItemMode = PublicOrSecret,
+            PublicMode = Public,
+            SecretMode = Secret,
+        >;
+
     /// Integrated Encryption Scheme for [`Asset`]
     type IntegratedEncryptionScheme: IntegratedEncryptionScheme<Plaintext = Asset>;
 
@@ -204,12 +215,6 @@ where
         AssetId: AllocEq<T::ProofSystem, Mode = PublicOrSecret>,
         AssetBalance: AllocEq<T::ProofSystem, Mode = PublicOrSecret>,
         AssetBalanceVar<T::ProofSystem>: AddAssign<AssetBalanceVar<T::ProofSystem>>,
-        T::ProofSystem: VerifiedSetProofSystem<
-            T::UtxoSet,
-            ItemMode = PublicOrSecret,
-            PublicMode = Public,
-            SecretMode = Secret,
-        >,
     {
         let commitment_scheme = ps.allocate((commitment_scheme, Public));
 
@@ -244,12 +249,6 @@ where
         AssetId: AllocEq<T::ProofSystem, Mode = PublicOrSecret>,
         AssetBalance: AllocEq<T::ProofSystem, Mode = PublicOrSecret>,
         AssetBalanceVar<T::ProofSystem>: AddAssign<AssetBalanceVar<T::ProofSystem>>,
-        T::ProofSystem: VerifiedSetProofSystem<
-            T::UtxoSet,
-            ItemMode = PublicOrSecret,
-            PublicMode = Public,
-            SecretMode = Secret,
-        >,
     {
         let mut ps = <T::ProofSystem as Default>::default();
 
@@ -287,12 +286,6 @@ where
         AssetId: AllocEq<T::ProofSystem, Mode = PublicOrSecret>,
         AssetBalance: AllocEq<T::ProofSystem, Mode = PublicOrSecret>,
         AssetBalanceVar<T::ProofSystem>: AddAssign<AssetBalanceVar<T::ProofSystem>>,
-        T::ProofSystem: VerifiedSetProofSystem<
-            T::UtxoSet,
-            ItemMode = PublicOrSecret,
-            PublicMode = Public,
-            SecretMode = Secret,
-        >,
     {
         let validity_proof = self.generate_validity_proof(commitment_scheme)?;
         Some(SecretTransferPost {
@@ -393,12 +386,6 @@ where
         AssetId: AllocEq<T::ProofSystem, Mode = PublicOrSecret>,
         AssetBalance: AllocEq<T::ProofSystem, Mode = PublicOrSecret>,
         AssetBalanceVar<T::ProofSystem>: AddAssign<AssetBalanceVar<T::ProofSystem>>,
-        T::ProofSystem: VerifiedSetProofSystem<
-            T::UtxoSet,
-            ItemMode = PublicOrSecret,
-            PublicMode = Public,
-            SecretMode = Secret,
-        >,
     {
         Some(TransferPost {
             public_transfer_post: self.public,
