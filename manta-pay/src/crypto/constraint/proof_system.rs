@@ -15,3 +15,53 @@
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
 //! Proof System Implementation
+
+use manta_crypto::constraint::{Alloc, Allocation, Bool, BooleanSystem, ProofSystem, Variable};
+
+/// Arkworks Proof System
+#[derive(Default)]
+pub struct ArkProofSystem;
+
+/// TODO
+pub struct BoolVar;
+
+impl Variable<ArkProofSystem> for BoolVar {
+    type Mode = ();
+    type Type = bool;
+}
+
+impl Alloc<ArkProofSystem> for bool {
+    type Mode = ();
+    type Variable = BoolVar;
+
+    #[inline]
+    fn variable<'t>(
+        ps: &mut ArkProofSystem,
+        allocation: impl Into<Allocation<'t, Self, ArkProofSystem>>,
+    ) -> Self::Variable
+    where
+        Self: 't,
+    {
+        let _ = (ps, allocation);
+        todo!()
+    }
+}
+
+impl BooleanSystem for ArkProofSystem {
+    #[inline]
+    fn assert(&mut self, b: Bool<Self>) {
+        let _ = b;
+        todo!()
+    }
+}
+
+impl ProofSystem for ArkProofSystem {
+    type Proof = ();
+
+    type Error = ();
+
+    #[inline]
+    fn finish(self) -> Result<Self::Proof, Self::Error> {
+        todo!()
+    }
+}

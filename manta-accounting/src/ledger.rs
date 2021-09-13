@@ -17,7 +17,10 @@
 //! Ledger Abstraction
 
 use crate::identity::{ReceiverPostError, SenderPostError};
-use manta_crypto::{Set, VerifiedSet};
+use manta_crypto::{
+    constraint::ProofSystem,
+    set::{Set, VerifiedSet},
+};
 
 /// Ledger Trait
 pub trait Ledger {
@@ -32,6 +35,9 @@ pub trait Ledger {
 
     /// Encrypted Asset Type
     type EncryptedAsset;
+
+    /// Proof System
+    type ProofSystem: ProofSystem;
 
     /// Returns a shared reference to the [`UtxoSet`](Self::UtxoSet).
     fn utxos(&self) -> &Self::UtxoSet;
@@ -85,6 +91,24 @@ pub trait Ledger {
         &mut self,
         encrypted_asset: Self::EncryptedAsset,
     ) -> Result<(), Self::EncryptedAsset>;
+
+    /// Checks that the given `proof` is valid.
+    fn check_proof(
+        &self,
+        proof: <Self::ProofSystem as ProofSystem>::Proof,
+    ) -> Result<(), ProofPostError<Self>>;
+}
+
+/// Proof Post Error
+pub enum ProofPostError<L>
+where
+    L: Ledger + ?Sized,
+{
+    /// Proof was invalid
+    InvalidProof(
+        /// Proof
+        <L::ProofSystem as ProofSystem>::Proof,
+    ),
 }
 
 /// Ledger Post Error
@@ -98,8 +122,8 @@ where
     /// Receiver Post Error
     Receiver(ReceiverPostError<L>),
 
-    /// Invalid Secret Transfer
-    InvalidSecretTransfer,
+    /// Proof Post Error
+    Proof(ProofPostError<L>),
 }
 
 impl<L> From<SenderPostError<L>> for PostError<L>
@@ -119,5 +143,15 @@ where
     #[inline]
     fn from(err: ReceiverPostError<L>) -> Self {
         Self::Receiver(err)
+    }
+}
+
+impl<L> From<ProofPostError<L>> for PostError<L>
+where
+    L: Ledger + ?Sized,
+{
+    #[inline]
+    fn from(err: ProofPostError<L>) -> Self {
+        Self::Proof(err)
     }
 }

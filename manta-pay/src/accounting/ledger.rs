@@ -16,7 +16,10 @@
 
 //! Ledger Implementation
 
+// FIXME: Use more type-safe definitions for `VoidNumber` and `Utxo`.
+
 use crate::crypto::{
+    constraint::ArkProofSystem,
     ies::EncryptedAsset,
     merkle_tree::{self, MerkleTree, Path, Root},
 };
@@ -25,9 +28,15 @@ use blake2::{
     digest::{Update, VariableOutput},
     VarBlake2s,
 };
-use manta_accounting::Ledger as LedgerTrait;
-use manta_crypto::set::{ContainmentProof, Set, VerifiedSet};
+use manta_accounting::{Ledger as LedgerTrait, ProofPostError};
+use manta_crypto::{
+    constraint::ProofSystem,
+    set::{ContainmentProof, Set, VerifiedSet},
+};
 use manta_util::into_array_unchecked;
+
+/// Void Number
+type VoidNumber = [u8; 32];
 
 /// Unspent Transaction Output
 type Utxo = [u8; 32];
@@ -153,23 +162,25 @@ impl VerifiedSet for UtxoSet {
 /// Ledger
 pub struct Ledger {
     /// Void Numbers
-    void_numbers: (),
+    void_numbers: Vec<VoidNumber>,
 
     /// Unspent Transaction Outputs
     utxos: UtxoSet,
 
     /// Encrypted Assets
-    encrypted_assets: (),
+    encrypted_assets: Vec<EncryptedAsset>,
 }
 
 impl LedgerTrait for Ledger {
-    type VoidNumber = ();
+    type VoidNumber = VoidNumber;
 
     type Utxo = Utxo;
 
     type UtxoSet = UtxoSet;
 
     type EncryptedAsset = EncryptedAsset;
+
+    type ProofSystem = ArkProofSystem;
 
     #[inline]
     fn utxos(&self) -> &Self::UtxoSet {
@@ -178,9 +189,7 @@ impl LedgerTrait for Ledger {
 
     #[inline]
     fn is_unspent(&self, void_number: &Self::VoidNumber) -> bool {
-        // TODO: !self.void_numbers.contains(void_number)
-        let _ = void_number;
-        todo!()
+        !self.void_numbers.contains(void_number)
     }
 
     #[inline]
@@ -188,8 +197,11 @@ impl LedgerTrait for Ledger {
         &mut self,
         void_number: Self::VoidNumber,
     ) -> Result<(), Self::VoidNumber> {
-        let _ = void_number;
-        todo!()
+        if self.void_numbers.contains(&void_number) {
+            return Err(void_number);
+        }
+        self.void_numbers.push(void_number);
+        Ok(())
     }
 
     #[inline]
@@ -202,7 +214,16 @@ impl LedgerTrait for Ledger {
         &mut self,
         encrypted_asset: Self::EncryptedAsset,
     ) -> Result<(), Self::EncryptedAsset> {
-        let _ = encrypted_asset;
+        self.encrypted_assets.push(encrypted_asset);
+        Ok(())
+    }
+
+    #[inline]
+    fn check_proof(
+        &self,
+        proof: <Self::ProofSystem as ProofSystem>::Proof,
+    ) -> Result<(), ProofPostError<Self>> {
+        let _ = proof;
         todo!()
     }
 }

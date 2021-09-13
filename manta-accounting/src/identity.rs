@@ -30,11 +30,14 @@ use core::{convert::Infallible, fmt::Debug, hash::Hash, marker::PhantomData};
 use manta_crypto::{
     commitment::{CommitmentScheme, Input as CommitmentInput},
     constraint::{
-        unknown, Alloc, Allocation, BooleanSystem, Constant, Derived, Equal, HasVariable,
+        unknown, Alloc, AllocEq, Allocation, BooleanSystem, Constant, Derived, HasVariable,
         ProofSystem, Public, PublicOrSecret, Secret, Var, Variable,
     },
     ies::{self, EncryptedMessage, IntegratedEncryptionScheme},
-    set::{constraint::VerifiedSetProofSystem, ContainmentProof, VerifiedSet},
+    set::{
+        constraint::{ContainmentProofVar, VerifiedSetProofSystem},
+        ContainmentProof, VerifiedSet,
+    },
     PseudorandomFunctionFamily,
 };
 use rand::{
@@ -83,7 +86,7 @@ pub trait IdentityProofSystemConfiguration {
     type PseudorandomFunctionFamilyInput: Alloc<Self::ProofSystem, Mode = Secret>;
 
     /// Pseudorandom Function Family Output
-    type PseudorandomFunctionFamilyOutput: Equal<Self::ProofSystem, Mode = PublicOrSecret>;
+    type PseudorandomFunctionFamilyOutput: AllocEq<Self::ProofSystem, Mode = PublicOrSecret>;
 
     /// Pseudorandom Function Family
     type PseudorandomFunctionFamily: PseudorandomFunctionFamily<
@@ -103,7 +106,7 @@ pub trait IdentityProofSystemConfiguration {
     type CommitmentSchemeRandomness: Alloc<Self::ProofSystem, Mode = Secret>;
 
     /// Commitment Scheme Output
-    type CommitmentSchemeOutput: Equal<Self::ProofSystem, Mode = PublicOrSecret>;
+    type CommitmentSchemeOutput: AllocEq<Self::ProofSystem, Mode = PublicOrSecret>;
 
     /// Commitment Scheme
     type CommitmentScheme: CommitmentScheme<
@@ -232,7 +235,7 @@ pub type UtxoVar<C> = CommitmentSchemeOutputVar<C>;
 
 /// UTXO Containment Proof Variable Type
 pub type UtxoContainmentProofVar<C, S> =
-    Var<ContainmentProof<S>, <C as IdentityProofSystemConfiguration>::ProofSystem>;
+    ContainmentProofVar<S, <C as IdentityProofSystemConfiguration>::ProofSystem>;
 
 /// Generates a void number commitment from `public_key`, `void_number_generator`, and
 /// `void_number_commitment_randomness`.
@@ -1218,8 +1221,12 @@ pub struct SenderVar<C, S>
 where
     C: IdentityProofSystemConfiguration,
     S: VerifiedSet<Item = Utxo<C>>,
-    C::ProofSystem:
-        VerifiedSetProofSystem<S, ItemMode = PublicOrSecret, ContainmentProofMode = Derived>,
+    C::ProofSystem: VerifiedSetProofSystem<
+        S,
+        ItemMode = PublicOrSecret,
+        PublicMode = Public,
+        SecretMode = Secret,
+    >,
 {
     /// Secret Key
     secret_key: SecretKeyVar<C>,
@@ -1243,7 +1250,6 @@ where
     utxo: UtxoVar<C>,
 
     /// UTXO Containment Proof
-    // TODO: think about what the mode type for this should be
     utxo_containment_proof: UtxoContainmentProofVar<C, S>,
 }
 
@@ -1251,8 +1257,12 @@ impl<C, S> SenderVar<C, S>
 where
     C: IdentityProofSystemConfiguration,
     S: VerifiedSet<Item = Utxo<C>>,
-    C::ProofSystem:
-        VerifiedSetProofSystem<S, ItemMode = PublicOrSecret, ContainmentProofMode = Derived>,
+    C::ProofSystem: VerifiedSetProofSystem<
+        S,
+        ItemMode = PublicOrSecret,
+        PublicMode = Public,
+        SecretMode = Secret,
+    >,
 {
     /// Checks if `self` is a well-formed sender and returns its asset.
     #[inline]
@@ -1261,13 +1271,13 @@ where
         ps: &mut C::ProofSystem,
         commitment_scheme: &C::CommitmentSchemeVar,
     ) -> AssetVar<C::ProofSystem> {
-        // FIXME: Implement well-formedness check:
+        // Well-formed check:
         //
-        // 1. pk = PRF(sk, 0)                           [public: (),     secret: (pk, sk)]
-        // 2. vn = PRF(sk, rho)                         [public: (vn),   secret: (sk, rho)]
-        // 3. k = COM(pk || rho, r)                     [public: (k),    secret: (pk, rho, r)]
-        // 4. cm = COM(asset_id || asset_value || k, s) [public: (),     secret: (cm, asset, k, s)]
-        // 5. merkle_path(cm, path, root) == true       [public: (root), secret: (cm, path)]
+        // 1. pk = PRF(sk, 0)                  [public: (),     secret: (pk, sk)]
+        // 2. vn = PRF(sk, rho)                [public: (vn),   secret: (sk, rho)]
+        // 3. k = COM(pk || rho, r)            [public: (k),    secret: (pk, rho, r)]
+        // 4. cm = COM(asset || k, s)          [public: (),     secret: (cm, asset, k, s)]
+        // 5. is_path(cm, path, root) == true  [public: (root), secret: (cm, path)]
         //
         // FIXME: should `k` be private or not?
 
@@ -1329,7 +1339,7 @@ where
         // is_path(cm, path, root) == true
         // ```
         // where public: {root}, secret: {cm, path}.
-        // FIXME: self.utxo_containment_proof.assert_verified(&self.utxo, ps);
+        self.utxo_containment_proof.assert_validity(&self.utxo, ps);
 
         self.asset
     }
@@ -1339,8 +1349,12 @@ impl<C, S> Variable<C::ProofSystem> for SenderVar<C, S>
 where
     C: IdentityProofSystemConfiguration,
     S: VerifiedSet<Item = Utxo<C>>,
-    C::ProofSystem:
-        VerifiedSetProofSystem<S, ItemMode = PublicOrSecret, ContainmentProofMode = Derived>,
+    C::ProofSystem: VerifiedSetProofSystem<
+        S,
+        ItemMode = PublicOrSecret,
+        PublicMode = Public,
+        SecretMode = Secret,
+    >,
 {
     type Mode = Derived;
     type Type = Sender<C, S>;
@@ -1350,8 +1364,12 @@ impl<C, S> Alloc<C::ProofSystem> for Sender<C, S>
 where
     C: IdentityProofSystemConfiguration,
     S: VerifiedSet<Item = Utxo<C>>,
-    C::ProofSystem:
-        VerifiedSetProofSystem<S, ItemMode = PublicOrSecret, ContainmentProofMode = Derived>,
+    C::ProofSystem: VerifiedSetProofSystem<
+        S,
+        ItemMode = PublicOrSecret,
+        PublicMode = Public,
+        SecretMode = Secret,
+    >,
 {
     type Mode = Derived;
     type Variable = SenderVar<C, S>;
@@ -1373,7 +1391,7 @@ where
                 void_number: this.void_number.as_known(ps, Public),
                 void_number_commitment: ps.allocate_known(&this.void_number_commitment, Public),
                 utxo: ps.allocate_known(&this.utxo, Secret),
-                utxo_containment_proof: ps.allocate_known(&this.utxo_containment_proof, mode),
+                utxo_containment_proof: this.utxo_containment_proof.as_known(ps, mode),
             },
             Allocation::Unknown(mode) => Self::Variable {
                 secret_key: SecretKey::<C>::unknown(ps, mode),
@@ -1383,7 +1401,7 @@ where
                 void_number: VoidNumber::<C>::unknown(ps, Public),
                 void_number_commitment: unknown::<VoidNumberCommitment<C>, _>(ps, Public.into()),
                 utxo: unknown::<Utxo<C>, _>(ps, Secret.into()),
-                utxo_containment_proof: unknown::<ContainmentProof<S>, _>(ps, mode),
+                utxo_containment_proof: ContainmentProof::<S>::unknown(ps, mode),
             },
         }
     }

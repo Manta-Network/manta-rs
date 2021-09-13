@@ -49,21 +49,6 @@ pub trait AllocationMode {
 
     /// Unknown Allocation Mode
     type Unknown;
-
-    /* TODO: Do we want this?
-    /// Upgrades the unknown allocation mode to the known allocation mode.
-    #[inline]
-    fn upgrade_mode(mode: Self::Unknown) -> Self::Known;
-
-    /// Upgrades the value from an unknown to known allocation.
-    #[inline]
-    fn upgrade<P, T>(value: &T, mode: Self::Unknown) -> Allocation<T, P>
-    where
-        T: Alloc<P, Mode = Self>,
-    {
-        Allocation::Known(value, Self::upgrade_mode(mode))
-    }
-    */
 }
 
 impl AllocationMode for Infallible {
@@ -352,7 +337,7 @@ pub trait BooleanSystem: HasVariable<bool> {
     fn eq<V>(&mut self, lhs: &V, rhs: &V) -> Bool<Self>
     where
         V: Variable<Self>,
-        V::Type: Equal<Self>,
+        V::Type: AllocEq<Self>,
     {
         V::Type::eq(self, lhs, rhs)
     }
@@ -362,7 +347,7 @@ pub trait BooleanSystem: HasVariable<bool> {
     fn assert_eq<V>(&mut self, lhs: &V, rhs: &V)
     where
         V: Variable<Self>,
-        V::Type: Equal<Self>,
+        V::Type: AllocEq<Self>,
     {
         V::Type::assert_eq(self, lhs, rhs)
     }
@@ -372,7 +357,7 @@ pub trait BooleanSystem: HasVariable<bool> {
     fn assert_all_eq_to_base<'t, V, I>(&mut self, base: &'t V, iter: I)
     where
         V: 't + Variable<Self>,
-        V::Type: Equal<Self>,
+        V::Type: AllocEq<Self>,
         I: IntoIterator<Item = &'t V>,
     {
         V::Type::assert_all_eq_to_base(self, base, iter)
@@ -383,7 +368,7 @@ pub trait BooleanSystem: HasVariable<bool> {
     fn assert_all_eq<'t, V, I>(&mut self, iter: I)
     where
         V: 't + Variable<Self>,
-        V::Type: Equal<Self>,
+        V::Type: AllocEq<Self>,
         I: IntoIterator<Item = &'t V>,
     {
         V::Type::assert_all_eq(self, iter)
@@ -391,7 +376,7 @@ pub trait BooleanSystem: HasVariable<bool> {
 }
 
 /// Equality Trait
-pub trait Equal<P>: Alloc<P>
+pub trait AllocEq<P>: Alloc<P>
 where
     P: BooleanSystem + ?Sized,
 {
@@ -450,23 +435,6 @@ where
     /// Verifies that a proof generated from a proof system is valid.
     fn verify(proof: &P::Proof) -> bool;
 }
-
-/* TODO: Should we have this mode?
-/// Compound Allocation Mode
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum CompoundMode<Known, Unknown> {
-    /// Known Allocation Mode
-    Known(Known),
-
-    /// Unknown Allocation Mode
-    Unknown(Unknown),
-}
-
-impl<Known, Unknown> AllocationMode for CompoundMode<Known, Unknown> {
-    type Known = Known;
-    type Unknown = Unknown;
-}
-*/
 
 /// Derived Allocation Mode
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]

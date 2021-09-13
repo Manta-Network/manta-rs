@@ -28,7 +28,7 @@ use alloc::vec::Vec;
 use core::ops::AddAssign;
 use manta_crypto::{
     constraint::{
-        BooleanSystem, Derived, Equal, HasVariable, ProofSystem, Public, PublicOrSecret, Secret,
+        AllocEq, BooleanSystem, Derived, HasVariable, ProofSystem, Public, PublicOrSecret, Secret,
     },
     ies::{EncryptedMessage, IntegratedEncryptionScheme},
     set::{constraint::VerifiedSetProofSystem, VerifiedSet},
@@ -139,10 +139,10 @@ where
     T: SecretTransferConfiguration,
 {
     /// Maximum Number of Senders
-    pub const MAXIMUM_SENDER_COUNT: usize = 10;
+    pub const MAXIMUM_SENDER_COUNT: usize = 32;
 
     /// Maximum Number of Receivers
-    pub const MAXIMUM_RECEIVER_COUNT: usize = 10;
+    pub const MAXIMUM_RECEIVER_COUNT: usize = 32;
 
     /// Builds a new [`SecretTransfer`].
     #[inline]
@@ -150,6 +150,7 @@ where
         senders: [SecretSender<T>; SENDERS],
         receivers: [SecretReceiver<T>; RECEIVERS],
     ) -> Self {
+        // FIXME: Should we have arrays of senders and receivers or use vectors?
         if SENDERS > Self::MAXIMUM_SENDER_COUNT {
             panic!("Allocated too many senders.");
         }
@@ -159,7 +160,6 @@ where
         Self { senders, receivers }
     }
 
-    /* TODO: do we still want these?
     /// Checks that the asset ids of all the senders and receivers matches.
     #[inline]
     pub fn has_unique_asset_id(&self) -> bool {
@@ -190,7 +190,6 @@ where
     pub fn is_balanced(&self) -> bool {
         self.sender_sum().eq(&self.receiver_sum())
     }
-    */
 
     /// Builds constraints for secret transfer validity proof.
     #[inline]
@@ -202,13 +201,14 @@ where
     ) where
         S: IntoIterator<Item = SecretSenderVar<T>>,
         R: IntoIterator<Item = SecretReceiverVar<T>>,
-        AssetId: Equal<T::ProofSystem, Mode = PublicOrSecret>,
-        AssetBalance: Equal<T::ProofSystem, Mode = PublicOrSecret>,
-        for<'i> AssetBalanceVar<T::ProofSystem>: AddAssign<&'i AssetBalanceVar<T::ProofSystem>>,
+        AssetId: AllocEq<T::ProofSystem, Mode = PublicOrSecret>,
+        AssetBalance: AllocEq<T::ProofSystem, Mode = PublicOrSecret>,
+        AssetBalanceVar<T::ProofSystem>: AddAssign<AssetBalanceVar<T::ProofSystem>>,
         T::ProofSystem: VerifiedSetProofSystem<
             T::UtxoSet,
             ItemMode = PublicOrSecret,
-            ContainmentProofMode = Derived,
+            PublicMode = Public,
+            SecretMode = Secret,
         >,
     {
         let commitment_scheme = ps.allocate((commitment_scheme, Public));
@@ -220,12 +220,12 @@ where
         let asset_ids = mixed_chain(senders, receivers, |c| match c {
             Either::Left(sender) => {
                 let asset = sender.get_well_formed_asset(ps, &commitment_scheme);
-                sender_sum += &asset.value;
+                sender_sum += asset.value;
                 asset.id
             }
             Either::Right(receiver) => {
                 let asset = receiver.get_well_formed_asset(ps, &commitment_scheme);
-                receiver_sum += &asset.value;
+                receiver_sum += asset.value;
                 asset.id
             }
         })
@@ -241,13 +241,14 @@ where
         commitment_scheme: &T::CommitmentScheme,
     ) -> Option<<T::ProofSystem as ProofSystem>::Proof>
     where
-        AssetId: Equal<T::ProofSystem, Mode = PublicOrSecret>,
-        AssetBalance: Equal<T::ProofSystem, Mode = PublicOrSecret>,
-        for<'i> AssetBalanceVar<T::ProofSystem>: AddAssign<&'i AssetBalanceVar<T::ProofSystem>>,
+        AssetId: AllocEq<T::ProofSystem, Mode = PublicOrSecret>,
+        AssetBalance: AllocEq<T::ProofSystem, Mode = PublicOrSecret>,
+        AssetBalanceVar<T::ProofSystem>: AddAssign<AssetBalanceVar<T::ProofSystem>>,
         T::ProofSystem: VerifiedSetProofSystem<
             T::UtxoSet,
             ItemMode = PublicOrSecret,
-            ContainmentProofMode = Derived,
+            PublicMode = Public,
+            SecretMode = Secret,
         >,
     {
         let mut ps = <T::ProofSystem as Default>::default();
@@ -283,13 +284,14 @@ where
         commitment_scheme: &T::CommitmentScheme,
     ) -> Option<SecretTransferPost<T, SENDERS, RECEIVERS>>
     where
-        AssetId: Equal<T::ProofSystem, Mode = PublicOrSecret>,
-        AssetBalance: Equal<T::ProofSystem, Mode = PublicOrSecret>,
-        for<'i> AssetBalanceVar<T::ProofSystem>: AddAssign<&'i AssetBalanceVar<T::ProofSystem>>,
+        AssetId: AllocEq<T::ProofSystem, Mode = PublicOrSecret>,
+        AssetBalance: AllocEq<T::ProofSystem, Mode = PublicOrSecret>,
+        AssetBalanceVar<T::ProofSystem>: AddAssign<AssetBalanceVar<T::ProofSystem>>,
         T::ProofSystem: VerifiedSetProofSystem<
             T::UtxoSet,
             ItemMode = PublicOrSecret,
-            ContainmentProofMode = Derived,
+            PublicMode = Public,
+            SecretMode = Secret,
         >,
     {
         let validity_proof = self.generate_validity_proof(commitment_scheme)?;
@@ -336,6 +338,7 @@ where
                 Utxo = Utxo<T>,
                 UtxoSet = T::UtxoSet,
                 EncryptedAsset = EncryptedMessage<T::IntegratedEncryptionScheme>,
+                ProofSystem = T::ProofSystem,
             > + ?Sized,
     {
         for sender_post in IntoIterator::into_iter(self.sender_posts) {
@@ -344,8 +347,7 @@ where
         for receiver_post in IntoIterator::into_iter(self.receiver_posts) {
             receiver_post.post(ledger)?;
         }
-        // FIXME: proof.post(ledger)?;
-        //        - returns `PostError::InvalidSecretTransfer` on error?
+        ledger.check_proof(self.validity_proof)?;
         Ok(())
     }
 }
@@ -388,13 +390,14 @@ where
         commitment_scheme: &T::CommitmentScheme,
     ) -> Option<TransferPost<T, SOURCES, SINKS, SENDERS, RECEIVERS>>
     where
-        AssetId: Equal<T::ProofSystem, Mode = PublicOrSecret>,
-        AssetBalance: Equal<T::ProofSystem, Mode = PublicOrSecret>,
-        for<'i> AssetBalanceVar<T::ProofSystem>: AddAssign<&'i AssetBalanceVar<T::ProofSystem>>,
+        AssetId: AllocEq<T::ProofSystem, Mode = PublicOrSecret>,
+        AssetBalance: AllocEq<T::ProofSystem, Mode = PublicOrSecret>,
+        AssetBalanceVar<T::ProofSystem>: AddAssign<AssetBalanceVar<T::ProofSystem>>,
         T::ProofSystem: VerifiedSetProofSystem<
             T::UtxoSet,
             ItemMode = PublicOrSecret,
-            ContainmentProofMode = Derived,
+            PublicMode = Public,
+            SecretMode = Secret,
         >,
     {
         Some(TransferPost {
@@ -435,6 +438,7 @@ where
                 Utxo = Utxo<T>,
                 EncryptedAsset = EncryptedMessage<T::IntegratedEncryptionScheme>,
                 UtxoSet = T::UtxoSet,
+                ProofSystem = T::ProofSystem,
             > + ?Sized,
     {
         // FIXME: self.public_transfer_post.post(ledger)?;
