@@ -148,7 +148,9 @@ pub mod constraint {
         uint8::UInt8,
     };
     use core::marker::PhantomData;
-    use manta_crypto::constraint::{Alloc, Allocation, Constant, PublicOrSecret, Secret, Variable};
+    use manta_crypto::constraint::{
+        Alloc, AllocEq, Allocation, Bool, Constant, PublicOrSecret, Secret, Var, Variable,
+    };
 
     /// Constraint Field Type
     pub type ConstraintField<C> = <<C as ProjectiveCurve>::BaseField as Field>::BasePrimeField;
@@ -202,6 +204,24 @@ pub mod constraint {
         #[inline]
         fn from(wrapper: PedersenCommitmentOutputWrapper<W, C, GG>) -> Self {
             wrapper.output
+        }
+    }
+
+    impl<W, C, GG> Concat for PedersenCommitmentOutputWrapper<W, C, GG>
+    where
+        W: PedersenWindow,
+        C: ProjectiveCurve,
+        GG: CurveVar<C, ConstraintField<C>>,
+        for<'g> &'g GG: GroupOpsBounds<'g, C, GG>,
+    {
+        type Item = u8;
+
+        #[inline]
+        fn concat<A>(&self, accumulator: &mut A)
+        where
+            A: ConcatAccumulator<Self::Item> + ?Sized,
+        {
+            self.output.concat(accumulator)
         }
     }
 
@@ -276,11 +296,11 @@ pub mod constraint {
 
         type Randomness = <PedersenCommitment<W, C> as CommitmentScheme>::Randomness;
 
-        type Output = <PedersenCommitment<W, C> as CommitmentScheme>::Output;
+        type Output = PedersenCommitmentOutputWrapper<W, C, GG>;
 
         #[inline]
         fn commit(&self, input: Self::InputBuffer, randomness: &Self::Randomness) -> Self::Output {
-            self.commitment_scheme.commit(input, randomness)
+            self.commitment_scheme.commit(input, randomness).into()
         }
     }
 
@@ -420,6 +440,23 @@ pub mod constraint {
         {
             // FIXME: implement
             let _ = (ps, allocation);
+            todo!()
+        }
+    }
+
+    impl<W, C, GG> AllocEq<ProofSystem<C>> for PedersenCommitmentOutputWrapper<W, C, GG>
+    where
+        W: PedersenWindow,
+        C: ProjectiveCurve,
+        GG: CurveVar<C, ConstraintField<C>>,
+        for<'g> &'g GG: GroupOpsBounds<'g, C, GG>,
+    {
+        #[inline]
+        fn eq(
+            ps: &mut ProofSystem<C>,
+            lhs: &Var<Self, ProofSystem<C>>,
+            rhs: &Var<Self, ProofSystem<C>>,
+        ) -> Bool<ProofSystem<C>> {
             todo!()
         }
     }

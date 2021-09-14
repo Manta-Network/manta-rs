@@ -21,6 +21,7 @@
 // TODO: Add more convenience functions for allocating unknown variables.
 // TODO: How to do verification systems? Should it be a separate trait or part of `ProofSystem`?
 // TODO: Should we (can we?) seal the `HasVariable` trait so no one implements it by accident?
+// TODO: Can we replace `AllocEq` with an equality trait that extends `Variable` not `Alloc`?
 
 use core::{
     convert::{Infallible, TryFrom},

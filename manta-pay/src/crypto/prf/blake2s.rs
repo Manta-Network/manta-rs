@@ -25,10 +25,43 @@ use manta_util::{Concat, ConcatAccumulator};
 pub struct Blake2s;
 
 /// Blake2s Pseudorandom Function Family Seed
-pub type Blake2sSeed = <ArkBlake2s as PRF>::Seed;
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct Blake2sSeed(pub(crate) <ArkBlake2s as PRF>::Seed);
+
+impl AsMut<[u8]> for Blake2sSeed {
+    #[inline]
+    fn as_mut(&mut self) -> &mut [u8] {
+        self.0.as_mut()
+    }
+}
+
+impl Concat for Blake2sSeed {
+    type Item = u8;
+
+    #[inline]
+    fn concat<A>(&self, accumulator: &mut A)
+    where
+        A: ConcatAccumulator<Self::Item> + ?Sized,
+    {
+        self.0.concat(accumulator)
+    }
+}
 
 /// Blake2s Pseudorandom Function Family Input
-pub type Blake2sInput = <ArkBlake2s as PRF>::Input;
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct Blake2sInput(<ArkBlake2s as PRF>::Input);
+
+impl Concat for Blake2sInput {
+    type Item = u8;
+
+    #[inline]
+    fn concat<A>(&self, accumulator: &mut A)
+    where
+        A: ConcatAccumulator<Self::Item> + ?Sized,
+    {
+        self.0.concat(accumulator)
+    }
+}
 
 /// Blake2s Pseudorandom Function Family Output
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -56,7 +89,8 @@ impl PseudorandomFunctionFamily for Blake2s {
     #[inline]
     fn evaluate(seed: &Self::Seed, input: &Self::Input) -> Self::Output {
         Blake2sOutput(
-            ArkBlake2s::evaluate(seed, input).expect("As of arkworks 0.3.0, this never fails."),
+            ArkBlake2s::evaluate(&seed.0, &input.0)
+                .expect("As of arkworks 0.3.0, this never fails."),
         )
     }
 }
@@ -64,50 +98,130 @@ impl PseudorandomFunctionFamily for Blake2s {
 /// Blake2s PRF Constraint System Implementations
 pub mod constraint {
     use super::*;
-    use crate::crypto::constraint::ArkProofSystem as ProofSystem;
+    use crate::crypto::constraint::{ArkProofSystem as ProofSystem, ByteArrayVar};
     use alloc::vec::Vec;
     use ark_crypto_primitives::{
         prf::blake2s::constraints::Blake2sGadget as ArkBlake2sVar, PRFGadget,
     };
     use ark_ff::PrimeField;
-    use ark_r1cs_std::uint8::UInt8;
+    use ark_r1cs_std::{uint8::UInt8, ToBytesGadget};
     use core::marker::PhantomData;
-    use manta_crypto::constraint::{Alloc, Allocation, Constant, PublicOrSecret, Variable};
+    use manta_crypto::constraint::{
+        Alloc, AllocEq, Allocation, Bool, Constant, PublicOrSecret, Secret, Var, Variable,
+    };
 
-    /// Blake2s Pseudorandom Function Family Output Wrapper
+    /// Blake2s Pseudorandom Function Family Seed Variable
     #[derive(derivative::Derivative)]
     #[derivative(Clone)]
-    pub struct Blake2sOutputWrapper<F>
+    pub struct Blake2sSeedVar<F>(ByteArrayVar<F, 32>)
+    where
+        F: PrimeField;
+
+    impl<F> Concat for Blake2sSeedVar<F>
     where
         F: PrimeField,
     {
-        /// PRF Output
-        output: Blake2sOutput,
+        type Item = UInt8<F>;
 
-        /// Type Parameter Marker
-        __: PhantomData<F>,
-    }
-
-    impl<F> From<Blake2sOutput> for Blake2sOutputWrapper<F>
-    where
-        F: PrimeField,
-    {
         #[inline]
-        fn from(output: Blake2sOutput) -> Blake2sOutputWrapper<F> {
-            Self {
-                output,
-                __: PhantomData,
-            }
+        fn concat<A>(&self, accumulator: &mut A)
+        where
+            A: ConcatAccumulator<Self::Item> + ?Sized,
+        {
+            self.0.concat(accumulator)
         }
     }
 
-    impl<F> From<Blake2sOutputWrapper<F>> for Blake2sOutput
+    impl<F> Variable<ProofSystem<F>> for Blake2sSeedVar<F>
+    where
+        F: PrimeField,
+    {
+        type Mode = Secret;
+        type Type = Blake2sSeed;
+    }
+
+    impl<F> Alloc<ProofSystem<F>> for Blake2sSeed
+    where
+        F: PrimeField,
+    {
+        type Mode = Secret;
+
+        type Variable = Blake2sSeedVar<F>;
+
+        #[inline]
+        fn variable<'t>(
+            ps: &mut ProofSystem<F>,
+            allocation: impl Into<Allocation<'t, Self, ProofSystem<F>>>,
+        ) -> Self::Variable
+        where
+            Self: 't,
+        {
+            // FIXME: implement
+            let _ = (ps, allocation);
+            todo!()
+        }
+    }
+
+    /// Blake2s Pseudorandom Function Family Input Variable
+    #[derive(derivative::Derivative)]
+    #[derivative(Clone)]
+    pub struct Blake2sInputVar<F>(ByteArrayVar<F, 32>)
+    where
+        F: PrimeField;
+
+    impl<F> Concat for Blake2sInputVar<F>
+    where
+        F: PrimeField,
+    {
+        type Item = UInt8<F>;
+
+        #[inline]
+        fn concat<A>(&self, accumulator: &mut A)
+        where
+            A: ConcatAccumulator<Self::Item> + ?Sized,
+        {
+            self.0.concat(accumulator)
+        }
+    }
+
+    impl<F> Default for Blake2sInputVar<F>
     where
         F: PrimeField,
     {
         #[inline]
-        fn from(wrapper: Blake2sOutputWrapper<F>) -> Self {
-            wrapper.output
+        fn default() -> Self {
+            // TODO: Should be secret values!
+            todo!()
+        }
+    }
+
+    impl<F> Variable<ProofSystem<F>> for Blake2sInputVar<F>
+    where
+        F: PrimeField,
+    {
+        type Mode = Secret;
+        type Type = Blake2sInput;
+    }
+
+    impl<F> Alloc<ProofSystem<F>> for Blake2sInput
+    where
+        F: PrimeField,
+    {
+        type Mode = Secret;
+
+        type Variable = Blake2sInputVar<F>;
+
+        #[inline]
+        fn variable<'t>(
+            ps: &mut ProofSystem<F>,
+            allocation: impl Into<Allocation<'t, Self, ProofSystem<F>>>,
+        ) -> Self::Variable
+        where
+            Self: 't,
+        {
+            // FIXME: implement
+            let _ = (ps, allocation);
+            todo!()
         }
     }
 
@@ -118,15 +232,30 @@ pub mod constraint {
     where
         F: PrimeField;
 
+    impl<F> Concat for Blake2sOutputVar<F>
+    where
+        F: PrimeField,
+    {
+        type Item = UInt8<F>;
+
+        #[inline]
+        fn concat<A>(&self, accumulator: &mut A)
+        where
+            A: ConcatAccumulator<Self::Item> + ?Sized,
+        {
+            accumulator.extend(&self.0.to_bytes().expect("This is not allowed to fail."));
+        }
+    }
+
     impl<F> Variable<ProofSystem<F>> for Blake2sOutputVar<F>
     where
         F: PrimeField,
     {
         type Mode = PublicOrSecret;
-        type Type = Blake2sOutputWrapper<F>;
+        type Type = Blake2sOutput;
     }
 
-    impl<F> Alloc<ProofSystem<F>> for Blake2sOutputWrapper<F>
+    impl<F> Alloc<ProofSystem<F>> for Blake2sOutput
     where
         F: PrimeField,
     {
@@ -144,6 +273,20 @@ pub mod constraint {
         {
             // FIXME: implement
             let _ = (ps, allocation);
+            todo!()
+        }
+    }
+
+    impl<F> AllocEq<ProofSystem<F>> for Blake2sOutput
+    where
+        F: PrimeField,
+    {
+        #[inline]
+        fn eq(
+            ps: &mut ProofSystem<F>,
+            lhs: &Var<Self, ProofSystem<F>>,
+            rhs: &Var<Self, ProofSystem<F>>,
+        ) -> Bool<ProofSystem<F>> {
             todo!()
         }
     }
@@ -185,15 +328,16 @@ pub mod constraint {
     where
         F: PrimeField,
     {
-        type Seed = [UInt8<F>];
-        type Input = Vec<UInt8<F>>;
+        type Seed = Blake2sSeedVar<F>;
+        type Input = Blake2sInputVar<F>;
         type Output = Blake2sOutputVar<F>;
 
         #[inline]
         fn evaluate(seed: &Self::Seed, input: &Self::Input) -> Self::Output {
             // FIXME: Make a note about the failure properties of PRFs.
             Blake2sOutputVar(
-                ArkBlake2sVar::evaluate(seed, input).expect("Failure outcomes are not accepted."),
+                ArkBlake2sVar::evaluate(seed.0.as_ref(), input.0.as_ref())
+                    .expect("Failure outcomes are not accepted."),
             )
         }
     }

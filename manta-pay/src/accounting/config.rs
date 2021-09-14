@@ -25,6 +25,7 @@ use crate::{
         constraint::ArkProofSystem,
         ies::IES,
         prf::blake2s::{constraint::Blake2sVar, Blake2s},
+        rand::ChaCha20RngBlake2sSeedable,
     },
 };
 use ark_ed_on_bls12_381::{constraints::EdwardsVar, EdwardsProjective, Fq};
@@ -68,14 +69,6 @@ pub type PedersenCommitmentVar = pedersen::constraint::PedersenCommitmentVar<
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Configuration;
 
-impl IdentityConfiguration for Configuration {
-    type SecretKey = [u8; 32];
-    type PseudorandomFunctionFamily = Blake2s;
-    type CommitmentScheme = PedersenCommitment;
-    type Rng = ChaCha20Rng;
-}
-
-/* TODO:
 impl IdentityProofSystemConfiguration for Configuration {
     type BooleanSystem = ArkProofSystem<Fq>;
     type PseudorandomFunctionFamilySeed = <Blake2s as PseudorandomFunctionFamily>::Seed;
@@ -87,13 +80,12 @@ impl IdentityProofSystemConfiguration for Configuration {
     type CommitmentSchemeOutput = <PedersenCommitment as CommitmentScheme>::Output;
     type CommitmentScheme = PedersenCommitment;
     type CommitmentSchemeVar = PedersenCommitmentVar;
-    type Rng = ChaCha20Rng;
+    type Rng = ChaCha20RngBlake2sSeedable;
 }
-*/
 
 /* TODO:
 impl SecretTransferConfiguration for Configuration {
-    type ProofSystem = ArkProofSystem;
+    type ProofSystem = ArkProofSystem<Fq>;
     type IntegratedEncryptionScheme = IES;
     type UtxoSet = UtxoSet;
 }
