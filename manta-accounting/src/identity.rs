@@ -35,7 +35,7 @@ use manta_crypto::{
     },
     ies::{self, EncryptedMessage, IntegratedEncryptionScheme},
     set::{
-        constraint::{ContainmentProofVar, VerifiedSetProofSystem},
+        constraint::{ContainmentProofVar, VerifiedSetVariable},
         ContainmentProof, VerifiedSet,
     },
     PseudorandomFunctionFamily,
@@ -1220,12 +1220,7 @@ pub struct SenderVar<C, S>
 where
     C: IdentityProofSystemConfiguration,
     S: VerifiedSet<Item = Utxo<C>>,
-    C::BooleanSystem: VerifiedSetProofSystem<
-        S,
-        ItemMode = PublicOrSecret,
-        PublicMode = Public,
-        SecretMode = Secret,
-    >,
+    C::BooleanSystem: HasVariable<S::Public> + HasVariable<S::Secret>,
 {
     /// Secret Key
     secret_key: SecretKeyVar<C>,
@@ -1256,12 +1251,7 @@ impl<C, S> SenderVar<C, S>
 where
     C: IdentityProofSystemConfiguration,
     S: VerifiedSet<Item = Utxo<C>>,
-    C::BooleanSystem: VerifiedSetProofSystem<
-        S,
-        ItemMode = PublicOrSecret,
-        PublicMode = Public,
-        SecretMode = Secret,
-    >,
+    C::BooleanSystem: HasVariable<S::Public> + HasVariable<S::Secret>,
 {
     /// Checks if `self` is a well-formed sender and returns its asset.
     #[inline]
@@ -1269,7 +1259,12 @@ where
         self,
         ps: &mut C::BooleanSystem,
         commitment_scheme: &C::CommitmentSchemeVar,
-    ) -> AssetVar<C::BooleanSystem> {
+        utxo_set: &Var<S, C::BooleanSystem>,
+    ) -> AssetVar<C::BooleanSystem>
+    where
+        S: Alloc<C::BooleanSystem>,
+        S::Variable: VerifiedSetVariable<C::BooleanSystem>,
+    {
         // Well-formed check:
         //
         // 1. pk = PRF(sk, 0)                  [public: (),     secret: (pk, sk)]
@@ -1338,7 +1333,8 @@ where
         // is_path(cm, path, root) == true
         // ```
         // where public: {root}, secret: {cm, path}.
-        self.utxo_containment_proof.assert_validity(&self.utxo, ps);
+        self.utxo_containment_proof
+            .assert_validity(utxo_set, &self.utxo, ps);
 
         self.asset
     }
@@ -1348,12 +1344,7 @@ impl<C, S> Variable<C::BooleanSystem> for SenderVar<C, S>
 where
     C: IdentityProofSystemConfiguration,
     S: VerifiedSet<Item = Utxo<C>>,
-    C::BooleanSystem: VerifiedSetProofSystem<
-        S,
-        ItemMode = PublicOrSecret,
-        PublicMode = Public,
-        SecretMode = Secret,
-    >,
+    C::BooleanSystem: HasVariable<S::Public, Mode = Public> + HasVariable<S::Secret, Mode = Secret>,
 {
     type Mode = Derived;
     type Type = Sender<C, S>;
@@ -1363,12 +1354,7 @@ impl<C, S> Alloc<C::BooleanSystem> for Sender<C, S>
 where
     C: IdentityProofSystemConfiguration,
     S: VerifiedSet<Item = Utxo<C>>,
-    C::BooleanSystem: VerifiedSetProofSystem<
-        S,
-        ItemMode = PublicOrSecret,
-        PublicMode = Public,
-        SecretMode = Secret,
-    >,
+    C::BooleanSystem: HasVariable<S::Public, Mode = Public> + HasVariable<S::Secret, Mode = Secret>,
 {
     type Mode = Derived;
     type Variable = SenderVar<C, S>;

@@ -16,8 +16,6 @@
 
 //! Identity and Transfer Configurations
 
-#![allow(unused_imports)] // FIXME: Remove this once we are done implementing config.
-
 use crate::{
     accounting::ledger::UtxoSet,
     crypto::{
@@ -30,11 +28,9 @@ use crate::{
 };
 use ark_ed_on_bls12_381::{constraints::EdwardsVar, EdwardsProjective, Fq};
 use manta_accounting::{
-    identity::{IdentityConfiguration, IdentityProofSystemConfiguration},
-    transfer::SecretTransferConfiguration,
+    identity::IdentityProofSystemConfiguration, transfer::TransferConfiguration,
 };
 use manta_crypto::{commitment::CommitmentScheme, PseudorandomFunctionFamily};
-use rand_chacha::ChaCha20Rng;
 
 /// Pedersen Window Parameters
 #[derive(Clone, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -65,12 +61,15 @@ pub type PedersenCommitmentVar = pedersen::constraint::PedersenCommitmentVar<
     PedersenCommitmentProjectiveCurveVar,
 >;
 
+/// Proof System
+pub type ProofSystem = ArkProofSystem<Fq>;
+
 /// Manta Pay Configuration
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Configuration;
 
 impl IdentityProofSystemConfiguration for Configuration {
-    type BooleanSystem = ArkProofSystem<Fq>;
+    type BooleanSystem = ProofSystem;
     type PseudorandomFunctionFamilySeed = <Blake2s as PseudorandomFunctionFamily>::Seed;
     type PseudorandomFunctionFamilyInput = <Blake2s as PseudorandomFunctionFamily>::Input;
     type PseudorandomFunctionFamilyOutput = <Blake2s as PseudorandomFunctionFamily>::Output;
@@ -84,9 +83,11 @@ impl IdentityProofSystemConfiguration for Configuration {
 }
 
 /* TODO:
-impl SecretTransferConfiguration for Configuration {
+impl TransferConfiguration for Configuration {
     type ProofSystem = ArkProofSystem<Fq>;
     type IntegratedEncryptionScheme = IES;
+    type UtxoPublicInput = ();
+    type UtxoSecretWitness = ();
     type UtxoSet = UtxoSet;
 }
 */

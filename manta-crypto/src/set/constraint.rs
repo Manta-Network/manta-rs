@@ -21,7 +21,7 @@ use crate::{
         unknown, Alloc, Allocation, AllocationMode, BooleanSystem, Derived, HasVariable, Mode, Var,
         Variable,
     },
-    set::{ContainmentProof, VerifiedSet},
+    set::{ContainmentProof, Set, VerifiedSet},
 };
 use core::marker::PhantomData;
 
@@ -101,11 +101,12 @@ where
 
     /// Asserts that `self` is a valid proof to the fact that `item` is stored in the verified set.
     #[inline]
-    pub fn assert_validity(&self, item: &Var<S::Item, P>, ps: &mut P)
+    pub fn assert_validity<V>(&self, set: &V, item: &ItemVar<V, P>, ps: &mut P)
     where
-        P: VerifiedSetProofSystem<S>,
+        P: BooleanSystem + HasVariable<S::Item>,
+        V: VerifiedSetVariable<P, Type = S>,
     {
-        ps.assert_validity(&self.public_input, &self.secret_witness, item)
+        set.assert_valid_containment_proof(&self.public_input, &self.secret_witness, item, ps)
     }
 }
 
@@ -145,6 +146,46 @@ where
     }
 }
 
+/// Item Type for [`VerifiedSetVariable`]
+pub type ItemType<V, P> = <<V as Variable<P>>::Type as Set>::Item;
+
+/// Public Input Type for [`VerifiedSetVariable`]
+pub type PublicInputType<V, P> = <<V as Variable<P>>::Type as VerifiedSet>::Public;
+
+/// Secret Witness Type for [`VerifiedSetVariable`]
+pub type SecretWitnessType<V, P> = <<V as Variable<P>>::Type as VerifiedSet>::Secret;
+
+/// Item Variable for [`VerifiedSetVariable`]
+pub type ItemVar<V, P> = Var<ItemType<V, P>, P>;
+
+/// Public Input Variable for [`VerifiedSetVariable`]
+pub type PublicInputVar<V, P> = Var<PublicInputType<V, P>, P>;
+
+/// Secret Witness Variable for [`VerifiedSetVariable`]
+pub type SecretWitnessVar<V, P> = Var<SecretWitnessType<V, P>, P>;
+
+/// Verified Set Variable
+pub trait VerifiedSetVariable<P>: Variable<P>
+where
+    P: BooleanSystem
+        + HasVariable<ItemType<Self, P>>
+        + HasVariable<PublicInputType<Self, P>>
+        + HasVariable<SecretWitnessType<Self, P>>
+        + ?Sized,
+    Self::Type: VerifiedSet,
+{
+    /// Asserts that `public_input` and `secret_witness` form a proof to the fact that `item` is
+    /// stored in `self`.
+    fn assert_valid_containment_proof(
+        &self,
+        public_input: &PublicInputVar<Self, P>,
+        secret_witness: &SecretWitnessVar<Self, P>,
+        item: &ItemVar<Self, P>,
+        ps: &mut P,
+    );
+}
+
+/* TODO[remove]:
 /// Verified Set Proof System
 pub trait VerifiedSetProofSystem<S>:
     BooleanSystem
@@ -172,3 +213,4 @@ where
         item: &Var<S::Item, Self>,
     );
 }
+*/

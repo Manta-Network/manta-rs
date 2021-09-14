@@ -19,11 +19,13 @@
 // FIXME: Use more type-safe definitions for `VoidNumber` and `Utxo`.
 
 use crate::{
-    accounting::config::{PedersenCommitmentProjectiveCurve, PedersenCommitmentWindowParameters},
+    accounting::config::{
+        PedersenCommitment, PedersenCommitmentProjectiveCurve, PedersenCommitmentWindowParameters,
+        ProofSystem,
+    },
     crypto::{
-        constraint::ArkProofSystem,
         ies::EncryptedAsset,
-        merkle_tree::{self, MerkleTree, Path, Root},
+        merkle_tree::{self, MerkleTree, Path},
     },
 };
 use alloc::{vec, vec::Vec};
@@ -33,21 +35,23 @@ use blake2::{
 };
 use manta_accounting::{Ledger as LedgerTrait, ProofPostError};
 use manta_crypto::{
-    constraint::ProofSystem,
-    set::{ContainmentProof, Set, VerifiedSet},
+    commitment::CommitmentScheme,
+    constraint::{Public, PublicOrSecret, Secret, Var},
+    set::{constraint::VerifiedSetVariable, ContainmentProof, Set, VerifiedSet},
 };
-use manta_util::into_array_unchecked;
+use manta_util::{as_bytes, into_array_unchecked};
 
 /// Void Number
 type VoidNumber = [u8; 32];
 
 /// Unspent Transaction Output
-type Utxo = [u8; 32];
+type Utxo = [u8; 32]; // TODO: <PedersenCommitment as CommitmentScheme>::Output;
 
 /// UTXO Shard Root
-type UtxoShardRoot = Root<PedersenCommitmentWindowParameters, PedersenCommitmentProjectiveCurve>;
+type UtxoShardRoot =
+    merkle_tree::Root<PedersenCommitmentWindowParameters, PedersenCommitmentProjectiveCurve>;
 
-/// Merkle Tree Parameters
+/// UTXO Set Parameters
 type Parameters =
     merkle_tree::Parameters<PedersenCommitmentWindowParameters, PedersenCommitmentProjectiveCurve>;
 
@@ -140,14 +144,32 @@ impl Set for UtxoSet {
 impl VerifiedSet for UtxoSet {
     type Public = UtxoShardRoot;
 
-    type Secret = Path<PedersenCommitmentWindowParameters, PedersenCommitmentProjectiveCurve, Utxo>;
+    type Secret = Path<PedersenCommitmentWindowParameters, PedersenCommitmentProjectiveCurve>;
 
     // TODO: Give a more informative error.
     type ContainmentError = ();
 
     #[inline]
-    fn check_public_input(&self, public: &Self::Public) -> bool {
-        self.root_exists(public)
+    fn check_public_input(&self, public_input: &Self::Public) -> bool {
+        self.root_exists(public_input)
+    }
+
+    #[inline]
+    fn check_containment_proof(
+        &self,
+        public_input: &Self::Public,
+        secret_witness: &Self::Secret,
+        item: &Self::Item,
+    ) -> bool {
+        secret_witness
+            .path
+            .verify(
+                &self.parameters.leaf,
+                &self.parameters.two_to_one,
+                public_input,
+                &as_bytes!(item),
+            )
+            .expect("As of arkworks 0.3.0, this never fails.")
     }
 
     #[inline]
@@ -188,7 +210,7 @@ impl LedgerTrait for Ledger {
 
     type EncryptedAsset = EncryptedAsset;
 
-    type ProofSystem = ArkProofSystem;
+    type ProofSystem = ProofSystem;
 
     #[inline]
     fn utxos(&self) -> &Self::UtxoSet {
@@ -229,7 +251,7 @@ impl LedgerTrait for Ledger {
     #[inline]
     fn check_proof(
         &self,
-        proof: <Self::ProofSystem as ProofSystem>::Proof,
+        proof: <Self::ProofSystem as constraint::ProofSystem>::Proof,
     ) -> Result<(), ProofPostError<Self>> {
         let _ = proof;
         todo!()

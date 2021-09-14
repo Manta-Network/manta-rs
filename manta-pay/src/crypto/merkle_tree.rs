@@ -34,7 +34,7 @@ use ark_crypto_primitives::{
     },
 };
 use core::marker::PhantomData;
-use manta_crypto::set::{ContainmentProof, VerifiedSet, VerifyContainment};
+use manta_crypto::set::{ContainmentProof, VerifiedSet};
 use manta_util::{as_bytes, Concat};
 
 /// Merkle Tree Root
@@ -49,72 +49,58 @@ where
     C: ProjectiveCurve,
 {
     /// Leaf Hash Parameters
-    leaf: LeafParam<MerkleTreeConfiguration<W, C>>,
+    pub(crate) leaf: LeafParam<MerkleTreeConfiguration<W, C>>,
 
     /// Two-to-One Hash Parameters
-    two_to_one: TwoToOneParam<MerkleTreeConfiguration<W, C>>,
+    pub(crate) two_to_one: TwoToOneParam<MerkleTreeConfiguration<W, C>>,
 }
 
 /// Merkle Tree Path
 #[derive(derivative::Derivative)]
 #[derivative(Clone(bound = ""))]
-pub struct Path<W, C, T>
+pub struct Path<W, C>
 where
     W: PedersenWindow,
     C: ProjectiveCurve,
 {
-    /// Merkle Tree Parameters
-    parameters: Parameters<W, C>,
-
     /// Path
-    path: MerkleTreePath<MerkleTreeConfiguration<W, C>>,
-
-    /// Type Parameter Marker
-    __: PhantomData<T>,
+    pub(crate) path: MerkleTreePath<MerkleTreeConfiguration<W, C>>,
 }
 
-impl<W, C, T> Path<W, C, T>
+impl<W, C> Path<W, C>
 where
     W: PedersenWindow,
     C: ProjectiveCurve,
 {
-    /// Builds a new [`Path`] from `parameters` and `path`.
+    /// Builds a new [`Path`] from `path`.
     #[inline]
-    fn new(
-        parameters: Parameters<W, C>,
-        path: MerkleTreePath<MerkleTreeConfiguration<W, C>>,
-    ) -> Self {
-        Self {
-            parameters,
-            path,
-            __: PhantomData,
-        }
+    fn new(path: MerkleTreePath<MerkleTreeConfiguration<W, C>>) -> Self {
+        Self { path }
     }
 }
+
+/// Path Variable
+pub struct PathVar<W, C>(PhantomData<(W, C)>)
+where
+    W: PedersenWindow,
+    C: ProjectiveCurve;
 
 /// Merkle Tree
 #[derive(derivative::Derivative)]
 #[derivative(Clone(bound = ""))]
-pub struct MerkleTree<W, C, T>
+pub struct MerkleTree<W, C>
 where
     W: PedersenWindow,
     C: ProjectiveCurve,
 {
-    /// Merkle Tree Parameters
-    parameters: Parameters<W, C>,
-
     /// Merkle Tree
-    tree: ArkMerkleTree<MerkleTreeConfiguration<W, C>>,
-
-    /// Type Parameter Marker
-    __: PhantomData<T>,
+    pub(crate) tree: ArkMerkleTree<MerkleTreeConfiguration<W, C>>,
 }
 
-impl<W, C, T> MerkleTree<W, C, T>
+impl<W, C> MerkleTree<W, C>
 where
     W: PedersenWindow,
     C: ProjectiveCurve,
-    T: Concat<Item = u8>,
 {
     /// Builds a new [`MerkleTree`].
     ///
@@ -122,7 +108,10 @@ where
     ///
     /// The length of `leaves` must be a power of 2 or this function will panic.
     #[inline]
-    pub fn new(parameters: &Parameters<W, C>, leaves: &[T]) -> Option<Self> {
+    pub fn new<T>(parameters: &Parameters<W, C>, leaves: &[T]) -> Option<Self>
+    where
+        T: Concat<Item = u8>,
+    {
         Some(Self {
             tree: ArkMerkleTree::new(
                 &parameters.leaf,
@@ -133,14 +122,15 @@ where
                     .collect::<Vec<_>>(),
             )
             .ok()?,
-            parameters: parameters.clone(),
-            __: PhantomData,
         })
     }
 
     /// Computes the [`Root`] of the [`MerkleTree`] built from the `leaves`.
     #[inline]
-    pub fn build_root(parameters: &Parameters<W, C>, leaves: &[T]) -> Option<Root<W, C>> {
+    pub fn build_root<T>(parameters: &Parameters<W, C>, leaves: &[T]) -> Option<Root<W, C>>
+    where
+        T: Concat<Item = u8>,
+    {
         Some(Self::new(parameters, leaves)?.root())
     }
 
@@ -154,14 +144,11 @@ where
     #[inline]
     pub fn get_containment_proof<S>(&self, index: usize) -> Option<ContainmentProof<S>>
     where
-        S: VerifiedSet<Public = Root<W, C>, Secret = Path<W, C, T>>,
+        S: VerifiedSet<Public = Root<W, C>, Secret = Path<W, C>>,
     {
         Some(ContainmentProof::new(
             self.root(),
-            Path::new(
-                self.parameters.clone(),
-                self.tree.generate_proof(index).ok()?,
-            ),
+            Path::new(self.tree.generate_proof(index).ok()?),
         ))
     }
 }
@@ -181,23 +168,4 @@ where
 {
     type LeafHash = CRH<C, W>;
     type TwoToOneHash = CRH<C, W>;
-}
-
-impl<W, C, T> VerifyContainment<Root<W, C>, T> for Path<W, C, T>
-where
-    W: PedersenWindow,
-    C: ProjectiveCurve,
-    T: Concat<Item = u8>,
-{
-    #[inline]
-    fn verify(&self, root: &Root<W, C>, item: &T) -> bool {
-        self.path
-            .verify(
-                &self.parameters.leaf,
-                &self.parameters.two_to_one,
-                root,
-                &as_bytes!(item),
-            )
-            .expect("As of arkworks 0.3.0, this never fails.")
-    }
 }

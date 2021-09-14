@@ -43,16 +43,6 @@ pub trait Set {
     }
 }
 
-/// Verified Containment Trait
-pub trait VerifyContainment<Public, Item>
-where
-    Public: ?Sized,
-    Item: ?Sized,
-{
-    /// Verifies that `self` is a proof that `item` is contained in some [`VerifiedSet`].
-    fn verify(&self, public_input: &Public, item: &Item) -> bool;
-}
-
 /// Containment Proof for a [`VerifiedSet`]
 pub struct ContainmentProof<S>
 where
@@ -86,8 +76,8 @@ where
 
     /// Verifies that the `item` is contained in some [`VerifiedSet`].
     #[inline]
-    pub fn verify(&self, item: &S::Item) -> bool {
-        self.secret_witness.verify(&self.public_input, item)
+    pub fn verify(&self, set: &S, item: &S::Item) -> bool {
+        set.check_containment_proof(&self.public_input, &self.secret_witness, item)
     }
 
     /// Returns `true` if `self.public_input` is a valid input for the current state of `set`.
@@ -103,13 +93,22 @@ pub trait VerifiedSet: Set {
     type Public;
 
     /// Secret Witness for [`Item`](Set::Item) Containment
-    type Secret: VerifyContainment<Self::Public, Self::Item>;
+    type Secret;
 
     /// Error Generating a [`ContainmentProof`]
     type ContainmentError;
 
     /// Returns `true` if `public_input` is a valid input for the current state of `self`.
     fn check_public_input(&self, public_input: &Self::Public) -> bool;
+
+    /// Returns `true` if `public_input` and `secret_witness` make up a valid proof that `item`
+    /// is stored in `self`.
+    fn check_containment_proof(
+        &self,
+        public_input: &Self::Public,
+        secret_witness: &Self::Secret,
+        item: &Self::Item,
+    ) -> bool;
 
     /// Generates a proof that the given `item` is stored in `self`.
     fn get_containment_proof(
