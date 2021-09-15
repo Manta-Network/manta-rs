@@ -33,7 +33,8 @@ use derive_more::{
     Add, AddAssign, Display, Div, DivAssign, From, Mul, MulAssign, Product, Sub, SubAssign, Sum,
 };
 use manta_crypto::constraint::{
-    unknown, Alloc, Allocation, HasVariable, PublicOrSecret, Secret, Var, Variable,
+    reflection::{unknown, HasAllocation, HasVariable, Var},
+    Allocation, PublicOrSecret, Secret, Variable,
 };
 use manta_util::{array_map, fallible_array_map, into_array_unchecked, Concat, ConcatAccumulator};
 use rand::{
@@ -395,36 +396,33 @@ where
         + HasVariable<AssetBalance, Mode = PublicOrSecret>
         + ?Sized,
 {
-    type Mode = Secret;
     type Type = Asset;
-}
 
-impl<P> Alloc<P> for Asset
-where
-    P: HasVariable<AssetId, Mode = PublicOrSecret>
-        + HasVariable<AssetBalance, Mode = PublicOrSecret>
-        + ?Sized,
-{
     type Mode = Secret;
-
-    type Variable = AssetVar<P>;
 
     #[inline]
-    fn variable<'t>(ps: &mut P, allocation: impl Into<Allocation<'t, Self, P>>) -> Self::Variable
-    where
-        Self: 't,
-    {
-        match allocation.into() {
-            Allocation::Known(this, mode) => Self::Variable::new(
-                ps.allocate_known(&this.id, mode),
-                ps.allocate_known(&this.value, mode),
+    fn new(ps: &mut P, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
+        match allocation {
+            Allocation::Known(this, mode) => Self::new(
+                ps.new_known_allocation(&this.id, mode),
+                ps.new_known_allocation(&this.value, mode),
             ),
-            Allocation::Unknown(mode) => Self::Variable::new(
+            Allocation::Unknown(mode) => Self::new(
                 unknown::<AssetId, _>(ps, mode.into()),
                 unknown::<AssetBalance, _>(ps, mode.into()),
             ),
         }
     }
+}
+
+impl<P> HasAllocation<P> for Asset
+where
+    P: HasVariable<AssetId, Mode = PublicOrSecret>
+        + HasVariable<AssetBalance, Mode = PublicOrSecret>
+        + ?Sized,
+{
+    type Variable = AssetVar<P>;
+    type Mode = Secret;
 }
 
 /// Asset Collection

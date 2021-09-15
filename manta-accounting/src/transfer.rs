@@ -17,13 +17,10 @@
 //! Transfer Protocols
 
 use crate::{
-    asset::{
-        sample_asset_balances, Asset, AssetBalance, AssetBalanceVar, AssetBalances, AssetId,
-        AssetIdVar,
-    },
+    asset::{sample_asset_balances, Asset, AssetBalance, AssetBalanceVar, AssetBalances, AssetId},
     identity::{
         IdentityProofSystemConfiguration, Receiver, ReceiverPost, ReceiverVar, Sender, SenderPost,
-        SenderVar, Utxo, VoidNumber,
+        SenderVar, Utxo, UtxoVar, VoidNumber,
     },
     ledger::{Ledger, PostError},
 };
@@ -31,8 +28,9 @@ use alloc::vec::Vec;
 use core::ops::AddAssign;
 use manta_crypto::{
     constraint::{
-        Alloc, AllocEq, BooleanSystem, Constant, Derived, ProofSystem, Public, PublicOrSecret,
-        Secret,
+        reflection::{HasAllocation, HasVariable},
+        BooleanSystem, Constant, Derived, Equal, ProofSystem, Public, PublicOrSecret, Secret,
+        Variable, VariableSource,
     },
     ies::{EncryptedMessage, IntegratedEncryptionScheme},
     set::{constraint::VerifiedSetVariable, VerifiedSet},
@@ -125,26 +123,35 @@ pub trait TransferConfiguration:
     IdentityProofSystemConfiguration<BooleanSystem = Self::ProofSystem>
 {
     /// Proof System
-    type ProofSystem: ProofSystem;
+    type ProofSystem: ProofSystem
+        + HasVariable<AssetId, Variable = Self::AssetIdVar, Mode = PublicOrSecret>
+        + HasVariable<AssetBalance, Variable = Self::AssetBalanceVar, Mode = PublicOrSecret>
+        + HasVariable<<Self::UtxoSet as VerifiedSet>::Public, Mode = Public>
+        + HasVariable<<Self::UtxoSet as VerifiedSet>::Secret, Mode = Secret>;
+
+    /// Asset Id Variable
+    type AssetIdVar: Variable<Self::ProofSystem, Mode = PublicOrSecret, Type = AssetId>
+        + Equal<Self::ProofSystem>;
+
+    /// Asset Balance Variable
+    type AssetBalanceVar: Variable<Self::ProofSystem, Mode = PublicOrSecret, Type = AssetBalance>
+        + Equal<Self::ProofSystem>
+        + AddAssign;
 
     /// Integrated Encryption Scheme for [`Asset`]
     type IntegratedEncryptionScheme: IntegratedEncryptionScheme<Plaintext = Asset>;
 
-    /// Verified Set Public Input
-    type UtxoSetPublicInput: Alloc<Self::ProofSystem, Mode = Public>;
-
-    /// Verified Set Secret Witness
-    type UtxoSetSecretWitness: Alloc<Self::ProofSystem, Mode = Secret>;
-
     /// Verified Set for [`Utxo`]
-    type UtxoSet: VerifiedSet<
-            Item = Utxo<Self>,
-            Public = Self::UtxoSetPublicInput,
-            Secret = Self::UtxoSetSecretWitness,
-        > + Alloc<Self::ProofSystem, Mode = Constant, Variable = Self::UtxoSetVar>;
+    type UtxoSet: VerifiedSet<Item = Utxo<Self>>
+        + HasAllocation<Self::ProofSystem, Variable = Self::UtxoSetVar, Mode = Constant>;
 
     /// Verified Set Variable for [`Utxo`]
-    type UtxoSetVar: VerifiedSetVariable<Self::ProofSystem, Mode = Constant, Type = Self::UtxoSet>;
+    type UtxoSetVar: VerifiedSetVariable<
+        Self::ProofSystem,
+        ItemVar = UtxoVar<Self>,
+        Type = Self::UtxoSet,
+        Mode = Constant,
+    >;
 }
 
 /// Secret Sender Type
@@ -279,12 +286,7 @@ where
         self,
         commitment_scheme: &T::CommitmentScheme,
         utxo_set: &T::UtxoSet,
-    ) -> Option<SecretTransferPost<T, SENDERS, RECEIVERS>>
-    where
-        AssetId: AllocEq<T::ProofSystem, Mode = PublicOrSecret>,
-        AssetBalance: AllocEq<T::ProofSystem, Mode = PublicOrSecret>,
-        AssetBalanceVar<T::ProofSystem>: AddAssign<AssetBalanceVar<T::ProofSystem>>,
-    {
+    ) -> Option<SecretTransferPost<T, SENDERS, RECEIVERS>> {
         Some(SecretTransferPost {
             validity_proof: Transfer::<T, 0, SENDERS, RECEIVERS, 0>::generate_validity_proof(
                 None,
@@ -475,7 +477,7 @@ where
         ps: &mut T::ProofSystem,
         commitment_scheme: &T::CommitmentSchemeVar,
         utxo_set: &T::UtxoSetVar,
-        base_asset_id: Option<AssetIdVar<T::ProofSystem>>,
+        base_asset_id: Option<T::AssetIdVar>,
         sources: Sources,
         senders: Senders,
         receivers: Receivers,
@@ -485,12 +487,9 @@ where
         Senders: Iterator<Item = SecretSenderVar<T>>,
         Receivers: Iterator<Item = SecretReceiverVar<T>>,
         Sinks: Iterator<Item = AssetBalanceVar<T::ProofSystem>>,
-        AssetId: AllocEq<T::ProofSystem, Mode = PublicOrSecret>,
-        AssetBalance: AllocEq<T::ProofSystem, Mode = PublicOrSecret>,
-        AssetBalanceVar<T::ProofSystem>: AddAssign<AssetBalanceVar<T::ProofSystem>>,
     {
-        let mut sender_sum = AssetBalance(0).as_known(ps, Secret);
-        let mut receiver_sum = AssetBalance(0).as_known(ps, Secret);
+        let mut sender_sum = T::AssetBalanceVar::from_default(ps, Secret);
+        let mut receiver_sum = T::AssetBalanceVar::from_default(ps, Secret);
 
         sources.for_each(|source| sender_sum += source);
         sinks.for_each(|sink| receiver_sum += sink);
@@ -528,12 +527,7 @@ where
         sinks: &AssetBalances<SINKS>,
         commitment_scheme: &T::CommitmentScheme,
         utxo_set: &T::UtxoSet,
-    ) -> Option<Proof<T>>
-    where
-        AssetId: AllocEq<T::ProofSystem, Mode = PublicOrSecret>,
-        AssetBalance: AllocEq<T::ProofSystem, Mode = PublicOrSecret>,
-        AssetBalanceVar<T::ProofSystem>: AddAssign<AssetBalanceVar<T::ProofSystem>>,
-    {
+    ) -> Option<Proof<T>> {
         // FIXME: Find a better way to allocate variables without so much hassle.
 
         let mut ps = <T::ProofSystem as Default>::default();
@@ -549,13 +543,13 @@ where
         #[allow(clippy::needless_collect)] // NOTE: `ps` is being mutated, we need to collect.
         let senders = senders
             .iter()
-            .map(|sender| sender.as_known(&mut ps, Derived))
+            .map(|sender| sender.known(&mut ps, Derived))
             .collect::<Vec<_>>();
 
         #[allow(clippy::needless_collect)] // NOTE: `ps` is being mutated, we need to collect.
         let receivers = receivers
             .iter()
-            .map(|receiver| receiver.as_known(&mut ps, Derived))
+            .map(|receiver| receiver.known(&mut ps, Derived))
             .collect::<Vec<_>>();
 
         #[allow(clippy::needless_collect)] // NOTE: `ps` is being mutated, we need to collect.
@@ -587,12 +581,7 @@ where
         self,
         commitment_scheme: &T::CommitmentScheme,
         utxo_set: &T::UtxoSet,
-    ) -> Option<TransferPost<T, SOURCES, SENDERS, RECEIVERS, SINKS>>
-    where
-        AssetId: AllocEq<T::ProofSystem, Mode = PublicOrSecret>,
-        AssetBalance: AllocEq<T::ProofSystem, Mode = PublicOrSecret>,
-        AssetBalanceVar<T::ProofSystem>: AddAssign<AssetBalanceVar<T::ProofSystem>>,
-    {
+    ) -> Option<TransferPost<T, SOURCES, SENDERS, RECEIVERS, SINKS>> {
         Some(TransferPost {
             validity_proof: if SENDERS == 0 {
                 None

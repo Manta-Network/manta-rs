@@ -29,8 +29,8 @@ use ark_relations::{
 use core::borrow::Borrow;
 use manta_accounting::{AssetBalance, AssetId};
 use manta_crypto::constraint::{
-    Alloc, Allocation, AllocationMode, Bool, BooleanSystem, ProofSystem, Public, PublicOrSecret,
-    Secret, Variable,
+    Alloc, AllocEq, Allocation, AllocationMode, Bool, BooleanSystem, ProofSystem, Public,
+    PublicOrSecret, Secret, Var, Variable,
 };
 use manta_util::{Concat, ConcatAccumulator};
 
@@ -137,12 +137,17 @@ where
     where
         Self: 't,
     {
-        use ArkAllocationMode::*;
         match allocation.into() {
             Allocation::Known(this, mode) => match mode {
-                Constant => Self::Variable::new_constant(ns!(ps.cs, "boolean constant"), this),
-                Public => Self::Variable::new_input(ns!(ps.cs, "boolean input"), full(this)),
-                Secret => Self::Variable::new_witness(ns!(ps.cs, "boolean witness"), full(this)),
+                ArkAllocationMode::Constant => {
+                    Self::Variable::new_constant(ns!(ps.cs, "boolean constant"), this)
+                }
+                ArkAllocationMode::Public => {
+                    Self::Variable::new_input(ns!(ps.cs, "boolean input"), full(this))
+                }
+                ArkAllocationMode::Secret => {
+                    Self::Variable::new_witness(ns!(ps.cs, "boolean witness"), full(this))
+                }
             },
             Allocation::Unknown(mode) => match mode {
                 PublicOrSecret::Public => {
@@ -154,6 +159,22 @@ where
             },
         }
         .expect("Variable allocation is not allowed to fail.")
+    }
+}
+
+impl<F> AllocEq<ArkProofSystem<F>> for bool
+where
+    F: Field,
+{
+    #[inline]
+    fn eq(
+        ps: &mut ArkProofSystem<F>,
+        lhs: &Var<Self, ArkProofSystem<F>>,
+        rhs: &Var<Self, ArkProofSystem<F>>,
+    ) -> Bool<ArkProofSystem<F>> {
+        let _ = ps;
+        lhs.is_eq(rhs)
+            .expect("Equality checking is not allowed to fail.")
     }
 }
 
@@ -188,14 +209,15 @@ where
     where
         Self: 't,
     {
-        use ArkAllocationMode::*;
         match allocation.into() {
             Allocation::Known(this, mode) => match mode {
-                Constant => {
+                ArkAllocationMode::Constant => {
                     Self::Variable::new_constant(ns!(ps.cs, "prime field constant"), this.0)
                 }
-                Public => Self::Variable::new_input(ns!(ps.cs, "prime field input"), full(this.0)),
-                Secret => {
+                ArkAllocationMode::Public => {
+                    Self::Variable::new_input(ns!(ps.cs, "prime field input"), full(this.0))
+                }
+                ArkAllocationMode::Secret => {
                     Self::Variable::new_witness(ns!(ps.cs, "prime field witness"), full(this.0))
                 }
             },
@@ -332,6 +354,23 @@ where
             Allocation::Known(this, mode) => Fp(F::from(this.0)).as_known(ps, mode),
             Allocation::Unknown(mode) => Fp::unknown(ps, mode),
         })
+    }
+}
+
+impl<F> AllocEq<ArkProofSystem<F>> for AssetId
+where
+    F: PrimeField,
+{
+    #[inline]
+    fn eq(
+        ps: &mut ArkProofSystem<F>,
+        lhs: &Var<Self, ArkProofSystem<F>>,
+        rhs: &Var<Self, ArkProofSystem<F>>,
+    ) -> Bool<ArkProofSystem<F>> {
+        let _ = ps;
+        lhs.0
+            .is_eq(&rhs.0)
+            .expect("Equality checking is not allowed to fail.")
     }
 }
 

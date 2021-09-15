@@ -71,6 +71,7 @@ pub type ProofSystem = ArkProofSystem<ConstraintField>;
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Configuration;
 
+/* FIXME:
 impl IdentityProofSystemConfiguration for Configuration {
     type BooleanSystem = ProofSystem;
     type PseudorandomFunctionFamilySeed = <Blake2s as PseudorandomFunctionFamily>::Seed;
@@ -93,3 +94,4 @@ impl TransferConfiguration for Configuration {
     type UtxoSet = UtxoSet;
     type UtxoSetVar = UtxoSetVar;
 }
+*/

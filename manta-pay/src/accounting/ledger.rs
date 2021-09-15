@@ -35,7 +35,7 @@ use blake2::{
 };
 use manta_accounting::{identity, Ledger as LedgerTrait, ProofPostError};
 use manta_crypto::{
-    constraint::{self, Alloc, Allocation, Constant, Variable},
+    constraint::{self, reflection::HasAllocation, Allocation, Constant, Variable},
     set::{constraint::VerifiedSetVariable, ContainmentProof, Set, VerifiedSet},
 };
 use manta_util::{as_bytes, concatenate, into_array_unchecked};

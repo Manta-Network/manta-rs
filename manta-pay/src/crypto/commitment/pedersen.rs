@@ -149,7 +149,7 @@ pub mod constraint {
     };
     use core::marker::PhantomData;
     use manta_crypto::constraint::{
-        Alloc, AllocEq, Allocation, Bool, Constant, PublicOrSecret, Secret, Var, Variable,
+        Allocation, Constant, HasAllocation, PublicOrSecret, Secret, Var, Variable,
     };
 
     /// Constraint Field Type
@@ -423,7 +423,7 @@ pub mod constraint {
             ps: &mut ProofSystem<C>,
             lhs: &Var<Self, ProofSystem<C>>,
             rhs: &Var<Self, ProofSystem<C>>,
-        ) -> Bool<ProofSystem<C>> {
+        ) -> ProofSystem<C>::Bool {
             todo!()
         }
     }

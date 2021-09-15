@@ -103,7 +103,7 @@ pub mod constraint {
         prf::blake2s::constraints::Blake2sGadget as ArkBlake2sVar, PRFGadget,
     };
     use ark_ff::PrimeField;
-    use ark_r1cs_std::{uint8::UInt8, ToBytesGadget};
+    use ark_r1cs_std::{eq::EqGadget, uint8::UInt8, ToBytesGadget};
     use core::marker::PhantomData;
     use manta_crypto::constraint::{
         Alloc, AllocEq, Allocation, Bool, Constant, PublicOrSecret, Secret, Var, Variable,
@@ -304,7 +304,10 @@ pub mod constraint {
             lhs: &Var<Self, ProofSystem<F>>,
             rhs: &Var<Self, ProofSystem<F>>,
         ) -> Bool<ProofSystem<F>> {
-            todo!()
+            let _ = ps;
+            lhs.0
+                .is_eq(&rhs.0)
+                .expect("Equality checking is not allowed to fail.")
         }
     }
 

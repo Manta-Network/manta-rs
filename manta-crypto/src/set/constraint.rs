@@ -18,8 +18,8 @@
 
 use crate::{
     constraint::{
-        unknown, Alloc, Allocation, AllocationMode, BooleanSystem, Derived, HasVariable, Mode, Var,
-        Variable,
+        reflection::{unknown, HasAllocation, HasVariable, Mode, Var},
+        Allocation, AllocationMode, AllocationSystem, BooleanSystem, Derived, Variable,
     },
     set::{ContainmentProof, Set, VerifiedSet},
 };
@@ -101,9 +101,9 @@ where
 
     /// Asserts that `self` is a valid proof to the fact that `item` is stored in the verified set.
     #[inline]
-    pub fn assert_validity<V>(&self, set: &V, item: &ItemVar<V, P>, ps: &mut P)
+    pub fn assert_validity<V>(&self, set: &V, item: &V::ItemVar, ps: &mut P)
     where
-        P: BooleanSystem + HasVariable<S::Item>,
+        P: BooleanSystem,
         V: VerifiedSetVariable<P, Type = S>,
     {
         set.assert_valid_containment_proof(&self.public_input, &self.secret_witness, item, ps)
@@ -115,30 +115,18 @@ where
     S: VerifiedSet + ?Sized,
     P: HasVariable<S::Public> + HasVariable<S::Secret> + ?Sized,
 {
-    type Mode = ContainmentProofMode<Mode<S::Public, P>, Mode<S::Secret, P>>;
     type Type = ContainmentProof<S>;
-}
 
-impl<S, P> Alloc<P> for ContainmentProof<S>
-where
-    S: VerifiedSet + ?Sized,
-    P: HasVariable<S::Public> + HasVariable<S::Secret> + ?Sized,
-{
     type Mode = ContainmentProofMode<Mode<S::Public, P>, Mode<S::Secret, P>>;
-
-    type Variable = ContainmentProofVar<S, P>;
 
     #[inline]
-    fn variable<'t>(ps: &mut P, allocation: impl Into<Allocation<'t, Self, P>>) -> Self::Variable
-    where
-        Self: 't,
-    {
-        match allocation.into() {
-            Allocation::Known(this, mode) => Self::Variable::new(
+    fn new(ps: &mut P, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
+        match allocation {
+            Allocation::Known(this, mode) => Self::new(
                 ps.allocate_known(&this.public_input, mode.public),
                 ps.allocate_known(&this.secret_witness, mode.secret),
             ),
-            Allocation::Unknown(mode) => Self::Variable::new(
+            Allocation::Unknown(mode) => Self::new(
                 unknown::<S::Public, _>(ps, mode.public),
                 unknown::<S::Secret, _>(ps, mode.secret),
             ),
@@ -146,17 +134,20 @@ where
     }
 }
 
-/// Item Type for [`VerifiedSetVariable`]
-pub type ItemType<V, P> = <<V as Variable<P>>::Type as Set>::Item;
+impl<S, P> HasAllocation<P> for ContainmentProof<S>
+where
+    S: VerifiedSet + ?Sized,
+    P: HasVariable<S::Public> + HasVariable<S::Secret> + ?Sized,
+{
+    type Variable = ContainmentProofVar<S, P>;
+    type Mode = ContainmentProofMode<Mode<S::Public, P>, Mode<S::Secret, P>>;
+}
 
 /// Public Input Type for [`VerifiedSetVariable`]
 pub type PublicInputType<V, P> = <<V as Variable<P>>::Type as VerifiedSet>::Public;
 
 /// Secret Witness Type for [`VerifiedSetVariable`]
 pub type SecretWitnessType<V, P> = <<V as Variable<P>>::Type as VerifiedSet>::Secret;
-
-/// Item Variable for [`VerifiedSetVariable`]
-pub type ItemVar<V, P> = Var<ItemType<V, P>, P>;
 
 /// Public Input Variable for [`VerifiedSetVariable`]
 pub type PublicInputVar<V, P> = Var<PublicInputType<V, P>, P>;
@@ -168,49 +159,21 @@ pub type SecretWitnessVar<V, P> = Var<SecretWitnessType<V, P>, P>;
 pub trait VerifiedSetVariable<P>: Variable<P>
 where
     P: BooleanSystem
-        + HasVariable<ItemType<Self, P>>
         + HasVariable<PublicInputType<Self, P>>
         + HasVariable<SecretWitnessType<Self, P>>
         + ?Sized,
     Self::Type: VerifiedSet,
 {
+    /// Item Variable
+    type ItemVar: Variable<P, Type = <Self::Type as Set>::Item>;
+
     /// Asserts that `public_input` and `secret_witness` form a proof to the fact that `item` is
     /// stored in `self`.
     fn assert_valid_containment_proof(
         &self,
         public_input: &PublicInputVar<Self, P>,
         secret_witness: &SecretWitnessVar<Self, P>,
-        item: &ItemVar<Self, P>,
+        item: &Self::ItemVar,
         ps: &mut P,
     );
 }
-
-/* TODO[remove]:
-/// Verified Set Proof System
-pub trait VerifiedSetProofSystem<S>:
-    BooleanSystem
-    + HasVariable<S::Item, Mode = Self::ItemMode>
-    + HasVariable<S::Public, Mode = Self::PublicMode>
-    + HasVariable<S::Secret, Mode = Self::SecretMode>
-where
-    S: VerifiedSet + ?Sized,
-{
-    /// Item Allocation Mode
-    type ItemMode: AllocationMode;
-
-    /// Public Input Allocation Mode
-    type PublicMode: AllocationMode;
-
-    /// Secret Witness Allocation Mode
-    type SecretMode: AllocationMode;
-
-    /// Asserts that `public_input` and `secret_witness` form a proof to the fact that `item` is
-    /// stored in the verified set.
-    fn assert_validity(
-        &mut self,
-        public_input: &Var<S::Public, Self>,
-        secret_witness: &Var<S::Secret, Self>,
-        item: &Var<S::Item, Self>,
-    );
-}
-*/

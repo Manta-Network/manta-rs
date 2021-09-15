@@ -30,8 +30,9 @@ use core::{convert::Infallible, fmt::Debug, hash::Hash, marker::PhantomData};
 use manta_crypto::{
     commitment::{CommitmentScheme, Input as CommitmentInput},
     constraint::{
-        unknown, Alloc, AllocEq, Allocation, BooleanSystem, Constant, Derived, HasVariable, Public,
-        PublicOrSecret, Secret, Var, Variable,
+        reflection::{HasAllocation, HasVariable, Var},
+        Allocation, BooleanSystem, Constant, Derived, Equal, Public, PublicOrSecret, Secret,
+        Variable,
     },
     ies::{self, EncryptedMessage, IntegratedEncryptionScheme},
     set::{
@@ -73,93 +74,75 @@ pub trait IdentityConfiguration {
 }
 
 /// [`Identity`] Proof System Configuration
-pub trait IdentityProofSystemConfiguration {
+pub trait IdentityProofSystemConfiguration: IdentityConfiguration {
     /// Boolean System
     type BooleanSystem: BooleanSystem
         + HasVariable<AssetId, Mode = PublicOrSecret>
         + HasVariable<AssetBalance, Mode = PublicOrSecret>;
 
-    /// Pseudorandom Function Family Seed
-    type PseudorandomFunctionFamilySeed: Clone + Alloc<Self::BooleanSystem, Mode = Secret>;
+    /// Secret Key Variable
+    type SecretKeyVar: Variable<Self::BooleanSystem, Type = Self::SecretKey, Mode = Secret>;
 
-    /// Pseudorandom Function Family Input
-    type PseudorandomFunctionFamilyInput: Alloc<Self::BooleanSystem, Mode = Secret>;
+    /// Pseudorandom Function Family Input Variable
+    type PseudorandomFunctionFamilyInputVar: Variable<
+        Self::BooleanSystem,
+        Type = <Self::PseudorandomFunctionFamily as PseudorandomFunctionFamily>::Input,
+        Mode = Secret,
+    >;
 
-    /// Pseudorandom Function Family Output
-    type PseudorandomFunctionFamilyOutput: AllocEq<Self::BooleanSystem, Mode = PublicOrSecret>;
-
-    /// Pseudorandom Function Family
-    type PseudorandomFunctionFamily: PseudorandomFunctionFamily<
-            Seed = Self::PseudorandomFunctionFamilySeed,
-            Input = Self::PseudorandomFunctionFamilyInput,
-            Output = Self::PseudorandomFunctionFamilyOutput,
-        > + Alloc<Self::BooleanSystem, Mode = Constant, Variable = Self::PseudorandomFunctionFamilyVar>;
+    /// Pseudorandom Function Family Output Variable
+    type PseudorandomFunctionFamilyOutputVar: Variable<
+            Self::BooleanSystem,
+            Type = <Self::PseudorandomFunctionFamily as PseudorandomFunctionFamily>::Output,
+            Mode = PublicOrSecret,
+        > + Equal<Self::BooleanSystem>;
 
     /// Pseudorandom Function Family Variable
     type PseudorandomFunctionFamilyVar: PseudorandomFunctionFamily<
-            Seed = PseudorandomFunctionFamilySeedVar<Self>,
-            Input = PseudorandomFunctionFamilyInputVar<Self>,
-            Output = PseudorandomFunctionFamilyOutputVar<Self>,
-        > + Variable<Self::BooleanSystem, Mode = Constant, Type = Self::PseudorandomFunctionFamily>;
+            Seed = Self::SecretKeyVar,
+            Input = Self::PseudorandomFunctionFamilyInputVar,
+            Output = Self::PseudorandomFunctionFamilyOutputVar,
+        > + Variable<Self::BooleanSystem, Type = Self::PseudorandomFunctionFamily, Mode = Constant>;
 
-    /// Commitment Scheme Randomness
-    type CommitmentSchemeRandomness: Alloc<Self::BooleanSystem, Mode = Secret>;
+    /// Commitment Scheme Randomness Variable
+    type CommitmentSchemeRandomnessVar: Variable<
+        Self::BooleanSystem,
+        Type = <Self::CommitmentScheme as CommitmentScheme>::Randomness,
+        Mode = Secret,
+    >;
 
-    /// Commitment Scheme Output
-    type CommitmentSchemeOutput: AllocEq<Self::BooleanSystem, Mode = PublicOrSecret>;
-
-    /// Commitment Scheme
-    type CommitmentScheme: CommitmentScheme<
-            Randomness = Self::CommitmentSchemeRandomness,
-            Output = Self::CommitmentSchemeOutput,
-        > + CommitmentInput<PublicKey<Self>>
-        + CommitmentInput<VoidNumberGenerator<Self>>
-        + CommitmentInput<Asset>
-        + CommitmentInput<VoidNumberCommitment<Self>>
-        + Alloc<Self::BooleanSystem, Mode = Constant, Variable = Self::CommitmentSchemeVar>;
+    /// Commitment Scheme Output Variable
+    type CommitmentSchemeOutputVar: Variable<
+            Self::BooleanSystem,
+            Type = <Self::CommitmentScheme as CommitmentScheme>::Output,
+            Mode = PublicOrSecret,
+        > + Equal<Self::BooleanSystem>;
 
     /// Commitment Scheme Variable
     type CommitmentSchemeVar: CommitmentScheme<
-            Randomness = CommitmentSchemeRandomnessVar<Self>,
-            Output = CommitmentSchemeOutputVar<Self>,
+            Randomness = Self::CommitmentSchemeRandomnessVar,
+            Output = Self::CommitmentSchemeOutputVar,
         > + CommitmentInput<PublicKeyVar<Self>>
         + CommitmentInput<VoidNumberGeneratorVar<Self>>
         + CommitmentInput<AssetVar<Self::BooleanSystem>>
         + CommitmentInput<VoidNumberCommitmentVar<Self>>
-        + Variable<Self::BooleanSystem, Mode = Constant, Type = Self::CommitmentScheme>;
-
-    /// Seedable Cryptographic Random Number Generator
-    type Rng: CryptoRng + RngCore + SeedableRng<Seed = Self::PseudorandomFunctionFamilySeed>;
+        + Variable<Self::BooleanSystem, Type = Self::CommitmentScheme, Mode = Constant>;
 }
-
-impl<C> IdentityConfiguration for C
-where
-    C: IdentityProofSystemConfiguration + ?Sized,
-{
-    type SecretKey = C::PseudorandomFunctionFamilySeed;
-    type PseudorandomFunctionFamily = C::PseudorandomFunctionFamily;
-    type CommitmentScheme = C::CommitmentScheme;
-    type Rng = C::Rng;
-}
-
-/// [`PseudorandomFunctionFamily::Seed`] Type
-pub type PseudorandomFunctionFamilySeed<C> =
-    <<C as IdentityConfiguration>::PseudorandomFunctionFamily as PseudorandomFunctionFamily>::Seed;
 
 /// [`PseudorandomFunctionFamily::Input`] Type
-pub type PseudorandomFunctionFamilyInput<C> =
+type PseudorandomFunctionFamilyInput<C> =
     <<C as IdentityConfiguration>::PseudorandomFunctionFamily as PseudorandomFunctionFamily>::Input;
 
 /// [`PseudorandomFunctionFamily::Output`] Type
-pub type PseudorandomFunctionFamilyOutput<C> =
+type PseudorandomFunctionFamilyOutput<C> =
 	<<C as IdentityConfiguration>::PseudorandomFunctionFamily as PseudorandomFunctionFamily>::Output;
 
 /// [`CommitmentScheme::Randomness`] Type
-pub type CommitmentSchemeRandomness<C> =
+type CommitmentSchemeRandomness<C> =
     <<C as IdentityConfiguration>::CommitmentScheme as CommitmentScheme>::Randomness;
 
 /// [`CommitmentScheme::Output`] Type
-pub type CommitmentSchemeOutput<C> =
+type CommitmentSchemeOutput<C> =
     <<C as IdentityConfiguration>::CommitmentScheme as CommitmentScheme>::Output;
 
 /// Secret Key Type
@@ -186,30 +169,24 @@ pub type UtxoRandomness<C> = CommitmentSchemeRandomness<C>;
 /// UTXO Type
 pub type Utxo<C> = CommitmentSchemeOutput<C>;
 
-/// [`PseudorandomFunctionFamily::Seed`] Variable Type
-pub type PseudorandomFunctionFamilySeedVar<C> =
-    Var<PseudorandomFunctionFamilySeed<C>, <C as IdentityProofSystemConfiguration>::BooleanSystem>;
-
 /// [`PseudorandomFunctionFamily::Input`] Variable Type
-pub type PseudorandomFunctionFamilyInputVar<C> =
-    Var<PseudorandomFunctionFamilyInput<C>, <C as IdentityProofSystemConfiguration>::BooleanSystem>;
+type PseudorandomFunctionFamilyInputVar<C> =
+    <C as IdentityProofSystemConfiguration>::PseudorandomFunctionFamilyInputVar;
 
 /// [`PseudorandomFunctionFamily::Output`] Variable Type
-pub type PseudorandomFunctionFamilyOutputVar<C> = Var<
-    PseudorandomFunctionFamilyOutput<C>,
-    <C as IdentityProofSystemConfiguration>::BooleanSystem,
->;
+type PseudorandomFunctionFamilyOutputVar<C> =
+    <C as IdentityProofSystemConfiguration>::PseudorandomFunctionFamilyOutputVar;
 
 /// [`CommitmentScheme::Randomness`] Variable Type
-pub type CommitmentSchemeRandomnessVar<C> =
-    Var<CommitmentSchemeRandomness<C>, <C as IdentityProofSystemConfiguration>::BooleanSystem>;
+type CommitmentSchemeRandomnessVar<C> =
+    <C as IdentityProofSystemConfiguration>::CommitmentSchemeRandomnessVar;
 
 /// [`CommitmentScheme::Output`] Variable Type
-pub type CommitmentSchemeOutputVar<C> =
-    Var<CommitmentSchemeOutput<C>, <C as IdentityProofSystemConfiguration>::BooleanSystem>;
+type CommitmentSchemeOutputVar<C> =
+    <C as IdentityProofSystemConfiguration>::CommitmentSchemeOutputVar;
 
 /// Secret Key Variable Type
-pub type SecretKeyVar<C> = PseudorandomFunctionFamilySeedVar<C>;
+pub type SecretKeyVar<C> = <C as IdentityProofSystemConfiguration>::SecretKeyVar;
 
 /// Public Key Variable Type
 pub type PublicKeyVar<C> = PseudorandomFunctionFamilyOutputVar<C>;
@@ -413,39 +390,37 @@ impl<C> Variable<C::BooleanSystem> for AssetParametersVar<C>
 where
     C: IdentityProofSystemConfiguration,
 {
-    type Mode = Secret;
     type Type = AssetParameters<C>;
-}
 
-impl<C> Alloc<C::BooleanSystem> for AssetParameters<C>
-where
-    C: IdentityProofSystemConfiguration,
-{
     type Mode = Secret;
-
-    type Variable = AssetParametersVar<C>;
 
     #[inline]
-    fn variable<'t>(
-        ps: &mut C::BooleanSystem,
-        allocation: impl Into<Allocation<'t, Self, C::BooleanSystem>>,
-    ) -> Self::Variable
-    where
-        Self: 't,
-    {
-        match allocation.into() {
-            Allocation::Known(this, mode) => Self::Variable::new(
-                this.void_number_generator.as_known(ps, mode),
-                this.void_number_commitment_randomness.as_known(ps, mode),
-                this.utxo_randomness.as_known(ps, mode),
+    fn new(ps: &mut C::BooleanSystem, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
+        match allocation {
+            Allocation::Known(this, mode) => Self::new(
+                VoidNumberGeneratorVar::<C>::new_known(ps, &this.void_number_generator, mode),
+                VoidNumberCommitmentRandomnessVar::<C>::new_known(
+                    ps,
+                    &this.void_number_commitment_randomness,
+                    mode,
+                ),
+                UtxoRandomnessVar::<C>::new_known(ps, &this.utxo_randomness, mode),
             ),
-            Allocation::Unknown(mode) => Self::Variable::new(
-                VoidNumberGenerator::<C>::unknown(ps, mode),
-                VoidNumberCommitmentRandomness::<C>::unknown(ps, mode),
-                UtxoRandomness::<C>::unknown(ps, mode),
+            Allocation::Unknown(mode) => Self::new(
+                VoidNumberGeneratorVar::<C>::new_unknown(ps, mode),
+                VoidNumberCommitmentRandomnessVar::<C>::new_unknown(ps, mode),
+                UtxoRandomnessVar::<C>::new_unknown(ps, mode),
             ),
         }
     }
+}
+
+impl<C> HasAllocation<C::BooleanSystem> for AssetParameters<C>
+where
+    C: IdentityProofSystemConfiguration,
+{
+    type Variable = AssetParametersVar<C>;
+    type Mode = Secret;
 }
 
 /// Account Identity
@@ -1262,8 +1237,8 @@ where
         utxo_set: &Var<S, C::BooleanSystem>,
     ) -> AssetVar<C::BooleanSystem>
     where
-        S: Alloc<C::BooleanSystem>,
-        S::Variable: VerifiedSetVariable<C::BooleanSystem>,
+        S: HasAllocation<C::BooleanSystem>,
+        S::Variable: VerifiedSetVariable<C::BooleanSystem, ItemVar = UtxoVar<C>>,
     {
         // Well-formed check:
         //
@@ -1346,50 +1321,49 @@ where
     S: VerifiedSet<Item = Utxo<C>>,
     C::BooleanSystem: HasVariable<S::Public, Mode = Public> + HasVariable<S::Secret, Mode = Secret>,
 {
-    type Mode = Derived;
     type Type = Sender<C, S>;
+
+    type Mode = Derived;
+
+    #[inline]
+    fn new(ps: &mut C::BooleanSystem, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
+        match allocation {
+            Allocation::Known(this, mode) => Self {
+                secret_key: SecretKeyVar::<C>::new_known(ps, &this.secret_key, mode),
+                public_key: PublicKeyVar::<C>::new_known(ps, &this.public_key, Secret),
+                asset: this.asset.known(ps, mode),
+                parameters: this.parameters.known(ps, mode),
+                void_number: VoidNumberVar::<C>::new_known(ps, &this.void_number, Public),
+                void_number_commitment: VoidNumberCommitmentVar::<C>::new_known(
+                    ps,
+                    &this.void_number_commitment,
+                    Public,
+                ),
+                utxo: UtxoVar::<C>::new_known(ps, &this.utxo, Secret),
+                utxo_containment_proof: this.utxo_containment_proof.known(ps, mode),
+            },
+            Allocation::Unknown(mode) => Self {
+                secret_key: SecretKeyVar::<C>::new_unknown(ps, mode),
+                public_key: PublicKeyVar::<C>::new_unknown(ps, Secret),
+                asset: Asset::unknown(ps, mode),
+                parameters: AssetParameters::unknown(ps, mode),
+                void_number: VoidNumberVar::<C>::new_unknown(ps, Public),
+                void_number_commitment: VoidNumberCommitmentVar::<C>::new_unknown(ps, Public),
+                utxo: UtxoVar::<C>::new_unknown(ps, Secret),
+                utxo_containment_proof: ContainmentProof::<S>::unknown(ps, mode),
+            },
+        }
+    }
 }
 
-impl<C, S> Alloc<C::BooleanSystem> for Sender<C, S>
+impl<C, S> HasAllocation<C::BooleanSystem> for Sender<C, S>
 where
     C: IdentityProofSystemConfiguration,
     S: VerifiedSet<Item = Utxo<C>>,
     C::BooleanSystem: HasVariable<S::Public, Mode = Public> + HasVariable<S::Secret, Mode = Secret>,
 {
-    type Mode = Derived;
     type Variable = SenderVar<C, S>;
-
-    #[inline]
-    fn variable<'t>(
-        ps: &mut C::BooleanSystem,
-        allocation: impl Into<Allocation<'t, Self, C::BooleanSystem>>,
-    ) -> Self::Variable
-    where
-        Self: 't,
-    {
-        match allocation.into() {
-            Allocation::Known(this, mode) => Self::Variable {
-                secret_key: this.secret_key.as_known(ps, mode),
-                public_key: this.public_key.as_known(ps, Secret),
-                asset: this.asset.as_known(ps, mode),
-                parameters: this.parameters.as_known(ps, mode),
-                void_number: this.void_number.as_known(ps, Public),
-                void_number_commitment: ps.allocate_known(&this.void_number_commitment, Public),
-                utxo: ps.allocate_known(&this.utxo, Secret),
-                utxo_containment_proof: this.utxo_containment_proof.as_known(ps, mode),
-            },
-            Allocation::Unknown(mode) => Self::Variable {
-                secret_key: SecretKey::<C>::unknown(ps, mode),
-                public_key: PublicKey::<C>::unknown(ps, Secret),
-                asset: Asset::unknown(ps, mode),
-                parameters: AssetParameters::unknown(ps, mode),
-                void_number: VoidNumber::<C>::unknown(ps, Public),
-                void_number_commitment: unknown::<VoidNumberCommitment<C>, _>(ps, Public.into()),
-                utxo: unknown::<Utxo<C>, _>(ps, Secret.into()),
-                utxo_containment_proof: ContainmentProof::<S>::unknown(ps, mode),
-            },
-        }
-    }
+    type Mode = Derived;
 }
 
 /// Sender Post Error
@@ -1606,44 +1580,42 @@ where
     C: IdentityProofSystemConfiguration,
     I: IntegratedEncryptionScheme<Plaintext = Asset>,
 {
-    type Mode = Derived;
     type Type = Receiver<C, I>;
-}
 
-impl<C, I> Alloc<C::BooleanSystem> for Receiver<C, I>
-where
-    C: IdentityProofSystemConfiguration,
-    I: IntegratedEncryptionScheme<Plaintext = Asset>,
-{
     type Mode = Derived;
-
-    type Variable = ReceiverVar<C, I>;
 
     #[inline]
-    fn variable<'t>(
-        ps: &mut C::BooleanSystem,
-        allocation: impl Into<Allocation<'t, Self, C::BooleanSystem>>,
-    ) -> Self::Variable
-    where
-        Self: 't,
-    {
-        match allocation.into() {
-            Allocation::Known(this, mode) => Self::Variable {
-                asset: this.asset.as_known(ps, mode),
-                utxo_randomness: this.utxo_randomness.as_known(ps, mode),
-                void_number_commitment: this.void_number_commitment.as_known(ps, Secret),
-                utxo: this.utxo.as_known(ps, Public),
+    fn new(ps: &mut C::BooleanSystem, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
+        match allocation {
+            Allocation::Known(this, mode) => Self {
+                asset: AssetVar::new_known(ps, &this.asset, mode),
+                utxo_randomness: UtxoRandomnessVar::<C>::new_known(ps, &this.utxo_randomness, mode),
+                void_number_commitment: VoidNumberCommitmentVar::<C>::new_known(
+                    ps,
+                    &this.void_number_commitment,
+                    Secret,
+                ),
+                utxo: UtxoVar::<C>::new_known(ps, &this.utxo, Public),
                 __: PhantomData,
             },
-            Allocation::Unknown(mode) => Self::Variable {
-                asset: Asset::unknown(ps, mode),
-                utxo_randomness: UtxoRandomness::<C>::unknown(ps, mode),
-                void_number_commitment: VoidNumberCommitment::<C>::unknown(ps, Secret),
-                utxo: Utxo::<C>::unknown(ps, Public),
+            Allocation::Unknown(mode) => Self {
+                asset: AssetVar::new_unknown(ps, mode),
+                utxo_randomness: UtxoRandomnessVar::<C>::new_unknown(ps, mode),
+                void_number_commitment: VoidNumberCommitmentVar::<C>::new_unknown(ps, Secret),
+                utxo: UtxoVar::<C>::new_unknown(ps, Public),
                 __: PhantomData,
             },
         }
     }
+}
+
+impl<C, I> HasAllocation<C::BooleanSystem> for Receiver<C, I>
+where
+    C: IdentityProofSystemConfiguration,
+    I: IntegratedEncryptionScheme<Plaintext = Asset>,
+{
+    type Variable = ReceiverVar<C, I>;
+    type Mode = Derived;
 }
 
 /// Receiver Post Error
