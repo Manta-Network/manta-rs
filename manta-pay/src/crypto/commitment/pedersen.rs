@@ -163,20 +163,23 @@ pub mod constraint {
 
     /// Pedersen Commitment Output Wrapper
     #[derive(derivative::Derivative)]
-    #[derivative(Clone(bound = ""))]
-    pub struct PedersenCommitmentOutputWrapper<W, C, GG>
+    #[derivative(
+        Clone(bound = ""),
+        Debug(bound = ""),
+        Default(bound = ""),
+        Eq(bound = ""),
+        Hash(bound = ""),
+        PartialEq(bound = "")
+    )]
+    pub struct PedersenCommitmentOutputWrapper<W, C, GG>(
+        PedersenCommitmentOutput<W, C>,
+        PhantomData<GG>,
+    )
     where
         W: PedersenWindow,
         C: ProjectiveCurve,
         GG: CurveVar<C, ConstraintField<C>>,
-        for<'g> &'g GG: GroupOpsBounds<'g, C, GG>,
-    {
-        /// Commitment Output
-        output: PedersenCommitmentOutput<W, C>,
-
-        /// Type Parameter Marker
-        __: PhantomData<GG>,
-    }
+        for<'g> &'g GG: GroupOpsBounds<'g, C, GG>;
 
     impl<W, C, GG> From<PedersenCommitmentOutput<W, C>> for PedersenCommitmentOutputWrapper<W, C, GG>
     where
@@ -187,10 +190,7 @@ pub mod constraint {
     {
         #[inline]
         fn from(output: PedersenCommitmentOutput<W, C>) -> Self {
-            Self {
-                output,
-                __: PhantomData,
-            }
+            Self(output, PhantomData)
         }
     }
 
@@ -203,7 +203,7 @@ pub mod constraint {
     {
         #[inline]
         fn from(wrapper: PedersenCommitmentOutputWrapper<W, C, GG>) -> Self {
-            wrapper.output
+            wrapper.0
         }
     }
 
@@ -221,26 +221,19 @@ pub mod constraint {
         where
             A: ConcatAccumulator<Self::Item> + ?Sized,
         {
-            self.output.concat(accumulator)
+            self.0.concat(accumulator)
         }
     }
 
     /// Pedersen Commitment Scheme Wrapper
     #[derive(derivative::Derivative)]
     #[derivative(Clone(bound = ""))]
-    pub struct PedersenCommitmentWrapper<W, C, GG>
+    pub struct PedersenCommitmentWrapper<W, C, GG>(PedersenCommitment<W, C>, PhantomData<GG>)
     where
         W: PedersenWindow,
         C: ProjectiveCurve,
         GG: CurveVar<C, ConstraintField<C>>,
-        for<'g> &'g GG: GroupOpsBounds<'g, C, GG>,
-    {
-        /// Commitment Scheme
-        commitment_scheme: PedersenCommitment<W, C>,
-
-        /// Type Parameter Marker
-        __: PhantomData<GG>,
-    }
+        for<'g> &'g GG: GroupOpsBounds<'g, C, GG>;
 
     impl<W, C, GG> PedersenCommitmentWrapper<W, C, GG>
     where
@@ -265,10 +258,7 @@ pub mod constraint {
     {
         #[inline]
         fn from(commitment_scheme: PedersenCommitment<W, C>) -> Self {
-            Self {
-                commitment_scheme,
-                __: PhantomData,
-            }
+            Self(commitment_scheme, PhantomData)
         }
     }
 
@@ -281,7 +271,7 @@ pub mod constraint {
     {
         #[inline]
         fn from(wrapper: PedersenCommitmentWrapper<W, C, GG>) -> Self {
-            wrapper.commitment_scheme
+            wrapper.0
         }
     }
 
@@ -300,24 +290,20 @@ pub mod constraint {
 
         #[inline]
         fn commit(&self, input: Self::InputBuffer, randomness: &Self::Randomness) -> Self::Output {
-            self.commitment_scheme.commit(input, randomness).into()
+            self.0.commit(input, randomness).into()
         }
     }
 
     /// Pedersen Commitment Randomness Variable
     #[derive(derivative::Derivative)]
     #[derivative(Clone(bound = ""))]
-    pub struct PedersenCommitmentRandomnessVar<W, C>
+    pub struct PedersenCommitmentRandomnessVar<W, C>(
+        RandomnessVar<ConstraintField<C>>,
+        PhantomData<W>,
+    )
     where
         W: PedersenWindow,
-        C: ProjectiveCurve,
-    {
-        /// Randomness Variable
-        randomness_var: RandomnessVar<ConstraintField<C>>,
-
-        /// Type Parameter Marker
-        __: PhantomData<W>,
-    }
+        C: ProjectiveCurve;
 
     impl<W, C> Variable<ProofSystem<C>> for PedersenCommitmentRandomnessVar<W, C>
     where
@@ -345,8 +331,6 @@ pub mod constraint {
         where
             Self: 't,
         {
-            // FIXME: implement
-            let _ = (ps, allocation);
             todo!()
         }
     }
@@ -354,19 +338,12 @@ pub mod constraint {
     /// Pedersen Commitment Output Variable
     #[derive(derivative::Derivative)]
     #[derivative(Clone(bound = ""))]
-    pub struct PedersenCommitmentOutputVar<W, C, GG>
+    pub struct PedersenCommitmentOutputVar<W, C, GG>(GG, PhantomData<(W, C)>)
     where
         W: PedersenWindow,
         C: ProjectiveCurve,
         GG: CurveVar<C, ConstraintField<C>>,
-        for<'g> &'g GG: GroupOpsBounds<'g, C, GG>,
-    {
-        /// Output Variable
-        output_var: GG,
-
-        /// Type Parameter Marker
-        __: PhantomData<(W, C)>,
-    }
+        for<'g> &'g GG: GroupOpsBounds<'g, C, GG>;
 
     impl<W, C, GG> PedersenCommitmentOutputVar<W, C, GG>
     where
@@ -378,10 +355,7 @@ pub mod constraint {
         /// Builds a new [`PedersenCommitmentOutputVar`] from `output_var`.
         #[inline]
         fn new(output_var: GG) -> Self {
-            Self {
-                output_var,
-                __: PhantomData,
-            }
+            Self(output_var, PhantomData)
         }
     }
 
@@ -399,12 +373,7 @@ pub mod constraint {
         where
             A: ConcatAccumulator<Self::Item> + ?Sized,
         {
-            accumulator.extend(
-                &self
-                    .output_var
-                    .to_bytes()
-                    .expect("This is not allowed to fail."),
-            );
+            accumulator.extend(&self.0.to_bytes().expect("This is not allowed to fail."));
         }
     }
 
@@ -438,8 +407,6 @@ pub mod constraint {
         where
             Self: 't,
         {
-            // FIXME: implement
-            let _ = (ps, allocation);
             todo!()
         }
     }
@@ -464,19 +431,12 @@ pub mod constraint {
     /// Pedersen Commitment Scheme Variable
     #[derive(derivative::Derivative)]
     #[derivative(Clone(bound = ""))]
-    pub struct PedersenCommitmentVar<W, C, GG>
+    pub struct PedersenCommitmentVar<W, C, GG>(ParametersVar<C, GG>, PhantomData<W>)
     where
         W: PedersenWindow,
         C: ProjectiveCurve,
         GG: CurveVar<C, ConstraintField<C>>,
-        for<'g> &'g GG: GroupOpsBounds<'g, C, GG>,
-    {
-        /// Commitment Parameters Variable
-        parameters: ParametersVar<C, GG>,
-
-        /// Type Parameter Marker
-        __: PhantomData<W>,
-    }
+        for<'g> &'g GG: GroupOpsBounds<'g, C, GG>;
 
     impl<W, C, GG> Variable<ProofSystem<C>> for PedersenCommitmentVar<W, C, GG>
     where
@@ -537,7 +497,7 @@ pub mod constraint {
         #[inline]
         fn commit(&self, input: Self::InputBuffer, randomness: &Self::Randomness) -> Self::Output {
             PedersenCommitmentOutputVar::new(
-                CommGadget::<_, _, W>::commit(&self.parameters, &input, &randomness.randomness_var)
+                CommGadget::<_, _, W>::commit(&self.0, &input, &randomness.0)
                     .expect("Failure outcomes are not accepted."),
             )
         }

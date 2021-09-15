@@ -99,7 +99,6 @@ impl PseudorandomFunctionFamily for Blake2s {
 pub mod constraint {
     use super::*;
     use crate::crypto::constraint::{ArkProofSystem as ProofSystem, ByteArrayVar};
-    use alloc::vec::Vec;
     use ark_crypto_primitives::{
         prf::blake2s::constraints::Blake2sGadget as ArkBlake2sVar, PRFGadget,
     };
@@ -156,9 +155,10 @@ pub mod constraint {
         where
             Self: 't,
         {
-            // FIXME: implement
-            let _ = (ps, allocation);
-            todo!()
+            match allocation.into().known() {
+                Some(this) => todo!(),
+                _ => todo!(),
+            }
         }
     }
 
@@ -219,16 +219,20 @@ pub mod constraint {
         where
             Self: 't,
         {
-            // FIXME: implement
-            let _ = (ps, allocation);
-            todo!()
+            match allocation.into().known() {
+                Some(this) => todo!(),
+                _ => todo!(),
+            }
         }
     }
+
+    /// Blake2s Pseudorandom Function Family Output Variable Inner Type
+    type Blake2sOutputVarInnerType<F> = <ArkBlake2sVar as PRFGadget<ArkBlake2s, F>>::OutputVar;
 
     /// Blake2s Pseudorandom Function Family Output Variable
     #[derive(derivative::Derivative)]
     #[derivative(Clone)]
-    pub struct Blake2sOutputVar<F>(<ArkBlake2sVar as PRFGadget<ArkBlake2s, F>>::OutputVar)
+    pub struct Blake2sOutputVar<F>(Blake2sOutputVarInnerType<F>)
     where
         F: PrimeField;
 
@@ -271,8 +275,21 @@ pub mod constraint {
         where
             Self: 't,
         {
-            // FIXME: implement
-            let _ = (ps, allocation);
+            /* TODO:
+            Blake2sOutputVar(
+                match allocation.into() {
+                    Allocation::Known(this, mode) => match mode {
+                        PublicOrSecret::Public => todo!(),
+                        PublicOrSecret::Secret => todo!(),
+                    },
+                    Allocation::Unknown(mode) => match mode {
+                        PublicOrSecret::Public => todo!(),
+                        PublicOrSecret::Secret => todo!(),
+                    },
+                }
+                .expect("Variable allocation is not allowed to fail."),
+            )
+            */
             todo!()
         }
     }

@@ -39,13 +39,13 @@ type SynthesisResult<T> = Result<T, SynthesisError>;
 
 /// Returns an empty variable assignment.
 #[inline]
-const fn empty<T>() -> SynthesisResult<T> {
+pub(crate) const fn empty<T>() -> SynthesisResult<T> {
     Err(SynthesisError::AssignmentMissing)
 }
 
 /// Returns a filled variable assignment.
 #[inline]
-fn full<T>(t: T) -> impl FnOnce() -> SynthesisResult<T> {
+pub(crate) fn full<T>(t: T) -> impl FnOnce() -> SynthesisResult<T> {
     move || Ok(t)
 }
 
@@ -99,7 +99,7 @@ where
     F: Field,
 {
     /// Constraint System
-    cs: ConstraintSystemRef<F>,
+    pub(crate) cs: ConstraintSystemRef<F>,
 }
 
 impl<F> Default for ArkProofSystem<F>

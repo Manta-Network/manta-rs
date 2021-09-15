@@ -747,7 +747,7 @@ pub mod canonical {
 
     /// Mint Transaction Shape
     ///
-    /// ```
+    /// ```text
     /// <1, 0, 1, 0>
     /// ```
     #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq, Ord, PartialOrd)]
@@ -763,7 +763,7 @@ pub mod canonical {
 
     /// Private Transfer Transaction Shape
     ///
-    /// ```
+    /// ```text
     /// <0, 2, 2, 0>
     /// ```
     #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq, Ord, PartialOrd)]
@@ -779,7 +779,7 @@ pub mod canonical {
 
     /// Reclaim Transaction Shape
     ///
-    /// ```
+    /// ```text
     /// <0, 2, 1, 1>
     /// ```
     #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq, Ord, PartialOrd)]

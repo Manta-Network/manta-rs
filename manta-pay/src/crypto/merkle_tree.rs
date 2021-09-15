@@ -24,21 +24,78 @@
 //       own `CRH` and `TwoToOneCRH` traits and then in the configuration we align them with the
 //       Pedersen settings.
 
-use crate::crypto::commitment::pedersen::{PedersenWindow, ProjectiveCurve};
+use crate::crypto::{
+    commitment::pedersen::{PedersenWindow, ProjectiveCurve},
+    constraint::{empty, full, ArkProofSystem},
+};
 use alloc::vec::Vec;
 use ark_crypto_primitives::{
-    crh::pedersen::CRH,
+    crh::{
+        constraints::{CRHGadget as CRHGadgetTrait, TwoToOneCRHGadget as TwoToOneCRHGadgetTrait},
+        pedersen::{constraints::CRHGadget, CRH},
+    },
     merkle_tree::{
-        Config as MerkleTreeConfig, LeafParam, MerkleTree as ArkMerkleTree, Path as MerkleTreePath,
-        TwoToOneDigest, TwoToOneParam,
+        constraints::PathVar as ArkPathVar, Config, LeafParam as ArkLeafParam,
+        MerkleTree as ArkMerkleTree, Path as ArkPath, TwoToOneDigest,
+        TwoToOneParam as ArkTwoToOneParam,
     },
 };
+use ark_ff::Field;
+use ark_r1cs_std::{
+    alloc::AllocVar,
+    boolean::Boolean,
+    eq::EqGadget,
+    groups::{CurveVar, GroupOpsBounds},
+    uint8::UInt8,
+};
+use ark_relations::ns;
 use core::marker::PhantomData;
-use manta_crypto::set::{ContainmentProof, VerifiedSet};
+use manta_crypto::{
+    constraint::{Alloc, Allocation, Constant, Public, Secret, Variable},
+    set::{ContainmentProof, VerifiedSet},
+};
 use manta_util::{as_bytes, Concat};
 
-/// Merkle Tree Root
-pub type Root<W, C> = TwoToOneDigest<MerkleTreeConfiguration<W, C>>;
+/// Constraint Field Type
+pub type ConstraintField<C> = <<C as ProjectiveCurve>::BaseField as Field>::BasePrimeField;
+
+/// Proof System
+type ProofSystem<C> = ArkProofSystem<ConstraintField<C>>;
+
+/// Merkle Tree Configuration
+#[derive(derivative::Derivative)]
+#[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct Configuration<W, C>(PhantomData<(W, C)>)
+where
+    W: PedersenWindow,
+    C: ProjectiveCurve;
+
+impl<W, C> Config for Configuration<W, C>
+where
+    W: PedersenWindow,
+    C: ProjectiveCurve,
+{
+    type LeafHash = CRH<C, W>;
+    type TwoToOneHash = CRH<C, W>;
+}
+
+/// Leaf Hash Parameters Type
+type LeafParam<W, C> = ArkLeafParam<Configuration<W, C>>;
+
+/// Two-to-One Hash Parameters Type
+type TwoToOneParam<W, C> = ArkTwoToOneParam<Configuration<W, C>>;
+
+/// Leaf Hash Parameters Variable
+type LeafParamVar<W, C, GG> = <CRHGadget<C, GG, W> as CRHGadgetTrait<
+    <Configuration<W, C> as Config>::LeafHash,
+    ConstraintField<C>,
+>>::ParametersVar;
+
+/// Two-to-One Hash Parameters Variable
+type TwoToOneParamVar<W, C, GG> = <CRHGadget<C, GG, W> as TwoToOneCRHGadgetTrait<
+    <Configuration<W, C> as Config>::TwoToOneHash,
+    ConstraintField<C>,
+>>::ParametersVar;
 
 /// Merkle Tree Parameters
 #[derive(derivative::Derivative)]
@@ -49,53 +106,324 @@ where
     C: ProjectiveCurve,
 {
     /// Leaf Hash Parameters
-    pub(crate) leaf: LeafParam<MerkleTreeConfiguration<W, C>>,
+    leaf: LeafParam<W, C>,
 
     /// Two-to-One Hash Parameters
-    pub(crate) two_to_one: TwoToOneParam<MerkleTreeConfiguration<W, C>>,
+    two_to_one: TwoToOneParam<W, C>,
 }
 
-/// Merkle Tree Path
-#[derive(derivative::Derivative)]
-#[derivative(Clone(bound = ""))]
-pub struct Path<W, C>
+impl<W, C> Parameters<W, C>
 where
     W: PedersenWindow,
     C: ProjectiveCurve,
 {
-    /// Path
-    pub(crate) path: MerkleTreePath<MerkleTreeConfiguration<W, C>>,
-}
-
-impl<W, C> Path<W, C>
-where
-    W: PedersenWindow,
-    C: ProjectiveCurve,
-{
-    /// Builds a new [`Path`] from `path`.
+    /// Verifies that `path` constitutes a proof that `item` is contained in the Merkle Tree
+    /// with the given `root`.
     #[inline]
-    fn new(path: MerkleTreePath<MerkleTreeConfiguration<W, C>>) -> Self {
-        Self { path }
+    pub fn verify<T>(&self, root: &Root<W, C>, path: &Path<W, C>, item: &T) -> bool
+    where
+        T: Concat<Item = u8>,
+    {
+        path.0
+            .verify(&self.leaf, &self.two_to_one, &root.0, &as_bytes!(item))
+            .expect("As of arkworks 0.3.0, this never fails.")
     }
 }
 
-/// Path Variable
-pub struct PathVar<W, C>(PhantomData<(W, C)>)
+/// Merkle Tree Parameters Wrapper
+#[derive(derivative::Derivative)]
+#[derivative(Clone(bound = ""))]
+pub struct ParametersWrapper<W, C, GG>(Parameters<W, C>, PhantomData<GG>)
+where
+    W: PedersenWindow,
+    C: ProjectiveCurve,
+    GG: CurveVar<C, ConstraintField<C>>,
+    for<'g> &'g GG: GroupOpsBounds<'g, C, GG>;
+
+impl<W, C, GG> ParametersWrapper<W, C, GG>
+where
+    W: PedersenWindow,
+    C: ProjectiveCurve,
+    GG: CurveVar<C, ConstraintField<C>>,
+    for<'g> &'g GG: GroupOpsBounds<'g, C, GG>,
+{
+    /// Verifies that `path` constitutes a proof that `item` is contained in the Merkle Tree
+    /// with the given `root`.
+    #[inline]
+    pub fn verify<T>(
+        &self,
+        root: &RootWrapper<W, C, GG>,
+        path: &PathWrapper<W, C, GG>,
+        item: &T,
+    ) -> bool
+    where
+        T: Concat<Item = u8>,
+    {
+        self.0.verify(&root.0, &path.0, item)
+    }
+}
+
+/// Merkle Tree Parameters Variable
+#[derive(derivative::Derivative)]
+#[derivative(Clone(bound = ""))]
+pub struct ParametersVar<W, C, GG>
+where
+    W: PedersenWindow,
+    C: ProjectiveCurve,
+    GG: CurveVar<C, ConstraintField<C>>,
+    for<'g> &'g GG: GroupOpsBounds<'g, C, GG>,
+{
+    /// Leaf Hash Parameters Variable
+    leaf: LeafParamVar<W, C, GG>,
+
+    /// Two-to-One Hash Parameters Variable
+    two_to_one: TwoToOneParamVar<W, C, GG>,
+}
+
+impl<W, C, GG> ParametersVar<W, C, GG>
+where
+    W: PedersenWindow,
+    C: ProjectiveCurve,
+    GG: CurveVar<C, ConstraintField<C>>,
+    for<'g> &'g GG: GroupOpsBounds<'g, C, GG>,
+{
+    /// Verifies that `path` constitutes a proof that `item` is contained in the Merkle Tree
+    /// with the given `root`.
+    #[inline]
+    pub fn verify(
+        &self,
+        root: &RootVar<W, C, GG>,
+        path: &PathVar<W, C, GG>,
+        item: &[UInt8<ConstraintField<C>>],
+    ) -> Boolean<ConstraintField<C>> {
+        path.0
+            .verify_membership(&self.leaf, &self.two_to_one, &root.0, &item)
+            .expect("This is not allowed to fail.")
+    }
+
+    /// Asserts that `path` constitutes a proof that `item` is contained in the Merkle Tree
+    /// with the given `root`.
+    #[inline]
+    pub fn assert_verified(
+        &self,
+        root: &RootVar<W, C, GG>,
+        path: &PathVar<W, C, GG>,
+        item: &[UInt8<ConstraintField<C>>],
+    ) {
+        self.verify(root, path, item)
+            .enforce_equal(&Boolean::TRUE)
+            .expect("This is not allowed to fail.")
+    }
+}
+
+impl<W, C, GG> Variable<ProofSystem<C>> for ParametersVar<W, C, GG>
+where
+    W: PedersenWindow,
+    C: ProjectiveCurve,
+    GG: CurveVar<C, ConstraintField<C>>,
+    for<'g> &'g GG: GroupOpsBounds<'g, C, GG>,
+{
+    type Mode = Constant;
+    type Type = ParametersWrapper<W, C, GG>;
+}
+
+impl<W, C, GG> Alloc<ProofSystem<C>> for ParametersWrapper<W, C, GG>
+where
+    W: PedersenWindow,
+    C: ProjectiveCurve,
+    GG: CurveVar<C, ConstraintField<C>>,
+    for<'g> &'g GG: GroupOpsBounds<'g, C, GG>,
+{
+    type Mode = Constant;
+
+    type Variable = ParametersVar<W, C, GG>;
+
+    #[inline]
+    fn variable<'t>(
+        ps: &mut ProofSystem<C>,
+        allocation: impl Into<Allocation<'t, Self, ProofSystem<C>>>,
+    ) -> Self::Variable
+    where
+        Self: 't,
+    {
+        match allocation.into() {
+            Allocation::Known(this, mode) => ParametersVar {
+                leaf: LeafParamVar::<W, _, _>::new_constant(
+                    ns!(ps.cs, "leaf hash parameter constant"),
+                    &this.0.leaf,
+                )
+                .expect("Variable allocation is not allowed to fail."),
+                two_to_one: TwoToOneParamVar::<W, _, _>::new_constant(
+                    ns!(ps.cs, "two-to-one hash parameter constant"),
+                    &this.0.two_to_one,
+                )
+                .expect("Variable allocation is not allowed to fail."),
+            },
+            _ => unreachable!(
+                "Since we use a constant allocation mode, we always know the variable value."
+            ),
+        }
+    }
+}
+
+/// Merkle Tree Root Inner Type
+type RootInnerType<W, C> = TwoToOneDigest<Configuration<W, C>>;
+
+/// Merkle Tree Root
+#[derive(derivative::Derivative)]
+#[derivative(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub struct Root<W, C>(RootInnerType<W, C>)
 where
     W: PedersenWindow,
     C: ProjectiveCurve;
 
-/// Merkle Tree
+/// Merkle Tree Root Wrapper
 #[derive(derivative::Derivative)]
-#[derivative(Clone(bound = ""))]
-pub struct MerkleTree<W, C>
+#[derivative(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub struct RootWrapper<W, C, GG>(Root<W, C>, PhantomData<GG>)
 where
     W: PedersenWindow,
     C: ProjectiveCurve,
+    GG: CurveVar<C, ConstraintField<C>>,
+    for<'g> &'g GG: GroupOpsBounds<'g, C, GG>;
+
+/// Merkle Tree Root Variable
+#[derive(derivative::Derivative)]
+#[derivative(Clone)]
+pub struct RootVar<W, C, GG>(GG, PhantomData<(W, C)>)
+where
+    W: PedersenWindow,
+    C: ProjectiveCurve,
+    GG: CurveVar<C, ConstraintField<C>>,
+    for<'g> &'g GG: GroupOpsBounds<'g, C, GG>;
+
+impl<W, C, GG> Variable<ProofSystem<C>> for RootVar<W, C, GG>
+where
+    W: PedersenWindow,
+    C: ProjectiveCurve,
+    GG: CurveVar<C, ConstraintField<C>>,
+    for<'g> &'g GG: GroupOpsBounds<'g, C, GG>,
 {
-    /// Merkle Tree
-    pub(crate) tree: ArkMerkleTree<MerkleTreeConfiguration<W, C>>,
+    type Mode = Public;
+    type Type = RootWrapper<W, C, GG>;
 }
+
+impl<W, C, GG> Alloc<ProofSystem<C>> for RootWrapper<W, C, GG>
+where
+    W: PedersenWindow,
+    C: ProjectiveCurve,
+    GG: CurveVar<C, ConstraintField<C>>,
+    for<'g> &'g GG: GroupOpsBounds<'g, C, GG>,
+{
+    type Mode = Public;
+
+    type Variable = RootVar<W, C, GG>;
+
+    #[inline]
+    fn variable<'t>(
+        ps: &mut ProofSystem<C>,
+        allocation: impl Into<Allocation<'t, Self, ProofSystem<C>>>,
+    ) -> Self::Variable
+    where
+        Self: 't,
+    {
+        RootVar(
+            match allocation.into().known() {
+                Some(this) => AllocVar::<RootInnerType<W, C>, _>::new_input(
+                    ns!(ps.cs, "merkle tree root public input"),
+                    full(((this.0).0).0),
+                ),
+                _ => AllocVar::<RootInnerType<W, C>, _>::new_input(
+                    ns!(ps.cs, "merkle tree root public input"),
+                    empty::<RootInnerType<W, C>>,
+                ),
+            }
+            .expect("Variable allocation is not allowed to fail."),
+            PhantomData,
+        )
+    }
+}
+
+/// Merkle Tree Path Inner Type
+type PathInnerType<W, C> = ArkPath<Configuration<W, C>>;
+
+/// Merkle Tree Path
+#[derive(derivative::Derivative)]
+#[derivative(Clone(bound = ""))]
+pub struct Path<W, C>(PathInnerType<W, C>)
+where
+    W: PedersenWindow,
+    C: ProjectiveCurve;
+
+/// Merkle Tree Path Wrapper
+#[derive(derivative::Derivative)]
+#[derivative(Clone(bound = ""))]
+pub struct PathWrapper<W, C, GG>(Path<W, C>, PhantomData<GG>)
+where
+    W: PedersenWindow,
+    C: ProjectiveCurve,
+    GG: CurveVar<C, ConstraintField<C>>,
+    for<'g> &'g GG: GroupOpsBounds<'g, C, GG>;
+
+/// Merkle Tree Path Variable Inner Type
+type PathVarInnerType<W, C, GG> =
+    ArkPathVar<Configuration<W, C>, CRHGadget<C, GG, W>, CRHGadget<C, GG, W>, ConstraintField<C>>;
+
+/// Merkle Tree Path Variable
+pub struct PathVar<W, C, GG>(PathVarInnerType<W, C, GG>)
+where
+    W: PedersenWindow,
+    C: ProjectiveCurve,
+    GG: CurveVar<C, ConstraintField<C>>,
+    for<'g> &'g GG: GroupOpsBounds<'g, C, GG>;
+
+impl<W, C, GG> Variable<ProofSystem<C>> for PathVar<W, C, GG>
+where
+    W: PedersenWindow,
+    C: ProjectiveCurve,
+    GG: CurveVar<C, ConstraintField<C>>,
+    for<'g> &'g GG: GroupOpsBounds<'g, C, GG>,
+{
+    type Mode = Secret;
+    type Type = PathWrapper<W, C, GG>;
+}
+
+impl<W, C, GG> Alloc<ProofSystem<C>> for PathWrapper<W, C, GG>
+where
+    W: PedersenWindow,
+    C: ProjectiveCurve,
+    GG: CurveVar<C, ConstraintField<C>>,
+    for<'g> &'g GG: GroupOpsBounds<'g, C, GG>,
+{
+    type Mode = Secret;
+
+    type Variable = PathVar<W, C, GG>;
+
+    #[inline]
+    fn variable<'t>(
+        ps: &mut ProofSystem<C>,
+        allocation: impl Into<Allocation<'t, Self, ProofSystem<C>>>,
+    ) -> Self::Variable
+    where
+        Self: 't,
+    {
+        PathVar(
+            match allocation.into().known() {
+                Some(this) => PathVarInnerType::new_witness(ns!(ps.cs, ""), full(&((this.0).0).0)),
+                _ => PathVarInnerType::new_witness(ns!(ps.cs, ""), empty::<PathInnerType<W, C>>),
+            }
+            .expect("Variable allocatino is not allowed to fail."),
+        )
+    }
+}
+
+/// Merkle Tree
+#[derive(derivative::Derivative)]
+#[derivative(Clone(bound = ""))]
+pub struct MerkleTree<W, C>(ArkMerkleTree<Configuration<W, C>>)
+where
+    W: PedersenWindow,
+    C: ProjectiveCurve;
 
 impl<W, C> MerkleTree<W, C>
 where
@@ -112,8 +440,8 @@ where
     where
         T: Concat<Item = u8>,
     {
-        Some(Self {
-            tree: ArkMerkleTree::new(
+        Some(Self(
+            ArkMerkleTree::new(
                 &parameters.leaf,
                 &parameters.two_to_one,
                 &leaves
@@ -122,7 +450,25 @@ where
                     .collect::<Vec<_>>(),
             )
             .ok()?,
-        })
+        ))
+    }
+
+    /// Builds a new [`MerkleTree`].
+    ///
+    /// # Panics
+    ///
+    /// The length of `leaves` must be a power of 2 or this function will panic.
+    #[inline]
+    pub fn from_wrapped<GG, T>(
+        parameters: &ParametersWrapper<W, C, GG>,
+        leaves: &[T],
+    ) -> Option<Self>
+    where
+        GG: CurveVar<C, ConstraintField<C>>,
+        for<'g> &'g GG: GroupOpsBounds<'g, C, GG>,
+        T: Concat<Item = u8>,
+    {
+        Self::new(&parameters.0, leaves)
     }
 
     /// Computes the [`Root`] of the [`MerkleTree`] built from the `leaves`.
@@ -134,10 +480,40 @@ where
         Some(Self::new(parameters, leaves)?.root())
     }
 
+    /// Computes the [`RootWrapper`] of the [`MerkleTree`] built from the `leaves`.
+    #[inline]
+    pub fn build_root_wrapped<GG, T>(
+        parameters: &ParametersWrapper<W, C, GG>,
+        leaves: &[T],
+    ) -> Option<RootWrapper<W, C, GG>>
+    where
+        GG: CurveVar<C, ConstraintField<C>>,
+        for<'g> &'g GG: GroupOpsBounds<'g, C, GG>,
+        T: Concat<Item = u8>,
+    {
+        Self::build_root(&parameters.0, leaves).map(move |r| RootWrapper(r, PhantomData))
+    }
+
     /// Returns the [`Root`] of this [`MerkleTree`].
     #[inline]
     pub fn root(&self) -> Root<W, C> {
-        self.tree.root()
+        Root(self.0.root())
+    }
+
+    /// Returns the [`RootWrapper`] of this [`MerkleTree`].
+    #[inline]
+    pub fn root_wrapped<GG>(&self) -> RootWrapper<W, C, GG>
+    where
+        GG: CurveVar<C, ConstraintField<C>>,
+        for<'g> &'g GG: GroupOpsBounds<'g, C, GG>,
+    {
+        RootWrapper(self.root(), PhantomData)
+    }
+
+    /// Computes the root and the path for the leaf at the given `index`.
+    #[inline]
+    fn compute_containment_proof(&self, index: usize) -> Option<(Root<W, C>, Path<W, C>)> {
+        Some((self.root(), Path(self.0.generate_proof(index).ok()?)))
     }
 
     /// Builds a containment proof (i.e. merkle root and path) for the leaf at the given `index`.
@@ -146,26 +522,22 @@ where
     where
         S: VerifiedSet<Public = Root<W, C>, Secret = Path<W, C>>,
     {
+        let (root, path) = self.compute_containment_proof(index)?;
+        Some(ContainmentProof::new(root, path))
+    }
+
+    /// Builds a containment proof (i.e. merkle root and path) for the leaf at the given `index`.
+    #[inline]
+    pub fn get_wrapped_containment_proof<GG, S>(&self, index: usize) -> Option<ContainmentProof<S>>
+    where
+        GG: CurveVar<C, ConstraintField<C>>,
+        for<'g> &'g GG: GroupOpsBounds<'g, C, GG>,
+        S: VerifiedSet<Public = RootWrapper<W, C, GG>, Secret = PathWrapper<W, C, GG>>,
+    {
+        let (root, path) = self.compute_containment_proof(index)?;
         Some(ContainmentProof::new(
-            self.root(),
-            Path::new(self.tree.generate_proof(index).ok()?),
+            RootWrapper(root, PhantomData),
+            PathWrapper(path, PhantomData),
         ))
     }
-}
-
-/// Merkle Tree Configuration
-#[derive(derivative::Derivative)]
-#[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct MerkleTreeConfiguration<W, C>(PhantomData<(W, C)>)
-where
-    W: PedersenWindow,
-    C: ProjectiveCurve;
-
-impl<W, C> MerkleTreeConfig for MerkleTreeConfiguration<W, C>
-where
-    W: PedersenWindow,
-    C: ProjectiveCurve,
-{
-    type LeafHash = CRH<C, W>;
-    type TwoToOneHash = CRH<C, W>;
 }

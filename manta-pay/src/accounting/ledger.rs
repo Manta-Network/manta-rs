@@ -16,16 +16,16 @@
 
 //! Ledger Implementation
 
-// FIXME: Use more type-safe definitions for `VoidNumber` and `Utxo`.
+// FIXME: How should we handle serdes?
 
 use crate::{
     accounting::config::{
-        PedersenCommitment, PedersenCommitmentProjectiveCurve, PedersenCommitmentWindowParameters,
-        ProofSystem,
+        Configuration, PedersenCommitmentProjectiveCurve, PedersenCommitmentProjectiveCurveVar,
+        PedersenCommitmentWindowParameters, ProofSystem,
     },
     crypto::{
         ies::EncryptedAsset,
-        merkle_tree::{self, MerkleTree, Path},
+        merkle_tree::{self, MerkleTree},
     },
 };
 use alloc::{vec, vec::Vec};
@@ -33,33 +33,69 @@ use blake2::{
     digest::{Update, VariableOutput},
     VarBlake2s,
 };
-use manta_accounting::{Ledger as LedgerTrait, ProofPostError};
+use manta_accounting::{identity, Ledger as LedgerTrait, ProofPostError};
 use manta_crypto::{
-    commitment::CommitmentScheme,
-    constraint::{Public, PublicOrSecret, Secret, Var},
+    constraint::{self, Alloc, Allocation, Constant, Variable},
     set::{constraint::VerifiedSetVariable, ContainmentProof, Set, VerifiedSet},
 };
-use manta_util::{as_bytes, into_array_unchecked};
+use manta_util::{as_bytes, concatenate, into_array_unchecked};
 
 /// Void Number
-type VoidNumber = [u8; 32];
+type VoidNumber = identity::VoidNumber<Configuration>;
 
 /// Unspent Transaction Output
-type Utxo = [u8; 32]; // TODO: <PedersenCommitment as CommitmentScheme>::Output;
+type Utxo = identity::Utxo<Configuration>;
+
+/// UTXO Variable
+type UtxoVar = identity::UtxoVar<Configuration>;
 
 /// UTXO Shard Root
-type UtxoShardRoot =
-    merkle_tree::Root<PedersenCommitmentWindowParameters, PedersenCommitmentProjectiveCurve>;
+type Root = merkle_tree::RootWrapper<
+    PedersenCommitmentWindowParameters,
+    PedersenCommitmentProjectiveCurve,
+    PedersenCommitmentProjectiveCurveVar,
+>;
+
+/// UTXO Shard Root Variable
+type RootVar = merkle_tree::RootVar<
+    PedersenCommitmentWindowParameters,
+    PedersenCommitmentProjectiveCurve,
+    PedersenCommitmentProjectiveCurveVar,
+>;
 
 /// UTXO Set Parameters
-type Parameters =
-    merkle_tree::Parameters<PedersenCommitmentWindowParameters, PedersenCommitmentProjectiveCurve>;
+type Parameters = merkle_tree::ParametersWrapper<
+    PedersenCommitmentWindowParameters,
+    PedersenCommitmentProjectiveCurve,
+    PedersenCommitmentProjectiveCurveVar,
+>;
+
+/// UTXO Set Parameters Variable
+type ParametersVar = merkle_tree::ParametersVar<
+    PedersenCommitmentWindowParameters,
+    PedersenCommitmentProjectiveCurve,
+    PedersenCommitmentProjectiveCurveVar,
+>;
+
+/// UTXO Set Path
+type Path = merkle_tree::PathWrapper<
+    PedersenCommitmentWindowParameters,
+    PedersenCommitmentProjectiveCurve,
+    PedersenCommitmentProjectiveCurveVar,
+>;
+
+/// UTXO Set Path Variable
+type PathVar = merkle_tree::PathVar<
+    PedersenCommitmentWindowParameters,
+    PedersenCommitmentProjectiveCurve,
+    PedersenCommitmentProjectiveCurveVar,
+>;
 
 /// UTXO Shard
 #[derive(Clone, Debug, Default, Eq, Hash, PartialEq)]
 pub struct UtxoShard {
     /// Shard Root
-    root: UtxoShardRoot,
+    root: Root,
 
     /// Unspent Transaction Outputs
     utxos: Vec<Utxo>,
@@ -91,7 +127,7 @@ impl UtxoSet {
     #[inline]
     fn shard_index(utxo: &Utxo) -> usize {
         let mut hasher = VarBlake2s::new(1).expect("Failed to generate Variable Blake2s hasher.");
-        hasher.update(&utxo);
+        hasher.update(&as_bytes!(utxo));
         let mut res: usize = 0;
         hasher.finalize_variable(|x| res = x[0] as usize);
         res
@@ -105,7 +141,7 @@ impl UtxoSet {
 
     /// Returns `true` if the `root` belongs to some shard.
     #[inline]
-    pub fn root_exists(&self, root: &UtxoShardRoot) -> bool {
+    pub fn root_exists(&self, root: &Root) -> bool {
         self.shards.iter().any(move |s| s.root == *root)
     }
 
@@ -126,12 +162,13 @@ impl Set for UtxoSet {
 
     #[inline]
     fn try_insert(&mut self, item: Self::Item) -> Result<(), Self::Item> {
+        // FIXME: This will panic because `shard.utxos.len()` is not always a power of two.
         let shard = &mut self.shards[Self::shard_index(&item)];
         if shard.utxos.contains(&item) {
             return Err(item);
         }
         shard.utxos.push(item);
-        match MerkleTree::build_root(&self.parameters, &shard.utxos) {
+        match MerkleTree::build_root_wrapped(&self.parameters, &shard.utxos) {
             Some(root) => {
                 shard.root = root;
                 Ok(())
@@ -142,9 +179,9 @@ impl Set for UtxoSet {
 }
 
 impl VerifiedSet for UtxoSet {
-    type Public = UtxoShardRoot;
+    type Public = Root;
 
-    type Secret = Path<PedersenCommitmentWindowParameters, PedersenCommitmentProjectiveCurve>;
+    type Secret = Path;
 
     // TODO: Give a more informative error.
     type ContainmentError = ();
@@ -161,15 +198,7 @@ impl VerifiedSet for UtxoSet {
         secret_witness: &Self::Secret,
         item: &Self::Item,
     ) -> bool {
-        secret_witness
-            .path
-            .verify(
-                &self.parameters.leaf,
-                &self.parameters.two_to_one,
-                public_input,
-                &as_bytes!(item),
-            )
-            .expect("As of arkworks 0.3.0, this never fails.")
+        self.parameters.verify(public_input, secret_witness, item)
     }
 
     #[inline]
@@ -177,14 +206,61 @@ impl VerifiedSet for UtxoSet {
         &self,
         item: &Self::Item,
     ) -> Result<ContainmentProof<Self>, Self::ContainmentError> {
+        // FIXME: This will panic because `utxos.len()` is not always a power of two.
         let utxos = &self.shards[Self::shard_index(item)].utxos;
         match utxos.iter().position(move |u| u == item) {
-            Some(index) => MerkleTree::new(&self.parameters, utxos)
+            Some(index) => MerkleTree::from_wrapped(&self.parameters, utxos)
                 .ok_or(())?
-                .get_containment_proof(index)
+                .get_wrapped_containment_proof(index)
                 .ok_or(()),
             _ => Err(()),
         }
+    }
+}
+
+/// UTXO Set Variable
+#[derive(Clone)]
+pub struct UtxoSetVar(ParametersVar);
+
+impl Variable<ProofSystem> for UtxoSetVar {
+    type Mode = Constant;
+    type Type = UtxoSet;
+}
+
+impl Alloc<ProofSystem> for UtxoSet {
+    type Mode = Constant;
+
+    type Variable = UtxoSetVar;
+
+    #[inline]
+    fn variable<'t>(
+        ps: &mut ProofSystem,
+        allocation: impl Into<Allocation<'t, Self, ProofSystem>>,
+    ) -> Self::Variable
+    where
+        Self: 't,
+    {
+        UtxoSetVar(match allocation.into() {
+            Allocation::Known(this, mode) => this.parameters.as_known(ps, mode),
+            _ => unreachable!(
+                "Since we use a constant allocation mode, we always know the variable value."
+            ),
+        })
+    }
+}
+
+impl VerifiedSetVariable<ProofSystem> for UtxoSetVar {
+    #[inline]
+    fn assert_valid_containment_proof(
+        &self,
+        public_input: &RootVar,
+        secret_witness: &PathVar,
+        item: &UtxoVar,
+        ps: &mut ProofSystem,
+    ) {
+        let _ = ps;
+        self.0
+            .assert_verified(public_input, secret_witness, &concatenate!(item))
     }
 }
 
@@ -200,7 +276,6 @@ pub struct Ledger {
     encrypted_assets: Vec<EncryptedAsset>,
 }
 
-/* TODO:
 impl LedgerTrait for Ledger {
     type VoidNumber = VoidNumber;
 
@@ -257,4 +332,3 @@ impl LedgerTrait for Ledger {
         todo!()
     }
 }
-*/

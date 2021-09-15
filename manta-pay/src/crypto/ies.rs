@@ -16,7 +16,7 @@
 
 //! IES Implementation
 
-// FIXME: make sure secret keys are protected
+// FIXME: Make sure secret keys are protected.
 
 use aes_gcm::{
     aead::{Aead, NewAead},
@@ -40,8 +40,8 @@ pub type PublicKey = [u8; 32];
 pub type SecretKey = [u8; 32];
 
 /// Asset Ciphertext Type
-// FIXME: this should be automatically calculated from [`Asset`]
-// FIXME: is this calculation correct? how do we know?
+// FIXME: This should be automatically calculated from [`Asset`].
+// FIXME: Is this calculation correct and how do we know?
 pub type AssetCiphertext = [u8; Asset::SIZE + 16];
 
 /// Ephemeral Public Key Type

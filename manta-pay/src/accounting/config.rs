@@ -17,7 +17,7 @@
 //! Identity and Transfer Configurations
 
 use crate::{
-    accounting::ledger::UtxoSet,
+    accounting::ledger::{UtxoSet, UtxoSetVar},
     crypto::{
         commitment::pedersen::{self, PedersenWindow},
         constraint::ArkProofSystem,
@@ -30,7 +30,7 @@ use ark_ed_on_bls12_381::{constraints::EdwardsVar, EdwardsProjective, Fq};
 use manta_accounting::{
     identity::IdentityProofSystemConfiguration, transfer::TransferConfiguration,
 };
-use manta_crypto::{commitment::CommitmentScheme, PseudorandomFunctionFamily};
+use manta_crypto::{commitment::CommitmentScheme, set::VerifiedSet, PseudorandomFunctionFamily};
 
 /// Pedersen Window Parameters
 #[derive(Clone, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -61,8 +61,11 @@ pub type PedersenCommitmentVar = pedersen::constraint::PedersenCommitmentVar<
     PedersenCommitmentProjectiveCurveVar,
 >;
 
+/// Constraint Field
+pub type ConstraintField = Fq;
+
 /// Proof System
-pub type ProofSystem = ArkProofSystem<Fq>;
+pub type ProofSystem = ArkProofSystem<ConstraintField>;
 
 /// Manta Pay Configuration
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -74,7 +77,7 @@ impl IdentityProofSystemConfiguration for Configuration {
     type PseudorandomFunctionFamilyInput = <Blake2s as PseudorandomFunctionFamily>::Input;
     type PseudorandomFunctionFamilyOutput = <Blake2s as PseudorandomFunctionFamily>::Output;
     type PseudorandomFunctionFamily = Blake2s;
-    type PseudorandomFunctionFamilyVar = Blake2sVar<Fq>;
+    type PseudorandomFunctionFamilyVar = Blake2sVar<ConstraintField>;
     type CommitmentSchemeRandomness = <PedersenCommitment as CommitmentScheme>::Randomness;
     type CommitmentSchemeOutput = <PedersenCommitment as CommitmentScheme>::Output;
     type CommitmentScheme = PedersenCommitment;
@@ -82,12 +85,11 @@ impl IdentityProofSystemConfiguration for Configuration {
     type Rng = ChaCha20RngBlake2sSeedable;
 }
 
-/* TODO:
 impl TransferConfiguration for Configuration {
-    type ProofSystem = ArkProofSystem<Fq>;
+    type ProofSystem = ProofSystem;
     type IntegratedEncryptionScheme = IES;
-    type UtxoPublicInput = ();
-    type UtxoSecretWitness = ();
+    type UtxoSetPublicInput = <UtxoSet as VerifiedSet>::Public;
+    type UtxoSetSecretWitness = <UtxoSet as VerifiedSet>::Secret;
     type UtxoSet = UtxoSet;
+    type UtxoSetVar = UtxoSetVar;
 }
-*/
