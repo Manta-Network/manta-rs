@@ -108,6 +108,8 @@ where
     InvalidProof(
         /// Proof
         <L::ProofSystem as ProofSystem>::Proof,
+        /// Proof Verification Error
+        Option<<L::ProofSystem as ProofSystem>::Error>,
     ),
 }
 

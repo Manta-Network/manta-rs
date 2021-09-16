@@ -395,21 +395,21 @@ where
     type Mode = Secret;
 
     #[inline]
-    fn new(ps: &mut C::ConstraintSystem, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
+    fn new(cs: &mut C::ConstraintSystem, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
         match allocation {
             Allocation::Known(this, mode) => Self::new(
-                VoidNumberGeneratorVar::<C>::new_known(ps, &this.void_number_generator, mode),
+                VoidNumberGeneratorVar::<C>::new_known(cs, &this.void_number_generator, mode),
                 VoidNumberCommitmentRandomnessVar::<C>::new_known(
-                    ps,
+                    cs,
                     &this.void_number_commitment_randomness,
                     mode,
                 ),
-                UtxoRandomnessVar::<C>::new_known(ps, &this.utxo_randomness, mode),
+                UtxoRandomnessVar::<C>::new_known(cs, &this.utxo_randomness, mode),
             ),
             Allocation::Unknown(mode) => Self::new(
-                VoidNumberGeneratorVar::<C>::new_unknown(ps, mode),
-                VoidNumberCommitmentRandomnessVar::<C>::new_unknown(ps, mode),
-                UtxoRandomnessVar::<C>::new_unknown(ps, mode),
+                VoidNumberGeneratorVar::<C>::new_unknown(cs, mode),
+                VoidNumberCommitmentRandomnessVar::<C>::new_unknown(cs, mode),
+                UtxoRandomnessVar::<C>::new_unknown(cs, mode),
             ),
         }
     }
@@ -1232,7 +1232,7 @@ where
     #[inline]
     pub fn get_well_formed_asset(
         self,
-        ps: &mut C::ConstraintSystem,
+        cs: &mut C::ConstraintSystem,
         commitment_scheme: &C::CommitmentSchemeVar,
         utxo_set: &Var<S, C::ConstraintSystem>,
     ) -> AssetVar<C::ConstraintSystem>
@@ -1255,7 +1255,7 @@ where
         // pk = PRF(sk, 0)
         // ```
         // where public: {}, secret: {pk, sk}.
-        ps.assert_eq(
+        cs.assert_eq(
             &self.public_key,
             &C::PseudorandomFunctionFamilyVar::evaluate_zero(&self.secret_key),
         );
@@ -1265,7 +1265,7 @@ where
         // vn = PRF(sk, rho)
         // ```
         // where public: {vn}, secret: {sk, rho}.
-        ps.assert_eq(
+        cs.assert_eq(
             &self.void_number,
             &C::PseudorandomFunctionFamilyVar::evaluate(
                 &self.secret_key,
@@ -1278,7 +1278,7 @@ where
         // k = COM(pk || rho, r)
         // ```
         // where public: {k}, secret: {pk, rho, r}.
-        ps.assert_eq(
+        cs.assert_eq(
             &self.void_number_commitment,
             &generate_void_number_commitment(
                 commitment_scheme,
@@ -1293,7 +1293,7 @@ where
         // cm = COM(asset || k, s)
         // ```
         // where public: {}, secret: {cm, asset, k, s}.
-        ps.assert_eq(
+        cs.assert_eq(
             &self.utxo,
             &generate_utxo(
                 commitment_scheme,
@@ -1309,7 +1309,7 @@ where
         // ```
         // where public: {root}, secret: {cm, path}.
         self.utxo_containment_proof
-            .assert_validity(utxo_set, &self.utxo, ps);
+            .assert_validity(utxo_set, &self.utxo, cs);
 
         self.asset
     }
@@ -1327,31 +1327,31 @@ where
     type Mode = Derived;
 
     #[inline]
-    fn new(ps: &mut C::ConstraintSystem, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
+    fn new(cs: &mut C::ConstraintSystem, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
         match allocation {
             Allocation::Known(this, mode) => Self {
-                secret_key: SecretKeyVar::<C>::new_known(ps, &this.secret_key, mode),
-                public_key: PublicKeyVar::<C>::new_known(ps, &this.public_key, Secret),
-                asset: this.asset.known(ps, mode),
-                parameters: this.parameters.known(ps, mode),
-                void_number: VoidNumberVar::<C>::new_known(ps, &this.void_number, Public),
+                secret_key: SecretKeyVar::<C>::new_known(cs, &this.secret_key, mode),
+                public_key: PublicKeyVar::<C>::new_known(cs, &this.public_key, Secret),
+                asset: this.asset.known(cs, mode),
+                parameters: this.parameters.known(cs, mode),
+                void_number: VoidNumberVar::<C>::new_known(cs, &this.void_number, Public),
                 void_number_commitment: VoidNumberCommitmentVar::<C>::new_known(
-                    ps,
+                    cs,
                     &this.void_number_commitment,
                     Public,
                 ),
-                utxo: UtxoVar::<C>::new_known(ps, &this.utxo, Secret),
-                utxo_containment_proof: this.utxo_containment_proof.known(ps, mode),
+                utxo: UtxoVar::<C>::new_known(cs, &this.utxo, Secret),
+                utxo_containment_proof: this.utxo_containment_proof.known(cs, mode),
             },
             Allocation::Unknown(mode) => Self {
-                secret_key: SecretKeyVar::<C>::new_unknown(ps, mode),
-                public_key: PublicKeyVar::<C>::new_unknown(ps, Secret),
-                asset: Asset::unknown(ps, mode),
-                parameters: AssetParameters::unknown(ps, mode),
-                void_number: VoidNumberVar::<C>::new_unknown(ps, Public),
-                void_number_commitment: VoidNumberCommitmentVar::<C>::new_unknown(ps, Public),
-                utxo: UtxoVar::<C>::new_unknown(ps, Secret),
-                utxo_containment_proof: ContainmentProof::<S>::unknown(ps, mode),
+                secret_key: SecretKeyVar::<C>::new_unknown(cs, mode),
+                public_key: PublicKeyVar::<C>::new_unknown(cs, Secret),
+                asset: Asset::unknown(cs, mode),
+                parameters: AssetParameters::unknown(cs, mode),
+                void_number: VoidNumberVar::<C>::new_unknown(cs, Public),
+                void_number_commitment: VoidNumberCommitmentVar::<C>::new_unknown(cs, Public),
+                utxo: UtxoVar::<C>::new_unknown(cs, Secret),
+                utxo_containment_proof: ContainmentProof::<S>::unknown(cs, mode),
             },
         }
     }
@@ -1561,10 +1561,10 @@ where
     #[inline]
     pub fn get_well_formed_asset(
         self,
-        ps: &mut C::ConstraintSystem,
+        cs: &mut C::ConstraintSystem,
         commitment_scheme: &C::CommitmentSchemeVar,
     ) -> AssetVar<C::ConstraintSystem> {
-        ps.assert_eq(
+        cs.assert_eq(
             &self.utxo,
             &generate_utxo(
                 commitment_scheme,
@@ -1587,24 +1587,24 @@ where
     type Mode = Derived;
 
     #[inline]
-    fn new(ps: &mut C::ConstraintSystem, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
+    fn new(cs: &mut C::ConstraintSystem, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
         match allocation {
             Allocation::Known(this, mode) => Self {
-                asset: AssetVar::new_known(ps, &this.asset, mode),
-                utxo_randomness: UtxoRandomnessVar::<C>::new_known(ps, &this.utxo_randomness, mode),
+                asset: AssetVar::new_known(cs, &this.asset, mode),
+                utxo_randomness: UtxoRandomnessVar::<C>::new_known(cs, &this.utxo_randomness, mode),
                 void_number_commitment: VoidNumberCommitmentVar::<C>::new_known(
-                    ps,
+                    cs,
                     &this.void_number_commitment,
                     Secret,
                 ),
-                utxo: UtxoVar::<C>::new_known(ps, &this.utxo, Public),
+                utxo: UtxoVar::<C>::new_known(cs, &this.utxo, Public),
                 __: PhantomData,
             },
             Allocation::Unknown(mode) => Self {
-                asset: AssetVar::new_unknown(ps, mode),
-                utxo_randomness: UtxoRandomnessVar::<C>::new_unknown(ps, mode),
-                void_number_commitment: VoidNumberCommitmentVar::<C>::new_unknown(ps, Secret),
-                utxo: UtxoVar::<C>::new_unknown(ps, Public),
+                asset: AssetVar::new_unknown(cs, mode),
+                utxo_randomness: UtxoRandomnessVar::<C>::new_unknown(cs, mode),
+                void_number_commitment: VoidNumberCommitmentVar::<C>::new_unknown(cs, Secret),
+                utxo: UtxoVar::<C>::new_unknown(cs, Public),
                 __: PhantomData,
             },
         }

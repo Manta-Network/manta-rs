@@ -14,12 +14,12 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Constraint Proof Systems
+//! Constraint Systems and Proof Systems
 
 // TODO:  Add derive macros to all the enums/structs here.
 // TODO:  Add derive trait to implement `HasAllocation` for structs (and enums?).
 // TODO:  Add more convenience functions for allocating unknown variables.
-// FIXME: Leverage the type system to constraint allocation to only unknown modes for verifier
+// FIXME: Leverage the type system to constrain allocation to only unknown modes for verifier
 //        generation and only known modes for proof generation, instead of relying on the `setup_*`
 //        methods to "do the right thing".
 
@@ -29,6 +29,7 @@ use core::{
     hash::Hash,
     marker::PhantomData,
 };
+use rand::{CryptoRng, RngCore};
 
 /// Allocation Mode
 pub trait AllocationMode {
@@ -163,37 +164,37 @@ where
         }
     }
 
-    /// Allocates a variable with `self` as the allocation entry into `ps`.
+    /// Allocates a variable with `self` as the allocation entry into `cs`.
     #[inline]
-    pub fn allocate<P, V>(self, ps: &mut P) -> V
+    pub fn allocate<C, V>(self, cs: &mut C) -> V
     where
-        P: ?Sized,
-        V: Variable<P, Type = T, Mode = Mode>,
+        C: ?Sized,
+        V: Variable<C, Type = T, Mode = Mode>,
     {
-        V::new(ps, self)
+        V::new(cs, self)
     }
 
-    /// Allocates a variable into `ps` after mapping over `self`.
+    /// Allocates a variable into `cs` after mapping over `self`.
     #[inline]
-    pub fn map_allocate<P, V, F>(self, ps: &mut P, f: F) -> V
+    pub fn map_allocate<C, V, F>(self, cs: &mut C, f: F) -> V
     where
         Mode::Known: Into<<V::Mode as AllocationMode>::Known>,
         Mode::Unknown: Into<<V::Mode as AllocationMode>::Unknown>,
-        P: ?Sized,
-        V: Variable<P>,
+        C: ?Sized,
+        V: Variable<C>,
         F: FnOnce(&'t T) -> V::Type,
     {
         match self {
-            Self::Known(value, mode) => V::new_known(ps, &f(value), mode),
-            Self::Unknown(mode) => V::new_unknown(ps, mode),
+            Self::Known(value, mode) => V::new_known(cs, &f(value), mode),
+            Self::Unknown(mode) => V::new_unknown(cs, mode),
         }
     }
 }
 
 /// Variable Allocation Trait
-pub trait Variable<P>: Sized
+pub trait Variable<C>: Sized
 where
-    P: ?Sized,
+    C: ?Sized,
 {
     /// Origin Type of the Variable
     type Type;
@@ -201,132 +202,132 @@ where
     /// Allocation Mode
     type Mode: AllocationMode;
 
-    /// Allocates a new variable into `ps` with the given `allocation`.
-    fn new(ps: &mut P, allocation: Allocation<Self::Type, Self::Mode>) -> Self;
+    /// Allocates a new variable into `cs` with the given `allocation`.
+    fn new(cs: &mut C, allocation: Allocation<Self::Type, Self::Mode>) -> Self;
 
-    /// Allocates a new known variable into `ps` with the given `mode`.
+    /// Allocates a new known variable into `cs` with the given `mode`.
     #[inline]
     fn new_known(
-        ps: &mut P,
+        cs: &mut C,
         value: &Self::Type,
         mode: impl Into<<Self::Mode as AllocationMode>::Known>,
     ) -> Self {
-        Self::new(ps, Allocation::Known(value, mode.into()))
+        Self::new(cs, Allocation::Known(value, mode.into()))
     }
 
-    /// Allocates a new unknown variable into `ps` with the given `mode`.
+    /// Allocates a new unknown variable into `cs` with the given `mode`.
     #[inline]
-    fn new_unknown(ps: &mut P, mode: impl Into<<Self::Mode as AllocationMode>::Unknown>) -> Self {
-        Self::new(ps, Allocation::Unknown(mode.into()))
+    fn new_unknown(cs: &mut C, mode: impl Into<<Self::Mode as AllocationMode>::Unknown>) -> Self {
+        Self::new(cs, Allocation::Unknown(mode.into()))
     }
 
-    /// Allocates a new known variable into `ps` with the given `mode` which holds the default
+    /// Allocates a new known variable into `cs` with the given `mode` which holds the default
     /// value of [`Self::Type`].
     #[inline]
-    fn from_default(ps: &mut P, mode: impl Into<<Self::Mode as AllocationMode>::Known>) -> Self
+    fn from_default(cs: &mut C, mode: impl Into<<Self::Mode as AllocationMode>::Known>) -> Self
     where
         Self::Type: Default,
     {
-        Self::new_known(ps, &Default::default(), mode)
+        Self::new_known(cs, &Default::default(), mode)
     }
 
-    /// Allocates a new known variable into `ps` with the given `mode` which holds the default
+    /// Allocates a new known variable into `cs` with the given `mode` which holds the default
     /// value of [`&Self::Type`](Self::Type).
     #[inline]
     fn from_default_ref<'t>(
-        ps: &mut P,
+        cs: &mut C,
         mode: impl Into<<Self::Mode as AllocationMode>::Known>,
     ) -> Self
     where
         Self::Type: 't,
         &'t Self::Type: Default,
     {
-        Self::new_known(ps, Default::default(), mode)
+        Self::new_known(cs, Default::default(), mode)
     }
 }
 
 /// Variable Source
 pub trait VariableSource {
-    /// Allocates a new variable into `ps` with the given `allocation`.
+    /// Allocates a new variable into `cs` with the given `allocation`.
     #[inline]
-    fn as_variable<P, V>(ps: &mut P, allocation: Allocation<Self, V::Mode>) -> V
+    fn as_variable<C, V>(cs: &mut C, allocation: Allocation<Self, V::Mode>) -> V
     where
-        P: ?Sized,
-        V: Variable<P, Type = Self>,
+        C: ?Sized,
+        V: Variable<C, Type = Self>,
     {
-        V::new(ps, allocation)
+        V::new(cs, allocation)
     }
 
-    /// Allocates a new known variable into `ps` with the given `mode`.
+    /// Allocates a new known variable into `cs` with the given `mode`.
     #[inline]
-    fn as_known<P, V>(&self, ps: &mut P, mode: impl Into<<V::Mode as AllocationMode>::Known>) -> V
+    fn as_known<C, V>(&self, cs: &mut C, mode: impl Into<<V::Mode as AllocationMode>::Known>) -> V
     where
-        P: ?Sized,
-        V: Variable<P, Type = Self>,
+        C: ?Sized,
+        V: Variable<C, Type = Self>,
     {
-        V::new_known(ps, self, mode)
+        V::new_known(cs, self, mode)
     }
 
-    /// Allocates a new unknown variable into `ps` with the given `mode`.
+    /// Allocates a new unknown variable into `cs` with the given `mode`.
     #[inline]
-    fn as_unknown<P, V>(ps: &mut P, mode: impl Into<<V::Mode as AllocationMode>::Unknown>) -> V
+    fn as_unknown<C, V>(cs: &mut C, mode: impl Into<<V::Mode as AllocationMode>::Unknown>) -> V
     where
-        P: ?Sized,
-        V: Variable<P, Type = Self>,
+        C: ?Sized,
+        V: Variable<C, Type = Self>,
     {
-        V::new_unknown(ps, mode)
+        V::new_unknown(cs, mode)
     }
 }
 
 impl<T> VariableSource for T where T: ?Sized {}
 
-impl<T, P> Variable<P> for PhantomData<T>
+impl<T, C> Variable<C> for PhantomData<T>
 where
     T: ?Sized,
-    P: ?Sized,
+    C: ?Sized,
 {
     type Type = PhantomData<T>;
 
     type Mode = ();
 
     #[inline]
-    fn new(ps: &mut P, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
-        let _ = (ps, allocation);
+    fn new(cs: &mut C, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
+        let _ = (cs, allocation);
         PhantomData
     }
 }
 
-impl<T, P> reflection::HasAllocation<P> for PhantomData<T>
+impl<T, C> reflection::HasAllocation<C> for PhantomData<T>
 where
     T: ?Sized,
-    P: ?Sized,
+    C: ?Sized,
 {
     type Variable = PhantomData<T>;
     type Mode = ();
 }
 
-/// Allocates a new known variable into `ps` with the given `mode`.
+/// Allocates a new known variable into `cs` with the given `mode`.
 #[inline]
-pub fn known<P, V>(
-    ps: &mut P,
+pub fn known<C, V>(
+    cs: &mut C,
     value: &V::Type,
     mode: impl Into<<V::Mode as AllocationMode>::Known>,
 ) -> V
 where
-    P: ?Sized,
-    V: Variable<P>,
+    C: ?Sized,
+    V: Variable<C>,
 {
-    V::new_known(ps, value, mode)
+    V::new_known(cs, value, mode)
 }
 
-/// Allocates a new unknown variable into `ps` with the given `mode`.
+/// Allocates a new unknown variable into `cs` with the given `mode`.
 #[inline]
-pub fn unknown<P, V>(ps: &mut P, mode: impl Into<<V::Mode as AllocationMode>::Unknown>) -> V
+pub fn unknown<C, V>(cs: &mut C, mode: impl Into<<V::Mode as AllocationMode>::Unknown>) -> V
 where
-    P: ?Sized,
-    V: Variable<P>,
+    C: ?Sized,
+    V: Variable<C>,
 {
-    V::new_unknown(ps, mode)
+    V::new_unknown(cs, mode)
 }
 
 /// Allocation System
@@ -363,7 +364,7 @@ pub trait AllocationSystem {
     }
 }
 
-impl<P> AllocationSystem for P where P: ?Sized {}
+impl<C> AllocationSystem for C where C: ?Sized {}
 
 /// Constraint System
 pub trait ConstraintSystem {
@@ -422,49 +423,55 @@ pub trait ConstraintSystem {
 }
 
 /// Equality Trait
-pub trait Equal<P>: Variable<P>
+pub trait Equal<C>: Variable<C>
 where
-    P: ConstraintSystem + ?Sized,
+    C: ConstraintSystem + ?Sized,
 {
     /// Generates a boolean that represents the fact that `lhs` and `rhs` may be equal.
-    fn eq(ps: &mut P, lhs: &Self, rhs: &Self) -> P::Bool;
+    fn eq(cs: &mut C, lhs: &Self, rhs: &Self) -> C::Bool;
 
     /// Asserts that `lhs` and `rhs` are equal.
     #[inline]
-    fn assert_eq(ps: &mut P, lhs: &Self, rhs: &Self) {
-        let boolean = Self::eq(ps, lhs, rhs);
-        ps.assert(boolean)
+    fn assert_eq(cs: &mut C, lhs: &Self, rhs: &Self) {
+        let boolean = Self::eq(cs, lhs, rhs);
+        cs.assert(boolean)
     }
 
     /// Asserts that all the elements in `iter` are equal to some `base` element.
     #[inline]
-    fn assert_all_eq_to_base<'t, I>(ps: &mut P, base: &'t Self, iter: I)
+    fn assert_all_eq_to_base<'t, I>(cs: &mut C, base: &'t Self, iter: I)
     where
         I: IntoIterator<Item = &'t Self>,
     {
         for item in iter {
-            Self::assert_eq(ps, base, item)
+            Self::assert_eq(cs, base, item)
         }
     }
 
     /// Asserts that all the elements in `iter` are equal.
     #[inline]
-    fn assert_all_eq<'t, I>(ps: &mut P, iter: I)
+    fn assert_all_eq<'t, I>(cs: &mut C, iter: I)
     where
         Self: 't,
         I: IntoIterator<Item = &'t Self>,
     {
         let mut iter = iter.into_iter();
         if let Some(base) = iter.next() {
-            Self::assert_all_eq_to_base(ps, base, iter)
+            Self::assert_all_eq_to_base(cs, base, iter)
         }
     }
 }
 
 /// Proof System
-pub trait ProofSystem: ConstraintSystem {
-    /// Verifier Type
-    type Verifier: Verifier<Self>;
+pub trait ProofSystem {
+    /// Constraint System
+    type ConstraintSystem: ConstraintSystem;
+
+    /// Proving Context Type
+    type ProvingContext;
+
+    /// Verifying Context Type
+    type VerifyingContext;
 
     /// Proof Type
     type Proof;
@@ -472,29 +479,34 @@ pub trait ProofSystem: ConstraintSystem {
     /// Error Type
     type Error;
 
-    /// Returns a proof system which is setup to build a verifier.
-    fn setup_to_verify() -> Self;
+    /// Returns a constraint system which is setup to build proving and verifying contexts.
+    fn for_unknown() -> Self::ConstraintSystem;
 
-    /// Returns a proof system which is setup to build a proof.
-    fn setup_to_prove() -> Self;
+    /// Returns a constraint system which is setup to build a proof.
+    fn for_known() -> Self::ConstraintSystem;
 
-    /// Returns a verifier object for the constraints contained in `self`.
-    fn into_verifier(self) -> Result<Self::Verifier, Self::Error>;
+    /// Returns proving and verifying contexts for the constraints contained in `self`.
+    fn generate_context<R>(
+        cs: Self::ConstraintSystem,
+        rng: &mut R,
+    ) -> Result<(Self::ProvingContext, Self::VerifyingContext), Self::Error>
+    where
+        R: CryptoRng + RngCore + ?Sized;
 
     /// Returns a proof that the constraint system `self` is consistent.
-    fn into_proof(self) -> Result<Self::Proof, Self::Error>;
-}
+    fn generate_proof<R>(
+        cs: Self::ConstraintSystem,
+        context: &Self::ProvingContext,
+        rng: &mut R,
+    ) -> Result<Self::Proof, Self::Error>
+    where
+        R: CryptoRng + RngCore + ?Sized;
 
-/// Proof System Verifier
-pub trait Verifier<P>
-where
-    P: ProofSystem + ?Sized,
-{
-    /// Error Type
-    type Error;
-
-    /// Verifies that a proof generated from a proof system is valid.
-    fn verify(&self, proof: &P::Proof) -> Result<bool, Self::Error>;
+    /// Verifies that a proof generated from this proof system is valid.
+    fn verify_proof(
+        context: &Self::VerifyingContext,
+        proof: &Self::Proof,
+    ) -> Result<bool, Self::Error>;
 }
 
 /// Derived Allocation Mode
@@ -696,71 +708,71 @@ pub mod reflection {
     /// Variable Type
     ///
     /// Requires a [`HasAllocation`] implementation for `T`.
-    pub type Var<T, P> = <P as HasVariable<T>>::Variable;
+    pub type Var<T, C> = <C as HasVariable<T>>::Variable;
 
     /// Allocation Mode Type
     ///
     /// Requires a [`HasAllocation`] implementation for `T`.
-    pub type Mode<T, P> = <Var<T, P> as Variable<P>>::Mode;
+    pub type Mode<T, C> = <Var<T, C> as Variable<C>>::Mode;
 
     /// Known Allocation Mode Type
     ///
     /// Requires a [`HasAllocation`] implementation for `T`.
-    pub type KnownMode<T, P> = <Mode<T, P> as AllocationMode>::Known;
+    pub type KnownMode<T, C> = <Mode<T, C> as AllocationMode>::Known;
 
     /// Known Allocation Mode Type
     ///
     /// Requires a [`HasAllocation`] implementation for `T`.
-    pub type UnknownMode<T, P> = <Mode<T, P> as AllocationMode>::Unknown;
+    pub type UnknownMode<T, C> = <Mode<T, C> as AllocationMode>::Unknown;
 
     /// Allocation Entry Type
     ///
     /// Requires a [`HasAllocation`] implementation for `T`.
-    pub type Alloc<'t, T, P> = Allocation<'t, T, Mode<T, P>>;
+    pub type Alloc<'t, T, C> = Allocation<'t, T, Mode<T, C>>;
 
     /// Variable Existence Reflection Trait
     ///
     /// This trait can be optionally implemented by any type `T` which has an existing variable
-    /// type that implements [`Variable<P, Type = T>`](Variable). Implementing this trait unlocks
+    /// type that implements [`Variable<C, Type = T>`](Variable). Implementing this trait unlocks
     /// all of the reflection capabilities in this module.
     ///
     /// Whenever possible, library authors should implement [`HasAllocation`] on their types which
     /// have associated variables but should minimize their use of [`HasVariable`] so that users
     /// can take advantage of as much of a library as possible while implementing as little as
     /// possible.
-    pub trait HasAllocation<P>
+    pub trait HasAllocation<C>
     where
-        P: ?Sized,
+        C: ?Sized,
     {
         /// Variable Object Type
-        type Variable: Variable<P, Mode = Self::Mode, Type = Self>;
+        type Variable: Variable<C, Mode = Self::Mode, Type = Self>;
 
         /// Allocation Mode
         type Mode: AllocationMode;
 
-        /// Allocates a new variable into `ps` with the given `allocation`.
+        /// Allocates a new variable into `cs` with the given `allocation`.
         #[inline]
-        fn variable(ps: &mut P, allocation: Allocation<Self, Self::Mode>) -> Self::Variable {
-            Self::Variable::new(ps, allocation)
+        fn variable(cs: &mut C, allocation: Allocation<Self, Self::Mode>) -> Self::Variable {
+            Self::Variable::new(cs, allocation)
         }
 
-        /// Allocates a new known variable into `ps` with the given `mode`.
+        /// Allocates a new known variable into `cs` with the given `mode`.
         #[inline]
         fn known(
             &self,
-            ps: &mut P,
+            cs: &mut C,
             mode: impl Into<<Self::Mode as AllocationMode>::Known>,
         ) -> Self::Variable {
-            Self::Variable::new_known(ps, self, mode)
+            Self::Variable::new_known(cs, self, mode)
         }
 
-        /// Allocates a new unknown variable into `ps` with the given `mode`.
+        /// Allocates a new unknown variable into `cs` with the given `mode`.
         #[inline]
         fn unknown(
-            ps: &mut P,
+            cs: &mut C,
             mode: impl Into<<Self::Mode as AllocationMode>::Unknown>,
         ) -> Self::Variable {
-            Self::Variable::new_unknown(ps, mode)
+            Self::Variable::new_unknown(cs, mode)
         }
     }
 
@@ -805,33 +817,33 @@ pub mod reflection {
         }
     }
 
-    impl<P, T> HasVariable<T> for P
+    impl<C, T> HasVariable<T> for C
     where
-        P: ?Sized,
-        T: HasAllocation<P> + ?Sized,
+        C: ?Sized,
+        T: HasAllocation<C> + ?Sized,
     {
         type Variable = T::Variable;
         type Mode = T::Mode;
     }
 
-    /// Allocates a new unknown variable into `ps` with the given `mode`.
+    /// Allocates a new unknown variable into `cs` with the given `mode`.
     #[inline]
-    pub fn known<T, P>(ps: &mut P, value: &T, mode: KnownMode<T, P>) -> Var<T, P>
+    pub fn known<T, C>(cs: &mut C, value: &T, mode: KnownMode<T, C>) -> Var<T, C>
     where
         T: ?Sized,
-        P: HasVariable<T> + ?Sized,
+        C: HasVariable<T> + ?Sized,
     {
-        ps.new_known_allocation(value, mode)
+        cs.new_known_allocation(value, mode)
     }
 
-    /// Allocates a new unknown variable into `ps` with the given `mode`.
+    /// Allocates a new unknown variable into `cs` with the given `mode`.
     #[inline]
-    pub fn unknown<T, P>(ps: &mut P, mode: UnknownMode<T, P>) -> Var<T, P>
+    pub fn unknown<T, C>(cs: &mut C, mode: UnknownMode<T, C>) -> Var<T, C>
     where
         T: ?Sized,
-        P: HasVariable<T> + ?Sized,
+        C: HasVariable<T> + ?Sized,
     {
-        ps.new_unknown_allocation(mode)
+        cs.new_unknown_allocation(mode)
     }
 }
 
@@ -842,50 +854,50 @@ pub mod types {
     use super::reflection::Var;
 
     /// Boolean Variable Type
-    pub type Bool<P> = Var<bool, P>;
+    pub type Bool<C> = Var<bool, C>;
 
     /// Character Variable Type
-    pub type Char<P> = Var<char, P>;
+    pub type Char<C> = Var<char, C>;
 
     /// 32-bit Floating Point Variable Type
-    pub type F32<P> = Var<f32, P>;
+    pub type F32<C> = Var<f32, C>;
 
     /// 64-bit Floating Point Variable Type
-    pub type F64<P> = Var<f64, P>;
+    pub type F64<C> = Var<f64, C>;
 
     /// Signed 8-bit Integer Variable Type
-    pub type I8<P> = Var<i8, P>;
+    pub type I8<C> = Var<i8, C>;
 
     /// Signed 16-bit Integer Variable Type
-    pub type I16<P> = Var<i16, P>;
+    pub type I16<C> = Var<i16, C>;
 
     /// Signed 32-bit Integer Variable Type
-    pub type I32<P> = Var<i32, P>;
+    pub type I32<C> = Var<i32, C>;
 
     /// Signed 64-bit Integer Variable Type
-    pub type I64<P> = Var<i64, P>;
+    pub type I64<C> = Var<i64, C>;
 
     /// Signed 128-bit Integer Variable Type
-    pub type I128<P> = Var<i128, P>;
+    pub type I128<C> = Var<i128, C>;
 
     /// Pointer-Sized Integer Variable Type
-    pub type Isize<P> = Var<isize, P>;
+    pub type Isize<C> = Var<isize, C>;
 
     /// Unsigned 8-bit Integer Variable Type
-    pub type U8<P> = Var<u8, P>;
+    pub type U8<C> = Var<u8, C>;
 
     /// Unsigned 16-bit Integer Variable Type
-    pub type U16<P> = Var<u16, P>;
+    pub type U16<C> = Var<u16, C>;
 
     /// Unsigned 32-bit Integer Variable Type
-    pub type U32<P> = Var<u32, P>;
+    pub type U32<C> = Var<u32, C>;
 
     /// Unsigned 64-bit Integer Variable Type
-    pub type U64<P> = Var<u64, P>;
+    pub type U64<C> = Var<u64, C>;
 
     /// Unsigned 128-bit Integer Variable Type
-    pub type U128<P> = Var<u128, P>;
+    pub type U128<C> = Var<u128, C>;
 
     /// Pointer-Sized Unsigned Integer Variable Type
-    pub type Usize<P> = Var<usize, P>;
+    pub type Usize<C> = Var<usize, C>;
 }

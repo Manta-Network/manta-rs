@@ -30,7 +30,7 @@ std = []
 
 [dependencies]
 aes-gcm = { version = "0.9.4", default-features = false }
-ark-bls12-381 = { version = "0.3.0", default-features = false }
+ark-bls12-381 = { version = "0.3.0", default-features = false, features = ["curve"] }
 ark-crypto-primitives = { version = "0.3.0", default-features = false, features = ["r1cs"] }
 ark-ec = { version = "0.3.0", default-features = false }
 ark-ed-on-bls12-381 = { version = "0.3.0", default-features = false, features = ["r1cs"] }

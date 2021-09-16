@@ -28,8 +28,9 @@ use core::{
 };
 use manta_crypto::{
     constraint::{
+        self,
         reflection::{HasAllocation, HasVariable},
-        Allocation, Constant, ConstraintSystem, Derived, Equal, ProofSystem, Public,
+        Allocation, Constant, ConstraintSystem as _, Derived, Equal, ProofSystem, Public,
         PublicOrSecret, Secret, Variable, VariableSource,
     },
     ies::{EncryptedMessage, IntegratedEncryptionScheme},
@@ -38,7 +39,7 @@ use manta_crypto::{
 use manta_util::{array_map, mixed_chain, Either};
 use rand::{
     distributions::{Distribution, Standard},
-    Rng, RngCore,
+    CryptoRng, Rng, RngCore,
 };
 
 /// Returns `true` if the transfer with this shape would have no public side.
@@ -141,22 +142,25 @@ impl<const SOURCES: usize, const SINKS: usize> Distribution<PublicTransfer<SOURC
 
 /// Transfer Configuration
 pub trait TransferConfiguration:
-    IdentityConstraintSystemConfiguration<ConstraintSystem = Self::ProofSystem>
+    IdentityConstraintSystemConfiguration<ConstraintSystem = ConstraintSystem<Self>>
 {
-    /// Proof System
-    type ProofSystem: ProofSystem
+    /// Constraint System
+    type ConstraintSystem: constraint::ConstraintSystem
         + HasVariable<AssetId, Variable = Self::AssetIdVar, Mode = PublicOrSecret>
         + HasVariable<AssetBalance, Variable = Self::AssetBalanceVar, Mode = PublicOrSecret>
         + HasVariable<<Self::UtxoSet as VerifiedSet>::Public, Mode = Public>
         + HasVariable<<Self::UtxoSet as VerifiedSet>::Secret, Mode = Secret>;
 
+    /// Proof System
+    type ProofSystem: ProofSystem<ConstraintSystem = ConstraintSystem<Self>>;
+
     /// Asset Id Variable
-    type AssetIdVar: Variable<Self::ProofSystem, Mode = PublicOrSecret, Type = AssetId>
-        + Equal<Self::ProofSystem>;
+    type AssetIdVar: Variable<ConstraintSystem<Self>, Mode = PublicOrSecret, Type = AssetId>
+        + Equal<ConstraintSystem<Self>>;
 
     /// Asset Balance Variable
-    type AssetBalanceVar: Variable<Self::ProofSystem, Mode = PublicOrSecret, Type = AssetBalance>
-        + Equal<Self::ProofSystem>
+    type AssetBalanceVar: Variable<ConstraintSystem<Self>, Mode = PublicOrSecret, Type = AssetBalance>
+        + Equal<ConstraintSystem<Self>>
         + AddAssign;
 
     /// Integrated Encryption Scheme for [`Asset`]
@@ -164,39 +168,47 @@ pub trait TransferConfiguration:
 
     /// Verified Set for [`Utxo`]
     type UtxoSet: VerifiedSet<Item = Utxo<Self>>
-        + HasAllocation<Self::ProofSystem, Variable = Self::UtxoSetVar, Mode = Constant>;
+        + HasAllocation<ConstraintSystem<Self>, Variable = Self::UtxoSetVar, Mode = Constant>;
 
     /// Verified Set Variable for [`Utxo`]
     type UtxoSetVar: VerifiedSetVariable<
-        Self::ProofSystem,
+        ConstraintSystem<Self>,
         ItemVar = UtxoVar<Self>,
         Type = Self::UtxoSet,
         Mode = Constant,
     >;
 }
 
-/// Sender Type
+/// Transfer Sender Type
 pub type Sender<T> = identity::Sender<T, <T as TransferConfiguration>::UtxoSet>;
 
-/// Receiver Type
+/// Transfer Receiver Type
 pub type Receiver<T> =
     identity::Receiver<T, <T as TransferConfiguration>::IntegratedEncryptionScheme>;
 
-/// Sender Variable Type
+/// Transfer Sender Variable Type
 pub type SenderVar<T> = identity::SenderVar<T, <T as TransferConfiguration>::UtxoSet>;
 
-/// Receiver Type
+/// Transfer Receiver Type
 pub type ReceiverVar<T> =
     identity::ReceiverVar<T, <T as TransferConfiguration>::IntegratedEncryptionScheme>;
 
-/// Secret Transfer Proof Error Type
-pub type ProofError<T> = <<T as TransferConfiguration>::ProofSystem as ProofSystem>::Error;
+/// Transfer Constraint System Type
+pub type ConstraintSystem<T> = <T as TransferConfiguration>::ConstraintSystem;
 
-/// Secret Transfer Proof Type
+/// Transfer Proving Context Type
+pub type ProvingContext<T> =
+    <<T as TransferConfiguration>::ProofSystem as ProofSystem>::ProvingContext;
+
+/// Transfer Verifying Context Type
+pub type VerifyingContext<T> =
+    <<T as TransferConfiguration>::ProofSystem as ProofSystem>::VerifyingContext;
+
+/// Transfer Proof Type
 pub type Proof<T> = <<T as TransferConfiguration>::ProofSystem as ProofSystem>::Proof;
 
-/// Secret Transfer Verifier Type
-pub type Verifier<T> = <<T as TransferConfiguration>::ProofSystem as ProofSystem>::Verifier;
+/// Transfer Proof System Error Type
+pub type ProofSystemError<T> = <<T as TransferConfiguration>::ProofSystem as ProofSystem>::Error;
 
 /// Secret Transfer Protocol
 pub struct SecretTransfer<T, const SENDERS: usize, const RECEIVERS: usize>
@@ -304,13 +316,18 @@ where
 
     /// Converts `self` into its ledger post.
     #[inline]
-    pub fn into_post(
+    pub fn into_post<R>(
         self,
         commitment_scheme: &T::CommitmentScheme,
         utxo_set: &T::UtxoSet,
-    ) -> Result<SecretTransferPost<T, SENDERS, RECEIVERS>, ProofError<T>> {
+        context: &ProvingContext<T>,
+        rng: &mut R,
+    ) -> Result<SecretTransferPost<T, SENDERS, RECEIVERS>, ProofSystemError<T>>
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
         match Transfer::from(self)
-            .into_post(commitment_scheme, utxo_set)?
+            .into_post(commitment_scheme, utxo_set, context, rng)?
             .try_into()
         {
             Ok(post) => Ok(post),
@@ -521,7 +538,7 @@ where
     fn unknown_variables(
         commitment_scheme: &T::CommitmentScheme,
         utxo_set: &T::UtxoSet,
-        ps: &mut T::ProofSystem,
+        cs: &mut ConstraintSystem<T>,
     ) -> (
         Option<T::AssetIdVar>,
         TransferParticipantsVar<T, SOURCES, SENDERS, RECEIVERS, SINKS>,
@@ -534,10 +551,10 @@ where
             Some(())
         };
         (
-            base_asset_id.map(|_| T::AssetIdVar::new_unknown(ps, Public)),
-            TransferParticipantsVar::new_unknown(ps, Derived),
-            commitment_scheme.as_known(ps, Public),
-            utxo_set.as_known(ps, Public),
+            base_asset_id.map(|_| T::AssetIdVar::new_unknown(cs, Public)),
+            TransferParticipantsVar::new_unknown(cs, Derived),
+            commitment_scheme.as_known(cs, Public),
+            utxo_set.as_known(cs, Public),
         )
     }
 
@@ -547,7 +564,7 @@ where
         &self,
         commitment_scheme: &T::CommitmentScheme,
         utxo_set: &T::UtxoSet,
-        ps: &mut T::ProofSystem,
+        cs: &mut ConstraintSystem<T>,
     ) -> (
         Option<T::AssetIdVar>,
         TransferParticipantsVar<T, SOURCES, SENDERS, RECEIVERS, SINKS>,
@@ -555,10 +572,10 @@ where
         T::UtxoSetVar,
     ) {
         (
-            self.public.asset_id.map(|id| id.as_known(ps, Public)),
-            TransferParticipantsVar::new_known(ps, self, Derived),
-            commitment_scheme.as_known(ps, Public),
-            utxo_set.as_known(ps, Public),
+            self.public.asset_id.map(|id| id.as_known(cs, Public)),
+            TransferParticipantsVar::new_known(cs, self, Derived),
+            commitment_scheme.as_known(cs, Public),
+            utxo_set.as_known(cs, Public),
         )
     }
 
@@ -569,10 +586,10 @@ where
         participants: TransferParticipantsVar<T, SOURCES, SENDERS, RECEIVERS, SINKS>,
         commitment_scheme: T::CommitmentSchemeVar,
         utxo_set: T::UtxoSetVar,
-        ps: &mut T::ProofSystem,
+        cs: &mut ConstraintSystem<T>,
     ) {
-        let mut sender_sum = T::AssetBalanceVar::from_default(ps, Secret);
-        let mut receiver_sum = T::AssetBalanceVar::from_default(ps, Secret);
+        let mut sender_sum = T::AssetBalanceVar::from_default(cs, Secret);
+        let mut receiver_sum = T::AssetBalanceVar::from_default(cs, Secret);
 
         participants
             .sources
@@ -584,18 +601,18 @@ where
             .into_iter()
             .for_each(|sink| receiver_sum += sink);
 
-        #[allow(clippy::needless_collect)] // NOTE: `ps` is being mutated, we need to collect.
+        #[allow(clippy::needless_collect)] // NOTE: `cs` is being mutated, we need to collect.
         let secret_asset_ids = mixed_chain(
             participants.senders.into_iter(),
             participants.receivers.into_iter(),
             |c| match c {
                 Either::Left(sender) => {
-                    let asset = sender.get_well_formed_asset(ps, &commitment_scheme, &utxo_set);
+                    let asset = sender.get_well_formed_asset(cs, &commitment_scheme, &utxo_set);
                     sender_sum += asset.value;
                     asset.id
                 }
                 Either::Right(receiver) => {
-                    let asset = receiver.get_well_formed_asset(ps, &commitment_scheme);
+                    let asset = receiver.get_well_formed_asset(cs, &commitment_scheme);
                     receiver_sum += asset.value;
                     asset.id
                 }
@@ -604,71 +621,78 @@ where
         .collect::<Vec<_>>();
 
         match base_asset_id {
-            Some(asset_id) => ps.assert_all_eq_to_base(&asset_id, secret_asset_ids.iter()),
-            _ => ps.assert_all_eq(secret_asset_ids.iter()),
+            Some(asset_id) => cs.assert_all_eq_to_base(&asset_id, secret_asset_ids.iter()),
+            _ => cs.assert_all_eq(secret_asset_ids.iter()),
         }
 
-        ps.assert_eq(&sender_sum, &receiver_sum);
+        cs.assert_eq(&sender_sum, &receiver_sum);
     }
 
     /// Generates a verifier for this transfer shape.
-    ///
-    /// Given a transfer object of the same shape, if the same `commitment_scheme` and `utxo_set`
-    /// are passed in to [`generate_proof`](Self::generate_proof) and proof is successfully
-    /// generated, then the verifier returned by this function will be able to verify that proof.
     #[inline]
-    pub fn generate_verifier(
+    pub fn generate_context<R>(
         commitment_scheme: &T::CommitmentScheme,
         utxo_set: &T::UtxoSet,
-    ) -> Result<Verifier<T>, ProofError<T>> {
-        let mut ps = T::ProofSystem::setup_to_verify();
+        rng: &mut R,
+    ) -> Result<(ProvingContext<T>, VerifyingContext<T>), ProofSystemError<T>>
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        let mut cs = T::ProofSystem::for_unknown();
         let (base_asset_id, participants, commitment_scheme, utxo_set) =
-            Self::unknown_variables(commitment_scheme, utxo_set, &mut ps);
+            Self::unknown_variables(commitment_scheme, utxo_set, &mut cs);
         Self::build_constraints(
             base_asset_id,
             participants,
             commitment_scheme,
             utxo_set,
-            &mut ps,
+            &mut cs,
         );
-        ps.into_verifier()
+        T::ProofSystem::generate_context(cs, rng)
     }
 
     /// Generates a validity proof for this transfer.
-    ///
-    /// To verify this proof, run [`generate_verifier`](Self::generate_verifier) with the same
-    /// `commitment_scheme` and `utxo_set` and use the returned verifier.
     #[inline]
-    pub fn generate_proof(
+    pub fn generate_proof<R>(
         &self,
         commitment_scheme: &T::CommitmentScheme,
         utxo_set: &T::UtxoSet,
-    ) -> Result<Proof<T>, ProofError<T>> {
-        let mut ps = T::ProofSystem::setup_to_prove();
+        context: &ProvingContext<T>,
+        rng: &mut R,
+    ) -> Result<Proof<T>, ProofSystemError<T>>
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        let mut cs = T::ProofSystem::for_known();
         let (base_asset_id, participants, commitment_scheme, utxo_set) =
-            self.known_variables(commitment_scheme, utxo_set, &mut ps);
+            self.known_variables(commitment_scheme, utxo_set, &mut cs);
         Self::build_constraints(
             base_asset_id,
             participants,
             commitment_scheme,
             utxo_set,
-            &mut ps,
+            &mut cs,
         );
-        ps.into_proof()
+        T::ProofSystem::generate_proof(cs, context, rng)
     }
 
     /// Converts `self` into its ledger post.
     #[inline]
-    pub fn into_post(
+    pub fn into_post<R>(
         self,
         commitment_scheme: &T::CommitmentScheme,
         utxo_set: &T::UtxoSet,
-    ) -> Result<TransferPost<T, SOURCES, SENDERS, RECEIVERS, SINKS>, ProofError<T>> {
+        context: &ProvingContext<T>,
+        rng: &mut R,
+    ) -> Result<TransferPost<T, SOURCES, SENDERS, RECEIVERS, SINKS>, ProofSystemError<T>>
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
         Ok(TransferPost {
             validity_proof: if SENDERS == 0 {
                 None
             } else {
-                Some(self.generate_proof(commitment_scheme, utxo_set)?)
+                Some(self.generate_proof(commitment_scheme, utxo_set, context, rng)?)
             },
             sender_posts: array_map(self.secret.senders, Sender::into_post),
             receiver_posts: array_map(self.secret.receivers, Receiver::into_post),
@@ -700,7 +724,7 @@ struct TransferParticipantsVar<
 }
 
 impl<T, const SOURCES: usize, const SENDERS: usize, const RECEIVERS: usize, const SINKS: usize>
-    Variable<T::ProofSystem> for TransferParticipantsVar<T, SOURCES, SENDERS, RECEIVERS, SINKS>
+    Variable<ConstraintSystem<T>> for TransferParticipantsVar<T, SOURCES, SENDERS, RECEIVERS, SINKS>
 where
     T: TransferConfiguration,
 {
@@ -709,50 +733,50 @@ where
     type Mode = Derived;
 
     #[inline]
-    fn new(ps: &mut T::ProofSystem, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
+    fn new(cs: &mut ConstraintSystem<T>, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
         match allocation {
             Allocation::Known(this, mode) => Self {
                 sources: this
                     .public
                     .sources
                     .iter()
-                    .map(|source| source.as_known(ps, Public))
+                    .map(|source| source.as_known(cs, Public))
                     .collect(),
                 senders: this
                     .secret
                     .senders
                     .iter()
-                    .map(|sender| sender.known(ps, mode))
+                    .map(|sender| sender.known(cs, mode))
                     .collect(),
                 receivers: this
                     .secret
                     .receivers
                     .iter()
-                    .map(|receiver| receiver.known(ps, mode))
+                    .map(|receiver| receiver.known(cs, mode))
                     .collect(),
                 sinks: this
                     .public
                     .sinks
                     .iter()
-                    .map(|sink| sink.as_known(ps, Public))
+                    .map(|sink| sink.as_known(cs, Public))
                     .collect(),
             },
             Allocation::Unknown(mode) => Self {
                 sources: (0..SOURCES)
                     .into_iter()
-                    .map(|_| T::AssetBalanceVar::new_unknown(ps, Public))
+                    .map(|_| T::AssetBalanceVar::new_unknown(cs, Public))
                     .collect(),
                 senders: (0..SENDERS)
                     .into_iter()
-                    .map(|_| SenderVar::new_unknown(ps, mode))
+                    .map(|_| SenderVar::new_unknown(cs, mode))
                     .collect(),
                 receivers: (0..RECEIVERS)
                     .into_iter()
-                    .map(|_| ReceiverVar::new_unknown(ps, mode))
+                    .map(|_| ReceiverVar::new_unknown(cs, mode))
                     .collect(),
                 sinks: (0..SINKS)
                     .into_iter()
-                    .map(|_| T::AssetBalanceVar::new_unknown(ps, Public))
+                    .map(|_| T::AssetBalanceVar::new_unknown(cs, Public))
                     .collect(),
             },
         }

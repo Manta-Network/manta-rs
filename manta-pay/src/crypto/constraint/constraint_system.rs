@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Arkworks Proof System Implementation
+//! Arkworks Constraint System Implementation
 
 use alloc::{vec, vec::Vec};
 use ark_ff::{fields::Field, PrimeField};
@@ -22,28 +22,22 @@ use ark_r1cs_std::{
     alloc::AllocVar, bits::boolean::Boolean, eq::EqGadget, fields::fp::FpVar, uint8::UInt8,
     R1CSVar, ToBytesGadget,
 };
-use ark_relations::{
-    ns,
-    r1cs::{
-        ConstraintSystem as ArkConstraintSystem, ConstraintSystemRef as ArkConstraintSystemRef,
-        SynthesisError,
-    },
-};
+use ark_relations::{ns, r1cs as ark_r1cs};
 use core::{borrow::Borrow, ops::AddAssign};
 use manta_accounting::{AssetBalance, AssetId};
 use manta_crypto::constraint::{
     reflection::HasAllocation, types::Bool, Allocation, AllocationMode, ConstraintSystem, Equal,
-    ProofSystem, Public, PublicOrSecret, Secret, Variable, Verifier,
+    Public, PublicOrSecret, Secret, Variable,
 };
 use manta_util::{Concat, ConcatAccumulator};
 
 /// Synthesis Result
-type SynthesisResult<T> = Result<T, SynthesisError>;
+type SynthesisResult<T> = Result<T, ark_r1cs::SynthesisError>;
 
 /// Returns an empty variable assignment.
 #[inline]
 pub(crate) const fn empty<T>() -> SynthesisResult<T> {
-    Err(SynthesisError::AssignmentMissing)
+    Err(ark_r1cs::SynthesisError::AssignmentMissing)
 }
 
 /// Returns a filled variable assignment.
@@ -96,16 +90,16 @@ impl From<PublicOrSecret> for ArkAllocationMode {
     }
 }
 
-/// Arkworks Proof System
-pub struct ArkProofSystem<F>
+/// Arkworks Constraint System
+pub struct ArkConstraintSystem<F>
 where
     F: Field,
 {
     /// Constraint System
-    pub(crate) cs: ArkConstraintSystemRef<F>,
+    pub(crate) cs: ark_r1cs::ConstraintSystemRef<F>,
 }
 
-impl<F> ConstraintSystem for ArkProofSystem<F>
+impl<F> ConstraintSystem for ArkConstraintSystem<F>
 where
     F: Field,
 {
@@ -119,13 +113,14 @@ where
     }
 }
 
-impl<F> ProofSystem for ArkProofSystem<F>
+/* TODO:
+impl<F> ProofSystem for Groth16ProofSystem<F>
 where
     F: Field,
 {
     type Verifier = Groth16Verifier;
 
-    type Proof = ();
+    type Proof = (Vec<F>, ());
 
     type Error = ();
 
@@ -146,29 +141,19 @@ where
 
     #[inline]
     fn into_proof(self) -> Result<Self::Proof, Self::Error> {
+        let input = self.cs.borrow().ok_or(())?.instance_assignment;
+        use rand::SeedableRng;
+        let mut rng = rand_chacha::ChaCha20Rng::from_seed([0; 32]);
+        let _ = ark_groth16::create_random_proof(|| {}, (), &mut rng);
         todo!()
     }
 }
 
-/// Arkworks Groth 16 Verifier
-pub struct Groth16Verifier;
+/// Arkworks Groth 16 Proof System
+pub struct Groth16ProofSystem;
+*/
 
-impl<F> Verifier<ArkProofSystem<F>> for Groth16Verifier
-where
-    F: Field,
-{
-    type Error = ();
-
-    #[inline]
-    fn verify(
-        &self,
-        proof: &<ArkProofSystem<F> as ProofSystem>::Proof,
-    ) -> Result<bool, Self::Error> {
-        todo!()
-    }
-}
-
-impl<F> Variable<ArkProofSystem<F>> for Boolean<F>
+impl<F> Variable<ArkConstraintSystem<F>> for Boolean<F>
 where
     F: Field,
 {
@@ -177,7 +162,10 @@ where
     type Mode = ArkAllocationMode;
 
     #[inline]
-    fn new(ps: &mut ArkProofSystem<F>, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
+    fn new(
+        ps: &mut ArkConstraintSystem<F>,
+        allocation: Allocation<Self::Type, Self::Mode>,
+    ) -> Self {
         match allocation {
             Allocation::Known(this, mode) => match mode {
                 ArkAllocationMode::Constant => {
@@ -203,7 +191,7 @@ where
     }
 }
 
-impl<F> HasAllocation<ArkProofSystem<F>> for bool
+impl<F> HasAllocation<ArkConstraintSystem<F>> for bool
 where
     F: Field,
 {
@@ -211,12 +199,12 @@ where
     type Mode = ArkAllocationMode;
 }
 
-impl<F> Equal<ArkProofSystem<F>> for Boolean<F>
+impl<F> Equal<ArkConstraintSystem<F>> for Boolean<F>
 where
     F: Field,
 {
     #[inline]
-    fn eq(ps: &mut ArkProofSystem<F>, lhs: &Self, rhs: &Self) -> Boolean<F> {
+    fn eq(ps: &mut ArkConstraintSystem<F>, lhs: &Self, rhs: &Self) -> Boolean<F> {
         let _ = ps;
         lhs.is_eq(rhs)
             .expect("Equality checking is not allowed to fail.")
@@ -230,7 +218,7 @@ pub struct Fp<F>(F)
 where
     F: PrimeField;
 
-impl<F> Variable<ArkProofSystem<F>> for FpVar<F>
+impl<F> Variable<ArkConstraintSystem<F>> for FpVar<F>
 where
     F: PrimeField,
 {
@@ -239,7 +227,10 @@ where
     type Mode = ArkAllocationMode;
 
     #[inline]
-    fn new(ps: &mut ArkProofSystem<F>, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
+    fn new(
+        ps: &mut ArkConstraintSystem<F>,
+        allocation: Allocation<Self::Type, Self::Mode>,
+    ) -> Self {
         match allocation {
             Allocation::Known(this, ArkAllocationMode::Constant) => {
                 Self::new_constant(ns!(ps.cs, "prime field constant"), this.0)
@@ -261,7 +252,7 @@ where
     }
 }
 
-impl<F> HasAllocation<ArkProofSystem<F>> for Fp<F>
+impl<F> HasAllocation<ArkConstraintSystem<F>> for Fp<F>
 where
     F: PrimeField,
 {
@@ -282,14 +273,14 @@ where
 {
     /// Returns an reference to the internal arkworks constriant system.
     #[inline]
-    pub(crate) fn constraint_system_ref(&self) -> ArkConstraintSystemRef<F> {
+    pub(crate) fn constraint_system_ref(&self) -> ark_r1cs::ConstraintSystemRef<F> {
         self.0.cs()
     }
 
     /// Allocates a new byte vector according to the `allocation` entry.
     #[inline]
     pub(crate) fn allocate(
-        cs: &ArkConstraintSystemRef<F>,
+        cs: &ark_r1cs::ConstraintSystemRef<F>,
         allocation: Allocation<[u8; N], PublicOrSecret>,
     ) -> Self
     where
@@ -351,7 +342,7 @@ where
     }
 }
 
-impl<F, const N: usize> Variable<ArkProofSystem<F>> for ByteArrayVar<F, N>
+impl<F, const N: usize> Variable<ArkConstraintSystem<F>> for ByteArrayVar<F, N>
 where
     F: PrimeField,
 {
@@ -360,12 +351,15 @@ where
     type Mode = PublicOrSecret;
 
     #[inline]
-    fn new(ps: &mut ArkProofSystem<F>, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
+    fn new(
+        ps: &mut ArkConstraintSystem<F>,
+        allocation: Allocation<Self::Type, Self::Mode>,
+    ) -> Self {
         Self::allocate(&ps.cs, allocation)
     }
 }
 
-impl<F, const N: usize> HasAllocation<ArkProofSystem<F>> for [u8; N]
+impl<F, const N: usize> HasAllocation<ArkConstraintSystem<F>> for [u8; N]
 where
     F: PrimeField,
 {
@@ -395,7 +389,7 @@ where
     }
 }
 
-impl<F> Variable<ArkProofSystem<F>> for AssetIdVar<F>
+impl<F> Variable<ArkConstraintSystem<F>> for AssetIdVar<F>
 where
     F: PrimeField,
 {
@@ -404,12 +398,15 @@ where
     type Mode = PublicOrSecret;
 
     #[inline]
-    fn new(ps: &mut ArkProofSystem<F>, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
+    fn new(
+        ps: &mut ArkConstraintSystem<F>,
+        allocation: Allocation<Self::Type, Self::Mode>,
+    ) -> Self {
         Self(allocation.map_allocate(ps, move |this| Fp(F::from(this.0))))
     }
 }
 
-impl<F> HasAllocation<ArkProofSystem<F>> for AssetId
+impl<F> HasAllocation<ArkConstraintSystem<F>> for AssetId
 where
     F: PrimeField,
 {
@@ -417,12 +414,12 @@ where
     type Mode = PublicOrSecret;
 }
 
-impl<F> Equal<ArkProofSystem<F>> for AssetIdVar<F>
+impl<F> Equal<ArkConstraintSystem<F>> for AssetIdVar<F>
 where
     F: PrimeField,
 {
     #[inline]
-    fn eq(ps: &mut ArkProofSystem<F>, lhs: &Self, rhs: &Self) -> Boolean<F> {
+    fn eq(ps: &mut ArkConstraintSystem<F>, lhs: &Self, rhs: &Self) -> Boolean<F> {
         let _ = ps;
         lhs.0
             .is_eq(&rhs.0)
@@ -452,7 +449,7 @@ where
     }
 }
 
-impl<F> Variable<ArkProofSystem<F>> for AssetBalanceVar<F>
+impl<F> Variable<ArkConstraintSystem<F>> for AssetBalanceVar<F>
 where
     F: PrimeField,
 {
@@ -461,12 +458,15 @@ where
     type Mode = PublicOrSecret;
 
     #[inline]
-    fn new(ps: &mut ArkProofSystem<F>, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
+    fn new(
+        ps: &mut ArkConstraintSystem<F>,
+        allocation: Allocation<Self::Type, Self::Mode>,
+    ) -> Self {
         Self(allocation.map_allocate(ps, move |this| Fp(F::from(this.0))))
     }
 }
 
-impl<F> HasAllocation<ArkProofSystem<F>> for AssetBalance
+impl<F> HasAllocation<ArkConstraintSystem<F>> for AssetBalance
 where
     F: PrimeField,
 {
@@ -474,12 +474,12 @@ where
     type Mode = PublicOrSecret;
 }
 
-impl<F> Equal<ArkProofSystem<F>> for AssetBalanceVar<F>
+impl<F> Equal<ArkConstraintSystem<F>> for AssetBalanceVar<F>
 where
     F: PrimeField,
 {
     #[inline]
-    fn eq(ps: &mut ArkProofSystem<F>, lhs: &Self, rhs: &Self) -> Boolean<F> {
+    fn eq(ps: &mut ArkConstraintSystem<F>, lhs: &Self, rhs: &Self) -> Boolean<F> {
         let _ = ps;
         lhs.0
             .is_eq(&rhs.0)

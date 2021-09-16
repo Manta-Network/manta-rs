@@ -20,12 +20,13 @@ use crate::{
     accounting::ledger::{UtxoSet, UtxoSetVar},
     crypto::{
         commitment::pedersen::{self, PedersenWindow},
-        constraint::{ArkProofSystem, AssetBalanceVar, AssetIdVar},
+        constraint::{proof_systems::Groth16, ArkConstraintSystem, AssetBalanceVar, AssetIdVar},
         ies::IES,
         prf::blake2s::{constraint::Blake2sVar, Blake2s},
         rand::ChaCha20RngBlake2sSeedable,
     },
 };
+use ark_bls12_381::Bls12_381;
 use ark_ed_on_bls12_381::{constraints::EdwardsVar, EdwardsProjective, Fq};
 use manta_accounting::{
     identity::{IdentityConfiguration, IdentityConstraintSystemConfiguration},
@@ -65,8 +66,11 @@ pub type PedersenCommitmentVar = pedersen::constraint::PedersenCommitmentVar<
 /// Constraint Field
 pub type ConstraintField = Fq;
 
+/// Constraint System
+pub type ConstraintSystem = ArkConstraintSystem<ConstraintField>;
+
 /// Proof System
-pub type ProofSystem = ArkProofSystem<ConstraintField>;
+pub type ProofSystem = Groth16<Bls12_381>;
 
 /// Manta Pay Configuration
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -80,7 +84,7 @@ impl IdentityConfiguration for Configuration {
 }
 
 impl IdentityConstraintSystemConfiguration for Configuration {
-    type ConstraintSystem = ProofSystem;
+    type ConstraintSystem = ConstraintSystem;
     type SecretKeyVar = <Blake2sVar<ConstraintField> as PseudorandomFunctionFamily>::Seed;
     type PseudorandomFunctionFamilyInputVar =
         <Blake2sVar<ConstraintField> as PseudorandomFunctionFamily>::Input;
@@ -93,6 +97,7 @@ impl IdentityConstraintSystemConfiguration for Configuration {
 }
 
 impl TransferConfiguration for Configuration {
+    type ConstraintSystem = ConstraintSystem;
     type ProofSystem = ProofSystem;
     type AssetIdVar = AssetIdVar<ConstraintField>;
     type AssetBalanceVar = AssetBalanceVar<ConstraintField>;

@@ -338,47 +338,47 @@ impl Distribution<Asset> for Standard {
 }
 
 /// Asset Id Variable
-pub type AssetIdVar<P> = Var<AssetId, P>;
+pub type AssetIdVar<C> = Var<AssetId, C>;
 
 /// Asset Balance Variable
-pub type AssetBalanceVar<P> = Var<AssetBalance, P>;
+pub type AssetBalanceVar<C> = Var<AssetBalance, C>;
 
 /// Asset Variable
-pub struct AssetVar<P>
+pub struct AssetVar<C>
 where
-    P: HasVariable<AssetId, Mode = PublicOrSecret>
+    C: HasVariable<AssetId, Mode = PublicOrSecret>
         + HasVariable<AssetBalance, Mode = PublicOrSecret>
         + ?Sized,
 {
     /// Asset Id
-    pub id: AssetIdVar<P>,
+    pub id: AssetIdVar<C>,
 
     /// Asset Value
-    pub value: AssetBalanceVar<P>,
+    pub value: AssetBalanceVar<C>,
 }
 
-impl<P> AssetVar<P>
+impl<C> AssetVar<C>
 where
-    P: HasVariable<AssetId, Mode = PublicOrSecret>
+    C: HasVariable<AssetId, Mode = PublicOrSecret>
         + HasVariable<AssetBalance, Mode = PublicOrSecret>
         + ?Sized,
 {
     /// Builds a new [`AssetVar`] from an `id` and a `value`.
     #[inline]
-    pub fn new(id: AssetIdVar<P>, value: AssetBalanceVar<P>) -> Self {
+    pub fn new(id: AssetIdVar<C>, value: AssetBalanceVar<C>) -> Self {
         Self { id, value }
     }
 }
 
-impl<P> Concat for AssetVar<P>
+impl<C> Concat for AssetVar<C>
 where
-    P: HasVariable<AssetId, Mode = PublicOrSecret>
+    C: HasVariable<AssetId, Mode = PublicOrSecret>
         + HasVariable<AssetBalance, Mode = PublicOrSecret>
         + ?Sized,
-    AssetIdVar<P>: Concat,
-    AssetBalanceVar<P>: Concat<Item = <AssetIdVar<P> as Concat>::Item>,
+    AssetIdVar<C>: Concat,
+    AssetBalanceVar<C>: Concat<Item = <AssetIdVar<C> as Concat>::Item>,
 {
-    type Item = <AssetIdVar<P> as Concat>::Item;
+    type Item = <AssetIdVar<C> as Concat>::Item;
 
     #[inline]
     fn concat<A>(&self, accumulator: &mut A)
@@ -390,9 +390,9 @@ where
     }
 }
 
-impl<P> Variable<P> for AssetVar<P>
+impl<C> Variable<C> for AssetVar<C>
 where
-    P: HasVariable<AssetId, Mode = PublicOrSecret>
+    C: HasVariable<AssetId, Mode = PublicOrSecret>
         + HasVariable<AssetBalance, Mode = PublicOrSecret>
         + ?Sized,
 {
@@ -401,27 +401,27 @@ where
     type Mode = Secret;
 
     #[inline]
-    fn new(ps: &mut P, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
+    fn new(cs: &mut C, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
         match allocation {
             Allocation::Known(this, mode) => Self::new(
-                ps.new_known_allocation(&this.id, mode),
-                ps.new_known_allocation(&this.value, mode),
+                cs.new_known_allocation(&this.id, mode),
+                cs.new_known_allocation(&this.value, mode),
             ),
             Allocation::Unknown(mode) => Self::new(
-                unknown::<AssetId, _>(ps, mode.into()),
-                unknown::<AssetBalance, _>(ps, mode.into()),
+                unknown::<AssetId, _>(cs, mode.into()),
+                unknown::<AssetBalance, _>(cs, mode.into()),
             ),
         }
     }
 }
 
-impl<P> HasAllocation<P> for Asset
+impl<C> HasAllocation<C> for Asset
 where
-    P: HasVariable<AssetId, Mode = PublicOrSecret>
+    C: HasVariable<AssetId, Mode = PublicOrSecret>
         + HasVariable<AssetBalance, Mode = PublicOrSecret>
         + ?Sized,
 {
-    type Variable = AssetVar<P>;
+    type Variable = AssetVar<C>;
     type Mode = Secret;
 }
 

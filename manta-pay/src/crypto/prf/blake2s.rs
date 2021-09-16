@@ -103,7 +103,7 @@ impl PseudorandomFunctionFamily for Blake2s {
 /// Blake2s PRF Constraint System Implementations
 pub mod constraint {
     use super::*;
-    use crate::crypto::constraint::{empty, full, ArkProofSystem as ProofSystem, ByteArrayVar};
+    use crate::crypto::constraint::{empty, full, ByteArrayVar};
     use ark_crypto_primitives::{
         prf::blake2s::constraints::Blake2sGadget as ArkBlake2sVar, PRFGadget,
     };
@@ -115,6 +115,9 @@ pub mod constraint {
         reflection::HasAllocation, types::Bool, Allocation, Constant, Equal, PublicOrSecret,
         Secret, Variable,
     };
+
+    /// Constraint System Type
+    pub use crate::crypto::constraint::ArkConstraintSystem as ConstraintSystem;
 
     /// Blake2s Pseudorandom Function Family Seed Variable
     #[derive(derivative::Derivative)]
@@ -138,7 +141,7 @@ pub mod constraint {
         }
     }
 
-    impl<F> Variable<ProofSystem<F>> for Blake2sSeedVar<F>
+    impl<F> Variable<ConstraintSystem<F>> for Blake2sSeedVar<F>
     where
         F: PrimeField,
     {
@@ -147,12 +150,15 @@ pub mod constraint {
         type Mode = Secret;
 
         #[inline]
-        fn new(ps: &mut ProofSystem<F>, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
-            Self(allocation.map_allocate(ps, move |this| this.0))
+        fn new(
+            cs: &mut ConstraintSystem<F>,
+            allocation: Allocation<Self::Type, Self::Mode>,
+        ) -> Self {
+            Self(allocation.map_allocate(cs, move |this| this.0))
         }
     }
 
-    impl<F> HasAllocation<ProofSystem<F>> for Blake2sSeed
+    impl<F> HasAllocation<ConstraintSystem<F>> for Blake2sSeed
     where
         F: PrimeField,
     {
@@ -182,7 +188,7 @@ pub mod constraint {
         }
     }
 
-    impl<F> Variable<ProofSystem<F>> for Blake2sInputVar<F>
+    impl<F> Variable<ConstraintSystem<F>> for Blake2sInputVar<F>
     where
         F: PrimeField,
     {
@@ -191,12 +197,15 @@ pub mod constraint {
         type Mode = Secret;
 
         #[inline]
-        fn new(ps: &mut ProofSystem<F>, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
-            Self(allocation.map_allocate(ps, move |this| this.0))
+        fn new(
+            cs: &mut ConstraintSystem<F>,
+            allocation: Allocation<Self::Type, Self::Mode>,
+        ) -> Self {
+            Self(allocation.map_allocate(cs, move |this| this.0))
         }
     }
 
-    impl<F> HasAllocation<ProofSystem<F>> for Blake2sInput
+    impl<F> HasAllocation<ConstraintSystem<F>> for Blake2sInput
     where
         F: PrimeField,
     {
@@ -229,7 +238,7 @@ pub mod constraint {
         }
     }
 
-    impl<F> Variable<ProofSystem<F>> for Blake2sOutputVar<F>
+    impl<F> Variable<ConstraintSystem<F>> for Blake2sOutputVar<F>
     where
         F: PrimeField,
     {
@@ -238,26 +247,29 @@ pub mod constraint {
         type Mode = PublicOrSecret;
 
         #[inline]
-        fn new(ps: &mut ProofSystem<F>, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
+        fn new(
+            cs: &mut ConstraintSystem<F>,
+            allocation: Allocation<Self::Type, Self::Mode>,
+        ) -> Self {
             Self(
                 match allocation {
                     Allocation::Known(this, mode) => match mode {
                         PublicOrSecret::Public => Blake2sOutputVarInnerType::new_input(
-                            ns!(ps.cs, "blake2s output public input"),
+                            ns!(cs.cs, "blake2s output public input"),
                             full(this.0),
                         ),
                         PublicOrSecret::Secret => Blake2sOutputVarInnerType::new_witness(
-                            ns!(ps.cs, "blake2s output secret witness"),
+                            ns!(cs.cs, "blake2s output secret witness"),
                             full(this.0),
                         ),
                     },
                     Allocation::Unknown(mode) => match mode {
                         PublicOrSecret::Public => Blake2sOutputVarInnerType::new_input(
-                            ns!(ps.cs, "blake2s output public input"),
+                            ns!(cs.cs, "blake2s output public input"),
                             empty::<<ArkBlake2s as PRF>::Output>,
                         ),
                         PublicOrSecret::Secret => Blake2sOutputVarInnerType::new_witness(
-                            ns!(ps.cs, "blake2s output secret witness"),
+                            ns!(cs.cs, "blake2s output secret witness"),
                             empty::<<ArkBlake2s as PRF>::Output>,
                         ),
                     },
@@ -267,7 +279,7 @@ pub mod constraint {
         }
     }
 
-    impl<F> HasAllocation<ProofSystem<F>> for Blake2sOutput
+    impl<F> HasAllocation<ConstraintSystem<F>> for Blake2sOutput
     where
         F: PrimeField,
     {
@@ -275,13 +287,13 @@ pub mod constraint {
         type Mode = PublicOrSecret;
     }
 
-    impl<F> Equal<ProofSystem<F>> for Blake2sOutputVar<F>
+    impl<F> Equal<ConstraintSystem<F>> for Blake2sOutputVar<F>
     where
         F: PrimeField,
     {
         #[inline]
-        fn eq(ps: &mut ProofSystem<F>, lhs: &Self, rhs: &Self) -> Bool<ProofSystem<F>> {
-            let _ = ps;
+        fn eq(cs: &mut ConstraintSystem<F>, lhs: &Self, rhs: &Self) -> Bool<ConstraintSystem<F>> {
+            let _ = cs;
             lhs.0
                 .is_eq(&rhs.0)
                 .expect("Equality checking is not allowed to fail.")
@@ -295,7 +307,7 @@ pub mod constraint {
     where
         F: PrimeField;
 
-    impl<F> Variable<ProofSystem<F>> for Blake2sVar<F>
+    impl<F> Variable<ConstraintSystem<F>> for Blake2sVar<F>
     where
         F: PrimeField,
     {
@@ -304,13 +316,16 @@ pub mod constraint {
         type Mode = Constant;
 
         #[inline]
-        fn new(ps: &mut ProofSystem<F>, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
-            let _ = (ps, allocation);
+        fn new(
+            cs: &mut ConstraintSystem<F>,
+            allocation: Allocation<Self::Type, Self::Mode>,
+        ) -> Self {
+            let _ = (cs, allocation);
             Default::default()
         }
     }
 
-    impl<F> HasAllocation<ProofSystem<F>> for Blake2s
+    impl<F> HasAllocation<ConstraintSystem<F>> for Blake2s
     where
         F: PrimeField,
     {

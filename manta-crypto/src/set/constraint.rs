@@ -73,26 +73,26 @@ where
 }
 
 /// Containment Proof Variable
-pub struct ContainmentProofVar<S, P>
+pub struct ContainmentProofVar<S, C>
 where
     S: VerifiedSet + ?Sized,
-    P: HasVariable<S::Public> + HasVariable<S::Secret> + ?Sized,
+    C: HasVariable<S::Public> + HasVariable<S::Secret> + ?Sized,
 {
     /// Public Input
-    public_input: Var<S::Public, P>,
+    public_input: Var<S::Public, C>,
 
     /// Secret Witness
-    secret_witness: Var<S::Secret, P>,
+    secret_witness: Var<S::Secret, C>,
 }
 
-impl<S, P> ContainmentProofVar<S, P>
+impl<S, C> ContainmentProofVar<S, C>
 where
     S: VerifiedSet + ?Sized,
-    P: HasVariable<S::Public> + HasVariable<S::Secret> + ?Sized,
+    C: HasVariable<S::Public> + HasVariable<S::Secret> + ?Sized,
 {
     /// Builds a new [`ContainmentProofVar`] from `public_input` and `secret_witness`.
     #[inline]
-    pub fn new(public_input: Var<S::Public, P>, secret_witness: Var<S::Secret, P>) -> Self {
+    pub fn new(public_input: Var<S::Public, C>, secret_witness: Var<S::Secret, C>) -> Self {
         Self {
             public_input,
             secret_witness,
@@ -101,79 +101,79 @@ where
 
     /// Asserts that `self` is a valid proof to the fact that `item` is stored in the verified set.
     #[inline]
-    pub fn assert_validity<V>(&self, set: &V, item: &V::ItemVar, ps: &mut P)
+    pub fn assert_validity<V>(&self, set: &V, item: &V::ItemVar, cs: &mut C)
     where
-        P: ConstraintSystem,
-        V: VerifiedSetVariable<P, Type = S>,
+        C: ConstraintSystem,
+        V: VerifiedSetVariable<C, Type = S>,
     {
-        set.assert_valid_containment_proof(&self.public_input, &self.secret_witness, item, ps)
+        set.assert_valid_containment_proof(&self.public_input, &self.secret_witness, item, cs)
     }
 }
 
-impl<S, P> Variable<P> for ContainmentProofVar<S, P>
+impl<S, C> Variable<C> for ContainmentProofVar<S, C>
 where
     S: VerifiedSet + ?Sized,
-    P: HasVariable<S::Public> + HasVariable<S::Secret> + ?Sized,
+    C: HasVariable<S::Public> + HasVariable<S::Secret> + ?Sized,
 {
     type Type = ContainmentProof<S>;
 
-    type Mode = ContainmentProofMode<Mode<S::Public, P>, Mode<S::Secret, P>>;
+    type Mode = ContainmentProofMode<Mode<S::Public, C>, Mode<S::Secret, C>>;
 
     #[inline]
-    fn new(ps: &mut P, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
+    fn new(cs: &mut C, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
         match allocation {
             Allocation::Known(this, mode) => Self::new(
-                ps.allocate_known(&this.public_input, mode.public),
-                ps.allocate_known(&this.secret_witness, mode.secret),
+                cs.allocate_known(&this.public_input, mode.public),
+                cs.allocate_known(&this.secret_witness, mode.secret),
             ),
             Allocation::Unknown(mode) => Self::new(
-                unknown::<S::Public, _>(ps, mode.public),
-                unknown::<S::Secret, _>(ps, mode.secret),
+                unknown::<S::Public, _>(cs, mode.public),
+                unknown::<S::Secret, _>(cs, mode.secret),
             ),
         }
     }
 }
 
-impl<S, P> HasAllocation<P> for ContainmentProof<S>
+impl<S, C> HasAllocation<C> for ContainmentProof<S>
 where
     S: VerifiedSet + ?Sized,
-    P: HasVariable<S::Public> + HasVariable<S::Secret> + ?Sized,
+    C: HasVariable<S::Public> + HasVariable<S::Secret> + ?Sized,
 {
-    type Variable = ContainmentProofVar<S, P>;
-    type Mode = ContainmentProofMode<Mode<S::Public, P>, Mode<S::Secret, P>>;
+    type Variable = ContainmentProofVar<S, C>;
+    type Mode = ContainmentProofMode<Mode<S::Public, C>, Mode<S::Secret, C>>;
 }
 
 /// Public Input Type for [`VerifiedSetVariable`]
-pub type PublicInputType<V, P> = <<V as Variable<P>>::Type as VerifiedSet>::Public;
+pub type PublicInputType<V, C> = <<V as Variable<C>>::Type as VerifiedSet>::Public;
 
 /// Secret Witness Type for [`VerifiedSetVariable`]
-pub type SecretWitnessType<V, P> = <<V as Variable<P>>::Type as VerifiedSet>::Secret;
+pub type SecretWitnessType<V, C> = <<V as Variable<C>>::Type as VerifiedSet>::Secret;
 
 /// Public Input Variable for [`VerifiedSetVariable`]
-pub type PublicInputVar<V, P> = Var<PublicInputType<V, P>, P>;
+pub type PublicInputVar<V, C> = Var<PublicInputType<V, C>, C>;
 
 /// Secret Witness Variable for [`VerifiedSetVariable`]
-pub type SecretWitnessVar<V, P> = Var<SecretWitnessType<V, P>, P>;
+pub type SecretWitnessVar<V, C> = Var<SecretWitnessType<V, C>, C>;
 
 /// Verified Set Variable
-pub trait VerifiedSetVariable<P>: Variable<P>
+pub trait VerifiedSetVariable<C>: Variable<C>
 where
-    P: ConstraintSystem
-        + HasVariable<PublicInputType<Self, P>>
-        + HasVariable<SecretWitnessType<Self, P>>
+    C: ConstraintSystem
+        + HasVariable<PublicInputType<Self, C>>
+        + HasVariable<SecretWitnessType<Self, C>>
         + ?Sized,
     Self::Type: VerifiedSet,
 {
     /// Item Variable
-    type ItemVar: Variable<P, Type = <Self::Type as Set>::Item>;
+    type ItemVar: Variable<C, Type = <Self::Type as Set>::Item>;
 
     /// Asserts that `public_input` and `secret_witness` form a proof to the fact that `item` is
     /// stored in `self`.
     fn assert_valid_containment_proof(
         &self,
-        public_input: &PublicInputVar<Self, P>,
-        secret_witness: &SecretWitnessVar<Self, P>,
+        public_input: &PublicInputVar<Self, C>,
+        secret_witness: &SecretWitnessVar<Self, C>,
         item: &Self::ItemVar,
-        ps: &mut P,
+        cs: &mut C,
     );
 }

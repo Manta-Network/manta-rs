@@ -20,8 +20,8 @@
 
 use crate::{
     accounting::config::{
-        Configuration, PedersenCommitmentProjectiveCurve, PedersenCommitmentProjectiveCurveVar,
-        PedersenCommitmentWindowParameters, ProofSystem,
+        Configuration, ConstraintSystem, PedersenCommitmentProjectiveCurve,
+        PedersenCommitmentProjectiveCurveVar, PedersenCommitmentWindowParameters, ProofSystem,
     },
     crypto::{
         ies::EncryptedAsset,
@@ -35,7 +35,9 @@ use blake2::{
 };
 use manta_accounting::{identity, Ledger as LedgerTrait, ProofPostError};
 use manta_crypto::{
-    constraint::{self, reflection::HasAllocation, Allocation, Constant, Variable},
+    constraint::{
+        self, reflection::HasAllocation, Allocation, Constant, ProofSystem as _, Variable,
+    },
     set::{constraint::VerifiedSetVariable, ContainmentProof, Set, VerifiedSet},
 };
 use manta_util::{as_bytes, concatenate, into_array_unchecked};
@@ -222,24 +224,24 @@ impl VerifiedSet for UtxoSet {
 #[derive(Clone)]
 pub struct UtxoSetVar(ParametersVar);
 
-impl Variable<ProofSystem> for UtxoSetVar {
+impl Variable<ConstraintSystem> for UtxoSetVar {
     type Type = UtxoSet;
 
     type Mode = Constant;
 
     #[inline]
-    fn new(ps: &mut ProofSystem, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
+    fn new(ps: &mut ConstraintSystem, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
         let (this, mode) = allocation.into_known();
         Self(this.parameters.known(ps, mode))
     }
 }
 
-impl HasAllocation<ProofSystem> for UtxoSet {
+impl HasAllocation<ConstraintSystem> for UtxoSet {
     type Variable = UtxoSetVar;
     type Mode = Constant;
 }
 
-impl VerifiedSetVariable<ProofSystem> for UtxoSetVar {
+impl VerifiedSetVariable<ConstraintSystem> for UtxoSetVar {
     type ItemVar = UtxoVar;
 
     #[inline]
@@ -248,9 +250,9 @@ impl VerifiedSetVariable<ProofSystem> for UtxoSetVar {
         public_input: &RootVar,
         secret_witness: &PathVar,
         item: &UtxoVar,
-        ps: &mut ProofSystem,
+        cs: &mut ConstraintSystem,
     ) {
-        let _ = ps;
+        let _ = cs;
         self.0
             .assert_verified(public_input, secret_witness, &concatenate!(item))
     }
@@ -266,6 +268,9 @@ pub struct Ledger {
 
     /// Encrypted Assets
     encrypted_assets: Vec<EncryptedAsset>,
+
+    /// Verifying Context
+    verifying_context: <ProofSystem as constraint::ProofSystem>::VerifyingContext,
 }
 
 impl LedgerTrait for Ledger {
@@ -320,7 +325,10 @@ impl LedgerTrait for Ledger {
         &self,
         proof: <Self::ProofSystem as constraint::ProofSystem>::Proof,
     ) -> Result<(), ProofPostError<Self>> {
-        let _ = proof;
-        todo!()
+        match Self::ProofSystem::verify_proof(&self.verifying_context, &proof) {
+            Ok(true) => Ok(()),
+            Ok(false) => Err(ProofPostError::InvalidProof(proof, None)),
+            Err(err) => Err(ProofPostError::InvalidProof(proof, Some(err))),
+        }
     }
 }
