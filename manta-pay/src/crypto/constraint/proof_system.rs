@@ -20,7 +20,7 @@ use alloc::{vec, vec::Vec};
 use ark_ff::{fields::Field, PrimeField};
 use ark_r1cs_std::{
     alloc::AllocVar, bits::boolean::Boolean, eq::EqGadget, fields::fp::FpVar, uint8::UInt8,
-    ToBytesGadget,
+    R1CSVar, ToBytesGadget,
 };
 use ark_relations::{
     ns,
@@ -33,7 +33,7 @@ use core::{borrow::Borrow, ops::AddAssign};
 use manta_accounting::{AssetBalance, AssetId};
 use manta_crypto::constraint::{
     reflection::HasAllocation, types::Bool, Allocation, AllocationMode, ConstraintSystem, Equal,
-    ProofSystem, Public, PublicOrSecret, Secret, Variable,
+    ProofSystem, Public, PublicOrSecret, Secret, Variable, Verifier,
 };
 use manta_util::{Concat, ConcatAccumulator};
 
@@ -105,18 +105,6 @@ where
     pub(crate) cs: ArkConstraintSystemRef<F>,
 }
 
-impl<F> Default for ArkProofSystem<F>
-where
-    F: Field,
-{
-    #[inline]
-    fn default() -> Self {
-        Self {
-            cs: ArkConstraintSystem::new_ref(),
-        }
-    }
-}
-
 impl<F> ConstraintSystem for ArkProofSystem<F>
 where
     F: Field,
@@ -135,15 +123,51 @@ impl<F> ProofSystem for ArkProofSystem<F>
 where
     F: Field,
 {
+    type Verifier = Groth16Verifier;
+
     type Proof = ();
 
     type Error = ();
 
     #[inline]
-    fn finish(self) -> Result<Self::Proof, Self::Error> {
+    fn setup_to_verify() -> Self {
+        todo!()
+    }
+
+    #[inline]
+    fn setup_to_prove() -> Self {
+        todo!()
+    }
+
+    #[inline]
+    fn into_verifier(self) -> Result<Self::Verifier, Self::Error> {
+        todo!()
+    }
+
+    #[inline]
+    fn into_proof(self) -> Result<Self::Proof, Self::Error> {
         todo!()
     }
 }
+
+/// Arkworks Groth 16 Verifier
+pub struct Groth16Verifier;
+
+impl<F> Verifier<ArkProofSystem<F>> for Groth16Verifier
+where
+    F: Field,
+{
+    type Error = ();
+
+    #[inline]
+    fn verify(
+        &self,
+        proof: &<ArkProofSystem<F> as ProofSystem>::Proof,
+    ) -> Result<bool, Self::Error> {
+        todo!()
+    }
+}
+
 impl<F> Variable<ArkProofSystem<F>> for Boolean<F>
 where
     F: Field,
@@ -252,6 +276,46 @@ pub struct ByteArrayVar<F, const N: usize>(Vec<UInt8<F>>)
 where
     F: Field;
 
+impl<F, const N: usize> ByteArrayVar<F, N>
+where
+    F: Field,
+{
+    /// Returns an reference to the internal arkworks constriant system.
+    #[inline]
+    pub(crate) fn constraint_system_ref(&self) -> ArkConstraintSystemRef<F> {
+        self.0.cs()
+    }
+
+    /// Allocates a new byte vector according to the `allocation` entry.
+    #[inline]
+    pub(crate) fn allocate(
+        cs: &ArkConstraintSystemRef<F>,
+        allocation: Allocation<[u8; N], PublicOrSecret>,
+    ) -> Self
+    where
+        F: PrimeField,
+    {
+        Self(
+            match allocation {
+                Allocation::Known(this, PublicOrSecret::Public) => {
+                    UInt8::new_input_vec(ns!(cs, "byte array public input"), this)
+                }
+                Allocation::Known(this, PublicOrSecret::Secret) => {
+                    UInt8::new_witness_vec(ns!(cs, "byte array secret witness"), this)
+                }
+                Allocation::Unknown(PublicOrSecret::Public) => {
+                    // FIXME: What goes here?
+                    todo!()
+                }
+                Allocation::Unknown(PublicOrSecret::Secret) => {
+                    UInt8::new_witness_vec(ns!(cs, "byte array secret witness"), &vec![None; N])
+                }
+            }
+            .expect("Variable allocation is not allowed to fail."),
+        )
+    }
+}
+
 impl<F, const N: usize> AsRef<[UInt8<F>]> for ByteArrayVar<F, N>
 where
     F: Field,
@@ -293,29 +357,11 @@ where
 {
     type Type = [u8; N];
 
-    type Mode = ArkAllocationMode;
+    type Mode = PublicOrSecret;
 
     #[inline]
     fn new(ps: &mut ArkProofSystem<F>, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
-        Self(
-            match allocation {
-                Allocation::Known(this, ArkAllocationMode::Constant) => {
-                    let _ = this;
-                    todo!()
-                }
-                Allocation::Known(this, ArkAllocationMode::Public) => {
-                    UInt8::new_input_vec(ns!(ps.cs, ""), this)
-                }
-                Allocation::Known(this, ArkAllocationMode::Secret) => {
-                    UInt8::new_witness_vec(ns!(ps.cs, ""), this)
-                }
-                Allocation::Unknown(PublicOrSecret::Public) => todo!(),
-                Allocation::Unknown(PublicOrSecret::Secret) => {
-                    UInt8::new_witness_vec(ns!(ps.cs, ""), &vec![None; N])
-                }
-            }
-            .expect("Variable allocation is not allowed to fail."),
-        )
+        Self::allocate(&ps.cs, allocation)
     }
 }
 
@@ -324,7 +370,7 @@ where
     F: PrimeField,
 {
     type Variable = ByteArrayVar<F, N>;
-    type Mode = ArkAllocationMode;
+    type Mode = PublicOrSecret;
 }
 
 /// Asset Id Variable

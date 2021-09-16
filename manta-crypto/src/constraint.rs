@@ -16,10 +16,12 @@
 
 //! Constraint Proof Systems
 
-// TODO: Add derive macros to all the enums/structs here.
-// TODO: Add derive trait to implement `HasAllocation` for structs (and enums?).
-// TODO: Add more convenience functions for allocating unknown variables.
-// TODO: How to do verification systems? Should it be a separate trait or part of `ProofSystem`?
+// TODO:  Add derive macros to all the enums/structs here.
+// TODO:  Add derive trait to implement `HasAllocation` for structs (and enums?).
+// TODO:  Add more convenience functions for allocating unknown variables.
+// FIXME: Leverage the type system to constraint allocation to only unknown modes for verifier
+//        generation and only known modes for proof generation, instead of relying on the `setup_*`
+//        methods to "do the right thing".
 
 use core::{
     convert::{Infallible, TryFrom},
@@ -460,15 +462,27 @@ where
 }
 
 /// Proof System
-pub trait ProofSystem: ConstraintSystem + Default {
+pub trait ProofSystem: ConstraintSystem {
+    /// Verifier Type
+    type Verifier: Verifier<Self>;
+
     /// Proof Type
     type Proof;
 
     /// Error Type
     type Error;
 
-    /// Returns a proof that the boolean system is consistent.
-    fn finish(self) -> Result<Self::Proof, Self::Error>;
+    /// Returns a proof system which is setup to build a verifier.
+    fn setup_to_verify() -> Self;
+
+    /// Returns a proof system which is setup to build a proof.
+    fn setup_to_prove() -> Self;
+
+    /// Returns a verifier object for the constraints contained in `self`.
+    fn into_verifier(self) -> Result<Self::Verifier, Self::Error>;
+
+    /// Returns a proof that the constraint system `self` is consistent.
+    fn into_proof(self) -> Result<Self::Proof, Self::Error>;
 }
 
 /// Proof System Verifier
@@ -476,8 +490,11 @@ pub trait Verifier<P>
 where
     P: ProofSystem + ?Sized,
 {
+    /// Error Type
+    type Error;
+
     /// Verifies that a proof generated from a proof system is valid.
-    fn verify(proof: &P::Proof) -> bool;
+    fn verify(&self, proof: &P::Proof) -> Result<bool, Self::Error>;
 }
 
 /// Derived Allocation Mode

@@ -22,7 +22,7 @@ pub trait PseudorandomFunctionFamily {
     type Seed: ?Sized;
 
     /// PRF Input Type
-    type Input: Default;
+    type Input;
 
     /// PRF Output Type
     type Output;
@@ -30,9 +30,6 @@ pub trait PseudorandomFunctionFamily {
     /// Evaluates the PRF at the `seed` and `input`.
     fn evaluate(seed: &Self::Seed, input: &Self::Input) -> Self::Output;
 
-    /// Evaluates the PRF at the `seed` with the default input.
-    #[inline]
-    fn evaluate_zero(seed: &Self::Seed) -> Self::Output {
-        Self::evaluate(seed, &Self::Input::default())
-    }
+    /// Evaluates the PRF at the `seed` with input set to a zero value.
+    fn evaluate_zero(seed: &Self::Seed) -> Self::Output;
 }

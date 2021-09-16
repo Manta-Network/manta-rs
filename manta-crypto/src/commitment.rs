@@ -45,7 +45,10 @@ pub trait CommitmentScheme {
 }
 
 /// Commitment Input
-pub trait Input<T>: CommitmentScheme {
+pub trait Input<T>: CommitmentScheme
+where
+    T: ?Sized,
+{
     /// Extends the input buffer with `input`.
     fn extend(buffer: &mut Self::InputBuffer, input: &T);
 }
@@ -54,7 +57,7 @@ impl<C, I> Input<I> for C
 where
     C: CommitmentScheme + ?Sized,
     C::InputBuffer: ConcatAccumulator<I::Item>,
-    I: Concat,
+    I: Concat + ?Sized,
 {
     #[inline]
     fn extend(buffer: &mut C::InputBuffer, input: &I) {
@@ -91,6 +94,7 @@ where
     #[inline]
     pub fn update<T>(mut self, input: &T) -> Self
     where
+        T: ?Sized,
         C: Input<T>,
     {
         C::extend(&mut self.input_buffer, input);
