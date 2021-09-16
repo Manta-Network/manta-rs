@@ -51,7 +51,7 @@ use ark_r1cs_std::{
 use ark_relations::ns;
 use core::marker::PhantomData;
 use manta_crypto::{
-    constraint::{Alloc, Allocation, Constant, Public, Secret, Variable},
+    constraint::{reflection::HasAllocation, Allocation, Constant, Public, Secret, Variable},
     set::{ContainmentProof, VerifiedSet},
 };
 use manta_util::{as_bytes, Concat};
@@ -223,47 +223,38 @@ where
     GG: CurveVar<C, ConstraintField<C>>,
     for<'g> &'g GG: GroupOpsBounds<'g, C, GG>,
 {
-    type Mode = Constant;
     type Type = ParametersWrapper<W, C, GG>;
+
+    type Mode = Constant;
+
+    #[inline]
+    fn new(ps: &mut ProofSystem<C>, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
+        let (this, _) = allocation.into_known();
+        ParametersVar {
+            leaf: LeafParamVar::<W, _, _>::new_constant(
+                ns!(ps.cs, "leaf hash parameter constant"),
+                &this.0.leaf,
+            )
+            .expect("Variable allocation is not allowed to fail."),
+            two_to_one: TwoToOneParamVar::<W, _, _>::new_constant(
+                ns!(ps.cs, "two-to-one hash parameter constant"),
+                &this.0.two_to_one,
+            )
+            .expect("Variable allocation is not allowed to fail."),
+        }
+    }
 }
 
-impl<W, C, GG> Alloc<ProofSystem<C>> for ParametersWrapper<W, C, GG>
+impl<W, C, GG> HasAllocation<ProofSystem<C>> for ParametersWrapper<W, C, GG>
 where
     W: PedersenWindow,
     C: ProjectiveCurve,
     GG: CurveVar<C, ConstraintField<C>>,
     for<'g> &'g GG: GroupOpsBounds<'g, C, GG>,
 {
-    type Mode = Constant;
-
     type Variable = ParametersVar<W, C, GG>;
 
-    #[inline]
-    fn variable<'t>(
-        ps: &mut ProofSystem<C>,
-        allocation: impl Into<Allocation<'t, Self, ProofSystem<C>>>,
-    ) -> Self::Variable
-    where
-        Self: 't,
-    {
-        match allocation.into() {
-            Allocation::Known(this, mode) => ParametersVar {
-                leaf: LeafParamVar::<W, _, _>::new_constant(
-                    ns!(ps.cs, "leaf hash parameter constant"),
-                    &this.0.leaf,
-                )
-                .expect("Variable allocation is not allowed to fail."),
-                two_to_one: TwoToOneParamVar::<W, _, _>::new_constant(
-                    ns!(ps.cs, "two-to-one hash parameter constant"),
-                    &this.0.two_to_one,
-                )
-                .expect("Variable allocation is not allowed to fail."),
-            },
-            _ => unreachable!(
-                "Since we use a constant allocation mode, we always know the variable value."
-            ),
-        }
-    }
+    type Mode = Constant;
 }
 
 /// Merkle Tree Root Inner Type
@@ -304,34 +295,17 @@ where
     GG: CurveVar<C, ConstraintField<C>>,
     for<'g> &'g GG: GroupOpsBounds<'g, C, GG>,
 {
-    type Mode = Public;
     type Type = RootWrapper<W, C, GG>;
-}
 
-impl<W, C, GG> Alloc<ProofSystem<C>> for RootWrapper<W, C, GG>
-where
-    W: PedersenWindow,
-    C: ProjectiveCurve,
-    GG: CurveVar<C, ConstraintField<C>>,
-    for<'g> &'g GG: GroupOpsBounds<'g, C, GG>,
-{
     type Mode = Public;
-
-    type Variable = RootVar<W, C, GG>;
 
     #[inline]
-    fn variable<'t>(
-        ps: &mut ProofSystem<C>,
-        allocation: impl Into<Allocation<'t, Self, ProofSystem<C>>>,
-    ) -> Self::Variable
-    where
-        Self: 't,
-    {
+    fn new(ps: &mut ProofSystem<C>, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
         RootVar(
-            match allocation.into().known() {
-                Some(this) => AllocVar::<RootInnerType<W, C>, _>::new_input(
+            match allocation.known() {
+                Some((this, _)) => AllocVar::<RootInnerType<W, C>, _>::new_input(
                     ns!(ps.cs, "merkle tree root public input"),
-                    full(((this.0).0).0),
+                    full((this.0).0),
                 ),
                 _ => AllocVar::<RootInnerType<W, C>, _>::new_input(
                     ns!(ps.cs, "merkle tree root public input"),
@@ -342,6 +316,17 @@ where
             PhantomData,
         )
     }
+}
+
+impl<W, C, GG> HasAllocation<ProofSystem<C>> for RootWrapper<W, C, GG>
+where
+    W: PedersenWindow,
+    C: ProjectiveCurve,
+    GG: CurveVar<C, ConstraintField<C>>,
+    for<'g> &'g GG: GroupOpsBounds<'g, C, GG>,
+{
+    type Variable = RootVar<W, C, GG>;
+    type Mode = Public;
 }
 
 /// Merkle Tree Path Inner Type
@@ -384,37 +369,31 @@ where
     GG: CurveVar<C, ConstraintField<C>>,
     for<'g> &'g GG: GroupOpsBounds<'g, C, GG>,
 {
-    type Mode = Secret;
     type Type = PathWrapper<W, C, GG>;
+
+    type Mode = Secret;
+
+    #[inline]
+    fn new(ps: &mut ProofSystem<C>, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
+        PathVar(
+            match allocation.known() {
+                Some((this, _)) => PathVarInnerType::new_witness(ns!(ps.cs, ""), full(&(this.0).0)),
+                _ => PathVarInnerType::new_witness(ns!(ps.cs, ""), empty::<PathInnerType<W, C>>),
+            }
+            .expect("Variable allocation is not allowed to fail."),
+        )
+    }
 }
 
-impl<W, C, GG> Alloc<ProofSystem<C>> for PathWrapper<W, C, GG>
+impl<W, C, GG> HasAllocation<ProofSystem<C>> for PathWrapper<W, C, GG>
 where
     W: PedersenWindow,
     C: ProjectiveCurve,
     GG: CurveVar<C, ConstraintField<C>>,
     for<'g> &'g GG: GroupOpsBounds<'g, C, GG>,
 {
-    type Mode = Secret;
-
     type Variable = PathVar<W, C, GG>;
-
-    #[inline]
-    fn variable<'t>(
-        ps: &mut ProofSystem<C>,
-        allocation: impl Into<Allocation<'t, Self, ProofSystem<C>>>,
-    ) -> Self::Variable
-    where
-        Self: 't,
-    {
-        PathVar(
-            match allocation.into().known() {
-                Some(this) => PathVarInnerType::new_witness(ns!(ps.cs, ""), full(&((this.0).0).0)),
-                _ => PathVarInnerType::new_witness(ns!(ps.cs, ""), empty::<PathInnerType<W, C>>),
-            }
-            .expect("Variable allocatino is not allowed to fail."),
-        )
-    }
+    type Mode = Secret;
 }
 
 /// Merkle Tree

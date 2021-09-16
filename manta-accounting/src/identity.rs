@@ -31,7 +31,7 @@ use manta_crypto::{
     commitment::{CommitmentScheme, Input as CommitmentInput},
     constraint::{
         reflection::{HasAllocation, HasVariable, Var},
-        Allocation, BooleanSystem, Constant, Derived, Equal, Public, PublicOrSecret, Secret,
+        Allocation, Constant, ConstraintSystem, Derived, Equal, Public, PublicOrSecret, Secret,
         Variable,
     },
     ies::{self, EncryptedMessage, IntegratedEncryptionScheme},
@@ -73,50 +73,50 @@ pub trait IdentityConfiguration {
     type Rng: CryptoRng + RngCore + SeedableRng<Seed = Self::SecretKey>;
 }
 
-/// [`Identity`] Proof System Configuration
-pub trait IdentityProofSystemConfiguration: IdentityConfiguration {
-    /// Boolean System
-    type BooleanSystem: BooleanSystem
+/// [`Identity`] Constraint System Configuration
+pub trait IdentityConstraintSystemConfiguration: IdentityConfiguration {
+    /// Constraint System
+    type ConstraintSystem: ConstraintSystem
         + HasVariable<AssetId, Mode = PublicOrSecret>
         + HasVariable<AssetBalance, Mode = PublicOrSecret>;
 
     /// Secret Key Variable
-    type SecretKeyVar: Variable<Self::BooleanSystem, Type = Self::SecretKey, Mode = Secret>;
+    type SecretKeyVar: Variable<Self::ConstraintSystem, Type = Self::SecretKey, Mode = Secret>;
 
     /// Pseudorandom Function Family Input Variable
     type PseudorandomFunctionFamilyInputVar: Variable<
-        Self::BooleanSystem,
+        Self::ConstraintSystem,
         Type = <Self::PseudorandomFunctionFamily as PseudorandomFunctionFamily>::Input,
         Mode = Secret,
     >;
 
     /// Pseudorandom Function Family Output Variable
     type PseudorandomFunctionFamilyOutputVar: Variable<
-            Self::BooleanSystem,
+            Self::ConstraintSystem,
             Type = <Self::PseudorandomFunctionFamily as PseudorandomFunctionFamily>::Output,
             Mode = PublicOrSecret,
-        > + Equal<Self::BooleanSystem>;
+        > + Equal<Self::ConstraintSystem>;
 
     /// Pseudorandom Function Family Variable
     type PseudorandomFunctionFamilyVar: PseudorandomFunctionFamily<
             Seed = Self::SecretKeyVar,
             Input = Self::PseudorandomFunctionFamilyInputVar,
             Output = Self::PseudorandomFunctionFamilyOutputVar,
-        > + Variable<Self::BooleanSystem, Type = Self::PseudorandomFunctionFamily, Mode = Constant>;
+        > + Variable<Self::ConstraintSystem, Type = Self::PseudorandomFunctionFamily, Mode = Constant>;
 
     /// Commitment Scheme Randomness Variable
     type CommitmentSchemeRandomnessVar: Variable<
-        Self::BooleanSystem,
+        Self::ConstraintSystem,
         Type = <Self::CommitmentScheme as CommitmentScheme>::Randomness,
         Mode = Secret,
     >;
 
     /// Commitment Scheme Output Variable
     type CommitmentSchemeOutputVar: Variable<
-            Self::BooleanSystem,
+            Self::ConstraintSystem,
             Type = <Self::CommitmentScheme as CommitmentScheme>::Output,
             Mode = PublicOrSecret,
-        > + Equal<Self::BooleanSystem>;
+        > + Equal<Self::ConstraintSystem>;
 
     /// Commitment Scheme Variable
     type CommitmentSchemeVar: CommitmentScheme<
@@ -124,9 +124,9 @@ pub trait IdentityProofSystemConfiguration: IdentityConfiguration {
             Output = Self::CommitmentSchemeOutputVar,
         > + CommitmentInput<PublicKeyVar<Self>>
         + CommitmentInput<VoidNumberGeneratorVar<Self>>
-        + CommitmentInput<AssetVar<Self::BooleanSystem>>
+        + CommitmentInput<AssetVar<Self::ConstraintSystem>>
         + CommitmentInput<VoidNumberCommitmentVar<Self>>
-        + Variable<Self::BooleanSystem, Type = Self::CommitmentScheme, Mode = Constant>;
+        + Variable<Self::ConstraintSystem, Type = Self::CommitmentScheme, Mode = Constant>;
 }
 
 /// [`PseudorandomFunctionFamily::Input`] Type
@@ -171,22 +171,22 @@ pub type Utxo<C> = CommitmentSchemeOutput<C>;
 
 /// [`PseudorandomFunctionFamily::Input`] Variable Type
 type PseudorandomFunctionFamilyInputVar<C> =
-    <C as IdentityProofSystemConfiguration>::PseudorandomFunctionFamilyInputVar;
+    <C as IdentityConstraintSystemConfiguration>::PseudorandomFunctionFamilyInputVar;
 
 /// [`PseudorandomFunctionFamily::Output`] Variable Type
 type PseudorandomFunctionFamilyOutputVar<C> =
-    <C as IdentityProofSystemConfiguration>::PseudorandomFunctionFamilyOutputVar;
+    <C as IdentityConstraintSystemConfiguration>::PseudorandomFunctionFamilyOutputVar;
 
 /// [`CommitmentScheme::Randomness`] Variable Type
 type CommitmentSchemeRandomnessVar<C> =
-    <C as IdentityProofSystemConfiguration>::CommitmentSchemeRandomnessVar;
+    <C as IdentityConstraintSystemConfiguration>::CommitmentSchemeRandomnessVar;
 
 /// [`CommitmentScheme::Output`] Variable Type
 type CommitmentSchemeOutputVar<C> =
-    <C as IdentityProofSystemConfiguration>::CommitmentSchemeOutputVar;
+    <C as IdentityConstraintSystemConfiguration>::CommitmentSchemeOutputVar;
 
 /// Secret Key Variable Type
-pub type SecretKeyVar<C> = <C as IdentityProofSystemConfiguration>::SecretKeyVar;
+pub type SecretKeyVar<C> = <C as IdentityConstraintSystemConfiguration>::SecretKeyVar;
 
 /// Public Key Variable Type
 pub type PublicKeyVar<C> = PseudorandomFunctionFamilyOutputVar<C>;
@@ -211,7 +211,7 @@ pub type UtxoVar<C> = CommitmentSchemeOutputVar<C>;
 
 /// UTXO Containment Proof Variable Type
 pub type UtxoContainmentProofVar<C, S> =
-    ContainmentProofVar<S, <C as IdentityProofSystemConfiguration>::BooleanSystem>;
+    ContainmentProofVar<S, <C as IdentityConstraintSystemConfiguration>::ConstraintSystem>;
 
 /// Generates a void number commitment from `public_key`, `void_number_generator`, and
 /// `void_number_commitment_randomness`.
@@ -355,7 +355,7 @@ where
 /// Asset Parameters Variable
 pub struct AssetParametersVar<C>
 where
-    C: IdentityProofSystemConfiguration,
+    C: IdentityConstraintSystemConfiguration,
 {
     /// Void Number Generator
     pub void_number_generator: VoidNumberGeneratorVar<C>,
@@ -369,7 +369,7 @@ where
 
 impl<C> AssetParametersVar<C>
 where
-    C: IdentityProofSystemConfiguration,
+    C: IdentityConstraintSystemConfiguration,
 {
     /// Builds a new [`AssetParametersVar`] from parameter variables.
     #[inline]
@@ -386,16 +386,16 @@ where
     }
 }
 
-impl<C> Variable<C::BooleanSystem> for AssetParametersVar<C>
+impl<C> Variable<C::ConstraintSystem> for AssetParametersVar<C>
 where
-    C: IdentityProofSystemConfiguration,
+    C: IdentityConstraintSystemConfiguration,
 {
     type Type = AssetParameters<C>;
 
     type Mode = Secret;
 
     #[inline]
-    fn new(ps: &mut C::BooleanSystem, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
+    fn new(ps: &mut C::ConstraintSystem, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
         match allocation {
             Allocation::Known(this, mode) => Self::new(
                 VoidNumberGeneratorVar::<C>::new_known(ps, &this.void_number_generator, mode),
@@ -415,9 +415,9 @@ where
     }
 }
 
-impl<C> HasAllocation<C::BooleanSystem> for AssetParameters<C>
+impl<C> HasAllocation<C::ConstraintSystem> for AssetParameters<C>
 where
-    C: IdentityProofSystemConfiguration,
+    C: IdentityConstraintSystemConfiguration,
 {
     type Variable = AssetParametersVar<C>;
     type Mode = Secret;
@@ -1193,9 +1193,9 @@ where
 /// Sender Variable
 pub struct SenderVar<C, S>
 where
-    C: IdentityProofSystemConfiguration,
+    C: IdentityConstraintSystemConfiguration,
     S: VerifiedSet<Item = Utxo<C>>,
-    C::BooleanSystem: HasVariable<S::Public> + HasVariable<S::Secret>,
+    C::ConstraintSystem: HasVariable<S::Public> + HasVariable<S::Secret>,
 {
     /// Secret Key
     secret_key: SecretKeyVar<C>,
@@ -1204,7 +1204,7 @@ where
     public_key: PublicKeyVar<C>,
 
     /// Asset
-    asset: AssetVar<C::BooleanSystem>,
+    asset: AssetVar<C::ConstraintSystem>,
 
     /// Asset Parameters
     parameters: AssetParametersVar<C>,
@@ -1224,21 +1224,21 @@ where
 
 impl<C, S> SenderVar<C, S>
 where
-    C: IdentityProofSystemConfiguration,
+    C: IdentityConstraintSystemConfiguration,
     S: VerifiedSet<Item = Utxo<C>>,
-    C::BooleanSystem: HasVariable<S::Public> + HasVariable<S::Secret>,
+    C::ConstraintSystem: HasVariable<S::Public> + HasVariable<S::Secret>,
 {
     /// Checks if `self` is a well-formed sender and returns its asset.
     #[inline]
     pub fn get_well_formed_asset(
         self,
-        ps: &mut C::BooleanSystem,
+        ps: &mut C::ConstraintSystem,
         commitment_scheme: &C::CommitmentSchemeVar,
-        utxo_set: &Var<S, C::BooleanSystem>,
-    ) -> AssetVar<C::BooleanSystem>
+        utxo_set: &Var<S, C::ConstraintSystem>,
+    ) -> AssetVar<C::ConstraintSystem>
     where
-        S: HasAllocation<C::BooleanSystem>,
-        S::Variable: VerifiedSetVariable<C::BooleanSystem, ItemVar = UtxoVar<C>>,
+        S: HasAllocation<C::ConstraintSystem>,
+        S::Variable: VerifiedSetVariable<C::ConstraintSystem, ItemVar = UtxoVar<C>>,
     {
         // Well-formed check:
         //
@@ -1315,18 +1315,19 @@ where
     }
 }
 
-impl<C, S> Variable<C::BooleanSystem> for SenderVar<C, S>
+impl<C, S> Variable<C::ConstraintSystem> for SenderVar<C, S>
 where
-    C: IdentityProofSystemConfiguration,
+    C: IdentityConstraintSystemConfiguration,
     S: VerifiedSet<Item = Utxo<C>>,
-    C::BooleanSystem: HasVariable<S::Public, Mode = Public> + HasVariable<S::Secret, Mode = Secret>,
+    C::ConstraintSystem:
+        HasVariable<S::Public, Mode = Public> + HasVariable<S::Secret, Mode = Secret>,
 {
     type Type = Sender<C, S>;
 
     type Mode = Derived;
 
     #[inline]
-    fn new(ps: &mut C::BooleanSystem, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
+    fn new(ps: &mut C::ConstraintSystem, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
         match allocation {
             Allocation::Known(this, mode) => Self {
                 secret_key: SecretKeyVar::<C>::new_known(ps, &this.secret_key, mode),
@@ -1356,11 +1357,12 @@ where
     }
 }
 
-impl<C, S> HasAllocation<C::BooleanSystem> for Sender<C, S>
+impl<C, S> HasAllocation<C::ConstraintSystem> for Sender<C, S>
 where
-    C: IdentityProofSystemConfiguration,
+    C: IdentityConstraintSystemConfiguration,
     S: VerifiedSet<Item = Utxo<C>>,
-    C::BooleanSystem: HasVariable<S::Public, Mode = Public> + HasVariable<S::Secret, Mode = Secret>,
+    C::ConstraintSystem:
+        HasVariable<S::Public, Mode = Public> + HasVariable<S::Secret, Mode = Secret>,
 {
     type Variable = SenderVar<C, S>;
     type Mode = Derived;
@@ -1524,11 +1526,11 @@ where
 /// Receiver Variable
 pub struct ReceiverVar<C, I>
 where
-    C: IdentityProofSystemConfiguration,
+    C: IdentityConstraintSystemConfiguration,
     I: IntegratedEncryptionScheme<Plaintext = Asset>,
 {
     /// Asset
-    asset: AssetVar<C::BooleanSystem>,
+    asset: AssetVar<C::ConstraintSystem>,
 
     /// UTXO Randomness
     utxo_randomness: UtxoRandomnessVar<C>,
@@ -1545,7 +1547,7 @@ where
 
 impl<C, I> ReceiverVar<C, I>
 where
-    C: IdentityProofSystemConfiguration,
+    C: IdentityConstraintSystemConfiguration,
     I: IntegratedEncryptionScheme<Plaintext = Asset>,
 {
     /// Checks if `self` is a well-formed receiver and returns its asset.
@@ -1559,9 +1561,9 @@ where
     #[inline]
     pub fn get_well_formed_asset(
         self,
-        ps: &mut C::BooleanSystem,
+        ps: &mut C::ConstraintSystem,
         commitment_scheme: &C::CommitmentSchemeVar,
-    ) -> AssetVar<C::BooleanSystem> {
+    ) -> AssetVar<C::ConstraintSystem> {
         ps.assert_eq(
             &self.utxo,
             &generate_utxo(
@@ -1575,9 +1577,9 @@ where
     }
 }
 
-impl<C, I> Variable<C::BooleanSystem> for ReceiverVar<C, I>
+impl<C, I> Variable<C::ConstraintSystem> for ReceiverVar<C, I>
 where
-    C: IdentityProofSystemConfiguration,
+    C: IdentityConstraintSystemConfiguration,
     I: IntegratedEncryptionScheme<Plaintext = Asset>,
 {
     type Type = Receiver<C, I>;
@@ -1585,7 +1587,7 @@ where
     type Mode = Derived;
 
     #[inline]
-    fn new(ps: &mut C::BooleanSystem, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
+    fn new(ps: &mut C::ConstraintSystem, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
         match allocation {
             Allocation::Known(this, mode) => Self {
                 asset: AssetVar::new_known(ps, &this.asset, mode),
@@ -1609,9 +1611,9 @@ where
     }
 }
 
-impl<C, I> HasAllocation<C::BooleanSystem> for Receiver<C, I>
+impl<C, I> HasAllocation<C::ConstraintSystem> for Receiver<C, I>
 where
-    C: IdentityProofSystemConfiguration,
+    C: IdentityConstraintSystemConfiguration,
     I: IntegratedEncryptionScheme<Plaintext = Asset>,
 {
     type Variable = ReceiverVar<C, I>;

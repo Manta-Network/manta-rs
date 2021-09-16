@@ -137,19 +137,22 @@ where
 /// Pedersen Commitment Scheme Constraint System Implementation
 pub mod constraint {
     use super::*;
-    use crate::crypto::constraint::ArkProofSystem;
+    use crate::crypto::constraint::{empty, full, ArkProofSystem};
     use ark_crypto_primitives::{
         commitment::pedersen::constraints::{CommGadget, ParametersVar, RandomnessVar},
         CommitmentGadget,
     };
     use ark_ff::Field;
     use ark_r1cs_std::{
+        alloc::AllocVar,
         groups::{CurveVar, GroupOpsBounds},
         uint8::UInt8,
     };
+    use ark_relations::ns;
     use core::marker::PhantomData;
     use manta_crypto::constraint::{
-        Allocation, Constant, HasAllocation, PublicOrSecret, Secret, Var, Variable,
+        reflection::HasAllocation, types::Bool, Allocation, Constant, Equal, PublicOrSecret,
+        Secret, Variable,
     };
 
     /// Constraint Field Type
@@ -310,29 +313,36 @@ pub mod constraint {
         W: PedersenWindow,
         C: ProjectiveCurve,
     {
-        type Mode = Secret;
         type Type = PedersenCommitmentRandomness<W, C>;
+
+        type Mode = Secret;
+
+        #[inline]
+        fn new(ps: &mut ProofSystem<C>, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
+            Self(
+                match allocation.known() {
+                    Some((this, _)) => RandomnessVar::new_witness(
+                        ns!(ps.cs, "pedersen commitment randomness secret witness"),
+                        full(&this.0),
+                    ),
+                    _ => RandomnessVar::new_witness(
+                        ns!(ps.cs, "pedersen commitment randomness secret witness"),
+                        empty::<ArkPedersenCommitmentRandomness<W, C>>,
+                    ),
+                }
+                .expect("Variable allocation is not allowed to fail."),
+                PhantomData,
+            )
+        }
     }
 
-    impl<W, C> Alloc<ProofSystem<C>> for PedersenCommitmentRandomness<W, C>
+    impl<W, C> HasAllocation<ProofSystem<C>> for PedersenCommitmentRandomness<W, C>
     where
         W: PedersenWindow,
         C: ProjectiveCurve,
     {
-        type Mode = Secret;
-
         type Variable = PedersenCommitmentRandomnessVar<W, C>;
-
-        #[inline]
-        fn variable<'t>(
-            ps: &mut ProofSystem<C>,
-            allocation: impl Into<Allocation<'t, Self, ProofSystem<C>>>,
-        ) -> Self::Variable
-        where
-            Self: 't,
-        {
-            todo!()
-        }
+        type Mode = Secret;
     }
 
     /// Pedersen Commitment Output Variable
@@ -384,34 +394,53 @@ pub mod constraint {
         GG: CurveVar<C, ConstraintField<C>>,
         for<'g> &'g GG: GroupOpsBounds<'g, C, GG>,
     {
-        type Mode = PublicOrSecret;
         type Type = PedersenCommitmentOutputWrapper<W, C, GG>;
-    }
 
-    impl<W, C, GG> Alloc<ProofSystem<C>> for PedersenCommitmentOutputWrapper<W, C, GG>
-    where
-        W: PedersenWindow,
-        C: ProjectiveCurve,
-        GG: CurveVar<C, ConstraintField<C>>,
-        for<'g> &'g GG: GroupOpsBounds<'g, C, GG>,
-    {
         type Mode = PublicOrSecret;
-
-        type Variable = PedersenCommitmentOutputVar<W, C, GG>;
 
         #[inline]
-        fn variable<'t>(
-            ps: &mut ProofSystem<C>,
-            allocation: impl Into<Allocation<'t, Self, ProofSystem<C>>>,
-        ) -> Self::Variable
-        where
-            Self: 't,
-        {
-            todo!()
+        fn new(ps: &mut ProofSystem<C>, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
+            Self(
+                match allocation {
+                    Allocation::Known(this, PublicOrSecret::Public) => {
+                        AllocVar::<ArkPedersenCommitmentOutput<W, C>, _>::new_input(
+                            ns!(ps.cs, "pedersen commitment output public input"),
+                            full(&(this.0).0),
+                        )
+                    }
+                    Allocation::Known(this, PublicOrSecret::Secret) => {
+                        AllocVar::<ArkPedersenCommitmentOutput<W, C>, _>::new_witness(
+                            ns!(ps.cs, "pedersen commitment output secret witness"),
+                            full(&(this.0).0),
+                        )
+                    }
+                    Allocation::Unknown(PublicOrSecret::Public) => GG::new_input(
+                        ns!(ps.cs, "pedersen commitment output public input"),
+                        empty::<ArkPedersenCommitmentOutput<W, C>>,
+                    ),
+                    Allocation::Unknown(PublicOrSecret::Secret) => GG::new_witness(
+                        ns!(ps.cs, "pedersen commitment output secret witness"),
+                        empty::<ArkPedersenCommitmentOutput<W, C>>,
+                    ),
+                }
+                .expect("Variable allocation is not allowed to fail."),
+                PhantomData,
+            )
         }
     }
 
-    impl<W, C, GG> AllocEq<ProofSystem<C>> for PedersenCommitmentOutputWrapper<W, C, GG>
+    impl<W, C, GG> HasAllocation<ProofSystem<C>> for PedersenCommitmentOutputWrapper<W, C, GG>
+    where
+        W: PedersenWindow,
+        C: ProjectiveCurve,
+        GG: CurveVar<C, ConstraintField<C>>,
+        for<'g> &'g GG: GroupOpsBounds<'g, C, GG>,
+    {
+        type Variable = PedersenCommitmentOutputVar<W, C, GG>;
+        type Mode = PublicOrSecret;
+    }
+
+    impl<W, C, GG> Equal<ProofSystem<C>> for PedersenCommitmentOutputVar<W, C, GG>
     where
         W: PedersenWindow,
         C: ProjectiveCurve,
@@ -419,12 +448,11 @@ pub mod constraint {
         for<'g> &'g GG: GroupOpsBounds<'g, C, GG>,
     {
         #[inline]
-        fn eq(
-            ps: &mut ProofSystem<C>,
-            lhs: &Var<Self, ProofSystem<C>>,
-            rhs: &Var<Self, ProofSystem<C>>,
-        ) -> ProofSystem<C>::Bool {
-            todo!()
+        fn eq(ps: &mut ProofSystem<C>, lhs: &Self, rhs: &Self) -> Bool<ProofSystem<C>> {
+            let _ = ps;
+            lhs.0
+                .is_eq(&rhs.0)
+                .expect("Equality checking is not allowed to fail.")
         }
     }
 
@@ -445,40 +473,34 @@ pub mod constraint {
         GG: CurveVar<C, ConstraintField<C>>,
         for<'g> &'g GG: GroupOpsBounds<'g, C, GG>,
     {
-        type Mode = Constant;
         type Type = PedersenCommitmentWrapper<W, C, GG>;
+
+        type Mode = Constant;
+
+        #[inline]
+        fn new(ps: &mut ProofSystem<C>, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
+            let (this, _) = allocation.into_known();
+            Self(
+                ParametersVar::new_constant(
+                    ns!(ps.cs, "pedersen commitment paramters constant"),
+                    &(this.0).0,
+                )
+                .expect("Variable allocation is not allowed to fail."),
+                PhantomData,
+            )
+        }
     }
 
-    impl<W, C, GG> Alloc<ArkProofSystem<ConstraintField<C>>> for PedersenCommitmentWrapper<W, C, GG>
+    impl<W, C, GG> HasAllocation<ArkProofSystem<ConstraintField<C>>>
+        for PedersenCommitmentWrapper<W, C, GG>
     where
         W: PedersenWindow,
         C: ProjectiveCurve,
         GG: CurveVar<C, ConstraintField<C>>,
         for<'g> &'g GG: GroupOpsBounds<'g, C, GG>,
     {
-        type Mode = Constant;
-
         type Variable = PedersenCommitmentVar<W, C, GG>;
-
-        #[inline]
-        fn variable<'t>(
-            ps: &mut ProofSystem<C>,
-            allocation: impl Into<Allocation<'t, Self, ProofSystem<C>>>,
-        ) -> Self::Variable
-        where
-            Self: 't,
-        {
-            match allocation.into() {
-                Allocation::Known(this, _) => {
-                    // FIXME: `this.parameters.new_constant(ps)`
-                    let _ = (ps, this);
-                    todo!()
-                }
-                _ => unreachable!(
-                    "Since we use a constant allocation mode, we always know the variable value."
-                ),
-            }
-        }
+        type Mode = Constant;
     }
 
     impl<W, C, GG> CommitmentScheme for PedersenCommitmentVar<W, C, GG>

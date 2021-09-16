@@ -223,33 +223,25 @@ impl VerifiedSet for UtxoSet {
 pub struct UtxoSetVar(ParametersVar);
 
 impl Variable<ProofSystem> for UtxoSetVar {
-    type Mode = Constant;
     type Type = UtxoSet;
-}
 
-impl Alloc<ProofSystem> for UtxoSet {
     type Mode = Constant;
-
-    type Variable = UtxoSetVar;
 
     #[inline]
-    fn variable<'t>(
-        ps: &mut ProofSystem,
-        allocation: impl Into<Allocation<'t, Self, ProofSystem>>,
-    ) -> Self::Variable
-    where
-        Self: 't,
-    {
-        UtxoSetVar(match allocation.into() {
-            Allocation::Known(this, mode) => this.parameters.as_known(ps, mode),
-            _ => unreachable!(
-                "Since we use a constant allocation mode, we always know the variable value."
-            ),
-        })
+    fn new(ps: &mut ProofSystem, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
+        let (this, mode) = allocation.into_known();
+        Self(this.parameters.known(ps, mode))
     }
 }
 
+impl HasAllocation<ProofSystem> for UtxoSet {
+    type Variable = UtxoSetVar;
+    type Mode = Constant;
+}
+
 impl VerifiedSetVariable<ProofSystem> for UtxoSetVar {
+    type ItemVar = UtxoVar;
+
     #[inline]
     fn assert_valid_containment_proof(
         &self,

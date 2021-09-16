@@ -19,8 +19,8 @@
 use crate::{
     asset::{sample_asset_balances, Asset, AssetBalance, AssetBalanceVar, AssetBalances, AssetId},
     identity::{
-        IdentityProofSystemConfiguration, Receiver, ReceiverPost, ReceiverVar, Sender, SenderPost,
-        SenderVar, Utxo, UtxoVar, VoidNumber,
+        IdentityConstraintSystemConfiguration, Receiver, ReceiverPost, ReceiverVar, Sender,
+        SenderPost, SenderVar, Utxo, UtxoVar, VoidNumber,
     },
     ledger::{Ledger, PostError},
 };
@@ -29,7 +29,7 @@ use core::ops::AddAssign;
 use manta_crypto::{
     constraint::{
         reflection::{HasAllocation, HasVariable},
-        BooleanSystem, Constant, Derived, Equal, ProofSystem, Public, PublicOrSecret, Secret,
+        Constant, ConstraintSystem, Derived, Equal, ProofSystem, Public, PublicOrSecret, Secret,
         Variable, VariableSource,
     },
     ies::{EncryptedMessage, IntegratedEncryptionScheme},
@@ -120,7 +120,7 @@ impl<const SOURCES: usize, const SINKS: usize> Distribution<PublicTransfer<SOURC
 
 /// Transfer Configuration
 pub trait TransferConfiguration:
-    IdentityProofSystemConfiguration<BooleanSystem = Self::ProofSystem>
+    IdentityConstraintSystemConfiguration<ConstraintSystem = Self::ProofSystem>
 {
     /// Proof System
     type ProofSystem: ProofSystem

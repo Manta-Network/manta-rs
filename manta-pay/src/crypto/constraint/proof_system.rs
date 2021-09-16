@@ -16,7 +16,7 @@
 
 //! Arkworks Proof System Implementation
 
-use alloc::vec::Vec;
+use alloc::{vec, vec::Vec};
 use ark_ff::{fields::Field, PrimeField};
 use ark_r1cs_std::{
     alloc::AllocVar, bits::boolean::Boolean, eq::EqGadget, fields::fp::FpVar, uint8::UInt8,
@@ -24,13 +24,16 @@ use ark_r1cs_std::{
 };
 use ark_relations::{
     ns,
-    r1cs::{ConstraintSystem, ConstraintSystemRef, SynthesisError},
+    r1cs::{
+        ConstraintSystem as ArkConstraintSystem, ConstraintSystemRef as ArkConstraintSystemRef,
+        SynthesisError,
+    },
 };
-use core::borrow::Borrow;
+use core::{borrow::Borrow, ops::AddAssign};
 use manta_accounting::{AssetBalance, AssetId};
 use manta_crypto::constraint::{
-    Alloc, AllocEq, Allocation, AllocationMode, Bool, BooleanSystem, ProofSystem, Public,
-    PublicOrSecret, Secret, Var, Variable,
+    reflection::HasAllocation, types::Bool, Allocation, AllocationMode, ConstraintSystem, Equal,
+    ProofSystem, Public, PublicOrSecret, Secret, Variable,
 };
 use manta_util::{Concat, ConcatAccumulator};
 
@@ -99,7 +102,7 @@ where
     F: Field,
 {
     /// Constraint System
-    pub(crate) cs: ConstraintSystemRef<F>,
+    pub(crate) cs: ArkConstraintSystemRef<F>,
 }
 
 impl<F> Default for ArkProofSystem<F>
@@ -109,52 +112,66 @@ where
     #[inline]
     fn default() -> Self {
         Self {
-            cs: ConstraintSystem::new_ref(),
+            cs: ArkConstraintSystem::new_ref(),
         }
     }
 }
 
+impl<F> ConstraintSystem for ArkProofSystem<F>
+where
+    F: Field,
+{
+    type Bool = Boolean<F>;
+
+    #[inline]
+    fn assert(&mut self, b: Bool<Self>) {
+        // FIXME: Is there a more direct way to do assertions?
+        b.enforce_equal(&Boolean::TRUE)
+            .expect("This should never fail.")
+    }
+}
+
+impl<F> ProofSystem for ArkProofSystem<F>
+where
+    F: Field,
+{
+    type Proof = ();
+
+    type Error = ();
+
+    #[inline]
+    fn finish(self) -> Result<Self::Proof, Self::Error> {
+        todo!()
+    }
+}
 impl<F> Variable<ArkProofSystem<F>> for Boolean<F>
 where
     F: Field,
 {
-    type Mode = ArkAllocationMode;
     type Type = bool;
-}
 
-impl<F> Alloc<ArkProofSystem<F>> for bool
-where
-    F: Field,
-{
     type Mode = ArkAllocationMode;
-    type Variable = Boolean<F>;
 
     #[inline]
-    fn variable<'t>(
-        ps: &mut ArkProofSystem<F>,
-        allocation: impl Into<Allocation<'t, Self, ArkProofSystem<F>>>,
-    ) -> Self::Variable
-    where
-        Self: 't,
-    {
-        match allocation.into() {
+    fn new(ps: &mut ArkProofSystem<F>, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
+        match allocation {
             Allocation::Known(this, mode) => match mode {
                 ArkAllocationMode::Constant => {
-                    Self::Variable::new_constant(ns!(ps.cs, "boolean constant"), this)
+                    Self::new_constant(ns!(ps.cs, "boolean constant"), this)
                 }
                 ArkAllocationMode::Public => {
-                    Self::Variable::new_input(ns!(ps.cs, "boolean input"), full(this))
+                    Self::new_input(ns!(ps.cs, "boolean input"), full(this))
                 }
                 ArkAllocationMode::Secret => {
-                    Self::Variable::new_witness(ns!(ps.cs, "boolean witness"), full(this))
+                    Self::new_witness(ns!(ps.cs, "boolean witness"), full(this))
                 }
             },
             Allocation::Unknown(mode) => match mode {
                 PublicOrSecret::Public => {
-                    Self::Variable::new_input(ns!(ps.cs, "boolean input"), empty::<bool>)
+                    Self::new_input(ns!(ps.cs, "boolean input"), empty::<bool>)
                 }
                 PublicOrSecret::Secret => {
-                    Self::Variable::new_witness(ns!(ps.cs, "boolean witness"), empty::<bool>)
+                    Self::new_witness(ns!(ps.cs, "boolean witness"), empty::<bool>)
                 }
             },
         }
@@ -162,16 +179,20 @@ where
     }
 }
 
-impl<F> AllocEq<ArkProofSystem<F>> for bool
+impl<F> HasAllocation<ArkProofSystem<F>> for bool
+where
+    F: Field,
+{
+    type Variable = Boolean<F>;
+    type Mode = ArkAllocationMode;
+}
+
+impl<F> Equal<ArkProofSystem<F>> for Boolean<F>
 where
     F: Field,
 {
     #[inline]
-    fn eq(
-        ps: &mut ArkProofSystem<F>,
-        lhs: &Var<Self, ArkProofSystem<F>>,
-        rhs: &Var<Self, ArkProofSystem<F>>,
-    ) -> Bool<ArkProofSystem<F>> {
+    fn eq(ps: &mut ArkProofSystem<F>, lhs: &Self, rhs: &Self) -> Boolean<F> {
         let _ = ps;
         lhs.is_eq(rhs)
             .expect("Equality checking is not allowed to fail.")
@@ -189,49 +210,39 @@ impl<F> Variable<ArkProofSystem<F>> for FpVar<F>
 where
     F: PrimeField,
 {
-    type Mode = ArkAllocationMode;
     type Type = Fp<F>;
-}
 
-impl<F> Alloc<ArkProofSystem<F>> for Fp<F>
-where
-    F: PrimeField,
-{
     type Mode = ArkAllocationMode;
-
-    type Variable = FpVar<F>;
 
     #[inline]
-    fn variable<'t>(
-        ps: &mut ArkProofSystem<F>,
-        allocation: impl Into<Allocation<'t, Self, ArkProofSystem<F>>>,
-    ) -> Self::Variable
-    where
-        Self: 't,
-    {
-        match allocation.into() {
-            Allocation::Known(this, mode) => match mode {
-                ArkAllocationMode::Constant => {
-                    Self::Variable::new_constant(ns!(ps.cs, "prime field constant"), this.0)
-                }
-                ArkAllocationMode::Public => {
-                    Self::Variable::new_input(ns!(ps.cs, "prime field input"), full(this.0))
-                }
-                ArkAllocationMode::Secret => {
-                    Self::Variable::new_witness(ns!(ps.cs, "prime field witness"), full(this.0))
-                }
-            },
-            Allocation::Unknown(mode) => match mode {
-                PublicOrSecret::Public => {
-                    Self::Variable::new_input(ns!(ps.cs, "prime field input"), empty::<F>)
-                }
-                PublicOrSecret::Secret => {
-                    Self::Variable::new_witness(ns!(ps.cs, "prime field witness"), empty::<F>)
-                }
-            },
+    fn new(ps: &mut ArkProofSystem<F>, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
+        match allocation {
+            Allocation::Known(this, ArkAllocationMode::Constant) => {
+                Self::new_constant(ns!(ps.cs, "prime field constant"), this.0)
+            }
+            Allocation::Known(this, ArkAllocationMode::Public) => {
+                Self::new_input(ns!(ps.cs, "prime field input"), full(this.0))
+            }
+            Allocation::Known(this, ArkAllocationMode::Secret) => {
+                Self::new_witness(ns!(ps.cs, "prime field witness"), full(this.0))
+            }
+            Allocation::Unknown(PublicOrSecret::Public) => {
+                Self::new_input(ns!(ps.cs, "prime field input"), empty::<F>)
+            }
+            Allocation::Unknown(PublicOrSecret::Secret) => {
+                Self::new_witness(ns!(ps.cs, "prime field witness"), empty::<F>)
+            }
         }
         .expect("Variable allocation is not allowed to fail.")
     }
+}
+
+impl<F> HasAllocation<ArkProofSystem<F>> for Fp<F>
+where
+    F: PrimeField,
+{
+    type Variable = FpVar<F>;
+    type Mode = ArkAllocationMode;
 }
 
 /// Byte Array Variable
@@ -278,30 +289,42 @@ where
 
 impl<F, const N: usize> Variable<ArkProofSystem<F>> for ByteArrayVar<F, N>
 where
-    F: Field,
+    F: PrimeField,
 {
-    type Mode = ArkAllocationMode;
     type Type = [u8; N];
-}
 
-impl<F, const N: usize> Alloc<ArkProofSystem<F>> for [u8; N]
-where
-    F: Field,
-{
     type Mode = ArkAllocationMode;
-
-    type Variable = ByteArrayVar<F, N>;
 
     #[inline]
-    fn variable<'t>(
-        ps: &mut ArkProofSystem<F>,
-        allocation: impl Into<Allocation<'t, Self, ArkProofSystem<F>>>,
-    ) -> Self::Variable
-    where
-        Self: 't,
-    {
-        todo!()
+    fn new(ps: &mut ArkProofSystem<F>, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
+        Self(
+            match allocation {
+                Allocation::Known(this, ArkAllocationMode::Constant) => {
+                    let _ = this;
+                    todo!()
+                }
+                Allocation::Known(this, ArkAllocationMode::Public) => {
+                    UInt8::new_input_vec(ns!(ps.cs, ""), this)
+                }
+                Allocation::Known(this, ArkAllocationMode::Secret) => {
+                    UInt8::new_witness_vec(ns!(ps.cs, ""), this)
+                }
+                Allocation::Unknown(PublicOrSecret::Public) => todo!(),
+                Allocation::Unknown(PublicOrSecret::Secret) => {
+                    UInt8::new_witness_vec(ns!(ps.cs, ""), &vec![None; N])
+                }
+            }
+            .expect("Variable allocation is not allowed to fail."),
+        )
     }
+}
+
+impl<F, const N: usize> HasAllocation<ArkProofSystem<F>> for [u8; N]
+where
+    F: PrimeField,
+{
+    type Variable = ByteArrayVar<F, N>;
+    type Mode = ArkAllocationMode;
 }
 
 /// Asset Id Variable
@@ -330,43 +353,30 @@ impl<F> Variable<ArkProofSystem<F>> for AssetIdVar<F>
 where
     F: PrimeField,
 {
-    type Mode = PublicOrSecret;
     type Type = AssetId;
-}
 
-impl<F> Alloc<ArkProofSystem<F>> for AssetId
-where
-    F: PrimeField,
-{
     type Mode = PublicOrSecret;
-
-    type Variable = AssetIdVar<F>;
 
     #[inline]
-    fn variable<'t>(
-        ps: &mut ArkProofSystem<F>,
-        allocation: impl Into<Allocation<'t, Self, ArkProofSystem<F>>>,
-    ) -> Self::Variable
-    where
-        Self: 't,
-    {
-        AssetIdVar(match allocation.into() {
-            Allocation::Known(this, mode) => Fp(F::from(this.0)).as_known(ps, mode),
-            Allocation::Unknown(mode) => Fp::unknown(ps, mode),
-        })
+    fn new(ps: &mut ArkProofSystem<F>, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
+        Self(allocation.map_allocate(ps, move |this| Fp(F::from(this.0))))
     }
 }
 
-impl<F> AllocEq<ArkProofSystem<F>> for AssetId
+impl<F> HasAllocation<ArkProofSystem<F>> for AssetId
+where
+    F: PrimeField,
+{
+    type Variable = AssetIdVar<F>;
+    type Mode = PublicOrSecret;
+}
+
+impl<F> Equal<ArkProofSystem<F>> for AssetIdVar<F>
 where
     F: PrimeField,
 {
     #[inline]
-    fn eq(
-        ps: &mut ArkProofSystem<F>,
-        lhs: &Var<Self, ArkProofSystem<F>>,
-        rhs: &Var<Self, ArkProofSystem<F>>,
-    ) -> Bool<ArkProofSystem<F>> {
+    fn eq(ps: &mut ArkProofSystem<F>, lhs: &Self, rhs: &Self) -> Boolean<F> {
         let _ = ps;
         lhs.0
             .is_eq(&rhs.0)
@@ -400,55 +410,43 @@ impl<F> Variable<ArkProofSystem<F>> for AssetBalanceVar<F>
 where
     F: PrimeField,
 {
-    type Mode = PublicOrSecret;
     type Type = AssetBalance;
+
+    type Mode = PublicOrSecret;
+
+    #[inline]
+    fn new(ps: &mut ArkProofSystem<F>, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
+        Self(allocation.map_allocate(ps, move |this| Fp(F::from(this.0))))
+    }
 }
 
-impl<F> Alloc<ArkProofSystem<F>> for AssetBalance
+impl<F> HasAllocation<ArkProofSystem<F>> for AssetBalance
 where
     F: PrimeField,
 {
-    type Mode = PublicOrSecret;
-
     type Variable = AssetBalanceVar<F>;
+    type Mode = PublicOrSecret;
+}
 
+impl<F> Equal<ArkProofSystem<F>> for AssetBalanceVar<F>
+where
+    F: PrimeField,
+{
     #[inline]
-    fn variable<'t>(
-        ps: &mut ArkProofSystem<F>,
-        allocation: impl Into<Allocation<'t, Self, ArkProofSystem<F>>>,
-    ) -> Self::Variable
-    where
-        Self: 't,
-    {
-        AssetBalanceVar(match allocation.into() {
-            Allocation::Known(this, mode) => Fp(F::from(this.0)).as_known(ps, mode),
-            Allocation::Unknown(mode) => Fp::unknown(ps, mode),
-        })
+    fn eq(ps: &mut ArkProofSystem<F>, lhs: &Self, rhs: &Self) -> Boolean<F> {
+        let _ = ps;
+        lhs.0
+            .is_eq(&rhs.0)
+            .expect("Equality checking is not allowed to fail.")
     }
 }
 
-impl<F> BooleanSystem for ArkProofSystem<F>
+impl<F> AddAssign for AssetBalanceVar<F>
 where
-    F: Field,
+    F: PrimeField,
 {
     #[inline]
-    fn assert(&mut self, b: Bool<Self>) {
-        // FIXME: Is there a more direct way to do assertions?
-        b.enforce_equal(&Boolean::TRUE)
-            .expect("This should never fail.")
-    }
-}
-
-impl<F> ProofSystem for ArkProofSystem<F>
-where
-    F: Field,
-{
-    type Proof = ();
-
-    type Error = ();
-
-    #[inline]
-    fn finish(self) -> Result<Self::Proof, Self::Error> {
-        todo!()
+    fn add_assign(&mut self, rhs: Self) {
+        self.0 += rhs.0
     }
 }

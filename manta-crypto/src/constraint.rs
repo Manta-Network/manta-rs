@@ -76,42 +76,6 @@ where
     ),
 }
 
-impl<'t, T, Mode> Allocation<'t, T, Mode>
-where
-    T: ?Sized,
-    Mode: AllocationMode,
-{
-    /// Returns `true` if `self` represents a known variable.
-    #[inline]
-    pub fn is_known(&self) -> bool {
-        matches!(self, Self::Known(..))
-    }
-
-    /// Returns `true` if `self` represents an unknown value.
-    #[inline]
-    pub fn is_unknown(&self) -> bool {
-        matches!(self, Self::Unknown(..))
-    }
-
-    /// Converts `self` into a possible known value.
-    #[inline]
-    pub fn known(self) -> Option<(&'t T, Mode::Known)> {
-        match self {
-            Self::Known(value, mode) => Some((value, mode)),
-            _ => None,
-        }
-    }
-
-    /// Converts `self` into a possibly unknown value.
-    #[inline]
-    pub fn unknown(self) -> Option<Mode::Unknown> {
-        match self {
-            Self::Unknown(mode) => Some(mode),
-            _ => None,
-        }
-    }
-}
-
 impl<'t, T, Mode> From<(&'t T, Mode::Known)> for Allocation<'t, T, Mode>
 where
     T: ?Sized,
@@ -120,6 +84,107 @@ where
     #[inline]
     fn from((value, mode): (&'t T, Mode::Known)) -> Self {
         Self::Known(value, mode)
+    }
+}
+
+impl<'t, T, Mode> Allocation<'t, T, Mode>
+where
+    T: ?Sized,
+    Mode: AllocationMode,
+{
+    /// Returns `true` if `self` represents a known value and mode.
+    #[inline]
+    pub fn is_known(&self) -> bool {
+        matches!(self, Self::Known(..))
+    }
+
+    /// Returns `true` if `self` represents an unknown value mode.
+    #[inline]
+    pub fn is_unknown(&self) -> bool {
+        matches!(self, Self::Unknown(..))
+    }
+
+    /// Converts `self` into a possibly known value and mode.
+    #[inline]
+    pub fn known(self) -> Option<(&'t T, Mode::Known)> {
+        match self {
+            Self::Known(value, mode) => Some((value, mode)),
+            _ => None,
+        }
+    }
+
+    /// Converts `self` into a possibly unknown mode.
+    #[inline]
+    pub fn unknown(self) -> Option<Mode::Unknown> {
+        match self {
+            Self::Unknown(mode) => Some(mode),
+            _ => None,
+        }
+    }
+
+    /// Converts `self` into a known value and mode whenever its unknown mode is [`Infallible`].
+    #[inline]
+    pub fn into_known(self) -> (&'t T, Mode::Known)
+    where
+        Mode: AllocationMode<Unknown = Infallible>,
+    {
+        match self {
+            Self::Known(value, mode) => (value, mode),
+            _ => unreachable!("Values of infallible types cannot be constructed."),
+        }
+    }
+
+    /// Converts `self` into an unknown mode whenever its known mode is [`Infallible`].
+    #[inline]
+    pub fn into_unknown(self) -> Mode::Unknown
+    where
+        Mode: AllocationMode<Known = Infallible>,
+    {
+        match self {
+            Self::Unknown(mode) => mode,
+            _ => unreachable!("Values of infallible types cannot be constructed."),
+        }
+    }
+
+    /// Maps over the possible value stored in `self`.
+    #[inline]
+    pub fn map<'u, U, N, F>(self, f: F) -> Allocation<'u, U, N>
+    where
+        Mode::Known: Into<N::Known>,
+        Mode::Unknown: Into<N::Unknown>,
+        N: AllocationMode,
+        F: FnOnce(&'t T) -> &'u U,
+    {
+        match self {
+            Self::Known(value, mode) => Allocation::Known(f(value), mode.into()),
+            Self::Unknown(mode) => Allocation::Unknown(mode.into()),
+        }
+    }
+
+    /// Allocates a variable with `self` as the allocation entry into `ps`.
+    #[inline]
+    pub fn allocate<P, V>(self, ps: &mut P) -> V
+    where
+        P: ?Sized,
+        V: Variable<P, Type = T, Mode = Mode>,
+    {
+        V::new(ps, self)
+    }
+
+    /// Allocates a variable into `ps` after mapping over `self`.
+    #[inline]
+    pub fn map_allocate<P, V, F>(self, ps: &mut P, f: F) -> V
+    where
+        Mode::Known: Into<<V::Mode as AllocationMode>::Known>,
+        Mode::Unknown: Into<<V::Mode as AllocationMode>::Unknown>,
+        P: ?Sized,
+        V: Variable<P>,
+        F: FnOnce(&'t T) -> V::Type,
+    {
+        match self {
+            Self::Known(value, mode) => V::new_known(ps, &f(value), mode),
+            Self::Unknown(mode) => V::new_unknown(ps, mode),
+        }
     }
 }
 
@@ -298,8 +363,8 @@ pub trait AllocationSystem {
 
 impl<P> AllocationSystem for P where P: ?Sized {}
 
-/// Boolean Constraint System
-pub trait BooleanSystem {
+/// Constraint System
+pub trait ConstraintSystem {
     /// Boolean Variable Type
     type Bool: Variable<Self, Type = bool>;
 
@@ -357,7 +422,7 @@ pub trait BooleanSystem {
 /// Equality Trait
 pub trait Equal<P>: Variable<P>
 where
-    P: BooleanSystem + ?Sized,
+    P: ConstraintSystem + ?Sized,
 {
     /// Generates a boolean that represents the fact that `lhs` and `rhs` may be equal.
     fn eq(ps: &mut P, lhs: &Self, rhs: &Self) -> P::Bool;
@@ -395,7 +460,7 @@ where
 }
 
 /// Proof System
-pub trait ProofSystem: BooleanSystem + Default {
+pub trait ProofSystem: ConstraintSystem + Default {
     /// Proof Type
     type Proof;
 

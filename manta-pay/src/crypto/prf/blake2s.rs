@@ -98,15 +98,17 @@ impl PseudorandomFunctionFamily for Blake2s {
 /// Blake2s PRF Constraint System Implementations
 pub mod constraint {
     use super::*;
-    use crate::crypto::constraint::{ArkProofSystem as ProofSystem, ByteArrayVar};
+    use crate::crypto::constraint::{empty, full, ArkProofSystem as ProofSystem, ByteArrayVar};
     use ark_crypto_primitives::{
         prf::blake2s::constraints::Blake2sGadget as ArkBlake2sVar, PRFGadget,
     };
     use ark_ff::PrimeField;
-    use ark_r1cs_std::{eq::EqGadget, uint8::UInt8, ToBytesGadget};
+    use ark_r1cs_std::{alloc::AllocVar, eq::EqGadget, uint8::UInt8, ToBytesGadget};
+    use ark_relations::ns;
     use core::marker::PhantomData;
     use manta_crypto::constraint::{
-        Alloc, AllocEq, Allocation, Bool, Constant, PublicOrSecret, Secret, Var, Variable,
+        reflection::HasAllocation, types::Bool, Allocation, Constant, Equal, PublicOrSecret,
+        Secret, Variable,
     };
 
     /// Blake2s Pseudorandom Function Family Seed Variable
@@ -135,31 +137,22 @@ pub mod constraint {
     where
         F: PrimeField,
     {
-        type Mode = Secret;
         type Type = Blake2sSeed;
+
+        type Mode = Secret;
+
+        #[inline]
+        fn new(ps: &mut ProofSystem<F>, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
+            Self(allocation.map_allocate(ps, move |this| this.0))
+        }
     }
 
-    impl<F> Alloc<ProofSystem<F>> for Blake2sSeed
+    impl<F> HasAllocation<ProofSystem<F>> for Blake2sSeed
     where
         F: PrimeField,
     {
-        type Mode = Secret;
-
         type Variable = Blake2sSeedVar<F>;
-
-        #[inline]
-        fn variable<'t>(
-            ps: &mut ProofSystem<F>,
-            allocation: impl Into<Allocation<'t, Self, ProofSystem<F>>>,
-        ) -> Self::Variable
-        where
-            Self: 't,
-        {
-            match allocation.into().known() {
-                Some(this) => todo!(),
-                _ => todo!(),
-            }
-        }
+        type Mode = Secret;
     }
 
     /// Blake2s Pseudorandom Function Family Input Variable
@@ -199,31 +192,22 @@ pub mod constraint {
     where
         F: PrimeField,
     {
-        type Mode = Secret;
         type Type = Blake2sInput;
+
+        type Mode = Secret;
+
+        #[inline]
+        fn new(ps: &mut ProofSystem<F>, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
+            Self(allocation.map_allocate(ps, move |this| this.0))
+        }
     }
 
-    impl<F> Alloc<ProofSystem<F>> for Blake2sInput
+    impl<F> HasAllocation<ProofSystem<F>> for Blake2sInput
     where
         F: PrimeField,
     {
-        type Mode = Secret;
-
         type Variable = Blake2sInputVar<F>;
-
-        #[inline]
-        fn variable<'t>(
-            ps: &mut ProofSystem<F>,
-            allocation: impl Into<Allocation<'t, Self, ProofSystem<F>>>,
-        ) -> Self::Variable
-        where
-            Self: 't,
-        {
-            match allocation.into().known() {
-                Some(this) => todo!(),
-                _ => todo!(),
-            }
-        }
+        type Mode = Secret;
     }
 
     /// Blake2s Pseudorandom Function Family Output Variable Inner Type
@@ -255,55 +239,54 @@ pub mod constraint {
     where
         F: PrimeField,
     {
-        type Mode = PublicOrSecret;
         type Type = Blake2sOutput;
-    }
 
-    impl<F> Alloc<ProofSystem<F>> for Blake2sOutput
-    where
-        F: PrimeField,
-    {
         type Mode = PublicOrSecret;
-
-        type Variable = Blake2sOutputVar<F>;
 
         #[inline]
-        fn variable<'t>(
-            ps: &mut ProofSystem<F>,
-            allocation: impl Into<Allocation<'t, Self, ProofSystem<F>>>,
-        ) -> Self::Variable
-        where
-            Self: 't,
-        {
-            /* TODO:
-            Blake2sOutputVar(
-                match allocation.into() {
+        fn new(ps: &mut ProofSystem<F>, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
+            Self(
+                match allocation {
                     Allocation::Known(this, mode) => match mode {
-                        PublicOrSecret::Public => todo!(),
-                        PublicOrSecret::Secret => todo!(),
+                        PublicOrSecret::Public => Blake2sOutputVarInnerType::new_input(
+                            ns!(ps.cs, "blake2s output public input"),
+                            full(this.0),
+                        ),
+                        PublicOrSecret::Secret => Blake2sOutputVarInnerType::new_witness(
+                            ns!(ps.cs, "blake2s output secret witness"),
+                            full(this.0),
+                        ),
                     },
                     Allocation::Unknown(mode) => match mode {
-                        PublicOrSecret::Public => todo!(),
-                        PublicOrSecret::Secret => todo!(),
+                        PublicOrSecret::Public => Blake2sOutputVarInnerType::new_input(
+                            ns!(ps.cs, "blake2s output public input"),
+                            empty::<<ArkBlake2s as PRF>::Output>,
+                        ),
+                        PublicOrSecret::Secret => Blake2sOutputVarInnerType::new_witness(
+                            ns!(ps.cs, "blake2s output secret witness"),
+                            empty::<<ArkBlake2s as PRF>::Output>,
+                        ),
                     },
                 }
                 .expect("Variable allocation is not allowed to fail."),
             )
-            */
-            todo!()
         }
     }
 
-    impl<F> AllocEq<ProofSystem<F>> for Blake2sOutput
+    impl<F> HasAllocation<ProofSystem<F>> for Blake2sOutput
+    where
+        F: PrimeField,
+    {
+        type Variable = Blake2sOutputVar<F>;
+        type Mode = PublicOrSecret;
+    }
+
+    impl<F> Equal<ProofSystem<F>> for Blake2sOutputVar<F>
     where
         F: PrimeField,
     {
         #[inline]
-        fn eq(
-            ps: &mut ProofSystem<F>,
-            lhs: &Var<Self, ProofSystem<F>>,
-            rhs: &Var<Self, ProofSystem<F>>,
-        ) -> Bool<ProofSystem<F>> {
+        fn eq(ps: &mut ProofSystem<F>, lhs: &Self, rhs: &Self) -> Bool<ProofSystem<F>> {
             let _ = ps;
             lhs.0
                 .is_eq(&rhs.0)
@@ -322,26 +305,23 @@ pub mod constraint {
     where
         F: PrimeField,
     {
-        type Mode = Constant;
         type Type = Blake2s;
-    }
 
-    impl<F> Alloc<ProofSystem<F>> for Blake2s
-    where
-        F: PrimeField,
-    {
         type Mode = Constant;
-
-        type Variable = Blake2sVar<F>;
 
         #[inline]
-        fn variable<'t>(
-            ps: &mut ProofSystem<F>,
-            allocation: impl Into<Allocation<'t, Self, ProofSystem<F>>>,
-        ) -> Self::Variable {
+        fn new(ps: &mut ProofSystem<F>, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
             let _ = (ps, allocation);
             Default::default()
         }
+    }
+
+    impl<F> HasAllocation<ProofSystem<F>> for Blake2s
+    where
+        F: PrimeField,
+    {
+        type Variable = Blake2sVar<F>;
+        type Mode = Constant;
     }
 
     impl<F> PseudorandomFunctionFamily for Blake2sVar<F>

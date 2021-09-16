@@ -19,7 +19,7 @@
 use crate::{
     constraint::{
         reflection::{unknown, HasAllocation, HasVariable, Mode, Var},
-        Allocation, AllocationMode, AllocationSystem, BooleanSystem, Derived, Variable,
+        Allocation, AllocationMode, AllocationSystem, ConstraintSystem, Derived, Variable,
     },
     set::{ContainmentProof, Set, VerifiedSet},
 };
@@ -103,7 +103,7 @@ where
     #[inline]
     pub fn assert_validity<V>(&self, set: &V, item: &V::ItemVar, ps: &mut P)
     where
-        P: BooleanSystem,
+        P: ConstraintSystem,
         V: VerifiedSetVariable<P, Type = S>,
     {
         set.assert_valid_containment_proof(&self.public_input, &self.secret_witness, item, ps)
@@ -158,7 +158,7 @@ pub type SecretWitnessVar<V, P> = Var<SecretWitnessType<V, P>, P>;
 /// Verified Set Variable
 pub trait VerifiedSetVariable<P>: Variable<P>
 where
-    P: BooleanSystem
+    P: ConstraintSystem
         + HasVariable<PublicInputType<Self, P>>
         + HasVariable<SecretWitnessType<Self, P>>
         + ?Sized,
