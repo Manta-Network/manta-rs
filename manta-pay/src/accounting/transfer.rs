@@ -14,11 +14,25 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Accounting Implementations
+//! Transfer Implementations
 
-pub mod config;
-pub mod identity;
-pub mod keys;
-pub mod ledger;
-pub mod transfer;
-pub mod wallet;
+use crate::accounting::config::Configuration;
+use manta_accounting::transfer::canonical;
+
+/// Mint Transaction Type
+pub type Mint = canonical::Mint<Configuration>;
+
+/// Mint Transaction Post Type
+pub type MintPost = canonical::MintPost<Configuration>;
+
+/// Private Transfer Transaction Type
+pub type PrivateTransfer = canonical::PrivateTransfer<Configuration>;
+
+/// Private Transfer Transaction Post Type
+pub type PrivateTransferPost = canonical::PrivateTransferPost<Configuration>;
+
+/// Reclaim Transaction Type
+pub type Reclaim = canonical::Reclaim<Configuration>;
+
+/// Reclaim Transaction Post Type
+pub type ReclaimPost = canonical::ReclaimPost<Configuration>;

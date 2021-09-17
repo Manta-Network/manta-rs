@@ -76,7 +76,7 @@ impl AssetId {
 impl Distribution<AssetId> for Standard {
     #[inline]
     fn sample<R: RngCore + ?Sized>(&self, rng: &mut R) -> AssetId {
-        AssetId(rng.gen())
+        AssetId(self.sample(rng))
     }
 }
 
@@ -161,7 +161,7 @@ impl AssetBalance {
 impl Distribution<AssetBalance> for Standard {
     #[inline]
     fn sample<R: RngCore + ?Sized>(&self, rng: &mut R) -> AssetBalance {
-        AssetBalance(rng.gen())
+        AssetBalance(self.sample(rng))
     }
 }
 
@@ -333,7 +333,7 @@ impl From<Asset> for (AssetId, AssetBalance) {
 impl Distribution<Asset> for Standard {
     #[inline]
     fn sample<R: RngCore + ?Sized>(&self, rng: &mut R) -> Asset {
-        Asset::new(rng.gen(), rng.gen())
+        Asset::new(self.sample(rng), self.sample(rng))
     }
 }
 

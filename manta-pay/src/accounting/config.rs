@@ -22,6 +22,7 @@ use crate::{
         commitment::pedersen::{self, PedersenWindow},
         constraint::{proof_systems::Groth16, ArkConstraintSystem, AssetBalanceVar, AssetIdVar},
         ies::IES,
+        merkle_tree,
         prf::blake2s::{constraint::Blake2sVar, Blake2s},
         rand::ChaCha20RngBlake2sSeedable,
     },
@@ -72,9 +73,39 @@ pub type ConstraintSystem = ArkConstraintSystem<ConstraintField>;
 /// Proof System
 pub type ProofSystem = Groth16<Bls12_381>;
 
-/// Manta Pay Configuration
+/// Configuration Structure
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Configuration;
+
+impl merkle_tree::Configuration for Configuration {
+    type LeafHash = ark_crypto_primitives::crh::pedersen::CRH<
+        PedersenCommitmentProjectiveCurve,
+        PedersenCommitmentWindowParameters,
+    >;
+
+    type InnerHash = ark_crypto_primitives::crh::pedersen::CRH<
+        PedersenCommitmentProjectiveCurve,
+        PedersenCommitmentWindowParameters,
+    >;
+
+    const HEIGHT: u32 = 32;
+}
+
+impl merkle_tree::constraint::Configuration for Configuration {
+    type ConstraintField = ConstraintField;
+
+    type LeafHashVar = ark_crypto_primitives::crh::pedersen::constraints::CRHGadget<
+        PedersenCommitmentProjectiveCurve,
+        PedersenCommitmentProjectiveCurveVar,
+        PedersenCommitmentWindowParameters,
+    >;
+
+    type InnerHashVar = ark_crypto_primitives::crh::pedersen::constraints::CRHGadget<
+        PedersenCommitmentProjectiveCurve,
+        PedersenCommitmentProjectiveCurveVar,
+        PedersenCommitmentWindowParameters,
+    >;
+}
 
 impl IdentityConfiguration for Configuration {
     type SecretKey = <Blake2s as PseudorandomFunctionFamily>::Seed;

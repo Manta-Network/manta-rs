@@ -20,6 +20,7 @@
 // FIXME: Should the identity types have methods that expose their members? Or should it be
 //        completely opaque, and let the internal APIs handle all the logic?
 // TODO:  Since `IdentityConfiguration::SecretKey: Clone`, should `Identity: Clone`?
+// TODO:  Separate "constraint" types into another module just like `manta_crypto::set`.
 
 use crate::{
     asset::{Asset, AssetBalance, AssetId, AssetVar},
@@ -43,7 +44,7 @@ use manta_crypto::{
 };
 use rand::{
     distributions::{Distribution, Standard},
-    CryptoRng, Rng, RngCore, SeedableRng,
+    CryptoRng, RngCore, SeedableRng,
 };
 
 pub(crate) mod prelude {
@@ -348,7 +349,7 @@ where
 {
     #[inline]
     fn sample<R: RngCore + ?Sized>(&self, rng: &mut R) -> AssetParameters<C> {
-        AssetParameters::new(rng.gen(), rng.gen(), rng.gen())
+        AssetParameters::new(self.sample(rng), self.sample(rng), self.sample(rng))
     }
 }
 
@@ -479,7 +480,7 @@ where
         Standard: Distribution<AssetParameters<C>>,
     {
         let mut rng = C::Rng::from_seed(self.secret_key.clone());
-        let parameters = rng.gen();
+        let parameters = Standard.sample(&mut rng);
         (rng, parameters)
     }
 
@@ -755,7 +756,7 @@ where
 {
     #[inline]
     fn sample<R: RngCore + ?Sized>(&self, rng: &mut R) -> Identity<C> {
-        Identity::new(rng.gen())
+        Identity::new(self.sample(rng))
     }
 }
 

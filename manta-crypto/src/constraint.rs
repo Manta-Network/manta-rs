@@ -22,8 +22,6 @@
 // FIXME: Leverage the type system to constrain allocation to only unknown modes for verifier
 //        generation and only known modes for proof generation, instead of relying on the `setup_*`
 //        methods to "do the right thing".
-// FIXME: Post a fix to arkworks so that we can put `?Sized` on our random number generator
-//        paramters as conventionally used by `rand`.
 
 use core::{
     convert::{Infallible, TryFrom},
@@ -498,7 +496,7 @@ pub trait ProofSystem {
         rng: &mut R,
     ) -> Result<(Self::ProvingContext, Self::VerifyingContext), Self::Error>
     where
-        R: CryptoRng + RngCore;
+        R: CryptoRng + RngCore + ?Sized;
 
     /// Returns a proof that the constraint system `self` is consistent.
     fn generate_proof<R>(
@@ -507,7 +505,7 @@ pub trait ProofSystem {
         rng: &mut R,
     ) -> Result<Self::Proof, Self::Error>
     where
-        R: CryptoRng + RngCore;
+        R: CryptoRng + RngCore + ?Sized;
 
     /// Verifies that a proof generated from this proof system is valid.
     fn verify_proof(

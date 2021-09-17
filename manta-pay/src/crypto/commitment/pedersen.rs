@@ -22,7 +22,11 @@ use ark_crypto_primitives::commitment::{
 };
 use ark_ff::bytes::ToBytes;
 use manta_crypto::commitment::CommitmentScheme;
-use manta_util::{Concat, ConcatAccumulator};
+use manta_util::{rand::SizedRng, Concat, ConcatAccumulator};
+use rand::{
+    distributions::{Distribution, Standard},
+    RngCore,
+};
 
 /// Pedersen Window Parameters Trait
 // TODO: Remove this comment once `arkworks` writes their own.
@@ -130,6 +134,20 @@ where
         PedersenCommitmentOutput(
             ArkPedersenCommitment::<_, W>::commit(&self.0, &input, &randomness.0)
                 .expect("Failure outcomes are not accepted."),
+        )
+    }
+}
+
+impl<W, C> Distribution<PedersenCommitment<W, C>> for Standard
+where
+    W: PedersenWindow,
+    C: ProjectiveCurve,
+{
+    #[inline]
+    fn sample<R: RngCore + ?Sized>(&self, rng: &mut R) -> PedersenCommitment<W, C> {
+        PedersenCommitment(
+            ArkPedersenCommitment::<_, W>::setup(&mut SizedRng(rng))
+                .expect("Sampling is not allowed to fail."),
         )
     }
 }
@@ -297,6 +315,19 @@ pub mod constraint {
         }
     }
 
+    impl<W, C, GG> Distribution<PedersenCommitmentWrapper<W, C, GG>> for Standard
+    where
+        W: PedersenWindow,
+        C: ProjectiveCurve,
+        GG: CurveVar<C, ConstraintField<C>>,
+        for<'g> &'g GG: GroupOpsBounds<'g, C, GG>,
+    {
+        #[inline]
+        fn sample<R: RngCore + ?Sized>(&self, rng: &mut R) -> PedersenCommitmentWrapper<W, C, GG> {
+            PedersenCommitmentWrapper(self.sample(rng), PhantomData)
+        }
+    }
+
     /// Pedersen Commitment Randomness Variable
     #[derive(derivative::Derivative)]
     #[derivative(Clone(bound = ""))]
@@ -322,6 +353,8 @@ pub mod constraint {
             cs: &mut ConstraintSystem<C>,
             allocation: Allocation<Self::Type, Self::Mode>,
         ) -> Self {
+            // SAFETY: We can use `empty` here because `RandomnessVar` has an internal default and
+            //         so its allocation never fails.
             Self(
                 match allocation.known() {
                     Some((this, _)) => RandomnessVar::new_witness(

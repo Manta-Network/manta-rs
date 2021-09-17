@@ -251,6 +251,8 @@ pub mod constraint {
             cs: &mut ConstraintSystem<F>,
             allocation: Allocation<Self::Type, Self::Mode>,
         ) -> Self {
+            // SAFETY: We can use `empty` here because `Blake2sOutputVarInnerType` has an internal
+            //         default and so its allocation never fails.
             Self(
                 match allocation {
                     Allocation::Known(this, mode) => match mode {

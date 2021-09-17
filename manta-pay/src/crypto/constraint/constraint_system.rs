@@ -34,9 +34,16 @@ use manta_util::{Concat, ConcatAccumulator};
 /// Synthesis Result
 pub type SynthesisResult<T = ()> = Result<T, ark_r1cs::SynthesisError>;
 
-/// Returns an empty variable assignment.
+/// Returns an empty variable assignment for setup mode.
+///
+/// # Warning
+///
+/// This does not work for all variable assignments! For some assignemnts, the variable inherits
+/// some structure from its input even though the input itself will not form part of the proving
+/// key and verifying key that we produce after compiling the constraint system. For those cases,
+/// some mocking is required.
 #[inline]
-pub const fn empty<T>() -> SynthesisResult<T> {
+pub fn empty<T>() -> SynthesisResult<T> {
     Err(ark_r1cs::SynthesisError::AssignmentMissing)
 }
 

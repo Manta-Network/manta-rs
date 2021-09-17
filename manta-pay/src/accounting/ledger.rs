@@ -19,10 +19,7 @@
 // FIXME: How should we handle serdes?
 
 use crate::{
-    accounting::config::{
-        Configuration, ConstraintSystem, PedersenCommitmentProjectiveCurve,
-        PedersenCommitmentProjectiveCurveVar, PedersenCommitmentWindowParameters, ProofSystem,
-    },
+    accounting::config::{Configuration, ConstraintSystem, ProofSystem},
     crypto::{
         ies::EncryptedAsset,
         merkle_tree::{self, MerkleTree},
@@ -52,46 +49,22 @@ type Utxo = identity::Utxo<Configuration>;
 type UtxoVar = identity::UtxoVar<Configuration>;
 
 /// UTXO Shard Root
-type Root = merkle_tree::RootWrapper<
-    PedersenCommitmentWindowParameters,
-    PedersenCommitmentProjectiveCurve,
-    PedersenCommitmentProjectiveCurveVar,
->;
+type Root = merkle_tree::Root<Configuration>;
 
 /// UTXO Shard Root Variable
-type RootVar = merkle_tree::RootVar<
-    PedersenCommitmentWindowParameters,
-    PedersenCommitmentProjectiveCurve,
-    PedersenCommitmentProjectiveCurveVar,
->;
+type RootVar = merkle_tree::constraint::RootVar<Configuration>;
 
 /// UTXO Set Parameters
-type Parameters = merkle_tree::ParametersWrapper<
-    PedersenCommitmentWindowParameters,
-    PedersenCommitmentProjectiveCurve,
-    PedersenCommitmentProjectiveCurveVar,
->;
+type Parameters = merkle_tree::Parameters<Configuration>;
 
 /// UTXO Set Parameters Variable
-type ParametersVar = merkle_tree::ParametersVar<
-    PedersenCommitmentWindowParameters,
-    PedersenCommitmentProjectiveCurve,
-    PedersenCommitmentProjectiveCurveVar,
->;
+type ParametersVar = merkle_tree::constraint::ParametersVar<Configuration>;
 
 /// UTXO Set Path
-type Path = merkle_tree::PathWrapper<
-    PedersenCommitmentWindowParameters,
-    PedersenCommitmentProjectiveCurve,
-    PedersenCommitmentProjectiveCurveVar,
->;
+type Path = merkle_tree::Path<Configuration>;
 
 /// UTXO Set Path Variable
-type PathVar = merkle_tree::PathVar<
-    PedersenCommitmentWindowParameters,
-    PedersenCommitmentProjectiveCurve,
-    PedersenCommitmentProjectiveCurveVar,
->;
+type PathVar = merkle_tree::constraint::PathVar<Configuration>;
 
 /// UTXO Shard
 #[derive(Clone, Debug, Default, Eq, Hash, PartialEq)]
@@ -164,13 +137,12 @@ impl Set for UtxoSet {
 
     #[inline]
     fn try_insert(&mut self, item: Self::Item) -> Result<(), Self::Item> {
-        // FIXME: This will panic because `shard.utxos.len()` is not always a power of two.
         let shard = &mut self.shards[Self::shard_index(&item)];
         if shard.utxos.contains(&item) {
             return Err(item);
         }
         shard.utxos.push(item);
-        match MerkleTree::build_root_wrapped(&self.parameters, &shard.utxos) {
+        match MerkleTree::new_root(&self.parameters, &shard.utxos) {
             Some(root) => {
                 shard.root = root;
                 Ok(())
@@ -185,7 +157,6 @@ impl VerifiedSet for UtxoSet {
 
     type Secret = Path;
 
-    // TODO: Give a more informative error.
     type ContainmentError = ();
 
     #[inline]
@@ -208,12 +179,12 @@ impl VerifiedSet for UtxoSet {
         &self,
         item: &Self::Item,
     ) -> Result<ContainmentProof<Self>, Self::ContainmentError> {
-        // FIXME: This will panic because `utxos.len()` is not always a power of two.
+        // TODO: Return a more informative error.
         let utxos = &self.shards[Self::shard_index(item)].utxos;
         match utxos.iter().position(move |u| u == item) {
-            Some(index) => MerkleTree::from_wrapped(&self.parameters, utxos)
+            Some(index) => MerkleTree::new(&self.parameters, utxos)
                 .ok_or(())?
-                .get_wrapped_containment_proof(index)
+                .get_containment_proof(index)
                 .ok_or(()),
             _ => Err(()),
         }

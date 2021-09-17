@@ -25,8 +25,16 @@ is-it-maintained-open-issues = { repository = "Manta-Network/manta-rs" }
 maintenance = { status = "actively-developed" }
 
 [features]
+# Constraint System Gadgets
+constraints = []
+
+# Cocoon Filesystem Adapters
 cocoon-adapters = ["cocoon/std", "zeroize"]
+
+# Standard Library
 std = ["cocoon-adapters"]
+
+# Testing Framework
 test = []
 
 [dependencies]

@@ -39,7 +39,7 @@ use manta_crypto::{
 use manta_util::{array_map, mixed_chain, Either};
 use rand::{
     distributions::{Distribution, Standard},
-    CryptoRng, Rng, RngCore,
+    CryptoRng, RngCore,
 };
 
 /// Returns `true` if the transfer with this shape would have no public side.
@@ -133,7 +133,7 @@ impl<const SOURCES: usize, const SINKS: usize> Distribution<PublicTransfer<SOURC
     #[inline]
     fn sample<R: RngCore + ?Sized>(&self, rng: &mut R) -> PublicTransfer<SOURCES, SINKS> {
         PublicTransfer::new(
-            rng.gen(),
+            self.sample(rng),
             sample_asset_balances(rng),
             sample_asset_balances(rng),
         )
@@ -324,7 +324,7 @@ where
         rng: &mut R,
     ) -> Result<SecretTransferPost<T, SENDERS, RECEIVERS>, ProofSystemError<T>>
     where
-        R: CryptoRng + RngCore,
+        R: CryptoRng + RngCore + ?Sized,
     {
         match Transfer::from(self)
             .into_post(commitment_scheme, utxo_set, context, rng)?
@@ -629,15 +629,21 @@ where
     }
 
     /// Generates a verifier for this transfer shape.
+    ///
+    /// Returns `None` if proof generation does not apply for this kind of transfer.
+    #[allow(clippy::type_complexity)] // FIXME: We will have to refactor this at some point.
     #[inline]
     pub fn generate_context<R>(
         commitment_scheme: &T::CommitmentScheme,
         utxo_set: &T::UtxoSet,
         rng: &mut R,
-    ) -> Result<(ProvingContext<T>, VerifyingContext<T>), ProofSystemError<T>>
+    ) -> Option<Result<(ProvingContext<T>, VerifyingContext<T>), ProofSystemError<T>>>
     where
-        R: CryptoRng + RngCore,
+        R: CryptoRng + RngCore + ?Sized,
     {
+        if SENDERS == 0 {
+            return None;
+        }
         let mut cs = T::ProofSystem::for_unknown();
         let (base_asset_id, participants, commitment_scheme, utxo_set) =
             Self::unknown_variables(commitment_scheme, utxo_set, &mut cs);
@@ -648,10 +654,12 @@ where
             utxo_set,
             &mut cs,
         );
-        T::ProofSystem::generate_context(cs, rng)
+        Some(T::ProofSystem::generate_context(cs, rng))
     }
 
     /// Generates a validity proof for this transfer.
+    ///
+    /// Returns `None` if proof generation does not apply for this kind of transfer.
     #[inline]
     pub fn generate_proof<R>(
         &self,
@@ -659,10 +667,13 @@ where
         utxo_set: &T::UtxoSet,
         context: &ProvingContext<T>,
         rng: &mut R,
-    ) -> Result<Proof<T>, ProofSystemError<T>>
+    ) -> Option<Result<Proof<T>, ProofSystemError<T>>>
     where
-        R: CryptoRng + RngCore,
+        R: CryptoRng + RngCore + ?Sized,
     {
+        if SENDERS == 0 {
+            return None;
+        }
         let mut cs = T::ProofSystem::for_known();
         let (base_asset_id, participants, commitment_scheme, utxo_set) =
             self.known_variables(commitment_scheme, utxo_set, &mut cs);
@@ -673,7 +684,7 @@ where
             utxo_set,
             &mut cs,
         );
-        T::ProofSystem::generate_proof(cs, context, rng)
+        Some(T::ProofSystem::generate_proof(cs, context, rng))
     }
 
     /// Converts `self` into its ledger post.
@@ -686,13 +697,12 @@ where
         rng: &mut R,
     ) -> Result<TransferPost<T, SOURCES, SENDERS, RECEIVERS, SINKS>, ProofSystemError<T>>
     where
-        R: CryptoRng + RngCore,
+        R: CryptoRng + RngCore + ?Sized,
     {
         Ok(TransferPost {
-            validity_proof: if SENDERS == 0 {
-                None
-            } else {
-                Some(self.generate_proof(commitment_scheme, utxo_set, context, rng)?)
+            validity_proof: match self.generate_proof(commitment_scheme, utxo_set, context, rng) {
+                Some(result) => Some(result?),
+                _ => None,
             },
             sender_posts: array_map(self.secret.senders, Sender::into_post),
             receiver_posts: array_map(self.secret.receivers, Receiver::into_post),

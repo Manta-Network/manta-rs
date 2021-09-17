@@ -16,6 +16,8 @@
 
 //! Arkworks Groth16 Implementation
 
+// FIXME: Move these tests elsewhere since they are rather general.
+
 use crate::crypto::constraint::{constraint_system::SynthesisResult, ArkConstraintSystem};
 use alloc::vec::Vec;
 use ark_crypto_primitives::SNARK;
@@ -25,6 +27,7 @@ use ark_groth16::{Groth16 as ArkGroth16, PreparedVerifyingKey, Proof, ProvingKey
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
 use core::marker::PhantomData;
 use manta_crypto::constraint::ProofSystem;
+use manta_util::rand::SizedRng;
 use rand::{CryptoRng, RngCore};
 
 /// Arkworks Groth 16 Proof System
@@ -66,10 +69,12 @@ where
         rng: &mut R,
     ) -> Result<(Self::ProvingContext, Self::VerifyingContext), Self::Error>
     where
-        R: CryptoRng + RngCore,
+        R: CryptoRng + RngCore + ?Sized,
     {
-        let (proving_key, verifying_key) =
-            ArkGroth16::circuit_specific_setup(ConstraintSynthesizerWrapper(cs), rng)?;
+        let (proving_key, verifying_key) = ArkGroth16::circuit_specific_setup(
+            ConstraintSynthesizerWrapper(cs),
+            &mut SizedRng(rng),
+        )?;
         Ok((proving_key, ArkGroth16::process_vk(&verifying_key)?))
     }
 
@@ -80,7 +85,7 @@ where
         rng: &mut R,
     ) -> Result<Self::Proof, Self::Error>
     where
-        R: CryptoRng + RngCore,
+        R: CryptoRng + RngCore + ?Sized,
     {
         let input = cs
             .cs
@@ -88,7 +93,11 @@ where
             .ok_or(SynthesisError::MissingCS)?
             .instance_assignment
             .clone();
-        let proof = ArkGroth16::prove(context, ConstraintSynthesizerWrapper(cs), rng)?;
+        let proof = ArkGroth16::prove(
+            context,
+            ConstraintSynthesizerWrapper(cs),
+            &mut SizedRng(rng),
+        )?;
         Ok((input, proof))
     }
 
@@ -127,11 +136,40 @@ where
 
 #[cfg(test)]
 mod test {
-    use super::*;
+    use crate::accounting::{
+        ledger::UtxoSet,
+        transfer::{Mint, PrivateTransfer, Reclaim},
+    };
+    use rand::{thread_rng, Rng};
 
-    /// Tests the generation of proving/verifying contexts.
+    /// Tests the generation of proving/verifying keys for [`PrivateTransfer`].
     #[test]
-    fn generate_context() {}
+    fn generate_private_transfer_keys() {
+        let mut rng = thread_rng();
+        PrivateTransfer::generate_context(&rng.gen(), &UtxoSet::new(rng.gen()), &mut rng)
+            .unwrap()
+            .unwrap();
+    }
+
+    /// Tests the generation of proving/verifying keys for [`Reclaim`].
+    #[test]
+    fn generate_reclaim_keys() {
+        let mut rng = thread_rng();
+        Reclaim::generate_context(&rng.gen(), &UtxoSet::new(rng.gen()), &mut rng)
+            .unwrap()
+            .unwrap();
+    }
+
+    /// Tries to generate proving/verifying keys for [`Mint`] but this does not work because
+    /// [`Mint`] does not require a proof.
+    #[test]
+    #[should_panic]
+    fn generate_mint_keys_is_impossible() {
+        let mut rng = thread_rng();
+        Mint::generate_context(&rng.gen(), &UtxoSet::new(rng.gen()), &mut rng)
+            .unwrap()
+            .unwrap();
+    }
 
     /// Tests the generation of proofs.
     #[test]
