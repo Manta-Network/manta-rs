@@ -172,13 +172,12 @@ impl IntegratedEncryptionScheme for IES {
 mod test {
     use super::*;
     use manta_crypto::ies::test as ies_test;
+    use rand::{thread_rng, Rng};
 
     /// Tests encryption/decryption of a random asset.
     #[test]
     fn encryption_decryption() {
-        use rand::{thread_rng, Rng, SeedableRng};
-        use rand_chacha::ChaCha20Rng;
-        let mut rng = ChaCha20Rng::from_rng(&mut thread_rng()).expect("failed to seed ChaCha20Rng");
-        ies_test::encryption_decryption::<IES, _>(rng.gen(), &mut rng);
+        let mut rng = thread_rng();
+        ies_test::assert_decryption_of_encryption::<IES, _>(&rng.gen(), &mut rng);
     }
 }

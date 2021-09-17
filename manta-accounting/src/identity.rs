@@ -49,8 +49,8 @@ use rand::{
 pub(crate) mod prelude {
     #[doc(inline)]
     pub use super::{
-        Identity, IdentityConfiguration, Receiver, Sender, SenderError, ShieldedIdentity, Spend,
-        SpendError, Utxo, VoidNumber,
+        Identity, IdentityConfiguration, IdentityConstraintSystemConfiguration, Receiver, Sender,
+        SenderError, ShieldedIdentity, Spend, SpendError, Utxo, VoidNumber,
     };
 }
 

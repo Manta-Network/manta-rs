@@ -22,6 +22,8 @@
 // FIXME: Leverage the type system to constrain allocation to only unknown modes for verifier
 //        generation and only known modes for proof generation, instead of relying on the `setup_*`
 //        methods to "do the right thing".
+// FIXME: Post a fix to arkworks so that we can put `?Sized` on our random number generator
+//        paramters as conventionally used by `rand`.
 
 use core::{
     convert::{Infallible, TryFrom},
@@ -476,6 +478,11 @@ pub trait ProofSystem {
     /// Proof Type
     type Proof;
 
+    /// Verification Type
+    ///
+    /// Usually this is just `bool`.
+    type Verification;
+
     /// Error Type
     type Error;
 
@@ -491,7 +498,7 @@ pub trait ProofSystem {
         rng: &mut R,
     ) -> Result<(Self::ProvingContext, Self::VerifyingContext), Self::Error>
     where
-        R: CryptoRng + RngCore + ?Sized;
+        R: CryptoRng + RngCore;
 
     /// Returns a proof that the constraint system `self` is consistent.
     fn generate_proof<R>(
@@ -500,13 +507,13 @@ pub trait ProofSystem {
         rng: &mut R,
     ) -> Result<Self::Proof, Self::Error>
     where
-        R: CryptoRng + RngCore + ?Sized;
+        R: CryptoRng + RngCore;
 
     /// Verifies that a proof generated from this proof system is valid.
     fn verify_proof(
         context: &Self::VerifyingContext,
         proof: &Self::Proof,
-    ) -> Result<bool, Self::Error>;
+    ) -> Result<Self::Verification, Self::Error>;
 }
 
 /// Derived Allocation Mode
@@ -900,4 +907,30 @@ pub mod types {
 
     /// Pointer-Sized Unsigned Integer Variable Type
     pub type Usize<C> = Var<usize, C>;
+}
+
+/// Testing Framework
+#[cfg(feature = "test")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
+pub mod test {
+    use super::*;
+
+    /// Builds a proof from `cs` and the `proving_context` and then tries to verify it with
+    /// the `verifying_context`.
+    #[inline]
+    pub fn verify_constructed_proof<P, R>(
+        proving_context: &P::ProvingContext,
+        verifying_context: &P::VerifyingContext,
+        cs: P::ConstraintSystem,
+        rng: &mut R,
+    ) -> Result<P::Verification, P::Error>
+    where
+        P: ProofSystem,
+        R: CryptoRng + RngCore,
+    {
+        P::verify_proof(
+            verifying_context,
+            &P::generate_proof(cs, proving_context, rng)?,
+        )
+    }
 }

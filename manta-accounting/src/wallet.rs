@@ -23,6 +23,7 @@
 
 use crate::{
     asset::{Asset, AssetBalance, AssetId},
+    fs::{Load, Save},
     identity::{
         AssetParameters, Identity, IdentityConfiguration, OpenSpend, Receiver, ShieldedIdentity,
         Spend,
@@ -400,6 +401,46 @@ where
         */
         let _ = external_receiver.into_receiver(commitment_scheme, asset, rng);
         todo!()
+    }
+}
+
+impl<D, M> Load for Wallet<D, M>
+where
+    D: DerivedSecretKeyGenerator + Load,
+    M: AssetMap + Default,
+{
+    type Path = D::Path;
+
+    type LoadingKey = D::LoadingKey;
+
+    type Error = <D as Load>::Error;
+
+    #[inline]
+    fn load<P>(path: P, loading_key: &Self::LoadingKey) -> Result<Self, Self::Error>
+    where
+        P: AsRef<Self::Path>,
+    {
+        Ok(Self::new(D::load(path, loading_key)?, Default::default()))
+    }
+}
+
+impl<D, M> Save for Wallet<D, M>
+where
+    D: DerivedSecretKeyGenerator + Save,
+    M: AssetMap + Default,
+{
+    type Path = D::Path;
+
+    type SavingKey = D::SavingKey;
+
+    type Error = <D as Save>::Error;
+
+    #[inline]
+    fn save<P>(self, path: P, saving_key: &Self::SavingKey) -> Result<(), Self::Error>
+    where
+        P: AsRef<Self::Path>,
+    {
+        self.secret_key_source.save(path, saving_key)
     }
 }
 

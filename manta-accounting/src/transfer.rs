@@ -324,7 +324,7 @@ where
         rng: &mut R,
     ) -> Result<SecretTransferPost<T, SENDERS, RECEIVERS>, ProofSystemError<T>>
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: CryptoRng + RngCore,
     {
         match Transfer::from(self)
             .into_post(commitment_scheme, utxo_set, context, rng)?
@@ -636,7 +636,7 @@ where
         rng: &mut R,
     ) -> Result<(ProvingContext<T>, VerifyingContext<T>), ProofSystemError<T>>
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: CryptoRng + RngCore,
     {
         let mut cs = T::ProofSystem::for_unknown();
         let (base_asset_id, participants, commitment_scheme, utxo_set) =
@@ -661,7 +661,7 @@ where
         rng: &mut R,
     ) -> Result<Proof<T>, ProofSystemError<T>>
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: CryptoRng + RngCore,
     {
         let mut cs = T::ProofSystem::for_known();
         let (base_asset_id, participants, commitment_scheme, utxo_set) =
@@ -686,7 +686,7 @@ where
         rng: &mut R,
     ) -> Result<TransferPost<T, SOURCES, SENDERS, RECEIVERS, SINKS>, ProofSystemError<T>>
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: CryptoRng + RngCore,
     {
         Ok(TransferPost {
             validity_proof: if SENDERS == 0 {

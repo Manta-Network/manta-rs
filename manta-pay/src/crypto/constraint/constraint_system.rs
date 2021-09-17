@@ -32,17 +32,17 @@ use manta_crypto::constraint::{
 use manta_util::{Concat, ConcatAccumulator};
 
 /// Synthesis Result
-type SynthesisResult<T> = Result<T, ark_r1cs::SynthesisError>;
+pub type SynthesisResult<T = ()> = Result<T, ark_r1cs::SynthesisError>;
 
 /// Returns an empty variable assignment.
 #[inline]
-pub(crate) const fn empty<T>() -> SynthesisResult<T> {
+pub const fn empty<T>() -> SynthesisResult<T> {
     Err(ark_r1cs::SynthesisError::AssignmentMissing)
 }
 
 /// Returns a filled variable assignment.
 #[inline]
-pub(crate) fn full<T>(t: T) -> impl FnOnce() -> SynthesisResult<T> {
+pub fn full<T>(t: T) -> impl FnOnce() -> SynthesisResult<T> {
     move || Ok(t)
 }
 
@@ -99,6 +99,26 @@ where
     pub(crate) cs: ark_r1cs::ConstraintSystemRef<F>,
 }
 
+impl<F> ArkConstraintSystem<F>
+where
+    F: Field,
+{
+    /// Constructs a new constraint system which is ready for unknown variables.
+    #[inline]
+    pub fn for_unknown() -> Self {
+        let cs = ark_r1cs::ConstraintSystem::new_ref();
+        cs.set_mode(ark_r1cs::SynthesisMode::Setup);
+        Self { cs }
+    }
+
+    /// Constructs a new constraint system which is ready for known variables.
+    #[inline]
+    pub fn for_known() -> Self {
+        let cs = ark_r1cs::ConstraintSystem::new_ref();
+        Self { cs }
+    }
+}
+
 impl<F> ConstraintSystem for ArkConstraintSystem<F>
 where
     F: Field,
@@ -112,46 +132,6 @@ where
             .expect("This should never fail.")
     }
 }
-
-/* TODO:
-impl<F> ProofSystem for Groth16ProofSystem<F>
-where
-    F: Field,
-{
-    type Verifier = Groth16Verifier;
-
-    type Proof = (Vec<F>, ());
-
-    type Error = ();
-
-    #[inline]
-    fn setup_to_verify() -> Self {
-        todo!()
-    }
-
-    #[inline]
-    fn setup_to_prove() -> Self {
-        todo!()
-    }
-
-    #[inline]
-    fn into_verifier(self) -> Result<Self::Verifier, Self::Error> {
-        todo!()
-    }
-
-    #[inline]
-    fn into_proof(self) -> Result<Self::Proof, Self::Error> {
-        let input = self.cs.borrow().ok_or(())?.instance_assignment;
-        use rand::SeedableRng;
-        let mut rng = rand_chacha::ChaCha20Rng::from_seed([0; 32]);
-        let _ = ark_groth16::create_random_proof(|| {}, (), &mut rng);
-        todo!()
-    }
-}
-
-/// Arkworks Groth 16 Proof System
-pub struct Groth16ProofSystem;
-*/
 
 impl<F> Variable<ArkConstraintSystem<F>> for Boolean<F>
 where

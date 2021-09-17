@@ -16,7 +16,7 @@
 
 //! Accounting Primitives
 
-#![no_std]
+#![cfg_attr(not(any(feature = "std", test)), no_std)]
 #![cfg_attr(doc_cfg, feature(doc_cfg))]
 #![forbid(rustdoc::broken_intra_doc_links)]
 #![forbid(missing_docs)]
@@ -24,9 +24,13 @@
 extern crate alloc;
 extern crate derive_more;
 
+#[cfg(feature = "cocoon")]
+extern crate cocoon as cocoon_crate;
+
 mod asset;
 mod ledger;
 
+pub mod fs;
 pub mod identity;
 pub mod keys;
 pub mod transfer;

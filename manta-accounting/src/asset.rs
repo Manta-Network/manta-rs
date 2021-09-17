@@ -488,3 +488,33 @@ impl<const N: usize> TryFrom<[Asset; N]> for AssetCollection<N> {
         }
     }
 }
+
+/// Testing Suite
+#[cfg(test)]
+mod test {
+    use super::*;
+    use rand::{thread_rng, Rng};
+
+    /// Tests asset conversion into and from bytes.
+    #[test]
+    fn asset_into_and_from_bytes() {
+        let mut rng = thread_rng();
+        let asset = rng.gen::<Asset>();
+        assert_eq!(asset, Asset::from_bytes(asset.into_bytes()));
+        let mut asset_bytes = [0; Asset::SIZE];
+        rng.fill_bytes(&mut asset_bytes);
+        assert_eq!(asset_bytes, Asset::from_bytes(asset_bytes).into_bytes());
+    }
+
+    /// Tests asset arithmetic.
+    #[test]
+    fn asset_arithmetic() {
+        let mut rng = thread_rng();
+        let mut asset = Asset::new(rng.gen(), AssetBalance(0));
+        let value = rng.gen::<AssetBalance>();
+        let _ = asset + value;
+        asset += value;
+        let _ = asset - value;
+        asset -= value;
+    }
+}

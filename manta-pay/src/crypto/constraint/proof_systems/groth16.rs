@@ -16,14 +16,13 @@
 
 //! Arkworks Groth16 Implementation
 
-use crate::crypto::constraint::ArkConstraintSystem;
+use crate::crypto::constraint::{constraint_system::SynthesisResult, ArkConstraintSystem};
 use alloc::vec::Vec;
+use ark_crypto_primitives::SNARK;
 use ark_ec::PairingEngine;
-use ark_groth16::{
-    create_random_proof, generate_random_parameters, verify_proof, PreparedVerifyingKey, Proof,
-    ProvingKey,
-};
-use ark_relations::r1cs::SynthesisError;
+use ark_ff::Field;
+use ark_groth16::{Groth16 as ArkGroth16, PreparedVerifyingKey, Proof, ProvingKey};
+use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
 use core::marker::PhantomData;
 use manta_crypto::constraint::ProofSystem;
 use rand::{CryptoRng, RngCore};
@@ -47,16 +46,18 @@ where
 
     type Proof = (Vec<E::Fr>, Proof<E>);
 
+    type Verification = bool;
+
     type Error = SynthesisError;
 
     #[inline]
     fn for_unknown() -> Self::ConstraintSystem {
-        todo!()
+        Self::ConstraintSystem::for_unknown()
     }
 
     #[inline]
     fn for_known() -> Self::ConstraintSystem {
-        todo!()
+        Self::ConstraintSystem::for_known()
     }
 
     #[inline]
@@ -65,12 +66,11 @@ where
         rng: &mut R,
     ) -> Result<(Self::ProvingContext, Self::VerifyingContext), Self::Error>
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: CryptoRng + RngCore,
     {
-        /* TODO:
-        let _ = generate_random_parameters(|| {}, rng)?;
-        */
-        todo!()
+        let (proving_key, verifying_key) =
+            ArkGroth16::circuit_specific_setup(ConstraintSynthesizerWrapper(cs), rng)?;
+        Ok((proving_key, ArkGroth16::process_vk(&verifying_key)?))
     }
 
     #[inline]
@@ -80,20 +80,64 @@ where
         rng: &mut R,
     ) -> Result<Self::Proof, Self::Error>
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: CryptoRng + RngCore,
     {
-        /* TODO:
-        let input = self.cs.borrow().ok_or(())?.instance_assignment;
-        let _ = create_random_proof(|| {}, context, &mut rng)?;
-        */
-        todo!()
+        let input = cs
+            .cs
+            .borrow()
+            .ok_or(SynthesisError::MissingCS)?
+            .instance_assignment
+            .clone();
+        let proof = ArkGroth16::prove(context, ConstraintSynthesizerWrapper(cs), rng)?;
+        Ok((input, proof))
     }
 
     #[inline]
     fn verify_proof(
         context: &Self::VerifyingContext,
         proof: &Self::Proof,
-    ) -> Result<bool, Self::Error> {
-        verify_proof(context, &proof.1, &proof.0)
+    ) -> Result<Self::Verification, Self::Error> {
+        ArkGroth16::verify_with_processed_vk(context, &proof.0, &proof.1)
     }
+}
+
+/// Constraint Synthesizer Wrapper
+struct ConstraintSynthesizerWrapper<F>(ArkConstraintSystem<F>)
+where
+    F: Field;
+
+impl<F> ConstraintSynthesizer<F> for ConstraintSynthesizerWrapper<F>
+where
+    F: Field,
+{
+    #[inline]
+    fn generate_constraints(self, cs: ConstraintSystemRef<F>) -> SynthesisResult {
+        let precomputed_cs = self
+            .0
+            .cs
+            .into_inner()
+            .expect("We own this constraint system so we can consume it.");
+        let mut target_cs = cs
+            .borrow_mut()
+            .expect("This is given to us to mutate so it can't be borrowed by anyone else.");
+        *target_cs = precomputed_cs;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    /// Tests the generation of proving/verifying contexts.
+    #[test]
+    fn generate_context() {}
+
+    /// Tests the generation of proofs.
+    #[test]
+    fn generate_proof() {}
+
+    /// Tests the verification of proofs.
+    #[test]
+    fn verify_proof() {}
 }

@@ -16,6 +16,7 @@
 
 //! Commitment Schemes
 
+use core::{fmt::Debug, hash::Hash};
 use manta_util::{Concat, ConcatAccumulator};
 
 pub(crate) mod prelude {
@@ -42,6 +43,23 @@ pub trait CommitmentScheme {
 
     /// Commits the `input` buffer with the given `randomness` parameter.
     fn commit(&self, input: Self::InputBuffer, randomness: &Self::Randomness) -> Self::Output;
+
+    /// Commits with an empty input using the given `randomness` parameter.
+    #[inline]
+    fn commit_none(&self, randomness: &Self::Randomness) -> Self::Output {
+        self.start().commit(randomness)
+    }
+
+    /// Commits the single `input` by filling a new input buffer and then commiting with the given
+    /// `randomness` parameter.
+    #[inline]
+    fn commit_one<T>(&self, input: &T, randomness: &Self::Randomness) -> Self::Output
+    where
+        T: ?Sized,
+        Self: Input<T>,
+    {
+        self.start().update(input).commit(randomness)
+    }
 }
 
 /// Commitment Input
@@ -66,6 +84,15 @@ where
 }
 
 /// Commitment Builder
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "C::InputBuffer: Clone"),
+    Copy(bound = "C::InputBuffer: Copy"),
+    Debug(bound = "C: Debug, C::InputBuffer: Debug"),
+    Eq(bound = "C: Eq, C::InputBuffer: Eq"),
+    Hash(bound = "C: Hash, C::InputBuffer: Hash"),
+    PartialEq(bound = "C: PartialEq, C::InputBuffer: PartialEq")
+)]
 pub struct Builder<'c, C>
 where
     C: CommitmentScheme + ?Sized,
@@ -105,5 +132,29 @@ where
     #[inline]
     pub fn commit(self, randomness: &C::Randomness) -> C::Output {
         self.commitment_scheme.commit(self.input_buffer, randomness)
+    }
+}
+
+/// Testing Framework
+#[cfg(feature = "test")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
+pub mod test {
+    use super::*;
+    use core::fmt::Debug;
+
+    /// Asserts that the given commitment `output` is equal to commiting `input` with `randomness`
+    /// using the `commitment_scheme`.
+    #[inline]
+    pub fn assert_commitment_matches<T, C>(
+        commitment_scheme: &C,
+        input: &T,
+        randomness: &C::Randomness,
+        output: &C::Output,
+    ) where
+        T: ?Sized,
+        C: CommitmentScheme + Input<T> + ?Sized,
+        C::Output: Debug + PartialEq,
+    {
+        assert_eq!(&commitment_scheme.commit_one(input, randomness), output)
     }
 }

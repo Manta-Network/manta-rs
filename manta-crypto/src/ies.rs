@@ -289,7 +289,7 @@ pub mod test {
     use core::fmt::Debug;
 
     /// Tests encryption/decryption of a sample `plaintext`.
-    pub fn encryption_decryption<I, R>(plaintext: I::Plaintext, rng: &mut R)
+    pub fn assert_decryption_of_encryption<I, R>(plaintext: &I::Plaintext, rng: &mut R)
     where
         I: IntegratedEncryptionScheme,
         I::Plaintext: Debug + PartialEq,
@@ -300,10 +300,10 @@ pub mod test {
         let reconstructed_plaintext = secret_key
             .decrypt(
                 &public_key
-                    .encrypt(&plaintext, rng)
+                    .encrypt(plaintext, rng)
                     .expect("Unable to encrypt plaintext."),
             )
             .expect("Unable to decrypt plaintext.");
-        assert_eq!(plaintext, reconstructed_plaintext)
+        assert_eq!(plaintext, &reconstructed_plaintext)
     }
 }
