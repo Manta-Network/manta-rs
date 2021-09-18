@@ -18,7 +18,7 @@
 
 use crate::{
     asset::{sample_asset_balances, Asset, AssetBalance, AssetBalances, AssetId},
-    identity::{self, IdentityConstraintSystemConfiguration, Utxo, UtxoVar, VoidNumber},
+    identity::{self, constraint::UtxoVar, Utxo, VoidNumber},
     ledger::{Ledger, PostError},
 };
 use alloc::vec::Vec;
@@ -140,9 +140,9 @@ impl<const SOURCES: usize, const SINKS: usize> Distribution<PublicTransfer<SOURC
     }
 }
 
-/// Transfer Configuration
-pub trait TransferConfiguration:
-    IdentityConstraintSystemConfiguration<ConstraintSystem = ConstraintSystem<Self>>
+/// [`Transfer`] Configuration
+pub trait Configuration:
+    identity::constraint::Configuration<ConstraintSystem = ConstraintSystem<Self>>
 {
     /// Constraint System
     type ConstraintSystem: constraint::ConstraintSystem
@@ -180,40 +180,37 @@ pub trait TransferConfiguration:
 }
 
 /// Transfer Sender Type
-pub type Sender<T> = identity::Sender<T, <T as TransferConfiguration>::UtxoSet>;
+pub type Sender<T> = identity::Sender<T, <T as Configuration>::UtxoSet>;
 
 /// Transfer Receiver Type
-pub type Receiver<T> =
-    identity::Receiver<T, <T as TransferConfiguration>::IntegratedEncryptionScheme>;
+pub type Receiver<T> = identity::Receiver<T, <T as Configuration>::IntegratedEncryptionScheme>;
 
 /// Transfer Sender Variable Type
-pub type SenderVar<T> = identity::SenderVar<T, <T as TransferConfiguration>::UtxoSet>;
+pub type SenderVar<T> = identity::constraint::SenderVar<T, <T as Configuration>::UtxoSet>;
 
 /// Transfer Receiver Type
 pub type ReceiverVar<T> =
-    identity::ReceiverVar<T, <T as TransferConfiguration>::IntegratedEncryptionScheme>;
+    identity::constraint::ReceiverVar<T, <T as Configuration>::IntegratedEncryptionScheme>;
 
 /// Transfer Constraint System Type
-pub type ConstraintSystem<T> = <T as TransferConfiguration>::ConstraintSystem;
+pub type ConstraintSystem<T> = <T as Configuration>::ConstraintSystem;
 
 /// Transfer Proving Context Type
-pub type ProvingContext<T> =
-    <<T as TransferConfiguration>::ProofSystem as ProofSystem>::ProvingContext;
+pub type ProvingContext<T> = <<T as Configuration>::ProofSystem as ProofSystem>::ProvingContext;
 
 /// Transfer Verifying Context Type
-pub type VerifyingContext<T> =
-    <<T as TransferConfiguration>::ProofSystem as ProofSystem>::VerifyingContext;
+pub type VerifyingContext<T> = <<T as Configuration>::ProofSystem as ProofSystem>::VerifyingContext;
 
 /// Transfer Proof Type
-pub type Proof<T> = <<T as TransferConfiguration>::ProofSystem as ProofSystem>::Proof;
+pub type Proof<T> = <<T as Configuration>::ProofSystem as ProofSystem>::Proof;
 
 /// Transfer Proof System Error Type
-pub type ProofSystemError<T> = <<T as TransferConfiguration>::ProofSystem as ProofSystem>::Error;
+pub type ProofSystemError<T> = <<T as Configuration>::ProofSystem as ProofSystem>::Error;
 
 /// Secret Transfer Protocol
 pub struct SecretTransfer<T, const SENDERS: usize, const RECEIVERS: usize>
 where
-    T: TransferConfiguration,
+    T: Configuration,
 {
     /// Senders
     pub senders: [Sender<T>; SENDERS],
@@ -224,7 +221,7 @@ where
 
 impl<T, const SENDERS: usize, const RECEIVERS: usize> SecretTransfer<T, SENDERS, RECEIVERS>
 where
-    T: TransferConfiguration,
+    T: Configuration,
 {
     /// Maximum Number of Senders
     pub const MAXIMUM_SENDER_COUNT: usize = 32;
@@ -339,7 +336,7 @@ where
 impl<T, const SENDERS: usize, const RECEIVERS: usize> From<SecretTransfer<T, SENDERS, RECEIVERS>>
     for Transfer<T, 0, SENDERS, RECEIVERS, 0>
 where
-    T: TransferConfiguration,
+    T: Configuration,
 {
     #[inline]
     fn from(transfer: SecretTransfer<T, SENDERS, RECEIVERS>) -> Self {
@@ -351,16 +348,16 @@ where
 }
 
 /// Sender Post Type
-pub type SenderPost<T> = identity::SenderPost<T, <T as TransferConfiguration>::UtxoSet>;
+pub type SenderPost<T> = identity::SenderPost<T, <T as Configuration>::UtxoSet>;
 
 /// Receiver Post Type
 pub type ReceiverPost<T> =
-    identity::ReceiverPost<T, <T as TransferConfiguration>::IntegratedEncryptionScheme>;
+    identity::ReceiverPost<T, <T as Configuration>::IntegratedEncryptionScheme>;
 
 /// Secret Transfer Post
 pub struct SecretTransferPost<T, const SENDERS: usize, const RECEIVERS: usize>
 where
-    T: TransferConfiguration,
+    T: Configuration,
 {
     /// Sender Posts
     pub sender_posts: [SenderPost<T>; SENDERS],
@@ -374,7 +371,7 @@ where
 
 impl<T, const SENDERS: usize, const RECEIVERS: usize> SecretTransferPost<T, SENDERS, RECEIVERS>
 where
-    T: TransferConfiguration,
+    T: Configuration,
 {
     /// Posts the [`SecretTransferPost`] to the `ledger`.
     #[inline]
@@ -395,7 +392,7 @@ where
 impl<T, const SENDERS: usize, const RECEIVERS: usize>
     From<SecretTransferPost<T, SENDERS, RECEIVERS>> for TransferPost<T, 0, SENDERS, RECEIVERS, 0>
 where
-    T: TransferConfiguration,
+    T: Configuration,
 {
     #[inline]
     fn from(post: SecretTransferPost<T, SENDERS, RECEIVERS>) -> Self {
@@ -410,7 +407,7 @@ where
 impl<T, const SENDERS: usize, const RECEIVERS: usize>
     TryFrom<TransferPost<T, 0, SENDERS, RECEIVERS, 0>> for SecretTransferPost<T, SENDERS, RECEIVERS>
 where
-    T: TransferConfiguration,
+    T: Configuration,
 {
     type Error = ();
 
@@ -432,7 +429,7 @@ pub struct Transfer<
     const RECEIVERS: usize,
     const SINKS: usize,
 > where
-    T: TransferConfiguration,
+    T: Configuration,
 {
     /// Public Part of the Transfer
     public: PublicTransfer<SOURCES, SINKS>,
@@ -444,7 +441,7 @@ pub struct Transfer<
 impl<T, const SOURCES: usize, const SENDERS: usize, const RECEIVERS: usize, const SINKS: usize>
     Transfer<T, SOURCES, SENDERS, RECEIVERS, SINKS>
 where
-    T: TransferConfiguration,
+    T: Configuration,
 {
     /// Builds a new [`Transfer`] from a [`PublicTransfer`] and a [`SecretTransfer`].
     #[inline]
@@ -718,7 +715,7 @@ struct TransferParticipantsVar<
     const RECEIVERS: usize,
     const SINKS: usize,
 > where
-    T: TransferConfiguration,
+    T: Configuration,
 {
     /// Source Variables
     sources: Vec<T::AssetBalanceVar>,
@@ -736,7 +733,7 @@ struct TransferParticipantsVar<
 impl<T, const SOURCES: usize, const SENDERS: usize, const RECEIVERS: usize, const SINKS: usize>
     Variable<ConstraintSystem<T>> for TransferParticipantsVar<T, SOURCES, SENDERS, RECEIVERS, SINKS>
 where
-    T: TransferConfiguration,
+    T: Configuration,
 {
     type Type = Transfer<T, SOURCES, SENDERS, RECEIVERS, SINKS>;
 
@@ -801,7 +798,7 @@ pub struct TransferPost<
     const RECEIVERS: usize,
     const SINKS: usize,
 > where
-    T: TransferConfiguration,
+    T: Configuration,
 {
     /// Sender Posts
     pub sender_posts: [SenderPost<T>; SENDERS],
@@ -816,7 +813,7 @@ pub struct TransferPost<
 impl<T, const SOURCES: usize, const SENDERS: usize, const RECEIVERS: usize, const SINKS: usize>
     TransferPost<T, SOURCES, SENDERS, RECEIVERS, SINKS>
 where
-    T: TransferConfiguration,
+    T: Configuration,
 {
     /// Posts the [`TransferPost`] to the `ledger`.
     #[inline]

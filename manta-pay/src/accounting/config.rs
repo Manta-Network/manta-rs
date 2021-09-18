@@ -24,16 +24,14 @@ use crate::{
         ies::IES,
         merkle_tree,
         prf::blake2s::{constraint::Blake2sVar, Blake2s},
-        rand::ChaCha20RngBlake2sSeedable,
     },
 };
 use ark_bls12_381::Bls12_381;
 use ark_ed_on_bls12_381::{constraints::EdwardsVar, EdwardsProjective, Fq};
-use manta_accounting::{
-    identity::{IdentityConfiguration, IdentityConstraintSystemConfiguration},
-    transfer::TransferConfiguration,
-};
+use manta_accounting::{identity, transfer};
 use manta_crypto::{commitment::CommitmentScheme, PseudorandomFunctionFamily};
+use manta_util::rand::SeedIntoRng;
+use rand_chacha::ChaCha20Rng;
 
 /// Pedersen Window Parameters
 #[derive(Clone, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -107,14 +105,14 @@ impl merkle_tree::constraint::Configuration for Configuration {
     >;
 }
 
-impl IdentityConfiguration for Configuration {
+impl identity::Configuration for Configuration {
     type SecretKey = <Blake2s as PseudorandomFunctionFamily>::Seed;
     type PseudorandomFunctionFamily = Blake2s;
     type CommitmentScheme = PedersenCommitment;
-    type Rng = ChaCha20RngBlake2sSeedable;
+    type Rng = SeedIntoRng<<Blake2s as PseudorandomFunctionFamily>::Seed, ChaCha20Rng>;
 }
 
-impl IdentityConstraintSystemConfiguration for Configuration {
+impl identity::constraint::Configuration for Configuration {
     type ConstraintSystem = ConstraintSystem;
     type SecretKeyVar = <Blake2sVar<ConstraintField> as PseudorandomFunctionFamily>::Seed;
     type PseudorandomFunctionFamilyInputVar =
@@ -127,7 +125,7 @@ impl IdentityConstraintSystemConfiguration for Configuration {
     type CommitmentSchemeVar = PedersenCommitmentVar;
 }
 
-impl TransferConfiguration for Configuration {
+impl transfer::Configuration for Configuration {
     type ConstraintSystem = ConstraintSystem;
     type ProofSystem = ProofSystem;
     type AssetIdVar = AssetIdVar<ConstraintField>;

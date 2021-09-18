@@ -47,6 +47,13 @@ impl Concat for Blake2sSeed {
     }
 }
 
+impl From<Blake2sSeed> for [u8; 32] {
+    #[inline]
+    fn from(seed: Blake2sSeed) -> Self {
+        seed.0
+    }
+}
+
 /// Blake2s Pseudorandom Function Family Input
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Blake2sInput(<ArkBlake2s as PRF>::Input);

@@ -24,13 +24,10 @@
 use crate::{
     asset::{Asset, AssetBalance, AssetId},
     fs::{Load, Save},
-    identity::{
-        AssetParameters, Identity, IdentityConfiguration, OpenSpend, Receiver, ShieldedIdentity,
-        Spend,
-    },
+    identity::{self, AssetParameters, Identity, OpenSpend, Receiver, ShieldedIdentity, Spend},
     keys::{self, DerivedSecretKeyGenerator, ExternalKeys, InternalKeys},
     ledger::Ledger,
-    transfer::{SecretTransfer, TransferConfiguration},
+    transfer::{self, SecretTransfer},
 };
 use core::{convert::Infallible, fmt::Debug, hash::Hash};
 use manta_crypto::ies::{EncryptedMessage, IntegratedEncryptionScheme};
@@ -209,7 +206,7 @@ where
     #[inline]
     fn next_external_identity<C>(&mut self) -> Result<Identity<C>, D::Error>
     where
-        C: IdentityConfiguration<SecretKey = D::SecretKey>,
+        C: identity::Configuration<SecretKey = D::SecretKey>,
     {
         self.next_external_key().map(Identity::new)
     }
@@ -218,7 +215,7 @@ where
     #[inline]
     fn next_internal_identity<C>(&mut self) -> Result<Identity<C>, D::Error>
     where
-        C: IdentityConfiguration<SecretKey = D::SecretKey>,
+        C: identity::Configuration<SecretKey = D::SecretKey>,
     {
         self.next_internal_key().map(Identity::new)
     }
@@ -246,7 +243,7 @@ where
         iter: Iter,
     ) -> Option<OpenSpend<C>>
     where
-        C: IdentityConfiguration<SecretKey = D::SecretKey>,
+        C: identity::Configuration<SecretKey = D::SecretKey>,
         I: IntegratedEncryptionScheme<Plaintext = Asset>,
         Iter: IntoIterator<Item = D::SecretKey>,
         Standard: Distribution<AssetParameters<C>>,
@@ -265,7 +262,7 @@ where
         gap_limit: usize,
     ) -> Option<OpenSpend<C>>
     where
-        C: IdentityConfiguration<SecretKey = D::SecretKey>,
+        C: identity::Configuration<SecretKey = D::SecretKey>,
         I: IntegratedEncryptionScheme<Plaintext = Asset>,
         Standard: Distribution<AssetParameters<C>>,
     {
@@ -290,7 +287,7 @@ where
         gap_limit: usize,
     ) -> Option<OpenSpend<C>>
     where
-        C: IdentityConfiguration<SecretKey = D::SecretKey>,
+        C: identity::Configuration<SecretKey = D::SecretKey>,
         I: IntegratedEncryptionScheme<Plaintext = Asset>,
         Standard: Distribution<AssetParameters<C>>,
     {
@@ -310,7 +307,7 @@ where
         gap_limit: usize,
     ) -> Option<OpenSpend<C>>
     where
-        C: IdentityConfiguration<SecretKey = D::SecretKey>,
+        C: identity::Configuration<SecretKey = D::SecretKey>,
         I: IntegratedEncryptionScheme<Plaintext = Asset>,
         Standard: Distribution<AssetParameters<C>>,
     {
@@ -343,7 +340,7 @@ where
         commitment_scheme: &C::CommitmentScheme,
     ) -> Result<ShieldedIdentity<C, I>, D::Error>
     where
-        C: IdentityConfiguration<SecretKey = D::SecretKey>,
+        C: identity::Configuration<SecretKey = D::SecretKey>,
         I: IntegratedEncryptionScheme<Plaintext = Asset>,
         Standard: Distribution<AssetParameters<C>>,
     {
@@ -362,7 +359,7 @@ where
         rng: &mut R,
     ) -> Result<(Receiver<C, I>, Spend<C, I>), InternalReceiverError<D, I>>
     where
-        C: IdentityConfiguration<SecretKey = D::SecretKey>,
+        C: identity::Configuration<SecretKey = D::SecretKey>,
         I: IntegratedEncryptionScheme<Plaintext = Asset>,
         R: CryptoRng + RngCore + ?Sized,
         Standard: Distribution<AssetParameters<C>>,
@@ -388,7 +385,7 @@ where
         rng: &mut R,
     ) -> Option<SecretTransfer<T, 2, 2>>
     where
-        T: TransferConfiguration,
+        T: transfer::Configuration,
         R: CryptoRng + RngCore + ?Sized,
     {
         // TODO: spec:

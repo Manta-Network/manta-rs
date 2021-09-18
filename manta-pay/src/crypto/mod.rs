@@ -21,4 +21,3 @@ pub mod constraint;
 pub mod ies;
 pub mod merkle_tree;
 pub mod prf;
-pub mod rand;

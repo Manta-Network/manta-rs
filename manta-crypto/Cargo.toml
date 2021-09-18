@@ -25,7 +25,7 @@ is-it-maintained-open-issues = { repository = "Manta-Network/manta-rs" }
 maintenance = { status = "actively-developed" }
 
 [features]
-constraints = []
+# TODO: constraints = []
 default = []
 test = []
 

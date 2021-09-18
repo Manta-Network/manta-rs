@@ -16,7 +16,8 @@
 
 //! Random Number Generator Utilities
 
-use rand_core::{block::BlockRngCore, CryptoRng, Error, RngCore};
+use core::marker::PhantomData;
+use rand_core::{block::BlockRngCore, CryptoRng, Error, RngCore, SeedableRng};
 
 /// Random Number Generator Sized Wrapper
 #[derive(Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -62,5 +63,96 @@ where
     #[inline]
     fn generate(&mut self, results: &mut Self::Results) {
         self.0.generate(results)
+    }
+}
+
+/// Seed Into Random Number Generator
+pub struct SeedIntoRng<S, R> {
+    /// Inner Rng
+    inner: R,
+
+    /// Type Parameter Marker
+    __: PhantomData<S>,
+}
+
+impl<S, R> SeedIntoRng<S, R> {
+    /// Builds a new [`SeedIntoRng`] from an existing `inner` random number generator.
+    #[inline]
+    fn new(inner: R) -> Self {
+        Self {
+            inner,
+            __: PhantomData,
+        }
+    }
+}
+
+impl<S, R> CryptoRng for SeedIntoRng<S, R> where R: CryptoRng {}
+
+impl<S, R> RngCore for SeedIntoRng<S, R>
+where
+    R: RngCore,
+{
+    #[inline]
+    fn next_u32(&mut self) -> u32 {
+        self.inner.next_u32()
+    }
+
+    #[inline]
+    fn next_u64(&mut self) -> u64 {
+        self.inner.next_u64()
+    }
+
+    #[inline]
+    fn fill_bytes(&mut self, dest: &mut [u8]) {
+        self.inner.fill_bytes(dest)
+    }
+
+    #[inline]
+    fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), Error> {
+        self.inner.try_fill_bytes(dest)
+    }
+}
+
+impl<S, R> BlockRngCore for SeedIntoRng<S, R>
+where
+    R: BlockRngCore,
+{
+    type Item = R::Item;
+
+    type Results = R::Results;
+
+    #[inline]
+    fn generate(&mut self, results: &mut Self::Results) {
+        self.inner.generate(results)
+    }
+}
+
+impl<S, R> SeedableRng for SeedIntoRng<S, R>
+where
+    S: Into<R::Seed> + Default + AsMut<[u8]>,
+    R: SeedableRng,
+{
+    type Seed = S;
+
+    #[inline]
+    fn from_seed(seed: Self::Seed) -> Self {
+        Self::new(R::from_seed(seed.into()))
+    }
+
+    #[inline]
+    fn seed_from_u64(state: u64) -> Self {
+        Self::new(R::seed_from_u64(state))
+    }
+
+    #[inline]
+    fn from_rng<T: RngCore>(rng: T) -> Result<Self, Error> {
+        R::from_rng(rng).map(Self::new)
+    }
+
+    #[cfg(feature = "getrandom")]
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "getrandom")))]
+    #[inline]
+    fn from_entropy() -> Self {
+        Self::new(R::from_entropy())
     }
 }

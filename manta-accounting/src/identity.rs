@@ -19,7 +19,7 @@
 // FIXME: Check the secret key APIs.
 // FIXME: Should the identity types have methods that expose their members? Or should it be
 //        completely opaque, and let the internal APIs handle all the logic?
-// TODO:  Since `IdentityConfiguration::SecretKey: Clone`, should `Identity: Clone`?
+// TODO:  Since `Configuration::SecretKey: Clone`, should `Identity: Clone`?
 // TODO:  Separate "constraint" types into another module just like `manta_crypto::set`.
 
 use crate::{
@@ -30,16 +30,8 @@ use crate::{
 use core::{convert::Infallible, fmt::Debug, hash::Hash, marker::PhantomData};
 use manta_crypto::{
     commitment::{CommitmentScheme, Input as CommitmentInput},
-    constraint::{
-        reflection::{HasAllocation, HasVariable, Var},
-        Allocation, Constant, ConstraintSystem, Derived, Equal, Public, PublicOrSecret, Secret,
-        Variable,
-    },
     ies::{self, EncryptedMessage, IntegratedEncryptionScheme},
-    set::{
-        constraint::{ContainmentProofVar, VerifiedSetVariable},
-        ContainmentProof, VerifiedSet,
-    },
+    set::{ContainmentProof, VerifiedSet},
     PseudorandomFunctionFamily,
 };
 use rand::{
@@ -50,13 +42,13 @@ use rand::{
 pub(crate) mod prelude {
     #[doc(inline)]
     pub use super::{
-        Identity, IdentityConfiguration, IdentityConstraintSystemConfiguration, Receiver, Sender,
-        SenderError, ShieldedIdentity, Spend, SpendError, Utxo, VoidNumber,
+        Configuration, Identity, Receiver, Sender, SenderError, ShieldedIdentity, Spend,
+        SpendError, Utxo, VoidNumber,
     };
 }
 
 /// [`Identity`] Configuration
-pub trait IdentityConfiguration {
+pub trait Configuration {
     /// Secret Key Type
     type SecretKey: Clone;
 
@@ -74,80 +66,24 @@ pub trait IdentityConfiguration {
     type Rng: CryptoRng + RngCore + SeedableRng<Seed = Self::SecretKey>;
 }
 
-/// [`Identity`] Constraint System Configuration
-pub trait IdentityConstraintSystemConfiguration: IdentityConfiguration {
-    /// Constraint System
-    type ConstraintSystem: ConstraintSystem
-        + HasVariable<AssetId, Mode = PublicOrSecret>
-        + HasVariable<AssetBalance, Mode = PublicOrSecret>;
-
-    /// Secret Key Variable
-    type SecretKeyVar: Variable<Self::ConstraintSystem, Type = Self::SecretKey, Mode = Secret>;
-
-    /// Pseudorandom Function Family Input Variable
-    type PseudorandomFunctionFamilyInputVar: Variable<
-        Self::ConstraintSystem,
-        Type = <Self::PseudorandomFunctionFamily as PseudorandomFunctionFamily>::Input,
-        Mode = Secret,
-    >;
-
-    /// Pseudorandom Function Family Output Variable
-    type PseudorandomFunctionFamilyOutputVar: Variable<
-            Self::ConstraintSystem,
-            Type = <Self::PseudorandomFunctionFamily as PseudorandomFunctionFamily>::Output,
-            Mode = PublicOrSecret,
-        > + Equal<Self::ConstraintSystem>;
-
-    /// Pseudorandom Function Family Variable
-    type PseudorandomFunctionFamilyVar: PseudorandomFunctionFamily<
-            Seed = Self::SecretKeyVar,
-            Input = Self::PseudorandomFunctionFamilyInputVar,
-            Output = Self::PseudorandomFunctionFamilyOutputVar,
-        > + Variable<Self::ConstraintSystem, Type = Self::PseudorandomFunctionFamily, Mode = Constant>;
-
-    /// Commitment Scheme Randomness Variable
-    type CommitmentSchemeRandomnessVar: Variable<
-        Self::ConstraintSystem,
-        Type = <Self::CommitmentScheme as CommitmentScheme>::Randomness,
-        Mode = Secret,
-    >;
-
-    /// Commitment Scheme Output Variable
-    type CommitmentSchemeOutputVar: Variable<
-            Self::ConstraintSystem,
-            Type = <Self::CommitmentScheme as CommitmentScheme>::Output,
-            Mode = PublicOrSecret,
-        > + Equal<Self::ConstraintSystem>;
-
-    /// Commitment Scheme Variable
-    type CommitmentSchemeVar: CommitmentScheme<
-            Randomness = Self::CommitmentSchemeRandomnessVar,
-            Output = Self::CommitmentSchemeOutputVar,
-        > + CommitmentInput<PublicKeyVar<Self>>
-        + CommitmentInput<VoidNumberGeneratorVar<Self>>
-        + CommitmentInput<AssetVar<Self::ConstraintSystem>>
-        + CommitmentInput<VoidNumberCommitmentVar<Self>>
-        + Variable<Self::ConstraintSystem, Type = Self::CommitmentScheme, Mode = Constant>;
-}
-
 /// [`PseudorandomFunctionFamily::Input`] Type
 type PseudorandomFunctionFamilyInput<C> =
-    <<C as IdentityConfiguration>::PseudorandomFunctionFamily as PseudorandomFunctionFamily>::Input;
+    <<C as Configuration>::PseudorandomFunctionFamily as PseudorandomFunctionFamily>::Input;
 
 /// [`PseudorandomFunctionFamily::Output`] Type
 type PseudorandomFunctionFamilyOutput<C> =
-	<<C as IdentityConfiguration>::PseudorandomFunctionFamily as PseudorandomFunctionFamily>::Output;
+    <<C as Configuration>::PseudorandomFunctionFamily as PseudorandomFunctionFamily>::Output;
 
 /// [`CommitmentScheme::Randomness`] Type
 type CommitmentSchemeRandomness<C> =
-    <<C as IdentityConfiguration>::CommitmentScheme as CommitmentScheme>::Randomness;
+    <<C as Configuration>::CommitmentScheme as CommitmentScheme>::Randomness;
 
 /// [`CommitmentScheme::Output`] Type
 type CommitmentSchemeOutput<C> =
-    <<C as IdentityConfiguration>::CommitmentScheme as CommitmentScheme>::Output;
+    <<C as Configuration>::CommitmentScheme as CommitmentScheme>::Output;
 
 /// Secret Key Type
-pub type SecretKey<C> = <C as IdentityConfiguration>::SecretKey;
+pub type SecretKey<C> = <C as Configuration>::SecretKey;
 
 /// Public Key Type
 pub type PublicKey<C> = PseudorandomFunctionFamilyOutput<C>;
@@ -169,50 +105,6 @@ pub type UtxoRandomness<C> = CommitmentSchemeRandomness<C>;
 
 /// UTXO Type
 pub type Utxo<C> = CommitmentSchemeOutput<C>;
-
-/// [`PseudorandomFunctionFamily::Input`] Variable Type
-type PseudorandomFunctionFamilyInputVar<C> =
-    <C as IdentityConstraintSystemConfiguration>::PseudorandomFunctionFamilyInputVar;
-
-/// [`PseudorandomFunctionFamily::Output`] Variable Type
-type PseudorandomFunctionFamilyOutputVar<C> =
-    <C as IdentityConstraintSystemConfiguration>::PseudorandomFunctionFamilyOutputVar;
-
-/// [`CommitmentScheme::Randomness`] Variable Type
-type CommitmentSchemeRandomnessVar<C> =
-    <C as IdentityConstraintSystemConfiguration>::CommitmentSchemeRandomnessVar;
-
-/// [`CommitmentScheme::Output`] Variable Type
-type CommitmentSchemeOutputVar<C> =
-    <C as IdentityConstraintSystemConfiguration>::CommitmentSchemeOutputVar;
-
-/// Secret Key Variable Type
-pub type SecretKeyVar<C> = <C as IdentityConstraintSystemConfiguration>::SecretKeyVar;
-
-/// Public Key Variable Type
-pub type PublicKeyVar<C> = PseudorandomFunctionFamilyOutputVar<C>;
-
-/// Void Number Generator Variable Type
-pub type VoidNumberGeneratorVar<C> = PseudorandomFunctionFamilyInputVar<C>;
-
-/// Void Number Variable Type
-pub type VoidNumberVar<C> = PseudorandomFunctionFamilyOutputVar<C>;
-
-///  Void Number Commitment Randomness Variable Type
-pub type VoidNumberCommitmentRandomnessVar<C> = CommitmentSchemeRandomnessVar<C>;
-
-/// Void Number Commitment Variable Type
-pub type VoidNumberCommitmentVar<C> = CommitmentSchemeOutputVar<C>;
-
-/// UTXO Randomness Variable Type
-pub type UtxoRandomnessVar<C> = CommitmentSchemeRandomnessVar<C>;
-
-/// UTXO Variable Type
-pub type UtxoVar<C> = CommitmentSchemeOutputVar<C>;
-
-/// UTXO Containment Proof Variable Type
-pub type UtxoContainmentProofVar<C, S> =
-    ContainmentProofVar<S, <C as IdentityConstraintSystemConfiguration>::ConstraintSystem>;
 
 /// Generates a void number commitment from `public_key`, `void_number_generator`, and
 /// `void_number_commitment_randomness`.
@@ -255,7 +147,7 @@ where
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(
-        bound = "VoidNumberGenerator<C>: Clone, VoidNumberCommitmentRandomness<C>: Clone, UtxoRandomness<C>: Copy"
+        bound = "VoidNumberGenerator<C>: Clone, VoidNumberCommitmentRandomness<C>: Clone, UtxoRandomness<C>: Clone"
     ),
     Copy(
         bound = "VoidNumberGenerator<C>: Copy, VoidNumberCommitmentRandomness<C>: Copy, UtxoRandomness<C>: Copy"
@@ -278,7 +170,7 @@ where
 )]
 pub struct AssetParameters<C>
 where
-    C: IdentityConfiguration,
+    C: Configuration,
 {
     /// Void Number Generator
     pub void_number_generator: VoidNumberGenerator<C>,
@@ -292,7 +184,7 @@ where
 
 impl<C> AssetParameters<C>
 where
-    C: IdentityConfiguration,
+    C: Configuration,
 {
     /// Builds a new [`AssetParameters`].
     #[inline]
@@ -342,7 +234,7 @@ where
 
 impl<C> Distribution<AssetParameters<C>> for Standard
 where
-    C: IdentityConfiguration,
+    C: Configuration,
     Standard: Distribution<VoidNumberGenerator<C>>
         + Distribution<VoidNumberCommitmentRandomness<C>>
         + Distribution<UtxoRandomness<C>>,
@@ -353,81 +245,10 @@ where
     }
 }
 
-/// Asset Parameters Variable
-pub struct AssetParametersVar<C>
-where
-    C: IdentityConstraintSystemConfiguration,
-{
-    /// Void Number Generator
-    pub void_number_generator: VoidNumberGeneratorVar<C>,
-
-    /// Void Number Commitment Randomness
-    pub void_number_commitment_randomness: VoidNumberCommitmentRandomnessVar<C>,
-
-    /// UTXO Randomness
-    pub utxo_randomness: UtxoRandomnessVar<C>,
-}
-
-impl<C> AssetParametersVar<C>
-where
-    C: IdentityConstraintSystemConfiguration,
-{
-    /// Builds a new [`AssetParametersVar`] from parameter variables.
-    #[inline]
-    pub fn new(
-        void_number_generator: VoidNumberGeneratorVar<C>,
-        void_number_commitment_randomness: VoidNumberCommitmentRandomnessVar<C>,
-        utxo_randomness: UtxoRandomnessVar<C>,
-    ) -> Self {
-        Self {
-            void_number_generator,
-            void_number_commitment_randomness,
-            utxo_randomness,
-        }
-    }
-}
-
-impl<C> Variable<C::ConstraintSystem> for AssetParametersVar<C>
-where
-    C: IdentityConstraintSystemConfiguration,
-{
-    type Type = AssetParameters<C>;
-
-    type Mode = Secret;
-
-    #[inline]
-    fn new(cs: &mut C::ConstraintSystem, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
-        match allocation {
-            Allocation::Known(this, mode) => Self::new(
-                VoidNumberGeneratorVar::<C>::new_known(cs, &this.void_number_generator, mode),
-                VoidNumberCommitmentRandomnessVar::<C>::new_known(
-                    cs,
-                    &this.void_number_commitment_randomness,
-                    mode,
-                ),
-                UtxoRandomnessVar::<C>::new_known(cs, &this.utxo_randomness, mode),
-            ),
-            Allocation::Unknown(mode) => Self::new(
-                VoidNumberGeneratorVar::<C>::new_unknown(cs, mode),
-                VoidNumberCommitmentRandomnessVar::<C>::new_unknown(cs, mode),
-                UtxoRandomnessVar::<C>::new_unknown(cs, mode),
-            ),
-        }
-    }
-}
-
-impl<C> HasAllocation<C::ConstraintSystem> for AssetParameters<C>
-where
-    C: IdentityConstraintSystemConfiguration,
-{
-    type Variable = AssetParametersVar<C>;
-    type Mode = Secret;
-}
-
 /// Account Identity
 pub struct Identity<C>
 where
-    C: IdentityConfiguration,
+    C: Configuration,
 {
     /// Secret Key
     secret_key: SecretKey<C>,
@@ -435,7 +256,7 @@ where
 
 impl<C> Identity<C>
 where
-    C: IdentityConfiguration,
+    C: Configuration,
 {
     /// Generates a new [`Identity`] from a [`SecretKey`].
     #[inline]
@@ -751,7 +572,7 @@ where
 
 impl<C> Distribution<Identity<C>> for Standard
 where
-    C: IdentityConfiguration,
+    C: Configuration,
     Standard: Distribution<SecretKey<C>>,
 {
     #[inline]
@@ -763,7 +584,7 @@ where
 /// Shielded Identity
 pub struct ShieldedIdentity<C, I>
 where
-    C: IdentityConfiguration,
+    C: Configuration,
     I: IntegratedEncryptionScheme<Plaintext = Asset>,
 {
     /// UTXO Randomness
@@ -778,7 +599,7 @@ where
 
 impl<C, I> ShieldedIdentity<C, I>
 where
-    C: IdentityConfiguration,
+    C: Configuration,
     I: IntegratedEncryptionScheme<Plaintext = Asset>,
 {
     /// Builds a new [`ShieldedIdentity`] from `identity` and `commitment_scheme`.
@@ -880,7 +701,7 @@ mod spend_error {
     )]
     pub enum SpendError<C, I, S>
     where
-        C: IdentityConfiguration,
+        C: Configuration,
         I: IntegratedEncryptionScheme<Plaintext = Asset>,
         S: VerifiedSet<Item = Utxo<C>>,
     {
@@ -902,7 +723,7 @@ pub use spend_error::SpendError;
 /// Spending Information
 pub struct Spend<C, I>
 where
-    C: IdentityConfiguration,
+    C: Configuration,
     I: IntegratedEncryptionScheme<Plaintext = Asset>,
 {
     /// Spender Identity
@@ -914,7 +735,7 @@ where
 
 impl<C, I> Spend<C, I>
 where
-    C: IdentityConfiguration,
+    C: Configuration,
     I: IntegratedEncryptionScheme<Plaintext = Asset>,
 {
     /// Generates a new `Spend` from an `Identity` and an `ies::SecretKey<I>`.
@@ -981,7 +802,7 @@ where
 
 impl<C, I> From<Identity<C>> for Spend<C, I>
 where
-    C: IdentityConfiguration,
+    C: Configuration,
     I: IntegratedEncryptionScheme<Plaintext = Asset>,
     Standard: Distribution<AssetParameters<C>>,
 {
@@ -994,7 +815,7 @@ where
 /// Open [`Spend`]
 pub struct OpenSpend<C>
 where
-    C: IdentityConfiguration,
+    C: Configuration,
 {
     /// Spender Identity
     identity: Identity<C>,
@@ -1005,7 +826,7 @@ where
 
 impl<C> OpenSpend<C>
 where
-    C: IdentityConfiguration,
+    C: Configuration,
 {
     /// Builds a new [`Sender`] for `self`.
     #[inline]
@@ -1048,7 +869,7 @@ mod sender_error {
     )]
     pub enum SenderError<C, G, S>
     where
-        C: IdentityConfiguration,
+        C: Configuration,
         G: SecretKeyGenerator<SecretKey = SecretKey<C>>,
         S: VerifiedSet<Item = Utxo<C>>,
     {
@@ -1070,7 +891,7 @@ pub use sender_error::SenderError;
 /// Sender
 pub struct Sender<C, S>
 where
-    C: IdentityConfiguration,
+    C: Configuration,
     S: VerifiedSet<Item = Utxo<C>>,
 {
     /// Secret Key
@@ -1100,7 +921,7 @@ where
 
 impl<C, S> Sender<C, S>
 where
-    C: IdentityConfiguration,
+    C: Configuration,
     S: VerifiedSet<Item = Utxo<C>>,
 {
     /// Builds a new [`Sender`] for this `asset` from an `identity`.
@@ -1191,184 +1012,6 @@ where
     }
 }
 
-/// Sender Variable
-pub struct SenderVar<C, S>
-where
-    C: IdentityConstraintSystemConfiguration,
-    S: VerifiedSet<Item = Utxo<C>>,
-    C::ConstraintSystem: HasVariable<S::Public> + HasVariable<S::Secret>,
-{
-    /// Secret Key
-    secret_key: SecretKeyVar<C>,
-
-    /// Public Key
-    public_key: PublicKeyVar<C>,
-
-    /// Asset
-    asset: AssetVar<C::ConstraintSystem>,
-
-    /// Asset Parameters
-    parameters: AssetParametersVar<C>,
-
-    /// Void Number
-    void_number: VoidNumberVar<C>,
-
-    /// Void Number Commitment
-    void_number_commitment: VoidNumberCommitmentVar<C>,
-
-    /// Unspent Transaction Output
-    utxo: UtxoVar<C>,
-
-    /// UTXO Containment Proof
-    utxo_containment_proof: UtxoContainmentProofVar<C, S>,
-}
-
-impl<C, S> SenderVar<C, S>
-where
-    C: IdentityConstraintSystemConfiguration,
-    S: VerifiedSet<Item = Utxo<C>>,
-    C::ConstraintSystem: HasVariable<S::Public> + HasVariable<S::Secret>,
-{
-    /// Checks if `self` is a well-formed sender and returns its asset.
-    #[inline]
-    pub fn get_well_formed_asset(
-        self,
-        cs: &mut C::ConstraintSystem,
-        commitment_scheme: &C::CommitmentSchemeVar,
-        utxo_set: &Var<S, C::ConstraintSystem>,
-    ) -> AssetVar<C::ConstraintSystem>
-    where
-        S: HasAllocation<C::ConstraintSystem>,
-        S::Variable: VerifiedSetVariable<C::ConstraintSystem, ItemVar = UtxoVar<C>>,
-    {
-        // Well-formed check:
-        //
-        // 1. pk = PRF(sk, 0)                  [public: (),     secret: (pk, sk)]
-        // 2. vn = PRF(sk, rho)                [public: (vn),   secret: (sk, rho)]
-        // 3. k = COM(pk || rho, r)            [public: (k),    secret: (pk, rho, r)]
-        // 4. cm = COM(asset || k, s)          [public: (),     secret: (cm, asset, k, s)]
-        // 5. is_path(cm, path, root) == true  [public: (root), secret: (cm, path)]
-        //
-        // FIXME: should `k` be private or not?
-
-        // 1. Check public key:
-        // ```
-        // pk = PRF(sk, 0)
-        // ```
-        // where public: {}, secret: {pk, sk}.
-        cs.assert_eq(
-            &self.public_key,
-            &C::PseudorandomFunctionFamilyVar::evaluate_zero(&self.secret_key),
-        );
-
-        // 2. Check void number:
-        // ```
-        // vn = PRF(sk, rho)
-        // ```
-        // where public: {vn}, secret: {sk, rho}.
-        cs.assert_eq(
-            &self.void_number,
-            &C::PseudorandomFunctionFamilyVar::evaluate(
-                &self.secret_key,
-                &self.parameters.void_number_generator,
-            ),
-        );
-
-        // 3. Check void number commitment:
-        // ```
-        // k = COM(pk || rho, r)
-        // ```
-        // where public: {k}, secret: {pk, rho, r}.
-        cs.assert_eq(
-            &self.void_number_commitment,
-            &generate_void_number_commitment(
-                commitment_scheme,
-                &self.public_key,
-                &self.parameters.void_number_generator,
-                &self.parameters.void_number_commitment_randomness,
-            ),
-        );
-
-        // 4. Check UTXO:
-        // ```
-        // cm = COM(asset || k, s)
-        // ```
-        // where public: {}, secret: {cm, asset, k, s}.
-        cs.assert_eq(
-            &self.utxo,
-            &generate_utxo(
-                commitment_scheme,
-                &self.asset,
-                &self.void_number_commitment,
-                &self.parameters.utxo_randomness,
-            ),
-        );
-
-        // 5. Check UTXO containment proof:
-        // ```
-        // is_path(cm, path, root) == true
-        // ```
-        // where public: {root}, secret: {cm, path}.
-        self.utxo_containment_proof
-            .assert_validity(utxo_set, &self.utxo, cs);
-
-        self.asset
-    }
-}
-
-impl<C, S> Variable<C::ConstraintSystem> for SenderVar<C, S>
-where
-    C: IdentityConstraintSystemConfiguration,
-    S: VerifiedSet<Item = Utxo<C>>,
-    C::ConstraintSystem:
-        HasVariable<S::Public, Mode = Public> + HasVariable<S::Secret, Mode = Secret>,
-{
-    type Type = Sender<C, S>;
-
-    type Mode = Derived;
-
-    #[inline]
-    fn new(cs: &mut C::ConstraintSystem, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
-        match allocation {
-            Allocation::Known(this, mode) => Self {
-                secret_key: SecretKeyVar::<C>::new_known(cs, &this.secret_key, mode),
-                public_key: PublicKeyVar::<C>::new_known(cs, &this.public_key, Secret),
-                asset: this.asset.known(cs, mode),
-                parameters: this.parameters.known(cs, mode),
-                void_number: VoidNumberVar::<C>::new_known(cs, &this.void_number, Public),
-                void_number_commitment: VoidNumberCommitmentVar::<C>::new_known(
-                    cs,
-                    &this.void_number_commitment,
-                    Public,
-                ),
-                utxo: UtxoVar::<C>::new_known(cs, &this.utxo, Secret),
-                utxo_containment_proof: this.utxo_containment_proof.known(cs, mode),
-            },
-            Allocation::Unknown(mode) => Self {
-                secret_key: SecretKeyVar::<C>::new_unknown(cs, mode),
-                public_key: PublicKeyVar::<C>::new_unknown(cs, Secret),
-                asset: Asset::unknown(cs, mode),
-                parameters: AssetParameters::unknown(cs, mode),
-                void_number: VoidNumberVar::<C>::new_unknown(cs, Public),
-                void_number_commitment: VoidNumberCommitmentVar::<C>::new_unknown(cs, Public),
-                utxo: UtxoVar::<C>::new_unknown(cs, Secret),
-                utxo_containment_proof: ContainmentProof::<S>::unknown(cs, mode),
-            },
-        }
-    }
-}
-
-impl<C, S> HasAllocation<C::ConstraintSystem> for Sender<C, S>
-where
-    C: IdentityConstraintSystemConfiguration,
-    S: VerifiedSet<Item = Utxo<C>>,
-    C::ConstraintSystem:
-        HasVariable<S::Public, Mode = Public> + HasVariable<S::Secret, Mode = Secret>,
-{
-    type Variable = SenderVar<C, S>;
-    type Mode = Derived;
-}
-
 /// Sender Post Error
 pub enum SenderPostError<L>
 where
@@ -1389,7 +1032,7 @@ where
 /// Sender Post
 pub struct SenderPost<C, S>
 where
-    C: IdentityConfiguration,
+    C: Configuration,
     S: VerifiedSet<Item = Utxo<C>>,
 {
     /// Void Number
@@ -1401,7 +1044,7 @@ where
 
 impl<C, S> SenderPost<C, S>
 where
-    C: IdentityConfiguration,
+    C: Configuration,
     S: VerifiedSet<Item = Utxo<C>>,
 {
     /// Posts the [`SenderPost`] data to the `ledger`.
@@ -1422,7 +1065,7 @@ where
 
 impl<C, S> From<Sender<C, S>> for SenderPost<C, S>
 where
-    C: IdentityConfiguration,
+    C: Configuration,
     S: VerifiedSet<Item = Utxo<C>>,
 {
     #[inline]
@@ -1434,7 +1077,7 @@ where
 /// Receiver
 pub struct Receiver<C, I>
 where
-    C: IdentityConfiguration,
+    C: Configuration,
     I: IntegratedEncryptionScheme<Plaintext = Asset>,
 {
     /// Asset
@@ -1455,7 +1098,7 @@ where
 
 impl<C, I> Receiver<C, I>
 where
-    C: IdentityConfiguration,
+    C: Configuration,
     I: IntegratedEncryptionScheme<Plaintext = Asset>,
 {
     /// Build a [`Receiver`] from a [`ShieldedIdentity`] for the `asset`.
@@ -1524,103 +1167,6 @@ where
     }
 }
 
-/// Receiver Variable
-pub struct ReceiverVar<C, I>
-where
-    C: IdentityConstraintSystemConfiguration,
-    I: IntegratedEncryptionScheme<Plaintext = Asset>,
-{
-    /// Asset
-    asset: AssetVar<C::ConstraintSystem>,
-
-    /// UTXO Randomness
-    utxo_randomness: UtxoRandomnessVar<C>,
-
-    /// Void Number Commitment
-    void_number_commitment: VoidNumberCommitmentVar<C>,
-
-    /// Unspent Transaction Output
-    utxo: UtxoVar<C>,
-
-    /// Type Parameter Marker
-    __: PhantomData<I>,
-}
-
-impl<C, I> ReceiverVar<C, I>
-where
-    C: IdentityConstraintSystemConfiguration,
-    I: IntegratedEncryptionScheme<Plaintext = Asset>,
-{
-    /// Checks if `self` is a well-formed receiver and returns its asset.
-    ///
-    /// This [`ReceiverVar`] is well-formed whenever:
-    /// ```text
-    /// utxo = COM(asset || k, s)
-    /// ```
-    /// where `k` is `self.void_number_commitment` and `s` is `self.utxo_randomness`. In this
-    /// equation we have `{ utxo } : Public`, `{ asset, k, s } : Secret`.
-    #[inline]
-    pub fn get_well_formed_asset(
-        self,
-        cs: &mut C::ConstraintSystem,
-        commitment_scheme: &C::CommitmentSchemeVar,
-    ) -> AssetVar<C::ConstraintSystem> {
-        cs.assert_eq(
-            &self.utxo,
-            &generate_utxo(
-                commitment_scheme,
-                &self.asset,
-                &self.void_number_commitment,
-                &self.utxo_randomness,
-            ),
-        );
-        self.asset
-    }
-}
-
-impl<C, I> Variable<C::ConstraintSystem> for ReceiverVar<C, I>
-where
-    C: IdentityConstraintSystemConfiguration,
-    I: IntegratedEncryptionScheme<Plaintext = Asset>,
-{
-    type Type = Receiver<C, I>;
-
-    type Mode = Derived;
-
-    #[inline]
-    fn new(cs: &mut C::ConstraintSystem, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
-        match allocation {
-            Allocation::Known(this, mode) => Self {
-                asset: AssetVar::new_known(cs, &this.asset, mode),
-                utxo_randomness: UtxoRandomnessVar::<C>::new_known(cs, &this.utxo_randomness, mode),
-                void_number_commitment: VoidNumberCommitmentVar::<C>::new_known(
-                    cs,
-                    &this.void_number_commitment,
-                    Secret,
-                ),
-                utxo: UtxoVar::<C>::new_known(cs, &this.utxo, Public),
-                __: PhantomData,
-            },
-            Allocation::Unknown(mode) => Self {
-                asset: AssetVar::new_unknown(cs, mode),
-                utxo_randomness: UtxoRandomnessVar::<C>::new_unknown(cs, mode),
-                void_number_commitment: VoidNumberCommitmentVar::<C>::new_unknown(cs, Secret),
-                utxo: UtxoVar::<C>::new_unknown(cs, Public),
-                __: PhantomData,
-            },
-        }
-    }
-}
-
-impl<C, I> HasAllocation<C::ConstraintSystem> for Receiver<C, I>
-where
-    C: IdentityConstraintSystemConfiguration,
-    I: IntegratedEncryptionScheme<Plaintext = Asset>,
-{
-    type Variable = ReceiverVar<C, I>;
-    type Mode = Derived;
-}
-
 /// Receiver Post Error
 pub enum ReceiverPostError<L>
 where
@@ -1641,7 +1187,7 @@ where
 /// Receiver Post
 pub struct ReceiverPost<C, I>
 where
-    C: IdentityConfiguration,
+    C: Configuration,
     I: IntegratedEncryptionScheme<Plaintext = Asset>,
 {
     /// Unspent Transaction Output
@@ -1653,7 +1199,7 @@ where
 
 impl<C, I> ReceiverPost<C, I>
 where
-    C: IdentityConfiguration,
+    C: Configuration,
     I: IntegratedEncryptionScheme<Plaintext = Asset>,
 {
     /// Posts the [`ReceiverPost`] data to the `ledger`.
@@ -1674,11 +1220,485 @@ where
 
 impl<C, I> From<Receiver<C, I>> for ReceiverPost<C, I>
 where
-    C: IdentityConfiguration,
+    C: Configuration,
     I: IntegratedEncryptionScheme<Plaintext = Asset>,
 {
     #[inline]
     fn from(receiver: Receiver<C, I>) -> Self {
         receiver.into_post()
+    }
+}
+
+/// Constraint System Gadgets for Identities
+pub mod constraint {
+    use super::*;
+    use manta_crypto::{
+        constraint::{
+            reflection::{HasAllocation, HasVariable, Var},
+            Allocation, Constant, ConstraintSystem, Derived, Equal, Public, PublicOrSecret, Secret,
+            Variable,
+        },
+        set::constraint::{ContainmentProofVar, VerifiedSetVariable},
+    };
+
+    /// [`Identity`] Constraint System Configuration
+    pub trait Configuration: super::Configuration {
+        /// Constraint System
+        type ConstraintSystem: ConstraintSystem
+            + HasVariable<AssetId, Mode = PublicOrSecret>
+            + HasVariable<AssetBalance, Mode = PublicOrSecret>;
+
+        /// Secret Key Variable
+        type SecretKeyVar: Variable<Self::ConstraintSystem, Type = Self::SecretKey, Mode = Secret>;
+
+        /// Pseudorandom Function Family Input Variable
+        type PseudorandomFunctionFamilyInputVar: Variable<
+            Self::ConstraintSystem,
+            Type = <Self::PseudorandomFunctionFamily as PseudorandomFunctionFamily>::Input,
+            Mode = Secret,
+        >;
+
+        /// Pseudorandom Function Family Output Variable
+        type PseudorandomFunctionFamilyOutputVar: Variable<
+                Self::ConstraintSystem,
+                Type = <Self::PseudorandomFunctionFamily as PseudorandomFunctionFamily>::Output,
+                Mode = PublicOrSecret,
+            > + Equal<Self::ConstraintSystem>;
+
+        /// Pseudorandom Function Family Variable
+        type PseudorandomFunctionFamilyVar: PseudorandomFunctionFamily<
+                Seed = Self::SecretKeyVar,
+                Input = Self::PseudorandomFunctionFamilyInputVar,
+                Output = Self::PseudorandomFunctionFamilyOutputVar,
+            > + Variable<
+                Self::ConstraintSystem,
+                Type = Self::PseudorandomFunctionFamily,
+                Mode = Constant,
+            >;
+
+        /// Commitment Scheme Randomness Variable
+        type CommitmentSchemeRandomnessVar: Variable<
+            Self::ConstraintSystem,
+            Type = <Self::CommitmentScheme as CommitmentScheme>::Randomness,
+            Mode = Secret,
+        >;
+
+        /// Commitment Scheme Output Variable
+        type CommitmentSchemeOutputVar: Variable<
+                Self::ConstraintSystem,
+                Type = <Self::CommitmentScheme as CommitmentScheme>::Output,
+                Mode = PublicOrSecret,
+            > + Equal<Self::ConstraintSystem>;
+
+        /// Commitment Scheme Variable
+        type CommitmentSchemeVar: CommitmentScheme<
+                Randomness = Self::CommitmentSchemeRandomnessVar,
+                Output = Self::CommitmentSchemeOutputVar,
+            > + CommitmentInput<PublicKeyVar<Self>>
+            + CommitmentInput<VoidNumberGeneratorVar<Self>>
+            + CommitmentInput<AssetVar<Self::ConstraintSystem>>
+            + CommitmentInput<VoidNumberCommitmentVar<Self>>
+            + Variable<Self::ConstraintSystem, Type = Self::CommitmentScheme, Mode = Constant>;
+    }
+
+    /// [`PseudorandomFunctionFamily::Input`] Variable Type
+    type PseudorandomFunctionFamilyInputVar<C> =
+        <C as Configuration>::PseudorandomFunctionFamilyInputVar;
+
+    /// [`PseudorandomFunctionFamily::Output`] Variable Type
+    type PseudorandomFunctionFamilyOutputVar<C> =
+        <C as Configuration>::PseudorandomFunctionFamilyOutputVar;
+
+    /// [`CommitmentScheme::Randomness`] Variable Type
+    type CommitmentSchemeRandomnessVar<C> = <C as Configuration>::CommitmentSchemeRandomnessVar;
+
+    /// [`CommitmentScheme::Output`] Variable Type
+    type CommitmentSchemeOutputVar<C> = <C as Configuration>::CommitmentSchemeOutputVar;
+
+    /// Secret Key Variable Type
+    pub type SecretKeyVar<C> = <C as Configuration>::SecretKeyVar;
+
+    /// Public Key Variable Type
+    pub type PublicKeyVar<C> = PseudorandomFunctionFamilyOutputVar<C>;
+
+    /// Void Number Generator Variable Type
+    pub type VoidNumberGeneratorVar<C> = PseudorandomFunctionFamilyInputVar<C>;
+
+    /// Void Number Variable Type
+    pub type VoidNumberVar<C> = PseudorandomFunctionFamilyOutputVar<C>;
+
+    ///  Void Number Commitment Randomness Variable Type
+    pub type VoidNumberCommitmentRandomnessVar<C> = CommitmentSchemeRandomnessVar<C>;
+
+    /// Void Number Commitment Variable Type
+    pub type VoidNumberCommitmentVar<C> = CommitmentSchemeOutputVar<C>;
+
+    /// UTXO Randomness Variable Type
+    pub type UtxoRandomnessVar<C> = CommitmentSchemeRandomnessVar<C>;
+
+    /// UTXO Variable Type
+    pub type UtxoVar<C> = CommitmentSchemeOutputVar<C>;
+
+    /// UTXO Containment Proof Variable Type
+    pub type UtxoContainmentProofVar<C, S> =
+        ContainmentProofVar<S, <C as Configuration>::ConstraintSystem>;
+
+    /// Asset Parameters Variable
+    pub struct AssetParametersVar<C>
+    where
+        C: Configuration,
+    {
+        /// Void Number Generator
+        pub void_number_generator: VoidNumberGeneratorVar<C>,
+
+        /// Void Number Commitment Randomness
+        pub void_number_commitment_randomness: VoidNumberCommitmentRandomnessVar<C>,
+
+        /// UTXO Randomness
+        pub utxo_randomness: UtxoRandomnessVar<C>,
+    }
+
+    impl<C> AssetParametersVar<C>
+    where
+        C: Configuration,
+    {
+        /// Builds a new [`AssetParametersVar`] from parameter variables.
+        #[inline]
+        pub fn new(
+            void_number_generator: VoidNumberGeneratorVar<C>,
+            void_number_commitment_randomness: VoidNumberCommitmentRandomnessVar<C>,
+            utxo_randomness: UtxoRandomnessVar<C>,
+        ) -> Self {
+            Self {
+                void_number_generator,
+                void_number_commitment_randomness,
+                utxo_randomness,
+            }
+        }
+    }
+
+    impl<C> Variable<C::ConstraintSystem> for AssetParametersVar<C>
+    where
+        C: Configuration,
+    {
+        type Type = AssetParameters<C>;
+
+        type Mode = Secret;
+
+        #[inline]
+        fn new(
+            cs: &mut C::ConstraintSystem,
+            allocation: Allocation<Self::Type, Self::Mode>,
+        ) -> Self {
+            match allocation {
+                Allocation::Known(this, mode) => Self::new(
+                    VoidNumberGeneratorVar::<C>::new_known(cs, &this.void_number_generator, mode),
+                    VoidNumberCommitmentRandomnessVar::<C>::new_known(
+                        cs,
+                        &this.void_number_commitment_randomness,
+                        mode,
+                    ),
+                    UtxoRandomnessVar::<C>::new_known(cs, &this.utxo_randomness, mode),
+                ),
+                Allocation::Unknown(mode) => Self::new(
+                    VoidNumberGeneratorVar::<C>::new_unknown(cs, mode),
+                    VoidNumberCommitmentRandomnessVar::<C>::new_unknown(cs, mode),
+                    UtxoRandomnessVar::<C>::new_unknown(cs, mode),
+                ),
+            }
+        }
+    }
+
+    impl<C> HasAllocation<C::ConstraintSystem> for AssetParameters<C>
+    where
+        C: Configuration,
+    {
+        type Variable = AssetParametersVar<C>;
+        type Mode = Secret;
+    }
+
+    /// Sender Variable
+    pub struct SenderVar<C, S>
+    where
+        C: Configuration,
+        S: VerifiedSet<Item = Utxo<C>>,
+        C::ConstraintSystem: HasVariable<S::Public> + HasVariable<S::Secret>,
+    {
+        /// Secret Key
+        secret_key: SecretKeyVar<C>,
+
+        /// Public Key
+        public_key: PublicKeyVar<C>,
+
+        /// Asset
+        asset: AssetVar<C::ConstraintSystem>,
+
+        /// Asset Parameters
+        parameters: AssetParametersVar<C>,
+
+        /// Void Number
+        void_number: VoidNumberVar<C>,
+
+        /// Void Number Commitment
+        void_number_commitment: VoidNumberCommitmentVar<C>,
+
+        /// Unspent Transaction Output
+        utxo: UtxoVar<C>,
+
+        /// UTXO Containment Proof
+        utxo_containment_proof: UtxoContainmentProofVar<C, S>,
+    }
+
+    impl<C, S> SenderVar<C, S>
+    where
+        C: Configuration,
+        S: VerifiedSet<Item = Utxo<C>>,
+        C::ConstraintSystem: HasVariable<S::Public> + HasVariable<S::Secret>,
+    {
+        /// Checks if `self` is a well-formed sender and returns its asset.
+        #[inline]
+        pub fn get_well_formed_asset(
+            self,
+            cs: &mut C::ConstraintSystem,
+            commitment_scheme: &C::CommitmentSchemeVar,
+            utxo_set: &Var<S, C::ConstraintSystem>,
+        ) -> AssetVar<C::ConstraintSystem>
+        where
+            S: HasAllocation<C::ConstraintSystem>,
+            S::Variable: VerifiedSetVariable<C::ConstraintSystem, ItemVar = UtxoVar<C>>,
+        {
+            // Well-formed check:
+            //
+            // 1. pk = PRF(sk, 0)                  [public: (),     secret: (pk, sk)]
+            // 2. vn = PRF(sk, rho)                [public: (vn),   secret: (sk, rho)]
+            // 3. k = COM(pk || rho, r)            [public: (k),    secret: (pk, rho, r)]
+            // 4. cm = COM(asset || k, s)          [public: (),     secret: (cm, asset, k, s)]
+            // 5. is_path(cm, path, root) == true  [public: (root), secret: (cm, path)]
+            //
+            // FIXME: should `k` be private or not?
+
+            // 1. Check public key:
+            // ```
+            // pk = PRF(sk, 0)
+            // ```
+            // where public: {}, secret: {pk, sk}.
+            cs.assert_eq(
+                &self.public_key,
+                &C::PseudorandomFunctionFamilyVar::evaluate_zero(&self.secret_key),
+            );
+
+            // 2. Check void number:
+            // ```
+            // vn = PRF(sk, rho)
+            // ```
+            // where public: {vn}, secret: {sk, rho}.
+            cs.assert_eq(
+                &self.void_number,
+                &C::PseudorandomFunctionFamilyVar::evaluate(
+                    &self.secret_key,
+                    &self.parameters.void_number_generator,
+                ),
+            );
+
+            // 3. Check void number commitment:
+            // ```
+            // k = COM(pk || rho, r)
+            // ```
+            // where public: {k}, secret: {pk, rho, r}.
+            cs.assert_eq(
+                &self.void_number_commitment,
+                &generate_void_number_commitment(
+                    commitment_scheme,
+                    &self.public_key,
+                    &self.parameters.void_number_generator,
+                    &self.parameters.void_number_commitment_randomness,
+                ),
+            );
+
+            // 4. Check UTXO:
+            // ```
+            // cm = COM(asset || k, s)
+            // ```
+            // where public: {}, secret: {cm, asset, k, s}.
+            cs.assert_eq(
+                &self.utxo,
+                &generate_utxo(
+                    commitment_scheme,
+                    &self.asset,
+                    &self.void_number_commitment,
+                    &self.parameters.utxo_randomness,
+                ),
+            );
+
+            // 5. Check UTXO containment proof:
+            // ```
+            // is_path(cm, path, root) == true
+            // ```
+            // where public: {root}, secret: {cm, path}.
+            self.utxo_containment_proof
+                .assert_validity(utxo_set, &self.utxo, cs);
+
+            self.asset
+        }
+    }
+
+    impl<C, S> Variable<C::ConstraintSystem> for SenderVar<C, S>
+    where
+        C: Configuration,
+        S: VerifiedSet<Item = Utxo<C>>,
+        C::ConstraintSystem:
+            HasVariable<S::Public, Mode = Public> + HasVariable<S::Secret, Mode = Secret>,
+    {
+        type Type = Sender<C, S>;
+
+        type Mode = Derived;
+
+        #[inline]
+        fn new(
+            cs: &mut C::ConstraintSystem,
+            allocation: Allocation<Self::Type, Self::Mode>,
+        ) -> Self {
+            match allocation {
+                Allocation::Known(this, mode) => Self {
+                    secret_key: SecretKeyVar::<C>::new_known(cs, &this.secret_key, mode),
+                    public_key: PublicKeyVar::<C>::new_known(cs, &this.public_key, Secret),
+                    asset: this.asset.known(cs, mode),
+                    parameters: this.parameters.known(cs, mode),
+                    void_number: VoidNumberVar::<C>::new_known(cs, &this.void_number, Public),
+                    void_number_commitment: VoidNumberCommitmentVar::<C>::new_known(
+                        cs,
+                        &this.void_number_commitment,
+                        Public,
+                    ),
+                    utxo: UtxoVar::<C>::new_known(cs, &this.utxo, Secret),
+                    utxo_containment_proof: this.utxo_containment_proof.known(cs, mode),
+                },
+                Allocation::Unknown(mode) => Self {
+                    secret_key: SecretKeyVar::<C>::new_unknown(cs, mode),
+                    public_key: PublicKeyVar::<C>::new_unknown(cs, Secret),
+                    asset: Asset::unknown(cs, mode),
+                    parameters: AssetParameters::unknown(cs, mode),
+                    void_number: VoidNumberVar::<C>::new_unknown(cs, Public),
+                    void_number_commitment: VoidNumberCommitmentVar::<C>::new_unknown(cs, Public),
+                    utxo: UtxoVar::<C>::new_unknown(cs, Secret),
+                    utxo_containment_proof: ContainmentProof::<S>::unknown(cs, mode),
+                },
+            }
+        }
+    }
+
+    impl<C, S> HasAllocation<C::ConstraintSystem> for Sender<C, S>
+    where
+        C: Configuration,
+        S: VerifiedSet<Item = Utxo<C>>,
+        C::ConstraintSystem:
+            HasVariable<S::Public, Mode = Public> + HasVariable<S::Secret, Mode = Secret>,
+    {
+        type Variable = SenderVar<C, S>;
+        type Mode = Derived;
+    }
+
+    /// Receiver Variable
+    pub struct ReceiverVar<C, I>
+    where
+        C: Configuration,
+        I: IntegratedEncryptionScheme<Plaintext = Asset>,
+    {
+        /// Asset
+        asset: AssetVar<C::ConstraintSystem>,
+
+        /// UTXO Randomness
+        utxo_randomness: UtxoRandomnessVar<C>,
+
+        /// Void Number Commitment
+        void_number_commitment: VoidNumberCommitmentVar<C>,
+
+        /// Unspent Transaction Output
+        utxo: UtxoVar<C>,
+
+        /// Type Parameter Marker
+        __: PhantomData<I>,
+    }
+
+    impl<C, I> ReceiverVar<C, I>
+    where
+        C: Configuration,
+        I: IntegratedEncryptionScheme<Plaintext = Asset>,
+    {
+        /// Checks if `self` is a well-formed receiver and returns its asset.
+        ///
+        /// This [`ReceiverVar`] is well-formed whenever:
+        /// ```text
+        /// utxo = COM(asset || k, s)
+        /// ```
+        /// where `k` is `self.void_number_commitment` and `s` is `self.utxo_randomness`. In this
+        /// equation we have `{ utxo } : Public`, `{ asset, k, s } : Secret`.
+        #[inline]
+        pub fn get_well_formed_asset(
+            self,
+            cs: &mut C::ConstraintSystem,
+            commitment_scheme: &C::CommitmentSchemeVar,
+        ) -> AssetVar<C::ConstraintSystem> {
+            cs.assert_eq(
+                &self.utxo,
+                &generate_utxo(
+                    commitment_scheme,
+                    &self.asset,
+                    &self.void_number_commitment,
+                    &self.utxo_randomness,
+                ),
+            );
+            self.asset
+        }
+    }
+
+    impl<C, I> Variable<C::ConstraintSystem> for ReceiverVar<C, I>
+    where
+        C: Configuration,
+        I: IntegratedEncryptionScheme<Plaintext = Asset>,
+    {
+        type Type = Receiver<C, I>;
+
+        type Mode = Derived;
+
+        #[inline]
+        fn new(
+            cs: &mut C::ConstraintSystem,
+            allocation: Allocation<Self::Type, Self::Mode>,
+        ) -> Self {
+            match allocation {
+                Allocation::Known(this, mode) => Self {
+                    asset: AssetVar::new_known(cs, &this.asset, mode),
+                    utxo_randomness: UtxoRandomnessVar::<C>::new_known(
+                        cs,
+                        &this.utxo_randomness,
+                        mode,
+                    ),
+                    void_number_commitment: VoidNumberCommitmentVar::<C>::new_known(
+                        cs,
+                        &this.void_number_commitment,
+                        Secret,
+                    ),
+                    utxo: UtxoVar::<C>::new_known(cs, &this.utxo, Public),
+                    __: PhantomData,
+                },
+                Allocation::Unknown(mode) => Self {
+                    asset: AssetVar::new_unknown(cs, mode),
+                    utxo_randomness: UtxoRandomnessVar::<C>::new_unknown(cs, mode),
+                    void_number_commitment: VoidNumberCommitmentVar::<C>::new_unknown(cs, Secret),
+                    utxo: UtxoVar::<C>::new_unknown(cs, Public),
+                    __: PhantomData,
+                },
+            }
+        }
+    }
+
+    impl<C, I> HasAllocation<C::ConstraintSystem> for Receiver<C, I>
+    where
+        C: Configuration,
+        I: IntegratedEncryptionScheme<Plaintext = Asset>,
+    {
+        type Variable = ReceiverVar<C, I>;
+        type Mode = Derived;
     }
 }

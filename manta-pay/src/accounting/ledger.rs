@@ -46,7 +46,7 @@ type VoidNumber = identity::VoidNumber<Configuration>;
 type Utxo = identity::Utxo<Configuration>;
 
 /// UTXO Variable
-type UtxoVar = identity::UtxoVar<Configuration>;
+type UtxoVar = identity::constraint::UtxoVar<Configuration>;
 
 /// UTXO Shard Root
 type Root = merkle_tree::Root<Configuration>;
