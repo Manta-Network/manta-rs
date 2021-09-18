@@ -27,6 +27,7 @@ use crate::{
     },
 };
 use ark_bls12_381::Bls12_381;
+use ark_crypto_primitives::crh::pedersen::{constraints::CRHGadget, CRH};
 use ark_ed_on_bls12_381::{constraints::EdwardsVar, EdwardsProjective, Fq};
 use manta_accounting::{identity, transfer};
 use manta_crypto::{commitment::CommitmentScheme, PseudorandomFunctionFamily};
@@ -76,29 +77,23 @@ pub type ProofSystem = Groth16<Bls12_381>;
 pub struct Configuration;
 
 impl merkle_tree::Configuration for Configuration {
-    type LeafHash = ark_crypto_primitives::crh::pedersen::CRH<
-        PedersenCommitmentProjectiveCurve,
-        PedersenCommitmentWindowParameters,
-    >;
+    type LeafHash = CRH<PedersenCommitmentProjectiveCurve, PedersenCommitmentWindowParameters>;
 
-    type InnerHash = ark_crypto_primitives::crh::pedersen::CRH<
-        PedersenCommitmentProjectiveCurve,
-        PedersenCommitmentWindowParameters,
-    >;
+    type InnerHash = CRH<PedersenCommitmentProjectiveCurve, PedersenCommitmentWindowParameters>;
 
-    const HEIGHT: u32 = 32;
+    const HEIGHT: merkle_tree::Height = merkle_tree::Height::new(20);
 }
 
 impl merkle_tree::constraint::Configuration for Configuration {
     type ConstraintField = ConstraintField;
 
-    type LeafHashVar = ark_crypto_primitives::crh::pedersen::constraints::CRHGadget<
+    type LeafHashVar = CRHGadget<
         PedersenCommitmentProjectiveCurve,
         PedersenCommitmentProjectiveCurveVar,
         PedersenCommitmentWindowParameters,
     >;
 
-    type InnerHashVar = ark_crypto_primitives::crh::pedersen::constraints::CRHGadget<
+    type InnerHashVar = CRHGadget<
         PedersenCommitmentProjectiveCurve,
         PedersenCommitmentProjectiveCurveVar,
         PedersenCommitmentWindowParameters,
@@ -109,7 +104,7 @@ impl identity::Configuration for Configuration {
     type SecretKey = <Blake2s as PseudorandomFunctionFamily>::Seed;
     type PseudorandomFunctionFamily = Blake2s;
     type CommitmentScheme = PedersenCommitment;
-    type Rng = SeedIntoRng<<Blake2s as PseudorandomFunctionFamily>::Seed, ChaCha20Rng>;
+    type Rng = SeedIntoRng<Self::SecretKey, ChaCha20Rng>;
 }
 
 impl identity::constraint::Configuration for Configuration {

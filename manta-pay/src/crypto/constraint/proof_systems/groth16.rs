@@ -171,11 +171,32 @@ mod test {
             .unwrap();
     }
 
-    /// Tests the generation of proofs.
+    ///
     #[test]
-    fn generate_proof() {}
+    fn test_private_transfer() {
+        /* TODO:
+        let mut rng = thread_rng();
+        let commitment_scheme = rng.gen();
+        let mut utxo_set = UtxoSet::new(rng.gen());
 
-    /// Tests the verification of proofs.
-    #[test]
-    fn verify_proof() {}
+        let base = rng.gen::<Identity>();
+        let shielded = base.into_shielded();
+
+        let mint_asset = rng.gen();
+        let mint = Mint::build(
+            mint_asset,
+            shielded.into_receiver(&commitment_scheme, mint_asset, &mut rng),
+        );
+
+        let (proving_key, verifying_key) =
+            PrivateTransfer::generate_context(&commitment_scheme, &utxo_set, &mut rng)
+                .unwrap()
+                .unwrap();
+
+        let secret_transfer = PrivateTransfer::build(
+            [rng.gen().into_sender(), rng.gen().into_sender()],
+            [rng.gen().into_receiver(), rng.gen().into_receiver()],
+        );
+        */
+    }
 }

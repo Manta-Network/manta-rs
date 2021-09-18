@@ -443,7 +443,7 @@ impl<T, const SOURCES: usize, const SENDERS: usize, const RECEIVERS: usize, cons
 where
     T: Configuration,
 {
-    /// Builds a new [`Transfer`] from a [`PublicTransfer`] and a [`SecretTransfer`].
+    /// Builds a new universal [`Transfer`] from public and secret information.
     #[inline]
     pub fn new(
         asset_id: AssetId,
@@ -925,6 +925,23 @@ pub mod canonical {
     /// Mint Transaction Ledger Post
     pub type MintPost<T> = transfer_post_alias!(T, MintShape);
 
+    impl<T> Mint<T>
+    where
+        T: Configuration,
+    {
+        /// Builds a [`Mint`] from `asset` and `receiver`.
+        #[inline]
+        pub fn build(asset: Asset, receiver: Receiver<T>) -> Self {
+            Self::new(
+                asset.id,
+                [asset.value],
+                Default::default(),
+                [receiver],
+                Default::default(),
+            )
+        }
+    }
+
     /// Private Transfer Transaction Shape
     ///
     /// ```text
@@ -941,6 +958,26 @@ pub mod canonical {
     /// Private Transfer Transaction Post
     pub type PrivateTransferPost<T> = transfer_post_alias!(T, PrivateTransferShape);
 
+    impl<T> PrivateTransfer<T>
+    where
+        T: Configuration,
+    {
+        /// Builds a [`PrivateTransfer`] from `senders` and `receivers`.
+        #[inline]
+        pub fn build(
+            senders: [Sender<T>; PrivateTransferShape::SENDERS],
+            receivers: [Receiver<T>; PrivateTransferShape::RECEIVERS],
+        ) -> Self {
+            Self::new(
+                Default::default(),
+                Default::default(),
+                senders,
+                receivers,
+                Default::default(),
+            )
+        }
+    }
+
     /// Reclaim Transaction Shape
     ///
     /// ```text
@@ -956,4 +993,25 @@ pub mod canonical {
 
     /// Reclaim Transaction Post
     pub type ReclaimPost<T> = transfer_post_alias!(T, ReclaimShape);
+
+    impl<T> Reclaim<T>
+    where
+        T: Configuration,
+    {
+        /// Builds a [`Reclaim`] from `senders`, `receiver`, and `reclaim`.
+        #[inline]
+        pub fn build(
+            senders: [Sender<T>; ReclaimShape::SENDERS],
+            receiver: Receiver<T>,
+            reclaim: Asset,
+        ) -> Self {
+            Self::new(
+                reclaim.id,
+                Default::default(),
+                senders,
+                [receiver],
+                [reclaim.value],
+            )
+        }
+    }
 }

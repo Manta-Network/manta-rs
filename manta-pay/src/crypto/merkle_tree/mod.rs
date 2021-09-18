@@ -31,7 +31,7 @@
 mod incremental;
 
 use crate::crypto::constraint::{empty, full, ArkConstraintSystem};
-use alloc::vec::Vec;
+use alloc::{vec, vec::Vec};
 use ark_crypto_primitives::{
     crh::{TwoToOneCRH, CRH},
     merkle_tree::{Config, MerkleTree as ArkMerkleTree, Path as ArkPath, TwoToOneDigest},
@@ -44,6 +44,32 @@ use rand::{
     RngCore,
 };
 
+/// Merkle Tree Height Type
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct Height(u16);
+
+impl Height {
+    /// Builds a Merkle Tree [`Height`] whenever `height >= 2`.
+    #[inline]
+    pub const fn new(height: u16) -> Self {
+        let height = Self(height);
+        height.inner();
+        height
+    }
+
+    /// Returns the height as a `u16`.
+    #[inline]
+    pub const fn get(&self) -> u16 {
+        self.0
+    }
+
+    /// Returns the inner height as a `u16`.
+    #[inline]
+    pub const fn inner(&self) -> u16 {
+        self.0 - 2
+    }
+}
+
 /// Merkle Tree Configuration
 pub trait Configuration {
     /// Leaf Hash Type
@@ -53,13 +79,13 @@ pub trait Configuration {
     type InnerHash: TwoToOneCRH;
 
     /// Merkle Tree Height
-    const HEIGHT: u32;
+    const HEIGHT: Height;
 }
 
 /// Computes the Merkle Tree capacity given the `height`.
 #[inline]
-pub const fn capacity(height: u32) -> usize {
-    2usize.pow(height)
+pub const fn capacity(height: Height) -> usize {
+    2usize.pow(height.0 as u32)
 }
 
 /// Computes the necessary padding required to fill the capacity of a Merkle Tree with the
@@ -67,7 +93,7 @@ pub const fn capacity(height: u32) -> usize {
 ///
 /// Returns `None` if `length` is larger than the capacity of the tree.
 #[inline]
-pub const fn padding_length(height: u32, length: usize) -> Option<usize> {
+pub const fn padding_length(height: Height, length: usize) -> Option<usize> {
     let capacity = capacity(height);
     if length > capacity {
         return None;
@@ -229,7 +255,7 @@ where
 
     /// Returns the height of this merkle tree.
     #[inline]
-    pub fn height(&self) -> u32 {
+    pub fn height(&self) -> Height {
         C::HEIGHT
     }
 
@@ -269,7 +295,7 @@ where
         Self(incremental::IncrementalMerkleTree::blank(
             &parameters.leaf,
             &parameters.inner,
-            C::HEIGHT as usize,
+            C::HEIGHT.0 as usize,
         ))
     }
 
@@ -293,7 +319,7 @@ where
 
     /// Returns the height of this incremental merkle tree.
     #[inline]
-    pub fn height(&self) -> u32 {
+    pub fn height(&self) -> Height {
         C::HEIGHT
     }
 
@@ -540,7 +566,11 @@ pub mod constraint {
                         //
                         PathVarInnerType::new_witness(
                             ns!(cs.cs, "path variable secret witness"),
-                            empty::<PathInnerType<C>>,
+                            full(PathInnerType {
+                                leaf_sibling_hash: Default::default(),
+                                auth_path: vec![Default::default(); C::HEIGHT.inner() as usize],
+                                leaf_index: Default::default(),
+                            }),
                         )
                     }
                 }

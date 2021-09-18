@@ -113,7 +113,9 @@ where
     /// Constructs a new constraint system which is ready for unknown variables.
     #[inline]
     pub fn for_unknown() -> Self {
+        // FIXME: This might not be the right setup for all proof systems.
         let cs = ark_r1cs::ConstraintSystem::new_ref();
+        cs.set_optimization_goal(ark_r1cs::OptimizationGoal::Constraints);
         cs.set_mode(ark_r1cs::SynthesisMode::Setup);
         Self { cs }
     }
@@ -121,7 +123,9 @@ where
     /// Constructs a new constraint system which is ready for known variables.
     #[inline]
     pub fn for_known() -> Self {
+        // FIXME: This might not be the right setup for all proof systems.
         let cs = ark_r1cs::ConstraintSystem::new_ref();
+        cs.set_optimization_goal(ark_r1cs::OptimizationGoal::Constraints);
         Self { cs }
     }
 }

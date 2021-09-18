@@ -27,8 +27,12 @@ use crate::{
     identity::{self, AssetParameters, Identity, OpenSpend, Receiver, ShieldedIdentity, Spend},
     keys::{self, DerivedSecretKeyGenerator, ExternalKeys, InternalKeys},
     ledger::Ledger,
-    transfer::{self, SecretTransfer},
+    transfer::{
+        self,
+        canonical::{Mint, PrivateTransfer, Reclaim},
+    },
 };
+use alloc::vec::Vec;
 use core::{convert::Infallible, fmt::Debug, hash::Hash};
 use manta_crypto::ies::{EncryptedMessage, IntegratedEncryptionScheme};
 use rand::{
@@ -239,7 +243,7 @@ where
     #[inline]
     fn find_open_spend_from_iter<C, I, Iter>(
         &self,
-        encrypted_asset: EncryptedMessage<I>,
+        encrypted_asset: &EncryptedMessage<I>,
         iter: Iter,
     ) -> Option<OpenSpend<C>>
     where
@@ -249,32 +253,7 @@ where
         Standard: Distribution<AssetParameters<C>>,
     {
         iter.into_iter()
-            .find_map(move |k| Identity::new(k).try_open(&encrypted_asset).ok())
-    }
-
-    /// Looks for an [`OpenSpend`] for this `encrypted_asset`, only trying `gap_limit`-many
-    /// external and internal keys starting from `index`.
-    #[inline]
-    pub fn find_open_spend<C, I>(
-        &self,
-        encrypted_asset: EncryptedMessage<I>,
-        index: D::Index,
-        gap_limit: usize,
-    ) -> Option<OpenSpend<C>>
-    where
-        C: identity::Configuration<SecretKey = D::SecretKey>,
-        I: IntegratedEncryptionScheme<Plaintext = Asset>,
-        Standard: Distribution<AssetParameters<C>>,
-    {
-        // TODO: Return which kind of spend it was, internal or external.
-
-        let interleaved_keys = self
-            .external_keys_from_index(index.clone())
-            .zip(self.internal_keys_from_index(index))
-            .flat_map(move |(e, i)| [e, i])
-            .take(2 * gap_limit);
-
-        self.find_open_spend_from_iter(encrypted_asset, interleaved_keys)
+            .find_map(move |k| Identity::new(k).try_open(encrypted_asset).ok())
     }
 
     /// Looks for an [`OpenSpend`] for this `encrypted_asset`, only trying `gap_limit`-many
@@ -282,7 +261,7 @@ where
     #[inline]
     pub fn find_external_open_spend<C, I>(
         &self,
-        encrypted_asset: EncryptedMessage<I>,
+        encrypted_asset: &EncryptedMessage<I>,
         index: D::Index,
         gap_limit: usize,
     ) -> Option<OpenSpend<C>>
@@ -302,7 +281,7 @@ where
     #[inline]
     pub fn find_internal_open_spend<C, I>(
         &self,
-        encrypted_asset: EncryptedMessage<I>,
+        encrypted_asset: &EncryptedMessage<I>,
         index: D::Index,
         gap_limit: usize,
     ) -> Option<OpenSpend<C>>
@@ -315,6 +294,35 @@ where
             encrypted_asset,
             self.internal_keys_from_index(index).take(gap_limit),
         )
+    }
+
+    /// Looks for an [`OpenSpend`] for this `encrypted_asset`, only trying `gap_limit`-many
+    /// external and internal keys starting from `index`.
+    #[inline]
+    pub fn find_open_spend<C, I>(
+        &self,
+        encrypted_asset: &EncryptedMessage<I>,
+        external_index: D::Index,
+        internal_index: D::Index,
+        gap_limit: usize,
+    ) -> Option<(OpenSpend<C>, SpendKind)>
+    where
+        C: identity::Configuration<SecretKey = D::SecretKey>,
+        I: IntegratedEncryptionScheme<Plaintext = Asset>,
+        Standard: Distribution<AssetParameters<C>>,
+    {
+        // TODO: Find a way to either interleave these or parallelize these.
+        if let Some(spend) =
+            self.find_external_open_spend(encrypted_asset, external_index, gap_limit)
+        {
+            return Some((spend, SpendKind::External));
+        }
+        if let Some(spend) =
+            self.find_internal_open_spend(encrypted_asset, internal_index, gap_limit)
+        {
+            return Some((spend, SpendKind::Internal));
+        }
+        None
     }
 
     /// Updates `self` with new information from the ledger.
@@ -376,14 +384,32 @@ where
         ))
     }
 
-    /// Builds a [`SecretTransfer`] transaction to send `asset` to an `external_receiver`.
-    pub fn secret_send<T, R>(
+    /// Builds a [`Mint`] transaction to mint `asset` and returns the [`Spend`] for that asset.
+    #[inline]
+    pub fn mint<T, R>(
+        &mut self,
+        commitment_scheme: &T::CommitmentScheme,
+        asset: Asset,
+        rng: &mut R,
+    ) -> WalletMintResult<D, T>
+    where
+        T: transfer::Configuration<SecretKey = D::SecretKey>,
+        R: CryptoRng + RngCore + ?Sized,
+        Standard: Distribution<AssetParameters<T>>,
+    {
+        let (receiver, spend) = self.generate_internal_receiver(commitment_scheme, asset, rng)?;
+        Ok((Mint::build(asset, receiver), spend))
+    }
+
+    /// TODO: Builds [`PrivateTransfer`] transactions to send `asset` to an `external_receiver`.
+    #[inline]
+    pub fn batch_private_transfer_external<T, R>(
         &self,
         commitment_scheme: &T::CommitmentScheme,
         asset: Asset,
         external_receiver: ShieldedIdentity<T, T::IntegratedEncryptionScheme>,
         rng: &mut R,
-    ) -> Option<SecretTransfer<T, 2, 2>>
+    ) -> Option<Vec<PrivateTransfer<T>>>
     where
         T: transfer::Configuration,
         R: CryptoRng + RngCore + ?Sized,
@@ -393,10 +419,25 @@ where
         // 2. find out which keys have control over `asset`
         // 3. build two senders and build a receiver and a change receiver for the extra change
 
-        /*
-        let sender = Sender::generate(self.secret_key_source, commitment_scheme);
-        */
         let _ = external_receiver.into_receiver(commitment_scheme, asset, rng);
+        // TODO: PrivateTransfer::build([fst, snd], [external_receiver, change])
+        todo!()
+    }
+
+    /// TODO: Builds a [`Reclaim`] transaction.
+    #[inline]
+    pub fn reclaim<T, R>(
+        &self,
+        commitment_scheme: &T::CommitmentScheme,
+        asset: Asset,
+        rng: &mut R,
+    ) -> Option<Reclaim<T>>
+    where
+        T: transfer::Configuration,
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        let _ = (commitment_scheme, asset, rng);
+        // TODO: Reclaim::build(senders, receiver, reclaim);
         todo!()
     }
 }
@@ -441,6 +482,16 @@ where
     }
 }
 
+/// Spend Kind
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum SpendKind {
+    /// External Spend
+    External,
+
+    /// Internal Spend
+    Internal,
+}
+
 /// Internal Receiver Error
 ///
 /// This `enum` is the error state for the [`generate_internal_receiver`] method on [`Wallet`].
@@ -467,3 +518,16 @@ where
     /// Encryption Error
     EncryptionError(I::Error),
 }
+
+/// Internal Receiver Result Type
+pub type InternalReceiverResult<D, I, OK> = Result<OK, InternalReceiverError<D, I>>;
+
+/// Wallet Mint Result Type
+pub type WalletMintResult<D, T> = InternalReceiverResult<
+    D,
+    <T as transfer::Configuration>::IntegratedEncryptionScheme,
+    (
+        Mint<T>,
+        Spend<T, <T as transfer::Configuration>::IntegratedEncryptionScheme>,
+    ),
+>;

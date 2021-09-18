@@ -365,23 +365,20 @@ where
 
     /// Returns the public key associated with this identity.
     #[inline]
-    pub(crate) fn public_key(&self) -> PublicKey<C> {
+    fn public_key(&self) -> PublicKey<C> {
         C::PseudorandomFunctionFamily::evaluate_zero(&self.secret_key)
     }
 
     /// Generates a new void number using the `void_number_generator` parameter.
     #[inline]
-    pub(crate) fn void_number(
-        &self,
-        void_number_generator: &VoidNumberGenerator<C>,
-    ) -> VoidNumber<C> {
+    fn void_number(&self, void_number_generator: &VoidNumberGenerator<C>) -> VoidNumber<C> {
         C::PseudorandomFunctionFamily::evaluate(&self.secret_key, void_number_generator)
     }
 
     /// Generates a new void number commitment using the `void_number_generator` and
     /// `void_number_commitment_randomness`.
     #[inline]
-    pub(crate) fn void_number_commitment(
+    fn void_number_commitment(
         &self,
         commitment_scheme: &C::CommitmentScheme,
         parameters: &AssetParameters<C>,
@@ -391,7 +388,7 @@ where
 
     /// Returns the [`PublicKey`], [`VoidNumberCommitment`], and [`Utxo`] for this identity.
     #[inline]
-    pub(crate) fn construct_utxo(
+    fn construct_utxo(
         &self,
         commitment_scheme: &C::CommitmentScheme,
         asset: &Asset,
