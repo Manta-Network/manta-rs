@@ -39,10 +39,11 @@ pub type PublicKey = [u8; 32];
 /// Secret Key Type
 pub type SecretKey = [u8; 32];
 
+/// `GCM` Tag Size
+const GCM_TAG_SIZE: usize = (aes_gcm::C_MAX - aes_gcm::P_MAX) as usize;
+
 /// Asset Ciphertext Type
-// FIXME: This should be automatically calculated from [`Asset`].
-// FIXME: Is this calculation correct and how do we know?
-pub type AssetCiphertext = [u8; Asset::SIZE + 16];
+pub type AssetCiphertext = [u8; Asset::SIZE + GCM_TAG_SIZE];
 
 /// Ephemeral Public Key Type
 pub type EphemeralPublicKey = PublicKey;

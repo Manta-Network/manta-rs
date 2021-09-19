@@ -38,7 +38,7 @@ std = ["cocoon-adapters"]
 test = []
 
 [dependencies]
-cocoon = { version = "0.2.4", optional = true, default-features = false }
+cocoon = { version = "0.2.5", optional = true, default-features = false }
 derivative = { version = "2.2.0", default-features = false, features = ["use_core"] }
 derive_more = { version = "0.99.16", default-features = false, features = ["add", "add_assign", "display", "from", "mul", "mul_assign", "sum"] }
 manta-crypto = { path = "../manta-crypto", default-features = false }
