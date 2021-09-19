@@ -769,6 +769,18 @@ where
         Identity::generate_spend(source)
     }
 
+    /// Opens a [`Spend`] without having to decrypt an encrypted asset.
+    #[inline]
+    pub fn open(self, asset: Asset) -> OpenSpend<C> {
+        // FIXME: Have a convenience function on [`Identity`] which is an alternative to
+        // `into_receiver` when we know the `asset`, so that we don't have to use a [`Spend`] and
+        // we can go strait to [`OpenSpend`].
+        OpenSpend {
+            asset,
+            identity: self.identity,
+        }
+    }
+
     /// Tries to open an `encrypted_asset`, returning an [`OpenSpend`] if successful.
     #[inline]
     pub fn try_open(self, encrypted_asset: &EncryptedMessage<I>) -> Result<OpenSpend<C>, I::Error> {

@@ -179,11 +179,25 @@ pub trait Configuration:
     >;
 }
 
+/// Transfer Shielded Identity Type
+pub type ShieldedIdentity<T> =
+    identity::ShieldedIdentity<T, <T as Configuration>::IntegratedEncryptionScheme>;
+
+/// Transfer Spend Type
+pub type Spend<T> = identity::Spend<T, <T as Configuration>::IntegratedEncryptionScheme>;
+
 /// Transfer Sender Type
 pub type Sender<T> = identity::Sender<T, <T as Configuration>::UtxoSet>;
 
 /// Transfer Receiver Type
 pub type Receiver<T> = identity::Receiver<T, <T as Configuration>::IntegratedEncryptionScheme>;
+
+/// Transfer Integrated Encryption Scheme Error
+pub type IntegratedEncryptionSchemeError<T> =
+    <<T as Configuration>::IntegratedEncryptionScheme as IntegratedEncryptionScheme>::Error;
+
+/// Transfer Constraint System Type
+pub type ConstraintSystem<T> = <T as Configuration>::ConstraintSystem;
 
 /// Transfer Sender Variable Type
 pub type SenderVar<T> = identity::constraint::SenderVar<T, <T as Configuration>::UtxoSet>;
@@ -191,9 +205,6 @@ pub type SenderVar<T> = identity::constraint::SenderVar<T, <T as Configuration>:
 /// Transfer Receiver Type
 pub type ReceiverVar<T> =
     identity::constraint::ReceiverVar<T, <T as Configuration>::IntegratedEncryptionScheme>;
-
-/// Transfer Constraint System Type
-pub type ConstraintSystem<T> = <T as Configuration>::ConstraintSystem;
 
 /// Transfer Proving Context Type
 pub type ProvingContext<T> = <<T as Configuration>::ProofSystem as ProofSystem>::ProvingContext;
@@ -868,6 +879,7 @@ pub trait Shape: sealed::Sealed {
 /// Canonical Transaction Types
 pub mod canonical {
     use super::*;
+    use crate::identity::{AssetParameters, Identity, OpenSpend};
 
     /// Implements [`Shape`] for a given shape type.
     macro_rules! impl_shape {
@@ -939,6 +951,28 @@ pub mod canonical {
                 [receiver],
                 Default::default(),
             )
+        }
+
+        /// Builds a [`Mint`] from an `identity` and an `asset`.
+        #[inline]
+        pub fn from_identity<R>(
+            identity: Identity<T>,
+            commitment_scheme: &T::CommitmentScheme,
+            asset: Asset,
+            rng: &mut R,
+        ) -> Result<(Mint<T>, OpenSpend<T>), IntegratedEncryptionSchemeError<T>>
+        where
+            R: CryptoRng + RngCore + ?Sized,
+            Standard: Distribution<AssetParameters<T>>,
+        {
+            let (shielded_identity, spend) = identity.into_receiver(commitment_scheme);
+            Ok((
+                Mint::build(
+                    asset,
+                    shielded_identity.into_receiver(commitment_scheme, asset, rng)?,
+                ),
+                spend.open(asset),
+            ))
         }
     }
 
@@ -1015,3 +1049,26 @@ pub mod canonical {
         }
     }
 }
+
+/* TODO:
+/// Testing Framework
+#[cfg(feature = "test")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
+pub mod test {
+    use super::*;
+    use canonical::Mint;
+    use rand::Rng;
+
+    ///
+    #[inline]
+    pub fn sample_sender<T, R>(commitment_scheme: &T::CommitmentScheme, rng: &mut R)
+    where
+        T: Configuration,
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        // TODO: let _ = Mint::from_identity(rng.gen(), commitment_scheme, rng.gen(), rng);
+        let _ = (commitment_scheme, rng);
+        todo!()
+    }
+}
+*/

@@ -58,7 +58,7 @@ pub trait DerivedSecretKeyGenerator {
     /// the given `index`.
     fn generate_key(
         &self,
-        is_external: bool,
+        kind: KeyKind,
         account: &Self::Account,
         index: &Self::Index,
     ) -> Result<Self::SecretKey, Self::Error>;
@@ -98,19 +98,43 @@ pub trait DerivedSecretKeyGenerator {
     }
 }
 
+/// Key Kind
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum KeyKind {
+    /// External Key
+    External,
+
+    /// Internal Key
+    Internal,
+}
+
+impl KeyKind {
+    /// Returns `true` if `self` matches [`External`](Self::External).
+    #[inline]
+    pub const fn is_external(&self) -> bool {
+        matches!(self, Self::External)
+    }
+
+    /// Returns `true` if `self` matches [`Internal`](Self::Internal).
+    #[inline]
+    pub const fn is_internal(&self) -> bool {
+        matches!(self, Self::Internal)
+    }
+}
+
 /// Generates an internal or external secret key according to the [`DerivedSecretKeyGenerator`]
 /// protocol and increments the running `index`.
 #[inline]
 fn next_key<D>(
     source: &D,
-    is_external: bool,
+    kind: KeyKind,
     account: &D::Account,
     index: &mut D::Index,
 ) -> Result<D::SecretKey, D::Error>
 where
     D: DerivedSecretKeyGenerator + ?Sized,
 {
-    let secret_key = source.generate_key(is_external, account, index)?;
+    let secret_key = source.generate_key(kind, account, index)?;
     index.increment();
     Ok(secret_key)
 }
@@ -126,7 +150,7 @@ pub fn next_external<D>(
 where
     D: DerivedSecretKeyGenerator + ?Sized,
 {
-    next_key(source, true, account, index)
+    next_key(source, KeyKind::External, account, index)
 }
 
 /// Generates an internal secret key according to the [`DerivedSecretKeyGenerator`] protocol
@@ -140,7 +164,7 @@ pub fn next_internal<D>(
 where
     D: DerivedSecretKeyGenerator + ?Sized,
 {
-    next_key(source, false, account, index)
+    next_key(source, KeyKind::Internal, account, index)
 }
 
 /// Keys

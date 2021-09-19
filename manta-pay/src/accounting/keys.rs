@@ -26,7 +26,7 @@
 use alloc::{format, string::String};
 use bip32::Seed;
 use core::{marker::PhantomData, num::ParseIntError, str::FromStr};
-use manta_accounting::keys::{DerivedSecretKeyGenerator, DerivedSecretKeyParameter};
+use manta_accounting::keys::{DerivedSecretKeyGenerator, DerivedSecretKeyParameter, KeyKind};
 
 pub use bip32::{Error, Mnemonic, XPrv as SecretKey};
 
@@ -181,11 +181,7 @@ where
 /// Computes the [`BIP-0044`] path string for the given coin settings.
 ///
 /// [`BIP-0044`]: https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki
-pub fn path_string<C>(
-    is_external: bool,
-    account: &AccountParameter,
-    index: &IndexParameter,
-) -> String
+pub fn path_string<C>(kind: KeyKind, account: &AccountParameter, index: &IndexParameter) -> String
 where
     C: CoinType,
 {
@@ -195,7 +191,7 @@ where
         BIP_44_PURPOSE_ID,
         C::COIN_TYPE_ID,
         account.0,
-        if is_external { 0 } else { 1 },
+        if kind.is_external() { 0 } else { 1 },
         index.0
     )
 }
@@ -215,13 +211,10 @@ where
     #[inline]
     fn generate_key(
         &self,
-        is_external: bool,
+        kind: KeyKind,
         account: &Self::Account,
         index: &Self::Index,
     ) -> Result<Self::SecretKey, Self::Error> {
-        SecretKey::derive_from_path(
-            &self.seed,
-            &path_string::<C>(is_external, account, index).parse()?,
-        )
+        SecretKey::derive_from_path(&self.seed, &path_string::<C>(kind, account, index).parse()?)
     }
 }

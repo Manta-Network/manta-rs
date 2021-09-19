@@ -25,7 +25,7 @@ use crate::{
     asset::{Asset, AssetBalance, AssetId},
     fs::{Load, Save},
     identity::{self, AssetParameters, Identity, OpenSpend, Receiver, ShieldedIdentity, Spend},
-    keys::{self, DerivedSecretKeyGenerator, ExternalKeys, InternalKeys},
+    keys::{self, DerivedSecretKeyGenerator, ExternalKeys, InternalKeys, KeyKind},
     ledger::Ledger,
     transfer::{
         self,
@@ -305,7 +305,7 @@ where
         external_index: D::Index,
         internal_index: D::Index,
         gap_limit: usize,
-    ) -> Option<(OpenSpend<C>, SpendKind)>
+    ) -> Option<(OpenSpend<C>, KeyKind)>
     where
         C: identity::Configuration<SecretKey = D::SecretKey>,
         I: IntegratedEncryptionScheme<Plaintext = Asset>,
@@ -315,12 +315,12 @@ where
         if let Some(spend) =
             self.find_external_open_spend(encrypted_asset, external_index, gap_limit)
         {
-            return Some((spend, SpendKind::External));
+            return Some((spend, KeyKind::External));
         }
         if let Some(spend) =
             self.find_internal_open_spend(encrypted_asset, internal_index, gap_limit)
         {
-            return Some((spend, SpendKind::Internal));
+            return Some((spend, KeyKind::Internal));
         }
         None
     }
@@ -480,16 +480,6 @@ where
     {
         self.secret_key_source.save(path, saving_key)
     }
-}
-
-/// Spend Kind
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum SpendKind {
-    /// External Spend
-    External,
-
-    /// Internal Spend
-    Internal,
 }
 
 /// Internal Receiver Error
