@@ -58,7 +58,7 @@ pub mod cocoon {
     use cocoon_crate::{Cocoon, Error as CocoonError};
     use core::{
         convert::{Infallible, TryInto},
-        fmt,
+        fmt, mem,
         ops::Drop,
     };
     use manta_util::from_variant_impl;
@@ -68,21 +68,21 @@ pub mod cocoon {
     /// Cocoon Loading/Saving Error
     #[derive(Debug)]
     pub enum Error {
-        /// I/O Error
-        Io(IoError),
+        /// File Opening Error
+        UnableToOpenFile(IoError),
 
         /// Cocoon Error
         Cocoon(CocoonError),
     }
 
-    from_variant_impl!(Error, Io, IoError);
+    from_variant_impl!(Error, UnableToOpenFile, IoError);
     from_variant_impl!(Error, Cocoon, CocoonError);
 
     impl fmt::Display for Error {
         #[inline]
         fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
             match self {
-                Self::Io(err) => write!(f, "I/O Error: {}", err),
+                Self::UnableToOpenFile(err) => write!(f, "File Opening Error: {}", err),
                 Self::Cocoon(err) => write!(f, "Cocoon Error: {:?}", err),
             }
         }
@@ -99,15 +99,6 @@ pub mod cocoon {
         fn from_payload(payload: &[u8]) -> Result<Self, Self::Error>;
     }
 
-    impl FromPayload for Vec<u8> {
-        type Error = Infallible;
-
-        #[inline]
-        fn from_payload(payload: &[u8]) -> Result<Self, Self::Error> {
-            Ok(payload.to_vec())
-        }
-    }
-
     impl<const N: usize> FromPayload for [u8; N] {
         type Error = core::array::TryFromSliceError;
 
@@ -117,19 +108,64 @@ pub mod cocoon {
         }
     }
 
+    impl FromPayload for Vec<u8> {
+        type Error = Infallible;
+
+        #[inline]
+        fn from_payload(payload: &[u8]) -> Result<Self, Self::Error> {
+            Ok(payload.to_vec())
+        }
+    }
+
+    /// Owned Payload Parsing
+    pub trait FromPayloadOwned: Sized {
+        /// Parsing Error Type
+        type Error;
+
+        /// Converts the `payload` into an element of type `Self`.
+        fn from_payload_owned(payload: Vec<u8>) -> Result<Self, Self::Error>;
+    }
+
+    impl<const N: usize> FromPayloadOwned for [u8; N] {
+        type Error = Vec<u8>;
+
+        #[inline]
+        fn from_payload_owned(payload: Vec<u8>) -> Result<Self, Self::Error> {
+            payload.try_into()
+        }
+    }
+
+    impl FromPayloadOwned for Vec<u8> {
+        type Error = Infallible;
+
+        #[inline]
+        fn from_payload_owned(payload: Vec<u8>) -> Result<Self, Self::Error> {
+            Ok(payload)
+        }
+    }
+
     /// Cocoon [`Load`] Adapter
     #[derive(Zeroize)]
     #[zeroize(drop)]
     pub struct Loader(Vec<u8>);
 
     impl Loader {
-        /// Parses the loaded data into an element of type `T`.
+        /// Parses the loaded data into an element of type `T` by taking a referece to the payload.
         #[inline]
         pub fn parse<T>(self) -> Result<T, T::Error>
         where
             T: FromPayload,
         {
             T::from_payload(&self.0)
+        }
+
+        /// Parses the loaded data into an element of type `T` by taking ownership of the payload.
+        #[inline]
+        pub fn parse_owned<T>(mut self) -> Result<T, T::Error>
+        where
+            T: FromPayloadOwned,
+        {
+            T::from_payload_owned(mem::take(&mut self.0))
         }
     }
 
@@ -157,13 +193,6 @@ pub mod cocoon {
         fn payload(&self) -> Vec<u8>;
     }
 
-    impl Payload for Vec<u8> {
-        #[inline]
-        fn payload(&self) -> Vec<u8> {
-            self.clone()
-        }
-    }
-
     impl<const N: usize> Payload for [u8; N] {
         #[inline]
         fn payload(&self) -> Vec<u8> {
@@ -171,9 +200,26 @@ pub mod cocoon {
         }
     }
 
+    impl Payload for &[u8] {
+        #[inline]
+        fn payload(&self) -> Vec<u8> {
+            self.to_vec()
+        }
+    }
+
+    impl Payload for Vec<u8> {
+        #[inline]
+        fn payload(&self) -> Vec<u8> {
+            self.clone()
+        }
+    }
+
     /// Cocoon [`Save`] Borrowed Data Adapter
     #[derive(Clone, Copy)]
-    pub struct Saver<'t, T>(pub &'t T)
+    pub struct Saver<'t, T>(
+        /// Payload Source
+        pub &'t T,
+    )
     where
         T: Payload;
 
