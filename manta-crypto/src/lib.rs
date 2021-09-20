@@ -26,6 +26,7 @@ mod prf;
 pub mod commitment;
 pub mod constraint;
 pub mod ies;
+pub mod merkle_tree;
 pub mod set;
 
 pub use commitment::prelude::*;
