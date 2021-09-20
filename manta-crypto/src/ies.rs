@@ -26,6 +26,110 @@ pub(crate) mod prelude {
     pub use super::IntegratedEncryptionScheme;
 }
 
+/// Integrated Encryption Scheme Trait
+pub trait IntegratedEncryptionScheme {
+    /// Public Key Type
+    type PublicKey;
+
+    /// Secret Key Type
+    type SecretKey;
+
+    /// Plaintext Type
+    type Plaintext;
+
+    /// Ciphertext Type
+    type Ciphertext;
+
+    /// Encryption/Decryption Error Type
+    type Error;
+
+    /// Generates a public/secret keypair.
+    fn generate_keys<R>(rng: &mut R) -> KeyPair<Self>
+    where
+        R: CryptoRng + RngCore + ?Sized;
+
+    /// Generates a public key.
+    ///
+    /// This enables an optimization path whenever decryption is not necessary.
+    #[inline]
+    fn generate_public_key<R>(rng: &mut R) -> PublicKey<Self>
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        Self::generate_keys(rng).into_public()
+    }
+
+    /// Generates a secret key.
+    ///
+    /// This enables an optimization path whenever encryption is not necessary.
+    #[inline]
+    fn generate_secret_key<R>(rng: &mut R) -> SecretKey<Self>
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        Self::generate_keys(rng).into_secret()
+    }
+
+    /// Encrypts the `plaintext` with the `public_key`, generating an [`EncryptedMessage`].
+    fn encrypt<R>(
+        plaintext: &Self::Plaintext,
+        public_key: Self::PublicKey,
+        rng: &mut R,
+    ) -> Result<EncryptedMessage<Self>, Self::Error>
+    where
+        R: CryptoRng + RngCore + ?Sized;
+
+    /// Generates a public/secret keypair and then encrypts the `plaintext` with the generated
+    /// public key, returning an [`EncryptedMessage`] and a [`SecretKey`].
+    #[inline]
+    fn generate_keys_and_encrypt<R>(
+        plaintext: &Self::Plaintext,
+        rng: &mut R,
+    ) -> Result<(EncryptedMessage<Self>, SecretKey<Self>), Self::Error>
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        Self::generate_keys(rng).encrypt(plaintext, rng)
+    }
+
+    /// Generates a public key and then encrypts the `plaintext` with the generated public key,
+    /// returning an [`EncryptedMessage`].
+    ///
+    /// This enables an optimization path whenever decryption is not necessary.
+    #[inline]
+    fn generate_public_key_and_encrypt<R>(
+        plaintext: &Self::Plaintext,
+        rng: &mut R,
+    ) -> Result<EncryptedMessage<Self>, Self::Error>
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        Self::generate_public_key(rng).encrypt(plaintext, rng)
+    }
+
+    /// Decrypts the `ciphertext` with the `secret_key`, returning the
+    /// [`Plaintext`](Self::Plaintext).
+    fn decrypt(
+        ciphertext: &Self::Ciphertext,
+        secret_key: Self::SecretKey,
+    ) -> Result<Self::Plaintext, Self::Error>;
+
+    /// Generates a secret key and then decrypts the `ciphertext` with the generated secret key,
+    /// returing the [`Plaintext`](Self::Plaintext).
+    ///
+    /// This enables an optimization path whenever encryption is not necessary.
+    #[inline]
+    fn generate_secret_key_and_decrypt<R>(
+        ciphertext: &Self::Ciphertext,
+        rng: &mut R,
+    ) -> Result<Self::Plaintext, Self::Error>
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        Self::decrypt(ciphertext, Self::generate_secret_key(rng).secret_key)
+    }
+}
+
 /// [`IntegratedEncryptionScheme`] Public Key
 pub struct PublicKey<I>
 where
@@ -39,17 +143,24 @@ impl<I> PublicKey<I>
 where
     I: IntegratedEncryptionScheme + ?Sized,
 {
-    /// Generates a new [`PublicKey`] from `I::PublicKey`.
-    ///
-    /// # API Note
-    ///
-    /// This function is intentionally private so that only [`KeyPair`] can create this type.
+    /// Builds a new [`PublicKey`] from `I::PublicKey`.
     #[inline]
-    fn new(public_key: I::PublicKey) -> Self {
+    pub fn new(public_key: I::PublicKey) -> Self {
         Self { public_key }
     }
 
-    /// Encrypts the `plaintext` with `self`, generating an [`EncryptedMessage`].
+    /// Generates a public key.
+    ///
+    /// This enables an optimization path whenever decryption is not necessary.
+    #[inline]
+    pub fn generate<R>(rng: &mut R) -> Self
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        I::generate_public_key(rng)
+    }
+
+    /// Encrypts the `plaintext` with `self`, returning an [`EncryptedMessage`].
     #[inline]
     pub fn encrypt<R>(
         self,
@@ -60,6 +171,21 @@ where
         R: CryptoRng + RngCore + ?Sized,
     {
         I::encrypt(plaintext, self.public_key, rng)
+    }
+
+    /// Generates a public key and then encrypts the `plaintext` with the generated public key,
+    /// returning an [`EncryptedMessage`].
+    ///
+    /// This enables an optimization path whenever decryption is not necessary.
+    #[inline]
+    pub fn generate_and_encrypt<R>(
+        plaintext: &I::Plaintext,
+        rng: &mut R,
+    ) -> Result<EncryptedMessage<I>, I::Error>
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        I::generate_public_key_and_encrypt(plaintext, rng)
     }
 }
 
@@ -76,20 +202,43 @@ impl<I> SecretKey<I>
 where
     I: IntegratedEncryptionScheme + ?Sized,
 {
-    /// Generates a new [`SecretKey`] from `I::SecretKey`.
-    ///
-    /// # API Note
-    ///
-    /// This function is intentionally private, so that only `KeyPair` can create this type.
+    /// Builds a new [`SecretKey`] from `I::SecretKey`.
     #[inline]
-    fn new(secret_key: I::SecretKey) -> Self {
+    pub fn new(secret_key: I::SecretKey) -> Self {
         Self { secret_key }
     }
 
-    /// Decrypts the `message` with `self`.
+    /// Generates a secret key.
+    ///
+    /// This enables an optimization path whenever encryption is not necessary.
+    #[inline]
+    pub fn generate<R>(rng: &mut R) -> Self
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        I::generate_secret_key(rng)
+    }
+
+    /// Decrypts the `message` with `self` returning the
+    /// [`Plaintext`](IntegratedEncryptionScheme::Plaintext).
     #[inline]
     pub fn decrypt(self, message: &EncryptedMessage<I>) -> Result<I::Plaintext, I::Error> {
         message.decrypt(self)
+    }
+
+    /// Generates a secret key and then decrypts the `message` with the generated secret key,
+    /// returing the [`Plaintext`](IntegratedEncryptionScheme::Plaintext).
+    ///
+    /// This enables an optimization path whenever encryption is not necessary.
+    #[inline]
+    pub fn generate_and_decrypt<R>(
+        message: &EncryptedMessage<I>,
+        rng: &mut R,
+    ) -> Result<I::Plaintext, I::Error>
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        I::generate_secret_key(rng).decrypt(message)
     }
 }
 
@@ -124,22 +273,22 @@ where
     where
         R: CryptoRng + RngCore + ?Sized,
     {
-        I::keygen(rng)
+        I::generate_keys(rng)
     }
 
     /// Returns the public side of the key pair.
     #[inline]
-    pub fn into_public(self) -> PublicKey<I> {
+    fn into_public(self) -> PublicKey<I> {
         PublicKey::new(self.public_key)
     }
 
     /// Returns the secret side of the key pair.
     #[inline]
-    pub fn into_secret(self) -> SecretKey<I> {
+    fn into_secret(self) -> SecretKey<I> {
         SecretKey::new(self.secret_key)
     }
 
-    /// Encrypts the `plaintext` with `self, generating an [`EncryptedMessage`].
+    /// Encrypts the `plaintext` with `self, returning an [`EncryptedMessage`].
     #[inline]
     pub fn encrypt<R>(
         self,
@@ -165,57 +314,6 @@ where
             SecretKey::new(keypair.secret_key),
         )
     }
-}
-
-/// Integrated Encryption Scheme Trait
-pub trait IntegratedEncryptionScheme {
-    /// Public Key Type
-    type PublicKey;
-
-    /// Secret Key Type
-    type SecretKey;
-
-    /// Plaintext Type
-    type Plaintext;
-
-    /// Ciphertext Type
-    type Ciphertext;
-
-    /// Encryption/Decryption Error Type
-    type Error;
-
-    /// Generates a public/secret keypair.
-    fn keygen<R>(rng: &mut R) -> KeyPair<Self>
-    where
-        R: CryptoRng + RngCore + ?Sized;
-
-    /// Encrypts the `plaintext` with the `public_key`, generating an [`EncryptedMessage`].
-    fn encrypt<R>(
-        plaintext: &Self::Plaintext,
-        public_key: Self::PublicKey,
-        rng: &mut R,
-    ) -> Result<EncryptedMessage<Self>, Self::Error>
-    where
-        R: CryptoRng + RngCore + ?Sized;
-
-    /// Generates a public/secret keypair and then encrypts the `plaintext` with the generated
-    /// public key, generating an [`EncryptedMessage`] and a [`SecretKey`].
-    #[inline]
-    fn keygen_encrypt<R>(
-        plaintext: &Self::Plaintext,
-        rng: &mut R,
-    ) -> Result<(EncryptedMessage<Self>, SecretKey<Self>), Self::Error>
-    where
-        R: CryptoRng + RngCore + ?Sized,
-    {
-        Self::keygen(rng).encrypt(plaintext, rng)
-    }
-
-    /// Decrypts the `ciphertext` with the `secret_key`.
-    fn decrypt(
-        ciphertext: &Self::Ciphertext,
-        secret_key: Self::SecretKey,
-    ) -> Result<Self::Plaintext, Self::Error>;
 }
 
 /// Encrypted Message
@@ -248,7 +346,7 @@ where
         Self { ciphertext }
     }
 
-    /// Encrypts the `plaintext` with the `public_key`, generating an [`EncryptedMessage`].
+    /// Encrypts the `plaintext` with the `public_key`, returning an [`EncryptedMessage`].
     #[inline]
     pub fn encrypt<R>(
         plaintext: &I::Plaintext,
@@ -262,22 +360,50 @@ where
     }
 
     /// Generates a public/secret keypair and then encrypts the `plaintext` with the generated
-    /// public key, generating an [`EncryptedMessage`] and a [`SecretKey`].
+    /// public key, returning an [`EncryptedMessage`] and a [`SecretKey`].
     #[inline]
-    pub fn keygen_encrypt<R>(
+    pub fn generate_keys_and_encrypt<R>(
         plaintext: &I::Plaintext,
         rng: &mut R,
     ) -> Result<(Self, SecretKey<I>), I::Error>
     where
         R: CryptoRng + RngCore + ?Sized,
     {
-        I::keygen_encrypt(plaintext, rng)
+        I::generate_keys_and_encrypt(plaintext, rng)
     }
 
-    /// Decrypts `self` with the `secret_key`.
+    /// Generates a public key and then encrypts the `plaintext` with the generated public key,
+    /// returning an [`EncryptedMessage`].
+    ///
+    /// This enables an optimization path whenever decryption is not necessary.
+    #[inline]
+    pub fn generate_public_key_and_encrypt<R>(
+        plaintext: &I::Plaintext,
+        rng: &mut R,
+    ) -> Result<Self, I::Error>
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        I::generate_public_key_and_encrypt(plaintext, rng)
+    }
+
+    /// Decrypts `self` with the `secret_key` returning the
+    /// [`Plaintext`](IntegratedEncryptionScheme::Plaintext).
     #[inline]
     pub fn decrypt(&self, secret_key: SecretKey<I>) -> Result<I::Plaintext, I::Error> {
         I::decrypt(&self.ciphertext, secret_key.secret_key)
+    }
+
+    /// Generates a secret key and then decrypts `self` with the generated secret key,
+    /// returing the [`Plaintext`](IntegratedEncryptionScheme::Plaintext).
+    ///
+    /// This enables an optimization path whenever encryption is not necessary.
+    #[inline]
+    pub fn generate_secret_key_and_decrypt<R>(&self, rng: &mut R) -> Result<I::Plaintext, I::Error>
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        I::generate_secret_key_and_decrypt(&self.ciphertext, rng)
     }
 }
 
@@ -296,7 +422,7 @@ pub mod test {
         I::Error: Debug,
         R: CryptoRng + RngCore + ?Sized,
     {
-        let (public_key, secret_key) = I::keygen(rng).into();
+        let (public_key, secret_key) = I::generate_keys(rng).into();
         let reconstructed_plaintext = secret_key
             .decrypt(
                 &public_key

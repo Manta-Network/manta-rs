@@ -16,6 +16,7 @@
 
 //! IES Implementation
 
+// FIXME: Don't use raw bytes as secret and public key.
 // FIXME: Make sure secret keys are protected.
 
 use aes_gcm::{
@@ -109,13 +110,30 @@ impl IntegratedEncryptionScheme for IES {
     type Error = aes_gcm::Error;
 
     #[inline]
-    fn keygen<R>(rng: &mut R) -> KeyPair<Self>
+    fn generate_keys<R>(rng: &mut R) -> KeyPair<Self>
     where
         R: CryptoRng + RngCore + ?Sized,
     {
         let sk = StaticSecret::new(rng);
         let pk = PubKey::from(&sk);
         KeyPair::new(pk.to_bytes(), sk.to_bytes())
+    }
+
+    #[inline]
+    fn generate_public_key<R>(rng: &mut R) -> ies::PublicKey<Self>
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        // TODO: Is there an even more efficient way to do this?
+        ies::PublicKey::new(PubKey::from(&StaticSecret::new(rng)).to_bytes())
+    }
+
+    #[inline]
+    fn generate_secret_key<R>(rng: &mut R) -> ies::SecretKey<Self>
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        ies::SecretKey::new(StaticSecret::new(rng).to_bytes())
     }
 
     fn encrypt<R>(

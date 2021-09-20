@@ -879,7 +879,7 @@ pub trait Shape: sealed::Sealed {
 /// Canonical Transaction Types
 pub mod canonical {
     use super::*;
-    use crate::identity::{AssetParameters, Identity, OpenSpend};
+    use crate::identity::{AssetParameters, Identity, InternalReceiver, OpenSpend};
 
     /// Implements [`Shape`] for a given shape type.
     macro_rules! impl_shape {
@@ -953,7 +953,7 @@ pub mod canonical {
             )
         }
 
-        /// Builds a [`Mint`] from an `identity` and an `asset`.
+        /// Builds a [`Mint`]-[`OpenSpend`] pair from an `identity` and an `asset`.
         #[inline]
         pub fn from_identity<R>(
             identity: Identity<T>,
@@ -965,14 +965,11 @@ pub mod canonical {
             R: CryptoRng + RngCore + ?Sized,
             Standard: Distribution<AssetParameters<T>>,
         {
-            let (shielded_identity, spend) = identity.into_receiver(commitment_scheme);
-            Ok((
-                Mint::build(
-                    asset,
-                    shielded_identity.into_receiver(commitment_scheme, asset, rng)?,
-                ),
-                spend.open(asset),
-            ))
+            let InternalReceiver {
+                receiver,
+                open_spend,
+            } = identity.into_internal_receiver(commitment_scheme, asset, rng)?;
+            Ok((Mint::build(asset, receiver), open_spend))
         }
     }
 
@@ -1050,7 +1047,6 @@ pub mod canonical {
     }
 }
 
-/* TODO:
 /// Testing Framework
 #[cfg(feature = "test")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
@@ -1071,4 +1067,3 @@ pub mod test {
         todo!()
     }
 }
-*/

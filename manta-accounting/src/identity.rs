@@ -17,17 +17,14 @@
 //! Identities, Senders, and Receivers
 
 // FIXME: Check the secret key APIs.
-// FIXME: Should the identity types have methods that expose their members? Or should it be
-//        completely opaque, and let the internal APIs handle all the logic?
 // TODO:  Since `Configuration::SecretKey: Clone`, should `Identity: Clone`?
-// TODO:  Separate "constraint" types into another module just like `manta_crypto::set`.
 
 use crate::{
     asset::{Asset, AssetBalance, AssetId, AssetVar},
     keys::SecretKeyGenerator,
     ledger::Ledger,
 };
-use core::{convert::Infallible, fmt::Debug, hash::Hash, marker::PhantomData};
+use core::{fmt::Debug, hash::Hash, marker::PhantomData};
 use manta_crypto::{
     commitment::{CommitmentScheme, Input as CommitmentInput},
     ies::{self, EncryptedMessage, IntegratedEncryptionScheme},
@@ -258,7 +255,7 @@ impl<C> Identity<C>
 where
     C: Configuration,
 {
-    /// Generates a new [`Identity`] from a [`SecretKey`].
+    /// Builds a new [`Identity`] from a [`SecretKey`].
     #[inline]
     pub fn new(secret_key: SecretKey<C>) -> Self {
         Self { secret_key }
@@ -315,32 +312,7 @@ where
         parameters
     }
 
-    /// Generates the associated `C::Rng`, `AssetParameters<C>`, and `ies::KeyPair<I>` for
-    /// this identity.
-    ///
-    /// # API Note
-    ///
-    /// This function is intentionally private so that the internal random number generator is
-    /// not part of the public interface. See [`Self::parameters_and_asset_keypair`] for access to
-    /// the associated `parameters` and `asset_keypair`.
-    ///
-    /// # Implementation Note
-    ///
-    /// See [`Self::rng_and_parameters`].
-    #[inline]
-    fn rng_and_parameters_and_asset_keypair<I>(
-        &self,
-    ) -> (C::Rng, AssetParameters<C>, ies::KeyPair<I>)
-    where
-        I: IntegratedEncryptionScheme<Plaintext = Asset>,
-        Standard: Distribution<AssetParameters<C>>,
-    {
-        let (mut rng, parameters) = self.rng_and_parameters();
-        let asset_keypair = I::keygen(&mut rng);
-        (rng, parameters, asset_keypair)
-    }
-
-    /// Generates [`AssetParameters`] and a [`KeyPair`](ies::KeyPair) for assets that are used by
+    /// Generates the associated [`AssetParameters`] and asset [`KeyPair`](ies::KeyPair) for
     /// this identity.
     #[inline]
     fn parameters_and_asset_keypair<I>(&self) -> (AssetParameters<C>, ies::KeyPair<I>)
@@ -348,19 +320,32 @@ where
         I: IntegratedEncryptionScheme<Plaintext = Asset>,
         Standard: Distribution<AssetParameters<C>>,
     {
-        let (_, parameters, asset_keypair) = self.rng_and_parameters_and_asset_keypair();
-        (parameters, asset_keypair)
+        let (mut rng, parameters) = self.rng_and_parameters();
+        (parameters, I::generate_keys(&mut rng))
     }
 
-    /// Generates a [`KeyPair`](ies::KeyPair) for assets that are used by this identity.
+    /// Generates the associated [`AssetParameters`] and asset [`PublicKey`](ies::PublicKey) for
+    /// this identity.
     #[inline]
-    fn asset_keypair<I>(&self) -> ies::KeyPair<I>
+    fn parameters_and_asset_public_key<I>(&self) -> (AssetParameters<C>, ies::PublicKey<I>)
     where
         I: IntegratedEncryptionScheme<Plaintext = Asset>,
         Standard: Distribution<AssetParameters<C>>,
     {
-        let (_, asset_keypair) = self.parameters_and_asset_keypair();
-        asset_keypair
+        let (mut rng, parameters) = self.rng_and_parameters();
+        (parameters, I::generate_public_key(&mut rng))
+    }
+
+    /// Generates the associated [`AssetParameters`] and asset [`SecretKey`](ies::SecretKey) for
+    /// this identity.
+    #[inline]
+    fn parameters_and_asset_secret_key<I>(&self) -> (AssetParameters<C>, ies::SecretKey<I>)
+    where
+        I: IntegratedEncryptionScheme<Plaintext = Asset>,
+        Standard: Distribution<AssetParameters<C>>,
+    {
+        let (mut rng, parameters) = self.rng_and_parameters();
+        (parameters, I::generate_secret_key(&mut rng))
     }
 
     /// Returns the public key associated with this identity.
@@ -431,12 +416,12 @@ where
     /// Generates a new [`Identity`] from a secret key generation source and builds a new
     /// [`Sender`] from it.
     #[inline]
-    fn generate_sender<G, S>(
+    pub fn generate_sender<G, S>(
         source: &mut G,
         commitment_scheme: &C::CommitmentScheme,
         asset: Asset,
         utxo_set: &S,
-    ) -> Result<Sender<C, S>, SenderError<C, G, S>>
+    ) -> Result<Sender<C, S>, SenderError<G, S>>
     where
         G: SecretKeyGenerator<SecretKey = SecretKey<C>>,
         S: VerifiedSet<Item = Utxo<C>>,
@@ -475,14 +460,14 @@ where
         I: IntegratedEncryptionScheme<Plaintext = Asset>,
         Standard: Distribution<AssetParameters<C>>,
     {
-        let (parameters, asset_keypair) = self.parameters_and_asset_keypair();
-        self.build_shielded_identity(commitment_scheme, parameters, asset_keypair.into_public())
+        let (parameters, asset_public_key) = self.parameters_and_asset_public_key();
+        self.build_shielded_identity(commitment_scheme, parameters, asset_public_key)
     }
 
     /// Generates a new [`Identity`] from a secret key generation source and builds a new
     /// [`ShieldedIdentity`] from it.
     #[inline]
-    fn generate_shielded<G, I>(
+    pub fn generate_shielded<G, I>(
         source: &mut G,
         commitment_scheme: &C::CommitmentScheme,
     ) -> Result<ShieldedIdentity<C, I>, G::Error>
@@ -501,56 +486,20 @@ where
         I: IntegratedEncryptionScheme<Plaintext = Asset>,
         Standard: Distribution<AssetParameters<C>>,
     {
-        Spend {
-            asset_secret_key: self.asset_keypair().into_secret(),
-            identity: self,
-        }
+        let (_, asset_secret_key) = self.parameters_and_asset_secret_key();
+        Spend::new(self, asset_secret_key)
     }
 
     /// Generates a new [`Identity`] from a secret key generation source and builds a new
     /// [`Spend`] from it.
     #[inline]
-    fn generate_spend<G, I>(source: &mut G) -> Result<Spend<C, I>, G::Error>
+    pub fn generate_spend<G, I>(source: &mut G) -> Result<Spend<C, I>, G::Error>
     where
         G: SecretKeyGenerator<SecretKey = SecretKey<C>>,
         I: IntegratedEncryptionScheme<Plaintext = Asset>,
         Standard: Distribution<AssetParameters<C>>,
     {
         Ok(Self::generate(source)?.into_spend())
-    }
-
-    /// Builds a new [`ShieldedIdentity`]-[`Spend`] pair.
-    #[inline]
-    pub fn into_receiver<I>(
-        self,
-        commitment_scheme: &C::CommitmentScheme,
-    ) -> (ShieldedIdentity<C, I>, Spend<C, I>)
-    where
-        I: IntegratedEncryptionScheme<Plaintext = Asset>,
-        Standard: Distribution<AssetParameters<C>>,
-    {
-        let (parameters, asset_keypair) = self.parameters_and_asset_keypair();
-        let (asset_public_key, asset_secret_key) = asset_keypair.into();
-        (
-            self.build_shielded_identity(commitment_scheme, parameters, asset_public_key),
-            Spend::new(self, asset_secret_key),
-        )
-    }
-
-    /// Generates a new [`Identity`] from a secret key generation source and builds a new
-    /// [`ShieldedIdentity`]-[`Spend`] pair from it.
-    #[allow(clippy::type_complexity)] // NOTE: This is not very complex.
-    #[inline]
-    pub fn generate_receiver<G, I>(
-        source: &mut G,
-        commitment_scheme: &C::CommitmentScheme,
-    ) -> Result<(ShieldedIdentity<C, I>, Spend<C, I>), G::Error>
-    where
-        G: SecretKeyGenerator<SecretKey = SecretKey<C>>,
-        I: IntegratedEncryptionScheme<Plaintext = Asset>,
-        Standard: Distribution<AssetParameters<C>>,
-    {
-        Ok(Self::generate(source)?.into_receiver(commitment_scheme))
     }
 
     /// Tries to open an `encrypted_asset`, returning an [`OpenSpend`] if successful.
@@ -564,6 +513,86 @@ where
         Standard: Distribution<AssetParameters<C>>,
     {
         self.into_spend().try_open(encrypted_asset)
+    }
+
+    /// Builds a new [`ExternalReceiver`].
+    #[inline]
+    pub fn into_external_receiver<I>(
+        self,
+        commitment_scheme: &C::CommitmentScheme,
+    ) -> ExternalReceiver<C, I>
+    where
+        I: IntegratedEncryptionScheme<Plaintext = Asset>,
+        Standard: Distribution<AssetParameters<C>>,
+    {
+        let (parameters, asset_keypair) = self.parameters_and_asset_keypair();
+        let (asset_public_key, asset_secret_key) = asset_keypair.into();
+        ExternalReceiver {
+            shielded_identity: self.build_shielded_identity(
+                commitment_scheme,
+                parameters,
+                asset_public_key,
+            ),
+            spend: Spend::new(self, asset_secret_key),
+        }
+    }
+
+    /// Generates a new [`Identity`] from a secret key generation source and builds a new
+    /// [`ExternalReceiver`] from it.
+    #[inline]
+    pub fn generate_external_receiver<G, I>(
+        source: &mut G,
+        commitment_scheme: &C::CommitmentScheme,
+    ) -> Result<ExternalReceiver<C, I>, G::Error>
+    where
+        G: SecretKeyGenerator<SecretKey = SecretKey<C>>,
+        I: IntegratedEncryptionScheme<Plaintext = Asset>,
+        Standard: Distribution<AssetParameters<C>>,
+    {
+        Ok(Self::generate(source)?.into_external_receiver(commitment_scheme))
+    }
+
+    /// Builds a new [`InternalReceiver`].
+    #[inline]
+    pub fn into_internal_receiver<I, R>(
+        self,
+        commitment_scheme: &C::CommitmentScheme,
+        asset: Asset,
+        rng: &mut R,
+    ) -> Result<InternalReceiver<C, I>, I::Error>
+    where
+        I: IntegratedEncryptionScheme<Plaintext = Asset>,
+        R: CryptoRng + RngCore + ?Sized,
+        Standard: Distribution<AssetParameters<C>>,
+    {
+        let (parameters, asset_public_key) = self.parameters_and_asset_public_key();
+        Ok(InternalReceiver {
+            receiver: self
+                .build_shielded_identity(commitment_scheme, parameters, asset_public_key)
+                .into_receiver(commitment_scheme, asset, rng)?,
+            open_spend: OpenSpend::new(self, asset),
+        })
+    }
+
+    /// Generates a new [`Identity`] from a secret key generation source and builds a new
+    /// [`InternalReceiver`] from it.
+    #[inline]
+    pub fn generate_internal_receiver<G, I, R>(
+        source: &mut G,
+        commitment_scheme: &C::CommitmentScheme,
+        asset: Asset,
+        rng: &mut R,
+    ) -> Result<InternalReceiver<C, I>, InternalReceiverError<G, I>>
+    where
+        G: SecretKeyGenerator<SecretKey = SecretKey<C>>,
+        I: IntegratedEncryptionScheme<Plaintext = Asset>,
+        R: CryptoRng + RngCore + ?Sized,
+        Standard: Distribution<AssetParameters<C>>,
+    {
+        Self::generate(source)
+            .map_err(InternalReceiverError::SecretKeyError)?
+            .into_internal_receiver(commitment_scheme, asset, rng)
+            .map_err(InternalReceiverError::EncryptionError)
     }
 }
 
@@ -624,24 +653,6 @@ where
         Identity::generate_shielded(source, commitment_scheme)
     }
 
-    /// Returns the UTXO randomness for this shielded identity.
-    #[inline]
-    pub fn utxo_randomness(&self) -> &UtxoRandomness<C> {
-        &self.utxo_randomness
-    }
-
-    /// Returns the void number commitment for this shielded identity.
-    #[inline]
-    pub fn void_number_commitment(&self) -> &VoidNumberCommitment<C> {
-        &self.void_number_commitment
-    }
-
-    /// Returns the asset public key for this shielded identity.
-    #[inline]
-    pub fn asset_public_key(&self) -> &ies::PublicKey<I> {
-        &self.asset_public_key
-    }
-
     /// Generates a [`Receiver`] from a [`ShieldedIdentity`].
     #[inline]
     pub fn into_receiver<R>(
@@ -675,47 +686,30 @@ where
 
 /// Spend Error
 ///
-/// This is a work-around for a `clippy` overreaction bug.
-/// See <https://github.com/mcarton/rust-derivative/issues/100>.
-#[allow(unreachable_code)]
-mod spend_error {
-    use super::*;
+/// This `enum` is the error state for the [`into_sender`] method on [`Spend`].
+/// See its documentation for more.
+///
+/// [`into_sender`]: Spend::into_sender
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "I::Error: Clone, S::ContainmentError: Clone"),
+    Copy(bound = "I::Error: Copy, S::ContainmentError: Copy"),
+    Debug(bound = "I::Error: Debug, S::ContainmentError: Debug"),
+    Eq(bound = "I::Error: Eq, S::ContainmentError: Eq"),
+    Hash(bound = "I::Error: Hash, S::ContainmentError: Hash"),
+    PartialEq(bound = "I::Error: PartialEq, S::ContainmentError: PartialEq")
+)]
+pub enum SpendError<I, S>
+where
+    I: IntegratedEncryptionScheme<Plaintext = Asset>,
+    S: VerifiedSet,
+{
+    /// Encryption Error
+    EncryptionError(I::Error),
 
-    /// Spend Error
-    ///
-    /// This `enum` is the error state for the [`into_sender`] method on [`Spend`].
-    /// See its documentation for more.
-    ///
-    /// [`into_sender`]: Spend::into_sender
-    #[derive(derivative::Derivative)]
-    #[derivative(
-        Clone(bound = "I::Error: Clone, S::ContainmentError: Clone"),
-        Copy(bound = "I::Error: Copy, S::ContainmentError: Copy"),
-        Debug(bound = "I::Error: Debug, S::ContainmentError: Debug"),
-        Eq(bound = "I::Error: Eq, S::ContainmentError: Eq"),
-        Hash(bound = "I::Error: Hash, S::ContainmentError: Hash"),
-        PartialEq(bound = "I::Error: PartialEq, S::ContainmentError: PartialEq")
-    )]
-    pub enum SpendError<C, I, S>
-    where
-        C: Configuration,
-        I: IntegratedEncryptionScheme<Plaintext = Asset>,
-        S: VerifiedSet<Item = Utxo<C>>,
-    {
-        /// Encryption Error
-        EncryptionError(I::Error),
-
-        /// Missing UTXO Containment Proof
-        MissingUtxo(S::ContainmentError),
-
-        /// Type Parameter Marker
-        #[doc(hidden)]
-        __(Infallible, PhantomData<C>),
-    }
+    /// Missing UTXO Containment Proof
+    MissingUtxo(S::ContainmentError),
 }
-
-#[doc(inline)]
-pub use spend_error::SpendError;
 
 /// Spending Information
 pub struct Spend<C, I>
@@ -735,12 +729,12 @@ where
     C: Configuration,
     I: IntegratedEncryptionScheme<Plaintext = Asset>,
 {
-    /// Generates a new `Spend` from an `Identity` and an `ies::SecretKey<I>`.
+    /// Builds a new `Spend` from an `Identity` and an `ies::SecretKey<I>`.
     ///
     /// # API Note
     ///
-    /// This function is intentionally private so that the `asset_secret_key` is not part
-    /// of the public interface.
+    /// This function is intentionally private so that `identity` and `asset_secret_key` are
+    /// not part of the public interface.
     #[inline]
     fn new(identity: Identity<C>, asset_secret_key: ies::SecretKey<I>) -> Self {
         Self {
@@ -769,25 +763,13 @@ where
         Identity::generate_spend(source)
     }
 
-    /// Opens a [`Spend`] without having to decrypt an encrypted asset.
-    #[inline]
-    pub fn open(self, asset: Asset) -> OpenSpend<C> {
-        // FIXME: Have a convenience function on [`Identity`] which is an alternative to
-        // `into_receiver` when we know the `asset`, so that we don't have to use a [`Spend`] and
-        // we can go strait to [`OpenSpend`].
-        OpenSpend {
-            asset,
-            identity: self.identity,
-        }
-    }
-
     /// Tries to open an `encrypted_asset`, returning an [`OpenSpend`] if successful.
     #[inline]
     pub fn try_open(self, encrypted_asset: &EncryptedMessage<I>) -> Result<OpenSpend<C>, I::Error> {
-        Ok(OpenSpend {
-            asset: self.asset_secret_key.decrypt(encrypted_asset)?,
-            identity: self.identity,
-        })
+        Ok(OpenSpend::new(
+            self.identity,
+            self.asset_secret_key.decrypt(encrypted_asset)?,
+        ))
     }
 
     /// Builds a new [`Sender`] for the given `encrypted_asset`.
@@ -797,7 +779,7 @@ where
         commitment_scheme: &C::CommitmentScheme,
         encrypted_asset: EncryptedMessage<I>,
         utxo_set: &S,
-    ) -> Result<Sender<C, S>, SpendError<C, I, S>>
+    ) -> Result<Sender<C, S>, SpendError<I, S>>
     where
         S: VerifiedSet<Item = Utxo<C>>,
         Standard: Distribution<AssetParameters<C>>,
@@ -821,6 +803,50 @@ where
     }
 }
 
+/// External Receiver
+pub struct ExternalReceiver<C, I>
+where
+    C: Configuration,
+    I: IntegratedEncryptionScheme<Plaintext = Asset>,
+{
+    /// Shielded Identity
+    pub shielded_identity: ShieldedIdentity<C, I>,
+
+    /// Spend
+    pub spend: Spend<C, I>,
+}
+
+impl<C, I> ExternalReceiver<C, I>
+where
+    C: Configuration,
+    I: IntegratedEncryptionScheme<Plaintext = Asset>,
+{
+    /// Generates a new [`Identity`] from a secret key generation source and builds a new
+    /// [`ExternalReceiver`] from it.
+    #[inline]
+    pub fn generate<G>(
+        source: &mut G,
+        commitment_scheme: &C::CommitmentScheme,
+    ) -> Result<Self, G::Error>
+    where
+        G: SecretKeyGenerator<SecretKey = SecretKey<C>>,
+        Standard: Distribution<AssetParameters<C>>,
+    {
+        Identity::generate_external_receiver(source, commitment_scheme)
+    }
+}
+
+impl<C, I> From<ExternalReceiver<C, I>> for (ShieldedIdentity<C, I>, Spend<C, I>)
+where
+    C: Configuration,
+    I: IntegratedEncryptionScheme<Plaintext = Asset>,
+{
+    #[inline]
+    fn from(external: ExternalReceiver<C, I>) -> Self {
+        (external.shielded_identity, external.spend)
+    }
+}
+
 /// Open [`Spend`]
 pub struct OpenSpend<C>
 where
@@ -837,6 +863,17 @@ impl<C> OpenSpend<C>
 where
     C: Configuration,
 {
+    /// Builds a new `OpenSpend` from an `Identity` and an `Asset`.
+    ///
+    /// # API Note
+    ///
+    /// This function is intentionally private so that `identity` and `asset` are
+    /// not part of the public interface.
+    #[inline]
+    fn new(identity: Identity<C>, asset: Asset) -> Self {
+        Self { identity, asset }
+    }
+
     /// Builds a new [`Sender`] for `self`.
     #[inline]
     pub fn into_sender<S>(
@@ -853,49 +890,106 @@ where
     }
 }
 
-/// Sender Error
+/// Internal Receiver Error
 ///
-/// This is a work-around for a `clippy` overreaction bug.
-/// See <https://github.com/mcarton/rust-derivative/issues/100>.
-#[allow(unreachable_code)]
-mod sender_error {
-    use super::*;
+/// This `enum` is the error state for the [`generate`] method on [`InternalReceiver`].
+/// See its documentation for more.
+///
+/// [`generate`]: InternalReceiver::generate
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "G::Error: Clone, I::Error: Clone"),
+    Copy(bound = "G::Error: Copy, I::Error: Copy"),
+    Debug(bound = "G::Error: Debug, I::Error: Debug"),
+    Eq(bound = "G::Error: Eq, I::Error: Eq"),
+    Hash(bound = "G::Error: Hash, I::Error: Hash"),
+    PartialEq(bound = "G::Error: PartialEq, I::Error: PartialEq")
+)]
+pub enum InternalReceiverError<G, I>
+where
+    G: SecretKeyGenerator,
+    I: IntegratedEncryptionScheme<Plaintext = Asset>,
+{
+    /// Secret Key Generator Error
+    SecretKeyError(G::Error),
 
-    /// Sender Error
-    ///
-    /// This `enum` is the error state for the [`generate`] method on [`Sender`].
-    /// See its documentation for more.
-    ///
-    /// [`generate`]: Sender::generate
-    #[derive(derivative::Derivative)]
-    #[derivative(
-        Clone(bound = "G::Error: Clone, S::ContainmentError: Clone"),
-        Copy(bound = "G::Error: Copy, S::ContainmentError: Copy"),
-        Debug(bound = "G::Error: Debug, S::ContainmentError: Debug"),
-        Eq(bound = "G::Error: Eq, S::ContainmentError: Eq"),
-        Hash(bound = "G::Error: Hash, S::ContainmentError: Hash"),
-        PartialEq(bound = "G::Error: PartialEq, S::ContainmentError: PartialEq")
-    )]
-    pub enum SenderError<C, G, S>
+    /// Encryption Error
+    EncryptionError(I::Error),
+}
+
+/// Internal Receiver
+pub struct InternalReceiver<C, I>
+where
+    C: Configuration,
+    I: IntegratedEncryptionScheme<Plaintext = Asset>,
+{
+    /// Receiver
+    pub receiver: Receiver<C, I>,
+
+    /// Open Spend
+    pub open_spend: OpenSpend<C>,
+}
+
+impl<C, I> InternalReceiver<C, I>
+where
+    C: Configuration,
+    I: IntegratedEncryptionScheme<Plaintext = Asset>,
+{
+    /// Generates a new [`Identity`] from a secret key generation source and builds a new
+    /// [`InternalReceiver`] from it.
+    #[inline]
+    pub fn generate<G, R>(
+        source: &mut G,
+        commitment_scheme: &C::CommitmentScheme,
+        asset: Asset,
+        rng: &mut R,
+    ) -> Result<Self, InternalReceiverError<G, I>>
     where
-        C: Configuration,
         G: SecretKeyGenerator<SecretKey = SecretKey<C>>,
-        S: VerifiedSet<Item = Utxo<C>>,
+        R: CryptoRng + RngCore + ?Sized,
+        Standard: Distribution<AssetParameters<C>>,
     {
-        /// Secret Key Generator Error
-        SecretKeyError(G::Error),
-
-        /// Containment Error
-        MissingUtxo(S::ContainmentError),
-
-        /// Type Parameter Marker
-        #[doc(hidden)]
-        __(Infallible, PhantomData<C>),
+        Identity::generate_internal_receiver(source, commitment_scheme, asset, rng)
     }
 }
 
-#[doc(inline)]
-pub use sender_error::SenderError;
+impl<C, I> From<InternalReceiver<C, I>> for (Receiver<C, I>, OpenSpend<C>)
+where
+    C: Configuration,
+    I: IntegratedEncryptionScheme<Plaintext = Asset>,
+{
+    #[inline]
+    fn from(internal: InternalReceiver<C, I>) -> Self {
+        (internal.receiver, internal.open_spend)
+    }
+}
+
+/// Sender Error
+///
+/// This `enum` is the error state for the [`generate`] method on [`Sender`].
+/// See its documentation for more.
+///
+/// [`generate`]: Sender::generate
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "G::Error: Clone, S::ContainmentError: Clone"),
+    Copy(bound = "G::Error: Copy, S::ContainmentError: Copy"),
+    Debug(bound = "G::Error: Debug, S::ContainmentError: Debug"),
+    Eq(bound = "G::Error: Eq, S::ContainmentError: Eq"),
+    Hash(bound = "G::Error: Hash, S::ContainmentError: Hash"),
+    PartialEq(bound = "G::Error: PartialEq, S::ContainmentError: PartialEq")
+)]
+pub enum SenderError<G, S>
+where
+    G: SecretKeyGenerator,
+    S: VerifiedSet,
+{
+    /// Secret Key Generator Error
+    SecretKeyError(G::Error),
+
+    /// Containment Error
+    MissingUtxo(S::ContainmentError),
+}
 
 /// Sender
 pub struct Sender<C, S>
@@ -955,7 +1049,7 @@ where
         commitment_scheme: &C::CommitmentScheme,
         asset: Asset,
         utxo_set: &S,
-    ) -> Result<Self, SenderError<C, G, S>>
+    ) -> Result<Self, SenderError<G, S>>
     where
         G: SecretKeyGenerator<SecretKey = SecretKey<C>>,
         Standard: Distribution<AssetParameters<C>>,
@@ -963,52 +1057,16 @@ where
         Identity::generate_sender(source, commitment_scheme, asset, utxo_set)
     }
 
-    /// Returns the asset for this sender.
-    #[inline]
-    pub fn asset(&self) -> Asset {
-        self.asset
-    }
-
     /// Returns the asset id for this sender.
     #[inline]
-    pub fn asset_id(&self) -> AssetId {
+    pub(crate) fn asset_id(&self) -> AssetId {
         self.asset.id
     }
 
     /// Returns the asset value for this sender.
     #[inline]
-    pub fn asset_value(&self) -> AssetBalance {
+    pub(crate) fn asset_value(&self) -> AssetBalance {
         self.asset.value
-    }
-
-    /// Returns the asset parameters for this sender.
-    #[inline]
-    pub fn parameters(&self) -> &AssetParameters<C> {
-        &self.parameters
-    }
-
-    /// Returns the void number for this sender.
-    #[inline]
-    pub fn void_number(&self) -> &VoidNumber<C> {
-        &self.void_number
-    }
-
-    /// Returns the void number commitment for this sender.
-    #[inline]
-    pub fn void_number_commitment(&self) -> &VoidNumberCommitment<C> {
-        &self.void_number_commitment
-    }
-
-    /// Returns the UTXO for this sender.
-    #[inline]
-    pub fn utxo(&self) -> &Utxo<C> {
-        &self.utxo
-    }
-
-    /// Returns the UTXO containment proof for this sender.
-    #[inline]
-    pub fn utxo_containment_proof(&self) -> &ContainmentProof<S> {
-        &self.utxo_containment_proof
     }
 
     /// Extracts ledger posting data for this sender.
@@ -1124,46 +1182,16 @@ where
         identity.into_receiver(commitment_scheme, asset, rng)
     }
 
-    /// Returns the asset for this receiver.
-    #[inline]
-    pub fn asset(&self) -> Asset {
-        self.asset
-    }
-
     /// Returns the asset id for this receiver.
     #[inline]
-    pub fn asset_id(&self) -> AssetId {
+    pub(crate) fn asset_id(&self) -> AssetId {
         self.asset.id
     }
 
     /// Returns the asset value for this receiver.
     #[inline]
-    pub fn asset_value(&self) -> AssetBalance {
+    pub(crate) fn asset_value(&self) -> AssetBalance {
         self.asset.value
-    }
-
-    /// Returns the UTXO randomness for this receiver.
-    #[inline]
-    pub fn utxo_randomness(&self) -> &UtxoRandomness<C> {
-        &self.utxo_randomness
-    }
-
-    /// Returns the void number commitment for this receiver.
-    #[inline]
-    pub fn void_number_commitment(&self) -> &VoidNumberCommitment<C> {
-        &self.void_number_commitment
-    }
-
-    /// Returns the UTXO for this reciever.
-    #[inline]
-    pub fn utxo(&self) -> &Utxo<C> {
-        &self.utxo
-    }
-
-    /// Returns the encrypted asset for this receiver.
-    #[inline]
-    pub fn encrypted_asset(&self) -> &EncryptedMessage<I> {
-        &self.encrypted_asset
     }
 
     /// Extracts ledger posting data for this receiver.

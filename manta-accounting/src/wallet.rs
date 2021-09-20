@@ -24,12 +24,16 @@
 use crate::{
     asset::{Asset, AssetBalance, AssetId},
     fs::{Load, Save},
-    identity::{self, AssetParameters, Identity, OpenSpend, Receiver, ShieldedIdentity, Spend},
+    identity::{
+        self, AssetParameters, Identity, InternalReceiver, InternalReceiverError, OpenSpend,
+        ShieldedIdentity,
+    },
     keys::{self, DerivedSecretKeyGenerator, ExternalKeys, InternalKeys, KeyKind},
     ledger::Ledger,
     transfer::{
         self,
         canonical::{Mint, PrivateTransfer, Reclaim},
+        IntegratedEncryptionSchemeError,
     },
 };
 use alloc::vec::Vec;
@@ -343,7 +347,7 @@ where
     /// Generates a new [`ShieldedIdentity`] to receive assets to this wallet via an external
     /// transaction.
     #[inline]
-    pub fn generate_external_receiver<C, I>(
+    pub fn generate_shielded_identity<C, I>(
         &mut self,
         commitment_scheme: &C::CommitmentScheme,
     ) -> Result<ShieldedIdentity<C, I>, D::Error>
@@ -356,49 +360,48 @@ where
             .map(move |identity| identity.into_shielded(commitment_scheme))
     }
 
-    /// Generates a new [`Receiver`]-[`Spend`] pair to receive `asset` to this wallet via an
+    /// Generates a new [`InternalReceiver`] to receive `asset` to this wallet via an
     /// internal transaction.
-    #[allow(clippy::type_complexity)] // NOTE: This is not very complex.
     #[inline]
     pub fn generate_internal_receiver<C, I, R>(
         &mut self,
         commitment_scheme: &C::CommitmentScheme,
         asset: Asset,
         rng: &mut R,
-    ) -> Result<(Receiver<C, I>, Spend<C, I>), InternalReceiverError<D, I>>
+    ) -> Result<InternalReceiver<C, I>, InternalReceiverError<InternalKeys<D>, I>>
     where
         C: identity::Configuration<SecretKey = D::SecretKey>,
         I: IntegratedEncryptionScheme<Plaintext = Asset>,
         R: CryptoRng + RngCore + ?Sized,
         Standard: Distribution<AssetParameters<C>>,
     {
-        let (shielded_identity, spend) = self
-            .next_internal_identity()
-            .map_err(InternalReceiverError::SecretKeyGenerationError)?
-            .into_receiver(commitment_scheme);
-        Ok((
-            shielded_identity
-                .into_receiver(commitment_scheme, asset, rng)
-                .map_err(InternalReceiverError::EncryptionError)?,
-            spend,
-        ))
+        self.next_internal_identity()
+            .map_err(InternalReceiverError::SecretKeyError)?
+            .into_internal_receiver(commitment_scheme, asset, rng)
+            .map_err(InternalReceiverError::EncryptionError)
     }
 
-    /// Builds a [`Mint`] transaction to mint `asset` and returns the [`Spend`] for that asset.
+    /// Builds a [`Mint`] transaction to mint `asset` and returns the [`OpenSpend`] for that asset.
     #[inline]
     pub fn mint<T, R>(
         &mut self,
         commitment_scheme: &T::CommitmentScheme,
         asset: Asset,
         rng: &mut R,
-    ) -> WalletMintResult<D, T>
+    ) -> Result<(Mint<T>, OpenSpend<T>), MintError<D, T>>
     where
         T: transfer::Configuration<SecretKey = D::SecretKey>,
         R: CryptoRng + RngCore + ?Sized,
         Standard: Distribution<AssetParameters<T>>,
     {
-        let (receiver, spend) = self.generate_internal_receiver(commitment_scheme, asset, rng)?;
-        Ok((Mint::build(asset, receiver), spend))
+        Mint::from_identity(
+            self.next_internal_identity()
+                .map_err(MintError::SecretKeyError)?,
+            commitment_scheme,
+            asset,
+            rng,
+        )
+        .map_err(MintError::EncryptionError)
     }
 
     /// TODO: Builds [`PrivateTransfer`] transactions to send `asset` to an `external_receiver`.
@@ -482,42 +485,29 @@ where
     }
 }
 
-/// Internal Receiver Error
+/// Mint Error
 ///
-/// This `enum` is the error state for the [`generate_internal_receiver`] method on [`Wallet`].
+/// This `enum` is the error state for the [`mint`] method on [`Wallet`].
 /// See its documentation for more.
 ///
-/// [`generate_internal_receiver`]: Wallet::generate_internal_receiver
+/// [`mint`]: Wallet::mint
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "D::Error: Clone, I::Error: Clone"),
-    Copy(bound = "D::Error: Copy, I::Error: Copy"),
-    Debug(bound = "D::Error: Debug, I::Error: Debug"),
-    Eq(bound = "D::Error: Eq, I::Error: Eq"),
-    Hash(bound = "D::Error: Hash, I::Error: Hash"),
-    PartialEq(bound = "D::Error: PartialEq, I::Error: PartialEq")
+    Clone(bound = "D::Error: Clone, IntegratedEncryptionSchemeError<T>: Clone"),
+    Copy(bound = "D::Error: Copy, IntegratedEncryptionSchemeError<T>: Copy"),
+    Debug(bound = "D::Error: Debug, IntegratedEncryptionSchemeError<T>: Debug"),
+    Eq(bound = "D::Error: Eq, IntegratedEncryptionSchemeError<T>: Eq"),
+    Hash(bound = "D::Error: Hash, IntegratedEncryptionSchemeError<T>: Hash"),
+    PartialEq(bound = "D::Error: PartialEq, IntegratedEncryptionSchemeError<T>: PartialEq")
 )]
-pub enum InternalReceiverError<D, I>
+pub enum MintError<D, T>
 where
     D: DerivedSecretKeyGenerator,
-    I: IntegratedEncryptionScheme<Plaintext = Asset>,
+    T: transfer::Configuration,
 {
-    /// Secret Key Generation Error
-    SecretKeyGenerationError(D::Error),
+    /// Secret Key Generator Error
+    SecretKeyError(D::Error),
 
     /// Encryption Error
-    EncryptionError(I::Error),
+    EncryptionError(IntegratedEncryptionSchemeError<T>),
 }
-
-/// Internal Receiver Result Type
-pub type InternalReceiverResult<D, I, OK> = Result<OK, InternalReceiverError<D, I>>;
-
-/// Wallet Mint Result Type
-pub type WalletMintResult<D, T> = InternalReceiverResult<
-    D,
-    <T as transfer::Configuration>::IntegratedEncryptionScheme,
-    (
-        Mint<T>,
-        Spend<T, <T as transfer::Configuration>::IntegratedEncryptionScheme>,
-    ),
->;
