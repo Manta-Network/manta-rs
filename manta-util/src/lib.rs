@@ -27,6 +27,8 @@ mod array;
 mod concat;
 mod mixed_chain;
 
+pub mod num;
+
 #[cfg(feature = "rand_core")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "rand_core")))]
 pub mod rand;

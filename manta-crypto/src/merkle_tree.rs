@@ -16,19 +16,16 @@
 
 //! Merkle Trees
 
-// TODO: The following optimizations/configurations must be possible:
-//
-//    1. Subtree Computation/Memoization
-//    2. Root computation from only the past
-//    3. Path computation from only the past
-//    4. Incremental Update
-//    5. Only store relevant history subset
-//
-
 extern crate alloc;
 
-use alloc::{collections::BTreeMap, vec::Vec};
-use core::{borrow::Borrow, convert::Infallible, fmt::Debug, hash::Hash, iter::Rev, ops::Range};
+use alloc::vec::Vec;
+use core::{
+    borrow::{Borrow, BorrowMut},
+    fmt::Debug,
+    hash::Hash,
+    iter::Rev,
+    ops::{Add, Range, Sub},
+};
 
 /// Merkle Tree Leaf Hash
 pub trait LeafHash {
@@ -74,9 +71,6 @@ pub trait Configuration {
 
     /// Inner Hash Type
     type InnerHash: InnerHash<LeafHash = Self::LeafHash>;
-
-    /// Merkle Tree Structure Type
-    type Tree: Tree<Self>;
 
     /// Height Type
     type Height: Copy + Into<usize>;
@@ -147,11 +141,13 @@ where
     /// Builds a new merkle tree.
     fn new(parameters: &Parameters<C>) -> Self;
 
-    /// Builds a new merkle tree with the given `leaves`.
+    /// Builds a new merkle tree with the given `leaves` returning `None` if the iterator
+    /// would overflow the capacity of the tree.
     #[inline]
-    fn from_leaves<L>(parameters: &Parameters<C>, leaves: L) -> Option<Self>
+    fn from_leaves<'l, L>(parameters: &Parameters<C>, leaves: L) -> Option<Self>
     where
-        L: IntoIterator<Item = LeafDigest<C>>,
+        Leaf<C>: 'l,
+        L: IntoIterator<Item = &'l Leaf<C>>,
     {
         let leaves = leaves.into_iter();
         if leaves.size_hint().0 > capacity::<C>() {
@@ -181,270 +177,9 @@ where
     /// Returns the [`Path`] to some element of the merkle tree given by the `query`.
     fn path(&self, parameters: &Parameters<C>, query: Self::Query) -> Result<Path<C>, Self::Error>;
 
-    /// Inserts `leaf_digest` at the next avaiable leaf node of the tree, returning `false` if the
-    /// leaf could not be inserted because the tree has exhausted its capacity.
-    fn append(&mut self, parameters: &Parameters<C>, leaf_digest: LeafDigest<C>) -> bool;
-}
-
-/// Full Merkle Tree Backing Structure
-pub struct FullTree<C>
-where
-    C: Configuration + ?Sized,
-{
-    /// Leaf Digests
-    leaf_digests: Vec<LeafDigest<C>>,
-
-    /// Inner Digests
-    inner_digests: BTreeMap<usize, InnerDigest<C>>,
-}
-
-impl<C> FullTree<C>
-where
-    C: Configuration + ?Sized,
-{
-    /// Returns the sibling leaf node to `index`.
-    #[inline]
-    fn sibling_leaf(&self, index: Node) -> Option<&LeafDigest<C>> {
-        self.leaf_digests.get(index.sibling().0)
-    }
-
-    /// Computes the index into the `inner_digests` map for a node of the given `depth` and `index`.
-    #[inline]
-    fn inner_digest_index(depth: usize, index: Node) -> usize {
-        (1 << (depth + 1)) + index.0 - 1
-    }
-
-    /// Returns the inner digest at the given `depth` and `index` of the merkle tree.
-    ///
-    /// # Note
-    ///
-    /// The `depth` of the tree tracks the inner nodes not including the root. The root of the tree
-    /// is at `depth := -1` and `index := 0`.
-    #[inline]
-    fn get_inner_digest(&self, depth: usize, index: Node) -> Option<&InnerDigest<C>> {
-        self.inner_digests
-            .get(&Self::inner_digest_index(depth, index))
-    }
-
-    /// Sets the inner digest at the given `depth` and `index` of the merkle tree to the
-    /// `inner_digest` value.
-    ///
-    /// # Note
-    ///
-    /// The `depth` of the tree tracks the inner nodes not including the root. The root of the tree
-    /// is at `depth := -1` and `index := 0`.
-    #[inline]
-    fn set_inner_digest(&mut self, depth: usize, index: Node, inner_digest: InnerDigest<C>) {
-        self.inner_digests
-            .insert(Self::inner_digest_index(depth, index), inner_digest);
-    }
-
-    /// Computes the inner path of a node starting at the leaf given by `index`.
-    #[inline]
-    fn compute_inner_path(&self, mut index: Node) -> Vec<InnerDigest<C>>
-    where
-        InnerDigest<C>: Clone,
-    {
-        path_iter::<C>()
-            .map(move |depth| {
-                self.get_inner_digest(depth, index.into_parent().sibling())
-                    .map(Clone::clone)
-                    .unwrap_or_default()
-            })
-            .collect()
-    }
-
-    /// Computes the root of the merkle tree, modifying the inner tree in-place, starting at the
-    /// leaf given by `index`.
-    #[inline]
-    fn compute_root(
-        &mut self,
-        parameters: &Parameters<C>,
-        mut index: Node,
-        base: InnerDigest<C>,
-    ) -> Root<C>
-    where
-        InnerDigest<C>: Clone,
-    {
-        path_iter::<C>().fold(base, |acc, depth| {
-            self.set_inner_digest(depth, index.into_parent(), acc.clone());
-            index.join(
-                parameters,
-                &acc,
-                self.get_inner_digest(depth, index.sibling())
-                    .unwrap_or(&Default::default()),
-            )
-        })
-    }
-}
-
-impl<C> Tree<C> for FullTree<C>
-where
-    C: Configuration + ?Sized,
-    LeafDigest<C>: Clone,
-    InnerDigest<C>: Clone,
-{
-    type Query = usize;
-
-    type Error = ();
-
-    #[inline]
-    fn new(parameters: &Parameters<C>) -> Self {
-        let _ = parameters;
-        Self {
-            leaf_digests: Default::default(),
-            inner_digests: Default::default(),
-        }
-    }
-
-    #[inline]
-    fn len(&self) -> usize {
-        self.leaf_digests.len()
-    }
-
-    #[inline]
-    fn root(&self, parameters: &Parameters<C>) -> Root<C> {
-        let _ = parameters;
-        self.inner_digests
-            .get(&0)
-            .map(Clone::clone)
-            .unwrap_or_default()
-    }
-
-    #[inline]
-    fn path(&self, parameters: &Parameters<C>, query: Self::Query) -> Result<Path<C>, Self::Error> {
-        let _ = parameters;
-        if query > capacity::<C>() {
-            return Err(());
-        }
-        let leaf_index = Node(query);
-        Ok(Path::new(
-            leaf_index,
-            self.sibling_leaf(leaf_index)
-                .map(Clone::clone)
-                .unwrap_or_default(),
-            self.compute_inner_path(leaf_index),
-        ))
-    }
-
-    #[inline]
-    fn append(&mut self, parameters: &Parameters<C>, leaf_digest: LeafDigest<C>) -> bool {
-        let len = self.len();
-        if len >= capacity::<C>() {
-            return false;
-        }
-        let leaf_index = Node(len);
-        let root = self.compute_root(
-            parameters,
-            leaf_index,
-            leaf_index.join_leaves(
-                parameters,
-                &leaf_digest,
-                self.sibling_leaf(leaf_index).unwrap_or(&Default::default()),
-            ),
-        );
-        self.inner_digests.insert(0, root);
-        self.leaf_digests.push(leaf_digest);
-        true
-    }
-}
-
-/// Latest Node Merkle Tree Backing Structure
-pub struct LatestNodeTree<C>
-where
-    C: Configuration + ?Sized,
-{
-    /// Leaf Digest
-    leaf_digest: Option<LeafDigest<C>>,
-
-    /// Path
-    path: Path<C>,
-
-    /// Root
-    root: Root<C>,
-}
-
-impl<C> LatestNodeTree<C>
-where
-    C: Configuration + ?Sized,
-{
-    /// Returns the number of leaves in the merkle tree.
-    #[inline]
-    fn len(&self) -> usize {
-        if self.leaf_digest.is_none() {
-            0
-        } else {
-            self.path.leaf_node_index.0 + 1
-        }
-    }
-
-    /// Returns the next avaiable index or `None` if the merkle tree is full.
-    #[inline]
-    fn next_index(&self) -> Option<Node> {
-        let len = self.len();
-        if len == 0 {
-            Some(Node(0))
-        } else if len < capacity::<C>() - 1 {
-            Some(Node(len + 1))
-        } else {
-            None
-        }
-    }
-}
-
-impl<C> Tree<C> for LatestNodeTree<C>
-where
-    C: Configuration + ?Sized,
-    Root<C>: Clone,
-    Path<C>: Clone,
-{
-    type Query = ();
-
-    type Error = Infallible;
-
-    #[inline]
-    fn new(parameters: &Parameters<C>) -> Self {
-        let _ = parameters;
-        Self {
-            leaf_digest: Default::default(),
-            path: Default::default(),
-            root: Default::default(),
-        }
-    }
-
-    #[inline]
-    fn len(&self) -> usize {
-        self.len()
-    }
-
-    #[inline]
-    fn root(&self, parameters: &Parameters<C>) -> Root<C> {
-        let _ = parameters;
-        self.root.clone()
-    }
-
-    #[inline]
-    fn path(&self, parameters: &Parameters<C>, query: Self::Query) -> Result<Path<C>, Self::Error> {
-        let _ = (parameters, query);
-        Ok(self.path.clone())
-    }
-
-    #[inline]
-    fn append(&mut self, parameters: &Parameters<C>, leaf_digest: LeafDigest<C>) -> bool {
-        let index = match self.next_index() {
-            Some(index) => index,
-            _ => return false,
-        };
-
-        if index.is_zero() {
-            self.root = self.path.root_relative_to(parameters, &leaf_digest);
-            self.leaf_digest = Some(leaf_digest);
-        } else {
-            todo!()
-        }
-
-        true
-    }
+    /// Inserts the digest of `leaf` at the next avaiable leaf node of the tree, returning
+    /// `false` if the leaf could not be inserted because the tree has exhausted its capacity.
+    fn append(&mut self, parameters: &Parameters<C>, leaf: &Leaf<C>) -> bool;
 }
 
 /// Left or Right Side of a Subtree
@@ -467,7 +202,7 @@ impl Default for Parity {
 impl Parity {
     /// Computes the [`Parity`] of the given `index`.
     #[inline]
-    pub const fn from_index(index: usize) -> Self {
+    pub fn from_index(index: usize) -> Self {
         if index % 2 == 0 {
             Self::Left
         } else {
@@ -486,37 +221,115 @@ impl Parity {
     pub const fn is_right(&self) -> bool {
         matches!(self, Self::Right)
     }
+
+    /// Maps `self` to the output of `lhs` and `rhs` depending on its parity.
+    #[inline]
+    pub fn map<T, L, R>(self, lhs: L, rhs: R) -> T
+    where
+        L: FnOnce() -> T,
+        R: FnOnce() -> T,
+    {
+        match self {
+            Self::Left => lhs(),
+            Self::Right => rhs(),
+        }
+    }
+
+    /// Combines two inner digests into a new inner digest using `parameters`, swapping the order
+    /// of `lhs` and `rhs` depending on the parity of `self` in its subtree.
+    #[inline]
+    pub fn join<C>(
+        &self,
+        parameters: &Parameters<C>,
+        lhs: &InnerDigest<C>,
+        rhs: &InnerDigest<C>,
+    ) -> InnerDigest<C>
+    where
+        C: Configuration + ?Sized,
+    {
+        match self {
+            Self::Left => C::InnerHash::join(&parameters.inner, lhs, rhs),
+            Self::Right => C::InnerHash::join(&parameters.inner, rhs, lhs),
+        }
+    }
+
+    /// Combines two leaf digests into a new inner digest using `parameters`, choosing the left
+    /// pair `(center, rhs)` if `self` has left parity or choosing the right pair `(lhs, center)`
+    /// if `self` has right parity.
+    #[inline]
+    pub fn join_opposite_pair<C>(
+        &self,
+        parameters: &Parameters<C>,
+        lhs: &InnerDigest<C>,
+        center: &InnerDigest<C>,
+        rhs: &InnerDigest<C>,
+    ) -> InnerDigest<C>
+    where
+        C: Configuration + ?Sized,
+    {
+        match self {
+            Self::Left => C::InnerHash::join(&parameters.inner, center, rhs),
+            Self::Right => C::InnerHash::join(&parameters.inner, lhs, center),
+        }
+    }
+
+    /// Combines two leaf digests into a new inner digest using `parameters`, swapping the order
+    /// of `lhs` and `rhs` depending on the parity of `self` in its subtree.
+    #[inline]
+    pub fn join_leaves<C>(
+        &self,
+        parameters: &Parameters<C>,
+        lhs: &LeafDigest<C>,
+        rhs: &LeafDigest<C>,
+    ) -> InnerDigest<C>
+    where
+        C: Configuration + ?Sized,
+    {
+        match self {
+            Self::Left => C::InnerHash::join_leaves(&parameters.inner, lhs, rhs),
+            Self::Right => C::InnerHash::join_leaves(&parameters.inner, rhs, lhs),
+        }
+    }
 }
 
 /// Node Index
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
-pub struct Node(pub usize);
+pub struct Node<Idx = usize>(
+    /// Level-wise Index to a node in a Binary Tree
+    pub Idx,
+);
 
 impl Node {
-    /// Returns `true` if `self` is the left-most index.
-    #[inline]
-    pub const fn is_zero(&self) -> bool {
-        self.0 == 0
-    }
-
     /// Returns the [`Parity`] of this node.
     #[inline]
-    pub const fn parity(&self) -> Parity {
+    pub fn parity(&self) -> Parity {
         Parity::from_index(self.0)
+    }
+
+    /// Returns `true` if this node has left parity.
+    #[inline]
+    pub fn is_left(&self) -> bool {
+        self.parity().is_left()
+    }
+
+    /// Returns `true` if this node has right parity.
+    #[inline]
+    pub fn is_right(&self) -> bool {
+        self.parity().is_right()
     }
 
     /// Returns the [`Node`] which is the sibling to `self`.
     #[inline]
-    pub const fn sibling(&self) -> Self {
+    pub fn sibling(&self) -> Self {
         match self.parity() {
-            Parity::Left => Self(self.0 + 1),
-            Parity::Right => Self(self.0 - 1),
+            Parity::Left => *self + 1,
+            Parity::Right => *self - 1,
         }
     }
 
     /// Returns the parent [`Node`] of this node.
     #[inline]
-    pub const fn parent(&self) -> Self {
+    pub fn parent(&self) -> Self {
         Self(self.0 >> 1)
     }
 
@@ -539,10 +352,25 @@ impl Node {
     where
         C: Configuration + ?Sized,
     {
-        match self.parity() {
-            Parity::Left => C::InnerHash::join(&parameters.inner, lhs, rhs),
-            Parity::Right => C::InnerHash::join(&parameters.inner, rhs, lhs),
-        }
+        self.parity().join(parameters, lhs, rhs)
+    }
+
+    /// Combines two leaf digests into a new inner digest using `parameters`, choosing the left
+    /// pair `(center, rhs)` if `self` has left parity or choosing the right pair `(lhs, center)`
+    /// if `self` has right parity.
+    #[inline]
+    pub fn join_opposite_pair<C>(
+        &self,
+        parameters: &Parameters<C>,
+        lhs: &InnerDigest<C>,
+        center: &InnerDigest<C>,
+        rhs: &InnerDigest<C>,
+    ) -> InnerDigest<C>
+    where
+        C: Configuration + ?Sized,
+    {
+        self.parity()
+            .join_opposite_pair(parameters, lhs, center, rhs)
     }
 
     /// Combines two leaf digests into a new inner digest using `parameters`, swapping the order
@@ -557,28 +385,72 @@ impl Node {
     where
         C: Configuration + ?Sized,
     {
-        match self.parity() {
-            Parity::Left => {
-                C::InnerHash::join_leaves(&parameters.inner, lhs.borrow(), rhs.borrow())
-            }
-            Parity::Right => {
-                C::InnerHash::join_leaves(&parameters.inner, rhs.borrow(), lhs.borrow())
-            }
-        }
+        self.parity().join_leaves(parameters, lhs, rhs)
     }
 }
 
-impl From<Node> for usize {
+impl<Idx> Add<Idx> for Node<Idx>
+where
+    Idx: Add<Output = Idx>,
+{
+    type Output = Self;
+
     #[inline]
-    fn from(index: Node) -> Self {
-        index.0
+    fn add(self, rhs: Idx) -> Self::Output {
+        Self(self.0 + rhs)
     }
 }
 
-impl From<usize> for Node {
+impl<'i, Idx> Add<&'i Idx> for &'i Node<Idx>
+where
+    &'i Idx: Add<Output = Idx>,
+{
+    type Output = Node<Idx>;
+
     #[inline]
-    fn from(index: usize) -> Self {
+    fn add(self, rhs: &'i Idx) -> Self::Output {
+        Node(&self.0 + rhs)
+    }
+}
+
+impl<Idx> Sub<Idx> for Node<Idx>
+where
+    Idx: Sub<Output = Idx>,
+{
+    type Output = Self;
+
+    #[inline]
+    fn sub(self, rhs: Idx) -> Self::Output {
+        Self(self.0 - rhs)
+    }
+}
+
+impl<'i, Idx> Sub<&'i Idx> for &'i Node<Idx>
+where
+    &'i Idx: Sub<Output = Idx>,
+{
+    type Output = Node<Idx>;
+
+    #[inline]
+    fn sub(self, rhs: &'i Idx) -> Self::Output {
+        Node(&self.0 - rhs)
+    }
+}
+
+impl<Idx> From<Idx> for Node<Idx> {
+    #[inline]
+    fn from(index: Idx) -> Self {
         Self(index)
+    }
+}
+
+impl<Idx> PartialEq<Idx> for Node<Idx>
+where
+    Idx: PartialEq,
+{
+    #[inline]
+    fn eq(&self, rhs: &Idx) -> bool {
+        self.0 == *rhs
     }
 }
 
@@ -706,26 +578,28 @@ where
 }
 
 /// Merkle Tree
-pub struct MerkleTree<C>
+pub struct MerkleTree<C, T>
 where
     C: Configuration + ?Sized,
+    T: Tree<C>,
 {
     /// Merkle Tree Parameters
     parameters: Parameters<C>,
 
     /// Underlying Tree Structure
-    tree: C::Tree,
+    tree: T,
 }
 
-impl<C> MerkleTree<C>
+impl<C, T> MerkleTree<C, T>
 where
     C: Configuration + ?Sized,
+    T: Tree<C>,
 {
     /// Builds a new [`MerkleTree`].
     #[inline]
     pub fn new(parameters: Parameters<C>) -> Self {
         Self {
-            tree: C::Tree::new(&parameters),
+            tree: T::new(&parameters),
             parameters,
         }
     }
@@ -738,15 +612,12 @@ where
         L: IntoIterator<Item = &'l Leaf<C>>,
     {
         Some(Self {
-            tree: C::Tree::from_leaves(
-                &parameters,
-                leaves.into_iter().map(|l| parameters.digest(l)),
-            )?,
+            tree: T::from_leaves(&parameters, leaves)?,
             parameters,
         })
     }
 
-    ///
+    /// Returns a reference to the parameters used by this merkle tree.
     #[inline]
     pub fn parameters(&self) -> &Parameters<C> {
         &self.parameters
@@ -760,10 +631,7 @@ where
 
     /// Returns the [`Path`] to some element of the merkle tree given by the `query`.
     #[inline]
-    pub fn path(
-        &self,
-        query: <C::Tree as Tree<C>>::Query,
-    ) -> Result<Path<C>, <C::Tree as Tree<C>>::Error> {
+    pub fn path(&self, query: T::Query) -> Result<Path<C>, T::Error> {
         self.tree.path(&self.parameters, query)
     }
 
@@ -771,7 +639,440 @@ where
     /// leaf could not be inserted because the tree has exhausted its capacity.
     #[inline]
     pub fn append(&mut self, leaf: &Leaf<C>) -> bool {
-        self.tree
-            .append(&self.parameters, self.parameters.digest(leaf))
+        self.tree.append(&self.parameters, leaf)
+    }
+}
+
+impl<C, T> AsRef<T> for MerkleTree<C, T>
+where
+    C: Configuration + ?Sized,
+    T: Tree<C>,
+{
+    #[inline]
+    fn as_ref(&self) -> &T {
+        &self.tree
+    }
+}
+
+impl<C, T> AsMut<T> for MerkleTree<C, T>
+where
+    C: Configuration + ?Sized,
+    T: Tree<C>,
+{
+    #[inline]
+    fn as_mut(&mut self) -> &mut T {
+        &mut self.tree
+    }
+}
+
+impl<C, T> Borrow<T> for MerkleTree<C, T>
+where
+    C: Configuration + ?Sized,
+    T: Tree<C>,
+{
+    #[inline]
+    fn borrow(&self) -> &T {
+        &self.tree
+    }
+}
+
+impl<C, T> BorrowMut<T> for MerkleTree<C, T>
+where
+    C: Configuration + ?Sized,
+    T: Tree<C>,
+{
+    #[inline]
+    fn borrow_mut(&mut self) -> &mut T {
+        &mut self.tree
+    }
+}
+
+/// Full Merkle Tree Storage
+pub mod full {
+    use super::*;
+    use alloc::collections::BTreeMap;
+
+    /// Path Query Error Type
+    ///
+    /// Querying for paths beyond the current length of a [`Full`] tree is an error.
+    #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    pub struct Unknown;
+
+    /// Full Merkle Tree Backing Structure
+    #[derive(derivative::Derivative)]
+    #[derivative(
+        Clone(bound = "LeafDigest<C>: Clone, InnerDigest<C>: Clone"),
+        Debug(bound = "LeafDigest<C>: Debug, InnerDigest<C>: Debug"),
+        Default(bound = "LeafDigest<C>: Default, InnerDigest<C>: Default"),
+        Eq(bound = "LeafDigest<C>: Eq, InnerDigest<C>: Eq"),
+        PartialEq(bound = "LeafDigest<C>: PartialEq, InnerDigest<C>: PartialEq")
+    )]
+    pub struct Full<C>
+    where
+        C: Configuration + ?Sized,
+    {
+        /// Leaf Digests
+        leaf_digests: Vec<LeafDigest<C>>,
+
+        /// Inner Digests
+        ///
+        /// See [`Self::inner_digest_index`] for the encoding of tree coordinates.
+        inner_digests: BTreeMap<usize, InnerDigest<C>>,
+    }
+
+    impl<C> Full<C>
+    where
+        C: Configuration + ?Sized,
+    {
+        /// Returns the sibling leaf node to `index`.
+        #[inline]
+        fn sibling_leaf(&self, index: Node) -> Option<&LeafDigest<C>> {
+            self.leaf_digests.get(index.sibling().0)
+        }
+
+        /// Computes the index into the `inner_digests` map for a node of the given `depth` and `index`.
+        #[inline]
+        fn inner_digest_index(depth: usize, index: Node) -> usize {
+            (1 << (depth + 1)) + index.0 - 1
+        }
+
+        /// Returns the inner digest at the given `depth` and `index` of the merkle tree.
+        ///
+        /// # Note
+        ///
+        /// The `depth` of the tree tracks the inner nodes not including the root. The root of the tree
+        /// is at `depth := -1` and `index := 0`.
+        #[inline]
+        fn get_inner_digest(&self, depth: usize, index: Node) -> Option<&InnerDigest<C>> {
+            self.inner_digests
+                .get(&Self::inner_digest_index(depth, index))
+        }
+
+        /// Sets the inner digest at the given `depth` and `index` of the merkle tree to the
+        /// `inner_digest` value.
+        ///
+        /// # Note
+        ///
+        /// The `depth` of the tree tracks the inner nodes not including the root. The root of the tree
+        /// is at `depth := -1` and `index := 0`.
+        #[inline]
+        fn set_inner_digest(&mut self, depth: usize, index: Node, inner_digest: InnerDigest<C>) {
+            self.inner_digests
+                .insert(Self::inner_digest_index(depth, index), inner_digest);
+        }
+
+        /// Computes the inner path of a node starting at the leaf given by `index`.
+        #[inline]
+        fn compute_inner_path(&self, mut index: Node) -> Vec<InnerDigest<C>>
+        where
+            InnerDigest<C>: Clone,
+        {
+            path_iter::<C>()
+                .map(move |depth| {
+                    self.get_inner_digest(depth, index.into_parent().sibling())
+                        .map(Clone::clone)
+                        .unwrap_or_default()
+                })
+                .collect()
+        }
+
+        /// Computes the root of the merkle tree, modifying the inner tree in-place, starting at the
+        /// leaf given by `index`.
+        #[inline]
+        fn compute_root(
+            &mut self,
+            parameters: &Parameters<C>,
+            mut index: Node,
+            base: InnerDigest<C>,
+        ) -> Root<C>
+        where
+            InnerDigest<C>: Clone,
+        {
+            // TODO: Use `core::lazy::Lazy` when it is stabilized.
+            let default_inner_digest = Default::default();
+            path_iter::<C>().fold(base, |acc, depth| {
+                self.set_inner_digest(depth, index.into_parent(), acc.clone());
+                index.join(
+                    parameters,
+                    &acc,
+                    self.get_inner_digest(depth, index.sibling())
+                        .unwrap_or(&default_inner_digest),
+                )
+            })
+        }
+    }
+
+    impl<C> Tree<C> for Full<C>
+    where
+        C: Configuration + ?Sized,
+        LeafDigest<C>: Clone,
+        InnerDigest<C>: Clone,
+    {
+        type Query = usize;
+
+        type Error = Unknown;
+
+        #[inline]
+        fn new(parameters: &Parameters<C>) -> Self {
+            let _ = parameters;
+            Self {
+                leaf_digests: Default::default(),
+                inner_digests: Default::default(),
+            }
+        }
+
+        #[inline]
+        fn len(&self) -> usize {
+            self.leaf_digests.len()
+        }
+
+        #[inline]
+        fn root(&self, parameters: &Parameters<C>) -> Root<C> {
+            let _ = parameters;
+            self.inner_digests
+                .get(&0)
+                .map(Clone::clone)
+                .unwrap_or_default()
+        }
+
+        #[inline]
+        fn path(
+            &self,
+            parameters: &Parameters<C>,
+            query: Self::Query,
+        ) -> Result<Path<C>, Self::Error> {
+            let _ = parameters;
+            if query > capacity::<C>() {
+                return Err(Unknown);
+            }
+            let leaf_index = Node(query);
+            Ok(Path::new(
+                leaf_index,
+                self.sibling_leaf(leaf_index)
+                    .map(Clone::clone)
+                    .unwrap_or_default(),
+                self.compute_inner_path(leaf_index),
+            ))
+        }
+
+        #[inline]
+        fn append(&mut self, parameters: &Parameters<C>, leaf: &Leaf<C>) -> bool {
+            let len = self.len();
+            if len >= capacity::<C>() {
+                return false;
+            }
+            let leaf_digest = parameters.digest(leaf);
+            let leaf_index = Node(len);
+            let root = self.compute_root(
+                parameters,
+                leaf_index,
+                leaf_index.join_leaves(
+                    parameters,
+                    &leaf_digest,
+                    self.sibling_leaf(leaf_index).unwrap_or(&Default::default()),
+                ),
+            );
+            self.inner_digests.insert(0, root);
+            self.leaf_digests.push(leaf_digest);
+            true
+        }
+    }
+}
+
+/// Latest Node Merkle Tree Storage
+pub mod latest_node {
+    use super::*;
+    use core::convert::Infallible;
+
+    /// Path Query Type
+    ///
+    /// Since the [`LatestNode`] tree only stores one node and one path, we can only query the tree
+    /// for the current path.
+    #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    pub struct Current;
+
+    /// Latest Node Merkle Tree Backing Structure
+    #[derive(derivative::Derivative)]
+    #[derivative(
+        Clone(bound = "LeafDigest<C>: Clone, InnerDigest<C>: Clone"),
+        Debug(bound = "LeafDigest<C>: Debug, InnerDigest<C>: Debug"),
+        Default(bound = "LeafDigest<C>: Default, InnerDigest<C>: Default"),
+        Eq(bound = "LeafDigest<C>: Eq, InnerDigest<C>: Eq"),
+        PartialEq(bound = "LeafDigest<C>: PartialEq, InnerDigest<C>: PartialEq")
+    )]
+    pub struct LatestNode<C>
+    where
+        C: Configuration + ?Sized,
+    {
+        /// Leaf Digest
+        leaf_digest: Option<LeafDigest<C>>,
+
+        /// Path
+        path: Path<C>,
+
+        /// Root
+        root: Root<C>,
+    }
+
+    impl<C> LatestNode<C>
+    where
+        C: Configuration + ?Sized,
+    {
+        /// Returns the number of leaves in the merkle tree.
+        #[inline]
+        fn len(&self) -> usize {
+            if self.leaf_digest.is_none() {
+                0
+            } else {
+                self.path.leaf_node_index.0 + 1
+            }
+        }
+
+        /// Returns the next avaiable index or `None` if the merkle tree is full.
+        #[inline]
+        fn next_index(&self) -> Option<Node> {
+            let len = self.len();
+            if len == 0 {
+                Some(Node(0))
+            } else if len < capacity::<C>() - 1 {
+                Some(Node(len + 1))
+            } else {
+                None
+            }
+        }
+
+        /// Returns the current merkle tree root.
+        #[inline]
+        pub fn root(&self) -> &Root<C> {
+            &self.root
+        }
+
+        /// Returns the current merkle tree path for the current leaf.
+        #[inline]
+        pub fn path(&self) -> &Path<C> {
+            &self.path
+        }
+    }
+
+    impl<C> Tree<C> for LatestNode<C>
+    where
+        C: Configuration + ?Sized,
+        LeafDigest<C>: Clone,
+        InnerDigest<C>: Clone,
+    {
+        type Query = Current;
+
+        type Error = Infallible;
+
+        #[inline]
+        fn new(parameters: &Parameters<C>) -> Self {
+            let _ = parameters;
+            Self {
+                leaf_digest: Default::default(),
+                path: Default::default(),
+                root: Default::default(),
+            }
+        }
+
+        #[inline]
+        fn len(&self) -> usize {
+            self.len()
+        }
+
+        #[inline]
+        fn root(&self, parameters: &Parameters<C>) -> Root<C> {
+            let _ = parameters;
+            self.root.clone()
+        }
+
+        #[inline]
+        fn path(
+            &self,
+            parameters: &Parameters<C>,
+            query: Self::Query,
+        ) -> Result<Path<C>, Self::Error> {
+            let _ = (parameters, query);
+            Ok(self.path.clone())
+        }
+
+        #[inline]
+        fn append(&mut self, parameters: &Parameters<C>, leaf: &Leaf<C>) -> bool {
+            let index = match self.next_index() {
+                Some(index) => index,
+                _ => return false,
+            };
+
+            let leaf_digest = parameters.digest(leaf);
+
+            if index == 0 {
+                self.root = self.path.root_relative_to(parameters, &leaf_digest);
+            } else {
+                let mut next_index = index;
+
+                let default_leaf_digest = Default::default();
+                let default_inner_digest = Default::default();
+
+                let current_leaf_digest = self.leaf_digest.as_ref().unwrap();
+
+                let (mut accumulator, sibling_digest) = match next_index.parity() {
+                    Parity::Left => (
+                        parameters.join_leaves(&leaf_digest, &default_leaf_digest),
+                        default_leaf_digest,
+                    ),
+                    Parity::Right => (
+                        parameters.join_leaves(current_leaf_digest, &leaf_digest),
+                        current_leaf_digest.clone(),
+                    ),
+                };
+
+                let mut prev_index = next_index - 1;
+                let mut prev_digest = prev_index.join_leaves(
+                    parameters,
+                    current_leaf_digest,
+                    &self.path.sibling_digest,
+                );
+
+                let inner_path = self
+                    .path
+                    .inner_path
+                    .iter()
+                    .map(|digest| {
+                        if prev_index.into_parent() == next_index.into_parent() {
+                            accumulator = next_index.join_opposite_pair(
+                                parameters,
+                                digest,
+                                &accumulator,
+                                &default_inner_digest,
+                            );
+                            digest.clone()
+                        } else {
+                            let next_inner_path_digest = next_index
+                                .parity()
+                                .map(|| default_inner_digest.clone(), || prev_digest.clone());
+
+                            accumulator = next_index.join_opposite_pair(
+                                parameters,
+                                &prev_digest,
+                                &accumulator,
+                                &default_inner_digest,
+                            );
+
+                            if prev_index.is_right() {
+                                prev_digest = parameters.join(digest, &prev_digest);
+                            }
+
+                            next_inner_path_digest
+                        }
+                    })
+                    .collect();
+
+                self.path = Path::new(index, sibling_digest, inner_path);
+                self.root = accumulator;
+            }
+
+            self.leaf_digest = Some(leaf_digest);
+
+            true
+        }
     }
 }

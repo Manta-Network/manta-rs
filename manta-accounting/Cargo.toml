@@ -44,7 +44,7 @@ derive_more = { version = "0.99.16", default-features = false, features = ["add"
 manta-crypto = { path = "../manta-crypto", default-features = false }
 manta-util = { path = "../manta-util", default-features = false }
 rand = { version = "0.8.4", default-features = false }
-zeroize = { version = "1.4.1", optional = true, default-features = false, features = ["alloc", "zeroize_derive"] }
+zeroize = { version = "1.4.2", optional = true, default-features = false, features = ["alloc", "zeroize_derive"] }
 
 [dev-dependencies]
 rand = "0.8.4"
