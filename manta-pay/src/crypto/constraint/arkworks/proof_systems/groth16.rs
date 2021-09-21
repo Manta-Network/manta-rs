@@ -18,7 +18,9 @@
 
 // FIXME: Move these tests elsewhere since they are rather general.
 
-use crate::crypto::constraint::{constraint_system::SynthesisResult, ArkConstraintSystem};
+use crate::crypto::constraint::arkworks::{
+    constraint_system::SynthesisResult, ArkConstraintSystem,
+};
 use alloc::vec::Vec;
 use ark_crypto_primitives::SNARK;
 use ark_ec::PairingEngine;

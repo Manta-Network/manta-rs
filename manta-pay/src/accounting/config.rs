@@ -16,11 +16,16 @@
 
 //! Identity and Transfer Configurations
 
+// TODO: Make this generic over the backend we use. Automatically compute which features are
+//       enabled when using whichever backend.
+
 use crate::{
     accounting::ledger::{UtxoSet, UtxoSetVar},
     crypto::{
         commitment::pedersen::{self, PedersenWindow},
-        constraint::{proof_systems::Groth16, ArkConstraintSystem, AssetBalanceVar, AssetIdVar},
+        constraint::arkworks::{
+            proof_systems::groth16::Groth16, ArkConstraintSystem, AssetBalanceVar, AssetIdVar,
+        },
         ies::IES,
         merkle_tree,
         prf::blake2s::{constraint::Blake2sVar, Blake2s},

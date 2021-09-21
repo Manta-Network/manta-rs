@@ -25,7 +25,24 @@ is-it-maintained-open-issues = { repository = "Manta-Network/manta-rs" }
 maintenance = { status = "actively-developed" }
 
 [features]
-default = []
+# Default Features
+default = ["arkworks-groth16"]
+
+# Enable Arkworks Zero-Knowledge Proof Backends
+arkworks-zkp = []
+# Arkworks Groth16 Backend
+arkworks-groth16 = ["arkworks-zkp", "ark-groth16"]
+# Enable All Arkworks Zero-Knowledge Proof Backends
+arkworks-zkp-all = ["arkworks-groth16"]
+
+# Enable Dusk-Netowrk Zero-Knowledge Proof Backends
+dusk-network-zkp = []
+# Dusk-Network Plonk Backend
+dusk-network-plonk = ["dusk-network-zkp", "dusk-plonk"]
+# Enable All Dusk-Network Zero-Knowledge Proof Backends
+dusk-network-zkp-all = ["dusk-network-plonk"]
+
+# Standard Library
 std = []
 
 [dependencies]
@@ -35,12 +52,13 @@ ark-crypto-primitives = { version = "0.3.0", default-features = false, features 
 ark-ec = { version = "0.3.0", default-features = false }
 ark-ed-on-bls12-381 = { version = "0.3.0", default-features = false, features = ["r1cs"] }
 ark-ff = { version = "0.3.0", default-features = false }
-ark-groth16 = { version = "0.3.0", default-features = false }
+ark-groth16 = { version = "0.3.0", optional = true, default-features = false }
 ark-r1cs-std = { version = "0.3.1", default-features = false }
 ark-relations = { version = "0.3.0", default-features = false }
 bip32 = { version = "0.2.2", default-features = false, features = ["bip39", "secp256k1"] }
 blake2 = { version = "0.9.2", default-features = false }
 derivative = { version = "2.2.0", default-features = false }
+dusk-plonk = { version = "0.8.2", optional = true, default-features = false }
 generic-array = { version = "0.14.4", default-features = false }
 manta-accounting = { path = "../manta-accounting", default-features = false }
 manta-crypto = { path = "../manta-crypto", default-features = false }
@@ -51,4 +69,5 @@ x25519-dalek = { git = "https://github.com/Manta-Network/x25519-dalek", default-
 
 [dev-dependencies]
 manta-crypto = { path = "../manta-crypto", features = ["test"] }
+manta-accounting = { path = "../manta-accounting", features = ["test"] }
 rand = "0.8.4"

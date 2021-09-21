@@ -14,24 +14,8 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! The Manta Network
+//! Arkworks Proof System Implementations
 
-// TODO: Given the structure of `manta-pay` does this crate make sense anymore? Maybe only as
-//       `accounting` + `crypto`?
-
-#![cfg_attr(not(any(feature = "std", test)), no_std)]
-#![cfg_attr(doc_cfg, feature(doc_cfg))]
-#![forbid(rustdoc::broken_intra_doc_links)]
-#![forbid(missing_docs)]
-
-#[doc(inline)]
-pub use manta_accounting as accounting;
-
-#[doc(inline)]
-pub use manta_codec as codec;
-
-#[doc(inline)]
-pub use manta_crypto as crypto;
-
-#[doc(inline)]
-pub use manta_pay as pay;
+#[cfg(feature = "arkworks-groth16")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "arkworks-groth16")))]
+pub mod groth16;

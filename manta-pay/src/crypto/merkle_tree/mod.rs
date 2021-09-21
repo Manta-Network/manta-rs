@@ -16,21 +16,14 @@
 
 //! Merkle Tree Implementations
 
-// NOTE: Most if not all of the fallible interfaces in this file never actually fail. We use
-//       faillible interfaces so that we don't have to depend explicitly on implementation
-//       details of the `arkworks` project.
+// FIXME: Move to `manta_crypto::merkle_tree` implementation!
 
-// TODO: Improve the interface so that we don't have to worry about panicking interfaces from
-//       arkworks (automatic padding, etc.).
-// TODO: We should think about how much of this file can be moved to `manta_crypto`.
-
-// NOTE: This is meant to be a full implementation of the incremental merkle tree type suitable for
-//       merging into arkworks itself. Therefore, even if we don't use all of the functionality
-//       available in this module, we want to preserve the code anyway.
+// NOTE:  This is meant to be a full implementation of the incremental merkle tree type suitable
+//        for merging into arkworks itself. Therefore, even if we don't use all of the
+//        functionality available in this module, we want to preserve the code anyway.
 #[allow(dead_code)]
 mod incremental;
 
-use crate::crypto::constraint::{empty, full, ArkConstraintSystem};
 use alloc::{vec, vec::Vec};
 use ark_crypto_primitives::{
     crh::{TwoToOneCRH, CRH},
@@ -344,6 +337,7 @@ where
 /// Merkle Tree Constraint System Variables
 pub mod constraint {
     use super::*;
+    use crate::crypto::constraint::arkworks::{empty, full, ArkConstraintSystem};
     use ark_crypto_primitives::{
         crh::constraints::{CRHGadget, TwoToOneCRHGadget},
         merkle_tree::constraints::PathVar as ArkPathVar,

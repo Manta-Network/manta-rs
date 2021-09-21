@@ -155,7 +155,7 @@ where
 /// Pedersen Commitment Scheme Constraint System Implementation
 pub mod constraint {
     use super::*;
-    use crate::crypto::constraint::{empty, full, ArkConstraintSystem};
+    use crate::crypto::constraint::arkworks::{empty, full, ArkConstraintSystem};
     use ark_crypto_primitives::{
         commitment::pedersen::constraints::{CommGadget, ParametersVar, RandomnessVar},
         CommitmentGadget,

@@ -20,6 +20,8 @@
 //        verified set can give to someone who wants to check a containment proof, since in general
 //        we don't actually need access to the set itself, or having access to the set would be be
 //        possible in any real implementation.
+// FIXME: The `Set::contains` method is not really something we can always implement properly.
+// FIXME: Should we just get rid of `Set` and just ensure we can get proofs working?
 
 pub(crate) mod prelude {
     #[doc(inline)]

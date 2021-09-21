@@ -14,8 +14,10 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Arkworks Proof System Implementations
+//! Arkworks Constraint System and Proof System Implementations
 
-mod groth16;
+mod constraint_system;
 
-pub use groth16::*;
+pub mod proof_systems;
+
+pub use constraint_system::*;

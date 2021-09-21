@@ -25,9 +25,11 @@ is-it-maintained-open-issues = { repository = "Manta-Network/manta-rs" }
 maintenance = { status = "actively-developed" }
 
 [features]
-default = []
-std = []
+# Scale Codec Derive Traits
 derive = ["scale-codec/derive"]
+
+# Standard Library
+std = []
 
 [dependencies]
 ark-serialize = { version = "0.3.0", default-features = false }

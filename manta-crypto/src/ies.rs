@@ -415,6 +415,7 @@ pub mod test {
     use core::fmt::Debug;
 
     /// Tests encryption/decryption of a sample `plaintext`.
+    #[inline]
     pub fn assert_decryption_of_encryption<I, R>(plaintext: &I::Plaintext, rng: &mut R)
     where
         I: IntegratedEncryptionScheme,
@@ -430,6 +431,9 @@ pub mod test {
                     .expect("Unable to encrypt plaintext."),
             )
             .expect("Unable to decrypt plaintext.");
-        assert_eq!(plaintext, &reconstructed_plaintext)
+        assert_eq!(
+            plaintext, &reconstructed_plaintext,
+            "Plaintext didn't match decrypted ciphertext."
+        )
     }
 }

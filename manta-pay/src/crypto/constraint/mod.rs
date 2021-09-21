@@ -16,8 +16,10 @@
 
 //! Constraint System and Proof System Implementations
 
-mod constraint_system;
+#[cfg(feature = "arkworks-zkp")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "arkworks-zkp")))]
+pub mod arkworks;
 
-pub mod proof_systems;
-
-pub use constraint_system::*;
+#[cfg(feature = "dusk-network-zkp")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "dusk-network-zkp")))]
+pub mod dusk_network;

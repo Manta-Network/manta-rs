@@ -34,7 +34,7 @@ cocoon-adapters = ["cocoon/std", "zeroize"]
 # Standard Library
 std = ["cocoon-adapters"]
 
-# Testing Framework
+# Testing Frameworks
 test = []
 
 [dependencies]

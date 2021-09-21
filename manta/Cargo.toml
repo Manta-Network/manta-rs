@@ -25,8 +25,13 @@ is-it-maintained-open-issues = { repository = "Manta-Network/manta-rs" }
 maintenance = { status = "actively-developed" }
 
 [features]
+# Default Features
 default = []
+
+# Standard Library
 std = []
+
+# Test Frameworks
 test = ["manta-accounting/test", "manta-crypto/test"]
 
 [dependencies]

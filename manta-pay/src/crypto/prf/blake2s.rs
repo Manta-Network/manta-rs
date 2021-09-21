@@ -110,7 +110,7 @@ impl PseudorandomFunctionFamily for Blake2s {
 /// Blake2s PRF Constraint System Implementations
 pub mod constraint {
     use super::*;
-    use crate::crypto::constraint::{empty, full, ByteArrayVar};
+    use crate::crypto::constraint::arkworks::{empty, full, ByteArrayVar};
     use ark_crypto_primitives::{
         prf::blake2s::constraints::Blake2sGadget as ArkBlake2sVar, PRFGadget,
     };
@@ -124,7 +124,7 @@ pub mod constraint {
     };
 
     /// Constraint System Type
-    pub use crate::crypto::constraint::ArkConstraintSystem as ConstraintSystem;
+    pub use crate::crypto::constraint::arkworks::ArkConstraintSystem as ConstraintSystem;
 
     /// Blake2s Pseudorandom Function Family Seed Variable
     #[derive(derivative::Derivative)]
