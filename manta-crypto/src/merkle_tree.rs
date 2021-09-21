@@ -28,6 +28,7 @@
 extern crate alloc;
 
 use alloc::vec::Vec;
+use core::{convert::Infallible, fmt::Debug, hash::Hash};
 
 /// Merkle Tree Leaf Hash
 pub trait LeafHash {
@@ -76,50 +77,12 @@ pub trait Configuration {
 
     /// Merkle Tree Structure Type
     type Tree: Tree<Self>;
-}
 
-/// Merkle Tree Structure
-pub trait Tree<C>: Sized
-where
-    C: Configuration + ?Sized,
-{
     /// Height Type
-    type Height: Copy;
+    type Height: Copy + Into<usize>;
 
-    /// Path Query Type
-    type PathQuery;
-
-    /// Builds a new merkle tree with the given `height`.
-    fn new(height: Self::Height) -> Self;
-
-    /// Builds a new merkle tree with the given `height` and pre-existing `leaves`.
-    fn with_leaves(height: Self::Height, leaves: &[Leaf<C>]) -> Option<Self>
-    where
-        Leaf<C>: Sized;
-
-    /// Returns the [`Root`] of the merkle tree.
-    fn root(&self) -> Root<C>;
-
-    /// Returns the [`Path`] to some element of the merkle tree given by the `path_query`.
-    fn path(&self, path_query: Self::PathQuery) -> Path<C>;
-}
-
-/// Merkle Tree Append Mixin
-pub trait Append<C>
-where
-    C: Configuration + ?Sized,
-{
-    /// Inserts `leaf_digest` at the next avaiable leaf node of the tree.
-    fn append(&mut self, parameters: &Parameters<C>, leaf_digest: LeafDigest<C>);
-}
-
-/// Merkle Tree Update Mixin
-pub trait Update<C>
-where
-    C: Configuration + ?Sized,
-{
-    /// Modifies the leaf node at the given `index` to `leaf_digest`.
-    fn update(&mut self, parameters: &Parameters<C>, index: usize, leaf_digest: LeafDigest<C>);
+    /// Fixed Height of the Merkle Tree
+    const HEIGHT: Self::Height;
 }
 
 /// Leaf Type
@@ -139,6 +102,273 @@ pub type InnerDigest<C> = <<C as Configuration>::InnerHash as InnerHash>::Output
 
 /// Merkle Tree Root Type
 pub type Root<C> = InnerDigest<C>;
+
+///
+#[inline]
+pub fn capacity<C>() -> usize
+where
+    C: Configuration + ?Sized,
+{
+    1usize << C::HEIGHT.into()
+}
+
+///
+#[inline]
+pub fn path_length<C>() -> usize
+where
+    C: Configuration + ?Sized,
+{
+    C::HEIGHT.into() - 2
+}
+
+/// Merkle Tree Structure
+pub trait Tree<C>: Sized
+where
+    C: Configuration + ?Sized,
+{
+    /// Path Query Type
+    type Query;
+
+    /// Path Error Type
+    type Error;
+
+    /// Builds a new merkle tree.
+    fn new(parameters: &Parameters<C>) -> Self;
+
+    /// Builds a new merkle tree with the given `leaves`.
+    #[inline]
+    fn from_leaves<L>(parameters: &Parameters<C>, leaves: L) -> Option<Self>
+    where
+        L: IntoIterator<Item = LeafDigest<C>>,
+    {
+        let capacity = capacity::<C>();
+        let leaves = leaves.into_iter();
+        if leaves.size_hint().0 > capacity {
+            return None;
+        }
+        let mut tree = Self::new(parameters);
+        for leaf in leaves {
+            if !tree.append(parameters, leaf) {
+                return None;
+            }
+        }
+        Some(tree)
+    }
+
+    /// Returns the length of `self`.
+    fn len(&self) -> usize;
+
+    /// Returns `true` if the length of `self` is zero.
+    #[inline]
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Returns the [`Root`] of the merkle tree.
+    fn root(&self, parameters: &Parameters<C>) -> Root<C>;
+
+    /// Returns the [`Path`] to some element of the merkle tree given by the `query`.
+    fn path(&self, parameters: &Parameters<C>, query: Self::Query) -> Result<Path<C>, Self::Error>;
+
+    /// Inserts `leaf_digest` at the next avaiable leaf node of the tree, returning `false` if the
+    /// leaf could not be inserted because the tree has exhausted its capacity.
+    fn append(&mut self, parameters: &Parameters<C>, leaf_digest: LeafDigest<C>) -> bool;
+}
+
+/// Full Merkle Tree Backing Structure
+pub struct FullTree<C>
+where
+    C: Configuration + ?Sized,
+{
+    /// Leaf Digests
+    leaf_digests: Vec<LeafDigest<C>>,
+
+    /// Inner Digests
+    inner_digests: Vec<InnerDigest<C>>,
+}
+
+impl<C> FullTree<C>
+where
+    C: Configuration + ?Sized,
+{
+    ///
+    #[inline]
+    fn sibling_leaf(&self, index: NodeIndex) -> Option<&LeafDigest<C>> {
+        self.leaf_digests.get(index.sibling().0)
+    }
+
+    ///
+    #[inline]
+    fn get_inner_digest(&self, depth: usize, index: NodeIndex) -> Option<&InnerDigest<C>> {
+        // TODO: self.inner_digests.get((1 << (depth + 1)) + index.0 - 1)
+        todo!()
+    }
+
+    ///
+    #[inline]
+    fn construct_inner_path(&self, mut index: NodeIndex) -> Vec<InnerDigest<C>>
+    where
+        InnerDigest<C>: Clone,
+    {
+        /* TODO:
+        (0..path_length::<C>())
+            .into_iter()
+            .rev()
+            .map(|depth| {
+                self.get_inner_digest(depth, index.into_parent().sibling())
+                    .map(Clone::clone)
+                    .unwrap_or_default()
+            })
+            .collect()
+        */
+        todo!()
+    }
+}
+
+impl<C> Tree<C> for FullTree<C>
+where
+    C: Configuration + ?Sized,
+    LeafDigest<C>: Clone,
+    InnerDigest<C>: Clone,
+{
+    type Query = usize;
+
+    type Error = ();
+
+    #[inline]
+    fn new(parameters: &Parameters<C>) -> Self {
+        let _ = parameters;
+        Self {
+            leaf_digests: Vec::default(),
+            inner_digests: Vec::default(),
+        }
+    }
+
+    #[inline]
+    fn len(&self) -> usize {
+        self.leaf_digests.len()
+    }
+
+    #[inline]
+    fn root(&self, parameters: &Parameters<C>) -> Root<C> {
+        self.inner_digests
+            .get(0)
+            .map(Clone::clone)
+            .unwrap_or_default()
+    }
+
+    #[inline]
+    fn path(&self, parameters: &Parameters<C>, query: Self::Query) -> Result<Path<C>, Self::Error> {
+        let base_index = NodeIndex(query);
+        Ok(Path::new(
+            base_index,
+            self.sibling_leaf(base_index).ok_or(())?.clone(),
+            self.construct_inner_path(base_index),
+        ))
+    }
+
+    #[inline]
+    fn append(&mut self, parameters: &Parameters<C>, leaf_digest: LeafDigest<C>) -> bool {
+        todo!()
+    }
+}
+
+/// Latest Node Merkle Tree Backing Structure
+pub struct LatestNodeTree<C>
+where
+    C: Configuration + ?Sized,
+{
+    /// Leaf Digests
+    leaf_digest: Option<LeafDigest<C>>,
+
+    /// Path
+    path: Path<C>,
+
+    /// Root
+    root: Root<C>,
+}
+
+impl<C> LatestNodeTree<C>
+where
+    C: Configuration + ?Sized,
+{
+    ///
+    #[inline]
+    fn len(&self) -> usize {
+        if self.leaf_digest.is_none() {
+            0
+        } else {
+            Into::<usize>::into(self.path.leaf_node_index) + 1
+        }
+    }
+
+    ///
+    #[inline]
+    fn next_index(&self) -> Option<NodeIndex> {
+        let len = self.len();
+        if len == 0 {
+            Some(NodeIndex(0))
+        } else if len < capacity::<C>() {
+            Some(NodeIndex(len + 1))
+        } else {
+            None
+        }
+    }
+}
+
+impl<C> Tree<C> for LatestNodeTree<C>
+where
+    C: Configuration + ?Sized,
+    Root<C>: Clone,
+    Path<C>: Clone,
+{
+    type Query = ();
+
+    type Error = Infallible;
+
+    #[inline]
+    fn new(parameters: &Parameters<C>) -> Self {
+        Self {
+            leaf_digest: Default::default(),
+            path: Default::default(),
+            root: Default::default(),
+        }
+    }
+
+    #[inline]
+    fn len(&self) -> usize {
+        self.len()
+    }
+
+    #[inline]
+    fn root(&self, parameters: &Parameters<C>) -> Root<C> {
+        let _ = parameters;
+        self.root.clone()
+    }
+
+    #[inline]
+    fn path(&self, parameters: &Parameters<C>, query: Self::Query) -> Result<Path<C>, Self::Error> {
+        let _ = (parameters, query);
+        Ok(self.path.clone())
+    }
+
+    #[inline]
+    fn append(&mut self, parameters: &Parameters<C>, leaf_digest: LeafDigest<C>) -> bool {
+        let index = match self.next_index() {
+            Some(index) => index,
+            _ => return false,
+        };
+
+        if index.is_zero() {
+            self.root = self.path.root_relative_to(parameters, &leaf_digest);
+            self.leaf_digest = Some(leaf_digest);
+        } else {
+            todo!()
+        }
+
+        true
+    }
+}
 
 /// Left or Right Side of a Subtree
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -181,15 +411,21 @@ impl Parity {
     }
 }
 
-/// Node Location
+/// Node Index
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
-pub struct Node(usize);
+pub struct NodeIndex(usize);
 
-impl Node {
-    /// Builds a [`Node`] for this `index`.
+impl NodeIndex {
+    /// Builds a [`NodeIndex`] for this `index`.
     #[inline]
     pub const fn from_index(index: usize) -> Self {
         Self(index)
+    }
+
+    /// Returns `true` if `self` is the left-most index.
+    #[inline]
+    pub const fn is_zero(&self) -> bool {
+        self.0 == 0
     }
 
     /// Returns the [`Parity`] of this node.
@@ -198,13 +434,22 @@ impl Node {
         Parity::from_index(self.0)
     }
 
-    /// Returns the parent [`Node`] of this node.
+    /// Returns the [`NodeIndex`] which is the sibling to `self`.
+    #[inline]
+    pub const fn sibling(&self) -> Self {
+        match self.parity() {
+            Parity::Left => Self(self.0 + 1),
+            Parity::Right => Self(self.0 - 1),
+        }
+    }
+
+    /// Returns the parent [`NodeIndex`] of this node.
     #[inline]
     pub const fn parent(&self) -> Self {
         Self(self.0 >> 1)
     }
 
-    /// Converts `self` into its parent, returning the parent [`Node`].
+    /// Converts `self` into its parent, returning the parent [`NodeIndex`].
     #[inline]
     pub fn into_parent(&mut self) -> Self {
         *self = self.parent();
@@ -248,7 +493,24 @@ impl Node {
     }
 }
 
+impl From<NodeIndex> for usize {
+    #[inline]
+    fn from(index: NodeIndex) -> Self {
+        index.0
+    }
+}
+
 /// Merkle Tree Parameters
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "LeafHashParamters<C>: Clone, InnerHashParameters<C>: Clone"),
+    Copy(bound = "LeafHashParamters<C>: Copy, InnerHashParameters<C>: Copy"),
+    Debug(bound = "LeafHashParamters<C>: Debug, InnerHashParameters<C>: Debug"),
+    Default(bound = "LeafHashParamters<C>: Default, InnerHashParameters<C>: Default"),
+    Eq(bound = "LeafHashParamters<C>: Eq, InnerHashParameters<C>: Eq"),
+    Hash(bound = "LeafHashParamters<C>: Hash, InnerHashParameters<C>: Hash"),
+    PartialEq(bound = "LeafHashParamters<C>: PartialEq, InnerHashParameters<C>: PartialEq")
+)]
 pub struct Parameters<C>
 where
     C: Configuration + ?Sized,
@@ -260,41 +522,107 @@ where
     pub inner: InnerHashParameters<C>,
 }
 
+impl<C> Parameters<C>
+where
+    C: Configuration + ?Sized,
+{
+    /// Computes the leaf digest of `leaf` using `self`.
+    #[inline]
+    pub fn digest(&self, leaf: &Leaf<C>) -> LeafDigest<C> {
+        C::LeafHash::digest(&self.leaf, leaf)
+    }
+
+    /// Combines two inner digests into a new inner digest using `self`.
+    #[inline]
+    pub fn join(&self, lhs: &InnerDigest<C>, rhs: &InnerDigest<C>) -> InnerDigest<C> {
+        C::InnerHash::join(&self.inner, lhs, rhs)
+    }
+
+    /// Combines two leaf digests into a new inner digest using `self`.
+    #[inline]
+    pub fn join_leaves(&self, lhs: &LeafDigest<C>, rhs: &LeafDigest<C>) -> InnerDigest<C> {
+        C::InnerHash::join_leaves(&self.inner, lhs, rhs)
+    }
+}
+
 /// Merkle Tree Path
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "LeafDigest<C>: Clone, InnerDigest<C>: Clone"),
+    Debug(bound = "LeafDigest<C>: Debug, InnerDigest<C>: Debug"),
+    Eq(bound = "LeafDigest<C>: Eq, InnerDigest<C>: Eq"),
+    Hash(bound = "LeafDigest<C>: Hash, InnerDigest<C>: Hash"),
+    PartialEq(bound = "LeafDigest<C>: PartialEq, InnerDigest<C>: PartialEq")
+)]
 pub struct Path<C>
 where
     C: Configuration + ?Sized,
 {
-    /// Inner Path
-    inner_path: Vec<InnerDigest<C>>,
+    /// Leaf Node Index
+    leaf_node_index: NodeIndex,
 
     /// Sibling Digest
     sibling_digest: LeafDigest<C>,
 
-    /// Leaf Node
-    leaf_node: Node,
+    /// Inner Path
+    inner_path: Vec<InnerDigest<C>>,
 }
 
 impl<C> Path<C>
 where
     C: Configuration + ?Sized,
 {
+    /// Builds a new [`Path`] from `leaf_node_index`, `sibling_digest`, and `inner_path`.
+    #[inline]
+    pub fn new(
+        leaf_node_index: NodeIndex,
+        sibling_digest: LeafDigest<C>,
+        inner_path: Vec<InnerDigest<C>>,
+    ) -> Self {
+        Self {
+            leaf_node_index,
+            sibling_digest,
+            inner_path,
+        }
+    }
+
+    /// Computes the root of the merkle tree relative to `leaf_digest` using `parameters`.
+    #[inline]
+    pub fn root_relative_to(
+        &self,
+        parameters: &Parameters<C>,
+        leaf_digest: &LeafDigest<C>,
+    ) -> Root<C> {
+        let mut node_index = self.leaf_node_index;
+        let first_inner_digest =
+            node_index.join_leaves::<C>(&parameters.inner, leaf_digest, &self.sibling_digest);
+        self.inner_path
+            .iter()
+            .fold(first_inner_digest, move |acc, d| {
+                node_index
+                    .into_parent()
+                    .join::<C>(&parameters.inner, &acc, d)
+            })
+    }
+
     /// Returns `true` if `self` is a witness to the fact that `leaf` is stored in a merkle tree
     /// with the given `root`.
     #[inline]
     pub fn is_valid(&self, parameters: &Parameters<C>, root: &Root<C>, leaf: &Leaf<C>) -> bool {
-        let mut node = self.leaf_node;
-        let first_inner_digest = node.join_leaves::<C>(
-            &parameters.inner,
-            &C::LeafHash::digest(&parameters.leaf, leaf),
-            &self.sibling_digest,
-        );
-        root == &self
-            .inner_path
-            .iter()
-            .fold(first_inner_digest, move |acc, d| {
-                node.into_parent().join::<C>(&parameters.inner, &acc, d)
-            })
+        root == &self.root_relative_to(parameters, &parameters.digest(leaf))
+    }
+}
+
+impl<C> Default for Path<C>
+where
+    C: Configuration + ?Sized,
+{
+    #[inline]
+    fn default() -> Self {
+        let path_length = path_length::<C>();
+        let mut inner_path = Vec::with_capacity(path_length);
+        inner_path.resize_with(path_length, InnerDigest::<C>::default);
+        Self::new(Default::default(), Default::default(), inner_path)
     }
 }
 
@@ -303,6 +631,9 @@ pub struct MerkleTree<C>
 where
     C: Configuration + ?Sized,
 {
+    /// Merkle Tree Parameters
+    parameters: Parameters<C>,
+
     /// Underlying Tree Structure
     tree: C::Tree,
 }
@@ -311,46 +642,57 @@ impl<C> MerkleTree<C>
 where
     C: Configuration + ?Sized,
 {
-    /// Builds a new [`MerkleTree`] with the given `height`.
+    /// Builds a new [`MerkleTree`].
     #[inline]
-    pub fn new(height: <C::Tree as Tree<C>>::Height) -> Self {
+    pub fn new(parameters: Parameters<C>) -> Self {
         Self {
-            tree: C::Tree::new(height),
+            tree: C::Tree::new(&parameters),
+            parameters,
         }
+    }
+
+    /// Builds a new merkle tree with the given `leaves`.
+    #[inline]
+    pub fn from_leaves<'l, L>(parameters: Parameters<C>, leaves: L) -> Option<Self>
+    where
+        Leaf<C>: 'l,
+        L: IntoIterator<Item = &'l Leaf<C>>,
+    {
+        Some(Self {
+            tree: C::Tree::from_leaves(
+                &parameters,
+                leaves.into_iter().map(|l| parameters.digest(l)),
+            )?,
+            parameters,
+        })
+    }
+
+    ///
+    #[inline]
+    pub fn parameters(&self) -> &Parameters<C> {
+        &self.parameters
     }
 
     /// Returns the [`Root`] of the merkle tree.
     #[inline]
     pub fn root(&self) -> Root<C> {
-        self.tree.root()
+        self.tree.root(&self.parameters)
     }
 
-    /// Returns the [`Path`] to some element of the merkle tree given by the `path_query`.
+    /// Returns the [`Path`] to some element of the merkle tree given by the `query`.
     #[inline]
-    pub fn path(&self, path_query: <C::Tree as Tree<C>>::PathQuery) -> Path<C> {
-        self.tree.path(path_query)
+    pub fn path(
+        &self,
+        query: <C::Tree as Tree<C>>::Query,
+    ) -> Result<Path<C>, <C::Tree as Tree<C>>::Error> {
+        self.tree.path(&self.parameters, query)
     }
 
-    /// Inserts `leaf` at the next avaiable leaf node of the tree.
+    /// Inserts `leaf` at the next avaiable leaf node of the tree, returning `false` if the
+    /// leaf could not be inserted because the tree has exhausted its capacity.
     #[inline]
-    pub fn append(&mut self, parameters: &Parameters<C>, leaf: &Leaf<C>)
-    where
-        C::Tree: Append<C>,
-    {
+    pub fn append(&mut self, leaf: &Leaf<C>) -> bool {
         self.tree
-            .append(parameters, C::LeafHash::digest(&parameters.leaf, leaf))
-    }
-
-    /// Modifies the leaf node at the given `index` to `leaf`.
-    #[inline]
-    pub fn update(&mut self, parameters: &Parameters<C>, index: usize, leaf: &Leaf<C>)
-    where
-        C::Tree: Update<C>,
-    {
-        self.tree.update(
-            parameters,
-            index,
-            C::LeafHash::digest(&parameters.leaf, leaf),
-        )
+            .append(&self.parameters, self.parameters.digest(leaf))
     }
 }
