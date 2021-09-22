@@ -394,10 +394,9 @@ pub mod constraint {
         /// Converts a [`Path`] to a [`PathInnerType`].
         #[inline]
         fn convert_path(path: &Path<ConfigConverter<C>>) -> PathInnerType<C> {
-            // FIXME: Does the `auth_path` need to be reversed?
             PathInnerType {
                 leaf_sibling_hash: path.sibling_digest.clone(),
-                auth_path: path.inner_path.clone(),
+                auth_path: path.inner_path.iter().rev().cloned().collect(),
                 leaf_index: path.leaf_index.0,
             }
         }

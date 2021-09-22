@@ -26,7 +26,7 @@ use crate::{
         merkle_tree::{constraint as merkle_tree_constraint, ConfigConverter},
     },
 };
-use alloc::{vec, vec::Vec};
+use alloc::{collections::BTreeSet, vec, vec::Vec};
 use blake2::{
     digest::{Update, VariableOutput},
     VarBlake2s,
@@ -36,7 +36,7 @@ use manta_crypto::{
     constraint::{
         self, reflection::HasAllocation, Allocation, Constant, ProofSystem as _, Variable,
     },
-    merkle_tree::{self, MerkleTree},
+    merkle_tree::{self, latest_node::LatestNode, MerkleTree, Tree},
     set::{constraint::VerifiedSetVariable, ContainmentProof, Set, VerifiedSet},
 };
 use manta_util::{as_bytes, concatenate, into_array_unchecked};
@@ -75,7 +75,7 @@ pub struct UtxoShard {
     root: Root,
 
     /// Unspent Transaction Outputs
-    utxos: Vec<Utxo>,
+    utxos: LatestNode<ConfigConverter<Configuration>>,
 }
 
 /// UTXO Set
@@ -83,6 +83,9 @@ pub struct UtxoShard {
 pub struct UtxoSet {
     /// UTXO Shards
     shards: [UtxoShard; Self::SHARD_COUNT],
+
+    /// UTXO Set
+    utxos: BTreeSet<Utxo>,
 
     /// Merkle Tree Parameters
     parameters: Parameters,
@@ -96,6 +99,7 @@ impl UtxoSet {
     pub fn new(parameters: Parameters) -> Self {
         Self {
             shards: into_array_unchecked(vec![Default::default(); Self::SHARD_COUNT]),
+            utxos: Default::default(),
             parameters,
         }
     }
@@ -125,7 +129,8 @@ impl UtxoSet {
     /// Returns `true` if the `utxo` belongs to the shard it would be stored in.
     #[inline]
     pub fn utxo_exists(&self, utxo: &Utxo) -> bool {
-        self.shard(utxo).utxos.iter().any(move |u| u == utxo)
+        // TODO: self.utxos.contains(utxo)
+        todo!()
     }
 }
 
@@ -139,21 +144,18 @@ impl Set for UtxoSet {
 
     #[inline]
     fn try_insert(&mut self, item: Self::Item) -> Result<(), Self::Item> {
-        /* FIXME:
-        let shard = &mut self.shards[Self::shard_index(&item)];
-        if shard.utxos.contains(&item) {
+        // TODO: Distinguish between both kinds of errors.
+        if self.utxo_exists(&item) {
             return Err(item);
         }
-        shard.utxos.push(item);
-        match MerkleTree::new_root(&self.parameters, &shard.utxos) {
-            Some(root) => {
-                shard.root = root;
-                Ok(())
-            }
-            _ => Err(shard.utxos.pop().unwrap()),
+        if !self.shards[Self::shard_index(&item)]
+            .utxos
+            .append(&self.parameters, &as_bytes!(&item))
+        {
+            return Err(item);
         }
-        */
-        todo!()
+        // FIXME: self.utxos.insert(item);
+        Ok(())
     }
 }
 
@@ -187,7 +189,10 @@ impl VerifiedSet for UtxoSet {
         item: &Self::Item,
     ) -> Result<ContainmentProof<Self>, Self::ContainmentError> {
         // TODO: Return a more informative error.
-        /* FIXME:
+
+        /* FIXME: This is not implementable! Need to split this functionality into a better
+         *        abstraction.
+
         let utxos = &self.shards[Self::shard_index(item)].utxos;
         match utxos.iter().position(move |u| u == item) {
             Some(index) => MerkleTree::new(&self.parameters, utxos)
@@ -196,8 +201,10 @@ impl VerifiedSet for UtxoSet {
                 .ok_or(()),
             _ => Err(()),
         }
+
         */
-        todo!()
+
+        unimplemented!()
     }
 }
 

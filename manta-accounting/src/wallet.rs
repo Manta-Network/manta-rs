@@ -334,12 +334,18 @@ where
     where
         L: Ledger,
     {
-        // TODO: pull updates from the ledger
+        // TODO: Pull updates from the ledger:
         //         1. Download the new encrypted notes and try to decrypt them using the latest
         //            keys that haven't been used.
         //         2. Download the new vns and utxos and check that we can still spend all the
         //            tokens we think we can spend.
         //         3. compute the new deposits and withdrawls
+
+        // TODO: Have something which represents a "local-ledger" state. This ledger state can
+        //       exist "at" the wallet, or can exist elsewhere, but the wallet must be able to
+        //       send/recv messages to/from it, i.e. the `Ledger` abstraction may not be correct,
+        //       it may have to be a different trait or two traits.
+
         let _ = ledger;
         todo!()
     }
