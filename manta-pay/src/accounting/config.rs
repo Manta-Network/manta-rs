@@ -27,7 +27,10 @@ use crate::{
             proof_systems::groth16::Groth16, ArkConstraintSystem, AssetBalanceVar, AssetIdVar,
         },
         ies::IES,
-        merkle_tree,
+        merkle_tree::{
+            constraint as merkle_tree_constraint, ConfigConverter as ArkMerkleTreeConfigConverter,
+            Configuration as ArkMerkleTreeConfiguration,
+        },
         prf::blake2s::{constraint::Blake2sVar, Blake2s},
     },
 };
@@ -35,7 +38,7 @@ use ark_bls12_381::Bls12_381;
 use ark_crypto_primitives::crh::pedersen::{constraints::CRHGadget, CRH};
 use ark_ed_on_bls12_381::{constraints::EdwardsVar, EdwardsProjective, Fq};
 use manta_accounting::{identity, transfer};
-use manta_crypto::{commitment::CommitmentScheme, PseudorandomFunctionFamily};
+use manta_crypto::{commitment::CommitmentScheme, merkle_tree, PseudorandomFunctionFamily};
 use manta_util::rand::SeedIntoRng;
 use rand_chacha::ChaCha20Rng;
 
@@ -68,6 +71,10 @@ pub type PedersenCommitmentVar = pedersen::constraint::PedersenCommitmentVar<
     PedersenCommitmentProjectiveCurveVar,
 >;
 
+/// Arkworks Pedersen Commitment Scheme
+type ArkPedersenCommitment =
+    CRH<PedersenCommitmentProjectiveCurve, PedersenCommitmentWindowParameters>;
+
 /// Constraint Field
 pub type ConstraintField = Fq;
 
@@ -81,15 +88,28 @@ pub type ProofSystem = Groth16<Bls12_381>;
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Configuration;
 
-impl merkle_tree::Configuration for Configuration {
-    type LeafHash = CRH<PedersenCommitmentProjectiveCurve, PedersenCommitmentWindowParameters>;
+impl ArkMerkleTreeConfiguration for Configuration {
+    type Leaf = [u8];
+    type LeafHash = ArkPedersenCommitment;
+    type InnerHash = ArkPedersenCommitment;
+    type Height = u8;
 
-    type InnerHash = CRH<PedersenCommitmentProjectiveCurve, PedersenCommitmentWindowParameters>;
-
-    const HEIGHT: merkle_tree::Height = merkle_tree::Height::new(20);
+    const HEIGHT: Self::Height = 20;
 }
 
-impl merkle_tree::constraint::Configuration for Configuration {
+impl merkle_tree::Configuration for Configuration {
+    type LeafHash =
+        <ArkMerkleTreeConfigConverter<Configuration> as merkle_tree::Configuration>::LeafHash;
+    type InnerHash =
+        <ArkMerkleTreeConfigConverter<Configuration> as merkle_tree::Configuration>::InnerHash;
+    type Height =
+        <ArkMerkleTreeConfigConverter<Configuration> as merkle_tree::Configuration>::Height;
+
+    const HEIGHT: Self::Height =
+        <ArkMerkleTreeConfigConverter<Configuration> as merkle_tree::Configuration>::HEIGHT;
+}
+
+impl merkle_tree_constraint::Configuration for Configuration {
     type ConstraintField = ConstraintField;
 
     type LeafHashVar = CRHGadget<

@@ -16,6 +16,8 @@
 
 //! Merkle Trees
 
+// TODO: Should `Leaf` move into `Tree`/`Configuration` since we might want the tree to have
+//       special kinds of leaf input (metadata along with just the digest)?
 // TODO: Implement [`crate::VerifiedSet`] for [`MerkleTree`].
 // TODO: Maybe we should require `INNER_HEIGHT` instead of `HEIGHT` so that we don't have to rely
 //       on the user to check that `HEIGHT >= 2`.
@@ -101,9 +103,6 @@ pub type InnerHashParameters<C> = <<C as Configuration>::InnerHash as InnerHash>
 
 /// Inner Hash Digest Type
 pub type InnerDigest<C> = <<C as Configuration>::InnerHash as InnerHash>::Output;
-
-/// Merkle Tree Root Type
-pub type Root<C> = InnerDigest<C>;
 
 /// Returns the capacity of the merkle tree with the given [`C::HEIGHT`](Configuration::HEIGHT)
 /// parameter.
@@ -505,7 +504,32 @@ where
     pub fn join_leaves(&self, lhs: &LeafDigest<C>, rhs: &LeafDigest<C>) -> InnerDigest<C> {
         C::InnerHash::join_leaves(&self.inner, lhs, rhs)
     }
+
+    /// Verify that `path` witnesses the fact that `leaf` is a member of a merkle tree with the
+    /// given `root`.
+    #[inline]
+    pub fn verify_path(&self, path: &Path<C>, root: &Root<C>, leaf: &Leaf<C>) -> bool {
+        path.verify(self, root, leaf)
+    }
 }
+
+/// Merkle Tree Root Wrapper Type
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "InnerDigest<C>: Clone"),
+    Copy(bound = "InnerDigest<C>: Copy"),
+    Debug(bound = "InnerDigest<C>: Debug"),
+    Default(bound = "InnerDigest<C>: Default"),
+    Eq(bound = "InnerDigest<C>: Eq"),
+    Hash(bound = "InnerDigest<C>: Hash"),
+    PartialEq(bound = "InnerDigest<C>: PartialEq")
+)]
+pub struct Root<C>(
+    /// Root Inner Digest
+    pub InnerDigest<C>,
+)
+where
+    C: Configuration + ?Sized;
 
 /// Merkle Tree Path
 #[derive(derivative::Derivative)]
@@ -520,31 +544,31 @@ pub struct Path<C>
 where
     C: Configuration + ?Sized,
 {
-    /// Leaf Node Index
-    leaf_node_index: Node,
+    /// Leaf Index
+    pub leaf_index: Node,
 
     /// Sibling Digest
-    sibling_digest: LeafDigest<C>,
+    pub sibling_digest: LeafDigest<C>,
 
     /// Inner Path
     ///
-    /// The inner path is stored in the direction leaf-to-root.
-    inner_path: Vec<InnerDigest<C>>,
+    /// Inner digests are stored from leaf to root, not including the root.
+    pub inner_path: Vec<InnerDigest<C>>,
 }
 
 impl<C> Path<C>
 where
     C: Configuration + ?Sized,
 {
-    /// Builds a new [`Path`] from `leaf_node_index`, `sibling_digest`, and `inner_path`.
+    /// Builds a new [`Path`] from `leaf_index`, `sibling_digest`, and `inner_path`.
     #[inline]
     pub fn new(
-        leaf_node_index: Node,
+        leaf_index: Node,
         sibling_digest: LeafDigest<C>,
         inner_path: Vec<InnerDigest<C>>,
     ) -> Self {
         Self {
-            leaf_node_index,
+            leaf_index,
             sibling_digest,
             inner_path,
         }
@@ -557,11 +581,11 @@ where
         parameters: &Parameters<C>,
         leaf_digest: &LeafDigest<C>,
     ) -> Root<C> {
-        let mut node_index = self.leaf_node_index;
-        self.inner_path.iter().fold(
-            node_index.join_leaves(parameters, leaf_digest, &self.sibling_digest),
-            move |acc, d| node_index.into_parent().join(parameters, &acc, d),
-        )
+        let mut index = self.leaf_index;
+        Root(self.inner_path.iter().fold(
+            index.join_leaves(parameters, leaf_digest, &self.sibling_digest),
+            move |acc, d| index.into_parent().join(parameters, &acc, d),
+        ))
     }
 
     /// Returns `true` if `self` is a witness to the fact that `leaf_digest` is stored in a
@@ -819,13 +843,14 @@ pub mod full {
             parameters: &Parameters<C>,
             mut index: Node,
             base: InnerDigest<C>,
-        ) -> Root<C>
+        ) -> InnerDigest<C>
         where
             InnerDigest<C>: Clone,
         {
             // TODO: Use `core::lazy::Lazy` when it is stabilized.
             let default_inner_digest = Default::default();
             path_iter::<C>().fold(base, |acc, depth| {
+                // FIXME: Get rid of this clone.
                 self.set_inner_digest(depth, index.into_parent(), acc.clone());
                 index.join(
                     parameters,
@@ -864,10 +889,12 @@ pub mod full {
         #[inline]
         fn root(&self, parameters: &Parameters<C>) -> Root<C> {
             let _ = parameters;
-            self.inner_digests
-                .get(&0)
-                .map(Clone::clone)
-                .unwrap_or_default()
+            Root(
+                self.inner_digests
+                    .get(&0)
+                    .map(Clone::clone)
+                    .unwrap_or_default(),
+            )
         }
 
         #[inline]
@@ -962,7 +989,7 @@ pub mod latest_node {
             if self.leaf_digest.is_none() {
                 0
             } else {
-                self.path.leaf_node_index.0 + 1
+                self.path.leaf_index.0 + 1
             }
         }
 
@@ -1111,7 +1138,7 @@ pub mod latest_node {
                     .collect();
 
                 self.path = Path::new(index, sibling_digest, inner_path);
-                self.root = accumulator;
+                self.root = Root(accumulator);
             }
 
             self.leaf_digest = Some(leaf_digest);

@@ -14,10 +14,9 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Merkle Tree Implementations
+//! Arkworks Merkle Tree Wrappers
 
-// FIXME: Move to `manta_crypto::merkle_tree` implementation!
-
+// FIXME: Remove this old implementation:
 // NOTE:  This is meant to be a full implementation of the incremental merkle tree type suitable
 //        for merging into arkworks itself. Therefore, even if we don't use all of the
 //        functionality available in this module, we want to preserve the code anyway.
@@ -27,311 +26,158 @@ mod incremental;
 use alloc::{vec, vec::Vec};
 use ark_crypto_primitives::{
     crh::{TwoToOneCRH, CRH},
-    merkle_tree::{Config, MerkleTree as ArkMerkleTree, Path as ArkPath, TwoToOneDigest},
+    merkle_tree::Config,
 };
+use ark_ff::{to_bytes, ToBytes};
 use core::marker::PhantomData;
-use manta_crypto::set::{ContainmentProof, VerifiedSet};
-use manta_util::{as_bytes, rand::SizedRng, Concat};
-use rand::{
-    distributions::{Distribution, Standard},
-    RngCore,
-};
+use manta_crypto::merkle_tree::{self, InnerHash, LeafHash};
+use manta_util::{as_bytes, Concat};
 
-/// Merkle Tree Height Type
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct Height(u16);
+/// Arkworks Leaf Hash Converter
+#[derive(derivative::Derivative)]
+#[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct LeafHashConverter<L, LH>(PhantomData<L>, PhantomData<LH>)
+where
+    L: Concat<Item = u8> + ?Sized,
+    LH: CRH;
 
-impl Height {
-    /// Builds a Merkle Tree [`Height`] whenever `height >= 2`.
+impl<L, LH> LeafHash for LeafHashConverter<L, LH>
+where
+    L: Concat<Item = u8> + ?Sized,
+    LH: CRH,
+{
+    type Leaf = L;
+
+    type Parameters = LH::Parameters;
+
+    type Output = LH::Output;
+
     #[inline]
-    pub const fn new(height: u16) -> Self {
-        let height = Self(height);
-        height.inner();
-        height
-    }
-
-    /// Returns the height as a `u16`.
-    #[inline]
-    pub const fn get(&self) -> u16 {
-        self.0
-    }
-
-    /// Returns the inner height as a `u16`.
-    #[inline]
-    pub const fn inner(&self) -> u16 {
-        self.0 - 2
+    fn digest(parameters: &Self::Parameters, leaf: &Self::Leaf) -> Self::Output {
+        LH::evaluate(parameters, &as_bytes!(leaf))
+            .expect("Leaf digest computation is not allowed to fail.")
     }
 }
 
-/// Merkle Tree Configuration
+/// Arkworks Inner Hash Converter
+#[derive(derivative::Derivative)]
+#[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct InnerHashConverter<L, LH, IH>(PhantomData<L>, PhantomData<(LH, IH)>)
+where
+    L: Concat<Item = u8> + ?Sized,
+    LH: CRH,
+    IH: TwoToOneCRH;
+
+impl<L, LH, IH> InnerHashConverter<L, LH, IH>
+where
+    L: Concat<Item = u8> + ?Sized,
+    LH: CRH,
+    IH: TwoToOneCRH,
+{
+    /// Evaluates the inner hash function for `IH` using `parameters`.
+    #[inline]
+    fn evaluate<T>(parameters: &IH::Parameters, lhs: &T, rhs: &T) -> IH::Output
+    where
+        T: ToBytes,
+    {
+        IH::evaluate(
+            parameters,
+            &to_bytes!(lhs).expect("Conversion to bytes is not allowed to fail."),
+            &to_bytes!(rhs).expect("Conversion to bytes is not allowed to fail."),
+        )
+        .expect("Inner digest computation is not allowed to fail.")
+    }
+}
+
+impl<L, LH, IH> InnerHash for InnerHashConverter<L, LH, IH>
+where
+    L: Concat<Item = u8> + ?Sized,
+    LH: CRH,
+    IH: TwoToOneCRH,
+{
+    type LeafHash = LeafHashConverter<L, LH>;
+
+    type Parameters = IH::Parameters;
+
+    type Output = IH::Output;
+
+    #[inline]
+    fn join(parameters: &Self::Parameters, lhs: &Self::Output, rhs: &Self::Output) -> Self::Output {
+        Self::evaluate(parameters, lhs, rhs)
+    }
+
+    #[inline]
+    fn join_leaves(
+        parameters: &Self::Parameters,
+        lhs: &<Self::LeafHash as LeafHash>::Output,
+        rhs: &<Self::LeafHash as LeafHash>::Output,
+    ) -> Self::Output {
+        Self::evaluate(parameters, lhs, rhs)
+    }
+}
+
+/// Arkworks Merkle Tree Configuration
 pub trait Configuration {
+    /// Leaf Type
+    type Leaf: Concat<Item = u8> + ?Sized;
+
     /// Leaf Hash Type
     type LeafHash: CRH;
 
     /// Inner Hash Type
     type InnerHash: TwoToOneCRH;
 
+    /// Merkle Tree Height Type
+    type Height: Copy + Into<usize>;
+
     /// Merkle Tree Height
-    const HEIGHT: Height;
+    const HEIGHT: Self::Height;
 }
 
-/// Computes the Merkle Tree capacity given the `height`.
-#[inline]
-pub const fn capacity(height: Height) -> usize {
-    2usize.pow(height.0 as u32)
-}
-
-/// Computes the necessary padding required to fill the capacity of a Merkle Tree with the
-/// given `height`.
+/// Configuration Converter
 ///
-/// Returns `None` if `length` is larger than the capacity of the tree.
-#[inline]
-pub const fn padding_length(height: Height, length: usize) -> Option<usize> {
-    let capacity = capacity(height);
-    if length > capacity {
-        return None;
-    }
-    Some(capacity - length)
-}
-
-/// Arkworks Configuration Converter
-///
-/// Given any `C: Configuration`, this struct can be used as `ArkConfigConverter<C>` instead of `C`
-/// in places where we need an implementation of the arkworks [`Config`] trait.
+/// Given any `L` and [`C: Configuration`](Configuration), this struct can be used as
+/// `ConfigConverter<L, C>` instead of `C` in places where we need an implementation of the
+/// `arkworks` [`Config`] trait or the `manta_crypto` [`Configuration`](merkle_tree::Configuration)
+/// trait.
 ///
 /// This `struct` is meant only to be used in place of the type `C`, so any values of this `struct`
 /// have no meaning.
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct ArkConfigConverter<C>(PhantomData<C>)
+pub struct ConfigConverter<C>(PhantomData<C>)
 where
     C: Configuration;
 
-impl<C> Config for ArkConfigConverter<C>
+impl<C> Configuration for ConfigConverter<C>
+where
+    C: Configuration,
+{
+    type Leaf = C::Leaf;
+    type LeafHash = C::LeafHash;
+    type InnerHash = C::InnerHash;
+    type Height = C::Height;
+
+    const HEIGHT: Self::Height = C::HEIGHT;
+}
+
+impl<C> merkle_tree::Configuration for ConfigConverter<C>
+where
+    C: Configuration,
+{
+    type LeafHash = LeafHashConverter<C::Leaf, C::LeafHash>;
+    type InnerHash = InnerHashConverter<C::Leaf, C::LeafHash, C::InnerHash>;
+    type Height = C::Height;
+
+    const HEIGHT: Self::Height = C::HEIGHT;
+}
+
+impl<C> Config for ConfigConverter<C>
 where
     C: Configuration,
 {
     type LeafHash = C::LeafHash;
     type TwoToOneHash = C::InnerHash;
-}
-
-/// Leaf Hash Type
-type LeafHash<C> = <C as Configuration>::LeafHash;
-
-/// Inner Hash Type
-type InnerHash<C> = <C as Configuration>::InnerHash;
-
-/// Leaf Hash Parameters Type
-type LeafHashParameters<C> = <LeafHash<C> as CRH>::Parameters;
-
-/// Inner Hash Parameters Type
-type InnerHashParameters<C> = <InnerHash<C> as TwoToOneCRH>::Parameters;
-
-/// Merkle Tree Parameters
-#[derive(derivative::Derivative)]
-#[derivative(Clone(bound = ""))]
-pub struct Parameters<C>
-where
-    C: Configuration,
-{
-    /// Leaf Hash Parameters
-    pub leaf: LeafHashParameters<C>,
-
-    /// Inner Hash Parameters
-    pub inner: InnerHashParameters<C>,
-}
-
-impl<C> Parameters<C>
-where
-    C: Configuration,
-{
-    /// Builds a new [`Parameters`] from `leaf` and `inner` parameters.
-    #[inline]
-    pub fn new(leaf: LeafHashParameters<C>, inner: InnerHashParameters<C>) -> Self {
-        Self { leaf, inner }
-    }
-
-    /// Verifies that `path` constitutes a proof that `item` is contained in the Merkle Tree
-    /// with the given `root`.
-    #[inline]
-    pub fn verify<T>(&self, root: &Root<C>, path: &Path<C>, item: &T) -> bool
-    where
-        T: Concat<Item = u8>,
-    {
-        path.0
-            .verify(&self.leaf, &self.inner, &root.0, &as_bytes!(item))
-            .expect("As of arkworks 0.3.0, this never fails.")
-    }
-}
-
-impl<C> Distribution<Parameters<C>> for Standard
-where
-    C: Configuration,
-{
-    #[inline]
-    fn sample<R: RngCore + ?Sized>(&self, rng: &mut R) -> Parameters<C> {
-        Parameters {
-            leaf: LeafHash::<C>::setup(&mut SizedRng(rng))
-                .expect("Sampling is not allowed to fail."),
-            inner: InnerHash::<C>::setup(&mut SizedRng(rng))
-                .expect("Sampling is not allowed to fail."),
-        }
-    }
-}
-
-/// Merkle Tree Root Inner Type
-type RootInnerType<C> = TwoToOneDigest<ArkConfigConverter<C>>;
-
-/// Merkle Tree Root
-#[derive(derivative::Derivative)]
-#[derivative(Clone, Debug, Default, Eq, Hash, PartialEq)]
-pub struct Root<C>(RootInnerType<C>)
-where
-    C: Configuration;
-
-/// Merkle Tree Path Inner Type
-type PathInnerType<C> = ArkPath<ArkConfigConverter<C>>;
-
-/// Merkle Tree Path
-#[derive(derivative::Derivative)]
-#[derivative(Clone(bound = ""))]
-pub struct Path<C>(PathInnerType<C>)
-where
-    C: Configuration;
-
-/// Merkle Tree Inner Type
-type MerkleTreeInnerType<C> = ArkMerkleTree<ArkConfigConverter<C>>;
-
-/// Merkle Tree
-#[derive(derivative::Derivative)]
-#[derivative(Clone(bound = ""))]
-pub struct MerkleTree<C>(MerkleTreeInnerType<C>)
-where
-    C: Configuration;
-
-impl<C> MerkleTree<C>
-where
-    C: Configuration,
-{
-    /// Builds a new [`MerkleTree`].
-    #[inline]
-    pub fn new<T>(parameters: &Parameters<C>, leaves: &[T]) -> Option<Self>
-    where
-        T: Concat<Item = u8>,
-    {
-        // FIXME: Add additional padding so we can be compatible with IMT.
-
-        let leaves = leaves
-            .iter()
-            .map(move |leaf| as_bytes!(leaf))
-            .collect::<Vec<_>>();
-
-        Some(Self(
-            ArkMerkleTree::new(&parameters.leaf, &parameters.inner, &leaves).ok()?,
-        ))
-    }
-
-    /// Computes the [`Root`] of the [`MerkleTree`] built from the `leaves`.
-    #[inline]
-    pub fn new_root<T>(parameters: &Parameters<C>, leaves: &[T]) -> Option<Root<C>>
-    where
-        T: Concat<Item = u8>,
-    {
-        Some(Self::new(parameters, leaves)?.root())
-    }
-
-    /// Returns the capacity of this merkle tree.
-    #[inline]
-    pub fn capacity(&self) -> usize {
-        capacity(C::HEIGHT)
-    }
-
-    /// Returns the height of this merkle tree.
-    #[inline]
-    pub fn height(&self) -> Height {
-        C::HEIGHT
-    }
-
-    /// Returns the [`Root`] of this merkle tree.
-    #[inline]
-    pub fn root(&self) -> Root<C> {
-        Root(self.0.root())
-    }
-
-    /// Builds a containment proof (i.e. merkle root and path) for the leaf at the given `index`.
-    #[inline]
-    pub fn get_containment_proof<S>(&self, index: usize) -> Option<ContainmentProof<S>>
-    where
-        S: VerifiedSet<Public = Root<C>, Secret = Path<C>>,
-    {
-        Some(ContainmentProof::new(
-            self.root(),
-            Path(self.0.generate_proof(index).ok()?),
-        ))
-    }
-}
-
-/// Incremental Merkle Tree
-#[derive(derivative::Derivative)]
-#[derivative(Clone(bound = ""))]
-pub struct IncrementalMerkleTree<C>(incremental::IncrementalMerkleTree<ArkConfigConverter<C>>)
-where
-    C: Configuration;
-
-impl<C> IncrementalMerkleTree<C>
-where
-    C: Configuration,
-{
-    /// Builds a new [`IncrementalMerkleTree`].
-    #[inline]
-    pub fn new(parameters: &Parameters<C>) -> Self {
-        Self(incremental::IncrementalMerkleTree::blank(
-            &parameters.leaf,
-            &parameters.inner,
-            C::HEIGHT.0 as usize,
-        ))
-    }
-
-    /// Returns the length of this incremental merkle tree.
-    #[inline]
-    pub fn len(&self) -> usize {
-        todo!()
-    }
-
-    /// Returns `true` if this incremental merkle tree is empty.
-    #[inline]
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-
-    /// Returns the capacity of this incremental merkle tree.
-    #[inline]
-    pub fn capacity(&self) -> usize {
-        capacity(C::HEIGHT)
-    }
-
-    /// Returns the height of this incremental merkle tree.
-    #[inline]
-    pub fn height(&self) -> Height {
-        C::HEIGHT
-    }
-
-    /// Appends an element to the incremental merkle tree, returning `false` if it has already
-    /// reached its capacity and can no longer accept new elements.
-    #[inline]
-    pub fn append<T>(&mut self, leaf: &T) -> bool
-    where
-        T: Concat<Item = u8>,
-    {
-        let _ = leaf;
-        todo!()
-    }
-
-    /// Returns the [`Root`] of this incremental merkle tree.
-    #[inline]
-    pub fn root(&self) -> Root<C> {
-        Root(self.0.root().clone())
-    }
 }
 
 /// Merkle Tree Constraint System Variables
@@ -340,13 +186,14 @@ pub mod constraint {
     use crate::crypto::constraint::arkworks::{empty, full, ArkConstraintSystem};
     use ark_crypto_primitives::{
         crh::constraints::{CRHGadget, TwoToOneCRHGadget},
-        merkle_tree::constraints::PathVar as ArkPathVar,
+        merkle_tree::{constraints::PathVar as ArkPathVar, Path as ArkPath},
     };
     use ark_ff::Field;
     use ark_r1cs_std::{alloc::AllocVar, boolean::Boolean, eq::EqGadget, uint8::UInt8};
     use ark_relations::ns;
-    use manta_crypto::constraint::{
-        reflection::HasAllocation, Allocation, Constant, Public, Secret, Variable,
+    use manta_crypto::{
+        constraint::{reflection::HasAllocation, Allocation, Constant, Public, Secret, Variable},
+        merkle_tree::{Parameters, Path, Root},
     };
 
     /// Merkle Tree Constraint System Configuration
@@ -368,18 +215,22 @@ pub mod constraint {
     pub type ContraintSystem<C> = ArkConstraintSystem<ConstraintField<C>>;
 
     /// Leaf Hash Type
-    type LeafHashVar<C> = <C as Configuration>::LeafHashVar;
+    pub type LeafHashVar<C> = <C as Configuration>::LeafHashVar;
 
     /// Inner Hash Type
-    type InnerHashVar<C> = <C as Configuration>::InnerHashVar;
+    pub type InnerHashVar<C> = <C as Configuration>::InnerHashVar;
 
     /// Leaf Hash Parameters Type
-    type LeafHashParametersVar<C> =
-        <LeafHashVar<C> as CRHGadget<LeafHash<C>, ConstraintField<C>>>::ParametersVar;
+    pub type LeafHashParametersVar<C> = <LeafHashVar<C> as CRHGadget<
+        <C as super::Configuration>::LeafHash,
+        ConstraintField<C>,
+    >>::ParametersVar;
 
     /// Inner Hash Parameters Type
-    type InnerHashParametersVar<C> =
-        <InnerHashVar<C> as TwoToOneCRHGadget<InnerHash<C>, ConstraintField<C>>>::ParametersVar;
+    pub type InnerHashParametersVar<C> = <InnerHashVar<C> as TwoToOneCRHGadget<
+        <C as super::Configuration>::InnerHash,
+        ConstraintField<C>,
+    >>::ParametersVar;
 
     /// Merkle Tree Parameters Variable
     #[derive(derivative::Derivative)]
@@ -405,30 +256,30 @@ pub mod constraint {
             Self { leaf, inner }
         }
 
-        /// Verifies that `path` constitutes a proof that `item` is contained in the Merkle Tree
+        /// Verifies that `path` constitutes a proof that `leaf` is contained in the Merkle Tree
         /// with the given `root`.
         #[inline]
         pub fn verify(
             &self,
             root: &RootVar<C>,
             path: &PathVar<C>,
-            item: &[UInt8<ConstraintField<C>>],
+            leaf: &[UInt8<ConstraintField<C>>],
         ) -> Boolean<ConstraintField<C>> {
             path.0
-                .verify_membership(&self.leaf, &self.inner, &root.0, &item)
+                .verify_membership(&self.leaf, &self.inner, &root.0, &leaf)
                 .expect("This is not allowed to fail.")
         }
 
-        /// Asserts that `path` constitutes a proof that `item` is contained in the Merkle Tree
+        /// Asserts that `path` constitutes a proof that `leaf` is contained in the Merkle Tree
         /// with the given `root`.
         #[inline]
         pub fn assert_verified(
             &self,
             root: &RootVar<C>,
             path: &PathVar<C>,
-            item: &[UInt8<ConstraintField<C>>],
+            leaf: &[UInt8<ConstraintField<C>>],
         ) {
-            self.verify(root, path, item)
+            self.verify(root, path, leaf)
                 .enforce_equal(&Boolean::TRUE)
                 .expect("This is not allowed to fail.")
         }
@@ -438,7 +289,7 @@ pub mod constraint {
     where
         C: Configuration,
     {
-        type Type = Parameters<C>;
+        type Type = Parameters<ConfigConverter<C>>;
 
         type Mode = Constant;
 
@@ -463,7 +314,7 @@ pub mod constraint {
         }
     }
 
-    impl<C> HasAllocation<ContraintSystem<C>> for Parameters<C>
+    impl<C> HasAllocation<ContraintSystem<C>> for Parameters<ConfigConverter<C>>
     where
         C: Configuration,
     {
@@ -471,9 +322,14 @@ pub mod constraint {
         type Mode = Constant;
     }
 
+    /// Merkle Tree Root Inner Type
+    type RootInnerType<C> = <<C as super::Configuration>::InnerHash as TwoToOneCRH>::Output;
+
     /// Merkle Tree Root Variable Inner Type
-    type RootVarInnerType<C> =
-        <InnerHashVar<C> as TwoToOneCRHGadget<InnerHash<C>, ConstraintField<C>>>::OutputVar;
+    type RootVarInnerType<C> = <InnerHashVar<C> as TwoToOneCRHGadget<
+        <C as super::Configuration>::InnerHash,
+        ConstraintField<C>,
+    >>::OutputVar;
 
     /// Merkle Tree Root Variable
     #[derive(derivative::Derivative)]
@@ -486,7 +342,7 @@ pub mod constraint {
     where
         C: Configuration,
     {
-        type Type = Root<C>;
+        type Type = Root<ConfigConverter<C>>;
 
         type Mode = Public;
 
@@ -511,7 +367,7 @@ pub mod constraint {
         }
     }
 
-    impl<C> HasAllocation<ContraintSystem<C>> for Root<C>
+    impl<C> HasAllocation<ContraintSystem<C>> for Root<ConfigConverter<C>>
     where
         C: Configuration,
     {
@@ -519,20 +375,49 @@ pub mod constraint {
         type Mode = Public;
     }
 
+    /// Merkle Tree Path Inner Type
+    type PathInnerType<C> = ArkPath<ConfigConverter<C>>;
+
     /// Merkle Tree Path Variable Inner Type
     type PathVarInnerType<C> =
-        ArkPathVar<ArkConfigConverter<C>, LeafHashVar<C>, InnerHashVar<C>, ConstraintField<C>>;
+        ArkPathVar<ConfigConverter<C>, LeafHashVar<C>, InnerHashVar<C>, ConstraintField<C>>;
 
     /// Merkle Tree Path Variable
     pub struct PathVar<C>(PathVarInnerType<C>)
     where
         C: Configuration;
 
+    impl<C> PathVar<C>
+    where
+        C: Configuration,
+    {
+        /// Converts a [`Path`] to a [`PathInnerType`].
+        #[inline]
+        fn convert_path(path: &Path<ConfigConverter<C>>) -> PathInnerType<C> {
+            // FIXME: Does the `auth_path` need to be reversed?
+            PathInnerType {
+                leaf_sibling_hash: path.sibling_digest.clone(),
+                auth_path: path.inner_path.clone(),
+                leaf_index: path.leaf_index.0,
+            }
+        }
+
+        /// Builds a default [`PathInnerType`] for use as an unknown variable value.
+        #[inline]
+        fn default_path() -> PathInnerType<C> {
+            PathInnerType {
+                leaf_sibling_hash: Default::default(),
+                auth_path: vec![Default::default(); C::HEIGHT.into() - 2],
+                leaf_index: Default::default(),
+            }
+        }
+    }
+
     impl<C> Variable<ContraintSystem<C>> for PathVar<C>
     where
         C: Configuration,
     {
-        type Type = Path<C>;
+        type Type = Path<ConfigConverter<C>>;
 
         type Mode = Secret;
 
@@ -545,7 +430,7 @@ pub mod constraint {
                 match allocation.known() {
                     Some((this, _)) => PathVarInnerType::new_witness(
                         ns!(cs.cs, "path variable secret witness"),
-                        full(&this.0),
+                        full(&Self::convert_path(this)),
                     ),
                     _ => {
                         // FIXME: We can't use `empty` here. What do we do?
@@ -560,11 +445,7 @@ pub mod constraint {
                         //
                         PathVarInnerType::new_witness(
                             ns!(cs.cs, "path variable secret witness"),
-                            full(PathInnerType {
-                                leaf_sibling_hash: Default::default(),
-                                auth_path: vec![Default::default(); C::HEIGHT.inner() as usize],
-                                leaf_index: Default::default(),
-                            }),
+                            full(&Self::default_path()),
                         )
                     }
                 }
@@ -573,7 +454,7 @@ pub mod constraint {
         }
     }
 
-    impl<C> HasAllocation<ContraintSystem<C>> for Path<C>
+    impl<C> HasAllocation<ContraintSystem<C>> for Path<ConfigConverter<C>>
     where
         C: Configuration,
     {

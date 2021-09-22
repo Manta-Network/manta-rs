@@ -17,12 +17,13 @@
 //! Ledger Implementation
 
 // FIXME: How should we handle serdes?
+// FIXME: Use "incremental merkle tree".
 
 use crate::{
     accounting::config::{Configuration, ConstraintSystem, ProofSystem},
     crypto::{
         ies::EncryptedAsset,
-        merkle_tree::{self, MerkleTree},
+        merkle_tree::{constraint as merkle_tree_constraint, ConfigConverter},
     },
 };
 use alloc::{vec, vec::Vec};
@@ -35,6 +36,7 @@ use manta_crypto::{
     constraint::{
         self, reflection::HasAllocation, Allocation, Constant, ProofSystem as _, Variable,
     },
+    merkle_tree::{self, MerkleTree},
     set::{constraint::VerifiedSetVariable, ContainmentProof, Set, VerifiedSet},
 };
 use manta_util::{as_bytes, concatenate, into_array_unchecked};
@@ -49,22 +51,22 @@ type Utxo = identity::Utxo<Configuration>;
 type UtxoVar = identity::constraint::UtxoVar<Configuration>;
 
 /// UTXO Shard Root
-type Root = merkle_tree::Root<Configuration>;
+type Root = merkle_tree::Root<ConfigConverter<Configuration>>;
 
 /// UTXO Shard Root Variable
-type RootVar = merkle_tree::constraint::RootVar<Configuration>;
+type RootVar = merkle_tree_constraint::RootVar<Configuration>;
 
 /// UTXO Set Parameters
-type Parameters = merkle_tree::Parameters<Configuration>;
+type Parameters = merkle_tree::Parameters<ConfigConverter<Configuration>>;
 
 /// UTXO Set Parameters Variable
-type ParametersVar = merkle_tree::constraint::ParametersVar<Configuration>;
+type ParametersVar = merkle_tree_constraint::ParametersVar<Configuration>;
 
 /// UTXO Set Path
-type Path = merkle_tree::Path<Configuration>;
+type Path = merkle_tree::Path<ConfigConverter<Configuration>>;
 
 /// UTXO Set Path Variable
-type PathVar = merkle_tree::constraint::PathVar<Configuration>;
+type PathVar = merkle_tree_constraint::PathVar<Configuration>;
 
 /// UTXO Shard
 #[derive(Clone, Debug, Default, Eq, Hash, PartialEq)]
@@ -137,6 +139,7 @@ impl Set for UtxoSet {
 
     #[inline]
     fn try_insert(&mut self, item: Self::Item) -> Result<(), Self::Item> {
+        /* FIXME:
         let shard = &mut self.shards[Self::shard_index(&item)];
         if shard.utxos.contains(&item) {
             return Err(item);
@@ -149,6 +152,8 @@ impl Set for UtxoSet {
             }
             _ => Err(shard.utxos.pop().unwrap()),
         }
+        */
+        todo!()
     }
 }
 
@@ -171,7 +176,9 @@ impl VerifiedSet for UtxoSet {
         secret_witness: &Self::Secret,
         item: &Self::Item,
     ) -> bool {
-        self.parameters.verify(public_input, secret_witness, item)
+        // FIXME: Leaf should be `Utxo` not `[u8]`.
+        self.parameters
+            .verify_path(secret_witness, public_input, &as_bytes!(item))
     }
 
     #[inline]
@@ -180,6 +187,7 @@ impl VerifiedSet for UtxoSet {
         item: &Self::Item,
     ) -> Result<ContainmentProof<Self>, Self::ContainmentError> {
         // TODO: Return a more informative error.
+        /* FIXME:
         let utxos = &self.shards[Self::shard_index(item)].utxos;
         match utxos.iter().position(move |u| u == item) {
             Some(index) => MerkleTree::new(&self.parameters, utxos)
@@ -188,6 +196,8 @@ impl VerifiedSet for UtxoSet {
                 .ok_or(()),
             _ => Err(()),
         }
+        */
+        todo!()
     }
 }
 
