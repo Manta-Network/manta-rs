@@ -22,6 +22,8 @@
 // TODO: Check to make sure we conform to the specification and then make a note about it in the
 //       module documentation, and add a link to the specification.
 
+use core::{fmt::Debug, hash::Hash};
+
 /// Secret Key Generator Trait
 pub trait SecretKeyGenerator {
     /// Secret Key Type
@@ -54,7 +56,7 @@ pub trait DerivedSecretKeyGenerator {
     /// Key Generation Error
     type Error;
 
-    /// Generates a new secret key determined by `is_external` for the `account` with
+    /// Generates a new secret key determined by `kind` for the `account` with
     /// the given `index`.
     fn generate_key(
         &self,
@@ -62,6 +64,26 @@ pub trait DerivedSecretKeyGenerator {
         account: &Self::Account,
         index: &Self::Index,
     ) -> Result<Self::SecretKey, Self::Error>;
+
+    /// Generates a new external secret key for the `account` with the given `index`.
+    #[inline]
+    fn generate_external_key(
+        &self,
+        account: &Self::Account,
+        index: &Self::Index,
+    ) -> Result<Self::SecretKey, Self::Error> {
+        self.generate_key(KeyKind::External, account, index)
+    }
+
+    /// Generates a new internal secret key for the `account` with the given `index`.
+    #[inline]
+    fn generate_internal_key(
+        &self,
+        account: &Self::Account,
+        index: &Self::Index,
+    ) -> Result<Self::SecretKey, Self::Error> {
+        self.generate_key(KeyKind::Internal, account, index)
+    }
 
     /// Builds a [`SecretKeyGenerator`] for external keys associated to `account`.
     #[inline]
@@ -122,10 +144,10 @@ impl KeyKind {
     }
 }
 
-/// Generates an internal or external secret key according to the [`DerivedSecretKeyGenerator`]
+/// Generates an external or internal secret key according to the [`DerivedSecretKeyGenerator`]
 /// protocol and increments the running `index`.
 #[inline]
-fn next_key<D>(
+pub fn next_key<D>(
     source: &D,
     kind: KeyKind,
     account: &D::Account,
@@ -150,7 +172,9 @@ pub fn next_external<D>(
 where
     D: DerivedSecretKeyGenerator + ?Sized,
 {
-    next_key(source, KeyKind::External, account, index)
+    let secret_key = source.generate_external_key(account, index)?;
+    index.increment();
+    Ok(secret_key)
 }
 
 /// Generates an internal secret key according to the [`DerivedSecretKeyGenerator`] protocol
@@ -164,7 +188,9 @@ pub fn next_internal<D>(
 where
     D: DerivedSecretKeyGenerator + ?Sized,
 {
-    next_key(source, KeyKind::Internal, account, index)
+    let secret_key = source.generate_internal_key(account, index)?;
+    index.increment();
+    Ok(secret_key)
 }
 
 /// Keys
@@ -311,5 +337,130 @@ where
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         self.generate_key().ok()
+    }
+}
+
+/// Account Index Manager
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "D::Account: Clone, D::Index: Clone"),
+    Copy(bound = "D::Account: Copy, D::Index: Copy"),
+    Debug(bound = "D::Account: Debug, D::Index: Debug"),
+    Default(bound = "D::Account: Default, D::Index: Default"),
+    Eq(bound = "D::Account: Eq, D::Index: Eq"),
+    Hash(bound = "D::Account: Hash, D::Index: Hash"),
+    PartialEq(bound = "D::Account: PartialEq, D::Index: PartialEq")
+)]
+pub struct Account<D>
+where
+    D: DerivedSecretKeyGenerator,
+{
+    /// Account Identifier
+    pub account: D::Account,
+
+    /// External Transaction Running Index
+    pub external_index: D::Index,
+
+    /// Internal Transaction Running Index
+    pub internal_index: D::Index,
+}
+
+impl<D> Account<D>
+where
+    D: DerivedSecretKeyGenerator,
+{
+    /// Builds a new [`Account`] for the given `account` identifier.
+    #[inline]
+    pub fn new(account: D::Account) -> Self {
+        Self::with_indices(account, Default::default(), Default::default())
+    }
+
+    /// Builds a new [`Account`] for the given `account` identifier with starting indices
+    /// `external_index` and `internal_index`.
+    #[inline]
+    pub fn with_indices(
+        account: D::Account,
+        external_index: D::Index,
+        internal_index: D::Index,
+    ) -> Self {
+        Self {
+            account,
+            external_index,
+            internal_index,
+        }
+    }
+
+    /// Resets the external and internal running indices to their default values.
+    #[inline]
+    pub fn reset(&mut self) -> &mut Self {
+        self.external_index = Default::default();
+        self.internal_index = Default::default();
+        self
+    }
+
+    /// Generates a new external key for this account.
+    #[inline]
+    pub fn external_key(&self, source: &D) -> Result<D::SecretKey, D::Error> {
+        source.generate_external_key(&self.account, &self.external_index)
+    }
+
+    /// Generates a new internal key for this account.
+    #[inline]
+    pub fn internal_key(&self, source: &D) -> Result<D::SecretKey, D::Error> {
+        source.generate_internal_key(&self.account, &self.internal_index)
+    }
+
+    /// Generates the next external key for this account, incrementing the `external_index`.
+    #[inline]
+    pub fn next_external_key(&mut self, source: &D) -> Result<D::SecretKey, D::Error> {
+        next_external(source, &self.account, &mut self.external_index)
+    }
+
+    /// Generates the next internal key for this account, incrementing the `internal_index`.
+    #[inline]
+    pub fn next_internal_key(&mut self, source: &D) -> Result<D::SecretKey, D::Error> {
+        next_internal(source, &self.account, &mut self.internal_index)
+    }
+
+    /// Returns an [`ExternalKeys`] generator starting from the current external index.
+    #[inline]
+    pub fn external_keys<'s>(&'s self, source: &'s D) -> ExternalKeys<'s, D> {
+        self.external_keys_from_index(source, self.external_index.clone())
+    }
+
+    /// Returns an [`InternalKeys`] generator starting from the current internal index.
+    #[inline]
+    pub fn internal_keys<'s>(&'s self, source: &'s D) -> InternalKeys<'s, D> {
+        self.internal_keys_from_index(source, self.internal_index.clone())
+    }
+
+    /// Returns an [`ExternalKeys`] generator starting from the given `index`.
+    #[inline]
+    pub fn external_keys_from_index<'s>(
+        &'s self,
+        source: &'s D,
+        index: D::Index,
+    ) -> ExternalKeys<'s, D> {
+        source.external_keys_from_index(&self.account, index)
+    }
+
+    /// Returns an [`InternalKeys`] generator starting from the given `index`.
+    #[inline]
+    pub fn internal_keys_from_index<'s>(
+        &'s self,
+        source: &'s D,
+        index: D::Index,
+    ) -> InternalKeys<'s, D> {
+        source.internal_keys_from_index(&self.account, index)
+    }
+}
+
+impl<D> AsRef<D::Account> for Account<D>
+where
+    D: DerivedSecretKeyGenerator,
+{
+    #[inline]
+    fn as_ref(&self) -> &D::Account {
+        &self.account
     }
 }

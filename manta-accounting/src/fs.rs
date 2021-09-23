@@ -33,6 +33,15 @@ pub trait Load: Sized {
         P: AsRef<Self::Path>;
 }
 
+/// Filesystem Encrypted Loading with Extra Data
+pub trait LoadWith<T>: Load {
+    /// Loads an element of type `Self` along with additional data from `path` unlocking it with
+    /// the `loading_key`.
+    fn load_with<P>(path: P, loading_key: &Self::LoadingKey) -> Result<(Self, T), Self::Error>
+    where
+        P: AsRef<Self::Path>;
+}
+
 /// Filesystem Encrypted Saving
 pub trait Save {
     /// Path Type
@@ -46,6 +55,19 @@ pub trait Save {
 
     /// Saves `self` to `path` locking it with the `saving_key`.
     fn save<P>(self, path: P, saving_key: &Self::SavingKey) -> Result<(), Self::Error>
+    where
+        P: AsRef<Self::Path>;
+}
+
+/// Filesystem Encrypted Saving with Extra Data
+pub trait SaveWith<T>: Save {
+    /// Saves `self` along with `additional` data to `path` locking it with the `saving_key`.
+    fn save_with<P>(
+        self,
+        additional: T,
+        path: P,
+        saving_key: &Self::SavingKey,
+    ) -> Result<(), Self::Error>
     where
         P: AsRef<Self::Path>;
 }

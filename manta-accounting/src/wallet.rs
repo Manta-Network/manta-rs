@@ -26,25 +26,367 @@
 
 use crate::{
     asset::{Asset, AssetBalance, AssetId},
-    fs::{Load, Save},
+    fs::{Load, LoadWith, Save, SaveWith},
     identity::{
         self, AssetParameters, Identity, InternalReceiver, InternalReceiverError, OpenSpend,
         ShieldedIdentity, Utxo, VoidNumber,
     },
-    keys::{self, DerivedSecretKeyGenerator, ExternalKeys, InternalKeys, KeyKind},
+    keys::{Account, DerivedSecretKeyGenerator, ExternalKeys, InternalKeys, KeyKind},
     transfer::{
         self,
         canonical::{Mint, PrivateTransfer, Reclaim},
         EncryptedAsset, IntegratedEncryptionSchemeError, TransferPost,
     },
 };
-use alloc::vec::Vec;
-use core::{convert::Infallible, fmt::Debug, future::Future, hash::Hash};
+use alloc::{vec, vec::Vec};
+use core::{convert::Infallible, fmt::Debug, future::Future, hash::Hash, marker::PhantomData};
 use manta_crypto::ies::{EncryptedMessage, IntegratedEncryptionScheme};
 use rand::{
     distributions::{Distribution, Standard},
     CryptoRng, RngCore,
 };
+
+/// Signer
+pub struct Signer<D>
+where
+    D: DerivedSecretKeyGenerator,
+{
+    /// Secret Key Source
+    secret_key_source: D,
+
+    /// Signer Account
+    account: Account<D>,
+}
+
+impl<D> Signer<D>
+where
+    D: DerivedSecretKeyGenerator,
+{
+    /// Builds a new [`Signer`] for `account` from a `secret_key_source`.
+    #[inline]
+    pub fn new(secret_key_source: D, account: D::Account) -> Self {
+        Self::with_account(secret_key_source, Account::new(account))
+    }
+
+    /// Builds a new [`Signer`] for `account` from a `secret_key_source`.
+    #[inline]
+    pub fn with_account(secret_key_source: D, account: Account<D>) -> Self {
+        Self {
+            secret_key_source,
+            account,
+        }
+    }
+
+    /// Builds a new [`Signer`] for `account` from a `secret_key_source` with starting indices
+    /// `external_index` and `internal_index`.
+    #[inline]
+    pub fn with_indices(
+        secret_key_source: D,
+        account: D::Account,
+        external_index: D::Index,
+        internal_index: D::Index,
+    ) -> Self {
+        Self::with_account(
+            secret_key_source,
+            Account::with_indices(account, external_index, internal_index),
+        )
+    }
+
+    /// Generates the next external key for this signer.
+    #[inline]
+    fn next_external_key(&mut self) -> Result<D::SecretKey, D::Error> {
+        self.account.next_external_key(&self.secret_key_source)
+    }
+
+    /// Generates the next internal key for this signer.
+    #[inline]
+    fn next_internal_key(&mut self) -> Result<D::SecretKey, D::Error> {
+        self.account.next_internal_key(&self.secret_key_source)
+    }
+
+    /// Generates the next external identity for this signer.
+    #[inline]
+    pub fn next_external_identity<C>(&mut self) -> Result<Identity<C>, D::Error>
+    where
+        C: identity::Configuration<SecretKey = D::SecretKey>,
+    {
+        self.next_external_key().map(Identity::new)
+    }
+
+    /// Generates the next internal identity for this signer.
+    #[inline]
+    pub fn next_internal_identity<C>(&mut self) -> Result<Identity<C>, D::Error>
+    where
+        C: identity::Configuration<SecretKey = D::SecretKey>,
+    {
+        self.next_internal_key().map(Identity::new)
+    }
+
+    /// Generates a new [`ShieldedIdentity`] to receive assets to this account via an external
+    /// transaction.
+    #[inline]
+    pub fn generate_shielded_identity<C, I>(
+        &mut self,
+        commitment_scheme: &C::CommitmentScheme,
+    ) -> Result<ShieldedIdentity<C, I>, D::Error>
+    where
+        C: identity::Configuration<SecretKey = D::SecretKey>,
+        I: IntegratedEncryptionScheme<Plaintext = Asset>,
+        Standard: Distribution<AssetParameters<C>>,
+    {
+        self.next_external_identity()
+            .map(move |identity| identity.into_shielded(commitment_scheme))
+    }
+
+    /// Generates a new [`InternalReceiver`] to receive `asset` to this account via an
+    /// internal transaction.
+    #[inline]
+    pub fn generate_internal_receiver<C, I, R>(
+        &mut self,
+        commitment_scheme: &C::CommitmentScheme,
+        asset: Asset,
+        rng: &mut R,
+    ) -> Result<InternalReceiver<C, I>, InternalReceiverError<InternalKeys<D>, I>>
+    where
+        C: identity::Configuration<SecretKey = D::SecretKey>,
+        I: IntegratedEncryptionScheme<Plaintext = Asset>,
+        R: CryptoRng + RngCore + ?Sized,
+        Standard: Distribution<AssetParameters<C>>,
+    {
+        self.next_internal_identity()
+            .map_err(InternalReceiverError::SecretKeyError)?
+            .into_internal_receiver(commitment_scheme, asset, rng)
+            .map_err(InternalReceiverError::EncryptionError)
+    }
+
+    /* TODO: Revisit how this is designed (this is part of recovery/ledger-sync):
+
+    /// Returns an [`ExternalKeys`] generator starting from the given `index`.
+    #[inline]
+    fn external_keys_from_index(&self, index: D::Index) -> ExternalKeys<D> {
+        self.secret_key_source
+            .external_keys_from_index(self.account.as_ref(), index)
+    }
+
+    /// Returns an [`InternalKeys`] generator starting from the given `index`.
+    #[inline]
+    fn internal_keys_from_index(&self, index: D::Index) -> InternalKeys<D> {
+        self.secret_key_source
+            .internal_keys_from_index(self.account.as_ref(), index)
+    }
+
+    /// Looks for an [`OpenSpend`] for this `encrypted_asset` by checking every secret key
+    /// in the iterator.
+    #[inline]
+    fn find_open_spend_from_iter<C, I, Iter>(
+        &self,
+        encrypted_asset: &EncryptedMessage<I>,
+        iter: Iter,
+    ) -> Option<OpenSpend<C>>
+    where
+        C: identity::Configuration<SecretKey = D::SecretKey>,
+        I: IntegratedEncryptionScheme<Plaintext = Asset>,
+        Iter: IntoIterator<Item = D::SecretKey>,
+        Standard: Distribution<AssetParameters<C>>,
+    {
+        iter.into_iter()
+            .find_map(move |k| Identity::new(k).try_open(encrypted_asset).ok())
+    }
+
+    /// Looks for an [`OpenSpend`] for this `encrypted_asset`, only trying `gap_limit`-many
+    /// external keys starting from `index`.
+    #[inline]
+    pub fn find_external_open_spend<C, I>(
+        &self,
+        encrypted_asset: &EncryptedMessage<I>,
+        index: D::Index,
+        gap_limit: usize,
+    ) -> Option<OpenSpend<C>>
+    where
+        C: identity::Configuration<SecretKey = D::SecretKey>,
+        I: IntegratedEncryptionScheme<Plaintext = Asset>,
+        Standard: Distribution<AssetParameters<C>>,
+    {
+        self.find_open_spend_from_iter(
+            encrypted_asset,
+            self.external_keys_from_index(index).take(gap_limit),
+        )
+    }
+
+    /// Looks for an [`OpenSpend`] for this `encrypted_asset`, only trying `gap_limit`-many
+    /// internal keys starting from `index`.
+    #[inline]
+    pub fn find_internal_open_spend<C, I>(
+        &self,
+        encrypted_asset: &EncryptedMessage<I>,
+        index: D::Index,
+        gap_limit: usize,
+    ) -> Option<OpenSpend<C>>
+    where
+        C: identity::Configuration<SecretKey = D::SecretKey>,
+        I: IntegratedEncryptionScheme<Plaintext = Asset>,
+        Standard: Distribution<AssetParameters<C>>,
+    {
+        self.find_open_spend_from_iter(
+            encrypted_asset,
+            self.internal_keys_from_index(index).take(gap_limit),
+        )
+    }
+
+    /// Looks for an [`OpenSpend`] for this `encrypted_asset`, only trying `gap_limit`-many
+    /// external and internal keys starting from `external_index` and `internal_index`.
+    #[inline]
+    pub fn find_open_spend<C, I>(
+        &self,
+        encrypted_asset: &EncryptedMessage<I>,
+        external_index: D::Index,
+        internal_index: D::Index,
+        gap_limit: usize,
+    ) -> Option<(OpenSpend<C>, KeyKind)>
+    where
+        C: identity::Configuration<SecretKey = D::SecretKey>,
+        I: IntegratedEncryptionScheme<Plaintext = Asset>,
+        Standard: Distribution<AssetParameters<C>>,
+    {
+        // TODO: Find a way to either interleave these or parallelize these.
+        if let Some(spend) =
+            self.find_external_open_spend(encrypted_asset, external_index, gap_limit)
+        {
+            return Some((spend, KeyKind::External));
+        }
+        if let Some(spend) =
+            self.find_internal_open_spend(encrypted_asset, internal_index, gap_limit)
+        {
+            return Some((spend, KeyKind::Internal));
+        }
+        None
+    }
+
+    */
+}
+
+impl<D> Load for Signer<D>
+where
+    D: DerivedSecretKeyGenerator + LoadWith<Account<D>>,
+{
+    type Path = D::Path;
+
+    type LoadingKey = D::LoadingKey;
+
+    type Error = <D as Load>::Error;
+
+    #[inline]
+    fn load<P>(path: P, loading_key: &Self::LoadingKey) -> Result<Self, Self::Error>
+    where
+        P: AsRef<Self::Path>,
+    {
+        let (secret_key_source, account) = D::load_with(path, loading_key)?;
+        Ok(Self::with_account(secret_key_source, account))
+    }
+}
+
+impl<D> Save for Signer<D>
+where
+    D: DerivedSecretKeyGenerator + SaveWith<Account<D>>,
+{
+    type Path = D::Path;
+
+    type SavingKey = D::SavingKey;
+
+    type Error = <D as Save>::Error;
+
+    #[inline]
+    fn save<P>(self, path: P, saving_key: &Self::SavingKey) -> Result<(), Self::Error>
+    where
+        P: AsRef<Self::Path>,
+    {
+        self.secret_key_source
+            .save_with(self.account, path, saving_key)
+    }
+}
+
+/// Ledger Source
+pub trait LedgerSource<C>
+where
+    C: transfer::Configuration,
+{
+    /// Sync Future Type
+    ///
+    /// Future for the [`sync`](Self::sync) method.
+    type SyncFuture: Future<Output = Result<SyncResponse<C, Self>, Self::Error>>;
+
+    /// Send Future Type
+    ///
+    /// Future for the [`send`](Self::send) method.
+    type SendFuture: Future<Output = Result<SendResponse<C, Self>, Self::Error>>;
+
+    /// Ledger State Checkpoint Type
+    type Checkpoint: Default + Ord;
+
+    /// Error Type
+    type Error;
+
+    /// Pulls data from the ledger starting from `checkpoint`, returning the current
+    /// [`Checkpoint`](Self::Checkpoint).
+    fn sync(&self, checkpoint: &Self::Checkpoint) -> Self::SyncFuture;
+
+    /// Pulls all of the data from the entire history of the ledger, returning the current
+    /// [`Checkpoint`](Self::Checkpoint).
+    #[inline]
+    fn sync_all(&self) -> Self::SyncFuture {
+        self.sync(&Default::default())
+    }
+
+    /// Sends `transfers` to the ledger, returning the current [`Checkpoint`](Self::Checkpoint)
+    /// and the status of the transfers.
+    fn send(&self, transfers: Vec<TransferPost<C>>) -> Self::SendFuture;
+
+    /// Sends `transfer` to the ledger, returning the current [`Checkpoint`](Self::Checkpoint)
+    /// and the status of the transfer.
+    #[inline]
+    fn send_one(&self, transfer: TransferPost<C>) -> Self::SendFuture {
+        self.send(vec![transfer])
+    }
+}
+
+/// Ledger Source Sync Response
+///
+/// This `struct` is created by the [`sync`](LedgerSource::sync) method on [`LedgerSource`].
+/// See its documentation for more.
+pub struct SyncResponse<C, LS>
+where
+    C: transfer::Configuration,
+    LS: LedgerSource<C> + ?Sized,
+{
+    /// Current Ledger Checkpoint
+    pub checkpoint: LS::Checkpoint,
+
+    /// New Void Numbers
+    pub void_numbers: Vec<VoidNumber<C>>,
+
+    /// New UTXOS
+    pub utxos: Vec<Utxo<C>>,
+
+    /// New Encrypted Assets
+    pub encrypted_assets: Vec<EncryptedAsset<C>>,
+}
+
+/// Ledger Source Send Response
+///
+/// This `struct` is created by the [`send`](LedgerSource::send) method on [`LedgerSource`].
+/// See its documentation for more.
+pub struct SendResponse<C, LS>
+where
+    C: transfer::Configuration,
+    LS: LedgerSource<C> + ?Sized,
+{
+    /// Current Ledger Checkpoint
+    pub checkpoint: LS::Checkpoint,
+
+    /// Ledger Responses
+    // FIXME: Design responses.
+    pub responses: Vec<bool>,
+}
 
 /// Asset Map
 pub trait AssetMap {
@@ -66,7 +408,8 @@ pub trait AssetMap {
         self.set_balance(asset.id, asset.value)
     }
 
-    /// Mutates the asset balance for `id` to the result of `f` if it succeeds.
+    /// Mutates the asset balance for `id` to the result of `f` if it succeeds, returning the
+    /// new balance.
     #[inline]
     #[must_use = "this only modifies the stored value if the function call succeeded"]
     fn mutate<F, E>(&mut self, id: AssetId, f: F) -> Result<AssetBalance, E>
@@ -129,364 +472,181 @@ pub trait AssetMap {
     }
 }
 
-/// Ledger Source
-pub trait LedgerSource<C>
+/// Local Ledger
+pub trait LocalLedger<C>
 where
     C: transfer::Configuration,
 {
-    /// Sync Future Type
-    ///
-    /// Future for the [`sync`](Self::sync) method.
-    type SyncFuture: Future<Output = Result<SyncResponse<C, Self>, Self::Error>>;
-
-    /// Send Future Type
-    ///
-    /// Future for the [`send`](Self::send) method.
-    type SendFuture: Future<Output = Result<SendResponse<C, Self>, Self::Error>>;
-
     /// Ledger State Checkpoint Type
     type Checkpoint: Default + Ord;
 
-    /// Error Type
-    type Error;
+    /// Returns the checkpoint of the local ledger.
+    fn checkpoint(&self) -> &Self::Checkpoint;
 
-    /// Pulls data from the ledger starting from `checkpoint`, returning the current
-    /// [`Checkpoint`](Self::Checkpoint).
-    fn sync(&self, checkpoint: &Self::Checkpoint) -> Self::SyncFuture;
+    /// Sets the checkpoint of the local ledger to `checkpoint`.
+    fn set_checkpoint(&mut self, checkpoint: Self::Checkpoint);
 
-    /// Pulls all of the data from the entire history of the ledger, returning the current
-    /// [`Checkpoint`](Self::Checkpoint).
+    /// Inserts the `void_number` into the local ledger.
+    fn insert_void_number(&mut self, void_number: VoidNumber<C>);
+
+    /// Inserts the `utxo` into the local ledger.
+    fn insert_utxo(&mut self, utxo: Utxo<C>);
+
+    /// Inserts the `encrypted_asset` into the local ledger.
+    fn insert_encrypted_asset(&mut self, encrypted_asset: EncryptedAsset<C>);
+}
+
+/// Wallet Balance State
+pub struct BalanceState<C, LL, SM, PM = SM>
+where
+    C: transfer::Configuration,
+    LL: LocalLedger<C>,
+    SM: AssetMap,
+    PM: AssetMap,
+{
+    /// Secret Asset Map
+    secret_assets: SM,
+
+    /// Public Asset Map
+    public_assets: PM,
+
+    /// Local Ledger
+    local_ledger: LL,
+
+    /// Type Parameter Marker
+    __: PhantomData<C>,
+}
+
+impl<C, LL, SM, PM> BalanceState<C, LL, SM, PM>
+where
+    C: transfer::Configuration,
+    LL: LocalLedger<C>,
+    SM: AssetMap,
+    PM: AssetMap,
+{
+    /// Synchronizes `self` with the `ledger`.
     #[inline]
-    fn sync_all(&self) -> Self::SyncFuture {
-        self.sync(&Default::default())
+    pub async fn sync<LS>(&mut self, ledger: &LS) -> Result<(), LS::Error>
+    where
+        LS: LedgerSource<C, Checkpoint = LL::Checkpoint> + ?Sized,
+    {
+        let SyncResponse {
+            checkpoint,
+            void_numbers,
+            utxos,
+            encrypted_assets,
+        } = ledger.sync(self.local_ledger.checkpoint()).await?;
+
+        for void_number in void_numbers {
+            // TODO: Only keep the ones we care about. How do we alert the local ledger? We have to
+            //       communicate with it when we try to send transactions to a ledger source.
+            //       Do we care about keeping void numbers? Maybe only for recovery?
+            self.local_ledger.insert_void_number(void_number);
+        }
+
+        for encrypted_asset in encrypted_assets {
+            // TODO: Decrypt them on the way in ... threads? For internal transactions we know the
+            //       `encrypted_asset` ahead of time, and we know it decrypted too. For external
+            //       transactions we have to keep all of them since we have to try and decrypt all
+            //       of them.
+            self.local_ledger.insert_encrypted_asset(encrypted_asset);
+        }
+
+        for utxo in utxos {
+            // TODO: Only keep the ones we care about. For internal transactions we know the `utxo`
+            //       ahead of time. For external ones, we have to get the `asset` first.
+            self.local_ledger.insert_utxo(utxo);
+        }
+
+        self.local_ledger.set_checkpoint(checkpoint);
+
+        // FIXME: How do we update `secret_assets` and `public_assets`? Can we only "deposit" from
+        //        a `sync`, and only "withdraw" from a `send`?
+
+        Ok(())
     }
 
-    /// Sends `transfers` to the ledger, returning the current [`Checkpoint`](Self::Checkpoint)
-    /// and the status of the transfers.
-    fn send(&self, transfers: Vec<TransferPost<C>>) -> Self::SendFuture;
+    /// Sends the `transfers` to the `ledger`.
+    #[inline]
+    pub async fn send<LS>(
+        &mut self,
+        transfers: Vec<TransferPost<C>>,
+        ledger: &LS,
+    ) -> Result<(), LS::Error>
+    where
+        LS: LedgerSource<C, Checkpoint = LL::Checkpoint> + ?Sized,
+    {
+        // TODO: When sending to the ledger, we really have to set up a backup state in case we
+        //       missed the "send window", and we need to recover. We can also hint to the local
+        //       ledger that we are about to send some transactions and so it should know which
+        //       `utxo`s and such are important to keep when it sees them appear later in the real
+        //       ledger state.
+        //
+        //       Sender Posts:   `void_number`
+        //       Receiver Posts: `utxo`, `encrypted_asset`
+        //
+        let _ = ledger.send(transfers).await?;
+        todo!()
+    }
 }
 
-/// Ledger Source Sync Response
-///
-/// This `struct` is created by the [`sync`](LedgerSource::sync) method on [`LedgerSource`].
-/// See its documentation for more.
-pub struct SyncResponse<C, LS>
+/* TODO:
+/// Wallet
+pub struct Wallet<C, D, LL, SM, PM = SM>
 where
     C: transfer::Configuration,
-    LS: LedgerSource<C> + ?Sized,
+    D: DerivedSecretKeyGenerator<SecretKey = C::SecretKey>,
+    LL: LocalLedger<C>,
+    SM: AssetMap,
+    PM: AssetMap,
 {
-    /// Current Ledger Checkpoint
-    pub checkpoint: LS::Checkpoint,
+    /// Wallet Signer
+    signer: Signer<D>,
 
-    /// New Void Numbers
-    pub void_numbers: Vec<VoidNumber<C>>,
-
-    /// New UTXOS
-    pub utxos: Vec<Utxo<C>>,
-
-    /// New Encrypted Assets
-    pub encrypted_assets: Vec<EncryptedAsset<C>>,
+    /// Wallet Balance State
+    balance_state: BalanceState<C, LL, SM, PM>,
 }
-
-/// Ledger Source Send Response
-///
-/// This `struct` is created by the [`send`](LedgerSource::send) method on [`LedgerSource`].
-/// See its documentation for more.
-pub struct SendResponse<C, LS>
-where
-    C: transfer::Configuration,
-    LS: LedgerSource<C> + ?Sized,
-{
-    /// Current Ledger Checkpoint
-    pub checkpoint: LS::Checkpoint,
-
-    /// Ledger Responses
-    // FIXME: Design responses.
-    pub responses: Vec<bool>,
-}
-
-/// Local Ledger
-pub trait LocalLedger {
-    /// Ledger State Checkpoint Type
-    type Checkpoint: Default + Ord;
-}
+*/
 
 /// Wallet
-pub struct Wallet<D, M, LL>
+pub struct Wallet<D, M>
 where
     D: DerivedSecretKeyGenerator,
     M: AssetMap,
-    LL: LocalLedger,
 {
-    /// Secret Key Source
-    secret_key_source: D,
-
-    /// Wallet Account
-    account: D::Account,
-
-    /// External Transaction Running Index
-    external_index: D::Index,
-
-    /// Internal Transaction Running Index
-    internal_index: D::Index,
+    /// Wallet Signer
+    signer: Signer<D>,
 
     /// Public Asset Map
     public_assets: M,
 
     /// Secret Asset Map
     secret_assets: M,
-
-    /// Local Ledger Checkpoint
-    checkpoint: LL::Checkpoint,
 }
 
-impl<D, M, LL> Wallet<D, M, LL>
+impl<D, M> Wallet<D, M>
 where
     D: DerivedSecretKeyGenerator,
     M: AssetMap,
-    LL: LocalLedger,
 {
-    /// Builds a new [`Wallet`] for `account` from a `secret_key_source`.
+    /// Builds a new [`Wallet`] for `signer`.
     #[inline]
-    pub fn new(secret_key_source: D, account: D::Account) -> Self
+    pub fn new(signer: Signer<D>) -> Self
     where
         M: Default,
     {
-        Self::with_balances(
-            secret_key_source,
-            account,
-            Default::default(),
-            Default::default(),
-        )
+        Self::with_balances(signer, Default::default(), Default::default())
     }
 
-    /// Builds a new [`Wallet`] for `account` from a `secret_key_source` and pre-built
-    /// `public_assets` map and `secret_assets` map.
+    /// Builds a new [`Wallet`] for `signer` and pre-built `public_assets` map and
+    /// `secret_assets` map.
     #[inline]
-    pub fn with_balances(
-        secret_key_source: D,
-        account: D::Account,
-        public_assets: M,
-        secret_assets: M,
-    ) -> Self {
+    pub fn with_balances(signer: Signer<D>, public_assets: M, secret_assets: M) -> Self {
         Self {
-            secret_key_source,
-            account,
-            external_index: Default::default(),
-            internal_index: Default::default(),
+            signer,
             public_assets,
             secret_assets,
-            checkpoint: Default::default(),
         }
-    }
-
-    /// Generates the next external key for this wallet.
-    #[inline]
-    fn next_external_key(&mut self) -> Result<D::SecretKey, D::Error> {
-        keys::next_external(
-            &self.secret_key_source,
-            &self.account,
-            &mut self.external_index,
-        )
-    }
-
-    /// Generates the next internal key for this wallet.
-    #[inline]
-    fn next_internal_key(&mut self) -> Result<D::SecretKey, D::Error> {
-        keys::next_internal(
-            &self.secret_key_source,
-            &self.account,
-            &mut self.internal_index,
-        )
-    }
-
-    /// Generates the next external identity for this wallet.
-    #[inline]
-    fn next_external_identity<C>(&mut self) -> Result<Identity<C>, D::Error>
-    where
-        C: identity::Configuration<SecretKey = D::SecretKey>,
-    {
-        self.next_external_key().map(Identity::new)
-    }
-
-    /// Generates the next internal identity for this wallet.
-    #[inline]
-    fn next_internal_identity<C>(&mut self) -> Result<Identity<C>, D::Error>
-    where
-        C: identity::Configuration<SecretKey = D::SecretKey>,
-    {
-        self.next_internal_key().map(Identity::new)
-    }
-
-    /// Returns an [`ExternalKeys`] generator starting from the given `index`.
-    #[inline]
-    fn external_keys_from_index(&self, index: D::Index) -> ExternalKeys<D> {
-        self.secret_key_source
-            .external_keys_from_index(&self.account, index)
-    }
-
-    /// Returns an [`InternalKeys`] generator starting from the given `index`.
-    #[inline]
-    fn internal_keys_from_index(&self, index: D::Index) -> InternalKeys<D> {
-        self.secret_key_source
-            .internal_keys_from_index(&self.account, index)
-    }
-
-    /// Looks for an [`OpenSpend`] for this `encrypted_asset` by checking every secret key
-    /// in the iterator.
-    #[inline]
-    fn find_open_spend_from_iter<C, I, Iter>(
-        &self,
-        encrypted_asset: &EncryptedMessage<I>,
-        iter: Iter,
-    ) -> Option<OpenSpend<C>>
-    where
-        C: identity::Configuration<SecretKey = D::SecretKey>,
-        I: IntegratedEncryptionScheme<Plaintext = Asset>,
-        Iter: IntoIterator<Item = D::SecretKey>,
-        Standard: Distribution<AssetParameters<C>>,
-    {
-        iter.into_iter()
-            .find_map(move |k| Identity::new(k).try_open(encrypted_asset).ok())
-    }
-
-    /// Looks for an [`OpenSpend`] for this `encrypted_asset`, only trying `gap_limit`-many
-    /// external keys starting from `index`.
-    #[inline]
-    pub fn find_external_open_spend<C, I>(
-        &self,
-        encrypted_asset: &EncryptedMessage<I>,
-        index: D::Index,
-        gap_limit: usize,
-    ) -> Option<OpenSpend<C>>
-    where
-        C: identity::Configuration<SecretKey = D::SecretKey>,
-        I: IntegratedEncryptionScheme<Plaintext = Asset>,
-        Standard: Distribution<AssetParameters<C>>,
-    {
-        self.find_open_spend_from_iter(
-            encrypted_asset,
-            self.external_keys_from_index(index).take(gap_limit),
-        )
-    }
-
-    /// Looks for an [`OpenSpend`] for this `encrypted_asset`, only trying `gap_limit`-many
-    /// internal keys starting from `index`.
-    #[inline]
-    pub fn find_internal_open_spend<C, I>(
-        &self,
-        encrypted_asset: &EncryptedMessage<I>,
-        index: D::Index,
-        gap_limit: usize,
-    ) -> Option<OpenSpend<C>>
-    where
-        C: identity::Configuration<SecretKey = D::SecretKey>,
-        I: IntegratedEncryptionScheme<Plaintext = Asset>,
-        Standard: Distribution<AssetParameters<C>>,
-    {
-        self.find_open_spend_from_iter(
-            encrypted_asset,
-            self.internal_keys_from_index(index).take(gap_limit),
-        )
-    }
-
-    /// Looks for an [`OpenSpend`] for this `encrypted_asset`, only trying `gap_limit`-many
-    /// external and internal keys starting from `index`.
-    #[inline]
-    pub fn find_open_spend<C, I>(
-        &self,
-        encrypted_asset: &EncryptedMessage<I>,
-        external_index: D::Index,
-        internal_index: D::Index,
-        gap_limit: usize,
-    ) -> Option<(OpenSpend<C>, KeyKind)>
-    where
-        C: identity::Configuration<SecretKey = D::SecretKey>,
-        I: IntegratedEncryptionScheme<Plaintext = Asset>,
-        Standard: Distribution<AssetParameters<C>>,
-    {
-        // TODO: Find a way to either interleave these or parallelize these.
-        if let Some(spend) =
-            self.find_external_open_spend(encrypted_asset, external_index, gap_limit)
-        {
-            return Some((spend, KeyKind::External));
-        }
-        if let Some(spend) =
-            self.find_internal_open_spend(encrypted_asset, internal_index, gap_limit)
-        {
-            return Some((spend, KeyKind::Internal));
-        }
-        None
-    }
-
-    /// Synchronize `self` with the `ledger`.
-    #[inline]
-    pub async fn sync<C, LS>(&mut self, ledger: &LS) -> Result<(), LS::Error>
-    where
-        C: transfer::Configuration,
-        LS: LedgerSource<C, Checkpoint = LL::Checkpoint> + ?Sized,
-    {
-        // TODO: Pull updates from the ledger:
-        //         1. Download the new encrypted notes and try to decrypt them using the latest
-        //            keys that haven't been used.
-        //         2. Download the new vns and utxos and check that we can still spend all the
-        //            tokens we think we can spend.
-        //         3. compute the new deposits and withdrawls
-
-        // TODO: Have something which represents a "local-ledger" state. This ledger state can
-        //       exist "at" the wallet, or can exist elsewhere, but the wallet must be able to
-        //       send/recv messages to/from it, i.e. the `Ledger` abstraction may not be correct,
-        //       it may have to be a different trait or two traits.
-
-        let SyncResponse {
-            checkpoint,
-            void_numbers,
-            utxos,
-            encrypted_assets,
-        } = ledger.sync(&self.checkpoint).await?;
-
-        let _ = (void_numbers, utxos, encrypted_assets);
-
-        self.checkpoint = checkpoint;
-
-        todo!()
-    }
-
-    /// Generates a new [`ShieldedIdentity`] to receive assets to this wallet via an external
-    /// transaction.
-    #[inline]
-    pub fn generate_shielded_identity<C, I>(
-        &mut self,
-        commitment_scheme: &C::CommitmentScheme,
-    ) -> Result<ShieldedIdentity<C, I>, D::Error>
-    where
-        C: identity::Configuration<SecretKey = D::SecretKey>,
-        I: IntegratedEncryptionScheme<Plaintext = Asset>,
-        Standard: Distribution<AssetParameters<C>>,
-    {
-        self.next_external_identity()
-            .map(move |identity| identity.into_shielded(commitment_scheme))
-    }
-
-    /// Generates a new [`InternalReceiver`] to receive `asset` to this wallet via an
-    /// internal transaction.
-    #[inline]
-    pub fn generate_internal_receiver<C, I, R>(
-        &mut self,
-        commitment_scheme: &C::CommitmentScheme,
-        asset: Asset,
-        rng: &mut R,
-    ) -> Result<InternalReceiver<C, I>, InternalReceiverError<InternalKeys<D>, I>>
-    where
-        C: identity::Configuration<SecretKey = D::SecretKey>,
-        I: IntegratedEncryptionScheme<Plaintext = Asset>,
-        R: CryptoRng + RngCore + ?Sized,
-        Standard: Distribution<AssetParameters<C>>,
-    {
-        self.next_internal_identity()
-            .map_err(InternalReceiverError::SecretKeyError)?
-            .into_internal_receiver(commitment_scheme, asset, rng)
-            .map_err(InternalReceiverError::EncryptionError)
     }
 
     /// Builds a [`Mint`] transaction to mint `asset` and returns the [`OpenSpend`] for that asset.
@@ -503,7 +663,8 @@ where
         Standard: Distribution<AssetParameters<C>>,
     {
         Mint::from_identity(
-            self.next_internal_identity()
+            self.signer
+                .next_internal_identity()
                 .map_err(MintError::SecretKeyError)?,
             commitment_scheme,
             asset,
@@ -553,45 +714,47 @@ where
     }
 }
 
-impl<D, M, LL> Load for Wallet<D, M, LL>
+impl<D, M> Load for Wallet<D, M>
 where
-    D: DerivedSecretKeyGenerator + Load,
+    D: DerivedSecretKeyGenerator,
     M: AssetMap + Default,
-    LL: LocalLedger,
+    Signer<D>: Load,
 {
-    type Path = D::Path;
+    type Path = <Signer<D> as Load>::Path;
 
-    type LoadingKey = D::LoadingKey;
+    type LoadingKey = <Signer<D> as Load>::LoadingKey;
 
-    type Error = <D as Load>::Error;
+    type Error = <Signer<D> as Load>::Error;
 
     #[inline]
     fn load<P>(path: P, loading_key: &Self::LoadingKey) -> Result<Self, Self::Error>
     where
         P: AsRef<Self::Path>,
     {
-        Ok(Self::new(D::load(path, loading_key)?, Default::default()))
+        // TODO: Also add a way to save `BalanceState`.
+        Ok(Self::new(Signer::<D>::load(path, loading_key)?))
     }
 }
 
-impl<D, M, LL> Save for Wallet<D, M, LL>
+impl<D, M> Save for Wallet<D, M>
 where
-    D: DerivedSecretKeyGenerator + Save,
+    D: DerivedSecretKeyGenerator,
     M: AssetMap + Default,
-    LL: LocalLedger,
+    Signer<D>: Save,
 {
-    type Path = D::Path;
+    type Path = <Signer<D> as Save>::Path;
 
-    type SavingKey = D::SavingKey;
+    type SavingKey = <Signer<D> as Save>::SavingKey;
 
-    type Error = <D as Save>::Error;
+    type Error = <Signer<D> as Save>::Error;
 
     #[inline]
     fn save<P>(self, path: P, saving_key: &Self::SavingKey) -> Result<(), Self::Error>
     where
         P: AsRef<Self::Path>,
     {
-        self.secret_key_source.save(path, saving_key)
+        // TODO: Also add a way to save `BalanceState`.
+        self.signer.save(path, saving_key)
     }
 }
 
