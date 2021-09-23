@@ -38,8 +38,8 @@ use rand::{
 pub(crate) mod prelude {
     #[doc(inline)]
     pub use super::{
-        Configuration, Identity, Receiver, Sender, SenderError, ShieldedIdentity, Spend,
-        SpendError, Utxo, VoidNumber,
+        Identity, Receiver, Sender, SenderError, ShieldedIdentity, Spend, SpendError, Utxo,
+        VoidNumber,
     };
 }
 
@@ -1102,11 +1102,9 @@ where
     /// # Safety
     ///
     /// This type must be some wrapper around [`VoidNumber`] which can only be constructed by this
-    /// implementation of [`SenderLedger`]. This is to prevent that [`post`] is called before
-    /// [`validate`].
-    ///
-    /// [`post`]: SenderPostingKey::post
-    /// [`validate`]: SenderPost::validate
+    /// implementation of [`SenderLedger`]. This is to prevent that [`spend`](Self::spend) is
+    /// called before [`is_unspent`](Self::is_unspent) and
+    /// [`is_valid_utxo_state`](Self::is_valid_utxo_state).
     type ValidVoidNumber;
 
     /// Valid Utxo State Posting Key
@@ -1114,12 +1112,11 @@ where
     /// # Safety
     ///
     /// This type must be some wrapper around [`S::Public`] which can only be constructed by this
-    /// implementation of [`SenderLedger`]. This is to prevent that [`post`] is called before
-    /// [`validate`].
+    /// implementation of [`SenderLedger`]. This is to prevent that [`spend`](Self::spend) is
+    /// called before [`is_unspent`](Self::is_unspent) and
+    /// [`is_valid_utxo_state`](Self::is_valid_utxo_state).
     ///
     /// [`S::Public`]: VerifiedSet::Public
-    /// [`post`]: SenderPostingKey::post
-    /// [`validate`]: SenderPost::validate
     type ValidUtxoState;
 
     /// Super Posting Key
@@ -1143,7 +1140,7 @@ where
     ///
     /// Failure to match the ledger state means that the sender was constructed under an invalid or
     /// older state of the ledger.
-    fn has_same_utxo_state(
+    fn is_valid_utxo_state(
         &self,
         public_input: S::Public,
     ) -> Result<Option<Self::ValidUtxoState>, Self::Error>;
@@ -1228,7 +1225,7 @@ where
                 _ => return Err(SenderPostError::AssetSpent),
             },
             utxo_containment_proof_public_input: match ledger
-                .has_same_utxo_state(self.utxo_containment_proof_public_input)
+                .is_valid_utxo_state(self.utxo_containment_proof_public_input)
                 .map_err(SenderPostError::LedgerError)?
             {
                 Some(key) => key,
@@ -1354,11 +1351,8 @@ where
     /// # Safety
     ///
     /// This type must be some wrapper around [`Utxo`] which can only be constructed by this
-    /// implementation of [`ReceiverLedger`]. This is to prevent that [`post`] is called
-    /// before [`validate`].
-    ///
-    /// [`post`]: ReceiverPostingKey::post
-    /// [`validate`]: ReceiverPost::validate
+    /// implementation of [`ReceiverLedger`]. This is to prevent that [`register`](Self::register)
+    /// is called before [`is_not_registered`](Self::is_not_registered).
     type ValidUtxo;
 
     /// Super Posting Key

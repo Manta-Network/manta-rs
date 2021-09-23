@@ -17,22 +17,16 @@
 //! Transfer Implementations
 
 use crate::accounting::config::Configuration;
-use manta_accounting::transfer::canonical;
+use manta_accounting::transfer::{self, canonical};
 
 /// Mint Transaction Type
 pub type Mint = canonical::Mint<Configuration>;
 
-/// Mint Transaction Post Type
-pub type MintPost = canonical::MintPost<Configuration>;
-
 /// Private Transfer Transaction Type
 pub type PrivateTransfer = canonical::PrivateTransfer<Configuration>;
-
-/// Private Transfer Transaction Post Type
-pub type PrivateTransferPost = canonical::PrivateTransferPost<Configuration>;
 
 /// Reclaim Transaction Type
 pub type Reclaim = canonical::Reclaim<Configuration>;
 
-/// Reclaim Transaction Post Type
-pub type ReclaimPost = canonical::ReclaimPost<Configuration>;
+/// Transfer Post Type
+pub type TransferPost = transfer::TransferPost<Configuration>;

@@ -18,25 +18,28 @@
 
 // TODO: How to manage accounts? Wallet should have a fixed account or not?
 // TODO: Is recovery different than just building a fresh `Wallet` instance?
-// TODO: Add encrypt-to-disk and decrypt-from-disk methods to save the wallet state.
 // TODO: Add query builder for encrypted asset search (internal/external, gap_limit, start_index)
+// TODO: Merge `AssetMap` and `LocalLedger` into one container and have it query `LedgerSource`
+//       instead of `Wallet`. Then `Wallet` just has access to local ledger (also async).
+//       Have then a "light wallet" which is just `Wallet` and a "heavy wallet" where the
+//       local ledger and asset map are built-in to it.
 
 use crate::{
     asset::{Asset, AssetBalance, AssetId},
     fs::{Load, Save},
     identity::{
         self, AssetParameters, Identity, InternalReceiver, InternalReceiverError, OpenSpend,
-        ShieldedIdentity,
+        ShieldedIdentity, Utxo, VoidNumber,
     },
     keys::{self, DerivedSecretKeyGenerator, ExternalKeys, InternalKeys, KeyKind},
     transfer::{
         self,
         canonical::{Mint, PrivateTransfer, Reclaim},
-        IntegratedEncryptionSchemeError,
+        EncryptedAsset, IntegratedEncryptionSchemeError, TransferPost,
     },
 };
 use alloc::vec::Vec;
-use core::{convert::Infallible, fmt::Debug, hash::Hash};
+use core::{convert::Infallible, fmt::Debug, future::Future, hash::Hash};
 use manta_crypto::ies::{EncryptedMessage, IntegratedEncryptionScheme};
 use rand::{
     distributions::{Distribution, Standard},
@@ -126,11 +129,94 @@ pub trait AssetMap {
     }
 }
 
+/// Ledger Source
+pub trait LedgerSource<C>
+where
+    C: transfer::Configuration,
+{
+    /// Sync Future Type
+    ///
+    /// Future for the [`sync`](Self::sync) method.
+    type SyncFuture: Future<Output = Result<SyncResponse<C, Self>, Self::Error>>;
+
+    /// Send Future Type
+    ///
+    /// Future for the [`send`](Self::send) method.
+    type SendFuture: Future<Output = Result<SendResponse<C, Self>, Self::Error>>;
+
+    /// Ledger State Checkpoint Type
+    type Checkpoint: Default + Ord;
+
+    /// Error Type
+    type Error;
+
+    /// Pulls data from the ledger starting from `checkpoint`, returning the current
+    /// [`Checkpoint`](Self::Checkpoint).
+    fn sync(&self, checkpoint: &Self::Checkpoint) -> Self::SyncFuture;
+
+    /// Pulls all of the data from the entire history of the ledger, returning the current
+    /// [`Checkpoint`](Self::Checkpoint).
+    #[inline]
+    fn sync_all(&self) -> Self::SyncFuture {
+        self.sync(&Default::default())
+    }
+
+    /// Sends `transfers` to the ledger, returning the current [`Checkpoint`](Self::Checkpoint)
+    /// and the status of the transfers.
+    fn send(&self, transfers: Vec<TransferPost<C>>) -> Self::SendFuture;
+}
+
+/// Ledger Source Sync Response
+///
+/// This `struct` is created by the [`sync`](LedgerSource::sync) method on [`LedgerSource`].
+/// See its documentation for more.
+pub struct SyncResponse<C, LS>
+where
+    C: transfer::Configuration,
+    LS: LedgerSource<C> + ?Sized,
+{
+    /// Current Ledger Checkpoint
+    pub checkpoint: LS::Checkpoint,
+
+    /// New Void Numbers
+    pub void_numbers: Vec<VoidNumber<C>>,
+
+    /// New UTXOS
+    pub utxos: Vec<Utxo<C>>,
+
+    /// New Encrypted Assets
+    pub encrypted_assets: Vec<EncryptedAsset<C>>,
+}
+
+/// Ledger Source Send Response
+///
+/// This `struct` is created by the [`send`](LedgerSource::send) method on [`LedgerSource`].
+/// See its documentation for more.
+pub struct SendResponse<C, LS>
+where
+    C: transfer::Configuration,
+    LS: LedgerSource<C> + ?Sized,
+{
+    /// Current Ledger Checkpoint
+    pub checkpoint: LS::Checkpoint,
+
+    /// Ledger Responses
+    // FIXME: Design responses.
+    pub responses: Vec<bool>,
+}
+
+/// Local Ledger
+pub trait LocalLedger {
+    /// Ledger State Checkpoint Type
+    type Checkpoint: Default + Ord;
+}
+
 /// Wallet
-pub struct Wallet<D, M>
+pub struct Wallet<D, M, LL>
 where
     D: DerivedSecretKeyGenerator,
     M: AssetMap,
+    LL: LocalLedger,
 {
     /// Secret Key Source
     secret_key_source: D,
@@ -149,12 +235,16 @@ where
 
     /// Secret Asset Map
     secret_assets: M,
+
+    /// Local Ledger Checkpoint
+    checkpoint: LL::Checkpoint,
 }
 
-impl<D, M> Wallet<D, M>
+impl<D, M, LL> Wallet<D, M, LL>
 where
     D: DerivedSecretKeyGenerator,
     M: AssetMap,
+    LL: LocalLedger,
 {
     /// Builds a new [`Wallet`] for `account` from a `secret_key_source`.
     #[inline]
@@ -186,6 +276,7 @@ where
             internal_index: Default::default(),
             public_assets,
             secret_assets,
+            checkpoint: Default::default(),
         }
     }
 
@@ -328,11 +419,12 @@ where
         None
     }
 
-    /* TODO:
-    /// Updates `self` with new information from the ledger.
-    pub fn pull_updates<L>(&mut self, ledger: &L)
+    /// Synchronize `self` with the `ledger`.
+    #[inline]
+    pub async fn sync<C, LS>(&mut self, ledger: &LS) -> Result<(), LS::Error>
     where
-        L: Ledger,
+        C: transfer::Configuration,
+        LS: LedgerSource<C, Checkpoint = LL::Checkpoint> + ?Sized,
     {
         // TODO: Pull updates from the ledger:
         //         1. Download the new encrypted notes and try to decrypt them using the latest
@@ -346,10 +438,19 @@ where
         //       send/recv messages to/from it, i.e. the `Ledger` abstraction may not be correct,
         //       it may have to be a different trait or two traits.
 
-        let _ = ledger;
+        let SyncResponse {
+            checkpoint,
+            void_numbers,
+            utxos,
+            encrypted_assets,
+        } = ledger.sync(&self.checkpoint).await?;
+
+        let _ = (void_numbers, utxos, encrypted_assets);
+
+        self.checkpoint = checkpoint;
+
         todo!()
     }
-    */
 
     /// Generates a new [`ShieldedIdentity`] to receive assets to this wallet via an external
     /// transaction.
@@ -390,16 +491,16 @@ where
 
     /// Builds a [`Mint`] transaction to mint `asset` and returns the [`OpenSpend`] for that asset.
     #[inline]
-    pub fn mint<T, R>(
+    pub fn mint<C, R>(
         &mut self,
-        commitment_scheme: &T::CommitmentScheme,
+        commitment_scheme: &C::CommitmentScheme,
         asset: Asset,
         rng: &mut R,
-    ) -> Result<(Mint<T>, OpenSpend<T>), MintError<D, T>>
+    ) -> Result<(Mint<C>, OpenSpend<C>), MintError<D, C>>
     where
-        T: transfer::Configuration<SecretKey = D::SecretKey>,
+        C: transfer::Configuration<SecretKey = D::SecretKey>,
         R: CryptoRng + RngCore + ?Sized,
-        Standard: Distribution<AssetParameters<T>>,
+        Standard: Distribution<AssetParameters<C>>,
     {
         Mint::from_identity(
             self.next_internal_identity()
@@ -413,15 +514,15 @@ where
 
     /// TODO: Builds [`PrivateTransfer`] transactions to send `asset` to an `external_receiver`.
     #[inline]
-    pub fn batch_private_transfer_external<T, R>(
+    pub fn batch_private_transfer_external<C, R>(
         &self,
-        commitment_scheme: &T::CommitmentScheme,
+        commitment_scheme: &C::CommitmentScheme,
         asset: Asset,
-        external_receiver: ShieldedIdentity<T, T::IntegratedEncryptionScheme>,
+        external_receiver: ShieldedIdentity<C, C::IntegratedEncryptionScheme>,
         rng: &mut R,
-    ) -> Option<Vec<PrivateTransfer<T>>>
+    ) -> Option<Vec<PrivateTransfer<C>>>
     where
-        T: transfer::Configuration,
+        C: transfer::Configuration,
         R: CryptoRng + RngCore + ?Sized,
     {
         // TODO: spec:
@@ -436,14 +537,14 @@ where
 
     /// TODO: Builds a [`Reclaim`] transaction.
     #[inline]
-    pub fn reclaim<T, R>(
+    pub fn reclaim<C, R>(
         &self,
-        commitment_scheme: &T::CommitmentScheme,
+        commitment_scheme: &C::CommitmentScheme,
         asset: Asset,
         rng: &mut R,
-    ) -> Option<Reclaim<T>>
+    ) -> Option<Reclaim<C>>
     where
-        T: transfer::Configuration,
+        C: transfer::Configuration,
         R: CryptoRng + RngCore + ?Sized,
     {
         let _ = (commitment_scheme, asset, rng);
@@ -452,10 +553,11 @@ where
     }
 }
 
-impl<D, M> Load for Wallet<D, M>
+impl<D, M, LL> Load for Wallet<D, M, LL>
 where
     D: DerivedSecretKeyGenerator + Load,
     M: AssetMap + Default,
+    LL: LocalLedger,
 {
     type Path = D::Path;
 
@@ -472,10 +574,11 @@ where
     }
 }
 
-impl<D, M> Save for Wallet<D, M>
+impl<D, M, LL> Save for Wallet<D, M, LL>
 where
     D: DerivedSecretKeyGenerator + Save,
     M: AssetMap + Default,
+    LL: LocalLedger,
 {
     type Path = D::Path;
 
@@ -500,21 +603,21 @@ where
 /// [`mint`]: Wallet::mint
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "D::Error: Clone, IntegratedEncryptionSchemeError<T>: Clone"),
-    Copy(bound = "D::Error: Copy, IntegratedEncryptionSchemeError<T>: Copy"),
-    Debug(bound = "D::Error: Debug, IntegratedEncryptionSchemeError<T>: Debug"),
-    Eq(bound = "D::Error: Eq, IntegratedEncryptionSchemeError<T>: Eq"),
-    Hash(bound = "D::Error: Hash, IntegratedEncryptionSchemeError<T>: Hash"),
-    PartialEq(bound = "D::Error: PartialEq, IntegratedEncryptionSchemeError<T>: PartialEq")
+    Clone(bound = "D::Error: Clone, IntegratedEncryptionSchemeError<C>: Clone"),
+    Copy(bound = "D::Error: Copy, IntegratedEncryptionSchemeError<C>: Copy"),
+    Debug(bound = "D::Error: Debug, IntegratedEncryptionSchemeError<C>: Debug"),
+    Eq(bound = "D::Error: Eq, IntegratedEncryptionSchemeError<C>: Eq"),
+    Hash(bound = "D::Error: Hash, IntegratedEncryptionSchemeError<C>: Hash"),
+    PartialEq(bound = "D::Error: PartialEq, IntegratedEncryptionSchemeError<C>: PartialEq")
 )]
-pub enum MintError<D, T>
+pub enum MintError<D, C>
 where
     D: DerivedSecretKeyGenerator,
-    T: transfer::Configuration,
+    C: transfer::Configuration,
 {
     /// Secret Key Generator Error
     SecretKeyError(D::Error),
 
     /// Encryption Error
-    EncryptionError(IntegratedEncryptionSchemeError<T>),
+    EncryptionError(IntegratedEncryptionSchemeError<C>),
 }
