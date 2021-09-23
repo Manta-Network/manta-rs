@@ -29,7 +29,6 @@ use crate::{
         ShieldedIdentity,
     },
     keys::{self, DerivedSecretKeyGenerator, ExternalKeys, InternalKeys, KeyKind},
-    ledger::Ledger,
     transfer::{
         self,
         canonical::{Mint, PrivateTransfer, Reclaim},
@@ -329,6 +328,7 @@ where
         None
     }
 
+    /* TODO:
     /// Updates `self` with new information from the ledger.
     pub fn pull_updates<L>(&mut self, ledger: &L)
     where
@@ -349,6 +349,7 @@ where
         let _ = ledger;
         todo!()
     }
+    */
 
     /// Generates a new [`ShieldedIdentity`] to receive assets to this wallet via an external
     /// transaction.

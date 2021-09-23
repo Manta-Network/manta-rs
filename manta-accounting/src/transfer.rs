@@ -16,16 +16,18 @@
 
 //! Transfer Protocols
 
+// TODO: See if we can get rid of the `Copy` restriction on `ValidProof` and `SuperPostingKey`.
+// TODO: Add `generate_context`/`generate_proof` logic to `SecretTransfer`.
+// TODO: Have a compile-time way to check if proof generation is used for a certain shape,
+//       so that the `generate_context`/`generate_proof` functions can only exist on the right
+//       shape implementations, instead of failing at runtime with `None`.
+
 use crate::{
     asset::{sample_asset_balances, Asset, AssetBalance, AssetBalances, AssetId},
-    identity::{self, constraint::UtxoVar, Utxo, VoidNumber},
-    ledger::{Ledger, PostError},
+    identity::{self, constraint::UtxoVar, ReceiverLedger, SenderLedger, Utxo},
 };
 use alloc::vec::Vec;
-use core::{
-    convert::{TryFrom, TryInto},
-    ops::AddAssign,
-};
+use core::{fmt::Debug, hash::Hash, ops::AddAssign};
 use manta_crypto::{
     constraint::{
         self,
@@ -36,7 +38,7 @@ use manta_crypto::{
     ies::{EncryptedMessage, IntegratedEncryptionScheme},
     set::{constraint::VerifiedSetVariable, VerifiedSet},
 };
-use manta_util::{array_map, mixed_chain, Either};
+use manta_util::{array_map, fallible_array_map, mixed_chain, Either};
 use rand::{
     distributions::{Distribution, Standard},
     CryptoRng, RngCore,
@@ -180,59 +182,135 @@ pub trait Configuration:
 }
 
 /// Transfer Shielded Identity Type
-pub type ShieldedIdentity<T> =
-    identity::ShieldedIdentity<T, <T as Configuration>::IntegratedEncryptionScheme>;
+pub type ShieldedIdentity<C> =
+    identity::ShieldedIdentity<C, <C as Configuration>::IntegratedEncryptionScheme>;
 
 /// Transfer Spend Type
-pub type Spend<T> = identity::Spend<T, <T as Configuration>::IntegratedEncryptionScheme>;
+pub type Spend<C> = identity::Spend<C, <C as Configuration>::IntegratedEncryptionScheme>;
 
 /// Transfer Sender Type
-pub type Sender<T> = identity::Sender<T, <T as Configuration>::UtxoSet>;
+pub type Sender<C> = identity::Sender<C, <C as Configuration>::UtxoSet>;
+
+/// Sender Post Type
+pub type SenderPost<C> = identity::SenderPost<C, <C as Configuration>::UtxoSet>;
+
+/// Sender Post Error Type
+pub type SenderPostError<C, L> = identity::SenderPostError<C, <C as Configuration>::UtxoSet, L>;
+
+/// Sender Posting Key Type
+pub type SenderPostingKey<C, L> = identity::SenderPostingKey<C, <C as Configuration>::UtxoSet, L>;
 
 /// Transfer Receiver Type
-pub type Receiver<T> = identity::Receiver<T, <T as Configuration>::IntegratedEncryptionScheme>;
+pub type Receiver<C> = identity::Receiver<C, <C as Configuration>::IntegratedEncryptionScheme>;
 
-/// Transfer Integrated Encryption Scheme Error
-pub type IntegratedEncryptionSchemeError<T> =
-    <<T as Configuration>::IntegratedEncryptionScheme as IntegratedEncryptionScheme>::Error;
+/// Receiver Post Type
+pub type ReceiverPost<C> =
+    identity::ReceiverPost<C, <C as Configuration>::IntegratedEncryptionScheme>;
+
+/// Receiver Post Error Type
+pub type ReceiverPostError<C, L> =
+    identity::ReceiverPostError<C, <C as Configuration>::IntegratedEncryptionScheme, L>;
+
+/// Receiver Posting Key Type
+pub type ReceiverPostingKey<C, L> =
+    identity::ReceiverPostingKey<C, <C as Configuration>::IntegratedEncryptionScheme, L>;
+
+/// Transfer Encrypted Asset Type
+pub type EncryptedAsset<C> = EncryptedMessage<<C as Configuration>::IntegratedEncryptionScheme>;
+
+/// Transfer Integrated Encryption Scheme Error Type
+pub type IntegratedEncryptionSchemeError<C> =
+    <<C as Configuration>::IntegratedEncryptionScheme as IntegratedEncryptionScheme>::Error;
 
 /// Transfer Constraint System Type
-pub type ConstraintSystem<T> = <T as Configuration>::ConstraintSystem;
+pub type ConstraintSystem<C> = <C as Configuration>::ConstraintSystem;
 
 /// Transfer Sender Variable Type
-pub type SenderVar<T> = identity::constraint::SenderVar<T, <T as Configuration>::UtxoSet>;
+pub type SenderVar<C> = identity::constraint::SenderVar<C, <C as Configuration>::UtxoSet>;
 
 /// Transfer Receiver Type
-pub type ReceiverVar<T> =
-    identity::constraint::ReceiverVar<T, <T as Configuration>::IntegratedEncryptionScheme>;
+pub type ReceiverVar<C> =
+    identity::constraint::ReceiverVar<C, <C as Configuration>::IntegratedEncryptionScheme>;
 
 /// Transfer Proving Context Type
-pub type ProvingContext<T> = <<T as Configuration>::ProofSystem as ProofSystem>::ProvingContext;
+pub type ProvingContext<C> = <<C as Configuration>::ProofSystem as ProofSystem>::ProvingContext;
 
 /// Transfer Verifying Context Type
-pub type VerifyingContext<T> = <<T as Configuration>::ProofSystem as ProofSystem>::VerifyingContext;
+pub type VerifyingContext<C> = <<C as Configuration>::ProofSystem as ProofSystem>::VerifyingContext;
 
 /// Transfer Proof Type
-pub type Proof<T> = <<T as Configuration>::ProofSystem as ProofSystem>::Proof;
+pub type Proof<C> = <<C as Configuration>::ProofSystem as ProofSystem>::Proof;
 
 /// Transfer Proof System Error Type
-pub type ProofSystemError<T> = <<T as Configuration>::ProofSystem as ProofSystem>::Error;
+pub type ProofSystemError<C> = <<C as Configuration>::ProofSystem as ProofSystem>::Error;
 
-/// Secret Transfer Protocol
-pub struct SecretTransfer<T, const SENDERS: usize, const RECEIVERS: usize>
+/// Transfer Ledger Super Posting Key Type
+pub type TransferLedgerSuperPostingKey<C, L> = <L as TransferLedger<C>>::SuperPostingKey;
+
+/// Transfer Ledger Error Type
+pub type TransferLedgerError<C, L> = <L as TransferLedger<C>>::Error;
+
+/// Transfer Ledger
+pub trait TransferLedger<C>:
+    SenderLedger<
+        C,
+        C::UtxoSet,
+        SuperPostingKey = (Self::ValidProof, TransferLedgerSuperPostingKey<C, Self>),
+        Error = TransferLedgerError<C, Self>,
+    > + ReceiverLedger<
+        C,
+        C::IntegratedEncryptionScheme,
+        SuperPostingKey = (Self::ValidProof, TransferLedgerSuperPostingKey<C, Self>),
+        Error = TransferLedgerError<C, Self>,
+    >
 where
-    T: Configuration,
+    C: Configuration,
 {
-    /// Senders
-    pub senders: [Sender<T>; SENDERS],
+    /// Valid [`Proof`] Posting Key
+    ///
+    /// # Safety
+    ///
+    /// This type must be restricted so that it can only be constructed by this implementation
+    /// of [`TransferLedger`]. This is to prevent that [`SenderPostingKey::post`] and
+    /// [`ReceiverPostingKey::post`] are called before [`is_valid`](Self::is_valid),
+    /// [`SenderPost::validate`], and [`ReceiverPost::validate`].
+    type ValidProof: Copy;
 
-    /// Receivers
-    pub receivers: [Receiver<T>; RECEIVERS],
+    /// Super Posting Key
+    ///
+    /// Type that allows super-traits of [`TransferLedger`] to customize posting key behavior.
+    type SuperPostingKey: Copy;
+
+    /// Ledger Error
+    type Error;
+
+    /// Checks that the transfer proof is valid.
+    ///
+    /// # Implementation Note
+    ///
+    /// This should always succeed on `None` inputs which correspond to transfers which do not
+    /// require a validation proof.
+    fn is_valid(
+        &self,
+        proof: Option<Proof<C>>,
+    ) -> Result<Option<Self::ValidProof>, TransferLedgerError<C, Self>>;
 }
 
-impl<T, const SENDERS: usize, const RECEIVERS: usize> SecretTransfer<T, SENDERS, RECEIVERS>
+/// Secret Transfer Protocol
+pub struct SecretTransfer<C, const SENDERS: usize, const RECEIVERS: usize>
 where
-    T: Configuration,
+    C: Configuration,
+{
+    /// Senders
+    pub senders: [Sender<C>; SENDERS],
+
+    /// Receivers
+    pub receivers: [Receiver<C>; RECEIVERS],
+}
+
+impl<C, const SENDERS: usize, const RECEIVERS: usize> SecretTransfer<C, SENDERS, RECEIVERS>
+where
+    C: Configuration,
 {
     /// Maximum Number of Senders
     pub const MAXIMUM_SENDER_COUNT: usize = 32;
@@ -242,7 +320,7 @@ where
 
     /// Builds a new [`SecretTransfer`].
     #[inline]
-    pub fn new(senders: [Sender<T>; SENDERS], receivers: [Receiver<T>; RECEIVERS]) -> Self {
+    pub fn new(senders: [Sender<C>; SENDERS], receivers: [Receiver<C>; RECEIVERS]) -> Self {
         Self::check_sender_side();
         Self::check_receiver_side();
         Self::check_size_overflow();
@@ -282,7 +360,7 @@ where
 
     /// Builds a new [`SecretTransfer`] without checking the number of senders and receivers.
     #[inline]
-    fn new_unchecked(senders: [Sender<T>; SENDERS], receivers: [Receiver<T>; RECEIVERS]) -> Self {
+    fn new_unchecked(senders: [Sender<C>; SENDERS], receivers: [Receiver<C>; RECEIVERS]) -> Self {
         Self { senders, receivers }
     }
 
@@ -326,31 +404,25 @@ where
     #[inline]
     pub fn into_post<R>(
         self,
-        commitment_scheme: &T::CommitmentScheme,
-        utxo_set: &T::UtxoSet,
-        context: &ProvingContext<T>,
+        commitment_scheme: &C::CommitmentScheme,
+        utxo_set: &C::UtxoSet,
+        context: &ProvingContext<C>,
         rng: &mut R,
-    ) -> Result<SecretTransferPost<T, SENDERS, RECEIVERS>, ProofSystemError<T>>
+    ) -> Result<TransferPost<C, 0, SENDERS, RECEIVERS, 0>, ProofSystemError<C>>
     where
         R: CryptoRng + RngCore + ?Sized,
     {
-        match Transfer::from(self)
-            .into_post(commitment_scheme, utxo_set, context, rng)?
-            .try_into()
-        {
-            Ok(post) => Ok(post),
-            _ => unreachable!("We convert there and back so we know that the proof exists."),
-        }
+        Transfer::from(self).into_post(commitment_scheme, utxo_set, context, rng)
     }
 }
 
-impl<T, const SENDERS: usize, const RECEIVERS: usize> From<SecretTransfer<T, SENDERS, RECEIVERS>>
-    for Transfer<T, 0, SENDERS, RECEIVERS, 0>
+impl<C, const SENDERS: usize, const RECEIVERS: usize> From<SecretTransfer<C, SENDERS, RECEIVERS>>
+    for Transfer<C, 0, SENDERS, RECEIVERS, 0>
 where
-    T: Configuration,
+    C: Configuration,
 {
     #[inline]
-    fn from(transfer: SecretTransfer<T, SENDERS, RECEIVERS>) -> Self {
+    fn from(transfer: SecretTransfer<C, SENDERS, RECEIVERS>) -> Self {
         Self {
             public: Default::default(),
             secret: transfer,
@@ -358,114 +430,40 @@ where
     }
 }
 
-/// Sender Post Type
-pub type SenderPost<T> = identity::SenderPost<T, <T as Configuration>::UtxoSet>;
-
-/// Receiver Post Type
-pub type ReceiverPost<T> =
-    identity::ReceiverPost<T, <T as Configuration>::IntegratedEncryptionScheme>;
-
-/// Secret Transfer Post
-pub struct SecretTransferPost<T, const SENDERS: usize, const RECEIVERS: usize>
-where
-    T: Configuration,
-{
-    /// Sender Posts
-    pub sender_posts: [SenderPost<T>; SENDERS],
-
-    /// Receiver Posts
-    pub receiver_posts: [ReceiverPost<T>; RECEIVERS],
-
-    /// Validity Proof
-    pub validity_proof: Proof<T>,
-}
-
-impl<T, const SENDERS: usize, const RECEIVERS: usize> SecretTransferPost<T, SENDERS, RECEIVERS>
-where
-    T: Configuration,
-{
-    /// Posts the [`SecretTransferPost`] to the `ledger`.
-    #[inline]
-    pub fn post<L>(self, ledger: &mut L) -> Result<(), PostError<L>>
-    where
-        L: Ledger<
-                VoidNumber = VoidNumber<T>,
-                Utxo = Utxo<T>,
-                UtxoSet = T::UtxoSet,
-                EncryptedAsset = EncryptedMessage<T::IntegratedEncryptionScheme>,
-                ProofSystem = T::ProofSystem,
-            > + ?Sized,
-    {
-        TransferPost::from(self).post(ledger)
-    }
-}
-
-impl<T, const SENDERS: usize, const RECEIVERS: usize>
-    From<SecretTransferPost<T, SENDERS, RECEIVERS>> for TransferPost<T, 0, SENDERS, RECEIVERS, 0>
-where
-    T: Configuration,
-{
-    #[inline]
-    fn from(post: SecretTransferPost<T, SENDERS, RECEIVERS>) -> Self {
-        Self {
-            sender_posts: post.sender_posts,
-            receiver_posts: post.receiver_posts,
-            validity_proof: Some(post.validity_proof),
-        }
-    }
-}
-
-impl<T, const SENDERS: usize, const RECEIVERS: usize>
-    TryFrom<TransferPost<T, 0, SENDERS, RECEIVERS, 0>> for SecretTransferPost<T, SENDERS, RECEIVERS>
-where
-    T: Configuration,
-{
-    type Error = ();
-
-    #[inline]
-    fn try_from(post: TransferPost<T, 0, SENDERS, RECEIVERS, 0>) -> Result<Self, Self::Error> {
-        Ok(Self {
-            sender_posts: post.sender_posts,
-            receiver_posts: post.receiver_posts,
-            validity_proof: post.validity_proof.ok_or(())?,
-        })
-    }
-}
-
 /// Transfer Protocol
 pub struct Transfer<
-    T,
+    C,
     const SOURCES: usize,
     const SENDERS: usize,
     const RECEIVERS: usize,
     const SINKS: usize,
 > where
-    T: Configuration,
+    C: Configuration,
 {
     /// Public Part of the Transfer
     public: PublicTransfer<SOURCES, SINKS>,
 
     /// Secret Part of the Transfer
-    secret: SecretTransfer<T, SENDERS, RECEIVERS>,
+    secret: SecretTransfer<C, SENDERS, RECEIVERS>,
 }
 
-impl<T, const SOURCES: usize, const SENDERS: usize, const RECEIVERS: usize, const SINKS: usize>
-    Transfer<T, SOURCES, SENDERS, RECEIVERS, SINKS>
+impl<C, const SOURCES: usize, const SENDERS: usize, const RECEIVERS: usize, const SINKS: usize>
+    Transfer<C, SOURCES, SENDERS, RECEIVERS, SINKS>
 where
-    T: Configuration,
+    C: Configuration,
 {
     /// Builds a new universal [`Transfer`] from public and secret information.
     #[inline]
     pub fn new(
         asset_id: AssetId,
         sources: AssetBalances<SOURCES>,
-        senders: [Sender<T>; SENDERS],
-        receivers: [Receiver<T>; RECEIVERS],
+        senders: [Sender<C>; SENDERS],
+        receivers: [Receiver<C>; RECEIVERS],
         sinks: AssetBalances<SINKS>,
     ) -> Self {
         Self::check_sender_side();
         Self::check_receiver_side();
-        SecretTransfer::<T, SENDERS, RECEIVERS>::check_size_overflow();
+        SecretTransfer::<C, SENDERS, RECEIVERS>::check_size_overflow();
         Self::new_unchecked(asset_id, sources, senders, receivers, sinks)
     }
 
@@ -491,8 +489,8 @@ where
     fn new_unchecked(
         asset_id: AssetId,
         sources: AssetBalances<SOURCES>,
-        senders: [Sender<T>; SENDERS],
-        receivers: [Receiver<T>; RECEIVERS],
+        senders: [Sender<C>; SENDERS],
+        receivers: [Receiver<C>; RECEIVERS],
         sinks: AssetBalances<SINKS>,
     ) -> Self {
         Self {
@@ -544,14 +542,14 @@ where
     /// Generates the unknown variables for the validity proof.
     #[inline]
     fn unknown_variables(
-        commitment_scheme: &T::CommitmentScheme,
-        utxo_set: &T::UtxoSet,
-        cs: &mut ConstraintSystem<T>,
+        commitment_scheme: &C::CommitmentScheme,
+        utxo_set: &C::UtxoSet,
+        cs: &mut ConstraintSystem<C>,
     ) -> (
-        Option<T::AssetIdVar>,
-        TransferParticipantsVar<T, SOURCES, SENDERS, RECEIVERS, SINKS>,
-        T::CommitmentSchemeVar,
-        T::UtxoSetVar,
+        Option<C::AssetIdVar>,
+        TransferParticipantsVar<C, SOURCES, SENDERS, RECEIVERS, SINKS>,
+        C::CommitmentSchemeVar,
+        C::UtxoSetVar,
     ) {
         let base_asset_id = if has_no_public_side::<SOURCES, SENDERS, RECEIVERS, SINKS>() {
             None
@@ -559,7 +557,7 @@ where
             Some(())
         };
         (
-            base_asset_id.map(|_| T::AssetIdVar::new_unknown(cs, Public)),
+            base_asset_id.map(|_| C::AssetIdVar::new_unknown(cs, Public)),
             TransferParticipantsVar::new_unknown(cs, Derived),
             commitment_scheme.as_known(cs, Public),
             utxo_set.as_known(cs, Public),
@@ -570,14 +568,14 @@ where
     #[inline]
     fn known_variables(
         &self,
-        commitment_scheme: &T::CommitmentScheme,
-        utxo_set: &T::UtxoSet,
-        cs: &mut ConstraintSystem<T>,
+        commitment_scheme: &C::CommitmentScheme,
+        utxo_set: &C::UtxoSet,
+        cs: &mut ConstraintSystem<C>,
     ) -> (
-        Option<T::AssetIdVar>,
-        TransferParticipantsVar<T, SOURCES, SENDERS, RECEIVERS, SINKS>,
-        T::CommitmentSchemeVar,
-        T::UtxoSetVar,
+        Option<C::AssetIdVar>,
+        TransferParticipantsVar<C, SOURCES, SENDERS, RECEIVERS, SINKS>,
+        C::CommitmentSchemeVar,
+        C::UtxoSetVar,
     ) {
         (
             self.public.asset_id.map(|id| id.as_known(cs, Public)),
@@ -590,14 +588,14 @@ where
     /// Builds constraints for transfer validity proof/verifier.
     #[inline]
     fn build_constraints(
-        base_asset_id: Option<T::AssetIdVar>,
-        participants: TransferParticipantsVar<T, SOURCES, SENDERS, RECEIVERS, SINKS>,
-        commitment_scheme: T::CommitmentSchemeVar,
-        utxo_set: T::UtxoSetVar,
-        cs: &mut ConstraintSystem<T>,
+        base_asset_id: Option<C::AssetIdVar>,
+        participants: TransferParticipantsVar<C, SOURCES, SENDERS, RECEIVERS, SINKS>,
+        commitment_scheme: C::CommitmentSchemeVar,
+        utxo_set: C::UtxoSetVar,
+        cs: &mut ConstraintSystem<C>,
     ) {
-        let mut sender_sum = T::AssetBalanceVar::from_default(cs, Secret);
-        let mut receiver_sum = T::AssetBalanceVar::from_default(cs, Secret);
+        let mut sender_sum = C::AssetBalanceVar::from_default(cs, Secret);
+        let mut receiver_sum = C::AssetBalanceVar::from_default(cs, Secret);
 
         participants
             .sources
@@ -642,17 +640,17 @@ where
     #[allow(clippy::type_complexity)] // FIXME: We will have to refactor this at some point.
     #[inline]
     pub fn generate_context<R>(
-        commitment_scheme: &T::CommitmentScheme,
-        utxo_set: &T::UtxoSet,
+        commitment_scheme: &C::CommitmentScheme,
+        utxo_set: &C::UtxoSet,
         rng: &mut R,
-    ) -> Option<Result<(ProvingContext<T>, VerifyingContext<T>), ProofSystemError<T>>>
+    ) -> Option<Result<(ProvingContext<C>, VerifyingContext<C>), ProofSystemError<C>>>
     where
         R: CryptoRng + RngCore + ?Sized,
     {
         if SENDERS == 0 {
             return None;
         }
-        let mut cs = T::ProofSystem::for_unknown();
+        let mut cs = C::ProofSystem::for_unknown();
         let (base_asset_id, participants, commitment_scheme, utxo_set) =
             Self::unknown_variables(commitment_scheme, utxo_set, &mut cs);
         Self::build_constraints(
@@ -662,7 +660,7 @@ where
             utxo_set,
             &mut cs,
         );
-        Some(T::ProofSystem::generate_context(cs, rng))
+        Some(C::ProofSystem::generate_context(cs, rng))
     }
 
     /// Generates a validity proof for this transfer.
@@ -671,18 +669,18 @@ where
     #[inline]
     pub fn generate_proof<R>(
         &self,
-        commitment_scheme: &T::CommitmentScheme,
-        utxo_set: &T::UtxoSet,
-        context: &ProvingContext<T>,
+        commitment_scheme: &C::CommitmentScheme,
+        utxo_set: &C::UtxoSet,
+        context: &ProvingContext<C>,
         rng: &mut R,
-    ) -> Option<Result<Proof<T>, ProofSystemError<T>>>
+    ) -> Option<Result<Proof<C>, ProofSystemError<C>>>
     where
         R: CryptoRng + RngCore + ?Sized,
     {
         if SENDERS == 0 {
             return None;
         }
-        let mut cs = T::ProofSystem::for_known();
+        let mut cs = C::ProofSystem::for_known();
         let (base_asset_id, participants, commitment_scheme, utxo_set) =
             self.known_variables(commitment_scheme, utxo_set, &mut cs);
         Self::build_constraints(
@@ -692,18 +690,18 @@ where
             utxo_set,
             &mut cs,
         );
-        Some(T::ProofSystem::generate_proof(cs, context, rng))
+        Some(C::ProofSystem::generate_proof(cs, context, rng))
     }
 
     /// Converts `self` into its ledger post.
     #[inline]
     pub fn into_post<R>(
         self,
-        commitment_scheme: &T::CommitmentScheme,
-        utxo_set: &T::UtxoSet,
-        context: &ProvingContext<T>,
+        commitment_scheme: &C::CommitmentScheme,
+        utxo_set: &C::UtxoSet,
+        context: &ProvingContext<C>,
         rng: &mut R,
-    ) -> Result<TransferPost<T, SOURCES, SENDERS, RECEIVERS, SINKS>, ProofSystemError<T>>
+    ) -> Result<TransferPost<C, SOURCES, SENDERS, RECEIVERS, SINKS>, ProofSystemError<C>>
     where
         R: CryptoRng + RngCore + ?Sized,
     {
@@ -720,38 +718,38 @@ where
 
 /// Transfer Participants Variable
 struct TransferParticipantsVar<
-    T,
+    C,
     const SOURCES: usize,
     const SENDERS: usize,
     const RECEIVERS: usize,
     const SINKS: usize,
 > where
-    T: Configuration,
+    C: Configuration,
 {
     /// Source Variables
-    sources: Vec<T::AssetBalanceVar>,
+    sources: Vec<C::AssetBalanceVar>,
 
     /// Sender Variables
-    senders: Vec<SenderVar<T>>,
+    senders: Vec<SenderVar<C>>,
 
     /// Receiver Variables
-    receivers: Vec<ReceiverVar<T>>,
+    receivers: Vec<ReceiverVar<C>>,
 
     /// Sink Variables
-    sinks: Vec<T::AssetBalanceVar>,
+    sinks: Vec<C::AssetBalanceVar>,
 }
 
-impl<T, const SOURCES: usize, const SENDERS: usize, const RECEIVERS: usize, const SINKS: usize>
-    Variable<ConstraintSystem<T>> for TransferParticipantsVar<T, SOURCES, SENDERS, RECEIVERS, SINKS>
+impl<C, const SOURCES: usize, const SENDERS: usize, const RECEIVERS: usize, const SINKS: usize>
+    Variable<ConstraintSystem<C>> for TransferParticipantsVar<C, SOURCES, SENDERS, RECEIVERS, SINKS>
 where
-    T: Configuration,
+    C: Configuration,
 {
-    type Type = Transfer<T, SOURCES, SENDERS, RECEIVERS, SINKS>;
+    type Type = Transfer<C, SOURCES, SENDERS, RECEIVERS, SINKS>;
 
     type Mode = Derived;
 
     #[inline]
-    fn new(cs: &mut ConstraintSystem<T>, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
+    fn new(cs: &mut ConstraintSystem<C>, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
         match allocation {
             Allocation::Known(this, mode) => Self {
                 sources: this
@@ -782,7 +780,7 @@ where
             Allocation::Unknown(mode) => Self {
                 sources: (0..SOURCES)
                     .into_iter()
-                    .map(|_| T::AssetBalanceVar::new_unknown(cs, Public))
+                    .map(|_| C::AssetBalanceVar::new_unknown(cs, Public))
                     .collect(),
                 senders: (0..SENDERS)
                     .into_iter()
@@ -794,58 +792,166 @@ where
                     .collect(),
                 sinks: (0..SINKS)
                     .into_iter()
-                    .map(|_| T::AssetBalanceVar::new_unknown(cs, Public))
+                    .map(|_| C::AssetBalanceVar::new_unknown(cs, Public))
                     .collect(),
             },
         }
     }
 }
 
+/// Transfer Post Error
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "TransferLedgerError<C, L>: Clone"),
+    Copy(bound = "TransferLedgerError<C, L>: Copy"),
+    Debug(bound = "TransferLedgerError<C, L>: Debug"),
+    Eq(bound = "TransferLedgerError<C, L>: Eq"),
+    Hash(bound = "TransferLedgerError<C, L>: Hash"),
+    PartialEq(bound = "TransferLedgerError<C, L>: PartialEq")
+)]
+pub enum TransferPostError<C, L>
+where
+    C: Configuration,
+    L: TransferLedger<C>,
+{
+    /// Sender Post Error
+    Sender(SenderPostError<C, L>),
+
+    /// Receiver Post Error
+    Receiver(ReceiverPostError<C, L>),
+
+    /// Invalid Transfer Proof Error
+    ///
+    /// Validity of the transfer could not be proved by the ledger.
+    InvalidProof,
+
+    /// Ledger Error
+    LedgerError(TransferLedgerError<C, L>),
+}
+
+impl<C, L> From<SenderPostError<C, L>> for TransferPostError<C, L>
+where
+    C: Configuration,
+    L: TransferLedger<C>,
+{
+    #[inline]
+    fn from(err: SenderPostError<C, L>) -> Self {
+        Self::Sender(err)
+    }
+}
+
+impl<C, L> From<ReceiverPostError<C, L>> for TransferPostError<C, L>
+where
+    C: Configuration,
+    L: TransferLedger<C>,
+{
+    #[inline]
+    fn from(err: ReceiverPostError<C, L>) -> Self {
+        Self::Receiver(err)
+    }
+}
+
 /// Transfer Post
 pub struct TransferPost<
-    T,
+    C,
     const SOURCES: usize,
     const SENDERS: usize,
     const RECEIVERS: usize,
     const SINKS: usize,
 > where
-    T: Configuration,
+    C: Configuration,
 {
     /// Sender Posts
-    pub sender_posts: [SenderPost<T>; SENDERS],
+    sender_posts: [SenderPost<C>; SENDERS],
 
     /// Receiver Posts
-    pub receiver_posts: [ReceiverPost<T>; RECEIVERS],
+    receiver_posts: [ReceiverPost<C>; RECEIVERS],
 
     /// Validity Proof
-    pub validity_proof: Option<Proof<T>>,
+    ///
+    /// This value is only inhabited by a proof when the transfer shape requires one.
+    validity_proof: Option<Proof<C>>,
 }
 
-impl<T, const SOURCES: usize, const SENDERS: usize, const RECEIVERS: usize, const SINKS: usize>
-    TransferPost<T, SOURCES, SENDERS, RECEIVERS, SINKS>
+impl<C, const SOURCES: usize, const SENDERS: usize, const RECEIVERS: usize, const SINKS: usize>
+    TransferPost<C, SOURCES, SENDERS, RECEIVERS, SINKS>
 where
-    T: Configuration,
+    C: Configuration,
 {
-    /// Posts the [`TransferPost`] to the `ledger`.
+    /// Validates `self` on the transfer `ledger`.
     #[inline]
-    pub fn post<L>(self, ledger: &mut L) -> Result<(), PostError<L>>
+    pub fn validate<L>(
+        self,
+        ledger: &L,
+    ) -> Result<TransferPostingKey<C, L, SOURCES, SENDERS, RECEIVERS, SINKS>, TransferPostError<C, L>>
     where
-        L: Ledger<
-                VoidNumber = VoidNumber<T>,
-                Utxo = Utxo<T>,
-                EncryptedAsset = EncryptedMessage<T::IntegratedEncryptionScheme>,
-                UtxoSet = T::UtxoSet,
-                ProofSystem = T::ProofSystem,
-            > + ?Sized,
+        L: TransferLedger<C>,
     {
-        for sender_post in IntoIterator::into_iter(self.sender_posts) {
-            sender_post.post(ledger)?;
+        let sender_posting_keys =
+            fallible_array_map(self.sender_posts, move |s| s.validate(ledger))?;
+        let receiver_posting_keys =
+            fallible_array_map(self.receiver_posts, move |s| s.validate(ledger))?;
+        let validity_proof = match ledger
+            .is_valid(self.validity_proof)
+            .map_err(TransferPostError::LedgerError)?
+        {
+            Some(key) => key,
+            _ => return Err(TransferPostError::InvalidProof),
+        };
+        Ok(TransferPostingKey {
+            sender_posting_keys,
+            receiver_posting_keys,
+            validity_proof,
+        })
+    }
+}
+
+/// Transfer Posting Key
+pub struct TransferPostingKey<
+    C,
+    L,
+    const SOURCES: usize,
+    const SENDERS: usize,
+    const RECEIVERS: usize,
+    const SINKS: usize,
+> where
+    C: Configuration,
+    L: TransferLedger<C>,
+{
+    /// Sender Posting Keys
+    sender_posting_keys: [SenderPostingKey<C, L>; SENDERS],
+
+    /// Receiver Posting Keys
+    receiver_posting_keys: [ReceiverPostingKey<C, L>; RECEIVERS],
+
+    /// Validity Proof Posting Key
+    validity_proof: L::ValidProof,
+}
+
+impl<
+        C,
+        L,
+        const SOURCES: usize,
+        const SENDERS: usize,
+        const RECEIVERS: usize,
+        const SINKS: usize,
+    > TransferPostingKey<C, L, SOURCES, SENDERS, RECEIVERS, SINKS>
+where
+    C: Configuration,
+    L: TransferLedger<C>,
+{
+    /// Posts `self` to the transfer `ledger`.
+    #[inline]
+    pub fn post(
+        self,
+        super_key: &TransferLedgerSuperPostingKey<C, L>,
+        ledger: &mut L,
+    ) -> Result<(), TransferLedgerError<C, L>> {
+        for key in self.sender_posting_keys {
+            key.post(&(self.validity_proof, *super_key), ledger)?;
         }
-        for receiver_post in IntoIterator::into_iter(self.receiver_posts) {
-            receiver_post.post(ledger)?;
-        }
-        if let Some(proof) = self.validity_proof {
-            ledger.check_proof(proof)?;
+        for key in self.receiver_posting_keys {
+            key.post(&(self.validity_proof, *super_key), ledger)?;
         }
         Ok(())
     }
@@ -932,18 +1038,18 @@ pub mod canonical {
     impl_shape!(MintShape, 1, 0, 1, 0);
 
     /// Mint Transaction
-    pub type Mint<T> = transfer_alias!(T, MintShape);
+    pub type Mint<C> = transfer_alias!(C, MintShape);
 
     /// Mint Transaction Ledger Post
-    pub type MintPost<T> = transfer_post_alias!(T, MintShape);
+    pub type MintPost<C> = transfer_post_alias!(C, MintShape);
 
-    impl<T> Mint<T>
+    impl<C> Mint<C>
     where
-        T: Configuration,
+        C: Configuration,
     {
         /// Builds a [`Mint`] from `asset` and `receiver`.
         #[inline]
-        pub fn build(asset: Asset, receiver: Receiver<T>) -> Self {
+        pub fn build(asset: Asset, receiver: Receiver<C>) -> Self {
             Self::new(
                 asset.id,
                 [asset.value],
@@ -956,14 +1062,14 @@ pub mod canonical {
         /// Builds a [`Mint`]-[`OpenSpend`] pair from an `identity` and an `asset`.
         #[inline]
         pub fn from_identity<R>(
-            identity: Identity<T>,
-            commitment_scheme: &T::CommitmentScheme,
+            identity: Identity<C>,
+            commitment_scheme: &C::CommitmentScheme,
             asset: Asset,
             rng: &mut R,
-        ) -> Result<(Mint<T>, OpenSpend<T>), IntegratedEncryptionSchemeError<T>>
+        ) -> Result<(Mint<C>, OpenSpend<C>), IntegratedEncryptionSchemeError<C>>
         where
             R: CryptoRng + RngCore + ?Sized,
-            Standard: Distribution<AssetParameters<T>>,
+            Standard: Distribution<AssetParameters<C>>,
         {
             let InternalReceiver {
                 receiver,
@@ -984,20 +1090,20 @@ pub mod canonical {
     impl_shape!(PrivateTransferShape, 0, 2, 2, 0);
 
     /// Private Transfer Transaction
-    pub type PrivateTransfer<T> = transfer_alias!(T, PrivateTransferShape);
+    pub type PrivateTransfer<C> = transfer_alias!(C, PrivateTransferShape);
 
     /// Private Transfer Transaction Post
-    pub type PrivateTransferPost<T> = transfer_post_alias!(T, PrivateTransferShape);
+    pub type PrivateTransferPost<C> = transfer_post_alias!(C, PrivateTransferShape);
 
-    impl<T> PrivateTransfer<T>
+    impl<C> PrivateTransfer<C>
     where
-        T: Configuration,
+        C: Configuration,
     {
         /// Builds a [`PrivateTransfer`] from `senders` and `receivers`.
         #[inline]
         pub fn build(
-            senders: [Sender<T>; PrivateTransferShape::SENDERS],
-            receivers: [Receiver<T>; PrivateTransferShape::RECEIVERS],
+            senders: [Sender<C>; PrivateTransferShape::SENDERS],
+            receivers: [Receiver<C>; PrivateTransferShape::RECEIVERS],
         ) -> Self {
             Self::new(
                 Default::default(),
@@ -1020,20 +1126,20 @@ pub mod canonical {
     impl_shape!(ReclaimShape, 0, 2, 1, 1);
 
     /// Reclaim Transaction
-    pub type Reclaim<T> = transfer_alias!(T, ReclaimShape);
+    pub type Reclaim<C> = transfer_alias!(C, ReclaimShape);
 
     /// Reclaim Transaction Post
-    pub type ReclaimPost<T> = transfer_post_alias!(T, ReclaimShape);
+    pub type ReclaimPost<C> = transfer_post_alias!(C, ReclaimShape);
 
-    impl<T> Reclaim<T>
+    impl<C> Reclaim<C>
     where
-        T: Configuration,
+        C: Configuration,
     {
         /// Builds a [`Reclaim`] from `senders`, `receiver`, and `reclaim`.
         #[inline]
         pub fn build(
-            senders: [Sender<T>; ReclaimShape::SENDERS],
-            receiver: Receiver<T>,
+            senders: [Sender<C>; ReclaimShape::SENDERS],
+            receiver: Receiver<C>,
             reclaim: Asset,
         ) -> Self {
             Self::new(
@@ -1047,6 +1153,7 @@ pub mod canonical {
     }
 }
 
+/* TODO:
 /// Testing Framework
 #[cfg(feature = "test")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
@@ -1057,9 +1164,9 @@ pub mod test {
 
     ///
     #[inline]
-    pub fn sample_sender<T, R>(commitment_scheme: &T::CommitmentScheme, rng: &mut R)
+    pub fn sample_sender<C, R>(commitment_scheme: &C::CommitmentScheme, rng: &mut R)
     where
-        T: Configuration,
+        C: Configuration,
         R: CryptoRng + RngCore + ?Sized,
     {
         // TODO: let _ = Mint::from_identity(rng.gen(), commitment_scheme, rng.gen(), rng);
@@ -1067,3 +1174,4 @@ pub mod test {
         todo!()
     }
 }
+*/

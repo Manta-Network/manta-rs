@@ -16,8 +16,8 @@
 
 //! Ledger Implementation
 
-// FIXME: How should we handle serdes?
-// FIXME: Use "incremental merkle tree".
+// FIXME: Migrate this to new ledger abstraction. This will most likely go to `wallet` since it
+//        represents the "native" ledger rather than the blockchain ledger.
 
 use crate::{
     accounting::config::{Configuration, ConstraintSystem, ProofSystem},
@@ -31,12 +31,10 @@ use blake2::{
     digest::{Update, VariableOutput},
     VarBlake2s,
 };
-use manta_accounting::{identity, Ledger as LedgerTrait, ProofPostError};
+use manta_accounting::identity;
 use manta_crypto::{
-    constraint::{
-        self, reflection::HasAllocation, Allocation, Constant, ProofSystem as _, Variable,
-    },
-    merkle_tree::{self, latest_node::LatestNode, MerkleTree, Tree},
+    constraint::{self, reflection::HasAllocation, Allocation, Constant, Variable},
+    merkle_tree::{self, latest_node::LatestNode, Tree},
     set::{constraint::VerifiedSetVariable, ContainmentProof, Set, VerifiedSet},
 };
 use manta_util::{as_bytes, concatenate, into_array_unchecked};
@@ -85,7 +83,7 @@ pub struct UtxoSet {
     shards: [UtxoShard; Self::SHARD_COUNT],
 
     /// UTXO Set
-    utxos: BTreeSet<Utxo>,
+    _utxos: BTreeSet<Utxo>,
 
     /// Merkle Tree Parameters
     parameters: Parameters,
@@ -99,7 +97,7 @@ impl UtxoSet {
     pub fn new(parameters: Parameters) -> Self {
         Self {
             shards: into_array_unchecked(vec![Default::default(); Self::SHARD_COUNT]),
-            utxos: Default::default(),
+            _utxos: Default::default(),
             parameters,
         }
     }
@@ -129,6 +127,7 @@ impl UtxoSet {
     /// Returns `true` if the `utxo` belongs to the shard it would be stored in.
     #[inline]
     pub fn utxo_exists(&self, utxo: &Utxo) -> bool {
+        let _ = utxo;
         // TODO: self.utxos.contains(utxo)
         todo!()
     }
@@ -188,11 +187,11 @@ impl VerifiedSet for UtxoSet {
         &self,
         item: &Self::Item,
     ) -> Result<ContainmentProof<Self>, Self::ContainmentError> {
+        let _ = item;
+
         // TODO: Return a more informative error.
 
-        /* FIXME: This is not implementable! Need to split this functionality into a better
-         *        abstraction.
-
+        /* TODO:
         let utxos = &self.shards[Self::shard_index(item)].utxos;
         match utxos.iter().position(move |u| u == item) {
             Some(index) => MerkleTree::new(&self.parameters, utxos)
@@ -201,10 +200,9 @@ impl VerifiedSet for UtxoSet {
                 .ok_or(()),
             _ => Err(()),
         }
-
         */
 
-        unimplemented!()
+        todo!()
     }
 }
 
@@ -249,74 +247,14 @@ impl VerifiedSetVariable<ConstraintSystem> for UtxoSetVar {
 /// Ledger
 pub struct Ledger {
     /// Void Numbers
-    void_numbers: Vec<VoidNumber>,
+    _void_numbers: Vec<VoidNumber>,
 
     /// Unspent Transaction Outputs
-    utxos: UtxoSet,
+    _utxos: UtxoSet,
 
     /// Encrypted Assets
-    encrypted_assets: Vec<EncryptedAsset>,
+    _encrypted_assets: Vec<EncryptedAsset>,
 
     /// Verifying Context
-    verifying_context: <ProofSystem as constraint::ProofSystem>::VerifyingContext,
-}
-
-impl LedgerTrait for Ledger {
-    type VoidNumber = VoidNumber;
-
-    type Utxo = Utxo;
-
-    type UtxoSet = UtxoSet;
-
-    type EncryptedAsset = EncryptedAsset;
-
-    type ProofSystem = ProofSystem;
-
-    #[inline]
-    fn utxos(&self) -> &Self::UtxoSet {
-        &self.utxos
-    }
-
-    #[inline]
-    fn is_unspent(&self, void_number: &Self::VoidNumber) -> bool {
-        !self.void_numbers.contains(void_number)
-    }
-
-    #[inline]
-    fn try_post_void_number(
-        &mut self,
-        void_number: Self::VoidNumber,
-    ) -> Result<(), Self::VoidNumber> {
-        if self.void_numbers.contains(&void_number) {
-            return Err(void_number);
-        }
-        self.void_numbers.push(void_number);
-        Ok(())
-    }
-
-    #[inline]
-    fn try_post_utxo(&mut self, utxo: Self::Utxo) -> Result<(), Self::Utxo> {
-        self.utxos.try_insert(utxo)
-    }
-
-    #[inline]
-    fn try_post_encrypted_asset(
-        &mut self,
-        encrypted_asset: Self::EncryptedAsset,
-    ) -> Result<(), Self::EncryptedAsset> {
-        self.encrypted_assets.push(encrypted_asset);
-        Ok(())
-    }
-
-    #[inline]
-    fn check_proof(
-        &self,
-        proof: <Self::ProofSystem as constraint::ProofSystem>::Proof,
-    ) -> Result<(), ProofPostError<Self>> {
-        match Self::ProofSystem::verify_proof(&self.verifying_context, &proof) {
-            Ok(true) => Ok(()),
-            Ok(false) => Err(ProofPostError::InvalidProof(proof, None)),
-            Err(err) => Err(ProofPostError::InvalidProof(proof, Some(err))),
-        }
-    }
+    _verifying_context: <ProofSystem as constraint::ProofSystem>::VerifyingContext,
 }

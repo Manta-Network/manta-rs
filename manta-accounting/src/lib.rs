@@ -28,7 +28,6 @@ extern crate derive_more;
 extern crate cocoon as cocoon_crate;
 
 mod asset;
-mod ledger;
 
 pub mod fs;
 pub mod identity;
@@ -38,4 +37,3 @@ pub mod wallet;
 
 pub use asset::*;
 pub use identity::prelude::*;
-pub use ledger::*;
