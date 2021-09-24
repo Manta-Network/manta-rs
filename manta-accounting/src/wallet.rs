@@ -31,16 +31,16 @@ use crate::{
         self, AssetParameters, Identity, InternalReceiver, InternalReceiverError, OpenSpend,
         ShieldedIdentity, Utxo, VoidNumber,
     },
-    keys::{Account, DerivedSecretKeyGenerator, ExternalKeys, InternalKeys, KeyKind},
+    keys::{Account, DerivedSecretKeyGenerator, InternalKeys, KeyKind},
     transfer::{
         self,
         canonical::{Mint, PrivateTransfer, Reclaim},
-        EncryptedAsset, IntegratedEncryptionSchemeError, TransferPost,
+        EncryptedAsset, IntegratedEncryptionSchemeError, ReceiverPost, SenderPost, TransferPost,
     },
 };
 use alloc::{vec, vec::Vec};
 use core::{convert::Infallible, fmt::Debug, future::Future, hash::Hash, marker::PhantomData};
-use manta_crypto::ies::{EncryptedMessage, IntegratedEncryptionScheme};
+use manta_crypto::ies::IntegratedEncryptionScheme;
 use rand::{
     distributions::{Distribution, Standard},
     CryptoRng, RngCore,
@@ -472,6 +472,50 @@ pub trait AssetMap {
     }
 }
 
+/// Ledger Ownership Marker
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum Ownership {
+    /// Key Ownership
+    Key(KeyKind),
+
+    /// Unknown Self-Ownership
+    Unknown,
+
+    /// Ownership by Others
+    Other,
+}
+
+impl Default for Ownership {
+    #[inline]
+    fn default() -> Self {
+        Self::Unknown
+    }
+}
+
+/// Ledger Data
+pub enum LedgerData<C>
+where
+    C: transfer::Configuration,
+{
+    /// Sender Data
+    Sender(VoidNumber<C>),
+
+    /// Receiver Data
+    Receiver(Utxo<C>, EncryptedAsset<C>),
+}
+
+/// Ledger Post Entry
+pub enum PostEntry<'t, C>
+where
+    C: transfer::Configuration,
+{
+    /// Sender Entry
+    Sender(&'t SenderPost<C>),
+
+    /// Receiver Entry
+    Receiver(&'t ReceiverPost<C>),
+}
+
 /// Local Ledger
 pub trait LocalLedger<C>
 where
@@ -480,88 +524,103 @@ where
     /// Ledger State Checkpoint Type
     type Checkpoint: Default + Ord;
 
+    /// Data Preservation Key
+    type Key;
+
+    /// Data Access Error
+    type Error;
+
     /// Returns the checkpoint of the local ledger.
     fn checkpoint(&self) -> &Self::Checkpoint;
 
     /// Sets the checkpoint of the local ledger to `checkpoint`.
     fn set_checkpoint(&mut self, checkpoint: Self::Checkpoint);
 
-    /// Inserts the `void_number` into the local ledger.
-    fn insert_void_number(&mut self, void_number: VoidNumber<C>);
+    /// Saves `data` into the local ledger.
+    fn append(&mut self, data: LedgerData<C>) -> Result<(), Self::Error>;
 
-    /// Inserts the `utxo` into the local ledger.
-    fn insert_utxo(&mut self, utxo: Utxo<C>);
+    /// Prepares a `post` in the local ledger, returning a key to decide if the post should
+    /// be preserved by the ledger or not.
+    fn prepare(&mut self, post: PostEntry<C>, ownership: Ownership) -> Self::Key;
 
-    /// Inserts the `encrypted_asset` into the local ledger.
-    fn insert_encrypted_asset(&mut self, encrypted_asset: EncryptedAsset<C>);
+    /// Preserves the data associated to the `key`.
+    fn keep(&mut self, key: Self::Key);
+
+    /// Drops the data associated to the `key`.
+    fn drop(&mut self, key: Self::Key);
 }
 
 /// Wallet Balance State
-pub struct BalanceState<C, LL, SM, PM = SM>
+pub struct BalanceState<C, L, M>
 where
     C: transfer::Configuration,
-    LL: LocalLedger<C>,
-    SM: AssetMap,
-    PM: AssetMap,
+    L: LocalLedger<C>,
+    M: AssetMap,
 {
     /// Secret Asset Map
-    secret_assets: SM,
+    secret_assets: M,
 
     /// Public Asset Map
-    public_assets: PM,
+    // TODO: Find a way to connect this.
+    _public_assets: M,
 
     /// Local Ledger
-    local_ledger: LL,
+    ledger: L,
 
     /// Type Parameter Marker
     __: PhantomData<C>,
 }
 
-impl<C, LL, SM, PM> BalanceState<C, LL, SM, PM>
+impl<C, L, M> BalanceState<C, L, M>
 where
     C: transfer::Configuration,
-    LL: LocalLedger<C>,
-    SM: AssetMap,
-    PM: AssetMap,
+    L: LocalLedger<C>,
+    M: AssetMap,
 {
+    /// Returns the [`Checkpoint`](LocalLedger::Checkpoint) associated with the local ledger.
+    #[inline]
+    pub fn checkpoint(&self) -> &L::Checkpoint {
+        self.ledger.checkpoint()
+    }
+
     /// Synchronizes `self` with the `ledger`.
     #[inline]
     pub async fn sync<LS>(&mut self, ledger: &LS) -> Result<(), LS::Error>
     where
-        LS: LedgerSource<C, Checkpoint = LL::Checkpoint> + ?Sized,
+        LS: LedgerSource<C, Checkpoint = L::Checkpoint> + ?Sized,
     {
         let SyncResponse {
             checkpoint,
             void_numbers,
             utxos,
             encrypted_assets,
-        } = ledger.sync(self.local_ledger.checkpoint()).await?;
+        } = ledger.sync(self.checkpoint()).await?;
 
         for void_number in void_numbers {
             // TODO: Only keep the ones we care about. How do we alert the local ledger? We have to
             //       communicate with it when we try to send transactions to a ledger source.
             //       Do we care about keeping void numbers? Maybe only for recovery?
-            self.local_ledger.insert_void_number(void_number);
+            //
+            let _ = self.ledger.append(LedgerData::Sender(void_number));
         }
 
-        for encrypted_asset in encrypted_assets {
+        for (utxo, encrypted_asset) in utxos.into_iter().zip(encrypted_assets) {
+            // TODO: Only keep the ones we care about. For internal transactions we know the `utxo`
+            //       ahead of time. For external ones, we have to get the `asset` first.
+            //
             // TODO: Decrypt them on the way in ... threads? For internal transactions we know the
             //       `encrypted_asset` ahead of time, and we know it decrypted too. For external
             //       transactions we have to keep all of them since we have to try and decrypt all
             //       of them.
-            self.local_ledger.insert_encrypted_asset(encrypted_asset);
+            //
+            let _ = self
+                .ledger
+                .append(LedgerData::Receiver(utxo, encrypted_asset));
         }
 
-        for utxo in utxos {
-            // TODO: Only keep the ones we care about. For internal transactions we know the `utxo`
-            //       ahead of time. For external ones, we have to get the `asset` first.
-            self.local_ledger.insert_utxo(utxo);
-        }
+        self.ledger.set_checkpoint(checkpoint);
 
-        self.local_ledger.set_checkpoint(checkpoint);
-
-        // FIXME: How do we update `secret_assets` and `public_assets`? Can we only "deposit" from
-        //        a `sync`, and only "withdraw" from a `send`?
+        // FIXME: Deposit into `secret_assets` and `public_assets`.
 
         Ok(())
     }
@@ -574,7 +633,7 @@ where
         ledger: &LS,
     ) -> Result<(), LS::Error>
     where
-        LS: LedgerSource<C, Checkpoint = LL::Checkpoint> + ?Sized,
+        LS: LedgerSource<C, Checkpoint = L::Checkpoint> + ?Sized,
     {
         // TODO: When sending to the ledger, we really have to set up a backup state in case we
         //       missed the "send window", and we need to recover. We can also hint to the local
@@ -585,7 +644,39 @@ where
         //       Sender Posts:   `void_number`
         //       Receiver Posts: `utxo`, `encrypted_asset`
         //
-        let _ = ledger.send(transfers).await?;
+
+        let mut keys = Vec::new();
+
+        for transfer in &transfers {
+            for sender in &transfer.sender_posts {
+                keys.push(
+                    self.ledger
+                        .prepare(PostEntry::Sender(sender), Default::default()),
+                );
+            }
+            for receiver in &transfer.receiver_posts {
+                keys.push(
+                    self.ledger
+                        .prepare(PostEntry::Receiver(receiver), Default::default()),
+                );
+            }
+        }
+
+        keys.shrink_to_fit();
+
+        let SendResponse {
+            checkpoint,
+            responses,
+        } = ledger.send(transfers).await?;
+
+        // TODO: Revoke keys if the transfer failed, otherwise recover from the failure.
+
+        let _ = responses;
+
+        self.ledger.set_checkpoint(checkpoint);
+
+        // FIXME: Withdraw from `secret_assets` and `public_assets`.
+
         todo!()
     }
 }
@@ -609,44 +700,22 @@ where
 */
 
 /// Wallet
-pub struct Wallet<D, M>
+pub struct Wallet<D>
 where
     D: DerivedSecretKeyGenerator,
-    M: AssetMap,
 {
     /// Wallet Signer
     signer: Signer<D>,
-
-    /// Public Asset Map
-    public_assets: M,
-
-    /// Secret Asset Map
-    secret_assets: M,
 }
 
-impl<D, M> Wallet<D, M>
+impl<D> Wallet<D>
 where
     D: DerivedSecretKeyGenerator,
-    M: AssetMap,
 {
     /// Builds a new [`Wallet`] for `signer`.
     #[inline]
-    pub fn new(signer: Signer<D>) -> Self
-    where
-        M: Default,
-    {
-        Self::with_balances(signer, Default::default(), Default::default())
-    }
-
-    /// Builds a new [`Wallet`] for `signer` and pre-built `public_assets` map and
-    /// `secret_assets` map.
-    #[inline]
-    pub fn with_balances(signer: Signer<D>, public_assets: M, secret_assets: M) -> Self {
-        Self {
-            signer,
-            public_assets,
-            secret_assets,
-        }
+    pub fn new(signer: Signer<D>) -> Self {
+        Self { signer }
     }
 
     /// Builds a [`Mint`] transaction to mint `asset` and returns the [`OpenSpend`] for that asset.
@@ -714,10 +783,9 @@ where
     }
 }
 
-impl<D, M> Load for Wallet<D, M>
+impl<D> Load for Wallet<D>
 where
     D: DerivedSecretKeyGenerator,
-    M: AssetMap + Default,
     Signer<D>: Load,
 {
     type Path = <Signer<D> as Load>::Path;
@@ -736,10 +804,9 @@ where
     }
 }
 
-impl<D, M> Save for Wallet<D, M>
+impl<D> Save for Wallet<D>
 where
     D: DerivedSecretKeyGenerator,
-    M: AssetMap + Default,
     Signer<D>: Save,
 {
     type Path = <Signer<D> as Save>::Path;

@@ -1044,10 +1044,10 @@ where
     C: Configuration,
 {
     /// Sender Posts
-    sender_posts: Vec<SenderPost<C>>,
+    pub sender_posts: Vec<SenderPost<C>>,
 
     /// Receiver Posts
-    receiver_posts: Vec<ReceiverPost<C>>,
+    pub receiver_posts: Vec<ReceiverPost<C>>,
 
     /// Validity Proof
     ///

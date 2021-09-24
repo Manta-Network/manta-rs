@@ -385,6 +385,45 @@ where
         (public_key, void_number_commitment, utxo)
     }
 
+    /// Builds a new [`PreSender`] for the given `asset`.
+    #[inline]
+    pub fn into_pre_sender(
+        self,
+        commitment_scheme: &C::CommitmentScheme,
+        asset: Asset,
+    ) -> PreSender<C>
+    where
+        Standard: Distribution<AssetParameters<C>>,
+    {
+        let parameters = self.parameters();
+        let (public_key, void_number_commitment, utxo) =
+            self.construct_utxo(commitment_scheme, &asset, &parameters);
+        PreSender {
+            void_number: self.void_number(&parameters.void_number_generator),
+            secret_key: self.secret_key,
+            public_key,
+            asset,
+            parameters,
+            void_number_commitment,
+            utxo,
+        }
+    }
+
+    /// Generates a new [`Identity`] from a secret key generation source and builds a new
+    /// [`PreSender`] from it.
+    #[inline]
+    pub fn generate_pre_sender<G>(
+        source: &mut G,
+        commitment_scheme: &C::CommitmentScheme,
+        asset: Asset,
+    ) -> Result<PreSender<C>, G::Error>
+    where
+        G: SecretKeyGenerator<SecretKey = SecretKey<C>>,
+        Standard: Distribution<AssetParameters<C>>,
+    {
+        Ok(Self::generate(source)?.into_pre_sender(commitment_scheme, asset))
+    }
+
     /// Builds a new [`Sender`] for the given `asset`.
     #[inline]
     pub fn into_sender<S>(
@@ -397,19 +436,6 @@ where
         S: VerifiedSet<Item = Utxo<C>>,
         Standard: Distribution<AssetParameters<C>>,
     {
-        // TODO: Generate pre-sender data structure in case the `utxo_set` is behind the
-        //       current ledger state and we need to have everything ready for the `utxo_set`.
-        //
-        //   > pub struct PreSender<C> {
-        //         secret_key,
-        //         public_key,
-        //         asset,
-        //         parameters,
-        //         void_number_commitment,
-        //         void_number,
-        //         utxo
-        //     }
-        //
         let parameters = self.parameters();
         let (public_key, void_number_commitment, utxo) =
             self.construct_utxo(commitment_scheme, &asset, &parameters);
@@ -976,6 +1002,143 @@ where
     }
 }
 
+/// Sender Proof
+///
+/// This `struct` is created by the [`get_proof`](PreSender::get_proof) method on [`PreSender`].
+/// See its documentation for more.
+pub struct SenderProof<C, S>
+where
+    C: Configuration,
+    S: VerifiedSet<Item = Utxo<C>>,
+{
+    /// UTXO Containment Proof
+    utxo_containment_proof: ContainmentProof<S>,
+
+    /// Type Parameter Marker
+    __: PhantomData<C>,
+}
+
+impl<C, S> SenderProof<C, S>
+where
+    C: Configuration,
+    S: VerifiedSet<Item = Utxo<C>>,
+{
+    /// Returns `true` if a [`PreSender`] could be upgraded using `self` given the `utxo_set`.
+    #[inline]
+    pub fn can_upgrade(&self, utxo_set: &S) -> bool {
+        self.utxo_containment_proof.check_public_input(utxo_set)
+    }
+
+    /// Upgrades the `pre_sender` to a [`Sender`] by attaching `self` to it.
+    ///
+    /// # Note
+    ///
+    /// When using this function, be sure to check that [`can_upgrade`](Self::can_upgrade) returns
+    /// `true`. Otherwise, using the sender returned here will most likely return an error when
+    /// posting to the ledger.
+    #[inline]
+    pub fn upgrade(self, pre_sender: PreSender<C>) -> Sender<C, S> {
+        pre_sender.upgrade(self)
+    }
+}
+
+/// Pre-Sender
+pub struct PreSender<C>
+where
+    C: Configuration,
+{
+    /// Secret Key
+    secret_key: SecretKey<C>,
+
+    /// Public Key
+    public_key: PublicKey<C>,
+
+    /// Asset
+    asset: Asset,
+
+    /// Asset Parameters
+    parameters: AssetParameters<C>,
+
+    /// Void Number
+    void_number: VoidNumber<C>,
+
+    /// Void Number Commitment
+    void_number_commitment: VoidNumberCommitment<C>,
+
+    /// Unspent Transaction Output
+    utxo: Utxo<C>,
+}
+
+impl<C> PreSender<C>
+where
+    C: Configuration,
+{
+    /// Builds a new [`PreSender`] for this `asset` from an `identity`.
+    #[inline]
+    pub fn from_identity(
+        identity: Identity<C>,
+        commitment_scheme: &C::CommitmentScheme,
+        asset: Asset,
+    ) -> Self
+    where
+        Standard: Distribution<AssetParameters<C>>,
+    {
+        identity.into_pre_sender(commitment_scheme, asset)
+    }
+
+    /// Generates a new [`Identity`] from a secret key generation source and builds a new
+    /// [`PreSender`] from it.
+    #[inline]
+    pub fn generate<G>(
+        source: &mut G,
+        commitment_scheme: &C::CommitmentScheme,
+        asset: Asset,
+    ) -> Result<Self, G::Error>
+    where
+        G: SecretKeyGenerator<SecretKey = SecretKey<C>>,
+        Standard: Distribution<AssetParameters<C>>,
+    {
+        Identity::generate_pre_sender(source, commitment_scheme, asset)
+    }
+
+    /// Requests the containment proof of `self.utxo` from `utxo_set` so that we can turn `self`
+    /// into a [`Sender`].
+    #[inline]
+    pub fn get_proof<S>(&self, utxo_set: &S) -> Result<SenderProof<C, S>, S::ContainmentError>
+    where
+        S: VerifiedSet<Item = Utxo<C>>,
+    {
+        Ok(SenderProof {
+            utxo_containment_proof: utxo_set.get_containment_proof(&self.utxo)?,
+            __: PhantomData,
+        })
+    }
+
+    /// Converts `self` into a [`Sender`] by attaching `proof` to it.
+    ///
+    /// # Note
+    ///
+    /// When using this function, be sure to check that [`SenderProof::can_upgrade`] returns
+    /// `true`. Otherwise, using the sender returned here will most likely return an error when
+    /// posting to the ledger.
+    #[inline]
+    pub fn upgrade<S>(self, proof: SenderProof<C, S>) -> Sender<C, S>
+    where
+        S: VerifiedSet<Item = Utxo<C>>,
+    {
+        Sender {
+            secret_key: self.secret_key,
+            public_key: self.public_key,
+            asset: self.asset,
+            parameters: self.parameters,
+            void_number: self.void_number,
+            void_number_commitment: self.void_number_commitment,
+            utxo: self.utxo,
+            utxo_containment_proof: proof.utxo_containment_proof,
+        }
+    }
+}
+
 /// Sender Error
 ///
 /// This `enum` is the error state for the [`generate`] method on [`Sender`].
@@ -1079,6 +1242,21 @@ where
     #[inline]
     pub(crate) fn asset_value(&self) -> AssetBalance {
         self.asset.value
+    }
+
+    /// Reverts `self` back into a [`PreSender`] if its [`Utxo`] containment proof was deemed
+    /// invalid or had expired.
+    #[inline]
+    pub fn downgrade(self) -> PreSender<C> {
+        PreSender {
+            secret_key: self.secret_key,
+            public_key: self.public_key,
+            asset: self.asset,
+            parameters: self.parameters,
+            void_number: self.void_number,
+            void_number_commitment: self.void_number_commitment,
+            utxo: self.utxo,
+        }
     }
 
     /// Extracts ledger posting data for this sender.
