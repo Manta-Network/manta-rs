@@ -150,22 +150,23 @@ where
     /// Builds a new merkle tree with the given `leaves` returning `None` if the iterator
     /// would overflow the capacity of the tree.
     #[inline]
-    fn from_leaves<'l, L>(parameters: &Parameters<C>, leaves: L) -> Option<Self>
+    fn from_iter<'l, L>(parameters: &Parameters<C>, leaves: L) -> Option<Self>
     where
         Leaf<C>: 'l,
         L: IntoIterator<Item = &'l Leaf<C>>,
     {
-        let leaves = leaves.into_iter();
-        if leaves.size_hint().0 > capacity::<C>() {
-            return None;
-        }
         let mut tree = Self::new(parameters);
-        for leaf in leaves {
-            if !tree.append(parameters, leaf) {
-                return None;
-            }
-        }
-        Some(tree)
+        tree.extend(parameters, leaves).then(move || tree)
+    }
+
+    /// Builds a new merkle tree with the given `leaves` returning `None` if the slice
+    /// would overflow the capacity of the tree.
+    #[inline]
+    fn from_slice(parameters: &Parameters<C>, slice: &[Leaf<C>]) -> Option<Self>
+    where
+        Leaf<C>: Sized,
+    {
+        Self::from_iter(parameters, slice)
     }
 
     /// Returns the length of `self`.
@@ -185,7 +186,77 @@ where
 
     /// Inserts the digest of `leaf` at the next avaiable leaf node of the tree, returning
     /// `false` if the leaf could not be inserted because the tree has exhausted its capacity.
-    fn append(&mut self, parameters: &Parameters<C>, leaf: &Leaf<C>) -> bool;
+    fn push(&mut self, parameters: &Parameters<C>, leaf: &Leaf<C>) -> bool;
+
+    /// Appends an iterator of leaves at the end of the tree, returning `false` if the
+    /// `leaves` could not be inserted because the tree has exhausted its capacity.
+    ///
+    /// # Implementation Note
+    ///
+    /// This operation is meant to be atomic, so if appending the iterator should fail, the
+    /// implementation must ensure that the tree returns to the same state before the insertion
+    /// occured.
+    #[inline]
+    fn extend<'l, L>(&mut self, parameters: &Parameters<C>, leaves: L) -> bool
+    where
+        Leaf<C>: 'l,
+        L: IntoIterator<Item = &'l Leaf<C>>,
+    {
+        let leaves = leaves.into_iter();
+        if matches!(leaves.size_hint().1, Some(max) if max <= capacity::<C>() - self.len()) {
+            for leaf in leaves {
+                debug_assert!(self.push(parameters, leaf));
+            }
+            return true;
+        }
+        false
+    }
+
+    /// Appends a slice of leaves at the end of the tree, returning `false` if the
+    /// `leaves` could not be inserted because the tree has exhausted its capacity.
+    ///
+    /// # Implementation Note
+    ///
+    /// This operation is meant to be atomic, so if appending the slice should fail, the
+    /// implementation must ensure that the tree returns to the same state before the insertion
+    /// occured.
+    #[inline]
+    fn extend_slice(&mut self, parameters: &Parameters<C>, leaves: &[Leaf<C>]) -> bool
+    where
+        Leaf<C>: Sized,
+    {
+        self.extend(parameters, leaves)
+    }
+}
+
+/// Merkle Tree Pop Mixin
+pub trait Pop<C>: Tree<C>
+where
+    C: Configuration + ?Sized,
+{
+    /// Removes the last element of the tree rolling it back to the state right before the
+    /// insertion of the last leaf, returning `None` if the tree is empty.
+    fn pop(&mut self, parameters: &Parameters<C>) -> Option<LeafDigest<C>>;
+
+    /// Removes `n` elements of the tree rolling it back to the state before the insertion
+    /// of the last `n` leaves, returning `false` if `n` is greater than the current length
+    /// of the tree.
+    ///
+    /// # Implementation Note
+    ///
+    /// This operation is meant to be atomic, so if removing elements should fail, the
+    /// implementation must ensure that the tree returns to the same state before the removal
+    /// occured.
+    #[inline]
+    fn pop_many(&mut self, parameters: &Parameters<C>, n: usize) -> bool {
+        if n > self.len() {
+            return false;
+        }
+        for _ in 0..n {
+            debug_assert!(self.pop(parameters).is_some());
+        }
+        true
+    }
 }
 
 /// Parity of a Subtree
@@ -766,13 +837,25 @@ where
 
     /// Builds a new [`MerkleTree`] with the given `leaves`.
     #[inline]
-    pub fn from_leaves<'l, L>(parameters: Parameters<C>, leaves: L) -> Option<Self>
+    pub fn from_iter<'l, L>(parameters: Parameters<C>, leaves: L) -> Option<Self>
     where
         Leaf<C>: 'l,
         L: IntoIterator<Item = &'l Leaf<C>>,
     {
         Some(Self::from_tree(
-            T::from_leaves(&parameters, leaves)?,
+            T::from_iter(&parameters, leaves)?,
+            parameters,
+        ))
+    }
+
+    /// Builds a new [`MerkleTree`] with the given `leaves`.
+    #[inline]
+    pub fn from_slice(parameters: Parameters<C>, leaves: &[Leaf<C>]) -> Option<Self>
+    where
+        Leaf<C>: Sized,
+    {
+        Some(Self::from_tree(
+            T::from_slice(&parameters, leaves)?,
             parameters,
         ))
     }
@@ -804,8 +887,49 @@ where
     /// Inserts `leaf` at the next avaiable leaf node of the tree, returning `false` if the
     /// leaf could not be inserted because the tree has exhausted its capacity.
     #[inline]
-    pub fn append(&mut self, leaf: &Leaf<C>) -> bool {
-        self.tree.append(&self.parameters, leaf)
+    pub fn push(&mut self, leaf: &Leaf<C>) -> bool {
+        self.tree.push(&self.parameters, leaf)
+    }
+
+    /// Appends an iterator of leaves at the end of the tree, returning `false` if the `leaves`
+    /// could not be inserted because the tree has exhausted its capacity.
+    #[inline]
+    pub fn extend<'l, L>(&mut self, leaves: L) -> bool
+    where
+        Leaf<C>: 'l,
+        L: IntoIterator<Item = &'l Leaf<C>>,
+    {
+        self.tree.extend(&self.parameters, leaves)
+    }
+
+    /// Appends a slice of leaves at the end of the tree, returning `false` if the `leaves` could
+    /// not be inserted because the tree has exhausted its capacity.
+    #[inline]
+    pub fn extend_slice(&mut self, leaves: &[Leaf<C>]) -> bool
+    where
+        Leaf<C>: Sized,
+    {
+        self.tree.extend_slice(&self.parameters, leaves)
+    }
+
+    /// Removes the last element of the tree rolling it back to the state right before the
+    /// insertion of the last leaf, returning `None` if the tree is empty.
+    #[inline]
+    pub fn pop(&mut self) -> Option<LeafDigest<C>>
+    where
+        T: Pop<C>,
+    {
+        self.tree.pop(&self.parameters)
+    }
+
+    /// Removes `n` elements of the tree rolling it back to the state before the insertion of the
+    /// last `n` leaves, returning `false` if `n` is greater than the current length of the tree.
+    #[inline]
+    pub fn pop_many(&mut self, n: usize) -> bool
+    where
+        T: Pop<C>,
+    {
+        self.tree.pop_many(&self.parameters, n)
     }
 
     /// Extracts the parameters of the merkle tree, dropping the internal tree.
@@ -1046,7 +1170,7 @@ pub mod full {
         }
 
         #[inline]
-        fn append(&mut self, parameters: &Parameters<C>, leaf: &Leaf<C>) -> bool {
+        fn push(&mut self, parameters: &Parameters<C>, leaf: &Leaf<C>) -> bool {
             let len = self.len();
             if len >= capacity::<C>() {
                 return false;
@@ -1193,7 +1317,7 @@ pub mod latest_node {
         }
 
         #[inline]
-        fn append(&mut self, parameters: &Parameters<C>, leaf: &Leaf<C>) -> bool {
+        fn push(&mut self, parameters: &Parameters<C>, leaf: &Leaf<C>) -> bool {
             let index = match self.next_index() {
                 Some(index) => index,
                 _ => return false,
@@ -1287,7 +1411,7 @@ pub mod test {
     /// Tests that a tree constructed with `parameters` can accept at least two leaves without
     /// failing.
     #[inline]
-    pub fn append_twice_to_empty_tree_succeeds<C, T>(
+    pub fn push_twice_to_empty_tree_succeeds<C, T>(
         parameters: Parameters<C>,
         lhs: &Leaf<C>,
         rhs: &Leaf<C>,
@@ -1298,11 +1422,11 @@ pub mod test {
     {
         let mut tree = MerkleTree::<C, T>::new(parameters);
         assert!(
-            tree.append(lhs),
+            tree.push(lhs),
             "Trees always have a capacity of at least two."
         );
         assert!(
-            tree.append(rhs),
+            tree.push(rhs),
             "Trees always have a capacity of at least two."
         );
         tree.into_parameters()

@@ -635,6 +635,8 @@ where
     where
         LS: LedgerSource<C, Checkpoint = L::Checkpoint> + ?Sized,
     {
+        // FIXME: How do to batched transfers? Those above are not necessarily "batched-atomic".
+        //
         // TODO: When sending to the ledger, we really have to set up a backup state in case we
         //       missed the "send window", and we need to recover. We can also hint to the local
         //       ledger that we are about to send some transactions and so it should know which

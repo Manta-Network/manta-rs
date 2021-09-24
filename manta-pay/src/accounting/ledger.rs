@@ -149,7 +149,7 @@ impl Set for UtxoSet {
         }
         if !self.shards[Self::shard_index(&item)]
             .utxos
-            .append(&self.parameters, &as_bytes!(&item))
+            .push(&self.parameters, &as_bytes!(&item))
         {
             return Err(item);
         }
