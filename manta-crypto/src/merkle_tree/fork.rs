@@ -19,11 +19,33 @@
 extern crate alloc;
 
 use crate::merkle_tree::{
-    capacity, inner_tree::InnerTree, Configuration, InnerDigest, Leaf, LeafDigest, MerkleTree,
-    Parameters, Path, Root, Tree,
+    capacity, inner_tree::InnerTree, Configuration, GetPath, GetPathError, InnerDigest, Leaf,
+    LeafDigest, MerkleTree, Parameters, Path, Root, Tree,
 };
 use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash};
+
+/// Fork Path Error
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "GetPathError<C, T>: Clone"),
+    Copy(bound = "GetPathError<C, T>: Copy"),
+    Debug(bound = "GetPathError<C, T>: Debug"),
+    Eq(bound = "GetPathError<C, T>: Eq"),
+    Hash(bound = "GetPathError<C, T>: Hash"),
+    PartialEq(bound = "GetPathError<C, T>: PartialEq")
+)]
+pub enum ForkGetPathError<C, T>
+where
+    C: Configuration + ?Sized,
+    T: GetPath<C>,
+{
+    /// Trunk Path Query Error
+    TrunkError(GetPathError<C, T>),
+
+    /// Unknown Index on Branch Error
+    UnknownIndexOnBranch,
+}
 
 /// Merkle Tree Delta
 #[derive(derivative::Derivative)]
@@ -82,15 +104,29 @@ where
 
     ///
     #[inline]
-    fn path<T>(
-        &self,
-        parameters: &Parameters<C>,
-        trunk: &T,
-        query: ForkQuery<C, T>,
-    ) -> Result<Path<C>, T::Error>
+    fn current_path<T>(&self, parameters: &Parameters<C>, trunk: &T) -> Path<C>
     where
         T: Tree<C>,
     {
+        todo!()
+    }
+
+    ///
+    #[inline]
+    fn forward_path<T>(
+        &self,
+        parameters: &Parameters<C>,
+        trunk: &T,
+        index: usize,
+    ) -> Option<Path<C>>
+    where
+        T: Tree<C>,
+    {
+        let trunk_len = trunk.len();
+        let total_len = trunk_len + self.len();
+        if !(trunk_len..total_len).contains(&index) {
+            return None;
+        }
         todo!()
     }
 
@@ -155,15 +191,34 @@ where
 
     ///
     #[inline]
+    pub fn len(&self) -> usize {
+        self.trunk.len() + self.delta.len()
+    }
+
+    ///
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    ///
+    #[inline]
     pub fn root(&self) -> Root<C> {
         self.delta.root(&self.trunk.parameters, &self.trunk.tree)
     }
 
     ///
     #[inline]
-    pub fn path(&self, query: ForkQuery<C, T>) -> Result<Path<C>, T::Error> {
+    pub fn current_path(&self) -> Path<C> {
         self.delta
-            .path(&self.trunk.parameters, &self.trunk.tree, query)
+            .current_path(&self.trunk.parameters, &self.trunk.tree)
+    }
+
+    ///
+    #[inline]
+    pub fn forward_path(&self, index: usize) -> Option<Path<C>> {
+        self.delta
+            .forward_path(&self.trunk.parameters, &self.trunk.tree, index)
     }
 
     ///
@@ -172,17 +227,4 @@ where
         self.delta
             .push(&self.trunk.parameters, &self.trunk.tree, leaf)
     }
-}
-
-/// Fork Query Type
-pub enum ForkQuery<C, T>
-where
-    C: Configuration + ?Sized,
-    T: Tree<C>,
-{
-    /// Trunk Query
-    Trunk(T::Query),
-
-    /// Branch Query
-    Branch(usize),
 }

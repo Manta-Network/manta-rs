@@ -27,14 +27,11 @@ use alloc::{format, string::String};
 use bip32::Seed;
 use core::{marker::PhantomData, num::ParseIntError, str::FromStr};
 use manta_accounting::keys::{DerivedSecretKeyGenerator, DerivedSecretKeyParameter, KeyKind};
+use manta_util::{create_seal, seal};
 
 pub use bip32::{Error, Mnemonic, XPrv as SecretKey};
 
-/// Sealed Trait Module
-mod sealed {
-    /// Sealed Trait
-    pub trait Sealed {}
-}
+create_seal! {}
 
 /// Coin Type Id Type
 pub type CoinTypeId = u128;
@@ -57,7 +54,7 @@ pub trait CoinType: sealed::Sealed {
 /// Implements the [`CoinType`] trait for `$name` with coin type id given by `$id`.
 macro_rules! impl_coin_type {
     ($name:ty, $id:ident) => {
-        impl sealed::Sealed for $name {}
+        seal!($name);
         impl CoinType for $name {
             const COIN_TYPE_ID: CoinTypeId = $id;
         }

@@ -28,6 +28,9 @@ maintenance = { status = "actively-developed" }
 # Constraint System Gadgets
 # TODO: constraints = []
 
+# Standard Library
+std = []
+
 # Testing Frameworks
 test = []
 

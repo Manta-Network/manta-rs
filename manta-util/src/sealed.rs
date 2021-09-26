@@ -14,22 +14,24 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Cryptographic Primitives Library
+//! Sealed Traits
 
-#![cfg_attr(not(feature = "std"), no_std)]
-#![cfg_attr(doc_cfg, feature(doc_cfg))]
-#![forbid(rustdoc::broken_intra_doc_links)]
-#![forbid(missing_docs)]
+/// Creates a new `sealed::Sealed` trait in the current module.
+#[macro_export]
+macro_rules! create_seal {
+    () => {
+        /// Sealed Trait Module
+        mod sealed {
+            /// Sealed Trait
+            pub trait Sealed {}
+        }
+    };
+}
 
-mod prf;
-
-pub mod commitment;
-pub mod constraint;
-pub mod ies;
-pub mod merkle_tree;
-pub mod set;
-
-pub use commitment::prelude::*;
-pub use ies::prelude::*;
-pub use prf::*;
-pub use set::prelude::*;
+/// Adds an `sealed::Sealed` implementation to `$type`.
+#[macro_export]
+macro_rules! seal {
+    ($($type:tt),+ $(,)?) => {
+        $(impl sealed::Sealed for $type {})+
+    };
+}

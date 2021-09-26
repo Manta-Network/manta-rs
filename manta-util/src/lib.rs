@@ -26,6 +26,7 @@ extern crate alloc;
 mod array;
 mod concat;
 mod mixed_chain;
+mod sealed;
 
 pub mod num;
 

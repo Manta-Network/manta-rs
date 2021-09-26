@@ -34,7 +34,7 @@ use blake2::{
 use manta_accounting::identity;
 use manta_crypto::{
     constraint::{self, reflection::HasAllocation, Allocation, Constant, Variable},
-    merkle_tree::{self, latest_node::LatestNode, Tree},
+    merkle_tree::{self, single_leaf::SingleLeaf, Tree},
     set::{constraint::VerifiedSetVariable, ContainmentProof, Set, VerifiedSet},
 };
 use manta_util::{as_bytes, concatenate, into_array_unchecked};
@@ -73,7 +73,7 @@ pub struct UtxoShard {
     root: Root,
 
     /// Unspent Transaction Outputs
-    utxos: LatestNode<ConfigConverter<Configuration>>,
+    utxos: SingleLeaf<ConfigConverter<Configuration>>,
 }
 
 /// UTXO Set

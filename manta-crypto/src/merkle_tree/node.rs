@@ -184,11 +184,16 @@ impl Node {
         }
     }
 
-    /// Returns `self` with its sibling in parity order.
+    /// Maps `self` and its sibling over `f`.
     #[inline]
-    pub fn with_sibling(self) -> (Self, Self) {
-        self.parity()
-            .triple_order(self, move || self - 1, move || self + 1)
+    pub fn with_sibling<T, F>(self, mut f: F) -> (T, T)
+    where
+        F: FnMut(Self) -> T,
+    {
+        match self.parity() {
+            Parity::Left => (f(self), f(self + 1)),
+            Parity::Right => (f(self - 1), f(self)),
+        }
     }
 
     /// Returns the left child [`Node`] of this node.

@@ -20,17 +20,10 @@ use crate::merkle_tree::{
     capacity, Configuration, InnerDigest, LeafDigest, MerkleTree, Node, Parameters, Parity, Path,
     Root, Tree,
 };
-use core::{convert::Infallible, fmt::Debug, hash::Hash};
+use core::{fmt::Debug, hash::Hash};
 
 /// Single Leaf Merkle Tree Type
 pub type SingleLeafMerkleTree<C> = MerkleTree<C, SingleLeaf<C>>;
-
-/// Path Query Type
-///
-/// Since the [`SingleLeaf`] tree only stores one leaf and one path, we can only query the
-/// tree for the current path.
-#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct Current;
 
 /// Single Leaf Merkle Tree Backing Structure
 #[derive(derivative::Derivative)]
@@ -108,10 +101,6 @@ where
     LeafDigest<C>: Clone,
     InnerDigest<C>: Clone,
 {
-    type Query = Current;
-
-    type Error = Infallible;
-
     #[inline]
     fn new(parameters: &Parameters<C>) -> Self {
         let _ = parameters;
@@ -130,9 +119,9 @@ where
     }
 
     #[inline]
-    fn path(&self, parameters: &Parameters<C>, query: Self::Query) -> Result<Path<C>, Self::Error> {
-        let _ = (parameters, query);
-        Ok(self.path.clone())
+    fn current_path(&self, parameters: &Parameters<C>) -> Path<C> {
+        let _ = parameters;
+        self.path.clone()
     }
 
     #[inline]

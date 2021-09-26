@@ -19,20 +19,14 @@
 extern crate alloc;
 
 use crate::merkle_tree::{
-    capacity, inner_tree::InnerTree, Configuration, InnerDigest, LeafDigest, MerkleTree, Node,
-    Parameters, Path, Root, Tree,
+    capacity, inner_tree::InnerTree, Configuration, GetPath, InnerDigest, LeafDigest, MerkleTree,
+    Node, Parameters, Path, Root, Tree,
 };
 use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash};
 
 /// Full Merkle Tree Type
 pub type FullMerkleTree<C> = MerkleTree<C, Full<C>>;
-
-/// Path Query Error Type
-///
-/// Querying for paths beyond the current length of a [`Full`] tree is an error.
-#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct Unknown;
 
 /// Full Merkle Tree Backing Structure
 #[derive(derivative::Derivative)]
@@ -68,7 +62,7 @@ where
     /// Returns a reference to the root inner digest.
     #[inline]
     pub fn root(&self) -> &InnerDigest<C> {
-        self.inner_digests.previous_root()
+        self.inner_digests.root()
     }
 
     /// Returns the sibling leaf node to `index`.
@@ -106,10 +100,6 @@ where
     LeafDigest<C>: Clone,
     InnerDigest<C>: Clone,
 {
-    type Query = usize;
-
-    type Error = Unknown;
-
     #[inline]
     fn new(parameters: &Parameters<C>) -> Self {
         let _ = parameters;
@@ -128,19 +118,8 @@ where
     }
 
     #[inline]
-    fn path(&self, parameters: &Parameters<C>, query: Self::Query) -> Result<Path<C>, Self::Error> {
-        let _ = parameters;
-        if query > capacity::<C>() {
-            return Err(Unknown);
-        }
-        let leaf_index = Node(query);
-        Ok(Path::new(
-            leaf_index,
-            self.get_leaf_sibling(leaf_index)
-                .map(Clone::clone)
-                .unwrap_or_default(),
-            self.inner_digests.inner_path_for_leaf(leaf_index),
-        ))
+    fn current_path(&self, parameters: &Parameters<C>) -> Path<C> {
+        self.path(parameters, 0).unwrap()
     }
 
     #[inline]
@@ -154,5 +133,33 @@ where
         }
         self.push_leaf_digest(parameters, Node(len), leaf_digest()?);
         Some(true)
+    }
+}
+
+impl<C> GetPath<C> for Full<C>
+where
+    C: Configuration + ?Sized,
+    LeafDigest<C>: Clone,
+    InnerDigest<C>: Clone,
+{
+    type Error = ();
+
+    #[inline]
+    fn path(&self, parameters: &Parameters<C>, index: usize) -> Result<Path<C>, Self::Error> {
+        let _ = parameters;
+        if index > 0 && index >= self.len() {
+            return Err(());
+        }
+        let leaf_index = Node(index);
+        Ok(Path::new(
+            leaf_index,
+            self.get_leaf_sibling(leaf_index)
+                .map(Clone::clone)
+                .unwrap_or_default(),
+            self.inner_digests
+                .inner_path_for_leaf(leaf_index)
+                .cloned()
+                .collect(),
+        ))
     }
 }

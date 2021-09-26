@@ -121,12 +121,6 @@ pub trait Tree<C>: Sized
 where
     C: Configuration + ?Sized,
 {
-    /// Path Query Type
-    type Query;
-
-    /// Path Error Type
-    type Error;
-
     /// Builds a new merkle tree.
     fn new(parameters: &Parameters<C>) -> Self;
 
@@ -139,7 +133,7 @@ where
         L: IntoIterator<Item = &'l Leaf<C>>,
     {
         let mut tree = Self::new(parameters);
-        tree.extend(parameters, leaves).then(|| tree)
+        tree.extend(parameters, leaves).then(move || tree)
     }
 
     /// Builds a new merkle tree with the given `leaves` returning `None` if the slice
@@ -164,8 +158,8 @@ where
     /// Returns the [`Root`] of the merkle tree.
     fn root(&self, parameters: &Parameters<C>) -> Root<C>;
 
-    /// Returns the [`Path`] to some element of the merkle tree given by the `query`.
-    fn path(&self, parameters: &Parameters<C>, query: Self::Query) -> Result<Path<C>, Self::Error>;
+    /// Returns the [`Path`] of the current (i.e. right-most) leaf.
+    fn current_path(&self, parameters: &Parameters<C>) -> Path<C>;
 
     /// Checks if a leaf can be inserted into the tree and if it can, it runs `leaf_digest` to
     /// extract a leaf digest to insert, returning `None` if there was no leaf digest.
@@ -180,10 +174,8 @@ where
     where
         F: FnOnce() -> LeafDigest<C>,
     {
-        match self.maybe_push_digest(parameters, || Some(leaf_digest())) {
-            Some(result) => result,
-            _ => unreachable!(),
-        }
+        self.maybe_push_digest(parameters, move || Some(leaf_digest()))
+            .unwrap()
     }
 
     /// Inserts the digest of `leaf` at the next available leaf node of the tree, returning
@@ -269,6 +261,42 @@ where
             _ => Ok(()),
         }
     }
+}
+
+/// Merkle Tree Path Query Mixin
+pub trait GetPath<C>
+where
+    C: Configuration + ?Sized,
+{
+    /// Path Query Error Type
+    type Error;
+
+    /// Returns the [`Path`] of the leaf at the given `index`.
+    fn path(&self, parameters: &Parameters<C>, index: usize) -> Result<Path<C>, Self::Error>;
+}
+
+/// Tree Path Query Error Type
+pub type GetPathError<C, T> = <T as GetPath<C>>::Error;
+
+/// Digest Type
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "LeafDigest<C>: Clone, InnerDigest<C>: Clone"),
+    Copy(bound = "LeafDigest<C>: Copy, InnerDigest<C>: Copy"),
+    Debug(bound = "LeafDigest<C>: Debug, InnerDigest<C>: Debug"),
+    Eq(bound = "LeafDigest<C>: Eq, InnerDigest<C>: Eq"),
+    Hash(bound = "LeafDigest<C>: Hash, InnerDigest<C>: Hash"),
+    PartialEq(bound = "LeafDigest<C>: PartialEq, InnerDigest<C>: PartialEq")
+)]
+pub enum Digest<C>
+where
+    C: Configuration + ?Sized,
+{
+    /// Leaf Digest
+    Leaf(LeafDigest<C>),
+
+    /// Inner Digest
+    Inner(InnerDigest<C>),
 }
 
 /// Merkle Tree Parameters
@@ -518,16 +546,37 @@ where
         &self.parameters
     }
 
+    /// Returns the length of this merkle tree.
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.tree.len()
+    }
+
+    /// Returns `true` if this merkle tree is empty.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.tree.is_empty()
+    }
+
     /// Returns the [`Root`] of the merkle tree.
     #[inline]
     pub fn root(&self) -> Root<C> {
         self.tree.root(&self.parameters)
     }
 
-    /// Returns the [`Path`] to some element of the merkle tree given by the `query`.
+    /// Returns the [`Path`] of the current (i.e right-most) leaf.
     #[inline]
-    pub fn path(&self, query: T::Query) -> Result<Path<C>, T::Error> {
-        self.tree.path(&self.parameters, query)
+    pub fn current_path(&self) -> Path<C> {
+        self.tree.current_path(&self.parameters)
+    }
+
+    /// Returns the [`Path`] of the leaf at the given `index`.
+    #[inline]
+    pub fn path(&self, index: usize) -> Result<Path<C>, GetPathError<C, T>>
+    where
+        T: GetPath<C>,
+    {
+        self.tree.path(&self.parameters, index)
     }
 
     /// Inserts `leaf` at the next avaiable leaf node of the tree, returning `false` if the

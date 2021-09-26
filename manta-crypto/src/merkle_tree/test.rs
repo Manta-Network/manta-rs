@@ -16,7 +16,9 @@
 
 //! Testing Framework
 
-use crate::merkle_tree::{Configuration, Leaf, MerkleTree, Parameters, Tree};
+use crate::merkle_tree::{
+    Configuration, GetPath, GetPathError, Leaf, MerkleTree, Parameters, Tree,
+};
 use core::fmt::Debug;
 
 /// Tests that a tree constructed with `parameters` can accept at least two leaves without
@@ -48,14 +50,14 @@ where
 ///
 /// [`Path`]: crate::merkle_tree::Path
 #[inline]
-pub fn assert_valid_path<C, T>(tree: &MerkleTree<C, T>, query: T::Query, leaf: &Leaf<C>)
+pub fn assert_valid_path<C, T>(tree: &MerkleTree<C, T>, index: usize, leaf: &Leaf<C>)
 where
     C: Configuration + ?Sized,
-    T: Tree<C>,
-    T::Error: Debug,
+    T: Tree<C> + GetPath<C>,
+    GetPathError<C, T>: Debug,
 {
     assert!(
-        tree.path(query)
+        tree.path(index)
             .expect("Only valid queries are accepted.")
             .verify(&tree.parameters, &tree.root(), leaf),
         "Path returned from tree was not valid."

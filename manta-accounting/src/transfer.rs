@@ -40,7 +40,7 @@ use manta_crypto::{
     ies::{EncryptedMessage, IntegratedEncryptionScheme},
     set::{constraint::VerifiedSetVariable, VerifiedSet},
 };
-use manta_util::{mixed_chain, Either};
+use manta_util::{create_seal, mixed_chain, seal, Either};
 use rand::{
     distributions::{Distribution, Standard},
     CryptoRng, RngCore,
@@ -1134,11 +1134,7 @@ where
     }
 }
 
-/// Sealed Trait Module
-mod sealed {
-    /// Sealed Trait
-    pub trait Sealed {}
-}
+create_seal! {}
 
 /// Transfer Shapes
 ///
@@ -1167,7 +1163,7 @@ pub mod canonical {
     /// Implements [`Shape`] for a given shape type.
     macro_rules! impl_shape {
         ($shape:tt, $sources:expr, $senders:expr, $receivers:expr, $sinks:expr) => {
-            impl sealed::Sealed for $shape {}
+            seal!($shape);
             impl Shape for $shape {
                 const SOURCES: usize = $sources;
                 const SENDERS: usize = $senders;
