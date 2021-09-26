@@ -18,10 +18,7 @@
 
 extern crate alloc;
 
-use crate::merkle_tree::{
-    fork::{Delta, Fork},
-    Node,
-};
+use crate::merkle_tree::{fork::Trunk, Node};
 use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash};
 
@@ -246,20 +243,6 @@ where
         Leaf<C>: Sized,
     {
         self.extend(parameters, leaves)
-    }
-
-    /// Tries to merge the `delta` into the tree, returning it back if it would exceed the capacity
-    /// of the tree.
-    #[inline]
-    fn merge_delta(&mut self, parameters: &Parameters<C>, delta: Delta<C>) -> Result<(), Delta<C>> {
-        let Delta {
-            leaf_digests,
-            inner_digests,
-        } = delta;
-        match self.extend_digests(parameters, leaf_digests) {
-            Err(leaf_digests) => Err(Delta::new(leaf_digests.collect(), inner_digests)),
-            _ => Ok(()),
-        }
     }
 }
 
@@ -607,16 +590,12 @@ where
         self.tree.extend_slice(&self.parameters, leaves)
     }
 
-    /// Forks the merkle tree.
+    /// Converts `self` into a fork-able merkle tree.
+    ///
+    /// Use [`Trunk::into_tree`] to convert back.
     #[inline]
-    pub fn fork(&self) -> Fork<C, T> {
-        Fork::new(self)
-    }
-
-    /// Merges the `fork` into `self`.
-    #[inline]
-    pub fn merge(&mut self, fork: Fork<C, T>) {
-        debug_assert!(self.tree.merge_delta(&self.parameters, fork.delta).is_ok())
+    pub fn into_trunk(self) -> Trunk<C, T> {
+        Trunk::new(self)
     }
 
     /// Extracts the parameters of the merkle tree, dropping the internal tree.
