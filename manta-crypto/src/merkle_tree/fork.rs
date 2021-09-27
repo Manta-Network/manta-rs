@@ -20,39 +20,38 @@ extern crate alloc;
 
 use crate::merkle_tree::{
     capacity, inner_tree::InnerTree, Configuration, GetPath, GetPathError, InnerDigest, Leaf,
-    LeafDigest, MerkleTree, Parameters, Path, Root, Tree,
+    LeafDigest, MerkleTree, Path, Root, Tree,
 };
-use alloc::{
-    rc::{Rc, Weak},
-    vec::Vec,
-};
-use core::{fmt::Debug, hash::Hash};
+use alloc::vec::Vec;
+use core::{fmt::Debug, hash::Hash, mem};
 
 /// Fork-able Merkle Tree
-pub struct Trunk<C, T>
+pub struct Trunk<C, T, P = raw::SingleThreaded>
 where
     C: Configuration + ?Sized,
     T: Tree<C>,
+    P: raw::MerkleTreePointerFamily<C, T>,
 {
     /// Base Merkle Tree
-    base: Rc<MerkleTree<C, T>>,
+    base: Option<P::Strong>,
 }
 
-impl<C, T> Trunk<C, T>
+impl<C, T, P> Trunk<C, T, P>
 where
     C: Configuration + ?Sized,
     T: Tree<C>,
+    P: raw::MerkleTreePointerFamily<C, T>,
 {
     /// Builds a new [`Trunk`] from a reference-counted [`MerkleTree`].
     #[inline]
-    fn new_inner(base: Rc<MerkleTree<C, T>>) -> Self {
+    fn new_inner(base: Option<P::Strong>) -> Self {
         Self { base }
     }
 
     /// Builds a new [`Trunk`] from a `base` merkle tree.
     #[inline]
     pub fn new(base: MerkleTree<C, T>) -> Self {
-        Self::new_inner(Rc::new(base))
+        Self::new_inner(Some(P::new(base)))
     }
 
     /// Converts `self` back into its inner [`MerkleTree`].
@@ -60,63 +59,137 @@ where
     /// # Safety
     ///
     /// This function automatically detaches all of the forks associated to this trunk. To
-    /// attach them to another trunk use [`Fork::attach`].
+    /// attach them to another trunk, use [`Fork::attach`].
     #[inline]
     pub fn into_tree(self) -> MerkleTree<C, T> {
-        Rc::try_unwrap(self.base).ok().unwrap()
+        P::claim(self.base.unwrap())
     }
 
     /// Creates a new fork of this trunk.
     #[inline]
-    pub fn fork(&self) -> Fork<C, T> {
+    pub fn fork(&self) -> Fork<C, T, P> {
         Fork::new(self)
+    }
+
+    /// Attaches `fork` to `self` as its new trunk.
+    #[inline]
+    pub fn attach(&self, fork: &mut Fork<C, T, P>) {
+        fork.attach(self)
+    }
+
+    /// Tries to merge `fork` onto `self`, returning `fork` back if it could not be merged.
+    ///
+    /// # Safety
+    ///
+    /// If the merge succeeds, this function automatically detaches all of the forks associated to
+    /// this trunk. To attach them to another trunk, use [`Fork::attach`]. To attach them to this
+    /// trunk, [`attach`](Self::attach) can also be used.
+    ///
+    /// Since merging will add leaves to the base tree, forks which were previously associated to
+    /// this trunk will have to catch up. If [`Fork::attach`] or [`attach`](Self::attach) is used,
+    /// the leaves which were added in this merge will exist before the first leaf in the fork in
+    /// the final tree.
+    #[inline]
+    pub fn merge(&mut self, fork: Fork<C, T, P>) -> Result<(), Fork<C, T, P>> {
+        match fork.get_attached_base(self) {
+            Some(base) => {
+                self.merge_branch(base, fork.branch);
+                Ok(())
+            }
+            _ => Err(fork),
+        }
+    }
+
+    /// Performs a merge of the `branch` onto `fork_base`, setting `self` equal to the resulting
+    /// merged tree.
+    #[inline]
+    fn merge_branch(&mut self, fork_base: P::Strong, branch: Branch<C>) {
+        self.base = Some(fork_base);
+        let mut base = P::claim(mem::take(&mut self.base).unwrap());
+        branch.merge(&mut base);
+        self.base = Some(P::new(base));
+    }
+
+    /// Borrows the underlying merkle tree pointer.
+    #[inline]
+    fn borrow_base(&self) -> &P::Strong {
+        self.base.as_ref().unwrap()
+    }
+
+    /// Returns a new weak pointer to the base tree.
+    #[inline]
+    fn downgrade(&self) -> P::Weak {
+        P::downgrade(self.borrow_base())
+    }
+
+    /// Checks if the internal base tree uses the same pointer as `base`.
+    #[inline]
+    fn ptr_eq_base(&self, base: &P::Strong) -> bool {
+        P::strong_ptr_eq(self.borrow_base(), base)
     }
 }
 
 /// Merkle Tree Fork
-pub struct Fork<C, T>
+pub struct Fork<C, T, P = raw::SingleThreaded>
 where
     C: Configuration + ?Sized,
     T: Tree<C>,
+    P: raw::MerkleTreePointerFamily<C, T>,
 {
     /// Base Merkle Tree
-    base: Weak<MerkleTree<C, T>>,
+    base: P::Weak,
 
     /// Branch Data
     branch: Branch<C>,
 }
 
-impl<C, T> Fork<C, T>
+impl<C, T, P> Fork<C, T, P>
 where
     C: Configuration + ?Sized,
     T: Tree<C>,
+    P: raw::MerkleTreePointerFamily<C, T>,
 {
     /// Builds a new [`Fork`] from `trunk`.
     #[inline]
-    pub fn new(trunk: &Trunk<C, T>) -> Self {
-        Self::with_branch(trunk, Default::default())
+    pub fn new(trunk: &Trunk<C, T, P>) -> Self {
+        Self::with_leaves(trunk, Default::default())
     }
 
-    /// Builds a new [`Fork`] from `trunk` with a custom `branch`.
+    /// Builds a new [`Fork`] from `trunk` extended by `leaf_digests`
     #[inline]
-    pub fn with_branch(trunk: &Trunk<C, T>, branch: Branch<C>) -> Self {
+    pub fn with_leaves(trunk: &Trunk<C, T, P>, leaf_digests: Vec<LeafDigest<C>>) -> Self {
         Self {
-            base: Rc::downgrade(&trunk.base),
-            branch,
+            base: trunk.downgrade(),
+            branch: Branch::new(trunk.borrow_base().as_ref(), leaf_digests),
         }
     }
 
     /// Attaches this fork to a new `trunk`.
     #[inline]
-    pub fn attach(&mut self, trunk: &Trunk<C, T>) {
-        // FIXME: Do we have to do a re-computation of the `branch` inner data?
-        self.base = Rc::downgrade(&trunk.base);
+    pub fn attach(&mut self, trunk: &Trunk<C, T, P>) {
+        self.base = trunk.downgrade();
+        self.branch.rebase(trunk.borrow_base().as_ref());
     }
 
-    /// Returns `true` if this fork is attached to some `trunk`.
+    /// Returns `true` if this fork is attached to some [`Trunk`].
     #[inline]
     pub fn is_attached(&self) -> bool {
-        self.base.upgrade().is_some()
+        P::upgrade(&self.base).is_some()
+    }
+
+    /// Returns `true` if this fork is attached to `trunk`.
+    #[inline]
+    pub fn is_attached_to(&self, trunk: &Trunk<C, T, P>) -> bool {
+        matches!(P::upgrade(&self.base), Some(base) if trunk.ptr_eq_base(&base))
+    }
+
+    /// Returns the attached base tree if `self` is attached to `trunk`.
+    #[inline]
+    fn get_attached_base(&self, trunk: &Trunk<C, T, P>) -> Option<P::Strong> {
+        match P::upgrade(&self.base) {
+            Some(base) if trunk.ptr_eq_base(&base) => Some(base),
+            _ => None,
+        }
     }
 
     /// Computes the length of this fork of the tree.
@@ -125,8 +198,7 @@ where
     /// to re-associate a trunk to this fork.
     #[inline]
     pub fn len(&self) -> Option<usize> {
-        let base = self.base.upgrade()?;
-        Some(base.len() + self.branch.len())
+        Some(P::upgrade(&self.base)?.as_ref().len() + self.branch.len())
     }
 
     /// Returns `true` if this fork is empty.
@@ -144,8 +216,7 @@ where
     /// to re-associate a trunk to this fork.
     #[inline]
     pub fn root(&self) -> Option<Root<C>> {
-        let base = self.base.upgrade()?;
-        Some(self.branch.root(&base.parameters, &base.tree))
+        Some(self.branch.root(P::upgrade(&self.base)?.as_ref()))
     }
 
     /// Appends a new `leaf` onto this fork.
@@ -154,8 +225,7 @@ where
     /// to re-associate a trunk to this fork.
     #[inline]
     pub fn push(&mut self, leaf: &Leaf<C>) -> Option<bool> {
-        let base = self.base.upgrade()?;
-        Some(self.branch.push(&base.parameters, &base.tree, leaf))
+        Some(self.branch.push(P::upgrade(&self.base)?.as_ref(), leaf))
     }
 }
 
@@ -208,13 +278,27 @@ impl<C> Branch<C>
 where
     C: Configuration + ?Sized,
 {
-    /// Builds a new [`Branch`] from `leaf_digests` and `inner_digests`.
+    /// Builds a new [`Branch`] from `base` and `leaf_digests`.
     #[inline]
-    pub fn new(leaf_digests: Vec<LeafDigest<C>>, inner_digests: InnerTree<C>) -> Self {
-        Self {
+    fn new<T>(base: &MerkleTree<C, T>, leaf_digests: Vec<LeafDigest<C>>) -> Self
+    where
+        T: Tree<C>,
+    {
+        let mut this = Self {
             leaf_digests,
-            inner_digests,
-        }
+            inner_digests: Default::default(),
+        };
+        this.rebase(base);
+        this
+    }
+
+    /// Restarts `self` at a new base.
+    #[inline]
+    fn rebase<T>(&mut self, base: &MerkleTree<C, T>)
+    where
+        T: Tree<C>,
+    {
+        todo!()
     }
 
     /// Computes the length of this branch.
@@ -229,9 +313,9 @@ where
         self.len() == 0
     }
 
-    /// Computes the root of the fork which has `self` as its branch and `tree` as its base tree.
+    /// Computes the root of the fork which has `self` as its branch and `base` as its base tree.
     #[inline]
-    fn root<T>(&self, parameters: &Parameters<C>, tree: &T) -> Root<C>
+    fn root<T>(&self, base: &MerkleTree<C, T>) -> Root<C>
     where
         T: Tree<C>,
     {
@@ -239,16 +323,148 @@ where
     }
 
     /// Appends a new `leaf` to this branch, recomputing the relevant inner digests relative to
-    /// the base `tree`.
+    /// the `base` tree.
     #[inline]
-    fn push<T>(&mut self, parameters: &Parameters<C>, tree: &T, leaf: &Leaf<C>) -> bool
+    fn push<T>(&mut self, base: &MerkleTree<C, T>, leaf: &Leaf<C>) -> bool
     where
         T: Tree<C>,
     {
-        if tree.len() + self.len() >= capacity::<C>() {
+        if base.tree.len() + self.len() >= capacity::<C>() {
             return false;
         }
 
         todo!()
     }
+
+    /// Merges `self` onto the `base` merkle tree.
+    #[inline]
+    fn merge<T>(self, base: &mut MerkleTree<C, T>)
+    where
+        T: Tree<C>,
+    {
+        base.tree.merge_branch(&base.parameters, MergeBranch(self))
+    }
+}
+
+/// Fork Merge Branch
+///
+/// An type which can only be instantiated by the merkle tree forking implementation, which
+/// prevents running [`Tree::merge_branch`] on arbitrary user-constructed [`Branch`] values.
+pub struct MergeBranch<C>(Branch<C>)
+where
+    C: Configuration + ?Sized;
+
+impl<C> From<MergeBranch<C>> for Branch<C>
+where
+    C: Configuration + ?Sized,
+{
+    #[inline]
+    fn from(branch: MergeBranch<C>) -> Self {
+        branch.0
+    }
+}
+
+/// Raw Forking Primitives
+pub mod raw {
+    use super::*;
+    use alloc::{
+        rc::{Rc, Weak as WeakRc},
+        sync::{Arc, Weak as WeakArc},
+    };
+    use core::borrow::Borrow;
+    use manta_util::{create_seal, seal};
+
+    create_seal! {}
+
+    /// Merkle Tree Pointer Family
+    pub trait MerkleTreePointerFamily<C, T>: sealed::Sealed
+    where
+        C: Configuration + ?Sized,
+        T: Tree<C>,
+    {
+        /// Strong Pointer
+        type Strong: AsRef<MerkleTree<C, T>> + Borrow<MerkleTree<C, T>>;
+
+        /// Weak Pointer
+        type Weak;
+
+        /// Returns a new strong pointer holding `base`.
+        fn new(base: MerkleTree<C, T>) -> Self::Strong;
+
+        /// Claims ownership of the underlying merkle tree from `strong`.
+        ///
+        /// # Panics
+        ///
+        /// This function can only panic if there are other outstanding strong pointers. This
+        /// function will still succeed if there are other outstanding weak pointers, but they will
+        /// all be disassociated to `strong`.
+        fn claim(strong: Self::Strong) -> MerkleTree<C, T>;
+
+        /// Returns a new weak pointer to `strong`.
+        fn downgrade(strong: &Self::Strong) -> Self::Weak;
+
+        /// Tries to upgrade `weak` to a strong pointer, returning `None` if there is no strong
+        /// pointer associated to `weak`.
+        fn upgrade(weak: &Self::Weak) -> Option<Self::Strong>;
+
+        /// Checks if two strong pointers point to the same allocation.
+        fn strong_ptr_eq(lhs: &Self::Strong, rhs: &Self::Strong) -> bool;
+    }
+
+    /// Implements [`MerkleTreePointerFamily`] for `$type` with `$strong` and `$weak` pointers.
+    macro_rules! impl_pointer_family {
+        ($type:tt, $strong:ident, $weak:ident) => {
+            seal!($type);
+            impl<C, T> MerkleTreePointerFamily<C, T> for $type
+            where
+                C: Configuration + ?Sized,
+                T: Tree<C>,
+            {
+                type Strong = $strong<MerkleTree<C, T>>;
+
+                type Weak = $weak<MerkleTree<C, T>>;
+
+                #[inline]
+                fn new(base: MerkleTree<C, T>) -> Self::Strong {
+                    $strong::new(base)
+                }
+
+                #[inline]
+                fn claim(strong: Self::Strong) -> MerkleTree<C, T> {
+                    $strong::try_unwrap(strong).ok().unwrap()
+                }
+
+                #[inline]
+                fn downgrade(strong: &Self::Strong) -> Self::Weak {
+                    $strong::downgrade(strong)
+                }
+
+                #[inline]
+                fn upgrade(weak: &Self::Weak) -> Option<Self::Strong> {
+                    weak.upgrade()
+                }
+
+                #[inline]
+                fn strong_ptr_eq(lhs: &Self::Strong, rhs: &Self::Strong) -> bool {
+                    $strong::ptr_eq(lhs, rhs)
+                }
+            }
+        };
+    }
+
+    /// Single-Threaded Merkle Tree Pointer Family
+    ///
+    /// This is the pointer family for [`Rc`].
+    #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    pub struct SingleThreaded;
+
+    impl_pointer_family!(SingleThreaded, Rc, WeakRc);
+
+    /// Thread-Safe Merkle Tree Pointer Family
+    ///
+    /// This is the pointer family for [`Arc`].
+    #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    pub struct ThreadSafe;
+
+    impl_pointer_family!(ThreadSafe, Arc, WeakArc);
 }

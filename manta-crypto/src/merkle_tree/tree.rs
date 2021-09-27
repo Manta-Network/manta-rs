@@ -18,7 +18,10 @@
 
 extern crate alloc;
 
-use crate::merkle_tree::{fork::Trunk, Node};
+use crate::merkle_tree::{
+    fork::{self, Branch, MergeBranch, Trunk},
+    Node,
+};
 use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash};
 
@@ -203,7 +206,7 @@ where
         if matches!(leaf_digests.size_hint().1, Some(max) if max <= capacity::<C>() - self.len()) {
             loop {
                 match self.maybe_push_digest(parameters, || leaf_digests.next()) {
-                    Some(result) => debug_assert!(result),
+                    Some(result) => assert!(result),
                     _ => return Ok(()),
                 }
             }
@@ -243,6 +246,20 @@ where
         Leaf<C>: Sized,
     {
         self.extend(parameters, leaves)
+    }
+
+    /// Merges the data from `branch` into `self` using `parameters`.
+    ///
+    /// # Implementation Note
+    ///
+    /// The forking implementation will never input invalid `branch` values, i.e. branches with too
+    /// many leaves, into this method, so any implementation is allowed to panic on invalid
+    /// `branch` values as long as it does not panic on any valid `branch` values.
+    #[inline]
+    fn merge_branch(&mut self, parameters: &Parameters<C>, branch: MergeBranch<C>) {
+        assert!(self
+            .extend_digests(parameters, Branch::from(branch).leaf_digests)
+            .is_ok())
     }
 }
 
@@ -594,7 +611,10 @@ where
     ///
     /// Use [`Trunk::into_tree`] to convert back.
     #[inline]
-    pub fn into_trunk(self) -> Trunk<C, T> {
+    pub fn into_trunk<P>(self) -> Trunk<C, T, P>
+    where
+        P: fork::raw::MerkleTreePointerFamily<C, T>,
+    {
         Trunk::new(self)
     }
 
