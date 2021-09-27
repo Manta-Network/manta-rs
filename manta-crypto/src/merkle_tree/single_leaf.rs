@@ -20,7 +20,7 @@ use crate::merkle_tree::{
     capacity, Configuration, InnerDigest, LeafDigest, MerkleTree, Node, Parameters, Parity, Path,
     Root, Tree,
 };
-use core::{fmt::Debug, hash::Hash};
+use core::{fmt::Debug, hash::Hash, mem};
 
 /// Single Leaf Merkle Tree Type
 pub type SingleLeafMerkleTree<C> = MerkleTree<C, SingleLeaf<C>>;
@@ -93,6 +93,96 @@ where
     pub fn leaf_digest(&self) -> Option<&LeafDigest<C>> {
         self.leaf_digest.as_ref()
     }
+
+    /// Computes the root of the tree under the assumption that `self.leaf_digest.is_some()`
+    /// evaluates to `true`.
+    #[inline]
+    fn compute_root(&self, parameters: &Parameters<C>) -> Root<C> {
+        self.path
+            .root_relative_to(parameters, self.leaf_digest.as_ref().unwrap())
+    }
+
+    /* TODO:
+    pub fn maybe_push_digest<F>(
+        &mut self,
+        parameters: &Parameters<C>,
+        leaf_digest: F,
+    ) -> Option<bool>
+    where
+        F: FnOnce() -> Option<LeafDigest<C>>,
+        InnerDigest<C>: Clone,
+    {
+        // TODO[move]:
+        use crate::merkle_tree::path_length;
+
+        let index = match self.next_index() {
+            Some(index) => index,
+            _ => return Some(false),
+        };
+
+        let leaf_digest = leaf_digest()?;
+
+        if index == 0 {
+            self.leaf_digest = Some(leaf_digest);
+            self.root = self.compute_root(parameters);
+        } else {
+            match index.parity() {
+                Parity::Left => {
+                    let default_leaf_digest = Default::default();
+                    let default_inner_digest = Default::default();
+
+                    let mut prev_index = index - 1;
+                    let mut prev_accumulator = parameters.join_leaves(
+                        &self.path.sibling_digest,
+                        self.leaf_digest.as_ref().unwrap(),
+                    );
+
+                    let mut next_index = index;
+                    let mut next_accumulator =
+                        parameters.join_leaves(&leaf_digest, &default_leaf_digest);
+
+                    let mut i = 0;
+                    loop {
+                        if prev_index.into_parent() == next_index.into_parent() {
+                            next_accumulator =
+                                parameters.join(&prev_accumulator, &next_accumulator);
+                            break;
+                        } else {
+                            self.path.inner_path[i] = prev_accumulator.clone();
+                            next_accumulator =
+                                parameters.join(&next_accumulator, &default_inner_digest);
+                            prev_accumulator = prev_index.join(
+                                parameters,
+                                &prev_accumulator,
+                                &self.path.inner_path[i],
+                            );
+                        }
+                        i += 1;
+                    }
+
+                    for j in i..path_length::<C>() {
+                        next_accumulator = next_index.into_parent().join(
+                            parameters,
+                            &next_accumulator,
+                            &self.path.inner_path[j],
+                        );
+                    }
+
+                    self.path.leaf_index = index;
+                    self.root = Root(next_accumulator);
+                }
+                Parity::Right => {
+                    self.path.leaf_index = index;
+                    self.path.sibling_digest =
+                        mem::replace(self.leaf_digest.as_mut().unwrap(), leaf_digest);
+                    self.root = self.compute_root(parameters);
+                }
+            }
+        }
+
+        Some(true)
+    }
+    */
 }
 
 impl<C> Tree<C> for SingleLeaf<C>
@@ -145,6 +235,8 @@ where
             let default_inner_digest = Default::default();
 
             let current_leaf_digest = self.leaf_digest.as_ref().unwrap();
+
+            // TODO: Get rid of this clone.
 
             let (mut accumulator, sibling_digest) = match next_index.parity() {
                 Parity::Left => (

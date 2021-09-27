@@ -19,39 +19,43 @@
 extern crate alloc;
 
 use crate::merkle_tree::{
-    capacity, inner_tree::InnerTree, Configuration, GetPath, InnerDigest, LeafDigest, MerkleTree,
-    Node, Parameters, Path, Root, Tree,
+    capacity,
+    inner_tree::{BTreeMap, InnerMap, InnerTree},
+    Configuration, GetPath, InnerDigest, LeafDigest, MerkleTree, Node, Parameters, Path, Root,
+    Tree,
 };
 use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash};
 
 /// Full Merkle Tree Type
-pub type FullMerkleTree<C> = MerkleTree<C, Full<C>>;
+pub type FullMerkleTree<C, M = BTreeMap<C>> = MerkleTree<C, Full<C, M>>;
 
 /// Full Merkle Tree Backing Structure
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "LeafDigest<C>: Clone, InnerDigest<C>: Clone"),
-    Debug(bound = "LeafDigest<C>: Debug, InnerDigest<C>: Debug"),
-    Default(bound = "LeafDigest<C>: Default, InnerDigest<C>: Default"),
-    Eq(bound = "LeafDigest<C>: Eq, InnerDigest<C>: Eq"),
-    Hash(bound = "LeafDigest<C>: Hash, InnerDigest<C>: Hash"),
-    PartialEq(bound = "LeafDigest<C>: PartialEq, InnerDigest<C>: PartialEq")
+    Clone(bound = "LeafDigest<C>: Clone, InnerDigest<C>: Clone, M: Clone"),
+    Debug(bound = "LeafDigest<C>: Debug, InnerDigest<C>: Debug, M: Debug"),
+    Default(bound = ""),
+    Eq(bound = "LeafDigest<C>: Eq, InnerDigest<C>: Eq, M: Eq"),
+    Hash(bound = "LeafDigest<C>: Hash, InnerDigest<C>: Hash, M: Hash"),
+    PartialEq(bound = "LeafDigest<C>: PartialEq, InnerDigest<C>: PartialEq, M: PartialEq")
 )]
-pub struct Full<C>
+pub struct Full<C, M = BTreeMap<C>>
 where
     C: Configuration + ?Sized,
+    M: InnerMap<C>,
 {
     /// Leaf Digests
     leaf_digests: Vec<LeafDigest<C>>,
 
     /// Inner Digests
-    inner_digests: InnerTree<C>,
+    inner_digests: InnerTree<C, M>,
 }
 
-impl<C> Full<C>
+impl<C, M> Full<C, M>
 where
     C: Configuration + ?Sized,
+    M: InnerMap<C>,
 {
     /// Returns the leaf digests currently stored in the merkle tree.
     #[inline]
@@ -94,9 +98,10 @@ where
     }
 }
 
-impl<C> Tree<C> for Full<C>
+impl<C, M> Tree<C> for Full<C, M>
 where
     C: Configuration + ?Sized,
+    M: InnerMap<C>,
     LeafDigest<C>: Clone,
     InnerDigest<C>: Clone,
 {
@@ -136,9 +141,10 @@ where
     }
 }
 
-impl<C> GetPath<C> for Full<C>
+impl<C, M> GetPath<C> for Full<C, M>
 where
     C: Configuration + ?Sized,
+    M: InnerMap<C>,
     LeafDigest<C>: Clone,
     InnerDigest<C>: Clone,
 {

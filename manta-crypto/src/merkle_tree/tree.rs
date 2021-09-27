@@ -23,7 +23,7 @@ use crate::merkle_tree::{
     Node,
 };
 use alloc::vec::Vec;
-use core::{fmt::Debug, hash::Hash};
+use core::{fmt::Debug, hash::Hash, marker::PhantomData};
 
 /// Merkle Tree Leaf Hash
 pub trait LeafHash {
@@ -62,14 +62,17 @@ pub trait InnerHash {
     ) -> Self::Output;
 }
 
-/// Merkle Tree Configuration
-pub trait Configuration {
+/// Merkle Tree Hash Configuration
+pub trait HashConfiguration {
     /// Leaf Hash Type
     type LeafHash: LeafHash;
 
     /// Inner Hash Type
     type InnerHash: InnerHash<LeafHash = Self::LeafHash>;
+}
 
+/// Merkle Tree Configuration
+pub trait Configuration: HashConfiguration {
     /// Height Type
     type Height: Copy + Into<usize>;
 
@@ -81,20 +84,51 @@ pub trait Configuration {
     const HEIGHT: Self::Height;
 }
 
+/// Configuration Structure
+///
+/// Use this `struct` to extend any [`C: HashConfiguration`](HashConfiguration) and a given
+/// `const HEIGHT: usize` to a full implementation of [`Configuration`].
+///
+/// # Note
+///
+/// Since this `struct` is meant to be used as a type parameter, any values of this type have no
+/// meaning, just like values of type [`HashConfiguration`] or [`Configuration`].
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct Config<C, const HEIGHT: usize>(PhantomData<C>)
+where
+    C: HashConfiguration + ?Sized;
+
+impl<C, const HEIGHT: usize> HashConfiguration for Config<C, HEIGHT>
+where
+    C: HashConfiguration + ?Sized,
+{
+    type LeafHash = C::LeafHash;
+    type InnerHash = C::InnerHash;
+}
+
+impl<C, const HEIGHT: usize> Configuration for Config<C, HEIGHT>
+where
+    C: HashConfiguration + ?Sized,
+{
+    type Height = usize;
+
+    const HEIGHT: Self::Height = HEIGHT;
+}
+
 /// Leaf Type
-pub type Leaf<C> = <<C as Configuration>::LeafHash as LeafHash>::Leaf;
+pub type Leaf<C> = <<C as HashConfiguration>::LeafHash as LeafHash>::Leaf;
 
 /// Leaf Hash Parameters Type
-pub type LeafHashParamters<C> = <<C as Configuration>::LeafHash as LeafHash>::Parameters;
+pub type LeafHashParamters<C> = <<C as HashConfiguration>::LeafHash as LeafHash>::Parameters;
 
 /// Leaf Hash Digest Type
-pub type LeafDigest<C> = <<C as Configuration>::LeafHash as LeafHash>::Output;
+pub type LeafDigest<C> = <<C as HashConfiguration>::LeafHash as LeafHash>::Output;
 
 /// Inner Hash Parameters Type
-pub type InnerHashParameters<C> = <<C as Configuration>::InnerHash as InnerHash>::Parameters;
+pub type InnerHashParameters<C> = <<C as HashConfiguration>::InnerHash as InnerHash>::Parameters;
 
 /// Inner Hash Digest Type
-pub type InnerDigest<C> = <<C as Configuration>::InnerHash as InnerHash>::Output;
+pub type InnerDigest<C> = <<C as HashConfiguration>::InnerHash as InnerHash>::Output;
 
 /// Returns the capacity of the merkle tree with the given [`C::HEIGHT`](Configuration::HEIGHT)
 /// parameter.

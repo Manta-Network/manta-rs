@@ -97,11 +97,14 @@ impl ArkMerkleTreeConfiguration for Configuration {
     const HEIGHT: Self::Height = 20;
 }
 
-impl merkle_tree::Configuration for Configuration {
+impl merkle_tree::HashConfiguration for Configuration {
     type LeafHash =
-        <ArkMerkleTreeConfigConverter<Configuration> as merkle_tree::Configuration>::LeafHash;
+        <ArkMerkleTreeConfigConverter<Configuration> as merkle_tree::HashConfiguration>::LeafHash;
     type InnerHash =
-        <ArkMerkleTreeConfigConverter<Configuration> as merkle_tree::Configuration>::InnerHash;
+        <ArkMerkleTreeConfigConverter<Configuration> as merkle_tree::HashConfiguration>::InnerHash;
+}
+
+impl merkle_tree::Configuration for Configuration {
     type Height =
         <ArkMerkleTreeConfigConverter<Configuration> as merkle_tree::Configuration>::Height;
 

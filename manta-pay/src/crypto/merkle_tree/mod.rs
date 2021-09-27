@@ -161,12 +161,18 @@ where
     const HEIGHT: Self::Height = C::HEIGHT;
 }
 
-impl<C> merkle_tree::Configuration for ConfigConverter<C>
+impl<C> merkle_tree::HashConfiguration for ConfigConverter<C>
 where
     C: Configuration,
 {
     type LeafHash = LeafHashConverter<C::Leaf, C::LeafHash>;
     type InnerHash = InnerHashConverter<C::Leaf, C::LeafHash, C::InnerHash>;
+}
+
+impl<C> merkle_tree::Configuration for ConfigConverter<C>
+where
+    C: Configuration,
+{
     type Height = C::Height;
 
     const HEIGHT: Self::Height = C::HEIGHT;

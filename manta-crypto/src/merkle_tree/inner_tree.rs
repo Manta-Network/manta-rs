@@ -235,6 +235,15 @@ where
 /// Inner Tree
 ///
 /// Tree data-structure for storing the inner digests of a merkle tree.
+///
+/// # Implementation Note
+///
+/// This type intentionally lacks an implementation of [`Tree`], especially since it does not store
+/// leaf digests. Instead, [`Full`] should be used whenever a tree with the capability to request
+/// arbitrary inner nodes is needed.
+///
+/// [`Tree`]: crate::merkle_tree::Tree
+/// [`Full`]: crate::merkle_tree::full::Full
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "InnerDigest<C>: Clone, M: Clone"),

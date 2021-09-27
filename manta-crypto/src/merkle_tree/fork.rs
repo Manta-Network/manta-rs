@@ -16,6 +16,8 @@
 
 //! Merkle Tree Forks
 
+// TODO: Think about whether we want to keep the `raw::MerkleTreePointerFamily` API sealed or not.
+
 extern crate alloc;
 
 use crate::merkle_tree::{
