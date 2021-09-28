@@ -22,7 +22,7 @@ use crate::merkle_tree::{
     fork::{self, Branch, MergeBranch, Trunk},
     Node,
 };
-use alloc::vec::Vec;
+use alloc::{vec, vec::Vec};
 use core::{fmt::Debug, hash::Hash, marker::PhantomData};
 
 /// Merkle Tree Leaf Hash
@@ -50,6 +50,12 @@ pub trait InnerHash {
 
     /// Inner Hash Output Type
     type Output: Default + PartialEq;
+
+    /// Returns `true` if `digest` is the default inner hash output value.
+    #[inline]
+    fn is_default(digest: &Self::Output) -> bool {
+        digest == &Default::default()
+    }
 
     /// Combines two inner digests into a new inner digest using `parameters`.
     fn join(parameters: &Self::Parameters, lhs: &Self::Output, rhs: &Self::Output) -> Self::Output;
@@ -449,6 +455,11 @@ where
     C: Configuration + ?Sized,
 {
     /// Builds a new [`Path`] from `leaf_index`, `sibling_digest`, and `inner_path`.
+    ///
+    /// # Safety
+    ///
+    /// In order for paths to compute the correct root, they should always have an `inner_path`
+    /// with length given by [`path_length`].
     #[inline]
     pub fn new(
         leaf_index: Node,
@@ -462,18 +473,52 @@ where
         }
     }
 
+    /// Compresses [`self.inner_path`](Self::inner_path) by removing all default values and saving
+    /// only the positions in the path of those default values.
+    #[inline]
+    pub fn compress(self) -> CompressedPath<C> {
+        let default_inner_digest = Default::default();
+        let mut started = false;
+        let mut sentinel_ranges = Vec::new();
+        let inner_path = self
+            .inner_path
+            .into_iter()
+            .enumerate()
+            .filter_map(|(i, d)| {
+                if d == default_inner_digest {
+                    if !started {
+                        sentinel_ranges.push(i);
+                        started = true;
+                    }
+                    None
+                } else {
+                    if started {
+                        sentinel_ranges.push(i);
+                        started = false;
+                    }
+                    Some(d)
+                }
+            })
+            .collect();
+        sentinel_ranges.shrink_to_fit();
+        CompressedPath::new(
+            self.leaf_index,
+            self.sibling_digest,
+            inner_path,
+            sentinel_ranges,
+        )
+    }
+
     /// Computes the root of the merkle tree relative to `leaf_digest` using `parameters`.
     #[inline]
-    pub fn root_relative_to(
-        &self,
-        parameters: &Parameters<C>,
-        leaf_digest: &LeafDigest<C>,
-    ) -> Root<C> {
-        let mut index = self.leaf_index;
-        Root(self.inner_path.iter().fold(
+    pub fn root(&self, parameters: &Parameters<C>, leaf_digest: &LeafDigest<C>) -> Root<C> {
+        let index = self.leaf_index;
+        Self::fold(
+            parameters,
+            index,
             index.join_leaves(parameters, leaf_digest, &self.sibling_digest),
-            move |acc, d| index.into_parent().join(parameters, &acc, d),
-        ))
+            &self.inner_path,
+        )
     }
 
     /// Returns `true` if `self` is a witness to the fact that `leaf_digest` is stored in a
@@ -485,7 +530,7 @@ where
         root: &Root<C>,
         leaf_digest: &LeafDigest<C>,
     ) -> bool {
-        root == &self.root_relative_to(parameters, leaf_digest)
+        root == &self.root(parameters, leaf_digest)
     }
 
     /// Returns `true` if `self` is a witness to the fact that `leaf` is stored in a merkle tree
@@ -493,6 +538,33 @@ where
     #[inline]
     pub fn verify(&self, parameters: &Parameters<C>, root: &Root<C>, leaf: &Leaf<C>) -> bool {
         self.verify_digest(parameters, root, &parameters.digest(leaf))
+    }
+
+    /// Returns the folding algorithm for a path with `index` as its starting index.
+    #[inline]
+    pub fn fold_fn<'d>(
+        parameters: &'d Parameters<C>,
+        mut index: Node,
+    ) -> impl 'd + FnMut(InnerDigest<C>, &'d InnerDigest<C>) -> InnerDigest<C> {
+        move |acc, d| index.into_parent().join(parameters, &acc, d)
+    }
+
+    /// Folds `iter` into a root using [`fold_fn`](Self::fold_fn), the path folding algorithm.
+    #[inline]
+    pub fn fold<'i, I>(
+        parameters: &'i Parameters<C>,
+        index: Node,
+        base: InnerDigest<C>,
+        iter: I,
+    ) -> Root<C>
+    where
+        InnerDigest<C>: 'i,
+        I: IntoIterator<Item = &'i InnerDigest<C>>,
+    {
+        Root(
+            iter.into_iter()
+                .fold(base, Self::fold_fn(parameters, index)),
+        )
     }
 }
 
@@ -506,6 +578,122 @@ where
         let mut inner_path = Vec::with_capacity(path_length);
         inner_path.resize_with(path_length, InnerDigest::<C>::default);
         Self::new(Default::default(), Default::default(), inner_path)
+    }
+}
+
+impl<C> From<CompressedPath<C>> for Path<C>
+where
+    C: Configuration + ?Sized,
+{
+    #[inline]
+    fn from(path: CompressedPath<C>) -> Self {
+        path.decompress()
+    }
+}
+
+/// Compressed Path
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "LeafDigest<C>: Clone, InnerDigest<C>: Clone"),
+    Debug(bound = "LeafDigest<C>: Debug, InnerDigest<C>: Debug"),
+    Eq(bound = "LeafDigest<C>: Eq, InnerDigest<C>: Eq"),
+    Hash(bound = "LeafDigest<C>: Hash, InnerDigest<C>: Hash"),
+    PartialEq(bound = "LeafDigest<C>: PartialEq, InnerDigest<C>: PartialEq")
+)]
+pub struct CompressedPath<C>
+where
+    C: Configuration + ?Sized,
+{
+    /// Leaf Index
+    pub leaf_index: Node,
+
+    /// Sibling Digest
+    pub sibling_digest: LeafDigest<C>,
+
+    /// Inner Path
+    ///
+    /// Inner digests are stored from leaf to root, not including the root.
+    pub inner_path: Vec<InnerDigest<C>>,
+
+    /// Sentinel Ranges
+    pub sentinel_ranges: Vec<usize>,
+}
+
+impl<C> CompressedPath<C>
+where
+    C: Configuration + ?Sized,
+{
+    /// Builds a new [`CompressedPath`] from `leaf_index`, `sibling_digest`, `inner_path`, and
+    /// `sentinel_ranges`.
+    ///
+    /// # Safety
+    ///
+    /// In order for paths to compute the correct root, they should always have an `inner_path`
+    /// with length given by [`path_length`].
+    ///
+    /// For compressed paths, we need the `sentinel_ranges` to contain all the ranges which include
+    /// the default inner hash, and then `inner_path` contains the non-default values. The total
+    /// number of values represented in this way must equal the [`path_length`].
+    #[inline]
+    pub fn new(
+        leaf_index: Node,
+        sibling_digest: LeafDigest<C>,
+        inner_path: Vec<InnerDigest<C>>,
+        sentinel_ranges: Vec<usize>,
+    ) -> Self {
+        Self {
+            leaf_index,
+            sibling_digest,
+            inner_path,
+            sentinel_ranges,
+        }
+    }
+
+    /// Decompresses a path by re-inserting the default values into [`self.inner_path`] at the
+    /// indices described by [`self.sentinel_ranges`].
+    ///
+    /// [`self.sentinel_ranges`]: Self::sentinel_ranges
+    /// [`self.inner_path`]: Self::inner_path
+    #[inline]
+    pub fn decompress(mut self) -> Path<C> {
+        let path_length = path_length::<C>();
+        self.inner_path.reserve(path_length);
+        let mut start = 0;
+        for (i, index) in self.sentinel_ranges.into_iter().enumerate() {
+            if i % 2 == 0 {
+                start = index;
+            } else {
+                self.inner_path
+                    .splice(start..start, (start..index).map(|_| Default::default()));
+            }
+        }
+        self.inner_path.resize_with(path_length, Default::default);
+        Path::new(self.leaf_index, self.sibling_digest, self.inner_path)
+    }
+}
+
+impl<C> Default for CompressedPath<C>
+where
+    C: Configuration + ?Sized,
+{
+    #[inline]
+    fn default() -> Self {
+        Self::new(
+            Default::default(),
+            Default::default(),
+            Default::default(),
+            vec![0, path_length::<C>()],
+        )
+    }
+}
+
+impl<C> From<Path<C>> for CompressedPath<C>
+where
+    C: Configuration + ?Sized,
+{
+    #[inline]
+    fn from(path: Path<C>) -> Self {
+        path.compress()
     }
 }
 

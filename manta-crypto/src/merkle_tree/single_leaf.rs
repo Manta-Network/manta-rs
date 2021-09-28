@@ -16,6 +16,8 @@
 
 //! Single Leaf Merkle Tree Storage
 
+// TODO: Should we be storing the root? Can we have a version where we don't?
+
 use crate::merkle_tree::{
     capacity, Configuration, InnerDigest, LeafDigest, MerkleTree, Node, Parameters, Parity, Path,
     Root, Tree,
@@ -94,95 +96,24 @@ where
         self.leaf_digest.as_ref()
     }
 
+    /// Returns a shared reference to the current leaf digest.
+    #[inline]
+    fn leaf_digest_ref(&self) -> &LeafDigest<C> {
+        self.leaf_digest().unwrap()
+    }
+
+    /// Returns a mutable reference to the current leaf digest.
+    #[inline]
+    fn leaf_digest_mut_ref(&mut self) -> &mut LeafDigest<C> {
+        self.leaf_digest.as_mut().unwrap()
+    }
+
     /// Computes the root of the tree under the assumption that `self.leaf_digest.is_some()`
     /// evaluates to `true`.
     #[inline]
     fn compute_root(&self, parameters: &Parameters<C>) -> Root<C> {
-        self.path
-            .root_relative_to(parameters, self.leaf_digest.as_ref().unwrap())
+        self.path.root(parameters, self.leaf_digest_ref())
     }
-
-    /* TODO:
-    pub fn maybe_push_digest<F>(
-        &mut self,
-        parameters: &Parameters<C>,
-        leaf_digest: F,
-    ) -> Option<bool>
-    where
-        F: FnOnce() -> Option<LeafDigest<C>>,
-        InnerDigest<C>: Clone,
-    {
-        // TODO[move]:
-        use crate::merkle_tree::path_length;
-
-        let index = match self.next_index() {
-            Some(index) => index,
-            _ => return Some(false),
-        };
-
-        let leaf_digest = leaf_digest()?;
-
-        if index == 0 {
-            self.leaf_digest = Some(leaf_digest);
-            self.root = self.compute_root(parameters);
-        } else {
-            match index.parity() {
-                Parity::Left => {
-                    let default_leaf_digest = Default::default();
-                    let default_inner_digest = Default::default();
-
-                    let mut prev_index = index - 1;
-                    let mut prev_accumulator = parameters.join_leaves(
-                        &self.path.sibling_digest,
-                        self.leaf_digest.as_ref().unwrap(),
-                    );
-
-                    let mut next_index = index;
-                    let mut next_accumulator =
-                        parameters.join_leaves(&leaf_digest, &default_leaf_digest);
-
-                    let mut i = 0;
-                    loop {
-                        if prev_index.into_parent() == next_index.into_parent() {
-                            next_accumulator =
-                                parameters.join(&prev_accumulator, &next_accumulator);
-                            break;
-                        } else {
-                            self.path.inner_path[i] = prev_accumulator.clone();
-                            next_accumulator =
-                                parameters.join(&next_accumulator, &default_inner_digest);
-                            prev_accumulator = prev_index.join(
-                                parameters,
-                                &prev_accumulator,
-                                &self.path.inner_path[i],
-                            );
-                        }
-                        i += 1;
-                    }
-
-                    for j in i..path_length::<C>() {
-                        next_accumulator = next_index.into_parent().join(
-                            parameters,
-                            &next_accumulator,
-                            &self.path.inner_path[j],
-                        );
-                    }
-
-                    self.path.leaf_index = index;
-                    self.root = Root(next_accumulator);
-                }
-                Parity::Right => {
-                    self.path.leaf_index = index;
-                    self.path.sibling_digest =
-                        mem::replace(self.leaf_digest.as_mut().unwrap(), leaf_digest);
-                    self.root = self.compute_root(parameters);
-                }
-            }
-        }
-
-        Some(true)
-    }
-    */
 }
 
 impl<C> Tree<C> for SingleLeaf<C>
@@ -219,7 +150,7 @@ where
     where
         F: FnOnce() -> Option<LeafDigest<C>>,
     {
-        let index = match self.next_index() {
+        let mut index = match self.next_index() {
             Some(index) => index,
             _ => return Some(false),
         };
@@ -227,74 +158,52 @@ where
         let leaf_digest = leaf_digest()?;
 
         if index == 0 {
-            self.root = self.path.root_relative_to(parameters, &leaf_digest);
+            self.leaf_digest = Some(leaf_digest);
+            self.root = self.compute_root(parameters);
         } else {
-            let mut next_index = index;
+            self.path.leaf_index = index;
+            match index.parity() {
+                Parity::Left => {
+                    let mut last_index = index - 1;
+                    let mut last_accumulator = parameters.join_leaves(
+                        &self.path.sibling_digest,
+                        &mem::replace(self.leaf_digest.as_mut().unwrap(), leaf_digest),
+                    );
 
-            let default_leaf_digest = Default::default();
-            let default_inner_digest = Default::default();
+                    self.path.sibling_digest = Default::default();
 
-            let current_leaf_digest = self.leaf_digest.as_ref().unwrap();
+                    let mut accumulator =
+                        parameters.join_leaves(self.leaf_digest_ref(), &self.path.sibling_digest);
 
-            // TODO: Get rid of this clone.
-
-            let (mut accumulator, sibling_digest) = match next_index.parity() {
-                Parity::Left => (
-                    parameters.join_leaves(&leaf_digest, &default_leaf_digest),
-                    default_leaf_digest,
-                ),
-                Parity::Right => (
-                    parameters.join_leaves(current_leaf_digest, &leaf_digest),
-                    current_leaf_digest.clone(),
-                ),
-            };
-
-            let mut prev_index = next_index - 1;
-            let mut prev_digest =
-                prev_index.join_leaves(parameters, current_leaf_digest, &self.path.sibling_digest);
-
-            // TODO: Mutate the path in place.
-
-            let inner_path = self
-                .path
-                .inner_path
-                .iter()
-                .map(|digest| {
-                    if prev_index.into_parent() == next_index.into_parent() {
-                        accumulator = next_index.join_opposite_pair(
+                    let mut i = 0;
+                    while !Node::are_siblings(&last_index.into_parent(), &index.into_parent()) {
+                        last_accumulator = last_index.join(
                             parameters,
-                            digest,
-                            &accumulator,
-                            &default_inner_digest,
+                            &last_accumulator,
+                            &self.path.inner_path[i],
                         );
-                        digest.clone()
-                    } else {
-                        let next_index_parity = next_index.parity();
-
-                        let next_inner_path_digest = next_index_parity
-                            .map(|| default_inner_digest.clone(), || prev_digest.clone());
-
-                        accumulator = next_index_parity.join_opposite_pair(
-                            parameters,
-                            &prev_digest,
-                            &accumulator,
-                            &default_inner_digest,
-                        );
-
-                        if prev_index.is_right() {
-                            prev_digest = parameters.join(digest, &prev_digest);
-                        }
-
-                        next_inner_path_digest
+                        self.path.inner_path[i] = Default::default();
+                        accumulator = parameters.join(&accumulator, &self.path.inner_path[i]);
+                        i += 1;
                     }
-                })
-                .collect();
 
-            self.path = Path::new(index, sibling_digest, inner_path);
-            self.root = Root(accumulator);
+                    self.path.inner_path[i] = last_accumulator;
+                    accumulator = parameters.join(&self.path.inner_path[i], &accumulator);
+
+                    self.root = Path::fold(
+                        parameters,
+                        index,
+                        accumulator,
+                        &self.path.inner_path[i + 1..],
+                    );
+                }
+                Parity::Right => {
+                    self.path.sibling_digest =
+                        mem::replace(self.leaf_digest_mut_ref(), leaf_digest);
+                    self.root = self.compute_root(parameters);
+                }
+            }
         }
-
-        self.leaf_digest = Some(leaf_digest);
 
         Some(true)
     }

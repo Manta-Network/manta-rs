@@ -107,26 +107,8 @@ impl Parity {
         C::InnerHash::join(&parameters.inner, lhs, rhs)
     }
 
-    /// Combines two leaf digests into a new inner digest using `parameters`, choosing the right
-    /// pair `(center, rhs)` if `self` has left parity or choosing the left pair `(lhs, center)`
-    /// if `self` has right parity.
-    #[inline]
-    pub fn join_opposite_pair<C>(
-        &self,
-        parameters: &Parameters<C>,
-        lhs: &InnerDigest<C>,
-        center: &InnerDigest<C>,
-        rhs: &InnerDigest<C>,
-    ) -> InnerDigest<C>
-    where
-        C: Configuration + ?Sized,
-    {
-        let (lhs, rhs) = self.triple_order(center, move || lhs, move || rhs);
-        C::InnerHash::join(&parameters.inner, lhs, rhs)
-    }
-
     /// Combines two leaf digests into a new inner digest using `parameters`, swapping the order
-    /// of `lhs` and `rhs` depending on the parity of `self` in its subtree.
+    /// of `lhs` and `rhs` depending on the parity of `self`.
     #[inline]
     pub fn join_leaves<C>(
         &self,
@@ -196,6 +178,12 @@ impl Node {
         }
     }
 
+    /// Returns `true` if `lhs` and `rhs` are siblings.
+    #[inline]
+    pub const fn are_siblings(lhs: &Self, rhs: &Self) -> bool {
+        lhs.sibling().0 == rhs.0
+    }
+
     /// Returns the left child [`Node`] of this node.
     #[inline]
     pub const fn left_child(&self) -> Self {
@@ -228,7 +216,7 @@ impl Node {
     }
 
     /// Combines two inner digests into a new inner digest using `parameters`, swapping the order
-    /// of `lhs` and `rhs` depending on the location of `self` in its subtree.
+    /// of `lhs` and `rhs` depending on the location of `self`.
     #[inline]
     pub fn join<C>(
         &self,
@@ -242,26 +230,8 @@ impl Node {
         self.parity().join(parameters, lhs, rhs)
     }
 
-    /// Combines two leaf digests into a new inner digest using `parameters`, choosing the right
-    /// pair `(center, rhs)` if `self` has left parity or choosing the left pair `(lhs, center)`
-    /// if `self` has right parity.
-    #[inline]
-    pub fn join_opposite_pair<C>(
-        &self,
-        parameters: &Parameters<C>,
-        lhs: &InnerDigest<C>,
-        center: &InnerDigest<C>,
-        rhs: &InnerDigest<C>,
-    ) -> InnerDigest<C>
-    where
-        C: Configuration + ?Sized,
-    {
-        self.parity()
-            .join_opposite_pair(parameters, lhs, center, rhs)
-    }
-
     /// Combines two leaf digests into a new inner digest using `parameters`, swapping the order
-    /// of `lhs` and `rhs` depending on the location of `self` in its subtree.
+    /// of `lhs` and `rhs` depending on the location of `self`.
     #[inline]
     pub fn join_leaves<C>(
         &self,
