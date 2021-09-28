@@ -17,15 +17,18 @@
 //! Merkle Tree Forks
 
 // TODO: Think about whether we want to keep the `raw::MerkleTreePointerFamily` API sealed or not.
+// TODO: Implement derive-able traits for these types.
 
 extern crate alloc;
 
 use crate::merkle_tree::{
-    capacity, inner_tree::InnerTree, Configuration, GetPath, GetPathError, InnerDigest, Leaf,
-    LeafDigest, MerkleTree, Path, Root, Tree,
+    capacity,
+    inner_tree::{BTreeMap, InnerMap, InnerTree},
+    Configuration, GetPath, GetPathError, InnerDigest, Leaf, LeafDigest, MerkleTree, Path, Root,
+    Tree,
 };
 use alloc::vec::Vec;
-use core::{fmt::Debug, hash::Hash, mem};
+use core::{borrow::Borrow, fmt::Debug, hash::Hash, mem, ops::Deref};
 
 /// Fork-able Merkle Tree
 pub struct Trunk<C, T, P = raw::SingleThreaded>
@@ -73,9 +76,10 @@ where
         Fork::new(self)
     }
 
-    /// Attaches `fork` to `self` as its new trunk.
+    /// Tries to attach `fork` to `self` as its new trunk, returning `false` if `fork` has
+    /// too many leaves to fit in `self`.
     #[inline]
-    pub fn attach(&self, fork: &mut Fork<C, T, P>) {
+    pub fn attach(&self, fork: &mut Fork<C, T, P>) -> bool {
         fork.attach(self)
     }
 
@@ -131,6 +135,44 @@ where
     }
 }
 
+impl<C, T, P> AsRef<MerkleTree<C, T>> for Trunk<C, T, P>
+where
+    C: Configuration + ?Sized,
+    T: Tree<C>,
+    P: raw::MerkleTreePointerFamily<C, T>,
+{
+    #[inline]
+    fn as_ref(&self) -> &MerkleTree<C, T> {
+        self.borrow_base().as_ref()
+    }
+}
+
+impl<C, T, P> Borrow<MerkleTree<C, T>> for Trunk<C, T, P>
+where
+    C: Configuration + ?Sized,
+    T: Tree<C>,
+    P: raw::MerkleTreePointerFamily<C, T>,
+{
+    #[inline]
+    fn borrow(&self) -> &MerkleTree<C, T> {
+        self.borrow_base().borrow()
+    }
+}
+
+impl<C, T, P> Deref for Trunk<C, T, P>
+where
+    C: Configuration + ?Sized,
+    T: Tree<C>,
+    P: raw::MerkleTreePointerFamily<C, T>,
+{
+    type Target = MerkleTree<C, T>;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        self.borrow_base().deref()
+    }
+}
+
 /// Merkle Tree Fork
 pub struct Fork<C, T, P = raw::SingleThreaded>
 where
@@ -154,23 +196,28 @@ where
     /// Builds a new [`Fork`] from `trunk`.
     #[inline]
     pub fn new(trunk: &Trunk<C, T, P>) -> Self {
-        Self::with_leaves(trunk, Default::default())
+        Self::with_leaves(trunk, Default::default()).unwrap()
     }
 
-    /// Builds a new [`Fork`] from `trunk` extended by `leaf_digests`
+    /// Builds a new [`Fork`] from `trunk` extended by `leaf_digests`, returning `None` if
+    /// appending `leaf_digests` would exceed the capacity of the `trunk`.
     #[inline]
-    pub fn with_leaves(trunk: &Trunk<C, T, P>, leaf_digests: Vec<LeafDigest<C>>) -> Self {
-        Self {
+    pub fn with_leaves(trunk: &Trunk<C, T, P>, leaf_digests: Vec<LeafDigest<C>>) -> Option<Self> {
+        Some(Self {
             base: trunk.downgrade(),
-            branch: Branch::new(trunk.borrow_base().as_ref(), leaf_digests),
-        }
+            branch: Branch::new(trunk.borrow_base().as_ref(), leaf_digests)?,
+        })
     }
 
-    /// Attaches this fork to a new `trunk`.
+    /// Tries to attach this fork to a new `trunk`, returning `false` if `self` has too many leaves
+    /// to fit in `trunk`.
     #[inline]
-    pub fn attach(&mut self, trunk: &Trunk<C, T, P>) {
+    pub fn attach(&mut self, trunk: &Trunk<C, T, P>) -> bool {
+        if !self.branch.try_rebase(trunk.borrow_base().as_ref()) {
+            return false;
+        }
         self.base = trunk.downgrade();
-        self.branch.rebase(trunk.borrow_base().as_ref());
+        true
     }
 
     /// Returns `true` if this fork is attached to some [`Trunk`].
@@ -258,31 +305,33 @@ where
 /// Merkle Tree Fork Branch
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "LeafDigest<C>: Clone, InnerDigest<C>: Clone"),
-    Debug(bound = "LeafDigest<C>: Debug, InnerDigest<C>: Debug"),
-    Default(bound = "LeafDigest<C>: Default, InnerDigest<C>: Default"),
-    Eq(bound = "LeafDigest<C>: Eq, InnerDigest<C>: Eq"),
-    Hash(bound = "LeafDigest<C>: Hash, InnerDigest<C>: Hash"),
-    PartialEq(bound = "LeafDigest<C>: PartialEq, InnerDigest<C>: PartialEq")
+    Clone(bound = "LeafDigest<C>: Clone, InnerDigest<C>: Clone, M: Clone"),
+    Debug(bound = "LeafDigest<C>: Debug, InnerDigest<C>: Debug, M: Debug"),
+    Default(bound = "M: Default"),
+    Eq(bound = "LeafDigest<C>: Eq, InnerDigest<C>: Eq, M: Eq"),
+    Hash(bound = "LeafDigest<C>: Hash, InnerDigest<C>: Hash, M: Hash"),
+    PartialEq(bound = "LeafDigest<C>: PartialEq, InnerDigest<C>: PartialEq, M: PartialEq")
 )]
-pub struct Branch<C>
+pub struct Branch<C, M = BTreeMap<C>>
 where
     C: Configuration + ?Sized,
+    M: InnerMap<C> + Default,
 {
     /// Leaf Digests
     pub leaf_digests: Vec<LeafDigest<C>>,
 
     /// Inner Digests
-    pub inner_digests: InnerTree<C>,
+    pub inner_digests: InnerTree<C, M>,
 }
 
-impl<C> Branch<C>
+impl<C, M> Branch<C, M>
 where
     C: Configuration + ?Sized,
+    M: InnerMap<C> + Default,
 {
     /// Builds a new [`Branch`] from `base` and `leaf_digests`.
     #[inline]
-    fn new<T>(base: &MerkleTree<C, T>, leaf_digests: Vec<LeafDigest<C>>) -> Self
+    fn new<T>(base: &MerkleTree<C, T>, leaf_digests: Vec<LeafDigest<C>>) -> Option<Self>
     where
         T: Tree<C>,
     {
@@ -290,17 +339,23 @@ where
             leaf_digests,
             inner_digests: Default::default(),
         };
-        this.rebase(base);
-        this
+        this.try_rebase(base).then(|| this)
     }
 
-    /// Restarts `self` at a new base.
+    /// Tries to restart `self` at a new `base` if `base` has enough capacity.
     #[inline]
-    fn rebase<T>(&mut self, base: &MerkleTree<C, T>)
+    fn try_rebase<T>(&mut self, base: &MerkleTree<C, T>) -> bool
     where
         T: Tree<C>,
     {
-        todo!()
+        if self.len() + base.len() > capacity::<C>() {
+            return false;
+        }
+        let Self { leaf_digests, .. } = mem::take(self);
+        for digest in leaf_digests {
+            self.push_digest(base, || digest);
+        }
+        true
     }
 
     /// Computes the length of this branch.
@@ -324,6 +379,69 @@ where
         todo!()
     }
 
+    /// Appends a new `leaf_digest` to this branch, recomputing the relevant inner digests
+    /// relative to the `base` tree`.
+    #[inline]
+    fn push_digest<T, F>(&mut self, base: &MerkleTree<C, T>, leaf_digest: F) -> bool
+    where
+        T: Tree<C>,
+        F: FnOnce() -> LeafDigest<C>,
+    {
+        use super::{inner_tree::InnerNodeIter, Node, Parity};
+
+        let len = self.len();
+        let base_tree_len = base.tree.len();
+        let total_len = base_tree_len + len;
+        if total_len >= capacity::<C>() {
+            return false;
+        }
+
+        let leaf_digest = leaf_digest();
+
+        let leaf_index = Node(total_len);
+
+        let first_inner = leaf_index.join_leaves(
+            &base.parameters,
+            &leaf_digest,
+            self.leaf_digests
+                .get(leaf_index.sibling().0)
+                .unwrap_or(&Default::default()),
+        );
+
+        let default_inner_digest = Default::default();
+
+        let root = InnerNodeIter::from_leaf::<C>(leaf_index).fold(first_inner, |acc, node| {
+            let index = node.map_index();
+            InnerMap::<C>::set(&mut self.inner_digests.map, index, acc);
+            // FIXME: This should be unwraping into `base` rather than `default_inner_digest`.
+            let (lhs, rhs) = match node.parity() {
+                Parity::Left => (
+                    self.inner_digests
+                        .map_get(index)
+                        .unwrap_or(&default_inner_digest),
+                    self.inner_digests
+                        .map_get(index + 1)
+                        .unwrap_or(&default_inner_digest),
+                ),
+                Parity::Right => (
+                    self.inner_digests
+                        .map_get(index - 1)
+                        .unwrap_or(&default_inner_digest),
+                    self.inner_digests
+                        .map_get(index)
+                        .unwrap_or(&default_inner_digest),
+                ),
+            };
+            base.parameters.join(lhs, rhs)
+        });
+
+        InnerMap::<C>::set(&mut self.inner_digests.map, 0, root);
+
+        self.leaf_digests.push(leaf_digest);
+
+        true
+    }
+
     /// Appends a new `leaf` to this branch, recomputing the relevant inner digests relative to
     /// the `base` tree.
     #[inline]
@@ -331,11 +449,7 @@ where
     where
         T: Tree<C>,
     {
-        if base.tree.len() + self.len() >= capacity::<C>() {
-            return false;
-        }
-
-        todo!()
+        self.push_digest(base, || base.parameters.digest(leaf))
     }
 
     /// Merges `self` onto the `base` merkle tree.
@@ -352,16 +466,18 @@ where
 ///
 /// An type which can only be instantiated by the merkle tree forking implementation, which
 /// prevents running [`Tree::merge_branch`] on arbitrary user-constructed [`Branch`] values.
-pub struct MergeBranch<C>(Branch<C>)
-where
-    C: Configuration + ?Sized;
-
-impl<C> From<MergeBranch<C>> for Branch<C>
+pub struct MergeBranch<C, M = BTreeMap<C>>(Branch<C, M>)
 where
     C: Configuration + ?Sized,
+    M: InnerMap<C> + Default;
+
+impl<C, M> From<MergeBranch<C, M>> for Branch<C, M>
+where
+    C: Configuration + ?Sized,
+    M: InnerMap<C> + Default,
 {
     #[inline]
-    fn from(branch: MergeBranch<C>) -> Self {
+    fn from(branch: MergeBranch<C, M>) -> Self {
         branch.0
     }
 }
@@ -373,7 +489,6 @@ pub mod raw {
         rc::{Rc, Weak as WeakRc},
         sync::{Arc, Weak as WeakArc},
     };
-    use core::borrow::Borrow;
     use manta_util::{create_seal, seal};
 
     create_seal! {}
@@ -385,7 +500,9 @@ pub mod raw {
         T: Tree<C>,
     {
         /// Strong Pointer
-        type Strong: AsRef<MerkleTree<C, T>> + Borrow<MerkleTree<C, T>>;
+        type Strong: AsRef<MerkleTree<C, T>>
+            + Borrow<MerkleTree<C, T>>
+            + Deref<Target = MerkleTree<C, T>>;
 
         /// Weak Pointer
         type Weak;

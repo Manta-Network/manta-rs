@@ -16,6 +16,8 @@
 
 //! Full Merkle Tree Storage
 
+// TODO: Do we allow custom sentinel sources for this tree?
+
 extern crate alloc;
 
 use crate::merkle_tree::{
@@ -35,7 +37,7 @@ pub type FullMerkleTree<C, M = BTreeMap<C>> = MerkleTree<C, Full<C, M>>;
 #[derivative(
     Clone(bound = "LeafDigest<C>: Clone, InnerDigest<C>: Clone, M: Clone"),
     Debug(bound = "LeafDigest<C>: Debug, InnerDigest<C>: Debug, M: Debug"),
-    Default(bound = ""),
+    Default(bound = "M: Default"),
     Eq(bound = "LeafDigest<C>: Eq, InnerDigest<C>: Eq, M: Eq"),
     Hash(bound = "LeafDigest<C>: Hash, InnerDigest<C>: Hash, M: Hash"),
     PartialEq(bound = "LeafDigest<C>: PartialEq, InnerDigest<C>: PartialEq, M: PartialEq")
@@ -101,7 +103,7 @@ where
 impl<C, M> Tree<C> for Full<C, M>
 where
     C: Configuration + ?Sized,
-    M: InnerMap<C>,
+    M: InnerMap<C> + Default,
     LeafDigest<C>: Clone,
     InnerDigest<C>: Clone,
 {
@@ -153,7 +155,7 @@ where
     #[inline]
     fn path(&self, parameters: &Parameters<C>, index: usize) -> Result<Path<C>, Self::Error> {
         let _ = parameters;
-        if index > 0 && index >= self.len() {
+        if index > 0 && index >= self.leaf_digests.len() {
             return Err(());
         }
         let leaf_index = Node(index);

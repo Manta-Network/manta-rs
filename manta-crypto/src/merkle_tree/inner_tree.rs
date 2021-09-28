@@ -16,11 +16,14 @@
 
 //! Inner Digest Tree
 
+// TODO: Figure out how we want to expose the meaning of `InnerNode` coordinates. We should share
+//       some of it, to reduce potential duplication.
+
 extern crate alloc;
 
 use crate::merkle_tree::{path_length, Configuration, InnerDigest, Node, Parameters, Parity};
 use alloc::collections::btree_map;
-use core::{fmt::Debug, hash::Hash, iter::FusedIterator, ops::Index};
+use core::{fmt::Debug, hash::Hash, iter::FusedIterator, marker::PhantomData, ops::Index};
 
 #[cfg(feature = "std")]
 use std::{collections::hash_map, hash::BuildHasher};
@@ -109,9 +112,9 @@ impl InnerNode {
         (1 << (self.depth + 1)) - 1
     }
 
-    /// Computes the index into the tree map of `self`.
+    /// Computes an [`InnerMap`] index for the coordinates represented by `self`.
     #[inline]
-    const fn map_index(&self) -> usize {
+    pub const fn map_index(&self) -> usize {
         self.depth_starting_index() + self.index.0
     }
 }
@@ -181,7 +184,7 @@ impl ExactSizeIterator for InnerNodeIter {}
 impl FusedIterator for InnerNodeIter {}
 
 /// [`InnerTree`] Map Backend
-pub trait InnerMap<C>: Default
+pub trait InnerMap<C>
 where
     C: Configuration + ?Sized,
 {
@@ -190,6 +193,22 @@ where
 
     /// Sets the inner digest at `index` to `inner_digest`.
     fn set(&mut self, index: usize, inner_digest: InnerDigest<C>);
+}
+
+impl<C, M> InnerMap<C> for &mut M
+where
+    C: Configuration + ?Sized,
+    M: InnerMap<C>,
+{
+    #[inline]
+    fn get(&self, index: usize) -> Option<&InnerDigest<C>> {
+        (**self).get(index)
+    }
+
+    #[inline]
+    fn set(&mut self, index: usize, inner_digest: InnerDigest<C>) {
+        (**self).set(index, inner_digest)
+    }
 }
 
 /// B-Tree Map [`InnerTree`] Backend
@@ -232,6 +251,66 @@ where
     }
 }
 
+/// [`InnerTree`] Sentinel Source Tree Backend
+pub trait SentinelSource<C>
+where
+    C: Configuration + ?Sized,
+{
+    /// Returns the sentinel value at the location `index` of the tree.
+    fn get(&self, index: usize) -> &InnerDigest<C>;
+}
+
+impl<C, S> SentinelSource<C> for &S
+where
+    C: Configuration + ?Sized,
+    S: SentinelSource<C>,
+{
+    #[inline]
+    fn get(&self, index: usize) -> &InnerDigest<C> {
+        (**self).get(index)
+    }
+}
+
+impl<C, S> SentinelSource<C> for &mut S
+where
+    C: Configuration + ?Sized,
+    S: SentinelSource<C>,
+{
+    #[inline]
+    fn get(&self, index: usize) -> &InnerDigest<C> {
+        (**self).get(index)
+    }
+}
+
+/// Sentinel Source for a Single Sentinel Value
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "InnerDigest<C>: Clone"),
+    Copy(bound = "InnerDigest<C>: Copy"),
+    Debug(bound = "InnerDigest<C>: Debug"),
+    Default(bound = ""),
+    Eq(bound = "InnerDigest<C>: Eq"),
+    Hash(bound = "InnerDigest<C>: Hash"),
+    PartialEq(bound = "InnerDigest<C>: PartialEq")
+)]
+pub struct Sentinel<C>(
+    /// Sentinel Value
+    pub InnerDigest<C>,
+)
+where
+    C: Configuration + ?Sized;
+
+impl<C> SentinelSource<C> for Sentinel<C>
+where
+    C: Configuration + ?Sized,
+{
+    #[inline]
+    fn get(&self, index: usize) -> &InnerDigest<C> {
+        let _ = index;
+        &self.0
+    }
+}
+
 /// Inner Tree
 ///
 /// Tree data-structure for storing the inner digests of a merkle tree.
@@ -246,17 +325,18 @@ where
 /// [`Full`]: crate::merkle_tree::full::Full
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "InnerDigest<C>: Clone, M: Clone"),
-    Debug(bound = "InnerDigest<C>: Debug, M: Debug"),
-    Default(bound = ""),
-    Eq(bound = "InnerDigest<C>: Eq, M: Eq"),
-    Hash(bound = "InnerDigest<C>: Hash, M: Hash"),
-    PartialEq(bound = "InnerDigest<C>: PartialEq, M: PartialEq")
+    Clone(bound = "M: Clone, S: Clone"),
+    Debug(bound = "M: Debug, S: Debug"),
+    Default(bound = "M: Default, S: Default"),
+    Eq(bound = "M: Eq, S: Eq"),
+    Hash(bound = "M: Hash, S: Hash"),
+    PartialEq(bound = "M: PartialEq, S: PartialEq")
 )]
-pub struct InnerTree<C, M = BTreeMap<C>>
+pub struct InnerTree<C, M = BTreeMap<C>, S = Sentinel<C>>
 where
     C: Configuration + ?Sized,
     M: InnerMap<C>,
+    S: SentinelSource<C>,
 {
     /// Inner Digest Map
     ///
@@ -266,39 +346,91 @@ where
     /// node is given by its layer in the tree starting from `depth := -1` at the root increasing
     /// downwards towards the leaves. The `index` of a node is its position from left to right
     /// along a layer in the tree. See [`InnerNode`] for more details.
-    map: M,
+    pub(super) map: M,
 
-    /// Inner Digest Default Value
-    default: InnerDigest<C>,
+    /// Sentinel Source
+    ///
+    /// The background tree for sentinel values.
+    pub(super) sentinel_source: S,
+
+    /// Type Parameter Marker
+    __: PhantomData<C>,
 }
 
-impl<C, M> InnerTree<C, M>
+impl<C, M, S> InnerTree<C, M, S>
 where
     C: Configuration + ?Sized,
     M: InnerMap<C>,
+    S: SentinelSource<C>,
 {
     /// Builds a new [`InnerTree`].
     #[inline]
-    pub fn new() -> Self {
+    pub fn new() -> Self
+    where
+        M: Default,
+        S: Default,
+    {
         Default::default()
     }
 
-    /// Returns the inner digest at `node` or the default value if the inner digest is missing.
+    /// Builds a new [`InnerTree`] with the given inner `map`.
     #[inline]
-    fn map_get(&self, index: usize) -> &InnerDigest<C> {
-        self.map.get(index).unwrap_or(&self.default)
+    pub fn with_map(map: M) -> Self
+    where
+        S: Default,
+    {
+        Self::with_map_and_sentinel(map, Default::default())
+    }
+
+    /// Builds a new [`InnerTree`] with the given `sentinel_source`.
+    #[inline]
+    pub fn with_sentinel(sentinel_source: S) -> Self
+    where
+        M: Default,
+    {
+        Self::with_map_and_sentinel(Default::default(), sentinel_source)
+    }
+
+    /// Builds a new [`InnerTree`] with the given `map` and `sentinel_source`.
+    #[inline]
+    pub fn with_map_and_sentinel(map: M, sentinel_source: S) -> Self {
+        Self {
+            map,
+            sentinel_source,
+            __: PhantomData,
+        }
+    }
+
+    /// Tries to get the inner digest at `node`, returning `None` if the inner digest is missing.
+    #[inline]
+    pub fn get(&self, node: InnerNode) -> Option<&InnerDigest<C>> {
+        self.map_get(node.map_index())
+    }
+
+    /// Returns the inner digest at `node` or a sentinel value if the inner digest is missing.
+    #[inline]
+    pub fn get_or_sentinel(&self, node: InnerNode) -> &InnerDigest<C> {
+        self.map_get_or_sentinel(node.map_index())
+    }
+
+    /// Tries to return the inner digest at `index`, returning `None` if the inner digest is
+    /// missing.
+    #[inline]
+    pub fn map_get(&self, index: usize) -> Option<&InnerDigest<C>> {
+        self.map.get(index)
+    }
+
+    /// Returns the inner digest at `index` or a sentinel value if the inner digest is missing.
+    #[inline]
+    pub fn map_get_or_sentinel(&self, index: usize) -> &InnerDigest<C> {
+        self.map_get(index)
+            .unwrap_or_else(move || self.sentinel_source.get(index))
     }
 
     /// Returns a reference to the root inner digest.
     #[inline]
     pub fn root(&self) -> &InnerDigest<C> {
-        self.map_get(0)
-    }
-
-    /// Returns the inner digest at `node` or the default value if the inner digest is missing.
-    #[inline]
-    pub fn get(&self, node: InnerNode) -> &InnerDigest<C> {
-        self.map_get(node.map_index())
+        self.map_get_or_sentinel(0)
     }
 
     /// Inserts the new `inner_digest` at `node` in the tree, and returns a reference to
@@ -312,8 +444,14 @@ where
         let index = node.map_index();
         self.map.set(index, inner_digest);
         match node.parity() {
-            Parity::Left => (self.map_get(index), self.map_get(index + 1)),
-            Parity::Right => (self.map_get(index - 1), self.map_get(index)),
+            Parity::Left => (
+                self.map_get_or_sentinel(index),
+                self.map_get_or_sentinel(index + 1),
+            ),
+            Parity::Right => (
+                self.map_get_or_sentinel(index - 1),
+                self.map_get_or_sentinel(index),
+            ),
         }
     }
 
@@ -354,69 +492,99 @@ where
 
     /// Computes the inner path starting from `node`.
     #[inline]
-    pub fn inner_path(&self, node: InnerNode) -> InnerPathIter<C, M> {
+    pub fn inner_path(&self, node: InnerNode) -> InnerPathIter<C, M, S> {
         InnerPathIter::new(self, node.iter())
     }
 
     /// Computes the inner path of the leaf given by `leaf_index`.
     #[inline]
-    pub fn inner_path_for_leaf(&self, leaf_index: Node) -> InnerPathIter<C, M> {
+    pub fn inner_path_for_leaf(&self, leaf_index: Node) -> InnerPathIter<C, M, S> {
         InnerPathIter::new(self, InnerNodeIter::from_leaf::<C>(leaf_index))
     }
 }
 
-impl<C, M> Index<InnerNode> for InnerTree<C, M>
+impl<C, M, S> Index<InnerNode> for InnerTree<C, M, S>
 where
     C: Configuration + ?Sized,
     M: InnerMap<C>,
+    S: SentinelSource<C>,
 {
     type Output = InnerDigest<C>;
 
     #[inline]
     fn index(&self, index: InnerNode) -> &Self::Output {
-        self.get(index)
+        self.get_or_sentinel(index)
+    }
+}
+
+impl<C, M, S> Index<usize> for InnerTree<C, M, S>
+where
+    C: Configuration + ?Sized,
+    M: InnerMap<C>,
+    S: SentinelSource<C>,
+{
+    type Output = InnerDigest<C>;
+
+    #[inline]
+    fn index(&self, index: usize) -> &Self::Output {
+        self.map_get_or_sentinel(index)
+    }
+}
+
+impl<C, M, S> SentinelSource<C> for InnerTree<C, M, S>
+where
+    C: Configuration + ?Sized,
+    M: InnerMap<C>,
+    S: SentinelSource<C>,
+{
+    #[inline]
+    fn get(&self, index: usize) -> &InnerDigest<C> {
+        self.map_get_or_sentinel(index)
     }
 }
 
 /// Inner Path Iterator
 #[derive(derivative::Derivative)]
 #[derivative(
-    Copy,
-    Clone,
-    Debug(bound = "InnerDigest<C>: Debug, M: Debug"),
-    Eq(bound = "InnerDigest<C>: Eq, M: Eq"),
-    Hash(bound = "InnerDigest<C>: Hash, M: Hash"),
-    PartialEq(bound = "InnerDigest<C>: PartialEq, M: PartialEq")
+    Copy(bound = ""),
+    Clone(bound = ""),
+    Debug(bound = "M: Debug, S: Debug"),
+    Eq(bound = "M: Eq, S: Eq"),
+    Hash(bound = "M: Hash, S: Hash"),
+    PartialEq(bound = "M: PartialEq, S: PartialEq")
 )]
-pub struct InnerPathIter<'t, C, M = BTreeMap<C>>
+pub struct InnerPathIter<'t, C, M = BTreeMap<C>, S = Sentinel<C>>
 where
     C: Configuration + ?Sized,
     M: InnerMap<C>,
+    S: SentinelSource<C>,
 {
     /// Inner Tree
-    inner_tree: &'t InnerTree<C, M>,
+    inner_tree: &'t InnerTree<C, M, S>,
 
     /// Inner Node Iterator
     iter: InnerNodeIter,
 }
 
-impl<'t, C, M> InnerPathIter<'t, C, M>
+impl<'t, C, M, S> InnerPathIter<'t, C, M, S>
 where
     C: Configuration + ?Sized,
     M: InnerMap<C>,
+    S: SentinelSource<C>,
 {
     /// Builds a new [`InnerPathIter`] for `inner_tree` using `iter`.
     #[inline]
-    fn new(inner_tree: &'t InnerTree<C, M>, iter: InnerNodeIter) -> Self {
+    fn new(inner_tree: &'t InnerTree<C, M, S>, iter: InnerNodeIter) -> Self {
         Self { inner_tree, iter }
     }
 }
 
 // TODO: Add all methods which can be optimized.
-impl<'t, C, M> Iterator for InnerPathIter<'t, C, M>
+impl<'t, C, M, S> Iterator for InnerPathIter<'t, C, M, S>
 where
     C: Configuration + ?Sized,
     M: InnerMap<C>,
+    S: SentinelSource<C>,
 {
     type Item = &'t InnerDigest<C>;
 
@@ -431,16 +599,18 @@ where
     }
 }
 
-impl<'t, C, M> ExactSizeIterator for InnerPathIter<'t, C, M>
+impl<'t, C, M, S> ExactSizeIterator for InnerPathIter<'t, C, M, S>
 where
     C: Configuration + ?Sized,
     M: InnerMap<C>,
+    S: SentinelSource<C>,
 {
 }
 
-impl<'t, C, M> FusedIterator for InnerPathIter<'t, C, M>
+impl<'t, C, M, S> FusedIterator for InnerPathIter<'t, C, M, S>
 where
     C: Configuration + ?Sized,
     M: InnerMap<C>,
+    S: SentinelSource<C>,
 {
 }

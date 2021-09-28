@@ -16,13 +16,14 @@
 
 //! Merkle Trees
 
-// TODO: Should `Leaf` move into `Tree`/`Configuration` since we might want the tree to have
-//       special kinds of leaf input (metadata along with just the digest)?
-// TODO: Implement [`crate::VerifiedSet`] for [`MerkleTree`]?
-// TODO: Maybe we should require `INNER_HEIGHT` instead of `HEIGHT` so that we don't have to rely
-//       on the user to check that `HEIGHT >= 2`.
-// TODO: Look into optimizations related to default values. Ex: computing the default values once
-//       and caching them in the tree storage?
+// TODO:  Should `Leaf` move into `Tree`/`Configuration` since we might want the tree to have
+//        special kinds of leaf input (metadata along with just the digest)?
+// TODO:  Implement [`crate::VerifiedSet`] for [`MerkleTree`]?
+// TODO:  Maybe we should require `INNER_HEIGHT` instead of `HEIGHT` so that we don't have to rely
+//        on the user to check that `HEIGHT >= 2`.
+// TODO:  Look into optimizations related to default values. Ex: computing the default values once
+//        and caching them in the tree storage?
+// FIXME: Get rid of as many `pub(super)` declarations as we can.
 
 mod node;
 mod tree;
@@ -38,3 +39,8 @@ pub mod test;
 
 pub use node::*;
 pub use tree::*;
+
+pub(crate) mod prelude {
+    #[doc(inline)]
+    pub use super::full::FullMerkleTree;
+}

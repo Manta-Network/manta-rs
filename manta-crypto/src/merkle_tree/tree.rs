@@ -16,10 +16,14 @@
 
 //! Merkle Tree Abstractions
 
+// TODO: Should we get rid of the `H > 2` requirement, and find a way to give correct
+//       implementations for the trivial tree sizes?
+
 extern crate alloc;
 
 use crate::merkle_tree::{
     fork::{self, Branch, MergeBranch, Trunk},
+    inner_tree::InnerMap,
     Node,
 };
 use alloc::{vec, vec::Vec};
@@ -138,6 +142,8 @@ pub type InnerDigest<C> = <<C as HashConfiguration>::InnerHash as InnerHash>::Ou
 
 /// Returns the capacity of the merkle tree with the given [`C::HEIGHT`](Configuration::HEIGHT)
 /// parameter.
+///
+/// The capacity of a merkle tree with height `H` is `2^(H-1)`.
 #[inline]
 pub fn capacity<C>() -> usize
 where
@@ -148,6 +154,8 @@ where
 
 /// Returns the path length of the merkle tree with the given [`C::HEIGHT`](Configuration::HEIGHT)
 /// parameter.
+///
+/// The path length of a merkle tree with height `H` is `H - 2`.
 #[inline]
 pub fn path_length<C>() -> usize
 where
@@ -296,7 +304,10 @@ where
     /// many leaves, into this method, so any implementation is allowed to panic on invalid
     /// `branch` values as long as it does not panic on any valid `branch` values.
     #[inline]
-    fn merge_branch(&mut self, parameters: &Parameters<C>, branch: MergeBranch<C>) {
+    fn merge_branch<M>(&mut self, parameters: &Parameters<C>, branch: MergeBranch<C, M>)
+    where
+        M: InnerMap<C> + Default,
+    {
         assert!(self
             .extend_digests(parameters, Branch::from(branch).leaf_digests)
             .is_ok())
@@ -352,7 +363,7 @@ where
 )]
 pub struct Parameters<C>
 where
-    C: Configuration + ?Sized,
+    C: HashConfiguration + ?Sized,
 {
     /// Leaf Hash Parameters
     pub leaf: LeafHashParamters<C>,
@@ -363,7 +374,7 @@ where
 
 impl<C> Parameters<C>
 where
-    C: Configuration + ?Sized,
+    C: HashConfiguration + ?Sized,
 {
     /// Builds a new [`Parameters`] from `leaf` and `inner` parameters.
     #[inline]
@@ -392,7 +403,10 @@ where
     /// Verify that `path` witnesses the fact that `leaf` is a member of a merkle tree with the
     /// given `root`.
     #[inline]
-    pub fn verify_path(&self, path: &Path<C>, root: &Root<C>, leaf: &Leaf<C>) -> bool {
+    pub fn verify_path(&self, path: &Path<C>, root: &Root<C>, leaf: &Leaf<C>) -> bool
+    where
+        C: Configuration,
+    {
         path.verify(self, root, leaf)
     }
 }
@@ -413,11 +427,11 @@ pub struct Root<C>(
     pub InnerDigest<C>,
 )
 where
-    C: Configuration + ?Sized;
+    C: HashConfiguration + ?Sized;
 
 impl<C> AsRef<InnerDigest<C>> for Root<C>
 where
-    C: Configuration + ?Sized,
+    C: HashConfiguration + ?Sized,
 {
     #[inline]
     fn as_ref(&self) -> &InnerDigest<C> {
@@ -778,6 +792,12 @@ where
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.tree.is_empty()
+    }
+
+    /// Returns the number of leaves that can fit in this merkle tree.
+    #[inline]
+    pub fn capacity(&self) -> usize {
+        capacity::<C>()
     }
 
     /// Returns the [`Root`] of the merkle tree.

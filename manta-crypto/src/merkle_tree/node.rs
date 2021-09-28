@@ -16,7 +16,7 @@
 
 //! Merkle Tree Node Abstractions
 
-use crate::merkle_tree::{Configuration, InnerDigest, InnerHash, LeafDigest, Parameters};
+use crate::merkle_tree::{HashConfiguration, InnerDigest, InnerHash, LeafDigest, Parameters};
 use core::{
     iter::FusedIterator,
     ops::{Add, Sub},
@@ -101,7 +101,7 @@ impl Parity {
         rhs: &InnerDigest<C>,
     ) -> InnerDigest<C>
     where
-        C: Configuration + ?Sized,
+        C: HashConfiguration + ?Sized,
     {
         let (lhs, rhs) = self.order(lhs, rhs);
         C::InnerHash::join(&parameters.inner, lhs, rhs)
@@ -117,7 +117,7 @@ impl Parity {
         rhs: &LeafDigest<C>,
     ) -> InnerDigest<C>
     where
-        C: Configuration + ?Sized,
+        C: HashConfiguration + ?Sized,
     {
         let (lhs, rhs) = self.order(lhs, rhs);
         C::InnerHash::join_leaves(&parameters.inner, lhs, rhs)
@@ -225,7 +225,7 @@ impl Node {
         rhs: &InnerDigest<C>,
     ) -> InnerDigest<C>
     where
-        C: Configuration + ?Sized,
+        C: HashConfiguration + ?Sized,
     {
         self.parity().join(parameters, lhs, rhs)
     }
@@ -240,7 +240,7 @@ impl Node {
         rhs: &LeafDigest<C>,
     ) -> InnerDigest<C>
     where
-        C: Configuration + ?Sized,
+        C: HashConfiguration + ?Sized,
     {
         self.parity().join_leaves(parameters, lhs, rhs)
     }

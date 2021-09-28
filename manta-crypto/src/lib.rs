@@ -31,5 +31,6 @@ pub mod set;
 
 pub use commitment::prelude::*;
 pub use ies::prelude::*;
+pub use merkle_tree::prelude::*;
 pub use prf::*;
 pub use set::prelude::*;
