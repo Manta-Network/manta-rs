@@ -16,10 +16,8 @@
 
 //! Inner Digest Tree
 
-// TODO: Figure out how we want to expose the meaning of `InnerNode` coordinates. We should share
-//       some of it, to reduce potential duplication.
-
-extern crate alloc;
+// TODO: Figure out how we want to expose the meaning of `InnerNode` coordinates. Should we share
+//       some of it, to reduce potential duplication?
 
 use crate::merkle_tree::{path_length, Configuration, InnerDigest, Node, Parameters, Parity, Path};
 use alloc::collections::btree_map;

@@ -18,13 +18,11 @@
 
 // TODO: Do we allow custom sentinel sources for this tree?
 
-extern crate alloc;
-
 use crate::merkle_tree::{
     capacity,
     inner_tree::{BTreeMap, InnerMap, PartialInnerTree},
-    Configuration, GetPath, InnerDigest, LeafDigest, MerkleTree, Node, Parameters, Path, Root,
-    Tree,
+    Configuration, CurrentPath, GetPath, InnerDigest, LeafDigest, MerkleTree, Node, Parameters,
+    Path, Root, Tree,
 };
 use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash};
@@ -137,7 +135,7 @@ where
     }
 
     #[inline]
-    fn current_path(&self, parameters: &Parameters<C>) -> Path<C> {
+    fn current_path(&self, parameters: &Parameters<C>) -> CurrentPath<C> {
         /* TODO:
         self.path(parameters, 0).unwrap()
         */

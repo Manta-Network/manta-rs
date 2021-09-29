@@ -20,8 +20,6 @@
 // TODO: Implement derive-able traits for these types.
 // TODO: See if we can get rid of the smart pointer logic.
 
-extern crate alloc;
-
 use crate::merkle_tree::{
     capacity,
     inner_tree::{BTreeMap, InnerMap, PartialInnerTree},

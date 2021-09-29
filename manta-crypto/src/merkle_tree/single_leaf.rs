@@ -19,8 +19,8 @@
 // TODO: Should we be storing the root? Can we have a version where we don't?
 
 use crate::merkle_tree::{
-    capacity, Configuration, InnerDigest, LeafDigest, MerkleTree, Node, Parameters, Parity, Path,
-    Root, Tree,
+    capacity, Configuration, CurrentPath, InnerDigest, InnerPath, LeafDigest, MerkleTree, Node,
+    Parameters, Parity, Path, Root, Tree,
 };
 use core::{fmt::Debug, hash::Hash, mem};
 
@@ -44,7 +44,7 @@ where
     /// Leaf Digest
     leaf_digest: Option<LeafDigest<C>>,
 
-    /// Path
+    /// Current Path
     path: Path<C>,
 
     /// Root
@@ -61,7 +61,7 @@ where
         if self.leaf_digest.is_none() {
             0
         } else {
-            self.path.leaf_index.0 + 1
+            self.path.leaf_index().0 + 1
         }
     }
 
@@ -84,11 +84,13 @@ where
         &self.root
     }
 
+    /* TODO:
     /// Returns the current merkle tree path for the current leaf.
     #[inline]
-    pub fn path(&self) -> &Path<C> {
-        &self.path
+    pub fn current_path(&self) -> &CurrentPath<C> {
+        &self.current_path
     }
+    */
 
     /// Returns the currently stored leaf digest, returning `None` if the tree is empty.
     #[inline]
@@ -140,9 +142,12 @@ where
     }
 
     #[inline]
-    fn current_path(&self, parameters: &Parameters<C>) -> Path<C> {
+    fn current_path(&self, parameters: &Parameters<C>) -> CurrentPath<C> {
+        /* TODO:
         let _ = parameters;
-        self.path.clone()
+        self.current_path.clone()
+        */
+        todo!()
     }
 
     #[inline]
@@ -161,7 +166,7 @@ where
             self.leaf_digest = Some(leaf_digest);
             self.root = self.compute_root(parameters);
         } else {
-            self.path.leaf_index = index;
+            self.path.inner_path.leaf_index = index;
             match index.parity() {
                 Parity::Left => {
                     let mut last_index = index - 1;
@@ -180,21 +185,21 @@ where
                         last_accumulator = last_index.join(
                             parameters,
                             &last_accumulator,
-                            &self.path.inner_path[i],
+                            &self.path.inner_path.path[i],
                         );
-                        self.path.inner_path[i] = Default::default();
-                        accumulator = parameters.join(&accumulator, &self.path.inner_path[i]);
+                        self.path.inner_path.path[i] = Default::default();
+                        accumulator = parameters.join(&accumulator, &self.path.inner_path.path[i]);
                         i += 1;
                     }
 
-                    self.path.inner_path[i] = last_accumulator;
-                    accumulator = parameters.join(&self.path.inner_path[i], &accumulator);
+                    self.path.inner_path.path[i] = last_accumulator;
+                    accumulator = parameters.join(&self.path.inner_path.path[i], &accumulator);
 
-                    self.root = Path::fold(
+                    self.root = InnerPath::fold(
                         parameters,
                         index,
                         accumulator,
-                        &self.path.inner_path[i + 1..],
+                        &self.path.inner_path.path[i + 1..],
                     );
                 }
                 Parity::Right => {
@@ -203,6 +208,11 @@ where
                     self.root = self.compute_root(parameters);
                 }
             }
+            /* TODO:
+            self.root =
+                self.current_path
+                    .update(parameters, self.leaf_digest_mut_ref(), leaf_digest);
+            */
         }
 
         Some(true)
