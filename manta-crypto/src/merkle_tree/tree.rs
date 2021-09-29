@@ -18,6 +18,8 @@
 
 // TODO: Should we get rid of the `H > 2` requirement, and find a way to give correct
 //       implementations for the trivial tree sizes?
+// TODO: Add "copy-on-write" adapters for `Root` and `Path`, and see if we can incorporate them
+//       into `Tree`.
 
 extern crate alloc;
 
@@ -601,7 +603,7 @@ where
 {
     #[inline]
     fn from(path: CompressedPath<C>) -> Self {
-        path.decompress()
+        path.uncompress()
     }
 }
 
@@ -663,13 +665,13 @@ where
         }
     }
 
-    /// Decompresses a path by re-inserting the default values into [`self.inner_path`] at the
+    /// Uncompresses a path by re-inserting the default values into [`self.inner_path`] at the
     /// indices described by [`self.sentinel_ranges`].
     ///
     /// [`self.sentinel_ranges`]: Self::sentinel_ranges
     /// [`self.inner_path`]: Self::inner_path
     #[inline]
-    pub fn decompress(mut self) -> Path<C> {
+    pub fn uncompress(mut self) -> Path<C> {
         let path_length = path_length::<C>();
         self.inner_path.reserve(path_length);
         let mut start = 0;

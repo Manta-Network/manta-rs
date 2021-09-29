@@ -31,6 +31,7 @@ mod tree;
 pub mod fork;
 pub mod full;
 pub mod inner_tree;
+pub mod partial;
 pub mod single_leaf;
 
 #[cfg(feature = "test")]
@@ -39,8 +40,3 @@ pub mod test;
 
 pub use node::*;
 pub use tree::*;
-
-pub(crate) mod prelude {
-    #[doc(inline)]
-    pub use super::full::FullMerkleTree;
-}

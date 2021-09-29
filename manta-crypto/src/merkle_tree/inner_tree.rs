@@ -21,7 +21,7 @@
 
 extern crate alloc;
 
-use crate::merkle_tree::{path_length, Configuration, InnerDigest, Node, Parameters, Parity};
+use crate::merkle_tree::{path_length, Configuration, InnerDigest, Node, Parameters, Parity, Path};
 use alloc::collections::btree_map;
 use core::{fmt::Debug, hash::Hash, iter::FusedIterator, marker::PhantomData, ops::Index};
 
@@ -346,12 +346,12 @@ where
     /// node is given by its layer in the tree starting from `depth := -1` at the root increasing
     /// downwards towards the leaves. The `index` of a node is its position from left to right
     /// along a layer in the tree. See [`InnerNode`] for more details.
-    pub(super) map: M,
+    map: M,
 
     /// Sentinel Source
     ///
     /// The background tree for sentinel values.
-    pub(super) sentinel_source: S,
+    sentinel_source: S,
 
     /// Type Parameter Marker
     __: PhantomData<C>,
@@ -540,6 +540,91 @@ where
     #[inline]
     fn get(&self, index: usize) -> &InnerDigest<C> {
         self.map_get_or_sentinel(index)
+    }
+}
+
+/// Partial Inner Tree
+///
+/// Tree data-structure for storing a subset of the inner digests of a merkle tree.
+///
+/// # Implementation Note
+///
+/// This type intentionally lacks an implementation of [`Tree`], especially since it does not store
+/// leaf digests.
+///
+/// [`Tree`]: crate::merkle_tree::Tree
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "M: Clone, S: Clone"),
+    Debug(bound = "M: Debug, S: Debug"),
+    Default(bound = "M: Default, S: Default"),
+    Eq(bound = "M: Eq, S: Eq"),
+    Hash(bound = "M: Hash, S: Hash"),
+    PartialEq(bound = "M: PartialEq, S: PartialEq")
+)]
+pub struct PartialInnerTree<C, M = BTreeMap<C>, S = Sentinel<C>>
+where
+    C: Configuration + ?Sized,
+    M: InnerMap<C>,
+    S: SentinelSource<C>,
+{
+    /// Inner Tree
+    inner_tree: InnerTree<C, M, S>,
+}
+
+impl<C, M, S> PartialInnerTree<C, M, S>
+where
+    C: Configuration + ?Sized,
+    M: InnerMap<C>,
+    S: SentinelSource<C>,
+{
+    /// Builds a [`PartialInnerTree`] from `path` treated as the current path of the tree.
+    #[inline]
+    pub fn from_current(path: Path<C>) -> Self {
+        todo!()
+    }
+
+    /// Tries to get the inner digest at `node`, returning `None` if the inner digest is missing.
+    #[inline]
+    pub fn get(&self, node: InnerNode) -> Option<&InnerDigest<C>> {
+        self.inner_tree.get(node)
+    }
+
+    /// Returns the inner digest at `node` or a sentinel value if the inner digest is missing.
+    #[inline]
+    fn get_or_sentinel(&self, node: InnerNode) -> &InnerDigest<C> {
+        self.inner_tree.get_or_sentinel(node)
+    }
+
+    /// Tries to return the inner digest at `index`, returning `None` if the inner digest is
+    /// missing.
+    #[inline]
+    pub fn map_get(&self, index: usize) -> Option<&InnerDigest<C>> {
+        self.inner_tree.map_get(index)
+    }
+
+    /// Returns the inner digest at `index` or a sentinel value if the inner digest is missing.
+    #[inline]
+    fn map_get_or_sentinel(&self, index: usize) -> &InnerDigest<C> {
+        self.inner_tree.map_get_or_sentinel(index)
+    }
+
+    /// Returns a reference to the root inner digest.
+    #[inline]
+    pub fn root(&self) -> &InnerDigest<C> {
+        self.inner_tree.root()
+    }
+}
+
+impl<C, M, S> From<InnerTree<C, M, S>> for PartialInnerTree<C, M, S>
+where
+    C: Configuration + ?Sized,
+    M: InnerMap<C>,
+    S: SentinelSource<C>,
+{
+    #[inline]
+    fn from(inner_tree: InnerTree<C, M, S>) -> Self {
+        Self { inner_tree }
     }
 }
 

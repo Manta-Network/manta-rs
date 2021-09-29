@@ -77,20 +77,6 @@ impl Parity {
         }
     }
 
-    /// Returns the `center` placed in the pair at the location given by `self`, placing `lhs` and
-    /// `rhs` in the left or right empty slot of the pair respectively.
-    #[inline]
-    pub fn triple_order<T, L, R>(&self, center: T, lhs: L, rhs: R) -> (T, T)
-    where
-        L: FnOnce() -> T,
-        R: FnOnce() -> T,
-    {
-        match self {
-            Self::Left => (center, rhs()),
-            Self::Right => (lhs(), center),
-        }
-    }
-
     /// Combines two inner digests into a new inner digest using `parameters`, swapping the order
     /// of `lhs` and `rhs` depending on the parity of `self` in its subtree.
     #[inline]
@@ -190,10 +176,17 @@ impl Node {
         Self(self.0 << 1)
     }
 
-    /// Returns the right child [`Node`] fo this node.
+    /// Returns the right child [`Node`] of this node.
     #[inline]
     pub const fn right_child(&self) -> Self {
         Self(self.left_child().0 + 1)
+    }
+
+    /// Returns the [`Node`] children of this node.
+    #[inline]
+    pub const fn children(&self) -> (Self, Self) {
+        let left_child = self.left_child();
+        (left_child, Self(left_child.0 + 1))
     }
 
     /// Returns the parent [`Node`] of this node.

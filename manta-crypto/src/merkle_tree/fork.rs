@@ -18,12 +18,13 @@
 
 // TODO: Think about whether we want to keep the `raw::MerkleTreePointerFamily` API sealed or not.
 // TODO: Implement derive-able traits for these types.
+// TODO: See if we can get rid of the smart pointer logic.
 
 extern crate alloc;
 
 use crate::merkle_tree::{
     capacity,
-    inner_tree::{BTreeMap, InnerMap, InnerTree},
+    inner_tree::{BTreeMap, InnerMap, PartialInnerTree},
     Configuration, GetPath, GetPathError, InnerDigest, Leaf, LeafDigest, MerkleTree, Path, Root,
     Tree,
 };
@@ -321,7 +322,7 @@ where
     pub leaf_digests: Vec<LeafDigest<C>>,
 
     /// Inner Digests
-    pub inner_digests: InnerTree<C, M>,
+    pub inner_digests: PartialInnerTree<C, M>,
 }
 
 impl<C, M> Branch<C, M>
@@ -387,6 +388,7 @@ where
         T: Tree<C>,
         F: FnOnce() -> LeafDigest<C>,
     {
+        /* TODO:
         use super::{inner_tree::InnerNodeIter, Node, Parity};
 
         let len = self.len();
@@ -409,6 +411,8 @@ where
         );
 
         let default_inner_digest = Default::default();
+
+        let current_base_path = base.current_path();
 
         let root = InnerNodeIter::from_leaf::<C>(leaf_index).fold(first_inner, |acc, node| {
             let index = node.map_index();
@@ -438,8 +442,9 @@ where
         InnerMap::<C>::set(&mut self.inner_digests.map, 0, root);
 
         self.leaf_digests.push(leaf_digest);
-
         true
+        */
+        todo!()
     }
 
     /// Appends a new `leaf` to this branch, recomputing the relevant inner digests relative to
