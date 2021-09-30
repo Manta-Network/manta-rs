@@ -19,12 +19,12 @@
 // TODO: Think about whether we want to keep the `raw::MerkleTreePointerFamily` API sealed or not.
 // TODO: Implement derive-able traits for these types.
 // TODO: See if we can get rid of the smart pointer logic.
+// TODO: Reduce duplication in this file, relative to `merkle_tree::partial`.
 
 use crate::merkle_tree::{
     capacity,
     inner_tree::{BTreeMap, InnerMap, PartialInnerTree},
-    Configuration, GetPath, GetPathError, InnerDigest, Leaf, LeafDigest, MerkleTree, Path, Root,
-    Tree,
+    Configuration, InnerDigest, Leaf, LeafDigest, MerkleTree, Node, Parameters, Tree,
 };
 use alloc::vec::Vec;
 use core::{borrow::Borrow, fmt::Debug, hash::Hash, mem, ops::Deref};
@@ -241,30 +241,21 @@ where
     }
 
     /// Computes the length of this fork of the tree.
-    ///
-    /// Returns `None` if this fork has been detached from its trunk. Use [`attach`](Self::attach)
-    /// to re-associate a trunk to this fork.
     #[inline]
-    pub fn len(&self) -> Option<usize> {
-        Some(P::upgrade(&self.base)?.as_ref().len() + self.branch.len())
+    pub fn len(&self) -> usize {
+        self.branch.len()
     }
 
     /// Returns `true` if this fork is empty.
-    ///
-    /// Returns `None` if this fork has been detached from its trunk. Use [`attach`](Self::attach)
-    /// to re-associate a trunk to this fork.
     #[inline]
-    pub fn is_empty(&self) -> Option<bool> {
-        Some(self.len()? == 0)
+    pub fn is_empty(&self) -> bool {
+        self.branch.is_empty()
     }
 
-    /// Computes the current root of this fork.
-    ///
-    /// Returns `None` if this fork has been detached from its trunk. Use [`attach`](Self::attach)
-    /// to re-associate a trunk to this fork.
+    /// Returns the current root of this fork.
     #[inline]
-    pub fn root(&self) -> Option<Root<C>> {
-        Some(self.branch.root(P::upgrade(&self.base)?.as_ref()))
+    pub fn root(&self) -> &InnerDigest<C> {
+        self.branch.root()
     }
 
     /// Appends a new `leaf` onto this fork.
@@ -273,33 +264,12 @@ where
     /// to re-associate a trunk to this fork.
     #[inline]
     pub fn push(&mut self, leaf: &Leaf<C>) -> Option<bool> {
-        Some(self.branch.push(P::upgrade(&self.base)?.as_ref(), leaf))
+        Some(
+            self.branch
+                .push(&P::upgrade(&self.base)?.as_ref().parameters, leaf),
+        )
     }
 }
-
-/* TODO:
-/// Fork Path Error
-#[derive(derivative::Derivative)]
-#[derivative(
-    Clone(bound = "GetPathError<C, T>: Clone"),
-    Copy(bound = "GetPathError<C, T>: Copy"),
-    Debug(bound = "GetPathError<C, T>: Debug"),
-    Eq(bound = "GetPathError<C, T>: Eq"),
-    Hash(bound = "GetPathError<C, T>: Hash"),
-    PartialEq(bound = "GetPathError<C, T>: PartialEq")
-)]
-pub enum ForkGetPathError<C, T>
-where
-    C: Configuration + ?Sized,
-    T: GetPath<C>,
-{
-    /// Trunk Path Query Error
-    TrunkError(GetPathError<C, T>),
-
-    /// Unknown Index on Branch Error
-    UnknownIndexOnBranch,
-}
-*/
 
 /// Merkle Tree Fork Branch
 #[derive(derivative::Derivative)]
@@ -328,17 +298,50 @@ where
     C: Configuration + ?Sized,
     M: InnerMap<C> + Default,
 {
+    /// Builds a new [`Branch`] from `leaf_digests` and `inner_digests`.
+    #[inline]
+    fn new_inner(leaf_digests: Vec<LeafDigest<C>>, inner_digests: PartialInnerTree<C, M>) -> Self {
+        Self {
+            leaf_digests,
+            inner_digests,
+        }
+    }
+
+    /// Builds a new [`Branch`] from `base` and `leaf_digests` without checking capacity limits.
+    #[inline]
+    fn new_unchecked<T>(base: &MerkleTree<C, T>, leaf_digests: Vec<LeafDigest<C>>) -> Self
+    where
+        T: Tree<C>,
+    {
+        let current_path = base.current_path();
+        let mut this = Self::new_inner(
+            Default::default(),
+            PartialInnerTree::from_current(
+                &base.parameters,
+                current_path.leaf_index().join_leaves(
+                    &base.parameters,
+                    &base.current_leaf(),
+                    &current_path.sibling_digest,
+                ),
+                current_path.inner_path,
+            ),
+        );
+        for digest in leaf_digests {
+            this.push_digest(&base.parameters, || digest);
+        }
+        this
+    }
+
     /// Builds a new [`Branch`] from `base` and `leaf_digests`.
     #[inline]
     fn new<T>(base: &MerkleTree<C, T>, leaf_digests: Vec<LeafDigest<C>>) -> Option<Self>
     where
         T: Tree<C>,
     {
-        let mut this = Self {
-            leaf_digests,
-            inner_digests: Default::default(),
-        };
-        this.try_rebase(base).then(|| this)
+        if leaf_digests.len() + base.len() > capacity::<C>() {
+            return None;
+        }
+        Some(Self::new_unchecked(base, leaf_digests))
     }
 
     /// Tries to restart `self` at a new `base` if `base` has enough capacity.
@@ -347,20 +350,17 @@ where
     where
         T: Tree<C>,
     {
-        if self.len() + base.len() > capacity::<C>() {
+        if self.leaf_digests.len() + base.len() > capacity::<C>() {
             return false;
         }
-        let Self { leaf_digests, .. } = mem::take(self);
-        for digest in leaf_digests {
-            self.push_digest(base, || digest);
-        }
+        *self = Self::new_unchecked(base, mem::take(self).leaf_digests);
         true
     }
 
-    /// Computes the length of this branch.
+    /// Computes the total length of this branch.
     #[inline]
     pub fn len(&self) -> usize {
-        self.leaf_digests.len()
+        self.inner_digests.starting_leaf_index().0 + self.leaf_digests.len()
     }
 
     /// Returns `true` if this branch is empty.
@@ -369,90 +369,52 @@ where
         self.len() == 0
     }
 
-    /// Computes the root of the fork which has `self` as its branch and `base` as its base tree.
+    /// Returns the root inner digest of this branch.
     #[inline]
-    fn root<T>(&self, base: &MerkleTree<C, T>) -> Root<C>
-    where
-        T: Tree<C>,
-    {
-        todo!()
+    pub fn root(&self) -> &InnerDigest<C> {
+        self.inner_digests.root()
     }
 
-    /// Appends a new `leaf_digest` to this branch, recomputing the relevant inner digests
-    /// relative to the `base` tree`.
+    /// Returns the sibling leaf node to `index`.
     #[inline]
-    fn push_digest<T, F>(&mut self, base: &MerkleTree<C, T>, leaf_digest: F) -> bool
+    fn get_leaf_sibling(&self, index: Node) -> Option<&LeafDigest<C>> {
+        self.leaf_digests.get(
+            (index - self.inner_digests.starting_leaf_index().0)
+                .sibling()
+                .0,
+        )
+    }
+
+    /// Appends a new `leaf_digest` to this branch.
+    #[inline]
+    fn push_digest<F>(&mut self, parameters: &Parameters<C>, leaf_digest: F) -> bool
     where
-        T: Tree<C>,
         F: FnOnce() -> LeafDigest<C>,
     {
-        /* TODO:
-        use super::{inner_tree::InnerNodeIter, Node, Parity};
-
         let len = self.len();
-        let base_tree_len = base.tree.len();
-        let total_len = base_tree_len + len;
-        if total_len >= capacity::<C>() {
+        if len >= capacity::<C>() {
             return false;
         }
-
         let leaf_digest = leaf_digest();
-
-        let leaf_index = Node(total_len);
-
-        let first_inner = leaf_index.join_leaves(
-            &base.parameters,
-            &leaf_digest,
-            self.leaf_digests
-                .get(leaf_index.sibling().0)
-                .unwrap_or(&Default::default()),
+        let leaf_index = Node(len);
+        self.inner_digests.insert(
+            parameters,
+            leaf_index,
+            leaf_index.join_leaves(
+                parameters,
+                &leaf_digest,
+                self.get_leaf_sibling(leaf_index)
+                    .unwrap_or(&Default::default()),
+            ),
         );
-
-        let default_inner_digest = Default::default();
-
-        let current_base_path = base.current_path();
-
-        let root = InnerNodeIter::from_leaf::<C>(leaf_index).fold(first_inner, |acc, node| {
-            let index = node.map_index();
-            InnerMap::<C>::set(&mut self.inner_digests.map, index, acc);
-            // FIXME: This should be unwraping into `base` rather than `default_inner_digest`.
-            let (lhs, rhs) = match node.parity() {
-                Parity::Left => (
-                    self.inner_digests
-                        .map_get(index)
-                        .unwrap_or(&default_inner_digest),
-                    self.inner_digests
-                        .map_get(index + 1)
-                        .unwrap_or(&default_inner_digest),
-                ),
-                Parity::Right => (
-                    self.inner_digests
-                        .map_get(index - 1)
-                        .unwrap_or(&default_inner_digest),
-                    self.inner_digests
-                        .map_get(index)
-                        .unwrap_or(&default_inner_digest),
-                ),
-            };
-            base.parameters.join(lhs, rhs)
-        });
-
-        InnerMap::<C>::set(&mut self.inner_digests.map, 0, root);
-
         self.leaf_digests.push(leaf_digest);
         true
-        */
-        todo!()
     }
 
-    /// Appends a new `leaf` to this branch, recomputing the relevant inner digests relative to
-    /// the `base` tree.
+    /// Appends a new `leaf` to this branch.
     #[inline]
-    fn push<T>(&mut self, base: &MerkleTree<C, T>, leaf: &Leaf<C>) -> bool
-    where
-        T: Tree<C>,
-    {
-        self.push_digest(base, || base.parameters.digest(leaf))
+    fn push(&mut self, parameters: &Parameters<C>, leaf: &Leaf<C>) -> bool {
+        self.push_digest(parameters, || parameters.digest(leaf))
     }
 
     /// Merges `self` onto the `base` merkle tree.

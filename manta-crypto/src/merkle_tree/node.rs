@@ -55,6 +55,34 @@ impl Parity {
         matches!(self, Self::Right)
     }
 
+    /// Returns the output of `f` if `self` is [`Left`](Self::Left), or returns a default value
+    /// otherwise.
+    #[inline]
+    pub fn left_or_default<T, F>(&self, f: F) -> T
+    where
+        T: Default,
+        F: FnOnce() -> T,
+    {
+        match self {
+            Self::Left => f(),
+            Self::Right => Default::default(),
+        }
+    }
+
+    /// Returns the output of `f` if `self` is [`Right`](Self::Right), or returns a default value
+    /// otherwise.
+    #[inline]
+    pub fn right_or_default<T, F>(&self, f: F) -> T
+    where
+        T: Default,
+        F: FnOnce() -> T,
+    {
+        match self {
+            Self::Left => Default::default(),
+            Self::Right => f(),
+        }
+    }
+
     /// Maps `self` to the output of `lhs` and `rhs` depending on its parity.
     #[inline]
     pub fn map<T, L, R>(self, lhs: L, rhs: R) -> T

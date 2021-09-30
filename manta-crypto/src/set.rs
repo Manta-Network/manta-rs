@@ -23,7 +23,7 @@
 // FIXME: The `Set::contains` method is not really something we can always implement properly.
 // FIXME: Should we just get rid of `Set` and just ensure we can get proofs working?
 
-pub(crate) mod prelude {
+pub(super) mod prelude {
     #[doc(inline)]
     pub use super::{Set, VerifiedSet};
 }

@@ -117,6 +117,11 @@ where
     }
 
     #[inline]
+    fn current_leaf(&self) -> LeafDigest<C> {
+        self.leaf_digests.last().cloned().unwrap_or_default()
+    }
+
+    #[inline]
     fn root(&self, parameters: &Parameters<C>) -> Root<C> {
         let _ = parameters;
         Root(self.root().clone())
@@ -124,8 +129,20 @@ where
 
     #[inline]
     fn current_path(&self, parameters: &Parameters<C>) -> CurrentPath<C> {
-        // FIXME: self.path(parameters, 0).unwrap()
-        todo!()
+        let _ = parameters;
+        let default = Default::default();
+        let leaf_index = Node(self.len() - 1);
+        CurrentPath::new(
+            self.get_leaf_sibling(leaf_index)
+                .map(Clone::clone)
+                .unwrap_or_default(),
+            leaf_index,
+            self.inner_digests
+                .path_for_leaf(leaf_index)
+                .filter(move |&d| d != &default)
+                .cloned()
+                .collect(),
+        )
     }
 
     #[inline]
@@ -145,7 +162,7 @@ where
 impl<C, M> GetPath<C> for Full<C, M>
 where
     C: Configuration + ?Sized,
-    M: InnerMap<C>,
+    M: InnerMap<C> + Default,
     LeafDigest<C>: Clone,
     InnerDigest<C>: Clone,
 {
@@ -154,7 +171,7 @@ where
     #[inline]
     fn path(&self, parameters: &Parameters<C>, index: usize) -> Result<Path<C>, Self::Error> {
         let _ = parameters;
-        if index > 0 && index >= self.leaf_digests.len() {
+        if index > 0 && index >= self.len() {
             return Err(());
         }
         let leaf_index = Node(index);
@@ -164,7 +181,7 @@ where
                 .unwrap_or_default(),
             leaf_index,
             self.inner_digests
-                .inner_path_for_leaf(leaf_index)
+                .path_for_leaf(leaf_index)
                 .cloned()
                 .collect(),
         ))

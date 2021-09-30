@@ -204,6 +204,9 @@ where
         self.len() == 0
     }
 
+    /// Returns the current (i.e. right-most) leaf.
+    fn current_leaf(&self) -> LeafDigest<C>;
+
     /// Returns the [`Root`] of the merkle tree.
     fn root(&self, parameters: &Parameters<C>) -> Root<C>;
 
@@ -527,6 +530,12 @@ where
     #[inline]
     pub fn capacity(&self) -> usize {
         capacity::<C>()
+    }
+
+    /// Returns the current (i.e right-most) leaf.
+    #[inline]
+    pub fn current_leaf(&self) -> LeafDigest<C> {
+        self.tree.current_leaf()
     }
 
     /// Returns the [`Root`] of the merkle tree.

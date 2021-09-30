@@ -35,7 +35,7 @@ use rand::{
     CryptoRng, RngCore, SeedableRng,
 };
 
-pub(crate) mod prelude {
+pub(super) mod prelude {
     #[doc(inline)]
     pub use super::{
         Identity, Receiver, Sender, SenderError, ShieldedIdentity, Spend, SpendError, Utxo,

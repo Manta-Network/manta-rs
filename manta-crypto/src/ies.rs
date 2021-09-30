@@ -21,7 +21,7 @@
 use core::{fmt::Debug, hash::Hash};
 use rand::{CryptoRng, RngCore};
 
-pub(crate) mod prelude {
+pub(super) mod prelude {
     #[doc(inline)]
     pub use super::IntegratedEncryptionScheme;
 }

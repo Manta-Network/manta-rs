@@ -19,18 +19,24 @@
 // TODO: Move some methods to a `raw` module for paths.
 
 use crate::merkle_tree::{
-    inner_tree::InnerNodeIter, node::Parity, path_length, Configuration, InnerDigest, Leaf,
-    LeafDigest, Node, Parameters, Root,
+    inner_tree::{InnerNode, InnerNodeIter},
+    path_length, Configuration, InnerDigest, Leaf, LeafDigest, Node, Parameters, Parity, Root,
 };
-use alloc::vec::Vec;
+use alloc::vec::{self, Vec};
 use core::{
+    convert::{TryFrom, TryInto},
     fmt::Debug,
     hash::Hash,
     iter::FusedIterator,
     mem,
     ops::{Index, IndexMut},
-    slice::{self, SliceIndex},
+    slice::SliceIndex,
 };
+
+pub(super) mod prelude {
+    #[doc(inline)]
+    pub use super::{CurrentPath, Path};
+}
 
 /// Merkle Tree Inner Path
 #[derive(derivative::Derivative)]
@@ -67,6 +73,18 @@ where
     #[inline]
     pub fn new(leaf_index: Node, path: Vec<InnerDigest<C>>) -> Self {
         Self { leaf_index, path }
+    }
+
+    /// Checks if `self` could represent the [`CurrentInnerPath`] of some tree.
+    #[inline]
+    pub fn is_current(&self) -> bool {
+        let default = Default::default();
+        InnerNodeIter::from_leaf::<C>(self.leaf_index)
+            .zip(self.path.iter())
+            .all(move |(node, d)| match node.parity() {
+                Parity::Left => d == &default,
+                Parity::Right => true,
+            })
     }
 
     /// Computes the root of the merkle tree relative to `base` using `parameters`.
@@ -115,7 +133,7 @@ where
 
     /// Folds `iter` into a root using the path folding algorithm for [`InnerPath`].
     #[inline]
-    pub(super) fn fold<'i, I>(
+    fn fold<'i, I>(
         parameters: &'i Parameters<C>,
         index: Node,
         base: InnerDigest<C>,
@@ -161,7 +179,7 @@ where
 {
     #[inline]
     fn from(path: CurrentInnerPath<C>) -> Self {
-        todo!()
+        InnerPath::new(path.leaf_index, path.into_iter().collect())
     }
 }
 
@@ -231,15 +249,24 @@ where
         Self { leaf_index, path }
     }
 
+    /// Builds a new [`CurrentInnerPath`] from an [`InnerPath`] without checking that `path`
+    /// satisfies [`InnerPath::is_current`].
+    #[inline]
+    pub fn from_path_unchecked(mut path: InnerPath<C>) -> Self {
+        let default = Default::default();
+        path.path.retain(|d| d != &default);
+        Self::new(path.leaf_index, path.path)
+    }
+
     /// Computes the root of the merkle tree relative to `base` using `parameters`.
     #[inline]
     pub fn root_from_base(&self, parameters: &Parameters<C>, base: InnerDigest<C>) -> Root<C> {
         Self::fold(
-            &Default::default(),
             parameters,
             0,
             self.leaf_index,
             base,
+            &Default::default(),
             &self.path,
         )
     }
@@ -273,14 +300,39 @@ where
         root == &self.root(parameters, leaf_digest, sibling_digest)
     }
 
+    /// Returns an iterator over the elements of [`self.path`](Self::path) as [`InnerNode`]
+    /// objects, yielding elements of the path if they are not default.
+    #[inline]
+    pub fn into_nodes(self) -> CurrentInnerPathNodeIter<C> {
+        CurrentInnerPathNodeIter::new(self)
+    }
+
+    /// Computes the folding algorithm for a path with `index` as its starting index.
+    #[inline]
+    fn fold_fn<'d, D>(
+        parameters: &'d Parameters<C>,
+        index: Node,
+        accumulator: &'d InnerDigest<C>,
+        default: &'d InnerDigest<C>,
+        digest: D,
+    ) -> InnerDigest<C>
+    where
+        D: FnOnce() -> &'d InnerDigest<C>,
+    {
+        match index.parity() {
+            Parity::Left => parameters.join(accumulator, default),
+            Parity::Right => parameters.join(digest(), accumulator),
+        }
+    }
+
     /// Folds `iter` into a root using the path folding algorithm for [`CurrentInnerPath`].
     #[inline]
     fn fold<'i, I>(
-        default: &'i InnerDigest<C>,
         parameters: &'i Parameters<C>,
         depth: usize,
         mut index: Node,
         base: InnerDigest<C>,
+        default: &'i InnerDigest<C>,
         iter: I,
     ) -> Root<C>
     where
@@ -288,18 +340,15 @@ where
         I: IntoIterator<Item = &'i InnerDigest<C>>,
     {
         let mut iter = iter.into_iter().peekable();
-        let mut accumulator = base;
-        for _ in depth..path_length::<C>() {
-            accumulator = match index.into_parent().parity() {
-                Parity::Left => parameters.join(&accumulator, default),
-                Parity::Right => parameters.join(iter.next().unwrap(), &accumulator),
-            };
-        }
-        Root(accumulator)
+        Root((depth..path_length::<C>()).fold(base, |acc, _| {
+            Self::fold_fn(parameters, index.into_parent(), &acc, default, || {
+                iter.next().unwrap()
+            })
+        }))
     }
 
-    /// Updates the path to the next current path with `next_leaf_digest`, updating `leaf_digest`
-    /// and `sibling_digest` as necessary.
+    /// Updates `self` to the next current path with `next_leaf_digest`, updating `leaf_digest`
+    /// and `sibling_digest` as needed.
     #[inline]
     fn update(
         &mut self,
@@ -322,25 +371,35 @@ where
 
                 let default_inner_digest = Default::default();
 
+                let mut i = 0;
                 let mut depth = 0;
                 while !Node::are_siblings(&last_index.into_parent(), &index.into_parent()) {
-                    last_accumulator = match last_index.parity() {
-                        Parity::Left => parameters.join(&last_accumulator, &default_inner_digest),
-                        Parity::Right => parameters.join(&self.path.remove(0), &last_accumulator),
-                    };
+                    last_accumulator = Self::fold_fn(
+                        parameters,
+                        last_index,
+                        &last_accumulator,
+                        &default_inner_digest,
+                        || {
+                            let next = &self.path[i];
+                            i += 1;
+                            next
+                        },
+                    );
                     accumulator = parameters.join(&accumulator, &default_inner_digest);
                     depth += 1;
                 }
 
-                self.path.insert(0, last_accumulator);
+                mem::drop(self.path.drain(1..i));
+
+                self.path[0] = last_accumulator;
                 accumulator = parameters.join(&self.path[0], &accumulator);
 
                 Self::fold(
-                    &default_inner_digest,
                     parameters,
                     depth + 1,
                     index,
                     accumulator,
+                    &default_inner_digest,
                     &self.path[1..],
                 )
             }
@@ -361,6 +420,129 @@ where
         path.inner_path
     }
 }
+
+impl<C> TryFrom<InnerPath<C>> for CurrentInnerPath<C>
+where
+    C: Configuration + ?Sized,
+{
+    type Error = InnerPath<C>;
+
+    #[inline]
+    fn try_from(path: InnerPath<C>) -> Result<Self, Self::Error> {
+        if path.is_current() {
+            Ok(CurrentInnerPath::from_path_unchecked(path))
+        } else {
+            Err(path)
+        }
+    }
+}
+
+impl<C> IntoIterator for CurrentInnerPath<C>
+where
+    C: Configuration + ?Sized,
+{
+    type Item = InnerDigest<C>;
+
+    type IntoIter = CurrentInnerPathIntoIter<C>;
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        Self::IntoIter {
+            current_path_iter: self.path.into_iter(),
+            node_iter: InnerNodeIter::from_leaf::<C>(self.leaf_index),
+        }
+    }
+}
+
+/// Owning Iterator for [`CurrentInnerPath`]
+pub struct CurrentInnerPathIntoIter<C>
+where
+    C: Configuration + ?Sized,
+{
+    /// Current Path Iterator
+    current_path_iter: vec::IntoIter<InnerDigest<C>>,
+
+    /// Inner Node Iterator
+    node_iter: InnerNodeIter,
+}
+
+impl<C> Iterator for CurrentInnerPathIntoIter<C>
+where
+    C: Configuration + ?Sized,
+{
+    type Item = InnerDigest<C>;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        Some(
+            self.node_iter
+                .next()?
+                .parity()
+                .right_or_default(|| self.current_path_iter.next().unwrap()),
+        )
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.node_iter.size_hint()
+    }
+}
+
+impl<C> ExactSizeIterator for CurrentInnerPathIntoIter<C> where C: Configuration + ?Sized {}
+
+impl<C> FusedIterator for CurrentInnerPathIntoIter<C> where C: Configuration + ?Sized {}
+
+/// [`InnerNode`] Iterator for [`CurrentInnerPath`]
+pub struct CurrentInnerPathNodeIter<C>
+where
+    C: Configuration + ?Sized,
+{
+    /// Current Path Iterator
+    current_path_iter: vec::IntoIter<InnerDigest<C>>,
+
+    /// Inner Node Iterator
+    node_iter: InnerNodeIter,
+}
+
+impl<C> CurrentInnerPathNodeIter<C>
+where
+    C: Configuration + ?Sized,
+{
+    /// Builds a new [`CurrentInnerPathNodeIter`] from a [`CurrentInnerPath`].
+    #[inline]
+    pub fn new(path: CurrentInnerPath<C>) -> Self {
+        Self {
+            current_path_iter: path.path.into_iter(),
+            node_iter: InnerNodeIter::from_leaf::<C>(path.leaf_index),
+        }
+    }
+}
+
+impl<C> Iterator for CurrentInnerPathNodeIter<C>
+where
+    C: Configuration + ?Sized,
+{
+    type Item = (InnerNode, Option<InnerDigest<C>>);
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        let node = self.node_iter.next()?;
+        Some((
+            node,
+            node.parity()
+                .right_or_default(|| Some(self.current_path_iter.next().unwrap())),
+        ))
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.node_iter.size_hint()
+    }
+}
+
+impl<C> ExactSizeIterator for CurrentInnerPathNodeIter<C> where C: Configuration + ?Sized {}
+
+impl<C> FusedIterator for CurrentInnerPathNodeIter<C> where C: Configuration + ?Sized {}
 
 /// Merkle Tree Path
 #[derive(derivative::Derivative)]
@@ -412,6 +594,12 @@ where
         self.inner_path.leaf_index
     }
 
+    /// Checks if `self` could represent the [`CurrentPath`] of some tree.
+    #[inline]
+    pub fn is_current(&self) -> bool {
+        self.inner_path.is_current()
+    }
+
     /// Computes the root of the merkle tree relative to `leaf_digest` using `parameters`.
     #[inline]
     pub fn root(&self, parameters: &Parameters<C>, leaf_digest: &LeafDigest<C>) -> Root<C> {
@@ -438,23 +626,6 @@ where
     pub fn verify(&self, parameters: &Parameters<C>, root: &Root<C>, leaf: &Leaf<C>) -> bool {
         self.verify_digest(parameters, root, &parameters.digest(leaf))
     }
-
-    /* TODO:
-    /// Folds `iter` into a root using the path folding algorithm for [`Path`].
-    #[inline]
-    pub(super) fn fold<'i, I>(
-        parameters: &'i Parameters<C>,
-        index: Node,
-        base: InnerDigest<C>,
-        iter: I,
-    ) -> Root<C>
-    where
-        InnerDigest<C>: 'i,
-        I: IntoIterator<Item = &'i InnerDigest<C>>,
-    {
-        InnerPath::fold(parameters, index, base, iter)
-    }
-    */
 }
 
 impl<C> From<CurrentPath<C>> for Path<C>
@@ -535,6 +706,16 @@ where
         }
     }
 
+    /// Builds a new [`CurrentPath`] from a [`Path`] without checking that `path` satisfies
+    /// [`Path::is_current`].
+    #[inline]
+    pub fn from_path_unchecked(path: Path<C>) -> Self {
+        Self::from_inner(
+            path.sibling_digest,
+            CurrentInnerPath::from_path_unchecked(path.inner_path),
+        )
+    }
+
     /// Returns the leaf index for this [`CurrentPath`].
     #[inline]
     pub fn leaf_index(&self) -> Node {
@@ -578,6 +759,25 @@ where
     ) -> Root<C> {
         self.inner_path
             .update(parameters, current, &mut self.sibling_digest, next)
+    }
+}
+
+impl<C> TryFrom<Path<C>> for CurrentPath<C>
+where
+    C: Configuration + ?Sized,
+{
+    type Error = Path<C>;
+
+    #[inline]
+    fn try_from(path: Path<C>) -> Result<Self, Self::Error> {
+        let Path {
+            sibling_digest,
+            inner_path,
+        } = path;
+        match inner_path.try_into() {
+            Ok(inner_path) => Ok(Self::from_inner(sibling_digest, inner_path)),
+            Err(inner_path) => Err(Path::from_inner(sibling_digest, inner_path)),
+        }
     }
 }
 
@@ -697,7 +897,7 @@ where
     /// only the positions in the path of those default values.
     #[inline]
     pub fn compress(self) -> CompressedPath<C> {
-        let default_inner_digest = Default::default();
+        let default = Default::default();
         let mut started = false;
         let mut sentinel_ranges = Vec::new();
         let inner_path = self
@@ -705,7 +905,7 @@ where
             .into_iter()
             .enumerate()
             .filter_map(|(i, d)| {
-                if d == default_inner_digest {
+                if d == default {
                     if !started {
                         sentinel_ranges.push(i);
                         started = true;

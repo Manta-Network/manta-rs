@@ -18,8 +18,11 @@
 
 // TODO: Figure out how we want to expose the meaning of `InnerNode` coordinates. Should we share
 //       some of it, to reduce potential duplication?
+// TODO: We should probably move `InnerNode` and its related `struct`s to `merkle_tree::node`.
 
-use crate::merkle_tree::{path_length, Configuration, InnerDigest, Node, Parameters, Parity, Path};
+use crate::merkle_tree::{
+    path::CurrentInnerPath, path_length, Configuration, InnerDigest, Node, Parameters, Parity,
+};
 use alloc::collections::btree_map;
 use core::{fmt::Debug, hash::Hash, iter::FusedIterator, marker::PhantomData, ops::Index};
 
@@ -27,7 +30,7 @@ use core::{fmt::Debug, hash::Hash, iter::FusedIterator, marker::PhantomData, ops
 use std::{collections::hash_map, hash::BuildHasher};
 
 /// Inner Tree Node
-#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct InnerNode {
     /// Depth
     depth: usize,
@@ -191,6 +194,31 @@ where
 
     /// Sets the inner digest at `index` to `inner_digest`.
     fn set(&mut self, index: usize, inner_digest: InnerDigest<C>);
+
+    /// Sets the inner digest at `index` to `inner_digest` and returns a reference to the
+    /// newly stored value.
+    #[inline]
+    fn set_get(&mut self, index: usize, inner_digest: InnerDigest<C>) -> &InnerDigest<C> {
+        self.set(index, inner_digest);
+        self.get(index).unwrap()
+    }
+
+    /// Sets the inner digests at `lhs_index` and `rhs_index` to `lhs_digest` and `rhs_digest`
+    /// respectively, returning their join.
+    #[inline]
+    fn set_and_join(
+        &mut self,
+        parameters: &Parameters<C>,
+        lhs_index: usize,
+        lhs_digest: InnerDigest<C>,
+        rhs_index: usize,
+        rhs_digest: InnerDigest<C>,
+    ) -> InnerDigest<C> {
+        let digest = parameters.join(&lhs_digest, &rhs_digest);
+        self.set(lhs_index, lhs_digest);
+        self.set(rhs_index, rhs_digest);
+        digest
+    }
 }
 
 impl<C, M> InnerMap<C> for &mut M
@@ -431,6 +459,12 @@ where
         self.map_get_or_sentinel(0)
     }
 
+    /// Sets the current root to `root`.
+    #[inline]
+    fn set_root(&mut self, root: InnerDigest<C>) {
+        self.map.set(0, root)
+    }
+
     /// Inserts the new `inner_digest` at `node` in the tree, and returns a reference to
     /// `inner_digest` and its sibling in the tree in parity order.
     #[inline]
@@ -485,19 +519,19 @@ where
     #[inline]
     pub fn insert(&mut self, parameters: &Parameters<C>, leaf_index: Node, base: InnerDigest<C>) {
         let root = self.compute_root(parameters, leaf_index, base);
-        self.map.set(0, root);
+        self.set_root(root);
     }
 
     /// Computes the inner path starting from `node`.
     #[inline]
-    pub fn inner_path(&self, node: InnerNode) -> InnerPathIter<C, M, S> {
-        InnerPathIter::new(self, node.iter())
+    pub fn path(&self, node: InnerNode) -> InnerTreePathIter<C, M, S> {
+        InnerTreePathIter::new(self, node.iter())
     }
 
     /// Computes the inner path of the leaf given by `leaf_index`.
     #[inline]
-    pub fn inner_path_for_leaf(&self, leaf_index: Node) -> InnerPathIter<C, M, S> {
-        InnerPathIter::new(self, InnerNodeIter::from_leaf::<C>(leaf_index))
+    pub fn path_for_leaf(&self, leaf_index: Node) -> InnerTreePathIter<C, M, S> {
+        InnerTreePathIter::new(self, InnerNodeIter::from_leaf::<C>(leaf_index))
     }
 }
 
@@ -568,6 +602,9 @@ where
 {
     /// Inner Tree
     inner_tree: InnerTree<C, M, S>,
+
+    /// Starting Leaf Index
+    starting_leaf_index: Node,
 }
 
 impl<C, M, S> PartialInnerTree<C, M, S>
@@ -576,22 +613,65 @@ where
     M: InnerMap<C>,
     S: SentinelSource<C>,
 {
-    /// Builds a [`PartialInnerTree`] from `path` treated as the current path of the tree.
+    /// Builds a new [`PartialInnerTree`] from `inner_tree` and `starting_leaf_index`.
     #[inline]
-    pub fn from_current(path: Path<C>) -> Self {
-        todo!()
+    fn new(inner_tree: InnerTree<C, M, S>, starting_leaf_index: Node) -> Self {
+        Self {
+            inner_tree,
+            starting_leaf_index,
+        }
+    }
+
+    /// Builds a new [`PartialInnerTree`] from `base` and `path`.
+    #[inline]
+    pub fn from_current(
+        parameters: &Parameters<C>,
+        base: InnerDigest<C>,
+        path: CurrentInnerPath<C>,
+    ) -> Self
+    where
+        M: Default,
+        S: Default,
+    {
+        // TODO: Remove duplicated function calls.
+
+        let mut inner_tree = InnerTree::<C, M, S>::default();
+
+        let leaf_index = path.leaf_index;
+        let node_iter = path.into_nodes();
+
+        if node_iter.len() == 0 {
+            return inner_tree.into();
+        }
+
+        let default = Default::default();
+        let root = node_iter.fold(base, |acc, (node, digest)| {
+            let index = node.map_index();
+            match digest {
+                Some(digest) => {
+                    inner_tree
+                        .map
+                        .set_and_join(parameters, index - 1, digest, index, acc)
+                }
+                _ => parameters.join(inner_tree.map.set_get(index, acc), &default),
+            }
+        });
+
+        inner_tree.set_root(root);
+
+        Self::new(inner_tree, leaf_index)
+    }
+
+    /// Returns the starting leaf index where the tree was constructed from.
+    #[inline]
+    pub fn starting_leaf_index(&self) -> Node {
+        self.starting_leaf_index
     }
 
     /// Tries to get the inner digest at `node`, returning `None` if the inner digest is missing.
     #[inline]
     pub fn get(&self, node: InnerNode) -> Option<&InnerDigest<C>> {
         self.inner_tree.get(node)
-    }
-
-    /// Returns the inner digest at `node` or a sentinel value if the inner digest is missing.
-    #[inline]
-    fn get_or_sentinel(&self, node: InnerNode) -> &InnerDigest<C> {
-        self.inner_tree.get_or_sentinel(node)
     }
 
     /// Tries to return the inner digest at `index`, returning `None` if the inner digest is
@@ -601,16 +681,23 @@ where
         self.inner_tree.map_get(index)
     }
 
-    /// Returns the inner digest at `index` or a sentinel value if the inner digest is missing.
-    #[inline]
-    fn map_get_or_sentinel(&self, index: usize) -> &InnerDigest<C> {
-        self.inner_tree.map_get_or_sentinel(index)
-    }
-
     /// Returns a reference to the root inner digest.
     #[inline]
     pub fn root(&self) -> &InnerDigest<C> {
         self.inner_tree.root()
+    }
+
+    /// Inserts the `base` inner digest corresponding to the leaf at `leaf_index` into the tree.
+    #[inline]
+    pub fn insert(&mut self, parameters: &Parameters<C>, leaf_index: Node, base: InnerDigest<C>) {
+        self.inner_tree.insert(parameters, leaf_index, base)
+    }
+
+    /// Computes the inner path of the leaf given by `leaf_index` without checking if
+    /// `leaf_index` is later than the starting index of this tree.
+    #[inline]
+    pub fn path_for_leaf_unchecked(&self, leaf_index: Node) -> InnerTreePathIter<C, M, S> {
+        self.inner_tree.path_for_leaf(leaf_index)
     }
 }
 
@@ -622,11 +709,11 @@ where
 {
     #[inline]
     fn from(inner_tree: InnerTree<C, M, S>) -> Self {
-        Self { inner_tree }
+        Self::new(inner_tree, Default::default())
     }
 }
 
-/// Inner Path Iterator
+/// [`InnerTree`] Path Iterator
 #[derive(derivative::Derivative)]
 #[derivative(
     Copy(bound = ""),
@@ -636,7 +723,7 @@ where
     Hash(bound = "M: Hash, S: Hash"),
     PartialEq(bound = "M: PartialEq, S: PartialEq")
 )]
-pub struct InnerPathIter<'t, C, M = BTreeMap<C>, S = Sentinel<C>>
+pub struct InnerTreePathIter<'t, C, M = BTreeMap<C>, S = Sentinel<C>>
 where
     C: Configuration + ?Sized,
     M: InnerMap<C>,
@@ -649,13 +736,13 @@ where
     iter: InnerNodeIter,
 }
 
-impl<'t, C, M, S> InnerPathIter<'t, C, M, S>
+impl<'t, C, M, S> InnerTreePathIter<'t, C, M, S>
 where
     C: Configuration + ?Sized,
     M: InnerMap<C>,
     S: SentinelSource<C>,
 {
-    /// Builds a new [`InnerPathIter`] for `inner_tree` using `iter`.
+    /// Builds a new [`InnerTreePathIter`] for `inner_tree` using `iter`.
     #[inline]
     fn new(inner_tree: &'t InnerTree<C, M, S>, iter: InnerNodeIter) -> Self {
         Self { inner_tree, iter }
@@ -663,7 +750,7 @@ where
 }
 
 // TODO: Add all methods which can be optimized.
-impl<'t, C, M, S> Iterator for InnerPathIter<'t, C, M, S>
+impl<'t, C, M, S> Iterator for InnerTreePathIter<'t, C, M, S>
 where
     C: Configuration + ?Sized,
     M: InnerMap<C>,
@@ -682,7 +769,7 @@ where
     }
 }
 
-impl<'t, C, M, S> ExactSizeIterator for InnerPathIter<'t, C, M, S>
+impl<'t, C, M, S> ExactSizeIterator for InnerTreePathIter<'t, C, M, S>
 where
     C: Configuration + ?Sized,
     M: InnerMap<C>,
@@ -690,7 +777,7 @@ where
 {
 }
 
-impl<'t, C, M, S> FusedIterator for InnerPathIter<'t, C, M, S>
+impl<'t, C, M, S> FusedIterator for InnerTreePathIter<'t, C, M, S>
 where
     C: Configuration + ?Sized,
     M: InnerMap<C>,

@@ -26,13 +26,13 @@
 // FIXME: Get rid of as many `pub(super)` declarations as we can.
 
 mod node;
-mod path;
 mod tree;
 
 pub mod fork;
 pub mod full;
 pub mod inner_tree;
 pub mod partial;
+pub mod path;
 pub mod single_leaf;
 
 #[cfg(feature = "test")]
@@ -40,5 +40,5 @@ pub mod single_leaf;
 pub mod test;
 
 pub use node::*;
-pub use path::*;
+pub use path::prelude::*;
 pub use tree::*;

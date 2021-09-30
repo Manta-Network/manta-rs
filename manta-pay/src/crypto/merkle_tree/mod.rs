@@ -402,8 +402,8 @@ pub mod constraint {
         fn convert_path(path: &Path<ConfigConverter<C>>) -> PathInnerType<C> {
             PathInnerType {
                 leaf_sibling_hash: path.sibling_digest.clone(),
-                auth_path: path.inner_path.iter().rev().cloned().collect(),
-                leaf_index: path.leaf_index.0,
+                auth_path: path.inner_path.path.iter().rev().cloned().collect(),
+                leaf_index: path.inner_path.leaf_index.0,
             }
         }
 

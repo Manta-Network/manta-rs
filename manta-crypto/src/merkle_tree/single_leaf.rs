@@ -19,10 +19,23 @@
 // TODO: Should we be storing the root? Can we have a version where we don't?
 
 use crate::merkle_tree::{
-    capacity, Configuration, CurrentPath, InnerDigest, InnerPath, LeafDigest, MerkleTree, Node,
-    Parameters, Parity, Path, Root, Tree,
+    capacity, Configuration, CurrentPath, InnerDigest, LeafDigest, MerkleTree, Parameters, Root,
+    Tree,
 };
-use core::{fmt::Debug, hash::Hash, mem};
+use core::{fmt::Debug, hash::Hash};
+
+/// Tree Length State
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum Length {
+    /// Empty Tree
+    Empty,
+
+    /// Can Accept Leaves
+    CanAccept,
+
+    /// Full Tree
+    Full,
+}
 
 /// Single Leaf Merkle Tree Type
 pub type SingleLeafMerkleTree<C> = MerkleTree<C, SingleLeaf<C>>;
@@ -45,7 +58,7 @@ where
     leaf_digest: Option<LeafDigest<C>>,
 
     /// Current Path
-    path: Path<C>,
+    current_path: CurrentPath<C>,
 
     /// Root
     root: Root<C>,
@@ -61,20 +74,19 @@ where
         if self.leaf_digest.is_none() {
             0
         } else {
-            self.path.leaf_index().0 + 1
+            self.current_path.leaf_index().0 + 1
         }
     }
 
-    /// Returns the next avaiable index or `None` if the merkle tree is full.
+    /// Returns the state of the length of this tree.
     #[inline]
-    fn next_index(&self) -> Option<Node> {
-        let len = self.len();
-        if len == 0 {
-            Some(Node(0))
-        } else if len < capacity::<C>() - 1 {
-            Some(Node(len + 1))
+    pub fn length_state(&self) -> Length {
+        if self.leaf_digest.is_none() {
+            Length::Empty
+        } else if self.current_path.leaf_index().0 < capacity::<C>() - 2 {
+            Length::CanAccept
         } else {
-            None
+            Length::Full
         }
     }
 
@@ -84,13 +96,11 @@ where
         &self.root
     }
 
-    /* TODO:
     /// Returns the current merkle tree path for the current leaf.
     #[inline]
     pub fn current_path(&self) -> &CurrentPath<C> {
         &self.current_path
     }
-    */
 
     /// Returns the currently stored leaf digest, returning `None` if the tree is empty.
     #[inline]
@@ -98,23 +108,12 @@ where
         self.leaf_digest.as_ref()
     }
 
-    /// Returns a shared reference to the current leaf digest.
-    #[inline]
-    fn leaf_digest_ref(&self) -> &LeafDigest<C> {
-        self.leaf_digest().unwrap()
-    }
-
-    /// Returns a mutable reference to the current leaf digest.
-    #[inline]
-    fn leaf_digest_mut_ref(&mut self) -> &mut LeafDigest<C> {
-        self.leaf_digest.as_mut().unwrap()
-    }
-
     /// Computes the root of the tree under the assumption that `self.leaf_digest.is_some()`
     /// evaluates to `true`.
     #[inline]
     fn compute_root(&self, parameters: &Parameters<C>) -> Root<C> {
-        self.path.root(parameters, self.leaf_digest_ref())
+        self.current_path
+            .root(parameters, self.leaf_digest().unwrap())
     }
 }
 
@@ -136,6 +135,16 @@ where
     }
 
     #[inline]
+    fn is_empty(&self) -> bool {
+        self.leaf_digest.is_none()
+    }
+
+    #[inline]
+    fn current_leaf(&self) -> LeafDigest<C> {
+        self.leaf_digest.as_ref().cloned().unwrap_or_default()
+    }
+
+    #[inline]
     fn root(&self, parameters: &Parameters<C>) -> Root<C> {
         let _ = parameters;
         self.root.clone()
@@ -143,11 +152,8 @@ where
 
     #[inline]
     fn current_path(&self, parameters: &Parameters<C>) -> CurrentPath<C> {
-        /* TODO:
         let _ = parameters;
         self.current_path.clone()
-        */
-        todo!()
     }
 
     #[inline]
@@ -155,66 +161,20 @@ where
     where
         F: FnOnce() -> Option<LeafDigest<C>>,
     {
-        let mut index = match self.next_index() {
-            Some(index) => index,
-            _ => return Some(false),
-        };
-
-        let leaf_digest = leaf_digest()?;
-
-        if index == 0 {
-            self.leaf_digest = Some(leaf_digest);
-            self.root = self.compute_root(parameters);
-        } else {
-            self.path.inner_path.leaf_index = index;
-            match index.parity() {
-                Parity::Left => {
-                    let mut last_index = index - 1;
-                    let mut last_accumulator = parameters.join_leaves(
-                        &self.path.sibling_digest,
-                        &mem::replace(self.leaf_digest.as_mut().unwrap(), leaf_digest),
-                    );
-
-                    self.path.sibling_digest = Default::default();
-
-                    let mut accumulator =
-                        parameters.join_leaves(self.leaf_digest_ref(), &self.path.sibling_digest);
-
-                    let mut i = 0;
-                    while !Node::are_siblings(&last_index.into_parent(), &index.into_parent()) {
-                        last_accumulator = last_index.join(
-                            parameters,
-                            &last_accumulator,
-                            &self.path.inner_path.path[i],
-                        );
-                        self.path.inner_path.path[i] = Default::default();
-                        accumulator = parameters.join(&accumulator, &self.path.inner_path.path[i]);
-                        i += 1;
-                    }
-
-                    self.path.inner_path.path[i] = last_accumulator;
-                    accumulator = parameters.join(&self.path.inner_path.path[i], &accumulator);
-
-                    self.root = InnerPath::fold(
-                        parameters,
-                        index,
-                        accumulator,
-                        &self.path.inner_path.path[i + 1..],
-                    );
-                }
-                Parity::Right => {
-                    self.path.sibling_digest =
-                        mem::replace(self.leaf_digest_mut_ref(), leaf_digest);
-                    self.root = self.compute_root(parameters);
-                }
+        match self.length_state() {
+            Length::Full => return Some(false),
+            Length::Empty => {
+                self.leaf_digest = Some(leaf_digest()?);
+                self.root = self.compute_root(parameters);
             }
-            /* TODO:
-            self.root =
-                self.current_path
-                    .update(parameters, self.leaf_digest_mut_ref(), leaf_digest);
-            */
+            Length::CanAccept => {
+                self.root = self.current_path.update(
+                    parameters,
+                    self.leaf_digest.as_mut().unwrap(),
+                    leaf_digest()?,
+                );
+            }
         }
-
         Some(true)
     }
 }

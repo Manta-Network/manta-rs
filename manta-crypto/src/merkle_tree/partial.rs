@@ -21,8 +21,7 @@
 use crate::merkle_tree::{
     capacity,
     inner_tree::{BTreeMap, InnerMap, PartialInnerTree},
-    Configuration, CurrentPath, GetPath, InnerDigest, LeafDigest, MerkleTree, Node, Parameters,
-    Path, Root, Tree,
+    Configuration, CurrentPath, InnerDigest, LeafDigest, MerkleTree, Node, Parameters, Root, Tree,
 };
 use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash};
@@ -58,9 +57,21 @@ where
     M: InnerMap<C>,
 {
     /// Returns the leaf digests currently stored in the merkle tree.
+    ///
+    /// # Note
+    ///
+    /// Since this tree does not start its leaf nodes from the first possible index, indexing into
+    /// this slice will not be the same as indexing into a slice from a full tree. For all other
+    /// indexing, use the full indexing scheme.
     #[inline]
     pub fn leaf_digests(&self) -> &[LeafDigest<C>] {
         &self.leaf_digests
+    }
+
+    /// Returns the starting leaf index for this tree.
+    #[inline]
+    pub fn starting_leaf_index(&self) -> Node {
+        self.inner_digests.starting_leaf_index()
     }
 
     /// Returns a reference to the root inner digest.
@@ -72,11 +83,8 @@ where
     /// Returns the sibling leaf node to `index`.
     #[inline]
     fn get_leaf_sibling(&self, index: Node) -> Option<&LeafDigest<C>> {
-        /* TODO:
-        // TODO: Add `Index` methods to accept `Node` as indices.
-        self.leaf_digests.get(index.sibling().0)
-        */
-        todo!()
+        self.leaf_digests
+            .get((index - self.starting_leaf_index().0).sibling().0)
     }
 
     /// Appends a `leaf_digest` with index given by `leaf_index` into the tree.
@@ -87,7 +95,6 @@ where
         leaf_index: Node,
         leaf_digest: LeafDigest<C>,
     ) {
-        /* TODO:
         self.inner_digests.insert(
             parameters,
             leaf_index,
@@ -99,8 +106,6 @@ where
             ),
         );
         self.leaf_digests.push(leaf_digest);
-        */
-        todo!()
     }
 }
 
@@ -119,27 +124,36 @@ where
 
     #[inline]
     fn len(&self) -> usize {
-        /* TODO:
-        self.leaf_digests.len()
-        */
-        todo!()
+        self.starting_leaf_index().0 + self.leaf_digests.len()
+    }
+
+    #[inline]
+    fn current_leaf(&self) -> LeafDigest<C> {
+        self.leaf_digests.last().cloned().unwrap_or_default()
     }
 
     #[inline]
     fn root(&self, parameters: &Parameters<C>) -> Root<C> {
-        /* TODO:
         let _ = parameters;
         Root(self.root().clone())
-        */
-        todo!()
     }
 
     #[inline]
     fn current_path(&self, parameters: &Parameters<C>) -> CurrentPath<C> {
-        /* TODO:
-        self.path(parameters, 0).unwrap()
-        */
-        todo!()
+        let _ = parameters;
+        let default = Default::default();
+        let leaf_index = Node(self.len() - 1);
+        CurrentPath::new(
+            self.get_leaf_sibling(leaf_index)
+                .map(Clone::clone)
+                .unwrap_or_default(),
+            leaf_index,
+            self.inner_digests
+                .path_for_leaf_unchecked(leaf_index)
+                .filter(move |&d| d != &default)
+                .cloned()
+                .collect(),
+        )
     }
 
     #[inline]
@@ -147,17 +161,16 @@ where
     where
         F: FnOnce() -> Option<LeafDigest<C>>,
     {
-        /* TODO:
         let len = self.len();
         if len >= capacity::<C>() {
             return Some(false);
         }
         self.push_leaf_digest(parameters, Node(len), leaf_digest()?);
         Some(true)
-        */
-        todo!()
     }
 }
+
+/* TODO: Implement `GetPath` for `Partial`
 
 impl<C, M> GetPath<C> for Partial<C, M>
 where
@@ -170,6 +183,7 @@ where
 
     #[inline]
     fn path(&self, parameters: &Parameters<C>, index: usize) -> Result<Path<C>, Self::Error> {
+        // TODO: Make sure we don't query paths too far to the left.
         /* TODO:
         let _ = parameters;
         if index > 0 && index >= self.leaf_digests.len() {
@@ -182,7 +196,7 @@ where
                 .map(Clone::clone)
                 .unwrap_or_default(),
             self.inner_digests
-                .inner_path_for_leaf(leaf_index)
+                .path_for_leaf_unchecked(leaf_index)
                 .cloned()
                 .collect(),
         ))
@@ -190,3 +204,5 @@ where
         todo!()
     }
 }
+
+*/
