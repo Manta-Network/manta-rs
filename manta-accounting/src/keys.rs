@@ -398,6 +398,15 @@ where
         self
     }
 
+    /// Generates a new key of the given `kind` for this account.
+    #[inline]
+    pub fn key(&self, source: &D, kind: KeyKind) -> Result<D::SecretKey, D::Error> {
+        match kind {
+            KeyKind::External => self.external_key(source),
+            KeyKind::Internal => self.internal_key(source),
+        }
+    }
+
     /// Generates a new external key for this account.
     #[inline]
     pub fn external_key(&self, source: &D) -> Result<D::SecretKey, D::Error> {
@@ -408,6 +417,16 @@ where
     #[inline]
     pub fn internal_key(&self, source: &D) -> Result<D::SecretKey, D::Error> {
         source.generate_internal_key(&self.account, &self.internal_index)
+    }
+
+    /// Generates the next key of the given `kind` for this account, incrementing the
+    /// appropriate index.
+    #[inline]
+    pub fn next_key(&mut self, source: &D, kind: KeyKind) -> Result<D::SecretKey, D::Error> {
+        match kind {
+            KeyKind::External => self.next_external_key(source),
+            KeyKind::Internal => self.next_internal_key(source),
+        }
     }
 
     /// Generates the next external key for this account, incrementing the `external_index`.

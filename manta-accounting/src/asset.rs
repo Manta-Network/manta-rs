@@ -26,7 +26,7 @@ use core::{
     convert::TryFrom,
     fmt::Debug,
     hash::Hash,
-    iter::Sum,
+    iter::{FusedIterator, Sum},
     ops::{Add, AddAssign, Mul, Sub, SubAssign},
 };
 use derive_more::{
@@ -156,6 +156,12 @@ impl AssetBalance {
             _ => None,
         }
     }
+
+    /// Returns an iterator over change amounts in `n` parts.
+    #[inline]
+    pub const fn make_change(self, n: usize) -> Option<Change> {
+        Change::new(self.0, n)
+    }
 }
 
 impl Distribution<AssetBalance> for Standard {
@@ -194,6 +200,7 @@ impl<'a> Sum<&'a AssetBalance> for AssetBalance {
 /// [`AssetBalance`] Array Type
 pub type AssetBalances<const N: usize> = [AssetBalance; N];
 
+/// Samples asset balances from `rng`.
 #[inline]
 pub(crate) fn sample_asset_balances<R, const N: usize>(rng: &mut R) -> AssetBalances<N>
 where
@@ -203,6 +210,68 @@ where
     //        See `https://github.com/rust-random/rand/pull/1173`.
     into_array_unchecked(rng.sample_iter(Standard).take(N).collect::<Vec<_>>())
 }
+
+/// Change Iterator
+///
+/// An iterator over [`AssetBalance`] change amounts.
+///
+/// This `struct` is created by the [`make_change`](AssetBalance::make_change) method on
+/// [`AssetBalance`]. See its documentation for more.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub struct Change {
+    /// Base Amount
+    base: AssetBalanceType,
+
+    /// Remainder to be Divided
+    remainder: usize,
+
+    /// Total Number of Units
+    units: usize,
+
+    /// Current Index
+    index: usize,
+}
+
+impl Change {
+    /// Builds a new [`Change`] iterator for `amount` into `n` pieces.
+    #[inline]
+    const fn new(amount: AssetBalanceType, n: usize) -> Option<Self> {
+        let n_div = n as AssetBalanceType;
+        match amount.checked_div(n_div) {
+            Some(base) if base < AssetBalanceType::MAX => Some(Self {
+                base,
+                remainder: (amount % n_div) as usize,
+                units: n,
+                index: 0,
+            }),
+            _ => None,
+        }
+    }
+}
+
+impl Iterator for Change {
+    type Item = AssetBalance;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.index >= self.units {
+            return None;
+        }
+        let amount = self.base + (self.index < self.remainder) as u128;
+        self.index += 1;
+        Some(AssetBalance(amount))
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let len = self.units - self.index;
+        (len, Some(len))
+    }
+}
+
+impl ExactSizeIterator for Change {}
+
+impl FusedIterator for Change {}
 
 /// Asset
 #[derive(Clone, Copy, Debug, Default, Display, Eq, From, Hash, PartialEq)]
@@ -226,6 +295,12 @@ impl Asset {
     #[inline]
     pub const fn new(id: AssetId, value: AssetBalance) -> Self {
         Self { id, value }
+    }
+
+    /// Builds a new zero [`Asset`] with the given `id`.
+    #[inline]
+    pub const fn zero(id: AssetId) -> Self {
+        Self::new(id, AssetBalance(0))
     }
 
     /// Builds a new [`Asset`] from an existing one with a new `value`.
@@ -516,5 +591,18 @@ mod test {
         asset += value;
         let _ = asset - value;
         asset -= value;
+    }
+
+    /// Tests that the [`Change`] iterator makes the correct change.
+    #[test]
+    fn test_change_iterator() {
+        let mut rng = thread_rng();
+        for _ in 0..0xFFF {
+            let amount = AssetBalance(rng.gen_range(0..0xFFFFFF));
+            let n = rng.gen_range(1..0xFFFF);
+            let change = amount.make_change(n).unwrap().collect::<Vec<_>>();
+            assert_eq!(n, change.len());
+            assert_eq!(amount, change.into_iter().sum());
+        }
     }
 }
