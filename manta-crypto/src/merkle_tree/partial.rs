@@ -21,7 +21,8 @@
 use crate::merkle_tree::{
     capacity,
     inner_tree::{BTreeMap, InnerMap, PartialInnerTree},
-    Configuration, CurrentPath, InnerDigest, LeafDigest, MerkleTree, Node, Parameters, Root, Tree,
+    Configuration, CurrentPath, InnerDigest, Leaf, LeafDigest, MerkleTree, Node, Parameters, Root,
+    Tree,
 };
 use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash};
@@ -56,6 +57,19 @@ where
     C: Configuration + ?Sized,
     M: InnerMap<C>,
 {
+    /// Builds a new [`Partial`] without checking that `leaf_digests` and `inner_digests` form a
+    /// consistent merkle tree.
+    #[inline]
+    pub fn new_unchecked(
+        leaf_digests: Vec<LeafDigest<C>>,
+        inner_digests: PartialInnerTree<C, M>,
+    ) -> Self {
+        Self {
+            leaf_digests,
+            inner_digests,
+        }
+    }
+
     /// Returns the leaf digests currently stored in the merkle tree.
     ///
     /// # Note
@@ -68,10 +82,33 @@ where
         &self.leaf_digests
     }
 
+    /// Returns the leaf digests stored in the tree, dropping the rest of the tree data.
+    ///
+    /// # Note
+    ///
+    /// See the note at [`leaf_digests`](Self::leaf_digests) for more information on indexing this
+    /// vector.
+    #[inline]
+    pub fn into_leaves(self) -> Vec<LeafDigest<C>> {
+        self.leaf_digests
+    }
+
     /// Returns the starting leaf index for this tree.
     #[inline]
     pub fn starting_leaf_index(&self) -> Node {
         self.inner_digests.starting_leaf_index()
+    }
+
+    /// Returns the number of leaves in this tree.
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.starting_leaf_index().0 + self.leaf_digests.len()
+    }
+
+    /// Returns `true` if this tree is empty.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     /// Returns a reference to the root inner digest.
@@ -87,9 +124,19 @@ where
             .get((index - self.starting_leaf_index().0).sibling().0)
     }
 
-    /// Appends a `leaf_digest` with index given by `leaf_index` into the tree.
+    /// Returns an owned sibling leaf node to `index`.
     #[inline]
-    fn push_leaf_digest(
+    fn get_owned_leaf_sibling(&self, index: Node) -> LeafDigest<C>
+    where
+        LeafDigest<C>: Clone,
+    {
+        self.get_leaf_sibling(index).cloned().unwrap_or_default()
+    }
+
+    /// Appends a `leaf_digest` with index given by `leaf_index` into the tree.
+    // FIXME: Remove pub(super) on this once we have a better interface for `fork`.
+    #[inline]
+    pub(super) fn push_leaf_digest(
         &mut self,
         parameters: &Parameters<C>,
         leaf_index: Node,
@@ -106,6 +153,18 @@ where
             ),
         );
         self.leaf_digests.push(leaf_digest);
+    }
+
+    /// Appends a `leaf` to the tree using `parameters`.
+    // FIXME: Remove pub(super) on this once we have a better interface for `fork`.
+    #[inline]
+    pub(super) fn push(&mut self, parameters: &Parameters<C>, leaf: &Leaf<C>) -> bool {
+        let len = self.len();
+        if len >= capacity::<C>() {
+            return false;
+        }
+        self.push_leaf_digest(parameters, Node(len), parameters.digest(leaf));
+        true
     }
 }
 
@@ -124,7 +183,7 @@ where
 
     #[inline]
     fn len(&self) -> usize {
-        self.starting_leaf_index().0 + self.leaf_digests.len()
+        self.len()
     }
 
     #[inline]
@@ -141,18 +200,10 @@ where
     #[inline]
     fn current_path(&self, parameters: &Parameters<C>) -> CurrentPath<C> {
         let _ = parameters;
-        let default = Default::default();
         let leaf_index = Node(self.len() - 1);
-        CurrentPath::new(
-            self.get_leaf_sibling(leaf_index)
-                .map(Clone::clone)
-                .unwrap_or_default(),
-            leaf_index,
-            self.inner_digests
-                .path_for_leaf_unchecked(leaf_index)
-                .filter(move |&d| d != &default)
-                .cloned()
-                .collect(),
+        CurrentPath::from_inner(
+            self.get_owned_leaf_sibling(leaf_index),
+            self.inner_digests.current_path_unchecked(leaf_index),
         )
     }
 
@@ -192,13 +243,8 @@ where
         let leaf_index = Node(index);
         Ok(Path::new(
             leaf_index,
-            self.get_leaf_sibling(leaf_index)
-                .map(Clone::clone)
-                .unwrap_or_default(),
-            self.inner_digests
-                .path_for_leaf_unchecked(leaf_index)
-                .cloned()
-                .collect(),
+            self.get_owned_leaf_sibling(leaf_index),
+            self.inner_digests.path_unchecked(leaf_index),
         ))
         */
         todo!()

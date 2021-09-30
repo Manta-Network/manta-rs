@@ -21,7 +21,8 @@
 // TODO: We should probably move `InnerNode` and its related `struct`s to `merkle_tree::node`.
 
 use crate::merkle_tree::{
-    path::CurrentInnerPath, path_length, Configuration, InnerDigest, Node, Parameters, Parity,
+    path::{CurrentInnerPath, InnerPath},
+    path_length, Configuration, InnerDigest, Node, Parameters, Parity,
 };
 use alloc::collections::btree_map;
 use core::{fmt::Debug, hash::Hash, iter::FusedIterator, marker::PhantomData, ops::Index};
@@ -524,14 +525,48 @@ where
 
     /// Computes the inner path starting from `node`.
     #[inline]
-    pub fn path(&self, node: InnerNode) -> InnerTreePathIter<C, M, S> {
+    pub fn path_iter(&self, node: InnerNode) -> InnerTreePathIter<C, M, S> {
         InnerTreePathIter::new(self, node.iter())
     }
 
     /// Computes the inner path of the leaf given by `leaf_index`.
     #[inline]
-    pub fn path_for_leaf(&self, leaf_index: Node) -> InnerTreePathIter<C, M, S> {
+    pub fn path_iter_for_leaf(&self, leaf_index: Node) -> InnerTreePathIter<C, M, S> {
         InnerTreePathIter::new(self, InnerNodeIter::from_leaf::<C>(leaf_index))
+    }
+
+    /// Returns the path at `leaf_index`.
+    #[inline]
+    pub fn path(&self, leaf_index: Node) -> InnerPath<C>
+    where
+        InnerDigest<C>: Clone,
+    {
+        InnerPath::new(
+            leaf_index,
+            self.path_iter_for_leaf(leaf_index).cloned().collect(),
+        )
+    }
+}
+
+impl<C, M> InnerTree<C, M, Sentinel<C>>
+where
+    C: Configuration + ?Sized,
+    M: InnerMap<C>,
+{
+    /// Returns the path at `leaf_index`, assuming that `leaf_index` is the right-most index,
+    /// so that the return value is a valid [`CurrentInnerPath`].
+    #[inline]
+    pub fn current_path_unchecked(&self, leaf_index: Node) -> CurrentInnerPath<C>
+    where
+        InnerDigest<C>: Clone,
+    {
+        CurrentInnerPath::new(
+            leaf_index,
+            self.path_iter_for_leaf(leaf_index)
+                .filter(move |&d| d != &self.sentinel_source.0)
+                .cloned()
+                .collect(),
+        )
     }
 }
 
@@ -637,14 +672,13 @@ where
 
         let mut inner_tree = InnerTree::<C, M, S>::default();
 
-        let leaf_index = path.leaf_index;
+        let leaf_index = path.leaf_index.as_left();
         let node_iter = path.into_nodes();
 
         if node_iter.len() == 0 {
             return inner_tree.into();
         }
 
-        let default = Default::default();
         let root = node_iter.fold(base, |acc, (node, digest)| {
             let index = node.map_index();
             match digest {
@@ -653,7 +687,10 @@ where
                         .map
                         .set_and_join(parameters, index - 1, digest, index, acc)
                 }
-                _ => parameters.join(inner_tree.map.set_get(index, acc), &default),
+                _ => parameters.join(
+                    inner_tree.map.set_get(index, acc),
+                    inner_tree.sentinel_source.get(index + 1),
+                ),
             }
         });
 
@@ -696,8 +733,34 @@ where
     /// Computes the inner path of the leaf given by `leaf_index` without checking if
     /// `leaf_index` is later than the starting index of this tree.
     #[inline]
-    pub fn path_for_leaf_unchecked(&self, leaf_index: Node) -> InnerTreePathIter<C, M, S> {
-        self.inner_tree.path_for_leaf(leaf_index)
+    pub fn path_iter_for_leaf_unchecked(&self, leaf_index: Node) -> InnerTreePathIter<C, M, S> {
+        self.inner_tree.path_iter_for_leaf(leaf_index)
+    }
+
+    /// Returns the path at `leaf_index` without checking if `leaf_index` is later than the
+    /// starting index of this tree.
+    #[inline]
+    pub fn path_unchecked(&self, leaf_index: Node) -> InnerPath<C>
+    where
+        InnerDigest<C>: Clone,
+    {
+        self.inner_tree.path(leaf_index)
+    }
+}
+
+impl<C, M> PartialInnerTree<C, M, Sentinel<C>>
+where
+    C: Configuration + ?Sized,
+    M: InnerMap<C>,
+{
+    /// Returns the path at `leaf_index`, assuming that `leaf_index` is the right-most index,
+    /// so that the return value is a valid [`CurrentInnerPath`].
+    #[inline]
+    pub fn current_path_unchecked(&self, leaf_index: Node) -> CurrentInnerPath<C>
+    where
+        InnerDigest<C>: Clone,
+    {
+        self.inner_tree.current_path_unchecked(leaf_index)
     }
 }
 

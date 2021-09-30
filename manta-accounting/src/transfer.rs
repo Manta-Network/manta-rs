@@ -499,17 +499,13 @@ where
     /// Checks that the sender side is not empty.
     #[inline]
     fn check_sender_side() {
-        if SENDERS == 0 {
-            panic!("Not enough senders.")
-        }
+        assert_ne!(SENDERS, 0, "Not enough senders.")
     }
 
     /// Checks that the receiver side is not empty.
     #[inline]
     fn check_receiver_side() {
-        if RECEIVERS == 0 {
-            panic!("Not enough receivers.")
-        }
+        assert_ne!(RECEIVERS, 0, "Not enough receivers.")
     }
 
     /// Checks that the number of senders and/or receivers does not exceed the allocation limit.
@@ -645,17 +641,21 @@ where
     /// Checks that the sender side is not empty.
     #[inline]
     fn check_sender_side() {
-        if SOURCES + SENDERS == 0 {
-            panic!("Not enough participants on the sender side.");
-        }
+        assert_ne!(
+            SOURCES + SENDERS,
+            0,
+            "Not enough participants on the sender side."
+        )
     }
 
     /// Checks that the receiver side is not empty.
     #[inline]
     fn check_receiver_side() {
-        if RECEIVERS + SINKS == 0 {
-            panic!("Not enough participants on the receiver side.");
-        }
+        assert_ne!(
+            RECEIVERS + SINKS,
+            0,
+            "Not enough participants on the receiver side."
+        )
     }
 
     /// Builds a new [`Transfer`] without checking the number of participants on the sender and

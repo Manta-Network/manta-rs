@@ -16,13 +16,6 @@
 
 //! Arkworks Merkle Tree Wrappers
 
-// FIXME: Remove this old implementation:
-// NOTE:  This is meant to be a full implementation of the incremental merkle tree type suitable
-//        for merging into arkworks itself. Therefore, even if we don't use all of the
-//        functionality available in this module, we want to preserve the code anyway.
-#[allow(dead_code)]
-mod incremental;
-
 use alloc::{vec, vec::Vec};
 use ark_crypto_primitives::{
     crh::{TwoToOneCRH, CRH},

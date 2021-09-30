@@ -198,6 +198,26 @@ impl Node {
         lhs.sibling().0 == rhs.0
     }
 
+    /// Returns `self` if `self` has left parity or returns the sibling of `self` if `self` has
+    /// right parity.
+    #[inline]
+    pub const fn as_left(&self) -> Self {
+        match self.parity() {
+            Parity::Left => *self,
+            Parity::Right => Self(self.0 - 1),
+        }
+    }
+
+    /// Returns `self` if `self` has right parity or returns the sibling of `self` if `self` has
+    /// left parity.
+    #[inline]
+    pub const fn as_right(&self) -> Self {
+        match self.parity() {
+            Parity::Left => Self(self.0 + 1),
+            Parity::Right => *self,
+        }
+    }
+
     /// Returns the left child [`Node`] of this node.
     #[inline]
     pub const fn left_child(&self) -> Self {

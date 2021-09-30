@@ -24,8 +24,7 @@
 //       creating a new one from scratch (for inner digests)?
 
 use crate::merkle_tree::{
-    fork::{self, Branch, MergeBranch, Trunk},
-    inner_tree::InnerMap,
+    fork::{self, Trunk},
     path::{CurrentPath, Path},
 };
 use core::{fmt::Debug, hash::Hash, marker::PhantomData};
@@ -298,23 +297,6 @@ where
         Leaf<C>: Sized,
     {
         self.extend(parameters, leaves)
-    }
-
-    /// Merges the data from `branch` into `self` using `parameters`.
-    ///
-    /// # Implementation Note
-    ///
-    /// The forking implementation will never input invalid `branch` values, i.e. branches with too
-    /// many leaves, into this method, so any implementation is allowed to panic on invalid
-    /// `branch` values as long as it does not panic on any valid `branch` values.
-    #[inline]
-    fn merge_branch<M>(&mut self, parameters: &Parameters<C>, branch: MergeBranch<C, M>)
-    where
-        M: InnerMap<C> + Default,
-    {
-        assert!(self
-            .extend_digests(parameters, Branch::from(branch).leaf_digests)
-            .is_ok())
     }
 }
 

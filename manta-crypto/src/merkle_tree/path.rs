@@ -78,11 +78,17 @@ where
     /// Checks if `self` could represent the [`CurrentInnerPath`] of some tree.
     #[inline]
     pub fn is_current(&self) -> bool {
-        let default = Default::default();
+        self.is_current_with(&Default::default())
+    }
+
+    /// Checks if `self` could represent the [`CurrentInnerPath`] of some tree, using `default`
+    /// as the sentinel value.
+    #[inline]
+    pub fn is_current_with(&self, default: &InnerDigest<C>) -> bool {
         InnerNodeIter::from_leaf::<C>(self.leaf_index)
             .zip(self.path.iter())
             .all(move |(node, d)| match node.parity() {
-                Parity::Left => d == &default,
+                Parity::Left => d == default,
                 Parity::Right => true,
             })
     }
@@ -252,9 +258,15 @@ where
     /// Builds a new [`CurrentInnerPath`] from an [`InnerPath`] without checking that `path`
     /// satisfies [`InnerPath::is_current`].
     #[inline]
-    pub fn from_path_unchecked(mut path: InnerPath<C>) -> Self {
-        let default = Default::default();
-        path.path.retain(|d| d != &default);
+    pub fn from_path_unchecked(path: InnerPath<C>) -> Self {
+        Self::from_path_unchecked_with(path, &Default::default())
+    }
+
+    /// Builds a new [`CurrentInnerPath`] from an [`InnerPath`] without checking that `path`
+    /// satisfies [`InnerPath::is_current_with`] against `default`.
+    #[inline]
+    pub fn from_path_unchecked_with(mut path: InnerPath<C>, default: &InnerDigest<C>) -> Self {
+        path.path.retain(|d| d != default);
         Self::new(path.leaf_index, path.path)
     }
 
@@ -429,8 +441,9 @@ where
 
     #[inline]
     fn try_from(path: InnerPath<C>) -> Result<Self, Self::Error> {
-        if path.is_current() {
-            Ok(CurrentInnerPath::from_path_unchecked(path))
+        let default = Default::default();
+        if path.is_current_with(&default) {
+            Ok(CurrentInnerPath::from_path_unchecked_with(path, &default))
         } else {
             Err(path)
         }
@@ -597,7 +610,14 @@ where
     /// Checks if `self` could represent the [`CurrentPath`] of some tree.
     #[inline]
     pub fn is_current(&self) -> bool {
-        self.inner_path.is_current()
+        self.is_current_with(&Default::default())
+    }
+
+    /// Checks if `self` could represent the [`CurrentPath`] of some tree, using `default` as the
+    /// sentinel value.
+    #[inline]
+    pub fn is_current_with(&self, default: &InnerDigest<C>) -> bool {
+        self.inner_path.is_current_with(default)
     }
 
     /// Computes the root of the merkle tree relative to `leaf_digest` using `parameters`.
@@ -710,9 +730,16 @@ where
     /// [`Path::is_current`].
     #[inline]
     pub fn from_path_unchecked(path: Path<C>) -> Self {
+        Self::from_path_unchecked_with(path, &Default::default())
+    }
+
+    /// Builds a new [`CurrentPath`] from a [`Path`] without checking that `path` satisfies
+    /// [`Path::is_current_with`] against `default`.
+    #[inline]
+    pub fn from_path_unchecked_with(path: Path<C>, default: &InnerDigest<C>) -> Self {
         Self::from_inner(
             path.sibling_digest,
-            CurrentInnerPath::from_path_unchecked(path.inner_path),
+            CurrentInnerPath::from_path_unchecked_with(path.inner_path, default),
         )
     }
 

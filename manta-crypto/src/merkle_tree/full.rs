@@ -57,10 +57,38 @@ where
     C: Configuration + ?Sized,
     M: InnerMap<C>,
 {
+    /// Builds a new [`Full`] without checking that `leaf_digests` and `inner_digests` form a
+    /// consistent merkle tree.
+    #[inline]
+    pub fn new_unchecked(leaf_digests: Vec<LeafDigest<C>>, inner_digests: InnerTree<C, M>) -> Self {
+        Self {
+            leaf_digests,
+            inner_digests,
+        }
+    }
+
     /// Returns the leaf digests currently stored in the merkle tree.
     #[inline]
     pub fn leaf_digests(&self) -> &[LeafDigest<C>] {
         &self.leaf_digests
+    }
+
+    /// Returns the leaf digests stored in the tree, dropping the rest of the tree data.
+    #[inline]
+    pub fn into_leaves(self) -> Vec<LeafDigest<C>> {
+        self.leaf_digests
+    }
+
+    /// Returns the number of leaves in this tree.
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.leaf_digests.len()
+    }
+
+    /// Returns `true` if this tree is empty.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     /// Returns a reference to the root inner digest.
@@ -72,8 +100,16 @@ where
     /// Returns the sibling leaf node to `index`.
     #[inline]
     fn get_leaf_sibling(&self, index: Node) -> Option<&LeafDigest<C>> {
-        // TODO: Add `Index` methods to accept `Node` as indices.
         self.leaf_digests.get(index.sibling().0)
+    }
+
+    /// Returns an owned sibling leaf node to `index`.
+    #[inline]
+    fn get_owned_leaf_sibling(&self, index: Node) -> LeafDigest<C>
+    where
+        LeafDigest<C>: Clone,
+    {
+        self.get_leaf_sibling(index).cloned().unwrap_or_default()
     }
 
     /// Appends a `leaf_digest` with index given by `leaf_index` into the tree.
@@ -113,7 +149,7 @@ where
 
     #[inline]
     fn len(&self) -> usize {
-        self.leaf_digests.len()
+        self.len()
     }
 
     #[inline]
@@ -130,18 +166,10 @@ where
     #[inline]
     fn current_path(&self, parameters: &Parameters<C>) -> CurrentPath<C> {
         let _ = parameters;
-        let default = Default::default();
         let leaf_index = Node(self.len() - 1);
-        CurrentPath::new(
-            self.get_leaf_sibling(leaf_index)
-                .map(Clone::clone)
-                .unwrap_or_default(),
-            leaf_index,
-            self.inner_digests
-                .path_for_leaf(leaf_index)
-                .filter(move |&d| d != &default)
-                .cloned()
-                .collect(),
+        CurrentPath::from_inner(
+            self.get_owned_leaf_sibling(leaf_index),
+            self.inner_digests.current_path_unchecked(leaf_index),
         )
     }
 
@@ -162,7 +190,7 @@ where
 impl<C, M> GetPath<C> for Full<C, M>
 where
     C: Configuration + ?Sized,
-    M: InnerMap<C> + Default,
+    M: InnerMap<C>,
     LeafDigest<C>: Clone,
     InnerDigest<C>: Clone,
 {
@@ -175,15 +203,9 @@ where
             return Err(());
         }
         let leaf_index = Node(index);
-        Ok(Path::new(
-            self.get_leaf_sibling(leaf_index)
-                .map(Clone::clone)
-                .unwrap_or_default(),
-            leaf_index,
-            self.inner_digests
-                .path_for_leaf(leaf_index)
-                .cloned()
-                .collect(),
+        Ok(Path::from_inner(
+            self.get_owned_leaf_sibling(leaf_index),
+            self.inner_digests.path(leaf_index),
         ))
     }
 }

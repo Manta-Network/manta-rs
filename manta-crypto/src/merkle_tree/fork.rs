@@ -19,14 +19,15 @@
 // TODO: Think about whether we want to keep the `raw::MerkleTreePointerFamily` API sealed or not.
 // TODO: Implement derive-able traits for these types.
 // TODO: See if we can get rid of the smart pointer logic.
-// TODO: Reduce duplication in this file, relative to `merkle_tree::partial`.
 
 use crate::merkle_tree::{
     capacity,
     inner_tree::{BTreeMap, InnerMap, PartialInnerTree},
-    Configuration, InnerDigest, Leaf, LeafDigest, MerkleTree, Node, Parameters, Tree,
+    partial::Partial,
+    path::CurrentInnerPath,
+    Configuration, InnerDigest, Leaf, LeafDigest, MerkleTree, Node, Parity, Tree,
 };
-use alloc::vec::Vec;
+use alloc::{vec, vec::Vec};
 use core::{borrow::Borrow, fmt::Debug, hash::Hash, mem, ops::Deref};
 
 /// Fork-able Merkle Tree
@@ -71,14 +72,20 @@ where
 
     /// Creates a new fork of this trunk.
     #[inline]
-    pub fn fork(&self) -> Fork<C, T, P> {
+    pub fn fork<M>(&self) -> Fork<C, T, P, M>
+    where
+        M: InnerMap<C> + Default,
+    {
         Fork::new(self)
     }
 
     /// Tries to attach `fork` to `self` as its new trunk, returning `false` if `fork` has
     /// too many leaves to fit in `self`.
     #[inline]
-    pub fn attach(&self, fork: &mut Fork<C, T, P>) -> bool {
+    pub fn attach<M>(&self, fork: &mut Fork<C, T, P, M>) -> bool
+    where
+        M: InnerMap<C> + Default,
+    {
         fork.attach(self)
     }
 
@@ -95,10 +102,13 @@ where
     /// the leaves which were added in this merge will exist before the first leaf in the fork in
     /// the final tree.
     #[inline]
-    pub fn merge(&mut self, fork: Fork<C, T, P>) -> Result<(), Fork<C, T, P>> {
+    pub fn merge<M>(&mut self, fork: Fork<C, T, P, M>) -> Result<(), Fork<C, T, P, M>>
+    where
+        M: InnerMap<C> + Default,
+    {
         match fork.get_attached_base(self) {
             Some(base) => {
-                self.merge_branch(base, fork.branch);
+                self.merge_branch(base, fork.base_contribution, fork.branch);
                 Ok(())
             }
             _ => Err(fork),
@@ -108,10 +118,23 @@ where
     /// Performs a merge of the `branch` onto `fork_base`, setting `self` equal to the resulting
     /// merged tree.
     #[inline]
-    fn merge_branch(&mut self, fork_base: P::Strong, branch: Branch<C>) {
+    fn merge_branch<M>(
+        &mut self,
+        fork_base: P::Strong,
+        base_contribution: BaseContribution,
+        branch: Partial<C, M>,
+    ) where
+        M: InnerMap<C> + Default,
+    {
         self.base = Some(fork_base);
         let mut base = P::claim(mem::take(&mut self.base).unwrap());
-        branch.merge(&mut base);
+        assert!(base
+            .tree
+            .extend_digests(
+                &base.parameters,
+                Fork::<C, T, P, M>::extract_leaves(base_contribution, branch),
+            )
+            .is_ok());
         self.base = Some(P::new(base));
     }
 
@@ -172,25 +195,50 @@ where
     }
 }
 
+/// Base Tree Leaf Contribution
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+enum BaseContribution {
+    /// No Leaves Contributed
+    Empty,
+
+    /// Left Leaf Contributed
+    LeftLeaf,
+
+    /// Both Leaves Contributed
+    BothLeaves,
+}
+
+impl Default for BaseContribution {
+    #[inline]
+    fn default() -> Self {
+        Self::Empty
+    }
+}
+
 /// Merkle Tree Fork
-pub struct Fork<C, T, P = raw::SingleThreaded>
+pub struct Fork<C, T, P = raw::SingleThreaded, M = BTreeMap<C>>
 where
     C: Configuration + ?Sized,
     T: Tree<C>,
     P: raw::MerkleTreePointerFamily<C, T>,
+    M: InnerMap<C> + Default,
 {
     /// Base Merkle Tree
     base: P::Weak,
 
+    /// Base Tree Contribution
+    base_contribution: BaseContribution,
+
     /// Branch Data
-    branch: Branch<C>,
+    branch: Partial<C, M>,
 }
 
-impl<C, T, P> Fork<C, T, P>
+impl<C, T, P, M> Fork<C, T, P, M>
 where
     C: Configuration + ?Sized,
     T: Tree<C>,
     P: raw::MerkleTreePointerFamily<C, T>,
+    M: InnerMap<C> + Default,
 {
     /// Builds a new [`Fork`] from `trunk`.
     #[inline]
@@ -202,17 +250,125 @@ where
     /// appending `leaf_digests` would exceed the capacity of the `trunk`.
     #[inline]
     pub fn with_leaves(trunk: &Trunk<C, T, P>, leaf_digests: Vec<LeafDigest<C>>) -> Option<Self> {
+        let (base_contribution, branch) =
+            Self::new_branch(trunk.borrow_base().as_ref(), leaf_digests)?;
         Some(Self {
             base: trunk.downgrade(),
-            branch: Branch::new(trunk.borrow_base().as_ref(), leaf_digests)?,
+            base_contribution,
+            branch,
         })
+    }
+
+    /// Builds a new branch off of `base`, extending by `leaf_digests`.
+    #[inline]
+    fn new_branch(
+        base: &MerkleTree<C, T>,
+        leaf_digests: Vec<LeafDigest<C>>,
+    ) -> Option<(BaseContribution, Partial<C, M>)> {
+        if leaf_digests.len() + base.len() >= capacity::<C>() {
+            return None;
+        }
+        Some(Self::new_branch_unchecked(base, leaf_digests))
+    }
+
+    /// Builds a new branch off of `base`, extending by `leaf_digests` without checking that
+    /// `base` can accept new leaves.
+    #[inline]
+    fn new_branch_unchecked(
+        base: &MerkleTree<C, T>,
+        leaf_digests: Vec<LeafDigest<C>>,
+    ) -> (BaseContribution, Partial<C, M>) {
+        let (base_contribution, base_inner_digest, base_leaf_digests, inner_path) =
+            Self::generate_branch_setup(base);
+        let mut partial = Partial::new_unchecked(
+            base_leaf_digests,
+            PartialInnerTree::from_current(&base.parameters, base_inner_digest, inner_path),
+        );
+        let partial_tree_len = partial.len();
+        for (i, digest) in leaf_digests.into_iter().enumerate() {
+            partial.push_leaf_digest(&base.parameters, Node(partial_tree_len + i), digest);
+        }
+        (base_contribution, partial)
+    }
+
+    /// Generates the setup data to compute [`new_branch_unchecked`](Self::new_branch_unchecked).
+    #[inline]
+    fn generate_branch_setup(
+        base: &MerkleTree<C, T>,
+    ) -> (
+        BaseContribution,
+        InnerDigest<C>,
+        Vec<LeafDigest<C>>,
+        CurrentInnerPath<C>,
+    ) {
+        if base.is_empty() {
+            (
+                BaseContribution::Empty,
+                Default::default(),
+                Default::default(),
+                base.current_path().inner_path,
+            )
+        } else {
+            let current_leaf = base.current_leaf();
+            let current_path = base.current_path();
+            match current_path.leaf_index().parity() {
+                Parity::Left => (
+                    BaseContribution::LeftLeaf,
+                    base.parameters
+                        .join_leaves(&current_leaf, &current_path.sibling_digest),
+                    vec![current_leaf],
+                    current_path.inner_path,
+                ),
+                Parity::Right => (
+                    BaseContribution::BothLeaves,
+                    base.parameters
+                        .join_leaves(&current_path.sibling_digest, &current_leaf),
+                    vec![current_path.sibling_digest, current_leaf],
+                    current_path.inner_path,
+                ),
+            }
+        }
+    }
+
+    /// Extracts the non-base leaves from `branch`.
+    #[inline]
+    fn extract_leaves(
+        base_contribution: BaseContribution,
+        branch: Partial<C, M>,
+    ) -> Vec<LeafDigest<C>> {
+        let mut leaf_digests = branch.into_leaves();
+        mem::drop(leaf_digests.drain(0..base_contribution as usize));
+        leaf_digests
+    }
+
+    /// Tries to rebase `branch` at `base`.
+    #[inline]
+    fn try_rebase(
+        base: &MerkleTree<C, T>,
+        base_contribution: &mut BaseContribution,
+        branch: &mut Partial<C, M>,
+    ) -> bool {
+        if branch.len() + base.len() - (*base_contribution as usize) >= capacity::<C>() {
+            return false;
+        }
+        let (new_base_contribution, new_branch) = Self::new_branch_unchecked(
+            base,
+            Self::extract_leaves(*base_contribution, mem::take(branch)),
+        );
+        *base_contribution = new_base_contribution;
+        *branch = new_branch;
+        true
     }
 
     /// Tries to attach this fork to a new `trunk`, returning `false` if `self` has too many leaves
     /// to fit in `trunk`.
     #[inline]
     pub fn attach(&mut self, trunk: &Trunk<C, T, P>) -> bool {
-        if !self.branch.try_rebase(trunk.borrow_base().as_ref()) {
+        if !Self::try_rebase(
+            trunk.borrow_base().as_ref(),
+            &mut self.base_contribution,
+            &mut self.branch,
+        ) {
             return false;
         }
         self.base = trunk.downgrade();
@@ -268,182 +424,6 @@ where
             self.branch
                 .push(&P::upgrade(&self.base)?.as_ref().parameters, leaf),
         )
-    }
-}
-
-/// Merkle Tree Fork Branch
-#[derive(derivative::Derivative)]
-#[derivative(
-    Clone(bound = "LeafDigest<C>: Clone, InnerDigest<C>: Clone, M: Clone"),
-    Debug(bound = "LeafDigest<C>: Debug, InnerDigest<C>: Debug, M: Debug"),
-    Default(bound = "M: Default"),
-    Eq(bound = "LeafDigest<C>: Eq, InnerDigest<C>: Eq, M: Eq"),
-    Hash(bound = "LeafDigest<C>: Hash, InnerDigest<C>: Hash, M: Hash"),
-    PartialEq(bound = "LeafDigest<C>: PartialEq, InnerDigest<C>: PartialEq, M: PartialEq")
-)]
-pub struct Branch<C, M = BTreeMap<C>>
-where
-    C: Configuration + ?Sized,
-    M: InnerMap<C> + Default,
-{
-    /// Leaf Digests
-    pub leaf_digests: Vec<LeafDigest<C>>,
-
-    /// Inner Digests
-    pub inner_digests: PartialInnerTree<C, M>,
-}
-
-impl<C, M> Branch<C, M>
-where
-    C: Configuration + ?Sized,
-    M: InnerMap<C> + Default,
-{
-    /// Builds a new [`Branch`] from `leaf_digests` and `inner_digests`.
-    #[inline]
-    fn new_inner(leaf_digests: Vec<LeafDigest<C>>, inner_digests: PartialInnerTree<C, M>) -> Self {
-        Self {
-            leaf_digests,
-            inner_digests,
-        }
-    }
-
-    /// Builds a new [`Branch`] from `base` and `leaf_digests` without checking capacity limits.
-    #[inline]
-    fn new_unchecked<T>(base: &MerkleTree<C, T>, leaf_digests: Vec<LeafDigest<C>>) -> Self
-    where
-        T: Tree<C>,
-    {
-        let current_path = base.current_path();
-        let mut this = Self::new_inner(
-            Default::default(),
-            PartialInnerTree::from_current(
-                &base.parameters,
-                current_path.leaf_index().join_leaves(
-                    &base.parameters,
-                    &base.current_leaf(),
-                    &current_path.sibling_digest,
-                ),
-                current_path.inner_path,
-            ),
-        );
-        for digest in leaf_digests {
-            this.push_digest(&base.parameters, || digest);
-        }
-        this
-    }
-
-    /// Builds a new [`Branch`] from `base` and `leaf_digests`.
-    #[inline]
-    fn new<T>(base: &MerkleTree<C, T>, leaf_digests: Vec<LeafDigest<C>>) -> Option<Self>
-    where
-        T: Tree<C>,
-    {
-        if leaf_digests.len() + base.len() > capacity::<C>() {
-            return None;
-        }
-        Some(Self::new_unchecked(base, leaf_digests))
-    }
-
-    /// Tries to restart `self` at a new `base` if `base` has enough capacity.
-    #[inline]
-    fn try_rebase<T>(&mut self, base: &MerkleTree<C, T>) -> bool
-    where
-        T: Tree<C>,
-    {
-        if self.leaf_digests.len() + base.len() > capacity::<C>() {
-            return false;
-        }
-        *self = Self::new_unchecked(base, mem::take(self).leaf_digests);
-        true
-    }
-
-    /// Computes the total length of this branch.
-    #[inline]
-    pub fn len(&self) -> usize {
-        self.inner_digests.starting_leaf_index().0 + self.leaf_digests.len()
-    }
-
-    /// Returns `true` if this branch is empty.
-    #[inline]
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
-    /// Returns the root inner digest of this branch.
-    #[inline]
-    pub fn root(&self) -> &InnerDigest<C> {
-        self.inner_digests.root()
-    }
-
-    /// Returns the sibling leaf node to `index`.
-    #[inline]
-    fn get_leaf_sibling(&self, index: Node) -> Option<&LeafDigest<C>> {
-        self.leaf_digests.get(
-            (index - self.inner_digests.starting_leaf_index().0)
-                .sibling()
-                .0,
-        )
-    }
-
-    /// Appends a new `leaf_digest` to this branch.
-    #[inline]
-    fn push_digest<F>(&mut self, parameters: &Parameters<C>, leaf_digest: F) -> bool
-    where
-        F: FnOnce() -> LeafDigest<C>,
-    {
-        let len = self.len();
-        if len >= capacity::<C>() {
-            return false;
-        }
-        let leaf_digest = leaf_digest();
-        let leaf_index = Node(len);
-        self.inner_digests.insert(
-            parameters,
-            leaf_index,
-            leaf_index.join_leaves(
-                parameters,
-                &leaf_digest,
-                self.get_leaf_sibling(leaf_index)
-                    .unwrap_or(&Default::default()),
-            ),
-        );
-        self.leaf_digests.push(leaf_digest);
-        true
-    }
-
-    /// Appends a new `leaf` to this branch.
-    #[inline]
-    fn push(&mut self, parameters: &Parameters<C>, leaf: &Leaf<C>) -> bool {
-        self.push_digest(parameters, || parameters.digest(leaf))
-    }
-
-    /// Merges `self` onto the `base` merkle tree.
-    #[inline]
-    fn merge<T>(self, base: &mut MerkleTree<C, T>)
-    where
-        T: Tree<C>,
-    {
-        base.tree.merge_branch(&base.parameters, MergeBranch(self))
-    }
-}
-
-/// Fork Merge Branch
-///
-/// An type which can only be instantiated by the merkle tree forking implementation, which
-/// prevents running [`Tree::merge_branch`] on arbitrary user-constructed [`Branch`] values.
-pub struct MergeBranch<C, M = BTreeMap<C>>(Branch<C, M>)
-where
-    C: Configuration + ?Sized,
-    M: InnerMap<C> + Default;
-
-impl<C, M> From<MergeBranch<C, M>> for Branch<C, M>
-where
-    C: Configuration + ?Sized,
-    M: InnerMap<C> + Default,
-{
-    #[inline]
-    fn from(branch: MergeBranch<C, M>) -> Self {
-        branch.0
     }
 }
 
