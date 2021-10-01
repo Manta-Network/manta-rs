@@ -238,7 +238,7 @@ impl Change {
     const fn new(amount: AssetBalanceType, n: usize) -> Option<Self> {
         let n_div = n as AssetBalanceType;
         match amount.checked_div(n_div) {
-            Some(base) if base < AssetBalanceType::MAX => Some(Self {
+            Some(base) => Some(Self {
                 base,
                 remainder: (amount % n_div) as usize,
                 units: n,

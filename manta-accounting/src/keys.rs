@@ -36,6 +36,20 @@ pub trait SecretKeyGenerator {
     fn generate_key(&mut self) -> Result<Self::SecretKey, Self::Error>;
 }
 
+impl<S> SecretKeyGenerator for &mut S
+where
+    S: SecretKeyGenerator,
+{
+    type SecretKey = S::SecretKey;
+
+    type Error = S::Error;
+
+    #[inline]
+    fn generate_key(&mut self) -> Result<Self::SecretKey, Self::Error> {
+        (*self).generate_key()
+    }
+}
+
 /// Derived Secret Key Parameter
 pub trait DerivedSecretKeyParameter: Clone + Default {
     /// Increments the key parameter by one unit.
@@ -117,6 +131,47 @@ pub trait DerivedSecretKeyGenerator {
         index: Self::Index,
     ) -> InternalKeys<'s, Self> {
         InternalKeys::from_index(self, account, index)
+    }
+}
+
+impl<D> DerivedSecretKeyGenerator for &D
+where
+    D: DerivedSecretKeyGenerator,
+{
+    type SecretKey = D::SecretKey;
+
+    type Account = D::Account;
+
+    type Index = D::Index;
+
+    type Error = D::Error;
+
+    #[inline]
+    fn generate_key(
+        &self,
+        kind: KeyKind,
+        account: &Self::Account,
+        index: &Self::Index,
+    ) -> Result<Self::SecretKey, Self::Error> {
+        (*self).generate_key(kind, account, index)
+    }
+
+    #[inline]
+    fn generate_external_key(
+        &self,
+        account: &Self::Account,
+        index: &Self::Index,
+    ) -> Result<Self::SecretKey, Self::Error> {
+        (*self).generate_external_key(account, index)
+    }
+
+    #[inline]
+    fn generate_internal_key(
+        &self,
+        account: &Self::Account,
+        index: &Self::Index,
+    ) -> Result<Self::SecretKey, Self::Error> {
+        (*self).generate_internal_key(account, index)
     }
 }
 
@@ -343,10 +398,10 @@ where
 /// Account Index Manager
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "D::Account: Clone, D::Index: Clone"),
+    Clone(bound = ""),
     Copy(bound = "D::Account: Copy, D::Index: Copy"),
     Debug(bound = "D::Account: Debug, D::Index: Debug"),
-    Default(bound = "D::Account: Default, D::Index: Default"),
+    Default(bound = ""),
     Eq(bound = "D::Account: Eq, D::Index: Eq"),
     Hash(bound = "D::Account: Hash, D::Index: Hash"),
     PartialEq(bound = "D::Account: PartialEq, D::Index: PartialEq")
@@ -388,6 +443,14 @@ where
             external_index,
             internal_index,
         }
+    }
+
+    /// Returns the next [`Account`] after `this`.
+    #[inline]
+    pub fn next(this: &Self) -> Self {
+        let mut next_account = this.account.clone();
+        next_account.increment();
+        Self::new(next_account)
     }
 
     /// Resets the external and internal running indices to their default values.

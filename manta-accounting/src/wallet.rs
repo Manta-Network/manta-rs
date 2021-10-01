@@ -16,7 +16,6 @@
 
 //! Wallet Abstractions
 
-// TODO: How to manage accounts? Wallet should have a fixed account or not?
 // TODO: Is recovery different than just building a fresh `Wallet` instance?
 // TODO: Add query builder for encrypted asset search (internal/external, gap_limit, start_index)
 // TODO: Merge `AssetMap` and `LocalLedger` into one container and have it query `LedgerSource`
@@ -28,10 +27,10 @@ use crate::{
     asset::{Asset, AssetBalance, AssetId},
     fs::{Load, LoadWith, Save, SaveWith},
     identity::{
-        self, AssetParameters, Identity, InternalReceiver, InternalReceiverError, OpenSpend,
-        PreSender, ShieldedIdentity, Utxo, VoidNumber,
+        self, AssetParameters, Identity, InternalReceiver, OpenSpend, PreSender, ShieldedIdentity,
+        Utxo, VoidNumber,
     },
-    keys::{Account, DerivedSecretKeyGenerator, InternalKeys, KeyKind},
+    keys::{Account, DerivedSecretKeyGenerator, KeyKind},
     transfer::{
         self,
         canonical::{Mint, PrivateTransfer, Reclaim},
@@ -39,12 +38,33 @@ use crate::{
     },
 };
 use alloc::{vec, vec::Vec};
-use core::{convert::Infallible, fmt::Debug, future::Future, hash::Hash, marker::PhantomData};
+use core::{fmt::Debug, future::Future, hash::Hash, marker::PhantomData};
 use manta_crypto::ies::IntegratedEncryptionScheme;
 use rand::{
     distributions::{Distribution, Standard},
     CryptoRng, RngCore,
 };
+
+/// Secret Key Generation Error
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "D::Error: Clone, E: Clone"),
+    Copy(bound = "D::Error: Copy, E: Copy"),
+    Debug(bound = "D::Error: Debug, E: Debug"),
+    Eq(bound = "D::Error: Eq, E: Eq"),
+    Hash(bound = "D::Error: Hash, E: Hash"),
+    PartialEq(bound = "D::Error: PartialEq, E: PartialEq")
+)]
+pub enum SecretKeyGenerationError<D, E>
+where
+    D: DerivedSecretKeyGenerator,
+{
+    /// Secret Key Generator Error
+    SecretKeyError(D::Error),
+
+    /// Other Error
+    Error(E),
+}
 
 /// Signer
 pub struct Signer<D>
@@ -92,6 +112,15 @@ where
         )
     }
 
+    /// Returns the next [`Signer`] after `this`, incrementing the account number.
+    #[inline]
+    pub fn next(this: &Self) -> Self
+    where
+        D: Clone,
+    {
+        Self::with_account(this.secret_key_source.clone(), Account::next(&this.account))
+    }
+
     /// Returns the identity for a key of the given `kind` and `index`.
     #[inline]
     pub fn get<C>(&self, kind: KeyKind, index: D::Index) -> Result<Identity<C>, D::Error>
@@ -105,7 +134,7 @@ where
 
     /// Generates the next identity of the given `kind` for this signer.
     #[inline]
-    pub fn next<C>(&mut self, kind: KeyKind) -> Result<Identity<C>, D::Error>
+    pub fn next_identity<C>(&mut self, kind: KeyKind) -> Result<Identity<C>, D::Error>
     where
         C: identity::Configuration<SecretKey = D::SecretKey>,
     {
@@ -116,7 +145,7 @@ where
 
     /// Generates the next external identity for this signer.
     #[inline]
-    pub fn next_external<C>(&mut self) -> Result<Identity<C>, D::Error>
+    pub fn next_external_identity<C>(&mut self) -> Result<Identity<C>, D::Error>
     where
         C: identity::Configuration<SecretKey = D::SecretKey>,
     {
@@ -127,7 +156,7 @@ where
 
     /// Generates the next internal identity for this signer.
     #[inline]
-    pub fn next_internal<C>(&mut self) -> Result<Identity<C>, D::Error>
+    pub fn next_internal_identity<C>(&mut self) -> Result<Identity<C>, D::Error>
     where
         C: identity::Configuration<SecretKey = D::SecretKey>,
     {
@@ -148,7 +177,7 @@ where
         I: IntegratedEncryptionScheme<Plaintext = Asset>,
         Standard: Distribution<AssetParameters<C>>,
     {
-        self.next_external()
+        self.next_external_identity()
             .map(move |identity| identity.into_shielded(commitment_scheme))
     }
 
@@ -160,17 +189,17 @@ where
         commitment_scheme: &C::CommitmentScheme,
         asset: Asset,
         rng: &mut R,
-    ) -> Result<InternalReceiver<C, I>, InternalReceiverError<InternalKeys<D>, I>>
+    ) -> Result<InternalReceiver<C, I>, SecretKeyGenerationError<D, I::Error>>
     where
         C: identity::Configuration<SecretKey = D::SecretKey>,
         I: IntegratedEncryptionScheme<Plaintext = Asset>,
         R: CryptoRng + RngCore + ?Sized,
         Standard: Distribution<AssetParameters<C>>,
     {
-        self.next_internal()
-            .map_err(InternalReceiverError::SecretKeyError)?
+        self.next_internal_identity()
+            .map_err(SecretKeyGenerationError::SecretKeyError)?
             .into_internal_receiver(commitment_scheme, asset, rng)
-            .map_err(InternalReceiverError::EncryptionError)
+            .map_err(SecretKeyGenerationError::Error)
     }
 
     /// Generates a new [`InternalReceiver`] to receive an asset, with the given `asset_id` and
@@ -181,7 +210,7 @@ where
         commitment_scheme: &C::CommitmentScheme,
         asset_id: AssetId,
         rng: &mut R,
-    ) -> Result<InternalReceiver<C, I>, InternalReceiverError<InternalKeys<D>, I>>
+    ) -> Result<InternalReceiver<C, I>, SecretKeyGenerationError<D, I::Error>>
     where
         C: identity::Configuration<SecretKey = D::SecretKey>,
         I: IntegratedEncryptionScheme<Plaintext = Asset>,
@@ -415,132 +444,48 @@ where
     /// Current Ledger Checkpoint
     pub checkpoint: LS::Checkpoint,
 
-    /// Ledger Responses
-    // FIXME: Design responses.
-    pub responses: Vec<bool>,
-}
-
-/// Asset Map
-pub trait AssetMap {
-    /// Returns the current balance associated with this `id`.
-    fn balance(&self, id: AssetId) -> AssetBalance;
-
-    /// Returns `true` if `self` contains at least `asset.value` of the asset of kind `asset.id`.
-    #[inline]
-    fn contains(&self, asset: Asset) -> bool {
-        self.balance(asset.id) >= asset.value
-    }
-
-    /// Sets the asset balance for `id` to `value`.
-    fn set_balance(&mut self, id: AssetId, value: AssetBalance);
-
-    /// Sets the asset balance for `asset.id` to `asset.value`.
-    #[inline]
-    fn set_asset(&mut self, asset: Asset) {
-        self.set_balance(asset.id, asset.value)
-    }
-
-    /// Mutates the asset balance for `id` to the result of `f` if it succeeds, returning the
-    /// new balance.
-    #[inline]
-    #[must_use = "this only modifies the stored value if the function call succeeded"]
-    fn mutate<F, E>(&mut self, id: AssetId, f: F) -> Result<AssetBalance, E>
-    where
-        F: FnOnce(AssetBalance) -> Result<AssetBalance, E>,
-    {
-        // TODO: use `try_trait_v2` when it comes out
-        f(self.balance(id)).map(move |v| {
-            self.set_balance(id, v);
-            v
-        })
-    }
-
-    /// Performs a deposit of value `asset.value` into the balance of `asset.id`,
-    /// returning the new balance for this `asset.id` if it did not overflow.
-    ///
-    /// To skip the overflow check, use [`deposit_unchecked`](Self::deposit_unchecked) instead.
-    #[inline]
-    #[must_use = "this only modifies the stored value if the addition did not overflow"]
-    fn deposit(&mut self, asset: Asset) -> Option<AssetBalance> {
-        self.mutate(asset.id, move |v| v.checked_add(asset.value).ok_or(()))
-            .ok()
-    }
-
-    /// Performs a deposit of value `asset.value` into the balance of `asset.id`,
-    /// without checking for overflow, returning the new balance for this `asset.id`.
-    ///
-    /// # Panics
-    ///
-    /// This function panics on overflow. To explicitly check for overflow, use
-    /// [`deposit`](Self::deposit) instead.
-    #[inline]
-    fn deposit_unchecked(&mut self, asset: Asset) -> AssetBalance {
-        self.mutate::<_, Infallible>(asset.id, move |v| Ok(v + asset.value))
-            .unwrap()
-    }
-
-    /// Performs a withdrawl of value `asset.value` from the balance of `asset.id`,
-    /// returning the new balance for this `asset.id` if it did not overflow.
-    ///
-    /// To skip the overflow check, use [`withdraw_unchecked`](Self::withdraw_unchecked) instead.
-    #[inline]
-    #[must_use = "this only modifies the stored value if the subtraction did not overflow"]
-    fn withdraw(&mut self, asset: Asset) -> Option<AssetBalance> {
-        self.mutate(asset.id, move |v| v.checked_sub(asset.value).ok_or(()))
-            .ok()
-    }
-
-    /// Performs a withdrawl of value `asset.value` from the balance of `asset.id`,
-    /// without checking for overflow, returning the new balance for this `asset.id`.
-    ///
-    /// # Panics
-    ///
-    /// This function panics on overflow. To explicitly check for overflow, use
-    /// [`withdraw`](Self::withdraw) instead.
-    #[inline]
-    fn withdraw_unchecked(&mut self, asset: Asset) -> AssetBalance {
-        self.mutate::<_, Infallible>(asset.id, move |v| Ok(v - asset.value))
-            .unwrap()
-    }
+    /// Transaction Failed at the Given Index
+    pub failure_index: Option<usize>,
 }
 
 /// Asset Key
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = ""),
-    Copy(bound = "D::Index: Copy"),
-    Debug(bound = "D::Index: Debug"),
-    Eq(bound = "D::Index: Eq"),
-    Hash(bound = "D::Index: Hash"),
-    PartialEq(bound = "D::Index: PartialEq")
+    Clone(bound = "S::Index: Clone"),
+    Copy(bound = "S::Index: Copy"),
+    Debug(bound = "S::Index: Debug"),
+    Eq(bound = "S::Index: Eq"),
+    Hash(bound = "S::Index: Hash"),
+    PartialEq(bound = "S::Index: PartialEq")
 )]
-pub struct AssetKey<D>
+pub struct AssetKey<S>
 where
-    D: DerivedSecretKeyGenerator,
+    S: AssetMap + ?Sized,
 {
     /// Key Kind
     pub kind: KeyKind,
 
     /// Key Index
-    pub index: D::Index,
+    pub index: S::Index,
 
     /// Value stored at this key
     pub value: AssetBalance,
 }
 
-impl<D> AssetKey<D>
+impl<S> AssetKey<S>
 where
-    D: DerivedSecretKeyGenerator,
+    S: AssetMap + ?Sized,
 {
     /// Builds a [`PreSender`] for `self`, using `signer` to generate the secret key.
     #[inline]
-    pub fn into_pre_sender<C>(
+    pub fn into_pre_sender<D, C>(
         self,
         signer: &Signer<D>,
         commitment_scheme: &C::CommitmentScheme,
         asset_id: AssetId,
     ) -> Result<PreSender<C>, D::Error>
     where
+        D: DerivedSecretKeyGenerator<Index = S::Index>,
         C: identity::Configuration<SecretKey = D::SecretKey>,
         Standard: Distribution<AssetParameters<C>>,
     {
@@ -551,46 +496,105 @@ where
 }
 
 /// Asset Selection
-pub struct AssetSelection<D, S>
+pub struct AssetSelection<S>
 where
-    D: DerivedSecretKeyGenerator,
-    S: AssetSelector<D> + ?Sized,
+    S: AssetMap + ?Sized,
 {
     /// Change Amount
     pub change: AssetBalance,
 
-    /// Asset Keys
-    pub keys: S::Keys,
+    /// Asset Sender Keys
+    pub sender_keys: S::Keys,
 }
 
-impl<D, S> AssetSelection<D, S>
+impl<S> AssetSelection<S>
 where
-    D: DerivedSecretKeyGenerator,
-    S: AssetSelector<D> + ?Sized,
+    S: AssetMap + ?Sized,
 {
-    /* TODO:
-    ///
+    /// Builds an [`InternalReceiver`] to capture the `change` from the given [`AssetSelection`].
     #[inline]
-    pub fn make_change(&self, signer: &Signer<D>, n: usize) -> Option<Vec<()>> {
-        let amounts = self.change.make_change(n)?;
-        todo!()
+    pub fn change_receiver<D, C, I, R>(
+        &self,
+        signer: &mut Signer<D>,
+        asset_id: AssetId,
+        commitment_scheme: &C::CommitmentScheme,
+        rng: &mut R,
+    ) -> Result<InternalReceiver<C, I>, SecretKeyGenerationError<D, I::Error>>
+    where
+        D: DerivedSecretKeyGenerator<Index = S::Index>,
+        C: identity::Configuration<SecretKey = D::SecretKey>,
+        I: IntegratedEncryptionScheme<Plaintext = Asset>,
+        R: CryptoRng + RngCore + ?Sized,
+        Standard: Distribution<AssetParameters<C>>,
+    {
+        signer.next_internal_receiver(commitment_scheme, Asset::new(asset_id, self.change), rng)
     }
-    */
+
+    /// Builds a vector of `n` internal receivers to capture the `change` from the given
+    /// [`AssetSelection`].
+    ///
+    /// # Panics
+    ///
+    /// This method panics if `n == 0`.
+    #[inline]
+    pub fn change_receivers<D, C, I, R>(
+        &self,
+        signer: &mut Signer<D>,
+        asset_id: AssetId,
+        n: usize,
+        commitment_scheme: &C::CommitmentScheme,
+        rng: &mut R,
+    ) -> Result<Vec<InternalReceiver<C, I>>, SecretKeyGenerationError<D, I::Error>>
+    where
+        D: DerivedSecretKeyGenerator<Index = S::Index>,
+        C: identity::Configuration<SecretKey = D::SecretKey>,
+        I: IntegratedEncryptionScheme<Plaintext = Asset>,
+        R: CryptoRng + RngCore + ?Sized,
+        Standard: Distribution<AssetParameters<C>>,
+    {
+        self.change
+            .make_change(n)
+            .unwrap()
+            .map(move |value| {
+                signer.next_internal_receiver(commitment_scheme, Asset::new(asset_id, value), rng)
+            })
+            .collect()
+    }
 }
 
-/// Asset Selector
-pub trait AssetSelector<D>
-where
-    D: DerivedSecretKeyGenerator,
-{
-    /// Keys Type
-    type Keys: Iterator<Item = AssetKey<D>>;
+/// Asset Map
+pub trait AssetMap {
+    /// Key Index Type
+    type Index;
+
+    /// Keys Iterator Type
+    type Keys: Iterator<Item = AssetKey<Self>>;
 
     /// Error Type
     type Error;
 
     /// Selects assets which total up to at least `asset` in value.
-    fn select(&self, asset: Asset) -> Result<AssetSelection<D, Self>, Self::Error>;
+    fn select(&self, asset: Asset) -> Result<AssetSelection<Self>, Self::Error>;
+
+    /// Withdraws the asset stored at `kind` and `index`.
+    fn withdraw(&mut self, kind: KeyKind, index: Self::Index) -> Result<(), Self::Error>;
+
+    /// Deposits `asset` at the key stored at `kind` and `index`.
+    fn deposit(
+        &mut self,
+        kind: KeyKind,
+        index: Self::Index,
+        asset: Asset,
+    ) -> Result<(), Self::Error>;
+
+    /// Returns the current balance associated with this `id`.
+    fn balance(&self, id: AssetId) -> AssetBalance;
+
+    /// Returns true if `self` contains at least `asset.value` of the asset of kind `asset.id`.
+    #[inline]
+    fn contains(&self, asset: Asset) -> bool {
+        self.balance(asset.id) >= asset.value
+    }
 }
 
 /// Ledger Ownership Marker
@@ -672,21 +676,27 @@ where
 }
 
 /// Wallet Balance State
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "M: Clone, L: Clone"),
+    Copy(bound = "M: Copy, L: Copy"),
+    Debug(bound = "M: Debug, L: Debug"),
+    Default(bound = "M: Default, L: Default"),
+    Eq(bound = "M: Eq, L: Eq"),
+    Hash(bound = "M: Hash, L: Hash"),
+    PartialEq(bound = "M: PartialEq, L: PartialEq")
+)]
 pub struct BalanceState<C, L, M>
 where
     C: transfer::Configuration,
     L: LocalLedger<C>,
     M: AssetMap,
 {
-    /// Secret Asset Map
-    secret_assets: M,
-
-    /// Public Asset Map
-    // TODO: Find a way to connect this.
-    _public_assets: M,
-
     /// Local Ledger
     ledger: L,
+
+    /// Asset Map
+    asset_map: M,
 
     /// Type Parameter Marker
     __: PhantomData<C>,
@@ -741,7 +751,7 @@ where
 
         self.ledger.set_checkpoint(checkpoint);
 
-        // FIXME: Deposit into `secret_assets` and `public_assets`.
+        // FIXME: Deposit into `asset_map`.
 
         Ok(())
     }
@@ -789,74 +799,77 @@ where
 
         let SendResponse {
             checkpoint,
-            responses,
+            failure_index,
         } = ledger.send(transfers).await?;
 
         // TODO: Revoke keys if the transfer failed, otherwise recover from the failure.
 
-        let _ = responses;
+        let _ = failure_index;
 
         self.ledger.set_checkpoint(checkpoint);
 
-        // FIXME: Withdraw from `secret_assets` and `public_assets`.
+        // FIXME: Withdraw from `asset_map`
 
         todo!()
     }
 }
 
-/* TODO:
 /// Wallet
-pub struct Wallet<C, D, LL, SM, PM = SM>
+pub struct Wallet<D, C, L, M>
 where
-    C: transfer::Configuration,
-    D: DerivedSecretKeyGenerator<SecretKey = C::SecretKey>,
-    LL: LocalLedger<C>,
-    SM: AssetMap,
-    PM: AssetMap,
+    D: DerivedSecretKeyGenerator,
+    C: transfer::Configuration<SecretKey = D::SecretKey>,
+    L: LocalLedger<C>,
+    M: AssetMap<Index = D::Index>,
 {
     /// Wallet Signer
     signer: Signer<D>,
 
     /// Wallet Balance State
-    balance_state: BalanceState<C, LL, SM, PM>,
-}
-*/
-
-/// Wallet
-pub struct Wallet<D>
-where
-    D: DerivedSecretKeyGenerator,
-{
-    /// Wallet Signer
-    signer: Signer<D>,
+    balance_state: BalanceState<C, L, M>,
 }
 
-impl<D> Wallet<D>
+impl<D, C, L, M> Wallet<D, C, L, M>
 where
     D: DerivedSecretKeyGenerator,
+    C: transfer::Configuration<SecretKey = D::SecretKey>,
+    L: LocalLedger<C>,
+    M: AssetMap<Index = D::Index>,
 {
     /// Builds a new [`Wallet`] for `signer`.
     #[inline]
-    pub fn new(signer: Signer<D>) -> Self {
-        Self { signer }
+    pub fn new(signer: Signer<D>) -> Self
+    where
+        L: Default,
+        M: Default,
+    {
+        Self::with_balances(signer, Default::default())
+    }
+
+    /// Builds a new [`Wallet`] for `signer` with the given `balance_state`.
+    #[inline]
+    pub fn with_balances(signer: Signer<D>, balance_state: BalanceState<C, L, M>) -> Self {
+        Self {
+            signer,
+            balance_state,
+        }
     }
 
     /// Builds a [`Mint`] transaction to mint `asset` and returns the [`OpenSpend`] for that asset.
     #[inline]
-    pub fn mint<C, R>(
+    pub fn mint<R>(
         &mut self,
         commitment_scheme: &C::CommitmentScheme,
         asset: Asset,
         rng: &mut R,
     ) -> Result<(Mint<C>, OpenSpend<C>), MintError<D, C>>
     where
-        C: transfer::Configuration<SecretKey = D::SecretKey>,
         R: CryptoRng + RngCore + ?Sized,
         Standard: Distribution<AssetParameters<C>>,
     {
         Mint::from_identity(
             self.signer
-                .next_internal()
+                .next_internal_identity()
                 .map_err(MintError::SecretKeyError)?,
             commitment_scheme,
             asset,
@@ -865,39 +878,52 @@ where
         .map_err(MintError::EncryptionError)
     }
 
-    /// TODO: Builds [`PrivateTransfer`] transactions to send `asset` to an `external_receiver`.
+    /// Builds [`PrivateTransfer`] transactions to send `asset` to an `external_receiver`.
     #[inline]
-    pub fn batch_private_transfer_external<C, R>(
-        &self,
+    pub fn private_transfer_external<R>(
+        &mut self,
         commitment_scheme: &C::CommitmentScheme,
         asset: Asset,
-        external_receiver: ShieldedIdentity<C, C::IntegratedEncryptionScheme>,
+        external_receiver: transfer::ShieldedIdentity<C>,
         rng: &mut R,
     ) -> Option<Vec<PrivateTransfer<C>>>
     where
-        C: transfer::Configuration,
         R: CryptoRng + RngCore + ?Sized,
+        Standard: Distribution<AssetParameters<C>>,
     {
         // TODO: spec:
-        // 1. check that we have enough `asset` in the secret_assets map
+        // 1. check that we have enough `asset` in the `asset_map`
         // 2. find out which keys have control over `asset`
         // 3. build two senders and build a receiver and a change receiver for the extra change
 
+        let selection = self.balance_state.asset_map.select(asset).ok()?;
+
+        // let senders = selection.sender_keys;
+
+        let change_receiver = selection
+            .change_receiver::<_, _, C::IntegratedEncryptionScheme, _>(
+                &mut self.signer,
+                asset.id,
+                commitment_scheme,
+                rng,
+            )
+            .ok()?;
+
         let _ = external_receiver.into_receiver(commitment_scheme, asset, rng);
+
         // TODO: PrivateTransfer::build([fst, snd], [external_receiver, change])
         todo!()
     }
 
-    /// TODO: Builds a [`Reclaim`] transaction.
+    /// Builds a [`Reclaim`] transaction.
     #[inline]
-    pub fn reclaim<C, R>(
+    pub fn reclaim<R>(
         &self,
         commitment_scheme: &C::CommitmentScheme,
         asset: Asset,
         rng: &mut R,
     ) -> Option<Reclaim<C>>
     where
-        C: transfer::Configuration,
         R: CryptoRng + RngCore + ?Sized,
     {
         let _ = (commitment_scheme, asset, rng);
@@ -906,9 +932,12 @@ where
     }
 }
 
-impl<D> Load for Wallet<D>
+impl<D, C, L, M> Load for Wallet<D, C, L, M>
 where
     D: DerivedSecretKeyGenerator,
+    C: transfer::Configuration<SecretKey = D::SecretKey>,
+    L: LocalLedger<C> + Default,
+    M: AssetMap<Index = D::Index> + Default,
     Signer<D>: Load,
 {
     type Path = <Signer<D> as Load>::Path;
@@ -922,14 +951,16 @@ where
     where
         P: AsRef<Self::Path>,
     {
-        // TODO: Also add a way to save `BalanceState`.
-        Ok(Self::new(Signer::<D>::load(path, loading_key)?))
+        Ok(Self::new(Signer::load(path, loading_key)?))
     }
 }
 
-impl<D> Save for Wallet<D>
+impl<D, C, L, M> Save for Wallet<D, C, L, M>
 where
     D: DerivedSecretKeyGenerator,
+    C: transfer::Configuration<SecretKey = D::SecretKey>,
+    L: LocalLedger<C>,
+    M: AssetMap<Index = D::Index>,
     Signer<D>: Save,
 {
     type Path = <Signer<D> as Save>::Path;
@@ -943,7 +974,6 @@ where
     where
         P: AsRef<Self::Path>,
     {
-        // TODO: Also add a way to save `BalanceState`.
         self.signer.save(path, saving_key)
     }
 }
