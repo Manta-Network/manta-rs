@@ -673,6 +673,21 @@ where
         ))
     }
 
+    /// Builds a new [`PreSender`] for the given `encrypted_asset`.
+    #[inline]
+    pub fn into_pre_sender(
+        self,
+        commitment_scheme: &C::CommitmentScheme,
+        encrypted_asset: EncryptedMessage<I>,
+    ) -> Result<PreSender<C>, I::Error>
+    where
+        Standard: Distribution<AssetParameters<C>>,
+    {
+        Ok(self
+            .try_open(&encrypted_asset)?
+            .into_pre_sender(commitment_scheme))
+    }
+
     /// Builds a new [`Sender`] for the given `encrypted_asset`.
     #[inline]
     pub fn into_sender<S>(
@@ -753,6 +768,15 @@ where
     #[inline]
     fn new(identity: Identity<C>, asset: Asset) -> Self {
         Self { identity, asset }
+    }
+
+    /// Builds a new [`PreSender`] for `self`.
+    #[inline]
+    pub fn into_pre_sender(self, commitment_scheme: &C::CommitmentScheme) -> PreSender<C>
+    where
+        Standard: Distribution<AssetParameters<C>>,
+    {
+        self.identity.into_pre_sender(commitment_scheme, self.asset)
     }
 
     /// Builds a new [`Sender`] for `self`.

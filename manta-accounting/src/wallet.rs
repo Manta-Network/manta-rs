@@ -22,6 +22,7 @@
 //       instead of `Wallet`. Then `Wallet` just has access to local ledger (also async).
 //       Have then a "light wallet" which is just `Wallet` and a "heavy wallet" where the
 //       local ledger and asset map are built-in to it.
+// TODO: Have a good way to asynchronously connect `Signer` and `BalanceState`.
 
 use crate::{
     asset::{Asset, AssetBalance, AssetId},
@@ -448,10 +449,46 @@ where
     pub failure_index: Option<usize>,
 }
 
+/// Key Index
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "Idx: Clone"),
+    Copy(bound = "Idx: Copy"),
+    Debug(bound = "Idx: Debug"),
+    Eq(bound = "Idx: Eq"),
+    Hash(bound = "Idx: Hash"),
+    PartialEq(bound = "Idx: PartialEq")
+)]
+pub struct Key<Idx> {
+    /// Key Kind
+    pub kind: KeyKind,
+
+    /// Key Index
+    pub index: Idx,
+}
+
+/// Key-Owned Value
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "Idx: Clone, T: Clone"),
+    Copy(bound = "Idx: Copy, T: Copy"),
+    Debug(bound = "Idx: Debug, T: Debug"),
+    Eq(bound = "Idx: Eq, T: Eq"),
+    Hash(bound = "Idx: Hash, T: Hash"),
+    PartialEq(bound = "Idx: PartialEq, T: PartialEq")
+)]
+pub struct KeyOwned<Idx, T> {
+    /// Key
+    pub key: Key<Idx>,
+
+    /// Value Owned by the Key
+    pub value: T,
+}
+
 /// Asset Key
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "S::Index: Clone"),
+    Clone(bound = ""),
     Copy(bound = "S::Index: Copy"),
     Debug(bound = "S::Index: Debug"),
     Eq(bound = "S::Index: Eq"),
@@ -462,11 +499,8 @@ pub struct AssetKey<S>
 where
     S: AssetMap + ?Sized,
 {
-    /// Key Kind
-    pub kind: KeyKind,
-
-    /// Key Index
-    pub index: S::Index,
+    /// Key
+    pub key: Key<S::Index>,
 
     /// Value stored at this key
     pub value: AssetBalance,
@@ -489,8 +523,9 @@ where
         C: identity::Configuration<SecretKey = D::SecretKey>,
         Standard: Distribution<AssetParameters<C>>,
     {
+        let key = self.key; // FIXME: We need to attach these to types.
         Ok(signer
-            .get(self.kind, self.index)?
+            .get(key.kind, key.index)?
             .into_pre_sender(commitment_scheme, Asset::new(asset_id, self.value)))
     }
 }
@@ -565,27 +600,59 @@ where
 /// Asset Map
 pub trait AssetMap {
     /// Key Index Type
-    type Index;
+    type Index: Clone + Default;
 
     /// Keys Iterator Type
-    type Keys: Iterator<Item = AssetKey<Self>>;
+    ///
+    /// # Implementation Note
+    ///
+    /// See [`select`](Self::select) for properties of this iterator.
+    type Keys: IntoIterator<Item = AssetKey<Self>>;
 
     /// Error Type
     type Error;
 
     /// Selects assets which total up to at least `asset` in value.
+    ///
+    /// # Contract
+    ///
+    /// Implementations should always return an error whenever the `asset` cannot be covered
+    /// by a set of keys, i.e. when the call `self.contains(asset)` returns `false`. In any other
+    /// case, the iterator returned by the `Ok` branch of this method must always contain at least
+    /// one element, i.e. the following
+    ///
+    /// ```text
+    /// match self.select(asset) {
+    ///     Ok(selection) => selection.keys.into_iter().next().is_some(),
+    ///     _ => true,
+    /// }
+    /// ```
+    ///
+    /// should always return `true`.
     fn select(&self, asset: Asset) -> Result<AssetSelection<Self>, Self::Error>;
 
     /// Withdraws the asset stored at `kind` and `index`.
-    fn withdraw(&mut self, kind: KeyKind, index: Self::Index) -> Result<(), Self::Error>;
+    fn withdraw_from(&mut self, kind: KeyKind, index: Self::Index) -> Result<(), Self::Error>;
+
+    /// Withdraws the asset stored at `key`.
+    #[inline]
+    fn withdraw(&mut self, key: Key<Self::Index>) -> Result<(), Self::Error> {
+        self.withdraw_from(key.kind, key.index)
+    }
 
     /// Deposits `asset` at the key stored at `kind` and `index`.
-    fn deposit(
+    fn deposit_to(
         &mut self,
         kind: KeyKind,
         index: Self::Index,
         asset: Asset,
     ) -> Result<(), Self::Error>;
+
+    /// Deposits `asset` at the key stored at `key`.
+    #[inline]
+    fn deposit(&mut self, key: Key<Self::Index>, asset: Asset) -> Result<(), Self::Error> {
+        self.deposit_to(key.kind, key.index, asset)
+    }
 
     /// Returns the current balance associated with this `id`.
     fn balance(&self, id: AssetId) -> AssetBalance;
@@ -880,7 +947,7 @@ where
 
     /// Builds [`PrivateTransfer`] transactions to send `asset` to an `external_receiver`.
     #[inline]
-    pub fn private_transfer_external<R>(
+    pub fn private_transfer<R>(
         &mut self,
         commitment_scheme: &C::CommitmentScheme,
         asset: Asset,
@@ -891,14 +958,7 @@ where
         R: CryptoRng + RngCore + ?Sized,
         Standard: Distribution<AssetParameters<C>>,
     {
-        // TODO: spec:
-        // 1. check that we have enough `asset` in the `asset_map`
-        // 2. find out which keys have control over `asset`
-        // 3. build two senders and build a receiver and a change receiver for the extra change
-
         let selection = self.balance_state.asset_map.select(asset).ok()?;
-
-        // let senders = selection.sender_keys;
 
         let change_receiver = selection
             .change_receiver::<_, _, C::IntegratedEncryptionScheme, _>(
@@ -909,9 +969,34 @@ where
             )
             .ok()?;
 
-        let _ = external_receiver.into_receiver(commitment_scheme, asset, rng);
+        let mut pre_senders = selection
+            .sender_keys
+            .into_iter()
+            .map(|k| k.into_pre_sender(&self.signer, commitment_scheme, asset.id))
+            .collect::<Result<Vec<_>, _>>()
+            .ok()?;
 
-        // TODO: PrivateTransfer::build([fst, snd], [external_receiver, change])
+        let external_receiver = external_receiver.into_receiver(commitment_scheme, asset, rng);
+
+        let mint = if pre_senders.len() % 2 == 1 {
+            let (mint, open_spend) = self
+                .mint(commitment_scheme, Asset::zero(asset.id), rng)
+                .ok()?;
+            pre_senders.push(open_spend.into_pre_sender(commitment_scheme));
+            Some(mint)
+        } else {
+            None
+        };
+
+        /* TODO:
+        for i in 0..(pre_senders.len() / 2) {
+            PrivateTransfer::build(
+                [pre_senders[2 * i], pre_senders[2 * i + 1]],
+                [?, ?]
+            )
+        }
+        */
+
         todo!()
     }
 

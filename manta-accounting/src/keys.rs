@@ -21,6 +21,8 @@
 
 // TODO: Check to make sure we conform to the specification and then make a note about it in the
 //       module documentation, and add a link to the specification.
+// TODO: How many of these interfaces should actually return `SecretKey<D>` instead of
+//       `D::SecretKey`?
 
 use core::{fmt::Debug, hash::Hash};
 
@@ -196,6 +198,85 @@ impl KeyKind {
     #[inline]
     pub const fn is_internal(&self) -> bool {
         matches!(self, Self::Internal)
+    }
+}
+
+/// Key Index
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = ""),
+    Copy(bound = "D::Index: Copy"),
+    Debug(bound = "D::Index: Debug"),
+    Eq(bound = "D::Index: Eq"),
+    Hash(bound = "D::Index: Hash"),
+    PartialEq(bound = "D::Index: PartialEq")
+)]
+pub struct Index<D>
+where
+    D: DerivedSecretKeyGenerator,
+{
+    /// Key Kind
+    pub kind: KeyKind,
+
+    /// Key Index
+    pub index: D::Index,
+}
+
+impl<D> Index<D>
+where
+    D: DerivedSecretKeyGenerator,
+{
+    /// Returns `true` if `self` represents an external key.
+    #[inline]
+    pub fn is_external(&self) -> bool {
+        self.kind.is_external()
+    }
+
+    /// Returns `true` if `self` represents an internal key.
+    #[inline]
+    pub fn is_internal(&self) -> bool {
+        self.kind.is_internal()
+    }
+}
+
+/// Labelled Secret Key Type
+pub type SecretKey<D> = KeyOwned<D, <D as DerivedSecretKeyGenerator>::SecretKey>;
+
+/// Key-Owned Value
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "T: Clone"),
+    Copy(bound = "D::Index: Copy, T: Copy"),
+    Debug(bound = "D::Index: Debug, T: Debug"),
+    Eq(bound = "D::Index: Eq, T: Eq"),
+    Hash(bound = "D::Index: Hash, T: Hash"),
+    PartialEq(bound = "D::Index: PartialEq, T: PartialEq")
+)]
+pub struct KeyOwned<D, T>
+where
+    D: DerivedSecretKeyGenerator,
+{
+    /// Key Index
+    pub index: Index<D>,
+
+    /// Value Owned by the Key
+    pub value: T,
+}
+
+impl<D, T> KeyOwned<D, T>
+where
+    D: DerivedSecretKeyGenerator,
+{
+    /// Returns `true` if `self` represents a value owned by an external key.
+    #[inline]
+    pub fn is_external(&self) -> bool {
+        self.index.is_external()
+    }
+
+    /// Returns `true` if `self` represents a value owned by an internal key.
+    #[inline]
+    pub fn is_internal(&self) -> bool {
+        self.index.is_internal()
     }
 }
 
