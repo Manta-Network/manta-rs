@@ -27,11 +27,8 @@
 use crate::{
     asset::{Asset, AssetBalance, AssetId},
     fs::{Load, LoadWith, Save, SaveWith},
-    identity::{
-        self, AssetParameters, Identity, InternalReceiver, OpenSpend, PreSender, ShieldedIdentity,
-        Utxo, VoidNumber,
-    },
-    keys::{Account, DerivedSecretKeyGenerator, KeyKind},
+    identity::{self, AssetParameters, Identity, Utxo, VoidNumber},
+    keys::{Account, DerivedSecretKeyGenerator, Index, KeyKind, KeyOwned},
     transfer::{
         self,
         canonical::{Mint, PrivateTransfer, Reclaim},
@@ -45,6 +42,18 @@ use rand::{
     distributions::{Distribution, Standard},
     CryptoRng, RngCore,
 };
+
+/// Key-Owned Pre-Sender Type
+pub type PreSender<D, C> = KeyOwned<D, identity::PreSender<C>>;
+
+/// Key-Owned Shielded Identity Type
+pub type ShieldedIdentity<D, C, I> = KeyOwned<D, identity::ShieldedIdentity<C, I>>;
+
+/// Key-Owned Internal Receiver Type
+pub type InternalReceiver<D, C, I> = KeyOwned<D, identity::InternalReceiver<C, I>>;
+
+/// Key-Owned Open Spend Type
+pub type OpenSpend<D, C> = KeyOwned<D, identity::OpenSpend<C>>;
 
 /// Secret Key Generation Error
 #[derive(derivative::Derivative)]
@@ -122,48 +131,69 @@ where
         Self::with_account(this.secret_key_source.clone(), Account::next(&this.account))
     }
 
-    /// Returns the identity for a key of the given `kind` and `index`.
+    /// Returns the identity for a key of the given `index`.
     #[inline]
-    pub fn get<C>(&self, kind: KeyKind, index: D::Index) -> Result<Identity<C>, D::Error>
+    pub fn get<C>(&self, index: &Index<D>) -> Result<Identity<C>, D::Error>
     where
         C: identity::Configuration<SecretKey = D::SecretKey>,
     {
-        self.secret_key_source
-            .generate_key(kind, self.account.as_ref(), &index)
+        index
+            .key(&self.secret_key_source, self.account.as_ref())
             .map(Identity::new)
+    }
+
+    /// Returns a [`PreSender`] for the key at the given `index`.
+    #[inline]
+    pub fn get_pre_sender<C>(
+        &self,
+        index: Index<D>,
+        commitment_scheme: &C::CommitmentScheme,
+        asset: Asset,
+    ) -> Result<PreSender<D, C>, D::Error>
+    where
+        C: identity::Configuration<SecretKey = D::SecretKey>,
+        Standard: Distribution<AssetParameters<C>>,
+    {
+        Ok(KeyOwned::new(
+            self.get(&index)?.into_pre_sender(commitment_scheme, asset),
+            index,
+        ))
     }
 
     /// Generates the next identity of the given `kind` for this signer.
     #[inline]
-    pub fn next_identity<C>(&mut self, kind: KeyKind) -> Result<Identity<C>, D::Error>
+    pub fn next_identity<C>(&mut self, kind: KeyKind) -> Result<KeyOwned<D, Identity<C>>, D::Error>
     where
         C: identity::Configuration<SecretKey = D::SecretKey>,
     {
-        self.account
-            .next_key(&self.secret_key_source, kind)
-            .map(Identity::new)
+        Ok(self
+            .account
+            .next_key(&self.secret_key_source, kind)?
+            .map(Identity::new))
     }
 
     /// Generates the next external identity for this signer.
     #[inline]
-    pub fn next_external_identity<C>(&mut self) -> Result<Identity<C>, D::Error>
+    pub fn next_external_identity<C>(&mut self) -> Result<KeyOwned<D, Identity<C>>, D::Error>
     where
         C: identity::Configuration<SecretKey = D::SecretKey>,
     {
-        self.account
-            .next_external_key(&self.secret_key_source)
-            .map(Identity::new)
+        Ok(self
+            .account
+            .next_external_key(&self.secret_key_source)?
+            .map(Identity::new))
     }
 
     /// Generates the next internal identity for this signer.
     #[inline]
-    pub fn next_internal_identity<C>(&mut self) -> Result<Identity<C>, D::Error>
+    pub fn next_internal_identity<C>(&mut self) -> Result<KeyOwned<D, Identity<C>>, D::Error>
     where
         C: identity::Configuration<SecretKey = D::SecretKey>,
     {
-        self.account
-            .next_internal_key(&self.secret_key_source)
-            .map(Identity::new)
+        Ok(self
+            .account
+            .next_internal_key(&self.secret_key_source)?
+            .map(Identity::new))
     }
 
     /// Generates a new [`ShieldedIdentity`] to receive assets to this account via an external
@@ -172,14 +202,15 @@ where
     pub fn next_shielded_identity<C, I>(
         &mut self,
         commitment_scheme: &C::CommitmentScheme,
-    ) -> Result<ShieldedIdentity<C, I>, D::Error>
+    ) -> Result<ShieldedIdentity<D, C, I>, D::Error>
     where
         C: identity::Configuration<SecretKey = D::SecretKey>,
         I: IntegratedEncryptionScheme<Plaintext = Asset>,
         Standard: Distribution<AssetParameters<C>>,
     {
-        self.next_external_identity()
-            .map(move |identity| identity.into_shielded(commitment_scheme))
+        Ok(self
+            .next_external_identity()?
+            .map(move |identity| identity.into_shielded(commitment_scheme)))
     }
 
     /// Generates a new [`InternalReceiver`] to receive `asset` to this account via an
@@ -190,7 +221,7 @@ where
         commitment_scheme: &C::CommitmentScheme,
         asset: Asset,
         rng: &mut R,
-    ) -> Result<InternalReceiver<C, I>, SecretKeyGenerationError<D, I::Error>>
+    ) -> Result<InternalReceiver<D, C, I>, SecretKeyGenerationError<D, I::Error>>
     where
         C: identity::Configuration<SecretKey = D::SecretKey>,
         I: IntegratedEncryptionScheme<Plaintext = Asset>,
@@ -199,7 +230,7 @@ where
     {
         self.next_internal_identity()
             .map_err(SecretKeyGenerationError::SecretKeyError)?
-            .into_internal_receiver(commitment_scheme, asset, rng)
+            .map_ok(move |identity| identity.into_internal_receiver(commitment_scheme, asset, rng))
             .map_err(SecretKeyGenerationError::Error)
     }
 
@@ -211,7 +242,7 @@ where
         commitment_scheme: &C::CommitmentScheme,
         asset_id: AssetId,
         rng: &mut R,
-    ) -> Result<InternalReceiver<C, I>, SecretKeyGenerationError<D, I::Error>>
+    ) -> Result<InternalReceiver<D, C, I>, SecretKeyGenerationError<D, I::Error>>
     where
         C: identity::Configuration<SecretKey = D::SecretKey>,
         I: IntegratedEncryptionScheme<Plaintext = Asset>,
@@ -449,87 +480,6 @@ where
     pub failure_index: Option<usize>,
 }
 
-/// Key Index
-#[derive(derivative::Derivative)]
-#[derivative(
-    Clone(bound = "Idx: Clone"),
-    Copy(bound = "Idx: Copy"),
-    Debug(bound = "Idx: Debug"),
-    Eq(bound = "Idx: Eq"),
-    Hash(bound = "Idx: Hash"),
-    PartialEq(bound = "Idx: PartialEq")
-)]
-pub struct Key<Idx> {
-    /// Key Kind
-    pub kind: KeyKind,
-
-    /// Key Index
-    pub index: Idx,
-}
-
-/// Key-Owned Value
-#[derive(derivative::Derivative)]
-#[derivative(
-    Clone(bound = "Idx: Clone, T: Clone"),
-    Copy(bound = "Idx: Copy, T: Copy"),
-    Debug(bound = "Idx: Debug, T: Debug"),
-    Eq(bound = "Idx: Eq, T: Eq"),
-    Hash(bound = "Idx: Hash, T: Hash"),
-    PartialEq(bound = "Idx: PartialEq, T: PartialEq")
-)]
-pub struct KeyOwned<Idx, T> {
-    /// Key
-    pub key: Key<Idx>,
-
-    /// Value Owned by the Key
-    pub value: T,
-}
-
-/// Asset Key
-#[derive(derivative::Derivative)]
-#[derivative(
-    Clone(bound = ""),
-    Copy(bound = "S::Index: Copy"),
-    Debug(bound = "S::Index: Debug"),
-    Eq(bound = "S::Index: Eq"),
-    Hash(bound = "S::Index: Hash"),
-    PartialEq(bound = "S::Index: PartialEq")
-)]
-pub struct AssetKey<S>
-where
-    S: AssetMap + ?Sized,
-{
-    /// Key
-    pub key: Key<S::Index>,
-
-    /// Value stored at this key
-    pub value: AssetBalance,
-}
-
-impl<S> AssetKey<S>
-where
-    S: AssetMap + ?Sized,
-{
-    /// Builds a [`PreSender`] for `self`, using `signer` to generate the secret key.
-    #[inline]
-    pub fn into_pre_sender<D, C>(
-        self,
-        signer: &Signer<D>,
-        commitment_scheme: &C::CommitmentScheme,
-        asset_id: AssetId,
-    ) -> Result<PreSender<C>, D::Error>
-    where
-        D: DerivedSecretKeyGenerator<Index = S::Index>,
-        C: identity::Configuration<SecretKey = D::SecretKey>,
-        Standard: Distribution<AssetParameters<C>>,
-    {
-        let key = self.key; // FIXME: We need to attach these to types.
-        Ok(signer
-            .get(key.kind, key.index)?
-            .into_pre_sender(commitment_scheme, Asset::new(asset_id, self.value)))
-    }
-}
-
 /// Asset Selection
 pub struct AssetSelection<S>
 where
@@ -538,8 +488,8 @@ where
     /// Change Amount
     pub change: AssetBalance,
 
-    /// Asset Sender Keys
-    pub sender_keys: S::Keys,
+    /// Sender Assets
+    pub assets: S::Assets,
 }
 
 impl<S> AssetSelection<S>
@@ -554,9 +504,10 @@ where
         asset_id: AssetId,
         commitment_scheme: &C::CommitmentScheme,
         rng: &mut R,
-    ) -> Result<InternalReceiver<C, I>, SecretKeyGenerationError<D, I::Error>>
+    ) -> Result<InternalReceiver<D, C, I>, SecretKeyGenerationError<D, I::Error>>
     where
-        D: DerivedSecretKeyGenerator<Index = S::Index>,
+        S: AssetMap<Key = Index<D>>,
+        D: DerivedSecretKeyGenerator,
         C: identity::Configuration<SecretKey = D::SecretKey>,
         I: IntegratedEncryptionScheme<Plaintext = Asset>,
         R: CryptoRng + RngCore + ?Sized,
@@ -579,9 +530,10 @@ where
         n: usize,
         commitment_scheme: &C::CommitmentScheme,
         rng: &mut R,
-    ) -> Result<Vec<InternalReceiver<C, I>>, SecretKeyGenerationError<D, I::Error>>
+    ) -> Result<Vec<InternalReceiver<D, C, I>>, SecretKeyGenerationError<D, I::Error>>
     where
-        D: DerivedSecretKeyGenerator<Index = S::Index>,
+        S: AssetMap<Key = Index<D>>,
+        D: DerivedSecretKeyGenerator,
         C: identity::Configuration<SecretKey = D::SecretKey>,
         I: IntegratedEncryptionScheme<Plaintext = Asset>,
         R: CryptoRng + RngCore + ?Sized,
@@ -599,27 +551,30 @@ where
 
 /// Asset Map
 pub trait AssetMap {
-    /// Key Index Type
-    type Index: Clone + Default;
+    /// Key Type
+    ///
+    /// Keys are used to access the underlying asset balances. See [`withdraw`](Self::withdraw)
+    /// and [`deposit`](Self::deposit) for uses of the [`Key`](Self::Key) type.
+    type Key;
 
-    /// Keys Iterator Type
+    /// Assets Iterator Type
     ///
     /// # Implementation Note
     ///
     /// See [`select`](Self::select) for properties of this iterator.
-    type Keys: IntoIterator<Item = AssetKey<Self>>;
+    type Assets: IntoIterator<Item = (Self::Key, AssetBalance)>;
 
     /// Error Type
     type Error;
 
-    /// Selects assets which total up to at least `asset` in value.
+    /// Selects asset keys which total up to at least `asset` in value.
     ///
     /// # Contract
     ///
     /// Implementations should always return an error whenever the `asset` cannot be covered
-    /// by a set of keys, i.e. when the call `self.contains(asset)` returns `false`. In any other
-    /// case, the iterator returned by the `Ok` branch of this method must always contain at least
-    /// one element, i.e. the following
+    /// by a set of keys, i.e. when the call [`self.contains(asset)`](Self::contains) returns
+    /// `false`. In any other case, the iterator returned by the `Ok` branch of this method must
+    /// always contain at least one element, i.e. the following
     ///
     /// ```text
     /// match self.select(asset) {
@@ -631,28 +586,11 @@ pub trait AssetMap {
     /// should always return `true`.
     fn select(&self, asset: Asset) -> Result<AssetSelection<Self>, Self::Error>;
 
-    /// Withdraws the asset stored at `kind` and `index`.
-    fn withdraw_from(&mut self, kind: KeyKind, index: Self::Index) -> Result<(), Self::Error>;
-
     /// Withdraws the asset stored at `key`.
-    #[inline]
-    fn withdraw(&mut self, key: Key<Self::Index>) -> Result<(), Self::Error> {
-        self.withdraw_from(key.kind, key.index)
-    }
+    fn withdraw(&mut self, key: Self::Key) -> Result<(), Self::Error>;
 
     /// Deposits `asset` at the key stored at `kind` and `index`.
-    fn deposit_to(
-        &mut self,
-        kind: KeyKind,
-        index: Self::Index,
-        asset: Asset,
-    ) -> Result<(), Self::Error>;
-
-    /// Deposits `asset` at the key stored at `key`.
-    #[inline]
-    fn deposit(&mut self, key: Key<Self::Index>, asset: Asset) -> Result<(), Self::Error> {
-        self.deposit_to(key.kind, key.index, asset)
-    }
+    fn deposit(&mut self, key: Self::Key, asset: Asset) -> Result<(), Self::Error>;
 
     /// Returns the current balance associated with this `id`.
     fn balance(&self, id: AssetId) -> AssetBalance;
@@ -887,7 +825,7 @@ where
     D: DerivedSecretKeyGenerator,
     C: transfer::Configuration<SecretKey = D::SecretKey>,
     L: LocalLedger<C>,
-    M: AssetMap<Index = D::Index>,
+    M: AssetMap<Key = Index<D>>,
 {
     /// Wallet Signer
     signer: Signer<D>,
@@ -901,7 +839,7 @@ where
     D: DerivedSecretKeyGenerator,
     C: transfer::Configuration<SecretKey = D::SecretKey>,
     L: LocalLedger<C>,
-    M: AssetMap<Index = D::Index>,
+    M: AssetMap<Key = Index<D>>,
 {
     /// Builds a new [`Wallet`] for `signer`.
     #[inline]
@@ -929,20 +867,18 @@ where
         commitment_scheme: &C::CommitmentScheme,
         asset: Asset,
         rng: &mut R,
-    ) -> Result<(Mint<C>, OpenSpend<C>), MintError<D, C>>
+    ) -> Result<(Mint<C>, OpenSpend<D, C>), MintError<D, C>>
     where
         R: CryptoRng + RngCore + ?Sized,
         Standard: Distribution<AssetParameters<C>>,
     {
-        Mint::from_identity(
-            self.signer
-                .next_internal_identity()
-                .map_err(MintError::SecretKeyError)?,
-            commitment_scheme,
-            asset,
-            rng,
-        )
-        .map_err(MintError::EncryptionError)
+        Ok(self
+            .signer
+            .next_internal_identity()
+            .map_err(MintError::SecretKeyError)?
+            .map_ok(move |identity| Mint::from_identity(identity, commitment_scheme, asset, rng))
+            .map_err(MintError::EncryptionError)?
+            .right())
     }
 
     /// Builds [`PrivateTransfer`] transactions to send `asset` to an `external_receiver`.
@@ -970,23 +906,26 @@ where
             .ok()?;
 
         let mut pre_senders = selection
-            .sender_keys
+            .assets
             .into_iter()
-            .map(|k| k.into_pre_sender(&self.signer, commitment_scheme, asset.id))
+            .map(|(index, value)| {
+                self.signer
+                    .get_pre_sender(index, commitment_scheme, Asset::new(asset.id, value))
+            })
             .collect::<Result<Vec<_>, _>>()
             .ok()?;
-
-        let external_receiver = external_receiver.into_receiver(commitment_scheme, asset, rng);
 
         let mint = if pre_senders.len() % 2 == 1 {
             let (mint, open_spend) = self
                 .mint(commitment_scheme, Asset::zero(asset.id), rng)
                 .ok()?;
-            pre_senders.push(open_spend.into_pre_sender(commitment_scheme));
+            pre_senders.push(open_spend.map(move |os| os.into_pre_sender(commitment_scheme)));
             Some(mint)
         } else {
             None
         };
+
+        let external_receiver = external_receiver.into_receiver(commitment_scheme, asset, rng);
 
         /* TODO:
         for i in 0..(pre_senders.len() / 2) {
@@ -1022,7 +961,7 @@ where
     D: DerivedSecretKeyGenerator,
     C: transfer::Configuration<SecretKey = D::SecretKey>,
     L: LocalLedger<C> + Default,
-    M: AssetMap<Index = D::Index> + Default,
+    M: AssetMap<Key = Index<D>> + Default,
     Signer<D>: Load,
 {
     type Path = <Signer<D> as Load>::Path;
@@ -1045,7 +984,7 @@ where
     D: DerivedSecretKeyGenerator,
     C: transfer::Configuration<SecretKey = D::SecretKey>,
     L: LocalLedger<C>,
-    M: AssetMap<Index = D::Index>,
+    M: AssetMap<Key = Index<D>>,
     Signer<D>: Save,
 {
     type Path = <Signer<D> as Save>::Path;
