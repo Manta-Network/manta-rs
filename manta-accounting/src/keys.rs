@@ -99,6 +99,7 @@ pub trait DerivedSecretKeyGenerator {
         self.generate_key(KeyKind::Internal, account, index)
     }
 
+    /* TODO[remove]:
     /// Builds a [`SecretKeyGenerator`] for external keys associated to `account`.
     #[inline]
     fn external_keys<'s>(&'s self, account: &'s Self::Account) -> ExternalKeys<'s, Self> {
@@ -132,6 +133,7 @@ pub trait DerivedSecretKeyGenerator {
     ) -> InternalKeys<'s, Self> {
         InternalKeys::from_index(self, account, index)
     }
+    */
 }
 
 impl<D> DerivedSecretKeyGenerator for &D
@@ -211,7 +213,7 @@ impl KeyKind {
 )]
 pub struct Index<D>
 where
-    D: DerivedSecretKeyGenerator + ?Sized,
+    D: DerivedSecretKeyGenerator,
 {
     /// Key Kind
     pub kind: KeyKind,
@@ -222,7 +224,7 @@ where
 
 impl<D> Index<D>
 where
-    D: DerivedSecretKeyGenerator + ?Sized,
+    D: DerivedSecretKeyGenerator,
 {
     /// Builds a new [`Index`] for `kind` and `index`.
     #[inline]
@@ -254,6 +256,12 @@ where
         self.kind.is_internal()
     }
 
+    /// Increments the internal `index`.
+    #[inline]
+    pub fn increment(&mut self) {
+        self.index.increment()
+    }
+
     /// Gets the underlying key for this `index` at the `account`.
     #[inline]
     pub fn key(&self, source: &D, account: &D::Account) -> Result<D::SecretKey, D::Error> {
@@ -276,7 +284,7 @@ pub type SecretKey<D> = KeyOwned<D, <D as DerivedSecretKeyGenerator>::SecretKey>
 )]
 pub struct KeyOwned<D, T>
 where
-    D: DerivedSecretKeyGenerator + ?Sized,
+    D: DerivedSecretKeyGenerator,
 {
     /// Value Owned by the Key
     pub value: T,
@@ -287,7 +295,7 @@ where
 
 impl<D, T> KeyOwned<D, T>
 where
-    D: DerivedSecretKeyGenerator + ?Sized,
+    D: DerivedSecretKeyGenerator,
 {
     /// Builds a new [`KeyOwned`] for `value` with `index` as the [`Index`].
     #[inline]
@@ -355,7 +363,7 @@ where
 
 impl<D, T> AsRef<T> for KeyOwned<D, T>
 where
-    D: DerivedSecretKeyGenerator + ?Sized,
+    D: DerivedSecretKeyGenerator,
 {
     #[inline]
     fn as_ref(&self) -> &T {
@@ -365,7 +373,7 @@ where
 
 impl<D, T> AsMut<T> for KeyOwned<D, T>
 where
-    D: DerivedSecretKeyGenerator + ?Sized,
+    D: DerivedSecretKeyGenerator,
 {
     #[inline]
     fn as_mut(&mut self) -> &mut T {
@@ -375,7 +383,7 @@ where
 
 impl<D, T> From<KeyOwned<D, T>> for (T, Index<D>)
 where
-    D: DerivedSecretKeyGenerator + ?Sized,
+    D: DerivedSecretKeyGenerator,
 {
     #[inline]
     fn from(key_owned: KeyOwned<D, T>) -> Self {
@@ -385,7 +393,7 @@ where
 
 impl<D, L, R> KeyOwned<D, (L, R)>
 where
-    D: DerivedSecretKeyGenerator + ?Sized,
+    D: DerivedSecretKeyGenerator,
 {
     /// Factors the key index over the left value in the pair.
     #[inline]
@@ -402,7 +410,7 @@ where
 
 impl<D, T> KeyOwned<D, Option<T>>
 where
-    D: DerivedSecretKeyGenerator + ?Sized,
+    D: DerivedSecretKeyGenerator,
 {
     /// Converts a `KeyOwned<D, Option<T>>` into an `Option<KeyOwned<D, T>>`.
     #[inline]
@@ -413,7 +421,7 @@ where
 
 impl<D, T> From<KeyOwned<D, Option<T>>> for Option<KeyOwned<D, T>>
 where
-    D: DerivedSecretKeyGenerator + ?Sized,
+    D: DerivedSecretKeyGenerator,
 {
     #[inline]
     fn from(key_owned: KeyOwned<D, Option<T>>) -> Self {
@@ -423,7 +431,7 @@ where
 
 impl<D, T, E> KeyOwned<D, Result<T, E>>
 where
-    D: DerivedSecretKeyGenerator + ?Sized,
+    D: DerivedSecretKeyGenerator,
 {
     /// Converts a `KeyOwned<D, Result<T, E>>` into an `Result<KeyOwned<D, T>, E>`.
     #[inline]
@@ -434,7 +442,7 @@ where
 
 impl<D, T, E> From<KeyOwned<D, Result<T, E>>> for Result<KeyOwned<D, T>, E>
 where
-    D: DerivedSecretKeyGenerator + ?Sized,
+    D: DerivedSecretKeyGenerator,
 {
     #[inline]
     fn from(key_owned: KeyOwned<D, Result<T, E>>) -> Self {
@@ -444,7 +452,7 @@ where
 
 impl<D, T, E> TryFrom<KeyOwned<D, Result<T, E>>> for KeyOwned<D, T>
 where
-    D: DerivedSecretKeyGenerator + ?Sized,
+    D: DerivedSecretKeyGenerator,
 {
     type Error = E;
 
@@ -464,7 +472,7 @@ pub fn next_key<D>(
     index: &mut D::Index,
 ) -> Result<SecretKey<D>, D::Error>
 where
-    D: DerivedSecretKeyGenerator + ?Sized,
+    D: DerivedSecretKeyGenerator,
 {
     let secret_key = SecretKey::with_kind(
         source.generate_key(kind, account, index)?,
@@ -484,7 +492,7 @@ pub fn next_external<D>(
     index: &mut D::Index,
 ) -> Result<SecretKey<D>, D::Error>
 where
-    D: DerivedSecretKeyGenerator + ?Sized,
+    D: DerivedSecretKeyGenerator,
 {
     let secret_key =
         SecretKey::new_external(source.generate_external_key(account, index)?, index.clone());
@@ -501,7 +509,7 @@ pub fn next_internal<D>(
     index: &mut D::Index,
 ) -> Result<SecretKey<D>, D::Error>
 where
-    D: DerivedSecretKeyGenerator + ?Sized,
+    D: DerivedSecretKeyGenerator,
 {
     let secret_key =
         SecretKey::new_internal(source.generate_internal_key(account, index)?, index.clone());
@@ -512,7 +520,7 @@ where
 /// Keys
 struct Keys<'d, D>
 where
-    D: DerivedSecretKeyGenerator + ?Sized,
+    D: DerivedSecretKeyGenerator,
 {
     /// Derived Key Generator
     derived_key_generator: &'d D,
@@ -526,7 +534,7 @@ where
 
 impl<'d, D> Keys<'d, D>
 where
-    D: DerivedSecretKeyGenerator + ?Sized,
+    D: DerivedSecretKeyGenerator,
 {
     /// Builds a new [`Keys`] generator from a [`DerivedSecretKeyGenerator`] and an `account`.
     #[inline]
@@ -563,11 +571,11 @@ where
 /// External Keys
 pub struct ExternalKeys<'d, D>(Keys<'d, D>)
 where
-    D: DerivedSecretKeyGenerator + ?Sized;
+    D: DerivedSecretKeyGenerator;
 
 impl<'d, D> ExternalKeys<'d, D>
 where
-    D: DerivedSecretKeyGenerator + ?Sized,
+    D: DerivedSecretKeyGenerator,
 {
     /// Builds a new [`ExternalKeys`] generator for `account` from a `source`.
     #[inline]
@@ -584,7 +592,7 @@ where
 
 impl<'d, D> SecretKeyGenerator for ExternalKeys<'d, D>
 where
-    D: DerivedSecretKeyGenerator + ?Sized,
+    D: DerivedSecretKeyGenerator,
 {
     type SecretKey = SecretKey<D>;
 
@@ -598,7 +606,7 @@ where
 
 impl<'d, D> Iterator for ExternalKeys<'d, D>
 where
-    D: DerivedSecretKeyGenerator + ?Sized,
+    D: DerivedSecretKeyGenerator,
 {
     type Item = Result<SecretKey<D>, D::Error>;
 
@@ -611,11 +619,11 @@ where
 /// Internal Keys
 pub struct InternalKeys<'d, D>(Keys<'d, D>)
 where
-    D: DerivedSecretKeyGenerator + ?Sized;
+    D: DerivedSecretKeyGenerator;
 
 impl<'d, D> InternalKeys<'d, D>
 where
-    D: DerivedSecretKeyGenerator + ?Sized,
+    D: DerivedSecretKeyGenerator,
 {
     /// Builds a new [`InternalKeys`] generator for `account` from a `source`.
     #[inline]
@@ -632,7 +640,7 @@ where
 
 impl<'d, D> SecretKeyGenerator for InternalKeys<'d, D>
 where
-    D: DerivedSecretKeyGenerator + ?Sized,
+    D: DerivedSecretKeyGenerator,
 {
     type SecretKey = SecretKey<D>;
 
@@ -646,7 +654,7 @@ where
 
 impl<'d, D> Iterator for InternalKeys<'d, D>
 where
-    D: DerivedSecretKeyGenerator + ?Sized,
+    D: DerivedSecretKeyGenerator,
 {
     type Item = Result<SecretKey<D>, D::Error>;
 
@@ -706,12 +714,11 @@ where
         }
     }
 
-    /// Returns the next [`Account`] after `this`.
+    /// Returns the next [`Account`] after `self`.
     #[inline]
-    pub fn next(this: &Self) -> Self {
-        let mut next_account = this.account.clone();
-        next_account.increment();
-        Self::new(next_account)
+    pub fn next(mut self) -> Self {
+        self.account.increment();
+        Self::new(self.account)
     }
 
     /// Resets the external and internal running indices to their default values.
@@ -771,6 +778,7 @@ where
         next_internal(source, &self.account, &mut self.internal_index)
     }
 
+    /* TODO[remove]:
     /// Returns an [`ExternalKeys`] generator starting from the current external index.
     #[inline]
     pub fn external_keys<'s>(&'s self, source: &'s D) -> ExternalKeys<'s, D> {
@@ -802,6 +810,7 @@ where
     ) -> InternalKeys<'s, D> {
         source.internal_keys_from_index(&self.account, index)
     }
+    */
 }
 
 impl<D> AsRef<D::Account> for Account<D>

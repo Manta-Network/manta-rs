@@ -150,8 +150,6 @@ pub type MantaDerivedKeySecret = DerivedKeySecret<Manta>;
 pub type CalamariDerivedKeySecret = DerivedKeySecret<Calamari>;
 
 /// Derived Key Secret
-#[derive(derivative::Derivative)]
-#[derivative(Clone, Copy)]
 pub struct DerivedKeySecret<C>
 where
     C: CoinType,
