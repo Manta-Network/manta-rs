@@ -272,11 +272,11 @@ where
     pub async fn sign<D, SC>(
         &mut self,
         signer: &mut SC,
-        request: signer::Request<D>,
-    ) -> Result<(), SC::Error>
+        request: signer::Request<D, C>,
+    ) -> Result<(), signer::Error<D, C>>
     where
         D: DerivedSecretKeyGenerator<SecretKey = C::SecretKey>,
-        SC: signer::Connection<D>,
+        SC: signer::Connection<D, C>,
     {
         let signer::Response { owner, transfers } = signer.sign(request).await?;
 
@@ -393,7 +393,7 @@ where
     C: transfer::Configuration<SecretKey = D::SecretKey>,
     L: LocalLedger<C>,
     M: AssetMap,
-    SC: signer::Connection<D>,
+    SC: signer::Connection<D, C>,
     LC: ledger::Connection<C>,
 {
     /// Wallet Balance State
@@ -415,7 +415,7 @@ where
     C: transfer::Configuration<SecretKey = D::SecretKey>,
     L: LocalLedger<C>,
     M: AssetMap,
-    SC: signer::Connection<D>,
+    SC: signer::Connection<D, C>,
     LC: ledger::Connection<C>,
 {
 }

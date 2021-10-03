@@ -24,7 +24,7 @@ use crate::{
     transfer::{
         self,
         canonical::{Mint, PrivateTransfer, Reclaim},
-        IntegratedEncryptionSchemeError,
+        IntegratedEncryptionSchemeError, ProofSystemError, ProvingContext, TransferPost,
     },
 };
 use alloc::vec::Vec;
@@ -72,49 +72,82 @@ where
     Error(E),
 }
 
-/// Signer Server
-pub trait Server {}
-
 /// Signer Connection
-pub trait Connection<D>
+pub trait Connection<D, C>
 where
     D: DerivedSecretKeyGenerator,
+    C: transfer::Configuration<SecretKey = D::SecretKey>,
 {
+    /// Sign Future Type
     ///
-    type SignFuture: Future<Output = Result<Response<D>, Self::Error>>;
+    /// Future for the [`sign`](Self::sign) method.
+    type SignFuture: Future<Output = Result<Response<D, C>, Error<D, C>>>;
 
-    ///
-    type Error;
-
-    ///
-    fn sign(&mut self, request: Request<D>) -> Self::SignFuture;
+    /// Signs a transfer request and returns the ledger transfer posts if successful.
+    fn sign(&mut self, request: Request<D, C>) -> Self::SignFuture;
 }
 
+/// Signer Connection Request
 ///
-pub enum Request<D>
+/// This `struct` is used by the [`sign`](Connection::sign) method on [`Connection`].
+/// See its documentation for more.
+pub enum Request<D, C>
 where
     D: DerivedSecretKeyGenerator,
+    C: transfer::Configuration<SecretKey = D::SecretKey>,
 {
-    ///
+    /// Mint Transaction
     Mint(Asset),
 
-    ///
-    PrivateTransfer(Asset, Vec<Index<D>>, ()),
+    /// Private Transfer Transaction
+    PrivateTransfer(Asset, Vec<Index<D>>, transfer::ShieldedIdentity<C>),
 
-    ///
+    /// Reclaim Transaction
     Reclaim(Asset, Vec<Index<D>>),
 }
 
+/// Signer Connection Response
 ///
-pub struct Response<D>
+/// This `struct` is created by the [`sign`](Connection::sign) method on [`Connection`].
+/// See its documentation for more.
+pub struct Response<D, C>
 where
     D: DerivedSecretKeyGenerator,
+    C: transfer::Configuration<SecretKey = D::SecretKey>,
 {
-    ///
+    /// Final Owner Index
     pub owner: Index<D>,
 
-    ///
-    pub transfers: Vec<()>,
+    /// Transfer Posts
+    pub transfers: Vec<TransferPost<C>>,
+}
+
+impl<D, C> Response<D, C>
+where
+    D: DerivedSecretKeyGenerator,
+    C: transfer::Configuration<SecretKey = D::SecretKey>,
+{
+    /// Builds a new [`Response`] from `owner` and `transfers`.
+    #[inline]
+    pub fn new(owner: Index<D>, transfers: Vec<TransferPost<C>>) -> Self {
+        Self { owner, transfers }
+    }
+}
+
+/// Signer Connection Error
+pub enum Error<D, C>
+where
+    D: DerivedSecretKeyGenerator,
+    C: transfer::Configuration<SecretKey = D::SecretKey>,
+{
+    /// Secret Key Generation Error
+    SecretKeyError(D::Error),
+
+    /// Encryption Error
+    EncryptionError(IntegratedEncryptionSchemeError<C>),
+
+    /// Proof System Error
+    ProofSystemError(ProofSystemError<C>),
 }
 
 /// Signer
@@ -317,6 +350,7 @@ where
         &mut self,
         commitment_scheme: &C::CommitmentScheme,
         asset: Asset,
+        senders: Vec<Index<D>>,
         external_receiver: transfer::ShieldedIdentity<C>,
         rng: &mut R,
     ) -> Option<Vec<PrivateTransfer<C>>>
@@ -549,27 +583,44 @@ where
     /// Commitment Scheme
     commitment_scheme: C::CommitmentScheme,
 
+    /// Proving Context
+    proving_context: ProvingContext<C>,
+
     /// Random Number Generator
     rng: R,
 }
 
-impl<D, C, R> Connection<D> for FullSigner<D, C, R>
+impl<D, C, R> Connection<D, C> for FullSigner<D, C, R>
 where
     D: DerivedSecretKeyGenerator,
     C: transfer::Configuration<SecretKey = D::SecretKey>,
     R: CryptoRng + RngCore + ?Sized,
+    Standard: Distribution<AssetParameters<C>>,
 {
-    type SignFuture = Ready<Result<Response<D>, Self::Error>>;
-
-    type Error = ();
+    type SignFuture = Ready<Result<Response<D, C>, Error<D, C>>>;
 
     #[inline]
-    fn sign(&mut self, request: Request<D>) -> Self::SignFuture {
+    fn sign(&mut self, request: Request<D, C>) -> Self::SignFuture {
         future::ready(match request {
-            Request::Mint(asset) => {
-                //
-                todo!()
-            }
+            Request::Mint(asset) => self
+                .signer
+                .mint::<C, _>(&self.commitment_scheme, asset, &mut self.rng)
+                .map_err(|e| match e {
+                    MintError::SecretKeyError(err) => Error::SecretKeyError(err),
+                    MintError::EncryptionError(err) => Error::EncryptionError(err),
+                })
+                .and_then(|(mint, open_spend)| {
+                    /* TODO:
+                    mint.into_post(
+                        &self.commitment_scheme,
+                        &self.proving_context,
+                        &mut self.rng,
+                    )
+                    .map_err(Error::ProofSystemError)
+                    .map(|p| Response::new(open_spend.index, vec![p]))
+                    */
+                    todo!()
+                }),
             Request::PrivateTransfer(asset, senders, receiver) => {
                 //
                 todo!()
