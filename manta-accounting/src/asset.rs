@@ -20,6 +20,7 @@
 // TODO: Implement all `rand` sampling traits.
 // TODO: Should we rename `AssetBalance` to `AssetValue` to be more consistent?
 // TODO: Implement `Concat` for `AssetId` and `AssetBalance`.
+// TODO: Add implementations for `AssetMap` using key-value maps like `BTreeMap` and `HashMap`
 
 use alloc::vec::Vec;
 use core::{
@@ -60,16 +61,23 @@ impl AssetId {
     /// The size of this type in bytes.
     pub const SIZE: usize = (Self::BITS / 8) as usize;
 
-    /// Converts `self` into a byte array.
+    /// Constructs a new [`Asset`] with `self` as the [`AssetId`] and `value` as the
+    /// [`AssetBalance`].
     #[inline]
-    pub const fn into_bytes(self) -> [u8; Self::SIZE] {
-        self.0.to_le_bytes()
+    pub const fn with(self, value: AssetBalance) -> Asset {
+        Asset::new(self, value)
     }
 
     /// Converts a byte array into `self`.
     #[inline]
     pub const fn from_bytes(bytes: [u8; Self::SIZE]) -> Self {
         Self(AssetIdType::from_le_bytes(bytes))
+    }
+
+    /// Converts `self` into a byte array.
+    #[inline]
+    pub const fn into_bytes(self) -> [u8; Self::SIZE] {
+        self.0.to_le_bytes()
     }
 }
 
@@ -127,16 +135,22 @@ impl AssetBalance {
     /// The size of this type in bytes.
     pub const SIZE: usize = (Self::BITS / 8) as usize;
 
-    /// Converts `self` into a byte array.
+    /// Constructs a new [`Asset`] with `self` as the [`AssetBalance`] and `id` as the [`AssetId`].
     #[inline]
-    pub const fn into_bytes(self) -> [u8; Self::SIZE] {
-        self.0.to_le_bytes()
+    pub const fn with(self, id: AssetId) -> Asset {
+        Asset::new(id, self)
     }
 
     /// Converts a byte array into `self`.
     #[inline]
     pub const fn from_bytes(bytes: [u8; Self::SIZE]) -> Self {
         Self(AssetBalanceType::from_le_bytes(bytes))
+    }
+
+    /// Converts `self` into a byte array.
+    #[inline]
+    pub const fn into_bytes(self) -> [u8; Self::SIZE] {
+        self.0.to_le_bytes()
     }
 
     /// Checked integer addition. Computes `self + rhs`, returning `None` if overflow occurred.
@@ -315,12 +329,6 @@ impl Asset {
         self.id.0 == rhs.id.0
     }
 
-    /// Converts `self` into a byte array.
-    #[inline]
-    pub fn into_bytes(self) -> [u8; Self::SIZE] {
-        into_array_unchecked(self.accumulated::<Vec<_>>())
-    }
-
     /// Converts a byte array into `self`.
     #[inline]
     pub fn from_bytes(bytes: [u8; Self::SIZE]) -> Self {
@@ -329,6 +337,12 @@ impl Asset {
             AssetId::from_bytes(into_array_unchecked(&bytes[..split])),
             AssetBalance::from_bytes(into_array_unchecked(&bytes[split..])),
         )
+    }
+
+    /// Converts `self` into a byte array.
+    #[inline]
+    pub fn into_bytes(self) -> [u8; Self::SIZE] {
+        into_array_unchecked(self.accumulated::<Vec<_>>())
     }
 }
 
@@ -529,7 +543,7 @@ impl<const N: usize> Default for AssetCollection<N> {
 impl<const N: usize> From<AssetCollection<N>> for [Asset; N] {
     #[inline]
     fn from(collection: AssetCollection<N>) -> Self {
-        array_map(collection.values, move |v| Asset::new(collection.id, v))
+        array_map(collection.values, move |v| collection.id.with(v))
     }
 }
 
@@ -564,6 +578,96 @@ impl<const N: usize> TryFrom<[Asset; N]> for AssetCollection<N> {
     }
 }
 
+/// Asset Map
+///
+/// This trait represents an asset distribution over some [`Key`](Self::Key) type.
+pub trait AssetMap {
+    /// Key Type
+    ///
+    /// Keys are used to access the underlying asset balances. See [`withdraw`](Self::withdraw)
+    /// and [`deposit`](Self::deposit) for uses of the [`Key`](Self::Key) type.
+    type Key;
+
+    /// Asset Selection Iterator Type
+    ///
+    /// This type is returned by [`select`](Self::select) when looking for assets in the map.
+    type Selection: Iterator<Item = (Self::Key, AssetBalance)>;
+
+    /// Asset Iterator Type
+    ///
+    /// This type is returned by [`iter`](Self::iter) when iterating over all assets.
+    type Iter: Iterator<Item = (Self::Key, Asset)>;
+
+    /// Selects asset keys which total up to at least `asset` in value.
+    ///
+    /// See [`iter`](Self::iter) for iterating over all the assets in the map instead of a specific
+    /// subset summing to the `asset` total.
+    fn select(&self, asset: Asset) -> AssetSelection<Self>;
+
+    /// Returns an iterator over all the assets stored in the map.
+    ///
+    /// See [`select`](Self::select) for selecting an asset distribution that sums to some known
+    /// `asset` total.
+    fn iter(&self) -> Self::Iter;
+
+    /// Withdraws the asset stored at `key`.
+    fn withdraw(&mut self, key: Self::Key);
+
+    /// Deposits `asset` at the key stored at `kind` and `index`, returning `false` if the `key`
+    /// was already assigned to some other [`Asset`].
+    fn deposit(&mut self, key: Self::Key, asset: Asset) -> bool;
+
+    /// Returns the current balance associated with this `id`.
+    #[inline]
+    fn balance(&self, id: AssetId) -> AssetBalance {
+        self.iter()
+            .filter_map(move |(_, asset)| (asset.id == id).then(move || asset.value))
+            .sum()
+    }
+
+    /// Returns true if `self` contains at least `asset.value` of the asset of kind `asset.id`.
+    #[inline]
+    fn contains(&self, asset: Asset) -> bool {
+        self.balance(asset.id) >= asset.value
+    }
+}
+
+/// Asset Selection
+///
+/// This `struct` is generated by the [`select`](AssetMap::select) method of [`AssetMap`]. See its
+/// documentation for more.
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "M::Selection: Clone"),
+    Copy(bound = "M::Selection: Copy"),
+    Debug(bound = "M::Selection: Debug"),
+    Default(bound = "M::Selection: Default"),
+    Eq(bound = "M::Selection: Eq"),
+    Hash(bound = "M::Selection: Hash"),
+    PartialEq(bound = "M::Selection: PartialEq")
+)]
+pub struct AssetSelection<M>
+where
+    M: AssetMap + ?Sized,
+{
+    /// Change Amount
+    pub change: AssetBalance,
+
+    /// Asset Distribution
+    pub assets: M::Selection,
+}
+
+impl<M> AssetSelection<M>
+where
+    M: AssetMap + ?Sized,
+{
+    /// Splits [`self.change`] into `n` change components.
+    #[inline]
+    pub fn split_change(&self, n: usize) -> Option<Change> {
+        self.change.make_change(n)
+    }
+}
+
 /// Testing Suite
 #[cfg(test)]
 mod test {
@@ -585,7 +689,7 @@ mod test {
     #[test]
     fn asset_arithmetic() {
         let mut rng = thread_rng();
-        let mut asset = Asset::new(rng.gen(), AssetBalance(0));
+        let mut asset = Asset::zero(rng.gen());
         let value = rng.gen::<AssetBalance>();
         let _ = asset + value;
         asset += value;

@@ -17,7 +17,6 @@
 //! Identities, Senders, and Receivers
 
 // FIXME: Check the secret key APIs.
-// TODO:  Since `Configuration::SecretKey: Clone`, should `Identity: Clone`?
 
 use crate::asset::{Asset, AssetBalance, AssetId, AssetVar};
 use core::{fmt::Debug, hash::Hash, marker::PhantomData};
@@ -34,9 +33,7 @@ use rand::{
 
 pub(super) mod prelude {
     #[doc(inline)]
-    pub use super::{
-        Identity, Receiver, Sender, ShieldedIdentity, Spend, SpendError, Utxo, VoidNumber,
-    };
+    pub use super::{Identity, Receiver, Sender, ShieldedIdentity, Spend, Utxo, VoidNumber};
 }
 
 /// [`Identity`] Configuration

@@ -18,9 +18,12 @@
 
 use crate::{
     asset::{Asset, AssetBalance, AssetId},
-    identity::{self, AssetParameters, Utxo, VoidNumber},
+    identity::{AssetParameters, Utxo, VoidNumber},
     keys::{DerivedSecretKeyGenerator, Index, KeyKind},
-    transfer::{self, EncryptedAsset, ReceiverPost, SenderPost, TransferPost},
+    transfer::{
+        self, EncryptedAsset, IntegratedEncryptionSchemeError, ReceiverPost, SenderPost,
+        TransferPost,
+    },
     wallet::{
         ledger::{self, SendResponse, SyncResponse},
         signer::{self, InternalReceiver, SecretKeyGenerationError, Signer},
@@ -28,115 +31,10 @@ use crate::{
 };
 use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash, marker::PhantomData};
-use manta_crypto::ies::IntegratedEncryptionScheme;
 use rand::{
     distributions::{Distribution, Standard},
     CryptoRng, RngCore,
 };
-
-/// Asset Map
-pub trait AssetMap {
-    /// Key Type
-    ///
-    /// Keys are used to access the underlying asset balances. See [`withdraw`](Self::withdraw)
-    /// and [`deposit`](Self::deposit) for uses of the [`Key`](Self::Key) type.
-    type Key;
-
-    /// Assets Iterator Type
-    ///
-    /// This type is returned by [`select`](Self::select) when looking for assets in the map.
-    type Assets: IntoIterator<Item = (Self::Key, AssetBalance)>;
-
-    /// Error Type
-    type Error;
-
-    /// Selects asset keys which total up to at least `asset` in value.
-    fn select(&self, asset: Asset) -> AssetSelection<Self>;
-
-    /// Withdraws the asset stored at `key`.
-    fn withdraw(&mut self, key: Self::Key) -> Result<(), Self::Error>;
-
-    /// Deposits `asset` at the key stored at `kind` and `index`.
-    fn deposit(&mut self, key: Self::Key, asset: Asset) -> Result<(), Self::Error>;
-
-    /// Returns the current balance associated with this `id`.
-    fn balance(&self, id: AssetId) -> AssetBalance;
-
-    /// Returns true if `self` contains at least `asset.value` of the asset of kind `asset.id`.
-    #[inline]
-    fn contains(&self, asset: Asset) -> bool {
-        self.balance(asset.id) >= asset.value
-    }
-}
-
-/// Asset Selection
-pub struct AssetSelection<S>
-where
-    S: AssetMap + ?Sized,
-{
-    /// Change Amount
-    pub change: AssetBalance,
-
-    /// Sender Assets
-    pub assets: S::Assets,
-}
-
-impl<S> AssetSelection<S>
-where
-    S: AssetMap + ?Sized,
-{
-    /// Builds an [`InternalReceiver`] to capture the `change` from the given [`AssetSelection`].
-    #[inline]
-    pub fn change_receiver<D, C, I, R>(
-        &self,
-        signer: &mut Signer<D>,
-        asset_id: AssetId,
-        commitment_scheme: &C::CommitmentScheme,
-        rng: &mut R,
-    ) -> Result<InternalReceiver<D, C, I>, SecretKeyGenerationError<D, I::Error>>
-    where
-        S: AssetMap<Key = Index<D>>,
-        D: DerivedSecretKeyGenerator,
-        C: identity::Configuration<SecretKey = D::SecretKey>,
-        I: IntegratedEncryptionScheme<Plaintext = Asset>,
-        R: CryptoRng + RngCore + ?Sized,
-        Standard: Distribution<AssetParameters<C>>,
-    {
-        signer.next_internal_receiver(commitment_scheme, Asset::new(asset_id, self.change), rng)
-    }
-
-    /// Builds a vector of `n` internal receivers to capture the `change` from the given
-    /// [`AssetSelection`].
-    ///
-    /// # Panics
-    ///
-    /// This method panics if `n == 0`.
-    #[inline]
-    pub fn change_receivers<D, C, I, R>(
-        &self,
-        signer: &mut Signer<D>,
-        asset_id: AssetId,
-        n: usize,
-        commitment_scheme: &C::CommitmentScheme,
-        rng: &mut R,
-    ) -> Result<Vec<InternalReceiver<D, C, I>>, SecretKeyGenerationError<D, I::Error>>
-    where
-        S: AssetMap<Key = Index<D>>,
-        D: DerivedSecretKeyGenerator,
-        C: identity::Configuration<SecretKey = D::SecretKey>,
-        I: IntegratedEncryptionScheme<Plaintext = Asset>,
-        R: CryptoRng + RngCore + ?Sized,
-        Standard: Distribution<AssetParameters<C>>,
-    {
-        self.change
-            .make_change(n)
-            .unwrap()
-            .map(move |value| {
-                signer.next_internal_receiver(commitment_scheme, Asset::new(asset_id, value), rng)
-            })
-            .collect()
-    }
-}
 
 /// Ledger Ownership Marker
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -384,38 +282,4 @@ where
 
         todo!()
     }
-}
-
-/// Full Wallet
-pub struct Wallet<D, C, L, M, SC, LC>
-where
-    D: DerivedSecretKeyGenerator,
-    C: transfer::Configuration<SecretKey = D::SecretKey>,
-    L: LocalLedger<C>,
-    M: AssetMap,
-    SC: signer::Connection<D, C>,
-    LC: ledger::Connection<C>,
-{
-    /// Wallet Balance State
-    _state: BalanceState<C, L, M>,
-
-    /// Signer Connection
-    _signer: SC,
-
-    /// Ledger Connection
-    _ledger: LC,
-
-    /// Type Parameter Marker
-    __: PhantomData<D>,
-}
-
-impl<D, C, L, M, SC, LC> Wallet<D, C, L, M, SC, LC>
-where
-    D: DerivedSecretKeyGenerator,
-    C: transfer::Configuration<SecretKey = D::SecretKey>,
-    L: LocalLedger<C>,
-    M: AssetMap,
-    SC: signer::Connection<D, C>,
-    LC: ledger::Connection<C>,
-{
 }

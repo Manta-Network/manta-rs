@@ -28,15 +28,15 @@ pub trait Connection<C>
 where
     C: transfer::Configuration,
 {
-    /// Sync Future Type
+    /// Pull Future Type
     ///
-    /// Future for the [`sync`](Self::sync) method.
-    type SyncFuture: Future<Output = Result<SyncResponse<C, Self>, Self::Error>>;
+    /// Future for the [`pull`](Self::pull) method.
+    type PullFuture: Future<Output = Result<PullResponse<C, Self>, Self::Error>>;
 
-    /// Send Future Type
+    /// Push Future Type
     ///
-    /// Future for the [`send`](Self::send) method.
-    type SendFuture: Future<Output = Result<SendResponse<C, Self>, Self::Error>>;
+    /// Future for the [`push`](Self::push) method.
+    type PushFuture: Future<Output = Result<PushResponse<C, Self>, Self::Error>>;
 
     /// Ledger State Checkpoint Type
     type Checkpoint: Default + Ord;
@@ -46,32 +46,32 @@ where
 
     /// Pulls data from the ledger starting from `checkpoint`, returning the current
     /// [`Checkpoint`](Self::Checkpoint).
-    fn sync(&self, checkpoint: &Self::Checkpoint) -> Self::SyncFuture;
+    fn pull(&self, checkpoint: &Self::Checkpoint) -> Self::PullFuture;
 
     /// Pulls all of the data from the entire history of the ledger, returning the current
     /// [`Checkpoint`](Self::Checkpoint).
     #[inline]
-    fn sync_all(&self) -> Self::SyncFuture {
-        self.sync(&Default::default())
+    fn pull_all(&self) -> Self::PullFuture {
+        self.pull(&Default::default())
     }
 
     /// Sends `transfers` to the ledger, returning the current [`Checkpoint`](Self::Checkpoint)
-    /// and the status of the transfers.
-    fn send(&self, transfers: Vec<TransferPost<C>>) -> Self::SendFuture;
+    /// and the status of the transfers if successful.
+    fn push(&self, transfers: Vec<TransferPost<C>>) -> Self::PushFuture;
 
     /// Sends `transfer` to the ledger, returning the current [`Checkpoint`](Self::Checkpoint)
-    /// and the status of the transfer.
+    /// and the status of the transfer if successful.
     #[inline]
-    fn send_one(&self, transfer: TransferPost<C>) -> Self::SendFuture {
-        self.send(vec![transfer])
+    fn push_one(&self, transfer: TransferPost<C>) -> Self::PushFuture {
+        self.push(vec![transfer])
     }
 }
 
-/// Ledger Source Sync Response
+/// Ledger Source Pull Response
 ///
-/// This `struct` is created by the [`sync`](Connection::sync) method on [`Connection`].
+/// This `struct` is created by the [`pull`](Connection::pull) method on [`Connection`].
 /// See its documentation for more.
-pub struct SyncResponse<C, LC>
+pub struct PullResponse<C, LC>
 where
     C: transfer::Configuration,
     LC: Connection<C> + ?Sized,
@@ -89,11 +89,11 @@ where
     pub encrypted_assets: Vec<EncryptedAsset<C>>,
 }
 
-/// Ledger Source Send Response
+/// Ledger Source Push Response
 ///
-/// This `struct` is created by the [`send`](Connection::send) method on [`Connection`].
+/// This `struct` is created by the [`push`](Connection::push) method on [`Connection`].
 /// See its documentation for more.
-pub struct SendResponse<C, LC>
+pub struct PushResponse<C, LC>
 where
     C: transfer::Configuration,
     LC: Connection<C> + ?Sized,

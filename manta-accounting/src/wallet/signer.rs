@@ -17,7 +17,7 @@
 //! Wallet Signer
 
 use crate::{
-    asset::{Asset, AssetId},
+    asset::{Asset, AssetBalance, AssetId, AssetMap},
     fs::{Load, LoadWith, Save, SaveWith},
     identity::{self, AssetParameters, Identity},
     keys::{Account, DerivedSecretKeyGenerator, Index, KeyKind, KeyOwned},
@@ -29,11 +29,11 @@ use crate::{
 };
 use alloc::vec::Vec;
 use core::{
+    convert::Infallible,
     fmt::Debug,
     future::{self, Future, Ready},
     hash::Hash,
 };
-use manta_crypto::ies::IntegratedEncryptionScheme;
 use rand::{
     distributions::{Distribution, Standard},
     CryptoRng, RngCore,
@@ -43,55 +43,96 @@ use rand::{
 pub type PreSender<D, C> = KeyOwned<D, identity::PreSender<C>>;
 
 /// Key-Owned Shielded Identity Type
-pub type ShieldedIdentity<D, C, I> = KeyOwned<D, identity::ShieldedIdentity<C, I>>;
+pub type ShieldedIdentity<D, C> = KeyOwned<D, transfer::ShieldedIdentity<C>>;
 
 /// Key-Owned Internal Receiver Type
-pub type InternalReceiver<D, C, I> = KeyOwned<D, identity::InternalReceiver<C, I>>;
+pub type InternalReceiver<D, C> = KeyOwned<
+    D,
+    identity::InternalReceiver<C, <C as transfer::Configuration>::IntegratedEncryptionScheme>,
+>;
 
 /// Key-Owned Open Spend Type
 pub type OpenSpend<D, C> = KeyOwned<D, identity::OpenSpend<C>>;
 
-/// Secret Key Generation Error
-#[derive(derivative::Derivative)]
-#[derivative(
-    Clone(bound = "D::Error: Clone, E: Clone"),
-    Copy(bound = "D::Error: Copy, E: Copy"),
-    Debug(bound = "D::Error: Debug, E: Debug"),
-    Eq(bound = "D::Error: Eq, E: Eq"),
-    Hash(bound = "D::Error: Hash, E: Hash"),
-    PartialEq(bound = "D::Error: PartialEq, E: PartialEq")
-)]
-pub enum SecretKeyGenerationError<D, E>
-where
-    D: DerivedSecretKeyGenerator,
-{
-    /// Secret Key Generator Error
-    SecretKeyError(D::Error),
-
-    /// Other Error
-    Error(E),
-}
-
-/// Signer Connection
+/// Wallet Connection
 pub trait Connection<D, C>
 where
     D: DerivedSecretKeyGenerator,
     C: transfer::Configuration<SecretKey = D::SecretKey>,
 {
+    /// Sync Future Type
+    ///
+    /// Future for the [`sync`](Self::sync) method.
+    type SyncFuture: Future<Output = SyncResult<D, C, Self::Error>>;
+
     /// Sign Future Type
     ///
     /// Future for the [`sign`](Self::sign) method.
-    type SignFuture: Future<Output = Result<Response<D, C>, Error<D, C>>>;
+    type SignFuture: Future<Output = SignResult<D, C, Self::Error>>;
 
-    /// Signs a transfer request and returns the ledger transfer posts if successful.
-    fn sign(&mut self, request: Request<D, C>) -> Self::SignFuture;
+    /// New Receiver Future Type
+    ///
+    /// Future for the [`new_receiver`](Self::new_receiver) method.
+    type NewReceiverFuture: Future<Output = NewReceiverResult<D, C, Self::Error>>;
+
+    /// Error Type
+    type Error;
+
+    /// Pushes updates from the ledger to the wallet, synchronizing it with the ledger state and
+    /// returning an updated asset distribution.
+    fn sync(&mut self, msg: ()) -> Self::SyncFuture;
+
+    /// Signs a transfer `request` and returns the ledger transfer posts if successful.
+    fn sign(&mut self, request: SignRequest<D, C>) -> Self::SignFuture;
+
+    /// Generates a new [`ShieldedIdentity`] for `self` to receive assets.
+    fn new_receiver(&mut self) -> Self::NewReceiverFuture;
 }
 
-/// Signer Connection Request
+/// Synchronization Result
+///
+/// See the [`sync`](Connection::sync) method on [`Connection`] for more information.
+pub type SyncResult<D, C, CE> = Result<(), Error<D, C, CE>>;
+
+/// Signing Result
+///
+/// See the [`sign`](Connection::sign) method on [`Connection`] for more information.
+pub type SignResult<D, C, CE> = Result<SignResponse<D, C>, Error<D, C, CE>>;
+
+/// New Receiver Generation Result
+///
+/// See the [`new_receiver`](Connection::new_receiver) method on [`Connection`] for more
+/// information.
+pub type NewReceiverResult<D, C, CE> = Result<ShieldedIdentity<D, C>, Error<D, C, CE>>;
+
+/* TODO:
+pub struct SignRequest<D, C>
+where
+    D: DerivedSecretKeyGenerator,
+    C: transfer::Configuration<SecretKey = D::SecretKey>,
+{
+    ///
+    pub asset: Asset,
+
+    ///
+    pub sources: Vec<AssetBalance>,
+
+    ///
+    pub senders: Vec<(AssetBalance, Index<D>)>,
+
+    ///
+    pub receivers: Vec<(AssetBalance, transfer::ShieldedIdentity<C>)>,
+
+    ///
+    pub sinks: Vec<AssetBalance>,
+}
+*/
+
+/// Wallet Signing Request
 ///
 /// This `struct` is used by the [`sign`](Connection::sign) method on [`Connection`].
 /// See its documentation for more.
-pub enum Request<D, C>
+pub enum SignRequest<D, C>
 where
     D: DerivedSecretKeyGenerator,
     C: transfer::Configuration<SecretKey = D::SecretKey>,
@@ -106,36 +147,47 @@ where
     Reclaim(Asset, Vec<Index<D>>),
 }
 
-/// Signer Connection Response
+/// Wallet Signing Response
 ///
 /// This `struct` is created by the [`sign`](Connection::sign) method on [`Connection`].
 /// See its documentation for more.
-pub struct Response<D, C>
+pub struct SignResponse<D, C>
 where
     D: DerivedSecretKeyGenerator,
     C: transfer::Configuration<SecretKey = D::SecretKey>,
 {
-    /// Final Owner Index
-    pub owner: Index<D>,
+    /// Asset Distribution Deposit Asset Id
+    pub asset_id: AssetId,
+
+    /// Asset Distribution Deposit Balance Updates
+    pub balances: Vec<(Index<D>, AssetBalance)>,
 
     /// Transfer Posts
     pub transfers: Vec<TransferPost<C>>,
 }
 
-impl<D, C> Response<D, C>
+impl<D, C> SignResponse<D, C>
 where
     D: DerivedSecretKeyGenerator,
     C: transfer::Configuration<SecretKey = D::SecretKey>,
 {
-    /// Builds a new [`Response`] from `owner` and `transfers`.
+    /// Builds a new [`SignResponse`] from `asset_id`, `balances` and `transfers`.
     #[inline]
-    pub fn new(owner: Index<D>, transfers: Vec<TransferPost<C>>) -> Self {
-        Self { owner, transfers }
+    pub fn new(
+        asset_id: AssetId,
+        balances: Vec<(Index<D>, AssetBalance)>,
+        transfers: Vec<TransferPost<C>>,
+    ) -> Self {
+        Self {
+            asset_id,
+            balances,
+            transfers,
+        }
     }
 }
 
-/// Signer Connection Error
-pub enum Error<D, C>
+/// Wallet Error
+pub enum Error<D, C, CE>
 where
     D: DerivedSecretKeyGenerator,
     C: transfer::Configuration<SecretKey = D::SecretKey>,
@@ -148,6 +200,23 @@ where
 
     /// Proof System Error
     ProofSystemError(ProofSystemError<C>),
+
+    /// Wallet Connection Error
+    ConnectionError(CE),
+}
+
+impl<D, C, CE> From<InternalReceiverError<D, C>> for Error<D, C, CE>
+where
+    D: DerivedSecretKeyGenerator,
+    C: transfer::Configuration<SecretKey = D::SecretKey>,
+{
+    #[inline]
+    fn from(err: InternalReceiverError<D, C>) -> Self {
+        match err {
+            InternalReceiverError::SecretKeyError(err) => Self::SecretKeyError(err),
+            InternalReceiverError::EncryptionError(err) => Self::EncryptionError(err),
+        }
+    }
 }
 
 /// Signer
@@ -270,13 +339,12 @@ where
     /// Generates a new [`ShieldedIdentity`] to receive assets to this account via an external
     /// transaction.
     #[inline]
-    pub fn next_shielded_identity<C, I>(
+    pub fn next_shielded<C>(
         &mut self,
         commitment_scheme: &C::CommitmentScheme,
-    ) -> Result<ShieldedIdentity<D, C, I>, D::Error>
+    ) -> Result<ShieldedIdentity<D, C>, D::Error>
     where
-        C: identity::Configuration<SecretKey = D::SecretKey>,
-        I: IntegratedEncryptionScheme<Plaintext = Asset>,
+        C: transfer::Configuration<SecretKey = D::SecretKey>,
         Standard: Distribution<AssetParameters<C>>,
     {
         Ok(self
@@ -287,40 +355,98 @@ where
     /// Generates a new [`InternalReceiver`] to receive `asset` to this account via an
     /// internal transaction.
     #[inline]
-    pub fn next_internal_receiver<C, I, R>(
+    pub fn next_change_receiver<C, R>(
         &mut self,
         commitment_scheme: &C::CommitmentScheme,
         asset: Asset,
         rng: &mut R,
-    ) -> Result<InternalReceiver<D, C, I>, SecretKeyGenerationError<D, I::Error>>
+    ) -> Result<InternalReceiver<D, C>, InternalReceiverError<D, C>>
     where
-        C: identity::Configuration<SecretKey = D::SecretKey>,
-        I: IntegratedEncryptionScheme<Plaintext = Asset>,
+        C: transfer::Configuration<SecretKey = D::SecretKey>,
         R: CryptoRng + RngCore + ?Sized,
         Standard: Distribution<AssetParameters<C>>,
     {
         self.next_internal_identity()
-            .map_err(SecretKeyGenerationError::SecretKeyError)?
+            .map_err(InternalReceiverError::SecretKeyError)?
             .map_ok(move |identity| identity.into_internal_receiver(commitment_scheme, asset, rng))
-            .map_err(SecretKeyGenerationError::Error)
+            .map_err(InternalReceiverError::EncryptionError)
+    }
+
+    /// Builds a vector of `n` internal receivers to capture the given `asset`.
+    ///
+    /// # Panics
+    ///
+    /// This method panics if `n == 0`.
+    #[inline]
+    pub fn next_change_receivers<C, R>(
+        &mut self,
+        commitment_scheme: &C::CommitmentScheme,
+        asset: Asset,
+        n: usize,
+        rng: &mut R,
+    ) -> InternalReceiverResult<D, C, Vec<InternalReceiver<D, C>>>
+    where
+        C: transfer::Configuration<SecretKey = D::SecretKey>,
+        R: CryptoRng + RngCore + ?Sized,
+        Standard: Distribution<AssetParameters<C>>,
+    {
+        asset
+            .value
+            .make_change(n)
+            .unwrap()
+            .map(move |value| {
+                self.next_change_receiver(commitment_scheme, asset.id.with(value), rng)
+            })
+            .collect()
     }
 
     /// Generates a new [`InternalReceiver`] to receive an asset, with the given `asset_id` and
     /// no value, to this account via an internal transaction.
     #[inline]
-    pub fn next_empty_internal_receiver<C, I, R>(
+    pub fn next_empty_receiver<C, R>(
         &mut self,
         commitment_scheme: &C::CommitmentScheme,
         asset_id: AssetId,
         rng: &mut R,
-    ) -> Result<InternalReceiver<D, C, I>, SecretKeyGenerationError<D, I::Error>>
+    ) -> Result<InternalReceiver<D, C>, InternalReceiverError<D, C>>
     where
-        C: identity::Configuration<SecretKey = D::SecretKey>,
-        I: IntegratedEncryptionScheme<Plaintext = Asset>,
+        C: transfer::Configuration<SecretKey = D::SecretKey>,
         R: CryptoRng + RngCore + ?Sized,
         Standard: Distribution<AssetParameters<C>>,
     {
-        self.next_internal_receiver(commitment_scheme, Asset::zero(asset_id), rng)
+        self.next_change_receiver(commitment_scheme, Asset::zero(asset_id), rng)
+    }
+
+    /// Generates a new [`PreSender`] to send `asset` from this account via an internal
+    /// transaction.
+    #[inline]
+    pub fn next_pre_sender<C>(
+        &mut self,
+        commitment_scheme: &C::CommitmentScheme,
+        asset: Asset,
+    ) -> Result<PreSender<D, C>, D::Error>
+    where
+        C: transfer::Configuration<SecretKey = D::SecretKey>,
+        Standard: Distribution<AssetParameters<C>>,
+    {
+        Ok(self
+            .next_internal_identity()?
+            .map(move |identity| identity.into_pre_sender(commitment_scheme, asset)))
+    }
+
+    /// Generates a new [`PreSender`] to send an asset with the given `asset_id` and no value,
+    /// from this account via an internal transaction.
+    #[inline]
+    pub fn next_empty_pre_sender<C>(
+        &mut self,
+        commitment_scheme: &C::CommitmentScheme,
+        asset_id: AssetId,
+    ) -> Result<PreSender<D, C>, D::Error>
+    where
+        C: transfer::Configuration<SecretKey = D::SecretKey>,
+        Standard: Distribution<AssetParameters<C>>,
+    {
+        self.next_pre_sender(commitment_scheme, Asset::zero(asset_id))
     }
 
     /// Builds a [`Mint`] transaction to mint `asset` and returns the [`OpenSpend`] for that asset.
@@ -330,7 +456,7 @@ where
         commitment_scheme: &C::CommitmentScheme,
         asset: Asset,
         rng: &mut R,
-    ) -> Result<(Mint<C>, OpenSpend<D, C>), MintError<D, C>>
+    ) -> InternalReceiverResult<D, C, (Mint<C>, OpenSpend<D, C>)>
     where
         C: transfer::Configuration<SecretKey = D::SecretKey>,
         R: CryptoRng + RngCore + ?Sized,
@@ -338,10 +464,27 @@ where
     {
         Ok(self
             .next_internal_identity()
-            .map_err(MintError::SecretKeyError)?
+            .map_err(InternalReceiverError::SecretKeyError)?
             .map_ok(move |identity| Mint::from_identity(identity, commitment_scheme, asset, rng))
-            .map_err(MintError::EncryptionError)?
+            .map_err(InternalReceiverError::EncryptionError)?
             .right())
+    }
+
+    /// Builds a [`Mint`] transaction to mint an asset with the given `asset_id` and no value,
+    /// returning the [`OpenSpend`] for that asset.
+    #[inline]
+    pub fn mint_zero<C, R>(
+        &mut self,
+        commitment_scheme: &C::CommitmentScheme,
+        asset_id: AssetId,
+        rng: &mut R,
+    ) -> InternalReceiverResult<D, C, (Mint<C>, OpenSpend<D, C>)>
+    where
+        C: transfer::Configuration<SecretKey = D::SecretKey>,
+        R: CryptoRng + RngCore + ?Sized,
+        Standard: Distribution<AssetParameters<C>>,
+    {
+        self.mint(commitment_scheme, Asset::zero(asset_id), rng)
     }
 
     /// Builds [`PrivateTransfer`] transactions to send `asset` to an `external_receiver`.
@@ -350,7 +493,7 @@ where
         &mut self,
         commitment_scheme: &C::CommitmentScheme,
         asset: Asset,
-        senders: Vec<Index<D>>,
+        senders: Vec<(Index<D>, AssetBalance)>,
         external_receiver: transfer::ShieldedIdentity<C>,
         rng: &mut R,
     ) -> Option<Vec<PrivateTransfer<C>>>
@@ -360,48 +503,47 @@ where
         Standard: Distribution<AssetParameters<C>>,
     {
         /* TODO:
-        let selection = self.balance_state.asset_map.select(asset).ok()?;
-
-        let change_receiver = selection
-            .change_receiver::<_, _, C::IntegratedEncryptionScheme, _>(
-                &mut self.signer,
-                asset.id,
-                commitment_scheme,
-                rng,
-            )
-            .ok()?;
-
-        let mut pre_senders = selection
-            .assets
+        let mut sender_total = AssetBalance(0);
+        let mut pre_senders = senders
             .into_iter()
             .map(|(index, value)| {
-                self.signer
-                    .get_pre_sender(index, commitment_scheme, Asset::new(asset.id, value))
+                sender_total += value;
+                self.get_pre_sender(index, commitment_scheme, asset.id.with(value))
             })
             .collect::<Result<Vec<_>, _>>()
             .ok()?;
 
         let mint = if pre_senders.len() % 2 == 1 {
-            let (mint, open_spend) = self
-                .signer
-                .mint(commitment_scheme, Asset::zero(asset.id), rng)
-                .ok()?;
+            let (mint, open_spend) = self.mint_zero(commitment_scheme, asset.id, rng).ok()?;
             pre_senders.push(open_spend.map(move |os| os.into_pre_sender(commitment_scheme)));
             Some(mint)
         } else {
             None
         };
-        */
+
+        let mut transfers = Vec::new();
+        let mut accumulator = self
+            .next_internal_identity()?
+            .into_pre_sender(commitment_scheme, Asset::zero(asset.id));
+        for pre_sender in pre_senders {
+            let (next_receiver, next_open_spend) =
+                self.next_change_receiver(commitment_scheme)?.value.into();
+            transfers.push(PrivateTransfer::build(
+                [accumulator.into_sender(), pre_sender.value],
+                [
+                    next_receiver,
+                    self.next_empty_receiver(commitment_scheme, asset.id, rng)?,
+                ],
+            ));
+            accumulator = next_open_spend.into_pre_sender(commitment_scheme);
+        }
 
         let external_receiver = external_receiver.into_receiver(commitment_scheme, asset, rng);
 
-        /* TODO:
-        for i in 0..(pre_senders.len() / 2) {
-            PrivateTransfer::build(
-                [pre_senders[2 * i], pre_senders[2 * i + 1]],
-                [?, ?]
-            )
-        }
+        transfers.push(PrivateTransfer::build(
+            [accumulator.into_sender(), self.next_empty_sender()],
+            [external_receiver, change],
+        ));
         */
 
         todo!()
@@ -570,11 +712,12 @@ where
     }
 }
 
-/// Full Signer
-pub struct FullSigner<D, C, R>
+/// Wallet
+pub struct Wallet<D, C, M, R>
 where
     D: DerivedSecretKeyGenerator,
     C: transfer::Configuration<SecretKey = D::SecretKey>,
+    M: AssetMap<Key = Index<D>>,
     R: CryptoRng + RngCore + ?Sized,
 {
     /// Signer
@@ -586,57 +729,110 @@ where
     /// Proving Context
     proving_context: ProvingContext<C>,
 
+    /// UTXO Set
+    utxo_set: C::UtxoSet,
+
+    /// Asset Distribution
+    assets: M,
+
     /// Random Number Generator
     rng: R,
 }
 
-impl<D, C, R> Connection<D, C> for FullSigner<D, C, R>
+impl<D, C, M, R> Wallet<D, C, M, R>
 where
     D: DerivedSecretKeyGenerator,
     C: transfer::Configuration<SecretKey = D::SecretKey>,
+    M: AssetMap<Key = Index<D>>,
     R: CryptoRng + RngCore + ?Sized,
-    Standard: Distribution<AssetParameters<C>>,
 {
-    type SignFuture = Ready<Result<Response<D, C>, Error<D, C>>>;
-
+    /// Updates the internal ledger state, returing the new asset distribution.
     #[inline]
-    fn sign(&mut self, request: Request<D, C>) -> Self::SignFuture {
-        future::ready(match request {
-            Request::Mint(asset) => self
-                .signer
-                .mint::<C, _>(&self.commitment_scheme, asset, &mut self.rng)
-                .map_err(|e| match e {
-                    MintError::SecretKeyError(err) => Error::SecretKeyError(err),
-                    MintError::EncryptionError(err) => Error::EncryptionError(err),
-                })
-                .and_then(|(mint, open_spend)| {
-                    /* TODO:
-                    mint.into_post(
+    fn sync(&mut self, msg: ()) -> SyncResult<D, C, Infallible> {
+        // TODO:
+        // 1. Update the utxo_set
+        // 2. Update the asset distribution
+        // 3. Return asset distribution changes
+        todo!()
+    }
+
+    /// Signs the `request`, generating transfer posts.
+    #[inline]
+    fn sign(&mut self, request: SignRequest<D, C>) -> SignResult<D, C, Infallible>
+    where
+        Standard: Distribution<AssetParameters<C>>,
+    {
+        match request {
+            SignRequest::Mint(asset) => {
+                let (mint, open_spend) =
+                    self.signer
+                        .mint(&self.commitment_scheme, asset, &mut self.rng)?;
+                let mint_post = mint
+                    .into_post(
                         &self.commitment_scheme,
+                        &self.utxo_set,
                         &self.proving_context,
                         &mut self.rng,
                     )
-                    .map_err(Error::ProofSystemError)
-                    .map(|p| Response::new(open_spend.index, vec![p]))
-                    */
-                    todo!()
-                }),
-            Request::PrivateTransfer(asset, senders, receiver) => {
+                    .map_err(Error::ProofSystemError)?;
+                Ok(SignResponse::new(
+                    asset.id,
+                    vec![(open_spend.index, asset.value)],
+                    vec![mint_post],
+                ))
+            }
+            SignRequest::PrivateTransfer(asset, senders, receiver) => {
                 //
                 todo!()
             }
-            Request::Reclaim(asset, senders) => {
+            SignRequest::Reclaim(asset, senders) => {
                 //
                 todo!()
             }
-        })
+        }
     }
 }
 
-/// Mint Error
+impl<D, C, M, R> Connection<D, C> for Wallet<D, C, M, R>
+where
+    D: DerivedSecretKeyGenerator,
+    C: transfer::Configuration<SecretKey = D::SecretKey>,
+    M: AssetMap<Key = Index<D>>,
+    R: CryptoRng + RngCore + ?Sized,
+    Standard: Distribution<AssetParameters<C>>,
+{
+    type SyncFuture = Ready<SyncResult<D, C, Self::Error>>;
+
+    type SignFuture = Ready<SignResult<D, C, Self::Error>>;
+
+    type NewReceiverFuture = Ready<NewReceiverResult<D, C, Self::Error>>;
+
+    type Error = Infallible;
+
+    #[inline]
+    fn sync(&mut self, msg: ()) -> Self::SyncFuture {
+        future::ready(self.sync(msg))
+    }
+
+    #[inline]
+    fn sign(&mut self, request: SignRequest<D, C>) -> Self::SignFuture {
+        future::ready(self.sign(request))
+    }
+
+    #[inline]
+    fn new_receiver(&mut self) -> Self::NewReceiverFuture {
+        future::ready(
+            self.signer
+                .next_shielded(&self.commitment_scheme)
+                .map_err(Error::SecretKeyError),
+        )
+    }
+}
+
+/// Internal Receiver Error
 ///
-/// This `enum` is the error state for the [`mint`](Signer::mint) method on [`Signer`].
-/// See its documentation for more.
+/// This `enum` is the error state for any construction of an [`InternalReceiver`] from a derived
+/// secret key generator.
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "D::Error: Clone, IntegratedEncryptionSchemeError<C>: Clone"),
@@ -646,10 +842,10 @@ where
     Hash(bound = "D::Error: Hash, IntegratedEncryptionSchemeError<C>: Hash"),
     PartialEq(bound = "D::Error: PartialEq, IntegratedEncryptionSchemeError<C>: PartialEq")
 )]
-pub enum MintError<D, C>
+pub enum InternalReceiverError<D, C>
 where
     D: DerivedSecretKeyGenerator,
-    C: transfer::Configuration,
+    C: transfer::Configuration<SecretKey = D::SecretKey>,
 {
     /// Secret Key Generator Error
     SecretKeyError(D::Error),
@@ -657,3 +853,6 @@ where
     /// Encryption Error
     EncryptionError(IntegratedEncryptionSchemeError<C>),
 }
+
+/// Internal Receiver Result Type
+pub type InternalReceiverResult<D, C, T> = Result<T, InternalReceiverError<D, C>>;

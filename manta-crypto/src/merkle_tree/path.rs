@@ -312,8 +312,8 @@ where
         root == &self.root(parameters, leaf_digest, sibling_digest)
     }
 
-    /// Returns an iterator over the elements of [`self.path`](Self::path) as [`InnerNode`]
-    /// objects, yielding elements of the path if they are not default.
+    /// Returns an iterator over the elements of [`self.path`] as [`InnerNode`] objects, yielding
+    /// elements of the path if they are not default.
     #[inline]
     pub fn into_nodes(self) -> CurrentInnerPathNodeIter<C> {
         CurrentInnerPathNodeIter::new(self)
@@ -870,9 +870,6 @@ where
 
     /// Uncompresses a path by re-inserting the default values into [`self.inner_path`] at the
     /// indices described by [`self.sentinel_ranges`].
-    ///
-    /// [`self.sentinel_ranges`]: Self::sentinel_ranges
-    /// [`self.inner_path`]: Self::inner_path
     #[inline]
     pub fn uncompress(mut self) -> Path<C> {
         let path_length = path_length::<C>();
@@ -920,8 +917,8 @@ impl<C> Path<C>
 where
     C: Configuration + ?Sized,
 {
-    /// Compresses [`self.inner_path`](Self::inner_path) by removing all default values and saving
-    /// only the positions in the path of those default values.
+    /// Compresses [`self.inner_path`] by removing all default values and saving only the positions
+    /// in the path of those default values.
     #[inline]
     pub fn compress(self) -> CompressedPath<C> {
         let default = Default::default();
