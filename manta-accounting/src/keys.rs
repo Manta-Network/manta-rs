@@ -333,6 +333,12 @@ where
         self.index.is_internal()
     }
 
+    /// Returns the inner [`self.value`] dropping the [`self.index`].
+    #[inline]
+    pub fn unwrap(self) -> T {
+        self.value
+    }
+
     /// Maps the underlying value using `f`.
     #[inline]
     pub fn map<U, F>(self, f: F) -> KeyOwned<D, U>

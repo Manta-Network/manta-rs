@@ -19,15 +19,16 @@
 use crate::{
     asset::{Asset, AssetBalance, AssetId, AssetMap},
     fs::{Load, LoadWith, Save, SaveWith},
-    identity::{self, AssetParameters, Identity},
+    identity::{self, AssetParameters, Identity, Utxo},
     keys::{Account, DerivedSecretKeyGenerator, Index, KeyKind, KeyOwned},
     transfer::{
         self,
         canonical::{Mint, PrivateTransfer, Reclaim},
-        IntegratedEncryptionSchemeError, ProofSystemError, ProvingContext, TransferPost,
+        EncryptedAsset, IntegratedEncryptionSchemeError, ProofSystemError, ProvingContext,
+        TransferPost,
     },
 };
-use alloc::vec::Vec;
+use alloc::{vec, vec::Vec};
 use core::{
     convert::Infallible,
     fmt::Debug,
@@ -54,7 +55,7 @@ pub type InternalReceiver<D, C> = KeyOwned<
 /// Key-Owned Open Spend Type
 pub type OpenSpend<D, C> = KeyOwned<D, identity::OpenSpend<C>>;
 
-/// Wallet Connection
+/// Signer Connection
 pub trait Connection<D, C>
 where
     D: DerivedSecretKeyGenerator,
@@ -80,7 +81,7 @@ where
 
     /// Pushes updates from the ledger to the wallet, synchronizing it with the ledger state and
     /// returning an updated asset distribution.
-    fn sync(&mut self, msg: ()) -> Self::SyncFuture;
+    fn sync(&mut self, updates: Vec<(Utxo<C>, EncryptedAsset<C>)>) -> Self::SyncFuture;
 
     /// Signs a transfer `request` and returns the ledger transfer posts if successful.
     fn sign(&mut self, request: SignRequest<D, C>) -> Self::SignFuture;
@@ -92,7 +93,7 @@ where
 /// Synchronization Result
 ///
 /// See the [`sync`](Connection::sync) method on [`Connection`] for more information.
-pub type SyncResult<D, C, CE> = Result<(), Error<D, C, CE>>;
+pub type SyncResult<D, C, CE> = Result<SyncResponse<D>, Error<D, C, CE>>;
 
 /// Signing Result
 ///
@@ -103,7 +104,22 @@ pub type SignResult<D, C, CE> = Result<SignResponse<D, C>, Error<D, C, CE>>;
 ///
 /// See the [`new_receiver`](Connection::new_receiver) method on [`Connection`] for more
 /// information.
-pub type NewReceiverResult<D, C, CE> = Result<ShieldedIdentity<D, C>, Error<D, C, CE>>;
+pub type NewReceiverResult<D, C, CE> = Result<transfer::ShieldedIdentity<C>, Error<D, C, CE>>;
+
+/// Signer Synchronization Response
+///
+/// This `struct` is created by the [`sync`](Connection::sync) methon on [`Connection`].
+/// See its documentation for more.
+pub struct SyncResponse<D>
+where
+    D: DerivedSecretKeyGenerator,
+{
+    ///
+    pub deposit: Vec<(Index<D>, Asset)>,
+
+    ///
+    pub withdraw: Vec<Index<D>>,
+}
 
 /* TODO:
 pub struct SignRequest<D, C>
@@ -128,7 +144,7 @@ where
 }
 */
 
-/// Wallet Signing Request
+/// Signer Signing Request
 ///
 /// This `struct` is used by the [`sign`](Connection::sign) method on [`Connection`].
 /// See its documentation for more.
@@ -147,7 +163,7 @@ where
     Reclaim(Asset, Vec<Index<D>>),
 }
 
-/// Wallet Signing Response
+/// Signer Signing Response
 ///
 /// This `struct` is created by the [`sign`](Connection::sign) method on [`Connection`].
 /// See its documentation for more.
@@ -186,7 +202,7 @@ where
     }
 }
 
-/// Wallet Error
+/// Signer Error
 pub enum Error<D, C, CE>
 where
     D: DerivedSecretKeyGenerator,
@@ -201,7 +217,7 @@ where
     /// Proof System Error
     ProofSystemError(ProofSystemError<C>),
 
-    /// Wallet Connection Error
+    /// Signer Connection Error
     ConnectionError(CE),
 }
 
@@ -712,13 +728,13 @@ where
     }
 }
 
-/// Wallet
-pub struct Wallet<D, C, M, R>
+/// Full Signer
+pub struct FullSigner<D, C, M, R>
 where
     D: DerivedSecretKeyGenerator,
     C: transfer::Configuration<SecretKey = D::SecretKey>,
     M: AssetMap<Key = Index<D>>,
-    R: CryptoRng + RngCore + ?Sized,
+    R: CryptoRng + RngCore,
 {
     /// Signer
     signer: Signer<D>,
@@ -739,16 +755,60 @@ where
     rng: R,
 }
 
-impl<D, C, M, R> Wallet<D, C, M, R>
+impl<D, C, M, R> FullSigner<D, C, M, R>
 where
     D: DerivedSecretKeyGenerator,
     C: transfer::Configuration<SecretKey = D::SecretKey>,
     M: AssetMap<Key = Index<D>>,
-    R: CryptoRng + RngCore + ?Sized,
+    R: CryptoRng + RngCore,
 {
+    /// Builds a new [`FullSigner`].
+    #[inline]
+    fn new_inner(
+        signer: Signer<D>,
+        commitment_scheme: C::CommitmentScheme,
+        proving_context: ProvingContext<C>,
+        utxo_set: C::UtxoSet,
+        assets: M,
+        rng: R,
+    ) -> Self {
+        Self {
+            signer,
+            commitment_scheme,
+            proving_context,
+            utxo_set,
+            assets,
+            rng,
+        }
+    }
+
+    /// Builds a new [`FullSigner`] from `secret_key_source`, `account`, `commitment_scheme`,
+    /// `proving_context`, and `rng`, using a default [`Utxo`] set and empty asset distribution.
+    #[inline]
+    pub fn new(
+        secret_key_source: D,
+        account: D::Account,
+        commitment_scheme: C::CommitmentScheme,
+        proving_context: ProvingContext<C>,
+        rng: R,
+    ) -> Self
+    where
+        C::UtxoSet: Default,
+        M: Default,
+    {
+        Self::new_inner(
+            Signer::new(secret_key_source, account),
+            commitment_scheme,
+            proving_context,
+            Default::default(),
+            Default::default(),
+            rng,
+        )
+    }
+
     /// Updates the internal ledger state, returing the new asset distribution.
     #[inline]
-    fn sync(&mut self, msg: ()) -> SyncResult<D, C, Infallible> {
+    fn sync(&mut self, updates: Vec<(Utxo<C>, EncryptedAsset<C>)>) -> SyncResult<D, C, Infallible> {
         // TODO:
         // 1. Update the utxo_set
         // 2. Update the asset distribution
@@ -793,12 +853,12 @@ where
     }
 }
 
-impl<D, C, M, R> Connection<D, C> for Wallet<D, C, M, R>
+impl<D, C, M, R> Connection<D, C> for FullSigner<D, C, M, R>
 where
     D: DerivedSecretKeyGenerator,
     C: transfer::Configuration<SecretKey = D::SecretKey>,
     M: AssetMap<Key = Index<D>>,
-    R: CryptoRng + RngCore + ?Sized,
+    R: CryptoRng + RngCore,
     Standard: Distribution<AssetParameters<C>>,
 {
     type SyncFuture = Ready<SyncResult<D, C, Self::Error>>;
@@ -810,8 +870,8 @@ where
     type Error = Infallible;
 
     #[inline]
-    fn sync(&mut self, msg: ()) -> Self::SyncFuture {
-        future::ready(self.sync(msg))
+    fn sync(&mut self, updates: Vec<(Utxo<C>, EncryptedAsset<C>)>) -> Self::SyncFuture {
+        future::ready(self.sync(updates))
     }
 
     #[inline]
@@ -824,6 +884,7 @@ where
         future::ready(
             self.signer
                 .next_shielded(&self.commitment_scheme)
+                .map(KeyOwned::unwrap)
                 .map_err(Error::SecretKeyError),
         )
     }

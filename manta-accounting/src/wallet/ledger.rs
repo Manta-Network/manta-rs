@@ -20,7 +20,7 @@ use crate::{
     identity::{Utxo, VoidNumber},
     transfer::{self, EncryptedAsset, TransferPost},
 };
-use alloc::{vec, vec::Vec};
+use alloc::vec::Vec;
 use core::future::Future;
 
 /// Ledger Source Connection
@@ -28,18 +28,21 @@ pub trait Connection<C>
 where
     C: transfer::Configuration,
 {
+    /// Ledger State Checkpoint Type
+    type Checkpoint: Default + Ord;
+
     /// Pull Future Type
     ///
     /// Future for the [`pull`](Self::pull) method.
     type PullFuture: Future<Output = Result<PullResponse<C, Self>, Self::Error>>;
 
+    /// Pull Data Iterator Type
+    type PullData: IntoIterator<Item = LedgerData<C>>;
+
     /// Push Future Type
     ///
     /// Future for the [`push`](Self::push) method.
     type PushFuture: Future<Output = Result<PushResponse<C, Self>, Self::Error>>;
-
-    /// Ledger State Checkpoint Type
-    type Checkpoint: Default + Ord;
 
     /// Error Type
     type Error;
@@ -58,49 +61,71 @@ where
     /// Sends `transfers` to the ledger, returning the current [`Checkpoint`](Self::Checkpoint)
     /// and the status of the transfers if successful.
     fn push(&self, transfers: Vec<TransferPost<C>>) -> Self::PushFuture;
-
-    /// Sends `transfer` to the ledger, returning the current [`Checkpoint`](Self::Checkpoint)
-    /// and the status of the transfer if successful.
-    #[inline]
-    fn push_one(&self, transfer: TransferPost<C>) -> Self::PushFuture {
-        self.push(vec![transfer])
-    }
 }
 
 /// Ledger Source Pull Response
 ///
 /// This `struct` is created by the [`pull`](Connection::pull) method on [`Connection`].
 /// See its documentation for more.
-pub struct PullResponse<C, LC>
+pub struct PullResponse<C, L>
 where
     C: transfer::Configuration,
-    LC: Connection<C> + ?Sized,
+    L: Connection<C> + ?Sized,
 {
     /// Current Ledger Checkpoint
-    pub checkpoint: LC::Checkpoint,
+    pub checkpoint: L::Checkpoint,
 
-    /// New Void Numbers
-    pub void_numbers: Vec<VoidNumber<C>>,
-
-    /// New UTXOS
-    pub utxos: Vec<Utxo<C>>,
-
-    /// New Encrypted Assets
-    pub encrypted_assets: Vec<EncryptedAsset<C>>,
+    /// Ledger Data
+    pub data: L::PullData,
 }
 
 /// Ledger Source Push Response
 ///
 /// This `struct` is created by the [`push`](Connection::push) method on [`Connection`].
 /// See its documentation for more.
-pub struct PushResponse<C, LC>
+pub struct PushResponse<C, L>
 where
     C: transfer::Configuration,
-    LC: Connection<C> + ?Sized,
+    L: Connection<C> + ?Sized,
 {
     /// Current Ledger Checkpoint
-    pub checkpoint: LC::Checkpoint,
+    pub checkpoint: L::Checkpoint,
 
     /// Transaction Failed at the Given Index
     pub failure_index: Option<usize>,
+}
+
+/// Ledger Data
+pub enum LedgerData<C>
+where
+    C: transfer::Configuration,
+{
+    /// Sender Data
+    Sender(VoidNumber<C>),
+
+    /// Receiver Data
+    Receiver(Utxo<C>, EncryptedAsset<C>),
+}
+
+impl<C> LedgerData<C>
+where
+    C: transfer::Configuration,
+{
+    /// Extracts the sender data, if `self` matches [`Self::Sender`].
+    #[inline]
+    pub fn sender(self) -> Option<VoidNumber<C>> {
+        match self {
+            Self::Sender(void_number) => Some(void_number),
+            _ => None,
+        }
+    }
+
+    /// Extracts the receiver data, if `self` matches [`Self::Receiver`].
+    #[inline]
+    pub fn receiver(self) -> Option<(Utxo<C>, EncryptedAsset<C>)> {
+        match self {
+            Self::Receiver(utxo, encryped_asset) => Some((utxo, encryped_asset)),
+            _ => None,
+        }
+    }
 }

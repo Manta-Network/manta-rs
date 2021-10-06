@@ -16,6 +16,9 @@
 
 //! Wallet Abstractions
 
+mod state;
+
 pub mod ledger;
 pub mod signer;
-// TODO: pub mod state;
+
+pub use state::*;
