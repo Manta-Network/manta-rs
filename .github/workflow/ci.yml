@@ -1,0 +1,80 @@
+name: CI
+on: [pull_request, push]
+schedule:
+  - cron: '0 0 * * */2'
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+  RUST_BACKTRACE: full
+jobs:
+  test:
+    name: Test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - macos-latest
+          - ubuntu-latest
+          - wasm32-unknown-unknown
+          - wasm32-wasi
+          - windows-latest
+        channel:
+          - stable
+          - nightly
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v2
+      - run: rustup update ${{ matrix.channel }} --no-self-update && rustup default ${{ matrix.channel }}
+      - run: cargo install cargo-hack
+      - run: cargo hack test --feature-powerset --workspace
+      - run: cargo hack test --feature-powerset --workspace --release
+  lint:
+    name: Lint (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+        channel:
+          - stable
+          - nightly
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v2
+      - run: rustup update ${{ matrix.channel }} && rustup default ${{ matrix.channel }} && rustup component add clippy
+      - run: cargo install cargo-hack
+      - run: cargo hack clippy --feature-powerset --tests --workspace
+  lint-comments:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v1
+      - run: rustup update nightly && rustup default nightly && rustup component add clippy
+      - uses: actions-rs/clippy-check@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          args: --all-features
+  format:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@master
+    - run: rustup update nightly && rustup default nightly && rustup component add rustfmt
+    - run: cargo fmt --all -- --check
+  docs:
+    name: Docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - run: rustup update nightly && rustup default nightly
+      - run: RUSTDOCFLAGS="-D warnings --cfg doc_cfg" cargo doc --workspace --all-features --no-deps
+  bench:
+    name: Bench (${{ matrix.os }})
+    strategy:
+      matrix:
+        os:
+          - ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v2
+      - run: rustup update nightly && rustup default nightly
+      - run: cargo bench --workspace --all-features
