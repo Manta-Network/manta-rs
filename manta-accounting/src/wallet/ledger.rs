@@ -16,6 +16,8 @@
 
 //! Ledger Source
 
+// TODO: Move to streams so we can process some of the data as it's incoming.
+
 use crate::{
     identity::{Utxo, VoidNumber},
     transfer::{self, EncryptedAsset, TransferPost},
@@ -31,37 +33,56 @@ where
     /// Ledger State Checkpoint Type
     type Checkpoint: Default + Ord;
 
+    /// Receiver Data Iterator Type
+    type ReceiverData: IntoIterator<Item = (Utxo<C>, EncryptedAsset<C>)>;
+
+    /// Sender Data Iterator Type
+    type SenderData: IntoIterator<Item = VoidNumber<C>>;
+
     /// Pull Future Type
     ///
     /// Future for the [`pull`](Self::pull) method.
-    type PullFuture: Future<Output = Result<PullResponse<C, Self>, Self::Error>>;
+    type PullFuture: Future<Output = PullResult<C, Self>>;
 
-    /// Pull Data Iterator Type
-    type PullData: IntoIterator<Item = LedgerData<C>>;
+    /// Pull All Future Type
+    ///
+    /// Future for the [`pull_all`](Self::pull_all) method.
+    type PullAllFuture: Future<Output = PullAllResult<C, Self>>;
 
     /// Push Future Type
     ///
     /// Future for the [`push`](Self::push) method.
-    type PushFuture: Future<Output = Result<PushResponse<C, Self>, Self::Error>>;
+    type PushFuture: Future<Output = PushResult<C, Self>>;
 
     /// Error Type
     type Error;
 
-    /// Pulls data from the ledger starting from `checkpoint`, returning the current
+    /// Pulls receiver data from the ledger starting from `checkpoint`, returning the current
     /// [`Checkpoint`](Self::Checkpoint).
     fn pull(&self, checkpoint: &Self::Checkpoint) -> Self::PullFuture;
 
-    /// Pulls all of the data from the entire history of the ledger, returning the current
-    /// [`Checkpoint`](Self::Checkpoint).
-    #[inline]
-    fn pull_all(&self) -> Self::PullFuture {
-        self.pull(&Default::default())
-    }
+    /// Pulls all data from the ledger, returning the current [`Checkpoint`](Self::Checkpoint).
+    fn pull_all(&self) -> Self::PullAllFuture;
 
     /// Sends `transfers` to the ledger, returning the current [`Checkpoint`](Self::Checkpoint)
     /// and the status of the transfers if successful.
     fn push(&self, transfers: Vec<TransferPost<C>>) -> Self::PushFuture;
 }
+
+/// Ledger Source Pull Result
+///
+/// See the [`pull`](Connection::pull) method on [`Connection`] for more information.
+pub type PullResult<C, L> = Result<PullResponse<C, L>, <L as Connection<C>>::Error>;
+
+/// Ledger Source Pull All Result
+///
+/// See the [`pull_all`](Connection::pull_all) method on [`Connection`] for more information.
+pub type PullAllResult<C, L> = Result<PullAllResponse<C, L>, <L as Connection<C>>::Error>;
+
+/// Ledger Source Push Result
+///
+/// See the [`push`](Connection::push) method on [`Connection`] for more information.
+pub type PushResult<C, L> = Result<PushResponse<C, L>, <L as Connection<C>>::Error>;
 
 /// Ledger Source Pull Response
 ///
@@ -75,8 +96,27 @@ where
     /// Current Ledger Checkpoint
     pub checkpoint: L::Checkpoint,
 
-    /// Ledger Data
-    pub data: L::PullData,
+    /// Ledger Receiver Data
+    pub receiver_data: L::ReceiverData,
+}
+
+/// Ledger Source Pull All Response
+///
+/// This `struct` is created by the [`pull_all`](Connection::pull_all) method on [`Connection`].
+/// See its documentation for more.
+pub struct PullAllResponse<C, L>
+where
+    C: transfer::Configuration,
+    L: Connection<C> + ?Sized,
+{
+    /// Current Ledger Checkpoint
+    pub checkpoint: L::Checkpoint,
+
+    /// Ledger Receiver Data
+    pub receiver_data: L::ReceiverData,
+
+    /// Ledger Sender Data
+    pub sender_data: L::SenderData,
 }
 
 /// Ledger Source Push Response
@@ -91,41 +131,6 @@ where
     /// Current Ledger Checkpoint
     pub checkpoint: L::Checkpoint,
 
-    /// Transaction Failed at the Given Index
+    /// Transaction Failure Index
     pub failure_index: Option<usize>,
-}
-
-/// Ledger Data
-pub enum LedgerData<C>
-where
-    C: transfer::Configuration,
-{
-    /// Sender Data
-    Sender(VoidNumber<C>),
-
-    /// Receiver Data
-    Receiver(Utxo<C>, EncryptedAsset<C>),
-}
-
-impl<C> LedgerData<C>
-where
-    C: transfer::Configuration,
-{
-    /// Extracts the sender data, if `self` matches [`Self::Sender`].
-    #[inline]
-    pub fn sender(self) -> Option<VoidNumber<C>> {
-        match self {
-            Self::Sender(void_number) => Some(void_number),
-            _ => None,
-        }
-    }
-
-    /// Extracts the receiver data, if `self` matches [`Self::Receiver`].
-    #[inline]
-    pub fn receiver(self) -> Option<(Utxo<C>, EncryptedAsset<C>)> {
-        match self {
-            Self::Receiver(utxo, encryped_asset) => Some((utxo, encryped_asset)),
-            _ => None,
-        }
-    }
 }

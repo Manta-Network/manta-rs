@@ -21,7 +21,7 @@ use crate::{
     keys::{DerivedSecretKeyGenerator, Index},
     transfer::{self, ShieldedIdentity},
     wallet::{
-        ledger::{self, LedgerData, PullResponse},
+        ledger::{self, PullResponse},
         signer::{self, SyncResponse},
     },
 };
@@ -82,20 +82,21 @@ where
     /// Pulls data from the `ledger`, synchronizing the asset distribution.
     #[inline]
     pub async fn sync(&mut self) -> Result<(), Error<D, C, S, L>> {
-        let PullResponse { checkpoint, data } = self
+        let PullResponse {
+            checkpoint,
+            receiver_data,
+        } = self
             .ledger
             .pull(&self.checkpoint)
             .await
             .map_err(Error::LedgerError)?;
 
-        // NOTE: We only care about void numbers when we are doing recovery.
-        // TODO: Add an optimization path here, so we can decide if we want void
-        //       numbers or not when doing a `LedgerConnection::pull`.
-        let updates = data.into_iter().filter_map(LedgerData::receiver).collect();
+        let SyncResponse { deposits } = self
+            .signer
+            .sync(receiver_data.into_iter().collect())
+            .await?;
 
-        let SyncResponse { deposit, .. } = self.signer.sync(updates).await?;
-
-        for (key, asset) in deposit {
+        for (key, asset) in deposits {
             self.assets.deposit(key, asset);
         }
 

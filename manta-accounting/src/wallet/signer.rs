@@ -20,7 +20,9 @@ use crate::{
     asset::{Asset, AssetBalance, AssetId, AssetMap},
     fs::{Load, LoadWith, Save, SaveWith},
     identity::{self, AssetParameters, Identity, Utxo},
-    keys::{Account, DerivedSecretKeyGenerator, Index, KeyKind, KeyOwned},
+    keys::{
+        Account, DerivedSecretKeyGenerator, ExternalKeys, Index, InternalKeys, KeyKind, KeyOwned,
+    },
     transfer::{
         self,
         canonical::{Mint, PrivateTransfer, Reclaim},
@@ -64,17 +66,17 @@ where
     /// Sync Future Type
     ///
     /// Future for the [`sync`](Self::sync) method.
-    type SyncFuture: Future<Output = SyncResult<D, C, Self::Error>>;
+    type SyncFuture: Future<Output = SyncResult<D, C, Self>>;
 
     /// Sign Future Type
     ///
     /// Future for the [`sign`](Self::sign) method.
-    type SignFuture: Future<Output = SignResult<D, C, Self::Error>>;
+    type SignFuture: Future<Output = SignResult<D, C, Self>>;
 
     /// New Receiver Future Type
     ///
     /// Future for the [`new_receiver`](Self::new_receiver) method.
-    type NewReceiverFuture: Future<Output = NewReceiverResult<D, C, Self::Error>>;
+    type NewReceiverFuture: Future<Output = NewReceiverResult<D, C, Self>>;
 
     /// Error Type
     type Error;
@@ -93,18 +95,20 @@ where
 /// Synchronization Result
 ///
 /// See the [`sync`](Connection::sync) method on [`Connection`] for more information.
-pub type SyncResult<D, C, CE> = Result<SyncResponse<D>, Error<D, C, CE>>;
+pub type SyncResult<D, C, S> = Result<SyncResponse<D>, Error<D, C, <S as Connection<D, C>>::Error>>;
 
 /// Signing Result
 ///
 /// See the [`sign`](Connection::sign) method on [`Connection`] for more information.
-pub type SignResult<D, C, CE> = Result<SignResponse<D, C>, Error<D, C, CE>>;
+pub type SignResult<D, C, S> =
+    Result<SignResponse<D, C>, Error<D, C, <S as Connection<D, C>>::Error>>;
 
 /// New Receiver Generation Result
 ///
 /// See the [`new_receiver`](Connection::new_receiver) method on [`Connection`] for more
 /// information.
-pub type NewReceiverResult<D, C, CE> = Result<transfer::ShieldedIdentity<C>, Error<D, C, CE>>;
+pub type NewReceiverResult<D, C, S> =
+    Result<transfer::ShieldedIdentity<C>, Error<D, C, <S as Connection<D, C>>::Error>>;
 
 /// Signer Synchronization Response
 ///
@@ -115,10 +119,7 @@ where
     D: DerivedSecretKeyGenerator,
 {
     ///
-    pub deposit: Vec<(Index<D>, Asset)>,
-
-    ///
-    pub withdraw: Vec<Index<D>>,
+    pub deposits: Vec<(Index<D>, Asset)>,
 }
 
 /* TODO:
@@ -582,52 +583,51 @@ where
         todo!()
     }
 
-    /* TODO: Revisit how this is designed (this is part of recovery/ledger-sync):
-
+    /* TODO:
     /// Returns an [`ExternalKeys`] generator starting from the given `index`.
     #[inline]
     fn external_keys_from_index(&self, index: D::Index) -> ExternalKeys<D> {
-        self.secret_key_source
-            .external_keys_from_index(self.account.as_ref(), index)
+        self.account
+            .external_keys_from_index(&self.secret_key_source, index)
     }
 
     /// Returns an [`InternalKeys`] generator starting from the given `index`.
     #[inline]
     fn internal_keys_from_index(&self, index: D::Index) -> InternalKeys<D> {
-        self.secret_key_source
-            .internal_keys_from_index(self.account.as_ref(), index)
+        self.account
+            .internal_keys_from_index(&self.secret_key_source, index)
     }
 
     /// Looks for an [`OpenSpend`] for this `encrypted_asset` by checking every secret key
     /// in the iterator.
     #[inline]
-    fn find_open_spend_from_iter<C, I, Iter>(
+    fn find_open_spend_from_iter<C, I>(
         &self,
-        encrypted_asset: &EncryptedMessage<I>,
-        iter: Iter,
-    ) -> Option<OpenSpend<C>>
+        encrypted_asset: &EncryptedAsset<C>,
+        iter: I,
+    ) -> Option<OpenSpend<D, C>>
     where
-        C: identity::Configuration<SecretKey = D::SecretKey>,
-        I: IntegratedEncryptionScheme<Plaintext = Asset>,
-        Iter: IntoIterator<Item = D::SecretKey>,
+        C: transfer::Configuration<SecretKey = D::SecretKey>,
+        I: IntoIterator<Item = SecretKey<D>>,
         Standard: Distribution<AssetParameters<C>>,
     {
-        iter.into_iter()
-            .find_map(move |k| Identity::new(k).try_open(encrypted_asset).ok())
+        iter.into_iter().find_map(move |k| {
+            k.map(move |k| Identity::new(k).try_open(encrypted_asset))
+                .ok()
+        })
     }
 
     /// Looks for an [`OpenSpend`] for this `encrypted_asset`, only trying `gap_limit`-many
     /// external keys starting from `index`.
     #[inline]
-    pub fn find_external_open_spend<C, I>(
+    pub fn find_external_open_spend<C>(
         &self,
-        encrypted_asset: &EncryptedMessage<I>,
+        encrypted_asset: &EncryptedAsset<C>,
         index: D::Index,
         gap_limit: usize,
-    ) -> Option<OpenSpend<C>>
+    ) -> Option<OpenSpend<D, C>>
     where
-        C: identity::Configuration<SecretKey = D::SecretKey>,
-        I: IntegratedEncryptionScheme<Plaintext = Asset>,
+        C: transfer::Configuration<SecretKey = D::SecretKey>,
         Standard: Distribution<AssetParameters<C>>,
     {
         self.find_open_spend_from_iter(
@@ -639,15 +639,14 @@ where
     /// Looks for an [`OpenSpend`] for this `encrypted_asset`, only trying `gap_limit`-many
     /// internal keys starting from `index`.
     #[inline]
-    pub fn find_internal_open_spend<C, I>(
+    pub fn find_internal_open_spend<C>(
         &self,
-        encrypted_asset: &EncryptedMessage<I>,
+        encrypted_asset: &EncryptedAsset<C>,
         index: D::Index,
         gap_limit: usize,
-    ) -> Option<OpenSpend<C>>
+    ) -> Option<OpenSpend<D, C>>
     where
-        C: identity::Configuration<SecretKey = D::SecretKey>,
-        I: IntegratedEncryptionScheme<Plaintext = Asset>,
+        C: transfer::Configuration<SecretKey = D::SecretKey>,
         Standard: Distribution<AssetParameters<C>>,
     {
         self.find_open_spend_from_iter(
@@ -659,32 +658,30 @@ where
     /// Looks for an [`OpenSpend`] for this `encrypted_asset`, only trying `gap_limit`-many
     /// external and internal keys starting from `external_index` and `internal_index`.
     #[inline]
-    pub fn find_open_spend<C, I>(
+    pub fn find_open_spend<C>(
         &self,
-        encrypted_asset: &EncryptedMessage<I>,
+        encrypted_asset: &EncryptedAsset<C>,
         external_index: D::Index,
         internal_index: D::Index,
         gap_limit: usize,
-    ) -> Option<(OpenSpend<C>, KeyKind)>
+    ) -> Option<OpenSpend<D, C>>
     where
-        C: identity::Configuration<SecretKey = D::SecretKey>,
-        I: IntegratedEncryptionScheme<Plaintext = Asset>,
+        C: transfer::Configuration<SecretKey = D::SecretKey>,
         Standard: Distribution<AssetParameters<C>>,
     {
         // TODO: Find a way to either interleave these or parallelize these.
         if let Some(spend) =
             self.find_external_open_spend(encrypted_asset, external_index, gap_limit)
         {
-            return Some((spend, KeyKind::External));
+            return Some(spend);
         }
         if let Some(spend) =
             self.find_internal_open_spend(encrypted_asset, internal_index, gap_limit)
         {
-            return Some((spend, KeyKind::Internal));
+            return Some(spend);
         }
         None
     }
-
     */
 }
 
@@ -808,7 +805,23 @@ where
 
     /// Updates the internal ledger state, returing the new asset distribution.
     #[inline]
-    fn sync(&mut self, updates: Vec<(Utxo<C>, EncryptedAsset<C>)>) -> SyncResult<D, C, Infallible> {
+    fn sync(&mut self, updates: Vec<(Utxo<C>, EncryptedAsset<C>)>) -> SyncResult<D, C, Self>
+    where
+        Standard: Distribution<AssetParameters<C>>,
+    {
+        /* TODO:
+        use manta_crypto::Set;
+
+        let mut asset_distribution = Vec::new();
+
+        for (utxo, encrypted_asset) in updates {
+            if let Some(open_spend) = self.signer.find_open_spend(encrypted_asset) {
+                asset_distribution.push((open_spend.index, open_spend.value.into_asset()));
+            }
+            let _ = self.utxo_set.try_insert(utxo);
+        }
+        */
+
         // TODO:
         // 1. Update the utxo_set
         // 2. Update the asset distribution
@@ -818,7 +831,7 @@ where
 
     /// Signs the `request`, generating transfer posts.
     #[inline]
-    fn sign(&mut self, request: SignRequest<D, C>) -> SignResult<D, C, Infallible>
+    fn sign(&mut self, request: SignRequest<D, C>) -> SignResult<D, C, Self>
     where
         Standard: Distribution<AssetParameters<C>>,
     {
@@ -861,11 +874,11 @@ where
     R: CryptoRng + RngCore,
     Standard: Distribution<AssetParameters<C>>,
 {
-    type SyncFuture = Ready<SyncResult<D, C, Self::Error>>;
+    type SyncFuture = Ready<SyncResult<D, C, Self>>;
 
-    type SignFuture = Ready<SignResult<D, C, Self::Error>>;
+    type SignFuture = Ready<SignResult<D, C, Self>>;
 
-    type NewReceiverFuture = Ready<NewReceiverResult<D, C, Self::Error>>;
+    type NewReceiverFuture = Ready<NewReceiverResult<D, C, Self>>;
 
     type Error = Infallible;
 

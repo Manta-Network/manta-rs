@@ -767,6 +767,12 @@ where
         Self { identity, asset }
     }
 
+    /// Extracts decrypted asset from `self`.
+    #[inline]
+    pub fn into_asset(self) -> Asset {
+        self.asset
+    }
+
     /// Builds a new [`PreSender`] for `self`.
     #[inline]
     pub fn into_pre_sender(self, commitment_scheme: &C::CommitmentScheme) -> PreSender<C>

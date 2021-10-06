@@ -98,42 +98,6 @@ pub trait DerivedSecretKeyGenerator {
     ) -> Result<Self::SecretKey, Self::Error> {
         self.generate_key(KeyKind::Internal, account, index)
     }
-
-    /* TODO[remove]:
-    /// Builds a [`SecretKeyGenerator`] for external keys associated to `account`.
-    #[inline]
-    fn external_keys<'s>(&'s self, account: &'s Self::Account) -> ExternalKeys<'s, Self> {
-        ExternalKeys::new(self, account)
-    }
-
-    /// Builds a [`SecretKeyGenerator`] for internal keys associated to `account`.
-    #[inline]
-    fn internal_keys<'s>(&'s self, account: &'s Self::Account) -> InternalKeys<'s, Self> {
-        InternalKeys::new(self, account)
-    }
-
-    /// Builds a [`SecretKeyGenerator`] for external keys associated to `account`, starting
-    /// from `index`.
-    #[inline]
-    fn external_keys_from_index<'s>(
-        &'s self,
-        account: &'s Self::Account,
-        index: Self::Index,
-    ) -> ExternalKeys<'s, Self> {
-        ExternalKeys::from_index(self, account, index)
-    }
-
-    /// Builds a [`SecretKeyGenerator`] for internal keys associated to `account`, starting
-    /// from `index`.
-    #[inline]
-    fn internal_keys_from_index<'s>(
-        &'s self,
-        account: &'s Self::Account,
-        index: Self::Index,
-    ) -> InternalKeys<'s, Self> {
-        InternalKeys::from_index(self, account, index)
-    }
-    */
 }
 
 impl<D> DerivedSecretKeyGenerator for &D
@@ -443,6 +407,12 @@ where
     #[inline]
     pub fn collect(self) -> Result<KeyOwned<D, T>, E> {
         Ok(KeyOwned::new(self.value?, self.index))
+    }
+
+    /// Converts a `KeyOwned<D, Result<T, E>>` into an `Option<KeyOwned<D, T>>`.
+    #[inline]
+    pub fn ok(self) -> Option<KeyOwned<D, T>> {
+        self.collect().ok()
     }
 }
 
@@ -784,7 +754,6 @@ where
         next_internal(source, &self.account, &mut self.internal_index)
     }
 
-    /* TODO[remove]:
     /// Returns an [`ExternalKeys`] generator starting from the current external index.
     #[inline]
     pub fn external_keys<'s>(&'s self, source: &'s D) -> ExternalKeys<'s, D> {
@@ -804,7 +773,7 @@ where
         source: &'s D,
         index: D::Index,
     ) -> ExternalKeys<'s, D> {
-        source.external_keys_from_index(&self.account, index)
+        ExternalKeys::from_index(source, &self.account, index)
     }
 
     /// Returns an [`InternalKeys`] generator starting from the given `index`.
@@ -814,9 +783,8 @@ where
         source: &'s D,
         index: D::Index,
     ) -> InternalKeys<'s, D> {
-        source.internal_keys_from_index(&self.account, index)
+        InternalKeys::from_index(source, &self.account, index)
     }
-    */
 }
 
 impl<D> AsRef<D::Account> for Account<D>
