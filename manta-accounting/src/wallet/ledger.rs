@@ -64,9 +64,9 @@ where
     /// Pulls all data from the ledger, returning the current [`Checkpoint`](Self::Checkpoint).
     fn pull_all(&self) -> Self::PullAllFuture;
 
-    /// Sends `transfers` to the ledger, returning the current [`Checkpoint`](Self::Checkpoint)
-    /// and the status of the transfers if successful.
-    fn push(&self, transfers: Vec<TransferPost<C>>) -> Self::PushFuture;
+    /// Sends `posts` to the ledger returning the post of the transfer which failed and all
+    /// following transfer posts.
+    fn push(&self, posts: Vec<TransferPost<C>>) -> Self::PushFuture;
 }
 
 /// Ledger Source Pull Result
@@ -82,7 +82,7 @@ pub type PullAllResult<C, L> = Result<PullAllResponse<C, L>, <L as Connection<C>
 /// Ledger Source Push Result
 ///
 /// See the [`push`](Connection::push) method on [`Connection`] for more information.
-pub type PushResult<C, L> = Result<PushResponse<C, L>, <L as Connection<C>>::Error>;
+pub type PushResult<C, L> = Result<PushResponse, <L as Connection<C>>::Error>;
 
 /// Ledger Source Pull Response
 ///
@@ -123,14 +123,11 @@ where
 ///
 /// This `struct` is created by the [`push`](Connection::push) method on [`Connection`].
 /// See its documentation for more.
-pub struct PushResponse<C, L>
-where
-    C: transfer::Configuration,
-    L: Connection<C> + ?Sized,
-{
-    /// Current Ledger Checkpoint
-    pub checkpoint: L::Checkpoint,
-
-    /// Transaction Failure Index
-    pub failure_index: Option<usize>,
+pub struct PushResponse {
+    /* TODO:
+    /// Failed Transfer Posts
+    pub failed_posts: Vec<TransferPost<C>>,
+    */
+    /// Successful Push
+    pub success: bool,
 }

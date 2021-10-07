@@ -584,25 +584,19 @@ impl<const N: usize> TryFrom<[Asset; N]> for AssetCollection<N> {
 pub trait AssetMap {
     /// Key Type
     ///
-    /// Keys are used to access the underlying asset balances. See [`withdraw`](Self::withdraw)
-    /// and [`deposit`](Self::deposit) for uses of the [`Key`](Self::Key) type.
+    /// Keys are used to access the underlying asset balances. See [`select`](Self::select)
+    /// and [`insert`](Self::insert) for uses of the [`Key`](Self::Key) type.
     type Key;
-
-    /// Asset Selection Iterator Type
-    ///
-    /// This type is returned by [`select`](Self::select) when looking for assets in the map.
-    type Selection: Iterator<Item = (Self::Key, AssetBalance)>;
 
     /// Asset Iterator Type
     ///
     /// This type is returned by [`iter`](Self::iter) when iterating over all assets.
     type Iter: Iterator<Item = (Self::Key, Asset)>;
 
-    /// Selects asset keys which total up to at least `asset` in value.
+    /// Asset Selection Iterator Type
     ///
-    /// See [`iter`](Self::iter) for iterating over all the assets in the map instead of a specific
-    /// subset summing to the `asset` total.
-    fn select(&self, asset: Asset) -> AssetSelection<Self>;
+    /// This type is returned by [`select`](Self::select) when looking for assets in the map.
+    type Selection: Iterator<Item = (Self::Key, AssetBalance)>;
 
     /// Returns an iterator over all the assets stored in the map.
     ///
@@ -610,12 +604,36 @@ pub trait AssetMap {
     /// `asset` total.
     fn iter(&self) -> Self::Iter;
 
-    /// Withdraws the asset stored at `key`.
-    fn withdraw(&mut self, key: Self::Key);
+    /// Selects asset keys which total up to at least `asset` in value, removing them from
+    /// the asset distribution. If there are not enough keys to total `asset`, then this method
+    /// returns `None`.
+    ///
+    /// See [`iter`](Self::iter) for iterating over all the assets in the map instead of a specific
+    /// subset summing to the `asset` total.
+    fn select(&mut self, asset: Asset) -> Option<AssetSelection<Self>>;
 
-    /// Deposits `asset` at the key stored at `kind` and `index`, returning `false` if the `key`
-    /// was already assigned to some other [`Asset`].
-    fn deposit(&mut self, key: Self::Key, asset: Asset) -> bool;
+    /// Inserts `asset` at the key stored at `key`.
+    fn insert(&mut self, key: Self::Key, asset: Asset);
+
+    /// Inserts all of the assets in `iter`.
+    #[inline]
+    fn insert_all<I>(&mut self, iter: I)
+    where
+        I: IntoIterator<Item = (Self::Key, Asset)>,
+    {
+        for (key, asset) in iter {
+            self.insert(key, asset)
+        }
+    }
+
+    /// Inserts all of the balances in `iter` using the same `id`.
+    #[inline]
+    fn insert_all_same<I>(&mut self, id: AssetId, iter: I)
+    where
+        I: IntoIterator<Item = (Self::Key, AssetBalance)>,
+    {
+        self.insert_all(iter.into_iter().map(move |(k, b)| (k, b.with(id))))
+    }
 
     /// Returns the current balance associated with this `id`.
     #[inline]
@@ -653,8 +671,8 @@ where
     /// Change Amount
     pub change: AssetBalance,
 
-    /// Asset Distribution
-    pub assets: M::Selection,
+    /// Asset Balance Distribution
+    pub balances: M::Selection,
 }
 
 impl<M> AssetSelection<M>

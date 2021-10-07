@@ -16,6 +16,8 @@
 
 //! Wallet Signer
 
+// TODO: Use universal transfers instead of just the canonical ones.
+
 use crate::{
     asset::{Asset, AssetBalance, AssetId},
     fs::{Load, LoadWith, Save, SaveWith},
@@ -81,25 +83,62 @@ where
     /// Future for the [`sign`](Self::sign) method.
     type SignFuture: Future<Output = SignResult<D, C, Self>>;
 
-    /// New Receiver Future Type
+    /// Sign Commit Future Type
     ///
-    /// Future for the [`new_receiver`](Self::new_receiver) method.
-    type NewReceiverFuture: Future<Output = NewReceiverResult<D, C, Self>>;
+    /// Future for the [`commit`](Self::commit) method.
+    type CommitFuture: Future<Output = Result<(), Self::Error>>;
+
+    /// Sign Rollback Future Type
+    ///
+    /// Future for the [`rollback`](Self::rollback) method.
+    type RollbackFuture: Future<Output = Result<(), Self::Error>>;
+
+    /// External Receiver Future Type
+    ///
+    /// Future for the [`external_receiver`](Self::external_receiver) method.
+    type ExternalReceiverFuture: Future<Output = ExternalReceiverResult<D, C, Self>>;
 
     /// Error Type
     type Error;
 
     /// Pushes updates from the ledger to the wallet, synchronizing it with the ledger state and
-    /// returning an updated asset distribution.
-    fn sync<I>(&mut self, updates: I) -> Self::SyncFuture
+    /// returning an updated asset distribution. Depending on the `sync_state`, the signer will
+    /// either commit to the current state before synchronizing or rollback to the previous state.
+    fn sync<I>(&mut self, updates: I, sync_state: SyncState) -> Self::SyncFuture
     where
         I: IntoIterator<Item = (Utxo<C>, EncryptedAsset<C>)>;
 
     /// Signs a transfer `request` and returns the ledger transfer posts if successful.
+    ///
+    /// # Safety
+    ///
+    /// To preserve consistency, calls to [`sign`](Self::sign) should be followed by a call to
+    /// either [`commit`](Self::commit), [`rollback`](Self::rollback), or [`sync`](Self::sync) with
+    /// the appropriate [`SyncState`]. Repeated calls to [`sign`](Self::sign) should automatically
+    /// commit the current state before signing.
     fn sign(&mut self, request: SignRequest<D, C>) -> Self::SignFuture;
 
+    /// Commits to the state after the last call to [`sign`](Self::sign).
+    fn commit(&mut self) -> Self::CommitFuture;
+
+    /// Rolls back to the state before the last call to [`sign`](Self::sign).
+    fn rollback(&mut self) -> Self::RollbackFuture;
+
     /// Generates a new [`ShieldedIdentity`] for `self` to receive assets.
-    fn new_receiver(&mut self) -> Self::NewReceiverFuture;
+    fn external_receiver(&mut self) -> Self::ExternalReceiverFuture;
+}
+
+/// Synchronization State
+///
+/// This `enum` is used by the [`sync`](Connection::sync) method on [`Connection`]. See its
+/// documentation for more.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum SyncState {
+    /// Should commit the current state before synchronizing
+    Commit,
+
+    /// Should rollback to the previous state before synchronizing
+    Rollback,
 }
 
 /// Synchronization Result
@@ -113,11 +152,11 @@ pub type SyncResult<D, C, S> = Result<SyncResponse<D>, Error<D, C, <S as Connect
 pub type SignResult<D, C, S> =
     Result<SignResponse<D, C>, Error<D, C, <S as Connection<D, C>>::Error>>;
 
-/// New Receiver Generation Result
+/// External Receiver Generation Result
 ///
-/// See the [`new_receiver`](Connection::new_receiver) method on [`Connection`] for more
+/// See the [`external_receiver`](Connection::external_receiver) method on [`Connection`] for more
 /// information.
-pub type NewReceiverResult<D, C, S> =
+pub type ExternalReceiverResult<D, C, S> =
     Result<transfer::ShieldedIdentity<C>, Error<D, C, <S as Connection<D, C>>::Error>>;
 
 /// Signer Synchronization Response
@@ -128,32 +167,9 @@ pub struct SyncResponse<D>
 where
     D: DerivedSecretKeyGenerator,
 {
-    /// Deposit Asset Distribution
-    pub deposits: Vec<(ExternalIndex<D>, Asset)>,
+    /// Updates to the Asset Distribution
+    pub assets: Vec<(ExternalIndex<D>, Asset)>,
 }
-
-/* TODO:
-pub struct SignRequest<D, C>
-where
-    D: DerivedSecretKeyGenerator,
-    C: transfer::Configuration<SecretKey = D::SecretKey>,
-{
-    ///
-    pub asset: Asset,
-
-    ///
-    pub sources: Vec<AssetBalance>,
-
-    ///
-    pub senders: Vec<(AssetBalance, Index<D>)>,
-
-    ///
-    pub receivers: Vec<(AssetBalance, transfer::ShieldedIdentity<C>)>,
-
-    ///
-    pub sinks: Vec<AssetBalance>,
-}
-*/
 
 /// Signer Signing Request
 ///
@@ -168,10 +184,31 @@ where
     Mint(Asset),
 
     /// Private Transfer Transaction
-    PrivateTransfer(Asset, Vec<Index<D>>, transfer::ShieldedIdentity<C>),
+    PrivateTransfer {
+        /// Total Asset to Transfer
+        total: Asset,
+
+        /// Change Remaining from Asset Selection
+        change: AssetBalance,
+
+        /// Asset Selection
+        balances: Vec<(Index<D>, AssetBalance)>,
+
+        /// Receiver Shielded Identity
+        receiver: transfer::ShieldedIdentity<C>,
+    },
 
     /// Reclaim Transaction
-    Reclaim(Asset, Vec<Index<D>>),
+    Reclaim {
+        /// Total Asset to Transfer
+        total: Asset,
+
+        /// Change Remaining from Asset Selection
+        change: AssetBalance,
+
+        /// Asset Selection
+        balances: Vec<(Index<D>, AssetBalance)>,
+    },
 }
 
 /// Signer Signing Response
@@ -183,14 +220,11 @@ where
     D: DerivedSecretKeyGenerator,
     C: transfer::Configuration<SecretKey = D::SecretKey>,
 {
-    /// Asset Distribution Deposit Asset Id
-    pub asset_id: AssetId,
-
     /// Asset Distribution Deposit Balance Updates
-    pub balances: Vec<(Index<D>, AssetBalance)>,
+    pub balances: Vec<(InternalIndex<D>, AssetBalance)>,
 
     /// Transfer Posts
-    pub transfers: Vec<TransferPost<C>>,
+    pub posts: Vec<TransferPost<C>>,
 }
 
 impl<D, C> SignResponse<D, C>
@@ -198,18 +232,13 @@ where
     D: DerivedSecretKeyGenerator,
     C: transfer::Configuration<SecretKey = D::SecretKey>,
 {
-    /// Builds a new [`SignResponse`] from `asset_id`, `balances` and `transfers`.
+    /// Builds a new [`SignResponse`] from `balances` and `posts`.
     #[inline]
     pub fn new(
-        asset_id: AssetId,
-        balances: Vec<(Index<D>, AssetBalance)>,
-        transfers: Vec<TransferPost<C>>,
+        balances: Vec<(InternalIndex<D>, AssetBalance)>,
+        posts: Vec<TransferPost<C>>,
     ) -> Self {
-        Self {
-            asset_id,
-            balances,
-            transfers,
-        }
+        Self { balances, posts }
     }
 }
 
@@ -621,7 +650,7 @@ where
 
     /// Looks for an [`OpenSpend`] for this `encrypted_asset`.
     #[inline]
-    pub fn find_next_external_open_spend<C>(
+    pub fn find_external_open_spend<C>(
         &mut self,
         encrypted_asset: &EncryptedAsset<C>,
     ) -> Option<ExternalOpenSpend<D, C>>
@@ -757,25 +786,30 @@ where
 
     /// Updates the internal ledger state, returing the new asset distribution.
     #[inline]
-    fn sync<I>(&mut self, updates: I) -> SyncResult<D, C, Self>
+    fn sync<I>(&mut self, updates: I, sync_state: SyncState) -> SyncResult<D, C, Self>
     where
         I: IntoIterator<Item = (Utxo<C>, EncryptedAsset<C>)>,
         Standard: Distribution<AssetParameters<C>>,
     {
         use manta_crypto::Set; // FIXME: move up to top of file
 
-        let mut deposits = Vec::new();
+        match sync_state {
+            SyncState::Commit => self.commit(),
+            SyncState::Rollback => self.rollback(),
+        }
+
+        let mut assets = Vec::new();
         for (utxo, encrypted_asset) in updates {
             // TODO: Add optimization path where we have "strong" and "weak" insertions into the
             //       `utxo_set`. If the `utxo` is accompanied by an `encrypted_asset` then we
             //       "strong insert", if not we "weak insert".
             //
-            if let Some(open_spend) = self.signer.find_next_external_open_spend(&encrypted_asset) {
-                deposits.push((open_spend.index, open_spend.value.into_asset()));
+            if let Some(open_spend) = self.signer.find_external_open_spend(&encrypted_asset) {
+                assets.push((open_spend.index, open_spend.value.into_asset()));
             }
             let _ = self.utxo_set.try_insert(utxo); // FIXME: Should this ever error?
         }
-        Ok(SyncResponse { deposits })
+        Ok(SyncResponse { assets })
     }
 
     /// Signs the `request`, generating transfer posts.
@@ -784,6 +818,7 @@ where
     where
         Standard: Distribution<AssetParameters<C>>,
     {
+        // FIXME: Repeated calls to sign should automatically commit.
         match request {
             SignRequest::Mint(asset) => {
                 let (mint, open_spend) =
@@ -798,20 +833,33 @@ where
                     )
                     .map_err(Error::ProofSystemError)?;
                 Ok(SignResponse::new(
-                    asset.id,
-                    vec![(open_spend.index.reduce(), asset.value)],
+                    vec![(open_spend.index, asset.value)],
                     vec![mint_post],
                 ))
             }
-            SignRequest::PrivateTransfer(asset, senders, receiver) => {
-                // TODO: implement
+            SignRequest::PrivateTransfer { .. } => {
+                // FIXME: implement
                 todo!()
             }
-            SignRequest::Reclaim(asset, senders) => {
-                // TODO: implement
+            SignRequest::Reclaim { .. } => {
+                // FIXME: implement
                 todo!()
             }
         }
+    }
+
+    /// Commits to the state after the last call to [`sign`](Self::sign).
+    #[inline]
+    fn commit(&mut self) {
+        // FIXME: Implement.
+        todo!()
+    }
+
+    /// Rolls back to the state before the last call to [`sign`](Self::sign).
+    #[inline]
+    fn rollback(&mut self) {
+        // FIXME: Implement.
+        todo!()
     }
 }
 
@@ -826,16 +874,20 @@ where
 
     type SignFuture = Ready<SignResult<D, C, Self>>;
 
-    type NewReceiverFuture = Ready<NewReceiverResult<D, C, Self>>;
+    type CommitFuture = Ready<Result<(), Self::Error>>;
+
+    type RollbackFuture = Ready<Result<(), Self::Error>>;
+
+    type ExternalReceiverFuture = Ready<ExternalReceiverResult<D, C, Self>>;
 
     type Error = Infallible;
 
     #[inline]
-    fn sync<I>(&mut self, updates: I) -> Self::SyncFuture
+    fn sync<I>(&mut self, updates: I, sync_state: SyncState) -> Self::SyncFuture
     where
         I: IntoIterator<Item = (Utxo<C>, EncryptedAsset<C>)>,
     {
-        future::ready(self.sync(updates))
+        future::ready(self.sync(updates, sync_state))
     }
 
     #[inline]
@@ -844,7 +896,23 @@ where
     }
 
     #[inline]
-    fn new_receiver(&mut self) -> Self::NewReceiverFuture {
+    fn commit(&mut self) -> Self::CommitFuture {
+        future::ready({
+            self.commit();
+            Ok(())
+        })
+    }
+
+    #[inline]
+    fn rollback(&mut self) -> Self::RollbackFuture {
+        future::ready({
+            self.rollback();
+            Ok(())
+        })
+    }
+
+    #[inline]
+    fn external_receiver(&mut self) -> Self::ExternalReceiverFuture {
         future::ready(
             self.signer
                 .next_shielded(&self.commitment_scheme)

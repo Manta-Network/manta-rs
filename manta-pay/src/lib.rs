@@ -16,6 +16,8 @@
 
 //! Manta Pay Implementation
 
+// FIXME: Ensure that `no-default-features` is a valid build.
+
 #![cfg_attr(not(any(feature = "std", test)), no_std)]
 #![cfg_attr(doc_cfg, feature(doc_cfg))]
 #![forbid(rustdoc::broken_intra_doc_links)]
