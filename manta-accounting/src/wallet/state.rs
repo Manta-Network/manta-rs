@@ -53,11 +53,11 @@ where
     S: signer::Connection<D, C>,
     L: ledger::Connection<C> + ?Sized,
 {
+    /// Insufficient Balance
+    InsufficientBalance(Asset),
+
     /// Signer Error
     SignerError(signer::Error<D, C, S::Error>),
-
-    /// Insufficient Balance Error
-    InsufficientBalance(Asset),
 
     /// Ledger Error
     LedgerError(L::Error),
@@ -149,6 +149,7 @@ where
                 .into_iter()
                 .map(move |(k, a)| (k.reduce(), a)),
         );
+        self.sync_state = SyncState::Commit;
         self.checkpoint = checkpoint;
         Ok(())
     }
@@ -211,7 +212,9 @@ where
     }
 
     /// Posts a transaction to the ledger, returning `true` if the `transaction` was successfully
-    /// saved onto the ledger.
+    /// saved onto the ledger. This method automatically synchronizes with the ledger before
+    /// posting. To amortize the cost of future calls to [`post`](Self::post), the
+    /// [`sync`](Self::sync) method can be used to synchronize with the ledger.
     ///
     /// # Failure Conditions
     ///

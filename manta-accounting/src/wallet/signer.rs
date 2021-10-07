@@ -306,18 +306,18 @@ where
         }
     }
 
-    /// Builds a new [`Signer`] for `account` from a `secret_key_source` with starting indices
-    /// `external_index_range` and `internal_index`.
+    /// Builds a new [`Signer`] for `account` from a `secret_key_source` with starting ranges
+    /// `external_indices` and `internal_indices`.
     #[inline]
-    pub fn with_indices(
+    pub fn with_ranges(
         secret_key_source: D,
         account: D::Account,
-        external_index_range: Range<D::Index>,
-        internal_index: D::Index,
+        external_indices: Range<D::Index>,
+        internal_indices: Range<D::Index>,
     ) -> Self {
         Self::with_account(
             secret_key_source,
-            Account::with_indices(account, external_index_range, internal_index),
+            Account::with_ranges(account, external_indices, internal_indices),
         )
     }
 
@@ -670,7 +670,7 @@ where
                 .flatten()
             })?;
         self.account
-            .conditional_update_external_key_range(&open_spend.index.index);
+            .conditional_increment_external_range(&open_spend.index.index);
         Some(open_spend)
     }
 }
@@ -851,14 +851,16 @@ where
     /// Commits to the state after the last call to [`sign`](Self::sign).
     #[inline]
     fn commit(&mut self) {
-        // FIXME: Implement.
+        // FIXME: Implement commit for UTXO set.
+        self.signer.account.internal_range_shift_to_end();
         todo!()
     }
 
     /// Rolls back to the state before the last call to [`sign`](Self::sign).
     #[inline]
     fn rollback(&mut self) {
-        // FIXME: Implement.
+        // FIXME: Implement rollback for UTXO set.
+        self.signer.account.internal_range_shift_to_start();
         todo!()
     }
 }
