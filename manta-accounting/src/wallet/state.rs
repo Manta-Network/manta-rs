@@ -22,7 +22,7 @@ use crate::{
     transfer::{self, ShieldedIdentity},
     wallet::{
         ledger::{self, PullResponse},
-        signer::{self, SyncResponse},
+        signer,
     },
 };
 use core::marker::PhantomData;
@@ -79,7 +79,7 @@ where
         &self.checkpoint
     }
 
-    /// Pulls data from the `ledger`, synchronizing the asset distribution.
+    /// Pulls data from the `ledger`, synchronizing the wallet and asset distribution.
     #[inline]
     pub async fn sync(&mut self) -> Result<(), Error<D, C, S, L>> {
         let PullResponse {
@@ -90,23 +90,11 @@ where
             .pull(&self.checkpoint)
             .await
             .map_err(Error::LedgerError)?;
-
-        let SyncResponse { deposits } = self
-            .signer
-            .sync(receiver_data.into_iter().collect())
-            .await?;
-
-        for (key, asset) in deposits {
-            self.assets.deposit(key, asset);
+        for (key, asset) in self.signer.sync(receiver_data).await?.deposits {
+            self.assets.deposit(key.reduce(), asset);
         }
-
-        // TODO: ...
-
         self.checkpoint = checkpoint;
-
-        // TODO: ...
-
-        todo!()
+        Ok(())
     }
 
     /// Posts data to the ledger.

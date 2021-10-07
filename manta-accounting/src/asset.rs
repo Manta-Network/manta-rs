@@ -661,7 +661,7 @@ impl<M> AssetSelection<M>
 where
     M: AssetMap + ?Sized,
 {
-    /// Splits [`self.change`] into `n` change components.
+    /// Splits [`self.change`](Self::change) into `n` change components.
     #[inline]
     pub fn split_change(&self, n: usize) -> Option<Change> {
         self.change.make_change(n)

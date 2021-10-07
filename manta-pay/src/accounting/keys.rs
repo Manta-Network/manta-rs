@@ -129,13 +129,13 @@ macro_rules! impl_parameter {
 type ParameterType = u128;
 
 /// Account Parameter
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct AccountParameter(ParameterType);
 
 impl_parameter!(AccountParameter);
 
 /// Index Parameter
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct IndexParameter(ParameterType);
 
 impl_parameter!(IndexParameter);

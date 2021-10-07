@@ -22,36 +22,10 @@
 // TODO: Check to make sure we conform to the specification and then make a note about it in the
 //       module documentation, and add a link to the specification.
 
-use core::{convert::TryFrom, fmt::Debug, hash::Hash};
-
-/// Secret Key Generator Trait
-pub trait SecretKeyGenerator {
-    /// Secret Key Type
-    type SecretKey;
-
-    /// Key Generation Error
-    type Error;
-
-    /// Generates a new secret key.
-    fn next_key(&mut self) -> Result<Self::SecretKey, Self::Error>;
-}
-
-impl<S> SecretKeyGenerator for &mut S
-where
-    S: SecretKeyGenerator,
-{
-    type SecretKey = S::SecretKey;
-
-    type Error = S::Error;
-
-    #[inline]
-    fn next_key(&mut self) -> Result<Self::SecretKey, Self::Error> {
-        (*self).next_key()
-    }
-}
+use core::{convert::TryFrom, fmt::Debug, hash::Hash, ops::Range};
 
 /// Derived Secret Key Parameter
-pub trait DerivedSecretKeyParameter: Clone + Default {
+pub trait DerivedSecretKeyParameter: Clone + Default + PartialOrd {
     /// Increments the key parameter by one unit.
     fn increment(&mut self);
 }
@@ -165,37 +139,86 @@ impl KeyKind {
     }
 }
 
-/// Key Index
+/// External Key Kind
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct External;
+
+impl From<External> for KeyKind {
+    #[inline]
+    fn from(kind: External) -> Self {
+        let _ = kind;
+        Self::External
+    }
+}
+
+/// Internal Key Kind
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct Internal;
+
+impl From<Internal> for KeyKind {
+    #[inline]
+    fn from(kind: Internal) -> Self {
+        let _ = kind;
+        Self::Internal
+    }
+}
+
+/// External Secret Key Index Type
+pub type ExternalIndex<D> = Index<D, External>;
+
+/// Internal Secret Key Index Type
+pub type InternalIndex<D> = Index<D, Internal>;
+
+/// Secret Key Index
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = ""),
-    Copy(bound = "D::Index: Copy"),
-    Debug(bound = "D::Index: Debug"),
-    Eq(bound = "D::Index: Eq"),
-    Hash(bound = "D::Index: Hash"),
-    PartialEq(bound = "D::Index: PartialEq")
+    Clone(bound = "K: Clone"),
+    Copy(bound = "K: Copy, D::Index: Copy"),
+    Debug(bound = "K: Debug, D::Index: Debug"),
+    Eq(bound = "K: Eq, D::Index: Eq"),
+    Hash(bound = "K: Hash, D::Index: Hash"),
+    PartialEq(bound = "K: PartialEq")
 )]
-pub struct Index<D>
+pub struct Index<D, K = KeyKind>
 where
     D: DerivedSecretKeyGenerator,
+    K: Into<KeyKind>,
 {
     /// Key Kind
-    pub kind: KeyKind,
+    pub kind: K,
 
     /// Key Index
     pub index: D::Index,
+}
+
+impl<D, K> Index<D, K>
+where
+    D: DerivedSecretKeyGenerator,
+    K: Into<KeyKind>,
+{
+    /// Builds a new [`Index`] for `kind` and `index`.
+    #[inline]
+    pub fn new(kind: K, index: D::Index) -> Self {
+        Self { kind, index }
+    }
+
+    /// Increments the internal `index`.
+    #[inline]
+    pub fn increment(&mut self) {
+        self.index.increment()
+    }
+
+    /// Reduces `self` into an [`Index`] with [`KeyKind`] as the key kind.
+    #[inline]
+    pub fn reduce(self) -> Index<D> {
+        Index::new(self.kind.into(), self.index)
+    }
 }
 
 impl<D> Index<D>
 where
     D: DerivedSecretKeyGenerator,
 {
-    /// Builds a new [`Index`] for `kind` and `index`.
-    #[inline]
-    pub fn new(kind: KeyKind, index: D::Index) -> Self {
-        Self { kind, index }
-    }
-
     /// Builds a new [`Index`] for an external key with the given `index`.
     #[inline]
     pub fn new_external(index: D::Index) -> Self {
@@ -220,12 +243,6 @@ where
         self.kind.is_internal()
     }
 
-    /// Increments the internal `index`.
-    #[inline]
-    pub fn increment(&mut self) {
-        self.index.increment()
-    }
-
     /// Gets the underlying key for this `index` at the `account`.
     #[inline]
     pub fn key(&self, source: &D, account: &D::Account) -> Result<D::SecretKey, D::Error> {
@@ -233,46 +250,138 @@ where
     }
 }
 
+impl<D> ExternalIndex<D>
+where
+    D: DerivedSecretKeyGenerator,
+{
+    /// Builds a new [`Index`] for an external key with the given `index`.
+    #[inline]
+    pub fn from(index: D::Index) -> Self {
+        Self::new(External, index)
+    }
+
+    /// Gets the underlying key for this `index` at the `account`.
+    #[inline]
+    pub fn key(&self, source: &D, account: &D::Account) -> Result<D::SecretKey, D::Error> {
+        source.generate_external_key(account, &self.index)
+    }
+}
+
+impl<D> InternalIndex<D>
+where
+    D: DerivedSecretKeyGenerator,
+{
+    /// Builds a new [`Index`] for an internal key with the given `index`.
+    #[inline]
+    pub fn from(index: D::Index) -> Self {
+        Self::new(Internal, index)
+    }
+
+    /// Gets the underlying key for this `index` at the `account`.
+    #[inline]
+    pub fn key(&self, source: &D, account: &D::Account) -> Result<D::SecretKey, D::Error> {
+        source.generate_internal_key(account, &self.index)
+    }
+}
+
 /// Labelled Secret Key Type
-pub type SecretKey<D> = KeyOwned<D, <D as DerivedSecretKeyGenerator>::SecretKey>;
+pub type SecretKey<D, K = KeyKind> = KeyOwned<D, <D as DerivedSecretKeyGenerator>::SecretKey, K>;
+
+/// Labelled External Secret Key Type
+pub type ExternalSecretKey<D> = SecretKey<D, External>;
+
+/// Labelled Internal Secret Key Type
+pub type InternalSecretKey<D> = SecretKey<D, Internal>;
+
+/// External Key-Owned Value Type
+pub type ExternalKeyOwned<D, T> = KeyOwned<D, T, External>;
+
+/// Internal Key-Owned Value Type
+pub type InternalKeyOwned<D, T> = KeyOwned<D, T, Internal>;
 
 /// Key-Owned Value
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "T: Clone"),
-    Copy(bound = "D::Index: Copy, T: Copy"),
-    Debug(bound = "D::Index: Debug, T: Debug"),
-    Eq(bound = "D::Index: Eq, T: Eq"),
-    Hash(bound = "D::Index: Hash, T: Hash"),
-    PartialEq(bound = "D::Index: PartialEq, T: PartialEq")
+    Clone(bound = "T: Clone, K: Clone"),
+    Copy(bound = "D::Index: Copy, T: Copy, K: Copy"),
+    Debug(bound = "D::Index: Debug, T: Debug, K: Debug"),
+    Eq(bound = "D::Index: Eq, T: Eq, K: Eq"),
+    Hash(bound = "D::Index: Hash, T: Hash, K: Hash"),
+    PartialEq(bound = "T: PartialEq, K: PartialEq")
 )]
-pub struct KeyOwned<D, T>
+pub struct KeyOwned<D, T, K = KeyKind>
 where
     D: DerivedSecretKeyGenerator,
+    K: Into<KeyKind>,
 {
     /// Value Owned by the Key
     pub value: T,
 
     /// Key Index
-    pub index: Index<D>,
+    pub index: Index<D, K>,
+}
+
+impl<D, T, K> KeyOwned<D, T, K>
+where
+    D: DerivedSecretKeyGenerator,
+    K: Into<KeyKind>,
+{
+    /// Builds a new [`KeyOwned`] for `value` with `index` as the [`Index`].
+    #[inline]
+    pub fn new(value: T, index: Index<D, K>) -> Self {
+        Self { value, index }
+    }
+
+    /// Builds a new [`KeyOwned`] for `value` with `kind` and `index` as the [`Index`].
+    #[inline]
+    pub fn with_kind(value: T, kind: K, index: D::Index) -> Self {
+        Self::new(value, Index::new(kind, index))
+    }
+
+    /// Returns the inner [`self.value`](Self::value) dropping the [`self.index`](Self::index).
+    #[inline]
+    pub fn unwrap(self) -> T {
+        self.value
+    }
+
+    /// Reduces `self` into a [`KeyOwned`] with [`KeyKind`] as the key kind.
+    #[inline]
+    pub fn reduce(self) -> KeyOwned<D, T> {
+        KeyOwned::new(self.value, self.index.reduce())
+    }
+
+    /// Maps the underlying value using `f`.
+    #[inline]
+    pub fn map<U, F>(self, f: F) -> KeyOwned<D, U, K>
+    where
+        F: FnOnce(T) -> U,
+    {
+        KeyOwned::new(f(self.value), self.index)
+    }
+
+    /// Maps the underlying value using `f` and then factors over the `Some` branch.
+    #[inline]
+    pub fn map_some<U, F>(self, f: F) -> Option<KeyOwned<D, U, K>>
+    where
+        F: FnOnce(T) -> Option<U>,
+    {
+        self.map(f).collect()
+    }
+
+    /// Maps the underlying value using `f` and then factors over the `Ok` branch.
+    #[inline]
+    pub fn map_ok<U, E, F>(self, f: F) -> Result<KeyOwned<D, U, K>, E>
+    where
+        F: FnOnce(T) -> Result<U, E>,
+    {
+        self.map(f).collect()
+    }
 }
 
 impl<D, T> KeyOwned<D, T>
 where
     D: DerivedSecretKeyGenerator,
 {
-    /// Builds a new [`KeyOwned`] for `value` with `index` as the [`Index`].
-    #[inline]
-    pub fn new(value: T, index: Index<D>) -> Self {
-        Self { value, index }
-    }
-
-    /// Builds a new [`KeyOwned`] for `value` with `kind` and `index` as the [`Index`].
-    #[inline]
-    pub fn with_kind(value: T, kind: KeyKind, index: D::Index) -> Self {
-        Self::new(value, Index::new(kind, index))
-    }
-
     /// Builds a new [`KeyOwned`] for `value` for an external key with `index`.
     #[inline]
     pub fn new_external(value: T, index: D::Index) -> Self {
@@ -296,44 +405,12 @@ where
     pub fn is_internal(&self) -> bool {
         self.index.is_internal()
     }
-
-    /// Returns the inner [`self.value`] dropping the [`self.index`].
-    #[inline]
-    pub fn unwrap(self) -> T {
-        self.value
-    }
-
-    /// Maps the underlying value using `f`.
-    #[inline]
-    pub fn map<U, F>(self, f: F) -> KeyOwned<D, U>
-    where
-        F: FnOnce(T) -> U,
-    {
-        KeyOwned::new(f(self.value), self.index)
-    }
-
-    /// Maps the underlying value using `f` and then factors over the `Some` branch.
-    #[inline]
-    pub fn map_some<U, F>(self, f: F) -> Option<KeyOwned<D, U>>
-    where
-        F: FnOnce(T) -> Option<U>,
-    {
-        self.map(f).collect()
-    }
-
-    /// Maps the underlying value using `f` and then factors over the `Ok` branch.
-    #[inline]
-    pub fn map_ok<U, E, F>(self, f: F) -> Result<KeyOwned<D, U>, E>
-    where
-        F: FnOnce(T) -> Result<U, E>,
-    {
-        self.map(f).collect()
-    }
 }
 
-impl<D, T> AsRef<T> for KeyOwned<D, T>
+impl<D, T, K> AsRef<T> for KeyOwned<D, T, K>
 where
     D: DerivedSecretKeyGenerator,
+    K: Into<KeyKind>,
 {
     #[inline]
     fn as_ref(&self) -> &T {
@@ -341,9 +418,10 @@ where
     }
 }
 
-impl<D, T> AsMut<T> for KeyOwned<D, T>
+impl<D, T, K> AsMut<T> for KeyOwned<D, T, K>
 where
     D: DerivedSecretKeyGenerator,
+    K: Into<KeyKind>,
 {
     #[inline]
     fn as_mut(&mut self) -> &mut T {
@@ -351,89 +429,96 @@ where
     }
 }
 
-impl<D, T> From<KeyOwned<D, T>> for (T, Index<D>)
+impl<D, T, K> From<KeyOwned<D, T, K>> for (T, Index<D, K>)
 where
     D: DerivedSecretKeyGenerator,
+    K: Into<KeyKind>,
 {
     #[inline]
-    fn from(key_owned: KeyOwned<D, T>) -> Self {
+    fn from(key_owned: KeyOwned<D, T, K>) -> Self {
         (key_owned.value, key_owned.index)
     }
 }
 
-impl<D, L, R> KeyOwned<D, (L, R)>
+impl<D, L, R, K> KeyOwned<D, (L, R), K>
 where
     D: DerivedSecretKeyGenerator,
+    K: Into<KeyKind>,
 {
     /// Factors the key index over the left value in the pair.
     #[inline]
-    pub fn left(self) -> (KeyOwned<D, L>, R) {
+    pub fn left(self) -> (KeyOwned<D, L, K>, R) {
         (KeyOwned::new(self.value.0, self.index), self.value.1)
     }
 
     /// Factors the key index over the right value in the pair.
     #[inline]
-    pub fn right(self) -> (L, KeyOwned<D, R>) {
+    pub fn right(self) -> (L, KeyOwned<D, R, K>) {
         (self.value.0, KeyOwned::new(self.value.1, self.index))
     }
 }
 
-impl<D, T> KeyOwned<D, Option<T>>
+impl<D, T, K> KeyOwned<D, Option<T>, K>
 where
     D: DerivedSecretKeyGenerator,
+    K: Into<KeyKind>,
 {
-    /// Converts a `KeyOwned<D, Option<T>>` into an `Option<KeyOwned<D, T>>`.
+    /// Converts a `KeyOwned<D, Option<T>, K>` into an `Option<KeyOwned<D, T, K>>`.
     #[inline]
-    pub fn collect(self) -> Option<KeyOwned<D, T>> {
+    pub fn collect(self) -> Option<KeyOwned<D, T, K>> {
         Some(KeyOwned::new(self.value?, self.index))
     }
 }
 
-impl<D, T> From<KeyOwned<D, Option<T>>> for Option<KeyOwned<D, T>>
+impl<D, T, K> From<KeyOwned<D, Option<T>, K>> for Option<KeyOwned<D, T, K>>
 where
     D: DerivedSecretKeyGenerator,
+    K: Into<KeyKind>,
 {
     #[inline]
-    fn from(key_owned: KeyOwned<D, Option<T>>) -> Self {
+    fn from(key_owned: KeyOwned<D, Option<T>, K>) -> Self {
         key_owned.collect()
     }
 }
 
-impl<D, T, E> KeyOwned<D, Result<T, E>>
+impl<D, T, E, K> KeyOwned<D, Result<T, E>, K>
 where
     D: DerivedSecretKeyGenerator,
+    K: Into<KeyKind>,
 {
-    /// Converts a `KeyOwned<D, Result<T, E>>` into an `Result<KeyOwned<D, T>, E>`.
+    /// Converts a `KeyOwned<D, Result<T, E>, K>` into an `Result<KeyOwned<D, T, K>, E>`.
     #[inline]
-    pub fn collect(self) -> Result<KeyOwned<D, T>, E> {
+    pub fn collect(self) -> Result<KeyOwned<D, T, K>, E> {
         Ok(KeyOwned::new(self.value?, self.index))
     }
 
-    /// Converts a `KeyOwned<D, Result<T, E>>` into an `Option<KeyOwned<D, T>>`.
+    /// Converts a `KeyOwned<D, Result<T, E>, K>` into an `Option<KeyOwned<D, T, K>>`.
     #[inline]
-    pub fn ok(self) -> Option<KeyOwned<D, T>> {
+    pub fn ok(self) -> Option<KeyOwned<D, T, K>> {
         self.collect().ok()
     }
 }
 
-impl<D, T, E> From<KeyOwned<D, Result<T, E>>> for Result<KeyOwned<D, T>, E>
+impl<D, T, E, K> From<KeyOwned<D, Result<T, E>, K>> for Result<KeyOwned<D, T, K>, E>
 where
     D: DerivedSecretKeyGenerator,
+    K: Into<KeyKind>,
 {
     #[inline]
-    fn from(key_owned: KeyOwned<D, Result<T, E>>) -> Self {
+    fn from(key_owned: KeyOwned<D, Result<T, E>, K>) -> Self {
         key_owned.collect()
     }
 }
 
-impl<D, T, E> TryFrom<KeyOwned<D, Result<T, E>>> for KeyOwned<D, T>
+impl<D, T, E, K> TryFrom<KeyOwned<D, Result<T, E>, K>> for KeyOwned<D, T, K>
 where
     D: DerivedSecretKeyGenerator,
+    K: Into<KeyKind>,
 {
     type Error = E;
 
     #[inline]
-    fn try_from(key_owned: KeyOwned<D, Result<T, E>>) -> Result<Self, Self::Error> {
+    fn try_from(key_owned: KeyOwned<D, Result<T, E>, K>) -> Result<Self, Self::Error> {
         key_owned.collect()
     }
 }
@@ -466,12 +551,14 @@ pub fn next_external<D>(
     source: &D,
     account: &D::Account,
     index: &mut D::Index,
-) -> Result<SecretKey<D>, D::Error>
+) -> Result<ExternalSecretKey<D>, D::Error>
 where
     D: DerivedSecretKeyGenerator,
 {
-    let secret_key =
-        SecretKey::new_external(source.generate_external_key(account, index)?, index.clone());
+    let secret_key = ExternalSecretKey::new(
+        source.generate_external_key(account, index)?,
+        Index::new(External, index.clone()),
+    );
     index.increment();
     Ok(secret_key)
 }
@@ -483,12 +570,14 @@ pub fn next_internal<D>(
     source: &D,
     account: &D::Account,
     index: &mut D::Index,
-) -> Result<SecretKey<D>, D::Error>
+) -> Result<InternalSecretKey<D>, D::Error>
 where
     D: DerivedSecretKeyGenerator,
 {
-    let secret_key =
-        SecretKey::new_internal(source.generate_internal_key(account, index)?, index.clone());
+    let secret_key = InternalSecretKey::new(
+        source.generate_internal_key(account, index)?,
+        Index::new(Internal, index.clone()),
+    );
     index.increment();
     Ok(secret_key)
 }
@@ -532,14 +621,14 @@ where
     /// Generates an external secret key according to the [`DerivedSecretKeyGenerator`] protocol
     /// and increments the running `self.index`.
     #[inline]
-    fn generate_external_key(&mut self) -> Result<SecretKey<D>, D::Error> {
+    fn generate_external_key(&mut self) -> Result<ExternalSecretKey<D>, D::Error> {
         next_external(self.derived_key_generator, self.account, &mut self.index)
     }
 
     /// Generates an internal secret key according to the [`DerivedSecretKeyGenerator`] protocol
     /// and increments the running `self.index`.
     #[inline]
-    fn generate_internal_key(&mut self) -> Result<SecretKey<D>, D::Error> {
+    fn generate_internal_key(&mut self) -> Result<InternalSecretKey<D>, D::Error> {
         next_internal(self.derived_key_generator, self.account, &mut self.index)
     }
 }
@@ -566,29 +655,15 @@ where
     }
 }
 
-impl<'d, D> SecretKeyGenerator for ExternalKeys<'d, D>
-where
-    D: DerivedSecretKeyGenerator,
-{
-    type SecretKey = SecretKey<D>;
-
-    type Error = D::Error;
-
-    #[inline]
-    fn next_key(&mut self) -> Result<Self::SecretKey, Self::Error> {
-        self.0.generate_external_key()
-    }
-}
-
 impl<'d, D> Iterator for ExternalKeys<'d, D>
 where
     D: DerivedSecretKeyGenerator,
 {
-    type Item = Result<SecretKey<D>, D::Error>;
+    type Item = Result<ExternalSecretKey<D>, D::Error>;
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        Some(self.next_key())
+        Some(self.0.generate_external_key())
     }
 }
 
@@ -614,29 +689,15 @@ where
     }
 }
 
-impl<'d, D> SecretKeyGenerator for InternalKeys<'d, D>
-where
-    D: DerivedSecretKeyGenerator,
-{
-    type SecretKey = SecretKey<D>;
-
-    type Error = D::Error;
-
-    #[inline]
-    fn next_key(&mut self) -> Result<Self::SecretKey, Self::Error> {
-        self.0.generate_internal_key()
-    }
-}
-
 impl<'d, D> Iterator for InternalKeys<'d, D>
 where
     D: DerivedSecretKeyGenerator,
 {
-    type Item = Result<SecretKey<D>, D::Error>;
+    type Item = Result<InternalSecretKey<D>, D::Error>;
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        Some(self.next_key())
+        Some(self.0.generate_internal_key())
     }
 }
 
@@ -644,12 +705,11 @@ where
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = ""),
-    Copy(bound = "D::Account: Copy, D::Index: Copy"),
     Debug(bound = "D::Account: Debug, D::Index: Debug"),
     Default(bound = ""),
     Eq(bound = "D::Account: Eq, D::Index: Eq"),
     Hash(bound = "D::Account: Hash, D::Index: Hash"),
-    PartialEq(bound = "D::Account: PartialEq, D::Index: PartialEq")
+    PartialEq(bound = "")
 )]
 pub struct Account<D>
 where
@@ -658,8 +718,8 @@ where
     /// Account Identifier
     pub account: D::Account,
 
-    /// External Transaction Running Index
-    pub external_index: D::Index,
+    /// External Transaction Index Range
+    pub external_index_range: Range<D::Index>,
 
     /// Internal Transaction Running Index
     pub internal_index: D::Index,
@@ -676,16 +736,16 @@ where
     }
 
     /// Builds a new [`Account`] for the given `account` identifier with starting indices
-    /// `external_index` and `internal_index`.
+    /// `external_index_range` and `internal_index`.
     #[inline]
     pub fn with_indices(
         account: D::Account,
-        external_index: D::Index,
+        external_index_range: Range<D::Index>,
         internal_index: D::Index,
     ) -> Self {
         Self {
             account,
-            external_index,
+            external_index_range,
             internal_index,
         }
     }
@@ -700,7 +760,7 @@ where
     /// Resets the external and internal running indices to their default values.
     #[inline]
     pub fn reset(&mut self) -> &mut Self {
-        self.external_index = Default::default();
+        self.external_index_range = Default::default();
         self.internal_index = Default::default();
         self
     }
@@ -709,26 +769,26 @@ where
     #[inline]
     pub fn key(&self, source: &D, kind: KeyKind) -> Result<SecretKey<D>, D::Error> {
         match kind {
-            KeyKind::External => self.external_key(source),
-            KeyKind::Internal => self.internal_key(source),
+            KeyKind::External => Ok(self.external_key(source)?.reduce()),
+            KeyKind::Internal => Ok(self.internal_key(source)?.reduce()),
         }
     }
 
     /// Generates a new external key for this account.
     #[inline]
-    pub fn external_key(&self, source: &D) -> Result<SecretKey<D>, D::Error> {
-        Ok(SecretKey::new_external(
-            source.generate_external_key(&self.account, &self.external_index)?,
-            self.external_index.clone(),
+    pub fn external_key(&self, source: &D) -> Result<ExternalSecretKey<D>, D::Error> {
+        Ok(SecretKey::new(
+            source.generate_external_key(&self.account, &self.external_index_range.end)?,
+            Index::new(External, self.external_index_range.end.clone()),
         ))
     }
 
     /// Generates a new internal key for this account.
     #[inline]
-    pub fn internal_key(&self, source: &D) -> Result<SecretKey<D>, D::Error> {
-        Ok(SecretKey::new_internal(
+    pub fn internal_key(&self, source: &D) -> Result<InternalSecretKey<D>, D::Error> {
+        Ok(SecretKey::new(
             source.generate_internal_key(&self.account, &self.internal_index)?,
-            self.internal_index.clone(),
+            Index::new(Internal, self.internal_index.clone()),
         ))
     }
 
@@ -737,53 +797,41 @@ where
     #[inline]
     pub fn next_key(&mut self, source: &D, kind: KeyKind) -> Result<SecretKey<D>, D::Error> {
         match kind {
-            KeyKind::External => self.next_external_key(source),
-            KeyKind::Internal => self.next_internal_key(source),
+            KeyKind::External => Ok(self.next_external_key(source)?.reduce()),
+            KeyKind::Internal => Ok(self.next_internal_key(source)?.reduce()),
         }
     }
 
     /// Generates the next external key for this account, incrementing the `external_index`.
     #[inline]
-    pub fn next_external_key(&mut self, source: &D) -> Result<SecretKey<D>, D::Error> {
-        next_external(source, &self.account, &mut self.external_index)
+    pub fn next_external_key(&mut self, source: &D) -> Result<ExternalSecretKey<D>, D::Error> {
+        next_external(source, &self.account, &mut self.external_index_range.end)
     }
 
     /// Generates the next internal key for this account, incrementing the `internal_index`.
     #[inline]
-    pub fn next_internal_key(&mut self, source: &D) -> Result<SecretKey<D>, D::Error> {
+    pub fn next_internal_key(&mut self, source: &D) -> Result<InternalSecretKey<D>, D::Error> {
         next_internal(source, &self.account, &mut self.internal_index)
     }
 
-    /// Returns an [`ExternalKeys`] generator starting from the current external index.
+    /// Returns an iterator over the external keys generated by the indices in
+    /// [`self.external_index_range`](Self::external_index_range).
     #[inline]
-    pub fn external_keys<'s>(&'s self, source: &'s D) -> ExternalKeys<'s, D> {
-        self.external_keys_from_index(source, self.external_index.clone())
+    pub fn external_keys<'s>(&'s self, source: &'s D) -> ExternalKeysRange<'s, D> {
+        ExternalKeysRange {
+            source,
+            account: &self.account,
+            range: self.external_index_range.clone(),
+        }
     }
 
-    /// Returns an [`InternalKeys`] generator starting from the current internal index.
+    /// Increments the start of the [`self.external_index_range`](Self::external_index_range) if
+    /// `index` is equal to the start of the range.
     #[inline]
-    pub fn internal_keys<'s>(&'s self, source: &'s D) -> InternalKeys<'s, D> {
-        self.internal_keys_from_index(source, self.internal_index.clone())
-    }
-
-    /// Returns an [`ExternalKeys`] generator starting from the given `index`.
-    #[inline]
-    pub fn external_keys_from_index<'s>(
-        &'s self,
-        source: &'s D,
-        index: D::Index,
-    ) -> ExternalKeys<'s, D> {
-        ExternalKeys::from_index(source, &self.account, index)
-    }
-
-    /// Returns an [`InternalKeys`] generator starting from the given `index`.
-    #[inline]
-    pub fn internal_keys_from_index<'s>(
-        &'s self,
-        source: &'s D,
-        index: D::Index,
-    ) -> InternalKeys<'s, D> {
-        InternalKeys::from_index(source, &self.account, index)
+    pub fn conditional_update_external_key_range(&mut self, index: &D::Index) {
+        if &self.external_index_range.start == index {
+            self.external_index_range.start.increment()
+        }
     }
 }
 
@@ -794,5 +842,42 @@ where
     #[inline]
     fn as_ref(&self) -> &D::Account {
         &self.account
+    }
+}
+
+/// External Keys Range Iterator
+///
+/// This `struct` is created by the [`external_keys`](Account::external_keys) method on [`Account`].
+/// See its documentation for more.
+pub struct ExternalKeysRange<'d, D>
+where
+    D: DerivedSecretKeyGenerator,
+{
+    /// Derived Secret Key Generator
+    source: &'d D,
+
+    /// Key Account
+    account: &'d D::Account,
+
+    /// Index Range
+    range: Range<D::Index>,
+}
+
+impl<'d, D> Iterator for ExternalKeysRange<'d, D>
+where
+    D: DerivedSecretKeyGenerator,
+{
+    type Item = Result<ExternalSecretKey<D>, D::Error>;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.range.is_empty() {
+            return None;
+        }
+        Some(next_external(
+            self.source,
+            self.account,
+            &mut self.range.end,
+        ))
     }
 }
