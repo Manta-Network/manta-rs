@@ -19,18 +19,18 @@
 // TODO: Use universal transfers instead of just the canonical ones.
 
 use crate::{
-    asset::{Asset, AssetBalance, AssetId},
+    asset::{self, Asset, AssetBalance, AssetId, AssetMap, AssetMapSelection},
     fs::{Load, LoadWith, Save, SaveWith},
-    identity::{self, AssetParameters, Identity, Utxo},
+    identity::{self, AssetParameters, Identity, PreSender, Utxo},
     keys::{
-        Account, DerivedSecretKeyGenerator, External, ExternalIndex, ExternalKeyOwned, Index,
-        Internal, InternalIndex, InternalKeyOwned, KeyKind, KeyOwned,
+        Account, DerivedSecretKeyGenerator, External, ExternalIndex, Index, Internal,
+        InternalIndex, InternalKeyOwned, KeyKind, KeyOwned,
     },
     transfer::{
         self,
         canonical::{Mint, PrivateTransfer, Reclaim},
-        EncryptedAsset, IntegratedEncryptionSchemeError, ProofSystemError, ProvingContext, Sender,
-        Transfer, TransferPost,
+        EncryptedAsset, IntegratedEncryptionSchemeError, ProofSystemError, ProvingContext,
+        Receiver, Sender, ShieldedIdentity, Transfer, TransferPost,
     },
 };
 use alloc::{vec, vec::Vec};
@@ -47,26 +47,8 @@ use rand::{
     CryptoRng, RngCore,
 };
 
-/// Key-Owned Pre-Sender Type
-pub type PreSender<D, C> = InternalKeyOwned<D, identity::PreSender<C>>;
-
-/// Key-Owned Shielded Identity Type
-pub type ShieldedIdentity<D, C> = ExternalKeyOwned<D, transfer::ShieldedIdentity<C>>;
-
-/// Key-Owned Internal Receiver Type
-pub type InternalReceiver<D, C> = InternalKeyOwned<
-    D,
-    identity::InternalReceiver<C, <C as transfer::Configuration>::IntegratedEncryptionScheme>,
->;
-
-/// Key-Owned Open Spend Type
-pub type OpenSpend<D, C, K = KeyKind> = KeyOwned<D, identity::OpenSpend<C>, K>;
-
-/// External Key-Owned Open Spend Type
-pub type ExternalOpenSpend<D, C> = OpenSpend<D, C, External>;
-
-/// Internal Key-Owned Open Spend Type
-pub type InternalOpenSpend<D, C> = OpenSpend<D, C, Internal>;
+///
+pub type Selection<D> = asset::Selection<Index<D>, Vec<(Index<D>, AssetBalance)>, Vec<Index<D>>>;
 
 /// Rollback Trait
 pub trait Rollback {
@@ -141,7 +123,7 @@ where
     ///
     /// See the [`Rollback`] trait for expectations on the behavior of [`commit`](Self::commit)
     /// and [`rollback`](Self::rollback).
-    fn sign(&mut self, request: SignRequest<D, C>) -> Self::SignFuture;
+    fn sign(&mut self, request: SignRequest<C>) -> Self::SignFuture;
 
     /// Commits to the state after the last call to [`sign`](Self::sign).
     ///
@@ -179,109 +161,97 @@ pub enum SyncState {
 /// Synchronization Result
 ///
 /// See the [`sync`](Connection::sync) method on [`Connection`] for more information.
-pub type SyncResult<D, C, S> = Result<SyncResponse<D>, Error<D, C, <S as Connection<D, C>>::Error>>;
+pub type SyncResult<D, C, S> = Result<SyncResponse, Error<D, C, <S as Connection<D, C>>::Error>>;
 
 /// Signing Result
 ///
 /// See the [`sign`](Connection::sign) method on [`Connection`] for more information.
-pub type SignResult<D, C, S> =
-    Result<SignResponse<D, C>, Error<D, C, <S as Connection<D, C>>::Error>>;
+pub type SignResult<D, C, S> = Result<SignResponse<C>, Error<D, C, <S as Connection<D, C>>::Error>>;
 
 /// External Receiver Generation Result
 ///
 /// See the [`external_receiver`](Connection::external_receiver) method on [`Connection`] for more
 /// information.
 pub type ExternalReceiverResult<D, C, S> =
-    Result<transfer::ShieldedIdentity<C>, Error<D, C, <S as Connection<D, C>>::Error>>;
+    Result<ShieldedIdentity<C>, Error<D, C, <S as Connection<D, C>>::Error>>;
 
 /// Signer Synchronization Response
 ///
 /// This `struct` is created by the [`sync`](Connection::sync) method on [`Connection`].
 /// See its documentation for more.
-pub struct SyncResponse<D>
-where
-    D: DerivedSecretKeyGenerator,
-{
+pub struct SyncResponse {
     /// Updates to the Asset Distribution
-    pub assets: Vec<(ExternalIndex<D>, Asset)>,
+    pub assets: Vec<Asset>,
 }
 
 /// Signer Signing Request
 ///
 /// This `struct` is used by the [`sign`](Connection::sign) method on [`Connection`].
 /// See its documentation for more.
-pub enum SignRequest<D, C>
+pub enum SignRequest<C>
 where
-    D: DerivedSecretKeyGenerator,
-    C: transfer::Configuration<SecretKey = D::SecretKey>,
+    C: transfer::Configuration,
 {
     /// Mint Transaction
     Mint(Asset),
 
     /// Private Transfer Transaction
-    PrivateTransfer {
-        /// Total Asset to Transfer
-        total: Asset,
-
-        /// Change Remaining from Asset Selection
-        change: AssetBalance,
-
-        /// Asset Selection
-        balances: Vec<(Index<D>, AssetBalance)>,
-
-        /// Receiver Shielded Identity
-        receiver: transfer::ShieldedIdentity<C>,
-    },
+    PrivateTransfer(Asset, ShieldedIdentity<C>),
 
     /// Reclaim Transaction
-    Reclaim {
-        /// Total Asset to Transfer
-        total: Asset,
+    Reclaim(Asset),
+}
 
-        /// Change Remaining from Asset Selection
-        change: AssetBalance,
+impl<C> SignRequest<C>
+where
+    C: transfer::Configuration,
+{
+    /// Returns the underlying asset of the transaction.
+    #[inline]
+    pub fn asset(&self) -> Asset {
+        match self {
+            Self::Mint(asset) => *asset,
+            Self::PrivateTransfer(asset, _) => *asset,
+            Self::Reclaim(asset) => *asset,
+        }
+    }
 
-        /// Asset Selection
-        balances: Vec<(Index<D>, AssetBalance)>,
-    },
+    /// Returns `true` if the transaction is a deposit relative to the poster.
+    #[inline]
+    pub fn is_deposit(&self) -> bool {
+        matches!(self, Self::Mint(_))
+    }
+
+    /// Returns `true` if the transaction is a withdraw relative to the poster.
+    #[inline]
+    pub fn is_withdraw(&self) -> bool {
+        !self.is_deposit()
+    }
 }
 
 /// Signer Signing Response
 ///
 /// This `struct` is created by the [`sign`](Connection::sign) method on [`Connection`].
 /// See its documentation for more.
-pub struct SignResponse<D, C>
+pub struct SignResponse<C>
 where
-    D: DerivedSecretKeyGenerator,
-    C: transfer::Configuration<SecretKey = D::SecretKey>,
+    C: transfer::Configuration,
 {
-    /// Owner Index of the Resulting Balance
-    pub owner: InternalIndex<D>,
-
-    /// Resulting Balance
-    pub balance: AssetBalance,
+    /// Resulting Balance to Deposit
+    pub deposit: AssetBalance,
 
     /// Transfer Posts
     pub posts: Vec<TransferPost<C>>,
 }
 
-impl<D, C> SignResponse<D, C>
+impl<C> SignResponse<C>
 where
-    D: DerivedSecretKeyGenerator,
-    C: transfer::Configuration<SecretKey = D::SecretKey>,
+    C: transfer::Configuration,
 {
-    /// Builds a new [`SignResponse`] from `owner`, `balance`, and `posts`.
+    /// Builds a new [`SignResponse`] from `deposit` and `posts`.
     #[inline]
-    pub fn new(
-        owner: InternalIndex<D>,
-        balance: AssetBalance,
-        posts: Vec<TransferPost<C>>,
-    ) -> Self {
-        Self {
-            owner,
-            balance,
-            posts,
-        }
+    pub fn new(deposit: AssetBalance, posts: Vec<TransferPost<C>>) -> Self {
+        Self { deposit, posts }
     }
 }
 
@@ -403,25 +373,6 @@ where
             .map(Identity::new)
     }
 
-    /// Returns a [`PreSender`] for the key at the given `index`.
-    #[inline]
-    pub fn get_pre_sender<C>(
-        &self,
-        index: InternalIndex<D>,
-        commitment_scheme: &C::CommitmentScheme,
-        asset: Asset,
-    ) -> Result<PreSender<D, C>, D::Error>
-    where
-        C: identity::Configuration<SecretKey = D::SecretKey>,
-        Standard: Distribution<AssetParameters<C>>,
-    {
-        Ok(KeyOwned::new(
-            self.get_internal(&index)?
-                .into_pre_sender(commitment_scheme, asset),
-            index,
-        ))
-    }
-
     /// Returns a [`Sender`] for the key at the given `index`.
     #[inline]
     pub fn get_sender<C>(
@@ -441,37 +392,22 @@ where
             .map_err(SenderError::ContainmentError)
     }
 
-    /// Generates the next identity of the given `kind` for this signer.
-    #[inline]
-    pub fn next_identity<C>(&mut self, kind: KeyKind) -> Result<KeyOwned<D, Identity<C>>, D::Error>
-    where
-        C: identity::Configuration<SecretKey = D::SecretKey>,
-    {
-        Ok(self
-            .account
-            .next_key(&self.secret_key_source, kind)?
-            .map(Identity::new))
-    }
-
     /// Generates the next external identity for this signer.
     #[inline]
-    pub fn next_external_identity<C>(
-        &mut self,
-    ) -> Result<ExternalKeyOwned<D, Identity<C>>, D::Error>
+    fn next_external_identity<C>(&mut self) -> Result<Identity<C>, D::Error>
     where
         C: identity::Configuration<SecretKey = D::SecretKey>,
     {
         Ok(self
             .account
             .next_external_key(&self.secret_key_source)?
-            .map(Identity::new))
+            .map(Identity::new)
+            .unwrap())
     }
 
     /// Generates the next internal identity for this signer.
     #[inline]
-    pub fn next_internal_identity<C>(
-        &mut self,
-    ) -> Result<InternalKeyOwned<D, Identity<C>>, D::Error>
+    fn next_internal_identity<C>(&mut self) -> Result<InternalKeyOwned<D, Identity<C>>, D::Error>
     where
         C: identity::Configuration<SecretKey = D::SecretKey>,
     {
@@ -487,86 +423,73 @@ where
     pub fn next_shielded<C>(
         &mut self,
         commitment_scheme: &C::CommitmentScheme,
-    ) -> Result<ShieldedIdentity<D, C>, D::Error>
+    ) -> Result<ShieldedIdentity<C>, D::Error>
     where
         C: transfer::Configuration<SecretKey = D::SecretKey>,
         Standard: Distribution<AssetParameters<C>>,
     {
         Ok(self
             .next_external_identity()?
-            .map(move |identity| identity.into_shielded(commitment_scheme)))
+            .into_shielded(commitment_scheme))
     }
 
-    /// Generates a new [`InternalReceiver`] to receive `asset` to this account via an
-    /// internal transaction.
+    /// Builds the next inner change receiver and pre-sender.
     #[inline]
-    pub fn next_change_receiver<C, R>(
+    pub fn next_inner_change<C, R>(
         &mut self,
         commitment_scheme: &C::CommitmentScheme,
         asset: Asset,
         rng: &mut R,
-    ) -> Result<InternalReceiver<D, C>, InternalReceiverError<D, C>>
+    ) -> Result<(Receiver<C>, PreSender<C>), InternalReceiverError<D, C>>
     where
         C: transfer::Configuration<SecretKey = D::SecretKey>,
         R: CryptoRng + RngCore + ?Sized,
         Standard: Distribution<AssetParameters<C>>,
     {
+        // TODO: Simplify this so that `into_internal_receiver` automatically produces a
+        //       `PreSender` instead of an `OpenSpend`.
+        let internal_receiver = self
+            .next_internal_identity()
+            .map_err(InternalReceiverError::SecretKeyError)?
+            .unwrap()
+            .into_internal_receiver(commitment_scheme, asset, rng)
+            .map_err(InternalReceiverError::EncryptionError)?;
+        Ok((
+            internal_receiver.receiver,
+            internal_receiver
+                .open_spend
+                .into_pre_sender(commitment_scheme),
+        ))
+    }
+
+    /// Builds the final change receiver for the end of a transaction.
+    #[inline]
+    pub fn next_change<C, R>(
+        &mut self,
+        commitment_scheme: &C::CommitmentScheme,
+        asset: Asset,
+        rng: &mut R,
+    ) -> Result<InternalKeyOwned<D, Receiver<C>>, InternalReceiverError<D, C>>
+    where
+        C: transfer::Configuration<SecretKey = D::SecretKey>,
+        R: CryptoRng + RngCore + ?Sized,
+        Standard: Distribution<AssetParameters<C>>,
+    {
+        // TODO: Simplify this so that `into_shielded` and `into_receiver` can be replaced by a
+        //       one-step `into_receiver` call on `Identity`.
         self.next_internal_identity()
             .map_err(InternalReceiverError::SecretKeyError)?
-            .map_ok(move |identity| identity.into_internal_receiver(commitment_scheme, asset, rng))
+            .map_ok(move |identity| {
+                identity.into_shielded(commitment_scheme).into_receiver(
+                    commitment_scheme,
+                    asset,
+                    rng,
+                )
+            })
             .map_err(InternalReceiverError::EncryptionError)
     }
 
-    /// Generates a new [`InternalReceiver`] to receive an asset, with the given `asset_id` and
-    /// no value, to this account via an internal transaction.
-    #[inline]
-    pub fn next_empty_receiver<C, R>(
-        &mut self,
-        commitment_scheme: &C::CommitmentScheme,
-        asset_id: AssetId,
-        rng: &mut R,
-    ) -> Result<InternalReceiver<D, C>, InternalReceiverError<D, C>>
-    where
-        C: transfer::Configuration<SecretKey = D::SecretKey>,
-        R: CryptoRng + RngCore + ?Sized,
-        Standard: Distribution<AssetParameters<C>>,
-    {
-        self.next_change_receiver(commitment_scheme, Asset::zero(asset_id), rng)
-    }
-
-    /// Generates a new [`PreSender`] to send `asset` from this account via an internal
-    /// transaction.
-    #[inline]
-    pub fn next_pre_sender<C>(
-        &mut self,
-        commitment_scheme: &C::CommitmentScheme,
-        asset: Asset,
-    ) -> Result<PreSender<D, C>, D::Error>
-    where
-        C: transfer::Configuration<SecretKey = D::SecretKey>,
-        Standard: Distribution<AssetParameters<C>>,
-    {
-        Ok(self
-            .next_internal_identity()?
-            .map(move |identity| identity.into_pre_sender(commitment_scheme, asset)))
-    }
-
-    /// Generates a new [`PreSender`] to send an asset with the given `asset_id` and no value,
-    /// from this account via an internal transaction.
-    #[inline]
-    pub fn next_empty_pre_sender<C>(
-        &mut self,
-        commitment_scheme: &C::CommitmentScheme,
-        asset_id: AssetId,
-    ) -> Result<PreSender<D, C>, D::Error>
-    where
-        C: transfer::Configuration<SecretKey = D::SecretKey>,
-        Standard: Distribution<AssetParameters<C>>,
-    {
-        self.next_pre_sender(commitment_scheme, Asset::zero(asset_id))
-    }
-
-    /// Builds a [`Mint`] transaction to mint `asset` and returns the [`OpenSpend`] for that asset.
+    /// Builds a [`Mint`] transaction to mint `asset` and returns the index for that asset.
     #[inline]
     pub fn mint<C, R>(
         &mut self,
@@ -597,7 +520,7 @@ where
         commitment_scheme: &C::CommitmentScheme,
         asset: Asset,
         senders: Vec<(Index<D>, AssetBalance)>,
-        external_receiver: transfer::ShieldedIdentity<C>,
+        external_receiver: ShieldedIdentity<C>,
         rng: &mut R,
     ) -> Option<Vec<PrivateTransfer<C>>>
     where
@@ -652,28 +575,12 @@ where
         todo!()
     }
 
-    /// Builds a [`Reclaim`] transaction.
+    /// Looks for an index that can decrypt the given `encrypted_asset`.
     #[inline]
-    pub fn reclaim<C, R>(
-        &self,
-        commitment_scheme: &C::CommitmentScheme,
-        asset: Asset,
-        rng: &mut R,
-    ) -> Option<Reclaim<C>>
-    where
-        C: transfer::Configuration<SecretKey = D::SecretKey>,
-        R: CryptoRng + RngCore + ?Sized,
-    {
-        let _ = (commitment_scheme, asset, rng);
-        todo!()
-    }
-
-    /// Looks for an [`OpenSpend`] for this `encrypted_asset`.
-    #[inline]
-    pub fn find_external_open_spend<C>(
+    pub fn find_external_asset<C>(
         &mut self,
         encrypted_asset: &EncryptedAsset<C>,
-    ) -> Option<ExternalOpenSpend<D, C>>
+    ) -> Option<(Index<D>, Asset)>
     where
         C: transfer::Configuration<SecretKey = D::SecretKey>,
         Standard: Distribution<AssetParameters<C>>,
@@ -691,7 +598,7 @@ where
             })?;
         self.account
             .conditional_increment_external_range(&open_spend.index.index);
-        Some(open_spend)
+        Some((open_spend.index.reduce(), open_spend.value.into_asset()))
     }
 }
 
@@ -735,12 +642,51 @@ where
     }
 }
 
+/// Pending Asset Map
+#[derive(derivative::Derivative)]
+#[derivative(Default(bound = ""))]
+struct PendingAssetMap<M>
+where
+    M: AssetMap + ?Sized,
+{
+    /// Pending Deposit Data
+    deposit: Option<(M::Key, Asset)>,
+
+    /// Pending Withdraw Data
+    withdraw: Option<(AssetId, AssetMapSelection<M>)>,
+}
+
+impl<M> PendingAssetMap<M>
+where
+    M: AssetMap + ?Sized,
+{
+    /// Commits the pending asset map data to `assets`.
+    #[inline]
+    fn commit(&mut self, assets: &mut M) {
+        self.withdraw = None;
+        if let Some((key, asset)) = self.deposit.take() {
+            assets.insert(key, asset);
+        }
+    }
+
+    /// Rolls back the pending asset map data updating `assets`.
+    #[inline]
+    fn rollback(&mut self, assets: &mut M) {
+        self.deposit = None;
+        if let Some((asset_id, selection)) = self.withdraw.take() {
+            assets.insert_all_same(asset_id, selection.balances);
+            assets.insert_all_zeroes(asset_id, selection.zeroes);
+        }
+    }
+}
+
 /// Full Signer
-pub struct FullSigner<D, C, R>
+pub struct FullSigner<D, C, M, R>
 where
     D: DerivedSecretKeyGenerator,
     C: transfer::Configuration<SecretKey = D::SecretKey>,
     C::UtxoSet: Rollback,
+    M: AssetMap<Key = Index<D>>,
     R: CryptoRng + RngCore,
 {
     /// Signer
@@ -755,15 +701,22 @@ where
     /// UTXO Set
     utxo_set: C::UtxoSet,
 
+    /// Asset Distribution
+    assets: M,
+
+    /// Pending Asset Distribution
+    pending_assets: PendingAssetMap<M>,
+
     /// Random Number Generator
     rng: R,
 }
 
-impl<D, C, R> FullSigner<D, C, R>
+impl<D, C, M, R> FullSigner<D, C, M, R>
 where
     D: DerivedSecretKeyGenerator,
     C: transfer::Configuration<SecretKey = D::SecretKey>,
     C::UtxoSet: Rollback,
+    M: AssetMap<Key = Index<D>>,
     R: CryptoRng + RngCore,
 {
     /// Builds a new [`FullSigner`].
@@ -773,6 +726,8 @@ where
         commitment_scheme: C::CommitmentScheme,
         proving_context: ProvingContext<C>,
         utxo_set: C::UtxoSet,
+        assets: M,
+        pending_assets: PendingAssetMap<M>,
         rng: R,
     ) -> Self {
         Self {
@@ -780,12 +735,14 @@ where
             commitment_scheme,
             proving_context,
             utxo_set,
+            assets,
+            pending_assets,
             rng,
         }
     }
 
     /// Builds a new [`FullSigner`] from `secret_key_source`, `account`, `commitment_scheme`,
-    /// `proving_context`, and `rng`, using a default [`Utxo`] set.
+    /// `proving_context`, and `rng`, using a default [`Utxo`] set and asset distribution.
     #[inline]
     pub fn new(
         secret_key_source: D,
@@ -801,6 +758,8 @@ where
             Signer::new(secret_key_source, account),
             commitment_scheme,
             proving_context,
+            Default::default(),
+            Default::default(),
             Default::default(),
             rng,
         )
@@ -821,12 +780,72 @@ where
             //       `utxo_set`. If the `utxo` is accompanied by an `encrypted_asset` then we
             //       "strong insert", if not we "weak insert".
             //
-            if let Some(open_spend) = self.signer.find_external_open_spend(&encrypted_asset) {
-                assets.push((open_spend.index, open_spend.value.into_asset()));
+            if let Some((key, asset)) = self.signer.find_external_asset(&encrypted_asset) {
+                assets.push(asset);
+                self.assets.insert(key, asset);
             }
-            let _ = self.utxo_set.try_insert(utxo); // FIXME: Should this ever error?
+
+            // FIXME: Should this ever error? We should check the capacity at `updates`, then
+            //        insert should always work here.
+            let _ = self.utxo_set.try_insert(utxo);
         }
         Ok(SyncResponse { assets })
+    }
+
+    /// Selects `asset` from the asset distribution, returning it back if there was an insufficient
+    /// balance.
+    #[inline]
+    fn select(&mut self, asset: Asset) -> Result<AssetMapSelection<M>, Asset> {
+        /*
+        self.assets
+            .select(asset, &self.selection_strategy)
+            .ok_or(asset)
+        */
+        todo!()
+    }
+
+    /// Prepares a `request` for signing.
+    #[inline]
+    fn prepare(&mut self, request: SignRequest<C>) {
+        /* TODO:
+        match transaction {
+            Transaction::Mint(asset) => Ok((asset.id, SignRequest::Mint(asset))),
+            Transaction::PrivateTransfer(asset, receiver) => {
+                let Selection {
+                    change,
+                    balances,
+                    zeroes,
+                } = self.select(asset)?;
+                Ok((
+                    asset.id,
+                    SignRequest::PrivateTransfer {
+                        total: asset,
+                        change,
+                        balances: balances.collect(),
+                        zeroes: zeroes.collect(),
+                        receiver,
+                    },
+                ))
+            }
+            Transaction::Reclaim(asset) => {
+                let Selection {
+                    change,
+                    balances,
+                    zeroes,
+                } = self.select(asset)?;
+                Ok((
+                    asset.id,
+                    SignRequest::Reclaim {
+                        total: asset,
+                        change,
+                        balances: balances.collect(),
+                        zeroes: zeroes.collect(),
+                    },
+                ))
+            }
+        }
+        */
+        todo!()
     }
 
     /// Returns a [`Sender`] for the key at the given `index`.
@@ -862,7 +881,7 @@ where
 
     /// Signs the `request`, generating transfer posts.
     #[inline]
-    fn sign(&mut self, request: SignRequest<D, C>) -> SignResult<D, C, Self>
+    fn sign(&mut self, request: SignRequest<C>) -> SignResult<D, C, Self>
     where
         Standard: Distribution<AssetParameters<C>>,
     {
@@ -873,50 +892,15 @@ where
                     self.signer
                         .mint(&self.commitment_scheme, asset, &mut self.rng)?;
                 let mint_post = self.build_post(mint)?;
-                Ok(SignResponse::new(owner, asset.value, vec![mint_post]))
+                self.pending_assets.deposit = Some((owner.reduce(), asset));
+                Ok(SignResponse::new(asset.value, vec![mint_post]))
             }
-            SignRequest::PrivateTransfer { .. } => {
+            SignRequest::PrivateTransfer(..) => {
                 // FIXME: implement
                 todo!()
             }
-            SignRequest::Reclaim {
-                total,
-                change,
-                balances,
-            } => {
-                /* FIXME:
-                let mut posts = Vec::new();
-
-                let mut balances = balances.chunks_exact(2);
-
-                let mut accumulator = 0;
-                for pair in balances {
-                    if let [(lhs_key, lhs_value), (rhs_key, rhs_value)] = pair {
-                        let lhs = self.get_sender(lhs_key, total.id.with(lhs_value))?;
-                        let rhs = self.get_sender(rhs_key, total.id.with(rhs_value))?;
-                        let (next_receiver, next_open_spend) = self
-                            .signer
-                            .next_change_receiver(&self.commitment_scheme)?
-                            .unwrap()
-                            .into();
-                        posts.push(PrivateTransfer::build([lhs, rhs], [accumulator, zero]));
-                    }
-                }
-
-                let reclaim = match balances.remainder() {
-                    [last] => Reclaim::build([accumulator, last], [change]),
-                    _ => {
-                        let (mint, zero) = self.signer.mint_zero(
-                            &self.commitment_scheme,
-                            total.id,
-                            &mut self.rng,
-                        )?;
-                        posts.push(mint);
-                        Reclaim::build([accumulator, zero.into_sender()], [change])
-                    }
-                };
-                */
-
+            SignRequest::Reclaim(..) => {
+                // FIXME: implement
                 todo!()
             }
         }
@@ -927,6 +911,7 @@ where
     fn commit(&mut self) {
         self.signer.account.internal_range_shift_to_end();
         self.utxo_set.commit();
+        self.pending_assets.commit(&mut self.assets);
     }
 
     /// Rolls back to the state before the last call to [`sign`](Self::sign).
@@ -934,6 +919,7 @@ where
     fn rollback(&mut self) {
         self.signer.account.internal_range_shift_to_start();
         self.utxo_set.rollback();
+        self.pending_assets.rollback(&mut self.assets);
     }
 
     /// Commits or rolls back the state depending on the value of `sync_state`.
@@ -946,11 +932,12 @@ where
     }
 }
 
-impl<D, C, R> Connection<D, C> for FullSigner<D, C, R>
+impl<D, C, M, R> Connection<D, C> for FullSigner<D, C, M, R>
 where
     D: DerivedSecretKeyGenerator,
     C: transfer::Configuration<SecretKey = D::SecretKey>,
     C::UtxoSet: Rollback,
+    M: AssetMap<Key = Index<D>>,
     R: CryptoRng + RngCore,
     Standard: Distribution<AssetParameters<C>>,
 {
@@ -975,7 +962,7 @@ where
     }
 
     #[inline]
-    fn sign(&mut self, request: SignRequest<D, C>) -> Self::SignFuture {
+    fn sign(&mut self, request: SignRequest<C>) -> Self::SignFuture {
         future::ready(self.sign(request))
     }
 
@@ -1000,7 +987,6 @@ where
         future::ready(
             self.signer
                 .next_shielded(&self.commitment_scheme)
-                .map(KeyOwned::unwrap)
                 .map_err(Error::SecretKeyError),
         )
     }
@@ -1008,7 +994,7 @@ where
 
 /// Internal Receiver Error
 ///
-/// This `enum` is the error state for any construction of an [`InternalReceiver`] from a derived
+/// This `enum` is the error state for any construction of an internal receiver from a derived
 /// secret key generator.
 #[derive(derivative::Derivative)]
 #[derivative(

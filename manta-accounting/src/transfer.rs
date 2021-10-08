@@ -1158,7 +1158,7 @@ pub trait Shape: sealed::Sealed {
 /// Canonical Transaction Types
 pub mod canonical {
     use super::*;
-    use crate::identity::{AssetParameters, Identity, InternalReceiver, OpenSpend};
+    use crate::identity::{AssetParameters, Identity};
 
     /// Implements [`Shape`] for a given shape type.
     macro_rules! impl_shape {
@@ -1222,7 +1222,7 @@ pub mod canonical {
             )
         }
 
-        /// Builds a [`Mint`]-[`OpenSpend`] pair from an `identity` and an `asset`.
+        /// Builds a [`Mint`] from an `identity` and an `asset`.
         #[inline]
         pub fn from_identity<R>(
             identity: Identity<C>,

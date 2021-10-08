@@ -27,13 +27,12 @@ extern crate derive_more;
 #[cfg(feature = "cocoon")]
 extern crate cocoon as cocoon_crate;
 
-mod asset;
-
+pub mod asset;
 pub mod fs;
 pub mod identity;
 pub mod keys;
 pub mod transfer;
 pub mod wallet;
 
-pub use asset::*;
+pub use asset::prelude::*;
 pub use identity::prelude::*;

@@ -17,9 +17,9 @@
 //! Wallet Full State Implementation
 
 use crate::{
-    asset::{Asset, AssetBalance, AssetId, AssetMap, AssetSelection},
-    keys::{DerivedSecretKeyGenerator, Index},
-    transfer::{self, ShieldedIdentity},
+    asset::{Asset, AssetBalance, AssetId},
+    keys::DerivedSecretKeyGenerator,
+    transfer::{Configuration, ShieldedIdentity},
     wallet::{
         ledger::{self, PullResponse, PushResponse},
         signer::{self, SignRequest, SignResponse, SyncState},
@@ -27,20 +27,46 @@ use crate::{
 };
 use core::marker::PhantomData;
 
-/// Wallet Transaction
-pub enum Transaction<C>
-where
-    C: transfer::Configuration,
-{
-    /// Mint a Private Asset
-    Mint(Asset),
+/// Balance State
+pub trait BalanceState {
+    /// Returns the current balance associated with this `id`.
+    fn balance(&self, id: AssetId) -> AssetBalance;
 
-    /// Transfer a Private Asset
-    PrivateTransfer(Asset, ShieldedIdentity<C>),
+    /// Returns true if `self` contains at least `asset.value` of the asset of kind `asset.id`.
+    #[inline]
+    fn contains(&self, asset: Asset) -> bool {
+        self.balance(asset.id) >= asset.value
+    }
 
-    /// Reclaim a Private Asset
-    Reclaim(Asset),
+    /// Deposits `asset` into the balance state, increasing the balance of the asset stored at
+    /// `asset.id` by an amount equal to `asset.value`.
+    fn deposit(&mut self, asset: Asset);
+
+    /// Deposits every asset in `assets` into the balance state.
+    #[inline]
+    fn deposit_all<I>(&mut self, assets: I)
+    where
+        I: IntoIterator<Item = Asset>,
+    {
+        for asset in assets {
+            self.deposit(asset)
+        }
+    }
+
+    /// Withdraws `asset` from the balance state without checking if it would overdraw.
+    ///
+    /// # Panics
+    ///
+    /// This method does not check if withdrawing `asset` from the balance state would cause an
+    /// overdraw, but if it were to overdraw, this method must panic.
+    fn withdraw_unchecked(&mut self, asset: Asset);
 }
+
+/* TODO: Implement these:
+impl BalanceState for Vec<Asset> {}
+impl BalanceState for BTreeMap<Asset> {}
+impl BalanceState for HashMap<Asset> {}
+*/
 
 /// Wallet Error
 ///
@@ -49,7 +75,7 @@ where
 pub enum Error<D, C, S, L>
 where
     D: DerivedSecretKeyGenerator,
-    C: transfer::Configuration<SecretKey = D::SecretKey>,
+    C: Configuration<SecretKey = D::SecretKey>,
     S: signer::Connection<D, C>,
     L: ledger::Connection<C> + ?Sized,
 {
@@ -66,7 +92,7 @@ where
 impl<D, C, S, L> From<signer::Error<D, C, S::Error>> for Error<D, C, S, L>
 where
     D: DerivedSecretKeyGenerator,
-    C: transfer::Configuration<SecretKey = D::SecretKey>,
+    C: Configuration<SecretKey = D::SecretKey>,
     S: signer::Connection<D, C>,
     L: ledger::Connection<C> + ?Sized,
 {
@@ -76,17 +102,14 @@ where
     }
 }
 /// Wallet
-pub struct Wallet<D, C, M, S, L>
+pub struct Wallet<D, C, S, L, B>
 where
     D: DerivedSecretKeyGenerator,
-    C: transfer::Configuration<SecretKey = D::SecretKey>,
-    M: AssetMap<Key = Index<D>>,
+    C: Configuration<SecretKey = D::SecretKey>,
     S: signer::Connection<D, C>,
     L: ledger::Connection<C>,
+    B: BalanceState,
 {
-    /// Asset Distribution
-    assets: M,
-
     /// Signer Connection
     signer: S,
 
@@ -99,18 +122,40 @@ where
     /// Ledger Checkpoint
     checkpoint: L::Checkpoint,
 
+    /// Balance State
+    assets: B,
+
     /// Type Parameter Marker
     __: PhantomData<(D, C)>,
 }
 
-impl<D, C, M, S, L> Wallet<D, C, M, S, L>
+impl<D, C, S, L, B> Wallet<D, C, S, L, B>
 where
     D: DerivedSecretKeyGenerator,
-    C: transfer::Configuration<SecretKey = D::SecretKey>,
-    M: AssetMap<Key = Index<D>>,
+    C: Configuration<SecretKey = D::SecretKey>,
     S: signer::Connection<D, C>,
     L: ledger::Connection<C>,
+    B: BalanceState,
 {
+    /// Builds a new [`Wallet`].
+    #[inline]
+    pub fn new(
+        signer: S,
+        sync_state: SyncState,
+        ledger: L,
+        checkpoint: L::Checkpoint,
+        assets: B,
+    ) -> Self {
+        Self {
+            signer,
+            sync_state,
+            ledger,
+            checkpoint,
+            assets,
+            __: PhantomData,
+        }
+    }
+
     /// Returns the current balance associated with this `id`.
     #[inline]
     pub fn balance(&self, id: AssetId) -> AssetBalance {
@@ -130,7 +175,7 @@ where
         &self.checkpoint
     }
 
-    /// Pulls data from the `ledger`, synchronizing the wallet and asset distribution.
+    /// Pulls data from the `ledger`, synchronizing the wallet and balance state.
     #[inline]
     pub async fn sync(&mut self) -> Result<(), Error<D, C, S, L>> {
         let PullResponse {
@@ -141,57 +186,27 @@ where
             .pull(&self.checkpoint)
             .await
             .map_err(Error::LedgerError)?;
-        self.assets.insert_all(
+        self.assets.deposit_all(
             self.signer
                 .sync(receiver_data, self.sync_state)
                 .await?
-                .assets
-                .into_iter()
-                .map(move |(k, a)| (k.reduce(), a)),
+                .assets,
         );
         self.sync_state = SyncState::Commit;
         self.checkpoint = checkpoint;
         Ok(())
     }
 
-    /// Selects `asset` from the asset distribution, returning it back if there was an insufficient
-    /// balance.
+    /// Checks if there is enough balance in the balance state to perform the `transaction`.
     #[inline]
-    fn select(&mut self, asset: Asset) -> Result<AssetSelection<M>, Asset> {
-        self.assets.select(asset).ok_or(asset)
-    }
-
-    /// Prepares a `transaction` for signing.
-    #[inline]
-    fn prepare(
-        &mut self,
-        transaction: Transaction<C>,
-    ) -> Result<(AssetId, SignRequest<D, C>), Asset> {
-        match transaction {
-            Transaction::Mint(asset) => Ok((asset.id, SignRequest::Mint(asset))),
-            Transaction::PrivateTransfer(asset, receiver) => {
-                let AssetSelection { change, balances } = self.select(asset)?;
-                Ok((
-                    asset.id,
-                    SignRequest::PrivateTransfer {
-                        total: asset,
-                        change,
-                        balances: balances.collect(),
-                        receiver,
-                    },
-                ))
-            }
-            Transaction::Reclaim(asset) => {
-                let AssetSelection { change, balances } = self.select(asset)?;
-                Ok((
-                    asset.id,
-                    SignRequest::Reclaim {
-                        total: asset,
-                        change,
-                        balances: balances.collect(),
-                    },
-                ))
-            }
+    fn prepare(&self, transaction: &SignRequest<C>) -> Result<TransactionKind, Asset> {
+        let asset = transaction.asset();
+        if transaction.is_deposit() {
+            Ok(TransactionKind::Deposit(asset.id))
+        } else if self.assets.contains(asset) {
+            Ok(TransactionKind::Withdraw(asset))
+        } else {
+            Err(asset)
         }
     }
 
@@ -228,20 +243,24 @@ where
     /// This method returns an error in any other case. The internal state of the wallet is kept
     /// consistent between calls and recoverable errors are returned for the caller to handle.
     #[inline]
-    pub async fn post(&mut self, transaction: Transaction<C>) -> Result<bool, Error<D, C, S, L>> {
+    pub async fn post(&mut self, transaction: SignRequest<C>) -> Result<bool, Error<D, C, S, L>> {
         self.sync().await?;
-        let (asset_id, request) = self
-            .prepare(transaction)
+        let transaction_kind = self
+            .prepare(&transaction)
             .map_err(Error::InsufficientBalance)?;
-        let SignResponse {
-            owner,
-            balance,
-            posts,
-        } = self.signer.sign(request).await?;
+        let SignResponse { deposit, posts } = self.signer.sign(transaction).await?;
         match self.ledger.push(posts).await {
             Ok(PushResponse { success: true }) => {
                 self.try_commit().await;
-                self.assets.insert(owner.reduce(), asset_id.with(balance));
+                match transaction_kind {
+                    TransactionKind::Deposit(asset_id) => {
+                        self.assets.deposit(asset_id.with(deposit));
+                    }
+                    TransactionKind::Withdraw(asset) => {
+                        self.assets.withdraw_unchecked(asset);
+                        self.assets.deposit(asset.id.with(deposit));
+                    }
+                }
                 Ok(true)
             }
             Ok(PushResponse { success: false }) => {
@@ -262,4 +281,13 @@ where
     ) -> Result<ShieldedIdentity<C>, signer::Error<D, C, S::Error>> {
         self.signer.external_receiver().await
     }
+}
+
+/// Transaction Kind
+enum TransactionKind {
+    /// Deposit Transaction
+    Deposit(AssetId),
+
+    /// Withdraw Transaction
+    Withdraw(Asset),
 }

@@ -17,6 +17,7 @@
 //! Ledger Source
 
 // TODO: Move to streams so we can process some of the data as it's incoming.
+// TODO: Add non-atomic transactions.
 
 use crate::{
     identity::{Utxo, VoidNumber},
@@ -124,10 +125,6 @@ where
 /// This `struct` is created by the [`push`](Connection::push) method on [`Connection`].
 /// See its documentation for more.
 pub struct PushResponse {
-    /* TODO:
-    /// Failed Transfer Posts
-    pub failed_posts: Vec<TransferPost<C>>,
-    */
     /// Successful Push
     pub success: bool,
 }
