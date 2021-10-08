@@ -233,14 +233,15 @@ where
         let (asset_id, request) = self
             .prepare(transaction)
             .map_err(Error::InsufficientBalance)?;
-        let SignResponse { balances, posts } = self.signer.sign(request).await?;
+        let SignResponse {
+            owner,
+            balance,
+            posts,
+        } = self.signer.sign(request).await?;
         match self.ledger.push(posts).await {
             Ok(PushResponse { success: true }) => {
                 self.try_commit().await;
-                self.assets.insert_all_same(
-                    asset_id,
-                    balances.into_iter().map(move |(k, b)| (k.reduce(), b)),
-                );
+                self.assets.insert(owner.reduce(), asset_id.with(balance));
                 Ok(true)
             }
             Ok(PushResponse { success: false }) => {

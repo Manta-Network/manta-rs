@@ -257,14 +257,13 @@ where
     ///
     /// # API Note
     ///
-    /// This function is intentionally private so that internal random number generator is
-    /// not part of the public interface. See [`Self::parameters`] for access to the associated
-    /// `parameters`.
+    /// This method is intentionally private so that internal random number generator is not part
+    /// of the public interface. See [`Self::parameters`] for access to the associated `parameters`.
     ///
     /// # Implementation Note
     ///
-    /// Contributors should always use this function when generating an `rng` or a
-    /// `parameters` in the folowing ways:
+    /// Contributors should always use this method when generating an `rng` or a `parameters` in the
+    /// folowing ways:
     ///
     /// ```text
     /// 1. [BOTH] let (mut rng, parameters) = self.rng_and_parameters();
@@ -273,8 +272,8 @@ where
     /// ```
     ///
     /// This is important because we need to preserve the order in which objects are randomly
-    /// generated across different functions. The `parameters` is always generated immediately
-    /// after creation of the random number generator.
+    /// generated across different methods. The `parameters` is always generated immediately after
+    /// creation of the random number generator.
     #[inline]
     fn rng_and_parameters(&self) -> (C::Rng, AssetParameters<C>)
     where
@@ -642,8 +641,8 @@ where
     ///
     /// # API Note
     ///
-    /// This function is intentionally private so that `identity` and `asset_secret_key` are
-    /// not part of the public interface.
+    /// This method is intentionally private so that `identity` and `asset_secret_key` are not part
+    /// of the public interface.
     #[inline]
     fn new(identity: Identity<C>, asset_secret_key: ies::SecretKey<I>) -> Self {
         Self {
@@ -760,8 +759,8 @@ where
     ///
     /// # API Note
     ///
-    /// This function is intentionally private so that `identity` and `asset` are
-    /// not part of the public interface.
+    /// This method is intentionally private so that `identity` and `asset` are not part of the
+    /// public interface.
     #[inline]
     fn new(identity: Identity<C>, asset: Asset) -> Self {
         Self { identity, asset }
@@ -853,7 +852,7 @@ where
     ///
     /// # Note
     ///
-    /// When using this function, be sure to check that [`can_upgrade`](Self::can_upgrade) returns
+    /// When using this method, be sure to check that [`can_upgrade`](Self::can_upgrade) returns
     /// `true`. Otherwise, using the sender returned here will most likely return an error when
     /// posting to the ledger.
     #[inline]
@@ -923,9 +922,9 @@ where
     ///
     /// # Note
     ///
-    /// When using this function, be sure to check that [`SenderProof::can_upgrade`] returns
-    /// `true`. Otherwise, using the sender returned here will most likely return an error when
-    /// posting to the ledger.
+    /// When using this method, be sure to check that [`SenderProof::can_upgrade`] returns `true`.
+    /// Otherwise, using the sender returned here will most likely return an error when posting to
+    /// the ledger.
     #[inline]
     pub fn upgrade<S>(self, proof: SenderProof<C, S>) -> Sender<C, S>
     where
@@ -1089,8 +1088,8 @@ where
     ///
     /// # Safety
     ///
-    /// This function can only be called once we check that `void_number` is not already stored
-    /// on the ledger. See [`is_unspent`](Self::is_unspent).
+    /// This method can only be called once we check that `void_number` is not already stored on
+    /// the ledger. See [`is_unspent`](Self::is_unspent).
     fn spend(
         &mut self,
         void_number: Self::ValidVoidNumber,
@@ -1312,8 +1311,8 @@ where
     ///
     /// # Safety
     ///
-    /// This function can only be called once we check that `utxo` is not already stored
-    /// on the ledger. See [`is_not_registered`](Self::is_not_registered).
+    /// This method can only be called once we check that `utxo` is not already stored on the
+    /// ledger. See [`is_not_registered`](Self::is_not_registered).
     fn register(
         &mut self,
         utxo: Self::ValidUtxo,

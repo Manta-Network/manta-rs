@@ -21,7 +21,7 @@
 // TODO:  See if we can get rid of the `Copy` restriction on `ValidProof` and `SuperPostingKey`.
 // TODO:  Add `generate_context`/`generate_proof` logic to `SecretTransfer`.
 // TODO:  Have a compile-time way to check if proof generation is used for a certain shape,
-//        so that the `generate_context`/`generate_proof` functions can only exist on the right
+//        so that the `generate_context`/`generate_proof` method can only exist on the right
 //        shape implementations, instead of failing at runtime with `None`.
 
 use crate::{
@@ -1229,16 +1229,20 @@ pub mod canonical {
             commitment_scheme: &C::CommitmentScheme,
             asset: Asset,
             rng: &mut R,
-        ) -> Result<(Mint<C>, OpenSpend<C>), IntegratedEncryptionSchemeError<C>>
+        ) -> Result<Mint<C>, IntegratedEncryptionSchemeError<C>>
         where
             R: CryptoRng + RngCore + ?Sized,
             Standard: Distribution<AssetParameters<C>>,
         {
-            let InternalReceiver {
-                receiver,
-                open_spend,
-            } = identity.into_internal_receiver(commitment_scheme, asset, rng)?;
-            Ok((Mint::build(asset, receiver), open_spend))
+            // TODO: Add convenience method for `Identity::into_receiver`.
+            Ok(Mint::build(
+                asset,
+                identity.into_shielded(commitment_scheme).into_receiver(
+                    commitment_scheme,
+                    asset,
+                    rng,
+                )?,
+            ))
         }
     }
 

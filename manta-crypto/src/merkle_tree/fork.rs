@@ -63,8 +63,8 @@ where
     ///
     /// # Safety
     ///
-    /// This function automatically detaches all of the forks associated to this trunk. To
-    /// attach them to another trunk, use [`Fork::attach`].
+    /// This method automatically detaches all of the forks associated to this trunk. To attach them
+    /// to another trunk, use [`Fork::attach`].
     #[inline]
     pub fn into_tree(self) -> MerkleTree<C, T> {
         P::claim(self.base.unwrap())
@@ -93,7 +93,7 @@ where
     ///
     /// # Safety
     ///
-    /// If the merge succeeds, this function automatically detaches all of the forks associated to
+    /// If the merge succeeds, this method automatically detaches all of the forks associated to
     /// this trunk. To attach them to another trunk, use [`Fork::attach`]. To attach them to this
     /// trunk, [`attach`](Self::attach) can also be used.
     ///
@@ -459,9 +459,9 @@ pub mod raw {
         ///
         /// # Panics
         ///
-        /// This function can only panic if there are other outstanding strong pointers. This
-        /// function will still succeed if there are other outstanding weak pointers, but they will
-        /// all be disassociated to `strong`.
+        /// This method can only panic if there are other outstanding strong pointers. This method
+        /// will still succeed if there are other outstanding weak pointers, but they will all be
+        /// disassociated to `strong`.
         fn claim(strong: Self::Strong) -> MerkleTree<C, T>;
 
         /// Returns a new weak pointer to `strong`.

@@ -249,7 +249,7 @@ where
     /// In order for paths to compute the correct root, they should always have a `path` with
     /// length given by [`path_length`]. For [`CurrentInnerPath`], we also have the invariant
     /// that any right-siblings on the path, which can only be a sentinel value, are not stored.
-    /// This function assumes that this is the case for `path`.
+    /// This method assumes that this is the case for `path`.
     #[inline]
     pub fn new(leaf_index: Node, path: Vec<InnerDigest<C>>) -> Self {
         Self { leaf_index, path }
@@ -586,7 +586,7 @@ where
     ///
     /// # Safety
     ///
-    /// See [`InnerPath::new`] for the invariants on `path` assumed by this function.
+    /// See [`InnerPath::new`] for the invariants on `path` assumed by this method.
     #[inline]
     pub fn new(sibling_digest: LeafDigest<C>, leaf_index: Node, path: Vec<InnerDigest<C>>) -> Self {
         Self::from_inner(sibling_digest, InnerPath::new(leaf_index, path))
@@ -711,7 +711,7 @@ where
     ///
     /// # Safety
     ///
-    /// See [`CurrentInnerPath::new`] for the invariants on `path` assumed by this function.
+    /// See [`CurrentInnerPath::new`] for the invariants on `path` assumed by this method.
     #[inline]
     pub fn new(sibling_digest: LeafDigest<C>, leaf_index: Node, path: Vec<InnerDigest<C>>) -> Self {
         Self::from_inner(sibling_digest, CurrentInnerPath::new(leaf_index, path))

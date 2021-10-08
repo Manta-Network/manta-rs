@@ -668,7 +668,7 @@ where
         M: Default,
         S: Default,
     {
-        // TODO: Remove duplicated function calls.
+        // TODO: Remove duplicated method calls.
 
         let mut inner_tree = InnerTree::<C, M, S>::default();
 
