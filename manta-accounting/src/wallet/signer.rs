@@ -19,7 +19,7 @@
 // TODO: Use universal transfers instead of just the canonical ones.
 
 use crate::{
-    asset::{self, Asset, AssetBalance, AssetId, AssetMap, AssetMapSelection},
+    asset::{Asset, AssetBalance, AssetId, AssetMap, Selection},
     fs::{Load, LoadWith, Save, SaveWith},
     identity::{self, AssetParameters, Identity, PreSender, Utxo},
     keys::{
@@ -39,6 +39,7 @@ use core::{
     fmt::Debug,
     future::{self, Future, Ready},
     hash::Hash,
+    mem,
     ops::Range,
 };
 use manta_crypto::{Set, VerifiedSet};
@@ -46,9 +47,6 @@ use rand::{
     distributions::{Distribution, Standard},
     CryptoRng, RngCore,
 };
-
-///
-pub type Selection<D> = asset::Selection<Index<D>, Vec<(Index<D>, AssetBalance)>, Vec<Index<D>>>;
 
 /// Rollback Trait
 pub trait Rollback {
@@ -266,6 +264,9 @@ where
 
     /// Encryption Error
     EncryptionError(IntegratedEncryptionSchemeError<C>),
+
+    /// Insufficient Balance
+    InsufficientBalance(Asset),
 
     /// Proof System Error
     ProofSystemError(ProofSystemError<C>),
@@ -513,6 +514,7 @@ where
         ))
     }
 
+    /* FIXME[remove]:
     /// Builds [`PrivateTransfer`] transactions to send `asset` to an `external_receiver`.
     #[inline]
     pub fn private_transfer<C, R>(
@@ -574,6 +576,7 @@ where
 
         todo!()
     }
+    */
 
     /// Looks for an index that can decrypt the given `encrypted_asset`.
     #[inline]
@@ -653,7 +656,7 @@ where
     deposit: Option<(M::Key, Asset)>,
 
     /// Pending Withdraw Data
-    withdraw: Option<(AssetId, AssetMapSelection<M>)>,
+    withdraw: Vec<M::Key>,
 }
 
 impl<M> PendingAssetMap<M>
@@ -663,20 +666,16 @@ where
     /// Commits the pending asset map data to `assets`.
     #[inline]
     fn commit(&mut self, assets: &mut M) {
-        self.withdraw = None;
         if let Some((key, asset)) = self.deposit.take() {
             assets.insert(key, asset);
         }
+        assets.remove_all(mem::take(&mut self.withdraw))
     }
 
-    /// Rolls back the pending asset map data updating `assets`.
+    /// Clears the pending asset map.
     #[inline]
-    fn rollback(&mut self, assets: &mut M) {
-        self.deposit = None;
-        if let Some((asset_id, selection)) = self.withdraw.take() {
-            assets.insert_all_same(asset_id, selection.balances);
-            assets.insert_all_zeroes(asset_id, selection.zeroes);
-        }
+    fn rollback(&mut self) {
+        *self = Default::default()
     }
 }
 
@@ -792,62 +791,6 @@ where
         Ok(SyncResponse { assets })
     }
 
-    /// Selects `asset` from the asset distribution, returning it back if there was an insufficient
-    /// balance.
-    #[inline]
-    fn select(&mut self, asset: Asset) -> Result<AssetMapSelection<M>, Asset> {
-        /*
-        self.assets
-            .select(asset, &self.selection_strategy)
-            .ok_or(asset)
-        */
-        todo!()
-    }
-
-    /// Prepares a `request` for signing.
-    #[inline]
-    fn prepare(&mut self, request: SignRequest<C>) {
-        /* TODO:
-        match transaction {
-            Transaction::Mint(asset) => Ok((asset.id, SignRequest::Mint(asset))),
-            Transaction::PrivateTransfer(asset, receiver) => {
-                let Selection {
-                    change,
-                    balances,
-                    zeroes,
-                } = self.select(asset)?;
-                Ok((
-                    asset.id,
-                    SignRequest::PrivateTransfer {
-                        total: asset,
-                        change,
-                        balances: balances.collect(),
-                        zeroes: zeroes.collect(),
-                        receiver,
-                    },
-                ))
-            }
-            Transaction::Reclaim(asset) => {
-                let Selection {
-                    change,
-                    balances,
-                    zeroes,
-                } = self.select(asset)?;
-                Ok((
-                    asset.id,
-                    SignRequest::Reclaim {
-                        total: asset,
-                        change,
-                        balances: balances.collect(),
-                        zeroes: zeroes.collect(),
-                    },
-                ))
-            }
-        }
-        */
-        todo!()
-    }
-
     /// Returns a [`Sender`] for the key at the given `index`.
     #[inline]
     fn get_sender(&self, index: Index<D>, asset: Asset) -> Result<Sender<C>, SenderError<D, C>>
@@ -879,6 +822,37 @@ where
             .map_err(Error::ProofSystemError)
     }
 
+    /// Selects `asset` from the asset distribution, returning it back if there was an insufficient
+    /// balance.
+    #[inline]
+    fn select(&self, asset: Asset) -> Result<Selection<M>, Asset> {
+        let selection = self.assets.select(asset);
+        if selection.is_empty() {
+            Err(asset)
+        } else {
+            Ok(selection)
+        }
+    }
+
+    /// Signs a withdraw request.
+    #[inline]
+    fn sign_withdraw(
+        &mut self,
+        asset: Asset,
+        receiver: Option<ShieldedIdentity<C>>,
+    ) -> SignResult<D, C, Self>
+    where
+        Standard: Distribution<AssetParameters<C>>,
+    {
+        let selection = self.select(asset).map_err(Error::InsufficientBalance)?;
+        // let zeroes = self.assets.zeroes(asset.id);
+
+        // FIXME: Implement the signing.
+
+        self.pending_assets.withdraw = vec![]; // FIXME: Push changes here as we go along
+        todo!()
+    }
+
     /// Signs the `request`, generating transfer posts.
     #[inline]
     fn sign(&mut self, request: SignRequest<C>) -> SignResult<D, C, Self>
@@ -895,14 +869,10 @@ where
                 self.pending_assets.deposit = Some((owner.reduce(), asset));
                 Ok(SignResponse::new(asset.value, vec![mint_post]))
             }
-            SignRequest::PrivateTransfer(..) => {
-                // FIXME: implement
-                todo!()
+            SignRequest::PrivateTransfer(asset, receiver) => {
+                self.sign_withdraw(asset, Some(receiver))
             }
-            SignRequest::Reclaim(..) => {
-                // FIXME: implement
-                todo!()
-            }
+            SignRequest::Reclaim(asset) => self.sign_withdraw(asset, None),
         }
     }
 
@@ -919,7 +889,7 @@ where
     fn rollback(&mut self) {
         self.signer.account.internal_range_shift_to_start();
         self.utxo_set.rollback();
-        self.pending_assets.rollback(&mut self.assets);
+        self.pending_assets.rollback();
     }
 
     /// Commits or rolls back the state depending on the value of `sync_state`.
