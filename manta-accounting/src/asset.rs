@@ -322,6 +322,12 @@ impl Asset {
         Self::new(id, AssetBalance(0))
     }
 
+    /// Returns `true` if `self` is a zero [`Asset`] of some [`AssetId`].
+    #[inline]
+    pub const fn is_zero(&self) -> bool {
+        self.value.0 == 0
+    }
+
     /// Checks if the `rhs` asset has the same [`AssetId`].
     #[inline]
     pub const fn same_id(&self, rhs: &Self) -> bool {
@@ -342,6 +348,27 @@ impl Asset {
     #[inline]
     pub fn into_bytes(self) -> [u8; Self::SIZE] {
         into_array_unchecked(self.accumulated::<Vec<_>>())
+    }
+
+    /// Returns [`self.value`](Self::value) if the given `id` matches [`self.id`](Self::id).
+    #[inline]
+    pub const fn value_of(&self, id: AssetId) -> Option<AssetBalance> {
+        if self.id.0 == id.0 {
+            Some(self.value)
+        } else {
+            None
+        }
+    }
+
+    /// Returns a mutable reference to [`self.value`](Self::value) if the given `id` matches
+    /// [`self.id`](Self::id).
+    #[inline]
+    pub fn value_of_mut(&mut self, id: AssetId) -> Option<&mut AssetBalance> {
+        if self.id.0 == id.0 {
+            Some(&mut self.value)
+        } else {
+            None
+        }
     }
 }
 
@@ -586,13 +613,13 @@ pub trait AssetMap: Default {
     /// Keys are used to access the underlying asset balances.
     type Key;
 
-    // TODO: Turn `select` and `zeroes` back into iterator returning functions.
+    // TODO: Turn `select` and `zeroes` back into iterator returning methods.
 
     /// Selects asset keys which total up to at least `asset` in value.
     fn select(&self, asset: Asset) -> Selection<Self>;
 
-    /// Returns all of the keys which have zero balance for the given `id`.
-    fn zeroes(&self, id: AssetId) -> Vec<Self::Key>;
+    /// Returns at most `n` zero assets with the given `id`.
+    fn zeroes(&self, n: usize, id: AssetId) -> Vec<Self::Key>;
 
     /// Inserts `asset` at the `key` in the map.
     fn insert(&mut self, key: Self::Key, asset: Asset);
@@ -619,7 +646,7 @@ pub trait AssetMap: Default {
 
     /// Inserts all of the assets in `iter` using a fixed `id` and zero value.
     #[inline]
-    fn insert_all_zeroes<I>(&mut self, id: AssetId, iter: I)
+    fn insert_zeroes<I>(&mut self, id: AssetId, iter: I)
     where
         I: IntoIterator<Item = Self::Key>,
     {

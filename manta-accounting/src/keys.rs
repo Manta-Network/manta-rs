@@ -21,6 +21,7 @@
 
 // TODO: Check to make sure we conform to the specification and then make a note about it in the
 //       module documentation, and add a link to the specification.
+// TODO: Try to get rid of `KeyOwned` if possible, or at least minimize its use.
 
 use core::{convert::TryFrom, fmt::Debug, hash::Hash, ops::Range};
 

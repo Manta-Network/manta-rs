@@ -1312,6 +1312,60 @@ pub mod canonical {
             )
         }
     }
+
+    /// Canonical Transaction Type
+    pub enum Transaction<C>
+    where
+        C: Configuration,
+    {
+        /// Mint Private Asset
+        Mint(Asset),
+
+        /// Private Transfer Asset to Receiver
+        PrivateTransfer(Asset, ShieldedIdentity<C>),
+
+        /// Reclaim Private Asset
+        Reclaim(Asset),
+    }
+
+    impl<C> Transaction<C>
+    where
+        C: Configuration,
+    {
+        /// Checks that `self` can be executed for a given `balance` state, returning the
+        /// transaction kind if successful, and returning the asset back if the balance was
+        /// insufficient.
+        #[inline]
+        pub fn check<F>(&self, balance: F) -> Result<TransactionKind, Asset>
+        where
+            F: FnOnce(Asset) -> bool,
+        {
+            match self {
+                Self::Mint(asset) => Ok(TransactionKind::Deposit(*asset)),
+                Self::PrivateTransfer(asset, _) | Self::Reclaim(asset) => {
+                    if balance(*asset) {
+                        Ok(TransactionKind::Withdraw(*asset))
+                    } else {
+                        Err(*asset)
+                    }
+                }
+            }
+        }
+    }
+
+    /// Transaction Kind
+    #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+    pub enum TransactionKind {
+        /// Deposit Transaction
+        ///
+        /// A transaction of this kind will result in a deposit of `asset`.
+        Deposit(Asset),
+
+        /// Withdraw Transaction
+        ///
+        /// A transaction of this kind will result in a withdraw of `asset`.
+        Withdraw(Asset),
+    }
 }
 
 /* TODO:

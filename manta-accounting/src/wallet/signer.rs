@@ -19,7 +19,7 @@
 // TODO: Use universal transfers instead of just the canonical ones.
 
 use crate::{
-    asset::{Asset, AssetBalance, AssetId, AssetMap, Selection},
+    asset::{Asset, AssetId, AssetMap, Selection},
     fs::{Load, LoadWith, Save, SaveWith},
     identity::{self, AssetParameters, Identity, PreSender, Utxo},
     keys::{
@@ -28,7 +28,7 @@ use crate::{
     },
     transfer::{
         self,
-        canonical::{Mint, PrivateTransfer, Reclaim},
+        canonical::{Mint, PrivateTransfer, Reclaim, Transaction},
         EncryptedAsset, IntegratedEncryptionSchemeError, ProofSystemError, ProvingContext,
         Receiver, Sender, ShieldedIdentity, Transfer, TransferPost,
     },
@@ -110,7 +110,7 @@ where
     where
         I: IntoIterator<Item = (Utxo<C>, EncryptedAsset<C>)>;
 
-    /// Signs a transfer `request` and returns the ledger transfer posts if successful.
+    /// Signs a `transaction` and returns the ledger transfer posts if successful.
     ///
     /// # Safety
     ///
@@ -121,7 +121,7 @@ where
     ///
     /// See the [`Rollback`] trait for expectations on the behavior of [`commit`](Self::commit)
     /// and [`rollback`](Self::rollback).
-    fn sign(&mut self, request: SignRequest<C>) -> Self::SignFuture;
+    fn sign(&mut self, transaction: Transaction<C>) -> Self::SignFuture;
 
     /// Commits to the state after the last call to [`sign`](Self::sign).
     ///
@@ -182,48 +182,11 @@ pub struct SyncResponse {
     pub assets: Vec<Asset>,
 }
 
-/// Signer Signing Request
-///
-/// This `struct` is used by the [`sign`](Connection::sign) method on [`Connection`].
-/// See its documentation for more.
-pub enum SignRequest<C>
-where
-    C: transfer::Configuration,
-{
-    /// Mint Transaction
-    Mint(Asset),
-
-    /// Private Transfer Transaction
-    PrivateTransfer(Asset, ShieldedIdentity<C>),
-
-    /// Reclaim Transaction
-    Reclaim(Asset),
-}
-
-impl<C> SignRequest<C>
-where
-    C: transfer::Configuration,
-{
-    /// Returns the underlying asset of the transaction.
+impl SyncResponse {
+    /// Builds a new [`SyncResponse`] from `assets`.
     #[inline]
-    pub fn asset(&self) -> Asset {
-        match self {
-            Self::Mint(asset) => *asset,
-            Self::PrivateTransfer(asset, _) => *asset,
-            Self::Reclaim(asset) => *asset,
-        }
-    }
-
-    /// Returns `true` if the transaction is a deposit relative to the poster.
-    #[inline]
-    pub fn is_deposit(&self) -> bool {
-        matches!(self, Self::Mint(_))
-    }
-
-    /// Returns `true` if the transaction is a withdraw relative to the poster.
-    #[inline]
-    pub fn is_withdraw(&self) -> bool {
-        !self.is_deposit()
+    pub fn new(assets: Vec<Asset>) -> Self {
+        Self { assets }
     }
 }
 
@@ -235,9 +198,6 @@ pub struct SignResponse<C>
 where
     C: transfer::Configuration,
 {
-    /// Resulting Balance to Deposit
-    pub deposit: AssetBalance,
-
     /// Transfer Posts
     pub posts: Vec<TransferPost<C>>,
 }
@@ -246,10 +206,10 @@ impl<C> SignResponse<C>
 where
     C: transfer::Configuration,
 {
-    /// Builds a new [`SignResponse`] from `deposit` and `posts`.
+    /// Builds a new [`SignResponse`] from `posts`.
     #[inline]
-    pub fn new(deposit: AssetBalance, posts: Vec<TransferPost<C>>) -> Self {
-        Self { deposit, posts }
+    pub fn new(posts: Vec<TransferPost<C>>) -> Self {
+        Self { posts }
     }
 }
 
@@ -514,70 +474,6 @@ where
         ))
     }
 
-    /* FIXME[remove]:
-    /// Builds [`PrivateTransfer`] transactions to send `asset` to an `external_receiver`.
-    #[inline]
-    pub fn private_transfer<C, R>(
-        &mut self,
-        commitment_scheme: &C::CommitmentScheme,
-        asset: Asset,
-        senders: Vec<(Index<D>, AssetBalance)>,
-        external_receiver: ShieldedIdentity<C>,
-        rng: &mut R,
-    ) -> Option<Vec<PrivateTransfer<C>>>
-    where
-        C: transfer::Configuration<SecretKey = D::SecretKey>,
-        R: CryptoRng + RngCore + ?Sized,
-        Standard: Distribution<AssetParameters<C>>,
-    {
-        /* FIXME:
-        let mut sender_total = AssetBalance(0);
-        let mut pre_senders = senders
-            .into_iter()
-            .map(|(index, value)| {
-                sender_total += value;
-                self.get_pre_sender(index, commitment_scheme, asset.id.with(value))
-            })
-            .collect::<Result<Vec<_>, _>>()
-            .ok()?;
-
-        let mint = if pre_senders.len() % 2 == 1 {
-            let (mint, open_spend) = self.mint_zero(commitment_scheme, asset.id, rng).ok()?;
-            pre_senders.push(open_spend.map(move |os| os.into_pre_sender(commitment_scheme)));
-            Some(mint)
-        } else {
-            None
-        };
-
-        let mut transfers = Vec::new();
-        let mut accumulator = self
-            .next_internal_identity()?
-            .into_pre_sender(commitment_scheme, Asset::zero(asset.id));
-        for pre_sender in pre_senders {
-            let (next_receiver, next_open_spend) =
-                self.next_change_receiver(commitment_scheme)?.value.into();
-            transfers.push(PrivateTransfer::build(
-                [accumulator.into_sender(), pre_sender.value],
-                [
-                    next_receiver,
-                    self.next_empty_receiver(commitment_scheme, asset.id, rng)?,
-                ],
-            ));
-            accumulator = next_open_spend.into_pre_sender(commitment_scheme);
-        }
-
-        let external_receiver = external_receiver.into_receiver(commitment_scheme, asset, rng);
-
-        transfers.push(PrivateTransfer::build(
-            [accumulator.into_sender(), self.next_empty_sender()],
-            [external_receiver, change],
-        ));
-        */
-
-        todo!()
-    }
-    */
-
     /// Looks for an index that can decrypt the given `encrypted_asset`.
     #[inline]
     pub fn find_external_asset<C>(
@@ -588,6 +484,7 @@ where
         C: transfer::Configuration<SecretKey = D::SecretKey>,
         Standard: Distribution<AssetParameters<C>>,
     {
+        // FIXME: Simplify this implementation.
         let open_spend = self
             .account
             .external_keys(&self.secret_key_source)
@@ -648,28 +545,37 @@ where
 /// Pending Asset Map
 #[derive(derivative::Derivative)]
 #[derivative(Default(bound = ""))]
-struct PendingAssetMap<M>
+struct PendingAssetMap<D>
 where
-    M: AssetMap + ?Sized,
+    D: DerivedSecretKeyGenerator,
 {
-    /// Pending Deposit Data
-    deposit: Option<(M::Key, Asset)>,
+    /// Pending Insert Data
+    insert: Option<(InternalIndex<D>, Asset)>,
 
-    /// Pending Withdraw Data
-    withdraw: Vec<M::Key>,
+    /// Pending Insert Zeroes Data
+    insert_zeroes: Option<(AssetId, Vec<InternalIndex<D>>)>,
+
+    /// Pending Remove Data
+    remove: Vec<InternalIndex<D>>,
 }
 
-impl<M> PendingAssetMap<M>
+impl<D> PendingAssetMap<D>
 where
-    M: AssetMap + ?Sized,
+    D: DerivedSecretKeyGenerator,
 {
     /// Commits the pending asset map data to `assets`.
     #[inline]
-    fn commit(&mut self, assets: &mut M) {
-        if let Some((key, asset)) = self.deposit.take() {
-            assets.insert(key, asset);
+    fn commit<M>(&mut self, assets: &mut M)
+    where
+        M: AssetMap<Key = Index<D>> + ?Sized,
+    {
+        if let Some((key, asset)) = self.insert.take() {
+            assets.insert(key.reduce(), asset);
         }
-        assets.remove_all(mem::take(&mut self.withdraw))
+        if let Some((asset_id, zeroes)) = self.insert_zeroes.take() {
+            assets.insert_zeroes(asset_id, zeroes.into_iter().map(Index::reduce));
+        }
+        assets.remove_all(mem::take(&mut self.remove).into_iter().map(Index::reduce))
     }
 
     /// Clears the pending asset map.
@@ -704,7 +610,7 @@ where
     assets: M,
 
     /// Pending Asset Distribution
-    pending_assets: PendingAssetMap<M>,
+    pending_assets: PendingAssetMap<D>,
 
     /// Random Number Generator
     rng: R,
@@ -726,7 +632,7 @@ where
         proving_context: ProvingContext<C>,
         utxo_set: C::UtxoSet,
         assets: M,
-        pending_assets: PendingAssetMap<M>,
+        pending_assets: PendingAssetMap<D>,
         rng: R,
     ) -> Self {
         Self {
@@ -788,7 +694,7 @@ where
             //        insert should always work here.
             let _ = self.utxo_set.try_insert(utxo);
         }
-        Ok(SyncResponse { assets })
+        Ok(SyncResponse::new(assets))
     }
 
     /// Returns a [`Sender`] for the key at the given `index`.
@@ -834,7 +740,7 @@ where
         }
     }
 
-    /// Signs a withdraw request.
+    /// Signs a withdraw transaction.
     #[inline]
     fn sign_withdraw(
         &mut self,
@@ -844,35 +750,40 @@ where
     where
         Standard: Distribution<AssetParameters<C>>,
     {
-        let selection = self.select(asset).map_err(Error::InsufficientBalance)?;
-        // let zeroes = self.assets.zeroes(asset.id);
+        let Selection { change, balances } =
+            self.select(asset).map_err(Error::InsufficientBalance)?;
+        let zeroes = self
+            .assets
+            .zeroes(2usize.saturating_sub(balances.len()), asset.id);
 
-        // FIXME: Implement the signing.
+        // FIXME: Implement signing.
 
-        self.pending_assets.withdraw = vec![]; // FIXME: Push changes here as we go along
+        // FIXME: Push changes here as we go along
+        self.pending_assets.insert_zeroes = Some((asset.id, vec![]));
+        self.pending_assets.remove = vec![];
         todo!()
     }
 
-    /// Signs the `request`, generating transfer posts.
+    /// Signs the `transaction`, generating transfer posts.
     #[inline]
-    fn sign(&mut self, request: SignRequest<C>) -> SignResult<D, C, Self>
+    fn sign(&mut self, transaction: Transaction<C>) -> SignResult<D, C, Self>
     where
         Standard: Distribution<AssetParameters<C>>,
     {
         self.commit();
-        match request {
-            SignRequest::Mint(asset) => {
+        match transaction {
+            Transaction::Mint(asset) => {
                 let (mint, owner) =
                     self.signer
                         .mint(&self.commitment_scheme, asset, &mut self.rng)?;
                 let mint_post = self.build_post(mint)?;
-                self.pending_assets.deposit = Some((owner.reduce(), asset));
-                Ok(SignResponse::new(asset.value, vec![mint_post]))
+                self.pending_assets.insert = Some((owner, asset));
+                Ok(SignResponse::new(vec![mint_post]))
             }
-            SignRequest::PrivateTransfer(asset, receiver) => {
+            Transaction::PrivateTransfer(asset, receiver) => {
                 self.sign_withdraw(asset, Some(receiver))
             }
-            SignRequest::Reclaim(asset) => self.sign_withdraw(asset, None),
+            Transaction::Reclaim(asset) => self.sign_withdraw(asset, None),
         }
     }
 
@@ -932,8 +843,8 @@ where
     }
 
     #[inline]
-    fn sign(&mut self, request: SignRequest<C>) -> Self::SignFuture {
-        future::ready(self.sign(request))
+    fn sign(&mut self, transaction: Transaction<C>) -> Self::SignFuture {
+        future::ready(self.sign(transaction))
     }
 
     #[inline]

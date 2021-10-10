@@ -14,18 +14,31 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Wallet Full State Implementation
+//! Full Wallet Implementation
 
 use crate::{
     asset::{Asset, AssetBalance, AssetId},
     keys::DerivedSecretKeyGenerator,
-    transfer::{Configuration, ShieldedIdentity},
+    transfer::{
+        canonical::{Transaction, TransactionKind},
+        Configuration, ShieldedIdentity,
+    },
     wallet::{
         ledger::{self, PullResponse, PushResponse},
-        signer::{self, SignRequest, SignResponse, SyncState},
+        signer::{self, SignResponse, SyncState},
     },
 };
+use alloc::{
+    collections::btree_map::{BTreeMap, Entry as BTreeMapEntry},
+    vec::Vec,
+};
 use core::marker::PhantomData;
+
+#[cfg(feature = "std")]
+use std::{
+    collections::hash_map::{Entry as HashMapEntry, HashMap, RandomState},
+    hash::BuildHasher,
+};
 
 /// Balance State
 pub trait BalanceState {
@@ -48,9 +61,7 @@ pub trait BalanceState {
     where
         I: IntoIterator<Item = Asset>,
     {
-        for asset in assets {
-            self.deposit(asset)
-        }
+        assets.into_iter().for_each(move |a| self.deposit(a))
     }
 
     /// Withdraws `asset` from the balance state without checking if it would overdraw.
@@ -62,47 +73,90 @@ pub trait BalanceState {
     fn withdraw_unchecked(&mut self, asset: Asset);
 }
 
-/* TODO: Implement these:
-impl BalanceState for Vec<Asset> {}
-impl BalanceState for BTreeMap<Asset> {}
-impl BalanceState for HashMap<Asset> {}
-*/
-
-/// Wallet Error
-///
-/// This `enum` is the error state for [`Wallet`] methods. See [`sync`](Wallet::sync) and
-/// [`post`](Wallet::post) for more.
-pub enum Error<D, C, S, L>
-where
-    D: DerivedSecretKeyGenerator,
-    C: Configuration<SecretKey = D::SecretKey>,
-    S: signer::Connection<D, C>,
-    L: ledger::Connection<C> + ?Sized,
-{
-    /// Insufficient Balance
-    InsufficientBalance(Asset),
-
-    /// Signer Error
-    SignerError(signer::Error<D, C, S::Error>),
-
-    /// Ledger Error
-    LedgerError(L::Error),
+/// Performs an unchecked withdraw on `balance`, panicking on overflow.
+#[inline]
+fn withdraw_unchecked(balance: Option<&mut AssetBalance>, withdraw: AssetBalance) {
+    let balance = balance.expect("Trying to withdraw from a zero balance.");
+    *balance = balance
+        .checked_sub(withdraw)
+        .expect("Overdrawn balance state.");
 }
 
-impl<D, C, S, L> From<signer::Error<D, C, S::Error>> for Error<D, C, S, L>
-where
-    D: DerivedSecretKeyGenerator,
-    C: Configuration<SecretKey = D::SecretKey>,
-    S: signer::Connection<D, C>,
-    L: ledger::Connection<C> + ?Sized,
-{
+impl BalanceState for Vec<Asset> {
     #[inline]
-    fn from(err: signer::Error<D, C, S::Error>) -> Self {
-        Self::SignerError(err)
+    fn balance(&self, id: AssetId) -> AssetBalance {
+        self.iter()
+            .find_map(move |a| a.value_of(id))
+            .unwrap_or_default()
+    }
+
+    #[inline]
+    fn deposit(&mut self, asset: Asset) {
+        self.push(asset)
+    }
+
+    #[inline]
+    fn withdraw_unchecked(&mut self, asset: Asset) {
+        if !asset.is_zero() {
+            withdraw_unchecked(
+                self.iter_mut().find_map(move |a| a.value_of_mut(asset.id)),
+                asset.value,
+            )
+        }
     }
 }
+
+/// Adds implementation of [`BalanceState`] for a map type with the given `$entry` type.
+macro_rules! impl_balance_state_map_body {
+    ($entry:tt) => {
+        #[inline]
+        fn balance(&self, id: AssetId) -> AssetBalance {
+            self.get(&id).copied().unwrap_or_default()
+        }
+
+        #[inline]
+        fn deposit(&mut self, asset: Asset) {
+            match self.entry(asset.id) {
+                $entry::Vacant(entry) => {
+                    entry.insert(asset.value);
+                }
+                $entry::Occupied(entry) => {
+                    *entry.into_mut() += asset.value;
+                }
+            }
+        }
+
+        #[inline]
+        fn withdraw_unchecked(&mut self, asset: Asset) {
+            if !asset.is_zero() {
+                withdraw_unchecked(self.get_mut(&asset.id), asset.value);
+            }
+        }
+    };
+}
+
+/// B-Tree Map [`BalanceState`] Implementation
+pub type BTreeMapBalanceState = BTreeMap<AssetId, AssetBalance>;
+
+impl BalanceState for BTreeMapBalanceState {
+    impl_balance_state_map_body! { BTreeMapEntry }
+}
+
+/// Hash Map [`BalanceState`] Implementation
+#[cfg(feature = "std")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
+pub type HashMapBalanceState<S = RandomState> = HashMap<AssetId, AssetBalance, S>;
+
+#[cfg(feature = "std")]
+impl<S> BalanceState for HashMapBalanceState<S>
+where
+    S: BuildHasher,
+{
+    impl_balance_state_map_body! { HashMapEntry }
+}
+
 /// Wallet
-pub struct Wallet<D, C, S, L, B>
+pub struct Wallet<D, C, S, L, B = BTreeMapBalanceState>
 where
     D: DerivedSecretKeyGenerator,
     C: Configuration<SecretKey = D::SecretKey>,
@@ -197,17 +251,17 @@ where
         Ok(())
     }
 
-    /// Checks if there is enough balance in the balance state to perform the `transaction`.
+    /// Checks if `transaction` can be executed on the balance state of `self`, returning the
+    /// kind of update that should be performed on the balance state if the transaction is
+    /// successfully posted to the ledger.
+    ///
+    /// # Safety
+    ///
+    /// This method is already called by [`post`](Self::post), but can be used by custom
+    /// implementations to perform checks elsewhere.
     #[inline]
-    fn prepare(&self, transaction: &SignRequest<C>) -> Result<TransactionKind, Asset> {
-        let asset = transaction.asset();
-        if transaction.is_deposit() {
-            Ok(TransactionKind::Deposit(asset.id))
-        } else if self.assets.contains(asset) {
-            Ok(TransactionKind::Withdraw(asset))
-        } else {
-            Err(asset)
-        }
+    pub fn check(&self, transaction: &Transaction<C>) -> Result<TransactionKind, Asset> {
+        transaction.check(move |a| self.contains(a))
     }
 
     /// Tries to commit to the current signer state.
@@ -243,23 +297,18 @@ where
     /// This method returns an error in any other case. The internal state of the wallet is kept
     /// consistent between calls and recoverable errors are returned for the caller to handle.
     #[inline]
-    pub async fn post(&mut self, transaction: SignRequest<C>) -> Result<bool, Error<D, C, S, L>> {
+    pub async fn post(&mut self, transaction: Transaction<C>) -> Result<bool, Error<D, C, S, L>> {
         self.sync().await?;
-        let transaction_kind = self
-            .prepare(&transaction)
+        let balance_update = self
+            .check(&transaction)
             .map_err(Error::InsufficientBalance)?;
-        let SignResponse { deposit, posts } = self.signer.sign(transaction).await?;
+        let SignResponse { posts } = self.signer.sign(transaction).await?;
         match self.ledger.push(posts).await {
             Ok(PushResponse { success: true }) => {
                 self.try_commit().await;
-                match transaction_kind {
-                    TransactionKind::Deposit(asset_id) => {
-                        self.assets.deposit(asset_id.with(deposit));
-                    }
-                    TransactionKind::Withdraw(asset) => {
-                        self.assets.withdraw_unchecked(asset);
-                        self.assets.deposit(asset.id.with(deposit));
-                    }
+                match balance_update {
+                    TransactionKind::Deposit(asset) => self.assets.deposit(asset),
+                    TransactionKind::Withdraw(asset) => self.assets.withdraw_unchecked(asset),
                 }
                 Ok(true)
             }
@@ -283,11 +332,36 @@ where
     }
 }
 
-/// Transaction Kind
-enum TransactionKind {
-    /// Deposit Transaction
-    Deposit(AssetId),
+/// Wallet Error
+///
+/// This `enum` is the error state for [`Wallet`] methods. See [`sync`](Wallet::sync) and
+/// [`post`](Wallet::post) for more.
+pub enum Error<D, C, S, L>
+where
+    D: DerivedSecretKeyGenerator,
+    C: Configuration<SecretKey = D::SecretKey>,
+    S: signer::Connection<D, C>,
+    L: ledger::Connection<C> + ?Sized,
+{
+    /// Insufficient Balance
+    InsufficientBalance(Asset),
 
-    /// Withdraw Transaction
-    Withdraw(Asset),
+    /// Signer Error
+    SignerError(signer::Error<D, C, S::Error>),
+
+    /// Ledger Error
+    LedgerError(L::Error),
+}
+
+impl<D, C, S, L> From<signer::Error<D, C, S::Error>> for Error<D, C, S, L>
+where
+    D: DerivedSecretKeyGenerator,
+    C: Configuration<SecretKey = D::SecretKey>,
+    S: signer::Connection<D, C>,
+    L: ledger::Connection<C> + ?Sized,
+{
+    #[inline]
+    fn from(err: signer::Error<D, C, S::Error>) -> Self {
+        Self::SignerError(err)
+    }
 }
