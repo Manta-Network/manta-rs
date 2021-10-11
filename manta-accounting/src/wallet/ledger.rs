@@ -17,7 +17,7 @@
 //! Ledger Source
 
 // TODO: Move to streams so we can process some of the data as it's incoming.
-// TODO: Add non-atomic transactions.
+// TODO: Add non-atomic transactions?
 
 use crate::{
     identity::{Utxo, VoidNumber},
@@ -32,7 +32,7 @@ where
     C: transfer::Configuration,
 {
     /// Ledger State Checkpoint Type
-    type Checkpoint: Default + Ord;
+    type Checkpoint: Default + PartialOrd;
 
     /// Receiver Data Iterator Type
     type ReceiverData: IntoIterator<Item = (Utxo<C>, EncryptedAsset<C>)>;

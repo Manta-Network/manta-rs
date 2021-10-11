@@ -75,6 +75,11 @@ where
     D: DerivedSecretKeyGenerator,
     C: transfer::Configuration<SecretKey = D::SecretKey>,
 {
+    /* FIXME:
+    /// Ledger Checkpoint Type
+    type Checkpoint;
+    */
+
     /// Sync Future Type
     ///
     /// Future for the [`sync`](Self::sync) method.
@@ -553,10 +558,10 @@ where
     insert: Option<(InternalIndex<D>, Asset)>,
 
     /// Pending Insert Zeroes Data
-    insert_zeroes: Option<(AssetId, Vec<InternalIndex<D>>)>,
+    insert_zeroes: Option<(AssetId, Vec<Index<D>>)>,
 
     /// Pending Remove Data
-    remove: Vec<InternalIndex<D>>,
+    remove: Vec<Index<D>>,
 }
 
 impl<D> PendingAssetMap<D>
@@ -573,9 +578,9 @@ where
             assets.insert(key.reduce(), asset);
         }
         if let Some((asset_id, zeroes)) = self.insert_zeroes.take() {
-            assets.insert_zeroes(asset_id, zeroes.into_iter().map(Index::reduce));
+            assets.insert_zeroes(asset_id, zeroes);
         }
-        assets.remove_all(mem::take(&mut self.remove).into_iter().map(Index::reduce))
+        assets.remove_all(mem::take(&mut self.remove))
     }
 
     /// Clears the pending asset map.
@@ -677,6 +682,8 @@ where
         I: IntoIterator<Item = (Utxo<C>, EncryptedAsset<C>)>,
         Standard: Distribution<AssetParameters<C>>,
     {
+        // FIXME: Add checkpoint to sync so that we can make sure we are synchronizing correctly.
+
         self.start_sync(sync_state);
 
         let mut assets = Vec::new();
@@ -742,7 +749,7 @@ where
 
     /// Signs a withdraw transaction.
     #[inline]
-    fn sign_withdraw(
+    fn sign_withdraw_inner(
         &mut self,
         asset: Asset,
         receiver: Option<ShieldedIdentity<C>>,
@@ -752,16 +759,71 @@ where
     {
         let Selection { change, balances } =
             self.select(asset).map_err(Error::InsufficientBalance)?;
+
         let zeroes = self
             .assets
-            .zeroes(2usize.saturating_sub(balances.len()), asset.id);
+            .zeroes(2_usize.saturating_sub(balances.len()), asset.id);
 
-        // FIXME: Implement signing.
+        let mut new_zeroes = vec![];
+        self.pending_assets.remove = balances.iter().map(move |(k, _)| k.clone()).collect();
 
-        // FIXME: Push changes here as we go along
-        self.pending_assets.insert_zeroes = Some((asset.id, vec![]));
-        self.pending_assets.remove = vec![];
-        todo!()
+        // FIXME: Implement signing:
+        /*
+        fn pad<T: Default, const N: usize>(mut v: Vec<T>) -> [T; N] {
+            v.extend(repeat_with(Default::default).take(N - v.len()));
+            into_array_unchecked(v)
+        }
+
+        fn generate<const M: usize, const N: usize>(
+            total: u128,
+            change: u128,
+            mut balances: Vec<u128>,
+        ) -> Vec<([u128; M], [u128; N])> {
+            assert!(M > 1, "M must be > 1!");
+            assert!(N > 1, "N must be > 1!");
+            assert!(!balances.is_empty(), "Balances cannot be empty!");
+
+            let mut posts = Vec::new();
+
+            while balances.len() > M {
+                let iter = balances.chunks_exact(M);
+                let mut accumulators = iter.remainder().to_vec();
+                for senders in iter {
+                    let accumulator = senders.iter().sum();
+                    posts.push((into_array_unchecked(senders), pad(vec![accumulator])));
+                    accumulators.push(accumulator);
+                }
+                balances = accumulators;
+            }
+
+            posts.push((pad(balances), pad(vec![total, change])));
+            posts
+        }
+        */
+
+        let mut posts = Vec::new();
+
+        self.pending_assets.insert_zeroes = Some((asset.id, new_zeroes));
+        Ok(SignResponse::new(posts))
+    }
+
+    /// Signs a withdraw transaction, resetting the internal state on an error.
+    #[inline]
+    fn sign_withdraw(
+        &mut self,
+        asset: Asset,
+        receiver: Option<ShieldedIdentity<C>>,
+    ) -> SignResult<D, C, Self>
+    where
+        Standard: Distribution<AssetParameters<C>>,
+    {
+        let result = self.sign_withdraw_inner(asset, receiver);
+        if result.is_err() {
+            // FIXME: Add recovery from error.
+            // TODO: Is this right: `self.rollback();`
+            todo!()
+        }
+        result
     }
 
     /// Signs the `transaction`, generating transfer posts.

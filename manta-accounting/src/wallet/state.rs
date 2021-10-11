@@ -232,6 +232,8 @@ where
     /// Pulls data from the `ledger`, synchronizing the wallet and balance state.
     #[inline]
     pub async fn sync(&mut self) -> Result<(), Error<D, C, S, L>> {
+        // FIXME: Add a checkpoint to the signer so that we can make sure that if `signer.sync`
+        //        fails, we can catch up properly.
         let PullResponse {
             checkpoint,
             receiver_data,
