@@ -24,7 +24,7 @@ use crate::{
         Configuration, ShieldedIdentity,
     },
     wallet::{
-        ledger::{self, PullResponse, PushResponse},
+        ledger::{self, Checkpoint, PullResponse, PushResponse},
         signer::{self, SignResponse, SyncState},
     },
 };
@@ -156,25 +156,25 @@ where
 }
 
 /// Wallet
-pub struct Wallet<D, C, S, L, B = BTreeMapBalanceState>
+pub struct Wallet<D, C, L, S, B = BTreeMapBalanceState>
 where
     D: DerivedSecretKeyGenerator,
     C: Configuration<SecretKey = D::SecretKey>,
-    S: signer::Connection<D, C>,
     L: ledger::Connection<C>,
+    S: signer::Connection<D, C>,
     B: BalanceState,
 {
-    /// Signer Connection
-    signer: S,
-
-    /// Signer Synchronization State
-    sync_state: SyncState,
-
     /// Ledger Connection
     ledger: L,
 
     /// Ledger Checkpoint
     checkpoint: L::Checkpoint,
+
+    /// Signer Connection
+    signer: S,
+
+    /// Signer Synchronization State
+    sync_state: SyncState,
 
     /// Balance State
     assets: B,
@@ -183,12 +183,12 @@ where
     __: PhantomData<(D, C)>,
 }
 
-impl<D, C, S, L, B> Wallet<D, C, S, L, B>
+impl<D, C, L, S, B> Wallet<D, C, L, S, B>
 where
     D: DerivedSecretKeyGenerator,
     C: Configuration<SecretKey = D::SecretKey>,
-    S: signer::Connection<D, C>,
     L: ledger::Connection<C>,
+    S: signer::Connection<D, C>,
     B: BalanceState,
 {
     /// Builds a new [`Wallet`].
@@ -231,9 +231,9 @@ where
 
     /// Pulls data from the `ledger`, synchronizing the wallet and balance state.
     #[inline]
-    pub async fn sync(&mut self) -> Result<(), Error<D, C, S, L>> {
-        // FIXME: Add a checkpoint to the signer so that we can make sure that if `signer.sync`
-        //        fails, we can catch up properly.
+    pub async fn sync(&mut self) -> Result<(), Error<D, C, L, S>> {
+        // TODO: How to recover from an `InconsistentSynchronization` error? Need some sort of
+        //       recovery mode, like starting from the beginning of the state?
         let PullResponse {
             checkpoint,
             receiver_data,
@@ -244,7 +244,11 @@ where
             .map_err(Error::LedgerError)?;
         self.assets.deposit_all(
             self.signer
-                .sync(receiver_data, self.sync_state)
+                .sync(
+                    self.sync_state,
+                    self.checkpoint.receiver_index(),
+                    receiver_data,
+                )
                 .await?
                 .assets,
         );
@@ -299,7 +303,7 @@ where
     /// This method returns an error in any other case. The internal state of the wallet is kept
     /// consistent between calls and recoverable errors are returned for the caller to handle.
     #[inline]
-    pub async fn post(&mut self, transaction: Transaction<C>) -> Result<bool, Error<D, C, S, L>> {
+    pub async fn post(&mut self, transaction: Transaction<C>) -> Result<bool, Error<D, C, L, S>> {
         self.sync().await?;
         let balance_update = self
             .check(&transaction)
@@ -338,29 +342,29 @@ where
 ///
 /// This `enum` is the error state for [`Wallet`] methods. See [`sync`](Wallet::sync) and
 /// [`post`](Wallet::post) for more.
-pub enum Error<D, C, S, L>
+pub enum Error<D, C, L, S>
 where
     D: DerivedSecretKeyGenerator,
     C: Configuration<SecretKey = D::SecretKey>,
+    L: ledger::Connection<C>,
     S: signer::Connection<D, C>,
-    L: ledger::Connection<C> + ?Sized,
 {
     /// Insufficient Balance
     InsufficientBalance(Asset),
 
-    /// Signer Error
-    SignerError(signer::Error<D, C, S::Error>),
-
     /// Ledger Error
     LedgerError(L::Error),
+
+    /// Signer Error
+    SignerError(signer::Error<D, C, S::Error>),
 }
 
-impl<D, C, S, L> From<signer::Error<D, C, S::Error>> for Error<D, C, S, L>
+impl<D, C, L, S> From<signer::Error<D, C, S::Error>> for Error<D, C, L, S>
 where
     D: DerivedSecretKeyGenerator,
     C: Configuration<SecretKey = D::SecretKey>,
+    L: ledger::Connection<C>,
     S: signer::Connection<D, C>,
-    L: ledger::Connection<C> + ?Sized,
 {
     #[inline]
     fn from(err: signer::Error<D, C, S::Error>) -> Self {

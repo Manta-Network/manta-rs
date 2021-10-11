@@ -33,6 +33,15 @@ pub trait Set {
     /// Item Stored in the [`Set`]
     type Item;
 
+    /// Returns the number of elements that are contained in `self`.
+    fn len(&self) -> usize;
+
+    /// Returns `true` if `self` contains no elements.
+    #[inline]
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     /// Returns `true` if `item` is stored in `self`.
     fn contains(&self, item: &Self::Item) -> bool;
 

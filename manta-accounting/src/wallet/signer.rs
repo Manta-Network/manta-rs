@@ -75,11 +75,6 @@ where
     D: DerivedSecretKeyGenerator,
     C: transfer::Configuration<SecretKey = D::SecretKey>,
 {
-    /* FIXME:
-    /// Ledger Checkpoint Type
-    type Checkpoint;
-    */
-
     /// Sync Future Type
     ///
     /// Future for the [`sync`](Self::sync) method.
@@ -111,7 +106,12 @@ where
     /// Pushes updates from the ledger to the wallet, synchronizing it with the ledger state and
     /// returning an updated asset distribution. Depending on the `sync_state`, the signer will
     /// either commit to the current state before synchronizing or rollback to the previous state.
-    fn sync<I>(&mut self, updates: I, sync_state: SyncState) -> Self::SyncFuture
+    fn sync<I>(
+        &mut self,
+        sync_state: SyncState,
+        starting_index: usize,
+        updates: I,
+    ) -> Self::SyncFuture
     where
         I: IntoIterator<Item = (Utxo<C>, EncryptedAsset<C>)>;
 
@@ -235,6 +235,9 @@ where
 
     /// Proof System Error
     ProofSystemError(ProofSystemError<C>),
+
+    /// Inconsistent Synchronization State
+    InconsistentSynchronization,
 
     /// Signer Connection Error
     ConnectionError(CE),
@@ -675,17 +678,13 @@ where
         )
     }
 
-    /// Updates the internal ledger state, returing the new asset distribution.
+    /// Updates the internal ledger state, returning the new asset distribution.
     #[inline]
-    fn sync<I>(&mut self, updates: I, sync_state: SyncState) -> SyncResult<D, C, Self>
+    fn sync_inner<I>(&mut self, updates: I) -> SyncResult<D, C, Self>
     where
-        I: IntoIterator<Item = (Utxo<C>, EncryptedAsset<C>)>,
+        I: Iterator<Item = (Utxo<C>, EncryptedAsset<C>)>,
         Standard: Distribution<AssetParameters<C>>,
     {
-        // FIXME: Add checkpoint to sync so that we can make sure we are synchronizing correctly.
-
-        self.start_sync(sync_state);
-
         let mut assets = Vec::new();
         for (utxo, encrypted_asset) in updates {
             // TODO: Add optimization path where we have "strong" and "weak" insertions into the
@@ -699,9 +698,28 @@ where
 
             // FIXME: Should this ever error? We should check the capacity at `updates`, then
             //        insert should always work here.
-            let _ = self.utxo_set.try_insert(utxo);
+            let _ = self.utxo_set.insert(utxo);
         }
         Ok(SyncResponse::new(assets))
+    }
+
+    /// Updates the internal ledger state, returning the new asset distribution.
+    #[inline]
+    pub fn sync<I>(
+        &mut self,
+        sync_state: SyncState,
+        starting_index: usize,
+        updates: I,
+    ) -> SyncResult<D, C, Self>
+    where
+        I: IntoIterator<Item = (Utxo<C>, EncryptedAsset<C>)>,
+        Standard: Distribution<AssetParameters<C>>,
+    {
+        self.start_sync(sync_state);
+        match self.utxo_set.len().checked_sub(starting_index) {
+            Some(diff) => self.sync_inner(updates.into_iter().skip(diff)),
+            _ => Err(Error::InconsistentSynchronization),
+        }
     }
 
     /// Returns a [`Sender`] for the key at the given `index`.
@@ -828,7 +846,7 @@ where
 
     /// Signs the `transaction`, generating transfer posts.
     #[inline]
-    fn sign(&mut self, transaction: Transaction<C>) -> SignResult<D, C, Self>
+    pub fn sign(&mut self, transaction: Transaction<C>) -> SignResult<D, C, Self>
     where
         Standard: Distribution<AssetParameters<C>>,
     {
@@ -851,7 +869,7 @@ where
 
     /// Commits to the state after the last call to [`sign`](Self::sign).
     #[inline]
-    fn commit(&mut self) {
+    pub fn commit(&mut self) {
         self.signer.account.internal_range_shift_to_end();
         self.utxo_set.commit();
         self.pending_assets.commit(&mut self.assets);
@@ -859,7 +877,7 @@ where
 
     /// Rolls back to the state before the last call to [`sign`](Self::sign).
     #[inline]
-    fn rollback(&mut self) {
+    pub fn rollback(&mut self) {
         self.signer.account.internal_range_shift_to_start();
         self.utxo_set.rollback();
         self.pending_assets.rollback();
@@ -867,11 +885,22 @@ where
 
     /// Commits or rolls back the state depending on the value of `sync_state`.
     #[inline]
-    fn start_sync(&mut self, sync_state: SyncState) {
+    pub fn start_sync(&mut self, sync_state: SyncState) {
         match sync_state {
             SyncState::Commit => self.commit(),
             SyncState::Rollback => self.rollback(),
         }
+    }
+
+    /// Generates a new [`ShieldedIdentity`] for `self` to receive assets.
+    #[inline]
+    pub fn external_receiver(&mut self) -> ExternalReceiverResult<D, C, Self>
+    where
+        Standard: Distribution<AssetParameters<C>>,
+    {
+        self.signer
+            .next_shielded(&self.commitment_scheme)
+            .map_err(Error::SecretKeyError)
     }
 }
 
@@ -897,11 +926,16 @@ where
     type Error = Infallible;
 
     #[inline]
-    fn sync<I>(&mut self, updates: I, sync_state: SyncState) -> Self::SyncFuture
+    fn sync<I>(
+        &mut self,
+        sync_state: SyncState,
+        starting_index: usize,
+        updates: I,
+    ) -> Self::SyncFuture
     where
         I: IntoIterator<Item = (Utxo<C>, EncryptedAsset<C>)>,
     {
-        future::ready(self.sync(updates, sync_state))
+        future::ready(self.sync(sync_state, starting_index, updates))
     }
 
     #[inline]
@@ -927,11 +961,7 @@ where
 
     #[inline]
     fn external_receiver(&mut self) -> Self::ExternalReceiverFuture {
-        future::ready(
-            self.signer
-                .next_shielded(&self.commitment_scheme)
-                .map_err(Error::SecretKeyError),
-        )
+        future::ready(self.external_receiver())
     }
 }
 

@@ -26,7 +26,10 @@
 
 use crate::{
     asset::{sample_asset_balances, Asset, AssetBalance, AssetBalances, AssetId},
-    identity::{self, constraint::UtxoVar, ReceiverLedger, SenderLedger, Utxo},
+    identity::{
+        self, constraint::UtxoVar, ReceiverLedger, ReceiverPostError, SenderLedger,
+        SenderPostError, Utxo,
+    },
 };
 use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash, ops::AddAssign};
@@ -40,7 +43,7 @@ use manta_crypto::{
     ies::{EncryptedMessage, IntegratedEncryptionScheme},
     set::{constraint::VerifiedSetVariable, VerifiedSet},
 };
-use manta_util::{create_seal, mixed_chain, seal, Either};
+use manta_util::{create_seal, from_variant_impl, mixed_chain, seal, Either};
 use rand::{
     distributions::{Distribution, Standard},
     CryptoRng, RngCore,
@@ -117,9 +120,6 @@ pub type Sender<C> = identity::Sender<C, <C as Configuration>::UtxoSet>;
 /// Sender Post Type
 pub type SenderPost<C> = identity::SenderPost<C, <C as Configuration>::UtxoSet>;
 
-/// Sender Post Error Type
-pub type SenderPostError<C, L> = identity::SenderPostError<C, <C as Configuration>::UtxoSet, L>;
-
 /// Sender Posting Key Type
 pub type SenderPostingKey<C, L> = identity::SenderPostingKey<C, <C as Configuration>::UtxoSet, L>;
 
@@ -129,10 +129,6 @@ pub type Receiver<C> = identity::Receiver<C, <C as Configuration>::IntegratedEnc
 /// Receiver Post Type
 pub type ReceiverPost<C> =
     identity::ReceiverPost<C, <C as Configuration>::IntegratedEncryptionScheme>;
-
-/// Receiver Post Error Type
-pub type ReceiverPostError<C, L> =
-    identity::ReceiverPostError<C, <C as Configuration>::IntegratedEncryptionScheme, L>;
 
 /// Receiver Posting Key Type
 pub type ReceiverPostingKey<C, L> =
@@ -170,21 +166,16 @@ pub type ProofSystemError<C> = <<C as Configuration>::ProofSystem as ProofSystem
 /// Transfer Ledger Super Posting Key Type
 pub type TransferLedgerSuperPostingKey<C, L> = <L as TransferLedger<C>>::SuperPostingKey;
 
-/// Transfer Ledger Error Type
-pub type TransferLedgerError<C, L> = <L as TransferLedger<C>>::Error;
-
 /// Transfer Ledger
 pub trait TransferLedger<C>:
     SenderLedger<
         C,
         C::UtxoSet,
         SuperPostingKey = (Self::ValidProof, TransferLedgerSuperPostingKey<C, Self>),
-        Error = TransferLedgerError<C, Self>,
     > + ReceiverLedger<
         C,
         C::IntegratedEncryptionScheme,
         SuperPostingKey = (Self::ValidProof, TransferLedgerSuperPostingKey<C, Self>),
-        Error = TransferLedgerError<C, Self>,
     >
 where
     C: Configuration,
@@ -204,19 +195,13 @@ where
     /// Type that allows super-traits of [`TransferLedger`] to customize posting key behavior.
     type SuperPostingKey: Copy;
 
-    /// Ledger Error
-    type Error;
-
     /// Checks that the transfer `proof` is valid.
     ///
     /// # Implementation Note
     ///
     /// This should always succeed on inputs that demonstrate that they do not require a
     /// proof, by revealing their transaction shape.
-    fn is_valid(
-        &self,
-        proof: ShapedProof<C>,
-    ) -> Result<Option<Self::ValidProof>, TransferLedgerError<C, Self>>;
+    fn is_valid(&self, proof: ShapedProof<C>) -> Option<Self::ValidProof>;
 }
 
 /// Dynamic Transfer Shape
@@ -987,56 +972,22 @@ where
 }
 
 /// Transfer Post Error
-#[derive(derivative::Derivative)]
-#[derivative(
-    Clone(bound = "TransferLedgerError<C, L>: Clone"),
-    Copy(bound = "TransferLedgerError<C, L>: Copy"),
-    Debug(bound = "TransferLedgerError<C, L>: Debug"),
-    Eq(bound = "TransferLedgerError<C, L>: Eq"),
-    Hash(bound = "TransferLedgerError<C, L>: Hash"),
-    PartialEq(bound = "TransferLedgerError<C, L>: PartialEq")
-)]
-pub enum TransferPostError<C, L>
-where
-    C: Configuration,
-    L: TransferLedger<C>,
-{
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum TransferPostError {
     /// Sender Post Error
-    Sender(SenderPostError<C, L>),
+    Sender(SenderPostError),
 
     /// Receiver Post Error
-    Receiver(ReceiverPostError<C, L>),
+    Receiver(ReceiverPostError),
 
     /// Invalid Transfer Proof Error
     ///
     /// Validity of the transfer could not be proved by the ledger.
     InvalidProof,
-
-    /// Ledger Error
-    LedgerError(TransferLedgerError<C, L>),
 }
 
-impl<C, L> From<SenderPostError<C, L>> for TransferPostError<C, L>
-where
-    C: Configuration,
-    L: TransferLedger<C>,
-{
-    #[inline]
-    fn from(err: SenderPostError<C, L>) -> Self {
-        Self::Sender(err)
-    }
-}
-
-impl<C, L> From<ReceiverPostError<C, L>> for TransferPostError<C, L>
-where
-    C: Configuration,
-    L: TransferLedger<C>,
-{
-    #[inline]
-    fn from(err: ReceiverPostError<C, L>) -> Self {
-        Self::Receiver(err)
-    }
-}
+from_variant_impl!(TransferPostError, Sender, SenderPostError);
+from_variant_impl!(TransferPostError, Receiver, ReceiverPostError);
 
 /// Transfer Post
 pub struct TransferPost<C>
@@ -1067,10 +1018,7 @@ where
 
     /// Validates `self` on the transfer `ledger`.
     #[inline]
-    pub fn validate<L>(
-        self,
-        ledger: &L,
-    ) -> Result<TransferPostingKey<C, L>, TransferPostError<C, L>>
+    pub fn validate<L>(self, ledger: &L) -> Result<TransferPostingKey<C, L>, TransferPostError>
     where
         L: TransferLedger<C>,
     {
@@ -1085,10 +1033,7 @@ where
                 .into_iter()
                 .map(move |r| r.validate(ledger))
                 .collect::<Result<_, _>>()?,
-            validity_proof: match ledger
-                .is_valid(self.validity_proof)
-                .map_err(TransferPostError::LedgerError)?
-            {
+            validity_proof: match ledger.is_valid(self.validity_proof) {
                 Some(key) => key,
                 _ => return Err(TransferPostError::InvalidProof),
             },
@@ -1119,18 +1064,18 @@ where
 {
     /// Posts `self` to the transfer `ledger`.
     #[inline]
-    pub fn post(
-        self,
-        super_key: &TransferLedgerSuperPostingKey<C, L>,
-        ledger: &mut L,
-    ) -> Result<(), TransferLedgerError<C, L>> {
-        for key in self.sender_posting_keys {
-            key.post(&(self.validity_proof, *super_key), ledger)?;
-        }
-        for key in self.receiver_posting_keys {
-            key.post(&(self.validity_proof, *super_key), ledger)?;
-        }
-        Ok(())
+    pub fn post(self, super_key: &TransferLedgerSuperPostingKey<C, L>, ledger: &mut L) -> bool {
+        // FIXME: This needs to be atomic! Add a `commit/rollback` method somewhere.
+        let proof = self.validity_proof;
+        let all_senders_posted = self
+            .sender_posting_keys
+            .into_iter()
+            .all(|k| k.post(&(proof, *super_key), ledger));
+        let all_receivers_posted = self
+            .receiver_posting_keys
+            .into_iter()
+            .all(|k| k.post(&(proof, *super_key), ledger));
+        all_senders_posted && all_receivers_posted
     }
 }
 

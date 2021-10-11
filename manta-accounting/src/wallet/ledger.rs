@@ -21,18 +21,27 @@
 
 use crate::{
     identity::{Utxo, VoidNumber},
-    transfer::{self, EncryptedAsset, TransferPost},
+    transfer::{Configuration, EncryptedAsset, TransferPost},
 };
 use alloc::vec::Vec;
 use core::future::Future;
 
+/// Ledger Checkpoint
+pub trait Checkpoint: Default + PartialOrd {
+    /// Returns the number of receivers that have participated in transactions on the ledger so far.
+    fn receiver_index(&self) -> usize;
+
+    /// Returns the number of senders that have participated in transactions on the ledger so far.
+    fn sender_index(&self) -> usize;
+}
+
 /// Ledger Source Connection
 pub trait Connection<C>
 where
-    C: transfer::Configuration,
+    C: Configuration,
 {
     /// Ledger State Checkpoint Type
-    type Checkpoint: Default + PartialOrd;
+    type Checkpoint: Checkpoint;
 
     /// Receiver Data Iterator Type
     type ReceiverData: IntoIterator<Item = (Utxo<C>, EncryptedAsset<C>)>;
@@ -91,7 +100,7 @@ pub type PushResult<C, L> = Result<PushResponse, <L as Connection<C>>::Error>;
 /// See its documentation for more.
 pub struct PullResponse<C, L>
 where
-    C: transfer::Configuration,
+    C: Configuration,
     L: Connection<C> + ?Sized,
 {
     /// Current Ledger Checkpoint
@@ -107,7 +116,7 @@ where
 /// See its documentation for more.
 pub struct PullAllResponse<C, L>
 where
-    C: transfer::Configuration,
+    C: Configuration,
     L: Connection<C> + ?Sized,
 {
     /// Current Ledger Checkpoint
@@ -128,3 +137,12 @@ pub struct PushResponse {
     /// Successful Push
     pub success: bool,
 }
+
+/* TODO:
+///
+pub struct Ledger<C>
+where
+    C: Configuration, {}
+
+impl<C> TransferLedger<C> for Ledger<C> where C: Configuration {}
+*/

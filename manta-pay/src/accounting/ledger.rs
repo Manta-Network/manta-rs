@@ -137,6 +137,12 @@ impl Set for UtxoSet {
     type Item = Utxo;
 
     #[inline]
+    fn len(&self) -> usize {
+        // FIXME: Implement.
+        todo!()
+    }
+
+    #[inline]
     fn contains(&self, item: &Self::Item) -> bool {
         self.utxo_exists(item)
     }

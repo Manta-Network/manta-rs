@@ -1063,26 +1063,17 @@ where
     /// Type that allows super-traits of [`SenderLedger`] to customize posting key behavior.
     type SuperPostingKey: Copy;
 
-    /// Ledger Error
-    type Error;
-
     /// Checks if the ledger already contains the `void_number` in its set of void numbers.
     ///
     /// Existence of such a void number could indicate a possible double-spend.
-    fn is_unspent(
-        &self,
-        void_number: VoidNumber<C>,
-    ) -> Result<Option<Self::ValidVoidNumber>, Self::Error>;
+    fn is_unspent(&self, void_number: VoidNumber<C>) -> Option<Self::ValidVoidNumber>;
 
     /// Checks if the `public_input` is up-to-date with the current state of the UTXO set that is
     /// stored on the ledger.
     ///
     /// Failure to match the ledger state means that the sender was constructed under an invalid or
     /// older state of the ledger.
-    fn is_valid_utxo_state(
-        &self,
-        public_input: S::Public,
-    ) -> Result<Option<Self::ValidUtxoState>, Self::Error>;
+    fn is_valid_utxo_state(&self, public_input: S::Public) -> Option<Self::ValidUtxoState>;
 
     /// Posts the `void_number` to the ledger, spending the asset.
     ///
@@ -1095,25 +1086,12 @@ where
         void_number: Self::ValidVoidNumber,
         utxo_state: Self::ValidUtxoState,
         super_key: &Self::SuperPostingKey,
-    ) -> Result<(), Self::Error>;
+    ) -> bool;
 }
 
 /// Sender Post Error
-#[derive(derivative::Derivative)]
-#[derivative(
-    Clone(bound = "L::Error: Clone"),
-    Copy(bound = "L::Error: Copy"),
-    Debug(bound = "L::Error: Debug"),
-    Eq(bound = "L::Error: Eq"),
-    Hash(bound = "L::Error: Hash"),
-    PartialEq(bound = "L::Error: PartialEq")
-)]
-pub enum SenderPostError<C, S, L>
-where
-    C: Configuration,
-    S: VerifiedSet<Item = Utxo<C>>,
-    L: SenderLedger<C, S>,
-{
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum SenderPostError {
     /// Asset Spent Error
     ///
     /// The asset has already been spent.
@@ -1123,9 +1101,6 @@ where
     ///
     /// The sender was not constructed under the current state of the UTXO set.
     InvalidUtxoState,
-
-    /// Ledger Error
-    LedgerError(L::Error),
 }
 
 /// Sender Post
@@ -1148,24 +1123,17 @@ where
 {
     /// Validates `self` on the sender `ledger`.
     #[inline]
-    pub fn validate<L>(
-        self,
-        ledger: &L,
-    ) -> Result<SenderPostingKey<C, S, L>, SenderPostError<C, S, L>>
+    pub fn validate<L>(self, ledger: &L) -> Result<SenderPostingKey<C, S, L>, SenderPostError>
     where
         L: SenderLedger<C, S>,
     {
         Ok(SenderPostingKey {
-            void_number: match ledger
-                .is_unspent(self.void_number)
-                .map_err(SenderPostError::LedgerError)?
-            {
+            void_number: match ledger.is_unspent(self.void_number) {
                 Some(key) => key,
                 _ => return Err(SenderPostError::AssetSpent),
             },
             utxo_containment_proof_public_input: match ledger
                 .is_valid_utxo_state(self.utxo_containment_proof_public_input)
-                .map_err(SenderPostError::LedgerError)?
             {
                 Some(key) => key,
                 _ => return Err(SenderPostError::InvalidUtxoState),
@@ -1207,7 +1175,7 @@ where
 {
     /// Posts `self` to the sender `ledger`.
     #[inline]
-    pub fn post(self, super_key: &L::SuperPostingKey, ledger: &mut L) -> Result<(), L::Error> {
+    pub fn post(self, super_key: &L::SuperPostingKey, ledger: &mut L) -> bool {
         ledger.spend(
             self.void_number,
             self.utxo_containment_proof_public_input,
@@ -1299,13 +1267,10 @@ where
     /// Type that allows super-traits of [`ReceiverLedger`] to customize posting key behavior.
     type SuperPostingKey: Copy;
 
-    /// Ledger Error
-    type Error;
-
     /// Checks if the ledger already contains the `utxo` in its set of UTXOs.
     ///
     /// Existence of such a UTXO could indicate a possible double-spend.
-    fn is_not_registered(&self, utxo: Utxo<C>) -> Result<Option<Self::ValidUtxo>, Self::Error>;
+    fn is_not_registered(&self, utxo: Utxo<C>) -> Option<Self::ValidUtxo>;
 
     /// Posts the `utxo` and `encrypted_asset` to the ledger, registering the asset.
     ///
@@ -1318,32 +1283,16 @@ where
         utxo: Self::ValidUtxo,
         encrypted_asset: EncryptedMessage<I>,
         super_key: &Self::SuperPostingKey,
-    ) -> Result<(), Self::Error>;
+    ) -> bool;
 }
 
 /// Receiver Post Error
-#[derive(derivative::Derivative)]
-#[derivative(
-    Clone(bound = "L::Error: Clone"),
-    Copy(bound = "L::Error: Copy"),
-    Debug(bound = "L::Error: Debug"),
-    Eq(bound = "L::Error: Eq"),
-    Hash(bound = "L::Error: Hash"),
-    PartialEq(bound = "L::Error: PartialEq")
-)]
-pub enum ReceiverPostError<C, I, L>
-where
-    C: Configuration,
-    I: IntegratedEncryptionScheme<Plaintext = Asset>,
-    L: ReceiverLedger<C, I>,
-{
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum ReceiverPostError {
     /// Asset Registered Error
     ///
     /// The asset has already been registered with the ledger.
     AssetRegistered,
-
-    /// Ledger Error
-    LedgerError(L::Error),
 }
 
 /// Receiver Post
@@ -1366,18 +1315,12 @@ where
 {
     /// Validates `self` on the receiver `ledger`.
     #[inline]
-    pub fn validate<L>(
-        self,
-        ledger: &L,
-    ) -> Result<ReceiverPostingKey<C, I, L>, ReceiverPostError<C, I, L>>
+    pub fn validate<L>(self, ledger: &L) -> Result<ReceiverPostingKey<C, I, L>, ReceiverPostError>
     where
         L: ReceiverLedger<C, I>,
     {
         Ok(ReceiverPostingKey {
-            utxo: match ledger
-                .is_not_registered(self.utxo)
-                .map_err(ReceiverPostError::LedgerError)?
-            {
+            utxo: match ledger.is_not_registered(self.utxo) {
                 Some(key) => key,
                 _ => return Err(ReceiverPostError::AssetRegistered),
             },
@@ -1419,7 +1362,7 @@ where
 {
     /// Posts `self` to the receiver `ledger`.
     #[inline]
-    pub fn post(self, super_key: &L::SuperPostingKey, ledger: &mut L) -> Result<(), L::Error> {
+    pub fn post(self, super_key: &L::SuperPostingKey, ledger: &mut L) -> bool {
         ledger.register(self.utxo, self.encrypted_asset, super_key)
     }
 }
