@@ -43,7 +43,7 @@ use manta_crypto::{
     ies::{EncryptedMessage, IntegratedEncryptionScheme},
     set::{constraint::VerifiedSetVariable, VerifiedSet},
 };
-use manta_util::{create_seal, from_variant_impl, mixed_chain, seal, Either};
+use manta_util::{create_seal, from_variant_impl, iter::mixed_chain, seal, Either};
 use rand::{
     distributions::{Distribution, Standard},
     CryptoRng, RngCore,
@@ -1062,20 +1062,41 @@ where
     C: Configuration,
     L: TransferLedger<C>,
 {
+    /// Posts `senders` to the transfer `ledger`.
+    #[inline]
+    fn post_senders(
+        senders: Vec<SenderPostingKey<C, L>>,
+        proof: &L::ValidProof,
+        super_key: &TransferLedgerSuperPostingKey<C, L>,
+        ledger: &mut L,
+    ) -> bool {
+        senders
+            .into_iter()
+            .all(|k| k.post(&(*proof, *super_key), ledger))
+    }
+
+    /// Posts `receivers` to the transfer `ledger`.
+    #[inline]
+    fn post_receivers(
+        receivers: Vec<ReceiverPostingKey<C, L>>,
+        proof: &L::ValidProof,
+        super_key: &TransferLedgerSuperPostingKey<C, L>,
+        ledger: &mut L,
+    ) -> bool {
+        receivers
+            .into_iter()
+            .all(|k| k.post(&(*proof, *super_key), ledger))
+    }
+
     /// Posts `self` to the transfer `ledger`.
     #[inline]
     pub fn post(self, super_key: &TransferLedgerSuperPostingKey<C, L>, ledger: &mut L) -> bool {
-        // FIXME: This needs to be atomic! Add a `commit/rollback` method somewhere.
+        // FIXME: This needs to be atomic! Add a `commit/rollback` method somewhere? Or can the
+        //        ledger keep track of its own atomicity, so we have an "atomic-until-next-error"
+        //        kind of behavior.
         let proof = self.validity_proof;
-        let all_senders_posted = self
-            .sender_posting_keys
-            .into_iter()
-            .all(|k| k.post(&(proof, *super_key), ledger));
-        let all_receivers_posted = self
-            .receiver_posting_keys
-            .into_iter()
-            .all(|k| k.post(&(proof, *super_key), ledger));
-        all_senders_posted && all_receivers_posted
+        Self::post_senders(self.sender_posting_keys, &proof, super_key, ledger)
+            && Self::post_receivers(self.receiver_posting_keys, &proof, super_key, ledger)
     }
 }
 

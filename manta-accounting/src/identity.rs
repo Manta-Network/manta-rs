@@ -905,6 +905,16 @@ where
         identity.into_pre_sender(commitment_scheme, asset)
     }
 
+    ///
+    #[inline]
+    pub fn insert_utxo<S>(&self, utxo_set: &mut S)
+    where
+        S: VerifiedSet<Item = Utxo<C>>,
+    {
+        // FIXME: Need to improve the [`VerifiedSet`] trait before we can implement this.
+        todo!()
+    }
+
     /// Requests the containment proof of `self.utxo` from `utxo_set` so that we can turn `self`
     /// into a [`Sender`].
     #[inline]
@@ -940,6 +950,16 @@ where
             utxo: self.utxo,
             utxo_containment_proof: proof.utxo_containment_proof,
         }
+    }
+
+    /// Tries to convert `self` into a [`Sender`] by getting a proof from `utxo_set`.
+    #[inline]
+    pub fn try_upgrade<S>(self, utxo_set: &S) -> Result<Sender<C, S>, S::ContainmentError>
+    where
+        S: VerifiedSet<Item = Utxo<C>>,
+    {
+        let proof = self.get_proof(utxo_set)?;
+        Ok(self.upgrade(proof))
     }
 }
 

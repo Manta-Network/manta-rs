@@ -25,9 +25,9 @@ extern crate alloc;
 
 mod array;
 mod concat;
-mod mixed_chain;
 mod sealed;
 
+pub mod iter;
 pub mod num;
 
 #[cfg(feature = "rand_core")]
@@ -36,7 +36,6 @@ pub mod rand;
 
 pub use array::*;
 pub use concat::*;
-pub use mixed_chain::*;
 
 /// Implements [`From`]`<$from>` for an enum `$to`, choosing the `$kind` variant.
 // TODO: add `where` clauses
@@ -60,18 +59,4 @@ pub enum Either<L, R> {
 
     /// Right Variant
     Right(R),
-}
-
-/// Folds every element into an accumulator by applying an operation, returning the final result.
-///
-/// This function differs from [`Iterator::fold`] because its initial state is borrowed instead
-/// of moved. This means that we have to return `Option<B>` in case the iterator is empty.
-#[inline]
-pub fn fold_ref<I, B, F>(mut iter: I, init: &B, mut f: F) -> Option<B>
-where
-    I: Iterator,
-    F: FnMut(&B, I::Item) -> B,
-{
-    iter.next()
-        .map(move |first| iter.fold(f(init, first), move |acc, n| f(&acc, n)))
 }

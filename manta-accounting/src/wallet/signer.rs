@@ -23,14 +23,13 @@ use crate::{
     fs::{Load, LoadWith, Save, SaveWith},
     identity::{self, AssetParameters, Identity, PreSender, Utxo},
     keys::{
-        Account, DerivedSecretKeyGenerator, External, ExternalIndex, Index, Internal,
-        InternalIndex, InternalKeyOwned, KeyKind, KeyOwned,
+        Account, DerivedSecretKeyGenerator, ExternalIndex, Index, InternalIndex, InternalKeyOwned,
     },
     transfer::{
         self,
         canonical::{Mint, PrivateTransfer, Reclaim, Transaction},
         EncryptedAsset, IntegratedEncryptionSchemeError, ProofSystemError, ProvingContext,
-        Receiver, Sender, ShieldedIdentity, Transfer, TransferPost,
+        Receiver, SecretTransfer, Sender, ShieldedIdentity, Transfer, TransferPost,
     },
 };
 use alloc::{vec, vec::Vec};
@@ -43,6 +42,7 @@ use core::{
     ops::Range,
 };
 use manta_crypto::{Set, VerifiedSet};
+use manta_util::{fallible_array_map, into_array_unchecked, iter::IteratorExt};
 use rand::{
     distributions::{Distribution, Standard},
     CryptoRng, RngCore,
@@ -230,6 +230,9 @@ where
     /// Encryption Error
     EncryptionError(IntegratedEncryptionSchemeError<C>),
 
+    /// Containment Error
+    ContainmentError(<C::UtxoSet as VerifiedSet>::ContainmentError),
+
     /// Insufficient Balance
     InsufficientBalance(Asset),
 
@@ -253,6 +256,20 @@ where
         match err {
             InternalReceiverError::SecretKeyError(err) => Self::SecretKeyError(err),
             InternalReceiverError::EncryptionError(err) => Self::EncryptionError(err),
+        }
+    }
+}
+
+impl<D, C, CE> From<SenderError<D, C>> for Error<D, C, CE>
+where
+    D: DerivedSecretKeyGenerator,
+    C: transfer::Configuration<SecretKey = D::SecretKey>,
+{
+    #[inline]
+    fn from(err: SenderError<D, C>) -> Self {
+        match err {
+            SenderError::SecretKeyError(err) => Self::SecretKeyError(err),
+            SenderError::ContainmentError(err) => Self::ContainmentError(err),
         }
     }
 }
@@ -342,6 +359,22 @@ where
             .map(Identity::new)
     }
 
+    ///
+    #[inline]
+    pub fn get_pre_sender<C>(
+        &self,
+        index: Index<D>,
+        commitment_scheme: &C::CommitmentScheme,
+        asset: Asset,
+    ) -> Result<PreSender<C>, D::Error>
+    where
+        C: transfer::Configuration<SecretKey = D::SecretKey>,
+        Standard: Distribution<AssetParameters<C>>,
+    {
+        Ok(self.get(&index)?.into_pre_sender(commitment_scheme, asset))
+    }
+
+    /* TODO[remove]:
     /// Returns a [`Sender`] for the key at the given `index`.
     #[inline]
     pub fn get_sender<C>(
@@ -360,6 +393,7 @@ where
             .into_sender(commitment_scheme, asset, utxo_set)
             .map_err(SenderError::ContainmentError)
     }
+    */
 
     /// Generates the next external identity for this signer.
     #[inline]
@@ -402,9 +436,9 @@ where
             .into_shielded(commitment_scheme))
     }
 
-    /// Builds the next inner change receiver and pre-sender.
+    /// Builds the next accumulator receiver and pre-sender.
     #[inline]
-    pub fn next_inner_change<C, R>(
+    pub fn next_accumulator<C, R>(
         &mut self,
         commitment_scheme: &C::CommitmentScheme,
         asset: Asset,
@@ -431,7 +465,24 @@ where
         ))
     }
 
-    /// Builds the final change receiver for the end of a transaction.
+    ///
+    #[inline]
+    pub fn next_zeroes<C, R>(
+        &mut self,
+        n: usize,
+        commitment_scheme: &C::CommitmentScheme,
+        asset_id: AssetId,
+        rng: &mut R,
+    ) -> Result<(Vec<InternalIndex<D>>, Vec<Receiver<C>>), InternalReceiverError<D, C>>
+    where
+        C: transfer::Configuration<SecretKey = D::SecretKey>,
+        R: CryptoRng + RngCore + ?Sized,
+        Standard: Distribution<AssetParameters<C>>,
+    {
+        todo!()
+    }
+
+    /// Builds the change receiver for the end of a transaction.
     #[inline]
     pub fn next_change<C, R>(
         &mut self,
@@ -722,6 +773,7 @@ where
         }
     }
 
+    /* TODO[remove]:
     /// Returns a [`Sender`] for the key at the given `index`.
     #[inline]
     fn get_sender(&self, index: Index<D>, asset: Asset) -> Result<Sender<C>, SenderError<D, C>>
@@ -731,6 +783,7 @@ where
         self.signer
             .get_sender(index, &self.commitment_scheme, asset, &self.utxo_set)
     }
+    */
 
     /// Builds a [`TransferPost`] for the given `transfer`.
     #[inline]
@@ -765,7 +818,97 @@ where
         }
     }
 
-    /// Signs a withdraw transaction.
+    ///
+    #[inline]
+    fn accumulate_transfers<const SENDERS: usize, const RECEIVERS: usize>(
+        &mut self,
+        asset_id: AssetId,
+        mut pre_senders: Vec<PreSender<C>>,
+    ) -> Result<
+        (
+            Vec<InternalIndex<D>>,
+            Vec<PreSender<C>>,
+            Vec<TransferPost<C>>,
+        ),
+        Error<D, C, Infallible>,
+    >
+    where
+        Standard: Distribution<AssetParameters<C>>,
+    {
+        assert!(SENDERS > 1, "There must be at least two senders.");
+        assert!(RECEIVERS > 1, "There must be at least two receivers.");
+        assert!(
+            !pre_senders.is_empty(),
+            "The set of initial senders cannot be empty."
+        );
+
+        let mut new_zeroes = Vec::new();
+        let mut posts = Vec::new();
+
+        while pre_senders.len() > SENDERS {
+            let mut accumulators = Vec::new();
+            let mut iter = pre_senders.into_iter().chunk_by::<SENDERS>();
+            for pre_sender_side in &mut iter {
+                let sender_side =
+                    fallible_array_map(pre_sender_side, |ps| ps.try_upgrade(&self.utxo_set))
+                        .map_err(Error::ContainmentError)?;
+
+                let (receiver, pre_sender) = self.signer.next_accumulator(
+                    &self.commitment_scheme,
+                    asset_id.with(sender_side.iter().map(Sender::asset_value).sum()),
+                    &mut self.rng,
+                )?;
+
+                let (mut zeroes, mut receiver_side) = self.signer.next_zeroes(
+                    RECEIVERS - 1,
+                    &self.commitment_scheme,
+                    asset_id,
+                    &mut self.rng,
+                )?;
+
+                receiver_side.push(receiver);
+
+                posts.push(
+                    self.build_post(
+                        SecretTransfer::<_, SENDERS, RECEIVERS>::new(
+                            sender_side,
+                            into_array_unchecked(receiver_side),
+                        )
+                        .into(),
+                    )?,
+                );
+
+                new_zeroes.append(&mut zeroes);
+                accumulators.push(pre_sender);
+            }
+
+            for pre_sender in accumulators.iter() {
+                pre_sender.insert_utxo(&mut self.utxo_set);
+            }
+
+            accumulators.append(&mut iter.remainder());
+            pre_senders = accumulators;
+        }
+
+        Ok((new_zeroes, pre_senders, posts))
+    }
+
+    ///
+    #[inline]
+    fn resolve_sender_zeroes<const SENDERS: usize>(
+        &self,
+        sender_count: usize,
+        asset_id: AssetId,
+        new_zeroes: &mut Vec<InternalIndex<D>>,
+    ) -> Result<(Vec<Mint<C>>, Vec<PreSender<C>>), InternalReceiverError<D, C>> {
+        let zeroes = self
+            .assets
+            .zeroes(SENDERS.saturating_sub(sender_count), asset_id);
+
+        todo!()
+    }
+
+    /// Signs a withdraw transaction without resetting on error.
     #[inline]
     fn sign_withdraw_inner(
         &mut self,
@@ -778,50 +921,67 @@ where
         let Selection { change, balances } =
             self.select(asset).map_err(Error::InsufficientBalance)?;
 
-        let zeroes = self
-            .assets
-            .zeroes(2_usize.saturating_sub(balances.len()), asset.id);
-
-        let mut new_zeroes = vec![];
         self.pending_assets.remove = balances.iter().map(move |(k, _)| k.clone()).collect();
 
-        // FIXME: Implement signing:
-        /*
-        fn pad<T: Default, const N: usize>(mut v: Vec<T>) -> [T; N] {
-            v.extend(repeat_with(Default::default).take(N - v.len()));
-            into_array_unchecked(v)
+        let pre_senders = balances
+            .into_iter()
+            .map(|(k, v)| {
+                self.signer
+                    .get_pre_sender(k, &self.commitment_scheme, asset.id.with(v))
+            })
+            .collect::<Result<_, _>>()
+            .map_err(Error::SecretKeyError)?;
+
+        let (mut new_zeroes, mut pre_senders, mut posts) =
+            self.accumulate_transfers::<2, 2>(asset.id, pre_senders)?;
+
+        let (mints, mut pre_sender_side) =
+            self.resolve_sender_zeroes::<2>(pre_senders.len(), asset.id, &mut new_zeroes)?;
+
+        for mint in mints {
+            posts.insert(0, self.build_post(mint)?);
         }
 
-        fn generate<const M: usize, const N: usize>(
-            total: u128,
-            change: u128,
-            mut balances: Vec<u128>,
-        ) -> Vec<([u128; M], [u128; N])> {
-            assert!(M > 1, "M must be > 1!");
-            assert!(N > 1, "N must be > 1!");
-            assert!(!balances.is_empty(), "Balances cannot be empty!");
+        pre_sender_side.append(&mut pre_senders);
 
-            let mut posts = Vec::new();
+        let sender_side = into_array_unchecked(
+            pre_sender_side
+                .into_iter()
+                .map(|ps| ps.try_upgrade(&self.utxo_set))
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(Error::ContainmentError)?,
+        );
 
-            while balances.len() > M {
-                let iter = balances.chunks_exact(M);
-                let mut accumulators = iter.remainder().to_vec();
-                for senders in iter {
-                    let accumulator = senders.iter().sum();
-                    posts.push((into_array_unchecked(senders), pad(vec![accumulator])));
-                    accumulators.push(accumulator);
-                }
-                balances = accumulators;
+        let (change_receiver, change_index) = self
+            .signer
+            .next_change(
+                &self.commitment_scheme,
+                asset.id.with(change),
+                &mut self.rng,
+            )?
+            .into();
+
+        let final_post = match receiver {
+            Some(receiver) => {
+                let receiver = receiver
+                    .into_receiver(&self.commitment_scheme, asset, &mut self.rng)
+                    .map_err(Error::EncryptionError)?;
+                self.build_post(PrivateTransfer::build(
+                    sender_side,
+                    [change_receiver, receiver],
+                ))?
             }
+            _ => self.build_post(Reclaim::build(sender_side, change_receiver, asset))?,
+        };
 
-            posts.push((pad(balances), pad(vec![total, change])));
-            posts
-        }
-        */
+        posts.push(final_post);
 
-        let mut posts = Vec::new();
+        self.pending_assets.insert = Some((change_index, asset.id.with(change)));
+        self.pending_assets.insert_zeroes = Some((
+            asset.id,
+            new_zeroes.into_iter().map(Index::reduce).collect(),
+        ));
 
-        self.pending_assets.insert_zeroes = Some((asset.id, new_zeroes));
         Ok(SignResponse::new(posts))
     }
 
@@ -837,9 +997,7 @@ where
     {
         let result = self.sign_withdraw_inner(asset, receiver);
         if result.is_err() {
-            // FIXME: Add recovery from error.
-            // TODO: Is this right: `self.rollback();`
-            todo!()
+            self.rollback();
         }
         result
     }
@@ -989,9 +1147,6 @@ where
     /// Encryption Error
     EncryptionError(IntegratedEncryptionSchemeError<C>),
 }
-
-/// Internal Receiver Result Type
-pub type InternalReceiverResult<D, C, T> = Result<T, InternalReceiverError<D, C>>;
 
 /// Sender Error
 pub enum SenderError<D, C>
