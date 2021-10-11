@@ -27,8 +27,10 @@ use core::{
     convert::TryFrom,
     fmt::Debug,
     hash::Hash,
+    iter,
     iter::{FusedIterator, Sum},
     ops::{Add, AddAssign, Mul, Sub, SubAssign},
+    slice,
 };
 use derive_more::{
     Add, AddAssign, Display, Div, DivAssign, From, Mul, MulAssign, Product, Sub, SubAssign, Sum,
@@ -689,6 +691,114 @@ where
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.balances.is_empty()
+    }
+
+    /// Returns an iterator over [`self.balances`](Self::balances) by reference.
+    #[inline]
+    pub fn iter(&self) -> SelectionIter<M> {
+        SelectionIter::new(self.balances.iter())
+    }
+
+    /// Returns an iterator over the keys in [`self.balances`](Self::balances) by reference.
+    #[inline]
+    pub fn keys(&self) -> SelectionKeys<M> {
+        SelectionKeys::new(self.balances.iter().map(move |(key, _)| key))
+    }
+}
+
+/// [`SelectionIter`] Iterator Type
+type SelectionIterType<'s, M> = slice::Iter<'s, (<M as AssetMap>::Key, AssetBalance)>;
+
+/// Selection Iterator
+///
+/// This `struct` is created by the [`iter`](Selection::iter) method on [`Selection`].
+/// See its documentation for more.
+#[derive(derivative::Derivative)]
+#[derivative(Clone(bound = ""), Debug(bound = "M::Key: Debug"))]
+pub struct SelectionIter<'s, M>
+where
+    M: AssetMap + ?Sized,
+{
+    /// Base Iterator
+    iter: SelectionIterType<'s, M>,
+}
+
+impl<'s, M> SelectionIter<'s, M>
+where
+    M: AssetMap + ?Sized,
+{
+    /// Builds a new [`SelectionIter`] from `iter`.
+    #[inline]
+    fn new(iter: SelectionIterType<'s, M>) -> Self {
+        Self { iter }
+    }
+}
+
+// TODO: Implement all optimized methods/traits.
+impl<'s, M> Iterator for SelectionIter<'s, M>
+where
+    M: AssetMap + ?Sized,
+{
+    type Item = &'s (M::Key, AssetBalance);
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next()
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.iter.size_hint()
+    }
+}
+
+/// [`SelectionKeys`] Map Function Type
+type SelectionKeysMapFnType<'s, M> =
+    fn(&'s (<M as AssetMap>::Key, AssetBalance)) -> &'s <M as AssetMap>::Key;
+
+/// [`SelectionKeys`] Iterator Type
+type SelectionKeysType<'s, M> = iter::Map<SelectionIterType<'s, M>, SelectionKeysMapFnType<'s, M>>;
+
+/// Selection Keys Iterator
+///
+/// This `struct` is created by the [`keys`](Selection::keys) method on [`Selection`].
+/// See its documentation for more.
+#[derive(derivative::Derivative)]
+#[derivative(Clone(bound = ""), Debug(bound = "M::Key: Debug"))]
+pub struct SelectionKeys<'s, M>
+where
+    M: AssetMap + ?Sized,
+{
+    /// Base Iterator
+    iter: SelectionKeysType<'s, M>,
+}
+
+impl<'s, M> SelectionKeys<'s, M>
+where
+    M: AssetMap + ?Sized,
+{
+    /// Builds a new [`SelectionKeys`] from `iter`.
+    #[inline]
+    fn new(iter: SelectionKeysType<'s, M>) -> Self {
+        Self { iter }
+    }
+}
+
+// TODO: Implement all optimized methods/traits.
+impl<'s, M> Iterator for SelectionKeys<'s, M>
+where
+    M: AssetMap + ?Sized,
+{
+    type Item = &'s M::Key;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next()
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.iter.size_hint()
     }
 }
 

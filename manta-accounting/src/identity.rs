@@ -905,7 +905,7 @@ where
         identity.into_pre_sender(commitment_scheme, asset)
     }
 
-    ///
+    /// Inserts the [`Utxo`] corresponding to `self` into the `utxo_set`.
     #[inline]
     pub fn insert_utxo<S>(&self, utxo_set: &mut S)
     where

@@ -1124,7 +1124,7 @@ pub trait Shape: sealed::Sealed {
 /// Canonical Transaction Types
 pub mod canonical {
     use super::*;
-    use crate::identity::{AssetParameters, Identity};
+    use crate::identity::{AssetParameters, Identity, PreSender};
 
     /// Implements [`Shape`] for a given shape type.
     macro_rules! impl_shape {
@@ -1208,6 +1208,30 @@ pub mod canonical {
                     asset,
                     rng,
                 )?,
+            ))
+        }
+
+        /// Builds a [`Mint`] from an `identity` for an [`Asset`] with the given `asset_id` but
+        /// zero value.
+        #[inline]
+        pub fn zero<R>(
+            identity: Identity<C>,
+            commitment_scheme: &C::CommitmentScheme,
+            asset_id: AssetId,
+            rng: &mut R,
+        ) -> Result<(Mint<C>, PreSender<C>), IntegratedEncryptionSchemeError<C>>
+        where
+            R: CryptoRng + RngCore + ?Sized,
+            Standard: Distribution<AssetParameters<C>>,
+        {
+            // TODO: Make this more convenient.
+            let asset = Asset::zero(asset_id);
+            let (receiver, open_spend) = identity
+                .into_internal_receiver(commitment_scheme, asset, rng)?
+                .into();
+            Ok((
+                Mint::build(asset, receiver),
+                open_spend.into_pre_sender(commitment_scheme),
             ))
         }
     }
