@@ -35,7 +35,7 @@ use manta_accounting::identity;
 use manta_crypto::{
     constraint::{self, reflection::HasAllocation, Allocation, Constant, Variable},
     merkle_tree::{self, single_leaf::SingleLeaf, Tree},
-    set::{constraint::VerifiedSetVariable, ContainmentProof, Set, VerifiedSet},
+    set::{constraint::VerifierVariable, MembershipProof, VerifiedSet, Verifier},
 };
 use manta_util::{as_bytes, concatenate, into_array_unchecked};
 
@@ -133,8 +133,19 @@ impl UtxoSet {
     }
 }
 
-impl Set for UtxoSet {
+impl VerifiedSet for UtxoSet {
     type Item = Utxo;
+
+    type Public = Root;
+
+    type Secret = Path;
+
+    type Verifier = UtxoSetVerifier;
+
+    #[inline]
+    fn capacity(&self) -> usize {
+        todo!()
+    }
 
     #[inline]
     fn len(&self) -> usize {
@@ -143,56 +154,34 @@ impl Set for UtxoSet {
     }
 
     #[inline]
-    fn contains(&self, item: &Self::Item) -> bool {
-        self.utxo_exists(item)
-    }
-
-    #[inline]
-    fn try_insert(&mut self, item: Self::Item) -> Result<(), Self::Item> {
-        // TODO: Distinguish between both kinds of errors.
-        if self.utxo_exists(&item) {
-            return Err(item);
+    fn insert(&mut self, item: &Self::Item) -> bool {
+        if self.utxo_exists(item) {
+            return false;
         }
-        if !self.shards[Self::shard_index(&item)]
+        if !self.shards[Self::shard_index(item)]
             .utxos
-            .push(&self.parameters, &as_bytes!(&item))
+            .push(&self.parameters, &as_bytes!(item))
         {
-            return Err(item);
+            return false;
         }
         // FIXME: self.utxos.insert(item);
-        Ok(())
-    }
-}
-
-impl VerifiedSet for UtxoSet {
-    type Public = Root;
-
-    type Secret = Path;
-
-    type ContainmentError = ();
-
-    #[inline]
-    fn check_public_input(&self, public_input: &Self::Public) -> bool {
-        self.root_exists(public_input)
+        true
     }
 
     #[inline]
-    fn check_containment_proof(
-        &self,
-        public_input: &Self::Public,
-        secret_witness: &Self::Secret,
-        item: &Self::Item,
-    ) -> bool {
-        // FIXME: Leaf should be `Utxo` not `[u8]`.
-        self.parameters
-            .verify_path(secret_witness, public_input, &as_bytes!(item))
+    fn verifier(&self) -> Self::Verifier {
+        UtxoSetVerifier {
+            parameters: self.parameters.clone(),
+        }
     }
 
     #[inline]
-    fn get_containment_proof(
-        &self,
-        item: &Self::Item,
-    ) -> Result<ContainmentProof<Self>, Self::ContainmentError> {
+    fn verify(&self, public: &Self::Public) -> bool {
+        self.root_exists(public)
+    }
+
+    #[inline]
+    fn get_membership_proof(&self, item: &Self::Item) -> Option<MembershipProof<Self>> {
         let _ = item;
 
         // TODO: Return a more informative error.
@@ -210,14 +199,41 @@ impl VerifiedSet for UtxoSet {
 
         todo!()
     }
+
+    #[inline]
+    fn contains(&self, item: &Self::Item) -> bool {
+        self.utxo_exists(item)
+    }
 }
 
-/// UTXO Set Variable
+/// UTXO Set Verifier
 #[derive(Clone)]
-pub struct UtxoSetVar(ParametersVar);
+pub struct UtxoSetVerifier {
+    /// Merkle Tree Parameters
+    parameters: Parameters,
+}
 
-impl Variable<ConstraintSystem> for UtxoSetVar {
-    type Type = UtxoSet;
+impl Verifier for UtxoSetVerifier {
+    type Item = Utxo;
+
+    type Public = Root;
+
+    type Secret = Path;
+
+    #[inline]
+    fn verify(&self, public: &Self::Public, secret: &Self::Secret, item: &Self::Item) -> bool {
+        // FIXME: Leaf should be `Utxo` not `[u8]`.
+        self.parameters
+            .verify_path(secret, public, &as_bytes!(item))
+    }
+}
+
+/// UTXO Set Verifier Variable
+#[derive(Clone)]
+pub struct UtxoSetVerifierVar(ParametersVar);
+
+impl Variable<ConstraintSystem> for UtxoSetVerifierVar {
+    type Type = UtxoSetVerifier;
 
     type Mode = Constant;
 
@@ -228,25 +244,24 @@ impl Variable<ConstraintSystem> for UtxoSetVar {
     }
 }
 
-impl HasAllocation<ConstraintSystem> for UtxoSet {
-    type Variable = UtxoSetVar;
+impl HasAllocation<ConstraintSystem> for UtxoSetVerifier {
+    type Variable = UtxoSetVerifierVar;
     type Mode = Constant;
 }
 
-impl VerifiedSetVariable<ConstraintSystem> for UtxoSetVar {
+impl VerifierVariable<ConstraintSystem> for UtxoSetVerifierVar {
     type ItemVar = UtxoVar;
 
     #[inline]
-    fn assert_valid_containment_proof(
+    fn assert_valid_membership_proof(
         &self,
-        public_input: &RootVar,
-        secret_witness: &PathVar,
+        public: &RootVar,
+        secret: &PathVar,
         item: &UtxoVar,
         cs: &mut ConstraintSystem,
     ) {
         let _ = cs;
-        self.0
-            .assert_verified(public_input, secret_witness, &concatenate!(item))
+        self.0.assert_verified(public, secret, &concatenate!(item))
     }
 }
 

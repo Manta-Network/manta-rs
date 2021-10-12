@@ -42,7 +42,7 @@ use core::{
     mem,
     ops::Range,
 };
-use manta_crypto::{Set, VerifiedSet};
+use manta_crypto::set::VerifiedSet;
 use manta_util::{fallible_array_map, into_array_unchecked, iter::IteratorExt};
 use rand::{
     distributions::{Distribution, Standard},
@@ -231,8 +231,8 @@ where
     /// Encryption Error
     EncryptionError(IntegratedEncryptionSchemeError<C>),
 
-    /// Containment Error
-    ContainmentError(<C::UtxoSet as VerifiedSet>::ContainmentError),
+    /// Missing [`Utxo`] Membership Proof
+    MissingUtxoMembershipProof,
 
     /// Insufficient Balance
     InsufficientBalance(Asset),
@@ -793,7 +793,7 @@ where
 
             // FIXME: Should this ever error? We should check the capacity at `updates`, then
             //        insert should always work here.
-            let _ = self.utxo_set.insert(utxo);
+            let _ = self.utxo_set.insert(&utxo);
         }
         Ok(SyncResponse::new(assets))
     }
@@ -865,7 +865,7 @@ where
             .into()
             .into_post(
                 &self.commitment_scheme,
-                &self.utxo_set,
+                &self.utxo_set.verifier(),
                 &self.proving_context,
                 &mut self.rng,
             )
@@ -890,12 +890,8 @@ where
         Standard: Distribution<AssetParameters<C>>,
     {
         assert!(
-            SENDERS > 1,
-            "The transfer shape must include at least two senders."
-        );
-        assert!(
-            RECEIVERS > 1,
-            "The transfer shape must include at least two receivers."
+            (SENDERS > 1) && (RECEIVERS > 1),
+            "The transfer shape must include at least two senders and two receivers."
         );
         assert!(
             !pre_senders.is_empty(),
@@ -909,8 +905,10 @@ where
             let mut accumulators = Vec::new();
             let mut iter = pre_senders.into_iter().chunk_by::<SENDERS>();
             for chunk in &mut iter {
-                let senders = fallible_array_map(chunk, |ps| ps.try_upgrade(&self.utxo_set))
-                    .map_err(Error::ContainmentError)?;
+                let senders = fallible_array_map(chunk, |ps| {
+                    ps.try_upgrade(&self.utxo_set)
+                        .ok_or(Error::MissingUtxoMembershipProof)
+                })?;
 
                 let (receivers, accumulator, mut zeroes) =
                     self.signer.next_accumulated_receiver::<_, _, RECEIVERS>(
@@ -1049,8 +1047,8 @@ where
             pre_senders
                 .into_iter()
                 .map(|ps| ps.try_upgrade(&self.utxo_set))
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(Error::ContainmentError)?,
+                .collect::<Option<Vec<_>>>()
+                .ok_or(Error::MissingUtxoMembershipProof)?,
         );
 
         let change_receiver = self.next_change(asset.id, change)?;

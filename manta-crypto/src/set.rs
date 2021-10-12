@@ -14,24 +14,27 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Sets and Verified Sets
+//! Verified Sets
 
-// FIXME: We should probably have something like a "verified set verification handle" which a
-//        verified set can give to someone who wants to check a containment proof, since in general
-//        we don't actually need access to the set itself, or having access to the set would be be
-//        possible in any real implementation.
-// FIXME: The `Set::contains` method is not really something we can always implement properly.
-// FIXME: Should we just get rid of `Set` and just ensure we can get proofs working?
-
-pub(super) mod prelude {
-    #[doc(inline)]
-    pub use super::{Set, VerifiedSet};
-}
-
-/// Set Trait
-pub trait Set {
-    /// Item Stored in the [`Set`]
+/// Verified Set Trait
+pub trait VerifiedSet {
+    /// Item Type
     type Item;
+
+    /// Public Part of the [`Item`](Self::Item) Membership Proof
+    type Public;
+
+    /// Secret Part of the [`Item`](Self::Item) Membership Proof
+    type Secret;
+
+    /// [`MembershipProof`] Verifier Type
+    type Verifier: Verifier<Item = Self::Item, Public = Self::Public, Secret = Self::Secret>;
+
+    /// Returns a new verifier for `self`.
+    fn verifier(&self) -> Self::Verifier;
+
+    /// Returns the maximum number of elements that can be stored in `self`.
+    fn capacity(&self) -> usize;
 
     /// Returns the number of elements that are contained in `self`.
     fn len(&self) -> usize;
@@ -42,93 +45,83 @@ pub trait Set {
         self.len() == 0
     }
 
+    /// Inserts `item` into `self`.
+    fn insert(&mut self, item: &Self::Item) -> bool;
+
+    /// Returns `true` if `public` is a valid input for the current state of `self`.
+    fn verify(&self, public: &Self::Public) -> bool;
+
+    /// Generates a proof that the given `item` is stored in `self`.
+    fn get_membership_proof(&self, item: &Self::Item) -> Option<MembershipProof<Self>>;
+
     /// Returns `true` if `item` is stored in `self`.
-    fn contains(&self, item: &Self::Item) -> bool;
-
-    /// Tries to insert the `item` into `self`, returning the item back if it was already
-    /// contained in `self`.
-    fn try_insert(&mut self, item: Self::Item) -> Result<(), Self::Item>;
-
-    /// Inserts the `item` into `self`, returning `true` if the `item` was not contained and
-    /// `false` if the item was already contained in `self`.
+    ///
+    /// # Implementation Note
+    ///
+    /// This method must at least return `true` for `item` whenever a valid proof of membership
+    /// exists. It may return `true` in other cases when `self` knows that it has `item` stored but
+    /// cannot return a proof for it.
     #[inline]
-    fn insert(&mut self, item: Self::Item) -> bool {
-        self.try_insert(item).is_err()
+    fn contains(&self, item: &Self::Item) -> bool {
+        self.get_membership_proof(item).is_some()
     }
 }
 
-/// Containment Proof for a [`VerifiedSet`]
-pub struct ContainmentProof<S>
-where
-    S: VerifiedSet + ?Sized,
-{
-    /// Public Input
-    public_input: S::Public,
+/// Verified Set Verifier
+pub trait Verifier {
+    /// Item Type
+    type Item;
 
-    /// Secret Witness
-    secret_witness: S::Secret,
+    /// Public Part of the [`Item`](Self::Item) Membership Proof
+    type Public;
+
+    /// Secret Part of the [`Item`](Self::Item) Membership Proof
+    type Secret;
+
+    /// Verifies that `public` and `secret` form a proof to the fact that `item` is contained in
+    /// the verified set which returned `self`.
+    fn verify(&self, public: &Self::Public, secret: &Self::Secret, item: &Self::Item) -> bool;
 }
 
-impl<S> ContainmentProof<S>
+/// Membership Proof for a [`VerifiedSet`]
+pub struct MembershipProof<S>
 where
     S: VerifiedSet + ?Sized,
 {
-    /// Builds a new [`ContainmentProof`] from `public_input` and `secret_witness`.
+    /// Public Proof Part
+    public: S::Public,
+
+    /// Secret Proof Part
+    secret: S::Secret,
+}
+
+impl<S> MembershipProof<S>
+where
+    S: VerifiedSet + ?Sized,
+{
+    /// Builds a new [`MembershipProof`] from `public` and `secret`.
     #[inline]
-    pub fn new(public_input: S::Public, secret_witness: S::Secret) -> Self {
-        Self {
-            public_input,
-            secret_witness,
-        }
+    pub fn new(public: S::Public, secret: S::Secret) -> Self {
+        Self { public, secret }
     }
 
-    /// Returns [`S::Public`](VerifiedSet::Public) discarding the [`ContainmentProof`].
+    /// Returns [`S::Public`](VerifiedSet::Public) discarding the [`MembershipProof`].
     #[inline]
-    pub fn into_public_input(self) -> S::Public {
-        self.public_input
+    pub fn into_public(self) -> S::Public {
+        self.public
+    }
+
+    /// Returns `true` if the public part of `self` is a valid input for the current state of `set`.
+    #[inline]
+    pub fn verify_public(&self, set: &S) -> bool {
+        set.verify(&self.public)
     }
 
     /// Verifies that the `item` is contained in some [`VerifiedSet`].
     #[inline]
-    pub fn verify(&self, set: &S, item: &S::Item) -> bool {
-        set.check_containment_proof(&self.public_input, &self.secret_witness, item)
+    pub fn verify(&self, verifier: &S::Verifier, item: &S::Item) -> bool {
+        verifier.verify(&self.public, &self.secret, item)
     }
-
-    /// Returns `true` if `self.public_input` is a valid input for the current state of `set`.
-    #[inline]
-    pub fn check_public_input(&self, set: &S) -> bool {
-        set.check_public_input(&self.public_input)
-    }
-}
-
-/// Verified Set Trait
-pub trait VerifiedSet: Set {
-    /// Public Input for [`Item`](Set::Item) Containment
-    type Public;
-
-    /// Secret Witness for [`Item`](Set::Item) Containment
-    type Secret;
-
-    /// Error Generating a [`ContainmentProof`]
-    type ContainmentError;
-
-    /// Returns `true` if `public_input` is a valid input for the current state of `self`.
-    fn check_public_input(&self, public_input: &Self::Public) -> bool;
-
-    /// Returns `true` if `public_input` and `secret_witness` make up a valid proof that `item`
-    /// is stored in `self`.
-    fn check_containment_proof(
-        &self,
-        public_input: &Self::Public,
-        secret_witness: &Self::Secret,
-        item: &Self::Item,
-    ) -> bool;
-
-    /// Generates a proof that the given `item` is stored in `self`.
-    fn get_containment_proof(
-        &self,
-        item: &Self::Item,
-    ) -> Result<ContainmentProof<Self>, Self::ContainmentError>;
 }
 
 /// Constraint System Gadgets for Sets and Verified Sets
@@ -140,26 +133,26 @@ pub mod constraint {
     };
     use core::marker::PhantomData;
 
-    /// Containment Proof Allocation Mode Entry
+    /// Membership Proof Allocation Mode Entry
     #[derive(derivative::Derivative)]
     #[derivative(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
-    pub struct ContainmentProofModeEntry<PublicMode, SecretMode> {
-        /// Public Input Allocation Mode
+    pub struct MembershipProofModeEntry<PublicMode, SecretMode> {
+        /// Public Allocation Mode
         pub public: PublicMode,
 
-        /// Secret Witness Allocation Mode
+        /// Secret Allocation Mode
         pub secret: SecretMode,
     }
 
-    impl<PublicMode, SecretMode> ContainmentProofModeEntry<PublicMode, SecretMode> {
-        /// Builds a new [`ContainmentProofModeEntry`] from a `public` mode and a `secret` mode.
+    impl<PublicMode, SecretMode> MembershipProofModeEntry<PublicMode, SecretMode> {
+        /// Builds a new [`MembershipProofModeEntry`] from a `public` mode and a `secret` mode.
         #[inline]
         pub fn new(public: PublicMode, secret: SecretMode) -> Self {
             Self { public, secret }
         }
     }
 
-    impl<PublicMode, SecretMode> From<Derived> for ContainmentProofModeEntry<PublicMode, SecretMode>
+    impl<PublicMode, SecretMode> From<Derived> for MembershipProofModeEntry<PublicMode, SecretMode>
     where
         PublicMode: From<Derived>,
         SecretMode: From<Derived>,
@@ -170,77 +163,74 @@ pub mod constraint {
         }
     }
 
-    /// Containment Proof Allocation Mode
+    /// Membership Proof Allocation Mode
     #[derive(derivative::Derivative)]
     #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-    pub struct ContainmentProofMode<PublicMode, SecretMode>(PhantomData<(PublicMode, SecretMode)>)
+    pub struct MembershipProofMode<PublicMode, SecretMode>(PhantomData<(PublicMode, SecretMode)>)
     where
         PublicMode: AllocationMode,
         SecretMode: AllocationMode;
 
-    impl<PublicMode, SecretMode> AllocationMode for ContainmentProofMode<PublicMode, SecretMode>
+    impl<PublicMode, SecretMode> AllocationMode for MembershipProofMode<PublicMode, SecretMode>
     where
         PublicMode: AllocationMode,
         SecretMode: AllocationMode,
     {
-        type Known = ContainmentProofModeEntry<PublicMode::Known, SecretMode::Known>;
-        type Unknown = ContainmentProofModeEntry<PublicMode::Unknown, SecretMode::Unknown>;
+        type Known = MembershipProofModeEntry<PublicMode::Known, SecretMode::Known>;
+        type Unknown = MembershipProofModeEntry<PublicMode::Unknown, SecretMode::Unknown>;
     }
 
-    /// Containment Proof Variable
-    pub struct ContainmentProofVar<S, C>
+    /// Membership Proof Variable
+    pub struct MembershipProofVar<S, C>
     where
         S: VerifiedSet + ?Sized,
         C: HasVariable<S::Public> + HasVariable<S::Secret> + ?Sized,
     {
-        /// Public Input
-        public_input: Var<S::Public, C>,
+        /// Public Proof Part
+        public: Var<S::Public, C>,
 
-        /// Secret Witness
-        secret_witness: Var<S::Secret, C>,
+        /// Secret Proof Part
+        secret: Var<S::Secret, C>,
     }
 
-    impl<S, C> ContainmentProofVar<S, C>
+    impl<S, C> MembershipProofVar<S, C>
     where
         S: VerifiedSet + ?Sized,
         C: HasVariable<S::Public> + HasVariable<S::Secret> + ?Sized,
     {
-        /// Builds a new [`ContainmentProofVar`] from `public_input` and `secret_witness`.
+        /// Builds a new [`MembershipProofVar`] from `public` and `secret`.
         #[inline]
-        pub fn new(public_input: Var<S::Public, C>, secret_witness: Var<S::Secret, C>) -> Self {
-            Self {
-                public_input,
-                secret_witness,
-            }
+        pub fn new(public: Var<S::Public, C>, secret: Var<S::Secret, C>) -> Self {
+            Self { public, secret }
         }
 
         /// Asserts that `self` is a valid proof to the fact that `item` is stored in the
         /// verified set.
         #[inline]
-        pub fn assert_validity<V>(&self, set: &V, item: &V::ItemVar, cs: &mut C)
+        pub fn assert_validity<V>(&self, verifier: &V, item: &V::ItemVar, cs: &mut C)
         where
             C: ConstraintSystem,
-            V: VerifiedSetVariable<C, Type = S>,
+            V: VerifierVariable<C, Type = S::Verifier>,
         {
-            set.assert_valid_containment_proof(&self.public_input, &self.secret_witness, item, cs)
+            verifier.assert_valid_membership_proof(&self.public, &self.secret, item, cs)
         }
     }
 
-    impl<S, C> Variable<C> for ContainmentProofVar<S, C>
+    impl<S, C> Variable<C> for MembershipProofVar<S, C>
     where
         S: VerifiedSet + ?Sized,
         C: HasVariable<S::Public> + HasVariable<S::Secret> + ?Sized,
     {
-        type Type = ContainmentProof<S>;
+        type Type = MembershipProof<S>;
 
-        type Mode = ContainmentProofMode<Mode<S::Public, C>, Mode<S::Secret, C>>;
+        type Mode = MembershipProofMode<Mode<S::Public, C>, Mode<S::Secret, C>>;
 
         #[inline]
         fn new(cs: &mut C, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
             match allocation {
                 Allocation::Known(this, mode) => Self::new(
-                    cs.allocate_known(&this.public_input, mode.public),
-                    cs.allocate_known(&this.secret_witness, mode.secret),
+                    cs.allocate_known(&this.public, mode.public),
+                    cs.allocate_known(&this.secret, mode.secret),
                 ),
                 Allocation::Unknown(mode) => Self::new(
                     unknown::<S::Public, _>(cs, mode.public),
@@ -250,45 +240,45 @@ pub mod constraint {
         }
     }
 
-    impl<S, C> HasAllocation<C> for ContainmentProof<S>
+    impl<S, C> HasAllocation<C> for MembershipProof<S>
     where
         S: VerifiedSet + ?Sized,
         C: HasVariable<S::Public> + HasVariable<S::Secret> + ?Sized,
     {
-        type Variable = ContainmentProofVar<S, C>;
-        type Mode = ContainmentProofMode<Mode<S::Public, C>, Mode<S::Secret, C>>;
+        type Variable = MembershipProofVar<S, C>;
+        type Mode = MembershipProofMode<Mode<S::Public, C>, Mode<S::Secret, C>>;
     }
 
-    /// Public Input Type for [`VerifiedSetVariable`]
-    pub type PublicInputType<V, C> = <<V as Variable<C>>::Type as VerifiedSet>::Public;
+    /// Public Proof Part for [`VerifierVariable`]
+    pub type PublicType<V, C> = <<V as Variable<C>>::Type as Verifier>::Public;
 
-    /// Secret Witness Type for [`VerifiedSetVariable`]
-    pub type SecretWitnessType<V, C> = <<V as Variable<C>>::Type as VerifiedSet>::Secret;
+    /// Secret Proof Part for [`VerifierVariable`]
+    pub type SecretType<V, C> = <<V as Variable<C>>::Type as Verifier>::Secret;
 
-    /// Public Input Variable for [`VerifiedSetVariable`]
-    pub type PublicInputVar<V, C> = Var<PublicInputType<V, C>, C>;
+    /// Public Proof Part Variable for [`VerifierVariable`]
+    pub type PublicVar<V, C> = Var<PublicType<V, C>, C>;
 
-    /// Secret Witness Variable for [`VerifiedSetVariable`]
-    pub type SecretWitnessVar<V, C> = Var<SecretWitnessType<V, C>, C>;
+    /// Secret Proof Part Variable for [`VerifierVariable`]
+    pub type SecretVar<V, C> = Var<SecretType<V, C>, C>;
 
     /// Verified Set Variable
-    pub trait VerifiedSetVariable<C>: Variable<C>
+    pub trait VerifierVariable<C>: Variable<C>
     where
         C: ConstraintSystem
-            + HasVariable<PublicInputType<Self, C>>
-            + HasVariable<SecretWitnessType<Self, C>>
+            + HasVariable<PublicType<Self, C>>
+            + HasVariable<SecretType<Self, C>>
             + ?Sized,
-        Self::Type: VerifiedSet,
+        Self::Type: Verifier,
     {
         /// Item Variable
-        type ItemVar: Variable<C, Type = <Self::Type as Set>::Item>;
+        type ItemVar: Variable<C, Type = <Self::Type as Verifier>::Item>;
 
-        /// Asserts that `public_input` and `secret_witness` form a proof to the fact that `item`
-        /// is stored in `self`.
-        fn assert_valid_containment_proof(
+        /// Asserts that `public` and `secret` form a proof to the fact that `item` is stored in
+        /// `self`.
+        fn assert_valid_membership_proof(
             &self,
-            public_input: &PublicInputVar<Self, C>,
-            secret_witness: &SecretWitnessVar<Self, C>,
+            public: &PublicVar<Self, C>,
+            secret: &SecretVar<Self, C>,
             item: &Self::ItemVar,
             cs: &mut C,
         );

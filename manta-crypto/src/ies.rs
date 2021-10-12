@@ -19,7 +19,7 @@
 // FIXME: add zeroize for secret keys
 
 use core::{fmt::Debug, hash::Hash};
-use rand::{CryptoRng, RngCore};
+use rand_core::{CryptoRng, RngCore};
 
 pub(super) mod prelude {
     #[doc(inline)]

@@ -20,7 +20,7 @@
 //       enabled when using whichever backend.
 
 use crate::{
-    accounting::ledger::{UtxoSet, UtxoSetVar},
+    accounting::ledger::{UtxoSet, UtxoSetVerifier, UtxoSetVerifierVar},
     crypto::{
         commitment::pedersen::{self, PedersenWindow},
         constraint::arkworks::{
@@ -114,13 +114,11 @@ impl merkle_tree::Configuration for Configuration {
 
 impl merkle_tree_constraint::Configuration for Configuration {
     type ConstraintField = ConstraintField;
-
     type LeafHashVar = CRHGadget<
         PedersenCommitmentProjectiveCurve,
         PedersenCommitmentProjectiveCurveVar,
         PedersenCommitmentWindowParameters,
     >;
-
     type InnerHashVar = CRHGadget<
         PedersenCommitmentProjectiveCurve,
         PedersenCommitmentProjectiveCurveVar,
@@ -155,5 +153,6 @@ impl transfer::Configuration for Configuration {
     type AssetBalanceVar = AssetBalanceVar<ConstraintField>;
     type IntegratedEncryptionScheme = IES;
     type UtxoSet = UtxoSet;
-    type UtxoSetVar = UtxoSetVar;
+    type UtxoSetVerifier = UtxoSetVerifier;
+    type UtxoSetVerifierVar = UtxoSetVerifierVar;
 }

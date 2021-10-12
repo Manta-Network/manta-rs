@@ -29,7 +29,7 @@ use core::{
     hash::Hash,
     marker::PhantomData,
 };
-use rand::{CryptoRng, RngCore};
+use rand_core::{CryptoRng, RngCore};
 
 /// Allocation Mode
 pub trait AllocationMode {
@@ -499,7 +499,7 @@ pub trait ProofSystem {
         R: CryptoRng + RngCore + ?Sized;
 
     /// Returns a proof that the constraint system `self` is consistent.
-    fn generate_proof<R>(
+    fn prove<R>(
         cs: Self::ConstraintSystem,
         context: &Self::ProvingContext,
         rng: &mut R,
@@ -508,7 +508,7 @@ pub trait ProofSystem {
         R: CryptoRng + RngCore + ?Sized;
 
     /// Verifies that a proof generated from this proof system is valid.
-    fn verify_proof(
+    fn verify(
         context: &Self::VerifyingContext,
         proof: &Self::Proof,
     ) -> Result<Self::Verification, Self::Error>;
@@ -926,9 +926,6 @@ pub mod test {
         P: ProofSystem,
         R: CryptoRng + RngCore,
     {
-        P::verify_proof(
-            verifying_context,
-            &P::generate_proof(cs, proving_context, rng)?,
-        )
+        P::verify(verifying_context, &P::prove(cs, proving_context, rng)?)
     }
 }

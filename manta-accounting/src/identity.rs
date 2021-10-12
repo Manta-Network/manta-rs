@@ -23,7 +23,7 @@ use core::{fmt::Debug, hash::Hash, marker::PhantomData};
 use manta_crypto::{
     commitment::{CommitmentScheme, Input as CommitmentInput},
     ies::{self, EncryptedMessage, IntegratedEncryptionScheme},
-    set::{ContainmentProof, VerifiedSet},
+    set::{MembershipProof, VerifiedSet},
     PseudorandomFunctionFamily,
 };
 use rand::{
@@ -399,7 +399,7 @@ where
         commitment_scheme: &C::CommitmentScheme,
         asset: Asset,
         utxo_set: &S,
-    ) -> Result<Sender<C, S>, S::ContainmentError>
+    ) -> Option<Sender<C, S>>
     where
         S: VerifiedSet<Item = Utxo<C>>,
         Standard: Distribution<AssetParameters<C>>,
@@ -407,8 +407,8 @@ where
         let parameters = self.parameters();
         let (public_key, void_number_commitment, utxo) =
             self.construct_utxo(commitment_scheme, &asset, &parameters);
-        Ok(Sender {
-            utxo_containment_proof: utxo_set.get_containment_proof(&utxo)?,
+        Some(Sender {
+            utxo_membership_proof: utxo_set.get_membership_proof(&utxo)?,
             void_number: self.void_number(&parameters.void_number_generator),
             secret_key: self.secret_key,
             public_key,
@@ -600,23 +600,22 @@ where
 /// [`into_sender`]: Spend::into_sender
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "I::Error: Clone, S::ContainmentError: Clone"),
-    Copy(bound = "I::Error: Copy, S::ContainmentError: Copy"),
-    Debug(bound = "I::Error: Debug, S::ContainmentError: Debug"),
-    Eq(bound = "I::Error: Eq, S::ContainmentError: Eq"),
-    Hash(bound = "I::Error: Hash, S::ContainmentError: Hash"),
-    PartialEq(bound = "I::Error: PartialEq, S::ContainmentError: PartialEq")
+    Clone(bound = "I::Error: Clone"),
+    Copy(bound = "I::Error: Copy"),
+    Debug(bound = "I::Error: Debug"),
+    Eq(bound = "I::Error: Eq"),
+    Hash(bound = "I::Error: Hash"),
+    PartialEq(bound = "I::Error: PartialEq")
 )]
-pub enum SpendError<I, S>
+pub enum SpendError<I>
 where
     I: IntegratedEncryptionScheme<Plaintext = Asset>,
-    S: VerifiedSet,
 {
     /// Encryption Error
     EncryptionError(I::Error),
 
-    /// Missing UTXO Containment Proof
-    MissingUtxo(S::ContainmentError),
+    /// Missing UTXO Membership Proof
+    MissingUtxo,
 }
 
 /// Spending Information
@@ -691,7 +690,7 @@ where
         commitment_scheme: &C::CommitmentScheme,
         encrypted_asset: EncryptedMessage<I>,
         utxo_set: &S,
-    ) -> Result<Sender<C, S>, SpendError<I, S>>
+    ) -> Result<Sender<C, S>, SpendError<I>>
     where
         S: VerifiedSet<Item = Utxo<C>>,
         Standard: Distribution<AssetParameters<C>>,
@@ -699,7 +698,7 @@ where
         self.try_open(&encrypted_asset)
             .map_err(SpendError::EncryptionError)?
             .into_sender(commitment_scheme, utxo_set)
-            .map_err(SpendError::MissingUtxo)
+            .ok_or(SpendError::MissingUtxo)
     }
 }
 
@@ -787,7 +786,7 @@ where
         self,
         commitment_scheme: &C::CommitmentScheme,
         utxo_set: &S,
-    ) -> Result<Sender<C, S>, S::ContainmentError>
+    ) -> Option<Sender<C, S>>
     where
         S: VerifiedSet<Item = Utxo<C>>,
         Standard: Distribution<AssetParameters<C>>,
@@ -830,8 +829,8 @@ where
     C: Configuration,
     S: VerifiedSet<Item = Utxo<C>>,
 {
-    /// UTXO Containment Proof
-    utxo_containment_proof: ContainmentProof<S>,
+    /// UTXO Membership Proof
+    utxo_membership_proof: MembershipProof<S>,
 
     /// Type Parameter Marker
     __: PhantomData<C>,
@@ -845,7 +844,7 @@ where
     /// Returns `true` if a [`PreSender`] could be upgraded using `self` given the `utxo_set`.
     #[inline]
     pub fn can_upgrade(&self, utxo_set: &S) -> bool {
-        self.utxo_containment_proof.check_public_input(utxo_set)
+        self.utxo_membership_proof.verify_public(utxo_set)
     }
 
     /// Upgrades the `pre_sender` to a [`Sender`] by attaching `self` to it.
@@ -907,23 +906,22 @@ where
 
     /// Inserts the [`Utxo`] corresponding to `self` into the `utxo_set`.
     #[inline]
-    pub fn insert_utxo<S>(&self, utxo_set: &mut S)
+    pub fn insert_utxo<S>(&self, utxo_set: &mut S) -> bool
     where
         S: VerifiedSet<Item = Utxo<C>>,
     {
-        // FIXME: Need to improve the [`VerifiedSet`] trait before we can implement this.
-        todo!()
+        utxo_set.insert(&self.utxo)
     }
 
-    /// Requests the containment proof of `self.utxo` from `utxo_set` so that we can turn `self`
+    /// Requests the membership proof of `self.utxo` from `utxo_set` so that we can turn `self`
     /// into a [`Sender`].
     #[inline]
-    pub fn get_proof<S>(&self, utxo_set: &S) -> Result<SenderProof<C, S>, S::ContainmentError>
+    pub fn get_proof<S>(&self, utxo_set: &S) -> Option<SenderProof<C, S>>
     where
         S: VerifiedSet<Item = Utxo<C>>,
     {
-        Ok(SenderProof {
-            utxo_containment_proof: utxo_set.get_containment_proof(&self.utxo)?,
+        Some(SenderProof {
+            utxo_membership_proof: utxo_set.get_membership_proof(&self.utxo)?,
             __: PhantomData,
         })
     }
@@ -948,18 +946,18 @@ where
             void_number: self.void_number,
             void_number_commitment: self.void_number_commitment,
             utxo: self.utxo,
-            utxo_containment_proof: proof.utxo_containment_proof,
+            utxo_membership_proof: proof.utxo_membership_proof,
         }
     }
 
     /// Tries to convert `self` into a [`Sender`] by getting a proof from `utxo_set`.
     #[inline]
-    pub fn try_upgrade<S>(self, utxo_set: &S) -> Result<Sender<C, S>, S::ContainmentError>
+    pub fn try_upgrade<S>(self, utxo_set: &S) -> Option<Sender<C, S>>
     where
         S: VerifiedSet<Item = Utxo<C>>,
     {
         let proof = self.get_proof(utxo_set)?;
-        Ok(self.upgrade(proof))
+        Some(self.upgrade(proof))
     }
 }
 
@@ -990,8 +988,8 @@ where
     /// Unspent Transaction Output
     utxo: Utxo<C>,
 
-    /// UTXO Containment Proof
-    utxo_containment_proof: ContainmentProof<S>,
+    /// UTXO Membership Proof
+    utxo_membership_proof: MembershipProof<S>,
 }
 
 impl<C, S> Sender<C, S>
@@ -1006,7 +1004,7 @@ where
         commitment_scheme: &C::CommitmentScheme,
         asset: Asset,
         utxo_set: &S,
-    ) -> Result<Self, S::ContainmentError>
+    ) -> Option<Self>
     where
         Standard: Distribution<AssetParameters<C>>,
     {
@@ -1025,7 +1023,9 @@ where
         self.asset.value
     }
 
-    /// Reverts `self` back into a [`PreSender`] if its [`Utxo`] containment proof was deemed
+    /// Reverts `self` back into a [`PreSender`].
+    ///
+    /// This method should be called if the [`Utxo`] membership proof attached to `self` was deemed
     /// invalid or had expired.
     #[inline]
     pub fn downgrade(self) -> PreSender<C> {
@@ -1045,7 +1045,7 @@ where
     pub fn into_post(self) -> SenderPost<C, S> {
         SenderPost {
             void_number: self.void_number,
-            utxo_containment_proof_public_input: self.utxo_containment_proof.into_public_input(),
+            utxo_membership_proof_public: self.utxo_membership_proof.into_public(),
         }
     }
 }
@@ -1132,8 +1132,8 @@ where
     /// Void Number
     void_number: VoidNumber<C>,
 
-    /// UTXO Containment Proof Public Input
-    utxo_containment_proof_public_input: S::Public,
+    /// UTXO Membership Proof Public Part
+    utxo_membership_proof_public: S::Public,
 }
 
 impl<C, S> SenderPost<C, S>
@@ -1152,8 +1152,8 @@ where
                 Some(key) => key,
                 _ => return Err(SenderPostError::AssetSpent),
             },
-            utxo_containment_proof_public_input: match ledger
-                .is_valid_utxo_state(self.utxo_containment_proof_public_input)
+            utxo_membership_proof_public: match ledger
+                .is_valid_utxo_state(self.utxo_membership_proof_public)
             {
                 Some(key) => key,
                 _ => return Err(SenderPostError::InvalidUtxoState),
@@ -1183,8 +1183,8 @@ where
     /// Void Number Posting Key
     void_number: L::ValidVoidNumber,
 
-    /// UTXO Containment Proof Public Input Posting Key
-    utxo_containment_proof_public_input: L::ValidUtxoState,
+    /// UTXO Membership Proof Public Part Posting Key
+    utxo_membership_proof_public: L::ValidUtxoState,
 }
 
 impl<C, S, L> SenderPostingKey<C, S, L>
@@ -1198,7 +1198,7 @@ where
     pub fn post(self, super_key: &L::SuperPostingKey, ledger: &mut L) -> bool {
         ledger.spend(
             self.void_number,
-            self.utxo_containment_proof_public_input,
+            self.utxo_membership_proof_public,
             super_key,
         )
     }
@@ -1396,7 +1396,7 @@ pub mod constraint {
             Allocation, Constant, ConstraintSystem, Derived, Equal, Public, PublicOrSecret, Secret,
             Variable,
         },
-        set::constraint::{ContainmentProofVar, VerifiedSetVariable},
+        set::constraint::{MembershipProofVar, VerifierVariable},
     };
 
     /// [`Identity`] Constraint System Configuration
@@ -1497,9 +1497,9 @@ pub mod constraint {
     /// UTXO Variable Type
     pub type UtxoVar<C> = CommitmentSchemeOutputVar<C>;
 
-    /// UTXO Containment Proof Variable Type
-    pub type UtxoContainmentProofVar<C, S> =
-        ContainmentProofVar<S, <C as Configuration>::ConstraintSystem>;
+    /// UTXO Membership Proof Variable Type
+    pub type UtxoMembershipProofVar<C, S> =
+        MembershipProofVar<S, <C as Configuration>::ConstraintSystem>;
 
     /// Asset Parameters Variable
     pub struct AssetParametersVar<C>
@@ -1603,8 +1603,8 @@ pub mod constraint {
         /// Unspent Transaction Output
         utxo: UtxoVar<C>,
 
-        /// UTXO Containment Proof
-        utxo_containment_proof: UtxoContainmentProofVar<C, S>,
+        /// UTXO Membership Proof
+        utxo_membership_proof: UtxoMembershipProofVar<C, S>,
     }
 
     impl<C, S> SenderVar<C, S>
@@ -1619,11 +1619,12 @@ pub mod constraint {
             self,
             cs: &mut C::ConstraintSystem,
             commitment_scheme: &C::CommitmentSchemeVar,
-            utxo_set: &Var<S, C::ConstraintSystem>,
+            utxo_set_verifier: &Var<S::Verifier, C::ConstraintSystem>,
         ) -> AssetVar<C::ConstraintSystem>
         where
-            S: HasAllocation<C::ConstraintSystem>,
-            S::Variable: VerifiedSetVariable<C::ConstraintSystem, ItemVar = UtxoVar<C>>,
+            S::Verifier: HasAllocation<C::ConstraintSystem>,
+            <S::Verifier as HasAllocation<C::ConstraintSystem>>::Variable:
+                VerifierVariable<C::ConstraintSystem, ItemVar = UtxoVar<C>>,
         {
             // Well-formed check:
             //
@@ -1688,13 +1689,13 @@ pub mod constraint {
                 ),
             );
 
-            // 5. Check UTXO containment proof:
+            // 5. Check UTXO membership proof:
             // ```
             // is_path(cm, path, root) == true
             // ```
             // where public: {root}, secret: {cm, path}.
-            self.utxo_containment_proof
-                .assert_validity(utxo_set, &self.utxo, cs);
+            self.utxo_membership_proof
+                .assert_validity(utxo_set_verifier, &self.utxo, cs);
 
             self.asset
         }
@@ -1729,7 +1730,7 @@ pub mod constraint {
                         Public,
                     ),
                     utxo: UtxoVar::<C>::new_known(cs, &this.utxo, Secret),
-                    utxo_containment_proof: this.utxo_containment_proof.known(cs, mode),
+                    utxo_membership_proof: this.utxo_membership_proof.known(cs, mode),
                 },
                 Allocation::Unknown(mode) => Self {
                     secret_key: SecretKeyVar::<C>::new_unknown(cs, mode),
@@ -1739,7 +1740,7 @@ pub mod constraint {
                     void_number: VoidNumberVar::<C>::new_unknown(cs, Public),
                     void_number_commitment: VoidNumberCommitmentVar::<C>::new_unknown(cs, Public),
                     utxo: UtxoVar::<C>::new_unknown(cs, Secret),
-                    utxo_containment_proof: ContainmentProof::<S>::unknown(cs, mode),
+                    utxo_membership_proof: MembershipProof::<S>::unknown(cs, mode),
                 },
             }
         }

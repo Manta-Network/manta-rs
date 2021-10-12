@@ -81,7 +81,7 @@ where
     }
 
     #[inline]
-    fn generate_proof<R>(
+    fn prove<R>(
         cs: Self::ConstraintSystem,
         context: &Self::ProvingContext,
         rng: &mut R,
@@ -104,7 +104,7 @@ where
     }
 
     #[inline]
-    fn verify_proof(
+    fn verify(
         context: &Self::VerifyingContext,
         proof: &Self::Proof,
     ) -> Result<Self::Verification, Self::Error> {

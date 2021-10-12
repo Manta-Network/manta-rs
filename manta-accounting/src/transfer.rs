@@ -41,7 +41,7 @@ use manta_crypto::{
         PublicOrSecret, Secret, Variable, VariableSource,
     },
     ies::{EncryptedMessage, IntegratedEncryptionScheme},
-    set::{constraint::VerifiedSetVariable, VerifiedSet},
+    set::{constraint::VerifierVariable, VerifiedSet, Verifier},
 };
 use manta_util::{create_seal, from_variant_impl, iter::mixed_chain, seal, Either};
 use rand::{
@@ -95,14 +95,20 @@ pub trait Configuration:
     type IntegratedEncryptionScheme: IntegratedEncryptionScheme<Plaintext = Asset>;
 
     /// Verified Set for [`Utxo`]
-    type UtxoSet: VerifiedSet<Item = Utxo<Self>>
-        + HasAllocation<ConstraintSystem<Self>, Variable = Self::UtxoSetVar, Mode = Constant>;
+    type UtxoSet: VerifiedSet<Item = Utxo<Self>, Verifier = Self::UtxoSetVerifier>;
 
-    /// Verified Set Variable for [`Utxo`]
-    type UtxoSetVar: VerifiedSetVariable<
+    /// Verified Set Verifier for [`Utxo`]
+    type UtxoSetVerifier: Verifier<
+            Item = Utxo<Self>,
+            Public = <Self::UtxoSet as VerifiedSet>::Public,
+            Secret = <Self::UtxoSet as VerifiedSet>::Secret,
+        > + HasAllocation<ConstraintSystem<Self>, Variable = Self::UtxoSetVerifierVar, Mode = Constant>;
+
+    /// Verified Set Verifier Variable for [`Utxo`]
+    type UtxoSetVerifierVar: VerifierVariable<
         ConstraintSystem<Self>,
         ItemVar = UtxoVar<Self>,
-        Type = Self::UtxoSet,
+        Type = Self::UtxoSetVerifier,
         Mode = Constant,
     >;
 }
@@ -561,14 +567,14 @@ where
     pub fn into_post<R>(
         self,
         commitment_scheme: &C::CommitmentScheme,
-        utxo_set: &C::UtxoSet,
+        utxo_set_verifier: &C::UtxoSetVerifier,
         context: &ProvingContext<C>,
         rng: &mut R,
     ) -> Result<TransferPost<C>, ProofSystemError<C>>
     where
         R: CryptoRng + RngCore + ?Sized,
     {
-        Transfer::from(self).into_post(commitment_scheme, utxo_set, context, rng)
+        Transfer::from(self).into_post(commitment_scheme, utxo_set_verifier, context, rng)
     }
 }
 
@@ -709,13 +715,13 @@ where
     #[inline]
     fn unknown_variables(
         commitment_scheme: &C::CommitmentScheme,
-        utxo_set: &C::UtxoSet,
+        utxo_set_verifier: &C::UtxoSetVerifier,
         cs: &mut ConstraintSystem<C>,
     ) -> (
         Option<C::AssetIdVar>,
         TransferParticipantsVar<C, SOURCES, SENDERS, RECEIVERS, SINKS>,
         C::CommitmentSchemeVar,
-        C::UtxoSetVar,
+        C::UtxoSetVerifierVar,
     ) {
         let base_asset_id = if has_no_public_side(SOURCES, SENDERS, RECEIVERS, SINKS) {
             None
@@ -726,7 +732,7 @@ where
             base_asset_id,
             TransferParticipantsVar::new_unknown(cs, Derived),
             commitment_scheme.as_known(cs, Public),
-            utxo_set.as_known(cs, Public),
+            utxo_set_verifier.as_known(cs, Public),
         )
     }
 
@@ -735,19 +741,19 @@ where
     fn known_variables(
         &self,
         commitment_scheme: &C::CommitmentScheme,
-        utxo_set: &C::UtxoSet,
+        utxo_set_verifier: &C::UtxoSetVerifier,
         cs: &mut ConstraintSystem<C>,
     ) -> (
         Option<C::AssetIdVar>,
         TransferParticipantsVar<C, SOURCES, SENDERS, RECEIVERS, SINKS>,
         C::CommitmentSchemeVar,
-        C::UtxoSetVar,
+        C::UtxoSetVerifierVar,
     ) {
         (
             self.public.asset_id.map(|id| id.as_known(cs, Public)),
             TransferParticipantsVar::new_known(cs, self, Derived),
             commitment_scheme.as_known(cs, Public),
-            utxo_set.as_known(cs, Public),
+            utxo_set_verifier.as_known(cs, Public),
         )
     }
 
@@ -757,7 +763,7 @@ where
         base_asset_id: Option<C::AssetIdVar>,
         participants: TransferParticipantsVar<C, SOURCES, SENDERS, RECEIVERS, SINKS>,
         commitment_scheme: C::CommitmentSchemeVar,
-        utxo_set: C::UtxoSetVar,
+        utxo_set_verifier: C::UtxoSetVerifierVar,
         cs: &mut ConstraintSystem<C>,
     ) {
         let mut sender_sum = C::AssetBalanceVar::from_default(cs, Secret);
@@ -779,7 +785,8 @@ where
             participants.receivers.into_iter(),
             |c| match c {
                 Either::Left(sender) => {
-                    let asset = sender.get_well_formed_asset(cs, &commitment_scheme, &utxo_set);
+                    let asset =
+                        sender.get_well_formed_asset(cs, &commitment_scheme, &utxo_set_verifier);
                     sender_sum += asset.value;
                     asset.id
                 }
@@ -807,7 +814,7 @@ where
     #[inline]
     pub fn generate_context<R>(
         commitment_scheme: &C::CommitmentScheme,
-        utxo_set: &C::UtxoSet,
+        utxo_set_verifier: &C::UtxoSetVerifier,
         rng: &mut R,
     ) -> Option<Result<(ProvingContext<C>, VerifyingContext<C>), ProofSystemError<C>>>
     where
@@ -817,13 +824,13 @@ where
             return None;
         }
         let mut cs = C::ProofSystem::for_unknown();
-        let (base_asset_id, participants, commitment_scheme, utxo_set) =
-            Self::unknown_variables(commitment_scheme, utxo_set, &mut cs);
+        let (base_asset_id, participants, commitment_scheme, utxo_set_verifier) =
+            Self::unknown_variables(commitment_scheme, utxo_set_verifier, &mut cs);
         Self::build_constraints(
             base_asset_id,
             participants,
             commitment_scheme,
-            utxo_set,
+            utxo_set_verifier,
             &mut cs,
         );
         Some(C::ProofSystem::generate_context(cs, rng))
@@ -837,7 +844,7 @@ where
     pub fn generate_proof<R>(
         &self,
         commitment_scheme: &C::CommitmentScheme,
-        utxo_set: &C::UtxoSet,
+        utxo_set_verifier: &C::UtxoSetVerifier,
         context: &ProvingContext<C>,
         rng: &mut R,
     ) -> Result<ShapedProof<C>, ProofSystemError<C>>
@@ -849,18 +856,18 @@ where
             return Ok(shape.into());
         }
         let mut cs = C::ProofSystem::for_known();
-        let (base_asset_id, participants, commitment_scheme, utxo_set) =
-            self.known_variables(commitment_scheme, utxo_set, &mut cs);
+        let (base_asset_id, participants, commitment_scheme, utxo_set_verifier) =
+            self.known_variables(commitment_scheme, utxo_set_verifier, &mut cs);
         Self::build_constraints(
             base_asset_id,
             participants,
             commitment_scheme,
-            utxo_set,
+            utxo_set_verifier,
             &mut cs,
         );
         Ok(ShapedProof::new_proof(
             shape,
-            C::ProofSystem::generate_proof(cs, context, rng)?,
+            C::ProofSystem::prove(cs, context, rng)?,
         ))
     }
 
@@ -869,7 +876,7 @@ where
     pub fn into_post<R>(
         self,
         commitment_scheme: &C::CommitmentScheme,
-        utxo_set: &C::UtxoSet,
+        utxo_set_verifier: &C::UtxoSetVerifier,
         context: &ProvingContext<C>,
         rng: &mut R,
     ) -> Result<TransferPost<C>, ProofSystemError<C>>
@@ -877,7 +884,12 @@ where
         R: CryptoRng + RngCore + ?Sized,
     {
         Ok(TransferPost {
-            validity_proof: self.generate_proof(commitment_scheme, utxo_set, context, rng)?,
+            validity_proof: self.generate_proof(
+                commitment_scheme,
+                utxo_set_verifier,
+                context,
+                rng,
+            )?,
             sender_posts: IntoIterator::into_iter(self.secret.senders)
                 .map(Sender::into_post)
                 .collect(),
