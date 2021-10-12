@@ -453,20 +453,36 @@ where
         self.into_spend().try_open(encrypted_asset)
     }
 
-    /// Builds a new [`InternalReceiver`].
+    /// Builds a new [`Receiver`].
     #[inline]
-    pub fn into_internal_receiver<I, R>(
+    pub fn into_receiver<I, R>(
         self,
         commitment_scheme: &C::CommitmentScheme,
         asset: Asset,
         rng: &mut R,
-    ) -> Result<InternalReceiver<C, I>, I::Error>
+    ) -> Result<Receiver<C, I>, I::Error>
+    where
+        I: IntegratedEncryptionScheme<Plaintext = Asset>,
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        self.into_shielded(commitment_scheme)
+            .into_receiver(commitment_scheme, asset, rng)
+    }
+
+    /// Builds a new [`InternalIdentity`].
+    #[inline]
+    pub fn into_internal<I, R>(
+        self,
+        commitment_scheme: &C::CommitmentScheme,
+        asset: Asset,
+        rng: &mut R,
+    ) -> Result<InternalIdentity<C, I>, I::Error>
     where
         I: IntegratedEncryptionScheme<Plaintext = Asset>,
         R: CryptoRng + RngCore + ?Sized,
     {
         let (parameters, asset_public_key) = self.parameters_and_asset_public_key();
-        Ok(InternalReceiver {
+        Ok(InternalIdentity {
             receiver: self
                 .build_shielded_identity(commitment_scheme, parameters, asset_public_key)
                 .into_receiver(commitment_scheme, asset, rng)?,
@@ -718,8 +734,8 @@ where
     }
 }
 
-/// Internal Receiver
-pub struct InternalReceiver<C, I>
+/// Internal Identity
+pub struct InternalIdentity<C, I>
 where
     C: Configuration,
     I: IntegratedEncryptionScheme<Plaintext = Asset>,
@@ -731,13 +747,33 @@ where
     pub pre_sender: PreSender<C>,
 }
 
-impl<C, I> From<InternalReceiver<C, I>> for (Receiver<C, I>, PreSender<C>)
+impl<C, I> InternalIdentity<C, I>
+where
+    C: Configuration,
+    I: IntegratedEncryptionScheme<Plaintext = Asset>,
+{
+    /// Builds an [`InternalIdentity`] from an [`Identity`] for the given `asset`.
+    #[inline]
+    pub fn from_identity<R>(
+        identity: Identity<C>,
+        commitment_scheme: &C::CommitmentScheme,
+        asset: Asset,
+        rng: &mut R,
+    ) -> Result<Self, I::Error>
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        identity.into_internal(commitment_scheme, asset, rng)
+    }
+}
+
+impl<C, I> From<InternalIdentity<C, I>> for (Receiver<C, I>, PreSender<C>)
 where
     C: Configuration,
     I: IntegratedEncryptionScheme<Plaintext = Asset>,
 {
     #[inline]
-    fn from(internal: InternalReceiver<C, I>) -> Self {
+    fn from(internal: InternalIdentity<C, I>) -> Self {
         (internal.receiver, internal.pre_sender)
     }
 }
@@ -1147,7 +1183,21 @@ where
     C: Configuration,
     I: IntegratedEncryptionScheme<Plaintext = Asset>,
 {
-    /// Build a [`Receiver`] from a [`ShieldedIdentity`] for the `asset`.
+    /// Builds a [`Receiver`] from an [`Identity`] for the given `asset`.
+    #[inline]
+    pub fn from_identity<R>(
+        identity: Identity<C>,
+        commitment_scheme: &C::CommitmentScheme,
+        asset: Asset,
+        rng: &mut R,
+    ) -> Result<Self, I::Error>
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        identity.into_receiver(commitment_scheme, asset, rng)
+    }
+
+    /// Builds a [`Receiver`] from a [`ShieldedIdentity`] for the given `asset`.
     #[inline]
     pub fn from_shielded<R>(
         identity: ShieldedIdentity<C, I>,

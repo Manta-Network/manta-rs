@@ -114,32 +114,32 @@ pub trait Configuration:
 pub type ShieldedIdentity<C> =
     identity::ShieldedIdentity<C, <C as Configuration>::IntegratedEncryptionScheme>;
 
+/// Transfer Internal Identity Type
+pub type InternalIdentity<C> =
+    identity::InternalIdentity<C, <C as Configuration>::IntegratedEncryptionScheme>;
+
 /// Transfer Spend Type
 pub type Spend<C> = identity::Spend<C, <C as Configuration>::IntegratedEncryptionScheme>;
 
 /// Transfer Sender Type
 pub type Sender<C> = identity::Sender<C, <C as Configuration>::UtxoSet>;
 
-/// Sender Post Type
+/// Transfer Sender Post Type
 pub type SenderPost<C> = identity::SenderPost<C, <C as Configuration>::UtxoSet>;
 
-/// Sender Posting Key Type
+/// Transfer Sender Posting Key Type
 pub type SenderPostingKey<C, L> = identity::SenderPostingKey<C, <C as Configuration>::UtxoSet, L>;
 
 /// Transfer Receiver Type
 pub type Receiver<C> = identity::Receiver<C, <C as Configuration>::IntegratedEncryptionScheme>;
 
-/// Receiver Post Type
+/// Transfer Receiver Post Type
 pub type ReceiverPost<C> =
     identity::ReceiverPost<C, <C as Configuration>::IntegratedEncryptionScheme>;
 
-/// Receiver Posting Key Type
+/// Transfer Receiver Posting Key Type
 pub type ReceiverPostingKey<C, L> =
     identity::ReceiverPostingKey<C, <C as Configuration>::IntegratedEncryptionScheme, L>;
-
-/// Internal Receiver Type
-pub type InternalReceiver<C> =
-    identity::InternalReceiver<C, <C as Configuration>::IntegratedEncryptionScheme>;
 
 /// Transfer Encrypted Asset Type
 pub type EncryptedAsset<C> = EncryptedMessage<<C as Configuration>::IntegratedEncryptionScheme>;
@@ -1214,19 +1214,17 @@ pub mod canonical {
         where
             R: CryptoRng + RngCore + ?Sized,
         {
-            // TODO: Add convenience method for `Identity::into_receiver`.
             Ok(Mint::build(
                 asset,
-                identity.into_shielded(commitment_scheme).into_receiver(
-                    commitment_scheme,
-                    asset,
-                    rng,
-                )?,
+                identity.into_receiver(commitment_scheme, asset, rng)?,
             ))
         }
 
         /// Builds a [`Mint`] from an `identity` for an [`Asset`] with the given `asset_id` but
         /// zero value.
+        ///
+        /// This is particularly useful when constructing transactions accumulated from [`Transfer`]
+        /// objects and a zero slot on the sender side needs to be filled.
         #[inline]
         pub fn zero<R>(
             identity: Identity<C>,
@@ -1238,12 +1236,8 @@ pub mod canonical {
             R: CryptoRng + RngCore + ?Sized,
         {
             let asset = Asset::zero(asset_id);
-            let internal_receiver =
-                identity.into_internal_receiver(commitment_scheme, asset, rng)?;
-            Ok((
-                Mint::build(asset, internal_receiver.receiver),
-                internal_receiver.pre_sender,
-            ))
+            let internal = identity.into_internal(commitment_scheme, asset, rng)?;
+            Ok((Mint::build(asset, internal.receiver), internal.pre_sender))
         }
     }
 
@@ -1285,10 +1279,19 @@ pub mod canonical {
     /// ```text
     /// <0, 2, 1, 1>
     /// ```
+    ///
+    /// The [`ReclaimShape`] is defined in terms of the [`PrivateTransferShape`]. It is defined to
+    /// have the same number of senders and one secret receiver turned into a public sink.
     #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq, Ord, PartialOrd)]
     pub struct ReclaimShape;
 
-    impl_shape!(ReclaimShape, 0, 2, 1, 1);
+    impl_shape!(
+        ReclaimShape,
+        0,
+        PrivateTransferShape::SENDERS,
+        PrivateTransferShape::RECEIVERS - 1,
+        1
+    );
 
     /// Reclaim Transaction
     pub type Reclaim<C> = transfer_alias!(C, ReclaimShape);

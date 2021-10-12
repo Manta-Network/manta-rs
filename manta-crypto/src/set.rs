@@ -16,6 +16,8 @@
 
 //! Verified Sets
 
+// TODO: Should `insert` or `insert_non_proving` be the default?
+
 /// Verified Set Trait
 pub trait VerifiedSet {
     /// Item Type
@@ -45,8 +47,20 @@ pub trait VerifiedSet {
         self.len() == 0
     }
 
-    /// Inserts `item` into `self`.
+    /// Inserts `item` into `self` with the guarantee that `self` can later return a valid proof of
+    /// membership for `item` with a call to [`get_membership_proof`](Self::get_membership_proof).
     fn insert(&mut self, item: &Self::Item) -> bool;
+
+    /// Inserts `item` into `self` without the guarantee that `self` with be able to return a proof
+    /// of membership for `item`.
+    ///
+    /// # Implementation Note
+    ///
+    /// By default, this method uses [`insert`](Self::insert) to store `item`.
+    #[inline]
+    fn insert_non_proving(&mut self, item: &Self::Item) -> bool {
+        self.insert(item)
+    }
 
     /// Returns `true` if `public` is a valid input for the current state of `self`.
     fn verify(&self, public: &Self::Public) -> bool;

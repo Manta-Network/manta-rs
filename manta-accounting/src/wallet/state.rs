@@ -371,3 +371,16 @@ where
         Self::SignerError(err)
     }
 }
+
+impl<D, C, L, S> From<signer::InternalIdentityError<D, C>> for Error<D, C, L, S>
+where
+    D: DerivedSecretKeyGenerator,
+    C: Configuration<SecretKey = D::SecretKey>,
+    L: ledger::Connection<C>,
+    S: signer::Connection<D, C>,
+{
+    #[inline]
+    fn from(err: signer::InternalIdentityError<D, C>) -> Self {
+        Self::SignerError(err.into())
+    }
+}

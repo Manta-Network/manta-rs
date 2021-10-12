@@ -74,8 +74,8 @@ where
     /// Pulls all data from the ledger, returning the current [`Checkpoint`](Self::Checkpoint).
     fn pull_all(&self) -> Self::PullAllFuture;
 
-    /// Sends `posts` to the ledger returning the post of the transfer which failed and all
-    /// following transfer posts.
+    /// Sends `posts` to the ledger to be appended atomically, returning `false` if the posts were
+    /// invalid.
     fn push(&self, posts: Vec<TransferPost<C>>) -> Self::PushFuture;
 }
 
@@ -137,12 +137,3 @@ pub struct PushResponse {
     /// Successful Push
     pub success: bool,
 }
-
-/* TODO:
-///
-pub struct Ledger<C>
-where
-    C: Configuration, {}
-
-impl<C> TransferLedger<C> for Ledger<C> where C: Configuration {}
-*/

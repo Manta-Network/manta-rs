@@ -214,6 +214,12 @@ where
     pub fn reduce(self) -> Index<D> {
         Index::new(self.kind.into(), self.index)
     }
+
+    /// Wraps an `inner` value into a [`KeyOwned`] with `self` as the index.
+    #[inline]
+    pub fn wrap<T>(self, inner: T) -> KeyOwned<D, T, K> {
+        KeyOwned::new(inner, self)
+    }
 }
 
 impl<D> Index<D>
@@ -316,7 +322,7 @@ where
     K: Into<KeyKind>,
 {
     /// Value Owned by the Key
-    pub value: T,
+    pub inner: T,
 
     /// Key Index
     pub index: Index<D, K>,
@@ -327,28 +333,28 @@ where
     D: DerivedSecretKeyGenerator,
     K: Into<KeyKind>,
 {
-    /// Builds a new [`KeyOwned`] for `value` with `index` as the [`Index`].
+    /// Builds a new [`KeyOwned`] for `inner` with `index` as the [`Index`].
     #[inline]
-    pub fn new(value: T, index: Index<D, K>) -> Self {
-        Self { value, index }
+    pub fn new(inner: T, index: Index<D, K>) -> Self {
+        Self { inner, index }
     }
 
-    /// Builds a new [`KeyOwned`] for `value` with `kind` and `index` as the [`Index`].
+    /// Builds a new [`KeyOwned`] for `inner` with `kind` and `index` as the [`Index`].
     #[inline]
-    pub fn with_kind(value: T, kind: K, index: D::Index) -> Self {
-        Self::new(value, Index::new(kind, index))
+    pub fn with_kind(inner: T, kind: K, index: D::Index) -> Self {
+        Self::new(inner, Index::new(kind, index))
     }
 
-    /// Returns the inner [`self.value`](Self::value) dropping the [`self.index`](Self::index).
+    /// Returns the inner [`self.inner`](Self::inner) dropping the [`self.index`](Self::index).
     #[inline]
     pub fn unwrap(self) -> T {
-        self.value
+        self.inner
     }
 
     /// Reduces `self` into a [`KeyOwned`] with [`KeyKind`] as the key kind.
     #[inline]
     pub fn reduce(self) -> KeyOwned<D, T> {
-        KeyOwned::new(self.value, self.index.reduce())
+        KeyOwned::new(self.inner, self.index.reduce())
     }
 
     /// Maps the underlying value using `f`.
@@ -357,7 +363,7 @@ where
     where
         F: FnOnce(T) -> U,
     {
-        KeyOwned::new(f(self.value), self.index)
+        KeyOwned::new(f(self.inner), self.index)
     }
 
     /// Maps the underlying value using `f` and then factors over the `Some` branch.
@@ -383,16 +389,16 @@ impl<D, T> KeyOwned<D, T>
 where
     D: DerivedSecretKeyGenerator,
 {
-    /// Builds a new [`KeyOwned`] for `value` for an external key with `index`.
+    /// Builds a new [`KeyOwned`] for `inner` for an external key with `index`.
     #[inline]
-    pub fn new_external(value: T, index: D::Index) -> Self {
-        Self::new(value, Index::new_external(index))
+    pub fn new_external(inner: T, index: D::Index) -> Self {
+        Self::new(inner, Index::new_external(index))
     }
 
-    /// Builds a new [`KeyOwned`] for `value` for an internal key with `index`.
+    /// Builds a new [`KeyOwned`] for `inner` for an internal key with `index`.
     #[inline]
-    pub fn new_internal(value: T, index: D::Index) -> Self {
-        Self::new(value, Index::new_internal(index))
+    pub fn new_internal(inner: T, index: D::Index) -> Self {
+        Self::new(inner, Index::new_internal(index))
     }
 
     /// Returns `true` if `self` represents a value owned by an external key.
@@ -415,7 +421,7 @@ where
 {
     #[inline]
     fn as_ref(&self) -> &T {
-        &self.value
+        &self.inner
     }
 }
 
@@ -426,7 +432,7 @@ where
 {
     #[inline]
     fn as_mut(&mut self) -> &mut T {
-        &mut self.value
+        &mut self.inner
     }
 }
 
@@ -437,7 +443,7 @@ where
 {
     #[inline]
     fn from(key_owned: KeyOwned<D, T, K>) -> Self {
-        (key_owned.value, key_owned.index)
+        (key_owned.inner, key_owned.index)
     }
 }
 
@@ -449,13 +455,13 @@ where
     /// Factors the key index over the left value in the pair.
     #[inline]
     pub fn left(self) -> (KeyOwned<D, L, K>, R) {
-        (KeyOwned::new(self.value.0, self.index), self.value.1)
+        (KeyOwned::new(self.inner.0, self.index), self.inner.1)
     }
 
     /// Factors the key index over the right value in the pair.
     #[inline]
     pub fn right(self) -> (L, KeyOwned<D, R, K>) {
-        (self.value.0, KeyOwned::new(self.value.1, self.index))
+        (self.inner.0, KeyOwned::new(self.inner.1, self.index))
     }
 }
 
@@ -467,7 +473,7 @@ where
     /// Converts a `KeyOwned<D, Option<T>, K>` into an `Option<KeyOwned<D, T, K>>`.
     #[inline]
     pub fn collect(self) -> Option<KeyOwned<D, T, K>> {
-        Some(KeyOwned::new(self.value?, self.index))
+        Some(KeyOwned::new(self.inner?, self.index))
     }
 }
 
@@ -490,7 +496,7 @@ where
     /// Converts a `KeyOwned<D, Result<T, E>, K>` into an `Result<KeyOwned<D, T, K>, E>`.
     #[inline]
     pub fn collect(self) -> Result<KeyOwned<D, T, K>, E> {
-        Ok(KeyOwned::new(self.value?, self.index))
+        Ok(KeyOwned::new(self.inner?, self.index))
     }
 
     /// Converts a `KeyOwned<D, Result<T, E>, K>` into an `Option<KeyOwned<D, T, K>>`.
