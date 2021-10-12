@@ -792,7 +792,7 @@ where
             .into()
             .into_post(
                 &self.commitment_scheme,
-                &self.utxo_set.verifier(),
+                self.utxo_set.verifier(),
                 &self.proving_context,
                 &mut self.rng,
             )

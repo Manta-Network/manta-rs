@@ -20,11 +20,8 @@
 //        represents the "native" ledger rather than the blockchain ledger.
 
 use crate::{
-    accounting::config::{Configuration, ConstraintSystem, ProofSystem},
-    crypto::{
-        ies::EncryptedAsset,
-        merkle_tree::{constraint as merkle_tree_constraint, ConfigConverter},
-    },
+    accounting::config::{Configuration, ConstraintSystem},
+    crypto::merkle_tree::{constraint as merkle_tree_constraint, ConfigConverter},
 };
 use alloc::{collections::BTreeSet, vec, vec::Vec};
 use blake2::{
@@ -33,14 +30,11 @@ use blake2::{
 };
 use manta_accounting::identity;
 use manta_crypto::{
-    constraint::{self, reflection::HasAllocation, Allocation, Constant, Variable},
+    constraint::{reflection::HasAllocation, Allocation, Constant, Variable},
     merkle_tree::{self, single_leaf::SingleLeaf, Tree},
     set::{constraint::VerifierVariable, MembershipProof, VerifiedSet, Verifier},
 };
 use manta_util::{as_bytes, concatenate, into_array_unchecked};
-
-/// Void Number
-type VoidNumber = identity::VoidNumber<Configuration>;
 
 /// Unspent Transaction Output
 type Utxo = identity::Utxo<Configuration>;
@@ -76,6 +70,23 @@ pub struct UtxoShard {
     utxos: SingleLeaf<ConfigConverter<Configuration>>,
 }
 
+/// UTXO Set Verifier
+#[derive(Clone)]
+pub struct UtxoSetVerifier(Parameters);
+
+impl Verifier for UtxoSetVerifier {
+    type Item = Utxo;
+
+    type Public = Root;
+
+    type Secret = Path;
+
+    #[inline]
+    fn verify(&self, public: &Self::Public, secret: &Self::Secret, item: &Self::Item) -> bool {
+        self.0.verify(public, secret, &as_bytes!(item))
+    }
+}
+
 /// UTXO Set
 #[derive(Clone)]
 pub struct UtxoSet {
@@ -86,7 +97,7 @@ pub struct UtxoSet {
     _utxos: BTreeSet<Utxo>,
 
     /// Merkle Tree Parameters
-    parameters: Parameters,
+    parameters: UtxoSetVerifier,
 }
 
 impl UtxoSet {
@@ -98,7 +109,7 @@ impl UtxoSet {
         Self {
             shards: into_array_unchecked(vec![Default::default(); Self::SHARD_COUNT]),
             _utxos: Default::default(),
-            parameters,
+            parameters: UtxoSetVerifier(parameters),
         }
     }
 
@@ -160,7 +171,7 @@ impl VerifiedSet for UtxoSet {
         }
         if !self.shards[Self::shard_index(item)]
             .utxos
-            .push(&self.parameters, &as_bytes!(item))
+            .push(&self.parameters.0, &as_bytes!(item))
         {
             return false;
         }
@@ -169,19 +180,17 @@ impl VerifiedSet for UtxoSet {
     }
 
     #[inline]
-    fn verifier(&self) -> Self::Verifier {
-        UtxoSetVerifier {
-            parameters: self.parameters.clone(),
-        }
+    fn verifier(&self) -> &Self::Verifier {
+        &self.parameters
     }
 
     #[inline]
-    fn verify(&self, public: &Self::Public) -> bool {
+    fn check_public(&self, public: &Self::Public) -> bool {
         self.root_exists(public)
     }
 
     #[inline]
-    fn get_membership_proof(&self, item: &Self::Item) -> Option<MembershipProof<Self>> {
+    fn get_membership_proof(&self, item: &Self::Item) -> Option<MembershipProof<Self::Verifier>> {
         let _ = item;
 
         // TODO: Return a more informative error.
@@ -206,28 +215,6 @@ impl VerifiedSet for UtxoSet {
     }
 }
 
-/// UTXO Set Verifier
-#[derive(Clone)]
-pub struct UtxoSetVerifier {
-    /// Merkle Tree Parameters
-    parameters: Parameters,
-}
-
-impl Verifier for UtxoSetVerifier {
-    type Item = Utxo;
-
-    type Public = Root;
-
-    type Secret = Path;
-
-    #[inline]
-    fn verify(&self, public: &Self::Public, secret: &Self::Secret, item: &Self::Item) -> bool {
-        // FIXME: Leaf should be `Utxo` not `[u8]`.
-        self.parameters
-            .verify_path(secret, public, &as_bytes!(item))
-    }
-}
-
 /// UTXO Set Verifier Variable
 #[derive(Clone)]
 pub struct UtxoSetVerifierVar(ParametersVar);
@@ -240,7 +227,7 @@ impl Variable<ConstraintSystem> for UtxoSetVerifierVar {
     #[inline]
     fn new(ps: &mut ConstraintSystem, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
         let (this, mode) = allocation.into_known();
-        Self(this.parameters.known(ps, mode))
+        Self(this.0.known(ps, mode))
     }
 }
 
@@ -263,19 +250,4 @@ impl VerifierVariable<ConstraintSystem> for UtxoSetVerifierVar {
         let _ = cs;
         self.0.assert_verified(public, secret, &concatenate!(item))
     }
-}
-
-/// Ledger
-pub struct Ledger {
-    /// Void Numbers
-    _void_numbers: Vec<VoidNumber>,
-
-    /// Unspent Transaction Outputs
-    _utxos: UtxoSet,
-
-    /// Encrypted Assets
-    _encrypted_assets: Vec<EncryptedAsset>,
-
-    /// Verifying Context
-    _verifying_context: <ProofSystem as constraint::ProofSystem>::VerifyingContext,
 }

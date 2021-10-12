@@ -18,10 +18,26 @@
 
 // TODO: Should `insert` or `insert_non_proving` be the default?
 
-/// Verified Set Trait
+/// Verified Set Verifier
+pub trait Verifier {
+    /// Item Type
+    type Item: ?Sized;
+
+    /// Public Part of the [`Item`](Self::Item) Membership Proof
+    type Public;
+
+    /// Secret Part of the [`Item`](Self::Item) Membership Proof
+    type Secret;
+
+    /// Verifies that `public` and `secret` form a proof to the fact that `item` is contained in
+    /// the verified set which returned `self`.
+    fn verify(&self, public: &Self::Public, secret: &Self::Secret, item: &Self::Item) -> bool;
+}
+
+/// Verified Set
 pub trait VerifiedSet {
     /// Item Type
-    type Item;
+    type Item: ?Sized;
 
     /// Public Part of the [`Item`](Self::Item) Membership Proof
     type Public;
@@ -32,8 +48,8 @@ pub trait VerifiedSet {
     /// [`MembershipProof`] Verifier Type
     type Verifier: Verifier<Item = Self::Item, Public = Self::Public, Secret = Self::Secret>;
 
-    /// Returns a new verifier for `self`.
-    fn verifier(&self) -> Self::Verifier;
+    /// Returns the internal verifier for `self`.
+    fn verifier(&self) -> &Self::Verifier;
 
     /// Returns the maximum number of elements that can be stored in `self`.
     fn capacity(&self) -> usize;
@@ -63,10 +79,10 @@ pub trait VerifiedSet {
     }
 
     /// Returns `true` if `public` is a valid input for the current state of `self`.
-    fn verify(&self, public: &Self::Public) -> bool;
+    fn check_public(&self, public: &Self::Public) -> bool;
 
     /// Generates a proof that the given `item` is stored in `self`.
-    fn get_membership_proof(&self, item: &Self::Item) -> Option<MembershipProof<Self>>;
+    fn get_membership_proof(&self, item: &Self::Item) -> Option<MembershipProof<Self::Verifier>>;
 
     /// Returns `true` if `item` is stored in `self`.
     ///
@@ -81,59 +97,62 @@ pub trait VerifiedSet {
     }
 }
 
-/// Verified Set Verifier
-pub trait Verifier {
-    /// Item Type
-    type Item;
+impl<S> Verifier for S
+where
+    S: VerifiedSet,
+{
+    type Item = S::Item;
 
-    /// Public Part of the [`Item`](Self::Item) Membership Proof
-    type Public;
+    type Public = S::Public;
 
-    /// Secret Part of the [`Item`](Self::Item) Membership Proof
-    type Secret;
+    type Secret = S::Secret;
 
-    /// Verifies that `public` and `secret` form a proof to the fact that `item` is contained in
-    /// the verified set which returned `self`.
-    fn verify(&self, public: &Self::Public, secret: &Self::Secret, item: &Self::Item) -> bool;
+    #[inline]
+    fn verify(&self, public: &Self::Public, secret: &Self::Secret, item: &Self::Item) -> bool {
+        self.check_public(public) && self.verifier().verify(public, secret, item)
+    }
 }
 
-/// Membership Proof for a [`VerifiedSet`]
-pub struct MembershipProof<S>
+/// Membership Proof for a [`Verifier`]
+pub struct MembershipProof<V>
 where
-    S: VerifiedSet + ?Sized,
+    V: Verifier + ?Sized,
 {
     /// Public Proof Part
-    public: S::Public,
+    public: V::Public,
 
     /// Secret Proof Part
-    secret: S::Secret,
+    secret: V::Secret,
 }
 
-impl<S> MembershipProof<S>
+impl<V> MembershipProof<V>
 where
-    S: VerifiedSet + ?Sized,
+    V: Verifier + ?Sized,
 {
     /// Builds a new [`MembershipProof`] from `public` and `secret`.
     #[inline]
-    pub fn new(public: S::Public, secret: S::Secret) -> Self {
+    pub fn new(public: V::Public, secret: V::Secret) -> Self {
         Self { public, secret }
     }
 
-    /// Returns [`S::Public`](VerifiedSet::Public) discarding the [`MembershipProof`].
+    /// Returns [`V::Public`](Verifier::Public) discarding the [`MembershipProof`].
     #[inline]
-    pub fn into_public(self) -> S::Public {
+    pub fn into_public(self) -> V::Public {
         self.public
     }
 
     /// Returns `true` if the public part of `self` is a valid input for the current state of `set`.
     #[inline]
-    pub fn verify_public(&self, set: &S) -> bool {
-        set.verify(&self.public)
+    pub fn check_public<S>(&self, set: &S) -> bool
+    where
+        S: VerifiedSet<Item = V::Item, Public = V::Public, Secret = V::Secret, Verifier = V>,
+    {
+        set.check_public(&self.public)
     }
 
     /// Verifies that the `item` is contained in some [`VerifiedSet`].
     #[inline]
-    pub fn verify(&self, verifier: &S::Verifier, item: &S::Item) -> bool {
+    pub fn verify(&self, verifier: &V, item: &V::Item) -> bool {
         verifier.verify(&self.public, &self.secret, item)
     }
 }
@@ -195,49 +214,49 @@ pub mod constraint {
     }
 
     /// Membership Proof Variable
-    pub struct MembershipProofVar<S, C>
+    pub struct MembershipProofVar<V, C>
     where
-        S: VerifiedSet + ?Sized,
-        C: HasVariable<S::Public> + HasVariable<S::Secret> + ?Sized,
+        V: Verifier + ?Sized,
+        C: HasVariable<V::Public> + HasVariable<V::Secret> + ?Sized,
     {
         /// Public Proof Part
-        public: Var<S::Public, C>,
+        public: Var<V::Public, C>,
 
         /// Secret Proof Part
-        secret: Var<S::Secret, C>,
+        secret: Var<V::Secret, C>,
     }
 
-    impl<S, C> MembershipProofVar<S, C>
+    impl<V, C> MembershipProofVar<V, C>
     where
-        S: VerifiedSet + ?Sized,
-        C: HasVariable<S::Public> + HasVariable<S::Secret> + ?Sized,
+        V: Verifier + ?Sized,
+        C: HasVariable<V::Public> + HasVariable<V::Secret> + ?Sized,
     {
         /// Builds a new [`MembershipProofVar`] from `public` and `secret`.
         #[inline]
-        pub fn new(public: Var<S::Public, C>, secret: Var<S::Secret, C>) -> Self {
+        pub fn new(public: Var<V::Public, C>, secret: Var<V::Secret, C>) -> Self {
             Self { public, secret }
         }
 
         /// Asserts that `self` is a valid proof to the fact that `item` is stored in the
         /// verified set.
         #[inline]
-        pub fn assert_validity<V>(&self, verifier: &V, item: &V::ItemVar, cs: &mut C)
+        pub fn assert_validity<VV>(&self, verifier: &VV, item: &VV::ItemVar, cs: &mut C)
         where
             C: ConstraintSystem,
-            V: VerifierVariable<C, Type = S::Verifier>,
+            VV: VerifierVariable<C, Type = V>,
         {
             verifier.assert_valid_membership_proof(&self.public, &self.secret, item, cs)
         }
     }
 
-    impl<S, C> Variable<C> for MembershipProofVar<S, C>
+    impl<V, C> Variable<C> for MembershipProofVar<V, C>
     where
-        S: VerifiedSet + ?Sized,
-        C: HasVariable<S::Public> + HasVariable<S::Secret> + ?Sized,
+        V: Verifier + ?Sized,
+        C: HasVariable<V::Public> + HasVariable<V::Secret> + ?Sized,
     {
-        type Type = MembershipProof<S>;
+        type Type = MembershipProof<V>;
 
-        type Mode = MembershipProofMode<Mode<S::Public, C>, Mode<S::Secret, C>>;
+        type Mode = MembershipProofMode<Mode<V::Public, C>, Mode<V::Secret, C>>;
 
         #[inline]
         fn new(cs: &mut C, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
@@ -247,20 +266,20 @@ pub mod constraint {
                     cs.allocate_known(&this.secret, mode.secret),
                 ),
                 Allocation::Unknown(mode) => Self::new(
-                    unknown::<S::Public, _>(cs, mode.public),
-                    unknown::<S::Secret, _>(cs, mode.secret),
+                    unknown::<V::Public, _>(cs, mode.public),
+                    unknown::<V::Secret, _>(cs, mode.secret),
                 ),
             }
         }
     }
 
-    impl<S, C> HasAllocation<C> for MembershipProof<S>
+    impl<V, C> HasAllocation<C> for MembershipProof<V>
     where
-        S: VerifiedSet + ?Sized,
-        C: HasVariable<S::Public> + HasVariable<S::Secret> + ?Sized,
+        V: Verifier + ?Sized,
+        C: HasVariable<V::Public> + HasVariable<V::Secret> + ?Sized,
     {
-        type Variable = MembershipProofVar<S, C>;
-        type Mode = MembershipProofMode<Mode<S::Public, C>, Mode<S::Secret, C>>;
+        type Variable = MembershipProofVar<V, C>;
+        type Mode = MembershipProofMode<Mode<V::Public, C>, Mode<V::Secret, C>>;
     }
 
     /// Public Proof Part for [`VerifierVariable`]

@@ -788,7 +788,7 @@ where
     S: VerifiedSet<Item = Utxo<C>>,
 {
     /// UTXO Membership Proof
-    utxo_membership_proof: MembershipProof<S>,
+    utxo_membership_proof: MembershipProof<S::Verifier>,
 
     /// Type Parameter Marker
     __: PhantomData<C>,
@@ -802,7 +802,7 @@ where
     /// Returns `true` if a [`PreSender`] could be upgraded using `self` given the `utxo_set`.
     #[inline]
     pub fn can_upgrade(&self, utxo_set: &S) -> bool {
-        self.utxo_membership_proof.verify_public(utxo_set)
+        self.utxo_membership_proof.check_public(utxo_set)
     }
 
     /// Upgrades the `pre_sender` to a [`Sender`] by attaching `self` to it.
@@ -944,7 +944,7 @@ where
     utxo: Utxo<C>,
 
     /// UTXO Membership Proof
-    utxo_membership_proof: MembershipProof<S>,
+    utxo_membership_proof: MembershipProof<S::Verifier>,
 }
 
 impl<C, S> Sender<C, S>
@@ -1465,7 +1465,7 @@ pub mod constraint {
 
     /// UTXO Membership Proof Variable Type
     pub type UtxoMembershipProofVar<C, S> =
-        MembershipProofVar<S, <C as Configuration>::ConstraintSystem>;
+        MembershipProofVar<<S as VerifiedSet>::Verifier, <C as Configuration>::ConstraintSystem>;
 
     /// Asset Parameters Variable
     pub struct AssetParametersVar<C>
@@ -1706,7 +1706,7 @@ pub mod constraint {
                     void_number: VoidNumberVar::<C>::new_unknown(cs, Public),
                     void_number_commitment: VoidNumberCommitmentVar::<C>::new_unknown(cs, Public),
                     utxo: UtxoVar::<C>::new_unknown(cs, Secret),
-                    utxo_membership_proof: MembershipProof::<S>::unknown(cs, mode),
+                    utxo_membership_proof: MembershipProof::<S::Verifier>::unknown(cs, mode),
                 },
             }
         }

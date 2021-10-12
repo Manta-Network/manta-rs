@@ -31,6 +31,7 @@ pub mod full;
 pub mod inner_tree;
 pub mod partial;
 pub mod path;
+pub mod sharded;
 pub mod single_leaf;
 
 #[cfg(feature = "test")]

@@ -16,10 +16,7 @@
 
 //! Testing Framework
 
-use crate::merkle_tree::{
-    Configuration, GetPath, GetPathError, Leaf, MerkleTree, Parameters, Tree,
-};
-use core::fmt::Debug;
+use crate::merkle_tree::{Configuration, GetPath, Leaf, MerkleTree, Parameters, Tree};
 
 /// Tests that a tree constructed with `parameters` can accept at least two leaves without
 /// failing.
@@ -52,7 +49,6 @@ pub fn assert_valid_path<C, T>(tree: &MerkleTree<C, T>, index: usize, leaf: &Lea
 where
     C: Configuration + ?Sized,
     T: Tree<C> + GetPath<C>,
-    GetPathError<C, T>: Debug,
 {
     assert!(
         tree.path(index)

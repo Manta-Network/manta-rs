@@ -23,9 +23,12 @@
 // TODO: Should we add optimization paths for when `cloning` the default value is cheaper than
 //       creating a new one from scratch (for inner digests)?
 
-use crate::merkle_tree::{
-    fork::{self, Trunk},
-    path::{CurrentPath, Path},
+use crate::{
+    merkle_tree::{
+        fork::{self, Trunk},
+        path::{CurrentPath, Path},
+    },
+    set::{MembershipProof, VerifiedSet, Verifier},
 };
 use core::{fmt::Debug, hash::Hash, marker::PhantomData};
 
@@ -300,20 +303,32 @@ where
     }
 }
 
+/// Merkle Tree Leaf Query Mixin
+pub trait GetLeaf<C>
+where
+    C: Configuration + ?Sized,
+{
+    /// Returns the [`LeafDigest`] at the given `index`.
+    fn leaf_digest(&self, index: usize) -> Option<&LeafDigest<C>>;
+
+    /// Returns the index of the `leaf_digest` if it is contained in `self`.
+    fn index_of(&self, leaf_digest: &LeafDigest<C>) -> Option<usize>;
+
+    /// Returns `true` if `leaf_digest` is contained in the tree.
+    #[inline]
+    fn contains(&self, leaf_digest: &LeafDigest<C>) -> bool {
+        self.index_of(leaf_digest).is_some()
+    }
+}
+
 /// Merkle Tree Path Query Mixin
 pub trait GetPath<C>
 where
     C: Configuration + ?Sized,
 {
-    /// Path Query Error Type
-    type Error;
-
     /// Returns the [`Path`] of the leaf at the given `index`.
-    fn path(&self, parameters: &Parameters<C>, index: usize) -> Result<Path<C>, Self::Error>;
+    fn path(&self, parameters: &Parameters<C>, index: usize) -> Option<Path<C>>;
 }
-
-/// Tree Path Query Error Type
-pub type GetPathError<C, T> = <T as GetPath<C>>::Error;
 
 /// Digest Type
 #[derive(derivative::Derivative)]
@@ -394,6 +409,22 @@ where
         C: Configuration,
     {
         path.verify(self, root, leaf)
+    }
+}
+
+impl<C> Verifier for Parameters<C>
+where
+    C: Configuration + ?Sized,
+{
+    type Item = Leaf<C>;
+
+    type Public = Root<C>;
+
+    type Secret = Path<C>;
+
+    #[inline]
+    fn verify(&self, public: &Self::Public, secret: &Self::Secret, item: &Self::Item) -> bool {
+        self.verify_path(secret, public, item)
     }
 }
 
@@ -532,9 +563,36 @@ where
         self.tree.current_path(&self.parameters)
     }
 
+    /// Returns the [`LeafDigest`] at the given `index`.
+    #[inline]
+    pub fn leaf_digest(&self, index: usize) -> Option<&LeafDigest<C>>
+    where
+        T: GetLeaf<C>,
+    {
+        self.tree.leaf_digest(index)
+    }
+
+    /// Returns the index of the `leaf_digest` if it is contained in `self`.
+    #[inline]
+    pub fn index_of(&self, leaf_digest: &LeafDigest<C>) -> Option<usize>
+    where
+        T: GetLeaf<C>,
+    {
+        self.tree.index_of(leaf_digest)
+    }
+
+    /// Returns `true` if `leaf_digest` is contained in the tree.
+    #[inline]
+    pub fn contains(&self, leaf_digest: &LeafDigest<C>) -> bool
+    where
+        T: GetLeaf<C>,
+    {
+        self.tree.contains(leaf_digest)
+    }
+
     /// Returns the [`Path`] of the leaf at the given `index`.
     #[inline]
-    pub fn path(&self, index: usize) -> Result<Path<C>, GetPathError<C, T>>
+    pub fn path(&self, index: usize) -> Option<Path<C>>
     where
         T: GetPath<C>,
     {
@@ -606,5 +664,68 @@ where
     #[inline]
     fn as_mut(&mut self) -> &mut T {
         &mut self.tree
+    }
+}
+
+impl<C, T> VerifiedSet for MerkleTree<C, T>
+where
+    C: Configuration + ?Sized,
+    T: GetLeaf<C> + GetPath<C> + Tree<C>,
+{
+    type Item = Leaf<C>;
+
+    type Public = Root<C>;
+
+    type Secret = Path<C>;
+
+    type Verifier = Parameters<C>;
+
+    #[inline]
+    fn verifier(&self) -> &Self::Verifier {
+        &self.parameters
+    }
+
+    #[inline]
+    fn capacity(&self) -> usize {
+        self.capacity()
+    }
+
+    #[inline]
+    fn len(&self) -> usize {
+        self.len()
+    }
+
+    #[inline]
+    fn is_empty(&self) -> bool {
+        self.is_empty()
+    }
+
+    #[inline]
+    fn insert(&mut self, item: &Self::Item) -> bool {
+        self.push(item)
+    }
+
+    #[inline]
+    fn insert_non_proving(&mut self, item: &Self::Item) -> bool {
+        // FIXME: What to do here?
+        todo!()
+    }
+
+    #[inline]
+    fn check_public(&self, public: &Self::Public) -> bool {
+        &self.root() == public
+    }
+
+    #[inline]
+    fn get_membership_proof(&self, item: &Self::Item) -> Option<MembershipProof<Self::Verifier>> {
+        Some(MembershipProof::new(
+            self.root(),
+            self.path(self.index_of(&self.parameters.digest(item))?)?,
+        ))
+    }
+
+    #[inline]
+    fn contains(&self, item: &Self::Item) -> bool {
+        self.contains(&self.parameters.digest(item))
     }
 }

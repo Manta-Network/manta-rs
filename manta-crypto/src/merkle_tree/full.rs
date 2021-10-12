@@ -194,16 +194,14 @@ where
     LeafDigest<C>: Clone,
     InnerDigest<C>: Clone,
 {
-    type Error = ();
-
     #[inline]
-    fn path(&self, parameters: &Parameters<C>, index: usize) -> Result<Path<C>, Self::Error> {
+    fn path(&self, parameters: &Parameters<C>, index: usize) -> Option<Path<C>> {
         let _ = parameters;
         if index > 0 && index >= self.len() {
-            return Err(());
+            return None;
         }
         let leaf_index = Node(index);
-        Ok(Path::from_inner(
+        Some(Path::from_inner(
             self.get_owned_leaf_sibling(leaf_index),
             self.inner_digests.path(leaf_index),
         ))
