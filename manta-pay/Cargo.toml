@@ -62,8 +62,7 @@ dusk-plonk = { version = "0.8.2", optional = true, default-features = false }
 generic-array = { version = "0.14.4", default-features = false }
 manta-accounting = { path = "../manta-accounting", default-features = false }
 manta-crypto = { path = "../manta-crypto", default-features = false }
-manta-util = { path = "../manta-util", default-features = false, features = ["rand_core"] }
-rand = { version = "0.8.4", default-features = false }
+manta-util = { path = "../manta-util", default-features = false }
 rand_chacha = { version = "0.3.1", default-features = false }
 x25519-dalek = { git = "https://github.com/Manta-Network/x25519-dalek", default-features = false, features = ["u64_backend"] }
 

@@ -28,10 +28,10 @@ use generic_array::GenericArray;
 use manta_accounting::Asset;
 use manta_crypto::{
     ies::{self, KeyPair},
+    rand::{CryptoRng, RngCore},
     IntegratedEncryptionScheme,
 };
 use manta_util::into_array_unchecked;
-use rand::{CryptoRng, RngCore};
 use x25519_dalek::{EphemeralSecret, PublicKey as PubKey, StaticSecret};
 
 /// Public Key Type
@@ -190,8 +190,8 @@ impl IntegratedEncryptionScheme for IES {
 #[cfg(test)]
 mod test {
     use super::*;
-    use manta_crypto::ies::test as ies_test;
-    use rand::{thread_rng, Rng};
+    use manta_crypto::{ies::test as ies_test, rand::Rand};
+    use rand::thread_rng;
 
     /// Tests encryption/decryption of a random asset.
     #[test]

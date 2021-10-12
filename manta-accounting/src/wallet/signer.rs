@@ -21,7 +21,7 @@
 use crate::{
     asset::{Asset, AssetBalance, AssetId, AssetMap},
     fs::{Load, LoadWith, Save, SaveWith},
-    identity::{self, AssetParameters, Identity, PreSender, Utxo},
+    identity::{self, Identity, PreSender, Utxo},
     keys::{
         Account, DerivedSecretKeyGenerator, ExternalIndex, Index, InternalIndex, InternalKeyOwned,
         KeyOwned,
@@ -29,8 +29,8 @@ use crate::{
     transfer::{
         self,
         canonical::{Mint, PrivateTransfer, Reclaim, Transaction},
-        EncryptedAsset, IntegratedEncryptionSchemeError, ProofSystemError, ProvingContext,
-        Receiver, SecretTransfer, Sender, ShieldedIdentity, Transfer, TransferPost,
+        EncryptedAsset, IntegratedEncryptionSchemeError, InternalReceiver, ProofSystemError,
+        ProvingContext, Receiver, SecretTransfer, Sender, ShieldedIdentity, Transfer, TransferPost,
     },
 };
 use alloc::{vec, vec::Vec};
@@ -42,12 +42,11 @@ use core::{
     mem,
     ops::Range,
 };
-use manta_crypto::set::VerifiedSet;
-use manta_util::{fallible_array_map, into_array_unchecked, iter::IteratorExt};
-use rand::{
-    distributions::{Distribution, Standard},
-    CryptoRng, RngCore,
+use manta_crypto::{
+    rand::{CryptoRng, RngCore},
+    set::VerifiedSet,
 };
+use manta_util::{fallible_array_map, into_array_unchecked, iter::IteratorExt};
 
 /// Rollback Trait
 pub trait Rollback {
@@ -356,7 +355,6 @@ where
     ) -> Result<PreSender<C>, D::Error>
     where
         C: transfer::Configuration<SecretKey = D::SecretKey>,
-        Standard: Distribution<AssetParameters<C>>,
     {
         Ok(self.get(&index)?.into_pre_sender(commitment_scheme, asset))
     }
@@ -395,7 +393,6 @@ where
     ) -> Result<ShieldedIdentity<C>, D::Error>
     where
         C: transfer::Configuration<SecretKey = D::SecretKey>,
-        Standard: Distribution<AssetParameters<C>>,
     {
         Ok(self
             .next_external_identity()?
@@ -416,7 +413,6 @@ where
     where
         C: transfer::Configuration<SecretKey = D::SecretKey>,
         R: CryptoRng + RngCore + ?Sized,
-        Standard: Distribution<AssetParameters<C>>,
     {
         let mut receivers = Vec::with_capacity(RECEIVERS);
         let mut pre_senders = Vec::with_capacity(RECEIVERS - 1);
@@ -429,12 +425,7 @@ where
                 .into_internal_receiver(commitment_scheme, Asset::zero(asset_id), rng)
                 .map_err(InternalReceiverError::EncryptionError)?;
             receivers.push(internal_receiver.receiver);
-            pre_senders.push(KeyOwned::new(
-                internal_receiver
-                    .open_spend
-                    .into_pre_sender(commitment_scheme),
-                index,
-            ));
+            pre_senders.push(KeyOwned::new(internal_receiver.pre_sender, index));
         }
         Ok((receivers, pre_senders))
     }
@@ -446,26 +437,16 @@ where
         commitment_scheme: &C::CommitmentScheme,
         asset: Asset,
         rng: &mut R,
-    ) -> Result<(Receiver<C>, PreSender<C>), InternalReceiverError<D, C>>
+    ) -> Result<InternalReceiver<C>, InternalReceiverError<D, C>>
     where
         C: transfer::Configuration<SecretKey = D::SecretKey>,
         R: CryptoRng + RngCore + ?Sized,
-        Standard: Distribution<AssetParameters<C>>,
     {
-        // TODO: Simplify this so that `into_internal_receiver` automatically produces a
-        //       `PreSender` instead of an `OpenSpend`.
-        let internal_receiver = self
-            .next_internal_identity()
+        self.next_internal_identity()
             .map_err(InternalReceiverError::SecretKeyError)?
             .unwrap()
             .into_internal_receiver(commitment_scheme, asset, rng)
-            .map_err(InternalReceiverError::EncryptionError)?;
-        Ok((
-            internal_receiver.receiver,
-            internal_receiver
-                .open_spend
-                .into_pre_sender(commitment_scheme),
-        ))
+            .map_err(InternalReceiverError::EncryptionError)
     }
 
     /// Builds the next accumulated receiver.
@@ -487,16 +468,15 @@ where
     where
         C: transfer::Configuration<SecretKey = D::SecretKey>,
         R: CryptoRng + RngCore + ?Sized,
-        Standard: Distribution<AssetParameters<C>>,
     {
         let (mut receivers, zero_pre_senders) =
             self.next_zeroes::<_, _, RECEIVERS>(commitment_scheme, asset_id, rng)?;
-        let (receiver, pre_sender) =
+        let internal_receiver =
             self.next_accumulator(commitment_scheme, asset_id.with(sender_sum), rng)?;
-        receivers.push(receiver);
+        receivers.push(internal_receiver.receiver);
         Ok((
             into_array_unchecked(receivers),
-            pre_sender,
+            internal_receiver.pre_sender,
             zero_pre_senders,
         ))
     }
@@ -512,7 +492,6 @@ where
     where
         C: transfer::Configuration<SecretKey = D::SecretKey>,
         R: CryptoRng + RngCore + ?Sized,
-        Standard: Distribution<AssetParameters<C>>,
     {
         // TODO: Simplify this so that `into_shielded` and `into_receiver` can be replaced by a
         //       one-step `into_receiver` call on `Identity`.
@@ -539,7 +518,6 @@ where
     where
         C: transfer::Configuration<SecretKey = D::SecretKey>,
         R: CryptoRng + RngCore + ?Sized,
-        Standard: Distribution<AssetParameters<C>>,
     {
         let (identity, index) = self
             .next_internal_identity()
@@ -564,7 +542,6 @@ where
     where
         C: transfer::Configuration<SecretKey = D::SecretKey>,
         R: CryptoRng + RngCore + ?Sized,
-        Standard: Distribution<AssetParameters<C>>,
     {
         Mint::zero(
             self.next_internal_identity()
@@ -585,7 +562,6 @@ where
     ) -> Option<(Index<D>, Asset)>
     where
         C: transfer::Configuration<SecretKey = D::SecretKey>,
-        Standard: Distribution<AssetParameters<C>>,
     {
         // FIXME: Simplify this implementation.
         let open_spend = self
@@ -593,7 +569,7 @@ where
             .external_keys(&self.secret_key_source)
             .find_map(move |ek| {
                 ek.map(move |ek| {
-                    ek.map(move |k| Identity::new(k).try_open(encrypted_asset))
+                    ek.map(move |k| Identity::<C>::new(k).try_open(encrypted_asset))
                         .ok()
                 })
                 .ok()
@@ -778,7 +754,6 @@ where
     fn sync_inner<I>(&mut self, updates: I) -> SyncResult<D, C, Self>
     where
         I: Iterator<Item = (Utxo<C>, EncryptedAsset<C>)>,
-        Standard: Distribution<AssetParameters<C>>,
     {
         let mut assets = Vec::new();
         for (utxo, encrypted_asset) in updates {
@@ -786,7 +761,7 @@ where
             //       `utxo_set`. If the `utxo` is accompanied by an `encrypted_asset` then we
             //       "strong insert", if not we "weak insert".
             //
-            if let Some((key, asset)) = self.signer.find_external_asset(&encrypted_asset) {
+            if let Some((key, asset)) = self.signer.find_external_asset::<C>(&encrypted_asset) {
                 assets.push(asset);
                 self.assets.insert(key, asset);
             }
@@ -808,7 +783,6 @@ where
     ) -> SyncResult<D, C, Self>
     where
         I: IntoIterator<Item = (Utxo<C>, EncryptedAsset<C>)>,
-        Standard: Distribution<AssetParameters<C>>,
     {
         self.start_sync(sync_state);
         match self.utxo_set.len().checked_sub(starting_index) {
@@ -819,10 +793,7 @@ where
 
     /// Returns a [`PreSender`] for the key at the given `index`.
     #[inline]
-    fn get_pre_sender(&self, index: Index<D>, asset: Asset) -> Result<PreSender<C>, Error<D, C>>
-    where
-        Standard: Distribution<AssetParameters<C>>,
-    {
+    fn get_pre_sender(&self, index: Index<D>, asset: Asset) -> Result<PreSender<C>, Error<D, C>> {
         self.signer
             .get_pre_sender(index, &self.commitment_scheme, asset)
             .map_err(Error::SecretKeyError)
@@ -830,10 +801,7 @@ where
 
     /// Selects the pre-senders which collectively own at least `asset`, returning any change.
     #[inline]
-    fn select(&mut self, asset: Asset) -> Result<(AssetBalance, Vec<PreSender<C>>), Error<D, C>>
-    where
-        Standard: Distribution<AssetParameters<C>>,
-    {
+    fn select(&mut self, asset: Asset) -> Result<(AssetBalance, Vec<PreSender<C>>), Error<D, C>> {
         let selection = self.assets.select(asset);
         if selection.is_empty() {
             return Err(Error::InsufficientBalance(asset));
@@ -885,10 +853,7 @@ where
             Vec<TransferPost<C>>,
         ),
         Error<D, C>,
-    >
-    where
-        Standard: Distribution<AssetParameters<C>>,
-    {
+    > {
         assert!(
             (SENDERS > 1) && (RECEIVERS > 1),
             "The transfer shape must include at least two senders and two receivers."
@@ -943,10 +908,7 @@ where
         mut new_zeroes: Vec<InternalKeyOwned<D, PreSender<C>>>,
         pre_senders: &mut Vec<PreSender<C>>,
         posts: &mut Vec<TransferPost<C>>,
-    ) -> Result<(), Error<D, C>>
-    where
-        Standard: Distribution<AssetParameters<C>>,
-    {
+    ) -> Result<(), Error<D, C>> {
         let mut needed_zeroes = SENDERS - pre_senders.len();
         if needed_zeroes == 0 {
             return Ok(());
@@ -1001,10 +963,7 @@ where
         &mut self,
         asset_id: AssetId,
         change: AssetBalance,
-    ) -> Result<Receiver<C>, Error<D, C>>
-    where
-        Standard: Distribution<AssetParameters<C>>,
-    {
+    ) -> Result<Receiver<C>, Error<D, C>> {
         let asset = asset_id.with(change);
         let (receiver, index) = self
             .signer
@@ -1032,10 +991,7 @@ where
         &mut self,
         asset: Asset,
         receiver: Option<ShieldedIdentity<C>>,
-    ) -> SignResult<D, C, Self>
-    where
-        Standard: Distribution<AssetParameters<C>>,
-    {
+    ) -> SignResult<D, C, Self> {
         let (change, pre_senders) = self.select(asset)?;
 
         let (new_zeroes, mut pre_senders, mut posts) =
@@ -1075,10 +1031,7 @@ where
         &mut self,
         asset: Asset,
         receiver: Option<ShieldedIdentity<C>>,
-    ) -> SignResult<D, C, Self>
-    where
-        Standard: Distribution<AssetParameters<C>>,
-    {
+    ) -> SignResult<D, C, Self> {
         let result = self.sign_withdraw_inner(asset, receiver);
         if result.is_err() {
             self.rollback();
@@ -1088,10 +1041,7 @@ where
 
     /// Signs the `transaction`, generating transfer posts.
     #[inline]
-    pub fn sign(&mut self, transaction: Transaction<C>) -> SignResult<D, C, Self>
-    where
-        Standard: Distribution<AssetParameters<C>>,
-    {
+    pub fn sign(&mut self, transaction: Transaction<C>) -> SignResult<D, C, Self> {
         self.commit();
         match transaction {
             Transaction::Mint(asset) => {
@@ -1136,10 +1086,7 @@ where
 
     /// Generates a new [`ShieldedIdentity`] for `self` to receive assets.
     #[inline]
-    pub fn external_receiver(&mut self) -> ExternalReceiverResult<D, C, Self>
-    where
-        Standard: Distribution<AssetParameters<C>>,
-    {
+    pub fn external_receiver(&mut self) -> ExternalReceiverResult<D, C, Self> {
         self.signer
             .next_shielded(&self.commitment_scheme)
             .map_err(Error::SecretKeyError)
@@ -1153,7 +1100,6 @@ where
     C::UtxoSet: Rollback,
     M: AssetMap<Key = Index<D>>,
     R: CryptoRng + RngCore,
-    Standard: Distribution<AssetParameters<C>>,
 {
     type SyncFuture = Ready<SyncResult<D, C, Self>>;
 

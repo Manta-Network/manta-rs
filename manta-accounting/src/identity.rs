@@ -23,12 +23,9 @@ use core::{fmt::Debug, hash::Hash, marker::PhantomData};
 use manta_crypto::{
     commitment::{CommitmentScheme, Input as CommitmentInput},
     ies::{self, EncryptedMessage, IntegratedEncryptionScheme},
+    rand::{CryptoRand, CryptoRng, CryptoSample, RngCore, SeedableRng, Standard},
     set::{MembershipProof, VerifiedSet},
     PseudorandomFunctionFamily,
-};
-use rand::{
-    distributions::{Distribution, Standard},
-    CryptoRng, RngCore, SeedableRng,
 };
 
 pub(super) mod prelude {
@@ -41,11 +38,20 @@ pub trait Configuration {
     /// Secret Key Type
     type SecretKey: Clone;
 
+    /// Pseudorandom Function Family Input Type
+    type PseudorandomFunctionFamilyInput: CryptoSample;
+
     /// Pseudorandom Function Family Type
-    type PseudorandomFunctionFamily: PseudorandomFunctionFamily<Seed = Self::SecretKey>;
+    type PseudorandomFunctionFamily: PseudorandomFunctionFamily<
+        Seed = Self::SecretKey,
+        Input = Self::PseudorandomFunctionFamilyInput,
+    >;
+
+    /// Commitment Scheme Randomness Type
+    type CommitmentSchemeRandomness: CryptoSample;
 
     /// Commitment Scheme Type
-    type CommitmentScheme: CommitmentScheme
+    type CommitmentScheme: CommitmentScheme<Randomness = Self::CommitmentSchemeRandomness>
         + CommitmentInput<PublicKey<Self>>
         + CommitmentInput<VoidNumberGenerator<Self>>
         + CommitmentInput<Asset>
@@ -221,16 +227,17 @@ where
     }
 }
 
-impl<C> Distribution<AssetParameters<C>> for Standard
+impl<C> CryptoSample for AssetParameters<C>
 where
     C: Configuration,
-    Standard: Distribution<VoidNumberGenerator<C>>
-        + Distribution<VoidNumberCommitmentRandomness<C>>
-        + Distribution<UtxoRandomness<C>>,
 {
     #[inline]
-    fn sample<R: RngCore + ?Sized>(&self, rng: &mut R) -> AssetParameters<C> {
-        AssetParameters::new(self.sample(rng), self.sample(rng), self.sample(rng))
+    fn sample<R>(distribution: &Standard, rng: &mut R) -> Self
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        let _ = distribution;
+        Self::new(rng.gen(), rng.gen(), rng.gen())
     }
 }
 
@@ -275,35 +282,17 @@ where
     /// generated across different methods. The `parameters` is always generated immediately after
     /// creation of the random number generator.
     #[inline]
-    fn rng_and_parameters(&self) -> (C::Rng, AssetParameters<C>)
-    where
-        Standard: Distribution<AssetParameters<C>>,
-    {
+    fn rng_and_parameters(&self) -> (C::Rng, AssetParameters<C>) {
         let mut rng = C::Rng::from_seed(self.secret_key.clone());
-        let parameters = Standard.sample(&mut rng);
+        let parameters = rng.gen();
         (rng, parameters)
     }
 
     /// Generates [`AssetParameters`] for assets that are used by this identity.
     #[inline]
-    fn parameters(&self) -> AssetParameters<C>
-    where
-        Standard: Distribution<AssetParameters<C>>,
-    {
+    fn parameters(&self) -> AssetParameters<C> {
         let (_, parameters) = self.rng_and_parameters();
         parameters
-    }
-
-    /// Generates the associated [`AssetParameters`] and asset [`KeyPair`](ies::KeyPair) for
-    /// this identity.
-    #[inline]
-    fn parameters_and_asset_keypair<I>(&self) -> (AssetParameters<C>, ies::KeyPair<I>)
-    where
-        I: IntegratedEncryptionScheme<Plaintext = Asset>,
-        Standard: Distribution<AssetParameters<C>>,
-    {
-        let (mut rng, parameters) = self.rng_and_parameters();
-        (parameters, I::generate_keys(&mut rng))
     }
 
     /// Generates the associated [`AssetParameters`] and asset [`PublicKey`](ies::PublicKey) for
@@ -312,7 +301,6 @@ where
     fn parameters_and_asset_public_key<I>(&self) -> (AssetParameters<C>, ies::PublicKey<I>)
     where
         I: IntegratedEncryptionScheme<Plaintext = Asset>,
-        Standard: Distribution<AssetParameters<C>>,
     {
         let (mut rng, parameters) = self.rng_and_parameters();
         (parameters, I::generate_public_key(&mut rng))
@@ -324,7 +312,6 @@ where
     fn parameters_and_asset_secret_key<I>(&self) -> (AssetParameters<C>, ies::SecretKey<I>)
     where
         I: IntegratedEncryptionScheme<Plaintext = Asset>,
-        Standard: Distribution<AssetParameters<C>>,
     {
         let (mut rng, parameters) = self.rng_and_parameters();
         (parameters, I::generate_secret_key(&mut rng))
@@ -374,10 +361,7 @@ where
         self,
         commitment_scheme: &C::CommitmentScheme,
         asset: Asset,
-    ) -> PreSender<C>
-    where
-        Standard: Distribution<AssetParameters<C>>,
-    {
+    ) -> PreSender<C> {
         let parameters = self.parameters();
         let (public_key, void_number_commitment, utxo) =
             self.construct_utxo(commitment_scheme, &asset, &parameters);
@@ -402,7 +386,6 @@ where
     ) -> Option<Sender<C, S>>
     where
         S: VerifiedSet<Item = Utxo<C>>,
-        Standard: Distribution<AssetParameters<C>>,
     {
         let parameters = self.parameters();
         let (public_key, void_number_commitment, utxo) =
@@ -430,7 +413,6 @@ where
     ) -> ShieldedIdentity<C, I>
     where
         I: IntegratedEncryptionScheme<Plaintext = Asset>,
-        Standard: Distribution<AssetParameters<C>>,
     {
         ShieldedIdentity {
             void_number_commitment: self.void_number_commitment(commitment_scheme, &parameters),
@@ -444,7 +426,6 @@ where
     pub fn into_shielded<I>(self, commitment_scheme: &C::CommitmentScheme) -> ShieldedIdentity<C, I>
     where
         I: IntegratedEncryptionScheme<Plaintext = Asset>,
-        Standard: Distribution<AssetParameters<C>>,
     {
         let (parameters, asset_public_key) = self.parameters_and_asset_public_key();
         self.build_shielded_identity(commitment_scheme, parameters, asset_public_key)
@@ -455,7 +436,6 @@ where
     pub fn into_spend<I>(self) -> Spend<C, I>
     where
         I: IntegratedEncryptionScheme<Plaintext = Asset>,
-        Standard: Distribution<AssetParameters<C>>,
     {
         let (_, asset_secret_key) = self.parameters_and_asset_secret_key();
         Spend::new(self, asset_secret_key)
@@ -469,31 +449,8 @@ where
     ) -> Result<OpenSpend<C>, I::Error>
     where
         I: IntegratedEncryptionScheme<Plaintext = Asset>,
-        Standard: Distribution<AssetParameters<C>>,
     {
         self.into_spend().try_open(encrypted_asset)
-    }
-
-    /// Builds a new [`ExternalReceiver`].
-    #[inline]
-    pub fn into_external_receiver<I>(
-        self,
-        commitment_scheme: &C::CommitmentScheme,
-    ) -> ExternalReceiver<C, I>
-    where
-        I: IntegratedEncryptionScheme<Plaintext = Asset>,
-        Standard: Distribution<AssetParameters<C>>,
-    {
-        let (parameters, asset_keypair) = self.parameters_and_asset_keypair();
-        let (asset_public_key, asset_secret_key) = asset_keypair.into();
-        ExternalReceiver {
-            shielded_identity: self.build_shielded_identity(
-                commitment_scheme,
-                parameters,
-                asset_public_key,
-            ),
-            spend: Spend::new(self, asset_secret_key),
-        }
     }
 
     /// Builds a new [`InternalReceiver`].
@@ -507,26 +464,28 @@ where
     where
         I: IntegratedEncryptionScheme<Plaintext = Asset>,
         R: CryptoRng + RngCore + ?Sized,
-        Standard: Distribution<AssetParameters<C>>,
     {
         let (parameters, asset_public_key) = self.parameters_and_asset_public_key();
         Ok(InternalReceiver {
             receiver: self
                 .build_shielded_identity(commitment_scheme, parameters, asset_public_key)
                 .into_receiver(commitment_scheme, asset, rng)?,
-            open_spend: OpenSpend::new(self, asset),
+            pre_sender: OpenSpend::new(self, asset).into_pre_sender(commitment_scheme),
         })
     }
 }
 
-impl<C> Distribution<Identity<C>> for Standard
+impl<C, D> CryptoSample<D> for Identity<C>
 where
     C: Configuration,
-    Standard: Distribution<SecretKey<C>>,
+    C::SecretKey: CryptoSample<D>,
 {
     #[inline]
-    fn sample<R: RngCore + ?Sized>(&self, rng: &mut R) -> Identity<C> {
-        Identity::new(self.sample(rng))
+    fn sample<R>(distribution: &D, rng: &mut R) -> Self
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        Self::new(rng.sample(distribution))
     }
 }
 
@@ -556,7 +515,6 @@ where
     pub fn from_identity(identity: Identity<C>, commitment_scheme: &C::CommitmentScheme) -> Self
     where
         I: IntegratedEncryptionScheme<Plaintext = Asset>,
-        Standard: Distribution<AssetParameters<C>>,
     {
         identity.into_shielded(commitment_scheme)
     }
@@ -652,10 +610,7 @@ where
 
     /// Builds a new [`Spend`] from an `identity`.
     #[inline]
-    pub fn from_identity(identity: Identity<C>) -> Self
-    where
-        Standard: Distribution<AssetParameters<C>>,
-    {
+    pub fn from_identity(identity: Identity<C>) -> Self {
         identity.into_spend()
     }
 
@@ -674,10 +629,7 @@ where
         self,
         commitment_scheme: &C::CommitmentScheme,
         encrypted_asset: EncryptedMessage<I>,
-    ) -> Result<PreSender<C>, I::Error>
-    where
-        Standard: Distribution<AssetParameters<C>>,
-    {
+    ) -> Result<PreSender<C>, I::Error> {
         Ok(self
             .try_open(&encrypted_asset)?
             .into_pre_sender(commitment_scheme))
@@ -693,7 +645,6 @@ where
     ) -> Result<Sender<C, S>, SpendError<I>>
     where
         S: VerifiedSet<Item = Utxo<C>>,
-        Standard: Distribution<AssetParameters<C>>,
     {
         self.try_open(&encrypted_asset)
             .map_err(SpendError::EncryptionError)?
@@ -706,35 +657,10 @@ impl<C, I> From<Identity<C>> for Spend<C, I>
 where
     C: Configuration,
     I: IntegratedEncryptionScheme<Plaintext = Asset>,
-    Standard: Distribution<AssetParameters<C>>,
 {
     #[inline]
     fn from(identity: Identity<C>) -> Self {
         Self::from_identity(identity)
-    }
-}
-
-/// External Receiver
-pub struct ExternalReceiver<C, I>
-where
-    C: Configuration,
-    I: IntegratedEncryptionScheme<Plaintext = Asset>,
-{
-    /// Shielded Identity
-    pub shielded_identity: ShieldedIdentity<C, I>,
-
-    /// Spend
-    pub spend: Spend<C, I>,
-}
-
-impl<C, I> From<ExternalReceiver<C, I>> for (ShieldedIdentity<C, I>, Spend<C, I>)
-where
-    C: Configuration,
-    I: IntegratedEncryptionScheme<Plaintext = Asset>,
-{
-    #[inline]
-    fn from(external: ExternalReceiver<C, I>) -> Self {
-        (external.shielded_identity, external.spend)
     }
 }
 
@@ -773,10 +699,7 @@ where
 
     /// Builds a new [`PreSender`] for `self`.
     #[inline]
-    pub fn into_pre_sender(self, commitment_scheme: &C::CommitmentScheme) -> PreSender<C>
-    where
-        Standard: Distribution<AssetParameters<C>>,
-    {
+    pub fn into_pre_sender(self, commitment_scheme: &C::CommitmentScheme) -> PreSender<C> {
         self.identity.into_pre_sender(commitment_scheme, self.asset)
     }
 
@@ -789,7 +712,6 @@ where
     ) -> Option<Sender<C, S>>
     where
         S: VerifiedSet<Item = Utxo<C>>,
-        Standard: Distribution<AssetParameters<C>>,
     {
         self.identity
             .into_sender(commitment_scheme, self.asset, utxo_set)
@@ -805,18 +727,18 @@ where
     /// Receiver
     pub receiver: Receiver<C, I>,
 
-    /// Open Spend
-    pub open_spend: OpenSpend<C>,
+    /// Pre-Sender
+    pub pre_sender: PreSender<C>,
 }
 
-impl<C, I> From<InternalReceiver<C, I>> for (Receiver<C, I>, OpenSpend<C>)
+impl<C, I> From<InternalReceiver<C, I>> for (Receiver<C, I>, PreSender<C>)
 where
     C: Configuration,
     I: IntegratedEncryptionScheme<Plaintext = Asset>,
 {
     #[inline]
     fn from(internal: InternalReceiver<C, I>) -> Self {
-        (internal.receiver, internal.open_spend)
+        (internal.receiver, internal.pre_sender)
     }
 }
 
@@ -897,10 +819,7 @@ where
         identity: Identity<C>,
         commitment_scheme: &C::CommitmentScheme,
         asset: Asset,
-    ) -> Self
-    where
-        Standard: Distribution<AssetParameters<C>>,
-    {
+    ) -> Self {
         identity.into_pre_sender(commitment_scheme, asset)
     }
 
@@ -1004,10 +923,7 @@ where
         commitment_scheme: &C::CommitmentScheme,
         asset: Asset,
         utxo_set: &S,
-    ) -> Option<Self>
-    where
-        Standard: Distribution<AssetParameters<C>>,
-    {
+    ) -> Option<Self> {
         identity.into_sender(commitment_scheme, asset, utxo_set)
     }
 
@@ -1412,7 +1328,7 @@ pub mod constraint {
         /// Pseudorandom Function Family Input Variable
         type PseudorandomFunctionFamilyInputVar: Variable<
             Self::ConstraintSystem,
-            Type = <Self::PseudorandomFunctionFamily as PseudorandomFunctionFamily>::Input,
+            Type = Self::PseudorandomFunctionFamilyInput,
             Mode = Secret,
         >;
 
@@ -1437,7 +1353,7 @@ pub mod constraint {
         /// Commitment Scheme Randomness Variable
         type CommitmentSchemeRandomnessVar: Variable<
             Self::ConstraintSystem,
-            Type = <Self::CommitmentScheme as CommitmentScheme>::Randomness,
+            Type = Self::CommitmentSchemeRandomness,
             Mode = Secret,
         >;
 

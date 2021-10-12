@@ -17,7 +17,10 @@
 //! Blake2s PRF Implementation
 
 use ark_crypto_primitives::prf::{Blake2s as ArkBlake2s, PRF};
-use manta_crypto::PseudorandomFunctionFamily;
+use manta_crypto::{
+    rand::{CryptoRng, CryptoSample, RngCore, Standard},
+    PseudorandomFunctionFamily,
+};
 use manta_util::{Concat, ConcatAccumulator};
 
 /// Blake2s Pseudorandom Function Family
@@ -67,6 +70,17 @@ impl Concat for Blake2sInput {
         A: ConcatAccumulator<Self::Item> + ?Sized,
     {
         self.0.concat(accumulator)
+    }
+}
+
+impl CryptoSample for Blake2sInput {
+    #[inline]
+    fn sample<R>(distribution: &Standard, rng: &mut R) -> Self
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        // FIXME: Implement.
+        todo!()
     }
 }
 

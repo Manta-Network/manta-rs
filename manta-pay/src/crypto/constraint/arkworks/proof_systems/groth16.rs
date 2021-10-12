@@ -28,9 +28,10 @@ use ark_ff::Field;
 use ark_groth16::{Groth16 as ArkGroth16, PreparedVerifyingKey, Proof, ProvingKey};
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
 use core::marker::PhantomData;
-use manta_crypto::constraint::ProofSystem;
-use manta_util::rand::SizedRng;
-use rand::{CryptoRng, RngCore};
+use manta_crypto::{
+    constraint::ProofSystem,
+    rand::{CryptoRng, RngCore, SizedRng},
+};
 
 /// Arkworks Groth 16 Proof System
 #[derive(derivative::Derivative)]

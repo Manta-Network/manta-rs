@@ -41,13 +41,10 @@ use manta_crypto::{
         PublicOrSecret, Secret, Variable, VariableSource,
     },
     ies::{EncryptedMessage, IntegratedEncryptionScheme},
+    rand::{CryptoRng, Rand, RngCore, Sample, Standard},
     set::{constraint::VerifierVariable, VerifiedSet, Verifier},
 };
 use manta_util::{create_seal, from_variant_impl, iter::mixed_chain, seal, Either};
-use rand::{
-    distributions::{Distribution, Standard},
-    CryptoRng, RngCore,
-};
 
 /// Returns `true` if the transfer with this shape would have no public side.
 #[inline]
@@ -139,6 +136,10 @@ pub type ReceiverPost<C> =
 /// Receiver Posting Key Type
 pub type ReceiverPostingKey<C, L> =
     identity::ReceiverPostingKey<C, <C as Configuration>::IntegratedEncryptionScheme, L>;
+
+/// Internal Receiver Type
+pub type InternalReceiver<C> =
+    identity::InternalReceiver<C, <C as Configuration>::IntegratedEncryptionScheme>;
 
 /// Transfer Encrypted Asset Type
 pub type EncryptedAsset<C> = EncryptedMessage<<C as Configuration>::IntegratedEncryptionScheme>;
@@ -443,13 +444,15 @@ impl Default for PublicTransfer<0, 0> {
     }
 }
 
-impl<const SOURCES: usize, const SINKS: usize> Distribution<PublicTransfer<SOURCES, SINKS>>
-    for Standard
-{
+impl<const SOURCES: usize, const SINKS: usize> Sample for PublicTransfer<SOURCES, SINKS> {
     #[inline]
-    fn sample<R: RngCore + ?Sized>(&self, rng: &mut R) -> PublicTransfer<SOURCES, SINKS> {
-        PublicTransfer::new(
-            self.sample(rng),
+    fn sample<R>(distribution: &Standard, rng: &mut R) -> Self
+    where
+        R: RngCore + ?Sized,
+    {
+        let _ = distribution;
+        Self::new(
+            rng.gen(),
             sample_asset_balances(rng),
             sample_asset_balances(rng),
         )
@@ -1136,7 +1139,7 @@ pub trait Shape: sealed::Sealed {
 /// Canonical Transaction Types
 pub mod canonical {
     use super::*;
-    use crate::identity::{AssetParameters, Identity, PreSender};
+    use crate::identity::{Identity, PreSender};
 
     /// Implements [`Shape`] for a given shape type.
     macro_rules! impl_shape {
@@ -1210,7 +1213,6 @@ pub mod canonical {
         ) -> Result<Mint<C>, IntegratedEncryptionSchemeError<C>>
         where
             R: CryptoRng + RngCore + ?Sized,
-            Standard: Distribution<AssetParameters<C>>,
         {
             // TODO: Add convenience method for `Identity::into_receiver`.
             Ok(Mint::build(
@@ -1234,16 +1236,13 @@ pub mod canonical {
         ) -> Result<(Mint<C>, PreSender<C>), IntegratedEncryptionSchemeError<C>>
         where
             R: CryptoRng + RngCore + ?Sized,
-            Standard: Distribution<AssetParameters<C>>,
         {
-            // TODO: Make this more convenient.
             let asset = Asset::zero(asset_id);
-            let (receiver, open_spend) = identity
-                .into_internal_receiver(commitment_scheme, asset, rng)?
-                .into();
+            let internal_receiver =
+                identity.into_internal_receiver(commitment_scheme, asset, rng)?;
             Ok((
-                Mint::build(asset, receiver),
-                open_spend.into_pre_sender(commitment_scheme),
+                Mint::build(asset, internal_receiver.receiver),
+                internal_receiver.pre_sender,
             ))
         }
     }

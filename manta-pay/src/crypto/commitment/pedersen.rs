@@ -21,12 +21,11 @@ use ark_crypto_primitives::commitment::{
     pedersen::Commitment as ArkPedersenCommitment, CommitmentScheme as ArkCommitmentScheme,
 };
 use ark_ff::bytes::ToBytes;
-use manta_crypto::commitment::CommitmentScheme;
-use manta_util::{rand::SizedRng, Concat, ConcatAccumulator};
-use rand::{
-    distributions::{Distribution, Standard},
-    RngCore,
+use manta_crypto::{
+    commitment::CommitmentScheme,
+    rand::{CryptoRand, CryptoRng, CryptoSample, RngCore, SizedRng, Standard},
 };
+use manta_util::{Concat, ConcatAccumulator};
 
 /// Pedersen Window Parameters Trait
 // TODO: Remove this comment once `arkworks` writes their own.
@@ -59,6 +58,21 @@ pub struct PedersenCommitmentRandomness<W, C>(ArkPedersenCommitmentRandomness<W,
 where
     W: PedersenWindow,
     C: ProjectiveCurve;
+
+impl<W, C> CryptoSample for PedersenCommitmentRandomness<W, C>
+where
+    W: PedersenWindow,
+    C: ProjectiveCurve,
+{
+    #[inline]
+    fn sample<R>(distribution: &Standard, rng: &mut R) -> Self
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        // FIXME: Implement.
+        todo!()
+    }
+}
 
 /// Pedersen Commitment Output
 #[derive(derivative::Derivative)]
@@ -138,14 +152,18 @@ where
     }
 }
 
-impl<W, C> Distribution<PedersenCommitment<W, C>> for Standard
+impl<W, C> CryptoSample for PedersenCommitment<W, C>
 where
     W: PedersenWindow,
     C: ProjectiveCurve,
 {
     #[inline]
-    fn sample<R: RngCore + ?Sized>(&self, rng: &mut R) -> PedersenCommitment<W, C> {
-        PedersenCommitment(
+    fn sample<R>(distribution: &Standard, rng: &mut R) -> Self
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        let _ = distribution;
+        Self(
             ArkPedersenCommitment::<_, W>::setup(&mut SizedRng(rng))
                 .expect("Sampling is not allowed to fail."),
         )
@@ -315,16 +333,20 @@ pub mod constraint {
         }
     }
 
-    impl<W, C, GG> Distribution<PedersenCommitmentWrapper<W, C, GG>> for Standard
+    impl<W, C, GG, D> CryptoSample<D> for PedersenCommitmentWrapper<W, C, GG>
     where
         W: PedersenWindow,
         C: ProjectiveCurve,
         GG: CurveVar<C, ConstraintField<C>>,
         for<'g> &'g GG: GroupOpsBounds<'g, C, GG>,
+        PedersenCommitment<W, C>: CryptoSample<D>,
     {
         #[inline]
-        fn sample<R: RngCore + ?Sized>(&self, rng: &mut R) -> PedersenCommitmentWrapper<W, C, GG> {
-            PedersenCommitmentWrapper(self.sample(rng), PhantomData)
+        fn sample<R>(distribution: &D, rng: &mut R) -> PedersenCommitmentWrapper<W, C, GG>
+        where
+            R: CryptoRng + RngCore + ?Sized,
+        {
+            Self(rng.sample(distribution), PhantomData)
         }
     }
 

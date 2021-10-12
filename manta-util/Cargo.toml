@@ -23,6 +23,3 @@ rustdoc-args = ["--cfg", "doc_cfg"]
 is-it-maintained-issue-resolution = { repository = "Manta-Network/manta-rs" }
 is-it-maintained-open-issues = { repository = "Manta-Network/manta-rs" }
 maintenance = { status = "actively-developed" }
-
-[dependencies]
-rand_core = { version = "0.6.3", optional = true, default-features = false }

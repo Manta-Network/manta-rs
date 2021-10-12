@@ -38,8 +38,9 @@ use ark_bls12_381::Bls12_381;
 use ark_crypto_primitives::crh::pedersen::{constraints::CRHGadget, CRH};
 use ark_ed_on_bls12_381::{constraints::EdwardsVar, EdwardsProjective, Fq};
 use manta_accounting::{identity, transfer};
-use manta_crypto::{commitment::CommitmentScheme, merkle_tree, PseudorandomFunctionFamily};
-use manta_util::rand::SeedIntoRng;
+use manta_crypto::{
+    commitment::CommitmentScheme, merkle_tree, rand::SeedIntoRng, PseudorandomFunctionFamily,
+};
 use rand_chacha::ChaCha20Rng;
 
 /// Pedersen Window Parameters
@@ -128,7 +129,9 @@ impl merkle_tree_constraint::Configuration for Configuration {
 
 impl identity::Configuration for Configuration {
     type SecretKey = <Blake2s as PseudorandomFunctionFamily>::Seed;
+    type PseudorandomFunctionFamilyInput = <Blake2s as PseudorandomFunctionFamily>::Input;
     type PseudorandomFunctionFamily = Blake2s;
+    type CommitmentSchemeRandomness = <PedersenCommitment as CommitmentScheme>::Randomness;
     type CommitmentScheme = PedersenCommitment;
     type Rng = SeedIntoRng<Self::SecretKey, ChaCha20Rng>;
 }

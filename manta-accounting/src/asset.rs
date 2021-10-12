@@ -35,15 +35,14 @@ use core::{
 use derive_more::{
     Add, AddAssign, Display, Div, DivAssign, From, Mul, MulAssign, Product, Sub, SubAssign, Sum,
 };
-use manta_crypto::constraint::{
-    reflection::{unknown, HasAllocation, HasVariable, Var},
-    Allocation, PublicOrSecret, Secret, Variable,
+use manta_crypto::{
+    constraint::{
+        reflection::{unknown, HasAllocation, HasVariable, Var},
+        Allocation, PublicOrSecret, Secret, Variable,
+    },
+    rand::{Rand, RngCore, Sample, Standard},
 };
 use manta_util::{array_map, fallible_array_map, into_array_unchecked, Concat, ConcatAccumulator};
-use rand::{
-    distributions::{Distribution, Standard},
-    Rng, RngCore,
-};
 
 pub(super) mod prelude {
     #[doc(inline)]
@@ -88,10 +87,16 @@ impl AssetId {
     }
 }
 
-impl Distribution<AssetId> for Standard {
+impl<D> Sample<D> for AssetId
+where
+    AssetIdType: Sample<D>,
+{
     #[inline]
-    fn sample<R: RngCore + ?Sized>(&self, rng: &mut R) -> AssetId {
-        AssetId(self.sample(rng))
+    fn sample<R>(distribution: &D, rng: &mut R) -> Self
+    where
+        R: RngCore + ?Sized,
+    {
+        Self(rng.sample(distribution))
     }
 }
 
@@ -185,10 +190,16 @@ impl AssetBalance {
     }
 }
 
-impl Distribution<AssetBalance> for Standard {
+impl<D> Sample<D> for AssetBalance
+where
+    AssetBalanceType: Sample<D>,
+{
     #[inline]
-    fn sample<R: RngCore + ?Sized>(&self, rng: &mut R) -> AssetBalance {
-        AssetBalance(self.sample(rng))
+    fn sample<R>(distribution: &D, rng: &mut R) -> Self
+    where
+        R: RngCore + ?Sized,
+    {
+        Self(rng.sample(distribution))
     }
 }
 
@@ -227,9 +238,11 @@ pub(crate) fn sample_asset_balances<R, const N: usize>(rng: &mut R) -> AssetBala
 where
     R: RngCore + ?Sized,
 {
-    // FIXME: We have to use this implementation because of a bug in `rand`.
-    //        See `https://github.com/rust-random/rand/pull/1173`.
-    into_array_unchecked(rng.sample_iter(Standard).take(N).collect::<Vec<_>>())
+    let mut balances = Vec::with_capacity(N);
+    for _ in 0..N {
+        balances.push(rng.gen());
+    }
+    into_array_unchecked(balances)
 }
 
 /// Change Iterator
@@ -447,10 +460,14 @@ impl From<Asset> for (AssetId, AssetBalance) {
     }
 }
 
-impl Distribution<Asset> for Standard {
+impl Sample for Asset {
     #[inline]
-    fn sample<R: RngCore + ?Sized>(&self, rng: &mut R) -> Asset {
-        Asset::new(self.sample(rng), self.sample(rng))
+    fn sample<R>(distribution: &Standard, rng: &mut R) -> Self
+    where
+        R: RngCore + ?Sized,
+    {
+        let _ = distribution;
+        Self::new(rng.gen(), rng.gen())
     }
 }
 
@@ -812,7 +829,7 @@ mod test {
     #[test]
     fn asset_into_and_from_bytes() {
         let mut rng = thread_rng();
-        let asset = rng.gen::<Asset>();
+        let asset = Asset::gen(&mut rng);
         assert_eq!(asset, Asset::from_bytes(asset.into_bytes()));
         let mut asset_bytes = [0; Asset::SIZE];
         rng.fill_bytes(&mut asset_bytes);
@@ -823,8 +840,8 @@ mod test {
     #[test]
     fn asset_arithmetic() {
         let mut rng = thread_rng();
-        let mut asset = Asset::zero(rng.gen());
-        let value = rng.gen::<AssetBalance>();
+        let mut asset = Asset::zero(AssetId::gen(&mut rng));
+        let value = AssetBalance::gen(&mut rng);
         let _ = asset + value;
         asset += value;
         let _ = asset - value;
