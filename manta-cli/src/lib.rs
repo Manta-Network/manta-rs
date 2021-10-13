@@ -14,15 +14,9 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Wallet Abstractions
+//! Manta CLI
 
-mod state;
-
-pub mod ledger;
-pub mod signer;
-
-#[cfg(feature = "test")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
-pub mod test;
-
-pub use state::*;
+#![cfg_attr(not(any(feature = "std", test)), no_std)]
+#![cfg_attr(doc_cfg, feature(doc_cfg))]
+#![forbid(rustdoc::broken_intra_doc_links)]
+#![forbid(missing_docs)]

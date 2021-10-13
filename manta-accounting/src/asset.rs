@@ -40,7 +40,7 @@ use manta_crypto::{
         reflection::{unknown, HasAllocation, HasVariable, Var},
         Allocation, PublicOrSecret, Secret, Variable,
     },
-    rand::{Rand, RngCore, Sample, Standard},
+    rand::{CryptoRng, Rand, RngCore, Sample, Standard},
 };
 use manta_util::{array_map, fallible_array_map, into_array_unchecked, Concat, ConcatAccumulator};
 
@@ -50,7 +50,7 @@ pub(super) mod prelude {
 }
 
 /// [`AssetId`] Base Type
-type AssetIdType = u32;
+pub type AssetIdType = u32;
 
 /// Asset Id Type
 #[derive(Clone, Copy, Debug, Default, Display, Eq, From, Hash, Ord, PartialEq, PartialOrd)]
@@ -92,9 +92,9 @@ where
     AssetIdType: Sample<D>,
 {
     #[inline]
-    fn sample<R>(distribution: &D, rng: &mut R) -> Self
+    fn sample<R>(distribution: D, rng: &mut R) -> Self
     where
-        R: RngCore + ?Sized,
+        R: CryptoRng + RngCore + ?Sized,
     {
         Self(rng.sample(distribution))
     }
@@ -108,7 +108,7 @@ impl From<AssetId> for [u8; AssetId::SIZE] {
 }
 
 /// [`AssetBalance`] Base Type
-type AssetBalanceType = u128;
+pub type AssetBalanceType = u128;
 
 /// Asset Balance Type
 #[derive(
@@ -195,9 +195,9 @@ where
     AssetBalanceType: Sample<D>,
 {
     #[inline]
-    fn sample<R>(distribution: &D, rng: &mut R) -> Self
+    fn sample<R>(distribution: D, rng: &mut R) -> Self
     where
-        R: RngCore + ?Sized,
+        R: CryptoRng + RngCore + ?Sized,
     {
         Self(rng.sample(distribution))
     }
@@ -231,19 +231,6 @@ impl<'a> Sum<&'a AssetBalance> for AssetBalance {
 
 /// [`AssetBalance`] Array Type
 pub type AssetBalances<const N: usize> = [AssetBalance; N];
-
-/// Samples asset balances from `rng`.
-#[inline]
-pub(crate) fn sample_asset_balances<R, const N: usize>(rng: &mut R) -> AssetBalances<N>
-where
-    R: RngCore + ?Sized,
-{
-    let mut balances = Vec::with_capacity(N);
-    for _ in 0..N {
-        balances.push(rng.gen());
-    }
-    into_array_unchecked(balances)
-}
 
 /// Change Iterator
 ///
@@ -462,9 +449,9 @@ impl From<Asset> for (AssetId, AssetBalance) {
 
 impl Sample for Asset {
     #[inline]
-    fn sample<R>(distribution: &Standard, rng: &mut R) -> Self
+    fn sample<R>(distribution: Standard, rng: &mut R) -> Self
     where
-        R: RngCore + ?Sized,
+        R: CryptoRng + RngCore + ?Sized,
     {
         let _ = distribution;
         Self::new(rng.gen(), rng.gen())

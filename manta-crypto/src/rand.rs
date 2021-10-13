@@ -181,27 +181,7 @@ pub struct Standard;
 pub trait Sample<D = Standard>: Sized {
     /// Returns a random value of type `Self`, sampled according to the given `distribution`,
     /// generated from the `rng`.
-    fn sample<R>(distribution: &D, rng: &mut R) -> Self
-    where
-        R: RngCore + ?Sized;
-
-    /// Returns a random value of type `Self`, sampled according to the default distribution of
-    /// type `D`, generated from the `rng`.
-    #[inline]
-    fn gen<R>(rng: &mut R) -> Self
-    where
-        D: Default,
-        R: RngCore + ?Sized,
-    {
-        Self::sample(&Default::default(), rng)
-    }
-}
-
-/// Cryptographic Sampling Trait
-pub trait CryptoSample<D = Standard>: Sized {
-    /// Returns a random value of type `Self`, sampled according to the given `distribution`,
-    /// generated from the `rng`.
-    fn sample<R>(distribution: &D, rng: &mut R) -> Self
+    fn sample<R>(distribution: D, rng: &mut R) -> Self
     where
         R: CryptoRng + RngCore + ?Sized;
 
@@ -213,7 +193,7 @@ pub trait CryptoSample<D = Standard>: Sized {
         D: Default,
         R: CryptoRng + RngCore + ?Sized,
     {
-        Self::sample(&Default::default(), rng)
+        Self::sample(Default::default(), rng)
     }
 }
 
@@ -223,7 +203,7 @@ macro_rules! impl_sample_from_u32 {
         $(
             impl Sample for $type {
                 #[inline]
-                fn sample<R>(distribution: &Standard, rng: &mut R) -> Self
+                fn sample<R>(distribution: Standard, rng: &mut R) -> Self
                 where
                     R: RngCore + ?Sized,
                 {
@@ -239,9 +219,9 @@ impl_sample_from_u32! { u8, u16, u32 }
 
 impl Sample for u64 {
     #[inline]
-    fn sample<R>(distribution: &Standard, rng: &mut R) -> Self
+    fn sample<R>(distribution: Standard, rng: &mut R) -> Self
     where
-        R: RngCore + ?Sized,
+        R: CryptoRng + RngCore + ?Sized,
     {
         let _ = distribution;
         rng.next_u64()
@@ -250,25 +230,58 @@ impl Sample for u64 {
 
 impl Sample for u128 {
     #[inline]
-    fn sample<R>(distribution: &Standard, rng: &mut R) -> Self
+    fn sample<R>(distribution: Standard, rng: &mut R) -> Self
     where
-        R: RngCore + ?Sized,
+        R: CryptoRng + RngCore + ?Sized,
     {
         let _ = distribution;
         ((rng.next_u64() as u128) << 64) | (rng.next_u64() as u128)
     }
 }
 
+/// Fallible Sampling Trait
+pub trait TrySample<D = Standard>: Sized {
+    /// Error Type
+    type Error;
+
+    /// Tries to return a random value of type `Self`, sampled according to the given
+    /// `distribution`, generated from the `rng`.
+    fn try_sample<R>(distribution: D, rng: &mut R) -> Result<Self, Self::Error>
+    where
+        R: CryptoRng + RngCore + ?Sized;
+
+    /// Tries to return a random value of type `Self`, sampled according to the default
+    /// distribution of type `D`, generated from the `rng`.
+    #[inline]
+    fn try_gen<R>(rng: &mut R) -> Result<Self, Self::Error>
+    where
+        D: Default,
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        Self::try_sample(Default::default(), rng)
+    }
+}
+
 /// Random Number Generator
-pub trait Rand: RngCore {
+pub trait Rand: CryptoRng + RngCore {
     /// Returns a random value of type `Self`, sampled according to the given `distribution`,
     /// generated from the `rng`.
     #[inline]
-    fn sample<D, T>(&mut self, distribution: &D) -> T
+    fn sample<D, T>(&mut self, distribution: D) -> T
     where
         T: Sample<D>,
     {
         T::sample(distribution, self)
+    }
+
+    /// Tries to return a random value of type `Self`, sampled according to the given
+    /// `distribution`, generated from the `rng`.
+    #[inline]
+    fn try_sample<D, T>(&mut self, distribution: D) -> Result<T, T::Error>
+    where
+        T: TrySample<D>,
+    {
+        T::try_sample(distribution, self)
     }
 
     /// Returns a random value of type `Self`, sampled according to the default distribution of
@@ -281,32 +294,17 @@ pub trait Rand: RngCore {
     {
         T::gen(self)
     }
-}
 
-impl<R> Rand for R where R: RngCore + ?Sized {}
-
-/// Cryptographically Secure Random Number Generator
-pub trait CryptoRand: CryptoRng + RngCore {
-    /// Returns a random value of type `Self`, sampled according to the given `distribution`,
-    /// generated from the `rng`.
+    /// Tries to return a random value of type `Self`, sampled according to the default
+    /// distribution of type `D`, generated from the `rng`.
     #[inline]
-    fn sample<D, T>(&mut self, distribution: &D) -> T
-    where
-        T: CryptoSample<D>,
-    {
-        T::sample(distribution, self)
-    }
-
-    /// Returns a random value of type `Self`, sampled according to the default distribution of
-    /// type `D`, generated from the `rng`.
-    #[inline]
-    fn gen<D, T>(&mut self) -> T
+    fn try_gen<D, T>(&mut self) -> Result<T, T::Error>
     where
         D: Default,
-        T: CryptoSample<D>,
+        T: TrySample<D>,
     {
-        T::gen(self)
+        T::try_gen(self)
     }
 }
 
-impl<R> CryptoRand for R where R: CryptoRng + Rand + ?Sized {}
+impl<R> Rand for R where R: CryptoRng + RngCore + ?Sized {}

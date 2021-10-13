@@ -2,6 +2,7 @@
 members = [
     "manta",
     "manta-accounting",
+    "manta-cli",
     "manta-codec",
     "manta-crypto",
     "manta-pay",

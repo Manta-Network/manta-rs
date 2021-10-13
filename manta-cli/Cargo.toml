@@ -1,0 +1,38 @@
+[package]
+name = "manta-cli"
+edition = "2018"
+version = "0.3.0"
+authors = ["Manta Network <contact@manta.network>"]
+readme = "README.md"
+license-file = "LICENSE"
+repository = "https://github.com/Manta-Network/manta-rs"
+homepage = "https://github.com/Manta-Network"
+documentation = "https://github.com/Manta-Network/manta-rs"
+categories = [""]
+keywords = [""]
+description = "Manta CLI"
+publish = false
+
+[package.metadata.docs.rs]
+# To build locally:
+# RUSTDOCFLAGS="--cfg doc_cfg" cargo +nightly doc --all-features --no-deps --open
+all-features = true
+rustdoc-args = ["--cfg", "doc_cfg"]
+
+[badges]
+is-it-maintained-issue-resolution = { repository = "Manta-Network/manta-rs" }
+is-it-maintained-open-issues = { repository = "Manta-Network/manta-rs" }
+maintenance = { status = "actively-developed" }
+
+[features]
+# Standard Library
+std = []
+
+[dependencies]
+manta-accounting = { path = "../manta-accounting", default-features = false }
+manta-crypto = { path = "../manta-crypto", default-features = false }
+manta-pay = { path = "../manta-pay", default-features = false }
+
+[dev-dependencies]
+manta-crypto = { path = "../manta-crypto", features = ["test"] }
+manta-accounting = { path = "../manta-accounting", features = ["test"] }

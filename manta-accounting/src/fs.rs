@@ -16,6 +16,10 @@
 
 //! Encrypted Filesystem Primitives
 
+// FIXME: Change this to a "payload parsing" scheme, like serdes but ensure it gets encrypted
+//        before saving and decrypted after loading. So we need something like EncryptedSerialize
+//        and DecryptedDeserialize.
+
 /// Filesystem Encrypted Loading
 pub trait Load: Sized {
     /// Path Type

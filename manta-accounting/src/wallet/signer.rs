@@ -442,8 +442,8 @@ where
 
         Ok(TransferAccumulator::new(
             into_array_unchecked(receivers),
-            internal.pre_sender,
             zero_pre_senders,
+            internal.pre_sender,
         ))
     }
 
@@ -841,12 +841,13 @@ where
 
                 posts.push(self.build_post(SecretTransfer::new(senders, accumulator.receivers))?);
 
+                for zero in accumulator.zeroes.iter() {
+                    zero.as_ref().insert_utxo(&mut self.utxo_set);
+                }
+                accumulator.pre_sender.insert_utxo(&mut self.utxo_set);
+
                 new_zeroes.append(&mut accumulator.zeroes);
                 accumulators.push(accumulator.pre_sender);
-            }
-
-            for pre_sender in accumulators.iter() {
-                pre_sender.insert_utxo(&mut self.utxo_set);
             }
 
             accumulators.append(&mut iter.remainder());
@@ -882,9 +883,7 @@ where
         needed_zeroes -= zeroes.len();
 
         for zero in zeroes {
-            let next = self.get_pre_sender(zero, Asset::zero(asset_id))?;
-            next.insert_utxo(&mut self.utxo_set);
-            pre_senders.push(next);
+            pre_senders.push(self.get_pre_sender(zero, Asset::zero(asset_id))?);
         }
 
         if needed_zeroes == 0 {
@@ -895,11 +894,7 @@ where
 
         for _ in 0..needed_zeroes {
             match new_zeroes.pop() {
-                Some(zero) => {
-                    let next = zero.unwrap();
-                    next.insert_utxo(&mut self.utxo_set);
-                    pre_senders.push(next);
-                }
+                Some(zero) => pre_senders.push(zero.unwrap()),
                 _ => break,
             }
         }
@@ -917,7 +912,6 @@ where
             let (mint, pre_sender) =
                 self.signer
                     .mint_zero(&self.commitment_scheme, asset_id, &mut self.rng)?;
-            pre_sender.insert_utxo(&mut self.utxo_set);
             pre_senders.push(pre_sender);
             posts.push(self.build_post(mint)?);
         }
@@ -980,7 +974,7 @@ where
                 let receiver = self.prepare_receiver(asset, receiver)?;
                 self.build_post(PrivateTransfer::build(senders, [change, receiver]))?
             }
-            _ => self.build_post(Reclaim::build(senders, change, asset))?,
+            _ => self.build_post(Reclaim::build(senders, [change], asset))?,
         };
 
         posts.push(final_post);
@@ -1151,11 +1145,11 @@ where
     /// Receivers
     pub receivers: [Receiver<C>; RECEIVERS],
 
-    /// Accumulated Balance Pre-Sender
-    pub pre_sender: PreSender<C>,
-
     /// Zero Balance Pre-Senders
     pub zeroes: Vec<InternalKeyOwned<D, PreSender<C>>>,
+
+    /// Accumulated Balance Pre-Sender
+    pub pre_sender: PreSender<C>,
 }
 
 impl<D, C, const RECEIVERS: usize> TransferAccumulator<D, C, RECEIVERS>
@@ -1163,17 +1157,17 @@ where
     D: DerivedSecretKeyGenerator,
     C: transfer::Configuration<SecretKey = D::SecretKey>,
 {
-    /// Builds a new [`TransferAccumulator`] from `receivers`, `pre_sender`, and `zeroes`.
+    /// Builds a new [`TransferAccumulator`] from `receivers`, `zeroes`, and `pre_sender`.
     #[inline]
     pub fn new(
         receivers: [Receiver<C>; RECEIVERS],
-        pre_sender: PreSender<C>,
         zeroes: Vec<InternalKeyOwned<D, PreSender<C>>>,
+        pre_sender: PreSender<C>,
     ) -> Self {
         Self {
             receivers,
-            pre_sender,
             zeroes,
+            pre_sender,
         }
     }
 }

@@ -92,7 +92,7 @@ pub type PullAllResult<C, L> = Result<PullAllResponse<C, L>, <L as Connection<C>
 /// Ledger Source Push Result
 ///
 /// See the [`push`](Connection::push) method on [`Connection`] for more information.
-pub type PushResult<C, L> = Result<PushResponse, <L as Connection<C>>::Error>;
+pub type PushResult<C, L> = Result<PushResponse<C, L>, <L as Connection<C>>::Error>;
 
 /// Ledger Source Pull Response
 ///
@@ -133,7 +133,14 @@ where
 ///
 /// This `struct` is created by the [`push`](Connection::push) method on [`Connection`].
 /// See its documentation for more.
-pub struct PushResponse {
+pub struct PushResponse<C, L>
+where
+    C: Configuration,
+    L: Connection<C> + ?Sized,
+{
+    /// Current Ledger Checkpoint
+    pub checkpoint: L::Checkpoint,
+
     /// Successful Push
     pub success: bool,
 }

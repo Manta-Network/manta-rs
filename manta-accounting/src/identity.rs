@@ -17,13 +17,16 @@
 //! Identities, Senders, and Receivers
 
 // FIXME: Check the secret key APIs.
+// FIXME: Remove `UtxoSet` dependence from `identity`, really we only need `UtxoSetVerifier`.
+// TODO:  Get rid of [`Spend`] and [`OpenSpend`] if possible. They don't seem to be that useful.
+//        See `crate::wallet::signer`.
 
 use crate::asset::{Asset, AssetBalance, AssetId, AssetVar};
 use core::{fmt::Debug, hash::Hash, marker::PhantomData};
 use manta_crypto::{
     commitment::{CommitmentScheme, Input as CommitmentInput},
     ies::{self, EncryptedMessage, IntegratedEncryptionScheme},
-    rand::{CryptoRand, CryptoRng, CryptoSample, RngCore, SeedableRng, Standard},
+    rand::{CryptoRng, Rand, RngCore, Sample, SeedableRng, Standard, TrySample},
     set::{MembershipProof, VerifiedSet},
     PseudorandomFunctionFamily,
 };
@@ -39,7 +42,7 @@ pub trait Configuration {
     type SecretKey: Clone;
 
     /// Pseudorandom Function Family Input Type
-    type PseudorandomFunctionFamilyInput: CryptoSample;
+    type PseudorandomFunctionFamilyInput: Sample;
 
     /// Pseudorandom Function Family Type
     type PseudorandomFunctionFamily: PseudorandomFunctionFamily<
@@ -48,7 +51,7 @@ pub trait Configuration {
     >;
 
     /// Commitment Scheme Randomness Type
-    type CommitmentSchemeRandomness: CryptoSample;
+    type CommitmentSchemeRandomness: Sample;
 
     /// Commitment Scheme Type
     type CommitmentScheme: CommitmentScheme<Randomness = Self::CommitmentSchemeRandomness>
@@ -227,12 +230,12 @@ where
     }
 }
 
-impl<C> CryptoSample for AssetParameters<C>
+impl<C> Sample for AssetParameters<C>
 where
     C: Configuration,
 {
     #[inline]
-    fn sample<R>(distribution: &Standard, rng: &mut R) -> Self
+    fn sample<R>(distribution: Standard, rng: &mut R) -> Self
     where
         R: CryptoRng + RngCore + ?Sized,
     {
@@ -491,13 +494,13 @@ where
     }
 }
 
-impl<C, D> CryptoSample<D> for Identity<C>
+impl<C, D> Sample<D> for Identity<C>
 where
     C: Configuration,
-    C::SecretKey: CryptoSample<D>,
+    C::SecretKey: Sample<D>,
 {
     #[inline]
-    fn sample<R>(distribution: &D, rng: &mut R) -> Self
+    fn sample<R>(distribution: D, rng: &mut R) -> Self
     where
         R: CryptoRng + RngCore + ?Sized,
     {
@@ -917,6 +920,20 @@ where
     }
 }
 
+impl<C> Sample<&C::CommitmentScheme> for PreSender<C>
+where
+    C: Configuration,
+    C::SecretKey: Sample,
+{
+    #[inline]
+    fn sample<R>(distribution: &C::CommitmentScheme, rng: &mut R) -> Self
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        Identity::gen(rng).into_pre_sender(distribution, rng.gen())
+    }
+}
+
 /// Sender
 pub struct Sender<C, S>
 where
@@ -1224,6 +1241,16 @@ where
         self.asset.value
     }
 
+    /// Inserts the [`Utxo`] corresponding to `self` into the `utxo_set` with the intention of
+    /// returning a proof later by a call to [`get_proof`](PreSender::get_proof).
+    #[inline]
+    pub fn insert_utxo<S>(&self, utxo_set: &mut S) -> bool
+    where
+        S: VerifiedSet<Item = Utxo<C>>,
+    {
+        utxo_set.insert_provable(&self.utxo)
+    }
+
     /// Extracts ledger posting data for this receiver.
     #[inline]
     pub fn into_post(self) -> ReceiverPost<C, I> {
@@ -1231,6 +1258,23 @@ where
             utxo: self.utxo,
             encrypted_asset: self.encrypted_asset,
         }
+    }
+}
+
+impl<C, I> TrySample<&C::CommitmentScheme> for Receiver<C, I>
+where
+    C: Configuration,
+    C::SecretKey: Sample,
+    I: IntegratedEncryptionScheme<Plaintext = Asset>,
+{
+    type Error = I::Error;
+
+    #[inline]
+    fn try_sample<R>(distribution: &C::CommitmentScheme, rng: &mut R) -> Result<Self, Self::Error>
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        Identity::gen(rng).into_receiver(distribution, rng.gen(), rng)
     }
 }
 

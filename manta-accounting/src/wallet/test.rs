@@ -14,15 +14,4 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Wallet Abstractions
-
-mod state;
-
-pub mod ledger;
-pub mod signer;
-
-#[cfg(feature = "test")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
-pub mod test;
-
-pub use state::*;
+//! Testing Framework

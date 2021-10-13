@@ -310,15 +310,20 @@ where
             .map_err(Error::InsufficientBalance)?;
         let SignResponse { posts } = self.signer.sign(transaction).await?;
         match self.ledger.push(posts).await {
-            Ok(PushResponse { success: true }) => {
+            Ok(PushResponse {
+                checkpoint,
+                success: true,
+            }) => {
                 self.try_commit().await;
                 match balance_update {
                     TransactionKind::Deposit(asset) => self.assets.deposit(asset),
                     TransactionKind::Withdraw(asset) => self.assets.withdraw_unchecked(asset),
                 }
+                self.checkpoint = checkpoint;
                 Ok(true)
             }
-            Ok(PushResponse { success: false }) => {
+            Ok(PushResponse { success: false, .. }) => {
+                // FIXME: What about the checkpoint?
                 self.try_rollback().await;
                 Ok(false)
             }

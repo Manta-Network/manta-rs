@@ -309,7 +309,23 @@ where
     }
 }
 
-/// Merkle Tree Provable Mixin
+/// Path Error
+///
+/// This `struct` is returned by the [`path`](WithProofs::path) method of the [`WithProofs`] trait.
+/// See its documentation for more.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum PathError {
+    /// Path for the given index was not stored in the tree
+    MissingPath,
+
+    /// Given index exceeded the length of the tree
+    IndexTooLarge(
+        /// Length of the tree
+        usize,
+    ),
+}
+
+/// Merkle Tree Membership Proof Mixin
 pub trait WithProofs<C>
 where
     C: Configuration + ?Sized,
@@ -374,21 +390,25 @@ where
     fn path(&self, parameters: &Parameters<C>, index: usize) -> Result<Path<C>, PathError>;
 }
 
-/// Path Error
-///
-/// This `struct` is returned by the [`path`](WithProofs::path) method of the [`WithProofs`] trait.
-/// See its documentation for more.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum PathError {
-    /// Path for the given index was not stored in the tree
-    MissingPath,
+/* TODO:
+/// Merkle Tree Removable Membership Proof Mixin
+pub trait WithRemovableProofs<C>: WithProofs<C>
+where
+    C: Configuration + ?Sized,
+{
+    ///
+    fn remove_paths<R>(&mut self, range: R) -> bool
+    where
+        R: RangeBounds<usize>;
 
-    /// Given index exceeded the length of the tree
-    IndexTooLarge(
-        /// Length of the tree
-        usize,
-    ),
+    ///
+    #[inline]
+    fn remove_path(&mut self, index: usize) -> bool {
+        self.remove_paths(index..=index)
+    }
+
 }
+*/
 
 /// Digest Type
 #[derive(derivative::Derivative)]

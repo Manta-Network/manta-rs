@@ -19,6 +19,7 @@
 // TODO: Think about whether we want to keep the `raw::MerkleTreePointerFamily` API sealed or not.
 // TODO: Implement derive-able traits for these types.
 // TODO: See if we can get rid of the smart pointer logic.
+// TODO: Implement partial merging. Will need to upgrade `PartialInnerTree`.
 
 use crate::merkle_tree::{
     capacity,

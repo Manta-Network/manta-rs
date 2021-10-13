@@ -23,7 +23,7 @@ use ark_crypto_primitives::commitment::{
 use ark_ff::bytes::ToBytes;
 use manta_crypto::{
     commitment::CommitmentScheme,
-    rand::{CryptoRand, CryptoRng, CryptoSample, RngCore, SizedRng, Standard},
+    rand::{CryptoRng, Rand, RngCore, Sample, SizedRng, Standard},
 };
 use manta_util::{Concat, ConcatAccumulator};
 
@@ -59,13 +59,13 @@ where
     W: PedersenWindow,
     C: ProjectiveCurve;
 
-impl<W, C> CryptoSample for PedersenCommitmentRandomness<W, C>
+impl<W, C> Sample for PedersenCommitmentRandomness<W, C>
 where
     W: PedersenWindow,
     C: ProjectiveCurve,
 {
     #[inline]
-    fn sample<R>(distribution: &Standard, rng: &mut R) -> Self
+    fn sample<R>(distribution: Standard, rng: &mut R) -> Self
     where
         R: CryptoRng + RngCore + ?Sized,
     {
@@ -152,13 +152,13 @@ where
     }
 }
 
-impl<W, C> CryptoSample for PedersenCommitment<W, C>
+impl<W, C> Sample for PedersenCommitment<W, C>
 where
     W: PedersenWindow,
     C: ProjectiveCurve,
 {
     #[inline]
-    fn sample<R>(distribution: &Standard, rng: &mut R) -> Self
+    fn sample<R>(distribution: Standard, rng: &mut R) -> Self
     where
         R: CryptoRng + RngCore + ?Sized,
     {
@@ -333,16 +333,16 @@ pub mod constraint {
         }
     }
 
-    impl<W, C, GG, D> CryptoSample<D> for PedersenCommitmentWrapper<W, C, GG>
+    impl<W, C, GG, D> Sample<D> for PedersenCommitmentWrapper<W, C, GG>
     where
         W: PedersenWindow,
         C: ProjectiveCurve,
         GG: CurveVar<C, ConstraintField<C>>,
         for<'g> &'g GG: GroupOpsBounds<'g, C, GG>,
-        PedersenCommitment<W, C>: CryptoSample<D>,
+        PedersenCommitment<W, C>: Sample<D>,
     {
         #[inline]
-        fn sample<R>(distribution: &D, rng: &mut R) -> PedersenCommitmentWrapper<W, C, GG>
+        fn sample<R>(distribution: D, rng: &mut R) -> PedersenCommitmentWrapper<W, C, GG>
         where
             R: CryptoRng + RngCore + ?Sized,
         {
