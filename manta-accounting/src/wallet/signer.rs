@@ -16,7 +16,12 @@
 
 //! Wallet Signer
 
-// TODO: Use universal transfers instead of just the canonical ones.
+// TODO: Add wallet recovery i.e. remove the assumption that a new signer represents a completely
+//       new derived secret key generator.
+// TODO: Allow for non-atomic signing, i.e. rollback state to something in-between two calls to
+//       `sign`. Will have to upgrade `Rollback` and `manta_crypto::merkle_tree::fork` as well.
+// TODO: Add checkpointing/garbage-collection in `utxo_set` so we can remove old UTXOs once they
+//       are irrelevant. Once we create a sender and its transaction succeeds we can drop the UTXO.
 
 use crate::{
     asset::{Asset, AssetBalance, AssetId, AssetMap},
@@ -726,9 +731,9 @@ where
             {
                 assets.push(inner);
                 self.assets.insert(index.reduce(), inner);
-                self.utxo_set.insert(&utxo);
+                self.utxo_set.insert_provable(&utxo);
             } else {
-                self.utxo_set.insert_non_proving(&utxo);
+                self.utxo_set.insert(&utxo);
             }
         }
         Ok(SyncResponse::new(assets))
@@ -877,7 +882,9 @@ where
         needed_zeroes -= zeroes.len();
 
         for zero in zeroes {
-            pre_senders.push(self.get_pre_sender(zero, Asset::zero(asset_id))?);
+            let next = self.get_pre_sender(zero, Asset::zero(asset_id))?;
+            next.insert_utxo(&mut self.utxo_set);
+            pre_senders.push(next);
         }
 
         if needed_zeroes == 0 {
@@ -888,7 +895,11 @@ where
 
         for _ in 0..needed_zeroes {
             match new_zeroes.pop() {
-                Some(zero) => pre_senders.push(zero.unwrap()),
+                Some(zero) => {
+                    let next = zero.unwrap();
+                    next.insert_utxo(&mut self.utxo_set);
+                    pre_senders.push(next);
+                }
                 _ => break,
             }
         }
@@ -906,6 +917,7 @@ where
             let (mint, pre_sender) =
                 self.signer
                     .mint_zero(&self.commitment_scheme, asset_id, &mut self.rng)?;
+            pre_sender.insert_utxo(&mut self.utxo_set);
             pre_senders.push(pre_sender);
             posts.push(self.build_post(mint)?);
         }

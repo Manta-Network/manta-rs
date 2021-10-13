@@ -21,8 +21,8 @@
 use crate::merkle_tree::{
     capacity,
     inner_tree::{BTreeMap, InnerMap, InnerTree},
-    Configuration, CurrentPath, GetPath, InnerDigest, LeafDigest, MerkleTree, Node, Parameters,
-    Path, Root, Tree,
+    Configuration, CurrentPath, InnerDigest, LeafDigest, MerkleTree, Node, Parameters, Path,
+    PathError, Root, Tree, WithProofs,
 };
 use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash};
@@ -164,6 +164,12 @@ where
     }
 
     #[inline]
+    fn matching_root(&self, parameters: &Parameters<C>, root: &Root<C>) -> bool {
+        let _ = parameters;
+        self.root() == &root.0
+    }
+
+    #[inline]
     fn current_path(&self, parameters: &Parameters<C>) -> CurrentPath<C> {
         let _ = parameters;
         let leaf_index = Node(self.len() - 1);
@@ -187,21 +193,44 @@ where
     }
 }
 
-impl<C, M> GetPath<C> for Full<C, M>
+impl<C, M> WithProofs<C> for Full<C, M>
 where
     C: Configuration + ?Sized,
-    M: InnerMap<C>,
-    LeafDigest<C>: Clone,
+    M: InnerMap<C> + Default,
+    LeafDigest<C>: Clone + PartialEq,
     InnerDigest<C>: Clone,
 {
     #[inline]
-    fn path(&self, parameters: &Parameters<C>, index: usize) -> Option<Path<C>> {
+    fn leaf_digest(&self, index: usize) -> Option<&LeafDigest<C>> {
+        self.leaf_digests.get(index)
+    }
+
+    #[inline]
+    fn index_of(&self, leaf_digest: &LeafDigest<C>) -> Option<usize> {
+        self.leaf_digests.iter().position(move |d| d == leaf_digest)
+    }
+
+    #[inline]
+    fn maybe_push_provable_digest<F>(
+        &mut self,
+        parameters: &Parameters<C>,
+        leaf_digest: F,
+    ) -> Option<bool>
+    where
+        F: FnOnce() -> Option<LeafDigest<C>>,
+    {
+        self.maybe_push_digest(parameters, leaf_digest)
+    }
+
+    #[inline]
+    fn path(&self, parameters: &Parameters<C>, index: usize) -> Result<Path<C>, PathError> {
         let _ = parameters;
-        if index > 0 && index >= self.len() {
-            return None;
+        let len = self.len();
+        if index > 0 && index >= len {
+            return Err(PathError::IndexTooLarge(len));
         }
         let leaf_index = Node(index);
-        Some(Path::from_inner(
+        Ok(Path::from_inner(
             self.get_owned_leaf_sibling(leaf_index),
             self.inner_digests.path(leaf_index),
         ))

@@ -30,7 +30,7 @@ where
     type RootTree: Tree<C>;
 
     /// Returns the shard index for the given `leaf`.
-    fn shard(leaf: &Leaf<C>) -> <Self::Tree as ShardedTree<C>>::Index;
+    fn shard(leaf: &Leaf<C>) -> usize;
 }
 
 /// Sharded Merkle Tree
@@ -38,9 +38,6 @@ pub trait ShardedTree<C>
 where
     C: Configuration + ?Sized,
 {
-    /// Shard Index
-    type Index: Copy + Into<usize>;
-
     /// Builds a new sharded merkle tree from `parameters`.
     fn new(parameters: &Parameters<C>) -> Self;
 }

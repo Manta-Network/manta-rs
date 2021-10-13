@@ -16,8 +16,8 @@
 
 //! Ledger Source
 
-// TODO: Move to streams so we can process some of the data as it's incoming.
-// TODO: Add non-atomic transactions?
+// TODO: Move to streams so we can process some of the data as it is incoming.
+// TODO: Add non-atomic transactions. See similar comment in `crate::wallet::signer`.
 
 use crate::{
     identity::{Utxo, VoidNumber},

@@ -65,17 +65,18 @@ pub trait VerifiedSet {
 
     /// Inserts `item` into `self` with the guarantee that `self` can later return a valid proof of
     /// membership for `item` with a call to [`get_membership_proof`](Self::get_membership_proof).
-    fn insert(&mut self, item: &Self::Item) -> bool;
+    fn insert_provable(&mut self, item: &Self::Item) -> bool;
 
     /// Inserts `item` into `self` without the guarantee that `self` with be able to return a proof
     /// of membership for `item`.
     ///
     /// # Implementation Note
     ///
-    /// By default, this method uses [`insert`](Self::insert) to store `item`.
+    /// By default, this method uses [`insert_provable`](Self::insert_provable) to store `item`
+    /// in `self`.
     #[inline]
-    fn insert_non_proving(&mut self, item: &Self::Item) -> bool {
-        self.insert(item)
+    fn insert(&mut self, item: &Self::Item) -> bool {
+        self.insert_provable(item)
     }
 
     /// Returns `true` if `public` is a valid input for the current state of `self`.

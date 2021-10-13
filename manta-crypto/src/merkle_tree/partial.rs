@@ -198,6 +198,12 @@ where
     }
 
     #[inline]
+    fn matching_root(&self, parameters: &Parameters<C>, root: &Root<C>) -> bool {
+        let _ = parameters;
+        self.root() == &root.0
+    }
+
+    #[inline]
     fn current_path(&self, parameters: &Parameters<C>) -> CurrentPath<C> {
         let _ = parameters;
         let leaf_index = Node(self.len() - 1);
@@ -221,9 +227,9 @@ where
     }
 }
 
-/* TODO: Implement `GetPath` for `Partial`
+/* TODO: Implement `WithProofs` for `Partial`
 
-impl<C, M> GetPath<C> for Partial<C, M>
+impl<C, M> WithProofs<C> for Partial<C, M>
 where
     C: Configuration + ?Sized,
     M: InnerMap<C>,

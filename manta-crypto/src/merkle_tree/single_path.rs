@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Single Leaf Merkle Tree Storage
+//! Single Path Merkle Tree Storage
 
 // TODO: Should we be storing the root? Can we have a version where we don't?
 
@@ -37,10 +37,10 @@ pub enum Length {
     Full,
 }
 
-/// Single Leaf Merkle Tree Type
-pub type SingleLeafMerkleTree<C> = MerkleTree<C, SingleLeaf<C>>;
+/// Single Path Merkle Tree Type
+pub type SinglePathMerkleTree<C> = MerkleTree<C, SinglePath<C>>;
 
-/// Single Leaf Merkle Tree Backing Structure
+/// Single Path Merkle Tree Backing Structure
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "LeafDigest<C>: Clone, InnerDigest<C>: Clone"),
@@ -50,7 +50,7 @@ pub type SingleLeafMerkleTree<C> = MerkleTree<C, SingleLeaf<C>>;
     Hash(bound = "LeafDigest<C>: Hash, InnerDigest<C>: Hash"),
     PartialEq(bound = "LeafDigest<C>: PartialEq, InnerDigest<C>: PartialEq")
 )]
-pub struct SingleLeaf<C>
+pub struct SinglePath<C>
 where
     C: Configuration + ?Sized,
 {
@@ -64,7 +64,7 @@ where
     root: Root<C>,
 }
 
-impl<C> SingleLeaf<C>
+impl<C> SinglePath<C>
 where
     C: Configuration + ?Sized,
 {
@@ -117,7 +117,7 @@ where
     }
 }
 
-impl<C> Tree<C> for SingleLeaf<C>
+impl<C> Tree<C> for SinglePath<C>
 where
     C: Configuration + ?Sized,
     LeafDigest<C>: Clone,
@@ -148,6 +148,12 @@ where
     fn root(&self, parameters: &Parameters<C>) -> Root<C> {
         let _ = parameters;
         self.root.clone()
+    }
+
+    #[inline]
+    fn matching_root(&self, parameters: &Parameters<C>, root: &Root<C>) -> bool {
+        let _ = parameters;
+        &self.root == root
     }
 
     #[inline]

@@ -31,7 +31,7 @@ use blake2::{
 use manta_accounting::identity;
 use manta_crypto::{
     constraint::{reflection::HasAllocation, Allocation, Constant, Variable},
-    merkle_tree::{self, single_leaf::SingleLeaf, Tree},
+    merkle_tree::{self, single_path::SinglePath, Tree},
     set::{constraint::VerifierVariable, MembershipProof, VerifiedSet, Verifier},
 };
 use manta_util::{as_bytes, concatenate, into_array_unchecked};
@@ -67,7 +67,7 @@ pub struct UtxoShard {
     root: Root,
 
     /// Unspent Transaction Outputs
-    utxos: SingleLeaf<ConfigConverter<Configuration>>,
+    utxos: SinglePath<ConfigConverter<Configuration>>,
 }
 
 /// UTXO Set Verifier
@@ -177,6 +177,12 @@ impl VerifiedSet for UtxoSet {
         }
         // FIXME: self.utxos.insert(item);
         true
+    }
+
+    #[inline]
+    fn insert_provable(&mut self, item: &Self::Item) -> bool {
+        // FIXME: This is not implementable!
+        false
     }
 
     #[inline]

@@ -212,6 +212,12 @@ where
     /// Returns the [`Root`] of the merkle tree.
     fn root(&self, parameters: &Parameters<C>) -> Root<C>;
 
+    /// Returns `true` if `root` matches the root of `self`.
+    #[inline]
+    fn matching_root(&self, parameters: &Parameters<C>, root: &Root<C>) -> bool {
+        &self.root(parameters) == root
+    }
+
     /// Returns the [`CurrentPath`] of the current (i.e. right-most) leaf.
     fn current_path(&self, parameters: &Parameters<C>) -> CurrentPath<C>;
 
@@ -303,31 +309,85 @@ where
     }
 }
 
-/// Merkle Tree Leaf Query Mixin
-pub trait GetLeaf<C>
+/// Merkle Tree Provable Mixin
+pub trait WithProofs<C>
 where
     C: Configuration + ?Sized,
 {
-    /// Returns the [`LeafDigest`] at the given `index`.
+    /// Returns the leaf digest at the given `index`.
+    ///
+    /// # Implementation Note
+    ///
+    /// This method is allowed to return `None` even if `index` is less than the current length of
+    /// the tree. See [`index_of`](Self::index_of) for more.
     fn leaf_digest(&self, index: usize) -> Option<&LeafDigest<C>>;
 
     /// Returns the index of the `leaf_digest` if it is contained in `self`.
+    ///
+    /// # Implementation Note
+    ///
+    /// This method is allowed to return `None` even if `leaf_digest` was inserted with a call to
+    /// [`push_digest`](Tree::push_digest). This method need only return an index for leaves which
+    /// are inserted with a call to [`push_provable`](Self::push_provable).
     fn index_of(&self, leaf_digest: &LeafDigest<C>) -> Option<usize>;
 
-    /// Returns `true` if `leaf_digest` is contained in the tree.
+    /// Returns `true` if `leaf_digest` is provably stored in `self`.
+    ///
+    /// See the [`index_of`](Self::index_of) and [`push_provable`](Self::push_provable) methods
+    /// for more.
     #[inline]
     fn contains(&self, leaf_digest: &LeafDigest<C>) -> bool {
         self.index_of(leaf_digest).is_some()
     }
+
+    /// Checks if a leaf can be inserted into the tree and if it can, it runs `leaf_digest` to
+    /// extract a leaf digest to insert, returning `None` if there was no leaf digest. If this
+    /// method is successful, the digest inserted will have an accompanying proof that can be
+    /// returned by a call to the [`path`](Self::path) method.
+    fn maybe_push_provable_digest<F>(
+        &mut self,
+        parameters: &Parameters<C>,
+        leaf_digest: F,
+    ) -> Option<bool>
+    where
+        F: FnOnce() -> Option<LeafDigest<C>>;
+
+    /// Appends `leaf_digest` to the end of the tree, retaining its path for later use with a call
+    /// to the [`path`](Self::path) method.
+    #[inline]
+    fn push_provable_digest<F>(&mut self, parameters: &Parameters<C>, leaf_digest: F) -> bool
+    where
+        F: FnOnce() -> LeafDigest<C>,
+    {
+        self.maybe_push_provable_digest(parameters, move || Some(leaf_digest()))
+            .unwrap()
+    }
+
+    /// Appends `leaf` to the end of the tree, retaining its path for later use with a call to the
+    /// [`path`](Self::path) method.
+    #[inline]
+    fn push_provable(&mut self, parameters: &Parameters<C>, leaf: &Leaf<C>) -> bool {
+        self.push_provable_digest(parameters, move || parameters.digest(leaf))
+    }
+
+    /// Returns the path for the leaf stored at the given `index` if it exists.
+    fn path(&self, parameters: &Parameters<C>, index: usize) -> Result<Path<C>, PathError>;
 }
 
-/// Merkle Tree Path Query Mixin
-pub trait GetPath<C>
-where
-    C: Configuration + ?Sized,
-{
-    /// Returns the [`Path`] of the leaf at the given `index`.
-    fn path(&self, parameters: &Parameters<C>, index: usize) -> Option<Path<C>>;
+/// Path Error
+///
+/// This `struct` is returned by the [`path`](WithProofs::path) method of the [`WithProofs`] trait.
+/// See its documentation for more.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum PathError {
+    /// Path for the given index was not stored in the tree
+    MissingPath,
+
+    /// Given index exceeded the length of the tree
+    IndexTooLarge(
+        /// Length of the tree
+        usize,
+    ),
 }
 
 /// Digest Type
@@ -485,12 +545,16 @@ where
     T: Tree<C>,
 {
     /// Builds a new [`MerkleTree`].
+    ///
+    /// See [`Tree::new`] for more.
     #[inline]
     pub fn new(parameters: Parameters<C>) -> Self {
         Self::from_tree(T::new(&parameters), parameters)
     }
 
     /// Builds a new [`MerkleTree`] with the given `leaves`.
+    ///
+    /// See [`Tree::from_iter`] for more.
     #[inline]
     pub fn from_iter<'l, L>(parameters: Parameters<C>, leaves: L) -> Option<Self>
     where
@@ -504,6 +568,8 @@ where
     }
 
     /// Builds a new [`MerkleTree`] with the given `leaves`.
+    ///
+    /// See [`Tree::from_slice`] for more.
     #[inline]
     pub fn from_slice(parameters: Parameters<C>, leaves: &[Leaf<C>]) -> Option<Self>
     where
@@ -527,80 +593,66 @@ where
         &self.parameters
     }
 
+    /// Returns the number of leaves that can fit in this merkle tree.
+    ///
+    /// See [`capacity`] for more.
+    #[inline]
+    pub fn capacity(&self) -> usize {
+        capacity::<C>()
+    }
+
     /// Returns the length of this merkle tree.
+    ///
+    /// See [`Tree::len`] for more.
     #[inline]
     pub fn len(&self) -> usize {
         self.tree.len()
     }
 
     /// Returns `true` if this merkle tree is empty.
+    ///
+    /// See [`Tree::is_empty`] for more.
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.tree.is_empty()
     }
 
-    /// Returns the number of leaves that can fit in this merkle tree.
-    #[inline]
-    pub fn capacity(&self) -> usize {
-        capacity::<C>()
-    }
-
     /// Returns the current (i.e right-most) leaf.
+    ///
+    /// See [`Tree::current_leaf`] for more.
     #[inline]
     pub fn current_leaf(&self) -> LeafDigest<C> {
         self.tree.current_leaf()
     }
 
     /// Returns the [`Root`] of the merkle tree.
+    ///
+    /// See [`Tree::root`] for more.
     #[inline]
     pub fn root(&self) -> Root<C> {
         self.tree.root(&self.parameters)
     }
 
+    /// Returns `true` if `root` matches the root of `self`.
+    ///
+    /// See [`Tree::matching_root`] for more.
+    #[inline]
+    fn matching_root(&self, root: &Root<C>) -> bool {
+        self.tree.matching_root(&self.parameters, root)
+    }
+
     /// Returns the [`CurrentPath`] of the current (i.e right-most) leaf.
+    ///
+    /// See [`Tree::current_path`] for more.
     #[inline]
     pub fn current_path(&self) -> CurrentPath<C> {
         self.tree.current_path(&self.parameters)
     }
 
-    /// Returns the [`LeafDigest`] at the given `index`.
-    #[inline]
-    pub fn leaf_digest(&self, index: usize) -> Option<&LeafDigest<C>>
-    where
-        T: GetLeaf<C>,
-    {
-        self.tree.leaf_digest(index)
-    }
-
-    /// Returns the index of the `leaf_digest` if it is contained in `self`.
-    #[inline]
-    pub fn index_of(&self, leaf_digest: &LeafDigest<C>) -> Option<usize>
-    where
-        T: GetLeaf<C>,
-    {
-        self.tree.index_of(leaf_digest)
-    }
-
-    /// Returns `true` if `leaf_digest` is contained in the tree.
-    #[inline]
-    pub fn contains(&self, leaf_digest: &LeafDigest<C>) -> bool
-    where
-        T: GetLeaf<C>,
-    {
-        self.tree.contains(leaf_digest)
-    }
-
-    /// Returns the [`Path`] of the leaf at the given `index`.
-    #[inline]
-    pub fn path(&self, index: usize) -> Option<Path<C>>
-    where
-        T: GetPath<C>,
-    {
-        self.tree.path(&self.parameters, index)
-    }
-
     /// Inserts `leaf` at the next avaiable leaf node of the tree, returning `false` if the
     /// leaf could not be inserted because the tree has exhausted its capacity.
+    ///
+    /// See [`Tree::push`] for more.
     #[inline]
     pub fn push(&mut self, leaf: &Leaf<C>) -> bool {
         self.tree.push(&self.parameters, leaf)
@@ -608,6 +660,8 @@ where
 
     /// Appends an iterator of leaves at the end of the tree, returning `false` if the `leaves`
     /// could not be inserted because the tree has exhausted its capacity.
+    ///
+    /// See [`Tree::extend`] for more.
     #[inline]
     pub fn extend<'l, L>(&mut self, leaves: L) -> bool
     where
@@ -619,12 +673,70 @@ where
 
     /// Appends a slice of leaves at the end of the tree, returning `false` if the `leaves` could
     /// not be inserted because the tree has exhausted its capacity.
+    ///
+    /// See [`Tree::extend_slice`] for more.
     #[inline]
     pub fn extend_slice(&mut self, leaves: &[Leaf<C>]) -> bool
     where
         Leaf<C>: Sized,
     {
         self.tree.extend_slice(&self.parameters, leaves)
+    }
+
+    /// Returns the leaf digest at the given `index`.
+    ///
+    /// See [`WithProofs::leaf_digest`] for more.
+    #[inline]
+    pub fn leaf_digest(&self, index: usize) -> Option<&LeafDigest<C>>
+    where
+        T: WithProofs<C>,
+    {
+        self.tree.leaf_digest(index)
+    }
+
+    /// Returns the index of the `leaf_digest` if it is contained in `self`.
+    ///
+    /// See [`WithProofs::index_of`] for more.
+    #[inline]
+    pub fn index_of(&self, leaf_digest: &LeafDigest<C>) -> Option<usize>
+    where
+        T: WithProofs<C>,
+    {
+        self.tree.index_of(leaf_digest)
+    }
+
+    /// Returns `true` if `leaf_digest` is provably stored in `self`.
+    ///
+    /// See [`WithProofs::contains`] for more.
+    #[inline]
+    pub fn contains(&self, leaf_digest: &LeafDigest<C>) -> bool
+    where
+        T: WithProofs<C>,
+    {
+        self.tree.contains(leaf_digest)
+    }
+
+    /// Appends `leaf` to the end of the tree, retaining its path for later use with a call to the
+    /// [`path`](Self::path) method.
+    ///
+    /// See [`WithProofs::push_provable`] for more.
+    #[inline]
+    pub fn push_provable(&mut self, leaf: &Leaf<C>) -> bool
+    where
+        T: WithProofs<C>,
+    {
+        self.tree.push_provable(&self.parameters, leaf)
+    }
+
+    /// Returns the path for the leaf stored at the given `index` if it exists.
+    ///
+    /// See [`WithProofs::path`] for more.
+    #[inline]
+    pub fn path(&self, index: usize) -> Result<Path<C>, PathError>
+    where
+        T: WithProofs<C>,
+    {
+        self.tree.path(&self.parameters, index)
     }
 
     /// Converts `self` into a fork-able merkle tree.
@@ -670,7 +782,7 @@ where
 impl<C, T> VerifiedSet for MerkleTree<C, T>
 where
     C: Configuration + ?Sized,
-    T: GetLeaf<C> + GetPath<C> + Tree<C>,
+    T: Tree<C> + WithProofs<C>,
 {
     type Item = Leaf<C>;
 
@@ -701,26 +813,26 @@ where
     }
 
     #[inline]
+    fn insert_provable(&mut self, item: &Self::Item) -> bool {
+        self.push_provable(item)
+    }
+
+    #[inline]
     fn insert(&mut self, item: &Self::Item) -> bool {
         self.push(item)
     }
 
     #[inline]
-    fn insert_non_proving(&mut self, item: &Self::Item) -> bool {
-        // FIXME: What to do here?
-        todo!()
-    }
-
-    #[inline]
     fn check_public(&self, public: &Self::Public) -> bool {
-        &self.root() == public
+        self.matching_root(public)
     }
 
     #[inline]
     fn get_membership_proof(&self, item: &Self::Item) -> Option<MembershipProof<Self::Verifier>> {
         Some(MembershipProof::new(
             self.root(),
-            self.path(self.index_of(&self.parameters.digest(item))?)?,
+            self.path(self.index_of(&self.parameters.digest(item))?)
+                .ok()?,
         ))
     }
 

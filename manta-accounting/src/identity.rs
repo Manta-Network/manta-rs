@@ -859,13 +859,14 @@ where
         identity.into_pre_sender(commitment_scheme, asset)
     }
 
-    /// Inserts the [`Utxo`] corresponding to `self` into the `utxo_set`.
+    /// Inserts the [`Utxo`] corresponding to `self` into the `utxo_set` with the intention of
+    /// returning a proof later by a call to [`get_proof`](Self::get_proof).
     #[inline]
     pub fn insert_utxo<S>(&self, utxo_set: &mut S) -> bool
     where
         S: VerifiedSet<Item = Utxo<C>>,
     {
-        utxo_set.insert(&self.utxo)
+        utxo_set.insert_provable(&self.utxo)
     }
 
     /// Requests the membership proof of `self.utxo` from `utxo_set` so that we can turn `self`

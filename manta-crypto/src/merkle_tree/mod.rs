@@ -18,7 +18,6 @@
 
 // TODO:  Should `Leaf` move into `Tree`/`Configuration` since we might want the tree to have
 //        special kinds of leaf input (metadata along with just the digest)?
-// TODO:  Implement [`crate::VerifiedSet`] for [`MerkleTree`]?
 // TODO:  Maybe we should require `INNER_HEIGHT` instead of `HEIGHT` so that we don't have to rely
 //        on the user to check that `HEIGHT >= 2`.
 // FIXME: Get rid of as many `pub(super)` declarations as we can.
@@ -31,8 +30,9 @@ pub mod full;
 pub mod inner_tree;
 pub mod partial;
 pub mod path;
-pub mod sharded;
-pub mod single_leaf;
+pub mod single_path;
+
+// TODO: pub mod sharded;
 
 #[cfg(feature = "test")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
