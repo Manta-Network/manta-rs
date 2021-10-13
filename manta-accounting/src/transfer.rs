@@ -1363,25 +1363,25 @@ pub mod canonical {
 #[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
 pub mod test {
     use super::*;
-    use crate::{asset::AssetBalanceType, identity::PreSender};
+    use crate::{asset::AssetBalanceType, identity::Identity};
     use manta_crypto::rand::{Rand, Sample, Standard, TrySample};
-    use manta_util::into_array_unchecked;
+    use manta_util::{array_map, fallible_array_map, into_array_unchecked};
 
     /// Test Sampling Distributions
     pub mod distribution {
         use super::*;
 
-        /// [`PublicTransfer`] Sampling Distribution
+        /// [`PublicTransfer`](super::PublicTransfer) Sampling Distribution
         pub type PublicTransfer = Standard;
 
-        /// Fixed Asset [`PublicTransfer`] Sampling Distribution
+        /// Fixed Asset [`PublicTransfer`](super::PublicTransfer) Sampling Distribution
         #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
         pub struct FixedPublicTransfer(pub Asset);
 
-        /// [`SecretTransfer`] Sampling Distribution
+        /// [`SecretTransfer`](super::SecretTransfer) Sampling Distribution
         pub type SecretTransfer<'c, C> = Transfer<'c, C>;
 
-        /// Fixed Asset [`SecretTransfer`] Sampling Distribution
+        /// Fixed Asset [`SecretTransfer`](super::SecretTransfer) Sampling Distribution
         pub struct FixedSecretTransfer<'c, C>
         where
             C: Configuration,
@@ -1393,7 +1393,100 @@ pub mod test {
             pub base: SecretTransfer<'c, C>,
         }
 
-        /// [`Transfer`] Sampling Distribution
+        impl<'c, C> FixedSecretTransfer<'c, C>
+        where
+            C: Configuration,
+            C::SecretKey: Sample,
+        {
+            /// Tries to sample a [`super::SecretTransfer`] using custom sender and receiver asset
+            /// totals.
+            #[inline]
+            pub(super) fn try_sample_custom_totals<
+                R,
+                const SENDERS: usize,
+                const RECEIVERS: usize,
+            >(
+                asset_id: AssetId,
+                sender_total: AssetBalance,
+                receiver_total: AssetBalance,
+                commitment_scheme: &C::CommitmentScheme,
+                utxo_set: &mut C::UtxoSet,
+                rng: &mut R,
+            ) -> Result<
+                super::SecretTransfer<C, SENDERS, RECEIVERS>,
+                IntegratedEncryptionSchemeError<C>,
+            >
+            where
+                R: CryptoRng + RngCore + ?Sized,
+            {
+                FixedSecretTransfer::<C>::try_sample_custom_distribution(
+                    asset_id,
+                    sample_asset_balances::<_, SENDERS>(sender_total, rng),
+                    sample_asset_balances::<_, RECEIVERS>(receiver_total, rng),
+                    commitment_scheme,
+                    utxo_set,
+                    rng,
+                )
+            }
+
+            /// Tries to sample a [`super::SecretTransfer`] with custom sender and receiver asset
+            /// value distributions.
+            #[inline]
+            pub(super) fn try_sample_custom_distribution<
+                R,
+                const SENDERS: usize,
+                const RECEIVERS: usize,
+            >(
+                asset_id: AssetId,
+                senders: AssetBalances<SENDERS>,
+                receivers: AssetBalances<RECEIVERS>,
+                commitment_scheme: &C::CommitmentScheme,
+                utxo_set: &mut C::UtxoSet,
+                rng: &mut R,
+            ) -> Result<
+                super::SecretTransfer<C, SENDERS, RECEIVERS>,
+                IntegratedEncryptionSchemeError<C>,
+            >
+            where
+                R: CryptoRng + RngCore + ?Sized,
+            {
+                Ok(super::SecretTransfer::new(
+                    array_map(senders, |v| {
+                        let pre_sender =
+                            Identity::gen(rng).into_pre_sender(commitment_scheme, asset_id.with(v));
+                        pre_sender.insert_utxo(utxo_set);
+                        pre_sender.try_upgrade(utxo_set).unwrap()
+                    }),
+                    fallible_array_map(receivers, |v| {
+                        Identity::gen(rng).into_receiver(commitment_scheme, asset_id.with(v), rng)
+                    })?,
+                ))
+            }
+
+            /// Tries to sample a [`super::SecretTransfer`].
+            #[inline]
+            pub(super) fn try_sample<R, const SENDERS: usize, const RECEIVERS: usize>(
+                self,
+                rng: &mut R,
+            ) -> Result<
+                super::SecretTransfer<C, SENDERS, RECEIVERS>,
+                IntegratedEncryptionSchemeError<C>,
+            >
+            where
+                R: CryptoRng + RngCore + ?Sized,
+            {
+                Self::try_sample_custom_totals(
+                    self.asset.id,
+                    self.asset.value,
+                    self.asset.value,
+                    self.base.commitment_scheme,
+                    self.base.utxo_set,
+                    rng,
+                )
+            }
+        }
+
+        /// [`Transfer`](super::Transfer) Sampling Distribution
         pub struct Transfer<'c, C>
         where
             C: Configuration,
@@ -1405,19 +1498,13 @@ pub mod test {
             pub utxo_set: &'c mut C::UtxoSet,
         }
 
-        /// Fixed Asset [`Transfer`] Sampling Distribution
+        /// Fixed Asset [`Transfer`](super::Transfer) Sampling Distribution
         pub struct FixedTransfer<'c, C>
         where
             C: Configuration,
         {
-            /// Asset Id
-            pub asset_id: AssetId,
-
-            /// Public Value Exchanged
-            pub public_value: AssetBalance,
-
-            /// Secret Value Exchanged
-            pub secret_value: AssetBalance,
+            /// Asset
+            pub asset: Asset,
 
             /// Base Distribution
             pub base: Transfer<'c, C>,
@@ -1543,25 +1630,7 @@ pub mod test {
         where
             R: CryptoRng + RngCore + ?Sized,
         {
-            Ok(Self::new(
-                into_array_unchecked(
-                    (0..SENDERS)
-                        .into_iter()
-                        .map(|_| {
-                            let pre_sender =
-                                PreSender::sample(distribution.base.commitment_scheme, rng);
-                            pre_sender.insert_utxo(distribution.base.utxo_set);
-                            pre_sender.try_upgrade(distribution.base.utxo_set).unwrap()
-                        })
-                        .collect::<Vec<_>>(),
-                ),
-                into_array_unchecked(
-                    (0..RECEIVERS)
-                        .into_iter()
-                        .map(|_| rng.try_sample(distribution.base.commitment_scheme))
-                        .collect::<Result<Vec<_>, _>>()?,
-                ),
-            ))
+            distribution.try_sample(rng)
         }
     }
 
@@ -1589,9 +1658,7 @@ pub mod test {
         {
             Self::try_sample(
                 distribution::FixedTransfer {
-                    asset_id: rng.gen(),
-                    public_value: rng.gen(),
-                    secret_value: rng.gen(),
+                    asset: rng.gen(),
                     base: distribution,
                 },
                 rng,
@@ -1624,18 +1691,25 @@ pub mod test {
             Self::check_sender_side();
             Self::check_receiver_side();
             SecretTransfer::<C, SENDERS, RECEIVERS>::check_size_overflow();
+
+            let asset = distribution.asset;
+            let mut input = value_distribution(SOURCES + SENDERS, asset.value, rng);
+            let mut output = value_distribution(RECEIVERS + SINKS, asset.value, rng);
+            let secret_input = input.split_off(SOURCES);
+            let public_output = output.split_off(RECEIVERS);
+
             Ok(Self {
-                public: PublicTransfer::sample(
-                    distribution::FixedPublicTransfer(
-                        distribution.asset_id.with(distribution.public_value),
-                    ),
-                    rng,
+                public: PublicTransfer::new(
+                    asset.id,
+                    into_array_unchecked(input),
+                    into_array_unchecked(public_output),
                 ),
-                secret: SecretTransfer::try_sample(
-                    distribution::FixedSecretTransfer {
-                        asset: distribution.asset_id.with(distribution.secret_value),
-                        base: distribution.base,
-                    },
+                secret: distribution::FixedSecretTransfer::try_sample_custom_distribution(
+                    asset.id,
+                    into_array_unchecked(secret_input),
+                    into_array_unchecked(output),
+                    distribution.base.commitment_scheme,
+                    distribution.base.utxo_set,
                     rng,
                 )?,
             })

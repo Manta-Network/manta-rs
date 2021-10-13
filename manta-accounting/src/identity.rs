@@ -508,6 +508,22 @@ where
     }
 }
 
+impl<C, D> TrySample<D> for Identity<C>
+where
+    C: Configuration,
+    C::SecretKey: TrySample<D>,
+{
+    type Error = <C::SecretKey as TrySample<D>>::Error;
+
+    #[inline]
+    fn try_sample<R>(distribution: D, rng: &mut R) -> Result<Self, Self::Error>
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        Ok(Self::new(rng.try_sample(distribution)?))
+    }
+}
+
 /// Shielded Identity
 pub struct ShieldedIdentity<C, I>
 where
