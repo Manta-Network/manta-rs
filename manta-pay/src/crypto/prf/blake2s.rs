@@ -18,7 +18,7 @@
 
 use ark_crypto_primitives::prf::{Blake2s as ArkBlake2s, PRF};
 use manta_crypto::{
-    rand::{CryptoRng, RngCore, Sample, Standard},
+    rand::{CryptoRng, Rand, RngCore, Sample, Standard},
     PseudorandomFunctionFamily,
 };
 use manta_util::{Concat, ConcatAccumulator};
@@ -57,6 +57,17 @@ impl From<Blake2sSeed> for [u8; 32] {
     }
 }
 
+impl Sample for Blake2sSeed {
+    #[inline]
+    fn sample<R>(distribution: Standard, rng: &mut R) -> Self
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        let _ = distribution;
+        Self(rng.gen())
+    }
+}
+
 /// Blake2s Pseudorandom Function Family Input
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Blake2sInput(<ArkBlake2s as PRF>::Input);
@@ -79,8 +90,8 @@ impl Sample for Blake2sInput {
     where
         R: CryptoRng + RngCore + ?Sized,
     {
-        // FIXME: Implement.
-        todo!()
+        let _ = distribution;
+        Self(rng.gen())
     }
 }
 

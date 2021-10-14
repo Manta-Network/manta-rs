@@ -137,20 +137,24 @@ where
     }
 }
 
-/* FIXME:
 #[cfg(test)]
 mod test {
     use crate::accounting::{
-        ledger::UtxoSet,
+        identity::UtxoSet,
         transfer::{Mint, PrivateTransfer, Reclaim},
     };
-    use rand::{thread_rng, Rng};
+    use manta_accounting::transfer::test::distribution;
+    use manta_crypto::{
+        rand::{Rand, TrySample},
+        set::VerifiedSet,
+    };
+    use rand::thread_rng;
 
     /// Tests the generation of proving/verifying keys for [`PrivateTransfer`].
     #[test]
     fn generate_private_transfer_keys() {
         let mut rng = thread_rng();
-        PrivateTransfer::generate_context(&rng.gen(), &UtxoSet::new(rng.gen()), &mut rng)
+        PrivateTransfer::generate_context(&rng.gen(), &rng.gen(), &mut rng)
             .unwrap()
             .unwrap();
     }
@@ -159,7 +163,7 @@ mod test {
     #[test]
     fn generate_reclaim_keys() {
         let mut rng = thread_rng();
-        Reclaim::generate_context(&rng.gen(), &UtxoSet::new(rng.gen()), &mut rng)
+        Reclaim::generate_context(&rng.gen(), &rng.gen(), &mut rng)
             .unwrap()
             .unwrap();
     }
@@ -168,40 +172,43 @@ mod test {
     /// [`Mint`] does not require a proof.
     #[test]
     #[should_panic]
-    fn generate_mint_keys_is_impossible() {
+    fn generating_mint_keys_is_impossible() {
         let mut rng = thread_rng();
-        Mint::generate_context(&rng.gen(), &UtxoSet::new(rng.gen()), &mut rng)
+        Mint::generate_context(&rng.gen(), &rng.gen(), &mut rng)
             .unwrap()
             .unwrap();
     }
 
     ///
     #[test]
-    fn test_private_transfer() {
-        /* TODO:
+    fn private_transfer() {
         let mut rng = thread_rng();
         let commitment_scheme = rng.gen();
         let mut utxo_set = UtxoSet::new(rng.gen());
 
-        let base = rng.gen::<Identity>();
-        let shielded = base.into_shielded();
-
-        let mint_asset = rng.gen();
-        let mint = Mint::build(
-            mint_asset,
-            shielded.into_receiver(&commitment_scheme, mint_asset, &mut rng),
-        );
+        let private_transfer = PrivateTransfer::try_sample(
+            distribution::Transfer {
+                commitment_scheme: &commitment_scheme,
+                utxo_set: &mut utxo_set,
+            },
+            &mut rng,
+        )
+        .unwrap();
 
         let (proving_key, verifying_key) =
-            PrivateTransfer::generate_context(&commitment_scheme, &utxo_set, &mut rng)
+            PrivateTransfer::generate_context(&commitment_scheme, utxo_set.verifier(), &mut rng)
                 .unwrap()
                 .unwrap();
 
-        let secret_transfer = PrivateTransfer::build(
-            [rng.gen().into_sender(), rng.gen().into_sender()],
-            [rng.gen().into_receiver(), rng.gen().into_receiver()],
-        );
-        */
+        let post = private_transfer
+            .into_post(
+                &commitment_scheme,
+                utxo_set.verifier(),
+                &proving_key,
+                &mut rng,
+            )
+            .unwrap();
+
+        // TODO: let _ = post.validate(&ledger).unwrap();
     }
 }
-*/

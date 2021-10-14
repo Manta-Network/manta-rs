@@ -24,12 +24,12 @@
 //! [`BIP-0044`]: https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki
 
 use alloc::{format, string::String};
-use bip32::Seed;
+use bip32::{Seed, XPrv};
 use core::{marker::PhantomData, num::ParseIntError, str::FromStr};
 use manta_accounting::keys::{DerivedSecretKeyGenerator, DerivedSecretKeyParameter, KeyKind};
 use manta_util::{create_seal, seal};
 
-pub use bip32::{Error, Mnemonic, XPrv as SecretKey};
+pub use bip32::{Error, Mnemonic};
 
 create_seal! {}
 
@@ -197,7 +197,7 @@ impl<C> DerivedSecretKeyGenerator for DerivedKeySecret<C>
 where
     C: CoinType,
 {
-    type SecretKey = SecretKey;
+    type SecretKey = XPrv;
 
     type Account = AccountParameter;
 
@@ -212,6 +212,6 @@ where
         account: &Self::Account,
         index: &Self::Index,
     ) -> Result<Self::SecretKey, Self::Error> {
-        SecretKey::derive_from_path(&self.seed, &path_string::<C>(kind, account, index).parse()?)
+        XPrv::derive_from_path(&self.seed, &path_string::<C>(kind, account, index).parse()?)
     }
 }

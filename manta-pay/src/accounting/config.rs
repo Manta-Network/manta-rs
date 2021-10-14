@@ -20,7 +20,7 @@
 //       enabled when using whichever backend.
 
 use crate::{
-    accounting::ledger::{UtxoSet, UtxoSetVerifier, UtxoSetVerifierVar},
+    accounting::identity::{constraint::UtxoSetVerifierVar, Utxo, UtxoSet},
     crypto::{
         commitment::pedersen::{self, PedersenWindow},
         constraint::arkworks::{
@@ -90,7 +90,7 @@ pub type ProofSystem = Groth16<Bls12_381>;
 pub struct Configuration;
 
 impl ArkMerkleTreeConfiguration for Configuration {
-    type Leaf = [u8];
+    type Leaf = Utxo;
     type LeafHash = ArkPedersenCommitment;
     type InnerHash = ArkPedersenCommitment;
     type Height = u8;
@@ -156,6 +156,5 @@ impl transfer::Configuration for Configuration {
     type AssetBalanceVar = AssetBalanceVar<ConstraintField>;
     type IntegratedEncryptionScheme = IES;
     type UtxoSet = UtxoSet;
-    type UtxoSetVerifier = UtxoSetVerifier;
     type UtxoSetVerifierVar = UtxoSetVerifierVar;
 }

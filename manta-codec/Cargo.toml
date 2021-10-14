@@ -15,7 +15,7 @@ publish = false
 
 [package.metadata.docs.rs]
 # To build locally:
-# RUSTDOCFLAGS="--cfg doc_cfg" cargo +nightly doc --all-features --no-deps --open
+# RUSTDOCFLAGS="--cfg doc_cfg" cargo +nightly doc --all-features --open
 all-features = true
 rustdoc-args = ["--cfg", "doc_cfg"]
 

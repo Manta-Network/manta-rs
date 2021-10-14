@@ -16,7 +16,9 @@
 
 //! Random Number Generators
 
-use core::{fmt::Debug, hash::Hash, marker::PhantomData};
+use alloc::vec::Vec;
+use core::{fmt::Debug, hash::Hash, iter::repeat, marker::PhantomData};
+use manta_util::into_array_unchecked;
 
 pub use rand_core::{block, CryptoRng, Error, RngCore, SeedableRng};
 
@@ -236,6 +238,25 @@ impl Sample for u128 {
     {
         let _ = distribution;
         ((rng.next_u64() as u128) << 64) | (rng.next_u64() as u128)
+    }
+}
+
+impl<D, T, const N: usize> Sample<D> for [T; N]
+where
+    D: Clone,
+    T: Sample<D>,
+{
+    #[inline]
+    fn sample<R>(distribution: D, rng: &mut R) -> Self
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        into_array_unchecked(
+            repeat(distribution)
+                .take(N)
+                .map(move |d| T::sample(d, rng))
+                .collect::<Vec<_>>(),
+        )
     }
 }
 

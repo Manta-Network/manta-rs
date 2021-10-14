@@ -132,7 +132,7 @@ where
 pub type Leaf<C> = <<C as HashConfiguration>::LeafHash as LeafHash>::Leaf;
 
 /// Leaf Hash Parameters Type
-pub type LeafHashParamters<C> = <<C as HashConfiguration>::LeafHash as LeafHash>::Parameters;
+pub type LeafHashParameters<C> = <<C as HashConfiguration>::LeafHash as LeafHash>::Parameters;
 
 /// Leaf Hash Digest Type
 pub type LeafDigest<C> = <<C as HashConfiguration>::LeafHash as LeafHash>::Output;
@@ -434,20 +434,20 @@ where
 /// Merkle Tree Parameters
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "LeafHashParamters<C>: Clone, InnerHashParameters<C>: Clone"),
-    Copy(bound = "LeafHashParamters<C>: Copy, InnerHashParameters<C>: Copy"),
-    Debug(bound = "LeafHashParamters<C>: Debug, InnerHashParameters<C>: Debug"),
-    Default(bound = "LeafHashParamters<C>: Default, InnerHashParameters<C>: Default"),
-    Eq(bound = "LeafHashParamters<C>: Eq, InnerHashParameters<C>: Eq"),
-    Hash(bound = "LeafHashParamters<C>: Hash, InnerHashParameters<C>: Hash"),
-    PartialEq(bound = "LeafHashParamters<C>: PartialEq, InnerHashParameters<C>: PartialEq")
+    Clone(bound = "LeafHashParameters<C>: Clone, InnerHashParameters<C>: Clone"),
+    Copy(bound = "LeafHashParameters<C>: Copy, InnerHashParameters<C>: Copy"),
+    Debug(bound = "LeafHashParameters<C>: Debug, InnerHashParameters<C>: Debug"),
+    Default(bound = "LeafHashParameters<C>: Default, InnerHashParameters<C>: Default"),
+    Eq(bound = "LeafHashParameters<C>: Eq, InnerHashParameters<C>: Eq"),
+    Hash(bound = "LeafHashParameters<C>: Hash, InnerHashParameters<C>: Hash"),
+    PartialEq(bound = "LeafHashParameters<C>: PartialEq, InnerHashParameters<C>: PartialEq")
 )]
 pub struct Parameters<C>
 where
     C: HashConfiguration + ?Sized,
 {
     /// Leaf Hash Parameters
-    pub leaf: LeafHashParamters<C>,
+    pub leaf: LeafHashParameters<C>,
 
     /// Inner Hash Parameters
     pub inner: InnerHashParameters<C>,
@@ -459,7 +459,7 @@ where
 {
     /// Builds a new [`Parameters`] from `leaf` and `inner` parameters.
     #[inline]
-    pub fn new(leaf: LeafHashParamters<C>, inner: InnerHashParameters<C>) -> Self {
+    pub fn new(leaf: LeafHashParameters<C>, inner: InnerHashParameters<C>) -> Self {
         Self { leaf, inner }
     }
 

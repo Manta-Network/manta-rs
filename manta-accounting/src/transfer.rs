@@ -43,7 +43,7 @@ use manta_crypto::{
     },
     ies::{EncryptedMessage, IntegratedEncryptionScheme},
     rand::{CryptoRng, RngCore},
-    set::{constraint::VerifierVariable, VerifiedSet, Verifier},
+    set::{constraint::VerifierVariable, VerifiedSet},
 };
 use manta_util::{create_seal, from_variant_impl, iter::mixed_chain, seal, Either};
 
@@ -93,20 +93,22 @@ pub trait Configuration:
     type IntegratedEncryptionScheme: IntegratedEncryptionScheme<Plaintext = Asset>;
 
     /// Verified Set for [`Utxo`]
-    type UtxoSet: VerifiedSet<Item = Utxo<Self>, Verifier = Self::UtxoSetVerifier>;
+    type UtxoSet: VerifiedSet<Item = Utxo<Self>>; //, Verifier = Self::UtxoSetVerifier>;
 
+    /*
     /// Verified Set Verifier for [`Utxo`]
     type UtxoSetVerifier: Verifier<
-            Item = Utxo<Self>,
-            Public = <Self::UtxoSet as VerifiedSet>::Public,
-            Secret = <Self::UtxoSet as VerifiedSet>::Secret,
-        > + HasAllocation<ConstraintSystem<Self>, Variable = Self::UtxoSetVerifierVar, Mode = Constant>;
+        Item = Utxo<Self>,
+        Public = <Self::UtxoSet as VerifiedSet>::Public,
+        Secret = <Self::UtxoSet as VerifiedSet>::Secret,
+    >;
+    */
 
     /// Verified Set Verifier Variable for [`Utxo`]
     type UtxoSetVerifierVar: VerifierVariable<
         ConstraintSystem<Self>,
         ItemVar = UtxoVar<Self>,
-        Type = Self::UtxoSetVerifier,
+        Type = <Self::UtxoSet as VerifiedSet>::Verifier,
         Mode = Constant,
     >;
 }
@@ -158,6 +160,9 @@ pub type SenderVar<C> = identity::constraint::SenderVar<C, <C as Configuration>:
 /// Transfer Receiver Type
 pub type ReceiverVar<C> =
     identity::constraint::ReceiverVar<C, <C as Configuration>::IntegratedEncryptionScheme>;
+
+/// Transfer UTXO Set Verifier Type
+pub type UtxoSetVerifier<C> = <<C as Configuration>::UtxoSet as VerifiedSet>::Verifier;
 
 /// Transfer Proving Context Type
 pub type ProvingContext<C> = <<C as Configuration>::ProofSystem as ProofSystem>::ProvingContext;
@@ -556,7 +561,7 @@ where
     pub fn into_post<R>(
         self,
         commitment_scheme: &C::CommitmentScheme,
-        utxo_set_verifier: &C::UtxoSetVerifier,
+        utxo_set_verifier: &UtxoSetVerifier<C>,
         context: &ProvingContext<C>,
         rng: &mut R,
     ) -> Result<TransferPost<C>, ProofSystemError<C>>
@@ -704,7 +709,7 @@ where
     #[inline]
     fn unknown_variables(
         commitment_scheme: &C::CommitmentScheme,
-        utxo_set_verifier: &C::UtxoSetVerifier,
+        utxo_set_verifier: &UtxoSetVerifier<C>,
         cs: &mut ConstraintSystem<C>,
     ) -> (
         Option<C::AssetIdVar>,
@@ -730,7 +735,7 @@ where
     fn known_variables(
         &self,
         commitment_scheme: &C::CommitmentScheme,
-        utxo_set_verifier: &C::UtxoSetVerifier,
+        utxo_set_verifier: &UtxoSetVerifier<C>,
         cs: &mut ConstraintSystem<C>,
     ) -> (
         Option<C::AssetIdVar>,
@@ -803,7 +808,7 @@ where
     #[inline]
     pub fn generate_context<R>(
         commitment_scheme: &C::CommitmentScheme,
-        utxo_set_verifier: &C::UtxoSetVerifier,
+        utxo_set_verifier: &UtxoSetVerifier<C>,
         rng: &mut R,
     ) -> Option<Result<(ProvingContext<C>, VerifyingContext<C>), ProofSystemError<C>>>
     where
@@ -833,7 +838,7 @@ where
     pub fn generate_proof<R>(
         &self,
         commitment_scheme: &C::CommitmentScheme,
-        utxo_set_verifier: &C::UtxoSetVerifier,
+        utxo_set_verifier: &UtxoSetVerifier<C>,
         context: &ProvingContext<C>,
         rng: &mut R,
     ) -> Result<ShapedProof<C>, ProofSystemError<C>>
@@ -865,7 +870,7 @@ where
     pub fn into_post<R>(
         self,
         commitment_scheme: &C::CommitmentScheme,
-        utxo_set_verifier: &C::UtxoSetVerifier,
+        utxo_set_verifier: &UtxoSetVerifier<C>,
         context: &ProvingContext<C>,
         rng: &mut R,
     ) -> Result<TransferPost<C>, ProofSystemError<C>>
@@ -991,15 +996,16 @@ from_variant_impl!(TransferPostError, Sender, SenderPostError);
 from_variant_impl!(TransferPostError, Receiver, ReceiverPostError);
 
 /// Transfer Post
+// FIXME: Add public data
 pub struct TransferPost<C>
 where
     C: Configuration,
 {
     /// Sender Posts
-    pub sender_posts: Vec<SenderPost<C>>,
+    sender_posts: Vec<SenderPost<C>>,
 
     /// Receiver Posts
-    pub receiver_posts: Vec<ReceiverPost<C>>,
+    receiver_posts: Vec<ReceiverPost<C>>,
 
     /// Validity Proof
     ///

@@ -1419,7 +1419,7 @@ pub mod constraint {
     use super::*;
     use manta_crypto::{
         constraint::{
-            reflection::{HasAllocation, HasVariable, Var},
+            reflection::{HasAllocation, HasVariable},
             Allocation, Constant, ConstraintSystem, Derived, Equal, Public, PublicOrSecret, Secret,
             Variable,
         },
@@ -1642,16 +1642,14 @@ pub mod constraint {
     {
         /// Checks if `self` is a well-formed sender and returns its asset.
         #[inline]
-        pub fn get_well_formed_asset(
+        pub fn get_well_formed_asset<V>(
             self,
             cs: &mut C::ConstraintSystem,
             commitment_scheme: &C::CommitmentSchemeVar,
-            utxo_set_verifier: &Var<S::Verifier, C::ConstraintSystem>,
+            utxo_set_verifier: &V,
         ) -> AssetVar<C::ConstraintSystem>
         where
-            S::Verifier: HasAllocation<C::ConstraintSystem>,
-            <S::Verifier as HasAllocation<C::ConstraintSystem>>::Variable:
-                VerifierVariable<C::ConstraintSystem, ItemVar = UtxoVar<C>>,
+            V: VerifierVariable<C::ConstraintSystem, ItemVar = UtxoVar<C>, Type = S::Verifier>,
         {
             // Well-formed check:
             //

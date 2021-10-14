@@ -15,7 +15,7 @@ publish = false
 
 [package.metadata.docs.rs]
 # To build locally:
-# RUSTDOCFLAGS="--cfg doc_cfg" cargo +nightly doc --all-features --no-deps --open
+# RUSTDOCFLAGS="--cfg doc_cfg" cargo +nightly doc --all-features --open
 all-features = true
 rustdoc-args = ["--cfg", "doc_cfg"]
 
@@ -67,6 +67,6 @@ rand_chacha = { version = "0.3.1", default-features = false }
 x25519-dalek = { git = "https://github.com/Manta-Network/x25519-dalek", default-features = false, features = ["u64_backend"] }
 
 [dev-dependencies]
-manta-crypto = { path = "../manta-crypto", features = ["test"] }
 manta-accounting = { path = "../manta-accounting", features = ["test"] }
+manta-crypto = { path = "../manta-crypto", features = ["test"] }
 rand = "0.8.4"

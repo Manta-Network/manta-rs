@@ -23,7 +23,10 @@ use ark_crypto_primitives::{
 };
 use ark_ff::{to_bytes, ToBytes};
 use core::marker::PhantomData;
-use manta_crypto::merkle_tree::{self, InnerHash, LeafHash};
+use manta_crypto::{
+    merkle_tree::{self, InnerHash, LeafHash},
+    rand::{CryptoRng, RngCore, SizedRng, Standard},
+};
 use manta_util::{as_bytes, Concat};
 
 /// Arkworks Leaf Hash Converter
@@ -33,6 +36,22 @@ pub struct LeafHashConverter<L, LH>(PhantomData<L>, PhantomData<LH>)
 where
     L: Concat<Item = u8> + ?Sized,
     LH: CRH;
+
+impl<L, LH> LeafHashConverter<L, LH>
+where
+    L: Concat<Item = u8> + ?Sized,
+    LH: CRH,
+{
+    /// Sample leaf hash parameters using `rng`.
+    #[inline]
+    pub fn sample_parameters<R>(rng: &mut R) -> LH::Parameters
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        LH::setup(&mut SizedRng(rng))
+            .expect("Leaf hash parameter generation is not allowed to fail.")
+    }
+}
 
 impl<L, LH> LeafHash for LeafHashConverter<L, LH>
 where
@@ -67,6 +86,16 @@ where
     LH: CRH,
     IH: TwoToOneCRH,
 {
+    /// Sample inner hash parameters using `rng`.
+    #[inline]
+    pub fn sample_parameters<R>(rng: &mut R) -> IH::Parameters
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        IH::setup(&mut SizedRng(rng))
+            .expect("Inner hash parameter generation is not allowed to fail.")
+    }
+
     /// Evaluates the inner hash function for `IH` using `parameters`.
     #[inline]
     fn evaluate<T>(parameters: &IH::Parameters, lhs: &T, rhs: &T) -> IH::Output
@@ -177,6 +206,40 @@ where
 {
     type LeafHash = C::LeafHash;
     type TwoToOneHash = C::InnerHash;
+}
+
+#[cfg(test)]
+impl<C> merkle_tree::test::HashParameterSampling for ConfigConverter<C>
+where
+    C: Configuration,
+{
+    type LeafHashParameterDistribution = Standard;
+
+    type InnerHashParameterDistribution = Standard;
+
+    #[inline]
+    fn sample_leaf_hash_parameters<R>(
+        distribution: Self::LeafHashParameterDistribution,
+        rng: &mut R,
+    ) -> merkle_tree::LeafHashParameters<Self>
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        let _ = distribution;
+        <ConfigConverter<C> as merkle_tree::HashConfiguration>::LeafHash::sample_parameters(rng)
+    }
+
+    #[inline]
+    fn sample_inner_hash_parameters<R>(
+        distribution: Self::InnerHashParameterDistribution,
+        rng: &mut R,
+    ) -> merkle_tree::InnerHashParameters<Self>
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        let _ = distribution;
+        <ConfigConverter<C> as merkle_tree::HashConfiguration>::InnerHash::sample_parameters(rng)
+    }
 }
 
 /// Merkle Tree Constraint System Variables
@@ -430,22 +493,10 @@ pub mod constraint {
                         ns!(cs.cs, "path variable secret witness"),
                         full(&Self::convert_path(this)),
                     ),
-                    _ => {
-                        // FIXME: We can't use `empty` here. What do we do?
-                        //
-                        //   > The circuit we output must contain the height of the merkle tree
-                        //     we are using for containment proofs. Since this is mandatory,
-                        //     arkworks just forces you to build a path variable from a real path
-                        //     even if you are just trying to build the circuit keys. So to solve
-                        //     this, we need to find a way to mock the path of the correct height
-                        //     (sample it from some distribution) so that when we create the
-                        //     variable, it will have the necessary constraints to build the keys.
-                        //
-                        PathVarInnerType::new_witness(
-                            ns!(cs.cs, "path variable secret witness"),
-                            full(&Self::default_path()),
-                        )
-                    }
+                    _ => PathVarInnerType::new_witness(
+                        ns!(cs.cs, "path variable secret witness"),
+                        full(&Self::default_path()),
+                    ),
                 }
                 .expect("Variable allocation is not allowed to fail."),
             )

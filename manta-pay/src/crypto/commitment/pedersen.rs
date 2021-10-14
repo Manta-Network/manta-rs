@@ -20,7 +20,7 @@ use alloc::vec::Vec;
 use ark_crypto_primitives::commitment::{
     pedersen::Commitment as ArkPedersenCommitment, CommitmentScheme as ArkCommitmentScheme,
 };
-use ark_ff::bytes::ToBytes;
+use ark_ff::{bytes::ToBytes, UniformRand};
 use manta_crypto::{
     commitment::CommitmentScheme,
     rand::{CryptoRng, Rand, RngCore, Sample, SizedRng, Standard},
@@ -69,8 +69,8 @@ where
     where
         R: CryptoRng + RngCore + ?Sized,
     {
-        // FIXME: Implement.
-        todo!()
+        let _ = distribution;
+        Self(ArkPedersenCommitmentRandomness::<W, _>::rand(rng))
     }
 }
 

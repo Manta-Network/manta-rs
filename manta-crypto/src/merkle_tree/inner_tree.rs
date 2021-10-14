@@ -262,6 +262,7 @@ where
 pub type HashMap<C, S = hash_map::RandomState> = hash_map::HashMap<usize, InnerDigest<C>, S>;
 
 #[cfg(feature = "std")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
 impl<C, S> InnerMap<C> for HashMap<C, S>
 where
     C: Configuration + ?Sized,

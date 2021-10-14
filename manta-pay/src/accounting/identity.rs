@@ -16,8 +16,12 @@
 
 //! Identity Implementations
 
-use crate::accounting::config::Configuration;
+use crate::{accounting::config::Configuration, crypto::merkle_tree::ConfigConverter};
 use manta_accounting::{identity, transfer};
+use manta_crypto::merkle_tree::{self, full::Full};
+
+/// Unspent Transaction Output
+pub type Utxo = identity::Utxo<Configuration>;
 
 /// Asset Parameters
 pub type AssetParameters = identity::AssetParameters<Configuration>;
@@ -53,3 +57,75 @@ pub type ReceiverPost = identity::ReceiverPost<
     Configuration,
     <Configuration as transfer::Configuration>::IntegratedEncryptionScheme,
 >;
+
+/// UTXO Set Parameters
+pub type Parameters = merkle_tree::Parameters<ConfigConverter<Configuration>>;
+
+/// UTXO Set Root
+pub type Root = merkle_tree::Root<ConfigConverter<Configuration>>;
+
+/// UTXO Set Path
+pub type Path = merkle_tree::Path<ConfigConverter<Configuration>>;
+
+/// UTXO Set
+// FIXME: Change this to sharded merkle tree.
+pub type UtxoSet =
+    merkle_tree::MerkleTree<ConfigConverter<Configuration>, Full<ConfigConverter<Configuration>>>;
+
+/// Identity Constraint System Variables
+pub mod constraint {
+    use super::*;
+    use crate::{
+        accounting::config::ConstraintSystem,
+        crypto::merkle_tree::constraint as merkle_tree_constraint,
+    };
+    use manta_crypto::{
+        constraint::{reflection::HasAllocation, Allocation, Constant, Variable},
+        set::constraint::VerifierVariable,
+    };
+    use manta_util::concatenate;
+
+    /// UTXO Variable
+    pub type UtxoVar = identity::constraint::UtxoVar<Configuration>;
+
+    /// UTXO Set Parameters Variable
+    pub type ParametersVar = merkle_tree_constraint::ParametersVar<Configuration>;
+
+    /// UTXO Set Root Variable
+    pub type RootVar = merkle_tree_constraint::RootVar<Configuration>;
+
+    /// UTXO Set Path Variable
+    pub type PathVar = merkle_tree_constraint::PathVar<Configuration>;
+
+    /// UTXO Set Verifier Variable
+    #[derive(Clone)]
+    pub struct UtxoSetVerifierVar(ParametersVar);
+
+    impl Variable<ConstraintSystem> for UtxoSetVerifierVar {
+        type Type = Parameters;
+
+        type Mode = Constant;
+
+        #[inline]
+        fn new(ps: &mut ConstraintSystem, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
+            let (this, mode) = allocation.into_known();
+            Self(this.known(ps, mode))
+        }
+    }
+
+    impl VerifierVariable<ConstraintSystem> for UtxoSetVerifierVar {
+        type ItemVar = UtxoVar;
+
+        #[inline]
+        fn assert_valid_membership_proof(
+            &self,
+            public: &RootVar,
+            secret: &PathVar,
+            item: &UtxoVar,
+            cs: &mut ConstraintSystem,
+        ) {
+            let _ = cs;
+            self.0.assert_verified(public, secret, &concatenate!(item))
+        }
+    }
+}

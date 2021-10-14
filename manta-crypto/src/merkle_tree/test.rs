@@ -16,7 +16,88 @@
 
 //! Testing Framework
 
-use crate::merkle_tree::{Configuration, Leaf, MerkleTree, Parameters, Tree, WithProofs};
+use crate::{
+    merkle_tree::{
+        Configuration, HashConfiguration, InnerHashParameters, Leaf, LeafHashParameters,
+        MerkleTree, Parameters, Tree, WithProofs,
+    },
+    rand::{CryptoRng, RngCore, Sample},
+};
+use core::{fmt::Debug, hash::Hash};
+
+/// Hash Parameter Sampling
+pub trait HashParameterSampling: HashConfiguration {
+    /// Leaf Hash Parameter Distribution
+    type LeafHashParameterDistribution;
+
+    /// Inner Hash Parameter Distribution
+    type InnerHashParameterDistribution;
+
+    /// Sample leaf hash parameters from `distribution` using the given `rng`.
+    fn sample_leaf_hash_parameters<R>(
+        distribution: Self::LeafHashParameterDistribution,
+        rng: &mut R,
+    ) -> LeafHashParameters<Self>
+    where
+        R: CryptoRng + RngCore + ?Sized;
+
+    /// Sample inner hash parameters from `distribution` using the given `rng`.
+    fn sample_inner_hash_parameters<R>(
+        distribution: Self::InnerHashParameterDistribution,
+        rng: &mut R,
+    ) -> InnerHashParameters<Self>
+    where
+        R: CryptoRng + RngCore + ?Sized;
+}
+
+/// Hash Parameter Distribution
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(
+        bound = "C::LeafHashParameterDistribution: Clone, C::InnerHashParameterDistribution: Clone"
+    ),
+    Copy(
+        bound = "C::LeafHashParameterDistribution: Copy, C::InnerHashParameterDistribution: Copy"
+    ),
+    Debug(
+        bound = "C::LeafHashParameterDistribution: Debug, C::InnerHashParameterDistribution: Debug"
+    ),
+    Default(
+        bound = "C::LeafHashParameterDistribution: Default, C::InnerHashParameterDistribution: Default"
+    ),
+    Eq(bound = "C::LeafHashParameterDistribution: Eq, C::InnerHashParameterDistribution: Eq"),
+    Hash(
+        bound = "C::LeafHashParameterDistribution: Hash, C::InnerHashParameterDistribution: Hash"
+    ),
+    PartialEq(bound = "C::LeafHashParameterDistribution: PartialEq,
+        C::InnerHashParameterDistribution: PartialEq")
+)]
+pub struct HashParameterDistribution<C>
+where
+    C: HashParameterSampling + ?Sized,
+{
+    /// Leaf Hash Parameter Distribution
+    pub leaf: C::LeafHashParameterDistribution,
+
+    /// Inner Hash Parameter Distribution
+    pub inner: C::InnerHashParameterDistribution,
+}
+
+impl<C> Sample<HashParameterDistribution<C>> for Parameters<C>
+where
+    C: HashParameterSampling + ?Sized,
+{
+    #[inline]
+    fn sample<R>(distribution: HashParameterDistribution<C>, rng: &mut R) -> Self
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        Self::new(
+            C::sample_leaf_hash_parameters(distribution.leaf, rng),
+            C::sample_inner_hash_parameters(distribution.inner, rng),
+        )
+    }
+}
 
 /// Tests that a tree constructed with `parameters` can accept at least two leaves without
 /// failing.
