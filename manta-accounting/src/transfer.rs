@@ -38,8 +38,8 @@ use manta_crypto::{
     constraint::{
         self,
         reflection::{HasAllocation, HasVariable},
-        Allocation, Constant, ConstraintSystem as _, Derived, Equal, ProofSystem, Public,
-        PublicOrSecret, Secret, Variable, VariableSource,
+        Allocation, Constant, ConstraintSystem as _, Derived, Equal, Input as ProofSystemInput,
+        ProofSystem, Public, PublicOrSecret, Secret, Variable, VariableSource,
     },
     ies::{EncryptedMessage, IntegratedEncryptionScheme},
     rand::{CryptoRng, RngCore},
@@ -79,6 +79,12 @@ pub trait Configuration:
 
     /// Proof System
     type ProofSystem: ProofSystem<ConstraintSystem = ConstraintSystem<Self>>;
+    /* TODO:
+    + ProofSystemInput<AssetId>
+    + ProofSystemInput<AssetBalance>
+    + ProofSystemInput<SenderPost<Self>>
+    + ProofSystemInput<ReceiverPost<Self>>;
+    */
 
     /// Asset Id Variable
     type AssetIdVar: Variable<ConstraintSystem<Self>, Mode = PublicOrSecret, Type = AssetId>
@@ -93,16 +99,7 @@ pub trait Configuration:
     type IntegratedEncryptionScheme: IntegratedEncryptionScheme<Plaintext = Asset>;
 
     /// Verified Set for [`Utxo`]
-    type UtxoSet: VerifiedSet<Item = Utxo<Self>>; //, Verifier = Self::UtxoSetVerifier>;
-
-    /*
-    /// Verified Set Verifier for [`Utxo`]
-    type UtxoSetVerifier: Verifier<
-        Item = Utxo<Self>,
-        Public = <Self::UtxoSet as VerifiedSet>::Public,
-        Secret = <Self::UtxoSet as VerifiedSet>::Secret,
-    >;
-    */
+    type UtxoSet: VerifiedSet<Item = Utxo<Self>>;
 
     /// Verified Set Verifier Variable for [`Utxo`]
     type UtxoSetVerifierVar: VerifierVariable<
@@ -199,8 +196,8 @@ where
     ///
     /// This type must be restricted so that it can only be constructed by this implementation
     /// of [`TransferLedger`]. This is to prevent that [`SenderPostingKey::post`] and
-    /// [`ReceiverPostingKey::post`] are called before [`is_valid`](Self::is_valid),
-    /// [`SenderPost::validate`], and [`ReceiverPost::validate`].
+    /// [`ReceiverPostingKey::post`] are called before [`SenderPost::validate`],
+    /// [`ReceiverPost::validate`], and [`is_valid`](Self::is_valid).
     type ValidProof: Copy;
 
     /// Super Posting Key
@@ -214,7 +211,31 @@ where
     ///
     /// This should always succeed on inputs that demonstrate that they do not require a
     /// proof, by revealing their transaction shape.
-    fn is_valid(&self, proof: ShapedProof<C>) -> Option<Self::ValidProof>;
+    fn is_valid(
+        &self,
+        asset_id: Option<AssetId>,
+        sources: &[AssetBalance],
+        senders: &[SenderPostingKey<C, Self>],
+        receivers: &[ReceiverPostingKey<C, Self>],
+        sinks: &[AssetBalance],
+        proof: ShapedProof<C>,
+    ) -> Option<Self::ValidProof>;
+
+    /// Updates the public balances in the ledger, finishing the transaction.
+    ///
+    /// # Safety
+    ///
+    /// This method can only be called once we check that `proof` is a valid proof and that
+    /// `senders` and `receivers` are valid participants in the transaction. See
+    /// [`is_valid`](Self::is_valid) for more.
+    fn update_public_balances(
+        &mut self,
+        asset_id: AssetId,
+        sources: Vec<AssetBalance>,
+        sinks: Vec<AssetBalance>,
+        proof: Self::ValidProof,
+        super_key: &TransferLedgerSuperPostingKey<C, Self>,
+    );
 }
 
 /// Dynamic Transfer Shape
@@ -884,12 +905,15 @@ where
                 context,
                 rng,
             )?,
+            asset_id: self.public.asset_id,
+            sources: self.public.sources.into(),
             sender_posts: IntoIterator::into_iter(self.secret.senders)
                 .map(Sender::into_post)
                 .collect(),
             receiver_posts: IntoIterator::into_iter(self.secret.receivers)
                 .map(Receiver::into_post)
                 .collect(),
+            sinks: self.public.sinks.into(),
         })
     }
 }
@@ -996,16 +1020,24 @@ from_variant_impl!(TransferPostError, Sender, SenderPostError);
 from_variant_impl!(TransferPostError, Receiver, ReceiverPostError);
 
 /// Transfer Post
-// FIXME: Add public data
 pub struct TransferPost<C>
 where
     C: Configuration,
 {
+    /// Asset Id
+    asset_id: Option<AssetId>,
+
+    /// Sources
+    sources: Vec<AssetBalance>,
+
     /// Sender Posts
     sender_posts: Vec<SenderPost<C>>,
 
     /// Receiver Posts
     receiver_posts: Vec<ReceiverPost<C>>,
+
+    /// Sinks
+    sinks: Vec<AssetBalance>,
 
     /// Validity Proof
     ///
@@ -1029,21 +1061,33 @@ where
     where
         L: TransferLedger<C>,
     {
+        let sender_posting_keys = self
+            .sender_posts
+            .into_iter()
+            .map(move |s| s.validate(ledger))
+            .collect::<Result<Vec<_>, _>>()?;
+        let receiver_posting_keys = self
+            .receiver_posts
+            .into_iter()
+            .map(move |r| r.validate(ledger))
+            .collect::<Result<Vec<_>, _>>()?;
         Ok(TransferPostingKey {
-            sender_posting_keys: self
-                .sender_posts
-                .into_iter()
-                .map(move |s| s.validate(ledger))
-                .collect::<Result<_, _>>()?,
-            receiver_posting_keys: self
-                .receiver_posts
-                .into_iter()
-                .map(move |r| r.validate(ledger))
-                .collect::<Result<_, _>>()?,
-            validity_proof: match ledger.is_valid(self.validity_proof) {
+            validity_proof: match ledger.is_valid(
+                self.asset_id,
+                &self.sources,
+                &sender_posting_keys,
+                &receiver_posting_keys,
+                &self.sinks,
+                self.validity_proof,
+            ) {
                 Some(key) => key,
                 _ => return Err(TransferPostError::InvalidProof),
             },
+            asset_id: self.asset_id,
+            sources: self.sources,
+            sender_posting_keys,
+            receiver_posting_keys,
+            sinks: self.sinks,
         })
     }
 }
@@ -1054,11 +1098,20 @@ where
     C: Configuration,
     L: TransferLedger<C>,
 {
+    /// Asset Id
+    asset_id: Option<AssetId>,
+
+    /// Sources
+    sources: Vec<AssetBalance>,
+
     /// Sender Posting Keys
     sender_posting_keys: Vec<SenderPostingKey<C, L>>,
 
     /// Receiver Posting Keys
     receiver_posting_keys: Vec<ReceiverPostingKey<C, L>>,
+
+    /// Sinks
+    sinks: Vec<AssetBalance>,
 
     /// Validity Proof Posting Key
     validity_proof: L::ValidProof,
@@ -1069,41 +1122,25 @@ where
     C: Configuration,
     L: TransferLedger<C>,
 {
-    /// Posts `senders` to the transfer `ledger`.
-    #[inline]
-    fn post_senders(
-        senders: Vec<SenderPostingKey<C, L>>,
-        proof: &L::ValidProof,
-        super_key: &TransferLedgerSuperPostingKey<C, L>,
-        ledger: &mut L,
-    ) -> bool {
-        senders
-            .into_iter()
-            .all(|k| k.post(&(*proof, *super_key), ledger))
-    }
-
-    /// Posts `receivers` to the transfer `ledger`.
-    #[inline]
-    fn post_receivers(
-        receivers: Vec<ReceiverPostingKey<C, L>>,
-        proof: &L::ValidProof,
-        super_key: &TransferLedgerSuperPostingKey<C, L>,
-        ledger: &mut L,
-    ) -> bool {
-        receivers
-            .into_iter()
-            .all(|k| k.post(&(*proof, *super_key), ledger))
-    }
-
     /// Posts `self` to the transfer `ledger`.
+    ///
+    /// # Safety
+    ///
+    /// This method assumes that posting `self` to `ledger` is atomic and cannot fail. See
+    /// [`SenderLedger::spend`] and [`ReceiverLedger::register`] for more information on the
+    /// contract for this method.
     #[inline]
-    pub fn post(self, super_key: &TransferLedgerSuperPostingKey<C, L>, ledger: &mut L) -> bool {
-        // FIXME: This needs to be atomic! Add a `commit/rollback` method somewhere? Or can the
-        //        ledger keep track of its own atomicity, so we have an "atomic-until-next-error"
-        //        kind of behavior.
+    pub fn post(self, super_key: &TransferLedgerSuperPostingKey<C, L>, ledger: &mut L) {
         let proof = self.validity_proof;
-        Self::post_senders(self.sender_posting_keys, &proof, super_key, ledger)
-            && Self::post_receivers(self.receiver_posting_keys, &proof, super_key, ledger)
+        for key in self.sender_posting_keys {
+            key.post(&(proof, *super_key), ledger);
+        }
+        for key in self.receiver_posting_keys {
+            key.post(&(proof, *super_key), ledger);
+        }
+        if let Some(asset_id) = self.asset_id {
+            ledger.update_public_balances(asset_id, self.sources, self.sinks, proof, super_key)
+        }
     }
 }
 

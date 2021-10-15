@@ -136,14 +136,14 @@ where
     W: PedersenWindow,
     C: ProjectiveCurve,
 {
-    type InputBuffer = Vec<u8>;
+    type Input = Vec<u8>;
 
     type Randomness = PedersenCommitmentRandomness<W, C>;
 
     type Output = PedersenCommitmentOutput<W, C>;
 
     #[inline]
-    fn commit(&self, input: Self::InputBuffer, randomness: &Self::Randomness) -> Self::Output {
+    fn commit(&self, input: Self::Input, randomness: &Self::Randomness) -> Self::Output {
         // FIXME: Make a note about the failure properties of commitment schemes.
         PedersenCommitmentOutput(
             ArkPedersenCommitment::<_, W>::commit(&self.0, &input, &randomness.0)
@@ -321,14 +321,14 @@ pub mod constraint {
         GG: CurveVar<C, ConstraintField<C>>,
         for<'g> &'g GG: GroupOpsBounds<'g, C, GG>,
     {
-        type InputBuffer = <PedersenCommitment<W, C> as CommitmentScheme>::InputBuffer;
+        type Input = <PedersenCommitment<W, C> as CommitmentScheme>::Input;
 
         type Randomness = <PedersenCommitment<W, C> as CommitmentScheme>::Randomness;
 
         type Output = PedersenCommitmentOutputWrapper<W, C, GG>;
 
         #[inline]
-        fn commit(&self, input: Self::InputBuffer, randomness: &Self::Randomness) -> Self::Output {
+        fn commit(&self, input: Self::Input, randomness: &Self::Randomness) -> Self::Output {
             self.0.commit(input, randomness).into()
         }
     }
@@ -573,14 +573,14 @@ pub mod constraint {
         GG: CurveVar<C, ConstraintField<C>>,
         for<'g> &'g GG: GroupOpsBounds<'g, C, GG>,
     {
-        type InputBuffer = InputBuffer<ConstraintField<C>>;
+        type Input = InputBuffer<ConstraintField<C>>;
 
         type Randomness = PedersenCommitmentRandomnessVar<W, C>;
 
         type Output = PedersenCommitmentOutputVar<W, C, GG>;
 
         #[inline]
-        fn commit(&self, input: Self::InputBuffer, randomness: &Self::Randomness) -> Self::Output {
+        fn commit(&self, input: Self::Input, randomness: &Self::Randomness) -> Self::Output {
             PedersenCommitmentOutputVar::new(
                 CommGadget::<_, _, W>::commit(&self.0, &input, &randomness.0)
                     .expect("Failure outcomes are not accepted."),

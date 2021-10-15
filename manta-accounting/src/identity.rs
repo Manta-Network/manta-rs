@@ -168,7 +168,7 @@ where
 )]
 pub struct AssetParameters<C>
 where
-    C: Configuration,
+    C: Configuration + ?Sized,
 {
     /// Void Number Generator
     pub void_number_generator: VoidNumberGenerator<C>,
@@ -182,7 +182,7 @@ where
 
 impl<C> AssetParameters<C>
 where
-    C: Configuration,
+    C: Configuration + ?Sized,
 {
     /// Builds a new [`AssetParameters`].
     #[inline]
@@ -232,7 +232,7 @@ where
 
 impl<C> Sample for AssetParameters<C>
 where
-    C: Configuration,
+    C: Configuration + ?Sized,
 {
     #[inline]
     fn sample<R>(distribution: Standard, rng: &mut R) -> Self
@@ -247,7 +247,7 @@ where
 /// Account Identity
 pub struct Identity<C>
 where
-    C: Configuration,
+    C: Configuration + ?Sized,
 {
     /// Secret Key
     secret_key: SecretKey<C>,
@@ -255,7 +255,7 @@ where
 
 impl<C> Identity<C>
 where
-    C: Configuration,
+    C: Configuration + ?Sized,
 {
     /// Builds a new [`Identity`] from a [`SecretKey`].
     #[inline]
@@ -496,7 +496,7 @@ where
 
 impl<C, D> Sample<D> for Identity<C>
 where
-    C: Configuration,
+    C: Configuration + ?Sized,
     C::SecretKey: Sample<D>,
 {
     #[inline]
@@ -510,7 +510,7 @@ where
 
 impl<C, D> TrySample<D> for Identity<C>
 where
-    C: Configuration,
+    C: Configuration + ?Sized,
     C::SecretKey: TrySample<D>,
 {
     type Error = <C::SecretKey as TrySample<D>>::Error;
@@ -527,7 +527,7 @@ where
 /// Shielded Identity
 pub struct ShieldedIdentity<C, I>
 where
-    C: Configuration,
+    C: Configuration + ?Sized,
     I: IntegratedEncryptionScheme<Plaintext = Asset>,
 {
     /// UTXO Randomness
@@ -542,7 +542,7 @@ where
 
 impl<C, I> ShieldedIdentity<C, I>
 where
-    C: Configuration,
+    C: Configuration + ?Sized,
     I: IntegratedEncryptionScheme<Plaintext = Asset>,
 {
     /// Builds a new [`ShieldedIdentity`] from `identity` and `commitment_scheme`.
@@ -614,7 +614,7 @@ where
 /// Spending Information
 pub struct Spend<C, I>
 where
-    C: Configuration,
+    C: Configuration + ?Sized,
     I: IntegratedEncryptionScheme<Plaintext = Asset>,
 {
     /// Spender Identity
@@ -626,7 +626,7 @@ where
 
 impl<C, I> Spend<C, I>
 where
-    C: Configuration,
+    C: Configuration + ?Sized,
     I: IntegratedEncryptionScheme<Plaintext = Asset>,
 {
     /// Builds a new `Spend` from an `Identity` and an `ies::SecretKey<I>`.
@@ -690,7 +690,7 @@ where
 
 impl<C, I> From<Identity<C>> for Spend<C, I>
 where
-    C: Configuration,
+    C: Configuration + ?Sized,
     I: IntegratedEncryptionScheme<Plaintext = Asset>,
 {
     #[inline]
@@ -702,7 +702,7 @@ where
 /// Open [`Spend`]
 pub struct OpenSpend<C>
 where
-    C: Configuration,
+    C: Configuration + ?Sized,
 {
     /// Spender Identity
     identity: Identity<C>,
@@ -713,7 +713,7 @@ where
 
 impl<C> OpenSpend<C>
 where
-    C: Configuration,
+    C: Configuration + ?Sized,
 {
     /// Builds a new `OpenSpend` from an `Identity` and an `Asset`.
     ///
@@ -756,7 +756,7 @@ where
 /// Internal Identity
 pub struct InternalIdentity<C, I>
 where
-    C: Configuration,
+    C: Configuration + ?Sized,
     I: IntegratedEncryptionScheme<Plaintext = Asset>,
 {
     /// Receiver
@@ -768,7 +768,7 @@ where
 
 impl<C, I> InternalIdentity<C, I>
 where
-    C: Configuration,
+    C: Configuration + ?Sized,
     I: IntegratedEncryptionScheme<Plaintext = Asset>,
 {
     /// Builds an [`InternalIdentity`] from an [`Identity`] for the given `asset`.
@@ -788,7 +788,7 @@ where
 
 impl<C, I> From<InternalIdentity<C, I>> for (Receiver<C, I>, PreSender<C>)
 where
-    C: Configuration,
+    C: Configuration + ?Sized,
     I: IntegratedEncryptionScheme<Plaintext = Asset>,
 {
     #[inline]
@@ -803,7 +803,7 @@ where
 /// See its documentation for more.
 pub struct SenderProof<C, S>
 where
-    C: Configuration,
+    C: Configuration + ?Sized,
     S: VerifiedSet<Item = Utxo<C>>,
 {
     /// UTXO Membership Proof
@@ -815,7 +815,7 @@ where
 
 impl<C, S> SenderProof<C, S>
 where
-    C: Configuration,
+    C: Configuration + ?Sized,
     S: VerifiedSet<Item = Utxo<C>>,
 {
     /// Returns `true` if a [`PreSender`] could be upgraded using `self` given the `utxo_set`.
@@ -840,7 +840,7 @@ where
 /// Pre-Sender
 pub struct PreSender<C>
 where
-    C: Configuration,
+    C: Configuration + ?Sized,
 {
     /// Secret Key
     secret_key: SecretKey<C>,
@@ -866,7 +866,7 @@ where
 
 impl<C> PreSender<C>
 where
-    C: Configuration,
+    C: Configuration + ?Sized,
 {
     /// Builds a new [`PreSender`] for this `asset` from an `identity`.
     #[inline]
@@ -938,7 +938,7 @@ where
 
 impl<C> Sample<&C::CommitmentScheme> for PreSender<C>
 where
-    C: Configuration,
+    C: Configuration + ?Sized,
     C::SecretKey: Sample,
 {
     #[inline]
@@ -953,7 +953,7 @@ where
 /// Sender
 pub struct Sender<C, S>
 where
-    C: Configuration,
+    C: Configuration + ?Sized,
     S: VerifiedSet<Item = Utxo<C>>,
 {
     /// Secret Key
@@ -983,7 +983,7 @@ where
 
 impl<C, S> Sender<C, S>
 where
-    C: Configuration,
+    C: Configuration + ?Sized,
     S: VerifiedSet<Item = Utxo<C>>,
 {
     /// Builds a new [`Sender`] for this `asset` from an `identity`.
@@ -1039,7 +1039,7 @@ where
 /// Sender Ledger
 pub trait SenderLedger<C, S>
 where
-    C: Configuration,
+    C: Configuration + ?Sized,
     S: VerifiedSet<Item = Utxo<C>>,
 {
     /// Valid [`VoidNumber`] Posting Key
@@ -1092,7 +1092,7 @@ where
         void_number: Self::ValidVoidNumber,
         utxo_state: Self::ValidUtxoState,
         super_key: &Self::SuperPostingKey,
-    ) -> bool;
+    );
 }
 
 /// Sender Post Error
@@ -1112,7 +1112,7 @@ pub enum SenderPostError {
 /// Sender Post
 pub struct SenderPost<C, S>
 where
-    C: Configuration,
+    C: Configuration + ?Sized,
     S: VerifiedSet<Item = Utxo<C>>,
 {
     /// Void Number
@@ -1124,14 +1124,14 @@ where
 
 impl<C, S> SenderPost<C, S>
 where
-    C: Configuration,
+    C: Configuration + ?Sized,
     S: VerifiedSet<Item = Utxo<C>>,
 {
     /// Validates `self` on the sender `ledger`.
     #[inline]
     pub fn validate<L>(self, ledger: &L) -> Result<SenderPostingKey<C, S, L>, SenderPostError>
     where
-        L: SenderLedger<C, S>,
+        L: SenderLedger<C, S> + ?Sized,
     {
         Ok(SenderPostingKey {
             void_number: match ledger.is_unspent(self.void_number) {
@@ -1150,7 +1150,7 @@ where
 
 impl<C, S> From<Sender<C, S>> for SenderPost<C, S>
 where
-    C: Configuration,
+    C: Configuration + ?Sized,
     S: VerifiedSet<Item = Utxo<C>>,
 {
     #[inline]
@@ -1162,9 +1162,9 @@ where
 /// Sender Posting Key
 pub struct SenderPostingKey<C, S, L>
 where
-    C: Configuration,
+    C: Configuration + ?Sized,
     S: VerifiedSet<Item = Utxo<C>>,
-    L: SenderLedger<C, S>,
+    L: SenderLedger<C, S> + ?Sized,
 {
     /// Void Number Posting Key
     void_number: L::ValidVoidNumber,
@@ -1175,13 +1175,13 @@ where
 
 impl<C, S, L> SenderPostingKey<C, S, L>
 where
-    C: Configuration,
+    C: Configuration + ?Sized,
     S: VerifiedSet<Item = Utxo<C>>,
-    L: SenderLedger<C, S>,
+    L: SenderLedger<C, S> + ?Sized,
 {
     /// Posts `self` to the sender `ledger`.
     #[inline]
-    pub fn post(self, super_key: &L::SuperPostingKey, ledger: &mut L) -> bool {
+    pub fn post(self, super_key: &L::SuperPostingKey, ledger: &mut L) {
         ledger.spend(
             self.void_number,
             self.utxo_membership_proof_public,
@@ -1193,7 +1193,7 @@ where
 /// Receiver
 pub struct Receiver<C, I>
 where
-    C: Configuration,
+    C: Configuration + ?Sized,
     I: IntegratedEncryptionScheme<Plaintext = Asset>,
 {
     /// Asset
@@ -1214,7 +1214,7 @@ where
 
 impl<C, I> Receiver<C, I>
 where
-    C: Configuration,
+    C: Configuration + ?Sized,
     I: IntegratedEncryptionScheme<Plaintext = Asset>,
 {
     /// Builds a [`Receiver`] from an [`Identity`] for the given `asset`.
@@ -1279,7 +1279,7 @@ where
 
 impl<C, I> TrySample<&C::CommitmentScheme> for Receiver<C, I>
 where
-    C: Configuration,
+    C: Configuration + ?Sized,
     C::SecretKey: Sample,
     I: IntegratedEncryptionScheme<Plaintext = Asset>,
 {
@@ -1297,7 +1297,7 @@ where
 /// Receiver Ledger
 pub trait ReceiverLedger<C, I>
 where
-    C: Configuration,
+    C: Configuration + ?Sized,
     I: IntegratedEncryptionScheme<Plaintext = Asset>,
 {
     /// Valid [`Utxo`] Posting Key
@@ -1330,7 +1330,7 @@ where
         utxo: Self::ValidUtxo,
         encrypted_asset: EncryptedMessage<I>,
         super_key: &Self::SuperPostingKey,
-    ) -> bool;
+    );
 }
 
 /// Receiver Post Error
@@ -1345,7 +1345,7 @@ pub enum ReceiverPostError {
 /// Receiver Post
 pub struct ReceiverPost<C, I>
 where
-    C: Configuration,
+    C: Configuration + ?Sized,
     I: IntegratedEncryptionScheme<Plaintext = Asset>,
 {
     /// Unspent Transaction Output
@@ -1357,7 +1357,7 @@ where
 
 impl<C, I> ReceiverPost<C, I>
 where
-    C: Configuration,
+    C: Configuration + ?Sized,
     I: IntegratedEncryptionScheme<Plaintext = Asset>,
 {
     /// Validates `self` on the receiver `ledger`.
@@ -1378,7 +1378,7 @@ where
 
 impl<C, I> From<Receiver<C, I>> for ReceiverPost<C, I>
 where
-    C: Configuration,
+    C: Configuration + ?Sized,
     I: IntegratedEncryptionScheme<Plaintext = Asset>,
 {
     #[inline]
@@ -1390,9 +1390,9 @@ where
 /// Receiver Posting Key
 pub struct ReceiverPostingKey<C, I, L>
 where
-    C: Configuration,
+    C: Configuration + ?Sized,
     I: IntegratedEncryptionScheme<Plaintext = Asset>,
-    L: ReceiverLedger<C, I>,
+    L: ReceiverLedger<C, I> + ?Sized,
 {
     /// Utxo Posting Key
     utxo: L::ValidUtxo,
@@ -1403,13 +1403,13 @@ where
 
 impl<C, I, L> ReceiverPostingKey<C, I, L>
 where
-    C: Configuration,
+    C: Configuration + ?Sized,
     I: IntegratedEncryptionScheme<Plaintext = Asset>,
-    L: ReceiverLedger<C, I>,
+    L: ReceiverLedger<C, I> + ?Sized,
 {
     /// Posts `self` to the receiver `ledger`.
     #[inline]
-    pub fn post(self, super_key: &L::SuperPostingKey, ledger: &mut L) -> bool {
+    pub fn post(self, super_key: &L::SuperPostingKey, ledger: &mut L) {
         ledger.register(self.utxo, self.encrypted_asset, super_key)
     }
 }
@@ -1651,31 +1651,10 @@ pub mod constraint {
         where
             V: VerifierVariable<C::ConstraintSystem, ItemVar = UtxoVar<C>, Type = S::Verifier>,
         {
-            // Well-formed check:
-            //
-            // 1. pk = PRF(sk, 0)                  [public: (),     secret: (pk, sk)]
-            // 2. vn = PRF(sk, rho)                [public: (vn),   secret: (sk, rho)]
-            // 3. k = COM(pk || rho, r)            [public: (k),    secret: (pk, rho, r)]
-            // 4. cm = COM(asset || k, s)          [public: (),     secret: (cm, asset, k, s)]
-            // 5. is_path(cm, path, root) == true  [public: (root), secret: (cm, path)]
-            //
-            // FIXME: should `k` be private or not?
-
-            // 1. Check public key:
-            // ```
-            // pk = PRF(sk, 0)
-            // ```
-            // where public: {}, secret: {pk, sk}.
             cs.assert_eq(
                 &self.public_key,
                 &C::PseudorandomFunctionFamilyVar::evaluate_zero(&self.secret_key),
             );
-
-            // 2. Check void number:
-            // ```
-            // vn = PRF(sk, rho)
-            // ```
-            // where public: {vn}, secret: {sk, rho}.
             cs.assert_eq(
                 &self.void_number,
                 &C::PseudorandomFunctionFamilyVar::evaluate(
@@ -1683,12 +1662,6 @@ pub mod constraint {
                     &self.parameters.void_number_generator,
                 ),
             );
-
-            // 3. Check void number commitment:
-            // ```
-            // k = COM(pk || rho, r)
-            // ```
-            // where public: {k}, secret: {pk, rho, r}.
             cs.assert_eq(
                 &self.void_number_commitment,
                 &generate_void_number_commitment(
@@ -1698,12 +1671,6 @@ pub mod constraint {
                     &self.parameters.void_number_commitment_randomness,
                 ),
             );
-
-            // 4. Check UTXO:
-            // ```
-            // cm = COM(asset || k, s)
-            // ```
-            // where public: {}, secret: {cm, asset, k, s}.
             cs.assert_eq(
                 &self.utxo,
                 &generate_utxo(
@@ -1713,15 +1680,8 @@ pub mod constraint {
                     &self.parameters.utxo_randomness,
                 ),
             );
-
-            // 5. Check UTXO membership proof:
-            // ```
-            // is_path(cm, path, root) == true
-            // ```
-            // where public: {root}, secret: {cm, path}.
             self.utxo_membership_proof
                 .assert_validity(utxo_set_verifier, &self.utxo, cs);
-
             self.asset
         }
     }
@@ -1752,7 +1712,7 @@ pub mod constraint {
                     void_number_commitment: VoidNumberCommitmentVar::<C>::new_known(
                         cs,
                         &this.void_number_commitment,
-                        Public,
+                        Secret,
                     ),
                     utxo: UtxoVar::<C>::new_known(cs, &this.utxo, Secret),
                     utxo_membership_proof: this.utxo_membership_proof.known(cs, mode),
@@ -1763,7 +1723,7 @@ pub mod constraint {
                     asset: Asset::unknown(cs, mode),
                     parameters: AssetParameters::unknown(cs, mode),
                     void_number: VoidNumberVar::<C>::new_unknown(cs, Public),
-                    void_number_commitment: VoidNumberCommitmentVar::<C>::new_unknown(cs, Public),
+                    void_number_commitment: VoidNumberCommitmentVar::<C>::new_unknown(cs, Secret),
                     utxo: UtxoVar::<C>::new_unknown(cs, Secret),
                     utxo_membership_proof: MembershipProof::<S::Verifier>::unknown(cs, mode),
                 },
@@ -1810,13 +1770,6 @@ pub mod constraint {
         I: IntegratedEncryptionScheme<Plaintext = Asset>,
     {
         /// Checks if `self` is a well-formed receiver and returns its asset.
-        ///
-        /// This [`ReceiverVar`] is well-formed whenever:
-        /// ```text
-        /// utxo = COM(asset || k, s)
-        /// ```
-        /// where `k` is `self.void_number_commitment` and `s` is `self.utxo_randomness`. In this
-        /// equation we have `{ utxo } : Public`, `{ asset, k, s } : Secret`.
         #[inline]
         pub fn get_well_formed_asset(
             self,

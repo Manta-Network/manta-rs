@@ -39,5 +39,5 @@ test = []
 
 [dependencies]
 derivative = { version = "2.2.0", default-features = false, features = ["use_core"] }
-manta-util = { path = "../manta-util", default-features = false }
+manta-util = { path = "../manta-util" }
 rand_core = { version = "0.6.3", default-features = false }

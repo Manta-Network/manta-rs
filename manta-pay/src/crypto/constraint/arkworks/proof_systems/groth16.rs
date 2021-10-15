@@ -21,7 +21,6 @@
 use crate::crypto::constraint::arkworks::{
     constraint_system::SynthesisResult, ArkConstraintSystem,
 };
-use alloc::vec::Vec;
 use ark_crypto_primitives::SNARK;
 use ark_ec::PairingEngine;
 use ark_ff::Field;
@@ -50,7 +49,9 @@ where
 
     type VerifyingContext = PreparedVerifyingKey<E>;
 
-    type Proof = (Vec<E::Fr>, Proof<E>);
+    type Input = [E::Fr];
+
+    type Proof = Proof<E>;
 
     type Verification = bool;
 
@@ -90,26 +91,28 @@ where
     where
         R: CryptoRng + RngCore + ?Sized,
     {
+        /* TODO:
         let input = cs
             .cs
             .borrow()
             .ok_or(SynthesisError::MissingCS)?
             .instance_assignment
             .clone();
-        let proof = ArkGroth16::prove(
+        */
+        ArkGroth16::prove(
             context,
             ConstraintSynthesizerWrapper(cs),
             &mut SizedRng(rng),
-        )?;
-        Ok((input, proof))
+        )
     }
 
     #[inline]
     fn verify(
-        context: &Self::VerifyingContext,
+        input: &Self::Input,
         proof: &Self::Proof,
+        context: &Self::VerifyingContext,
     ) -> Result<Self::Verification, Self::Error> {
-        ArkGroth16::verify_with_processed_vk(context, &proof.0, &proof.1)
+        ArkGroth16::verify_with_processed_vk(context, input, proof)
     }
 }
 

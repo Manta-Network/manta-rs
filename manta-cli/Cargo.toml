@@ -29,9 +29,9 @@ maintenance = { status = "actively-developed" }
 std = []
 
 [dependencies]
-manta-accounting = { path = "../manta-accounting", default-features = false }
-manta-crypto = { path = "../manta-crypto", default-features = false }
-manta-pay = { path = "../manta-pay", default-features = false }
+manta-accounting = { path = "../manta-accounting" }
+manta-crypto = { path = "../manta-crypto" }
+manta-pay = { path = "../manta-pay" }
 
 [dev-dependencies]
 manta-crypto = { path = "../manta-crypto", features = ["test"] }

@@ -14,4 +14,26 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Wallet Implementation
+//! Manta Network
+
+// TODO: Given the structure of `manta-pay` does this crate make sense anymore? Maybe only as
+//       `accounting` + `crypto`?
+// TODO: Reconsider how `manta-codec` is designed. Do we need it? Should it just be part of
+//       `manta-pay` or some `substrate`-specific interoperability crates?
+
+#![cfg_attr(not(any(feature = "std", test)), no_std)]
+#![cfg_attr(doc_cfg, feature(doc_cfg))]
+#![forbid(rustdoc::broken_intra_doc_links)]
+#![forbid(missing_docs)]
+
+#[doc(inline)]
+pub use manta_accounting as accounting;
+
+#[doc(inline)]
+pub use manta_codec as codec;
+
+#[doc(inline)]
+pub use manta_crypto as crypto;
+
+#[doc(inline)]
+pub use manta_pay as pay;

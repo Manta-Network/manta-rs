@@ -26,8 +26,8 @@ pub(crate) mod prelude {
 
 /// Commitment Scheme
 pub trait CommitmentScheme {
-    /// Commitment Input Buffer Type
-    type InputBuffer: Default;
+    /// Commitment Input Type
+    type Input: Default;
 
     /// Commitment Randomness Parameter Type
     type Randomness;
@@ -41,8 +41,8 @@ pub trait CommitmentScheme {
         Builder::new(self)
     }
 
-    /// Commits the `input` buffer with the given `randomness` parameter.
-    fn commit(&self, input: Self::InputBuffer, randomness: &Self::Randomness) -> Self::Output;
+    /// Commits the `input` with the given `randomness` parameter.
+    fn commit(&self, input: Self::Input, randomness: &Self::Randomness) -> Self::Output;
 
     /// Commits with an empty input using the given `randomness` parameter.
     #[inline]
@@ -50,8 +50,7 @@ pub trait CommitmentScheme {
         self.start().commit(randomness)
     }
 
-    /// Commits the single `input` by filling a new input buffer and then commiting with the given
-    /// `randomness` parameter.
+    /// Commits the single `input` value with the given `randomness` parameter.
     #[inline]
     fn commit_one<T>(&self, input: &T, randomness: &Self::Randomness) -> Self::Output
     where
@@ -67,31 +66,31 @@ pub trait Input<T>: CommitmentScheme
 where
     T: ?Sized,
 {
-    /// Extends the input buffer with `input`.
-    fn extend(buffer: &mut Self::InputBuffer, input: &T);
+    /// Extends the `input` with the `next` element.
+    fn extend(input: &mut Self::Input, next: &T);
 }
 
-impl<C, I> Input<I> for C
+impl<C, T> Input<T> for C
 where
     C: CommitmentScheme + ?Sized,
-    C::InputBuffer: ConcatAccumulator<I::Item>,
-    I: Concat + ?Sized,
+    C::Input: ConcatAccumulator<T::Item>,
+    T: Concat + ?Sized,
 {
     #[inline]
-    fn extend(buffer: &mut C::InputBuffer, input: &I) {
-        input.concat(buffer)
+    fn extend(input: &mut Self::Input, next: &T) {
+        next.concat(input)
     }
 }
 
 /// Commitment Builder
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "C::InputBuffer: Clone"),
-    Copy(bound = "C::InputBuffer: Copy"),
-    Debug(bound = "C: Debug, C::InputBuffer: Debug"),
-    Eq(bound = "C: Eq, C::InputBuffer: Eq"),
-    Hash(bound = "C: Hash, C::InputBuffer: Hash"),
-    PartialEq(bound = "C: PartialEq, C::InputBuffer: PartialEq")
+    Clone(bound = "C::Input: Clone"),
+    Copy(bound = "C::Input: Copy"),
+    Debug(bound = "C: Debug, C::Input: Debug"),
+    Eq(bound = "C: Eq, C::Input: Eq"),
+    Hash(bound = "C: Hash, C::Input: Hash"),
+    PartialEq(bound = "C: PartialEq, C::Input: PartialEq")
 )]
 pub struct Builder<'c, C>
 where
@@ -100,8 +99,8 @@ where
     /// Commitment Scheme
     commitment_scheme: &'c C,
 
-    /// Input Buffer
-    input_buffer: C::InputBuffer,
+    /// Commitment Input
+    input: C::Input,
 }
 
 impl<'c, C> Builder<'c, C>
@@ -113,25 +112,25 @@ where
     pub fn new(commitment_scheme: &'c C) -> Self {
         Self {
             commitment_scheme,
-            input_buffer: Default::default(),
+            input: Default::default(),
         }
     }
 
-    /// Updates the builder with new `input`.
+    /// Updates the builder with the `next` input.
     #[inline]
-    pub fn update<T>(mut self, input: &T) -> Self
+    pub fn update<T>(mut self, next: &T) -> Self
     where
         T: ?Sized,
         C: Input<T>,
     {
-        C::extend(&mut self.input_buffer, input);
+        C::extend(&mut self.input, next);
         self
     }
 
     /// Commits to the input stored in the builder with the given `randomness`.
     #[inline]
     pub fn commit(self, randomness: &C::Randomness) -> C::Output {
-        self.commitment_scheme.commit(self.input_buffer, randomness)
+        self.commitment_scheme.commit(self.input, randomness)
     }
 }
 

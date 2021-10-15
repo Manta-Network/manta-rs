@@ -21,4 +21,3 @@ pub mod identity;
 pub mod keys;
 pub mod ledger;
 pub mod transfer;
-pub mod wallet;

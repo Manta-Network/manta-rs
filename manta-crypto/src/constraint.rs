@@ -473,12 +473,15 @@ pub trait ProofSystem {
     /// Verifying Context Type
     type VerifyingContext;
 
+    /// Verification Input Type
+    type Input: ?Sized;
+
     /// Proof Type
     type Proof;
 
     /// Verification Type
     ///
-    /// Usually this is just `bool`.
+    /// For non-recursive proof systems this is just `bool`.
     type Verification;
 
     /// Error Type
@@ -509,9 +512,19 @@ pub trait ProofSystem {
 
     /// Verifies that a proof generated from this proof system is valid.
     fn verify(
-        context: &Self::VerifyingContext,
+        input: &Self::Input,
         proof: &Self::Proof,
+        context: &Self::VerifyingContext,
     ) -> Result<Self::Verification, Self::Error>;
+}
+
+/// Proof System Input
+pub trait Input<T>: ProofSystem
+where
+    T: ?Sized,
+{
+    /// Extends the `input` with the `next` element.
+    fn extend(input: &mut Self::Input, next: &T);
 }
 
 /// Derived Allocation Mode
@@ -907,6 +920,7 @@ pub mod types {
     pub type Usize<C> = Var<usize, C>;
 }
 
+/* FIXME: Need to reconsider how to do this:
 /// Testing Framework
 #[cfg(feature = "test")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
@@ -917,15 +931,16 @@ pub mod test {
     /// the `verifying_context`.
     #[inline]
     pub fn verify_constructed_proof<P, R>(
+        cs: P::ConstraintSystem,
         proving_context: &P::ProvingContext,
         verifying_context: &P::VerifyingContext,
-        cs: P::ConstraintSystem,
         rng: &mut R,
     ) -> Result<P::Verification, P::Error>
     where
         P: ProofSystem,
         R: CryptoRng + RngCore,
     {
-        P::verify(verifying_context, &P::prove(cs, proving_context, rng)?)
+        P::verify(&P::prove(cs, proving_context, rng)?, verifying_context)
     }
 }
+*/

@@ -1,7 +1,53 @@
+[package]
+name = "manta"
+edition = "2018"
+version = "0.3.0"
+authors = ["Manta Network <contact@manta.network>"]
+readme = "README.md"
+license-file = "LICENSE"
+repository = "https://github.com/Manta-Network/manta-rs"
+homepage = "https://github.com/Manta-Network"
+documentation = "https://github.com/Manta-Network/manta-rs"
+categories = [""]
+keywords = [""]
+description = "Manta Network main crate."
+publish = false
+
+[package.metadata.docs.rs]
+# To build locally:
+# RUSTDOCFLAGS="--cfg doc_cfg" cargo +nightly doc --all-features --open
+all-features = true
+rustdoc-args = ["--cfg", "doc_cfg"]
+
+[badges]
+is-it-maintained-issue-resolution = { repository = "Manta-Network/manta-rs" }
+is-it-maintained-open-issues = { repository = "Manta-Network/manta-rs" }
+maintenance = { status = "actively-developed" }
+
+[features]
+# Default Features
+default = []
+
+# Standard Library
+std = []
+
+# Test Frameworks
+test = ["manta-accounting/test", "manta-crypto/test"]
+
+[dependencies]
+manta-accounting = { path = "manta-accounting" }
+manta-codec = { path = "manta-codec" }
+manta-crypto = { path = "manta-crypto" }
+manta-pay = { path = "manta-pay" }
+parity-scale-codec = { version = "2.2.0", default-features = false }
+
+[dev-dependencies]
+manta-accounting = { path = "manta-accounting", features = ["test"] }
+manta-crypto = { path = "manta-crypto", features = ["test"] }
+
 [workspace]
 resolver = "2"
 members = [
-    "manta",
     "manta-accounting",
     "manta-cli",
     "manta-codec",
@@ -9,3 +55,4 @@ members = [
     "manta-pay",
     "manta-util",
 ]
+
