@@ -24,11 +24,12 @@ is-it-maintained-issue-resolution = { repository = "Manta-Network/manta-rs" }
 is-it-maintained-open-issues = { repository = "Manta-Network/manta-rs" }
 maintenance = { status = "actively-developed" }
 
-[features]
-# Standard Library
-std = []
+[[bin]]
+name = "manta"
+path = "src/main.rs"
 
 [dependencies]
+clap = "~3.0.0-beta.4"
 manta-accounting = { path = "../manta-accounting" }
 manta-crypto = { path = "../manta-crypto" }
 manta-pay = { path = "../manta-pay" }
