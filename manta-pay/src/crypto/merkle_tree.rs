@@ -25,9 +25,12 @@ use ark_ff::{to_bytes, ToBytes};
 use core::marker::PhantomData;
 use manta_crypto::{
     merkle_tree::{self, InnerHash, LeafHash},
-    rand::{CryptoRng, RngCore, SizedRng, Standard},
+    rand::{CryptoRng, RngCore, SizedRng},
 };
 use manta_util::{as_bytes, Concat};
+
+#[cfg(test)]
+use manta_crypto::rand::Standard;
 
 /// Arkworks Leaf Hash Converter
 #[derive(derivative::Derivative)]

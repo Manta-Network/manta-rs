@@ -16,7 +16,7 @@
 
 //! Ledger Source
 
-// TODO: Move to streams so we can process some of the data as it is incoming.
+// TODO: Move to asynchronous streaming model so we can process some of the data as it is incoming.
 // TODO: Add non-atomic transactions. See similar comment in `crate::wallet::signer`.
 
 use crate::{

@@ -38,8 +38,8 @@ use manta_crypto::{
     constraint::{
         self,
         reflection::{HasAllocation, HasVariable},
-        Allocation, Constant, ConstraintSystem as _, Derived, Equal, Input as ProofSystemInput,
-        ProofSystem, Public, PublicOrSecret, Secret, Variable, VariableSource,
+        Allocation, Constant, ConstraintSystem as _, Derived, Equal, ProofSystem, Public,
+        PublicOrSecret, Secret, Variable, VariableSource,
     },
     ies::{EncryptedMessage, IntegratedEncryptionScheme},
     rand::{CryptoRng, RngCore},
@@ -47,9 +47,9 @@ use manta_crypto::{
 };
 use manta_util::{create_seal, from_variant_impl, iter::mixed_chain, seal, Either};
 
-/// Returns `true` if the transfer with this shape would have no public side.
+/// Returns `true` if the transfer with this shape would have no public participants.
 #[inline]
-const fn has_no_public_side(
+const fn has_no_public_participants(
     sources: usize,
     senders: usize,
     receivers: usize,
@@ -57,13 +57,6 @@ const fn has_no_public_side(
 ) -> bool {
     let _ = (senders, receivers);
     sources == 0 && sinks == 0
-}
-
-/// Returns `true` if the transfer with this shape requires a proof.
-#[inline]
-const fn requires_proof(sources: usize, senders: usize, receivers: usize, sinks: usize) -> bool {
-    let _ = (sources, receivers, sinks);
-    senders > 0
 }
 
 /// [`Transfer`] Configuration
@@ -173,10 +166,21 @@ pub type Proof<C> = <<C as Configuration>::ProofSystem as ProofSystem>::Proof;
 /// Transfer Proof System Error Type
 pub type ProofSystemError<C> = <<C as Configuration>::ProofSystem as ProofSystem>::Error;
 
+/// Transfer Source Posting Key Type
+pub type SourcePostingKey<C, L> = <L as TransferLedger<C>>::ValidSourceBalance;
+
 /// Transfer Ledger Super Posting Key Type
 pub type TransferLedgerSuperPostingKey<C, L> = <L as TransferLedger<C>>::SuperPostingKey;
 
 /// Transfer Ledger
+///
+/// # Safety
+///
+/// The [`TransferLedger`] interface describes the conditions for a valid ledger update but only for
+/// the state that is described by a [`TransferPost`]. Independently of this trait, any ledger
+/// implementation still needs to check that source and sink accounts are associated to a real
+/// public address. However, checking public balances is done in the
+/// [`check_source_balances`](Self::check_source_balances) method.
 pub trait TransferLedger<C>:
     SenderLedger<
         C,
@@ -190,6 +194,14 @@ pub trait TransferLedger<C>:
 where
     C: Configuration,
 {
+    /// Valid [`AssetBalance`] for [`TransferPost`] source
+    ///
+    /// # Safety
+    ///
+    /// This type must be restricted so that it can only be constructed by this implementation of
+    /// [`TransferLedger`].
+    type ValidSourceBalance;
+
     /// Valid [`Proof`] Posting Key
     ///
     /// # Safety
@@ -197,7 +209,8 @@ where
     /// This type must be restricted so that it can only be constructed by this implementation
     /// of [`TransferLedger`]. This is to prevent that [`SenderPostingKey::post`] and
     /// [`ReceiverPostingKey::post`] are called before [`SenderPost::validate`],
-    /// [`ReceiverPost::validate`], and [`is_valid`](Self::is_valid).
+    /// [`ReceiverPost::validate`], [`check_source_balances`](Self::check_source_balances), and
+    /// [`is_valid`](Self::is_valid).
     type ValidProof: Copy;
 
     /// Super Posting Key
@@ -205,20 +218,22 @@ where
     /// Type that allows super-traits of [`TransferLedger`] to customize posting key behavior.
     type SuperPostingKey: Copy;
 
+    /// Checks that the balances associated to the source accounts are sufficient to withdraw the
+    /// amount given in `sources`.
+    fn check_source_balances(
+        &self,
+        sources: Vec<AssetBalance>,
+    ) -> Result<Vec<Self::ValidSourceBalance>, InsufficientPublicBalance>;
+
     /// Checks that the transfer `proof` is valid.
-    ///
-    /// # Implementation Note
-    ///
-    /// This should always succeed on inputs that demonstrate that they do not require a
-    /// proof, by revealing their transaction shape.
     fn is_valid(
         &self,
         asset_id: Option<AssetId>,
-        sources: &[AssetBalance],
+        sources: &[Self::ValidSourceBalance],
         senders: &[SenderPostingKey<C, Self>],
         receivers: &[ReceiverPostingKey<C, Self>],
         sinks: &[AssetBalance],
-        proof: ShapedProof<C>,
+        proof: Proof<C>,
     ) -> Option<Self::ValidProof>;
 
     /// Updates the public balances in the ledger, finishing the transaction.
@@ -231,7 +246,7 @@ where
     fn update_public_balances(
         &mut self,
         asset_id: AssetId,
-        sources: Vec<AssetBalance>,
+        sources: Vec<Self::ValidSourceBalance>,
         sinks: Vec<AssetBalance>,
         proof: Self::ValidProof,
         super_key: &TransferLedgerSuperPostingKey<C, Self>,
@@ -266,10 +281,13 @@ impl DynamicShape {
         }
     }
 
-    /// Returns `true` whenever a transfer of the given shape `self` requires a validity proof.
+    /// Builds a new [`DynamicShape`] using the static [`Shape`] given by `S`.
     #[inline]
-    pub const fn requires_proof(&self) -> bool {
-        requires_proof(self.sources, self.senders, self.receivers, self.sinks)
+    pub fn from_static<S>() -> Self
+    where
+        S: Shape,
+    {
+        Self::new(S::SOURCES, S::SENDERS, S::RECEIVERS, S::SINKS)
     }
 
     /// Checks if `self` matches the static [`Shape`] given by `S`.
@@ -292,102 +310,7 @@ where
     #[inline]
     fn from(shape: S) -> Self {
         let _ = shape;
-        Self {
-            sources: S::SOURCES,
-            senders: S::SENDERS,
-            receivers: S::RECEIVERS,
-            sinks: S::SINKS,
-        }
-    }
-}
-
-/// Transfer Shape with Possible Validity [`Proof`]
-pub enum ShapedProof<C>
-where
-    C: Configuration,
-{
-    /// Shape with a Validity Proof
-    WithProof(ShapedProofEntry<C>),
-
-    /// Shape with no Proof
-    NoProof(DynamicShape),
-}
-
-impl<C> ShapedProof<C>
-where
-    C: Configuration,
-{
-    /// Builds a new [`ShapedProof`] for the given `shape` and `proof`.
-    #[inline]
-    fn new_proof(shape: DynamicShape, proof: Proof<C>) -> Self {
-        Self::WithProof(ShapedProofEntry::new(shape, proof))
-    }
-
-    /// Returns the shape of the transfer which generated `self`.
-    #[inline]
-    pub fn shape(&self) -> &DynamicShape {
-        match self {
-            Self::WithProof(ShapedProofEntry { shape, .. }) => shape,
-            Self::NoProof(shape) => shape,
-        }
-    }
-
-    /// Returns the validity proof for the transfer which generated `self`.
-    #[inline]
-    pub fn proof(&self) -> Option<&Proof<C>> {
-        match self {
-            Self::WithProof(ShapedProofEntry { proof, .. }) => Some(proof),
-            _ => None,
-        }
-    }
-}
-
-impl<C> From<DynamicShape> for ShapedProof<C>
-where
-    C: Configuration,
-{
-    #[inline]
-    fn from(shape: DynamicShape) -> Self {
-        Self::NoProof(shape)
-    }
-}
-
-/// Entry for [`ShapedProof`] with a [`Proof`]
-pub struct ShapedProofEntry<C>
-where
-    C: Configuration,
-{
-    /// Transfer Shape
-    shape: DynamicShape,
-
-    /// Validity Proof
-    proof: Proof<C>,
-}
-
-impl<C> ShapedProofEntry<C>
-where
-    C: Configuration,
-{
-    /// Builds a new [`ShapedProofEntry`] for the given `shape` and `proof`.
-    #[inline]
-    fn new(shape: DynamicShape, proof: Proof<C>) -> Self {
-        Self { shape, proof }
-    }
-
-    /// Returns the validity `proof` along with its `shape`.
-    #[inline]
-    pub fn open(self) -> (DynamicShape, Proof<C>) {
-        (self.shape, self.proof)
-    }
-}
-
-impl<C> From<ShapedProofEntry<C>> for (DynamicShape, Proof<C>)
-where
-    C: Configuration,
-{
-    #[inline]
-    fn from(entry: ShapedProofEntry<C>) -> Self {
-        entry.open()
+        Self::from_static::<S>()
     }
 }
 
@@ -413,7 +336,7 @@ impl<const SOURCES: usize, const SINKS: usize> PublicTransfer<SOURCES, SINKS> {
         sinks: AssetBalances<SINKS>,
     ) -> Self {
         Self::new_unchecked(
-            if has_no_public_side(SOURCES, 0, 0, SINKS) {
+            if has_no_public_participants(SOURCES, 0, 0, SINKS) {
                 None
             } else {
                 Some(asset_id)
@@ -488,36 +411,41 @@ where
     C: Configuration,
 {
     /// Maximum Number of Senders
-    pub const MAXIMUM_SENDER_COUNT: usize = 32;
+    pub const MAXIMUM_SENDER_COUNT: usize = 16;
 
     /// Maximum Number of Receivers
-    pub const MAXIMUM_RECEIVER_COUNT: usize = 32;
+    pub const MAXIMUM_RECEIVER_COUNT: usize = 16;
 
     /// Builds a new [`SecretTransfer`].
     #[inline]
     pub fn new(senders: [Sender<C>; SENDERS], receivers: [Receiver<C>; RECEIVERS]) -> Self {
-        Self::check_sender_side();
-        Self::check_receiver_side();
-        Self::check_size_overflow();
+        Self::check_shape();
         Self::new_unchecked(senders, receivers)
+    }
+
+    /// Checks that the [`SecretTransfer`] has a valid shape.
+    #[inline]
+    fn check_shape() {
+        Self::check_sender_shape();
+        Self::check_receiver_shape();
+        Self::check_size_overflow();
     }
 
     /// Checks that the sender side is not empty.
     #[inline]
-    fn check_sender_side() {
+    fn check_sender_shape() {
         assert_ne!(SENDERS, 0, "Not enough senders.")
     }
 
     /// Checks that the receiver side is not empty.
     #[inline]
-    fn check_receiver_side() {
+    fn check_receiver_shape() {
         assert_ne!(RECEIVERS, 0, "Not enough receivers.")
     }
 
     /// Checks that the number of senders and/or receivers does not exceed the allocation limit.
     #[inline]
     fn check_size_overflow() {
-        // FIXME: Should we have arrays of senders and receivers or use vectors?
         match (
             SENDERS > Self::MAXIMUM_SENDER_COUNT,
             RECEIVERS > Self::MAXIMUM_RECEIVER_COUNT,
@@ -638,34 +566,40 @@ where
         receivers: [Receiver<C>; RECEIVERS],
         sinks: AssetBalances<SINKS>,
     ) -> Self {
-        Self::check_sender_side();
-        Self::check_receiver_side();
-        SecretTransfer::<C, SENDERS, RECEIVERS>::check_size_overflow();
+        Self::check_shape();
         Self::new_unchecked(asset_id, sources, senders, receivers, sinks)
     }
 
-    /// Checks that the sender side is not empty.
+    /// Checks that the [`Transfer`] has a valid shape.
     #[inline]
-    fn check_sender_side() {
+    fn check_shape() {
+        Self::check_input_shape();
+        Self::check_output_shape();
+        SecretTransfer::<C, SENDERS, RECEIVERS>::check_size_overflow();
+    }
+
+    /// Checks that the input side is not empty.
+    #[inline]
+    fn check_input_shape() {
         assert_ne!(
             SOURCES + SENDERS,
             0,
-            "Not enough participants on the sender side."
+            "Not enough participants on the input side."
         )
     }
 
-    /// Checks that the receiver side is not empty.
+    /// Checks that the output side is not empty.
     #[inline]
-    fn check_receiver_side() {
+    fn check_output_shape() {
         assert_ne!(
             RECEIVERS + SINKS,
             0,
-            "Not enough participants on the receiver side."
+            "Not enough participants on the output side."
         )
     }
 
-    /// Builds a new [`Transfer`] without checking the number of participants on the sender and
-    /// receiver side.
+    /// Builds a new [`Transfer`] without checking the number of participants on the input and
+    /// output sides.
     #[inline]
     fn new_unchecked(
         asset_id: AssetId,
@@ -720,10 +654,22 @@ where
         self.public.sink_sum()
     }
 
+    /// Returns the sum of the asset values of the sources and senders in this transfer.
+    #[inline]
+    pub fn input_sum(&self) -> AssetBalance {
+        self.source_sum() + self.sender_sum()
+    }
+
+    /// Returns the sum of the asset values of the receivers and sinks in this transfer.
+    #[inline]
+    pub fn output_sum(&self) -> AssetBalance {
+        self.receiver_sum() + self.sink_sum()
+    }
+
     /// Checks that the transaction is balanced.
     #[inline]
     pub fn is_balanced(&self) -> bool {
-        self.source_sum() + self.sender_sum() == self.receiver_sum() + self.sink_sum()
+        self.input_sum() == self.output_sum()
     }
 
     /// Generates the unknown variables for the validity proof.
@@ -738,7 +684,7 @@ where
         C::CommitmentSchemeVar,
         C::UtxoSetVerifierVar,
     ) {
-        let base_asset_id = if has_no_public_side(SOURCES, SENDERS, RECEIVERS, SINKS) {
+        let base_asset_id = if has_no_public_participants(SOURCES, SENDERS, RECEIVERS, SINKS) {
             None
         } else {
             Some(C::AssetIdVar::new_unknown(cs, Public))
@@ -822,22 +768,16 @@ where
         cs.assert_eq(&sender_sum, &receiver_sum);
     }
 
-    /// Generates a verifier for this transfer shape.
-    ///
-    /// Returns `None` if proof generation does not apply for this kind of transfer.
-    #[allow(clippy::type_complexity)] // FIXME: We will have to refactor this at some point.
+    /// Generates a proving and verifying context for this transfer shape.
     #[inline]
     pub fn generate_context<R>(
         commitment_scheme: &C::CommitmentScheme,
         utxo_set_verifier: &UtxoSetVerifier<C>,
         rng: &mut R,
-    ) -> Option<Result<(ProvingContext<C>, VerifyingContext<C>), ProofSystemError<C>>>
+    ) -> Result<(ProvingContext<C>, VerifyingContext<C>), ProofSystemError<C>>
     where
         R: CryptoRng + RngCore + ?Sized,
     {
-        if !requires_proof(SOURCES, SENDERS, RECEIVERS, SINKS) {
-            return None;
-        }
         let mut cs = C::ProofSystem::for_unknown();
         let (base_asset_id, participants, commitment_scheme, utxo_set_verifier) =
             Self::unknown_variables(commitment_scheme, utxo_set_verifier, &mut cs);
@@ -848,13 +788,10 @@ where
             utxo_set_verifier,
             &mut cs,
         );
-        Some(C::ProofSystem::generate_context(cs, rng))
+        C::ProofSystem::generate_context(cs, rng)
     }
 
     /// Generates a validity proof for this transfer.
-    ///
-    /// Returns `Ok(ShapedProof::NoProof(_))` if proof generation does not apply for this kind
-    /// of transfer.
     #[inline]
     pub fn generate_proof<R>(
         &self,
@@ -862,14 +799,10 @@ where
         utxo_set_verifier: &UtxoSetVerifier<C>,
         context: &ProvingContext<C>,
         rng: &mut R,
-    ) -> Result<ShapedProof<C>, ProofSystemError<C>>
+    ) -> Result<Proof<C>, ProofSystemError<C>>
     where
         R: CryptoRng + RngCore + ?Sized,
     {
-        let shape = DynamicShape::new(SOURCES, SENDERS, RECEIVERS, SINKS);
-        if !shape.requires_proof() {
-            return Ok(shape.into());
-        }
         let mut cs = C::ProofSystem::for_known();
         let (base_asset_id, participants, commitment_scheme, utxo_set_verifier) =
             self.known_variables(commitment_scheme, utxo_set_verifier, &mut cs);
@@ -880,10 +813,7 @@ where
             utxo_set_verifier,
             &mut cs,
         );
-        Ok(ShapedProof::new_proof(
-            shape,
-            C::ProofSystem::prove(cs, context, rng)?,
-        ))
+        C::ProofSystem::prove(cs, context, rng)
     }
 
     /// Converts `self` into its ledger post.
@@ -1001,9 +931,31 @@ where
     }
 }
 
+/// Insufficient Public Balance Error
+///
+/// This `enum` is the error state of the [`TransferLedger::check_source_balances`] method. See its
+/// documentation for more.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct InsufficientPublicBalance {
+    /// Index of the Public Address
+    pub index: usize,
+
+    /// Current Balance
+    pub balance: AssetBalance,
+
+    /// Amount Attempting to Withdraw
+    pub withdraw: AssetBalance,
+}
+
 /// Transfer Post Error
+///
+/// This `enum` is the error state of the [`TransferPost::validate`] method. See its documentation
+/// for more.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum TransferPostError {
+    /// Insufficient Public Balance
+    InsufficientPublicBalance(InsufficientPublicBalance),
+
     /// Sender Post Error
     Sender(SenderPostError),
 
@@ -1040,9 +992,7 @@ where
     sinks: Vec<AssetBalance>,
 
     /// Validity Proof
-    ///
-    /// This value is only inhabited by a proof when the transfer shape requires one.
-    validity_proof: ShapedProof<C>,
+    validity_proof: Proof<C>,
 }
 
 impl<C> TransferPost<C>
@@ -1051,8 +1001,13 @@ where
 {
     /// Returns the shape of the transfer which generated this post.
     #[inline]
-    pub fn shape(&self) -> &DynamicShape {
-        self.validity_proof.shape()
+    pub fn shape(&self) -> DynamicShape {
+        DynamicShape::new(
+            self.sources.len(),
+            self.sender_posts.len(),
+            self.receiver_posts.len(),
+            self.sinks.len(),
+        )
     }
 
     /// Validates `self` on the transfer `ledger`.
@@ -1061,6 +1016,9 @@ where
     where
         L: TransferLedger<C>,
     {
+        let source_posting_keys = ledger
+            .check_source_balances(self.sources)
+            .map_err(TransferPostError::InsufficientPublicBalance)?;
         let sender_posting_keys = self
             .sender_posts
             .into_iter()
@@ -1074,7 +1032,7 @@ where
         Ok(TransferPostingKey {
             validity_proof: match ledger.is_valid(
                 self.asset_id,
-                &self.sources,
+                &source_posting_keys,
                 &sender_posting_keys,
                 &receiver_posting_keys,
                 &self.sinks,
@@ -1084,7 +1042,7 @@ where
                 _ => return Err(TransferPostError::InvalidProof),
             },
             asset_id: self.asset_id,
-            sources: self.sources,
+            source_posting_keys,
             sender_posting_keys,
             receiver_posting_keys,
             sinks: self.sinks,
@@ -1101,8 +1059,8 @@ where
     /// Asset Id
     asset_id: Option<AssetId>,
 
-    /// Sources
-    sources: Vec<AssetBalance>,
+    /// Source Posting Keys
+    source_posting_keys: Vec<SourcePostingKey<C, L>>,
 
     /// Sender Posting Keys
     sender_posting_keys: Vec<SenderPostingKey<C, L>>,
@@ -1122,6 +1080,17 @@ where
     C: Configuration,
     L: TransferLedger<C>,
 {
+    /// Returns the shape of the transfer which generated this posting key.
+    #[inline]
+    pub fn shape(&self) -> DynamicShape {
+        DynamicShape::new(
+            self.source_posting_keys.len(),
+            self.sender_posting_keys.len(),
+            self.receiver_posting_keys.len(),
+            self.sinks.len(),
+        )
+    }
+
     /// Posts `self` to the transfer `ledger`.
     ///
     /// # Safety
@@ -1139,7 +1108,13 @@ where
             key.post(&(proof, *super_key), ledger);
         }
         if let Some(asset_id) = self.asset_id {
-            ledger.update_public_balances(asset_id, self.sources, self.sinks, proof, super_key)
+            ledger.update_public_balances(
+                asset_id,
+                self.source_posting_keys,
+                self.sinks,
+                proof,
+                super_key,
+            )
         }
     }
 }
@@ -1148,9 +1123,9 @@ create_seal! {}
 
 /// Transfer Shapes
 ///
-/// This trait identifies a transfer shape, i.e. the number and type of participants on the sender
-/// and receiver side of the transaction. This trait is sealed and can only be used with the
-/// existing implementations.
+/// This trait identifies a transfer shape, i.e. the number and type of participants on the input
+/// and output sides of the transaction. This trait is sealed and can only be used with the
+/// [existing canonical implementations](canonical).
 pub trait Shape: sealed::Sealed {
     /// Number of Sources
     const SOURCES: usize;
@@ -1253,7 +1228,7 @@ pub mod canonical {
         /// zero value.
         ///
         /// This is particularly useful when constructing transactions accumulated from [`Transfer`]
-        /// objects and a zero slot on the sender side needs to be filled.
+        /// objects and a zero slot on the input side needs to be filled.
         #[inline]
         pub fn zero<R>(
             identity: Identity<C>,
@@ -1731,9 +1706,7 @@ pub mod test {
         where
             R: CryptoRng + RngCore + ?Sized,
         {
-            Self::check_sender_side();
-            Self::check_receiver_side();
-            SecretTransfer::<C, SENDERS, RECEIVERS>::check_size_overflow();
+            Self::check_shape();
 
             let asset = distribution.asset;
             let mut input = value_distribution(SOURCES + SENDERS, asset.value, rng);

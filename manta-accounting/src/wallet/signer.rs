@@ -750,8 +750,9 @@ where
     where
         I: IntoIterator<Item = (Utxo<C>, EncryptedAsset<C>)>,
     {
-        // TODO: Capacity check.
         self.start_sync(sync_state);
+
+        // FIXME: Do a capacity check on the current UTXO set.
         match self.utxo_set.len().checked_sub(starting_index) {
             Some(diff) => self.sync_inner(updates.into_iter().skip(diff)),
             _ => Err(Error::InconsistentSynchronization),
