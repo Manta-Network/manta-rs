@@ -19,17 +19,13 @@
 // FIXME: Make sure that either (a) no empty transfer can be built, or (b) empty transfers work
 //        properly i.e. do nothing.
 // TODO:  See if we can get rid of the `Copy` restriction on `ValidProof` and `SuperPostingKey`.
-// TODO:  Add `generate_context`/`generate_proof` logic to `SecretTransfer`.
-// TODO:  Have a compile-time way to check if proof generation is used for a certain shape,
-//        so that the `generate_context`/`generate_proof` method can only exist on the right
-//        shape implementations, instead of failing at runtime with `None`.
 // FIXME: Remove `UtxoSet` dependence from `transfer`, really we only need `UtxoSetVerifier`.
 
 use crate::{
     asset::{Asset, AssetBalance, AssetBalances, AssetId},
     identity::{
         self, constraint::UtxoVar, ReceiverLedger, ReceiverPostError, SenderLedger,
-        SenderPostError, Utxo,
+        SenderPostError, Utxo, VoidNumber,
     },
 };
 use alloc::vec::Vec;
@@ -38,8 +34,8 @@ use manta_crypto::{
     constraint::{
         self,
         reflection::{HasAllocation, HasVariable},
-        Allocation, Constant, ConstraintSystem as _, Derived, Equal, ProofSystem, Public,
-        PublicOrSecret, Secret, Variable, VariableSource,
+        Allocation, Constant, ConstraintSystem as _, Derived, Equal, Input as ProofSystemInput,
+        ProofSystem, Public, PublicOrSecret, Secret, Variable, VariableSource,
     },
     ies::{EncryptedMessage, IntegratedEncryptionScheme},
     rand::{CryptoRng, RngCore},
@@ -71,13 +67,12 @@ pub trait Configuration:
         + HasVariable<<Self::UtxoSet as VerifiedSet>::Secret, Mode = Secret>;
 
     /// Proof System
-    type ProofSystem: ProofSystem<ConstraintSystem = ConstraintSystem<Self>>;
-    /* TODO:
-    + ProofSystemInput<AssetId>
-    + ProofSystemInput<AssetBalance>
-    + ProofSystemInput<SenderPost<Self>>
-    + ProofSystemInput<ReceiverPost<Self>>;
-    */
+    type ProofSystem: ProofSystem<ConstraintSystem = ConstraintSystem<Self>>
+        + ProofSystemInput<AssetId>
+        + ProofSystemInput<AssetBalance>
+        + ProofSystemInput<VoidNumber<Self>>
+        + ProofSystemInput<<Self::UtxoSet as VerifiedSet>::Public>
+        + ProofSystemInput<Utxo<Self>>;
 
     /// Asset Id Variable
     type AssetIdVar: Variable<ConstraintSystem<Self>, Mode = PublicOrSecret, Type = AssetId>
@@ -162,6 +157,9 @@ pub type VerifyingContext<C> = <<C as Configuration>::ProofSystem as ProofSystem
 
 /// Transfer Proof Type
 pub type Proof<C> = <<C as Configuration>::ProofSystem as ProofSystem>::Proof;
+
+/// Transfer Proof System Input Type
+pub type ProofInput<C> = <<C as Configuration>::ProofSystem as ProofSystem>::Input;
 
 /// Transfer Proof System Error Type
 pub type ProofSystemError<C> = <<C as Configuration>::ProofSystem as ProofSystem>::Error;
@@ -1010,6 +1008,30 @@ where
         )
     }
 
+    /// Generates the public input for the [`Transfer`] validation proof.
+    #[inline]
+    pub fn generate_proof_input(&self) -> ProofInput<C> {
+        // TODO: See comments in `crate::identity::constraint` about automatically deriving this
+        //       method from possibly `TransferParticipantsVar`?
+        let mut input = Default::default();
+        if let Some(asset_id) = self.asset_id {
+            C::ProofSystem::extend(&mut input, &asset_id);
+        }
+        self.sources
+            .iter()
+            .for_each(|source| C::ProofSystem::extend(&mut input, source));
+        self.sender_posts
+            .iter()
+            .for_each(|post| post.extend_input::<C::ProofSystem>(&mut input));
+        self.receiver_posts
+            .iter()
+            .for_each(|post| post.extend_input::<C::ProofSystem>(&mut input));
+        self.sinks
+            .iter()
+            .for_each(|sink| C::ProofSystem::extend(&mut input, sink));
+        input
+    }
+
     /// Validates `self` on the transfer `ledger`.
     #[inline]
     pub fn validate<L>(self, ledger: &L) -> Result<TransferPostingKey<C, L>, TransferPostError>
@@ -1729,6 +1751,32 @@ pub mod test {
                     rng,
                 )?,
             })
+        }
+    }
+
+    impl<
+            C,
+            const SOURCES: usize,
+            const SENDERS: usize,
+            const RECEIVERS: usize,
+            const SINKS: usize,
+        > Transfer<C, SOURCES, SENDERS, RECEIVERS, SINKS>
+    where
+        C: Configuration,
+    {
+        /// Samples proving and verifying contexts from `rng`.
+        #[inline]
+        pub fn sample_context<CD, VD, R>(
+            rng: &mut R,
+        ) -> Result<(ProvingContext<C>, VerifyingContext<C>), ProofSystemError<C>>
+        where
+            CD: Default,
+            VD: Default,
+            C::CommitmentScheme: Sample<CD>,
+            UtxoSetVerifier<C>: Sample<VD>,
+            R: CryptoRng + RngCore + ?Sized,
+        {
+            Self::generate_context(&rng.gen(), &rng.gen(), rng)
         }
     }
 }

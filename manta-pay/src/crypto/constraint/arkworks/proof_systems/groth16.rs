@@ -18,19 +18,46 @@
 
 // FIXME: Move these tests elsewhere since they are rather general.
 
-use crate::crypto::constraint::arkworks::{
-    constraint_system::SynthesisResult, ArkConstraintSystem,
+use crate::{
+    accounting::identity::{Root, Utxo, VoidNumber},
+    crypto::constraint::arkworks::{constraint_system::SynthesisResult, ArkConstraintSystem},
 };
+use alloc::vec::Vec;
 use ark_crypto_primitives::SNARK;
 use ark_ec::PairingEngine;
 use ark_ff::Field;
 use ark_groth16::{Groth16 as ArkGroth16, PreparedVerifyingKey, Proof, ProvingKey};
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
 use core::marker::PhantomData;
+use manta_accounting::asset::{AssetBalance, AssetId};
 use manta_crypto::{
-    constraint::ProofSystem,
+    constraint::{Input, ProofSystem},
     rand::{CryptoRng, RngCore, SizedRng},
 };
+
+/// Constraint Synthesizer Wrapper
+struct ConstraintSynthesizerWrapper<F>(ArkConstraintSystem<F>)
+where
+    F: Field;
+
+impl<F> ConstraintSynthesizer<F> for ConstraintSynthesizerWrapper<F>
+where
+    F: Field,
+{
+    #[inline]
+    fn generate_constraints(self, cs: ConstraintSystemRef<F>) -> SynthesisResult {
+        let precomputed_cs = self
+            .0
+            .cs
+            .into_inner()
+            .expect("We own this constraint system so we can consume it.");
+        let mut target_cs = cs
+            .borrow_mut()
+            .expect("This is given to us to mutate so it can't be borrowed by anyone else.");
+        *target_cs = precomputed_cs;
+        Ok(())
+    }
+}
 
 /// Arkworks Groth 16 Proof System
 #[derive(derivative::Derivative)]
@@ -49,7 +76,7 @@ where
 
     type VerifyingContext = PreparedVerifyingKey<E>;
 
-    type Input = [E::Fr];
+    type Input = Vec<E::Fr>;
 
     type Proof = Proof<E>;
 
@@ -91,7 +118,7 @@ where
     where
         R: CryptoRng + RngCore + ?Sized,
     {
-        /* TODO:
+        /* TODO[remove]:
         let input = cs
             .cs
             .borrow()
@@ -116,27 +143,48 @@ where
     }
 }
 
-/// Constraint Synthesizer Wrapper
-struct ConstraintSynthesizerWrapper<F>(ArkConstraintSystem<F>)
+impl<E> Input<AssetId> for Groth16<E>
 where
-    F: Field;
-
-impl<F> ConstraintSynthesizer<F> for ConstraintSynthesizerWrapper<F>
-where
-    F: Field,
+    E: PairingEngine,
 {
-    #[inline]
-    fn generate_constraints(self, cs: ConstraintSystemRef<F>) -> SynthesisResult {
-        let precomputed_cs = self
-            .0
-            .cs
-            .into_inner()
-            .expect("We own this constraint system so we can consume it.");
-        let mut target_cs = cs
-            .borrow_mut()
-            .expect("This is given to us to mutate so it can't be borrowed by anyone else.");
-        *target_cs = precomputed_cs;
-        Ok(())
+    fn extend(input: &mut Self::Input, next: &AssetId) {
+        todo!()
+    }
+}
+
+impl<E> Input<AssetBalance> for Groth16<E>
+where
+    E: PairingEngine,
+{
+    fn extend(input: &mut Self::Input, next: &AssetBalance) {
+        todo!()
+    }
+}
+
+impl<E> Input<VoidNumber> for Groth16<E>
+where
+    E: PairingEngine,
+{
+    fn extend(input: &mut Self::Input, next: &VoidNumber) {
+        todo!()
+    }
+}
+
+impl<E> Input<Root> for Groth16<E>
+where
+    E: PairingEngine,
+{
+    fn extend(input: &mut Self::Input, next: &Root) {
+        todo!()
+    }
+}
+
+impl<E> Input<Utxo> for Groth16<E>
+where
+    E: PairingEngine,
+{
+    fn extend(input: &mut Self::Input, next: &Utxo) {
+        todo!()
     }
 }
 
@@ -153,33 +201,22 @@ mod test {
     };
     use rand::thread_rng;
 
+    /// Tests the generation of proving/verifying keys for [`Mint`].
+    #[test]
+    fn sample_mint_keys() {
+        Mint::sample_context(&mut thread_rng()).unwrap();
+    }
+
     /// Tests the generation of proving/verifying keys for [`PrivateTransfer`].
     #[test]
-    fn generate_private_transfer_keys() {
-        let mut rng = thread_rng();
-        PrivateTransfer::generate_context(&rng.gen(), &rng.gen(), &mut rng)
-            .unwrap()
-            .unwrap();
+    fn sample_private_transfer_keys() {
+        PrivateTransfer::sample_context(&mut thread_rng()).unwrap();
     }
 
     /// Tests the generation of proving/verifying keys for [`Reclaim`].
     #[test]
-    fn generate_reclaim_keys() {
-        let mut rng = thread_rng();
-        Reclaim::generate_context(&rng.gen(), &rng.gen(), &mut rng)
-            .unwrap()
-            .unwrap();
-    }
-
-    /// Tries to generate proving/verifying keys for [`Mint`] but this does not work because
-    /// [`Mint`] does not require a proof.
-    #[test]
-    #[should_panic]
-    fn generating_mint_keys_is_impossible() {
-        let mut rng = thread_rng();
-        Mint::generate_context(&rng.gen(), &rng.gen(), &mut rng)
-            .unwrap()
-            .unwrap();
+    fn sample_reclaim_keys() {
+        Reclaim::sample_context(&mut thread_rng()).unwrap();
     }
 
     ///
@@ -200,7 +237,6 @@ mod test {
 
         let (proving_key, verifying_key) =
             PrivateTransfer::generate_context(&commitment_scheme, utxo_set.verifier(), &mut rng)
-                .unwrap()
                 .unwrap();
 
         let post = private_transfer
@@ -212,6 +248,10 @@ mod test {
             )
             .unwrap();
 
-        // TODO: let _ = post.validate(&ledger).unwrap();
+        /* TODO:
+        let input = post.generate_proof_input();
+        let proof = post.validity_proof;
+        assert!(Groth16::verify(input, proof));
+        */
     }
 }

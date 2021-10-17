@@ -20,11 +20,14 @@ use crate::{accounting::config::Configuration, crypto::merkle_tree::ConfigConver
 use manta_accounting::{identity, transfer};
 use manta_crypto::merkle_tree::{self, full::Full};
 
+/// Asset Parameters
+pub type AssetParameters = identity::AssetParameters<Configuration>;
+
 /// Unspent Transaction Output
 pub type Utxo = identity::Utxo<Configuration>;
 
-/// Asset Parameters
-pub type AssetParameters = identity::AssetParameters<Configuration>;
+/// Void Number
+pub type VoidNumber = identity::VoidNumber<Configuration>;
 
 /// Sender Type
 pub type Sender =

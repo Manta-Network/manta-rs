@@ -474,7 +474,7 @@ pub trait ProofSystem {
     type VerifyingContext;
 
     /// Verification Input Type
-    type Input: ?Sized;
+    type Input: Default;
 
     /// Proof Type
     type Proof;
@@ -523,7 +523,7 @@ pub trait Input<T>: ProofSystem
 where
     T: ?Sized,
 {
-    /// Extends the `input` with the `next` element.
+    /// Extend the `input` with the `next` element.
     fn extend(input: &mut Self::Input, next: &T);
 }
 

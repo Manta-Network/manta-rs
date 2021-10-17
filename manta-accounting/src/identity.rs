@@ -1116,10 +1116,10 @@ where
     S: VerifiedSet<Item = Utxo<C>>,
 {
     /// Void Number
-    void_number: VoidNumber<C>,
+    pub(super) void_number: VoidNumber<C>,
 
     /// UTXO Membership Proof Public Part
-    utxo_membership_proof_public: S::Public,
+    pub(super) utxo_membership_proof_public: S::Public,
 }
 
 impl<C, S> SenderPost<C, S>
@@ -1349,10 +1349,10 @@ where
     I: IntegratedEncryptionScheme<Plaintext = Asset>,
 {
     /// Unspent Transaction Output
-    utxo: Utxo<C>,
+    pub(super) utxo: Utxo<C>,
 
     /// Encrypted [`Asset`]
-    encrypted_asset: EncryptedMessage<I>,
+    pub(super) encrypted_asset: EncryptedMessage<I>,
 }
 
 impl<C, I> ReceiverPost<C, I>
@@ -1420,8 +1420,8 @@ pub mod constraint {
     use manta_crypto::{
         constraint::{
             reflection::{HasAllocation, HasVariable},
-            Allocation, Constant, ConstraintSystem, Derived, Equal, Public, PublicOrSecret, Secret,
-            Variable,
+            Allocation, Constant, ConstraintSystem, Derived, Equal, Input as ProofSystemInput,
+            ProofSystem, Public, PublicOrSecret, Secret, Variable,
         },
         set::constraint::{MembershipProofVar, VerifierVariable},
     };
@@ -1742,6 +1742,27 @@ pub mod constraint {
         type Mode = Derived;
     }
 
+    impl<C, S> SenderPost<C, S>
+    where
+        C: Configuration,
+        S: VerifiedSet<Item = Utxo<C>>,
+        C::ConstraintSystem: HasVariable<S::Public, Mode = Public>,
+    {
+        /// Extends proof public input with `self`.
+        #[inline]
+        pub fn extend_input<P>(&self, input: &mut P::Input)
+        where
+            P: ProofSystem<ConstraintSystem = C::ConstraintSystem>
+                + ProofSystemInput<VoidNumber<C>>
+                + ProofSystemInput<S::Public>,
+        {
+            // TODO: Add a "public part" trait that extracts the public part of `Sender` (using
+            //       `SenderVar` to determine the types), then generate this method automatically.
+            P::extend(input, &self.void_number);
+            P::extend(input, &self.utxo_membership_proof_public);
+        }
+    }
+
     /// Receiver Variable
     pub struct ReceiverVar<C, I>
     where
@@ -1837,5 +1858,22 @@ pub mod constraint {
     {
         type Variable = ReceiverVar<C, I>;
         type Mode = Derived;
+    }
+
+    impl<C, I> ReceiverPost<C, I>
+    where
+        C: Configuration,
+        I: IntegratedEncryptionScheme<Plaintext = Asset>,
+    {
+        /// Extends proof public input with `self`.
+        #[inline]
+        pub fn extend_input<P>(&self, input: &mut P::Input)
+        where
+            P: ProofSystem<ConstraintSystem = C::ConstraintSystem> + ProofSystemInput<Utxo<C>>,
+        {
+            // TODO: Add a "public part" trait that extracts the public part of `Receiver` (using
+            //       `ReceiverVar` to determine the types), then generate this method automatically.
+            P::extend(input, &self.utxo);
+        }
     }
 }
