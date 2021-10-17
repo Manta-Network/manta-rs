@@ -147,8 +147,9 @@ impl<E> Input<AssetId> for Groth16<E>
 where
     E: PairingEngine,
 {
+    #[inline]
     fn extend(input: &mut Self::Input, next: &AssetId) {
-        todo!()
+        input.push(next.0.into());
     }
 }
 
@@ -156,8 +157,9 @@ impl<E> Input<AssetBalance> for Groth16<E>
 where
     E: PairingEngine,
 {
+    #[inline]
     fn extend(input: &mut Self::Input, next: &AssetBalance) {
-        todo!()
+        input.push(next.0.into());
     }
 }
 
@@ -165,8 +167,13 @@ impl<E> Input<VoidNumber> for Groth16<E>
 where
     E: PairingEngine,
 {
+    #[inline]
     fn extend(input: &mut Self::Input, next: &VoidNumber) {
-        todo!()
+        /* TODO:
+        use ark_ff::ToConstraintField;
+        input.append(&mut ToConstraintField::to_field_elements(VoidNumber::deserialize(next))
+            .expect("Conversion to constraint field elements is not allowed to fail."));
+        */
     }
 }
 
@@ -174,7 +181,13 @@ impl<E> Input<Root> for Groth16<E>
 where
     E: PairingEngine,
 {
+    #[inline]
     fn extend(input: &mut Self::Input, next: &Root) {
+        /* TODO:
+        use ark_ff::ToConstraintField;
+        input.append(&mut ToConstraintField::to_field_elements(Root::deserialize(next))
+            .expect("Conversion to constraint field elements is not allowed to fail."));
+        */
         todo!()
     }
 }
@@ -183,7 +196,13 @@ impl<E> Input<Utxo> for Groth16<E>
 where
     E: PairingEngine,
 {
+    #[inline]
     fn extend(input: &mut Self::Input, next: &Utxo) {
+        /* TODO:
+        use ark_ff::ToConstraintField;
+        input.append(&mut ToConstraintField::to_field_elements(Utxo::deserialize(next))
+            .expect("Conversion to constraint field elements is not allowed to fail."));
+        */
         todo!()
     }
 }
@@ -194,7 +213,7 @@ mod test {
         identity::UtxoSet,
         transfer::{Mint, PrivateTransfer, Reclaim},
     };
-    use manta_accounting::transfer::test::distribution;
+    use manta_accounting::transfer::test::{assert_valid_proof, distribution};
     use manta_crypto::{
         rand::{Rand, TrySample},
         set::VerifiedSet,
@@ -219,7 +238,39 @@ mod test {
         Reclaim::sample_context(&mut thread_rng()).unwrap();
     }
 
-    ///
+    /// Tests the generation of a [`Mint`].
+    #[test]
+    fn mint() {
+        let mut rng = thread_rng();
+        let commitment_scheme = rng.gen();
+        let mut utxo_set = UtxoSet::new(rng.gen());
+
+        let mint = Mint::try_sample(
+            distribution::Transfer {
+                commitment_scheme: &commitment_scheme,
+                utxo_set: &mut utxo_set,
+            },
+            &mut rng,
+        )
+        .unwrap();
+
+        let (proving_key, verifying_key) =
+            Mint::generate_context(&commitment_scheme, utxo_set.verifier(), &mut rng).unwrap();
+
+        assert_valid_proof(
+            &mint
+                .into_post(
+                    &commitment_scheme,
+                    utxo_set.verifier(),
+                    &proving_key,
+                    &mut rng,
+                )
+                .unwrap(),
+            &verifying_key,
+        );
+    }
+
+    /// Tests the generation of a [`PrivateTransfer`].
     #[test]
     fn private_transfer() {
         let mut rng = thread_rng();
@@ -239,19 +290,48 @@ mod test {
             PrivateTransfer::generate_context(&commitment_scheme, utxo_set.verifier(), &mut rng)
                 .unwrap();
 
-        let post = private_transfer
-            .into_post(
-                &commitment_scheme,
-                utxo_set.verifier(),
-                &proving_key,
-                &mut rng,
-            )
-            .unwrap();
+        assert_valid_proof(
+            &private_transfer
+                .into_post(
+                    &commitment_scheme,
+                    utxo_set.verifier(),
+                    &proving_key,
+                    &mut rng,
+                )
+                .unwrap(),
+            &verifying_key,
+        );
+    }
 
-        /* TODO:
-        let input = post.generate_proof_input();
-        let proof = post.validity_proof;
-        assert!(Groth16::verify(input, proof));
-        */
+    /// Tests the generation of a [`Reclaim`].
+    #[test]
+    fn reclaim() {
+        let mut rng = thread_rng();
+        let commitment_scheme = rng.gen();
+        let mut utxo_set = UtxoSet::new(rng.gen());
+
+        let reclaim = Reclaim::try_sample(
+            distribution::Transfer {
+                commitment_scheme: &commitment_scheme,
+                utxo_set: &mut utxo_set,
+            },
+            &mut rng,
+        )
+        .unwrap();
+
+        let (proving_key, verifying_key) =
+            Reclaim::generate_context(&commitment_scheme, utxo_set.verifier(), &mut rng).unwrap();
+
+        assert_valid_proof(
+            &reclaim
+                .into_post(
+                    &commitment_scheme,
+                    utxo_set.verifier(),
+                    &proving_key,
+                    &mut rng,
+                )
+                .unwrap(),
+            &verifying_key,
+        );
     }
 }

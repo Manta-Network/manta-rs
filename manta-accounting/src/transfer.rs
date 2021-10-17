@@ -67,7 +67,7 @@ pub trait Configuration:
         + HasVariable<<Self::UtxoSet as VerifiedSet>::Secret, Mode = Secret>;
 
     /// Proof System
-    type ProofSystem: ProofSystem<ConstraintSystem = ConstraintSystem<Self>>
+    type ProofSystem: ProofSystem<ConstraintSystem = ConstraintSystem<Self>, Verification = bool>
         + ProofSystemInput<AssetId>
         + ProofSystemInput<AssetBalance>
         + ProofSystemInput<VoidNumber<Self>>
@@ -1778,5 +1778,17 @@ pub mod test {
         {
             Self::generate_context(&rng.gen(), &rng.gen(), rng)
         }
+    }
+
+    /// Asserts that `post` has a valid internal proof, verifying with the given `context`.
+    #[inline]
+    pub fn assert_valid_proof<C>(post: &TransferPost<C>, context: &VerifyingContext<C>)
+    where
+        C: Configuration,
+    {
+        assert!(matches!(
+            C::ProofSystem::verify(&post.generate_proof_input(), &post.validity_proof, context),
+            Ok(true)
+        ))
     }
 }
