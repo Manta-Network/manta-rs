@@ -253,7 +253,7 @@ pub mod constraint {
         crh::constraints::{CRHGadget, TwoToOneCRHGadget},
         merkle_tree::{constraints::PathVar as ArkPathVar, Path as ArkPath},
     };
-    use ark_ff::Field;
+    use ark_ff::{Field, ToConstraintField};
     use ark_r1cs_std::{alloc::AllocVar, boolean::Boolean, eq::EqGadget, uint8::UInt8};
     use ark_relations::ns;
     use manta_crypto::{
@@ -438,6 +438,23 @@ pub mod constraint {
     {
         type Variable = RootVar<C>;
         type Mode = Public;
+    }
+
+    /// Extends the `input` vector by constraint field elements that make up `root`.
+    #[inline]
+    pub fn root_extend_input<C>(
+        root: &Root<ConfigConverter<C>>,
+        input: &mut Vec<ConstraintField<C>>,
+    ) where
+        C: Configuration,
+        RootInnerType<C>: ToConstraintField<ConstraintField<C>>,
+    {
+        input.append(
+            &mut root
+                .0
+                .to_field_elements()
+                .expect("Conversion to constraint field elements is not allowed to fail."),
+        );
     }
 
     /// Merkle Tree Path Inner Type

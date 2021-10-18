@@ -30,3 +30,66 @@ pub type Reclaim = canonical::Reclaim<Configuration>;
 
 /// Transfer Post Type
 pub type TransferPost = transfer::TransferPost<Configuration>;
+
+/// Testing Suite
+#[cfg(test)]
+mod test {
+    use crate::accounting::{
+        identity::UtxoSet,
+        transfer::{Mint, PrivateTransfer, Reclaim},
+    };
+    use manta_crypto::rand::Rand;
+    use rand::thread_rng;
+
+    /// Tests the generation of proving/verifying contexts for [`Mint`].
+    #[test]
+    fn sample_mint_context() {
+        Mint::sample_context(&mut thread_rng()).unwrap();
+    }
+
+    /// Tests the generation of proving/verifying contexts for [`PrivateTransfer`].
+    #[test]
+    fn sample_private_transfer_context() {
+        PrivateTransfer::sample_context(&mut thread_rng()).unwrap();
+    }
+
+    /// Tests the generation of proving/verifying contexts for [`Reclaim`].
+    #[test]
+    fn sample_reclaim_context() {
+        Reclaim::sample_context(&mut thread_rng()).unwrap();
+    }
+
+    /// Tests the generation of a [`Mint`].
+    #[test]
+    fn mint() {
+        let mut rng = thread_rng();
+        assert!(matches!(
+            Mint::sample_and_check_proof(&rng.gen(), &mut UtxoSet::new(rng.gen()), &mut rng),
+            Ok(true)
+        ));
+    }
+
+    /// Tests the generation of a [`PrivateTransfer`].
+    #[test]
+    fn private_transfer() {
+        let mut rng = thread_rng();
+        assert!(matches!(
+            PrivateTransfer::sample_and_check_proof(
+                &rng.gen(),
+                &mut UtxoSet::new(rng.gen()),
+                &mut rng
+            ),
+            Ok(true)
+        ));
+    }
+
+    /// Tests the generation of a [`Reclaim`].
+    #[test]
+    fn reclaim() {
+        let mut rng = thread_rng();
+        assert!(matches!(
+            Reclaim::sample_and_check_proof(&rng.gen(), &mut UtxoSet::new(rng.gen()), &mut rng),
+            Ok(true)
+        ));
+    }
+}

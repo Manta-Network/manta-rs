@@ -16,6 +16,7 @@
 
 //! Blake2s PRF Implementation
 
+use alloc::vec::Vec;
 use ark_crypto_primitives::prf::{Blake2s as ArkBlake2s, PRF};
 use manta_crypto::{
     rand::{CryptoRng, Rand, RngCore, Sample, Standard},
@@ -139,7 +140,7 @@ pub mod constraint {
     use ark_crypto_primitives::{
         prf::blake2s::constraints::Blake2sGadget as ArkBlake2sVar, PRFGadget,
     };
-    use ark_ff::PrimeField;
+    use ark_ff::{PrimeField, ToConstraintField};
     use ark_r1cs_std::{alloc::AllocVar, eq::EqGadget, uint8::UInt8, ToBytesGadget};
     use ark_relations::ns;
     use core::marker::PhantomData;
@@ -334,6 +335,20 @@ pub mod constraint {
         }
     }
 
+    impl Blake2sOutput {
+        /// Extends the `input` vector by constraint field elements that make up `self`.
+        #[inline]
+        pub fn extend_input<F>(&self, input: &mut Vec<F>)
+        where
+            F: PrimeField,
+        {
+            input.append(
+                &mut ToConstraintField::to_field_elements(&self.0)
+                    .expect("Conversion to constraint field elements is not allowed to fail."),
+            );
+        }
+    }
+
     /// Blake2s Pseudorandom Function Family Variable
     #[derive(derivative::Derivative)]
     #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -377,7 +392,6 @@ pub mod constraint {
 
         #[inline]
         fn evaluate(seed: &Self::Seed, input: &Self::Input) -> Self::Output {
-            // FIXME: Make a note about the failure properties of PRFs.
             Blake2sOutputVar(
                 ArkBlake2sVar::evaluate(seed.0.as_ref(), input.0.as_ref())
                     .expect("Failure outcomes are not accepted."),

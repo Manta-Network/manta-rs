@@ -28,7 +28,6 @@ use manta_crypto::{
 use manta_util::{Concat, ConcatAccumulator};
 
 /// Pedersen Window Parameters Trait
-// TODO: Remove this comment once `arkworks` writes their own.
 pub use ark_crypto_primitives::commitment::pedersen::Window as PedersenWindow;
 
 pub use ark_ec::ProjectiveCurve;
@@ -144,7 +143,6 @@ where
 
     #[inline]
     fn commit(&self, input: Self::Input, randomness: &Self::Randomness) -> Self::Output {
-        // FIXME: Make a note about the failure properties of commitment schemes.
         PedersenCommitmentOutput(
             ArkPedersenCommitment::<_, W>::commit(&self.0, &input, &randomness.0)
                 .expect("Failure outcomes are not accepted."),
@@ -178,7 +176,7 @@ pub mod constraint {
         commitment::pedersen::constraints::{CommGadget, ParametersVar, RandomnessVar},
         CommitmentGadget,
     };
-    use ark_ff::Field;
+    use ark_ff::{Field, ToConstraintField};
     use ark_r1cs_std::{
         alloc::AllocVar,
         groups::{CurveVar, GroupOpsBounds},
@@ -514,6 +512,43 @@ pub mod constraint {
             lhs.0
                 .is_eq(&rhs.0)
                 .expect("Equality checking is not allowed to fail.")
+        }
+    }
+
+    impl<W, C> PedersenCommitmentOutput<W, C>
+    where
+        W: PedersenWindow,
+        C: ProjectiveCurve,
+    {
+        /// Extends the `input` vector by constraint field elements that make up `self`.
+        #[inline]
+        pub fn extend_input(&self, input: &mut Vec<ConstraintField<C>>)
+        where
+            C::Affine: ToConstraintField<ConstraintField<C>>,
+        {
+            input.append(
+                &mut self
+                    .0
+                    .to_field_elements()
+                    .expect("Conversion to constraint field elements is not allowed to fail."),
+            );
+        }
+    }
+
+    impl<W, C, GG> PedersenCommitmentOutputWrapper<W, C, GG>
+    where
+        W: PedersenWindow,
+        C: ProjectiveCurve,
+        GG: CurveVar<C, ConstraintField<C>>,
+        for<'g> &'g GG: GroupOpsBounds<'g, C, GG>,
+    {
+        /// Extends the `input` vector by constraint field elements that make up `self`.
+        #[inline]
+        pub fn extend_input(&self, input: &mut Vec<ConstraintField<C>>)
+        where
+            C::Affine: ToConstraintField<ConstraintField<C>>,
+        {
+            self.0.extend_input(input)
         }
     }
 

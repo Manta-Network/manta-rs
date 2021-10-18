@@ -46,13 +46,3 @@ macro_rules! from_variant_impl {
         }
     };
 }
-
-/// Either Type
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum Either<L, R> {
-    /// Left Variant
-    Left(L),
-
-    /// Right Variant
-    Right(R),
-}

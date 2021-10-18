@@ -16,6 +16,7 @@
 
 //! Identities, Senders, and Receivers
 
+// FIXME: Rename `AssetParameters`, since they are about identities not assets.
 // FIXME: Check the secret key APIs.
 // FIXME: Remove `UtxoSet` dependence from `identity`, really we only need `UtxoSetVerifier`.
 // TODO:  Get rid of [`Spend`] and [`OpenSpend`] if possible. They don't seem to be that useful.

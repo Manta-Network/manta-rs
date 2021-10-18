@@ -29,6 +29,9 @@ pub type Utxo = identity::Utxo<Configuration>;
 /// Void Number
 pub type VoidNumber = identity::VoidNumber<Configuration>;
 
+/// Identity Type
+pub type Identity = identity::Identity<Configuration>;
+
 /// Sender Type
 pub type Sender =
     identity::Sender<Configuration, <Configuration as transfer::Configuration>::UtxoSet>;

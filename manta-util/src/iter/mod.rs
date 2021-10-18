@@ -17,10 +17,8 @@
 //! Iteration Utilities
 
 mod chunk_by;
-mod mixed_chain;
 
 pub use chunk_by::*;
-pub use mixed_chain::*;
 
 /// Iterator Extensions
 pub trait IteratorExt: Iterator {

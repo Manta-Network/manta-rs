@@ -16,8 +16,6 @@
 
 //! Arkworks Groth16 Implementation
 
-// FIXME: Move these tests elsewhere since they are rather general.
-
 use crate::{
     accounting::identity::{Root, Utxo, VoidNumber},
     crypto::constraint::arkworks::{constraint_system::SynthesisResult, ArkConstraintSystem},
@@ -118,14 +116,6 @@ where
     where
         R: CryptoRng + RngCore + ?Sized,
     {
-        /* TODO[remove]:
-        let input = cs
-            .cs
-            .borrow()
-            .ok_or(SynthesisError::MissingCS)?
-            .instance_assignment
-            .clone();
-        */
         ArkGroth16::prove(
             context,
             ConstraintSynthesizerWrapper(cs),
@@ -169,169 +159,26 @@ where
 {
     #[inline]
     fn extend(input: &mut Self::Input, next: &VoidNumber) {
-        /* TODO:
-        use ark_ff::ToConstraintField;
-        input.append(&mut ToConstraintField::to_field_elements(VoidNumber::deserialize(next))
-            .expect("Conversion to constraint field elements is not allowed to fail."));
-        */
+        next.extend_input(input)
     }
 }
 
 impl<E> Input<Root> for Groth16<E>
 where
-    E: PairingEngine,
+    E: PairingEngine<Fr = ark_ff::Fp256<ark_bls12_381::FrParameters>>,
 {
     #[inline]
     fn extend(input: &mut Self::Input, next: &Root) {
-        /* TODO:
-        use ark_ff::ToConstraintField;
-        input.append(&mut ToConstraintField::to_field_elements(Root::deserialize(next))
-            .expect("Conversion to constraint field elements is not allowed to fail."));
-        */
-        todo!()
+        crate::crypto::merkle_tree::constraint::root_extend_input(next, input)
     }
 }
 
 impl<E> Input<Utxo> for Groth16<E>
 where
-    E: PairingEngine,
+    E: PairingEngine<Fr = ark_ff::Fp256<ark_bls12_381::FrParameters>>,
 {
     #[inline]
     fn extend(input: &mut Self::Input, next: &Utxo) {
-        /* TODO:
-        use ark_ff::ToConstraintField;
-        input.append(&mut ToConstraintField::to_field_elements(Utxo::deserialize(next))
-            .expect("Conversion to constraint field elements is not allowed to fail."));
-        */
-        todo!()
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use crate::accounting::{
-        identity::UtxoSet,
-        transfer::{Mint, PrivateTransfer, Reclaim},
-    };
-    use manta_accounting::transfer::test::{assert_valid_proof, distribution};
-    use manta_crypto::{
-        rand::{Rand, TrySample},
-        set::VerifiedSet,
-    };
-    use rand::thread_rng;
-
-    /// Tests the generation of proving/verifying keys for [`Mint`].
-    #[test]
-    fn sample_mint_keys() {
-        Mint::sample_context(&mut thread_rng()).unwrap();
-    }
-
-    /// Tests the generation of proving/verifying keys for [`PrivateTransfer`].
-    #[test]
-    fn sample_private_transfer_keys() {
-        PrivateTransfer::sample_context(&mut thread_rng()).unwrap();
-    }
-
-    /// Tests the generation of proving/verifying keys for [`Reclaim`].
-    #[test]
-    fn sample_reclaim_keys() {
-        Reclaim::sample_context(&mut thread_rng()).unwrap();
-    }
-
-    /// Tests the generation of a [`Mint`].
-    #[test]
-    fn mint() {
-        let mut rng = thread_rng();
-        let commitment_scheme = rng.gen();
-        let mut utxo_set = UtxoSet::new(rng.gen());
-
-        let mint = Mint::try_sample(
-            distribution::Transfer {
-                commitment_scheme: &commitment_scheme,
-                utxo_set: &mut utxo_set,
-            },
-            &mut rng,
-        )
-        .unwrap();
-
-        let (proving_key, verifying_key) =
-            Mint::generate_context(&commitment_scheme, utxo_set.verifier(), &mut rng).unwrap();
-
-        assert_valid_proof(
-            &mint
-                .into_post(
-                    &commitment_scheme,
-                    utxo_set.verifier(),
-                    &proving_key,
-                    &mut rng,
-                )
-                .unwrap(),
-            &verifying_key,
-        );
-    }
-
-    /// Tests the generation of a [`PrivateTransfer`].
-    #[test]
-    fn private_transfer() {
-        let mut rng = thread_rng();
-        let commitment_scheme = rng.gen();
-        let mut utxo_set = UtxoSet::new(rng.gen());
-
-        let private_transfer = PrivateTransfer::try_sample(
-            distribution::Transfer {
-                commitment_scheme: &commitment_scheme,
-                utxo_set: &mut utxo_set,
-            },
-            &mut rng,
-        )
-        .unwrap();
-
-        let (proving_key, verifying_key) =
-            PrivateTransfer::generate_context(&commitment_scheme, utxo_set.verifier(), &mut rng)
-                .unwrap();
-
-        assert_valid_proof(
-            &private_transfer
-                .into_post(
-                    &commitment_scheme,
-                    utxo_set.verifier(),
-                    &proving_key,
-                    &mut rng,
-                )
-                .unwrap(),
-            &verifying_key,
-        );
-    }
-
-    /// Tests the generation of a [`Reclaim`].
-    #[test]
-    fn reclaim() {
-        let mut rng = thread_rng();
-        let commitment_scheme = rng.gen();
-        let mut utxo_set = UtxoSet::new(rng.gen());
-
-        let reclaim = Reclaim::try_sample(
-            distribution::Transfer {
-                commitment_scheme: &commitment_scheme,
-                utxo_set: &mut utxo_set,
-            },
-            &mut rng,
-        )
-        .unwrap();
-
-        let (proving_key, verifying_key) =
-            Reclaim::generate_context(&commitment_scheme, utxo_set.verifier(), &mut rng).unwrap();
-
-        assert_valid_proof(
-            &reclaim
-                .into_post(
-                    &commitment_scheme,
-                    utxo_set.verifier(),
-                    &proving_key,
-                    &mut rng,
-                )
-                .unwrap(),
-            &verifying_key,
-        );
+        next.extend_input(input)
     }
 }

@@ -18,8 +18,9 @@
 
 // FIXME: Make sure that either (a) no empty transfer can be built, or (b) empty transfers work
 //        properly i.e. do nothing.
-// TODO:  See if we can get rid of the `Copy` restriction on `ValidProof` and `SuperPostingKey`.
 // FIXME: Remove `UtxoSet` dependence from `transfer`, really we only need `UtxoSetVerifier`.
+// TODO:  See if we can get rid of the `Copy` restriction on `ValidProof` and `SuperPostingKey`.
+// TODO:  See if we can get rid of `PublicTransfer` and `SecretTransfer` and just use `Transfer`.
 
 use crate::{
     asset::{Asset, AssetBalance, AssetBalances, AssetId},
@@ -41,7 +42,7 @@ use manta_crypto::{
     rand::{CryptoRng, RngCore},
     set::{constraint::VerifierVariable, VerifiedSet},
 };
-use manta_util::{create_seal, from_variant_impl, iter::mixed_chain, seal, Either};
+use manta_util::{create_seal, from_variant_impl, seal};
 
 /// Returns `true` if the transfer with this shape would have no public participants.
 #[inline]
@@ -716,7 +717,7 @@ where
         )
     }
 
-    /// Builds constraints for transfer validity proof/verifier.
+    /// Builds constraints for transfer validity proof.
     #[inline]
     fn build_constraints(
         base_asset_id: Option<C::AssetIdVar>,
@@ -725,45 +726,36 @@ where
         utxo_set_verifier: C::UtxoSetVerifierVar,
         cs: &mut ConstraintSystem<C>,
     ) {
-        let mut sender_sum = C::AssetBalanceVar::from_default(cs, Secret);
-        let mut receiver_sum = C::AssetBalanceVar::from_default(cs, Secret);
+        let mut input_sum = C::AssetBalanceVar::from_default(cs, Secret);
+        let mut output_sum = C::AssetBalanceVar::from_default(cs, Secret);
+        let mut secret_asset_ids = Vec::new();
 
-        participants
-            .sources
-            .into_iter()
-            .for_each(|source| sender_sum += source);
+        for source in participants.sources {
+            input_sum += source;
+        }
 
-        participants
-            .sinks
-            .into_iter()
-            .for_each(|sink| receiver_sum += sink);
+        for sender in participants.senders {
+            let asset = sender.get_well_formed_asset(cs, &commitment_scheme, &utxo_set_verifier);
+            input_sum += asset.value;
+            secret_asset_ids.push(asset.id);
+        }
 
-        #[allow(clippy::needless_collect)] // NOTE: `cs` is being mutated, we need to collect.
-        let secret_asset_ids = mixed_chain(
-            participants.senders.into_iter(),
-            participants.receivers.into_iter(),
-            |c| match c {
-                Either::Left(sender) => {
-                    let asset =
-                        sender.get_well_formed_asset(cs, &commitment_scheme, &utxo_set_verifier);
-                    sender_sum += asset.value;
-                    asset.id
-                }
-                Either::Right(receiver) => {
-                    let asset = receiver.get_well_formed_asset(cs, &commitment_scheme);
-                    receiver_sum += asset.value;
-                    asset.id
-                }
-            },
-        )
-        .collect::<Vec<_>>();
+        for receiver in participants.receivers {
+            let asset = receiver.get_well_formed_asset(cs, &commitment_scheme);
+            output_sum += asset.value;
+            secret_asset_ids.push(asset.id);
+        }
+
+        for sink in participants.sinks {
+            output_sum += sink;
+        }
+
+        cs.assert_eq(&input_sum, &output_sum);
 
         match base_asset_id {
             Some(asset_id) => cs.assert_all_eq_to_base(&asset_id, secret_asset_ids.iter()),
             _ => cs.assert_all_eq(secret_asset_ids.iter()),
         }
-
-        cs.assert_eq(&sender_sum, &receiver_sum);
     }
 
     /// Generates a proving and verifying context for this transfer shape.
@@ -1440,6 +1432,11 @@ pub mod test {
         {
             /// Tries to sample a [`super::SecretTransfer`] using custom sender and receiver asset
             /// totals.
+            ///
+            /// # Safety
+            ///
+            /// This method does not check the input/output size constraints found in the
+            /// [`super::SecretTransfer::check_shape`] method.
             #[inline]
             pub(super) fn try_sample_custom_totals<
                 R,
@@ -1471,6 +1468,11 @@ pub mod test {
 
             /// Tries to sample a [`super::SecretTransfer`] with custom sender and receiver asset
             /// value distributions.
+            ///
+            /// # Safety
+            ///
+            /// This method does not check the input/output size constraints found in the
+            /// [`super::SecretTransfer::check_shape`] method.
             #[inline]
             pub(super) fn try_sample_custom_distribution<
                 R,
@@ -1490,7 +1492,7 @@ pub mod test {
             where
                 R: CryptoRng + RngCore + ?Sized,
             {
-                Ok(super::SecretTransfer::new(
+                Ok(super::SecretTransfer::new_unchecked(
                     array_map(senders, |v| {
                         let pre_sender =
                             Identity::gen(rng).into_pre_sender(commitment_scheme, asset_id.with(v));
@@ -1515,6 +1517,7 @@ pub mod test {
             where
                 R: CryptoRng + RngCore + ?Sized,
             {
+                super::SecretTransfer::<C, SENDERS, RECEIVERS>::check_shape();
                 Self::try_sample_custom_totals(
                     self.asset.id,
                     self.asset.value,
@@ -1778,6 +1781,49 @@ pub mod test {
         {
             Self::generate_context(&rng.gen(), &rng.gen(), rng)
         }
+
+        /// Samples a [`Transfer`] and checks whether its internal proof is valid relative to the
+        /// given `commitment_scheme` and `utxo_set`.
+        #[inline]
+        pub fn sample_and_check_proof<R>(
+            commitment_scheme: &C::CommitmentScheme,
+            utxo_set: &mut C::UtxoSet,
+            rng: &mut R,
+        ) -> Result<bool, ProofSystemError<C>>
+        where
+            C::SecretKey: Sample,
+            R: CryptoRng + RngCore + ?Sized,
+        {
+            let transfer = Self::try_sample(
+                distribution::Transfer {
+                    commitment_scheme,
+                    utxo_set,
+                },
+                rng,
+            )
+            .ok()
+            .expect("This test is not checking whether sampling works properly.");
+
+            let (proving_key, verifying_key) =
+                Self::generate_context(commitment_scheme, utxo_set.verifier(), rng)?;
+
+            has_valid_proof(
+                &transfer.into_post(commitment_scheme, utxo_set.verifier(), &proving_key, rng)?,
+                &verifying_key,
+            )
+        }
+    }
+
+    /// Checks if `post` has a valid internal proof, verifying with the given `context`.
+    #[inline]
+    pub fn has_valid_proof<C>(
+        post: &TransferPost<C>,
+        context: &VerifyingContext<C>,
+    ) -> Result<bool, ProofSystemError<C>>
+    where
+        C: Configuration,
+    {
+        C::ProofSystem::verify(&post.generate_proof_input(), &post.validity_proof, context)
     }
 
     /// Asserts that `post` has a valid internal proof, verifying with the given `context`.
@@ -1786,9 +1832,6 @@ pub mod test {
     where
         C: Configuration,
     {
-        assert!(matches!(
-            C::ProofSystem::verify(&post.generate_proof_input(), &post.validity_proof, context),
-            Ok(true)
-        ))
+        assert!(matches!(has_valid_proof(post, context), Ok(true)))
     }
 }
