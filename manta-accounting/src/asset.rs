@@ -87,6 +87,30 @@ impl AssetId {
     }
 }
 
+impl Concat for AssetId {
+    type Item = u8;
+
+    #[inline]
+    fn concat<A>(&self, accumulator: &mut A)
+    where
+        A: ConcatAccumulator<Self::Item> + ?Sized,
+    {
+        accumulator.extend(&self.into_bytes());
+    }
+
+    #[inline]
+    fn size_hint(&self) -> Option<usize> {
+        Some(Self::SIZE)
+    }
+}
+
+impl From<AssetId> for [u8; AssetId::SIZE] {
+    #[inline]
+    fn from(entry: AssetId) -> Self {
+        entry.into_bytes()
+    }
+}
+
 impl<D> Sample<D> for AssetId
 where
     AssetIdType: Sample<D>,
@@ -97,13 +121,6 @@ where
         R: CryptoRng + RngCore + ?Sized,
     {
         Self(rng.sample(distribution))
-    }
-}
-
-impl From<AssetId> for [u8; AssetId::SIZE] {
-    #[inline]
-    fn from(entry: AssetId) -> Self {
-        entry.into_bytes()
     }
 }
 
@@ -190,16 +207,20 @@ impl AssetBalance {
     }
 }
 
-impl<D> Sample<D> for AssetBalance
-where
-    AssetBalanceType: Sample<D>,
-{
+impl Concat for AssetBalance {
+    type Item = u8;
+
     #[inline]
-    fn sample<R>(distribution: D, rng: &mut R) -> Self
+    fn concat<A>(&self, accumulator: &mut A)
     where
-        R: CryptoRng + RngCore + ?Sized,
+        A: ConcatAccumulator<Self::Item> + ?Sized,
     {
-        Self(rng.sample(distribution))
+        accumulator.extend(&self.into_bytes());
+    }
+
+    #[inline]
+    fn size_hint(&self) -> Option<usize> {
+        Some(Self::SIZE)
     }
 }
 
@@ -216,6 +237,19 @@ impl Mul<AssetBalance> for AssetBalanceType {
     #[inline]
     fn mul(self, rhs: AssetBalance) -> Self::Output {
         self * rhs.0
+    }
+}
+
+impl<D> Sample<D> for AssetBalance
+where
+    AssetBalanceType: Sample<D>,
+{
+    #[inline]
+    fn sample<R>(distribution: D, rng: &mut R) -> Self
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        Self(rng.sample(distribution))
     }
 }
 
@@ -391,23 +425,6 @@ impl AddAssign<AssetBalance> for Asset {
     }
 }
 
-impl Sub<AssetBalance> for Asset {
-    type Output = Self;
-
-    #[inline]
-    fn sub(mut self, rhs: AssetBalance) -> Self::Output {
-        self -= rhs;
-        self
-    }
-}
-
-impl SubAssign<AssetBalance> for Asset {
-    #[inline]
-    fn sub_assign(&mut self, rhs: AssetBalance) {
-        self.value -= rhs;
-    }
-}
-
 impl Concat for Asset {
     type Item = u8;
 
@@ -416,8 +433,8 @@ impl Concat for Asset {
     where
         A: ConcatAccumulator<Self::Item> + ?Sized,
     {
-        accumulator.extend(&self.id.into_bytes());
-        accumulator.extend(&self.value.into_bytes());
+        self.id.concat(accumulator);
+        self.value.concat(accumulator);
     }
 
     #[inline]
@@ -455,6 +472,23 @@ impl Sample for Asset {
     {
         let _ = distribution;
         Self::new(rng.gen(), rng.gen())
+    }
+}
+
+impl Sub<AssetBalance> for Asset {
+    type Output = Self;
+
+    #[inline]
+    fn sub(mut self, rhs: AssetBalance) -> Self::Output {
+        self -= rhs;
+        self
+    }
+}
+
+impl SubAssign<AssetBalance> for Asset {
+    #[inline]
+    fn sub_assign(&mut self, rhs: AssetBalance) {
+        self.value -= rhs;
     }
 }
 

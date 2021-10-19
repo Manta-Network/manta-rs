@@ -30,7 +30,7 @@ pub struct Blake2s;
 
 /// Blake2s Pseudorandom Function Family Seed
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct Blake2sSeed(pub(crate) <ArkBlake2s as PRF>::Seed);
+pub struct Blake2sSeed(<ArkBlake2s as PRF>::Seed);
 
 impl AsMut<[u8]> for Blake2sSeed {
     #[inline]

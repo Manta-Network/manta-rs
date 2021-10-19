@@ -67,6 +67,7 @@ rand_chacha = { version = "0.3.1", default-features = false }
 x25519-dalek = { git = "https://github.com/Manta-Network/x25519-dalek", default-features = false, features = ["u64_backend"] }
 
 [dev-dependencies]
+criterion = "0.3.5"
 manta-accounting = { path = "../manta-accounting", features = ["test"] }
 manta-crypto = { path = "../manta-crypto", features = ["test"] }
 rand = "0.8.4"

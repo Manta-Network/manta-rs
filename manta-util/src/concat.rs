@@ -175,6 +175,23 @@ impl<T, const N: usize> Concat for [T; N] {
     }
 }
 
+impl<T> Concat for Vec<T> {
+    type Item = T;
+
+    #[inline]
+    fn concat<A>(&self, accumulator: &mut A)
+    where
+        A: ConcatAccumulator<T> + ?Sized,
+    {
+        accumulator.extend(self)
+    }
+
+    #[inline]
+    fn size_hint(&self) -> Option<usize> {
+        Some(self.len())
+    }
+}
+
 /// Concatenates `$item`s together by building a [`ConcatAccumulator`] and running
 /// [`Concat::concat`] over each `$item`.
 #[macro_export]

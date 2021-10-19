@@ -23,7 +23,7 @@ use crate::{
 use alloc::vec::Vec;
 use ark_crypto_primitives::SNARK;
 use ark_ec::PairingEngine;
-use ark_ff::Field;
+use ark_ff::{Field, ToConstraintField};
 use ark_groth16::{Groth16 as ArkGroth16, PreparedVerifyingKey, Proof, ProvingKey};
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
 use core::marker::PhantomData;
@@ -140,6 +140,7 @@ where
     #[inline]
     fn extend(input: &mut Self::Input, next: &AssetId) {
         input.push(next.0.into());
+        input.append(&mut next.into_bytes().to_field_elements().unwrap());
     }
 }
 
@@ -150,6 +151,7 @@ where
     #[inline]
     fn extend(input: &mut Self::Input, next: &AssetBalance) {
         input.push(next.0.into());
+        input.append(&mut next.into_bytes().to_field_elements().unwrap());
     }
 }
 

@@ -19,15 +19,14 @@
 use alloc::{vec, vec::Vec};
 use ark_ff::{fields::Field, PrimeField};
 use ark_r1cs_std::{
-    alloc::AllocVar, bits::boolean::Boolean, eq::EqGadget, fields::fp::FpVar, uint8::UInt8,
-    R1CSVar, ToBytesGadget,
+    alloc::AllocVar, bits::boolean::Boolean, eq::EqGadget, fields::fp::FpVar, uint8::UInt8, R1CSVar,
 };
 use ark_relations::{ns, r1cs as ark_r1cs};
 use core::{borrow::Borrow, ops::AddAssign};
 use manta_accounting::{AssetBalance, AssetId};
 use manta_crypto::constraint::{
     reflection::HasAllocation, types::Bool, Allocation, AllocationMode, ConstraintSystem, Equal,
-    Public, PublicOrSecret, Secret, Variable,
+    Public, PublicOrSecret, Secret, Variable, VariableSource,
 };
 use manta_util::{Concat, ConcatAccumulator};
 
@@ -41,7 +40,7 @@ pub type SynthesisResult<T = ()> = Result<T, ark_r1cs::SynthesisError>;
 /// This does not work for all variable assignments! For some assignemnts, the variable inherits
 /// some structure from its input even though the input itself will not form part of the proving
 /// key and verifying key that we produce after compiling the constraint system. For those cases,
-/// some mocking is required.
+/// some mocking is required and this function can not be used directly.
 #[inline]
 pub fn empty<T>() -> SynthesisResult<T> {
     Err(ark_r1cs::SynthesisError::AssignmentMissing)
@@ -138,7 +137,6 @@ where
 
     #[inline]
     fn assert(&mut self, b: Bool<Self>) {
-        // FIXME: Is there a more direct way to do assertions?
         b.enforce_equal(&Boolean::TRUE)
             .expect("This should never fail.")
     }
@@ -154,27 +152,27 @@ where
 
     #[inline]
     fn new(
-        ps: &mut ArkConstraintSystem<F>,
+        cs: &mut ArkConstraintSystem<F>,
         allocation: Allocation<Self::Type, Self::Mode>,
     ) -> Self {
         match allocation {
             Allocation::Known(this, mode) => match mode {
                 ArkAllocationMode::Constant => {
-                    Self::new_constant(ns!(ps.cs, "boolean constant"), this)
+                    Self::new_constant(ns!(cs.cs, "boolean constant"), this)
                 }
                 ArkAllocationMode::Public => {
-                    Self::new_input(ns!(ps.cs, "boolean input"), full(this))
+                    Self::new_input(ns!(cs.cs, "boolean input"), full(this))
                 }
                 ArkAllocationMode::Secret => {
-                    Self::new_witness(ns!(ps.cs, "boolean witness"), full(this))
+                    Self::new_witness(ns!(cs.cs, "boolean witness"), full(this))
                 }
             },
             Allocation::Unknown(mode) => match mode {
                 PublicOrSecret::Public => {
-                    Self::new_input(ns!(ps.cs, "boolean input"), empty::<bool>)
+                    Self::new_input(ns!(cs.cs, "boolean input"), empty::<bool>)
                 }
                 PublicOrSecret::Secret => {
-                    Self::new_witness(ns!(ps.cs, "boolean witness"), empty::<bool>)
+                    Self::new_witness(ns!(cs.cs, "boolean witness"), empty::<bool>)
                 }
             },
         }
@@ -195,8 +193,8 @@ where
     F: Field,
 {
     #[inline]
-    fn eq(ps: &mut ArkConstraintSystem<F>, lhs: &Self, rhs: &Self) -> Boolean<F> {
-        let _ = ps;
+    fn eq(cs: &mut ArkConstraintSystem<F>, lhs: &Self, rhs: &Self) -> Boolean<F> {
+        let _ = cs;
         lhs.is_eq(rhs)
             .expect("Equality checking is not allowed to fail.")
     }
@@ -219,24 +217,24 @@ where
 
     #[inline]
     fn new(
-        ps: &mut ArkConstraintSystem<F>,
+        cs: &mut ArkConstraintSystem<F>,
         allocation: Allocation<Self::Type, Self::Mode>,
     ) -> Self {
         match allocation {
             Allocation::Known(this, ArkAllocationMode::Constant) => {
-                Self::new_constant(ns!(ps.cs, "prime field constant"), this.0)
+                Self::new_constant(ns!(cs.cs, "prime field constant"), this.0)
             }
             Allocation::Known(this, ArkAllocationMode::Public) => {
-                Self::new_input(ns!(ps.cs, "prime field input"), full(this.0))
+                Self::new_input(ns!(cs.cs, "prime field input"), full(this.0))
             }
             Allocation::Known(this, ArkAllocationMode::Secret) => {
-                Self::new_witness(ns!(ps.cs, "prime field witness"), full(this.0))
+                Self::new_witness(ns!(cs.cs, "prime field witness"), full(this.0))
             }
             Allocation::Unknown(PublicOrSecret::Public) => {
-                Self::new_input(ns!(ps.cs, "prime field input"), empty::<F>)
+                Self::new_input(ns!(cs.cs, "prime field input"), empty::<F>)
             }
             Allocation::Unknown(PublicOrSecret::Secret) => {
-                Self::new_witness(ns!(ps.cs, "prime field witness"), empty::<F>)
+                Self::new_witness(ns!(cs.cs, "prime field witness"), empty::<F>)
             }
         }
         .expect("Variable allocation is not allowed to fail.")
@@ -286,8 +284,7 @@ where
                     UInt8::new_witness_vec(ns!(cs, "byte array secret witness"), this)
                 }
                 Allocation::Unknown(PublicOrSecret::Public) => {
-                    // FIXME: What goes here?
-                    todo!()
+                    UInt8::new_input_vec(ns!(cs, "byte array public input"), &[0; N])
                 }
                 Allocation::Unknown(PublicOrSecret::Secret) => {
                     UInt8::new_witness_vec(ns!(cs, "byte array secret witness"), &vec![None; N])
@@ -343,10 +340,10 @@ where
 
     #[inline]
     fn new(
-        ps: &mut ArkConstraintSystem<F>,
+        cs: &mut ArkConstraintSystem<F>,
         allocation: Allocation<Self::Type, Self::Mode>,
     ) -> Self {
-        Self::allocate(&ps.cs, allocation)
+        Self::allocate(&cs.cs, allocation)
     }
 }
 
@@ -361,9 +358,27 @@ where
 /// Asset Id Variable
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Debug)]
-pub struct AssetIdVar<F>(FpVar<F>)
+pub struct AssetIdVar<F>
 where
-    F: PrimeField;
+    F: PrimeField,
+{
+    /// Field Point
+    field_point: FpVar<F>,
+
+    /// Byte Array
+    bytes: ByteArrayVar<F, { AssetId::SIZE }>,
+}
+
+impl<F> AssetIdVar<F>
+where
+    F: PrimeField,
+{
+    /// Builds a new [`AssetIdVar`] from `field_point` and `bytes`.
+    #[inline]
+    fn new(field_point: FpVar<F>, bytes: ByteArrayVar<F, { AssetId::SIZE }>) -> Self {
+        Self { field_point, bytes }
+    }
+}
 
 impl<F> Concat for AssetIdVar<F>
 where
@@ -376,7 +391,7 @@ where
     where
         A: ConcatAccumulator<Self::Item> + ?Sized,
     {
-        accumulator.extend(&self.0.to_bytes().expect("This is not allowed to fail."))
+        self.bytes.concat(accumulator)
     }
 }
 
@@ -390,10 +405,19 @@ where
 
     #[inline]
     fn new(
-        ps: &mut ArkConstraintSystem<F>,
+        cs: &mut ArkConstraintSystem<F>,
         allocation: Allocation<Self::Type, Self::Mode>,
     ) -> Self {
-        Self(allocation.map_allocate(ps, move |this| Fp(F::from(this.0))))
+        match allocation {
+            Allocation::Known(this, mode) => Self::new(
+                Fp(F::from(this.0)).as_known(cs, mode),
+                this.into_bytes().as_known(cs, mode),
+            ),
+            Allocation::Unknown(mode) => Self::new(
+                Fp::as_unknown(cs, mode),
+                <[u8; AssetId::SIZE]>::as_unknown(cs, mode),
+            ),
+        }
     }
 }
 
@@ -410,10 +434,11 @@ where
     F: PrimeField,
 {
     #[inline]
-    fn eq(ps: &mut ArkConstraintSystem<F>, lhs: &Self, rhs: &Self) -> Boolean<F> {
-        let _ = ps;
-        lhs.0
-            .is_eq(&rhs.0)
+    fn eq(cs: &mut ArkConstraintSystem<F>, lhs: &Self, rhs: &Self) -> Boolean<F> {
+        // TODO: Is `field_point` or `bytes` faster?
+        let _ = cs;
+        lhs.field_point
+            .is_eq(&rhs.field_point)
             .expect("Equality checking is not allowed to fail.")
     }
 }
@@ -421,9 +446,27 @@ where
 /// Asset Balance Variable
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Debug)]
-pub struct AssetBalanceVar<F>(FpVar<F>)
+pub struct AssetBalanceVar<F>
 where
-    F: PrimeField;
+    F: PrimeField,
+{
+    /// Field Point
+    field_point: FpVar<F>,
+
+    /// Byte Array
+    bytes: ByteArrayVar<F, { AssetBalance::SIZE }>,
+}
+
+impl<F> AssetBalanceVar<F>
+where
+    F: PrimeField,
+{
+    /// Builds a new [`AssetBalanceVar`] from `field_point` and `bytes`.
+    #[inline]
+    fn new(field_point: FpVar<F>, bytes: ByteArrayVar<F, { AssetBalance::SIZE }>) -> Self {
+        Self { field_point, bytes }
+    }
+}
 
 impl<F> Concat for AssetBalanceVar<F>
 where
@@ -436,7 +479,7 @@ where
     where
         A: ConcatAccumulator<Self::Item> + ?Sized,
     {
-        accumulator.extend(&self.0.to_bytes().expect("This is not allowed to fail."))
+        self.bytes.concat(accumulator)
     }
 }
 
@@ -450,10 +493,19 @@ where
 
     #[inline]
     fn new(
-        ps: &mut ArkConstraintSystem<F>,
+        cs: &mut ArkConstraintSystem<F>,
         allocation: Allocation<Self::Type, Self::Mode>,
     ) -> Self {
-        Self(allocation.map_allocate(ps, move |this| Fp(F::from(this.0))))
+        match allocation {
+            Allocation::Known(this, mode) => Self::new(
+                Fp(F::from(this.0)).as_known(cs, mode),
+                this.into_bytes().as_known(cs, mode),
+            ),
+            Allocation::Unknown(mode) => Self::new(
+                Fp::as_unknown(cs, mode),
+                <[u8; AssetBalance::SIZE]>::as_unknown(cs, mode),
+            ),
+        }
     }
 }
 
@@ -470,10 +522,11 @@ where
     F: PrimeField,
 {
     #[inline]
-    fn eq(ps: &mut ArkConstraintSystem<F>, lhs: &Self, rhs: &Self) -> Boolean<F> {
-        let _ = ps;
-        lhs.0
-            .is_eq(&rhs.0)
+    fn eq(cs: &mut ArkConstraintSystem<F>, lhs: &Self, rhs: &Self) -> Boolean<F> {
+        // TODO: Is `field_point` or `bytes` faster?
+        let _ = cs;
+        lhs.field_point
+            .is_eq(&rhs.field_point)
             .expect("Equality checking is not allowed to fail.")
     }
 }
@@ -484,6 +537,6 @@ where
 {
     #[inline]
     fn add_assign(&mut self, rhs: Self) {
-        self.0 += rhs.0
+        self.field_point += rhs.field_point
     }
 }

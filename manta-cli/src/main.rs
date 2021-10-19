@@ -21,12 +21,12 @@
 // TODO: In order to hook up a node instance here, we will want to eventually move this out of
 //       `manta-rs` into its own repo.
 
-use clap::{crate_version, AppSettings, Clap};
+use clap::{crate_version, AppSettings, Parser};
 
 mod command;
 
 /// Manta Network's Command Line Interface
-#[derive(Clap)]
+#[derive(Parser)]
 #[clap(
     name = "manta",
     version = crate_version!(),
@@ -47,7 +47,7 @@ struct Args {
     command: Command,
 }
 
-#[derive(Clap)]
+#[derive(Parser)]
 enum Command {
     /// Run the testing suite and tools
     Test {

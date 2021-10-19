@@ -91,6 +91,18 @@ pub mod constraint {
     };
     use manta_util::concatenate;
 
+    /// Sender Variable Type
+    pub type SenderVar = identity::constraint::SenderVar<
+        Configuration,
+        <Configuration as transfer::Configuration>::UtxoSet,
+    >;
+
+    /// Receiver Variable Type
+    pub type ReceiverVar = identity::constraint::ReceiverVar<
+        Configuration,
+        <Configuration as transfer::Configuration>::IntegratedEncryptionScheme,
+    >;
+
     /// UTXO Variable
     pub type UtxoVar = identity::constraint::UtxoVar<Configuration>;
 
