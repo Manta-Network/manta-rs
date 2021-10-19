@@ -61,7 +61,7 @@ pub trait BalanceState {
     where
         I: IntoIterator<Item = Asset>,
     {
-        assets.into_iter().for_each(move |a| self.deposit(a))
+        assets.into_iter().for_each(move |a| self.deposit(a));
     }
 
     /// Withdraws `asset` from the balance state without checking if it would overdraw.
@@ -92,7 +92,7 @@ impl BalanceState for Vec<Asset> {
 
     #[inline]
     fn deposit(&mut self, asset: Asset) {
-        self.push(asset)
+        self.push(asset);
     }
 
     #[inline]
@@ -101,7 +101,7 @@ impl BalanceState for Vec<Asset> {
             withdraw_unchecked(
                 self.iter_mut().find_map(move |a| a.value_of_mut(asset.id)),
                 asset.value,
-            )
+            );
         }
     }
 }

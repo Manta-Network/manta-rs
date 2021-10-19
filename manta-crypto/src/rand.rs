@@ -49,7 +49,7 @@ where
 
     #[inline]
     fn fill_bytes(&mut self, dest: &mut [u8]) {
-        self.0.fill_bytes(dest)
+        self.0.fill_bytes(dest);
     }
 
     #[inline]
@@ -68,7 +68,7 @@ where
 
     #[inline]
     fn generate(&mut self, results: &mut Self::Results) {
-        self.0.generate(results)
+        self.0.generate(results);
     }
 }
 
@@ -122,7 +122,7 @@ where
 
     #[inline]
     fn fill_bytes(&mut self, dest: &mut [u8]) {
-        self.inner.fill_bytes(dest)
+        self.inner.fill_bytes(dest);
     }
 
     #[inline]
@@ -141,7 +141,7 @@ where
 
     #[inline]
     fn generate(&mut self, results: &mut Self::Results) {
-        self.inner.generate(results)
+        self.inner.generate(results);
     }
 }
 
@@ -237,7 +237,7 @@ impl Sample for u128 {
         R: CryptoRng + RngCore + ?Sized,
     {
         let _ = distribution;
-        ((rng.next_u64() as u128) << 64) | (rng.next_u64() as u128)
+        (u128::from(rng.next_u64()) << 64) | u128::from(rng.next_u64())
     }
 }
 

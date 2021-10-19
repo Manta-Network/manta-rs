@@ -1187,7 +1187,7 @@ where
             self.void_number,
             self.utxo_membership_proof_public,
             super_key,
-        )
+        );
     }
 }
 
@@ -1411,7 +1411,7 @@ where
     /// Posts `self` to the receiver `ledger`.
     #[inline]
     pub fn post(self, super_key: &L::SuperPostingKey, ledger: &mut L) {
-        ledger.register(self.utxo, self.encrypted_asset, super_key)
+        ledger.register(self.utxo, self.encrypted_asset, super_key);
     }
 }
 

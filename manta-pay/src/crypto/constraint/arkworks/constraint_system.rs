@@ -25,8 +25,8 @@ use ark_relations::{ns, r1cs as ark_r1cs};
 use core::{borrow::Borrow, ops::AddAssign};
 use manta_accounting::{AssetBalance, AssetId};
 use manta_crypto::constraint::{
-    reflection::HasAllocation, types::Bool, Allocation, AllocationMode, ConstraintSystem, Equal,
-    Public, PublicOrSecret, Secret, Variable, VariableSource,
+    measure::Measure, reflection::HasAllocation, types::Bool, Allocation, AllocationMode,
+    ConstraintSystem, Equal, Public, PublicOrSecret, Secret, Variable, VariableSource,
 };
 use manta_util::{Concat, ConcatAccumulator};
 
@@ -138,7 +138,25 @@ where
     #[inline]
     fn assert(&mut self, b: Bool<Self>) {
         b.enforce_equal(&Boolean::TRUE)
-            .expect("This should never fail.")
+            .expect("This should never fail.");
+    }
+}
+
+impl<F> Measure<PublicOrSecret> for ArkConstraintSystem<F>
+where
+    F: Field,
+{
+    #[inline]
+    fn constraint_count(&self) -> usize {
+        self.cs.num_constraints()
+    }
+
+    #[inline]
+    fn variable_count(&self, mode: PublicOrSecret) -> usize {
+        match mode {
+            PublicOrSecret::Public => self.cs.num_instance_variables(),
+            PublicOrSecret::Secret => self.cs.num_witness_variables(),
+        }
     }
 }
 
@@ -156,25 +174,21 @@ where
         allocation: Allocation<Self::Type, Self::Mode>,
     ) -> Self {
         match allocation {
-            Allocation::Known(this, mode) => match mode {
-                ArkAllocationMode::Constant => {
-                    Self::new_constant(ns!(cs.cs, "boolean constant"), this)
-                }
-                ArkAllocationMode::Public => {
-                    Self::new_input(ns!(cs.cs, "boolean input"), full(this))
-                }
-                ArkAllocationMode::Secret => {
-                    Self::new_witness(ns!(cs.cs, "boolean witness"), full(this))
-                }
-            },
-            Allocation::Unknown(mode) => match mode {
-                PublicOrSecret::Public => {
-                    Self::new_input(ns!(cs.cs, "boolean input"), empty::<bool>)
-                }
-                PublicOrSecret::Secret => {
-                    Self::new_witness(ns!(cs.cs, "boolean witness"), empty::<bool>)
-                }
-            },
+            Allocation::Known(this, ArkAllocationMode::Constant) => {
+                Self::new_constant(ns!(cs.cs, "boolean constant"), this)
+            }
+            Allocation::Known(this, ArkAllocationMode::Public) => {
+                Self::new_input(ns!(cs.cs, "boolean input"), full(this))
+            }
+            Allocation::Known(this, ArkAllocationMode::Secret) => {
+                Self::new_witness(ns!(cs.cs, "boolean witness"), full(this))
+            }
+            Allocation::Unknown(PublicOrSecret::Public) => {
+                Self::new_input(ns!(cs.cs, "boolean input"), empty::<bool>)
+            }
+            Allocation::Unknown(PublicOrSecret::Secret) => {
+                Self::new_witness(ns!(cs.cs, "boolean witness"), empty::<bool>)
+            }
         }
         .expect("Variable allocation is not allowed to fail.")
     }
@@ -326,7 +340,7 @@ where
     where
         A: ConcatAccumulator<Self::Item> + ?Sized,
     {
-        accumulator.extend(&self.0)
+        accumulator.extend(&self.0);
     }
 }
 
@@ -391,7 +405,7 @@ where
     where
         A: ConcatAccumulator<Self::Item> + ?Sized,
     {
-        self.bytes.concat(accumulator)
+        self.bytes.concat(accumulator);
     }
 }
 
@@ -479,7 +493,7 @@ where
     where
         A: ConcatAccumulator<Self::Item> + ?Sized,
     {
-        self.bytes.concat(accumulator)
+        self.bytes.concat(accumulator);
     }
 }
 
@@ -537,6 +551,6 @@ where
 {
     #[inline]
     fn add_assign(&mut self, rhs: Self) {
-        self.field_point += rhs.field_point
+        self.field_point += rhs.field_point;
     }
 }

@@ -166,8 +166,9 @@ where
     C: CoinType,
 {
     /// Converts a `mnemonic` phrase into a [`DerivedKeySecret`], locking it with `password`.
+    #[must_use]
     #[inline]
-    pub fn from_mnemonic(mnemonic: Mnemonic, password: &str) -> Self {
+    pub fn new(mnemonic: Mnemonic, password: &str) -> Self {
         Self {
             seed: mnemonic.to_seed(password),
             __: PhantomData,
@@ -178,6 +179,8 @@ where
 /// Computes the [`BIP-0044`] path string for the given coin settings.
 ///
 /// [`BIP-0044`]: https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki
+#[must_use]
+#[inline]
 pub fn path_string<C>(kind: KeyKind, account: &AccountParameter, index: &IndexParameter) -> String
 where
     C: CoinType,

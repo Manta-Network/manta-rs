@@ -623,13 +623,13 @@ where
         if let Some((asset_id, zeroes)) = self.insert_zeroes.take() {
             assets.insert_zeroes(asset_id, zeroes.into_iter().map(Index::reduce));
         }
-        assets.remove_all(mem::take(&mut self.remove))
+        assets.remove_all(mem::take(&mut self.remove));
     }
 
     /// Clears the pending asset map.
     #[inline]
     fn rollback(&mut self) {
-        *self = Default::default()
+        *self = Default::default();
     }
 }
 
@@ -842,7 +842,7 @@ where
 
                 posts.push(self.build_post(SecretTransfer::new(senders, accumulator.receivers))?);
 
-                for zero in accumulator.zeroes.iter() {
+                for zero in &accumulator.zeroes {
                     zero.as_ref().insert_utxo(&mut self.utxo_set);
                 }
                 accumulator.pre_sender.insert_utxo(&mut self.utxo_set);
@@ -955,13 +955,12 @@ where
         asset: Asset,
         receiver: Option<ShieldedIdentity<C>>,
     ) -> SignResult<D, C, Self> {
-        let selection = self.select(asset)?;
-
-        let mut posts = Vec::new();
-
         const SENDERS: usize = PrivateTransferShape::SENDERS;
         const RECEIVERS: usize = PrivateTransferShape::RECEIVERS;
 
+        let selection = self.select(asset)?;
+
+        let mut posts = Vec::new();
         let senders = self.accumulate_transfers::<SENDERS, RECEIVERS>(
             asset.id,
             selection.pre_senders,
@@ -969,7 +968,6 @@ where
         )?;
 
         let change = self.next_change(asset.id, selection.change)?;
-
         let final_post = match receiver {
             Some(receiver) => {
                 let receiver = self.prepare_receiver(asset, receiver)?;

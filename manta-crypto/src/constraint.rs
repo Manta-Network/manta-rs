@@ -20,7 +20,7 @@
 // TODO:  Add derive trait to implement `HasAllocation` for structs (and enums?).
 // TODO:  Add more convenience functions for allocating unknown variables.
 // FIXME: Leverage the type system to constrain allocation to only unknown modes for verifier
-//        generation and only known modes for proof generation, instead of relying on the `setup_*`
+//        generation and only known modes for proof generation, instead of relying on the `for_*`
 //        methods to "do the right thing".
 
 use core::{
@@ -380,7 +380,7 @@ pub trait ConstraintSystem {
     where
         I: IntoIterator<Item = Self::Bool>,
     {
-        iter.into_iter().for_each(move |b| self.assert(b))
+        iter.into_iter().for_each(move |b| self.assert(b));
     }
 
     /// Generates a boolean that represents the fact that `lhs` and `rhs` may be equal.
@@ -398,7 +398,7 @@ pub trait ConstraintSystem {
     where
         V: Variable<Self> + Equal<Self>,
     {
-        V::assert_eq(self, lhs, rhs)
+        V::assert_eq(self, lhs, rhs);
     }
 
     /// Asserts that all the elements in `iter` are equal to some `base` element.
@@ -408,7 +408,7 @@ pub trait ConstraintSystem {
         V: 't + Variable<Self> + Equal<Self>,
         I: IntoIterator<Item = &'t V>,
     {
-        V::assert_all_eq_to_base(self, base, iter)
+        V::assert_all_eq_to_base(self, base, iter);
     }
 
     /// Asserts that all the elements in `iter` are equal.
@@ -418,7 +418,32 @@ pub trait ConstraintSystem {
         V: 't + Variable<Self> + Equal<Self>,
         I: IntoIterator<Item = &'t V>,
     {
-        V::assert_all_eq(self, iter)
+        V::assert_all_eq(self, iter);
+    }
+
+    /// Returns proving and verifying contexts for the constraints contained in `self`.
+    #[inline]
+    fn generate_context<P, R>(
+        self,
+        rng: &mut R,
+    ) -> Result<(P::ProvingContext, P::VerifyingContext), P::Error>
+    where
+        Self: Sized,
+        P: ProofSystem<ConstraintSystem = Self>,
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        P::generate_context(self, rng)
+    }
+
+    /// Returns a proof that the constraint system `self` is consistent.
+    #[inline]
+    fn prove<P, R>(self, context: &P::ProvingContext, rng: &mut R) -> Result<P::Proof, P::Error>
+    where
+        Self: Sized,
+        P: ProofSystem<ConstraintSystem = Self>,
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        P::prove(self, context, rng)
     }
 }
 
@@ -434,7 +459,7 @@ where
     #[inline]
     fn assert_eq(cs: &mut C, lhs: &Self, rhs: &Self) {
         let boolean = Self::eq(cs, lhs, rhs);
-        cs.assert(boolean)
+        cs.assert(boolean);
     }
 
     /// Asserts that all the elements in `iter` are equal to some `base` element.
@@ -444,7 +469,7 @@ where
         I: IntoIterator<Item = &'t Self>,
     {
         for item in iter {
-            Self::assert_eq(cs, base, item)
+            Self::assert_eq(cs, base, item);
         }
     }
 
@@ -457,7 +482,7 @@ where
     {
         let mut iter = iter.into_iter();
         if let Some(base) = iter.next() {
-            Self::assert_all_eq_to_base(cs, base, iter)
+            Self::assert_all_eq_to_base(cs, base, iter);
         }
     }
 }
@@ -488,12 +513,14 @@ pub trait ProofSystem {
     type Error;
 
     /// Returns a constraint system which is setup to build proving and verifying contexts.
+    #[must_use]
     fn for_unknown() -> Self::ConstraintSystem;
 
     /// Returns a constraint system which is setup to build a proof.
+    #[must_use]
     fn for_known() -> Self::ConstraintSystem;
 
-    /// Returns proving and verifying contexts for the constraints contained in `self`.
+    /// Returns proving and verifying contexts for the constraints contained in `cs`.
     fn generate_context<R>(
         cs: Self::ConstraintSystem,
         rng: &mut R,
@@ -501,7 +528,7 @@ pub trait ProofSystem {
     where
         R: CryptoRng + RngCore + ?Sized;
 
-    /// Returns a proof that the constraint system `self` is consistent.
+    /// Returns a proof that the constraint system `cs` is consistent.
     fn prove<R>(
         cs: Self::ConstraintSystem,
         context: &Self::ProvingContext,
@@ -626,7 +653,7 @@ impl PublicOrSecret {
     pub const fn public(self) -> Option<Public> {
         match self {
             Self::Public => Some(Public),
-            _ => None,
+            Self::Secret => None,
         }
     }
 
@@ -641,7 +668,7 @@ impl PublicOrSecret {
     pub const fn secret(self) -> Option<Secret> {
         match self {
             Self::Secret => Some(Secret),
-            _ => None,
+            Self::Public => None,
         }
     }
 }
@@ -711,6 +738,142 @@ where
     #[inline]
     fn try_from(pos: PublicOrSecret) -> Result<Self, Self::Error> {
         T::try_from(pos).map(Self)
+    }
+}
+
+/// Constraint System Measurement
+pub mod measure {
+    use super::*;
+
+    /// Constraint System Measurement
+    pub trait Measure<M>
+    where
+        M: ?Sized,
+    {
+        /// Returns the number of constraints stored in `self`.
+        fn constraint_count(&self) -> usize;
+
+        /// Returns the number of variables allocated with the given `mode`.
+        fn variable_count(&self, mode: M) -> usize;
+
+        /// Returns the number of constraints and number and kind of variables stored in `self`.
+        #[inline]
+        fn measure(&self) -> SizeReport<M>
+        where
+            M: MeasureVariables,
+        {
+            M::measure(self)
+        }
+    }
+
+    /// Constraint System Variable Allocation Measurement
+    pub trait MeasureVariables {
+        /// Measurement Type
+        type Measurement;
+
+        /// Counts the number of constraints and the number of variables allocated with all of the
+        /// possible modes in `Self`, returning a [`SizeReport`].
+        fn measure<C>(cs: &C) -> SizeReport<Self>
+        where
+            C: Measure<Self> + ?Sized;
+    }
+
+    /// Constraint System Size Measurement Report
+    #[derive(derivative::Derivative)]
+    #[derivative(
+        Clone(bound = "M::Measurement: Clone"),
+        Copy(bound = "M::Measurement: Copy"),
+        Debug(bound = "M::Measurement: Debug"),
+        Default(bound = "M::Measurement: Default"),
+        Eq(bound = "M::Measurement: Eq"),
+        Hash(bound = "M::Measurement: Hash"),
+        PartialEq(bound = "M::Measurement: PartialEq")
+    )]
+    pub struct SizeReport<M>
+    where
+        M: MeasureVariables + ?Sized,
+    {
+        /// Number of constraints
+        pub constraint_count: usize,
+
+        /// Number of variables
+        pub variable_count: M::Measurement,
+    }
+
+    impl<M> SizeReport<M>
+    where
+        M: MeasureVariables + ?Sized,
+    {
+        /// Builds a new [`SizeReport`] from `constraint_count` and `variable_count`.
+        #[inline]
+        pub fn new(constraint_count: usize, variable_count: M::Measurement) -> Self {
+            Self {
+                constraint_count,
+                variable_count,
+            }
+        }
+
+        /// Builds a new [`SizeReport`] with the given `cs` to measure its constraint count and
+        /// `variable_count` as the number of variables in the resulting report.
+        #[inline]
+        pub fn with<C>(cs: &C, variable_count: M::Measurement) -> Self
+        where
+            C: Measure<M> + ?Sized,
+        {
+            Self::new(cs.constraint_count(), variable_count)
+        }
+    }
+
+    impl MeasureVariables for Public {
+        type Measurement = usize;
+
+        #[inline]
+        fn measure<C>(cs: &C) -> SizeReport<Self>
+        where
+            C: Measure<Self> + ?Sized,
+        {
+            SizeReport::with(cs, cs.variable_count(Public))
+        }
+    }
+
+    impl MeasureVariables for Secret {
+        type Measurement = usize;
+
+        #[inline]
+        fn measure<C>(cs: &C) -> SizeReport<Self>
+        where
+            C: Measure<Self> + ?Sized,
+        {
+            SizeReport::with(cs, cs.variable_count(Secret))
+        }
+    }
+
+    impl MeasureVariables for PublicOrSecret {
+        type Measurement = PublicOrSecretMeasurement;
+
+        #[inline]
+        fn measure<C>(cs: &C) -> SizeReport<Self>
+        where
+            C: Measure<Self> + ?Sized,
+        {
+            SizeReport::with(
+                cs,
+                PublicOrSecretMeasurement {
+                    public: cs.variable_count(PublicOrSecret::Public),
+                    secret: cs.variable_count(PublicOrSecret::Secret),
+                },
+            )
+        }
+    }
+
+    /// [`PublicOrSecret`] Measurement
+    #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+    pub struct PublicOrSecretMeasurement {
+        /// Public Variable Count
+        pub public: usize,
+
+        /// Secret Variable Count
+        pub secret: usize,
     }
 }
 
@@ -919,28 +1082,3 @@ pub mod types {
     /// Pointer-Sized Unsigned Integer Variable Type
     pub type Usize<C> = Var<usize, C>;
 }
-
-/* FIXME: Need to reconsider how to do this:
-/// Testing Framework
-#[cfg(feature = "test")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
-pub mod test {
-    use super::*;
-
-    /// Builds a proof from `cs` and the `proving_context` and then tries to verify it with
-    /// the `verifying_context`.
-    #[inline]
-    pub fn verify_constructed_proof<P, R>(
-        cs: P::ConstraintSystem,
-        proving_context: &P::ProvingContext,
-        verifying_context: &P::VerifyingContext,
-        rng: &mut R,
-    ) -> Result<P::Verification, P::Error>
-    where
-        P: ProofSystem,
-        R: CryptoRng + RngCore,
-    {
-        P::verify(&P::prove(cs, proving_context, rng)?, verifying_context)
-    }
-}
-*/

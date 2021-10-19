@@ -41,6 +41,7 @@ pub type PublicKey = [u8; 32];
 pub type SecretKey = [u8; 32];
 
 /// `GCM` Tag Size
+#[allow(clippy::cast_possible_truncation)] // NOTE: GCM Tag Size should be smaller than `2^32`.
 const GCM_TAG_SIZE: usize = (aes_gcm::C_MAX - aes_gcm::P_MAX) as usize;
 
 /// Asset Ciphertext Type

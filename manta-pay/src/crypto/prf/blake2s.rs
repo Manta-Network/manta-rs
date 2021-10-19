@@ -47,7 +47,7 @@ impl Concat for Blake2sSeed {
     where
         A: ConcatAccumulator<Self::Item> + ?Sized,
     {
-        self.0.concat(accumulator)
+        self.0.concat(accumulator);
     }
 }
 
@@ -81,7 +81,7 @@ impl Concat for Blake2sInput {
     where
         A: ConcatAccumulator<Self::Item> + ?Sized,
     {
-        self.0.concat(accumulator)
+        self.0.concat(accumulator);
     }
 }
 
@@ -108,7 +108,7 @@ impl Concat for Blake2sOutput {
     where
         A: ConcatAccumulator<Self::Item> + ?Sized,
     {
-        self.0.concat(accumulator)
+        self.0.concat(accumulator);
     }
 }
 
@@ -170,7 +170,7 @@ pub mod constraint {
         where
             A: ConcatAccumulator<Self::Item> + ?Sized,
         {
-            self.0.concat(accumulator)
+            self.0.concat(accumulator);
         }
     }
 
@@ -217,7 +217,7 @@ pub mod constraint {
         where
             A: ConcatAccumulator<Self::Item> + ?Sized,
         {
-            self.0.concat(accumulator)
+            self.0.concat(accumulator);
         }
     }
 

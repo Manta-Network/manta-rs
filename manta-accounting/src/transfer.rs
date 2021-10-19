@@ -433,13 +433,13 @@ where
     /// Checks that the sender side is not empty.
     #[inline]
     fn check_sender_shape() {
-        assert_ne!(SENDERS, 0, "Not enough senders.")
+        assert_ne!(SENDERS, 0, "Not enough senders.");
     }
 
     /// Checks that the receiver side is not empty.
     #[inline]
     fn check_receiver_shape() {
-        assert_ne!(RECEIVERS, 0, "Not enough receivers.")
+        assert_ne!(RECEIVERS, 0, "Not enough receivers.");
     }
 
     /// Checks that the number of senders and/or receivers does not exceed the allocation limit.
@@ -584,7 +584,7 @@ where
             SOURCES + SENDERS,
             0,
             "Not enough participants on the input side."
-        )
+        );
     }
 
     /// Checks that the output side is not empty.
@@ -594,7 +594,7 @@ where
             RECEIVERS + SINKS,
             0,
             "Not enough participants on the output side."
-        )
+        );
     }
 
     /// Builds a new [`Transfer`] without checking the number of participants on the input and
@@ -758,16 +758,12 @@ where
         }
     }
 
-    /// Generates a proving and verifying context for this transfer shape.
+    /// Generates the constraint system for an unknown transfer.
     #[inline]
-    pub fn generate_context<R>(
+    pub fn unknown_constraints(
         commitment_scheme: &C::CommitmentScheme,
         utxo_set_verifier: &UtxoSetVerifier<C>,
-        rng: &mut R,
-    ) -> Result<(ProvingContext<C>, VerifyingContext<C>), ProofSystemError<C>>
-    where
-        R: CryptoRng + RngCore + ?Sized,
-    {
+    ) -> ConstraintSystem<C> {
         let mut cs = C::ProofSystem::for_unknown();
         let (base_asset_id, participants, commitment_scheme, utxo_set_verifier) =
             Self::unknown_variables(commitment_scheme, utxo_set_verifier, &mut cs);
@@ -778,21 +774,16 @@ where
             utxo_set_verifier,
             &mut cs,
         );
-        C::ProofSystem::generate_context(cs, rng)
+        cs
     }
 
-    /// Generates a validity proof for this transfer.
+    /// Generates the constraint system for a known transfer.
     #[inline]
-    pub fn generate_proof<R>(
+    pub fn known_constraints(
         &self,
         commitment_scheme: &C::CommitmentScheme,
         utxo_set_verifier: &UtxoSetVerifier<C>,
-        context: &ProvingContext<C>,
-        rng: &mut R,
-    ) -> Result<Proof<C>, ProofSystemError<C>>
-    where
-        R: CryptoRng + RngCore + ?Sized,
-    {
+    ) -> ConstraintSystem<C> {
         let mut cs = C::ProofSystem::for_known();
         let (base_asset_id, participants, commitment_scheme, utxo_set_verifier) =
             self.known_variables(commitment_scheme, utxo_set_verifier, &mut cs);
@@ -803,7 +794,37 @@ where
             utxo_set_verifier,
             &mut cs,
         );
-        C::ProofSystem::prove(cs, context, rng)
+        cs
+    }
+
+    /// Generates a proving and verifying context for this transfer shape.
+    #[inline]
+    pub fn generate_context<R>(
+        commitment_scheme: &C::CommitmentScheme,
+        utxo_set_verifier: &UtxoSetVerifier<C>,
+        rng: &mut R,
+    ) -> Result<(ProvingContext<C>, VerifyingContext<C>), ProofSystemError<C>>
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        Self::unknown_constraints(commitment_scheme, utxo_set_verifier)
+            .generate_context::<C::ProofSystem, _>(rng)
+    }
+
+    /// Generates a validity proof for this transfer.
+    #[inline]
+    pub fn is_valid<R>(
+        &self,
+        commitment_scheme: &C::CommitmentScheme,
+        utxo_set_verifier: &UtxoSetVerifier<C>,
+        context: &ProvingContext<C>,
+        rng: &mut R,
+    ) -> Result<Proof<C>, ProofSystemError<C>>
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        self.known_constraints(commitment_scheme, utxo_set_verifier)
+            .prove::<C::ProofSystem, _>(context, rng)
     }
 
     /// Converts `self` into its ledger post.
@@ -819,12 +840,7 @@ where
         R: CryptoRng + RngCore + ?Sized,
     {
         Ok(TransferPost {
-            validity_proof: self.generate_proof(
-                commitment_scheme,
-                utxo_set_verifier,
-                context,
-                rng,
-            )?,
+            validity_proof: self.is_valid(commitment_scheme, utxo_set_verifier, context, rng)?,
             asset_id: self.public.asset_id,
             sources: self.public.sources.into(),
             sender_posts: IntoIterator::into_iter(self.secret.senders)
@@ -1128,7 +1144,7 @@ where
                 self.sinks,
                 proof,
                 super_key,
-            )
+            );
         }
     }
 }
@@ -1767,6 +1783,19 @@ pub mod test {
     where
         C: Configuration,
     {
+        /// Samples constraint system for unknown transfer from `rng`.
+        #[inline]
+        pub fn sample_unknown_constraints<CD, VD, R>(rng: &mut R) -> ConstraintSystem<C>
+        where
+            CD: Default,
+            VD: Default,
+            C::CommitmentScheme: Sample<CD>,
+            UtxoSetVerifier<C>: Sample<VD>,
+            R: CryptoRng + RngCore + ?Sized,
+        {
+            Self::unknown_constraints(&rng.gen(), &rng.gen())
+        }
+
         /// Samples proving and verifying contexts from `rng`.
         #[inline]
         pub fn sample_context<CD, VD, R>(
@@ -1832,6 +1861,6 @@ pub mod test {
     where
         C: Configuration,
     {
-        assert!(matches!(has_valid_proof(post, context), Ok(true)))
+        assert!(matches!(has_valid_proof(post, context), Ok(true)));
     }
 }

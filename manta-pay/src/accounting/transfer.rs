@@ -35,28 +35,41 @@ pub type TransferPost = transfer::TransferPost<Configuration>;
 #[cfg(test)]
 mod test {
     use crate::accounting::{
+        config,
         identity::UtxoSet,
         transfer::{Mint, PrivateTransfer, Reclaim},
     };
-    use manta_crypto::rand::Rand;
+    use manta_crypto::{
+        constraint::{measure::Measure, ProofSystem},
+        rand::Rand,
+    };
     use rand::thread_rng;
 
     /// Tests the generation of proving/verifying contexts for [`Mint`].
     #[test]
     fn sample_mint_context() {
-        Mint::sample_context(&mut thread_rng()).unwrap();
+        let mut rng = thread_rng();
+        let cs = Mint::sample_unknown_constraints(&mut rng);
+        println!("Mint: {:?}", cs.measure());
+        config::ProofSystem::generate_context(cs, &mut rng).unwrap();
     }
 
     /// Tests the generation of proving/verifying contexts for [`PrivateTransfer`].
     #[test]
     fn sample_private_transfer_context() {
-        PrivateTransfer::sample_context(&mut thread_rng()).unwrap();
+        let mut rng = thread_rng();
+        let cs = PrivateTransfer::sample_unknown_constraints(&mut rng);
+        println!("PrivateTransfer: {:?}", cs.measure());
+        config::ProofSystem::generate_context(cs, &mut rng).unwrap();
     }
 
     /// Tests the generation of proving/verifying contexts for [`Reclaim`].
     #[test]
     fn sample_reclaim_context() {
-        Reclaim::sample_context(&mut thread_rng()).unwrap();
+        let mut rng = thread_rng();
+        let cs = Reclaim::sample_unknown_constraints(&mut rng);
+        println!("Reclaim: {:?}", cs.measure());
+        config::ProofSystem::generate_context(cs, &mut rng).unwrap();
     }
 
     /// Tests the generation of a [`Mint`].

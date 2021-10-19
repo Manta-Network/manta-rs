@@ -24,6 +24,10 @@ is-it-maintained-issue-resolution = { repository = "Manta-Network/manta-rs" }
 is-it-maintained-open-issues = { repository = "Manta-Network/manta-rs" }
 maintenance = { status = "actively-developed" }
 
+[[bench]]
+name = "main"
+harness = false
+
 [features]
 # Default Features
 default = ["arkworks-groth16"]
@@ -41,6 +45,9 @@ dusk-network-zkp = []
 dusk-network-plonk = ["dusk-network-zkp", "dusk-plonk"]
 # Enable All Dusk-Network Zero-Knowledge Proof Backends
 dusk-network-zkp-all = ["dusk-network-plonk"]
+
+# Testing Frameworks
+test = ["manta-accounting/test", "manta-crypto/test"]
 
 # Standard Library
 std = []
@@ -70,4 +77,5 @@ x25519-dalek = { git = "https://github.com/Manta-Network/x25519-dalek", default-
 criterion = "0.3.5"
 manta-accounting = { path = "../manta-accounting", features = ["test"] }
 manta-crypto = { path = "../manta-crypto", features = ["test"] }
+manta-pay = { path = ".", features = ["test"] }
 rand = "0.8.4"

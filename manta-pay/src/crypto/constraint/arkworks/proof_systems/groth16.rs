@@ -18,7 +18,10 @@
 
 use crate::{
     accounting::identity::{Root, Utxo, VoidNumber},
-    crypto::constraint::arkworks::{constraint_system::SynthesisResult, ArkConstraintSystem},
+    crypto::{
+        constraint::arkworks::{constraint_system::SynthesisResult, ArkConstraintSystem},
+        merkle_tree::constraint::root_extend_input,
+    },
 };
 use alloc::vec::Vec;
 use ark_crypto_primitives::SNARK;
@@ -161,7 +164,7 @@ where
 {
     #[inline]
     fn extend(input: &mut Self::Input, next: &VoidNumber) {
-        next.extend_input(input)
+        next.extend_input(input);
     }
 }
 
@@ -171,7 +174,7 @@ where
 {
     #[inline]
     fn extend(input: &mut Self::Input, next: &Root) {
-        crate::crypto::merkle_tree::constraint::root_extend_input(next, input)
+        root_extend_input(next, input);
     }
 }
 
@@ -181,6 +184,6 @@ where
 {
     #[inline]
     fn extend(input: &mut Self::Input, next: &Utxo) {
-        next.extend_input(input)
+        next.extend_input(input);
     }
 }

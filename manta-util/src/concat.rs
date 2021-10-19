@@ -59,17 +59,17 @@ where
 {
     #[inline]
     fn extend(&mut self, buffer: &[T]) {
-        (**self).extend(buffer)
+        (**self).extend(buffer);
     }
 
     #[inline]
     fn reserve(&mut self, additional: usize) {
-        (**self).reserve(additional)
+        (**self).reserve(additional);
     }
 
     #[inline]
     fn shrink_to_fit(&mut self) {
-        (**self).shrink_to_fit()
+        (**self).shrink_to_fit();
     }
 }
 
@@ -79,17 +79,17 @@ where
 {
     #[inline]
     fn extend(&mut self, buffer: &[T]) {
-        self.extend_from_slice(buffer)
+        self.extend_from_slice(buffer);
     }
 
     #[inline]
     fn reserve(&mut self, additional: usize) {
-        self.reserve(additional)
+        self.reserve(additional);
     }
 
     #[inline]
     fn shrink_to_fit(&mut self) {
-        self.shrink_to_fit()
+        self.shrink_to_fit();
     }
 }
 
@@ -125,7 +125,7 @@ pub trait Concat {
         if let Some(capacity) = self.size_hint() {
             accumulator.reserve(capacity);
         }
-        self.concat(accumulator)
+        self.concat(accumulator);
     }
 
     /// Constructs a default accumulator and accumulates over `self`, reserving the appropriate
@@ -149,7 +149,7 @@ impl<T> Concat for [T] {
     where
         A: ConcatAccumulator<T> + ?Sized,
     {
-        accumulator.extend(self)
+        accumulator.extend(self);
     }
 
     #[inline]
@@ -166,7 +166,7 @@ impl<T, const N: usize> Concat for [T; N] {
     where
         A: ConcatAccumulator<T> + ?Sized,
     {
-        accumulator.extend(self)
+        accumulator.extend(self);
     }
 
     #[inline]
@@ -183,7 +183,7 @@ impl<T> Concat for Vec<T> {
     where
         A: ConcatAccumulator<T> + ?Sized,
     {
-        accumulator.extend(self)
+        accumulator.extend(self);
     }
 
     #[inline]

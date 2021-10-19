@@ -136,5 +136,5 @@ where
             .expect("Only valid queries are accepted.")
             .verify(&tree.parameters, &tree.root(), leaf),
         "Path returned from tree was not valid."
-    )
+    );
 }

@@ -147,18 +147,20 @@ pub type InnerDigest<C> = <<C as HashConfiguration>::InnerHash as InnerHash>::Ou
 /// parameter.
 ///
 /// The capacity of a merkle tree with height `H` is `2^(H-1)`.
+#[must_use]
 #[inline]
 pub fn capacity<C>() -> usize
 where
     C: Configuration + ?Sized,
 {
-    1usize << (C::HEIGHT.into() - 1)
+    1_usize << (C::HEIGHT.into() - 1)
 }
 
 /// Returns the path length of the merkle tree with the given [`C::HEIGHT`](Configuration::HEIGHT)
 /// parameter.
 ///
 /// The path length of a merkle tree with height `H` is `H - 2`.
+#[must_use]
 #[inline]
 pub fn path_length<C>() -> usize
 where

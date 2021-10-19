@@ -16,6 +16,8 @@
 
 //! Arkworks Merkle Tree Wrappers
 
+// TODO: Move as much constraint code to `manta_crypto` as possible.
+
 use alloc::{vec, vec::Vec};
 use ark_crypto_primitives::{
     crh::{TwoToOneCRH, CRH},
@@ -29,7 +31,7 @@ use manta_crypto::{
 };
 use manta_util::{as_bytes, Concat};
 
-#[cfg(test)]
+#[cfg(feature = "test")]
 use manta_crypto::rand::Standard;
 
 /// Arkworks Leaf Hash Converter
@@ -211,7 +213,8 @@ where
     type TwoToOneHash = C::InnerHash;
 }
 
-#[cfg(test)]
+#[cfg(feature = "test")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
 impl<C> merkle_tree::test::HashParameterSampling for ConfigConverter<C>
 where
     C: Configuration,
@@ -346,7 +349,7 @@ pub mod constraint {
         ) {
             self.verify(root, path, leaf)
                 .enforce_equal(&Boolean::TRUE)
-                .expect("This is not allowed to fail.")
+                .expect("This is not allowed to fail.");
         }
     }
 

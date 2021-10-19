@@ -246,7 +246,7 @@ pub mod constraint {
             C: ConstraintSystem,
             VV: VerifierVariable<C, Type = V>,
         {
-            verifier.assert_valid_membership_proof(&self.public, &self.secret, item, cs)
+            verifier.assert_valid_membership_proof(&self.public, &self.secret, item, cs);
         }
     }
 

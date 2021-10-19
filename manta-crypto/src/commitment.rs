@@ -78,7 +78,7 @@ where
 {
     #[inline]
     fn extend(input: &mut Self::Input, next: &T) {
-        next.concat(input)
+        next.concat(input);
     }
 }
 
@@ -154,6 +154,6 @@ pub mod test {
         C: CommitmentScheme + Input<T> + ?Sized,
         C::Output: Debug + PartialEq,
     {
-        assert_eq!(&commitment_scheme.commit_one(input, randomness), output)
+        assert_eq!(&commitment_scheme.commit_one(input, randomness), output);
     }
 }

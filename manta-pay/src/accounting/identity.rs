@@ -143,7 +143,7 @@ pub mod constraint {
             cs: &mut ConstraintSystem,
         ) {
             let _ = cs;
-            self.0.assert_verified(public, secret, &concatenate!(item))
+            self.0.assert_verified(public, secret, &concatenate!(item));
         }
     }
 }

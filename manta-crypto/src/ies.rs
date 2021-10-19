@@ -288,7 +288,7 @@ where
         SecretKey::new(self.secret_key)
     }
 
-    /// Encrypts the `plaintext` with `self, returning an [`EncryptedMessage`].
+    /// Encrypts the `plaintext` with `self`, returning an [`EncryptedMessage`].
     #[inline]
     pub fn encrypt<R>(
         self,
@@ -434,6 +434,6 @@ pub mod test {
         assert_eq!(
             plaintext, &reconstructed_plaintext,
             "Plaintext didn't match decrypted ciphertext."
-        )
+        );
     }
 }

@@ -106,7 +106,7 @@ where
         self.0
             .write(&mut buffer)
             .expect("This does not fail. See the implementation of `Write` for `Vec`.");
-        accumulator.extend(&buffer)
+        accumulator.extend(&buffer);
     }
 }
 
@@ -258,7 +258,7 @@ pub mod constraint {
         where
             A: ConcatAccumulator<Self::Item> + ?Sized,
         {
-            self.0.concat(accumulator)
+            self.0.concat(accumulator);
         }
     }
 
@@ -439,7 +439,7 @@ pub mod constraint {
         where
             A: ConcatAccumulator<Self::Item> + ?Sized,
         {
-            accumulator.extend(&self.0.to_bytes().expect("This is not allowed to fail."))
+            accumulator.extend(&self.0.to_bytes().expect("This is not allowed to fail."));
         }
     }
 
@@ -531,7 +531,7 @@ pub mod constraint {
                     .0
                     .to_field_elements()
                     .expect("Conversion to constraint field elements is not allowed to fail."),
-            )
+            );
         }
     }
 
@@ -548,7 +548,7 @@ pub mod constraint {
         where
             C::Affine: ToConstraintField<ConstraintField<C>>,
         {
-            self.0.extend_input(input)
+            self.0.extend_input(input);
         }
     }
 

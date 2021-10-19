@@ -622,13 +622,8 @@ impl<const N: usize> TryFrom<[Asset; N]> for AssetCollection<N> {
         let mut base_id = None;
         let values = fallible_array_map(array, move |asset| {
             let result = match base_id {
-                Some(id) => {
-                    if id == asset.id {
-                        Ok(asset.value)
-                    } else {
-                        Err(counter)
-                    }
-                }
+                Some(id) if id == asset.id => Ok(asset.value),
+                Some(_) => Err(counter),
                 _ => {
                     base_id = Some(asset.id);
                     Ok(asset.value)
@@ -681,7 +676,7 @@ pub trait AssetMap: Default {
         I: IntoIterator<Item = (Self::Key, AssetBalance)>,
     {
         iter.into_iter()
-            .for_each(move |(key, value)| self.insert(key, id.with(value)))
+            .for_each(move |(key, value)| self.insert(key, id.with(value)));
     }
 
     /// Inserts all of the assets in `iter` using a fixed `id` and zero value.
@@ -691,7 +686,7 @@ pub trait AssetMap: Default {
         I: IntoIterator<Item = Self::Key>,
     {
         iter.into_iter()
-            .for_each(move |key| self.insert(key, Asset::zero(id)))
+            .for_each(move |key| self.insert(key, Asset::zero(id)));
     }
 
     /// Removes the `key` from the map.
@@ -702,7 +697,7 @@ pub trait AssetMap: Default {
     where
         I: IntoIterator<Item = Self::Key>,
     {
-        iter.into_iter().for_each(move |key| self.remove(key))
+        iter.into_iter().for_each(move |key| self.remove(key));
     }
 }
 
@@ -874,7 +869,7 @@ mod test {
     fn test_change_iterator() {
         let mut rng = thread_rng();
         for _ in 0..0xFFF {
-            let amount = AssetBalance(rng.gen_range(0..0xFFFFFF));
+            let amount = AssetBalance(rng.gen_range(0..0xFFFF_FFFF));
             let n = rng.gen_range(1..0xFFFF);
             let change = amount.make_change(n).unwrap().collect::<Vec<_>>();
             assert_eq!(n, change.len());

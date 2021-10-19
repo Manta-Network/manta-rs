@@ -359,7 +359,7 @@ pub mod cocoon {
 
             // Close the testing directory.
             dir.close()
-                .expect("Temporary directory should have closed.")
+                .expect("Temporary directory should have closed.");
         }
     }
 }

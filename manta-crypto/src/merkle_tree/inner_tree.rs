@@ -176,7 +176,7 @@ impl Iterator for InnerNodeIter {
 
     #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
-        let len = self.node.map(move |n| n.depth + 1).unwrap_or(0);
+        let len = self.node.map_or(0, move |n| n.depth + 1);
         (len, Some(len))
     }
 }
@@ -234,7 +234,7 @@ where
 
     #[inline]
     fn set(&mut self, index: usize, inner_digest: InnerDigest<C>) {
-        (**self).set(index, inner_digest)
+        (**self).set(index, inner_digest);
     }
 }
 
@@ -464,7 +464,7 @@ where
     /// Sets the current root to `root`.
     #[inline]
     fn set_root(&mut self, root: InnerDigest<C>) {
-        self.map.set(0, root)
+        self.map.set(0, root);
     }
 
     /// Inserts the new `inner_digest` at `node` in the tree, and returns a reference to
@@ -728,7 +728,7 @@ where
     /// Inserts the `base` inner digest corresponding to the leaf at `leaf_index` into the tree.
     #[inline]
     pub fn insert(&mut self, parameters: &Parameters<C>, leaf_index: Node, base: InnerDigest<C>) {
-        self.inner_tree.insert(parameters, leaf_index, base)
+        self.inner_tree.insert(parameters, leaf_index, base);
     }
 
     /// Computes the inner path of the leaf given by `leaf_index` without checking if

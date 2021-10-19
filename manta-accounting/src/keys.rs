@@ -206,7 +206,7 @@ where
     /// Increments the internal `index`.
     #[inline]
     pub fn increment(&mut self) {
-        self.index.increment()
+        self.index.increment();
     }
 
     /// Reduces `self` into an [`Index`] with [`KeyKind`] as the key kind.
@@ -837,7 +837,7 @@ where
     #[inline]
     pub fn conditional_increment_external_range(&mut self, index: &D::Index) {
         if &self.external_indices.start == index {
-            self.external_indices.start.increment()
+            self.external_indices.start.increment();
         }
     }
 
