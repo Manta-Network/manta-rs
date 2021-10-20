@@ -30,7 +30,7 @@ use crate::{
     },
 };
 use alloc::vec::Vec;
-use core::{fmt::Debug, hash::Hash, ops::AddAssign};
+use core::{fmt::Debug, hash::Hash, ops::Add};
 use manta_crypto::{
     constraint::{
         self,
@@ -82,7 +82,7 @@ pub trait Configuration:
     /// Asset Balance Variable
     type AssetBalanceVar: Variable<ConstraintSystem<Self>, Mode = PublicOrSecret, Type = AssetBalance>
         + Equal<ConstraintSystem<Self>>
-        + AddAssign;
+        + Add<Output = Self::AssetBalanceVar>;
 
     /// Integrated Encryption Scheme for [`Asset`]
     type IntegratedEncryptionScheme: IntegratedEncryptionScheme<Plaintext = Asset>;
@@ -726,29 +726,31 @@ where
         utxo_set_verifier: C::UtxoSetVerifierVar,
         cs: &mut ConstraintSystem<C>,
     ) {
-        let mut input_sum = C::AssetBalanceVar::from_default(cs, Secret);
-        let mut output_sum = C::AssetBalanceVar::from_default(cs, Secret);
-        let mut secret_asset_ids = Vec::new();
+        let mut secret_asset_ids = Vec::with_capacity(SENDERS + RECEIVERS);
 
-        for source in participants.sources {
-            input_sum += source;
-        }
+        let input_sum = participants
+            .senders
+            .into_iter()
+            .map(|s| {
+                let asset = s.get_well_formed_asset(cs, &commitment_scheme, &utxo_set_verifier);
+                secret_asset_ids.push(asset.id);
+                asset.value
+            })
+            .chain(participants.sources)
+            .reduce(Add::add)
+            .unwrap();
 
-        for sender in participants.senders {
-            let asset = sender.get_well_formed_asset(cs, &commitment_scheme, &utxo_set_verifier);
-            input_sum += asset.value;
-            secret_asset_ids.push(asset.id);
-        }
-
-        for receiver in participants.receivers {
-            let asset = receiver.get_well_formed_asset(cs, &commitment_scheme);
-            output_sum += asset.value;
-            secret_asset_ids.push(asset.id);
-        }
-
-        for sink in participants.sinks {
-            output_sum += sink;
-        }
+        let output_sum = participants
+            .receivers
+            .into_iter()
+            .map(|r| {
+                let asset = r.get_well_formed_asset(cs, &commitment_scheme);
+                secret_asset_ids.push(asset.id);
+                asset.value
+            })
+            .chain(participants.sinks)
+            .reduce(Add::add)
+            .unwrap();
 
         cs.assert_eq(&input_sum, &output_sum);
 

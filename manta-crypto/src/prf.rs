@@ -22,14 +22,11 @@ pub trait PseudorandomFunctionFamily {
     type Seed: ?Sized;
 
     /// PRF Input Type
-    type Input;
+    type Input: ?Sized;
 
     /// PRF Output Type
     type Output;
 
     /// Evaluates the PRF at the `seed` and `input`.
     fn evaluate(seed: &Self::Seed, input: &Self::Input) -> Self::Output;
-
-    /// Evaluates the PRF at the `seed` with input set to a zero value.
-    fn evaluate_zero(seed: &Self::Seed) -> Self::Output;
 }

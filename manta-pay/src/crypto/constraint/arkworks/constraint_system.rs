@@ -19,10 +19,13 @@
 use alloc::{vec, vec::Vec};
 use ark_ff::{fields::Field, PrimeField};
 use ark_r1cs_std::{
-    alloc::AllocVar, bits::boolean::Boolean, eq::EqGadget, fields::fp::FpVar, uint8::UInt8, R1CSVar,
+    alloc::AllocVar, bits::boolean::Boolean, eq::EqGadget, fields::fp::FpVar, uint8::UInt8,
 };
 use ark_relations::{ns, r1cs as ark_r1cs};
-use core::{borrow::Borrow, ops::AddAssign};
+use core::{
+    borrow::Borrow,
+    ops::{Add, AddAssign},
+};
 use manta_accounting::{AssetBalance, AssetId};
 use manta_crypto::constraint::{
     measure::Measure, reflection::HasAllocation, types::Bool, Allocation, AllocationMode,
@@ -270,45 +273,6 @@ pub struct ByteArrayVar<F, const N: usize>(Vec<UInt8<F>>)
 where
     F: Field;
 
-impl<F, const N: usize> ByteArrayVar<F, N>
-where
-    F: Field,
-{
-    /// Returns an reference to the internal arkworks constriant system.
-    #[inline]
-    pub(crate) fn constraint_system_ref(&self) -> ark_r1cs::ConstraintSystemRef<F> {
-        self.0.cs()
-    }
-
-    /// Allocates a new byte vector according to the `allocation` entry.
-    #[inline]
-    pub(crate) fn allocate(
-        cs: &ark_r1cs::ConstraintSystemRef<F>,
-        allocation: Allocation<[u8; N], PublicOrSecret>,
-    ) -> Self
-    where
-        F: PrimeField,
-    {
-        Self(
-            match allocation {
-                Allocation::Known(this, PublicOrSecret::Public) => {
-                    UInt8::new_input_vec(ns!(cs, "byte array public input"), this)
-                }
-                Allocation::Known(this, PublicOrSecret::Secret) => {
-                    UInt8::new_witness_vec(ns!(cs, "byte array secret witness"), this)
-                }
-                Allocation::Unknown(PublicOrSecret::Public) => {
-                    UInt8::new_input_vec(ns!(cs, "byte array public input"), &[0; N])
-                }
-                Allocation::Unknown(PublicOrSecret::Secret) => {
-                    UInt8::new_witness_vec(ns!(cs, "byte array secret witness"), &vec![None; N])
-                }
-            }
-            .expect("Variable allocation is not allowed to fail."),
-        )
-    }
-}
-
 impl<F, const N: usize> AsRef<[UInt8<F>]> for ByteArrayVar<F, N>
 where
     F: Field,
@@ -357,7 +321,23 @@ where
         cs: &mut ArkConstraintSystem<F>,
         allocation: Allocation<Self::Type, Self::Mode>,
     ) -> Self {
-        Self::allocate(&cs.cs, allocation)
+        Self(
+            match allocation {
+                Allocation::Known(this, PublicOrSecret::Public) => {
+                    UInt8::new_input_vec(ns!(cs.cs, "byte array public input"), this)
+                }
+                Allocation::Known(this, PublicOrSecret::Secret) => {
+                    UInt8::new_witness_vec(ns!(cs.cs, "byte array secret witness"), this)
+                }
+                Allocation::Unknown(PublicOrSecret::Public) => {
+                    UInt8::new_input_vec(ns!(cs.cs, "byte array public input"), &[0; N])
+                }
+                Allocation::Unknown(PublicOrSecret::Secret) => {
+                    UInt8::new_witness_vec(ns!(cs.cs, "byte array secret witness"), &vec![None; N])
+                }
+            }
+            .expect("Variable allocation is not allowed to fail."),
+        )
     }
 }
 
@@ -468,7 +448,7 @@ where
     field_point: FpVar<F>,
 
     /// Byte Array
-    bytes: ByteArrayVar<F, { AssetBalance::SIZE }>,
+    bytes: Option<ByteArrayVar<F, { AssetBalance::SIZE }>>,
 }
 
 impl<F> AssetBalanceVar<F>
@@ -477,7 +457,7 @@ where
 {
     /// Builds a new [`AssetBalanceVar`] from `field_point` and `bytes`.
     #[inline]
-    fn new(field_point: FpVar<F>, bytes: ByteArrayVar<F, { AssetBalance::SIZE }>) -> Self {
+    fn new(field_point: FpVar<F>, bytes: Option<ByteArrayVar<F, { AssetBalance::SIZE }>>) -> Self {
         Self { field_point, bytes }
     }
 }
@@ -493,7 +473,9 @@ where
     where
         A: ConcatAccumulator<Self::Item> + ?Sized,
     {
-        self.bytes.concat(accumulator);
+        if let Some(bytes) = &self.bytes {
+            bytes.concat(accumulator);
+        }
     }
 }
 
@@ -513,11 +495,11 @@ where
         match allocation {
             Allocation::Known(this, mode) => Self::new(
                 Fp(F::from(this.0)).as_known(cs, mode),
-                this.into_bytes().as_known(cs, mode),
+                Some(this.into_bytes().as_known(cs, mode)),
             ),
             Allocation::Unknown(mode) => Self::new(
                 Fp::as_unknown(cs, mode),
-                <[u8; AssetBalance::SIZE]>::as_unknown(cs, mode),
+                Some(<[u8; AssetBalance::SIZE]>::as_unknown(cs, mode)),
             ),
         }
     }
@@ -542,6 +524,19 @@ where
         lhs.field_point
             .is_eq(&rhs.field_point)
             .expect("Equality checking is not allowed to fail.")
+    }
+}
+
+impl<F> Add for AssetBalanceVar<F>
+where
+    F: PrimeField,
+{
+    type Output = Self;
+
+    #[inline]
+    fn add(self, rhs: Self) -> Self {
+        // TODO: This is not a good abstraction.
+        Self::new(self.field_point + rhs.field_point, None)
     }
 }
 

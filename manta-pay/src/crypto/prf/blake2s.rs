@@ -126,11 +126,6 @@ impl PseudorandomFunctionFamily for Blake2s {
                 .expect("As of arkworks 0.3.0, this never fails."),
         )
     }
-
-    #[inline]
-    fn evaluate_zero(seed: &Self::Seed) -> Self::Output {
-        Self::evaluate(seed, &Default::default())
-    }
 }
 
 /// Blake2s PRF Constraint System Implementations
@@ -395,18 +390,6 @@ pub mod constraint {
             Blake2sOutputVar(
                 ArkBlake2sVar::evaluate(seed.0.as_ref(), input.0.as_ref())
                     .expect("Failure outcomes are not accepted."),
-            )
-        }
-
-        #[inline]
-        fn evaluate_zero(seed: &Self::Seed) -> Self::Output {
-            // FIXME: This is super hacky! Find a more sustainable way to do this.
-            Self::evaluate(
-                seed,
-                &Blake2sInputVar(ByteArrayVar::allocate(
-                    &seed.0.constraint_system_ref(),
-                    Allocation::Known(&[0; 32], Secret.into()),
-                )),
             )
         }
     }

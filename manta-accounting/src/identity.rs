@@ -56,7 +56,6 @@ pub trait Configuration {
 
     /// Commitment Scheme Type
     type CommitmentScheme: CommitmentScheme<Randomness = Self::CommitmentSchemeRandomness>
-        + CommitmentInput<PublicKey<Self>>
         + CommitmentInput<VoidNumberGenerator<Self>>
         + CommitmentInput<Asset>
         + CommitmentInput<VoidNumberCommitment<Self>>;
@@ -84,9 +83,6 @@ type CommitmentSchemeOutput<C> =
 /// Secret Key Type
 pub type SecretKey<C> = <C as Configuration>::SecretKey;
 
-/// Public Key Type
-pub type PublicKey<C> = PseudorandomFunctionFamilyOutput<C>;
-
 /// Void Number Generator Type
 pub type VoidNumberGenerator<C> = PseudorandomFunctionFamilyInput<C>;
 
@@ -105,23 +101,18 @@ pub type UtxoRandomness<C> = CommitmentSchemeRandomness<C>;
 /// UTXO Type
 pub type Utxo<C> = CommitmentSchemeOutput<C>;
 
-/// Generates a void number commitment from `public_key`, `void_number_generator`, and
+/// Generates a void number commitment from `void_number_generator` and
 /// `void_number_commitment_randomness`.
 #[inline]
-pub fn generate_void_number_commitment<CS, PK, VNG>(
+pub fn generate_void_number_commitment<CS, VNG>(
     commitment_scheme: &CS,
-    public_key: &PK,
     void_number_generator: &VNG,
     void_number_commitment_randomness: &CS::Randomness,
 ) -> CS::Output
 where
-    CS: CommitmentScheme + CommitmentInput<PK> + CommitmentInput<VNG>,
+    CS: CommitmentScheme + CommitmentInput<VNG>,
 {
-    commitment_scheme
-        .start()
-        .update(public_key)
-        .update(void_number_generator)
-        .commit(void_number_commitment_randomness)
+    commitment_scheme.commit_one(void_number_generator, void_number_commitment_randomness)
 }
 
 /// Generates a UTXO from `asset`, `void_number_commitment`, and `utxo_randomness`.
@@ -199,16 +190,14 @@ where
         }
     }
 
-    /// Generates a new void number commitment using `public_key`.
+    /// Generates a new void number commitment.
     #[inline]
     pub fn void_number_commitment(
         &self,
         commitment_scheme: &C::CommitmentScheme,
-        public_key: &PublicKey<C>,
     ) -> VoidNumberCommitment<C> {
         generate_void_number_commitment(
             commitment_scheme,
-            public_key,
             &self.void_number_generator,
             &self.void_number_commitment_randomness,
         )
@@ -321,12 +310,6 @@ where
         (parameters, I::generate_secret_key(&mut rng))
     }
 
-    /// Returns the public key associated with this identity.
-    #[inline]
-    fn public_key(&self) -> PublicKey<C> {
-        C::PseudorandomFunctionFamily::evaluate_zero(&self.secret_key)
-    }
-
     /// Generates a new void number using the `void_number_generator` parameter.
     #[inline]
     fn void_number(&self, void_number_generator: &VoidNumberGenerator<C>) -> VoidNumber<C> {
@@ -341,22 +324,20 @@ where
         commitment_scheme: &C::CommitmentScheme,
         parameters: &AssetParameters<C>,
     ) -> VoidNumberCommitment<C> {
-        parameters.void_number_commitment(commitment_scheme, &self.public_key())
+        parameters.void_number_commitment(commitment_scheme)
     }
 
-    /// Returns the [`PublicKey`], [`VoidNumberCommitment`], and [`Utxo`] for this identity.
+    /// Returns the [`VoidNumberCommitment`], and [`Utxo`] for this identity.
     #[inline]
     fn construct_utxo(
         &self,
         commitment_scheme: &C::CommitmentScheme,
         asset: &Asset,
         parameters: &AssetParameters<C>,
-    ) -> (PublicKey<C>, VoidNumberCommitment<C>, Utxo<C>) {
-        let public_key = self.public_key();
-        let void_number_commitment =
-            parameters.void_number_commitment(commitment_scheme, &public_key);
+    ) -> (VoidNumberCommitment<C>, Utxo<C>) {
+        let void_number_commitment = parameters.void_number_commitment(commitment_scheme);
         let utxo = parameters.utxo(commitment_scheme, asset, &void_number_commitment);
-        (public_key, void_number_commitment, utxo)
+        (void_number_commitment, utxo)
     }
 
     /// Builds a new [`PreSender`] for the given `asset`.
@@ -367,12 +348,11 @@ where
         asset: Asset,
     ) -> PreSender<C> {
         let parameters = self.parameters();
-        let (public_key, void_number_commitment, utxo) =
+        let (void_number_commitment, utxo) =
             self.construct_utxo(commitment_scheme, &asset, &parameters);
         PreSender {
             void_number: self.void_number(&parameters.void_number_generator),
             secret_key: self.secret_key,
-            public_key,
             asset,
             parameters,
             void_number_commitment,
@@ -392,13 +372,12 @@ where
         S: VerifiedSet<Item = Utxo<C>>,
     {
         let parameters = self.parameters();
-        let (public_key, void_number_commitment, utxo) =
+        let (void_number_commitment, utxo) =
             self.construct_utxo(commitment_scheme, &asset, &parameters);
         Some(Sender {
             utxo_membership_proof: utxo_set.get_membership_proof(&utxo)?,
             void_number: self.void_number(&parameters.void_number_generator),
             secret_key: self.secret_key,
-            public_key,
             asset,
             parameters,
             void_number_commitment,
@@ -846,9 +825,6 @@ where
     /// Secret Key
     secret_key: SecretKey<C>,
 
-    /// Public Key
-    public_key: PublicKey<C>,
-
     /// Asset
     asset: Asset,
 
@@ -916,7 +892,6 @@ where
     {
         Sender {
             secret_key: self.secret_key,
-            public_key: self.public_key,
             asset: self.asset,
             parameters: self.parameters,
             void_number: self.void_number,
@@ -959,9 +934,6 @@ where
 {
     /// Secret Key
     secret_key: SecretKey<C>,
-
-    /// Public Key
-    public_key: PublicKey<C>,
 
     /// Asset
     asset: Asset,
@@ -1018,7 +990,6 @@ where
     pub fn downgrade(self) -> PreSender<C> {
         PreSender {
             secret_key: self.secret_key,
-            public_key: self.public_key,
             asset: self.asset,
             parameters: self.parameters,
             void_number: self.void_number,
@@ -1480,8 +1451,7 @@ pub mod constraint {
         type CommitmentSchemeVar: CommitmentScheme<
                 Randomness = Self::CommitmentSchemeRandomnessVar,
                 Output = Self::CommitmentSchemeOutputVar,
-            > + CommitmentInput<PublicKeyVar<Self>>
-            + CommitmentInput<VoidNumberGeneratorVar<Self>>
+            > + CommitmentInput<VoidNumberGeneratorVar<Self>>
             + CommitmentInput<AssetVar<Self::ConstraintSystem>>
             + CommitmentInput<VoidNumberCommitmentVar<Self>>
             + Variable<Self::ConstraintSystem, Type = Self::CommitmentScheme, Mode = Constant>;
@@ -1503,9 +1473,6 @@ pub mod constraint {
 
     /// Secret Key Variable Type
     pub type SecretKeyVar<C> = <C as Configuration>::SecretKeyVar;
-
-    /// Public Key Variable Type
-    pub type PublicKeyVar<C> = PseudorandomFunctionFamilyOutputVar<C>;
 
     /// Void Number Generator Variable Type
     pub type VoidNumberGeneratorVar<C> = PseudorandomFunctionFamilyInputVar<C>;
@@ -1613,9 +1580,6 @@ pub mod constraint {
         /// Secret Key
         secret_key: SecretKeyVar<C>,
 
-        /// Public Key
-        public_key: PublicKeyVar<C>,
-
         /// Asset
         asset: AssetVar<C::ConstraintSystem>,
 
@@ -1653,25 +1617,26 @@ pub mod constraint {
             V: VerifierVariable<C::ConstraintSystem, ItemVar = UtxoVar<C>, Type = S::Verifier>,
         {
             cs.assert_eq(
-                &self.public_key,
-                &C::PseudorandomFunctionFamilyVar::evaluate_zero(&self.secret_key),
-            );
-            cs.assert_eq(
                 &self.void_number,
                 &C::PseudorandomFunctionFamilyVar::evaluate(
                     &self.secret_key,
                     &self.parameters.void_number_generator,
                 ),
             );
+
+            // TODO: Prepare commitment input during allocation instead of here, could reduce
+            //       constraint/variable count.
             cs.assert_eq(
                 &self.void_number_commitment,
                 &generate_void_number_commitment(
                     commitment_scheme,
-                    &self.public_key,
                     &self.parameters.void_number_generator,
                     &self.parameters.void_number_commitment_randomness,
                 ),
             );
+
+            // TODO: Prepare commitment input during allocation instead of here, could reduce
+            //       constraint/variable count.
             cs.assert_eq(
                 &self.utxo,
                 &generate_utxo(
@@ -1681,6 +1646,7 @@ pub mod constraint {
                     &self.parameters.utxo_randomness,
                 ),
             );
+
             self.utxo_membership_proof
                 .assert_validity(utxo_set_verifier, &self.utxo, cs);
             self.asset
@@ -1706,7 +1672,6 @@ pub mod constraint {
             match allocation {
                 Allocation::Known(this, mode) => Self {
                     secret_key: SecretKeyVar::<C>::new_known(cs, &this.secret_key, mode),
-                    public_key: PublicKeyVar::<C>::new_known(cs, &this.public_key, Secret),
                     asset: this.asset.known(cs, mode),
                     parameters: this.parameters.known(cs, mode),
                     void_number: VoidNumberVar::<C>::new_known(cs, &this.void_number, Public),
@@ -1720,7 +1685,6 @@ pub mod constraint {
                 },
                 Allocation::Unknown(mode) => Self {
                     secret_key: SecretKeyVar::<C>::new_unknown(cs, mode),
-                    public_key: PublicKeyVar::<C>::new_unknown(cs, Secret),
                     asset: Asset::unknown(cs, mode),
                     parameters: AssetParameters::unknown(cs, mode),
                     void_number: VoidNumberVar::<C>::new_unknown(cs, Public),
