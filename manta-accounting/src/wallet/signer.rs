@@ -22,6 +22,9 @@
 //       `sign`. Will have to upgrade `Rollback` and `manta_crypto::merkle_tree::fork` as well.
 // TODO: Add checkpointing/garbage-collection in `utxo_set` so we can remove old UTXOs once they
 //       are irrelevant. Once we create a sender and its transaction succeeds we can drop the UTXO.
+// TODO: Should have a mode on the signer where we return a generic error which reveals no detail
+//       about what went wrong during signing. The kind of error returned from a signing could
+//       reveal information about the internal state (privacy leak, not a secrecy leak).
 
 use crate::{
     asset::{Asset, AssetBalance, AssetId, AssetMap},
@@ -729,6 +732,15 @@ where
             if let Some(KeyOwned { inner, index }) =
                 self.signer.find_external_asset::<C>(&encrypted_asset)
             {
+                // TODO: We can actually check at this point whether the `utxo` is valid, by
+                //       computing the utxo that lives in the sender of `index`, this way, a future
+                //       call to `try_upgrade` should never fail. Also, if the `utxo` is replaced
+                //       by the encrypted note (in a future version of the protocol), we can
+                //       even remove the entire failure branch alltogether since the ledger would
+                //       have to verify the correctness of the encrypted note before storing it.
+                //       Currently, if the `utxo` doesn't match, it should just be stored in the
+                //       verified set as non-provable since it can never be used, it is burnt.
+                //
                 assets.push(inner);
                 self.assets.insert(index.reduce(), inner);
                 self.utxo_set.insert_provable(&utxo);

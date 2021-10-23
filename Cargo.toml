@@ -10,7 +10,7 @@ homepage = "https://github.com/Manta-Network"
 documentation = "https://github.com/Manta-Network/manta-rs"
 categories = [""]
 keywords = [""]
-description = "Manta Network main crate."
+description = "Rust Crates for the Manta Network Ecosystem"
 publish = false
 
 [package.metadata.docs.rs]
@@ -23,6 +23,17 @@ rustdoc-args = ["--cfg", "doc_cfg"]
 is-it-maintained-issue-resolution = { repository = "Manta-Network/manta-rs" }
 is-it-maintained-open-issues = { repository = "Manta-Network/manta-rs" }
 maintenance = { status = "actively-developed" }
+
+[workspace]
+resolver = "2"
+members = [
+    "manta-accounting",
+    "manta-cli",
+    "manta-codec",
+    "manta-crypto",
+    "manta-pay",
+    "manta-util",
+]
 
 [features]
 # Default Features
@@ -44,15 +55,4 @@ parity-scale-codec = { version = "2.2.0", default-features = false }
 [dev-dependencies]
 manta-accounting = { path = "manta-accounting", features = ["test"] }
 manta-crypto = { path = "manta-crypto", features = ["test"] }
-
-[workspace]
-resolver = "2"
-members = [
-    "manta-accounting",
-    "manta-cli",
-    "manta-codec",
-    "manta-crypto",
-    "manta-pay",
-    "manta-util",
-]
 
