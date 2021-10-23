@@ -462,8 +462,6 @@ where
         C: transfer::Configuration<SecretKey = D::SecretKey>,
         R: CryptoRng + RngCore + ?Sized,
     {
-        // TODO: Simplify this so that `into_shielded` and `into_receiver` can be replaced by a
-        //       one-step `into_receiver` call on `Identity`.
         self.next_internal_identity()
             .map_err(InternalIdentityError::SecretKeyError)?
             .map_ok(move |identity| identity.into_receiver(commitment_scheme, asset, rng))
@@ -732,14 +730,19 @@ where
             if let Some(KeyOwned { inner, index }) =
                 self.signer.find_external_asset::<C>(&encrypted_asset)
             {
-                // TODO: We can actually check at this point whether the `utxo` is valid, by
-                //       computing the utxo that lives in the sender of `index`, this way, a future
-                //       call to `try_upgrade` should never fail. Also, if the `utxo` is replaced
-                //       by the encrypted note (in a future version of the protocol), we can
-                //       even remove the entire failure branch alltogether since the ledger would
-                //       have to verify the correctness of the encrypted note before storing it.
-                //       Currently, if the `utxo` doesn't match, it should just be stored in the
-                //       verified set as non-provable since it can never be used, it is burnt.
+                // FIXME: We need to actually check at this point whether the `utxo` is valid, by
+                //        computing the UTXO that lives at the `Sender` of `index`, this way, a
+                //        future call to `try_upgrade` will never fail. If the call to `try_upgrade`
+                //        fails, we need to mark the coin as burnt, or it will show up again in
+                //        later calls to the signer (during coin selection). Currently, if the
+                //        `utxo` does not match it should be stored in the verified set as
+                //        non-provable and the asset should not be added to the asset map, since the
+                //        asset is effectively burnt.
+                //
+                //        If, in a future version of the protocol, the `utxo` is replaced by a
+                //        ZKP-compatible  encrypted note, we might be able to remove this check
+                //        since the ledger would have to guarantee that the asset is not burnt,
+                //        whereas, right now, it does not.
                 //
                 assets.push(inner);
                 self.assets.insert(index.reduce(), inner);
