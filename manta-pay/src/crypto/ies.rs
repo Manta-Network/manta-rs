@@ -27,9 +27,8 @@ use blake2::{Blake2s, Digest};
 use generic_array::GenericArray;
 use manta_accounting::Asset;
 use manta_crypto::{
-    ies::{self, KeyPair},
+    encryption::ies::{self, IntegratedEncryptionScheme, KeyPair},
     rand::{CryptoRng, RngCore},
-    IntegratedEncryptionScheme,
 };
 use manta_util::into_array_unchecked;
 use x25519_dalek::{EphemeralSecret, PublicKey as PubKey, StaticSecret};

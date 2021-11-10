@@ -738,12 +738,6 @@ where
                 //        `utxo` does not match it should be stored in the verified set as
                 //        non-provable and the asset should not be added to the asset map, since the
                 //        asset is effectively burnt.
-                //
-                //        If, in a future version of the protocol, the `utxo` is replaced by a
-                //        ZKP-compatible  encrypted note, we might be able to remove this check
-                //        since the ledger would have to guarantee that the asset is not burnt,
-                //        whereas, right now, it does not.
-                //
                 assets.push(inner);
                 self.assets.insert(index.reduce(), inner);
                 self.utxo_set.insert_provable(&utxo);

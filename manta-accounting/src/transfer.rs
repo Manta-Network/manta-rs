@@ -38,7 +38,7 @@ use manta_crypto::{
         Allocation, Constant, ConstraintSystem as _, Derived, Equal, Input as ProofSystemInput,
         ProofSystem, Public, PublicOrSecret, Secret, Variable, VariableSource,
     },
-    ies::{EncryptedMessage, IntegratedEncryptionScheme},
+    encryption::ies::{EncryptedMessage, IntegratedEncryptionScheme},
     rand::{CryptoRng, RngCore},
     set::{constraint::VerifierVariable, VerifiedSet},
 };
@@ -1048,6 +1048,8 @@ where
     where
         L: TransferLedger<C>,
     {
+        // FIXME: The ledger needs to check whether or not senders and receivers are unique. Should
+        //        this be done in this method or is it something the ledger can do "per-validation".
         let source_posting_keys = ledger
             .check_source_balances(self.sources)
             .map_err(TransferPostError::InsufficientPublicBalance)?;

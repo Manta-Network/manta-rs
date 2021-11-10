@@ -14,23 +14,8 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Cryptographic Primitives Library
+//! Encryption Primitives
 
-#![cfg_attr(not(feature = "std"), no_std)]
-#![cfg_attr(doc_cfg, feature(doc_cfg))]
-#![forbid(rustdoc::broken_intra_doc_links)]
-#![forbid(missing_docs)]
+pub mod ies;
 
-extern crate alloc;
-
-mod prf;
-
-pub mod commitment;
-pub mod constraint;
-pub mod encryption;
-pub mod merkle_tree;
-pub mod rand;
-pub mod set;
-
-pub use commitment::prelude::*;
-pub use prf::*;
+pub use ies::prelude::*;

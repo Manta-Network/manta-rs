@@ -26,7 +26,7 @@ use crate::asset::{Asset, AssetBalance, AssetId, AssetVar};
 use core::{fmt::Debug, hash::Hash, marker::PhantomData};
 use manta_crypto::{
     commitment::{CommitmentScheme, Input as CommitmentInput},
-    ies::{self, EncryptedMessage, IntegratedEncryptionScheme},
+    encryption::ies::{self, EncryptedMessage, IntegratedEncryptionScheme},
     rand::{CryptoRng, Rand, RngCore, Sample, SeedableRng, Standard, TrySample},
     set::{MembershipProof, VerifiedSet},
     PseudorandomFunctionFamily,
