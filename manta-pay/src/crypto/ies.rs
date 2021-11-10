@@ -190,7 +190,7 @@ impl IntegratedEncryptionScheme for IES {
 #[cfg(test)]
 mod test {
     use super::*;
-    use manta_crypto::{ies::test as ies_test, rand::Rand};
+    use manta_crypto::{encryption::ies::test as ies_test, rand::Rand};
     use rand::thread_rng;
 
     /// Tests encryption/decryption of a random asset.
