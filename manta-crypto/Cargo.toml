@@ -26,7 +26,7 @@ maintenance = { status = "actively-developed" }
 
 [features]
 # Constraint System Gadgets
-# TODO: constraints = []
+constraint = []
 
 # Enable `getrandom` Entropy Source
 getrandom = ["rand_core/getrandom"]

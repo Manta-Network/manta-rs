@@ -25,6 +25,7 @@ extern crate alloc;
 
 mod prf;
 
+pub mod accumulator;
 pub mod commitment;
 pub mod constraint;
 pub mod encryption;

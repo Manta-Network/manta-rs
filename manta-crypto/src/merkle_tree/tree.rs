@@ -24,11 +24,12 @@
 //       creating a new one from scratch (for inner digests)?
 
 use crate::{
+    accumulator::{Accumulator, MembershipProof, OptimizedAccumulator, Verifier},
     merkle_tree::{
         fork::{self, Trunk},
         path::{CurrentPath, Path},
     },
-    set::{MembershipProof, VerifiedSet, Verifier},
+    set,
 };
 use core::{fmt::Debug, hash::Hash, marker::PhantomData};
 
@@ -494,7 +495,7 @@ where
     }
 }
 
-impl<C> Verifier for Parameters<C>
+impl<C> set::Verifier for Parameters<C>
 where
     C: Configuration + ?Sized,
 {
@@ -507,6 +508,27 @@ where
     #[inline]
     fn verify(&self, public: &Self::Public, secret: &Self::Secret, item: &Self::Item) -> bool {
         self.verify_path(secret, public, item)
+    }
+}
+
+impl<C> Verifier for Parameters<C>
+where
+    C: Configuration + ?Sized,
+{
+    type Item = Leaf<C>;
+
+    type Checkpoint = Root<C>;
+
+    type Witness = Path<C>;
+
+    #[inline]
+    fn verify(
+        &self,
+        item: &Self::Item,
+        checkpoint: &Self::Checkpoint,
+        witness: &Self::Witness,
+    ) -> bool {
+        self.verify_path(witness, checkpoint, item)
     }
 }
 
@@ -801,7 +823,7 @@ where
     }
 }
 
-impl<C, T> VerifiedSet for MerkleTree<C, T>
+impl<C, T> set::VerifiedSet for MerkleTree<C, T>
 where
     C: Configuration + ?Sized,
     T: Tree<C> + WithProofs<C>,
@@ -850,7 +872,46 @@ where
     }
 
     #[inline]
-    fn get_membership_proof(&self, item: &Self::Item) -> Option<MembershipProof<Self::Verifier>> {
+    fn get_membership_proof(
+        &self,
+        item: &Self::Item,
+    ) -> Option<set::MembershipProof<Self::Verifier>> {
+        Some(set::MembershipProof::new(
+            self.root(),
+            self.path(self.index_of(&self.parameters.digest(item))?)
+                .ok()?,
+        ))
+    }
+
+    #[inline]
+    fn contains(&self, item: &Self::Item) -> bool {
+        self.contains(&self.parameters.digest(item))
+    }
+}
+
+impl<C, T> Accumulator for MerkleTree<C, T>
+where
+    C: Configuration + ?Sized,
+    T: Tree<C> + WithProofs<C>,
+{
+    type Item = Leaf<C>;
+
+    type Checkpoint = Root<C>;
+
+    type Witness = Path<C>;
+
+    #[inline]
+    fn matching_checkpoint(&self, checkpoint: &Self::Checkpoint) -> bool {
+        self.matching_root(checkpoint)
+    }
+
+    #[inline]
+    fn insert(&mut self, item: &Self::Item) -> bool {
+        self.push_provable(item)
+    }
+
+    #[inline]
+    fn prove(&self, item: &Self::Item) -> Option<MembershipProof<Self>> {
         Some(MembershipProof::new(
             self.root(),
             self.path(self.index_of(&self.parameters.digest(item))?)
@@ -861,5 +922,26 @@ where
     #[inline]
     fn contains(&self, item: &Self::Item) -> bool {
         self.contains(&self.parameters.digest(item))
+    }
+
+    #[inline]
+    fn verify(
+        &self,
+        item: &Self::Item,
+        checkpoint: &Self::Checkpoint,
+        witness: &Self::Witness,
+    ) -> bool {
+        self.parameters.verify(item, checkpoint, witness)
+    }
+}
+
+impl<C, T> OptimizedAccumulator for MerkleTree<C, T>
+where
+    C: Configuration + ?Sized,
+    T: Tree<C> + WithProofs<C>,
+{
+    #[inline]
+    fn insert_nonprovable(&mut self, item: &Self::Item) -> bool {
+        self.push(item)
     }
 }
