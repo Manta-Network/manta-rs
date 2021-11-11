@@ -100,6 +100,8 @@ pub trait HybridPublicKeyEncryptionScheme {
     type KeyDerivationFunction: KeyDerivationFunction<
         SharedSecret = <Self::KeyAgreementScheme as KeyAgreementScheme>::SharedSecret,
         Key = <Self::SymmetricKeyEncryptionScheme as SymmetricKeyEncryptionScheme>::Key,
+        KeyAgreementScheme = Self::KeyAgreementScheme,
+        SymmetricKeyEncryptionScheme = Self::SymmetricKeyEncryptionScheme,
     >;
 }
 
