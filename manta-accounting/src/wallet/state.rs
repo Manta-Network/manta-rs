@@ -18,7 +18,7 @@
 
 use crate::{
     asset::{Asset, AssetBalance, AssetId},
-    keys::DerivedSecretKeyGenerator,
+    key::DerivedSecretKeyGenerator,
     transfer::{
         canonical::{Transaction, TransactionKind},
         Configuration, ShieldedIdentity,

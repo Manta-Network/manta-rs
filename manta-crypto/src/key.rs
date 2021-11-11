@@ -43,53 +43,23 @@ pub trait KeyAgreementScheme {
 
     /// Derives a public key corresponding to `secret_key`. This public key should be sent to the
     /// other party involved in the shared computation.
-    fn derive(secret_key: Self::SecretKey) -> Self::PublicKey;
+    fn derive(secret_key: &Self::SecretKey) -> Self::PublicKey;
+
+    /// Derives a public key corresponding to `secret_key`. This public key should be sent to the
+    /// other party involved in the shared computation.
+    ///
+    /// # Implementation Note
+    ///
+    /// This method is an optimization path for [`derive`] when we own the `secret_key` value, and
+    /// by default, uses [`derive`] as its implementation. This method must return the same value
+    /// as [`derive`] on the same input.
+    ///
+    /// [`derive`]: Self::derive
+    #[inline]
+    fn derive_owned(secret_key: Self::SecretKey) -> Self::PublicKey {
+        Self::derive(&secret_key)
+    }
 
     /// Computes the shared secret given the known `secret_key` and the given `public_key`.
     fn agree(secret_key: &Self::SecretKey, public_key: &Self::PublicKey) -> Self::SharedSecret;
-}
-
-/// Key-Diversification Scheme
-///
-/// # Specification
-///
-/// All implementations of this trait must adhere to the following properties:
-///
-/// 1. **Derivation Invariance**: For all possible inputs, the following function returns `true`:
-///
-///    ```text
-///    fn derivation_invariance(diversifier: SecretKey, lhs: SecretKey, rhs: SecretKey) -> bool {
-///        combine_secret_keys(
-///            diversifier,
-///            KeyAgreementScheme::derive(lhs),
-///            KeyAgreementScheme::derive(rhs)
-///         ) == combine_public_keys(KeyAgreementScheme::derive(diversifier), lhs, rhs)
-///    }
-///    ```
-pub trait KeyDiversificationScheme {
-    /// Secret Key Type
-    type SecretKey;
-
-    /// Public Key Type
-    type PublicKey;
-
-    /// Key-Agreement Scheme Type
-    type KeyAgreementScheme: KeyAgreementScheme<
-        PublicKey = Self::PublicKey,
-        SecretKey = Self::SecretKey,
-    >;
-
-    /// Derives a new public key from a given `diversifier` and the `lhs` and `rhs` public keys.
-    fn combine_public_keys(
-        diversifier: Self::SecretKey,
-        lhs: Self::PublicKey,
-        rhs: Self::PublicKey,
-    ) -> Self::PublicKey;
-
-    /// Derives a new secret key from a given `diversifier` and the `lhs` and `rhs` secret keys.
-    fn combine_secret_keys(
-        diversifier: Self::PublicKey,
-        lhs: Self::SecretKey,
-        rhs: Self::SecretKey,
-    ) -> Self::SecretKey;
 }

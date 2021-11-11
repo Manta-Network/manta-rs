@@ -19,8 +19,8 @@
 use alloc::vec::Vec;
 use ark_crypto_primitives::prf::{Blake2s as ArkBlake2s, PRF};
 use manta_crypto::{
+    prf::PseudorandomFunctionFamily,
     rand::{CryptoRng, Rand, RngCore, Sample, Standard},
-    PseudorandomFunctionFamily,
 };
 use manta_util::{Concat, ConcatAccumulator};
 

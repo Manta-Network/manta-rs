@@ -18,6 +18,6 @@
 
 pub mod config;
 pub mod identity;
-pub mod keys;
+pub mod key;
 pub mod ledger;
 pub mod transfer;

@@ -31,7 +31,7 @@ use crate::{
     asset::{Asset, AssetBalance, AssetId, AssetMap},
     fs::{Load, LoadWith, Save, SaveWith},
     identity::{self, Identity, PreSender, Utxo},
-    keys::{
+    key::{
         Account, DerivedSecretKeyGenerator, ExternalKeyOwned, ExternalSecretKey, Index,
         InternalIndex, InternalKeyOwned, KeyKind, KeyOwned,
     },

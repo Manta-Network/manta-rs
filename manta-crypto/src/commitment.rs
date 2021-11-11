@@ -19,11 +19,6 @@
 use core::{fmt::Debug, hash::Hash};
 use manta_util::{Concat, ConcatAccumulator};
 
-pub(crate) mod prelude {
-    #[doc(inline)]
-    pub use super::CommitmentScheme;
-}
-
 /// Commitment Scheme
 pub trait CommitmentScheme {
     /// Commitment Input Type

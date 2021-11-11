@@ -16,9 +16,11 @@
 
 //! Encryption Primitives
 
-pub mod ies;
+// TODO: Make `KeyDerivationFunction` more general (don't require the `SymmetricKeyEncryptionScheme`
+//       dependency) and move it to `crate::key`.
 
-pub use ies::prelude::*;
+// TODO: remove
+pub mod ies;
 
 use crate::key::KeyAgreementScheme;
 
@@ -105,10 +107,57 @@ pub trait HybridPublicKeyEncryptionScheme {
     >;
 }
 
+impl<H> KeyAgreementScheme for H
+where
+    H: HybridPublicKeyEncryptionScheme,
+{
+    type SecretKey = <H::KeyAgreementScheme as KeyAgreementScheme>::SecretKey;
+
+    type PublicKey = <H::KeyAgreementScheme as KeyAgreementScheme>::PublicKey;
+
+    type SharedSecret = <H::KeyAgreementScheme as KeyAgreementScheme>::SharedSecret;
+
+    #[inline]
+    fn derive(secret_key: &Self::SecretKey) -> Self::PublicKey {
+        H::KeyAgreementScheme::derive(secret_key)
+    }
+
+    #[inline]
+    fn derive_owned(secret_key: Self::SecretKey) -> Self::PublicKey {
+        H::KeyAgreementScheme::derive_owned(secret_key)
+    }
+
+    #[inline]
+    fn agree(secret_key: &Self::SecretKey, public_key: &Self::PublicKey) -> Self::SharedSecret {
+        H::KeyAgreementScheme::agree(secret_key, public_key)
+    }
+}
+
+impl<H> SymmetricKeyEncryptionScheme for H
+where
+    H: HybridPublicKeyEncryptionScheme,
+{
+    type Key = <H::SymmetricKeyEncryptionScheme as SymmetricKeyEncryptionScheme>::Key;
+
+    type Plaintext = <H::SymmetricKeyEncryptionScheme as SymmetricKeyEncryptionScheme>::Plaintext;
+
+    type Ciphertext = <H::SymmetricKeyEncryptionScheme as SymmetricKeyEncryptionScheme>::Ciphertext;
+
+    #[inline]
+    fn encrypt(key: Self::Key, plaintext: Self::Plaintext) -> Self::Ciphertext {
+        H::SymmetricKeyEncryptionScheme::encrypt(key, plaintext)
+    }
+
+    #[inline]
+    fn decrypt(key: Self::Key, ciphertext: &Self::Ciphertext) -> Option<Self::Plaintext> {
+        H::SymmetricKeyEncryptionScheme::decrypt(key, ciphertext)
+    }
+}
+
 /// Encrypted Message
 pub struct EncryptedMessage<H>
 where
-    H: HybridPublicKeyEncryptionScheme + ?Sized,
+    H: HybridPublicKeyEncryptionScheme,
 {
     /// Ciphertext
     ciphertext: H::Ciphertext,
@@ -119,7 +168,7 @@ where
 
 impl<H> EncryptedMessage<H>
 where
-    H: HybridPublicKeyEncryptionScheme + ?Sized,
+    H: HybridPublicKeyEncryptionScheme,
 {
     /// Builds a new [`EncryptedMessage`] containing an encrypted `plaintext` using `public_key`
     /// and an `ephemeral_secret_key`.
@@ -130,14 +179,11 @@ where
         plaintext: H::Plaintext,
     ) -> Self {
         Self {
-            ciphertext: H::SymmetricKeyEncryptionScheme::encrypt(
-                H::KeyDerivationFunction::derive(H::KeyAgreementScheme::agree(
-                    &ephemeral_secret_key,
-                    public_key,
-                )),
+            ciphertext: H::encrypt(
+                H::KeyDerivationFunction::derive(H::agree(&ephemeral_secret_key, public_key)),
                 plaintext,
             ),
-            ephemeral_public_key: H::KeyAgreementScheme::derive(ephemeral_secret_key),
+            ephemeral_public_key: H::derive_owned(ephemeral_secret_key),
         }
     }
 
@@ -145,11 +191,8 @@ where
     /// was unable to decrypt the message.
     #[inline]
     pub fn decrypt(self, secret_key: &H::SecretKey) -> Result<DecryptedMessage<H>, Self> {
-        match H::SymmetricKeyEncryptionScheme::decrypt(
-            H::KeyDerivationFunction::derive(H::KeyAgreementScheme::agree(
-                secret_key,
-                &self.ephemeral_public_key,
-            )),
+        match H::decrypt(
+            H::KeyDerivationFunction::derive(H::agree(secret_key, &self.ephemeral_public_key)),
             &self.ciphertext,
         ) {
             Some(plaintext) => Ok(DecryptedMessage::new(plaintext, self.ephemeral_public_key)),
@@ -161,7 +204,7 @@ where
 /// Decrypted Message
 pub struct DecryptedMessage<H>
 where
-    H: HybridPublicKeyEncryptionScheme + ?Sized,
+    H: HybridPublicKeyEncryptionScheme,
 {
     /// Plaintext
     pub plaintext: H::Plaintext,
@@ -172,7 +215,7 @@ where
 
 impl<H> DecryptedMessage<H>
 where
-    H: HybridPublicKeyEncryptionScheme + ?Sized,
+    H: HybridPublicKeyEncryptionScheme,
 {
     /// Builds a new [`DecryptedMessage`] from `plaintext` and `ephemeral_public_key`.
     #[inline]

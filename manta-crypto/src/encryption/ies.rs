@@ -21,11 +21,6 @@
 use core::{fmt::Debug, hash::Hash};
 use rand_core::{CryptoRng, RngCore};
 
-pub(super) mod prelude {
-    #[doc(inline)]
-    pub use super::IntegratedEncryptionScheme;
-}
-
 /// Integrated Encryption Scheme Trait
 pub trait IntegratedEncryptionScheme {
     /// Public Key Type

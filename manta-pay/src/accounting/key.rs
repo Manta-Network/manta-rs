@@ -26,7 +26,7 @@
 use alloc::{format, string::String};
 use bip32::{Seed, XPrv};
 use core::{marker::PhantomData, num::ParseIntError, str::FromStr};
-use manta_accounting::keys::{DerivedSecretKeyGenerator, DerivedSecretKeyParameter, KeyKind};
+use manta_accounting::key::{DerivedSecretKeyGenerator, DerivedSecretKeyParameter, KeyKind};
 use manta_util::{create_seal, seal};
 
 pub use bip32::{Error, Mnemonic};

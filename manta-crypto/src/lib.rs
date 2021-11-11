@@ -23,15 +23,14 @@
 
 extern crate alloc;
 
-mod prf;
-
 pub mod accumulator;
 pub mod commitment;
-pub mod constraint;
 pub mod encryption;
 pub mod key;
 pub mod merkle_tree;
+pub mod prf;
 pub mod rand;
 
-pub use commitment::prelude::*;
-pub use prf::*;
+#[cfg(feature = "constraint")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "constraint")))]
+pub mod constraint;

@@ -27,8 +27,8 @@ use manta_crypto::{
     accumulator::{Accumulator, MembershipProof, Verifier},
     commitment::{CommitmentScheme, Input as CommitmentInput},
     encryption::ies::{self, EncryptedMessage, IntegratedEncryptionScheme},
+    prf::PseudorandomFunctionFamily,
     rand::{CryptoRng, Rand, RngCore, Sample, SeedableRng, Standard, TrySample},
-    PseudorandomFunctionFamily,
 };
 
 pub(super) mod prelude {

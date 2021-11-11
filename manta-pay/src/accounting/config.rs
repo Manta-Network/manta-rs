@@ -39,7 +39,7 @@ use ark_crypto_primitives::crh::pedersen::{constraints::CRHGadget, CRH};
 use ark_ed_on_bls12_381::{constraints::EdwardsVar, EdwardsProjective, Fq};
 use manta_accounting::{identity, transfer};
 use manta_crypto::{
-    commitment::CommitmentScheme, merkle_tree, rand::SeedIntoRng, PseudorandomFunctionFamily,
+    commitment::CommitmentScheme, merkle_tree, prf::PseudorandomFunctionFamily, rand::SeedIntoRng,
 };
 use rand_chacha::ChaCha20Rng;
 
