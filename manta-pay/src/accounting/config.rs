@@ -20,7 +20,7 @@
 //       enabled when using whichever backend.
 
 use crate::{
-    accounting::identity::{constraint::UtxoSetVerifierVar, Utxo, UtxoSet},
+    accounting::identity::{constraint::UtxoSetVerifierVar, Parameters, Utxo},
     crypto::{
         commitment::pedersen::{self, PedersenWindow},
         constraint::arkworks::{
@@ -155,6 +155,6 @@ impl transfer::Configuration for Configuration {
     type AssetIdVar = AssetIdVar<ConstraintField>;
     type AssetBalanceVar = AssetBalanceVar<ConstraintField>;
     type IntegratedEncryptionScheme = IES;
-    type UtxoSet = UtxoSet;
+    type UtxoSetVerifier = Parameters;
     type UtxoSetVerifierVar = UtxoSetVerifierVar;
 }

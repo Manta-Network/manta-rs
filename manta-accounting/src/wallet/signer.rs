@@ -16,15 +16,16 @@
 
 //! Wallet Signer
 
-// TODO: Add wallet recovery i.e. remove the assumption that a new signer represents a completely
-//       new derived secret key generator.
-// TODO: Allow for non-atomic signing, i.e. rollback state to something in-between two calls to
-//       `sign`. Will have to upgrade `Rollback` and `manta_crypto::merkle_tree::fork` as well.
-// TODO: Add checkpointing/garbage-collection in `utxo_set` so we can remove old UTXOs once they
-//       are irrelevant. Once we create a sender and its transaction succeeds we can drop the UTXO.
-// TODO: Should have a mode on the signer where we return a generic error which reveals no detail
-//       about what went wrong during signing. The kind of error returned from a signing could
-//       reveal information about the internal state (privacy leak, not a secrecy leak).
+// FIXME: Change the name of `TransferAccumulator`, its not an `Accumulator`.
+// TODO:  Add wallet recovery i.e. remove the assumption that a new signer represents a completely
+//        new derived secret key generator.
+// TODO:  Allow for non-atomic signing, i.e. rollback state to something in-between two calls to
+//        sign`. Will have to upgrade `Rollback` and `manta_crypto::merkle_tree::fork` as well.
+// TODO:  Add checkpointing/garbage-collection in `utxo_set` so we can remove old UTXOs once they
+//        are irrelevant. Once we create a sender and its transaction succeeds we can drop the UTXO.
+// TODO:  Should have a mode on the signer where we return a generic error which reveals no detail
+//        about what went wrong during signing. The kind of error returned from a signing could
+//        reveal information about the internal state (privacy leak, not a secrecy leak).
 
 use crate::{
     asset::{Asset, AssetBalance, AssetId, AssetMap},
@@ -52,8 +53,11 @@ use core::{
     ops::Range,
 };
 use manta_crypto::{
+    accumulator::{
+        Accumulator, ConstantCapacityAccumulator, ExactSizeAccumulator, OptimizedAccumulator,
+        Verifier,
+    },
     rand::{CryptoRng, RngCore},
-    set::VerifiedSet,
 };
 use manta_util::{fallible_array_map, into_array_unchecked, iter::IteratorExt};
 
@@ -634,17 +638,36 @@ where
     }
 }
 
+/// Signer Configuration
+pub trait Configuration: transfer::Configuration {
+    /// Derived Secret Key Generator Type
+    type DerivedSecretKeyGenerator: DerivedSecretKeyGenerator<SecretKey = Self::SecretKey>;
+
+    /// [`Utxo`] Accumulator Type
+    type UtxoSet: Accumulator<
+            Item = <Self::UtxoSetVerifier as Verifier>::Item,
+            Checkpoint = <Self::UtxoSetVerifier as Verifier>::Checkpoint,
+            Witness = <Self::UtxoSetVerifier as Verifier>::Witness,
+            Verifier = Self::UtxoSetVerifier,
+        > + ConstantCapacityAccumulator
+        + ExactSizeAccumulator
+        + OptimizedAccumulator
+        + Rollback;
+
+    /// Asset Map Type
+    type AssetMap: AssetMap<Key = Index<Self::DerivedSecretKeyGenerator>>;
+
+    /// Random Number Generator Type
+    type EntropySource: CryptoRng + RngCore;
+}
+
 /// Full Signer
-pub struct FullSigner<D, C, M, R>
+pub struct FullSigner<C>
 where
-    D: DerivedSecretKeyGenerator,
-    C: transfer::Configuration<SecretKey = D::SecretKey>,
-    C::UtxoSet: Rollback,
-    M: AssetMap<Key = Index<D>>,
-    R: CryptoRng + RngCore,
+    C: Configuration,
 {
     /// Signer
-    signer: Signer<D>,
+    signer: Signer<C::DerivedSecretKeyGenerator>,
 
     /// Commitment Scheme
     commitment_scheme: C::CommitmentScheme,
@@ -656,33 +679,29 @@ where
     utxo_set: C::UtxoSet,
 
     /// Asset Distribution
-    assets: M,
+    assets: C::AssetMap,
 
     /// Pending Asset Distribution
-    pending_assets: PendingAssetMap<D>,
+    pending_assets: PendingAssetMap<C::DerivedSecretKeyGenerator>,
 
     /// Random Number Generator
-    rng: R,
+    rng: C::EntropySource,
 }
 
-impl<D, C, M, R> FullSigner<D, C, M, R>
+impl<C> FullSigner<C>
 where
-    D: DerivedSecretKeyGenerator,
-    C: transfer::Configuration<SecretKey = D::SecretKey>,
-    C::UtxoSet: Rollback,
-    M: AssetMap<Key = Index<D>>,
-    R: CryptoRng + RngCore,
+    C: Configuration,
 {
     /// Builds a new [`FullSigner`].
     #[inline]
     fn new_inner(
-        signer: Signer<D>,
+        signer: Signer<C::DerivedSecretKeyGenerator>,
         commitment_scheme: C::CommitmentScheme,
         proving_context: ProvingContext<C>,
         utxo_set: C::UtxoSet,
-        assets: M,
-        pending_assets: PendingAssetMap<D>,
-        rng: R,
+        assets: C::AssetMap,
+        pending_assets: PendingAssetMap<C::DerivedSecretKeyGenerator>,
+        rng: C::EntropySource,
     ) -> Self {
         Self {
             signer,
@@ -699,11 +718,11 @@ where
     /// `proving_context`, and `rng`, using a default [`Utxo`] set and asset distribution.
     #[inline]
     pub fn new(
-        secret_key_source: D,
-        account: D::Account,
+        secret_key_source: C::DerivedSecretKeyGenerator,
+        account: <C::DerivedSecretKeyGenerator as DerivedSecretKeyGenerator>::Account,
         commitment_scheme: C::CommitmentScheme,
         proving_context: ProvingContext<C>,
-        rng: R,
+        rng: C::EntropySource,
     ) -> Self
     where
         C::UtxoSet: Default,
@@ -721,7 +740,7 @@ where
 
     /// Updates the internal ledger state, returning the new asset distribution.
     #[inline]
-    fn sync_inner<I>(&mut self, updates: I) -> SyncResult<D, C, Self>
+    fn sync_inner<I>(&mut self, updates: I) -> SyncResult<C::DerivedSecretKeyGenerator, C, Self>
     where
         I: Iterator<Item = (Utxo<C>, EncryptedAsset<C>)>,
     {
@@ -740,9 +759,9 @@ where
                 //        asset is effectively burnt.
                 assets.push(inner);
                 self.assets.insert(index.reduce(), inner);
-                self.utxo_set.insert_provable(&utxo);
-            } else {
                 self.utxo_set.insert(&utxo);
+            } else {
+                self.utxo_set.insert_nonprovable(&utxo);
             }
         }
         Ok(SyncResponse::new(assets))
@@ -755,7 +774,7 @@ where
         sync_state: SyncState,
         starting_index: usize,
         updates: I,
-    ) -> SyncResult<D, C, Self>
+    ) -> SyncResult<C::DerivedSecretKeyGenerator, C, Self>
     where
         I: IntoIterator<Item = (Utxo<C>, EncryptedAsset<C>)>,
     {
@@ -770,7 +789,11 @@ where
 
     /// Returns a [`PreSender`] for the key at the given `index`.
     #[inline]
-    fn get_pre_sender(&self, index: Index<D>, asset: Asset) -> Result<PreSender<C>, Error<D, C>> {
+    fn get_pre_sender(
+        &self,
+        index: Index<C::DerivedSecretKeyGenerator>,
+        asset: Asset,
+    ) -> Result<PreSender<C>, Error<C::DerivedSecretKeyGenerator, C>> {
         self.signer
             .get_pre_sender(index, &self.commitment_scheme, asset)
             .map_err(Error::SecretKeyError)
@@ -778,7 +801,10 @@ where
 
     /// Selects the pre-senders which collectively own at least `asset`, returning any change.
     #[inline]
-    fn select(&mut self, asset: Asset) -> Result<Selection<C>, Error<D, C>> {
+    fn select(
+        &mut self,
+        asset: Asset,
+    ) -> Result<Selection<C>, Error<C::DerivedSecretKeyGenerator, C>> {
         let selection = self.assets.select(asset);
         if selection.is_empty() {
             return Err(Error::InsufficientBalance(asset));
@@ -802,7 +828,7 @@ where
     >(
         &mut self,
         transfer: impl Into<Transfer<C, SOURCES, SENDERS, RECEIVERS, SINKS>>,
-    ) -> Result<TransferPost<C>, Error<D, C>> {
+    ) -> Result<TransferPost<C>, Error<C::DerivedSecretKeyGenerator, C>> {
         transfer
             .into()
             .into_post(
@@ -821,7 +847,7 @@ where
         asset_id: AssetId,
         mut pre_senders: Vec<PreSender<C>>,
         posts: &mut Vec<TransferPost<C>>,
-    ) -> Result<[Sender<C>; SENDERS], Error<D, C>> {
+    ) -> Result<[Sender<C>; SENDERS], Error<C::DerivedSecretKeyGenerator, C>> {
         assert!(
             (SENDERS > 1) && (RECEIVERS > 1),
             "The transfer shape must include at least two senders and two receivers."
@@ -880,10 +906,10 @@ where
     fn prepare_final_pre_senders<const SENDERS: usize>(
         &mut self,
         asset_id: AssetId,
-        mut new_zeroes: Vec<InternalKeyOwned<D, PreSender<C>>>,
+        mut new_zeroes: Vec<InternalKeyOwned<C::DerivedSecretKeyGenerator, PreSender<C>>>,
         pre_senders: &mut Vec<PreSender<C>>,
         posts: &mut Vec<TransferPost<C>>,
-    ) -> Result<(), Error<D, C>> {
+    ) -> Result<(), Error<C::DerivedSecretKeyGenerator, C>> {
         let mut needed_zeroes = SENDERS - pre_senders.len();
         if needed_zeroes == 0 {
             return Ok(());
@@ -935,7 +961,7 @@ where
         &mut self,
         asset_id: AssetId,
         change: AssetBalance,
-    ) -> Result<Receiver<C>, Error<D, C>> {
+    ) -> Result<Receiver<C>, Error<C::DerivedSecretKeyGenerator, C>> {
         let asset = asset_id.with(change);
         let (receiver, index) = self
             .signer
@@ -951,7 +977,7 @@ where
         &mut self,
         asset: Asset,
         receiver: ShieldedIdentity<C>,
-    ) -> Result<Receiver<C>, Error<D, C>> {
+    ) -> Result<Receiver<C>, Error<C::DerivedSecretKeyGenerator, C>> {
         receiver
             .into_receiver(&self.commitment_scheme, asset, &mut self.rng)
             .map_err(Error::EncryptionError)
@@ -963,7 +989,7 @@ where
         &mut self,
         asset: Asset,
         receiver: Option<ShieldedIdentity<C>>,
-    ) -> SignResult<D, C, Self> {
+    ) -> SignResult<C::DerivedSecretKeyGenerator, C, Self> {
         const SENDERS: usize = PrivateTransferShape::SENDERS;
         const RECEIVERS: usize = PrivateTransferShape::RECEIVERS;
 
@@ -996,7 +1022,7 @@ where
         &mut self,
         asset: Asset,
         receiver: Option<ShieldedIdentity<C>>,
-    ) -> SignResult<D, C, Self> {
+    ) -> SignResult<C::DerivedSecretKeyGenerator, C, Self> {
         let result = self.sign_withdraw_inner(asset, receiver);
         if result.is_err() {
             self.rollback();
@@ -1006,7 +1032,10 @@ where
 
     /// Signs the `transaction`, generating transfer posts.
     #[inline]
-    pub fn sign(&mut self, transaction: Transaction<C>) -> SignResult<D, C, Self> {
+    pub fn sign(
+        &mut self,
+        transaction: Transaction<C>,
+    ) -> SignResult<C::DerivedSecretKeyGenerator, C, Self> {
         self.commit();
         match transaction {
             Transaction::Mint(asset) => {
@@ -1052,30 +1081,29 @@ where
 
     /// Generates a new [`ShieldedIdentity`] for `self` to receive assets.
     #[inline]
-    pub fn external_receiver(&mut self) -> ExternalReceiverResult<D, C, Self> {
+    pub fn external_receiver(
+        &mut self,
+    ) -> ExternalReceiverResult<C::DerivedSecretKeyGenerator, C, Self> {
         self.signer
             .next_shielded(&self.commitment_scheme)
             .map_err(Error::SecretKeyError)
     }
 }
 
-impl<D, C, M, R> Connection<D, C> for FullSigner<D, C, M, R>
+impl<C> Connection<C::DerivedSecretKeyGenerator, C> for FullSigner<C>
 where
-    D: DerivedSecretKeyGenerator,
-    C: transfer::Configuration<SecretKey = D::SecretKey>,
-    C::UtxoSet: Rollback,
-    M: AssetMap<Key = Index<D>>,
-    R: CryptoRng + RngCore,
+    C: Configuration,
 {
-    type SyncFuture = Ready<SyncResult<D, C, Self>>;
+    type SyncFuture = Ready<SyncResult<C::DerivedSecretKeyGenerator, C, Self>>;
 
-    type SignFuture = Ready<SignResult<D, C, Self>>;
+    type SignFuture = Ready<SignResult<C::DerivedSecretKeyGenerator, C, Self>>;
 
     type CommitFuture = Ready<Result<(), Self::Error>>;
 
     type RollbackFuture = Ready<Result<(), Self::Error>>;
 
-    type ExternalReceiverFuture = Ready<ExternalReceiverResult<D, C, Self>>;
+    type ExternalReceiverFuture =
+        Ready<ExternalReceiverResult<C::DerivedSecretKeyGenerator, C, Self>>;
 
     type Error = Infallible;
 

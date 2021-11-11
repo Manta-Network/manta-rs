@@ -18,17 +18,16 @@
 
 // FIXME: Rename `AssetParameters`, since they are about identities not assets.
 // FIXME: Check the secret key APIs.
-// FIXME: Remove `UtxoSet` dependence from `identity`, really we only need `UtxoSetVerifier`.
 // TODO:  Get rid of [`Spend`] and [`OpenSpend`] if possible. They don't seem to be that useful.
 //        See `crate::wallet::signer`.
 
 use crate::asset::{Asset, AssetBalance, AssetId, AssetVar};
 use core::{fmt::Debug, hash::Hash, marker::PhantomData};
 use manta_crypto::{
+    accumulator::{Accumulator, MembershipProof, Verifier},
     commitment::{CommitmentScheme, Input as CommitmentInput},
     encryption::ies::{self, EncryptedMessage, IntegratedEncryptionScheme},
     rand::{CryptoRng, Rand, RngCore, Sample, SeedableRng, Standard, TrySample},
-    set::{MembershipProof, VerifiedSet},
     PseudorandomFunctionFamily,
 };
 
@@ -367,15 +366,15 @@ where
         commitment_scheme: &C::CommitmentScheme,
         asset: Asset,
         utxo_set: &S,
-    ) -> Option<Sender<C, S>>
+    ) -> Option<Sender<C, S::Verifier>>
     where
-        S: VerifiedSet<Item = Utxo<C>>,
+        S: Accumulator<Item = Utxo<C>>,
     {
         let parameters = self.parameters();
         let (void_number_commitment, utxo) =
             self.construct_utxo(commitment_scheme, &asset, &parameters);
         Some(Sender {
-            utxo_membership_proof: utxo_set.get_membership_proof(&utxo)?,
+            utxo_membership_proof: utxo_set.prove(&utxo)?,
             void_number: self.void_number(&parameters.void_number_generator),
             secret_key: self.secret_key,
             asset,
@@ -657,9 +656,9 @@ where
         commitment_scheme: &C::CommitmentScheme,
         encrypted_asset: EncryptedMessage<I>,
         utxo_set: &S,
-    ) -> Result<Sender<C, S>, SpendError<I>>
+    ) -> Result<Sender<C, S::Verifier>, SpendError<I>>
     where
-        S: VerifiedSet<Item = Utxo<C>>,
+        S: Accumulator<Item = Utxo<C>>,
     {
         self.try_open(&encrypted_asset)
             .map_err(SpendError::EncryptionError)?
@@ -724,9 +723,9 @@ where
         self,
         commitment_scheme: &C::CommitmentScheme,
         utxo_set: &S,
-    ) -> Option<Sender<C, S>>
+    ) -> Option<Sender<C, S::Verifier>>
     where
-        S: VerifiedSet<Item = Utxo<C>>,
+        S: Accumulator<Item = Utxo<C>>,
     {
         self.identity
             .into_sender(commitment_scheme, self.asset, utxo_set)
@@ -781,27 +780,35 @@ where
 ///
 /// This `struct` is created by the [`get_proof`](PreSender::get_proof) method on [`PreSender`].
 /// See its documentation for more.
-pub struct SenderProof<C, S>
+pub struct SenderProof<C, V>
 where
     C: Configuration + ?Sized,
-    S: VerifiedSet<Item = Utxo<C>>,
+    V: Verifier<Item = Utxo<C>> + ?Sized,
 {
     /// UTXO Membership Proof
-    utxo_membership_proof: MembershipProof<S::Verifier>,
+    utxo_membership_proof: MembershipProof<V>,
 
     /// Type Parameter Marker
     __: PhantomData<C>,
 }
 
-impl<C, S> SenderProof<C, S>
+impl<C, V> SenderProof<C, V>
 where
     C: Configuration + ?Sized,
-    S: VerifiedSet<Item = Utxo<C>>,
+    V: Verifier<Item = Utxo<C>> + ?Sized,
 {
     /// Returns `true` if a [`PreSender`] could be upgraded using `self` given the `utxo_set`.
     #[inline]
-    pub fn can_upgrade(&self, utxo_set: &S) -> bool {
-        self.utxo_membership_proof.check_public(utxo_set)
+    pub fn can_upgrade<S>(&self, utxo_set: &S) -> bool
+    where
+        S: Accumulator<
+            Item = V::Item,
+            Checkpoint = V::Checkpoint,
+            Witness = V::Witness,
+            Verifier = V,
+        >,
+    {
+        self.utxo_membership_proof.matching_checkpoint(utxo_set)
     }
 
     /// Upgrades the `pre_sender` to a [`Sender`] by attaching `self` to it.
@@ -812,7 +819,7 @@ where
     /// `true`. Otherwise, using the sender returned here will most likely return an error when
     /// posting to the ledger.
     #[inline]
-    pub fn upgrade(self, pre_sender: PreSender<C>) -> Sender<C, S> {
+    pub fn upgrade(self, pre_sender: PreSender<C>) -> Sender<C, V> {
         pre_sender.upgrade(self)
     }
 }
@@ -860,20 +867,20 @@ where
     #[inline]
     pub fn insert_utxo<S>(&self, utxo_set: &mut S) -> bool
     where
-        S: VerifiedSet<Item = Utxo<C>>,
+        S: Accumulator<Item = Utxo<C>>,
     {
-        utxo_set.insert_provable(&self.utxo)
+        utxo_set.insert(&self.utxo)
     }
 
     /// Requests the membership proof of `self.utxo` from `utxo_set` so that we can turn `self`
     /// into a [`Sender`].
     #[inline]
-    pub fn get_proof<S>(&self, utxo_set: &S) -> Option<SenderProof<C, S>>
+    pub fn get_proof<S>(&self, utxo_set: &S) -> Option<SenderProof<C, S::Verifier>>
     where
-        S: VerifiedSet<Item = Utxo<C>>,
+        S: Accumulator<Item = Utxo<C>>,
     {
         Some(SenderProof {
-            utxo_membership_proof: utxo_set.get_membership_proof(&self.utxo)?,
+            utxo_membership_proof: utxo_set.prove(&self.utxo)?,
             __: PhantomData,
         })
     }
@@ -886,9 +893,9 @@ where
     /// Otherwise, using the sender returned here will most likely return an error when posting to
     /// the ledger.
     #[inline]
-    pub fn upgrade<S>(self, proof: SenderProof<C, S>) -> Sender<C, S>
+    pub fn upgrade<V>(self, proof: SenderProof<C, V>) -> Sender<C, V>
     where
-        S: VerifiedSet<Item = Utxo<C>>,
+        V: Verifier<Item = Utxo<C>> + ?Sized,
     {
         Sender {
             secret_key: self.secret_key,
@@ -903,9 +910,9 @@ where
 
     /// Tries to convert `self` into a [`Sender`] by getting a proof from `utxo_set`.
     #[inline]
-    pub fn try_upgrade<S>(self, utxo_set: &S) -> Option<Sender<C, S>>
+    pub fn try_upgrade<S>(self, utxo_set: &S) -> Option<Sender<C, S::Verifier>>
     where
-        S: VerifiedSet<Item = Utxo<C>>,
+        S: Accumulator<Item = Utxo<C>>,
     {
         let proof = self.get_proof(utxo_set)?;
         Some(self.upgrade(proof))
@@ -927,10 +934,10 @@ where
 }
 
 /// Sender
-pub struct Sender<C, S>
+pub struct Sender<C, V>
 where
     C: Configuration + ?Sized,
-    S: VerifiedSet<Item = Utxo<C>>,
+    V: Verifier<Item = Utxo<C>> + ?Sized,
 {
     /// Secret Key
     secret_key: SecretKey<C>,
@@ -951,22 +958,30 @@ where
     utxo: Utxo<C>,
 
     /// UTXO Membership Proof
-    utxo_membership_proof: MembershipProof<S::Verifier>,
+    utxo_membership_proof: MembershipProof<V>,
 }
 
-impl<C, S> Sender<C, S>
+impl<C, V> Sender<C, V>
 where
     C: Configuration + ?Sized,
-    S: VerifiedSet<Item = Utxo<C>>,
+    V: Verifier<Item = Utxo<C>> + ?Sized,
 {
     /// Builds a new [`Sender`] for this `asset` from an `identity`.
     #[inline]
-    pub fn from_identity(
+    pub fn from_identity<S>(
         identity: Identity<C>,
         commitment_scheme: &C::CommitmentScheme,
         asset: Asset,
         utxo_set: &S,
-    ) -> Option<Self> {
+    ) -> Option<Self>
+    where
+        S: Accumulator<
+            Item = V::Item,
+            Checkpoint = V::Checkpoint,
+            Witness = V::Witness,
+            Verifier = V,
+        >,
+    {
         identity.into_sender(commitment_scheme, asset, utxo_set)
     }
 
@@ -1000,19 +1015,19 @@ where
 
     /// Extracts ledger posting data for this sender.
     #[inline]
-    pub fn into_post(self) -> SenderPost<C, S> {
+    pub fn into_post(self) -> SenderPost<C, V> {
         SenderPost {
             void_number: self.void_number,
-            utxo_membership_proof_public: self.utxo_membership_proof.into_public(),
+            utxo_checkpoint: self.utxo_membership_proof.into_checkpoint(),
         }
     }
 }
 
 /// Sender Ledger
-pub trait SenderLedger<C, S>
+pub trait SenderLedger<C, V>
 where
     C: Configuration + ?Sized,
-    S: VerifiedSet<Item = Utxo<C>>,
+    V: Verifier<Item = Utxo<C>> + ?Sized,
 {
     /// Valid [`VoidNumber`] Posting Key
     ///
@@ -1021,20 +1036,20 @@ where
     /// This type must be some wrapper around [`VoidNumber`] which can only be constructed by this
     /// implementation of [`SenderLedger`]. This is to prevent that [`spend`](Self::spend) is
     /// called before [`is_unspent`](Self::is_unspent) and
-    /// [`is_valid_utxo_state`](Self::is_valid_utxo_state).
+    /// [`is_matching_checkpoint`](Self::is_matching_checkpoint).
     type ValidVoidNumber;
 
     /// Valid Utxo State Posting Key
     ///
     /// # Safety
     ///
-    /// This type must be some wrapper around [`S::Public`] which can only be constructed by this
+    /// This type must be some wrapper around [`S::Checkpoint`] which can only be constructed by this
     /// implementation of [`SenderLedger`]. This is to prevent that [`spend`](Self::spend) is
     /// called before [`is_unspent`](Self::is_unspent) and
-    /// [`is_valid_utxo_state`](Self::is_valid_utxo_state).
+    /// [`is_matching_checkpoint`](Self::is_matching_checkpoint).
     ///
-    /// [`S::Public`]: VerifiedSet::Public
-    type ValidUtxoState;
+    /// [`S::Checkpoint`]: Verifier::Checkpoint
+    type ValidUtxoCheckpoint;
 
     /// Super Posting Key
     ///
@@ -1046,12 +1061,15 @@ where
     /// Existence of such a void number could indicate a possible double-spend.
     fn is_unspent(&self, void_number: VoidNumber<C>) -> Option<Self::ValidVoidNumber>;
 
-    /// Checks if the `public_input` is up-to-date with the current state of the UTXO set that is
-    /// stored on the ledger.
+    /// Checks if the `checkpoint` matches the current checkpoint of the UTXO set that is stored on
+    /// the ledger.
     ///
     /// Failure to match the ledger state means that the sender was constructed under an invalid or
     /// older state of the ledger.
-    fn is_valid_utxo_state(&self, public_input: S::Public) -> Option<Self::ValidUtxoState>;
+    fn is_matching_checkpoint(
+        &self,
+        checkpoint: V::Checkpoint,
+    ) -> Option<Self::ValidUtxoCheckpoint>;
 
     /// Posts the `void_number` to the ledger, spending the asset.
     ///
@@ -1062,7 +1080,7 @@ where
     fn spend(
         &mut self,
         void_number: Self::ValidVoidNumber,
-        utxo_state: Self::ValidUtxoState,
+        utxo_checkpoint: Self::ValidUtxoCheckpoint,
         super_key: &Self::SuperPostingKey,
     );
 }
@@ -1078,87 +1096,79 @@ pub enum SenderPostError {
     /// Invalid UTXO State Error
     ///
     /// The sender was not constructed under the current state of the UTXO set.
-    InvalidUtxoState,
+    InvalidUtxoCheckpoint,
 }
 
 /// Sender Post
-pub struct SenderPost<C, S>
+pub struct SenderPost<C, V>
 where
     C: Configuration + ?Sized,
-    S: VerifiedSet<Item = Utxo<C>>,
+    V: Verifier<Item = Utxo<C>> + ?Sized,
 {
     /// Void Number
     pub(super) void_number: VoidNumber<C>,
 
-    /// UTXO Membership Proof Public Part
-    pub(super) utxo_membership_proof_public: S::Public,
+    /// UTXO Checkpoint
+    pub(super) utxo_checkpoint: V::Checkpoint,
 }
 
-impl<C, S> SenderPost<C, S>
+impl<C, V> SenderPost<C, V>
 where
     C: Configuration + ?Sized,
-    S: VerifiedSet<Item = Utxo<C>>,
+    V: Verifier<Item = Utxo<C>> + ?Sized,
 {
     /// Validates `self` on the sender `ledger`.
     #[inline]
-    pub fn validate<L>(self, ledger: &L) -> Result<SenderPostingKey<C, S, L>, SenderPostError>
+    pub fn validate<L>(self, ledger: &L) -> Result<SenderPostingKey<C, V, L>, SenderPostError>
     where
-        L: SenderLedger<C, S> + ?Sized,
+        L: SenderLedger<C, V> + ?Sized,
     {
         Ok(SenderPostingKey {
-            void_number: match ledger.is_unspent(self.void_number) {
-                Some(key) => key,
-                _ => return Err(SenderPostError::AssetSpent),
-            },
-            utxo_membership_proof_public: match ledger
-                .is_valid_utxo_state(self.utxo_membership_proof_public)
-            {
-                Some(key) => key,
-                _ => return Err(SenderPostError::InvalidUtxoState),
-            },
+            void_number: ledger
+                .is_unspent(self.void_number)
+                .ok_or(SenderPostError::AssetSpent)?,
+            utxo_checkpoint: ledger
+                .is_matching_checkpoint(self.utxo_checkpoint)
+                .ok_or(SenderPostError::InvalidUtxoCheckpoint)?,
         })
     }
 }
 
-impl<C, S> From<Sender<C, S>> for SenderPost<C, S>
+impl<C, V> From<Sender<C, V>> for SenderPost<C, V>
 where
     C: Configuration + ?Sized,
-    S: VerifiedSet<Item = Utxo<C>>,
+    V: Verifier<Item = Utxo<C>> + ?Sized,
 {
     #[inline]
-    fn from(sender: Sender<C, S>) -> Self {
+    fn from(sender: Sender<C, V>) -> Self {
         sender.into_post()
     }
 }
 
 /// Sender Posting Key
-pub struct SenderPostingKey<C, S, L>
+pub struct SenderPostingKey<C, V, L>
 where
     C: Configuration + ?Sized,
-    S: VerifiedSet<Item = Utxo<C>>,
-    L: SenderLedger<C, S> + ?Sized,
+    V: Verifier<Item = Utxo<C>> + ?Sized,
+    L: SenderLedger<C, V> + ?Sized,
 {
     /// Void Number Posting Key
     void_number: L::ValidVoidNumber,
 
-    /// UTXO Membership Proof Public Part Posting Key
-    utxo_membership_proof_public: L::ValidUtxoState,
+    /// UTXO Checkpoint Posting Key
+    utxo_checkpoint: L::ValidUtxoCheckpoint,
 }
 
-impl<C, S, L> SenderPostingKey<C, S, L>
+impl<C, V, L> SenderPostingKey<C, V, L>
 where
     C: Configuration + ?Sized,
-    S: VerifiedSet<Item = Utxo<C>>,
-    L: SenderLedger<C, S> + ?Sized,
+    V: Verifier<Item = Utxo<C>> + ?Sized,
+    L: SenderLedger<C, V> + ?Sized,
 {
     /// Posts `self` to the sender `ledger`.
     #[inline]
     pub fn post(self, super_key: &L::SuperPostingKey, ledger: &mut L) {
-        ledger.spend(
-            self.void_number,
-            self.utxo_membership_proof_public,
-            super_key,
-        );
+        ledger.spend(self.void_number, self.utxo_checkpoint, super_key);
     }
 }
 
@@ -1234,9 +1244,9 @@ where
     #[inline]
     pub fn insert_utxo<S>(&self, utxo_set: &mut S) -> bool
     where
-        S: VerifiedSet<Item = Utxo<C>>,
+        S: Accumulator<Item = Utxo<C>>,
     {
-        utxo_set.insert_provable(&self.utxo)
+        utxo_set.insert(&self.utxo)
     }
 
     /// Extracts ledger posting data for this receiver.
@@ -1339,10 +1349,9 @@ where
         L: ReceiverLedger<C, I>,
     {
         Ok(ReceiverPostingKey {
-            utxo: match ledger.is_not_registered(self.utxo) {
-                Some(key) => key,
-                _ => return Err(ReceiverPostError::AssetRegistered),
-            },
+            utxo: ledger
+                .is_not_registered(self.utxo)
+                .ok_or(ReceiverPostError::AssetRegistered)?,
             encrypted_asset: self.encrypted_asset,
         })
     }
@@ -1390,12 +1399,12 @@ where
 pub mod constraint {
     use super::*;
     use manta_crypto::{
+        accumulator::constraint::{MembershipProofVar, VerifierVariable},
         constraint::{
             reflection::{HasAllocation, HasVariable},
             Allocation, Constant, ConstraintSystem, Derived, Equal, Input as ProofSystemInput,
             ProofSystem, Public, PublicOrSecret, Secret, Variable,
         },
-        set::constraint::{MembershipProofVar, VerifierVariable},
     };
 
     /// [`Identity`] Constraint System Configuration
@@ -1493,8 +1502,8 @@ pub mod constraint {
     pub type UtxoVar<C> = CommitmentSchemeOutputVar<C>;
 
     /// UTXO Membership Proof Variable Type
-    pub type UtxoMembershipProofVar<C, S> =
-        MembershipProofVar<<S as VerifiedSet>::Verifier, <C as Configuration>::ConstraintSystem>;
+    pub type UtxoMembershipProofVar<C, V> =
+        MembershipProofVar<V, <C as Configuration>::ConstraintSystem>;
 
     /// Asset Parameters Variable
     pub struct AssetParametersVar<C>
@@ -1571,11 +1580,11 @@ pub mod constraint {
     }
 
     /// Sender Variable
-    pub struct SenderVar<C, S>
+    pub struct SenderVar<C, V>
     where
         C: Configuration,
-        S: VerifiedSet<Item = Utxo<C>>,
-        C::ConstraintSystem: HasVariable<S::Public> + HasVariable<S::Secret>,
+        V: Verifier<Item = Utxo<C>> + ?Sized,
+        C::ConstraintSystem: HasVariable<V::Checkpoint> + HasVariable<V::Witness>,
     {
         /// Secret Key
         secret_key: SecretKeyVar<C>,
@@ -1596,25 +1605,25 @@ pub mod constraint {
         utxo: UtxoVar<C>,
 
         /// UTXO Membership Proof
-        utxo_membership_proof: UtxoMembershipProofVar<C, S>,
+        utxo_membership_proof: UtxoMembershipProofVar<C, V>,
     }
 
-    impl<C, S> SenderVar<C, S>
+    impl<C, V> SenderVar<C, V>
     where
         C: Configuration,
-        S: VerifiedSet<Item = Utxo<C>>,
-        C::ConstraintSystem: HasVariable<S::Public> + HasVariable<S::Secret>,
+        V: Verifier<Item = Utxo<C>> + ?Sized,
+        C::ConstraintSystem: HasVariable<V::Checkpoint> + HasVariable<V::Witness>,
     {
         /// Checks if `self` is a well-formed sender and returns its asset.
         #[inline]
-        pub fn get_well_formed_asset<V>(
+        pub fn get_well_formed_asset<VV>(
             self,
             cs: &mut C::ConstraintSystem,
             commitment_scheme: &C::CommitmentSchemeVar,
-            utxo_set_verifier: &V,
+            utxo_set_verifier: &VV,
         ) -> AssetVar<C::ConstraintSystem>
         where
-            V: VerifierVariable<C::ConstraintSystem, ItemVar = UtxoVar<C>, Type = S::Verifier>,
+            VV: VerifierVariable<C::ConstraintSystem, ItemVar = UtxoVar<C>, Type = V>,
         {
             cs.assert_eq(
                 &self.void_number,
@@ -1648,19 +1657,19 @@ pub mod constraint {
             );
 
             self.utxo_membership_proof
-                .assert_validity(utxo_set_verifier, &self.utxo, cs);
+                .assert_validity(&self.utxo, utxo_set_verifier, cs);
             self.asset
         }
     }
 
-    impl<C, S> Variable<C::ConstraintSystem> for SenderVar<C, S>
+    impl<C, V> Variable<C::ConstraintSystem> for SenderVar<C, V>
     where
         C: Configuration,
-        S: VerifiedSet<Item = Utxo<C>>,
+        V: Verifier<Item = Utxo<C>> + ?Sized,
         C::ConstraintSystem:
-            HasVariable<S::Public, Mode = Public> + HasVariable<S::Secret, Mode = Secret>,
+            HasVariable<V::Checkpoint, Mode = Public> + HasVariable<V::Witness, Mode = Secret>,
     {
-        type Type = Sender<C, S>;
+        type Type = Sender<C, V>;
 
         type Mode = Derived;
 
@@ -1690,28 +1699,28 @@ pub mod constraint {
                     void_number: VoidNumberVar::<C>::new_unknown(cs, Public),
                     void_number_commitment: VoidNumberCommitmentVar::<C>::new_unknown(cs, Secret),
                     utxo: UtxoVar::<C>::new_unknown(cs, Secret),
-                    utxo_membership_proof: MembershipProof::<S::Verifier>::unknown(cs, mode),
+                    utxo_membership_proof: MembershipProof::<V>::unknown(cs, mode),
                 },
             }
         }
     }
 
-    impl<C, S> HasAllocation<C::ConstraintSystem> for Sender<C, S>
+    impl<C, V> HasAllocation<C::ConstraintSystem> for Sender<C, V>
     where
         C: Configuration,
-        S: VerifiedSet<Item = Utxo<C>>,
+        V: Verifier<Item = Utxo<C>> + ?Sized,
         C::ConstraintSystem:
-            HasVariable<S::Public, Mode = Public> + HasVariable<S::Secret, Mode = Secret>,
+            HasVariable<V::Checkpoint, Mode = Public> + HasVariable<V::Witness, Mode = Secret>,
     {
-        type Variable = SenderVar<C, S>;
+        type Variable = SenderVar<C, V>;
         type Mode = Derived;
     }
 
-    impl<C, S> SenderPost<C, S>
+    impl<C, V> SenderPost<C, V>
     where
         C: Configuration,
-        S: VerifiedSet<Item = Utxo<C>>,
-        C::ConstraintSystem: HasVariable<S::Public, Mode = Public>,
+        V: Verifier<Item = Utxo<C>> + ?Sized,
+        C::ConstraintSystem: HasVariable<V::Checkpoint, Mode = Public>,
     {
         /// Extends proof public input with `self`.
         #[inline]
@@ -1719,12 +1728,12 @@ pub mod constraint {
         where
             P: ProofSystem<ConstraintSystem = C::ConstraintSystem>
                 + ProofSystemInput<VoidNumber<C>>
-                + ProofSystemInput<S::Public>,
+                + ProofSystemInput<V::Checkpoint>,
         {
             // TODO: Add a "public part" trait that extracts the public part of `Sender` (using
             //       `SenderVar` to determine the types), then generate this method automatically.
             P::extend(input, &self.void_number);
-            P::extend(input, &self.utxo_membership_proof_public);
+            P::extend(input, &self.utxo_checkpoint);
         }
     }
 

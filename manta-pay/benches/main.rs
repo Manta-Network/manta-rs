@@ -21,8 +21,8 @@ extern crate manta_pay;
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use manta_accounting::transfer::test;
 use manta_crypto::{
+    accumulator::Accumulator,
     rand::{Rand, TrySample},
-    set::VerifiedSet,
 };
 use manta_pay::accounting::{
     identity::UtxoSet,
@@ -123,8 +123,7 @@ fn mint(c: &mut Criterion) {
         &mut rng,
     )
     .unwrap();
-    let utxo_set_verifier = utxo_set.verifier();
-    transfer_benchmark!(c, "Mint", rng, mint, commitment_scheme, utxo_set_verifier);
+    transfer_benchmark!(c, "Mint", rng, mint, commitment_scheme, utxo_set);
 }
 
 /// Runs the circuit benchmark for the [`PrivateTransfer`] transfer.
@@ -140,14 +139,13 @@ fn private_transfer(c: &mut Criterion) {
         &mut rng,
     )
     .unwrap();
-    let utxo_set_verifier = utxo_set.verifier();
     transfer_benchmark!(
         c,
         "PrivateTransfer",
         rng,
         private_transfer,
         commitment_scheme,
-        utxo_set_verifier
+        utxo_set
     );
 }
 
@@ -164,15 +162,7 @@ fn reclaim(c: &mut Criterion) {
         &mut rng,
     )
     .unwrap();
-    let utxo_set_verifier = utxo_set.verifier();
-    transfer_benchmark!(
-        c,
-        "Reclaim",
-        rng,
-        reclaim,
-        commitment_scheme,
-        utxo_set_verifier
-    );
+    transfer_benchmark!(c, "Reclaim", rng, reclaim, commitment_scheme, utxo_set);
 }
 
 criterion_group!(circuits, mint, private_transfer, reclaim);

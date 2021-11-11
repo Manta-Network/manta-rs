@@ -24,12 +24,14 @@
 //       creating a new one from scratch (for inner digests)?
 
 use crate::{
-    accumulator::{Accumulator, MembershipProof, OptimizedAccumulator, Verifier},
+    accumulator::{
+        Accumulator, ConstantCapacityAccumulator, ExactSizeAccumulator, MembershipProof,
+        OptimizedAccumulator, Verifier,
+    },
     merkle_tree::{
         fork::{self, Trunk},
         path::{CurrentPath, Path},
     },
-    set,
 };
 use core::{fmt::Debug, hash::Hash, marker::PhantomData};
 
@@ -495,22 +497,6 @@ where
     }
 }
 
-impl<C> set::Verifier for Parameters<C>
-where
-    C: Configuration + ?Sized,
-{
-    type Item = Leaf<C>;
-
-    type Public = Root<C>;
-
-    type Secret = Path<C>;
-
-    #[inline]
-    fn verify(&self, public: &Self::Public, secret: &Self::Secret, item: &Self::Item) -> bool {
-        self.verify_path(secret, public, item)
-    }
-}
-
 impl<C> Verifier for Parameters<C>
 where
     C: Configuration + ?Sized,
@@ -823,72 +809,6 @@ where
     }
 }
 
-impl<C, T> set::VerifiedSet for MerkleTree<C, T>
-where
-    C: Configuration + ?Sized,
-    T: Tree<C> + WithProofs<C>,
-{
-    type Item = Leaf<C>;
-
-    type Public = Root<C>;
-
-    type Secret = Path<C>;
-
-    type Verifier = Parameters<C>;
-
-    #[inline]
-    fn verifier(&self) -> &Self::Verifier {
-        &self.parameters
-    }
-
-    #[inline]
-    fn capacity(&self) -> usize {
-        self.capacity()
-    }
-
-    #[inline]
-    fn len(&self) -> usize {
-        self.len()
-    }
-
-    #[inline]
-    fn is_empty(&self) -> bool {
-        self.is_empty()
-    }
-
-    #[inline]
-    fn insert_provable(&mut self, item: &Self::Item) -> bool {
-        self.push_provable(item)
-    }
-
-    #[inline]
-    fn insert(&mut self, item: &Self::Item) -> bool {
-        self.push(item)
-    }
-
-    #[inline]
-    fn check_public(&self, public: &Self::Public) -> bool {
-        self.matching_root(public)
-    }
-
-    #[inline]
-    fn get_membership_proof(
-        &self,
-        item: &Self::Item,
-    ) -> Option<set::MembershipProof<Self::Verifier>> {
-        Some(set::MembershipProof::new(
-            self.root(),
-            self.path(self.index_of(&self.parameters.digest(item))?)
-                .ok()?,
-        ))
-    }
-
-    #[inline]
-    fn contains(&self, item: &Self::Item) -> bool {
-        self.contains(&self.parameters.digest(item))
-    }
-}
-
 impl<C, T> Accumulator for MerkleTree<C, T>
 where
     C: Configuration + ?Sized,
@@ -899,6 +819,20 @@ where
     type Checkpoint = Root<C>;
 
     type Witness = Path<C>;
+
+    type Verifier = Parameters<C>;
+
+    type CheckpointSet = Self::Checkpoint;
+
+    #[inline]
+    fn verifier(&self) -> &Parameters<C> {
+        &self.parameters
+    }
+
+    #[inline]
+    fn checkpoints(&self) -> Self::CheckpointSet {
+        self.root()
+    }
 
     #[inline]
     fn matching_checkpoint(&self, checkpoint: &Self::Checkpoint) -> bool {
@@ -911,7 +845,7 @@ where
     }
 
     #[inline]
-    fn prove(&self, item: &Self::Item) -> Option<MembershipProof<Self>> {
+    fn prove(&self, item: &Self::Item) -> Option<MembershipProof<Self::Verifier>> {
         Some(MembershipProof::new(
             self.root(),
             self.path(self.index_of(&self.parameters.digest(item))?)
@@ -923,15 +857,32 @@ where
     fn contains(&self, item: &Self::Item) -> bool {
         self.contains(&self.parameters.digest(item))
     }
+}
+
+impl<C, T> ConstantCapacityAccumulator for MerkleTree<C, T>
+where
+    C: Configuration + ?Sized,
+    T: Tree<C> + WithProofs<C>,
+{
+    #[inline]
+    fn capacity() -> usize {
+        capacity::<C>()
+    }
+}
+
+impl<C, T> ExactSizeAccumulator for MerkleTree<C, T>
+where
+    C: Configuration + ?Sized,
+    T: Tree<C> + WithProofs<C>,
+{
+    #[inline]
+    fn len(&self) -> usize {
+        self.len()
+    }
 
     #[inline]
-    fn verify(
-        &self,
-        item: &Self::Item,
-        checkpoint: &Self::Checkpoint,
-        witness: &Self::Witness,
-    ) -> bool {
-        self.parameters.verify(item, checkpoint, witness)
+    fn is_empty(&self) -> bool {
+        self.is_empty()
     }
 }
 

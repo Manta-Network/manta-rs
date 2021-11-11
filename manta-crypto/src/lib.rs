@@ -31,7 +31,6 @@ pub mod constraint;
 pub mod encryption;
 pub mod merkle_tree;
 pub mod rand;
-pub mod set;
 
 pub use commitment::prelude::*;
 pub use prf::*;

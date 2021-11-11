@@ -34,7 +34,7 @@ pub type Identity = identity::Identity<Configuration>;
 
 /// Sender Type
 pub type Sender =
-    identity::Sender<Configuration, <Configuration as transfer::Configuration>::UtxoSet>;
+    identity::Sender<Configuration, <Configuration as transfer::Configuration>::UtxoSetVerifier>;
 
 /// Receiver Type
 pub type Receiver = identity::Receiver<
@@ -55,8 +55,10 @@ pub type Spend = identity::Spend<
 >;
 
 /// Sender Post Type
-pub type SenderPost =
-    identity::SenderPost<Configuration, <Configuration as transfer::Configuration>::UtxoSet>;
+pub type SenderPost = identity::SenderPost<
+    Configuration,
+    <Configuration as transfer::Configuration>::UtxoSetVerifier,
+>;
 
 /// Receiver Post Type
 pub type ReceiverPost = identity::ReceiverPost<
@@ -86,15 +88,15 @@ pub mod constraint {
         crypto::merkle_tree::constraint as merkle_tree_constraint,
     };
     use manta_crypto::{
+        accumulator::constraint::VerifierVariable,
         constraint::{reflection::HasAllocation, Allocation, Constant, Variable},
-        set::constraint::VerifierVariable,
     };
     use manta_util::concatenate;
 
     /// Sender Variable Type
     pub type SenderVar = identity::constraint::SenderVar<
         Configuration,
-        <Configuration as transfer::Configuration>::UtxoSet,
+        <Configuration as transfer::Configuration>::UtxoSetVerifier,
     >;
 
     /// Receiver Variable Type
@@ -137,13 +139,14 @@ pub mod constraint {
         #[inline]
         fn assert_valid_membership_proof(
             &self,
-            public: &RootVar,
-            secret: &PathVar,
             item: &UtxoVar,
+            checkpoint: &RootVar,
+            witness: &PathVar,
             cs: &mut ConstraintSystem,
         ) {
             let _ = cs;
-            self.0.assert_verified(public, secret, &concatenate!(item));
+            self.0
+                .assert_verified(checkpoint, witness, &concatenate!(item));
         }
     }
 }

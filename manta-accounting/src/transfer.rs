@@ -18,7 +18,6 @@
 
 // FIXME: Make sure that either (a) no empty transfer can be built, or (b) empty transfers work
 //        properly i.e. do nothing.
-// FIXME: Remove `UtxoSet` dependence from `transfer`, really we only need `UtxoSetVerifier`.
 // TODO:  See if we can get rid of the `Copy` restriction on `ValidProof` and `SuperPostingKey`.
 // TODO:  See if we can get rid of `PublicTransfer` and `SecretTransfer` and just use `Transfer`.
 
@@ -32,6 +31,7 @@ use crate::{
 use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash, ops::Add};
 use manta_crypto::{
+    accumulator::{constraint::VerifierVariable, Verifier},
     constraint::{
         self,
         reflection::{HasAllocation, HasVariable},
@@ -40,7 +40,6 @@ use manta_crypto::{
     },
     encryption::ies::{EncryptedMessage, IntegratedEncryptionScheme},
     rand::{CryptoRng, RngCore},
-    set::{constraint::VerifierVariable, VerifiedSet},
 };
 use manta_util::{create_seal, from_variant_impl, seal};
 
@@ -64,15 +63,15 @@ pub trait Configuration:
     type ConstraintSystem: constraint::ConstraintSystem
         + HasVariable<AssetId, Variable = Self::AssetIdVar, Mode = PublicOrSecret>
         + HasVariable<AssetBalance, Variable = Self::AssetBalanceVar, Mode = PublicOrSecret>
-        + HasVariable<<Self::UtxoSet as VerifiedSet>::Public, Mode = Public>
-        + HasVariable<<Self::UtxoSet as VerifiedSet>::Secret, Mode = Secret>;
+        + HasVariable<<Self::UtxoSetVerifier as Verifier>::Checkpoint, Mode = Public>
+        + HasVariable<<Self::UtxoSetVerifier as Verifier>::Witness, Mode = Secret>;
 
     /// Proof System
     type ProofSystem: ProofSystem<ConstraintSystem = ConstraintSystem<Self>, Verification = bool>
         + ProofSystemInput<AssetId>
         + ProofSystemInput<AssetBalance>
         + ProofSystemInput<VoidNumber<Self>>
-        + ProofSystemInput<<Self::UtxoSet as VerifiedSet>::Public>
+        + ProofSystemInput<<Self::UtxoSetVerifier as Verifier>::Checkpoint>
         + ProofSystemInput<Utxo<Self>>;
 
     /// Asset Id Variable
@@ -87,14 +86,14 @@ pub trait Configuration:
     /// Integrated Encryption Scheme for [`Asset`]
     type IntegratedEncryptionScheme: IntegratedEncryptionScheme<Plaintext = Asset>;
 
-    /// Verified Set for [`Utxo`]
-    type UtxoSet: VerifiedSet<Item = Utxo<Self>>;
+    /// Accumulator Verifier for [`Utxo`]
+    type UtxoSetVerifier: Verifier<Item = Utxo<Self>>;
 
-    /// Verified Set Verifier Variable for [`Utxo`]
+    /// Accumulator Verifier Variable for [`Utxo`]
     type UtxoSetVerifierVar: VerifierVariable<
         ConstraintSystem<Self>,
         ItemVar = UtxoVar<Self>,
-        Type = <Self::UtxoSet as VerifiedSet>::Verifier,
+        Type = Self::UtxoSetVerifier,
         Mode = Constant,
     >;
 }
@@ -111,13 +110,14 @@ pub type InternalIdentity<C> =
 pub type Spend<C> = identity::Spend<C, <C as Configuration>::IntegratedEncryptionScheme>;
 
 /// Transfer Sender Type
-pub type Sender<C> = identity::Sender<C, <C as Configuration>::UtxoSet>;
+pub type Sender<C> = identity::Sender<C, <C as Configuration>::UtxoSetVerifier>;
 
 /// Transfer Sender Post Type
-pub type SenderPost<C> = identity::SenderPost<C, <C as Configuration>::UtxoSet>;
+pub type SenderPost<C> = identity::SenderPost<C, <C as Configuration>::UtxoSetVerifier>;
 
 /// Transfer Sender Posting Key Type
-pub type SenderPostingKey<C, L> = identity::SenderPostingKey<C, <C as Configuration>::UtxoSet, L>;
+pub type SenderPostingKey<C, L> =
+    identity::SenderPostingKey<C, <C as Configuration>::UtxoSetVerifier, L>;
 
 /// Transfer Receiver Type
 pub type Receiver<C> = identity::Receiver<C, <C as Configuration>::IntegratedEncryptionScheme>;
@@ -141,14 +141,11 @@ pub type IntegratedEncryptionSchemeError<C> =
 pub type ConstraintSystem<C> = <C as Configuration>::ConstraintSystem;
 
 /// Transfer Sender Variable Type
-pub type SenderVar<C> = identity::constraint::SenderVar<C, <C as Configuration>::UtxoSet>;
+pub type SenderVar<C> = identity::constraint::SenderVar<C, <C as Configuration>::UtxoSetVerifier>;
 
 /// Transfer Receiver Type
 pub type ReceiverVar<C> =
     identity::constraint::ReceiverVar<C, <C as Configuration>::IntegratedEncryptionScheme>;
-
-/// Transfer UTXO Set Verifier Type
-pub type UtxoSetVerifier<C> = <<C as Configuration>::UtxoSet as VerifiedSet>::Verifier;
 
 /// Transfer Proving Context Type
 pub type ProvingContext<C> = <<C as Configuration>::ProofSystem as ProofSystem>::ProvingContext;
@@ -183,7 +180,7 @@ pub type TransferLedgerSuperPostingKey<C, L> = <L as TransferLedger<C>>::SuperPo
 pub trait TransferLedger<C>:
     SenderLedger<
         C,
-        C::UtxoSet,
+        C::UtxoSetVerifier,
         SuperPostingKey = (Self::ValidProof, TransferLedgerSuperPostingKey<C, Self>),
     > + ReceiverLedger<
         C,
@@ -509,7 +506,7 @@ where
     pub fn into_post<R>(
         self,
         commitment_scheme: &C::CommitmentScheme,
-        utxo_set_verifier: &UtxoSetVerifier<C>,
+        utxo_set_verifier: &C::UtxoSetVerifier,
         context: &ProvingContext<C>,
         rng: &mut R,
     ) -> Result<TransferPost<C>, ProofSystemError<C>>
@@ -675,7 +672,7 @@ where
     #[inline]
     fn unknown_variables(
         commitment_scheme: &C::CommitmentScheme,
-        utxo_set_verifier: &UtxoSetVerifier<C>,
+        utxo_set_verifier: &C::UtxoSetVerifier,
         cs: &mut ConstraintSystem<C>,
     ) -> (
         Option<C::AssetIdVar>,
@@ -701,7 +698,7 @@ where
     fn known_variables(
         &self,
         commitment_scheme: &C::CommitmentScheme,
-        utxo_set_verifier: &UtxoSetVerifier<C>,
+        utxo_set_verifier: &C::UtxoSetVerifier,
         cs: &mut ConstraintSystem<C>,
     ) -> (
         Option<C::AssetIdVar>,
@@ -764,7 +761,7 @@ where
     #[inline]
     pub fn unknown_constraints(
         commitment_scheme: &C::CommitmentScheme,
-        utxo_set_verifier: &UtxoSetVerifier<C>,
+        utxo_set_verifier: &C::UtxoSetVerifier,
     ) -> ConstraintSystem<C> {
         let mut cs = C::ProofSystem::for_unknown();
         let (base_asset_id, participants, commitment_scheme, utxo_set_verifier) =
@@ -784,7 +781,7 @@ where
     pub fn known_constraints(
         &self,
         commitment_scheme: &C::CommitmentScheme,
-        utxo_set_verifier: &UtxoSetVerifier<C>,
+        utxo_set_verifier: &C::UtxoSetVerifier,
     ) -> ConstraintSystem<C> {
         let mut cs = C::ProofSystem::for_known();
         let (base_asset_id, participants, commitment_scheme, utxo_set_verifier) =
@@ -803,7 +800,7 @@ where
     #[inline]
     pub fn generate_context<R>(
         commitment_scheme: &C::CommitmentScheme,
-        utxo_set_verifier: &UtxoSetVerifier<C>,
+        utxo_set_verifier: &C::UtxoSetVerifier,
         rng: &mut R,
     ) -> Result<(ProvingContext<C>, VerifyingContext<C>), ProofSystemError<C>>
     where
@@ -818,7 +815,7 @@ where
     pub fn is_valid<R>(
         &self,
         commitment_scheme: &C::CommitmentScheme,
-        utxo_set_verifier: &UtxoSetVerifier<C>,
+        utxo_set_verifier: &C::UtxoSetVerifier,
         context: &ProvingContext<C>,
         rng: &mut R,
     ) -> Result<Proof<C>, ProofSystemError<C>>
@@ -834,7 +831,7 @@ where
     pub fn into_post<R>(
         self,
         commitment_scheme: &C::CommitmentScheme,
-        utxo_set_verifier: &UtxoSetVerifier<C>,
+        utxo_set_verifier: &C::UtxoSetVerifier,
         context: &ProvingContext<C>,
         rng: &mut R,
     ) -> Result<TransferPost<C>, ProofSystemError<C>>
@@ -1416,7 +1413,10 @@ pub mod canonical {
 pub mod test {
     use super::*;
     use crate::{asset::AssetBalanceType, identity::Identity};
-    use manta_crypto::rand::{Rand, Sample, Standard, TrySample};
+    use manta_crypto::{
+        accumulator::Accumulator,
+        rand::{Rand, Sample, Standard, TrySample},
+    };
     use manta_util::{array_map, fallible_array_map, into_array_unchecked};
 
     /// Test Sampling Distributions
@@ -1431,24 +1431,32 @@ pub mod test {
         pub struct FixedPublicTransfer(pub Asset);
 
         /// [`SecretTransfer`](super::SecretTransfer) Sampling Distribution
-        pub type SecretTransfer<'c, C> = Transfer<'c, C>;
+        pub type SecretTransfer<'c, C, S> = Transfer<'c, C, S>;
 
         /// Fixed Asset [`SecretTransfer`](super::SecretTransfer) Sampling Distribution
-        pub struct FixedSecretTransfer<'c, C>
+        pub struct FixedSecretTransfer<'c, C, S>
         where
             C: Configuration,
+            S: Accumulator<
+                Item = <C::UtxoSetVerifier as Verifier>::Item,
+                Verifier = C::UtxoSetVerifier,
+            >,
         {
             /// Asset
             pub asset: Asset,
 
             /// Base Distribution
-            pub base: SecretTransfer<'c, C>,
+            pub base: SecretTransfer<'c, C, S>,
         }
 
-        impl<'c, C> FixedSecretTransfer<'c, C>
+        impl<'c, C, S> FixedSecretTransfer<'c, C, S>
         where
             C: Configuration,
             C::SecretKey: Sample,
+            S: Accumulator<
+                Item = <C::UtxoSetVerifier as Verifier>::Item,
+                Verifier = C::UtxoSetVerifier,
+            >,
         {
             /// Tries to sample a [`super::SecretTransfer`] using custom sender and receiver asset
             /// totals.
@@ -1467,7 +1475,7 @@ pub mod test {
                 sender_total: AssetBalance,
                 receiver_total: AssetBalance,
                 commitment_scheme: &C::CommitmentScheme,
-                utxo_set: &mut C::UtxoSet,
+                utxo_set: &mut S,
                 rng: &mut R,
             ) -> Result<
                 super::SecretTransfer<C, SENDERS, RECEIVERS>,
@@ -1476,7 +1484,7 @@ pub mod test {
             where
                 R: CryptoRng + RngCore + ?Sized,
             {
-                FixedSecretTransfer::<C>::try_sample_custom_distribution(
+                FixedSecretTransfer::<C, S>::try_sample_custom_distribution(
                     asset_id,
                     sample_asset_balances::<_, SENDERS>(sender_total, rng),
                     sample_asset_balances::<_, RECEIVERS>(receiver_total, rng),
@@ -1503,7 +1511,7 @@ pub mod test {
                 senders: AssetBalances<SENDERS>,
                 receivers: AssetBalances<RECEIVERS>,
                 commitment_scheme: &C::CommitmentScheme,
-                utxo_set: &mut C::UtxoSet,
+                utxo_set: &mut S,
                 rng: &mut R,
             ) -> Result<
                 super::SecretTransfer<C, SENDERS, RECEIVERS>,
@@ -1550,27 +1558,35 @@ pub mod test {
         }
 
         /// [`Transfer`](super::Transfer) Sampling Distribution
-        pub struct Transfer<'c, C>
+        pub struct Transfer<'c, C, S>
         where
             C: Configuration,
+            S: Accumulator<
+                Item = <C::UtxoSetVerifier as Verifier>::Item,
+                Verifier = C::UtxoSetVerifier,
+            >,
         {
             /// Commitment Scheme
             pub commitment_scheme: &'c C::CommitmentScheme,
 
             /// UTXO Set
-            pub utxo_set: &'c mut C::UtxoSet,
+            pub utxo_set: &'c mut S,
         }
 
         /// Fixed Asset [`Transfer`](super::Transfer) Sampling Distribution
-        pub struct FixedTransfer<'c, C>
+        pub struct FixedTransfer<'c, C, S>
         where
             C: Configuration,
+            S: Accumulator<
+                Item = <C::UtxoSetVerifier as Verifier>::Item,
+                Verifier = C::UtxoSetVerifier,
+            >,
         {
             /// Asset
             pub asset: Asset,
 
             /// Base Distribution
-            pub base: Transfer<'c, C>,
+            pub base: Transfer<'c, C, S>,
         }
     }
 
@@ -1650,17 +1666,21 @@ pub mod test {
         }
     }
 
-    impl<C, const SENDERS: usize, const RECEIVERS: usize>
-        TrySample<distribution::SecretTransfer<'_, C>> for SecretTransfer<C, SENDERS, RECEIVERS>
+    impl<C, S, const SENDERS: usize, const RECEIVERS: usize>
+        TrySample<distribution::SecretTransfer<'_, C, S>> for SecretTransfer<C, SENDERS, RECEIVERS>
     where
         C: Configuration,
         C::SecretKey: Sample,
+        S: Accumulator<
+            Item = <C::UtxoSetVerifier as Verifier>::Item,
+            Verifier = C::UtxoSetVerifier,
+        >,
     {
         type Error = IntegratedEncryptionSchemeError<C>;
 
         #[inline]
         fn try_sample<R>(
-            distribution: distribution::SecretTransfer<C>,
+            distribution: distribution::SecretTransfer<C, S>,
             rng: &mut R,
         ) -> Result<Self, Self::Error>
         where
@@ -1676,18 +1696,22 @@ pub mod test {
         }
     }
 
-    impl<C, const SENDERS: usize, const RECEIVERS: usize>
-        TrySample<distribution::FixedSecretTransfer<'_, C>>
+    impl<C, S, const SENDERS: usize, const RECEIVERS: usize>
+        TrySample<distribution::FixedSecretTransfer<'_, C, S>>
         for SecretTransfer<C, SENDERS, RECEIVERS>
     where
         C: Configuration,
         C::SecretKey: Sample,
+        S: Accumulator<
+            Item = <C::UtxoSetVerifier as Verifier>::Item,
+            Verifier = C::UtxoSetVerifier,
+        >,
     {
         type Error = IntegratedEncryptionSchemeError<C>;
 
         #[inline]
         fn try_sample<R>(
-            distribution: distribution::FixedSecretTransfer<C>,
+            distribution: distribution::FixedSecretTransfer<C, S>,
             rng: &mut R,
         ) -> Result<Self, Self::Error>
         where
@@ -1699,21 +1723,26 @@ pub mod test {
 
     impl<
             C,
+            S,
             const SOURCES: usize,
             const SENDERS: usize,
             const RECEIVERS: usize,
             const SINKS: usize,
-        > TrySample<distribution::Transfer<'_, C>>
+        > TrySample<distribution::Transfer<'_, C, S>>
         for Transfer<C, SOURCES, SENDERS, RECEIVERS, SINKS>
     where
         C: Configuration,
         C::SecretKey: Sample,
+        S: Accumulator<
+            Item = <C::UtxoSetVerifier as Verifier>::Item,
+            Verifier = C::UtxoSetVerifier,
+        >,
     {
         type Error = IntegratedEncryptionSchemeError<C>;
 
         #[inline]
         fn try_sample<R>(
-            distribution: distribution::Transfer<C>,
+            distribution: distribution::Transfer<C, S>,
             rng: &mut R,
         ) -> Result<Self, Self::Error>
         where
@@ -1731,21 +1760,26 @@ pub mod test {
 
     impl<
             C,
+            S,
             const SOURCES: usize,
             const SENDERS: usize,
             const RECEIVERS: usize,
             const SINKS: usize,
-        > TrySample<distribution::FixedTransfer<'_, C>>
+        > TrySample<distribution::FixedTransfer<'_, C, S>>
         for Transfer<C, SOURCES, SENDERS, RECEIVERS, SINKS>
     where
         C: Configuration,
         C::SecretKey: Sample,
+        S: Accumulator<
+            Item = <C::UtxoSetVerifier as Verifier>::Item,
+            Verifier = C::UtxoSetVerifier,
+        >,
     {
         type Error = IntegratedEncryptionSchemeError<C>;
 
         #[inline]
         fn try_sample<R>(
-            distribution: distribution::FixedTransfer<C>,
+            distribution: distribution::FixedTransfer<C, S>,
             rng: &mut R,
         ) -> Result<Self, Self::Error>
         where
@@ -1794,7 +1828,7 @@ pub mod test {
             CD: Default,
             VD: Default,
             C::CommitmentScheme: Sample<CD>,
-            UtxoSetVerifier<C>: Sample<VD>,
+            C::UtxoSetVerifier: Sample<VD>,
             R: CryptoRng + RngCore + ?Sized,
         {
             Self::unknown_constraints(&rng.gen(), &rng.gen())
@@ -1809,7 +1843,7 @@ pub mod test {
             CD: Default,
             VD: Default,
             C::CommitmentScheme: Sample<CD>,
-            UtxoSetVerifier<C>: Sample<VD>,
+            C::UtxoSetVerifier: Sample<VD>,
             R: CryptoRng + RngCore + ?Sized,
         {
             Self::generate_context(&rng.gen(), &rng.gen(), rng)
@@ -1818,13 +1852,17 @@ pub mod test {
         /// Samples a [`Transfer`] and checks whether its internal proof is valid relative to the
         /// given `commitment_scheme` and `utxo_set`.
         #[inline]
-        pub fn sample_and_check_proof<R>(
+        pub fn sample_and_check_proof<S, R>(
             commitment_scheme: &C::CommitmentScheme,
-            utxo_set: &mut C::UtxoSet,
+            utxo_set: &mut S,
             rng: &mut R,
         ) -> Result<bool, ProofSystemError<C>>
         where
             C::SecretKey: Sample,
+            S: Accumulator<
+                Item = <C::UtxoSetVerifier as Verifier>::Item,
+                Verifier = C::UtxoSetVerifier,
+            >,
             R: CryptoRng + RngCore + ?Sized,
         {
             let transfer = Self::try_sample(
