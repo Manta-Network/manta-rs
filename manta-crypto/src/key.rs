@@ -63,3 +63,17 @@ pub trait KeyAgreementScheme {
     /// Computes the shared secret given the known `secret_key` and the given `public_key`.
     fn agree(secret_key: &Self::SecretKey, public_key: &Self::PublicKey) -> Self::SharedSecret;
 }
+
+/// Key-Derivation Function
+pub trait KeyDerivationFunction {
+    /// Key Agreement Scheme Type
+    type KeyAgreementScheme: KeyAgreementScheme;
+
+    /// Output Key Type
+    type Key;
+
+    /// Derives an output key from `shared_secret` computed from a key-agreement scheme.
+    fn derive(
+        shared_secret: <Self::KeyAgreementScheme as KeyAgreementScheme>::SharedSecret,
+    ) -> Self::Key;
+}

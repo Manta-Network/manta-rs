@@ -16,13 +16,10 @@
 
 //! Encryption Primitives
 
-// TODO: Make `KeyDerivationFunction` more general (don't require the `SymmetricKeyEncryptionScheme`
-//       dependency) and move it to `crate::key`.
-
 // TODO: remove
 pub mod ies;
 
-use crate::key::KeyAgreementScheme;
+use crate::key::{KeyAgreementScheme, KeyDerivationFunction};
 
 /// Symmetric-Key Encryption Scheme
 ///
@@ -54,104 +51,15 @@ pub trait SymmetricKeyEncryptionScheme {
     fn decrypt(key: Self::Key, ciphertext: &Self::Ciphertext) -> Option<Self::Plaintext>;
 }
 
-/// Key-Derivation Function
-pub trait KeyDerivationFunction {
-    /// Shared Secret Type
-    type SharedSecret;
-
-    /// Encryption/Decryption Key Type
-    type Key;
-
-    /// Key-Agreement Scheme Type
-    type KeyAgreementScheme: KeyAgreementScheme<SharedSecret = Self::SharedSecret>;
-
-    /// Symmetric-Key Encryption Scheme Type
-    type SymmetricKeyEncryptionScheme: SymmetricKeyEncryptionScheme<Key = Self::Key>;
-
-    /// Derives an encryption/decryption key from a given `shared_secret`.
-    fn derive(shared_secret: Self::SharedSecret) -> Self::Key;
-}
-
 /// Hybrid Public Key Encryption Scheme
-pub trait HybridPublicKeyEncryptionScheme {
-    /// Secret Key Type
-    type SecretKey;
-
-    /// Public Key Type
-    type PublicKey;
-
-    /// Plaintext Type
-    type Plaintext;
-
-    /// Ciphertext Type
-    type Ciphertext;
-
-    /// Key-Agreement Scheme Type
-    type KeyAgreementScheme: KeyAgreementScheme<
-        SecretKey = Self::SecretKey,
-        PublicKey = Self::PublicKey,
-    >;
-
-    /// Symmetric-Key Encryption Scheme Type
-    type SymmetricKeyEncryptionScheme: SymmetricKeyEncryptionScheme<
-        Plaintext = Self::Plaintext,
-        Ciphertext = Self::Ciphertext,
-    >;
-
+pub trait HybridPublicKeyEncryptionScheme:
+    KeyAgreementScheme + SymmetricKeyEncryptionScheme
+{
     /// Key-Derivation Function Type
     type KeyDerivationFunction: KeyDerivationFunction<
-        SharedSecret = <Self::KeyAgreementScheme as KeyAgreementScheme>::SharedSecret,
-        Key = <Self::SymmetricKeyEncryptionScheme as SymmetricKeyEncryptionScheme>::Key,
-        KeyAgreementScheme = Self::KeyAgreementScheme,
-        SymmetricKeyEncryptionScheme = Self::SymmetricKeyEncryptionScheme,
+        KeyAgreementScheme = Self,
+        Key = <Self as SymmetricKeyEncryptionScheme>::Key,
     >;
-}
-
-impl<H> KeyAgreementScheme for H
-where
-    H: HybridPublicKeyEncryptionScheme,
-{
-    type SecretKey = <H::KeyAgreementScheme as KeyAgreementScheme>::SecretKey;
-
-    type PublicKey = <H::KeyAgreementScheme as KeyAgreementScheme>::PublicKey;
-
-    type SharedSecret = <H::KeyAgreementScheme as KeyAgreementScheme>::SharedSecret;
-
-    #[inline]
-    fn derive(secret_key: &Self::SecretKey) -> Self::PublicKey {
-        H::KeyAgreementScheme::derive(secret_key)
-    }
-
-    #[inline]
-    fn derive_owned(secret_key: Self::SecretKey) -> Self::PublicKey {
-        H::KeyAgreementScheme::derive_owned(secret_key)
-    }
-
-    #[inline]
-    fn agree(secret_key: &Self::SecretKey, public_key: &Self::PublicKey) -> Self::SharedSecret {
-        H::KeyAgreementScheme::agree(secret_key, public_key)
-    }
-}
-
-impl<H> SymmetricKeyEncryptionScheme for H
-where
-    H: HybridPublicKeyEncryptionScheme,
-{
-    type Key = <H::SymmetricKeyEncryptionScheme as SymmetricKeyEncryptionScheme>::Key;
-
-    type Plaintext = <H::SymmetricKeyEncryptionScheme as SymmetricKeyEncryptionScheme>::Plaintext;
-
-    type Ciphertext = <H::SymmetricKeyEncryptionScheme as SymmetricKeyEncryptionScheme>::Ciphertext;
-
-    #[inline]
-    fn encrypt(key: Self::Key, plaintext: Self::Plaintext) -> Self::Ciphertext {
-        H::SymmetricKeyEncryptionScheme::encrypt(key, plaintext)
-    }
-
-    #[inline]
-    fn decrypt(key: Self::Key, ciphertext: &Self::Ciphertext) -> Option<Self::Plaintext> {
-        H::SymmetricKeyEncryptionScheme::decrypt(key, ciphertext)
-    }
 }
 
 /// Encrypted Message

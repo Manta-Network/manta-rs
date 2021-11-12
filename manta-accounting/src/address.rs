@@ -90,7 +90,7 @@ where
 {
     /// Builds a new [`SecretKey`] from `secret_key`.
     #[inline]
-    fn new(secret_key: K::SecretKey) -> Self {
+    pub fn new(secret_key: K::SecretKey) -> Self {
         Self {
             secret_key,
             __: PhantomData,
@@ -109,6 +109,17 @@ where
     #[inline]
     pub fn derive_owned(self) -> PublicKey<K, T> {
         PublicKey::new(K::derive_owned(self.secret_key))
+    }
+}
+
+impl<K> SecretSpendKey<K>
+where
+    K: KeyAgreementScheme,
+{
+    /// Generates the spending secret associated to `self` and the `ephemeral_public_key`.
+    #[inline]
+    pub fn spending_secret(&self, ephemeral_public_key: &K::PublicKey) -> K::SharedSecret {
+        K::agree(&self.secret_key, ephemeral_public_key)
     }
 }
 
@@ -148,12 +159,28 @@ where
     T: KeyType,
 {
     /// Builds a new [`PublicKey`] from `public_key`.
+    ///
+    /// # Implementation Note
+    ///
+    /// This method is intentionally private, since these keys should only be constructed by some
+    /// call to the appropriate `derive` method.
     #[inline]
     fn new(public_key: K::PublicKey) -> Self {
         Self {
             public_key,
             __: PhantomData,
         }
+    }
+}
+
+impl<K> PublicSpendKey<K>
+where
+    K: KeyAgreementScheme,
+{
+    /// Generates the spending secret associated to `self` and the `ephemeral_secret_key`.
+    #[inline]
+    pub fn spending_secret(&self, ephemeral_secret_key: &K::SecretKey) -> K::SharedSecret {
+        K::agree(ephemeral_secret_key, &self.public_key)
     }
 }
 
@@ -193,7 +220,7 @@ where
 {
     /// Builds a new [`SpendingKey`] from `spend` and `view`.
     #[inline]
-    fn new(spend: SecretSpendKey<K>, view: SecretViewKey<K>) -> Self {
+    pub fn new(spend: SecretSpendKey<K>, view: SecretViewKey<K>) -> Self {
         Self { spend, view }
     }
 
@@ -214,6 +241,12 @@ where
     pub fn into_receiving_key(self) -> ReceivingKey<K> {
         ReceivingKey::new(self.spend.derive_owned(), self.view.derive_owned())
     }
+
+    /// Generates the spending secret associated to `self` and the `ephemeral_public_key`.
+    #[inline]
+    pub fn spending_secret(&self, ephemeral_public_key: &K::PublicKey) -> K::SharedSecret {
+        self.spend.spending_secret(ephemeral_public_key)
+    }
 }
 
 impl<H> SpendingKey<H>
@@ -229,7 +262,7 @@ where
         &self,
         message: EncryptedMessage<H>,
     ) -> Result<DecryptedMessage<H>, EncryptedMessage<H>> {
-        self.viewing_key().decrypt(message)
+        self.view.decrypt(message)
     }
 }
 
@@ -250,9 +283,26 @@ where
     K: KeyAgreementScheme,
 {
     /// Builds a new [`ReceivingKey`] from `spend` and `view`.
+    ///
+    /// # Implementation Note
+    ///
+    /// This method is intentionally private, since these keys should only be constructed by some
+    /// call to the appropriate `derive` method.
     #[inline]
     fn new(spend: PublicSpendKey<K>, view: PublicViewKey<K>) -> Self {
         Self { spend, view }
+    }
+
+    /// Returns the [`PublicViewKey`] component of `self`.
+    #[inline]
+    pub fn viewing_key(&self) -> &PublicViewKey<K> {
+        &self.view
+    }
+
+    /// Generates the spending secret associated to `self` and the `ephemeral_secret_key`.
+    #[inline]
+    pub fn spending_secret(&self, ephemeral_secret_key: &K::SecretKey) -> K::SharedSecret {
+        self.spend.spending_secret(ephemeral_secret_key)
     }
 }
 

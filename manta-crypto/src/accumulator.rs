@@ -16,6 +16,8 @@
 
 //! Dynamic Cryptographic Accumulators
 
+// TODO: See if we can modify `Accumulator` so that it can extend the `Verifier` trait directly.
+
 /// Matching Set
 ///
 /// This is a generalization of a single-element matching system, where there can be multiple
