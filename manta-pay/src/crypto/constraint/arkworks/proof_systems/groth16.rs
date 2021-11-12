@@ -30,7 +30,7 @@ use ark_ff::{Field, ToConstraintField};
 use ark_groth16::{Groth16 as ArkGroth16, PreparedVerifyingKey, Proof, ProvingKey};
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
 use core::marker::PhantomData;
-use manta_accounting::asset::{AssetBalance, AssetId};
+use manta_accounting::asset::{AssetId, AssetValue};
 use manta_crypto::{
     constraint::{Input, ProofSystem},
     rand::{CryptoRng, RngCore, SizedRng},
@@ -147,12 +147,12 @@ where
     }
 }
 
-impl<E> Input<AssetBalance> for Groth16<E>
+impl<E> Input<AssetValue> for Groth16<E>
 where
     E: PairingEngine,
 {
     #[inline]
-    fn extend(input: &mut Self::Input, next: &AssetBalance) {
+    fn extend(input: &mut Self::Input, next: &AssetValue) {
         input.push(next.0.into());
         input.append(&mut next.into_bytes().to_field_elements().unwrap());
     }

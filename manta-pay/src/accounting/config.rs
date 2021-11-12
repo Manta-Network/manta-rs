@@ -24,7 +24,7 @@ use crate::{
     crypto::{
         commitment::pedersen::{self, PedersenWindow},
         constraint::arkworks::{
-            proof_systems::groth16::Groth16, ArkConstraintSystem, AssetBalanceVar, AssetIdVar,
+            proof_systems::groth16::Groth16, ArkConstraintSystem, AssetIdVar, AssetValueVar,
         },
         ies::IES,
         merkle_tree::{
@@ -153,7 +153,7 @@ impl transfer::Configuration for Configuration {
     type ConstraintSystem = ConstraintSystem;
     type ProofSystem = ProofSystem;
     type AssetIdVar = AssetIdVar<ConstraintField>;
-    type AssetBalanceVar = AssetBalanceVar<ConstraintField>;
+    type AssetValueVar = AssetValueVar<ConstraintField>;
     type IntegratedEncryptionScheme = IES;
     type UtxoSetVerifier = Parameters;
     type UtxoSetVerifierVar = UtxoSetVerifierVar;

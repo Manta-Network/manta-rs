@@ -16,10 +16,10 @@
 
 //! Assets
 
-// TODO: Add macro to build `AssetId` and `AssetBalance`.
+// TODO: Add macro to build `AssetId` and `AssetValue`.
 // TODO: Implement all `rand` sampling traits.
-// TODO: Should we rename `AssetBalance` to `AssetValue` to be more consistent?
-// TODO: Implement `Concat` for `AssetId` and `AssetBalance`.
+// TODO: Should we rename `AssetValue` to `AssetValue` to be more consistent?
+// TODO: Implement `Concat` for `AssetId` and `AssetValue`.
 // TODO: Add implementations for `AssetMap` using key-value maps like `BTreeMap` and `HashMap`
 
 use alloc::vec::Vec;
@@ -46,7 +46,7 @@ use manta_util::{array_map, fallible_array_map, into_array_unchecked, Concat, Co
 
 pub(super) mod prelude {
     #[doc(inline)]
-    pub use super::{Asset, AssetBalance, AssetBalances, AssetId};
+    pub use super::{Asset, AssetId, AssetValue, AssetValues};
 }
 
 /// [`AssetId`] Base Type
@@ -68,9 +68,9 @@ impl AssetId {
     pub const SIZE: usize = (Self::BITS / 8) as usize;
 
     /// Constructs a new [`Asset`] with `self` as the [`AssetId`] and `value` as the
-    /// [`AssetBalance`].
+    /// [`AssetValue`].
     #[inline]
-    pub const fn with(self, value: AssetBalance) -> Asset {
+    pub const fn with(self, value: AssetValue) -> Asset {
         Asset::new(self, value)
     }
 
@@ -124,10 +124,10 @@ where
     }
 }
 
-/// [`AssetBalance`] Base Type
-pub type AssetBalanceType = u128;
+/// [`AssetValue`] Base Type
+pub type AssetValueType = u128;
 
-/// Asset Balance Type
+/// Asset Value Type
 #[derive(
     Add,
     AddAssign,
@@ -152,19 +152,19 @@ pub type AssetBalanceType = u128;
     Sum,
 )]
 #[from(forward)]
-pub struct AssetBalance(
-    /// [`Asset`] Balance
-    pub AssetBalanceType,
+pub struct AssetValue(
+    /// [`Asset`] Value
+    pub AssetValueType,
 );
 
-impl AssetBalance {
+impl AssetValue {
     /// The size of this type in bits.
-    pub const BITS: u32 = AssetBalanceType::BITS;
+    pub const BITS: u32 = AssetValueType::BITS;
 
     /// The size of this type in bytes.
     pub const SIZE: usize = (Self::BITS / 8) as usize;
 
-    /// Constructs a new [`Asset`] with `self` as the [`AssetBalance`] and `id` as the [`AssetId`].
+    /// Constructs a new [`Asset`] with `self` as the [`AssetValue`] and `id` as the [`AssetId`].
     #[inline]
     pub const fn with(self, id: AssetId) -> Asset {
         Asset::new(id, self)
@@ -173,7 +173,7 @@ impl AssetBalance {
     /// Converts a byte array into `self`.
     #[inline]
     pub const fn from_bytes(bytes: [u8; Self::SIZE]) -> Self {
-        Self(AssetBalanceType::from_le_bytes(bytes))
+        Self(AssetValueType::from_le_bytes(bytes))
     }
 
     /// Converts `self` into a byte array.
@@ -207,7 +207,7 @@ impl AssetBalance {
     }
 }
 
-impl Concat for AssetBalance {
+impl Concat for AssetValue {
     type Item = u8;
 
     #[inline]
@@ -224,25 +224,25 @@ impl Concat for AssetBalance {
     }
 }
 
-impl From<AssetBalance> for [u8; AssetBalance::SIZE] {
+impl From<AssetValue> for [u8; AssetValue::SIZE] {
     #[inline]
-    fn from(entry: AssetBalance) -> Self {
+    fn from(entry: AssetValue) -> Self {
         entry.into_bytes()
     }
 }
 
-impl Mul<AssetBalance> for AssetBalanceType {
-    type Output = AssetBalanceType;
+impl Mul<AssetValue> for AssetValueType {
+    type Output = AssetValueType;
 
     #[inline]
-    fn mul(self, rhs: AssetBalance) -> Self::Output {
+    fn mul(self, rhs: AssetValue) -> Self::Output {
         self * rhs.0
     }
 }
 
-impl<D> Sample<D> for AssetBalance
+impl<D> Sample<D> for AssetValue
 where
-    AssetBalanceType: Sample<D>,
+    AssetValueType: Sample<D>,
 {
     #[inline]
     fn sample<R>(distribution: D, rng: &mut R) -> Self
@@ -253,29 +253,29 @@ where
     }
 }
 
-impl<'a> Sum<&'a AssetBalance> for AssetBalance {
+impl<'a> Sum<&'a AssetValue> for AssetValue {
     #[inline]
     fn sum<I>(iter: I) -> Self
     where
-        I: Iterator<Item = &'a AssetBalance>,
+        I: Iterator<Item = &'a AssetValue>,
     {
         iter.copied().sum()
     }
 }
 
-/// [`AssetBalance`] Array Type
-pub type AssetBalances<const N: usize> = [AssetBalance; N];
+/// [`AssetValue`] Array Type
+pub type AssetValues<const N: usize> = [AssetValue; N];
 
 /// Change Iterator
 ///
-/// An iterator over [`AssetBalance`] change amounts.
+/// An iterator over [`AssetValue`] change amounts.
 ///
-/// This `struct` is created by the [`make_change`](AssetBalance::make_change) method on
-/// [`AssetBalance`]. See its documentation for more.
+/// This `struct` is created by the [`make_change`](AssetValue::make_change) method on
+/// [`AssetValue`]. See its documentation for more.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub struct Change {
     /// Base Amount
-    base: AssetBalanceType,
+    base: AssetValueType,
 
     /// Remainder to be Divided
     remainder: usize,
@@ -290,8 +290,8 @@ pub struct Change {
 impl Change {
     /// Builds a new [`Change`] iterator for `amount` into `n` pieces.
     #[inline]
-    const fn new(amount: AssetBalanceType, n: usize) -> Option<Self> {
-        let n_div = n as AssetBalanceType;
+    const fn new(amount: AssetValueType, n: usize) -> Option<Self> {
+        let n_div = n as AssetValueType;
         match amount.checked_div(n_div) {
             Some(base) => Some(Self {
                 base,
@@ -305,7 +305,7 @@ impl Change {
 }
 
 impl Iterator for Change {
-    type Item = AssetBalance;
+    type Item = AssetValue;
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
@@ -314,7 +314,7 @@ impl Iterator for Change {
         }
         let amount = self.base + (self.index < self.remainder) as u128;
         self.index += 1;
-        Some(AssetBalance(amount))
+        Some(AssetValue(amount))
     }
 
     #[inline]
@@ -336,26 +336,26 @@ pub struct Asset {
     pub id: AssetId,
 
     /// Asset Value
-    pub value: AssetBalance,
+    pub value: AssetValue,
 }
 
 impl Asset {
     /// The size of the data in this type in bits.
-    pub const BITS: u32 = AssetId::BITS + AssetBalance::BITS;
+    pub const BITS: u32 = AssetId::BITS + AssetValue::BITS;
 
     /// The size of the data in this type in bytes.
     pub const SIZE: usize = (Self::BITS / 8) as usize;
 
     /// Builds a new [`Asset`] from an `id` and a `value`.
     #[inline]
-    pub const fn new(id: AssetId, value: AssetBalance) -> Self {
+    pub const fn new(id: AssetId, value: AssetValue) -> Self {
         Self { id, value }
     }
 
     /// Builds a new zero [`Asset`] with the given `id`.
     #[inline]
     pub const fn zero(id: AssetId) -> Self {
-        Self::new(id, AssetBalance(0))
+        Self::new(id, AssetValue(0))
     }
 
     /// Returns `true` if `self` is a zero [`Asset`] of some [`AssetId`].
@@ -376,7 +376,7 @@ impl Asset {
         let split = (AssetId::BITS / 8) as usize;
         Self::new(
             AssetId::from_bytes(into_array_unchecked(&bytes[..split])),
-            AssetBalance::from_bytes(into_array_unchecked(&bytes[split..])),
+            AssetValue::from_bytes(into_array_unchecked(&bytes[split..])),
         )
     }
 
@@ -388,7 +388,7 @@ impl Asset {
 
     /// Returns [`self.value`](Self::value) if the given `id` matches [`self.id`](Self::id).
     #[inline]
-    pub const fn value_of(&self, id: AssetId) -> Option<AssetBalance> {
+    pub const fn value_of(&self, id: AssetId) -> Option<AssetValue> {
         if self.id.0 == id.0 {
             Some(self.value)
         } else {
@@ -399,7 +399,7 @@ impl Asset {
     /// Returns a mutable reference to [`self.value`](Self::value) if the given `id` matches
     /// [`self.id`](Self::id).
     #[inline]
-    pub fn value_of_mut(&mut self, id: AssetId) -> Option<&mut AssetBalance> {
+    pub fn value_of_mut(&mut self, id: AssetId) -> Option<&mut AssetValue> {
         if self.id.0 == id.0 {
             Some(&mut self.value)
         } else {
@@ -408,19 +408,19 @@ impl Asset {
     }
 }
 
-impl Add<AssetBalance> for Asset {
+impl Add<AssetValue> for Asset {
     type Output = Self;
 
     #[inline]
-    fn add(mut self, rhs: AssetBalance) -> Self::Output {
+    fn add(mut self, rhs: AssetValue) -> Self::Output {
         self += rhs;
         self
     }
 }
 
-impl AddAssign<AssetBalance> for Asset {
+impl AddAssign<AssetValue> for Asset {
     #[inline]
-    fn add_assign(&mut self, rhs: AssetBalance) {
+    fn add_assign(&mut self, rhs: AssetValue) {
         self.value += rhs;
     }
 }
@@ -457,7 +457,7 @@ impl From<Asset> for [u8; Asset::SIZE] {
     }
 }
 
-impl From<Asset> for (AssetId, AssetBalance) {
+impl From<Asset> for (AssetId, AssetValue) {
     #[inline]
     fn from(asset: Asset) -> Self {
         (asset.id, asset.value)
@@ -475,19 +475,19 @@ impl Sample for Asset {
     }
 }
 
-impl Sub<AssetBalance> for Asset {
+impl Sub<AssetValue> for Asset {
     type Output = Self;
 
     #[inline]
-    fn sub(mut self, rhs: AssetBalance) -> Self::Output {
+    fn sub(mut self, rhs: AssetValue) -> Self::Output {
         self -= rhs;
         self
     }
 }
 
-impl SubAssign<AssetBalance> for Asset {
+impl SubAssign<AssetValue> for Asset {
     #[inline]
-    fn sub_assign(&mut self, rhs: AssetBalance) {
+    fn sub_assign(&mut self, rhs: AssetValue) {
         self.value -= rhs;
     }
 }
@@ -495,32 +495,32 @@ impl SubAssign<AssetBalance> for Asset {
 /// Asset Id Variable
 pub type AssetIdVar<C> = Var<AssetId, C>;
 
-/// Asset Balance Variable
-pub type AssetBalanceVar<C> = Var<AssetBalance, C>;
+/// Asset Value Variable
+pub type AssetValueVar<C> = Var<AssetValue, C>;
 
 /// Asset Variable
 pub struct AssetVar<C>
 where
     C: HasVariable<AssetId, Mode = PublicOrSecret>
-        + HasVariable<AssetBalance, Mode = PublicOrSecret>
+        + HasVariable<AssetValue, Mode = PublicOrSecret>
         + ?Sized,
 {
     /// Asset Id
     pub id: AssetIdVar<C>,
 
     /// Asset Value
-    pub value: AssetBalanceVar<C>,
+    pub value: AssetValueVar<C>,
 }
 
 impl<C> AssetVar<C>
 where
     C: HasVariable<AssetId, Mode = PublicOrSecret>
-        + HasVariable<AssetBalance, Mode = PublicOrSecret>
+        + HasVariable<AssetValue, Mode = PublicOrSecret>
         + ?Sized,
 {
     /// Builds a new [`AssetVar`] from an `id` and a `value`.
     #[inline]
-    pub fn new(id: AssetIdVar<C>, value: AssetBalanceVar<C>) -> Self {
+    pub fn new(id: AssetIdVar<C>, value: AssetValueVar<C>) -> Self {
         Self { id, value }
     }
 }
@@ -528,10 +528,10 @@ where
 impl<C> Concat for AssetVar<C>
 where
     C: HasVariable<AssetId, Mode = PublicOrSecret>
-        + HasVariable<AssetBalance, Mode = PublicOrSecret>
+        + HasVariable<AssetValue, Mode = PublicOrSecret>
         + ?Sized,
     AssetIdVar<C>: Concat,
-    AssetBalanceVar<C>: Concat<Item = <AssetIdVar<C> as Concat>::Item>,
+    AssetValueVar<C>: Concat<Item = <AssetIdVar<C> as Concat>::Item>,
 {
     type Item = <AssetIdVar<C> as Concat>::Item;
 
@@ -548,7 +548,7 @@ where
 impl<C> Variable<C> for AssetVar<C>
 where
     C: HasVariable<AssetId, Mode = PublicOrSecret>
-        + HasVariable<AssetBalance, Mode = PublicOrSecret>
+        + HasVariable<AssetValue, Mode = PublicOrSecret>
         + ?Sized,
 {
     type Type = Asset;
@@ -564,7 +564,7 @@ where
             ),
             Allocation::Unknown(mode) => Self::new(
                 unknown::<AssetId, _>(cs, mode.into()),
-                unknown::<AssetBalance, _>(cs, mode.into()),
+                unknown::<AssetValue, _>(cs, mode.into()),
             ),
         }
     }
@@ -573,7 +573,7 @@ where
 impl<C> HasAllocation<C> for Asset
 where
     C: HasVariable<AssetId, Mode = PublicOrSecret>
-        + HasVariable<AssetBalance, Mode = PublicOrSecret>
+        + HasVariable<AssetValue, Mode = PublicOrSecret>
         + ?Sized,
 {
     type Variable = AssetVar<C>;
@@ -588,13 +588,13 @@ pub struct AssetCollection<const N: usize> {
     pub id: AssetId,
 
     /// Asset Values
-    pub values: [AssetBalance; N],
+    pub values: [AssetValue; N],
 }
 
 impl<const N: usize> AssetCollection<N> {
     /// Generates a collection of assets with matching [`AssetId`].
     #[inline]
-    pub const fn new(id: AssetId, values: [AssetBalance; N]) -> Self {
+    pub const fn new(id: AssetId, values: [AssetValue; N]) -> Self {
         Self { id, values }
     }
 }
@@ -645,7 +645,7 @@ impl<const N: usize> TryFrom<[Asset; N]> for AssetCollection<N> {
 pub trait AssetMap: Default {
     /// Key Type
     ///
-    /// Keys are used to access the underlying asset balances.
+    /// Keys are used to access the underlying asset values.
     type Key;
 
     // TODO: Turn `select` and `zeroes` back into iterator returning methods.
@@ -673,7 +673,7 @@ pub trait AssetMap: Default {
     #[inline]
     fn insert_all_same<I>(&mut self, id: AssetId, iter: I)
     where
-        I: IntoIterator<Item = (Self::Key, AssetBalance)>,
+        I: IntoIterator<Item = (Self::Key, AssetValue)>,
     {
         iter.into_iter()
             .for_each(move |(key, value)| self.insert(key, id.with(value)));
@@ -710,10 +710,10 @@ where
     M: AssetMap + ?Sized,
 {
     /// Change Amount
-    pub change: AssetBalance,
+    pub change: AssetValue,
 
-    /// Asset Balance Distribution
-    pub balances: Vec<(M::Key, AssetBalance)>,
+    /// Asset Value Distribution
+    pub values: Vec<(M::Key, AssetValue)>,
 }
 
 impl<M> Selection<M>
@@ -723,24 +723,24 @@ where
     /// Returns `true` if `self` is an empty [`Selection`].
     #[inline]
     pub fn is_empty(&self) -> bool {
-        self.balances.is_empty()
+        self.values.is_empty()
     }
 
-    /// Returns an iterator over [`self.balances`](Self::balances) by reference.
+    /// Returns an iterator over [`self.values`](Self::values) by reference.
     #[inline]
     pub fn iter(&self) -> SelectionIter<M> {
-        SelectionIter::new(self.balances.iter())
+        SelectionIter::new(self.values.iter())
     }
 
-    /// Returns an iterator over the keys in [`self.balances`](Self::balances) by reference.
+    /// Returns an iterator over the keys in [`self.values`](Self::values) by reference.
     #[inline]
     pub fn keys(&self) -> SelectionKeys<M> {
-        SelectionKeys::new(self.balances.iter().map(move |(key, _)| key))
+        SelectionKeys::new(self.values.iter().map(move |(key, _)| key))
     }
 }
 
 /// [`SelectionIter`] Iterator Type
-type SelectionIterType<'s, M> = slice::Iter<'s, (<M as AssetMap>::Key, AssetBalance)>;
+type SelectionIterType<'s, M> = slice::Iter<'s, (<M as AssetMap>::Key, AssetValue)>;
 
 /// Selection Iterator
 ///
@@ -772,7 +772,7 @@ impl<'s, M> Iterator for SelectionIter<'s, M>
 where
     M: AssetMap + ?Sized,
 {
-    type Item = &'s (M::Key, AssetBalance);
+    type Item = &'s (M::Key, AssetValue);
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
@@ -787,7 +787,7 @@ where
 
 /// [`SelectionKeys`] Map Function Type
 type SelectionKeysMapFnType<'s, M> =
-    fn(&'s (<M as AssetMap>::Key, AssetBalance)) -> &'s <M as AssetMap>::Key;
+    fn(&'s (<M as AssetMap>::Key, AssetValue)) -> &'s <M as AssetMap>::Key;
 
 /// [`SelectionKeys`] Iterator Type
 type SelectionKeysType<'s, M> = iter::Map<SelectionIterType<'s, M>, SelectionKeysMapFnType<'s, M>>;
@@ -857,7 +857,7 @@ mod test {
     fn asset_arithmetic() {
         let mut rng = thread_rng();
         let mut asset = Asset::zero(AssetId::gen(&mut rng));
-        let value = AssetBalance::gen(&mut rng);
+        let value = AssetValue::gen(&mut rng);
         let _ = asset + value;
         asset += value;
         let _ = asset - value;
@@ -869,7 +869,7 @@ mod test {
     fn test_change_iterator() {
         let mut rng = thread_rng();
         for _ in 0..0xFFF {
-            let amount = AssetBalance(rng.gen_range(0..0xFFFF_FFFF));
+            let amount = AssetValue(rng.gen_range(0..0xFFFF_FFFF));
             let n = rng.gen_range(1..0xFFFF);
             let change = amount.make_change(n).unwrap().collect::<Vec<_>>();
             assert_eq!(n, change.len());

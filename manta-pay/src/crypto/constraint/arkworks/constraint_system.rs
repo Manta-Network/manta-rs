@@ -26,7 +26,7 @@ use core::{
     borrow::Borrow,
     ops::{Add, AddAssign},
 };
-use manta_accounting::{AssetBalance, AssetId};
+use manta_accounting::{AssetId, AssetValue};
 use manta_crypto::constraint::{
     measure::Measure, reflection::HasAllocation, types::Bool, Allocation, AllocationMode,
     ConstraintSystem, Equal, Public, PublicOrSecret, Secret, Variable, VariableSource,
@@ -437,10 +437,10 @@ where
     }
 }
 
-/// Asset Balance Variable
+/// Asset Value Variable
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Debug)]
-pub struct AssetBalanceVar<F>
+pub struct AssetValueVar<F>
 where
     F: PrimeField,
 {
@@ -448,21 +448,21 @@ where
     field_point: FpVar<F>,
 
     /// Byte Array
-    bytes: Option<ByteArrayVar<F, { AssetBalance::SIZE }>>,
+    bytes: Option<ByteArrayVar<F, { AssetValue::SIZE }>>,
 }
 
-impl<F> AssetBalanceVar<F>
+impl<F> AssetValueVar<F>
 where
     F: PrimeField,
 {
-    /// Builds a new [`AssetBalanceVar`] from `field_point` and `bytes`.
+    /// Builds a new [`AssetValueVar`] from `field_point` and `bytes`.
     #[inline]
-    fn new(field_point: FpVar<F>, bytes: Option<ByteArrayVar<F, { AssetBalance::SIZE }>>) -> Self {
+    fn new(field_point: FpVar<F>, bytes: Option<ByteArrayVar<F, { AssetValue::SIZE }>>) -> Self {
         Self { field_point, bytes }
     }
 }
 
-impl<F> Concat for AssetBalanceVar<F>
+impl<F> Concat for AssetValueVar<F>
 where
     F: PrimeField,
 {
@@ -479,11 +479,11 @@ where
     }
 }
 
-impl<F> Variable<ArkConstraintSystem<F>> for AssetBalanceVar<F>
+impl<F> Variable<ArkConstraintSystem<F>> for AssetValueVar<F>
 where
     F: PrimeField,
 {
-    type Type = AssetBalance;
+    type Type = AssetValue;
 
     type Mode = PublicOrSecret;
 
@@ -499,21 +499,21 @@ where
             ),
             Allocation::Unknown(mode) => Self::new(
                 Fp::as_unknown(cs, mode),
-                Some(<[u8; AssetBalance::SIZE]>::as_unknown(cs, mode)),
+                Some(<[u8; AssetValue::SIZE]>::as_unknown(cs, mode)),
             ),
         }
     }
 }
 
-impl<F> HasAllocation<ArkConstraintSystem<F>> for AssetBalance
+impl<F> HasAllocation<ArkConstraintSystem<F>> for AssetValue
 where
     F: PrimeField,
 {
-    type Variable = AssetBalanceVar<F>;
+    type Variable = AssetValueVar<F>;
     type Mode = PublicOrSecret;
 }
 
-impl<F> Equal<ArkConstraintSystem<F>> for AssetBalanceVar<F>
+impl<F> Equal<ArkConstraintSystem<F>> for AssetValueVar<F>
 where
     F: PrimeField,
 {
@@ -527,7 +527,7 @@ where
     }
 }
 
-impl<F> Add for AssetBalanceVar<F>
+impl<F> Add for AssetValueVar<F>
 where
     F: PrimeField,
 {
@@ -540,7 +540,7 @@ where
     }
 }
 
-impl<F> AddAssign for AssetBalanceVar<F>
+impl<F> AddAssign for AssetValueVar<F>
 where
     F: PrimeField,
 {

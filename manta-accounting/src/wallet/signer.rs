@@ -28,7 +28,7 @@
 //        reveal information about the internal state (privacy leak, not a secrecy leak).
 
 use crate::{
-    asset::{Asset, AssetBalance, AssetId, AssetMap},
+    asset::{Asset, AssetId, AssetMap, AssetValue},
     fs::{Load, LoadWith, Save, SaveWith},
     identity::{self, Identity, PreSender, Utxo},
     key::{
@@ -423,7 +423,7 @@ where
         &mut self,
         commitment_scheme: &C::CommitmentScheme,
         asset_id: AssetId,
-        sender_sum: AssetBalance,
+        sender_sum: AssetValue,
         rng: &mut R,
     ) -> Result<TransferAccumulator<D, C, RECEIVERS>, InternalIdentityError<D, C>>
     where
@@ -811,7 +811,7 @@ where
         }
         self.pending_assets.remove = selection.keys().cloned().collect();
         let pre_senders = selection
-            .balances
+            .values
             .into_iter()
             .map(move |(k, v)| self.get_pre_sender(k, asset.id.with(v)))
             .collect::<Result<_, _>>()?;
@@ -960,7 +960,7 @@ where
     fn next_change(
         &mut self,
         asset_id: AssetId,
-        change: AssetBalance,
+        change: AssetValue,
     ) -> Result<Receiver<C>, Error<C::DerivedSecretKeyGenerator, C>> {
         let asset = asset_id.with(change);
         let (receiver, index) = self
@@ -1214,7 +1214,7 @@ where
     C: transfer::Configuration,
 {
     /// Selection Change
-    pub change: AssetBalance,
+    pub change: AssetValue,
 
     /// Selection Pre-Senders
     pub pre_senders: Vec<PreSender<C>>,
@@ -1226,7 +1226,7 @@ where
 {
     /// Builds a new [`Selection`] from `change` and `pre_senders`.
     #[inline]
-    pub fn new(change: AssetBalance, pre_senders: Vec<PreSender<C>>) -> Self {
+    pub fn new(change: AssetValue, pre_senders: Vec<PreSender<C>>) -> Self {
         Self {
             change,
             pre_senders,

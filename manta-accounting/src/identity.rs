@@ -21,7 +21,7 @@
 // TODO:  Get rid of [`Spend`] and [`OpenSpend`] if possible. They don't seem to be that useful.
 //        See `crate::wallet::signer`.
 
-use crate::asset::{Asset, AssetBalance, AssetId, AssetVar};
+use crate::asset::{Asset, AssetId, AssetValue, AssetVar};
 use core::{fmt::Debug, hash::Hash, marker::PhantomData};
 use manta_crypto::{
     accumulator::{Accumulator, MembershipProof, Verifier},
@@ -993,7 +993,7 @@ where
 
     /// Returns the asset value for this sender.
     #[inline]
-    pub(super) fn asset_value(&self) -> AssetBalance {
+    pub(super) fn asset_value(&self) -> AssetValue {
         self.asset.value
     }
 
@@ -1235,7 +1235,7 @@ where
 
     /// Returns the asset value for this receiver.
     #[inline]
-    pub(crate) fn asset_value(&self) -> AssetBalance {
+    pub(crate) fn asset_value(&self) -> AssetValue {
         self.asset.value
     }
 
@@ -1412,7 +1412,7 @@ pub mod constraint {
         /// Constraint System
         type ConstraintSystem: ConstraintSystem
             + HasVariable<AssetId, Mode = PublicOrSecret>
-            + HasVariable<AssetBalance, Mode = PublicOrSecret>;
+            + HasVariable<AssetValue, Mode = PublicOrSecret>;
 
         /// Secret Key Variable
         type SecretKeyVar: Variable<Self::ConstraintSystem, Type = Self::SecretKey, Mode = Secret>;

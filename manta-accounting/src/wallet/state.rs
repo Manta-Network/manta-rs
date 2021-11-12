@@ -17,7 +17,7 @@
 //! Full Wallet Implementation
 
 use crate::{
-    asset::{Asset, AssetBalance, AssetId},
+    asset::{Asset, AssetId, AssetValue},
     key::DerivedSecretKeyGenerator,
     transfer::{
         canonical::{Transaction, TransactionKind},
@@ -43,7 +43,7 @@ use std::{
 /// Balance State
 pub trait BalanceState {
     /// Returns the current balance associated with this `id`.
-    fn balance(&self, id: AssetId) -> AssetBalance;
+    fn balance(&self, id: AssetId) -> AssetValue;
 
     /// Returns true if `self` contains at least `asset.value` of the asset of kind `asset.id`.
     #[inline]
@@ -75,7 +75,7 @@ pub trait BalanceState {
 
 /// Performs an unchecked withdraw on `balance`, panicking on overflow.
 #[inline]
-fn withdraw_unchecked(balance: Option<&mut AssetBalance>, withdraw: AssetBalance) {
+fn withdraw_unchecked(balance: Option<&mut AssetValue>, withdraw: AssetValue) {
     let balance = balance.expect("Trying to withdraw from a zero balance.");
     *balance = balance
         .checked_sub(withdraw)
@@ -84,7 +84,7 @@ fn withdraw_unchecked(balance: Option<&mut AssetBalance>, withdraw: AssetBalance
 
 impl BalanceState for Vec<Asset> {
     #[inline]
-    fn balance(&self, id: AssetId) -> AssetBalance {
+    fn balance(&self, id: AssetId) -> AssetValue {
         self.iter()
             .find_map(move |a| a.value_of(id))
             .unwrap_or_default()
@@ -110,7 +110,7 @@ impl BalanceState for Vec<Asset> {
 macro_rules! impl_balance_state_map_body {
     ($entry:tt) => {
         #[inline]
-        fn balance(&self, id: AssetId) -> AssetBalance {
+        fn balance(&self, id: AssetId) -> AssetValue {
             self.get(&id).copied().unwrap_or_default()
         }
 
@@ -136,7 +136,7 @@ macro_rules! impl_balance_state_map_body {
 }
 
 /// B-Tree Map [`BalanceState`] Implementation
-pub type BTreeMapBalanceState = BTreeMap<AssetId, AssetBalance>;
+pub type BTreeMapBalanceState = BTreeMap<AssetId, AssetValue>;
 
 impl BalanceState for BTreeMapBalanceState {
     impl_balance_state_map_body! { BTreeMapEntry }
@@ -145,7 +145,7 @@ impl BalanceState for BTreeMapBalanceState {
 /// Hash Map [`BalanceState`] Implementation
 #[cfg(feature = "std")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
-pub type HashMapBalanceState<S = RandomState> = HashMap<AssetId, AssetBalance, S>;
+pub type HashMapBalanceState<S = RandomState> = HashMap<AssetId, AssetValue, S>;
 
 #[cfg(feature = "std")]
 impl<S> BalanceState for HashMapBalanceState<S>
@@ -212,7 +212,7 @@ where
 
     /// Returns the current balance associated with this `id`.
     #[inline]
-    pub fn balance(&self, id: AssetId) -> AssetBalance {
+    pub fn balance(&self, id: AssetId) -> AssetValue {
         self.assets.balance(id)
     }
 

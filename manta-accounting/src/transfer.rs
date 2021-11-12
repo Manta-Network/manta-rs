@@ -22,7 +22,7 @@
 // TODO:  See if we can get rid of `PublicTransfer` and `SecretTransfer` and just use `Transfer`.
 
 use crate::{
-    asset::{Asset, AssetBalance, AssetBalances, AssetId},
+    asset::{Asset, AssetId, AssetValue, AssetValues},
     identity::{
         self, constraint::UtxoVar, ReceiverLedger, ReceiverPostError, SenderLedger,
         SenderPostError, Utxo, VoidNumber,
@@ -62,14 +62,14 @@ pub trait Configuration:
     /// Constraint System
     type ConstraintSystem: constraint::ConstraintSystem
         + HasVariable<AssetId, Variable = Self::AssetIdVar, Mode = PublicOrSecret>
-        + HasVariable<AssetBalance, Variable = Self::AssetBalanceVar, Mode = PublicOrSecret>
+        + HasVariable<AssetValue, Variable = Self::AssetValueVar, Mode = PublicOrSecret>
         + HasVariable<<Self::UtxoSetVerifier as Verifier>::Checkpoint, Mode = Public>
         + HasVariable<<Self::UtxoSetVerifier as Verifier>::Witness, Mode = Secret>;
 
     /// Proof System
     type ProofSystem: ProofSystem<ConstraintSystem = ConstraintSystem<Self>, Verification = bool>
         + ProofSystemInput<AssetId>
-        + ProofSystemInput<AssetBalance>
+        + ProofSystemInput<AssetValue>
         + ProofSystemInput<VoidNumber<Self>>
         + ProofSystemInput<<Self::UtxoSetVerifier as Verifier>::Checkpoint>
         + ProofSystemInput<Utxo<Self>>;
@@ -78,10 +78,10 @@ pub trait Configuration:
     type AssetIdVar: Variable<ConstraintSystem<Self>, Mode = PublicOrSecret, Type = AssetId>
         + Equal<ConstraintSystem<Self>>;
 
-    /// Asset Balance Variable
-    type AssetBalanceVar: Variable<ConstraintSystem<Self>, Mode = PublicOrSecret, Type = AssetBalance>
+    /// Asset Value Variable
+    type AssetValueVar: Variable<ConstraintSystem<Self>, Mode = PublicOrSecret, Type = AssetValue>
         + Equal<ConstraintSystem<Self>>
-        + Add<Output = Self::AssetBalanceVar>;
+        + Add<Output = Self::AssetValueVar>;
 
     /// Integrated Encryption Scheme for [`Asset`]
     type IntegratedEncryptionScheme: IntegratedEncryptionScheme<Plaintext = Asset>;
@@ -190,7 +190,7 @@ pub trait TransferLedger<C>:
 where
     C: Configuration,
 {
-    /// Valid [`AssetBalance`] for [`TransferPost`] source
+    /// Valid [`AssetValue`] for [`TransferPost`] source
     ///
     /// # Safety
     ///
@@ -218,7 +218,7 @@ where
     /// amount given in `sources`.
     fn check_source_balances(
         &self,
-        sources: Vec<AssetBalance>,
+        sources: Vec<AssetValue>,
     ) -> Result<Vec<Self::ValidSourceBalance>, InsufficientPublicBalance>;
 
     /// Checks that the transfer `proof` is valid.
@@ -228,7 +228,7 @@ where
         sources: &[Self::ValidSourceBalance],
         senders: &[SenderPostingKey<C, Self>],
         receivers: &[ReceiverPostingKey<C, Self>],
-        sinks: &[AssetBalance],
+        sinks: &[AssetValue],
         proof: Proof<C>,
     ) -> Option<Self::ValidProof>;
 
@@ -243,7 +243,7 @@ where
         &mut self,
         asset_id: AssetId,
         sources: Vec<Self::ValidSourceBalance>,
-        sinks: Vec<AssetBalance>,
+        sinks: Vec<AssetValue>,
         proof: Self::ValidProof,
         super_key: &TransferLedgerSuperPostingKey<C, Self>,
     );
@@ -317,10 +317,10 @@ pub struct PublicTransfer<const SOURCES: usize, const SINKS: usize> {
     pub asset_id: Option<AssetId>,
 
     /// Public Asset Sources
-    pub sources: AssetBalances<SOURCES>,
+    pub sources: AssetValues<SOURCES>,
 
     /// Public Asset Sinks
-    pub sinks: AssetBalances<SINKS>,
+    pub sinks: AssetValues<SINKS>,
 }
 
 impl<const SOURCES: usize, const SINKS: usize> PublicTransfer<SOURCES, SINKS> {
@@ -328,8 +328,8 @@ impl<const SOURCES: usize, const SINKS: usize> PublicTransfer<SOURCES, SINKS> {
     #[inline]
     pub const fn new(
         asset_id: AssetId,
-        sources: AssetBalances<SOURCES>,
-        sinks: AssetBalances<SINKS>,
+        sources: AssetValues<SOURCES>,
+        sinks: AssetValues<SINKS>,
     ) -> Self {
         Self::new_unchecked(
             if has_no_public_participants(SOURCES, 0, 0, SINKS) {
@@ -346,8 +346,8 @@ impl<const SOURCES: usize, const SINKS: usize> PublicTransfer<SOURCES, SINKS> {
     #[inline]
     const fn new_unchecked(
         asset_id: Option<AssetId>,
-        sources: AssetBalances<SOURCES>,
-        sinks: AssetBalances<SINKS>,
+        sources: AssetValues<SOURCES>,
+        sinks: AssetValues<SINKS>,
     ) -> Self {
         Self {
             asset_id,
@@ -364,13 +364,13 @@ impl<const SOURCES: usize, const SINKS: usize> PublicTransfer<SOURCES, SINKS> {
 
     /// Returns the sum of the asset values of the sources in this transfer.
     #[inline]
-    pub fn source_sum(&self) -> AssetBalance {
+    pub fn source_sum(&self) -> AssetValue {
         self.sources.iter().sum()
     }
 
     /// Returns the sum of the asset values of the sinks in this transfer.
     #[inline]
-    pub fn sink_sum(&self) -> AssetBalance {
+    pub fn sink_sum(&self) -> AssetValue {
         self.sinks.iter().sum()
     }
 
@@ -484,13 +484,13 @@ where
 
     /// Returns the sum of the asset values of the senders in this transfer.
     #[inline]
-    pub fn sender_sum(&self) -> AssetBalance {
+    pub fn sender_sum(&self) -> AssetValue {
         self.senders.iter().map(Sender::asset_value).sum()
     }
 
     /// Returns the sum of the asset values of the receivers in this transfer.
     #[inline]
-    pub fn receiver_sum(&self) -> AssetBalance {
+    pub fn receiver_sum(&self) -> AssetValue {
         self.receivers.iter().map(Receiver::asset_value).sum()
     }
 
@@ -557,10 +557,10 @@ where
     #[inline]
     pub fn new(
         asset_id: AssetId,
-        sources: AssetBalances<SOURCES>,
+        sources: AssetValues<SOURCES>,
         senders: [Sender<C>; SENDERS],
         receivers: [Receiver<C>; RECEIVERS],
-        sinks: AssetBalances<SINKS>,
+        sinks: AssetValues<SINKS>,
     ) -> Self {
         Self::check_shape();
         Self::new_unchecked(asset_id, sources, senders, receivers, sinks)
@@ -599,10 +599,10 @@ where
     #[inline]
     fn new_unchecked(
         asset_id: AssetId,
-        sources: AssetBalances<SOURCES>,
+        sources: AssetValues<SOURCES>,
         senders: [Sender<C>; SENDERS],
         receivers: [Receiver<C>; RECEIVERS],
-        sinks: AssetBalances<SINKS>,
+        sinks: AssetValues<SINKS>,
     ) -> Self {
         Self {
             public: PublicTransfer::new(asset_id, sources, sinks),
@@ -628,37 +628,37 @@ where
 
     /// Returns the sum of the asset values of the sources in this transfer.
     #[inline]
-    pub fn source_sum(&self) -> AssetBalance {
+    pub fn source_sum(&self) -> AssetValue {
         self.public.source_sum()
     }
 
     /// Returns the sum of the asset values of the senders in this transfer.
     #[inline]
-    pub fn sender_sum(&self) -> AssetBalance {
+    pub fn sender_sum(&self) -> AssetValue {
         self.secret.sender_sum()
     }
 
     /// Returns the sum of the asset values of the receivers in this transfer.
     #[inline]
-    pub fn receiver_sum(&self) -> AssetBalance {
+    pub fn receiver_sum(&self) -> AssetValue {
         self.secret.receiver_sum()
     }
 
     /// Returns the sum of the asset values of the sinks in this transfer.
     #[inline]
-    pub fn sink_sum(&self) -> AssetBalance {
+    pub fn sink_sum(&self) -> AssetValue {
         self.public.sink_sum()
     }
 
     /// Returns the sum of the asset values of the sources and senders in this transfer.
     #[inline]
-    pub fn input_sum(&self) -> AssetBalance {
+    pub fn input_sum(&self) -> AssetValue {
         self.source_sum() + self.sender_sum()
     }
 
     /// Returns the sum of the asset values of the receivers and sinks in this transfer.
     #[inline]
-    pub fn output_sum(&self) -> AssetBalance {
+    pub fn output_sum(&self) -> AssetValue {
         self.receiver_sum() + self.sink_sum()
     }
 
@@ -864,7 +864,7 @@ struct TransferParticipantsVar<
     C: Configuration,
 {
     /// Source Variables
-    sources: Vec<C::AssetBalanceVar>,
+    sources: Vec<C::AssetValueVar>,
 
     /// Sender Variables
     senders: Vec<SenderVar<C>>,
@@ -873,7 +873,7 @@ struct TransferParticipantsVar<
     receivers: Vec<ReceiverVar<C>>,
 
     /// Sink Variables
-    sinks: Vec<C::AssetBalanceVar>,
+    sinks: Vec<C::AssetValueVar>,
 }
 
 impl<C, const SOURCES: usize, const SENDERS: usize, const RECEIVERS: usize, const SINKS: usize>
@@ -917,7 +917,7 @@ where
             Allocation::Unknown(mode) => Self {
                 sources: (0..SOURCES)
                     .into_iter()
-                    .map(|_| C::AssetBalanceVar::new_unknown(cs, Public))
+                    .map(|_| C::AssetValueVar::new_unknown(cs, Public))
                     .collect(),
                 senders: (0..SENDERS)
                     .into_iter()
@@ -929,7 +929,7 @@ where
                     .collect(),
                 sinks: (0..SINKS)
                     .into_iter()
-                    .map(|_| C::AssetBalanceVar::new_unknown(cs, Public))
+                    .map(|_| C::AssetValueVar::new_unknown(cs, Public))
                     .collect(),
             },
         }
@@ -946,10 +946,10 @@ pub struct InsufficientPublicBalance {
     pub index: usize,
 
     /// Current Balance
-    pub balance: AssetBalance,
+    pub balance: AssetValue,
 
     /// Amount Attempting to Withdraw
-    pub withdraw: AssetBalance,
+    pub withdraw: AssetValue,
 }
 
 /// Transfer Post Error
@@ -985,7 +985,7 @@ where
     asset_id: Option<AssetId>,
 
     /// Sources
-    sources: Vec<AssetBalance>,
+    sources: Vec<AssetValue>,
 
     /// Sender Posts
     sender_posts: Vec<SenderPost<C>>,
@@ -994,7 +994,7 @@ where
     receiver_posts: Vec<ReceiverPost<C>>,
 
     /// Sinks
-    sinks: Vec<AssetBalance>,
+    sinks: Vec<AssetValue>,
 
     /// Validity Proof
     validity_proof: Proof<C>,
@@ -1100,7 +1100,7 @@ where
     receiver_posting_keys: Vec<ReceiverPostingKey<C, L>>,
 
     /// Sinks
-    sinks: Vec<AssetBalance>,
+    sinks: Vec<AssetValue>,
 
     /// Validity Proof Posting Key
     validity_proof: L::ValidProof,
@@ -1412,7 +1412,7 @@ pub mod canonical {
 #[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
 pub mod test {
     use super::*;
-    use crate::{asset::AssetBalanceType, identity::Identity};
+    use crate::{asset::AssetValueType, identity::Identity};
     use manta_crypto::{
         accumulator::Accumulator,
         rand::{Rand, Sample, Standard, TrySample},
@@ -1472,8 +1472,8 @@ pub mod test {
                 const RECEIVERS: usize,
             >(
                 asset_id: AssetId,
-                sender_total: AssetBalance,
-                receiver_total: AssetBalance,
+                sender_total: AssetValue,
+                receiver_total: AssetValue,
                 commitment_scheme: &C::CommitmentScheme,
                 utxo_set: &mut S,
                 rng: &mut R,
@@ -1486,8 +1486,8 @@ pub mod test {
             {
                 FixedSecretTransfer::<C, S>::try_sample_custom_distribution(
                     asset_id,
-                    sample_asset_balances::<_, SENDERS>(sender_total, rng),
-                    sample_asset_balances::<_, RECEIVERS>(receiver_total, rng),
+                    sample_asset_values::<_, SENDERS>(sender_total, rng),
+                    sample_asset_values::<_, RECEIVERS>(receiver_total, rng),
                     commitment_scheme,
                     utxo_set,
                     rng,
@@ -1508,8 +1508,8 @@ pub mod test {
                 const RECEIVERS: usize,
             >(
                 asset_id: AssetId,
-                senders: AssetBalances<SENDERS>,
-                receivers: AssetBalances<RECEIVERS>,
+                senders: AssetValues<SENDERS>,
+                receivers: AssetValues<RECEIVERS>,
                 commitment_scheme: &C::CommitmentScheme,
                 utxo_set: &mut S,
                 rng: &mut R,
@@ -1596,11 +1596,7 @@ pub mod test {
     ///
     /// This is a naive algorithm and should only be used for testing purposes.
     #[inline]
-    pub fn value_distribution<R>(
-        count: usize,
-        total: AssetBalance,
-        rng: &mut R,
-    ) -> Vec<AssetBalance>
+    pub fn value_distribution<R>(count: usize, total: AssetValue, rng: &mut R) -> Vec<AssetValue>
     where
         R: CryptoRng + RngCore + ?Sized,
     {
@@ -1608,9 +1604,9 @@ pub mod test {
             return Default::default();
         }
         let mut result = Vec::with_capacity(count + 1);
-        result.push(AssetBalance(0));
+        result.push(AssetValue(0));
         for _ in 1..count {
-            result.push(AssetBalance(AssetBalanceType::gen(rng) % total.0));
+            result.push(AssetValue(AssetValueType::gen(rng) % total.0));
         }
         result.push(total);
         result.sort_unstable();
@@ -1621,16 +1617,13 @@ pub mod test {
         result
     }
 
-    /// Samples asset balances from `rng`.
+    /// Samples asset values from `rng`.
     ///
     /// # Warning
     ///
     /// This is a naive algorithm and should only be used for testing purposes.
     #[inline]
-    pub fn sample_asset_balances<R, const N: usize>(
-        total: AssetBalance,
-        rng: &mut R,
-    ) -> AssetBalances<N>
+    pub fn sample_asset_values<R, const N: usize>(total: AssetValue, rng: &mut R) -> AssetValues<N>
     where
         R: CryptoRng + RngCore + ?Sized,
     {
@@ -1660,8 +1653,8 @@ pub mod test {
         {
             Self::new(
                 distribution.0.id,
-                sample_asset_balances(distribution.0.value, rng),
-                sample_asset_balances(distribution.0.value, rng),
+                sample_asset_values(distribution.0.value, rng),
+                sample_asset_values(distribution.0.value, rng),
             )
         }
     }
