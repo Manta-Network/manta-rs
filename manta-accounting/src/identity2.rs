@@ -16,7 +16,6 @@
 
 //! Sender and Receiver Identities
 
-use crate::address;
 use core::marker::PhantomData;
 use manta_crypto::{
     accumulator::{Accumulator, MembershipProof, Verifier},
@@ -24,6 +23,111 @@ use manta_crypto::{
     encryption::{EncryptedMessage, HybridPublicKeyEncryptionScheme},
     key::KeyAgreementScheme,
 };
+
+/// Key Table
+pub trait KeyTable<K>
+where
+    K: KeyAgreementScheme,
+{
+    /// Query Type
+    type Query;
+
+    /// Returns the key associated to `query`, generating a new key if `query` does not already
+    /// correspond to an existing key.
+    fn get(&mut self, query: Self::Query) -> &K::SecretKey;
+}
+
+/// Spending Key
+pub struct SpendingKey<K, T>
+where
+    K: KeyAgreementScheme,
+    T: KeyTable<K>,
+{
+    /// Spending Key
+    spending_key: K::SecretKey,
+
+    /// Viewing Key Table
+    viewing_key_table: T,
+}
+
+impl<K, T> SpendingKey<K, T>
+where
+    K: KeyAgreementScheme,
+    T: KeyTable<K>,
+{
+    /// Builds a new [`SpendingKey`] from `spending_key` and `viewing_key_table`.
+    #[inline]
+    pub fn new(spending_key: K::SecretKey, viewing_key_table: T) -> Self {
+        Self {
+            spending_key,
+            viewing_key_table,
+        }
+    }
+
+    /// Returns the receiving key for `self` with the viewing key located at the given `query` in
+    /// the viewing key table.
+    #[inline]
+    pub fn receiving_key(&mut self, query: T::Query) -> ReceivingKey<K> {
+        ReceivingKey {
+            spend: K::derive(&self.spending_key),
+            view: K::derive(self.viewing_key_table.get(query)),
+        }
+    }
+
+    /// Prepares `self` for spending `asset` with the given `ephemeral_key`.
+    #[inline]
+    pub fn pre_sender<C>(
+        &self,
+        ephemeral_key: PublicKey<C>,
+        asset: C::Asset,
+        commitment_scheme: &C::CommitmentScheme,
+    ) -> PreSender<C>
+    where
+        K::SecretKey: Clone,
+        C: Configuration<KeyScheme = K>,
+    {
+        PreSender::new(
+            self.spending_key.clone(),
+            ephemeral_key,
+            asset,
+            commitment_scheme,
+        )
+    }
+}
+
+/// Receiving Key
+pub struct ReceivingKey<K>
+where
+    K: KeyAgreementScheme,
+{
+    /// Spend Part of the Receiving Key
+    pub spend: K::PublicKey,
+
+    /// View Part of the Receiving Key
+    pub view: K::PublicKey,
+}
+
+impl<K> ReceivingKey<K>
+where
+    K: KeyAgreementScheme,
+{
+    /// Prepares `self` for receiving `asset` with the given `ephemeral_key`.
+    #[inline]
+    pub fn into_receiver<C>(
+        self,
+        ephemeral_key: SecretKey<C>,
+        asset: C::Asset,
+        commitment_scheme: &C::CommitmentScheme,
+    ) -> (Receiver<C>, K::PublicKey)
+    where
+        C: Configuration<KeyScheme = K>,
+    {
+        (
+            Receiver::new(self.spend, ephemeral_key, asset, commitment_scheme),
+            self.view,
+        )
+    }
+}
 
 /// Identity Configuration
 pub trait Configuration {
@@ -38,12 +142,6 @@ pub trait Configuration {
         + CommitmentInput<Self::Asset>
         + CommitmentInput<<Self::KeyScheme as KeyAgreementScheme>::SecretKey>;
 }
-
-/// Spending Key Type
-pub type SpendingKey<C> = address::SpendingKey<<C as Configuration>::KeyScheme>;
-
-/// Receiving Key Type
-pub type ReceivingKey<C> = address::ReceivingKey<<C as Configuration>::KeyScheme>;
 
 /// Secret Key Type
 pub type SecretKey<C> = <<C as Configuration>::KeyScheme as KeyAgreementScheme>::SecretKey;
@@ -60,16 +158,19 @@ pub type Utxo<C> = <<C as Configuration>::CommitmentScheme as CommitmentScheme>:
 /// Void Number Type
 pub type VoidNumber<C> = <<C as Configuration>::CommitmentScheme as CommitmentScheme>::Output;
 
+/// Encrypted Note Type
+pub type EncryptedNote<C> = EncryptedMessage<<C as Configuration>::KeyScheme>;
+
 /// Pre-Sender
 pub struct PreSender<C>
 where
     C: Configuration,
 {
-    /// Spending Key
-    spending_key: SpendingKey<C>,
+    /// Secret Spending Key
+    spending_key: SecretKey<C>,
 
     /// Ephemeral Public Key
-    ephemeral_public_key: PublicKey<C>,
+    ephemeral_key: PublicKey<C>,
 
     /// Trapdoor
     trapdoor: Trapdoor<C>,
@@ -89,20 +190,20 @@ where
     C: Configuration,
 {
     /// Builds a new [`PreSender`] for `spending_key` to spend `asset` with
-    /// `ephemeral_public_key`.
+    /// `ephemeral_key`.
     #[inline]
     pub fn new(
-        spending_key: SpendingKey<C>,
-        ephemeral_public_key: PublicKey<C>,
+        spending_key: SecretKey<C>,
+        ephemeral_key: PublicKey<C>,
         asset: C::Asset,
         commitment_scheme: &C::CommitmentScheme,
     ) -> Self {
-        let trapdoor = spending_key.spending_secret(&ephemeral_public_key);
+        let trapdoor = C::KeyScheme::agree(&spending_key, &ephemeral_key);
         Self {
             utxo: commitment_scheme.commit_one(&asset, &trapdoor),
-            void_number: commitment_scheme.commit_one(&spending_key.spend.secret_key, &trapdoor),
+            void_number: commitment_scheme.commit_one(&spending_key, &trapdoor),
             spending_key,
-            ephemeral_public_key,
+            ephemeral_key,
             asset,
             trapdoor,
         }
@@ -145,7 +246,7 @@ where
     {
         Sender {
             spending_key: self.spending_key,
-            ephemeral_public_key: self.ephemeral_public_key,
+            ephemeral_key: self.ephemeral_key,
             trapdoor: self.trapdoor,
             asset: self.asset,
             utxo: self.utxo,
@@ -218,11 +319,11 @@ where
     C: Configuration,
     V: Verifier<Item = Utxo<C>> + ?Sized,
 {
-    /// Spending Key
-    spending_key: SpendingKey<C>,
+    /// Secret Spend Key
+    spending_key: SecretKey<C>,
 
     /// Ephemeral Public Key
-    ephemeral_public_key: PublicKey<C>,
+    ephemeral_key: PublicKey<C>,
 
     /// Trapdoor
     trapdoor: Trapdoor<C>,
@@ -253,7 +354,7 @@ where
     pub fn downgrade(self) -> PreSender<C> {
         PreSender {
             spending_key: self.spending_key,
-            ephemeral_public_key: self.ephemeral_public_key,
+            ephemeral_key: self.ephemeral_key,
             trapdoor: self.trapdoor,
             asset: self.asset,
             utxo: self.utxo,
@@ -382,17 +483,6 @@ where
     }
 }
 
-impl<C, V> From<Sender<C, V>> for SenderPost<C, V>
-where
-    C: Configuration,
-    V: Verifier<Item = Utxo<C>>,
-{
-    #[inline]
-    fn from(sender: Sender<C, V>) -> Self {
-        sender.into_post()
-    }
-}
-
 /// Sender Posting Key
 pub struct SenderPostingKey<C, V, L>
 where
@@ -425,14 +515,11 @@ pub struct Receiver<C>
 where
     C: Configuration,
 {
-    /// Receiving Key
-    receiving_key: ReceivingKey<C>,
+    /// Public Spending Key
+    spending_key: PublicKey<C>,
 
     /// Ephemeral Secret Key
-    ephemeral_secret_key: SecretKey<C>,
-
-    /// Trapdoor
-    trapdoor: Trapdoor<C>,
+    ephemeral_key: SecretKey<C>,
 
     /// Asset
     asset: C::Asset,
@@ -445,36 +532,33 @@ impl<C> Receiver<C>
 where
     C: Configuration,
 {
-    /// Builds a new [`Receiver`] for `receiving_key` to receive `asset` with
-    /// `ephemeral_secret_key`.
+    /// Builds a new [`Receiver`] for `spending_key` to receive `asset` with
+    /// `ephemeral_key`.
     #[inline]
     pub fn new(
-        receiving_key: ReceivingKey<C>,
-        ephemeral_secret_key: SecretKey<C>,
+        spending_key: PublicKey<C>,
+        ephemeral_key: SecretKey<C>,
         asset: C::Asset,
         commitment_scheme: &C::CommitmentScheme,
     ) -> Self {
-        let trapdoor = receiving_key.spending_secret(&ephemeral_secret_key);
         Self {
-            utxo: commitment_scheme.commit_one(&asset, &trapdoor),
-            receiving_key,
-            trapdoor,
-            ephemeral_secret_key,
+            utxo: commitment_scheme
+                .commit_one(&asset, &C::KeyScheme::agree(&ephemeral_key, &spending_key)),
+            spending_key,
+            ephemeral_key,
             asset,
         }
     }
 
     /// Extracts the ledger posting data from `self`.
     #[inline]
-    pub fn into_post(self) -> ReceiverPost<C>
+    pub fn into_post(self, public_view_key: PublicKey<C>) -> ReceiverPost<C>
     where
         C::KeyScheme: HybridPublicKeyEncryptionScheme<Plaintext = C::Asset>,
     {
         ReceiverPost {
             utxo: self.utxo,
-            note: self
-                .receiving_key
-                .encrypt(self.ephemeral_secret_key, self.asset),
+            note: EncryptedMessage::new(&public_view_key, self.ephemeral_key, self.asset),
         }
     }
 }
@@ -513,7 +597,7 @@ where
     fn register(
         &mut self,
         utxo: Self::ValidUtxo,
-        note: EncryptedMessage<C::KeyScheme>,
+        note: EncryptedNote<C>,
         super_key: &Self::SuperPostingKey,
     );
 }
@@ -537,7 +621,7 @@ where
     utxo: Utxo<C>,
 
     /// Encrypted Note
-    note: EncryptedMessage<C::KeyScheme>,
+    note: EncryptedNote<C>,
 }
 
 impl<C> ReceiverPost<C>
@@ -560,17 +644,6 @@ where
     }
 }
 
-impl<C> From<Receiver<C>> for ReceiverPost<C>
-where
-    C: Configuration,
-    C::KeyScheme: HybridPublicKeyEncryptionScheme<Plaintext = C::Asset>,
-{
-    #[inline]
-    fn from(receiver: Receiver<C>) -> ReceiverPost<C> {
-        receiver.into_post()
-    }
-}
-
 /// Receiver Posting Key
 pub struct ReceiverPostingKey<C, L>
 where
@@ -582,7 +655,7 @@ where
     utxo: L::ValidUtxo,
 
     /// Encrypted Note
-    note: EncryptedMessage<C::KeyScheme>,
+    note: EncryptedNote<C>,
 }
 
 impl<C, L> ReceiverPostingKey<C, L>
@@ -601,11 +674,7 @@ where
 /// Constraint System Gadgets for Identities
 pub mod constraint {
     use super::*;
-    use crate::asset::{AssetId, AssetValue, AssetVar};
-    use manta_crypto::{
-        accumulator::constraint::{MembershipProofVar, VerifierVariable},
-        constraint::{reflection::HasVariable, ConstraintSystem, Equal, PublicOrSecret},
-    };
+    use manta_crypto::constraint::{ConstraintSystem, Equal};
 
     impl<C, V> Sender<C, V>
     where
@@ -629,9 +698,7 @@ pub mod constraint {
         {
             cs.assert_eq(
                 &self.trapdoor,
-                &self
-                    .spending_key
-                    .spending_secret(&self.ephemeral_public_key),
+                &C::KeyScheme::agree(&self.spending_key, &self.ephemeral_key),
             );
             cs.assert_eq(
                 &self.utxo,
@@ -639,7 +706,7 @@ pub mod constraint {
             );
             cs.assert_eq(
                 &self.void_number,
-                &commitment_scheme.commit_one(&self.spending_key.spend.secret_key, &self.trapdoor),
+                &commitment_scheme.commit_one(&self.spending_key, &self.trapdoor),
             );
             cs.assert(
                 self.utxo_membership_proof
@@ -668,9 +735,7 @@ pub mod constraint {
                 &self.utxo,
                 &commitment_scheme.commit_one(
                     &self.asset,
-                    &self
-                        .receiving_key
-                        .spending_secret(&self.ephemeral_secret_key),
+                    &C::KeyScheme::agree(&self.ephemeral_key, &self.spending_key),
                 ),
             );
             self.asset

@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Transfer Protocols
+//! Transfer Protocol
 
 // FIXME: Make sure that either (a) no empty transfer can be built, or (b) empty transfers work
 //        properly i.e. do nothing.

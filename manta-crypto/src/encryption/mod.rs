@@ -52,6 +52,7 @@ pub trait SymmetricKeyEncryptionScheme {
 }
 
 /// Hybrid Public Key Encryption Scheme
+// FIXME: This should not inherit from these types:
 pub trait HybridPublicKeyEncryptionScheme:
     KeyAgreementScheme + SymmetricKeyEncryptionScheme
 {
