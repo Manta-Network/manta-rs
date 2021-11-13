@@ -84,7 +84,7 @@ where
     ) -> PreSender<C>
     where
         K::SecretKey: Clone,
-        C: Configuration<KeyScheme = K>,
+        C: Configuration<KeyAgreementScheme = K>,
     {
         PreSender::new(
             self.spending_key.clone(),
@@ -120,7 +120,7 @@ where
         commitment_scheme: &C::CommitmentScheme,
     ) -> (Receiver<C>, K::PublicKey)
     where
-        C: Configuration<KeyScheme = K>,
+        C: Configuration<KeyAgreementScheme = K>,
     {
         (
             Receiver::new(self.spend, ephemeral_key, asset, commitment_scheme),
@@ -134,32 +134,31 @@ pub trait Configuration {
     /// Asset Type
     type Asset;
 
-    /// Key Scheme Type
-    type KeyScheme: KeyAgreementScheme;
+    /// Key Agreement Scheme Type
+    type KeyAgreementScheme: KeyAgreementScheme;
 
     /// Commitment Scheme Type
-    type CommitmentScheme: CommitmentScheme<Randomness = <Self::KeyScheme as KeyAgreementScheme>::SharedSecret>
-        + CommitmentInput<Self::Asset>
-        + CommitmentInput<<Self::KeyScheme as KeyAgreementScheme>::SecretKey>;
+    type CommitmentScheme: CommitmentScheme<
+            Randomness = <Self::KeyAgreementScheme as KeyAgreementScheme>::SharedSecret,
+        > + CommitmentInput<Self::Asset>
+        + CommitmentInput<<Self::KeyAgreementScheme as KeyAgreementScheme>::SecretKey>;
 }
 
 /// Secret Key Type
-pub type SecretKey<C> = <<C as Configuration>::KeyScheme as KeyAgreementScheme>::SecretKey;
+pub type SecretKey<C> = <<C as Configuration>::KeyAgreementScheme as KeyAgreementScheme>::SecretKey;
 
 /// Public Key Type
-pub type PublicKey<C> = <<C as Configuration>::KeyScheme as KeyAgreementScheme>::PublicKey;
+pub type PublicKey<C> = <<C as Configuration>::KeyAgreementScheme as KeyAgreementScheme>::PublicKey;
 
 /// Trapdoor Type
-pub type Trapdoor<C> = <<C as Configuration>::KeyScheme as KeyAgreementScheme>::SharedSecret;
+pub type Trapdoor<C> =
+    <<C as Configuration>::KeyAgreementScheme as KeyAgreementScheme>::SharedSecret;
 
 /// UTXO Type
 pub type Utxo<C> = <<C as Configuration>::CommitmentScheme as CommitmentScheme>::Output;
 
 /// Void Number Type
 pub type VoidNumber<C> = <<C as Configuration>::CommitmentScheme as CommitmentScheme>::Output;
-
-/// Encrypted Note Type
-pub type EncryptedNote<C> = EncryptedMessage<<C as Configuration>::KeyScheme>;
 
 /// Pre-Sender
 pub struct PreSender<C>
@@ -198,7 +197,7 @@ where
         asset: C::Asset,
         commitment_scheme: &C::CommitmentScheme,
     ) -> Self {
-        let trapdoor = C::KeyScheme::agree(&spending_key, &ephemeral_key);
+        let trapdoor = C::KeyAgreementScheme::agree(&spending_key, &ephemeral_key);
         Self {
             utxo: commitment_scheme.commit_one(&asset, &trapdoor),
             void_number: commitment_scheme.commit_one(&spending_key, &trapdoor),
@@ -542,8 +541,10 @@ where
         commitment_scheme: &C::CommitmentScheme,
     ) -> Self {
         Self {
-            utxo: commitment_scheme
-                .commit_one(&asset, &C::KeyScheme::agree(&ephemeral_key, &spending_key)),
+            utxo: commitment_scheme.commit_one(
+                &asset,
+                &C::KeyAgreementScheme::agree(&ephemeral_key, &spending_key),
+            ),
             spending_key,
             ephemeral_key,
             asset,
@@ -552,9 +553,12 @@ where
 
     /// Extracts the ledger posting data from `self`.
     #[inline]
-    pub fn into_post(self, public_view_key: PublicKey<C>) -> ReceiverPost<C>
+    pub fn into_post<H>(self, public_view_key: PublicKey<C>) -> ReceiverPost<C, H>
     where
-        C::KeyScheme: HybridPublicKeyEncryptionScheme<Plaintext = C::Asset>,
+        H: HybridPublicKeyEncryptionScheme<
+            Plaintext = C::Asset,
+            KeyAgreementScheme = C::KeyAgreementScheme,
+        >,
     {
         ReceiverPost {
             utxo: self.utxo,
@@ -564,10 +568,13 @@ where
 }
 
 /// Receiver Ledger
-pub trait ReceiverLedger<C>
+pub trait ReceiverLedger<C, H>
 where
     C: Configuration,
-    C::KeyScheme: HybridPublicKeyEncryptionScheme<Plaintext = C::Asset>,
+    H: HybridPublicKeyEncryptionScheme<
+        Plaintext = C::Asset,
+        KeyAgreementScheme = C::KeyAgreementScheme,
+    >,
 {
     /// Valid [`Utxo`] Posting Key
     ///
@@ -597,7 +604,7 @@ where
     fn register(
         &mut self,
         utxo: Self::ValidUtxo,
-        note: EncryptedNote<C>,
+        note: EncryptedMessage<H>,
         super_key: &Self::SuperPostingKey,
     );
 }
@@ -612,28 +619,34 @@ pub enum ReceiverPostError {
 }
 
 /// Receiver Post
-pub struct ReceiverPost<C>
+pub struct ReceiverPost<C, H>
 where
     C: Configuration,
-    C::KeyScheme: HybridPublicKeyEncryptionScheme<Plaintext = C::Asset>,
+    H: HybridPublicKeyEncryptionScheme<
+        Plaintext = C::Asset,
+        KeyAgreementScheme = C::KeyAgreementScheme,
+    >,
 {
     /// Unspent Transaction Output
     utxo: Utxo<C>,
 
     /// Encrypted Note
-    note: EncryptedNote<C>,
+    note: EncryptedMessage<H>,
 }
 
-impl<C> ReceiverPost<C>
+impl<C, H> ReceiverPost<C, H>
 where
     C: Configuration,
-    C::KeyScheme: HybridPublicKeyEncryptionScheme<Plaintext = C::Asset>,
+    H: HybridPublicKeyEncryptionScheme<
+        Plaintext = C::Asset,
+        KeyAgreementScheme = C::KeyAgreementScheme,
+    >,
 {
     /// Validates `self` on the receiver `ledger`.
     #[inline]
-    pub fn validate<L>(self, ledger: &L) -> Result<ReceiverPostingKey<C, L>, ReceiverPostError>
+    pub fn validate<L>(self, ledger: &L) -> Result<ReceiverPostingKey<C, H, L>, ReceiverPostError>
     where
-        L: ReceiverLedger<C>,
+        L: ReceiverLedger<C, H>,
     {
         Ok(ReceiverPostingKey {
             utxo: ledger
@@ -645,24 +658,30 @@ where
 }
 
 /// Receiver Posting Key
-pub struct ReceiverPostingKey<C, L>
+pub struct ReceiverPostingKey<C, H, L>
 where
     C: Configuration,
-    C::KeyScheme: HybridPublicKeyEncryptionScheme<Plaintext = C::Asset>,
-    L: ReceiverLedger<C>,
+    H: HybridPublicKeyEncryptionScheme<
+        Plaintext = C::Asset,
+        KeyAgreementScheme = C::KeyAgreementScheme,
+    >,
+    L: ReceiverLedger<C, H>,
 {
     /// UTXO Posting Key
     utxo: L::ValidUtxo,
 
     /// Encrypted Note
-    note: EncryptedNote<C>,
+    note: EncryptedMessage<H>,
 }
 
-impl<C, L> ReceiverPostingKey<C, L>
+impl<C, H, L> ReceiverPostingKey<C, H, L>
 where
     C: Configuration,
-    C::KeyScheme: HybridPublicKeyEncryptionScheme<Plaintext = C::Asset>,
-    L: ReceiverLedger<C>,
+    H: HybridPublicKeyEncryptionScheme<
+        Plaintext = C::Asset,
+        KeyAgreementScheme = C::KeyAgreementScheme,
+    >,
+    L: ReceiverLedger<C, H>,
 {
     /// Posts `self` to the receiver `ledger`.
     #[inline]
@@ -674,11 +693,31 @@ where
 /// Constraint System Gadgets for Identities
 pub mod constraint {
     use super::*;
-    use manta_crypto::constraint::{ConstraintSystem, Equal};
+    use manta_crypto::constraint::{
+        reflection::{HasVariable, Var},
+        Constant, ConstraintSystem, Equal, PublicOrSecret,
+    };
+
+    /// Constraint System Configuration
+    pub trait Configuration<C>:
+        super::Configuration<
+        Asset = Var<C::Asset, Self::ConstraintSystem>,
+        KeyAgreementScheme = Var<C::KeyAgreementScheme, Self::ConstraintSystem>,
+        CommitmentScheme = Var<C::CommitmentScheme, Self::ConstraintSystem>,
+    >
+    where
+        C: super::Configuration,
+    {
+        /// Constraint System Type
+        type ConstraintSystem: ConstraintSystem
+            + HasVariable<C::Asset, Mode = PublicOrSecret>
+            + HasVariable<C::KeyAgreementScheme, Mode = Constant>
+            + HasVariable<C::CommitmentScheme, Mode = Constant>;
+    }
 
     impl<C, V> Sender<C, V>
     where
-        C: Configuration,
+        C: super::Configuration,
         V: Verifier<Item = Utxo<C>> + ?Sized,
     {
         ///
@@ -698,7 +737,7 @@ pub mod constraint {
         {
             cs.assert_eq(
                 &self.trapdoor,
-                &C::KeyScheme::agree(&self.spending_key, &self.ephemeral_key),
+                &C::KeyAgreementScheme::agree(&self.spending_key, &self.ephemeral_key),
             );
             cs.assert_eq(
                 &self.utxo,
@@ -718,7 +757,7 @@ pub mod constraint {
 
     impl<C> Receiver<C>
     where
-        C: Configuration,
+        C: super::Configuration,
     {
         ///
         #[inline]
@@ -735,7 +774,7 @@ pub mod constraint {
                 &self.utxo,
                 &commitment_scheme.commit_one(
                     &self.asset,
-                    &C::KeyScheme::agree(&self.ephemeral_key, &self.spending_key),
+                    &C::KeyAgreementScheme::agree(&self.ephemeral_key, &self.spending_key),
                 ),
             );
             self.asset

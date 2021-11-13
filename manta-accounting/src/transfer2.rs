@@ -23,11 +23,25 @@ use crate::{
 use manta_crypto::{
     accumulator::Verifier,
     constraint::{
-        reflection::HasVariable, Constant, ConstraintSystem, ProofSystem, PublicOrSecret, Variable,
+        reflection::{HasVariable, Var},
+        Constant, ConstraintSystem, ProofSystem, PublicOrSecret, Variable,
     },
     encryption::HybridPublicKeyEncryptionScheme,
 };
 
+/// Transfer Configuration
+pub trait Configuration: identity2::Configuration<Asset = Asset> {
+    /// Encryption Scheme
+    type EncryptionScheme: HybridPublicKeyEncryptionScheme<
+        Plaintext = Self::Asset,
+        KeyAgreementScheme = Self::KeyAgreementScheme,
+    >;
+
+    /// UTXO Set Verifier
+    type UtxoSetVerifier: Verifier<Item = Utxo<Self>, Verification = bool>;
+}
+
+/*
 /// Transfer Configuration
 pub trait Configuration {
     /// Encryption Scheme Type
@@ -86,3 +100,4 @@ pub type ReceiverVar<C> = identity2::Receiver<<C as Configuration>::ConfigVar>;
 
 ///
 pub type ReceiverPost<C> = identity2::ReceiverPost<<C as Configuration>::Config>;
+*/

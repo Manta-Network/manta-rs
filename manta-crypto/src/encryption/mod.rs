@@ -52,16 +52,24 @@ pub trait SymmetricKeyEncryptionScheme {
 }
 
 /// Hybrid Public Key Encryption Scheme
-// FIXME: This should not inherit from these types:
-pub trait HybridPublicKeyEncryptionScheme:
-    KeyAgreementScheme + SymmetricKeyEncryptionScheme
-{
-    /// Key-Derivation Function Type
+pub trait HybridPublicKeyEncryptionScheme: SymmetricKeyEncryptionScheme {
+    /// Key Agreement Scheme Type
+    type KeyAgreementScheme: KeyAgreementScheme;
+
+    /// Key Derivation Function Type
     type KeyDerivationFunction: KeyDerivationFunction<
-        KeyAgreementScheme = Self,
+        KeyAgreementScheme = Self::KeyAgreementScheme,
         Key = <Self as SymmetricKeyEncryptionScheme>::Key,
     >;
 }
+
+/// Secret Key Type
+pub type SecretKey<H> =
+    <<H as HybridPublicKeyEncryptionScheme>::KeyAgreementScheme as KeyAgreementScheme>::SecretKey;
+
+/// Public Key Type
+pub type PublicKey<H> =
+    <<H as HybridPublicKeyEncryptionScheme>::KeyAgreementScheme as KeyAgreementScheme>::PublicKey;
 
 /// Encrypted Message
 pub struct EncryptedMessage<H>
@@ -72,7 +80,7 @@ where
     ciphertext: H::Ciphertext,
 
     /// Ephemeral Public Key
-    ephemeral_public_key: H::PublicKey,
+    ephemeral_public_key: PublicKey<H>,
 }
 
 impl<H> EncryptedMessage<H>
@@ -83,25 +91,31 @@ where
     /// and an `ephemeral_secret_key`.
     #[inline]
     pub fn new(
-        public_key: &H::PublicKey,
-        ephemeral_secret_key: H::SecretKey,
+        public_key: &PublicKey<H>,
+        ephemeral_secret_key: SecretKey<H>,
         plaintext: H::Plaintext,
     ) -> Self {
         Self {
             ciphertext: H::encrypt(
-                H::KeyDerivationFunction::derive(H::agree(&ephemeral_secret_key, public_key)),
+                H::KeyDerivationFunction::derive(H::KeyAgreementScheme::agree(
+                    &ephemeral_secret_key,
+                    public_key,
+                )),
                 plaintext,
             ),
-            ephemeral_public_key: H::derive_owned(ephemeral_secret_key),
+            ephemeral_public_key: H::KeyAgreementScheme::derive_owned(ephemeral_secret_key),
         }
     }
 
     /// Tries to decrypt `self` using `secret_key`, returning back `Err(self)` if the `secret_key`
     /// was unable to decrypt the message.
     #[inline]
-    pub fn decrypt(self, secret_key: &H::SecretKey) -> Result<DecryptedMessage<H>, Self> {
+    pub fn decrypt(self, secret_key: &SecretKey<H>) -> Result<DecryptedMessage<H>, Self> {
         match H::decrypt(
-            H::KeyDerivationFunction::derive(H::agree(secret_key, &self.ephemeral_public_key)),
+            H::KeyDerivationFunction::derive(H::KeyAgreementScheme::agree(
+                secret_key,
+                &self.ephemeral_public_key,
+            )),
             &self.ciphertext,
         ) {
             Some(plaintext) => Ok(DecryptedMessage::new(plaintext, self.ephemeral_public_key)),
@@ -119,7 +133,7 @@ where
     pub plaintext: H::Plaintext,
 
     /// Ephemeral Public Key
-    pub ephemeral_public_key: H::PublicKey,
+    pub ephemeral_public_key: PublicKey<H>,
 }
 
 impl<H> DecryptedMessage<H>
@@ -128,7 +142,7 @@ where
 {
     /// Builds a new [`DecryptedMessage`] from `plaintext` and `ephemeral_public_key`.
     #[inline]
-    pub fn new(plaintext: H::Plaintext, ephemeral_public_key: H::PublicKey) -> Self {
+    pub fn new(plaintext: H::Plaintext, ephemeral_public_key: PublicKey<H>) -> Self {
         Self {
             plaintext,
             ephemeral_public_key,
