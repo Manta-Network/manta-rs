@@ -77,7 +77,7 @@ where
     T: KeyType,
 {
     /// Secret Key
-    secret_key: K::SecretKey,
+    pub(crate) secret_key: K::SecretKey,
 
     /// Type Parameter Marker
     __: PhantomData<T>,
@@ -208,7 +208,7 @@ where
     K: KeyAgreementScheme,
 {
     /// Spend Part of the Spending Key
-    spend: SecretSpendKey<K>,
+    pub(crate) spend: SecretSpendKey<K>,
 
     /// View Part of the Spending Key
     view: SecretViewKey<K>,

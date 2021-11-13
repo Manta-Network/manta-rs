@@ -48,13 +48,16 @@ pub trait Verifier {
     /// Secret Witness Type
     type Witness;
 
+    /// Verification Type
+    type Verification;
+
     /// Verifies that `item` is stored in a known accumulator with `checkpoint` and `witness`.
     fn verify(
         &self,
         item: &Self::Item,
         checkpoint: &Self::Checkpoint,
         witness: &Self::Witness,
-    ) -> bool;
+    ) -> Self::Verification;
 }
 
 impl<V> Verifier for &V
@@ -67,13 +70,15 @@ where
 
     type Witness = V::Witness;
 
+    type Verification = V::Verification;
+
     #[inline]
     fn verify(
         &self,
         item: &Self::Item,
         checkpoint: &Self::Checkpoint,
         witness: &Self::Witness,
-    ) -> bool {
+    ) -> Self::Verification {
         (*self).verify(item, checkpoint, witness)
     }
 }
@@ -277,7 +282,7 @@ where
 
     /// Verifies that `item` is stored in a known accumulator using `verifier`.
     #[inline]
-    pub fn verify(&self, item: &V::Item, verifier: &V) -> bool {
+    pub fn verify(&self, item: &V::Item, verifier: &V) -> V::Verification {
         verifier.verify(item, &self.checkpoint, &self.witness)
     }
 }
@@ -468,6 +473,7 @@ pub mod test {
     pub fn assert_provable_membership<A>(accumulator: &mut A, item: &A::Item) -> A::Checkpoint
     where
         A: Accumulator,
+        A::Verifier: Verifier<Verification = bool>,
     {
         assert!(
             accumulator.insert(item),
@@ -496,6 +502,7 @@ pub mod test {
         A: Accumulator,
         A::Item: 'i,
         A::Checkpoint: Debug + PartialEq,
+        A::Verifier: Verifier<Verification = bool>,
         I: IntoIterator<Item = &'i A::Item>,
     {
         let checkpoints = iter

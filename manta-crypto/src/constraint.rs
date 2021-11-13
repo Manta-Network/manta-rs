@@ -447,6 +447,33 @@ pub trait ConstraintSystem {
     }
 }
 
+/// Native Constraint System
+pub struct Native;
+
+impl ConstraintSystem for Native {
+    type Bool = bool;
+
+    #[inline]
+    fn assert(&mut self, b: Self::Bool) {
+        assert!(b)
+    }
+}
+
+impl Variable<Native> for bool {
+    type Type = bool;
+
+    type Mode = Constant<()>;
+
+    #[inline]
+    fn new(cs: &mut Native, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
+        let _ = cs;
+        match allocation {
+            Allocation::Known(b, _) => *b,
+            _ => unreachable!(),
+        }
+    }
+}
+
 /// Equality Trait
 pub trait Equal<C>: Variable<C>
 where

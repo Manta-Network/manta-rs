@@ -507,13 +507,15 @@ where
 
     type Witness = Path<C>;
 
+    type Verification = bool;
+
     #[inline]
     fn verify(
         &self,
         item: &Self::Item,
         checkpoint: &Self::Checkpoint,
         witness: &Self::Witness,
-    ) -> bool {
+    ) -> Self::Verification {
         self.verify_path(witness, checkpoint, item)
     }
 }

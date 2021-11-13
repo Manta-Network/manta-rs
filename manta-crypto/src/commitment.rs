@@ -16,6 +16,10 @@
 
 //! Commitment Schemes
 
+// FIXME: Change this so that commiting one value is the default, and commiting a "concatenation"
+//        of values is the special case.
+// TODO:  Change `Randomness` to `Trapdoor`
+
 use core::{fmt::Debug, hash::Hash};
 use manta_util::{Concat, ConcatAccumulator};
 
