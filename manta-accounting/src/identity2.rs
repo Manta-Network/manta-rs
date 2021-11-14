@@ -24,8 +24,8 @@ use manta_crypto::{
     key::KeyAgreementScheme,
 };
 
-/// Key Table
-pub trait KeyTable<K>
+/// Viewing Key Table
+pub trait ViewingKeyTable<K>
 where
     K: KeyAgreementScheme,
 {
@@ -34,30 +34,42 @@ where
 
     /// Returns the key associated to `query`, generating a new key if `query` does not already
     /// correspond to an existing key.
-    fn get(&mut self, query: Self::Query) -> &K::SecretKey;
+    fn get_or_generate(&mut self, query: Self::Query) -> &K::SecretKey;
+}
+
+impl<K> ViewingKeyTable<K> for K::SecretKey
+where
+    K: KeyAgreementScheme,
+{
+    type Query = ();
+
+    #[inline]
+    fn get_or_generate(&mut self, query: Self::Query) -> &K::SecretKey {
+        self
+    }
 }
 
 /// Spending Key
-pub struct SpendingKey<K, T>
+pub struct SpendingKey<K, V = <K as KeyAgreementScheme>::SecretKey>
 where
     K: KeyAgreementScheme,
-    T: KeyTable<K>,
+    V: ViewingKeyTable<K>,
 {
     /// Spending Key
     spending_key: K::SecretKey,
 
     /// Viewing Key Table
-    viewing_key_table: T,
+    viewing_key_table: V,
 }
 
-impl<K, T> SpendingKey<K, T>
+impl<K, V> SpendingKey<K, V>
 where
     K: KeyAgreementScheme,
-    T: KeyTable<K>,
+    V: ViewingKeyTable<K>,
 {
     /// Builds a new [`SpendingKey`] from `spending_key` and `viewing_key_table`.
     #[inline]
-    pub fn new(spending_key: K::SecretKey, viewing_key_table: T) -> Self {
+    pub fn new(spending_key: K::SecretKey, viewing_key_table: V) -> Self {
         Self {
             spending_key,
             viewing_key_table,
@@ -67,10 +79,10 @@ where
     /// Returns the receiving key for `self` with the viewing key located at the given `query` in
     /// the viewing key table.
     #[inline]
-    pub fn receiving_key(&mut self, query: T::Query) -> ReceivingKey<K> {
+    pub fn receiving_key(&mut self, query: V::Query) -> ReceivingKey<K> {
         ReceivingKey {
             spend: K::derive(&self.spending_key),
-            view: K::derive(self.viewing_key_table.get(query)),
+            view: K::derive(self.viewing_key_table.get_or_generate(query)),
         }
     }
 

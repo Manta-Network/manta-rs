@@ -14,26 +14,6 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Accounting Primitives
+//! Testing Framework
 
-#![cfg_attr(not(any(feature = "std", test)), no_std)]
-#![cfg_attr(doc_cfg, feature(doc_cfg))]
-#![forbid(rustdoc::broken_intra_doc_links)]
-#![forbid(missing_docs)]
-
-extern crate alloc;
-extern crate derive_more;
-
-#[cfg(feature = "cocoon")]
-extern crate cocoon as cocoon_crate;
-
-pub mod asset;
-pub mod fs;
-// TODO[remove]: pub mod identity;
-pub mod identity2;
-// TODO[remove]: pub mod key;
-pub mod key2;
-// TODO[remove]: pub mod transfer;
-pub mod transfer2;
-// TODO[remove]: pub mod wallet;
-pub mod wallet2;
+// TODO: Add tests for the asynchronous wallet protocol.
