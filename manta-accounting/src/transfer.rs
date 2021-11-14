@@ -63,7 +63,7 @@ pub trait Configuration:
     type ConstraintSystem: constraint::ConstraintSystem
         + HasVariable<AssetId, Variable = Self::AssetIdVar, Mode = PublicOrSecret>
         + HasVariable<AssetValue, Variable = Self::AssetValueVar, Mode = PublicOrSecret>
-        + HasVariable<<Self::UtxoSetVerifier as Verifier>::Checkpoint, Mode = Public>
+        + HasVariable<<Self::UtxoSetVerifier as Verifier>::Output, Mode = Public>
         + HasVariable<<Self::UtxoSetVerifier as Verifier>::Witness, Mode = Secret>;
 
     /// Proof System
@@ -71,7 +71,7 @@ pub trait Configuration:
         + ProofSystemInput<AssetId>
         + ProofSystemInput<AssetValue>
         + ProofSystemInput<VoidNumber<Self>>
-        + ProofSystemInput<<Self::UtxoSetVerifier as Verifier>::Checkpoint>
+        + ProofSystemInput<<Self::UtxoSetVerifier as Verifier>::Output>
         + ProofSystemInput<Utxo<Self>>;
 
     /// Asset Id Variable

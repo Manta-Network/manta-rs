@@ -15,3 +15,5 @@
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
 //! Testing Framework
+
+// TODO: Add tests for the asynchronous wallet protocol.

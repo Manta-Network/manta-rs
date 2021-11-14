@@ -801,14 +801,9 @@ where
     #[inline]
     pub fn can_upgrade<S>(&self, utxo_set: &S) -> bool
     where
-        S: Accumulator<
-            Item = V::Item,
-            Checkpoint = V::Checkpoint,
-            Witness = V::Witness,
-            Verifier = V,
-        >,
+        S: Accumulator<Item = V::Item, Verifier = V>,
     {
-        self.utxo_membership_proof.matching_checkpoint(utxo_set)
+        self.utxo_membership_proof.matching_output(utxo_set)
     }
 
     /// Upgrades the `pre_sender` to a [`Sender`] by attaching `self` to it.
@@ -975,12 +970,7 @@ where
         utxo_set: &S,
     ) -> Option<Self>
     where
-        S: Accumulator<
-            Item = V::Item,
-            Checkpoint = V::Checkpoint,
-            Witness = V::Witness,
-            Verifier = V,
-        >,
+        S: Accumulator<Item = V::Item, Verifier = V>,
     {
         identity.into_sender(commitment_scheme, asset, utxo_set)
     }
@@ -1018,7 +1008,7 @@ where
     pub fn into_post(self) -> SenderPost<C, V> {
         SenderPost {
             void_number: self.void_number,
-            utxo_checkpoint: self.utxo_membership_proof.into_checkpoint(),
+            utxo_checkpoint: self.utxo_membership_proof.into_output(),
         }
     }
 }
@@ -1043,12 +1033,12 @@ where
     ///
     /// # Safety
     ///
-    /// This type must be some wrapper around [`S::Checkpoint`] which can only be constructed by this
+    /// This type must be some wrapper around [`S::Output`] which can only be constructed by this
     /// implementation of [`SenderLedger`]. This is to prevent that [`spend`](Self::spend) is
     /// called before [`is_unspent`](Self::is_unspent) and
     /// [`is_matching_checkpoint`](Self::is_matching_checkpoint).
     ///
-    /// [`S::Checkpoint`]: Verifier::Checkpoint
+    /// [`S::Output`]: Verifier::Output
     type ValidUtxoCheckpoint;
 
     /// Super Posting Key
@@ -1066,10 +1056,7 @@ where
     ///
     /// Failure to match the ledger state means that the sender was constructed under an invalid or
     /// older state of the ledger.
-    fn is_matching_checkpoint(
-        &self,
-        checkpoint: V::Checkpoint,
-    ) -> Option<Self::ValidUtxoCheckpoint>;
+    fn is_matching_checkpoint(&self, checkpoint: V::Output) -> Option<Self::ValidUtxoCheckpoint>;
 
     /// Posts the `void_number` to the ledger, spending the asset.
     ///
@@ -1109,7 +1096,7 @@ where
     pub(super) void_number: VoidNumber<C>,
 
     /// UTXO Checkpoint
-    pub(super) utxo_checkpoint: V::Checkpoint,
+    pub(super) utxo_checkpoint: V::Output,
 }
 
 impl<C, V> SenderPost<C, V>
@@ -1584,7 +1571,7 @@ pub mod constraint {
     where
         C: Configuration,
         V: Verifier<Item = Utxo<C>> + ?Sized,
-        C::ConstraintSystem: HasVariable<V::Checkpoint> + HasVariable<V::Witness>,
+        C::ConstraintSystem: HasVariable<V::Output> + HasVariable<V::Witness>,
     {
         /// Secret Key
         secret_key: SecretKeyVar<C>,
@@ -1612,7 +1599,7 @@ pub mod constraint {
     where
         C: Configuration,
         V: Verifier<Item = Utxo<C>> + ?Sized,
-        C::ConstraintSystem: HasVariable<V::Checkpoint> + HasVariable<V::Witness>,
+        C::ConstraintSystem: HasVariable<V::Output> + HasVariable<V::Witness>,
     {
         /// Checks if `self` is a well-formed sender and returns its asset.
         #[inline]
@@ -1667,7 +1654,7 @@ pub mod constraint {
         C: Configuration,
         V: Verifier<Item = Utxo<C>> + ?Sized,
         C::ConstraintSystem:
-            HasVariable<V::Checkpoint, Mode = Public> + HasVariable<V::Witness, Mode = Secret>,
+            HasVariable<V::Output, Mode = Public> + HasVariable<V::Witness, Mode = Secret>,
     {
         type Type = Sender<C, V>;
 
@@ -1710,7 +1697,7 @@ pub mod constraint {
         C: Configuration,
         V: Verifier<Item = Utxo<C>> + ?Sized,
         C::ConstraintSystem:
-            HasVariable<V::Checkpoint, Mode = Public> + HasVariable<V::Witness, Mode = Secret>,
+            HasVariable<V::Output, Mode = Public> + HasVariable<V::Witness, Mode = Secret>,
     {
         type Variable = SenderVar<C, V>;
         type Mode = Derived;
@@ -1720,7 +1707,7 @@ pub mod constraint {
     where
         C: Configuration,
         V: Verifier<Item = Utxo<C>> + ?Sized,
-        C::ConstraintSystem: HasVariable<V::Checkpoint, Mode = Public>,
+        C::ConstraintSystem: HasVariable<V::Output, Mode = Public>,
     {
         /// Extends proof public input with `self`.
         #[inline]
@@ -1728,7 +1715,7 @@ pub mod constraint {
         where
             P: ProofSystem<ConstraintSystem = C::ConstraintSystem>
                 + ProofSystemInput<VoidNumber<C>>
-                + ProofSystemInput<V::Checkpoint>,
+                + ProofSystemInput<V::Output>,
         {
             // TODO: Add a "public part" trait that extracts the public part of `Sender` (using
             //       `SenderVar` to determine the types), then generate this method automatically.

@@ -25,7 +25,7 @@
 
 use crate::{
     accumulator::{
-        Accumulator, ConstantCapacityAccumulator, ExactSizeAccumulator, MembershipProof,
+        self, Accumulator, ConstantCapacityAccumulator, ExactSizeAccumulator, MembershipProof,
         OptimizedAccumulator, Verifier,
     },
     merkle_tree::{
@@ -503,9 +503,9 @@ where
 {
     type Item = Leaf<C>;
 
-    type Checkpoint = Root<C>;
-
     type Witness = Path<C>;
+
+    type Output = Root<C>;
 
     type Verification = bool;
 
@@ -513,10 +513,10 @@ where
     fn verify(
         &self,
         item: &Self::Item,
-        checkpoint: &Self::Checkpoint,
         witness: &Self::Witness,
+        output: &Self::Output,
     ) -> Self::Verification {
-        self.verify_path(witness, checkpoint, item)
+        self.verify_path(witness, output, item)
     }
 }
 
@@ -818,13 +818,9 @@ where
 {
     type Item = Leaf<C>;
 
-    type Checkpoint = Root<C>;
-
-    type Witness = Path<C>;
-
     type Verifier = Parameters<C>;
 
-    type CheckpointSet = Self::Checkpoint;
+    type OutputSet = accumulator::Output<Self>;
 
     #[inline]
     fn verifier(&self) -> &Parameters<C> {
@@ -832,13 +828,13 @@ where
     }
 
     #[inline]
-    fn checkpoints(&self) -> Self::CheckpointSet {
+    fn outputs(&self) -> Self::OutputSet {
         self.root()
     }
 
     #[inline]
-    fn matching_checkpoint(&self, checkpoint: &Self::Checkpoint) -> bool {
-        self.matching_root(checkpoint)
+    fn matching_output(&self, output: &accumulator::Output<Self>) -> bool {
+        self.matching_root(output)
     }
 
     #[inline]
@@ -849,9 +845,9 @@ where
     #[inline]
     fn prove(&self, item: &Self::Item) -> Option<MembershipProof<Self::Verifier>> {
         Some(MembershipProof::new(
-            self.root(),
             self.path(self.index_of(&self.parameters.digest(item))?)
                 .ok()?,
+            self.root(),
         ))
     }
 

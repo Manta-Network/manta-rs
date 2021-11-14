@@ -646,8 +646,6 @@ pub trait Configuration: transfer::Configuration {
     /// [`Utxo`] Accumulator Type
     type UtxoSet: Accumulator<
             Item = <Self::UtxoSetVerifier as Verifier>::Item,
-            Checkpoint = <Self::UtxoSetVerifier as Verifier>::Checkpoint,
-            Witness = <Self::UtxoSetVerifier as Verifier>::Witness,
             Verifier = Self::UtxoSetVerifier,
         > + ConstantCapacityAccumulator
         + ExactSizeAccumulator

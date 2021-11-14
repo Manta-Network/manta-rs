@@ -18,7 +18,7 @@
 
 use crate::{
     asset::{Asset, AssetId, AssetValue, AssetVar},
-    identity2::{self, CommitmentSchemeOutput, PublicKey, Utxo},
+    identity2::{self, CommitmentSchemeOutput, Utxo},
 };
 use alloc::vec::Vec;
 use core::ops::Add;
@@ -30,10 +30,11 @@ use manta_crypto::{
         Allocation, Constant, ConstraintSystem, Derived, Equal, ProofSystem, Public,
         PublicOrSecret, Variable, VariableSource,
     },
-    encryption::HybridPublicKeyEncryptionScheme,
+    encryption::{EncryptedMessage, HybridPublicKeyEncryptionScheme},
     key::KeyAgreementScheme,
     rand::{CryptoRng, RngCore},
 };
+use manta_util::create_seal;
 
 /// Returns `true` if the transfer with this shape would have no public participants.
 #[inline]
@@ -101,6 +102,9 @@ where
             Verification = <Self::ConstraintSystem as ConstraintSystem>::Bool,
         > + Variable<Self::ConstraintSystem, Type = C::UtxoSetVerifier, Mode = Constant>;
 }
+
+/// Encrypted Note Type
+pub type EncryptedNote<C> = EncryptedMessage<<C as Configuration>::EncryptionScheme>;
 
 /// Pre-Sender Type
 pub type PreSender<C> = identity2::PreSender<C>;
@@ -579,4 +583,225 @@ where
 
     /// Validity Proof
     validity_proof: Proof<C, P>,
+}
+
+create_seal! {}
+
+/// Transfer Shapes
+///
+/// This trait identifies a transfer shape, i.e. the number and type of participants on the input
+/// and output sides of the transaction. This trait is sealed and can only be used with the
+/// [existing canonical implementations](canonical).
+pub trait Shape: sealed::Sealed {
+    /// Number of Sources
+    const SOURCES: usize;
+
+    /// Number of Senders
+    const SENDERS: usize;
+
+    /// Number of Receivers
+    const RECEIVERS: usize;
+
+    /// Number of Sinks
+    const SINKS: usize;
+}
+
+/// Canonical Transaction Types
+pub mod canonical {
+    use super::*;
+    use crate::identity2::ReceivingKey;
+    use manta_util::seal;
+
+    /// Implements [`Shape`] for a given shape type.
+    macro_rules! impl_shape {
+        ($shape:tt, $sources:expr, $senders:expr, $receivers:expr, $sinks:expr) => {
+            seal!($shape);
+            impl Shape for $shape {
+                const SOURCES: usize = $sources;
+                const SENDERS: usize = $senders;
+                const RECEIVERS: usize = $receivers;
+                const SINKS: usize = $sinks;
+            }
+        };
+    }
+
+    /// Builds a new alias using the given shape type.
+    macro_rules! alias_type {
+        ($type:tt, $t:ident, $shape:tt) => {
+            $type<
+                $t,
+                { $shape::SOURCES },
+                { $shape::SENDERS },
+                { $shape::RECEIVERS },
+                { $shape::SINKS },
+            >
+        }
+    }
+
+    /// Builds a new [`Transfer`] alias using the given shape type.
+    macro_rules! transfer_alias {
+        ($t:ident, $shape:tt) => {
+            alias_type!(Transfer, $t, $shape)
+        };
+    }
+
+    /// Mint Transaction Shape
+    ///
+    /// ```text
+    /// <1, 0, 1, 0>
+    /// ```
+    #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq, Ord, PartialOrd)]
+    pub struct MintShape;
+
+    impl_shape!(MintShape, 1, 0, 1, 0);
+
+    /// Mint Transaction
+    pub type Mint<C> = transfer_alias!(C, MintShape);
+
+    impl<C> Mint<C>
+    where
+        C: Configuration,
+    {
+        /// Builds a [`Mint`] from `asset` and `receiver`.
+        #[inline]
+        pub fn build(asset: Asset, receiver: FullReceiver<C>) -> Self {
+            Self::new(
+                Some(asset.id),
+                [asset.value],
+                Default::default(),
+                [receiver],
+                Default::default(),
+            )
+        }
+    }
+
+    /// Private Transfer Transaction Shape
+    ///
+    /// ```text
+    /// <0, 2, 2, 0>
+    /// ```
+    #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq, Ord, PartialOrd)]
+    pub struct PrivateTransferShape;
+
+    impl_shape!(PrivateTransferShape, 0, 2, 2, 0);
+
+    /// Private Transfer Transaction
+    pub type PrivateTransfer<C> = transfer_alias!(C, PrivateTransferShape);
+
+    impl<C> PrivateTransfer<C>
+    where
+        C: Configuration,
+    {
+        /// Builds a [`PrivateTransfer`] from `senders` and `receivers`.
+        #[inline]
+        pub fn build(
+            senders: [Sender<C>; PrivateTransferShape::SENDERS],
+            receivers: [FullReceiver<C>; PrivateTransferShape::RECEIVERS],
+        ) -> Self {
+            Self::new(
+                Default::default(),
+                Default::default(),
+                senders,
+                receivers,
+                Default::default(),
+            )
+        }
+    }
+
+    /// Reclaim Transaction Shape
+    ///
+    /// ```text
+    /// <0, 2, 1, 1>
+    /// ```
+    ///
+    /// The [`ReclaimShape`] is defined in terms of the [`PrivateTransferShape`]. It is defined to
+    /// have the same number of senders and one secret receiver turned into a public sink.
+    #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq, Ord, PartialOrd)]
+    pub struct ReclaimShape;
+
+    impl_shape!(
+        ReclaimShape,
+        0,
+        PrivateTransferShape::SENDERS,
+        PrivateTransferShape::RECEIVERS - 1,
+        1
+    );
+
+    /// Reclaim Transaction
+    pub type Reclaim<C> = transfer_alias!(C, ReclaimShape);
+
+    impl<C> Reclaim<C>
+    where
+        C: Configuration,
+    {
+        /// Builds a [`Reclaim`] from `senders`, `receivers`, and `reclaim`.
+        #[inline]
+        pub fn build(
+            senders: [Sender<C>; ReclaimShape::SENDERS],
+            receivers: [FullReceiver<C>; ReclaimShape::RECEIVERS],
+            reclaim: Asset,
+        ) -> Self {
+            Self::new(
+                Some(reclaim.id),
+                Default::default(),
+                senders,
+                receivers,
+                [reclaim.value],
+            )
+        }
+    }
+
+    /// Canonical Transaction Type
+    pub enum Transaction<K>
+    where
+        K: KeyAgreementScheme,
+    {
+        /// Mint Private Asset
+        Mint(Asset),
+
+        /// Private Transfer Asset to Receiver
+        PrivateTransfer(Asset, ReceivingKey<K>),
+
+        /// Reclaim Private Asset
+        Reclaim(Asset),
+    }
+
+    impl<K> Transaction<K>
+    where
+        K: KeyAgreementScheme,
+    {
+        /// Checks that `self` can be executed for a given `balance` state, returning the
+        /// transaction kind if successful, and returning the asset back if the balance was
+        /// insufficient.
+        #[inline]
+        pub fn check<F>(&self, balance: F) -> Result<TransactionKind, Asset>
+        where
+            F: FnOnce(Asset) -> bool,
+        {
+            match self {
+                Self::Mint(asset) => Ok(TransactionKind::Deposit(*asset)),
+                Self::PrivateTransfer(asset, _) | Self::Reclaim(asset) => {
+                    if balance(*asset) {
+                        Ok(TransactionKind::Withdraw(*asset))
+                    } else {
+                        Err(*asset)
+                    }
+                }
+            }
+        }
+    }
+
+    /// Transaction Kind
+    #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+    pub enum TransactionKind {
+        /// Deposit Transaction
+        ///
+        /// A transaction of this kind will result in a deposit of `asset`.
+        Deposit(Asset),
+
+        /// Withdraw Transaction
+        ///
+        /// A transaction of this kind will result in a withdraw of `asset`.
+        Withdraw(Asset),
+    }
 }

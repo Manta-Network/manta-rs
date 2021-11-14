@@ -42,21 +42,22 @@ pub trait Verifier {
     /// Item Type
     type Item: ?Sized;
 
-    /// Public Checkpoint Type
-    type Checkpoint;
-
     /// Secret Witness Type
     type Witness;
+
+    /// Output Type
+    type Output;
 
     /// Verification Type
     type Verification;
 
-    /// Verifies that `item` is stored in a known accumulator with `checkpoint` and `witness`.
+    /// Verifies that `item` is stored in a known accumulator with accumulated `output` and
+    /// membership `witness`.
     fn verify(
         &self,
         item: &Self::Item,
-        checkpoint: &Self::Checkpoint,
         witness: &Self::Witness,
+        output: &Self::Output,
     ) -> Self::Verification;
 }
 
@@ -66,9 +67,9 @@ where
 {
     type Item = V::Item;
 
-    type Checkpoint = V::Checkpoint;
-
     type Witness = V::Witness;
+
+    type Output = V::Output;
 
     type Verification = V::Verification;
 
@@ -76,47 +77,43 @@ where
     fn verify(
         &self,
         item: &Self::Item,
-        checkpoint: &Self::Checkpoint,
         witness: &Self::Witness,
+        output: &Self::Output,
     ) -> Self::Verification {
-        (*self).verify(item, checkpoint, witness)
+        (*self).verify(item, witness, output)
     }
 }
+
+/// Accumulator Output Type
+pub type Output<A> = <<A as Accumulator>::Verifier as Verifier>::Output;
 
 /// Accumulator
 pub trait Accumulator {
     /// Item Type
     type Item: ?Sized;
 
-    /// Public Checkpoint Type
-    type Checkpoint;
-
-    /// Secret Witness Type
-    type Witness;
-
     /// Verifier Type
-    type Verifier: Verifier<Item = Self::Item, Checkpoint = Self::Checkpoint, Witness = Self::Witness>
-        + ?Sized;
+    type Verifier: Verifier<Item = Self::Item> + ?Sized;
 
-    /// Checkpoint Matching Set Type
-    type CheckpointSet: MatchingSet<Self::Checkpoint>;
+    /// Output Matching Set Type
+    type OutputSet: MatchingSet<<Self::Verifier as Verifier>::Output>;
 
     /// Returns the verifier for `self`.
     fn verifier(&self) -> &Self::Verifier;
 
-    /// Returns the checkpoint matching set for the current state of `self`.
-    fn checkpoints(&self) -> Self::CheckpointSet;
+    /// Returns the output matching set for the current state of `self`.
+    fn outputs(&self) -> Self::OutputSet;
 
-    /// Returns `true` if `checkpoint` is contained in the current checkpoint matching set
-    /// associated to `self`.
+    /// Returns `true` if `output` is contained in the current output matching set associated to
+    /// `self`.
     ///
     /// # Implementation Note
     ///
     /// This method is an optimization path for implementations of [`Accumulator`] which can do a
-    /// checkpoint matching without having to return an entire owned [`Self::CheckpointSet`].
+    /// output matching without having to return an entire owned [`Self::OutputSet`].
     #[inline]
-    fn matching_checkpoint(&self, checkpoint: &Self::Checkpoint) -> bool {
-        self.checkpoints().contains(checkpoint)
+    fn matching_output(&self, output: &Output<Self>) -> bool {
+        self.outputs().contains(output)
     }
 
     /// Inserts `item` into `self` with the guarantee that `self` can later return a valid
@@ -147,13 +144,9 @@ where
 {
     type Item = A::Item;
 
-    type Checkpoint = A::Checkpoint;
-
-    type Witness = A::Witness;
-
     type Verifier = A::Verifier;
 
-    type CheckpointSet = A::CheckpointSet;
+    type OutputSet = A::OutputSet;
 
     #[inline]
     fn verifier(&self) -> &Self::Verifier {
@@ -161,13 +154,13 @@ where
     }
 
     #[inline]
-    fn checkpoints(&self) -> Self::CheckpointSet {
-        (**self).checkpoints()
+    fn outputs(&self) -> Self::OutputSet {
+        (**self).outputs()
     }
 
     #[inline]
-    fn matching_checkpoint(&self, checkpoint: &Self::Checkpoint) -> bool {
-        (**self).matching_checkpoint(checkpoint)
+    fn matching_output(&self, output: &Output<Self>) -> bool {
+        (**self).matching_output(output)
     }
 
     #[inline]
@@ -230,64 +223,58 @@ pub struct MembershipProof<V>
 where
     V: Verifier + ?Sized,
 {
-    /// Public Checkpoint
-    checkpoint: V::Checkpoint,
-
-    /// Secret Witness
+    /// Secret Membership Witness
     witness: V::Witness,
+
+    /// Accumulator Output
+    output: V::Output,
 }
 
 impl<V> MembershipProof<V>
 where
     V: Verifier + ?Sized,
 {
-    /// Builds a new [`MembershipProof`] from `checkpoint` and `witness`.
+    /// Builds a new [`MembershipProof`] from `witness` and `output`.
     #[inline]
-    pub fn new(checkpoint: V::Checkpoint, witness: V::Witness) -> Self {
-        Self {
-            checkpoint,
-            witness,
-        }
+    pub fn new(witness: V::Witness, output: V::Output) -> Self {
+        Self { witness, output }
     }
 
-    /// Converts `self` into its checkpoint, dropping the [`V::Witness`](Verifier::Witness).
+    /// Returns the accumulated output part of `self`, dropping the
+    /// [`V::Witness`](Verifier::Witness).
     #[inline]
-    pub fn into_checkpoint(self) -> V::Checkpoint {
-        self.checkpoint
+    pub fn into_output(self) -> V::Output {
+        self.output
     }
 
-    /// Returns `true` if the checkpoint associated to `self` is contained in `checkpoints`.
+    /// Returns `true` if the output associated to `self` is contained in `outputs`.
     #[inline]
-    pub fn checkpoint_contained_in<S>(&self, checkpoints: &S) -> bool
+    pub fn output_contained_in<S>(&self, outputs: &S) -> bool
     where
-        S: MatchingSet<V::Checkpoint>,
+        S: MatchingSet<V::Output>,
     {
-        checkpoints.contains(&self.checkpoint)
+        outputs.contains(&self.output)
     }
 
-    /// Returns `true` if the checkpoint associated to `self` is contained in the current
-    /// checkpoint matching set associated to `accumulator`.
+    /// Returns `true` if the output associated to `self` is contained in the current output
+    /// matching set associated to `accumulator`.
     #[inline]
-    pub fn matching_checkpoint<A>(&self, accumulator: &A) -> bool
+    pub fn matching_output<A>(&self, accumulator: &A) -> bool
     where
-        A: Accumulator<
-            Item = V::Item,
-            Checkpoint = V::Checkpoint,
-            Witness = V::Witness,
-            Verifier = V,
-        >,
+        A: Accumulator<Verifier = V>,
     {
-        accumulator.matching_checkpoint(&self.checkpoint)
+        accumulator.matching_output(&self.output)
     }
 
     /// Verifies that `item` is stored in a known accumulator using `verifier`.
     #[inline]
     pub fn verify(&self, item: &V::Item, verifier: &V) -> V::Verification {
-        verifier.verify(item, &self.checkpoint, &self.witness)
+        verifier.verify(item, &self.witness, &self.output)
     }
 }
 
 /// Constraint System Gadgets for Accumulators
+// TODO[remove]:
 #[cfg(feature = "constraint")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "constraint")))]
 pub mod constraint {
@@ -356,10 +343,10 @@ pub mod constraint {
     pub struct MembershipProofVar<V, C>
     where
         V: Verifier + ?Sized,
-        C: HasVariable<V::Checkpoint> + HasVariable<V::Witness> + ?Sized,
+        C: HasVariable<V::Output> + HasVariable<V::Witness> + ?Sized,
     {
         /// Public Checkpoint Variable
-        checkpoint: Var<V::Checkpoint, C>,
+        checkpoint: Var<V::Output, C>,
 
         /// Secret Witness Variable
         witness: Var<V::Witness, C>,
@@ -368,11 +355,11 @@ pub mod constraint {
     impl<V, C> MembershipProofVar<V, C>
     where
         V: Verifier + ?Sized,
-        C: HasVariable<V::Checkpoint> + HasVariable<V::Witness> + ?Sized,
+        C: HasVariable<V::Output> + HasVariable<V::Witness> + ?Sized,
     {
         /// Builds a new [`MembershipProofVar`] from `checkpoint` and `witness` variables.
         #[inline]
-        pub fn new(checkpoint: Var<V::Checkpoint, C>, witness: Var<V::Witness, C>) -> Self {
+        pub fn new(checkpoint: Var<V::Output, C>, witness: Var<V::Witness, C>) -> Self {
             Self {
                 checkpoint,
                 witness,
@@ -394,21 +381,21 @@ pub mod constraint {
     impl<V, C> Variable<C> for MembershipProofVar<V, C>
     where
         V: Verifier + ?Sized,
-        C: HasVariable<V::Checkpoint> + HasVariable<V::Witness> + ?Sized,
+        C: HasVariable<V::Output> + HasVariable<V::Witness> + ?Sized,
     {
         type Type = MembershipProof<V>;
 
-        type Mode = MembershipProofMode<Mode<V::Checkpoint, C>, Mode<V::Witness, C>>;
+        type Mode = MembershipProofMode<Mode<V::Output, C>, Mode<V::Witness, C>>;
 
         #[inline]
         fn new(cs: &mut C, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
             match allocation {
                 Allocation::Known(this, mode) => Self::new(
-                    cs.allocate_known(&this.checkpoint, mode.checkpoint),
+                    cs.allocate_known(&this.output, mode.checkpoint),
                     cs.allocate_known(&this.witness, mode.witness),
                 ),
                 Allocation::Unknown(mode) => Self::new(
-                    unknown::<V::Checkpoint, _>(cs, mode.checkpoint),
+                    unknown::<V::Output, _>(cs, mode.checkpoint),
                     unknown::<V::Witness, _>(cs, mode.witness),
                 ),
             }
@@ -418,14 +405,14 @@ pub mod constraint {
     impl<V, C> HasAllocation<C> for MembershipProof<V>
     where
         V: Verifier + ?Sized,
-        C: HasVariable<V::Checkpoint> + HasVariable<V::Witness> + ?Sized,
+        C: HasVariable<V::Output> + HasVariable<V::Witness> + ?Sized,
     {
         type Variable = MembershipProofVar<V, C>;
-        type Mode = MembershipProofMode<Mode<V::Checkpoint, C>, Mode<V::Witness, C>>;
+        type Mode = MembershipProofMode<Mode<V::Output, C>, Mode<V::Witness, C>>;
     }
 
     /// Public Checkpoint Type for [`VerifierVariable`]
-    pub type CheckpointType<V, C> = <<V as Variable<C>>::Type as Verifier>::Checkpoint;
+    pub type CheckpointType<V, C> = <<V as Variable<C>>::Type as Verifier>::Output;
 
     /// Secret Witness Type for [`VerifierVariable`]
     pub type WitnessType<V, C> = <<V as Variable<C>>::Type as Verifier>::Witness;
@@ -470,7 +457,7 @@ pub mod test {
 
     /// Asserts that `accumulator` can prove the membership of `item` after it is inserted.
     #[inline]
-    pub fn assert_provable_membership<A>(accumulator: &mut A, item: &A::Item) -> A::Checkpoint
+    pub fn assert_provable_membership<A>(accumulator: &mut A, item: &A::Item) -> Output<A>
     where
         A: Accumulator,
         A::Verifier: Verifier<Verification = bool>,
@@ -488,29 +475,29 @@ pub mod test {
                 proof.verify(item, accumulator.verifier()),
                 "Invalid proof returned for inserted item."
             );
-            proof.into_checkpoint()
+            proof.into_output()
         } else {
             panic!("Item was supposed to be contained in the accumulator after insertion.")
         }
     }
 
-    /// Asserts that the `accumulator` yields unique checkpoints after every insertion of items from
-    /// `iter`.
+    /// Asserts that the `accumulator` yields unique accumulated values after every insertion of
+    /// items from `iter`.
     #[inline]
-    pub fn assert_unique_checkpoints<'i, A, I>(accumulator: &mut A, iter: I)
+    pub fn assert_unique_outputs<'i, A, I>(accumulator: &mut A, iter: I)
     where
         A: Accumulator,
         A::Item: 'i,
-        A::Checkpoint: Debug + PartialEq,
         A::Verifier: Verifier<Verification = bool>,
+        Output<A>: Debug + PartialEq,
         I: IntoIterator<Item = &'i A::Item>,
     {
-        let checkpoints = iter
+        let outputs = iter
             .into_iter()
             .map(move |item| assert_provable_membership(accumulator, item))
             .collect::<Vec<_>>();
-        for (i, x) in checkpoints.iter().enumerate() {
-            for (j, y) in checkpoints.iter().enumerate().skip(i + 1) {
+        for (i, x) in outputs.iter().enumerate() {
+            for (j, y) in outputs.iter().enumerate().skip(i + 1) {
                 assert_ne!(x, y, "Found matching checkpoints at {:?} and {:?}.", i, j)
             }
         }

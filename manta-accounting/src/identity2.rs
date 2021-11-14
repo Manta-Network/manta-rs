@@ -289,14 +289,9 @@ where
     #[inline]
     pub fn can_upgrade<S>(&self, utxo_set: &S) -> bool
     where
-        S: Accumulator<
-            Item = V::Item,
-            Checkpoint = V::Checkpoint,
-            Witness = V::Witness,
-            Verifier = V,
-        >,
+        S: Accumulator<Item = V::Item, Verifier = V>,
     {
-        self.utxo_membership_proof.matching_checkpoint(utxo_set)
+        self.utxo_membership_proof.matching_output(utxo_set)
     }
 
     /// Upgrades the `pre_sender` to a [`Sender`] by attaching `self` to it.
@@ -361,7 +356,7 @@ where
     #[inline]
     pub fn into_post(self) -> SenderPost<C, V> {
         SenderPost {
-            utxo_checkpoint: self.utxo_membership_proof.into_checkpoint(),
+            utxo_accumulator_output: self.utxo_membership_proof.into_output(),
             void_number: self.void_number,
         }
     }
@@ -380,20 +375,20 @@ where
     /// This type must be some wrapper around [`VoidNumber`] which can only be constructed by this
     /// implementation of [`SenderLedger`]. This is to prevent that [`spend`](Self::spend) is
     /// called before [`is_unspent`](Self::is_unspent) and
-    /// [`is_matching_checkpoint`](Self::is_matching_checkpoint).
+    /// [`has_matching_utxo_accumulator_output`](Self::has_matching_utxo_accumulator_output).
     type ValidVoidNumber;
 
-    /// Valid Utxo State Posting Key
+    /// Valid UTXO Accumulator Output Posting Key
     ///
     /// # Safety
     ///
-    /// This type must be some wrapper around [`S::Checkpoint`] which can only be constructed by this
+    /// This type must be some wrapper around [`S::Output`] which can only be constructed by this
     /// implementation of [`SenderLedger`]. This is to prevent that [`spend`](Self::spend) is
     /// called before [`is_unspent`](Self::is_unspent) and
-    /// [`is_matching_checkpoint`](Self::is_matching_checkpoint).
+    /// [`has_matching_utxo_accumulator_output`](Self::has_matching_utxo_accumulator_output).
     ///
-    /// [`S::Checkpoint`]: Verifier::Checkpoint
-    type ValidUtxoCheckpoint;
+    /// [`S::Output`]: Verifier::Output
+    type ValidUtxoAccumulatorOutput;
 
     /// Super Posting Key
     ///
@@ -405,15 +400,15 @@ where
     /// Existence of such a void number could indicate a possible double-spend.
     fn is_unspent(&self, void_number: VoidNumber<C>) -> Option<Self::ValidVoidNumber>;
 
-    /// Checks if the `checkpoint` matches the current checkpoint of the UTXO set that is stored on
+    /// Checks if `output` matches the current accumulated value of the UTXO set that is stored on
     /// the ledger.
     ///
     /// Failure to match the ledger state means that the sender was constructed under an invalid or
     /// older state of the ledger.
-    fn is_matching_checkpoint(
+    fn has_matching_utxo_accumulator_output(
         &self,
-        checkpoint: V::Checkpoint,
-    ) -> Option<Self::ValidUtxoCheckpoint>;
+        output: V::Output,
+    ) -> Option<Self::ValidUtxoAccumulatorOutput>;
 
     /// Posts the `void_number` to the ledger, spending the asset.
     ///
@@ -423,7 +418,7 @@ where
     /// the ledger. See [`is_unspent`](Self::is_unspent).
     fn spend(
         &mut self,
-        utxo_checkpoint: Self::ValidUtxoCheckpoint,
+        utxo_accumulator_output: Self::ValidUtxoAccumulatorOutput,
         void_number: Self::ValidVoidNumber,
         super_key: &Self::SuperPostingKey,
     );
@@ -437,10 +432,10 @@ pub enum SenderPostError {
     /// The asset has already been spent.
     AssetSpent,
 
-    /// Invalid UTXO Checkpoint Error
+    /// Invalid UTXO Accumulator Error
     ///
     /// The sender was not constructed under the current state of the UTXO set.
-    InvalidUtxoCheckpoint,
+    InvalidUtxoAccumulator,
 }
 
 /// Sender Post
@@ -449,8 +444,8 @@ where
     C: Configuration,
     V: Verifier<Item = Utxo<C>>,
 {
-    /// UTXO Checkpoint
-    utxo_checkpoint: V::Checkpoint,
+    /// UTXO Accumulator Output
+    utxo_accumulator_output: V::Output,
 
     /// Void Number
     void_number: VoidNumber<C>,
@@ -468,9 +463,9 @@ where
         L: SenderLedger<C, V>,
     {
         Ok(SenderPostingKey {
-            utxo_checkpoint: ledger
-                .is_matching_checkpoint(self.utxo_checkpoint)
-                .ok_or(SenderPostError::InvalidUtxoCheckpoint)?,
+            utxo_accumulator_output: ledger
+                .has_matching_utxo_accumulator_output(self.utxo_accumulator_output)
+                .ok_or(SenderPostError::InvalidUtxoAccumulator)?,
             void_number: ledger
                 .is_unspent(self.void_number)
                 .ok_or(SenderPostError::AssetSpent)?,
@@ -485,8 +480,8 @@ where
     V: Verifier<Item = Utxo<C>>,
     L: SenderLedger<C, V>,
 {
-    /// UTXO Checkpoint Posting Key
-    utxo_checkpoint: L::ValidUtxoCheckpoint,
+    /// UTXO Accumulator Output Posting Key
+    utxo_accumulator_output: L::ValidUtxoAccumulatorOutput,
 
     /// Void Number Posting Key
     void_number: L::ValidVoidNumber,
@@ -501,7 +496,7 @@ where
     /// Posts `self` to the sender `ledger`.
     #[inline]
     pub fn post(self, super_key: &L::SuperPostingKey, ledger: &mut L) {
-        ledger.spend(self.utxo_checkpoint, self.void_number, super_key);
+        ledger.spend(self.utxo_accumulator_output, self.void_number, super_key);
     }
 }
 
