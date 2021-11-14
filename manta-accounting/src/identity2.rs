@@ -118,13 +118,16 @@ where
         ephemeral_key: SecretKey<C>,
         asset: C::Asset,
         commitment_scheme: &C::CommitmentScheme,
-    ) -> (Receiver<C>, K::PublicKey)
+    ) -> FullReceiver<C>
     where
         C: Configuration<KeyAgreementScheme = K>,
     {
-        (
-            Receiver::new(self.spend, ephemeral_key, asset, commitment_scheme),
+        FullReceiver::new(
+            self.spend,
             self.view,
+            ephemeral_key,
+            asset,
+            commitment_scheme,
         )
     }
 }
@@ -138,10 +141,9 @@ pub trait Configuration {
     type KeyAgreementScheme: KeyAgreementScheme;
 
     /// Commitment Scheme Type
-    type CommitmentScheme: CommitmentScheme<
-            Randomness = <Self::KeyAgreementScheme as KeyAgreementScheme>::SharedSecret,
-        > + CommitmentInput<Self::Asset>
-        + CommitmentInput<<Self::KeyAgreementScheme as KeyAgreementScheme>::SecretKey>;
+    type CommitmentScheme: CommitmentScheme<Randomness = Trapdoor<Self>>
+        + CommitmentInput<Self::Asset>
+        + CommitmentInput<SecretKey<Self>>;
 }
 
 /// Secret Key Type
@@ -154,11 +156,15 @@ pub type PublicKey<C> = <<C as Configuration>::KeyAgreementScheme as KeyAgreemen
 pub type Trapdoor<C> =
     <<C as Configuration>::KeyAgreementScheme as KeyAgreementScheme>::SharedSecret;
 
-/// UTXO Type
-pub type Utxo<C> = <<C as Configuration>::CommitmentScheme as CommitmentScheme>::Output;
+/// Commitment Scheme Output Type
+pub type CommitmentSchemeOutput<C> =
+    <<C as Configuration>::CommitmentScheme as CommitmentScheme>::Output;
+
+/// Unspent Transaction Output Type
+pub type Utxo<C> = CommitmentSchemeOutput<C>;
 
 /// Void Number Type
-pub type VoidNumber<C> = <<C as Configuration>::CommitmentScheme as CommitmentScheme>::Output;
+pub type VoidNumber<C> = CommitmentSchemeOutput<C>;
 
 /// Pre-Sender
 pub struct PreSender<C>
@@ -170,9 +176,6 @@ where
 
     /// Ephemeral Public Key
     ephemeral_key: PublicKey<C>,
-
-    /// Trapdoor
-    trapdoor: Trapdoor<C>,
 
     /// Asset
     asset: C::Asset,
@@ -204,7 +207,6 @@ where
             spending_key,
             ephemeral_key,
             asset,
-            trapdoor,
         }
     }
 
@@ -246,9 +248,7 @@ where
         Sender {
             spending_key: self.spending_key,
             ephemeral_key: self.ephemeral_key,
-            trapdoor: self.trapdoor,
             asset: self.asset,
-            utxo: self.utxo,
             utxo_membership_proof: proof.utxo_membership_proof,
             void_number: self.void_number,
         }
@@ -324,14 +324,8 @@ where
     /// Ephemeral Public Key
     ephemeral_key: PublicKey<C>,
 
-    /// Trapdoor
-    trapdoor: Trapdoor<C>,
-
     /// Asset
     asset: C::Asset,
-
-    /// Unspent Transaction Output
-    utxo: Utxo<C>,
 
     /// UTXO Membership Proof
     utxo_membership_proof: MembershipProof<V>,
@@ -350,13 +344,15 @@ where
     /// This method should be called if the [`Utxo`] membership proof attached to `self` was deemed
     /// invalid or had expired.
     #[inline]
-    pub fn downgrade(self) -> PreSender<C> {
+    pub fn downgrade(self, commitment_scheme: &C::CommitmentScheme) -> PreSender<C> {
         PreSender {
+            utxo: commitment_scheme.commit_one(
+                &self.asset,
+                &C::KeyAgreementScheme::agree(&self.spending_key, &self.ephemeral_key),
+            ),
             spending_key: self.spending_key,
             ephemeral_key: self.ephemeral_key,
-            trapdoor: self.trapdoor,
             asset: self.asset,
-            utxo: self.utxo,
             void_number: self.void_number,
         }
     }
@@ -531,21 +527,65 @@ impl<C> Receiver<C>
 where
     C: Configuration,
 {
+    /// Generates the [`Utxo`] for a [`Receiver`] with the given parameters.
+    #[inline]
+    fn generate_utxo(
+        spending_key: &PublicKey<C>,
+        ephemeral_key: &SecretKey<C>,
+        asset: &C::Asset,
+        commitment_scheme: &C::CommitmentScheme,
+    ) -> Utxo<C> {
+        commitment_scheme.commit_one(
+            asset,
+            &C::KeyAgreementScheme::agree(ephemeral_key, spending_key),
+        )
+    }
+}
+
+/// Full Receiver
+pub struct FullReceiver<C>
+where
+    C: Configuration,
+{
+    /// Public Spending Key
+    spending_key: PublicKey<C>,
+
+    /// Public Viewing Key
+    viewing_key: PublicKey<C>,
+
+    /// Ephemeral Secret Key
+    ephemeral_key: SecretKey<C>,
+
+    /// Asset
+    asset: C::Asset,
+
+    /// Unspent Transaction Output
+    utxo: Utxo<C>,
+}
+
+impl<C> FullReceiver<C>
+where
+    C: Configuration,
+{
     /// Builds a new [`Receiver`] for `spending_key` to receive `asset` with
     /// `ephemeral_key`.
     #[inline]
     pub fn new(
         spending_key: PublicKey<C>,
+        viewing_key: PublicKey<C>,
         ephemeral_key: SecretKey<C>,
         asset: C::Asset,
         commitment_scheme: &C::CommitmentScheme,
     ) -> Self {
         Self {
-            utxo: commitment_scheme.commit_one(
+            utxo: Receiver::<C>::generate_utxo(
+                &spending_key,
+                &ephemeral_key,
                 &asset,
-                &C::KeyAgreementScheme::agree(&ephemeral_key, &spending_key),
+                commitment_scheme,
             ),
             spending_key,
+            viewing_key,
             ephemeral_key,
             asset,
         }
@@ -553,7 +593,7 @@ where
 
     /// Extracts the ledger posting data from `self`.
     #[inline]
-    pub fn into_post<H>(self, public_view_key: PublicKey<C>) -> ReceiverPost<C, H>
+    pub fn into_post<H>(self) -> ReceiverPost<C, H>
     where
         H: HybridPublicKeyEncryptionScheme<
             Plaintext = C::Asset,
@@ -562,7 +602,7 @@ where
     {
         ReceiverPost {
             utxo: self.utxo,
-            note: EncryptedMessage::new(&public_view_key, self.ephemeral_key, self.asset),
+            note: EncryptedMessage::new(&self.viewing_key, self.ephemeral_key, self.asset),
         }
     }
 }
@@ -693,34 +733,15 @@ where
 /// Constraint System Gadgets for Identities
 pub mod constraint {
     use super::*;
-    use manta_crypto::constraint::{
-        reflection::{HasVariable, Var},
-        Constant, ConstraintSystem, Equal, PublicOrSecret,
-    };
-
-    /// Constraint System Configuration
-    pub trait Configuration<C>:
-        super::Configuration<
-        Asset = Var<C::Asset, Self::ConstraintSystem>,
-        KeyAgreementScheme = Var<C::KeyAgreementScheme, Self::ConstraintSystem>,
-        CommitmentScheme = Var<C::CommitmentScheme, Self::ConstraintSystem>,
-    >
-    where
-        C: super::Configuration,
-    {
-        /// Constraint System Type
-        type ConstraintSystem: ConstraintSystem
-            + HasVariable<C::Asset, Mode = PublicOrSecret>
-            + HasVariable<C::KeyAgreementScheme, Mode = Constant>
-            + HasVariable<C::CommitmentScheme, Mode = Constant>;
-    }
+    use manta_crypto::constraint::{ConstraintSystem, Equal};
 
     impl<C, V> Sender<C, V>
     where
-        C: super::Configuration,
+        C: Configuration,
         V: Verifier<Item = Utxo<C>> + ?Sized,
     {
-        ///
+        /// Returns the asset for `self`, checking if `self` is well-formed in the given constraint
+        /// system `cs`.
         #[inline]
         pub fn get_well_formed_asset<CS>(
             self,
@@ -730,26 +751,17 @@ pub mod constraint {
         ) -> C::Asset
         where
             CS: ConstraintSystem,
-            Trapdoor<C>: Equal<CS>,
-            Utxo<C>: Equal<CS>,
-            VoidNumber<C>: Equal<CS>,
+            CommitmentSchemeOutput<C>: Equal<CS>,
             V: Verifier<Verification = CS::Bool>,
         {
-            cs.assert_eq(
-                &self.trapdoor,
-                &C::KeyAgreementScheme::agree(&self.spending_key, &self.ephemeral_key),
-            );
-            cs.assert_eq(
-                &self.utxo,
-                &commitment_scheme.commit_one(&self.asset, &self.trapdoor),
-            );
+            let trapdoor = C::KeyAgreementScheme::agree(&self.spending_key, &self.ephemeral_key);
+            cs.assert(self.utxo_membership_proof.verify(
+                &commitment_scheme.commit_one(&self.asset, &trapdoor),
+                utxo_set_verifier,
+            ));
             cs.assert_eq(
                 &self.void_number,
-                &commitment_scheme.commit_one(&self.spending_key, &self.trapdoor),
-            );
-            cs.assert(
-                self.utxo_membership_proof
-                    .verify(&self.utxo, utxo_set_verifier),
+                &commitment_scheme.commit_one(&self.spending_key, &trapdoor),
             );
             self.asset
         }
@@ -757,9 +769,10 @@ pub mod constraint {
 
     impl<C> Receiver<C>
     where
-        C: super::Configuration,
+        C: Configuration,
     {
-        ///
+        /// Returns the asset for `self`, checking if `self` is well-formed in the given constraint
+        /// system `cs`.
         #[inline]
         pub fn get_well_formed_asset<CS>(
             self,
@@ -772,9 +785,11 @@ pub mod constraint {
         {
             cs.assert_eq(
                 &self.utxo,
-                &commitment_scheme.commit_one(
+                &Self::generate_utxo(
+                    &self.spending_key,
+                    &self.ephemeral_key,
                     &self.asset,
-                    &C::KeyAgreementScheme::agree(&self.ephemeral_key, &self.spending_key),
+                    commitment_scheme,
                 ),
             );
             self.asset

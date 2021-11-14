@@ -387,7 +387,7 @@ pub trait ConstraintSystem {
     #[inline]
     fn eq<V>(&mut self, lhs: &V, rhs: &V) -> Self::Bool
     where
-        V: Variable<Self> + Equal<Self>,
+        V: Equal<Self>,
     {
         V::eq(self, lhs, rhs)
     }
@@ -396,7 +396,7 @@ pub trait ConstraintSystem {
     #[inline]
     fn assert_eq<V>(&mut self, lhs: &V, rhs: &V)
     where
-        V: Variable<Self> + Equal<Self>,
+        V: Equal<Self>,
     {
         V::assert_eq(self, lhs, rhs);
     }
@@ -405,7 +405,7 @@ pub trait ConstraintSystem {
     #[inline]
     fn assert_all_eq_to_base<'t, V, I>(&mut self, base: &'t V, iter: I)
     where
-        V: 't + Variable<Self> + Equal<Self>,
+        V: 't + Equal<Self>,
         I: IntoIterator<Item = &'t V>,
     {
         V::assert_all_eq_to_base(self, base, iter);
@@ -415,7 +415,7 @@ pub trait ConstraintSystem {
     #[inline]
     fn assert_all_eq<'t, V, I>(&mut self, iter: I)
     where
-        V: 't + Variable<Self> + Equal<Self>,
+        V: 't + Equal<Self>,
         I: IntoIterator<Item = &'t V>,
     {
         V::assert_all_eq(self, iter);
@@ -475,7 +475,7 @@ impl Variable<Native> for bool {
 }
 
 /// Equality Trait
-pub trait Equal<C>: Variable<C>
+pub trait Equal<C>
 where
     C: ConstraintSystem + ?Sized,
 {
@@ -1032,6 +1032,22 @@ pub mod reflection {
     {
         type Variable = T::Variable;
         type Mode = T::Mode;
+    }
+
+    ///
+    pub trait HasEqual<V>: ConstraintSystem {
+        ///
+        fn eq(&mut self, lhs: &V, rhs: &V) -> Self::Bool;
+    }
+
+    impl<C, V> Equal<C> for V
+    where
+        C: HasEqual<V>,
+    {
+        #[inline]
+        fn eq(cs: &mut C, lhs: &Self, rhs: &Self) -> C::Bool {
+            HasEqual::eq(cs, lhs, rhs)
+        }
     }
 
     /// Allocates a new unknown variable into `cs` with the given `mode`.
