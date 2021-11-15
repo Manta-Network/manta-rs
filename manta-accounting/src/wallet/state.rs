@@ -18,10 +18,11 @@
 
 use crate::{
     asset::{Asset, AssetId, AssetValue},
-    key::DerivedSecretKeyGenerator,
+    identity::SecretKey,
+    key::HierarchicalKeyTable,
     transfer::{
         canonical::{Transaction, TransactionKind},
-        Configuration, ShieldedIdentity,
+        Configuration, ReceivingKey,
     },
     wallet::{
         ledger::{self, Checkpoint, PullResponse, PushResponse},
@@ -156,12 +157,12 @@ where
 }
 
 /// Wallet
-pub struct Wallet<D, C, L, S, B = BTreeMapBalanceState>
+pub struct Wallet<H, C, L, S, B = BTreeMapBalanceState>
 where
-    D: DerivedSecretKeyGenerator,
-    C: Configuration<SecretKey = D::SecretKey>,
+    H: HierarchicalKeyTable<SecretKey = SecretKey<C>>,
+    C: Configuration,
     L: ledger::Connection<C>,
-    S: signer::Connection<D, C>,
+    S: signer::Connection<H, C>,
     B: BalanceState,
 {
     /// Ledger Connection
@@ -180,15 +181,15 @@ where
     assets: B,
 
     /// Type Parameter Marker
-    __: PhantomData<(D, C)>,
+    __: PhantomData<(H, C)>,
 }
 
-impl<D, C, L, S, B> Wallet<D, C, L, S, B>
+impl<H, C, L, S, B> Wallet<H, C, L, S, B>
 where
-    D: DerivedSecretKeyGenerator,
-    C: Configuration<SecretKey = D::SecretKey>,
+    H: HierarchicalKeyTable<SecretKey = SecretKey<C>>,
+    C: Configuration,
     L: ledger::Connection<C>,
-    S: signer::Connection<D, C>,
+    S: signer::Connection<H, C>,
     B: BalanceState,
 {
     /// Builds a new [`Wallet`].
@@ -231,7 +232,7 @@ where
 
     /// Pulls data from the `ledger`, synchronizing the wallet and balance state.
     #[inline]
-    pub async fn sync(&mut self) -> Result<(), Error<D, C, L, S>> {
+    pub async fn sync(&mut self) -> Result<(), Error<H, C, L, S>> {
         // TODO: How to recover from an `InconsistentSynchronization` error? Need some sort of
         //       recovery mode, like starting from the beginning of the state?
         let PullResponse {
@@ -303,7 +304,7 @@ where
     /// This method returns an error in any other case. The internal state of the wallet is kept
     /// consistent between calls and recoverable errors are returned for the caller to handle.
     #[inline]
-    pub async fn post(&mut self, transaction: Transaction<C>) -> Result<bool, Error<D, C, L, S>> {
+    pub async fn post(&mut self, transaction: Transaction<C>) -> Result<bool, Error<H, C, L, S>> {
         self.sync().await?;
         let balance_update = self
             .check(&transaction)
@@ -323,7 +324,7 @@ where
                 Ok(true)
             }
             Ok(PushResponse { success: false, .. }) => {
-                // FIXME: What about the checkpoint?
+                // FIXME: What about the checkpoint returned in the response?
                 self.try_rollback().await;
                 Ok(false)
             }
@@ -334,12 +335,10 @@ where
         }
     }
 
-    /// Returns a new shielded identity to receive external assets at this wallet.
+    ///
     #[inline]
-    pub async fn external_receiver(
-        &mut self,
-    ) -> Result<ShieldedIdentity<C>, signer::Error<D, C, S::Error>> {
-        self.signer.external_receiver().await
+    pub async fn receiver(&mut self) -> Result<ReceivingKey<C>, signer::Error<H, C, S::Error>> {
+        self.signer.receiver().await
     }
 }
 
@@ -347,12 +346,12 @@ where
 ///
 /// This `enum` is the error state for [`Wallet`] methods. See [`sync`](Wallet::sync) and
 /// [`post`](Wallet::post) for more.
-pub enum Error<D, C, L, S>
+pub enum Error<H, C, L, S>
 where
-    D: DerivedSecretKeyGenerator,
-    C: Configuration<SecretKey = D::SecretKey>,
+    H: HierarchicalKeyTable<SecretKey = SecretKey<C>>,
+    C: Configuration,
     L: ledger::Connection<C>,
-    S: signer::Connection<D, C>,
+    S: signer::Connection<H, C>,
 {
     /// Insufficient Balance
     InsufficientBalance(Asset),
@@ -361,31 +360,18 @@ where
     LedgerError(L::Error),
 
     /// Signer Error
-    SignerError(signer::Error<D, C, S::Error>),
+    SignerError(signer::Error<H, C, S::Error>),
 }
 
-impl<D, C, L, S> From<signer::Error<D, C, S::Error>> for Error<D, C, L, S>
+impl<H, C, L, S> From<signer::Error<H, C, S::Error>> for Error<H, C, L, S>
 where
-    D: DerivedSecretKeyGenerator,
-    C: Configuration<SecretKey = D::SecretKey>,
+    H: HierarchicalKeyTable<SecretKey = SecretKey<C>>,
+    C: Configuration,
     L: ledger::Connection<C>,
-    S: signer::Connection<D, C>,
+    S: signer::Connection<H, C>,
 {
     #[inline]
-    fn from(err: signer::Error<D, C, S::Error>) -> Self {
+    fn from(err: signer::Error<H, C, S::Error>) -> Self {
         Self::SignerError(err)
-    }
-}
-
-impl<D, C, L, S> From<signer::InternalIdentityError<D, C>> for Error<D, C, L, S>
-where
-    D: DerivedSecretKeyGenerator,
-    C: Configuration<SecretKey = D::SecretKey>,
-    L: ledger::Connection<C>,
-    S: signer::Connection<D, C>,
-{
-    #[inline]
-    fn from(err: signer::InternalIdentityError<D, C>) -> Self {
-        Self::SignerError(err.into())
     }
 }

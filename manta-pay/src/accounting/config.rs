@@ -20,27 +20,24 @@
 //       enabled when using whichever backend.
 
 use crate::{
-    accounting::identity::{constraint::UtxoSetVerifierVar, Parameters, Utxo},
+    accounting::identity::{Parameters, Utxo},
     crypto::{
         commitment::pedersen::{self, PedersenWindow},
         constraint::arkworks::{
             proof_systems::groth16::Groth16, ArkConstraintSystem, AssetIdVar, AssetValueVar,
         },
-        ies::IES,
+        key::EllipticCurveDiffieHellman,
         merkle_tree::{
             constraint as merkle_tree_constraint, ConfigConverter as ArkMerkleTreeConfigConverter,
             Configuration as ArkMerkleTreeConfiguration,
         },
-        prf::blake2s::{constraint::Blake2sVar, Blake2s},
     },
 };
 use ark_bls12_381::Bls12_381;
 use ark_crypto_primitives::crh::pedersen::{constraints::CRHGadget, CRH};
 use ark_ed_on_bls12_381::{constraints::EdwardsVar, EdwardsProjective, Fq};
-use manta_accounting::{identity, transfer};
-use manta_crypto::{
-    commitment::CommitmentScheme, merkle_tree, prf::PseudorandomFunctionFamily, rand::SeedIntoRng,
-};
+use manta_accounting::{asset::Asset, identity, transfer};
+use manta_crypto::{commitment::CommitmentScheme, merkle_tree, rand::SeedIntoRng};
 use rand_chacha::ChaCha20Rng;
 
 /// Pedersen Window Parameters
@@ -128,33 +125,29 @@ impl merkle_tree_constraint::Configuration for Configuration {
 }
 
 impl identity::Configuration for Configuration {
-    type SecretKey = <Blake2s as PseudorandomFunctionFamily>::Seed;
-    type PseudorandomFunctionFamilyInput = <Blake2s as PseudorandomFunctionFamily>::Input;
-    type PseudorandomFunctionFamily = Blake2s;
-    type CommitmentSchemeRandomness = <PedersenCommitment as CommitmentScheme>::Randomness;
+    type Asset = Asset;
+    type KeyAgreementScheme = EllipticCurveDiffieHellman<PedersenCommitmentProjectiveCurve>;
     type CommitmentScheme = PedersenCommitment;
-    type Rng = SeedIntoRng<Self::SecretKey, ChaCha20Rng>;
 }
 
-impl identity::constraint::Configuration for Configuration {
-    type ConstraintSystem = ConstraintSystem;
-    type SecretKeyVar = <Blake2sVar<ConstraintField> as PseudorandomFunctionFamily>::Seed;
-    type PseudorandomFunctionFamilyInputVar =
-        <Blake2sVar<ConstraintField> as PseudorandomFunctionFamily>::Input;
-    type PseudorandomFunctionFamilyOutputVar =
-        <Blake2sVar<ConstraintField> as PseudorandomFunctionFamily>::Output;
-    type PseudorandomFunctionFamilyVar = Blake2sVar<ConstraintField>;
-    type CommitmentSchemeRandomnessVar = <PedersenCommitmentVar as CommitmentScheme>::Randomness;
-    type CommitmentSchemeOutputVar = <PedersenCommitmentVar as CommitmentScheme>::Output;
-    type CommitmentSchemeVar = PedersenCommitmentVar;
+/*
+/// Transfer Constraint Configuration Structure
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct TransferConstraintConfiguration;
+
+impl identity::Configuration for TransferConstraintConfiguration {
+    type Asset = AssetVar;
+    type KeyAgreementScheme = ();
+    type CommitmentScheme = ();
 }
+
+impl transfer::ConstraintConfiguration<ConstraintSystem> for TransferConstraintConfiguration {}
 
 impl transfer::Configuration for Configuration {
+    type EncryptionScheme = ();
+    type UtxoSetVerifier = ();
     type ConstraintSystem = ConstraintSystem;
+    type ConstraintConfiguration = TransferConstraintConfiguration;
     type ProofSystem = ProofSystem;
-    type AssetIdVar = AssetIdVar<ConstraintField>;
-    type AssetValueVar = AssetValueVar<ConstraintField>;
-    type IntegratedEncryptionScheme = IES;
-    type UtxoSetVerifier = Parameters;
-    type UtxoSetVerifierVar = UtxoSetVerifierVar;
 }
+*/

@@ -274,44 +274,36 @@ where
 }
 
 /// Constraint System Gadgets for Accumulators
-// TODO[remove]:
 #[cfg(feature = "constraint")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "constraint")))]
 pub mod constraint {
     use super::*;
-    use crate::constraint::{
-        reflection::{unknown, HasAllocation, HasVariable, Mode, Var},
-        Allocation, AllocationMode, AllocationSystem, ConstraintSystem, Derived, Variable,
-    };
+    use crate::constraint::{Allocation, AllocationMode, Derived, Variable, VariableSource};
     use core::marker::PhantomData;
 
     /// Membership Proof Allocation Mode Entry
     #[derive(derivative::Derivative)]
     #[derivative(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
-    pub struct MembershipProofModeEntry<CheckpointMode, WitnessMode> {
-        /// Public Checkpoint Allocation Mode
-        pub checkpoint: CheckpointMode,
-
+    pub struct MembershipProofModeEntry<WitnessMode, OutputMode> {
         /// Secret Witness Allocation Mode
         pub witness: WitnessMode,
+
+        /// Accumulated Value Allocation Mode
+        pub output: OutputMode,
     }
 
-    impl<CheckpointMode, WitnessMode> MembershipProofModeEntry<CheckpointMode, WitnessMode> {
-        /// Builds a new [`MembershipProofModeEntry`] from a `checkpoint` mode and a `witness` mode.
+    impl<WitnessMode, OutputMode> MembershipProofModeEntry<WitnessMode, OutputMode> {
+        /// Builds a new [`MembershipProofModeEntry`] from a witness` mode and an `output` mode.
         #[inline]
-        pub fn new(checkpoint: CheckpointMode, witness: WitnessMode) -> Self {
-            Self {
-                checkpoint,
-                witness,
-            }
+        pub fn new(witness: WitnessMode, output: OutputMode) -> Self {
+            Self { witness, output }
         }
     }
 
-    impl<CheckpointMode, WitnessMode> From<Derived>
-        for MembershipProofModeEntry<CheckpointMode, WitnessMode>
+    impl<WitnessMode, OutputMode> From<Derived> for MembershipProofModeEntry<WitnessMode, OutputMode>
     where
-        CheckpointMode: From<Derived>,
         WitnessMode: From<Derived>,
+        OutputMode: From<Derived>,
     {
         #[inline]
         fn from(d: Derived) -> Self {
@@ -322,128 +314,48 @@ pub mod constraint {
     /// Membership Proof Allocation Mode
     #[derive(derivative::Derivative)]
     #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-    pub struct MembershipProofMode<CheckpointMode, WitnessMode>(
-        PhantomData<(CheckpointMode, WitnessMode)>,
-    )
+    pub struct MembershipProofMode<WitnessMode, OutputMode>(PhantomData<(WitnessMode, OutputMode)>)
     where
-        CheckpointMode: AllocationMode,
-        WitnessMode: AllocationMode;
-
-    impl<CheckpointMode, WitnessMode> AllocationMode
-        for MembershipProofMode<CheckpointMode, WitnessMode>
-    where
-        CheckpointMode: AllocationMode,
         WitnessMode: AllocationMode,
+        OutputMode: AllocationMode;
+
+    impl<WitnessMode, OutputMode> AllocationMode for MembershipProofMode<WitnessMode, OutputMode>
+    where
+        WitnessMode: AllocationMode,
+        OutputMode: AllocationMode,
     {
-        type Known = MembershipProofModeEntry<CheckpointMode::Known, WitnessMode::Known>;
-        type Unknown = MembershipProofModeEntry<CheckpointMode::Unknown, WitnessMode::Unknown>;
+        type Known = MembershipProofModeEntry<WitnessMode::Known, OutputMode::Known>;
+        type Unknown = MembershipProofModeEntry<WitnessMode::Unknown, OutputMode::Unknown>;
     }
 
-    /// Membership Proof Variable
-    pub struct MembershipProofVar<V, C>
+    impl<C, V> Variable<C> for MembershipProof<V>
     where
-        V: Verifier + ?Sized,
-        C: HasVariable<V::Output> + HasVariable<V::Witness> + ?Sized,
+        C: ?Sized,
+        V: Variable<C> + Verifier + ?Sized,
+        V::Type: Verifier,
+        V::Witness: Variable<C, Type = <V::Type as Verifier>::Witness>,
+        V::Output: Variable<C, Type = <V::Type as Verifier>::Output>,
     {
-        /// Public Checkpoint Variable
-        checkpoint: Var<V::Output, C>,
+        type Type = MembershipProof<V::Type>;
 
-        /// Secret Witness Variable
-        witness: Var<V::Witness, C>,
-    }
-
-    impl<V, C> MembershipProofVar<V, C>
-    where
-        V: Verifier + ?Sized,
-        C: HasVariable<V::Output> + HasVariable<V::Witness> + ?Sized,
-    {
-        /// Builds a new [`MembershipProofVar`] from `checkpoint` and `witness` variables.
-        #[inline]
-        pub fn new(checkpoint: Var<V::Output, C>, witness: Var<V::Witness, C>) -> Self {
-            Self {
-                checkpoint,
-                witness,
-            }
-        }
-
-        /// Asserts that `self` is a valid proof to the fact that `item` is stored in some known
-        /// accumulator.
-        #[inline]
-        pub fn assert_validity<VV>(&self, item: &VV::ItemVar, verifier: &VV, cs: &mut C)
-        where
-            C: ConstraintSystem,
-            VV: VerifierVariable<C, Type = V>,
-        {
-            verifier.assert_valid_membership_proof(item, &self.checkpoint, &self.witness, cs);
-        }
-    }
-
-    impl<V, C> Variable<C> for MembershipProofVar<V, C>
-    where
-        V: Verifier + ?Sized,
-        C: HasVariable<V::Output> + HasVariable<V::Witness> + ?Sized,
-    {
-        type Type = MembershipProof<V>;
-
-        type Mode = MembershipProofMode<Mode<V::Output, C>, Mode<V::Witness, C>>;
+        type Mode = MembershipProofMode<
+            <V::Witness as Variable<C>>::Mode,
+            <V::Output as Variable<C>>::Mode,
+        >;
 
         #[inline]
         fn new(cs: &mut C, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
             match allocation {
                 Allocation::Known(this, mode) => Self::new(
-                    cs.allocate_known(&this.output, mode.checkpoint),
-                    cs.allocate_known(&this.witness, mode.witness),
+                    this.witness.as_known(cs, mode.witness),
+                    this.output.as_known(cs, mode.output),
                 ),
                 Allocation::Unknown(mode) => Self::new(
-                    unknown::<V::Output, _>(cs, mode.checkpoint),
-                    unknown::<V::Witness, _>(cs, mode.witness),
+                    V::Witness::new_unknown(cs, mode.witness),
+                    V::Output::new_unknown(cs, mode.output),
                 ),
             }
         }
-    }
-
-    impl<V, C> HasAllocation<C> for MembershipProof<V>
-    where
-        V: Verifier + ?Sized,
-        C: HasVariable<V::Output> + HasVariable<V::Witness> + ?Sized,
-    {
-        type Variable = MembershipProofVar<V, C>;
-        type Mode = MembershipProofMode<Mode<V::Output, C>, Mode<V::Witness, C>>;
-    }
-
-    /// Public Checkpoint Type for [`VerifierVariable`]
-    pub type CheckpointType<V, C> = <<V as Variable<C>>::Type as Verifier>::Output;
-
-    /// Secret Witness Type for [`VerifierVariable`]
-    pub type WitnessType<V, C> = <<V as Variable<C>>::Type as Verifier>::Witness;
-
-    /// Public Checkpoint Variable Type for [`VerifierVariable`]
-    pub type CheckpointVar<V, C> = Var<CheckpointType<V, C>, C>;
-
-    /// Secret Witness Variable Type for [`VerifierVariable`]
-    pub type WitnessVar<V, C> = Var<WitnessType<V, C>, C>;
-
-    /// Verified Set Variable
-    pub trait VerifierVariable<C>: Variable<C>
-    where
-        C: ConstraintSystem
-            + HasVariable<CheckpointType<Self, C>>
-            + HasVariable<WitnessType<Self, C>>
-            + ?Sized,
-        Self::Type: Verifier,
-    {
-        /// Item Variable
-        type ItemVar: Variable<C, Type = <Self::Type as Verifier>::Item>;
-
-        /// Asserts that `checkpoint` and `witness` form a proof to the fact that `item` is stored
-        /// in some known accumulator.
-        fn assert_valid_membership_proof(
-            &self,
-            item: &Self::ItemVar,
-            checkpoint: &CheckpointVar<Self, C>,
-            witness: &WitnessVar<Self, C>,
-            cs: &mut C,
-        );
     }
 }
 

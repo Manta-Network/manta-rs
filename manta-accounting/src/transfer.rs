@@ -16,36 +16,29 @@
 
 //! Transfer Protocol
 
-// FIXME: Make sure that either (a) no empty transfer can be built, or (b) empty transfers work
-//        properly i.e. do nothing.
-// TODO:  See if we can get rid of the `Copy` restriction on `ValidProof` and `SuperPostingKey`.
-// TODO:  See if we can get rid of `PublicTransfer` and `SecretTransfer` and just use `Transfer`.
-
 use crate::{
-    asset::{Asset, AssetId, AssetValue, AssetValues},
-    identity::{
-        self, constraint::UtxoVar, ReceiverLedger, ReceiverPostError, SenderLedger,
-        SenderPostError, Utxo, VoidNumber,
-    },
+    asset::{Asset, AssetId, AssetValue},
+    identity::{self, CommitmentSchemeOutput, Utxo},
 };
 use alloc::vec::Vec;
-use core::{fmt::Debug, hash::Hash, ops::Add};
+use core::ops::Add;
 use manta_crypto::{
-    accumulator::{constraint::VerifierVariable, Verifier},
+    accumulator::Verifier,
+    commitment::CommitmentScheme,
     constraint::{
-        self,
-        reflection::{HasAllocation, HasVariable},
-        Allocation, Constant, ConstraintSystem as _, Derived, Equal, Input as ProofSystemInput,
-        ProofSystem, Public, PublicOrSecret, Secret, Variable, VariableSource,
+        reflection::{HasEqual, HasVariable, Var},
+        Allocation, Constant, ConstraintSystem, Derived, Equal, ProofSystem, Public,
+        PublicOrSecret, Variable, VariableSource,
     },
-    encryption::ies::{EncryptedMessage, IntegratedEncryptionScheme},
+    encryption::{EncryptedMessage, HybridPublicKeyEncryptionScheme},
+    key::KeyAgreementScheme,
     rand::{CryptoRng, RngCore},
 };
-use manta_util::{create_seal, from_variant_impl, seal};
+use manta_util::create_seal;
 
 /// Returns `true` if the transfer with this shape would have no public participants.
 #[inline]
-const fn has_no_public_participants(
+pub const fn has_no_public_participants(
     sources: usize,
     senders: usize,
     receivers: usize,
@@ -55,483 +48,139 @@ const fn has_no_public_participants(
     sources == 0 && sinks == 0
 }
 
-/// [`Transfer`] Configuration
-pub trait Configuration:
-    identity::constraint::Configuration<ConstraintSystem = ConstraintSystem<Self>>
-{
-    /// Constraint System
-    type ConstraintSystem: constraint::ConstraintSystem
-        + HasVariable<AssetId, Variable = Self::AssetIdVar, Mode = PublicOrSecret>
-        + HasVariable<AssetValue, Variable = Self::AssetValueVar, Mode = PublicOrSecret>
-        + HasVariable<<Self::UtxoSetVerifier as Verifier>::Output, Mode = Public>
-        + HasVariable<<Self::UtxoSetVerifier as Verifier>::Witness, Mode = Secret>;
-
-    /// Proof System
-    type ProofSystem: ProofSystem<ConstraintSystem = ConstraintSystem<Self>, Verification = bool>
-        + ProofSystemInput<AssetId>
-        + ProofSystemInput<AssetValue>
-        + ProofSystemInput<VoidNumber<Self>>
-        + ProofSystemInput<<Self::UtxoSetVerifier as Verifier>::Output>
-        + ProofSystemInput<Utxo<Self>>;
-
-    /// Asset Id Variable
-    type AssetIdVar: Variable<ConstraintSystem<Self>, Mode = PublicOrSecret, Type = AssetId>
-        + Equal<ConstraintSystem<Self>>;
-
-    /// Asset Value Variable
-    type AssetValueVar: Variable<ConstraintSystem<Self>, Mode = PublicOrSecret, Type = AssetValue>
-        + Equal<ConstraintSystem<Self>>
-        + Add<Output = Self::AssetValueVar>;
-
-    /// Integrated Encryption Scheme for [`Asset`]
-    type IntegratedEncryptionScheme: IntegratedEncryptionScheme<Plaintext = Asset>;
-
-    /// Accumulator Verifier for [`Utxo`]
-    type UtxoSetVerifier: Verifier<Item = Utxo<Self>>;
-
-    /// Accumulator Verifier Variable for [`Utxo`]
-    type UtxoSetVerifierVar: VerifierVariable<
-        ConstraintSystem<Self>,
-        ItemVar = UtxoVar<Self>,
-        Type = Self::UtxoSetVerifier,
-        Mode = Constant,
+/// Transfer Configuration
+pub trait Configuration: identity::Configuration<Asset = Asset> {
+    /// Encryption Scheme Type
+    type EncryptionScheme: HybridPublicKeyEncryptionScheme<
+        Plaintext = Self::Asset,
+        KeyAgreementScheme = Self::KeyAgreementScheme,
     >;
+
+    /// UTXO Set Verifier Type
+    type UtxoSetVerifier: Verifier<Item = Utxo<Self>, Verification = bool>;
+
+    /// Constraint System Type
+    type ConstraintSystem: ConstraintSystem
+        + HasVariable<
+            Self::KeyAgreementScheme,
+            Variable = KeyAgreementSchemeVar<Self>,
+            Mode = Constant,
+        > + HasVariable<Self::CommitmentScheme, Variable = CommitmentSchemeVar<Self>, Mode = Constant>
+        + HasVariable<Self::UtxoSetVerifier, Variable = UtxoSetVerifierVar<Self>, Mode = Constant>
+        + HasVariable<AssetId, Variable = AssetIdVar<Self>, Mode = PublicOrSecret>
+        + HasVariable<AssetValue, Variable = AssetValueVar<Self>, Mode = PublicOrSecret>
+        + HasVariable<
+            CommitmentSchemeOutput<Self>,
+            Variable = CommitmentSchemeOutput<Self::ConstraintConfiguration>,
+            Mode = PublicOrSecret,
+        > + HasEqual<CommitmentSchemeOutput<Self::ConstraintConfiguration>>;
+
+    /// Constraint System Configuration
+    type ConstraintConfiguration: ConstraintConfiguration<Self::ConstraintSystem>;
+
+    /// Proof System Type
+    type ProofSystem: ProofSystem<ConstraintSystem = Self::ConstraintSystem, Verification = bool>;
 }
 
-/// Transfer Shielded Identity Type
-pub type ShieldedIdentity<C> =
-    identity::ShieldedIdentity<C, <C as Configuration>::IntegratedEncryptionScheme>;
+/// Transfer Constraint System Configuration
+pub trait ConstraintConfiguration<CS>:
+    identity::Configuration<Asset = Asset<Self::AssetId, Self::AssetValue>>
+where
+    CS: ConstraintSystem,
+{
+    /// Asset Id Variable Type
+    type AssetId: Variable<CS, Type = AssetId, Mode = PublicOrSecret> + Equal<CS>;
 
-/// Transfer Internal Identity Type
-pub type InternalIdentity<C> =
-    identity::InternalIdentity<C, <C as Configuration>::IntegratedEncryptionScheme>;
+    /// Asset Value Variable Type
+    type AssetValue: Variable<CS, Type = AssetValue, Mode = PublicOrSecret>
+        + Equal<CS>
+        + Add<Output = Self::AssetValue>;
 
-/// Transfer Spend Type
-pub type Spend<C> = identity::Spend<C, <C as Configuration>::IntegratedEncryptionScheme>;
+    /// UTXO Set Verifier Variable Type
+    type UtxoSetVerifier: Verifier<Item = Utxo<Self>, Verification = CS::Bool>;
+}
 
-/// Transfer Sender Type
+/// Spending Key Type
+pub type SpendingKey<C> = identity::SpendingKey<<C as identity::Configuration>::KeyAgreementScheme>;
+
+/// Receiving Key Type
+pub type ReceivingKey<C> =
+    identity::ReceivingKey<<C as identity::Configuration>::KeyAgreementScheme>;
+
+/// Encrypted Note Type
+pub type EncryptedNote<C> = EncryptedMessage<<C as Configuration>::EncryptionScheme>;
+
+/// Constraint System Type
+type ConstraintSystemType<C> = <C as Configuration>::ConstraintSystem;
+
+/// Constraint Configuration Type
+type ConstraintConfigurationType<C> = <C as Configuration>::ConstraintConfiguration;
+
+/// Pre-Sender Type
+pub type PreSender<C> = identity::PreSender<C>;
+
+/// Sender Type
 pub type Sender<C> = identity::Sender<C, <C as Configuration>::UtxoSetVerifier>;
 
-/// Transfer Sender Post Type
+/// Sender Variable Type
+type SenderVar<C> = identity::Sender<
+    ConstraintConfigurationType<C>,
+    <ConstraintConfigurationType<C> as ConstraintConfiguration<ConstraintSystemType<C>>>::UtxoSetVerifier,
+>;
+
+/// Sender Post Type
 pub type SenderPost<C> = identity::SenderPost<C, <C as Configuration>::UtxoSetVerifier>;
 
-/// Transfer Sender Posting Key Type
-pub type SenderPostingKey<C, L> =
-    identity::SenderPostingKey<C, <C as Configuration>::UtxoSetVerifier, L>;
+/// Receiver Type
+pub type Receiver<C> = identity::Receiver<C>;
 
-/// Transfer Receiver Type
-pub type Receiver<C> = identity::Receiver<C, <C as Configuration>::IntegratedEncryptionScheme>;
+/// Receiver Variable Type
+type ReceiverVar<C> = identity::Receiver<<C as Configuration>::ConstraintConfiguration>;
 
-/// Transfer Receiver Post Type
-pub type ReceiverPost<C> =
-    identity::ReceiverPost<C, <C as Configuration>::IntegratedEncryptionScheme>;
+/// Full Receiver Type
+pub type FullReceiver<C> = identity::FullReceiver<C>;
 
-/// Transfer Receiver Posting Key Type
-pub type ReceiverPostingKey<C, L> =
-    identity::ReceiverPostingKey<C, <C as Configuration>::IntegratedEncryptionScheme, L>;
+/// Receiver Post Type
+pub type ReceiverPost<C> = identity::ReceiverPost<C, <C as Configuration>::EncryptionScheme>;
 
-/// Transfer Encrypted Asset Type
-pub type EncryptedAsset<C> = EncryptedMessage<<C as Configuration>::IntegratedEncryptionScheme>;
+/// Asset Id Variable Type
+pub type AssetIdVar<C> =
+    <ConstraintConfigurationType<C> as ConstraintConfiguration<ConstraintSystemType<C>>>::AssetId;
 
-/// Transfer Integrated Encryption Scheme Error Type
-pub type IntegratedEncryptionSchemeError<C> =
-    <<C as Configuration>::IntegratedEncryptionScheme as IntegratedEncryptionScheme>::Error;
+/// Asset Value Variable Type
+pub type AssetValueVar<C> = <ConstraintConfigurationType<C> as ConstraintConfiguration<
+    ConstraintSystemType<C>,
+>>::AssetValue;
 
-/// Transfer Constraint System Type
-pub type ConstraintSystem<C> = <C as Configuration>::ConstraintSystem;
+/// Key Agreement Scheme Variable Type
+pub type KeyAgreementSchemeVar<C> =
+    <ConstraintConfigurationType<C> as identity::Configuration>::KeyAgreementScheme;
 
-/// Transfer Sender Variable Type
-pub type SenderVar<C> = identity::constraint::SenderVar<C, <C as Configuration>::UtxoSetVerifier>;
+/// Commitment Scheme Variable Type
+pub type CommitmentSchemeVar<C> =
+    <ConstraintConfigurationType<C> as identity::Configuration>::CommitmentScheme;
 
-/// Transfer Receiver Type
-pub type ReceiverVar<C> =
-    identity::constraint::ReceiverVar<C, <C as Configuration>::IntegratedEncryptionScheme>;
+/// UTXO Set Verifier Variable Type
+pub type UtxoSetVerifierVar<C> = <ConstraintConfigurationType<C> as ConstraintConfiguration<
+    ConstraintSystemType<C>,
+>>::UtxoSetVerifier;
 
-/// Transfer Proving Context Type
-pub type ProvingContext<C> = <<C as Configuration>::ProofSystem as ProofSystem>::ProvingContext;
-
-/// Transfer Verifying Context Type
-pub type VerifyingContext<C> = <<C as Configuration>::ProofSystem as ProofSystem>::VerifyingContext;
-
-/// Transfer Proof Type
-pub type Proof<C> = <<C as Configuration>::ProofSystem as ProofSystem>::Proof;
-
-/// Transfer Proof System Input Type
-pub type ProofInput<C> = <<C as Configuration>::ProofSystem as ProofSystem>::Input;
+/// Transfer Proof System Type
+type ProofSystemType<C> = <C as Configuration>::ProofSystem;
 
 /// Transfer Proof System Error Type
-pub type ProofSystemError<C> = <<C as Configuration>::ProofSystem as ProofSystem>::Error;
+pub type ProofSystemError<C> = <ProofSystemType<C> as ProofSystem>::Error;
 
-/// Transfer Source Posting Key Type
-pub type SourcePostingKey<C, L> = <L as TransferLedger<C>>::ValidSourceBalance;
+/// Transfer Proving Context Type
+pub type ProvingContext<C> = <ProofSystemType<C> as ProofSystem>::ProvingContext;
 
-/// Transfer Ledger Super Posting Key Type
-pub type TransferLedgerSuperPostingKey<C, L> = <L as TransferLedger<C>>::SuperPostingKey;
+/// Transfer Verifying Context Type
+pub type VerifyingContext<C> = <ProofSystemType<C> as ProofSystem>::VerifyingContext;
 
-/// Transfer Ledger
-///
-/// # Safety
-///
-/// The [`TransferLedger`] interface describes the conditions for a valid ledger update but only for
-/// the state that is described by a [`TransferPost`]. Independently of this trait, any ledger
-/// implementation still needs to check that source and sink accounts are associated to a real
-/// public address. However, checking public balances is done in the
-/// [`check_source_balances`](Self::check_source_balances) method.
-pub trait TransferLedger<C>:
-    SenderLedger<
-        C,
-        C::UtxoSetVerifier,
-        SuperPostingKey = (Self::ValidProof, TransferLedgerSuperPostingKey<C, Self>),
-    > + ReceiverLedger<
-        C,
-        C::IntegratedEncryptionScheme,
-        SuperPostingKey = (Self::ValidProof, TransferLedgerSuperPostingKey<C, Self>),
-    >
-where
-    C: Configuration,
-{
-    /// Valid [`AssetValue`] for [`TransferPost`] source
-    ///
-    /// # Safety
-    ///
-    /// This type must be restricted so that it can only be constructed by this implementation of
-    /// [`TransferLedger`].
-    type ValidSourceBalance;
+/// Transfer Validity Proof Type
+pub type Proof<C> = <ProofSystemType<C> as ProofSystem>::Proof;
 
-    /// Valid [`Proof`] Posting Key
-    ///
-    /// # Safety
-    ///
-    /// This type must be restricted so that it can only be constructed by this implementation
-    /// of [`TransferLedger`]. This is to prevent that [`SenderPostingKey::post`] and
-    /// [`ReceiverPostingKey::post`] are called before [`SenderPost::validate`],
-    /// [`ReceiverPost::validate`], [`check_source_balances`](Self::check_source_balances), and
-    /// [`is_valid`](Self::is_valid).
-    type ValidProof: Copy;
-
-    /// Super Posting Key
-    ///
-    /// Type that allows super-traits of [`TransferLedger`] to customize posting key behavior.
-    type SuperPostingKey: Copy;
-
-    /// Checks that the balances associated to the source accounts are sufficient to withdraw the
-    /// amount given in `sources`.
-    fn check_source_balances(
-        &self,
-        sources: Vec<AssetValue>,
-    ) -> Result<Vec<Self::ValidSourceBalance>, InsufficientPublicBalance>;
-
-    /// Checks that the transfer `proof` is valid.
-    fn is_valid(
-        &self,
-        asset_id: Option<AssetId>,
-        sources: &[Self::ValidSourceBalance],
-        senders: &[SenderPostingKey<C, Self>],
-        receivers: &[ReceiverPostingKey<C, Self>],
-        sinks: &[AssetValue],
-        proof: Proof<C>,
-    ) -> Option<Self::ValidProof>;
-
-    /// Updates the public balances in the ledger, finishing the transaction.
-    ///
-    /// # Safety
-    ///
-    /// This method can only be called once we check that `proof` is a valid proof and that
-    /// `senders` and `receivers` are valid participants in the transaction. See
-    /// [`is_valid`](Self::is_valid) for more.
-    fn update_public_balances(
-        &mut self,
-        asset_id: AssetId,
-        sources: Vec<Self::ValidSourceBalance>,
-        sinks: Vec<AssetValue>,
-        proof: Self::ValidProof,
-        super_key: &TransferLedgerSuperPostingKey<C, Self>,
-    );
-}
-
-/// Dynamic Transfer Shape
-#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
-pub struct DynamicShape {
-    /// Number of Sources
-    pub sources: usize,
-
-    /// Number of Senders
-    pub senders: usize,
-
-    /// Number of Receivers
-    pub receivers: usize,
-
-    /// Number of Sinks
-    pub sinks: usize,
-}
-
-impl DynamicShape {
-    /// Builds a new [`DynamicShape`] from `sources`, `senders`, `receivers`, and `sinks`.
-    #[inline]
-    pub const fn new(sources: usize, senders: usize, receivers: usize, sinks: usize) -> Self {
-        Self {
-            sources,
-            senders,
-            receivers,
-            sinks,
-        }
-    }
-
-    /// Builds a new [`DynamicShape`] using the static [`Shape`] given by `S`.
-    #[inline]
-    pub fn from_static<S>() -> Self
-    where
-        S: Shape,
-    {
-        Self::new(S::SOURCES, S::SENDERS, S::RECEIVERS, S::SINKS)
-    }
-
-    /// Checks if `self` matches the static [`Shape`] given by `S`.
-    #[inline]
-    pub fn matches<S>(&self) -> bool
-    where
-        S: Shape,
-    {
-        S::SOURCES == self.sources
-            && S::SENDERS == self.senders
-            && S::RECEIVERS == self.receivers
-            && S::SINKS == self.sinks
-    }
-}
-
-impl<S> From<S> for DynamicShape
-where
-    S: Shape,
-{
-    #[inline]
-    fn from(shape: S) -> Self {
-        let _ = shape;
-        Self::from_static::<S>()
-    }
-}
-
-/// Public Transfer Protocol
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub struct PublicTransfer<const SOURCES: usize, const SINKS: usize> {
-    /// Asset Id
-    pub asset_id: Option<AssetId>,
-
-    /// Public Asset Sources
-    pub sources: AssetValues<SOURCES>,
-
-    /// Public Asset Sinks
-    pub sinks: AssetValues<SINKS>,
-}
-
-impl<const SOURCES: usize, const SINKS: usize> PublicTransfer<SOURCES, SINKS> {
-    /// Builds a new [`PublicTransfer`].
-    #[inline]
-    pub const fn new(
-        asset_id: AssetId,
-        sources: AssetValues<SOURCES>,
-        sinks: AssetValues<SINKS>,
-    ) -> Self {
-        Self::new_unchecked(
-            if has_no_public_participants(SOURCES, 0, 0, SINKS) {
-                None
-            } else {
-                Some(asset_id)
-            },
-            sources,
-            sinks,
-        )
-    }
-
-    /// Builds a new [`PublicTransfer`] without checking if the asset id should be `None`.
-    #[inline]
-    const fn new_unchecked(
-        asset_id: Option<AssetId>,
-        sources: AssetValues<SOURCES>,
-        sinks: AssetValues<SINKS>,
-    ) -> Self {
-        Self {
-            asset_id,
-            sources,
-            sinks,
-        }
-    }
-
-    /// Returns the shape of this public transfer.
-    #[inline]
-    pub fn shape(&self) -> DynamicShape {
-        DynamicShape::new(SOURCES, 0, 0, SINKS)
-    }
-
-    /// Returns the sum of the asset values of the sources in this transfer.
-    #[inline]
-    pub fn source_sum(&self) -> AssetValue {
-        self.sources.iter().sum()
-    }
-
-    /// Returns the sum of the asset values of the sinks in this transfer.
-    #[inline]
-    pub fn sink_sum(&self) -> AssetValue {
-        self.sinks.iter().sum()
-    }
-
-    /// Validates the transaction by checking that the [`source_sum`](Self::source_sum)
-    /// equals the [`sink_sum`](Self::sink_sum).
-    #[inline]
-    pub fn is_valid(&self) -> bool {
-        self.source_sum() == self.sink_sum()
-    }
-}
-
-#[allow(clippy::derivable_impls)] // NOTE: We only want default on the `<0, 0>` setting.
-impl Default for PublicTransfer<0, 0> {
-    #[inline]
-    fn default() -> Self {
-        Self::new_unchecked(None, [], [])
-    }
-}
-
-/// Secret Transfer Protocol
-pub struct SecretTransfer<C, const SENDERS: usize, const RECEIVERS: usize>
-where
-    C: Configuration,
-{
-    /// Senders
-    pub senders: [Sender<C>; SENDERS],
-
-    /// Receivers
-    pub receivers: [Receiver<C>; RECEIVERS],
-}
-
-impl<C, const SENDERS: usize, const RECEIVERS: usize> SecretTransfer<C, SENDERS, RECEIVERS>
-where
-    C: Configuration,
-{
-    /// Maximum Number of Senders
-    pub const MAXIMUM_SENDER_COUNT: usize = 16;
-
-    /// Maximum Number of Receivers
-    pub const MAXIMUM_RECEIVER_COUNT: usize = 16;
-
-    /// Builds a new [`SecretTransfer`].
-    #[inline]
-    pub fn new(senders: [Sender<C>; SENDERS], receivers: [Receiver<C>; RECEIVERS]) -> Self {
-        Self::check_shape();
-        Self::new_unchecked(senders, receivers)
-    }
-
-    /// Checks that the [`SecretTransfer`] has a valid shape.
-    #[inline]
-    fn check_shape() {
-        Self::check_sender_shape();
-        Self::check_receiver_shape();
-        Self::check_size_overflow();
-    }
-
-    /// Checks that the sender side is not empty.
-    #[inline]
-    fn check_sender_shape() {
-        assert_ne!(SENDERS, 0, "Not enough senders.");
-    }
-
-    /// Checks that the receiver side is not empty.
-    #[inline]
-    fn check_receiver_shape() {
-        assert_ne!(RECEIVERS, 0, "Not enough receivers.");
-    }
-
-    /// Checks that the number of senders and/or receivers does not exceed the allocation limit.
-    #[inline]
-    fn check_size_overflow() {
-        match (
-            SENDERS > Self::MAXIMUM_SENDER_COUNT,
-            RECEIVERS > Self::MAXIMUM_RECEIVER_COUNT,
-        ) {
-            (true, true) => panic!("Allocated too many senders and receivers."),
-            (true, _) => panic!("Allocated too many senders."),
-            (_, true) => panic!("Allocated too many receivers."),
-            _ => {}
-        }
-    }
-
-    /// Builds a new [`SecretTransfer`] without checking the number of senders and receivers.
-    #[inline]
-    fn new_unchecked(senders: [Sender<C>; SENDERS], receivers: [Receiver<C>; RECEIVERS]) -> Self {
-        Self { senders, receivers }
-    }
-
-    /// Returns the shape of this secret transfer.
-    #[inline]
-    pub fn shape(&self) -> DynamicShape {
-        DynamicShape::new(0, SENDERS, RECEIVERS, 0)
-    }
-
-    /// Returns an iterator over all the asset ids in this transfer.
-    #[inline]
-    fn asset_id_iter(&self) -> impl '_ + Iterator<Item = AssetId> {
-        self.senders
-            .iter()
-            .map(Sender::asset_id)
-            .chain(self.receivers.iter().map(Receiver::asset_id))
-    }
-
-    /// Checks that the asset ids of all the senders and receivers matches.
-    #[inline]
-    pub fn has_unique_asset_id(&self) -> bool {
-        let mut asset_id = None;
-        self.asset_id_iter()
-            .all(move |i| asset_id.replace(i) == Some(i))
-    }
-
-    /// Returns the sum of the asset values of the senders in this transfer.
-    #[inline]
-    pub fn sender_sum(&self) -> AssetValue {
-        self.senders.iter().map(Sender::asset_value).sum()
-    }
-
-    /// Returns the sum of the asset values of the receivers in this transfer.
-    #[inline]
-    pub fn receiver_sum(&self) -> AssetValue {
-        self.receivers.iter().map(Receiver::asset_value).sum()
-    }
-
-    /// Checks that the [`sender_sum`](Self::sender_sum) equals the
-    /// [`receiver_sum`](Self::receiver_sum).
-    #[inline]
-    pub fn is_balanced(&self) -> bool {
-        self.sender_sum() == self.receiver_sum()
-    }
-
-    /// Converts `self` into its ledger post.
-    #[inline]
-    pub fn into_post<R>(
-        self,
-        commitment_scheme: &C::CommitmentScheme,
-        utxo_set_verifier: &C::UtxoSetVerifier,
-        context: &ProvingContext<C>,
-        rng: &mut R,
-    ) -> Result<TransferPost<C>, ProofSystemError<C>>
-    where
-        R: CryptoRng + RngCore + ?Sized,
-    {
-        Transfer::from(self).into_post(commitment_scheme, utxo_set_verifier, context, rng)
-    }
-}
-
-impl<C, const SENDERS: usize, const RECEIVERS: usize> From<SecretTransfer<C, SENDERS, RECEIVERS>>
-    for Transfer<C, 0, SENDERS, RECEIVERS, 0>
-where
-    C: Configuration,
-{
-    #[inline]
-    fn from(transfer: SecretTransfer<C, SENDERS, RECEIVERS>) -> Self {
-        Self {
-            public: Default::default(),
-            secret: transfer,
-        }
-    }
-}
-
-/// Transfer Protocol
+/// Transfer
 pub struct Transfer<
     C,
     const SOURCES: usize,
@@ -541,11 +190,20 @@ pub struct Transfer<
 > where
     C: Configuration,
 {
-    /// Public Part of the Transfer
-    public: PublicTransfer<SOURCES, SINKS>,
+    /// Asset Id
+    asset_id: Option<AssetId>,
 
-    /// Secret Part of the Transfer
-    secret: SecretTransfer<C, SENDERS, RECEIVERS>,
+    /// Sources
+    sources: [AssetValue; SOURCES],
+
+    /// Senders
+    senders: [Sender<C>; SENDERS],
+
+    /// Receivers
+    receivers: [FullReceiver<C>; RECEIVERS],
+
+    /// Sinks
+    sinks: [AssetValue; SINKS],
 }
 
 impl<C, const SOURCES: usize, const SENDERS: usize, const RECEIVERS: usize, const SINKS: usize>
@@ -553,30 +211,30 @@ impl<C, const SOURCES: usize, const SENDERS: usize, const RECEIVERS: usize, cons
 where
     C: Configuration,
 {
-    /// Builds a new universal [`Transfer`] from public and secret information.
+    /// Builds a new [`Transfer`] from public and secret information.
     #[inline]
-    pub fn new(
-        asset_id: AssetId,
-        sources: AssetValues<SOURCES>,
+    fn new(
+        asset_id: Option<AssetId>,
+        sources: [AssetValue; SOURCES],
         senders: [Sender<C>; SENDERS],
-        receivers: [Receiver<C>; RECEIVERS],
-        sinks: AssetValues<SINKS>,
+        receivers: [FullReceiver<C>; RECEIVERS],
+        sinks: [AssetValue; SINKS],
     ) -> Self {
-        Self::check_shape();
+        Self::check_shape(asset_id.is_some());
         Self::new_unchecked(asset_id, sources, senders, receivers, sinks)
     }
 
     /// Checks that the [`Transfer`] has a valid shape.
     #[inline]
-    fn check_shape() {
-        Self::check_input_shape();
-        Self::check_output_shape();
-        SecretTransfer::<C, SENDERS, RECEIVERS>::check_size_overflow();
+    fn check_shape(has_visible_asset_id: bool) {
+        Self::has_nonempty_input_shape();
+        Self::has_nonempty_output_shape();
+        Self::has_visible_asset_id_when_required(has_visible_asset_id);
     }
 
-    /// Checks that the input side is not empty.
+    /// Checks that the input side of the transfer is not empty.
     #[inline]
-    fn check_input_shape() {
+    fn has_nonempty_input_shape() {
         assert_ne!(
             SOURCES + SENDERS,
             0,
@@ -584,9 +242,9 @@ where
         );
     }
 
-    /// Checks that the output side is not empty.
+    /// Checks that the output side of the transfer is not empty.
     #[inline]
-    fn check_output_shape() {
+    fn has_nonempty_output_shape() {
         assert_ne!(
             RECEIVERS + SINKS,
             0,
@@ -594,134 +252,101 @@ where
         );
     }
 
+    /// Checks that the given `asset_id` for [`Transfer`] building is visible exactly when required.
+    #[inline]
+    fn has_visible_asset_id_when_required(has_visible_asset_id: bool) {
+        if SOURCES > 0 || SINKS > 0 {
+            assert!(
+                has_visible_asset_id,
+                "Missing public asset id when required."
+            );
+        } else {
+            assert!(
+                !has_visible_asset_id,
+                "Given public asset id when not required."
+            );
+        }
+    }
+
     /// Builds a new [`Transfer`] without checking the number of participants on the input and
     /// output sides.
     #[inline]
     fn new_unchecked(
-        asset_id: AssetId,
-        sources: AssetValues<SOURCES>,
+        asset_id: Option<AssetId>,
+        sources: [AssetValue; SOURCES],
         senders: [Sender<C>; SENDERS],
-        receivers: [Receiver<C>; RECEIVERS],
-        sinks: AssetValues<SINKS>,
+        receivers: [FullReceiver<C>; RECEIVERS],
+        sinks: [AssetValue; SINKS],
     ) -> Self {
         Self {
-            public: PublicTransfer::new(asset_id, sources, sinks),
-            secret: SecretTransfer::new_unchecked(senders, receivers),
+            asset_id,
+            sources,
+            senders,
+            receivers,
+            sinks,
         }
     }
 
-    /// Returns the shape of this transfer.
-    #[inline]
-    pub fn shape(&self) -> DynamicShape {
-        DynamicShape::new(SOURCES, SENDERS, RECEIVERS, SINKS)
-    }
-
-    /// Checks that there is one unique asset id for all participants in this transfer.
-    #[inline]
-    pub fn has_unique_asset_id(&self) -> bool {
-        if let Some(asset_id) = self.public.asset_id {
-            self.secret.asset_id_iter().all(move |i| asset_id == i)
-        } else {
-            self.secret.has_unique_asset_id()
-        }
-    }
-
-    /// Returns the sum of the asset values of the sources in this transfer.
-    #[inline]
-    pub fn source_sum(&self) -> AssetValue {
-        self.public.source_sum()
-    }
-
-    /// Returns the sum of the asset values of the senders in this transfer.
-    #[inline]
-    pub fn sender_sum(&self) -> AssetValue {
-        self.secret.sender_sum()
-    }
-
-    /// Returns the sum of the asset values of the receivers in this transfer.
-    #[inline]
-    pub fn receiver_sum(&self) -> AssetValue {
-        self.secret.receiver_sum()
-    }
-
-    /// Returns the sum of the asset values of the sinks in this transfer.
-    #[inline]
-    pub fn sink_sum(&self) -> AssetValue {
-        self.public.sink_sum()
-    }
-
-    /// Returns the sum of the asset values of the sources and senders in this transfer.
-    #[inline]
-    pub fn input_sum(&self) -> AssetValue {
-        self.source_sum() + self.sender_sum()
-    }
-
-    /// Returns the sum of the asset values of the receivers and sinks in this transfer.
-    #[inline]
-    pub fn output_sum(&self) -> AssetValue {
-        self.receiver_sum() + self.sink_sum()
-    }
-
-    /// Checks that the transaction is balanced.
-    #[inline]
-    pub fn is_balanced(&self) -> bool {
-        self.input_sum() == self.output_sum()
-    }
-
-    /// Generates the unknown variables for the validity proof.
+    /// Generates the unknown variables for the transfer validity proof.
     #[inline]
     fn unknown_variables(
         commitment_scheme: &C::CommitmentScheme,
         utxo_set_verifier: &C::UtxoSetVerifier,
-        cs: &mut ConstraintSystem<C>,
+        cs: &mut C::ConstraintSystem,
     ) -> (
-        Option<C::AssetIdVar>,
+        Option<AssetIdVar<C>>,
         TransferParticipantsVar<C, SOURCES, SENDERS, RECEIVERS, SINKS>,
-        C::CommitmentSchemeVar,
-        C::UtxoSetVerifierVar,
+        CommitmentSchemeVar<C>,
+        UtxoSetVerifierVar<C>,
     ) {
         let base_asset_id = if has_no_public_participants(SOURCES, SENDERS, RECEIVERS, SINKS) {
             None
         } else {
-            Some(C::AssetIdVar::new_unknown(cs, Public))
+            Some(AssetIdVar::<C>::new_unknown(cs, Public))
         };
+        /* TODO:
         (
             base_asset_id,
             TransferParticipantsVar::new_unknown(cs, Derived),
             commitment_scheme.as_known(cs, Public),
             utxo_set_verifier.as_known(cs, Public),
         )
+        */
+        todo!()
     }
 
-    /// Generates the known variables for the validity proof.
+    /// Generates the known variables for the transfer validity proof.
     #[inline]
     fn known_variables(
         &self,
         commitment_scheme: &C::CommitmentScheme,
         utxo_set_verifier: &C::UtxoSetVerifier,
-        cs: &mut ConstraintSystem<C>,
+        cs: &mut C::ConstraintSystem,
     ) -> (
-        Option<C::AssetIdVar>,
+        Option<AssetIdVar<C>>,
         TransferParticipantsVar<C, SOURCES, SENDERS, RECEIVERS, SINKS>,
-        C::CommitmentSchemeVar,
-        C::UtxoSetVerifierVar,
+        CommitmentSchemeVar<C>,
+        UtxoSetVerifierVar<C>,
     ) {
+        /* TODO:
         (
             self.public.asset_id.map(|id| id.as_known(cs, Public)),
             TransferParticipantsVar::new_known(cs, self, Derived),
             commitment_scheme.as_known(cs, Public),
             utxo_set_verifier.as_known(cs, Public),
         )
+        */
+        todo!()
     }
 
-    /// Builds constraints for transfer validity proof.
+    /// Builds constraints for the transfer validity proof.
     #[inline]
     fn build_constraints(
-        base_asset_id: Option<C::AssetIdVar>,
+        base_asset_id: Option<AssetIdVar<C>>,
         participants: TransferParticipantsVar<C, SOURCES, SENDERS, RECEIVERS, SINKS>,
-        commitment_scheme: C::CommitmentSchemeVar,
-        utxo_set_verifier: C::UtxoSetVerifierVar,
-        cs: &mut ConstraintSystem<C>,
+        commitment_scheme: CommitmentSchemeVar<C>,
+        utxo_set_verifier: UtxoSetVerifierVar<C>,
+        cs: &mut C::ConstraintSystem,
     ) {
         let mut secret_asset_ids = Vec::with_capacity(SENDERS + RECEIVERS);
 
@@ -729,7 +354,7 @@ where
             .senders
             .into_iter()
             .map(|s| {
-                let asset = s.get_well_formed_asset(cs, &commitment_scheme, &utxo_set_verifier);
+                let asset = s.get_well_formed_asset(&commitment_scheme, &utxo_set_verifier, cs);
                 secret_asset_ids.push(asset.id);
                 asset.value
             })
@@ -741,7 +366,7 @@ where
             .receivers
             .into_iter()
             .map(|r| {
-                let asset = r.get_well_formed_asset(cs, &commitment_scheme);
+                let asset = r.get_well_formed_asset(&commitment_scheme, cs);
                 secret_asset_ids.push(asset.id);
                 asset.value
             })
@@ -762,7 +387,7 @@ where
     pub fn unknown_constraints(
         commitment_scheme: &C::CommitmentScheme,
         utxo_set_verifier: &C::UtxoSetVerifier,
-    ) -> ConstraintSystem<C> {
+    ) -> C::ConstraintSystem {
         let mut cs = C::ProofSystem::for_unknown();
         let (base_asset_id, participants, commitment_scheme, utxo_set_verifier) =
             Self::unknown_variables(commitment_scheme, utxo_set_verifier, &mut cs);
@@ -782,7 +407,7 @@ where
         &self,
         commitment_scheme: &C::CommitmentScheme,
         utxo_set_verifier: &C::UtxoSetVerifier,
-    ) -> ConstraintSystem<C> {
+    ) -> C::ConstraintSystem {
         let mut cs = C::ProofSystem::for_known();
         let (base_asset_id, participants, commitment_scheme, utxo_set_verifier) =
             self.known_variables(commitment_scheme, utxo_set_verifier, &mut cs);
@@ -840,15 +465,15 @@ where
     {
         Ok(TransferPost {
             validity_proof: self.is_valid(commitment_scheme, utxo_set_verifier, context, rng)?,
-            asset_id: self.public.asset_id,
-            sources: self.public.sources.into(),
-            sender_posts: IntoIterator::into_iter(self.secret.senders)
+            asset_id: self.asset_id,
+            sources: self.sources.into(),
+            sender_posts: IntoIterator::into_iter(self.senders)
                 .map(Sender::into_post)
                 .collect(),
-            receiver_posts: IntoIterator::into_iter(self.secret.receivers)
-                .map(Receiver::into_post)
+            receiver_posts: IntoIterator::into_iter(self.receivers)
+                .map(FullReceiver::into_post)
                 .collect(),
-            sinks: self.public.sinks.into(),
+            sinks: self.sinks.into(),
         })
     }
 }
@@ -864,7 +489,7 @@ struct TransferParticipantsVar<
     C: Configuration,
 {
     /// Source Variables
-    sources: Vec<C::AssetValueVar>,
+    sources: Vec<AssetValueVar<C>>,
 
     /// Sender Variables
     senders: Vec<SenderVar<C>>,
@@ -873,11 +498,11 @@ struct TransferParticipantsVar<
     receivers: Vec<ReceiverVar<C>>,
 
     /// Sink Variables
-    sinks: Vec<C::AssetValueVar>,
+    sinks: Vec<AssetValueVar<C>>,
 }
 
 impl<C, const SOURCES: usize, const SENDERS: usize, const RECEIVERS: usize, const SINKS: usize>
-    Variable<ConstraintSystem<C>> for TransferParticipantsVar<C, SOURCES, SENDERS, RECEIVERS, SINKS>
+    Variable<C::ConstraintSystem> for TransferParticipantsVar<C, SOURCES, SENDERS, RECEIVERS, SINKS>
 where
     C: Configuration,
 {
@@ -886,29 +511,31 @@ where
     type Mode = Derived;
 
     #[inline]
-    fn new(cs: &mut ConstraintSystem<C>, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
+    fn new(cs: &mut C::ConstraintSystem, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
         match allocation {
             Allocation::Known(this, mode) => Self {
                 sources: this
-                    .public
                     .sources
                     .iter()
                     .map(|source| source.as_known(cs, Public))
                     .collect(),
                 senders: this
-                    .secret
                     .senders
                     .iter()
-                    .map(|sender| sender.known(cs, mode))
+                    .map(|sender| {
+                        //
+                        todo!()
+                    })
                     .collect(),
                 receivers: this
-                    .secret
                     .receivers
                     .iter()
-                    .map(|receiver| receiver.known(cs, mode))
+                    .map(|receiver| {
+                        //
+                        todo!()
+                    })
                     .collect(),
                 sinks: this
-                    .public
                     .sinks
                     .iter()
                     .map(|sink| sink.as_known(cs, Public))
@@ -917,64 +544,30 @@ where
             Allocation::Unknown(mode) => Self {
                 sources: (0..SOURCES)
                     .into_iter()
-                    .map(|_| C::AssetValueVar::new_unknown(cs, Public))
+                    .map(|_| AssetValueVar::<C>::new_unknown(cs, Public))
                     .collect(),
                 senders: (0..SENDERS)
                     .into_iter()
-                    .map(|_| SenderVar::new_unknown(cs, mode))
+                    .map(|_| {
+                        //
+                        todo!()
+                    })
                     .collect(),
                 receivers: (0..RECEIVERS)
                     .into_iter()
-                    .map(|_| ReceiverVar::new_unknown(cs, mode))
+                    .map(|_| {
+                        //
+                        todo!()
+                    })
                     .collect(),
                 sinks: (0..SINKS)
                     .into_iter()
-                    .map(|_| C::AssetValueVar::new_unknown(cs, Public))
+                    .map(|_| AssetValueVar::<C>::new_unknown(cs, Public))
                     .collect(),
             },
         }
     }
 }
-
-/// Insufficient Public Balance Error
-///
-/// This `enum` is the error state of the [`TransferLedger::check_source_balances`] method. See its
-/// documentation for more.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub struct InsufficientPublicBalance {
-    /// Index of the Public Address
-    pub index: usize,
-
-    /// Current Balance
-    pub balance: AssetValue,
-
-    /// Amount Attempting to Withdraw
-    pub withdraw: AssetValue,
-}
-
-/// Transfer Post Error
-///
-/// This `enum` is the error state of the [`TransferPost::validate`] method. See its documentation
-/// for more.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum TransferPostError {
-    /// Insufficient Public Balance
-    InsufficientPublicBalance(InsufficientPublicBalance),
-
-    /// Sender Post Error
-    Sender(SenderPostError),
-
-    /// Receiver Post Error
-    Receiver(ReceiverPostError),
-
-    /// Invalid Transfer Proof Error
-    ///
-    /// Validity of the transfer could not be proved by the ledger.
-    InvalidProof,
-}
-
-from_variant_impl!(TransferPostError, Sender, SenderPostError);
-from_variant_impl!(TransferPostError, Receiver, ReceiverPostError);
 
 /// Transfer Post
 pub struct TransferPost<C>
@@ -998,156 +591,6 @@ where
 
     /// Validity Proof
     validity_proof: Proof<C>,
-}
-
-impl<C> TransferPost<C>
-where
-    C: Configuration,
-{
-    /// Returns the shape of the transfer which generated this post.
-    #[inline]
-    pub fn shape(&self) -> DynamicShape {
-        DynamicShape::new(
-            self.sources.len(),
-            self.sender_posts.len(),
-            self.receiver_posts.len(),
-            self.sinks.len(),
-        )
-    }
-
-    /// Generates the public input for the [`Transfer`] validation proof.
-    #[inline]
-    pub fn generate_proof_input(&self) -> ProofInput<C> {
-        // TODO: See comments in `crate::identity::constraint` about automatically deriving this
-        //       method from possibly `TransferParticipantsVar`?
-        let mut input = Default::default();
-        if let Some(asset_id) = self.asset_id {
-            C::ProofSystem::extend(&mut input, &asset_id);
-        }
-        self.sources
-            .iter()
-            .for_each(|source| C::ProofSystem::extend(&mut input, source));
-        self.sender_posts
-            .iter()
-            .for_each(|post| post.extend_input::<C::ProofSystem>(&mut input));
-        self.receiver_posts
-            .iter()
-            .for_each(|post| post.extend_input::<C::ProofSystem>(&mut input));
-        self.sinks
-            .iter()
-            .for_each(|sink| C::ProofSystem::extend(&mut input, sink));
-        input
-    }
-
-    /// Validates `self` on the transfer `ledger`.
-    #[inline]
-    pub fn validate<L>(self, ledger: &L) -> Result<TransferPostingKey<C, L>, TransferPostError>
-    where
-        L: TransferLedger<C>,
-    {
-        // FIXME: The ledger needs to check whether or not senders and receivers are unique. Should
-        //        this be done in this method or is it something the ledger can do "per-validation".
-        let source_posting_keys = ledger
-            .check_source_balances(self.sources)
-            .map_err(TransferPostError::InsufficientPublicBalance)?;
-        let sender_posting_keys = self
-            .sender_posts
-            .into_iter()
-            .map(move |s| s.validate(ledger))
-            .collect::<Result<Vec<_>, _>>()?;
-        let receiver_posting_keys = self
-            .receiver_posts
-            .into_iter()
-            .map(move |r| r.validate(ledger))
-            .collect::<Result<Vec<_>, _>>()?;
-        Ok(TransferPostingKey {
-            validity_proof: match ledger.is_valid(
-                self.asset_id,
-                &source_posting_keys,
-                &sender_posting_keys,
-                &receiver_posting_keys,
-                &self.sinks,
-                self.validity_proof,
-            ) {
-                Some(key) => key,
-                _ => return Err(TransferPostError::InvalidProof),
-            },
-            asset_id: self.asset_id,
-            source_posting_keys,
-            sender_posting_keys,
-            receiver_posting_keys,
-            sinks: self.sinks,
-        })
-    }
-}
-
-/// Transfer Posting Key
-pub struct TransferPostingKey<C, L>
-where
-    C: Configuration,
-    L: TransferLedger<C>,
-{
-    /// Asset Id
-    asset_id: Option<AssetId>,
-
-    /// Source Posting Keys
-    source_posting_keys: Vec<SourcePostingKey<C, L>>,
-
-    /// Sender Posting Keys
-    sender_posting_keys: Vec<SenderPostingKey<C, L>>,
-
-    /// Receiver Posting Keys
-    receiver_posting_keys: Vec<ReceiverPostingKey<C, L>>,
-
-    /// Sinks
-    sinks: Vec<AssetValue>,
-
-    /// Validity Proof Posting Key
-    validity_proof: L::ValidProof,
-}
-
-impl<C, L> TransferPostingKey<C, L>
-where
-    C: Configuration,
-    L: TransferLedger<C>,
-{
-    /// Returns the shape of the transfer which generated this posting key.
-    #[inline]
-    pub fn shape(&self) -> DynamicShape {
-        DynamicShape::new(
-            self.source_posting_keys.len(),
-            self.sender_posting_keys.len(),
-            self.receiver_posting_keys.len(),
-            self.sinks.len(),
-        )
-    }
-
-    /// Posts `self` to the transfer `ledger`.
-    ///
-    /// # Safety
-    ///
-    /// This method assumes that posting `self` to `ledger` is atomic and cannot fail. See
-    /// [`SenderLedger::spend`] and [`ReceiverLedger::register`] for more information on the
-    /// contract for this method.
-    #[inline]
-    pub fn post(self, super_key: &TransferLedgerSuperPostingKey<C, L>, ledger: &mut L) {
-        let proof = self.validity_proof;
-        for key in self.sender_posting_keys {
-            key.post(&(proof, *super_key), ledger);
-        }
-        for key in self.receiver_posting_keys {
-            key.post(&(proof, *super_key), ledger);
-        }
-        if let Some(asset_id) = self.asset_id {
-            ledger.update_public_balances(
-                asset_id,
-                self.source_posting_keys,
-                self.sinks,
-                proof,
-                super_key,
-            );
-        }
-    }
 }
 
 create_seal! {}
@@ -1174,7 +617,7 @@ pub trait Shape: sealed::Sealed {
 /// Canonical Transaction Types
 pub mod canonical {
     use super::*;
-    use crate::identity::{Identity, PreSender};
+    use manta_util::seal;
 
     /// Implements [`Shape`] for a given shape type.
     macro_rules! impl_shape {
@@ -1228,51 +671,14 @@ pub mod canonical {
     {
         /// Builds a [`Mint`] from `asset` and `receiver`.
         #[inline]
-        pub fn build(asset: Asset, receiver: Receiver<C>) -> Self {
+        pub fn build(asset: Asset, receiver: FullReceiver<C>) -> Self {
             Self::new(
-                asset.id,
+                Some(asset.id),
                 [asset.value],
                 Default::default(),
                 [receiver],
                 Default::default(),
             )
-        }
-
-        /// Builds a [`Mint`] from an `identity` and an `asset`.
-        #[inline]
-        pub fn from_identity<R>(
-            identity: Identity<C>,
-            commitment_scheme: &C::CommitmentScheme,
-            asset: Asset,
-            rng: &mut R,
-        ) -> Result<Mint<C>, IntegratedEncryptionSchemeError<C>>
-        where
-            R: CryptoRng + RngCore + ?Sized,
-        {
-            Ok(Mint::build(
-                asset,
-                identity.into_receiver(commitment_scheme, asset, rng)?,
-            ))
-        }
-
-        /// Builds a [`Mint`] from an `identity` for an [`Asset`] with the given `asset_id` but
-        /// zero value.
-        ///
-        /// This is particularly useful when constructing transactions accumulated from [`Transfer`]
-        /// objects and a zero slot on the input side needs to be filled.
-        #[inline]
-        pub fn zero<R>(
-            identity: Identity<C>,
-            commitment_scheme: &C::CommitmentScheme,
-            asset_id: AssetId,
-            rng: &mut R,
-        ) -> Result<(Mint<C>, PreSender<C>), IntegratedEncryptionSchemeError<C>>
-        where
-            R: CryptoRng + RngCore + ?Sized,
-        {
-            let asset = Asset::zero(asset_id);
-            let internal = identity.into_internal(commitment_scheme, asset, rng)?;
-            Ok((Mint::build(asset, internal.receiver), internal.pre_sender))
         }
     }
 
@@ -1297,7 +703,7 @@ pub mod canonical {
         #[inline]
         pub fn build(
             senders: [Sender<C>; PrivateTransferShape::SENDERS],
-            receivers: [Receiver<C>; PrivateTransferShape::RECEIVERS],
+            receivers: [FullReceiver<C>; PrivateTransferShape::RECEIVERS],
         ) -> Self {
             Self::new(
                 Default::default(),
@@ -1339,11 +745,11 @@ pub mod canonical {
         #[inline]
         pub fn build(
             senders: [Sender<C>; ReclaimShape::SENDERS],
-            receivers: [Receiver<C>; ReclaimShape::RECEIVERS],
+            receivers: [FullReceiver<C>; ReclaimShape::RECEIVERS],
             reclaim: Asset,
         ) -> Self {
             Self::new(
-                reclaim.id,
+                Some(reclaim.id),
                 Default::default(),
                 senders,
                 receivers,
@@ -1361,7 +767,7 @@ pub mod canonical {
         Mint(Asset),
 
         /// Private Transfer Asset to Receiver
-        PrivateTransfer(Asset, ShieldedIdentity<C>),
+        PrivateTransfer(Asset, ReceivingKey<C>),
 
         /// Reclaim Private Asset
         Reclaim(Asset),
@@ -1404,498 +810,5 @@ pub mod canonical {
         ///
         /// A transaction of this kind will result in a withdraw of `asset`.
         Withdraw(Asset),
-    }
-}
-
-/// Testing Framework
-#[cfg(feature = "test")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
-pub mod test {
-    use super::*;
-    use crate::{asset::AssetValueType, identity::Identity};
-    use manta_crypto::{
-        accumulator::Accumulator,
-        rand::{Rand, Sample, Standard, TrySample},
-    };
-    use manta_util::{array_map, fallible_array_map, into_array_unchecked};
-
-    /// Test Sampling Distributions
-    pub mod distribution {
-        use super::*;
-
-        /// [`PublicTransfer`](super::PublicTransfer) Sampling Distribution
-        pub type PublicTransfer = Standard;
-
-        /// Fixed Asset [`PublicTransfer`](super::PublicTransfer) Sampling Distribution
-        #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
-        pub struct FixedPublicTransfer(pub Asset);
-
-        /// [`SecretTransfer`](super::SecretTransfer) Sampling Distribution
-        pub type SecretTransfer<'c, C, S> = Transfer<'c, C, S>;
-
-        /// Fixed Asset [`SecretTransfer`](super::SecretTransfer) Sampling Distribution
-        pub struct FixedSecretTransfer<'c, C, S>
-        where
-            C: Configuration,
-            S: Accumulator<
-                Item = <C::UtxoSetVerifier as Verifier>::Item,
-                Verifier = C::UtxoSetVerifier,
-            >,
-        {
-            /// Asset
-            pub asset: Asset,
-
-            /// Base Distribution
-            pub base: SecretTransfer<'c, C, S>,
-        }
-
-        impl<'c, C, S> FixedSecretTransfer<'c, C, S>
-        where
-            C: Configuration,
-            C::SecretKey: Sample,
-            S: Accumulator<
-                Item = <C::UtxoSetVerifier as Verifier>::Item,
-                Verifier = C::UtxoSetVerifier,
-            >,
-        {
-            /// Tries to sample a [`super::SecretTransfer`] using custom sender and receiver asset
-            /// totals.
-            ///
-            /// # Safety
-            ///
-            /// This method does not check the input/output size constraints found in the
-            /// [`super::SecretTransfer::check_shape`] method.
-            #[inline]
-            pub(super) fn try_sample_custom_totals<
-                R,
-                const SENDERS: usize,
-                const RECEIVERS: usize,
-            >(
-                asset_id: AssetId,
-                sender_total: AssetValue,
-                receiver_total: AssetValue,
-                commitment_scheme: &C::CommitmentScheme,
-                utxo_set: &mut S,
-                rng: &mut R,
-            ) -> Result<
-                super::SecretTransfer<C, SENDERS, RECEIVERS>,
-                IntegratedEncryptionSchemeError<C>,
-            >
-            where
-                R: CryptoRng + RngCore + ?Sized,
-            {
-                FixedSecretTransfer::<C, S>::try_sample_custom_distribution(
-                    asset_id,
-                    sample_asset_values::<_, SENDERS>(sender_total, rng),
-                    sample_asset_values::<_, RECEIVERS>(receiver_total, rng),
-                    commitment_scheme,
-                    utxo_set,
-                    rng,
-                )
-            }
-
-            /// Tries to sample a [`super::SecretTransfer`] with custom sender and receiver asset
-            /// value distributions.
-            ///
-            /// # Safety
-            ///
-            /// This method does not check the input/output size constraints found in the
-            /// [`super::SecretTransfer::check_shape`] method.
-            #[inline]
-            pub(super) fn try_sample_custom_distribution<
-                R,
-                const SENDERS: usize,
-                const RECEIVERS: usize,
-            >(
-                asset_id: AssetId,
-                senders: AssetValues<SENDERS>,
-                receivers: AssetValues<RECEIVERS>,
-                commitment_scheme: &C::CommitmentScheme,
-                utxo_set: &mut S,
-                rng: &mut R,
-            ) -> Result<
-                super::SecretTransfer<C, SENDERS, RECEIVERS>,
-                IntegratedEncryptionSchemeError<C>,
-            >
-            where
-                R: CryptoRng + RngCore + ?Sized,
-            {
-                Ok(super::SecretTransfer::new_unchecked(
-                    array_map(senders, |v| {
-                        let pre_sender =
-                            Identity::gen(rng).into_pre_sender(commitment_scheme, asset_id.with(v));
-                        pre_sender.insert_utxo(utxo_set);
-                        pre_sender.try_upgrade(utxo_set).unwrap()
-                    }),
-                    fallible_array_map(receivers, |v| {
-                        Identity::gen(rng).into_receiver(commitment_scheme, asset_id.with(v), rng)
-                    })?,
-                ))
-            }
-
-            /// Tries to sample a [`super::SecretTransfer`].
-            #[inline]
-            pub(super) fn try_sample<R, const SENDERS: usize, const RECEIVERS: usize>(
-                self,
-                rng: &mut R,
-            ) -> Result<
-                super::SecretTransfer<C, SENDERS, RECEIVERS>,
-                IntegratedEncryptionSchemeError<C>,
-            >
-            where
-                R: CryptoRng + RngCore + ?Sized,
-            {
-                super::SecretTransfer::<C, SENDERS, RECEIVERS>::check_shape();
-                Self::try_sample_custom_totals(
-                    self.asset.id,
-                    self.asset.value,
-                    self.asset.value,
-                    self.base.commitment_scheme,
-                    self.base.utxo_set,
-                    rng,
-                )
-            }
-        }
-
-        /// [`Transfer`](super::Transfer) Sampling Distribution
-        pub struct Transfer<'c, C, S>
-        where
-            C: Configuration,
-            S: Accumulator<
-                Item = <C::UtxoSetVerifier as Verifier>::Item,
-                Verifier = C::UtxoSetVerifier,
-            >,
-        {
-            /// Commitment Scheme
-            pub commitment_scheme: &'c C::CommitmentScheme,
-
-            /// UTXO Set
-            pub utxo_set: &'c mut S,
-        }
-
-        /// Fixed Asset [`Transfer`](super::Transfer) Sampling Distribution
-        pub struct FixedTransfer<'c, C, S>
-        where
-            C: Configuration,
-            S: Accumulator<
-                Item = <C::UtxoSetVerifier as Verifier>::Item,
-                Verifier = C::UtxoSetVerifier,
-            >,
-        {
-            /// Asset
-            pub asset: Asset,
-
-            /// Base Distribution
-            pub base: Transfer<'c, C, S>,
-        }
-    }
-
-    /// Samples a distribution over `count`-many values summing to `total`.
-    ///
-    /// # Warning
-    ///
-    /// This is a naive algorithm and should only be used for testing purposes.
-    #[inline]
-    pub fn value_distribution<R>(count: usize, total: AssetValue, rng: &mut R) -> Vec<AssetValue>
-    where
-        R: CryptoRng + RngCore + ?Sized,
-    {
-        if count == 0 {
-            return Default::default();
-        }
-        let mut result = Vec::with_capacity(count + 1);
-        result.push(AssetValue(0));
-        for _ in 1..count {
-            result.push(AssetValue(AssetValueType::gen(rng) % total.0));
-        }
-        result.push(total);
-        result.sort_unstable();
-        for i in 0..count {
-            result[i] = result[i + 1] - result[i];
-        }
-        result.pop().unwrap();
-        result
-    }
-
-    /// Samples asset values from `rng`.
-    ///
-    /// # Warning
-    ///
-    /// This is a naive algorithm and should only be used for testing purposes.
-    #[inline]
-    pub fn sample_asset_values<R, const N: usize>(total: AssetValue, rng: &mut R) -> AssetValues<N>
-    where
-        R: CryptoRng + RngCore + ?Sized,
-    {
-        into_array_unchecked(value_distribution(N, total, rng))
-    }
-
-    impl<const SOURCES: usize, const SINKS: usize> Sample<distribution::PublicTransfer>
-        for PublicTransfer<SOURCES, SINKS>
-    {
-        #[inline]
-        fn sample<R>(distribution: distribution::PublicTransfer, rng: &mut R) -> Self
-        where
-            R: CryptoRng + RngCore + ?Sized,
-        {
-            let _ = distribution;
-            Self::sample(distribution::FixedPublicTransfer(rng.gen()), rng)
-        }
-    }
-
-    impl<const SOURCES: usize, const SINKS: usize> Sample<distribution::FixedPublicTransfer>
-        for PublicTransfer<SOURCES, SINKS>
-    {
-        #[inline]
-        fn sample<R>(distribution: distribution::FixedPublicTransfer, rng: &mut R) -> Self
-        where
-            R: CryptoRng + RngCore + ?Sized,
-        {
-            Self::new(
-                distribution.0.id,
-                sample_asset_values(distribution.0.value, rng),
-                sample_asset_values(distribution.0.value, rng),
-            )
-        }
-    }
-
-    impl<C, S, const SENDERS: usize, const RECEIVERS: usize>
-        TrySample<distribution::SecretTransfer<'_, C, S>> for SecretTransfer<C, SENDERS, RECEIVERS>
-    where
-        C: Configuration,
-        C::SecretKey: Sample,
-        S: Accumulator<
-            Item = <C::UtxoSetVerifier as Verifier>::Item,
-            Verifier = C::UtxoSetVerifier,
-        >,
-    {
-        type Error = IntegratedEncryptionSchemeError<C>;
-
-        #[inline]
-        fn try_sample<R>(
-            distribution: distribution::SecretTransfer<C, S>,
-            rng: &mut R,
-        ) -> Result<Self, Self::Error>
-        where
-            R: CryptoRng + RngCore + ?Sized,
-        {
-            Self::try_sample(
-                distribution::FixedSecretTransfer {
-                    asset: rng.gen(),
-                    base: distribution,
-                },
-                rng,
-            )
-        }
-    }
-
-    impl<C, S, const SENDERS: usize, const RECEIVERS: usize>
-        TrySample<distribution::FixedSecretTransfer<'_, C, S>>
-        for SecretTransfer<C, SENDERS, RECEIVERS>
-    where
-        C: Configuration,
-        C::SecretKey: Sample,
-        S: Accumulator<
-            Item = <C::UtxoSetVerifier as Verifier>::Item,
-            Verifier = C::UtxoSetVerifier,
-        >,
-    {
-        type Error = IntegratedEncryptionSchemeError<C>;
-
-        #[inline]
-        fn try_sample<R>(
-            distribution: distribution::FixedSecretTransfer<C, S>,
-            rng: &mut R,
-        ) -> Result<Self, Self::Error>
-        where
-            R: CryptoRng + RngCore + ?Sized,
-        {
-            distribution.try_sample(rng)
-        }
-    }
-
-    impl<
-            C,
-            S,
-            const SOURCES: usize,
-            const SENDERS: usize,
-            const RECEIVERS: usize,
-            const SINKS: usize,
-        > TrySample<distribution::Transfer<'_, C, S>>
-        for Transfer<C, SOURCES, SENDERS, RECEIVERS, SINKS>
-    where
-        C: Configuration,
-        C::SecretKey: Sample,
-        S: Accumulator<
-            Item = <C::UtxoSetVerifier as Verifier>::Item,
-            Verifier = C::UtxoSetVerifier,
-        >,
-    {
-        type Error = IntegratedEncryptionSchemeError<C>;
-
-        #[inline]
-        fn try_sample<R>(
-            distribution: distribution::Transfer<C, S>,
-            rng: &mut R,
-        ) -> Result<Self, Self::Error>
-        where
-            R: CryptoRng + RngCore + ?Sized,
-        {
-            Self::try_sample(
-                distribution::FixedTransfer {
-                    asset: rng.gen(),
-                    base: distribution,
-                },
-                rng,
-            )
-        }
-    }
-
-    impl<
-            C,
-            S,
-            const SOURCES: usize,
-            const SENDERS: usize,
-            const RECEIVERS: usize,
-            const SINKS: usize,
-        > TrySample<distribution::FixedTransfer<'_, C, S>>
-        for Transfer<C, SOURCES, SENDERS, RECEIVERS, SINKS>
-    where
-        C: Configuration,
-        C::SecretKey: Sample,
-        S: Accumulator<
-            Item = <C::UtxoSetVerifier as Verifier>::Item,
-            Verifier = C::UtxoSetVerifier,
-        >,
-    {
-        type Error = IntegratedEncryptionSchemeError<C>;
-
-        #[inline]
-        fn try_sample<R>(
-            distribution: distribution::FixedTransfer<C, S>,
-            rng: &mut R,
-        ) -> Result<Self, Self::Error>
-        where
-            R: CryptoRng + RngCore + ?Sized,
-        {
-            Self::check_shape();
-
-            let asset = distribution.asset;
-            let mut input = value_distribution(SOURCES + SENDERS, asset.value, rng);
-            let mut output = value_distribution(RECEIVERS + SINKS, asset.value, rng);
-            let secret_input = input.split_off(SOURCES);
-            let public_output = output.split_off(RECEIVERS);
-
-            Ok(Self {
-                public: PublicTransfer::new(
-                    asset.id,
-                    into_array_unchecked(input),
-                    into_array_unchecked(public_output),
-                ),
-                secret: distribution::FixedSecretTransfer::try_sample_custom_distribution(
-                    asset.id,
-                    into_array_unchecked(secret_input),
-                    into_array_unchecked(output),
-                    distribution.base.commitment_scheme,
-                    distribution.base.utxo_set,
-                    rng,
-                )?,
-            })
-        }
-    }
-
-    impl<
-            C,
-            const SOURCES: usize,
-            const SENDERS: usize,
-            const RECEIVERS: usize,
-            const SINKS: usize,
-        > Transfer<C, SOURCES, SENDERS, RECEIVERS, SINKS>
-    where
-        C: Configuration,
-    {
-        /// Samples constraint system for unknown transfer from `rng`.
-        #[inline]
-        pub fn sample_unknown_constraints<CD, VD, R>(rng: &mut R) -> ConstraintSystem<C>
-        where
-            CD: Default,
-            VD: Default,
-            C::CommitmentScheme: Sample<CD>,
-            C::UtxoSetVerifier: Sample<VD>,
-            R: CryptoRng + RngCore + ?Sized,
-        {
-            Self::unknown_constraints(&rng.gen(), &rng.gen())
-        }
-
-        /// Samples proving and verifying contexts from `rng`.
-        #[inline]
-        pub fn sample_context<CD, VD, R>(
-            rng: &mut R,
-        ) -> Result<(ProvingContext<C>, VerifyingContext<C>), ProofSystemError<C>>
-        where
-            CD: Default,
-            VD: Default,
-            C::CommitmentScheme: Sample<CD>,
-            C::UtxoSetVerifier: Sample<VD>,
-            R: CryptoRng + RngCore + ?Sized,
-        {
-            Self::generate_context(&rng.gen(), &rng.gen(), rng)
-        }
-
-        /// Samples a [`Transfer`] and checks whether its internal proof is valid relative to the
-        /// given `commitment_scheme` and `utxo_set`.
-        #[inline]
-        pub fn sample_and_check_proof<S, R>(
-            commitment_scheme: &C::CommitmentScheme,
-            utxo_set: &mut S,
-            rng: &mut R,
-        ) -> Result<bool, ProofSystemError<C>>
-        where
-            C::SecretKey: Sample,
-            S: Accumulator<
-                Item = <C::UtxoSetVerifier as Verifier>::Item,
-                Verifier = C::UtxoSetVerifier,
-            >,
-            R: CryptoRng + RngCore + ?Sized,
-        {
-            let transfer = Self::try_sample(
-                distribution::Transfer {
-                    commitment_scheme,
-                    utxo_set,
-                },
-                rng,
-            )
-            .ok()
-            .expect("This test is not checking whether sampling works properly.");
-
-            let (proving_key, verifying_key) =
-                Self::generate_context(commitment_scheme, utxo_set.verifier(), rng)?;
-
-            has_valid_proof(
-                &transfer.into_post(commitment_scheme, utxo_set.verifier(), &proving_key, rng)?,
-                &verifying_key,
-            )
-        }
-    }
-
-    /// Checks if `post` has a valid internal proof, verifying with the given `context`.
-    #[inline]
-    pub fn has_valid_proof<C>(
-        post: &TransferPost<C>,
-        context: &VerifyingContext<C>,
-    ) -> Result<bool, ProofSystemError<C>>
-    where
-        C: Configuration,
-    {
-        C::ProofSystem::verify(&post.generate_proof_input(), &post.validity_proof, context)
-    }
-
-    /// Asserts that `post` has a valid internal proof, verifying with the given `context`.
-    #[inline]
-    pub fn assert_valid_proof<C>(post: &TransferPost<C>, context: &VerifyingContext<C>)
-    where
-        C: Configuration,
-    {
-        assert!(matches!(has_valid_proof(post, context), Ok(true)));
     }
 }

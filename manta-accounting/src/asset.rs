@@ -38,16 +38,11 @@ use derive_more::{
 use manta_crypto::{
     constraint::{
         reflection::{unknown, HasAllocation, HasVariable, Var},
-        Allocation, PublicOrSecret, Secret, Variable,
+        Allocation, PublicOrSecret, Secret, Variable, VariableSource,
     },
     rand::{CryptoRng, Rand, RngCore, Sample, Standard},
 };
 use manta_util::{array_map, fallible_array_map, into_array_unchecked, Concat, ConcatAccumulator};
-
-pub(super) mod prelude {
-    #[doc(inline)]
-    pub use super::{Asset, AssetId, AssetValue, AssetValues};
-}
 
 /// [`AssetId`] Base Type
 pub type AssetIdType = u32;
@@ -263,9 +258,6 @@ impl<'a> Sum<&'a AssetValue> for AssetValue {
     }
 }
 
-/// [`AssetValue`] Array Type
-pub type AssetValues<const N: usize> = [AssetValue; N];
-
 /// Change Iterator
 ///
 /// An iterator over [`AssetValue`] change amounts.
@@ -331,12 +323,20 @@ impl FusedIterator for Change {}
 /// Asset
 #[derive(Clone, Copy, Debug, Default, Display, Eq, From, Hash, PartialEq)]
 #[display(fmt = "{{id: {}, value: {}}}", id, value)]
-pub struct Asset {
+pub struct Asset<I = AssetId, V = AssetValue> {
     /// Asset Id
-    pub id: AssetId,
+    pub id: I,
 
     /// Asset Value
-    pub value: AssetValue,
+    pub value: V,
+}
+
+impl<I, V> Asset<I, V> {
+    /// Builds a new [`Asset`] from an `id` and a `value`.
+    #[inline]
+    pub const fn new(id: I, value: V) -> Self {
+        Self { id, value }
+    }
 }
 
 impl Asset {
@@ -345,12 +345,6 @@ impl Asset {
 
     /// The size of the data in this type in bytes.
     pub const SIZE: usize = (Self::BITS / 8) as usize;
-
-    /// Builds a new [`Asset`] from an `id` and a `value`.
-    #[inline]
-    pub const fn new(id: AssetId, value: AssetValue) -> Self {
-        Self { id, value }
-    }
 
     /// Builds a new zero [`Asset`] with the given `id`.
     #[inline]
@@ -408,25 +402,35 @@ impl Asset {
     }
 }
 
-impl Add<AssetValue> for Asset {
+impl<I, V> Add<V> for Asset<I, V>
+where
+    V: AddAssign,
+{
     type Output = Self;
 
     #[inline]
-    fn add(mut self, rhs: AssetValue) -> Self::Output {
+    fn add(mut self, rhs: V) -> Self::Output {
         self += rhs;
         self
     }
 }
 
-impl AddAssign<AssetValue> for Asset {
+impl<I, V> AddAssign<V> for Asset<I, V>
+where
+    V: AddAssign,
+{
     #[inline]
-    fn add_assign(&mut self, rhs: AssetValue) {
+    fn add_assign(&mut self, rhs: V) {
         self.value += rhs;
     }
 }
 
-impl Concat for Asset {
-    type Item = u8;
+impl<I, V> Concat for Asset<I, V>
+where
+    I: Concat,
+    V: Concat<Item = I::Item>,
+{
+    type Item = I::Item;
 
     #[inline]
     fn concat<A>(&self, accumulator: &mut A)
@@ -439,7 +443,11 @@ impl Concat for Asset {
 
     #[inline]
     fn size_hint(&self) -> Option<usize> {
-        Some(Self::SIZE)
+        if let (Some(id_size), Some(value_size)) = (self.id.size_hint(), self.value.size_hint()) {
+            Some(id_size + value_size)
+        } else {
+            None
+        }
     }
 }
 
@@ -457,9 +465,9 @@ impl From<Asset> for [u8; Asset::SIZE] {
     }
 }
 
-impl From<Asset> for (AssetId, AssetValue) {
+impl<I, V> From<Asset<I, V>> for (I, V) {
     #[inline]
-    fn from(asset: Asset) -> Self {
+    fn from(asset: Asset<I, V>) -> Self {
         (asset.id, asset.value)
     }
 }
@@ -475,81 +483,34 @@ impl Sample for Asset {
     }
 }
 
-impl Sub<AssetValue> for Asset {
+impl<I, V> Sub<V> for Asset<I, V>
+where
+    V: SubAssign,
+{
     type Output = Self;
 
     #[inline]
-    fn sub(mut self, rhs: AssetValue) -> Self::Output {
+    fn sub(mut self, rhs: V) -> Self::Output {
         self -= rhs;
         self
     }
 }
 
-impl SubAssign<AssetValue> for Asset {
+impl<I, V> SubAssign<V> for Asset<I, V>
+where
+    V: SubAssign,
+{
     #[inline]
-    fn sub_assign(&mut self, rhs: AssetValue) {
+    fn sub_assign(&mut self, rhs: V) {
         self.value -= rhs;
     }
 }
 
-/// Asset Id Variable
-pub type AssetIdVar<C> = Var<AssetId, C>;
-
-/// Asset Value Variable
-pub type AssetValueVar<C> = Var<AssetValue, C>;
-
-/// Asset Variable
-pub struct AssetVar<C>
+impl<C, I, V> Variable<C> for Asset<I, V>
 where
-    C: HasVariable<AssetId, Mode = PublicOrSecret>
-        + HasVariable<AssetValue, Mode = PublicOrSecret>
-        + ?Sized,
-{
-    /// Asset Id
-    pub id: AssetIdVar<C>,
-
-    /// Asset Value
-    pub value: AssetValueVar<C>,
-}
-
-impl<C> AssetVar<C>
-where
-    C: HasVariable<AssetId, Mode = PublicOrSecret>
-        + HasVariable<AssetValue, Mode = PublicOrSecret>
-        + ?Sized,
-{
-    /// Builds a new [`AssetVar`] from an `id` and a `value`.
-    #[inline]
-    pub fn new(id: AssetIdVar<C>, value: AssetValueVar<C>) -> Self {
-        Self { id, value }
-    }
-}
-
-impl<C> Concat for AssetVar<C>
-where
-    C: HasVariable<AssetId, Mode = PublicOrSecret>
-        + HasVariable<AssetValue, Mode = PublicOrSecret>
-        + ?Sized,
-    AssetIdVar<C>: Concat,
-    AssetValueVar<C>: Concat<Item = <AssetIdVar<C> as Concat>::Item>,
-{
-    type Item = <AssetIdVar<C> as Concat>::Item;
-
-    #[inline]
-    fn concat<A>(&self, accumulator: &mut A)
-    where
-        A: ConcatAccumulator<Self::Item> + ?Sized,
-    {
-        self.id.concat(accumulator);
-        self.value.concat(accumulator);
-    }
-}
-
-impl<C> Variable<C> for AssetVar<C>
-where
-    C: HasVariable<AssetId, Mode = PublicOrSecret>
-        + HasVariable<AssetValue, Mode = PublicOrSecret>
-        + ?Sized,
+    C: ?Sized,
+    I: Variable<C, Type = AssetId, Mode = PublicOrSecret>,
+    V: Variable<C, Type = AssetValue, Mode = PublicOrSecret>,
 {
     type Type = Asset;
 
@@ -558,83 +519,12 @@ where
     #[inline]
     fn new(cs: &mut C, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
         match allocation {
-            Allocation::Known(this, mode) => Self::new(
-                cs.new_known_allocation(&this.id, mode),
-                cs.new_known_allocation(&this.value, mode),
-            ),
-            Allocation::Unknown(mode) => Self::new(
-                unknown::<AssetId, _>(cs, mode.into()),
-                unknown::<AssetValue, _>(cs, mode.into()),
-            ),
-        }
-    }
-}
-
-impl<C> HasAllocation<C> for Asset
-where
-    C: HasVariable<AssetId, Mode = PublicOrSecret>
-        + HasVariable<AssetValue, Mode = PublicOrSecret>
-        + ?Sized,
-{
-    type Variable = AssetVar<C>;
-    type Mode = Secret;
-}
-
-/// Asset Collection
-#[derive(Clone, Copy, Debug, Eq, From, Hash, Ord, PartialEq, PartialOrd)]
-#[from(forward)]
-pub struct AssetCollection<const N: usize> {
-    /// Asset Id
-    pub id: AssetId,
-
-    /// Asset Values
-    pub values: [AssetValue; N],
-}
-
-impl<const N: usize> AssetCollection<N> {
-    /// Generates a collection of assets with matching [`AssetId`].
-    #[inline]
-    pub const fn new(id: AssetId, values: [AssetValue; N]) -> Self {
-        Self { id, values }
-    }
-}
-
-impl<const N: usize> Default for AssetCollection<N> {
-    #[inline]
-    fn default() -> Self {
-        Self::new(Default::default(), [Default::default(); N])
-    }
-}
-
-impl<const N: usize> From<AssetCollection<N>> for [Asset; N] {
-    #[inline]
-    fn from(collection: AssetCollection<N>) -> Self {
-        array_map(collection.values, move |v| collection.id.with(v))
-    }
-}
-
-impl<const N: usize> TryFrom<[Asset; N]> for AssetCollection<N> {
-    type Error = usize;
-
-    #[inline]
-    fn try_from(array: [Asset; N]) -> Result<Self, Self::Error> {
-        let mut counter: usize = 0;
-        let mut base_id = None;
-        let values = fallible_array_map(array, move |asset| {
-            let result = match base_id {
-                Some(id) if id == asset.id => Ok(asset.value),
-                Some(_) => Err(counter),
-                _ => {
-                    base_id = Some(asset.id);
-                    Ok(asset.value)
-                }
-            };
-            counter += 1;
-            result
-        })?;
-        match base_id {
-            Some(id) => Ok(Self::new(id, values)),
-            _ => Err(0),
+            Allocation::Known(this, mode) => {
+                Self::new(this.id.as_known(cs, mode), this.value.as_known(cs, mode))
+            }
+            Allocation::Unknown(mode) => {
+                Self::new(I::new_unknown(cs, mode), V::new_unknown(cs, mode))
+            }
         }
     }
 }
@@ -647,8 +537,6 @@ pub trait AssetMap: Default {
     ///
     /// Keys are used to access the underlying asset values.
     type Key;
-
-    // TODO: Turn `select` and `zeroes` back into iterator returning methods.
 
     /// Selects asset keys which total up to at least `asset` in value.
     fn select(&self, asset: Asset) -> Selection<Self>;

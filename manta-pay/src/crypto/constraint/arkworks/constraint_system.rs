@@ -26,7 +26,7 @@ use core::{
     borrow::Borrow,
     ops::{Add, AddAssign},
 };
-use manta_accounting::{AssetId, AssetValue};
+use manta_accounting::asset::{AssetId, AssetValue};
 use manta_crypto::constraint::{
     measure::Measure, reflection::HasAllocation, types::Bool, Allocation, AllocationMode,
     ConstraintSystem, Equal, Public, PublicOrSecret, Secret, Variable, VariableSource,

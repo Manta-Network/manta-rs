@@ -18,6 +18,6 @@
 
 pub mod commitment;
 pub mod constraint;
-pub mod ies;
+pub mod encryption;
+pub mod key;
 pub mod merkle_tree;
-pub mod prf;

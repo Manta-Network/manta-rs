@@ -260,6 +260,7 @@ pub mod constraint {
     use ark_r1cs_std::{alloc::AllocVar, boolean::Boolean, eq::EqGadget, uint8::UInt8};
     use ark_relations::ns;
     use manta_crypto::{
+        accumulator::Verifier,
         constraint::{reflection::HasAllocation, Allocation, Constant, Public, Secret, Variable},
         merkle_tree::{Parameters, Path, Root},
     };
@@ -350,6 +351,29 @@ pub mod constraint {
             self.verify(root, path, leaf)
                 .enforce_equal(&Boolean::TRUE)
                 .expect("This is not allowed to fail.");
+        }
+    }
+
+    impl<C> Verifier for ParametersVar<C>
+    where
+        C: Configuration,
+    {
+        type Item = [UInt8<ConstraintField<C>>];
+
+        type Witness = PathVar<C>;
+
+        type Output = RootVar<C>;
+
+        type Verification = Boolean<ConstraintField<C>>;
+
+        #[inline]
+        fn verify(
+            &self,
+            item: &Self::Item,
+            witness: &Self::Witness,
+            output: &Self::Output,
+        ) -> Self::Verification {
+            self.verify(output, witness, item)
         }
     }
 

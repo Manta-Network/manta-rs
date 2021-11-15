@@ -16,12 +16,10 @@
 
 //! Encryption Primitives
 
-// TODO: remove
-pub mod ies;
-
 use crate::key::{KeyAgreementScheme, KeyDerivationFunction};
+use core::marker::PhantomData;
 
-/// Symmetric-Key Encryption Scheme
+/// Symmetric Key Encryption Scheme
 ///
 /// # Specification
 ///
@@ -58,8 +56,8 @@ pub trait HybridPublicKeyEncryptionScheme: SymmetricKeyEncryptionScheme {
 
     /// Key Derivation Function Type
     type KeyDerivationFunction: KeyDerivationFunction<
-        KeyAgreementScheme = Self::KeyAgreementScheme,
-        Key = <Self as SymmetricKeyEncryptionScheme>::Key,
+        <Self::KeyAgreementScheme as KeyAgreementScheme>::SharedSecret,
+        Self::Key,
     >;
 }
 
@@ -70,6 +68,52 @@ pub type SecretKey<H> =
 /// Public Key Type
 pub type PublicKey<H> =
     <<H as HybridPublicKeyEncryptionScheme>::KeyAgreementScheme as KeyAgreementScheme>::PublicKey;
+
+/// Hybrid Public Key Encryption Scheme
+#[derive(derivative::Derivative)]
+#[derivative(Clone, Copy, Debug, Default, Eq, Hash, PartialEq, PartialOrd)]
+pub struct Hybrid<K, S, F>
+where
+    K: KeyAgreementScheme,
+    S: SymmetricKeyEncryptionScheme,
+    F: KeyDerivationFunction<K::SharedSecret, S::Key>,
+{
+    /// Type Parameter Marker
+    __: PhantomData<(K, S, F)>,
+}
+
+impl<K, S, F> SymmetricKeyEncryptionScheme for Hybrid<K, S, F>
+where
+    K: KeyAgreementScheme,
+    S: SymmetricKeyEncryptionScheme,
+    F: KeyDerivationFunction<K::SharedSecret, S::Key>,
+{
+    type Key = S::Key;
+
+    type Plaintext = S::Plaintext;
+
+    type Ciphertext = S::Ciphertext;
+
+    #[inline]
+    fn encrypt(key: Self::Key, plaintext: Self::Plaintext) -> Self::Ciphertext {
+        S::encrypt(key, plaintext)
+    }
+
+    #[inline]
+    fn decrypt(key: Self::Key, ciphertext: &Self::Ciphertext) -> Option<Self::Plaintext> {
+        S::decrypt(key, ciphertext)
+    }
+}
+
+impl<K, S, F> HybridPublicKeyEncryptionScheme for Hybrid<K, S, F>
+where
+    K: KeyAgreementScheme,
+    S: SymmetricKeyEncryptionScheme,
+    F: KeyDerivationFunction<K::SharedSecret, S::Key>,
+{
+    type KeyAgreementScheme = K;
+    type KeyDerivationFunction = F;
+}
 
 /// Encrypted Message
 pub struct EncryptedMessage<H>

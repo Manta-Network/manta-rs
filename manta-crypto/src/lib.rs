@@ -28,7 +28,6 @@ pub mod commitment;
 pub mod encryption;
 pub mod key;
 pub mod merkle_tree;
-pub mod prf;
 pub mod rand;
 
 #[cfg(feature = "constraint")]

@@ -17,7 +17,7 @@
 //! Transfer Implementations
 
 use crate::accounting::config::Configuration;
-use manta_accounting::transfer::{self, canonical};
+use manta_accounting::transfer::{self as transfer, canonical};
 
 /// Mint Transaction Type
 pub type Mint = canonical::Mint<Configuration>;

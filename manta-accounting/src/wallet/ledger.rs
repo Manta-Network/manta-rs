@@ -21,7 +21,7 @@
 
 use crate::{
     identity::{Utxo, VoidNumber},
-    transfer::{Configuration, EncryptedAsset, TransferPost},
+    transfer::{Configuration, EncryptedNote, TransferPost},
 };
 use alloc::vec::Vec;
 use core::future::Future;
@@ -44,7 +44,7 @@ where
     type Checkpoint: Checkpoint;
 
     /// Receiver Data Iterator Type
-    type ReceiverData: IntoIterator<Item = (Utxo<C>, EncryptedAsset<C>)>;
+    type ReceiverData: IntoIterator<Item = (Utxo<C>, EncryptedNote<C>)>;
 
     /// Sender Data Iterator Type
     type SenderData: IntoIterator<Item = VoidNumber<C>>;

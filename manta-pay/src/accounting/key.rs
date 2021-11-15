@@ -16,8 +16,9 @@
 
 //! Secret Key Generation
 //!
-//! This module contains [`DerivedKeySecret`] which implements the [`BIP-0044`] specification. We
-//! may implement other kinds of key generation schemes in the future.
+//! This module contains [`KeySecret`] which implements a hierarchical deterministic key generation
+//! scheme based on the [`BIP-0044`] specification. We may implement other kinds of key generation
+//! schemes in the future.
 //!
 //! See [`CoinType`] for the coins which this key generation scheme can control.
 //!
@@ -26,7 +27,7 @@
 use alloc::{format, string::String};
 use bip32::{Seed, XPrv};
 use core::{marker::PhantomData, num::ParseIntError, str::FromStr};
-use manta_accounting::key::{DerivedSecretKeyGenerator, DerivedSecretKeyParameter, KeyKind};
+use manta_accounting::key::{HierarchicalKeyTable, HierarchicalKeyTableParameter};
 use manta_util::{create_seal, seal};
 
 pub use bip32::{Error, Mnemonic};
@@ -38,8 +39,8 @@ pub type CoinTypeId = u128;
 
 /// Coin Type Marker Trait
 ///
-/// This trait identifies a coin type and its id for the [`BIP-0044`] specification. This trait is
-/// sealed and can only be used with the existing implementations.
+/// This trait identifies a coin type and its identifier for the [`BIP-0044`] specification. This
+/// trait is sealed and can only be used with the existing implementations.
 ///
 /// [`BIP-0044`]: https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki
 pub trait CoinType: sealed::Sealed {
@@ -102,10 +103,10 @@ macro_rules! impl_from_for_parameter {
     }
 }
 
-/// Implements the [`DerivedSecretKeyParameter`] trait for `$name`.
+/// Implements the [`HierarchicalKeyTableParameter`] trait for `$name`.
 macro_rules! impl_parameter {
     ($name:ty) => {
-        impl DerivedSecretKeyParameter for $name {
+        impl HierarchicalKeyTableParameter for $name {
             #[inline]
             fn increment(&mut self) {
                 self.0 += 1;
@@ -140,32 +141,32 @@ pub struct IndexParameter(ParameterType);
 
 impl_parameter!(IndexParameter);
 
-/// [`Testnet`] [`DerivedKeySecret`] Alias Type
-pub type TestnetDerivedKeySecret = DerivedKeySecret<Testnet>;
+/// Testnet [`KeySecret`] Type
+pub type TestnetKeySecret = KeySecret<Testnet>;
 
-/// [`Manta`] [`DerivedKeySecret`] Alias Type
-pub type MantaDerivedKeySecret = DerivedKeySecret<Manta>;
+/// Manta [`KeySecret`] Type
+pub type MantaKeySecret = KeySecret<Manta>;
 
-/// [`Calamari`] [`DerivedKeySecret`] Alias Type
-pub type CalamariDerivedKeySecret = DerivedKeySecret<Calamari>;
+/// Calamari [`KeySecret`] Type
+pub type CalamariKeySecret = KeySecret<Calamari>;
 
-/// Derived Key Secret
-pub struct DerivedKeySecret<C>
+/// Key Secret
+pub struct KeySecret<C>
 where
     C: CoinType,
 {
-    /// Derived Key Seed
+    /// Key Seed
     seed: Seed,
 
     /// Type Parameter Marker
     __: PhantomData<C>,
 }
 
-impl<C> DerivedKeySecret<C>
+impl<C> KeySecret<C>
 where
     C: CoinType,
 {
-    /// Converts a `mnemonic` phrase into a [`DerivedKeySecret`], locking it with `password`.
+    /// Converts a `mnemonic` phrase into a [`KeySecret`], locking it with `password`.
     #[must_use]
     #[inline]
     pub fn new(mnemonic: Mnemonic, password: &str) -> Self {
@@ -181,7 +182,7 @@ where
 /// [`BIP-0044`]: https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki
 #[must_use]
 #[inline]
-pub fn path_string<C>(kind: KeyKind, account: &AccountParameter, index: &IndexParameter) -> String
+pub fn path_string<C>(account: &AccountParameter, index: &IndexParameter, kind: u32) -> String
 where
     C: CoinType,
 {
@@ -191,12 +192,12 @@ where
         BIP_44_PURPOSE_ID,
         C::COIN_TYPE_ID,
         account.0,
-        if kind.is_external() { 0 } else { 1 },
+        kind,
         index.0
     )
 }
 
-impl<C> DerivedSecretKeyGenerator for DerivedKeySecret<C>
+impl<C> HierarchicalKeyTable for KeySecret<C>
 where
     C: CoinType,
 {
@@ -206,15 +207,20 @@ where
 
     type Index = IndexParameter;
 
+    type Kind = u32;
+
     type Error = Error;
 
     #[inline]
-    fn generate_key(
+    fn get(
         &self,
-        kind: KeyKind,
         account: &Self::Account,
         index: &Self::Index,
+        kind: &Self::Kind,
     ) -> Result<Self::SecretKey, Self::Error> {
-        XPrv::derive_from_path(&self.seed, &path_string::<C>(kind, account, index).parse()?)
+        XPrv::derive_from_path(
+            &self.seed,
+            &path_string::<C>(account, index, *kind).parse()?,
+        )
     }
 }

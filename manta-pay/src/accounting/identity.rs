@@ -20,51 +20,11 @@ use crate::{accounting::config::Configuration, crypto::merkle_tree::ConfigConver
 use manta_accounting::{identity, transfer};
 use manta_crypto::merkle_tree::{self, full::Full};
 
-/// Asset Parameters
-pub type AssetParameters = identity::AssetParameters<Configuration>;
-
 /// Unspent Transaction Output
 pub type Utxo = identity::Utxo<Configuration>;
 
 /// Void Number
 pub type VoidNumber = identity::VoidNumber<Configuration>;
-
-/// Identity Type
-pub type Identity = identity::Identity<Configuration>;
-
-/// Sender Type
-pub type Sender =
-    identity::Sender<Configuration, <Configuration as transfer::Configuration>::UtxoSetVerifier>;
-
-/// Receiver Type
-pub type Receiver = identity::Receiver<
-    Configuration,
-    <Configuration as transfer::Configuration>::IntegratedEncryptionScheme,
->;
-
-/// Shielded Identity Type
-pub type ShieldedIdentity = identity::ShieldedIdentity<
-    Configuration,
-    <Configuration as transfer::Configuration>::IntegratedEncryptionScheme,
->;
-
-/// Spend Type
-pub type Spend = identity::Spend<
-    Configuration,
-    <Configuration as transfer::Configuration>::IntegratedEncryptionScheme,
->;
-
-/// Sender Post Type
-pub type SenderPost = identity::SenderPost<
-    Configuration,
-    <Configuration as transfer::Configuration>::UtxoSetVerifier,
->;
-
-/// Receiver Post Type
-pub type ReceiverPost = identity::ReceiverPost<
-    Configuration,
-    <Configuration as transfer::Configuration>::IntegratedEncryptionScheme,
->;
 
 /// UTXO Set Parameters
 pub type Parameters = merkle_tree::Parameters<ConfigConverter<Configuration>>;
@@ -75,11 +35,6 @@ pub type Root = merkle_tree::Root<ConfigConverter<Configuration>>;
 /// UTXO Set Path
 pub type Path = merkle_tree::Path<ConfigConverter<Configuration>>;
 
-/// UTXO Set
-// FIXME: Change this to sharded merkle tree.
-pub type UtxoSet =
-    merkle_tree::MerkleTree<ConfigConverter<Configuration>, Full<ConfigConverter<Configuration>>>;
-
 /// Identity Constraint System Variables
 pub mod constraint {
     use super::*;
@@ -88,25 +43,10 @@ pub mod constraint {
         crypto::merkle_tree::constraint as merkle_tree_constraint,
     };
     use manta_crypto::{
-        accumulator::constraint::VerifierVariable,
+        accumulator::Verifier,
         constraint::{reflection::HasAllocation, Allocation, Constant, Variable},
     };
     use manta_util::concatenate;
-
-    /// Sender Variable Type
-    pub type SenderVar = identity::constraint::SenderVar<
-        Configuration,
-        <Configuration as transfer::Configuration>::UtxoSetVerifier,
-    >;
-
-    /// Receiver Variable Type
-    pub type ReceiverVar = identity::constraint::ReceiverVar<
-        Configuration,
-        <Configuration as transfer::Configuration>::IntegratedEncryptionScheme,
-    >;
-
-    /// UTXO Variable
-    pub type UtxoVar = identity::constraint::UtxoVar<Configuration>;
 
     /// UTXO Set Parameters Variable
     pub type ParametersVar = merkle_tree_constraint::ParametersVar<Configuration>;
@@ -119,9 +59,9 @@ pub mod constraint {
 
     /// UTXO Set Verifier Variable
     #[derive(Clone)]
-    pub struct UtxoSetVerifierVar(ParametersVar);
+    pub struct UtxoSetVerifier(ParametersVar);
 
-    impl Variable<ConstraintSystem> for UtxoSetVerifierVar {
+    impl Variable<ConstraintSystem> for UtxoSetVerifier {
         type Type = Parameters;
 
         type Mode = Constant;
@@ -133,20 +73,23 @@ pub mod constraint {
         }
     }
 
-    impl VerifierVariable<ConstraintSystem> for UtxoSetVerifierVar {
-        type ItemVar = UtxoVar;
+    impl Verifier for UtxoSetVerifier {
+        type Item = UtxoVar;
+
+        type Witness = <ParametersVar as Verifier>::Witness;
+
+        type Output = <ParametersVar as Verifier>::Output;
+
+        type Verification = <ParametersVar as Verifier>::Verification;
 
         #[inline]
-        fn assert_valid_membership_proof(
+        fn verify(
             &self,
-            item: &UtxoVar,
-            checkpoint: &RootVar,
-            witness: &PathVar,
-            cs: &mut ConstraintSystem,
-        ) {
-            let _ = cs;
-            self.0
-                .assert_verified(checkpoint, witness, &concatenate!(item));
+            item: &Self::Item,
+            witness: &Self::Witness,
+            output: &Self::Output,
+        ) -> Self::Verification {
+            self.0.verify(output, witness, &concatenate!(item))
         }
     }
 }

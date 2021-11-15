@@ -136,6 +136,7 @@ where
     }
 }
 
+/* TODO:
 impl<E> Input<AssetId> for Groth16<E>
 where
     E: PairingEngine,
@@ -180,10 +181,11 @@ where
 
 impl<E> Input<Utxo> for Groth16<E>
 where
-    E: PairingEngine<Fr = ark_ff::Fp256<ark_bls12_381::FrParameters>>,
+    E: PairingEngine,
 {
     #[inline]
     fn extend(input: &mut Self::Input, next: &Utxo) {
         next.extend_input(input);
     }
 }
+*/

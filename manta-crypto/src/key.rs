@@ -14,9 +14,9 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Key Primitives
+//! Cryptographic Key Primitives
 
-/// Key-Agreement Scheme
+/// Key Agreement Scheme
 ///
 /// # Specification
 ///
@@ -50,9 +50,9 @@ pub trait KeyAgreementScheme {
     ///
     /// # Implementation Note
     ///
-    /// This method is an optimization path for [`derive`] when we own the `secret_key` value, and
-    /// by default, uses [`derive`] as its implementation. This method must return the same value
-    /// as [`derive`] on the same input.
+    /// This method is an optimization path for [`derive`] when the `secret_key` value is owned,
+    /// and by default, [`derive`] is used as its implementation. This method must return the same
+    /// value as [`derive`] on the same input.
     ///
     /// [`derive`]: Self::derive
     #[inline]
@@ -62,18 +62,24 @@ pub trait KeyAgreementScheme {
 
     /// Computes the shared secret given the known `secret_key` and the given `public_key`.
     fn agree(secret_key: &Self::SecretKey, public_key: &Self::PublicKey) -> Self::SharedSecret;
+
+    /// Computes the shared secret given the known `secret_key` and the given `public_key`.
+    ///
+    /// # Implementation Note
+    ///
+    /// This method is an optimization path for [`agree`] when the `secret_key` value and
+    /// `public_key` value are owned, and by default, [`agree`] is used as its implementation. This
+    /// method must return the same value as [`agree`] on the same input.
+    ///
+    /// [`agree`]: Self::agree
+    #[inline]
+    fn agree_owned(secret_key: Self::SecretKey, public_key: Self::PublicKey) -> Self::SharedSecret {
+        Self::agree(&secret_key, &public_key)
+    }
 }
 
-/// Key-Derivation Function
-pub trait KeyDerivationFunction {
-    /// Key Agreement Scheme Type
-    type KeyAgreementScheme: KeyAgreementScheme;
-
-    /// Output Key Type
-    type Key;
-
-    /// Derives an output key from `shared_secret` computed from a key-agreement scheme.
-    fn derive(
-        shared_secret: <Self::KeyAgreementScheme as KeyAgreementScheme>::SharedSecret,
-    ) -> Self::Key;
+/// Key Derivation Function
+pub trait KeyDerivationFunction<A, B> {
+    /// Derives an output key from `secret` computed from a key-agreement scheme.
+    fn derive(secret: A) -> B;
 }
