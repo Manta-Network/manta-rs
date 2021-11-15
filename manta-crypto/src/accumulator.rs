@@ -216,6 +216,23 @@ pub trait OptimizedAccumulator: Accumulator {
     fn insert_nonprovable(&mut self, item: &<Self::Verifier as Verifier>::Item) -> bool {
         self.insert(item)
     }
+
+    /// Removes the witnesses to the membership of `item` in `self`. The resulting state of the
+    /// accumulator after removing a proof should be the same as if the item had been inserted into
+    /// the accumulator with [`insert_nonprovable`](Self::insert_nonprovable). This method returns
+    /// `true` if the item was successfully demoted to non-provable.
+    ///
+    /// # Implementation Note
+    ///
+    /// By default, this method does nothing and returns `false`. Implementations of this method may
+    /// fail arbitrarily, and should only successfully remove a proof if the implementation is
+    /// efficient enough. Space and time tradeoffs should be studied to determine the usefulness of
+    /// this method.
+    #[inline]
+    fn remove_proof(&mut self, item: &<Self::Verifier as Verifier>::Item) -> bool {
+        let _ = item;
+        false
+    }
 }
 
 /// Accumulator Membership Proof

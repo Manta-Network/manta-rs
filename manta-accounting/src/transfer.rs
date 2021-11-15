@@ -18,7 +18,7 @@
 
 use crate::{
     asset::{Asset, AssetId, AssetValue},
-    identity::{self, CommitmentSchemeOutput, PreReceiver, Utxo},
+    identity::{self, Commitment, PreReceiver, PublicKey, Utxo},
 };
 use alloc::vec::Vec;
 use core::ops::Add;
@@ -70,10 +70,10 @@ pub trait Configuration: identity::Configuration<Asset = Asset> {
         + HasVariable<AssetId, Variable = AssetIdVar<Self>, Mode = PublicOrSecret>
         + HasVariable<AssetValue, Variable = AssetValueVar<Self>, Mode = PublicOrSecret>
         + HasVariable<
-            CommitmentSchemeOutput<Self>,
-            Variable = CommitmentSchemeOutput<Self::ConstraintConfiguration>,
+            Commitment<Self>,
+            Variable = Commitment<Self::ConstraintConfiguration>,
             Mode = PublicOrSecret,
-        > + HasEqual<CommitmentSchemeOutput<Self::ConstraintConfiguration>>;
+        > + HasEqual<Commitment<Self::ConstraintConfiguration>>;
 
     /// Constraint System Configuration
     type ConstraintConfiguration: ConstraintConfiguration<Self::ConstraintSystem>;
@@ -179,6 +179,40 @@ pub type VerifyingContext<C> = <ProofSystemType<C> as ProofSystem>::VerifyingCon
 
 /// Transfer Validity Proof Type
 pub type Proof<C> = <ProofSystemType<C> as ProofSystem>::Proof;
+
+/* TODO:
+///
+pub struct Transfer2<
+    C,
+    const SOURCES: usize,
+    const SENDERS: usize,
+    const RECEIVERS: usize,
+    const SINKS: usize,
+> where
+    C: Configuration,
+{
+    /// Asset Id
+    asset_id: Option<AssetId>,
+
+    /// Sources
+    sources: [AssetValue; SOURCES],
+
+    /// Senders
+    senders: [Sender<C>; SENDERS],
+
+    /// Receivers
+    receivers: [FullReceiver<C>; RECEIVERS],
+
+    /// Sinks
+    sinks: [AssetValue; SINKS],
+
+    /// Fairness Constant Trapdoor
+    fair_trapdoor: Trapdoor<C>,
+
+    /// Fairness Constant
+    fair: Commitment<C>,
+}
+*/
 
 /// Transfer
 pub struct Transfer<
@@ -386,7 +420,7 @@ where
 
     /// Generates the constraint system for an unknown transfer.
     #[inline]
-    pub fn unknown_constraints(
+    fn unknown_constraints(
         commitment_scheme: &C::CommitmentScheme,
         utxo_set_verifier: &C::UtxoSetVerifier,
     ) -> C::ConstraintSystem {
@@ -405,7 +439,7 @@ where
 
     /// Generates the constraint system for a known transfer.
     #[inline]
-    pub fn known_constraints(
+    fn known_constraints(
         &self,
         commitment_scheme: &C::CommitmentScheme,
         utxo_set_verifier: &C::UtxoSetVerifier,
@@ -439,7 +473,7 @@ where
 
     /// Generates a validity proof for this transfer.
     #[inline]
-    pub fn is_valid<R>(
+    fn is_valid<R>(
         &self,
         commitment_scheme: &C::CommitmentScheme,
         utxo_set_verifier: &C::UtxoSetVerifier,
@@ -580,22 +614,36 @@ where
     C: Configuration,
 {
     /// Asset Id
-    pub asset_id: Option<AssetId>,
+    asset_id: Option<AssetId>,
 
     /// Sources
-    pub sources: Vec<AssetValue>,
+    sources: Vec<AssetValue>,
 
     /// Sender Posts
-    pub sender_posts: Vec<SenderPost<C>>,
+    sender_posts: Vec<SenderPost<C>>,
 
     /// Receiver Posts
-    pub receiver_posts: Vec<ReceiverPost<C>>,
+    receiver_posts: Vec<ReceiverPost<C>>,
 
     /// Sinks
-    pub sinks: Vec<AssetValue>,
+    sinks: Vec<AssetValue>,
 
     /// Validity Proof
-    pub validity_proof: Proof<C>,
+    validity_proof: Proof<C>,
+}
+
+impl<C> TransferPost<C>
+where
+    C: Configuration,
+{
+    /// Returns the ephemeral keys associated to the receiver posts of `self`.
+    #[inline]
+    pub fn receiver_ephemeral_keys(&self) -> Vec<&PublicKey<C>> {
+        self.receiver_posts
+            .iter()
+            .map(ReceiverPost::ephemeral_key)
+            .collect()
+    }
 }
 
 create_seal! {}

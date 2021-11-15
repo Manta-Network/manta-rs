@@ -18,7 +18,6 @@
 
 // FIXME: Change this so that commiting one value is the default, and commiting a "concatenation"
 //        of values is the special case.
-// TODO:  Change `Randomness` to `Trapdoor`
 
 use core::{fmt::Debug, hash::Hash};
 use manta_util::{Concat, ConcatAccumulator};
@@ -28,8 +27,8 @@ pub trait CommitmentScheme {
     /// Commitment Input Type
     type Input: Default;
 
-    /// Commitment Randomness Parameter Type
-    type Randomness;
+    /// Commitment Trapdoor Parameter Type
+    type Trapdoor;
 
     /// Commitment Output Type
     type Output;
@@ -40,23 +39,17 @@ pub trait CommitmentScheme {
         Builder::new(self)
     }
 
-    /// Commits the `input` with the given `randomness` parameter.
-    fn commit(&self, input: Self::Input, randomness: &Self::Randomness) -> Self::Output;
+    /// Commits the `input` with the given `trapdoor` parameter.
+    fn commit(&self, input: Self::Input, trapdoor: &Self::Trapdoor) -> Self::Output;
 
-    /// Commits with an empty input using the given `randomness` parameter.
+    /// Commits the single `input` value with the given `trapdoor` parameter.
     #[inline]
-    fn commit_none(&self, randomness: &Self::Randomness) -> Self::Output {
-        self.start().commit(randomness)
-    }
-
-    /// Commits the single `input` value with the given `randomness` parameter.
-    #[inline]
-    fn commit_one<T>(&self, input: &T, randomness: &Self::Randomness) -> Self::Output
+    fn commit_one<T>(&self, input: &T, trapdoor: &Self::Trapdoor) -> Self::Output
     where
         T: ?Sized,
         Self: Input<T>,
     {
-        self.start().update(input).commit(randomness)
+        self.start().update(input).commit(trapdoor)
     }
 }
 
@@ -126,10 +119,10 @@ where
         self
     }
 
-    /// Commits to the input stored in the builder with the given `randomness`.
+    /// Commits to the input stored in the builder with the given `trapdoor`.
     #[inline]
-    pub fn commit(self, randomness: &C::Randomness) -> C::Output {
-        self.commitment_scheme.commit(self.input, randomness)
+    pub fn commit(self, trapdoor: &C::Trapdoor) -> C::Output {
+        self.commitment_scheme.commit(self.input, trapdoor)
     }
 }
 
@@ -140,19 +133,19 @@ pub mod test {
     use super::*;
     use core::fmt::Debug;
 
-    /// Asserts that the given commitment `output` is equal to commiting `input` with `randomness`
+    /// Asserts that the given commitment `output` is equal to commiting `input` with `trapdoor`
     /// using the `commitment_scheme`.
     #[inline]
     pub fn assert_commitment_matches<T, C>(
         commitment_scheme: &C,
         input: &T,
-        randomness: &C::Randomness,
+        trapdoor: &C::Trapdoor,
         output: &C::Output,
     ) where
         T: ?Sized,
         C: CommitmentScheme + Input<T> + ?Sized,
         C::Output: Debug + PartialEq,
     {
-        assert_eq!(&commitment_scheme.commit_one(input, randomness), output);
+        assert_eq!(&commitment_scheme.commit_one(input, trapdoor), output);
     }
 }

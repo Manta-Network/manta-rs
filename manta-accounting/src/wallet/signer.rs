@@ -23,14 +23,16 @@
 //        sign`. Will have to upgrade `Rollback` and `manta_crypto::merkle_tree::fork` as well.
 // TODO:  Add checkpointing/garbage-collection in `utxo_set` so we can remove old UTXOs once they
 //        are irrelevant. Once we create a sender and its transaction succeeds we can drop the UTXO.
+//        See `OptimizedAccumulator::remove_proof`.
 // TODO:  Should have a mode on the signer where we return a generic error which reveals no detail
 //        about what went wrong during signing. The kind of error returned from a signing could
 //        reveal information about the internal state (privacy leak, not a secrecy leak).
+// TODO:  Setup multi-account wallets using `crate::key::AccountTable`.
 
 use crate::{
     asset::{Asset, AssetId, AssetMap, AssetValue},
     identity::{self, PreSender, PublicKey, SecretKey, Utxo},
-    key::{Account, HierarchicalKeyTable},
+    key::HierarchicalKeyTable,
     transfer::{
         self,
         canonical::{Mint, PrivateTransfer, PrivateTransferShape, Reclaim, Transaction},
@@ -262,6 +264,7 @@ pub trait Configuration: transfer::Configuration {
             Item = <Self::UtxoSetVerifier as Verifier>::Item,
             Verifier = Self::UtxoSetVerifier,
         > + ConstantCapacityAccumulator
+        + Default
         + ExactSizeAccumulator
         + OptimizedAccumulator
         + Rollback;
@@ -321,10 +324,6 @@ pub struct Signer<C>
 where
     C: Configuration,
 {
-    /* TODO:
-    /// Account Keys
-    account: Account<C::HierarchicalKeyTable>,
-    */
     /// Spending Key
     spending_key: SpendingKey<C>,
 
@@ -351,10 +350,9 @@ impl<C> Signer<C>
 where
     C: Configuration,
 {
-    ///
+    /// Builds a new [`Signer`].
     #[inline]
     fn new_inner(
-        // TODO: account: Account<C::HierarchicalKeyTable>,
         spending_key: SpendingKey<C>,
         commitment_scheme: C::CommitmentScheme,
         proving_context: ProvingContext<C>,
@@ -364,7 +362,6 @@ where
         rng: C::Rng,
     ) -> Self {
         Self {
-            // TODO: account,
             spending_key,
             commitment_scheme,
             proving_context,
@@ -375,20 +372,20 @@ where
         }
     }
 
+    /// Builds a new [`Signer`] from a fresh `spending_key`.
     ///
+    /// # Warning
+    ///
+    /// This method assumes that `spending_key` has never been used before, and does not attempt to
+    /// perform wallet recovery on this key.
     #[inline]
     pub fn new(
-        // TODO: account: Account<C::HierarchicalKeyTable>,
         spending_key: SpendingKey<C>,
         commitment_scheme: C::CommitmentScheme,
         proving_context: ProvingContext<C>,
         rng: C::Rng,
-    ) -> Self
-    where
-        C::UtxoSet: Default,
-    {
+    ) -> Self {
         Self::new_inner(
-            // TODO: account,
             spending_key,
             commitment_scheme,
             proving_context,
@@ -412,7 +409,7 @@ where
                 ephemeral_public_key,
             }) = self.spending_key.decrypt(encrypted_note)
             {
-                /* FIXME:
+                /* FIXME: Add UTXO validation check. Is this necessary?
                 if self.spending_key.validate_utxo::<C>(
                     &ephemeral_public_key,
                     &asset,
@@ -457,17 +454,13 @@ where
     /// Builds the pre-sender associated to `ephemeral_key` and `asset`.
     #[inline]
     fn build_pre_sender(&self, ephemeral_key: PublicKey<C>, asset: Asset) -> PreSender<C> {
-        /* TODO:
         self.spending_key
             .sender(ephemeral_key, asset, &self.commitment_scheme)
-        */
-        todo!()
     }
 
     /// Selects the pre-senders which collectively own at least `asset`, returning any change.
     #[inline]
     fn select(&mut self, asset: Asset) -> Result<Selection<C>, Error<C::HierarchicalKeyTable, C>> {
-        /* TODO:
         let selection = self.assets.select(asset);
         if selection.is_empty() {
             return Err(Error::InsufficientBalance(asset));
@@ -481,8 +474,6 @@ where
                 .map(move |(k, v)| self.build_pre_sender(k, asset.id.with(v)))
                 .collect(),
         ))
-        */
-        todo!()
     }
 
     /// Builds a [`TransferPost`] for the given `transfer`.
@@ -711,14 +702,11 @@ where
         self.commit();
         match transaction {
             Transaction::Mint(asset) => {
-                /* TODO:
                 let mint_post =
                     self.build_post(Mint::build(asset, self.spending_key.receiver(asset)))?;
                 self.pending_assets.insert =
-                    Some((mint_post.receiver_posts[0].ephemeral_key().clone(), asset));
+                    Some((mint_post.receiver_ephemeral_keys()[0].clone(), asset));
                 Ok(SignResponse::new(vec![mint_post]))
-                */
-                todo!()
             }
             Transaction::PrivateTransfer(asset, receiver) => {
                 self.sign_withdraw(asset, Some(receiver))

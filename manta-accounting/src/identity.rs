@@ -84,7 +84,10 @@ where
         C: Configuration<KeyAgreementScheme = K>,
         Utxo<C>: PartialEq,
     {
-        &commitment_scheme.commit_one(asset, &K::agree(&self.spend, ephemeral_key)) == utxo
+        &commitment_scheme.commit_one(
+            asset,
+            &C::into_trapdoor(K::agree(&self.spend, ephemeral_key)),
+        ) == utxo
     }
 
     /// Prepares `self` for spending `asset` with the given `ephemeral_key`.
@@ -147,9 +150,13 @@ pub trait Configuration {
     type KeyAgreementScheme: KeyAgreementScheme;
 
     /// Commitment Scheme Type
-    type CommitmentScheme: CommitmentScheme<Randomness = Trapdoor<Self>>
+    type CommitmentScheme: CommitmentScheme
         + CommitmentInput<Self::Asset>
         + CommitmentInput<SecretKey<Self>>;
+
+    /// Converts the `shared_secret` returned by the key agreement scheme into a trapdoor for the
+    /// commitment scheme.
+    fn into_trapdoor(shared_secret: SharedSecret<Self>) -> Trapdoor<Self>;
 }
 
 /// Secret Key Type
@@ -158,19 +165,21 @@ pub type SecretKey<C> = <<C as Configuration>::KeyAgreementScheme as KeyAgreemen
 /// Public Key Type
 pub type PublicKey<C> = <<C as Configuration>::KeyAgreementScheme as KeyAgreementScheme>::PublicKey;
 
-/// Trapdoor Type
-pub type Trapdoor<C> =
+/// Shared Secret Type
+pub type SharedSecret<C> =
     <<C as Configuration>::KeyAgreementScheme as KeyAgreementScheme>::SharedSecret;
 
+/// Trapdoor Type
+pub type Trapdoor<C> = <<C as Configuration>::CommitmentScheme as CommitmentScheme>::Trapdoor;
+
 /// Commitment Scheme Output Type
-pub type CommitmentSchemeOutput<C> =
-    <<C as Configuration>::CommitmentScheme as CommitmentScheme>::Output;
+pub type Commitment<C> = <<C as Configuration>::CommitmentScheme as CommitmentScheme>::Output;
 
 /// Unspent Transaction Output Type
-pub type Utxo<C> = CommitmentSchemeOutput<C>;
+pub type Utxo<C> = Commitment<C>;
 
 /// Void Number Type
-pub type VoidNumber<C> = CommitmentSchemeOutput<C>;
+pub type VoidNumber<C> = Commitment<C>;
 
 /// Pre-Sender
 pub struct PreSender<C>
@@ -206,7 +215,8 @@ where
         asset: C::Asset,
         commitment_scheme: &C::CommitmentScheme,
     ) -> Self {
-        let trapdoor = C::KeyAgreementScheme::agree(&spending_key, &ephemeral_key);
+        let trapdoor =
+            C::into_trapdoor(C::KeyAgreementScheme::agree(&spending_key, &ephemeral_key));
         Self {
             utxo: commitment_scheme.commit_one(&asset, &trapdoor),
             void_number: commitment_scheme.commit_one(&spending_key, &trapdoor),
@@ -349,7 +359,10 @@ where
         PreSender {
             utxo: commitment_scheme.commit_one(
                 &self.asset,
-                &C::KeyAgreementScheme::agree(&self.spending_key, &self.ephemeral_key),
+                &C::into_trapdoor(C::KeyAgreementScheme::agree(
+                    &self.spending_key,
+                    &self.ephemeral_key,
+                )),
             ),
             spending_key: self.spending_key,
             ephemeral_key: self.ephemeral_key,
@@ -369,10 +382,13 @@ where
     ) -> C::Asset
     where
         CS: ConstraintSystem,
-        CommitmentSchemeOutput<C>: Equal<CS>,
+        Commitment<C>: Equal<CS>,
         V: Verifier<Verification = CS::Bool>,
     {
-        let trapdoor = C::KeyAgreementScheme::agree(&self.spending_key, &self.ephemeral_key);
+        let trapdoor = C::into_trapdoor(C::KeyAgreementScheme::agree(
+            &self.spending_key,
+            &self.ephemeral_key,
+        ));
         cs.assert(self.utxo_membership_proof.verify(
             &commitment_scheme.commit_one(&self.asset, &trapdoor),
             utxo_set_verifier,
@@ -610,7 +626,7 @@ where
     ) -> Utxo<C> {
         commitment_scheme.commit_one(
             asset,
-            &C::KeyAgreementScheme::agree(ephemeral_key, spending_key),
+            &C::into_trapdoor(C::KeyAgreementScheme::agree(ephemeral_key, spending_key)),
         )
     }
 
