@@ -20,78 +20,76 @@ use core::marker::PhantomData;
 use manta_crypto::{
     accumulator::{Accumulator, MembershipProof, Verifier},
     commitment::{CommitmentScheme, Input as CommitmentInput},
-    encryption::{EncryptedMessage, HybridPublicKeyEncryptionScheme},
+    constraint::{
+        Allocation, ConstraintSystem, Derived, Equal, Public, PublicOrSecret, Secret, Variable,
+        VariableSource,
+    },
+    encryption::{DecryptedMessage, EncryptedMessage, HybridPublicKeyEncryptionScheme},
     key::KeyAgreementScheme,
 };
 
-use manta_crypto::constraint::{ConstraintSystem, Equal};
-
-/// Viewing Key Table
-pub trait ViewingKeyTable<K>
-where
-    K: KeyAgreementScheme,
-{
-    /// Query Type
-    type Query: Default;
-
-    /// Returns the key associated to `query`, generating a new key if `query` does not already
-    /// correspond to an existing key.
-    fn get_or_generate(&mut self, query: Self::Query) -> &K::SecretKey;
-}
-
-impl<K> ViewingKeyTable<K> for K::SecretKey
-where
-    K: KeyAgreementScheme,
-{
-    type Query = ();
-
-    #[inline]
-    fn get_or_generate(&mut self, query: Self::Query) -> &K::SecretKey {
-        let _ = query;
-        self
-    }
-}
-
 /// Spending Key
-pub struct SpendingKey<K, V = <K as KeyAgreementScheme>::SecretKey>
+pub struct SpendingKey<K>
 where
     K: KeyAgreementScheme,
-    V: ViewingKeyTable<K>,
 {
-    /// Spending Key
-    spending_key: K::SecretKey,
+    /// Spend Part of the Spending Key
+    spend: K::SecretKey,
 
-    /// Viewing Key Table
-    viewing_key_table: V,
+    /// View Part of the Spending Key
+    view: K::SecretKey,
 }
 
-impl<K, V> SpendingKey<K, V>
+impl<K> SpendingKey<K>
 where
     K: KeyAgreementScheme,
-    V: ViewingKeyTable<K>,
 {
-    /// Builds a new [`SpendingKey`] from `spending_key` and `viewing_key_table`.
+    /// Builds a new [`SpendingKey`] from `spend` and `view`.
     #[inline]
-    pub fn new(spending_key: K::SecretKey, viewing_key_table: V) -> Self {
-        Self {
-            spending_key,
-            viewing_key_table,
+    pub fn new(spend: K::SecretKey, view: K::SecretKey) -> Self {
+        Self { spend, view }
+    }
+
+    /// Derives the receiving key for `self`.
+    #[inline]
+    pub fn derive(&self) -> ReceivingKey<K> {
+        ReceivingKey {
+            spend: K::derive(&self.spend),
+            view: K::derive(&self.view),
         }
     }
 
-    /// Returns the receiving key for `self` with the viewing key located at the given `query` in
-    /// the viewing key table.
+    /// Tries to decrypt `encrypted_note` with the viewing key associated to `self`.
     #[inline]
-    pub fn receiving_key(&mut self, query: V::Query) -> ReceivingKey<K> {
-        ReceivingKey {
-            spend: K::derive(&self.spending_key),
-            view: K::derive(self.viewing_key_table.get_or_generate(query)),
-        }
+    pub fn decrypt<H>(
+        &self,
+        encrypted_note: EncryptedMessage<H>,
+    ) -> Result<DecryptedMessage<H>, EncryptedMessage<H>>
+    where
+        H: HybridPublicKeyEncryptionScheme<KeyAgreementScheme = K>,
+    {
+        encrypted_note.decrypt(&self.view)
+    }
+
+    /// Validates the `utxo` against `self` and the given `ephemeral_key` and `asset`.
+    #[inline]
+    pub fn validate_utxo<C>(
+        &self,
+        ephemeral_key: &PublicKey<C>,
+        asset: &C::Asset,
+        utxo: &Utxo<C>,
+        commitment_scheme: &C::CommitmentScheme,
+    ) -> bool
+    where
+        C: Configuration<KeyAgreementScheme = K>,
+        Utxo<C>: PartialEq,
+    {
+        &commitment_scheme.commit_one(asset, &K::agree(&self.spend, ephemeral_key)) == utxo
     }
 
     /// Prepares `self` for spending `asset` with the given `ephemeral_key`.
     #[inline]
-    pub fn pre_sender<C>(
+    pub fn sender<C>(
         &self,
         ephemeral_key: PublicKey<C>,
         asset: C::Asset,
@@ -101,12 +99,16 @@ where
         K::SecretKey: Clone,
         C: Configuration<KeyAgreementScheme = K>,
     {
-        PreSender::new(
-            self.spending_key.clone(),
-            ephemeral_key,
-            asset,
-            commitment_scheme,
-        )
+        PreSender::new(self.spend.clone(), ephemeral_key, asset, commitment_scheme)
+    }
+
+    /// Prepares `self` for receiving `asset`.
+    #[inline]
+    pub fn receiver<C>(&self, asset: C::Asset) -> PreReceiver<C>
+    where
+        C: Configuration<KeyAgreementScheme = K>,
+    {
+        self.derive().into_receiver(asset)
     }
 }
 
@@ -126,24 +128,13 @@ impl<K> ReceivingKey<K>
 where
     K: KeyAgreementScheme,
 {
-    /// Prepares `self` for receiving `asset` with the given `ephemeral_key`.
+    /// Prepares `self` for receiving `asset`.
     #[inline]
-    pub fn into_receiver<C>(
-        self,
-        ephemeral_key: SecretKey<C>,
-        asset: C::Asset,
-        commitment_scheme: &C::CommitmentScheme,
-    ) -> FullReceiver<C>
+    pub fn into_receiver<C>(self, asset: C::Asset) -> PreReceiver<C>
     where
         C: Configuration<KeyAgreementScheme = K>,
     {
-        FullReceiver::new(
-            self.spend,
-            self.view,
-            ephemeral_key,
-            asset,
-            commitment_scheme,
-        )
+        PreReceiver::new(self.spend, self.view, asset)
     }
 }
 
@@ -541,6 +532,52 @@ where
     }
 }
 
+/// Pre-Receiver
+pub struct PreReceiver<C>
+where
+    C: Configuration,
+{
+    /// Public Spending Key
+    spending_key: PublicKey<C>,
+
+    /// Public Viewing Key
+    viewing_key: PublicKey<C>,
+
+    /// Asset
+    asset: C::Asset,
+}
+
+impl<C> PreReceiver<C>
+where
+    C: Configuration,
+{
+    /// Builds a new [`PreReceiver`] for `spending_key` to receive `asset`.
+    #[inline]
+    pub fn new(spending_key: PublicKey<C>, viewing_key: PublicKey<C>, asset: C::Asset) -> Self {
+        Self {
+            spending_key,
+            viewing_key,
+            asset,
+        }
+    }
+
+    /// Upgrades `self` into a [`FullReceiver`] with the designated `ephemeral_key`.
+    #[inline]
+    pub fn upgrade(
+        self,
+        ephemeral_key: SecretKey<C>,
+        commitment_scheme: &C::CommitmentScheme,
+    ) -> FullReceiver<C> {
+        FullReceiver::new(
+            self.spending_key,
+            self.viewing_key,
+            ephemeral_key,
+            self.asset,
+            commitment_scheme,
+        )
+    }
+}
+
 /// Receiver
 pub struct Receiver<C>
 where
@@ -602,6 +639,38 @@ where
     }
 }
 
+impl<CS, C> Variable<CS> for Receiver<C>
+where
+    C: Configuration + Variable<CS>,
+    C::Type: Configuration,
+    PublicKey<C>: Variable<CS, Type = PublicKey<C::Type>, Mode = Secret>,
+    SecretKey<C>: Variable<CS, Type = SecretKey<C::Type>, Mode = Secret>,
+    C::Asset: Variable<CS, Type = <C::Type as Configuration>::Asset, Mode = Secret>,
+    Utxo<C>: Variable<CS, Type = Utxo<C::Type>, Mode = PublicOrSecret>,
+{
+    type Type = Receiver<C::Type>;
+
+    type Mode = Derived;
+
+    #[inline]
+    fn new(cs: &mut CS, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
+        match allocation {
+            Allocation::Known(this, mode) => Self {
+                spending_key: this.spending_key.as_known(cs, mode),
+                ephemeral_key: this.ephemeral_key.as_known(cs, mode),
+                asset: this.asset.as_known(cs, mode),
+                utxo: this.utxo.as_known(cs, Public),
+            },
+            Allocation::Unknown(mode) => Self {
+                spending_key: PublicKey::<C>::new_unknown(cs, mode),
+                ephemeral_key: SecretKey::<C>::new_unknown(cs, mode),
+                asset: C::Asset::new_unknown(cs, mode),
+                utxo: Utxo::<C>::new_unknown(cs, Public),
+            },
+        }
+    }
+}
+
 /// Full Receiver
 pub struct FullReceiver<C>
 where
@@ -649,6 +718,12 @@ where
             ephemeral_key,
             asset,
         }
+    }
+
+    /// Converts `self` into its [`PreReceiver`], dropping the ephemeral key.
+    #[inline]
+    pub fn downgrade(self) -> PreReceiver<C> {
+        PreReceiver::new(self.spending_key, self.viewing_key, self.asset)
     }
 
     /// Extracts the ledger posting data from `self`.
@@ -742,6 +817,12 @@ where
         KeyAgreementScheme = C::KeyAgreementScheme,
     >,
 {
+    /// Returns the ephemeral key associated to `self`.
+    #[inline]
+    pub fn ephemeral_key(&self) -> &PublicKey<C> {
+        self.note.ephemeral_public_key()
+    }
+
     /// Validates `self` on the receiver `ledger`.
     #[inline]
     pub fn validate<L>(self, ledger: &L) -> Result<ReceiverPostingKey<C, H, L>, ReceiverPostError>

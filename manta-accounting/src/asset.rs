@@ -24,7 +24,6 @@
 
 use alloc::vec::Vec;
 use core::{
-    convert::TryFrom,
     fmt::Debug,
     hash::Hash,
     iter,
@@ -36,13 +35,10 @@ use derive_more::{
     Add, AddAssign, Display, Div, DivAssign, From, Mul, MulAssign, Product, Sub, SubAssign, Sum,
 };
 use manta_crypto::{
-    constraint::{
-        reflection::{unknown, HasAllocation, HasVariable, Var},
-        Allocation, PublicOrSecret, Secret, Variable, VariableSource,
-    },
+    constraint::{Allocation, PublicOrSecret, Secret, Variable, VariableSource},
     rand::{CryptoRng, Rand, RngCore, Sample, Standard},
 };
-use manta_util::{array_map, fallible_array_map, into_array_unchecked, Concat, ConcatAccumulator};
+use manta_util::{into_array_unchecked, Concat, ConcatAccumulator};
 
 /// [`AssetId`] Base Type
 pub type AssetIdType = u32;

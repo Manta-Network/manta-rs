@@ -18,7 +18,7 @@
 
 use crate::{
     asset::{Asset, AssetId, AssetValue},
-    identity::{self, CommitmentSchemeOutput, Utxo},
+    identity::{self, CommitmentSchemeOutput, PreReceiver, Utxo},
 };
 use alloc::vec::Vec;
 use core::ops::Add;
@@ -197,10 +197,10 @@ pub struct Transfer<
     sources: [AssetValue; SOURCES],
 
     /// Senders
-    senders: [Sender<C>; SENDERS],
+    senders: [PreSender<C>; SENDERS],
 
     /// Receivers
-    receivers: [FullReceiver<C>; RECEIVERS],
+    receivers: [PreReceiver<C>; RECEIVERS],
 
     /// Sinks
     sinks: [AssetValue; SINKS],
@@ -211,13 +211,13 @@ impl<C, const SOURCES: usize, const SENDERS: usize, const RECEIVERS: usize, cons
 where
     C: Configuration,
 {
-    /// Builds a new [`Transfer`] from public and secret information.
+    /// Builds a new [`Transfer`].
     #[inline]
     fn new(
         asset_id: Option<AssetId>,
         sources: [AssetValue; SOURCES],
-        senders: [Sender<C>; SENDERS],
-        receivers: [FullReceiver<C>; RECEIVERS],
+        senders: [PreSender<C>; SENDERS],
+        receivers: [PreReceiver<C>; RECEIVERS],
         sinks: [AssetValue; SINKS],
     ) -> Self {
         Self::check_shape(asset_id.is_some());
@@ -274,8 +274,8 @@ where
     fn new_unchecked(
         asset_id: Option<AssetId>,
         sources: [AssetValue; SOURCES],
-        senders: [Sender<C>; SENDERS],
-        receivers: [FullReceiver<C>; RECEIVERS],
+        senders: [PreSender<C>; SENDERS],
+        receivers: [PreReceiver<C>; RECEIVERS],
         sinks: [AssetValue; SINKS],
     ) -> Self {
         Self {
@@ -348,6 +348,8 @@ where
         utxo_set_verifier: UtxoSetVerifierVar<C>,
         cs: &mut C::ConstraintSystem,
     ) {
+        // FIXME: Add fair randomness constraint.
+
         let mut secret_asset_ids = Vec::with_capacity(SENDERS + RECEIVERS);
 
         let input_sum = participants
@@ -463,6 +465,7 @@ where
     where
         R: CryptoRng + RngCore + ?Sized,
     {
+        /* TODO:
         Ok(TransferPost {
             validity_proof: self.is_valid(commitment_scheme, utxo_set_verifier, context, rng)?,
             asset_id: self.asset_id,
@@ -475,6 +478,8 @@ where
                 .collect(),
             sinks: self.sinks.into(),
         })
+        */
+        todo!()
     }
 }
 
@@ -575,22 +580,22 @@ where
     C: Configuration,
 {
     /// Asset Id
-    asset_id: Option<AssetId>,
+    pub asset_id: Option<AssetId>,
 
     /// Sources
-    sources: Vec<AssetValue>,
+    pub sources: Vec<AssetValue>,
 
     /// Sender Posts
-    sender_posts: Vec<SenderPost<C>>,
+    pub sender_posts: Vec<SenderPost<C>>,
 
     /// Receiver Posts
-    receiver_posts: Vec<ReceiverPost<C>>,
+    pub receiver_posts: Vec<ReceiverPost<C>>,
 
     /// Sinks
-    sinks: Vec<AssetValue>,
+    pub sinks: Vec<AssetValue>,
 
     /// Validity Proof
-    validity_proof: Proof<C>,
+    pub validity_proof: Proof<C>,
 }
 
 create_seal! {}
@@ -671,7 +676,7 @@ pub mod canonical {
     {
         /// Builds a [`Mint`] from `asset` and `receiver`.
         #[inline]
-        pub fn build(asset: Asset, receiver: FullReceiver<C>) -> Self {
+        pub fn build(asset: Asset, receiver: PreReceiver<C>) -> Self {
             Self::new(
                 Some(asset.id),
                 [asset.value],
@@ -702,8 +707,8 @@ pub mod canonical {
         /// Builds a [`PrivateTransfer`] from `senders` and `receivers`.
         #[inline]
         pub fn build(
-            senders: [Sender<C>; PrivateTransferShape::SENDERS],
-            receivers: [FullReceiver<C>; PrivateTransferShape::RECEIVERS],
+            senders: [PreSender<C>; PrivateTransferShape::SENDERS],
+            receivers: [PreReceiver<C>; PrivateTransferShape::RECEIVERS],
         ) -> Self {
             Self::new(
                 Default::default(),
@@ -744,8 +749,8 @@ pub mod canonical {
         /// Builds a [`Reclaim`] from `senders`, `receivers`, and `reclaim`.
         #[inline]
         pub fn build(
-            senders: [Sender<C>; ReclaimShape::SENDERS],
-            receivers: [FullReceiver<C>; ReclaimShape::RECEIVERS],
+            senders: [PreSender<C>; ReclaimShape::SENDERS],
+            receivers: [PreReceiver<C>; ReclaimShape::RECEIVERS],
             reclaim: Asset,
         ) -> Self {
             Self::new(

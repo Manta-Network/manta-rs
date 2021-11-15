@@ -151,6 +151,12 @@ where
         }
     }
 
+    /// Returns the ephemeral public key associated to `self`.
+    #[inline]
+    pub fn ephemeral_public_key(&self) -> &PublicKey<H> {
+        &self.ephemeral_public_key
+    }
+
     /// Tries to decrypt `self` using `secret_key`, returning back `Err(self)` if the `secret_key`
     /// was unable to decrypt the message.
     #[inline]

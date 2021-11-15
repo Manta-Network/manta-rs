@@ -29,14 +29,13 @@
 
 use crate::{
     asset::{Asset, AssetId, AssetMap, AssetValue},
-    fs::{Load, LoadWith, Save, SaveWith},
     identity::{self, PreSender, PublicKey, SecretKey, Utxo},
     key::{Account, HierarchicalKeyTable},
     transfer::{
         self,
         canonical::{Mint, PrivateTransfer, PrivateTransferShape, Reclaim, Transaction},
         EncryptedNote, FullReceiver, ProofSystemError, ProvingContext, Receiver, ReceivingKey,
-        Sender, Shape, Transfer, TransferPost,
+        Sender, Shape, SpendingKey, Transfer, TransferPost,
     },
 };
 use alloc::{vec, vec::Vec};
@@ -53,6 +52,7 @@ use manta_crypto::{
         Accumulator, ConstantCapacityAccumulator, ExactSizeAccumulator, OptimizedAccumulator,
         Verifier,
     },
+    encryption::DecryptedMessage,
     key::KeyAgreementScheme,
     rand::{CryptoRng, RngCore},
 };
@@ -321,8 +321,12 @@ pub struct Signer<C>
 where
     C: Configuration,
 {
+    /* TODO:
     /// Account Keys
     account: Account<C::HierarchicalKeyTable>,
+    */
+    /// Spending Key
+    spending_key: SpendingKey<C>,
 
     /// Commitment Scheme
     commitment_scheme: C::CommitmentScheme,
@@ -350,7 +354,8 @@ where
     ///
     #[inline]
     fn new_inner(
-        account: Account<C::HierarchicalKeyTable>,
+        // TODO: account: Account<C::HierarchicalKeyTable>,
+        spending_key: SpendingKey<C>,
         commitment_scheme: C::CommitmentScheme,
         proving_context: ProvingContext<C>,
         utxo_set: C::UtxoSet,
@@ -359,7 +364,8 @@ where
         rng: C::Rng,
     ) -> Self {
         Self {
-            account,
+            // TODO: account,
+            spending_key,
             commitment_scheme,
             proving_context,
             utxo_set,
@@ -372,7 +378,8 @@ where
     ///
     #[inline]
     pub fn new(
-        account: Account<C::HierarchicalKeyTable>,
+        // TODO: account: Account<C::HierarchicalKeyTable>,
+        spending_key: SpendingKey<C>,
         commitment_scheme: C::CommitmentScheme,
         proving_context: ProvingContext<C>,
         rng: C::Rng,
@@ -381,7 +388,8 @@ where
         C::UtxoSet: Default,
     {
         Self::new_inner(
-            account,
+            // TODO: account,
+            spending_key,
             commitment_scheme,
             proving_context,
             Default::default(),
@@ -397,30 +405,33 @@ where
     where
         I: Iterator<Item = (Utxo<C>, EncryptedNote<C>)>,
     {
-        /* TODO:
         let mut assets = Vec::new();
-        for (utxo, encrypted_asset) in updates {
-            if let Some(KeyOwned { inner, index }) =
-                self.signer.find_external_asset::<C>(&encrypted_asset)
+        for (utxo, encrypted_note) in updates {
+            if let Ok(DecryptedMessage {
+                plaintext: asset,
+                ephemeral_public_key,
+            }) = self.spending_key.decrypt(encrypted_note)
             {
-                // FIXME: We need to actually check at this point whether the `utxo` is valid, by
-                //        computing the UTXO that lives at the `Sender` of `index`, this way, a
-                //        future call to `try_upgrade` will never fail. If the call to `try_upgrade`
-                //        fails, we need to mark the coin as burnt, or it will show up again in
-                //        later calls to the signer (during coin selection). Currently, if the
-                //        `utxo` does not match it should be stored in the verified set as
-                //        non-provable and the asset should not be added to the asset map, since the
-                //        asset is effectively burnt.
-                assets.push(inner);
-                self.assets.insert(index.reduce(), inner);
+                /* FIXME:
+                if self.spending_key.validate_utxo::<C>(
+                    &ephemeral_public_key,
+                    &asset,
+                    &utxo,
+                    &self.commitment_scheme,
+                ) {
+                    assets.push(asset);
+                    self.assets.insert(ephemeral_public_key, asset);
+                    self.utxo_set.insert(&utxo);
+                }
+                */
+                assets.push(asset);
+                self.assets.insert(ephemeral_public_key, asset);
                 self.utxo_set.insert(&utxo);
             } else {
                 self.utxo_set.insert_nonprovable(&utxo);
             }
         }
         Ok(SyncResponse::new(assets))
-        */
-        todo!()
     }
 
     /// Updates the internal ledger state, returning the new asset distribution.
@@ -434,7 +445,6 @@ where
     where
         I: IntoIterator<Item = (Utxo<C>, EncryptedNote<C>)>,
     {
-        /* TODO:
         self.start_sync(sync_state);
 
         // FIXME: Do a capacity check on the current UTXO set.
@@ -442,6 +452,14 @@ where
             Some(diff) => self.sync_inner(updates.into_iter().skip(diff)),
             _ => Err(Error::InconsistentSynchronization),
         }
+    }
+
+    /// Builds the pre-sender associated to `ephemeral_key` and `asset`.
+    #[inline]
+    fn build_pre_sender(&self, ephemeral_key: PublicKey<C>, asset: Asset) -> PreSender<C> {
+        /* TODO:
+        self.spending_key
+            .sender(ephemeral_key, asset, &self.commitment_scheme)
         */
         todo!()
     }
@@ -455,12 +473,14 @@ where
             return Err(Error::InsufficientBalance(asset));
         }
         self.pending_assets.remove = selection.keys().cloned().collect();
-        let pre_senders = selection
-            .values
-            .into_iter()
-            .map(move |(k, v)| self.get_pre_sender(k, asset.id.with(v)))
-            .collect::<Result<_, _>>()?;
-        Ok(Selection::new(selection.change, pre_senders))
+        Ok(Selection::new(
+            selection.change,
+            selection
+                .values
+                .into_iter()
+                .map(move |(k, v)| self.build_pre_sender(k, asset.id.with(v)))
+                .collect(),
+        ))
         */
         todo!()
     }
@@ -692,12 +712,10 @@ where
         match transaction {
             Transaction::Mint(asset) => {
                 /* TODO:
-                let (mint, owner) = self
-                    .signer
-                    .mint(&self.commitment_scheme, asset, &mut self.rng)?
-                    .into();
-                let mint_post = self.build_post(mint)?;
-                self.pending_assets.insert = Some((owner, asset));
+                let mint_post =
+                    self.build_post(Mint::build(asset, self.spending_key.receiver(asset)))?;
+                self.pending_assets.insert =
+                    Some((mint_post.receiver_posts[0].ephemeral_key().clone(), asset));
                 Ok(SignResponse::new(vec![mint_post]))
                 */
                 todo!()
@@ -712,23 +730,15 @@ where
     /// Commits to the state after the last call to [`sign`](Self::sign).
     #[inline]
     pub fn commit(&mut self) {
-        /* TODO:
-        self.signer.account.internal_range_shift_to_end();
         self.utxo_set.commit();
         self.pending_assets.commit(&mut self.assets);
-        */
-        todo!()
     }
 
     /// Rolls back to the state before the last call to [`sign`](Self::sign).
     #[inline]
     pub fn rollback(&mut self) {
-        /* TODO:
-        self.signer.account.internal_range_shift_to_start();
         self.utxo_set.rollback();
         self.pending_assets.rollback();
-        */
-        todo!()
     }
 
     /// Commits or rolls back the state depending on the value of `sync_state`.
@@ -743,12 +753,7 @@ where
     /// Generates a new [`ReceivingKey`] for `self` to receive assets.
     #[inline]
     pub fn receiver(&mut self) -> ReceiverResult<C::HierarchicalKeyTable, C, Self> {
-        /* TODO:
-        self.signer
-            .next_shielded(&self.commitment_scheme)
-            .map_err(Error::SecretKeyError)
-        */
-        todo!()
+        Ok(self.spending_key.derive())
     }
 }
 
