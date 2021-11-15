@@ -31,13 +31,13 @@
 
 use crate::{
     asset::{Asset, AssetId, AssetMap, AssetValue},
-    identity::{self, PreSender, PublicKey, SecretKey, Utxo},
     key::HierarchicalKeyTable,
     transfer::{
         self,
         canonical::{Mint, PrivateTransfer, PrivateTransferShape, Reclaim, Transaction},
-        EncryptedNote, FullReceiver, ProofSystemError, ProvingContext, Receiver, ReceivingKey,
-        Sender, Shape, SpendingKey, Transfer, TransferPost,
+        EncryptedNote, FullReceiver, PreSender, ProofSystemError, ProvingContext, PublicKey,
+        Receiver, ReceivingKey, SecretKey, Sender, Shape, SpendingKey, Transfer, TransferPost,
+        Utxo,
     },
 };
 use alloc::{vec, vec::Vec};

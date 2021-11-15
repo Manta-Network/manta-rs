@@ -29,7 +29,7 @@ extern crate cocoon as cocoon_crate;
 
 pub mod asset;
 pub mod fs;
-pub mod identity;
+// TODO[remove]: pub mod identity;
 pub mod key;
 pub mod transfer;
-pub mod wallet;
+// pub mod wallet;

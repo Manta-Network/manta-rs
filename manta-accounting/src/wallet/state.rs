@@ -18,11 +18,10 @@
 
 use crate::{
     asset::{Asset, AssetId, AssetValue},
-    identity::SecretKey,
     key::HierarchicalKeyTable,
     transfer::{
         canonical::{Transaction, TransactionKind},
-        Configuration, ReceivingKey,
+        Configuration, ReceivingKey, SecretKey,
     },
     wallet::{
         ledger::{self, Checkpoint, PullResponse, PushResponse},

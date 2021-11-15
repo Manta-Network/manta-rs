@@ -33,10 +33,10 @@
 ///     about the value of the [`SharedSecret`](Self::SharedSecret).
 pub trait KeyAgreementScheme {
     /// Secret Key Type
-    type SecretKey: Clone;
+    type SecretKey;
 
     /// Public Key Type
-    type PublicKey: Clone;
+    type PublicKey;
 
     /// Shared Secret Type
     type SharedSecret;

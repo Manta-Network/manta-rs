@@ -19,10 +19,7 @@
 // TODO: Move to asynchronous streaming model so we can process some of the data as it is incoming.
 // TODO: Add non-atomic transactions. See similar comment in `crate::wallet::signer`.
 
-use crate::{
-    identity::{Utxo, VoidNumber},
-    transfer::{Configuration, EncryptedNote, TransferPost},
-};
+use crate::transfer::{Configuration, EncryptedNote, TransferPost, Utxo, VoidNumber};
 use alloc::vec::Vec;
 use core::future::Future;
 
