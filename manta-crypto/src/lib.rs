@@ -25,11 +25,8 @@ extern crate alloc;
 
 pub mod accumulator;
 pub mod commitment;
+pub mod constraint;
 pub mod encryption;
 pub mod key;
 pub mod merkle_tree;
 pub mod rand;
-
-#[cfg(feature = "constraint")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "constraint")))]
-pub mod constraint;

@@ -291,8 +291,6 @@ where
 }
 
 /// Constraint System Gadgets for Accumulators
-#[cfg(feature = "constraint")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "constraint")))]
 pub mod constraint {
     use super::*;
     use crate::constraint::{Allocation, AllocationMode, Derived, Variable, VariableSource};

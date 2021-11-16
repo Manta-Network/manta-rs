@@ -25,9 +25,6 @@ is-it-maintained-open-issues = { repository = "Manta-Network/manta-rs" }
 maintenance = { status = "actively-developed" }
 
 [features]
-# Constraint System Gadgets
-constraint = []
-
 # Enable `getrandom` Entropy Source
 getrandom = ["rand_core/getrandom"]
 

@@ -35,9 +35,8 @@ use crate::{
     transfer::{
         self,
         canonical::{Mint, PrivateTransfer, PrivateTransferShape, Reclaim, Transaction},
-        EncryptedNote, FullReceiver, PreSender, ProofSystemError, ProvingContext, PublicKey,
-        Receiver, ReceivingKey, SecretKey, Sender, Shape, SpendingKey, Transfer, TransferPost,
-        Utxo,
+        EncryptedNote, PreSender, ProofSystemError, ProvingContext, PublicKey, Receiver,
+        ReceivingKey, SecretKey, Sender, Shape, SpendingKey, Transfer, TransferPost, Utxo,
     },
 };
 use alloc::{vec, vec::Vec};
@@ -454,13 +453,17 @@ where
     /// Builds the pre-sender associated to `ephemeral_key` and `asset`.
     #[inline]
     fn build_pre_sender(&self, ephemeral_key: PublicKey<C>, asset: Asset) -> PreSender<C> {
+        /* TODO:
         self.spending_key
             .sender(ephemeral_key, asset, &self.commitment_scheme)
+        */
+        todo!()
     }
 
     /// Selects the pre-senders which collectively own at least `asset`, returning any change.
     #[inline]
     fn select(&mut self, asset: Asset) -> Result<Selection<C>, Error<C::HierarchicalKeyTable, C>> {
+        /* TODO:
         let selection = self.assets.select(asset);
         if selection.is_empty() {
             return Err(Error::InsufficientBalance(asset));
@@ -474,6 +477,8 @@ where
                 .map(move |(k, v)| self.build_pre_sender(k, asset.id.with(v)))
                 .collect(),
         ))
+        */
+        todo!()
     }
 
     /// Builds a [`TransferPost`] for the given `transfer`.
@@ -485,17 +490,20 @@ where
         const SINKS: usize,
     >(
         &mut self,
-        transfer: impl Into<Transfer<C, SOURCES, SENDERS, RECEIVERS, SINKS>>,
+        transfer: Transfer<C, SOURCES, SENDERS, RECEIVERS, SINKS>,
     ) -> Result<TransferPost<C>, Error<C::HierarchicalKeyTable, C>> {
+        /* TODO:
         transfer
-            .into()
             .into_post(
                 &self.commitment_scheme,
                 self.utxo_set.verifier(),
+                ledger_checkpoint,
                 &self.proving_context,
                 &mut self.rng,
             )
             .map_err(Error::ProofSystemError)
+        */
+        todo!()
     }
 
     /* TODO:
@@ -702,11 +710,14 @@ where
         self.commit();
         match transaction {
             Transaction::Mint(asset) => {
+                /* TODO:
                 let mint_post =
                     self.build_post(Mint::build(asset, self.spending_key.receiver(asset)))?;
                 self.pending_assets.insert =
                     Some((mint_post.receiver_ephemeral_keys()[0].clone(), asset));
                 Ok(SignResponse::new(vec![mint_post]))
+                */
+                todo!()
             }
             Transaction::PrivateTransfer(asset, receiver) => {
                 self.sign_withdraw(asset, Some(receiver))

@@ -18,37 +18,79 @@
 
 use crate::asset::{Asset, AssetId, AssetValue};
 use alloc::vec::Vec;
-use core::{marker::PhantomData, ops::Add};
+use core::ops::Add;
 use manta_crypto::{
     accumulator::{Accumulator, MembershipProof, Verifier},
     commitment::{CommitmentScheme, Input as CommitmentInput},
     constraint::{
-        reflection::{HasEqual, HasVariable, Var},
-        Allocation, Constant, ConstraintSystem, Derived, Equal, ProofSystem, Public,
-        PublicOrSecret, Secret, Variable, VariableSource,
+        Allocation, Constant, ConstraintSystem, Derived, Equal, Input as ProofSystemInput,
+        ProofSystem, Public, PublicOrSecret, Secret, Variable, VariableSource,
     },
-    encryption::{self, DecryptedMessage, EncryptedMessage, HybridPublicKeyEncryptionScheme},
+    encryption::{DecryptedMessage, EncryptedMessage, HybridPublicKeyEncryptionScheme},
     key::KeyAgreementScheme,
-    rand::{CryptoRng, Rand, RngCore},
+    rand::{CryptoRng, Rand, RngCore, Sample},
 };
-use manta_util::create_seal;
+use manta_util::{create_seal, from_variant_impl};
 
-/// Returns `true` if the transfer with this shape would have no public participants.
+/// Returns `true` if the transfer with this shape would have public participants.
 #[inline]
-pub const fn has_no_public_participants(
+pub const fn has_public_participants(
     sources: usize,
     senders: usize,
     receivers: usize,
     sinks: usize,
 ) -> bool {
     let _ = (senders, receivers);
-    sources == 0 && sinks == 0
+    sources > 0 || sinks > 0
+}
+
+/// Generates a UTXO, commiting `asset` with the given `trapdoor`.
+#[inline]
+fn generate_utxo<C, I, V>(
+    commitment_scheme: &C,
+    asset: &Asset<I, V>,
+    trapdoor: &C::Trapdoor,
+) -> C::Output
+where
+    C: CommitmentScheme + CommitmentInput<I> + CommitmentInput<V>,
+{
+    commitment_scheme
+        .start()
+        .update(&asset.id)
+        .update(&asset.value)
+        .commit(trapdoor)
+}
+
+/// Generates an ephemeral secret key, commiting to the `spend` key at the given `index` with the
+/// current `ledger_checkpoint`.
+#[inline]
+fn generate_ephemeral_secret_key<C, L, B, PK, SK>(
+    commitment_scheme: &C,
+    ledger_checkpoint: &L,
+    index: &B,
+    spend: &PK,
+    ephemeral_key_trapdoor: &C::Trapdoor,
+) -> SK
+where
+    C: CommitmentScheme + CommitmentInput<L> + CommitmentInput<B> + CommitmentInput<PK>,
+    C::Output: Into<SK>,
+{
+    commitment_scheme
+        .start()
+        .update(ledger_checkpoint)
+        .update(index)
+        .update(spend)
+        .commit(ephemeral_key_trapdoor)
+        .into()
 }
 
 /// Transfer Configuration
 pub trait Configuration {
+    /// Shared Secret
+    type SharedSecret: Sample;
+
     /// Key Agreement Scheme
-    type KeyAgreementScheme: KeyAgreementScheme;
+    type KeyAgreementScheme: KeyAgreementScheme<SharedSecret = Self::SharedSecret>;
 
     /// Secret Key Variable
     type SecretKeyVar: Variable<Self::ConstraintSystem, Type = SecretKey<Self>, Mode = Secret>;
@@ -56,36 +98,77 @@ pub trait Configuration {
     /// Public Key Variable
     type PublicKeyVar: Variable<Self::ConstraintSystem, Type = PublicKey<Self>, Mode = Secret>;
 
+    /// Shared Secret Key Variable
+    type SharedSecretVar: Variable<Self::ConstraintSystem, Type = Self::SharedSecret, Mode = Secret>;
+
     /// Key Agreement Scheme Variable
-    type KeyAgreementSchemeVar: KeyAgreementScheme<SecretKey = Self::SecretKeyVar, PublicKey = Self::PublicKeyVar>
-        + Variable<Self::ConstraintSystem, Type = Self::KeyAgreementScheme, Mode = Constant>;
+    type KeyAgreementSchemeVar: KeyAgreementScheme<
+            SecretKey = Self::SecretKeyVar,
+            PublicKey = Self::PublicKeyVar,
+            SharedSecret = Self::SharedSecretVar,
+        > + Variable<Self::ConstraintSystem, Type = Self::KeyAgreementScheme, Mode = Constant>;
 
     /// Commitment Scheme Output
-    type CommitmentSchemeOutput: PartialEq;
+    type CommitmentSchemeOutput: PartialEq + Into<SecretKey<Self>>;
 
     /// Commitment Scheme Output Variable
-    type CommitmentSchemeOutputVar: Variable<Self::ConstraintSystem, Type = Self::CommitmentSchemeOutput, Mode = PublicOrSecret>
+    type CommitmentSchemeOutputVar: Into<Self::SecretKeyVar>
+        + Variable<Self::ConstraintSystem, Type = Self::CommitmentSchemeOutput, Mode = PublicOrSecret>
         + Equal<Self::ConstraintSystem>;
 
     /// Commitment Scheme
-    type CommitmentScheme: CommitmentScheme<Trapdoor = SharedSecret<Self>, Output = Self::CommitmentSchemeOutput>
-        + CommitmentInput<Asset>
-        + CommitmentInput<SecretKey<Self>>;
+    type CommitmentScheme: CommitmentScheme<Trapdoor = Self::SharedSecret, Output = Self::CommitmentSchemeOutput>
+        + CommitmentInput<AssetId>
+        + CommitmentInput<AssetValue>
+        + CommitmentInput<SecretKey<Self>>
+        + CommitmentInput<PublicKey<Self>>
+        + CommitmentInput<Self::LedgerCheckpoint>
+        + CommitmentInput<u8>;
 
     /// Commitment Scheme Variable
-    type CommitmentSchemeVar: CommitmentScheme<Trapdoor = SharedSecretVar<Self>, Output = Self::CommitmentSchemeOutputVar>
-        + CommitmentInput<AssetVar<Self>>
+    type CommitmentSchemeVar: CommitmentScheme<Trapdoor = Self::SharedSecretVar, Output = Self::CommitmentSchemeOutputVar>
+        + CommitmentInput<Self::AssetIdVar>
+        + CommitmentInput<Self::AssetValueVar>
         + CommitmentInput<Self::SecretKeyVar>
+        + CommitmentInput<Self::PublicKeyVar>
+        + CommitmentInput<Self::LedgerCheckpointVar>
+        + CommitmentInput<Self::ByteVar>
         + Variable<Self::ConstraintSystem, Type = Self::CommitmentScheme, Mode = Constant>;
 
     /// UTXO Set Verifier
     type UtxoSetVerifier: Verifier<Item = Utxo<Self>, Verification = bool>;
 
+    /// UTXO Set Witness Variable
+    type UtxoSetWitnessVar: Variable<
+        Self::ConstraintSystem,
+        Type = <Self::UtxoSetVerifier as Verifier>::Witness,
+        Mode = Secret,
+    >;
+
+    /// UTXO Set Output Variable
+    type UtxoSetOutputVar: Variable<
+        Self::ConstraintSystem,
+        Type = <Self::UtxoSetVerifier as Verifier>::Output,
+        Mode = Public,
+    >;
+
     /// UTXO Set Verifier Variable
     type UtxoSetVerifierVar: Verifier<
             Item = UtxoVar<Self>,
+            Witness = Self::UtxoSetWitnessVar,
+            Output = Self::UtxoSetOutputVar,
             Verification = <Self::ConstraintSystem as ConstraintSystem>::Bool,
         > + Variable<Self::ConstraintSystem, Type = Self::UtxoSetVerifier, Mode = Constant>;
+
+    /// Ledger Checkpoint Type
+    type LedgerCheckpoint;
+
+    /// Ledger Checkpoint Variable
+    type LedgerCheckpointVar: Variable<
+        Self::ConstraintSystem,
+        Type = Self::LedgerCheckpoint,
+        Mode = Public,
+    >;
 
     /// Asset Id Variable
     type AssetIdVar: Variable<Self::ConstraintSystem, Type = AssetId, Mode = PublicOrSecret>
@@ -96,11 +179,19 @@ pub trait Configuration {
         + Equal<Self::ConstraintSystem>
         + Add<Output = Self::AssetValueVar>;
 
+    /// Byte Variable
+    type ByteVar: Variable<Self::ConstraintSystem, Type = u8, Mode = Public>;
+
     /// Constraint System Type
     type ConstraintSystem: ConstraintSystem;
 
     /// Proof System Type
-    type ProofSystem: ProofSystem<ConstraintSystem = Self::ConstraintSystem, Verification = bool>;
+    type ProofSystem: ProofSystem<ConstraintSystem = Self::ConstraintSystem, Verification = bool>
+        + ProofSystemInput<AssetId>
+        + ProofSystemInput<AssetValue>
+        + ProofSystemInput<UtxoSetOutput<Self>>
+        + ProofSystemInput<CommitmentSchemeOutput<Self>>
+        + ProofSystemInput<Self::LedgerCheckpoint>;
 
     /// Note Encryption Scheme Type
     type NoteEncryptionScheme: HybridPublicKeyEncryptionScheme<
@@ -109,64 +200,52 @@ pub trait Configuration {
     >;
 }
 
-///
+/// Asset Variable Type
 pub type AssetVar<C> = Asset<<C as Configuration>::AssetIdVar, <C as Configuration>::AssetValueVar>;
 
-///
+/// Secret Key Type
 pub type SecretKey<C> = <<C as Configuration>::KeyAgreementScheme as KeyAgreementScheme>::SecretKey;
 
-///
+/// Public Key Type
 pub type PublicKey<C> = <<C as Configuration>::KeyAgreementScheme as KeyAgreementScheme>::PublicKey;
 
-///
-pub type SharedSecret<C> =
-    <<C as Configuration>::KeyAgreementScheme as KeyAgreementScheme>::SharedSecret;
-
-///
-pub type SharedSecretVar<C> =
-    <<C as Configuration>::KeyAgreementSchemeVar as KeyAgreementScheme>::SharedSecret;
-
-///
+/// Trapdoor Type
 pub type Trapdoor<C> = <<C as Configuration>::CommitmentScheme as CommitmentScheme>::Trapdoor;
 
-///
+/// Trapdoor Variable Type
 pub type TrapdoorVar<C> = <<C as Configuration>::CommitmentSchemeVar as CommitmentScheme>::Trapdoor;
 
-///
+/// Commitment Scheme Output Type
 pub type CommitmentSchemeOutput<C> = <C as Configuration>::CommitmentSchemeOutput;
 
-///
+/// Commitment Scheme Output Variable Type
 pub type CommitmentSchemeOutputVar<C> = <C as Configuration>::CommitmentSchemeOutputVar;
 
-///
+/// Unspend Transaction Output Type
 pub type Utxo<C> = CommitmentSchemeOutput<C>;
 
-///
+/// Unspent Transaction Output Variable Type
 pub type UtxoVar<C> = CommitmentSchemeOutputVar<C>;
 
-///
-pub type UtxoAccumulatorOutput<C> = <<C as Configuration>::UtxoSetVerifier as Verifier>::Output;
+/// UTXO Set Output Type
+pub type UtxoSetOutput<C> = <<C as Configuration>::UtxoSetVerifier as Verifier>::Output;
 
-///
-pub type UtxoAccumulatorOutputVar<C> =
-    <<C as Configuration>::UtxoSetVerifierVar as Verifier>::Output;
-
-///
+/// UTXO Membership Proof Type
 pub type UtxoMembershipProof<C> = MembershipProof<<C as Configuration>::UtxoSetVerifier>;
 
-///
+/// UTXO Membership Proof Variable Type
 pub type UtxoMembershipProofVar<C> = MembershipProof<<C as Configuration>::UtxoSetVerifierVar>;
 
-///
+/// Void Number Type
 pub type VoidNumber<C> = CommitmentSchemeOutput<C>;
 
-///
+/// Void Number Variable Type
 pub type VoidNumberVar<C> = CommitmentSchemeOutputVar<C>;
 
-///
+/// Encrypted Note Type
 pub type EncryptedNote<C> = EncryptedMessage<<C as Configuration>::NoteEncryptionScheme>;
 
-///
+/// Decrypted Note Type
 pub type Note<C> = DecryptedMessage<<C as Configuration>::NoteEncryptionScheme>;
 
 /// Transfer Proof System Type
@@ -180,6 +259,9 @@ pub type ProvingContext<C> = <ProofSystemType<C> as ProofSystem>::ProvingContext
 
 /// Transfer Verifying Context Type
 pub type VerifyingContext<C> = <ProofSystemType<C> as ProofSystem>::VerifyingContext;
+
+/// Transfer Proof System Input Type
+pub type ProofInput<C> = <<C as Configuration>::ProofSystem as ProofSystem>::Input;
 
 /// Transfer Validity Proof Type
 pub type Proof<C> = <ProofSystemType<C> as ProofSystem>::Proof;
@@ -230,7 +312,8 @@ where
         utxo: &Utxo<C>,
         commitment_scheme: &C::CommitmentScheme,
     ) -> bool {
-        &commitment_scheme.commit_one(
+        &generate_utxo(
+            commitment_scheme,
             asset,
             &C::KeyAgreementScheme::agree(&self.spend, ephemeral_key),
         ) == utxo
@@ -315,7 +398,7 @@ where
     ) -> Self {
         let trapdoor = C::KeyAgreementScheme::agree(&spend, &ephemeral_key);
         Self {
-            utxo: commitment_scheme.commit_one(&asset, &trapdoor),
+            utxo: generate_utxo(commitment_scheme, &asset, &trapdoor),
             void_number: commitment_scheme.commit_one(&spend, &trapdoor),
             spend,
             ephemeral_key,
@@ -455,27 +538,53 @@ where
         }
     }
 
-    /* TODO:
+    /// Extracts the ledger posting data from `self`.
+    #[inline]
+    pub fn into_post(self) -> SenderPost<C> {
+        SenderPost {
+            utxo_set_output: self.utxo_membership_proof.into_output(),
+            void_number: self.void_number,
+        }
+    }
+}
+
+/// Sender Variable
+pub struct SenderVar<C>
+where
+    C: Configuration,
+{
+    /// Secret Spend Key
+    spend: C::SecretKeyVar,
+
+    /// Ephemeral Public Spend Key
+    ephemeral_key: C::PublicKeyVar,
+
+    /// Asset
+    asset: AssetVar<C>,
+
+    /// UTXO Membership Proof
+    utxo_membership_proof: UtxoMembershipProofVar<C>,
+
+    /// Void Number
+    void_number: VoidNumberVar<C>,
+}
+
+impl<C> SenderVar<C>
+where
+    C: Configuration,
+{
     /// Returns the asset for `self`, checking if `self` is well-formed in the given constraint
     /// system `cs`.
     #[inline]
-    pub fn get_well_formed_asset<CS>(
+    pub fn get_well_formed_asset(
         self,
-        commitment_scheme: &C::CommitmentScheme,
-        utxo_set_verifier: &V,
-        cs: &mut CS,
-    ) -> C::Asset
-    where
-        CS: ConstraintSystem,
-        Commitment<C>: Equal<CS>,
-        V: Verifier<Verification = CS::Bool>,
-    {
-        let trapdoor = C::into_trapdoor(C::KeyAgreementScheme::agree(
-            &self.spend,
-            &self.ephemeral_key,
-        ));
+        commitment_scheme: &C::CommitmentSchemeVar,
+        utxo_set_verifier: &C::UtxoSetVerifierVar,
+        cs: &mut C::ConstraintSystem,
+    ) -> AssetVar<C> {
+        let trapdoor = C::KeyAgreementSchemeVar::agree(&self.spend, &self.ephemeral_key);
         cs.assert(self.utxo_membership_proof.verify(
-            &commitment_scheme.commit_one(&self.asset, &trapdoor),
+            &generate_utxo(commitment_scheme, &self.asset, &trapdoor),
             utxo_set_verifier,
         ));
         cs.assert_eq(
@@ -484,14 +593,33 @@ where
         );
         self.asset
     }
-    */
+}
 
-    /// Extracts the ledger posting data from `self`.
+impl<C> Variable<C::ConstraintSystem> for SenderVar<C>
+where
+    C: Configuration,
+{
+    type Type = Sender<C>;
+
+    type Mode = Derived;
+
     #[inline]
-    pub fn into_post(self) -> SenderPost<C> {
-        SenderPost {
-            utxo_accumulator_output: self.utxo_membership_proof.into_output(),
-            void_number: self.void_number,
+    fn new(cs: &mut C::ConstraintSystem, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
+        match allocation {
+            Allocation::Known(this, mode) => Self {
+                spend: this.spend.as_known(cs, mode),
+                ephemeral_key: this.ephemeral_key.as_known(cs, mode),
+                asset: this.asset.as_known(cs, mode),
+                utxo_membership_proof: this.utxo_membership_proof.as_known(cs, mode),
+                void_number: this.void_number.as_known(cs, Public),
+            },
+            Allocation::Unknown(mode) => Self {
+                spend: C::SecretKeyVar::new_unknown(cs, mode),
+                ephemeral_key: C::PublicKeyVar::new_unknown(cs, mode),
+                asset: AssetVar::<C>::new_unknown(cs, mode),
+                utxo_membership_proof: UtxoMembershipProofVar::<C>::new_unknown(cs, mode),
+                void_number: VoidNumberVar::<C>::new_unknown(cs, Public),
+            },
         }
     }
 }
@@ -508,20 +636,20 @@ where
     /// This type must be some wrapper around [`VoidNumber`] which can only be constructed by this
     /// implementation of [`SenderLedger`]. This is to prevent that [`spend`](Self::spend) is
     /// called before [`is_unspent`](Self::is_unspent) and
-    /// [`has_matching_utxo_accumulator_output`](Self::has_matching_utxo_accumulator_output).
+    /// [`has_matching_utxo_set_output`](Self::has_matching_utxo_set_output).
     type ValidVoidNumber;
 
-    /// Valid UTXO Accumulator Output Posting Key
+    /// Valid UTXO Set Output Posting Key
     ///
     /// # Safety
     ///
     /// This type must be some wrapper around [`S::Output`] which can only be constructed by this
     /// implementation of [`SenderLedger`]. This is to prevent that [`spend`](Self::spend) is
     /// called before [`is_unspent`](Self::is_unspent) and
-    /// [`has_matching_utxo_accumulator_output`](Self::has_matching_utxo_accumulator_output).
+    /// [`has_matching_utxo_set_output`](Self::has_matching_utxo_set_output).
     ///
     /// [`S::Output`]: Verifier::Output
-    type ValidUtxoAccumulatorOutput;
+    type ValidUtxoSetOutput;
 
     /// Super Posting Key
     ///
@@ -538,10 +666,10 @@ where
     ///
     /// Failure to match the ledger state means that the sender was constructed under an invalid or
     /// older state of the ledger.
-    fn has_matching_utxo_accumulator_output(
+    fn has_matching_utxo_set_output(
         &self,
-        output: UtxoAccumulatorOutput<C>,
-    ) -> Option<Self::ValidUtxoAccumulatorOutput>;
+        output: UtxoSetOutput<C>,
+    ) -> Option<Self::ValidUtxoSetOutput>;
 
     /// Posts the `void_number` to the ledger, spending the asset.
     ///
@@ -551,7 +679,7 @@ where
     /// the ledger. See [`is_unspent`](Self::is_unspent).
     fn spend(
         &mut self,
-        utxo_accumulator_output: Self::ValidUtxoAccumulatorOutput,
+        utxo_set_output: Self::ValidUtxoSetOutput,
         void_number: Self::ValidVoidNumber,
         super_key: &Self::SuperPostingKey,
     );
@@ -565,10 +693,10 @@ pub enum SenderPostError {
     /// The asset has already been spent.
     AssetSpent,
 
-    /// Invalid UTXO Accumulator Error
+    /// Invalid UTXO Set Output Error
     ///
     /// The sender was not constructed under the current state of the UTXO set.
-    InvalidUtxoAccumulator,
+    InvalidUtxoSetOutput,
 }
 
 /// Sender Post
@@ -576,8 +704,8 @@ pub struct SenderPost<C>
 where
     C: Configuration,
 {
-    /// UTXO Accumulator Output
-    utxo_accumulator_output: UtxoAccumulatorOutput<C>,
+    /// UTXO Set Output
+    utxo_set_output: UtxoSetOutput<C>,
 
     /// Void Number
     void_number: VoidNumber<C>,
@@ -587,6 +715,15 @@ impl<C> SenderPost<C>
 where
     C: Configuration,
 {
+    /// Extends proof public input with `self`.
+    #[inline]
+    pub fn extend_input(&self, input: &mut ProofInput<C>) {
+        // TODO: Add a "public part" trait that extracts the public part of `Sender` (using
+        //       `SenderVar` to determine the types), then generate this method automatically.
+        C::ProofSystem::extend(input, &self.utxo_set_output);
+        C::ProofSystem::extend(input, &self.void_number);
+    }
+
     /// Validates `self` on the sender `ledger`.
     #[inline]
     pub fn validate<L>(self, ledger: &L) -> Result<SenderPostingKey<C, L>, SenderPostError>
@@ -594,9 +731,9 @@ where
         L: SenderLedger<C>,
     {
         Ok(SenderPostingKey {
-            utxo_accumulator_output: ledger
-                .has_matching_utxo_accumulator_output(self.utxo_accumulator_output)
-                .ok_or(SenderPostError::InvalidUtxoAccumulator)?,
+            utxo_set_output: ledger
+                .has_matching_utxo_set_output(self.utxo_set_output)
+                .ok_or(SenderPostError::InvalidUtxoSetOutput)?,
             void_number: ledger
                 .is_unspent(self.void_number)
                 .ok_or(SenderPostError::AssetSpent)?,
@@ -608,10 +745,10 @@ where
 pub struct SenderPostingKey<C, L>
 where
     C: Configuration,
-    L: SenderLedger<C>,
+    L: SenderLedger<C> + ?Sized,
 {
-    /// UTXO Accumulator Output Posting Key
-    utxo_accumulator_output: L::ValidUtxoAccumulatorOutput,
+    /// UTXO Set Output Posting Key
+    utxo_set_output: L::ValidUtxoSetOutput,
 
     /// Void Number Posting Key
     void_number: L::ValidVoidNumber,
@@ -620,12 +757,12 @@ where
 impl<C, L> SenderPostingKey<C, L>
 where
     C: Configuration,
-    L: SenderLedger<C>,
+    L: SenderLedger<C> + ?Sized,
 {
     /// Posts `self` to the sender `ledger`.
     #[inline]
     pub fn post(self, super_key: &L::SuperPostingKey, ledger: &mut L) {
-        ledger.spend(self.utxo_accumulator_output, self.void_number, super_key);
+        ledger.spend(self.utxo_set_output, self.void_number, super_key);
     }
 }
 
@@ -706,7 +843,8 @@ where
         commitment_scheme: &C::CommitmentScheme,
     ) -> Self {
         Self {
-            utxo: commitment_scheme.commit_one(
+            utxo: generate_utxo(
+                commitment_scheme,
                 &asset,
                 &C::KeyAgreementScheme::agree(&ephemeral_key, &spend),
             ),
@@ -716,32 +854,6 @@ where
             asset,
         }
     }
-
-    /* TODO:
-    /// Returns the asset for `self`, checking if `self` is well-formed in the given constraint
-    /// system `cs`.
-    #[inline]
-    pub fn get_well_formed_asset<CS>(
-        self,
-        commitment_scheme: &C::CommitmentScheme,
-        cs: &mut CS,
-    ) -> C::Asset
-    where
-        CS: ConstraintSystem,
-        Utxo<C>: Equal<CS>,
-    {
-        cs.assert_eq(
-            &self.utxo,
-            &Self::generate_utxo(
-                &self.spending_key,
-                &self.ephemeral_key,
-                &self.asset,
-                commitment_scheme,
-            ),
-        );
-        self.asset
-    }
-    */
 
     /// Converts `self` into its [`PreReceiver`], dropping the ephemeral key.
     #[inline]
@@ -755,6 +867,80 @@ where
         ReceiverPost {
             utxo: self.utxo,
             note: EncryptedMessage::new(&self.view, self.ephemeral_key, self.asset),
+        }
+    }
+}
+
+/// Receiver Variable
+pub struct ReceiverVar<C>
+where
+    C: Configuration,
+{
+    /// Public Spend Key
+    spend: C::PublicKeyVar,
+
+    /// Asset
+    asset: AssetVar<C>,
+
+    /// Unspent Transaction Output
+    utxo: UtxoVar<C>,
+}
+
+impl<C> ReceiverVar<C>
+where
+    C: Configuration,
+{
+    /// Returns the asset for `self`, checking if `self` is well-formed in the given constraint
+    /// system `cs`.
+    #[inline]
+    pub fn get_well_formed_asset(
+        self,
+        index: C::ByteVar,
+        ledger_checkpoint: &C::LedgerCheckpointVar,
+        ephemeral_key_trapdoor: &TrapdoorVar<C>,
+        commitment_scheme: &C::CommitmentSchemeVar,
+        cs: &mut C::ConstraintSystem,
+    ) -> AssetVar<C> {
+        let ephemeral_key = generate_ephemeral_secret_key(
+            commitment_scheme,
+            ledger_checkpoint,
+            &index,
+            &self.spend,
+            ephemeral_key_trapdoor,
+        );
+        cs.assert_eq(
+            &self.utxo,
+            &generate_utxo(
+                commitment_scheme,
+                &self.asset,
+                &C::KeyAgreementSchemeVar::agree(&ephemeral_key, &self.spend),
+            ),
+        );
+        self.asset
+    }
+}
+
+impl<C> Variable<C::ConstraintSystem> for ReceiverVar<C>
+where
+    C: Configuration,
+{
+    type Type = Receiver<C>;
+
+    type Mode = Derived;
+
+    #[inline]
+    fn new(cs: &mut C::ConstraintSystem, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
+        match allocation {
+            Allocation::Known(this, mode) => Self {
+                spend: this.spend.as_known(cs, mode),
+                asset: this.asset.as_known(cs, mode),
+                utxo: this.utxo.as_known(cs, Public),
+            },
+            Allocation::Unknown(mode) => Self {
+                spend: C::PublicKeyVar::new_unknown(cs, mode),
+                asset: AssetVar::<C>::new_unknown(cs, mode),
+                utxo: UtxoVar::<C>::new_unknown(cs, Public),
+            },
         }
     }
 }
@@ -828,6 +1014,14 @@ where
         self.note.ephemeral_public_key()
     }
 
+    /// Extends proof public input with `self`.
+    #[inline]
+    pub fn extend_input(&self, input: &mut ProofInput<C>) {
+        // TODO: Add a "public part" trait that extracts the public part of `Receiver` (using
+        //       `ReceiverVar` to determine the types), then generate this method automatically.
+        C::ProofSystem::extend(input, &self.utxo);
+    }
+
     /// Validates `self` on the receiver `ledger`.
     #[inline]
     pub fn validate<L>(self, ledger: &L) -> Result<ReceiverPostingKey<C, L>, ReceiverPostError>
@@ -847,7 +1041,7 @@ where
 pub struct ReceiverPostingKey<C, L>
 where
     C: Configuration,
-    L: ReceiverLedger<C>,
+    L: ReceiverLedger<C> + ?Sized,
 {
     /// UTXO Posting Key
     utxo: L::ValidUtxo,
@@ -859,7 +1053,7 @@ where
 impl<C, L> ReceiverPostingKey<C, L>
 where
     C: Configuration,
-    L: ReceiverLedger<C>,
+    L: ReceiverLedger<C> + ?Sized,
 {
     /// Posts `self` to the receiver `ledger`.
     #[inline]
@@ -885,7 +1079,7 @@ pub struct Transfer<
     sources: [AssetValue; SOURCES],
 
     /// Senders
-    senders: [PreSender<C>; SENDERS],
+    senders: [Sender<C>; SENDERS],
 
     /// Receivers
     receivers: [PreReceiver<C>; RECEIVERS],
@@ -904,7 +1098,7 @@ where
     fn new(
         asset_id: Option<AssetId>,
         sources: [AssetValue; SOURCES],
-        senders: [PreSender<C>; SENDERS],
+        senders: [Sender<C>; SENDERS],
         receivers: [PreReceiver<C>; RECEIVERS],
         sinks: [AssetValue; SINKS],
     ) -> Self {
@@ -943,7 +1137,7 @@ where
     /// Checks that the given `asset_id` for [`Transfer`] building is visible exactly when required.
     #[inline]
     fn has_visible_asset_id_when_required(has_visible_asset_id: bool) {
-        if SOURCES > 0 || SINKS > 0 {
+        if has_public_participants(SOURCES, SENDERS, RECEIVERS, SINKS) {
             assert!(
                 has_visible_asset_id,
                 "Missing public asset id when required."
@@ -962,7 +1156,7 @@ where
     fn new_unchecked(
         asset_id: Option<AssetId>,
         sources: [AssetValue; SOURCES],
-        senders: [PreSender<C>; SENDERS],
+        senders: [Sender<C>; SENDERS],
         receivers: [PreReceiver<C>; RECEIVERS],
         sinks: [AssetValue; SINKS],
     ) -> Self {
@@ -975,22 +1169,6 @@ where
         }
     }
 
-    /// Generates the constraint system for an unknown transfer.
-    #[inline]
-    fn unknown_constraints(
-        commitment_scheme: &C::CommitmentScheme,
-        utxo_set_verifier: &C::UtxoSetVerifier,
-    ) -> C::ConstraintSystem {
-        let mut cs = C::ProofSystem::for_unknown();
-        TransferVar::<C, SOURCES, SENDERS, RECEIVERS, SINKS>::new_unknown(&mut cs, Derived)
-            .build_validity_constraints(
-                &commitment_scheme.as_known(&mut cs, Public),
-                &utxo_set_verifier.as_known(&mut cs, Public),
-                &mut cs,
-            );
-        cs
-    }
-
     /// Generates a proving and verifying context for this transfer shape.
     #[inline]
     pub fn generate_context<R>(
@@ -1001,74 +1179,57 @@ where
     where
         R: CryptoRng + RngCore + ?Sized,
     {
-        Self::unknown_constraints(commitment_scheme, utxo_set_verifier)
-            .generate_context::<C::ProofSystem, _>(rng)
+        let mut cs = C::ProofSystem::for_unknown();
+        FullTransferVar::<C, SOURCES, SENDERS, RECEIVERS, SINKS>::new_unknown(&mut cs, Derived)
+            .build_validity_constraints(
+                &commitment_scheme.as_known(&mut cs, Public),
+                &utxo_set_verifier.as_known(&mut cs, Public),
+                &mut cs,
+            );
+        cs.generate_context::<C::ProofSystem, _>(rng)
     }
 
     /// Converts `self` into its ledger post.
     #[inline]
-    pub fn into_post<S, R>(
+    pub fn into_post<R>(
         self,
         commitment_scheme: &C::CommitmentScheme,
-        utxo_set: &S,
-        ledger_accumulator_output: UtxoAccumulatorOutput<C>,
+        utxo_set_verifier: &C::UtxoSetVerifier,
+        ledger_checkpoint: C::LedgerCheckpoint,
         context: &ProvingContext<C>,
         rng: &mut R,
     ) -> Result<TransferPost<C>, ProofSystemError<C>>
     where
-        S: Accumulator<Item = Utxo<C>, Verifier = C::UtxoSetVerifier>,
         R: CryptoRng + RngCore + ?Sized,
     {
-        /* TODO:
-        if !utxo_set.matching_output(&ledger_accumulator_output) {
-            todo!("ERROR")
-        }
-
-        let senders = IntoIterator::into_iter(self.senders)
-            .map(move |s| s.try_upgrade(utxo_set))
-            .collect::<Option<Vec<_>>>()
-            .expect("TODO: deal with error.");
-
-        let fair_trapdoor = rng.gen();
-        let mut fair = commitment_scheme.start().update(&ledger_accumulator_output);
-        for s in &senders {
-            fair.update(&s.spend);
-        }
-        fair = fair.commit(&fair_trapdoor);
-
-        let receivers = IntoIterator::into_iter(self.receivers)
-            .enumerate()
-            .map(move |(i, r)| {
-                let ephemeral_key = commitment_scheme
-                    .start()
-                    .update(&(i as u8))
-                    .update(&r.spend)
-                    .commit(fair);
-                r.upgrade(ephemeral_key, commitment_scheme)
-            })
-            .collect::<Vec<_>>();
-        */
-
-        /* TODO:
-        Ok(TransferPost {
-            validity_proof: self.is_valid(commitment_scheme, utxo_set_verifier, context, rng)?,
+        let ephemeral_key_trapdoor = rng.gen();
+        FullTransfer::<_, SOURCES, SENDERS, RECEIVERS, SINKS> {
             asset_id: self.asset_id,
-            sources: self.sources.into(),
-            sender_posts: IntoIterator::into_iter(self.senders)
-                .map(Sender::into_post)
-                .collect(),
-            receiver_posts: IntoIterator::into_iter(self.receivers)
-                .map(FullReceiver::into_post)
-                .collect(),
-            sinks: self.sinks.into(),
-        })
-        */
-        todo!()
+            sources: self.sources,
+            senders: self.senders,
+            receivers: IntoIterator::into_iter(self.receivers)
+                .enumerate()
+                .map(|(i, r)| {
+                    let ephemeral_key = generate_ephemeral_secret_key(
+                        commitment_scheme,
+                        &ledger_checkpoint,
+                        &(i as u8),
+                        &r.spend,
+                        &ephemeral_key_trapdoor,
+                    );
+                    r.upgrade(ephemeral_key, commitment_scheme)
+                })
+                .collect::<Vec<_>>(),
+            sinks: self.sinks,
+            ephemeral_key_trapdoor,
+            ledger_checkpoint,
+        }
+        .into_post(commitment_scheme, utxo_set_verifier, context, rng)
     }
 }
 
-/// Transfer Variable
-pub struct TransferVar<
+/// Full Transfer
+struct FullTransfer<
     C,
     const SOURCES: usize,
     const SENDERS: usize,
@@ -1077,37 +1238,111 @@ pub struct TransferVar<
 > where
     C: Configuration,
 {
-    ///
-    asset_id: Option<C::AssetIdVar>,
+    /// Asset Id
+    asset_id: Option<AssetId>,
 
-    ///
-    sources: [C::AssetValueVar; SOURCES],
+    /// Sources
+    sources: [AssetValue; SOURCES],
 
-    ///
-    // TODO: senders: [SenderVar<C>; SENDERS],
+    /// Senders
+    senders: [Sender<C>; SENDERS],
 
-    ///
-    // TODO: receivers: [ReceiverVar<C>; RECEIVERS],
+    /// Receivers
+    receivers: Vec<Receiver<C>>,
 
-    ///
-    sinks: [C::AssetValueVar; SINKS],
+    /// Sinks
+    sinks: [AssetValue; SINKS],
 
-    ///
-    ledger_accumulator_output: UtxoAccumulatorOutputVar<C>,
+    /// Ephemeral Key Trapdoor
+    ephemeral_key_trapdoor: Trapdoor<C>,
 
-    ///
-    fair_trapdoor: TrapdoorVar<C>,
-
-    ///
-    fair: CommitmentSchemeOutputVar<C>,
+    /// Ledger Checkpoint
+    ledger_checkpoint: C::LedgerCheckpoint,
 }
 
 impl<C, const SOURCES: usize, const SENDERS: usize, const RECEIVERS: usize, const SINKS: usize>
-    TransferVar<C, SOURCES, SENDERS, RECEIVERS, SINKS>
+    FullTransfer<C, SOURCES, SENDERS, RECEIVERS, SINKS>
 where
     C: Configuration,
 {
-    ///
+    /// Computes the [`TransferPost`] for `self`.
+    #[inline]
+    fn into_post<R>(
+        self,
+        commitment_scheme: &C::CommitmentScheme,
+        utxo_set_verifier: &C::UtxoSetVerifier,
+        context: &ProvingContext<C>,
+        rng: &mut R,
+    ) -> Result<TransferPost<C>, ProofSystemError<C>>
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        Ok(TransferPost {
+            validity_proof: {
+                let mut cs = C::ProofSystem::for_known();
+                let transfer: FullTransferVar<C, SOURCES, SENDERS, RECEIVERS, SINKS> =
+                    self.as_known(&mut cs, Derived);
+                transfer.build_validity_constraints(
+                    &commitment_scheme.as_known(&mut cs, Public),
+                    &utxo_set_verifier.as_known(&mut cs, Public),
+                    &mut cs,
+                );
+                cs.prove::<C::ProofSystem, _>(context, rng)?
+            },
+            asset_id: self.asset_id,
+            sources: self.sources.into(),
+            sender_posts: IntoIterator::into_iter(self.senders)
+                .map(Sender::into_post)
+                .collect(),
+            receiver_posts: self
+                .receivers
+                .into_iter()
+                .map(Receiver::into_post)
+                .collect(),
+            sinks: self.sinks.into(),
+            ledger_checkpoint: self.ledger_checkpoint,
+        })
+    }
+}
+
+/// Full Transfer Variable
+struct FullTransferVar<
+    C,
+    const SOURCES: usize,
+    const SENDERS: usize,
+    const RECEIVERS: usize,
+    const SINKS: usize,
+> where
+    C: Configuration,
+{
+    /// Asset Id
+    asset_id: Option<C::AssetIdVar>,
+
+    /// Sources
+    sources: Vec<C::AssetValueVar>,
+
+    /// Senders
+    senders: Vec<SenderVar<C>>,
+
+    /// Receivers
+    receivers: Vec<(C::ByteVar, ReceiverVar<C>)>,
+
+    /// Sinks
+    sinks: Vec<C::AssetValueVar>,
+
+    /// Ephemeral Key Trapdoor
+    ephemeral_key_trapdoor: TrapdoorVar<C>,
+
+    /// Ledger Checkpoint
+    ledger_checkpoint: C::LedgerCheckpointVar,
+}
+
+impl<C, const SOURCES: usize, const SENDERS: usize, const RECEIVERS: usize, const SINKS: usize>
+    FullTransferVar<C, SOURCES, SENDERS, RECEIVERS, SINKS>
+where
+    C: Configuration,
+{
+    /// Builds constraints for the [`Transfer`] validity proof.
     #[inline]
     fn build_validity_constraints(
         self,
@@ -1117,12 +1352,11 @@ where
     ) {
         let mut secret_asset_ids = Vec::with_capacity(SENDERS + RECEIVERS);
 
-        /* TODO:
         let input_sum = self
             .senders
             .into_iter()
             .map(|s| {
-                let asset = s.get_well_formed_asset(&commitment_scheme, &utxo_set_verifier, cs);
+                let asset = s.get_well_formed_asset(commitment_scheme, utxo_set_verifier, cs);
                 secret_asset_ids.push(asset.id);
                 asset.value
             })
@@ -1130,11 +1364,20 @@ where
             .reduce(Add::add)
             .unwrap();
 
+        let ledger_checkpoint = &self.ledger_checkpoint;
+        let ephemeral_key_trapdoor = &self.ephemeral_key_trapdoor;
+
         let output_sum = self
             .receivers
             .into_iter()
-            .map(|r| {
-                let asset = r.get_well_formed_asset(&commitment_scheme, cs);
+            .map(|(index, r)| {
+                let asset = r.get_well_formed_asset(
+                    index,
+                    ledger_checkpoint,
+                    ephemeral_key_trapdoor,
+                    commitment_scheme,
+                    cs,
+                );
                 secret_asset_ids.push(asset.id);
                 asset.value
             })
@@ -1143,7 +1386,6 @@ where
             .unwrap();
 
         cs.assert_eq(&input_sum, &output_sum);
-        */
 
         match self.asset_id {
             Some(asset_id) => cs.assert_all_eq_to_base(&asset_id, secret_asset_ids.iter()),
@@ -1153,19 +1395,19 @@ where
 }
 
 impl<C, const SOURCES: usize, const SENDERS: usize, const RECEIVERS: usize, const SINKS: usize>
-    Variable<C::ConstraintSystem> for TransferVar<C, SOURCES, SENDERS, RECEIVERS, SINKS>
+    Variable<C::ConstraintSystem> for FullTransferVar<C, SOURCES, SENDERS, RECEIVERS, SINKS>
 where
     C: Configuration,
 {
-    type Type = Transfer<C, SOURCES, SENDERS, RECEIVERS, SINKS>;
+    type Type = FullTransfer<C, SOURCES, SENDERS, RECEIVERS, SINKS>;
 
     type Mode = Derived;
 
     #[inline]
     fn new(cs: &mut C::ConstraintSystem, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
-        /* TODO:
         match allocation {
             Allocation::Known(this, mode) => Self {
+                asset_id: this.asset_id.map(|id| id.as_known(cs, Public)),
                 sources: this
                     .sources
                     .iter()
@@ -1174,17 +1416,14 @@ where
                 senders: this
                     .senders
                     .iter()
-                    .map(|sender| {
-                        //
-                        todo!()
-                    })
+                    .map(|sender| sender.as_known(cs, mode))
                     .collect(),
                 receivers: this
                     .receivers
                     .iter()
-                    .map(|receiver| {
-                        //
-                        todo!()
+                    .enumerate()
+                    .map(|(i, receiver)| {
+                        ((i as u8).as_known(cs, mode), receiver.as_known(cs, mode))
                     })
                     .collect(),
                 sinks: this
@@ -1192,93 +1431,152 @@ where
                     .iter()
                     .map(|sink| sink.as_known(cs, Public))
                     .collect(),
+                ephemeral_key_trapdoor: this.ephemeral_key_trapdoor.as_known(cs, mode),
+                ledger_checkpoint: this.ledger_checkpoint.as_known(cs, mode),
             },
             Allocation::Unknown(mode) => Self {
+                asset_id: has_public_participants(SOURCES, SENDERS, RECEIVERS, SINKS)
+                    .then(|| C::AssetIdVar::new_unknown(cs, Public)),
                 sources: (0..SOURCES)
                     .into_iter()
-                    .map(|_| AssetValueVar::<C>::new_unknown(cs, Public))
+                    .map(|_| C::AssetValueVar::new_unknown(cs, Public))
                     .collect(),
                 senders: (0..SENDERS)
                     .into_iter()
-                    .map(|_| {
-                        //
-                        todo!()
-                    })
+                    .map(|_| SenderVar::<C>::new_unknown(cs, mode))
                     .collect(),
                 receivers: (0..RECEIVERS)
                     .into_iter()
                     .map(|_| {
-                        //
-                        todo!()
+                        (
+                            C::ByteVar::new_unknown(cs, mode),
+                            ReceiverVar::<C>::new_unknown(cs, mode),
+                        )
                     })
                     .collect(),
                 sinks: (0..SINKS)
                     .into_iter()
-                    .map(|_| AssetValueVar::<C>::new_unknown(cs, Public))
+                    .map(|_| C::AssetValueVar::new_unknown(cs, Public))
                     .collect(),
+                ephemeral_key_trapdoor: TrapdoorVar::<C>::new_unknown(cs, mode),
+                ledger_checkpoint: C::LedgerCheckpointVar::new_unknown(cs, mode),
             },
         }
-        */
-        todo!()
     }
 }
 
-/*
-impl<C, const SOURCES: usize, const SENDERS: usize, const RECEIVERS: usize, const SINKS: usize>
-    Transfer<C, SOURCES, SENDERS, RECEIVERS, SINKS>
+/// Transfer Ledger
+pub trait TransferLedger<C>: SenderLedger<C, SuperPostingKey = (Self::ValidProof, TransferLedgerSuperPostingKey<C, Self>)>
+    + ReceiverLedger<C, SuperPostingKey = (Self::ValidProof, TransferLedgerSuperPostingKey<C, Self>)>
 where
     C: Configuration,
 {
-    /// Generates the unknown variables for the transfer validity proof.
-    #[inline]
-    fn unknown_variables(
-        commitment_scheme: &C::CommitmentScheme,
-        utxo_set_verifier: &C::UtxoSetVerifier,
-        cs: &mut C::ConstraintSystem,
-    ) -> (
-        Option<C::AssetIdVar>,
-        // TransferParticipantsVar<C, SOURCES, SENDERS, RECEIVERS, SINKS>,
-        C::CommitmentSchemeVar,
-        C::UtxoSetVerifierVar,
-    ) {
-        let base_asset_id = if has_no_public_participants(SOURCES, SENDERS, RECEIVERS, SINKS) {
-            None
-        } else {
-            Some(C::AssetIdVar::new_unknown(cs, Public))
-        };
-        (
-            base_asset_id,
-            // TransferParticipantsVar::new_unknown(cs, Derived),
-            commitment_scheme.as_known(cs, Public),
-            utxo_set_verifier.as_known(cs, Public),
-        )
-    }
+    /// Valid [`AssetValue`] for [`TransferPost`] source
+    ///
+    /// # Safety
+    ///
+    /// This type must be restricted so that it can only be constructed by this implementation of
+    /// [`TransferLedger`].
+    type ValidSourceBalance;
 
-    /// Generates the known variables for the transfer validity proof.
-    #[inline]
-    fn known_variables(
+    /// Valid [`Proof`] Posting Key
+    ///
+    /// # Safety
+    ///
+    /// This type must be restricted so that it can only be constructed by this implementation
+    /// of [`TransferLedger`]. This is to prevent that [`SenderPostingKey::post`] and
+    /// [`ReceiverPostingKey::post`] are called before [`SenderPost::validate`],
+    /// [`ReceiverPost::validate`], [`check_source_balances`](Self::check_source_balances), and
+    /// [`is_valid`](Self::is_valid).
+    type ValidProof: Copy;
+
+    /// Super Posting Key
+    ///
+    /// Type that allows super-traits of [`TransferLedger`] to customize posting key behavior.
+    type SuperPostingKey: Copy;
+
+    /// Checks that the balances associated to the source accounts are sufficient to withdraw the
+    /// amount given in `sources`.
+    fn check_source_balances(
         &self,
-        commitment_scheme: &C::CommitmentScheme,
-        utxo_set_verifier: &C::UtxoSetVerifier,
-        cs: &mut C::ConstraintSystem,
-    ) -> (
-        Option<AssetIdVar<C>>,
-        TransferParticipantsVar<C, SOURCES, SENDERS, RECEIVERS, SINKS>,
-        CommitmentSchemeVar<C>,
-        UtxoSetVerifierVar<C>,
-    ) {
-        /* TODO:
-        (
-            self.public.asset_id.map(|id| id.as_known(cs, Public)),
-            TransferParticipantsVar::new_known(cs, self, Derived),
-            commitment_scheme.as_known(cs, Public),
-            utxo_set_verifier.as_known(cs, Public),
-        )
-        */
-        todo!()
-    }
+        sources: Vec<AssetValue>,
+    ) -> Result<Vec<Self::ValidSourceBalance>, InsufficientPublicBalance>;
+
+    /// Checks that the transfer `proof` is valid.
+    #[allow(clippy::too_many_arguments)] // FIXME: Write a better abstraction for this.
+    fn is_valid(
+        &self,
+        asset_id: Option<AssetId>,
+        sources: &[Self::ValidSourceBalance],
+        senders: &[SenderPostingKey<C, Self>],
+        receivers: &[ReceiverPostingKey<C, Self>],
+        sinks: &[AssetValue],
+        ledger_checkpoint: &C::LedgerCheckpoint,
+        proof: Proof<C>,
+    ) -> Option<Self::ValidProof>;
+
+    /// Updates the public balances in the ledger, finishing the transaction.
+    ///
+    /// # Safety
+    ///
+    /// This method can only be called once we check that `proof` is a valid proof and that
+    /// `senders` and `receivers` are valid participants in the transaction. See
+    /// [`is_valid`](Self::is_valid) for more.
+    fn update_public_balances(
+        &mut self,
+        asset_id: AssetId,
+        sources: Vec<Self::ValidSourceBalance>,
+        sinks: Vec<AssetValue>,
+        proof: Self::ValidProof,
+        super_key: &TransferLedgerSuperPostingKey<C, Self>,
+    );
 }
-*/
+
+/// Transfer Source Posting Key Type
+pub type SourcePostingKey<C, L> = <L as TransferLedger<C>>::ValidSourceBalance;
+
+/// Transfer Ledger Super Posting Key Type
+pub type TransferLedgerSuperPostingKey<C, L> = <L as TransferLedger<C>>::SuperPostingKey;
+
+/// Insufficient Public Balance Error
+///
+/// This `enum` is the error state of the [`TransferLedger::check_source_balances`] method. See its
+/// documentation for more.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct InsufficientPublicBalance {
+    /// Index of the Public Address
+    pub index: usize,
+
+    /// Current Balance
+    pub balance: AssetValue,
+
+    /// Amount Attempting to Withdraw
+    pub withdraw: AssetValue,
+}
+
+/// Transfer Post Error
+///
+/// This `enum` is the error state of the [`TransferPost::validate`] method. See its documentation
+/// for more.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum TransferPostError {
+    /// Insufficient Public Balance
+    InsufficientPublicBalance(InsufficientPublicBalance),
+
+    /// Sender Post Error
+    Sender(SenderPostError),
+
+    /// Receiver Post Error
+    Receiver(ReceiverPostError),
+
+    /// Invalid Transfer Proof Error
+    ///
+    /// Validity of the transfer could not be proved by the ledger.
+    InvalidProof,
+}
+
+from_variant_impl!(TransferPostError, Sender, SenderPostError);
+from_variant_impl!(TransferPostError, Receiver, ReceiverPostError);
 
 /// Transfer Post
 pub struct TransferPost<C>
@@ -1300,8 +1598,8 @@ where
     /// Sinks
     sinks: Vec<AssetValue>,
 
-    /// Ledger Accumulator Output
-    ledger_accumulator_output: UtxoAccumulatorOutput<C>,
+    /// Ledger Checkpoint
+    ledger_checkpoint: C::LedgerCheckpoint,
 
     /// Validity Proof
     validity_proof: Proof<C>,
@@ -1311,16 +1609,129 @@ impl<C> TransferPost<C>
 where
     C: Configuration,
 {
-    /* TODO:
-    /// Returns the ephemeral keys associated to the receiver posts of `self`.
+    /// Generates the public input for the [`Transfer`] validation proof.
     #[inline]
-    pub fn receiver_ephemeral_keys(&self) -> Vec<&PublicKey<C>> {
+    pub fn generate_proof_input(&self) -> ProofInput<C> {
+        // TODO: See comments in `crate::identity::constraint` about automatically deriving this
+        //       method from possibly `TransferParticipantsVar`?
+        let mut input = Default::default();
+        if let Some(asset_id) = self.asset_id {
+            C::ProofSystem::extend(&mut input, &asset_id);
+        }
+        self.sources
+            .iter()
+            .for_each(|source| C::ProofSystem::extend(&mut input, source));
+        self.sender_posts
+            .iter()
+            .for_each(|post| post.extend_input(&mut input));
         self.receiver_posts
             .iter()
-            .map(ReceiverPost::ephemeral_key)
-            .collect()
+            .for_each(|post| post.extend_input(&mut input));
+        self.sinks
+            .iter()
+            .for_each(|sink| C::ProofSystem::extend(&mut input, sink));
+        C::ProofSystem::extend(&mut input, &self.ledger_checkpoint);
+        input
     }
-    */
+
+    /// Validates `self` on the transfer `ledger`.
+    #[inline]
+    pub fn validate<L>(self, ledger: &L) -> Result<TransferPostingKey<C, L>, TransferPostError>
+    where
+        L: TransferLedger<C>,
+    {
+        let source_posting_keys = ledger
+            .check_source_balances(self.sources)
+            .map_err(TransferPostError::InsufficientPublicBalance)?;
+        // FIXME: The ledger needs to check that the senders are all unique!
+        let sender_posting_keys = self
+            .sender_posts
+            .into_iter()
+            .map(move |s| s.validate(ledger))
+            .collect::<Result<Vec<_>, _>>()?;
+        let receiver_posting_keys = self
+            .receiver_posts
+            .into_iter()
+            .map(move |r| r.validate(ledger))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(TransferPostingKey {
+            validity_proof: match ledger.is_valid(
+                self.asset_id,
+                &source_posting_keys,
+                &sender_posting_keys,
+                &receiver_posting_keys,
+                &self.sinks,
+                &self.ledger_checkpoint,
+                self.validity_proof,
+            ) {
+                Some(key) => key,
+                _ => return Err(TransferPostError::InvalidProof),
+            },
+            asset_id: self.asset_id,
+            source_posting_keys,
+            sender_posting_keys,
+            receiver_posting_keys,
+            sinks: self.sinks,
+        })
+    }
+}
+
+/// Transfer Posting Key
+pub struct TransferPostingKey<C, L>
+where
+    C: Configuration,
+    L: TransferLedger<C>,
+{
+    /// Asset Id
+    asset_id: Option<AssetId>,
+
+    /// Source Posting Keys
+    source_posting_keys: Vec<SourcePostingKey<C, L>>,
+
+    /// Sender Posting Keys
+    sender_posting_keys: Vec<SenderPostingKey<C, L>>,
+
+    /// Receiver Posting Keys
+    receiver_posting_keys: Vec<ReceiverPostingKey<C, L>>,
+
+    /// Sinks
+    sinks: Vec<AssetValue>,
+
+    /// Validity Proof Posting Key
+    validity_proof: L::ValidProof,
+}
+
+impl<C, L> TransferPostingKey<C, L>
+where
+    C: Configuration,
+    L: TransferLedger<C>,
+{
+    /// Posts `self` to the transfer `ledger`.
+    ///
+    /// # Safety
+    ///
+    /// This method assumes that posting `self` to `ledger` is atomic and cannot fail. See
+    /// [`SenderLedger::spend`] and [`ReceiverLedger::register`] for more information on the
+    /// contract for this method.
+    #[inline]
+    pub fn post(self, super_key: &TransferLedgerSuperPostingKey<C, L>, ledger: &mut L) {
+        let proof = self.validity_proof;
+        for key in self.sender_posting_keys {
+            key.post(&(proof, *super_key), ledger);
+        }
+        for key in self.receiver_posting_keys {
+            key.post(&(proof, *super_key), ledger);
+        }
+        if let Some(asset_id) = self.asset_id {
+            ledger.update_public_balances(
+                asset_id,
+                self.source_posting_keys,
+                self.sinks,
+                proof,
+                super_key,
+            );
+        }
+    }
 }
 
 create_seal! {}
@@ -1432,7 +1843,7 @@ pub mod canonical {
         /// Builds a [`PrivateTransfer`] from `senders` and `receivers`.
         #[inline]
         pub fn build(
-            senders: [PreSender<C>; PrivateTransferShape::SENDERS],
+            senders: [Sender<C>; PrivateTransferShape::SENDERS],
             receivers: [PreReceiver<C>; PrivateTransferShape::RECEIVERS],
         ) -> Self {
             Self::new(
@@ -1474,7 +1885,7 @@ pub mod canonical {
         /// Builds a [`Reclaim`] from `senders`, `receivers`, and `reclaim`.
         #[inline]
         pub fn build(
-            senders: [PreSender<C>; ReclaimShape::SENDERS],
+            senders: [Sender<C>; ReclaimShape::SENDERS],
             receivers: [PreReceiver<C>; ReclaimShape::RECEIVERS],
             reclaim: Asset,
         ) -> Self {
