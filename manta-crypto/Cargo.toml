@@ -1,6 +1,6 @@
 [package]
 name = "manta-crypto"
-edition = "2018"
+edition = "2021"
 version = "0.4.0"
 authors = ["Manta Network <contact@manta.network>"]
 readme = "README.md"

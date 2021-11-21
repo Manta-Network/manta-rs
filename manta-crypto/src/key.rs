@@ -16,6 +16,15 @@
 
 //! Cryptographic Key Primitives
 
+/// Key Derivation Function
+pub trait KeyDerivationFunction<S> {
+    ///
+    type Output;
+
+    /// Derives an output key from `secret` computed from a cryptographic agreement scheme.
+    fn derive(secret: S) -> Self::Output;
+}
+
 /// Key Agreement Scheme
 ///
 /// # Specification
@@ -78,8 +87,33 @@ pub trait KeyAgreementScheme {
     }
 }
 
-/// Key Derivation Function
-pub trait KeyDerivationFunction<A, B> {
-    /// Derives an output key from `secret` computed from a key-agreement scheme.
-    fn derive(secret: A) -> B;
+/// Key Agreement Scheme with an attached Key Derivation Function
+pub trait KeyAgreementWithDerivation: KeyAgreementScheme {
+    /// Output Key Type
+    type Output;
+
+    /// Key Derivation Function Type
+    type KeyDerivationFunction: KeyDerivationFunction<Self::SharedSecret, Output = Self::Output>;
+
+    /// Computes the shared secret given the known `secret_key` and the given `public_key` and then
+    /// uses the key derivation function to derive a final shared secret.
+    #[inline]
+    fn agree_derive(secret_key: &Self::SecretKey, public_key: &Self::PublicKey) -> Self::Output {
+        Self::KeyDerivationFunction::derive(Self::agree(secret_key, public_key))
+    }
+
+    /// Computes the shared secret given the known `secret_key` and the given `public_key` and then
+    /// uses the key derivation function to derive a final shared secret.
+    ///
+    /// # Implementation Note
+    ///
+    /// This method is an optimization path for [`agree_derive`](Self::agree_derive). See
+    /// [`KeyAgreementScheme::agree_owned`] for more on this optimization.
+    #[inline]
+    fn agree_derive_owned(
+        secret_key: Self::SecretKey,
+        public_key: Self::PublicKey,
+    ) -> Self::Output {
+        Self::KeyDerivationFunction::derive(Self::agree_owned(secret_key, public_key))
+    }
 }

@@ -62,12 +62,14 @@ where
 /// Blake2s KDF
 pub struct Blake2sKdf;
 
-impl<T> KeyDerivationFunction<T, [u8; 32]> for Blake2sKdf
+impl<T> KeyDerivationFunction<T> for Blake2sKdf
 where
     T: AsRef<[u8]>,
 {
+    type Output = [u8; 32];
+
     #[inline]
-    fn derive(secret: T) -> [u8; 32] {
+    fn derive(secret: T) -> Self::Output {
         let mut hasher = Blake2s::new();
         hasher.update(secret.as_ref());
         hasher.update(b"manta kdf instantiated with blake2s hash function");

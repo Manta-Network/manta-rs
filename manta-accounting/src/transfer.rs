@@ -27,7 +27,7 @@ use manta_crypto::{
         ProofSystem, Public, PublicOrSecret, Secret, Variable, VariableSource,
     },
     encryption::{DecryptedMessage, EncryptedMessage, HybridPublicKeyEncryptionScheme},
-    key::KeyAgreementScheme,
+    key::{KeyAgreementScheme, KeyDerivationFunction},
     rand::{CryptoRng, Rand, RngCore, Sample},
 };
 use manta_util::{create_seal, from_variant_impl};
@@ -42,6 +42,16 @@ pub const fn has_public_participants(
 ) -> bool {
     let _ = (senders, receivers);
     sources > 0 || sinks > 0
+}
+
+/// Generates a commitment trapdoor from a key agreement with `secret_key` and `public_key`.
+#[inline]
+fn generate_trapdoor<KA, F>(secret_key: &KA::SecretKey, public_key: &KA::PublicKey) -> F::Output
+where
+    KA: KeyAgreementScheme,
+    F: KeyDerivationFunction<KA::SharedSecret>,
+{
+    F::derive(KA::agree(secret_key, public_key))
 }
 
 /// Generates a UTXO, commiting `asset` with the given `trapdoor`.
@@ -61,19 +71,31 @@ where
         .commit(trapdoor)
 }
 
+/// Generates a void number, commiting `secret_key` with the given `trapdoor`.
+#[inline]
+fn generate_void_number<C, SK>(
+    commitment_scheme: &C,
+    secret_key: &SK,
+    trapdoor: &C::Trapdoor,
+) -> C::Output
+where
+    C: CommitmentScheme + CommitmentInput<SK>,
+{
+    commitment_scheme.commit_one(secret_key, trapdoor)
+}
+
 /// Generates an ephemeral secret key, commiting to the `spend` key at the given `index` with the
 /// current `ledger_checkpoint`.
 #[inline]
-fn generate_ephemeral_secret_key<C, L, B, PK, SK>(
+fn generate_ephemeral_secret_key<C, L, B, PK>(
     commitment_scheme: &C,
     ledger_checkpoint: &L,
     index: &B,
     spend: &PK,
     ephemeral_key_trapdoor: &C::Trapdoor,
-) -> SK
+) -> C::Output
 where
     C: CommitmentScheme + CommitmentInput<L> + CommitmentInput<B> + CommitmentInput<PK>,
-    C::Output: Into<SK>,
 {
     commitment_scheme
         .start()
@@ -81,16 +103,12 @@ where
         .update(index)
         .update(spend)
         .commit(ephemeral_key_trapdoor)
-        .into()
 }
 
 /// Transfer Configuration
 pub trait Configuration {
-    /// Shared Secret
-    type SharedSecret: Sample;
-
     /// Key Agreement Scheme
-    type KeyAgreementScheme: KeyAgreementScheme<SharedSecret = Self::SharedSecret>;
+    type KeyAgreementScheme: KeyAgreementScheme;
 
     /// Secret Key Variable
     type SecretKeyVar: Variable<Self::ConstraintSystem, Type = SecretKey<Self>, Mode = Secret>;
@@ -98,41 +116,63 @@ pub trait Configuration {
     /// Public Key Variable
     type PublicKeyVar: Variable<Self::ConstraintSystem, Type = PublicKey<Self>, Mode = Secret>;
 
-    /// Shared Secret Key Variable
-    type SharedSecretVar: Variable<Self::ConstraintSystem, Type = Self::SharedSecret, Mode = Secret>;
-
     /// Key Agreement Scheme Variable
-    type KeyAgreementSchemeVar: KeyAgreementScheme<
-            SecretKey = Self::SecretKeyVar,
-            PublicKey = Self::PublicKeyVar,
-            SharedSecret = Self::SharedSecretVar,
-        > + Variable<Self::ConstraintSystem, Type = Self::KeyAgreementScheme, Mode = Constant>;
+    type KeyAgreementSchemeVar: KeyAgreementScheme<SecretKey = Self::SecretKeyVar, PublicKey = Self::PublicKeyVar>
+        + Variable<Self::ConstraintSystem, Type = Self::KeyAgreementScheme, Mode = Constant>;
+
+    /// Trapdoor Derivation Function
+    type TrapdoorDerivationFunction: KeyDerivationFunction<
+        SharedSecret<Self>,
+        Output = Trapdoor<Self>,
+    >;
+
+    /// Trapdoor Derivation Function Variable
+    type TrapdoorDerivationFunctionVar: KeyDerivationFunction<
+        SharedSecretVar<Self>,
+        Output = TrapdoorVar<Self>,
+    >;
+
+    /// Ephemeral-Key Trapdoor
+    type EphemeralKeyTrapdoor: Sample;
+
+    /// Ephemeral-Key Trapdoor Variable
+    type EphemeralKeyTrapdoorVar: Variable<
+        Self::ConstraintSystem,
+        Type = Self::EphemeralKeyTrapdoor,
+        Mode = Secret,
+    >;
+
+    /// Ephemeral-Key Commitment Scheme
+    type EphemeralKeyCommitmentScheme: CommitmentScheme<Trapdoor = Self::EphemeralKeyTrapdoor, Output = SecretKey<Self>>
+        + CommitmentInput<Self::LedgerCheckpoint>
+        + CommitmentInput<u8>
+        + CommitmentInput<PublicKey<Self>>;
+
+    /// Ephemeral-Key Commitment Scheme Variable
+    type EphemeralKeyCommitmentSchemeVar: CommitmentScheme<Trapdoor = Self::EphemeralKeyTrapdoorVar, Output = Self::SecretKeyVar>
+        + CommitmentInput<Self::LedgerCheckpointVar>
+        + CommitmentInput<Self::ByteVar>
+        + CommitmentInput<Self::PublicKeyVar>
+        + Variable<Self::ConstraintSystem, Type = Self::EphemeralKeyCommitmentScheme, Mode = Constant>;
 
     /// Commitment Scheme Output
-    type CommitmentSchemeOutput: PartialEq + Into<SecretKey<Self>>;
+    type CommitmentSchemeOutput: PartialEq;
 
     /// Commitment Scheme Output Variable
-    type CommitmentSchemeOutputVar: Into<Self::SecretKeyVar>
-        + Variable<Self::ConstraintSystem, Type = Self::CommitmentSchemeOutput, Mode = PublicOrSecret>
+    type CommitmentSchemeOutputVar: Variable<Self::ConstraintSystem, Type = Self::CommitmentSchemeOutput, Mode = PublicOrSecret>
         + Equal<Self::ConstraintSystem>;
 
     /// Commitment Scheme
-    type CommitmentScheme: CommitmentScheme<Trapdoor = Self::SharedSecret, Output = Self::CommitmentSchemeOutput>
+    type CommitmentScheme: CommitmentScheme<Output = Self::CommitmentSchemeOutput>
         + CommitmentInput<AssetId>
         + CommitmentInput<AssetValue>
-        + CommitmentInput<SecretKey<Self>>
-        + CommitmentInput<PublicKey<Self>>
-        + CommitmentInput<Self::LedgerCheckpoint>
-        + CommitmentInput<u8>;
+        + CommitmentInput<SecretKey<Self>>;
 
     /// Commitment Scheme Variable
-    type CommitmentSchemeVar: CommitmentScheme<Trapdoor = Self::SharedSecretVar, Output = Self::CommitmentSchemeOutputVar>
+    type CommitmentSchemeVar: CommitmentScheme<Output = Self::CommitmentSchemeOutputVar>
         + CommitmentInput<Self::AssetIdVar>
         + CommitmentInput<Self::AssetValueVar>
         + CommitmentInput<Self::SecretKeyVar>
-        + CommitmentInput<Self::PublicKeyVar>
-        + CommitmentInput<Self::LedgerCheckpointVar>
-        + CommitmentInput<Self::ByteVar>
         + Variable<Self::ConstraintSystem, Type = Self::CommitmentScheme, Mode = Constant>;
 
     /// UTXO Set Verifier
@@ -209,6 +249,14 @@ pub type SecretKey<C> = <<C as Configuration>::KeyAgreementScheme as KeyAgreemen
 /// Public Key Type
 pub type PublicKey<C> = <<C as Configuration>::KeyAgreementScheme as KeyAgreementScheme>::PublicKey;
 
+/// Shared Secret Type
+pub type SharedSecret<C> =
+    <<C as Configuration>::KeyAgreementScheme as KeyAgreementScheme>::SharedSecret;
+
+/// Shared Secret Variable Type
+pub type SharedSecretVar<C> =
+    <<C as Configuration>::KeyAgreementSchemeVar as KeyAgreementScheme>::SharedSecret;
+
 /// Trapdoor Type
 pub type Trapdoor<C> = <<C as Configuration>::CommitmentScheme as CommitmentScheme>::Trapdoor;
 
@@ -266,6 +314,22 @@ pub type ProofInput<C> = <<C as Configuration>::ProofSystem as ProofSystem>::Inp
 /// Transfer Validity Proof Type
 pub type Proof<C> = <ProofSystemType<C> as ProofSystem>::Proof;
 
+/* TODO:
+pub struct Parameters<C>
+where
+    C: Configuration,
+{
+    ///
+    ephemeral_key_commitment_scheme: C::EphemeralKeyCommitmentScheme,
+
+    ///
+    certificate_commitment_scheme: C::CertificateCommitmentScheme,
+
+    ///
+    utxo_set_verifier: C::UtxoSetVerifier,
+}
+*/
+
 /// Spending Key
 pub struct SpendingKey<C>
 where
@@ -315,7 +379,10 @@ where
         &generate_utxo(
             commitment_scheme,
             asset,
-            &C::KeyAgreementScheme::agree(&self.spend, ephemeral_key),
+            &generate_trapdoor::<C::KeyAgreementScheme, C::TrapdoorDerivationFunction>(
+                &self.spend,
+                ephemeral_key,
+            ),
         ) == utxo
     }
 
@@ -396,10 +463,13 @@ where
         asset: Asset,
         commitment_scheme: &C::CommitmentScheme,
     ) -> Self {
-        let trapdoor = C::KeyAgreementScheme::agree(&spend, &ephemeral_key);
+        let trapdoor = generate_trapdoor::<C::KeyAgreementScheme, C::TrapdoorDerivationFunction>(
+            &spend,
+            &ephemeral_key,
+        );
         Self {
             utxo: generate_utxo(commitment_scheme, &asset, &trapdoor),
-            void_number: commitment_scheme.commit_one(&spend, &trapdoor),
+            void_number: generate_void_number(commitment_scheme, &spend, &trapdoor),
             spend,
             ephemeral_key,
             asset,
@@ -582,14 +652,17 @@ where
         utxo_set_verifier: &C::UtxoSetVerifierVar,
         cs: &mut C::ConstraintSystem,
     ) -> AssetVar<C> {
-        let trapdoor = C::KeyAgreementSchemeVar::agree(&self.spend, &self.ephemeral_key);
+        let trapdoor = generate_trapdoor::<
+            C::KeyAgreementSchemeVar,
+            C::TrapdoorDerivationFunctionVar,
+        >(&self.spend, &self.ephemeral_key);
         cs.assert(self.utxo_membership_proof.verify(
             &generate_utxo(commitment_scheme, &self.asset, &trapdoor),
             utxo_set_verifier,
         ));
         cs.assert_eq(
             &self.void_number,
-            &commitment_scheme.commit_one(&self.spend, &trapdoor),
+            &generate_void_number(commitment_scheme, &self.spend, &trapdoor),
         );
         self.asset
     }
@@ -846,7 +919,10 @@ where
             utxo: generate_utxo(
                 commitment_scheme,
                 &asset,
-                &C::KeyAgreementScheme::agree(&ephemeral_key, &spend),
+                &generate_trapdoor::<C::KeyAgreementScheme, C::TrapdoorDerivationFunction>(
+                    &ephemeral_key,
+                    &spend,
+                ),
             ),
             spend,
             view,
@@ -897,12 +973,13 @@ where
         self,
         index: C::ByteVar,
         ledger_checkpoint: &C::LedgerCheckpointVar,
-        ephemeral_key_trapdoor: &TrapdoorVar<C>,
+        ephemeral_key_trapdoor: &C::EphemeralKeyTrapdoorVar,
+        ephemeral_key_commitment_scheme: &C::EphemeralKeyCommitmentSchemeVar,
         commitment_scheme: &C::CommitmentSchemeVar,
         cs: &mut C::ConstraintSystem,
     ) -> AssetVar<C> {
         let ephemeral_key = generate_ephemeral_secret_key(
-            commitment_scheme,
+            ephemeral_key_commitment_scheme,
             ledger_checkpoint,
             &index,
             &self.spend,
@@ -913,7 +990,10 @@ where
             &generate_utxo(
                 commitment_scheme,
                 &self.asset,
-                &C::KeyAgreementSchemeVar::agree(&ephemeral_key, &self.spend),
+                &generate_trapdoor::<C::KeyAgreementSchemeVar, C::TrapdoorDerivationFunctionVar>(
+                    &ephemeral_key,
+                    &self.spend,
+                ),
             ),
         );
         self.asset
@@ -1172,6 +1252,7 @@ where
     /// Generates a proving and verifying context for this transfer shape.
     #[inline]
     pub fn generate_context<R>(
+        ephemeral_key_commitment_scheme: &C::EphemeralKeyCommitmentScheme,
         commitment_scheme: &C::CommitmentScheme,
         utxo_set_verifier: &C::UtxoSetVerifier,
         rng: &mut R,
@@ -1182,6 +1263,7 @@ where
         let mut cs = C::ProofSystem::for_unknown();
         FullTransferVar::<C, SOURCES, SENDERS, RECEIVERS, SINKS>::new_unknown(&mut cs, Derived)
             .build_validity_constraints(
+                &ephemeral_key_commitment_scheme.as_known(&mut cs, Public),
                 &commitment_scheme.as_known(&mut cs, Public),
                 &utxo_set_verifier.as_known(&mut cs, Public),
                 &mut cs,
@@ -1193,6 +1275,7 @@ where
     #[inline]
     pub fn into_post<R>(
         self,
+        ephemeral_key_commitment_scheme: &C::EphemeralKeyCommitmentScheme,
         commitment_scheme: &C::CommitmentScheme,
         utxo_set_verifier: &C::UtxoSetVerifier,
         ledger_checkpoint: C::LedgerCheckpoint,
@@ -1211,7 +1294,7 @@ where
                 .enumerate()
                 .map(|(i, r)| {
                     let ephemeral_key = generate_ephemeral_secret_key(
-                        commitment_scheme,
+                        ephemeral_key_commitment_scheme,
                         &ledger_checkpoint,
                         &(i as u8),
                         &r.spend,
@@ -1224,7 +1307,13 @@ where
             ephemeral_key_trapdoor,
             ledger_checkpoint,
         }
-        .into_post(commitment_scheme, utxo_set_verifier, context, rng)
+        .into_post(
+            ephemeral_key_commitment_scheme,
+            commitment_scheme,
+            utxo_set_verifier,
+            context,
+            rng,
+        )
     }
 }
 
@@ -1254,7 +1343,7 @@ struct FullTransfer<
     sinks: [AssetValue; SINKS],
 
     /// Ephemeral Key Trapdoor
-    ephemeral_key_trapdoor: Trapdoor<C>,
+    ephemeral_key_trapdoor: C::EphemeralKeyTrapdoor,
 
     /// Ledger Checkpoint
     ledger_checkpoint: C::LedgerCheckpoint,
@@ -1269,6 +1358,7 @@ where
     #[inline]
     fn into_post<R>(
         self,
+        ephemeral_key_commitment_scheme: &C::EphemeralKeyCommitmentScheme,
         commitment_scheme: &C::CommitmentScheme,
         utxo_set_verifier: &C::UtxoSetVerifier,
         context: &ProvingContext<C>,
@@ -1283,6 +1373,7 @@ where
                 let transfer: FullTransferVar<C, SOURCES, SENDERS, RECEIVERS, SINKS> =
                     self.as_known(&mut cs, Derived);
                 transfer.build_validity_constraints(
+                    &ephemeral_key_commitment_scheme.as_known(&mut cs, Public),
                     &commitment_scheme.as_known(&mut cs, Public),
                     &utxo_set_verifier.as_known(&mut cs, Public),
                     &mut cs,
@@ -1331,7 +1422,7 @@ struct FullTransferVar<
     sinks: Vec<C::AssetValueVar>,
 
     /// Ephemeral Key Trapdoor
-    ephemeral_key_trapdoor: TrapdoorVar<C>,
+    ephemeral_key_trapdoor: C::EphemeralKeyTrapdoorVar,
 
     /// Ledger Checkpoint
     ledger_checkpoint: C::LedgerCheckpointVar,
@@ -1346,6 +1437,7 @@ where
     #[inline]
     fn build_validity_constraints(
         self,
+        ephemeral_key_commitment_scheme: &C::EphemeralKeyCommitmentSchemeVar,
         commitment_scheme: &C::CommitmentSchemeVar,
         utxo_set_verifier: &C::UtxoSetVerifierVar,
         cs: &mut C::ConstraintSystem,
@@ -1375,6 +1467,7 @@ where
                     index,
                     ledger_checkpoint,
                     ephemeral_key_trapdoor,
+                    ephemeral_key_commitment_scheme,
                     commitment_scheme,
                     cs,
                 );
@@ -1458,7 +1551,7 @@ where
                     .into_iter()
                     .map(|_| C::AssetValueVar::new_unknown(cs, Public))
                     .collect(),
-                ephemeral_key_trapdoor: TrapdoorVar::<C>::new_unknown(cs, mode),
+                ephemeral_key_trapdoor: C::EphemeralKeyTrapdoorVar::new_unknown(cs, mode),
                 ledger_checkpoint: C::LedgerCheckpointVar::new_unknown(cs, mode),
             },
         }

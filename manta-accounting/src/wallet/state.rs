@@ -82,7 +82,10 @@ fn withdraw_unchecked(balance: Option<&mut AssetValue>, withdraw: AssetValue) {
         .expect("Overdrawn balance state.");
 }
 
-impl BalanceState for Vec<Asset> {
+/// Vector [`BalanceState`] Implementation
+pub type VecBalanceState = Vec<Asset>;
+
+impl BalanceState for VecBalanceState {
     #[inline]
     fn balance(&self, id: AssetId) -> AssetValue {
         self.iter()

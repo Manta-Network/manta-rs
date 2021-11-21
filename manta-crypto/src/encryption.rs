@@ -57,7 +57,7 @@ pub trait HybridPublicKeyEncryptionScheme: SymmetricKeyEncryptionScheme {
     /// Key Derivation Function Type
     type KeyDerivationFunction: KeyDerivationFunction<
         <Self::KeyAgreementScheme as KeyAgreementScheme>::SharedSecret,
-        Self::Key,
+        Output = Self::Key,
     >;
 }
 
@@ -76,7 +76,7 @@ pub struct Hybrid<K, S, F>
 where
     K: KeyAgreementScheme,
     S: SymmetricKeyEncryptionScheme,
-    F: KeyDerivationFunction<K::SharedSecret, S::Key>,
+    F: KeyDerivationFunction<K::SharedSecret, Output = S::Key>,
 {
     /// Type Parameter Marker
     __: PhantomData<(K, S, F)>,
@@ -86,7 +86,7 @@ impl<K, S, F> SymmetricKeyEncryptionScheme for Hybrid<K, S, F>
 where
     K: KeyAgreementScheme,
     S: SymmetricKeyEncryptionScheme,
-    F: KeyDerivationFunction<K::SharedSecret, S::Key>,
+    F: KeyDerivationFunction<K::SharedSecret, Output = S::Key>,
 {
     type Key = S::Key;
 
@@ -109,7 +109,7 @@ impl<K, S, F> HybridPublicKeyEncryptionScheme for Hybrid<K, S, F>
 where
     K: KeyAgreementScheme,
     S: SymmetricKeyEncryptionScheme,
-    F: KeyDerivationFunction<K::SharedSecret, S::Key>,
+    F: KeyDerivationFunction<K::SharedSecret, Output = S::Key>,
 {
     type KeyAgreementScheme = K;
     type KeyDerivationFunction = F;
