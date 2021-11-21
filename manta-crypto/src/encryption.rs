@@ -59,6 +59,18 @@ pub trait HybridPublicKeyEncryptionScheme: SymmetricKeyEncryptionScheme {
         <Self::KeyAgreementScheme as KeyAgreementScheme>::SharedSecret,
         Output = Self::Key,
     >;
+
+    /// Computes the shared secret given the known `secret_key` and the given `public_key` and then
+    /// uses the key derivation function to derive a final shared secret.
+    ///
+    /// # Implementation Note
+    ///
+    /// This method is an optimization path for calling [`KeyAgreementScheme::agree`] and then
+    /// [`KeyDerivationFunction::derive`].
+    #[inline]
+    fn agree_derive(secret_key: &SecretKey<Self>, public_key: &PublicKey<Self>) -> Self::Key {
+        Self::KeyDerivationFunction::derive(Self::KeyAgreementScheme::agree(secret_key, public_key))
+    }
 }
 
 /// Secret Key Type
@@ -70,6 +82,15 @@ pub type PublicKey<H> =
     <<H as HybridPublicKeyEncryptionScheme>::KeyAgreementScheme as KeyAgreementScheme>::PublicKey;
 
 /// Hybrid Public Key Encryption Scheme
+///
+/// # Optimization Note
+///
+/// Since [`Hybrid`] takes the three parts of the [`HybridPublicKeyEncryptionScheme`] implementation
+/// as type parameters, the [`agree_derive`] optimization cannot be implemented. To implement a
+/// custom optimization, the entire [`HybridPublicKeyEncryptionScheme`] trait will need to be
+/// implemented.
+///
+/// [`agree_derive`]: HybridPublicKeyEncryptionScheme::agree_derive
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Debug, Default, Eq, Hash, PartialEq, PartialOrd)]
 pub struct Hybrid<K, S, F>
@@ -141,10 +162,7 @@ where
     ) -> Self {
         Self {
             ciphertext: H::encrypt(
-                H::KeyDerivationFunction::derive(H::KeyAgreementScheme::agree(
-                    &ephemeral_secret_key,
-                    public_key,
-                )),
+                H::agree_derive(&ephemeral_secret_key, public_key),
                 plaintext,
             ),
             ephemeral_public_key: H::KeyAgreementScheme::derive_owned(ephemeral_secret_key),
@@ -162,10 +180,7 @@ where
     #[inline]
     pub fn decrypt(self, secret_key: &SecretKey<H>) -> Result<DecryptedMessage<H>, Self> {
         match H::decrypt(
-            H::KeyDerivationFunction::derive(H::KeyAgreementScheme::agree(
-                secret_key,
-                &self.ephemeral_public_key,
-            )),
+            H::agree_derive(secret_key, &self.ephemeral_public_key),
             &self.ciphertext,
         ) {
             Some(plaintext) => Ok(DecryptedMessage::new(plaintext, self.ephemeral_public_key)),
