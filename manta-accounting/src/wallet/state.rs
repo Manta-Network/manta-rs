@@ -339,8 +339,10 @@ where
 
     ///
     #[inline]
-    pub async fn receiver(&mut self) -> Result<ReceivingKey<C>, signer::Error<H, C, S::Error>> {
-        self.signer.receiver().await
+    pub async fn receiving_key(
+        &mut self,
+    ) -> Result<ReceivingKey<C>, signer::Error<H, C, S::Error>> {
+        self.signer.receiving_key().await
     }
 }
 

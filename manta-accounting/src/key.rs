@@ -14,107 +14,234 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Hierarchical Key Tables
+//! Hierarchical Key Derivation Schemes
 
 use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash};
 
-/// Hierarchical Key Table Parameter
-pub trait HierarchicalKeyTableParameter:
+/// Hierarchical Key Derivation Parameter
+pub trait HierarchicalKeyDerivationParameter:
     Clone + Copy + Default + PartialOrd + From<usize> + Into<usize>
 {
     /// Increments the key parameter by one unit.
     fn increment(&mut self);
 }
 
-/// Hierarchical Key Table
-pub trait HierarchicalKeyTable {
+/// Hierarchical Key Derivation Scheme
+pub trait HierarchicalKeyDerivationScheme {
     /// Account Type
-    type Account: HierarchicalKeyTableParameter;
+    type Account: HierarchicalKeyDerivationParameter;
 
     /// Index Type
-    type Index: HierarchicalKeyTableParameter;
-
-    /// Key Kind Type
-    type Kind;
+    type Index: HierarchicalKeyDerivationParameter;
 
     /// Secret Key Type
     type SecretKey;
 
-    /// Key Access Error Type
+    /// Key Derivation Error Type
     type Error;
 
-    /// Returns the secret key associated to `account` and `index` of the given `kind`.
-    fn get(
+    ///
+    fn derive(
         &self,
         account: Self::Account,
-        index: Self::Index,
-        kind: &Self::Kind,
-    ) -> Result<Self::SecretKey, Self::Error>;
+        spend: Self::Index,
+        view: Self::Index,
+    ) -> Result<Key<Self>, Self::Error>;
 }
 
-impl<H> HierarchicalKeyTable for &H
+impl<H> HierarchicalKeyDerivationScheme for &H
 where
-    H: HierarchicalKeyTable,
+    H: HierarchicalKeyDerivationScheme,
 {
     type Account = H::Account;
 
     type Index = H::Index;
-
-    type Kind = H::Kind;
 
     type SecretKey = H::SecretKey;
 
     type Error = H::Error;
 
     #[inline]
-    fn get(
+    fn derive(
         &self,
         account: Self::Account,
-        index: Self::Index,
-        kind: &Self::Kind,
-    ) -> Result<Self::SecretKey, Self::Error> {
-        (*self).get(account, index, kind)
+        spend: Self::Index,
+        view: Self::Index,
+    ) -> Result<Key<Self>, Self::Error> {
+        let key = (*self).derive(account, spend, view)?;
+        Ok(Key {
+            spend: key.spend,
+            view: key.view,
+        })
     }
 }
 
-/// Account Map
+/// Hierarchical Key Derivation Key Type
+pub struct Key<H>
+where
+    H: HierarchicalKeyDerivationScheme + ?Sized,
+{
+    /// Spend Part of the Key
+    pub spend: H::SecretKey,
+
+    /// View Part of the Key
+    pub view: H::SecretKey,
+}
+
+impl<H> Key<H>
+where
+    H: HierarchicalKeyDerivationScheme + ?Sized,
+{
+    /// Builds a new [`Key`] from `spend` and `view`.
+    #[inline]
+    pub fn new(spend: H::SecretKey, view: H::SecretKey) -> Self {
+        Self { spend, view }
+    }
+}
+
+/// Error Type
+pub enum Error<H>
+where
+    H: HierarchicalKeyDerivationScheme,
+{
+    /// Exceeded Current Maximum Spend Index
+    ///
+    /// See the [`increment_spend`](AccountMap::increment_spend) method on [`AccountMap`] for more.
+    ExceedingCurrentMaximumSpendIndex,
+
+    /// Exceeded Current Maximum View Index
+    ///
+    /// See the [`increment_view`](AccountMap::increment_view) method on [`AccountMap`] for more.
+    ExceedingCurrentMaximumViewIndex,
+
+    /// Key Derivation Error
+    KeyDerivationError(H::Error),
+}
+
+/// Key Index Type
+#[derive(derivative::Derivative)]
+#[derivative(Clone, Copy, Default, Eq, PartialEq)]
+pub struct Index<H>
+where
+    H: HierarchicalKeyDerivationScheme,
+{
+    /// Spend Part of the Key Index
+    pub spend: H::Index,
+
+    /// View Part of the Key Index
+    pub view: H::Index,
+}
+
+impl<H> Index<H>
+where
+    H: HierarchicalKeyDerivationScheme,
+{
+    /// Builds a new [`Index`] using `spend` and `view`.
+    #[inline]
+    pub fn new(spend: H::Index, view: H::Index) -> Self {
+        Self { spend, view }
+    }
+}
+
+/// Account Keys
+#[derive(derivative::Derivative)]
+pub struct AccountKeys<'h, H>
+where
+    H: HierarchicalKeyDerivationScheme,
+{
+    /// Hierarchical Key Derivation Scheme
+    keys: &'h H,
+
+    /// Account Parameter
+    account: H::Account,
+
+    /// Maximum Key Index
+    max_index: Index<H>,
+}
+
+impl<'h, H> AccountKeys<'h, H>
+where
+    H: HierarchicalKeyDerivationScheme,
+{
+    /// Builds a new [`AccountKeys`] from `keys`, `account`, and `max_index`.
+    #[inline]
+    fn new(keys: &'h H, account: H::Account, max_index: Index<H>) -> Self {
+        Self {
+            keys,
+            account,
+            max_index,
+        }
+    }
+
+    /// Returns the key for this account at the `spend` and `view` indices, if those indices do not
+    /// exceed the maximum indices.
+    #[inline]
+    pub fn key(&self, spend: H::Index, view: H::Index) -> Result<Key<H>, Error<H>> {
+        if spend <= self.max_index.spend {
+            if view <= self.max_index.view {
+                self.keys
+                    .derive(self.account, spend, view)
+                    .map_err(Error::KeyDerivationError)
+            } else {
+                Err(Error::ExceedingCurrentMaximumViewIndex)
+            }
+        } else {
+            Err(Error::ExceedingCurrentMaximumSpendIndex)
+        }
+    }
+}
+
+/// Account Map Trait
 pub trait AccountMap<H>
 where
-    H: HierarchicalKeyTable,
+    H: HierarchicalKeyDerivationScheme,
 {
-    /// Returns the maximum index associated to `account`.
-    fn max_index(&self, account: H::Account) -> Option<H::Index>;
+    /// Returns the maximum spend and view indices for `account`, if it exists.
+    fn max_index(&self, account: H::Account) -> Option<Index<H>>;
 
-    /// Creates a new account, returning the new account parameter.
+    /// Adds a new account to the map, returning the new account parameter.
     fn create_account(&mut self) -> H::Account;
 
-    /// Increments the index on the existing account, returning the new index parameter.
-    fn increment_index(&mut self, account: H::Account) -> Option<H::Index>;
+    /// Increments the maximum spend index for `account`, if it exists, returning the current
+    /// maximum indices.
+    fn increment_spend(&mut self, account: H::Account) -> Option<Index<H>>;
+
+    /// Increments the maximum view index for `account`, if it exists, returning the current
+    /// maximum indices.
+    fn increment_view(&mut self, account: H::Account) -> Option<Index<H>>;
 }
 
 /// [`Vec`] Account Map Type
-pub type VecAccountMap<H> = Vec<<H as HierarchicalKeyTable>::Index>;
+pub type VecAccountMap<H> = Vec<Index<H>>;
 
 impl<H> AccountMap<H> for VecAccountMap<H>
 where
-    H: HierarchicalKeyTable,
+    H: HierarchicalKeyDerivationScheme,
 {
     #[inline]
-    fn max_index(&self, account: H::Account) -> Option<H::Index> {
+    fn max_index(&self, account: H::Account) -> Option<Index<H>> {
         self.get(account.into()).copied()
     }
 
     #[inline]
     fn create_account(&mut self) -> H::Account {
-        self.push(0.into());
+        self.push(Default::default());
         (self.len() - 1).into()
     }
 
     #[inline]
-    fn increment_index(&mut self, account: H::Account) -> Option<H::Index> {
+    fn increment_spend(&mut self, account: H::Account) -> Option<Index<H>> {
         self.get_mut(account.into()).map(move |index| {
-            index.increment();
+            index.spend.increment();
+            *index
+        })
+    }
+
+    #[inline]
+    fn increment_view(&mut self, account: H::Account) -> Option<Index<H>> {
+        self.get_mut(account.into()).map(move |index| {
+            index.view.increment();
             *index
         })
     }
@@ -133,11 +260,11 @@ where
 )]
 pub struct AccountTable<H, M = VecAccountMap<H>>
 where
-    H: HierarchicalKeyTable,
+    H: HierarchicalKeyDerivationScheme,
     M: AccountMap<H>,
 {
-    /// Hierarchical Key Table
-    table: H,
+    /// Hierarchical Key Derivation Scheme
+    keys: H,
 
     /// Account Map
     accounts: M,
@@ -145,113 +272,63 @@ where
 
 impl<H, M> AccountTable<H, M>
 where
-    H: HierarchicalKeyTable,
+    H: HierarchicalKeyDerivationScheme,
     M: AccountMap<H>,
 {
-    /// Builds a new [`AccountTable`] from a hierarchical key `table`.
+    /// Builds a new [`AccountTable`] using `keys` and a default account map.
     #[inline]
-    pub fn new(table: H) -> Self
+    pub fn new(keys: H) -> Self
     where
         M: Default,
     {
-        Self::with_accounts(table, Default::default())
+        Self::with_accounts(keys, Default::default())
     }
 
-    /// Builds a new [`AccountTable`] from `table` and `accounts`.
+    /// Builds a new [`AccountTable`] using `keys` and `accounts`.
     #[inline]
-    pub fn with_accounts(table: H, accounts: M) -> Self {
-        Self { table, accounts }
+    pub fn with_accounts(keys: H, accounts: M) -> Self {
+        Self { keys, accounts }
     }
 
-    /// Returns the key associated to `account`, `index`, and `kind`.
+    /// Returns the key associated to `account` if it exists, using the `spend` and `view` indices
+    /// if they do not exceed the maximum indices.
     #[inline]
     pub fn key(
         &self,
         account: H::Account,
-        index: H::Index,
-        kind: &H::Kind,
-    ) -> Option<Result<H::SecretKey, H::Error>> {
-        self.subtable(account, index).map(move |st| st.key(kind))
+        spend: H::Index,
+        view: H::Index,
+    ) -> Option<Result<Key<H>, Error<H>>> {
+        self.get(account).map(move |k| k.key(spend, view))
     }
 
-    /// Returns a subtable of `self` with fixed `account` and `index` parameters.
+    /// Returns the account keys for `account` if it exists.
     #[inline]
-    pub fn subtable(&self, account: H::Account, index: H::Index) -> Option<AccountSubTable<H>> {
-        match self.accounts.max_index(account) {
-            Some(max_index) if index <= max_index => {
-                Some(AccountSubTable::new(&self.table, account, index))
-            }
-            _ => None,
-        }
+    pub fn get(&self, account: H::Account) -> Option<AccountKeys<H>> {
+        Some(AccountKeys::new(
+            &self.keys,
+            account,
+            self.accounts.max_index(account)?,
+        ))
     }
 
-    /// Creates a new account, returning the new account parameter.
+    /// Adds a new account to the map, returning the new account parameter.
     #[inline]
     pub fn create_account(&mut self) -> H::Account {
         self.accounts.create_account()
     }
 
-    /// Increments the index on the existing account, returning the new index parameter.
+    /// Increments the maximum spend index for `account`, if it exists, returning the current
+    /// maximum indices.
     #[inline]
-    pub fn increment_index(&mut self, account: H::Account) -> Option<H::Index> {
-        self.accounts.increment_index(account)
-    }
-}
-
-/// Account Sub-Table
-#[derive(derivative::Derivative)]
-#[derivative(
-    Clone(bound = ""),
-    Copy(bound = ""),
-    Debug(bound = "H: Debug, H::Account: Debug, H::Index: Debug"),
-    Eq(bound = "H: Eq, H::Account: Eq, H::Index: Eq"),
-    Hash(bound = "H: Hash, H::Account: Hash, H::Index: Hash"),
-    PartialEq(bound = "H: PartialEq, H::Account: PartialEq, H::Index: PartialEq")
-)]
-pub struct AccountSubTable<'t, H>
-where
-    H: HierarchicalKeyTable,
-{
-    /// Hierarchical Key Table
-    table: &'t H,
-
-    /// Account Parameter
-    account: H::Account,
-
-    /// Index Parameter
-    index: H::Index,
-}
-
-impl<'t, H> AccountSubTable<'t, H>
-where
-    H: HierarchicalKeyTable,
-{
-    /// Builds a new [`AccountSubTable`] for `table`, `account`, and `index`.
-    #[inline]
-    fn new(table: &'t H, account: H::Account, index: H::Index) -> Self {
-        Self {
-            table,
-            account,
-            index,
-        }
+    pub fn increment_spend(&mut self, account: H::Account) -> Option<Index<H>> {
+        self.accounts.increment_spend(account)
     }
 
-    /// Returns the inner account parameter of this subtable.
+    /// Increments the maximum view index for `account`, if it exists, returning the current
+    /// maximum indices.
     #[inline]
-    pub fn account(&self) -> H::Account {
-        self.account
-    }
-
-    /// Returns the inner index parameter of this subtable.
-    #[inline]
-    pub fn index(&self) -> H::Index {
-        self.index
-    }
-
-    /// Returns the key of the given `kind` from the hierarchical key table with a fixed account
-    /// and index.
-    #[inline]
-    pub fn key(&self, kind: &H::Kind) -> Result<H::SecretKey, H::Error> {
-        self.table.get(self.account, self.index, kind)
+    pub fn increment_view(&mut self, account: H::Account) -> Option<Index<H>> {
+        self.accounts.increment_view(account)
     }
 }

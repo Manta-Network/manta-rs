@@ -106,10 +106,10 @@ where
     /// Future for the [`rollback`](Self::rollback) method.
     type RollbackFuture: Future<Output = Result<(), Self::Error>>;
 
-    /// Receiver Future Type
+    /// Receiving Key Future Type
     ///
-    /// Future for the [`receiver`](Self::receiver) method.
-    type ReceiverFuture: Future<Output = ReceiverResult<H, C, Self>>;
+    /// Future for the [`receiving_key`](Self::receiving_key) method.
+    type ReceivingKeyFuture: Future<Output = ReceivingKeyResult<H, C, Self>>;
 
     /// Error Type
     type Error;
@@ -156,7 +156,12 @@ where
     /// This method does not interact with the other methods on [`Connection`] so it can be called
     /// at any point in between calls to [`sync`](Self::sync), [`sign`](Self::sign), and other
     /// rollback related methods.
-    fn receiver(&mut self) -> Self::ReceiverFuture;
+    fn receiving_key(
+        &mut self,
+        account: H::Account,
+        index: H::Index,
+        view_key_index: H::Index,
+    ) -> Self::ReceivingKeyFuture;
 }
 
 /// Synchronization State
@@ -174,18 +179,18 @@ pub enum SyncState {
 
 /// Synchronization Result
 ///
-/// See the [`sync`](Connection::sync) method on [`Connection`] for more information.
+/// See the [`sync`](Connection::sync) method on [`Connection`] for more.
 pub type SyncResult<H, C, S> = Result<SyncResponse, Error<H, C, <S as Connection<H, C>>::Error>>;
 
 /// Signing Result
 ///
-/// See the [`sign`](Connection::sign) method on [`Connection`] for more information.
+/// See the [`sign`](Connection::sign) method on [`Connection`] for more.
 pub type SignResult<H, C, S> = Result<SignResponse<C>, Error<H, C, <S as Connection<H, C>>::Error>>;
 
-/// Receiver Result
+/// Receving Key Result
 ///
-/// See the [`receiver`](Connection::receiver) method on [`Connection`] for more information.
-pub type ReceiverResult<H, C, S> =
+/// See the [`receiving_key`](Connection::receiving_key) method on [`Connection`] for more.
+pub type ReceivingKeyResult<H, C, S> =
     Result<ReceivingKey<C>, Error<H, C, <S as Connection<H, C>>::Error>>;
 
 /// Signer Synchronization Response
@@ -326,6 +331,9 @@ where
     /// Spending Key
     spending_key: SpendingKey<C>,
 
+    /// Ephemeral Key Commitment Scheme
+    ephemeral_key_commitment_scheme: C::EphemeralKeyCommitmentScheme,
+
     /// Commitment Scheme
     commitment_scheme: C::CommitmentScheme,
 
@@ -353,6 +361,7 @@ where
     #[inline]
     fn new_inner(
         spending_key: SpendingKey<C>,
+        ephemeral_key_commitment_scheme: C::EphemeralKeyCommitmentScheme,
         commitment_scheme: C::CommitmentScheme,
         proving_context: ProvingContext<C>,
         utxo_set: C::UtxoSet,
@@ -362,6 +371,7 @@ where
     ) -> Self {
         Self {
             spending_key,
+            ephemeral_key_commitment_scheme,
             commitment_scheme,
             proving_context,
             utxo_set,
@@ -380,12 +390,14 @@ where
     #[inline]
     pub fn new(
         spending_key: SpendingKey<C>,
+        ephemeral_key_commitment_scheme: C::EphemeralKeyCommitmentScheme,
         commitment_scheme: C::CommitmentScheme,
         proving_context: ProvingContext<C>,
         rng: C::Rng,
     ) -> Self {
         Self::new_inner(
             spending_key,
+            ephemeral_key_commitment_scheme,
             commitment_scheme,
             proving_context,
             Default::default(),
@@ -453,11 +465,8 @@ where
     /// Builds the pre-sender associated to `ephemeral_key` and `asset`.
     #[inline]
     fn build_pre_sender(&self, ephemeral_key: PublicKey<C>, asset: Asset) -> PreSender<C> {
-        /* TODO:
         self.spending_key
             .sender(ephemeral_key, asset, &self.commitment_scheme)
-        */
-        todo!()
     }
 
     /// Selects the pre-senders which collectively own at least `asset`, returning any change.
@@ -490,11 +499,12 @@ where
         const SINKS: usize,
     >(
         &mut self,
+        ledger_checkpoint: C::LedgerCheckpoint,
         transfer: Transfer<C, SOURCES, SENDERS, RECEIVERS, SINKS>,
     ) -> Result<TransferPost<C>, Error<C::HierarchicalKeyTable, C>> {
-        /* TODO:
         transfer
             .into_post(
+                &self.ephemeral_key_commitment_scheme,
                 &self.commitment_scheme,
                 self.utxo_set.verifier(),
                 ledger_checkpoint,
@@ -502,8 +512,6 @@ where
                 &mut self.rng,
             )
             .map_err(Error::ProofSystemError)
-        */
-        todo!()
     }
 
     /* TODO:
@@ -710,7 +718,7 @@ where
         self.commit();
         match transaction {
             Transaction::Mint(asset) => {
-                /* TODO:
+                /*
                 let mint_post =
                     self.build_post(Mint::build(asset, self.spending_key.receiver(asset)))?;
                 self.pending_assets.insert =
@@ -751,7 +759,7 @@ where
 
     /// Generates a new [`ReceivingKey`] for `self` to receive assets.
     #[inline]
-    pub fn receiver(&mut self) -> ReceiverResult<C::HierarchicalKeyTable, C, Self> {
+    pub fn receiving_key(&mut self) -> ReceivingKeyResult<C::HierarchicalKeyTable, C, Self> {
         Ok(self.spending_key.derive())
     }
 }
@@ -768,7 +776,7 @@ where
 
     type RollbackFuture = Ready<Result<(), Self::Error>>;
 
-    type ReceiverFuture = Ready<ReceiverResult<C::HierarchicalKeyTable, C, Self>>;
+    type ReceivingKeyFuture = Ready<ReceivingKeyResult<C::HierarchicalKeyTable, C, Self>>;
 
     type Error = Infallible;
 
@@ -807,8 +815,8 @@ where
     }
 
     #[inline]
-    fn receiver(&mut self) -> Self::ReceiverFuture {
-        future::ready(self.receiver())
+    fn receiving_key(&mut self) -> Self::ReceivingKeyFuture {
+        future::ready(self.receiving_key())
     }
 }
 

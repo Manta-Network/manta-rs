@@ -1736,7 +1736,18 @@ where
         let source_posting_keys = ledger
             .check_source_balances(self.sources)
             .map_err(TransferPostError::InsufficientPublicBalance)?;
-        // FIXME: The ledger needs to check that the senders are all unique!
+
+        for (i, p) in self.sender_posts.iter().enumerate() {
+            if self
+                .sender_posts
+                .iter()
+                .skip(i + 1)
+                .any(move |q| p.void_number == q.void_number)
+            {
+                return Err(SenderPostError::AssetSpent.into());
+            }
+        }
+
         let sender_posting_keys = self
             .sender_posts
             .into_iter()
