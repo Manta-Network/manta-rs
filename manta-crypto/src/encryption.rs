@@ -213,4 +213,19 @@ where
             ephemeral_public_key,
         }
     }
+
+    /// Tries to decrypt `encrypted_message` with `secret_key`, if the `Option` contains a message.
+    #[inline]
+    pub fn try_new(
+        encrypted_message: &mut Option<EncryptedMessage<H>>,
+        secret_key: &SecretKey<H>,
+    ) -> Option<Self> {
+        if let Some(message) = encrypted_message.take() {
+            match message.decrypt(secret_key) {
+                Ok(decrypted_message) => return Some(decrypted_message),
+                Err(message) => *encrypted_message = Some(message),
+            }
+        }
+        None
+    }
 }

@@ -18,7 +18,7 @@
 
 use crate::{
     asset::{Asset, AssetId, AssetValue},
-    key::HierarchicalKeyTable,
+    key::{HierarchicalKeyDerivationScheme, Index},
     transfer::{
         canonical::{Transaction, TransactionKind},
         Configuration, ReceivingKey, SecretKey,
@@ -161,7 +161,7 @@ where
 /// Wallet
 pub struct Wallet<H, C, L, S, B = BTreeMapBalanceState>
 where
-    H: HierarchicalKeyTable<SecretKey = SecretKey<C>>,
+    H: HierarchicalKeyDerivationScheme<SecretKey = SecretKey<C>>,
     C: Configuration,
     L: ledger::Connection<C>,
     S: signer::Connection<H, C>,
@@ -188,7 +188,7 @@ where
 
 impl<H, C, L, S, B> Wallet<H, C, L, S, B>
 where
-    H: HierarchicalKeyTable<SecretKey = SecretKey<C>>,
+    H: HierarchicalKeyDerivationScheme<SecretKey = SecretKey<C>>,
     C: Configuration,
     L: ledger::Connection<C>,
     S: signer::Connection<H, C>,
@@ -337,12 +337,13 @@ where
         }
     }
 
-    ///
+    /// Returns a [`ReceivingKey`] for `self` to receive assets with `index`.
     #[inline]
     pub async fn receiving_key(
         &mut self,
+        index: Index<H>,
     ) -> Result<ReceivingKey<C>, signer::Error<H, C, S::Error>> {
-        self.signer.receiving_key().await
+        self.signer.receiving_key(index).await
     }
 }
 
@@ -352,7 +353,7 @@ where
 /// [`post`](Wallet::post) for more.
 pub enum Error<H, C, L, S>
 where
-    H: HierarchicalKeyTable<SecretKey = SecretKey<C>>,
+    H: HierarchicalKeyDerivationScheme<SecretKey = SecretKey<C>>,
     C: Configuration,
     L: ledger::Connection<C>,
     S: signer::Connection<H, C>,
@@ -369,7 +370,7 @@ where
 
 impl<H, C, L, S> From<signer::Error<H, C, S::Error>> for Error<H, C, L, S>
 where
-    H: HierarchicalKeyTable<SecretKey = SecretKey<C>>,
+    H: HierarchicalKeyDerivationScheme<SecretKey = SecretKey<C>>,
     C: Configuration,
     L: ledger::Connection<C>,
     S: signer::Connection<H, C>,

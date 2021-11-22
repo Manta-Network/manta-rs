@@ -18,6 +18,7 @@
 
 use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash};
+use manta_crypto::key::KeyAgreementScheme;
 
 /// Hierarchical Key Derivation Parameter
 pub trait HierarchicalKeyDerivationParameter:
@@ -41,18 +42,39 @@ pub trait HierarchicalKeyDerivationScheme {
     /// Key Derivation Error Type
     type Error;
 
-    ///
+    /// Derives a pair of secret keys for `account` using the `spend` and `view` indices.
     fn derive(
         &self,
         account: Self::Account,
         spend: Self::Index,
         view: Self::Index,
-    ) -> Result<Key<Self>, Self::Error>;
+    ) -> Result<SecretKeyPair<Self>, Self::Error>;
+
+    ///
+    #[inline]
+    fn derive_spend(
+        &self,
+        account: Self::Account,
+        spend: Self::Index,
+    ) -> Result<Self::SecretKey, Self::Error> {
+        Ok(self.derive(account, spend, Default::default())?.spend)
+    }
+
+    ///
+    #[inline]
+    fn derive_view(
+        &self,
+        account: Self::Account,
+        spend: Self::Index,
+        view: Self::Index,
+    ) -> Result<Self::SecretKey, Self::Error> {
+        Ok(self.derive(account, spend, view)?.view)
+    }
 }
 
 impl<H> HierarchicalKeyDerivationScheme for &H
 where
-    H: HierarchicalKeyDerivationScheme,
+    H: HierarchicalKeyDerivationScheme + ?Sized,
 {
     type Account = H::Account;
 
@@ -68,42 +90,66 @@ where
         account: Self::Account,
         spend: Self::Index,
         view: Self::Index,
-    ) -> Result<Key<Self>, Self::Error> {
+    ) -> Result<SecretKeyPair<Self>, Self::Error> {
         let key = (*self).derive(account, spend, view)?;
-        Ok(Key {
+        Ok(SecretKeyPair {
             spend: key.spend,
             view: key.view,
         })
     }
 }
 
-/// Hierarchical Key Derivation Key Type
-pub struct Key<H>
+/// Hierarchical Key Derivation Secret Key Pair
+pub struct SecretKeyPair<H>
 where
     H: HierarchicalKeyDerivationScheme + ?Sized,
 {
-    /// Spend Part of the Key
-    pub spend: H::SecretKey,
+    /// Spend Part of the Key Pair
+    spend: H::SecretKey,
 
-    /// View Part of the Key
-    pub view: H::SecretKey,
+    /// View Part of the Key Pair
+    view: H::SecretKey,
 }
 
-impl<H> Key<H>
+impl<H> SecretKeyPair<H>
 where
     H: HierarchicalKeyDerivationScheme + ?Sized,
 {
-    /// Builds a new [`Key`] from `spend` and `view`.
+    /// Builds a new [`SecretKeyPair`] from `spend` and `view`.
     #[inline]
     pub fn new(spend: H::SecretKey, view: H::SecretKey) -> Self {
         Self { spend, view }
     }
+
+    /// Derives the public key pair for `self`.
+    #[inline]
+    pub fn derive<K>(self) -> PublicKeyPair<K>
+    where
+        K: KeyAgreementScheme<SecretKey = H::SecretKey>,
+    {
+        PublicKeyPair {
+            spend: K::derive_owned(self.spend),
+            view: K::derive_owned(self.view),
+        }
+    }
+}
+
+/// Public Key Pair
+pub struct PublicKeyPair<K>
+where
+    K: KeyAgreementScheme,
+{
+    /// Spend Part of the Key Pair
+    pub spend: K::PublicKey,
+
+    /// View Part of the Key Pair
+    pub view: K::PublicKey,
 }
 
 /// Error Type
 pub enum Error<H>
 where
-    H: HierarchicalKeyDerivationScheme,
+    H: HierarchicalKeyDerivationScheme + ?Sized,
 {
     /// Exceeded Current Maximum Spend Index
     ///
@@ -124,7 +170,7 @@ where
 #[derivative(Clone, Copy, Default, Eq, PartialEq)]
 pub struct Index<H>
 where
-    H: HierarchicalKeyDerivationScheme,
+    H: HierarchicalKeyDerivationScheme + ?Sized,
 {
     /// Spend Part of the Key Index
     pub spend: H::Index,
@@ -135,7 +181,7 @@ where
 
 impl<H> Index<H>
 where
-    H: HierarchicalKeyDerivationScheme,
+    H: HierarchicalKeyDerivationScheme + ?Sized,
 {
     /// Builds a new [`Index`] using `spend` and `view`.
     #[inline]
@@ -148,7 +194,7 @@ where
 #[derive(derivative::Derivative)]
 pub struct AccountKeys<'h, H>
 where
-    H: HierarchicalKeyDerivationScheme,
+    H: HierarchicalKeyDerivationScheme + ?Sized,
 {
     /// Hierarchical Key Derivation Scheme
     keys: &'h H,
@@ -162,7 +208,7 @@ where
 
 impl<'h, H> AccountKeys<'h, H>
 where
-    H: HierarchicalKeyDerivationScheme,
+    H: HierarchicalKeyDerivationScheme + ?Sized,
 {
     /// Builds a new [`AccountKeys`] from `keys`, `account`, and `max_index`.
     #[inline]
@@ -174,15 +220,15 @@ where
         }
     }
 
-    /// Returns the key for this account at the `spend` and `view` indices, if those indices do not
-    /// exceed the maximum indices.
+    /// Performs the bounds check on `spend` and `view` and then runs `f`.
     #[inline]
-    pub fn key(&self, spend: H::Index, view: H::Index) -> Result<Key<H>, Error<H>> {
+    fn with_bounds_check<T, F>(&self, spend: H::Index, view: H::Index, f: F) -> Result<T, Error<H>>
+    where
+        F: FnOnce(&'h H, H::Account) -> Result<T, H::Error>,
+    {
         if spend <= self.max_index.spend {
             if view <= self.max_index.view {
-                self.keys
-                    .derive(self.account, spend, view)
-                    .map_err(Error::KeyDerivationError)
+                f(self.keys, self.account).map_err(Error::KeyDerivationError)
             } else {
                 Err(Error::ExceedingCurrentMaximumViewIndex)
             }
@@ -190,13 +236,85 @@ where
             Err(Error::ExceedingCurrentMaximumSpendIndex)
         }
     }
+
+    /// Returns the spend key for this account at the `spend` index, if it does not exceed the
+    /// maximum index.
+    #[inline]
+    pub fn spend_key(&self, spend: H::Index) -> Result<H::SecretKey, Error<H>> {
+        self.with_bounds_check(spend, Default::default(), |keys, account| {
+            keys.derive_spend(account, spend)
+        })
+    }
+
+    /// Returns the view key for this account at `index`, if it does not exceed the maximum index.
+    #[inline]
+    pub fn view_key(&self, index: Index<H>) -> Result<H::SecretKey, Error<H>> {
+        self.view_key_with(index.spend, index.view)
+    }
+
+    /// Returns the view key for this account at the `spend` and `view` indices, if those indices
+    /// do not exceed the maximum indices.
+    #[inline]
+    pub fn view_key_with(&self, spend: H::Index, view: H::Index) -> Result<H::SecretKey, Error<H>> {
+        self.with_bounds_check(spend, view, |keys, account| {
+            keys.derive_view(account, spend, view)
+        })
+    }
+
+    /// Returns the key pair for this account at `index`, if it does not exceed the maximum index.
+    #[inline]
+    pub fn keypair(&self, index: Index<H>) -> Result<SecretKeyPair<H>, Error<H>> {
+        self.keypair_with(index.spend, index.view)
+    }
+
+    /// Returns the key pair for this account at the `spend` and `view` indices, if those indices
+    /// do not exceed the maximum indices.
+    #[inline]
+    pub fn keypair_with(
+        &self,
+        spend: H::Index,
+        view: H::Index,
+    ) -> Result<SecretKeyPair<H>, Error<H>> {
+        self.with_bounds_check(spend, view, |keys, account| {
+            keys.derive(account, spend, view)
+        })
+    }
+
+    /// Applies `f` to the view keys generated by `self` returning the first non-`None` result with
+    /// it's spend key index attached, or returns an error if the key derivation failed.
+    #[inline]
+    pub fn find_index<T, F>(&self, mut f: F) -> Result<Option<(H::Index, T)>, H::Error>
+    where
+        F: FnMut(H::SecretKey) -> Option<T>,
+    {
+        let mut index = Index::default();
+        loop {
+            loop {
+                match self.view_key(index) {
+                    Ok(key) => {
+                        if let Some(value) = f(key) {
+                            return Ok(Some((index.spend, value)));
+                        }
+                    }
+                    Err(Error::ExceedingCurrentMaximumViewIndex) => break,
+                    Err(Error::ExceedingCurrentMaximumSpendIndex) => return Ok(None),
+                    Err(Error::KeyDerivationError(err)) => return Err(err),
+                }
+                index.view.increment();
+            }
+            index.spend.increment();
+        }
+    }
 }
 
 /// Account Map Trait
 pub trait AccountMap<H>
 where
-    H: HierarchicalKeyDerivationScheme,
+    H: HierarchicalKeyDerivationScheme + ?Sized,
 {
+    /// Builds a new [`AccountMap`] with a starting account with default max indices.
+    fn new() -> Self;
+
     /// Returns the maximum spend and view indices for `account`, if it exists.
     fn max_index(&self, account: H::Account) -> Option<Index<H>>;
 
@@ -217,8 +335,15 @@ pub type VecAccountMap<H> = Vec<Index<H>>;
 
 impl<H> AccountMap<H> for VecAccountMap<H>
 where
-    H: HierarchicalKeyDerivationScheme,
+    H: HierarchicalKeyDerivationScheme + ?Sized,
 {
+    #[inline]
+    fn new() -> Self {
+        let mut this = Self::new();
+        this.create_account();
+        this
+    }
+
     #[inline]
     fn max_index(&self, account: H::Account) -> Option<Index<H>> {
         self.get(account.into()).copied()
@@ -253,7 +378,6 @@ where
     Clone(bound = "H: Clone, M: Clone"),
     Copy(bound = "H: Copy, M: Copy"),
     Debug(bound = "H: Debug, M: Debug"),
-    Default(bound = "H: Default, M: Default"),
     Eq(bound = "H: Eq, M: Eq"),
     Hash(bound = "H: Hash, M: Hash"),
     PartialEq(bound = "H: PartialEq, M: PartialEq")
@@ -275,13 +399,10 @@ where
     H: HierarchicalKeyDerivationScheme,
     M: AccountMap<H>,
 {
-    /// Builds a new [`AccountTable`] using `keys` and a default account map.
+    /// Builds a new [`AccountTable`] using `keys` and the default account map.
     #[inline]
-    pub fn new(keys: H) -> Self
-    where
-        M: Default,
-    {
-        Self::with_accounts(keys, Default::default())
+    pub fn new(keys: H) -> Self {
+        Self::with_accounts(keys, M::new())
     }
 
     /// Builds a new [`AccountTable`] using `keys` and `accounts`.
@@ -290,16 +411,27 @@ where
         Self { keys, accounts }
     }
 
+    /// Returns the key associated to `account` if it exists, using `index` if it does not exceed
+    /// the maximum index.
+    #[inline]
+    pub fn keypair(
+        &self,
+        account: H::Account,
+        index: Index<H>,
+    ) -> Option<Result<SecretKeyPair<H>, Error<H>>> {
+        self.keypair_with(account, index.spend, index.view)
+    }
+
     /// Returns the key associated to `account` if it exists, using the `spend` and `view` indices
     /// if they do not exceed the maximum indices.
     #[inline]
-    pub fn key(
+    pub fn keypair_with(
         &self,
         account: H::Account,
         spend: H::Index,
         view: H::Index,
-    ) -> Option<Result<Key<H>, Error<H>>> {
-        self.get(account).map(move |k| k.key(spend, view))
+    ) -> Option<Result<SecretKeyPair<H>, Error<H>>> {
+        self.get(account).map(move |k| k.keypair_with(spend, view))
     }
 
     /// Returns the account keys for `account` if it exists.
@@ -330,5 +462,16 @@ where
     #[inline]
     pub fn increment_view(&mut self, account: H::Account) -> Option<Index<H>> {
         self.accounts.increment_view(account)
+    }
+}
+
+impl<H, M> Default for AccountTable<H, M>
+where
+    H: Default + HierarchicalKeyDerivationScheme,
+    M: AccountMap<H>,
+{
+    #[inline]
+    fn default() -> Self {
+        Self::new(Default::default())
     }
 }

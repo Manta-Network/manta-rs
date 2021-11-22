@@ -31,12 +31,13 @@
 
 use crate::{
     asset::{Asset, AssetId, AssetMap, AssetValue},
-    key::HierarchicalKeyTable,
+    key::{self, AccountKeys, HierarchicalKeyDerivationScheme},
     transfer::{
         self,
         canonical::{Mint, PrivateTransfer, PrivateTransferShape, Reclaim, Transaction},
-        EncryptedNote, PreSender, ProofSystemError, ProvingContext, PublicKey, Receiver,
-        ReceivingKey, SecretKey, Sender, Shape, SpendingKey, Transfer, TransferPost, Utxo,
+        EncryptedNote, PreReceiver, PreSender, ProofSystemError, ProvingContext, PublicKey,
+        Receiver, ReceivingKey, SecretKey, Sender, Shape, SpendingKey, Transfer, TransferPost,
+        Utxo,
     },
 };
 use alloc::{vec, vec::Vec};
@@ -83,7 +84,7 @@ pub trait Rollback {
 /// Signer Connection
 pub trait Connection<H, C>
 where
-    H: HierarchicalKeyTable<SecretKey = SecretKey<C>>,
+    H: HierarchicalKeyDerivationScheme<SecretKey = SecretKey<C>>,
     C: transfer::Configuration,
 {
     /// Sync Future Type
@@ -149,19 +150,14 @@ where
     /// See the [`Rollback`] trait for expectations on the behavior of [`rollback`](Self::rollback).
     fn rollback(&mut self) -> Self::RollbackFuture;
 
-    /// Returns a [`ReceivingKey`] for `self` to receive assets.
+    /// Returns a [`ReceivingKey`] for `self` to receive assets with `index`.
     ///
     /// # Note
     ///
     /// This method does not interact with the other methods on [`Connection`] so it can be called
     /// at any point in between calls to [`sync`](Self::sync), [`sign`](Self::sign), and other
     /// rollback related methods.
-    fn receiving_key(
-        &mut self,
-        account: H::Account,
-        index: H::Index,
-        view_key_index: H::Index,
-    ) -> Self::ReceivingKeyFuture;
+    fn receiving_key(&mut self, index: key::Index<H>) -> Self::ReceivingKeyFuture;
 }
 
 /// Synchronization State
@@ -236,11 +232,11 @@ where
 /// Signer Error
 pub enum Error<H, C, CE = Infallible>
 where
-    H: HierarchicalKeyTable<SecretKey = SecretKey<C>>,
+    H: HierarchicalKeyDerivationScheme<SecretKey = SecretKey<C>>,
     C: transfer::Configuration,
 {
-    /// Hierarchical Key Table Error
-    HierarchicalKeyTableError(H::Error),
+    /// Hierarchical Key Derivation Scheme Error
+    HierarchicalKeyDerivationSchemeError(key::Error<H>),
 
     /// Missing [`Utxo`] Membership Proof
     MissingUtxoMembershipProof,
@@ -258,10 +254,23 @@ where
     ConnectionError(CE),
 }
 
+impl<H, C, CE> From<key::Error<H>> for Error<H, C, CE>
+where
+    H: HierarchicalKeyDerivationScheme<SecretKey = SecretKey<C>>,
+    C: transfer::Configuration,
+{
+    #[inline]
+    fn from(err: key::Error<H>) -> Self {
+        Self::HierarchicalKeyDerivationSchemeError(err)
+    }
+}
+
 /// Signer Configuration
 pub trait Configuration: transfer::Configuration {
-    /// Hierarchical Key Table
-    type HierarchicalKeyTable: HierarchicalKeyTable<SecretKey = SecretKey<Self>>;
+    /// Hierarchical Key Derivation Scheme
+    type HierarchicalKeyDerivationScheme: HierarchicalKeyDerivationScheme<
+        SecretKey = SecretKey<Self>,
+    >;
 
     /// [`Utxo`] Accumulator Type
     type UtxoSet: Accumulator<
@@ -274,11 +283,30 @@ pub trait Configuration: transfer::Configuration {
         + Rollback;
 
     /// Asset Map Type
-    type AssetMap: AssetMap<Key = PublicKey<Self>>;
+    type AssetMap: AssetMap<Key = AssetMapKey<Self>>;
 
     /// Random Number Generator Type
     type Rng: CryptoRng + RngCore;
 }
+
+/// Index Type
+pub type Index<C> = key::Index<<C as Configuration>::HierarchicalKeyDerivationScheme>;
+
+/// Hierarchical Key Derivation Scheme Index
+type HierarchicalKeyDerivationSchemeIndex<C> =
+    <<C as Configuration>::HierarchicalKeyDerivationScheme as HierarchicalKeyDerivationScheme>::Index;
+
+/// Spend Index Type
+pub type SpendIndex<C> = HierarchicalKeyDerivationSchemeIndex<C>;
+
+/// View Index Type
+pub type ViewIndex<C> = HierarchicalKeyDerivationSchemeIndex<C>;
+
+/// Asset Map Key Type
+pub type AssetMapKey<C> = (SpendIndex<C>, PublicKey<C>);
+
+/// Account Table Type
+pub type AccountTable<C> = key::AccountTable<<C as Configuration>::HierarchicalKeyDerivationScheme>;
 
 /// Pending Asset Map
 #[derive(derivative::Derivative)]
@@ -288,13 +316,13 @@ where
     C: Configuration,
 {
     /// Pending Insert Data
-    insert: Option<(PublicKey<C>, Asset)>,
+    insert: Option<(AssetMapKey<C>, Asset)>,
 
     /// Pending Insert Zeroes Data
-    insert_zeroes: Option<(AssetId, Vec<PublicKey<C>>)>,
+    insert_zeroes: Option<(AssetId, Vec<AssetMapKey<C>>)>,
 
     /// Pending Remove Data
-    remove: Vec<PublicKey<C>>,
+    remove: Vec<AssetMapKey<C>>,
 }
 
 impl<C> PendingAssetMap<C>
@@ -303,10 +331,7 @@ where
 {
     /// Commits the pending asset map data to `assets`.
     #[inline]
-    fn commit<M>(&mut self, assets: &mut M)
-    where
-        M: AssetMap<Key = PublicKey<C>>,
-    {
+    fn commit(&mut self, assets: &mut C::AssetMap) {
         if let Some((key, asset)) = self.insert.take() {
             assets.insert(key, asset);
         }
@@ -328,8 +353,8 @@ pub struct Signer<C>
 where
     C: Configuration,
 {
-    /// Spending Key
-    spending_key: SpendingKey<C>,
+    /// Account Table
+    account_table: AccountTable<C>,
 
     /// Ephemeral Key Commitment Scheme
     ephemeral_key_commitment_scheme: C::EphemeralKeyCommitmentScheme,
@@ -360,7 +385,7 @@ where
     /// Builds a new [`Signer`].
     #[inline]
     fn new_inner(
-        spending_key: SpendingKey<C>,
+        account_table: AccountTable<C>,
         ephemeral_key_commitment_scheme: C::EphemeralKeyCommitmentScheme,
         commitment_scheme: C::CommitmentScheme,
         proving_context: ProvingContext<C>,
@@ -370,7 +395,7 @@ where
         rng: C::Rng,
     ) -> Self {
         Self {
-            spending_key,
+            account_table,
             ephemeral_key_commitment_scheme,
             commitment_scheme,
             proving_context,
@@ -381,22 +406,22 @@ where
         }
     }
 
-    /// Builds a new [`Signer`] from a fresh `spending_key`.
+    /// Builds a new [`Signer`] from a fresh `account_table`.
     ///
     /// # Warning
     ///
-    /// This method assumes that `spending_key` has never been used before, and does not attempt to
-    /// perform wallet recovery on this key.
+    /// This method assumes that `account_table` has never been used before, and does not attempt
+    /// to perform wallet recovery on this table.
     #[inline]
     pub fn new(
-        spending_key: SpendingKey<C>,
+        account_table: AccountTable<C>,
         ephemeral_key_commitment_scheme: C::EphemeralKeyCommitmentScheme,
         commitment_scheme: C::CommitmentScheme,
         proving_context: ProvingContext<C>,
         rng: C::Rng,
     ) -> Self {
         Self::new_inner(
-            spending_key,
+            account_table,
             ephemeral_key_commitment_scheme,
             commitment_scheme,
             proving_context,
@@ -407,18 +432,34 @@ where
         )
     }
 
+    ///
+    #[inline]
+    fn account(&self) -> AccountKeys<C::HierarchicalKeyDerivationScheme> {
+        self.account_table.get(Default::default()).unwrap()
+    }
+
     /// Updates the internal ledger state, returning the new asset distribution.
     #[inline]
-    fn sync_inner<I>(&mut self, updates: I) -> SyncResult<C::HierarchicalKeyTable, C, Self>
+    fn sync_inner<I>(
+        &mut self,
+        updates: I,
+    ) -> SyncResult<C::HierarchicalKeyDerivationScheme, C, Self>
     where
         I: Iterator<Item = (Utxo<C>, EncryptedNote<C>)>,
     {
         let mut assets = Vec::new();
         for (utxo, encrypted_note) in updates {
-            if let Ok(DecryptedMessage {
-                plaintext: asset,
-                ephemeral_public_key,
-            }) = self.spending_key.decrypt(encrypted_note)
+            let mut encrypted_note = Some(encrypted_note);
+            if let Some((
+                spend_index,
+                DecryptedMessage {
+                    plaintext: asset,
+                    ephemeral_public_key,
+                },
+            )) = self
+                .account()
+                .find_index(move |k| DecryptedMessage::try_new(&mut encrypted_note, &k))
+                .map_err(key::Error::KeyDerivationError)?
             {
                 /* FIXME: Add UTXO validation check. Is this necessary?
                 if self.spending_key.validate_utxo::<C>(
@@ -428,12 +469,13 @@ where
                     &self.commitment_scheme,
                 ) {
                     assets.push(asset);
-                    self.assets.insert(ephemeral_public_key, asset);
+                    self.assets.insert((index, ephemeral_public_key), asset);
                     self.utxo_set.insert(&utxo);
                 }
                 */
                 assets.push(asset);
-                self.assets.insert(ephemeral_public_key, asset);
+                self.assets
+                    .insert((spend_index, ephemeral_public_key), asset);
                 self.utxo_set.insert(&utxo);
             } else {
                 self.utxo_set.insert_nonprovable(&utxo);
@@ -449,7 +491,7 @@ where
         sync_state: SyncState,
         starting_index: usize,
         updates: I,
-    ) -> SyncResult<C::HierarchicalKeyTable, C, Self>
+    ) -> SyncResult<C::HierarchicalKeyDerivationScheme, C, Self>
     where
         I: IntoIterator<Item = (Utxo<C>, EncryptedNote<C>)>,
     {
@@ -462,35 +504,62 @@ where
         }
     }
 
-    /// Builds the pre-sender associated to `ephemeral_key` and `asset`.
+    /// Builds the pre-sender associated to `spend_index`, `ephemeral_key`, and `asset`.
     #[inline]
-    fn build_pre_sender(&self, ephemeral_key: PublicKey<C>, asset: Asset) -> PreSender<C> {
-        self.spending_key
-            .sender(ephemeral_key, asset, &self.commitment_scheme)
+    fn build_pre_sender(
+        &self,
+        spend_index: SpendIndex<C>,
+        ephemeral_key: PublicKey<C>,
+        asset: Asset,
+    ) -> Result<PreSender<C>, Error<C::HierarchicalKeyDerivationScheme, C>> {
+        Ok(PreSender::new(
+            self.account().spend_key(spend_index)?,
+            ephemeral_key,
+            asset,
+            &self.commitment_scheme,
+        ))
+    }
+
+    /// Builds the pre-receiver associated to `spend_index`, `view_index`, and `asset`.
+    #[inline]
+    fn build_pre_receiver(
+        &self,
+        spend_index: SpendIndex<C>,
+        view_index: ViewIndex<C>,
+        asset: Asset,
+    ) -> Result<PreReceiver<C>, Error<C::HierarchicalKeyDerivationScheme, C>> {
+        let keypair = self
+            .account()
+            .keypair_with(spend_index, view_index)?
+            .derive::<C::KeyAgreementScheme>();
+        Ok(PreReceiver::new(keypair.spend, keypair.view, asset))
     }
 
     /// Selects the pre-senders which collectively own at least `asset`, returning any change.
     #[inline]
-    fn select(&mut self, asset: Asset) -> Result<Selection<C>, Error<C::HierarchicalKeyTable, C>> {
-        /* TODO:
+    fn select(
+        &mut self,
+        asset: Asset,
+    ) -> Result<Selection<C>, Error<C::HierarchicalKeyDerivationScheme, C>> {
         let selection = self.assets.select(asset);
         if selection.is_empty() {
             return Err(Error::InsufficientBalance(asset));
         }
+        /* TODO:
         self.pending_assets.remove = selection.keys().cloned().collect();
         Ok(Selection::new(
             selection.change,
             selection
                 .values
                 .into_iter()
-                .map(move |(k, v)| self.build_pre_sender(k, asset.id.with(v)))
+                .map(move |((i, ek), v)| self.build_pre_sender(i, ek, asset.id.with(v)))
                 .collect(),
         ))
         */
         todo!()
     }
 
-    /// Builds a [`TransferPost`] for the given `transfer`.
+    /// Builds a [`TransferPost`] for the given `transfer` at `ledger_checkpoint`.
     #[inline]
     fn build_post<
         const SOURCES: usize,
@@ -501,7 +570,7 @@ where
         &mut self,
         ledger_checkpoint: C::LedgerCheckpoint,
         transfer: Transfer<C, SOURCES, SENDERS, RECEIVERS, SINKS>,
-    ) -> Result<TransferPost<C>, Error<C::HierarchicalKeyTable, C>> {
+    ) -> Result<TransferPost<C>, Error<C::HierarchicalKeyDerivationScheme, C>> {
         transfer
             .into_post(
                 &self.ephemeral_key_commitment_scheme,
@@ -665,7 +734,7 @@ where
         &mut self,
         asset: Asset,
         receiver: Option<ReceivingKey<C>>,
-    ) -> SignResult<C::HierarchicalKeyTable, C, Self> {
+    ) -> SignResult<C::HierarchicalKeyDerivationScheme, C, Self> {
         /* TODO:
         const SENDERS: usize = PrivateTransferShape::SENDERS;
         const RECEIVERS: usize = PrivateTransferShape::RECEIVERS;
@@ -701,7 +770,7 @@ where
         &mut self,
         asset: Asset,
         receiver: Option<ReceivingKey<C>>,
-    ) -> SignResult<C::HierarchicalKeyTable, C, Self> {
+    ) -> SignResult<C::HierarchicalKeyDerivationScheme, C, Self> {
         let result = self.sign_withdraw_inner(asset, receiver);
         if result.is_err() {
             self.rollback();
@@ -714,15 +783,21 @@ where
     pub fn sign(
         &mut self,
         transaction: Transaction<C>,
-    ) -> SignResult<C::HierarchicalKeyTable, C, Self> {
+    ) -> SignResult<C::HierarchicalKeyDerivationScheme, C, Self> {
         self.commit();
         match transaction {
             Transaction::Mint(asset) => {
-                /*
-                let mint_post =
-                    self.build_post(Mint::build(asset, self.spending_key.receiver(asset)))?;
-                self.pending_assets.insert =
-                    Some((mint_post.receiver_ephemeral_keys()[0].clone(), asset));
+                /* TODO:
+                let default_index = Default::default();
+                let mint_post = self.build_post(ledger_checkpoint, Mint::build(
+                    asset,
+                    self.build_pre_receiver(default_index, default_index, asset),
+                ))?;
+                self.pending_assets.insert = Some((
+                    default_index,
+                    mint_post.receiver_ephemeral_keys()[0].clone(),
+                    asset,
+                ));
                 Ok(SignResponse::new(vec![mint_post]))
                 */
                 todo!()
@@ -757,26 +832,34 @@ where
         }
     }
 
-    /// Generates a new [`ReceivingKey`] for `self` to receive assets.
+    /// Returns a [`ReceivingKey`] for `self` to receive assets with `index`.
     #[inline]
-    pub fn receiving_key(&mut self) -> ReceivingKeyResult<C::HierarchicalKeyTable, C, Self> {
-        Ok(self.spending_key.derive())
+    pub fn receiving_key(
+        &mut self,
+        index: Index<C>,
+    ) -> ReceivingKeyResult<C::HierarchicalKeyDerivationScheme, C, Self> {
+        let _ = self
+            .account()
+            .keypair(index)?
+            .derive::<C::KeyAgreementScheme>();
+        todo!()
     }
 }
 
-impl<C> Connection<C::HierarchicalKeyTable, C> for Signer<C>
+impl<C> Connection<C::HierarchicalKeyDerivationScheme, C> for Signer<C>
 where
     C: Configuration,
 {
-    type SyncFuture = Ready<SyncResult<C::HierarchicalKeyTable, C, Self>>;
+    type SyncFuture = Ready<SyncResult<C::HierarchicalKeyDerivationScheme, C, Self>>;
 
-    type SignFuture = Ready<SignResult<C::HierarchicalKeyTable, C, Self>>;
+    type SignFuture = Ready<SignResult<C::HierarchicalKeyDerivationScheme, C, Self>>;
 
     type CommitFuture = Ready<Result<(), Self::Error>>;
 
     type RollbackFuture = Ready<Result<(), Self::Error>>;
 
-    type ReceivingKeyFuture = Ready<ReceivingKeyResult<C::HierarchicalKeyTable, C, Self>>;
+    type ReceivingKeyFuture =
+        Ready<ReceivingKeyResult<C::HierarchicalKeyDerivationScheme, C, Self>>;
 
     type Error = Infallible;
 
@@ -815,8 +898,8 @@ where
     }
 
     #[inline]
-    fn receiving_key(&mut self) -> Self::ReceivingKeyFuture {
-        future::ready(self.receiving_key())
+    fn receiving_key(&mut self, index: Index<C>) -> Self::ReceivingKeyFuture {
+        future::ready(self.receiving_key(index))
     }
 }
 
