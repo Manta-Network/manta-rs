@@ -16,62 +16,49 @@
 
 //! Commitment Schemes
 
-// FIXME: Change this so that commiting one value is the default, and commiting a "concatenation"
-//        of values is the special case.
-
 use core::{fmt::Debug, hash::Hash};
-use manta_util::{Concat, ConcatAccumulator};
 
 /// Commitment Scheme
 pub trait CommitmentScheme {
-    /// Commitment Input Type
-    type Input: Default;
+    /// Parameters Type
+    type Parameters;
 
-    /// Commitment Trapdoor Parameter Type
+    /// Trapdoor Type
     type Trapdoor;
 
-    /// Commitment Output Type
+    /// Input Type
+    type Input;
+
+    /// Output Type
     type Output;
 
-    /// Returns a new [`Builder`] to build up a commitment.
-    #[inline]
-    fn start(&self) -> Builder<Self> {
-        Builder::new(self)
-    }
+    /// Commits to the `input` value using `parameters` and randomness `trapdoor`.
+    fn commit(
+        parameters: &Self::Parameters,
+        trapdoor: &Self::Trapdoor,
+        input: &Self::Input,
+    ) -> Self::Output;
 
-    /// Commits the `input` with the given `trapdoor` parameter.
-    fn commit(&self, input: Self::Input, trapdoor: &Self::Trapdoor) -> Self::Output;
-
-    /// Commits the single `input` value with the given `trapdoor` parameter.
+    /// Starts a new [`Builder`] for extended commitments.
     #[inline]
-    fn commit_one<T>(&self, input: &T, trapdoor: &Self::Trapdoor) -> Self::Output
+    fn start<'c>(
+        parameters: &'c Self::Parameters,
+        trapdoor: &'c Self::Trapdoor,
+    ) -> Builder<'c, Self>
     where
-        T: ?Sized,
-        Self: Input<T>,
+        Self::Input: Default,
     {
-        self.start().update(input).commit(trapdoor)
+        Builder::new(parameters, trapdoor)
     }
 }
 
-/// Commitment Input
+/// Commitment Extended Input
 pub trait Input<T>: CommitmentScheme
 where
     T: ?Sized,
 {
-    /// Extends the `input` with the `next` element.
+    /// Extends the `input` data with `next`.
     fn extend(input: &mut Self::Input, next: &T);
-}
-
-impl<C, T> Input<T> for C
-where
-    C: CommitmentScheme + ?Sized,
-    C::Input: ConcatAccumulator<T::Item>,
-    T: Concat + ?Sized,
-{
-    #[inline]
-    fn extend(input: &mut Self::Input, next: &T) {
-        next.concat(input);
-    }
 }
 
 /// Commitment Builder
@@ -79,31 +66,37 @@ where
 #[derivative(
     Clone(bound = "C::Input: Clone"),
     Copy(bound = "C::Input: Copy"),
-    Debug(bound = "C: Debug, C::Input: Debug"),
-    Eq(bound = "C: Eq, C::Input: Eq"),
-    Hash(bound = "C: Hash, C::Input: Hash"),
-    PartialEq(bound = "C: PartialEq, C::Input: PartialEq")
+    Debug(bound = "C::Parameters: Debug, C::Trapdoor: Debug, C::Input: Debug"),
+    Eq(bound = "C::Parameters: Eq, C::Trapdoor: Eq, C::Input: Eq"),
+    Hash(bound = "C::Parameters: Hash, C::Trapdoor: Hash, C::Input: Hash"),
+    PartialEq(bound = "C::Parameters: PartialEq, C::Trapdoor: PartialEq, C::Input: PartialEq")
 )]
 pub struct Builder<'c, C>
 where
     C: CommitmentScheme + ?Sized,
+    C::Input: Default,
 {
-    /// Commitment Scheme
-    commitment_scheme: &'c C,
+    /// Commitment Parameters
+    parameters: &'c C::Parameters,
 
-    /// Commitment Input
+    /// Commitment Trapdoor
+    trapdoor: &'c C::Trapdoor,
+
+    /// Commitment Input Accumulator
     input: C::Input,
 }
 
 impl<'c, C> Builder<'c, C>
 where
     C: CommitmentScheme + ?Sized,
+    C::Input: Default,
 {
-    /// Returns a new [`Builder`] for this `commitment_scheme`.
+    /// Returns a new [`Builder`] with fixed `parameters` and `trapdoor`.
     #[inline]
-    pub fn new(commitment_scheme: &'c C) -> Self {
+    pub fn new(parameters: &'c C::Parameters, trapdoor: &'c C::Trapdoor) -> Self {
         Self {
-            commitment_scheme,
+            parameters,
+            trapdoor,
             input: Default::default(),
         }
     }
@@ -119,33 +112,54 @@ where
         self
     }
 
-    /// Commits to the input stored in the builder with the given `trapdoor`.
+    /// Updates the builder with each item in `iter`.
     #[inline]
-    pub fn commit(self, trapdoor: &C::Trapdoor) -> C::Output {
-        self.commitment_scheme.commit(self.input, trapdoor)
+    pub fn update_all<'t, T, I>(mut self, iter: I) -> Self
+    where
+        T: 't + ?Sized,
+        I: IntoIterator<Item = &'t T>,
+        C: Input<T>,
+    {
+        for next in iter {
+            C::extend(&mut self.input, next);
+        }
+        self
+    }
+
+    /// Commits to the input stored in the builder.
+    #[inline]
+    pub fn commit(self) -> C::Output {
+        C::commit(self.parameters, self.trapdoor, &self.input)
     }
 }
 
-/// Testing Framework
-#[cfg(feature = "test")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
-pub mod test {
-    use super::*;
-    use core::fmt::Debug;
+/// Constraint System Gadgets
+pub mod constraint {
+    use crate::constraint::Variable;
 
-    /// Asserts that the given commitment `output` is equal to commiting `input` with `trapdoor`
-    /// using the `commitment_scheme`.
-    #[inline]
-    pub fn assert_commitment_matches<T, C>(
-        commitment_scheme: &C,
-        input: &T,
-        trapdoor: &C::Trapdoor,
-        output: &C::Output,
-    ) where
-        T: ?Sized,
-        C: CommitmentScheme + Input<T> + ?Sized,
-        C::Output: Debug + PartialEq,
+    /// Commitment Scheme Gadget
+    pub trait CommitmentScheme<C>
+    where
+        C: super::CommitmentScheme,
     {
-        assert_eq!(&commitment_scheme.commit_one(input, trapdoor), output);
+        /// Parameters Type
+        type Parameters: Variable<Self, Type = C::Parameters>;
+
+        /// Input Type
+        type Input: Variable<Self, Type = C::Input>;
+
+        /// Trapdoor Type
+        type Trapdoor: Variable<Self, Type = C::Trapdoor>;
+
+        /// Output Type
+        type Output: Variable<Self, Type = C::Output>;
+
+        /// Commits to the `input` value using `parameters` and randomness `trapdoor`.
+        fn commit(
+            &mut self,
+            parameters: &Self::Parameters,
+            input: &Self::Input,
+            trapdoor: &Self::Trapdoor,
+        ) -> Self::Output;
     }
 }

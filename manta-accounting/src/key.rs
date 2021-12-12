@@ -42,33 +42,33 @@ pub trait HierarchicalKeyDerivationScheme {
     /// Key Derivation Error Type
     type Error;
 
-    /// Derives a pair of secret keys for `account` using the `spend` and `view` indices.
-    fn derive(
-        &self,
-        account: Self::Account,
-        spend: Self::Index,
-        view: Self::Index,
-    ) -> Result<SecretKeyPair<Self>, Self::Error>;
-
-    ///
-    #[inline]
+    /// Derives a spend secret key for `account` using the `spend` index.
     fn derive_spend(
         &self,
         account: Self::Account,
         spend: Self::Index,
-    ) -> Result<Self::SecretKey, Self::Error> {
-        Ok(self.derive(account, spend, Default::default())?.spend)
-    }
+    ) -> Result<Self::SecretKey, Self::Error>;
 
-    ///
-    #[inline]
+    /// Derives a view secret key for `account` using the `spend` and `view` indices.
     fn derive_view(
         &self,
         account: Self::Account,
         spend: Self::Index,
         view: Self::Index,
-    ) -> Result<Self::SecretKey, Self::Error> {
-        Ok(self.derive(account, spend, view)?.view)
+    ) -> Result<Self::SecretKey, Self::Error>;
+
+    /// Derives a spend-view pair of secret keys for `account` using the `spend` and `view` indices.
+    #[inline]
+    fn derive(
+        &self,
+        account: Self::Account,
+        spend: Self::Index,
+        view: Self::Index,
+    ) -> Result<SecretKeyPair<Self>, Self::Error> {
+        Ok(SecretKeyPair::new(
+            self.derive_spend(account, spend)?,
+            self.derive_view(account, spend, view)?,
+        ))
     }
 }
 
@@ -85,17 +85,22 @@ where
     type Error = H::Error;
 
     #[inline]
-    fn derive(
+    fn derive_spend(
+        &self,
+        account: Self::Account,
+        spend: Self::Index,
+    ) -> Result<Self::SecretKey, Self::Error> {
+        (*self).derive_spend(account, spend)
+    }
+
+    #[inline]
+    fn derive_view(
         &self,
         account: Self::Account,
         spend: Self::Index,
         view: Self::Index,
-    ) -> Result<SecretKeyPair<Self>, Self::Error> {
-        let key = (*self).derive(account, spend, view)?;
-        Ok(SecretKeyPair {
-            spend: key.spend,
-            view: key.view,
-        })
+    ) -> Result<Self::SecretKey, Self::Error> {
+        (*self).derive_view(account, spend, view)
     }
 }
 

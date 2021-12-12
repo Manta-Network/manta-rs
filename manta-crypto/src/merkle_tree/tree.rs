@@ -26,7 +26,7 @@
 use crate::{
     accumulator::{
         self, Accumulator, ConstantCapacityAccumulator, ExactSizeAccumulator, MembershipProof,
-        OptimizedAccumulator, Verifier,
+        OptimizedAccumulator,
     },
     merkle_tree::{
         fork::{self, Trunk},
@@ -150,8 +150,8 @@ pub type InnerDigest<C> = <<C as HashConfiguration>::InnerHash as InnerHash>::Ou
 /// parameter.
 ///
 /// The capacity of a merkle tree with height `H` is `2^(H-1)`.
-#[must_use]
 #[inline]
+#[must_use]
 pub fn capacity<C>() -> usize
 where
     C: Configuration + ?Sized,
@@ -163,8 +163,8 @@ where
 /// parameter.
 ///
 /// The path length of a merkle tree with height `H` is `H - 2`.
-#[must_use]
 #[inline]
+#[must_use]
 pub fn path_length<C>() -> usize
 where
     C: Configuration + ?Sized,
@@ -497,29 +497,6 @@ where
     }
 }
 
-impl<C> Verifier for Parameters<C>
-where
-    C: Configuration + ?Sized,
-{
-    type Item = Leaf<C>;
-
-    type Witness = Path<C>;
-
-    type Output = Root<C>;
-
-    type Verification = bool;
-
-    #[inline]
-    fn verify(
-        &self,
-        item: &Self::Item,
-        witness: &Self::Witness,
-        output: &Self::Output,
-    ) -> Self::Verification {
-        self.verify_path(witness, output, item)
-    }
-}
-
 /// Merkle Tree Root Wrapper Type
 #[derive(derivative::Derivative)]
 #[derivative(
@@ -545,6 +522,37 @@ where
     #[inline]
     fn as_ref(&self) -> &InnerDigest<C> {
         &self.0
+    }
+}
+
+/// Merkle Tree Verifier
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct Verifier<C>(PhantomData<C>)
+where
+    C: Configuration + ?Sized;
+
+impl<C> accumulator::Verifier for Verifier<C>
+where
+    C: Configuration + ?Sized,
+{
+    type Parameters = Parameters<C>;
+
+    type Item = Leaf<C>;
+
+    type Witness = Path<C>;
+
+    type Output = Root<C>;
+
+    type Verification = bool;
+
+    #[inline]
+    fn verify(
+        parameters: &Self::Parameters,
+        item: &Self::Item,
+        witness: &Self::Witness,
+        output: &Self::Output,
+    ) -> Self::Verification {
+        parameters.verify_path(witness, output, item)
     }
 }
 
@@ -818,12 +826,12 @@ where
 {
     type Item = Leaf<C>;
 
-    type Verifier = Parameters<C>;
+    type Verifier = Verifier<C>;
 
     type OutputSet = accumulator::Output<Self>;
 
     #[inline]
-    fn verifier(&self) -> &Parameters<C> {
+    fn parameters(&self) -> &<Self::Verifier as accumulator::Verifier>::Parameters {
         &self.parameters
     }
 

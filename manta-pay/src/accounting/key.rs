@@ -27,7 +27,9 @@
 use alloc::{format, string::String};
 use bip32::{Seed, XPrv};
 use core::{marker::PhantomData, num::ParseIntError, str::FromStr};
-use manta_accounting::key::{HierarchicalKeyTable, HierarchicalKeyTableParameter};
+use manta_accounting::key::{
+    HierarchicalKeyDerivationParameter, HierarchicalKeyDerivationScheme, SecretKeyPair,
+};
 use manta_util::{create_seal, seal};
 
 pub use bip32::{Error, Mnemonic};
@@ -103,10 +105,10 @@ macro_rules! impl_from_for_parameter {
     }
 }
 
-/// Implements the [`HierarchicalKeyTableParameter`] trait for `$name`.
+/// Implements the [`HierarchicalKeyDerivationParameter`] trait for `$name`.
 macro_rules! impl_parameter {
     ($name:ty) => {
-        impl HierarchicalKeyTableParameter for $name {
+        impl HierarchicalKeyDerivationParameter for $name {
             #[inline]
             fn increment(&mut self) {
                 self.0 += 1;
@@ -167,8 +169,8 @@ where
     C: CoinType,
 {
     /// Converts a `mnemonic` phrase into a [`KeySecret`], locking it with `password`.
-    #[must_use]
     #[inline]
+    #[must_use]
     pub fn new(mnemonic: Mnemonic, password: &str) -> Self {
         Self {
             seed: mnemonic.to_seed(password),
@@ -180,9 +182,9 @@ where
 /// Computes the [`BIP-0044`] path string for the given coin settings.
 ///
 /// [`BIP-0044`]: https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki
-#[must_use]
 #[inline]
-pub fn path_string<C>(account: &AccountParameter, index: &IndexParameter, kind: u32) -> String
+#[must_use]
+pub fn path_string<C>(account: ParameterType, spend: ParameterType, view: ParameterType) -> String
 where
     C: CoinType,
 {
@@ -191,13 +193,13 @@ where
         "m/{}'/{}'/{}'/{}/{}",
         BIP_44_PURPOSE_ID,
         C::COIN_TYPE_ID,
-        account.0,
-        kind,
-        index.0
+        account,
+        spend,
+        view,
     )
 }
 
-impl<C> HierarchicalKeyTable for KeySecret<C>
+impl<C> HierarchicalKeyDerivationScheme for KeySecret<C>
 where
     C: CoinType,
 {
@@ -207,20 +209,30 @@ where
 
     type Index = IndexParameter;
 
-    type Kind = u32;
-
     type Error = Error;
 
     #[inline]
-    fn get(
+    fn derive_spend(
         &self,
-        account: &Self::Account,
-        index: &Self::Index,
-        kind: &Self::Kind,
+        account: Self::Account,
+        spend: Self::Index,
     ) -> Result<Self::SecretKey, Self::Error> {
-        XPrv::derive_from_path(
+        Ok(XPrv::derive_from_path(
             &self.seed,
-            &path_string::<C>(account, index, *kind).parse()?,
-        )
+            &path_string::<C>(account.0, spend.0, 0).parse()?,
+        ))
+    }
+
+    #[inline]
+    fn derive_view(
+        &self,
+        account: Self::Account,
+        spend: Self::Index,
+        view: Self::Index,
+    ) -> Result<Self::SecretKey, Self::Error> {
+        Ok(XPrv::derive_from_path(
+            &self.seed,
+            &path_string::<C>(account.0, spend.0, view.0 + 1).parse()?,
+        ))
     }
 }

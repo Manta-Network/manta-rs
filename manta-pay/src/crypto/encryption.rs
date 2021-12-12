@@ -23,6 +23,7 @@ use aes_gcm::{
     aead::{Aead, NewAead},
     Aes256Gcm, Nonce,
 };
+use alloc::vec::Vec;
 use core::marker::PhantomData;
 use generic_array::GenericArray;
 use manta_crypto::encryption::SymmetricKeyEncryptionScheme;

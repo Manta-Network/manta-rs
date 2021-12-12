@@ -15,7 +15,3 @@
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
 //! Manta CLI Commands
-
-#![cfg_attr(doc_cfg, feature(doc_cfg))]
-#![forbid(rustdoc::broken_intra_doc_links)]
-#![forbid(missing_docs)]

@@ -63,9 +63,9 @@ ark-groth16 = { version = "0.3.0", optional = true, default-features = false }
 ark-r1cs-std = { version = "0.3.1", default-features = false }
 ark-relations = { version = "0.3.0", default-features = false }
 bip32 = { version = "0.2.2", default-features = false, features = ["bip39", "secp256k1"] }
-blake2 = { version = "0.9.2", default-features = false }
+blake2 = { version = "0.10.0", default-features = false }
 derivative = { version = "2.2.0", default-features = false }
-dusk-plonk = { version = "0.8.2", optional = true, default-features = false }
+dusk-plonk = { version = "0.9.0", optional = true, default-features = false }
 generic-array = { version = "0.14.4", default-features = false }
 manta-accounting = { path = "../manta-accounting" }
 manta-crypto = { path = "../manta-crypto" }

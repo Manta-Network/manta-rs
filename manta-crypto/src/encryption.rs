@@ -92,7 +92,7 @@ pub type PublicKey<H> =
 ///
 /// [`agree_derive`]: HybridPublicKeyEncryptionScheme::agree_derive
 #[derive(derivative::Derivative)]
-#[derivative(Clone, Copy, Debug, Default, Eq, Hash, PartialEq, PartialOrd)]
+#[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Hybrid<K, S, F>
 where
     K: KeyAgreementScheme,

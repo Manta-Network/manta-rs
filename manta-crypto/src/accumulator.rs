@@ -39,6 +39,9 @@ where
 
 /// Accumulator Membership Verifier
 pub trait Verifier {
+    /// Parameters Type
+    type Parameters;
+
     /// Item Type
     type Item: ?Sized;
 
@@ -49,39 +52,18 @@ pub trait Verifier {
     type Output;
 
     /// Verification Type
+    ///
+    /// Typically this is either [`bool`] or some [`Result`] type.
     type Verification;
 
     /// Verifies that `item` is stored in a known accumulator with accumulated `output` and
     /// membership `witness`.
     fn verify(
-        &self,
+        parameters: &Self::Parameters,
         item: &Self::Item,
         witness: &Self::Witness,
         output: &Self::Output,
     ) -> Self::Verification;
-}
-
-impl<V> Verifier for &V
-where
-    V: Verifier + ?Sized,
-{
-    type Item = V::Item;
-
-    type Witness = V::Witness;
-
-    type Output = V::Output;
-
-    type Verification = V::Verification;
-
-    #[inline]
-    fn verify(
-        &self,
-        item: &Self::Item,
-        witness: &Self::Witness,
-        output: &Self::Output,
-    ) -> Self::Verification {
-        (*self).verify(item, witness, output)
-    }
 }
 
 /// Accumulator Output Type
@@ -98,8 +80,8 @@ pub trait Accumulator {
     /// Output Matching Set Type
     type OutputSet: MatchingSet<<Self::Verifier as Verifier>::Output>;
 
-    /// Returns the verifier for `self`.
-    fn verifier(&self) -> &Self::Verifier;
+    /// Returns the parameters associated with the verifier attached to `self`.
+    fn parameters(&self) -> &<Self::Verifier as Verifier>::Parameters;
 
     /// Returns the output matching set for the current state of `self`.
     fn outputs(&self) -> Self::OutputSet;
@@ -149,8 +131,8 @@ where
     type OutputSet = A::OutputSet;
 
     #[inline]
-    fn verifier(&self) -> &Self::Verifier {
-        (**self).verifier()
+    fn parameters(&self) -> &<Self::Verifier as Verifier>::Parameters {
+        (**self).parameters()
     }
 
     #[inline]
@@ -213,7 +195,7 @@ pub trait OptimizedAccumulator: Accumulator {
     /// [`insert`]: Accumulator::insert
     /// [`contains`]: Accumulator::contains
     #[inline]
-    fn insert_nonprovable(&mut self, item: &<Self::Verifier as Verifier>::Item) -> bool {
+    fn insert_nonprovable(&mut self, item: &Self::Item) -> bool {
         self.insert(item)
     }
 
@@ -229,7 +211,7 @@ pub trait OptimizedAccumulator: Accumulator {
     /// efficient enough. Space and time tradeoffs should be studied to determine the usefulness of
     /// this method.
     #[inline]
-    fn remove_proof(&mut self, item: &<Self::Verifier as Verifier>::Item) -> bool {
+    fn remove_proof(&mut self, item: &Self::Item) -> bool {
         let _ = item;
         false
     }
@@ -283,18 +265,48 @@ where
         accumulator.matching_output(&self.output)
     }
 
-    /// Verifies that `item` is stored in a known accumulator using `verifier`.
+    /// Verifies that `item` is stored in a known accumulator using `parameters`.
     #[inline]
-    pub fn verify(&self, item: &V::Item, verifier: &V) -> V::Verification {
-        verifier.verify(item, &self.witness, &self.output)
+    pub fn verify(&self, parameters: &V::Parameters, item: &V::Item) -> V::Verification {
+        V::verify(parameters, item, &self.witness, &self.output)
     }
 }
 
-/// Constraint System Gadgets for Accumulators
+/// Constraint System Gadgets
 pub mod constraint {
-    use super::*;
     use crate::constraint::{Allocation, AllocationMode, Derived, Variable, VariableSource};
     use core::marker::PhantomData;
+
+    /// Accumulator Verifier Gadget
+    pub trait Verifier<V>
+    where
+        V: super::Verifier,
+    {
+        /// Paramters Type
+        type Parameters: Variable<Self, Type = V::Parameters>;
+
+        /// Item Type
+        type Item: Variable<Self, Type = V::Item>;
+
+        /// Secret Witness Type
+        type Witness: Variable<Self, Type = V::Witness>;
+
+        /// Output Type
+        type Output: Variable<Self, Type = V::Output>;
+
+        /// Verification Type
+        type Verification: Variable<Self, Type = V::Verification>;
+
+        /// Verifies that `item` is stored in a known accumulator with accumulated `output` and
+        /// membership `witness`.
+        fn verify(
+            &mut self,
+            parameters: &Self::Parameters,
+            item: &Self::Item,
+            witness: &Self::Witness,
+            output: &Self::Output,
+        ) -> Self::Verification;
+    }
 
     /// Membership Proof Allocation Mode Entry
     #[derive(derivative::Derivative)]
@@ -343,23 +355,63 @@ pub mod constraint {
         type Unknown = MembershipProofModeEntry<WitnessMode::Unknown, OutputMode::Unknown>;
     }
 
-    impl<C, V> Variable<C> for MembershipProof<V>
+    /// Accumulator Membership Proof
+    pub struct MembershipProof<B, V>
     where
-        C: ?Sized,
-        V: Variable<C> + Verifier + ?Sized,
-        V::Type: Verifier,
-        V::Witness: Variable<C, Type = <V::Type as Verifier>::Witness>,
-        V::Output: Variable<C, Type = <V::Type as Verifier>::Output>,
+        B: super::Verifier,
+        V: Verifier<B>,
     {
-        type Type = MembershipProof<V::Type>;
+        /// Secret Membership Witness
+        witness: V::Witness,
+
+        /// Accumulator Output
+        output: V::Output,
+    }
+
+    impl<B, V> MembershipProof<B, V>
+    where
+        B: super::Verifier,
+        V: Verifier<B>,
+    {
+        /// Builds a new [`MembershipProof`] from `witness` and `output`.
+        #[inline]
+        pub fn new(witness: V::Witness, output: V::Output) -> Self {
+            Self { witness, output }
+        }
+
+        /// Returns the accumulated output part of `self`, dropping the
+        /// [`V::Witness`](Verifier::Witness).
+        #[inline]
+        pub fn into_output(self) -> V::Output {
+            self.output
+        }
+
+        /// Verifies that `item` is stored in a known accumulator using `verifier`.
+        #[inline]
+        pub fn verify(
+            &self,
+            parameters: &V::Parameters,
+            item: &V::Item,
+            cs: &mut V,
+        ) -> V::Verification {
+            cs.verify(parameters, item, &self.witness, &self.output)
+        }
+    }
+
+    impl<B, V> Variable<V> for MembershipProof<B, V>
+    where
+        B: super::Verifier,
+        V: Verifier<B>,
+    {
+        type Type = super::MembershipProof<B>;
 
         type Mode = MembershipProofMode<
-            <V::Witness as Variable<C>>::Mode,
-            <V::Output as Variable<C>>::Mode,
+            <V::Witness as Variable<V>>::Mode,
+            <V::Output as Variable<V>>::Mode,
         >;
 
         #[inline]
-        fn new(cs: &mut C, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
+        fn new(cs: &mut V, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
             match allocation {
                 Allocation::Known(this, mode) => Self::new(
                     this.witness.as_known(cs, mode.witness),
@@ -399,7 +451,7 @@ pub mod test {
         );
         if let Some(proof) = accumulator.prove(item) {
             assert!(
-                proof.verify(item, accumulator.verifier()),
+                proof.verify(accumulator.parameters(), item),
                 "Invalid proof returned for inserted item."
             );
             proof.into_output()

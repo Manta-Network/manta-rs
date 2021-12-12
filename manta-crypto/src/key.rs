@@ -18,7 +18,7 @@
 
 /// Key Derivation Function
 pub trait KeyDerivationFunction<S> {
-    ///
+    /// Output Key Type
     type Output;
 
     /// Derives an output key from `secret` computed from a cryptographic agreement scheme.
@@ -120,5 +120,35 @@ pub trait KeyAgreementWithDerivation: KeyAgreementScheme {
         public_key: Self::PublicKey,
     ) -> Self::Output {
         Self::KeyDerivationFunction::derive(Self::agree_owned(secret_key, public_key))
+    }
+}
+
+/// Constraint System Gadgets
+pub mod constraint {
+    use crate::constraint::Variable;
+
+    /// Key Agreement Scheme Gadget
+    pub trait KeyAgreementScheme<K>
+    where
+        K: super::KeyAgreementScheme,
+    {
+        /// Secret Key Type
+        type SecretKey: Variable<Self, Type = K::SecretKey>;
+
+        /// Public Key Type
+        type PublicKey: Variable<Self, Type = K::PublicKey>;
+
+        /// Shared Secret Type
+        type SharedSecret: Variable<Self, Type = K::SharedSecret>;
+
+        /// Derives a public key corresponding to `secret_key`.
+        fn derive(&mut self, secret_key: &Self::SecretKey) -> Self::PublicKey;
+
+        /// Computes the shared secret given the known `secret_key` and the given `public_key`.
+        fn agree(
+            &mut self,
+            secret_key: &Self::SecretKey,
+            public_key: &Self::PublicKey,
+        ) -> Self::SharedSecret;
     }
 }
