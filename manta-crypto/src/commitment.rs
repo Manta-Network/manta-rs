@@ -53,12 +53,12 @@ pub trait CommitmentScheme {
 }
 
 /// Commitment Extended Input
-pub trait Input<T>: CommitmentScheme
+pub trait Input<T>
 where
     T: ?Sized,
 {
-    /// Extends the `input` data with `next`.
-    fn extend(input: &mut Self::Input, next: &T);
+    /// Extends `self` with input data `next`.
+    fn extend(&mut self, next: &T);
 }
 
 /// Commitment Builder
@@ -106,9 +106,9 @@ where
     pub fn update<T>(mut self, next: &T) -> Self
     where
         T: ?Sized,
-        C: Input<T>,
+        C::Input: Input<T>,
     {
-        C::extend(&mut self.input, next);
+        self.input.extend(next);
         self
     }
 
@@ -118,10 +118,10 @@ where
     where
         T: 't + ?Sized,
         I: IntoIterator<Item = &'t T>,
-        C: Input<T>,
+        C::Input: Input<T>,
     {
         for next in iter {
-            C::extend(&mut self.input, next);
+            self.input.extend(next);
         }
         self
     }
