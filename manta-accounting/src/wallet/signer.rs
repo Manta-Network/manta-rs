@@ -559,7 +559,7 @@ where
         todo!()
     }
 
-    /// Builds a [`TransferPost`] for the given `transfer` at `ledger_checkpoint`.
+    /// Builds a [`TransferPost`] for the given `transfer`.
     #[inline]
     fn build_post<
         const SOURCES: usize,
@@ -568,7 +568,6 @@ where
         const SINKS: usize,
     >(
         &mut self,
-        ledger_checkpoint: C::LedgerCheckpoint,
         transfer: Transfer<C, SOURCES, SENDERS, RECEIVERS, SINKS>,
     ) -> Result<TransferPost<C>, Error<C::HierarchicalKeyDerivationScheme, C>> {
         transfer
@@ -576,7 +575,6 @@ where
                 &self.ephemeral_key_commitment_scheme,
                 &self.commitment_scheme,
                 self.utxo_set.verifier(),
-                ledger_checkpoint,
                 &self.proving_context,
                 &mut self.rng,
             )
@@ -789,7 +787,7 @@ where
             Transaction::Mint(asset) => {
                 /* TODO:
                 let default_index = Default::default();
-                let mint_post = self.build_post(ledger_checkpoint, Mint::build(
+                let mint_post = self.build_post(Mint::build(
                     asset,
                     self.build_pre_receiver(default_index, default_index, asset),
                 ))?;
