@@ -1895,6 +1895,7 @@ pub trait Shape: sealed::Sealed {
 /// Canonical Transaction Types
 pub mod canonical {
     use super::*;
+    use crate::asset;
     use manta_util::seal;
 
     /// Implements [`Shape`] for a given shape type.
@@ -2088,5 +2089,62 @@ pub mod canonical {
         ///
         /// A transaction of this kind will result in a withdraw of `asset`.
         Withdraw(Asset),
+    }
+
+    /// Transfer Asset Selection
+    pub struct Selection<C>
+    where
+        C: Configuration,
+    {
+        /// Change Value
+        pub change: AssetValue,
+
+        /// Senders
+        pub senders: Vec<PreSender<C>>,
+    }
+
+    /// Selection Error
+    #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+    pub enum SelectionError<E> {
+        /// Insufficient Balance
+        InsufficientBalance,
+
+        /// Building Error
+        Error(E),
+    }
+
+    impl<C> Selection<C>
+    where
+        C: Configuration,
+    {
+        /// Builds a new [`Selection`] from `change` and `senders`.
+        #[inline]
+        fn build(change: AssetValue, senders: Vec<PreSender<C>>) -> Self {
+            Self { change, senders }
+        }
+
+        /// Builds a new [`Selection`] by mapping over an asset selection with `builder`.
+        #[inline]
+        pub fn new<M, E, F>(
+            selection: &asset::Selection<M>,
+            asset_id: AssetId,
+            mut builder: F,
+        ) -> Result<Self, SelectionError<E>>
+        where
+            M: asset::AssetMap,
+            F: FnMut(&M::Key, Asset) -> Result<PreSender<C>, E>,
+        {
+            if selection.is_empty() {
+                return Err(SelectionError::InsufficientBalance);
+            }
+            Ok(Self::build(
+                selection.change,
+                selection
+                    .iter()
+                    .map(move |(k, v)| builder(k, asset_id.with(*v)))
+                    .collect::<Result<_, _>>()
+                    .map_err(SelectionError::Error)?,
+            ))
+        }
     }
 }
