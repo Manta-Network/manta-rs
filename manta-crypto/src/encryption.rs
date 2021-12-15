@@ -56,7 +56,7 @@ pub trait HybridPublicKeyEncryptionScheme: SymmetricKeyEncryptionScheme {
 
     /// Key Derivation Function Type
     type KeyDerivationFunction: KeyDerivationFunction<
-        <Self::KeyAgreementScheme as KeyAgreementScheme>::SharedSecret,
+        Key = <Self::KeyAgreementScheme as KeyAgreementScheme>::SharedSecret,
         Output = Self::Key,
     >;
 
@@ -97,7 +97,7 @@ pub struct Hybrid<K, S, F>
 where
     K: KeyAgreementScheme,
     S: SymmetricKeyEncryptionScheme,
-    F: KeyDerivationFunction<K::SharedSecret, Output = S::Key>,
+    F: KeyDerivationFunction<Key = K::SharedSecret, Output = S::Key>,
 {
     /// Type Parameter Marker
     __: PhantomData<(K, S, F)>,
@@ -107,7 +107,7 @@ impl<K, S, F> SymmetricKeyEncryptionScheme for Hybrid<K, S, F>
 where
     K: KeyAgreementScheme,
     S: SymmetricKeyEncryptionScheme,
-    F: KeyDerivationFunction<K::SharedSecret, Output = S::Key>,
+    F: KeyDerivationFunction<Key = K::SharedSecret, Output = S::Key>,
 {
     type Key = S::Key;
 
@@ -130,7 +130,7 @@ impl<K, S, F> HybridPublicKeyEncryptionScheme for Hybrid<K, S, F>
 where
     K: KeyAgreementScheme,
     S: SymmetricKeyEncryptionScheme,
-    F: KeyDerivationFunction<K::SharedSecret, Output = S::Key>,
+    F: KeyDerivationFunction<Key = K::SharedSecret, Output = S::Key>,
 {
     type KeyAgreementScheme = K;
     type KeyDerivationFunction = F;
@@ -157,15 +157,12 @@ where
     #[inline]
     pub fn new(
         public_key: &PublicKey<H>,
-        ephemeral_secret_key: SecretKey<H>,
+        ephemeral_secret_key: &SecretKey<H>,
         plaintext: H::Plaintext,
     ) -> Self {
         Self {
-            ciphertext: H::encrypt(
-                H::agree_derive(&ephemeral_secret_key, public_key),
-                plaintext,
-            ),
-            ephemeral_public_key: H::KeyAgreementScheme::derive_owned(ephemeral_secret_key),
+            ciphertext: H::encrypt(H::agree_derive(ephemeral_secret_key, public_key), plaintext),
+            ephemeral_public_key: H::KeyAgreementScheme::derive(ephemeral_secret_key),
         }
     }
 

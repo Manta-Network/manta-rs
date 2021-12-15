@@ -135,6 +135,7 @@ where
 
 /// Constraint System Gadgets
 pub mod constraint {
+    use super::Input;
     use crate::constraint::Variable;
 
     /// Commitment Scheme Gadget
@@ -158,8 +159,85 @@ pub mod constraint {
         fn commit(
             &mut self,
             parameters: &Self::Parameters,
-            input: &Self::Input,
             trapdoor: &Self::Trapdoor,
+            input: &Self::Input,
         ) -> Self::Output;
+
+        /// Starts a new [`Builder`] for extended commitments.
+        #[inline]
+        fn start<'c>(
+            parameters: &'c Self::Parameters,
+            trapdoor: &'c Self::Trapdoor,
+        ) -> Builder<'c, C, Self>
+        where
+            Self::Input: Default,
+        {
+            Builder::new(parameters, trapdoor)
+        }
+    }
+
+    /// Commitment Builder
+    pub struct Builder<'c, B, C>
+    where
+        B: super::CommitmentScheme,
+        C: CommitmentScheme<B> + ?Sized,
+        C::Input: Default,
+    {
+        /// Commitment Parameters
+        parameters: &'c C::Parameters,
+
+        /// Commitment Trapdoor
+        trapdoor: &'c C::Trapdoor,
+
+        /// Commitment Input Accumulator
+        input: C::Input,
+    }
+
+    impl<'c, B, C> Builder<'c, B, C>
+    where
+        B: super::CommitmentScheme,
+        C: CommitmentScheme<B> + ?Sized,
+        C::Input: Default,
+    {
+        /// Returns a new [`Builder`] with fixed `parameters` and `trapdoor`.
+        #[inline]
+        pub fn new(parameters: &'c C::Parameters, trapdoor: &'c C::Trapdoor) -> Self {
+            Self {
+                parameters,
+                trapdoor,
+                input: Default::default(),
+            }
+        }
+
+        /// Updates the builder with the `next` input.
+        #[inline]
+        pub fn update<T>(mut self, next: &T) -> Self
+        where
+            T: ?Sized,
+            C::Input: Input<T>,
+        {
+            self.input.extend(next);
+            self
+        }
+
+        /// Updates the builder with each item in `iter`.
+        #[inline]
+        pub fn update_all<'t, T, I>(mut self, iter: I) -> Self
+        where
+            T: 't + ?Sized,
+            I: IntoIterator<Item = &'t T>,
+            C::Input: Input<T>,
+        {
+            for next in iter {
+                self.input.extend(next);
+            }
+            self
+        }
+
+        /// Commits to the input stored in the builder.
+        #[inline]
+        pub fn commit(self, cs: &mut C) -> C::Output {
+            cs.commit(self.parameters, self.trapdoor, &self.input)
+        }
     }
 }
