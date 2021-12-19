@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Merkle Trees
+//! Merkle Trees and Forests
 
 // TODO:  Should `Leaf` move into `Tree`/`Configuration` since we might want the tree to have
 //        special kinds of leaf input (metadata along with just the digest)?

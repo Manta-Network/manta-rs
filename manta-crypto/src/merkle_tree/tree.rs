@@ -59,7 +59,7 @@ pub trait InnerHash {
     type Parameters;
 
     /// Inner Hash Output Type
-    type Output: Default + PartialEq;
+    type Output: Clone + Default + PartialEq;
 
     /// Returns `true` if `digest` is the default inner hash output value.
     #[inline]
@@ -210,13 +210,7 @@ where
     fn current_leaf(&self) -> LeafDigest<C>;
 
     /// Returns the [`Root`] of the merkle tree.
-    fn root(&self, parameters: &Parameters<C>) -> Root<C>;
-
-    /// Returns `true` if `root` matches the root of `self`.
-    #[inline]
-    fn matching_root(&self, parameters: &Parameters<C>, root: &Root<C>) -> bool {
-        &self.root(parameters) == root
-    }
+    fn root(&self) -> &Root<C>;
 
     /// Returns the [`CurrentPath`] of the current (i.e. right-most) leaf.
     fn current_path(&self, parameters: &Parameters<C>) -> CurrentPath<C>;
@@ -413,7 +407,7 @@ where
 /// Digest Type
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "LeafDigest<C>: Clone, InnerDigest<C>: Clone"),
+    Clone(bound = "LeafDigest<C>: Clone"),
     Copy(bound = "LeafDigest<C>: Copy, InnerDigest<C>: Copy"),
     Debug(bound = "LeafDigest<C>: Debug, InnerDigest<C>: Debug"),
     Eq(bound = "LeafDigest<C>: Eq, InnerDigest<C>: Eq"),
@@ -543,10 +537,10 @@ where
     T: Tree<C>,
 {
     /// Underlying Tree Structure
-    pub(super) tree: T,
+    tree: T,
 
     /// Merkle Tree Parameters
-    pub(super) parameters: Parameters<C>,
+    parameters: Parameters<C>,
 }
 
 impl<C, T> MerkleTree<C, T>
@@ -639,16 +633,8 @@ where
     ///
     /// See [`Tree::root`] for more.
     #[inline]
-    pub fn root(&self) -> Root<C> {
-        self.tree.root(&self.parameters)
-    }
-
-    /// Returns `true` if `root` matches the root of `self`.
-    ///
-    /// See [`Tree::matching_root`] for more.
-    #[inline]
-    fn matching_root(&self, root: &Root<C>) -> bool {
-        self.tree.matching_root(&self.parameters, root)
+    pub fn root(&self) -> &Root<C> {
+        self.tree.root()
     }
 
     /// Returns the [`CurrentPath`] of the current (i.e right-most) leaf.
@@ -691,6 +677,18 @@ where
         Leaf<C>: Sized,
     {
         self.tree.extend_slice(&self.parameters, leaves)
+    }
+
+    /// Appends an iterator of leaf digests at the end of the tree, returning the iterator back
+    /// if it could not be inserted because the tree has exhausted its capacity.
+    ///
+    /// See [`Tree::extend_digests`] for more.
+    #[inline]
+    pub fn extend_digests<L>(&mut self, leaf_digests: L) -> Result<(), L::IntoIter>
+    where
+        L: IntoIterator<Item = LeafDigest<C>>,
+    {
+        self.tree.extend_digests(&self.parameters, leaf_digests)
     }
 
     /// Returns the leaf digest at the given `index`.
@@ -804,11 +802,6 @@ where
     }
 
     #[inline]
-    fn matching_output(&self, output: &accumulator::Output<Self>) -> bool {
-        self.matching_root(output)
-    }
-
-    #[inline]
     fn insert(&mut self, item: &Self::Item) -> bool {
         self.push_provable(item)
     }
@@ -818,7 +811,7 @@ where
         Some(MembershipProof::new(
             self.path(self.index_of(&self.parameters.digest(item))?)
                 .ok()?,
-            self.root(),
+            self.root().clone(),
         ))
     }
 

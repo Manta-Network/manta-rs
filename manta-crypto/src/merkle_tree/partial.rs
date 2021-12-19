@@ -33,7 +33,7 @@ pub type PartialMerkleTree<C, M = BTreeMap<C>> = MerkleTree<C, Partial<C, M>>;
 /// Partial Merkle Tree Backing Structure
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "LeafDigest<C>: Clone, InnerDigest<C>: Clone, M: Clone"),
+    Clone(bound = "LeafDigest<C>: Clone, M: Clone"),
     Debug(bound = "LeafDigest<C>: Debug, InnerDigest<C>: Debug, M: Debug"),
     Default(bound = "M: Default"),
     Eq(bound = "LeafDigest<C>: Eq, InnerDigest<C>: Eq, M: Eq"),
@@ -173,7 +173,6 @@ where
     C: Configuration + ?Sized,
     M: InnerMap<C> + Default,
     LeafDigest<C>: Clone,
-    InnerDigest<C>: Clone,
 {
     #[inline]
     fn new(parameters: &Parameters<C>) -> Self {
@@ -192,15 +191,8 @@ where
     }
 
     #[inline]
-    fn root(&self, parameters: &Parameters<C>) -> Root<C> {
-        let _ = parameters;
-        self.root().clone()
-    }
-
-    #[inline]
-    fn matching_root(&self, parameters: &Parameters<C>, root: &Root<C>) -> bool {
-        let _ = parameters;
-        self.root() == root
+    fn root(&self) -> &Root<C> {
+        self.root()
     }
 
     #[inline]
@@ -234,7 +226,6 @@ where
     C: Configuration + ?Sized,
     M: InnerMap<C>,
     LeafDigest<C>: Clone,
-    InnerDigest<C>: Clone,
 {
     type Error = ();
 

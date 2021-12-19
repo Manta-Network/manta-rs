@@ -130,11 +130,10 @@ where
         self.base = Some(fork_base);
         let mut base = P::claim(mem::take(&mut self.base).unwrap());
         assert!(base
-            .tree
-            .extend_digests(
-                &base.parameters,
-                Fork::<C, T, P, M>::extract_leaves(base_contribution, branch),
-            )
+            .extend_digests(Fork::<C, T, P, M>::extract_leaves(
+                base_contribution,
+                branch
+            ))
             .is_ok());
         self.base = Some(P::new(base));
     }
@@ -283,11 +282,11 @@ where
             Self::generate_branch_setup(base);
         let mut partial = Partial::new_unchecked(
             base_leaf_digests,
-            PartialInnerTree::from_current(&base.parameters, base_inner_digest, inner_path),
+            PartialInnerTree::from_current(base.parameters(), base_inner_digest, inner_path),
         );
         let partial_tree_len = partial.len();
         for (i, digest) in leaf_digests.into_iter().enumerate() {
-            partial.push_leaf_digest(&base.parameters, Node(partial_tree_len + i), digest);
+            partial.push_leaf_digest(base.parameters(), Node(partial_tree_len + i), digest);
         }
         (base_contribution, partial)
     }
@@ -315,14 +314,14 @@ where
             match current_path.leaf_index().parity() {
                 Parity::Left => (
                     BaseContribution::LeftLeaf,
-                    base.parameters
+                    base.parameters()
                         .join_leaves(&current_leaf, &current_path.sibling_digest),
                     vec![current_leaf],
                     current_path.inner_path,
                 ),
                 Parity::Right => (
                     BaseContribution::BothLeaves,
-                    base.parameters
+                    base.parameters()
                         .join_leaves(&current_path.sibling_digest, &current_leaf),
                     vec![current_path.sibling_digest, current_leaf],
                     current_path.inner_path,
@@ -423,7 +422,7 @@ where
     pub fn push(&mut self, leaf: &Leaf<C>) -> Option<bool> {
         Some(
             self.branch
-                .push(&P::upgrade(&self.base)?.as_ref().parameters, leaf),
+                .push(P::upgrade(&self.base)?.as_ref().parameters(), leaf),
         )
     }
 }

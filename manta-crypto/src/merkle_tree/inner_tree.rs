@@ -314,7 +314,7 @@ where
 /// Sentinel Source for a Single Sentinel Value
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "InnerDigest<C>: Clone"),
+    Clone(bound = ""),
     Copy(bound = "InnerDigest<C>: Copy"),
     Debug(bound = "InnerDigest<C>: Debug"),
     Default(bound = ""),
@@ -539,10 +539,7 @@ where
 
     /// Returns the path at `leaf_index`.
     #[inline]
-    pub fn path(&self, leaf_index: Node) -> InnerPath<C>
-    where
-        InnerDigest<C>: Clone,
-    {
+    pub fn path(&self, leaf_index: Node) -> InnerPath<C> {
         InnerPath::new(
             leaf_index,
             self.path_iter_for_leaf(leaf_index).cloned().collect(),
@@ -558,10 +555,7 @@ where
     /// Returns the path at `leaf_index`, assuming that `leaf_index` is the right-most index,
     /// so that the return value is a valid [`CurrentInnerPath`].
     #[inline]
-    pub fn current_path_unchecked(&self, leaf_index: Node) -> CurrentInnerPath<C>
-    where
-        InnerDigest<C>: Clone,
-    {
+    pub fn current_path_unchecked(&self, leaf_index: Node) -> CurrentInnerPath<C> {
         CurrentInnerPath::new(
             leaf_index,
             self.path_iter_for_leaf(leaf_index)
@@ -742,10 +736,7 @@ where
     /// Returns the path at `leaf_index` without checking if `leaf_index` is later than the
     /// starting index of this tree.
     #[inline]
-    pub fn path_unchecked(&self, leaf_index: Node) -> InnerPath<C>
-    where
-        InnerDigest<C>: Clone,
-    {
+    pub fn path_unchecked(&self, leaf_index: Node) -> InnerPath<C> {
         self.inner_tree.path(leaf_index)
     }
 }
@@ -758,10 +749,7 @@ where
     /// Returns the path at `leaf_index`, assuming that `leaf_index` is the right-most index,
     /// so that the return value is a valid [`CurrentInnerPath`].
     #[inline]
-    pub fn current_path_unchecked(&self, leaf_index: Node) -> CurrentInnerPath<C>
-    where
-        InnerDigest<C>: Clone,
-    {
+    pub fn current_path_unchecked(&self, leaf_index: Node) -> CurrentInnerPath<C> {
         self.inner_tree.current_path_unchecked(leaf_index)
     }
 }

@@ -41,7 +41,7 @@ pub(super) mod prelude {
 /// Merkle Tree Inner Path
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "InnerDigest<C>: Clone"),
+    Clone(bound = ""),
     Debug(bound = "InnerDigest<C>: Debug"),
     Eq(bound = "InnerDigest<C>: Eq"),
     Hash(bound = "InnerDigest<C>: Hash"),
@@ -214,7 +214,7 @@ where
 /// Merkle Tree Current Inner Path
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "InnerDigest<C>: Clone"),
+    Clone(bound = ""),
     Debug(bound = "InnerDigest<C>: Debug"),
     Default(bound = ""),
     Eq(bound = "InnerDigest<C>: Eq"),
@@ -552,7 +552,7 @@ impl<C> FusedIterator for CurrentInnerPathNodeIter<C> where C: Configuration + ?
 /// Merkle Tree Path
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "LeafDigest<C>: Clone, InnerDigest<C>: Clone"),
+    Clone(bound = "LeafDigest<C>: Clone"),
     Debug(bound = "LeafDigest<C>: Debug, InnerDigest<C>: Debug"),
     Default(bound = ""),
     Eq(bound = "LeafDigest<C>: Eq, InnerDigest<C>: Eq"),
@@ -677,7 +677,7 @@ where
 /// Merkle Tree Current Path
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "LeafDigest<C>: Clone, InnerDigest<C>: Clone"),
+    Clone(bound = "LeafDigest<C>: Clone"),
     Debug(bound = "LeafDigest<C>: Debug, InnerDigest<C>: Debug"),
     Default(bound = ""),
     Eq(bound = "LeafDigest<C>: Eq, InnerDigest<C>: Eq"),
@@ -805,7 +805,7 @@ where
 /// Compressed Path
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "LeafDigest<C>: Clone, InnerDigest<C>: Clone"),
+    Clone(bound = "LeafDigest<C>: Clone"),
     Debug(bound = "LeafDigest<C>: Debug, InnerDigest<C>: Debug"),
     Eq(bound = "LeafDigest<C>: Eq, InnerDigest<C>: Eq"),
     Hash(bound = "LeafDigest<C>: Hash, InnerDigest<C>: Hash"),

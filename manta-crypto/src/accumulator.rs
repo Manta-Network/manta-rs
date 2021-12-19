@@ -64,10 +64,6 @@ pub trait Accumulator {
     /// Returns the parameters associated with the verifier attached to `self`.
     fn parameters(&self) -> &Parameters<Self>;
 
-    /// Returns `true` if `output` is contained in the current output matching set associated to
-    /// `self`.
-    fn matching_output(&self, output: &Output<Self>) -> bool;
-
     /// Inserts `item` into `self` with the guarantee that `self` can later return a valid
     /// membership proof for `item` with a call to [`prove`](Self::prove). This method returns
     /// `false` if the maximum capacity of the accumulator would be exceeded by inserting `item`.
@@ -101,11 +97,6 @@ where
     #[inline]
     fn parameters(&self) -> &Parameters<Self> {
         (**self).parameters()
-    }
-
-    #[inline]
-    fn matching_output(&self, output: &Output<Self>) -> bool {
-        (**self).matching_output(output)
     }
 
     #[inline]
@@ -207,16 +198,6 @@ where
     #[inline]
     pub fn into_output(self) -> V::Output {
         self.output
-    }
-
-    /// Returns `true` if the output associated to `self` is contained in the current output
-    /// matching set associated to `accumulator`.
-    #[inline]
-    pub fn matching_output<A>(&self, accumulator: &A) -> bool
-    where
-        A: Accumulator<Verifier = V>,
-    {
-        accumulator.matching_output(&self.output)
     }
 
     /// Verifies that `item` is stored in a known accumulator using `parameters`.
@@ -431,7 +412,7 @@ pub mod test {
             .collect::<Vec<_>>();
         for (i, x) in outputs.iter().enumerate() {
             for (j, y) in outputs.iter().enumerate().skip(i + 1) {
-                assert_ne!(x, y, "Found matching checkpoints at {:?} and {:?}.", i, j)
+                assert_ne!(x, y, "Found matching outputs at {:?} and {:?}.", i, j)
             }
         }
     }
