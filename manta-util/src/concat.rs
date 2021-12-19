@@ -35,6 +35,7 @@ pub trait ConcatAccumulator<T> {
 
     /// Captures the accumulator and drops extra capacity before returning an owned copy.
     #[inline]
+    #[must_use]
     fn finish(mut self) -> Self
     where
         Self: Sized,

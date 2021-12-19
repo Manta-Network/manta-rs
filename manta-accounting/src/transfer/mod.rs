@@ -18,7 +18,7 @@
 
 use crate::asset::{Asset, AssetId, AssetValue};
 use alloc::vec::Vec;
-use core::ops::Add;
+use core::{fmt::Debug, hash::Hash, ops::Add};
 use manta_crypto::{
     accumulator::{self, Accumulator, MembershipProof, Verifier},
     commitment::{self, CommitmentScheme, Input as CommitmentInput},
@@ -52,6 +52,9 @@ pub trait Configuration {
     /// Secret Key Type
     type SecretKey: Clone;
 
+    /// Public Key Type
+    type PublicKey: Clone;
+
     /// Secret Key Variable Type
     type SecretKeyVar: Variable<Self::ConstraintSystem, Type = SecretKey<Self>, Mode = Secret>;
 
@@ -60,7 +63,10 @@ pub trait Configuration {
         + Equal<Self::ConstraintSystem>;
 
     /// Key Agreement Scheme Type
-    type KeyAgreementScheme: KeyAgreementScheme<SecretKey = Self::SecretKey>;
+    type KeyAgreementScheme: KeyAgreementScheme<
+        SecretKey = Self::SecretKey,
+        PublicKey = Self::PublicKey,
+    >;
 
     /// Ephemeral Key Trapdoor Type
     type EphemeralKeyTrapdoor: Sample;
@@ -523,6 +529,8 @@ where
 }
 
 /// Spending Key
+#[derive(derivative::Derivative)]
+#[derivative(Clone(bound = ""))]
 pub struct SpendingKey<C>
 where
     C: Configuration,
@@ -579,6 +587,7 @@ where
         ephemeral_key: PublicKey<C>,
         asset: Asset,
     ) -> PreSender<C> {
+        // FIXME: See if this clone is really needed.
         PreSender::new(parameters, self.spend.clone(), ephemeral_key, asset)
     }
 
@@ -586,21 +595,70 @@ where
     #[inline]
     pub fn receiver(
         &self,
-        ephemeral_key_commitment_scheme_parameters: &EphemeralKeyParameters<C>,
+        ephemeral_key_parameters: &EphemeralKeyParameters<C>,
         commitment_scheme_parameters: &CommitmentSchemeParameters<C>,
         ephemeral_key_trapdoor: EphemeralKeyTrapdoor<C>,
         asset: Asset,
     ) -> Receiver<C> {
         self.derive().into_receiver(
-            ephemeral_key_commitment_scheme_parameters,
+            ephemeral_key_parameters,
             commitment_scheme_parameters,
             ephemeral_key_trapdoor,
             asset,
         )
     }
+
+    /// Returns an receiver-sender pair for internal transactions.
+    #[inline]
+    pub fn internal_pair(
+        &self,
+        ephemeral_key_parameters: &EphemeralKeyParameters<C>,
+        commitment_scheme_parameters: &CommitmentSchemeParameters<C>,
+        ephemeral_key_trapdoor: EphemeralKeyTrapdoor<C>,
+        asset: Asset,
+    ) -> (Receiver<C>, PreSender<C>) {
+        let receiver = self.receiver(
+            ephemeral_key_parameters,
+            commitment_scheme_parameters,
+            ephemeral_key_trapdoor,
+            asset,
+        );
+        let sender = self.sender(
+            commitment_scheme_parameters,
+            receiver.ephemeral_public_key().clone(),
+            asset,
+        );
+        (receiver, sender)
+    }
+
+    /// Returns an receiver-sender pair of zeroes for internal transactions.
+    #[inline]
+    pub fn internal_zero_pair(
+        &self,
+        ephemeral_key_parameters: &EphemeralKeyParameters<C>,
+        commitment_scheme_parameters: &CommitmentSchemeParameters<C>,
+        ephemeral_key_trapdoor: EphemeralKeyTrapdoor<C>,
+        asset_id: AssetId,
+    ) -> (Receiver<C>, PreSender<C>) {
+        self.internal_pair(
+            ephemeral_key_parameters,
+            commitment_scheme_parameters,
+            ephemeral_key_trapdoor,
+            Asset::zero(asset_id),
+        )
+    }
 }
 
 /// Receiving Key
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = ""),
+    Copy(bound = "PublicKey<C>: Copy"),
+    Debug(bound = "PublicKey<C>: Debug"),
+    Eq(bound = "PublicKey<C>: Eq"),
+    Hash(bound = "PublicKey<C>: Hash"),
+    PartialEq(bound = "PublicKey<C>: PartialEq")
+)]
 pub struct ReceivingKey<C>
 where
     C: Configuration,
@@ -620,13 +678,13 @@ where
     #[inline]
     pub fn into_receiver(
         self,
-        ephemeral_key_commitment_scheme_parameters: &EphemeralKeyParameters<C>,
+        ephemeral_key_parameters: &EphemeralKeyParameters<C>,
         commitment_scheme_parameters: &CommitmentSchemeParameters<C>,
         ephemeral_key_trapdoor: EphemeralKeyTrapdoor<C>,
         asset: Asset,
     ) -> Receiver<C> {
         Receiver::new(
-            ephemeral_key_commitment_scheme_parameters,
+            ephemeral_key_parameters,
             commitment_scheme_parameters,
             ephemeral_key_trapdoor,
             self.spend,
@@ -796,6 +854,12 @@ impl<C> Sender<C>
 where
     C: Configuration,
 {
+    /// Returns the asset value sent by `self` in the transaction.
+    #[inline]
+    pub fn asset_value(&self) -> AssetValue {
+        self.asset.value
+    }
+
     /// Reverts `self` back into a [`PreSender`].
     ///
     /// This method should be called if the [`Utxo`] membership proof attached to `self` was deemed
@@ -1066,18 +1130,15 @@ where
     /// Builds a new [`Receiver`] for `spend` to receive `asset` with `ephemeral_secret_key`.
     #[inline]
     pub fn new(
-        ephemeral_key_commitment_scheme_parameters: &EphemeralKeyParameters<C>,
+        ephemeral_key_parameters: &EphemeralKeyParameters<C>,
         commitment_scheme_parameters: &CommitmentSchemeParameters<C>,
         ephemeral_key_trapdoor: EphemeralKeyTrapdoor<C>,
         spend: PublicKey<C>,
         view: PublicKey<C>,
         asset: Asset,
     ) -> Self {
-        let ephemeral_secret_key = C::ephemeral_secret_key(
-            ephemeral_key_commitment_scheme_parameters,
-            &ephemeral_key_trapdoor,
-            asset,
-        );
+        let ephemeral_secret_key =
+            C::ephemeral_secret_key(ephemeral_key_parameters, &ephemeral_key_trapdoor, asset);
         Self {
             utxo: C::full_utxo(
                 commitment_scheme_parameters,
@@ -1090,6 +1151,12 @@ where
             spend,
             asset,
         }
+    }
+
+    /// Returns the ephemeral public key associated to `self`.
+    #[inline]
+    pub fn ephemeral_public_key(&self) -> &PublicKey<C> {
+        self.note.ephemeral_public_key()
     }
 
     /// Extracts the ledger posting data from `self`.
@@ -1168,7 +1235,7 @@ where
         match allocation {
             Allocation::Known(this, mode) => Self {
                 ephemeral_key_trapdoor: this.ephemeral_key_trapdoor.as_known(cs, mode),
-                ephemeral_public_key: this.note.ephemeral_public_key().as_known(cs, mode),
+                ephemeral_public_key: this.ephemeral_public_key().as_known(cs, mode),
                 spend: this.spend.as_known(cs, mode),
                 asset: this.asset.as_known(cs, mode),
                 utxo: this.utxo.as_known(cs, Public),
@@ -1247,9 +1314,9 @@ impl<C> ReceiverPost<C>
 where
     C: Configuration,
 {
-    /// Returns the ephemeral key associated to `self`.
+    /// Returns the ephemeral public key associated to `self`.
     #[inline]
-    pub fn ephemeral_key(&self) -> &PublicKey<C> {
+    pub fn ephemeral_public_key(&self) -> &PublicKey<C> {
         self.note.ephemeral_public_key()
     }
 
@@ -1259,7 +1326,7 @@ where
         // TODO: Add a "public part" trait that extracts the public part of `Receiver` (using
         //       `ReceiverVar` to determine the types), then generate this method automatically.
         C::ProofSystem::extend(input, &self.utxo);
-        C::ProofSystem::extend(input, self.ephemeral_key());
+        C::ProofSystem::extend(input, self.ephemeral_public_key());
     }
 
     /// Validates `self` on the receiver `ledger`.

@@ -77,6 +77,7 @@ impl InnerNode {
 
     /// Returns the [`InnerNode`] which is the sibling of `self`.
     #[inline]
+    #[must_use]
     pub const fn sibling(&self) -> Self {
         Self::new(self.depth, self.index.sibling())
     }

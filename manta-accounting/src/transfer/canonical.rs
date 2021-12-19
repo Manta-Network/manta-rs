@@ -28,7 +28,7 @@ create_seal! {}
 ///
 /// This trait identifies a transfer shape, i.e. the number and type of participants on the input
 /// and output sides of the transaction. This trait is sealed and can only be used with the
-/// [existing canonical implementations](canonical).
+/// existing canonical implementations.
 pub trait Shape: sealed::Sealed {
     /// Number of Sources
     const SOURCES: usize;
@@ -248,16 +248,6 @@ where
     pub senders: Vec<PreSender<C>>,
 }
 
-/// Selection Error
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum SelectionError<E> {
-    /// Insufficient Balance
-    InsufficientBalance,
-
-    /// Building Error
-    Error(E),
-}
-
 impl<C> Selection<C>
 where
     C: Configuration,
@@ -270,25 +260,18 @@ where
 
     /// Builds a new [`Selection`] by mapping over an asset selection with `builder`.
     #[inline]
-    pub fn new<M, E, F>(
-        selection: &asset::Selection<M>,
-        asset_id: AssetId,
-        mut builder: F,
-    ) -> Result<Self, SelectionError<E>>
+    pub fn new<M, E, F>(selection: asset::Selection<M>, mut builder: F) -> Result<Self, E>
     where
         M: asset::AssetMap,
-        F: FnMut(&M::Key, Asset) -> Result<PreSender<C>, E>,
+        F: FnMut(M::Key, AssetValue) -> Result<PreSender<C>, E>,
     {
-        if selection.is_empty() {
-            return Err(SelectionError::InsufficientBalance);
-        }
         Ok(Self::build(
             selection.change,
             selection
-                .iter()
-                .map(move |(k, v)| builder(k, asset_id.with(*v)))
-                .collect::<Result<_, _>>()
-                .map_err(SelectionError::Error)?,
+                .values
+                .into_iter()
+                .map(move |(k, v)| builder(k, v))
+                .collect::<Result<_, _>>()?,
         ))
     }
 }

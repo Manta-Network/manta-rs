@@ -25,14 +25,13 @@
 mod node;
 mod tree;
 
+pub mod forest;
 pub mod fork;
 pub mod full;
 pub mod inner_tree;
 pub mod partial;
 pub mod path;
 pub mod single_path;
-
-// TODO: pub mod sharded;
 
 #[cfg(feature = "test")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]

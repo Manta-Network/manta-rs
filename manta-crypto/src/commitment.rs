@@ -103,6 +103,7 @@ where
 
     /// Updates the builder with the `next` input.
     #[inline]
+    #[must_use]
     pub fn update<T>(mut self, next: &T) -> Self
     where
         T: ?Sized,
@@ -114,6 +115,7 @@ where
 
     /// Updates the builder with each item in `iter`.
     #[inline]
+    #[must_use]
     pub fn update_all<'t, T, I>(mut self, iter: I) -> Self
     where
         T: 't + ?Sized,
@@ -211,6 +213,7 @@ pub mod constraint {
 
         /// Updates the builder with the `next` input.
         #[inline]
+        #[must_use]
         pub fn update<T>(mut self, next: &T) -> Self
         where
             T: ?Sized,
@@ -222,6 +225,7 @@ pub mod constraint {
 
         /// Updates the builder with each item in `iter`.
         #[inline]
+        #[must_use]
         pub fn update_all<'t, T, I>(mut self, iter: I) -> Self
         where
             T: 't + ?Sized,

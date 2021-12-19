@@ -89,15 +89,12 @@ pub trait HashConfiguration {
 
 /// Merkle Tree Configuration
 pub trait Configuration: HashConfiguration {
-    /// Height Type
-    type Height: Copy + Into<usize>;
-
     /// Fixed Height of the Merkle Tree
     ///
     /// # Contract
     ///
     /// Trees must always have height at least `2`.
-    const HEIGHT: Self::Height;
+    const HEIGHT: usize;
 }
 
 /// Configuration Structure
@@ -126,9 +123,7 @@ impl<C, const HEIGHT: usize> Configuration for Config<C, HEIGHT>
 where
     C: HashConfiguration + ?Sized,
 {
-    type Height = usize;
-
-    const HEIGHT: Self::Height = HEIGHT;
+    const HEIGHT: usize = HEIGHT;
 }
 
 /// Leaf Type
@@ -156,7 +151,7 @@ pub fn capacity<C>() -> usize
 where
     C: Configuration + ?Sized,
 {
-    1_usize << (C::HEIGHT.into() - 1)
+    1_usize << (C::HEIGHT - 1)
 }
 
 /// Returns the path length of the merkle tree with the given [`C::HEIGHT`](Configuration::HEIGHT)
@@ -169,7 +164,7 @@ pub fn path_length<C>() -> usize
 where
     C: Configuration + ?Sized,
 {
-    C::HEIGHT.into() - 2
+    C::HEIGHT - 2
 }
 
 /// Merkle Tree Structure
@@ -177,7 +172,7 @@ pub trait Tree<C>: Sized
 where
     C: Configuration + ?Sized,
 {
-    /// Builds a new merkle tree.
+    /// Builds a new empty merkle tree.
     fn new(parameters: &Parameters<C>) -> Self;
 
     /// Builds a new merkle tree with the given `leaves` returning `None` if the iterator
@@ -202,7 +197,7 @@ where
         Self::from_iter(parameters, slice)
     }
 
-    /// Returns the length of `self`.
+    /// Returns the number of items in `self`.
     fn len(&self) -> usize;
 
     /// Returns `true` if the length of `self` is zero.
@@ -497,33 +492,8 @@ where
     }
 }
 
-/// Merkle Tree Root Wrapper Type
-#[derive(derivative::Derivative)]
-#[derivative(
-    Clone(bound = "InnerDigest<C>: Clone"),
-    Copy(bound = "InnerDigest<C>: Copy"),
-    Debug(bound = "InnerDigest<C>: Debug"),
-    Default(bound = "InnerDigest<C>: Default"),
-    Eq(bound = "InnerDigest<C>: Eq"),
-    Hash(bound = "InnerDigest<C>: Hash"),
-    PartialEq(bound = "InnerDigest<C>: PartialEq")
-)]
-pub struct Root<C>(
-    /// Root Inner Digest
-    pub InnerDigest<C>,
-)
-where
-    C: HashConfiguration + ?Sized;
-
-impl<C> AsRef<InnerDigest<C>> for Root<C>
-where
-    C: HashConfiguration + ?Sized,
-{
-    #[inline]
-    fn as_ref(&self) -> &InnerDigest<C> {
-        &self.0
-    }
-}
+/// Merkle Tree Root
+pub type Root<C> = InnerDigest<C>;
 
 /// Merkle Tree Verifier
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -627,7 +597,7 @@ where
         Self { tree, parameters }
     }
 
-    /// Returns a reference to the parameters used by this merkle tree.
+    /// Returns a shared reference to the parameters used by this merkle tree.
     #[inline]
     pub fn parameters(&self) -> &Parameters<C> {
         &self.parameters
@@ -641,7 +611,7 @@ where
         capacity::<C>()
     }
 
-    /// Returns the length of this merkle tree.
+    /// Returns the number of items this merkle tree.
     ///
     /// See [`Tree::len`] for more.
     #[inline]
@@ -797,17 +767,6 @@ where
     }
 }
 
-impl<C, T> AsRef<T> for MerkleTree<C, T>
-where
-    C: Configuration + ?Sized,
-    T: Tree<C>,
-{
-    #[inline]
-    fn as_ref(&self) -> &T {
-        &self.tree
-    }
-}
-
 impl<C, T> AsMut<T> for MerkleTree<C, T>
 where
     C: Configuration + ?Sized,
@@ -816,6 +775,17 @@ where
     #[inline]
     fn as_mut(&mut self) -> &mut T {
         &mut self.tree
+    }
+}
+
+impl<C, T> AsRef<T> for MerkleTree<C, T>
+where
+    C: Configuration + ?Sized,
+    T: Tree<C>,
+{
+    #[inline]
+    fn as_ref(&self) -> &T {
+        &self.tree
     }
 }
 
@@ -828,16 +798,9 @@ where
 
     type Verifier = Verifier<C>;
 
-    type OutputSet = accumulator::Output<Self>;
-
     #[inline]
-    fn parameters(&self) -> &<Self::Verifier as accumulator::Verifier>::Parameters {
-        &self.parameters
-    }
-
-    #[inline]
-    fn outputs(&self) -> Self::OutputSet {
-        self.root()
+    fn parameters(&self) -> &accumulator::Parameters<Self> {
+        self.parameters()
     }
 
     #[inline]

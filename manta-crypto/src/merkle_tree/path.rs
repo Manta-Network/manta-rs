@@ -149,10 +149,8 @@ where
         InnerDigest<C>: 'i,
         I: IntoIterator<Item = &'i InnerDigest<C>>,
     {
-        Root(
-            iter.into_iter()
-                .fold(base, Self::fold_fn(parameters, index)),
-        )
+        iter.into_iter()
+            .fold(base, Self::fold_fn(parameters, index))
     }
 }
 
@@ -352,11 +350,11 @@ where
         I: IntoIterator<Item = &'i InnerDigest<C>>,
     {
         let mut iter = iter.into_iter().peekable();
-        Root((depth..path_length::<C>()).fold(base, |acc, _| {
+        (depth..path_length::<C>()).fold(base, move |acc, _| {
             Self::fold_fn(parameters, index.into_parent(), &acc, default, || {
                 iter.next().unwrap()
             })
-        }))
+        })
     }
 
     /// Updates `self` to the next current path with `next_leaf_digest`, updating `leaf_digest`
@@ -378,11 +376,8 @@ where
                     &mem::take(sibling_digest),
                     &mem::replace(leaf_digest, next_leaf_digest),
                 );
-
                 let mut accumulator = parameters.join_leaves(leaf_digest, sibling_digest);
-
                 let default_inner_digest = Default::default();
-
                 let mut i = 0;
                 let mut depth = 0;
                 while !Node::are_siblings(&last_index.into_parent(), &index.into_parent()) {
@@ -400,12 +395,9 @@ where
                     accumulator = parameters.join(&accumulator, &default_inner_digest);
                     depth += 1;
                 }
-
                 mem::drop(self.path.drain(1..i));
-
                 self.path[0] = last_accumulator;
                 accumulator = parameters.join(&self.path[0], &accumulator);
-
                 Self::fold(
                     parameters,
                     depth + 1,

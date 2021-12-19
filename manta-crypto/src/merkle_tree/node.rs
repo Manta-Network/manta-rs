@@ -173,6 +173,7 @@ impl Node {
 
     /// Returns the [`Node`] which is the sibling to `self`.
     #[inline]
+    #[must_use]
     pub const fn sibling(&self) -> Self {
         match self.parity() {
             Parity::Left => Self(self.0 + 1),
@@ -201,6 +202,7 @@ impl Node {
     /// Returns `self` if `self` has left parity or returns the sibling of `self` if `self` has
     /// right parity.
     #[inline]
+    #[must_use]
     pub const fn as_left(&self) -> Self {
         match self.parity() {
             Parity::Left => *self,
@@ -211,6 +213,7 @@ impl Node {
     /// Returns `self` if `self` has right parity or returns the sibling of `self` if `self` has
     /// left parity.
     #[inline]
+    #[must_use]
     pub const fn as_right(&self) -> Self {
         match self.parity() {
             Parity::Left => Self(self.0 + 1),
@@ -220,12 +223,14 @@ impl Node {
 
     /// Returns the left child [`Node`] of this node.
     #[inline]
+    #[must_use]
     pub const fn left_child(&self) -> Self {
         Self(self.0 << 1)
     }
 
     /// Returns the right child [`Node`] of this node.
     #[inline]
+    #[must_use]
     pub const fn right_child(&self) -> Self {
         Self(self.left_child().0 + 1)
     }
@@ -239,12 +244,14 @@ impl Node {
 
     /// Returns the parent [`Node`] of this node.
     #[inline]
+    #[must_use]
     pub const fn parent(&self) -> Self {
         Self(self.0 >> 1)
     }
 
     /// Converts `self` into its parent, returning the parent [`Node`].
     #[inline]
+    #[must_use]
     pub fn into_parent(&mut self) -> Self {
         *self = self.parent();
         *self

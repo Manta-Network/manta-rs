@@ -160,13 +160,13 @@ where
     #[inline]
     fn root(&self, parameters: &Parameters<C>) -> Root<C> {
         let _ = parameters;
-        Root(self.root().clone())
+        self.root().clone()
     }
 
     #[inline]
     fn matching_root(&self, parameters: &Parameters<C>, root: &Root<C>) -> bool {
         let _ = parameters;
-        self.root() == &root.0
+        self.root() == root
     }
 
     #[inline]

@@ -16,28 +16,148 @@
 
 //! Batched Transfers
 
-use crate::transfer::{Configuration, PreSender, Receiver, Transfer, TransferPost, Utxo};
-use alloc::vec;
-use manta_crypto::accumulator::Accumulator;
-use manta_util::{
-    fallible_array_map,
-    iter::{ChunkBy, IteratorExt},
-    seal,
+use crate::{
+    asset::{Asset, AssetId, AssetValue},
+    transfer::{
+        Configuration, Parameters, PreSender, ProofSystemError, Receiver, ReceivingKey, Sender,
+        SpendingKey, Transfer, TransferPost, Utxo,
+    },
 };
+use alloc::vec;
+use core::mem;
+use manta_crypto::{
+    accumulator::Accumulator,
+    rand::{CryptoRng, Rand, RngCore},
+};
+use manta_util::{
+    fallible_array_map, into_array_unchecked,
+    iter::{ChunkBy, IteratorExt},
+};
+
+/// Secret Transfer
+pub type SecretTransfer<C, const SENDERS: usize, const RECEIVERS: usize> =
+    Transfer<C, 0, { SENDERS }, { RECEIVERS }, 0>;
+
+/// Zero Coin Pre-Sender
+pub struct Zero<C, K>
+where
+    C: Configuration,
+{
+    /// Spend Access Key
+    key: K,
+
+    /// Pre-Sender
+    pre_sender: PreSender<C>,
+}
+
+/// Batch Join Structure
+pub struct Join<C, K, const RECEIVERS: usize>
+where
+    C: Configuration,
+{
+    /// Receivers
+    receivers: [Receiver<C>; RECEIVERS],
+
+    /// Zero Coin Pre-Senders
+    zeroes: Vec<Zero<C, K>>,
+
+    /// Accumulated Balance Pre-Sender
+    pre_sender: PreSender<C>,
+}
+
+impl<C, K, const RECEIVERS: usize> Join<C, K, RECEIVERS>
+where
+    C: Configuration,
+    K: Clone,
+{
+    ///
+    #[inline]
+    pub fn new<R>(
+        parameters: &Parameters<C>,
+        asset: Asset,
+        spending_key: &SpendingKey<C>,
+        zero_key: K,
+        rng: &mut R,
+    ) -> Self
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        let mut receivers = Vec::with_capacity(RECEIVERS);
+        let mut zeroes = Vec::with_capacity(RECEIVERS - 1);
+        for _ in 0..RECEIVERS - 2 {
+            let (receiver, pre_sender) = spending_key.internal_zero_pair(
+                &parameters.ephemeral_key_commitment_scheme,
+                &parameters.commitment_scheme,
+                rng.gen(),
+                asset.id,
+            );
+            receivers.push(receiver);
+            zeroes.push(Zero {
+                key: zero_key.clone(),
+                pre_sender,
+            });
+        }
+        let (receiver, pre_sender) = spending_key.internal_pair(
+            &parameters.ephemeral_key_commitment_scheme,
+            &parameters.commitment_scheme,
+            rng.gen(),
+            asset,
+        );
+        receivers.push(receiver);
+        Self {
+            receivers: into_array_unchecked(receivers),
+            zeroes,
+            pre_sender,
+        }
+    }
+}
+
+///
+pub trait Batcher<C>
+where
+    C: Configuration,
+{
+    ///
+    type UtxoSet: Accumulator<Item = Utxo<C>, Verifier = C::UtxoSetVerifier>;
+
+    ///
+    type Rng: CryptoRng + RngCore + ?Sized;
+
+    ///
+    fn utxo_set(&mut self) -> &mut Self::UtxoSet;
+
+    ///
+    fn rng(&mut self) -> &mut Self::Rng;
+
+    ///
+    fn prove<const SENDERS: usize, const RECEIVERS: usize>(
+        &mut self,
+        transfer: SecretTransfer<C, SENDERS, RECEIVERS>,
+    ) -> Result<TransferPost<C>, ProofSystemError<C>>;
+}
+
+/// Batching Error
+pub enum Error<C>
+where
+    C: Configuration,
+{
+    /// Missing UTXO Membership Proof
+    MissingUtxoMembershipProof,
+
+    /// Proof System Error
+    ProofSystemError(ProofSystemError<C>),
+}
 
 ///
 pub struct BatchRound<C, const SENDERS: usize, const RECEIVERS: usize>
 where
     C: Configuration,
 {
-    /// PreSender Chunk Iterator
+    /// Pre-Sender Chunk Iterator
     pre_senders: ChunkBy<vec::IntoIter<PreSender<C>>, SENDERS>,
 
-    ///
-    accumulators: Vec<PreSender<C>>,
-
-    /// Final Receiver
-    receiver: Option<Receiver<C>>,
+    /// Joined Pre-Senders
+    joins: Vec<PreSender<C>>,
 }
 
 impl<C, const SENDERS: usize, const RECEIVERS: usize> BatchRound<C, SENDERS, RECEIVERS>
@@ -45,39 +165,56 @@ where
     C: Configuration,
 {
     ///
-    pub fn next_transfer<S>(&mut self, utxo_set: &mut S) -> Option<TransferPost<C>>
+    #[inline]
+    pub fn next<K, R, S, P>(
+        &mut self,
+        parameters: &Parameters<C>,
+        spending_key: &SpendingKey<C>,
+        zero_key: K,
+        asset_id: AssetId,
+        zeroes: &mut Vec<Zero<C, K>>,
+        utxo_set: &mut S,
+        mut prover: P,
+        rng: &mut R,
+    ) -> Result<TransferPost<C>, Error<C>>
     where
+        K: Clone,
+        R: CryptoRng + RngCore + ?Sized,
         S: Accumulator<Item = Utxo<C>, Verifier = C::UtxoSetVerifier>,
+        P: FnMut(
+            SecretTransfer<C, SENDERS, RECEIVERS>,
+        ) -> Result<TransferPost<C>, ProofSystemError<C>>,
     {
         if let Some(chunk) = self.pre_senders.next() {
-            let senders =
-                fallible_array_map(chunk, move |ps| ps.try_upgrade(utxo_set).ok_or(())).ok()?;
+            let senders = fallible_array_map(chunk, |ps| {
+                ps.try_upgrade(utxo_set)
+                    .ok_or(Error::MissingUtxoMembershipProof)
+            })?;
 
-            /*
-            let mut accumulator = self.signer.next_accumulator::<_, _, RECEIVERS>(
+            let mut join = Join::new(
                 parameters,
-                asset_id,
-                senders.iter().map(Sender::asset_value).sum(),
-                &mut self.rng,
-            )?;
+                asset_id.with(senders.iter().map(Sender::asset_value).sum()),
+                spending_key,
+                zero_key,
+                rng,
+            );
 
-            let post =
-                self.build_post(Transfer::new(None, [], senders, accumulator.receivers, []))?;
+            let post = prover(Transfer::new(None, [], senders, join.receivers, []))
+                .map_err(Error::ProofSystemError)?;
 
-            for zero in &accumulator.zeros {
-                zero.as_ref().insert_utxo(utxo_set);
+            for zero in &join.zeroes {
+                zero.pre_sender.insert_utxo(utxo_set);
             }
-            accumulator.pre_sender.insert_utxo(&mut self.utxo_set);
+            join.pre_sender.insert_utxo(utxo_set);
 
-            new_zeroes.append(&mut accumulator.zeroes);
-            accumulators.push(accumulator.pre_sender);
-            */
+            zeroes.append(&mut join.zeroes);
+            self.joins.push(join.pre_sender);
 
-            todo!()
+            Ok(post)
         } else {
             /*
-            accumulators.append(&mut self.pre_senders.remainder());
-            self.pre_senders = accumulators.into_iter().chunk_by::<SENDERS>();
+            self.joins.append(&mut self.pre_senders.remainder());
+            self.pre_senders = mem::take(&mut self.joins).into_iter().chunk_by::<SENDERS>();
             */
 
             todo!()

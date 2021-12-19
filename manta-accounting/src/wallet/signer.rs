@@ -34,10 +34,11 @@ use crate::{
     key::{self, AccountKeys, HierarchicalKeyDerivationScheme},
     transfer::{
         self,
-        canonical::{Mint, PrivateTransfer, PrivateTransferShape, Reclaim, Transaction},
-        EncryptedNote, PreReceiver, PreSender, ProofSystemError, ProvingContext, PublicKey,
-        Receiver, ReceivingKey, SecretKey, Sender, Shape, SpendingKey, Transfer, TransferPost,
-        Utxo,
+        canonical::{
+            Mint, PrivateTransfer, PrivateTransferShape, Reclaim, Selection, Shape, Transaction,
+        },
+        EncryptedNote, Parameters, PreSender, ProofSystemError, ProvingContext, PublicKey,
+        Receiver, ReceivingKey, SecretKey, Sender, SpendingKey, Transfer, TransferPost, Utxo,
     },
 };
 use alloc::{vec, vec::Vec};
@@ -56,7 +57,7 @@ use manta_crypto::{
     },
     encryption::DecryptedMessage,
     key::KeyAgreementScheme,
-    rand::{CryptoRng, RngCore},
+    rand::{CryptoRng, Rand, RngCore},
 };
 use manta_util::{fallible_array_map, into_array_unchecked, iter::IteratorExt};
 
@@ -356,11 +357,8 @@ where
     /// Account Table
     account_table: AccountTable<C>,
 
-    /// Ephemeral Key Commitment Scheme
-    ephemeral_key_commitment_scheme: C::EphemeralKeyCommitmentScheme,
-
-    /// Commitment Scheme
-    commitment_scheme: C::CommitmentScheme,
+    /// Transfer Parameters,
+    parameters: Parameters<C>,
 
     /// Proving Context
     proving_context: ProvingContext<C>,
@@ -386,8 +384,7 @@ where
     #[inline]
     fn new_inner(
         account_table: AccountTable<C>,
-        ephemeral_key_commitment_scheme: C::EphemeralKeyCommitmentScheme,
-        commitment_scheme: C::CommitmentScheme,
+        parameters: Parameters<C>,
         proving_context: ProvingContext<C>,
         utxo_set: C::UtxoSet,
         assets: C::AssetMap,
@@ -396,8 +393,7 @@ where
     ) -> Self {
         Self {
             account_table,
-            ephemeral_key_commitment_scheme,
-            commitment_scheme,
+            parameters,
             proving_context,
             utxo_set,
             assets,
@@ -415,15 +411,13 @@ where
     #[inline]
     pub fn new(
         account_table: AccountTable<C>,
-        ephemeral_key_commitment_scheme: C::EphemeralKeyCommitmentScheme,
-        commitment_scheme: C::CommitmentScheme,
+        parameters: Parameters<C>,
         proving_context: ProvingContext<C>,
         rng: C::Rng,
     ) -> Self {
         Self::new_inner(
             account_table,
-            ephemeral_key_commitment_scheme,
-            commitment_scheme,
+            parameters,
             proving_context,
             Default::default(),
             Default::default(),
@@ -432,15 +426,57 @@ where
         )
     }
 
-    ///
+    /// Returns the hierarchical key indices for the current account.
     #[inline]
     fn account(&self) -> AccountKeys<C::HierarchicalKeyDerivationScheme> {
+        // FIXME: Implement multiple accounts.
         self.account_table.get(Default::default()).unwrap()
+    }
+
+    /// Inserts the new `utxo`-`encrypted_note` pair if a known key can decrypt the note and
+    /// validate the utxo.
+    #[inline]
+    fn insert_update_item(
+        &mut self,
+        utxo: Utxo<C>,
+        encrypted_note: EncryptedNote<C>,
+        assets: &mut Vec<Asset>,
+    ) -> Result<(), Error<C::HierarchicalKeyDerivationScheme, C>> {
+        let mut encrypted_note = Some(encrypted_note);
+        if let Some((
+            spend_index,
+            DecryptedMessage {
+                plaintext: asset,
+                ephemeral_public_key,
+            },
+        )) = self
+            .account()
+            .find_index(move |k| DecryptedMessage::try_new(&mut encrypted_note, &k))
+            .map_err(key::Error::KeyDerivationError)?
+        {
+            /* TODO:
+            if self.get_spending_key(spend_index).validate_utxo(
+                &self.parameters.commitment_scheme,
+                &ephemeral_public_key,
+                &asset,
+                &utxo,
+            ) {
+                assets.push(asset);
+                self.assets
+                    .insert((spend_index, ephemeral_public_key), asset);
+                self.utxo_set.insert(&utxo);
+                return Ok(());
+            }
+            */
+            todo!()
+        }
+        self.utxo_set.insert_nonprovable(&utxo);
+        Ok(())
     }
 
     /// Updates the internal ledger state, returning the new asset distribution.
     #[inline]
-    fn sync_inner<I>(
+    fn sync_with_updates<I>(
         &mut self,
         updates: I,
     ) -> SyncResult<C::HierarchicalKeyDerivationScheme, C, Self>
@@ -449,37 +485,7 @@ where
     {
         let mut assets = Vec::new();
         for (utxo, encrypted_note) in updates {
-            let mut encrypted_note = Some(encrypted_note);
-            if let Some((
-                spend_index,
-                DecryptedMessage {
-                    plaintext: asset,
-                    ephemeral_public_key,
-                },
-            )) = self
-                .account()
-                .find_index(move |k| DecryptedMessage::try_new(&mut encrypted_note, &k))
-                .map_err(key::Error::KeyDerivationError)?
-            {
-                /* FIXME: Add UTXO validation check. Is this necessary?
-                if self.spending_key.validate_utxo::<C>(
-                    &ephemeral_public_key,
-                    &asset,
-                    &utxo,
-                    &self.commitment_scheme,
-                ) {
-                    assets.push(asset);
-                    self.assets.insert((index, ephemeral_public_key), asset);
-                    self.utxo_set.insert(&utxo);
-                }
-                */
-                assets.push(asset);
-                self.assets
-                    .insert((spend_index, ephemeral_public_key), asset);
-                self.utxo_set.insert(&utxo);
-            } else {
-                self.utxo_set.insert_nonprovable(&utxo);
-            }
+            self.insert_update_item(utxo, encrypted_note, &mut assets)?;
         }
         Ok(SyncResponse::new(assets))
     }
@@ -499,7 +505,7 @@ where
 
         // FIXME: Do a capacity check on the current UTXO set.
         match self.utxo_set.len().checked_sub(starting_index) {
-            Some(diff) => self.sync_inner(updates.into_iter().skip(diff)),
+            Some(diff) => self.sync_with_updates(updates.into_iter().skip(diff)),
             _ => Err(Error::InconsistentSynchronization),
         }
     }
@@ -512,27 +518,32 @@ where
         ephemeral_key: PublicKey<C>,
         asset: Asset,
     ) -> Result<PreSender<C>, Error<C::HierarchicalKeyDerivationScheme, C>> {
-        Ok(PreSender::new(
-            self.account().spend_key(spend_index)?,
+        /* TODO:
+        Ok(self.account().spend_key(spend_index)?.pre_sender(
+            &self.parameters.commitment_scheme,
             ephemeral_key,
             asset,
-            &self.commitment_scheme,
         ))
+        */
+        todo!()
     }
 
     /// Builds the pre-receiver associated to `spend_index`, `view_index`, and `asset`.
     #[inline]
-    fn build_pre_receiver(
+    fn build_receiver(
         &self,
         spend_index: SpendIndex<C>,
         view_index: ViewIndex<C>,
         asset: Asset,
-    ) -> Result<PreReceiver<C>, Error<C::HierarchicalKeyDerivationScheme, C>> {
+    ) -> Result<Receiver<C>, Error<C::HierarchicalKeyDerivationScheme, C>> {
+        /* TODO:
         let keypair = self
             .account()
             .keypair_with(spend_index, view_index)?
             .derive::<C::KeyAgreementScheme>();
         Ok(PreReceiver::new(keypair.spend, keypair.view, asset))
+        */
+        todo!()
     }
 
     /// Selects the pre-senders which collectively own at least `asset`, returning any change.
@@ -545,18 +556,10 @@ where
         if selection.is_empty() {
             return Err(Error::InsufficientBalance(asset));
         }
-        /* TODO:
         self.pending_assets.remove = selection.keys().cloned().collect();
-        Ok(Selection::new(
-            selection.change,
-            selection
-                .values
-                .into_iter()
-                .map(move |((i, ek), v)| self.build_pre_sender(i, ek, asset.id.with(v)))
-                .collect(),
-        ))
-        */
-        todo!()
+        Selection::new(selection, move |(i, ek), v| {
+            self.build_pre_sender(i, ek, asset.id.with(v))
+        })
     }
 
     /// Builds a [`TransferPost`] for the given `transfer`.
@@ -570,15 +573,18 @@ where
         &mut self,
         transfer: Transfer<C, SOURCES, SENDERS, RECEIVERS, SINKS>,
     ) -> Result<TransferPost<C>, Error<C::HierarchicalKeyDerivationScheme, C>> {
+        /* TODO:
         transfer
             .into_post(
-                &self.ephemeral_key_commitment_scheme,
-                &self.commitment_scheme,
+                &self.parameters.ephemeral_key_commitment_scheme,
+                &self.parameters.commitment_scheme,
                 self.utxo_set.verifier(),
                 &self.proving_context,
                 &mut self.rng,
             )
             .map_err(Error::ProofSystemError)
+        */
+        todo!()
     }
 
     /* TODO:
@@ -696,6 +702,7 @@ where
 
         Ok(())
     }
+    */
 
     /// Returns the next change receiver for `asset`.
     #[inline]
@@ -703,63 +710,67 @@ where
         &mut self,
         asset_id: AssetId,
         change: AssetValue,
-    ) -> Result<Receiver<C>, Error<C::DerivedSecretKeyGenerator, C>> {
+    ) -> Result<Receiver<C>, Error<C::HierarchicalKeyDerivationScheme, C>> {
         let asset = asset_id.with(change);
-        let (receiver, index) = self
-            .signer
-            .next_change(&self.commitment_scheme, asset, &mut self.rng)?
-            .into();
-        self.pending_assets.insert = Some((index, asset));
+        let default_index = Default::default();
+        let receiver = self.build_receiver(default_index, default_index, asset)?;
+        self.pending_assets.insert = Some((
+            (default_index, receiver.ephemeral_public_key().clone()),
+            asset,
+        ));
         Ok(receiver)
     }
 
-    /// Prepares a given [`ShieldedIdentity`] for receiving `asset`.
+    /// Prepares a given [`ReceivingKey`] for receiving `asset`.
     #[inline]
-    pub fn prepare_receiver(
-        &mut self,
-        asset: Asset,
-        receiver: ShieldedIdentity<C>,
-    ) -> Result<Receiver<C>, Error<C::DerivedSecretKeyGenerator, C>> {
-        receiver
-            .into_receiver(&self.commitment_scheme, asset, &mut self.rng)
-            .map_err(Error::EncryptionError)
+    pub fn prepare_receiver(&mut self, asset: Asset, receiver: ReceivingKey<C>) -> Receiver<C> {
+        receiver.into_receiver(
+            &self.parameters.ephemeral_key_commitment_scheme,
+            &self.parameters.commitment_scheme,
+            self.rng.gen(),
+            asset,
+        )
     }
-    */
 
     /// Signs a withdraw transaction without resetting on error.
     #[inline]
-    fn sign_withdraw_inner(
+    fn sign_withdraw_without_rollback(
         &mut self,
         asset: Asset,
         receiver: Option<ReceivingKey<C>>,
     ) -> SignResult<C::HierarchicalKeyDerivationScheme, C, Self> {
-        /* TODO:
         const SENDERS: usize = PrivateTransferShape::SENDERS;
         const RECEIVERS: usize = PrivateTransferShape::RECEIVERS;
 
         let selection = self.select(asset)?;
 
         let mut posts = Vec::new();
+
+        /*
         let senders = self.accumulate_transfers::<SENDERS, RECEIVERS>(
             asset.id,
             selection.pre_senders,
             &mut posts,
         )?;
+        */
 
         let change = self.next_change(asset.id, selection.change)?;
+
         let final_post = match receiver {
             Some(receiver) => {
-                let receiver = self.prepare_receiver(asset, receiver)?;
-                self.build_post(PrivateTransfer::build(senders, [change, receiver]))?
+                let receiver = self.prepare_receiver(asset, receiver);
+                // self.build_post(PrivateTransfer::build(senders, [change, receiver]))?
+                todo!()
             }
-            _ => self.build_post(Reclaim::build(senders, [change], asset))?,
+            _ => {
+                // self.build_post(Reclaim::build(senders, [change], asset))?
+                todo!()
+            }
         };
 
-        posts.push(final_post);
+        // posts.push(final_post);
 
         Ok(SignResponse::new(posts))
-        */
-        todo!()
     }
 
     /// Signs a withdraw transaction, resetting the internal state on an error.
@@ -769,7 +780,7 @@ where
         asset: Asset,
         receiver: Option<ReceivingKey<C>>,
     ) -> SignResult<C::HierarchicalKeyDerivationScheme, C, Self> {
-        let result = self.sign_withdraw_inner(asset, receiver);
+        let result = self.sign_withdraw_without_rollback(asset, receiver);
         if result.is_err() {
             self.rollback();
         }
@@ -785,20 +796,12 @@ where
         self.commit();
         match transaction {
             Transaction::Mint(asset) => {
-                /* TODO:
                 let default_index = Default::default();
-                let mint_post = self.build_post(Mint::build(
-                    asset,
-                    self.build_pre_receiver(default_index, default_index, asset),
-                ))?;
-                self.pending_assets.insert = Some((
-                    default_index,
-                    mint_post.receiver_ephemeral_keys()[0].clone(),
-                    asset,
-                ));
+                let receiver = self.build_receiver(default_index, default_index, asset)?;
+                let ephemeral_public_key = receiver.ephemeral_public_key().clone();
+                let mint_post = self.build_post(Mint::build(asset, receiver))?;
+                self.pending_assets.insert = Some(((default_index, ephemeral_public_key), asset));
                 Ok(SignResponse::new(vec![mint_post]))
-                */
-                todo!()
             }
             Transaction::PrivateTransfer(asset, receiver) => {
                 self.sign_withdraw(asset, Some(receiver))
@@ -901,6 +904,7 @@ where
     }
 }
 
+/* TODO:
 /// Pre-Sender Selection
 struct Selection<C>
 where
@@ -927,7 +931,6 @@ where
     }
 }
 
-/* TODO:
 impl<D> Signer<D>
 where
     D: DerivedSecretKeyGenerator,

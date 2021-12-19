@@ -31,4 +31,4 @@ pub mod asset;
 pub mod fs;
 pub mod key;
 pub mod transfer;
-// TODO: pub mod wallet;
+pub mod wallet;

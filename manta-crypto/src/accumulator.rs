@@ -18,25 +18,6 @@
 
 // TODO: See if we can modify `Accumulator` so that it can extend the `Verifier` trait directly.
 
-/// Matching Set
-///
-/// This is a generalization of a single-element matching system, where there can be multiple
-/// elements to match against.
-pub trait MatchingSet<T> {
-    /// Checks if `t` matches any element in `self`.
-    fn contains(&self, t: &T) -> bool;
-}
-
-impl<T> MatchingSet<T> for T
-where
-    T: PartialEq,
-{
-    #[inline]
-    fn contains(&self, t: &T) -> bool {
-        self.eq(t)
-    }
-}
-
 /// Accumulator Membership Verifier
 pub trait Verifier {
     /// Parameters Type
@@ -66,6 +47,9 @@ pub trait Verifier {
     ) -> Self::Verification;
 }
 
+/// Accumulator Parameters Type
+pub type Parameters<A> = <<A as Accumulator>::Verifier as Verifier>::Parameters;
+
 /// Accumulator Output Type
 pub type Output<A> = <<A as Accumulator>::Verifier as Verifier>::Output;
 
@@ -77,26 +61,12 @@ pub trait Accumulator {
     /// Verifier Type
     type Verifier: Verifier<Item = Self::Item> + ?Sized;
 
-    /// Output Matching Set Type
-    type OutputSet: MatchingSet<<Self::Verifier as Verifier>::Output>;
-
     /// Returns the parameters associated with the verifier attached to `self`.
-    fn parameters(&self) -> &<Self::Verifier as Verifier>::Parameters;
-
-    /// Returns the output matching set for the current state of `self`.
-    fn outputs(&self) -> Self::OutputSet;
+    fn parameters(&self) -> &Parameters<Self>;
 
     /// Returns `true` if `output` is contained in the current output matching set associated to
     /// `self`.
-    ///
-    /// # Implementation Note
-    ///
-    /// This method is an optimization path for implementations of [`Accumulator`] which can do a
-    /// output matching without having to return an entire owned [`Self::OutputSet`].
-    #[inline]
-    fn matching_output(&self, output: &Output<Self>) -> bool {
-        self.outputs().contains(output)
-    }
+    fn matching_output(&self, output: &Output<Self>) -> bool;
 
     /// Inserts `item` into `self` with the guarantee that `self` can later return a valid
     /// membership proof for `item` with a call to [`prove`](Self::prove). This method returns
@@ -128,16 +98,9 @@ where
 
     type Verifier = A::Verifier;
 
-    type OutputSet = A::OutputSet;
-
     #[inline]
-    fn parameters(&self) -> &<Self::Verifier as Verifier>::Parameters {
+    fn parameters(&self) -> &Parameters<Self> {
         (**self).parameters()
-    }
-
-    #[inline]
-    fn outputs(&self) -> Self::OutputSet {
-        (**self).outputs()
     }
 
     #[inline]
@@ -244,15 +207,6 @@ where
     #[inline]
     pub fn into_output(self) -> V::Output {
         self.output
-    }
-
-    /// Returns `true` if the output associated to `self` is contained in `outputs`.
-    #[inline]
-    pub fn output_contained_in<S>(&self, outputs: &S) -> bool
-    where
-        S: MatchingSet<V::Output>,
-    {
-        outputs.contains(&self.output)
     }
 
     /// Returns `true` if the output associated to `self` is contained in the current output
