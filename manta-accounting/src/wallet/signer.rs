@@ -33,7 +33,7 @@ use crate::{
     asset::{Asset, AssetId, AssetMap, AssetValue},
     key::{self, AccountKeys, HierarchicalKeyDerivationScheme},
     transfer::{
-        self,
+        self, batch,
         canonical::{
             Mint, PrivateTransfer, PrivateTransferShape, Reclaim, Selection, Shape, Transaction,
         },
@@ -110,18 +110,9 @@ where
         R: IntoIterator<Item = VoidNumber<C>>;
 
     /// Signs a `transaction` and returns the ledger transfer posts if successful.
-    ///
-    /// # Safety
-    ///
-    /// The caller of this method should call [`finish`](Self::finish) once the posts have been
-    /// returned from the ledger to preserve the signer's internal state.
     fn sign(&mut self, transaction: Transaction<C>) -> Self::SignFuture;
 
     /// Returns a [`ReceivingKey`] for `self` to receive assets with `index`.
-    ///
-    /// # Safety
-    ///
-    /// This method can be called at any point, since it is independent of the signing state.
     fn receiving_key(&mut self, index: key::Index<H>) -> Self::ReceivingKeyFuture;
 }
 
@@ -429,7 +420,7 @@ where
         //
         // TODO: Use a smarter object than `Vec` for `removes.into_iter().collect()` like a
         //       `HashSet` or some other set-like container with fast membership and remove ops.
-
+        //
         match self.utxo_set.len().checked_sub(insert_starting_index) {
             Some(diff) => self.sync_with(
                 inserts.into_iter().skip(diff),
@@ -443,14 +434,13 @@ where
     #[inline]
     fn build_pre_sender(
         &self,
-        spend_index: SpendIndex<C>,
-        ephemeral_key: PublicKey<C>,
+        key: AssetMapKey<C>,
         asset: Asset,
     ) -> Result<PreSender<C>, Error<C::HierarchicalKeyDerivationScheme, C>> {
-        let spend_key = self.account().spend_key(spend_index)?;
+        let (spend_index, ephemeral_key) = key;
         Ok(PreSender::new(
             &self.commitment_scheme_parameters,
-            spend_key,
+            self.account().spend_key(spend_index)?,
             ephemeral_key,
             asset,
         ))
@@ -460,22 +450,38 @@ where
     #[inline]
     fn build_receiver(
         &mut self,
-        spend_index: SpendIndex<C>,
-        view_index: ViewIndex<C>,
         asset: Asset,
     ) -> Result<Receiver<C>, Error<C::HierarchicalKeyDerivationScheme, C>> {
         let keypair = self
             .account()
-            .keypair_with(spend_index, view_index)?
-            .derive::<C::KeyAgreementScheme>();
-        Ok(Receiver::new(
+            .default_keypair()
+            .map_err(key::Error::KeyDerivationError)?;
+        Ok(SpendingKey::new(keypair.spend, keypair.view).receiver(
             &self.ephemeral_key_parameters,
             &self.commitment_scheme_parameters,
             self.rng.gen(),
-            keypair.spend,
-            keypair.view,
             asset,
         ))
+    }
+
+    ///
+    #[inline]
+    fn mint_zero(
+        &mut self,
+        asset_id: AssetId,
+    ) -> Result<(Mint<C>, PreSender<C>), Error<C::HierarchicalKeyDerivationScheme, C>> {
+        let asset = Asset::zero(asset_id);
+        let keypair = self
+            .account()
+            .default_keypair()
+            .map_err(key::Error::KeyDerivationError)?;
+        let (receiver, pre_sender) = SpendingKey::new(keypair.spend, keypair.view).internal_pair(
+            &self.ephemeral_key_parameters,
+            &self.commitment_scheme_parameters,
+            self.rng.gen(),
+            asset,
+        );
+        Ok((Mint::build(asset, receiver), pre_sender))
     }
 
     /// Selects the pre-senders which collectively own at least `asset`, returning any change.
@@ -488,8 +494,8 @@ where
         if selection.is_empty() {
             return Err(Error::InsufficientBalance(asset));
         }
-        Selection::new(selection, move |(i, ek), v| {
-            self.build_pre_sender(i, ek, asset.id.with(v))
+        Selection::new(selection, move |k, v| {
+            self.build_pre_sender(k, asset.id.with(v))
         })
     }
 
@@ -517,17 +523,78 @@ where
             .map_err(Error::ProofSystemError)
     }
 
-    /* TODO:
-    /// Accumulate transfers using the `SENDERS -> RECEIVERS` shape.
+    ///
     #[inline]
-    fn accumulate_transfers<const SENDERS: usize, const RECEIVERS: usize>(
+    fn next_join<const RECEIVERS: usize>(
+        &mut self,
+        asset_id: AssetId,
+        total: AssetValue,
+    ) -> Result<
+        ([Receiver<C>; RECEIVERS], batch::Join<C>),
+        Error<C::HierarchicalKeyDerivationScheme, C>,
+    > {
+        let keypair = self
+            .account()
+            .default_keypair()
+            .map_err(key::Error::KeyDerivationError)?;
+        Ok(batch::Join::new(
+            &self.ephemeral_key_parameters,
+            &self.commitment_scheme_parameters,
+            asset_id.with(total),
+            &SpendingKey::new(keypair.spend, keypair.view),
+            &mut self.rng,
+        ))
+    }
+
+    ///
+    #[inline]
+    fn prepare_final_pre_senders<const SENDERS: usize>(
+        &mut self,
+        asset_id: AssetId,
+        mut new_zeroes: Vec<PreSender<C>>,
+        pre_senders: &mut Vec<PreSender<C>>,
+        posts: &mut Vec<TransferPost<C>>,
+    ) -> Result<(), Error<C::HierarchicalKeyDerivationScheme, C>> {
+        let mut needed_zeroes = SENDERS - pre_senders.len();
+        if needed_zeroes == 0 {
+            return Ok(());
+        }
+        let zeroes = self.assets.zeroes(needed_zeroes, asset_id);
+        needed_zeroes -= zeroes.len();
+        for zero in zeroes {
+            pre_senders.push(self.build_pre_sender(zero, Asset::zero(asset_id))?);
+        }
+        if needed_zeroes == 0 {
+            return Ok(());
+        }
+        let needed_mints = needed_zeroes.saturating_sub(new_zeroes.len());
+        for _ in 0..needed_zeroes {
+            match new_zeroes.pop() {
+                Some(zero) => pre_senders.push(zero),
+                _ => break,
+            }
+        }
+        if needed_mints == 0 {
+            return Ok(());
+        }
+        for _ in 0..needed_mints {
+            let (mint, pre_sender) = self.mint_zero(asset_id)?;
+            posts.push(self.build_post(mint)?);
+            pre_senders.push(pre_sender);
+        }
+        Ok(())
+    }
+
+    ///
+    #[inline]
+    fn compute_batched_transaction<const SENDERS: usize, const RECEIVERS: usize>(
         &mut self,
         asset_id: AssetId,
         mut pre_senders: Vec<PreSender<C>>,
         posts: &mut Vec<TransferPost<C>>,
-    ) -> Result<[Sender<C>; SENDERS], Error<C::DerivedSecretKeyGenerator, C>> {
+    ) -> Result<[Sender<C>; SENDERS], Error<C::HierarchicalKeyDerivationScheme, C>> {
         assert!(
-            (SENDERS > 1) && (RECEIVERS > 1),
+            (SENDERS >= 2) && (RECEIVERS >= 2),
             "The transfer shape must include at least two senders and two receivers."
         );
         assert!(
@@ -538,34 +605,30 @@ where
         let mut new_zeroes = Vec::new();
 
         while pre_senders.len() > SENDERS {
-            let mut accumulators = Vec::new();
+            let mut joins = Vec::new();
             let mut iter = pre_senders.into_iter().chunk_by::<SENDERS>();
+
             for chunk in &mut iter {
-                let senders = fallible_array_map(chunk, |ps| {
-                    ps.try_upgrade(&self.utxo_set)
+                let senders = fallible_array_map(chunk, |s| {
+                    s.try_upgrade(&self.utxo_set)
                         .ok_or(Error::MissingUtxoMembershipProof)
                 })?;
 
-                let mut accumulator = self.signer.next_accumulator::<_, _, RECEIVERS>(
-                    &self.commitment_scheme,
+                let (receivers, mut join) = self.next_join::<RECEIVERS>(
                     asset_id,
                     senders.iter().map(Sender::asset_value).sum(),
-                    &mut self.rng,
                 )?;
 
-                posts.push(self.build_post(SecretTransfer::new(senders, accumulator.receivers))?);
+                posts.push(self.build_post(Transfer::new(None, [], senders, receivers, []))?);
 
-                for zero in &accumulator.zeroes {
-                    zero.as_ref().insert_utxo(&mut self.utxo_set);
-                }
-                accumulator.pre_sender.insert_utxo(&mut self.utxo_set);
+                join.insert_utxos(&mut self.utxo_set);
 
-                new_zeroes.append(&mut accumulator.zeroes);
-                accumulators.push(accumulator.pre_sender);
+                joins.push(join.pre_sender);
+                new_zeroes.append(&mut join.zeroes);
             }
 
-            accumulators.append(&mut iter.remainder());
-            pre_senders = accumulators;
+            joins.append(&mut iter.remainder());
+            pre_senders = joins;
         }
 
         self.prepare_final_pre_senders::<SENDERS>(asset_id, new_zeroes, &mut pre_senders, posts)?;
@@ -573,79 +636,10 @@ where
         Ok(into_array_unchecked(
             pre_senders
                 .into_iter()
-                .map(move |ps| ps.try_upgrade(&self.utxo_set))
+                .map(move |s| s.try_upgrade(&self.utxo_set))
                 .collect::<Option<Vec<_>>>()
                 .ok_or(Error::MissingUtxoMembershipProof)?,
         ))
-    }
-
-    /// Prepare final pre-senders for the transaction.
-    #[inline]
-    fn prepare_final_pre_senders<const SENDERS: usize>(
-        &mut self,
-        asset_id: AssetId,
-        mut new_zeroes: Vec<InternalKeyOwned<C::DerivedSecretKeyGenerator, PreSender<C>>>,
-        pre_senders: &mut Vec<PreSender<C>>,
-        posts: &mut Vec<TransferPost<C>>,
-    ) -> Result<(), Error<C::DerivedSecretKeyGenerator, C>> {
-        let mut needed_zeroes = SENDERS - pre_senders.len();
-        if needed_zeroes == 0 {
-            return Ok(());
-        }
-
-        let zeroes = self.assets.zeroes(needed_zeroes, asset_id);
-        needed_zeroes -= zeroes.len();
-
-        for zero in zeroes {
-            pre_senders.push(self.get_pre_sender(zero, Asset::zero(asset_id))?);
-        }
-
-        if needed_zeroes == 0 {
-            return Ok(());
-        }
-
-        let needed_mints = needed_zeroes.saturating_sub(new_zeroes.len());
-
-        for _ in 0..needed_zeroes {
-            match new_zeroes.pop() {
-                Some(zero) => pre_senders.push(zero.unwrap()),
-                _ => break,
-            }
-        }
-
-        if needed_mints == 0 {
-            return Ok(());
-        }
-
-        for _ in 0..needed_mints {
-            let (mint, pre_sender) =
-                self.signer
-                    .mint_zero(&self.commitment_scheme, asset_id, &mut self.rng)?;
-            pre_senders.push(pre_sender);
-            posts.push(self.build_post(mint)?);
-        }
-
-        Ok(())
-    }
-    */
-
-    ///
-    #[inline]
-    fn compute_batched_transaction<const SENDERS: usize, const RECEIVERS: usize>(
-        &mut self,
-    ) -> Result<[Sender<C>; SENDERS], Error<C::HierarchicalKeyDerivationScheme, C>> {
-        todo!()
-    }
-
-    /// Returns the next change receiver for `asset`.
-    #[inline]
-    fn next_change(
-        &mut self,
-        asset_id: AssetId,
-        change: AssetValue,
-    ) -> Result<Receiver<C>, Error<C::HierarchicalKeyDerivationScheme, C>> {
-        let default_index = Default::default();
-        self.build_receiver(default_index, default_index, asset_id.with(change))
     }
 
     /// Prepares a given [`ReceivingKey`] for receiving `asset`.
@@ -659,31 +653,24 @@ where
         )
     }
 
-    /// Signs a withdraw transaction without resetting on error.
+    /// Signs a withdraw transaction.
     #[inline]
     fn sign_withdraw(
         &mut self,
         asset: Asset,
-        receiver: Option<ReceivingKey<C>>,
+        receiver: impl Into<Option<ReceivingKey<C>>>,
     ) -> SignResult<C::HierarchicalKeyDerivationScheme, C, Self> {
         const SENDERS: usize = PrivateTransferShape::SENDERS;
         const RECEIVERS: usize = PrivateTransferShape::RECEIVERS;
-
         let selection = self.select(asset)?;
-
+        let change = self.build_receiver(asset.id.with(selection.change))?;
         let mut posts = Vec::new();
-
-        /*
-        let senders = self.accumulate_transfers::<SENDERS, RECEIVERS>(
+        let senders = self.compute_batched_transaction::<SENDERS, RECEIVERS>(
             asset.id,
             selection.pre_senders,
             &mut posts,
         )?;
-        */
-
-        let senders = self.compute_batched_transaction::<SENDERS, RECEIVERS>()?;
-        let change = self.next_change(asset.id, selection.change)?;
-        let final_post = match receiver {
+        let final_post = match receiver.into() {
             Some(receiver) => {
                 let receiver = self.prepare_receiver(asset, receiver);
                 self.build_post(PrivateTransfer::build(senders, [change, receiver]))?
@@ -703,14 +690,12 @@ where
     ) -> SignResult<C::HierarchicalKeyDerivationScheme, C, Self> {
         match transaction {
             Transaction::Mint(asset) => {
-                let default_index = Default::default();
-                let receiver = self.build_receiver(default_index, default_index, asset)?;
-                let mint_post = self.build_post(Mint::build(asset, receiver))?;
-                Ok(SignResponse::new(vec![mint_post]))
+                let receiver = self.build_receiver(asset)?;
+                Ok(SignResponse::new(vec![
+                    self.build_post(Mint::build(asset, receiver))?
+                ]))
             }
-            Transaction::PrivateTransfer(asset, receiver) => {
-                self.sign_withdraw(asset, Some(receiver))
-            }
+            Transaction::PrivateTransfer(asset, receiver) => self.sign_withdraw(asset, receiver),
             Transaction::Reclaim(asset) => self.sign_withdraw(asset, None),
         }
     }
@@ -721,13 +706,8 @@ where
         &mut self,
         index: Index<C>,
     ) -> ReceivingKeyResult<C::HierarchicalKeyDerivationScheme, C, Self> {
-        /*
-        let _ = self
-            .account()
-            .keypair(index)?
-            .derive::<C::KeyAgreementScheme>();
-        */
-        todo!()
+        let keypair = self.account().keypair(index)?;
+        Ok(SpendingKey::new(keypair.spend, keypair.view).derive())
     }
 }
 
@@ -769,288 +749,7 @@ where
     }
 }
 
-/* TODO:
-/// Pre-Sender Selection
-struct Selection<C>
-where
-    C: transfer::Configuration,
-{
-    /// Selection Change
-    pub change: AssetValue,
-
-    /// Selection Pre-Senders
-    pub pre_senders: Vec<PreSender<C>>,
-}
-
-impl<C> Selection<C>
-where
-    C: transfer::Configuration,
-{
-    /// Builds a new [`Selection`] from `change` and `pre_senders`.
-    #[inline]
-    pub fn new(change: AssetValue, pre_senders: Vec<PreSender<C>>) -> Self {
-        Self {
-            change,
-            pre_senders,
-        }
-    }
-}
-
-impl<D> Signer<D>
-where
-    D: DerivedSecretKeyGenerator,
-{
-    /// Builds a new [`Signer`] for `account` from a `secret_key_source`.
-    #[inline]
-    pub fn new(secret_key_source: D, account: D::Account) -> Self {
-        Self::with_account(secret_key_source, Account::new(account))
-    }
-
-    /// Builds a new [`Signer`] for `account` from a `secret_key_source`.
-    #[inline]
-    pub fn with_account(secret_key_source: D, account: Account<D>) -> Self {
-        Self {
-            secret_key_source,
-            account,
-        }
-    }
-
-    /// Builds a new [`Signer`] for `account` from a `secret_key_source` with starting ranges
-    /// `external_indices` and `internal_indices`.
-    #[inline]
-    pub fn with_ranges(
-        secret_key_source: D,
-        account: D::Account,
-        external_indices: Range<D::Index>,
-        internal_indices: Range<D::Index>,
-    ) -> Self {
-        Self::with_account(
-            secret_key_source,
-            Account::with_ranges(account, external_indices, internal_indices),
-        )
-    }
-
-    /// Returns the next [`Signer`] after `self`, incrementing the account number.
-    #[inline]
-    pub fn next(self) -> Self {
-        Self::with_account(self.secret_key_source, self.account.next())
-    }
-
-
-    /// Returns a [`PreSender`] for the key at the given `index`.
-    #[inline]
-    pub fn get_pre_sender<C>(
-        &self,
-        index: Index<D>,
-        commitment_scheme: &C::CommitmentScheme,
-        asset: Asset,
-    ) -> Result<PreSender<C>, D::Error>
-    where
-        C: transfer::Configuration<SecretKey = D::SecretKey>,
-    {
-        Ok(self.get(&index)?.into_pre_sender(commitment_scheme, asset))
-    }
-
-    /// Generates the next external identity for this signer.
-    #[inline]
-    fn next_external_identity<C>(&mut self) -> Result<Identity<C>, D::Error>
-    where
-        C: identity::Configuration<SecretKey = D::SecretKey>,
-    {
-        Ok(self
-            .account
-            .next_external_key(&self.secret_key_source)?
-            .map(Identity::new)
-            .unwrap())
-    }
-
-    /// Generates the next internal identity for this signer.
-    #[inline]
-    fn next_internal_identity<C>(&mut self) -> Result<InternalKeyOwned<D, Identity<C>>, D::Error>
-    where
-        C: identity::Configuration<SecretKey = D::SecretKey>,
-    {
-        Ok(self
-            .account
-            .next_internal_key(&self.secret_key_source)?
-            .map(Identity::new))
-    }
-
-    /// Generates a new [`ShieldedIdentity`] to receive assets to this account via an external
-    /// transaction.
-    #[inline]
-    pub fn next_shielded<C>(
-        &mut self,
-        commitment_scheme: &C::CommitmentScheme,
-    ) -> Result<ShieldedIdentity<C>, D::Error>
-    where
-        C: transfer::Configuration<SecretKey = D::SecretKey>,
-    {
-        Ok(self
-            .next_external_identity()?
-            .into_shielded(commitment_scheme))
-    }
-
-    /// Generates a new [`InternalIdentity`] to receive assets in this account via an internal
-    /// transaction.
-    #[inline]
-    pub fn next_internal<C, R>(
-        &mut self,
-        commitment_scheme: &C::CommitmentScheme,
-        asset: Asset,
-        rng: &mut R,
-    ) -> Result<InternalKeyOwned<D, InternalIdentity<C>>, InternalIdentityError<D, C>>
-    where
-        C: transfer::Configuration<SecretKey = D::SecretKey>,
-        R: CryptoRng + RngCore + ?Sized,
-    {
-        self.next_internal_identity()
-            .map_err(InternalIdentityError::SecretKeyError)?
-            .map_ok(move |identity| {
-                identity
-                    .into_internal(commitment_scheme, asset, rng)
-                    .map_err(InternalIdentityError::EncryptionError)
-            })
-    }
-
-    /// Builds the next transfer accumulator.
-    #[inline]
-    pub fn next_accumulator<C, R, const RECEIVERS: usize>(
-        &mut self,
-        commitment_scheme: &C::CommitmentScheme,
-        asset_id: AssetId,
-        sender_sum: AssetValue,
-        rng: &mut R,
-    ) -> Result<TransferAccumulator<D, C, RECEIVERS>, InternalIdentityError<D, C>>
-    where
-        C: transfer::Configuration<SecretKey = D::SecretKey>,
-        R: CryptoRng + RngCore + ?Sized,
-    {
-        let mut receivers = Vec::with_capacity(RECEIVERS);
-        let mut zero_pre_senders = Vec::with_capacity(RECEIVERS - 1);
-
-        for _ in 0..RECEIVERS - 1 {
-            let (internal, index) = self
-                .next_internal(commitment_scheme, Asset::zero(asset_id), rng)?
-                .into();
-            receivers.push(internal.receiver);
-            zero_pre_senders.push(KeyOwned::new(internal.pre_sender, index));
-        }
-
-        let internal = self
-            .next_internal(commitment_scheme, asset_id.with(sender_sum), rng)?
-            .unwrap();
-
-        receivers.push(internal.receiver);
-
-        Ok(TransferAccumulator::new(
-            into_array_unchecked(receivers),
-            zero_pre_senders,
-            internal.pre_sender,
-        ))
-    }
-
-    /// Builds the change receiver for the end of a transaction.
-    #[inline]
-    pub fn next_change<C, R>(
-        &mut self,
-        commitment_scheme: &C::CommitmentScheme,
-        asset: Asset,
-        rng: &mut R,
-    ) -> Result<InternalKeyOwned<D, Receiver<C>>, InternalIdentityError<D, C>>
-    where
-        C: transfer::Configuration<SecretKey = D::SecretKey>,
-        R: CryptoRng + RngCore + ?Sized,
-    {
-        self.next_internal_identity()
-            .map_err(InternalIdentityError::SecretKeyError)?
-            .map_ok(move |identity| identity.into_receiver(commitment_scheme, asset, rng))
-            .map_err(InternalIdentityError::EncryptionError)
-    }
-
-    /// Builds a [`Mint`] transaction to mint `asset` and returns the index for that asset.
-    #[inline]
-    pub fn mint<C, R>(
-        &mut self,
-        commitment_scheme: &C::CommitmentScheme,
-        asset: Asset,
-        rng: &mut R,
-    ) -> Result<InternalKeyOwned<D, Mint<C>>, InternalIdentityError<D, C>>
-    where
-        C: transfer::Configuration<SecretKey = D::SecretKey>,
-        R: CryptoRng + RngCore + ?Sized,
-    {
-        self.next_internal_identity()
-            .map_err(InternalIdentityError::SecretKeyError)?
-            .map_ok(|identity| {
-                Mint::from_identity(identity, commitment_scheme, asset, rng)
-                    .map_err(InternalIdentityError::EncryptionError)
-            })
-    }
-
-    /// Builds a [`Mint`] transaction to mint a zero asset with the given `asset_id`, returning a
-    /// [`PreSender`] for that asset.
-    #[inline]
-    pub fn mint_zero<C, R>(
-        &mut self,
-        commitment_scheme: &C::CommitmentScheme,
-        asset_id: AssetId,
-        rng: &mut R,
-    ) -> Result<(Mint<C>, PreSender<C>), InternalIdentityError<D, C>>
-    where
-        C: transfer::Configuration<SecretKey = D::SecretKey>,
-        R: CryptoRng + RngCore + ?Sized,
-    {
-        Mint::zero(
-            self.next_internal_identity()
-                .map_err(InternalIdentityError::SecretKeyError)?
-                .unwrap(),
-            commitment_scheme,
-            asset_id,
-            rng,
-        )
-        .map_err(InternalIdentityError::EncryptionError)
-    }
-
-    /// Tries to decrypt `encrypted_asset` using the `secret_key`.
-    #[inline]
-    fn try_open_asset<C>(
-        secret_key: Result<ExternalSecretKey<D>, D::Error>,
-        encrypted_asset: &EncryptedAsset<C>,
-    ) -> Option<ExternalKeyOwned<D, Asset>>
-    where
-        C: transfer::Configuration<SecretKey = D::SecretKey>,
-    {
-        let KeyOwned { inner, index } = secret_key.ok()?;
-        Some(
-            index.wrap(
-                Identity::<C>::new(inner)
-                    .try_open(encrypted_asset)
-                    .ok()?
-                    .into_asset(),
-            ),
-        )
-    }
-
-    /// Looks for an index that can decrypt the given `encrypted_asset`.
-    #[inline]
-    pub fn find_external_asset<C>(
-        &mut self,
-        encrypted_asset: &EncryptedAsset<C>,
-    ) -> Option<ExternalKeyOwned<D, Asset>>
-    where
-        C: transfer::Configuration<SecretKey = D::SecretKey>,
-    {
-        let asset = self
-            .account
-            .external_keys(&self.secret_key_source)
-            .find_map(move |k| Self::try_open_asset::<C>(k, encrypted_asset))?;
-        self.account
-            .conditional_increment_external_range(&asset.index.index);
-        Some(asset)
-    }
-}
-
+/* TODO[remove]:
 impl<D> Load for Signer<D>
 where
     D: DerivedSecretKeyGenerator + LoadWith<Account<D>>,
@@ -1088,120 +787,6 @@ where
     {
         self.secret_key_source
             .save_with(self.account, path, saving_key)
-    }
-}
-
-/// Signer Configuration
-pub trait Configuration {
-    ///
-    type TransferConfiguration: transfer::Configuration;
-
-    ///
-    type TransferProofSystemConfiguration:
-        transfer::ProofSystemConfiguration<Self::TransferConfiguration>;
-
-    ///
-    type AccountKeyTable: AccountKeyTable<SecretKey = SecretKey<Self::TransferConfiguration>>;
-
-    /// [`Utxo`] Accumulator Type
-    type UtxoSet: Accumulator<
-            Item = <Self::UtxoSetVerifier as Verifier>::Item,
-            Verifier = Self::UtxoSetVerifier,
-        > + ConstantCapacityAccumulator
-        + ExactSizeAccumulator
-        + OptimizedAccumulator
-        + Rollback;
-
-    /// Asset Map Type
-    type AssetMap: AssetMap<Key = ??>;
-
-    /// Random Number Generator Type
-    type Rng: CryptoRng + RngCore;
-}
-
-/// Full Signer
-pub struct Signer<C>
-where
-    C: Configuration,
-{
-    /// Signer
-    signer: Signer<C::DerivedSecretKeyGenerator>,
-
-    /// Commitment Scheme
-    commitment_scheme: C::CommitmentScheme,
-
-    /// Proving Context
-    proving_context: ProvingContext<C>,
-
-    /// UTXO Set
-    utxo_set: C::UtxoSet,
-
-    /// Asset Distribution
-    assets: C::AssetMap,
-
-    /// Random Number Generator
-    rng: C::Rng,
-}
-
-
-/// Internal Identity Error
-///
-/// This `enum` is the error state for any construction of an [`InternalIdentity`] from a derived
-/// secret key generator.
-#[derive(derivative::Derivative)]
-#[derivative(
-    Clone(bound = "D::Error: Clone, IntegratedEncryptionSchemeError<C>: Clone"),
-    Copy(bound = "D::Error: Copy, IntegratedEncryptionSchemeError<C>: Copy"),
-    Debug(bound = "D::Error: Debug, IntegratedEncryptionSchemeError<C>: Debug"),
-    Eq(bound = "D::Error: Eq, IntegratedEncryptionSchemeError<C>: Eq"),
-    Hash(bound = "D::Error: Hash, IntegratedEncryptionSchemeError<C>: Hash"),
-    PartialEq(bound = "D::Error: PartialEq, IntegratedEncryptionSchemeError<C>: PartialEq")
-)]
-pub enum InternalIdentityError<D, C>
-where
-    D: DerivedSecretKeyGenerator,
-    C: transfer::Configuration<SecretKey = D::SecretKey>,
-{
-    /// Secret Key Generator Error
-    SecretKeyError(D::Error),
-
-    /// Encryption Error
-    EncryptionError(IntegratedEncryptionSchemeError<C>),
-}
-
-/// Transfer Accumulator
-pub struct TransferAccumulator<D, C, const RECEIVERS: usize>
-where
-    D: DerivedSecretKeyGenerator,
-    C: transfer::Configuration<SecretKey = D::SecretKey>,
-{
-    /// Receivers
-    pub receivers: [Receiver<C>; RECEIVERS],
-
-    /// Zero Balance Pre-Senders
-    pub zeroes: Vec<InternalKeyOwned<D, PreSender<C>>>,
-
-    /// Accumulated Balance Pre-Sender
-    pub pre_sender: PreSender<C>,
-}
-
-impl<D, C, const RECEIVERS: usize> TransferAccumulator<D, C, RECEIVERS>
-where
-    D: DerivedSecretKeyGenerator,
-    C: transfer::Configuration<SecretKey = D::SecretKey>,
-{
-    /// Builds a new [`TransferAccumulator`] from `receivers`, `zeroes`, and `pre_sender`.
-    #[inline]
-    pub fn new(
-        receivers: [Receiver<C>; RECEIVERS],
-        zeroes: Vec<InternalKeyOwned<D, PreSender<C>>>,
-        pre_sender: PreSender<C>,
-    ) -> Self {
-        Self {
-            receivers,
-            zeroes,
-            pre_sender,
-        }
     }
 }
 */

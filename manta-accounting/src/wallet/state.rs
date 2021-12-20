@@ -238,7 +238,7 @@ where
             .map_err(Error::LedgerError)?;
         self.assets.deposit_all(
             self.signer
-                .sync(self.checkpoint.receiver_index(), receivers, senders)
+                .sync(checkpoint.receiver_index(), receivers, senders)
                 .await?
                 .assets,
         );

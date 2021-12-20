@@ -1422,13 +1422,14 @@ where
 {
     /// Builds a new [`Transfer`].
     #[inline]
-    fn new(
-        asset_id: Option<AssetId>,
+    pub fn new(
+        asset_id: impl Into<Option<AssetId>>,
         sources: [AssetValue; SOURCES],
         senders: [Sender<C>; SENDERS],
         receivers: [Receiver<C>; RECEIVERS],
         sinks: [AssetValue; SINKS],
     ) -> Self {
+        let asset_id = asset_id.into();
         Self::check_shape(asset_id.is_some());
         Self::new_unchecked(asset_id, sources, senders, receivers, sinks)
     }

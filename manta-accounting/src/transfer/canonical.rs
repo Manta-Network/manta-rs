@@ -96,13 +96,7 @@ where
     /// Builds a [`Mint`] from `asset` and `receiver`.
     #[inline]
     pub fn build(asset: Asset, receiver: Receiver<C>) -> Self {
-        Self::new(
-            Some(asset.id),
-            [asset.value],
-            Default::default(),
-            [receiver],
-            Default::default(),
-        )
+        Self::new(Some(asset.id), [asset.value], [], [receiver], [])
     }
 }
 
@@ -129,13 +123,7 @@ where
         senders: [Sender<C>; PrivateTransferShape::SENDERS],
         receivers: [Receiver<C>; PrivateTransferShape::RECEIVERS],
     ) -> Self {
-        Self::new(
-            Default::default(),
-            Default::default(),
-            senders,
-            receivers,
-            Default::default(),
-        )
+        Self::new(None, [], senders, receivers, [])
     }
 }
 
@@ -172,13 +160,7 @@ where
         receivers: [Receiver<C>; ReclaimShape::RECEIVERS],
         reclaim: Asset,
     ) -> Self {
-        Self::new(
-            Some(reclaim.id),
-            Default::default(),
-            senders,
-            receivers,
-            [reclaim.value],
-        )
+        Self::new(reclaim.id, [], senders, receivers, [reclaim.value])
     }
 }
 
@@ -244,18 +226,21 @@ where
     /// Change Value
     pub change: AssetValue,
 
-    /// Senders
-    pub senders: Vec<PreSender<C>>,
+    /// Pre-Senders
+    pub pre_senders: Vec<PreSender<C>>,
 }
 
 impl<C> Selection<C>
 where
     C: Configuration,
 {
-    /// Builds a new [`Selection`] from `change` and `senders`.
+    /// Builds a new [`Selection`] from `change` and `pre_senders`.
     #[inline]
-    fn build(change: AssetValue, senders: Vec<PreSender<C>>) -> Self {
-        Self { change, senders }
+    fn build(change: AssetValue, pre_senders: Vec<PreSender<C>>) -> Self {
+        Self {
+            change,
+            pre_senders,
+        }
     }
 
     /// Builds a new [`Selection`] by mapping over an asset selection with `builder`.

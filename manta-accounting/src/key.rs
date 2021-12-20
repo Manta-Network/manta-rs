@@ -18,7 +18,6 @@
 
 use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash};
-use manta_crypto::key::KeyAgreementScheme;
 
 /// Hierarchical Key Derivation Parameter
 pub trait HierarchicalKeyDerivationParameter:
@@ -125,30 +124,6 @@ where
     pub fn new(spend: H::SecretKey, view: H::SecretKey) -> Self {
         Self { spend, view }
     }
-
-    /// Derives the public key pair for `self`.
-    #[inline]
-    pub fn derive<K>(self) -> PublicKeyPair<K>
-    where
-        K: KeyAgreementScheme<SecretKey = H::SecretKey>,
-    {
-        PublicKeyPair {
-            spend: K::derive_owned(self.spend),
-            view: K::derive_owned(self.view),
-        }
-    }
-}
-
-/// Public Key Pair
-pub struct PublicKeyPair<K>
-where
-    K: KeyAgreementScheme,
-{
-    /// Spend Part of the Key Pair
-    pub spend: K::PublicKey,
-
-    /// View Part of the Key Pair
-    pub view: K::PublicKey,
 }
 
 /// Error Type
@@ -266,6 +241,12 @@ where
         self.keys.derive_spend(self.account, spend)
     }
 
+    /// Returns the default spend key for this account.
+    #[inline]
+    pub fn default_spend_key(&self) -> Result<H::SecretKey, H::Error> {
+        self.derive_spend(Default::default())
+    }
+
     /// Returns the spend key for this account at the `spend` index, if it does not exceed the
     /// maximum index.
     #[inline]
@@ -278,6 +259,13 @@ where
     #[inline]
     fn derive_view(&self, spend: H::Index, view: H::Index) -> Result<H::SecretKey, H::Error> {
         self.keys.derive_view(self.account, spend, view)
+    }
+
+    /// Returns the default view key for this account.
+    #[inline]
+    pub fn default_view_key(&self) -> Result<H::SecretKey, H::Error> {
+        let default_index = Default::default();
+        self.derive_view(default_index, default_index)
     }
 
     /// Returns the view key for this account at `index`, if it does not exceed the maximum index.
@@ -298,6 +286,13 @@ where
     #[inline]
     fn derive(&self, spend: H::Index, view: H::Index) -> Result<SecretKeyPair<H>, H::Error> {
         self.keys.derive(self.account, spend, view)
+    }
+
+    /// Returns the default secret key pair for this account.
+    #[inline]
+    pub fn default_keypair(&self) -> Result<SecretKeyPair<H>, H::Error> {
+        let default_index = Default::default();
+        self.derive(default_index, default_index)
     }
 
     /// Returns the key pair for this account at `index`, if it does not exceed the maximum index.
