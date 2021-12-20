@@ -69,6 +69,15 @@ pub trait Accumulator {
     /// `false` if the maximum capacity of the accumulator would be exceeded by inserting `item`.
     fn insert(&mut self, item: &Self::Item) -> bool;
 
+    /// Returns `true` whenever `fst` and `snd` can be inserted in any order into the accumulator.
+    /// This method should return `false`, the worst-case result, in the case that the insertion
+    /// order is unknown or unspecified.
+    #[inline]
+    fn are_independent(&self, fst: &Self::Item, snd: &Self::Item) -> bool {
+        let _ = (fst, snd);
+        false
+    }
+
     /// Returns a membership proof for `item` if it is contained in `self`.
     fn prove(&self, item: &Self::Item) -> Option<MembershipProof<Self::Verifier>>;
 

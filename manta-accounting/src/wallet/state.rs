@@ -25,7 +25,7 @@ use crate::{
     },
     wallet::{
         ledger::{self, Checkpoint, PullResponse, PushResponse},
-        signer::{self, SignResponse, SyncState},
+        signer::{self, SignResponse},
     },
 };
 use alloc::{
@@ -176,9 +176,6 @@ where
     /// Signer Connection
     signer: S,
 
-    /// Signer Synchronization State
-    sync_state: SyncState,
-
     /// Balance State
     assets: B,
 
@@ -196,16 +193,9 @@ where
 {
     /// Builds a new [`Wallet`].
     #[inline]
-    pub fn new(
-        signer: S,
-        sync_state: SyncState,
-        ledger: L,
-        checkpoint: L::Checkpoint,
-        assets: B,
-    ) -> Self {
+    pub fn new(signer: S, ledger: L, checkpoint: L::Checkpoint, assets: B) -> Self {
         Self {
             signer,
-            sync_state,
             ledger,
             checkpoint,
             assets,
@@ -239,7 +229,8 @@ where
         //       recovery mode, like starting from the beginning of the state?
         let PullResponse {
             checkpoint,
-            receiver_data,
+            receivers,
+            senders,
         } = self
             .ledger
             .pull(&self.checkpoint)
@@ -247,15 +238,10 @@ where
             .map_err(Error::LedgerError)?;
         self.assets.deposit_all(
             self.signer
-                .sync(
-                    self.sync_state,
-                    self.checkpoint.receiver_index(),
-                    receiver_data,
-                )
+                .sync(self.checkpoint.receiver_index(), receivers, senders)
                 .await?
                 .assets,
         );
-        self.sync_state = SyncState::Commit;
         self.checkpoint = checkpoint;
         Ok(())
     }
@@ -271,22 +257,6 @@ where
     #[inline]
     pub fn check(&self, transaction: &Transaction<C>) -> Result<TransactionKind, Asset> {
         transaction.check(move |a| self.contains(a))
-    }
-
-    /// Tries to commit to the current signer state.
-    #[inline]
-    async fn try_commit(&mut self) {
-        if self.signer.commit().await.is_err() {
-            self.sync_state = SyncState::Commit;
-        }
-    }
-
-    /// Tries to rollback to the previous signer state.
-    #[inline]
-    async fn try_rollback(&mut self) {
-        if self.signer.rollback().await.is_err() {
-            self.sync_state = SyncState::Rollback;
-        }
     }
 
     /// Posts a transaction to the ledger, returning `true` if the `transaction` was successfully
@@ -308,32 +278,20 @@ where
     #[inline]
     pub async fn post(&mut self, transaction: Transaction<C>) -> Result<bool, Error<H, C, L, S>> {
         self.sync().await?;
-        let balance_update = self
+        let transaction_kind = self
             .check(&transaction)
             .map_err(Error::InsufficientBalance)?;
         let SignResponse { posts } = self.signer.sign(transaction).await?;
         match self.ledger.push(posts).await {
-            Ok(PushResponse {
-                checkpoint,
-                success: true,
-            }) => {
-                self.try_commit().await;
-                match balance_update {
+            Ok(PushResponse { success: true }) => {
+                match transaction_kind {
                     TransactionKind::Deposit(asset) => self.assets.deposit(asset),
                     TransactionKind::Withdraw(asset) => self.assets.withdraw_unchecked(asset),
                 }
-                self.checkpoint = checkpoint;
                 Ok(true)
             }
-            Ok(PushResponse { success: false, .. }) => {
-                // FIXME: What about the checkpoint returned in the response?
-                self.try_rollback().await;
-                Ok(false)
-            }
-            Err(err) => {
-                self.try_rollback().await;
-                Err(Error::LedgerError(err))
-            }
+            Ok(PushResponse { success: false }) => Ok(false),
+            Err(err) => Err(Error::LedgerError(err)),
         }
     }
 

@@ -211,16 +211,48 @@ where
         }
     }
 
-    /// Tries to decrypt `encrypted_message` with `secret_key`, if the `Option` contains a message.
+    /// Builds a new [`DecryptionFinder`] for `encrypted_message`. Use [`DecryptionFinder::decrypt`]
+    /// to try and decrypt the message.
     #[inline]
-    pub fn try_new(
-        encrypted_message: &mut Option<EncryptedMessage<H>>,
-        secret_key: &SecretKey<H>,
-    ) -> Option<Self> {
-        if let Some(message) = encrypted_message.take() {
+    pub fn find(encrypted_message: EncryptedMessage<H>) -> DecryptionFinder<H> {
+        DecryptionFinder::new(encrypted_message)
+    }
+}
+
+/// Decryption Finder
+pub struct DecryptionFinder<H>
+where
+    H: HybridPublicKeyEncryptionScheme,
+{
+    /// Encrypted Message
+    encrypted_message: Option<EncryptedMessage<H>>,
+}
+
+impl<H> DecryptionFinder<H>
+where
+    H: HybridPublicKeyEncryptionScheme,
+{
+    /// Builds a new [`DecryptionFinder`] for `encrypted_message`.
+    #[inline]
+    pub fn new(encrypted_message: EncryptedMessage<H>) -> Self {
+        Self {
+            encrypted_message: Some(encrypted_message),
+        }
+    }
+
+    /// Returns `true` if the decryption was found.
+    #[inline]
+    pub fn found(&self) -> bool {
+        self.encrypted_message.is_none()
+    }
+
+    /// Tries to decrypt with `secret_key`, if `self` still contains a message.
+    #[inline]
+    pub fn decrypt(&mut self, secret_key: &SecretKey<H>) -> Option<DecryptedMessage<H>> {
+        if let Some(message) = self.encrypted_message.take() {
             match message.decrypt(secret_key) {
                 Ok(decrypted_message) => return Some(decrypted_message),
-                Err(message) => *encrypted_message = Some(message),
+                Err(message) => self.encrypted_message = Some(message),
             }
         }
         None

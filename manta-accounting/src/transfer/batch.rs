@@ -72,8 +72,8 @@ where
 {
     ///
     #[inline]
-    pub fn new<R>(
-        parameters: &Parameters<C>,
+    pub fn new<'p, R>(
+        parameters: Parameters<'p, C>,
         asset: Asset,
         spending_key: &SpendingKey<C>,
         zero_key: K,
@@ -86,8 +86,8 @@ where
         let mut zeroes = Vec::with_capacity(RECEIVERS - 1);
         for _ in 0..RECEIVERS - 2 {
             let (receiver, pre_sender) = spending_key.internal_zero_pair(
-                &parameters.ephemeral_key_commitment_scheme,
-                &parameters.commitment_scheme,
+                parameters.ephemeral_key,
+                parameters.commitment_scheme,
                 rng.gen(),
                 asset.id,
             );
@@ -98,8 +98,8 @@ where
             });
         }
         let (receiver, pre_sender) = spending_key.internal_pair(
-            &parameters.ephemeral_key_commitment_scheme,
-            &parameters.commitment_scheme,
+            parameters.ephemeral_key,
+            parameters.commitment_scheme,
             rng.gen(),
             asset,
         );
@@ -166,9 +166,9 @@ where
 {
     ///
     #[inline]
-    pub fn next<K, R, S, P>(
+    pub fn next<'p, K, R, S, P>(
         &mut self,
-        parameters: &Parameters<C>,
+        parameters: Parameters<'p, C>,
         spending_key: &SpendingKey<C>,
         zero_key: K,
         asset_id: AssetId,

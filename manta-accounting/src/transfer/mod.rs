@@ -18,7 +18,7 @@
 
 use crate::asset::{Asset, AssetId, AssetValue};
 use alloc::vec::Vec;
-use core::{fmt::Debug, hash::Hash, ops::Add};
+use core::{fmt::Debug, hash::Hash, marker::PhantomData, ops::Add};
 use manta_crypto::{
     accumulator::{self, Accumulator, MembershipProof, Verifier},
     commitment::{self, CommitmentScheme, Input as CommitmentInput},
@@ -355,6 +355,21 @@ pub trait Configuration {
         .update(secret_key)
         .commit(cs)
     }
+
+    /// Checks that the `utxo` is correctly constructed from the `secret_key`, `public_key`, and
+    /// `asset`, returning the void number for the asset if so.
+    #[inline]
+    fn check_full_asset(
+        parameters: &CommitmentSchemeParameters<Self>,
+        secret_key: &SecretKey<Self>,
+        public_key: &PublicKey<Self>,
+        asset: &Asset,
+        utxo: &Utxo<Self>,
+    ) -> Option<VoidNumber<Self>> {
+        let trapdoor = Self::trapdoor(secret_key, public_key);
+        (&Self::utxo(parameters, &trapdoor, asset) == utxo)
+            .then(move || Self::void_number(parameters, &trapdoor, secret_key))
+    }
 }
 
 /// Asset Variable Type
@@ -476,40 +491,66 @@ pub type ProofInput<C> = <<C as Configuration>::ProofSystem as ProofSystem>::Inp
 pub type Proof<C> = <ProofSystemType<C> as ProofSystem>::Proof;
 
 /// Transfer Parameters
-pub struct Parameters<C>
+pub struct Parameters<'p, C>
 where
     C: Configuration,
 {
     /// Ephemeral Key Commitment Scheme Parameters
-    pub ephemeral_key_commitment_scheme: EphemeralKeyParameters<C>,
+    pub ephemeral_key: &'p EphemeralKeyParameters<C>,
 
     /// Commitment Scheme Parameters
-    pub commitment_scheme: CommitmentSchemeParameters<C>,
+    pub commitment_scheme: &'p CommitmentSchemeParameters<C>,
 
     /// UTXO Set Verifier Parameters
-    pub utxo_set_verifier: UtxoSetParameters<C>,
+    pub utxo_set_verifier: &'p UtxoSetParameters<C>,
+}
+
+impl<'p, C> Parameters<'p, C>
+where
+    C: Configuration,
+{
+    /// Builds a new [`Parameters`] from `ephemeral_key`, `commitment_scheme`, and
+    /// `utxo_set_verifier` parameters.
+    #[inline]
+    pub fn new(
+        ephemeral_key: &'p EphemeralKeyParameters<C>,
+        commitment_scheme: &'p CommitmentSchemeParameters<C>,
+        utxo_set_verifier: &'p UtxoSetParameters<C>,
+    ) -> Self {
+        Self {
+            ephemeral_key,
+            commitment_scheme,
+            utxo_set_verifier,
+        }
+    }
 }
 
 /// Transfer Parameters Variables
-pub struct ParametersVar<C>
+pub struct ParametersVar<'p, C>
 where
     C: Configuration,
 {
     /// Ephemeral Key Commitment Scheme Parameters
-    pub ephemeral_key_commitment_scheme: EphemeralKeyParametersVar<C>,
+    pub ephemeral_key: EphemeralKeyParametersVar<C>,
 
     /// Commitment Scheme Parameters
     pub commitment_scheme: CommitmentSchemeParametersVar<C>,
 
     /// UTXO Set Verifier Parameters
     pub utxo_set_verifier: UtxoSetParametersVar<C>,
+
+    /// Type Parameter Marker
+    __: PhantomData<&'p ()>,
 }
 
-impl<C> Variable<C::ConstraintSystem> for ParametersVar<C>
+impl<'p, C> Variable<C::ConstraintSystem> for ParametersVar<'p, C>
 where
     C: Configuration,
+    EphemeralKeyParameters<C>: 'p,
+    CommitmentSchemeParameters<C>: 'p,
+    UtxoSetParameters<C>: 'p,
 {
-    type Type = Parameters<C>;
+    type Type = Parameters<'p, C>;
 
     type Mode = Public;
 
@@ -517,11 +558,10 @@ where
     fn new(cs: &mut C::ConstraintSystem, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
         match allocation {
             Allocation::Known(this, mode) => Self {
-                ephemeral_key_commitment_scheme: this
-                    .ephemeral_key_commitment_scheme
-                    .as_known(cs, mode),
+                ephemeral_key: this.ephemeral_key.as_known(cs, mode),
                 commitment_scheme: this.commitment_scheme.as_known(cs, mode),
                 utxo_set_verifier: this.utxo_set_verifier.as_known(cs, mode),
+                __: PhantomData,
             },
             _ => unreachable!(),
         }
@@ -567,16 +607,17 @@ where
         encrypted_note.decrypt(&self.view)
     }
 
-    /// Validates the `utxo` against `self` and the given `ephemeral_key` and `asset`.
+    /// Validates the `utxo` against `self` and the given `ephemeral_key` and `asset`, returning
+    /// the void number if the `utxo` is valid.
     #[inline]
-    pub fn validate_utxo(
+    pub fn check_full_asset(
         &self,
         parameters: &CommitmentSchemeParameters<C>,
         ephemeral_key: &PublicKey<C>,
         asset: &Asset,
         utxo: &Utxo<C>,
-    ) -> bool {
-        &C::full_utxo(parameters, &self.spend, ephemeral_key, asset) == utxo
+    ) -> Option<VoidNumber<C>> {
+        C::check_full_asset(parameters, &self.spend, ephemeral_key, asset, utxo)
     }
 
     /// Prepares `self` for spending `asset` with the given `ephemeral_key`.
@@ -760,12 +801,6 @@ where
     }
 
     /// Converts `self` into a [`Sender`] by attaching `proof` to it.
-    ///
-    /// # Note
-    ///
-    /// When using this method, be sure to check that [`SenderProof::can_upgrade`] returns `true`.
-    /// Otherwise, using the sender returned here will most likely return an error when posting to
-    /// the ledger.
     #[inline]
     pub fn upgrade(self, proof: SenderProof<C>) -> Sender<C> {
         Sender {
@@ -804,22 +839,7 @@ impl<C> SenderProof<C>
 where
     C: Configuration,
 {
-    /// Returns `true` if a [`PreSender`] could be upgraded using `self` given the `utxo_set`.
-    #[inline]
-    pub fn can_upgrade<S>(&self, utxo_set: &S) -> bool
-    where
-        S: Accumulator<Item = Utxo<C>, Verifier = C::UtxoSetVerifier>,
-    {
-        self.utxo_membership_proof.matching_output(utxo_set)
-    }
-
     /// Upgrades the `pre_sender` to a [`Sender`] by attaching `self` to it.
-    ///
-    /// # Note
-    ///
-    /// When using this method, be sure to check that [`can_upgrade`](Self::can_upgrade) returns
-    /// `true`. Otherwise, using the sender returned here will most likely return an error when
-    /// posting to the ledger.
     #[inline]
     pub fn upgrade(self, pre_sender: PreSender<C>) -> Sender<C> {
         pre_sender.upgrade(self)
@@ -1204,7 +1224,7 @@ where
     ) -> AssetVar<C> {
         let ephemeral_secret_key = C::ephemeral_secret_key_var(
             cs,
-            &parameters.ephemeral_key_commitment_scheme,
+            &parameters.ephemeral_key,
             &self.ephemeral_key_trapdoor,
             &self.asset,
         );
@@ -1479,7 +1499,7 @@ where
     /// Generates a proving and verifying context for this transfer shape.
     #[inline]
     pub fn generate_context<R>(
-        parameters: &Parameters<C>,
+        parameters: Parameters<C>,
         rng: &mut R,
     ) -> Result<(ProvingContext<C>, VerifyingContext<C>), ProofSystemError<C>>
     where
@@ -1493,9 +1513,9 @@ where
 
     /// Converts `self` into its ledger post.
     #[inline]
-    pub fn into_post<R>(
+    pub fn into_post<'p, R>(
         self,
-        parameters: &Parameters<C>,
+        parameters: Parameters<'p, C>,
         context: &ProvingContext<C>,
         rng: &mut R,
     ) -> Result<TransferPost<C>, ProofSystemError<C>>

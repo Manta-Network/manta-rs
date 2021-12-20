@@ -37,8 +37,9 @@ use crate::{
         canonical::{
             Mint, PrivateTransfer, PrivateTransferShape, Reclaim, Selection, Shape, Transaction,
         },
-        EncryptedNote, Parameters, PreSender, ProofSystemError, ProvingContext, PublicKey,
-        Receiver, ReceivingKey, SecretKey, Sender, SpendingKey, Transfer, TransferPost, Utxo,
+        CommitmentSchemeParameters, EncryptedNote, EphemeralKeyParameters, Parameters, PreSender,
+        ProofSystemError, ProvingContext, PublicKey, Receiver, ReceivingKey, SecretKey, Sender,
+        SpendingKey, Transfer, TransferPost, Utxo, VoidNumber,
     },
 };
 use alloc::{vec, vec::Vec};
@@ -63,22 +64,12 @@ use manta_util::{fallible_array_map, into_array_unchecked, iter::IteratorExt};
 
 /// Rollback Trait
 pub trait Rollback {
-    /// Commits `self` to the current state.
-    ///
-    /// # Implementation Note
-    ///
-    /// Commiting to the current state must be idempotent. Calling [`rollback`](Self::rollback)
-    /// after [`commit`](Self::commit) must not change the state after the call to
-    /// [`commit`](Self::commit).
-    fn commit(&mut self);
-
     /// Rolls back `self` to the previous state.
     ///
     /// # Implementation Note
     ///
-    /// Rolling back to the previous state must be idempotent. Calling [`commit`](Self::commit)
-    /// after [`rollback`](Self::rollback) must not change the state after the call to
-    /// [`rollback`](Self::rollback).
+    /// Rolling back to the previous state must be idempotent, i.e. two consecutive calls to
+    /// [`rollback`](Self::rollback) should do the same as one call.
     fn rollback(&mut self);
 }
 
@@ -98,16 +89,6 @@ where
     /// Future for the [`sign`](Self::sign) method.
     type SignFuture: Future<Output = SignResult<H, C, Self>>;
 
-    /// Sign Commit Future Type
-    ///
-    /// Future for the [`commit`](Self::commit) method.
-    type CommitFuture: Future<Output = Result<(), Self::Error>>;
-
-    /// Sign Rollback Future Type
-    ///
-    /// Future for the [`rollback`](Self::rollback) method.
-    type RollbackFuture: Future<Output = Result<(), Self::Error>>;
-
     /// Receiving Key Future Type
     ///
     /// Future for the [`receiving_key`](Self::receiving_key) method.
@@ -117,61 +98,31 @@ where
     type Error;
 
     /// Pushes updates from the ledger to the wallet, synchronizing it with the ledger state and
-    /// returning an updated asset distribution. Depending on the `sync_state`, the signer will
-    /// either commit to the current state before synchronizing or rollback to the previous state.
-    fn sync<I>(
+    /// returning an updated asset distribution.
+    fn sync<I, R>(
         &mut self,
-        sync_state: SyncState,
-        starting_index: usize,
-        updates: I,
+        insert_starting_index: usize,
+        inserts: I,
+        removes: R,
     ) -> Self::SyncFuture
     where
-        I: IntoIterator<Item = (Utxo<C>, EncryptedNote<C>)>;
+        I: IntoIterator<Item = (Utxo<C>, EncryptedNote<C>)>,
+        R: IntoIterator<Item = VoidNumber<C>>;
 
     /// Signs a `transaction` and returns the ledger transfer posts if successful.
     ///
     /// # Safety
     ///
-    /// To preserve consistency, calls to [`sign`](Self::sign) should be followed by a call to
-    /// either [`commit`](Self::commit), [`rollback`](Self::rollback), or [`sync`](Self::sync) with
-    /// the appropriate [`SyncState`]. Repeated calls to [`sign`](Self::sign) should automatically
-    /// commit the current state before signing.
-    ///
-    /// See the [`Rollback`] trait for expectations on the behavior of [`commit`](Self::commit)
-    /// and [`rollback`](Self::rollback).
+    /// The caller of this method should call [`finish`](Self::finish) once the posts have been
+    /// returned from the ledger to preserve the signer's internal state.
     fn sign(&mut self, transaction: Transaction<C>) -> Self::SignFuture;
-
-    /// Commits to the state after the last call to [`sign`](Self::sign).
-    ///
-    /// See the [`Rollback`] trait for expectations on the behavior of [`commit`](Self::commit).
-    fn commit(&mut self) -> Self::CommitFuture;
-
-    /// Rolls back to the state before the last call to [`sign`](Self::sign).
-    ///
-    /// See the [`Rollback`] trait for expectations on the behavior of [`rollback`](Self::rollback).
-    fn rollback(&mut self) -> Self::RollbackFuture;
 
     /// Returns a [`ReceivingKey`] for `self` to receive assets with `index`.
     ///
-    /// # Note
+    /// # Safety
     ///
-    /// This method does not interact with the other methods on [`Connection`] so it can be called
-    /// at any point in between calls to [`sync`](Self::sync), [`sign`](Self::sign), and other
-    /// rollback related methods.
+    /// This method can be called at any point, since it is independent of the signing state.
     fn receiving_key(&mut self, index: key::Index<H>) -> Self::ReceivingKeyFuture;
-}
-
-/// Synchronization State
-///
-/// This `enum` is used by the [`sync`](Connection::sync) method on [`Connection`]. See its
-/// documentation for more.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum SyncState {
-    /// Should commit the current state before synchronizing
-    Commit,
-
-    /// Should rollback to the previous state before synchronizing
-    Rollback,
 }
 
 /// Synchronization Result
@@ -278,7 +229,6 @@ pub trait Configuration: transfer::Configuration {
             Item = <Self::UtxoSetVerifier as Verifier>::Item,
             Verifier = Self::UtxoSetVerifier,
         > + ConstantCapacityAccumulator
-        + Default
         + ExactSizeAccumulator
         + OptimizedAccumulator
         + Rollback;
@@ -309,46 +259,6 @@ pub type AssetMapKey<C> = (SpendIndex<C>, PublicKey<C>);
 /// Account Table Type
 pub type AccountTable<C> = key::AccountTable<<C as Configuration>::HierarchicalKeyDerivationScheme>;
 
-/// Pending Asset Map
-#[derive(derivative::Derivative)]
-#[derivative(Default(bound = ""))]
-struct PendingAssetMap<C>
-where
-    C: Configuration,
-{
-    /// Pending Insert Data
-    insert: Option<(AssetMapKey<C>, Asset)>,
-
-    /// Pending Insert Zeroes Data
-    insert_zeroes: Option<(AssetId, Vec<AssetMapKey<C>>)>,
-
-    /// Pending Remove Data
-    remove: Vec<AssetMapKey<C>>,
-}
-
-impl<C> PendingAssetMap<C>
-where
-    C: Configuration,
-{
-    /// Commits the pending asset map data to `assets`.
-    #[inline]
-    fn commit(&mut self, assets: &mut C::AssetMap) {
-        if let Some((key, asset)) = self.insert.take() {
-            assets.insert(key, asset);
-        }
-        if let Some((asset_id, zeroes)) = self.insert_zeroes.take() {
-            assets.insert_zeroes(asset_id, zeroes);
-        }
-        assets.remove_all(mem::take(&mut self.remove));
-    }
-
-    /// Clears the pending asset map.
-    #[inline]
-    fn rollback(&mut self) {
-        *self = Default::default();
-    }
-}
-
 /// Signer
 pub struct Signer<C>
 where
@@ -357,20 +267,20 @@ where
     /// Account Table
     account_table: AccountTable<C>,
 
-    /// Transfer Parameters,
-    parameters: Parameters<C>,
-
     /// Proving Context
     proving_context: ProvingContext<C>,
+
+    /// Ephemeral Key Parameters
+    ephemeral_key_parameters: EphemeralKeyParameters<C>,
+
+    /// Commitment Scheme Parameters
+    commitment_scheme_parameters: CommitmentSchemeParameters<C>,
 
     /// UTXO Set
     utxo_set: C::UtxoSet,
 
     /// Asset Distribution
     assets: C::AssetMap,
-
-    /// Pending Asset Distribution
-    pending_assets: PendingAssetMap<C>,
 
     /// Random Number Generator
     rng: C::Rng,
@@ -384,20 +294,20 @@ where
     #[inline]
     fn new_inner(
         account_table: AccountTable<C>,
-        parameters: Parameters<C>,
         proving_context: ProvingContext<C>,
+        ephemeral_key_parameters: EphemeralKeyParameters<C>,
+        commitment_scheme_parameters: CommitmentSchemeParameters<C>,
         utxo_set: C::UtxoSet,
         assets: C::AssetMap,
-        pending_assets: PendingAssetMap<C>,
         rng: C::Rng,
     ) -> Self {
         Self {
             account_table,
-            parameters,
             proving_context,
+            ephemeral_key_parameters,
+            commitment_scheme_parameters,
             utxo_set,
             assets,
-            pending_assets,
             rng,
         }
     }
@@ -411,16 +321,18 @@ where
     #[inline]
     pub fn new(
         account_table: AccountTable<C>,
-        parameters: Parameters<C>,
         proving_context: ProvingContext<C>,
+        ephemeral_key_parameters: EphemeralKeyParameters<C>,
+        commitment_scheme_parameters: CommitmentSchemeParameters<C>,
+        utxo_set: C::UtxoSet,
         rng: C::Rng,
     ) -> Self {
         Self::new_inner(
             account_table,
-            parameters,
             proving_context,
-            Default::default(),
-            Default::default(),
+            ephemeral_key_parameters,
+            commitment_scheme_parameters,
+            utxo_set,
             Default::default(),
             rng,
         )
@@ -436,39 +348,43 @@ where
     /// Inserts the new `utxo`-`encrypted_note` pair if a known key can decrypt the note and
     /// validate the utxo.
     #[inline]
-    fn insert_update_item(
+    fn insert_next_item(
         &mut self,
         utxo: Utxo<C>,
         encrypted_note: EncryptedNote<C>,
+        void_numbers: &mut Vec<VoidNumber<C>>,
         assets: &mut Vec<Asset>,
     ) -> Result<(), Error<C::HierarchicalKeyDerivationScheme, C>> {
-        let mut encrypted_note = Some(encrypted_note);
+        let mut finder = DecryptedMessage::find(encrypted_note);
         if let Some((
-            spend_index,
+            index,
+            key,
             DecryptedMessage {
                 plaintext: asset,
                 ephemeral_public_key,
             },
         )) = self
             .account()
-            .find_index(move |k| DecryptedMessage::try_new(&mut encrypted_note, &k))
+            .find_index(move |k| finder.decrypt(k))
             .map_err(key::Error::KeyDerivationError)?
         {
-            /* TODO:
-            if self.get_spending_key(spend_index).validate_utxo(
-                &self.parameters.commitment_scheme,
+            if let Some(void_number) = C::check_full_asset(
+                &self.commitment_scheme_parameters,
+                &key.spend,
                 &ephemeral_public_key,
                 &asset,
                 &utxo,
             ) {
-                assets.push(asset);
-                self.assets
-                    .insert((spend_index, ephemeral_public_key), asset);
-                self.utxo_set.insert(&utxo);
-                return Ok(());
+                if let Some(index) = void_numbers.iter().position(move |v| v == &void_number) {
+                    void_numbers.remove(index);
+                } else {
+                    assets.push(asset);
+                    self.assets
+                        .insert((index.spend, ephemeral_public_key), asset);
+                    self.utxo_set.insert(&utxo);
+                    return Ok(());
+                }
             }
-            */
-            todo!()
         }
         self.utxo_set.insert_nonprovable(&utxo);
         Ok(())
@@ -476,36 +392,49 @@ where
 
     /// Updates the internal ledger state, returning the new asset distribution.
     #[inline]
-    fn sync_with_updates<I>(
+    fn sync_with<I>(
         &mut self,
-        updates: I,
+        inserts: I,
+        mut void_numbers: Vec<VoidNumber<C>>,
     ) -> SyncResult<C::HierarchicalKeyDerivationScheme, C, Self>
     where
         I: Iterator<Item = (Utxo<C>, EncryptedNote<C>)>,
     {
+        // TODO: Do this loop in parallel.
         let mut assets = Vec::new();
-        for (utxo, encrypted_note) in updates {
-            self.insert_update_item(utxo, encrypted_note, &mut assets)?;
+        for (utxo, encrypted_note) in inserts {
+            self.insert_next_item(utxo, encrypted_note, &mut void_numbers, &mut assets)?;
         }
+        // FIXME: Do we need to check the void numbers which survived the above loop?
         Ok(SyncResponse::new(assets))
     }
 
     /// Updates the internal ledger state, returning the new asset distribution.
     #[inline]
-    pub fn sync<I>(
+    pub fn sync<I, R>(
         &mut self,
-        sync_state: SyncState,
-        starting_index: usize,
-        updates: I,
+        insert_starting_index: usize,
+        inserts: I,
+        removes: R,
     ) -> SyncResult<C::HierarchicalKeyDerivationScheme, C, Self>
     where
         I: IntoIterator<Item = (Utxo<C>, EncryptedNote<C>)>,
+        R: IntoIterator<Item = VoidNumber<C>>,
     {
-        self.start_sync(sync_state);
+        // FIXME: Do a capacity check on the current UTXO set?
+        //
+        // if self.utxo_set.capacity() < starting_index {
+        //    panic!("something is very wrong here")
+        // }
+        //
+        // TODO: Use a smarter object than `Vec` for `removes.into_iter().collect()` like a
+        //       `HashSet` or some other set-like container with fast membership and remove ops.
 
-        // FIXME: Do a capacity check on the current UTXO set.
-        match self.utxo_set.len().checked_sub(starting_index) {
-            Some(diff) => self.sync_with_updates(updates.into_iter().skip(diff)),
+        match self.utxo_set.len().checked_sub(insert_starting_index) {
+            Some(diff) => self.sync_with(
+                inserts.into_iter().skip(diff),
+                removes.into_iter().collect(),
+            ),
             _ => Err(Error::InconsistentSynchronization),
         }
     }
@@ -518,32 +447,35 @@ where
         ephemeral_key: PublicKey<C>,
         asset: Asset,
     ) -> Result<PreSender<C>, Error<C::HierarchicalKeyDerivationScheme, C>> {
-        /* TODO:
-        Ok(self.account().spend_key(spend_index)?.pre_sender(
-            &self.parameters.commitment_scheme,
+        let spend_key = self.account().spend_key(spend_index)?;
+        Ok(PreSender::new(
+            &self.commitment_scheme_parameters,
+            spend_key,
             ephemeral_key,
             asset,
         ))
-        */
-        todo!()
     }
 
     /// Builds the pre-receiver associated to `spend_index`, `view_index`, and `asset`.
     #[inline]
     fn build_receiver(
-        &self,
+        &mut self,
         spend_index: SpendIndex<C>,
         view_index: ViewIndex<C>,
         asset: Asset,
     ) -> Result<Receiver<C>, Error<C::HierarchicalKeyDerivationScheme, C>> {
-        /* TODO:
         let keypair = self
             .account()
             .keypair_with(spend_index, view_index)?
             .derive::<C::KeyAgreementScheme>();
-        Ok(PreReceiver::new(keypair.spend, keypair.view, asset))
-        */
-        todo!()
+        Ok(Receiver::new(
+            &self.ephemeral_key_parameters,
+            &self.commitment_scheme_parameters,
+            self.rng.gen(),
+            keypair.spend,
+            keypair.view,
+            asset,
+        ))
     }
 
     /// Selects the pre-senders which collectively own at least `asset`, returning any change.
@@ -556,7 +488,6 @@ where
         if selection.is_empty() {
             return Err(Error::InsufficientBalance(asset));
         }
-        self.pending_assets.remove = selection.keys().cloned().collect();
         Selection::new(selection, move |(i, ek), v| {
             self.build_pre_sender(i, ek, asset.id.with(v))
         })
@@ -573,18 +504,17 @@ where
         &mut self,
         transfer: Transfer<C, SOURCES, SENDERS, RECEIVERS, SINKS>,
     ) -> Result<TransferPost<C>, Error<C::HierarchicalKeyDerivationScheme, C>> {
-        /* TODO:
         transfer
             .into_post(
-                &self.parameters.ephemeral_key_commitment_scheme,
-                &self.parameters.commitment_scheme,
-                self.utxo_set.verifier(),
+                Parameters::new(
+                    &self.ephemeral_key_parameters,
+                    &self.commitment_scheme_parameters,
+                    self.utxo_set.parameters(),
+                ),
                 &self.proving_context,
                 &mut self.rng,
             )
             .map_err(Error::ProofSystemError)
-        */
-        todo!()
     }
 
     /* TODO:
@@ -683,11 +613,6 @@ where
             }
         }
 
-        self.pending_assets.insert_zeroes = Some((
-            asset_id,
-            new_zeroes.into_iter().map(move |z| z.index).collect(),
-        ));
-
         if needed_mints == 0 {
             return Ok(());
         }
@@ -704,6 +629,14 @@ where
     }
     */
 
+    ///
+    #[inline]
+    fn compute_batched_transaction<const SENDERS: usize, const RECEIVERS: usize>(
+        &mut self,
+    ) -> Result<[Sender<C>; SENDERS], Error<C::HierarchicalKeyDerivationScheme, C>> {
+        todo!()
+    }
+
     /// Returns the next change receiver for `asset`.
     #[inline]
     fn next_change(
@@ -711,22 +644,16 @@ where
         asset_id: AssetId,
         change: AssetValue,
     ) -> Result<Receiver<C>, Error<C::HierarchicalKeyDerivationScheme, C>> {
-        let asset = asset_id.with(change);
         let default_index = Default::default();
-        let receiver = self.build_receiver(default_index, default_index, asset)?;
-        self.pending_assets.insert = Some((
-            (default_index, receiver.ephemeral_public_key().clone()),
-            asset,
-        ));
-        Ok(receiver)
+        self.build_receiver(default_index, default_index, asset_id.with(change))
     }
 
     /// Prepares a given [`ReceivingKey`] for receiving `asset`.
     #[inline]
     pub fn prepare_receiver(&mut self, asset: Asset, receiver: ReceivingKey<C>) -> Receiver<C> {
         receiver.into_receiver(
-            &self.parameters.ephemeral_key_commitment_scheme,
-            &self.parameters.commitment_scheme,
+            &self.ephemeral_key_parameters,
+            &self.commitment_scheme_parameters,
             self.rng.gen(),
             asset,
         )
@@ -734,7 +661,7 @@ where
 
     /// Signs a withdraw transaction without resetting on error.
     #[inline]
-    fn sign_withdraw_without_rollback(
+    fn sign_withdraw(
         &mut self,
         asset: Asset,
         receiver: Option<ReceivingKey<C>>,
@@ -754,37 +681,18 @@ where
         )?;
         */
 
+        let senders = self.compute_batched_transaction::<SENDERS, RECEIVERS>()?;
         let change = self.next_change(asset.id, selection.change)?;
-
         let final_post = match receiver {
             Some(receiver) => {
                 let receiver = self.prepare_receiver(asset, receiver);
-                // self.build_post(PrivateTransfer::build(senders, [change, receiver]))?
-                todo!()
+                self.build_post(PrivateTransfer::build(senders, [change, receiver]))?
             }
-            _ => {
-                // self.build_post(Reclaim::build(senders, [change], asset))?
-                todo!()
-            }
+            _ => self.build_post(Reclaim::build(senders, [change], asset))?,
         };
-
-        // posts.push(final_post);
-
+        posts.push(final_post);
+        self.utxo_set.rollback();
         Ok(SignResponse::new(posts))
-    }
-
-    /// Signs a withdraw transaction, resetting the internal state on an error.
-    #[inline]
-    fn sign_withdraw(
-        &mut self,
-        asset: Asset,
-        receiver: Option<ReceivingKey<C>>,
-    ) -> SignResult<C::HierarchicalKeyDerivationScheme, C, Self> {
-        let result = self.sign_withdraw_without_rollback(asset, receiver);
-        if result.is_err() {
-            self.rollback();
-        }
-        result
     }
 
     /// Signs the `transaction`, generating transfer posts.
@@ -793,14 +701,11 @@ where
         &mut self,
         transaction: Transaction<C>,
     ) -> SignResult<C::HierarchicalKeyDerivationScheme, C, Self> {
-        self.commit();
         match transaction {
             Transaction::Mint(asset) => {
                 let default_index = Default::default();
                 let receiver = self.build_receiver(default_index, default_index, asset)?;
-                let ephemeral_public_key = receiver.ephemeral_public_key().clone();
                 let mint_post = self.build_post(Mint::build(asset, receiver))?;
-                self.pending_assets.insert = Some(((default_index, ephemeral_public_key), asset));
                 Ok(SignResponse::new(vec![mint_post]))
             }
             Transaction::PrivateTransfer(asset, receiver) => {
@@ -810,39 +715,18 @@ where
         }
     }
 
-    /// Commits to the state after the last call to [`sign`](Self::sign).
-    #[inline]
-    pub fn commit(&mut self) {
-        self.utxo_set.commit();
-        self.pending_assets.commit(&mut self.assets);
-    }
-
-    /// Rolls back to the state before the last call to [`sign`](Self::sign).
-    #[inline]
-    pub fn rollback(&mut self) {
-        self.utxo_set.rollback();
-        self.pending_assets.rollback();
-    }
-
-    /// Commits or rolls back the state depending on the value of `sync_state`.
-    #[inline]
-    pub fn start_sync(&mut self, sync_state: SyncState) {
-        match sync_state {
-            SyncState::Commit => self.commit(),
-            SyncState::Rollback => self.rollback(),
-        }
-    }
-
     /// Returns a [`ReceivingKey`] for `self` to receive assets with `index`.
     #[inline]
     pub fn receiving_key(
         &mut self,
         index: Index<C>,
     ) -> ReceivingKeyResult<C::HierarchicalKeyDerivationScheme, C, Self> {
+        /*
         let _ = self
             .account()
             .keypair(index)?
             .derive::<C::KeyAgreementScheme>();
+        */
         todo!()
     }
 }
@@ -855,47 +739,28 @@ where
 
     type SignFuture = Ready<SignResult<C::HierarchicalKeyDerivationScheme, C, Self>>;
 
-    type CommitFuture = Ready<Result<(), Self::Error>>;
-
-    type RollbackFuture = Ready<Result<(), Self::Error>>;
-
     type ReceivingKeyFuture =
         Ready<ReceivingKeyResult<C::HierarchicalKeyDerivationScheme, C, Self>>;
 
     type Error = Infallible;
 
     #[inline]
-    fn sync<I>(
+    fn sync<I, R>(
         &mut self,
-        sync_state: SyncState,
-        starting_index: usize,
-        updates: I,
+        insert_starting_index: usize,
+        inserts: I,
+        removes: R,
     ) -> Self::SyncFuture
     where
         I: IntoIterator<Item = (Utxo<C>, EncryptedNote<C>)>,
+        R: IntoIterator<Item = VoidNumber<C>>,
     {
-        future::ready(self.sync(sync_state, starting_index, updates))
+        future::ready(self.sync(insert_starting_index, inserts, removes))
     }
 
     #[inline]
     fn sign(&mut self, transaction: Transaction<C>) -> Self::SignFuture {
         future::ready(self.sign(transaction))
-    }
-
-    #[inline]
-    fn commit(&mut self) -> Self::CommitFuture {
-        future::ready({
-            self.commit();
-            Ok(())
-        })
-    }
-
-    #[inline]
-    fn rollback(&mut self) -> Self::RollbackFuture {
-        future::ready({
-            self.rollback();
-            Ok(())
-        })
     }
 
     #[inline]
@@ -1273,9 +1138,6 @@ where
 
     /// Asset Distribution
     assets: C::AssetMap,
-
-    /// Pending Asset Distribution
-    pending_assets: PendingAssetMap<C::DerivedSecretKeyGenerator>,
 
     /// Random Number Generator
     rng: C::Rng,

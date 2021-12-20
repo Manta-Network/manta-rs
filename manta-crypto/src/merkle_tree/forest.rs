@@ -29,13 +29,14 @@ use crate::{
         WithProofs,
     },
 };
+use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash, marker::PhantomData};
 use manta_util::into_array_unchecked;
 
 /// Merkle Forest Configuration
 pub trait Configuration: tree::Configuration {
     /// Tree Index Type
-    type Index;
+    type Index: PartialEq;
 
     /// Returns the index of the merkle tree where `leaf` should be inserted.
     ///
@@ -257,6 +258,11 @@ where
         self.forest
             .get_tree_mut(item)
             .push_provable(&self.parameters, item)
+    }
+
+    #[inline]
+    fn are_independent(&self, fst: &Self::Item, snd: &Self::Item) -> bool {
+        C::tree_index(fst) != C::tree_index(snd)
     }
 
     #[inline]
