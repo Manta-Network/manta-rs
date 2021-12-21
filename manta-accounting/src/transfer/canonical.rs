@@ -17,7 +17,7 @@
 //! Canonical Transaction Types
 
 use crate::{
-    asset::{self, Asset, AssetId, AssetValue},
+    asset::{self, Asset, AssetValue},
     transfer::{Configuration, PreSender, Receiver, ReceivingKey, Sender, Transfer},
 };
 use manta_util::{create_seal, seal};

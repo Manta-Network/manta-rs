@@ -21,8 +21,8 @@
 use crate::merkle_tree::{
     capacity,
     inner_tree::{BTreeMap, InnerMap, PartialInnerTree},
-    Configuration, CurrentPath, InnerDigest, Leaf, LeafDigest, MerkleTree, Node, Parameters, Root,
-    Tree,
+    Configuration, CurrentPath, InnerDigest, Leaf, LeafDigest, MerkleTree, Node, Parameters, Path,
+    PathError, Root, Tree, WithProofs,
 };
 use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash};
@@ -210,6 +210,7 @@ where
     where
         F: FnOnce() -> Option<LeafDigest<C>>,
     {
+        // TODO: Push without keeping unnecessary proof.
         let len = self.len();
         if len >= capacity::<C>() {
             return Some(false);
@@ -219,20 +220,39 @@ where
     }
 }
 
-/* TODO: Implement `WithProofs` for `Partial`
-
 impl<C, M> WithProofs<C> for Partial<C, M>
 where
     C: Configuration + ?Sized,
-    M: InnerMap<C>,
-    LeafDigest<C>: Clone,
+    M: Default + InnerMap<C>,
+    LeafDigest<C>: Clone + PartialEq,
 {
-    type Error = ();
+    #[inline]
+    fn leaf_digest(&self, index: usize) -> Option<&LeafDigest<C>> {
+        self.leaf_digests.get(index)
+    }
 
     #[inline]
-    fn path(&self, parameters: &Parameters<C>, index: usize) -> Result<Path<C>, Self::Error> {
+    fn position(&self, leaf_digest: &LeafDigest<C>) -> Option<usize> {
+        self.leaf_digests.iter().position(move |d| d == leaf_digest)
+    }
+
+    #[inline]
+    fn maybe_push_provable_digest<F>(
+        &mut self,
+        parameters: &Parameters<C>,
+        leaf_digest: F,
+    ) -> Option<bool>
+    where
+        F: FnOnce() -> Option<LeafDigest<C>>,
+    {
+        self.maybe_push_digest(parameters, leaf_digest)
+    }
+
+    #[inline]
+    fn path(&self, parameters: &Parameters<C>, index: usize) -> Result<Path<C>, PathError> {
+        // FIXME: Implement this:
         // TODO: Make sure we don't query paths too far to the left.
-        /* TODO:
+        /*
         let _ = parameters;
         if index > 0 && index >= self.leaf_digests.len() {
             return Err(());
@@ -244,8 +264,14 @@ where
             self.inner_digests.path_unchecked(leaf_index),
         ))
         */
+        let _ = (parameters, index);
         todo!()
     }
-}
 
-*/
+    #[inline]
+    fn remove_path(&mut self, index: usize) -> bool {
+        // TODO: Implement this optimization.
+        let _ = index;
+        false
+    }
+}

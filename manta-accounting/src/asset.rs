@@ -18,11 +18,10 @@
 
 // TODO: Add macro to build `AssetId` and `AssetValue`.
 // TODO: Implement all `rand` sampling traits.
-// TODO: Should we rename `AssetValue` to `AssetValue` to be more consistent?
 // TODO: Implement `Concat` for `AssetId` and `AssetValue`.
-// TODO: Add implementations for `AssetMap` using key-value maps like `BTreeMap` and `HashMap`
+// TODO: Add implementations for `AssetMap` using sorted vectors and/or max-heaps
 
-use alloc::vec::Vec;
+use alloc::{collections::BTreeMap, vec::Vec};
 use core::{
     fmt::Debug,
     hash::Hash,
@@ -39,6 +38,12 @@ use manta_crypto::{
     rand::{CryptoRng, Rand, RngCore, Sample, Standard},
 };
 use manta_util::{into_array_unchecked, Concat, ConcatAccumulator};
+
+#[cfg(feature = "std")]
+use std::{
+    collections::hash_map::{HashMap, RandomState},
+    hash::BuildHasher,
+};
 
 /// [`AssetId`] Base Type
 pub type AssetIdType = u32;
@@ -396,6 +401,28 @@ impl Asset {
             None
         }
     }
+
+    /// Adds the value of `asset` to `self` if it has the same [`AssetId`].
+    #[inline]
+    pub fn try_add_assign(&mut self, asset: Asset) -> bool {
+        if self.id == asset.id {
+            self.value += asset.value;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Subtracts the value of `asset` from `self` if it has the same [`AssetId`].
+    #[inline]
+    pub fn try_sub_assign(&mut self, asset: Asset) -> bool {
+        if self.id == asset.id {
+            self.value -= asset.value;
+            true
+        } else {
+            false
+        }
+    }
 }
 
 impl<I, V> Add<V> for Asset<I, V>
@@ -585,10 +612,94 @@ pub trait AssetMap: Default {
     }
 }
 
+///
+macro_rules! impl_asset_map_for_maps_body {
+    ($k:tt) => {
+        type Key = $k;
+
+        #[inline]
+        fn select(&self, asset: Asset) -> Selection<Self> {
+            // TODO: Use a smarter coin-selection algorithm (max-heap?).
+            if asset.is_zero() {
+                return Selection::default();
+            }
+            let mut sum = Asset::zero(asset.id);
+            let mut values = Vec::new();
+            for (key, item) in self {
+                if item.value != AssetValue(0) && sum.try_add_assign(*item) {
+                    values.push((key.clone(), item.value));
+                    if sum.value >= asset.value {
+                        break;
+                    }
+                }
+            }
+            if sum.value < asset.value {
+                Selection::default()
+            } else {
+                Selection::new(sum.value - asset.value, values)
+            }
+        }
+
+        #[inline]
+        fn zeroes(&self, n: usize, id: AssetId) -> Vec<Self::Key> {
+            self.iter()
+                .filter_map(move |(k, a)| {
+                    (a.id == id && a.value == AssetValue(0)).then(move || k.clone())
+                })
+                .take(n)
+                .collect()
+        }
+
+        #[inline]
+        fn insert(&mut self, key: Self::Key, asset: Asset) {
+            self.insert(key, asset);
+        }
+
+        #[inline]
+        fn remove(&mut self, key: Self::Key) {
+            self.remove(&key);
+        }
+    };
+}
+
+/// B-Tree Map [`AssetMap`] Implementation
+pub type BTreeAssetMap<K> = BTreeMap<K, Asset>;
+
+impl<K> AssetMap for BTreeAssetMap<K>
+where
+    K: Clone + Ord,
+{
+    impl_asset_map_for_maps_body! { K }
+}
+
+/// Hash Map [`AssetMap`] Implementation
+#[cfg(feature = "std")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
+pub type HashAssetMap<K, S = RandomState> = HashMap<K, Asset, S>;
+
+#[cfg(feature = "std")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
+impl<K, S> AssetMap for HashAssetMap<K, S>
+where
+    K: Clone + Hash + Eq,
+    S: BuildHasher + Default,
+{
+    impl_asset_map_for_maps_body! { K }
+}
+
 /// Asset Selection
 ///
 /// This `struct` is created by the [`select`](AssetMap::select) method of [`AssetMap`]. See its
 /// documentation for more.
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "M::Key: Clone"),
+    Debug(bound = "M::Key: Debug"),
+    Default(bound = ""),
+    Eq(bound = "M::Key: Eq"),
+    Hash(bound = "M::Key: Hash"),
+    PartialEq(bound = "M::Key: PartialEq")
+)]
 pub struct Selection<M>
 where
     M: AssetMap + ?Sized,
@@ -604,6 +715,12 @@ impl<M> Selection<M>
 where
     M: AssetMap + ?Sized,
 {
+    /// Builds a new [`Selection`] from `change` and `values`.
+    #[inline]
+    pub fn new(change: AssetValue, values: Vec<(M::Key, AssetValue)>) -> Self {
+        Self { change, values }
+    }
+
     /// Returns `true` if `self` is an empty [`Selection`].
     #[inline]
     pub fn is_empty(&self) -> bool {

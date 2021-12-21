@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Ledger Source
+//! Ledger Connection
 
 use crate::transfer::{Configuration, EncryptedNote, TransferPost, Utxo, VoidNumber};
 use alloc::vec::Vec;
@@ -61,7 +61,7 @@ where
     fn pull(&self, checkpoint: &Self::Checkpoint) -> Self::PullFuture;
 
     /// Sends `posts` to the ledger, returning `true` or `false` depending on whether the entire
-    /// transaction succeeded or not.
+    /// batch succeeded or not.
     fn push(&self, posts: Vec<TransferPost<C>>) -> Self::PushFuture;
 }
 
@@ -99,6 +99,6 @@ where
 /// This `struct` is created by the [`push`](Connection::push) method on [`Connection`].
 /// See its documentation for more.
 pub struct PushResponse {
-    /// Whether or not the Transaction Succeeded in Full
+    /// Transaction Success Flag
     pub success: bool,
 }

@@ -29,6 +29,7 @@ mod sealed;
 
 pub mod iter;
 pub mod num;
+pub mod pointer;
 
 pub use array::*;
 pub use concat::*;

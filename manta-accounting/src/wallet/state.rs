@@ -151,6 +151,7 @@ impl BalanceState for BTreeMapBalanceState {
 pub type HashMapBalanceState<S = RandomState> = HashMap<AssetId, AssetValue, S>;
 
 #[cfg(feature = "std")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
 impl<S> BalanceState for HashMapBalanceState<S>
 where
     S: BuildHasher,

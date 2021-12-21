@@ -188,7 +188,7 @@ where
 impl<C, M> WithProofs<C> for Full<C, M>
 where
     C: Configuration + ?Sized,
-    M: InnerMap<C> + Default,
+    M: Default + InnerMap<C>,
     LeafDigest<C>: Clone + PartialEq,
 {
     #[inline]
@@ -197,7 +197,7 @@ where
     }
 
     #[inline]
-    fn index_of(&self, leaf_digest: &LeafDigest<C>) -> Option<usize> {
+    fn position(&self, leaf_digest: &LeafDigest<C>) -> Option<usize> {
         self.leaf_digests.iter().position(move |d| d == leaf_digest)
     }
 

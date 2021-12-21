@@ -18,6 +18,7 @@
 
 // FIXME: Replace `N` parameter on `FixedIndex` with an associated value in the trait when
 //        `generic_const_exprs` is stabilized and get rid of `ConstantWidthForest`.
+// FIXME: Reduce code duplication between this and `tree.rs` code.
 
 use crate::{
     accumulator::{
@@ -271,7 +272,7 @@ where
         Some(MembershipProof::new(
             tree.path(
                 &self.parameters,
-                tree.index_of(&self.parameters.digest(item))?,
+                tree.position(&self.parameters.digest(item))?,
             )
             .ok()?,
             tree.root().clone(),
@@ -324,6 +325,14 @@ where
     #[inline]
     fn insert_nonprovable(&mut self, item: &Self::Item) -> bool {
         self.forest.get_tree_mut(item).push(&self.parameters, item)
+    }
+
+    #[inline]
+    fn remove_proof(&mut self, item: &Self::Item) -> bool {
+        let tree = self.forest.get_tree_mut(item);
+        tree.position(&self.parameters.digest(item))
+            .map(move |i| tree.remove_path(i))
+            .unwrap_or(false)
     }
 }
 

@@ -628,7 +628,7 @@ where
         ephemeral_key: PublicKey<C>,
         asset: Asset,
     ) -> PreSender<C> {
-        // FIXME: See if this clone is really needed.
+        // TODO: See if this clone is really needed.
         PreSender::new(parameters, self.spend.clone(), ephemeral_key, asset)
     }
 

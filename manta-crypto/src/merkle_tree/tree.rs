@@ -20,8 +20,6 @@
 //       implementations for the trivial tree sizes?
 // TODO: Add "copy-on-write" adapters for `Root` and `Path`, and see if we can incorporate them
 //       into `Tree`.
-// TODO: Should we add optimization paths for when `cloning` the default value is cheaper than
-//       creating a new one from scratch (for inner digests)?
 
 use crate::{
     accumulator::{
@@ -29,11 +27,12 @@ use crate::{
         OptimizedAccumulator,
     },
     merkle_tree::{
-        fork::{self, Trunk},
+        fork::Trunk,
         path::{CurrentPath, Path},
     },
 };
 use core::{fmt::Debug, hash::Hash, marker::PhantomData};
+use manta_util::pointer::PointerFamily;
 
 /// Merkle Tree Leaf Hash
 pub trait LeafHash {
@@ -329,7 +328,7 @@ where
     /// # Implementation Note
     ///
     /// This method is allowed to return `None` even if `index` is less than the current length of
-    /// the tree. See [`index_of`](Self::index_of) for more.
+    /// the tree. See [`position`](Self::position) for more.
     fn leaf_digest(&self, index: usize) -> Option<&LeafDigest<C>>;
 
     /// Returns the index of the `leaf_digest` if it is contained in `self`.
@@ -339,15 +338,15 @@ where
     /// This method is allowed to return `None` even if `leaf_digest` was inserted with a call to
     /// [`push_digest`](Tree::push_digest). This method need only return an index for leaves which
     /// are inserted with a call to [`push_provable`](Self::push_provable).
-    fn index_of(&self, leaf_digest: &LeafDigest<C>) -> Option<usize>;
+    fn position(&self, leaf_digest: &LeafDigest<C>) -> Option<usize>;
 
     /// Returns `true` if `leaf_digest` is provably stored in `self`.
     ///
-    /// See the [`index_of`](Self::index_of) and [`push_provable`](Self::push_provable) methods
+    /// See the [`position`](Self::position) and [`push_provable`](Self::push_provable) methods
     /// for more.
     #[inline]
     fn contains(&self, leaf_digest: &LeafDigest<C>) -> bool {
-        self.index_of(leaf_digest).is_some()
+        self.position(leaf_digest).is_some()
     }
 
     /// Checks if a leaf can be inserted into the tree and if it can, it runs `leaf_digest` to
@@ -382,27 +381,19 @@ where
 
     /// Returns the path for the leaf stored at the given `index` if it exists.
     fn path(&self, parameters: &Parameters<C>, index: usize) -> Result<Path<C>, PathError>;
-}
 
-/* TODO:
-/// Merkle Tree Removable Membership Proof Mixin
-pub trait WithRemovableProofs<C>: WithProofs<C>
-where
-    C: Configuration + ?Sized,
-{
+    /// Removes a single path at the given `index`, returning `true` if it was removed.
     ///
-    fn remove_paths<R>(&mut self, range: R) -> bool
-    where
-        R: RangeBounds<usize>;
-
+    /// # Implementation Note
     ///
+    /// This method may return `false` for arbitrary inputs and is only an optimization path for
+    /// removing unused memory.
     #[inline]
     fn remove_path(&mut self, index: usize) -> bool {
-        self.remove_paths(index..=index)
+        let _ = index;
+        false
     }
-
 }
-*/
 
 /// Digest Type
 #[derive(derivative::Derivative)]
@@ -591,6 +582,15 @@ where
         Self { tree, parameters }
     }
 
+    /// Builds a new [`MerkleTree`] from a `trunk` and `parameters`.
+    #[inline]
+    pub fn from_trunk<P>(trunk: Trunk<C, T, P>, parameters: Parameters<C>) -> Self
+    where
+        P: PointerFamily<T>,
+    {
+        Self::from_tree(trunk.into_tree(), parameters)
+    }
+
     /// Returns a shared reference to the parameters used by this merkle tree.
     #[inline]
     pub fn parameters(&self) -> &Parameters<C> {
@@ -704,13 +704,13 @@ where
 
     /// Returns the index of the `leaf_digest` if it is contained in `self`.
     ///
-    /// See [`WithProofs::index_of`] for more.
+    /// See [`WithProofs::position`] for more.
     #[inline]
-    pub fn index_of(&self, leaf_digest: &LeafDigest<C>) -> Option<usize>
+    pub fn position(&self, leaf_digest: &LeafDigest<C>) -> Option<usize>
     where
         T: WithProofs<C>,
     {
-        self.tree.index_of(leaf_digest)
+        self.tree.position(leaf_digest)
     }
 
     /// Returns `true` if `leaf_digest` is provably stored in `self`.
@@ -753,9 +753,9 @@ where
     #[inline]
     pub fn into_trunk<P>(self) -> Trunk<C, T, P>
     where
-        P: fork::raw::MerkleTreePointerFamily<C, T>,
+        P: PointerFamily<T>,
     {
-        Trunk::new(self)
+        Trunk::new(self.tree)
     }
 
     /// Extracts the parameters of the merkle tree, dropping the internal tree.
@@ -809,7 +809,7 @@ where
     #[inline]
     fn prove(&self, item: &Self::Item) -> Option<MembershipProof<Self::Verifier>> {
         Some(MembershipProof::new(
-            self.path(self.index_of(&self.parameters.digest(item))?)
+            self.path(self.position(&self.parameters.digest(item))?)
                 .ok()?,
             self.root().clone(),
         ))
@@ -856,5 +856,13 @@ where
     #[inline]
     fn insert_nonprovable(&mut self, item: &Self::Item) -> bool {
         self.push(item)
+    }
+
+    #[inline]
+    fn remove_proof(&mut self, item: &Self::Item) -> bool {
+        self.tree
+            .position(&self.parameters.digest(item))
+            .map(move |i| self.tree.remove_path(i))
+            .unwrap_or(false)
     }
 }

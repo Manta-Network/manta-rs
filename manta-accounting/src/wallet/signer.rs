@@ -16,14 +16,8 @@
 
 //! Wallet Signer
 
-// FIXME: Change the name of `TransferAccumulator`, its not an `Accumulator`.
 // TODO:  Add wallet recovery i.e. remove the assumption that a new signer represents a completely
 //        new derived secret key generator.
-// TODO:  Allow for non-atomic signing, i.e. rollback state to something in-between two calls to
-//        sign`. Will have to upgrade `Rollback` and `manta_crypto::merkle_tree::fork` as well.
-// TODO:  Add checkpointing/garbage-collection in `utxo_set` so we can remove old UTXOs once they
-//        are irrelevant. Once we create a sender and its transaction succeeds we can drop the UTXO.
-//        See `OptimizedAccumulator::remove_proof`.
 // TODO:  Should have a mode on the signer where we return a generic error which reveals no detail
 //        about what went wrong during signing. The kind of error returned from a signing could
 //        reveal information about the internal state (privacy leak, not a secrecy leak).
@@ -31,9 +25,10 @@
 
 use crate::{
     asset::{Asset, AssetId, AssetMap, AssetValue},
-    key::{self, AccountKeys, HierarchicalKeyDerivationScheme},
+    key::{self, AccountKeys, HierarchicalKeyDerivationScheme, ViewKeySelection},
     transfer::{
-        self, batch,
+        self,
+        batch::Join,
         canonical::{
             Mint, PrivateTransfer, PrivateTransferShape, Reclaim, Selection, Shape, Transaction,
         },
@@ -45,11 +40,7 @@ use crate::{
 use alloc::{vec, vec::Vec};
 use core::{
     convert::Infallible,
-    fmt::Debug,
     future::{self, Future, Ready},
-    hash::Hash,
-    mem,
-    ops::Range,
 };
 use manta_crypto::{
     accumulator::{
@@ -57,7 +48,6 @@ use manta_crypto::{
         Verifier,
     },
     encryption::DecryptedMessage,
-    key::KeyAgreementScheme,
     rand::{CryptoRng, Rand, RngCore},
 };
 use manta_util::{fallible_array_map, into_array_unchecked, iter::IteratorExt};
@@ -208,6 +198,9 @@ where
     }
 }
 
+/// Signer Error over a [`Configuration`]
+type SignerError<C> = Error<<C as Configuration>::HierarchicalKeyDerivationScheme, C>;
+
 /// Signer Configuration
 pub trait Configuration: transfer::Configuration {
     /// Hierarchical Key Derivation Scheme
@@ -345,29 +338,34 @@ where
         encrypted_note: EncryptedNote<C>,
         void_numbers: &mut Vec<VoidNumber<C>>,
         assets: &mut Vec<Asset>,
-    ) -> Result<(), Error<C::HierarchicalKeyDerivationScheme, C>> {
+    ) -> Result<(), SignerError<C>> {
         let mut finder = DecryptedMessage::find(encrypted_note);
-        if let Some((
+        if let Some(ViewKeySelection {
             index,
-            key,
-            DecryptedMessage {
-                plaintext: asset,
-                ephemeral_public_key,
-            },
-        )) = self
+            keypair,
+            item:
+                DecryptedMessage {
+                    plaintext: asset,
+                    ephemeral_public_key,
+                },
+        }) = self
             .account()
             .find_index(move |k| finder.decrypt(k))
             .map_err(key::Error::KeyDerivationError)?
         {
             if let Some(void_number) = C::check_full_asset(
                 &self.commitment_scheme_parameters,
-                &key.spend,
+                &keypair.spend,
                 &ephemeral_public_key,
                 &asset,
                 &utxo,
             ) {
-                if let Some(index) = void_numbers.iter().position(move |v| v == &void_number) {
-                    void_numbers.remove(index);
+                if let Some(void_number_index) =
+                    void_numbers.iter().position(move |v| v == &void_number)
+                {
+                    void_numbers.remove(void_number_index);
+                    self.utxo_set.remove_proof(&utxo);
+                    self.assets.remove((index.spend, ephemeral_public_key));
                 } else {
                     assets.push(asset);
                     self.assets
@@ -436,7 +434,7 @@ where
         &self,
         key: AssetMapKey<C>,
         asset: Asset,
-    ) -> Result<PreSender<C>, Error<C::HierarchicalKeyDerivationScheme, C>> {
+    ) -> Result<PreSender<C>, SignerError<C>> {
         let (spend_index, ephemeral_key) = key;
         Ok(PreSender::new(
             &self.commitment_scheme_parameters,
@@ -448,10 +446,7 @@ where
 
     /// Builds the pre-receiver associated to `spend_index`, `view_index`, and `asset`.
     #[inline]
-    fn build_receiver(
-        &mut self,
-        asset: Asset,
-    ) -> Result<Receiver<C>, Error<C::HierarchicalKeyDerivationScheme, C>> {
+    fn build_receiver(&mut self, asset: Asset) -> Result<Receiver<C>, SignerError<C>> {
         let keypair = self
             .account()
             .default_keypair()
@@ -464,12 +459,10 @@ where
         ))
     }
 
-    ///
+    /// Mints an asset with zero value for the given `asset_id`, returning the appropriate
+    /// transfer and pre-sender.
     #[inline]
-    fn mint_zero(
-        &mut self,
-        asset_id: AssetId,
-    ) -> Result<(Mint<C>, PreSender<C>), Error<C::HierarchicalKeyDerivationScheme, C>> {
+    fn mint_zero(&mut self, asset_id: AssetId) -> Result<(Mint<C>, PreSender<C>), SignerError<C>> {
         let asset = Asset::zero(asset_id);
         let keypair = self
             .account()
@@ -486,10 +479,7 @@ where
 
     /// Selects the pre-senders which collectively own at least `asset`, returning any change.
     #[inline]
-    fn select(
-        &mut self,
-        asset: Asset,
-    ) -> Result<Selection<C>, Error<C::HierarchicalKeyDerivationScheme, C>> {
+    fn select(&mut self, asset: Asset) -> Result<Selection<C>, SignerError<C>> {
         let selection = self.assets.select(asset);
         if selection.is_empty() {
             return Err(Error::InsufficientBalance(asset));
@@ -509,7 +499,7 @@ where
     >(
         &mut self,
         transfer: Transfer<C, SOURCES, SENDERS, RECEIVERS, SINKS>,
-    ) -> Result<TransferPost<C>, Error<C::HierarchicalKeyDerivationScheme, C>> {
+    ) -> Result<TransferPost<C>, SignerError<C>> {
         transfer
             .into_post(
                 Parameters::new(
@@ -523,21 +513,19 @@ where
             .map_err(Error::ProofSystemError)
     }
 
-    ///
+    /// Computes the next [`Join`](Join) element for an asset rebalancing round.
+    #[allow(clippy::type_complexity)] // NOTE: Clippy is too harsh here.
     #[inline]
     fn next_join<const RECEIVERS: usize>(
         &mut self,
         asset_id: AssetId,
         total: AssetValue,
-    ) -> Result<
-        ([Receiver<C>; RECEIVERS], batch::Join<C>),
-        Error<C::HierarchicalKeyDerivationScheme, C>,
-    > {
+    ) -> Result<([Receiver<C>; RECEIVERS], Join<C>), SignerError<C>> {
         let keypair = self
             .account()
             .default_keypair()
             .map_err(key::Error::KeyDerivationError)?;
-        Ok(batch::Join::new(
+        Ok(Join::new(
             &self.ephemeral_key_parameters,
             &self.commitment_scheme_parameters,
             asset_id.with(total),
@@ -546,7 +534,7 @@ where
         ))
     }
 
-    ///
+    /// Prepares the final pre-senders for the last part of the transaction.
     #[inline]
     fn prepare_final_pre_senders<const SENDERS: usize>(
         &mut self,
@@ -554,7 +542,7 @@ where
         mut new_zeroes: Vec<PreSender<C>>,
         pre_senders: &mut Vec<PreSender<C>>,
         posts: &mut Vec<TransferPost<C>>,
-    ) -> Result<(), Error<C::HierarchicalKeyDerivationScheme, C>> {
+    ) -> Result<(), SignerError<C>> {
         let mut needed_zeroes = SENDERS - pre_senders.len();
         if needed_zeroes == 0 {
             return Ok(());
@@ -585,14 +573,14 @@ where
         Ok(())
     }
 
-    ///
+    /// Computes the batched transactions for rebalancing before a final transfer.
     #[inline]
-    fn compute_batched_transaction<const SENDERS: usize, const RECEIVERS: usize>(
+    fn compute_batched_transactions<const SENDERS: usize, const RECEIVERS: usize>(
         &mut self,
         asset_id: AssetId,
         mut pre_senders: Vec<PreSender<C>>,
         posts: &mut Vec<TransferPost<C>>,
-    ) -> Result<[Sender<C>; SENDERS], Error<C::HierarchicalKeyDerivationScheme, C>> {
+    ) -> Result<[Sender<C>; SENDERS], SignerError<C>> {
         assert!(
             (SENDERS >= 2) && (RECEIVERS >= 2),
             "The transfer shape must include at least two senders and two receivers."
@@ -601,38 +589,28 @@ where
             !pre_senders.is_empty(),
             "The set of initial senders cannot be empty."
         );
-
         let mut new_zeroes = Vec::new();
-
         while pre_senders.len() > SENDERS {
             let mut joins = Vec::new();
             let mut iter = pre_senders.into_iter().chunk_by::<SENDERS>();
-
             for chunk in &mut iter {
                 let senders = fallible_array_map(chunk, |s| {
                     s.try_upgrade(&self.utxo_set)
                         .ok_or(Error::MissingUtxoMembershipProof)
                 })?;
-
                 let (receivers, mut join) = self.next_join::<RECEIVERS>(
                     asset_id,
                     senders.iter().map(Sender::asset_value).sum(),
                 )?;
-
                 posts.push(self.build_post(Transfer::new(None, [], senders, receivers, []))?);
-
                 join.insert_utxos(&mut self.utxo_set);
-
                 joins.push(join.pre_sender);
                 new_zeroes.append(&mut join.zeroes);
             }
-
             joins.append(&mut iter.remainder());
             pre_senders = joins;
         }
-
         self.prepare_final_pre_senders::<SENDERS>(asset_id, new_zeroes, &mut pre_senders, posts)?;
-
         Ok(into_array_unchecked(
             pre_senders
                 .into_iter()
@@ -653,7 +631,7 @@ where
         )
     }
 
-    /// Signs a withdraw transaction.
+    /// Signs a withdraw transaction for `asset` sent to `receiver`.
     #[inline]
     fn sign_withdraw(
         &mut self,
@@ -665,7 +643,7 @@ where
         let selection = self.select(asset)?;
         let change = self.build_receiver(asset.id.with(selection.change))?;
         let mut posts = Vec::new();
-        let senders = self.compute_batched_transaction::<SENDERS, RECEIVERS>(
+        let senders = self.compute_batched_transactions::<SENDERS, RECEIVERS>(
             asset.id,
             selection.pre_senders,
             &mut posts,
@@ -748,45 +726,3 @@ where
         future::ready(self.receiving_key(index))
     }
 }
-
-/* TODO[remove]:
-impl<D> Load for Signer<D>
-where
-    D: DerivedSecretKeyGenerator + LoadWith<Account<D>>,
-{
-    type Path = D::Path;
-
-    type LoadingKey = D::LoadingKey;
-
-    type Error = <D as Load>::Error;
-
-    #[inline]
-    fn load<P>(path: P, loading_key: &Self::LoadingKey) -> Result<Self, Self::Error>
-    where
-        P: AsRef<Self::Path>,
-    {
-        let (secret_key_source, account) = D::load_with(path, loading_key)?;
-        Ok(Self::with_account(secret_key_source, account))
-    }
-}
-
-impl<D> Save for Signer<D>
-where
-    D: DerivedSecretKeyGenerator + SaveWith<Account<D>>,
-{
-    type Path = D::Path;
-
-    type SavingKey = D::SavingKey;
-
-    type Error = <D as Save>::Error;
-
-    #[inline]
-    fn save<P>(self, path: P, saving_key: &Self::SavingKey) -> Result<(), Self::Error>
-    where
-        P: AsRef<Self::Path>,
-    {
-        self.secret_key_source
-            .save_with(self.account, path, saving_key)
-    }
-}
-*/

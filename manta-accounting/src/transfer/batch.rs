@@ -17,23 +17,17 @@
 //! Batched Transfers
 
 use crate::{
-    asset::{Asset, AssetId, AssetValue},
+    asset::Asset,
     transfer::{
-        CommitmentSchemeParameters, Configuration, EphemeralKeyParameters, Parameters, PreSender,
-        ProofSystemError, Receiver, ReceivingKey, Sender, SpendingKey, Transfer, TransferPost,
-        Utxo,
+        CommitmentSchemeParameters, Configuration, EphemeralKeyParameters, PreSender, Receiver,
+        SpendingKey, Utxo,
     },
 };
-use alloc::vec;
-use core::mem;
 use manta_crypto::{
     accumulator::Accumulator,
     rand::{CryptoRng, Rand, RngCore},
 };
-use manta_util::{
-    fallible_array_map, into_array_unchecked,
-    iter::{ChunkBy, IteratorExt},
-};
+use manta_util::into_array_unchecked;
 
 /// Batch Join Structure
 pub struct Join<C>
