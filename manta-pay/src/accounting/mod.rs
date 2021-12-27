@@ -16,8 +16,146 @@
 
 //! Accounting Implementations
 
-pub mod config;
-pub mod identity;
+// TODO: Make this generic over the backend we use. Automatically compute which features are
+//       enabled when using whichever backend.
+
+use crate::crypto::key::EllipticCurveDiffieHellman;
+use ark_bls12_381::Bls12_381;
+use ark_crypto_primitives::crh::pedersen::{constraints::CRHGadget, CRH};
+use ark_ed_on_bls12_381::{constraints::EdwardsVar, EdwardsProjective, Fq};
+use manta_accounting::{asset::Asset, transfer};
+use manta_crypto::{commitment::CommitmentScheme, key::KeyAgreementScheme, merkle_tree};
+use rand_chacha::ChaCha20Rng;
+
 pub mod key;
 // TODO: pub mod ledger;
-pub mod transfer;
+// TODO: pub mod transfer;
+
+/// Configuration Structure
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct Configuration;
+
+impl transfer::Configuration for Configuration {
+    type SecretKey = <Self::KeyAgreementScheme as KeyAgreementScheme>::SecretKey;
+    type SecretKeyVar = ();
+    type PublicKey = <Self::KeyAgreementScheme as KeyAgreementScheme>::PublicKey;
+    type PublicKeyVar = ();
+    type KeyAgreementScheme = EllipticCurveDiffieHellman<EdwardsProjective>;
+    type EphemeralKeyTrapdoor = <Self::EphemeralKeyCommitmentScheme as CommitmentScheme>::Trapdoor;
+    type EphemeralKeyTrapdoorVar = ();
+    type EphemeralKeyParametersVar = ();
+    type EphemeralKeyCommitmentSchemeInput =
+        <Self::EphemeralKeyCommitmentScheme as CommitmentScheme>::Input;
+    type EphemeralKeyCommitmentSchemeInputVar = ();
+    type EphemeralKeyCommitmentScheme = ();
+}
+
+/* TODO:
+/// Pedersen Window Parameters
+#[derive(Clone, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct PedersenCommitmentWindowParameters;
+
+impl PedersenWindow for PedersenCommitmentWindowParameters {
+    const WINDOW_SIZE: usize = 4;
+    const NUM_WINDOWS: usize = 256;
+}
+
+/// Pedersen Commitment Projective Curve
+pub type PedersenCommitmentProjectiveCurve = EdwardsProjective;
+
+/// Pedersen Commitment Projective Curve
+pub type PedersenCommitmentProjectiveCurveVar = EdwardsVar;
+
+/// Pedersen Commitment Scheme
+pub type PedersenCommitment = pedersen::constraint::PedersenCommitmentWrapper<
+    PedersenCommitmentWindowParameters,
+    PedersenCommitmentProjectiveCurve,
+    PedersenCommitmentProjectiveCurveVar,
+>;
+
+/// Pedersen Commitment Scheme Variable
+pub type PedersenCommitmentVar = pedersen::constraint::PedersenCommitmentVar<
+    PedersenCommitmentWindowParameters,
+    PedersenCommitmentProjectiveCurve,
+    PedersenCommitmentProjectiveCurveVar,
+>;
+
+/// Arkworks Pedersen Commitment Scheme
+type ArkPedersenCommitment =
+    CRH<PedersenCommitmentProjectiveCurve, PedersenCommitmentWindowParameters>;
+
+/// Constraint Field
+pub type ConstraintField = Fq;
+
+/// Constraint System
+pub type ConstraintSystem = ArkConstraintSystem<ConstraintField>;
+
+/// Proof System
+pub type ProofSystem = Groth16<Bls12_381>;
+
+impl ArkMerkleTreeConfiguration for Configuration {
+    type Leaf = Utxo;
+    type LeafHash = ArkPedersenCommitment;
+    type InnerHash = ArkPedersenCommitment;
+    type Height = u8;
+
+    const HEIGHT: Self::Height = 20;
+}
+
+impl merkle_tree::HashConfiguration for Configuration {
+    type LeafHash =
+        <ArkMerkleTreeConfigConverter<Configuration> as merkle_tree::HashConfiguration>::LeafHash;
+    type InnerHash =
+        <ArkMerkleTreeConfigConverter<Configuration> as merkle_tree::HashConfiguration>::InnerHash;
+}
+
+impl merkle_tree::Configuration for Configuration {
+    type Height =
+        <ArkMerkleTreeConfigConverter<Configuration> as merkle_tree::Configuration>::Height;
+
+    const HEIGHT: Self::Height =
+        <ArkMerkleTreeConfigConverter<Configuration> as merkle_tree::Configuration>::HEIGHT;
+}
+
+impl merkle_tree_constraint::Configuration for Configuration {
+    type ConstraintField = ConstraintField;
+    type LeafHashVar = CRHGadget<
+        PedersenCommitmentProjectiveCurve,
+        PedersenCommitmentProjectiveCurveVar,
+        PedersenCommitmentWindowParameters,
+    >;
+    type InnerHashVar = CRHGadget<
+        PedersenCommitmentProjectiveCurve,
+        PedersenCommitmentProjectiveCurveVar,
+        PedersenCommitmentWindowParameters,
+    >;
+}
+
+impl identity::Configuration for Configuration {
+    type Asset = Asset;
+    type KeyAgreementScheme = EllipticCurveDiffieHellman<PedersenCommitmentProjectiveCurve>;
+    type CommitmentScheme = PedersenCommitment;
+}
+
+/*
+/// Transfer Constraint Configuration Structure
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct TransferConstraintConfiguration;
+
+impl identity::Configuration for TransferConstraintConfiguration {
+    type Asset = AssetVar;
+    type KeyAgreementScheme = ();
+    type CommitmentScheme = ();
+}
+
+impl transfer::ConstraintConfiguration<ConstraintSystem> for TransferConstraintConfiguration {}
+
+impl transfer::Configuration for Configuration {
+    type EncryptionScheme = ();
+    type UtxoSetVerifier = ();
+    type ConstraintSystem = ConstraintSystem;
+    type ConstraintConfiguration = TransferConstraintConfiguration;
+    type ProofSystem = ProofSystem;
+}
+*/
+*/

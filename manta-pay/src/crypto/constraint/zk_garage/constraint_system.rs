@@ -14,10 +14,4 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Dusk-Network Constraint System and Proof System Implementations
-
-mod constraint_system;
-
-pub mod proof_systems;
-
-pub use constraint_system::*;
+//! ZK-Garage Constraint System Implementation

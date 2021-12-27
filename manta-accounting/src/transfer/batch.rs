@@ -23,6 +23,7 @@ use crate::{
         SpendingKey, Utxo,
     },
 };
+use alloc::vec::Vec;
 use manta_crypto::{
     accumulator::Accumulator,
     rand::{CryptoRng, Rand, RngCore},

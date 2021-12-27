@@ -16,8 +16,27 @@
 
 //! Transfer Implementations
 
-use crate::accounting::config::Configuration;
-use manta_accounting::transfer::{self as transfer, canonical};
+use crate::crypto::merkle_tree::ConfigConverter;
+use manta_accounting::{
+    identity, transfer,
+    transfer::{self as transfer, canonical},
+};
+use manta_crypto::merkle_tree::{self, full::Full};
+
+/// Unspent Transaction Output
+pub type Utxo = identity::Utxo<Configuration>;
+
+/// Void Number
+pub type VoidNumber = identity::VoidNumber<Configuration>;
+
+/// UTXO Set Parameters
+pub type Parameters = merkle_tree::Parameters<ConfigConverter<Configuration>>;
+
+/// UTXO Set Root
+pub type Root = merkle_tree::Root<ConfigConverter<Configuration>>;
+
+/// UTXO Set Path
+pub type Path = merkle_tree::Path<ConfigConverter<Configuration>>;
 
 /// Mint Transaction Type
 pub type Mint = canonical::Mint<Configuration>;

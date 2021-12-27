@@ -16,17 +16,47 @@
 
 //! Cryptographic Key Primitive Implementations
 
-use ark_ec::{AffineCurve, ProjectiveCurve};
 use blake2::{Blake2s, Digest};
 use core::marker::PhantomData;
-use manta_crypto::key::{KeyAgreementScheme, KeyDerivationFunction};
+use manta_crypto::key::KeyDerivationFunction;
 use manta_util::into_array_unchecked;
 
+#[cfg(feature = "arkworks")]
+use {
+    ark_ec::{AffineCurve, ProjectiveCurve},
+    manta_crypto::key::KeyAgreementScheme,
+};
+
+/// Blake2s KDF
+pub struct Blake2sKdf<T>(PhantomData<T>)
+where
+    T: AsRef<[u8]>;
+
+impl<T> KeyDerivationFunction for Blake2sKdf<T>
+where
+    T: AsRef<[u8]>,
+{
+    type Key = T;
+
+    type Output = [u8; 32];
+
+    #[inline]
+    fn derive(secret: Self::Key) -> Self::Output {
+        let mut hasher = Blake2s::new();
+        hasher.update(secret.as_ref());
+        hasher.update(b"manta kdf instantiated with blake2s hash function");
+        into_array_unchecked(hasher.finalize())
+    }
+}
+
 /// Elliptic Curve Diffie Hellman Protocol
+#[cfg(feature = "arkworks")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "arkworks")))]
 pub struct EllipticCurveDiffieHellman<C>(PhantomData<C>)
 where
     C: ProjectiveCurve;
 
+#[cfg(feature = "arkworks")]
 impl<C> KeyAgreementScheme for EllipticCurveDiffieHellman<C>
 where
     C: ProjectiveCurve,
@@ -53,26 +83,11 @@ where
     }
 
     #[inline]
-    fn agree_owned(secret_key: Self::SecretKey, public_key: Self::PublicKey) -> Self::SharedSecret {
+    fn agree_owned(
+        secret_key: Self::SecretKey,
+        mut public_key: Self::PublicKey,
+    ) -> Self::SharedSecret {
         public_key *= secret_key;
         public_key
-    }
-}
-
-/// Blake2s KDF
-pub struct Blake2sKdf;
-
-impl<T> KeyDerivationFunction<T> for Blake2sKdf
-where
-    T: AsRef<[u8]>,
-{
-    type Output = [u8; 32];
-
-    #[inline]
-    fn derive(secret: T) -> Self::Output {
-        let mut hasher = Blake2s::new();
-        hasher.update(secret.as_ref());
-        hasher.update(b"manta kdf instantiated with blake2s hash function");
-        into_array_unchecked(hasher.finalize())
     }
 }

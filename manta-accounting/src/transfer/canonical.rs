@@ -20,6 +20,7 @@ use crate::{
     asset::{self, Asset, AssetValue},
     transfer::{Configuration, PreSender, Receiver, ReceivingKey, Sender, Transfer},
 };
+use alloc::vec::Vec;
 use manta_util::{create_seal, seal};
 
 create_seal! {}

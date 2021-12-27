@@ -20,6 +20,6 @@
 #[cfg_attr(doc_cfg, doc(cfg(feature = "arkworks-zkp")))]
 pub mod arkworks;
 
-#[cfg(feature = "dusk-network-zkp")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "dusk-network-zkp")))]
-pub mod dusk_network;
+#[cfg(feature = "zk-garage-zkp")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "zk-garage-zkp")))]
+pub mod zk_garage;

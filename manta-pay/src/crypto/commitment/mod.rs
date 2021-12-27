@@ -17,3 +17,4 @@
 //! Commitment Scheme Implementations
 
 pub mod pedersen;
+pub mod poseidon;

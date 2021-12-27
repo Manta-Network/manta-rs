@@ -20,9 +20,7 @@ use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash};
 
 /// Hierarchical Key Derivation Parameter
-pub trait HierarchicalKeyDerivationParameter:
-    Copy + Default + PartialOrd + From<usize> + Into<usize>
-{
+pub trait HierarchicalKeyDerivationParameter: Copy + Default + PartialOrd {
     /// Increments the key parameter by one unit.
     fn increment(&mut self);
 }
@@ -30,7 +28,7 @@ pub trait HierarchicalKeyDerivationParameter:
 /// Hierarchical Key Derivation Scheme
 pub trait HierarchicalKeyDerivationScheme {
     /// Account Type
-    type Account: HierarchicalKeyDerivationParameter;
+    type Account: HierarchicalKeyDerivationParameter + From<usize> + Into<usize>;
 
     /// Index Type
     type Index: HierarchicalKeyDerivationParameter;

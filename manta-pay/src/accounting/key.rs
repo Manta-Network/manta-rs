@@ -27,9 +27,7 @@
 use alloc::{format, string::String};
 use bip32::{Seed, XPrv};
 use core::{marker::PhantomData, num::ParseIntError, str::FromStr};
-use manta_accounting::key::{
-    HierarchicalKeyDerivationParameter, HierarchicalKeyDerivationScheme, SecretKeyPair,
-};
+use manta_accounting::key::{HierarchicalKeyDerivationParameter, HierarchicalKeyDerivationScheme};
 use manta_util::{create_seal, seal};
 
 pub use bip32::{Error, Mnemonic};
@@ -115,7 +113,7 @@ macro_rules! impl_parameter {
             }
         }
 
-        impl_from_for_parameter!($name, bool, u8, u16, u32, u64, u128);
+        impl_from_for_parameter!($name, bool, u8, u16, u32);
 
         impl FromStr for $name {
             type Err = ParseParameterError;
@@ -128,18 +126,35 @@ macro_rules! impl_parameter {
     };
 }
 
-/// Parameter Type
-type ParameterType = u128;
+/// Account Parameter Type
+type AccountParameterType = u64;
 
 /// Account Parameter
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct AccountParameter(ParameterType);
+pub struct AccountParameter(AccountParameterType);
 
 impl_parameter!(AccountParameter);
 
+impl From<usize> for AccountParameter {
+    #[inline]
+    fn from(index: usize) -> Self {
+        Self(index as u64)
+    }
+}
+
+impl From<AccountParameter> for usize {
+    #[inline]
+    fn from(parameter: AccountParameter) -> Self {
+        parameter.0 as usize
+    }
+}
+
+/// Index Parameter Type
+type IndexParameterType = u128;
+
 /// Index Parameter
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct IndexParameter(ParameterType);
+pub struct IndexParameter(IndexParameterType);
 
 impl_parameter!(IndexParameter);
 
@@ -184,7 +199,11 @@ where
 /// [`BIP-0044`]: https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki
 #[inline]
 #[must_use]
-pub fn path_string<C>(account: ParameterType, spend: ParameterType, view: ParameterType) -> String
+pub fn path_string<C>(
+    account: AccountParameterType,
+    spend: IndexParameterType,
+    view: IndexParameterType,
+) -> String
 where
     C: CoinType,
 {
@@ -217,10 +236,10 @@ where
         account: Self::Account,
         spend: Self::Index,
     ) -> Result<Self::SecretKey, Self::Error> {
-        Ok(XPrv::derive_from_path(
+        XPrv::derive_from_path(
             &self.seed,
             &path_string::<C>(account.0, spend.0, 0).parse()?,
-        ))
+        )
     }
 
     #[inline]
@@ -230,9 +249,9 @@ where
         spend: Self::Index,
         view: Self::Index,
     ) -> Result<Self::SecretKey, Self::Error> {
-        Ok(XPrv::derive_from_path(
+        XPrv::derive_from_path(
             &self.seed,
             &path_string::<C>(account.0, spend.0, view.0 + 1).parse()?,
-        ))
+        )
     }
 }
