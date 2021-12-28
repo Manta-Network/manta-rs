@@ -23,7 +23,12 @@ use manta_util::into_array_unchecked;
 
 #[cfg(feature = "arkworks")]
 use {
+    crate::crypto::constraint::arkworks::R1CS,
     ark_ec::{AffineCurve, ProjectiveCurve},
+    ark_ff::Field,
+    ark_r1cs_std::fields::fp::FpVar,
+    ark_r1cs_std::groups::{CurveVar, GroupOpsBounds},
+    ark_r1cs_std::ToBitsGadget,
     manta_crypto::key::KeyAgreementScheme,
 };
 
@@ -50,17 +55,25 @@ where
     }
 }
 
+///
+#[cfg(feature = "arkworks")]
+type ConstraintField<C> = <<C as ProjectiveCurve>::BaseField as Field>::BasePrimeField;
+
 /// Elliptic Curve Diffie Hellman Protocol
 #[cfg(feature = "arkworks")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "arkworks")))]
-pub struct EllipticCurveDiffieHellman<C>(PhantomData<C>)
-where
-    C: ProjectiveCurve;
-
-#[cfg(feature = "arkworks")]
-impl<C> KeyAgreementScheme for EllipticCurveDiffieHellman<C>
+pub struct EllipticCurveDiffieHellman<C, GG>(PhantomData<(C, GG)>)
 where
     C: ProjectiveCurve,
+    GG: CurveVar<C, ConstraintField<C>>,
+    for<'g> &'g GG: GroupOpsBounds<'g, C, GG>;
+
+#[cfg(feature = "arkworks")]
+impl<C, GG> KeyAgreementScheme for EllipticCurveDiffieHellman<C, GG>
+where
+    C: ProjectiveCurve,
+    GG: CurveVar<C, ConstraintField<C>>,
+    for<'g> &'g GG: GroupOpsBounds<'g, C, GG>,
 {
     type SecretKey = C::ScalarField;
 
@@ -97,5 +110,51 @@ where
         let _ = compiler;
         public_key *= secret_key;
         public_key
+    }
+}
+
+#[cfg(feature = "arkworks")]
+impl<C, GG> KeyAgreementScheme<R1CS<ConstraintField<C>>> for EllipticCurveDiffieHellman<C, GG>
+where
+    C: ProjectiveCurve,
+    GG: CurveVar<C, ConstraintField<C>>,
+    for<'g> &'g GG: GroupOpsBounds<'g, C, GG>,
+{
+    type SecretKey = FpVar<C::ScalarField>;
+
+    type PublicKey = GG;
+
+    type SharedSecret = GG;
+
+    #[inline]
+    fn derive(
+        compiler: &mut R1CS<ConstraintField<C>>,
+        secret_key: &Self::SecretKey,
+    ) -> Self::PublicKey {
+        /* TODO:
+        let _ = compiler;
+        GG::prime_subgroup_generator().mul(secret_key)
+        */
+        todo!()
+    }
+
+    #[inline]
+    fn agree(
+        compiler: &mut R1CS<ConstraintField<C>>,
+        secret_key: &Self::SecretKey,
+        public_key: &Self::PublicKey,
+    ) -> Self::SharedSecret {
+        /* TODO:
+        let _ = compiler;
+        public_key
+            .scalar_mul_le(
+                FpVar::<ConstraintField<C>>::from(secret_key)
+                    .to_bits_le()
+                    .expect("")
+                    .iter(),
+            )
+            .expect("")
+        */
+        todo!()
     }
 }

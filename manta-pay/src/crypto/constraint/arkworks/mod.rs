@@ -17,7 +17,7 @@
 //! Arkworks Constraint System and Proof System Implementations
 
 mod constraint_system;
-
-pub mod proof_systems;
+mod proof_system;
 
 pub use constraint_system::*;
+pub use proof_system::*;

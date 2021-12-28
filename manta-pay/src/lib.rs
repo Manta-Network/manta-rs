@@ -24,9 +24,10 @@
 extern crate alloc;
 
 pub mod crypto;
+pub mod key;
 
-/*
+// TODO[remove]: pub mod accounting;
+
 #[cfg(all(feature = "arkworks", feature = "groth16"))]
 #[cfg_attr(doc_cfg, doc(cfg(all(feature = "arkworks", feature = "groth16"))))]
-pub mod accounting;
-*/
+pub mod config;

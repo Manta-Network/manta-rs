@@ -16,25 +16,19 @@
 
 //! Arkworks Constraint System Implementation
 
-use alloc::{vec, vec::Vec};
 use ark_ff::{fields::Field, PrimeField};
-use ark_r1cs_std::{
-    alloc::AllocVar, bits::boolean::Boolean, eq::EqGadget, fields::fp::FpVar, uint8::UInt8,
-};
+use ark_r1cs_std::{alloc::AllocVar, bits::boolean::Boolean, eq::EqGadget};
 use ark_relations::{ns, r1cs as ark_r1cs};
-use core::{
-    borrow::Borrow,
-    ops::{Add, AddAssign},
-};
-use manta_accounting::asset::{AssetId, AssetValue};
 use manta_crypto::constraint::{
-    measure::Measure, reflection::HasAllocation, types::Bool, Allocation, AllocationMode,
-    ConstraintSystem, Equal, Public, PublicOrSecret, Secret, Variable, VariableSource,
+    measure::Measure, Add, Allocation, AllocationMode, ConstraintSystem, Equal, Public,
+    PublicOrSecret, Secret, Variable,
 };
-use manta_util::{Concat, ConcatAccumulator};
+
+pub use ark_r1cs::SynthesisError;
+pub use ark_r1cs_std::fields::fp::FpVar;
 
 /// Synthesis Result
-pub type SynthesisResult<T = ()> = Result<T, ark_r1cs::SynthesisError>;
+pub type SynthesisResult<T = ()> = Result<T, SynthesisError>;
 
 /// Returns an empty variable assignment for setup mode.
 ///
@@ -46,7 +40,7 @@ pub type SynthesisResult<T = ()> = Result<T, ark_r1cs::SynthesisError>;
 /// some mocking is required and this function can not be used directly.
 #[inline]
 pub fn empty<T>() -> SynthesisResult<T> {
-    Err(ark_r1cs::SynthesisError::AssignmentMissing)
+    Err(SynthesisError::AssignmentMissing)
 }
 
 /// Returns a filled variable assignment.
@@ -99,8 +93,8 @@ impl From<PublicOrSecret> for ArkAllocationMode {
     }
 }
 
-/// Arkworks Constraint System
-pub struct ArkConstraintSystem<F>
+/// Arkworks Rank-1 Constraint System
+pub struct R1CS<F>
 where
     F: Field,
 {
@@ -108,7 +102,7 @@ where
     pub(crate) cs: ark_r1cs::ConstraintSystemRef<F>,
 }
 
-impl<F> ArkConstraintSystem<F>
+impl<F> R1CS<F>
 where
     F: Field,
 {
@@ -132,20 +126,20 @@ where
     }
 }
 
-impl<F> ConstraintSystem for ArkConstraintSystem<F>
+impl<F> ConstraintSystem for R1CS<F>
 where
     F: Field,
 {
     type Bool = Boolean<F>;
 
     #[inline]
-    fn assert(&mut self, b: Bool<Self>) {
+    fn assert(&mut self, b: Self::Bool) {
         b.enforce_equal(&Boolean::TRUE)
             .expect("This should never fail.");
     }
 }
 
-impl<F> Measure<PublicOrSecret> for ArkConstraintSystem<F>
+impl<F> Measure<PublicOrSecret> for R1CS<F>
 where
     F: Field,
 {
@@ -163,7 +157,7 @@ where
     }
 }
 
-impl<F> Variable<ArkConstraintSystem<F>> for Boolean<F>
+impl<F> Variable<R1CS<F>> for Boolean<F>
 where
     F: Field,
 {
@@ -172,10 +166,7 @@ where
     type Mode = ArkAllocationMode;
 
     #[inline]
-    fn new(
-        cs: &mut ArkConstraintSystem<F>,
-        allocation: Allocation<Self::Type, Self::Mode>,
-    ) -> Self {
+    fn new(cs: &mut R1CS<F>, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
         match allocation {
             Allocation::Known(this, ArkAllocationMode::Constant) => {
                 Self::new_constant(ns!(cs.cs, "boolean constant"), this)
@@ -197,55 +188,37 @@ where
     }
 }
 
-impl<F> HasAllocation<ArkConstraintSystem<F>> for bool
-where
-    F: Field,
-{
-    type Variable = Boolean<F>;
-    type Mode = ArkAllocationMode;
-}
-
-impl<F> Equal<ArkConstraintSystem<F>> for Boolean<F>
+impl<F> Equal<R1CS<F>> for Boolean<F>
 where
     F: Field,
 {
     #[inline]
-    fn eq(cs: &mut ArkConstraintSystem<F>, lhs: &Self, rhs: &Self) -> Boolean<F> {
+    fn eq(cs: &mut R1CS<F>, lhs: &Self, rhs: &Self) -> Boolean<F> {
         let _ = cs;
         lhs.is_eq(rhs)
             .expect("Equality checking is not allowed to fail.")
     }
 }
 
-/// Prime Field Element
-#[derive(derivative::Derivative)]
-#[derivative(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
-pub struct Fp<F>(F)
-where
-    F: PrimeField;
-
-impl<F> Variable<ArkConstraintSystem<F>> for FpVar<F>
+impl<F> Variable<R1CS<F>> for FpVar<F>
 where
     F: PrimeField,
 {
-    type Type = Fp<F>;
+    type Type = F;
 
     type Mode = ArkAllocationMode;
 
     #[inline]
-    fn new(
-        cs: &mut ArkConstraintSystem<F>,
-        allocation: Allocation<Self::Type, Self::Mode>,
-    ) -> Self {
+    fn new(cs: &mut R1CS<F>, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
         match allocation {
             Allocation::Known(this, ArkAllocationMode::Constant) => {
-                Self::new_constant(ns!(cs.cs, "prime field constant"), this.0)
+                Self::new_constant(ns!(cs.cs, "prime field constant"), this)
             }
             Allocation::Known(this, ArkAllocationMode::Public) => {
-                Self::new_input(ns!(cs.cs, "prime field input"), full(this.0))
+                Self::new_input(ns!(cs.cs, "prime field input"), full(this))
             }
             Allocation::Known(this, ArkAllocationMode::Secret) => {
-                Self::new_witness(ns!(cs.cs, "prime field witness"), full(this.0))
+                Self::new_witness(ns!(cs.cs, "prime field witness"), full(this))
             }
             Allocation::Unknown(PublicOrSecret::Public) => {
                 Self::new_input(ns!(cs.cs, "prime field input"), empty::<F>)
@@ -258,294 +231,25 @@ where
     }
 }
 
-impl<F> HasAllocation<ArkConstraintSystem<F>> for Fp<F>
-where
-    F: PrimeField,
-{
-    type Variable = FpVar<F>;
-    type Mode = ArkAllocationMode;
-}
-
-/// Byte Array Variable
-#[derive(derivative::Derivative)]
-#[derivative(Clone, Debug)]
-pub struct ByteArrayVar<F, const N: usize>(Vec<UInt8<F>>)
-where
-    F: Field;
-
-impl<F, const N: usize> AsRef<[UInt8<F>]> for ByteArrayVar<F, N>
-where
-    F: Field,
-{
-    #[inline]
-    fn as_ref(&self) -> &[UInt8<F>] {
-        &self.0
-    }
-}
-
-impl<F, const N: usize> Borrow<[UInt8<F>]> for ByteArrayVar<F, N>
-where
-    F: Field,
-{
-    #[inline]
-    fn borrow(&self) -> &[UInt8<F>] {
-        &self.0
-    }
-}
-
-impl<F, const N: usize> Concat for ByteArrayVar<F, N>
-where
-    F: Field,
-{
-    type Item = UInt8<F>;
-
-    #[inline]
-    fn concat<A>(&self, accumulator: &mut A)
-    where
-        A: ConcatAccumulator<Self::Item> + ?Sized,
-    {
-        accumulator.extend(&self.0);
-    }
-}
-
-impl<F, const N: usize> Variable<ArkConstraintSystem<F>> for ByteArrayVar<F, N>
-where
-    F: PrimeField,
-{
-    type Type = [u8; N];
-
-    type Mode = PublicOrSecret;
-
-    #[inline]
-    fn new(
-        cs: &mut ArkConstraintSystem<F>,
-        allocation: Allocation<Self::Type, Self::Mode>,
-    ) -> Self {
-        Self(
-            match allocation {
-                Allocation::Known(this, PublicOrSecret::Public) => {
-                    UInt8::new_input_vec(ns!(cs.cs, "byte array public input"), this)
-                }
-                Allocation::Known(this, PublicOrSecret::Secret) => {
-                    UInt8::new_witness_vec(ns!(cs.cs, "byte array secret witness"), this)
-                }
-                Allocation::Unknown(PublicOrSecret::Public) => {
-                    UInt8::new_input_vec(ns!(cs.cs, "byte array public input"), &[0; N])
-                }
-                Allocation::Unknown(PublicOrSecret::Secret) => {
-                    UInt8::new_witness_vec(ns!(cs.cs, "byte array secret witness"), &vec![None; N])
-                }
-            }
-            .expect("Variable allocation is not allowed to fail."),
-        )
-    }
-}
-
-impl<F, const N: usize> HasAllocation<ArkConstraintSystem<F>> for [u8; N]
-where
-    F: PrimeField,
-{
-    type Variable = ByteArrayVar<F, N>;
-    type Mode = PublicOrSecret;
-}
-
-/// Asset Id Variable
-#[derive(derivative::Derivative)]
-#[derivative(Clone, Debug)]
-pub struct AssetIdVar<F>
-where
-    F: PrimeField,
-{
-    /// Field Point
-    field_point: FpVar<F>,
-
-    /// Byte Array
-    bytes: ByteArrayVar<F, { AssetId::SIZE }>,
-}
-
-impl<F> AssetIdVar<F>
-where
-    F: PrimeField,
-{
-    /// Builds a new [`AssetIdVar`] from `field_point` and `bytes`.
-    #[inline]
-    fn new(field_point: FpVar<F>, bytes: ByteArrayVar<F, { AssetId::SIZE }>) -> Self {
-        Self { field_point, bytes }
-    }
-}
-
-impl<F> Concat for AssetIdVar<F>
-where
-    F: PrimeField,
-{
-    type Item = UInt8<F>;
-
-    #[inline]
-    fn concat<A>(&self, accumulator: &mut A)
-    where
-        A: ConcatAccumulator<Self::Item> + ?Sized,
-    {
-        self.bytes.concat(accumulator);
-    }
-}
-
-impl<F> Variable<ArkConstraintSystem<F>> for AssetIdVar<F>
-where
-    F: PrimeField,
-{
-    type Type = AssetId;
-
-    type Mode = PublicOrSecret;
-
-    #[inline]
-    fn new(
-        cs: &mut ArkConstraintSystem<F>,
-        allocation: Allocation<Self::Type, Self::Mode>,
-    ) -> Self {
-        match allocation {
-            Allocation::Known(this, mode) => Self::new(
-                Fp(F::from(this.0)).as_known(cs, mode),
-                this.into_bytes().as_known(cs, mode),
-            ),
-            Allocation::Unknown(mode) => Self::new(
-                Fp::as_unknown(cs, mode),
-                <[u8; AssetId::SIZE]>::as_unknown(cs, mode),
-            ),
-        }
-    }
-}
-
-impl<F> HasAllocation<ArkConstraintSystem<F>> for AssetId
-where
-    F: PrimeField,
-{
-    type Variable = AssetIdVar<F>;
-    type Mode = PublicOrSecret;
-}
-
-impl<F> Equal<ArkConstraintSystem<F>> for AssetIdVar<F>
+impl<F> Equal<R1CS<F>> for FpVar<F>
 where
     F: PrimeField,
 {
     #[inline]
-    fn eq(cs: &mut ArkConstraintSystem<F>, lhs: &Self, rhs: &Self) -> Boolean<F> {
-        // TODO: Is `field_point` or `bytes` faster?
+    fn eq(cs: &mut R1CS<F>, lhs: &Self, rhs: &Self) -> Boolean<F> {
         let _ = cs;
-        lhs.field_point
-            .is_eq(&rhs.field_point)
+        lhs.is_eq(rhs)
             .expect("Equality checking is not allowed to fail.")
     }
 }
 
-/// Asset Value Variable
-#[derive(derivative::Derivative)]
-#[derivative(Clone, Debug)]
-pub struct AssetValueVar<F>
-where
-    F: PrimeField,
-{
-    /// Field Point
-    field_point: FpVar<F>,
-
-    /// Byte Array
-    bytes: Option<ByteArrayVar<F, { AssetValue::SIZE }>>,
-}
-
-impl<F> AssetValueVar<F>
-where
-    F: PrimeField,
-{
-    /// Builds a new [`AssetValueVar`] from `field_point` and `bytes`.
-    #[inline]
-    fn new(field_point: FpVar<F>, bytes: Option<ByteArrayVar<F, { AssetValue::SIZE }>>) -> Self {
-        Self { field_point, bytes }
-    }
-}
-
-impl<F> Concat for AssetValueVar<F>
-where
-    F: PrimeField,
-{
-    type Item = UInt8<F>;
-
-    #[inline]
-    fn concat<A>(&self, accumulator: &mut A)
-    where
-        A: ConcatAccumulator<Self::Item> + ?Sized,
-    {
-        if let Some(bytes) = &self.bytes {
-            bytes.concat(accumulator);
-        }
-    }
-}
-
-impl<F> Variable<ArkConstraintSystem<F>> for AssetValueVar<F>
-where
-    F: PrimeField,
-{
-    type Type = AssetValue;
-
-    type Mode = PublicOrSecret;
-
-    #[inline]
-    fn new(
-        cs: &mut ArkConstraintSystem<F>,
-        allocation: Allocation<Self::Type, Self::Mode>,
-    ) -> Self {
-        match allocation {
-            Allocation::Known(this, mode) => Self::new(
-                Fp(F::from(this.0)).as_known(cs, mode),
-                Some(this.into_bytes().as_known(cs, mode)),
-            ),
-            Allocation::Unknown(mode) => Self::new(
-                Fp::as_unknown(cs, mode),
-                Some(<[u8; AssetValue::SIZE]>::as_unknown(cs, mode)),
-            ),
-        }
-    }
-}
-
-impl<F> HasAllocation<ArkConstraintSystem<F>> for AssetValue
-where
-    F: PrimeField,
-{
-    type Variable = AssetValueVar<F>;
-    type Mode = PublicOrSecret;
-}
-
-impl<F> Equal<ArkConstraintSystem<F>> for AssetValueVar<F>
+impl<F> Add<R1CS<F>> for FpVar<F>
 where
     F: PrimeField,
 {
     #[inline]
-    fn eq(cs: &mut ArkConstraintSystem<F>, lhs: &Self, rhs: &Self) -> Boolean<F> {
-        // TODO: Is `field_point` or `bytes` faster?
+    fn add(cs: &mut R1CS<F>, lhs: Self, rhs: Self) -> Self {
         let _ = cs;
-        lhs.field_point
-            .is_eq(&rhs.field_point)
-            .expect("Equality checking is not allowed to fail.")
-    }
-}
-
-impl<F> Add for AssetValueVar<F>
-where
-    F: PrimeField,
-{
-    type Output = Self;
-
-    #[inline]
-    fn add(self, rhs: Self) -> Self {
-        // TODO: This is not a good abstraction.
-        Self::new(self.field_point + rhs.field_point, None)
-    }
-}
-
-impl<F> AddAssign for AssetValueVar<F>
-where
-    F: PrimeField,
-{
-    #[inline]
-    fn add_assign(&mut self, rhs: Self) {
-        self.field_point += rhs.field_point;
+        lhs + rhs
     }
 }

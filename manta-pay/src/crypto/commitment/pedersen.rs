@@ -105,6 +105,17 @@ where
     }
 }
 
+/// Pedersen Commitment Trapdoor Type
+pub type Trapdoor<S, J, const ARITY: usize> =
+    <Commitment<S, J, ARITY> as CommitmentScheme<J>>::Trapdoor;
+
+/// Pedersen Commitment Input Type
+pub type Input<S, J, const ARITY: usize> = <Commitment<S, J, ARITY> as CommitmentScheme<J>>::Input;
+
+/// Pedersen Commitment Output Type
+pub type Output<S, J, const ARITY: usize> =
+    <Commitment<S, J, ARITY> as CommitmentScheme<J>>::Output;
+
 /// Arkworks Backend
 #[cfg(feature = "arkworks")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "arkworks")))]

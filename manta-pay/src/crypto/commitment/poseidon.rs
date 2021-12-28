@@ -24,6 +24,9 @@ use manta_crypto::commitment::CommitmentScheme;
 
 /// Poseidon Permutation Specification
 pub trait Specification<J = ()> {
+    /// Field Type
+    type Field;
+
     /// Number of Full Rounds
     ///
     /// This is counted twice for the first set of full rounds and then the second set after the
@@ -32,9 +35,6 @@ pub trait Specification<J = ()> {
 
     /// Number of Partial Rounds
     const PARTIAL_ROUNDS: usize;
-
-    /// Field Type
-    type Field;
 
     /// Adds two field elements together.
     fn add(compiler: &mut J, lhs: &Self::Field, rhs: &Self::Field) -> Self::Field;
@@ -212,6 +212,17 @@ where
     }
 }
 
+/// Poseidon Commitment Trapdoor Type
+pub type Trapdoor<S, J, const ARITY: usize> =
+    <Commitment<S, J, ARITY> as CommitmentScheme<J>>::Trapdoor;
+
+/// Poseidon Commitment Input Type
+pub type Input<S, J, const ARITY: usize> = <Commitment<S, J, ARITY> as CommitmentScheme<J>>::Input;
+
+/// Poseidon Commitment Output Type
+pub type Output<S, J, const ARITY: usize> =
+    <Commitment<S, J, ARITY> as CommitmentScheme<J>>::Output;
+
 /// Arkworks Backend
 #[cfg(feature = "arkworks")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "arkworks")))]
@@ -220,6 +231,9 @@ pub mod arkworks {
 
     /// Poseidon Permutation Specification
     pub trait Specification {
+        /// Field Type
+        type Field: Field;
+
         /// Number of Full Rounds
         ///
         /// This is counted twice for the first set of full rounds and then the second set after the
@@ -231,20 +245,17 @@ pub mod arkworks {
 
         /// S-BOX Exponenet
         const SBOX_EXPONENT: u64;
-
-        /// Field Type
-        type Field: Field;
     }
 
     impl<S> super::Specification for S
     where
         S: Specification,
     {
+        type Field = S::Field;
+
         const FULL_ROUNDS: usize = S::FULL_ROUNDS;
 
         const PARTIAL_ROUNDS: usize = S::PARTIAL_ROUNDS;
-
-        type Field = S::Field;
 
         #[inline]
         fn add(_: &mut (), lhs: &Self::Field, rhs: &Self::Field) -> Self::Field {

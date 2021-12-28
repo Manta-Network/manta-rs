@@ -16,10 +16,10 @@
 
 //! Constraint System and Proof System Implementations
 
-#[cfg(feature = "arkworks-zkp")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "arkworks-zkp")))]
+#[cfg(feature = "arkworks")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "arkworks")))]
 pub mod arkworks;
 
-#[cfg(feature = "zk-garage-zkp")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "zk-garage-zkp")))]
-pub mod zk_garage;
+#[cfg(feature = "plonk")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "plonk")))]
+pub mod plonk;

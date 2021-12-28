@@ -24,10 +24,10 @@ use manta_accounting::{
 use manta_crypto::merkle_tree::{self, full::Full};
 
 /// Unspent Transaction Output
-pub type Utxo = identity::Utxo<Configuration>;
+pub type Utxo = transfer::Utxo<Configuration>;
 
 /// Void Number
-pub type VoidNumber = identity::VoidNumber<Configuration>;
+pub type VoidNumber = transfer::VoidNumber<Configuration>;
 
 /// UTXO Set Parameters
 pub type Parameters = merkle_tree::Parameters<ConfigConverter<Configuration>>;

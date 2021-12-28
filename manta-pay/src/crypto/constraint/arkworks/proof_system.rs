@@ -14,36 +14,32 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Arkworks Groth16 Implementation
+//! Arkworks Proof System Implementations
 
-use crate::{
-    accounting::identity::{Root, Utxo, VoidNumber},
-    crypto::{
-        constraint::arkworks::{constraint_system::SynthesisResult, ArkConstraintSystem},
-        merkle_tree::constraint::root_extend_input,
+use crate::crypto::constraint::arkworks::{constraint_system::SynthesisResult, R1CS};
+use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef};
+
+#[cfg(feature = "groth16")]
+use {
+    crate::crypto::constraint::arkworks::constraint_system::SynthesisError,
+    alloc::vec::Vec,
+    ark_crypto_primitives::SNARK,
+    ark_groth16::{Groth16 as ArkGroth16, PreparedVerifyingKey, Proof, ProvingKey},
+    core::marker::PhantomData,
+    manta_crypto::{
+        constraint::ProofSystem,
+        rand::{CryptoRng, RngCore, SizedRng},
     },
-};
-use alloc::vec::Vec;
-use ark_crypto_primitives::SNARK;
-use ark_ec::PairingEngine;
-use ark_ff::{Field, ToConstraintField};
-use ark_groth16::{Groth16 as ArkGroth16, PreparedVerifyingKey, Proof, ProvingKey};
-use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
-use core::marker::PhantomData;
-use manta_accounting::asset::{AssetId, AssetValue};
-use manta_crypto::{
-    constraint::{Input, ProofSystem},
-    rand::{CryptoRng, RngCore, SizedRng},
 };
 
 /// Constraint Synthesizer Wrapper
-struct ConstraintSynthesizerWrapper<F>(ArkConstraintSystem<F>)
+struct ConstraintSynthesizerWrapper<F>(R1CS<F>)
 where
-    F: Field;
+    F: ark_ff::Field;
 
 impl<F> ConstraintSynthesizer<F> for ConstraintSynthesizerWrapper<F>
 where
-    F: Field,
+    F: ark_ff::Field,
 {
     #[inline]
     fn generate_constraints(self, cs: ConstraintSystemRef<F>) -> SynthesisResult {
@@ -60,18 +56,21 @@ where
     }
 }
 
-/// Arkworks Groth 16 Proof System
+/// Arkworks Groth16 Proof System
+#[cfg(feature = "groth16")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "groth16")))]
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Groth16<E>(PhantomData<E>)
 where
-    E: PairingEngine;
+    E: ark_ec::PairingEngine;
 
+#[cfg(feature = "groth16")]
 impl<E> ProofSystem for Groth16<E>
 where
-    E: PairingEngine,
+    E: ark_ec::PairingEngine,
 {
-    type ConstraintSystem = ArkConstraintSystem<E::Fr>;
+    type ConstraintSystem = R1CS<E::Fr>;
 
     type ProvingContext = ProvingKey<E>;
 
@@ -135,57 +134,3 @@ where
         ArkGroth16::verify_with_processed_vk(context, input, proof)
     }
 }
-
-/* TODO:
-impl<E> Input<AssetId> for Groth16<E>
-where
-    E: PairingEngine,
-{
-    #[inline]
-    fn extend(input: &mut Self::Input, next: &AssetId) {
-        input.push(next.0.into());
-        input.append(&mut next.into_bytes().to_field_elements().unwrap());
-    }
-}
-
-impl<E> Input<AssetValue> for Groth16<E>
-where
-    E: PairingEngine,
-{
-    #[inline]
-    fn extend(input: &mut Self::Input, next: &AssetValue) {
-        input.push(next.0.into());
-        input.append(&mut next.into_bytes().to_field_elements().unwrap());
-    }
-}
-
-impl<E> Input<VoidNumber> for Groth16<E>
-where
-    E: PairingEngine,
-{
-    #[inline]
-    fn extend(input: &mut Self::Input, next: &VoidNumber) {
-        next.extend_input(input);
-    }
-}
-
-impl<E> Input<Root> for Groth16<E>
-where
-    E: PairingEngine<Fr = ark_ff::Fp256<ark_bls12_381::FrParameters>>,
-{
-    #[inline]
-    fn extend(input: &mut Self::Input, next: &Root) {
-        root_extend_input(next, input);
-    }
-}
-
-impl<E> Input<Utxo> for Groth16<E>
-where
-    E: PairingEngine,
-{
-    #[inline]
-    fn extend(input: &mut Self::Input, next: &Utxo) {
-        next.extend_input(input);
-    }
-}
-*/
