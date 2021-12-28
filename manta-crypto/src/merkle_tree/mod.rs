@@ -21,6 +21,7 @@
 // TODO:  Maybe we should require `INNER_HEIGHT` instead of `HEIGHT` so that we don't have to rely
 //        on the user to check that `HEIGHT >= 2`.
 // FIXME: Get rid of as many `pub(super)` declarations as we can.
+// TODO:  Extend to arbitrary arity.
 
 mod node;
 mod tree;

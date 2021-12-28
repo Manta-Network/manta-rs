@@ -29,8 +29,10 @@ use manta_crypto::{
     commitment::CommitmentScheme, encryption, key::KeyAgreementScheme, merkle_tree,
 };
 
-pub use ark_bls12_381::Bls12_381;
-pub use ark_ed_on_bls12_381::EdwardsProjective as Bls12_381_Edwards;
+pub use ark_bls12_381 as bls12_381;
+pub use ark_ed_on_bls12_381 as bls12_381_ed;
+pub use bls12_381::Bls12_381;
+pub use bls12_381_ed::EdwardsProjective as Bls12_381_Edwards;
 
 pub mod key;
 // TODO: pub mod ledger;
@@ -38,41 +40,49 @@ pub mod key;
 
 /// Configuration Structure
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct Configuration;
+pub struct Config;
 
-impl poseidon::Configuration for Configuration {
-    const FULL_ROUNDS: usize = 1;
-    const PARTIAL_ROUNDS: usize = 1;
-    type Field = poseidon::arkworks::Field<Bls12_381_Edwards>;
+impl poseidon::Specification for Config {
+    const FULL_ROUNDS: usize = 10;
+    const PARTIAL_ROUNDS: usize = 10;
+    const SBOX_EXPONENT: u64 = 5;
+    type Field = bls12_381::Fr;
 }
 
-impl transfer::Configuration for Configuration {
+impl transfer::Configuration for Config {
     type SecretKey = <Self::KeyAgreementScheme as KeyAgreementScheme>::SecretKey;
     type SecretKeyVar = ();
     type PublicKey = <Self::KeyAgreementScheme as KeyAgreementScheme>::PublicKey;
     type PublicKeyVar = ();
-    type KeyAgreementScheme = EllipticCurveDiffieHellman<Bls12_381_Edwards>;
+    type KeyAgreementScheme = EllipticCurveDiffieHellman<Bls12_381>;
+
     type EphemeralKeyTrapdoor = <Self::EphemeralKeyCommitmentScheme as CommitmentScheme>::Trapdoor;
     type EphemeralKeyTrapdoorVar = ();
     type EphemeralKeyParametersVar = ();
-    type EphemeralKeyCommitmentSchemeInput =
-        <Self::EphemeralKeyCommitmentScheme as CommitmentScheme>::Input;
-    type EphemeralKeyCommitmentSchemeInputVar = ();
-    type EphemeralKeyCommitmentScheme = poseidon::Commitment<Self, 2>;
+    type EphemeralKeyCommitmentScheme =
+        poseidon::Commitment<Self, (), 2> + poseidon::Commitment<Self, Self::Compiler, 2>;
+
     type TrapdoorDerivationFunction = ();
-    type CommitmentSchemeParametersVar = ();
-    type CommitmentSchemeInput = <Self::CommitmentScheme as CommitmentScheme>::Input;
-    type CommitmentSchemeInputVar = ();
-    type CommitmentSchemeOutput = <Self::CommitmentScheme as CommitmentScheme>::Output;
-    type CommitmentScheme = pedersen::Commitment<pedersen::arkworks::Group<Bls12_381_Edwards>, 2>;
+
+    type UtxoCommitmentParametersVar = ();
+    type Utxo = <Self::UtxoCommitmentScheme as CommitmentScheme>::Output;
+    type UtxoCommitmentScheme = pedersen::Commitment<pedersen::arkworks::Group<Bls12_381>, 2>;
+
+    type VoidNumberCommitmentParametersVar = ();
+    type VoidNumber = <Self::VoidNumberCommitmentScheme as CommitmentScheme>::Output;
+    type VoidNumberCommitmentScheme = pedersen::Commitment<pedersen::arkworks::Group<Bls12_381>, 1>;
+
     type UtxoSetParametersVar = ();
     type UtxoSetWitnessVar = ();
     type UtxoSetOutputVar = ();
-    type UtxoSetVerifier = ();
+    type UtxoSetVerifier = merkle_tree::Verifier;
+
     type AssetIdVar = ();
     type AssetValueVar = ();
-    type ConstraintSystem = ();
-    type ProofSystem = ();
+
+    type Compiler = ArkworksR1CS;
+    type ProofSystem = Groth16;
+
     type NoteEncryptionScheme = encryption::Hybrid<
         Self::KeyAgreementScheme,
         AesGcm<Asset, { Asset::SIZE }>,

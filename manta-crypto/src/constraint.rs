@@ -487,6 +487,15 @@ where
     }
 }
 
+/// Addition Trait
+pub trait Add<C>
+where
+    C: ConstraintSystem + ?Sized,
+{
+    /// Adds `lhs` to `rhs` inside of `cs`, returning the sum.
+    fn add(cs: &mut C, lhs: Self, rhs: Self) -> Self;
+}
+
 /// Proof System
 pub trait ProofSystem {
     /// Constraint System

@@ -19,8 +19,8 @@
 use crate::{
     asset::Asset,
     transfer::{
-        CommitmentSchemeParameters, Configuration, EphemeralKeyParameters, PreSender, Receiver,
-        SpendingKey, Utxo,
+        Configuration, EphemeralKeyParameters, PreSender, Receiver, SpendingKey, Utxo,
+        UtxoCommitmentParameters, VoidNumberCommitmentParameters,
     },
 };
 use alloc::vec::Vec;
@@ -50,7 +50,8 @@ where
     #[inline]
     pub fn new<R, const RECEIVERS: usize>(
         ephemeral_key_parameters: &EphemeralKeyParameters<C>,
-        commitment_scheme_parameters: &CommitmentSchemeParameters<C>,
+        utxo_parameters: &UtxoCommitmentParameters<C>,
+        void_number_parameters: &VoidNumberCommitmentParameters<C>,
         asset: Asset,
         spending_key: &SpendingKey<C>,
         rng: &mut R,
@@ -65,7 +66,8 @@ where
         let mut zeroes = Vec::with_capacity(RECEIVERS - 1);
         let (receiver, pre_sender) = spending_key.internal_pair(
             ephemeral_key_parameters,
-            commitment_scheme_parameters,
+            utxo_parameters,
+            void_number_parameters,
             rng.gen(),
             asset,
         );
@@ -73,7 +75,8 @@ where
         for _ in 0..RECEIVERS - 2 {
             let (receiver, pre_sender) = spending_key.internal_zero_pair(
                 ephemeral_key_parameters,
-                commitment_scheme_parameters,
+                utxo_parameters,
+                void_number_parameters,
                 rng.gen(),
                 asset.id,
             );

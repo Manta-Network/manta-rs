@@ -19,7 +19,7 @@
 use core::{fmt::Debug, hash::Hash};
 
 /// Commitment Scheme
-pub trait CommitmentScheme {
+pub trait CommitmentScheme<J = ()> {
     /// Parameters Type
     type Parameters;
 
@@ -34,6 +34,7 @@ pub trait CommitmentScheme {
 
     /// Commits to the `input` value using `parameters` and randomness `trapdoor`.
     fn commit(
+        compiler: &mut J,
         parameters: &Self::Parameters,
         trapdoor: &Self::Trapdoor,
         input: &Self::Input,
@@ -44,7 +45,7 @@ pub trait CommitmentScheme {
     fn start<'c>(
         parameters: &'c Self::Parameters,
         trapdoor: &'c Self::Trapdoor,
-    ) -> Builder<'c, Self>
+    ) -> Builder<'c, Self, J>
     where
         Self::Input: Default,
     {
@@ -71,9 +72,9 @@ where
     Hash(bound = "C::Parameters: Hash, C::Trapdoor: Hash, C::Input: Hash"),
     PartialEq(bound = "C::Parameters: PartialEq, C::Trapdoor: PartialEq, C::Input: PartialEq")
 )]
-pub struct Builder<'c, C>
+pub struct Builder<'c, C, J = ()>
 where
-    C: CommitmentScheme + ?Sized,
+    C: CommitmentScheme<J> + ?Sized,
     C::Input: Default,
 {
     /// Commitment Parameters
@@ -86,9 +87,9 @@ where
     input: C::Input,
 }
 
-impl<'c, C> Builder<'c, C>
+impl<'c, C, J> Builder<'c, C, J>
 where
-    C: CommitmentScheme + ?Sized,
+    C: CommitmentScheme<J> + ?Sized,
     C::Input: Default,
 {
     /// Returns a new [`Builder`] with fixed `parameters` and `trapdoor`.
@@ -130,118 +131,19 @@ where
 
     /// Commits to the input stored in the builder.
     #[inline]
-    pub fn commit(self) -> C::Output {
-        C::commit(self.parameters, self.trapdoor, &self.input)
+    pub fn commit_with_compiler(self, compiler: &mut J) -> C::Output {
+        C::commit(compiler, self.parameters, self.trapdoor, &self.input)
     }
 }
 
-/// Constraint System Gadgets
-pub mod constraint {
-    use super::Input;
-    use crate::constraint::Variable;
-
-    /// Commitment Scheme Gadget
-    pub trait CommitmentScheme<C>
-    where
-        C: super::CommitmentScheme,
-    {
-        /// Parameters Type
-        type Parameters: Variable<Self, Type = C::Parameters>;
-
-        /// Input Type
-        type Input: Variable<Self, Type = C::Input>;
-
-        /// Trapdoor Type
-        type Trapdoor: Variable<Self, Type = C::Trapdoor>;
-
-        /// Output Type
-        type Output: Variable<Self, Type = C::Output>;
-
-        /// Commits to the `input` value using `parameters` and randomness `trapdoor`.
-        fn commit(
-            &mut self,
-            parameters: &Self::Parameters,
-            trapdoor: &Self::Trapdoor,
-            input: &Self::Input,
-        ) -> Self::Output;
-
-        /// Starts a new [`Builder`] for extended commitments.
-        #[inline]
-        fn start<'c>(
-            parameters: &'c Self::Parameters,
-            trapdoor: &'c Self::Trapdoor,
-        ) -> Builder<'c, C, Self>
-        where
-            Self::Input: Default,
-        {
-            Builder::new(parameters, trapdoor)
-        }
-    }
-
-    /// Commitment Builder
-    pub struct Builder<'c, B, C>
-    where
-        B: super::CommitmentScheme,
-        C: CommitmentScheme<B> + ?Sized,
-        C::Input: Default,
-    {
-        /// Commitment Parameters
-        parameters: &'c C::Parameters,
-
-        /// Commitment Trapdoor
-        trapdoor: &'c C::Trapdoor,
-
-        /// Commitment Input Accumulator
-        input: C::Input,
-    }
-
-    impl<'c, B, C> Builder<'c, B, C>
-    where
-        B: super::CommitmentScheme,
-        C: CommitmentScheme<B> + ?Sized,
-        C::Input: Default,
-    {
-        /// Returns a new [`Builder`] with fixed `parameters` and `trapdoor`.
-        #[inline]
-        pub fn new(parameters: &'c C::Parameters, trapdoor: &'c C::Trapdoor) -> Self {
-            Self {
-                parameters,
-                trapdoor,
-                input: Default::default(),
-            }
-        }
-
-        /// Updates the builder with the `next` input.
-        #[inline]
-        #[must_use]
-        pub fn update<T>(mut self, next: &T) -> Self
-        where
-            T: ?Sized,
-            C::Input: Input<T>,
-        {
-            self.input.extend(next);
-            self
-        }
-
-        /// Updates the builder with each item in `iter`.
-        #[inline]
-        #[must_use]
-        pub fn update_all<'t, T, I>(mut self, iter: I) -> Self
-        where
-            T: 't + ?Sized,
-            I: IntoIterator<Item = &'t T>,
-            C::Input: Input<T>,
-        {
-            for next in iter {
-                self.input.extend(next);
-            }
-            self
-        }
-
-        /// Commits to the input stored in the builder.
-        #[inline]
-        pub fn commit(self, cs: &mut C) -> C::Output {
-            cs.commit(self.parameters, self.trapdoor, &self.input)
-        }
+impl<'c, C> Builder<'c, C>
+where
+    C: CommitmentScheme + ?Sized,
+    C::Input: Default,
+{
+    /// Commits to the input stored in the builder.
+    #[inline]
+    pub fn commit(self) -> C::Output {
+        self.commit_with_compiler(&mut ())
     }
 }

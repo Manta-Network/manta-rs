@@ -502,11 +502,13 @@ where
 
     #[inline]
     fn verify(
+        compiler: &mut (),
         parameters: &Self::Parameters,
         item: &Self::Item,
         witness: &Self::Witness,
         output: &Self::Output,
     ) -> Self::Verification {
+        let _ = compiler;
         parameters.verify_path(witness, output, item)
     }
 }

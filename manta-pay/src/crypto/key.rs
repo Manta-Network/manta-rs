@@ -41,7 +41,8 @@ where
     type Output = [u8; 32];
 
     #[inline]
-    fn derive(secret: Self::Key) -> Self::Output {
+    fn derive(compiler: &mut (), secret: Self::Key) -> Self::Output {
+        let _ = compiler;
         let mut hasher = Blake2s::new();
         hasher.update(secret.as_ref());
         hasher.update(b"manta kdf instantiated with blake2s hash function");
@@ -68,25 +69,32 @@ where
     type SharedSecret = C;
 
     #[inline]
-    fn derive(secret_key: &Self::SecretKey) -> Self::PublicKey {
-        Self::derive_owned(*secret_key)
+    fn derive(compiler: &mut (), secret_key: &Self::SecretKey) -> Self::PublicKey {
+        Self::derive_owned(compiler, *secret_key)
     }
 
     #[inline]
-    fn derive_owned(secret_key: Self::SecretKey) -> Self::PublicKey {
+    fn derive_owned(compiler: &mut (), secret_key: Self::SecretKey) -> Self::PublicKey {
+        let _ = compiler;
         C::Affine::prime_subgroup_generator().mul(secret_key)
     }
 
     #[inline]
-    fn agree(secret_key: &Self::SecretKey, public_key: &Self::PublicKey) -> Self::SharedSecret {
-        Self::agree_owned(*secret_key, *public_key)
+    fn agree(
+        compiler: &mut (),
+        secret_key: &Self::SecretKey,
+        public_key: &Self::PublicKey,
+    ) -> Self::SharedSecret {
+        Self::agree_owned(compiler, *secret_key, *public_key)
     }
 
     #[inline]
     fn agree_owned(
+        compiler: &mut (),
         secret_key: Self::SecretKey,
         mut public_key: Self::PublicKey,
     ) -> Self::SharedSecret {
+        let _ = compiler;
         public_key *= secret_key;
         public_key
     }

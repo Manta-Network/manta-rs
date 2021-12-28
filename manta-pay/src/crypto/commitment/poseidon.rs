@@ -16,24 +16,14 @@
 
 //! Poseidon Commitment
 
+// TODO: Describe the contract for `Specification`.
+
 use alloc::vec::Vec;
 use core::{iter, marker::PhantomData, mem};
 use manta_crypto::commitment::CommitmentScheme;
 
-/// Poseidon Field
-pub trait Field {
-    /// Adds two field elements together.
-    fn add(lhs: &Self, rhs: &Self) -> Self;
-
-    /// Multiplies two field elements together.
-    fn mul(lhs: &Self, rhs: &Self) -> Self;
-
-    /// Adds the `rhs` field element to `self`, storing the value in `self`.
-    fn add_assign(&mut self, rhs: &Self);
-}
-
-/// Poseidon Configuration
-pub trait Configuration {
+/// Poseidon Permutation Specification
+pub trait Specification<J = ()> {
     /// Number of Full Rounds
     ///
     /// This is counted twice for the first set of full rounds and then the second set after the
@@ -44,51 +34,60 @@ pub trait Configuration {
     const PARTIAL_ROUNDS: usize;
 
     /// Field Type
-    type Field: Field;
+    type Field;
+
+    /// Adds two field elements together.
+    fn add(compiler: &mut J, lhs: &Self::Field, rhs: &Self::Field) -> Self::Field;
+
+    /// Multiplies two field elements together.
+    fn mul(compiler: &mut J, lhs: &Self::Field, rhs: &Self::Field) -> Self::Field;
+
+    /// Adds the `rhs` field element to `self`, storing the value in `self`.
+    fn add_assign(compiler: &mut J, lhs: &mut Self::Field, rhs: &Self::Field);
 
     /// Applies the S-BOX to `point`.
-    fn apply_sbox(point: &mut Self::Field);
+    fn apply_sbox(compiler: &mut J, point: &mut Self::Field);
 }
 
 /// Internal State Vector
-type State<C> = Vec<<C as Configuration>::Field>;
+type State<S, J> = Vec<<S as Specification<J>>::Field>;
 
 /// Returns the total number of rounds in a Poseidon permutation.
 #[inline]
-pub fn rounds<C>() -> usize
+pub fn rounds<S, J>() -> usize
 where
-    C: Configuration,
+    S: Specification<J>,
 {
-    2 * C::FULL_ROUNDS + C::PARTIAL_ROUNDS
+    2 * S::FULL_ROUNDS + S::PARTIAL_ROUNDS
 }
 
 /// Poseidon Permutation Parameters
-pub struct Parameters<C, const ARITY: usize>
+pub struct Parameters<S, J = (), const ARITY: usize = 1>
 where
-    C: Configuration,
+    S: Specification<J>,
 {
     /// Additive Round Keys
-    additive_round_keys: Vec<C::Field>,
+    additive_round_keys: Vec<S::Field>,
 
     /// MDS Matrix
-    mds_matrix: Vec<C::Field>,
+    mds_matrix: Vec<S::Field>,
 }
 
-impl<C, const ARITY: usize> Parameters<C, ARITY>
+impl<S, J, const ARITY: usize> Parameters<S, J, ARITY>
 where
-    C: Configuration,
+    S: Specification<J>,
 {
     /// Builds a new [`Parameters`] form `additive_round_keys` and `mds_matrix`.
     ///
     /// # Panics
     ///
     /// This method panics if the input vectors are not the correct size for the specified
-    /// [`Configuration`].
+    /// [`Specification`].
     #[inline]
-    pub fn new(additive_round_keys: Vec<C::Field>, mds_matrix: Vec<C::Field>) -> Self {
+    pub fn new(additive_round_keys: Vec<S::Field>, mds_matrix: Vec<S::Field>) -> Self {
         assert_eq!(
             additive_round_keys.len(),
-            rounds::<C>() * (ARITY + 1),
+            rounds::<S, J>() * (ARITY + 1),
             "Additive Rounds Keys are not the correct size."
         );
         assert_eq!(
@@ -104,7 +103,7 @@ where
 
     /// Returns the additive keys for the given `round`.
     #[inline]
-    fn additive_keys(&self, round: usize) -> &[C::Field] {
+    fn additive_keys(&self, round: usize) -> &[S::Field] {
         let width = ARITY + 1;
         let start = round * width;
         &self.additive_round_keys[start..start + width]
@@ -112,16 +111,20 @@ where
 
     /// Computes the MDS matrix multiplication against the `state`.
     #[inline]
-    fn mds_matrix_multiply(&self, state: &mut State<C>) {
+    fn mds_matrix_multiply(&self, state: &mut State<S, J>, compiler: &mut J) {
         let width = ARITY + 1;
         let mut next = Vec::with_capacity(width);
         for i in 0..width {
+            #[allow(clippy::needless_collect)] // NOTE: Clippy is wrong here, we need `&mut` access.
+            let linear_combination = state
+                .iter()
+                .enumerate()
+                .map(|(j, elem)| S::mul(compiler, elem, &self.mds_matrix[width * i + j]))
+                .collect::<Vec<_>>();
             next.push(
-                state
-                    .iter()
-                    .enumerate()
-                    .map(|(j, elem)| C::Field::mul(elem, &self.mds_matrix[width * i + j]))
-                    .reduce(|acc, next| C::Field::add(&acc, &next))
+                linear_combination
+                    .into_iter()
+                    .reduce(|acc, next| S::add(compiler, &acc, &next))
                     .unwrap(),
             );
         }
@@ -130,111 +133,137 @@ where
 
     /// Computes the first round of the Poseidon permutation from `trapdoor` and `input`.
     #[inline]
-    fn first_round(&self, trapdoor: &C::Field, input: &[C::Field; ARITY]) -> State<C> {
+    fn first_round(
+        &self,
+        trapdoor: &S::Field,
+        input: &[S::Field; ARITY],
+        compiler: &mut J,
+    ) -> State<S, J> {
         let mut state = Vec::with_capacity(ARITY + 1);
         for (i, point) in iter::once(trapdoor).chain(input).enumerate() {
-            let mut elem = C::Field::add(point, &self.additive_round_keys[i]);
-            C::apply_sbox(&mut elem);
+            let mut elem = S::add(compiler, point, &self.additive_round_keys[i]);
+            S::apply_sbox(compiler, &mut elem);
             state.push(elem);
         }
-        self.mds_matrix_multiply(&mut state);
+        self.mds_matrix_multiply(&mut state, compiler);
         state
     }
 
     /// Computes a full round at the given `round` index on the internal permutation `state`.
     #[inline]
-    fn full_round(&self, round: usize, state: &mut State<C>) {
+    fn full_round(&self, round: usize, state: &mut State<S, J>, compiler: &mut J) {
         let keys = self.additive_keys(round);
         for (i, elem) in state.iter_mut().enumerate() {
-            C::Field::add_assign(elem, &keys[i]);
-            C::apply_sbox(elem);
+            S::add_assign(compiler, elem, &keys[i]);
+            S::apply_sbox(compiler, elem);
         }
-        self.mds_matrix_multiply(state);
+        self.mds_matrix_multiply(state, compiler);
     }
 
     /// Computes a partial round at the given `round` index on the internal permutation `state`.
     #[inline]
-    fn partial_round(&self, round: usize, state: &mut State<C>) {
+    fn partial_round(&self, round: usize, state: &mut State<S, J>, compiler: &mut J) {
         let keys = self.additive_keys(round);
         for (i, elem) in state.iter_mut().enumerate() {
-            C::Field::add_assign(elem, &keys[i]);
+            S::add_assign(compiler, elem, &keys[i]);
         }
-        C::apply_sbox(&mut state[0]);
-        self.mds_matrix_multiply(state);
+        S::apply_sbox(compiler, &mut state[0]);
+        self.mds_matrix_multiply(state, compiler);
     }
 }
 
 /// Poseidon Commitment Scheme
-pub struct Commitment<C, const ARITY: usize>(PhantomData<C>)
+pub struct Commitment<S, J = (), const ARITY: usize = 1>(PhantomData<(S, J)>)
 where
-    C: Configuration;
+    S: Specification<J>;
 
-impl<C, const ARITY: usize> CommitmentScheme for Commitment<C, ARITY>
+impl<S, J, const ARITY: usize> CommitmentScheme<J> for Commitment<S, J, ARITY>
 where
-    C: Configuration,
+    S: Specification<J>,
 {
-    type Parameters = Parameters<C, ARITY>;
+    type Parameters = Parameters<S, J, ARITY>;
 
-    type Trapdoor = C::Field;
+    type Trapdoor = S::Field;
 
-    type Input = [C::Field; ARITY];
+    type Input = [S::Field; ARITY];
 
-    type Output = C::Field;
+    type Output = S::Field;
 
     #[inline]
     fn commit(
+        compiler: &mut J,
         parameters: &Self::Parameters,
         trapdoor: &Self::Trapdoor,
         input: &Self::Input,
     ) -> Self::Output {
-        let mut state = parameters.first_round(trapdoor, input);
-        for round in 1..C::FULL_ROUNDS {
-            parameters.full_round(round, &mut state);
+        let mut state = parameters.first_round(trapdoor, input, compiler);
+        for round in 1..S::FULL_ROUNDS {
+            parameters.full_round(round, &mut state, compiler);
         }
-        for round in C::FULL_ROUNDS..(C::FULL_ROUNDS + C::PARTIAL_ROUNDS) {
-            parameters.partial_round(round, &mut state);
+        for round in S::FULL_ROUNDS..(S::FULL_ROUNDS + S::PARTIAL_ROUNDS) {
+            parameters.partial_round(round, &mut state, compiler);
         }
-        for round in (C::FULL_ROUNDS + C::PARTIAL_ROUNDS)..(2 * C::FULL_ROUNDS + C::PARTIAL_ROUNDS)
+        for round in (S::FULL_ROUNDS + S::PARTIAL_ROUNDS)..(2 * S::FULL_ROUNDS + S::PARTIAL_ROUNDS)
         {
-            parameters.full_round(round, &mut state);
+            parameters.full_round(round, &mut state, compiler);
         }
         state.truncate(1);
         state.remove(0)
     }
 }
 
-/// Constraint System Gadgets
-pub mod constraint {}
-
 /// Arkworks Backend
 #[cfg(feature = "arkworks")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "arkworks")))]
 pub mod arkworks {
-    use ark_ec::ProjectiveCurve;
-    use ark_ff::PrimeField;
+    use ark_ff::Field;
 
-    /// Poseidon Field Wrapper for a [`ProjectiveCurve`]
-    pub struct Field<C>(C::ScalarField)
-    where
-        C: ProjectiveCurve;
+    /// Poseidon Permutation Specification
+    pub trait Specification {
+        /// Number of Full Rounds
+        ///
+        /// This is counted twice for the first set of full rounds and then the second set after the
+        /// partial rounds.
+        const FULL_ROUNDS: usize;
 
-    impl<C> super::Field for Field<C>
+        /// Number of Partial Rounds
+        const PARTIAL_ROUNDS: usize;
+
+        /// S-BOX Exponenet
+        const SBOX_EXPONENT: u64;
+
+        /// Field Type
+        type Field: Field;
+    }
+
+    impl<S> super::Specification for S
     where
-        C: ProjectiveCurve,
+        S: Specification,
     {
+        const FULL_ROUNDS: usize = S::FULL_ROUNDS;
+
+        const PARTIAL_ROUNDS: usize = S::PARTIAL_ROUNDS;
+
+        type Field = S::Field;
+
         #[inline]
-        fn add(lhs: &Self, rhs: &Self) -> Self {
-            Self(lhs.0 + rhs.0)
+        fn add(_: &mut (), lhs: &Self::Field, rhs: &Self::Field) -> Self::Field {
+            *lhs + *rhs
         }
 
         #[inline]
-        fn mul(lhs: &Self, rhs: &Self) -> Self {
-            Self(lhs.0 * rhs.0)
+        fn mul(_: &mut (), lhs: &Self::Field, rhs: &Self::Field) -> Self::Field {
+            *lhs * *rhs
         }
 
         #[inline]
-        fn add_assign(&mut self, rhs: &Self) {
-            self.0 += rhs.0;
+        fn add_assign(_: &mut (), lhs: &mut Self::Field, rhs: &Self::Field) {
+            *lhs += rhs;
+        }
+
+        #[inline]
+        fn apply_sbox(_: &mut (), point: &mut Self::Field) {
+            *point = point.pow(&[Self::SBOX_EXPONENT, 0, 0, 0]);
         }
     }
 }

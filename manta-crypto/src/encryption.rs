@@ -69,7 +69,10 @@ pub trait HybridPublicKeyEncryptionScheme: SymmetricKeyEncryptionScheme {
     /// [`KeyDerivationFunction::derive`].
     #[inline]
     fn agree_derive(secret_key: &SecretKey<Self>, public_key: &PublicKey<Self>) -> Self::Key {
-        Self::KeyDerivationFunction::derive(Self::KeyAgreementScheme::agree(secret_key, public_key))
+        Self::KeyDerivationFunction::derive(
+            &mut (),
+            Self::KeyAgreementScheme::agree(&mut (), secret_key, public_key),
+        )
     }
 }
 
@@ -162,7 +165,7 @@ where
     ) -> Self {
         Self {
             ciphertext: H::encrypt(H::agree_derive(ephemeral_secret_key, public_key), plaintext),
-            ephemeral_public_key: H::KeyAgreementScheme::derive(ephemeral_secret_key),
+            ephemeral_public_key: H::KeyAgreementScheme::derive(&mut (), ephemeral_secret_key),
         }
     }
 

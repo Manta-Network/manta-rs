@@ -17,7 +17,7 @@
 //! Cryptographic Key Primitives
 
 /// Key Derivation Function
-pub trait KeyDerivationFunction {
+pub trait KeyDerivationFunction<J = ()> {
     /// Input Key Type
     type Key;
 
@@ -25,7 +25,7 @@ pub trait KeyDerivationFunction {
     type Output;
 
     /// Derives an output key from `secret` computed from a cryptographic agreement scheme.
-    fn derive(secret: Self::Key) -> Self::Output;
+    fn derive(compiler: &mut J, secret: Self::Key) -> Self::Output;
 }
 
 /// Key Agreement Scheme
@@ -43,7 +43,7 @@ pub trait KeyDerivationFunction {
 ///     ```
 ///     This ensures that both parties in the shared computation will arrive at the same conclusion
 ///     about the value of the [`SharedSecret`](Self::SharedSecret).
-pub trait KeyAgreementScheme {
+pub trait KeyAgreementScheme<J = ()> {
     /// Secret Key Type
     type SecretKey;
 
@@ -55,7 +55,7 @@ pub trait KeyAgreementScheme {
 
     /// Derives a public key corresponding to `secret_key`. This public key should be sent to the
     /// other party involved in the shared computation.
-    fn derive(secret_key: &Self::SecretKey) -> Self::PublicKey;
+    fn derive(compiler: &mut J, secret_key: &Self::SecretKey) -> Self::PublicKey;
 
     /// Derives a public key corresponding to `secret_key`. This public key should be sent to the
     /// other party involved in the shared computation.
@@ -68,12 +68,16 @@ pub trait KeyAgreementScheme {
     ///
     /// [`derive`]: Self::derive
     #[inline]
-    fn derive_owned(secret_key: Self::SecretKey) -> Self::PublicKey {
-        Self::derive(&secret_key)
+    fn derive_owned(compiler: &mut J, secret_key: Self::SecretKey) -> Self::PublicKey {
+        Self::derive(compiler, &secret_key)
     }
 
     /// Computes the shared secret given the known `secret_key` and the given `public_key`.
-    fn agree(secret_key: &Self::SecretKey, public_key: &Self::PublicKey) -> Self::SharedSecret;
+    fn agree(
+        compiler: &mut J,
+        secret_key: &Self::SecretKey,
+        public_key: &Self::PublicKey,
+    ) -> Self::SharedSecret;
 
     /// Computes the shared secret given the known `secret_key` and the given `public_key`.
     ///
@@ -85,91 +89,11 @@ pub trait KeyAgreementScheme {
     ///
     /// [`agree`]: Self::agree
     #[inline]
-    fn agree_owned(secret_key: Self::SecretKey, public_key: Self::PublicKey) -> Self::SharedSecret {
-        Self::agree(&secret_key, &public_key)
-    }
-}
-
-/// Key Agreement Scheme with an attached Key Derivation Function
-pub trait KeyAgreementWithDerivation: KeyAgreementScheme {
-    /// Output Key Type
-    type Output;
-
-    /// Key Derivation Function Type
-    type KeyDerivationFunction: KeyDerivationFunction<
-        Key = Self::SharedSecret,
-        Output = Self::Output,
-    >;
-
-    /// Computes the shared secret given the known `secret_key` and the given `public_key` and then
-    /// uses the key derivation function to derive a final shared secret.
-    ///
-    /// # Implementation Note
-    ///
-    /// This method is an optimization path for calling [`KeyAgreementScheme::agree`] and then
-    /// [`KeyDerivationFunction::derive`].
-    #[inline]
-    fn agree_derive(secret_key: &Self::SecretKey, public_key: &Self::PublicKey) -> Self::Output {
-        Self::KeyDerivationFunction::derive(Self::agree(secret_key, public_key))
-    }
-
-    /// Computes the shared secret given the known `secret_key` and the given `public_key` and then
-    /// uses the key derivation function to derive a final shared secret.
-    ///
-    /// # Implementation Note
-    ///
-    /// This method is an optimization path for [`agree_derive`](Self::agree_derive). See
-    /// [`KeyAgreementScheme::agree_owned`] for more on this optimization.
-    #[inline]
-    fn agree_derive_owned(
+    fn agree_owned(
+        compiler: &mut J,
         secret_key: Self::SecretKey,
         public_key: Self::PublicKey,
-    ) -> Self::Output {
-        Self::KeyDerivationFunction::derive(Self::agree_owned(secret_key, public_key))
-    }
-}
-
-/// Constraint System Gadgets
-pub mod constraint {
-    use crate::constraint::Variable;
-
-    /// Key Derivation Function Gadget
-    pub trait KeyDerivationFunction<F>
-    where
-        F: super::KeyDerivationFunction,
-    {
-        /// Input Key Type
-        type Key: Variable<Self, Type = F::Key>;
-
-        /// Output Key Type
-        type Output: Variable<Self, Type = F::Output>;
-
-        /// Derives an output key from `secret` computed from a cryptographic agreement scheme.
-        fn derive(&mut self, secret: Self::Key) -> Self::Output;
-    }
-
-    /// Key Agreement Scheme Gadget
-    pub trait KeyAgreementScheme<K>
-    where
-        K: super::KeyAgreementScheme,
-    {
-        /// Secret Key Type
-        type SecretKey: Variable<Self, Type = K::SecretKey>;
-
-        /// Public Key Type
-        type PublicKey: Variable<Self, Type = K::PublicKey>;
-
-        /// Shared Secret Type
-        type SharedSecret: Variable<Self, Type = K::SharedSecret>;
-
-        /// Derives a public key corresponding to `secret_key`.
-        fn derive(&mut self, secret_key: &Self::SecretKey) -> Self::PublicKey;
-
-        /// Computes the shared secret given the known `secret_key` and the given `public_key`.
-        fn agree(
-            &mut self,
-            secret_key: &Self::SecretKey,
-            public_key: &Self::PublicKey,
-        ) -> Self::SharedSecret;
+    ) -> Self::SharedSecret {
+        Self::agree(compiler, &secret_key, &public_key)
     }
 }

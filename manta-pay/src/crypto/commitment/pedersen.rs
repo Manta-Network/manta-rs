@@ -16,95 +16,126 @@
 
 //! Pedersen Commitments
 
-// TODO: Describe contract for `Group`.
+// TODO: Describe contract for `Specification`.
 
-use core::marker::PhantomData;
+use core::{fmt::Debug, hash::Hash, marker::PhantomData};
 use manta_crypto::commitment::CommitmentScheme;
 
-/// Pedersen Group
-pub trait Group {
+/// Pedersen Commitment Specification
+pub trait Specification<J = ()> {
+    /// Group Type
+    type Group;
+
     /// Scalar Field Type
     type Scalar;
 
     /// Adds two points of the group together.
-    fn add(lhs: Self, rhs: Self) -> Self;
+    fn add(compiler: &mut J, lhs: Self::Group, rhs: Self::Group) -> Self::Group;
 
     /// Multiplies the given `point` with a `scalar` value.
-    fn scalar_mul(point: &Self, scalar: &Self::Scalar) -> Self;
-}
+    fn scalar_mul(compiler: &mut J, point: &Self::Group, scalar: &Self::Scalar) -> Self::Group;
 
-/// Commitment Paramters
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub struct Parameters<G, const ARITY: usize = 1>
-where
-    G: Group,
-{
-    /// Trapdoor Generator
-    pub trapdoor_generator: G,
-
-    /// Input Generators
-    pub input_generators: [G; ARITY],
-}
-
-/// Commitment Scheme
-pub struct Commitment<G, const ARITY: usize = 1>(PhantomData<G>)
-where
-    G: Group;
-
-impl<G, const ARITY: usize> CommitmentScheme for Commitment<G, ARITY>
-where
-    G: Group,
-{
-    type Parameters = Parameters<G, ARITY>;
-
-    type Trapdoor = G::Scalar;
-
-    type Input = [G::Scalar; ARITY];
-
-    type Output = G;
-
+    /// Computes the Pedersen Commitment with `parameters` over `trapdoor` and `input` in the given
+    /// `compiler`.
     #[inline]
-    fn commit(
-        parameters: &Self::Parameters,
-        trapdoor: &Self::Trapdoor,
-        input: &Self::Input,
-    ) -> Self::Output {
+    fn commit<const ARITY: usize>(
+        compiler: &mut J,
+        parameters: &Parameters<Self, J, ARITY>,
+        trapdoor: &Self::Scalar,
+        input: &[Self::Scalar; ARITY],
+    ) -> Self::Group {
         parameters.input_generators.iter().zip(input).fold(
-            G::scalar_mul(&parameters.trapdoor_generator, trapdoor),
-            move |acc, (g, i)| G::add(acc, G::scalar_mul(g, i)),
+            Self::scalar_mul(compiler, &parameters.trapdoor_generator, trapdoor),
+            move |acc, (g, i)| {
+                let point = Self::scalar_mul(compiler, g, i);
+                Self::add(compiler, acc, point)
+            },
         )
     }
 }
 
-/// Constraint System Gadgets
-pub mod constraint {}
+/// Commitment Parameters
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "S::Group: Clone"),
+    Copy(bound = "S::Group: Copy"),
+    Debug(bound = "S::Group: Debug"),
+    Eq(bound = "S::Group: Eq"),
+    Hash(bound = "S::Group: Hash"),
+    PartialEq(bound = "S::Group: PartialEq")
+)]
+pub struct Parameters<S, J = (), const ARITY: usize = 1>
+where
+    S: Specification<J> + ?Sized,
+{
+    /// Trapdoor Generator
+    pub trapdoor_generator: S::Group,
+
+    /// Input Generators
+    pub input_generators: [S::Group; ARITY],
+}
+
+/// Commitment Scheme
+#[derive(derivative::Derivative)]
+#[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct Commitment<S, J = (), const ARITY: usize = 1>(PhantomData<(J, S)>)
+where
+    S: Specification<J>;
+
+impl<S, J, const ARITY: usize> CommitmentScheme<J> for Commitment<S, J, ARITY>
+where
+    S: Specification<J>,
+{
+    type Parameters = Parameters<S, J, ARITY>;
+
+    type Trapdoor = S::Scalar;
+
+    type Input = [S::Scalar; ARITY];
+
+    type Output = S::Group;
+
+    #[inline]
+    fn commit(
+        compiler: &mut J,
+        parameters: &Self::Parameters,
+        trapdoor: &Self::Trapdoor,
+        input: &Self::Input,
+    ) -> Self::Output {
+        S::commit(compiler, parameters, trapdoor, input)
+    }
+}
 
 /// Arkworks Backend
 #[cfg(feature = "arkworks")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "arkworks")))]
 pub mod arkworks {
+    use super::*;
     use ark_ec::ProjectiveCurve;
     use ark_ff::PrimeField;
 
-    /// Pedersen Group Wrapper for a [`ProjectiveCurve`]
-    pub struct Group<C>(C)
+    /// Pedersen Commitment Specification
+    #[derive(derivative::Derivative)]
+    #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    pub struct Specification<C>(PhantomData<C>)
     where
         C: ProjectiveCurve;
 
-    impl<C> super::Group for Group<C>
+    impl<C> super::Specification for Specification<C>
     where
         C: ProjectiveCurve,
     {
+        type Group = C;
+
         type Scalar = C::ScalarField;
 
         #[inline]
-        fn add(lhs: Self, rhs: Self) -> Self {
-            Self(lhs.0 + rhs.0)
+        fn add(_: &mut (), lhs: Self::Group, rhs: Self::Group) -> Self::Group {
+            lhs + rhs
         }
 
         #[inline]
-        fn scalar_mul(point: &Self, scalar: &Self::Scalar) -> Self {
-            Self(point.0.mul(scalar.into_repr()))
+        fn scalar_mul(_: &mut (), point: &Self::Group, scalar: &Self::Scalar) -> Self::Group {
+            point.mul(scalar.into_repr())
         }
     }
 }

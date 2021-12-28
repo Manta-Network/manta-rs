@@ -19,7 +19,7 @@
 // TODO: See if we can modify `Accumulator` so that it can extend the `Verifier` trait directly.
 
 /// Accumulator Membership Verifier
-pub trait Verifier {
+pub trait Verifier<J = ()> {
     /// Parameters Type
     type Parameters;
 
@@ -34,12 +34,13 @@ pub trait Verifier {
 
     /// Verification Type
     ///
-    /// Typically this is either [`bool`] or some [`Result`] type.
+    /// Typically this is either [`bool`], a [`Result`] type, or a circuit boolean variable.
     type Verification;
 
     /// Verifies that `item` is stored in a known accumulator with accumulated `output` and
     /// membership `witness`.
     fn verify(
+        compiler: &mut J,
         parameters: &Self::Parameters,
         item: &Self::Item,
         witness: &Self::Witness,
@@ -181,9 +182,9 @@ pub trait OptimizedAccumulator: Accumulator {
 }
 
 /// Accumulator Membership Proof
-pub struct MembershipProof<V>
+pub struct MembershipProof<V, J = ()>
 where
-    V: Verifier + ?Sized,
+    V: Verifier<J> + ?Sized,
 {
     /// Secret Membership Witness
     witness: V::Witness,
@@ -192,9 +193,9 @@ where
     output: V::Output,
 }
 
-impl<V> MembershipProof<V>
+impl<V, J> MembershipProof<V, J>
 where
-    V: Verifier + ?Sized,
+    V: Verifier<J> + ?Sized,
 {
     /// Builds a new [`MembershipProof`] from `witness` and `output`.
     #[inline]
@@ -211,46 +212,32 @@ where
 
     /// Verifies that `item` is stored in a known accumulator using `parameters`.
     #[inline]
+    pub fn verify_with_compiler(
+        &self,
+        parameters: &V::Parameters,
+        item: &V::Item,
+        compiler: &mut J,
+    ) -> V::Verification {
+        V::verify(compiler, parameters, item, &self.witness, &self.output)
+    }
+}
+
+impl<V> MembershipProof<V>
+where
+    V: Verifier + ?Sized,
+{
+    /// Verifies that `item` is stored in a known accumulator using `parameters`.
+    #[inline]
     pub fn verify(&self, parameters: &V::Parameters, item: &V::Item) -> V::Verification {
-        V::verify(parameters, item, &self.witness, &self.output)
+        self.verify_with_compiler(parameters, item, &mut ())
     }
 }
 
 /// Constraint System Gadgets
 pub mod constraint {
+    use super::*;
     use crate::constraint::{Allocation, AllocationMode, Derived, Variable, VariableSource};
     use core::marker::PhantomData;
-
-    /// Accumulator Verifier Gadget
-    pub trait Verifier<V>
-    where
-        V: super::Verifier,
-    {
-        /// Paramters Type
-        type Parameters: Variable<Self, Type = V::Parameters>;
-
-        /// Item Type
-        type Item: Variable<Self, Type = V::Item>;
-
-        /// Secret Witness Type
-        type Witness: Variable<Self, Type = V::Witness>;
-
-        /// Output Type
-        type Output: Variable<Self, Type = V::Output>;
-
-        /// Verification Type
-        type Verification: Variable<Self, Type = V::Verification>;
-
-        /// Verifies that `item` is stored in a known accumulator with accumulated `output` and
-        /// membership `witness`.
-        fn verify(
-            &mut self,
-            parameters: &Self::Parameters,
-            item: &Self::Item,
-            witness: &Self::Witness,
-            output: &Self::Output,
-        ) -> Self::Verification;
-    }
 
     /// Membership Proof Allocation Mode Entry
     #[derive(derivative::Derivative)]
@@ -299,71 +286,29 @@ pub mod constraint {
         type Unknown = MembershipProofModeEntry<WitnessMode::Unknown, OutputMode::Unknown>;
     }
 
-    /// Accumulator Membership Proof
-    pub struct MembershipProof<B, V>
+    impl<V, J> Variable<J> for MembershipProof<V, J>
     where
-        B: super::Verifier,
-        V: Verifier<B>,
+        V: Verifier + Verifier<J>,
+        <V as Verifier<J>>::Witness: Variable<J, Type = <V as Verifier>::Witness>,
+        <V as Verifier<J>>::Output: Variable<J, Type = <V as Verifier>::Output>,
     {
-        /// Secret Membership Witness
-        witness: V::Witness,
-
-        /// Accumulator Output
-        output: V::Output,
-    }
-
-    impl<B, V> MembershipProof<B, V>
-    where
-        B: super::Verifier,
-        V: Verifier<B>,
-    {
-        /// Builds a new [`MembershipProof`] from `witness` and `output`.
-        #[inline]
-        pub fn new(witness: V::Witness, output: V::Output) -> Self {
-            Self { witness, output }
-        }
-
-        /// Returns the accumulated output part of `self`, dropping the
-        /// [`V::Witness`](Verifier::Witness).
-        #[inline]
-        pub fn into_output(self) -> V::Output {
-            self.output
-        }
-
-        /// Verifies that `item` is stored in a known accumulator using `verifier`.
-        #[inline]
-        pub fn verify(
-            &self,
-            parameters: &V::Parameters,
-            item: &V::Item,
-            cs: &mut V,
-        ) -> V::Verification {
-            cs.verify(parameters, item, &self.witness, &self.output)
-        }
-    }
-
-    impl<B, V> Variable<V> for MembershipProof<B, V>
-    where
-        B: super::Verifier,
-        V: Verifier<B>,
-    {
-        type Type = super::MembershipProof<B>;
+        type Type = MembershipProof<V>;
 
         type Mode = MembershipProofMode<
-            <V::Witness as Variable<V>>::Mode,
-            <V::Output as Variable<V>>::Mode,
+            <<V as Verifier<J>>::Witness as Variable<J>>::Mode,
+            <<V as Verifier<J>>::Output as Variable<J>>::Mode,
         >;
 
         #[inline]
-        fn new(cs: &mut V, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
+        fn new(cs: &mut J, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
             match allocation {
                 Allocation::Known(this, mode) => Self::new(
                     this.witness.as_known(cs, mode.witness),
                     this.output.as_known(cs, mode.output),
                 ),
                 Allocation::Unknown(mode) => Self::new(
-                    V::Witness::new_unknown(cs, mode.witness),
-                    V::Output::new_unknown(cs, mode.output),
+                    <V as Verifier<J>>::Witness::new_unknown(cs, mode.witness),
+                    <V as Verifier<J>>::Output::new_unknown(cs, mode.output),
                 ),
             }
         }
