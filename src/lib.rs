@@ -14,10 +14,8 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Manta Network
+//! Manta Network Crates
 
-// TODO: Given the structure of `manta-pay` does this crate make sense anymore? Maybe only as
-//       `accounting` + `crypto`?
 // TODO: Reconsider how `manta-codec` is designed. Do we need it? Should it just be part of
 //       `manta-pay` or some `substrate`-specific interoperability crates?
 
@@ -37,3 +35,6 @@ pub use manta_crypto as crypto;
 
 #[doc(inline)]
 pub use manta_pay as pay;
+
+#[doc(inline)]
+pub use manta_util as util;

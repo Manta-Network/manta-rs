@@ -16,7 +16,7 @@
 
 //! Encryption Implementations
 
-// FIXME: Don't use raw bytes as secret and public key.
+// FIXME: Don't use raw bytes as encryption/decryption key.
 // FIXME: Make sure secret keys are protected.
 
 use aes_gcm::{
@@ -27,36 +27,39 @@ use alloc::vec::Vec;
 use core::marker::PhantomData;
 use generic_array::GenericArray;
 use manta_crypto::encryption::SymmetricKeyEncryptionScheme;
+use manta_util::into_array_unchecked;
 
 /// AES Galois Counter Mode
-pub struct AesGcm<T>(PhantomData<T>)
+pub struct AesGcm<T, const SIZE: usize>(PhantomData<T>)
 where
-    T: AsRef<[u8]> + From<Vec<u8>>;
+    T: Into<[u8; SIZE]> + From<[u8; SIZE]>;
 
-impl<T> AesGcm<T>
+impl<T, const SIZE: usize> AesGcm<T, SIZE>
 where
-    T: AsRef<[u8]> + From<Vec<u8>>,
+    T: Into<[u8; SIZE]> + From<[u8; SIZE]>,
 {
     /// Encryption/Decryption Nonce
     const NONCE: &'static [u8] = b"manta rocks!";
 }
 
-impl<T> SymmetricKeyEncryptionScheme for AesGcm<T>
+impl<T, const SIZE: usize> SymmetricKeyEncryptionScheme for AesGcm<T, SIZE>
 where
-    T: AsRef<[u8]> + From<Vec<u8>>,
+    T: Into<[u8; SIZE]> + From<[u8; SIZE]>,
 {
     type Key = [u8; 32];
 
     type Plaintext = T;
 
-    type Ciphertext = Vec<u8>;
+    type Ciphertext = [u8; SIZE];
 
     #[inline]
     fn encrypt(key: Self::Key, plaintext: Self::Plaintext) -> Self::Ciphertext {
         // SAFETY: Using a deterministic nonce is ok since we never reuse keys.
-        Aes256Gcm::new(GenericArray::from_slice(&key))
-            .encrypt(Nonce::from_slice(Self::NONCE), plaintext.as_ref())
-            .expect("Symmetric encryption is not allowed to fail.")
+        into_array_unchecked(
+            Aes256Gcm::new(GenericArray::from_slice(&key))
+                .encrypt(Nonce::from_slice(Self::NONCE), plaintext.into().as_ref())
+                .expect("Symmetric encryption is not allowed to fail."),
+        )
     }
 
     #[inline]
@@ -65,6 +68,7 @@ where
         Aes256Gcm::new(GenericArray::from_slice(&key))
             .decrypt(Nonce::from_slice(Self::NONCE), ciphertext.as_ref())
             .ok()
+            .map(into_array_unchecked)
             .map(Into::into)
     }
 }

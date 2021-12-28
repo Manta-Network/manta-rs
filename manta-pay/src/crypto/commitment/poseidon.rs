@@ -209,4 +209,32 @@ pub mod constraint {}
 /// Arkworks Backend
 #[cfg(feature = "arkworks")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "arkworks")))]
-pub mod arkworks {}
+pub mod arkworks {
+    use ark_ec::ProjectiveCurve;
+    use ark_ff::PrimeField;
+
+    /// Poseidon Field Wrapper for a [`ProjectiveCurve`]
+    pub struct Field<C>(C::ScalarField)
+    where
+        C: ProjectiveCurve;
+
+    impl<C> super::Field for Field<C>
+    where
+        C: ProjectiveCurve,
+    {
+        #[inline]
+        fn add(lhs: &Self, rhs: &Self) -> Self {
+            Self(lhs.0 + rhs.0)
+        }
+
+        #[inline]
+        fn mul(lhs: &Self, rhs: &Self) -> Self {
+            Self(lhs.0 * rhs.0)
+        }
+
+        #[inline]
+        fn add_assign(&mut self, rhs: &Self) {
+            self.0 += rhs.0;
+        }
+    }
+}

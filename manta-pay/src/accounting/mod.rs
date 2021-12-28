@@ -19,13 +19,18 @@
 // TODO: Make this generic over the backend we use. Automatically compute which features are
 //       enabled when using whichever backend.
 
-use crate::crypto::key::EllipticCurveDiffieHellman;
-use ark_bls12_381::Bls12_381;
-use ark_crypto_primitives::crh::pedersen::{constraints::CRHGadget, CRH};
-use ark_ed_on_bls12_381::{constraints::EdwardsVar, EdwardsProjective, Fq};
+use crate::crypto::{
+    commitment::{pedersen, poseidon},
+    encryption::AesGcm,
+    key::{Blake2sKdf, EllipticCurveDiffieHellman},
+};
 use manta_accounting::{asset::Asset, transfer};
-use manta_crypto::{commitment::CommitmentScheme, key::KeyAgreementScheme, merkle_tree};
-use rand_chacha::ChaCha20Rng;
+use manta_crypto::{
+    commitment::CommitmentScheme, encryption, key::KeyAgreementScheme, merkle_tree,
+};
+
+pub use ark_bls12_381::Bls12_381;
+pub use ark_ed_on_bls12_381::EdwardsProjective as Bls12_381_Edwards;
 
 pub mod key;
 // TODO: pub mod ledger;
@@ -35,19 +40,44 @@ pub mod key;
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Configuration;
 
+impl poseidon::Configuration for Configuration {
+    const FULL_ROUNDS: usize = 1;
+    const PARTIAL_ROUNDS: usize = 1;
+    type Field = poseidon::arkworks::Field<Bls12_381_Edwards>;
+}
+
 impl transfer::Configuration for Configuration {
     type SecretKey = <Self::KeyAgreementScheme as KeyAgreementScheme>::SecretKey;
     type SecretKeyVar = ();
     type PublicKey = <Self::KeyAgreementScheme as KeyAgreementScheme>::PublicKey;
     type PublicKeyVar = ();
-    type KeyAgreementScheme = EllipticCurveDiffieHellman<EdwardsProjective>;
+    type KeyAgreementScheme = EllipticCurveDiffieHellman<Bls12_381_Edwards>;
     type EphemeralKeyTrapdoor = <Self::EphemeralKeyCommitmentScheme as CommitmentScheme>::Trapdoor;
     type EphemeralKeyTrapdoorVar = ();
     type EphemeralKeyParametersVar = ();
     type EphemeralKeyCommitmentSchemeInput =
         <Self::EphemeralKeyCommitmentScheme as CommitmentScheme>::Input;
     type EphemeralKeyCommitmentSchemeInputVar = ();
-    type EphemeralKeyCommitmentScheme = ();
+    type EphemeralKeyCommitmentScheme = poseidon::Commitment<Self, 2>;
+    type TrapdoorDerivationFunction = ();
+    type CommitmentSchemeParametersVar = ();
+    type CommitmentSchemeInput = <Self::CommitmentScheme as CommitmentScheme>::Input;
+    type CommitmentSchemeInputVar = ();
+    type CommitmentSchemeOutput = <Self::CommitmentScheme as CommitmentScheme>::Output;
+    type CommitmentScheme = pedersen::Commitment<pedersen::arkworks::Group<Bls12_381_Edwards>, 2>;
+    type UtxoSetParametersVar = ();
+    type UtxoSetWitnessVar = ();
+    type UtxoSetOutputVar = ();
+    type UtxoSetVerifier = ();
+    type AssetIdVar = ();
+    type AssetValueVar = ();
+    type ConstraintSystem = ();
+    type ProofSystem = ();
+    type NoteEncryptionScheme = encryption::Hybrid<
+        Self::KeyAgreementScheme,
+        AesGcm<Asset, { Asset::SIZE }>,
+        Blake2sKdf<<Self::KeyAgreementScheme as KeyAgreementScheme>::SharedSecret>,
+    >;
 }
 
 /* TODO:
