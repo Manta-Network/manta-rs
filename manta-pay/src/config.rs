@@ -98,15 +98,14 @@ impl CommitmentScheme for EphemeralKeyCommitmentScheme {
     }
 }
 
-/*
 impl CommitmentScheme<Compiler> for EphemeralKeyCommitmentScheme {
-    type Parameters = poseidon::Parameters<Self, Compiler, 2>;
+    type Parameters = poseidon::Parameters<PoseidonSpec<2>, Compiler, 2>;
 
-    type Trapdoor = poseidon::Trapdoor<Self, Compiler, 2>;
+    type Trapdoor = poseidon::Trapdoor<PoseidonSpec<2>, Compiler, 2>;
 
-    type Input = Asset<FpVar<Compiler>, FpVar<Compiler>>;
+    type Input = Asset<FpVar<ConstraintField>, FpVar<ConstraintField>>;
 
-    type Output = poseidon::Output<Self, Compiler, 2>;
+    type Output = poseidon::Output<PoseidonSpec<2>, Compiler, 2>;
 
     #[inline]
     fn commit(
@@ -115,15 +114,14 @@ impl CommitmentScheme<Compiler> for EphemeralKeyCommitmentScheme {
         trapdoor: &Self::Trapdoor,
         input: &Self::Input,
     ) -> Self::Output {
-        poseidon::Commitment::<Self, Compiler, 2>::commit(
+        poseidon::Commitment::<PoseidonSpec<2>, Compiler, 2>::commit(
             compiler,
             parameters,
             trapdoor,
-            &[input.id.0.into(), input.value.0.into()],
+            &[input.id.clone(), input.value.clone()],
         )
     }
 }
-*/
 
 ///
 pub struct TrapdoorDerivationFunction;

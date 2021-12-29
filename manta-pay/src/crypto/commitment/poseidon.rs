@@ -227,12 +227,14 @@ pub type Output<S, J, const ARITY: usize> =
 #[cfg(feature = "arkworks")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "arkworks")))]
 pub mod arkworks {
-    use ark_ff::Field;
+    use crate::crypto::constraint::arkworks::{FpVar, R1CS};
+    use ark_ff::{Field, PrimeField};
+    use ark_r1cs_std::fields::FieldVar;
 
     /// Poseidon Permutation Specification
     pub trait Specification {
         /// Field Type
-        type Field: Field;
+        type Field: PrimeField;
 
         /// Number of Full Rounds
         ///
@@ -275,6 +277,41 @@ pub mod arkworks {
         #[inline]
         fn apply_sbox(_: &mut (), point: &mut Self::Field) {
             *point = point.pow(&[Self::SBOX_EXPONENT, 0, 0, 0]);
+        }
+    }
+
+    impl<S> super::Specification<R1CS<S::Field>> for S
+    where
+        S: Specification,
+    {
+        type Field = FpVar<S::Field>;
+
+        const FULL_ROUNDS: usize = S::FULL_ROUNDS;
+
+        const PARTIAL_ROUNDS: usize = S::PARTIAL_ROUNDS;
+
+        #[inline]
+        fn add(compiler: &mut R1CS<S::Field>, lhs: &Self::Field, rhs: &Self::Field) -> Self::Field {
+            let _ = compiler;
+            lhs + rhs
+        }
+
+        #[inline]
+        fn mul(compiler: &mut R1CS<S::Field>, lhs: &Self::Field, rhs: &Self::Field) -> Self::Field {
+            let _ = compiler;
+            lhs * rhs
+        }
+
+        #[inline]
+        fn add_assign(compiler: &mut R1CS<S::Field>, lhs: &mut Self::Field, rhs: &Self::Field) {
+            let _ = compiler;
+            *lhs += rhs;
+        }
+
+        #[inline]
+        fn apply_sbox(compiler: &mut R1CS<S::Field>, point: &mut Self::Field) {
+            let _ = compiler;
+            *point = point.pow_by_constant(&[Self::SBOX_EXPONENT]).expect("");
         }
     }
 }
