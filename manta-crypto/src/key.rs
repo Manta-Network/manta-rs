@@ -17,7 +17,7 @@
 //! Cryptographic Key Primitives
 
 /// Key Derivation Function
-pub trait KeyDerivationFunction<J = ()> {
+pub trait KeyDerivationFunction<COM = ()> {
     /// Input Key Type
     type Key;
 
@@ -25,7 +25,7 @@ pub trait KeyDerivationFunction<J = ()> {
     type Output;
 
     /// Derives an output key from `secret` computed from a cryptographic agreement scheme.
-    fn derive(compiler: &mut J, secret: Self::Key) -> Self::Output;
+    fn derive(&self, secret: Self::Key, compiler: &mut COM) -> Self::Output;
 }
 
 /// Key Agreement Scheme
@@ -43,7 +43,7 @@ pub trait KeyDerivationFunction<J = ()> {
 ///     ```
 ///     This ensures that both parties in the shared computation will arrive at the same conclusion
 ///     about the value of the [`SharedSecret`](Self::SharedSecret).
-pub trait KeyAgreementScheme<J = ()> {
+pub trait KeyAgreementScheme<COM = ()> {
     /// Secret Key Type
     type SecretKey;
 
@@ -55,7 +55,7 @@ pub trait KeyAgreementScheme<J = ()> {
 
     /// Derives a public key corresponding to `secret_key`. This public key should be sent to the
     /// other party involved in the shared computation.
-    fn derive(compiler: &mut J, secret_key: &Self::SecretKey) -> Self::PublicKey;
+    fn derive(&self, secret_key: &Self::SecretKey, compiler: &mut COM) -> Self::PublicKey;
 
     /// Derives a public key corresponding to `secret_key`. This public key should be sent to the
     /// other party involved in the shared computation.
@@ -68,15 +68,16 @@ pub trait KeyAgreementScheme<J = ()> {
     ///
     /// [`derive`]: Self::derive
     #[inline]
-    fn derive_owned(compiler: &mut J, secret_key: Self::SecretKey) -> Self::PublicKey {
-        Self::derive(compiler, &secret_key)
+    fn derive_owned(&self, secret_key: Self::SecretKey, compiler: &mut COM) -> Self::PublicKey {
+        self.derive(&secret_key, compiler)
     }
 
     /// Computes the shared secret given the known `secret_key` and the given `public_key`.
     fn agree(
-        compiler: &mut J,
+        &self,
         secret_key: &Self::SecretKey,
         public_key: &Self::PublicKey,
+        compiler: &mut COM,
     ) -> Self::SharedSecret;
 
     /// Computes the shared secret given the known `secret_key` and the given `public_key`.
@@ -90,10 +91,11 @@ pub trait KeyAgreementScheme<J = ()> {
     /// [`agree`]: Self::agree
     #[inline]
     fn agree_owned(
-        compiler: &mut J,
+        &self,
         secret_key: Self::SecretKey,
         public_key: Self::PublicKey,
+        compiler: &mut COM,
     ) -> Self::SharedSecret {
-        Self::agree(compiler, &secret_key, &public_key)
+        self.agree(&secret_key, &public_key, compiler)
     }
 }

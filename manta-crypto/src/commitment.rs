@@ -19,10 +19,7 @@
 use core::{fmt::Debug, hash::Hash};
 
 /// Commitment Scheme
-pub trait CommitmentScheme<J = ()> {
-    /// Parameters Type
-    type Parameters;
-
+pub trait CommitmentScheme<COM = ()> {
     /// Trapdoor Type
     type Trapdoor;
 
@@ -32,24 +29,21 @@ pub trait CommitmentScheme<J = ()> {
     /// Output Type
     type Output;
 
-    /// Commits to the `input` value using `parameters` and randomness `trapdoor`.
+    /// Commits to the `input` value using randomness `trapdoor`.
     fn commit(
-        compiler: &mut J,
-        parameters: &Self::Parameters,
+        &self,
         trapdoor: &Self::Trapdoor,
         input: &Self::Input,
+        compiler: &mut COM,
     ) -> Self::Output;
 
     /// Starts a new [`Builder`] for extended commitments.
     #[inline]
-    fn start<'c>(
-        parameters: &'c Self::Parameters,
-        trapdoor: &'c Self::Trapdoor,
-    ) -> Builder<'c, Self, J>
+    fn start<'c>(&'c self, trapdoor: &'c Self::Trapdoor) -> Builder<'c, Self, COM>
     where
         Self::Input: Default,
     {
-        Builder::new(parameters, trapdoor)
+        Builder::new(self, trapdoor)
     }
 }
 
@@ -67,18 +61,18 @@ where
 #[derivative(
     Clone(bound = "C::Input: Clone"),
     Copy(bound = "C::Input: Copy"),
-    Debug(bound = "C::Parameters: Debug, C::Trapdoor: Debug, C::Input: Debug"),
-    Eq(bound = "C::Parameters: Eq, C::Trapdoor: Eq, C::Input: Eq"),
-    Hash(bound = "C::Parameters: Hash, C::Trapdoor: Hash, C::Input: Hash"),
-    PartialEq(bound = "C::Parameters: PartialEq, C::Trapdoor: PartialEq, C::Input: PartialEq")
+    Debug(bound = "C: Debug, C::Trapdoor: Debug, C::Input: Debug"),
+    Eq(bound = "C: Eq, C::Trapdoor: Eq, C::Input: Eq"),
+    Hash(bound = "C: Hash, C::Trapdoor: Hash, C::Input: Hash"),
+    PartialEq(bound = "C: PartialEq, C::Trapdoor: PartialEq, C::Input: PartialEq")
 )]
-pub struct Builder<'c, C, J = ()>
+pub struct Builder<'c, C, COM = ()>
 where
-    C: CommitmentScheme<J> + ?Sized,
+    C: CommitmentScheme<COM> + ?Sized,
     C::Input: Default,
 {
-    /// Commitment Parameters
-    parameters: &'c C::Parameters,
+    /// Commitment Scheme
+    commitment_scheme: &'c C,
 
     /// Commitment Trapdoor
     trapdoor: &'c C::Trapdoor,
@@ -87,16 +81,16 @@ where
     input: C::Input,
 }
 
-impl<'c, C, J> Builder<'c, C, J>
+impl<'c, C, COM> Builder<'c, C, COM>
 where
-    C: CommitmentScheme<J> + ?Sized,
+    C: CommitmentScheme<COM> + ?Sized,
     C::Input: Default,
 {
-    /// Returns a new [`Builder`] with fixed `parameters` and `trapdoor`.
+    /// Returns a new [`Builder`] with fixed `commitment_scheme` and `trapdoor`.
     #[inline]
-    pub fn new(parameters: &'c C::Parameters, trapdoor: &'c C::Trapdoor) -> Self {
+    pub fn new(commitment_scheme: &'c C, trapdoor: &'c C::Trapdoor) -> Self {
         Self {
-            parameters,
+            commitment_scheme,
             trapdoor,
             input: Default::default(),
         }
@@ -131,8 +125,9 @@ where
 
     /// Commits to the input stored in the builder.
     #[inline]
-    pub fn commit_with_compiler(self, compiler: &mut J) -> C::Output {
-        C::commit(compiler, self.parameters, self.trapdoor, &self.input)
+    pub fn commit_with_compiler(self, compiler: &mut COM) -> C::Output {
+        self.commitment_scheme
+            .commit(self.trapdoor, &self.input, compiler)
     }
 }
 

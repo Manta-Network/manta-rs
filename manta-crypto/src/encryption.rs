@@ -68,11 +68,13 @@ pub trait HybridPublicKeyEncryptionScheme: SymmetricKeyEncryptionScheme {
     /// This method is an optimization path for calling [`KeyAgreementScheme::agree`] and then
     /// [`KeyDerivationFunction::derive`].
     #[inline]
-    fn agree_derive(secret_key: &SecretKey<Self>, public_key: &PublicKey<Self>) -> Self::Key {
-        Self::KeyDerivationFunction::derive(
-            &mut (),
-            Self::KeyAgreementScheme::agree(&mut (), secret_key, public_key),
-        )
+    fn agree_derive(
+        agreement: &Self::KeyAgreementScheme,
+        derivation: &Self::KeyDerivationFunction,
+        secret_key: &SecretKey<Self>,
+        public_key: &PublicKey<Self>,
+    ) -> Self::Key {
+        derivation.derive(agreement.agree(secret_key, public_key, &mut ()), &mut ())
     }
 }
 
@@ -159,13 +161,18 @@ where
     /// and an `ephemeral_secret_key`.
     #[inline]
     pub fn new(
+        agreement: &H::KeyAgreementScheme,
+        derivation: &H::KeyDerivationFunction,
         public_key: &PublicKey<H>,
         ephemeral_secret_key: &SecretKey<H>,
         plaintext: H::Plaintext,
     ) -> Self {
         Self {
-            ciphertext: H::encrypt(H::agree_derive(ephemeral_secret_key, public_key), plaintext),
-            ephemeral_public_key: H::KeyAgreementScheme::derive(&mut (), ephemeral_secret_key),
+            ciphertext: H::encrypt(
+                H::agree_derive(agreement, derivation, ephemeral_secret_key, public_key),
+                plaintext,
+            ),
+            ephemeral_public_key: agreement.derive(ephemeral_secret_key, &mut ()),
         }
     }
 
@@ -178,9 +185,19 @@ where
     /// Tries to decrypt `self` using `secret_key`, returning back `Err(self)` if the `secret_key`
     /// was unable to decrypt the message.
     #[inline]
-    pub fn decrypt(self, secret_key: &SecretKey<H>) -> Result<DecryptedMessage<H>, Self> {
+    pub fn decrypt(
+        self,
+        agreement: &H::KeyAgreementScheme,
+        derivation: &H::KeyDerivationFunction,
+        secret_key: &SecretKey<H>,
+    ) -> Result<DecryptedMessage<H>, Self> {
         match H::decrypt(
-            H::agree_derive(secret_key, &self.ephemeral_public_key),
+            H::agree_derive(
+                agreement,
+                derivation,
+                secret_key,
+                &self.ephemeral_public_key,
+            ),
             &self.ciphertext,
         ) {
             Some(plaintext) => Ok(DecryptedMessage::new(plaintext, self.ephemeral_public_key)),
@@ -251,9 +268,14 @@ where
 
     /// Tries to decrypt with `secret_key`, if `self` still contains a message.
     #[inline]
-    pub fn decrypt(&mut self, secret_key: &SecretKey<H>) -> Option<DecryptedMessage<H>> {
+    pub fn decrypt(
+        &mut self,
+        agreement: &H::KeyAgreementScheme,
+        derivation: &H::KeyDerivationFunction,
+        secret_key: &SecretKey<H>,
+    ) -> Option<DecryptedMessage<H>> {
         if let Some(message) = self.encrypted_message.take() {
-            match message.decrypt(secret_key) {
+            match message.decrypt(agreement, derivation, secret_key) {
                 Ok(decrypted_message) => return Some(decrypted_message),
                 Err(message) => self.encrypted_message = Some(message),
             }

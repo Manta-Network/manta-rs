@@ -22,11 +22,11 @@
 
 use crate::{
     accumulator::{
-        self, Accumulator, ConstantCapacityAccumulator, ExactSizeAccumulator, MembershipProof,
+        Accumulator, ConstantCapacityAccumulator, ExactSizeAccumulator, MembershipProof,
         OptimizedAccumulator,
     },
     merkle_tree::{
-        tree::{self, Leaf, Parameters, Tree, Verifier},
+        tree::{self, Leaf, Parameters, Tree},
         WithProofs,
     },
 };
@@ -247,10 +247,10 @@ where
 {
     type Item = Leaf<C>;
 
-    type Verifier = Verifier<C>;
+    type Model = Parameters<C>;
 
     #[inline]
-    fn parameters(&self) -> &accumulator::Parameters<Self> {
+    fn model(&self) -> &Self::Model {
         self.parameters()
     }
 
@@ -267,7 +267,7 @@ where
     }
 
     #[inline]
-    fn prove(&self, item: &Self::Item) -> Option<MembershipProof<Self::Verifier>> {
+    fn prove(&self, item: &Self::Item) -> Option<MembershipProof<Self::Model>> {
         let tree = self.forest.get_tree(item);
         Some(MembershipProof::new(
             tree.path(

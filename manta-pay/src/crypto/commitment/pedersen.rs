@@ -22,7 +22,7 @@ use core::{fmt::Debug, hash::Hash, marker::PhantomData};
 use manta_crypto::commitment::CommitmentScheme;
 
 /// Pedersen Commitment Specification
-pub trait Specification<J = ()> {
+pub trait Specification<COM = ()> {
     /// Group Type
     type Group;
 
@@ -30,31 +30,31 @@ pub trait Specification<J = ()> {
     type Scalar;
 
     /// Adds two points of the group together.
-    fn add(compiler: &mut J, lhs: Self::Group, rhs: Self::Group) -> Self::Group;
+    fn add(lhs: Self::Group, rhs: Self::Group, compiler: &mut COM) -> Self::Group;
 
     /// Multiplies the given `point` with a `scalar` value.
-    fn scalar_mul(compiler: &mut J, point: &Self::Group, scalar: &Self::Scalar) -> Self::Group;
+    fn scalar_mul(point: &Self::Group, scalar: &Self::Scalar, compiler: &mut COM) -> Self::Group;
 
     /// Computes the Pedersen Commitment with `parameters` over `trapdoor` and `input` in the given
     /// `compiler`.
     #[inline]
     fn commit<const ARITY: usize>(
-        compiler: &mut J,
-        parameters: &Parameters<Self, J, ARITY>,
+        parameters: &Commitment<Self, COM, ARITY>,
         trapdoor: &Self::Scalar,
         input: &[Self::Scalar; ARITY],
+        compiler: &mut COM,
     ) -> Self::Group {
         parameters.input_generators.iter().zip(input).fold(
-            Self::scalar_mul(compiler, &parameters.trapdoor_generator, trapdoor),
+            Self::scalar_mul(&parameters.trapdoor_generator, trapdoor, compiler),
             move |acc, (g, i)| {
-                let point = Self::scalar_mul(compiler, g, i);
-                Self::add(compiler, acc, point)
+                let point = Self::scalar_mul(g, i, compiler);
+                Self::add(acc, point, compiler)
             },
         )
     }
 }
 
-/// Commitment Parameters
+/// Commitment Scheme
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "S::Group: Clone"),
@@ -64,9 +64,9 @@ pub trait Specification<J = ()> {
     Hash(bound = "S::Group: Hash"),
     PartialEq(bound = "S::Group: PartialEq")
 )]
-pub struct Parameters<S, J = (), const ARITY: usize = 1>
+pub struct Commitment<S, COM = (), const ARITY: usize = 1>
 where
-    S: Specification<J> + ?Sized,
+    S: Specification<COM> + ?Sized,
 {
     /// Trapdoor Generator
     pub trapdoor_generator: S::Group,
@@ -75,19 +75,10 @@ where
     pub input_generators: [S::Group; ARITY],
 }
 
-/// Commitment Scheme
-#[derive(derivative::Derivative)]
-#[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct Commitment<S, J = (), const ARITY: usize = 1>(PhantomData<(J, S)>)
+impl<S, COM, const ARITY: usize> CommitmentScheme<COM> for Commitment<S, COM, ARITY>
 where
-    S: Specification<J>;
-
-impl<S, J, const ARITY: usize> CommitmentScheme<J> for Commitment<S, J, ARITY>
-where
-    S: Specification<J>,
+    S: Specification<COM>,
 {
-    type Parameters = Parameters<S, J, ARITY>;
-
     type Trapdoor = S::Scalar;
 
     type Input = [S::Scalar; ARITY];
@@ -96,25 +87,26 @@ where
 
     #[inline]
     fn commit(
-        compiler: &mut J,
-        parameters: &Self::Parameters,
+        &self,
         trapdoor: &Self::Trapdoor,
         input: &Self::Input,
+        compiler: &mut COM,
     ) -> Self::Output {
-        S::commit(compiler, parameters, trapdoor, input)
+        S::commit(self, trapdoor, input, compiler)
     }
 }
 
 /// Pedersen Commitment Trapdoor Type
-pub type Trapdoor<S, J, const ARITY: usize> =
-    <Commitment<S, J, ARITY> as CommitmentScheme<J>>::Trapdoor;
+pub type Trapdoor<S, COM, const ARITY: usize> =
+    <Commitment<S, COM, ARITY> as CommitmentScheme<COM>>::Trapdoor;
 
 /// Pedersen Commitment Input Type
-pub type Input<S, J, const ARITY: usize> = <Commitment<S, J, ARITY> as CommitmentScheme<J>>::Input;
+pub type Input<S, COM, const ARITY: usize> =
+    <Commitment<S, COM, ARITY> as CommitmentScheme<COM>>::Input;
 
 /// Pedersen Commitment Output Type
-pub type Output<S, J, const ARITY: usize> =
-    <Commitment<S, J, ARITY> as CommitmentScheme<J>>::Output;
+pub type Output<S, COM, const ARITY: usize> =
+    <Commitment<S, COM, ARITY> as CommitmentScheme<COM>>::Output;
 
 /// Arkworks Backend
 #[cfg(feature = "arkworks")]
@@ -140,12 +132,12 @@ pub mod arkworks {
         type Scalar = C::ScalarField;
 
         #[inline]
-        fn add(_: &mut (), lhs: Self::Group, rhs: Self::Group) -> Self::Group {
+        fn add(lhs: Self::Group, rhs: Self::Group, _: &mut ()) -> Self::Group {
             lhs + rhs
         }
 
         #[inline]
-        fn scalar_mul(_: &mut (), point: &Self::Group, scalar: &Self::Scalar) -> Self::Group {
+        fn scalar_mul(point: &Self::Group, scalar: &Self::Scalar, _: &mut ()) -> Self::Group {
             point.mul(scalar.into_repr())
         }
     }

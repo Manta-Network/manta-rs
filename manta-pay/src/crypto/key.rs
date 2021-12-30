@@ -21,18 +21,9 @@ use core::marker::PhantomData;
 use manta_crypto::key::KeyDerivationFunction;
 use manta_util::into_array_unchecked;
 
-#[cfg(feature = "arkworks")]
-use {
-    crate::crypto::constraint::arkworks::R1CS,
-    ark_ec::{AffineCurve, ProjectiveCurve},
-    ark_ff::Field,
-    ark_r1cs_std::fields::fp::FpVar,
-    ark_r1cs_std::groups::{CurveVar, GroupOpsBounds},
-    ark_r1cs_std::ToBitsGadget,
-    manta_crypto::key::KeyAgreementScheme,
-};
-
 /// Blake2s KDF
+#[derive(derivative::Derivative)]
+#[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Blake2sKdf<T>(PhantomData<T>)
 where
     T: AsRef<[u8]>;
@@ -46,7 +37,7 @@ where
     type Output = [u8; 32];
 
     #[inline]
-    fn derive(compiler: &mut (), secret: Self::Key) -> Self::Output {
+    fn derive(&self, secret: Self::Key, compiler: &mut ()) -> Self::Output {
         let _ = compiler;
         let mut hasher = Blake2s::new();
         hasher.update(secret.as_ref());
@@ -57,104 +48,118 @@ where
 
 ///
 #[cfg(feature = "arkworks")]
-type ConstraintField<C> = <<C as ProjectiveCurve>::BaseField as Field>::BasePrimeField;
-
-/// Elliptic Curve Diffie Hellman Protocol
-#[cfg(feature = "arkworks")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "arkworks")))]
-pub struct EllipticCurveDiffieHellman<C, GG>(PhantomData<(C, GG)>)
-where
-    C: ProjectiveCurve,
-    GG: CurveVar<C, ConstraintField<C>>,
-    for<'g> &'g GG: GroupOpsBounds<'g, C, GG>;
+pub mod arkworks {
+    use super::*;
+    use crate::crypto::constraint::arkworks::R1CS;
+    use ark_ec::{AffineCurve, ProjectiveCurve};
+    use ark_ff::{Field, PrimeField};
+    use ark_r1cs_std::{
+        fields::fp::FpVar,
+        groups::{CurveVar, GroupOpsBounds},
+        ToBitsGadget,
+    };
+    use manta_crypto::key::KeyAgreementScheme;
 
-#[cfg(feature = "arkworks")]
-impl<C, GG> KeyAgreementScheme for EllipticCurveDiffieHellman<C, GG>
-where
-    C: ProjectiveCurve,
-    GG: CurveVar<C, ConstraintField<C>>,
-    for<'g> &'g GG: GroupOpsBounds<'g, C, GG>,
-{
-    type SecretKey = C::ScalarField;
+    ///
+    type ConstraintField<C> = <<C as ProjectiveCurve>::BaseField as Field>::BasePrimeField;
 
-    type PublicKey = C;
-
-    type SharedSecret = C;
-
-    #[inline]
-    fn derive(compiler: &mut (), secret_key: &Self::SecretKey) -> Self::PublicKey {
-        Self::derive_owned(compiler, *secret_key)
+    /// Elliptic Curve Diffie Hellman Protocol
+    pub struct EllipticCurveDiffieHellman<C>
+    where
+        C: ProjectiveCurve,
+    {
+        ///
+        pub generator: C,
     }
 
-    #[inline]
-    fn derive_owned(compiler: &mut (), secret_key: Self::SecretKey) -> Self::PublicKey {
-        let _ = compiler;
-        C::Affine::prime_subgroup_generator().mul(secret_key)
+    impl<C> KeyAgreementScheme for EllipticCurveDiffieHellman<C>
+    where
+        C: ProjectiveCurve,
+    {
+        type SecretKey = C::ScalarField;
+
+        type PublicKey = C;
+
+        type SharedSecret = C;
+
+        #[inline]
+        fn derive(&self, secret_key: &Self::SecretKey, compiler: &mut ()) -> Self::PublicKey {
+            self.derive_owned(*secret_key, compiler)
+        }
+
+        #[inline]
+        fn derive_owned(&self, secret_key: Self::SecretKey, compiler: &mut ()) -> Self::PublicKey {
+            let _ = compiler;
+            self.generator.mul(secret_key.into_repr())
+        }
+
+        #[inline]
+        fn agree(
+            &self,
+            secret_key: &Self::SecretKey,
+            public_key: &Self::PublicKey,
+            compiler: &mut (),
+        ) -> Self::SharedSecret {
+            self.agree_owned(*secret_key, *public_key, compiler)
+        }
+
+        #[inline]
+        fn agree_owned(
+            &self,
+            secret_key: Self::SecretKey,
+            mut public_key: Self::PublicKey,
+            compiler: &mut (),
+        ) -> Self::SharedSecret {
+            let _ = compiler;
+            public_key *= secret_key;
+            public_key
+        }
     }
 
-    #[inline]
-    fn agree(
-        compiler: &mut (),
-        secret_key: &Self::SecretKey,
-        public_key: &Self::PublicKey,
-    ) -> Self::SharedSecret {
-        Self::agree_owned(compiler, *secret_key, *public_key)
+    /* TODO:
+    impl<C, GG> KeyAgreementScheme<R1CS<ConstraintField<C>>> for EllipticCurveDiffieHellman<C, GG>
+    where
+        C: ProjectiveCurve,
+        GG: CurveVar<C, ConstraintField<C>>,
+    {
+        type SecretKey = FpVar<C::ScalarField>;
+
+        type PublicKey = GG;
+
+        type SharedSecret = GG;
+
+        #[inline]
+        fn derive(
+            compiler: &mut R1CS<ConstraintField<C>>,
+            secret_key: &Self::SecretKey,
+        ) -> Self::PublicKey {
+            /* TODO:
+            let _ = compiler;
+            GG::prime_subgroup_generator().mul(secret_key)
+            */
+            todo!()
+        }
+
+        #[inline]
+        fn agree(
+            compiler: &mut R1CS<ConstraintField<C>>,
+            secret_key: &Self::SecretKey,
+            public_key: &Self::PublicKey,
+        ) -> Self::SharedSecret {
+            /* TODO:
+            let _ = compiler;
+            public_key
+                .scalar_mul_le(
+                    FpVar::<ConstraintField<C>>::from(secret_key)
+                        .to_bits_le()
+                        .expect("")
+                        .iter(),
+                )
+                .expect("")
+            */
+            todo!()
+        }
     }
-
-    #[inline]
-    fn agree_owned(
-        compiler: &mut (),
-        secret_key: Self::SecretKey,
-        mut public_key: Self::PublicKey,
-    ) -> Self::SharedSecret {
-        let _ = compiler;
-        public_key *= secret_key;
-        public_key
-    }
-}
-
-#[cfg(feature = "arkworks")]
-impl<C, GG> KeyAgreementScheme<R1CS<ConstraintField<C>>> for EllipticCurveDiffieHellman<C, GG>
-where
-    C: ProjectiveCurve,
-    GG: CurveVar<C, ConstraintField<C>>,
-    for<'g> &'g GG: GroupOpsBounds<'g, C, GG>,
-{
-    type SecretKey = FpVar<C::ScalarField>;
-
-    type PublicKey = GG;
-
-    type SharedSecret = GG;
-
-    #[inline]
-    fn derive(
-        compiler: &mut R1CS<ConstraintField<C>>,
-        secret_key: &Self::SecretKey,
-    ) -> Self::PublicKey {
-        /* TODO:
-        let _ = compiler;
-        GG::prime_subgroup_generator().mul(secret_key)
-        */
-        todo!()
-    }
-
-    #[inline]
-    fn agree(
-        compiler: &mut R1CS<ConstraintField<C>>,
-        secret_key: &Self::SecretKey,
-        public_key: &Self::PublicKey,
-    ) -> Self::SharedSecret {
-        /* TODO:
-        let _ = compiler;
-        public_key
-            .scalar_mul_le(
-                FpVar::<ConstraintField<C>>::from(secret_key)
-                    .to_bits_le()
-                    .expect("")
-                    .iter(),
-            )
-            .expect("")
-        */
-        todo!()
-    }
+    */
 }

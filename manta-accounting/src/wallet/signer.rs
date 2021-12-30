@@ -32,10 +32,9 @@ use crate::{
         canonical::{
             Mint, PrivateTransfer, PrivateTransferShape, Reclaim, Selection, Shape, Transaction,
         },
-        EncryptedNote, EphemeralKeyParameters, Parameters, PreSender, ProofSystemError,
-        ProvingContext, PublicKey, Receiver, ReceivingKey, SecretKey, Sender, SpendingKey,
-        Transfer, TransferPost, Utxo, UtxoCommitmentParameters, VoidNumber,
-        VoidNumberCommitmentParameters,
+        EncryptedNote, FullParameters, Parameters, PreSender, ProofSystemError, ProvingContext,
+        PublicKey, Receiver, ReceivingKey, SecretKey, Sender, SpendingKey, Transfer, TransferPost,
+        Utxo, VoidNumber,
     },
 };
 use alloc::{vec, vec::Vec};
@@ -46,7 +45,6 @@ use core::{
 use manta_crypto::{
     accumulator::{
         Accumulator, ConstantCapacityAccumulator, ExactSizeAccumulator, OptimizedAccumulator,
-        Verifier,
     },
     encryption::DecryptedMessage,
     rand::{CryptoRng, Rand, RngCore},
@@ -210,10 +208,8 @@ pub trait Configuration: transfer::Configuration {
     >;
 
     /// [`Utxo`] Accumulator Type
-    type UtxoSet: Accumulator<
-            Item = <Self::UtxoSetVerifier as Verifier>::Item,
-            Verifier = Self::UtxoSetVerifier,
-        > + ConstantCapacityAccumulator
+    type UtxoSet: Accumulator<Item = Self::Utxo, Model = Self::UtxoSetModel>
+        + ConstantCapacityAccumulator
         + ExactSizeAccumulator
         + OptimizedAccumulator
         + Rollback;
@@ -255,14 +251,8 @@ where
     /// Proving Context
     proving_context: ProvingContext<C>,
 
-    /// Ephemeral Key Parameters
-    ephemeral_key_parameters: EphemeralKeyParameters<C>,
-
-    /// UTXO Commitment Scheme Parameters
-    utxo_commitment_parameters: UtxoCommitmentParameters<C>,
-
-    /// Void Number Commitment Scheme Parameters
-    void_number_commitment_parameters: VoidNumberCommitmentParameters<C>,
+    /// Parameters
+    parameters: Parameters<C>,
 
     /// UTXO Set
     utxo_set: C::UtxoSet,
@@ -279,14 +269,11 @@ where
     C: Configuration,
 {
     /// Builds a new [`Signer`].
-    #[allow(clippy::too_many_arguments)] // FIXME: Find a better way to construct this.
     #[inline]
     fn new_inner(
         account_table: AccountTable<C>,
         proving_context: ProvingContext<C>,
-        ephemeral_key_parameters: EphemeralKeyParameters<C>,
-        utxo_commitment_parameters: UtxoCommitmentParameters<C>,
-        void_number_commitment_parameters: VoidNumberCommitmentParameters<C>,
+        parameters: Parameters<C>,
         utxo_set: C::UtxoSet,
         assets: C::AssetMap,
         rng: C::Rng,
@@ -294,9 +281,7 @@ where
         Self {
             account_table,
             proving_context,
-            ephemeral_key_parameters,
-            utxo_commitment_parameters,
-            void_number_commitment_parameters,
+            parameters,
             utxo_set,
             assets,
             rng,
@@ -313,18 +298,14 @@ where
     pub fn new(
         account_table: AccountTable<C>,
         proving_context: ProvingContext<C>,
-        ephemeral_key_parameters: EphemeralKeyParameters<C>,
-        utxo_commitment_parameters: UtxoCommitmentParameters<C>,
-        void_number_commitment_parameters: VoidNumberCommitmentParameters<C>,
+        parameters: Parameters<C>,
         utxo_set: C::UtxoSet,
         rng: C::Rng,
     ) -> Self {
         Self::new_inner(
             account_table,
             proving_context,
-            ephemeral_key_parameters,
-            utxo_commitment_parameters,
-            void_number_commitment_parameters,
+            parameters,
             utxo_set,
             Default::default(),
             rng,
@@ -359,12 +340,11 @@ where
                 },
         }) = self
             .account()
-            .find_index(move |k| finder.decrypt(k))
+            .find_index(|k| finder.decrypt(&self.parameters.key_agreement, &Default::default(), k))
             .map_err(key::Error::KeyDerivationError)?
         {
             if let Some(void_number) = C::check_full_asset(
-                &self.utxo_commitment_parameters,
-                &self.void_number_commitment_parameters,
+                &self.parameters,
                 &keypair.spend,
                 &ephemeral_public_key,
                 &asset,
@@ -447,8 +427,7 @@ where
     ) -> Result<PreSender<C>, SignerError<C>> {
         let (spend_index, ephemeral_key) = key;
         Ok(PreSender::new(
-            &self.utxo_commitment_parameters,
-            &self.void_number_commitment_parameters,
+            &self.parameters,
             self.account().spend_key(spend_index)?,
             ephemeral_key,
             asset,
@@ -463,8 +442,7 @@ where
             .default_keypair()
             .map_err(key::Error::KeyDerivationError)?;
         Ok(SpendingKey::new(keypair.spend, keypair.view).receiver(
-            &self.ephemeral_key_parameters,
-            &self.utxo_commitment_parameters,
+            &self.parameters,
             self.rng.gen(),
             asset,
         ))
@@ -480,9 +458,7 @@ where
             .default_keypair()
             .map_err(key::Error::KeyDerivationError)?;
         let (receiver, pre_sender) = SpendingKey::new(keypair.spend, keypair.view).internal_pair(
-            &self.ephemeral_key_parameters,
-            &self.utxo_commitment_parameters,
-            &self.void_number_commitment_parameters,
+            &self.parameters,
             self.rng.gen(),
             asset,
         );
@@ -514,12 +490,7 @@ where
     ) -> Result<TransferPost<C>, SignerError<C>> {
         transfer
             .into_post(
-                Parameters::new(
-                    &self.ephemeral_key_parameters,
-                    &self.utxo_commitment_parameters,
-                    &self.void_number_commitment_parameters,
-                    self.utxo_set.parameters(),
-                ),
+                FullParameters::new(&self.parameters, self.utxo_set.model()),
                 &self.proving_context,
                 &mut self.rng,
             )
@@ -539,9 +510,7 @@ where
             .default_keypair()
             .map_err(key::Error::KeyDerivationError)?;
         Ok(Join::new(
-            &self.ephemeral_key_parameters,
-            &self.utxo_commitment_parameters,
-            &self.void_number_commitment_parameters,
+            &self.parameters,
             asset_id.with(total),
             &SpendingKey::new(keypair.spend, keypair.view),
             &mut self.rng,
@@ -637,12 +606,7 @@ where
     /// Prepares a given [`ReceivingKey`] for receiving `asset`.
     #[inline]
     pub fn prepare_receiver(&mut self, asset: Asset, receiver: ReceivingKey<C>) -> Receiver<C> {
-        receiver.into_receiver(
-            &self.ephemeral_key_parameters,
-            &self.utxo_commitment_parameters,
-            self.rng.gen(),
-            asset,
-        )
+        receiver.into_receiver(&self.parameters, self.rng.gen(), asset)
     }
 
     /// Signs a withdraw transaction for `asset` sent to `receiver`.
@@ -699,7 +663,7 @@ where
         index: Index<C>,
     ) -> ReceivingKeyResult<C::HierarchicalKeyDerivationScheme, C, Self> {
         let keypair = self.account().keypair(index)?;
-        Ok(SpendingKey::new(keypair.spend, keypair.view).derive())
+        Ok(SpendingKey::new(keypair.spend, keypair.view).derive(&self.parameters.key_agreement))
     }
 }
 

@@ -18,10 +18,7 @@
 
 use crate::{
     asset::Asset,
-    transfer::{
-        Configuration, EphemeralKeyParameters, PreSender, Receiver, SpendingKey, Utxo,
-        UtxoCommitmentParameters, VoidNumberCommitmentParameters,
-    },
+    transfer::{Configuration, Parameters, PreSender, Receiver, SpendingKey, Utxo},
 };
 use alloc::vec::Vec;
 use manta_crypto::{
@@ -49,9 +46,7 @@ where
     /// Builds a new [`Join`] for `asset` using `spending_key` and `zero_key`.
     #[inline]
     pub fn new<R, const RECEIVERS: usize>(
-        ephemeral_key_parameters: &EphemeralKeyParameters<C>,
-        utxo_parameters: &UtxoCommitmentParameters<C>,
-        void_number_parameters: &VoidNumberCommitmentParameters<C>,
+        parameters: &Parameters<C>,
         asset: Asset,
         spending_key: &SpendingKey<C>,
         rng: &mut R,
@@ -64,22 +59,11 @@ where
         //
         let mut receivers = Vec::with_capacity(RECEIVERS);
         let mut zeroes = Vec::with_capacity(RECEIVERS - 1);
-        let (receiver, pre_sender) = spending_key.internal_pair(
-            ephemeral_key_parameters,
-            utxo_parameters,
-            void_number_parameters,
-            rng.gen(),
-            asset,
-        );
+        let (receiver, pre_sender) = spending_key.internal_pair(parameters, rng.gen(), asset);
         receivers.push(receiver);
         for _ in 0..RECEIVERS - 2 {
-            let (receiver, pre_sender) = spending_key.internal_zero_pair(
-                ephemeral_key_parameters,
-                utxo_parameters,
-                void_number_parameters,
-                rng.gen(),
-                asset.id,
-            );
+            let (receiver, pre_sender) =
+                spending_key.internal_zero_pair(parameters, rng.gen(), asset.id);
             receivers.push(receiver);
             zeroes.push(pre_sender);
         }
@@ -90,7 +74,7 @@ where
     #[inline]
     pub fn insert_utxos<A>(&self, utxo_set: &mut A)
     where
-        A: Accumulator<Item = Utxo<C>, Verifier = C::UtxoSetVerifier>,
+        A: Accumulator<Item = Utxo<C>, Model = C::UtxoSetModel>,
     {
         self.pre_sender.insert_utxo(utxo_set);
         for zero in &self.zeroes {

@@ -480,18 +480,10 @@ where
 /// Merkle Tree Root
 pub type Root<C> = InnerDigest<C>;
 
-/// Merkle Tree Verifier
-#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct Verifier<C>(PhantomData<C>)
-where
-    C: Configuration + ?Sized;
-
-impl<C> accumulator::Verifier for Verifier<C>
+impl<C> accumulator::Model for Parameters<C>
 where
     C: Configuration + ?Sized,
 {
-    type Parameters = Parameters<C>;
-
     type Item = Leaf<C>;
 
     type Witness = Path<C>;
@@ -502,14 +494,14 @@ where
 
     #[inline]
     fn verify(
-        compiler: &mut (),
-        parameters: &Self::Parameters,
+        &self,
         item: &Self::Item,
         witness: &Self::Witness,
         output: &Self::Output,
+        compiler: &mut (),
     ) -> Self::Verification {
         let _ = compiler;
-        parameters.verify_path(witness, output, item)
+        self.verify_path(witness, output, item)
     }
 }
 
@@ -796,10 +788,10 @@ where
 {
     type Item = Leaf<C>;
 
-    type Verifier = Verifier<C>;
+    type Model = Parameters<C>;
 
     #[inline]
-    fn parameters(&self) -> &accumulator::Parameters<Self> {
+    fn model(&self) -> &Self::Model {
         self.parameters()
     }
 
@@ -809,7 +801,7 @@ where
     }
 
     #[inline]
-    fn prove(&self, item: &Self::Item) -> Option<MembershipProof<Self::Verifier>> {
+    fn prove(&self, item: &Self::Item) -> Option<MembershipProof<Self::Model>> {
         Some(MembershipProof::new(
             self.path(self.position(&self.parameters.digest(item))?)
                 .ok()?,

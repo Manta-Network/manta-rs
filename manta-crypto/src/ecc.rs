@@ -14,20 +14,31 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Cryptographic Primitives Library
+//! Elliptic Curve Cryptography
 
-#![cfg_attr(not(feature = "std"), no_std)]
-#![cfg_attr(doc_cfg, feature(doc_cfg))]
-#![forbid(rustdoc::broken_intra_doc_links)]
-#![forbid(missing_docs)]
+// TODO: Improve ECC abstractions over arkworks.
 
-extern crate alloc;
+///
+pub trait Coordinates<C, J = ()>
+where
+    C: Curve<J>,
+{
+}
 
-pub mod accumulator;
-pub mod commitment;
-pub mod constraint;
-pub mod ecc;
-pub mod encryption;
-pub mod key;
-pub mod merkle_tree;
-pub mod rand;
+/// Elliptic Curve
+pub trait Curve<J = ()> {
+    /// Base Field
+    type BaseField;
+
+    /// Scalar Field
+    type ScalarField;
+}
+
+/// Embedded Elliptic Curve
+pub trait EmbeddedCurve<C, J = ()>: Curve<J, BaseField = C::ScalarField>
+where
+    C: Curve<J>,
+{
+    ///
+    fn lift_scalar(compiler: &mut J, scalar: Self::ScalarField) -> C::ScalarField;
+}
