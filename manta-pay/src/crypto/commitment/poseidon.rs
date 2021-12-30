@@ -223,7 +223,12 @@ pub type Output<S, COM, const ARITY: usize> =
 pub mod arkworks {
     use crate::crypto::constraint::arkworks::{FpVar, R1CS};
     use ark_ff::{Field, PrimeField};
-    use ark_r1cs_std::fields::FieldVar;
+    use ark_r1cs_std::{alloc::AllocVar, fields::FieldVar};
+    use ark_relations::ns;
+    use manta_crypto::constraint::{Allocation, Constant, Variable};
+
+    /// Compiler Type
+    type Compiler<S> = R1CS<<S as Specification>::Field>;
 
     /// Poseidon Permutation Specification
     pub trait Specification {
@@ -274,7 +279,7 @@ pub mod arkworks {
         }
     }
 
-    impl<S> super::Specification<R1CS<S::Field>> for S
+    impl<S> super::Specification<Compiler<S>> for S
     where
         S: Specification,
     {
@@ -285,27 +290,57 @@ pub mod arkworks {
         const PARTIAL_ROUNDS: usize = S::PARTIAL_ROUNDS;
 
         #[inline]
-        fn add(lhs: &Self::Field, rhs: &Self::Field, compiler: &mut R1CS<S::Field>) -> Self::Field {
+        fn add(lhs: &Self::Field, rhs: &Self::Field, compiler: &mut Compiler<S>) -> Self::Field {
             let _ = compiler;
             lhs + rhs
         }
 
         #[inline]
-        fn mul(lhs: &Self::Field, rhs: &Self::Field, compiler: &mut R1CS<S::Field>) -> Self::Field {
+        fn mul(lhs: &Self::Field, rhs: &Self::Field, compiler: &mut Compiler<S>) -> Self::Field {
             let _ = compiler;
             lhs * rhs
         }
 
         #[inline]
-        fn add_assign(lhs: &mut Self::Field, rhs: &Self::Field, compiler: &mut R1CS<S::Field>) {
+        fn add_assign(lhs: &mut Self::Field, rhs: &Self::Field, compiler: &mut Compiler<S>) {
             let _ = compiler;
             *lhs += rhs;
         }
 
         #[inline]
-        fn apply_sbox(point: &mut Self::Field, compiler: &mut R1CS<S::Field>) {
+        fn apply_sbox(point: &mut Self::Field, compiler: &mut Compiler<S>) {
             let _ = compiler;
             *point = point.pow_by_constant(&[Self::SBOX_EXPONENT]).expect("");
+        }
+    }
+
+    impl<S, const ARITY: usize> Variable<Compiler<S>> for super::Commitment<S, Compiler<S>, ARITY>
+    where
+        S: Specification,
+    {
+        type Type = super::Commitment<S, (), ARITY>;
+
+        type Mode = Constant;
+
+        #[inline]
+        fn new(cs: &mut Compiler<S>, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
+            match allocation {
+                Allocation::Known(this, _) => Self {
+                    additive_round_keys: this
+                        .additive_round_keys
+                        .iter()
+                        .map(|k| FpVar::new_constant(ns!(cs.cs, ""), k))
+                        .collect::<Result<Vec<_>, _>>()
+                        .expect("Variable allocation is not allowed to fail."),
+                    mds_matrix: this
+                        .mds_matrix
+                        .iter()
+                        .map(|k| FpVar::new_constant(ns!(cs.cs, ""), k))
+                        .collect::<Result<Vec<_>, _>>()
+                        .expect("Variable allocation is not allowed to fail."),
+                },
+                _ => unreachable!(),
+            }
         }
     }
 }

@@ -18,7 +18,7 @@
 
 // TODO: Describe contract for `Specification`.
 
-use core::{fmt::Debug, hash::Hash, marker::PhantomData};
+use core::{fmt::Debug, hash::Hash};
 use manta_crypto::commitment::CommitmentScheme;
 
 /// Pedersen Commitment Specification
@@ -112,20 +112,33 @@ pub type Output<S, COM, const ARITY: usize> =
 #[cfg(feature = "arkworks")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "arkworks")))]
 pub mod arkworks {
-    use super::*;
+    use crate::crypto::constraint::arkworks::{FpVar, R1CS};
     use ark_ec::ProjectiveCurve;
-    use ark_ff::PrimeField;
+    use ark_ff::{Field, PrimeField};
+    use ark_r1cs_std::{groups::CurveVar, ToBitsGadget};
+    use ark_relations::ns;
+    use core::marker::PhantomData;
+    use manta_crypto::constraint::{Allocation, Constant, Variable};
+    use manta_util::fallible_array_map;
+
+    /// Constraint Field Type
+    type ConstraintField<C> = <<C as ProjectiveCurve>::BaseField as Field>::BasePrimeField;
+
+    /// Compiler Type
+    type Compiler<C> = R1CS<ConstraintField<C>>;
 
     /// Pedersen Commitment Specification
     #[derive(derivative::Derivative)]
     #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-    pub struct Specification<C>(PhantomData<C>)
-    where
-        C: ProjectiveCurve;
-
-    impl<C> super::Specification for Specification<C>
+    pub struct Specification<C, CV>(PhantomData<(C, CV)>)
     where
         C: ProjectiveCurve,
+        CV: CurveVar<C, ConstraintField<C>>;
+
+    impl<C, CV> super::Specification for Specification<C, CV>
+    where
+        C: ProjectiveCurve,
+        CV: CurveVar<C, ConstraintField<C>>,
     {
         type Group = C;
 
@@ -139,6 +152,68 @@ pub mod arkworks {
         #[inline]
         fn scalar_mul(point: &Self::Group, scalar: &Self::Scalar, _: &mut ()) -> Self::Group {
             point.mul(scalar.into_repr())
+        }
+    }
+
+    impl<C, CV> super::Specification<Compiler<C>> for Specification<C, CV>
+    where
+        C: ProjectiveCurve,
+        CV: CurveVar<C, ConstraintField<C>>,
+    {
+        type Group = CV;
+
+        type Scalar = FpVar<ConstraintField<C>>;
+
+        #[inline]
+        fn add(lhs: Self::Group, rhs: Self::Group, compiler: &mut Compiler<C>) -> Self::Group {
+            let _ = compiler;
+            lhs + rhs
+        }
+
+        #[inline]
+        fn scalar_mul(
+            point: &Self::Group,
+            scalar: &Self::Scalar,
+            compiler: &mut Compiler<C>,
+        ) -> Self::Group {
+            let _ = compiler;
+            point
+                .scalar_mul_le(
+                    scalar
+                        .to_bits_le()
+                        .expect("Bit decomposition is not allowed to fail.")
+                        .iter(),
+                )
+                .expect("Scalar multiplication is not allowed to fail.")
+        }
+    }
+
+    impl<C, CV, const ARITY: usize> Variable<Compiler<C>>
+        for super::Commitment<Specification<C, CV>, Compiler<C>, ARITY>
+    where
+        C: ProjectiveCurve,
+        CV: CurveVar<C, ConstraintField<C>>,
+    {
+        type Type = super::Commitment<Specification<C, CV>, (), ARITY>;
+
+        type Mode = Constant;
+
+        #[inline]
+        fn new(cs: &mut Compiler<C>, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
+            match allocation {
+                Allocation::Known(this, _) => Self {
+                    trapdoor_generator: CV::new_constant(
+                        ns!(cs.cs, "group element"),
+                        this.trapdoor_generator,
+                    )
+                    .expect("Variable allocation is not allowed to fail."),
+                    input_generators: fallible_array_map(this.input_generators, |g| {
+                        CV::new_constant(ns!(cs.cs, "group element"), g)
+                    })
+                    .expect("Variable allocation is not allowed to fail."),
+                },
+                _ => unreachable!(),
+            }
         }
     }
 }

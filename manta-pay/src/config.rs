@@ -20,19 +20,22 @@ use crate::crypto::{
     commitment::{pedersen, poseidon},
     constraint::arkworks::{FpVar, Groth16, R1CS},
     encryption::AesGcm,
-    key::{arkworks::EllipticCurveDiffieHellman, Blake2sKdf},
+    key::{elliptic_curve_diffie_hellman, Blake2sKdf},
 };
 use ark_ec::ProjectiveCurve;
 use bls12_381::Bls12_381;
 use bls12_381_ed::{
     constraints::EdwardsVar as Bls12_381_EdwardsVar, EdwardsProjective as Bls12_381_Edwards,
 };
-use manta_accounting::{asset::Asset, transfer};
+use manta_accounting::{
+    asset::{Asset, AssetId, AssetValue},
+    transfer::{self, Utxo, VoidNumber},
+};
 use manta_crypto::{
     accumulator,
     commitment::CommitmentScheme,
-    encryption,
-    key::{KeyAgreementScheme, KeyDerivationFunction},
+    constraint, encryption,
+    key::{self, KeyDerivationFunction},
     merkle_tree,
 };
 
@@ -63,7 +66,8 @@ pub type Compiler = R1CS<ConstraintField>;
 pub type ProofSystem = Groth16<Curve>;
 
 ///
-pub type KeyAgreement = EllipticCurveDiffieHellman<EmbeddedCurve>;
+pub type KeyAgreementSpec =
+    elliptic_curve_diffie_hellman::arkworks::Specification<EmbeddedCurve, EmbeddedCurveVar>;
 
 ///
 pub struct PoseidonSpec<const ARITY: usize>;
@@ -76,7 +80,14 @@ impl poseidon::arkworks::Specification for PoseidonSpec<2> {
 }
 
 ///
-pub type PedersenSpec = pedersen::arkworks::Specification<EmbeddedCurve>;
+pub type PedersenSpec = pedersen::arkworks::Specification<EmbeddedCurve, EmbeddedCurveVar>;
+
+///
+pub type KeyAgreementScheme = elliptic_curve_diffie_hellman::KeyAgreement<KeyAgreementSpec>;
+
+///
+pub type KeyAgreementSchemeVar =
+    elliptic_curve_diffie_hellman::KeyAgreement<KeyAgreementSpec, Compiler>;
 
 ///
 pub struct EphemeralKeyCommitmentScheme(pub poseidon::Commitment<PoseidonSpec<2>, (), 2>);
@@ -182,11 +193,10 @@ impl CommitmentScheme for UtxoCommitmentScheme {
     }
 }
 
-/* TODO:
 ///
 pub struct UtxoCommitmentSchemeVar(pub pedersen::Commitment<PedersenSpec, Compiler, 2>);
 
-impl CommitmentScheme<Compiler> for UtxoCommitmentScheme {
+impl CommitmentScheme<Compiler> for UtxoCommitmentSchemeVar {
     type Trapdoor = pedersen::Trapdoor<PedersenSpec, Compiler, 2>;
     type Input = Asset<FpVar<ConstraintField>, FpVar<ConstraintField>>;
     type Output = pedersen::Output<PedersenSpec, Compiler, 2>;
@@ -198,17 +208,17 @@ impl CommitmentScheme<Compiler> for UtxoCommitmentScheme {
         input: &Self::Input,
         compiler: &mut Compiler,
     ) -> Self::Output {
-        self.0.commit(trapdoor, &[input.id.clone(), input.value.clone()], compiler)
+        self.0
+            .commit(trapdoor, &[input.id.clone(), input.value.clone()], compiler)
     }
 }
-*/
 
 ///
 pub struct VoidNumberCommitmentScheme(pub pedersen::Commitment<PedersenSpec, (), 1>);
 
 impl CommitmentScheme for VoidNumberCommitmentScheme {
     type Trapdoor = pedersen::Trapdoor<PedersenSpec, (), 1>;
-    type Input = <KeyAgreement as KeyAgreementScheme>::SecretKey;
+    type Input = <KeyAgreementScheme as key::KeyAgreementScheme>::SecretKey;
     type Output = pedersen::Output<PedersenSpec, (), 1>;
 
     #[inline]
@@ -223,9 +233,25 @@ impl CommitmentScheme for VoidNumberCommitmentScheme {
     }
 }
 
-/*
-impl CommitmentScheme<Compiler> for VoidNumberCommitmentSchemeVar {}
-*/
+///
+pub struct VoidNumberCommitmentSchemeVar(pub pedersen::Commitment<PedersenSpec, Compiler, 1>);
+
+impl CommitmentScheme<Compiler> for VoidNumberCommitmentSchemeVar {
+    type Trapdoor = pedersen::Trapdoor<PedersenSpec, Compiler, 1>;
+    type Input = <KeyAgreementSchemeVar as key::KeyAgreementScheme<Compiler>>::SecretKey;
+    type Output = pedersen::Output<PedersenSpec, Compiler, 1>;
+
+    #[inline]
+    fn commit(
+        &self,
+        trapdoor: &Self::Trapdoor,
+        input: &Self::Input,
+        compiler: &mut Compiler,
+    ) -> Self::Output {
+        self.0
+            .commit(trapdoor, core::array::from_ref(input), compiler)
+    }
+}
 
 /// Configuration Structure
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -233,103 +259,93 @@ pub struct Config;
 
 /*
 impl transfer::Configuration for Config {
-    type SecretKey = <Self::KeyAgreementScheme as KeyAgreementScheme>::SecretKey;
-    type SecretKeyVar = <Self::KeyAgreementScheme as KeyAgreementScheme<Self::Compiler>>::SecretKey;
-    type PublicKey = <Self::KeyAgreementScheme as KeyAgreementScheme>::PublicKey;
-    type PublicKeyVar = <Self::KeyAgreementScheme as KeyAgreementScheme<Self::Compiler>>::PublicKey;
-    type KeyAgreementScheme = KeyAgreement;
+    /* TODO:
+    type SecretKey = <Self::KeyAgreementScheme as key::KeyAgreementScheme>::SecretKey;
+    type PublicKey = <Self::KeyAgreementScheme as key::KeyAgreementScheme>::PublicKey;
+    type KeyAgreementScheme = KeyAgreementScheme;
+    type SecretKeyVar =
+        <Self::KeyAgreementSchemeVar as key::KeyAgreementScheme<Self::Compiler>>::SecretKey;
+    type PublicKeyVar =
+        <Self::KeyAgreementSchemeVar as key::KeyAgreementScheme<Self::Compiler>>::PublicKey;
+    type KeyAgreementSchemeVar = KeyAgreementSchemeVar;
+    */
 
+    /*
     type EphemeralKeyTrapdoor = <Self::EphemeralKeyCommitmentScheme as CommitmentScheme>::Trapdoor;
-    type EphemeralKeyTrapdoorVar =
-        <Self::EphemeralKeyCommitmentScheme as CommitmentScheme<Self::Compiler>>::Trapdoor;
-    type EphemeralKeyParametersVar =
-        <Self::EphemeralKeyCommitmentScheme as CommitmentScheme<Self::Compiler>>::Parameters;
     type EphemeralKeyCommitmentScheme = EphemeralKeyCommitmentScheme;
+    type EphemeralKeyTrapdoorVar =
+        <Self::EphemeralKeyCommitmentSchemeVar as CommitmentScheme<Self::Compiler>>::Trapdoor;
+    type EphemeralKeyCommitmentSchemeVar = EphemeralKeyCommitmentSchemeVar;
+    */
 
     type TrapdoorDerivationFunction = TrapdoorDerivationFunction;
+    type TrapdoorDerivationFunctionVar = TrapdoorDerivationFunctionVar;
 
-    type UtxoCommitmentParametersVar =
-        <Self::UtxoCommitmentScheme as CommitmentScheme<Self::Compiler>>::Parameters;
     type Utxo = <Self::UtxoCommitmentScheme as CommitmentScheme>::Output;
     type UtxoCommitmentScheme = UtxoCommitmentScheme;
+    type UtxoVar = <Self::UtxoCommitmentSchemeVar as CommitmentScheme<Self::Compiler>>::Output;
+    type UtxoCommitmentSchemeVar = UtxoCommitmentSchemeVar;
 
-    type VoidNumberCommitmentParametersVar =
-        <Self::VoidNumberCommitmentScheme as CommitmentScheme<Self::Compiler>>::Parameters;
     type VoidNumber = <Self::VoidNumberCommitmentScheme as CommitmentScheme>::Output;
     type VoidNumberCommitmentScheme = VoidNumberCommitmentScheme;
+    type VoidNumberVar =
+        <Self::VoidNumberCommitmentSchemeVar as CommitmentScheme<Self::Compiler>>::Output;
+    type VoidNumberCommitmentSchemeVar = VoidNumberCommitmentSchemeVar;
 
-    type UtxoSetParametersVar =
-        <Self::UtxoSetVerifier as accumulator::Verifier<Self::Compiler>>::Parameters;
-    type UtxoSetWitnessVar =
-        <Self::UtxoSetVerifier as accumulator::Verifier<Self::Compiler>>::Witness;
-    type UtxoSetOutputVar =
-        <Self::UtxoSetVerifier as accumulator::Verifier<Self::Compiler>>::Output;
-    type UtxoSetVerifier = UtxoSetVerifier;
+    /* TODO:
+    type UtxoSetModel = merkle_tree::Parameters<()>;
+    type UtxoSetWitnessVar = <Self::UtxoSetModelVar as accumulator::Model<Self::Compiler>>::Witness;
+    type UtxoSetOutputVar = <Self::UtxoSetModelVar as accumulator::Model<Self::Compiler>>::Output;
+    type UtxoSetModelVar = ();
+    */
 
-    type AssetIdVar = FpVar<ConstraintField>;
-    type AssetValueVar = FpVar<ConstraintField>;
+    type AssetIdVar = ConstraintFieldVar;
+    type AssetValueVar = ConstraintFieldVar;
 
     type Compiler = Compiler;
     type ProofSystem = ProofSystem;
 
+    /* TODO:
+    type NoteEncryptionKeyDerivationFunction =
+        Blake2sKdf<<Self::KeyAgreementScheme as key::KeyAgreementScheme>::SharedSecret>;
+
     type NoteEncryptionScheme = encryption::Hybrid<
         Self::KeyAgreementScheme,
         AesGcm<Asset, { Asset::SIZE }>,
-        Blake2sKdf<<Self::KeyAgreementScheme as KeyAgreementScheme>::SharedSecret>,
+        Self::NoteEncryptionKeyDerivationFunction,
     >;
+    */
 }
 */
 
-/* TODO:
-impl<E> Input<AssetId> for Groth16<E>
-where
-    E: PairingEngine,
-{
+impl constraint::Input<AssetId> for ProofSystem {
     #[inline]
     fn extend(input: &mut Self::Input, next: &AssetId) {
         input.push(next.0.into());
-        input.append(&mut next.into_bytes().to_field_elements().unwrap());
     }
 }
 
-impl<E> Input<AssetValue> for Groth16<E>
-where
-    E: PairingEngine,
-{
+impl constraint::Input<AssetValue> for ProofSystem {
     #[inline]
     fn extend(input: &mut Self::Input, next: &AssetValue) {
         input.push(next.0.into());
-        input.append(&mut next.into_bytes().to_field_elements().unwrap());
     }
 }
 
-impl<E> Input<VoidNumber> for Groth16<E>
-where
-    E: PairingEngine,
-{
+impl constraint::Input<EmbeddedCurve> for ProofSystem {
     #[inline]
-    fn extend(input: &mut Self::Input, next: &VoidNumber) {
-        next.extend_input(input);
+    fn extend(input: &mut Self::Input, next: &EmbeddedCurve) {
+        // TODO: next.extend_input(input);
+        todo!()
     }
 }
 
-impl<E> Input<Root> for Groth16<E>
-where
-    E: PairingEngine<Fr = ark_ff::Fp256<ark_bls12_381::FrParameters>>,
+/* TODO:
+impl constraint::Input<Root> for ProofSystem
 {
     #[inline]
     fn extend(input: &mut Self::Input, next: &Root) {
         root_extend_input(next, input);
-    }
-}
-
-impl<E> Input<Utxo> for Groth16<E>
-where
-    E: PairingEngine,
-{
-    #[inline]
-    fn extend(input: &mut Self::Input, next: &Utxo) {
-        next.extend_input(input);
     }
 }
 */
