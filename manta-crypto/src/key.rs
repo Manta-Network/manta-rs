@@ -16,16 +16,45 @@
 
 //! Cryptographic Key Primitives
 
+use core::marker::PhantomData;
+
 /// Key Derivation Function
-pub trait KeyDerivationFunction<COM = ()> {
+pub trait KeyDerivationFunction {
     /// Input Key Type
-    type Key;
+    type Key: ?Sized;
 
     /// Output Key Type
     type Output;
 
     /// Derives an output key from `secret` computed from a cryptographic agreement scheme.
-    fn derive(&self, secret: Self::Key, compiler: &mut COM) -> Self::Output;
+    fn derive(secret: &Self::Key) -> Self::Output;
+}
+
+/// Key-Bytes Derivation Function
+#[derive(derivative::Derivative)]
+#[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct KeyBytesDerivationFunction<T, F>
+where
+    T: AsRef<[u8]>,
+    F: KeyDerivationFunction<Key = [u8]>,
+{
+    /// Type Parameter Marker
+    __: PhantomData<(T, F)>,
+}
+
+impl<T, F> KeyDerivationFunction for KeyBytesDerivationFunction<T, F>
+where
+    T: AsRef<[u8]>,
+    F: KeyDerivationFunction<Key = [u8]>,
+{
+    type Key = T;
+
+    type Output = F::Output;
+
+    #[inline]
+    fn derive(secret: &Self::Key) -> Self::Output {
+        F::derive(secret.as_ref())
+    }
 }
 
 /// Key Agreement Scheme

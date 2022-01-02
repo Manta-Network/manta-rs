@@ -17,37 +17,27 @@
 //! Encryption Implementations
 
 // FIXME: Don't use raw bytes as encryption/decryption key.
-// FIXME: Make sure secret keys are protected.
 
 use aes_gcm::{
     aead::{Aead, NewAead},
     Aes256Gcm, Nonce,
 };
-use core::marker::PhantomData;
 use generic_array::GenericArray;
 use manta_crypto::encryption::SymmetricKeyEncryptionScheme;
 use manta_util::into_array_unchecked;
 
 /// AES Galois Counter Mode
-pub struct AesGcm<T, const SIZE: usize>(PhantomData<T>)
-where
-    T: Into<[u8; SIZE]> + From<[u8; SIZE]>;
+pub struct AesGcm<const SIZE: usize>;
 
-impl<T, const SIZE: usize> AesGcm<T, SIZE>
-where
-    T: Into<[u8; SIZE]> + From<[u8; SIZE]>,
-{
+impl<const SIZE: usize> AesGcm<SIZE> {
     /// Encryption/Decryption Nonce
     const NONCE: &'static [u8] = b"manta rocks!";
 }
 
-impl<T, const SIZE: usize> SymmetricKeyEncryptionScheme for AesGcm<T, SIZE>
-where
-    T: Into<[u8; SIZE]> + From<[u8; SIZE]>,
-{
+impl<const SIZE: usize> SymmetricKeyEncryptionScheme for AesGcm<SIZE> {
     type Key = [u8; 32];
 
-    type Plaintext = T;
+    type Plaintext = [u8; SIZE];
 
     type Ciphertext = [u8; SIZE];
 
@@ -56,7 +46,7 @@ where
         // SAFETY: Using a deterministic nonce is ok since we never reuse keys.
         into_array_unchecked(
             Aes256Gcm::new(GenericArray::from_slice(&key))
-                .encrypt(Nonce::from_slice(Self::NONCE), plaintext.into().as_ref())
+                .encrypt(Nonce::from_slice(Self::NONCE), plaintext.as_ref())
                 .expect("Symmetric encryption is not allowed to fail."),
         )
     }
@@ -68,6 +58,5 @@ where
             .decrypt(Nonce::from_slice(Self::NONCE), ciphertext.as_ref())
             .ok()
             .map(into_array_unchecked)
-            .map(Into::into)
     }
 }

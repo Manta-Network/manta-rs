@@ -49,6 +49,43 @@ pub trait SymmetricKeyEncryptionScheme {
     fn decrypt(key: Self::Key, ciphertext: &Self::Ciphertext) -> Option<Self::Plaintext>;
 }
 
+/// Constant-Size Symmetric-Key Encryption Scheme
+#[derive(derivative::Derivative)]
+#[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct ConstantSizeSymmetricKeyEncryption<const SIZE: usize, S, P = [u8; SIZE], C = [u8; SIZE]>
+where
+    S: SymmetricKeyEncryptionScheme<Plaintext = [u8; SIZE], Ciphertext = [u8; SIZE]>,
+    P: Into<[u8; SIZE]> + TryFrom<[u8; SIZE]>,
+    C: AsRef<[u8; SIZE]> + From<[u8; SIZE]>,
+{
+    /// Type Parameter Marker
+    __: PhantomData<(S, P, C)>,
+}
+
+impl<const SIZE: usize, S, P, C> SymmetricKeyEncryptionScheme
+    for ConstantSizeSymmetricKeyEncryption<SIZE, S, P, C>
+where
+    S: SymmetricKeyEncryptionScheme<Plaintext = [u8; SIZE], Ciphertext = [u8; SIZE]>,
+    P: Into<[u8; SIZE]> + TryFrom<[u8; SIZE]>,
+    C: AsRef<[u8; SIZE]> + From<[u8; SIZE]>,
+{
+    type Key = S::Key;
+
+    type Plaintext = P;
+
+    type Ciphertext = C;
+
+    #[inline]
+    fn encrypt(key: Self::Key, plaintext: Self::Plaintext) -> Self::Ciphertext {
+        S::encrypt(key, plaintext.into()).into()
+    }
+
+    #[inline]
+    fn decrypt(key: Self::Key, ciphertext: &Self::Ciphertext) -> Option<Self::Plaintext> {
+        S::decrypt(key, ciphertext.as_ref()).and_then(move |p| p.try_into().ok())
+    }
+}
+
 /// Hybrid Public Key Encryption Scheme
 pub trait HybridPublicKeyEncryptionScheme: SymmetricKeyEncryptionScheme {
     /// Key Agreement Scheme Type
@@ -69,12 +106,11 @@ pub trait HybridPublicKeyEncryptionScheme: SymmetricKeyEncryptionScheme {
     /// [`KeyDerivationFunction::derive`].
     #[inline]
     fn agree_derive(
-        agreement: &Self::KeyAgreementScheme,
-        derivation: &Self::KeyDerivationFunction,
+        parameters: &Self::KeyAgreementScheme,
         secret_key: &SecretKey<Self>,
         public_key: &PublicKey<Self>,
     ) -> Self::Key {
-        derivation.derive(agreement.agree(secret_key, public_key, &mut ()), &mut ())
+        Self::KeyDerivationFunction::derive(&parameters.agree(secret_key, public_key, &mut ()))
     }
 }
 
@@ -161,18 +197,17 @@ where
     /// and an `ephemeral_secret_key`.
     #[inline]
     pub fn new(
-        agreement: &H::KeyAgreementScheme,
-        derivation: &H::KeyDerivationFunction,
+        parameters: &H::KeyAgreementScheme,
         public_key: &PublicKey<H>,
         ephemeral_secret_key: &SecretKey<H>,
         plaintext: H::Plaintext,
     ) -> Self {
         Self {
             ciphertext: H::encrypt(
-                H::agree_derive(agreement, derivation, ephemeral_secret_key, public_key),
+                H::agree_derive(parameters, ephemeral_secret_key, public_key),
                 plaintext,
             ),
-            ephemeral_public_key: agreement.derive(ephemeral_secret_key, &mut ()),
+            ephemeral_public_key: parameters.derive(ephemeral_secret_key, &mut ()),
         }
     }
 
@@ -187,17 +222,11 @@ where
     #[inline]
     pub fn decrypt(
         self,
-        agreement: &H::KeyAgreementScheme,
-        derivation: &H::KeyDerivationFunction,
+        parameters: &H::KeyAgreementScheme,
         secret_key: &SecretKey<H>,
     ) -> Result<DecryptedMessage<H>, Self> {
         match H::decrypt(
-            H::agree_derive(
-                agreement,
-                derivation,
-                secret_key,
-                &self.ephemeral_public_key,
-            ),
+            H::agree_derive(parameters, secret_key, &self.ephemeral_public_key),
             &self.ciphertext,
         ) {
             Some(plaintext) => Ok(DecryptedMessage::new(plaintext, self.ephemeral_public_key)),
@@ -270,12 +299,11 @@ where
     #[inline]
     pub fn decrypt(
         &mut self,
-        agreement: &H::KeyAgreementScheme,
-        derivation: &H::KeyDerivationFunction,
+        parameters: &H::KeyAgreementScheme,
         secret_key: &SecretKey<H>,
     ) -> Option<DecryptedMessage<H>> {
         if let Some(message) = self.encrypted_message.take() {
-            match message.decrypt(agreement, derivation, secret_key) {
+            match message.decrypt(parameters, secret_key) {
                 Ok(decrypted_message) => return Some(decrypted_message),
                 Err(message) => self.encrypted_message = Some(message),
             }

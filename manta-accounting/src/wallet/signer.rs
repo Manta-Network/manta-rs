@@ -340,7 +340,7 @@ where
                 },
         }) = self
             .account()
-            .find_index(|k| finder.decrypt(&self.parameters.key_agreement, &Default::default(), k))
+            .find_index(|k| finder.decrypt(&self.parameters.key_agreement, k))
             .map_err(key::Error::KeyDerivationError)?
         {
             if let Some(void_number) = C::check_full_asset(

@@ -14,56 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Elliptic Curve Diffie Hellman
-
-use manta_crypto::key::KeyAgreementScheme;
-
-/// Elliptic Curve Diffie Hellman Specification
-pub trait Specification<COM = ()> {
-    /// Group Type
-    type Group;
-
-    /// Scalar Type
-    type Scalar;
-
-    /// Multiplies `point` by `scalar`.
-    fn scalar_mul(point: &Self::Group, scalar: &Self::Scalar, compiler: &mut COM) -> Self::Group;
-}
-
-/// Key Agreement Protocol
-pub struct KeyAgreement<S, COM = ()>
-where
-    S: Specification<COM>,
-{
-    /// Base Generator
-    pub generator: S::Group,
-}
-
-impl<S, COM> KeyAgreementScheme<COM> for KeyAgreement<S, COM>
-where
-    S: Specification<COM>,
-{
-    type SecretKey = S::Scalar;
-
-    type PublicKey = S::Group;
-
-    type SharedSecret = S::Group;
-
-    #[inline]
-    fn derive(&self, secret_key: &Self::SecretKey, compiler: &mut COM) -> Self::PublicKey {
-        S::scalar_mul(&self.generator, secret_key, compiler)
-    }
-
-    #[inline]
-    fn agree(
-        &self,
-        secret_key: &Self::SecretKey,
-        public_key: &Self::PublicKey,
-        compiler: &mut COM,
-    ) -> Self::SharedSecret {
-        S::scalar_mul(public_key, secret_key, compiler)
-    }
-}
+//! Elliptic Curve Primitives
 
 /// Arkworks Backend
 #[cfg(feature = "arkworks")]
@@ -83,6 +34,7 @@ pub mod arkworks {
     /// Compiler Type
     type Compiler<C> = R1CS<ConstraintField<C>>;
 
+    /*
     /// Specification
     pub struct Specification<C, CV>(PhantomData<(C, CV)>)
     where
@@ -156,4 +108,5 @@ pub mod arkworks {
             }
         }
     }
+    */
 }

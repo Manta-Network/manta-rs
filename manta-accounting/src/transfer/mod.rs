@@ -27,7 +27,8 @@ use manta_crypto::{
         ProofSystem, Public, PublicOrSecret, Secret, Variable, VariableSource,
     },
     encryption::{DecryptedMessage, EncryptedMessage, HybridPublicKeyEncryptionScheme},
-    key::{KeyAgreementScheme, KeyDerivationFunction},
+    hash::{HashFunction, Input as HashFunctionInput},
+    key::KeyAgreementScheme,
     rand::{CryptoRng, RngCore, Sample},
 };
 use manta_util::from_variant_impl;
@@ -50,7 +51,7 @@ pub const fn has_public_participants(
 /// Transfer Configuration
 pub trait Configuration {
     /// Secret Key Type
-    type SecretKey: Clone;
+    type SecretKey: Clone + Sample;
 
     /// Public Key Type
     type PublicKey: Clone;
@@ -68,72 +69,46 @@ pub trait Configuration {
     type PublicKeyVar: Variable<Self::Compiler, Type = PublicKey<Self>, Mode = Public>
         + Equal<Self::Compiler>;
 
-    ///
+    /// Key Agreement Scheme Variable Type
     type KeyAgreementSchemeVar: KeyAgreementScheme<
             Self::Compiler,
             SecretKey = Self::SecretKeyVar,
             PublicKey = Self::PublicKeyVar,
         > + Variable<Self::Compiler, Type = Self::KeyAgreementScheme, Mode = Constant>;
 
-    /// Ephemeral Key Trapdoor Type
-    type EphemeralKeyTrapdoor: Sample;
-
-    /// Ephemeral Key Commitment Scheme Type
-    type EphemeralKeyCommitmentScheme: CommitmentScheme<
-        Trapdoor = Self::EphemeralKeyTrapdoor,
-        Input = Asset,
-        Output = Self::SecretKey,
-    >;
-
-    /// Ephemeral Key Trapdoor Variable Type
-    type EphemeralKeyTrapdoorVar: Variable<
-        Self::Compiler,
-        Type = Self::EphemeralKeyTrapdoor,
-        Mode = Secret,
-    >;
-
-    ///
-    type EphemeralKeyCommitmentSchemeVar: CommitmentScheme<
-            Self::Compiler,
-            Trapdoor = Self::EphemeralKeyTrapdoorVar,
-            Input = AssetVar<Self>,
-            Output = Self::SecretKeyVar,
-        > + Variable<Self::Compiler, Type = Self::EphemeralKeyCommitmentScheme, Mode = Constant>;
-
-    /// Trapdoor Derivation Function Type
-    type TrapdoorDerivationFunction: KeyDerivationFunction<
-        Key = SharedSecret<Self>,
-        Output = Trapdoor<Self>,
-    >;
-
-    ///
-    type TrapdoorDerivationFunctionVar: KeyDerivationFunction<
-            Self::Compiler,
-            Key = SharedSecretVar<Self>,
-            Output = TrapdoorVar<Self>,
-        > + Variable<Self::Compiler, Type = Self::TrapdoorDerivationFunction, Mode = Constant>;
-
     /// Unspent Transaction Output Type
     type Utxo: PartialEq;
 
     /// UTXO Commitment Scheme Type
-    type UtxoCommitmentScheme: CommitmentScheme<Input = Asset, Output = Self::Utxo>;
+    type UtxoCommitmentScheme: CommitmentScheme<
+        Trapdoor = Trapdoor<Self>,
+        Input = Asset,
+        Output = Self::Utxo,
+    >;
 
     /// UTXO Variable Type
     type UtxoVar: Variable<Self::Compiler, Type = Self::Utxo, Mode = PublicOrSecret>
         + Equal<Self::Compiler>;
 
-    ///
-    type UtxoCommitmentSchemeVar: CommitmentScheme<Self::Compiler, Input = AssetVar<Self>, Output = Self::UtxoVar>
-        + Variable<Self::Compiler, Type = Self::UtxoCommitmentScheme, Mode = Constant>;
+    /// UTXO Commitment Scheme Variable Type
+    type UtxoCommitmentSchemeVar: CommitmentScheme<
+            Self::Compiler,
+            Trapdoor = TrapdoorVar<Self>,
+            Input = AssetVar<Self>,
+            Output = Self::UtxoVar,
+        > + Variable<Self::Compiler, Type = Self::UtxoCommitmentScheme, Mode = Constant>;
 
     /// Void Number Type
     type VoidNumber: PartialEq;
 
-    /// Void Number Commitment Scheme Type
-    type VoidNumberCommitmentScheme: CommitmentScheme<
-        Trapdoor = Trapdoor<Self>,
-        Input = Self::SecretKey,
+    /// Void Number Hash Function Input Type
+    type VoidNumberHashFunctionInput: Default
+        + HashFunctionInput<Self::Utxo>
+        + HashFunctionInput<Self::SecretKey>;
+
+    /// Void Number Hash Function Type
+    type VoidNumberHashFunction: HashFunction<
+        Input = Self::VoidNumberHashFunctionInput,
         Output = Self::VoidNumber,
     >;
 
@@ -141,13 +116,17 @@ pub trait Configuration {
     type VoidNumberVar: Variable<Self::Compiler, Type = Self::VoidNumber, Mode = Public>
         + Equal<Self::Compiler>;
 
-    ///
-    type VoidNumberCommitmentSchemeVar: CommitmentScheme<
+    /// Void Number Hash Function Input Variable Type
+    type VoidNumberHashFunctionInputVar: Default
+        + HashFunctionInput<Self::UtxoVar>
+        + HashFunctionInput<Self::SecretKeyVar>;
+
+    /// Void Number Hash Function Variable Type
+    type VoidNumberHashFunctionVar: HashFunction<
             Self::Compiler,
-            Trapdoor = TrapdoorVar<Self>,
-            Input = Self::SecretKeyVar,
+            Input = Self::VoidNumberHashFunctionInputVar,
             Output = Self::VoidNumberVar,
-        > + Variable<Self::Compiler, Type = Self::VoidNumberCommitmentScheme, Mode = Constant>;
+        > + Variable<Self::Compiler, Type = Self::VoidNumberHashFunction, Mode = Constant>;
 
     /// UTXO Set Model Type
     type UtxoSetModel: Model<Item = Self::Utxo, Verification = bool>;
@@ -158,7 +137,7 @@ pub trait Configuration {
     /// UTXO Set Output Variable Type
     type UtxoSetOutputVar: Variable<Self::Compiler, Type = UtxoSetOutput<Self>, Mode = Public>;
 
-    ///
+    /// UTXO Set Model Variable Type
     type UtxoSetModelVar: Model<
             Self::Compiler,
             Item = Self::UtxoVar,
@@ -188,36 +167,11 @@ pub trait Configuration {
         + ProofSystemInput<VoidNumber<Self>>
         + ProofSystemInput<PublicKey<Self>>;
 
-    /// Note Encryption Key Derivation Function
-    type NoteEncryptionKeyDerivationFunction: Default;
-
     /// Note Encryption Scheme Type
     type NoteEncryptionScheme: HybridPublicKeyEncryptionScheme<
         Plaintext = Asset,
         KeyAgreementScheme = Self::KeyAgreementScheme,
-        KeyDerivationFunction = Self::NoteEncryptionKeyDerivationFunction,
     >;
-
-    /// Generates the ephemeral secret key from `parameters`, `trapdoor`, and `asset`.
-    #[inline]
-    fn ephemeral_secret_key(
-        parameters: &Self::EphemeralKeyCommitmentScheme,
-        trapdoor: &EphemeralKeyTrapdoor<Self>,
-        asset: Asset,
-    ) -> SecretKey<Self> {
-        parameters.commit(trapdoor, &asset, &mut ())
-    }
-
-    /// Generates the ephemeral secret key from `parameters`, `trapdoor`, and `asset`.
-    #[inline]
-    fn ephemeral_secret_key_var(
-        parameters: &Self::EphemeralKeyCommitmentSchemeVar,
-        trapdoor: &EphemeralKeyTrapdoorVar<Self>,
-        asset: &AssetVar<Self>,
-        cs: &mut Self::Compiler,
-    ) -> SecretKeyVar<Self> {
-        parameters.commit(trapdoor, asset, cs)
-    }
 
     /// Derives a public key variable from a secret key variable.
     #[inline]
@@ -233,109 +187,75 @@ pub trait Configuration {
     #[inline]
     fn trapdoor(
         key_agreement: &Self::KeyAgreementScheme,
-        trapdoor_derivation_function: &Self::TrapdoorDerivationFunction,
         secret_key: &SecretKey<Self>,
         public_key: &PublicKey<Self>,
     ) -> Trapdoor<Self> {
-        let shared_secret = key_agreement.agree(secret_key, public_key, &mut ());
-        trapdoor_derivation_function.derive(shared_secret, &mut ())
+        key_agreement.agree(secret_key, public_key, &mut ())
     }
 
     /// Generates the commitment trapdoor associated to `secret_key` and `public_key`.
     #[inline]
     fn trapdoor_var(
         key_agreement: &Self::KeyAgreementSchemeVar,
-        trapdoor_derivation_function: &Self::TrapdoorDerivationFunctionVar,
         secret_key: &SecretKeyVar<Self>,
         public_key: &PublicKeyVar<Self>,
         cs: &mut Self::Compiler,
     ) -> TrapdoorVar<Self> {
-        let shared_secret = key_agreement.agree(secret_key, public_key, cs);
-        trapdoor_derivation_function.derive(shared_secret, cs)
-    }
-
-    /// Generates the UTXO associated to `trapdoor` and `asset` from `parameters`.
-    #[inline]
-    fn utxo(
-        parameters: &Self::UtxoCommitmentScheme,
-        trapdoor: &Trapdoor<Self>,
-        asset: &Asset,
-    ) -> Utxo<Self> {
-        parameters.commit(trapdoor, asset, &mut ())
-    }
-
-    /// Generates the UTXO associated to `trapdoor` and `asset` from `parameters`.
-    #[inline]
-    fn utxo_var(
-        parameters: &Self::UtxoCommitmentSchemeVar,
-        trapdoor: &TrapdoorVar<Self>,
-        asset: &AssetVar<Self>,
-        cs: &mut Self::Compiler,
-    ) -> UtxoVar<Self> {
-        parameters.commit(trapdoor, asset, cs)
+        key_agreement.agree(secret_key, public_key, cs)
     }
 
     /// Generates the trapdoor associated to `secret_key` and `public_key` and then uses it to
     /// generate the UTXO associated to `asset`.
     #[inline]
-    fn full_utxo(
+    fn utxo(
         key_agreement: &Self::KeyAgreementScheme,
-        trapdoor_derivation_function: &Self::TrapdoorDerivationFunction,
         utxo_commitment: &Self::UtxoCommitmentScheme,
         secret_key: &SecretKey<Self>,
         public_key: &PublicKey<Self>,
         asset: &Asset,
     ) -> Utxo<Self> {
-        let trapdoor = Self::trapdoor(
-            key_agreement,
-            trapdoor_derivation_function,
-            secret_key,
-            public_key,
-        );
-        Self::utxo(utxo_commitment, &trapdoor, asset)
+        let trapdoor = Self::trapdoor(key_agreement, secret_key, public_key);
+        utxo_commitment.commit(&trapdoor, asset, &mut ())
     }
 
     /// Generates the trapdoor associated to `secret_key` and `public_key` and then uses it to
     /// generate the UTXO associated to `asset`.
     #[inline]
-    fn full_utxo_var(
+    fn utxo_var(
         key_agreement: &Self::KeyAgreementSchemeVar,
-        trapdoor_derivation_function: &Self::TrapdoorDerivationFunctionVar,
         utxo_commitment: &Self::UtxoCommitmentSchemeVar,
         secret_key: &SecretKeyVar<Self>,
         public_key: &PublicKeyVar<Self>,
         asset: &AssetVar<Self>,
         cs: &mut Self::Compiler,
     ) -> UtxoVar<Self> {
-        let trapdoor = Self::trapdoor_var(
-            key_agreement,
-            trapdoor_derivation_function,
-            secret_key,
-            public_key,
-            cs,
-        );
-        Self::utxo_var(utxo_commitment, &trapdoor, asset, cs)
+        let trapdoor = Self::trapdoor_var(key_agreement, secret_key, public_key, cs);
+        utxo_commitment.commit(&trapdoor, asset, cs)
     }
 
-    /// Generates the void number associated to `trapdoor` and `secret_key` using `parameters`.
+    /// Generates the void number associated to `utxo` and `secret_key` using `parameters`.
     #[inline]
     fn void_number(
-        parameters: &Self::VoidNumberCommitmentScheme,
-        trapdoor: &Trapdoor<Self>,
+        parameters: &Self::VoidNumberHashFunction,
+        utxo: &Utxo<Self>,
         secret_key: &SecretKey<Self>,
     ) -> VoidNumber<Self> {
-        parameters.commit(trapdoor, secret_key, &mut ())
+        parameters.start().update(utxo).update(secret_key).hash()
     }
 
-    /// Generates the void number associated to `trapdoor` and `secret_key` using `parameters`.
+    /// Generates the void number associated to `utxo` and `secret_key` using `parameters`.
     #[inline]
     fn void_number_var(
-        parameters: &Self::VoidNumberCommitmentSchemeVar,
-        trapdoor: &TrapdoorVar<Self>,
+        parameters: &Self::VoidNumberHashFunctionVar,
+        utxo: &UtxoVar<Self>,
         secret_key: &SecretKeyVar<Self>,
         cs: &mut Self::Compiler,
     ) -> VoidNumberVar<Self> {
-        parameters.commit(trapdoor, secret_key, cs)
+        parameters
+            .start()
+            .update(utxo)
+            .update(secret_key)
+            .hash_with_compiler(cs)
     }
 
     /// Checks that the `utxo` is correctly constructed from the `secret_key`, `public_key`, and
@@ -348,15 +268,14 @@ pub trait Configuration {
         asset: &Asset,
         utxo: &Utxo<Self>,
     ) -> Option<VoidNumber<Self>> {
-        let trapdoor = Self::trapdoor(
+        (&Self::utxo(
             &parameters.key_agreement,
-            &parameters.trapdoor_derivation_function,
+            &parameters.utxo_commitment,
             secret_key,
             public_key,
-        );
-        (&Self::utxo(&parameters.utxo_commitment, &trapdoor, asset) == utxo).then(move || {
-            Self::void_number(&parameters.void_number_commitment, &trapdoor, secret_key)
-        })
+            asset,
+        ) == utxo)
+            .then(move || Self::void_number(&parameters.void_number_hash, utxo, secret_key))
     }
 }
 
@@ -377,28 +296,13 @@ pub type PublicKey<C> = <<C as Configuration>::KeyAgreementScheme as KeyAgreemen
 pub type PublicKeyVar<C> =
     <<C as Configuration>::KeyAgreementSchemeVar as KeyAgreementScheme<Compiler<C>>>::PublicKey;
 
-/// Shared Secret Type
-pub type SharedSecret<C> =
+///
+pub type Trapdoor<C> =
     <<C as Configuration>::KeyAgreementScheme as KeyAgreementScheme>::SharedSecret;
 
-/// Shared Secret Variable Type
-pub type SharedSecretVar<C> =
-    <<C as Configuration>::KeyAgreementSchemeVar as KeyAgreementScheme<Compiler<C>>>::SharedSecret;
-
-/// Ephemeral Key Trapdoor Type
-pub type EphemeralKeyTrapdoor<C> =
-    <<C as Configuration>::EphemeralKeyCommitmentScheme as CommitmentScheme>::Trapdoor;
-
-/// Ephemeral Key Trapdoor Variable Type
-pub type EphemeralKeyTrapdoorVar<C> =
-    <<C as Configuration>::EphemeralKeyCommitmentSchemeVar as CommitmentScheme<Compiler<C>>>::Trapdoor;
-
-/// Trapdoor Type
-pub type Trapdoor<C> = <<C as Configuration>::UtxoCommitmentScheme as CommitmentScheme>::Trapdoor;
-
-/// Trapdoor Variable Type
+///
 pub type TrapdoorVar<C> =
-    <<C as Configuration>::UtxoCommitmentSchemeVar as CommitmentScheme<Compiler<C>>>::Trapdoor;
+    <<C as Configuration>::KeyAgreementSchemeVar as KeyAgreementScheme<Compiler<C>>>::SharedSecret;
 
 /// Unspend Transaction Output Type
 pub type Utxo<C> = <<C as Configuration>::UtxoCommitmentScheme as CommitmentScheme>::Output;
@@ -406,6 +310,13 @@ pub type Utxo<C> = <<C as Configuration>::UtxoCommitmentScheme as CommitmentSche
 /// Unspent Transaction Output Variable Type
 pub type UtxoVar<C> =
     <<C as Configuration>::UtxoCommitmentSchemeVar as CommitmentScheme<Compiler<C>>>::Output;
+
+/// Void Number Type
+pub type VoidNumber<C> = <<C as Configuration>::VoidNumberHashFunction as HashFunction>::Output;
+
+/// Void Number Variable Type
+pub type VoidNumberVar<C> =
+    <<C as Configuration>::VoidNumberHashFunctionVar as HashFunction<Compiler<C>>>::Output;
 
 /// UTXO Set Witness Type
 pub type UtxoSetWitness<C> = <<C as Configuration>::UtxoSetModel as Model>::Witness;
@@ -419,14 +330,6 @@ pub type UtxoMembershipProof<C> = MembershipProof<<C as Configuration>::UtxoSetM
 /// UTXO Membership Proof Variable Type
 pub type UtxoMembershipProofVar<C> =
     MembershipProof<<C as Configuration>::UtxoSetModelVar, Compiler<C>>;
-
-/// Void Number Type
-pub type VoidNumber<C> =
-    <<C as Configuration>::VoidNumberCommitmentScheme as CommitmentScheme>::Output;
-
-/// Void Number Variable Type
-pub type VoidNumberVar<C> =
-    <<C as Configuration>::VoidNumberCommitmentSchemeVar as CommitmentScheme<Compiler<C>>>::Output;
 
 /// Encrypted Note Type
 pub type EncryptedNote<C> = EncryptedMessage<<C as Configuration>::NoteEncryptionScheme>;
@@ -463,17 +366,11 @@ where
     /// Key Agreement Scheme
     pub key_agreement: C::KeyAgreementScheme,
 
-    /// Ephemeral Key Commitment Scheme
-    pub ephemeral_key_commitment: C::EphemeralKeyCommitmentScheme,
-
-    /// Trapdoor Derivation Function
-    pub trapdoor_derivation_function: C::TrapdoorDerivationFunction,
-
     /// UTXO Commitment Scheme
     pub utxo_commitment: C::UtxoCommitmentScheme,
 
-    /// Void Number Commitment Scheme
-    pub void_number_commitment: C::VoidNumberCommitmentScheme,
+    /// Void Number Hash Function
+    pub void_number_hash: C::VoidNumberHashFunction,
 }
 
 /// Transfer Full Parameters
@@ -510,17 +407,11 @@ where
     /// Key Agreement Scheme
     pub key_agreement: C::KeyAgreementSchemeVar,
 
-    /// Ephemeral Key Commitment Scheme
-    pub ephemeral_key_commitment: C::EphemeralKeyCommitmentSchemeVar,
-
-    /// Trapdoor Derivation Function
-    pub trapdoor_derivation_function: C::TrapdoorDerivationFunctionVar,
-
     /// UTXO Commitment Scheme
     pub utxo_commitment: C::UtxoCommitmentSchemeVar,
 
-    /// Void Number Commitment Scheme
-    pub void_number_commitment: C::VoidNumberCommitmentSchemeVar,
+    /// Void Number Hash Function
+    pub void_number_hash: C::VoidNumberHashFunctionVar,
 
     /// UTXO Set Model
     pub utxo_set_model: C::UtxoSetModelVar,
@@ -543,13 +434,8 @@ where
         match allocation {
             Allocation::Known(this, mode) => Self {
                 key_agreement: this.base.key_agreement.as_known(cs, mode),
-                ephemeral_key_commitment: this.base.ephemeral_key_commitment.as_known(cs, mode),
-                trapdoor_derivation_function: this
-                    .base
-                    .trapdoor_derivation_function
-                    .as_known(cs, mode),
                 utxo_commitment: this.base.utxo_commitment.as_known(cs, mode),
-                void_number_commitment: this.base.void_number_commitment.as_known(cs, mode),
+                void_number_hash: this.base.void_number_hash.as_known(cs, mode),
                 utxo_set_model: this.utxo_set_model.as_known(cs, mode),
                 __: PhantomData,
             },
@@ -595,10 +481,10 @@ where
     #[inline]
     pub fn decrypt(
         &self,
-        key_agreement: &C::KeyAgreementScheme,
+        parameters: &C::KeyAgreementScheme,
         encrypted_note: EncryptedNote<C>,
     ) -> Result<Note<C>, EncryptedNote<C>> {
-        encrypted_note.decrypt(key_agreement, &Default::default(), &self.view)
+        encrypted_note.decrypt(parameters, &self.view)
     }
 
     /// Validates the `utxo` against `self` and the given `ephemeral_key` and `asset`, returning
@@ -631,14 +517,11 @@ where
     pub fn receiver(
         &self,
         parameters: &Parameters<C>,
-        ephemeral_key_trapdoor: EphemeralKeyTrapdoor<C>,
+        ephemeral_key: SecretKey<C>,
         asset: Asset,
     ) -> Receiver<C> {
-        self.derive(&parameters.key_agreement).into_receiver(
-            parameters,
-            ephemeral_key_trapdoor,
-            asset,
-        )
+        self.derive(&parameters.key_agreement)
+            .into_receiver(parameters, ephemeral_key, asset)
     }
 
     /// Returns an receiver-sender pair for internal transactions.
@@ -646,10 +529,10 @@ where
     pub fn internal_pair(
         &self,
         parameters: &Parameters<C>,
-        ephemeral_key_trapdoor: EphemeralKeyTrapdoor<C>,
+        ephemeral_key: SecretKey<C>,
         asset: Asset,
     ) -> (Receiver<C>, PreSender<C>) {
-        let receiver = self.receiver(parameters, ephemeral_key_trapdoor, asset);
+        let receiver = self.receiver(parameters, ephemeral_key, asset);
         let sender = self.sender(parameters, receiver.ephemeral_public_key().clone(), asset);
         (receiver, sender)
     }
@@ -659,10 +542,10 @@ where
     pub fn internal_zero_pair(
         &self,
         parameters: &Parameters<C>,
-        ephemeral_key_trapdoor: EphemeralKeyTrapdoor<C>,
+        ephemeral_key: SecretKey<C>,
         asset_id: AssetId,
     ) -> (Receiver<C>, PreSender<C>) {
-        self.internal_pair(parameters, ephemeral_key_trapdoor, Asset::zero(asset_id))
+        self.internal_pair(parameters, ephemeral_key, Asset::zero(asset_id))
     }
 }
 
@@ -696,16 +579,10 @@ where
     pub fn into_receiver(
         self,
         parameters: &Parameters<C>,
-        ephemeral_key_trapdoor: EphemeralKeyTrapdoor<C>,
+        ephemeral_key: SecretKey<C>,
         asset: Asset,
     ) -> Receiver<C> {
-        Receiver::new(
-            parameters,
-            ephemeral_key_trapdoor,
-            self.spend,
-            self.view,
-            asset,
-        )
+        Receiver::new(parameters, ephemeral_key, self.spend, self.view, asset)
     }
 }
 
@@ -742,18 +619,19 @@ where
         ephemeral_public_key: PublicKey<C>,
         asset: Asset,
     ) -> Self {
-        let trapdoor = C::trapdoor(
+        let utxo = C::utxo(
             &parameters.key_agreement,
-            &parameters.trapdoor_derivation_function,
+            &parameters.utxo_commitment,
             &spend,
             &ephemeral_public_key,
+            &asset,
         );
         Self {
-            utxo: C::utxo(&parameters.utxo_commitment, &trapdoor, &asset),
-            void_number: C::void_number(&parameters.void_number_commitment, &trapdoor, &spend),
+            void_number: C::void_number(&parameters.void_number_hash, &utxo, &spend),
             spend,
             ephemeral_public_key,
             asset,
+            utxo,
         }
     }
 
@@ -917,24 +795,19 @@ where
         parameters: &FullParametersVar<C>,
         cs: &mut C::Compiler,
     ) -> AssetVar<C> {
-        let trapdoor = C::trapdoor_var(
+        let utxo = C::utxo_var(
             &parameters.key_agreement,
-            &parameters.trapdoor_derivation_function,
+            &parameters.utxo_commitment,
             &self.spend,
             &self.ephemeral_public_key,
+            &self.asset,
             cs,
         );
-        let utxo = C::utxo_var(&parameters.utxo_commitment, &trapdoor, &self.asset, cs);
         let is_valid_proof =
             self.utxo_membership_proof
                 .verify_with_compiler(&parameters.utxo_set_model, &utxo, cs);
         cs.assert(is_valid_proof);
-        let void_number = C::void_number_var(
-            &parameters.void_number_commitment,
-            &trapdoor,
-            &self.spend,
-            cs,
-        );
+        let void_number = C::void_number_var(&parameters.void_number_hash, &utxo, &self.spend, cs);
         cs.assert_eq(&self.void_number, &void_number);
         self.asset
     }
@@ -1116,8 +989,8 @@ pub struct Receiver<C>
 where
     C: Configuration,
 {
-    /// Ephemeral Secret Spend Key Trapdoor
-    ephemeral_key_trapdoor: EphemeralKeyTrapdoor<C>,
+    /// Ephemeral Secret Spend Key
+    ephemeral_secret_key: SecretKey<C>,
 
     /// Public Spend Key
     spend: PublicKey<C>,
@@ -1140,20 +1013,14 @@ where
     #[inline]
     pub fn new(
         parameters: &Parameters<C>,
-        ephemeral_key_trapdoor: EphemeralKeyTrapdoor<C>,
+        ephemeral_secret_key: SecretKey<C>,
         spend: PublicKey<C>,
         view: PublicKey<C>,
         asset: Asset,
     ) -> Self {
-        let ephemeral_secret_key = C::ephemeral_secret_key(
-            &parameters.ephemeral_key_commitment,
-            &ephemeral_key_trapdoor,
-            asset,
-        );
         Self {
-            utxo: C::full_utxo(
+            utxo: C::utxo(
                 &parameters.key_agreement,
-                &parameters.trapdoor_derivation_function,
                 &parameters.utxo_commitment,
                 &ephemeral_secret_key,
                 &spend,
@@ -1161,12 +1028,11 @@ where
             ),
             note: EncryptedMessage::new(
                 &parameters.key_agreement,
-                &Default::default(),
                 &view,
                 &ephemeral_secret_key,
                 asset,
             ),
-            ephemeral_key_trapdoor,
+            ephemeral_secret_key,
             spend,
             asset,
         }
@@ -1193,8 +1059,8 @@ pub struct ReceiverVar<C>
 where
     C: Configuration,
 {
-    /// Ephemeral Secret Spend Key Trapdoor
-    ephemeral_key_trapdoor: EphemeralKeyTrapdoorVar<C>,
+    /// Ephemeral Secret Spend Key
+    ephemeral_secret_key: SecretKeyVar<C>,
 
     /// Ephemeral Public Spend Key
     ephemeral_public_key: PublicKeyVar<C>,
@@ -1221,20 +1087,13 @@ where
         parameters: &FullParametersVar<C>,
         cs: &mut C::Compiler,
     ) -> AssetVar<C> {
-        let ephemeral_secret_key = C::ephemeral_secret_key_var(
-            &parameters.ephemeral_key_commitment,
-            &self.ephemeral_key_trapdoor,
-            &self.asset,
-            cs,
-        );
         let ephemeral_public_key =
-            C::ephemeral_public_key_var(&parameters.key_agreement, &ephemeral_secret_key, cs);
+            C::ephemeral_public_key_var(&parameters.key_agreement, &self.ephemeral_secret_key, cs);
         cs.assert_eq(&self.ephemeral_public_key, &ephemeral_public_key);
-        let utxo = C::full_utxo_var(
+        let utxo = C::utxo_var(
             &parameters.key_agreement,
-            &parameters.trapdoor_derivation_function,
             &parameters.utxo_commitment,
-            &ephemeral_secret_key,
+            &self.ephemeral_secret_key,
             &self.spend,
             &self.asset,
             cs,
@@ -1256,14 +1115,14 @@ where
     fn new(cs: &mut C::Compiler, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
         match allocation {
             Allocation::Known(this, mode) => Self {
-                ephemeral_key_trapdoor: this.ephemeral_key_trapdoor.as_known(cs, mode),
+                ephemeral_secret_key: this.ephemeral_secret_key.as_known(cs, mode),
                 ephemeral_public_key: this.ephemeral_public_key().as_known(cs, mode),
                 spend: this.spend.as_known(cs, mode),
                 asset: this.asset.as_known(cs, mode),
                 utxo: this.utxo.as_known(cs, Public),
             },
             Allocation::Unknown(mode) => Self {
-                ephemeral_key_trapdoor: EphemeralKeyTrapdoorVar::<C>::new_unknown(cs, mode),
+                ephemeral_secret_key: SecretKeyVar::<C>::new_unknown(cs, mode),
                 ephemeral_public_key: PublicKeyVar::<C>::new_unknown(cs, mode),
                 spend: PublicKeyVar::<C>::new_unknown(cs, mode),
                 asset: AssetVar::<C>::new_unknown(cs, mode),

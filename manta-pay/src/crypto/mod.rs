@@ -18,6 +18,7 @@
 
 pub mod commitment;
 pub mod constraint;
+pub mod ecc;
 pub mod encryption;
 pub mod key;
 // TODO: pub mod merkle_tree;

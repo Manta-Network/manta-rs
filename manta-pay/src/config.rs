@@ -146,6 +146,7 @@ impl KeyDerivationFunction for TrapdoorDerivationFunction {
 
     #[inline]
     fn derive(&self, secret: Self::Key, compiler: &mut ()) -> Self::Output {
+        // FIXME: We need to truncate the field element to get it to fit into an embedded scalar.
         let affine = <Self::Key as ProjectiveCurve>::Affine::from(secret);
         self.0
             .commit(&Default::default(), &[affine.x, affine.y], compiler)
@@ -162,6 +163,7 @@ impl KeyDerivationFunction<Compiler> for TrapdoorDerivationFunctionVar {
 
     #[inline]
     fn derive(&self, secret: Self::Key, compiler: &mut Compiler) -> Self::Output {
+        // FIXME: We need to truncate the field element to get it to fit into an embedded scalar.
         /* TODO:
         self.0
             .commit(&Default::default(), &[secret.x, secret.y], compiler)

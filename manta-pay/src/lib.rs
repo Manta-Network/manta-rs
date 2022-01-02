@@ -28,6 +28,8 @@ pub mod key;
 
 // TODO[remove]: pub mod accounting;
 
+/* TODO:
 #[cfg(all(feature = "arkworks", feature = "groth16"))]
 #[cfg_attr(doc_cfg, doc(cfg(all(feature = "arkworks", feature = "groth16"))))]
 pub mod config;
+*/

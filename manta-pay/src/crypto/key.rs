@@ -17,32 +17,23 @@
 //! Cryptographic Key Primitive Implementations
 
 use blake2::{Blake2s, Digest};
-use core::marker::PhantomData;
 use manta_crypto::key::KeyDerivationFunction;
 use manta_util::into_array_unchecked;
-
-pub mod elliptic_curve_diffie_hellman;
 
 /// Blake2s KDF
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct Blake2sKdf<T>(PhantomData<T>)
-where
-    T: AsRef<[u8]>;
+pub struct Blake2sKdf;
 
-impl<T> KeyDerivationFunction for Blake2sKdf<T>
-where
-    T: AsRef<[u8]>,
-{
-    type Key = T;
+impl KeyDerivationFunction for Blake2sKdf {
+    type Key = [u8];
 
     type Output = [u8; 32];
 
     #[inline]
-    fn derive(&self, secret: Self::Key, compiler: &mut ()) -> Self::Output {
-        let _ = compiler;
+    fn derive(secret: &Self::Key) -> Self::Output {
         let mut hasher = Blake2s::new();
-        hasher.update(secret.as_ref());
+        hasher.update(secret);
         hasher.update(b"manta kdf instantiated with blake2s hash function");
         into_array_unchecked(hasher.finalize())
     }
