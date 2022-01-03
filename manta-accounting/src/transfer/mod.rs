@@ -27,7 +27,7 @@ use manta_crypto::{
         ProofSystem, Public, PublicOrSecret, Secret, Variable, VariableSource,
     },
     encryption::{DecryptedMessage, EncryptedMessage, HybridPublicKeyEncryptionScheme},
-    hash::{HashFunction, Input as HashFunctionInput},
+    hash::BinaryHashFunction,
     key::KeyAgreementScheme,
     rand::{CryptoRng, RngCore, Sample},
 };
@@ -101,14 +101,10 @@ pub trait Configuration {
     /// Void Number Type
     type VoidNumber: PartialEq;
 
-    /// Void Number Hash Function Input Type
-    type VoidNumberHashFunctionInput: Default
-        + HashFunctionInput<Self::Utxo>
-        + HashFunctionInput<Self::SecretKey>;
-
     /// Void Number Hash Function Type
-    type VoidNumberHashFunction: HashFunction<
-        Input = Self::VoidNumberHashFunctionInput,
+    type VoidNumberHashFunction: BinaryHashFunction<
+        Left = Self::Utxo,
+        Right = Self::SecretKey,
         Output = Self::VoidNumber,
     >;
 
@@ -116,15 +112,11 @@ pub trait Configuration {
     type VoidNumberVar: Variable<Self::Compiler, Type = Self::VoidNumber, Mode = Public>
         + Equal<Self::Compiler>;
 
-    /// Void Number Hash Function Input Variable Type
-    type VoidNumberHashFunctionInputVar: Default
-        + HashFunctionInput<Self::UtxoVar>
-        + HashFunctionInput<Self::SecretKeyVar>;
-
     /// Void Number Hash Function Variable Type
-    type VoidNumberHashFunctionVar: HashFunction<
+    type VoidNumberHashFunctionVar: BinaryHashFunction<
             Self::Compiler,
-            Input = Self::VoidNumberHashFunctionInputVar,
+            Left = Self::UtxoVar,
+            Right = Self::SecretKeyVar,
             Output = Self::VoidNumberVar,
         > + Variable<Self::Compiler, Type = Self::VoidNumberHashFunction, Mode = Constant>;
 
@@ -240,7 +232,7 @@ pub trait Configuration {
         utxo: &Utxo<Self>,
         secret_key: &SecretKey<Self>,
     ) -> VoidNumber<Self> {
-        parameters.start().update(utxo).update(secret_key).hash()
+        parameters.hash(utxo, secret_key, &mut ())
     }
 
     /// Generates the void number associated to `utxo` and `secret_key` using `parameters`.
@@ -251,11 +243,7 @@ pub trait Configuration {
         secret_key: &SecretKeyVar<Self>,
         cs: &mut Self::Compiler,
     ) -> VoidNumberVar<Self> {
-        parameters
-            .start()
-            .update(utxo)
-            .update(secret_key)
-            .hash_with_compiler(cs)
+        parameters.hash(utxo, secret_key, cs)
     }
 
     /// Checks that the `utxo` is correctly constructed from the `secret_key`, `public_key`, and
@@ -296,11 +284,11 @@ pub type PublicKey<C> = <<C as Configuration>::KeyAgreementScheme as KeyAgreemen
 pub type PublicKeyVar<C> =
     <<C as Configuration>::KeyAgreementSchemeVar as KeyAgreementScheme<Compiler<C>>>::PublicKey;
 
-///
+/// UTXO Trapdoor Type
 pub type Trapdoor<C> =
     <<C as Configuration>::KeyAgreementScheme as KeyAgreementScheme>::SharedSecret;
 
-///
+/// UTXO Trapdoor Variable Type
 pub type TrapdoorVar<C> =
     <<C as Configuration>::KeyAgreementSchemeVar as KeyAgreementScheme<Compiler<C>>>::SharedSecret;
 
@@ -312,11 +300,12 @@ pub type UtxoVar<C> =
     <<C as Configuration>::UtxoCommitmentSchemeVar as CommitmentScheme<Compiler<C>>>::Output;
 
 /// Void Number Type
-pub type VoidNumber<C> = <<C as Configuration>::VoidNumberHashFunction as HashFunction>::Output;
+pub type VoidNumber<C> =
+    <<C as Configuration>::VoidNumberHashFunction as BinaryHashFunction>::Output;
 
 /// Void Number Variable Type
 pub type VoidNumberVar<C> =
-    <<C as Configuration>::VoidNumberHashFunctionVar as HashFunction<Compiler<C>>>::Output;
+    <<C as Configuration>::VoidNumberHashFunctionVar as BinaryHashFunction<Compiler<C>>>::Output;
 
 /// UTXO Set Witness Type
 pub type UtxoSetWitness<C> = <<C as Configuration>::UtxoSetModel as Model>::Witness;
@@ -373,6 +362,25 @@ where
     pub void_number_hash: C::VoidNumberHashFunction,
 }
 
+impl<C> Parameters<C>
+where
+    C: Configuration + ?Sized,
+{
+    /// Builds a new [`Parameters`].
+    #[inline]
+    pub fn new(
+        key_agreement: C::KeyAgreementScheme,
+        utxo_commitment: C::UtxoCommitmentScheme,
+        void_number_hash: C::VoidNumberHashFunction,
+    ) -> Self {
+        Self {
+            key_agreement,
+            utxo_commitment,
+            void_number_hash,
+        }
+    }
+}
+
 /// Transfer Full Parameters
 pub struct FullParameters<'p, C>
 where
@@ -405,16 +413,16 @@ where
     C: Configuration,
 {
     /// Key Agreement Scheme
-    pub key_agreement: C::KeyAgreementSchemeVar,
+    key_agreement: C::KeyAgreementSchemeVar,
 
     /// UTXO Commitment Scheme
-    pub utxo_commitment: C::UtxoCommitmentSchemeVar,
+    utxo_commitment: C::UtxoCommitmentSchemeVar,
 
     /// Void Number Hash Function
-    pub void_number_hash: C::VoidNumberHashFunctionVar,
+    void_number_hash: C::VoidNumberHashFunctionVar,
 
     /// UTXO Set Model
-    pub utxo_set_model: C::UtxoSetModelVar,
+    utxo_set_model: C::UtxoSetModelVar,
 
     /// Type Parameter Marker
     __: PhantomData<&'p ()>,
@@ -475,16 +483,6 @@ where
             spend: parameters.derive(&self.spend, &mut ()),
             view: parameters.derive(&self.view, &mut ()),
         }
-    }
-
-    /// Tries to decrypt `encrypted_note` with the viewing key associated to `self`.
-    #[inline]
-    pub fn decrypt(
-        &self,
-        parameters: &C::KeyAgreementScheme,
-        encrypted_note: EncryptedNote<C>,
-    ) -> Result<Note<C>, EncryptedNote<C>> {
-        encrypted_note.decrypt(parameters, &self.view)
     }
 
     /// Validates the `utxo` against `self` and the given `ephemeral_key` and `asset`, returning

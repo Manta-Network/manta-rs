@@ -26,7 +26,7 @@ pub trait HashFunction<COM = ()> {
     /// Output Type
     type Output;
 
-    /// Performs a hash over `input` in the `compiler`.
+    /// Performs a hash over `input` in the given `compiler`.
     fn hash(&self, input: &Self::Input, compiler: &mut COM) -> Self::Output;
 
     /// Starts a new [`Builder`] for extended hashes.
@@ -37,6 +37,21 @@ pub trait HashFunction<COM = ()> {
     {
         Builder::new(self, &())
     }
+}
+
+/// Binary Hash Function
+pub trait BinaryHashFunction<COM = ()> {
+    /// Left Input Type
+    type Left: ?Sized;
+
+    /// Right Input Type
+    type Right: ?Sized;
+
+    /// Output Type
+    type Output;
+
+    /// Performs a hash over `lhs` and `rhs` in the given `compiler`.
+    fn hash(&self, lhs: &Self::Left, rhs: &Self::Right, compiler: &mut COM) -> Self::Output;
 }
 
 impl<'h, H, I> Builder<'h, H, I> {
