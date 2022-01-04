@@ -94,12 +94,15 @@ pub type KeyAgreementScheme = DiffieHellman<Group>;
 pub type KeyAgreementSchemeVar = DiffieHellman<GroupVar, Compiler>;
 
 ///
+pub type Utxo = poseidon::Output<PoseidonSpec<4>, (), 4>;
+
+///
 pub struct UtxoCommitmentScheme(pub poseidon::Hash<PoseidonSpec<4>, (), 4>);
 
 impl CommitmentScheme for UtxoCommitmentScheme {
     type Trapdoor = Group;
     type Input = Asset;
-    type Output = poseidon::Output<PoseidonSpec<4>, (), 4>;
+    type Output = Utxo;
 
     #[inline]
     fn commit(
@@ -123,12 +126,15 @@ impl CommitmentScheme for UtxoCommitmentScheme {
 }
 
 ///
+pub type UtxoVar = poseidon::Output<PoseidonSpec<4>, Compiler, 4>;
+
+///
 pub struct UtxoCommitmentSchemeVar(pub poseidon::Hash<PoseidonSpec<4>, Compiler, 4>);
 
 impl CommitmentScheme<Compiler> for UtxoCommitmentSchemeVar {
     type Trapdoor = GroupVar;
     type Input = Asset<AssetIdVar, AssetValueVar>;
-    type Output = poseidon::Output<PoseidonSpec<4>, Compiler, 4>;
+    type Output = UtxoVar;
 
     #[inline]
     fn commit(
@@ -165,12 +171,15 @@ impl Variable<Compiler> for UtxoCommitmentSchemeVar {
 }
 
 ///
+pub type VoidNumber = poseidon::Output<PoseidonSpec<2>, (), 2>;
+
+///
 pub struct VoidNumberHashFunction(pub poseidon::Hash<PoseidonSpec<2>, (), 2>);
 
 impl BinaryHashFunction for VoidNumberHashFunction {
-    type Left = <UtxoCommitmentScheme as CommitmentScheme>::Output;
+    type Left = Utxo;
     type Right = <KeyAgreementScheme as key::KeyAgreementScheme>::SecretKey;
-    type Output = poseidon::Output<PoseidonSpec<2>, (), 2>;
+    type Output = VoidNumber;
 
     #[inline]
     fn hash(&self, left: &Self::Left, right: &Self::Right, compiler: &mut ()) -> Self::Output {
@@ -224,7 +233,6 @@ pub struct AssetIdVar(ConstraintFieldVar);
 
 impl Variable<Compiler> for AssetIdVar {
     type Type = AssetId;
-
     type Mode = Secret;
 
     #[inline]
@@ -245,7 +253,6 @@ pub struct AssetValueVar(ConstraintFieldVar);
 
 impl Variable<Compiler> for AssetValueVar {
     type Type = AssetValue;
-
     type Mode = Secret;
 
     #[inline]
@@ -258,6 +265,34 @@ impl Variable<Compiler> for AssetValueVar {
                 ConstraintFieldVar::new(cs, Allocation::Unknown(mode.into()))
             }
         })
+    }
+}
+
+///
+pub struct LeafHash;
+
+impl merkle_tree::LeafHash for LeafHash {
+    type Leaf = Utxo;
+    type Parameters = ();
+    type Output = Utxo;
+
+    #[inline]
+    fn digest_in(_: &Self::Parameters, leaf: &Self::Leaf, _: &mut ()) -> Self::Output {
+        *leaf
+    }
+}
+
+///
+pub struct LeafHashVar;
+
+impl merkle_tree::LeafHash<Compiler> for LeafHashVar {
+    type Leaf = UtxoVar;
+    type Parameters = ();
+    type Output = UtxoVar;
+
+    #[inline]
+    fn digest_in(_: &Self::Parameters, leaf: &Self::Leaf, _: &mut Compiler) -> Self::Output {
+        *leaf
     }
 }
 

@@ -18,8 +18,8 @@
 
 use crate::{
     merkle_tree::{
-        Configuration, HashConfiguration, InnerHashParameters, Leaf, LeafHashParameters,
-        MerkleTree, Parameters, Tree, WithProofs,
+        Configuration, HashConfiguration, InnerDigest, InnerHashParameters, Leaf,
+        LeafHashParameters, MerkleTree, Parameters, Tree, WithProofs,
     },
     rand::{CryptoRng, RngCore, Sample},
 };
@@ -130,6 +130,7 @@ pub fn assert_valid_path<C, T>(tree: &MerkleTree<C, T>, index: usize, leaf: &Lea
 where
     C: Configuration + ?Sized,
     T: Tree<C> + WithProofs<C>,
+    InnerDigest<C>: PartialEq,
 {
     assert!(
         tree.path(index)

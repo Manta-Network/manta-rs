@@ -81,6 +81,7 @@ where
     pub fn fork<M>(&self, parameters: &Parameters<C>) -> Fork<C, T, P, M>
     where
         M: Default + InnerMap<C>,
+        LeafDigest<C>: Default,
     {
         Fork::new(parameters, self)
     }
@@ -91,6 +92,7 @@ where
     pub fn attach<M>(&self, parameters: &Parameters<C>, fork: &mut Fork<C, T, P, M>) -> bool
     where
         M: Default + InnerMap<C>,
+        LeafDigest<C>: Default,
     {
         fork.attach(parameters, self)
     }
@@ -115,6 +117,7 @@ where
     ) -> Result<(), Fork<C, T, P, M>>
     where
         M: Default + InnerMap<C>,
+        LeafDigest<C>: Default,
     {
         match fork.get_attached_base(self) {
             Some(base) => {
@@ -136,6 +139,7 @@ where
         branch: Partial<C, M>,
     ) where
         M: InnerMap<C> + Default,
+        LeafDigest<C>: Default,
     {
         self.base = Some(fork_base);
         let mut base = P::claim(mem::take(&mut self.base).unwrap());
@@ -252,7 +256,10 @@ where
 {
     /// Builds a new [`Fork`] from `trunk`.
     #[inline]
-    pub fn new(parameters: &Parameters<C>, trunk: &Trunk<C, T, P>) -> Self {
+    pub fn new(parameters: &Parameters<C>, trunk: &Trunk<C, T, P>) -> Self
+    where
+        LeafDigest<C>: Default,
+    {
         Self::with_leaves(parameters, trunk, Default::default()).unwrap()
     }
 
@@ -263,7 +270,10 @@ where
         parameters: &Parameters<C>,
         trunk: &Trunk<C, T, P>,
         leaf_digests: Vec<LeafDigest<C>>,
-    ) -> Option<Self> {
+    ) -> Option<Self>
+    where
+        LeafDigest<C>: Default,
+    {
         let (base_contribution, branch) =
             Self::new_branch(parameters, trunk.borrow_base().as_ref(), leaf_digests)?;
         Some(Self {
@@ -279,7 +289,10 @@ where
         parameters: &Parameters<C>,
         base: &T,
         leaf_digests: Vec<LeafDigest<C>>,
-    ) -> Option<(BaseContribution, Partial<C, M>)> {
+    ) -> Option<(BaseContribution, Partial<C, M>)>
+    where
+        LeafDigest<C>: Default,
+    {
         if leaf_digests.len() + base.len() >= capacity::<C>() {
             return None;
         }
@@ -293,7 +306,10 @@ where
         parameters: &Parameters<C>,
         base: &T,
         leaf_digests: Vec<LeafDigest<C>>,
-    ) -> (BaseContribution, Partial<C, M>) {
+    ) -> (BaseContribution, Partial<C, M>)
+    where
+        LeafDigest<C>: Default,
+    {
         let (base_contribution, base_inner_digest, base_leaf_digests, inner_path) =
             Self::generate_branch_setup(parameters, base);
         let mut partial = Partial::new_unchecked(
@@ -317,7 +333,10 @@ where
         InnerDigest<C>,
         Vec<LeafDigest<C>>,
         CurrentInnerPath<C>,
-    ) {
+    )
+    where
+        LeafDigest<C>: Default,
+    {
         if base.is_empty() {
             (
                 BaseContribution::Empty,
@@ -350,7 +369,10 @@ where
     fn extract_leaves(
         base_contribution: BaseContribution,
         branch: Partial<C, M>,
-    ) -> Vec<LeafDigest<C>> {
+    ) -> Vec<LeafDigest<C>>
+    where
+        LeafDigest<C>: Default,
+    {
         let mut leaf_digests = branch.into_leaves();
         mem::drop(leaf_digests.drain(0..base_contribution as usize));
         leaf_digests
@@ -363,7 +385,10 @@ where
         base: &T,
         base_contribution: &mut BaseContribution,
         branch: &mut Partial<C, M>,
-    ) -> bool {
+    ) -> bool
+    where
+        LeafDigest<C>: Default,
+    {
         if branch.len() + base.len() - (*base_contribution as usize) >= capacity::<C>() {
             return false;
         }
@@ -380,7 +405,10 @@ where
     /// Tries to attach this fork to a new `trunk`, returning `false` if `self` has too many leaves
     /// to fit in `trunk`.
     #[inline]
-    pub fn attach(&mut self, parameters: &Parameters<C>, trunk: &Trunk<C, T, P>) -> bool {
+    pub fn attach(&mut self, parameters: &Parameters<C>, trunk: &Trunk<C, T, P>) -> bool
+    where
+        LeafDigest<C>: Default,
+    {
         if !Self::try_rebase(
             parameters,
             trunk.borrow_base().as_ref(),
@@ -437,7 +465,10 @@ where
     /// Returns `None` if this fork has been detached from its trunk. Use [`attach`](Self::attach)
     /// to re-associate a trunk to this fork.
     #[inline]
-    pub fn push(&mut self, parameters: &Parameters<C>, leaf: &Leaf<C>) -> Option<bool> {
+    pub fn push(&mut self, parameters: &Parameters<C>, leaf: &Leaf<C>) -> Option<bool>
+    where
+        LeafDigest<C>: Default,
+    {
         let _ = P::upgrade(&self.base)?;
         Some(self.branch.push(parameters, leaf))
     }

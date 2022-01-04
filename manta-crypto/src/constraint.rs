@@ -191,6 +191,19 @@ where
     }
 }
 
+/// Native Compiler Marker Trait
+///
+/// This trait is only implemented for `()`, the only native compiler.
+pub trait Native {
+    /// Returns the native compiler.
+    fn compiler() -> Self;
+}
+
+impl Native for () {
+    #[inline]
+    fn compiler() -> Self {}
+}
+
 /// Variable Allocation Trait
 pub trait Variable<C>: Sized
 where
@@ -297,6 +310,7 @@ where
     }
 }
 
+/* TODO[remove]:
 impl<T, C> reflection::HasAllocation<C> for PhantomData<T>
 where
     T: ?Sized,
@@ -305,6 +319,7 @@ where
     type Variable = PhantomData<T>;
     type Mode = ();
 }
+*/
 
 /// Allocates a new known variable into `cs` with the given `mode`.
 #[inline]
@@ -886,6 +901,7 @@ pub mod measure {
     }
 }
 
+/* TODO[remove]:
 /// Opt-In Compile-Time Reflection Capabilities
 ///
 /// See [`HasAllocation`] and [`HasVariable`] for more information.
@@ -1107,3 +1123,4 @@ pub mod types {
     /// Pointer-Sized Unsigned Integer Variable Type
     pub type Usize<C> = Var<usize, C>;
 }
+*/

@@ -551,6 +551,7 @@ impl<C, M> InnerTree<C, M, Sentinel<C>>
 where
     C: Configuration + ?Sized,
     M: InnerMap<C>,
+    InnerDigest<C>: PartialEq,
 {
     /// Returns the path at `leaf_index`, assuming that `leaf_index` is the right-most index,
     /// so that the return value is a valid [`CurrentInnerPath`].
@@ -745,6 +746,7 @@ impl<C, M> PartialInnerTree<C, M, Sentinel<C>>
 where
     C: Configuration + ?Sized,
     M: InnerMap<C>,
+    InnerDigest<C>: PartialEq,
 {
     /// Returns the path at `leaf_index`, assuming that `leaf_index` is the right-most index,
     /// so that the return value is a valid [`CurrentInnerPath`].

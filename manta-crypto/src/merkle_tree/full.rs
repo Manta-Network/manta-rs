@@ -33,9 +33,9 @@ pub type FullMerkleTree<C, M = BTreeMap<C>> = MerkleTree<C, Full<C, M>>;
 /// Full Merkle Tree Backing Structure
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "LeafDigest<C>: Clone, M: Clone"),
+    Clone(bound = "LeafDigest<C>: Clone, InnerDigest<C>: Clone, M: Clone"),
     Debug(bound = "LeafDigest<C>: Debug, InnerDigest<C>: Debug, M: Debug"),
-    Default(bound = "M: Default"),
+    Default(bound = "LeafDigest<C>: Default, InnerDigest<C>: Default, M: Default"),
     Eq(bound = "LeafDigest<C>: Eq, InnerDigest<C>: Eq, M: Eq"),
     Hash(bound = "LeafDigest<C>: Hash, InnerDigest<C>: Hash, M: Hash"),
     PartialEq(bound = "LeafDigest<C>: PartialEq, InnerDigest<C>: PartialEq, M: PartialEq")
@@ -107,7 +107,7 @@ where
     #[inline]
     fn get_owned_leaf_sibling(&self, index: Node) -> LeafDigest<C>
     where
-        LeafDigest<C>: Clone,
+        LeafDigest<C>: Clone + Default,
     {
         self.get_leaf_sibling(index).cloned().unwrap_or_default()
     }
@@ -119,7 +119,9 @@ where
         parameters: &Parameters<C>,
         leaf_index: Node,
         leaf_digest: LeafDigest<C>,
-    ) {
+    ) where
+        LeafDigest<C>: Default,
+    {
         self.inner_digests.insert(
             parameters,
             leaf_index,
@@ -138,7 +140,8 @@ impl<C, M> Tree<C> for Full<C, M>
 where
     C: Configuration + ?Sized,
     M: InnerMap<C> + Default,
-    LeafDigest<C>: Clone,
+    LeafDigest<C>: Clone + Default,
+    InnerDigest<C>: PartialEq,
 {
     #[inline]
     fn new(parameters: &Parameters<C>) -> Self {
@@ -189,7 +192,8 @@ impl<C, M> WithProofs<C> for Full<C, M>
 where
     C: Configuration + ?Sized,
     M: Default + InnerMap<C>,
-    LeafDigest<C>: Clone + PartialEq,
+    LeafDigest<C>: Clone + Default + PartialEq,
+    InnerDigest<C>: PartialEq,
 {
     #[inline]
     fn leaf_digest(&self, index: usize) -> Option<&LeafDigest<C>> {

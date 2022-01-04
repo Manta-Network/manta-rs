@@ -27,7 +27,7 @@ use crate::{
     },
     merkle_tree::{
         tree::{self, Leaf, Parameters, Tree},
-        WithProofs,
+        InnerDigest, WithProofs,
     },
 };
 use alloc::vec::Vec;
@@ -244,6 +244,7 @@ where
     C: Configuration + ?Sized,
     F: Forest<C>,
     F::Tree: WithProofs<C>,
+    InnerDigest<C>: PartialEq,
 {
     type Item = Leaf<C>;
 
@@ -292,6 +293,7 @@ where
     C: Configuration + ?Sized,
     F: ConstantWidthForest<C>,
     F::Tree: WithProofs<C>,
+    InnerDigest<C>: PartialEq,
 {
     #[inline]
     fn capacity() -> usize {
@@ -304,6 +306,7 @@ where
     C: Configuration + ?Sized,
     F: Forest<C>,
     F::Tree: WithProofs<C>,
+    InnerDigest<C>: PartialEq,
 {
     #[inline]
     fn len(&self) -> usize {
@@ -321,6 +324,7 @@ where
     C: Configuration + ?Sized,
     F: Forest<C>,
     F::Tree: WithProofs<C>,
+    InnerDigest<C>: PartialEq,
 {
     #[inline]
     fn insert_nonprovable(&mut self, item: &Self::Item) -> bool {

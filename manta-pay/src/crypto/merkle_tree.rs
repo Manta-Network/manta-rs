@@ -31,9 +31,12 @@ use manta_crypto::{
 };
 use manta_util::{as_bytes, Concat};
 
+/*
 #[cfg(feature = "test")]
 use manta_crypto::rand::Standard;
+*/
 
+/*
 /// Arkworks Leaf Hash Converter
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -183,9 +186,8 @@ where
     type Leaf = C::Leaf;
     type LeafHash = C::LeafHash;
     type InnerHash = C::InnerHash;
-    type Height = C::Height;
 
-    const HEIGHT: Self::Height = C::HEIGHT;
+    const HEIGHT: usize = C::HEIGHT;
 }
 
 impl<C> merkle_tree::HashConfiguration for ConfigConverter<C>
@@ -200,9 +202,7 @@ impl<C> merkle_tree::Configuration for ConfigConverter<C>
 where
     C: Configuration,
 {
-    type Height = C::Height;
-
-    const HEIGHT: Self::Height = C::HEIGHT;
+    const HEIGHT: usize = C::HEIGHT;
 }
 
 impl<C> Config for ConfigConverter<C>
@@ -247,11 +247,13 @@ where
         <ConfigConverter<C> as merkle_tree::HashConfiguration>::InnerHash::sample_parameters(rng)
     }
 }
+*/
 
+/* TODO:
 /// Merkle Tree Constraint System Variables
 pub mod constraint {
     use super::*;
-    use crate::crypto::constraint::arkworks::{empty, full, ArkConstraintSystem};
+    use crate::crypto::constraint::arkworks::{empty, full, R1CS};
     use ark_crypto_primitives::{
         crh::constraints::{CRHGadget, TwoToOneCRHGadget},
         merkle_tree::{constraints::PathVar as ArkPathVar, Path as ArkPath},
@@ -260,8 +262,8 @@ pub mod constraint {
     use ark_r1cs_std::{alloc::AllocVar, boolean::Boolean, eq::EqGadget, uint8::UInt8};
     use ark_relations::ns;
     use manta_crypto::{
-        accumulator::Verifier,
-        constraint::{reflection::HasAllocation, Allocation, Constant, Public, Secret, Variable},
+        accumulator::Model,
+        constraint::{Allocation, Constant, Public, Secret, Variable},
         merkle_tree::{Parameters, Path, Root},
     };
 
@@ -281,7 +283,7 @@ pub mod constraint {
     pub type ConstraintField<C> = <C as Configuration>::ConstraintField;
 
     /// Constraint System Type
-    pub type ContraintSystem<C> = ArkConstraintSystem<ConstraintField<C>>;
+    pub type ContraintSystem<C> = R1CS<ConstraintField<C>>;
 
     /// Leaf Hash Type
     pub type LeafHashVar<C> = <C as Configuration>::LeafHashVar;
@@ -354,7 +356,7 @@ pub mod constraint {
         }
     }
 
-    impl<C> Verifier for ParametersVar<C>
+    impl<C> Model<R1CS<ConstraintField<C>>> for ParametersVar<C>
     where
         C: Configuration,
     {
@@ -406,14 +408,6 @@ pub mod constraint {
         }
     }
 
-    impl<C> HasAllocation<ContraintSystem<C>> for Parameters<ConfigConverter<C>>
-    where
-        C: Configuration,
-    {
-        type Variable = ParametersVar<C>;
-        type Mode = Constant;
-    }
-
     /// Merkle Tree Root Inner Type
     type RootInnerType<C> = <<C as super::Configuration>::InnerHash as TwoToOneCRH>::Output;
 
@@ -457,14 +451,6 @@ pub mod constraint {
                 .expect("Variable allocation is not allowed to fail."),
             )
         }
-    }
-
-    impl<C> HasAllocation<ContraintSystem<C>> for Root<ConfigConverter<C>>
-    where
-        C: Configuration,
-    {
-        type Variable = RootVar<C>;
-        type Mode = Public;
     }
 
     /// Extends the `input` vector by constraint field elements that make up `root`.
@@ -549,12 +535,5 @@ pub mod constraint {
             )
         }
     }
-
-    impl<C> HasAllocation<ContraintSystem<C>> for Path<ConfigConverter<C>>
-    where
-        C: Configuration,
-    {
-        type Variable = PathVar<C>;
-        type Mode = Secret;
-    }
 }
+*/

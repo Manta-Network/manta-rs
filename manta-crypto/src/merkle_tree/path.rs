@@ -41,7 +41,7 @@ pub(super) mod prelude {
 /// Merkle Tree Inner Path
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = ""),
+    Clone(bound = "InnerDigest<C>: Clone"),
     Debug(bound = "InnerDigest<C>: Debug"),
     Eq(bound = "InnerDigest<C>: Eq"),
     Hash(bound = "InnerDigest<C>: Hash"),
@@ -77,14 +77,20 @@ where
 
     /// Checks if `self` could represent the [`CurrentInnerPath`] of some tree.
     #[inline]
-    pub fn is_current(&self) -> bool {
+    pub fn is_current(&self) -> bool
+    where
+        InnerDigest<C>: PartialEq,
+    {
         self.is_current_with(&Default::default())
     }
 
     /// Checks if `self` could represent the [`CurrentInnerPath`] of some tree, using `default`
     /// as the sentinel value.
     #[inline]
-    pub fn is_current_with(&self, default: &InnerDigest<C>) -> bool {
+    pub fn is_current_with(&self, default: &InnerDigest<C>) -> bool
+    where
+        InnerDigest<C>: PartialEq,
+    {
         InnerNodeIter::from_leaf::<C>(self.leaf_index)
             .zip(self.path.iter())
             .all(move |(node, d)| match node.parity() {
@@ -124,7 +130,10 @@ where
         root: &Root<C>,
         leaf_digest: &LeafDigest<C>,
         sibling_digest: &LeafDigest<C>,
-    ) -> bool {
+    ) -> bool
+    where
+        InnerDigest<C>: PartialEq,
+    {
         root == &self.root(parameters, leaf_digest, sibling_digest)
     }
 
@@ -214,9 +223,9 @@ where
 /// Merkle Tree Current Inner Path
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = ""),
+    Clone(bound = "InnerDigest<C>: Clone"),
     Debug(bound = "InnerDigest<C>: Debug"),
-    Default(bound = ""),
+    Default(bound = "InnerDigest<C>: Default"),
     Eq(bound = "InnerDigest<C>: Eq"),
     Hash(bound = "InnerDigest<C>: Hash"),
     PartialEq(bound = "InnerDigest<C>: PartialEq")
@@ -256,14 +265,20 @@ where
     /// Builds a new [`CurrentInnerPath`] from an [`InnerPath`] without checking that `path`
     /// satisfies [`InnerPath::is_current`].
     #[inline]
-    pub fn from_path_unchecked(path: InnerPath<C>) -> Self {
+    pub fn from_path_unchecked(path: InnerPath<C>) -> Self
+    where
+        InnerDigest<C>: PartialEq,
+    {
         Self::from_path_unchecked_with(path, &Default::default())
     }
 
     /// Builds a new [`CurrentInnerPath`] from an [`InnerPath`] without checking that `path`
     /// satisfies [`InnerPath::is_current_with`] against `default`.
     #[inline]
-    pub fn from_path_unchecked_with(mut path: InnerPath<C>, default: &InnerDigest<C>) -> Self {
+    pub fn from_path_unchecked_with(mut path: InnerPath<C>, default: &InnerDigest<C>) -> Self
+    where
+        InnerDigest<C>: PartialEq,
+    {
         path.path.retain(|d| d != default);
         Self::new(path.leaf_index, path.path)
     }
@@ -306,7 +321,10 @@ where
         root: &Root<C>,
         leaf_digest: &LeafDigest<C>,
         sibling_digest: &LeafDigest<C>,
-    ) -> bool {
+    ) -> bool
+    where
+        InnerDigest<C>: PartialEq,
+    {
         root == &self.root(parameters, leaf_digest, sibling_digest)
     }
 
@@ -366,7 +384,10 @@ where
         leaf_digest: &mut LeafDigest<C>,
         sibling_digest: &mut LeafDigest<C>,
         next_leaf_digest: LeafDigest<C>,
-    ) -> Root<C> {
+    ) -> Root<C>
+    where
+        LeafDigest<C>: Default,
+    {
         let mut last_index = self.leaf_index;
         let mut index = self.leaf_index + 1;
         self.leaf_index = index;
@@ -428,6 +449,7 @@ where
 impl<C> TryFrom<InnerPath<C>> for CurrentInnerPath<C>
 where
     C: Configuration + ?Sized,
+    InnerDigest<C>: PartialEq,
 {
     type Error = InnerPath<C>;
 
@@ -552,9 +574,9 @@ impl<C> FusedIterator for CurrentInnerPathNodeIter<C> where C: Configuration + ?
 /// Merkle Tree Path
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "LeafDigest<C>: Clone"),
+    Clone(bound = "LeafDigest<C>: Clone, InnerDigest<C>: Clone"),
     Debug(bound = "LeafDigest<C>: Debug, InnerDigest<C>: Debug"),
-    Default(bound = ""),
+    Default(bound = "LeafDigest<C>: Default, InnerDigest<C>: Default"),
     Eq(bound = "LeafDigest<C>: Eq, InnerDigest<C>: Eq"),
     Hash(bound = "LeafDigest<C>: Hash, InnerDigest<C>: Hash"),
     PartialEq(bound = "LeafDigest<C>: PartialEq, InnerDigest<C>: PartialEq")
@@ -601,14 +623,20 @@ where
 
     /// Checks if `self` could represent the [`CurrentPath`] of some tree.
     #[inline]
-    pub fn is_current(&self) -> bool {
+    pub fn is_current(&self) -> bool
+    where
+        InnerDigest<C>: PartialEq,
+    {
         self.is_current_with(&Default::default())
     }
 
     /// Checks if `self` could represent the [`CurrentPath`] of some tree, using `default` as the
     /// sentinel value.
     #[inline]
-    pub fn is_current_with(&self, default: &InnerDigest<C>) -> bool {
+    pub fn is_current_with(&self, default: &InnerDigest<C>) -> bool
+    where
+        InnerDigest<C>: PartialEq,
+    {
         self.inner_path.is_current_with(default)
     }
 
@@ -627,7 +655,10 @@ where
         parameters: &Parameters<C>,
         root: &Root<C>,
         leaf_digest: &LeafDigest<C>,
-    ) -> bool {
+    ) -> bool
+    where
+        InnerDigest<C>: PartialEq,
+    {
         self.inner_path
             .verify_digest(parameters, root, leaf_digest, &self.sibling_digest)
     }
@@ -635,7 +666,10 @@ where
     /// Returns `true` if `self` is a witness to the fact that `leaf` is stored in a merkle tree
     /// with the given `root`.
     #[inline]
-    pub fn verify(&self, parameters: &Parameters<C>, root: &Root<C>, leaf: &Leaf<C>) -> bool {
+    pub fn verify(&self, parameters: &Parameters<C>, root: &Root<C>, leaf: &Leaf<C>) -> bool
+    where
+        InnerDigest<C>: PartialEq,
+    {
         self.verify_digest(parameters, root, &parameters.digest(leaf))
     }
 }
@@ -679,7 +713,7 @@ where
 #[derivative(
     Clone(bound = "LeafDigest<C>: Clone"),
     Debug(bound = "LeafDigest<C>: Debug, InnerDigest<C>: Debug"),
-    Default(bound = ""),
+    Default(bound = "LeafDigest<C>: Default, InnerDigest<C>: Default"),
     Eq(bound = "LeafDigest<C>: Eq, InnerDigest<C>: Eq"),
     Hash(bound = "LeafDigest<C>: Hash, InnerDigest<C>: Hash"),
     PartialEq(bound = "LeafDigest<C>: PartialEq, InnerDigest<C>: PartialEq")
@@ -721,14 +755,20 @@ where
     /// Builds a new [`CurrentPath`] from a [`Path`] without checking that `path` satisfies
     /// [`Path::is_current`].
     #[inline]
-    pub fn from_path_unchecked(path: Path<C>) -> Self {
+    pub fn from_path_unchecked(path: Path<C>) -> Self
+    where
+        InnerDigest<C>: PartialEq,
+    {
         Self::from_path_unchecked_with(path, &Default::default())
     }
 
     /// Builds a new [`CurrentPath`] from a [`Path`] without checking that `path` satisfies
     /// [`Path::is_current_with`] against `default`.
     #[inline]
-    pub fn from_path_unchecked_with(path: Path<C>, default: &InnerDigest<C>) -> Self {
+    pub fn from_path_unchecked_with(path: Path<C>, default: &InnerDigest<C>) -> Self
+    where
+        InnerDigest<C>: PartialEq,
+    {
         Self::from_inner(
             path.sibling_digest,
             CurrentInnerPath::from_path_unchecked_with(path.inner_path, default),
@@ -756,7 +796,10 @@ where
         parameters: &Parameters<C>,
         root: &Root<C>,
         leaf_digest: &LeafDigest<C>,
-    ) -> bool {
+    ) -> bool
+    where
+        InnerDigest<C>: PartialEq,
+    {
         self.inner_path
             .verify_digest(parameters, root, leaf_digest, &self.sibling_digest)
     }
@@ -764,7 +807,10 @@ where
     /// Returns `true` if `self` is a witness to the fact that `leaf` is stored in a merkle tree
     /// with the given `root`.
     #[inline]
-    pub fn verify(&self, parameters: &Parameters<C>, root: &Root<C>, leaf: &Leaf<C>) -> bool {
+    pub fn verify(&self, parameters: &Parameters<C>, root: &Root<C>, leaf: &Leaf<C>) -> bool
+    where
+        InnerDigest<C>: PartialEq,
+    {
         self.verify_digest(parameters, root, &parameters.digest(leaf))
     }
 
@@ -775,7 +821,10 @@ where
         parameters: &Parameters<C>,
         current: &mut LeafDigest<C>,
         next: LeafDigest<C>,
-    ) -> Root<C> {
+    ) -> Root<C>
+    where
+        LeafDigest<C>: Default,
+    {
         self.inner_path
             .update(parameters, current, &mut self.sibling_digest, next)
     }
@@ -784,6 +833,7 @@ where
 impl<C> TryFrom<Path<C>> for CurrentPath<C>
 where
     C: Configuration + ?Sized,
+    InnerDigest<C>: PartialEq,
 {
     type Error = Path<C>;
 
@@ -801,4 +851,69 @@ where
 }
 
 /// Constraint System Gadgets
-pub mod constraint {}
+pub mod constraint {
+    use super::*;
+    use crate::constraint::{Allocation, AllocationMode, Secret, Variable, VariableSource};
+
+    ///
+    pub struct InnerPathVar<C, COM>
+    where
+        C: Configuration<COM> + ?Sized,
+    {
+        /// Digest Indices
+        pub indices: Vec<bool>,
+
+        /// Inner Digest Path
+        ///
+        /// Inner digests are stored from leaf to root, not including the root.
+        pub path: Vec<InnerDigest<C, COM>>,
+    }
+
+    impl<C, COM> Variable<COM> for InnerPathVar<C, COM>
+    where
+        C: Configuration<COM> + Variable<COM> + ?Sized,
+        C::Type: Configuration,
+    {
+        type Type = InnerPath<C::Type>;
+        type Mode = Secret;
+
+        #[inline]
+        fn new(compiler: &mut COM, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
+            todo!()
+        }
+    }
+
+    ///
+    pub struct PathVar<C, COM>
+    where
+        C: Configuration<COM> + ?Sized,
+    {
+        /// Sibling Digest
+        pub sibling_digest: LeafDigest<C, COM>,
+
+        /// Inner Path
+        pub inner_path: InnerPathVar<C, COM>,
+    }
+
+    impl<C, COM> Variable<COM> for PathVar<C, COM>
+    where
+        C: Configuration<COM> + Variable<COM> + ?Sized,
+        C::Type: Configuration,
+        LeafDigest<C, COM>: Variable<COM, Type = LeafDigest<C::Type>>,
+        <<LeafDigest<C, COM> as Variable<COM>>::Mode as AllocationMode>::Known: From<Secret>,
+    {
+        type Type = Path<C::Type>;
+        type Mode = Secret;
+
+        #[inline]
+        fn new(compiler: &mut COM, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
+            match allocation {
+                Allocation::Known(this, mode) => Self {
+                    sibling_digest: this.sibling_digest.as_known(compiler, mode),
+                    inner_path: this.inner_path.as_known(compiler, mode),
+                },
+                _ => todo!(),
+            }
+        }
+    }
+}

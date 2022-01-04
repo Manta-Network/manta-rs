@@ -22,4 +22,4 @@ pub mod ecc;
 pub mod encryption;
 pub mod hash;
 pub mod key;
-// TODO: pub mod merkle_tree;
+pub mod merkle_tree;

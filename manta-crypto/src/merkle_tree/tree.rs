@@ -26,6 +26,7 @@ use crate::{
         self, Accumulator, ConstantCapacityAccumulator, ExactSizeAccumulator, MembershipProof,
         OptimizedAccumulator,
     },
+    constraint::Native,
     merkle_tree::{
         fork::Trunk,
         path::{CurrentPath, Path},
@@ -35,7 +36,7 @@ use core::{fmt::Debug, hash::Hash, marker::PhantomData};
 use manta_util::pointer::PointerFamily;
 
 /// Merkle Tree Leaf Hash
-pub trait LeafHash {
+pub trait LeafHash<COM = ()> {
     /// Leaf Type
     type Leaf: ?Sized;
 
@@ -43,51 +44,88 @@ pub trait LeafHash {
     type Parameters;
 
     /// Leaf Hash Output Type
-    type Output: Default;
+    type Output;
+
+    /// Computes the digest of the `leaf` using `parameters` inside the given `compiler`.
+    fn digest_in(
+        parameters: &Self::Parameters,
+        leaf: &Self::Leaf,
+        compiler: &mut COM,
+    ) -> Self::Output;
 
     /// Computes the digest of the `leaf` using `parameters`.
-    fn digest(parameters: &Self::Parameters, leaf: &Self::Leaf) -> Self::Output;
+    #[inline]
+    fn digest(parameters: &Self::Parameters, leaf: &Self::Leaf) -> Self::Output
+    where
+        COM: Native,
+    {
+        Self::digest_in(parameters, leaf, &mut COM::compiler())
+    }
 }
 
 /// Merkle Tree Inner Hash
-pub trait InnerHash {
+pub trait InnerHash<COM = ()> {
     /// Leaf Hash Type
-    type LeafHash: LeafHash;
+    type LeafHash: LeafHash<COM>;
 
     /// Inner Hash Parameters Type
     type Parameters;
 
     /// Inner Hash Output Type
-    type Output: Clone + Default + PartialEq;
+    type Output: Clone + Default;
 
-    /// Returns `true` if `digest` is the default inner hash output value.
-    #[inline]
-    fn is_default(digest: &Self::Output) -> bool {
-        digest == &Default::default()
-    }
+    /// Combines two inner digests into a new inner digest using `parameters` inside the given
+    /// `compiler`.
+    fn join_in(
+        parameters: &Self::Parameters,
+        lhs: &Self::Output,
+        rhs: &Self::Output,
+        compiler: &mut COM,
+    ) -> Self::Output;
 
     /// Combines two inner digests into a new inner digest using `parameters`.
-    fn join(parameters: &Self::Parameters, lhs: &Self::Output, rhs: &Self::Output) -> Self::Output;
+    #[inline]
+    fn join(parameters: &Self::Parameters, lhs: &Self::Output, rhs: &Self::Output) -> Self::Output
+    where
+        COM: Native,
+    {
+        Self::join_in(parameters, lhs, rhs, &mut COM::compiler())
+    }
+
+    /// Combines two [`LeafHash`](Self::LeafHash) digests into an inner digest inside the given
+    /// `compiler`.
+    fn join_leaves_in(
+        parameters: &Self::Parameters,
+        lhs: &<Self::LeafHash as LeafHash<COM>>::Output,
+        rhs: &<Self::LeafHash as LeafHash<COM>>::Output,
+        compiler: &mut COM,
+    ) -> Self::Output;
 
     /// Combines two [`LeafHash`](Self::LeafHash) digests into an inner digest.
+    #[inline]
     fn join_leaves(
         parameters: &Self::Parameters,
-        lhs: &<Self::LeafHash as LeafHash>::Output,
-        rhs: &<Self::LeafHash as LeafHash>::Output,
-    ) -> Self::Output;
+        lhs: &<Self::LeafHash as LeafHash<COM>>::Output,
+        rhs: &<Self::LeafHash as LeafHash<COM>>::Output,
+    ) -> Self::Output
+    where
+        COM: Native,
+    {
+        Self::join_leaves_in(parameters, lhs, rhs, &mut COM::compiler())
+    }
 }
 
 /// Merkle Tree Hash Configuration
-pub trait HashConfiguration {
+pub trait HashConfiguration<COM = ()> {
     /// Leaf Hash Type
-    type LeafHash: LeafHash;
+    type LeafHash: LeafHash<COM>;
 
     /// Inner Hash Type
-    type InnerHash: InnerHash<LeafHash = Self::LeafHash>;
+    type InnerHash: InnerHash<COM, LeafHash = Self::LeafHash>;
 }
 
 /// Merkle Tree Configuration
-pub trait Configuration: HashConfiguration {
+pub trait Configuration<COM = ()>: HashConfiguration<COM> {
     /// Fixed Height of the Merkle Tree
     ///
     /// # Contract
@@ -106,39 +144,43 @@ pub trait Configuration: HashConfiguration {
 /// Since this `struct` is meant to be used as a type parameter, any values of this type have no
 /// meaning, just like values of type [`HashConfiguration`] or [`Configuration`].
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct Config<C, const HEIGHT: usize>(PhantomData<C>)
+pub struct Config<C, const HEIGHT: usize, COM = ()>(PhantomData<(COM, C)>)
 where
-    C: HashConfiguration + ?Sized;
+    C: HashConfiguration<COM> + ?Sized;
 
-impl<C, const HEIGHT: usize> HashConfiguration for Config<C, HEIGHT>
+impl<C, const HEIGHT: usize, COM> HashConfiguration<COM> for Config<C, HEIGHT, COM>
 where
-    C: HashConfiguration + ?Sized,
+    C: HashConfiguration<COM> + ?Sized,
 {
     type LeafHash = C::LeafHash;
     type InnerHash = C::InnerHash;
 }
 
-impl<C, const HEIGHT: usize> Configuration for Config<C, HEIGHT>
+impl<C, const HEIGHT: usize, COM> Configuration<COM> for Config<C, HEIGHT, COM>
 where
-    C: HashConfiguration + ?Sized,
+    C: HashConfiguration<COM> + ?Sized,
 {
     const HEIGHT: usize = HEIGHT;
 }
 
 /// Leaf Type
-pub type Leaf<C> = <<C as HashConfiguration>::LeafHash as LeafHash>::Leaf;
+pub type Leaf<C, COM = ()> = <<C as HashConfiguration<COM>>::LeafHash as LeafHash<COM>>::Leaf;
 
 /// Leaf Hash Parameters Type
-pub type LeafHashParameters<C> = <<C as HashConfiguration>::LeafHash as LeafHash>::Parameters;
+pub type LeafHashParameters<C, COM = ()> =
+    <<C as HashConfiguration<COM>>::LeafHash as LeafHash<COM>>::Parameters;
 
 /// Leaf Hash Digest Type
-pub type LeafDigest<C> = <<C as HashConfiguration>::LeafHash as LeafHash>::Output;
+pub type LeafDigest<C, COM = ()> =
+    <<C as HashConfiguration<COM>>::LeafHash as LeafHash<COM>>::Output;
 
 /// Inner Hash Parameters Type
-pub type InnerHashParameters<C> = <<C as HashConfiguration>::InnerHash as InnerHash>::Parameters;
+pub type InnerHashParameters<C, COM = ()> =
+    <<C as HashConfiguration<COM>>::InnerHash as InnerHash<COM>>::Parameters;
 
 /// Inner Hash Digest Type
-pub type InnerDigest<C> = <<C as HashConfiguration>::InnerHash as InnerHash>::Output;
+pub type InnerDigest<C, COM = ()> =
+    <<C as HashConfiguration<COM>>::InnerHash as InnerHash<COM>>::Output;
 
 /// Returns the capacity of the merkle tree with the given [`C::HEIGHT`](Configuration::HEIGHT)
 /// parameter.
@@ -149,6 +191,19 @@ pub type InnerDigest<C> = <<C as HashConfiguration>::InnerHash as InnerHash>::Ou
 pub fn capacity<C>() -> usize
 where
     C: Configuration + ?Sized,
+{
+    capacity_in::<C, _>()
+}
+
+/// Returns the capacity of the merkle tree with the given [`C::HEIGHT`](Configuration::HEIGHT)
+/// parameter.
+///
+/// The capacity of a merkle tree with height `H` is `2^(H-1)`.
+#[inline]
+#[must_use]
+pub fn capacity_in<C, COM>() -> usize
+where
+    C: Configuration<COM> + ?Sized,
 {
     1_usize << (C::HEIGHT - 1)
 }
@@ -162,6 +217,19 @@ where
 pub fn path_length<C>() -> usize
 where
     C: Configuration + ?Sized,
+{
+    path_length_in::<C, _>()
+}
+
+/// Returns the path length of the merkle tree with the given [`C::HEIGHT`](Configuration::HEIGHT)
+/// parameter.
+///
+/// The path length of a merkle tree with height `H` is `H - 2`.
+#[inline]
+#[must_use]
+pub fn path_length_in<C, COM>() -> usize
+where
+    C: Configuration<COM> + ?Sized,
 {
     C::HEIGHT - 2
 }
@@ -419,35 +487,70 @@ where
 /// Merkle Tree Parameters
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "LeafHashParameters<C>: Clone, InnerHashParameters<C>: Clone"),
-    Copy(bound = "LeafHashParameters<C>: Copy, InnerHashParameters<C>: Copy"),
-    Debug(bound = "LeafHashParameters<C>: Debug, InnerHashParameters<C>: Debug"),
-    Default(bound = "LeafHashParameters<C>: Default, InnerHashParameters<C>: Default"),
-    Eq(bound = "LeafHashParameters<C>: Eq, InnerHashParameters<C>: Eq"),
-    Hash(bound = "LeafHashParameters<C>: Hash, InnerHashParameters<C>: Hash"),
-    PartialEq(bound = "LeafHashParameters<C>: PartialEq, InnerHashParameters<C>: PartialEq")
+    Clone(bound = "LeafHashParameters<C, COM>: Clone, InnerHashParameters<C, COM>: Clone"),
+    Copy(bound = "LeafHashParameters<C, COM>: Copy, InnerHashParameters<C, COM>: Copy"),
+    Debug(bound = "LeafHashParameters<C, COM>: Debug, InnerHashParameters<C, COM>: Debug"),
+    Default(bound = "LeafHashParameters<C, COM>: Default, InnerHashParameters<C, COM>: Default"),
+    Eq(bound = "LeafHashParameters<C, COM>: Eq, InnerHashParameters<C, COM>: Eq"),
+    Hash(bound = "LeafHashParameters<C, COM>: Hash, InnerHashParameters<C, COM>: Hash"),
+    PartialEq(
+        bound = "LeafHashParameters<C, COM>: PartialEq, InnerHashParameters<C, COM>: PartialEq"
+    )
 )]
-pub struct Parameters<C>
+pub struct Parameters<C, COM = ()>
 where
-    C: HashConfiguration + ?Sized,
+    C: HashConfiguration<COM> + ?Sized,
 {
     /// Leaf Hash Parameters
-    pub leaf: LeafHashParameters<C>,
+    pub leaf: LeafHashParameters<C, COM>,
 
     /// Inner Hash Parameters
-    pub inner: InnerHashParameters<C>,
+    pub inner: InnerHashParameters<C, COM>,
+}
+
+impl<C, COM> Parameters<C, COM>
+where
+    C: HashConfiguration<COM> + ?Sized,
+{
+    /// Builds a new [`Parameters`] from `leaf` and `inner` parameters.
+    #[inline]
+    pub fn new(leaf: LeafHashParameters<C, COM>, inner: InnerHashParameters<C, COM>) -> Self {
+        Self { leaf, inner }
+    }
+
+    /// Computes the leaf digest of `leaf` using `self`.
+    #[inline]
+    pub fn digest_in(&self, leaf: &Leaf<C, COM>, compiler: &mut COM) -> LeafDigest<C, COM> {
+        C::LeafHash::digest_in(&self.leaf, leaf, compiler)
+    }
+
+    /// Combines two inner digests into a new inner digest using `self`.
+    #[inline]
+    pub fn join_in(
+        &self,
+        lhs: &InnerDigest<C, COM>,
+        rhs: &InnerDigest<C, COM>,
+        compiler: &mut COM,
+    ) -> InnerDigest<C, COM> {
+        C::InnerHash::join_in(&self.inner, lhs, rhs, compiler)
+    }
+
+    /// Combines two leaf digests into a new inner digest using `self`.
+    #[inline]
+    pub fn join_leaves_in(
+        &self,
+        lhs: &LeafDigest<C, COM>,
+        rhs: &LeafDigest<C, COM>,
+        compiler: &mut COM,
+    ) -> InnerDigest<C, COM> {
+        C::InnerHash::join_leaves_in(&self.inner, lhs, rhs, compiler)
+    }
 }
 
 impl<C> Parameters<C>
 where
     C: HashConfiguration + ?Sized,
 {
-    /// Builds a new [`Parameters`] from `leaf` and `inner` parameters.
-    #[inline]
-    pub fn new(leaf: LeafHashParameters<C>, inner: InnerHashParameters<C>) -> Self {
-        Self { leaf, inner }
-    }
-
     /// Computes the leaf digest of `leaf` using `self`.
     #[inline]
     pub fn digest(&self, leaf: &Leaf<C>) -> LeafDigest<C> {
@@ -472,17 +575,19 @@ where
     pub fn verify_path(&self, path: &Path<C>, root: &Root<C>, leaf: &Leaf<C>) -> bool
     where
         C: Configuration,
+        InnerDigest<C>: PartialEq,
     {
         path.verify(self, root, leaf)
     }
 }
 
 /// Merkle Tree Root
-pub type Root<C> = InnerDigest<C>;
+pub type Root<C, COM = ()> = InnerDigest<C, COM>;
 
 impl<C> accumulator::Model for Parameters<C>
 where
     C: Configuration + ?Sized,
+    InnerDigest<C>: PartialEq,
 {
     type Item = Leaf<C>;
 
@@ -785,6 +890,7 @@ impl<C, T> Accumulator for MerkleTree<C, T>
 where
     C: Configuration + ?Sized,
     T: Tree<C> + WithProofs<C>,
+    InnerDigest<C>: PartialEq,
 {
     type Item = Leaf<C>;
 
@@ -819,6 +925,7 @@ impl<C, T> ConstantCapacityAccumulator for MerkleTree<C, T>
 where
     C: Configuration + ?Sized,
     T: Tree<C> + WithProofs<C>,
+    InnerDigest<C>: PartialEq,
 {
     #[inline]
     fn capacity() -> usize {
@@ -830,6 +937,7 @@ impl<C, T> ExactSizeAccumulator for MerkleTree<C, T>
 where
     C: Configuration + ?Sized,
     T: Tree<C> + WithProofs<C>,
+    InnerDigest<C>: PartialEq,
 {
     #[inline]
     fn len(&self) -> usize {
@@ -846,6 +954,7 @@ impl<C, T> OptimizedAccumulator for MerkleTree<C, T>
 where
     C: Configuration + ?Sized,
     T: Tree<C> + WithProofs<C>,
+    InnerDigest<C>: PartialEq,
 {
     #[inline]
     fn insert_nonprovable(&mut self, item: &Self::Item) -> bool {

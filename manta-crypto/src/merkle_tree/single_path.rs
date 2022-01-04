@@ -43,7 +43,7 @@ pub type SinglePathMerkleTree<C> = MerkleTree<C, SinglePath<C>>;
 /// Single Path Merkle Tree Backing Structure
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "LeafDigest<C>: Clone"),
+    Clone(bound = "LeafDigest<C>: Clone, InnerDigest<C>: Clone"),
     Debug(bound = "LeafDigest<C>: Debug, InnerDigest<C>: Debug"),
     Default(bound = "LeafDigest<C>: Default, InnerDigest<C>: Default"),
     Eq(bound = "LeafDigest<C>: Eq, InnerDigest<C>: Eq"),
@@ -120,7 +120,7 @@ where
 impl<C> Tree<C> for SinglePath<C>
 where
     C: Configuration + ?Sized,
-    LeafDigest<C>: Clone,
+    LeafDigest<C>: Clone + Default,
 {
     #[inline]
     fn new(parameters: &Parameters<C>) -> Self {
