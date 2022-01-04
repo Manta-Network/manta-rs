@@ -20,13 +20,18 @@
 #[cfg(feature = "arkworks")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "arkworks")))]
 pub mod arkworks {
-    use crate::crypto::constraint::arkworks::R1CS;
+    use crate::crypto::constraint::arkworks::{empty, full, ArkAllocationMode, R1CS};
+    use alloc::vec::Vec;
     use ark_ec::ProjectiveCurve;
     use ark_ff::{Field, PrimeField};
     use ark_r1cs_std::{fields::fp::FpVar, groups::CurveVar, ToBitsGadget};
     use ark_relations::ns;
     use core::marker::PhantomData;
-    use manta_crypto::constraint::{Allocation, Constant, Variable};
+    use manta_crypto::{
+        constraint::{Allocation, PublicOrSecret, Variable},
+        ecc,
+        key::kdf,
+    };
 
     /// Constraint Field Type
     type ConstraintField<C> = <<C as ProjectiveCurve>::BaseField as Field>::BasePrimeField;
@@ -34,79 +39,108 @@ pub mod arkworks {
     /// Compiler Type
     type Compiler<C> = R1CS<ConstraintField<C>>;
 
-    /*
-    /// Specification
-    pub struct Specification<C, CV>(PhantomData<(C, CV)>)
+    /// Elliptic Curve Group Element
+    #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    pub struct Group<C>(pub(crate) C)
+    where
+        C: ProjectiveCurve;
+
+    impl<C> kdf::AsBytes for Group<C>
+    where
+        C: ProjectiveCurve,
+    {
+        #[inline]
+        fn as_bytes(&self) -> Vec<u8> {
+            ark_ff::to_bytes!(&self.0).expect("Byte conversion does not fail.")
+        }
+    }
+
+    impl<C> ecc::Group for Group<C>
+    where
+        C: ProjectiveCurve,
+    {
+        type Scalar = C::ScalarField;
+
+        #[inline]
+        fn add(&self, rhs: &Self, _: &mut ()) -> Self {
+            Self(self.0 + rhs.0)
+        }
+
+        #[inline]
+        fn scalar_mul(&self, scalar: &Self::Scalar, _: &mut ()) -> Self {
+            Self(self.0.mul(scalar.into_repr()))
+        }
+    }
+
+    /// Elliptic Curve Group Element Variable
+    pub struct GroupVar<C, CV>(pub(crate) CV, PhantomData<C>)
     where
         C: ProjectiveCurve,
         CV: CurveVar<C, ConstraintField<C>>;
 
-    impl<C, CV> super::Specification for Specification<C, CV>
+    impl<C, CV> ecc::Group<Compiler<C>> for GroupVar<C, CV>
     where
         C: ProjectiveCurve,
         CV: CurveVar<C, ConstraintField<C>>,
     {
-        type Group = C;
-
-        type Scalar = C::ScalarField;
-
-        #[inline]
-        fn scalar_mul(
-            point: &Self::Group,
-            scalar: &Self::Scalar,
-            compiler: &mut (),
-        ) -> Self::Group {
-            let _ = compiler;
-            point.mul(scalar.into_repr())
-        }
-    }
-
-    impl<C, CV> super::Specification<Compiler<C>> for Specification<C, CV>
-    where
-        C: ProjectiveCurve,
-        CV: CurveVar<C, ConstraintField<C>>,
-    {
-        type Group = CV;
-
+        // FIXME: This should be a "subtype" of this field (whenever we have an actual injection).
         type Scalar = FpVar<ConstraintField<C>>;
 
         #[inline]
-        fn scalar_mul(
-            point: &Self::Group,
-            scalar: &Self::Scalar,
-            compiler: &mut Compiler<C>,
-        ) -> Self::Group {
+        fn add(&self, rhs: &Self, compiler: &mut Compiler<C>) -> Self {
             let _ = compiler;
-            point
-                .scalar_mul_le(
-                    scalar
-                        .to_bits_le()
-                        .expect("Bit decomposition is not allowed to fail.")
-                        .iter(),
-                )
-                .expect("Scalar multiplication is not allowed to fail.")
+            Self(self.0.clone() + &rhs.0, PhantomData)
+        }
+
+        #[inline]
+        fn scalar_mul(&self, scalar: &Self::Scalar, compiler: &mut Compiler<C>) -> Self {
+            let _ = compiler;
+            Self(
+                self.0
+                    .scalar_mul_le(
+                        scalar
+                            .to_bits_le()
+                            .expect("Bit decomposition is not allowed to fail.")
+                            .iter(),
+                    )
+                    .expect("Scalar multiplication is not allowed to fail."),
+                PhantomData,
+            )
         }
     }
 
-    impl<C, CV> Variable<Compiler<C>> for super::KeyAgreement<Specification<C, CV>, Compiler<C>>
+    impl<C, CV> Variable<Compiler<C>> for GroupVar<C, CV>
     where
         C: ProjectiveCurve,
         CV: CurveVar<C, ConstraintField<C>>,
     {
-        type Type = super::KeyAgreement<Specification<C, CV>, ()>;
+        type Type = Group<C>;
 
-        type Mode = Constant;
+        type Mode = ArkAllocationMode;
 
         #[inline]
         fn new(cs: &mut Compiler<C>, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
-            match allocation {
-                Allocation::Known(this, _) => Self {
-                    generator: CV::new_constant(ns!(cs.cs, "group element"), this.generator)
-                        .expect("Variable allocation is not allowed to fail."),
-                },
-                _ => unreachable!(),
-            }
+            Self(
+                match allocation {
+                    Allocation::Known(this, ArkAllocationMode::Constant) => {
+                        CV::new_constant(ns!(cs.cs, ""), this.0)
+                    }
+                    Allocation::Known(this, ArkAllocationMode::Public) => {
+                        CV::new_input(ns!(cs.cs, ""), full(this.0))
+                    }
+                    Allocation::Known(this, ArkAllocationMode::Secret) => {
+                        CV::new_witness(ns!(cs.cs, ""), full(this.0))
+                    }
+                    Allocation::Unknown(PublicOrSecret::Public) => {
+                        CV::new_input(ns!(cs.cs, ""), empty::<C>)
+                    }
+                    Allocation::Unknown(PublicOrSecret::Secret) => {
+                        CV::new_witness(ns!(cs.cs, ""), empty::<C>)
+                    }
+                }
+                .expect("Variable allocation is not allowed to fail."),
+                PhantomData,
+            )
         }
     }
-    */
 }

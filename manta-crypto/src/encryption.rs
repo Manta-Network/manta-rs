@@ -52,37 +52,35 @@ pub trait SymmetricKeyEncryptionScheme {
 /// Constant-Size Symmetric-Key Encryption Scheme
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct ConstantSizeSymmetricKeyEncryption<const SIZE: usize, S, P = [u8; SIZE], C = [u8; SIZE]>
+pub struct ConstantSizeSymmetricKeyEncryption<const SIZE: usize, S, P = [u8; SIZE]>
 where
     S: SymmetricKeyEncryptionScheme<Plaintext = [u8; SIZE], Ciphertext = [u8; SIZE]>,
     P: Into<[u8; SIZE]> + TryFrom<[u8; SIZE]>,
-    C: AsRef<[u8; SIZE]> + From<[u8; SIZE]>,
 {
     /// Type Parameter Marker
-    __: PhantomData<(S, P, C)>,
+    __: PhantomData<(S, P)>,
 }
 
-impl<const SIZE: usize, S, P, C> SymmetricKeyEncryptionScheme
-    for ConstantSizeSymmetricKeyEncryption<SIZE, S, P, C>
+impl<const SIZE: usize, S, P> SymmetricKeyEncryptionScheme
+    for ConstantSizeSymmetricKeyEncryption<SIZE, S, P>
 where
     S: SymmetricKeyEncryptionScheme<Plaintext = [u8; SIZE], Ciphertext = [u8; SIZE]>,
     P: Into<[u8; SIZE]> + TryFrom<[u8; SIZE]>,
-    C: AsRef<[u8; SIZE]> + From<[u8; SIZE]>,
 {
     type Key = S::Key;
 
     type Plaintext = P;
 
-    type Ciphertext = C;
+    type Ciphertext = [u8; SIZE];
 
     #[inline]
     fn encrypt(key: Self::Key, plaintext: Self::Plaintext) -> Self::Ciphertext {
-        S::encrypt(key, plaintext.into()).into()
+        S::encrypt(key, plaintext.into())
     }
 
     #[inline]
     fn decrypt(key: Self::Key, ciphertext: &Self::Ciphertext) -> Option<Self::Plaintext> {
-        S::decrypt(key, ciphertext.as_ref()).and_then(move |p| p.try_into().ok())
+        S::decrypt(key, ciphertext).and_then(move |p| p.try_into().ok())
     }
 }
 

@@ -14,13 +14,13 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Poseidon Commitment
+//! Poseidon Hash Function
 
 // TODO: Describe the contract for `Specification`.
 
 use alloc::vec::Vec;
 use core::{iter, mem};
-use manta_crypto::commitment::CommitmentScheme;
+use manta_crypto::hash::{BinaryHashFunction, HashFunction};
 
 /// Poseidon Permutation Specification
 pub trait Specification<COM = ()> {
@@ -35,6 +35,9 @@ pub trait Specification<COM = ()> {
 
     /// Number of Partial Rounds
     const PARTIAL_ROUNDS: usize;
+
+    /// Returns the additive identity of the field.
+    fn zero(compiler: &mut COM) -> Self::Field;
 
     /// Adds two field elements together.
     fn add(lhs: &Self::Field, rhs: &Self::Field, compiler: &mut COM) -> Self::Field;
@@ -61,8 +64,8 @@ where
     2 * S::FULL_ROUNDS + S::PARTIAL_ROUNDS
 }
 
-/// Poseidon Commitment
-pub struct Commitment<S, COM = (), const ARITY: usize = 1>
+/// Poseidon Hash
+pub struct Hash<S, COM = (), const ARITY: usize = 1>
 where
     S: Specification<COM>,
 {
@@ -73,11 +76,11 @@ where
     mds_matrix: Vec<S::Field>,
 }
 
-impl<S, COM, const ARITY: usize> Commitment<S, COM, ARITY>
+impl<S, COM, const ARITY: usize> Hash<S, COM, ARITY>
 where
     S: Specification<COM>,
 {
-    /// Builds a new [`Commitment`] form `additive_round_keys` and `mds_matrix`.
+    /// Builds a new [`Hash`](self::Hash) form `additive_round_keys` and `mds_matrix`.
     ///
     /// # Panics
     ///
@@ -133,14 +136,9 @@ where
 
     /// Computes the first round of the Poseidon permutation from `trapdoor` and `input`.
     #[inline]
-    fn first_round(
-        &self,
-        trapdoor: &S::Field,
-        input: &[S::Field; ARITY],
-        compiler: &mut COM,
-    ) -> State<S, COM> {
+    fn first_round(&self, input: &[S::Field; ARITY], compiler: &mut COM) -> State<S, COM> {
         let mut state = Vec::with_capacity(ARITY + 1);
-        for (i, point) in iter::once(trapdoor).chain(input).enumerate() {
+        for (i, point) in iter::once(&S::zero(compiler)).chain(input).enumerate() {
             let mut elem = S::add(point, &self.additive_round_keys[i], compiler);
             S::apply_sbox(&mut elem, compiler);
             state.push(elem);
@@ -172,24 +170,17 @@ where
     }
 }
 
-impl<S, COM, const ARITY: usize> CommitmentScheme<COM> for Commitment<S, COM, ARITY>
+impl<S, COM, const ARITY: usize> HashFunction<COM> for Hash<S, COM, ARITY>
 where
     S: Specification<COM>,
 {
-    type Trapdoor = S::Field;
-
     type Input = [S::Field; ARITY];
 
     type Output = S::Field;
 
     #[inline]
-    fn commit(
-        &self,
-        trapdoor: &Self::Trapdoor,
-        input: &Self::Input,
-        compiler: &mut COM,
-    ) -> Self::Output {
-        let mut state = self.first_round(trapdoor, input, compiler);
+    fn hash(&self, input: &Self::Input, compiler: &mut COM) -> Self::Output {
+        let mut state = self.first_round(input, compiler);
         for round in 1..S::FULL_ROUNDS {
             self.full_round(round, &mut state, compiler);
         }
@@ -205,17 +196,11 @@ where
     }
 }
 
-/// Poseidon Commitment Trapdoor Type
-pub type Trapdoor<S, COM, const ARITY: usize> =
-    <Commitment<S, COM, ARITY> as CommitmentScheme<COM>>::Trapdoor;
-
-/// Poseidon Commitment Input Type
-pub type Input<S, COM, const ARITY: usize> =
-    <Commitment<S, COM, ARITY> as CommitmentScheme<COM>>::Input;
+/// Poseidon Hash Input Type
+pub type Input<S, COM, const ARITY: usize> = <Hash<S, COM, ARITY> as HashFunction<COM>>::Input;
 
 /// Poseidon Commitment Output Type
-pub type Output<S, COM, const ARITY: usize> =
-    <Commitment<S, COM, ARITY> as CommitmentScheme<COM>>::Output;
+pub type Output<S, COM, const ARITY: usize> = <Hash<S, COM, ARITY> as HashFunction<COM>>::Output;
 
 /// Arkworks Backend
 #[cfg(feature = "arkworks")]
@@ -259,6 +244,11 @@ pub mod arkworks {
         const PARTIAL_ROUNDS: usize = S::PARTIAL_ROUNDS;
 
         #[inline]
+        fn zero(_: &mut ()) -> Self::Field {
+            Default::default()
+        }
+
+        #[inline]
         fn add(lhs: &Self::Field, rhs: &Self::Field, _: &mut ()) -> Self::Field {
             *lhs + *rhs
         }
@@ -290,6 +280,12 @@ pub mod arkworks {
         const PARTIAL_ROUNDS: usize = S::PARTIAL_ROUNDS;
 
         #[inline]
+        fn zero(compiler: &mut Compiler<S>) -> Self::Field {
+            let _ = compiler;
+            Self::Field::zero()
+        }
+
+        #[inline]
         fn add(lhs: &Self::Field, rhs: &Self::Field, compiler: &mut Compiler<S>) -> Self::Field {
             let _ = compiler;
             lhs + rhs
@@ -314,11 +310,11 @@ pub mod arkworks {
         }
     }
 
-    impl<S, const ARITY: usize> Variable<Compiler<S>> for super::Commitment<S, Compiler<S>, ARITY>
+    impl<S, const ARITY: usize> Variable<Compiler<S>> for super::Hash<S, Compiler<S>, ARITY>
     where
         S: Specification,
     {
-        type Type = super::Commitment<S, (), ARITY>;
+        type Type = super::Hash<S, (), ARITY>;
 
         type Mode = Constant;
 
@@ -339,7 +335,7 @@ pub mod arkworks {
                         .collect::<Result<Vec<_>, _>>()
                         .expect("Variable allocation is not allowed to fail."),
                 },
-                _ => unreachable!(),
+                _ => unreachable!("Constant variables cannot be unknown."),
             }
         }
     }

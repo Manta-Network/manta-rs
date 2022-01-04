@@ -30,30 +30,61 @@ pub trait KeyDerivationFunction {
     fn derive(secret: &Self::Key) -> Self::Output;
 }
 
-/// Key-Bytes Derivation Function
-#[derive(derivative::Derivative)]
-#[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct KeyBytesDerivationFunction<T, F>
-where
-    T: AsRef<[u8]>,
-    F: KeyDerivationFunction<Key = [u8]>,
-{
-    /// Type Parameter Marker
-    __: PhantomData<(T, F)>,
-}
+/// Key Derivation Function Adapter
+pub mod kdf {
+    use super::*;
+    use alloc::vec::Vec;
 
-impl<T, F> KeyDerivationFunction for KeyBytesDerivationFunction<T, F>
-where
-    T: AsRef<[u8]>,
-    F: KeyDerivationFunction<Key = [u8]>,
-{
-    type Key = T;
+    /// From Byte Slice Reference Adapter
+    #[derive(derivative::Derivative)]
+    #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    pub struct FromByteSliceRef<T, F>(PhantomData<(T, F)>)
+    where
+        T: AsRef<[u8]>,
+        F: KeyDerivationFunction<Key = [u8]>;
 
-    type Output = F::Output;
+    impl<T, F> KeyDerivationFunction for FromByteSliceRef<T, F>
+    where
+        T: AsRef<[u8]>,
+        F: KeyDerivationFunction<Key = [u8]>,
+    {
+        type Key = T;
 
-    #[inline]
-    fn derive(secret: &Self::Key) -> Self::Output {
-        F::derive(secret.as_ref())
+        type Output = F::Output;
+
+        #[inline]
+        fn derive(secret: &Self::Key) -> Self::Output {
+            F::derive(secret.as_ref())
+        }
+    }
+
+    /// Byte Conversion Trait
+    pub trait AsBytes {
+        /// Returns an owned byte representation of `self`.
+        fn as_bytes(&self) -> Vec<u8>;
+    }
+
+    /// From Byte Vector Adapter
+    #[derive(derivative::Derivative)]
+    #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    pub struct FromByteVector<T, F>(PhantomData<(T, F)>)
+    where
+        T: AsBytes,
+        F: KeyDerivationFunction<Key = [u8]>;
+
+    impl<T, F> KeyDerivationFunction for FromByteVector<T, F>
+    where
+        T: AsBytes,
+        F: KeyDerivationFunction<Key = [u8]>,
+    {
+        type Key = T;
+
+        type Output = F::Output;
+
+        #[inline]
+        fn derive(secret: &Self::Key) -> Self::Output {
+            F::derive(&secret.as_bytes())
+        }
     }
 }
 
