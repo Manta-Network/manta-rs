@@ -17,10 +17,11 @@
 //! Poseidon Hash Function
 
 // TODO: Describe the contract for `Specification`.
+// TODO: Add more methods to the `Specification` trait for optimization.
 
 use alloc::vec::Vec;
 use core::{iter, mem};
-use manta_crypto::hash::{BinaryHashFunction, HashFunction};
+use manta_crypto::hash::HashFunction;
 
 /// Poseidon Permutation Specification
 pub trait Specification<COM = ()> {
@@ -136,7 +137,7 @@ where
 
     /// Computes the first round of the Poseidon permutation from `trapdoor` and `input`.
     #[inline]
-    fn first_round(&self, input: &[S::Field; ARITY], compiler: &mut COM) -> State<S, COM> {
+    fn first_round(&self, input: [&S::Field; ARITY], compiler: &mut COM) -> State<S, COM> {
         let mut state = Vec::with_capacity(ARITY + 1);
         for (i, point) in iter::once(&S::zero(compiler)).chain(input).enumerate() {
             let mut elem = S::add(point, &self.additive_round_keys[i], compiler);
@@ -170,16 +171,16 @@ where
     }
 }
 
-impl<S, const ARITY: usize, COM> HashFunction<COM> for Hash<S, ARITY, COM>
+impl<S, const ARITY: usize, COM> HashFunction<ARITY, COM> for Hash<S, ARITY, COM>
 where
     S: Specification<COM>,
 {
-    type Input = [S::Field; ARITY];
+    type Input = S::Field;
 
     type Output = S::Field;
 
     #[inline]
-    fn hash(&self, input: &Self::Input, compiler: &mut COM) -> Self::Output {
+    fn hash_in(&self, input: [&Self::Input; ARITY], compiler: &mut COM) -> Self::Output {
         let mut state = self.first_round(input, compiler);
         for round in 1..S::FULL_ROUNDS {
             self.full_round(round, &mut state, compiler);
@@ -197,11 +198,12 @@ where
 }
 
 /// Poseidon Hash Input Type
-pub type Input<S, const ARITY: usize, COM = ()> = <Hash<S, ARITY, COM> as HashFunction<COM>>::Input;
+pub type Input<S, const ARITY: usize, COM = ()> =
+    <Hash<S, ARITY, COM> as HashFunction<ARITY, COM>>::Input;
 
 /// Poseidon Commitment Output Type
 pub type Output<S, const ARITY: usize, COM = ()> =
-    <Hash<S, ARITY, COM> as HashFunction<COM>>::Output;
+    <Hash<S, ARITY, COM> as HashFunction<ARITY, COM>>::Output;
 
 /// Arkworks Backend
 #[cfg(feature = "arkworks")]

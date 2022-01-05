@@ -178,7 +178,7 @@ where
     C: Configuration + ?Sized,
     M: InnerMap<C> + Default,
     LeafDigest<C>: Clone + Default,
-    InnerDigest<C>: PartialEq,
+    InnerDigest<C>: Clone + Default + PartialEq,
 {
     #[inline]
     fn new(parameters: &Parameters<C>) -> Self {
@@ -231,7 +231,7 @@ where
     C: Configuration + ?Sized,
     M: Default + InnerMap<C>,
     LeafDigest<C>: Clone + Default + PartialEq,
-    InnerDigest<C>: PartialEq,
+    InnerDigest<C>: Clone + Default + PartialEq,
 {
     #[inline]
     fn leaf_digest(&self, index: usize) -> Option<&LeafDigest<C>> {
@@ -257,22 +257,20 @@ where
 
     #[inline]
     fn path(&self, parameters: &Parameters<C>, index: usize) -> Result<Path<C>, PathError> {
-        // FIXME: Implement this:
-        // TODO: Make sure we don't query paths too far to the left.
-        /*
+        // FIXME: Check that this is implemented properly.
         let _ = parameters;
-        if index > 0 && index >= self.leaf_digests.len() {
-            return Err(());
+        let length = self.len();
+        if index > 0 && index >= length {
+            return Err(PathError::IndexTooLarge { length });
+        }
+        if index < self.starting_leaf_index().0 {
+            return Err(PathError::MissingPath);
         }
         let leaf_index = Node(index);
-        Ok(Path::new(
-            leaf_index,
+        Ok(Path::from_inner(
             self.get_owned_leaf_sibling(leaf_index),
             self.inner_digests.path_unchecked(leaf_index),
         ))
-        */
-        let _ = (parameters, index);
-        todo!()
     }
 
     #[inline]

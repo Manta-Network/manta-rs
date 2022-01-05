@@ -103,7 +103,7 @@ pub trait InnerHash<COM = ()> {
     type Parameters;
 
     /// Inner Hash Output Type
-    type Output: Clone + Default;
+    type Output;
 
     /// Combines two inner digests into a new inner digest using `parameters` inside the given
     /// `compiler`.
@@ -411,10 +411,10 @@ pub enum PathError {
     MissingPath,
 
     /// Given index exceeded the length of the tree
-    IndexTooLarge(
+    IndexTooLarge {
         /// Length of the tree
-        usize,
-    ),
+        length: usize,
+    },
 }
 
 /// Merkle Tree Membership Proof Mixin
@@ -962,7 +962,7 @@ impl<C, T> Accumulator for MerkleTree<C, T>
 where
     C: Configuration + ?Sized,
     T: Tree<C> + WithProofs<C>,
-    InnerDigest<C>: PartialEq,
+    InnerDigest<C>: Clone + PartialEq,
 {
     type Item = Leaf<C>;
 
@@ -997,7 +997,7 @@ impl<C, T> ConstantCapacityAccumulator for MerkleTree<C, T>
 where
     C: Configuration + ?Sized,
     T: Tree<C> + WithProofs<C>,
-    InnerDigest<C>: PartialEq,
+    InnerDigest<C>: Clone + PartialEq,
 {
     #[inline]
     fn capacity() -> usize {
@@ -1009,7 +1009,7 @@ impl<C, T> ExactSizeAccumulator for MerkleTree<C, T>
 where
     C: Configuration + ?Sized,
     T: Tree<C> + WithProofs<C>,
-    InnerDigest<C>: PartialEq,
+    InnerDigest<C>: Clone + PartialEq,
 {
     #[inline]
     fn len(&self) -> usize {
@@ -1026,7 +1026,7 @@ impl<C, T> OptimizedAccumulator for MerkleTree<C, T>
 where
     C: Configuration + ?Sized,
     T: Tree<C> + WithProofs<C>,
-    InnerDigest<C>: PartialEq,
+    InnerDigest<C>: Clone + PartialEq,
 {
     #[inline]
     fn insert_nonprovable(&mut self, item: &Self::Item) -> bool {

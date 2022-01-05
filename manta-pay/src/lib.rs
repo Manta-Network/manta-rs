@@ -23,10 +23,12 @@
 
 extern crate alloc;
 
+#[cfg(test)]
+mod test;
+
 pub mod crypto;
 pub mod key;
-
-// TODO[remove]: pub mod accounting;
+// TODO: pub mod ledger;
 
 #[cfg(all(feature = "arkworks", feature = "groth16"))]
 #[cfg_attr(doc_cfg, doc(cfg(all(feature = "arkworks", feature = "groth16"))))]

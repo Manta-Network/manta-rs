@@ -29,7 +29,6 @@ use bls12_381::Bls12_381;
 use bls12_381_ed::{
     constraints::EdwardsVar as Bls12_381_EdwardsVar, EdwardsProjective as Bls12_381_Edwards,
 };
-use core::marker::PhantomData;
 use manta_accounting::{
     asset::{Asset, AssetId, AssetValue},
     transfer,
@@ -41,8 +40,7 @@ use manta_crypto::{
     ecc::DiffieHellman,
     encryption,
     hash::{BinaryHashFunction, HashFunction},
-    key::{self, KeyDerivationFunction},
-    merkle_tree,
+    key, merkle_tree,
 };
 
 #[doc(inline)]
@@ -50,13 +48,13 @@ pub use ark_bls12_381 as bls12_381;
 #[doc(inline)]
 pub use ark_ed_on_bls12_381 as bls12_381_ed;
 
-///
+/// Pairing Curve Type
 pub type PairingCurve = Bls12_381;
 
-///
+/// Embedded Group Type
 pub type Group = ecc::arkworks::Group<Bls12_381_Edwards>;
 
-///
+/// Embedded Group Variable Type
 pub type GroupVar = ecc::arkworks::GroupVar<Bls12_381_Edwards, Bls12_381_EdwardsVar>;
 
 /// Constraint Field
@@ -71,7 +69,7 @@ pub type Compiler = R1CS<ConstraintField>;
 /// Proof System
 pub type ProofSystem = Groth16<PairingCurve>;
 
-///
+/// Poseidon Specification
 pub struct PoseidonSpec<const ARITY: usize>;
 
 impl poseidon::arkworks::Specification for PoseidonSpec<2> {
@@ -88,16 +86,16 @@ impl poseidon::arkworks::Specification for PoseidonSpec<4> {
     const SBOX_EXPONENT: u64 = 5;
 }
 
-///
+/// Key Agreement Scheme Type
 pub type KeyAgreementScheme = DiffieHellman<Group>;
 
-///
+/// Key Agreement Scheme Variable Type
 pub type KeyAgreementSchemeVar = DiffieHellman<GroupVar, Compiler>;
 
-///
+/// Unspent Transaction Output Type
 pub type Utxo = poseidon::Output<PoseidonSpec<4>, 4>;
 
-///
+/// UTXO Commitment Scheme
 pub struct UtxoCommitmentScheme(pub poseidon::Hash<PoseidonSpec<4>, 4>);
 
 impl CommitmentScheme for UtxoCommitmentScheme {
@@ -106,30 +104,27 @@ impl CommitmentScheme for UtxoCommitmentScheme {
     type Output = Utxo;
 
     #[inline]
-    fn commit(
+    fn commit_in(
         &self,
         trapdoor: &Self::Trapdoor,
         input: &Self::Input,
-        compiler: &mut (),
+        _: &mut (),
     ) -> Self::Output {
         // NOTE: The group is in projective form, so we need to convert it first.
         let trapdoor = trapdoor.0.into_affine();
-        self.0.hash(
-            &[
-                trapdoor.x,
-                trapdoor.y,
-                input.id.0.into(),
-                input.value.0.into(),
-            ],
-            compiler,
-        )
+        self.0.hash([
+            &trapdoor.x,
+            &trapdoor.y,
+            &input.id.0.into(),
+            &input.value.0.into(),
+        ])
     }
 }
 
-///
+/// Unspent Transaction Output Variable Type
 pub type UtxoVar = poseidon::Output<PoseidonSpec<4>, 4, Compiler>;
 
-///
+/// UTXO Commitment Scheme Variable
 pub struct UtxoCommitmentSchemeVar(pub poseidon::Hash<PoseidonSpec<4>, 4, Compiler>);
 
 impl CommitmentScheme<Compiler> for UtxoCommitmentSchemeVar {
@@ -138,20 +133,15 @@ impl CommitmentScheme<Compiler> for UtxoCommitmentSchemeVar {
     type Output = UtxoVar;
 
     #[inline]
-    fn commit(
+    fn commit_in(
         &self,
         trapdoor: &Self::Trapdoor,
         input: &Self::Input,
         compiler: &mut Compiler,
     ) -> Self::Output {
         // NOTE: The group is already in affine form, so we can extract `x` and `y`.
-        self.0.hash(
-            &[
-                trapdoor.0.x.clone(),
-                trapdoor.0.y.clone(),
-                input.id.0.clone(),
-                input.value.0.clone(),
-            ],
+        self.0.hash_in(
+            [&trapdoor.0.x, &trapdoor.0.y, &input.id.0, &input.value.0],
             compiler,
         )
     }
@@ -159,22 +149,19 @@ impl CommitmentScheme<Compiler> for UtxoCommitmentSchemeVar {
 
 impl Variable<Compiler> for UtxoCommitmentSchemeVar {
     type Type = UtxoCommitmentScheme;
-
     type Mode = Constant;
 
     #[inline]
     fn new(cs: &mut Compiler, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
-        match allocation {
-            Allocation::Known(this, mode) => Self(this.0.as_known(cs, mode)),
-            _ => unreachable!("Constants cannot be unknown."),
-        }
+        let (this, mode) = allocation.into_known();
+        Self(this.0.as_known(cs, mode))
     }
 }
 
-///
+/// Void Number Type
 pub type VoidNumber = poseidon::Output<PoseidonSpec<2>, 2>;
 
-///
+/// Void Number Hash Function
 pub struct VoidNumberHashFunction(pub poseidon::Hash<PoseidonSpec<2>, 2>);
 
 impl BinaryHashFunction for VoidNumberHashFunction {
@@ -183,20 +170,20 @@ impl BinaryHashFunction for VoidNumberHashFunction {
     type Output = VoidNumber;
 
     #[inline]
-    fn hash(&self, left: &Self::Left, right: &Self::Right, compiler: &mut ()) -> Self::Output {
-        self.0.hash(
-            &[
-                *left,
-                // FIXME: This is the lift from inner scalar to outer scalar and only exists in some
-                // cases! We need a better abstraction for this.
-                ConstraintField::from_le_bytes_mod_order(&right.into_repr().to_bytes_le()),
-            ],
-            compiler,
-        )
+    fn hash_in(&self, left: &Self::Left, right: &Self::Right, _: &mut ()) -> Self::Output {
+        self.0.hash([
+            left,
+            // FIXME: This is the lift from inner scalar to outer scalar and only exists in some
+            // cases! We need a better abstraction for this.
+            &ConstraintField::from_le_bytes_mod_order(&right.into_repr().to_bytes_le()),
+        ])
     }
 }
 
-///
+/// Void Number Variable Type
+pub type VoidNumberVar = poseidon::Output<PoseidonSpec<2>, 2, Compiler>;
+
+/// Void Number Hash Function Variable
 pub struct VoidNumberHashFunctionVar(pub poseidon::Hash<PoseidonSpec<2>, 2, Compiler>);
 
 impl BinaryHashFunction<Compiler> for VoidNumberHashFunctionVar {
@@ -205,31 +192,28 @@ impl BinaryHashFunction<Compiler> for VoidNumberHashFunctionVar {
     type Output = poseidon::Output<PoseidonSpec<2>, 2, Compiler>;
 
     #[inline]
-    fn hash(
+    fn hash_in(
         &self,
         left: &Self::Left,
         right: &Self::Right,
         compiler: &mut Compiler,
     ) -> Self::Output {
-        self.0.hash(&[left.clone(), right.clone()], compiler)
+        self.0.hash_in([left, right], compiler)
     }
 }
 
 impl Variable<Compiler> for VoidNumberHashFunctionVar {
     type Type = VoidNumberHashFunction;
-
     type Mode = Constant;
 
     #[inline]
     fn new(cs: &mut Compiler, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
-        match allocation {
-            Allocation::Known(this, mode) => Self(this.0.as_known(cs, mode)),
-            _ => unreachable!("Constants cannot be unknown."),
-        }
+        let (this, mode) = allocation.into_known();
+        Self(this.0.as_known(cs, mode))
     }
 }
 
-///
+/// Asset ID Variable
 pub struct AssetIdVar(ConstraintFieldVar);
 
 impl Variable<Compiler> for AssetIdVar {
@@ -249,7 +233,7 @@ impl Variable<Compiler> for AssetIdVar {
     }
 }
 
-///
+/// Asset Value Variable
 pub struct AssetValueVar(ConstraintFieldVar);
 
 impl Variable<Compiler> for AssetValueVar {
@@ -269,13 +253,13 @@ impl Variable<Compiler> for AssetValueVar {
     }
 }
 
-///
+/// Leaf Hash Configuration Type
 pub type LeafHash = merkle_tree::IdentityLeafHash<Utxo>;
 
-///
+/// Leaf Hash Variable Configuration Type
 pub type LeafHashVar = merkle_tree::IdentityLeafHash<UtxoVar, Compiler>;
 
-///
+/// Inner Hash Configuration
 pub struct InnerHash;
 
 impl merkle_tree::InnerHash for InnerHash {
@@ -288,9 +272,9 @@ impl merkle_tree::InnerHash for InnerHash {
         parameters: &Self::Parameters,
         lhs: &Self::Output,
         rhs: &Self::Output,
-        compiler: &mut (),
+        _: &mut (),
     ) -> Self::Output {
-        parameters.hash(&[*lhs, *rhs], compiler)
+        parameters.hash([lhs, rhs])
     }
 
     #[inline]
@@ -298,17 +282,16 @@ impl merkle_tree::InnerHash for InnerHash {
         parameters: &Self::Parameters,
         lhs: &Self::LeafDigest,
         rhs: &Self::LeafDigest,
-        compiler: &mut (),
+        _: &mut (),
     ) -> Self::Output {
-        parameters.hash(&[*lhs, *rhs], compiler)
+        parameters.hash([lhs, rhs])
     }
 }
 
-/*
-///
+/// Inner Hash Variable Configuration
 pub struct InnerHashVar;
 
-impl merkle_tree::InnerHash<Compiler> for InnerHash {
+impl merkle_tree::InnerHash<Compiler> for InnerHashVar {
     type LeafDigest = UtxoVar;
     type Parameters = poseidon::Hash<PoseidonSpec<2>, 2, Compiler>;
     type Output = poseidon::Output<PoseidonSpec<2>, 2, Compiler>;
@@ -318,9 +301,9 @@ impl merkle_tree::InnerHash<Compiler> for InnerHash {
         parameters: &Self::Parameters,
         lhs: &Self::Output,
         rhs: &Self::Output,
-        compiler: &mut COM,
+        compiler: &mut Compiler,
     ) -> Self::Output {
-        parameters.hash(&[*lhs, *rhs], compiler)
+        parameters.hash_in([lhs, rhs], compiler)
     }
 
     #[inline]
@@ -328,19 +311,82 @@ impl merkle_tree::InnerHash<Compiler> for InnerHash {
         parameters: &Self::Parameters,
         lhs: &Self::LeafDigest,
         rhs: &Self::LeafDigest,
-        compiler: &mut COM,
+        compiler: &mut Compiler,
     ) -> Self::Output {
-        parameters.hash(&[*lhs, *rhs], compiler)
+        parameters.hash_in([lhs, rhs], compiler)
     }
 }
-*/
 
-/// Configuration Structure
-#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct Config;
+/// Merkle Tree Configuration
+pub struct MerkleTreeConfiguration;
+
+impl merkle_tree::HashConfiguration for MerkleTreeConfiguration {
+    type LeafHash = LeafHash;
+    type InnerHash = InnerHash;
+}
+
+impl merkle_tree::Configuration for MerkleTreeConfiguration {
+    const HEIGHT: usize = 20;
+}
+
+/// Merkle Tree Variable Configuration
+pub struct MerkleTreeConfigurationVar;
+
+impl merkle_tree::HashConfiguration<Compiler> for MerkleTreeConfigurationVar {
+    type LeafHash = LeafHashVar;
+    type InnerHash = InnerHashVar;
+}
+
+impl merkle_tree::Configuration<Compiler> for MerkleTreeConfigurationVar {
+    const HEIGHT: usize = <MerkleTreeConfiguration as merkle_tree::Configuration>::HEIGHT;
+}
+
+impl constraint::Input<AssetId> for ProofSystem {
+    #[inline]
+    fn extend(input: &mut Self::Input, next: &AssetId) {
+        input.push(next.0.into());
+    }
+}
+
+impl constraint::Input<AssetValue> for ProofSystem {
+    #[inline]
+    fn extend(input: &mut Self::Input, next: &AssetValue) {
+        input.push(next.0.into());
+    }
+}
+
+impl constraint::Input<ConstraintField> for ProofSystem {
+    #[inline]
+    fn extend(input: &mut Self::Input, next: &ConstraintField) {
+        input.push(*next);
+    }
+}
+
+impl constraint::Input<Group> for ProofSystem {
+    #[inline]
+    fn extend(input: &mut Self::Input, next: &Group) {
+        // FIXME: Make sure we can type check the coordinate system here.
+        let affine = next.0.into_affine();
+        input.push(affine.x);
+        input.push(affine.y);
+    }
+}
+
+/// Note Encryption Scheme
+pub type NoteEncryptionScheme = encryption::Hybrid<
+    KeyAgreementScheme,
+    encryption::ConstantSizeSymmetricKeyEncryption<{ Asset::SIZE }, AesGcm<{ Asset::SIZE }>, Asset>,
+    key::kdf::FromByteVector<
+        <KeyAgreementScheme as key::KeyAgreementScheme>::SharedSecret,
+        Blake2sKdf,
+    >,
+>;
+
+/// Transfer Configuration
+pub struct TransferConfiguration;
 
 /*
-impl transfer::Configuration for Config {
+impl transfer::Configuration for TransferConfiguration {
     type SecretKey = <Self::KeyAgreementScheme as key::KeyAgreementScheme>::SecretKey;
     type PublicKey = <Self::KeyAgreementScheme as key::KeyAgreementScheme>::PublicKey;
     type KeyAgreementScheme = KeyAgreementScheme;
@@ -361,12 +407,10 @@ impl transfer::Configuration for Config {
         <Self::VoidNumberHashFunctionVar as BinaryHashFunction<Self::Compiler>>::Output;
     type VoidNumberHashFunctionVar = VoidNumberHashFunctionVar;
 
-    /* TODO:
-    type UtxoSetModel = merkle_tree::Parameters<()>;
+    type UtxoSetModel = merkle_tree::Parameters<MerkleTreeConfiguration>;
     type UtxoSetWitnessVar = <Self::UtxoSetModelVar as accumulator::Model<Self::Compiler>>::Witness;
     type UtxoSetOutputVar = <Self::UtxoSetModelVar as accumulator::Model<Self::Compiler>>::Output;
-    type UtxoSetModelVar = ();
-    */
+    type UtxoSetModelVar = merkle_tree::Parameters<MerkleTreeConfigurationVar, Compiler>;
 
     type AssetIdVar = AssetIdVar;
     type AssetValueVar = AssetValueVar;
@@ -374,159 +418,20 @@ impl transfer::Configuration for Config {
     type Compiler = Compiler;
     type ProofSystem = ProofSystem;
 
-    type NoteEncryptionScheme = encryption::Hybrid<
-        Self::KeyAgreementScheme,
-        encryption::ConstantSizeSymmetricKeyEncryption<
-            { Asset::SIZE },
-            AesGcm<{ Asset::SIZE }>,
-            Asset,
-        >,
-        key::kdf::FromByteVector<
-            <Self::KeyAgreementScheme as key::KeyAgreementScheme>::SharedSecret,
-            Blake2sKdf,
-        >,
-    >;
-}
-*/
-
-impl constraint::Input<AssetId> for ProofSystem {
-    #[inline]
-    fn extend(input: &mut Self::Input, next: &AssetId) {
-        input.push(next.0.into());
-    }
-}
-
-impl constraint::Input<AssetValue> for ProofSystem {
-    #[inline]
-    fn extend(input: &mut Self::Input, next: &AssetValue) {
-        input.push(next.0.into());
-    }
-}
-
-impl constraint::Input<Group> for ProofSystem {
-    #[inline]
-    fn extend(input: &mut Self::Input, next: &Group) {
-        // TODO: next.extend_input(input);
-        todo!()
-    }
-}
-
-/* TODO:
-impl constraint::Input<Root> for ProofSystem
-{
-    #[inline]
-    fn extend(input: &mut Self::Input, next: &Root) {
-        root_extend_input(next, input);
-    }
+    type NoteEncryptionScheme = NoteEncryptionScheme;
 }
 */
 
 /* TODO:
-/// Pedersen Window Parameters
-#[derive(Clone, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct PedersenCommitmentWindowParameters;
+/// Mint Transfer Type
+pub struct Mint = transfer::canonical::Mint<TransferConfiguration>;
 
-impl PedersenWindow for PedersenCommitmentWindowParameters {
-    const WINDOW_SIZE: usize = 4;
-    const NUM_WINDOWS: usize = 256;
-}
+/// Private Transfer Type
+pub struct PrivateTransfer = transfer::canonical::PrivateTransfer<TransferConfiguration>;
 
-/// Pedersen Commitment Projective Curve
-pub type PedersenCommitmentProjectiveCurve = EdwardsProjective;
+/// Reclaim Transfer Type
+pub struct Reclaim = transfer::canonical::Reclaim<TransferConfiguration>;
 
-/// Pedersen Commitment Projective Curve
-pub type PedersenCommitmentProjectiveCurveVar = EdwardsVar;
-
-/// Pedersen Commitment Scheme
-pub type PedersenCommitment = pedersen::constraint::PedersenCommitmentWrapper<
-    PedersenCommitmentWindowParameters,
-    PedersenCommitmentProjectiveCurve,
-    PedersenCommitmentProjectiveCurveVar,
->;
-
-/// Pedersen Commitment Scheme Variable
-pub type PedersenCommitmentVar = pedersen::constraint::PedersenCommitmentVar<
-    PedersenCommitmentWindowParameters,
-    PedersenCommitmentProjectiveCurve,
-    PedersenCommitmentProjectiveCurveVar,
->;
-
-/// Arkworks Pedersen Commitment Scheme
-type ArkPedersenCommitment =
-    CRH<PedersenCommitmentProjectiveCurve, PedersenCommitmentWindowParameters>;
-
-/// Constraint Field
-pub type ConstraintField = Fq;
-
-/// Constraint System
-pub type ConstraintSystem = ArkConstraintSystem<ConstraintField>;
-
-/// Proof System
-pub type ProofSystem = Groth16<Bls12_381>;
-
-impl ArkMerkleTreeConfiguration for Configuration {
-    type Leaf = Utxo;
-    type LeafHash = ArkPedersenCommitment;
-    type InnerHash = ArkPedersenCommitment;
-    type Height = u8;
-
-    const HEIGHT: Self::Height = 20;
-}
-
-impl merkle_tree::HashConfiguration for Configuration {
-    type LeafHash =
-        <ArkMerkleTreeConfigConverter<Configuration> as merkle_tree::HashConfiguration>::LeafHash;
-    type InnerHash =
-        <ArkMerkleTreeConfigConverter<Configuration> as merkle_tree::HashConfiguration>::InnerHash;
-}
-
-impl merkle_tree::Configuration for Configuration {
-    type Height =
-        <ArkMerkleTreeConfigConverter<Configuration> as merkle_tree::Configuration>::Height;
-
-    const HEIGHT: Self::Height =
-        <ArkMerkleTreeConfigConverter<Configuration> as merkle_tree::Configuration>::HEIGHT;
-}
-
-impl merkle_tree_constraint::Configuration for Configuration {
-    type ConstraintField = ConstraintField;
-    type LeafHashVar = CRHGadget<
-        PedersenCommitmentProjectiveCurve,
-        PedersenCommitmentProjectiveCurveVar,
-        PedersenCommitmentWindowParameters,
-    >;
-    type InnerHashVar = CRHGadget<
-        PedersenCommitmentProjectiveCurve,
-        PedersenCommitmentProjectiveCurveVar,
-        PedersenCommitmentWindowParameters,
-    >;
-}
-
-impl identity::Configuration for Configuration {
-    type Asset = Asset;
-    type KeyAgreementScheme = EllipticCurveDiffieHellman<PedersenCommitmentProjectiveCurve>;
-    type CommitmentScheme = PedersenCommitment;
-}
-
-/*
-/// Transfer Constraint Configuration Structure
-#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct TransferConstraintConfiguration;
-
-impl identity::Configuration for TransferConstraintConfiguration {
-    type Asset = AssetVar;
-    type KeyAgreementScheme = ();
-    type CommitmentScheme = ();
-}
-
-impl transfer::ConstraintConfiguration<ConstraintSystem> for TransferConstraintConfiguration {}
-
-impl transfer::Configuration for Configuration {
-    type EncryptionScheme = ();
-    type UtxoSetVerifier = ();
-    type ConstraintSystem = ConstraintSystem;
-    type ConstraintConfiguration = TransferConstraintConfiguration;
-    type ProofSystem = ProofSystem;
-}
-*/
+/// Transfer Post Type
+pub struct TransferPost = transfer::TransferPost<TransferConfiguration>;
 */

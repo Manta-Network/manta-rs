@@ -207,7 +207,7 @@ pub trait Configuration {
         asset: &Asset,
     ) -> Utxo<Self> {
         let trapdoor = Self::trapdoor(key_agreement, secret_key, public_key);
-        utxo_commitment.commit(&trapdoor, asset, &mut ())
+        utxo_commitment.commit(&trapdoor, asset)
     }
 
     /// Generates the trapdoor associated to `secret_key` and `public_key` and then uses it to
@@ -222,7 +222,7 @@ pub trait Configuration {
         cs: &mut Self::Compiler,
     ) -> UtxoVar<Self> {
         let trapdoor = Self::trapdoor_var(key_agreement, secret_key, public_key, cs);
-        utxo_commitment.commit(&trapdoor, asset, cs)
+        utxo_commitment.commit_in(&trapdoor, asset, cs)
     }
 
     /// Generates the void number associated to `utxo` and `secret_key` using `parameters`.
@@ -232,7 +232,7 @@ pub trait Configuration {
         utxo: &Utxo<Self>,
         secret_key: &SecretKey<Self>,
     ) -> VoidNumber<Self> {
-        parameters.hash(utxo, secret_key, &mut ())
+        parameters.hash(utxo, secret_key)
     }
 
     /// Generates the void number associated to `utxo` and `secret_key` using `parameters`.
@@ -243,7 +243,7 @@ pub trait Configuration {
         secret_key: &SecretKeyVar<Self>,
         cs: &mut Self::Compiler,
     ) -> VoidNumberVar<Self> {
-        parameters.hash(utxo, secret_key, cs)
+        parameters.hash_in(utxo, secret_key, cs)
     }
 
     /// Checks that the `utxo` is correctly constructed from the `secret_key`, `public_key`, and

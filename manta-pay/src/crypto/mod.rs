@@ -16,10 +16,8 @@
 
 //! Manta Pay Cryptographic Primitives Implementations
 
-// TODO[remove]: pub mod commitment;
 pub mod constraint;
 pub mod ecc;
 pub mod encryption;
 pub mod hash;
 pub mod key;
-pub mod merkle_tree;

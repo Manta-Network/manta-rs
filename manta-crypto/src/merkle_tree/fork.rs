@@ -82,6 +82,7 @@ where
     where
         M: Default + InnerMap<C>,
         LeafDigest<C>: Default,
+        InnerDigest<C>: Default,
     {
         Fork::new(parameters, self)
     }
@@ -93,6 +94,7 @@ where
     where
         M: Default + InnerMap<C>,
         LeafDigest<C>: Default,
+        InnerDigest<C>: Default,
     {
         fork.attach(parameters, self)
     }
@@ -259,6 +261,7 @@ where
     pub fn new(parameters: &Parameters<C>, trunk: &Trunk<C, T, P>) -> Self
     where
         LeafDigest<C>: Default,
+        InnerDigest<C>: Default,
     {
         Self::with_leaves(parameters, trunk, Default::default()).unwrap()
     }
@@ -273,6 +276,7 @@ where
     ) -> Option<Self>
     where
         LeafDigest<C>: Default,
+        InnerDigest<C>: Default,
     {
         let (base_contribution, branch) =
             Self::new_branch(parameters, trunk.borrow_base().as_ref(), leaf_digests)?;
@@ -292,6 +296,7 @@ where
     ) -> Option<(BaseContribution, Partial<C, M>)>
     where
         LeafDigest<C>: Default,
+        InnerDigest<C>: Default,
     {
         if leaf_digests.len() + base.len() >= capacity::<C>() {
             return None;
@@ -309,6 +314,7 @@ where
     ) -> (BaseContribution, Partial<C, M>)
     where
         LeafDigest<C>: Default,
+        InnerDigest<C>: Default,
     {
         let (base_contribution, base_inner_digest, base_leaf_digests, inner_path) =
             Self::generate_branch_setup(parameters, base);
@@ -336,6 +342,7 @@ where
     )
     where
         LeafDigest<C>: Default,
+        InnerDigest<C>: Default,
     {
         if base.is_empty() {
             (
@@ -388,6 +395,7 @@ where
     ) -> bool
     where
         LeafDigest<C>: Default,
+        InnerDigest<C>: Default,
     {
         if branch.len() + base.len() - (*base_contribution as usize) >= capacity::<C>() {
             return false;
@@ -408,6 +416,7 @@ where
     pub fn attach(&mut self, parameters: &Parameters<C>, trunk: &Trunk<C, T, P>) -> bool
     where
         LeafDigest<C>: Default,
+        InnerDigest<C>: Default,
     {
         if !Self::try_rebase(
             parameters,

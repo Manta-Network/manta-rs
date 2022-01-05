@@ -80,7 +80,7 @@ where
     #[inline]
     pub fn is_current(&self) -> bool
     where
-        InnerDigest<C>: PartialEq,
+        InnerDigest<C>: Default + PartialEq,
     {
         self.is_current_with(&Default::default())
     }
@@ -167,6 +167,7 @@ where
 impl<C> Default for InnerPath<C>
 where
     C: Configuration + ?Sized,
+    InnerDigest<C>: Default,
 {
     #[inline]
     fn default() -> Self {
@@ -190,6 +191,7 @@ where
 impl<C> From<CurrentInnerPath<C>> for InnerPath<C>
 where
     C: Configuration + ?Sized,
+    InnerDigest<C>: Default,
 {
     #[inline]
     fn from(path: CurrentInnerPath<C>) -> Self {
@@ -268,7 +270,7 @@ where
     #[inline]
     pub fn from_path_unchecked(path: InnerPath<C>) -> Self
     where
-        InnerDigest<C>: PartialEq,
+        InnerDigest<C>: Default + PartialEq,
     {
         Self::from_path_unchecked_with(path, &Default::default())
     }
@@ -286,7 +288,10 @@ where
 
     /// Computes the root of the merkle tree relative to `base` using `parameters`.
     #[inline]
-    pub fn root_from_base(&self, parameters: &Parameters<C>, base: InnerDigest<C>) -> Root<C> {
+    pub fn root_from_base(&self, parameters: &Parameters<C>, base: InnerDigest<C>) -> Root<C>
+    where
+        InnerDigest<C>: Default,
+    {
         Self::fold(
             parameters,
             0,
@@ -305,7 +310,10 @@ where
         parameters: &Parameters<C>,
         leaf_digest: &LeafDigest<C>,
         sibling_digest: &LeafDigest<C>,
-    ) -> Root<C> {
+    ) -> Root<C>
+    where
+        InnerDigest<C>: Default,
+    {
         self.root_from_base(
             parameters,
             self.leaf_index
@@ -324,7 +332,7 @@ where
         sibling_digest: &LeafDigest<C>,
     ) -> bool
     where
-        InnerDigest<C>: PartialEq,
+        InnerDigest<C>: Default + PartialEq,
     {
         root == &self.root(parameters, leaf_digest, sibling_digest)
     }
@@ -388,6 +396,7 @@ where
     ) -> Root<C>
     where
         LeafDigest<C>: Default,
+        InnerDigest<C>: Default,
     {
         let mut last_index = self.leaf_index;
         let mut index = self.leaf_index + 1;
@@ -450,7 +459,7 @@ where
 impl<C> TryFrom<InnerPath<C>> for CurrentInnerPath<C>
 where
     C: Configuration + ?Sized,
-    InnerDigest<C>: PartialEq,
+    InnerDigest<C>: Default + PartialEq,
 {
     type Error = InnerPath<C>;
 
@@ -468,6 +477,7 @@ where
 impl<C> IntoIterator for CurrentInnerPath<C>
 where
     C: Configuration + ?Sized,
+    InnerDigest<C>: Default,
 {
     type Item = InnerDigest<C>;
 
@@ -497,6 +507,7 @@ where
 impl<C> Iterator for CurrentInnerPathIntoIter<C>
 where
     C: Configuration + ?Sized,
+    InnerDigest<C>: Default,
 {
     type Item = InnerDigest<C>;
 
@@ -516,9 +527,19 @@ where
     }
 }
 
-impl<C> ExactSizeIterator for CurrentInnerPathIntoIter<C> where C: Configuration + ?Sized {}
+impl<C> ExactSizeIterator for CurrentInnerPathIntoIter<C>
+where
+    C: Configuration + ?Sized,
+    InnerDigest<C>: Default,
+{
+}
 
-impl<C> FusedIterator for CurrentInnerPathIntoIter<C> where C: Configuration + ?Sized {}
+impl<C> FusedIterator for CurrentInnerPathIntoIter<C>
+where
+    C: Configuration + ?Sized,
+    InnerDigest<C>: Default,
+{
+}
 
 /// [`InnerNode`] Iterator for [`CurrentInnerPath`]
 pub struct CurrentInnerPathNodeIter<C>
@@ -626,7 +647,7 @@ where
     #[inline]
     pub fn is_current(&self) -> bool
     where
-        InnerDigest<C>: PartialEq,
+        InnerDigest<C>: Default + PartialEq,
     {
         self.is_current_with(&Default::default())
     }
@@ -636,7 +657,7 @@ where
     #[inline]
     pub fn is_current_with(&self, default: &InnerDigest<C>) -> bool
     where
-        InnerDigest<C>: PartialEq,
+        InnerDigest<C>: Default + PartialEq,
     {
         self.inner_path.is_current_with(default)
     }
@@ -678,6 +699,7 @@ where
 impl<C> From<CurrentPath<C>> for Path<C>
 where
     C: Configuration + ?Sized,
+    InnerDigest<C>: Default,
 {
     #[inline]
     fn from(path: CurrentPath<C>) -> Self {
@@ -712,7 +734,7 @@ where
 /// Merkle Tree Current Path
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "LeafDigest<C>: Clone"),
+    Clone(bound = "LeafDigest<C>: Clone, InnerDigest<C>: Clone"),
     Debug(bound = "LeafDigest<C>: Debug, InnerDigest<C>: Debug"),
     Default(bound = "LeafDigest<C>: Default, InnerDigest<C>: Default"),
     Eq(bound = "LeafDigest<C>: Eq, InnerDigest<C>: Eq"),
@@ -758,7 +780,7 @@ where
     #[inline]
     pub fn from_path_unchecked(path: Path<C>) -> Self
     where
-        InnerDigest<C>: PartialEq,
+        InnerDigest<C>: Default + PartialEq,
     {
         Self::from_path_unchecked_with(path, &Default::default())
     }
@@ -768,7 +790,7 @@ where
     #[inline]
     pub fn from_path_unchecked_with(path: Path<C>, default: &InnerDigest<C>) -> Self
     where
-        InnerDigest<C>: PartialEq,
+        InnerDigest<C>: Default + PartialEq,
     {
         Self::from_inner(
             path.sibling_digest,
@@ -784,7 +806,10 @@ where
 
     /// Computes the root of the merkle tree relative to `leaf_digest` using `parameters`.
     #[inline]
-    pub fn root(&self, parameters: &Parameters<C>, leaf_digest: &LeafDigest<C>) -> Root<C> {
+    pub fn root(&self, parameters: &Parameters<C>, leaf_digest: &LeafDigest<C>) -> Root<C>
+    where
+        InnerDigest<C>: Default,
+    {
         self.inner_path
             .root(parameters, leaf_digest, &self.sibling_digest)
     }
@@ -799,7 +824,7 @@ where
         leaf_digest: &LeafDigest<C>,
     ) -> bool
     where
-        InnerDigest<C>: PartialEq,
+        InnerDigest<C>: Default + PartialEq,
     {
         self.inner_path
             .verify_digest(parameters, root, leaf_digest, &self.sibling_digest)
@@ -810,7 +835,7 @@ where
     #[inline]
     pub fn verify(&self, parameters: &Parameters<C>, root: &Root<C>, leaf: &Leaf<C>) -> bool
     where
-        InnerDigest<C>: PartialEq,
+        InnerDigest<C>: Default + PartialEq,
     {
         self.verify_digest(parameters, root, &parameters.digest(leaf))
     }
@@ -825,6 +850,7 @@ where
     ) -> Root<C>
     where
         LeafDigest<C>: Default,
+        InnerDigest<C>: Default,
     {
         self.inner_path
             .update(parameters, current, &mut self.sibling_digest, next)
@@ -834,7 +860,7 @@ where
 impl<C> TryFrom<Path<C>> for CurrentPath<C>
 where
     C: Configuration + ?Sized,
-    InnerDigest<C>: PartialEq,
+    InnerDigest<C>: Default + PartialEq,
 {
     type Error = Path<C>;
 

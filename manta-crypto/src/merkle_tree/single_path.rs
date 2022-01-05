@@ -111,7 +111,10 @@ where
     /// Computes the root of the tree under the assumption that `self.leaf_digest.is_some()`
     /// evaluates to `true`.
     #[inline]
-    fn compute_root(&self, parameters: &Parameters<C>) -> Root<C> {
+    fn compute_root(&self, parameters: &Parameters<C>) -> Root<C>
+    where
+        InnerDigest<C>: Default,
+    {
         self.current_path
             .root(parameters, self.leaf_digest().unwrap())
     }
@@ -121,6 +124,7 @@ impl<C> Tree<C> for SinglePath<C>
 where
     C: Configuration + ?Sized,
     LeafDigest<C>: Clone + Default,
+    InnerDigest<C>: Clone + Default,
 {
     #[inline]
     fn new(parameters: &Parameters<C>) -> Self {

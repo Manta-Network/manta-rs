@@ -314,10 +314,10 @@ where
 /// Sentinel Source for a Single Sentinel Value
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = ""),
+    Clone(bound = "InnerDigest<C>: Clone"),
     Copy(bound = "InnerDigest<C>: Copy"),
     Debug(bound = "InnerDigest<C>: Debug"),
-    Default(bound = ""),
+    Default(bound = "InnerDigest<C>: Default"),
     Eq(bound = "InnerDigest<C>: Eq"),
     Hash(bound = "InnerDigest<C>: Hash"),
     PartialEq(bound = "InnerDigest<C>: PartialEq")
@@ -539,7 +539,10 @@ where
 
     /// Returns the path at `leaf_index`.
     #[inline]
-    pub fn path(&self, leaf_index: Node) -> InnerPath<C> {
+    pub fn path(&self, leaf_index: Node) -> InnerPath<C>
+    where
+        InnerDigest<C>: Clone,
+    {
         InnerPath::new(
             leaf_index,
             self.path_iter_for_leaf(leaf_index).cloned().collect(),
@@ -551,7 +554,7 @@ impl<C, M> InnerTree<C, M, Sentinel<C>>
 where
     C: Configuration + ?Sized,
     M: InnerMap<C>,
-    InnerDigest<C>: PartialEq,
+    InnerDigest<C>: Clone + PartialEq,
 {
     /// Returns the path at `leaf_index`, assuming that `leaf_index` is the right-most index,
     /// so that the return value is a valid [`CurrentInnerPath`].
@@ -737,7 +740,10 @@ where
     /// Returns the path at `leaf_index` without checking if `leaf_index` is later than the
     /// starting index of this tree.
     #[inline]
-    pub fn path_unchecked(&self, leaf_index: Node) -> InnerPath<C> {
+    pub fn path_unchecked(&self, leaf_index: Node) -> InnerPath<C>
+    where
+        InnerDigest<C>: Clone,
+    {
         self.inner_tree.path(leaf_index)
     }
 }
@@ -746,7 +752,7 @@ impl<C, M> PartialInnerTree<C, M, Sentinel<C>>
 where
     C: Configuration + ?Sized,
     M: InnerMap<C>,
-    InnerDigest<C>: PartialEq,
+    InnerDigest<C>: Clone + PartialEq,
 {
     /// Returns the path at `leaf_index`, assuming that `leaf_index` is the right-most index,
     /// so that the return value is a valid [`CurrentInnerPath`].

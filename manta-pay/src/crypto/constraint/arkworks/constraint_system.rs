@@ -17,11 +17,13 @@
 //! Arkworks Constraint System Implementation
 
 use ark_ff::{fields::Field, PrimeField};
-use ark_r1cs_std::{alloc::AllocVar, bits::boolean::Boolean, eq::EqGadget};
+use ark_r1cs_std::{
+    alloc::AllocVar, bits::boolean::Boolean, eq::EqGadget, select::CondSelectGadget,
+};
 use ark_relations::{ns, r1cs as ark_r1cs};
 use manta_crypto::constraint::{
-    measure::Measure, Add, Allocation, AllocationMode, ConstraintSystem, Equal, Public,
-    PublicOrSecret, Secret, Variable,
+    measure::Measure, Add, Allocation, AllocationMode, ConditionalSelect, ConstraintSystem, Equal,
+    Public, PublicOrSecret, Secret, Variable,
 };
 
 pub use ark_r1cs::SynthesisError;
@@ -240,6 +242,18 @@ where
         let _ = cs;
         lhs.is_eq(rhs)
             .expect("Equality checking is not allowed to fail.")
+    }
+}
+
+impl<F> ConditionalSelect<R1CS<F>> for FpVar<F>
+where
+    F: PrimeField,
+{
+    #[inline]
+    fn select(bit: &Boolean<F>, lhs: &Self, rhs: &Self, compiler: &mut R1CS<F>) -> Self {
+        let _ = compiler;
+        Self::conditionally_select(bit, lhs, rhs)
+            .expect("Conditionally selecting from two values is not allowed to fail.")
     }
 }
 

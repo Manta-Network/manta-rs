@@ -16,7 +16,7 @@
 
 //! Commitment Schemes
 
-pub use crate::util::{Builder, Input};
+use crate::constraint::Native;
 
 /// Commitment Scheme
 pub trait CommitmentScheme<COM = ()> {
@@ -29,43 +29,20 @@ pub trait CommitmentScheme<COM = ()> {
     /// Output Type
     type Output;
 
-    /// Commits to the `input` value using randomness `trapdoor`.
-    fn commit(
+    /// Commits to the `input` value using the randomness `trapdoor` inside the `compiler`.
+    fn commit_in(
         &self,
         trapdoor: &Self::Trapdoor,
         input: &Self::Input,
         compiler: &mut COM,
     ) -> Self::Output;
 
-    /// Starts a new [`Builder`] for extended commitments.
+    /// Commits to the `input` value using the randomness `trapdoor`.
     #[inline]
-    fn start<'c>(
-        &'c self,
-        trapdoor: &'c Self::Trapdoor,
-    ) -> Builder<'c, Self, Self::Input, Self::Trapdoor>
+    fn commit(&self, trapdoor: &Self::Trapdoor, input: &Self::Input) -> Self::Output
     where
-        Self::Input: Default,
+        COM: Native,
     {
-        Builder::new(self, trapdoor)
-    }
-}
-
-impl<'c, C, I, T> Builder<'c, C, I, T> {
-    /// Commits to the input stored in the builder against the given `compiler`.
-    #[inline]
-    pub fn commit_with_compiler<COM>(self, compiler: &mut COM) -> C::Output
-    where
-        C: CommitmentScheme<COM, Trapdoor = T, Input = I>,
-    {
-        self.base.commit(self.args, &self.input, compiler)
-    }
-
-    /// Commits to the input stored in the builder.
-    #[inline]
-    pub fn commit(self) -> C::Output
-    where
-        C: CommitmentScheme<Trapdoor = T, Input = I>,
-    {
-        self.commit_with_compiler(&mut ())
+        self.commit_in(trapdoor, input, &mut COM::compiler())
     }
 }

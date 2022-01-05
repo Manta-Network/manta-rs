@@ -16,26 +16,47 @@
 
 //! Hash Functions
 
-pub use crate::util::{Builder, Input};
+use crate::constraint::Native;
 
 /// Hash Function
-pub trait HashFunction<COM = ()> {
+pub trait HashFunction<const ARITY: usize = 1, COM = ()> {
     /// Input Type
     type Input: ?Sized;
 
     /// Output Type
     type Output;
 
-    /// Performs a hash over `input` in the given `compiler`.
-    fn hash(&self, input: &Self::Input, compiler: &mut COM) -> Self::Output;
+    /// Computes the hash over `input` in the given `compiler`.
+    fn hash_in(&self, input: [&Self::Input; ARITY], compiler: &mut COM) -> Self::Output;
 
-    /// Starts a new [`Builder`] for extended hashes.
+    /// Computes the hash over `input`.
     #[inline]
-    fn start(&self) -> Builder<Self, Self::Input>
+    fn hash(&self, input: [&Self::Input; ARITY]) -> Self::Output
     where
-        Self::Input: Default,
+        COM: Native,
     {
-        Builder::new(self, &())
+        self.hash_in(input, &mut COM::compiler())
+    }
+}
+
+/// Unary Hash Function
+pub trait UnaryHashFunction<COM = ()> {
+    /// Input Type
+    type Input: ?Sized;
+
+    /// Output Type
+    type Output;
+
+    /// Computes the hash over `input` in the given `compiler`.
+    fn hash_in(&self, input: &Self::Input, compiler: &mut COM) -> Self::Output;
+
+    /// Computes the hash over `input`.
+    #[inline]
+    fn hash(&self, input: &Self::Input) -> Self::Output
+    where
+        COM: Native,
+    {
+        self.hash_in(input, &mut COM::compiler())
     }
 }
 
@@ -50,26 +71,15 @@ pub trait BinaryHashFunction<COM = ()> {
     /// Output Type
     type Output;
 
-    /// Performs a hash over `lhs` and `rhs` in the given `compiler`.
-    fn hash(&self, lhs: &Self::Left, rhs: &Self::Right, compiler: &mut COM) -> Self::Output;
-}
+    /// Computes the hash over `lhs` and `rhs` in the given `compiler`.
+    fn hash_in(&self, lhs: &Self::Left, rhs: &Self::Right, compiler: &mut COM) -> Self::Output;
 
-impl<'h, H, I> Builder<'h, H, I> {
-    /// Hashes the input stored in the builder against the given `compiler`.
+    /// Computes the hash over `lhs` and `rhs`.
     #[inline]
-    pub fn hash_with_compiler<COM>(self, compiler: &mut COM) -> H::Output
+    fn hash(&self, lhs: &Self::Left, rhs: &Self::Right) -> Self::Output
     where
-        H: HashFunction<COM, Input = I>,
+        COM: Native,
     {
-        self.base.hash(&self.input, compiler)
-    }
-
-    /// Hashes the input stored in the builder.
-    #[inline]
-    pub fn hash(self) -> H::Output
-    where
-        H: HashFunction<Input = I>,
-    {
-        self.hash_with_compiler(&mut ())
+        self.hash_in(lhs, rhs, &mut COM::compiler())
     }
 }

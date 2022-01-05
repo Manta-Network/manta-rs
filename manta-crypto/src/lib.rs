@@ -32,4 +32,4 @@ pub mod hash;
 pub mod key;
 pub mod merkle_tree;
 pub mod rand;
-pub mod util;
+// TODO[remove]: pub mod util;
