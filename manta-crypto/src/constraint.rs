@@ -436,6 +436,24 @@ pub trait ConstraintSystem {
         V::assert_all_eq(self, iter);
     }
 
+    /// Selects `lhs` if `bit == 0` and `rhs` if `bit == 1`.
+    #[inline]
+    fn conditional_select<V>(&mut self, bit: &Self::Bool, lhs: &V, rhs: &V) -> V
+    where
+        V: ConditionalSelect<Self>,
+    {
+        V::select(bit, lhs, rhs, self)
+    }
+
+    /// Swaps `lhs` and `rhs` if `bit == 1`.
+    #[inline]
+    fn conditional_swap<V>(&mut self, bit: &Self::Bool, lhs: &V, rhs: &V) -> (V, V)
+    where
+        V: ConditionalSelect<Self>,
+    {
+        V::swap(bit, lhs, rhs, self)
+    }
+
     /// Returns proving and verifying contexts for the constraints contained in `self`.
     #[inline]
     fn generate_context<P, R>(
@@ -499,6 +517,27 @@ where
         if let Some(base) = iter.next() {
             Self::assert_all_eq_to_base(cs, base, iter);
         }
+    }
+}
+
+/// Conditional Selection
+pub trait ConditionalSelect<C>
+where
+    C: ConstraintSystem + ?Sized,
+{
+    /// Selects `lhs` if `bit == 0` and `rhs` if `bit == 1`.
+    fn select(bit: &C::Bool, lhs: &Self, rhs: &Self, cs: &mut C) -> Self;
+
+    /// Swaps `lhs` and `rhs` if `bit == 1`.
+    #[inline]
+    fn swap(bit: &C::Bool, lhs: &Self, rhs: &Self, cs: &mut C) -> (Self, Self)
+    where
+        Self: Sized,
+    {
+        (
+            Self::select(bit, lhs, rhs, cs),
+            Self::select(bit, lhs, rhs, cs),
+        )
     }
 }
 

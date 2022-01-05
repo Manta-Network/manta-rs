@@ -463,27 +463,6 @@ where
     }
 }
 
-/// Digest Type
-#[derive(derivative::Derivative)]
-#[derivative(
-    Clone(bound = "LeafDigest<C>: Clone"),
-    Copy(bound = "LeafDigest<C>: Copy, InnerDigest<C>: Copy"),
-    Debug(bound = "LeafDigest<C>: Debug, InnerDigest<C>: Debug"),
-    Eq(bound = "LeafDigest<C>: Eq, InnerDigest<C>: Eq"),
-    Hash(bound = "LeafDigest<C>: Hash, InnerDigest<C>: Hash"),
-    PartialEq(bound = "LeafDigest<C>: PartialEq, InnerDigest<C>: PartialEq")
-)]
-pub enum Digest<C>
-where
-    C: Configuration + ?Sized,
-{
-    /// Leaf Digest
-    Leaf(LeafDigest<C>),
-
-    /// Inner Digest
-    Inner(InnerDigest<C>),
-}
-
 /// Merkle Tree Parameters
 #[derive(derivative::Derivative)]
 #[derivative(
