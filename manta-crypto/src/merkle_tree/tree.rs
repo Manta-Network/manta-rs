@@ -26,10 +26,12 @@ use crate::{
         self, Accumulator, ConstantCapacityAccumulator, ExactSizeAccumulator, MembershipProof,
         OptimizedAccumulator,
     },
-    constraint::Native,
+    constraint::{
+        Allocation, ConditionalSelect, Constant, ConstraintSystem, Equal, Native, Variable,
+    },
     merkle_tree::{
         fork::Trunk,
-        path::{CurrentPath, Path},
+        path::{constraint::PathVar, CurrentPath, Path},
     },
 };
 use core::{fmt::Debug, hash::Hash, marker::PhantomData};
@@ -524,6 +526,25 @@ where
     ) -> InnerDigest<C, COM> {
         C::InnerHash::join_leaves_in(&self.inner, lhs, rhs, compiler)
     }
+
+    /// Verify that `path` witnesses the fact that `leaf` is a member of a merkle tree with the
+    /// given `root`.
+    #[inline]
+    pub fn verify_path_in(
+        &self,
+        path: &PathVar<C, COM>,
+        root: &Root<C, COM>,
+        leaf: &Leaf<C, COM>,
+        compiler: &mut COM,
+    ) -> COM::Bool
+    where
+        C: Configuration<COM>,
+        COM: ConstraintSystem,
+        InnerDigest<C, COM>: ConditionalSelect<COM> + Equal<COM>,
+        LeafDigest<C, COM>: ConditionalSelect<COM>,
+    {
+        path.verify(self, root, leaf, compiler)
+    }
 }
 
 impl<C> Parameters<C>
@@ -560,6 +581,29 @@ where
     }
 }
 
+use crate::constraint::VariableSource;
+
+impl<C, COM> Variable<COM> for Parameters<C, COM>
+where
+    C: HashConfiguration<COM> + Variable<COM> + ?Sized,
+    C::Type: HashConfiguration,
+    LeafHashParameters<C, COM>: Variable<COM, Type = LeafHashParameters<C::Type>, Mode = Constant>,
+    InnerHashParameters<C, COM>:
+        Variable<COM, Type = InnerHashParameters<C::Type>, Mode = Constant>,
+{
+    type Type = Parameters<C::Type>;
+    type Mode = Constant;
+
+    #[inline]
+    fn new(compiler: &mut COM, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
+        let (this, mode) = allocation.into_known();
+        Self::new(
+            this.leaf.as_known(compiler, mode),
+            this.inner.as_known(compiler, mode),
+        )
+    }
+}
+
 /// Merkle Tree Root
 pub type Root<C, COM = ()> = InnerDigest<C, COM>;
 
@@ -569,11 +613,8 @@ where
     InnerDigest<C>: PartialEq,
 {
     type Item = Leaf<C>;
-
     type Witness = Path<C>;
-
     type Output = Root<C>;
-
     type Verification = bool;
 
     #[inline]
@@ -582,10 +623,33 @@ where
         item: &Self::Item,
         witness: &Self::Witness,
         output: &Self::Output,
-        compiler: &mut (),
+        _: &mut (),
     ) -> Self::Verification {
-        let _ = compiler;
         self.verify_path(witness, output, item)
+    }
+}
+
+impl<C, COM> accumulator::Model<COM> for Parameters<C, COM>
+where
+    C: Configuration<COM> + ?Sized,
+    COM: ConstraintSystem,
+    InnerDigest<C, COM>: ConditionalSelect<COM> + Equal<COM>,
+    LeafDigest<C, COM>: ConditionalSelect<COM>,
+{
+    type Item = Leaf<C, COM>;
+    type Witness = PathVar<C, COM>;
+    type Output = Root<C, COM>;
+    type Verification = COM::Bool;
+
+    #[inline]
+    fn verify(
+        &self,
+        item: &Self::Item,
+        witness: &Self::Witness,
+        output: &Self::Output,
+        compiler: &mut COM,
+    ) -> Self::Verification {
+        self.verify_path_in(witness, output, item, compiler)
     }
 }
 
