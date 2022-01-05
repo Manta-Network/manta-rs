@@ -65,10 +65,39 @@ pub trait LeafHash<COM = ()> {
     }
 }
 
+/// Identity Leaf Hash
+///
+/// # Safety
+///
+/// This implementation of [`LeafHash`] should only be used when users cannot control the value of a
+/// leaf itself, otherwise, using this implementation may not be safe.
+pub struct IdentityLeafHash<L, COM = ()>(PhantomData<(L, COM)>)
+where
+    L: Clone;
+
+impl<L, COM> LeafHash<COM> for IdentityLeafHash<L, COM>
+where
+    L: Clone,
+{
+    type Leaf = L;
+    type Parameters = ();
+    type Output = L;
+
+    #[inline]
+    fn digest_in(
+        parameters: &Self::Parameters,
+        leaf: &Self::Leaf,
+        compiler: &mut COM,
+    ) -> Self::Output {
+        let _ = (parameters, compiler);
+        leaf.clone()
+    }
+}
+
 /// Merkle Tree Inner Hash
 pub trait InnerHash<COM = ()> {
-    /// Leaf Hash Type
-    type LeafHash: LeafHash<COM>;
+    /// Leaf Digest Type
+    type LeafDigest;
 
     /// Inner Hash Parameters Type
     type Parameters;
@@ -94,21 +123,21 @@ pub trait InnerHash<COM = ()> {
         Self::join_in(parameters, lhs, rhs, &mut COM::compiler())
     }
 
-    /// Combines two [`LeafHash`](Self::LeafHash) digests into an inner digest inside the given
+    /// Combines two [`LeafDigest`](Self::LeafDigest) values into an inner digest inside the given
     /// `compiler`.
     fn join_leaves_in(
         parameters: &Self::Parameters,
-        lhs: &<Self::LeafHash as LeafHash<COM>>::Output,
-        rhs: &<Self::LeafHash as LeafHash<COM>>::Output,
+        lhs: &Self::LeafDigest,
+        rhs: &Self::LeafDigest,
         compiler: &mut COM,
     ) -> Self::Output;
 
-    /// Combines two [`LeafHash`](Self::LeafHash) digests into an inner digest.
+    /// Combines two [`LeafDigest`](Self::LeafDigest) values into an inner digest.
     #[inline]
     fn join_leaves(
         parameters: &Self::Parameters,
-        lhs: &<Self::LeafHash as LeafHash<COM>>::Output,
-        rhs: &<Self::LeafHash as LeafHash<COM>>::Output,
+        lhs: &Self::LeafDigest,
+        rhs: &Self::LeafDigest,
     ) -> Self::Output
     where
         COM: Native,
@@ -123,7 +152,7 @@ pub trait HashConfiguration<COM = ()> {
     type LeafHash: LeafHash<COM>;
 
     /// Inner Hash Type
-    type InnerHash: InnerHash<COM, LeafHash = Self::LeafHash>;
+    type InnerHash: InnerHash<COM, LeafDigest = <Self::LeafHash as LeafHash<COM>>::Output>;
 }
 
 /// Merkle Tree Configuration

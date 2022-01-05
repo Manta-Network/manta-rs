@@ -65,7 +65,7 @@ where
 }
 
 /// Poseidon Hash
-pub struct Hash<S, COM = (), const ARITY: usize = 1>
+pub struct Hash<S, const ARITY: usize = 1, COM = ()>
 where
     S: Specification<COM>,
 {
@@ -76,7 +76,7 @@ where
     mds_matrix: Vec<S::Field>,
 }
 
-impl<S, COM, const ARITY: usize> Hash<S, COM, ARITY>
+impl<S, const ARITY: usize, COM> Hash<S, ARITY, COM>
 where
     S: Specification<COM>,
 {
@@ -170,7 +170,7 @@ where
     }
 }
 
-impl<S, COM, const ARITY: usize> HashFunction<COM> for Hash<S, COM, ARITY>
+impl<S, const ARITY: usize, COM> HashFunction<COM> for Hash<S, ARITY, COM>
 where
     S: Specification<COM>,
 {
@@ -197,10 +197,11 @@ where
 }
 
 /// Poseidon Hash Input Type
-pub type Input<S, COM, const ARITY: usize> = <Hash<S, COM, ARITY> as HashFunction<COM>>::Input;
+pub type Input<S, const ARITY: usize, COM = ()> = <Hash<S, ARITY, COM> as HashFunction<COM>>::Input;
 
 /// Poseidon Commitment Output Type
-pub type Output<S, COM, const ARITY: usize> = <Hash<S, COM, ARITY> as HashFunction<COM>>::Output;
+pub type Output<S, const ARITY: usize, COM = ()> =
+    <Hash<S, ARITY, COM> as HashFunction<COM>>::Output;
 
 /// Arkworks Backend
 #[cfg(feature = "arkworks")]
@@ -306,15 +307,17 @@ pub mod arkworks {
         #[inline]
         fn apply_sbox(point: &mut Self::Field, compiler: &mut Compiler<S>) {
             let _ = compiler;
-            *point = point.pow_by_constant(&[Self::SBOX_EXPONENT]).expect("");
+            *point = point
+                .pow_by_constant(&[Self::SBOX_EXPONENT])
+                .expect("Exponentiation is not allowed to fail.");
         }
     }
 
-    impl<S, const ARITY: usize> Variable<Compiler<S>> for super::Hash<S, Compiler<S>, ARITY>
+    impl<S, const ARITY: usize> Variable<Compiler<S>> for super::Hash<S, ARITY, Compiler<S>>
     where
         S: Specification,
     {
-        type Type = super::Hash<S, (), ARITY>;
+        type Type = super::Hash<S, ARITY>;
 
         type Mode = Constant;
 

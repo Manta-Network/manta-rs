@@ -29,6 +29,7 @@ use bls12_381::Bls12_381;
 use bls12_381_ed::{
     constraints::EdwardsVar as Bls12_381_EdwardsVar, EdwardsProjective as Bls12_381_Edwards,
 };
+use core::marker::PhantomData;
 use manta_accounting::{
     asset::{Asset, AssetId, AssetValue},
     transfer,
@@ -94,10 +95,10 @@ pub type KeyAgreementScheme = DiffieHellman<Group>;
 pub type KeyAgreementSchemeVar = DiffieHellman<GroupVar, Compiler>;
 
 ///
-pub type Utxo = poseidon::Output<PoseidonSpec<4>, (), 4>;
+pub type Utxo = poseidon::Output<PoseidonSpec<4>, 4>;
 
 ///
-pub struct UtxoCommitmentScheme(pub poseidon::Hash<PoseidonSpec<4>, (), 4>);
+pub struct UtxoCommitmentScheme(pub poseidon::Hash<PoseidonSpec<4>, 4>);
 
 impl CommitmentScheme for UtxoCommitmentScheme {
     type Trapdoor = Group;
@@ -126,10 +127,10 @@ impl CommitmentScheme for UtxoCommitmentScheme {
 }
 
 ///
-pub type UtxoVar = poseidon::Output<PoseidonSpec<4>, Compiler, 4>;
+pub type UtxoVar = poseidon::Output<PoseidonSpec<4>, 4, Compiler>;
 
 ///
-pub struct UtxoCommitmentSchemeVar(pub poseidon::Hash<PoseidonSpec<4>, Compiler, 4>);
+pub struct UtxoCommitmentSchemeVar(pub poseidon::Hash<PoseidonSpec<4>, 4, Compiler>);
 
 impl CommitmentScheme<Compiler> for UtxoCommitmentSchemeVar {
     type Trapdoor = GroupVar;
@@ -171,10 +172,10 @@ impl Variable<Compiler> for UtxoCommitmentSchemeVar {
 }
 
 ///
-pub type VoidNumber = poseidon::Output<PoseidonSpec<2>, (), 2>;
+pub type VoidNumber = poseidon::Output<PoseidonSpec<2>, 2>;
 
 ///
-pub struct VoidNumberHashFunction(pub poseidon::Hash<PoseidonSpec<2>, (), 2>);
+pub struct VoidNumberHashFunction(pub poseidon::Hash<PoseidonSpec<2>, 2>);
 
 impl BinaryHashFunction for VoidNumberHashFunction {
     type Left = Utxo;
@@ -196,12 +197,12 @@ impl BinaryHashFunction for VoidNumberHashFunction {
 }
 
 ///
-pub struct VoidNumberHashFunctionVar(pub poseidon::Hash<PoseidonSpec<2>, Compiler, 2>);
+pub struct VoidNumberHashFunctionVar(pub poseidon::Hash<PoseidonSpec<2>, 2, Compiler>);
 
 impl BinaryHashFunction<Compiler> for VoidNumberHashFunctionVar {
     type Left = <UtxoCommitmentSchemeVar as CommitmentScheme<Compiler>>::Output;
     type Right = <KeyAgreementSchemeVar as key::KeyAgreementScheme<Compiler>>::SecretKey;
-    type Output = poseidon::Output<PoseidonSpec<2>, Compiler, 1>;
+    type Output = poseidon::Output<PoseidonSpec<2>, 2, Compiler>;
 
     #[inline]
     fn hash(
@@ -269,32 +270,70 @@ impl Variable<Compiler> for AssetValueVar {
 }
 
 ///
-pub struct LeafHash;
-
-impl merkle_tree::LeafHash for LeafHash {
-    type Leaf = Utxo;
-    type Parameters = ();
-    type Output = Utxo;
-
-    #[inline]
-    fn digest_in(_: &Self::Parameters, leaf: &Self::Leaf, _: &mut ()) -> Self::Output {
-        *leaf
-    }
-}
+pub type LeafHash = merkle_tree::IdentityLeafHash<Utxo>;
 
 ///
-pub struct LeafHashVar;
+pub type LeafHashVar = merkle_tree::IdentityLeafHash<UtxoVar, Compiler>;
 
-impl merkle_tree::LeafHash<Compiler> for LeafHashVar {
-    type Leaf = UtxoVar;
-    type Parameters = ();
-    type Output = UtxoVar;
+///
+pub struct InnerHash;
+
+impl merkle_tree::InnerHash for InnerHash {
+    type LeafDigest = Utxo;
+    type Parameters = poseidon::Hash<PoseidonSpec<2>, 2>;
+    type Output = poseidon::Output<PoseidonSpec<2>, 2>;
 
     #[inline]
-    fn digest_in(_: &Self::Parameters, leaf: &Self::Leaf, _: &mut Compiler) -> Self::Output {
-        *leaf
+    fn join_in(
+        parameters: &Self::Parameters,
+        lhs: &Self::Output,
+        rhs: &Self::Output,
+        compiler: &mut (),
+    ) -> Self::Output {
+        parameters.hash(&[*lhs, *rhs], compiler)
+    }
+
+    #[inline]
+    fn join_leaves_in(
+        parameters: &Self::Parameters,
+        lhs: &Self::LeafDigest,
+        rhs: &Self::LeafDigest,
+        compiler: &mut (),
+    ) -> Self::Output {
+        parameters.hash(&[*lhs, *rhs], compiler)
     }
 }
+
+/*
+///
+pub struct InnerHashVar;
+
+impl merkle_tree::InnerHash<Compiler> for InnerHash {
+    type LeafDigest = UtxoVar;
+    type Parameters = poseidon::Hash<PoseidonSpec<2>, 2, Compiler>;
+    type Output = poseidon::Output<PoseidonSpec<2>, 2, Compiler>;
+
+    #[inline]
+    fn join_in(
+        parameters: &Self::Parameters,
+        lhs: &Self::Output,
+        rhs: &Self::Output,
+        compiler: &mut COM,
+    ) -> Self::Output {
+        parameters.hash(&[*lhs, *rhs], compiler)
+    }
+
+    #[inline]
+    fn join_leaves_in(
+        parameters: &Self::Parameters,
+        lhs: &Self::LeafDigest,
+        rhs: &Self::LeafDigest,
+        compiler: &mut COM,
+    ) -> Self::Output {
+        parameters.hash(&[*lhs, *rhs], compiler)
+    }
+}
+*/
 
 /// Configuration Structure
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]

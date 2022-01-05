@@ -454,6 +454,15 @@ pub trait ConstraintSystem {
         V::swap(bit, lhs, rhs, self)
     }
 
+    /// Swaps `lhs` and `rhs` in-place if `bit == 1`.
+    #[inline]
+    fn conditional_swap_in_place<V>(&mut self, bit: &Self::Bool, lhs: &mut V, rhs: &mut V)
+    where
+        V: ConditionalSelect<Self>,
+    {
+        V::swap_in_place(bit, lhs, rhs, self)
+    }
+
     /// Returns proving and verifying contexts for the constraints contained in `self`.
     #[inline]
     fn generate_context<P, R>(
@@ -538,6 +547,17 @@ where
             Self::select(bit, lhs, rhs, cs),
             Self::select(bit, rhs, lhs, cs),
         )
+    }
+
+    /// Swaps `lhs` and `rhs` in-place if `bit == 1`.
+    #[inline]
+    fn swap_in_place(bit: &C::Bool, lhs: &mut Self, rhs: &mut Self, cs: &mut C)
+    where
+        Self: Sized,
+    {
+        let (swapped_lhs, swapped_rhs) = Self::swap(bit, lhs, rhs, cs);
+        *lhs = swapped_lhs;
+        *rhs = swapped_rhs;
     }
 }
 
