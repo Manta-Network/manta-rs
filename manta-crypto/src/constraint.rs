@@ -536,7 +536,7 @@ where
     {
         (
             Self::select(bit, lhs, rhs, cs),
-            Self::select(bit, lhs, rhs, cs),
+            Self::select(bit, rhs, lhs, cs),
         )
     }
 }
