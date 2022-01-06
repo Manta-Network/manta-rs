@@ -23,6 +23,12 @@ use alloc::vec::Vec;
 use core::{iter, mem};
 use manta_crypto::hash::HashFunction;
 
+#[cfg(test)]
+use {
+    core::iter::repeat,
+    manta_crypto::rand::{CryptoRng, Rand, RngCore, Sample},
+};
+
 /// Poseidon Permutation Specification
 pub trait Specification<COM = ()> {
     /// Field Type
@@ -81,7 +87,10 @@ impl<S, const ARITY: usize, COM> Hash<S, ARITY, COM>
 where
     S: Specification<COM>,
 {
-    /// Builds a new [`Hash`](self::Hash) form `additive_round_keys` and `mds_matrix`.
+    /// Width of the State Buffer
+    pub const WIDTH: usize = ARITY + 1;
+
+    /// Builds a new [`Hash`](self::Hash) from `additive_round_keys` and `mds_matrix`.
     ///
     /// # Panics
     ///
@@ -91,24 +100,51 @@ where
     pub fn new(additive_round_keys: Vec<S::Field>, mds_matrix: Vec<S::Field>) -> Self {
         assert_eq!(
             additive_round_keys.len(),
-            rounds::<S, COM>() * (ARITY + 1),
+            Self::additive_round_keys_len(),
             "Additive Rounds Keys are not the correct size."
         );
         assert_eq!(
             mds_matrix.len(),
-            (ARITY + 1).pow(2),
+            Self::mds_matrix_size(),
             "MDS Matrix is not the correct size."
         );
+        Self::new_unchecked(additive_round_keys, mds_matrix)
+    }
+
+    /// Builds a new [`Hash`](self::Hash) from `additive_round_keys` and `mds_matrix` without
+    /// checking their sizes.
+    #[inline]
+    fn new_unchecked(additive_round_keys: Vec<S::Field>, mds_matrix: Vec<S::Field>) -> Self {
         Self {
             additive_round_keys,
             mds_matrix,
         }
     }
 
+    /// Returns the total number of rounds for this Poseidon hash function specification.
+    #[inline]
+    pub fn rounds() -> usize {
+        rounds::<S, COM>()
+    }
+
+    /// Returns the number of additive round keys.
+    #[inline]
+    pub fn additive_round_keys_len() -> usize {
+        Self::rounds() * Self::WIDTH
+    }
+
+    /// Returns the size of the MDS matrix.
+    ///
+    /// This is the square of the [`WIDTH`](Self::WIDTH).
+    #[inline]
+    pub fn mds_matrix_size() -> usize {
+        Self::WIDTH.pow(2)
+    }
+
     /// Returns the additive keys for the given `round`.
     #[inline]
     fn additive_keys(&self, round: usize) -> &[S::Field] {
-        let width = ARITY + 1;
+        let width = Self::WIDTH;
         let start = round * width;
         &self.additive_round_keys[start..start + width]
     }
@@ -116,7 +152,7 @@ where
     /// Computes the MDS matrix multiplication against the `state`.
     #[inline]
     fn mds_matrix_multiply(&self, state: &mut State<S, COM>, compiler: &mut COM) {
-        let width = ARITY + 1;
+        let width = Self::WIDTH;
         let mut next = Vec::with_capacity(width);
         for i in 0..width {
             #[allow(clippy::needless_collect)] // NOTE: Clippy is wrong here, we need `&mut` access.
@@ -138,7 +174,7 @@ where
     /// Computes the first round of the Poseidon permutation from `trapdoor` and `input`.
     #[inline]
     fn first_round(&self, input: [&S::Field; ARITY], compiler: &mut COM) -> State<S, COM> {
-        let mut state = Vec::with_capacity(ARITY + 1);
+        let mut state = Vec::with_capacity(Self::WIDTH);
         for (i, point) in iter::once(&S::zero(compiler)).chain(input).enumerate() {
             let mut elem = S::add(point, &self.additive_round_keys[i], compiler);
             S::apply_sbox(&mut elem, compiler);
@@ -197,6 +233,35 @@ where
     }
 }
 
+#[cfg(test)] // NOTE: This is only safe in a test.
+impl<D, S, const ARITY: usize, COM> Sample<D> for Hash<S, ARITY, COM>
+where
+    D: Clone,
+    S: Specification<COM>,
+    S::Field: Sample<D>,
+{
+    /// Samples random Poseidon parameters.
+    ///
+    /// # Warning
+    ///
+    /// This method samples the individual field elements of the parameters set, instead of
+    /// producing an actually correct/safe set of additive round keys and MDS matrix.
+    #[inline]
+    fn sample<R>(distribution: D, rng: &mut R) -> Self
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        Self {
+            additive_round_keys: rng
+                .sample_iter(repeat(distribution.clone()).take(Self::additive_round_keys_len()))
+                .collect(),
+            mds_matrix: rng
+                .sample_iter(repeat(distribution).take(Self::mds_matrix_size()))
+                .collect(),
+        }
+    }
+}
+
 /// Poseidon Hash Input Type
 pub type Input<S, const ARITY: usize, COM = ()> =
     <Hash<S, ARITY, COM> as HashFunction<ARITY, COM>>::Input;
@@ -209,7 +274,7 @@ pub type Output<S, const ARITY: usize, COM = ()> =
 #[cfg(feature = "arkworks")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "arkworks")))]
 pub mod arkworks {
-    use crate::crypto::constraint::arkworks::{FpVar, R1CS};
+    use crate::crypto::constraint::arkworks::{Fp, FpVar, R1CS};
     use ark_ff::{Field, PrimeField};
     use ark_r1cs_std::fields::FieldVar;
     use manta_crypto::constraint::{Constant, ValueSource};
@@ -239,7 +304,7 @@ pub mod arkworks {
     where
         S: Specification,
     {
-        type Field = S::Field;
+        type Field = Fp<S::Field>;
 
         const FULL_ROUNDS: usize = S::FULL_ROUNDS;
 
@@ -252,22 +317,22 @@ pub mod arkworks {
 
         #[inline]
         fn add(lhs: &Self::Field, rhs: &Self::Field, _: &mut ()) -> Self::Field {
-            *lhs + *rhs
+            Fp(lhs.0 + rhs.0)
         }
 
         #[inline]
         fn mul(lhs: &Self::Field, rhs: &Self::Field, _: &mut ()) -> Self::Field {
-            *lhs * *rhs
+            Fp(lhs.0 * rhs.0)
         }
 
         #[inline]
         fn add_assign(lhs: &mut Self::Field, rhs: &Self::Field, _: &mut ()) {
-            *lhs += rhs;
+            lhs.0 += rhs.0;
         }
 
         #[inline]
         fn apply_sbox(point: &mut Self::Field, _: &mut ()) {
-            *point = point.pow(&[Self::SBOX_EXPONENT, 0, 0, 0]);
+            point.0 = point.0.pow(&[Self::SBOX_EXPONENT, 0, 0, 0]);
         }
     }
 

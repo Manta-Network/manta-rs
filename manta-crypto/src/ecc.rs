@@ -18,35 +18,12 @@
 
 // TODO: Improve ECC abstractions over arkworks.
 
-use crate::{constraint::Constant, key::KeyAgreementScheme};
+use crate::{
+    constraint::Constant,
+    key::KeyAgreementScheme,
+    rand::{CryptoRng, RngCore, Sample},
+};
 use core::marker::PhantomData;
-
-/* TODO:
-/// Elliptic Curve Coordinate System
-pub trait Coordinates<C, COM = ()>
-where
-    C: Curve<COM>,
-{
-}
-
-/// Elliptic Curve
-pub trait Curve<COM = ()> {
-    /// Base Field
-    type BaseField;
-
-    /// Scalar Field
-    type ScalarField;
-}
-
-/// Embedded Elliptic Curve
-pub trait EmbeddedCurve<C, COM = ()>: Curve<COM, BaseField = C::ScalarField>
-where
-    C: Curve<COM>,
-{
-    ///
-    fn lift_scalar(scalar: Self::ScalarField, compiler: &mut COM) -> C::ScalarField;
-}
-*/
 
 /// Elliptic Curve Group
 pub trait Group<COM = ()>: Sized {
@@ -114,6 +91,19 @@ where
     }
 }
 
+impl<G, COM> Constant<COM> for DiffieHellman<G, COM>
+where
+    G: Group<COM> + Constant<COM>,
+    G::Type: Group,
+{
+    type Type = DiffieHellman<G::Type>;
+
+    #[inline]
+    fn new_constant(value: &Self::Type, compiler: &mut COM) -> Self {
+        Self::new(G::new_constant(&value.generator, compiler))
+    }
+}
+
 impl<G, COM> KeyAgreementScheme<COM> for DiffieHellman<G, COM>
 where
     G: Group<COM>,
@@ -140,15 +130,15 @@ where
     }
 }
 
-impl<G, COM> Constant<COM> for DiffieHellman<G, COM>
+impl<D, G, COM> Sample<D> for DiffieHellman<G, COM>
 where
-    G: Group<COM> + Constant<COM>,
-    G::Type: Group,
+    G: Group<COM> + Sample<D>,
 {
-    type Type = DiffieHellman<G::Type>;
-
     #[inline]
-    fn new_constant(value: &Self::Type, compiler: &mut COM) -> Self {
-        Self::new(G::new_constant(&value.generator, compiler))
+    fn sample<R>(distribution: D, rng: &mut R) -> Self
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        Self::new(G::sample(distribution, rng))
     }
 }

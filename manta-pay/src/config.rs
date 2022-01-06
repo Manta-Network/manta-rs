@@ -17,7 +17,7 @@
 //! Manta-Pay Configuration
 
 use crate::crypto::{
-    constraint::arkworks::{Boolean, FpVar, Groth16, R1CS},
+    constraint::arkworks::{Boolean, Fp, FpVar, Groth16, R1CS},
     ecc::{self, arkworks::ProjectiveCurve},
     encryption::AesGcm,
     hash::poseidon,
@@ -43,6 +43,9 @@ use manta_crypto::{
     hash::{BinaryHashFunction, HashFunction},
     key, merkle_tree,
 };
+
+#[cfg(test)]
+use manta_crypto::rand::{CryptoRng, Rand, RngCore, Sample, Standard};
 
 #[doc(inline)]
 pub use ark_bls12_381 as bls12_381;
@@ -73,12 +76,24 @@ pub type ProofSystem = Groth16<PairingCurve>;
 /// Poseidon Specification
 pub struct PoseidonSpec<const ARITY: usize>;
 
+/// Poseidon-2 Hash Parameters
+pub type Poseidon2 = poseidon::Hash<PoseidonSpec<2>, 2>;
+
+/// Poseidon-2 Hash Parameters Variable
+pub type Poseidon2Var = poseidon::Hash<PoseidonSpec<2>, 2, Compiler>;
+
 impl poseidon::arkworks::Specification for PoseidonSpec<2> {
     type Field = ConstraintField;
     const FULL_ROUNDS: usize = 10;
     const PARTIAL_ROUNDS: usize = 10;
     const SBOX_EXPONENT: u64 = 5;
 }
+
+/// Poseidon-4 Hash Parameters
+pub type Poseidon4 = poseidon::Hash<PoseidonSpec<4>, 4>;
+
+/// Poseidon-4 Hash Parameters Variable
+pub type Poseidon4Var = poseidon::Hash<PoseidonSpec<4>, 4, Compiler>;
 
 impl poseidon::arkworks::Specification for PoseidonSpec<4> {
     type Field = ConstraintField;
@@ -94,10 +109,10 @@ pub type KeyAgreementScheme = DiffieHellman<Group>;
 pub type KeyAgreementSchemeVar = DiffieHellman<GroupVar, Compiler>;
 
 /// Unspent Transaction Output Type
-pub type Utxo = poseidon::Output<PoseidonSpec<4>, 4>;
+pub type Utxo = Fp<ConstraintField>;
 
 /// UTXO Commitment Scheme
-pub struct UtxoCommitmentScheme(pub poseidon::Hash<PoseidonSpec<4>, 4>);
+pub struct UtxoCommitmentScheme(pub Poseidon4);
 
 impl CommitmentScheme for UtxoCommitmentScheme {
     type Trapdoor = Group;
@@ -114,19 +129,30 @@ impl CommitmentScheme for UtxoCommitmentScheme {
         // NOTE: The group is in projective form, so we need to convert it first.
         let trapdoor = trapdoor.0.into_affine();
         self.0.hash([
-            &trapdoor.x,
-            &trapdoor.y,
-            &input.id.0.into(),
-            &input.value.0.into(),
+            &Fp(trapdoor.x),
+            &Fp(trapdoor.y),
+            &Fp(input.id.0.into()),
+            &Fp(input.value.0.into()),
         ])
     }
 }
 
+#[cfg(test)] // NOTE: This is only safe in a test.
+impl Sample for UtxoCommitmentScheme {
+    #[inline]
+    fn sample<R>(distribution: Standard, rng: &mut R) -> Self
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        rng.sample(distribution)
+    }
+}
+
 /// Unspent Transaction Output Variable Type
-pub type UtxoVar = poseidon::Output<PoseidonSpec<4>, 4, Compiler>;
+pub type UtxoVar = ConstraintFieldVar;
 
 /// UTXO Commitment Scheme Variable
-pub struct UtxoCommitmentSchemeVar(pub poseidon::Hash<PoseidonSpec<4>, 4, Compiler>);
+pub struct UtxoCommitmentSchemeVar(pub Poseidon4Var);
 
 impl CommitmentScheme<Compiler> for UtxoCommitmentSchemeVar {
     type Trapdoor = GroupVar;
@@ -158,10 +184,10 @@ impl Constant<Compiler> for UtxoCommitmentSchemeVar {
 }
 
 /// Void Number Type
-pub type VoidNumber = poseidon::Output<PoseidonSpec<2>, 2>;
+pub type VoidNumber = Fp<ConstraintField>;
 
 /// Void Number Hash Function
-pub struct VoidNumberHashFunction(pub poseidon::Hash<PoseidonSpec<2>, 2>);
+pub struct VoidNumberHashFunction(pub Poseidon2);
 
 impl BinaryHashFunction for VoidNumberHashFunction {
     type Left = Utxo;
@@ -179,16 +205,27 @@ impl BinaryHashFunction for VoidNumberHashFunction {
     }
 }
 
+#[cfg(test)] // NOTE: This is only safe in a test.
+impl Sample for VoidNumberHashFunction {
+    #[inline]
+    fn sample<R>(distribution: Standard, rng: &mut R) -> Self
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        rng.sample(distribution)
+    }
+}
+
 /// Void Number Variable Type
-pub type VoidNumberVar = poseidon::Output<PoseidonSpec<2>, 2, Compiler>;
+pub type VoidNumberVar = ConstraintFieldVar;
 
 /// Void Number Hash Function Variable
-pub struct VoidNumberHashFunctionVar(pub poseidon::Hash<PoseidonSpec<2>, 2, Compiler>);
+pub struct VoidNumberHashFunctionVar(pub Poseidon2Var);
 
 impl BinaryHashFunction<Compiler> for VoidNumberHashFunctionVar {
     type Left = <UtxoCommitmentSchemeVar as CommitmentScheme<Compiler>>::Output;
     type Right = <KeyAgreementSchemeVar as key::KeyAgreementScheme<Compiler>>::SecretKey;
-    type Output = poseidon::Output<PoseidonSpec<2>, 2, Compiler>;
+    type Output = ConstraintFieldVar;
 
     #[inline]
     fn hash_in(
@@ -225,7 +262,7 @@ impl Variable<Public, Compiler> for AssetIdVar {
 
     #[inline]
     fn new_known(this: &Self::Type, compiler: &mut Compiler) -> Self {
-        Self(ConstraintField::from(this.0).as_known::<Public, _>(compiler))
+        Self(Fp(ConstraintField::from(this.0)).as_known::<Public, _>(compiler))
     }
 
     #[inline]
@@ -239,7 +276,7 @@ impl Variable<Secret, Compiler> for AssetIdVar {
 
     #[inline]
     fn new_known(this: &Self::Type, compiler: &mut Compiler) -> Self {
-        Self(ConstraintField::from(this.0).as_known::<Secret, _>(compiler))
+        Self(Fp(ConstraintField::from(this.0)).as_known::<Secret, _>(compiler))
     }
 
     #[inline]
@@ -270,7 +307,7 @@ impl Variable<Public, Compiler> for AssetValueVar {
 
     #[inline]
     fn new_known(this: &Self::Type, compiler: &mut Compiler) -> Self {
-        Self(ConstraintField::from(this.0).as_known::<Public, _>(compiler))
+        Self(Fp(ConstraintField::from(this.0)).as_known::<Public, _>(compiler))
     }
 
     #[inline]
@@ -284,7 +321,7 @@ impl Variable<Secret, Compiler> for AssetValueVar {
 
     #[inline]
     fn new_known(this: &Self::Type, compiler: &mut Compiler) -> Self {
-        Self(ConstraintField::from(this.0).as_known::<Secret, _>(compiler))
+        Self(Fp(ConstraintField::from(this.0)).as_known::<Secret, _>(compiler))
     }
 
     #[inline]
@@ -304,8 +341,8 @@ pub struct InnerHash;
 
 impl merkle_tree::InnerHash for InnerHash {
     type LeafDigest = Utxo;
-    type Parameters = poseidon::Hash<PoseidonSpec<2>, 2>;
-    type Output = poseidon::Output<PoseidonSpec<2>, 2>;
+    type Parameters = Poseidon2;
+    type Output = Fp<ConstraintField>;
 
     #[inline]
     fn join_in(
@@ -333,8 +370,8 @@ pub struct InnerHashVar;
 
 impl merkle_tree::InnerHash<Compiler> for InnerHashVar {
     type LeafDigest = UtxoVar;
-    type Parameters = poseidon::Hash<PoseidonSpec<2>, 2, Compiler>;
-    type Output = poseidon::Output<PoseidonSpec<2>, 2, Compiler>;
+    type Parameters = Poseidon2Var;
+    type Output = ConstraintFieldVar;
 
     #[inline]
     fn join_in(
@@ -367,6 +404,34 @@ impl merkle_tree::HashConfiguration for MerkleTreeConfiguration {
 
 impl merkle_tree::Configuration for MerkleTreeConfiguration {
     const HEIGHT: usize = 20;
+}
+
+#[cfg(test)]
+impl merkle_tree::test::HashParameterSampling for MerkleTreeConfiguration {
+    type LeafHashParameterDistribution = Standard;
+    type InnerHashParameterDistribution = Standard;
+
+    #[inline]
+    fn sample_leaf_hash_parameters<R>(
+        distribution: Self::LeafHashParameterDistribution,
+        rng: &mut R,
+    ) -> merkle_tree::LeafHashParameters<Self>
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        let _ = (distribution, rng);
+    }
+
+    #[inline]
+    fn sample_inner_hash_parameters<R>(
+        distribution: Self::InnerHashParameterDistribution,
+        rng: &mut R,
+    ) -> merkle_tree::InnerHashParameters<Self>
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        rng.sample(distribution)
+    }
 }
 
 /// Merkle Tree Variable Configuration
@@ -405,10 +470,10 @@ impl ProofSystemInput<AssetValue> for ProofSystem {
     }
 }
 
-impl ProofSystemInput<ConstraintField> for ProofSystem {
+impl ProofSystemInput<Fp<ConstraintField>> for ProofSystem {
     #[inline]
-    fn extend(input: &mut Self::Input, next: &ConstraintField) {
-        input.push(*next);
+    fn extend(input: &mut Self::Input, next: &Fp<ConstraintField>) {
+        input.push(next.0);
     }
 }
 
@@ -469,6 +534,12 @@ impl transfer::Configuration for TransferConfiguration {
 
     type NoteEncryptionScheme = NoteEncryptionScheme;
 }
+
+/// Transfer Parameters
+pub type Parameters = transfer::Parameters<TransferConfiguration>;
+
+/// Full Transfer Parameters
+pub type FullParameters<'p> = transfer::FullParameters<'p, TransferConfiguration>;
 
 /// Mint Transfer Type
 pub type Mint = transfer::canonical::Mint<TransferConfiguration>;

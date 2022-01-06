@@ -36,6 +36,10 @@ use manta_util::from_variant_impl;
 pub mod batch;
 pub mod canonical;
 
+#[cfg(feature = "test")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
+pub mod test;
+
 /// Returns `true` if the transfer with this shape would have public participants.
 #[inline]
 pub const fn has_public_participants(
@@ -1358,6 +1362,25 @@ where
         }
     }
 
+    /// Builds a constraint system which asserts constraints against unknown variables.
+    #[inline]
+    pub fn unknown_constraints(parameters: FullParameters<C>) -> C::Compiler {
+        let mut compiler = C::ProofSystem::for_unknown();
+        TransferVar::<C, SOURCES, SENDERS, RECEIVERS, SINKS>::new_unknown(&mut compiler)
+            .build_validity_constraints(&parameters.as_constant(&mut compiler), &mut compiler);
+        compiler
+    }
+
+    /// Builds a constraint system which asserts constraints against known variables.
+    #[inline]
+    pub fn known_constraints(&self, parameters: FullParameters<C>) -> C::Compiler {
+        let mut compiler = C::ProofSystem::for_known();
+        let transfer: TransferVar<C, SOURCES, SENDERS, RECEIVERS, SINKS> =
+            self.as_known(&mut compiler);
+        transfer.build_validity_constraints(&parameters.as_constant(&mut compiler), &mut compiler);
+        compiler
+    }
+
     /// Generates a proving and verifying context for this transfer shape.
     #[inline]
     pub fn generate_context<R>(
@@ -1367,10 +1390,7 @@ where
     where
         R: CryptoRng + RngCore + ?Sized,
     {
-        let mut compiler = C::ProofSystem::for_unknown();
-        TransferVar::<C, SOURCES, SENDERS, RECEIVERS, SINKS>::new_unknown(&mut compiler)
-            .build_validity_constraints(&parameters.as_constant(&mut compiler), &mut compiler);
-        C::ProofSystem::generate_context(compiler, rng)
+        C::ProofSystem::generate_context(Self::unknown_constraints(parameters), rng)
     }
 
     /// Converts `self` into its ledger post.
@@ -1385,16 +1405,11 @@ where
         R: CryptoRng + RngCore + ?Sized,
     {
         Ok(TransferPost {
-            validity_proof: {
-                let mut compiler = C::ProofSystem::for_known();
-                let transfer: TransferVar<C, SOURCES, SENDERS, RECEIVERS, SINKS> =
-                    self.as_known(&mut compiler);
-                transfer.build_validity_constraints(
-                    &parameters.as_constant(&mut compiler),
-                    &mut compiler,
-                );
-                C::ProofSystem::prove(compiler, context, rng)?
-            },
+            validity_proof: C::ProofSystem::prove(
+                self.known_constraints(parameters),
+                context,
+                rng,
+            )?,
             asset_id: self.asset_id,
             sources: self.sources.into(),
             sender_posts: IntoIterator::into_iter(self.senders)

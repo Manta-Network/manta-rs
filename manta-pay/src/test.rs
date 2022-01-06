@@ -16,12 +16,7 @@
 
 //! Manta Pay Testing
 
-/* TODO:
-use crate::accounting::{
-    config,
-    identity::UtxoSet,
-    transfer::{Mint, PrivateTransfer, Reclaim},
-};
+use crate::config::{self, FullParameters, Mint, PrivateTransfer, Reclaim};
 use manta_crypto::{
     constraint::{measure::Measure, ProofSystem},
     rand::Rand,
@@ -32,7 +27,7 @@ use rand::thread_rng;
 #[test]
 fn sample_mint_context() {
     let mut rng = thread_rng();
-    let cs = Mint::sample_unknown_constraints(&mut rng);
+    let cs = Mint::unknown_constraints(FullParameters::new(&rng.gen(), &rng.gen()));
     println!("Mint: {:?}", cs.measure());
     config::ProofSystem::generate_context(cs, &mut rng).unwrap();
 }
@@ -41,7 +36,7 @@ fn sample_mint_context() {
 #[test]
 fn sample_private_transfer_context() {
     let mut rng = thread_rng();
-    let cs = PrivateTransfer::sample_unknown_constraints(&mut rng);
+    let cs = PrivateTransfer::unknown_constraints(FullParameters::new(&rng.gen(), &rng.gen()));
     println!("PrivateTransfer: {:?}", cs.measure());
     config::ProofSystem::generate_context(cs, &mut rng).unwrap();
 }
@@ -50,11 +45,12 @@ fn sample_private_transfer_context() {
 #[test]
 fn sample_reclaim_context() {
     let mut rng = thread_rng();
-    let cs = Reclaim::sample_unknown_constraints(&mut rng);
+    let cs = Reclaim::unknown_constraints(FullParameters::new(&rng.gen(), &rng.gen()));
     println!("Reclaim: {:?}", cs.measure());
     config::ProofSystem::generate_context(cs, &mut rng).unwrap();
 }
 
+/*
 /// Tests the generation of a [`Mint`].
 #[test]
 fn mint() {

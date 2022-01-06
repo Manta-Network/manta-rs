@@ -19,13 +19,36 @@
 use ark_ff::PrimeField;
 use ark_r1cs_std::{alloc::AllocVar, eq::EqGadget, select::CondSelectGadget};
 use ark_relations::{ns, r1cs as ark_r1cs};
-use manta_crypto::constraint::{
-    measure::Measure, Add, ConditionalSelect, Constant, ConstraintSystem, Equal, Public, Secret,
-    Variable,
+use manta_crypto::{
+    constraint::{
+        measure::Measure, Add, ConditionalSelect, Constant, ConstraintSystem, Equal, Public,
+        Secret, Variable,
+    },
+    rand::{CryptoRng, RngCore, Sample, Standard},
 };
 
 pub use ark_r1cs::SynthesisError;
 pub use ark_r1cs_std::{bits::boolean::Boolean, fields::fp::FpVar};
+
+/// Prime Field Element
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct Fp<F>(pub F)
+where
+    F: PrimeField;
+
+impl<F> Sample for Fp<F>
+where
+    F: PrimeField,
+{
+    #[inline]
+    fn sample<R>(distribution: Standard, rng: &mut R) -> Self
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        let _ = distribution;
+        Self(F::rand(rng))
+    }
+}
 
 /// Synthesis Result
 pub type SynthesisResult<T = ()> = Result<T, SynthesisError>;
@@ -182,11 +205,11 @@ impl<F> Constant<R1CS<F>> for FpVar<F>
 where
     F: PrimeField,
 {
-    type Type = F;
+    type Type = Fp<F>;
 
     #[inline]
     fn new_constant(this: &Self::Type, compiler: &mut R1CS<F>) -> Self {
-        AllocVar::new_constant(ns!(compiler.cs, "field constant"), this)
+        AllocVar::new_constant(ns!(compiler.cs, "field constant"), this.0)
             .expect("Variable allocation is not allowed to fail.")
     }
 }
@@ -195,11 +218,11 @@ impl<F> Variable<Public, R1CS<F>> for FpVar<F>
 where
     F: PrimeField,
 {
-    type Type = F;
+    type Type = Fp<F>;
 
     #[inline]
     fn new_known(this: &Self::Type, compiler: &mut R1CS<F>) -> Self {
-        Self::new_input(ns!(compiler.cs, "field public input"), full(this))
+        Self::new_input(ns!(compiler.cs, "field public input"), full(this.0))
             .expect("Variable allocation is not allowed to fail.")
     }
 
@@ -214,11 +237,11 @@ impl<F> Variable<Secret, R1CS<F>> for FpVar<F>
 where
     F: PrimeField,
 {
-    type Type = F;
+    type Type = Fp<F>;
 
     #[inline]
     fn new_known(this: &Self::Type, compiler: &mut R1CS<F>) -> Self {
-        Self::new_witness(ns!(compiler.cs, "field secret witness"), full(this))
+        Self::new_witness(ns!(compiler.cs, "field secret witness"), full(this.0))
             .expect("Variable allocation is not allowed to fail.")
     }
 

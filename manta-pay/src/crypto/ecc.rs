@@ -20,9 +20,9 @@
 #[cfg(feature = "arkworks")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "arkworks")))]
 pub mod arkworks {
-    use crate::crypto::constraint::arkworks::{empty, full, Boolean, FpVar, R1CS};
+    use crate::crypto::constraint::arkworks::{empty, full, Boolean, Fp, FpVar, R1CS};
     use alloc::vec::Vec;
-    use ark_ff::{BigInteger, Field, FpParameters, PrimeField, UniformRand};
+    use ark_ff::{BigInteger, Field, FpParameters, PrimeField};
     use ark_r1cs_std::ToBitsGadget;
     use ark_relations::ns;
     use core::marker::PhantomData;
@@ -41,6 +41,9 @@ pub mod arkworks {
 
     /// Compiler Type
     type Compiler<C> = R1CS<ConstraintField<C>>;
+
+    /// Scalar Field Element
+    pub type Scalar<C> = Fp<<C as ProjectiveCurve>::ScalarField>;
 
     /// Converts `scalar` to the bit representation of `O`.
     #[inline]
@@ -75,7 +78,7 @@ pub mod arkworks {
     /// This can only be used whenver the embedded scalar field is **smaller** than the outer scalar
     /// field.
     #[inline]
-    pub fn lift_embedded_scalar<C>(scalar: &Scalar<C>) -> ConstraintField<C>
+    pub fn lift_embedded_scalar<C>(scalar: &Scalar<C>) -> Fp<ConstraintField<C>>
     where
         C: ProjectiveCurve,
     {
@@ -83,9 +86,12 @@ pub mod arkworks {
             modulus_is_smaller::<C::ScalarField, ConstraintField<C>>(),
             "The modulus of the embedded scalar field is larger than that of the constraint field."
         );
-        ConstraintField::<C>::from_le_bytes_mod_order(&scalar.0.into_repr().to_bytes_le())
+        Fp(ConstraintField::<C>::from_le_bytes_mod_order(
+            &scalar.0.into_repr().to_bytes_le(),
+        ))
     }
 
+    /* TODO[remove]:
     /// Elliptic Curve Scalar Element
     #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
     pub struct Scalar<C>(C::ScalarField)
@@ -105,6 +111,7 @@ pub mod arkworks {
             Self(C::ScalarField::rand(rng))
         }
     }
+    */
 
     /// Elliptic Curve Group Element
     #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -136,6 +143,20 @@ pub mod arkworks {
         #[inline]
         fn scalar_mul(&self, scalar: &Self::Scalar, _: &mut ()) -> Self {
             Self(self.0.mul(scalar.0.into_repr()))
+        }
+    }
+
+    impl<C> Sample for Group<C>
+    where
+        C: ProjectiveCurve,
+    {
+        #[inline]
+        fn sample<R>(distribution: Standard, rng: &mut R) -> Self
+        where
+            R: CryptoRng + RngCore + ?Sized,
+        {
+            let _ = distribution;
+            Self(C::rand(rng))
         }
     }
 

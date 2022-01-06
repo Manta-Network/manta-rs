@@ -16,6 +16,8 @@
 
 //! Random Number Generators
 
+// TODO: Add a `Sample` derive trait.
+
 use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash, iter::repeat, marker::PhantomData};
 use manta_util::into_array_unchecked;
@@ -252,11 +254,62 @@ where
         R: CryptoRng + RngCore + ?Sized,
     {
         into_array_unchecked(
-            repeat(distribution)
-                .take(N)
-                .map(move |d| T::sample(d, rng))
+            rng.sample_iter(repeat(distribution).take(N))
                 .collect::<Vec<_>>(),
         )
+    }
+}
+
+/// Distribution Iterator
+pub struct DistIter<'r, D, T, R>
+where
+    D: Iterator,
+    T: Sample<D::Item>,
+    R: CryptoRng + RngCore + ?Sized,
+{
+    /// Distribution Iterator
+    iter: D,
+
+    /// Random Number Generator
+    rng: &'r mut R,
+
+    /// Type Parameter Marker
+    __: PhantomData<T>,
+}
+
+impl<'r, D, T, R> DistIter<'r, D, T, R>
+where
+    D: Iterator,
+    T: Sample<D::Item>,
+    R: CryptoRng + RngCore + ?Sized,
+{
+    /// Builds a new [`DistIter`] from `iter` and `rng`.
+    #[inline]
+    fn new(iter: D, rng: &'r mut R) -> Self {
+        Self {
+            iter,
+            rng,
+            __: PhantomData,
+        }
+    }
+}
+
+impl<'r, D, T, R> Iterator for DistIter<'r, D, T, R>
+where
+    D: Iterator,
+    T: Sample<D::Item>,
+    R: CryptoRng + RngCore + ?Sized,
+{
+    type Item = T;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().map(|d| self.rng.sample(d))
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.iter.size_hint()
     }
 }
 
@@ -286,7 +339,7 @@ pub trait TrySample<D = Standard>: Sized {
 /// Random Number Generator
 pub trait Rand: CryptoRng + RngCore {
     /// Returns a random value of type `Self`, sampled according to the given `distribution`,
-    /// generated from the `rng`.
+    /// generated from `self`.
     #[inline]
     fn sample<D, T>(&mut self, distribution: D) -> T
     where
@@ -295,8 +348,18 @@ pub trait Rand: CryptoRng + RngCore {
         T::sample(distribution, self)
     }
 
+    /// Returns an iterator over `iter` which samples from `self`.
+    #[inline]
+    fn sample_iter<D, T>(&mut self, iter: D) -> DistIter<D, T, Self>
+    where
+        D: Iterator,
+        T: Sample<D::Item>,
+    {
+        DistIter::new(iter, self)
+    }
+
     /// Tries to return a random value of type `Self`, sampled according to the given
-    /// `distribution`, generated from the `rng`.
+    /// `distribution`, generated from `self`.
     #[inline]
     fn try_sample<D, T>(&mut self, distribution: D) -> Result<T, T::Error>
     where
@@ -306,7 +369,7 @@ pub trait Rand: CryptoRng + RngCore {
     }
 
     /// Returns a random value of type `Self`, sampled according to the default distribution of
-    /// type `D`, generated from the `rng`.
+    /// type `D`, generated from `rng`.
     #[inline]
     fn gen<D, T>(&mut self) -> T
     where
