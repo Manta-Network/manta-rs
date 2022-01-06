@@ -18,13 +18,11 @@
 
 use crate::crypto::{
     constraint::arkworks::{Boolean, FpVar, Groth16, R1CS},
-    ecc,
+    ecc::{self, arkworks::ProjectiveCurve},
     encryption::AesGcm,
     hash::poseidon,
     key::Blake2sKdf,
 };
-use ark_ec::ProjectiveCurve;
-use ark_ff::{BigInteger, PrimeField};
 use bls12_381::Bls12_381;
 use bls12_381_ed::{
     constraints::EdwardsVar as Bls12_381_EdwardsVar, EdwardsProjective as Bls12_381_Edwards,
@@ -176,7 +174,7 @@ impl BinaryHashFunction for VoidNumberHashFunction {
             left,
             // FIXME: This is the lift from inner scalar to outer scalar and only exists in some
             // cases! We need a better abstraction for this.
-            &ConstraintField::from_le_bytes_mod_order(&right.into_repr().to_bytes_le()),
+            &ecc::arkworks::lift_embedded_scalar::<Bls12_381_Edwards>(right),
         ])
     }
 }
@@ -199,7 +197,7 @@ impl BinaryHashFunction<Compiler> for VoidNumberHashFunctionVar {
         right: &Self::Right,
         compiler: &mut Compiler,
     ) -> Self::Output {
-        self.0.hash_in([left, right], compiler)
+        self.0.hash_in([left, &right.0], compiler)
     }
 }
 
@@ -472,16 +470,14 @@ impl transfer::Configuration for TransferConfiguration {
     type NoteEncryptionScheme = NoteEncryptionScheme;
 }
 
-/* TODO:
 /// Mint Transfer Type
-pub struct Mint = transfer::canonical::Mint<TransferConfiguration>;
+pub type Mint = transfer::canonical::Mint<TransferConfiguration>;
 
 /// Private Transfer Type
-pub struct PrivateTransfer = transfer::canonical::PrivateTransfer<TransferConfiguration>;
+pub type PrivateTransfer = transfer::canonical::PrivateTransfer<TransferConfiguration>;
 
 /// Reclaim Transfer Type
-pub struct Reclaim = transfer::canonical::Reclaim<TransferConfiguration>;
+pub type Reclaim = transfer::canonical::Reclaim<TransferConfiguration>;
 
 /// Transfer Post Type
-pub struct TransferPost = transfer::TransferPost<TransferConfiguration>;
-*/
+pub type TransferPost = transfer::TransferPost<TransferConfiguration>;
