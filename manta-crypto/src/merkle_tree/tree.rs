@@ -20,15 +20,14 @@
 //       implementations for the trivial tree sizes?
 // TODO: Add "copy-on-write" adapters for `Root` and `Path`, and see if we can incorporate them
 //       into `Tree`.
+// TODO: Use uniform construction for `Path` and `PathVar`.
 
 use crate::{
     accumulator::{
         self, Accumulator, ConstantCapacityAccumulator, ExactSizeAccumulator, MembershipProof,
         OptimizedAccumulator,
     },
-    constraint::{
-        Allocation, ConditionalSelect, Constant, ConstraintSystem, Equal, Native, Variable,
-    },
+    constraint::{ConditionalSelect, Constant, ConstraintSystem, Equal, Native, ValueSource},
     merkle_tree::{
         fork::Trunk,
         path::{constraint::PathVar, CurrentPath, Path},
@@ -610,25 +609,20 @@ where
     }
 }
 
-use crate::constraint::VariableSource;
-
-impl<C, COM> Variable<COM> for Parameters<C, COM>
+impl<C, COM> Constant<COM> for Parameters<C, COM>
 where
-    C: HashConfiguration<COM> + Variable<COM> + ?Sized,
+    C: HashConfiguration<COM> + Constant<COM> + ?Sized,
     C::Type: HashConfiguration,
-    LeafHashParameters<C, COM>: Variable<COM, Type = LeafHashParameters<C::Type>, Mode = Constant>,
-    InnerHashParameters<C, COM>:
-        Variable<COM, Type = InnerHashParameters<C::Type>, Mode = Constant>,
+    LeafHashParameters<C, COM>: Constant<COM, Type = LeafHashParameters<C::Type>>,
+    InnerHashParameters<C, COM>: Constant<COM, Type = InnerHashParameters<C::Type>>,
 {
     type Type = Parameters<C::Type>;
-    type Mode = Constant;
 
     #[inline]
-    fn new(compiler: &mut COM, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
-        let (this, mode) = allocation.into_known();
+    fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
         Self::new(
-            this.leaf.as_known(compiler, mode),
-            this.inner.as_known(compiler, mode),
+            this.leaf.as_constant(compiler),
+            this.inner.as_constant(compiler),
         )
     }
 }
@@ -647,7 +641,7 @@ where
     type Verification = bool;
 
     #[inline]
-    fn verify(
+    fn verify_in(
         &self,
         item: &Self::Item,
         witness: &Self::Witness,
@@ -671,7 +665,7 @@ where
     type Verification = COM::Bool;
 
     #[inline]
-    fn verify(
+    fn verify_in(
         &self,
         item: &Self::Item,
         witness: &Self::Witness,

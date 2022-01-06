@@ -23,8 +23,8 @@ use manta_crypto::{
     accumulator::{Accumulator, MembershipProof, Model},
     commitment::CommitmentScheme,
     constraint::{
-        Add, Allocation, Constant, ConstraintSystem, Derived, Equal, Input as ProofSystemInput,
-        ProofSystem, Public, PublicOrSecret, Secret, Variable, VariableSource,
+        Add, Allocator, Constant, ConstraintSystem, Derived, Equal, Input as ProofSystemInput,
+        ProofSystem, Public, Secret, ValueSource, Variable,
     },
     encryption::{DecryptedMessage, EncryptedMessage, HybridPublicKeyEncryptionScheme},
     hash::BinaryHashFunction,
@@ -63,10 +63,10 @@ pub trait Configuration {
     >;
 
     /// Secret Key Variable Type
-    type SecretKeyVar: Variable<Self::Compiler, Type = SecretKey<Self>, Mode = Secret>;
+    type SecretKeyVar: Variable<Secret, Self::Compiler, Type = SecretKey<Self>>;
 
     /// Public Key Variable Type
-    type PublicKeyVar: Variable<Self::Compiler, Type = PublicKey<Self>, Mode = Public>
+    type PublicKeyVar: Variable<Public, Self::Compiler, Type = PublicKey<Self>>
         + Equal<Self::Compiler>;
 
     /// Key Agreement Scheme Variable Type
@@ -74,7 +74,7 @@ pub trait Configuration {
             Self::Compiler,
             SecretKey = Self::SecretKeyVar,
             PublicKey = Self::PublicKeyVar,
-        > + Variable<Self::Compiler, Type = Self::KeyAgreementScheme, Mode = Constant>;
+        > + Constant<Self::Compiler, Type = Self::KeyAgreementScheme>;
 
     /// Unspent Transaction Output Type
     type Utxo: PartialEq;
@@ -87,7 +87,8 @@ pub trait Configuration {
     >;
 
     /// UTXO Variable Type
-    type UtxoVar: Variable<Self::Compiler, Type = Self::Utxo, Mode = PublicOrSecret>
+    type UtxoVar: Variable<Public, Self::Compiler, Type = Self::Utxo>
+        + Variable<Secret, Self::Compiler, Type = Self::Utxo>
         + Equal<Self::Compiler>;
 
     /// UTXO Commitment Scheme Variable Type
@@ -96,7 +97,7 @@ pub trait Configuration {
             Trapdoor = TrapdoorVar<Self>,
             Input = AssetVar<Self>,
             Output = Self::UtxoVar,
-        > + Variable<Self::Compiler, Type = Self::UtxoCommitmentScheme, Mode = Constant>;
+        > + Constant<Self::Compiler, Type = Self::UtxoCommitmentScheme>;
 
     /// Void Number Type
     type VoidNumber: PartialEq;
@@ -109,7 +110,7 @@ pub trait Configuration {
     >;
 
     /// Void Number Variable Type
-    type VoidNumberVar: Variable<Self::Compiler, Type = Self::VoidNumber, Mode = Public>
+    type VoidNumberVar: Variable<Public, Self::Compiler, Type = Self::VoidNumber>
         + Equal<Self::Compiler>;
 
     /// Void Number Hash Function Variable Type
@@ -118,16 +119,16 @@ pub trait Configuration {
             Left = Self::UtxoVar,
             Right = Self::SecretKeyVar,
             Output = Self::VoidNumberVar,
-        > + Variable<Self::Compiler, Type = Self::VoidNumberHashFunction, Mode = Constant>;
+        > + Constant<Self::Compiler, Type = Self::VoidNumberHashFunction>;
 
     /// UTXO Set Model Type
     type UtxoSetModel: Model<Item = Self::Utxo, Verification = bool>;
 
     /// UTXO Set Witness Variable Type
-    type UtxoSetWitnessVar: Variable<Self::Compiler, Type = UtxoSetWitness<Self>, Mode = Secret>;
+    type UtxoSetWitnessVar: Variable<Secret, Self::Compiler, Type = UtxoSetWitness<Self>>;
 
     /// UTXO Set Output Variable Type
-    type UtxoSetOutputVar: Variable<Self::Compiler, Type = UtxoSetOutput<Self>, Mode = Public>;
+    type UtxoSetOutputVar: Variable<Public, Self::Compiler, Type = UtxoSetOutput<Self>>;
 
     /// UTXO Set Model Variable Type
     type UtxoSetModelVar: Model<
@@ -136,16 +137,18 @@ pub trait Configuration {
             Witness = Self::UtxoSetWitnessVar,
             Output = Self::UtxoSetOutputVar,
             Verification = <Self::Compiler as ConstraintSystem>::Bool,
-        > + Variable<Self::Compiler, Type = Self::UtxoSetModel, Mode = Constant>;
+        > + Constant<Self::Compiler, Type = Self::UtxoSetModel>;
 
     /// Asset Id Variable Type
-    type AssetIdVar: Variable<Self::Compiler, Type = AssetId, Mode = PublicOrSecret>
+    type AssetIdVar: Variable<Public, Self::Compiler, Type = AssetId>
+        + Variable<Secret, Self::Compiler, Type = AssetId>
         + Equal<Self::Compiler>;
 
     /// Asset Value Variable Type
-    type AssetValueVar: Variable<Self::Compiler, Type = AssetValue, Mode = PublicOrSecret>
-        + Equal<Self::Compiler>
-        + Add<Self::Compiler>;
+    type AssetValueVar: Variable<Public, Self::Compiler, Type = AssetValue>
+        + Variable<Secret, Self::Compiler, Type = AssetValue>
+        + Add<Self::Compiler>
+        + Equal<Self::Compiler>;
 
     /// Constraint System Type
     type Compiler: ConstraintSystem;
@@ -170,9 +173,9 @@ pub trait Configuration {
     fn ephemeral_public_key_var(
         parameters: &Self::KeyAgreementSchemeVar,
         secret_key: &SecretKeyVar<Self>,
-        cs: &mut Self::Compiler,
+        compiler: &mut Self::Compiler,
     ) -> PublicKeyVar<Self> {
-        parameters.derive(secret_key, cs)
+        parameters.derive(secret_key, compiler)
     }
 
     /// Generates the commitment trapdoor associated to `secret_key` and `public_key`.
@@ -191,9 +194,9 @@ pub trait Configuration {
         key_agreement: &Self::KeyAgreementSchemeVar,
         secret_key: &SecretKeyVar<Self>,
         public_key: &PublicKeyVar<Self>,
-        cs: &mut Self::Compiler,
+        compiler: &mut Self::Compiler,
     ) -> TrapdoorVar<Self> {
-        key_agreement.agree(secret_key, public_key, cs)
+        key_agreement.agree(secret_key, public_key, compiler)
     }
 
     /// Generates the trapdoor associated to `secret_key` and `public_key` and then uses it to
@@ -219,10 +222,10 @@ pub trait Configuration {
         secret_key: &SecretKeyVar<Self>,
         public_key: &PublicKeyVar<Self>,
         asset: &AssetVar<Self>,
-        cs: &mut Self::Compiler,
+        compiler: &mut Self::Compiler,
     ) -> UtxoVar<Self> {
-        let trapdoor = Self::trapdoor_var(key_agreement, secret_key, public_key, cs);
-        utxo_commitment.commit_in(&trapdoor, asset, cs)
+        let trapdoor = Self::trapdoor_var(key_agreement, secret_key, public_key, compiler);
+        utxo_commitment.commit_in(&trapdoor, asset, compiler)
     }
 
     /// Generates the void number associated to `utxo` and `secret_key` using `parameters`.
@@ -241,9 +244,9 @@ pub trait Configuration {
         parameters: &Self::VoidNumberHashFunctionVar,
         utxo: &UtxoVar<Self>,
         secret_key: &SecretKeyVar<Self>,
-        cs: &mut Self::Compiler,
+        compiler: &mut Self::Compiler,
     ) -> VoidNumberVar<Self> {
-        parameters.hash_in(utxo, secret_key, cs)
+        parameters.hash_in(utxo, secret_key, compiler)
     }
 
     /// Checks that the `utxo` is correctly constructed from the `secret_key`, `public_key`, and
@@ -428,26 +431,21 @@ where
     __: PhantomData<&'p ()>,
 }
 
-impl<'p, C> Variable<C::Compiler> for FullParametersVar<'p, C>
+impl<'p, C> Constant<C::Compiler> for FullParametersVar<'p, C>
 where
     C: Configuration,
     Parameters<C>: 'p,
 {
     type Type = FullParameters<'p, C>;
 
-    type Mode = Constant;
-
     #[inline]
-    fn new(cs: &mut C::Compiler, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
-        match allocation {
-            Allocation::Known(this, mode) => Self {
-                key_agreement: this.base.key_agreement.as_known(cs, mode),
-                utxo_commitment: this.base.utxo_commitment.as_known(cs, mode),
-                void_number_hash: this.base.void_number_hash.as_known(cs, mode),
-                utxo_set_model: this.utxo_set_model.as_known(cs, mode),
-                __: PhantomData,
-            },
-            _ => unreachable!("Constant variables cannot be unknown."),
+    fn new_constant(this: &Self::Type, compiler: &mut C::Compiler) -> Self {
+        Self {
+            key_agreement: this.base.key_agreement.as_constant(compiler),
+            utxo_commitment: this.base.utxo_commitment.as_constant(compiler),
+            void_number_hash: this.base.void_number_hash.as_constant(compiler),
+            utxo_set_model: this.utxo_set_model.as_constant(compiler),
+            __: PhantomData,
         }
     }
 }
@@ -786,12 +784,12 @@ where
     C: Configuration,
 {
     /// Returns the asset for `self`, checking if `self` is well-formed in the given constraint
-    /// system `cs`.
+    /// system `compiler`.
     #[inline]
     pub fn get_well_formed_asset(
         self,
         parameters: &FullParametersVar<C>,
-        cs: &mut C::Compiler,
+        compiler: &mut C::Compiler,
     ) -> AssetVar<C> {
         let utxo = C::utxo_var(
             &parameters.key_agreement,
@@ -799,43 +797,44 @@ where
             &self.spend,
             &self.ephemeral_public_key,
             &self.asset,
-            cs,
+            compiler,
         );
         let is_valid_proof =
             self.utxo_membership_proof
-                .verify_with_compiler(&parameters.utxo_set_model, &utxo, cs);
-        cs.assert(is_valid_proof);
-        let void_number = C::void_number_var(&parameters.void_number_hash, &utxo, &self.spend, cs);
-        cs.assert_eq(&self.void_number, &void_number);
+                .verify_in(&parameters.utxo_set_model, &utxo, compiler);
+        compiler.assert(is_valid_proof);
+        let void_number =
+            C::void_number_var(&parameters.void_number_hash, &utxo, &self.spend, compiler);
+        compiler.assert_eq(&self.void_number, &void_number);
         self.asset
     }
 }
 
-impl<C> Variable<C::Compiler> for SenderVar<C>
+impl<C> Variable<Derived, C::Compiler> for SenderVar<C>
 where
     C: Configuration,
 {
     type Type = Sender<C>;
 
-    type Mode = Derived;
+    #[inline]
+    fn new_known(this: &Self::Type, compiler: &mut C::Compiler) -> Self {
+        Self {
+            spend: this.spend.as_known(compiler),
+            ephemeral_public_key: this.ephemeral_public_key.as_known(compiler),
+            asset: this.asset.as_known(compiler),
+            utxo_membership_proof: this.utxo_membership_proof.as_known(compiler),
+            void_number: this.void_number.as_known(compiler),
+        }
+    }
 
     #[inline]
-    fn new(cs: &mut C::Compiler, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
-        match allocation {
-            Allocation::Known(this, mode) => Self {
-                spend: this.spend.as_known(cs, mode),
-                ephemeral_public_key: this.ephemeral_public_key.as_known(cs, mode),
-                asset: this.asset.as_known(cs, mode),
-                utxo_membership_proof: this.utxo_membership_proof.as_known(cs, mode),
-                void_number: this.void_number.as_known(cs, Public),
-            },
-            Allocation::Unknown(mode) => Self {
-                spend: SecretKeyVar::<C>::new_unknown(cs, mode),
-                ephemeral_public_key: PublicKeyVar::<C>::new_unknown(cs, mode),
-                asset: AssetVar::<C>::new_unknown(cs, mode),
-                utxo_membership_proof: UtxoMembershipProofVar::<C>::new_unknown(cs, mode),
-                void_number: VoidNumberVar::<C>::new_unknown(cs, Public),
-            },
+    fn new_unknown(compiler: &mut C::Compiler) -> Self {
+        Self {
+            spend: compiler.allocate_unknown(),
+            ephemeral_public_key: compiler.allocate_unknown(),
+            asset: compiler.allocate_unknown(),
+            utxo_membership_proof: compiler.allocate_unknown(),
+            void_number: compiler.allocate_unknown(),
         }
     }
 }
@@ -1078,54 +1077,57 @@ where
     C: Configuration,
 {
     /// Returns the asset for `self`, checking if `self` is well-formed in the given constraint
-    /// system `cs`.
+    /// system `compiler`.
     #[inline]
     pub fn get_well_formed_asset(
         self,
         parameters: &FullParametersVar<C>,
-        cs: &mut C::Compiler,
+        compiler: &mut C::Compiler,
     ) -> AssetVar<C> {
-        let ephemeral_public_key =
-            C::ephemeral_public_key_var(&parameters.key_agreement, &self.ephemeral_secret_key, cs);
-        cs.assert_eq(&self.ephemeral_public_key, &ephemeral_public_key);
+        let ephemeral_public_key = C::ephemeral_public_key_var(
+            &parameters.key_agreement,
+            &self.ephemeral_secret_key,
+            compiler,
+        );
+        compiler.assert_eq(&self.ephemeral_public_key, &ephemeral_public_key);
         let utxo = C::utxo_var(
             &parameters.key_agreement,
             &parameters.utxo_commitment,
             &self.ephemeral_secret_key,
             &self.spend,
             &self.asset,
-            cs,
+            compiler,
         );
-        cs.assert_eq(&self.utxo, &utxo);
+        compiler.assert_eq(&self.utxo, &utxo);
         self.asset
     }
 }
 
-impl<C> Variable<C::Compiler> for ReceiverVar<C>
+impl<C> Variable<Derived, C::Compiler> for ReceiverVar<C>
 where
     C: Configuration,
 {
     type Type = Receiver<C>;
 
-    type Mode = Derived;
+    #[inline]
+    fn new_known(this: &Self::Type, compiler: &mut C::Compiler) -> Self {
+        Self {
+            ephemeral_secret_key: this.ephemeral_secret_key.as_known(compiler),
+            ephemeral_public_key: this.ephemeral_public_key().as_known(compiler),
+            spend: this.spend.as_known(compiler),
+            asset: this.asset.as_known(compiler),
+            utxo: this.utxo.as_known::<Public, _>(compiler),
+        }
+    }
 
     #[inline]
-    fn new(cs: &mut C::Compiler, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
-        match allocation {
-            Allocation::Known(this, mode) => Self {
-                ephemeral_secret_key: this.ephemeral_secret_key.as_known(cs, mode),
-                ephemeral_public_key: this.ephemeral_public_key().as_known(cs, mode),
-                spend: this.spend.as_known(cs, mode),
-                asset: this.asset.as_known(cs, mode),
-                utxo: this.utxo.as_known(cs, Public),
-            },
-            Allocation::Unknown(mode) => Self {
-                ephemeral_secret_key: SecretKeyVar::<C>::new_unknown(cs, mode),
-                ephemeral_public_key: PublicKeyVar::<C>::new_unknown(cs, mode),
-                spend: PublicKeyVar::<C>::new_unknown(cs, mode),
-                asset: AssetVar::<C>::new_unknown(cs, mode),
-                utxo: UtxoVar::<C>::new_unknown(cs, Public),
-            },
+    fn new_unknown(compiler: &mut C::Compiler) -> Self {
+        Self {
+            ephemeral_secret_key: compiler.allocate_unknown(),
+            ephemeral_public_key: compiler.allocate_unknown(),
+            spend: compiler.allocate_unknown(),
+            asset: compiler.allocate_unknown(),
+            utxo: compiler.allocate_unknown::<Public, _>(),
         }
     }
 }
@@ -1365,10 +1367,10 @@ where
     where
         R: CryptoRng + RngCore + ?Sized,
     {
-        let mut cs = C::ProofSystem::for_unknown();
-        TransferVar::<C, SOURCES, SENDERS, RECEIVERS, SINKS>::new_unknown(&mut cs, Derived)
-            .build_validity_constraints(&parameters.as_known(&mut cs, Public), &mut cs);
-        cs.generate_context::<C::ProofSystem, _>(rng)
+        let mut compiler = C::ProofSystem::for_unknown();
+        TransferVar::<C, SOURCES, SENDERS, RECEIVERS, SINKS>::new_unknown(&mut compiler)
+            .build_validity_constraints(&parameters.as_constant(&mut compiler), &mut compiler);
+        C::ProofSystem::generate_context(compiler, rng)
     }
 
     /// Converts `self` into its ledger post.
@@ -1384,11 +1386,14 @@ where
     {
         Ok(TransferPost {
             validity_proof: {
-                let mut cs = C::ProofSystem::for_known();
+                let mut compiler = C::ProofSystem::for_known();
                 let transfer: TransferVar<C, SOURCES, SENDERS, RECEIVERS, SINKS> =
-                    self.as_known(&mut cs, Derived);
-                transfer.build_validity_constraints(&parameters.as_known(&mut cs, Public), &mut cs);
-                cs.prove::<C::ProofSystem, _>(context, rng)?
+                    self.as_known(&mut compiler);
+                transfer.build_validity_constraints(
+                    &parameters.as_constant(&mut compiler),
+                    &mut compiler,
+                );
+                C::ProofSystem::prove(compiler, context, rng)?
             },
             asset_id: self.asset_id,
             sources: self.sources.into(),
@@ -1436,110 +1441,114 @@ where
 {
     /// Builds constraints for the [`Transfer`] validity proof.
     #[inline]
-    fn build_validity_constraints(self, parameters: &FullParametersVar<C>, cs: &mut C::Compiler) {
+    fn build_validity_constraints(
+        self,
+        parameters: &FullParametersVar<C>,
+        compiler: &mut C::Compiler,
+    ) {
         let mut secret_asset_ids = Vec::with_capacity(SENDERS + RECEIVERS);
 
         let input_sum = Self::value_sum(
             self.senders
                 .into_iter()
                 .map(|s| {
-                    let asset = s.get_well_formed_asset(parameters, cs);
+                    let asset = s.get_well_formed_asset(parameters, compiler);
                     secret_asset_ids.push(asset.id);
                     asset.value
                 })
                 .chain(self.sources)
                 .collect::<Vec<_>>(),
-            cs,
+            compiler,
         );
 
         let output_sum = Self::value_sum(
             self.receivers
                 .into_iter()
                 .map(|r| {
-                    let asset = r.get_well_formed_asset(parameters, cs);
+                    let asset = r.get_well_formed_asset(parameters, compiler);
                     secret_asset_ids.push(asset.id);
                     asset.value
                 })
                 .chain(self.sinks)
                 .collect::<Vec<_>>(),
-            cs,
+            compiler,
         );
 
-        cs.assert_eq(&input_sum, &output_sum);
+        compiler.assert_eq(&input_sum, &output_sum);
 
         match self.asset_id {
-            Some(asset_id) => cs.assert_all_eq_to_base(&asset_id, secret_asset_ids.iter()),
-            _ => cs.assert_all_eq(secret_asset_ids.iter()),
+            Some(asset_id) => compiler.assert_all_eq_to_base(&asset_id, secret_asset_ids.iter()),
+            _ => compiler.assert_all_eq(secret_asset_ids.iter()),
         }
     }
 
-    /// Computes the sum of the asset values over `iter` inside of `cs`.
+    /// Computes the sum of the asset values over `iter` inside of `compiler`.
     #[inline]
-    fn value_sum<I>(iter: I, cs: &mut C::Compiler) -> C::AssetValueVar
+    fn value_sum<I>(iter: I, compiler: &mut C::Compiler) -> C::AssetValueVar
     where
         I: IntoIterator<Item = C::AssetValueVar>,
     {
         iter.into_iter()
-            .reduce(move |l, r| Add::add(cs, l, r))
+            .reduce(move |l, r| Add::add(l, r, compiler))
             .unwrap()
     }
 }
 
 impl<C, const SOURCES: usize, const SENDERS: usize, const RECEIVERS: usize, const SINKS: usize>
-    Variable<C::Compiler> for TransferVar<C, SOURCES, SENDERS, RECEIVERS, SINKS>
+    Variable<Derived, C::Compiler> for TransferVar<C, SOURCES, SENDERS, RECEIVERS, SINKS>
 where
     C: Configuration,
 {
     type Type = Transfer<C, SOURCES, SENDERS, RECEIVERS, SINKS>;
 
-    type Mode = Derived;
+    #[inline]
+    fn new_known(this: &Self::Type, compiler: &mut C::Compiler) -> Self {
+        Self {
+            asset_id: this.asset_id.map(|id| id.as_known::<Public, _>(compiler)),
+            sources: this
+                .sources
+                .iter()
+                .map(|source| source.as_known::<Public, _>(compiler))
+                .collect(),
+            senders: this
+                .senders
+                .iter()
+                .map(|sender| sender.as_known(compiler))
+                .collect(),
+            receivers: this
+                .receivers
+                .iter()
+                .map(|receiver| receiver.as_known(compiler))
+                .collect(),
+            sinks: this
+                .sinks
+                .iter()
+                .map(|sink| sink.as_known::<Public, _>(compiler))
+                .collect(),
+        }
+    }
 
     #[inline]
-    fn new(cs: &mut C::Compiler, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
-        match allocation {
-            Allocation::Known(this, mode) => Self {
-                asset_id: this.asset_id.map(|id| id.as_known(cs, Public)),
-                sources: this
-                    .sources
-                    .iter()
-                    .map(|source| source.as_known(cs, Public))
-                    .collect(),
-                senders: this
-                    .senders
-                    .iter()
-                    .map(|sender| sender.as_known(cs, mode))
-                    .collect(),
-                receivers: this
-                    .receivers
-                    .iter()
-                    .map(|receiver| receiver.as_known(cs, mode))
-                    .collect(),
-                sinks: this
-                    .sinks
-                    .iter()
-                    .map(|sink| sink.as_known(cs, Public))
-                    .collect(),
-            },
-            Allocation::Unknown(mode) => Self {
-                asset_id: has_public_participants(SOURCES, SENDERS, RECEIVERS, SINKS)
-                    .then(|| C::AssetIdVar::new_unknown(cs, Public)),
-                sources: (0..SOURCES)
-                    .into_iter()
-                    .map(|_| C::AssetValueVar::new_unknown(cs, Public))
-                    .collect(),
-                senders: (0..SENDERS)
-                    .into_iter()
-                    .map(|_| SenderVar::<C>::new_unknown(cs, mode))
-                    .collect(),
-                receivers: (0..RECEIVERS)
-                    .into_iter()
-                    .map(|_| ReceiverVar::<C>::new_unknown(cs, mode))
-                    .collect(),
-                sinks: (0..SINKS)
-                    .into_iter()
-                    .map(|_| C::AssetValueVar::new_unknown(cs, Public))
-                    .collect(),
-            },
+    fn new_unknown(compiler: &mut C::Compiler) -> Self {
+        Self {
+            asset_id: has_public_participants(SOURCES, SENDERS, RECEIVERS, SINKS)
+                .then(|| compiler.allocate_unknown::<Public, _>()),
+            sources: (0..SOURCES)
+                .into_iter()
+                .map(|_| compiler.allocate_unknown::<Public, _>())
+                .collect(),
+            senders: (0..SENDERS)
+                .into_iter()
+                .map(|_| compiler.allocate_unknown())
+                .collect(),
+            receivers: (0..RECEIVERS)
+                .into_iter()
+                .map(|_| compiler.allocate_unknown())
+                .collect(),
+            sinks: (0..SINKS)
+                .into_iter()
+                .map(|_| compiler.allocate_unknown::<Public, _>())
+                .collect(),
         }
     }
 }

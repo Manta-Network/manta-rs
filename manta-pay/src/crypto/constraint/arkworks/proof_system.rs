@@ -35,11 +35,11 @@ use {
 /// Constraint Synthesizer Wrapper
 struct ConstraintSynthesizerWrapper<F>(R1CS<F>)
 where
-    F: ark_ff::Field;
+    F: ark_ff::PrimeField;
 
 impl<F> ConstraintSynthesizer<F> for ConstraintSynthesizerWrapper<F>
 where
-    F: ark_ff::Field,
+    F: ark_ff::PrimeField,
 {
     #[inline]
     fn generate_constraints(self, cs: ConstraintSystemRef<F>) -> SynthesisResult {

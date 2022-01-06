@@ -36,7 +36,7 @@ use manta_accounting::{
 use manta_crypto::{
     accumulator,
     commitment::CommitmentScheme,
-    constraint::{self, Allocation, Constant, Secret, Variable, VariableSource},
+    constraint::{Allocator, Constant, Input as ProofSystemInput, Secret, ValueSource, Variable},
     ecc::DiffieHellman,
     encryption,
     hash::{BinaryHashFunction, HashFunction},
@@ -147,14 +147,12 @@ impl CommitmentScheme<Compiler> for UtxoCommitmentSchemeVar {
     }
 }
 
-impl Variable<Compiler> for UtxoCommitmentSchemeVar {
+impl Constant<Compiler> for UtxoCommitmentSchemeVar {
     type Type = UtxoCommitmentScheme;
-    type Mode = Constant;
 
     #[inline]
-    fn new(cs: &mut Compiler, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
-        let (this, mode) = allocation.into_known();
-        Self(this.0.as_known(cs, mode))
+    fn new_constant(this: &Self::Type, compiler: &mut Compiler) -> Self {
+        Self(this.0.as_constant(compiler))
     }
 }
 
@@ -202,54 +200,46 @@ impl BinaryHashFunction<Compiler> for VoidNumberHashFunctionVar {
     }
 }
 
-impl Variable<Compiler> for VoidNumberHashFunctionVar {
+impl Constant<Compiler> for VoidNumberHashFunctionVar {
     type Type = VoidNumberHashFunction;
-    type Mode = Constant;
 
     #[inline]
-    fn new(cs: &mut Compiler, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
-        let (this, mode) = allocation.into_known();
-        Self(this.0.as_known(cs, mode))
+    fn new_constant(this: &Self::Type, compiler: &mut Compiler) -> Self {
+        Self(this.0.as_constant(compiler))
     }
 }
 
 /// Asset ID Variable
 pub struct AssetIdVar(ConstraintFieldVar);
 
-impl Variable<Compiler> for AssetIdVar {
+impl Variable<Secret, Compiler> for AssetIdVar {
     type Type = AssetId;
-    type Mode = Secret;
 
     #[inline]
-    fn new(cs: &mut Compiler, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
-        Self(match allocation {
-            Allocation::Known(this, mode) => {
-                ConstraintFieldVar::new(cs, Allocation::Known(&this.0.into(), mode.into()))
-            }
-            Allocation::Unknown(mode) => {
-                ConstraintFieldVar::new(cs, Allocation::Unknown(mode.into()))
-            }
-        })
+    fn new_known(this: &Self::Type, compiler: &mut Compiler) -> Self {
+        Self(ConstraintField::from(this.0).as_known::<Secret, _>(compiler))
+    }
+
+    #[inline]
+    fn new_unknown(compiler: &mut Compiler) -> Self {
+        Self(compiler.allocate_unknown::<Secret, _>())
     }
 }
 
 /// Asset Value Variable
 pub struct AssetValueVar(ConstraintFieldVar);
 
-impl Variable<Compiler> for AssetValueVar {
+impl Variable<Secret, Compiler> for AssetValueVar {
     type Type = AssetValue;
-    type Mode = Secret;
 
     #[inline]
-    fn new(cs: &mut Compiler, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
-        Self(match allocation {
-            Allocation::Known(this, mode) => {
-                ConstraintFieldVar::new(cs, Allocation::Known(&this.0.into(), mode.into()))
-            }
-            Allocation::Unknown(mode) => {
-                ConstraintFieldVar::new(cs, Allocation::Unknown(mode.into()))
-            }
-        })
+    fn new_known(this: &Self::Type, compiler: &mut Compiler) -> Self {
+        Self(ConstraintField::from(this.0).as_known::<Secret, _>(compiler))
+    }
+
+    #[inline]
+    fn new_unknown(compiler: &mut Compiler) -> Self {
+        Self(compiler.allocate_unknown::<Secret, _>())
     }
 }
 
@@ -341,28 +331,28 @@ impl merkle_tree::Configuration<Compiler> for MerkleTreeConfigurationVar {
     const HEIGHT: usize = <MerkleTreeConfiguration as merkle_tree::Configuration>::HEIGHT;
 }
 
-impl constraint::Input<AssetId> for ProofSystem {
+impl ProofSystemInput<AssetId> for ProofSystem {
     #[inline]
     fn extend(input: &mut Self::Input, next: &AssetId) {
         input.push(next.0.into());
     }
 }
 
-impl constraint::Input<AssetValue> for ProofSystem {
+impl ProofSystemInput<AssetValue> for ProofSystem {
     #[inline]
     fn extend(input: &mut Self::Input, next: &AssetValue) {
         input.push(next.0.into());
     }
 }
 
-impl constraint::Input<ConstraintField> for ProofSystem {
+impl ProofSystemInput<ConstraintField> for ProofSystem {
     #[inline]
     fn extend(input: &mut Self::Input, next: &ConstraintField) {
         input.push(*next);
     }
 }
 
-impl constraint::Input<Group> for ProofSystem {
+impl ProofSystemInput<Group> for ProofSystem {
     #[inline]
     fn extend(input: &mut Self::Input, next: &Group) {
         // FIXME: Make sure we can type check the coordinate system here.

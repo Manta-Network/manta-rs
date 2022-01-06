@@ -20,7 +20,7 @@
 #[cfg(feature = "arkworks")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "arkworks")))]
 pub mod arkworks {
-    use crate::crypto::constraint::arkworks::{empty, full, ArkAllocationMode, R1CS};
+    use crate::crypto::constraint::arkworks::{empty, full, R1CS};
     use alloc::vec::Vec;
     use ark_ec::ProjectiveCurve;
     use ark_ff::{Field, PrimeField};
@@ -28,7 +28,7 @@ pub mod arkworks {
     use ark_relations::ns;
     use core::marker::PhantomData;
     use manta_crypto::{
-        constraint::{Allocation, PublicOrSecret, Variable},
+        constraint::{Constant, Public, Secret, Variable},
         ecc,
         key::kdf,
     };
@@ -78,6 +78,18 @@ pub mod arkworks {
         C: ProjectiveCurve,
         CV: CurveVar<C, ConstraintField<C>>;
 
+    impl<C, CV> GroupVar<C, CV>
+    where
+        C: ProjectiveCurve,
+        CV: CurveVar<C, ConstraintField<C>>,
+    {
+        /// Builds a new [`GroupVar`] from a given `point`.
+        #[inline]
+        pub fn new(point: CV) -> Self {
+            Self(point, PhantomData)
+        }
+    }
+
     impl<C, CV> ecc::Group<Compiler<C>> for GroupVar<C, CV>
     where
         C: ProjectiveCurve,
@@ -109,37 +121,78 @@ pub mod arkworks {
         }
     }
 
-    impl<C, CV> Variable<Compiler<C>> for GroupVar<C, CV>
+    impl<C, CV> Constant<Compiler<C>> for GroupVar<C, CV>
     where
         C: ProjectiveCurve,
         CV: CurveVar<C, ConstraintField<C>>,
     {
         type Type = Group<C>;
 
-        type Mode = ArkAllocationMode;
+        #[inline]
+        fn new_constant(this: &Self::Type, compiler: &mut Compiler<C>) -> Self {
+            Self::new(
+                CV::new_constant(ns!(compiler.cs, "embedded curve point constant"), this.0)
+                    .expect("Variable allocation is not allowed to fail."),
+            )
+        }
+    }
+
+    impl<C, CV> Variable<Public, Compiler<C>> for GroupVar<C, CV>
+    where
+        C: ProjectiveCurve,
+        CV: CurveVar<C, ConstraintField<C>>,
+    {
+        type Type = Group<C>;
 
         #[inline]
-        fn new(cs: &mut Compiler<C>, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
-            Self(
-                match allocation {
-                    Allocation::Known(this, ArkAllocationMode::Constant) => {
-                        CV::new_constant(ns!(cs.cs, ""), this.0)
-                    }
-                    Allocation::Known(this, ArkAllocationMode::Public) => {
-                        CV::new_input(ns!(cs.cs, ""), full(this.0))
-                    }
-                    Allocation::Known(this, ArkAllocationMode::Secret) => {
-                        CV::new_witness(ns!(cs.cs, ""), full(this.0))
-                    }
-                    Allocation::Unknown(PublicOrSecret::Public) => {
-                        CV::new_input(ns!(cs.cs, ""), empty::<C>)
-                    }
-                    Allocation::Unknown(PublicOrSecret::Secret) => {
-                        CV::new_witness(ns!(cs.cs, ""), empty::<C>)
-                    }
-                }
+        fn new_known(this: &Self::Type, compiler: &mut Compiler<C>) -> Self {
+            Self::new(
+                CV::new_input(
+                    ns!(compiler.cs, "embedded curve point public input"),
+                    full(this.0),
+                )
                 .expect("Variable allocation is not allowed to fail."),
-                PhantomData,
+            )
+        }
+
+        #[inline]
+        fn new_unknown(compiler: &mut Compiler<C>) -> Self {
+            Self::new(
+                CV::new_input(
+                    ns!(compiler.cs, "embedded curve point public input"),
+                    empty::<C>,
+                )
+                .expect("Variable allocation is not allowed to fail."),
+            )
+        }
+    }
+
+    impl<C, CV> Variable<Secret, Compiler<C>> for GroupVar<C, CV>
+    where
+        C: ProjectiveCurve,
+        CV: CurveVar<C, ConstraintField<C>>,
+    {
+        type Type = Group<C>;
+
+        #[inline]
+        fn new_known(this: &Self::Type, compiler: &mut Compiler<C>) -> Self {
+            Self::new(
+                CV::new_witness(
+                    ns!(compiler.cs, "embedded curve point secret witness"),
+                    full(this.0),
+                )
+                .expect("Variable allocation is not allowed to fail."),
+            )
+        }
+
+        #[inline]
+        fn new_unknown(compiler: &mut Compiler<C>) -> Self {
+            Self::new(
+                CV::new_witness(
+                    ns!(compiler.cs, "embedded curve point secret witness"),
+                    empty::<C>,
+                )
+                .expect("Variable allocation is not allowed to fail."),
             )
         }
     }

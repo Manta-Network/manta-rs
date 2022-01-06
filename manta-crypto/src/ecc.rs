@@ -18,10 +18,7 @@
 
 // TODO: Improve ECC abstractions over arkworks.
 
-use crate::{
-    constraint::{Allocation, AllocationMode, Constant, Public, Variable, VariableSource},
-    key::KeyAgreementScheme,
-};
+use crate::{constraint::Constant, key::KeyAgreementScheme};
 use core::marker::PhantomData;
 
 /* TODO:
@@ -143,20 +140,14 @@ where
     }
 }
 
-impl<G, COM> Variable<COM> for DiffieHellman<G, COM>
+impl<G, COM> Constant<COM> for DiffieHellman<G, COM>
 where
-    G: Group<COM> + Variable<COM>,
-    <G::Mode as AllocationMode>::Known: From<Public>,
+    G: Group<COM> + Constant<COM>,
 {
     type Type = G::Type;
 
-    type Mode = Constant;
-
     #[inline]
-    fn new(cs: &mut COM, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
-        match allocation {
-            Allocation::Known(this, _) => Self::new(this.as_known(cs, Public)),
-            _ => unreachable!("Constants are never unknown."),
-        }
+    fn new_constant(value: &Self::Type, compiler: &mut COM) -> Self {
+        Self::new(G::new_constant(value, compiler))
     }
 }

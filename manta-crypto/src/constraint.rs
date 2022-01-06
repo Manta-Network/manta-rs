@@ -16,380 +16,200 @@
 
 //! Constraint Systems and Proof Systems
 
-// TODO:  Add derive macros to all the enums/structs here.
-// TODO:  Add derive trait to implement `HasAllocation` for structs (and enums?).
-// TODO:  Add more convenience functions for allocating unknown variables.
 // FIXME: Leverage the type system to constrain allocation to only unknown modes for verifier
 //        generation and only known modes for proof generation, instead of relying on the `for_*`
 //        methods to "do the right thing".
 
-use core::{
-    convert::{Infallible, TryFrom},
-    fmt::Debug,
-    hash::Hash,
-    marker::PhantomData,
-};
+use core::{fmt::Debug, hash::Hash, marker::PhantomData};
+use manta_util::{create_seal, seal};
 use rand_core::{CryptoRng, RngCore};
 
-/// Allocation Mode
-pub trait AllocationMode {
-    /// Known Allocation Mode
-    type Known;
+create_seal! {}
 
-    /// Unknown Allocation Mode
-    type Unknown;
+/// Generic Derived Allocation Mode
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct Derived;
+
+/// Public Allocation Mode
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct Public;
+
+impl From<Derived> for Public {
+    #[inline]
+    fn from(d: Derived) -> Self {
+        let _ = d;
+        Self
+    }
 }
 
-impl AllocationMode for Infallible {
-    type Known = Self;
-    type Unknown = Self;
+/// Secret Allocation Mode
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct Secret;
+
+impl From<Derived> for Secret {
+    #[inline]
+    fn from(d: Derived) -> Self {
+        let _ = d;
+        Self
+    }
 }
 
-impl AllocationMode for () {
-    type Known = Self;
-    type Unknown = Self;
-}
+/// Constant Type Alias
+pub type Const<C, COM> = <C as Constant<COM>>::Type;
 
-/// Allocation Entry
-#[derive(derivative::Derivative)]
-#[derivative(
-    Clone(bound = "Mode::Known: Clone, Mode::Unknown: Clone"),
-    Copy(bound = "Mode::Known: Copy, Mode::Unknown: Copy"),
-    Debug(bound = "T: Debug, Mode::Known: Debug, Mode::Unknown: Debug"),
-    Eq(bound = "T: Eq, Mode::Known: Eq, Mode::Unknown: Eq"),
-    Hash(bound = "T: Hash, Mode::Known: Hash, Mode::Unknown: Hash"),
-    PartialEq(bound = "T: PartialEq, Mode::Known: PartialEq, Mode::Unknown: PartialEq")
-)]
-pub enum Allocation<'t, T, Mode>
+/// Compiler Constant
+pub trait Constant<COM>
 where
-    T: ?Sized,
-    Mode: AllocationMode,
+    COM: ?Sized,
 {
-    /// Known Value
-    Known(
-        /// Allocation Value
-        &'t T,
-        /// Allocation Mode
-        Mode::Known,
-    ),
-    /// Unknown Value
-    Unknown(
-        /// Allocation Mode
-        Mode::Unknown,
-    ),
+    /// Underlying Type
+    type Type;
+
+    /// Allocates a new constant from `this` into the `compiler`.
+    fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self;
 }
 
-impl<'t, T, Mode> From<(&'t T, Mode::Known)> for Allocation<'t, T, Mode>
+impl<T, COM> Constant<COM> for PhantomData<T>
 where
-    T: ?Sized,
-    Mode: AllocationMode,
+    COM: ?Sized,
 {
+    type Type = PhantomData<T>;
+
     #[inline]
-    fn from((value, mode): (&'t T, Mode::Known)) -> Self {
-        Self::Known(value, mode)
+    fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
+        let _ = (this, compiler);
+        PhantomData
     }
 }
 
-impl<'t, T, Mode> Allocation<'t, T, Mode>
+/// Variable Type Alias
+pub type Var<V, M, COM> = <V as Variable<M, COM>>::Type;
+
+/// Compiler Variable
+pub trait Variable<M, COM>
 where
-    T: ?Sized,
-    Mode: AllocationMode,
+    COM: ?Sized,
 {
-    /// Returns `true` if `self` represents a known value and mode.
+    /// Underlying Type
+    type Type;
+
+    /// Allocates a new known value from `this` into the `compiler`.
+    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self;
+
+    /// Allocates a new unknown value into the `compiler`.
+    fn new_unknown(compiler: &mut COM) -> Self;
+}
+
+impl<T, M, COM> Variable<M, COM> for PhantomData<T>
+where
+    COM: ?Sized,
+{
+    type Type = PhantomData<T>;
+
     #[inline]
-    pub fn is_known(&self) -> bool {
-        matches!(self, Self::Known(..))
+    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
+        let _ = (this, compiler);
+        PhantomData
     }
 
-    /// Returns `true` if `self` represents an unknown value mode.
     #[inline]
-    pub fn is_unknown(&self) -> bool {
-        matches!(self, Self::Unknown(..))
-    }
-
-    /// Converts `self` into a possibly known value and mode.
-    #[inline]
-    pub fn known(self) -> Option<(&'t T, Mode::Known)> {
-        match self {
-            Self::Known(value, mode) => Some((value, mode)),
-            _ => None,
-        }
-    }
-
-    /// Converts `self` into a possibly unknown mode.
-    #[inline]
-    pub fn unknown(self) -> Option<Mode::Unknown> {
-        match self {
-            Self::Unknown(mode) => Some(mode),
-            _ => None,
-        }
-    }
-
-    /// Converts `self` into a known value and mode whenever its unknown mode is [`Infallible`].
-    #[inline]
-    pub fn into_known(self) -> (&'t T, Mode::Known)
-    where
-        Mode: AllocationMode<Unknown = Infallible>,
-    {
-        match self {
-            Self::Known(value, mode) => (value, mode),
-            _ => unreachable!("Values of infallible types cannot be constructed."),
-        }
-    }
-
-    /// Converts `self` into an unknown mode whenever its known mode is [`Infallible`].
-    #[inline]
-    pub fn into_unknown(self) -> Mode::Unknown
-    where
-        Mode: AllocationMode<Known = Infallible>,
-    {
-        match self {
-            Self::Unknown(mode) => mode,
-            _ => unreachable!("Values of infallible types cannot be constructed."),
-        }
-    }
-
-    /// Maps over the possible value stored in `self`.
-    #[inline]
-    pub fn map<'u, U, N, F>(self, f: F) -> Allocation<'u, U, N>
-    where
-        Mode::Known: Into<N::Known>,
-        Mode::Unknown: Into<N::Unknown>,
-        N: AllocationMode,
-        F: FnOnce(&'t T) -> &'u U,
-    {
-        match self {
-            Self::Known(value, mode) => Allocation::Known(f(value), mode.into()),
-            Self::Unknown(mode) => Allocation::Unknown(mode.into()),
-        }
-    }
-
-    /// Allocates a variable with `self` as the allocation entry into `cs`.
-    #[inline]
-    pub fn allocate<C, V>(self, cs: &mut C) -> V
-    where
-        C: ?Sized,
-        V: Variable<C, Type = T, Mode = Mode>,
-    {
-        V::new(cs, self)
-    }
-
-    /// Allocates a variable into `cs` after mapping over `self`.
-    #[inline]
-    pub fn map_allocate<C, V, F>(self, cs: &mut C, f: F) -> V
-    where
-        Mode::Known: Into<<V::Mode as AllocationMode>::Known>,
-        Mode::Unknown: Into<<V::Mode as AllocationMode>::Unknown>,
-        C: ?Sized,
-        V: Variable<C>,
-        F: FnOnce(&'t T) -> V::Type,
-    {
-        match self {
-            Self::Known(value, mode) => V::new_known(cs, &f(value), mode),
-            Self::Unknown(mode) => V::new_unknown(cs, mode),
-        }
+    fn new_unknown(compiler: &mut COM) -> Self {
+        let _ = compiler;
+        PhantomData
     }
 }
+
+/// Value Source Auto-Trait
+pub trait ValueSource<COM>
+where
+    COM: ?Sized,
+{
+    /// Allocates `self` as a constant in `compiler`.
+    #[inline]
+    fn as_constant<C>(&self, compiler: &mut COM) -> C
+    where
+        C: Constant<COM, Type = Self>,
+    {
+        C::new_constant(self, compiler)
+    }
+
+    /// Allocates `self` as a known value in `compiler`.
+    #[inline]
+    fn as_known<M, V>(&self, compiler: &mut COM) -> V
+    where
+        V: Variable<M, COM, Type = Self>,
+    {
+        V::new_known(self, compiler)
+    }
+
+    /// Allocates an unknown value of type `Self` into `compiler`.
+    #[inline]
+    fn as_unknown<M, V>(compiler: &mut COM) -> V
+    where
+        V: Variable<M, COM, Type = Self>,
+    {
+        V::new_unknown(compiler)
+    }
+}
+
+impl<COM, T> ValueSource<COM> for T where T: ?Sized {}
+
+/// Allocator Auto-Trait
+pub trait Allocator {
+    /// Allocates a constant with the given `value` into `self`.
+    #[inline]
+    fn allocate_constant<C>(&mut self, value: &C::Type) -> C
+    where
+        C: Constant<Self>,
+    {
+        C::new_constant(value, self)
+    }
+
+    /// Allocates a known variable with the given `value` into `self`.
+    #[inline]
+    fn allocate_known<M, V>(&mut self, value: &V::Type) -> V
+    where
+        V: Variable<M, Self>,
+    {
+        V::new_known(value, self)
+    }
+
+    /// Allocates an unknown variable into `self`.
+    #[inline]
+    fn allocate_unknown<M, V>(&mut self) -> V
+    where
+        V: Variable<M, Self>,
+    {
+        V::new_unknown(self)
+    }
+}
+
+impl<COM> Allocator for COM where COM: ?Sized {}
 
 /// Native Compiler Marker Trait
 ///
 /// This trait is only implemented for `()`, the only native compiler.
-pub trait Native {
+pub trait Native: sealed::Sealed {
     /// Returns the native compiler.
     fn compiler() -> Self;
 }
+
+seal! { () }
 
 impl Native for () {
     #[inline]
     fn compiler() -> Self {}
 }
 
-/// Variable Allocation Trait
-pub trait Variable<C>: Sized
-where
-    C: ?Sized,
-{
-    /// Origin Type of the Variable
-    type Type;
-
-    /// Allocation Mode
-    type Mode: AllocationMode;
-
-    /// Allocates a new variable into `cs` with the given `allocation`.
-    fn new(cs: &mut C, allocation: Allocation<Self::Type, Self::Mode>) -> Self;
-
-    /// Allocates a new known variable into `cs` with the given `mode`.
-    #[inline]
-    fn new_known(
-        cs: &mut C,
-        value: &Self::Type,
-        mode: impl Into<<Self::Mode as AllocationMode>::Known>,
-    ) -> Self {
-        Self::new(cs, Allocation::Known(value, mode.into()))
-    }
-
-    /// Allocates a new unknown variable into `cs` with the given `mode`.
-    #[inline]
-    fn new_unknown(cs: &mut C, mode: impl Into<<Self::Mode as AllocationMode>::Unknown>) -> Self {
-        Self::new(cs, Allocation::Unknown(mode.into()))
-    }
-
-    /// Allocates a new known variable into `cs` with the given `mode` which holds the default
-    /// value of [`Self::Type`].
-    #[inline]
-    fn from_default(cs: &mut C, mode: impl Into<<Self::Mode as AllocationMode>::Known>) -> Self
-    where
-        Self::Type: Default,
-    {
-        Self::new_known(cs, &Default::default(), mode)
-    }
-
-    /// Allocates a new known variable into `cs` with the given `mode` which holds the default
-    /// value of [`&Self::Type`](Self::Type).
-    #[inline]
-    fn from_default_ref<'t>(
-        cs: &mut C,
-        mode: impl Into<<Self::Mode as AllocationMode>::Known>,
-    ) -> Self
-    where
-        Self::Type: 't,
-        &'t Self::Type: Default,
-    {
-        Self::new_known(cs, Default::default(), mode)
-    }
-}
-
-/// Variable Source
-pub trait VariableSource {
-    /// Allocates a new variable into `cs` with the given `allocation`.
-    #[inline]
-    fn as_variable<C, V>(cs: &mut C, allocation: Allocation<Self, V::Mode>) -> V
-    where
-        C: ?Sized,
-        V: Variable<C, Type = Self>,
-    {
-        V::new(cs, allocation)
-    }
-
-    /// Allocates a new known variable into `cs` with the given `mode`.
-    #[inline]
-    fn as_known<C, V>(&self, cs: &mut C, mode: impl Into<<V::Mode as AllocationMode>::Known>) -> V
-    where
-        C: ?Sized,
-        V: Variable<C, Type = Self>,
-    {
-        V::new_known(cs, self, mode)
-    }
-
-    /// Allocates a new unknown variable into `cs` with the given `mode`.
-    #[inline]
-    fn as_unknown<C, V>(cs: &mut C, mode: impl Into<<V::Mode as AllocationMode>::Unknown>) -> V
-    where
-        C: ?Sized,
-        V: Variable<C, Type = Self>,
-    {
-        V::new_unknown(cs, mode)
-    }
-}
-
-impl<T> VariableSource for T where T: ?Sized {}
-
-impl<T, C> Variable<C> for PhantomData<T>
-where
-    T: ?Sized,
-    C: ?Sized,
-{
-    type Type = PhantomData<T>;
-
-    type Mode = ();
-
-    #[inline]
-    fn new(cs: &mut C, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
-        let _ = (cs, allocation);
-        PhantomData
-    }
-}
-
-/* TODO[remove]:
-impl<T, C> reflection::HasAllocation<C> for PhantomData<T>
-where
-    T: ?Sized,
-    C: ?Sized,
-{
-    type Variable = PhantomData<T>;
-    type Mode = ();
-}
-*/
-
-/// Allocates a new known variable into `cs` with the given `mode`.
-#[inline]
-pub fn known<C, V>(
-    cs: &mut C,
-    value: &V::Type,
-    mode: impl Into<<V::Mode as AllocationMode>::Known>,
-) -> V
-where
-    C: ?Sized,
-    V: Variable<C>,
-{
-    V::new_known(cs, value, mode)
-}
-
-/// Allocates a new unknown variable into `cs` with the given `mode`.
-#[inline]
-pub fn unknown<C, V>(cs: &mut C, mode: impl Into<<V::Mode as AllocationMode>::Unknown>) -> V
-where
-    C: ?Sized,
-    V: Variable<C>,
-{
-    V::new_unknown(cs, mode)
-}
-
-/// Allocation System
-pub trait AllocationSystem {
-    /// Allocates a new variable into `self` with the given `allocation`.
-    #[inline]
-    fn allocate<V>(&mut self, allocation: Allocation<V::Type, V::Mode>) -> V
-    where
-        V: Variable<Self>,
-    {
-        V::new(self, allocation)
-    }
-
-    /// Allocates a new known variable into `self` with the given `mode`.
-    #[inline]
-    fn allocate_known<V>(
-        &mut self,
-        value: &V::Type,
-        mode: impl Into<<V::Mode as AllocationMode>::Known>,
-    ) -> V
-    where
-        V: Variable<Self>,
-    {
-        known(self, value, mode)
-    }
-
-    /// Allocates a new unknown variable into `self` with the given `mode`.
-    #[inline]
-    fn allocate_unknown<V>(&mut self, mode: impl Into<<V::Mode as AllocationMode>::Unknown>) -> V
-    where
-        V: Variable<Self>,
-    {
-        unknown(self, mode)
-    }
-}
-
-impl<C> AllocationSystem for C where C: ?Sized {}
-
 /// Constraint System
 pub trait ConstraintSystem {
     /// Boolean Variable Type
-    type Bool: Variable<Self, Type = bool>;
+    type Bool;
 
-    /// Asserts that `b` is `true`.
+    /// Asserts that `b == 1`.
     fn assert(&mut self, b: Self::Bool);
 
-    /// Asserts that all the booleans in `iter` are `true`.
+    /// Asserts that all the booleans in `iter` are equal to `1`.
     #[inline]
     fn assert_all<I>(&mut self, iter: I)
     where
@@ -404,7 +224,7 @@ pub trait ConstraintSystem {
     where
         V: Equal<Self>,
     {
-        V::eq(self, lhs, rhs)
+        V::eq(lhs, rhs, self)
     }
 
     /// Asserts that `lhs` and `rhs` are equal.
@@ -413,7 +233,7 @@ pub trait ConstraintSystem {
     where
         V: Equal<Self>,
     {
-        V::assert_eq(self, lhs, rhs);
+        V::assert_eq(lhs, rhs, self);
     }
 
     /// Asserts that all the elements in `iter` are equal to some `base` element.
@@ -423,7 +243,7 @@ pub trait ConstraintSystem {
         V: 't + Equal<Self>,
         I: IntoIterator<Item = &'t V>,
     {
-        V::assert_all_eq_to_base(self, base, iter);
+        V::assert_all_eq_to_base(base, iter, self);
     }
 
     /// Asserts that all the elements in `iter` are equal.
@@ -433,7 +253,7 @@ pub trait ConstraintSystem {
         V: 't + Equal<Self>,
         I: IntoIterator<Item = &'t V>,
     {
-        V::assert_all_eq(self, iter);
+        V::assert_all_eq(iter, self);
     }
 
     /// Selects `lhs` if `bit == 0` and `rhs` if `bit == 1`.
@@ -462,112 +282,107 @@ pub trait ConstraintSystem {
     {
         V::swap_in_place(bit, lhs, rhs, self)
     }
-
-    /// Returns proving and verifying contexts for the constraints contained in `self`.
-    #[inline]
-    fn generate_context<P, R>(
-        self,
-        rng: &mut R,
-    ) -> Result<(P::ProvingContext, P::VerifyingContext), P::Error>
-    where
-        Self: Sized,
-        P: ProofSystem<ConstraintSystem = Self>,
-        R: CryptoRng + RngCore + ?Sized,
-    {
-        P::generate_context(self, rng)
-    }
-
-    /// Returns a proof that the constraint system `self` is consistent.
-    #[inline]
-    fn prove<P, R>(self, context: &P::ProvingContext, rng: &mut R) -> Result<P::Proof, P::Error>
-    where
-        Self: Sized,
-        P: ProofSystem<ConstraintSystem = Self>,
-        R: CryptoRng + RngCore + ?Sized,
-    {
-        P::prove(self, context, rng)
-    }
 }
 
+/* TODO: Can we safely implement this?
+impl ConstraintSystem for () {
+    type Bool = bool;
+
+    #[inline]
+    fn assert(&mut self, b: Self::Bool) {
+        assert!(b, "Native Constraint System assertion.");
+    }
+}
+*/
+
 /// Equality Trait
-pub trait Equal<C>
+pub trait Equal<COM>
 where
-    C: ConstraintSystem + ?Sized,
+    COM: ConstraintSystem + ?Sized,
 {
     /// Generates a boolean that represents the fact that `lhs` and `rhs` may be equal.
-    fn eq(cs: &mut C, lhs: &Self, rhs: &Self) -> C::Bool;
+    fn eq(lhs: &Self, rhs: &Self, compiler: &mut COM) -> COM::Bool;
 
     /// Asserts that `lhs` and `rhs` are equal.
     #[inline]
-    fn assert_eq(cs: &mut C, lhs: &Self, rhs: &Self) {
-        let boolean = Self::eq(cs, lhs, rhs);
-        cs.assert(boolean);
+    fn assert_eq(lhs: &Self, rhs: &Self, compiler: &mut COM) {
+        let boolean = Self::eq(lhs, rhs, compiler);
+        compiler.assert(boolean);
     }
 
     /// Asserts that all the elements in `iter` are equal to some `base` element.
     #[inline]
-    fn assert_all_eq_to_base<'t, I>(cs: &mut C, base: &'t Self, iter: I)
+    fn assert_all_eq_to_base<'t, I>(base: &'t Self, iter: I, compiler: &mut COM)
     where
         I: IntoIterator<Item = &'t Self>,
     {
         for item in iter {
-            Self::assert_eq(cs, base, item);
+            Self::assert_eq(base, item, compiler);
         }
     }
 
     /// Asserts that all the elements in `iter` are equal.
     #[inline]
-    fn assert_all_eq<'t, I>(cs: &mut C, iter: I)
+    fn assert_all_eq<'t, I>(iter: I, compiler: &mut COM)
     where
         Self: 't,
         I: IntoIterator<Item = &'t Self>,
     {
         let mut iter = iter.into_iter();
         if let Some(base) = iter.next() {
-            Self::assert_all_eq_to_base(cs, base, iter);
+            Self::assert_all_eq_to_base(base, iter, compiler);
         }
     }
 }
 
 /// Conditional Selection
-pub trait ConditionalSelect<C>
+pub trait ConditionalSelect<COM>
 where
-    C: ConstraintSystem + ?Sized,
+    COM: ConstraintSystem + ?Sized,
 {
     /// Selects `lhs` if `bit == 0` and `rhs` if `bit == 1`.
-    fn select(bit: &C::Bool, lhs: &Self, rhs: &Self, cs: &mut C) -> Self;
+    fn select(bit: &COM::Bool, lhs: &Self, rhs: &Self, compiler: &mut COM) -> Self;
 
     /// Swaps `lhs` and `rhs` if `bit == 1`.
     #[inline]
-    fn swap(bit: &C::Bool, lhs: &Self, rhs: &Self, cs: &mut C) -> (Self, Self)
+    fn swap(bit: &COM::Bool, lhs: &Self, rhs: &Self, compiler: &mut COM) -> (Self, Self)
     where
         Self: Sized,
     {
         (
-            Self::select(bit, lhs, rhs, cs),
-            Self::select(bit, rhs, lhs, cs),
+            Self::select(bit, lhs, rhs, compiler),
+            Self::select(bit, rhs, lhs, compiler),
         )
     }
 
     /// Swaps `lhs` and `rhs` in-place if `bit == 1`.
     #[inline]
-    fn swap_in_place(bit: &C::Bool, lhs: &mut Self, rhs: &mut Self, cs: &mut C)
+    fn swap_in_place(bit: &COM::Bool, lhs: &mut Self, rhs: &mut Self, compiler: &mut COM)
     where
         Self: Sized,
     {
-        let (swapped_lhs, swapped_rhs) = Self::swap(bit, lhs, rhs, cs);
+        let (swapped_lhs, swapped_rhs) = Self::swap(bit, lhs, rhs, compiler);
         *lhs = swapped_lhs;
         *rhs = swapped_rhs;
     }
 }
 
-/// Addition Trait
-pub trait Add<C>
+/// Addition
+pub trait Add<COM>
 where
-    C: ConstraintSystem + ?Sized,
+    COM: ?Sized,
 {
-    /// Adds `lhs` to `rhs` inside of `cs`, returning the sum.
-    fn add(cs: &mut C, lhs: Self, rhs: Self) -> Self;
+    /// Adds `lhs` and `rhs` inside of `compiler`.
+    fn add(lhs: Self, rhs: Self, compiler: &mut COM) -> Self;
+}
+
+/// Subtraction
+pub trait Sub<COM>
+where
+    COM: ?Sized,
+{
+    /// Subtracts `rhs` from `lhs` inside of `compiler`.
+    fn sub(lhs: Self, rhs: Self, compiler: &mut COM) -> Self;
 }
 
 /// Proof System
@@ -603,17 +418,17 @@ pub trait ProofSystem {
     #[must_use]
     fn for_known() -> Self::ConstraintSystem;
 
-    /// Returns proving and verifying contexts for the constraints contained in `cs`.
+    /// Returns proving and verifying contexts for the constraints contained in `compiler`.
     fn generate_context<R>(
-        cs: Self::ConstraintSystem,
+        compiler: Self::ConstraintSystem,
         rng: &mut R,
     ) -> Result<(Self::ProvingContext, Self::VerifyingContext), Self::Error>
     where
         R: CryptoRng + RngCore + ?Sized;
 
-    /// Returns a proof that the constraint system `cs` is consistent.
+    /// Returns a proof that the constraint system `compiler` is consistent.
     fn prove<R>(
-        cs: Self::ConstraintSystem,
+        compiler: Self::ConstraintSystem,
         context: &Self::ProvingContext,
         rng: &mut R,
     ) -> Result<Self::Proof, Self::Error>
@@ -637,549 +452,58 @@ where
     fn extend(input: &mut Self::Input, next: &T);
 }
 
-/// Derived Allocation Mode
-#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct Derived;
-
-impl AllocationMode for Derived {
-    type Known = Self;
-    type Unknown = Self;
-}
-
-impl From<Derived> for () {
-    #[inline]
-    fn from(d: Derived) -> Self {
-        let _ = d;
-    }
-}
-
-/// Always Public Allocation Mode
-#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct Public;
-
-impl AllocationMode for Public {
-    type Known = Self;
-    type Unknown = Self;
-}
-
-impl From<Derived> for Public {
-    #[inline]
-    fn from(d: Derived) -> Self {
-        let _ = d;
-        Self
-    }
-}
-
-/// Always Secret Allocation Mode
-#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct Secret;
-
-impl AllocationMode for Secret {
-    type Known = Self;
-    type Unknown = Self;
-}
-
-impl From<Derived> for Secret {
-    #[inline]
-    fn from(d: Derived) -> Self {
-        let _ = d;
-        Self
-    }
-}
-
-/// Constant Allocation Mode
-#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct Constant<T = Public>(
-    /// Underyling Allocation Mode
-    pub T,
-)
-where
-    T: AllocationMode;
-
-impl<T> AllocationMode for Constant<T>
-where
-    T: AllocationMode,
-{
-    type Known = T::Known;
-    type Unknown = Infallible;
-}
-
-impl<T> From<Derived> for Constant<T>
-where
-    T: AllocationMode + From<Derived>,
-{
-    #[inline]
-    fn from(d: Derived) -> Self {
-        Self(d.into())
-    }
-}
-
-/// Public/Secret Allocation Mode
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum PublicOrSecret {
-    /// Public Variable Mode
-    Public,
-
-    /// Secret Variable Mode
-    Secret,
-}
-
-impl PublicOrSecret {
-    /// Returns `true` if this mode is for public variables.
-    #[inline]
-    pub const fn is_public(&self) -> bool {
-        matches!(self, Self::Public)
-    }
-
-    /// Converts [`PublicOrSecret`] into `Option<Public>`.
-    #[inline]
-    pub const fn public(self) -> Option<Public> {
-        match self {
-            Self::Public => Some(Public),
-            Self::Secret => None,
-        }
-    }
-
-    /// Returns `true` if this mode is for secret variables.
-    #[inline]
-    pub const fn is_secret(&self) -> bool {
-        matches!(self, Self::Secret)
-    }
-
-    /// Converts [`PublicOrSecret`] into `Option<Secret>`.
-    #[inline]
-    pub const fn secret(self) -> Option<Secret> {
-        match self {
-            Self::Secret => Some(Secret),
-            Self::Public => None,
-        }
-    }
-}
-
-impl AllocationMode for PublicOrSecret {
-    type Known = Self;
-    type Unknown = Self;
-}
-
-impl Default for PublicOrSecret {
-    #[inline]
-    fn default() -> Self {
-        Self::Secret
-    }
-}
-
-impl From<Public> for PublicOrSecret {
-    #[inline]
-    fn from(p: Public) -> Self {
-        let _ = p;
-        Self::Public
-    }
-}
-
-impl TryFrom<PublicOrSecret> for Public {
-    type Error = Secret;
-
-    #[inline]
-    fn try_from(pos: PublicOrSecret) -> Result<Self, Self::Error> {
-        pos.public().ok_or(Secret)
-    }
-}
-
-impl From<Secret> for PublicOrSecret {
-    #[inline]
-    fn from(s: Secret) -> Self {
-        let _ = s;
-        Self::Secret
-    }
-}
-
-impl TryFrom<PublicOrSecret> for Secret {
-    type Error = Public;
-
-    #[inline]
-    fn try_from(pos: PublicOrSecret) -> Result<Self, Self::Error> {
-        pos.secret().ok_or(Public)
-    }
-}
-
-impl<T> From<Constant<T>> for PublicOrSecret
-where
-    T: AllocationMode + Into<PublicOrSecret>,
-{
-    #[inline]
-    fn from(c: Constant<T>) -> Self {
-        c.0.into()
-    }
-}
-
-impl<T> TryFrom<PublicOrSecret> for Constant<T>
-where
-    T: AllocationMode + TryFrom<PublicOrSecret>,
-{
-    type Error = T::Error;
-
-    #[inline]
-    fn try_from(pos: PublicOrSecret) -> Result<Self, Self::Error> {
-        T::try_from(pos).map(Self)
-    }
-}
-
 /// Constraint System Measurement
 pub mod measure {
     use super::*;
 
     /// Constraint System Measurement
-    pub trait Measure<M>
-    where
-        M: ?Sized,
-    {
+    pub trait Measure {
         /// Returns the number of constraints stored in `self`.
         fn constraint_count(&self) -> usize;
 
-        /// Returns the number of variables allocated with the given `mode`.
-        fn variable_count(&self, mode: M) -> usize;
-
-        /// Returns the number of constraints and number and kind of variables stored in `self`.
+        /// Returns the number of allocated constants.
         #[inline]
-        fn measure(&self) -> SizeReport<M>
-        where
-            M: MeasureVariables,
-        {
-            M::measure(self)
+        fn constant_count(&self) -> Option<usize> {
+            None
         }
-    }
 
-    /// Constraint System Variable Allocation Measurement
-    pub trait MeasureVariables {
-        /// Measurement Type
-        type Measurement;
+        /// Returns the number of allocated public variables.
+        #[inline]
+        fn public_variable_count(&self) -> Option<usize> {
+            None
+        }
 
-        /// Counts the number of constraints and the number of variables allocated with all of the
-        /// possible modes in `Self`, returning a [`SizeReport`].
-        fn measure<C>(cs: &C) -> SizeReport<Self>
-        where
-            C: Measure<Self> + ?Sized;
+        /// Returns the number of allocated secret variables.
+        #[inline]
+        fn secret_variable_count(&self) -> Option<usize> {
+            None
+        }
+
+        /// Returns a [`SizeReport`] with the number of constraints and variables of each kind.
+        #[inline]
+        fn measure(&self) -> SizeReport {
+            SizeReport {
+                constraint_count: self.constraint_count(),
+                constant_count: self.constant_count(),
+                public_variable_count: self.public_variable_count(),
+                secret_variable_count: self.secret_variable_count(),
+            }
+        }
     }
 
     /// Constraint System Size Measurement Report
-    #[derive(derivative::Derivative)]
-    #[derivative(
-        Clone(bound = "M::Measurement: Clone"),
-        Copy(bound = "M::Measurement: Copy"),
-        Debug(bound = "M::Measurement: Debug"),
-        Default(bound = "M::Measurement: Default"),
-        Eq(bound = "M::Measurement: Eq"),
-        Hash(bound = "M::Measurement: Hash"),
-        PartialEq(bound = "M::Measurement: PartialEq")
-    )]
-    pub struct SizeReport<M>
-    where
-        M: MeasureVariables + ?Sized,
-    {
-        /// Number of constraints
+    #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+    pub struct SizeReport {
+        /// Number of Constraints
         pub constraint_count: usize,
 
-        /// Number of variables
-        pub variable_count: M::Measurement,
-    }
+        /// Number of Constants
+        pub constant_count: Option<usize>,
 
-    impl<M> SizeReport<M>
-    where
-        M: MeasureVariables + ?Sized,
-    {
-        /// Builds a new [`SizeReport`] from `constraint_count` and `variable_count`.
-        #[inline]
-        pub fn new(constraint_count: usize, variable_count: M::Measurement) -> Self {
-            Self {
-                constraint_count,
-                variable_count,
-            }
-        }
+        /// Number of Public Variables
+        pub public_variable_count: Option<usize>,
 
-        /// Builds a new [`SizeReport`] with the given `cs` to measure its constraint count and
-        /// `variable_count` as the number of variables in the resulting report.
-        #[inline]
-        pub fn with<C>(cs: &C, variable_count: M::Measurement) -> Self
-        where
-            C: Measure<M> + ?Sized,
-        {
-            Self::new(cs.constraint_count(), variable_count)
-        }
-    }
-
-    impl MeasureVariables for Public {
-        type Measurement = usize;
-
-        #[inline]
-        fn measure<C>(cs: &C) -> SizeReport<Self>
-        where
-            C: Measure<Self> + ?Sized,
-        {
-            SizeReport::with(cs, cs.variable_count(Public))
-        }
-    }
-
-    impl MeasureVariables for Secret {
-        type Measurement = usize;
-
-        #[inline]
-        fn measure<C>(cs: &C) -> SizeReport<Self>
-        where
-            C: Measure<Self> + ?Sized,
-        {
-            SizeReport::with(cs, cs.variable_count(Secret))
-        }
-    }
-
-    impl MeasureVariables for PublicOrSecret {
-        type Measurement = PublicOrSecretMeasurement;
-
-        #[inline]
-        fn measure<C>(cs: &C) -> SizeReport<Self>
-        where
-            C: Measure<Self> + ?Sized,
-        {
-            SizeReport::with(
-                cs,
-                PublicOrSecretMeasurement {
-                    public: cs.variable_count(PublicOrSecret::Public),
-                    secret: cs.variable_count(PublicOrSecret::Secret),
-                },
-            )
-        }
-    }
-
-    /// [`PublicOrSecret`] Measurement
-    #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
-    pub struct PublicOrSecretMeasurement {
-        /// Public Variable Count
-        pub public: usize,
-
-        /// Secret Variable Count
-        pub secret: usize,
+        /// Number of Secret Variables
+        pub secret_variable_count: Option<usize>,
     }
 }
-
-/* TODO[remove]:
-/// Opt-In Compile-Time Reflection Capabilities
-///
-/// See [`HasAllocation`] and [`HasVariable`] for more information.
-///
-/// [`HasAllocation`]: reflection::HasAllocation
-/// [`HasVariable`]: reflection::HasVariable
-pub mod reflection {
-    use super::*;
-
-    /// Variable Type
-    ///
-    /// Requires a [`HasAllocation`] implementation for `T`.
-    pub type Var<T, C> = <C as HasVariable<T>>::Variable;
-
-    /// Allocation Mode Type
-    ///
-    /// Requires a [`HasAllocation`] implementation for `T`.
-    pub type Mode<T, C> = <Var<T, C> as Variable<C>>::Mode;
-
-    /// Known Allocation Mode Type
-    ///
-    /// Requires a [`HasAllocation`] implementation for `T`.
-    pub type KnownMode<T, C> = <Mode<T, C> as AllocationMode>::Known;
-
-    /// Known Allocation Mode Type
-    ///
-    /// Requires a [`HasAllocation`] implementation for `T`.
-    pub type UnknownMode<T, C> = <Mode<T, C> as AllocationMode>::Unknown;
-
-    /// Allocation Entry Type
-    ///
-    /// Requires a [`HasAllocation`] implementation for `T`.
-    pub type Alloc<'t, T, C> = Allocation<'t, T, Mode<T, C>>;
-
-    /// Variable Existence Reflection Trait
-    ///
-    /// This trait can be optionally implemented by any type `T` which has an existing variable
-    /// type that implements [`Variable<C, Type = T>`](Variable). Implementing this trait unlocks
-    /// all of the reflection capabilities in this module.
-    ///
-    /// Whenever possible, library authors should implement [`HasAllocation`] on their types which
-    /// have associated variables but should minimize their use of [`HasVariable`] so that users
-    /// can take advantage of as much of a library as possible while implementing as little as
-    /// possible.
-    pub trait HasAllocation<C>
-    where
-        C: ?Sized,
-    {
-        /// Variable Object Type
-        type Variable: Variable<C, Mode = Self::Mode, Type = Self>;
-
-        /// Allocation Mode
-        type Mode: AllocationMode;
-
-        /// Allocates a new variable into `cs` with the given `allocation`.
-        #[inline]
-        fn variable(cs: &mut C, allocation: Allocation<Self, Self::Mode>) -> Self::Variable {
-            Self::Variable::new(cs, allocation)
-        }
-
-        /// Allocates a new known variable into `cs` with the given `mode`.
-        #[inline]
-        fn known(
-            &self,
-            cs: &mut C,
-            mode: impl Into<<Self::Mode as AllocationMode>::Known>,
-        ) -> Self::Variable {
-            Self::Variable::new_known(cs, self, mode)
-        }
-
-        /// Allocates a new unknown variable into `cs` with the given `mode`.
-        #[inline]
-        fn unknown(
-            cs: &mut C,
-            mode: impl Into<<Self::Mode as AllocationMode>::Unknown>,
-        ) -> Self::Variable {
-            Self::Variable::new_unknown(cs, mode)
-        }
-    }
-
-    /// Variable Existence Reflection Trait
-    ///
-    /// This trait is automatically implemented for all types [`T: HasAllocation`](HasAllocation)
-    /// and it activates all the reflection features in this module. See that trait for more
-    /// information on activating reflection.
-    pub trait HasVariable<T>
-    where
-        T: ?Sized,
-    {
-        /// Variable Object Type
-        type Variable: Variable<Self, Mode = Self::Mode, Type = T>;
-
-        /// Allocation Mode
-        type Mode: AllocationMode;
-
-        /// Allocates a new variable into `self` with the given `allocation`.
-        #[inline]
-        fn new_allocation(&mut self, allocation: Allocation<T, Self::Mode>) -> Self::Variable {
-            Self::Variable::new(self, allocation)
-        }
-
-        /// Allocates a new known variable into `self` with the given `mode`.
-        #[inline]
-        fn new_known_allocation(
-            &mut self,
-            value: &T,
-            mode: impl Into<<Self::Mode as AllocationMode>::Known>,
-        ) -> Self::Variable {
-            Self::Variable::new_known(self, value, mode)
-        }
-
-        /// Allocates a new unknown variable into `self` with the given `mode`.
-        #[inline]
-        fn new_unknown_allocation(
-            &mut self,
-            mode: impl Into<<Self::Mode as AllocationMode>::Unknown>,
-        ) -> Self::Variable {
-            Self::Variable::new_unknown(self, mode)
-        }
-    }
-
-    impl<C, T> HasVariable<T> for C
-    where
-        C: ?Sized,
-        T: HasAllocation<C> + ?Sized,
-    {
-        type Variable = T::Variable;
-        type Mode = T::Mode;
-    }
-
-    ///
-    pub trait HasEqual<V>: ConstraintSystem {
-        ///
-        fn eq(&mut self, lhs: &V, rhs: &V) -> Self::Bool;
-    }
-
-    impl<C, V> Equal<C> for V
-    where
-        C: HasEqual<V>,
-    {
-        #[inline]
-        fn eq(cs: &mut C, lhs: &Self, rhs: &Self) -> C::Bool {
-            HasEqual::eq(cs, lhs, rhs)
-        }
-    }
-
-    /// Allocates a new unknown variable into `cs` with the given `mode`.
-    #[inline]
-    pub fn known<T, C>(cs: &mut C, value: &T, mode: KnownMode<T, C>) -> Var<T, C>
-    where
-        T: ?Sized,
-        C: HasVariable<T> + ?Sized,
-    {
-        cs.new_known_allocation(value, mode)
-    }
-
-    /// Allocates a new unknown variable into `cs` with the given `mode`.
-    #[inline]
-    pub fn unknown<T, C>(cs: &mut C, mode: UnknownMode<T, C>) -> Var<T, C>
-    where
-        T: ?Sized,
-        C: HasVariable<T> + ?Sized,
-    {
-        cs.new_unknown_allocation(mode)
-    }
-}
-
-/// Type Aliases
-///
-/// All of these types depend on reflection capabilities. See [`reflection`] for more information.
-pub mod types {
-    use super::reflection::Var;
-
-    /// Boolean Variable Type
-    pub type Bool<C> = Var<bool, C>;
-
-    /// Character Variable Type
-    pub type Char<C> = Var<char, C>;
-
-    /// 32-bit Floating Point Variable Type
-    pub type F32<C> = Var<f32, C>;
-
-    /// 64-bit Floating Point Variable Type
-    pub type F64<C> = Var<f64, C>;
-
-    /// Signed 8-bit Integer Variable Type
-    pub type I8<C> = Var<i8, C>;
-
-    /// Signed 16-bit Integer Variable Type
-    pub type I16<C> = Var<i16, C>;
-
-    /// Signed 32-bit Integer Variable Type
-    pub type I32<C> = Var<i32, C>;
-
-    /// Signed 64-bit Integer Variable Type
-    pub type I64<C> = Var<i64, C>;
-
-    /// Signed 128-bit Integer Variable Type
-    pub type I128<C> = Var<i128, C>;
-
-    /// Pointer-Sized Integer Variable Type
-    pub type Isize<C> = Var<isize, C>;
-
-    /// Unsigned 8-bit Integer Variable Type
-    pub type U8<C> = Var<u8, C>;
-
-    /// Unsigned 16-bit Integer Variable Type
-    pub type U16<C> = Var<u16, C>;
-
-    /// Unsigned 32-bit Integer Variable Type
-    pub type U32<C> = Var<u32, C>;
-
-    /// Unsigned 64-bit Integer Variable Type
-    pub type U64<C> = Var<u64, C>;
-
-    /// Unsigned 128-bit Integer Variable Type
-    pub type U128<C> = Var<u128, C>;
-
-    /// Pointer-Sized Unsigned Integer Variable Type
-    pub type Usize<C> = Var<usize, C>;
-}
-*/

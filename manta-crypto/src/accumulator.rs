@@ -16,7 +16,7 @@
 
 //! Dynamic Cryptographic Accumulators
 
-// TODO: See if we can modify `Accumulator` so that it can extend the `Verifier` trait directly.
+use crate::constraint::Native;
 
 /// Accumulator Membership Model
 pub trait Model<COM = ()> {
@@ -35,14 +35,29 @@ pub trait Model<COM = ()> {
     type Verification;
 
     /// Verifies that `item` is stored in a known accumulator with accumulated `output` and
-    /// membership `witness`.
-    fn verify(
+    /// membership `witness` inside the given `compiler`.
+    fn verify_in(
         &self,
         item: &Self::Item,
         witness: &Self::Witness,
         output: &Self::Output,
         compiler: &mut COM,
     ) -> Self::Verification;
+
+    /// Verifies that `item` is stored in a known accumulator with accumulated `output` and
+    /// membership `witness`.
+    #[inline]
+    fn verify(
+        &self,
+        item: &Self::Item,
+        witness: &Self::Witness,
+        output: &Self::Output,
+    ) -> Self::Verification
+    where
+        COM: Native,
+    {
+        self.verify_in(item, witness, output, &mut COM::compiler())
+    }
 }
 
 /// Accumulator Output Type
@@ -203,33 +218,26 @@ where
         self.output
     }
 
-    /// Verifies that `item` is stored in a known accumulator using `model`.
+    /// Verifies that `item` is stored in a known accumulator using `model` inside the `compiler`.
     #[inline]
-    pub fn verify_with_compiler(
-        &self,
-        model: &M,
-        item: &M::Item,
-        compiler: &mut COM,
-    ) -> M::Verification {
-        model.verify(item, &self.witness, &self.output, compiler)
+    pub fn verify_in(&self, model: &M, item: &M::Item, compiler: &mut COM) -> M::Verification {
+        model.verify_in(item, &self.witness, &self.output, compiler)
     }
-}
 
-impl<M> MembershipProof<M>
-where
-    M: Model + ?Sized,
-{
     /// Verifies that `item` is stored in a known accumulator using `model`.
     #[inline]
-    pub fn verify(&self, model: &M, item: &M::Item) -> M::Verification {
-        self.verify_with_compiler(model, item, &mut ())
+    pub fn verify(&self, model: &M, item: &M::Item) -> M::Verification
+    where
+        COM: Native,
+    {
+        model.verify(item, &self.witness, &self.output)
     }
 }
 
 /// Constraint System Gadgets
 pub mod constraint {
     use super::*;
-    use crate::constraint::{Allocation, AllocationMode, Derived, Variable, VariableSource};
+    use crate::constraint::{Allocator, Constant, Derived, ValueSource, Variable};
     use core::marker::PhantomData;
 
     /// Membership Proof Allocation Mode Entry
@@ -265,48 +273,29 @@ pub mod constraint {
     /// Membership Proof Allocation Mode
     #[derive(derivative::Derivative)]
     #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-    pub struct MembershipProofMode<WitnessMode, OutputMode>(PhantomData<(WitnessMode, OutputMode)>)
-    where
-        WitnessMode: AllocationMode,
-        OutputMode: AllocationMode;
+    pub struct MembershipProofMode<WitnessMode, OutputMode>(PhantomData<(WitnessMode, OutputMode)>);
 
-    impl<WitnessMode, OutputMode> AllocationMode for MembershipProofMode<WitnessMode, OutputMode>
+    impl<M, WitnessMode, OutputMode, COM>
+        Variable<MembershipProofMode<WitnessMode, OutputMode>, COM> for MembershipProof<M, COM>
     where
-        WitnessMode: AllocationMode,
-        OutputMode: AllocationMode,
+        M: Model<COM> + Constant<COM>,
+        M::Type: Model,
+        M::Witness: Variable<WitnessMode, COM, Type = <M::Type as Model>::Witness>,
+        M::Output: Variable<OutputMode, COM, Type = <M::Type as Model>::Output>,
     {
-        type Known = MembershipProofModeEntry<WitnessMode::Known, OutputMode::Known>;
-        type Unknown = MembershipProofModeEntry<WitnessMode::Unknown, OutputMode::Unknown>;
-    }
-
-    impl<M, COM> Variable<COM> for MembershipProof<M, COM>
-    where
-        M: Model<COM> + Variable<COM>,
-        <M as Variable<COM>>::Type: Model,
-        <M as Model<COM>>::Witness:
-            Variable<COM, Type = <<M as Variable<COM>>::Type as Model>::Witness>,
-        <M as Model<COM>>::Output:
-            Variable<COM, Type = <<M as Variable<COM>>::Type as Model>::Output>,
-    {
-        type Type = MembershipProof<<M as Variable<COM>>::Type>;
-
-        type Mode = MembershipProofMode<
-            <<M as Model<COM>>::Witness as Variable<COM>>::Mode,
-            <<M as Model<COM>>::Output as Variable<COM>>::Mode,
-        >;
+        type Type = MembershipProof<M::Type>;
 
         #[inline]
-        fn new(cs: &mut COM, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
-            match allocation {
-                Allocation::Known(this, mode) => Self::new(
-                    this.witness.as_known(cs, mode.witness),
-                    this.output.as_known(cs, mode.output),
-                ),
-                Allocation::Unknown(mode) => Self::new(
-                    <M as Model<COM>>::Witness::new_unknown(cs, mode.witness),
-                    <M as Model<COM>>::Output::new_unknown(cs, mode.output),
-                ),
-            }
+        fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
+            Self::new(
+                this.witness.as_known(compiler),
+                this.output.as_known(compiler),
+            )
+        }
+
+        #[inline]
+        fn new_unknown(compiler: &mut COM) -> Self {
+            Self::new(compiler.allocate_unknown(), compiler.allocate_unknown())
         }
     }
 }

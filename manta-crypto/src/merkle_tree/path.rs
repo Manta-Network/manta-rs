@@ -882,8 +882,8 @@ pub mod constraint {
     use super::*;
     use crate::{
         constraint::{
-            Allocation, AllocationMode, ConditionalSelect, ConstraintSystem, Equal, Secret,
-            Variable, VariableSource,
+            Allocator, ConditionalSelect, Constant, ConstraintSystem, Equal, Secret, ValueSource,
+            Variable,
         },
         merkle_tree::path_length_in,
     };
@@ -983,45 +983,39 @@ pub mod constraint {
         }
     }
 
-    impl<C, COM> Variable<COM> for InnerPathVar<C, COM>
+    impl<C, COM> Variable<Secret, COM> for InnerPathVar<C, COM>
     where
         COM: ConstraintSystem,
-        <<COM::Bool as Variable<COM>>::Mode as AllocationMode>::Known: From<Secret>,
-        <<COM::Bool as Variable<COM>>::Mode as AllocationMode>::Unknown: From<Secret>,
-        C: Configuration<COM> + Variable<COM> + ?Sized,
+        COM::Bool: Variable<Secret, COM, Type = bool>,
+        C: Configuration<COM> + Constant<COM> + ?Sized,
         C::Type: Configuration,
-        InnerDigest<C, COM>: Variable<COM, Type = InnerDigest<C::Type>>,
-        <<InnerDigest<C, COM> as Variable<COM>>::Mode as AllocationMode>::Known: From<Secret>,
-        <<InnerDigest<C, COM> as Variable<COM>>::Mode as AllocationMode>::Unknown: From<Secret>,
+        InnerDigest<C, COM>: Variable<Secret, COM, Type = InnerDigest<C::Type>>,
     {
         type Type = InnerPath<C::Type>;
-        type Mode = Secret;
 
         #[inline]
-        fn new(compiler: &mut COM, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
-            match allocation {
-                Allocation::Known(this, mode) => Self {
-                    leaf_index: this.leaf_index.is_right().as_known(compiler, mode),
-                    inner_indices: this
-                        .leaf_index
-                        .parents()
-                        .map(|i| i.is_right().as_known(compiler, mode))
-                        .collect(),
-                    path: this
-                        .path
-                        .iter()
-                        .map(|d| d.as_known(compiler, mode))
-                        .collect(),
-                },
-                Allocation::Unknown(mode) => Self {
-                    leaf_index: bool::as_unknown(compiler, mode),
-                    inner_indices: (0..path_length_in::<C, _>())
-                        .map(|_| bool::as_unknown(compiler, mode))
-                        .collect(),
-                    path: (0..path_length_in::<C, _>())
-                        .map(|_| InnerDigest::<C::Type>::as_unknown(compiler, mode))
-                        .collect(),
-                },
+        fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
+            Self {
+                leaf_index: this.leaf_index.is_right().as_known(compiler),
+                inner_indices: this
+                    .leaf_index
+                    .parents()
+                    .map(|i| i.is_right().as_known(compiler))
+                    .collect(),
+                path: this.path.iter().map(|d| d.as_known(compiler)).collect(),
+            }
+        }
+
+        #[inline]
+        fn new_unknown(compiler: &mut COM) -> Self {
+            Self {
+                leaf_index: compiler.allocate_unknown(),
+                inner_indices: (0..path_length_in::<C, _>())
+                    .map(|_| compiler.allocate_unknown())
+                    .collect(),
+                path: (0..path_length_in::<C, _>())
+                    .map(|_| compiler.allocate_unknown())
+                    .collect(),
             }
         }
     }
@@ -1097,34 +1091,30 @@ pub mod constraint {
         }
     }
 
-    impl<C, COM> Variable<COM> for PathVar<C, COM>
+    impl<C, COM> Variable<Secret, COM> for PathVar<C, COM>
     where
         COM: ConstraintSystem,
-        <<COM::Bool as Variable<COM>>::Mode as AllocationMode>::Known: From<Secret>,
-        <<COM::Bool as Variable<COM>>::Mode as AllocationMode>::Unknown: From<Secret>,
-        C: Configuration<COM> + Variable<COM> + ?Sized,
+        COM::Bool: Variable<Secret, COM, Type = bool>,
+        C: Configuration<COM> + Constant<COM> + ?Sized,
         C::Type: Configuration,
-        LeafDigest<C, COM>: Variable<COM, Type = LeafDigest<C::Type>>,
-        <<LeafDigest<C, COM> as Variable<COM>>::Mode as AllocationMode>::Known: From<Secret>,
-        <<LeafDigest<C, COM> as Variable<COM>>::Mode as AllocationMode>::Unknown: From<Secret>,
-        InnerDigest<C, COM>: Variable<COM, Type = InnerDigest<C::Type>>,
-        <<InnerDigest<C, COM> as Variable<COM>>::Mode as AllocationMode>::Known: From<Secret>,
-        <<InnerDigest<C, COM> as Variable<COM>>::Mode as AllocationMode>::Unknown: From<Secret>,
+        InnerDigest<C, COM>: Variable<Secret, COM, Type = InnerDigest<C::Type>>,
+        LeafDigest<C, COM>: Variable<Secret, COM, Type = LeafDigest<C::Type>>,
     {
         type Type = Path<C::Type>;
-        type Mode = Secret;
 
         #[inline]
-        fn new(compiler: &mut COM, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
-            match allocation {
-                Allocation::Known(this, mode) => Self {
-                    sibling_digest: this.sibling_digest.as_known(compiler, mode),
-                    inner_path: this.inner_path.as_known(compiler, mode),
-                },
-                Allocation::Unknown(mode) => Self {
-                    sibling_digest: LeafDigest::<C::Type>::as_unknown(compiler, mode),
-                    inner_path: InnerPath::<C::Type>::as_unknown(compiler, mode),
-                },
+        fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
+            Self {
+                sibling_digest: this.sibling_digest.as_known(compiler),
+                inner_path: this.inner_path.as_known(compiler),
+            }
+        }
+
+        #[inline]
+        fn new_unknown(compiler: &mut COM) -> Self {
+            Self {
+                sibling_digest: compiler.allocate_unknown(),
+                inner_path: compiler.allocate_unknown(),
             }
         }
     }

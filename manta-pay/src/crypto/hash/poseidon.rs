@@ -211,9 +211,8 @@ pub type Output<S, const ARITY: usize, COM = ()> =
 pub mod arkworks {
     use crate::crypto::constraint::arkworks::{FpVar, R1CS};
     use ark_ff::{Field, PrimeField};
-    use ark_r1cs_std::{alloc::AllocVar, fields::FieldVar};
-    use ark_relations::ns;
-    use manta_crypto::constraint::{Allocation, Constant, Variable};
+    use ark_r1cs_std::fields::FieldVar;
+    use manta_crypto::constraint::{Constant, ValueSource};
 
     /// Compiler Type
     type Compiler<S> = R1CS<<S as Specification>::Field>;
@@ -315,32 +314,25 @@ pub mod arkworks {
         }
     }
 
-    impl<S, const ARITY: usize> Variable<Compiler<S>> for super::Hash<S, ARITY, Compiler<S>>
+    impl<S, const ARITY: usize> Constant<Compiler<S>> for super::Hash<S, ARITY, Compiler<S>>
     where
         S: Specification,
     {
         type Type = super::Hash<S, ARITY>;
 
-        type Mode = Constant;
-
         #[inline]
-        fn new(cs: &mut Compiler<S>, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
-            match allocation {
-                Allocation::Known(this, _) => Self {
-                    additive_round_keys: this
-                        .additive_round_keys
-                        .iter()
-                        .map(|k| FpVar::new_constant(ns!(cs.cs, ""), k))
-                        .collect::<Result<Vec<_>, _>>()
-                        .expect("Variable allocation is not allowed to fail."),
-                    mds_matrix: this
-                        .mds_matrix
-                        .iter()
-                        .map(|k| FpVar::new_constant(ns!(cs.cs, ""), k))
-                        .collect::<Result<Vec<_>, _>>()
-                        .expect("Variable allocation is not allowed to fail."),
-                },
-                _ => unreachable!("Constant variables cannot be unknown."),
+        fn new_constant(this: &Self::Type, compiler: &mut Compiler<S>) -> Self {
+            Self {
+                additive_round_keys: this
+                    .additive_round_keys
+                    .iter()
+                    .map(|k| k.as_constant(compiler))
+                    .collect(),
+                mds_matrix: this
+                    .mds_matrix
+                    .iter()
+                    .map(|k| k.as_constant(compiler))
+                    .collect(),
             }
         }
     }

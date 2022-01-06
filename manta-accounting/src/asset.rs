@@ -34,7 +34,7 @@ use derive_more::{
     Add, AddAssign, Display, Div, DivAssign, From, Mul, MulAssign, Product, Sub, SubAssign, Sum,
 };
 use manta_crypto::{
-    constraint::{Allocation, PublicOrSecret, Secret, Variable, VariableSource},
+    constraint::{Allocator, Secret, ValueSource, Variable},
     rand::{CryptoRng, Rand, RngCore, Sample, Standard},
 };
 use manta_util::{into_array_unchecked, Concat, ConcatAccumulator};
@@ -529,26 +529,21 @@ where
     }
 }
 
-impl<C, I, V> Variable<C> for Asset<I, V>
+impl<COM, I, V> Variable<Secret, COM> for Asset<I, V>
 where
-    C: ?Sized,
-    I: Variable<C, Type = AssetId, Mode = PublicOrSecret>,
-    V: Variable<C, Type = AssetValue, Mode = PublicOrSecret>,
+    I: Variable<Secret, COM, Type = AssetId>,
+    V: Variable<Secret, COM, Type = AssetValue>,
 {
     type Type = Asset;
 
-    type Mode = Secret;
+    #[inline]
+    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
+        Self::new(this.id.as_known(compiler), this.value.as_known(compiler))
+    }
 
     #[inline]
-    fn new(cs: &mut C, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
-        match allocation {
-            Allocation::Known(this, mode) => {
-                Self::new(this.id.as_known(cs, mode), this.value.as_known(cs, mode))
-            }
-            Allocation::Unknown(mode) => {
-                Self::new(I::new_unknown(cs, mode), V::new_unknown(cs, mode))
-            }
-        }
+    fn new_unknown(compiler: &mut COM) -> Self {
+        Self::new(compiler.allocate_unknown(), compiler.allocate_unknown())
     }
 }
 

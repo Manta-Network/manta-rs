@@ -16,14 +16,14 @@
 
 //! Arkworks Constraint System Implementation
 
-use ark_ff::{fields::Field, PrimeField};
+use ark_ff::PrimeField;
 use ark_r1cs_std::{
     alloc::AllocVar, bits::boolean::Boolean, eq::EqGadget, select::CondSelectGadget,
 };
 use ark_relations::{ns, r1cs as ark_r1cs};
 use manta_crypto::constraint::{
-    measure::Measure, Add, Allocation, AllocationMode, ConditionalSelect, ConstraintSystem, Equal,
-    Public, PublicOrSecret, Secret, Variable,
+    measure::Measure, Add, ConditionalSelect, Constant, ConstraintSystem, Equal, Public, Secret,
+    Variable,
 };
 
 pub use ark_r1cs::SynthesisError;
@@ -51,54 +51,10 @@ pub fn full<T>(t: T) -> impl FnOnce() -> SynthesisResult<T> {
     move || Ok(t)
 }
 
-/// Arkworks Allocation Mode
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub enum ArkAllocationMode {
-    /// Allocates a Constant Variable
-    Constant,
-
-    /// Allocates a Public Input Variable
-    Public,
-
-    /// Allocates a Secret Witness Variable
-    Secret,
-}
-
-impl AllocationMode for ArkAllocationMode {
-    type Known = Self;
-    type Unknown = PublicOrSecret;
-}
-
-impl From<Public> for ArkAllocationMode {
-    #[inline]
-    fn from(p: Public) -> Self {
-        let _ = p;
-        Self::Public
-    }
-}
-
-impl From<Secret> for ArkAllocationMode {
-    #[inline]
-    fn from(s: Secret) -> Self {
-        let _ = s;
-        Self::Secret
-    }
-}
-
-impl From<PublicOrSecret> for ArkAllocationMode {
-    #[inline]
-    fn from(pos: PublicOrSecret) -> Self {
-        match pos {
-            PublicOrSecret::Public => Self::Public,
-            PublicOrSecret::Secret => Self::Secret,
-        }
-    }
-}
-
 /// Arkworks Rank-1 Constraint System
 pub struct R1CS<F>
 where
-    F: Field,
+    F: PrimeField,
 {
     /// Constraint System
     pub(crate) cs: ark_r1cs::ConstraintSystemRef<F>,
@@ -106,7 +62,7 @@ where
 
 impl<F> R1CS<F>
 where
-    F: Field,
+    F: PrimeField,
 {
     /// Constructs a new constraint system which is ready for unknown variables.
     #[inline]
@@ -130,7 +86,7 @@ where
 
 impl<F> ConstraintSystem for R1CS<F>
 where
-    F: Field,
+    F: PrimeField,
 {
     type Bool = Boolean<F>;
 
@@ -141,9 +97,9 @@ where
     }
 }
 
-impl<F> Measure<PublicOrSecret> for R1CS<F>
+impl<F> Measure for R1CS<F>
 where
-    F: Field,
+    F: PrimeField,
 {
     #[inline]
     fn constraint_count(&self) -> usize {
@@ -151,85 +107,127 @@ where
     }
 
     #[inline]
-    fn variable_count(&self, mode: PublicOrSecret) -> usize {
-        match mode {
-            PublicOrSecret::Public => self.cs.num_instance_variables(),
-            PublicOrSecret::Secret => self.cs.num_witness_variables(),
-        }
+    fn public_variable_count(&self) -> Option<usize> {
+        Some(self.cs.num_instance_variables())
+    }
+
+    #[inline]
+    fn secret_variable_count(&self) -> Option<usize> {
+        Some(self.cs.num_witness_variables())
     }
 }
 
-impl<F> Variable<R1CS<F>> for Boolean<F>
+impl<F> Constant<R1CS<F>> for Boolean<F>
 where
-    F: Field,
+    F: PrimeField,
 {
     type Type = bool;
 
-    type Mode = ArkAllocationMode;
+    #[inline]
+    fn new_constant(this: &Self::Type, compiler: &mut R1CS<F>) -> Self {
+        AllocVar::new_constant(ns!(compiler.cs, "boolean constant"), this)
+            .expect("Variable allocation is not allowed to fail.")
+    }
+}
+
+impl<F> Variable<Public, R1CS<F>> for Boolean<F>
+where
+    F: PrimeField,
+{
+    type Type = bool;
 
     #[inline]
-    fn new(cs: &mut R1CS<F>, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
-        match allocation {
-            Allocation::Known(this, ArkAllocationMode::Constant) => {
-                Self::new_constant(ns!(cs.cs, "boolean constant"), this)
-            }
-            Allocation::Known(this, ArkAllocationMode::Public) => {
-                Self::new_input(ns!(cs.cs, "boolean input"), full(this))
-            }
-            Allocation::Known(this, ArkAllocationMode::Secret) => {
-                Self::new_witness(ns!(cs.cs, "boolean witness"), full(this))
-            }
-            Allocation::Unknown(PublicOrSecret::Public) => {
-                Self::new_input(ns!(cs.cs, "boolean input"), empty::<bool>)
-            }
-            Allocation::Unknown(PublicOrSecret::Secret) => {
-                Self::new_witness(ns!(cs.cs, "boolean witness"), empty::<bool>)
-            }
-        }
-        .expect("Variable allocation is not allowed to fail.")
+    fn new_known(this: &Self::Type, compiler: &mut R1CS<F>) -> Self {
+        Self::new_input(ns!(compiler.cs, "boolean public input"), full(this))
+            .expect("Variable allocation is not allowed to fail.")
+    }
+
+    #[inline]
+    fn new_unknown(compiler: &mut R1CS<F>) -> Self {
+        Self::new_input(ns!(compiler.cs, "boolean public input"), empty::<bool>)
+            .expect("Variable allocation is not allowed to fail.")
+    }
+}
+
+impl<F> Variable<Secret, R1CS<F>> for Boolean<F>
+where
+    F: PrimeField,
+{
+    type Type = bool;
+
+    #[inline]
+    fn new_known(this: &Self::Type, compiler: &mut R1CS<F>) -> Self {
+        Self::new_witness(ns!(compiler.cs, "boolean secret witness"), full(this))
+            .expect("Variable allocation is not allowed to fail.")
+    }
+
+    #[inline]
+    fn new_unknown(compiler: &mut R1CS<F>) -> Self {
+        Self::new_witness(ns!(compiler.cs, "boolean secret witness"), empty::<bool>)
+            .expect("Variable allocation is not allowed to fail.")
     }
 }
 
 impl<F> Equal<R1CS<F>> for Boolean<F>
 where
-    F: Field,
+    F: PrimeField,
 {
     #[inline]
-    fn eq(cs: &mut R1CS<F>, lhs: &Self, rhs: &Self) -> Boolean<F> {
-        let _ = cs;
+    fn eq(lhs: &Self, rhs: &Self, compiler: &mut R1CS<F>) -> Boolean<F> {
+        let _ = compiler;
         lhs.is_eq(rhs)
             .expect("Equality checking is not allowed to fail.")
     }
 }
 
-impl<F> Variable<R1CS<F>> for FpVar<F>
+impl<F> Constant<R1CS<F>> for FpVar<F>
 where
     F: PrimeField,
 {
     type Type = F;
 
-    type Mode = ArkAllocationMode;
+    #[inline]
+    fn new_constant(this: &Self::Type, compiler: &mut R1CS<F>) -> Self {
+        AllocVar::new_constant(ns!(compiler.cs, "field constant"), this)
+            .expect("Variable allocation is not allowed to fail.")
+    }
+}
+
+impl<F> Variable<Public, R1CS<F>> for FpVar<F>
+where
+    F: PrimeField,
+{
+    type Type = F;
 
     #[inline]
-    fn new(cs: &mut R1CS<F>, allocation: Allocation<Self::Type, Self::Mode>) -> Self {
-        match allocation {
-            Allocation::Known(this, ArkAllocationMode::Constant) => {
-                Self::new_constant(ns!(cs.cs, "prime field constant"), this)
-            }
-            Allocation::Known(this, ArkAllocationMode::Public) => {
-                Self::new_input(ns!(cs.cs, "prime field input"), full(this))
-            }
-            Allocation::Known(this, ArkAllocationMode::Secret) => {
-                Self::new_witness(ns!(cs.cs, "prime field witness"), full(this))
-            }
-            Allocation::Unknown(PublicOrSecret::Public) => {
-                Self::new_input(ns!(cs.cs, "prime field input"), empty::<F>)
-            }
-            Allocation::Unknown(PublicOrSecret::Secret) => {
-                Self::new_witness(ns!(cs.cs, "prime field witness"), empty::<F>)
-            }
-        }
-        .expect("Variable allocation is not allowed to fail.")
+    fn new_known(this: &Self::Type, compiler: &mut R1CS<F>) -> Self {
+        Self::new_input(ns!(compiler.cs, "field public input"), full(this))
+            .expect("Variable allocation is not allowed to fail.")
+    }
+
+    #[inline]
+    fn new_unknown(compiler: &mut R1CS<F>) -> Self {
+        Self::new_input(ns!(compiler.cs, "field public input"), empty::<F>)
+            .expect("Variable allocation is not allowed to fail.")
+    }
+}
+
+impl<F> Variable<Secret, R1CS<F>> for FpVar<F>
+where
+    F: PrimeField,
+{
+    type Type = F;
+
+    #[inline]
+    fn new_known(this: &Self::Type, compiler: &mut R1CS<F>) -> Self {
+        Self::new_witness(ns!(compiler.cs, "field secret witness"), full(this))
+            .expect("Variable allocation is not allowed to fail.")
+    }
+
+    #[inline]
+    fn new_unknown(compiler: &mut R1CS<F>) -> Self {
+        Self::new_witness(ns!(compiler.cs, "field secret witness"), empty::<F>)
+            .expect("Variable allocation is not allowed to fail.")
     }
 }
 
@@ -238,8 +236,8 @@ where
     F: PrimeField,
 {
     #[inline]
-    fn eq(cs: &mut R1CS<F>, lhs: &Self, rhs: &Self) -> Boolean<F> {
-        let _ = cs;
+    fn eq(lhs: &Self, rhs: &Self, compiler: &mut R1CS<F>) -> Boolean<F> {
+        let _ = compiler;
         lhs.is_eq(rhs)
             .expect("Equality checking is not allowed to fail.")
     }
@@ -262,8 +260,8 @@ where
     F: PrimeField,
 {
     #[inline]
-    fn add(cs: &mut R1CS<F>, lhs: Self, rhs: Self) -> Self {
-        let _ = cs;
+    fn add(lhs: Self, rhs: Self, compiler: &mut R1CS<F>) -> Self {
+        let _ = compiler;
         lhs + rhs
     }
 }
