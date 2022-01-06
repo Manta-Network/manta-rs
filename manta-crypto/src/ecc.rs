@@ -143,11 +143,12 @@ where
 impl<G, COM> Constant<COM> for DiffieHellman<G, COM>
 where
     G: Group<COM> + Constant<COM>,
+    G::Type: Group,
 {
-    type Type = G::Type;
+    type Type = DiffieHellman<G::Type>;
 
     #[inline]
     fn new_constant(value: &Self::Type, compiler: &mut COM) -> Self {
-        Self::new(G::new_constant(value, compiler))
+        Self::new(G::new_constant(&value.generator, compiler))
     }
 }

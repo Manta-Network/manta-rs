@@ -17,9 +17,7 @@
 //! Arkworks Constraint System Implementation
 
 use ark_ff::PrimeField;
-use ark_r1cs_std::{
-    alloc::AllocVar, bits::boolean::Boolean, eq::EqGadget, select::CondSelectGadget,
-};
+use ark_r1cs_std::{alloc::AllocVar, eq::EqGadget, select::CondSelectGadget};
 use ark_relations::{ns, r1cs as ark_r1cs};
 use manta_crypto::constraint::{
     measure::Measure, Add, ConditionalSelect, Constant, ConstraintSystem, Equal, Public, Secret,
@@ -27,7 +25,7 @@ use manta_crypto::constraint::{
 };
 
 pub use ark_r1cs::SynthesisError;
-pub use ark_r1cs_std::fields::fp::FpVar;
+pub use ark_r1cs_std::{bits::boolean::Boolean, fields::fp::FpVar};
 
 /// Synthesis Result
 pub type SynthesisResult<T = ()> = Result<T, SynthesisError>;

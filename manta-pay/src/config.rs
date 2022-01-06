@@ -17,7 +17,7 @@
 //! Manta-Pay Configuration
 
 use crate::crypto::{
-    constraint::arkworks::{FpVar, Groth16, R1CS},
+    constraint::arkworks::{Boolean, FpVar, Groth16, R1CS},
     ecc,
     encryption::AesGcm,
     hash::poseidon,
@@ -36,7 +36,10 @@ use manta_accounting::{
 use manta_crypto::{
     accumulator,
     commitment::CommitmentScheme,
-    constraint::{Allocator, Constant, Input as ProofSystemInput, Secret, ValueSource, Variable},
+    constraint::{
+        Add, Allocator, Constant, Equal, Input as ProofSystemInput, Public, Secret, ValueSource,
+        Variable,
+    },
     ecc::DiffieHellman,
     encryption,
     hash::{BinaryHashFunction, HashFunction},
@@ -212,6 +215,27 @@ impl Constant<Compiler> for VoidNumberHashFunctionVar {
 /// Asset ID Variable
 pub struct AssetIdVar(ConstraintFieldVar);
 
+impl Equal<Compiler> for AssetIdVar {
+    #[inline]
+    fn eq(lhs: &Self, rhs: &Self, compiler: &mut Compiler) -> Boolean<ConstraintField> {
+        ConstraintFieldVar::eq(&lhs.0, &rhs.0, compiler)
+    }
+}
+
+impl Variable<Public, Compiler> for AssetIdVar {
+    type Type = AssetId;
+
+    #[inline]
+    fn new_known(this: &Self::Type, compiler: &mut Compiler) -> Self {
+        Self(ConstraintField::from(this.0).as_known::<Public, _>(compiler))
+    }
+
+    #[inline]
+    fn new_unknown(compiler: &mut Compiler) -> Self {
+        Self(compiler.allocate_unknown::<Public, _>())
+    }
+}
+
 impl Variable<Secret, Compiler> for AssetIdVar {
     type Type = AssetId;
 
@@ -228,6 +252,34 @@ impl Variable<Secret, Compiler> for AssetIdVar {
 
 /// Asset Value Variable
 pub struct AssetValueVar(ConstraintFieldVar);
+
+impl Add<Compiler> for AssetValueVar {
+    #[inline]
+    fn add(lhs: Self, rhs: Self, compiler: &mut Compiler) -> Self {
+        Self(ConstraintFieldVar::add(lhs.0, rhs.0, compiler))
+    }
+}
+
+impl Equal<Compiler> for AssetValueVar {
+    #[inline]
+    fn eq(lhs: &Self, rhs: &Self, compiler: &mut Compiler) -> Boolean<ConstraintField> {
+        ConstraintFieldVar::eq(&lhs.0, &rhs.0, compiler)
+    }
+}
+
+impl Variable<Public, Compiler> for AssetValueVar {
+    type Type = AssetValue;
+
+    #[inline]
+    fn new_known(this: &Self::Type, compiler: &mut Compiler) -> Self {
+        Self(ConstraintField::from(this.0).as_known::<Public, _>(compiler))
+    }
+
+    #[inline]
+    fn new_unknown(compiler: &mut Compiler) -> Self {
+        Self(compiler.allocate_unknown::<Public, _>())
+    }
+}
 
 impl Variable<Secret, Compiler> for AssetValueVar {
     type Type = AssetValue;
@@ -331,6 +383,16 @@ impl merkle_tree::Configuration<Compiler> for MerkleTreeConfigurationVar {
     const HEIGHT: usize = <MerkleTreeConfiguration as merkle_tree::Configuration>::HEIGHT;
 }
 
+impl Constant<Compiler> for MerkleTreeConfigurationVar {
+    type Type = MerkleTreeConfiguration;
+
+    #[inline]
+    fn new_constant(this: &Self::Type, compiler: &mut Compiler) -> Self {
+        let _ = (this, compiler);
+        Self
+    }
+}
+
 impl ProofSystemInput<AssetId> for ProofSystem {
     #[inline]
     fn extend(input: &mut Self::Input, next: &AssetId) {
@@ -375,7 +437,6 @@ pub type NoteEncryptionScheme = encryption::Hybrid<
 /// Transfer Configuration
 pub struct TransferConfiguration;
 
-/*
 impl transfer::Configuration for TransferConfiguration {
     type SecretKey = <Self::KeyAgreementScheme as key::KeyAgreementScheme>::SecretKey;
     type PublicKey = <Self::KeyAgreementScheme as key::KeyAgreementScheme>::PublicKey;
@@ -410,7 +471,6 @@ impl transfer::Configuration for TransferConfiguration {
 
     type NoteEncryptionScheme = NoteEncryptionScheme;
 }
-*/
 
 /* TODO:
 /// Mint Transfer Type

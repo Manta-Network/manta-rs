@@ -69,6 +69,18 @@ where
     fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self;
 }
 
+impl<COM> Constant<COM> for ()
+where
+    COM: ?Sized,
+{
+    type Type = ();
+
+    #[inline]
+    fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
+        let _ = (this, compiler);
+    }
+}
+
 impl<T, COM> Constant<COM> for PhantomData<T>
 where
     COM: ?Sized,
@@ -98,6 +110,23 @@ where
 
     /// Allocates a new unknown value into the `compiler`.
     fn new_unknown(compiler: &mut COM) -> Self;
+}
+
+impl<M, COM> Variable<M, COM> for ()
+where
+    COM: ?Sized,
+{
+    type Type = ();
+
+    #[inline]
+    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
+        let _ = (this, compiler);
+    }
+
+    #[inline]
+    fn new_unknown(compiler: &mut COM) -> Self {
+        let _ = compiler;
+    }
 }
 
 impl<T, M, COM> Variable<M, COM> for PhantomData<T>

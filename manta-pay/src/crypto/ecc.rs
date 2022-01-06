@@ -20,15 +20,15 @@
 #[cfg(feature = "arkworks")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "arkworks")))]
 pub mod arkworks {
-    use crate::crypto::constraint::arkworks::{empty, full, R1CS};
+    use crate::crypto::constraint::arkworks::{empty, full, Boolean, FpVar, R1CS};
     use alloc::vec::Vec;
     use ark_ec::ProjectiveCurve;
     use ark_ff::{Field, PrimeField};
-    use ark_r1cs_std::{fields::fp::FpVar, groups::CurveVar, ToBitsGadget};
+    use ark_r1cs_std::{groups::CurveVar, ToBitsGadget};
     use ark_relations::ns;
     use core::marker::PhantomData;
     use manta_crypto::{
-        constraint::{Constant, Public, Secret, Variable},
+        constraint::{Constant, Equal, Public, Secret, Variable},
         ecc,
         key::kdf,
     };
@@ -118,6 +118,20 @@ pub mod arkworks {
                     .expect("Scalar multiplication is not allowed to fail."),
                 PhantomData,
             )
+        }
+    }
+
+    impl<C, CV> Equal<Compiler<C>> for GroupVar<C, CV>
+    where
+        C: ProjectiveCurve,
+        CV: CurveVar<C, ConstraintField<C>>,
+    {
+        #[inline]
+        fn eq(lhs: &Self, rhs: &Self, compiler: &mut Compiler<C>) -> Boolean<ConstraintField<C>> {
+            let _ = compiler;
+            lhs.0
+                .is_eq(&rhs.0)
+                .expect("Equality check is not allowed to fail.")
         }
     }
 
