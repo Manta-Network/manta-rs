@@ -389,6 +389,8 @@ where
 }
 
 /// Transfer Full Parameters
+#[derive(derivative::Derivative)]
+#[derivative(Clone(bound = ""), Copy(bound = ""))]
 pub struct FullParameters<'p, C>
 where
     C: Configuration,

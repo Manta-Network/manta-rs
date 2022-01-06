@@ -144,7 +144,7 @@ impl Sample for UtxoCommitmentScheme {
     where
         R: CryptoRng + RngCore + ?Sized,
     {
-        rng.sample(distribution)
+        Self(rng.sample(distribution))
     }
 }
 
@@ -212,7 +212,7 @@ impl Sample for VoidNumberHashFunction {
     where
         R: CryptoRng + RngCore + ?Sized,
     {
-        rng.sample(distribution)
+        Self(rng.sample(distribution))
     }
 }
 
