@@ -16,6 +16,8 @@
 
 //! Utilities
 
+// TODO: Find a better way to abstract the `Rollback` trait.
+
 #![no_std]
 #![cfg_attr(doc_cfg, feature(doc_cfg))]
 #![forbid(rustdoc::broken_intra_doc_links)]
@@ -46,4 +48,18 @@ macro_rules! from_variant_impl {
             }
         }
     };
+}
+
+/// Rollback Trait
+///
+/// This trait should be implemented by strucutres which have a canonical working state which can be
+/// discarded easily.
+pub trait Rollback {
+    /// Rolls back `self` to the previous state.
+    ///
+    /// # Implementation Note
+    ///
+    /// Rolling back to the previous state must be idempotent, i.e. two consecutive calls to
+    /// [`rollback`](Self::rollback) should do the same as one call.
+    fn rollback(&mut self);
 }

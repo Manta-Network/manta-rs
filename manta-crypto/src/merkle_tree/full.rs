@@ -155,8 +155,8 @@ where
     }
 
     #[inline]
-    fn current_leaf(&self) -> LeafDigest<C> {
-        self.leaf_digests.last().cloned().unwrap_or_default()
+    fn current_leaf(&self) -> Option<&LeafDigest<C>> {
+        self.leaf_digests.last()
     }
 
     #[inline]

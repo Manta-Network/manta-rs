@@ -31,12 +31,13 @@ use crate::{
     },
     constraint::{ConditionalSelect, Constant, ConstraintSystem, Equal, Native, ValueSource},
     merkle_tree::{
-        fork::Trunk,
+        fork::{ForkedTree, Trunk},
+        inner_tree::InnerMap,
         path::{constraint::PathVar, CurrentPath, Path},
     },
 };
 use core::{fmt::Debug, hash::Hash, marker::PhantomData};
-use manta_util::pointer::PointerFamily;
+use manta_util::{pointer::PointerFamily, Rollback};
 
 /// Merkle Tree Leaf Hash
 pub trait LeafHash<COM = ()> {
@@ -72,6 +73,8 @@ pub trait LeafHash<COM = ()> {
 ///
 /// This implementation of [`LeafHash`] should only be used when users cannot control the value of a
 /// leaf itself, otherwise, using this implementation may not be safe.
+#[derive(derivative::Derivative)]
+#[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct IdentityLeafHash<L, COM = ()>(PhantomData<(L, COM)>)
 where
     L: Clone;
@@ -305,8 +308,8 @@ where
         self.len() == 0
     }
 
-    /// Returns the current (i.e. right-most) leaf.
-    fn current_leaf(&self) -> LeafDigest<C>;
+    /// Returns the current (i.e. right-most) leaf if the tree is not empty.
+    fn current_leaf(&self) -> Option<&LeafDigest<C>>;
 
     /// Returns the [`Root`] of the merkle tree.
     fn root(&self) -> &Root<C>;
@@ -792,7 +795,7 @@ where
     ///
     /// See [`Tree::current_leaf`] for more.
     #[inline]
-    pub fn current_leaf(&self) -> LeafDigest<C> {
+    pub fn current_leaf(&self) -> Option<&LeafDigest<C>> {
         self.tree.current_leaf()
     }
 
@@ -1035,5 +1038,20 @@ where
             .position(&self.parameters.digest(item))
             .map(move |i| self.tree.remove_path(i))
             .unwrap_or(false)
+    }
+}
+
+impl<C, T, P, M> Rollback for MerkleTree<C, ForkedTree<C, T, P, M>>
+where
+    C: Configuration + ?Sized,
+    T: Tree<C>,
+    P: PointerFamily<T>,
+    M: Default + InnerMap<C>,
+    LeafDigest<C>: Clone + Default,
+    InnerDigest<C>: Default,
+{
+    #[inline]
+    fn rollback(&mut self) {
+        self.tree.reset_fork(&self.parameters);
     }
 }

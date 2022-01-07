@@ -117,16 +117,22 @@ where
         self.inner_digests.root()
     }
 
+    ///
+    #[inline]
+    pub fn get_leaf_digest(&self, index: usize) -> Option<&LeafDigest<C>> {
+        self.leaf_digests.get(index - self.starting_leaf_index().0)
+    }
+
     /// Returns the sibling leaf node to `index`.
     #[inline]
-    fn get_leaf_sibling(&self, index: Node) -> Option<&LeafDigest<C>> {
+    pub fn get_leaf_sibling(&self, index: Node) -> Option<&LeafDigest<C>> {
         self.leaf_digests
             .get((index - self.starting_leaf_index().0).sibling().0)
     }
 
     /// Returns an owned sibling leaf node to `index`.
     #[inline]
-    fn get_owned_leaf_sibling(&self, index: Node) -> LeafDigest<C>
+    pub fn get_owned_leaf_sibling(&self, index: Node) -> LeafDigest<C>
     where
         LeafDigest<C>: Clone + Default,
     {
@@ -134,9 +140,8 @@ where
     }
 
     /// Appends a `leaf_digest` with index given by `leaf_index` into the tree.
-    // FIXME: Remove pub(super) on this once we have a better interface for `fork`.
     #[inline]
-    pub(super) fn push_leaf_digest(
+    pub fn push_leaf_digest(
         &mut self,
         parameters: &Parameters<C>,
         leaf_index: Node,
@@ -158,9 +163,8 @@ where
     }
 
     /// Appends a `leaf` to the tree using `parameters`.
-    // FIXME: Remove pub(super) on this once we have a better interface for `fork`.
     #[inline]
-    pub(super) fn push(&mut self, parameters: &Parameters<C>, leaf: &Leaf<C>) -> bool
+    pub fn push(&mut self, parameters: &Parameters<C>, leaf: &Leaf<C>) -> bool
     where
         LeafDigest<C>: Default,
     {
@@ -170,6 +174,26 @@ where
         }
         self.push_leaf_digest(parameters, Node(len), parameters.digest(leaf));
         true
+    }
+
+    /// Appends `leaf_digest` to the tree using `parameters`.
+    #[inline]
+    pub fn maybe_push_digest<F>(
+        &mut self,
+        parameters: &Parameters<C>,
+        leaf_digest: F,
+    ) -> Option<bool>
+    where
+        F: FnOnce() -> Option<LeafDigest<C>>,
+        LeafDigest<C>: Default,
+    {
+        // TODO: Push without keeping unnecessary proof.
+        let len = self.len();
+        if len >= capacity::<C>() {
+            return Some(false);
+        }
+        self.push_leaf_digest(parameters, Node(len), leaf_digest()?);
+        Some(true)
     }
 }
 
@@ -192,8 +216,8 @@ where
     }
 
     #[inline]
-    fn current_leaf(&self) -> LeafDigest<C> {
-        self.leaf_digests.last().cloned().unwrap_or_default()
+    fn current_leaf(&self) -> Option<&LeafDigest<C>> {
+        self.leaf_digests.last()
     }
 
     #[inline]
@@ -216,13 +240,7 @@ where
     where
         F: FnOnce() -> Option<LeafDigest<C>>,
     {
-        // TODO: Push without keeping unnecessary proof.
-        let len = self.len();
-        if len >= capacity::<C>() {
-            return Some(false);
-        }
-        self.push_leaf_digest(parameters, Node(len), leaf_digest()?);
-        Some(true)
+        self.maybe_push_digest(parameters, leaf_digest)
     }
 }
 
@@ -235,12 +253,15 @@ where
 {
     #[inline]
     fn leaf_digest(&self, index: usize) -> Option<&LeafDigest<C>> {
-        self.leaf_digests.get(index)
+        self.get_leaf_digest(index)
     }
 
     #[inline]
     fn position(&self, leaf_digest: &LeafDigest<C>) -> Option<usize> {
-        self.leaf_digests.iter().position(move |d| d == leaf_digest)
+        self.leaf_digests
+            .iter()
+            .position(move |d| d == leaf_digest)
+            .map(move |i| i + self.starting_leaf_index().0)
     }
 
     #[inline]

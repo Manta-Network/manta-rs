@@ -25,9 +25,7 @@ use crate::crypto::{
 };
 use ark_ff::ToConstraintField;
 use bls12_381::Bls12_381;
-use bls12_381_ed::{
-    constraints::EdwardsVar as Bls12_381_EdwardsVar, EdwardsProjective as Bls12_381_Edwards,
-};
+use bls12_381_ed::constraints::EdwardsVar as Bls12_381_EdwardsVar;
 use manta_accounting::{
     asset::{Asset, AssetId, AssetValue},
     transfer,
@@ -52,6 +50,8 @@ use manta_crypto::rand::{CryptoRng, Rand, RngCore, Sample, Standard};
 pub use ark_bls12_381 as bls12_381;
 #[doc(inline)]
 pub use ark_ed_on_bls12_381 as bls12_381_ed;
+
+pub(crate) use bls12_381_ed::EdwardsProjective as Bls12_381_Edwards;
 
 /// Pairing Curve Type
 pub type PairingCurve = Bls12_381;
@@ -105,6 +105,12 @@ impl poseidon::arkworks::Specification for PoseidonSpec<4> {
 
 /// Key Agreement Scheme Type
 pub type KeyAgreementScheme = DiffieHellman<Group>;
+
+/// Secret Key Type
+pub type SecretKey = <KeyAgreementScheme as key::KeyAgreementScheme>::SecretKey;
+
+/// Public Key Type
+pub type PublicKey = <KeyAgreementScheme as key::KeyAgreementScheme>::PublicKey;
 
 /// Key Agreement Scheme Variable Type
 pub type KeyAgreementSchemeVar = DiffieHellman<GroupVar, Compiler>;

@@ -26,13 +26,15 @@ use crate::{
         OptimizedAccumulator,
     },
     merkle_tree::{
+        fork::ForkedTree,
+        inner_tree::InnerMap,
         tree::{self, Leaf, Parameters, Tree},
-        InnerDigest, WithProofs,
+        InnerDigest, LeafDigest, WithProofs,
     },
 };
 use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash, marker::PhantomData};
-use manta_util::into_array_unchecked;
+use manta_util::{into_array_unchecked, pointer::PointerFamily, Rollback};
 
 /// Merkle Forest Configuration
 pub trait Configuration: tree::Configuration {
@@ -53,11 +55,14 @@ pub trait Configuration: tree::Configuration {
 /// # Contract
 ///
 /// For a type to be a fixed index, the number of possible values must be known at compile time. In
-/// this case, `N` must be the the number of values. If this type is used as an
+/// this case, `N` must be the number of distinct values. If this type is used as an
 /// [`Index`](Configuration::Index) for a merkle forest configuration, the
 /// [`tree_index`](Configuration::tree_index) method must return values from a distribution over
 /// exactly `N` values.
 pub trait FixedIndex<const N: usize>: Into<usize> {}
+
+impl FixedIndex<256> for u8 {}
+impl FixedIndex<65536> for u16 {}
 
 /// Merkle Forest Structure
 pub trait Forest<C>
@@ -442,6 +447,25 @@ where
         Self {
             array,
             __: PhantomData,
+        }
+    }
+}
+
+impl<C, T, P, M, const N: usize> Rollback
+    for MerkleForest<C, TreeArray<C, ForkedTree<C, T, P, M>, N>>
+where
+    C: Configuration + ?Sized,
+    C::Index: FixedIndex<N>,
+    T: Tree<C>,
+    P: PointerFamily<T>,
+    M: Default + InnerMap<C>,
+    LeafDigest<C>: Clone + Default,
+    InnerDigest<C>: Default,
+{
+    #[inline]
+    fn rollback(&mut self) {
+        for tree in &mut self.forest.array {
+            tree.reset_fork(&self.parameters);
         }
     }
 }

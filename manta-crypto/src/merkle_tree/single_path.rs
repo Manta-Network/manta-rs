@@ -143,8 +143,8 @@ where
     }
 
     #[inline]
-    fn current_leaf(&self) -> LeafDigest<C> {
-        self.leaf_digest.as_ref().cloned().unwrap_or_default()
+    fn current_leaf(&self) -> Option<&LeafDigest<C>> {
+        self.leaf_digest.as_ref()
     }
 
     #[inline]

@@ -139,3 +139,22 @@ where
         "Path returned from tree was not valid."
     );
 }
+
+/// Tests path construction for multiple insertions. This is an extension of the
+/// [`assert_valid_path`] test.
+#[inline]
+pub fn assert_valid_paths<C, T>(tree: &mut MerkleTree<C, T>, leaves: &[Leaf<C>])
+where
+    C: Configuration + ?Sized,
+    T: Tree<C> + WithProofs<C>,
+    InnerDigest<C>: PartialEq,
+    Leaf<C>: Sized,
+{
+    let starting_index = tree.len();
+    for (i, leaf) in leaves.iter().enumerate() {
+        tree.push(leaf);
+        for (j, previous_leaf) in leaves.iter().enumerate().take(i + 1) {
+            assert_valid_path(tree, starting_index + j, previous_leaf);
+        }
+    }
+}

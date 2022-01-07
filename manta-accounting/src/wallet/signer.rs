@@ -49,18 +49,7 @@ use manta_crypto::{
     encryption::DecryptedMessage,
     rand::{CryptoRng, Rand, RngCore},
 };
-use manta_util::{fallible_array_map, into_array_unchecked, iter::IteratorExt};
-
-/// Rollback Trait
-pub trait Rollback {
-    /// Rolls back `self` to the previous state.
-    ///
-    /// # Implementation Note
-    ///
-    /// Rolling back to the previous state must be idempotent, i.e. two consecutive calls to
-    /// [`rollback`](Self::rollback) should do the same as one call.
-    fn rollback(&mut self);
-}
+use manta_util::{fallible_array_map, into_array_unchecked, iter::IteratorExt, Rollback};
 
 /// Signer Connection
 pub trait Connection<H, C>

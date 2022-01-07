@@ -20,7 +20,7 @@
 // TODO: Add more methods to the `Specification` trait for optimization.
 
 use alloc::vec::Vec;
-use core::{iter, mem};
+use core::{fmt::Debug, iter, mem};
 use manta_crypto::hash::HashFunction;
 
 #[cfg(test)]
@@ -72,6 +72,14 @@ where
 }
 
 /// Poseidon Hash
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "S::Field: Clone"),
+    Debug(bound = "S::Field: Debug"),
+    Eq(bound = "S::Field: Eq"),
+    Hash(bound = "S::Field: core::hash::Hash"),
+    PartialEq(bound = "S::Field: PartialEq")
+)]
 pub struct Hash<S, const ARITY: usize = 1, COM = ()>
 where
     S: Specification<COM>,

@@ -17,7 +17,8 @@
 //! Hierarchical Key Derivation Schemes
 
 use alloc::vec::Vec;
-use core::{fmt::Debug, hash::Hash};
+use core::{fmt::Debug, hash::Hash, marker::PhantomData};
+use manta_crypto::key::KeyDerivationFunction;
 
 /// Hierarchical Key Derivation Parameter
 pub trait HierarchicalKeyDerivationParameter: Copy + Default + PartialOrd {
@@ -98,6 +99,58 @@ where
         view: Self::Index,
     ) -> Result<Self::SecretKey, Self::Error> {
         (*self).derive_view(account, spend, view)
+    }
+}
+
+/// Mapping Hierarchical Key Derivation Scheme
+#[derive(derivative::Derivative)]
+#[derivative(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub struct Map<H, K>
+where
+    H: HierarchicalKeyDerivationScheme,
+    K: KeyDerivationFunction<Key = H::SecretKey>,
+{
+    /// Base Derivation Scheme
+    base: H,
+
+    /// Type Parameter Marker
+    __: PhantomData<K>,
+}
+
+impl<H, K> HierarchicalKeyDerivationScheme for Map<H, K>
+where
+    H: HierarchicalKeyDerivationScheme,
+    K: KeyDerivationFunction<Key = H::SecretKey>,
+{
+    type Account = H::Account;
+
+    type Index = H::Index;
+
+    type SecretKey = K::Output;
+
+    type Error = H::Error;
+
+    #[inline]
+    fn derive_spend(
+        &self,
+        account: Self::Account,
+        spend: Self::Index,
+    ) -> Result<Self::SecretKey, Self::Error> {
+        self.base
+            .derive_spend(account, spend)
+            .map(move |k| K::derive(&k))
+    }
+
+    #[inline]
+    fn derive_view(
+        &self,
+        account: Self::Account,
+        spend: Self::Index,
+        view: Self::Index,
+    ) -> Result<Self::SecretKey, Self::Error> {
+        self.base
+            .derive_view(account, spend, view)
+            .map(move |k| K::derive(&k))
     }
 }
 

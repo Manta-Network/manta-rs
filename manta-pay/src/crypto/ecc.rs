@@ -91,28 +91,6 @@ pub mod arkworks {
         ))
     }
 
-    /* TODO[remove]:
-    /// Elliptic Curve Scalar Element
-    #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-    pub struct Scalar<C>(C::ScalarField)
-    where
-        C: ProjectiveCurve;
-
-    impl<C> Sample for Scalar<C>
-    where
-        C: ProjectiveCurve,
-    {
-        #[inline]
-        fn sample<R>(distribution: Standard, rng: &mut R) -> Self
-        where
-            R: CryptoRng + RngCore + ?Sized,
-        {
-            let _ = distribution;
-            Self(C::ScalarField::rand(rng))
-        }
-    }
-    */
-
     /// Elliptic Curve Group Element
     #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
     pub struct Group<C>(pub(crate) C)
