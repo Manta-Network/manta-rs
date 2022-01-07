@@ -50,7 +50,7 @@ plonk = ["zk-garage-plonk"]
 test = ["manta-accounting/test", "manta-crypto/test"]
 
 # Standard Library
-std = []
+std = ["manta-accounting/std"]
 
 [dependencies]
 aes-gcm = { version = "0.9.4", default-features = false, features = ["aes", "alloc"] }

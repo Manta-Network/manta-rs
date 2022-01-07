@@ -14,4 +14,26 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Manta Pay Base Signer Implementation
+//! Manta Pay Base Wallet Implementation
+
+use crate::{
+    config::{Config, MerkleTreeConfiguration},
+    key::TestnetKeySecret,
+};
+use manta_accounting::{
+    asset::{Asset, HashAssetMap},
+    wallet::signer::{self, AssetMapKey},
+};
+use manta_crypto::merkle_tree;
+
+/* TODO:
+impl signer::Configuration for Config {
+    type HierarchicalKeyDerivationScheme = TestnetKeySecret;
+    type UtxoSet = merkle_tree::full::FullMerkleTree<MerkleTreeConfiguration>;
+    type AssetMap = HashAssetMap<AssetMapKey<Self>>;
+    type Rng = rand_chacha::ChaCha20Rng;
+}
+
+///
+pub type Signer = signer::Signer<Config>;
+*/

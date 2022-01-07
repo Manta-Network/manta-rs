@@ -499,10 +499,10 @@ pub type NoteEncryptionScheme = encryption::Hybrid<
     >,
 >;
 
-/// Transfer Configuration
-pub struct TransferConfiguration;
+/// Base Configuration
+pub struct Config;
 
-impl transfer::Configuration for TransferConfiguration {
+impl transfer::Configuration for Config {
     type SecretKey = <Self::KeyAgreementScheme as key::KeyAgreementScheme>::SecretKey;
     type PublicKey = <Self::KeyAgreementScheme as key::KeyAgreementScheme>::PublicKey;
     type KeyAgreementScheme = KeyAgreementScheme;
@@ -538,19 +538,19 @@ impl transfer::Configuration for TransferConfiguration {
 }
 
 /// Transfer Parameters
-pub type Parameters = transfer::Parameters<TransferConfiguration>;
+pub type Parameters = transfer::Parameters<Config>;
 
 /// Full Transfer Parameters
-pub type FullParameters<'p> = transfer::FullParameters<'p, TransferConfiguration>;
+pub type FullParameters<'p> = transfer::FullParameters<'p, Config>;
 
 /// Mint Transfer Type
-pub type Mint = transfer::canonical::Mint<TransferConfiguration>;
+pub type Mint = transfer::canonical::Mint<Config>;
 
 /// Private Transfer Type
-pub type PrivateTransfer = transfer::canonical::PrivateTransfer<TransferConfiguration>;
+pub type PrivateTransfer = transfer::canonical::PrivateTransfer<Config>;
 
 /// Reclaim Transfer Type
-pub type Reclaim = transfer::canonical::Reclaim<TransferConfiguration>;
+pub type Reclaim = transfer::canonical::Reclaim<Config>;
 
 /// Transfer Post Type
-pub type TransferPost = transfer::TransferPost<TransferConfiguration>;
+pub type TransferPost = transfer::TransferPost<Config>;

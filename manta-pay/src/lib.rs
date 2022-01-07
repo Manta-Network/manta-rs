@@ -29,7 +29,7 @@ mod test;
 pub mod crypto;
 pub mod key;
 pub mod ledger;
-pub mod signer;
+pub mod wallet;
 
 #[cfg(all(feature = "arkworks", feature = "groth16"))]
 #[cfg_attr(doc_cfg, doc(cfg(all(feature = "arkworks", feature = "groth16"))))]
