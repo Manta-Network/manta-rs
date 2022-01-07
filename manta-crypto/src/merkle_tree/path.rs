@@ -1000,6 +1000,7 @@ pub mod constraint {
                 inner_indices: this
                     .leaf_index
                     .parents()
+                    .take(path_length_in::<C, _>())
                     .map(|i| i.is_right().as_known(compiler))
                     .collect(),
                 path: this.path.iter().map(|d| d.as_known(compiler)).collect(),

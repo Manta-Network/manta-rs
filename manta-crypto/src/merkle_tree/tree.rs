@@ -16,11 +16,13 @@
 
 //! Merkle Tree Abstractions
 
-// TODO: Should we get rid of the `H > 2` requirement, and find a way to give correct
-//       implementations for the trivial tree sizes?
-// TODO: Add "copy-on-write" adapters for `Root` and `Path`, and see if we can incorporate them
-//       into `Tree`.
-// TODO: Use uniform construction for `Path` and `PathVar`.
+// FIXME: Enforce that `Configuration` and `Configuration<COM>` use the same HEIGHT when used
+//        together.
+// TODO:  Should we get rid of the `H > 2` requirement, and find a way to give correct
+//        implementations for the trivial tree sizes?
+// TODO:  Add "copy-on-write" adapters for `Root` and `Path`, and see if we can incorporate them
+//        into `Tree`.
+// TODO:  Use uniform construction for `Path` and `PathVar`.
 
 use crate::{
     accumulator::{

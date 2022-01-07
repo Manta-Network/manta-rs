@@ -23,6 +23,7 @@ use crate::crypto::{
     hash::poseidon,
     key::Blake2sKdf,
 };
+use ark_ff::ToConstraintField;
 use bls12_381::Bls12_381;
 use bls12_381_ed::{
     constraints::EdwardsVar as Bls12_381_EdwardsVar, EdwardsProjective as Bls12_381_Edwards,
@@ -481,9 +482,7 @@ impl ProofSystemInput<Group> for ProofSystem {
     #[inline]
     fn extend(input: &mut Self::Input, next: &Group) {
         // FIXME: Make sure we can type check the coordinate system here.
-        let affine = next.0.into_affine();
-        input.push(affine.x);
-        input.push(affine.y);
+        input.append(&mut next.0.into_affine().to_field_elements().unwrap());
     }
 }
 

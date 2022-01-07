@@ -19,6 +19,8 @@
 // FIXME: Leverage the type system to constrain allocation to only unknown modes for verifier
 //        generation and only known modes for proof generation, instead of relying on the `for_*`
 //        methods to "do the right thing".
+// TODO:  Find ways to enforce public input structure, since it's very easy to extend the input
+//        vector by the wrong amount.
 
 use core::{fmt::Debug, hash::Hash, marker::PhantomData};
 use manta_util::{create_seal, seal};

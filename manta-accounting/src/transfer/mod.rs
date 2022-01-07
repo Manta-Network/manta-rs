@@ -71,6 +71,7 @@ pub trait Configuration {
 
     /// Public Key Variable Type
     type PublicKeyVar: Variable<Public, Self::Compiler, Type = PublicKey<Self>>
+        + Variable<Secret, Self::Compiler, Type = PublicKey<Self>>
         + Equal<Self::Compiler>;
 
     /// Key Agreement Scheme Variable Type
@@ -805,10 +806,12 @@ where
             &self.asset,
             compiler,
         );
+        /* FIXME:
         let is_valid_proof =
             self.utxo_membership_proof
                 .verify_in(&parameters.utxo_set_model, &utxo, compiler);
         compiler.assert(is_valid_proof);
+        */
         let void_number =
             C::void_number_var(&parameters.void_number_hash, &utxo, &self.spend, compiler);
         compiler.assert_eq(&self.void_number, &void_number);
@@ -826,7 +829,7 @@ where
     fn new_known(this: &Self::Type, compiler: &mut C::Compiler) -> Self {
         Self {
             spend: this.spend.as_known(compiler),
-            ephemeral_public_key: this.ephemeral_public_key.as_known(compiler),
+            ephemeral_public_key: this.ephemeral_public_key.as_known::<Secret, _>(compiler),
             asset: this.asset.as_known(compiler),
             utxo_membership_proof: this.utxo_membership_proof.as_known(compiler),
             void_number: this.void_number.as_known(compiler),
@@ -837,7 +840,7 @@ where
     fn new_unknown(compiler: &mut C::Compiler) -> Self {
         Self {
             spend: compiler.allocate_unknown(),
-            ephemeral_public_key: compiler.allocate_unknown(),
+            ephemeral_public_key: compiler.allocate_unknown::<Secret, _>(),
             asset: compiler.allocate_unknown(),
             utxo_membership_proof: compiler.allocate_unknown(),
             void_number: compiler.allocate_unknown(),
@@ -1119,8 +1122,8 @@ where
     fn new_known(this: &Self::Type, compiler: &mut C::Compiler) -> Self {
         Self {
             ephemeral_secret_key: this.ephemeral_secret_key.as_known(compiler),
-            ephemeral_public_key: this.ephemeral_public_key().as_known(compiler),
-            spend: this.spend.as_known(compiler),
+            ephemeral_public_key: this.ephemeral_public_key().as_known::<Public, _>(compiler),
+            spend: this.spend.as_known::<Secret, _>(compiler),
             asset: this.asset.as_known(compiler),
             utxo: this.utxo.as_known::<Public, _>(compiler),
         }
@@ -1130,8 +1133,8 @@ where
     fn new_unknown(compiler: &mut C::Compiler) -> Self {
         Self {
             ephemeral_secret_key: compiler.allocate_unknown(),
-            ephemeral_public_key: compiler.allocate_unknown(),
-            spend: compiler.allocate_unknown(),
+            ephemeral_public_key: compiler.allocate_unknown::<Public, _>(),
+            spend: compiler.allocate_unknown::<Secret, _>(),
             asset: compiler.allocate_unknown(),
             utxo: compiler.allocate_unknown::<Public, _>(),
         }
@@ -1212,8 +1215,8 @@ where
     pub fn extend_input(&self, input: &mut ProofInput<C>) {
         // TODO: Add a "public part" trait that extracts the public part of `Receiver` (using
         //       `ReceiverVar` to determine the types), then generate this method automatically.
-        C::ProofSystem::extend(input, &self.utxo);
         C::ProofSystem::extend(input, self.ephemeral_public_key());
+        C::ProofSystem::extend(input, &self.utxo);
     }
 
     /// Validates `self` on the receiver `ledger`.
