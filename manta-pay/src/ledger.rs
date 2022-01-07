@@ -16,9 +16,7 @@
 
 //! Ledger Implementation
 
-// FIXME: Migrate this to new ledger abstraction. This will most likely go to `wallet` since it
-//        represents the "native" ledger rather than the blockchain ledger.
-
+/*
 use crate::{
     accounting::{
         config::Configuration,
@@ -114,3 +112,4 @@ impl UtxoSetLedger {
         true
     }
 }
+*/

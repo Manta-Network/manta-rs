@@ -14,23 +14,4 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Manta Pay Implementation
-
-#![cfg_attr(not(any(feature = "std", test)), no_std)]
-#![cfg_attr(doc_cfg, feature(doc_cfg))]
-#![forbid(rustdoc::broken_intra_doc_links)]
-#![forbid(missing_docs)]
-
-extern crate alloc;
-
-#[cfg(test)]
-mod test;
-
-pub mod crypto;
-pub mod key;
-pub mod ledger;
-pub mod signer;
-
-#[cfg(all(feature = "arkworks", feature = "groth16"))]
-#[cfg_attr(doc_cfg, doc(cfg(all(feature = "arkworks", feature = "groth16"))))]
-pub mod config;
+//! Manta Pay Base Signer Implementation
