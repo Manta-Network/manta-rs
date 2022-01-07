@@ -806,12 +806,10 @@ where
             &self.asset,
             compiler,
         );
-        /* FIXME:
         let is_valid_proof =
             self.utxo_membership_proof
                 .verify_in(&parameters.utxo_set_model, &utxo, compiler);
         compiler.assert(is_valid_proof);
-        */
         let void_number =
             C::void_number_var(&parameters.void_number_hash, &utxo, &self.spend, compiler);
         compiler.assert_eq(&self.void_number, &void_number);

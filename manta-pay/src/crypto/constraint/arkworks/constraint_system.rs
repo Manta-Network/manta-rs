@@ -269,9 +269,14 @@ where
     F: PrimeField,
 {
     #[inline]
-    fn select(bit: &Boolean<F>, lhs: &Self, rhs: &Self, compiler: &mut R1CS<F>) -> Self {
+    fn select(
+        bit: &Boolean<F>,
+        true_value: &Self,
+        false_value: &Self,
+        compiler: &mut R1CS<F>,
+    ) -> Self {
         let _ = compiler;
-        Self::conditionally_select(bit, lhs, rhs)
+        Self::conditionally_select(bit, true_value, false_value)
             .expect("Conditionally selecting from two values is not allowed to fail.")
     }
 }

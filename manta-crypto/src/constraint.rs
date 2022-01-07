@@ -287,13 +287,13 @@ pub trait ConstraintSystem {
         V::assert_all_eq(iter, self);
     }
 
-    /// Selects `lhs` if `bit == 0` and `rhs` if `bit == 1`.
+    /// Selects `true_value` when `bit == 1` and `false_value` when `bit == 0`.
     #[inline]
-    fn conditional_select<V>(&mut self, bit: &Self::Bool, lhs: &V, rhs: &V) -> V
+    fn conditional_select<V>(&mut self, bit: &Self::Bool, true_value: &V, false_value: &V) -> V
     where
         V: ConditionalSelect<Self>,
     {
-        V::select(bit, lhs, rhs, self)
+        V::select(bit, true_value, false_value, self)
     }
 
     /// Swaps `lhs` and `rhs` if `bit == 1`.
@@ -371,8 +371,8 @@ pub trait ConditionalSelect<COM>
 where
     COM: ConstraintSystem + ?Sized,
 {
-    /// Selects `lhs` if `bit == 0` and `rhs` if `bit == 1`.
-    fn select(bit: &COM::Bool, lhs: &Self, rhs: &Self, compiler: &mut COM) -> Self;
+    /// Selects `true_value` when `bit == 1` and `false_value` when `bit == 0`.
+    fn select(bit: &COM::Bool, true_value: &Self, false_value: &Self, compiler: &mut COM) -> Self;
 
     /// Swaps `lhs` and `rhs` if `bit == 1`.
     #[inline]
@@ -381,8 +381,8 @@ where
         Self: Sized,
     {
         (
-            Self::select(bit, lhs, rhs, compiler),
             Self::select(bit, rhs, lhs, compiler),
+            Self::select(bit, lhs, rhs, compiler),
         )
     }
 

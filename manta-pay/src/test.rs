@@ -26,7 +26,6 @@ use rand::thread_rng;
 
 type UtxoSet = merkle_tree::full::FullMerkleTree<config::MerkleTreeConfiguration>;
 
-/*
 /// Tests the generation of proving/verifying contexts for [`Mint`].
 #[test]
 fn sample_mint_context() {
@@ -35,9 +34,7 @@ fn sample_mint_context() {
     println!("Mint: {:?}", cs.measure());
     config::ProofSystem::generate_context(cs, &mut rng).unwrap();
 }
-*/
 
-/*
 /// Tests the generation of proving/verifying contexts for [`PrivateTransfer`].
 #[test]
 fn sample_private_transfer_context() {
@@ -46,9 +43,7 @@ fn sample_private_transfer_context() {
     println!("PrivateTransfer: {:?}", cs.measure());
     config::ProofSystem::generate_context(cs, &mut rng).unwrap();
 }
-*/
 
-/*
 /// Tests the generation of proving/verifying contexts for [`Reclaim`].
 #[test]
 fn sample_reclaim_context() {
@@ -57,37 +52,6 @@ fn sample_reclaim_context() {
     println!("Reclaim: {:?}", cs.measure());
     config::ProofSystem::generate_context(cs, &mut rng).unwrap();
 }
-*/
-
-/*
-#[test]
-fn testing() {
-    let mut rng = thread_rng();
-
-    use manta_accounting::transfer::test::TransferDistribution;
-    use manta_crypto::{accumulator::Accumulator, rand::Sample};
-
-    let parameters = rng.gen();
-    let mut utxo_set = UtxoSet::new(rng.gen());
-    let transfer = Reclaim::sample(
-        TransferDistribution {
-            parameters: &parameters,
-            utxo_set: &mut utxo_set,
-        },
-        &mut rng,
-    );
-    let full_parameters = FullParameters::new(&parameters, utxo_set.model());
-
-    println!(
-        "Unknown {:?}",
-        Reclaim::unknown_constraints(full_parameters).measure()
-    );
-    println!(
-        "Known   {:?}",
-        transfer.known_constraints(full_parameters).measure()
-    );
-}
-*/
 
 /// Tests the generation of a [`Mint`].
 #[test]

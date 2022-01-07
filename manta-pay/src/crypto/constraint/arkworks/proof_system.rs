@@ -106,7 +106,6 @@ where
             ConstraintSynthesizerWrapper(cs),
             &mut SizedRng(rng),
         )?;
-        println!("VERIFYINGKEY: {:?}", verifying_key.gamma_abc_g1.len());
         Ok((proving_key, ArkGroth16::process_vk(&verifying_key)?))
     }
 
@@ -132,7 +131,6 @@ where
         proof: &Self::Proof,
         context: &Self::VerifyingContext,
     ) -> Result<Self::Verification, Self::Error> {
-        println!("INPUT: {:?}", input.len());
         ArkGroth16::verify_with_processed_vk(context, input, proof)
     }
 }
