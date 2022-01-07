@@ -19,7 +19,7 @@
 use crate::crypto::{
     constraint::arkworks::{Boolean, Fp, FpVar, Groth16, R1CS},
     ecc::{self, arkworks::ProjectiveCurve},
-    encryption::AesGcm,
+    encryption::aes::{self, AesGcm},
     hash::poseidon,
     key::Blake2sKdf,
 };
@@ -490,7 +490,10 @@ impl ProofSystemInput<Group> for ProofSystem {
 /// Note Encryption Scheme
 pub type NoteEncryptionScheme = encryption::Hybrid<
     KeyAgreementScheme,
-    encryption::ConstantSizeSymmetricKeyEncryption<{ Asset::SIZE }, AesGcm<{ Asset::SIZE }>, Asset>,
+    encryption::symmetric::Map<
+        AesGcm<{ Asset::SIZE }, { aes::ciphertext_size(Asset::SIZE) }>,
+        Asset,
+    >,
     key::kdf::FromByteVector<
         <KeyAgreementScheme as key::KeyAgreementScheme>::SharedSecret,
         Blake2sKdf,

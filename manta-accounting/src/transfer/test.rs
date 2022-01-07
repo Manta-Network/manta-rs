@@ -19,15 +19,15 @@
 use crate::{
     asset::{Asset, AssetId, AssetValue, AssetValueType},
     transfer::{
-        has_public_participants, Configuration, FullParameters, Parameters, ProofSystemError,
-        Receiver, Sender, Transfer, Utxo,
+        has_public_participants, Configuration, FullParameters, Parameters, PreSender,
+        ProofSystemError, Receiver, Sender, Transfer, Utxo,
     },
 };
 use alloc::vec::Vec;
-use core::marker::PhantomData;
 use manta_crypto::{
     accumulator::Accumulator,
     constraint::ProofSystem,
+    key::KeyAgreementScheme,
     rand::{CryptoRng, Rand, RngCore, Sample, Standard},
 };
 use manta_util::into_array_unchecked;
@@ -108,13 +108,17 @@ where
     }
 }
 
-///
-pub struct TransferDistribution<C>
+/// Transfer Distribution
+pub struct TransferDistribution<'p, C, A>
 where
     C: Configuration,
+    A: Accumulator<Item = Utxo<C>, Model = C::UtxoSetModel>,
 {
-    ///
-    __: PhantomData<C>,
+    /// Parameters
+    pub parameters: &'p Parameters<C>,
+
+    /// UTXO Set
+    pub utxo_set: &'p mut A,
 }
 
 impl<C, const SOURCES: usize, const SENDERS: usize, const RECEIVERS: usize, const SINKS: usize>
@@ -122,24 +126,28 @@ impl<C, const SOURCES: usize, const SENDERS: usize, const RECEIVERS: usize, cons
 where
     C: Configuration,
 {
-    ///
+    /// Samples a new [`Transfer`] and builds a correctness proof for it, checking if it was
+    /// validated.
     #[inline]
     pub fn sample_and_check_proof<A, R>(
         parameters: &Parameters<C>,
-        utxo_set: A,
+        utxo_set: &mut A,
         rng: &mut R,
     ) -> Result<bool, ProofSystemError<C>>
     where
         A: Accumulator<Item = Utxo<C>, Model = C::UtxoSetModel>,
         R: CryptoRng + RngCore + ?Sized,
     {
+        let transfer = Self::sample(
+            TransferDistribution {
+                parameters,
+                utxo_set,
+            },
+            rng,
+        );
         let full_parameters = FullParameters::new(parameters, utxo_set.model());
         let (proving_context, verifying_context) = Self::generate_context(full_parameters, rng)?;
-        let post = Self::sample(TransferDistribution { __: PhantomData }, rng).into_post(
-            full_parameters,
-            &proving_context,
-            rng,
-        )?;
+        let post = transfer.into_post(full_parameters, &proving_context, rng)?;
         C::ProofSystem::verify(
             &post.generate_proof_input(),
             &post.validity_proof,
@@ -148,37 +156,92 @@ where
     }
 }
 
-///
+/// Samples a set of senders and receivers.
 #[inline]
-fn sample_senders_and_receivers<C>(
+fn sample_senders_and_receivers<C, A, R>(
+    parameters: &Parameters<C>,
+    asset_id: AssetId,
     senders: &[AssetValue],
     receivers: &[AssetValue],
+    utxo_set: &mut A,
+    rng: &mut R,
 ) -> (Vec<Sender<C>>, Vec<Receiver<C>>)
 where
     C: Configuration,
+    A: Accumulator<Item = Utxo<C>, Model = C::UtxoSetModel>,
+    R: CryptoRng + RngCore + ?Sized,
 {
-    todo!()
+    (
+        senders
+            .iter()
+            .map(|v| {
+                let sender = PreSender::new(
+                    parameters,
+                    rng.gen(),
+                    C::KeyAgreementScheme::derive_owned(
+                        &parameters.key_agreement,
+                        rng.gen(),
+                        &mut (),
+                    ),
+                    asset_id.with(*v),
+                );
+                sender.insert_utxo(utxo_set);
+                sender.try_upgrade(utxo_set).unwrap()
+            })
+            .collect(),
+        receivers
+            .iter()
+            .map(|v| {
+                Receiver::new(
+                    parameters,
+                    rng.gen(),
+                    C::KeyAgreementScheme::derive_owned(
+                        &parameters.key_agreement,
+                        rng.gen(),
+                        &mut (),
+                    ),
+                    C::KeyAgreementScheme::derive_owned(
+                        &parameters.key_agreement,
+                        rng.gen(),
+                        &mut (),
+                    ),
+                    asset_id.with(*v),
+                )
+            })
+            .collect(),
+    )
 }
 
-impl<C, const SOURCES: usize, const SENDERS: usize, const RECEIVERS: usize, const SINKS: usize>
-    Sample<TransferDistribution<C>> for Transfer<C, SOURCES, SENDERS, RECEIVERS, SINKS>
+impl<
+        C,
+        A,
+        const SOURCES: usize,
+        const SENDERS: usize,
+        const RECEIVERS: usize,
+        const SINKS: usize,
+    > Sample<TransferDistribution<'_, C, A>> for Transfer<C, SOURCES, SENDERS, RECEIVERS, SINKS>
 where
     C: Configuration,
+    A: Accumulator<Item = Utxo<C>, Model = C::UtxoSetModel>,
 {
     #[inline]
-    fn sample<R>(distribution: TransferDistribution<C>, rng: &mut R) -> Self
+    fn sample<R>(distribution: TransferDistribution<'_, C, A>, rng: &mut R) -> Self
     where
         R: CryptoRng + RngCore + ?Sized,
     {
-        let asset: Asset = rng.gen();
-
+        let asset = Asset::gen(rng);
         let mut input = value_distribution(SOURCES + SENDERS, asset.value, rng);
         let mut output = value_distribution(RECEIVERS + SINKS, asset.value, rng);
         let secret_input = input.split_off(SOURCES);
         let public_output = output.split_off(RECEIVERS);
-
-        let (senders, receivers) = sample_senders_and_receivers(&secret_input, &output);
-
+        let (senders, receivers) = sample_senders_and_receivers(
+            distribution.parameters,
+            asset.id,
+            &secret_input,
+            &output,
+            distribution.utxo_set,
+            rng,
+        );
         Self::new(
             has_public_participants(SOURCES, SENDERS, RECEIVERS, SINKS).then(|| asset.id),
             into_array_unchecked(input),
@@ -186,23 +249,5 @@ where
             into_array_unchecked(receivers),
             into_array_unchecked(public_output),
         )
-
-        /*
-        Ok(Self {
-            public: PublicTransfer::new(
-                asset.id,
-                into_array_unchecked(input),
-                into_array_unchecked(public_output),
-            ),
-            secret: distribution::FixedSecretTransfer::try_sample_custom_distribution(
-                asset.id,
-                into_array_unchecked(secret_input),
-                into_array_unchecked(output),
-                distribution.base.commitment_scheme,
-                distribution.base.utxo_set,
-                rng,
-            )?,
-        })
-        */
     }
 }

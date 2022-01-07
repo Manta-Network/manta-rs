@@ -27,7 +27,10 @@ where
 {
     match v.try_into() {
         Ok(array) => array,
-        _ => unreachable!("User was supposed to ensure that this branch is never reached."),
+        _ => unreachable!(
+            "Input did not have the correct length to match the output slice of length {:?}.",
+            N,
+        ),
     }
 }
 

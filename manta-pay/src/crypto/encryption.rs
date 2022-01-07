@@ -18,45 +18,59 @@
 
 // FIXME: Don't use raw bytes as encryption/decryption key.
 
-use aes_gcm::{
-    aead::{Aead, NewAead},
-    Aes256Gcm, Nonce,
-};
-use generic_array::GenericArray;
-use manta_crypto::encryption::SymmetricKeyEncryptionScheme;
-use manta_util::into_array_unchecked;
+/// AES Encryption Implementation
+pub mod aes {
+    use aes_gcm::{
+        aead::{Aead, NewAead},
+        Aes256Gcm, Nonce,
+    };
+    use generic_array::GenericArray;
+    use manta_crypto::encryption::SymmetricKeyEncryptionScheme;
+    use manta_util::into_array_unchecked;
 
-/// AES Galois Counter Mode
-pub struct AesGcm<const SIZE: usize>;
+    /// AES-GCM Authentication Tag Size
+    #[allow(clippy::cast_possible_truncation)] // NOTE: GCM Tag Size should be smaller than `2^32`.
+    const TAG_SIZE: usize = (aes_gcm::C_MAX - aes_gcm::P_MAX) as usize;
 
-impl<const SIZE: usize> AesGcm<SIZE> {
-    /// Encryption/Decryption Nonce
-    const NONCE: &'static [u8] = b"manta rocks!";
-}
-
-impl<const SIZE: usize> SymmetricKeyEncryptionScheme for AesGcm<SIZE> {
-    type Key = [u8; 32];
-
-    type Plaintext = [u8; SIZE];
-
-    type Ciphertext = [u8; SIZE];
-
+    /// Computes the size of the ciphertext corresponding to a plaintext of the given
+    /// `plaintext_size`.
     #[inline]
-    fn encrypt(key: Self::Key, plaintext: Self::Plaintext) -> Self::Ciphertext {
-        // SAFETY: Using a deterministic nonce is ok since we never reuse keys.
-        into_array_unchecked(
-            Aes256Gcm::new(GenericArray::from_slice(&key))
-                .encrypt(Nonce::from_slice(Self::NONCE), plaintext.as_ref())
-                .expect("Symmetric encryption is not allowed to fail."),
-        )
+    pub const fn ciphertext_size(plaintext_size: usize) -> usize {
+        plaintext_size + TAG_SIZE
     }
 
-    #[inline]
-    fn decrypt(key: Self::Key, ciphertext: &Self::Ciphertext) -> Option<Self::Plaintext> {
-        // SAFETY: Using a deterministic nonce is ok since we never reuse keys.
-        Aes256Gcm::new(GenericArray::from_slice(&key))
-            .decrypt(Nonce::from_slice(Self::NONCE), ciphertext.as_ref())
-            .ok()
-            .map(into_array_unchecked)
+    /// AES Galois Counter Mode
+    pub struct AesGcm<const P: usize, const C: usize>;
+
+    impl<const P: usize, const C: usize> AesGcm<P, C> {
+        /// Encryption/Decryption Nonce
+        const NONCE: &'static [u8] = b"manta rocks!";
+    }
+
+    impl<const P: usize, const C: usize> SymmetricKeyEncryptionScheme for AesGcm<P, C> {
+        type Key = [u8; 32];
+
+        type Plaintext = [u8; P];
+
+        type Ciphertext = [u8; C];
+
+        #[inline]
+        fn encrypt(key: Self::Key, plaintext: Self::Plaintext) -> Self::Ciphertext {
+            // SAFETY: Using a deterministic nonce is ok since we never reuse keys.
+            into_array_unchecked(
+                Aes256Gcm::new(GenericArray::from_slice(&key))
+                    .encrypt(Nonce::from_slice(Self::NONCE), plaintext.as_ref())
+                    .expect("Symmetric encryption is not allowed to fail."),
+            )
+        }
+
+        #[inline]
+        fn decrypt(key: Self::Key, ciphertext: &Self::Ciphertext) -> Option<Self::Plaintext> {
+            // SAFETY: Using a deterministic nonce is ok since we never reuse keys.
+            Aes256Gcm::new(GenericArray::from_slice(&key))
+                .decrypt(Nonce::from_slice(Self::NONCE), ciphertext.as_ref())
+                .ok()
+                .map(into_array_unchecked)
+        }
     }
 }

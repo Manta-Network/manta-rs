@@ -49,38 +49,38 @@ pub trait SymmetricKeyEncryptionScheme {
     fn decrypt(key: Self::Key, ciphertext: &Self::Ciphertext) -> Option<Self::Plaintext>;
 }
 
-/// Constant-Size Symmetric-Key Encryption Scheme
-#[derive(derivative::Derivative)]
-#[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct ConstantSizeSymmetricKeyEncryption<const SIZE: usize, S, P = [u8; SIZE]>
-where
-    S: SymmetricKeyEncryptionScheme<Plaintext = [u8; SIZE], Ciphertext = [u8; SIZE]>,
-    P: Into<[u8; SIZE]> + TryFrom<[u8; SIZE]>,
-{
-    /// Type Parameter Marker
-    __: PhantomData<(S, P)>,
-}
+/// Symmetric Encryption
+pub mod symmetric {
+    use super::*;
 
-impl<const SIZE: usize, S, P> SymmetricKeyEncryptionScheme
-    for ConstantSizeSymmetricKeyEncryption<SIZE, S, P>
-where
-    S: SymmetricKeyEncryptionScheme<Plaintext = [u8; SIZE], Ciphertext = [u8; SIZE]>,
-    P: Into<[u8; SIZE]> + TryFrom<[u8; SIZE]>,
-{
-    type Key = S::Key;
+    /// Mapped Symmetric Encryption Scheme
+    #[derive(derivative::Derivative)]
+    #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    pub struct Map<S, P = <S as SymmetricKeyEncryptionScheme>::Plaintext>(PhantomData<(S, P)>)
+    where
+        S: SymmetricKeyEncryptionScheme,
+        P: Into<S::Plaintext> + TryFrom<S::Plaintext>;
 
-    type Plaintext = P;
+    impl<S, P> SymmetricKeyEncryptionScheme for Map<S, P>
+    where
+        S: SymmetricKeyEncryptionScheme,
+        P: Into<S::Plaintext> + TryFrom<S::Plaintext>,
+    {
+        type Key = S::Key;
 
-    type Ciphertext = [u8; SIZE];
+        type Plaintext = P;
 
-    #[inline]
-    fn encrypt(key: Self::Key, plaintext: Self::Plaintext) -> Self::Ciphertext {
-        S::encrypt(key, plaintext.into())
-    }
+        type Ciphertext = S::Ciphertext;
 
-    #[inline]
-    fn decrypt(key: Self::Key, ciphertext: &Self::Ciphertext) -> Option<Self::Plaintext> {
-        S::decrypt(key, ciphertext).and_then(move |p| p.try_into().ok())
+        #[inline]
+        fn encrypt(key: Self::Key, plaintext: Self::Plaintext) -> Self::Ciphertext {
+            S::encrypt(key, plaintext.into())
+        }
+
+        #[inline]
+        fn decrypt(key: Self::Key, ciphertext: &Self::Ciphertext) -> Option<Self::Plaintext> {
+            S::decrypt(key, ciphertext).and_then(move |p| p.try_into().ok())
+        }
     }
 }
 
@@ -132,15 +132,11 @@ pub type PublicKey<H> =
 /// [`agree_derive`]: HybridPublicKeyEncryptionScheme::agree_derive
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct Hybrid<K, S, F>
+pub struct Hybrid<K, S, F>(PhantomData<(K, S, F)>)
 where
     K: KeyAgreementScheme,
     S: SymmetricKeyEncryptionScheme,
-    F: KeyDerivationFunction<Key = K::SharedSecret, Output = S::Key>,
-{
-    /// Type Parameter Marker
-    __: PhantomData<(K, S, F)>,
-}
+    F: KeyDerivationFunction<Key = K::SharedSecret, Output = S::Key>;
 
 impl<K, S, F> SymmetricKeyEncryptionScheme for Hybrid<K, S, F>
 where

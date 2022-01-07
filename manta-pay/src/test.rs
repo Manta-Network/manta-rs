@@ -19,10 +19,14 @@
 use crate::config::{self, FullParameters, Mint, PrivateTransfer, Reclaim};
 use manta_crypto::{
     constraint::{measure::Measure, ProofSystem},
+    merkle_tree,
     rand::Rand,
 };
 use rand::thread_rng;
 
+type UtxoSet = merkle_tree::full::FullMerkleTree<config::MerkleTreeConfiguration>;
+
+/*
 /// Tests the generation of proving/verifying contexts for [`Mint`].
 #[test]
 fn sample_mint_context() {
@@ -49,18 +53,18 @@ fn sample_reclaim_context() {
     println!("Reclaim: {:?}", cs.measure());
     config::ProofSystem::generate_context(cs, &mut rng).unwrap();
 }
+*/
 
-/*
 /// Tests the generation of a [`Mint`].
 #[test]
 fn mint() {
     let mut rng = thread_rng();
-    assert!(matches!(
-        Mint::sample_and_check_proof(&rng.gen(), &mut UtxoSet::new(rng.gen()), &mut rng),
-        Ok(true)
-    ));
+    let result = Mint::sample_and_check_proof(&rng.gen(), &mut UtxoSet::new(rng.gen()), &mut rng);
+    println!("Mint: {:?}", result);
+    assert!(matches!(result, Ok(true)));
 }
 
+/*
 /// Tests the generation of a [`PrivateTransfer`].
 #[test]
 fn private_transfer() {
