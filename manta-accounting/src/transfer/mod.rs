@@ -859,7 +859,7 @@ where
     /// implementation of [`SenderLedger`]. This is to prevent that [`spend`](Self::spend) is
     /// called before [`is_unspent`](Self::is_unspent) and
     /// [`has_matching_utxo_set_output`](Self::has_matching_utxo_set_output).
-    type ValidVoidNumber;
+    type ValidVoidNumber: AsRef<VoidNumber<C>>;
 
     /// Valid UTXO Set Output Posting Key
     ///
@@ -871,7 +871,7 @@ where
     /// [`has_matching_utxo_set_output`](Self::has_matching_utxo_set_output).
     ///
     /// [`S::Output`]: Model::Output
-    type ValidUtxoSetOutput;
+    type ValidUtxoSetOutput: AsRef<UtxoSetOutput<C>>;
 
     /// Super Posting Key
     ///
@@ -981,6 +981,13 @@ where
     C: Configuration,
     L: SenderLedger<C> + ?Sized,
 {
+    /// Extends proof public input with `self`.
+    #[inline]
+    pub fn extend_input(&self, input: &mut ProofInput<C>) {
+        C::ProofSystem::extend(input, self.utxo_set_output.as_ref());
+        C::ProofSystem::extend(input, self.void_number.as_ref());
+    }
+
     /// Posts `self` to the sender `ledger`.
     #[inline]
     pub fn post(self, super_key: &L::SuperPostingKey, ledger: &mut L) {
@@ -1151,7 +1158,7 @@ where
     /// This type must be some wrapper around [`Utxo`] which can only be constructed by this
     /// implementation of [`ReceiverLedger`]. This is to prevent that [`register`](Self::register)
     /// is called before [`is_not_registered`](Self::is_not_registered).
-    type ValidUtxo;
+    type ValidUtxo: AsRef<Utxo<C>>;
 
     /// Super Posting Key
     ///
@@ -1250,6 +1257,19 @@ where
     C: Configuration,
     L: ReceiverLedger<C> + ?Sized,
 {
+    /// Returns the ephemeral public key associated to `self`.
+    #[inline]
+    pub fn ephemeral_public_key(&self) -> &PublicKey<C> {
+        self.note.ephemeral_public_key()
+    }
+
+    /// Extends proof public input with `self`.
+    #[inline]
+    pub fn extend_input(&self, input: &mut ProofInput<C>) {
+        C::ProofSystem::extend(input, self.ephemeral_public_key());
+        C::ProofSystem::extend(input, self.utxo.as_ref());
+    }
+
     /// Posts `self` to the receiver `ledger`.
     #[inline]
     pub fn post(self, super_key: &L::SuperPostingKey, ledger: &mut L) {
@@ -1577,13 +1597,24 @@ pub trait TransferLedger<C>: SenderLedger<C, SuperPostingKey = (Self::ValidProof
 where
     C: Configuration,
 {
-    /// Valid [`AssetValue`] for [`TransferPost`] source
+    /// Account Identifier
+    type AccountId;
+
+    /// Valid [`AssetValue`] for [`TransferPost`] Source
     ///
     /// # Safety
     ///
     /// This type must be restricted so that it can only be constructed by this implementation of
     /// [`TransferLedger`].
-    type ValidSourceBalance;
+    type ValidSourceAccount: AsRef<AssetValue>;
+
+    /// Valid [`AssetValue`] for [`TransferPost`] Sink
+    ///
+    /// # Safety
+    ///
+    /// This type must be restricted so that it can only be constructed by this implementation of
+    /// [`TransferLedger`].
+    type ValidSinkAccount: AsRef<AssetValue>;
 
     /// Valid [`Proof`] Posting Key
     ///
@@ -1592,8 +1623,8 @@ where
     /// This type must be restricted so that it can only be constructed by this implementation
     /// of [`TransferLedger`]. This is to prevent that [`SenderPostingKey::post`] and
     /// [`ReceiverPostingKey::post`] are called before [`SenderPost::validate`],
-    /// [`ReceiverPost::validate`], [`check_source_balances`](Self::check_source_balances), and
-    /// [`is_valid`](Self::is_valid).
+    /// [`ReceiverPost::validate`], [`check_source_accounts`](Self::check_source_accounts),
+    /// [`check_sink_accounts`](Self::check_sink_accounts) and [`is_valid`](Self::is_valid).
     type ValidProof: Copy;
 
     /// Super Posting Key
@@ -1603,20 +1634,30 @@ where
 
     /// Checks that the balances associated to the source accounts are sufficient to withdraw the
     /// amount given in `sources`.
-    fn check_source_balances(
+    fn check_source_accounts(
         &self,
+        asset_id: Option<AssetId>,
+        accounts: Vec<Self::AccountId>,
         sources: Vec<AssetValue>,
-    ) -> Result<Vec<Self::ValidSourceBalance>, InsufficientPublicBalance>;
+    ) -> Result<Vec<Self::ValidSourceAccount>, InvalidSourceAccounts<Self::AccountId>>;
+
+    /// Checks that the sink accounts exist.
+    fn check_sink_accounts(
+        &self,
+        asset_id: Option<AssetId>,
+        accounts: Vec<Self::AccountId>,
+        sinks: Vec<AssetValue>,
+    ) -> Result<Vec<Self::ValidSinkAccount>, InvalidSinkAccounts<Self::AccountId>>;
 
     /// Checks that the transfer `proof` is valid.
     #[allow(clippy::too_many_arguments)] // FIXME: Write a better abstraction for this.
     fn is_valid(
         &self,
         asset_id: Option<AssetId>,
-        sources: &[Self::ValidSourceBalance],
+        sources: &[SourcePostingKey<C, Self>],
         senders: &[SenderPostingKey<C, Self>],
         receivers: &[ReceiverPostingKey<C, Self>],
-        sinks: &[AssetValue],
+        sinks: &[SinkPostingKey<C, Self>],
         proof: Proof<C>,
     ) -> Option<Self::ValidProof>;
 
@@ -1630,33 +1671,68 @@ where
     fn update_public_balances(
         &mut self,
         asset_id: AssetId,
-        sources: Vec<Self::ValidSourceBalance>,
-        sinks: Vec<AssetValue>,
+        sources: Vec<SourcePostingKey<C, Self>>,
+        sinks: Vec<SinkPostingKey<C, Self>>,
         proof: Self::ValidProof,
         super_key: &TransferLedgerSuperPostingKey<C, Self>,
     );
 }
 
 /// Transfer Source Posting Key Type
-pub type SourcePostingKey<C, L> = <L as TransferLedger<C>>::ValidSourceBalance;
+pub type SourcePostingKey<C, L> = <L as TransferLedger<C>>::ValidSourceAccount;
+
+/// Transfer Sink Posting Key Type
+pub type SinkPostingKey<C, L> = <L as TransferLedger<C>>::ValidSinkAccount;
 
 /// Transfer Ledger Super Posting Key Type
 pub type TransferLedgerSuperPostingKey<C, L> = <L as TransferLedger<C>>::SuperPostingKey;
 
-/// Insufficient Public Balance Error
+/// Account Balance
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum AccountBalance {
+    /// Known Balance
+    Known(AssetValue),
+
+    /// Unknown Account
+    UnknownAccount,
+}
+
+/// Invalid Source Accounts
 ///
-/// This `enum` is the error state of the [`TransferLedger::check_source_balances`] method. See its
+/// This `enum` is the error state of the [`TransferLedger::check_source_accounts`] method. See its
 /// documentation for more.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub struct InsufficientPublicBalance {
-    /// Index of the Public Address
-    pub index: usize,
+pub enum InvalidSourceAccounts<AccountId> {
+    /// Invalid Transfer Shape
+    InvalidShape,
 
-    /// Current Balance
-    pub balance: AssetValue,
+    /// Account is Unknown or would be Overdraw
+    BadAccount {
+        /// Account Id
+        account_id: AccountId,
 
-    /// Amount Attempting to Withdraw
-    pub withdraw: AssetValue,
+        /// Current Balance if Known
+        balance: AccountBalance,
+
+        /// Amount Attempting to Withdraw
+        withdraw: AssetValue,
+    },
+}
+
+/// Invalid Sink Accounts
+///
+/// This `enum` is the error state of the [`TransferLedger::check_sink_accounts`] method. See its
+/// documentation for more.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum InvalidSinkAccounts<AccountId> {
+    /// Invalid Transfer Shape
+    InvalidShape,
+
+    /// Account is Unknown
+    BadAccount {
+        /// Account Id
+        account_id: AccountId,
+    },
 }
 
 /// Transfer Post Error
@@ -1664,9 +1740,12 @@ pub struct InsufficientPublicBalance {
 /// This `enum` is the error state of the [`TransferPost::validate`] method. See its documentation
 /// for more.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum TransferPostError {
-    /// Insufficient Public Balance
-    InsufficientPublicBalance(InsufficientPublicBalance),
+pub enum TransferPostError<AccountId> {
+    /// Invalid Source Accounts
+    InvalidSourceAccounts(InvalidSourceAccounts<AccountId>),
+
+    /// Invalid Sink Accounts
+    InvalidSinkAccounts(InvalidSinkAccounts<AccountId>),
 
     /// Sender Post Error
     Sender(SenderPostError),
@@ -1686,8 +1765,33 @@ pub enum TransferPostError {
     InvalidProof,
 }
 
-from_variant_impl!(TransferPostError, Sender, SenderPostError);
-from_variant_impl!(TransferPostError, Receiver, ReceiverPostError);
+impl<AccountId> From<InvalidSourceAccounts<AccountId>> for TransferPostError<AccountId> {
+    #[inline]
+    fn from(err: InvalidSourceAccounts<AccountId>) -> Self {
+        Self::InvalidSourceAccounts(err)
+    }
+}
+
+impl<AccountId> From<InvalidSinkAccounts<AccountId>> for TransferPostError<AccountId> {
+    #[inline]
+    fn from(err: InvalidSinkAccounts<AccountId>) -> Self {
+        Self::InvalidSinkAccounts(err)
+    }
+}
+
+impl<AccountId> From<SenderPostError> for TransferPostError<AccountId> {
+    #[inline]
+    fn from(err: SenderPostError) -> Self {
+        Self::Sender(err)
+    }
+}
+
+impl<AccountId> From<ReceiverPostError> for TransferPostError<AccountId> {
+    #[inline]
+    fn from(err: ReceiverPostError) -> Self {
+        Self::Receiver(err)
+    }
+}
 
 /// Transfer Post
 pub struct TransferPost<C>
@@ -1741,13 +1845,19 @@ where
 
     /// Validates `self` on the transfer `ledger`.
     #[inline]
-    pub fn validate<L>(self, ledger: &L) -> Result<TransferPostingKey<C, L>, TransferPostError>
+    pub fn validate<L>(
+        self,
+        source_accounts: Vec<L::AccountId>,
+        sink_accounts: Vec<L::AccountId>,
+        ledger: &L,
+    ) -> Result<TransferPostingKey<C, L>, TransferPostError<L::AccountId>>
     where
         L: TransferLedger<C>,
     {
-        let source_posting_keys = ledger
-            .check_source_balances(self.sources)
-            .map_err(TransferPostError::InsufficientPublicBalance)?;
+        let source_posting_keys =
+            ledger.check_source_accounts(self.asset_id, source_accounts, self.sources)?;
+        let sink_posting_keys =
+            ledger.check_sink_accounts(self.asset_id, sink_accounts, self.sinks)?;
         for (i, p) in self.sender_posts.iter().enumerate() {
             if self
                 .sender_posts
@@ -1784,7 +1894,7 @@ where
                 &source_posting_keys,
                 &sender_posting_keys,
                 &receiver_posting_keys,
-                &self.sinks,
+                &sink_posting_keys,
                 self.validity_proof,
             ) {
                 Some(key) => key,
@@ -1794,7 +1904,7 @@ where
             source_posting_keys,
             sender_posting_keys,
             receiver_posting_keys,
-            sinks: self.sinks,
+            sink_posting_keys,
         })
     }
 }
@@ -1817,8 +1927,8 @@ where
     /// Receiver Posting Keys
     receiver_posting_keys: Vec<ReceiverPostingKey<C, L>>,
 
-    /// Sinks
-    sinks: Vec<AssetValue>,
+    /// Sink Posting Keys
+    sink_posting_keys: Vec<SinkPostingKey<C, L>>,
 
     /// Validity Proof Posting Key
     validity_proof: L::ValidProof,
@@ -1829,6 +1939,34 @@ where
     C: Configuration,
     L: TransferLedger<C>,
 {
+    /// Generates the public input for the [`Transfer`] validation proof.
+    #[inline]
+    pub fn generate_proof_input(
+        asset_id: Option<AssetId>,
+        sources: &[SourcePostingKey<C, L>],
+        senders: &[SenderPostingKey<C, L>],
+        receivers: &[ReceiverPostingKey<C, L>],
+        sinks: &[SinkPostingKey<C, L>],
+    ) -> ProofInput<C> {
+        let mut input = Default::default();
+        if let Some(asset_id) = asset_id {
+            C::ProofSystem::extend(&mut input, &asset_id);
+        }
+        sources
+            .iter()
+            .for_each(|source| C::ProofSystem::extend(&mut input, source.as_ref()));
+        senders
+            .iter()
+            .for_each(|post| post.extend_input(&mut input));
+        receivers
+            .iter()
+            .for_each(|post| post.extend_input(&mut input));
+        sinks
+            .iter()
+            .for_each(|sink| C::ProofSystem::extend(&mut input, sink.as_ref()));
+        input
+    }
+
     /// Posts `self` to the transfer `ledger`.
     ///
     /// # Safety
@@ -1849,7 +1987,7 @@ where
             ledger.update_public_balances(
                 asset_id,
                 self.source_posting_keys,
-                self.sinks,
+                self.sink_posting_keys,
                 proof,
                 super_key,
             );

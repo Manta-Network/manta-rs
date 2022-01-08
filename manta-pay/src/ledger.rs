@@ -17,20 +17,17 @@
 //! Ledger Implementation
 
 use crate::config::{
-    Config, EncryptedNote, MerkleTreeConfiguration, ProofSystem, Utxo, VerifyingContext, VoidNumber,
+    Config, EncryptedNote, MerkleTreeConfiguration, ProofSystem, Utxo, VoidNumber,
 };
 use manta_accounting::{
     asset::{AssetId, AssetValue},
     transfer::{
-        self, InsufficientPublicBalance, Proof, ReceiverLedger, ReceiverPostingKey, SenderLedger,
-        SenderPostingKey, TransferLedger, TransferLedgerSuperPostingKey, UtxoSetOutput,
+        self, AccountBalance, InvalidSinkAccounts, InvalidSourceAccounts, Proof, ReceiverLedger,
+        ReceiverPostingKey, SenderLedger, SenderPostingKey, SinkPostingKey, SourcePostingKey,
+        TransferLedger, TransferLedgerSuperPostingKey, TransferPostingKey, UtxoSetOutput,
     },
 };
-use manta_crypto::{
-    constraint::{Input as ProofSystemInput, ProofSystem as _},
-    merkle_tree,
-    merkle_tree::forest::Configuration,
-};
+use manta_crypto::{constraint::ProofSystem as _, merkle_tree, merkle_tree::forest::Configuration};
 use std::collections::{HashMap, HashSet};
 
 /// UTXO Merkle Forest Type
@@ -43,6 +40,24 @@ pub type UtxoMerkleForest = merkle_tree::forest::TreeArrayMerkleForest<
 /// Wrap Type
 #[derive(Clone, Copy)]
 pub struct Wrap<T>(T);
+
+impl<T> AsRef<T> for Wrap<T> {
+    #[inline]
+    fn as_ref(&self) -> &T {
+        &self.0
+    }
+}
+
+/// Wrap Pair Type
+#[derive(Clone, Copy)]
+pub struct WrapPair<L, R>(L, R);
+
+impl<L, R> AsRef<R> for WrapPair<L, R> {
+    #[inline]
+    fn as_ref(&self) -> &R {
+        &self.1
+    }
+}
 
 /// Ledger
 pub struct Ledger {
@@ -57,6 +72,9 @@ pub struct Ledger {
 
     /// UTXO Forest
     utxo_forest: UtxoMerkleForest,
+
+    /// Account Table
+    accounts: HashMap<u128, HashMap<AssetId, AssetValue>>,
 
     /// Verifying Contexts
     verifying_context: transfer::canonical::VerifyingContext<Config>,
@@ -132,27 +150,93 @@ impl ReceiverLedger<Config> for Ledger {
 }
 
 impl TransferLedger<Config> for Ledger {
-    type ValidSourceBalance = Wrap<AssetValue>;
+    type AccountId = u128;
+    type ValidSourceAccount = WrapPair<Self::AccountId, AssetValue>;
+    type ValidSinkAccount = WrapPair<Self::AccountId, AssetValue>;
     type ValidProof = Wrap<()>;
     type SuperPostingKey = ();
 
     #[inline]
-    fn check_source_balances(
+    fn check_source_accounts(
         &self,
+        asset_id: Option<AssetId>,
+        accounts: Vec<Self::AccountId>,
         sources: Vec<AssetValue>,
-    ) -> Result<Vec<Self::ValidSourceBalance>, InsufficientPublicBalance> {
-        // FIXME: This can only be implemented on the actual ledger.
-        Ok(sources.into_iter().map(Wrap).collect())
+    ) -> Result<Vec<Self::ValidSourceAccount>, InvalidSourceAccounts<Self::AccountId>> {
+        if let Some(asset_id) = asset_id {
+            let mut valid_source_accounts = Vec::new();
+            for (account_id, withdraw) in accounts.into_iter().zip(sources) {
+                match self.accounts.get(&account_id) {
+                    Some(map) => match map.get(&asset_id) {
+                        Some(balance) => {
+                            if balance >= &withdraw {
+                                valid_source_accounts.push(WrapPair(account_id, withdraw));
+                            } else {
+                                return Err(InvalidSourceAccounts::BadAccount {
+                                    account_id,
+                                    balance: AccountBalance::Known(*balance),
+                                    withdraw,
+                                });
+                            }
+                        }
+                        _ => {
+                            // FIXME: What about zero values in `sources`?
+                            return Err(InvalidSourceAccounts::BadAccount {
+                                account_id,
+                                balance: AccountBalance::Known(AssetValue(0)),
+                                withdraw,
+                            });
+                        }
+                    },
+                    _ => {
+                        return Err(InvalidSourceAccounts::BadAccount {
+                            account_id,
+                            balance: AccountBalance::UnknownAccount,
+                            withdraw,
+                        });
+                    }
+                }
+            }
+            Ok(valid_source_accounts)
+        } else if accounts.is_empty() && sources.is_empty() {
+            Ok(Vec::new())
+        } else {
+            Err(InvalidSourceAccounts::InvalidShape)
+        }
+    }
+
+    #[inline]
+    fn check_sink_accounts(
+        &self,
+        asset_id: Option<AssetId>,
+        accounts: Vec<Self::AccountId>,
+        sinks: Vec<AssetValue>,
+    ) -> Result<Vec<Self::ValidSinkAccount>, InvalidSinkAccounts<Self::AccountId>> {
+        if asset_id.is_some() {
+            let mut valid_sink_accounts = Vec::new();
+            for (account_id, deposit) in accounts.into_iter().zip(sinks) {
+                if self.accounts.contains_key(&account_id) {
+                    valid_sink_accounts.push(WrapPair(account_id, deposit));
+                } else {
+                    return Err(InvalidSinkAccounts::BadAccount { account_id });
+                }
+            }
+            Ok(valid_sink_accounts)
+        } else if accounts.is_empty() && sinks.is_empty() {
+            Ok(Vec::new())
+        } else {
+            Err(InvalidSinkAccounts::InvalidShape)
+        }
     }
 
     #[inline]
     fn is_valid(
         &self,
         asset_id: Option<AssetId>,
-        sources: &[Self::ValidSourceBalance],
+        sources: &[SourcePostingKey<Config, Self>],
         senders: &[SenderPostingKey<Config, Self>],
         receivers: &[ReceiverPostingKey<Config, Self>],
-        sinks: &[AssetValue],
+        sinks: &[SinkPostingKey<Config, Self>],
         proof: Proof<Config>,
     ) -> Option<Self::ValidProof> {
         let verifying_context = self.verifying_context.select(
@@ -162,41 +246,40 @@ impl TransferLedger<Config> for Ledger {
             receivers.len(),
             sinks.len(),
         )?;
-
-        let mut input = Default::default();
-        if let Some(asset_id) = asset_id {
-            ProofSystem::extend(&mut input, &asset_id);
-        }
-        sources
-            .iter()
-            .for_each(|source| ProofSystem::extend(&mut input, &source.0));
-        senders.iter().for_each(|sender| {
-            // ...
-            todo!()
-        });
-        receivers.iter().for_each(|receiver| {
-            // ...
-            todo!()
-        });
-        sinks
-            .iter()
-            .for_each(|sink| ProofSystem::extend(&mut input, sink));
-
-        ProofSystem::verify(&input, &proof, verifying_context)
-            .ok()?
-            .then(move || Wrap(()))
+        ProofSystem::verify(
+            &TransferPostingKey::generate_proof_input(asset_id, sources, senders, receivers, sinks),
+            &proof,
+            verifying_context,
+        )
+        .ok()?
+        .then(move || Wrap(()))
     }
 
     #[inline]
     fn update_public_balances(
         &mut self,
         asset_id: AssetId,
-        sources: Vec<Self::ValidSourceBalance>,
-        sinks: Vec<AssetValue>,
+        sources: Vec<SourcePostingKey<Config, Self>>,
+        sinks: Vec<SinkPostingKey<Config, Self>>,
         proof: Self::ValidProof,
         super_key: &TransferLedgerSuperPostingKey<Config, Self>,
     ) {
-        // FIXME: This can only be implemented on the real ledger.
-        let _ = (asset_id, sources, sinks, proof, super_key);
+        let _ = (proof, super_key);
+        for WrapPair(account_id, withdraw) in sources {
+            *self
+                .accounts
+                .get_mut(&account_id)
+                .expect("We checked that this account exists.")
+                .get_mut(&asset_id)
+                .expect("We checked that this account has enough balance to withdraw.") -= withdraw;
+        }
+        for WrapPair(account_id, deposit) in sinks {
+            *self
+                .accounts
+                .get_mut(&account_id)
+                .expect("We checked that this account exists.")
+                .entry(asset_id)
+                .or_default() += deposit;
+        }
     }
 }
