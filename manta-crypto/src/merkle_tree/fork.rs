@@ -484,13 +484,13 @@ where
         self.branch.root()
     }
 
-    ///
+    /// Returns the leaf digest at the given `index` in the tree.
     #[inline]
     pub fn leaf_digest(&self, index: usize) -> Option<&LeafDigest<C>> {
         self.branch.leaf_digest(index)
     }
 
-    ///
+    /// Returns the position of `leaf_digest` in the tree.
     #[inline]
     pub fn position(&self, leaf_digest: &LeafDigest<C>) -> Option<usize>
     where
@@ -499,13 +499,13 @@ where
         self.branch.position(leaf_digest)
     }
 
-    ///
+    /// Returns the current (right-most) leaf of the tree.
     #[inline]
     pub fn current_leaf(&self) -> Option<&LeafDigest<C>> {
         self.branch.current_leaf()
     }
 
-    ///
+    /// Returns the current (right-most) path of the tree.
     #[inline]
     pub fn current_path(&self) -> CurrentPath<C>
     where
@@ -515,7 +515,7 @@ where
         self.branch.current_path()
     }
 
-    ///
+    /// Returns the path at the given `index` in the tree.
     #[inline]
     pub fn path(&self, parameters: &Parameters<C>, index: usize) -> Result<Path<C>, PathError>
     where
@@ -523,6 +523,8 @@ where
         LeafDigest<C>: Clone + Default,
         InnerDigest<C>: Clone,
     {
+        // FIXME: Move this algorithm to `crate::merkle_tree::path`.
+
         let length = self.len();
         if index > 0 && index >= length {
             return Err(PathError::IndexTooLarge { length });

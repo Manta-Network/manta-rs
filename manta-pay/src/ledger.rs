@@ -16,100 +16,187 @@
 
 //! Ledger Implementation
 
-/*
-use crate::{
-    accounting::{
-        config::Configuration,
-        identity::{Parameters, Root, Utxo},
+use crate::config::{
+    Config, EncryptedNote, MerkleTreeConfiguration, ProofSystem, Utxo, VerifyingContext, VoidNumber,
+};
+use manta_accounting::{
+    asset::{AssetId, AssetValue},
+    transfer::{
+        self, InsufficientPublicBalance, Proof, ReceiverLedger, ReceiverPostingKey, SenderLedger,
+        SenderPostingKey, TransferLedger, TransferLedgerSuperPostingKey, UtxoSetOutput,
     },
-    crypto::merkle_tree::ConfigConverter,
 };
-use alloc::{collections::BTreeSet, vec, vec::Vec};
-use blake2::{
-    digest::{Update, VariableOutput},
-    VarBlake2s,
+use manta_crypto::{
+    constraint::{Input as ProofSystemInput, ProofSystem as _},
+    merkle_tree,
+    merkle_tree::forest::Configuration,
 };
-use manta_crypto::merkle_tree::{single_path::SinglePath, Tree};
-use manta_util::{as_bytes, into_array_unchecked};
+use std::collections::{HashMap, HashSet};
 
-/// UTXO Shard
-#[derive(Clone, Debug, Default, Eq, Hash, PartialEq)]
-pub struct UtxoShard {
-    /// Shard Root
-    root: Root,
+/// UTXO Merkle Forest Type
+pub type UtxoMerkleForest = merkle_tree::forest::TreeArrayMerkleForest<
+    MerkleTreeConfiguration,
+    merkle_tree::single_path::SinglePath<MerkleTreeConfiguration>,
+    256,
+>;
 
-    /// Unspent Transaction Outputs
-    utxos: SinglePath<ConfigConverter<Configuration>>,
+/// Wrap Type
+#[derive(Clone, Copy)]
+pub struct Wrap<T>(T);
+
+/// Ledger
+pub struct Ledger {
+    /// Void Numbers
+    void_numbers: HashSet<VoidNumber>,
+
+    /// UTXOs
+    utxos: HashSet<Utxo>,
+
+    /// Shards
+    shards: HashMap<u8, HashMap<u64, (Utxo, EncryptedNote)>>,
+
+    /// UTXO Forest
+    utxo_forest: UtxoMerkleForest,
+
+    /// Verifying Contexts
+    verifying_context: transfer::canonical::VerifyingContext<Config>,
 }
 
-/// UTXO Set Ledger
-#[derive(Clone)]
-pub struct UtxoSetLedger {
-    /// UTXO Shards
-    pub shards: [UtxoShard; Self::SHARD_COUNT],
+impl SenderLedger<Config> for Ledger {
+    type ValidVoidNumber = Wrap<VoidNumber>;
+    type ValidUtxoSetOutput = Wrap<UtxoSetOutput<Config>>;
+    type SuperPostingKey = (Wrap<()>, ());
 
-    /// UTXO Set
-    pub utxos: BTreeSet<[u8; 32]>,
-
-    /// Merkle Tree Parameters
-    pub parameters: Parameters,
-}
-
-impl UtxoSetLedger {
-    const SHARD_COUNT: usize = 256;
-
-    /// Builds a new [`UtxoSetLedger`].
     #[inline]
-    pub fn new(parameters: Parameters) -> Self {
-        Self {
-            shards: into_array_unchecked(vec![Default::default(); Self::SHARD_COUNT]),
-            utxos: Default::default(),
-            parameters,
+    fn is_unspent(&self, void_number: VoidNumber) -> Option<Self::ValidVoidNumber> {
+        if self.void_numbers.contains(&void_number) {
+            None
+        } else {
+            Some(Wrap(void_number))
         }
     }
 
-    /// Computes the shard index of this `utxo`.
     #[inline]
-    fn shard_index(utxo: &Utxo) -> usize {
-        let mut hasher = VarBlake2s::new(1).expect("Failed to generate Variable Blake2s hasher.");
-        hasher.update(&as_bytes!(utxo));
-        let mut res: usize = 0;
-        hasher.finalize_variable(|x| res = x[0] as usize);
-        res
-    }
-
-    /// Returns a shared reference to the shard which this `utxo` would be stored in.
-    #[inline]
-    pub fn shard(&self, utxo: &Utxo) -> &UtxoShard {
-        &self.shards[Self::shard_index(utxo)]
-    }
-
-    /// Returns `true` if the `root` belongs to some shard.
-    #[inline]
-    pub fn root_exists(&self, root: &Root) -> bool {
-        self.shards.iter().any(move |s| s.root == *root)
-    }
-
-    /// Returns `true` if the `utxo` belongs to the shard it would be stored in.
-    #[inline]
-    pub fn utxo_exists(&self, utxo: &Utxo) -> bool {
-        self.utxos.contains(as_bytes!(utxo).as_slice())
-    }
-
-    ///
-    #[inline]
-    pub fn insert(&mut self, utxo: &Utxo) -> bool {
-        if self.utxo_exists(utxo) {
-            return false;
+    fn has_matching_utxo_set_output(
+        &self,
+        output: UtxoSetOutput<Config>,
+    ) -> Option<Self::ValidUtxoSetOutput> {
+        for tree in self.utxo_forest.forest.as_ref() {
+            if tree.root() == &output {
+                return Some(Wrap(output));
+            }
         }
-        if !self.shards[Self::shard_index(utxo)]
-            .utxos
-            .push(&self.parameters, utxo)
-        {
-            return false;
-        }
-        self.utxos.insert(into_array_unchecked(as_bytes!(utxo)));
-        true
+        None
+    }
+
+    #[inline]
+    fn spend(
+        &mut self,
+        utxo_set_output: Self::ValidUtxoSetOutput,
+        void_number: Self::ValidVoidNumber,
+        super_key: &Self::SuperPostingKey,
+    ) {
+        let _ = (utxo_set_output, super_key);
+        self.void_numbers.insert(void_number.0);
     }
 }
-*/
+
+impl ReceiverLedger<Config> for Ledger {
+    type ValidUtxo = Wrap<Utxo>;
+    type SuperPostingKey = (Wrap<()>, ());
+
+    #[inline]
+    fn is_not_registered(&self, utxo: Utxo) -> Option<Self::ValidUtxo> {
+        if self.utxos.contains(&utxo) {
+            None
+        } else {
+            Some(Wrap(utxo))
+        }
+    }
+
+    #[inline]
+    fn register(
+        &mut self,
+        utxo: Self::ValidUtxo,
+        note: EncryptedNote,
+        super_key: &Self::SuperPostingKey,
+    ) {
+        let _ = super_key;
+        let shard = self
+            .shards
+            .get_mut(&MerkleTreeConfiguration::tree_index(&utxo.0))
+            .unwrap();
+        let len = shard.len();
+        shard.insert(len as u64, (utxo.0, note));
+    }
+}
+
+impl TransferLedger<Config> for Ledger {
+    type ValidSourceBalance = Wrap<AssetValue>;
+    type ValidProof = Wrap<()>;
+    type SuperPostingKey = ();
+
+    #[inline]
+    fn check_source_balances(
+        &self,
+        sources: Vec<AssetValue>,
+    ) -> Result<Vec<Self::ValidSourceBalance>, InsufficientPublicBalance> {
+        // FIXME: This can only be implemented on the actual ledger.
+        Ok(sources.into_iter().map(Wrap).collect())
+    }
+
+    #[inline]
+    fn is_valid(
+        &self,
+        asset_id: Option<AssetId>,
+        sources: &[Self::ValidSourceBalance],
+        senders: &[SenderPostingKey<Config, Self>],
+        receivers: &[ReceiverPostingKey<Config, Self>],
+        sinks: &[AssetValue],
+        proof: Proof<Config>,
+    ) -> Option<Self::ValidProof> {
+        let verifying_context = self.verifying_context.select(
+            asset_id.is_some(),
+            sources.len(),
+            senders.len(),
+            receivers.len(),
+            sinks.len(),
+        )?;
+
+        let mut input = Default::default();
+        if let Some(asset_id) = asset_id {
+            ProofSystem::extend(&mut input, &asset_id);
+        }
+        sources
+            .iter()
+            .for_each(|source| ProofSystem::extend(&mut input, &source.0));
+        senders.iter().for_each(|sender| {
+            // ...
+            todo!()
+        });
+        receivers.iter().for_each(|receiver| {
+            // ...
+            todo!()
+        });
+        sinks
+            .iter()
+            .for_each(|sink| ProofSystem::extend(&mut input, sink));
+
+        ProofSystem::verify(&input, &proof, verifying_context)
+            .ok()?
+            .then(move || Wrap(()))
+    }
+
+    #[inline]
+    fn update_public_balances(
+        &mut self,
+        asset_id: AssetId,
+        sources: Vec<Self::ValidSourceBalance>,
+        sinks: Vec<AssetValue>,
+        proof: Self::ValidProof,
+        super_key: &TransferLedgerSuperPostingKey<Config, Self>,
+    ) {
+        // FIXME: This can only be implemented on the real ledger.
+        let _ = (asset_id, sources, sinks, proof, super_key);
+    }
+}

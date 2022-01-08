@@ -17,57 +17,15 @@
 //! Manta Pay Base Wallet Implementation
 
 use crate::{
-    config::{Bls12_381_Edwards, Config, MerkleTreeConfiguration, SecretKey},
-    crypto::{constraint::arkworks::Fp, ecc::arkworks::ProjectiveCurve},
+    config::{Config, HierarchicalKeyDerivationFunction, MerkleTreeConfiguration},
     key::TestnetKeySecret,
-};
-use ark_ff::PrimeField;
-use blake2::{
-    digest::{Update, VariableOutput},
-    Blake2sVar,
 };
 use manta_accounting::{
     asset::HashAssetMap,
-    key::{self, HierarchicalKeyDerivationScheme},
+    key,
     wallet::signer::{self, AssetMapKey},
 };
-use manta_crypto::{key::KeyDerivationFunction, merkle_tree};
-
-/// Hierarchical Key Derivation Function
-pub struct HierarchicalKeyDerivationFunction;
-
-impl KeyDerivationFunction for HierarchicalKeyDerivationFunction {
-    type Key = <TestnetKeySecret as HierarchicalKeyDerivationScheme>::SecretKey;
-    type Output = SecretKey;
-
-    #[inline]
-    fn derive(secret_key: &Self::Key) -> Self::Output {
-        // FIXME: Check that this conversion is logical/safe.
-        let bytes: [u8; 32] = secret_key
-            .private_key()
-            .to_bytes()
-            .try_into()
-            .expect("The private key has 32 bytes.");
-        Fp(<Bls12_381_Edwards as ProjectiveCurve>::ScalarField::from_le_bytes_mod_order(&bytes))
-    }
-}
-
-impl merkle_tree::forest::Configuration for MerkleTreeConfiguration {
-    type Index = u8;
-
-    #[inline]
-    fn tree_index(leaf: &merkle_tree::Leaf<Self>) -> Self::Index {
-        let mut hasher = Blake2sVar::new(1).unwrap();
-        hasher.update(
-            &ark_ff::to_bytes!(leaf.0).expect("Converting to bytes is not allowed to fail."),
-        );
-        let mut result = [0];
-        hasher
-            .finalize_variable(&mut result)
-            .expect("Hashing is not allowed to fail.");
-        result[0]
-    }
-}
+use manta_crypto::merkle_tree;
 
 /// Signer UTXO Set
 pub type UtxoSet = merkle_tree::forest::TreeArrayMerkleForest<

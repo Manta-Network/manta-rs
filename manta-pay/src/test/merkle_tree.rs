@@ -26,6 +26,7 @@ use manta_crypto::{
 };
 use rand::thread_rng;
 
+/*
 /// Base Tree
 pub type Base = merkle_tree::full::Full<MerkleTreeConfiguration>;
 
@@ -43,62 +44,4 @@ pub type Forest = forest::TreeArrayMerkleForest<MerkleTreeConfiguration, Base, 2
 
 /// Forest Wrapper for Forked Base
 pub type ForkedForest = forest::TreeArrayMerkleForest<MerkleTreeConfiguration, ForkedBase, 256>;
-
-#[test]
-fn test_suite() {
-    let mut rng = thread_rng();
-    let parameters = rng.gen();
-    let parameters = test::push_twice_to_empty_tree_succeeds::<MerkleTreeConfiguration, Base>(
-        parameters,
-        &rng.gen(),
-        &rng.gen(),
-    );
-
-    /*
-    let mut tree = Tree::new(parameters);
-
-    accumulator::test::assert_unique_outputs(
-        &mut tree,
-        &rng.sample_iter(repeat(Standard).take(300))
-            .collect::<Vec<_>>(),
-    );
-    for _ in 0..30000 {
-        tree.insert(&rng.gen());
-    }
-    accumulator::test::assert_unique_outputs(
-        &mut tree,
-        &rng.sample_iter(repeat(Standard).take(300))
-            .collect::<Vec<_>>(),
-    );
-
-    let mut forest = Forest::new(tree.into_parameters());
-
-    accumulator::test::assert_unique_outputs(
-        &mut forest,
-        &rng.sample_iter(repeat(Standard).take(300))
-            .collect::<Vec<_>>(),
-    );
-    for _ in 0..30000 {
-        forest.insert(&rng.gen());
-    }
-    accumulator::test::assert_unique_outputs(
-        &mut forest,
-        &rng.sample_iter(repeat(Standard).take(300))
-            .collect::<Vec<_>>(),
-    );
-    */
-
-    /*
-    let mut forked_tree = ForkedTree::new(parameters);
-
-    println!("{:?}", forked_tree.trunk().len());
-    println!("{:?}", forked_tree.fork().len());
-
-    for _ in 0..1 {
-        forked_tree.insert(&rng.gen());
-    }
-
-    println!("{:?}", forked_tree.trunk().len());
-    println!("{:?}", forked_tree.fork().len());
-    */
-}
+*/

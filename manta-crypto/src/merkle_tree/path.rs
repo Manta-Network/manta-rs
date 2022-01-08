@@ -154,7 +154,7 @@ where
         index: Node,
         base: InnerDigest<C>,
         iter: I,
-    ) -> Root<C>
+    ) -> InnerDigest<C>
     where
         InnerDigest<C>: 'i,
         I: IntoIterator<Item = &'i InnerDigest<C>>,

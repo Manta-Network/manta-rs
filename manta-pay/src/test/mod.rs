@@ -16,5 +16,5 @@
 
 //! Manta Pay Testing
 
-pub mod merkle_tree;
+// TODO: pub mod merkle_tree;
 pub mod transfer;

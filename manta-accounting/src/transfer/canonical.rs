@@ -14,13 +14,14 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Canonical Transaction Types
+//! Canonical Transfer Types
 
 use crate::{
     asset::{self, Asset, AssetValue},
-    transfer::{Configuration, PreSender, Receiver, ReceivingKey, Sender, Transfer},
+    transfer::{self, Configuration, PreSender, Receiver, ReceivingKey, Sender, Transfer},
 };
 use alloc::vec::Vec;
+use core::{fmt::Debug, hash::Hash};
 use manta_util::{create_seal, seal};
 
 create_seal! {}
@@ -77,7 +78,7 @@ macro_rules! transfer_alias {
     };
 }
 
-/// Mint Transaction Shape
+/// [`Mint`] Transfer Shape
 ///
 /// ```text
 /// <1, 0, 1, 0>
@@ -87,7 +88,7 @@ pub struct MintShape;
 
 impl_shape!(MintShape, 1, 0, 1, 0);
 
-/// Mint Transaction
+/// [`Mint`] Transfer Type
 pub type Mint<C> = transfer_alias!(C, MintShape);
 
 impl<C> Mint<C>
@@ -101,7 +102,7 @@ where
     }
 }
 
-/// Private Transfer Transaction Shape
+/// [`PrivateTransfer`] Transfer Shape
 ///
 /// ```text
 /// <0, 2, 2, 0>
@@ -111,7 +112,7 @@ pub struct PrivateTransferShape;
 
 impl_shape!(PrivateTransferShape, 0, 2, 2, 0);
 
-/// Private Transfer Transaction
+/// [`PrivateTransfer`] Transfer Type
 pub type PrivateTransfer<C> = transfer_alias!(C, PrivateTransferShape);
 
 impl<C> PrivateTransfer<C>
@@ -128,7 +129,7 @@ where
     }
 }
 
-/// Reclaim Transaction Shape
+/// [`Reclaim`] Transfer Shape
 ///
 /// ```text
 /// <0, 2, 1, 1>
@@ -147,7 +148,7 @@ impl_shape!(
     1
 );
 
-/// Reclaim Transaction
+/// [`Reclaim`] Transfer
 pub type Reclaim<C> = transfer_alias!(C, ReclaimShape);
 
 impl<C> Reclaim<C>
@@ -162,6 +163,60 @@ where
         reclaim: Asset,
     ) -> Self {
         Self::new(reclaim.id, [], senders, receivers, [reclaim.value])
+    }
+}
+
+/// Transfer Shape
+pub enum TransferShape {
+    /// [`Mint`] Transfer
+    Mint,
+
+    /// [`PrivateTransfer`] Transfer
+    PrivateTransfer,
+
+    /// [`Reclaim`] Transfer
+    Reclaim,
+}
+
+impl TransferShape {
+    /// Selects the [`TransferShape`] for the given shape if it matches a canonical shape.
+    #[allow(clippy::absurd_extreme_comparisons)] // NOTE: We want these comparisons as values..
+    #[inline]
+    pub fn select(
+        asset_id_is_some: bool,
+        sources: usize,
+        senders: usize,
+        receivers: usize,
+        sinks: usize,
+    ) -> Option<Self> {
+        const MINT_VISIBLE_ID: bool = MintShape::SOURCES + MintShape::SINKS > 0;
+        const PRIVATE_TRANSFER_VISIBLE_ID: bool =
+            PrivateTransferShape::SOURCES + PrivateTransferShape::SINKS > 0;
+        const RECLAIM_VISIBLE_ID: bool = ReclaimShape::SOURCES + ReclaimShape::SINKS > 0;
+        match (asset_id_is_some, sources, senders, receivers, sinks) {
+            (
+                MINT_VISIBLE_ID,
+                MintShape::SOURCES,
+                MintShape::SENDERS,
+                MintShape::RECEIVERS,
+                MintShape::SINKS,
+            ) => Some(Self::Mint),
+            (
+                PRIVATE_TRANSFER_VISIBLE_ID,
+                PrivateTransferShape::SOURCES,
+                PrivateTransferShape::SENDERS,
+                PrivateTransferShape::RECEIVERS,
+                PrivateTransferShape::SINKS,
+            ) => Some(Self::PrivateTransfer),
+            (
+                RECLAIM_VISIBLE_ID,
+                ReclaimShape::SOURCES,
+                ReclaimShape::SENDERS,
+                ReclaimShape::RECEIVERS,
+                ReclaimShape::SINKS,
+            ) => Some(Self::Reclaim),
+            _ => None,
+        }
     }
 }
 
@@ -259,5 +314,99 @@ where
                 .map(move |(k, v)| builder(k, v))
                 .collect::<Result<_, _>>()?,
         ))
+    }
+}
+
+/// Canonical Proving Contexts
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "transfer::ProvingContext<C>: Clone"),
+    Copy(bound = "transfer::ProvingContext<C>: Copy"),
+    Debug(bound = "transfer::ProvingContext<C>: Debug"),
+    Default(bound = "transfer::ProvingContext<C>: Default"),
+    Eq(bound = "transfer::ProvingContext<C>: Eq"),
+    Hash(bound = "transfer::ProvingContext<C>: Hash"),
+    PartialEq(bound = "transfer::ProvingContext<C>: PartialEq")
+)]
+pub struct ProvingContext<C>
+where
+    C: Configuration,
+{
+    /// Mint Proving Context
+    pub mint: transfer::ProvingContext<C>,
+
+    /// Private Transfer Proving Context
+    pub private_transfer: transfer::ProvingContext<C>,
+
+    /// Reclaim Proving Context
+    pub reclaim: transfer::ProvingContext<C>,
+}
+
+impl<C> ProvingContext<C>
+where
+    C: Configuration,
+{
+    /// Selects the proving context for the given shape if it matches a canonical shape.
+    #[inline]
+    pub fn select(
+        &self,
+        asset_id_is_some: bool,
+        sources: usize,
+        senders: usize,
+        receivers: usize,
+        sinks: usize,
+    ) -> Option<&transfer::ProvingContext<C>> {
+        match TransferShape::select(asset_id_is_some, sources, senders, receivers, sinks)? {
+            TransferShape::Mint => Some(&self.mint),
+            TransferShape::PrivateTransfer => Some(&self.private_transfer),
+            TransferShape::Reclaim => Some(&self.reclaim),
+        }
+    }
+}
+
+/// Canonical Verifying Contexts
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "transfer::VerifyingContext<C>: Clone"),
+    Copy(bound = "transfer::VerifyingContext<C>: Copy"),
+    Debug(bound = "transfer::VerifyingContext<C>: Debug"),
+    Default(bound = "transfer::VerifyingContext<C>: Default"),
+    Eq(bound = "transfer::VerifyingContext<C>: Eq"),
+    Hash(bound = "transfer::VerifyingContext<C>: Hash"),
+    PartialEq(bound = "transfer::VerifyingContext<C>: PartialEq")
+)]
+pub struct VerifyingContext<C>
+where
+    C: Configuration,
+{
+    /// Mint Verifying Context
+    pub mint: transfer::VerifyingContext<C>,
+
+    /// Private Transfer Verifying Context
+    pub private_transfer: transfer::VerifyingContext<C>,
+
+    /// Reclaim Verifying Context
+    pub reclaim: transfer::VerifyingContext<C>,
+}
+
+impl<C> VerifyingContext<C>
+where
+    C: Configuration,
+{
+    /// Selects the verifying context for the given shape if it matches a canonical shape.
+    #[inline]
+    pub fn select(
+        &self,
+        asset_id_is_some: bool,
+        sources: usize,
+        senders: usize,
+        receivers: usize,
+        sinks: usize,
+    ) -> Option<&transfer::VerifyingContext<C>> {
+        match TransferShape::select(asset_id_is_some, sources, senders, receivers, sinks)? {
+            TransferShape::Mint => Some(&self.mint),
+            TransferShape::PrivateTransfer => Some(&self.private_transfer),
+            TransferShape::Reclaim => Some(&self.reclaim),
+        }
     }
 }

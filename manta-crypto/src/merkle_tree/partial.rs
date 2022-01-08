@@ -123,13 +123,13 @@ where
         self.inner_digests.root()
     }
 
-    ///
+    /// Returns the leaf digest at the given `index` in the tree.
     #[inline]
     pub fn leaf_digest(&self, index: usize) -> Option<&LeafDigest<C>> {
         self.leaf_digests.get(index - self.starting_leaf_index())
     }
 
-    ///
+    /// Returns the position of `leaf_digest` in the tree.
     #[inline]
     pub fn position(&self, leaf_digest: &LeafDigest<C>) -> Option<usize>
     where
@@ -157,13 +157,13 @@ where
         self.get_leaf_sibling(index).cloned().unwrap_or_default()
     }
 
-    ///
+    /// Returns the current (right-most) leaf of the tree.
     #[inline]
     pub fn current_leaf(&self) -> Option<&LeafDigest<C>> {
         self.leaf_digests.last()
     }
 
-    ///
+    /// Returns the current (right-most) path of the tree.
     #[inline]
     pub fn current_path(&self) -> CurrentPath<C>
     where
@@ -181,7 +181,7 @@ where
         )
     }
 
-    ///
+    /// Returns the path at `index` without bounds-checking on the index.
     #[inline]
     pub fn path_unchecked(&self, index: usize) -> Path<C>
     where
@@ -327,7 +327,6 @@ where
 
     #[inline]
     fn path(&self, parameters: &Parameters<C>, index: usize) -> Result<Path<C>, PathError> {
-        // FIXME: Check that this is implemented properly.
         let _ = parameters;
         let length = self.len();
         if index > 0 && index >= length {

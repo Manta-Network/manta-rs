@@ -41,7 +41,7 @@ use std::{
 };
 
 /// Balance State
-pub trait BalanceState {
+pub trait BalanceState: Default {
     /// Returns the current balance associated with this `id`.
     fn balance(&self, id: AssetId) -> AssetValue;
 
@@ -154,10 +154,19 @@ pub type HashMapBalanceState<S = RandomState> = HashMap<AssetId, AssetValue, S>;
 #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
 impl<S> BalanceState for HashMapBalanceState<S>
 where
-    S: BuildHasher,
+    S: BuildHasher + Default,
 {
     impl_balance_state_map_body! { HashMapEntry }
 }
+
+/// Native Wallet
+pub type NativeWallet<C, L, B = BTreeMapBalanceState> = Wallet<
+    <C as signer::Configuration>::HierarchicalKeyDerivationScheme,
+    C,
+    L,
+    signer::Signer<C>,
+    B,
+>;
 
 /// Wallet
 pub struct Wallet<H, C, L, S, B = BTreeMapBalanceState>
@@ -202,6 +211,12 @@ where
             assets,
             __: PhantomData,
         }
+    }
+
+    /// Starts a new [`Wallet`] from `signer` and `ledger` connections.
+    #[inline]
+    pub fn empty(signer: S, ledger: L) -> Self {
+        Self::new(signer, ledger, Default::default(), Default::default())
     }
 
     /// Returns the current balance associated with this `id`.

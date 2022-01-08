@@ -27,7 +27,9 @@
 use alloc::{format, string::String};
 use bip32::{Seed, XPrv};
 use core::{marker::PhantomData, num::ParseIntError, str::FromStr};
-use manta_accounting::key::{HierarchicalKeyDerivationParameter, HierarchicalKeyDerivationScheme};
+use manta_accounting::key::{
+    self, HierarchicalKeyDerivationParameter, HierarchicalKeyDerivationScheme,
+};
 use manta_util::{create_seal, seal};
 
 pub use bip32::{Error, Mnemonic};
@@ -255,3 +257,15 @@ where
         )
     }
 }
+
+/// Account Table Type
+pub type AccountTable<C> = key::AccountTable<KeySecret<C>>;
+
+/// Testnet [`AccountTable`] Type
+pub type TestnetAccountTable = AccountTable<Testnet>;
+
+/// Manta [`AccountTable`] Type
+pub type MantaAccountTable = AccountTable<Manta>;
+
+/// Calamari [`AccountTable`] Type
+pub type CalamariAccountTable = AccountTable<Calamari>;

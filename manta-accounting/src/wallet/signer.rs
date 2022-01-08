@@ -30,11 +30,12 @@ use crate::{
         self,
         batch::Join,
         canonical::{
-            Mint, PrivateTransfer, PrivateTransferShape, Reclaim, Selection, Shape, Transaction,
+            Mint, PrivateTransfer, PrivateTransferShape, ProvingContext, Reclaim, Selection, Shape,
+            Transaction,
         },
-        EncryptedNote, FullParameters, Parameters, PreSender, ProofSystemError, ProvingContext,
-        PublicKey, Receiver, ReceivingKey, SecretKey, Sender, SpendingKey, Transfer, TransferPost,
-        Utxo, VoidNumber,
+        EncryptedNote, FullParameters, Parameters, PreSender, ProofSystemError, PublicKey,
+        Receiver, ReceivingKey, SecretKey, Sender, SpendingKey, Transfer, TransferPost, Utxo,
+        VoidNumber,
     },
 };
 use alloc::{vec, vec::Vec};
@@ -478,6 +479,7 @@ where
         &mut self,
         transfer: Transfer<C, SOURCES, SENDERS, RECEIVERS, SINKS>,
     ) -> Result<TransferPost<C>, SignerError<C>> {
+        /* TODO:
         transfer
             .into_post(
                 FullParameters::new(&self.parameters, self.utxo_set.model()),
@@ -485,6 +487,8 @@ where
                 &mut self.rng,
             )
             .map_err(Error::ProofSystemError)
+        */
+        todo!()
     }
 
     /// Computes the next [`Join`](Join) element for an asset rebalancing round.

@@ -16,18 +16,26 @@
 
 //! Manta-Pay Configuration
 
-use crate::crypto::{
-    constraint::arkworks::{Boolean, Fp, FpVar, Groth16, R1CS},
-    ecc::{self, arkworks::ProjectiveCurve},
-    encryption::aes::{self, AesGcm},
-    hash::poseidon,
-    key::Blake2sKdf,
+use crate::{
+    crypto::{
+        constraint::arkworks::{Boolean, Fp, FpVar, Groth16, R1CS},
+        ecc::{self, arkworks::ProjectiveCurve},
+        encryption::aes::{self, AesGcm},
+        hash::poseidon,
+        key::Blake2sKdf,
+    },
+    key::TestnetKeySecret,
 };
-use ark_ff::ToConstraintField;
+use ark_ff::{PrimeField, ToConstraintField};
+use blake2::{
+    digest::{Update, VariableOutput},
+    Blake2sVar,
+};
 use bls12_381::Bls12_381;
 use bls12_381_ed::constraints::EdwardsVar as Bls12_381_EdwardsVar;
 use manta_accounting::{
     asset::{Asset, AssetId, AssetValue},
+    key::HierarchicalKeyDerivationScheme,
     transfer,
 };
 use manta_crypto::{
@@ -40,7 +48,9 @@ use manta_crypto::{
     ecc::DiffieHellman,
     encryption,
     hash::{BinaryHashFunction, HashFunction},
-    key, merkle_tree,
+    key,
+    key::KeyDerivationFunction,
+    merkle_tree,
 };
 
 #[cfg(test)]
@@ -549,6 +559,9 @@ pub type Parameters = transfer::Parameters<Config>;
 /// Full Transfer Parameters
 pub type FullParameters<'p> = transfer::FullParameters<'p, Config>;
 
+/// Encrypted Note Type
+pub type EncryptedNote = transfer::EncryptedNote<Config>;
+
 /// Mint Transfer Type
 pub type Mint = transfer::canonical::Mint<Config>;
 
@@ -560,3 +573,45 @@ pub type Reclaim = transfer::canonical::Reclaim<Config>;
 
 /// Transfer Post Type
 pub type TransferPost = transfer::TransferPost<Config>;
+
+/// Proving Context Type
+pub type ProvingContext = transfer::ProvingContext<Config>;
+
+/// Verifying Context Type
+pub type VerifyingContext = transfer::VerifyingContext<Config>;
+
+/// Hierarchical Key Derivation Function
+pub struct HierarchicalKeyDerivationFunction;
+
+impl KeyDerivationFunction for HierarchicalKeyDerivationFunction {
+    type Key = <TestnetKeySecret as HierarchicalKeyDerivationScheme>::SecretKey;
+    type Output = SecretKey;
+
+    #[inline]
+    fn derive(secret_key: &Self::Key) -> Self::Output {
+        // FIXME: Check that this conversion is logical/safe.
+        let bytes: [u8; 32] = secret_key
+            .private_key()
+            .to_bytes()
+            .try_into()
+            .expect("The private key has 32 bytes.");
+        Fp(<Bls12_381_Edwards as ProjectiveCurve>::ScalarField::from_le_bytes_mod_order(&bytes))
+    }
+}
+
+impl merkle_tree::forest::Configuration for MerkleTreeConfiguration {
+    type Index = u8;
+
+    #[inline]
+    fn tree_index(leaf: &merkle_tree::Leaf<Self>) -> Self::Index {
+        let mut hasher = Blake2sVar::new(1).unwrap();
+        hasher.update(
+            &ark_ff::to_bytes!(leaf.0).expect("Converting to bytes is not allowed to fail."),
+        );
+        let mut result = [0];
+        hasher
+            .finalize_variable(&mut result)
+            .expect("Hashing is not allowed to fail.");
+        result[0]
+    }
+}

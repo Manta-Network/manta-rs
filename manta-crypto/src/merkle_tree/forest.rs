@@ -166,10 +166,10 @@ where
     F: Forest<C>,
 {
     /// Underlying Forest Structure
-    forest: F,
+    pub forest: F,
 
     /// Merkle Forest Parameters
-    parameters: Parameters<C>,
+    pub parameters: Parameters<C>,
 }
 
 impl<C, F> MerkleForest<C, F>
@@ -369,6 +369,18 @@ where
 
     /// Type Parameter Marker
     __: PhantomData<C>,
+}
+
+impl<C, T, const N: usize> AsRef<[T; N]> for TreeArray<C, T, N>
+where
+    C: Configuration + ?Sized,
+    C::Index: FixedIndex<N>,
+    T: Tree<C>,
+{
+    #[inline]
+    fn as_ref(&self) -> &[T; N] {
+        &self.array
+    }
 }
 
 impl<C, T, const N: usize> Default for TreeArray<C, T, N>

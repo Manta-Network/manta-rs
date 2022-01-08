@@ -29,6 +29,7 @@ mod test;
 pub mod crypto;
 pub mod key;
 pub mod ledger;
+pub mod simulation;
 pub mod wallet;
 
 #[cfg(all(feature = "arkworks", feature = "groth16"))]
