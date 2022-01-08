@@ -31,7 +31,6 @@ use manta_crypto::{
     key::KeyAgreementScheme,
     rand::{CryptoRng, RngCore, Sample},
 };
-use manta_util::from_variant_impl;
 
 pub mod batch;
 pub mod canonical;
@@ -1600,6 +1599,9 @@ where
     /// Account Identifier
     type AccountId;
 
+    /// Ledger Event
+    type Event;
+
     /// Valid [`AssetValue`] for [`TransferPost`] Source
     ///
     /// # Safety
@@ -1659,7 +1661,7 @@ where
         receivers: &[ReceiverPostingKey<C, Self>],
         sinks: &[SinkPostingKey<C, Self>],
         proof: Proof<C>,
-    ) -> Option<Self::ValidProof>;
+    ) -> Option<(Self::ValidProof, Self::Event)>;
 
     /// Updates the public balances in the ledger, finishing the transaction.
     ///
@@ -1888,23 +1890,25 @@ where
             .into_iter()
             .map(move |r| r.validate(ledger))
             .collect::<Result<Vec<_>, _>>()?;
+        let (validity_proof, event) = match ledger.is_valid(
+            self.asset_id,
+            &source_posting_keys,
+            &sender_posting_keys,
+            &receiver_posting_keys,
+            &sink_posting_keys,
+            self.validity_proof,
+        ) {
+            Some((validity_proof, event)) => (validity_proof, event),
+            _ => return Err(TransferPostError::InvalidProof),
+        };
         Ok(TransferPostingKey {
-            validity_proof: match ledger.is_valid(
-                self.asset_id,
-                &source_posting_keys,
-                &sender_posting_keys,
-                &receiver_posting_keys,
-                &sink_posting_keys,
-                self.validity_proof,
-            ) {
-                Some(key) => key,
-                _ => return Err(TransferPostError::InvalidProof),
-            },
             asset_id: self.asset_id,
             source_posting_keys,
             sender_posting_keys,
             receiver_posting_keys,
             sink_posting_keys,
+            validity_proof,
+            event,
         })
     }
 }
@@ -1932,6 +1936,9 @@ where
 
     /// Validity Proof Posting Key
     validity_proof: L::ValidProof,
+
+    /// Ledger Event
+    event: L::Event,
 }
 
 impl<C, L> TransferPostingKey<C, L>
@@ -1975,7 +1982,7 @@ where
     /// [`SenderLedger::spend`] and [`ReceiverLedger::register`] for more information on the
     /// contract for this method.
     #[inline]
-    pub fn post(self, super_key: &TransferLedgerSuperPostingKey<C, L>, ledger: &mut L) {
+    pub fn post(self, super_key: &TransferLedgerSuperPostingKey<C, L>, ledger: &mut L) -> L::Event {
         let proof = self.validity_proof;
         for key in self.sender_posting_keys {
             key.post(&(proof, *super_key), ledger);
@@ -1992,5 +1999,6 @@ where
                 super_key,
             );
         }
+        self.event
     }
 }

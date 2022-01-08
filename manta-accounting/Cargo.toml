@@ -48,6 +48,7 @@ futures = { version = "0.3.19", optional = true }
 manta-crypto = { path = "../manta-crypto" }
 manta-util = { path = "../manta-util" }
 rayon = { version = "1.5.1", optional = true, default-features = false }
+serde = { version = "1.0.133", optional = true, default-features = false, features = ["derive"] }
 zeroize = { version = "1.4.3", optional = true, default-features = false }
 
 [dev-dependencies]

@@ -49,6 +49,7 @@ use std::{
 pub type AssetIdType = u32;
 
 /// Asset Id Type
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Clone, Copy, Debug, Default, Display, Eq, From, Hash, Ord, PartialEq, PartialOrd)]
 #[from(forward)]
 pub struct AssetId(
@@ -124,6 +125,7 @@ where
 pub type AssetValueType = u128;
 
 /// Asset Value Type
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(
     Add,
     AddAssign,
@@ -265,6 +267,7 @@ impl<'a> Sum<&'a AssetValue> for AssetValue {
 ///
 /// This `struct` is created by the [`make_change`](AssetValue::make_change) method on
 /// [`AssetValue`]. See its documentation for more.
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub struct Change {
     /// Base Amount
@@ -322,6 +325,7 @@ impl ExactSizeIterator for Change {}
 impl FusedIterator for Change {}
 
 /// Asset
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Clone, Copy, Debug, Default, Display, Eq, From, Hash, PartialEq)]
 #[display(fmt = "{{id: {}, value: {}}}", id, value)]
 pub struct Asset<I = AssetId, V = AssetValue> {

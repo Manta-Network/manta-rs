@@ -18,6 +18,7 @@
 
 // FIXME: Add asynchronous streaming interfaces.
 
+use alloc::vec::Vec;
 use core::future::Future;
 
 /// Serialization

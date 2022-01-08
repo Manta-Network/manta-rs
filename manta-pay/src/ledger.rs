@@ -19,6 +19,7 @@
 use crate::config::{
     Config, EncryptedNote, MerkleTreeConfiguration, ProofSystem, Utxo, VoidNumber,
 };
+use alloc::vec::Vec;
 use manta_accounting::{
     asset::{AssetId, AssetValue},
     transfer::{
@@ -151,6 +152,7 @@ impl ReceiverLedger<Config> for Ledger {
 
 impl TransferLedger<Config> for Ledger {
     type AccountId = u128;
+    type Event = ();
     type ValidSourceAccount = WrapPair<Self::AccountId, AssetValue>;
     type ValidSinkAccount = WrapPair<Self::AccountId, AssetValue>;
     type ValidProof = Wrap<()>;
@@ -238,7 +240,7 @@ impl TransferLedger<Config> for Ledger {
         receivers: &[ReceiverPostingKey<Config, Self>],
         sinks: &[SinkPostingKey<Config, Self>],
         proof: Proof<Config>,
-    ) -> Option<Self::ValidProof> {
+    ) -> Option<(Self::ValidProof, Self::Event)> {
         let verifying_context = self.verifying_context.select(
             asset_id.is_some(),
             sources.len(),
@@ -252,7 +254,7 @@ impl TransferLedger<Config> for Ledger {
             verifying_context,
         )
         .ok()?
-        .then(move || Wrap(()))
+        .then(move || (Wrap(()), ()))
     }
 
     #[inline]
