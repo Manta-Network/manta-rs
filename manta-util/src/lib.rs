@@ -16,8 +16,6 @@
 
 //! Utilities
 
-// TODO: Find a better way to abstract the `Rollback` trait.
-
 #![no_std]
 #![cfg_attr(doc_cfg, feature(doc_cfg))]
 #![forbid(rustdoc::broken_intra_doc_links)]
@@ -28,6 +26,7 @@ extern crate alloc;
 mod array;
 mod concat;
 mod sealed;
+mod serde;
 
 pub mod iter;
 pub mod num;
@@ -35,6 +34,12 @@ pub mod pointer;
 
 pub use array::*;
 pub use concat::*;
+pub use serde::*;
+
+#[doc(inline)]
+#[cfg(feature = "zeroize")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "zeroize")))]
+pub use zeroize;
 
 /// Implements [`From`]`<$from>` for an enum `$to`, choosing the `$kind` variant.
 // TODO: add `where` clauses

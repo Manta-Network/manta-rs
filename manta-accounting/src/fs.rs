@@ -20,60 +20,7 @@
 
 use alloc::vec::Vec;
 use core::future::Future;
-
-/// Serialization
-pub trait Serialize {
-    /// Appends representation of `self` in bytes to `buffer`.
-    fn serialize(&self, buffer: &mut Vec<u8>);
-
-    /// Converts `self` into a vector of bytes.
-    #[inline]
-    fn to_vec(&self) -> Vec<u8> {
-        let mut buffer = Vec::new();
-        self.serialize(&mut buffer);
-        buffer
-    }
-}
-
-impl Serialize for u8 {
-    #[inline]
-    fn serialize(&self, buffer: &mut Vec<u8>) {
-        buffer.push(*self);
-    }
-}
-
-impl<T> Serialize for [T]
-where
-    T: Serialize,
-{
-    #[inline]
-    fn serialize(&self, buffer: &mut Vec<u8>) {
-        for item in self {
-            item.serialize(buffer);
-        }
-    }
-}
-
-impl<T, const N: usize> Serialize for [T; N]
-where
-    T: Serialize,
-{
-    #[inline]
-    fn serialize(&self, buffer: &mut Vec<u8>) {
-        for item in self {
-            item.serialize(buffer);
-        }
-    }
-}
-
-/// Deserialization
-pub trait Deserialize: Sized {
-    /// Error Type
-    type Error;
-
-    /// Parses the input `buffer` into a concrete value of type `Self` if possible.
-    fn deserialize(buffer: Vec<u8>) -> Result<Self, Self::Error>;
-}
+use manta_util::{Deserialize, Serialize};
 
 /// Filesystem Encrypted Saving
 pub trait SaveEncrypted {
@@ -129,7 +76,7 @@ where
     D: Deserialize,
 {
     match L::load_bytes(path, loading_key).await {
-        Ok(bytes) => D::deserialize(bytes).map_err(LoadError::Deserialize),
+        Ok(bytes) => D::from_vec(bytes).map_err(LoadError::Deserialize),
         Err(err) => Err(LoadError::Loading(err)),
     }
 }
@@ -161,8 +108,7 @@ pub mod cocoon {
     use cocoon_crate::{Cocoon, Error as CocoonError};
     use core::fmt;
     use futures::future::LocalBoxFuture;
-    use manta_util::from_variant_impl;
-    use zeroize::Zeroizing;
+    use manta_util::{from_variant_impl, zeroize::Zeroizing};
 
     /// Cocoon Loading/Saving Error
     #[derive(Debug)]

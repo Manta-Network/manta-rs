@@ -30,7 +30,6 @@ cocoon-fs = [
     "async-std", 
     "cocoon/std", 
     "futures",
-    "zeroize/alloc",
 ]
 
 # Standard Library
@@ -46,10 +45,9 @@ derivative = { version = "2.2.0", default-features = false, features = ["use_cor
 derive_more = { version = "0.99.16", default-features = false, features = ["add", "add_assign", "display", "from", "mul", "mul_assign", "sum"] }
 futures = { version = "0.3.19", optional = true }
 manta-crypto = { path = "../manta-crypto" }
-manta-util = { path = "../manta-util" }
+manta-util = { path = "../manta-util", features = ["zeroize"] }
 rayon = { version = "1.5.1", optional = true, default-features = false }
 serde = { version = "1.0.133", optional = true, default-features = false, features = ["derive"] }
-zeroize = { version = "1.4.3", optional = true, default-features = false }
 
 [dev-dependencies]
 rand = "0.8.4"

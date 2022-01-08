@@ -17,7 +17,7 @@
 //! Encryption Primitives
 
 use crate::key::{KeyAgreementScheme, KeyDerivationFunction};
-use core::marker::PhantomData;
+use core::{fmt::Debug, hash::Hash, marker::PhantomData};
 
 /// Symmetric Key Encryption Scheme
 ///
@@ -172,15 +172,24 @@ where
 }
 
 /// Encrypted Message
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "H::Ciphertext: Clone, PublicKey<H>: Clone"),
+    Copy(bound = "H::Ciphertext: Copy, PublicKey<H>: Copy"),
+    Debug(bound = "H::Ciphertext: Debug, PublicKey<H>: Debug"),
+    Eq(bound = "H::Ciphertext: Eq, PublicKey<H>: Eq"),
+    Hash(bound = "H::Ciphertext: Hash, PublicKey<H>: Hash"),
+    PartialEq(bound = "H::Ciphertext: PartialEq, PublicKey<H>: PartialEq")
+)]
 pub struct EncryptedMessage<H>
 where
     H: HybridPublicKeyEncryptionScheme,
 {
     /// Ciphertext
-    ciphertext: H::Ciphertext,
+    pub ciphertext: H::Ciphertext,
 
     /// Ephemeral Public Key
-    ephemeral_public_key: PublicKey<H>,
+    pub ephemeral_public_key: PublicKey<H>,
 }
 
 impl<H> EncryptedMessage<H>
@@ -230,6 +239,15 @@ where
 }
 
 /// Decrypted Message
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "H::Plaintext: Clone, PublicKey<H>: Clone"),
+    Copy(bound = "H::Plaintext: Copy, PublicKey<H>: Copy"),
+    Debug(bound = "H::Plaintext: Debug, PublicKey<H>: Debug"),
+    Eq(bound = "H::Plaintext: Eq, PublicKey<H>: Eq"),
+    Hash(bound = "H::Plaintext: Hash, PublicKey<H>: Hash"),
+    PartialEq(bound = "H::Plaintext: PartialEq, PublicKey<H>: PartialEq")
+)]
 pub struct DecryptedMessage<H>
 where
     H: HybridPublicKeyEncryptionScheme,
