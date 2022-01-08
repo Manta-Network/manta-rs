@@ -17,13 +17,13 @@
 //! Merkle Tree Forks
 
 // TODO: Implement derive-able traits for these types.
-// TODO: See if we can get rid of the smart pointer logic.
+// TODO: See if we can get rid of the smart pointer logic (we can for `ForkedTree` at least).
 
 use crate::merkle_tree::{
     capacity,
     inner_tree::{BTreeMap, InnerMap, PartialInnerTree},
     partial::Partial,
-    path::CurrentInnerPath,
+    path::{CurrentInnerPath, InnerPath},
     Configuration, CurrentPath, InnerDigest, Leaf, LeafDigest, Node, Parameters, Parity, Path,
     PathError, Root, Tree, WithProofs,
 };
@@ -32,6 +32,8 @@ use core::{borrow::Borrow, fmt::Debug, hash::Hash, marker::PhantomData, mem, ops
 use manta_util::pointer::{self, PointerFamily};
 
 /// Fork-able Merkle Tree
+#[derive(derivative::Derivative)]
+#[derivative(Debug(bound = "P::Strong: Debug"))]
 pub struct Trunk<C, T, P = pointer::SingleThreaded>
 where
     C: Configuration + ?Sized,
@@ -233,6 +235,11 @@ impl Default for BaseContribution {
 }
 
 /// Merkle Tree Fork
+#[derive(derivative::Derivative)]
+#[derivative(
+    Debug(bound = "P::Weak: Debug, LeafDigest<C>: Debug, InnerDigest<C>: Debug, M: Debug"),
+    Default(bound = "LeafDigest<C>: Default, InnerDigest<C>: Default")
+)]
 pub struct Fork<C, T, P = pointer::SingleThreaded, M = BTreeMap<C>>
 where
     C: Configuration + ?Sized,
@@ -452,6 +459,13 @@ where
         }
     }
 
+    /// Checks if `self` is still attached to `trunk`.
+    #[inline]
+    fn check_attachment(&self) -> Option<()> {
+        let _ = P::upgrade(&self.base)?;
+        Some(())
+    }
+
     /// Computes the length of this fork of the tree.
     #[inline]
     pub fn len(&self) -> usize {
@@ -473,26 +487,87 @@ where
     ///
     #[inline]
     pub fn leaf_digest(&self, index: usize) -> Option<&LeafDigest<C>> {
-        self.branch.get_leaf_digest(index)
+        self.branch.leaf_digest(index)
     }
 
     ///
     #[inline]
-    pub fn position(&self, leaf_digest: &LeafDigest<C>) -> Option<usize> {
-        todo!()
+    pub fn position(&self, leaf_digest: &LeafDigest<C>) -> Option<usize>
+    where
+        LeafDigest<C>: PartialEq,
+    {
+        self.branch.position(leaf_digest)
     }
 
     ///
     #[inline]
     pub fn current_leaf(&self) -> Option<&LeafDigest<C>> {
-        // self.branch.current_leaf()
-        todo!()
+        self.branch.current_leaf()
     }
 
     ///
     #[inline]
-    pub fn current_path(&self, parameters: &Parameters<C>) -> CurrentPath<C> {
-        todo!()
+    pub fn current_path(&self) -> CurrentPath<C>
+    where
+        LeafDigest<C>: Clone + Default,
+        InnerDigest<C>: Clone + Default + PartialEq,
+    {
+        self.branch.current_path()
+    }
+
+    ///
+    #[inline]
+    pub fn path(&self, parameters: &Parameters<C>, index: usize) -> Result<Path<C>, PathError>
+    where
+        T: WithProofs<C>,
+        LeafDigest<C>: Clone + Default,
+        InnerDigest<C>: Clone,
+    {
+        let length = self.len();
+        if index > 0 && index >= length {
+            return Err(PathError::IndexTooLarge { length });
+        }
+        if index < self.branch.starting_leaf_index() {
+            match P::upgrade(&self.base) {
+                Some(base) => {
+                    let base_index = Node(index);
+                    let base_path = base.path(parameters, base_index.0)?;
+
+                    let fork_index = self.branch.starting_leaf_node();
+                    let mut fork_path = self.branch.path_unchecked(fork_index.0);
+
+                    if !Node::are_siblings(&base_index, &fork_index) {
+                        let matching_index = base_index
+                            .parents()
+                            .zip(fork_index.parents())
+                            .position(|(b, f)| Node::are_siblings(&b, &f))
+                            .unwrap();
+
+                        fork_path.inner_path.path[matching_index] = InnerPath::fold(
+                            parameters,
+                            fork_index,
+                            fork_index.join_leaves(
+                                parameters,
+                                self.leaf_digest(fork_index.0)
+                                    .unwrap_or(&Default::default()),
+                                &fork_path.sibling_digest,
+                            ),
+                            &fork_path.inner_path.path[..matching_index],
+                        );
+
+                        fork_path.inner_path.path[..matching_index]
+                            .clone_from_slice(&base_path.inner_path.path[..matching_index]);
+                    }
+
+                    fork_path.inner_path.leaf_index = base_path.inner_path.leaf_index;
+                    fork_path.sibling_digest = base_path.sibling_digest;
+                    Ok(fork_path)
+                }
+                _ => Err(PathError::MissingPath),
+            }
+        } else {
+            Ok(self.branch.path_unchecked(index))
+        }
     }
 
     /// Appends a new `leaf` onto this fork.
@@ -504,23 +579,30 @@ where
     where
         LeafDigest<C>: Default,
     {
-        let _ = P::upgrade(&self.base)?;
+        self.check_attachment()?;
         Some(self.branch.push(parameters, leaf))
     }
 
     /// Appends a new `leaf_digest` onto this fork.
+    ///
+    /// Returns `None` if this fork has been detached from its trunk. Use [`attach`](Self::attach)
+    /// to re-associate a trunk to this fork.
     #[inline]
     fn maybe_push_digest<F>(&mut self, parameters: &Parameters<C>, leaf_digest: F) -> Option<bool>
     where
         F: FnOnce() -> Option<LeafDigest<C>>,
         LeafDigest<C>: Default,
     {
-        let _ = P::upgrade(&self.base)?;
+        self.check_attachment()?;
         self.branch.maybe_push_digest(parameters, leaf_digest)
     }
 }
 
 /// Forked Tree
+#[derive(derivative::Derivative)]
+#[derivative(Debug(
+    bound = "P::Strong: Debug, P::Weak: Debug, LeafDigest<C>: Debug, InnerDigest<C>: Debug, M: Debug"
+))]
 pub struct ForkedTree<C, T, P = pointer::SingleThreaded, M = BTreeMap<C>>
 where
     C: Configuration + ?Sized,
@@ -584,6 +666,22 @@ where
         self.fork = self.trunk.fork(parameters);
     }
 
+    /// Merges the fork of this tree back into the trunk returning `true` if it was successful.
+    #[inline]
+    pub fn merge_fork(&mut self, parameters: &Parameters<C>) -> bool
+    where
+        LeafDigest<C>: Clone + Default,
+        InnerDigest<C>: Default,
+    {
+        if let Err(fork) = self.trunk.merge(parameters, mem::take(&mut self.fork)) {
+            self.fork = fork;
+            false
+        } else {
+            self.reset_fork(parameters);
+            true
+        }
+    }
+
     /// Converts `self` back into its inner [`Tree`].
     ///
     /// # Safety
@@ -602,7 +700,7 @@ where
     P: PointerFamily<T>,
     M: Default + InnerMap<C>,
     LeafDigest<C>: Clone + Default,
-    InnerDigest<C>: Default,
+    InnerDigest<C>: Clone + Default + PartialEq,
 {
     #[inline]
     fn new(parameters: &Parameters<C>) -> Self {
@@ -626,8 +724,8 @@ where
 
     #[inline]
     fn current_path(&self, parameters: &Parameters<C>) -> CurrentPath<C> {
-        // TODO: self.fork.current_path(parameters)
-        todo!()
+        let _ = parameters;
+        self.fork.current_path()
     }
 
     #[inline]
@@ -645,8 +743,8 @@ where
     T: Tree<C> + WithProofs<C>,
     P: PointerFamily<T>,
     M: Default + InnerMap<C>,
-    LeafDigest<C>: Clone + Default,
-    InnerDigest<C>: Default,
+    LeafDigest<C>: Clone + Default + PartialEq,
+    InnerDigest<C>: Clone + Default,
 {
     #[inline]
     fn leaf_digest(&self, index: usize) -> Option<&LeafDigest<C>> {
@@ -655,8 +753,7 @@ where
 
     #[inline]
     fn position(&self, leaf_digest: &LeafDigest<C>) -> Option<usize> {
-        // self.fork.position(leaf_digest)
-        todo!()
+        self.fork.position(leaf_digest)
     }
 
     #[inline]
@@ -673,7 +770,6 @@ where
 
     #[inline]
     fn path(&self, parameters: &Parameters<C>, index: usize) -> Result<Path<C>, PathError> {
-        // self.fork.path(parameters, index)
-        todo!()
+        self.fork.path(parameters, index)
     }
 }

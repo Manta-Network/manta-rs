@@ -60,6 +60,15 @@ pub trait Rollback {
     /// # Implementation Note
     ///
     /// Rolling back to the previous state must be idempotent, i.e. two consecutive calls to
-    /// [`rollback`](Self::rollback) should do the same as one call.
+    /// [`rollback`](Self::rollback) should have the same effect as one call.
     fn rollback(&mut self);
+
+    /// Commits `self` to the current state, preventing a future call to
+    /// [`rollback`](Self::rollback) from clearing the state.
+    ///
+    /// # Implementation Note
+    ///
+    /// Commiting to the current state must be idempotent, i.e. two consecutive calls to
+    /// [`commit`](Self::commit) should have the same effect as one call.
+    fn commit(&mut self);
 }

@@ -18,12 +18,12 @@
 
 use crate::{
     merkle_tree::{
-        Configuration, HashConfiguration, InnerDigest, InnerHashParameters, Leaf,
-        LeafHashParameters, MerkleTree, Parameters, Tree, WithProofs,
+        Configuration, HashConfiguration, IdentityLeafHash, InnerDigest, InnerHash,
+        InnerHashParameters, Leaf, LeafHashParameters, MerkleTree, Parameters, Tree, WithProofs,
     },
     rand::{CryptoRng, RngCore, Sample},
 };
-use core::{fmt::Debug, hash::Hash};
+use core::{fmt::Debug, hash::Hash, marker::PhantomData, ops::BitXor};
 
 /// Hash Parameter Sampling
 pub trait HashParameterSampling: HashConfiguration {
@@ -158,3 +158,150 @@ where
         }
     }
 }
+
+/// Test Merkle Tree Configuration
+///
+/// # Warning
+///
+/// This is only meant for testing purposes, and should not be used in production or
+/// cryptographically secure environments.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct Test<T = u64, const HEIGHT: usize = 20>(PhantomData<T>)
+where
+    T: Clone + BitXor<Output = T> + Default + PartialEq;
+
+impl<T, const HEIGHT: usize> InnerHash for Test<T, HEIGHT>
+where
+    T: Clone + BitXor<Output = T> + Default + PartialEq,
+{
+    type LeafDigest = T;
+    type Parameters = ();
+    type Output = T;
+
+    #[inline]
+    fn join_in(
+        parameters: &Self::Parameters,
+        lhs: &Self::Output,
+        rhs: &Self::Output,
+        _: &mut (),
+    ) -> Self::Output {
+        let _ = parameters;
+        lhs.clone() ^ rhs.clone()
+    }
+
+    #[inline]
+    fn join_leaves_in(
+        parameters: &Self::Parameters,
+        lhs: &Self::LeafDigest,
+        rhs: &Self::LeafDigest,
+        _: &mut (),
+    ) -> Self::Output {
+        let _ = parameters;
+        lhs.clone() ^ rhs.clone()
+    }
+}
+
+impl<T, const HEIGHT: usize> HashConfiguration for Test<T, HEIGHT>
+where
+    T: Clone + BitXor<Output = T> + Default + PartialEq,
+{
+    type LeafHash = IdentityLeafHash<T>;
+    type InnerHash = Test<T, HEIGHT>;
+}
+
+impl<T, const HEIGHT: usize> Configuration for Test<T, HEIGHT>
+where
+    T: Clone + BitXor<Output = T> + Default + PartialEq,
+{
+    const HEIGHT: usize = HEIGHT;
+}
+
+/*
+#[cfg(test)]
+mod complete {
+    use super::*;
+    use crate::{
+        merkle_tree::{
+            self,
+            fork::{self, ForkedTree, Trunk},
+            inner_tree,
+        },
+        rand::{Rand, Standard},
+    };
+    use core::iter::repeat;
+    use manta_util::pointer::SingleThreaded;
+    use rand::thread_rng;
+
+    #[test]
+    fn test_suite() {
+        let mut rng = thread_rng();
+        let parameters = Default::default();
+
+        let mut single_path_tree =
+            merkle_tree::single_path::SinglePathMerkleTree::<Test>::new(parameters);
+
+        let mut full_tree = merkle_tree::full::FullMerkleTree::<Test>::new(parameters);
+
+        let leaves = rng
+            .sample_iter(repeat(Standard).take(1_000_000))
+            .collect::<Vec<u64>>();
+
+        full_tree.extend(&leaves[0..1000]);
+
+        // println!("{:#?}", full_tree);
+
+        let mut forked_tree = MerkleTree::from_tree(
+            ForkedTree::<_, _, SingleThreaded, inner_tree::BTreeMap<Test>>::new(
+                full_tree.clone().tree,
+                &parameters,
+            ),
+            parameters,
+        );
+
+        use manta_util::Rollback;
+
+        forked_tree.commit();
+
+        assert_valid_paths(&mut full_tree, &leaves[1000..3000]);
+        assert_valid_paths(&mut forked_tree, &leaves[1000..3000]);
+
+        forked_tree.commit();
+
+        for (i, leaf) in leaves.iter().enumerate().take(1000) {
+            // println!("{:#?}", full_tree.path(i));
+            // println!("{:#?}", forked_tree.path(i));
+            // assert_eq!(full_tree.path(i), forked_tree.path(i), "Failed on {:?}", i);
+            assert_valid_path(&full_tree, i, leaf);
+            assert_valid_path(&forked_tree, i, leaf);
+        }
+
+        forked_tree.commit();
+        let tree = forked_tree.tree.into_tree();
+
+        assert_eq!(full_tree.tree, tree);
+
+        /*
+        let mut trunk = Trunk::<_, _, SingleThreaded>::new(full_tree.clone().tree);
+
+        println!("{:#?}", trunk);
+
+        let mut fork = trunk.fork::<inner_tree::BTreeMap<Test>>(&parameters);
+
+        println!("{:#?}", fork);
+
+        for leaf in leaves.iter().take(1000) {
+            full_tree.push(leaf);
+            fork.push(&parameters, leaf);
+            assert_eq!(full_tree.current_path(), fork.current_path());
+            // println!("{:#?}", fork);
+            // println!("{:#?}", full_tree);
+        }
+
+        trunk.merge(&parameters, fork).unwrap();
+        println!("{:#?}", trunk);
+        println!("{:#?}", full_tree);
+        assert_eq!(trunk.into_tree(), full_tree.tree);
+        */
+    }
+}
+*/

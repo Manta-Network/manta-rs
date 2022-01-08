@@ -149,7 +149,7 @@ where
 
     /// Folds `iter` into a root using the path folding algorithm for [`InnerPath`].
     #[inline]
-    fn fold<'i, I>(
+    pub(crate) fn fold<'i, I>(
         parameters: &'i Parameters<C>,
         index: Node,
         base: InnerDigest<C>,
@@ -228,7 +228,7 @@ where
 #[derivative(
     Clone(bound = "InnerDigest<C>: Clone"),
     Debug(bound = "InnerDigest<C>: Debug"),
-    Default(bound = "InnerDigest<C>: Default"),
+    Default(bound = ""),
     Eq(bound = "InnerDigest<C>: Eq"),
     Hash(bound = "InnerDigest<C>: Hash"),
     PartialEq(bound = "InnerDigest<C>: PartialEq")
@@ -426,9 +426,11 @@ where
                     accumulator = parameters.join(&accumulator, &default_inner_digest);
                     depth += 1;
                 }
-                mem::drop(self.path.drain(1..i));
-                self.path[0] = last_accumulator;
+
+                mem::drop(self.path.drain(0..i));
+                self.path.insert(0, last_accumulator);
                 accumulator = parameters.join(&self.path[0], &accumulator);
+
                 Self::fold(
                     parameters,
                     depth + 1,
@@ -736,7 +738,7 @@ where
 #[derivative(
     Clone(bound = "LeafDigest<C>: Clone, InnerDigest<C>: Clone"),
     Debug(bound = "LeafDigest<C>: Debug, InnerDigest<C>: Debug"),
-    Default(bound = "LeafDigest<C>: Default, InnerDigest<C>: Default"),
+    Default(bound = "LeafDigest<C>: Default"),
     Eq(bound = "LeafDigest<C>: Eq, InnerDigest<C>: Eq"),
     Hash(bound = "LeafDigest<C>: Hash, InnerDigest<C>: Hash"),
     PartialEq(bound = "LeafDigest<C>: PartialEq, InnerDigest<C>: PartialEq")

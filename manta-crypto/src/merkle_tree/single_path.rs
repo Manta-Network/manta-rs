@@ -83,7 +83,7 @@ where
     pub fn length_state(&self) -> Length {
         if self.leaf_digest.is_none() {
             Length::Empty
-        } else if self.current_path.leaf_index().0 < capacity::<C>() - 2 {
+        } else if self.current_path.leaf_index().0 < capacity::<C>() - 1 {
             Length::CanAccept
         } else {
             Length::Full

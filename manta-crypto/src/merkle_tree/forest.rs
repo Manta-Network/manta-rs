@@ -460,12 +460,19 @@ where
     P: PointerFamily<T>,
     M: Default + InnerMap<C>,
     LeafDigest<C>: Clone + Default,
-    InnerDigest<C>: Default,
+    InnerDigest<C>: Clone + Default + PartialEq,
 {
     #[inline]
     fn rollback(&mut self) {
         for tree in &mut self.forest.array {
             tree.reset_fork(&self.parameters);
+        }
+    }
+
+    #[inline]
+    fn commit(&mut self) {
+        for tree in &mut self.forest.array {
+            tree.merge_fork(&self.parameters);
         }
     }
 }

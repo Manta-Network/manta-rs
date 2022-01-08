@@ -32,7 +32,7 @@ pub trait PointerFamily<T>: sealed::Sealed {
     type Strong: AsRef<T> + Borrow<T> + Deref<Target = T>;
 
     /// Weak Pointer
-    type Weak;
+    type Weak: Default;
 
     /// Returns a new strong pointer holding `base`.
     fn new(base: T) -> Self::Strong;

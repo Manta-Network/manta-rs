@@ -54,6 +54,7 @@ fn test_suite() {
         &rng.gen(),
     );
 
+    /*
     let mut tree = Tree::new(parameters);
 
     accumulator::test::assert_unique_outputs(
@@ -70,9 +71,7 @@ fn test_suite() {
             .collect::<Vec<_>>(),
     );
 
-    let parameters = tree.into_parameters();
-
-    let mut forest = Forest::new(parameters);
+    let mut forest = Forest::new(tree.into_parameters());
 
     accumulator::test::assert_unique_outputs(
         &mut forest,
@@ -87,4 +86,19 @@ fn test_suite() {
         &rng.sample_iter(repeat(Standard).take(300))
             .collect::<Vec<_>>(),
     );
+    */
+
+    /*
+    let mut forked_tree = ForkedTree::new(parameters);
+
+    println!("{:?}", forked_tree.trunk().len());
+    println!("{:?}", forked_tree.fork().len());
+
+    for _ in 0..1 {
+        forked_tree.insert(&rng.gen());
+    }
+
+    println!("{:?}", forked_tree.trunk().len());
+    println!("{:?}", forked_tree.fork().len());
+    */
 }

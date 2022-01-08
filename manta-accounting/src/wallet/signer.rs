@@ -374,6 +374,7 @@ where
             self.insert_next_item(utxo, encrypted_note, &mut void_numbers, &mut assets)?;
         }
         // FIXME: Do we need to check the void numbers which survived the above loop?
+        self.utxo_set.commit();
         Ok(SyncResponse::new(assets))
     }
 

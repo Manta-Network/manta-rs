@@ -93,16 +93,22 @@ where
         self.leaf_digests
     }
 
+    /// Returns the starting leaf [`Node`] for this tree.
+    #[inline]
+    pub fn starting_leaf_node(&self) -> Node {
+        self.inner_digests.starting_leaf_index()
+    }
+
     /// Returns the starting leaf index for this tree.
     #[inline]
-    pub fn starting_leaf_index(&self) -> Node {
-        self.inner_digests.starting_leaf_index()
+    pub fn starting_leaf_index(&self) -> usize {
+        self.starting_leaf_node().0
     }
 
     /// Returns the number of leaves in this tree.
     #[inline]
     pub fn len(&self) -> usize {
-        self.starting_leaf_index().0 + self.leaf_digests.len()
+        self.starting_leaf_index() + self.leaf_digests.len()
     }
 
     /// Returns `true` if this tree is empty.
@@ -119,15 +125,27 @@ where
 
     ///
     #[inline]
-    pub fn get_leaf_digest(&self, index: usize) -> Option<&LeafDigest<C>> {
-        self.leaf_digests.get(index - self.starting_leaf_index().0)
+    pub fn leaf_digest(&self, index: usize) -> Option<&LeafDigest<C>> {
+        self.leaf_digests.get(index - self.starting_leaf_index())
+    }
+
+    ///
+    #[inline]
+    pub fn position(&self, leaf_digest: &LeafDigest<C>) -> Option<usize>
+    where
+        LeafDigest<C>: PartialEq,
+    {
+        self.leaf_digests
+            .iter()
+            .position(move |d| d == leaf_digest)
+            .map(move |i| i + self.starting_leaf_index())
     }
 
     /// Returns the sibling leaf node to `index`.
     #[inline]
     pub fn get_leaf_sibling(&self, index: Node) -> Option<&LeafDigest<C>> {
         self.leaf_digests
-            .get((index - self.starting_leaf_index().0).sibling().0)
+            .get((index - self.starting_leaf_index()).sibling().0)
     }
 
     /// Returns an owned sibling leaf node to `index`.
@@ -137,6 +155,44 @@ where
         LeafDigest<C>: Clone + Default,
     {
         self.get_leaf_sibling(index).cloned().unwrap_or_default()
+    }
+
+    ///
+    #[inline]
+    pub fn current_leaf(&self) -> Option<&LeafDigest<C>> {
+        self.leaf_digests.last()
+    }
+
+    ///
+    #[inline]
+    pub fn current_path(&self) -> CurrentPath<C>
+    where
+        LeafDigest<C>: Clone + Default,
+        InnerDigest<C>: Clone + PartialEq,
+    {
+        let length = self.len();
+        if length == 0 {
+            return Default::default();
+        }
+        let leaf_index = Node(length - 1);
+        CurrentPath::from_inner(
+            self.get_owned_leaf_sibling(leaf_index),
+            self.inner_digests.current_path_unchecked(leaf_index),
+        )
+    }
+
+    ///
+    #[inline]
+    pub fn path_unchecked(&self, index: usize) -> Path<C>
+    where
+        LeafDigest<C>: Clone + Default,
+        InnerDigest<C>: Clone,
+    {
+        let leaf_index = Node(index);
+        Path::from_inner(
+            self.get_owned_leaf_sibling(leaf_index),
+            self.inner_digests.path_unchecked(leaf_index),
+        )
     }
 
     /// Appends a `leaf_digest` with index given by `leaf_index` into the tree.
@@ -217,7 +273,7 @@ where
 
     #[inline]
     fn current_leaf(&self) -> Option<&LeafDigest<C>> {
-        self.leaf_digests.last()
+        self.current_leaf()
     }
 
     #[inline]
@@ -228,11 +284,7 @@ where
     #[inline]
     fn current_path(&self, parameters: &Parameters<C>) -> CurrentPath<C> {
         let _ = parameters;
-        let leaf_index = Node(self.len() - 1);
-        CurrentPath::from_inner(
-            self.get_owned_leaf_sibling(leaf_index),
-            self.inner_digests.current_path_unchecked(leaf_index),
-        )
+        self.current_path()
     }
 
     #[inline]
@@ -253,15 +305,12 @@ where
 {
     #[inline]
     fn leaf_digest(&self, index: usize) -> Option<&LeafDigest<C>> {
-        self.get_leaf_digest(index)
+        self.leaf_digest(index)
     }
 
     #[inline]
     fn position(&self, leaf_digest: &LeafDigest<C>) -> Option<usize> {
-        self.leaf_digests
-            .iter()
-            .position(move |d| d == leaf_digest)
-            .map(move |i| i + self.starting_leaf_index().0)
+        self.position(leaf_digest)
     }
 
     #[inline]
@@ -284,14 +333,10 @@ where
         if index > 0 && index >= length {
             return Err(PathError::IndexTooLarge { length });
         }
-        if index < self.starting_leaf_index().0 {
+        if index < self.starting_leaf_index() {
             return Err(PathError::MissingPath);
         }
-        let leaf_index = Node(index);
-        Ok(Path::from_inner(
-            self.get_owned_leaf_sibling(leaf_index),
-            self.inner_digests.path_unchecked(leaf_index),
-        ))
+        Ok(self.path_unchecked(index))
     }
 
     #[inline]

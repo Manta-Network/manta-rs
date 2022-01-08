@@ -167,7 +167,11 @@ where
     #[inline]
     fn current_path(&self, parameters: &Parameters<C>) -> CurrentPath<C> {
         let _ = parameters;
-        let leaf_index = Node(self.len() - 1);
+        let length = self.len();
+        if length == 0 {
+            return Default::default();
+        }
+        let leaf_index = Node(length - 1);
         CurrentPath::from_inner(
             self.get_owned_leaf_sibling(leaf_index),
             self.inner_digests.current_path_unchecked(leaf_index),

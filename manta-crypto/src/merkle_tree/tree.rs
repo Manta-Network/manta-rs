@@ -698,10 +698,10 @@ where
     T: Tree<C>,
 {
     /// Underlying Tree Structure
-    tree: T,
+    pub tree: T,
 
     /// Merkle Tree Parameters
-    parameters: Parameters<C>,
+    pub parameters: Parameters<C>,
 }
 
 impl<C, T> MerkleTree<C, T>
@@ -1048,10 +1048,15 @@ where
     P: PointerFamily<T>,
     M: Default + InnerMap<C>,
     LeafDigest<C>: Clone + Default,
-    InnerDigest<C>: Default,
+    InnerDigest<C>: Clone + Default + PartialEq,
 {
     #[inline]
     fn rollback(&mut self) {
         self.tree.reset_fork(&self.parameters);
+    }
+
+    #[inline]
+    fn commit(&mut self) {
+        self.tree.merge_fork(&self.parameters);
     }
 }
