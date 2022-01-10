@@ -23,8 +23,8 @@ use manta_crypto::{
     accumulator::{Accumulator, MembershipProof, Model},
     commitment::CommitmentScheme,
     constraint::{
-        Add, Allocator, Constant, ConstraintSystem, Derived, Equal, Input as ProofSystemInput,
-        ProofSystem, Public, Secret, ValueSource, Variable,
+        Add, Allocator, Constant, ConstraintSystem, Derived, Equal, ProofSystem, ProofSystemInput,
+        Public, Secret, ValueSource, Variable,
     },
     encryption::{DecryptedMessage, EncryptedMessage, HybridPublicKeyEncryptionScheme},
     hash::BinaryHashFunction,
@@ -341,6 +341,9 @@ type ProofSystemType<C> = <C as Configuration>::ProofSystem;
 
 /// Transfer Proof System Error Type
 pub type ProofSystemError<C> = <ProofSystemType<C> as ProofSystem>::Error;
+
+/// Transfer Proof System Public Parameters Type
+pub type ProofSystemPublicParameters<C> = <ProofSystemType<C> as ProofSystem>::PublicParameters;
 
 /// Transfer Proving Context Type
 pub type ProvingContext<C> = <ProofSystemType<C> as ProofSystem>::ProvingContext;
@@ -1406,13 +1409,18 @@ where
     /// Generates a proving and verifying context for this transfer shape.
     #[inline]
     pub fn generate_context<R>(
+        public_parameters: &ProofSystemPublicParameters<C>,
         parameters: FullParameters<C>,
         rng: &mut R,
     ) -> Result<(ProvingContext<C>, VerifyingContext<C>), ProofSystemError<C>>
     where
         R: CryptoRng + RngCore + ?Sized,
     {
-        C::ProofSystem::generate_context(Self::unknown_constraints(parameters), rng)
+        C::ProofSystem::generate_context(
+            Self::unknown_constraints(parameters),
+            public_parameters,
+            rng,
+        )
     }
 
     /// Converts `self` into its ledger post.

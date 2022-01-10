@@ -28,7 +28,6 @@ maintenance = { status = "actively-developed" }
 resolver = "2"
 members = [
     "manta-accounting",
-    "manta-codec",
     "manta-crypto",
     "manta-pay",
     "manta-util",
@@ -46,7 +45,6 @@ test = ["manta-accounting/test", "manta-crypto/test"]
 
 [dependencies]
 manta-accounting = { path = "manta-accounting" }
-manta-codec = { path = "manta-codec" }
 manta-crypto = { path = "manta-crypto" }
 manta-pay = { path = "manta-pay" }
 manta-util = { path = "manta-util" }

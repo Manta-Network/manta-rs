@@ -20,7 +20,7 @@ use crate::{
     asset::{Asset, AssetId, AssetValue, AssetValueType},
     transfer::{
         has_public_participants, Configuration, FullParameters, Parameters, PreSender,
-        ProofSystemError, Receiver, Sender, Transfer, Utxo,
+        ProofSystemError, ProofSystemPublicParameters, Receiver, Sender, Transfer, Utxo,
     },
 };
 use alloc::vec::Vec;
@@ -130,6 +130,7 @@ where
     /// validated.
     #[inline]
     pub fn sample_and_check_proof<A, R>(
+        public_parameters: &ProofSystemPublicParameters<C>,
         parameters: &Parameters<C>,
         utxo_set: &mut A,
         rng: &mut R,
@@ -146,7 +147,8 @@ where
             rng,
         );
         let full_parameters = FullParameters::new(parameters, utxo_set.model());
-        let (proving_context, verifying_context) = Self::generate_context(full_parameters, rng)?;
+        let (proving_context, verifying_context) =
+            Self::generate_context(public_parameters, full_parameters, rng)?;
         let post = transfer.into_post(full_parameters, &proving_context, rng)?;
         C::ProofSystem::verify(
             &post.generate_proof_input(),

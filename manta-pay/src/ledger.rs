@@ -23,7 +23,8 @@ use alloc::vec::Vec;
 use manta_accounting::{
     asset::{AssetId, AssetValue},
     transfer::{
-        self, AccountBalance, InvalidSinkAccounts, InvalidSourceAccounts, Proof, ReceiverLedger,
+        canonical::{MultiVerifyingContext, TransferShape},
+        AccountBalance, InvalidSinkAccounts, InvalidSourceAccounts, Proof, ReceiverLedger,
         ReceiverPostingKey, SenderLedger, SenderPostingKey, SinkPostingKey, SourcePostingKey,
         TransferLedger, TransferLedgerSuperPostingKey, TransferPostingKey, UtxoSetOutput,
     },
@@ -78,7 +79,7 @@ pub struct Ledger {
     accounts: HashMap<u128, HashMap<AssetId, AssetValue>>,
 
     /// Verifying Contexts
-    verifying_context: transfer::canonical::VerifyingContext<Config>,
+    verifying_context: MultiVerifyingContext<Config>,
 }
 
 impl SenderLedger<Config> for Ledger {
@@ -241,13 +242,13 @@ impl TransferLedger<Config> for Ledger {
         sinks: &[SinkPostingKey<Config, Self>],
         proof: Proof<Config>,
     ) -> Option<(Self::ValidProof, Self::Event)> {
-        let verifying_context = self.verifying_context.select(
+        let verifying_context = self.verifying_context.select(TransferShape::select(
             asset_id.is_some(),
             sources.len(),
             senders.len(),
             receivers.len(),
             sinks.len(),
-        )?;
+        )?);
         ProofSystem::verify(
             &TransferPostingKey::generate_proof_input(asset_id, sources, senders, receivers, sinks),
             &proof,

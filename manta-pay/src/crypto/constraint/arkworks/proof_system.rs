@@ -72,6 +72,8 @@ where
 {
     type ConstraintSystem = R1CS<E::Fr>;
 
+    type PublicParameters = ();
+
     type ProvingContext = ProvingKey<E>;
 
     type VerifyingContext = PreparedVerifyingKey<E>;
@@ -97,11 +99,13 @@ where
     #[inline]
     fn generate_context<R>(
         cs: Self::ConstraintSystem,
+        public_parameters: &Self::PublicParameters,
         rng: &mut R,
     ) -> Result<(Self::ProvingContext, Self::VerifyingContext), Self::Error>
     where
         R: CryptoRng + RngCore + ?Sized,
     {
+        let _ = public_parameters;
         let (proving_key, verifying_key) = ArkGroth16::circuit_specific_setup(
             ConstraintSynthesizerWrapper(cs),
             &mut SizedRng(rng),

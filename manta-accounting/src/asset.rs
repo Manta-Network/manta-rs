@@ -21,12 +21,14 @@
 // TODO: Implement `Concat` for `AssetId` and `AssetValue`.
 // TODO: Add implementations for `AssetMap` using sorted vectors and/or max-heaps
 
-use alloc::{collections::BTreeMap, vec::Vec};
+use alloc::{
+    collections::btree_map::{BTreeMap, Entry as BTreeMapEntry},
+    vec::Vec,
+};
 use core::{
     fmt::Debug,
     hash::Hash,
-    iter,
-    iter::{FusedIterator, Sum},
+    iter::{self, FusedIterator, Sum},
     ops::{Add, AddAssign, Mul, Sub, SubAssign},
     slice,
 };
@@ -41,7 +43,7 @@ use manta_util::{into_array_unchecked, Concat, ConcatAccumulator};
 
 #[cfg(feature = "std")]
 use std::{
-    collections::hash_map::{HashMap, RandomState},
+    collections::hash_map::{Entry as HashMapEntry, HashMap, RandomState},
     hash::BuildHasher,
 };
 
@@ -105,6 +107,13 @@ impl From<AssetId> for [u8; AssetId::SIZE] {
     #[inline]
     fn from(entry: AssetId) -> Self {
         entry.into_bytes()
+    }
+}
+
+impl PartialEq<AssetIdType> for AssetId {
+    #[inline]
+    fn eq(&self, rhs: &AssetIdType) -> bool {
+        self.0 == *rhs
     }
 }
 
@@ -238,6 +247,13 @@ impl Mul<AssetValue> for AssetValueType {
     }
 }
 
+impl PartialEq<AssetValueType> for AssetValue {
+    #[inline]
+    fn eq(&self, rhs: &AssetValueType) -> bool {
+        self.0 == *rhs
+    }
+}
+
 impl<D> Sample<D> for AssetValue
 where
     AssetValueType: Sample<D>,
@@ -326,7 +342,7 @@ impl FusedIterator for Change {}
 
 /// Asset
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-#[derive(Clone, Copy, Debug, Default, Display, Eq, From, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Display, Eq, From, Hash, Ord, PartialEq, PartialOrd)]
 #[display(fmt = "{{id: {}, value: {}}}", id, value)]
 pub struct Asset<I = AssetId, V = AssetValue> {
     /// Asset Id
@@ -554,6 +570,10 @@ where
 /// Asset Map
 ///
 /// This trait represents an asset distribution over some [`Key`](Self::Key) type.
+///
+/// # Warning
+///
+/// It is possible that keys are repeated, as long as the assets associated to them are different.
 pub trait AssetMap: Default {
     /// Key Type
     ///
@@ -600,20 +620,21 @@ pub trait AssetMap: Default {
     }
 
     /// Removes the `key` from the map.
-    fn remove(&mut self, key: Self::Key);
+    fn remove(&mut self, key: Self::Key, asset: Asset);
 
     /// Removes all the keys in `iter` from the map.
     fn remove_all<I>(&mut self, iter: I)
     where
-        I: IntoIterator<Item = Self::Key>,
+        I: IntoIterator<Item = (Self::Key, Asset)>,
     {
-        iter.into_iter().for_each(move |key| self.remove(key));
+        iter.into_iter()
+            .for_each(move |(key, asset)| self.remove(key, asset));
     }
 }
 
 /// Implements [`AssetMap`] for map types.
 macro_rules! impl_asset_map_for_maps_body {
-    ($k:tt) => {
+    ($k:tt, $entry:tt) => {
         type Key = $k;
 
         #[inline]
@@ -624,11 +645,13 @@ macro_rules! impl_asset_map_for_maps_body {
             }
             let mut sum = Asset::zero(asset.id);
             let mut values = Vec::new();
-            for (key, item) in self {
-                if item.value != AssetValue(0) && sum.try_add_assign(*item) {
-                    values.push((key.clone(), item.value));
-                    if sum.value >= asset.value {
-                        break;
+            for (key, assets) in self {
+                for item in assets {
+                    if item.value != AssetValue(0) && sum.try_add_assign(*item) {
+                        values.push((key.clone(), item.value));
+                        if sum.value >= asset.value {
+                            break;
+                        }
                     }
                 }
             }
@@ -642,8 +665,11 @@ macro_rules! impl_asset_map_for_maps_body {
         #[inline]
         fn zeroes(&self, n: usize, id: AssetId) -> Vec<Self::Key> {
             self.iter()
-                .filter_map(move |(k, a)| {
-                    (a.id == id && a.value == AssetValue(0)).then(move || k.clone())
+                .filter_map(move |(key, assets)| {
+                    assets
+                        .iter()
+                        .any(move |a| a.id == id && a.value == 0)
+                        .then(move || key.clone())
                 })
                 .take(n)
                 .collect()
@@ -651,30 +677,48 @@ macro_rules! impl_asset_map_for_maps_body {
 
         #[inline]
         fn insert(&mut self, key: Self::Key, asset: Asset) {
-            self.insert(key, asset);
+            match self.entry(key) {
+                $entry::Vacant(entry) => {
+                    entry.insert(vec![asset]);
+                }
+                $entry::Occupied(mut entry) => {
+                    let assets = entry.get_mut();
+                    if let Err(index) = assets.binary_search(&asset) {
+                        assets.insert(index, asset);
+                    }
+                }
+            }
         }
 
         #[inline]
-        fn remove(&mut self, key: Self::Key) {
-            self.remove(&key);
+        fn remove(&mut self, key: Self::Key, asset: Asset) {
+            if let $entry::Occupied(mut entry) = self.entry(key) {
+                let assets = entry.get_mut();
+                if let Ok(index) = assets.binary_search(&asset) {
+                    assets.remove(index);
+                }
+                if assets.is_empty() {
+                    entry.remove();
+                }
+            }
         }
     };
 }
 
 /// B-Tree Map [`AssetMap`] Implementation
-pub type BTreeAssetMap<K> = BTreeMap<K, Asset>;
+pub type BTreeAssetMap<K> = BTreeMap<K, Vec<Asset>>;
 
 impl<K> AssetMap for BTreeAssetMap<K>
 where
     K: Clone + Ord,
 {
-    impl_asset_map_for_maps_body! { K }
+    impl_asset_map_for_maps_body! { K, BTreeMapEntry }
 }
 
 /// Hash Map [`AssetMap`] Implementation
 #[cfg(feature = "std")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
-pub type HashAssetMap<K, S = RandomState> = HashMap<K, Asset, S>;
+pub type HashAssetMap<K, S = RandomState> = HashMap<K, Vec<Asset>, S>;
 
 #[cfg(feature = "std")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
@@ -683,7 +727,7 @@ where
     K: Clone + Hash + Eq,
     S: BuildHasher + Default,
 {
-    impl_asset_map_for_maps_body! { K }
+    impl_asset_map_for_maps_body! { K, HashMapEntry }
 }
 
 /// Asset Selection
@@ -873,7 +917,7 @@ mod test {
             let n = rng.gen_range(1..0xFFFF);
             let change = amount.make_change(n).unwrap().collect::<Vec<_>>();
             assert_eq!(n, change.len());
-            assert_eq!(amount, change.into_iter().sum());
+            assert_eq!(amount, change.into_iter().sum::<AssetValue>());
         }
     }
 }

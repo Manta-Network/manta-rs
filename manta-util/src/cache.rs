@@ -1,0 +1,62 @@
+// Copyright 2019-2021 Manta Network.
+// This file is part of manta-rs.
+//
+// manta-rs is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// manta-rs is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
+
+//! Caching Utilities
+
+use crate::future::LocalBoxFuture;
+use alloc::boxed::Box;
+use core::convert::Infallible;
+
+/// Cached Resource
+pub trait CachedResource<T> {
+    /// Reading Key Type
+    type ReadingKey;
+
+    /// Aquisition Error Type
+    type Error;
+
+    /// Tries to aquire the resource with `self`, returning a reading key if successful, storing
+    /// the aquired resource in the cache.
+    fn aquire(&mut self) -> LocalBoxFuture<Result<Self::ReadingKey, Self::Error>>;
+
+    /// Reads the resource, spending the `reading_key`. The reference can be held on to until
+    /// [`release`](Self::release) is called or the reference falls out of scope.
+    fn read(&self, reading_key: Self::ReadingKey) -> &T;
+
+    /// Releases the resource with `self`, clearing the cache.
+    fn release(&mut self) -> LocalBoxFuture;
+}
+
+impl<T> CachedResource<T> for T {
+    type ReadingKey = ();
+    type Error = Infallible;
+
+    #[inline]
+    fn aquire(&mut self) -> LocalBoxFuture<Result<Self::ReadingKey, Self::Error>> {
+        Box::pin(async { Ok(()) })
+    }
+
+    #[inline]
+    fn read(&self, reading_key: Self::ReadingKey) -> &T {
+        let _ = reading_key;
+        self
+    }
+
+    #[inline]
+    fn release(&mut self) -> LocalBoxFuture {
+        Box::pin(async {})
+    }
+}

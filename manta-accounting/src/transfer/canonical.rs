@@ -18,7 +18,10 @@
 
 use crate::{
     asset::{self, Asset, AssetValue},
-    transfer::{self, Configuration, PreSender, Receiver, ReceivingKey, Sender, Transfer},
+    transfer::{
+        Configuration, PreSender, ProvingContext, Receiver, ReceivingKey, Sender, Transfer,
+        VerifyingContext,
+    },
 };
 use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash};
@@ -317,96 +320,82 @@ where
     }
 }
 
-/// Canonical Proving Contexts
+/// Canonical Multi-Proving Contexts
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "transfer::ProvingContext<C>: Clone"),
-    Copy(bound = "transfer::ProvingContext<C>: Copy"),
-    Debug(bound = "transfer::ProvingContext<C>: Debug"),
-    Default(bound = "transfer::ProvingContext<C>: Default"),
-    Eq(bound = "transfer::ProvingContext<C>: Eq"),
-    Hash(bound = "transfer::ProvingContext<C>: Hash"),
-    PartialEq(bound = "transfer::ProvingContext<C>: PartialEq")
+    Clone(bound = "ProvingContext<C>: Clone"),
+    Copy(bound = "ProvingContext<C>: Copy"),
+    Debug(bound = "ProvingContext<C>: Debug"),
+    Default(bound = "ProvingContext<C>: Default"),
+    Eq(bound = "ProvingContext<C>: Eq"),
+    Hash(bound = "ProvingContext<C>: Hash"),
+    PartialEq(bound = "ProvingContext<C>: PartialEq")
 )]
-pub struct ProvingContext<C>
+pub struct MultiProvingContext<C>
 where
-    C: Configuration,
+    C: Configuration + ?Sized,
 {
     /// Mint Proving Context
-    pub mint: transfer::ProvingContext<C>,
+    pub mint: ProvingContext<C>,
 
     /// Private Transfer Proving Context
-    pub private_transfer: transfer::ProvingContext<C>,
+    pub private_transfer: ProvingContext<C>,
 
     /// Reclaim Proving Context
-    pub reclaim: transfer::ProvingContext<C>,
+    pub reclaim: ProvingContext<C>,
 }
 
-impl<C> ProvingContext<C>
+impl<C> MultiProvingContext<C>
 where
-    C: Configuration,
+    C: Configuration + ?Sized,
 {
-    /// Selects the proving context for the given shape if it matches a canonical shape.
+    /// Selects a [`ProvingContext`] based on `shape`.
     #[inline]
-    pub fn select(
-        &self,
-        asset_id_is_some: bool,
-        sources: usize,
-        senders: usize,
-        receivers: usize,
-        sinks: usize,
-    ) -> Option<&transfer::ProvingContext<C>> {
-        match TransferShape::select(asset_id_is_some, sources, senders, receivers, sinks)? {
-            TransferShape::Mint => Some(&self.mint),
-            TransferShape::PrivateTransfer => Some(&self.private_transfer),
-            TransferShape::Reclaim => Some(&self.reclaim),
+    pub fn select(&self, shape: TransferShape) -> &ProvingContext<C> {
+        match shape {
+            TransferShape::Mint => &self.mint,
+            TransferShape::PrivateTransfer => &self.private_transfer,
+            TransferShape::Reclaim => &self.reclaim,
         }
     }
 }
 
-/// Canonical Verifying Contexts
+/// Canonical Multi-Verifying Contexts
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "transfer::VerifyingContext<C>: Clone"),
-    Copy(bound = "transfer::VerifyingContext<C>: Copy"),
-    Debug(bound = "transfer::VerifyingContext<C>: Debug"),
-    Default(bound = "transfer::VerifyingContext<C>: Default"),
-    Eq(bound = "transfer::VerifyingContext<C>: Eq"),
-    Hash(bound = "transfer::VerifyingContext<C>: Hash"),
-    PartialEq(bound = "transfer::VerifyingContext<C>: PartialEq")
+    Clone(bound = "VerifyingContext<C>: Clone"),
+    Copy(bound = "VerifyingContext<C>: Copy"),
+    Debug(bound = "VerifyingContext<C>: Debug"),
+    Default(bound = "VerifyingContext<C>: Default"),
+    Eq(bound = "VerifyingContext<C>: Eq"),
+    Hash(bound = "VerifyingContext<C>: Hash"),
+    PartialEq(bound = "VerifyingContext<C>: PartialEq")
 )]
-pub struct VerifyingContext<C>
+pub struct MultiVerifyingContext<C>
 where
-    C: Configuration,
+    C: Configuration + ?Sized,
 {
     /// Mint Verifying Context
-    pub mint: transfer::VerifyingContext<C>,
+    pub mint: VerifyingContext<C>,
 
     /// Private Transfer Verifying Context
-    pub private_transfer: transfer::VerifyingContext<C>,
+    pub private_transfer: VerifyingContext<C>,
 
     /// Reclaim Verifying Context
-    pub reclaim: transfer::VerifyingContext<C>,
+    pub reclaim: VerifyingContext<C>,
 }
 
-impl<C> VerifyingContext<C>
+impl<C> MultiVerifyingContext<C>
 where
-    C: Configuration,
+    C: Configuration + ?Sized,
 {
-    /// Selects the verifying context for the given shape if it matches a canonical shape.
+    /// Selects a [`VerifyingContext`] based on `shape`.
     #[inline]
-    pub fn select(
-        &self,
-        asset_id_is_some: bool,
-        sources: usize,
-        senders: usize,
-        receivers: usize,
-        sinks: usize,
-    ) -> Option<&transfer::VerifyingContext<C>> {
-        match TransferShape::select(asset_id_is_some, sources, senders, receivers, sinks)? {
-            TransferShape::Mint => Some(&self.mint),
-            TransferShape::PrivateTransfer => Some(&self.private_transfer),
-            TransferShape::Reclaim => Some(&self.reclaim),
+    pub fn select(&self, shape: TransferShape) -> &VerifyingContext<C> {
+        match shape {
+            TransferShape::Mint => &self.mint,
+            TransferShape::PrivateTransfer => &self.private_transfer,
+            TransferShape::Reclaim => &self.reclaim,
         }
     }
 }

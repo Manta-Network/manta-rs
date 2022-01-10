@@ -421,6 +421,9 @@ pub trait ProofSystem {
     /// Constraint System
     type ConstraintSystem: ConstraintSystem;
 
+    /// Public Parameters Type
+    type PublicParameters;
+
     /// Proving Context Type
     type ProvingContext;
 
@@ -452,6 +455,7 @@ pub trait ProofSystem {
     /// Returns proving and verifying contexts for the constraints contained in `compiler`.
     fn generate_context<R>(
         compiler: Self::ConstraintSystem,
+        public_parameters: &Self::PublicParameters,
         rng: &mut R,
     ) -> Result<(Self::ProvingContext, Self::VerifyingContext), Self::Error>
     where
@@ -475,7 +479,7 @@ pub trait ProofSystem {
 }
 
 /// Proof System Input
-pub trait Input<T>: ProofSystem
+pub trait ProofSystemInput<T>: ProofSystem
 where
     T: ?Sized,
 {

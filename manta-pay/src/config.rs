@@ -42,8 +42,7 @@ use manta_crypto::{
     accumulator,
     commitment::CommitmentScheme,
     constraint::{
-        Add, Allocator, Constant, Equal, Input as ProofSystemInput, Public, Secret, ValueSource,
-        Variable,
+        Add, Allocator, Constant, Equal, ProofSystemInput, Public, Secret, ValueSource, Variable,
     },
     ecc::DiffieHellman,
     encryption,

@@ -28,6 +28,8 @@ mod concat;
 mod sealed;
 mod serde;
 
+pub mod cache;
+pub mod future;
 pub mod iter;
 pub mod num;
 pub mod pointer;

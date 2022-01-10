@@ -32,7 +32,7 @@ fn sample_mint_context() {
     let mut rng = thread_rng();
     let cs = Mint::unknown_constraints(FullParameters::new(&rng.gen(), &rng.gen()));
     println!("Mint: {:?}", cs.measure());
-    config::ProofSystem::generate_context(cs, &mut rng).unwrap();
+    config::ProofSystem::generate_context(cs, &(), &mut rng).unwrap();
 }
 
 /// Tests the generation of proving/verifying contexts for [`PrivateTransfer`].
@@ -41,7 +41,7 @@ fn sample_private_transfer_context() {
     let mut rng = thread_rng();
     let cs = PrivateTransfer::unknown_constraints(FullParameters::new(&rng.gen(), &rng.gen()));
     println!("PrivateTransfer: {:?}", cs.measure());
-    config::ProofSystem::generate_context(cs, &mut rng).unwrap();
+    config::ProofSystem::generate_context(cs, &(), &mut rng).unwrap();
 }
 
 /// Tests the generation of proving/verifying contexts for [`Reclaim`].
@@ -50,14 +50,15 @@ fn sample_reclaim_context() {
     let mut rng = thread_rng();
     let cs = Reclaim::unknown_constraints(FullParameters::new(&rng.gen(), &rng.gen()));
     println!("Reclaim: {:?}", cs.measure());
-    config::ProofSystem::generate_context(cs, &mut rng).unwrap();
+    config::ProofSystem::generate_context(cs, &(), &mut rng).unwrap();
 }
 
 /// Tests the generation of a [`Mint`].
 #[test]
 fn mint() {
     let mut rng = thread_rng();
-    let result = Mint::sample_and_check_proof(&rng.gen(), &mut UtxoSet::new(rng.gen()), &mut rng);
+    let result =
+        Mint::sample_and_check_proof(&(), &rng.gen(), &mut UtxoSet::new(rng.gen()), &mut rng);
     println!("Mint: {:?}", result);
     assert!(matches!(result, Ok(true)));
 }
@@ -66,8 +67,12 @@ fn mint() {
 #[test]
 fn private_transfer() {
     let mut rng = thread_rng();
-    let result =
-        PrivateTransfer::sample_and_check_proof(&rng.gen(), &mut UtxoSet::new(rng.gen()), &mut rng);
+    let result = PrivateTransfer::sample_and_check_proof(
+        &(),
+        &rng.gen(),
+        &mut UtxoSet::new(rng.gen()),
+        &mut rng,
+    );
     println!("PrivateTransfer: {:?}", result);
     assert!(matches!(result, Ok(true)));
 }
@@ -77,7 +82,7 @@ fn private_transfer() {
 fn reclaim() {
     let mut rng = thread_rng();
     let result =
-        Reclaim::sample_and_check_proof(&rng.gen(), &mut UtxoSet::new(rng.gen()), &mut rng);
+        Reclaim::sample_and_check_proof(&(), &rng.gen(), &mut UtxoSet::new(rng.gen()), &mut rng);
     println!("Reclaim: {:?}", result);
     assert!(matches!(result, Ok(true)));
 }
