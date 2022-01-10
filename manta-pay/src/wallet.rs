@@ -23,7 +23,11 @@ use crate::{
 use manta_accounting::{
     asset::HashAssetMap,
     key,
-    wallet::signer::{self, AssetMapKey},
+    transfer::canonical::MultiProvingContext,
+    wallet::{
+        self,
+        signer::{self, AssetMapKey},
+    },
 };
 use manta_crypto::merkle_tree;
 
@@ -42,8 +46,12 @@ impl signer::Configuration for Config {
         key::Map<TestnetKeySecret, HierarchicalKeyDerivationFunction>;
     type UtxoSet = UtxoSet;
     type AssetMap = HashAssetMap<AssetMapKey<Self>>;
+    type ProvingContextCache = MultiProvingContext<Self>;
     type Rng = rand_chacha::ChaCha20Rng;
 }
 
 /// Signer
 pub type Signer = signer::Signer<Config>;
+
+/// Wallet
+pub type Wallet<L> = wallet::Wallet<Config, L, Signer>;

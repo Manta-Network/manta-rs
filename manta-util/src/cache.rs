@@ -30,6 +30,11 @@ pub trait CachedResource<T> {
 
     /// Tries to aquire the resource with `self`, returning a reading key if successful, storing
     /// the aquired resource in the cache.
+    ///
+    /// # Contract
+    ///
+    /// This method should be idempotent unless calls to [`aquire`](Self::aquire) are interleaved
+    /// with calls to [`release`](Self::release).
     fn aquire(&mut self) -> LocalBoxFuture<Result<Self::ReadingKey, Self::Error>>;
 
     /// Reads the resource, spending the `reading_key`. The reference can be held on to until
@@ -37,8 +42,17 @@ pub trait CachedResource<T> {
     fn read(&self, reading_key: Self::ReadingKey) -> &T;
 
     /// Releases the resource with `self`, clearing the cache.
+    ///
+    /// # Contract
+    ///
+    /// This method should be idempotent unless calls to [`release`](Self::release) are interleaved
+    /// with calls to [`aquire`](Self::aquire). This method can be a no-op if the resource was not
+    /// aquired.
     fn release(&mut self) -> LocalBoxFuture;
 }
+
+/// Cached Resource Error Type
+pub type CachedResourceError<T, R> = <R as CachedResource<T>>::Error;
 
 impl<T> CachedResource<T> for T {
     type ReadingKey = ();

@@ -18,10 +18,9 @@
 
 use crate::{
     asset::{Asset, AssetId, AssetValue},
-    key::{HierarchicalKeyDerivationScheme, Index},
     transfer::{
         canonical::{Transaction, TransactionKind},
-        Configuration, ReceivingKey, SecretKey,
+        Configuration, ReceivingKey,
     },
     wallet::{
         ledger::{self, Checkpoint, PullResponse, PushResponse},
@@ -32,7 +31,7 @@ use alloc::{
     collections::btree_map::{BTreeMap, Entry as BTreeMapEntry},
     vec::Vec,
 };
-use core::marker::PhantomData;
+use core::{fmt::Debug, marker::PhantomData};
 
 #[cfg(feature = "std")]
 use std::{
@@ -159,22 +158,12 @@ where
     impl_balance_state_map_body! { HashMapEntry }
 }
 
-/// Native Wallet
-pub type NativeWallet<C, L, B = BTreeMapBalanceState> = Wallet<
-    <C as signer::Configuration>::HierarchicalKeyDerivationScheme,
-    C,
-    L,
-    signer::Signer<C>,
-    B,
->;
-
 /// Wallet
-pub struct Wallet<H, C, L, S, B = BTreeMapBalanceState>
+pub struct Wallet<C, L, S = signer::Signer<C>, B = BTreeMapBalanceState>
 where
-    H: HierarchicalKeyDerivationScheme<SecretKey = SecretKey<C>>,
     C: Configuration,
     L: ledger::Connection<C>,
-    S: signer::Connection<H, C>,
+    S: signer::Connection<C>,
     B: BalanceState,
 {
     /// Ledger Connection
@@ -190,24 +179,23 @@ where
     assets: B,
 
     /// Type Parameter Marker
-    __: PhantomData<(H, C)>,
+    __: PhantomData<C>,
 }
 
-impl<H, C, L, S, B> Wallet<H, C, L, S, B>
+impl<C, L, S, B> Wallet<C, L, S, B>
 where
-    H: HierarchicalKeyDerivationScheme<SecretKey = SecretKey<C>>,
     C: Configuration,
     L: ledger::Connection<C>,
-    S: signer::Connection<H, C>,
+    S: signer::Connection<C>,
     B: BalanceState,
 {
     /// Builds a new [`Wallet`].
     #[inline]
-    pub fn new(signer: S, ledger: L, checkpoint: L::Checkpoint, assets: B) -> Self {
+    pub fn new(ledger: L, checkpoint: L::Checkpoint, signer: S, assets: B) -> Self {
         Self {
-            signer,
             ledger,
             checkpoint,
+            signer,
             assets,
             __: PhantomData,
         }
@@ -215,8 +203,8 @@ where
 
     /// Starts a new [`Wallet`] from `signer` and `ledger` connections.
     #[inline]
-    pub fn empty(signer: S, ledger: L) -> Self {
-        Self::new(signer, ledger, Default::default(), Default::default())
+    pub fn empty(ledger: L, signer: S) -> Self {
+        Self::new(ledger, Default::default(), signer, Default::default())
     }
 
     /// Returns the current balance associated with this `id`.
@@ -240,7 +228,7 @@ where
 
     /// Pulls data from the `ledger`, synchronizing the wallet and balance state.
     #[inline]
-    pub async fn sync(&mut self) -> Result<(), Error<H, C, L, S>> {
+    pub async fn sync(&mut self) -> Result<(), Error<C, L, S>> {
         // TODO: How to recover from an `InconsistentSynchronization` error? Need some sort of
         //       recovery mode, like starting from the beginning of the state?
         let PullResponse {
@@ -255,7 +243,8 @@ where
         self.assets.deposit_all(
             self.signer
                 .sync(checkpoint.receiver_index(), receivers, senders)
-                .await?
+                .await
+                .map_err(Error::SignerError)?
                 .assets,
         );
         self.checkpoint = checkpoint;
@@ -292,12 +281,16 @@ where
     /// This method returns an error in any other case. The internal state of the wallet is kept
     /// consistent between calls and recoverable errors are returned for the caller to handle.
     #[inline]
-    pub async fn post(&mut self, transaction: Transaction<C>) -> Result<bool, Error<H, C, L, S>> {
+    pub async fn post(&mut self, transaction: Transaction<C>) -> Result<bool, Error<C, L, S>> {
         self.sync().await?;
         let transaction_kind = self
             .check(&transaction)
             .map_err(Error::InsufficientBalance)?;
-        let SignResponse { posts } = self.signer.sign(transaction).await?;
+        let SignResponse { posts } = self
+            .signer
+            .sign(transaction)
+            .await
+            .map_err(Error::SignerError)?;
         match self.ledger.push(posts).await {
             Ok(PushResponse { success: true }) => {
                 match transaction_kind {
@@ -313,10 +306,7 @@ where
 
     /// Returns a [`ReceivingKey`] for `self` to receive assets with `index`.
     #[inline]
-    pub async fn receiving_key(
-        &mut self,
-        index: Index<H>,
-    ) -> Result<ReceivingKey<C>, signer::Error<H, C, S::Error>> {
+    pub async fn receiving_key(&mut self, index: S::KeyIndex) -> Result<ReceivingKey<C>, S::Error> {
         self.signer.receiving_key(index).await
     }
 }
@@ -325,12 +315,13 @@ where
 ///
 /// This `enum` is the error state for [`Wallet`] methods. See [`sync`](Wallet::sync) and
 /// [`post`](Wallet::post) for more.
-pub enum Error<H, C, L, S>
+#[derive(derivative::Derivative)]
+#[derivative(Debug(bound = "L::Error: Debug, S::Error: Debug"))]
+pub enum Error<C, L, S>
 where
-    H: HierarchicalKeyDerivationScheme<SecretKey = SecretKey<C>>,
     C: Configuration,
     L: ledger::Connection<C>,
-    S: signer::Connection<H, C>,
+    S: signer::Connection<C>,
 {
     /// Insufficient Balance
     InsufficientBalance(Asset),
@@ -339,18 +330,5 @@ where
     LedgerError(L::Error),
 
     /// Signer Error
-    SignerError(signer::Error<H, C, S::Error>),
-}
-
-impl<H, C, L, S> From<signer::Error<H, C, S::Error>> for Error<H, C, L, S>
-where
-    H: HierarchicalKeyDerivationScheme<SecretKey = SecretKey<C>>,
-    C: Configuration,
-    L: ledger::Connection<C>,
-    S: signer::Connection<H, C>,
-{
-    #[inline]
-    fn from(err: signer::Error<H, C, S::Error>) -> Self {
-        Self::SignerError(err)
-    }
+    SignerError(S::Error),
 }
