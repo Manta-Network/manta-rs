@@ -18,16 +18,7 @@
 
 use crate::transfer::{Configuration, EncryptedNote, TransferPost, Utxo, VoidNumber};
 use alloc::vec::Vec;
-use core::future::Future;
-
-/// Ledger Checkpoint
-pub trait Checkpoint: Default + PartialOrd {
-    /// Returns the number of receivers that have participated in transactions on the ledger so far.
-    fn receiver_index(&self) -> usize;
-
-    /// Returns the number of senders that have participated in transactions on the ledger so far.
-    fn sender_index(&self) -> usize;
-}
+use manta_util::future::LocalBoxFuture;
 
 /// Ledger Source Connection
 pub trait Connection<C>
@@ -35,7 +26,7 @@ where
     C: Configuration,
 {
     /// Ledger State Checkpoint Type
-    type Checkpoint: Checkpoint;
+    type Checkpoint: Default + PartialOrd;
 
     /// Receiver Chunk Iterator Type
     type ReceiverChunk: IntoIterator<Item = (Utxo<C>, EncryptedNote<C>)>;
@@ -43,26 +34,19 @@ where
     /// Sender Chunk Iterator Type
     type SenderChunk: IntoIterator<Item = VoidNumber<C>>;
 
-    /// Pull Future Type
-    ///
-    /// Future for the [`pull`](Self::pull) method.
-    type PullFuture: Future<Output = PullResult<C, Self>>;
-
-    /// Push Future Type
-    ///
-    /// Future for the [`push`](Self::push) method.
-    type PushFuture: Future<Output = PushResult<C, Self>>;
-
     /// Error Type
     type Error;
 
     /// Pulls receiver data from the ledger starting from `checkpoint`, returning the current
     /// [`Checkpoint`](Self::Checkpoint).
-    fn pull(&self, checkpoint: &Self::Checkpoint) -> Self::PullFuture;
+    fn pull<'s>(
+        &'s mut self,
+        checkpoint: &'s Self::Checkpoint,
+    ) -> LocalBoxFuture<'s, PullResult<C, Self>>;
 
     /// Sends `posts` to the ledger, returning `true` or `false` depending on whether the entire
     /// batch succeeded or not.
-    fn push(&self, posts: Vec<TransferPost<C>>) -> Self::PushFuture;
+    fn push(&mut self, posts: Vec<TransferPost<C>>) -> LocalBoxFuture<PushResult<C, Self>>;
 }
 
 /// Ledger Source Pull Result

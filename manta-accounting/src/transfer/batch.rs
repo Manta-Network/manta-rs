@@ -56,12 +56,11 @@ where
     {
         // TODO: Add optimization path for receiver re-sampling so that we ensure that all UTXOs
         //       are maximally independent.
-        //
         let mut receivers = Vec::with_capacity(RECEIVERS);
         let mut zeroes = Vec::with_capacity(RECEIVERS - 1);
         let (receiver, pre_sender) = spending_key.internal_pair(parameters, rng.gen(), asset);
         receivers.push(receiver);
-        for _ in 0..RECEIVERS - 2 {
+        for _ in 1..RECEIVERS {
             let (receiver, pre_sender) =
                 spending_key.internal_zero_pair(parameters, rng.gen(), asset.id);
             receivers.push(receiver);

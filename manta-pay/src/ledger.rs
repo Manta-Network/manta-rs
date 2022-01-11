@@ -17,9 +17,11 @@
 //! Ledger Implementation
 
 use crate::config::{
-    Config, EncryptedNote, MerkleTreeConfiguration, ProofSystem, Utxo, VoidNumber,
+    Config, EncryptedNote, MerkleTreeConfiguration, ProofSystem, TransferPost, Utxo, VoidNumber,
 };
 use alloc::vec::Vec;
+use core::convert::Infallible;
+use indexmap::IndexSet;
 use manta_accounting::{
     asset::{AssetId, AssetValue},
     transfer::{
@@ -28,8 +30,13 @@ use manta_accounting::{
         ReceiverPostingKey, SenderLedger, SenderPostingKey, SinkPostingKey, SourcePostingKey,
         TransferLedger, TransferLedgerSuperPostingKey, TransferPostingKey, UtxoSetOutput,
     },
+    wallet::ledger::{Connection, PullResponse, PullResult, PushResponse, PushResult},
 };
-use manta_crypto::{constraint::ProofSystem as _, merkle_tree, merkle_tree::forest::Configuration};
+use manta_crypto::{
+    constraint::ProofSystem as _,
+    merkle_tree::{self, forest::Configuration, Tree},
+};
+use manta_util::{future::LocalBoxFuture, into_array_unchecked};
 use std::collections::{HashMap, HashSet};
 
 /// UTXO Merkle Forest Type
@@ -64,7 +71,7 @@ impl<L, R> AsRef<R> for WrapPair<L, R> {
 /// Ledger
 pub struct Ledger {
     /// Void Numbers
-    void_numbers: HashSet<VoidNumber>,
+    void_numbers: IndexSet<VoidNumber>,
 
     /// UTXOs
     utxos: HashSet<Utxo>,
@@ -284,5 +291,98 @@ impl TransferLedger<Config> for Ledger {
                 .entry(asset_id)
                 .or_default() += deposit;
         }
+    }
+}
+
+/// Checkpoint
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct Checkpoint {
+    /// Receiver Index
+    pub receiver_index: [usize; 256],
+
+    /// Sender Index
+    pub sender_index: usize,
+}
+
+impl Checkpoint {
+    ///
+    #[inline]
+    pub fn new(receiver_index: [usize; 256], sender_index: usize) -> Self {
+        Self {
+            receiver_index,
+            sender_index,
+        }
+    }
+}
+
+impl Default for Checkpoint {
+    #[inline]
+    fn default() -> Self {
+        Self::new([0; 256], 0)
+    }
+}
+
+impl Connection<Config> for Ledger {
+    type Checkpoint = Checkpoint;
+    type ReceiverChunk = Vec<(Utxo, EncryptedNote)>;
+    type SenderChunk = Vec<VoidNumber>;
+    type Error = Infallible;
+
+    #[inline]
+    fn pull<'s>(
+        &'s mut self,
+        checkpoint: &'s Self::Checkpoint,
+    ) -> LocalBoxFuture<'s, PullResult<Config, Self>> {
+        Box::pin(async {
+            let mut receivers = Vec::new();
+            for (mut index, shard) in checkpoint
+                .receiver_index
+                .iter()
+                .copied()
+                .zip(self.shards.values())
+            {
+                while let Some(entry) = shard.get(&(index as u64)) {
+                    receivers.push(*entry);
+                    index += 1;
+                }
+            }
+            let senders = self
+                .void_numbers
+                .iter()
+                .skip(checkpoint.sender_index)
+                .copied()
+                .collect();
+            Ok(PullResponse {
+                checkpoint: Checkpoint::new(
+                    into_array_unchecked(
+                        self.utxo_forest
+                            .forest
+                            .as_ref()
+                            .iter()
+                            .map(move |t| t.len())
+                            .collect::<Vec<_>>(),
+                    ),
+                    self.void_numbers.len(),
+                ),
+                receivers,
+                senders,
+            })
+        })
+    }
+
+    #[inline]
+    fn push(&mut self, posts: Vec<TransferPost>) -> LocalBoxFuture<PushResult<Config, Self>> {
+        Box::pin(async {
+            for post in posts {
+                // FIXME: What should the public accounts be?
+                match post.validate(vec![], vec![], self) {
+                    Ok(posting_key) => {
+                        posting_key.post(&(), self);
+                    }
+                    _ => return Ok(PushResponse { success: false }),
+                }
+            }
+            Ok(PushResponse { success: true })
+        })
     }
 }

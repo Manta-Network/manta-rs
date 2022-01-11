@@ -23,7 +23,7 @@ use crate::{
         Configuration, ReceivingKey,
     },
     wallet::{
-        ledger::{self, Checkpoint, PullResponse, PushResponse},
+        ledger::{self, PullResponse, PushResponse},
         signer::{self, SignResponse},
     },
 };
@@ -229,8 +229,6 @@ where
     /// Pulls data from the `ledger`, synchronizing the wallet and balance state.
     #[inline]
     pub async fn sync(&mut self) -> Result<(), Error<C, L, S>> {
-        // TODO: How to recover from an `InconsistentSynchronization` error? Need some sort of
-        //       recovery mode, like starting from the beginning of the state?
         let PullResponse {
             checkpoint,
             receivers,
@@ -240,9 +238,12 @@ where
             .pull(&self.checkpoint)
             .await
             .map_err(Error::LedgerError)?;
+        if checkpoint < self.checkpoint {
+            return Err(Error::InconsistentCheckpoint);
+        }
         self.assets.deposit_all(
             self.signer
-                .sync(checkpoint.receiver_index(), receivers, senders)
+                .sync(receivers, senders)
                 .await
                 .map_err(Error::SignerError)?
                 .assets,
@@ -325,6 +326,9 @@ where
 {
     /// Insufficient Balance
     InsufficientBalance(Asset),
+
+    /// Inconsistent Checkpoint Error
+    InconsistentCheckpoint,
 
     /// Ledger Error
     LedgerError(L::Error),

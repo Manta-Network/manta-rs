@@ -17,6 +17,8 @@
 //! Single Path Merkle Tree Storage
 
 // TODO: Should we be storing the root? Can we have a version where we don't?
+// TODO: How should we design the free functions here? We need them for now for ledger state, but
+//       it would be nice to have a more elegant solution that doesn't require duplicate interfaces.
 
 use crate::merkle_tree::{
     capacity, Configuration, CurrentPath, InnerDigest, LeafDigest, MerkleTree, Parameters, Root,
@@ -81,13 +83,7 @@ where
     /// Returns the state of the length of this tree.
     #[inline]
     pub fn length_state(&self) -> Length {
-        if self.leaf_digest.is_none() {
-            Length::Empty
-        } else if self.current_path.leaf_index().0 < capacity::<C>() - 1 {
-            Length::CanAccept
-        } else {
-            Length::Full
-        }
+        raw::length_state(&self.leaf_digest, &self.current_path)
     }
 
     /// Returns the current merkle tree root.
@@ -178,5 +174,54 @@ where
             }
         }
         Some(true)
+    }
+}
+
+/// Raw Merkle Tree
+pub mod raw {
+    use super::*;
+
+    /// Returns the state of the length of this tree.
+    #[inline]
+    pub fn length_state<C>(
+        leaf_digest: &Option<LeafDigest<C>>,
+        current_path: &CurrentPath<C>,
+    ) -> Length
+    where
+        C: Configuration + ?Sized,
+    {
+        if leaf_digest.is_none() {
+            Length::Empty
+        } else if current_path.leaf_index().0 < capacity::<C>() - 1 {
+            Length::CanAccept
+        } else {
+            Length::Full
+        }
+    }
+
+    /// Inserts the `next` leaf digest into the tree updating the `leaf_digest` and the `current_path`.
+    #[inline]
+    pub fn insert<C>(
+        parameters: &Parameters<C>,
+        leaf_digest: &mut Option<LeafDigest<C>>,
+        current_path: &mut CurrentPath<C>,
+        next: LeafDigest<C>,
+    ) -> Option<Root<C>>
+    where
+        C: Configuration + ?Sized,
+        LeafDigest<C>: Default,
+        InnerDigest<C>: Default,
+    {
+        match length_state(leaf_digest, current_path) {
+            Length::Empty => {
+                let root = current_path.root(parameters, &next);
+                *leaf_digest = Some(next);
+                Some(root)
+            }
+            Length::CanAccept => {
+                Some(current_path.update(parameters, leaf_digest.as_mut().unwrap(), next))
+            }
+            Length::Full => None,
+        }
     }
 }

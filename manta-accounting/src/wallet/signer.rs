@@ -24,6 +24,7 @@
 // TODO:  Setup multi-account wallets using `crate::key::AccountTable`.
 // TODO:  Move `sync` to a stream-based algorithm instead of iterator-based.
 // TODO:  Save/Load `SignerState` to/from disk.
+// TODO:  Add self-destruct feature for clearing all secret and private data.
 
 use crate::{
     asset::{Asset, AssetId, AssetMap, AssetValue},
@@ -73,7 +74,6 @@ where
     /// returning an updated asset distribution.
     fn sync<'s, I, R>(
         &'s mut self,
-        insert_starting_index: usize,
         inserts: I,
         removes: R,
     ) -> LocalBoxFuture<'s, SyncResult<C, Self>>
@@ -219,9 +219,6 @@ where
 
     /// Proof System Error
     ProofSystemError(ProofSystemError<C>),
-
-    /// Inconsistent Synchronization State
-    InconsistentSynchronization,
 
     /// Signer Connection Error
     ConnectionError(CE),
@@ -710,12 +707,7 @@ where
 
     /// Updates the internal ledger state, returning the new asset distribution.
     #[inline]
-    pub fn sync<I, R>(
-        &mut self,
-        insert_starting_index: usize,
-        inserts: I,
-        removes: R,
-    ) -> SyncResult<C, Self>
+    pub fn sync<I, R>(&mut self, inserts: I, removes: R) -> SyncResult<C, Self>
     where
         I: IntoIterator<Item = (Utxo<C>, EncryptedNote<C>)>,
         R: IntoIterator<Item = VoidNumber<C>>,
@@ -729,14 +721,11 @@ where
         // TODO: Use a smarter object than `Vec` for `removes.into_iter().collect()` like a
         //       `HashSet` or some other set-like container with fast membership and remove ops.
         //
-        match self.state.utxo_set.len().checked_sub(insert_starting_index) {
-            Some(diff) => self.state.sync_with(
-                &self.parameters.parameters,
-                inserts.into_iter().skip(diff),
-                removes.into_iter().collect(),
-            ),
-            _ => Err(Error::InconsistentSynchronization),
-        }
+        self.state.sync_with(
+            &self.parameters.parameters,
+            inserts.into_iter(),
+            removes.into_iter().collect(),
+        )
     }
 
     /// Signs a withdraw transaction for `asset` sent to `receiver`.
@@ -838,7 +827,6 @@ where
     #[inline]
     fn sync<'s, I, R>(
         &'s mut self,
-        insert_starting_index: usize,
         inserts: I,
         removes: R,
     ) -> LocalBoxFuture<'s, SyncResult<C, Self>>
@@ -846,7 +834,7 @@ where
         I: 's + IntoIterator<Item = (Utxo<C>, EncryptedNote<C>)>,
         R: 's + IntoIterator<Item = VoidNumber<C>>,
     {
-        Box::pin(async move { self.sync(insert_starting_index, inserts, removes) })
+        Box::pin(async move { self.sync(inserts, removes) })
     }
 
     #[inline]
