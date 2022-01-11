@@ -39,16 +39,13 @@ pub mod canonical;
 #[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
 pub mod test;
 
-/// Returns `true` if the transfer with this shape would have public participants.
+#[doc(inline)]
+pub use canonical::Shape;
+
+/// Returns `true` if the [`Transfer`] with this shape would have public participants.
 #[inline]
-pub const fn has_public_participants(
-    sources: usize,
-    senders: usize,
-    receivers: usize,
-    sinks: usize,
-) -> bool {
-    let _ = (senders, receivers);
-    sources > 0 || sinks > 0
+pub const fn has_public_participants(sources: usize, sinks: usize) -> bool {
+    (sources + sinks) > 0
 }
 
 /// Transfer Configuration
@@ -929,10 +926,10 @@ where
     C: Configuration,
 {
     /// UTXO Set Output
-    utxo_set_output: UtxoSetOutput<C>,
+    pub utxo_set_output: UtxoSetOutput<C>,
 
     /// Void Number
-    void_number: VoidNumber<C>,
+    pub void_number: VoidNumber<C>,
 }
 
 impl<C> SenderPost<C>
@@ -1201,10 +1198,10 @@ where
     C: Configuration,
 {
     /// Unspent Transaction Output
-    utxo: Utxo<C>,
+    pub utxo: Utxo<C>,
 
     /// Encrypted Note
-    note: EncryptedNote<C>,
+    pub note: EncryptedNote<C>,
 }
 
 impl<C> ReceiverPost<C>
@@ -1355,7 +1352,7 @@ where
     /// Checks that the given `asset_id` for [`Transfer`] building is visible exactly when required.
     #[inline]
     fn has_visible_asset_id_when_required(has_visible_asset_id: bool) {
-        if has_public_participants(SOURCES, SENDERS, RECEIVERS, SINKS) {
+        if has_public_participants(SOURCES, SINKS) {
             assert!(
                 has_visible_asset_id,
                 "Missing public asset id when required."
@@ -1576,7 +1573,7 @@ where
     #[inline]
     fn new_unknown(compiler: &mut C::Compiler) -> Self {
         Self {
-            asset_id: has_public_participants(SOURCES, SENDERS, RECEIVERS, SINKS)
+            asset_id: has_public_participants(SOURCES, SINKS)
                 .then(|| compiler.allocate_unknown::<Public, _>()),
             sources: (0..SOURCES)
                 .into_iter()
@@ -1644,20 +1641,21 @@ where
 
     /// Checks that the balances associated to the source accounts are sufficient to withdraw the
     /// amount given in `sources`.
-    fn check_source_accounts(
+    fn check_source_accounts<I>(
         &self,
-        asset_id: Option<AssetId>,
-        accounts: Vec<Self::AccountId>,
-        sources: Vec<AssetValue>,
-    ) -> Result<Vec<Self::ValidSourceAccount>, InvalidSourceAccounts<Self::AccountId>>;
+        asset_id: AssetId,
+        sources: I,
+    ) -> Result<Vec<Self::ValidSourceAccount>, InvalidSourceAccount<Self::AccountId>>
+    where
+        I: Iterator<Item = (Self::AccountId, AssetValue)>;
 
     /// Checks that the sink accounts exist.
-    fn check_sink_accounts(
+    fn check_sink_accounts<I>(
         &self,
-        asset_id: Option<AssetId>,
-        accounts: Vec<Self::AccountId>,
-        sinks: Vec<AssetValue>,
-    ) -> Result<Vec<Self::ValidSinkAccount>, InvalidSinkAccounts<Self::AccountId>>;
+        sinks: I,
+    ) -> Result<Vec<Self::ValidSinkAccount>, InvalidSinkAccount<Self::AccountId>>
+    where
+        I: Iterator<Item = (Self::AccountId, AssetValue)>;
 
     /// Checks that the transfer `proof` is valid.
     #[allow(clippy::too_many_arguments)] // FIXME: Write a better abstraction for this.
@@ -1709,40 +1707,28 @@ pub enum AccountBalance {
 
 /// Invalid Source Accounts
 ///
-/// This `enum` is the error state of the [`TransferLedger::check_source_accounts`] method. See its
-/// documentation for more.
+/// This `struct` is the error state of the [`TransferLedger::check_source_accounts`] method. See
+/// its documentation for more.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum InvalidSourceAccounts<AccountId> {
-    /// Invalid Transfer Shape
-    InvalidShape,
+pub struct InvalidSourceAccount<AccountId> {
+    /// Account Id
+    pub account_id: AccountId,
 
-    /// Account is Unknown or would be Overdraw
-    BadAccount {
-        /// Account Id
-        account_id: AccountId,
+    /// Current Balance if Known
+    pub balance: AccountBalance,
 
-        /// Current Balance if Known
-        balance: AccountBalance,
-
-        /// Amount Attempting to Withdraw
-        withdraw: AssetValue,
-    },
+    /// Amount Attempting to Withdraw
+    pub withdraw: AssetValue,
 }
 
 /// Invalid Sink Accounts
 ///
-/// This `enum` is the error state of the [`TransferLedger::check_sink_accounts`] method. See its
+/// This `struct` is the error state of the [`TransferLedger::check_sink_accounts`] method. See its
 /// documentation for more.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum InvalidSinkAccounts<AccountId> {
-    /// Invalid Transfer Shape
-    InvalidShape,
-
-    /// Account is Unknown
-    BadAccount {
-        /// Account Id
-        account_id: AccountId,
-    },
+pub struct InvalidSinkAccount<AccountId> {
+    /// Account Id
+    pub account_id: AccountId,
 }
 
 /// Transfer Post Error
@@ -1751,11 +1737,14 @@ pub enum InvalidSinkAccounts<AccountId> {
 /// for more.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum TransferPostError<AccountId> {
+    /// Invalid Transfer Post Shape
+    InvalidShape,
+
     /// Invalid Source Accounts
-    InvalidSourceAccounts(InvalidSourceAccounts<AccountId>),
+    InvalidSourceAccount(InvalidSourceAccount<AccountId>),
 
     /// Invalid Sink Accounts
-    InvalidSinkAccounts(InvalidSinkAccounts<AccountId>),
+    InvalidSinkAccount(InvalidSinkAccount<AccountId>),
 
     /// Sender Post Error
     Sender(SenderPostError),
@@ -1775,17 +1764,17 @@ pub enum TransferPostError<AccountId> {
     InvalidProof,
 }
 
-impl<AccountId> From<InvalidSourceAccounts<AccountId>> for TransferPostError<AccountId> {
+impl<AccountId> From<InvalidSourceAccount<AccountId>> for TransferPostError<AccountId> {
     #[inline]
-    fn from(err: InvalidSourceAccounts<AccountId>) -> Self {
-        Self::InvalidSourceAccounts(err)
+    fn from(err: InvalidSourceAccount<AccountId>) -> Self {
+        Self::InvalidSourceAccount(err)
     }
 }
 
-impl<AccountId> From<InvalidSinkAccounts<AccountId>> for TransferPostError<AccountId> {
+impl<AccountId> From<InvalidSinkAccount<AccountId>> for TransferPostError<AccountId> {
     #[inline]
-    fn from(err: InvalidSinkAccounts<AccountId>) -> Self {
-        Self::InvalidSinkAccounts(err)
+    fn from(err: InvalidSinkAccount<AccountId>) -> Self {
+        Self::InvalidSinkAccount(err)
     }
 }
 
@@ -1809,22 +1798,22 @@ where
     C: Configuration,
 {
     /// Asset Id
-    asset_id: Option<AssetId>,
+    pub asset_id: Option<AssetId>,
 
     /// Sources
-    sources: Vec<AssetValue>,
+    pub sources: Vec<AssetValue>,
 
     /// Sender Posts
-    sender_posts: Vec<SenderPost<C>>,
+    pub sender_posts: Vec<SenderPost<C>>,
 
     /// Receiver Posts
-    receiver_posts: Vec<ReceiverPost<C>>,
+    pub receiver_posts: Vec<ReceiverPost<C>>,
 
     /// Sinks
-    sinks: Vec<AssetValue>,
+    pub sinks: Vec<AssetValue>,
 
     /// Validity Proof
-    validity_proof: Proof<C>,
+    pub validity_proof: Proof<C>,
 }
 
 impl<C> TransferPost<C>
@@ -1853,6 +1842,51 @@ where
         input
     }
 
+    /// Checks that the public participant data is well-formed and runs `ledger` validation on
+    /// source and sink accounts.
+    #[allow(clippy::type_complexity)] // FIXME: Use a better abstraction for this.
+    #[inline]
+    fn check_public_participants<L>(
+        asset_id: Option<AssetId>,
+        source_accounts: Vec<L::AccountId>,
+        source_values: Vec<AssetValue>,
+        sink_accounts: Vec<L::AccountId>,
+        sink_values: Vec<AssetValue>,
+        ledger: &L,
+    ) -> Result<
+        (Vec<L::ValidSourceAccount>, Vec<L::ValidSinkAccount>),
+        TransferPostError<L::AccountId>,
+    >
+    where
+        L: TransferLedger<C>,
+    {
+        let sources = source_values.len();
+        let sinks = sink_values.len();
+        if has_public_participants(sources, sinks) != asset_id.is_some() {
+            return Err(TransferPostError::InvalidShape);
+        }
+        if source_accounts.len() != sources {
+            return Err(TransferPostError::InvalidShape);
+        }
+        if sink_accounts.len() != sinks {
+            return Err(TransferPostError::InvalidShape);
+        }
+        let sources = if sources > 0 {
+            ledger.check_source_accounts(
+                asset_id.unwrap(),
+                source_accounts.into_iter().zip(source_values),
+            )?
+        } else {
+            Vec::new()
+        };
+        let sinks = if sinks > 0 {
+            ledger.check_sink_accounts(sink_accounts.into_iter().zip(sink_values))?
+        } else {
+            Vec::new()
+        };
+        Ok((sources, sinks))
+    }
+
     /// Validates `self` on the transfer `ledger`.
     #[inline]
     pub fn validate<L>(
@@ -1864,10 +1898,14 @@ where
     where
         L: TransferLedger<C>,
     {
-        let source_posting_keys =
-            ledger.check_source_accounts(self.asset_id, source_accounts, self.sources)?;
-        let sink_posting_keys =
-            ledger.check_sink_accounts(self.asset_id, sink_accounts, self.sinks)?;
+        let (source_posting_keys, sink_posting_keys) = Self::check_public_participants(
+            self.asset_id,
+            source_accounts,
+            self.sources,
+            sink_accounts,
+            self.sinks,
+            ledger,
+        )?;
         for (i, p) in self.sender_posts.iter().enumerate() {
             if self
                 .sender_posts

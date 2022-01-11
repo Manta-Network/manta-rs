@@ -579,6 +579,12 @@ pub type ProvingContext = transfer::ProvingContext<Config>;
 /// Verifying Context Type
 pub type VerifyingContext = transfer::VerifyingContext<Config>;
 
+/// Multi-Proving Context Type
+pub type MultiProvingContext = transfer::canonical::MultiProvingContext<Config>;
+
+/// Multi-Verifying Context Type
+pub type MultiVerifyingContext = transfer::canonical::MultiVerifyingContext<Config>;
+
 /// Hierarchical Key Derivation Function
 pub struct HierarchicalKeyDerivationFunction;
 

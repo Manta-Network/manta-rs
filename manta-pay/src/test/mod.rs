@@ -16,5 +16,11 @@
 
 //! Manta Pay Testing
 
-// TODO: pub mod merkle_tree;
+pub mod ledger;
+pub mod simulation;
+
+// TODO: #[cfg(test)]
+//       pub mod merkle_tree;
+
+#[cfg(test)]
 pub mod transfer;

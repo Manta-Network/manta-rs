@@ -245,7 +245,7 @@ where
             rng,
         );
         Self::new(
-            has_public_participants(SOURCES, SENDERS, RECEIVERS, SINKS).then(|| asset.id),
+            has_public_participants(SOURCES, SINKS).then(|| asset.id),
             into_array_unchecked(input),
             into_array_unchecked(senders),
             into_array_unchecked(receivers),

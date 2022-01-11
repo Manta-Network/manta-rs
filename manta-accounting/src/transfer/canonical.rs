@@ -19,8 +19,8 @@
 use crate::{
     asset::{self, Asset, AssetValue},
     transfer::{
-        Configuration, PreSender, ProvingContext, Receiver, ReceivingKey, Sender, Transfer,
-        VerifyingContext,
+        has_public_participants, Configuration, PreSender, ProvingContext, Receiver, ReceivingKey,
+        Sender, Transfer, TransferPost, VerifyingContext,
     },
 };
 use alloc::vec::Vec;
@@ -183,7 +183,6 @@ pub enum TransferShape {
 
 impl TransferShape {
     /// Selects the [`TransferShape`] for the given shape if it matches a canonical shape.
-    #[allow(clippy::absurd_extreme_comparisons)] // NOTE: We want these comparisons as values..
     #[inline]
     pub fn select(
         asset_id_is_some: bool,
@@ -192,27 +191,29 @@ impl TransferShape {
         receivers: usize,
         sinks: usize,
     ) -> Option<Self> {
-        const MINT_VISIBLE_ID: bool = MintShape::SOURCES + MintShape::SINKS > 0;
-        const PRIVATE_TRANSFER_VISIBLE_ID: bool =
-            PrivateTransferShape::SOURCES + PrivateTransferShape::SINKS > 0;
-        const RECLAIM_VISIBLE_ID: bool = ReclaimShape::SOURCES + ReclaimShape::SINKS > 0;
+        const MINT_VISIBLE_ASSET_ID: bool =
+            has_public_participants(MintShape::SOURCES, MintShape::SINKS);
+        const PRIVATE_TRANSFER_VISIBLE_ASSET_ID: bool =
+            has_public_participants(PrivateTransferShape::SOURCES, PrivateTransferShape::SINKS);
+        const RECLAIM_VISIBLE_ASSET_ID: bool =
+            has_public_participants(ReclaimShape::SOURCES, ReclaimShape::SINKS);
         match (asset_id_is_some, sources, senders, receivers, sinks) {
             (
-                MINT_VISIBLE_ID,
+                MINT_VISIBLE_ASSET_ID,
                 MintShape::SOURCES,
                 MintShape::SENDERS,
                 MintShape::RECEIVERS,
                 MintShape::SINKS,
             ) => Some(Self::Mint),
             (
-                PRIVATE_TRANSFER_VISIBLE_ID,
+                PRIVATE_TRANSFER_VISIBLE_ASSET_ID,
                 PrivateTransferShape::SOURCES,
                 PrivateTransferShape::SENDERS,
                 PrivateTransferShape::RECEIVERS,
                 PrivateTransferShape::SINKS,
             ) => Some(Self::PrivateTransfer),
             (
-                RECLAIM_VISIBLE_ID,
+                RECLAIM_VISIBLE_ASSET_ID,
                 ReclaimShape::SOURCES,
                 ReclaimShape::SENDERS,
                 ReclaimShape::RECEIVERS,
@@ -220,6 +221,21 @@ impl TransferShape {
             ) => Some(Self::Reclaim),
             _ => None,
         }
+    }
+
+    /// Selects the [`TransferShape`] from `post`.
+    #[inline]
+    pub fn from_post<C>(post: &TransferPost<C>) -> Option<Self>
+    where
+        C: Configuration,
+    {
+        Self::select(
+            post.asset_id.is_some(),
+            post.sources.len(),
+            post.sender_posts.len(),
+            post.receiver_posts.len(),
+            post.sinks.len(),
+        )
     }
 }
 

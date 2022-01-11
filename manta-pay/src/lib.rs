@@ -23,12 +23,8 @@
 
 extern crate alloc;
 
-#[cfg(test)]
-mod test;
-
 pub mod crypto;
 pub mod key;
-pub mod simulation;
 
 #[cfg(all(feature = "arkworks", feature = "groth16"))]
 #[cfg_attr(doc_cfg, doc(cfg(all(feature = "arkworks", feature = "groth16"))))]
@@ -39,11 +35,11 @@ pub mod config;
     doc_cfg,
     doc(cfg(all(feature = "std", feature = "arkworks", feature = "groth16")))
 )]
-pub mod ledger;
+pub mod wallet;
 
 #[cfg(all(feature = "std", feature = "arkworks", feature = "groth16"))]
 #[cfg_attr(
     doc_cfg,
     doc(cfg(all(feature = "std", feature = "arkworks", feature = "groth16")))
 )]
-pub mod wallet;
+pub mod test;

@@ -23,13 +23,14 @@ use crate::{
 use manta_accounting::{
     asset::HashAssetMap,
     key,
-    transfer::canonical::MultiProvingContext,
     wallet::{
         self,
         signer::{self, AssetMapKey},
     },
 };
 use manta_crypto::merkle_tree;
+
+pub mod cache;
 
 /// Signer UTXO Set
 pub type UtxoSet = merkle_tree::forest::TreeArrayMerkleForest<
@@ -46,7 +47,7 @@ impl signer::Configuration for Config {
         key::Map<TestnetKeySecret, HierarchicalKeyDerivationFunction>;
     type UtxoSet = UtxoSet;
     type AssetMap = HashAssetMap<AssetMapKey<Self>>;
-    type ProvingContextCache = MultiProvingContext<Self>;
+    type ProvingContextCache = cache::OnDiskMultiProvingContext;
     type Rng = rand_chacha::ChaCha20Rng;
 }
 
