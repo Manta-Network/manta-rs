@@ -80,8 +80,11 @@ x25519-dalek = { git = "https://github.com/Manta-Network/x25519-dalek", default-
 zk-garage-plonk = { package = "plonk", git = "https://github.com/zk-garage/plonk", optional = true, default-features = false }
 
 [dev-dependencies]
+async-std = { version = "1.10.0", features = ["attributes", "unstable"] }
 criterion = "0.3.5"
 manta-accounting = { path = "../manta-accounting", features = ["test"] }
 manta-crypto = { path = "../manta-crypto", features = ["test"] }
 manta-pay = { path = ".", features = ["test"] }
 rand = "0.8.4"
+tempfile = "3.2.0"
+

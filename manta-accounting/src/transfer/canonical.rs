@@ -19,12 +19,14 @@
 use crate::{
     asset::{self, Asset, AssetValue},
     transfer::{
-        has_public_participants, Configuration, PreSender, ProvingContext, Receiver, ReceivingKey,
-        Sender, Transfer, TransferPost, VerifyingContext,
+        has_public_participants, Configuration, FullParameters, PreSender, ProofSystemError,
+        ProofSystemPublicParameters, ProvingContext, Receiver, ReceivingKey, Sender, Transfer,
+        TransferPost, VerifyingContext,
     },
 };
 use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash};
+use manta_crypto::rand::{CryptoRng, RngCore};
 use manta_util::{create_seal, seal};
 
 create_seal! {}
@@ -414,4 +416,32 @@ where
             TransferShape::Reclaim => &self.reclaim,
         }
     }
+}
+
+/// Generates proving and verifying multi-contexts for the canonical transfer shapes.
+#[inline]
+pub fn generate_context<C, R>(
+    public_parameters: &ProofSystemPublicParameters<C>,
+    parameters: FullParameters<C>,
+    rng: &mut R,
+) -> Result<(MultiProvingContext<C>, MultiVerifyingContext<C>), ProofSystemError<C>>
+where
+    C: Configuration,
+    R: CryptoRng + RngCore + ?Sized,
+{
+    let mint = Mint::generate_context(public_parameters, parameters, rng)?;
+    let private_transfer = PrivateTransfer::generate_context(public_parameters, parameters, rng)?;
+    let reclaim = Reclaim::generate_context(public_parameters, parameters, rng)?;
+    Ok((
+        MultiProvingContext {
+            mint: mint.0,
+            private_transfer: private_transfer.0,
+            reclaim: reclaim.0,
+        },
+        MultiVerifyingContext {
+            mint: mint.1,
+            private_transfer: private_transfer.1,
+            reclaim: reclaim.1,
+        },
+    ))
 }

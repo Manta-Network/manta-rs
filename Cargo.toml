@@ -48,5 +48,4 @@ manta-accounting = { path = "manta-accounting" }
 manta-crypto = { path = "manta-crypto" }
 manta-pay = { path = "manta-pay" }
 manta-util = { path = "manta-util" }
-parity-scale-codec = { version = "2.2.0", default-features = false }
 

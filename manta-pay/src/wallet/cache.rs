@@ -26,6 +26,7 @@ use core::marker::PhantomData;
 use manta_util::{cache::CachedResource, future::LocalBoxFuture};
 
 /// Caching Error
+#[derive(Debug)]
 pub enum Error {
     /// Serialization Error
     Serialization(SerializationError),
@@ -113,7 +114,7 @@ impl OnDiskMultiProvingContext {
     /// Saves the `context` to the on-disk directory. This method _does not_ write `context` into
     /// the cache.
     #[inline]
-    pub async fn save(&self, context: &MultiProvingContext) -> Result<(), Error> {
+    pub async fn save(&self, context: MultiProvingContext) -> Result<(), Error> {
         let mint_path = self.directory.join("mint.bin");
         let private_transfer_path = self.directory.join("private-transfer.bin");
         let reclaim_path = self.directory.join("reclaim.bin");
@@ -156,5 +157,12 @@ impl CachedResource<MultiProvingContext> for OnDiskMultiProvingContext {
         Box::pin(async {
             self.context.take();
         })
+    }
+}
+
+impl Clone for OnDiskMultiProvingContext {
+    #[inline]
+    fn clone(&self) -> Self {
+        Self::new(&self.directory)
     }
 }

@@ -128,6 +128,7 @@ pub type KeyAgreementSchemeVar = DiffieHellman<GroupVar, Compiler>;
 pub type Utxo = Fp<ConstraintField>;
 
 /// UTXO Commitment Scheme
+#[derive(Clone)]
 pub struct UtxoCommitmentScheme(pub Poseidon4);
 
 impl CommitmentScheme for UtxoCommitmentScheme {
@@ -203,6 +204,7 @@ impl Constant<Compiler> for UtxoCommitmentSchemeVar {
 pub type VoidNumber = Fp<ConstraintField>;
 
 /// Void Number Hash Function
+#[derive(Clone)]
 pub struct VoidNumberHashFunction(pub Poseidon2);
 
 impl BinaryHashFunction for VoidNumberHashFunction {
@@ -353,6 +355,7 @@ pub type LeafHash = merkle_tree::IdentityLeafHash<Utxo>;
 pub type LeafHashVar = merkle_tree::IdentityLeafHash<UtxoVar, Compiler>;
 
 /// Inner Hash Configuration
+#[derive(Clone)]
 pub struct InnerHash;
 
 impl merkle_tree::InnerHash for InnerHash {
@@ -411,6 +414,7 @@ impl merkle_tree::InnerHash<Compiler> for InnerHashVar {
 }
 
 /// Merkle Tree Configuration
+#[derive(Clone)]
 pub struct MerkleTreeConfiguration;
 
 impl merkle_tree::HashConfiguration for MerkleTreeConfiguration {

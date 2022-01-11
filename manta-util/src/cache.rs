@@ -18,7 +18,7 @@
 
 use crate::future::LocalBoxFuture;
 use alloc::boxed::Box;
-use core::convert::Infallible;
+use core::{convert::Infallible, ops::Deref};
 
 /// Cached Resource
 pub trait CachedResource<T> {
@@ -54,7 +54,10 @@ pub trait CachedResource<T> {
 /// Cached Resource Error Type
 pub type CachedResourceError<T, R> = <R as CachedResource<T>>::Error;
 
-impl<T> CachedResource<T> for T {
+impl<T, D> CachedResource<T> for D
+where
+    D: Deref<Target = T>,
+{
     type ReadingKey = ();
     type Error = Infallible;
 

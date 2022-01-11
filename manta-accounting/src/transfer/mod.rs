@@ -355,6 +355,30 @@ pub type ProofInput<C> = <<C as Configuration>::ProofSystem as ProofSystem>::Inp
 pub type Proof<C> = <ProofSystemType<C> as ProofSystem>::Proof;
 
 /// Transfer Parameters
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(
+        bound = "C::KeyAgreementScheme: Clone, C::UtxoCommitmentScheme: Clone, C::VoidNumberHashFunction: Clone"
+    ),
+    Copy(
+        bound = "C::KeyAgreementScheme: Copy, C::UtxoCommitmentScheme: Copy, C::VoidNumberHashFunction: Copy"
+    ),
+    Debug(
+        bound = "C::KeyAgreementScheme: Debug, C::UtxoCommitmentScheme: Debug, C::VoidNumberHashFunction: Debug"
+    ),
+    Default(
+        bound = "C::KeyAgreementScheme: Default, C::UtxoCommitmentScheme: Default, C::VoidNumberHashFunction: Default"
+    ),
+    Eq(
+        bound = "C::KeyAgreementScheme: Eq, C::UtxoCommitmentScheme: Eq, C::VoidNumberHashFunction: Eq"
+    ),
+    Hash(
+        bound = "C::KeyAgreementScheme: Hash, C::UtxoCommitmentScheme: Hash, C::VoidNumberHashFunction: Hash"
+    ),
+    PartialEq(
+        bound = "C::KeyAgreementScheme: PartialEq, C::UtxoCommitmentScheme: PartialEq, C::VoidNumberHashFunction: PartialEq"
+    )
+)]
 pub struct Parameters<C>
 where
     C: Configuration + ?Sized,

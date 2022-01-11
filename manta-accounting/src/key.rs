@@ -68,6 +68,16 @@ pub trait HierarchicalKeyDerivationScheme {
             self.derive_view(account, spend, view)?,
         ))
     }
+
+    /// Maps `self` along a key derivation function.
+    #[inline]
+    fn map<K>(self) -> Map<Self, K>
+    where
+        Self: Sized,
+        K: KeyDerivationFunction<Key = Self::SecretKey>,
+    {
+        Map::new(self)
+    }
 }
 
 impl<H> HierarchicalKeyDerivationScheme for &H
@@ -115,6 +125,21 @@ where
 
     /// Type Parameter Marker
     __: PhantomData<K>,
+}
+
+impl<H, K> Map<H, K>
+where
+    H: HierarchicalKeyDerivationScheme,
+    K: KeyDerivationFunction<Key = H::SecretKey>,
+{
+    /// Builds a new [`Map`] from `base`.
+    #[inline]
+    pub fn new(base: H) -> Self {
+        Self {
+            base,
+            __: PhantomData,
+        }
+    }
 }
 
 impl<H, K> HierarchicalKeyDerivationScheme for Map<H, K>

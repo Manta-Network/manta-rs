@@ -16,15 +16,17 @@
 
 //! Manta Pay Transfer Testing
 
-use crate::config::{self, FullParameters, Mint, PrivateTransfer, Reclaim};
+use crate::config::{
+    FullParameters, MerkleTreeConfiguration, Mint, PrivateTransfer, ProofSystem, Reclaim,
+};
 use manta_crypto::{
-    constraint::{measure::Measure, ProofSystem},
+    constraint::{measure::Measure, ProofSystem as _},
     merkle_tree,
     rand::Rand,
 };
 use rand::thread_rng;
 
-type UtxoSet = merkle_tree::full::FullMerkleTree<config::MerkleTreeConfiguration>;
+type UtxoSet = merkle_tree::full::FullMerkleTree<MerkleTreeConfiguration>;
 
 /// Tests the generation of proving/verifying contexts for [`Mint`].
 #[test]
@@ -32,7 +34,7 @@ fn sample_mint_context() {
     let mut rng = thread_rng();
     let cs = Mint::unknown_constraints(FullParameters::new(&rng.gen(), &rng.gen()));
     println!("Mint: {:?}", cs.measure());
-    config::ProofSystem::generate_context(cs, &(), &mut rng).unwrap();
+    ProofSystem::generate_context(cs, &(), &mut rng).unwrap();
 }
 
 /// Tests the generation of proving/verifying contexts for [`PrivateTransfer`].
@@ -41,7 +43,7 @@ fn sample_private_transfer_context() {
     let mut rng = thread_rng();
     let cs = PrivateTransfer::unknown_constraints(FullParameters::new(&rng.gen(), &rng.gen()));
     println!("PrivateTransfer: {:?}", cs.measure());
-    config::ProofSystem::generate_context(cs, &(), &mut rng).unwrap();
+    ProofSystem::generate_context(cs, &(), &mut rng).unwrap();
 }
 
 /// Tests the generation of proving/verifying contexts for [`Reclaim`].
@@ -50,7 +52,7 @@ fn sample_reclaim_context() {
     let mut rng = thread_rng();
     let cs = Reclaim::unknown_constraints(FullParameters::new(&rng.gen(), &rng.gen()));
     println!("Reclaim: {:?}", cs.measure());
-    config::ProofSystem::generate_context(cs, &(), &mut rng).unwrap();
+    ProofSystem::generate_context(cs, &(), &mut rng).unwrap();
 }
 
 /// Tests the generation of a [`Mint`].

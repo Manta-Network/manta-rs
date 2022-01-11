@@ -32,7 +32,7 @@ use manta_accounting::key::{
 };
 use manta_util::{create_seal, seal};
 
-pub use bip32::{Error, Mnemonic};
+pub use bip32::{Error, Language, Mnemonic};
 
 create_seal! {}
 

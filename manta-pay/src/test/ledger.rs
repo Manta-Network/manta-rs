@@ -20,7 +20,7 @@ use crate::config::{
     Config, EncryptedNote, MerkleTreeConfiguration, MultiVerifyingContext, ProofSystem,
     TransferPost, Utxo, VoidNumber,
 };
-use alloc::vec::Vec;
+use alloc::{rc::Rc, vec::Vec};
 use async_std::sync::RwLock;
 use core::convert::Infallible;
 use indexmap::IndexSet;
@@ -75,6 +75,7 @@ impl<L, R> AsRef<R> for WrapPair<L, R> {
 pub struct AccountId(pub u64);
 
 /// Ledger
+#[derive(Debug)]
 pub struct Ledger {
     /// Void Numbers
     void_numbers: IndexSet<VoidNumber>,
@@ -345,10 +346,18 @@ impl Default for Checkpoint {
 /// Ledger Connection
 pub struct LedgerConnection {
     /// Ledger Account
-    pub account: AccountId,
+    account: AccountId,
 
     /// Ledger Access
-    pub ledger: RwLock<Ledger>,
+    ledger: Rc<RwLock<Ledger>>,
+}
+
+impl LedgerConnection {
+    /// Builds a new [`LedgerConnection`] for `account` and `ledger`.
+    #[inline]
+    pub fn new(account: AccountId, ledger: Rc<RwLock<Ledger>>) -> Self {
+        Self { account, ledger }
+    }
 }
 
 impl Connection<Config> for LedgerConnection {
@@ -424,17 +433,78 @@ impl Connection<Config> for LedgerConnection {
     }
 }
 
+/// Testing Suite
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::{
+        config::FullParameters,
+        key::{Language, Mnemonic, TestnetKeySecret},
+        wallet::{self, cache::OnDiskMultiProvingContext, Signer, Wallet},
+    };
+    use async_std::task;
+    use manta_accounting::{
+        key::{AccountTable, HierarchicalKeyDerivationScheme},
+        transfer,
+    };
+    use manta_crypto::rand::{Rand, SeedableRng};
     use rand::thread_rng;
+    use rand_chacha::ChaCha20Rng;
 
-    #[test]
-    fn test() {
-        /*
+    ///
+    #[async_std::test]
+    async fn test() {
         let mut rng = thread_rng();
         let parameters = rng.gen();
         let utxo_set_parameters = rng.gen();
-        */
+
+        let (proving_context, verifying_context) = transfer::canonical::generate_context(
+            &(),
+            FullParameters::new(&parameters, &utxo_set_parameters),
+            &mut rng,
+        )
+        .expect("Failed to generate contexts.");
+
+        let directory = task::spawn_blocking(tempfile::tempdir)
+            .await
+            .expect("Unable to generate temporary test directory.");
+
+        let cache = OnDiskMultiProvingContext::new(directory.path());
+        cache
+            .save(proving_context)
+            .await
+            .expect("Unable to save proving context to disk.");
+
+        let mut ledger = Ledger::new(utxo_set_parameters.clone(), verifying_context);
+        ledger.set_public_balance(AccountId(0), AssetId(0), AssetValue(10000));
+        ledger.set_public_balance(AccountId(1), AssetId(0), AssetValue(1000));
+        ledger.set_public_balance(AccountId(2), AssetId(0), AssetValue(100));
+
+        println!("{:#?}", ledger);
+
+        let ledger = Rc::new(RwLock::new(ledger));
+
+        let mut wallet = Wallet::empty(
+            LedgerConnection::new(AccountId(0), ledger.clone()),
+            Signer::new(
+                AccountTable::new(
+                    TestnetKeySecret::new(
+                        Mnemonic::random(&mut rng, Language::English),
+                        "password",
+                    )
+                    .map(),
+                ),
+                cache.clone(),
+                parameters.clone(),
+                wallet::UtxoSet::new(utxo_set_parameters.clone()),
+                ChaCha20Rng::from_rng(&mut rng).expect("Failed to sample PRNG for signer."),
+            ),
+        );
+
+        let _ = wallet.sync().await;
+
+        task::spawn_blocking(move || directory.close())
+            .await
+            .expect("Unable to delete temporary test directory.");
     }
 }
