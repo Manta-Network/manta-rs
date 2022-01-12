@@ -353,6 +353,35 @@ where
         Ok(())
     }
 
+    /// Checks if `asset` matches with `void_number`, removing it from the `utxo_set` and inserting
+    /// it into the `withdraw` set if this is the case.
+    #[inline]
+    fn is_asset_unspent(
+        parameters: &Parameters<C>,
+        secret_key: &SecretKey<C>,
+        ephemeral_public_key: &PublicKey<C>,
+        asset: Asset,
+        void_number: &VoidNumber<C>,
+        utxo_set: &mut C::UtxoSet,
+        withdraw: &mut Vec<Asset>,
+    ) -> bool {
+        let utxo = C::utxo(
+            &parameters.key_agreement,
+            &parameters.utxo_commitment,
+            secret_key,
+            ephemeral_public_key,
+            &asset,
+        );
+        let known_void_number = C::void_number(&parameters.void_number_hash, &utxo, secret_key);
+        if *void_number == known_void_number {
+            utxo_set.remove_proof(&utxo);
+            withdraw.push(asset);
+            false
+        } else {
+            true
+        }
+    }
+
     /// Updates the internal ledger state, returning the new asset distribution.
     #[inline]
     fn sync_with<I>(
@@ -364,7 +393,6 @@ where
     where
         I: Iterator<Item = (Utxo<C>, EncryptedNote<C>)>,
     {
-        // TODO: Do this loop in parallel.
         let mut deposit = Vec::new();
         let mut withdraw = Vec::new();
         for (utxo, encrypted_note) in inserts {
@@ -377,40 +405,25 @@ where
                 &mut withdraw,
             )?;
         }
-
         for void_number in void_numbers {
-            // FIXME: Use default account method like everywhere else.
-            self.assets
-                .remove_if(|(index, ephemeral_public_key), assets| {
-                    assets.iter().any(
-                        |asset| match self.accounts.get_default().spend_key(*index) {
-                            Ok(secret_key) => {
-                                let utxo = C::utxo(
-                                    &parameters.key_agreement,
-                                    &parameters.utxo_commitment,
-                                    &secret_key,
-                                    ephemeral_public_key,
-                                    asset,
-                                );
-                                let known_void_number = C::void_number(
-                                    &parameters.void_number_hash,
-                                    &utxo,
-                                    &secret_key,
-                                );
-                                if void_number == known_void_number {
-                                    self.utxo_set.remove_proof(&utxo);
-                                    withdraw.push(*asset);
-                                    true
-                                } else {
-                                    false
-                                }
-                            }
-                            _ => false,
-                        },
-                    )
-                });
+            self.assets.retain(|(index, ephemeral_public_key), assets| {
+                assets.retain(
+                    |asset| match self.accounts.get_default().spend_key(*index) {
+                        Ok(secret_key) => Self::is_asset_unspent(
+                            parameters,
+                            &secret_key,
+                            ephemeral_public_key,
+                            *asset,
+                            &void_number,
+                            &mut self.utxo_set,
+                            &mut withdraw,
+                        ),
+                        _ => true,
+                    },
+                );
+                !assets.is_empty()
+            });
         }
-
         self.utxo_set.commit();
         Ok(SyncResponse::new(deposit, withdraw))
     }
