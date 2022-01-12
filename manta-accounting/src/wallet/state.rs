@@ -23,7 +23,7 @@ use crate::{
         Configuration, ReceivingKey,
     },
     wallet::{
-        ledger::{self, PullResponse, PushResponse},
+        ledger::{self, Checkpoint, PullResponse, PushResponse},
         signer::{self, SignResponse, SyncResponse},
     },
 };
@@ -236,7 +236,7 @@ where
         self.assets.balance(id)
     }
 
-    /// Returns the entire balance state associated to `self`.
+    /// Returns a shared reference to the balance state associated to `self`.
     #[inline]
     pub fn assets(&self) -> &B {
         &self.assets
@@ -252,6 +252,14 @@ where
     /// Pulls data from the `ledger`, synchronizing the wallet and balance state.
     #[inline]
     pub async fn sync(&mut self) -> Result<(), Error<C, L, S>> {
+        // FIXME: What should be done when we receive an `InconsistentSynchronization` error from
+        //        the signer?
+        //          - One option is to do some sort of (exponential) backoff algorithm to find the
+        //            point at which the signer and the wallet are able to synchronize again. The
+        //            correct algorithm may be simply to exchange some checkpoints between the
+        //            signer and the wallet until they can agree on a minimal one.
+        //          - In the worst case we would have to recover the entire wallet.
+        //
         let PullResponse {
             checkpoint,
             receivers,
@@ -266,7 +274,7 @@ where
         }
         let SyncResponse { deposit, withdraw } = self
             .signer
-            .sync(receivers, senders)
+            .sync(self.checkpoint.receiver_index(), receivers, senders)
             .await
             .map_err(Error::SignerError)?;
         self.assets.deposit_all(deposit);

@@ -16,7 +16,7 @@
 
 //! Wallet Signer
 
-// TODO:  Add wallet recovery i.e. remove the assumption that a new signer represents a completely
+// FIXME: Add wallet recovery i.e. remove the assumption that a new signer represents a completely
 //        new derived secret key generator.
 // TODO:  Should have a mode on the signer where we return a generic error which reveals no detail
 //        about what went wrong during signing. The kind of error returned from a signing could
@@ -26,10 +26,11 @@
 // TODO:  Save/Load `SignerState` to/from disk.
 // TODO:  Add self-destruct feature for clearing all secret and private data.
 // TODO:  Compress the `SyncResponse` data before sending (improves privacy and bandwidth).
+// TODO:  Should we split the errors into two groups, one for `sync` and one for `sign`?
 
 use crate::{
     asset::{Asset, AssetId, AssetMap, AssetValue},
-    key::{self, AccountKeys, HierarchicalKeyDerivationScheme, ViewKeySelection},
+    key::{self, HierarchicalKeyDerivationScheme, ViewKeySelection},
     transfer::{
         self,
         batch::Join,
@@ -75,6 +76,7 @@ where
     /// returning an updated asset distribution.
     fn sync<'s, I, R>(
         &'s mut self,
+        starting_index: usize,
         inserts: I,
         removes: R,
     ) -> LocalBoxFuture<'s, SyncResult<C, Self>>
@@ -201,11 +203,11 @@ pub type ProvingContextCacheError<C> =
 /// Signer Error
 #[derive(derivative::Derivative)]
 #[derivative(Debug(bound = r#"
-        key::Error<C::HierarchicalKeyDerivationScheme>: Debug,
-        ProvingContextCacheError<C>: Debug,
-        ProofSystemError<C>: Debug,
-        CE: Debug
-    "#))]
+    key::Error<C::HierarchicalKeyDerivationScheme>: Debug,
+    ProvingContextCacheError<C>: Debug,
+    ProofSystemError<C>: Debug,
+    CE: Debug
+"#))]
 pub enum Error<C, CE = Infallible>
 where
     C: Configuration,
@@ -221,6 +223,9 @@ where
 
     /// Insufficient Balance
     InsufficientBalance(Asset),
+
+    /// Inconsistent Synchronization
+    InconsistentSynchronization,
 
     /// Proof System Error
     ProofSystemError(ProofSystemError<C>),
@@ -271,7 +276,13 @@ where
     C: Configuration,
 {
     /// Account Table
-    account_table: AccountTable<C>,
+    ///
+    /// # Note
+    ///
+    /// For now, we only use the default account, and the rest of the storage data is related to
+    /// this account. Eventually, we want to have a global `utxo_set` for all accounts and a local
+    /// `assets` map for each account.
+    accounts: AccountTable<C>,
 
     /// UTXO Set
     utxo_set: C::UtxoSet,
@@ -287,13 +298,6 @@ impl<C> SignerState<C>
 where
     C: Configuration,
 {
-    /// Returns the hierarchical key indices for the current account.
-    #[inline]
-    fn account(&self) -> AccountKeys<C::HierarchicalKeyDerivationScheme> {
-        // FIXME: Implement multiple accounts.
-        self.account_table.get(Default::default()).unwrap()
-    }
-
     /// Inserts the new `utxo`-`encrypted_note` pair if a known key can decrypt the note and
     /// validate the utxo.
     #[inline]
@@ -316,7 +320,8 @@ where
                     ephemeral_public_key,
                 },
         }) = self
-            .account()
+            .accounts
+            .get_default()
             .find_index(|k| finder.decrypt(&parameters.key_agreement, k))
             .map_err(key::Error::KeyDerivationError)?
         {
@@ -377,13 +382,8 @@ where
             // FIXME: Use default account method like everywhere else.
             self.assets
                 .remove_if(|(index, ephemeral_public_key), assets| {
-                    assets.iter().any(|asset| {
-                        match self
-                            .account_table
-                            .get(Default::default())
-                            .unwrap()
-                            .spend_key(*index)
-                        {
+                    assets.iter().any(
+                        |asset| match self.accounts.get_default().spend_key(*index) {
                             Ok(secret_key) => {
                                 let utxo = C::utxo(
                                     &parameters.key_agreement,
@@ -406,8 +406,8 @@ where
                                 }
                             }
                             _ => false,
-                        }
-                    })
+                        },
+                    )
                 });
         }
 
@@ -426,7 +426,7 @@ where
         let (spend_index, ephemeral_key) = key;
         Ok(PreSender::new(
             parameters,
-            self.account().spend_key(spend_index)?,
+            self.accounts.get_default().spend_key(spend_index)?,
             ephemeral_key,
             asset,
         ))
@@ -440,7 +440,8 @@ where
         asset: Asset,
     ) -> Result<Receiver<C>, Error<C>> {
         let keypair = self
-            .account()
+            .accounts
+            .get_default()
             .default_keypair()
             .map_err(key::Error::KeyDerivationError)?;
         Ok(SpendingKey::new(keypair.spend, keypair.view).receiver(
@@ -459,7 +460,8 @@ where
     ) -> Result<(Mint<C>, PreSender<C>), Error<C>> {
         let asset = Asset::zero(asset_id);
         let keypair = self
-            .account()
+            .accounts
+            .get_default()
             .default_keypair()
             .map_err(key::Error::KeyDerivationError)?;
         let (receiver, pre_sender) = SpendingKey::new(keypair.spend, keypair.view).internal_pair(
@@ -563,7 +565,8 @@ where
         total: AssetValue,
     ) -> Result<([Receiver<C>; PrivateTransferShape::RECEIVERS], Join<C>), Error<C>> {
         let keypair = self
-            .account()
+            .accounts
+            .get_default()
             .default_keypair()
             .map_err(key::Error::KeyDerivationError)?;
         Ok(Join::new(
@@ -708,7 +711,7 @@ where
     /// Builds a new [`Signer`].
     #[inline]
     fn new_inner(
-        account_table: AccountTable<C>,
+        accounts: AccountTable<C>,
         proving_context: C::ProvingContextCache,
         parameters: Parameters<C>,
         utxo_set: C::UtxoSet,
@@ -721,7 +724,7 @@ where
                 proving_context,
             },
             state: SignerState {
-                account_table,
+                accounts,
                 utxo_set,
                 assets,
                 rng,
@@ -729,24 +732,24 @@ where
         }
     }
 
-    /// Builds a new [`Signer`] from a fresh `account_table`.
+    /// Builds a new [`Signer`] from a fresh set of `accounts`.
     ///
     /// # Warning
     ///
-    /// This method assumes that `account_table` has never been used before, and does not attempt
+    /// This method assumes that `accounts` has never been used before, and does not attempt
     /// to perform wallet recovery on this table.
     //
     //  FIXME: Check that this warning even makes sense.
     #[inline]
     pub fn new(
-        account_table: AccountTable<C>,
+        accounts: AccountTable<C>,
         proving_context: C::ProvingContextCache,
         parameters: Parameters<C>,
         utxo_set: C::UtxoSet,
         rng: C::Rng,
     ) -> Self {
         Self::new_inner(
-            account_table,
+            accounts,
             proving_context,
             parameters,
             utxo_set,
@@ -757,7 +760,12 @@ where
 
     /// Updates the internal ledger state, returning the new asset distribution.
     #[inline]
-    pub fn sync<I, R>(&mut self, inserts: I, removes: R) -> SyncResult<C, Self>
+    pub fn sync<I, R>(
+        &mut self,
+        starting_index: usize,
+        inserts: I,
+        removes: R,
+    ) -> SyncResult<C, Self>
     where
         I: IntoIterator<Item = (Utxo<C>, EncryptedNote<C>)>,
         R: IntoIterator<Item = VoidNumber<C>>,
@@ -771,11 +779,14 @@ where
         // TODO: Use a smarter object than `Vec` for `removes.into_iter().collect()` like a
         //       `HashSet` or some other set-like container with fast membership and remove ops.
         //
-        self.state.sync_with(
-            &self.parameters.parameters,
-            inserts.into_iter(),
-            removes.into_iter().collect(),
-        )
+        match self.state.utxo_set.len().checked_sub(starting_index) {
+            Some(diff) => self.state.sync_with(
+                &self.parameters.parameters,
+                inserts.into_iter().skip(diff),
+                removes.into_iter().collect(),
+            ),
+            _ => Err(Error::InconsistentSynchronization),
+        }
     }
 
     /// Signs a withdraw transaction for `asset` sent to `receiver`.
@@ -861,7 +872,7 @@ where
     /// Returns a [`ReceivingKey`] for `self` to receive assets with `index`.
     #[inline]
     fn compute_receiving_key(&self, index: Index<C>) -> ReceivingKeyResult<C, Self> {
-        let keypair = self.state.account().keypair(index)?;
+        let keypair = self.state.accounts.get_default().keypair(index)?;
         Ok(SpendingKey::new(keypair.spend, keypair.view)
             .derive(&self.parameters.parameters.key_agreement))
     }
@@ -877,6 +888,7 @@ where
     #[inline]
     fn sync<'s, I, R>(
         &'s mut self,
+        starting_index: usize,
         inserts: I,
         removes: R,
     ) -> LocalBoxFuture<'s, SyncResult<C, Self>>
@@ -884,7 +896,7 @@ where
         I: 's + IntoIterator<Item = (Utxo<C>, EncryptedNote<C>)>,
         R: 's + IntoIterator<Item = VoidNumber<C>>,
     {
-        Box::pin(async move { self.sync(inserts, removes) })
+        Box::pin(async move { self.sync(starting_index, inserts, removes) })
     }
 
     #[inline]

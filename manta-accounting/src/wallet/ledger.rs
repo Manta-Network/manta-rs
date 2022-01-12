@@ -21,13 +21,22 @@ use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash};
 use manta_util::future::LocalBoxFuture;
 
+/// Ledger Checkpoint
+pub trait Checkpoint: Default + PartialOrd {
+    /// Returns the index into the receiver set for the ledger.
+    ///
+    /// This index is used to ensure that wallets are synchronized even during connection failures
+    /// or other errors during synchronization.
+    fn receiver_index(&self) -> usize;
+}
+
 /// Ledger Source Connection
 pub trait Connection<C>
 where
     C: Configuration,
 {
     /// Ledger State Checkpoint Type
-    type Checkpoint: Default + PartialOrd;
+    type Checkpoint: Checkpoint;
 
     /// Receiver Chunk Iterator Type
     type ReceiverChunk: IntoIterator<Item = (Utxo<C>, EncryptedNote<C>)>;

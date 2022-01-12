@@ -16,6 +16,8 @@
 
 //! Test Ledger Implementation
 
+// FIXME: How to model existential deposits and fee payments?
+
 use crate::config::{
     Config, EncryptedNote, MerkleTreeConfiguration, MultiVerifyingContext, ProofSystem,
     TransferPost, Utxo, VoidNumber,
@@ -32,7 +34,7 @@ use manta_accounting::{
         SourcePostingKey, TransferLedger, TransferLedgerSuperPostingKey, TransferPostingKey,
         UtxoSetOutput,
     },
-    wallet::ledger::{Connection, PullResponse, PullResult, PushResponse, PushResult},
+    wallet::ledger::{self, PullResponse, PullResult, PushResponse, PushResult},
 };
 use manta_crypto::{
     constraint::ProofSystem as _,
@@ -344,6 +346,13 @@ impl Default for Checkpoint {
     }
 }
 
+impl ledger::Checkpoint for Checkpoint {
+    #[inline]
+    fn receiver_index(&self) -> usize {
+        self.receiver_index.iter().sum()
+    }
+}
+
 /// Ledger Connection
 pub struct LedgerConnection {
     /// Ledger Account
@@ -361,7 +370,7 @@ impl LedgerConnection {
     }
 }
 
-impl Connection<Config> for LedgerConnection {
+impl ledger::Connection<Config> for LedgerConnection {
     type Checkpoint = Checkpoint;
     type ReceiverChunk = Vec<(Utxo, EncryptedNote)>;
     type SenderChunk = Vec<VoidNumber>;
@@ -418,7 +427,6 @@ impl Connection<Config> for LedgerConnection {
                     Some(TransferShape::Reclaim) => (vec![], vec![self.account]),
                     _ => return Ok(PushResponse { success: false }),
                 };
-                async_std::println!("PUSH [receivers]: {:?}", post.receiver_posts).await;
                 match post.validate(sources, sinks, &*ledger) {
                     Ok(posting_key) => {
                         posting_key.post(&(), &mut *ledger);
@@ -545,6 +553,18 @@ mod test {
                     Asset::new(AssetId(0), AssetValue(10)),
                     bob_public_key
                 ))
+                .await
+                .expect("Unable to private transfer.")
+        )
+        .await;
+
+        alice.sync().await.expect("");
+
+        async_std::println!("Alice [wallet]: {:?}", alice.assets()).await;
+        async_std::println!(
+            "{:?}",
+            alice
+                .post(Transaction::Reclaim(Asset::new(AssetId(0), AssetValue(7))))
                 .await
                 .expect("Unable to private transfer.")
         )

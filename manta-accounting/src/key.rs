@@ -599,6 +599,12 @@ where
         ))
     }
 
+    /// Returns the account keys for the default account.
+    #[inline]
+    pub fn get_default(&self) -> AccountKeys<H> {
+        self.get(Default::default()).unwrap()
+    }
+
     /// Adds a new account to the map, returning the new account parameter.
     #[inline]
     pub fn create_account(&mut self) -> H::Account {
