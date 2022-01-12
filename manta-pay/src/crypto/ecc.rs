@@ -25,6 +25,7 @@ pub mod arkworks {
     use ark_ff::{BigInteger, Field, FpParameters, PrimeField};
     use ark_r1cs_std::ToBitsGadget;
     use ark_relations::ns;
+    use ark_serialize::CanonicalSerialize;
     use core::marker::PhantomData;
     use manta_crypto::{
         constraint::{Allocator, Constant, Equal, Public, Secret, ValueSource, Variable},
@@ -33,7 +34,7 @@ pub mod arkworks {
         rand::{CryptoRng, RngCore, Sample, Standard},
     };
 
-    pub use ark_ec::ProjectiveCurve;
+    pub use ark_ec::{AffineCurve, ProjectiveCurve};
     pub use ark_r1cs_std::groups::CurveVar;
 
     /// Constraint Field Type
@@ -93,7 +94,7 @@ pub mod arkworks {
 
     /// Elliptic Curve Group Element
     #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-    pub struct Group<C>(pub(crate) C)
+    pub struct Group<C>(pub(crate) C::Affine)
     where
         C: ProjectiveCurve;
 
@@ -124,7 +125,7 @@ pub mod arkworks {
 
         #[inline]
         fn scalar_mul(&self, scalar: &Self::Scalar, _: &mut ()) -> Self {
-            Self(self.0.mul(scalar.0.into_repr()))
+            Self(self.0.mul(scalar.0.into_repr()).into())
         }
     }
 
@@ -138,7 +139,7 @@ pub mod arkworks {
             R: CryptoRng + RngCore + ?Sized,
         {
             let _ = distribution;
-            Self(C::rand(rng))
+            Self(C::rand(rng).into())
         }
     }
 

@@ -144,11 +144,10 @@ impl CommitmentScheme for UtxoCommitmentScheme {
         input: &Self::Input,
         _: &mut (),
     ) -> Self::Output {
-        // NOTE: The group is in projective form, so we need to convert it first.
-        let trapdoor = trapdoor.0.into_affine();
+        // NOTE: The group is already in affine form, so we can extract `x` and `y`.
         self.0.hash([
-            &Fp(trapdoor.x),
-            &Fp(trapdoor.y),
+            &Fp(trapdoor.0.x),
+            &Fp(trapdoor.0.y),
             &Fp(input.id.0.into()),
             &Fp(input.value.0.into()),
         ])
@@ -502,7 +501,7 @@ impl ProofSystemInput<Group> for ProofSystem {
     #[inline]
     fn extend(input: &mut Self::Input, next: &Group) {
         // FIXME: Make sure we can type check the coordinate system here.
-        input.append(&mut next.0.into_affine().to_field_elements().unwrap());
+        input.append(&mut next.0.to_field_elements().unwrap());
     }
 }
 

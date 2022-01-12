@@ -59,32 +59,36 @@ fn sample_reclaim_context() {
 #[test]
 fn mint() {
     let mut rng = thread_rng();
-    let result =
-        Mint::sample_and_check_proof(&(), &rng.gen(), &mut UtxoSet::new(rng.gen()), &mut rng);
-    println!("Mint: {:?}", result);
-    assert!(matches!(result, Ok(true)));
+    assert!(
+        Mint::sample_and_check_proof(&(), &rng.gen(), &mut UtxoSet::new(rng.gen()), &mut rng)
+            .expect("Random Mint should have successfully produced a proof."),
+        "The Mint proof should have been valid."
+    );
 }
 
 /// Tests the generation of a [`PrivateTransfer`].
 #[test]
 fn private_transfer() {
     let mut rng = thread_rng();
-    let result = PrivateTransfer::sample_and_check_proof(
-        &(),
-        &rng.gen(),
-        &mut UtxoSet::new(rng.gen()),
-        &mut rng,
+    assert!(
+        PrivateTransfer::sample_and_check_proof(
+            &(),
+            &rng.gen(),
+            &mut UtxoSet::new(rng.gen()),
+            &mut rng
+        )
+        .expect("Random PrivateTransfer should have successfully produced a proof."),
+        "The PrivateTransfer proof should have been valid."
     );
-    println!("PrivateTransfer: {:?}", result);
-    assert!(matches!(result, Ok(true)));
 }
 
 /// Tests the generation of a [`Reclaim`].
 #[test]
 fn reclaim() {
     let mut rng = thread_rng();
-    let result =
-        Reclaim::sample_and_check_proof(&(), &rng.gen(), &mut UtxoSet::new(rng.gen()), &mut rng);
-    println!("Reclaim: {:?}", result);
-    assert!(matches!(result, Ok(true)));
+    assert!(
+        Reclaim::sample_and_check_proof(&(), &rng.gen(), &mut UtxoSet::new(rng.gen()), &mut rng)
+            .expect("Random Reclaim should have successfully produced a proof."),
+        "The Reclaim proof should have been valid."
+    );
 }
