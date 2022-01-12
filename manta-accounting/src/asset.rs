@@ -631,6 +631,11 @@ pub trait AssetMap: Default {
         iter.into_iter()
             .for_each(move |(key, asset)| self.remove(key, asset));
     }
+
+    /// Removes elements from `self` if they return `true` from `f`.
+    fn remove_if<F>(&mut self, f: F)
+    where
+        F: FnMut(&Self::Key, &[Asset]) -> bool;
 }
 
 /// Implements [`AssetMap`] for map types.
@@ -702,6 +707,14 @@ macro_rules! impl_asset_map_for_maps_body {
                     entry.remove();
                 }
             }
+        }
+
+        #[inline]
+        fn remove_if<F>(&mut self, mut f: F)
+        where
+            F: FnMut(&Self::Key, &[Asset]) -> bool,
+        {
+            self.retain(move |key, assets| !f(key, &assets));
         }
     };
 }

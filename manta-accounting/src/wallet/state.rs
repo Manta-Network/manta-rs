@@ -190,7 +190,7 @@ where
     checkpoint: L::Checkpoint,
 
     /// Signer Connection
-    pub signer: S,
+    signer: S,
 
     /// Balance State
     assets: B,

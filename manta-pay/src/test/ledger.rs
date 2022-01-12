@@ -418,6 +418,7 @@ impl Connection<Config> for LedgerConnection {
                     Some(TransferShape::Reclaim) => (vec![], vec![self.account]),
                     _ => return Ok(PushResponse { success: false }),
                 };
+                async_std::println!("PUSH [receivers]: {:?}", post.receiver_posts).await;
                 match post.validate(sources, sinks, &*ledger) {
                     Ok(posting_key) => {
                         posting_key.post(&(), &mut *ledger);
@@ -525,7 +526,6 @@ mod test {
             .expect("Unable to get Bob's public key.");
 
         async_std::println!("Alice [wallet]: {:?}", alice.assets()).await;
-        async_std::println!("Alice [signer]: {:?}", alice.signer.state.assets).await;
         async_std::println!(
             "{:?}",
             alice
@@ -538,7 +538,6 @@ mod test {
         alice.sync().await.expect("");
 
         async_std::println!("Alice [wallet]: {:?}", alice.assets()).await;
-        async_std::println!("Alice [signer]: {:?}", alice.signer.state.assets).await;
         async_std::println!(
             "{:?}",
             alice
@@ -560,9 +559,7 @@ mod test {
             .expect("Unable to synchronise with the ledger.");
 
         async_std::println!("Alice [wallet]: {:?}", alice.assets()).await;
-        async_std::println!("Alice [signer]: {:?}", alice.signer.state.assets).await;
         async_std::println!("Bob [wallet]: {:?}", bob.assets()).await;
-        async_std::println!("Bob [signer]: {:?}", bob.signer.state.assets).await;
 
         task::spawn_blocking(move || directory.close())
             .await

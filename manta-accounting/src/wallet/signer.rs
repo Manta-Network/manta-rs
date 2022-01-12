@@ -266,7 +266,7 @@ where
 }
 
 /// Signer State
-pub struct SignerState<C>
+struct SignerState<C>
 where
     C: Configuration,
 {
@@ -277,7 +277,7 @@ where
     utxo_set: C::UtxoSet,
 
     /// Asset Distribution
-    pub assets: C::AssetMap,
+    assets: C::AssetMap,
 
     /// Random Number Generator
     rng: C::Rng,
@@ -330,14 +330,12 @@ where
                 if let Some(void_number_index) =
                     void_numbers.iter().position(move |v| v == &void_number)
                 {
-                    println!("REMOVE: {:?}", asset);
                     void_numbers.remove(void_number_index);
                     self.utxo_set.remove_proof(&utxo);
                     self.assets
                         .remove((index.spend, ephemeral_public_key), asset);
                     withdraw.push(asset);
                 } else {
-                    println!("INSERT: {:?}", asset);
                     self.utxo_set.insert(&utxo);
                     self.assets
                         .insert((index.spend, ephemeral_public_key), asset);
@@ -374,7 +372,45 @@ where
                 &mut withdraw,
             )?;
         }
-        // FIXME: Do we need to check the void numbers which survived the above loop?
+
+        for void_number in void_numbers {
+            // FIXME: Use default account method like everywhere else.
+            self.assets
+                .remove_if(|(index, ephemeral_public_key), assets| {
+                    assets.iter().any(|asset| {
+                        match self
+                            .account_table
+                            .get(Default::default())
+                            .unwrap()
+                            .spend_key(*index)
+                        {
+                            Ok(secret_key) => {
+                                let utxo = C::utxo(
+                                    &parameters.key_agreement,
+                                    &parameters.utxo_commitment,
+                                    &secret_key,
+                                    ephemeral_public_key,
+                                    asset,
+                                );
+                                let known_void_number = C::void_number(
+                                    &parameters.void_number_hash,
+                                    &utxo,
+                                    &secret_key,
+                                );
+                                if void_number == known_void_number {
+                                    self.utxo_set.remove_proof(&utxo);
+                                    withdraw.push(*asset);
+                                    true
+                                } else {
+                                    false
+                                }
+                            }
+                            _ => false,
+                        }
+                    })
+                });
+        }
+
         self.utxo_set.commit();
         Ok(SyncResponse::new(deposit, withdraw))
     }
@@ -662,7 +698,7 @@ where
     parameters: SignerParameters<C>,
 
     /// Signer State
-    pub state: SignerState<C>,
+    state: SignerState<C>,
 }
 
 impl<C> Signer<C>
