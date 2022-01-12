@@ -103,7 +103,11 @@ pub mod arkworks {
     {
         #[inline]
         fn as_bytes(&self) -> Vec<u8> {
-            ark_ff::to_bytes!(&self.0).expect("Byte conversion does not fail.")
+            let mut buffer = Vec::new();
+            self.0
+                .serialize_unchecked(&mut buffer)
+                .expect("Serialization does not fail.");
+            buffer
         }
     }
 

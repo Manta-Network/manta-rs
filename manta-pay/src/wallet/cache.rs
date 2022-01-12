@@ -19,11 +19,13 @@
 use crate::config::{MultiProvingContext, ProvingContext};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use async_std::{
-    fs, io,
+    io,
     path::{Path, PathBuf},
+    task,
 };
 use core::marker::PhantomData;
 use manta_util::{cache::CachedResource, future::LocalBoxFuture};
+use std::fs::{File, OpenOptions};
 
 /// Caching Error
 #[derive(Debug)]
@@ -93,34 +95,45 @@ impl OnDiskMultiProvingContext {
     #[inline]
     async fn read_context<P>(path: P) -> Result<ProvingContext, Error>
     where
-        P: AsRef<Path>,
+        P: 'static + AsRef<Path> + Send,
     {
-        Ok(ProvingContext::deserialize_unchecked(
-            &mut fs::read(path).await?.as_slice(),
-        )?)
+        Ok(task::spawn_blocking(move || {
+            File::open(path.as_ref())
+                .map_err(Error::Io)
+                .and_then(move |f| {
+                    ProvingContext::deserialize_unchecked(f).map_err(Error::Serialization)
+                })
+        })
+        .await?)
     }
 
     /// Writes `context` to `path`.
     #[inline]
-    async fn write_context<P>(path: P, context: &ProvingContext) -> Result<(), Error>
+    async fn write_context<P>(path: P, context: ProvingContext) -> Result<(), Error>
     where
-        P: AsRef<Path>,
+        P: 'static + AsRef<Path> + Send,
     {
-        let mut buffer = Vec::new();
-        context.serialize(&mut buffer.as_mut_slice())?;
-        Ok(fs::write(path, buffer).await?)
+        Ok(task::spawn_blocking(move || {
+            OpenOptions::new()
+                .write(true)
+                .create(true)
+                .open(path.as_ref())
+                .map_err(Error::Io)
+                .and_then(move |f| context.serialize_unchecked(f).map_err(Error::Serialization))
+        })
+        .await?)
     }
 
     /// Saves the `context` to the on-disk directory. This method _does not_ write `context` into
     /// the cache.
     #[inline]
     pub async fn save(&self, context: MultiProvingContext) -> Result<(), Error> {
-        let mint_path = self.directory.join("mint.bin");
-        let private_transfer_path = self.directory.join("private-transfer.bin");
-        let reclaim_path = self.directory.join("reclaim.bin");
-        Self::write_context(mint_path, &context.mint).await?;
-        Self::write_context(private_transfer_path, &context.private_transfer).await?;
-        Self::write_context(reclaim_path, &context.reclaim).await?;
+        let mint_path = self.directory.join("mint.pk");
+        let private_transfer_path = self.directory.join("private-transfer.pk");
+        let reclaim_path = self.directory.join("reclaim.pk");
+        Self::write_context(mint_path, context.mint).await?;
+        Self::write_context(private_transfer_path, context.private_transfer).await?;
+        Self::write_context(reclaim_path, context.reclaim).await?;
         Ok(())
     }
 }
@@ -132,9 +145,9 @@ impl CachedResource<MultiProvingContext> for OnDiskMultiProvingContext {
     #[inline]
     fn aquire(&mut self) -> LocalBoxFuture<Result<Self::ReadingKey, Self::Error>> {
         Box::pin(async {
-            let mint_path = self.directory.join("mint.bin");
-            let private_transfer_path = self.directory.join("private-transfer.bin");
-            let reclaim_path = self.directory.join("reclaim.bin");
+            let mint_path = self.directory.join("mint.pk");
+            let private_transfer_path = self.directory.join("private-transfer.pk");
+            let reclaim_path = self.directory.join("reclaim.pk");
             self.context = Some(MultiProvingContext {
                 mint: Self::read_context(mint_path).await?,
                 private_transfer: Self::read_context(private_transfer_path).await?,

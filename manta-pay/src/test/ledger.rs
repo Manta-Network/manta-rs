@@ -106,7 +106,7 @@ impl Ledger {
         Self {
             void_numbers: Default::default(),
             utxos: Default::default(),
-            shards: Default::default(),
+            shards: (0..=255).map(move |i| (i, Default::default())).collect(),
             utxo_forest: UtxoMerkleForest::new(utxo_forest_parameters),
             accounts: Default::default(),
             verifying_context,
@@ -183,10 +183,11 @@ impl ReceiverLedger<Config> for Ledger {
         let shard = self
             .shards
             .get_mut(&MerkleTreeConfiguration::tree_index(&utxo.0))
-            .unwrap();
+            .expect("All shards exist when the ledger is constructed.");
         let len = shard.len();
         shard.insert(len as u64, (utxo.0, note));
         self.utxos.insert(utxo.0);
+        self.utxo_forest.push(&utxo.0);
     }
 }
 
@@ -374,12 +375,8 @@ impl Connection<Config> for LedgerConnection {
         Box::pin(async {
             let ledger = self.ledger.read().await;
             let mut receivers = Vec::new();
-            for (mut index, shard) in checkpoint
-                .receiver_index
-                .iter()
-                .copied()
-                .zip(ledger.shards.values())
-            {
+            for (i, mut index) in checkpoint.receiver_index.iter().copied().enumerate() {
+                let shard = &ledger.shards[&(i as u8)];
                 while let Some(entry) = shard.get(&(index as u64)) {
                     receivers.push(*entry);
                     index += 1;
@@ -444,8 +441,9 @@ mod test {
     };
     use async_std::task;
     use manta_accounting::{
+        asset::Asset,
         key::{AccountTable, HierarchicalKeyDerivationScheme},
-        transfer,
+        transfer::{self, canonical::Transaction},
     };
     use manta_crypto::rand::{Rand, SeedableRng};
     use rand::thread_rng;
@@ -454,6 +452,11 @@ mod test {
     ///
     #[async_std::test]
     async fn test() {
+        let directory = task::spawn_blocking(tempfile::tempdir)
+            .await
+            .expect("Unable to generate temporary test directory.");
+        async_std::println!("Temporary Directory: {:?}", directory).await;
+
         let mut rng = thread_rng();
         let parameters = rng.gen();
         let utxo_set_parameters = rng.gen();
@@ -464,10 +467,6 @@ mod test {
             &mut rng,
         )
         .expect("Failed to generate contexts.");
-
-        let directory = task::spawn_blocking(tempfile::tempdir)
-            .await
-            .expect("Unable to generate temporary test directory.");
 
         let cache = OnDiskMultiProvingContext::new(directory.path());
         cache
@@ -480,11 +479,13 @@ mod test {
         ledger.set_public_balance(AccountId(1), AssetId(0), AssetValue(1000));
         ledger.set_public_balance(AccountId(2), AssetId(0), AssetValue(100));
 
-        println!("{:#?}", ledger);
+        async_std::println!("Ledger: {:?}", ledger.accounts).await;
 
         let ledger = Rc::new(RwLock::new(ledger));
 
-        let mut wallet = Wallet::empty(
+        async_std::println!("Building Wallets").await;
+
+        let mut alice = Wallet::empty(
             LedgerConnection::new(AccountId(0), ledger.clone()),
             Signer::new(
                 AccountTable::new(
@@ -501,7 +502,67 @@ mod test {
             ),
         );
 
-        let _ = wallet.sync().await;
+        let mut bob = Wallet::empty(
+            LedgerConnection::new(AccountId(1), ledger.clone()),
+            Signer::new(
+                AccountTable::new(
+                    TestnetKeySecret::new(
+                        Mnemonic::random(&mut rng, Language::English),
+                        "password",
+                    )
+                    .map(),
+                ),
+                cache.clone(),
+                parameters.clone(),
+                wallet::UtxoSet::new(utxo_set_parameters.clone()),
+                ChaCha20Rng::from_rng(&mut rng).expect("Failed to sample PRNG for signer."),
+            ),
+        );
+
+        let bob_public_key = bob
+            .receiving_key(Default::default())
+            .await
+            .expect("Unable to get Bob's public key.");
+
+        async_std::println!("Alice [wallet]: {:?}", alice.assets()).await;
+        async_std::println!("Alice [signer]: {:?}", alice.signer.state.assets).await;
+        async_std::println!(
+            "{:?}",
+            alice
+                .post(Transaction::Mint(Asset::new(AssetId(0), AssetValue(100))))
+                .await
+                .expect("Unable to mint.")
+        )
+        .await;
+
+        alice.sync().await.expect("");
+
+        async_std::println!("Alice [wallet]: {:?}", alice.assets()).await;
+        async_std::println!("Alice [signer]: {:?}", alice.signer.state.assets).await;
+        async_std::println!(
+            "{:?}",
+            alice
+                .post(Transaction::PrivateTransfer(
+                    Asset::new(AssetId(0), AssetValue(10)),
+                    bob_public_key
+                ))
+                .await
+                .expect("Unable to private transfer.")
+        )
+        .await;
+
+        alice
+            .sync()
+            .await
+            .expect("Unable to synchronise with the ledger.");
+        bob.sync()
+            .await
+            .expect("Unable to synchronise with the ledger.");
+
+        async_std::println!("Alice [wallet]: {:?}", alice.assets()).await;
+        async_std::println!("Alice [signer]: {:?}", alice.signer.state.assets).await;
+        async_std::println!("Bob [wallet]: {:?}", bob.assets()).await;
+        async_std::println!("Bob [signer]: {:?}", bob.signer.state.assets).await;
 
         task::spawn_blocking(move || directory.close())
             .await

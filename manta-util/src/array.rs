@@ -16,7 +16,7 @@
 
 //! Array Utilities
 
-use alloc::vec::Vec;
+use alloc::{boxed::Box, vec::Vec};
 use core::convert::TryInto;
 
 /// Performs the [`TryInto`] conversion into an array without checking if the conversion succeeded.
@@ -24,6 +24,22 @@ use core::convert::TryInto;
 pub fn into_array_unchecked<T, V, const N: usize>(v: V) -> [T; N]
 where
     V: TryInto<[T; N]>,
+{
+    match v.try_into() {
+        Ok(array) => array,
+        _ => unreachable!(
+            "Input did not have the correct length to match the output slice of length {:?}.",
+            N,
+        ),
+    }
+}
+
+/// Performs the [`TryInto`] conversion into a boxed array without checking if the conversion
+/// succeeded.
+#[inline]
+pub fn into_boxed_array_unchecked<T, V, const N: usize>(v: V) -> Box<[T; N]>
+where
+    V: TryInto<Box<[T; N]>>,
 {
     match v.try_into() {
         Ok(array) => array,

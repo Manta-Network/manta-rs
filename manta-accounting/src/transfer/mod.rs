@@ -945,6 +945,15 @@ pub enum SenderPostError {
 }
 
 /// Sender Post
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "UtxoSetOutput<C>: Clone, VoidNumber<C>: Clone"),
+    Copy(bound = "UtxoSetOutput<C>: Copy, VoidNumber<C>: Copy"),
+    Debug(bound = "UtxoSetOutput<C>: Debug, VoidNumber<C>: Debug"),
+    Eq(bound = "UtxoSetOutput<C>: Eq, VoidNumber<C>: Eq"),
+    Hash(bound = "UtxoSetOutput<C>: Hash, VoidNumber<C>: Hash"),
+    PartialEq(bound = "UtxoSetOutput<C>: PartialEq, VoidNumber<C>: PartialEq")
+)]
 pub struct SenderPost<C>
 where
     C: Configuration,
@@ -1217,6 +1226,15 @@ pub enum ReceiverPostError {
 }
 
 /// Receiver Post
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "Utxo<C>: Clone, EncryptedNote<C>: Clone"),
+    Copy(bound = "Utxo<C>: Copy, EncryptedNote<C>: Copy"),
+    Debug(bound = "Utxo<C>: Debug, EncryptedNote<C>: Debug"),
+    Eq(bound = "Utxo<C>: Eq, EncryptedNote<C>: Eq"),
+    Hash(bound = "Utxo<C>: Hash, EncryptedNote<C>: Hash"),
+    PartialEq(bound = "Utxo<C>: PartialEq, EncryptedNote<C>: PartialEq")
+)]
 pub struct ReceiverPost<C>
 where
     C: Configuration,
@@ -1817,6 +1835,14 @@ impl<AccountId> From<ReceiverPostError> for TransferPostError<AccountId> {
 }
 
 /// Transfer Post
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "SenderPost<C>: Clone, ReceiverPost<C>: Clone, Proof<C>: Clone"),
+    Debug(bound = "SenderPost<C>: Debug, ReceiverPost<C>: Debug, Proof<C>: Debug"),
+    Eq(bound = "SenderPost<C>: Eq, ReceiverPost<C>: Eq, Proof<C>: Eq"),
+    Hash(bound = "SenderPost<C>: Hash, ReceiverPost<C>: Hash, Proof<C>: Hash"),
+    PartialEq(bound = "SenderPost<C>: PartialEq, ReceiverPost<C>: PartialEq, Proof<C>: PartialEq")
+)]
 pub struct TransferPost<C>
 where
     C: Configuration,

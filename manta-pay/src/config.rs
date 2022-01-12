@@ -27,6 +27,7 @@ use crate::{
     key::TestnetKeySecret,
 };
 use ark_ff::{PrimeField, ToConstraintField};
+use ark_serialize::CanonicalSerialize;
 use blake2::{
     digest::{Update, VariableOutput},
     Blake2sVar,
@@ -614,9 +615,11 @@ impl merkle_tree::forest::Configuration for MerkleTreeConfiguration {
     #[inline]
     fn tree_index(leaf: &merkle_tree::Leaf<Self>) -> Self::Index {
         let mut hasher = Blake2sVar::new(1).unwrap();
-        hasher.update(
-            &ark_ff::to_bytes!(leaf.0).expect("Converting to bytes is not allowed to fail."),
-        );
+        let mut buffer = Vec::new();
+        leaf.0
+            .serialize_unchecked(&mut buffer)
+            .expect("Serializing is not allowed to fail.");
+        hasher.update(&buffer);
         let mut result = [0];
         hasher
             .finalize_variable(&mut result)

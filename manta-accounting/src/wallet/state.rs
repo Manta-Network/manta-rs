@@ -24,7 +24,7 @@ use crate::{
     },
     wallet::{
         ledger::{self, PullResponse, PushResponse},
-        signer::{self, SignResponse},
+        signer::{self, SignResponse, SyncResponse},
     },
 };
 use alloc::{
@@ -70,6 +70,23 @@ pub trait BalanceState: Default {
     /// This method does not check if withdrawing `asset` from the balance state would cause an
     /// overdraw, but if it were to overdraw, this method must panic.
     fn withdraw_unchecked(&mut self, asset: Asset);
+
+    /// Withdraws every asset in `assets` from the balance state without checking if it would
+    /// overdraw.
+    ///
+    /// # Panics
+    ///
+    /// This method does not check if withdrawing `asset` from the balance state would cause an
+    /// overdraw, but if it were to overdraw, this method must panic.
+    #[inline]
+    fn withdraw_all_unchecked<I>(&mut self, assets: I)
+    where
+        I: IntoIterator<Item = Asset>,
+    {
+        assets
+            .into_iter()
+            .for_each(move |a| self.withdraw_unchecked(a))
+    }
 }
 
 /// Performs an unchecked withdraw on `balance`, panicking on overflow.
@@ -173,7 +190,7 @@ where
     checkpoint: L::Checkpoint,
 
     /// Signer Connection
-    signer: S,
+    pub signer: S,
 
     /// Balance State
     assets: B,
@@ -207,16 +224,22 @@ where
         Self::new(ledger, Default::default(), signer, Default::default())
     }
 
+    /// Returns true if `self` contains at least `asset.value` of the asset of kind `asset.id`.
+    #[inline]
+    pub fn contains(&self, asset: Asset) -> bool {
+        self.assets.contains(asset)
+    }
+
     /// Returns the current balance associated with this `id`.
     #[inline]
     pub fn balance(&self, id: AssetId) -> AssetValue {
         self.assets.balance(id)
     }
 
-    /// Returns true if `self` contains at least `asset.value` of the asset of kind `asset.id`.
+    /// Returns the entire balance state associated to `self`.
     #[inline]
-    pub fn contains(&self, asset: Asset) -> bool {
-        self.assets.contains(asset)
+    pub fn assets(&self) -> &B {
+        &self.assets
     }
 
     /// Returns the [`Checkpoint`](ledger::Connection::Checkpoint) representing the current state
@@ -241,13 +264,13 @@ where
         if checkpoint < self.checkpoint {
             return Err(Error::InconsistentCheckpoint);
         }
-        self.assets.deposit_all(
-            self.signer
-                .sync(receivers, senders)
-                .await
-                .map_err(Error::SignerError)?
-                .assets,
-        );
+        let SyncResponse { deposit, withdraw } = self
+            .signer
+            .sync(receivers, senders)
+            .await
+            .map_err(Error::SignerError)?;
+        self.assets.deposit_all(deposit);
+        self.assets.withdraw_all_unchecked(withdraw);
         self.checkpoint = checkpoint;
         Ok(())
     }
@@ -267,7 +290,7 @@ where
 
     /// Posts a transaction to the ledger, returning `true` if the `transaction` was successfully
     /// saved onto the ledger. This method automatically synchronizes with the ledger before
-    /// posting. To amortize the cost of future calls to [`post`](Self::post), the
+    /// posting, _but not after_. To amortize the cost of future calls to [`post`](Self::post), the
     /// [`sync`](Self::sync) method can be used to synchronize with the ledger.
     ///
     /// # Failure Conditions
@@ -284,25 +307,15 @@ where
     #[inline]
     pub async fn post(&mut self, transaction: Transaction<C>) -> Result<bool, Error<C, L, S>> {
         self.sync().await?;
-        let transaction_kind = self
-            .check(&transaction)
+        self.check(&transaction)
             .map_err(Error::InsufficientBalance)?;
         let SignResponse { posts } = self
             .signer
             .sign(transaction)
             .await
             .map_err(Error::SignerError)?;
-        match self.ledger.push(posts).await {
-            Ok(PushResponse { success: true }) => {
-                match transaction_kind {
-                    TransactionKind::Deposit(asset) => self.assets.deposit(asset),
-                    TransactionKind::Withdraw(asset) => self.assets.withdraw_unchecked(asset),
-                }
-                Ok(true)
-            }
-            Ok(PushResponse { success: false }) => Ok(false),
-            Err(err) => Err(Error::LedgerError(err)),
-        }
+        let PushResponse { success } = self.ledger.push(posts).await.map_err(Error::LedgerError)?;
+        Ok(success)
     }
 
     /// Returns a [`ReceivingKey`] for `self` to receive assets with `index`.

@@ -203,6 +203,15 @@ where
 }
 
 /// Error Type
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "H::Error: Clone"),
+    Copy(bound = "H::Error: Copy"),
+    Debug(bound = "H::Error: Debug"),
+    Eq(bound = "H::Error: Eq"),
+    Hash(bound = "H::Error: Hash"),
+    PartialEq(bound = "H::Error: PartialEq")
+)]
 pub enum Error<H>
 where
     H: HierarchicalKeyDerivationScheme + ?Sized,

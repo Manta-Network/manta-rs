@@ -159,3 +159,25 @@ pub trait KeyAgreementScheme<COM = ()> {
         self.agree(&secret_key, &public_key, compiler)
     }
 }
+
+/// Testing Framework
+#[cfg(feature = "test")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
+pub mod test {
+    use super::*;
+    use core::fmt::Debug;
+
+    /// Tests if the `agreement` property is satisfied for `K`.
+    #[inline]
+    pub fn key_agreement<K>(parameters: &K, lhs: &K::SecretKey, rhs: &K::SecretKey)
+    where
+        K: KeyAgreementScheme,
+        K::SharedSecret: Debug + PartialEq,
+    {
+        assert_eq!(
+            parameters.agree(lhs, &parameters.derive(rhs, &mut ()), &mut ()),
+            parameters.agree(rhs, &parameters.derive(lhs, &mut ()), &mut ()),
+            "Key agreement schemes should satisfy the agreement property."
+        )
+    }
+}

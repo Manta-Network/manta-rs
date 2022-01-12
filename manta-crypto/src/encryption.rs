@@ -323,3 +323,60 @@ where
         None
     }
 }
+
+/// Testing Framework
+#[cfg(feature = "test")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
+pub mod test {
+    use super::*;
+
+    /// Tests if symmetric encryption of `plaintext` using `key` returns the same plaintext on
+    /// decryption.
+    #[inline]
+    pub fn symmetric_encryption<S>(key: S::Key, plaintext: S::Plaintext)
+    where
+        S: SymmetricKeyEncryptionScheme,
+        S::Key: Clone,
+        S::Plaintext: Clone + Debug + PartialEq,
+    {
+        assert_eq!(
+            S::decrypt(key.clone(), &S::encrypt(key, plaintext.clone()))
+                .expect("Decryption of encrypted message should have succeeded."),
+            plaintext,
+            "Plaintext should have matched decrypted-encrypted plaintext."
+        )
+    }
+
+    /// Tests if hybrid encryption of `plaintext` using `public_key` returns the same plaintext on
+    /// decryption.
+    #[inline]
+    pub fn hybrid_encryption<H>(
+        parameters: &H::KeyAgreementScheme,
+        secret_key: &SecretKey<H>,
+        ephemeral_secret_key: &SecretKey<H>,
+        plaintext: H::Plaintext,
+    ) where
+        H: HybridPublicKeyEncryptionScheme,
+        H::Plaintext: Clone + Debug + PartialEq,
+        H::Ciphertext: Debug,
+        PublicKey<H>: Debug + PartialEq,
+    {
+        let decrypted_message = EncryptedMessage::<H>::new(
+            parameters,
+            &parameters.derive(secret_key, &mut ()),
+            ephemeral_secret_key,
+            plaintext.clone(),
+        )
+        .decrypt(parameters, secret_key)
+        .expect("Decryption of encrypted message should have succeeded.");
+        assert_eq!(
+            decrypted_message.plaintext, plaintext,
+            "Plaintext should have matched decrypted-encrypted plaintext."
+        );
+        assert_eq!(
+            decrypted_message.ephemeral_public_key,
+            parameters.derive(ephemeral_secret_key, &mut ()),
+            "Decrypted message should have included the correct ephemeral public key.",
+        );
+    }
+}

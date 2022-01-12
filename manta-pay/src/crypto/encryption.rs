@@ -49,9 +49,7 @@ pub mod aes {
 
     impl<const P: usize, const C: usize> SymmetricKeyEncryptionScheme for AesGcm<P, C> {
         type Key = [u8; 32];
-
         type Plaintext = [u8; P];
-
         type Ciphertext = [u8; C];
 
         #[inline]
@@ -71,6 +69,28 @@ pub mod aes {
                 .decrypt(Nonce::from_slice(Self::NONCE), ciphertext.as_ref())
                 .ok()
                 .map(into_array_unchecked)
+        }
+    }
+
+    /// Test Suite
+    #[cfg(test)]
+    mod test {
+        use super::*;
+        use manta_accounting::asset::Asset;
+        use manta_crypto::{encryption, rand::RngCore};
+        use rand::thread_rng;
+
+        /// Tests if symmetric encryption of [`Asset`] decrypts properly.
+        #[test]
+        fn asset_encryption() {
+            let mut rng = thread_rng();
+            let mut key = [0; 32];
+            rng.fill_bytes(&mut key);
+            let mut plaintext = [0; Asset::SIZE];
+            rng.fill_bytes(&mut plaintext);
+            encryption::test::symmetric_encryption::<
+                AesGcm<{ Asset::SIZE }, { ciphertext_size(Asset::SIZE) }>,
+            >(key, plaintext);
         }
     }
 }

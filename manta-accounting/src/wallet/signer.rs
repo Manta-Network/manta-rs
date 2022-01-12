@@ -25,6 +25,7 @@
 // TODO:  Move `sync` to a stream-based algorithm instead of iterator-based.
 // TODO:  Save/Load `SignerState` to/from disk.
 // TODO:  Add self-destruct feature for clearing all secret and private data.
+// TODO:  Compress the `SyncResponse` data before sending (improves privacy and bandwidth).
 
 use crate::{
     asset::{Asset, AssetId, AssetMap, AssetValue},
@@ -110,16 +111,20 @@ pub type ReceivingKeyResult<C, S> = Result<ReceivingKey<C>, <S as Connection<C>>
 ///
 /// This `struct` is created by the [`sync`](Connection::sync) method on [`Connection`].
 /// See its documentation for more.
+#[derive(Clone, Debug, Default, Eq, Hash, PartialEq)]
 pub struct SyncResponse {
-    /// Updates to the Asset Distribution
-    pub assets: Vec<Asset>,
+    /// Assets Deposited
+    pub deposit: Vec<Asset>,
+
+    /// Assets Withdrawn
+    pub withdraw: Vec<Asset>,
 }
 
 impl SyncResponse {
-    /// Builds a new [`SyncResponse`] from `assets`.
+    /// Builds a new [`SyncResponse`] from `deposit` and `withdraw`.
     #[inline]
-    pub fn new(assets: Vec<Asset>) -> Self {
-        Self { assets }
+    pub fn new(deposit: Vec<Asset>, withdraw: Vec<Asset>) -> Self {
+        Self { deposit, withdraw }
     }
 }
 
@@ -261,7 +266,7 @@ where
 }
 
 /// Signer State
-struct SignerState<C>
+pub struct SignerState<C>
 where
     C: Configuration,
 {
@@ -272,7 +277,7 @@ where
     utxo_set: C::UtxoSet,
 
     /// Asset Distribution
-    assets: C::AssetMap,
+    pub assets: C::AssetMap,
 
     /// Random Number Generator
     rng: C::Rng,
@@ -298,7 +303,8 @@ where
         utxo: Utxo<C>,
         encrypted_note: EncryptedNote<C>,
         void_numbers: &mut Vec<VoidNumber<C>>,
-        assets: &mut Vec<Asset>,
+        deposit: &mut Vec<Asset>,
+        withdraw: &mut Vec<Asset>,
     ) -> Result<(), Error<C>> {
         let mut finder = DecryptedMessage::find(encrypted_note);
         if let Some(ViewKeySelection {
@@ -324,15 +330,18 @@ where
                 if let Some(void_number_index) =
                     void_numbers.iter().position(move |v| v == &void_number)
                 {
+                    println!("REMOVE: {:?}", asset);
                     void_numbers.remove(void_number_index);
                     self.utxo_set.remove_proof(&utxo);
                     self.assets
                         .remove((index.spend, ephemeral_public_key), asset);
+                    withdraw.push(asset);
                 } else {
-                    assets.push(asset);
+                    println!("INSERT: {:?}", asset);
+                    self.utxo_set.insert(&utxo);
                     self.assets
                         .insert((index.spend, ephemeral_public_key), asset);
-                    self.utxo_set.insert(&utxo);
+                    deposit.push(asset);
                     return Ok(());
                 }
             }
@@ -353,22 +362,24 @@ where
         I: Iterator<Item = (Utxo<C>, EncryptedNote<C>)>,
     {
         // TODO: Do this loop in parallel.
-        let mut assets = Vec::new();
+        let mut deposit = Vec::new();
+        let mut withdraw = Vec::new();
         for (utxo, encrypted_note) in inserts {
             self.insert_next_item(
                 parameters,
                 utxo,
                 encrypted_note,
                 &mut void_numbers,
-                &mut assets,
+                &mut deposit,
+                &mut withdraw,
             )?;
         }
         // FIXME: Do we need to check the void numbers which survived the above loop?
         self.utxo_set.commit();
-        Ok(SyncResponse::new(assets))
+        Ok(SyncResponse::new(deposit, withdraw))
     }
 
-    /// Builds the pre-sender associated to `spend_index`, `ephemeral_key`, and `asset`.
+    /// Builds the pre-sender associated to `key` and `asset`.
     #[inline]
     fn build_pre_sender(
         &self,
@@ -385,7 +396,7 @@ where
         ))
     }
 
-    /// Builds the pre-receiver associated to `spend_index`, `view_index`, and `asset`.
+    /// Builds the receiver for `asset`.
     #[inline]
     fn build_receiver(
         &mut self,
@@ -545,7 +556,9 @@ where
         let zeroes = self.assets.zeroes(needed_zeroes, asset_id);
         needed_zeroes -= zeroes.len();
         for zero in zeroes {
-            pre_senders.push(self.build_pre_sender(parameters, zero, Asset::zero(asset_id))?);
+            let pre_sender = self.build_pre_sender(parameters, zero, Asset::zero(asset_id))?;
+            pre_sender.insert_utxo(&mut self.utxo_set);
+            pre_senders.push(pre_sender);
         }
         if needed_zeroes == 0 {
             return Ok(());
@@ -563,6 +576,7 @@ where
         for _ in 0..needed_mints {
             let (mint, pre_sender) = self.mint_zero(parameters, asset_id)?;
             posts.push(self.mint_post(parameters, &proving_context.mint, mint)?);
+            pre_sender.insert_utxo(&mut self.utxo_set);
             pre_senders.push(pre_sender);
         }
         Ok(())
@@ -648,7 +662,7 @@ where
     parameters: SignerParameters<C>,
 
     /// Signer State
-    state: SignerState<C>,
+    pub state: SignerState<C>,
 }
 
 impl<C> Signer<C>
@@ -810,7 +824,7 @@ where
 
     /// Returns a [`ReceivingKey`] for `self` to receive assets with `index`.
     #[inline]
-    pub fn receiving_key(&self, index: Index<C>) -> ReceivingKeyResult<C, Self> {
+    fn compute_receiving_key(&self, index: Index<C>) -> ReceivingKeyResult<C, Self> {
         let keypair = self.state.account().keypair(index)?;
         Ok(SpendingKey::new(keypair.spend, keypair.view)
             .derive(&self.parameters.parameters.key_agreement))
@@ -844,6 +858,6 @@ where
 
     #[inline]
     fn receiving_key(&mut self, index: Index<C>) -> LocalBoxFuture<ReceivingKeyResult<C, Self>> {
-        Box::pin(async move { (&*self).receiving_key(index) })
+        Box::pin(async move { self.compute_receiving_key(index) })
     }
 }

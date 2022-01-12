@@ -19,6 +19,8 @@
 // FIXME: Replace `N` parameter on `FixedIndex` with an associated value in the trait when
 //        `generic_const_exprs` is stabilized and get rid of `ConstantWidthForest`.
 // FIXME: Reduce code duplication between this and `tree.rs` code.
+// TODO:  What should we do if a tree fills before others? Need some way of chosing a second option
+//        for a leaf.
 
 use crate::{
     accumulator::{
@@ -32,9 +34,9 @@ use crate::{
         InnerDigest, LeafDigest, WithProofs,
     },
 };
-use alloc::vec::Vec;
+use alloc::{boxed::Box, vec::Vec};
 use core::{fmt::Debug, hash::Hash, marker::PhantomData};
-use manta_util::{into_array_unchecked, pointer::PointerFamily, Rollback};
+use manta_util::{into_boxed_array_unchecked, pointer::PointerFamily, Rollback};
 
 /// Merkle Forest Configuration
 pub trait Configuration: tree::Configuration {
@@ -220,6 +222,14 @@ where
     pub fn is_empty(&self) -> bool {
         self.forest.is_empty()
     }
+
+    /// Inserts `leaf` at the next available leaf node of the tree corresponding with `leaf`,
+    /// returning `false` if the leaf could not be inserted because its tree has exhausted its
+    /// capacity.
+    #[inline]
+    pub fn push(&mut self, leaf: &Leaf<C>) -> bool {
+        self.forest.get_tree_mut(leaf).push(&self.parameters, leaf)
+    }
 }
 
 impl<C, F> AsMut<F> for MerkleForest<C, F>
@@ -352,7 +362,6 @@ pub type TreeArrayMerkleForest<C, T, const N: usize> = MerkleForest<C, TreeArray
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "T: Clone"),
-    Copy(bound = "T: Copy"),
     Debug(bound = "T: Debug"),
     Eq(bound = "T: Eq"),
     Hash(bound = "T: Hash"),
@@ -365,7 +374,10 @@ where
     T: Tree<C>,
 {
     /// Array of Trees
-    array: [T; N],
+    ///
+    /// Typically, even for reasonable `N`, the size of this array is too big to fit on the stack,
+    /// so we wrap it in a box to store on the heap.
+    array: Box<[T; N]>,
 
     /// Type Parameter Marker
     __: PhantomData<C>,
@@ -383,6 +395,18 @@ where
     }
 }
 
+impl<C, T, const N: usize> AsMut<[T; N]> for TreeArray<C, T, N>
+where
+    C: Configuration + ?Sized,
+    C::Index: FixedIndex<N>,
+    T: Tree<C>,
+{
+    #[inline]
+    fn as_mut(&mut self) -> &mut [T; N] {
+        &mut self.array
+    }
+}
+
 impl<C, T, const N: usize> Default for TreeArray<C, T, N>
 where
     C: Configuration + ?Sized,
@@ -391,11 +415,12 @@ where
 {
     #[inline]
     fn default() -> Self {
-        Self::from(into_array_unchecked(
+        Self::from(into_boxed_array_unchecked(
             (0..N)
                 .into_iter()
                 .map(move |_| Default::default())
-                .collect::<Vec<_>>(),
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
         ))
     }
 }
@@ -410,11 +435,12 @@ where
 
     #[inline]
     fn new(parameters: &Parameters<C>) -> Self {
-        Self::from(into_array_unchecked(
+        Self::from(into_boxed_array_unchecked(
             (0..N)
                 .into_iter()
                 .map(move |_| T::new(parameters))
-                .collect::<Vec<_>>(),
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
         ))
     }
 
@@ -456,6 +482,18 @@ where
 {
     #[inline]
     fn from(array: [T; N]) -> Self {
+        Self::from(Box::new(array))
+    }
+}
+
+impl<C, T, const N: usize> From<Box<[T; N]>> for TreeArray<C, T, N>
+where
+    C: Configuration + ?Sized,
+    C::Index: FixedIndex<N>,
+    T: Tree<C>,
+{
+    #[inline]
+    fn from(array: Box<[T; N]>) -> Self {
         Self {
             array,
             __: PhantomData,
@@ -476,14 +514,14 @@ where
 {
     #[inline]
     fn rollback(&mut self) {
-        for tree in &mut self.forest.array {
+        for tree in self.forest.as_mut() {
             tree.reset_fork(&self.parameters);
         }
     }
 
     #[inline]
     fn commit(&mut self) {
-        for tree in &mut self.forest.array {
+        for tree in self.forest.as_mut() {
             tree.merge_fork(&self.parameters);
         }
     }

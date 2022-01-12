@@ -18,6 +18,7 @@
 
 use crate::transfer::{Configuration, EncryptedNote, TransferPost, Utxo, VoidNumber};
 use alloc::vec::Vec;
+use core::{fmt::Debug, hash::Hash};
 use manta_util::future::LocalBoxFuture;
 
 /// Ledger Source Connection
@@ -63,6 +64,18 @@ pub type PushResult<C, L> = Result<PushResponse, <L as Connection<C>>::Error>;
 ///
 /// This `struct` is created by the [`pull`](Connection::pull) method on [`Connection`].
 /// See its documentation for more.
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "L::Checkpoint: Clone, L::ReceiverChunk: Clone, L::SenderChunk: Clone"),
+    Copy(bound = "L::Checkpoint: Copy, L::ReceiverChunk: Copy, L::SenderChunk: Copy"),
+    Debug(bound = "L::Checkpoint: Debug, L::ReceiverChunk: Debug, L::SenderChunk: Debug"),
+    Default(bound = "L::Checkpoint: Default, L::ReceiverChunk: Default, L::SenderChunk: Default"),
+    Eq(bound = "L::Checkpoint: Eq, L::ReceiverChunk: Eq, L::SenderChunk: Eq"),
+    Hash(bound = "L::Checkpoint: Hash, L::ReceiverChunk: Hash, L::SenderChunk: Hash"),
+    PartialEq(
+        bound = "L::Checkpoint: PartialEq, L::ReceiverChunk: PartialEq, L::SenderChunk: PartialEq"
+    )
+)]
 pub struct PullResponse<C, L>
 where
     C: Configuration,
@@ -82,6 +95,7 @@ where
 ///
 /// This `struct` is created by the [`push`](Connection::push) method on [`Connection`].
 /// See its documentation for more.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct PushResponse {
     /// Transaction Success Flag
     pub success: bool,
