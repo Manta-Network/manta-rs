@@ -19,30 +19,38 @@
 // FIXME: Add asynchronous streaming interfaces.
 
 use alloc::vec::Vec;
-use core::future::Future;
-use manta_util::{Deserialize, Serialize};
+use core::{fmt::Debug, hash::Hash};
+use manta_util::{future::LocalBoxFuture, Deserialize, Serialize};
 
 /// Filesystem Encrypted Saving
 pub trait SaveEncrypted {
     /// Path Type
-    type Path;
+    type Path: ?Sized;
 
     /// Saving Key Type
-    type SavingKey;
+    type SavingKey: ?Sized;
 
     /// Saving Error
     type Error;
 
-    /// Saving Future
-    type Future: Future<Output = Result<(), Self::Error>>;
-
     /// Saves the `payload` to `path` using the `saving_key` to encrypt it.
-    fn save_bytes(path: Self::Path, saving_key: Self::SavingKey, payload: Vec<u8>) -> Self::Future;
+    fn save_bytes<'s, P>(
+        path: P,
+        saving_key: &'s Self::SavingKey,
+        payload: Vec<u8>,
+    ) -> LocalBoxFuture<'s, Result<(), Self::Error>>
+    where
+        P: 's + AsRef<Self::Path>;
 
     /// Saves the `payload` to `path` after serializing using the `saving_key` to encrypt it.
     #[inline]
-    fn save<S>(path: Self::Path, saving_key: Self::SavingKey, payload: &S) -> Self::Future
+    fn save<'s, P, S>(
+        path: P,
+        saving_key: &'s Self::SavingKey,
+        payload: &'s S,
+    ) -> LocalBoxFuture<'s, Result<(), Self::Error>>
     where
+        P: 's + AsRef<Self::Path>,
         S: Serialize,
     {
         Self::save_bytes(path, saving_key, payload.to_vec())
@@ -52,41 +60,56 @@ pub trait SaveEncrypted {
 /// Filesystem Decrypted Loading
 pub trait LoadDecrypted {
     /// Path Type
-    type Path;
+    type Path: ?Sized;
 
     /// Loading Key Type
-    type LoadingKey;
+    type LoadingKey: ?Sized;
 
     /// Loading Error Type
     type Error;
 
-    /// Loading Future
-    type Future: Future<Output = Result<Vec<u8>, Self::Error>>;
-
     /// Loads a vector of bytes from `path` using `loading_key` to decrypt them.
-    fn load_bytes(path: Self::Path, loading_key: Self::LoadingKey) -> Self::Future;
-}
+    fn load_bytes<'s, P>(
+        path: P,
+        loading_key: &'s Self::LoadingKey,
+    ) -> LocalBoxFuture<'s, Result<Vec<u8>, Self::Error>>
+    where
+        P: 's + AsRef<Self::Path>;
 
-/// Loads a vector of bytes from `path` using `loading_key` to decrypt them, then deserializing
-/// the bytes to a concrete value of type `D`.
-#[inline]
-pub async fn load<L, D>(path: L::Path, loading_key: L::LoadingKey) -> Result<D, LoadError<D, L>>
-where
-    L: LoadDecrypted,
-    D: Deserialize,
-{
-    match L::load_bytes(path, loading_key).await {
-        Ok(bytes) => D::from_vec(bytes).map_err(LoadError::Deserialize),
-        Err(err) => Err(LoadError::Loading(err)),
+    /// Loads a vector of bytes from `path` using `loading_key` to decrypt them, then deserializing
+    /// the bytes to a concrete value of type `D`.
+    #[inline]
+    fn load<'s, P, D>(
+        path: P,
+        loading_key: &'s Self::LoadingKey,
+    ) -> LocalBoxFuture<'s, Result<D, LoadError<D, Self>>>
+    where
+        P: 's + AsRef<Self::Path>,
+        D: Deserialize,
+    {
+        Box::pin(async {
+            match Self::load_bytes(path, loading_key).await {
+                Ok(bytes) => D::from_vec(bytes).map_err(LoadError::Deserialize),
+                Err(err) => Err(LoadError::Loading(err)),
+            }
+        })
     }
 }
 
 /// Loading Error
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "D::Error: Clone, L::Error: Clone"),
+    Copy(bound = "D::Error: Copy, L::Error: Copy"),
+    Debug(bound = "D::Error: Debug, L::Error: Debug"),
+    Eq(bound = "D::Error: Eq, L::Error: Eq"),
+    Hash(bound = "D::Error: Hash, L::Error: Hash"),
+    PartialEq(bound = "D::Error: PartialEq, L::Error: PartialEq")
+)]
 pub enum LoadError<D, L>
 where
     D: Deserialize,
-    L: LoadDecrypted,
+    L: LoadDecrypted + ?Sized,
 {
     /// Deserialization Error
     Deserialize(D::Error),
@@ -103,7 +126,7 @@ pub mod cocoon {
     use async_std::{
         fs::OpenOptions,
         io::{Error as IoError, ReadExt, WriteExt},
-        path::PathBuf,
+        path::Path,
     };
     use cocoon_crate::{Cocoon, Error as CocoonError};
     use core::fmt;
@@ -142,21 +165,22 @@ pub mod cocoon {
     pub struct Save;
 
     impl SaveEncrypted for Save {
-        type Path = PathBuf;
-        type SavingKey = Vec<u8>;
+        type Path = Path;
+        type SavingKey = [u8];
         type Error = Error;
-        type Future = LocalBoxFuture<'static, Result<(), Self::Error>>;
 
         #[inline]
-        fn save_bytes(
-            path: Self::Path,
-            saving_key: Self::SavingKey,
+        fn save_bytes<'s, P>(
+            path: P,
+            saving_key: &'s Self::SavingKey,
             payload: Vec<u8>,
-        ) -> Self::Future {
+        ) -> LocalBoxFuture<'s, Result<(), Self::Error>>
+        where
+            P: 's + AsRef<Self::Path>,
+        {
             Box::pin(async {
-                let saving_key = Zeroizing::new(saving_key);
                 let mut buffer = Zeroizing::new(Vec::new());
-                Cocoon::new(&saving_key).dump(payload, &mut buffer.as_mut_slice())?;
+                Cocoon::new(saving_key).dump(payload, &mut buffer.as_mut_slice())?;
                 OpenOptions::new()
                     .create(true)
                     .truncate(true)
@@ -175,19 +199,23 @@ pub mod cocoon {
     pub struct Load;
 
     impl LoadDecrypted for Load {
-        type Path = PathBuf;
-        type LoadingKey = Vec<u8>;
+        type Path = Path;
+        type LoadingKey = [u8];
         type Error = Error;
-        type Future = LocalBoxFuture<'static, Result<Vec<u8>, Self::Error>>;
 
         #[inline]
-        fn load_bytes(path: Self::Path, loading_key: Self::LoadingKey) -> Self::Future {
+        fn load_bytes<'s, P>(
+            path: P,
+            loading_key: &'s Self::LoadingKey,
+        ) -> LocalBoxFuture<'s, Result<Vec<u8>, Self::Error>>
+        where
+            P: 's + AsRef<Self::Path>,
+        {
             Box::pin(async move {
-                let loading_key = Zeroizing::new(loading_key);
                 let mut buffer = Zeroizing::new(Vec::new());
                 let mut file = OpenOptions::new().read(true).open(path).await?;
                 file.read_to_end(&mut buffer).await?;
-                Ok(Cocoon::parse_only(&loading_key).parse(&mut buffer.as_slice())?)
+                Ok(Cocoon::parse_only(loading_key).parse(&mut buffer.as_slice())?)
             })
         }
     }

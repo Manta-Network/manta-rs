@@ -389,6 +389,15 @@ pub trait Rand: CryptoRng + RngCore {
     {
         T::try_gen(self)
     }
+
+    /// Seeds another random number generator `R` using entropy from `self`.
+    #[inline]
+    fn seed_rng<R>(&mut self) -> Result<R, Error>
+    where
+        R: SeedableRng,
+    {
+        R::from_rng(self)
+    }
 }
 
 impl<R> Rand for R where R: CryptoRng + RngCore + ?Sized {}

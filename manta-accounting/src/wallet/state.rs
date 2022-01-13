@@ -87,6 +87,9 @@ pub trait BalanceState: Default {
             .into_iter()
             .for_each(move |a| self.withdraw_unchecked(a))
     }
+
+    /// Clears the entire balance state.
+    fn clear(&mut self);
 }
 
 /// Performs an unchecked withdraw on `balance`, panicking on overflow.
@@ -111,17 +114,26 @@ impl BalanceState for VecBalanceState {
 
     #[inline]
     fn deposit(&mut self, asset: Asset) {
-        self.push(asset);
+        match self.binary_search_by_key(&asset.id, move |a| a.id) {
+            Ok(index) => self[index] += asset.value,
+            Err(index) => self.insert(index, asset),
+        }
     }
 
     #[inline]
     fn withdraw_unchecked(&mut self, asset: Asset) {
+        // TODO: Use binary search for withdraw.
         if !asset.is_zero() {
             withdraw_unchecked(
                 self.iter_mut().find_map(move |a| a.value_of_mut(asset.id)),
                 asset.value,
             );
         }
+    }
+
+    #[inline]
+    fn clear(&mut self) {
+        self.clear();
     }
 }
 
@@ -150,6 +162,11 @@ macro_rules! impl_balance_state_map_body {
             if !asset.is_zero() {
                 withdraw_unchecked(self.get_mut(&asset.id), asset.value);
             }
+        }
+
+        #[inline]
+        fn clear(&mut self) {
+            self.clear();
         }
     };
 }
@@ -272,13 +289,22 @@ where
         if checkpoint < self.checkpoint {
             return Err(Error::InconsistentCheckpoint);
         }
-        let SyncResponse { deposit, withdraw } = self
+        match self
             .signer
             .sync(self.checkpoint.receiver_index(), receivers, senders)
             .await
-            .map_err(Error::SignerError)?;
-        self.assets.deposit_all(deposit);
-        self.assets.withdraw_all_unchecked(withdraw);
+            .map_err(Error::SignerError)?
+        {
+            SyncResponse::Partial { deposit, withdraw } => {
+                self.assets.deposit_all(deposit);
+                self.assets.withdraw_all_unchecked(withdraw);
+            }
+            SyncResponse::Full { assets } => {
+                // TODO: Perform these two as one call, something like `self.assets.reset(assets)`.
+                self.assets.clear();
+                self.assets.deposit_all(assets);
+            }
+        }
         self.checkpoint = checkpoint;
         Ok(())
     }

@@ -18,7 +18,10 @@
 
 use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash, marker::PhantomData};
-use manta_crypto::key::KeyDerivationFunction;
+use manta_crypto::{
+    key::KeyDerivationFunction,
+    rand::{CryptoRng, RngCore, Sample},
+};
 
 /// Hierarchical Key Derivation Parameter
 pub trait HierarchicalKeyDerivationParameter: Copy + Default + PartialOrd {
@@ -176,6 +179,20 @@ where
         self.base
             .derive_view(account, spend, view)
             .map(move |k| K::derive(&k))
+    }
+}
+
+impl<H, K, D> Sample<D> for Map<H, K>
+where
+    H: HierarchicalKeyDerivationScheme + Sample<D>,
+    K: KeyDerivationFunction<Key = H::SecretKey>,
+{
+    #[inline]
+    fn sample<R>(distribution: D, rng: &mut R) -> Self
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        Self::new(H::sample(distribution, rng))
     }
 }
 

@@ -16,26 +16,19 @@
 
 //! Manta Pay Simulation
 
-/*
-use clap::{App, Arg};
-use core::cmp::min;
-use core::ops::Range;
+// TODO: Implement asynchronous/dynamic simulation and have this static simulation as a degenerate
+//       form of this simulation when "asynchronousity" is turned down to zero.
+
+use core::{cmp::min, ops::Range};
 use indexmap::IndexMap;
-use rand::{distributions::Distribution, seq::SliceRandom, thread_rng, Rng, RngCore};
-use serde::{Deserialize, Serialize};
+use manta_accounting::asset::{Asset, AssetId, AssetValue};
+use manta_crypto::rand::RngCore;
+use rand::{distributions::Distribution, seq::SliceRandom, Rng};
 use statrs::{
     distribution::{Categorical, Discrete, Poisson},
     StatsError,
 };
 use std::collections::HashMap;
-use std::fs;
-
-/// Flushes the STDOUT buffer.
-#[inline]
-fn flush_stdout() {
-    use std::io::Write;
-    let _ = std::io::stdout().flush();
-}
 
 /// Choose `count`-many elements from `vec` randomly and drop the remaining ones.
 #[inline]
@@ -47,34 +40,8 @@ where
     vec.drain(0..drop_count);
 }
 
-/// Asset Id
-pub type AssetId = u32;
-
-/// Asset Value
-pub type AssetValue = u128;
-
-/// Asset
-#[derive(Clone, Copy, Debug, Default, Deserialize, Hash, Eq, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct Asset {
-    /// Asset Id
-    pub id: AssetId,
-
-    /// Asset Value
-    pub value: AssetValue,
-}
-
-impl Asset {
-    /// Builds a new [`Asset`] from the given `id` and `value`.
-    #[inline]
-    pub fn new(id: AssetId, value: AssetValue) -> Self {
-        Self { id, value }
-    }
-}
-
 /// Balance State
-#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(deny_unknown_fields, transparent)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct BalanceState {
     /// Asset Map
     map: HashMap<AssetId, AssetValue>,
@@ -121,8 +88,7 @@ impl BalanceState {
 }
 
 /// Action Types
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
-#[serde(deny_unknown_fields, tag = "type")]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum Action {
     /// No Action
     None,
@@ -144,7 +110,7 @@ pub enum Action {
 }
 
 /// Action Distribution Probability Mass Function
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ActionDistributionPMF<T = f64> {
     /// No Action Weight
     pub none: T,
@@ -194,12 +160,7 @@ impl From<ActionDistribution> for ActionDistributionPMF {
 }
 
 /// Action Distribution
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-#[serde(
-    deny_unknown_fields,
-    into = "ActionDistributionPMF",
-    try_from = "ActionDistributionPMF"
-)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ActionDistribution {
     /// Distribution over Actions
     distribution: Categorical,
@@ -249,8 +210,7 @@ impl Distribution<Action> for ActionDistribution {
 }
 
 /// User Account
-#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Account {
     /// Public Balances
     pub public: BalanceState,
@@ -293,35 +253,65 @@ impl Account {
 }
 
 /// Simulation Update
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-#[serde(deny_unknown_fields, tag = "type")]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Update {
     /// Create Account
-    CreateAccount { account: Account },
+    CreateAccount {
+        /// Account to Create
+        account: Account,
+    },
 
     /// Deposit Public Balance
-    PublicDeposit { account_index: usize, asset: Asset },
+    PublicDeposit {
+        /// Index of Target Account
+        account_index: usize,
+
+        /// Asset to Deposit
+        asset: Asset,
+    },
 
     /// Withdraw Public Balance
-    PublicWithdraw { account_index: usize, asset: Asset },
+    PublicWithdraw {
+        /// Index of Target Account
+        account_index: usize,
+
+        /// Asset to Withdraw
+        asset: Asset,
+    },
 
     /// Mint Asset
-    Mint { source_index: usize, asset: Asset },
+    Mint {
+        /// Source Index
+        source_index: usize,
+
+        /// Asset to Mint
+        asset: Asset,
+    },
 
     /// Private Transfer Asset
     PrivateTransfer {
+        /// Sender Index
         sender_index: usize,
+
+        /// Receiver Index
         receiver_index: usize,
+
+        /// Asset to Private Transfer
         asset: Asset,
     },
 
     /// Reclaim Asset
-    Reclaim { sender_index: usize, asset: Asset },
+    Reclaim {
+        /// Reclaim Index
+        sender_index: usize,
+
+        /// Asset to Reclaim
+        asset: Asset,
+    },
 }
 
 /// Simulation Configuration
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Config {
     /// Number of starting accounts
     pub starting_account_count: u64,
@@ -408,7 +398,7 @@ impl Config {
     where
         R: RngCore + ?Sized,
     {
-        rng.gen_range(0..=self.allowed_asset_sampling[&id])
+        AssetValue(rng.gen_range(0..=self.allowed_asset_sampling[&id].0))
     }
 
     /// Samples an allowed withdraw from `balances`.
@@ -424,17 +414,18 @@ impl Config {
             if balance != 0 {
                 return Asset::new(
                     **id,
-                    rng.gen_range(0..=min(balance, self.allowed_asset_sampling[*id])),
+                    AssetValue(
+                        rng.gen_range(0..=min(balance.0, self.allowed_asset_sampling[*id].0)),
+                    ),
                 );
             }
         }
-        Asset::new(*ids[ids.len() - 1], 0)
+        Asset::zero(*ids[ids.len() - 1])
     }
 }
 
 /// Simulator
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Simulator {
     /// Configuration
     config: Config,
@@ -641,8 +632,7 @@ impl Simulator {
 }
 
 /// Simulation Final State
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Simulation {
     /// Configuration
     pub config: Config,
@@ -656,67 +646,3 @@ pub struct Simulation {
     /// Updates
     pub updates: Vec<Update>,
 }
-
-/// Runs a [`Simulator`] in a CLI.
-pub fn main() {
-    let matches = App::new("Manta Simulation")
-        .arg(
-            Arg::with_name("steps")
-                .help("The number of steps to run the simulation.")
-                .required(true),
-        )
-        .arg(
-            Arg::with_name("config")
-                .short("c")
-                .long("config")
-                .value_name("FILE")
-                .help("Sets a custom config file. By default, `default-config.json` is used.")
-                .takes_value(true),
-        )
-        .arg(
-            Arg::with_name("output")
-                .short("o")
-                .long("output")
-                .value_name("FILE")
-                .help("Sets a custom output file")
-                .takes_value(true),
-        )
-        .get_matches();
-
-    let config_path = matches.value_of("config").unwrap_or("default-config.json");
-    let config = match fs::read_to_string(&config_path) {
-        Ok(config) => match serde_json::from_str(&config) {
-            Ok(config) => config,
-            err => panic!("ERROR: {:?}", err),
-        },
-        _ => panic!("ERROR: Invalid configuration path: {:?}", config_path),
-    };
-
-    let steps = matches
-        .value_of("steps")
-        .unwrap()
-        .parse::<usize>()
-        .expect("ERROR: Invalid number of simulation steps.");
-
-    let mut rng = thread_rng();
-
-    print!("INFO: Running simulation ... ");
-    flush_stdout();
-    let simulation = Simulator::new(config, &mut rng).run(steps, &mut rng);
-    println!("DONE.");
-
-    if let Some(output_path) = matches.value_of("output") {
-        print!("INFO: Writing simulation to file ... ");
-        flush_stdout();
-        match serde_json::to_writer(
-            fs::File::create(output_path).expect("ERROR: Unable to create output file."),
-            &simulation,
-        ) {
-            Ok(()) => println!("DONE. Output written to `{}`.", output_path),
-            err => panic!("ERROR: {:?}", err),
-        }
-    } else if let Err(err) = serde_json::to_writer_pretty(std::io::stdout(), &simulation) {
-        panic!("ERROR: {:?}", err);
-    }
-}
-*/

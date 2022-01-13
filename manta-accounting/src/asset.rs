@@ -67,11 +67,16 @@ impl AssetId {
     /// The size of this type in bytes.
     pub const SIZE: usize = (Self::BITS / 8) as usize;
 
-    /// Constructs a new [`Asset`] with `self` as the [`AssetId`] and `value` as the
-    /// [`AssetValue`].
+    /// Constructs a new [`Asset`] with `self` as the [`AssetId`] and `value` as the [`AssetValue`].
     #[inline]
     pub const fn with(self, value: AssetValue) -> Asset {
         Asset::new(self, value)
+    }
+
+    /// Constructs a new [`Asset`] with `self` as the [`AssetId`] and `value` as the [`AssetValue`].
+    #[inline]
+    pub const fn value(self, value: AssetValueType) -> Asset {
+        self.with(AssetValue(value))
     }
 
     /// Converts a byte array into `self`.
@@ -581,6 +586,9 @@ pub trait AssetMap: Default {
     /// Keys are used to access the underlying asset values.
     type Key;
 
+    /// Returns the sum of all the assets in `self`.
+    fn assets(&self) -> Vec<Asset>;
+
     /// Selects asset keys which total up to at least `asset` in value.
     fn select(&self, asset: Asset) -> Selection<Self>;
 
@@ -642,6 +650,20 @@ pub trait AssetMap: Default {
 macro_rules! impl_asset_map_for_maps_body {
     ($k:tt, $entry:tt) => {
         type Key = $k;
+
+        #[inline]
+        fn assets(&self) -> Vec<Asset> {
+            let mut result = Vec::<Asset>::new();
+            for (_, assets) in self {
+                for asset in assets {
+                    match result.binary_search_by_key(&asset.id, move |a| a.id) {
+                        Ok(index) => result[index] += asset.value,
+                        Err(index) => result.insert(index, *asset),
+                    }
+                }
+            }
+            result
+        }
 
         #[inline]
         fn select(&self, asset: Asset) -> Selection<Self> {

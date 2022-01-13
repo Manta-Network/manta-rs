@@ -30,6 +30,7 @@ use core::{marker::PhantomData, num::ParseIntError, str::FromStr};
 use manta_accounting::key::{
     self, HierarchicalKeyDerivationParameter, HierarchicalKeyDerivationScheme,
 };
+use manta_crypto::rand::{CryptoRng, RngCore, Sample, Standard};
 use manta_util::{create_seal, seal};
 
 pub use bip32::{Error, Language, Mnemonic};
@@ -185,14 +186,36 @@ impl<C> KeySecret<C>
 where
     C: CoinType,
 {
+    /// Builds a [`KeySecret`] from a raw `seed`.
+    #[inline]
+    fn from_seed(seed: Seed) -> Self {
+        Self {
+            seed,
+            __: PhantomData,
+        }
+    }
+
     /// Converts a `mnemonic` phrase into a [`KeySecret`], locking it with `password`.
     #[inline]
     #[must_use]
     pub fn new(mnemonic: Mnemonic, password: &str) -> Self {
-        Self {
-            seed: mnemonic.to_seed(password),
-            __: PhantomData,
-        }
+        Self::from_seed(mnemonic.to_seed(password))
+    }
+}
+
+impl<C> Sample for KeySecret<C>
+where
+    C: CoinType,
+{
+    #[inline]
+    fn sample<R>(distribution: Standard, rng: &mut R) -> Self
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        let _ = distribution;
+        let mut seed = [0; Seed::SIZE];
+        rng.fill_bytes(&mut seed);
+        Self::from_seed(Seed::new(seed))
     }
 }
 

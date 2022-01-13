@@ -17,6 +17,9 @@
 //! Manta Pay Testing
 
 pub mod ledger;
+
+#[cfg(feature = "simulation")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "simulation")))]
 pub mod simulation;
 
 // TODO: #[cfg(test)]

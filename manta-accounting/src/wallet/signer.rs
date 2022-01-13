@@ -111,23 +111,31 @@ pub type ReceivingKeyResult<C, S> = Result<ReceivingKey<C>, <S as Connection<C>>
 
 /// Signer Synchronization Response
 ///
-/// This `struct` is created by the [`sync`](Connection::sync) method on [`Connection`].
+/// This `enum` is created by the [`sync`](Connection::sync) method on [`Connection`].
 /// See its documentation for more.
-#[derive(Clone, Debug, Default, Eq, Hash, PartialEq)]
-pub struct SyncResponse {
-    /// Assets Deposited
-    pub deposit: Vec<Asset>,
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub enum SyncResponse {
+    /// Partial Update
+    ///
+    /// This is the typical response from the [`Signer`]. In rare cases, we may need to perform a
+    /// [`Full`](Self::Full) update.
+    Partial {
+        /// Assets Deposited in the Last Update
+        deposit: Vec<Asset>,
 
-    /// Assets Withdrawn
-    pub withdraw: Vec<Asset>,
-}
+        /// Assets Withdrawn in the Last Update
+        withdraw: Vec<Asset>,
+    },
 
-impl SyncResponse {
-    /// Builds a new [`SyncResponse`] from `deposit` and `withdraw`.
-    #[inline]
-    pub fn new(deposit: Vec<Asset>, withdraw: Vec<Asset>) -> Self {
-        Self { deposit, withdraw }
-    }
+    /// Full Update
+    ///
+    /// Whenever the [`Signer`] gets ahead of the synchronization point, it would have updated its
+    /// internal balance state further along than any connection following its updates. In this
+    /// case, to entire balance state needs to be sent to catch up.
+    Full {
+        /// Full Balance State
+        assets: Vec<Asset>,
+    },
 }
 
 /// Signer Signing Response
@@ -222,10 +230,16 @@ where
     MissingUtxoMembershipProof,
 
     /// Insufficient Balance
-    InsufficientBalance(Asset),
+    InsufficientBalance {
+        /// Attempting to withdraw the given asset
+        withdraw: Asset,
+    },
 
     /// Inconsistent Synchronization
-    InconsistentSynchronization,
+    InconsistentSynchronization {
+        /// Desired starting index to fix synchronization
+        starting_index: usize,
+    },
 
     /// Proof System Error
     ProofSystemError(ProofSystemError<C>),
@@ -389,10 +403,13 @@ where
         parameters: &Parameters<C>,
         inserts: I,
         mut void_numbers: Vec<VoidNumber<C>>,
+        is_partial: bool,
     ) -> SyncResult<C, Signer<C>>
     where
         I: Iterator<Item = (Utxo<C>, EncryptedNote<C>)>,
     {
+        // FIXME: Use a more efficient synchronization algorithm for partial vs full.
+        //
         let mut deposit = Vec::new();
         let mut withdraw = Vec::new();
         for (utxo, encrypted_note) in inserts {
@@ -425,7 +442,13 @@ where
             });
         }
         self.utxo_set.commit();
-        Ok(SyncResponse::new(deposit, withdraw))
+        if is_partial {
+            Ok(SyncResponse::Partial { deposit, withdraw })
+        } else {
+            Ok(SyncResponse::Full {
+                assets: self.assets.assets(),
+            })
+        }
     }
 
     /// Builds the pre-sender associated to `key` and `asset`.
@@ -494,7 +517,7 @@ where
     ) -> Result<Selection<C>, Error<C>> {
         let selection = self.assets.select(asset);
         if selection.is_empty() {
-            return Err(Error::InsufficientBalance(asset));
+            return Err(Error::InsufficientBalance { withdraw: asset });
         }
         Selection::new(selection, move |k, v| {
             self.build_pre_sender(parameters, k, asset.id.with(v))
@@ -792,13 +815,17 @@ where
         // TODO: Use a smarter object than `Vec` for `removes.into_iter().collect()` like a
         //       `HashSet` or some other set-like container with fast membership and remove ops.
         //
-        match self.state.utxo_set.len().checked_sub(starting_index) {
+        let utxo_set_len = self.state.utxo_set.len();
+        match utxo_set_len.checked_sub(starting_index) {
             Some(diff) => self.state.sync_with(
                 &self.parameters.parameters,
                 inserts.into_iter().skip(diff),
                 removes.into_iter().collect(),
+                diff == 0,
             ),
-            _ => Err(Error::InconsistentSynchronization),
+            _ => Err(Error::InconsistentSynchronization {
+                starting_index: utxo_set_len,
+            }),
         }
     }
 
@@ -842,7 +869,6 @@ where
             )?,
         };
         posts.push(final_post);
-        self.state.utxo_set.rollback();
         Ok(SignResponse::new(posts))
     }
 
@@ -878,13 +904,14 @@ where
         // TODO: Should we do a time-based release mechanism to amortize the cost of reading/writing
         //       to disk?
         let result = self.sign_internal(transaction).await;
+        self.state.utxo_set.rollback();
         self.parameters.proving_context.release().await;
         result
     }
 
     /// Returns a [`ReceivingKey`] for `self` to receive assets with `index`.
     #[inline]
-    fn compute_receiving_key(&self, index: Index<C>) -> ReceivingKeyResult<C, Self> {
+    pub fn receiving_key(&self, index: Index<C>) -> ReceivingKeyResult<C, Self> {
         let keypair = self.state.accounts.get_default().keypair(index)?;
         Ok(SpendingKey::new(keypair.spend, keypair.view)
             .derive(&self.parameters.parameters.key_agreement))
@@ -919,6 +946,6 @@ where
 
     #[inline]
     fn receiving_key(&mut self, index: Index<C>) -> LocalBoxFuture<ReceivingKeyResult<C, Self>> {
-        Box::pin(async move { self.compute_receiving_key(index) })
+        Box::pin(async move { (&*self).receiving_key(index) })
     }
 }
