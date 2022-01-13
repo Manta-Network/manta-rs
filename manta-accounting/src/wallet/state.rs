@@ -17,7 +17,7 @@
 //! Full Wallet Implementation
 
 use crate::{
-    asset::{Asset, AssetId, AssetValue},
+    asset::{Asset, AssetId, AssetList, AssetValue},
     transfer::{
         canonical::{Transaction, TransactionKind},
         Configuration, ReceivingKey,
@@ -27,10 +27,7 @@ use crate::{
         signer::{self, SignResponse, SyncResponse},
     },
 };
-use alloc::{
-    collections::btree_map::{BTreeMap, Entry as BTreeMapEntry},
-    vec::Vec,
-};
+use alloc::collections::btree_map::{BTreeMap, Entry as BTreeMapEntry};
 use core::{fmt::Debug, marker::PhantomData};
 
 #[cfg(feature = "std")]
@@ -101,34 +98,20 @@ fn withdraw_unchecked(balance: Option<&mut AssetValue>, withdraw: AssetValue) {
         .expect("Overdrawn balance state.");
 }
 
-/// Vector [`BalanceState`] Implementation
-pub type VecBalanceState = Vec<Asset>;
-
-impl BalanceState for VecBalanceState {
+impl BalanceState for AssetList {
     #[inline]
     fn balance(&self, id: AssetId) -> AssetValue {
-        self.iter()
-            .find_map(move |a| a.value_of(id))
-            .unwrap_or_default()
+        self.value(id)
     }
 
     #[inline]
     fn deposit(&mut self, asset: Asset) {
-        match self.binary_search_by_key(&asset.id, move |a| a.id) {
-            Ok(index) => self[index] += asset.value,
-            Err(index) => self.insert(index, asset),
-        }
+        self.deposit(asset)
     }
 
     #[inline]
     fn withdraw_unchecked(&mut self, asset: Asset) {
-        // TODO: Use binary search for withdraw.
-        if !asset.is_zero() {
-            withdraw_unchecked(
-                self.iter_mut().find_map(move |a| a.value_of_mut(asset.id)),
-                asset.value,
-            );
-        }
+        self.withdraw_unchecked(asset)
     }
 
     #[inline]
@@ -147,13 +130,14 @@ macro_rules! impl_balance_state_map_body {
 
         #[inline]
         fn deposit(&mut self, asset: Asset) {
+            if asset.is_zero() {
+                return;
+            }
             match self.entry(asset.id) {
                 $entry::Vacant(entry) => {
                     entry.insert(asset.value);
                 }
-                $entry::Occupied(entry) => {
-                    *entry.into_mut() += asset.value;
-                }
+                $entry::Occupied(entry) => *entry.into_mut() += asset.value,
             }
         }
 
@@ -241,16 +225,16 @@ where
         Self::new(ledger, Default::default(), signer, Default::default())
     }
 
-    /// Returns true if `self` contains at least `asset.value` of the asset of kind `asset.id`.
-    #[inline]
-    pub fn contains(&self, asset: Asset) -> bool {
-        self.assets.contains(asset)
-    }
-
     /// Returns the current balance associated with this `id`.
     #[inline]
     pub fn balance(&self, id: AssetId) -> AssetValue {
         self.assets.balance(id)
+    }
+
+    /// Returns true if `self` contains at least `asset.value` of the asset of kind `asset.id`.
+    #[inline]
+    pub fn contains(&self, asset: Asset) -> bool {
+        self.assets.contains(asset)
     }
 
     /// Returns a shared reference to the balance state associated to `self`.

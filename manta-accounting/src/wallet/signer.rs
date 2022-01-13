@@ -446,7 +446,7 @@ where
             Ok(SyncResponse::Partial { deposit, withdraw })
         } else {
             Ok(SyncResponse::Full {
-                assets: self.assets.assets(),
+                assets: self.assets.assets().into(),
             })
         }
     }

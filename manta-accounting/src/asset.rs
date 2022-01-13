@@ -16,21 +16,17 @@
 
 //! Assets
 
-// TODO: Add macro to build `AssetId` and `AssetValue`.
-// TODO: Implement all `rand` sampling traits.
-// TODO: Implement `Concat` for `AssetId` and `AssetValue`.
-// TODO: Add implementations for `AssetMap` using sorted vectors and/or max-heaps
-
 use alloc::{
     collections::btree_map::{BTreeMap, Entry as BTreeMapEntry},
     vec,
     vec::Vec,
 };
 use core::{
+    borrow::Borrow,
     fmt::Debug,
     hash::Hash,
     iter::{self, FusedIterator, Sum},
-    ops::{Add, AddAssign, Mul, Sub, SubAssign},
+    ops::{Add, AddAssign, Deref, Mul, Sub, SubAssign},
     slice,
 };
 use derive_more::{
@@ -181,6 +177,12 @@ impl AssetValue {
     #[inline]
     pub const fn with(self, id: AssetId) -> Asset {
         Asset::new(id, self)
+    }
+
+    /// Constructs a new [`Asset`] with `self` as the [`AssetValue`] and `id` as the [`AssetId`].
+    #[inline]
+    pub const fn id(self, id: AssetIdType) -> Asset {
+        self.with(AssetId(id))
     }
 
     /// Converts a byte array into `self`.
@@ -573,6 +575,205 @@ where
     }
 }
 
+/// Asset List
+///
+/// Stores assets sorted by [`AssetId`] as a flat key-value vector. This type can be relied on to
+/// maintain sorted order for iterating.
+#[derive(Clone, Debug, Default, Eq, Hash, PartialEq)]
+pub struct AssetList {
+    /// Sorted Asset Vector
+    ///
+    /// The elements of the vector are sorted by [`AssetId`]. To insert/remove we perform a binary
+    /// search on the [`AssetId`] and update the [`AssetValue`] at that location.
+    map: Vec<Asset>,
+}
+
+impl AssetList {
+    /// Builds a new empty [`AssetList`].
+    #[inline]
+    pub const fn new() -> Self {
+        Self { map: Vec::new() }
+    }
+
+    /// Returns the number of entries stored in `self`.
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.map.len()
+    }
+
+    /// Returns `true` if the number of entries in `self` is zero.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.map.is_empty()
+    }
+
+    /// Returns the number of [`AssetId`] that can be inserted into `self` before needing to
+    /// reallocate.
+    #[inline]
+    pub fn capacity(&self) -> usize {
+        self.map.capacity()
+    }
+
+    /// Finds the insertion point for an [`Asset`] with the given `id`, returning `Ok` if there is
+    /// an [`Asset`] at that index, or `Err` otherwise.
+    #[inline]
+    fn find(&self, id: AssetId) -> Result<usize, usize> {
+        self.map.binary_search_by_key(&id, move |a| a.id)
+    }
+
+    /// Returns the total value for assets with the given `id`.
+    #[inline]
+    pub fn value(&self, id: AssetId) -> AssetValue {
+        self.find(id)
+            .map(move |i| self.map[i].value)
+            .unwrap_or_default()
+    }
+
+    /// Returns `true` if `self` contains at least `asset.value` of the asset of kind `asset.id`.
+    #[inline]
+    pub fn contains(&self, asset: Asset) -> bool {
+        self.value(asset.id) >= asset.value
+    }
+
+    /// Returns an iterator over the assets in `self`.
+    #[inline]
+    pub fn iter(&self) -> slice::Iter<Asset> {
+        self.map.iter()
+    }
+
+    /// Inserts `asset` into `self` increasing the [`AssetValue`] at `asset.id`.
+    #[inline]
+    pub fn deposit(&mut self, asset: Asset) {
+        if asset.is_zero() {
+            return;
+        }
+        match self.find(asset.id) {
+            Ok(index) => self.map[index] += asset.value,
+            Err(index) => self.map.insert(index, asset),
+        }
+    }
+
+    /// Sets the value at the `index` to `value` or removes the entry at `index` if `value == 0`.
+    #[inline]
+    fn set_or_remove(&mut self, index: usize, value: AssetValue) {
+        if value == 0 {
+            self.map.remove(index);
+        } else {
+            self.map[index].value = value;
+        }
+    }
+
+    /// Tries to remove `asset` from `self` decreasing the [`AssetValue`] at `asset.id`, returning
+    /// `false` if this would overflow. To skip the overflow check, use
+    /// [`withdraw_unchecked`](Self::withdraw_unchecked) instead.
+    #[inline]
+    pub fn withdraw(&mut self, asset: Asset) -> bool {
+        if asset.is_zero() {
+            return true;
+        }
+        if let Ok(index) = self.find(asset.id) {
+            if let Some(value) = self.map[index].value.checked_sub(asset.value) {
+                self.set_or_remove(index, value);
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Removes `asset` from `self` decreasing the [`AssetValue`] at `asset.id`.
+    ///
+    /// # Panics
+    ///
+    /// The method panics if removing `asset` would decrease the value of any entry to below zero.
+    /// To catch this condition, use [`withdraw`](Self::withdraw) instead.
+    #[inline]
+    pub fn withdraw_unchecked(&mut self, asset: Asset) {
+        if asset.is_zero() {
+            return;
+        }
+        match self.find(asset.id) {
+            Ok(index) => self.set_or_remove(index, self.map[index].value - asset.value),
+            _ => panic!("Trying to subtract from an Asset with zero value."),
+        }
+    }
+
+    /// Removes all entries in `self` which return `false` after applying `f`.
+    #[inline]
+    pub fn retain<F>(&mut self, mut f: F)
+    where
+        F: FnMut(Asset) -> bool,
+    {
+        self.map.retain(move |asset| f(*asset))
+    }
+
+    /// Removes all assets from `self`.
+    #[inline]
+    pub fn clear(&mut self) {
+        self.map.clear()
+    }
+
+    /// Removes all assets with the given `id`.
+    #[inline]
+    pub fn remove(&mut self, id: AssetId) -> Option<AssetValue> {
+        match self.find(id) {
+            Ok(index) => Some(self.map.remove(index).value),
+            _ => None,
+        }
+    }
+}
+
+impl AsRef<[Asset]> for AssetList {
+    #[inline]
+    fn as_ref(&self) -> &[Asset] {
+        self.map.as_ref()
+    }
+}
+
+impl Borrow<[Asset]> for AssetList {
+    #[inline]
+    fn borrow(&self) -> &[Asset] {
+        self.map.borrow()
+    }
+}
+
+impl Deref for AssetList {
+    type Target = [Asset];
+
+    #[inline]
+    fn deref(&self) -> &[Asset] {
+        self.map.deref()
+    }
+}
+
+impl From<AssetList> for Vec<Asset> {
+    #[inline]
+    fn from(list: AssetList) -> Self {
+        list.map
+    }
+}
+
+impl FromIterator<Asset> for AssetList {
+    #[inline]
+    fn from_iter<I>(iter: I) -> Self
+    where
+        I: IntoIterator<Item = Asset>,
+    {
+        let mut list = Self::new();
+        iter.into_iter().for_each(|a| list.deposit(a));
+        list
+    }
+}
+
+impl IntoIterator for AssetList {
+    type Item = Asset;
+    type IntoIter = vec::IntoIter<Asset>;
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        self.map.into_iter()
+    }
+}
+
 /// Asset Map
 ///
 /// This trait represents an asset distribution over some [`Key`](Self::Key) type.
@@ -587,7 +788,7 @@ pub trait AssetMap: Default {
     type Key;
 
     /// Returns the sum of all the assets in `self`.
-    fn assets(&self) -> Vec<Asset>;
+    fn assets(&self) -> AssetList;
 
     /// Selects asset keys which total up to at least `asset` in value.
     fn select(&self, asset: Asset) -> Selection<Self>;
@@ -652,17 +853,10 @@ macro_rules! impl_asset_map_for_maps_body {
         type Key = $k;
 
         #[inline]
-        fn assets(&self) -> Vec<Asset> {
-            let mut result = Vec::<Asset>::new();
-            for (_, assets) in self {
-                for asset in assets {
-                    match result.binary_search_by_key(&asset.id, move |a| a.id) {
-                        Ok(index) => result[index] += asset.value,
-                        Err(index) => result.insert(index, *asset),
-                    }
-                }
-            }
-            result
+        fn assets(&self) -> AssetList {
+            self.iter()
+                .flat_map(move |(_, assets)| assets.iter().copied())
+                .collect()
         }
 
         #[inline]
