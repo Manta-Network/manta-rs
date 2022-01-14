@@ -130,7 +130,6 @@ pub mod cocoon {
     };
     use cocoon_crate::{Cocoon, Error as CocoonError};
     use core::fmt;
-    use futures::future::LocalBoxFuture;
     use manta_util::{from_variant_impl, zeroize::Zeroizing};
 
     /// Cocoon Loading/Saving Error

@@ -22,7 +22,7 @@
 use core::{cmp::min, ops::Range};
 use indexmap::IndexMap;
 use manta_accounting::asset::{Asset, AssetId, AssetValue};
-use manta_crypto::rand::RngCore;
+use manta_crypto::rand::{CryptoRng, RngCore, Sample};
 use rand::{distributions::Distribution, seq::SliceRandom, Rng};
 use statrs::{
     distribution::{Categorical, Discrete, Poisson},
@@ -38,53 +38,6 @@ where
 {
     let drop_count = vec.partial_shuffle(rng, count).1.len();
     vec.drain(0..drop_count);
-}
-
-/// Balance State
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct BalanceState {
-    /// Asset Map
-    map: HashMap<AssetId, AssetValue>,
-}
-
-impl BalanceState {
-    /// Returns the asset balance associated to the assets with the given `id`.
-    #[inline]
-    pub fn balance(&self, id: AssetId) -> AssetValue {
-        self.map.get(&id).copied().unwrap_or_default()
-    }
-
-    /// Returns `true` if `self` contains at least `value` amount of the asset with the given `id`.
-    #[inline]
-    pub fn contains(&self, id: AssetId, value: AssetValue) -> bool {
-        self.balance(id) >= value
-    }
-
-    /// Deposit `asset` into `self`.
-    #[inline]
-    pub fn deposit(&mut self, asset: Asset) {
-        *self.map.entry(asset.id).or_default() += asset.value;
-    }
-
-    /// Withdraw `asset` from `self`, returning `false` if it would overdraw the balance.
-    #[inline]
-    pub fn withdraw(&mut self, asset: Asset) -> bool {
-        if asset.value == 0 {
-            true
-        } else {
-            self.map
-                .get_mut(&asset.id)
-                .map(move |balance| {
-                    if let Some(result) = balance.checked_sub(asset.value) {
-                        *balance = result;
-                        true
-                    } else {
-                        false
-                    }
-                })
-                .unwrap_or(false)
-        }
-    }
 }
 
 /// Action Types
@@ -148,7 +101,7 @@ impl Default for ActionDistributionPMF {
 impl From<ActionDistribution> for ActionDistributionPMF {
     #[inline]
     fn from(actions: ActionDistribution) -> Self {
-        ActionDistributionPMF {
+        Self {
             none: actions.distribution.pmf(0),
             public_deposit: actions.distribution.pmf(1),
             public_withdraw: actions.distribution.pmf(2),
@@ -205,6 +158,63 @@ impl Distribution<Action> for ActionDistribution {
             4 => Action::PrivateTransfer,
             5 => Action::Reclaim,
             _ => unreachable!(),
+        }
+    }
+}
+
+impl Sample<ActionDistribution> for Action {
+    #[inline]
+    fn sample<R>(distribution: ActionDistribution, rng: &mut R) -> Self
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        distribution.sample(rng)
+    }
+}
+
+/// Balance State
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct BalanceState {
+    /// Asset Map
+    map: HashMap<AssetId, AssetValue>,
+}
+
+impl BalanceState {
+    /// Returns the asset balance associated to the assets with the given `id`.
+    #[inline]
+    pub fn balance(&self, id: AssetId) -> AssetValue {
+        self.map.get(&id).copied().unwrap_or_default()
+    }
+
+    /// Returns `true` if `self` contains at least `value` amount of the asset with the given `id`.
+    #[inline]
+    pub fn contains(&self, id: AssetId, value: AssetValue) -> bool {
+        self.balance(id) >= value
+    }
+
+    /// Deposit `asset` into `self`.
+    #[inline]
+    pub fn deposit(&mut self, asset: Asset) {
+        *self.map.entry(asset.id).or_default() += asset.value;
+    }
+
+    /// Withdraw `asset` from `self`, returning `false` if it would overdraw the balance.
+    #[inline]
+    pub fn withdraw(&mut self, asset: Asset) -> bool {
+        if asset.value == 0 {
+            true
+        } else {
+            self.map
+                .get_mut(&asset.id)
+                .map(move |balance| {
+                    if let Some(result) = balance.checked_sub(asset.value) {
+                        *balance = result;
+                        true
+                    } else {
+                        false
+                    }
+                })
+                .unwrap_or(false)
         }
     }
 }

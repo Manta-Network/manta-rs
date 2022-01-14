@@ -547,17 +547,17 @@ mod test {
         );
 
         let alice_key = alice
-            .receiving_key(Default::default())
+            .receiving_key()
             .await
             .expect("Unable to get Alices's public key.");
 
         let bob_key = bob
-            .receiving_key(Default::default())
+            .receiving_key()
             .await
             .expect("Unable to get Bob's public key.");
 
         let charlie_key = charlie
-            .receiving_key(Default::default())
+            .receiving_key()
             .await
             .expect("Unable to get Charlie's public key.");
 
@@ -565,6 +565,7 @@ mod test {
         println!("Bob [wallet]: {:?}", bob.assets()).await;
         println!("Charlie [wallet]: {:?}", charlie.assets()).await;
 
+        println!("ALICE MINT 1000").await;
         alice
             .post(Transaction::Mint(AssetId(0).value(1000)))
             .await
@@ -572,6 +573,7 @@ mod test {
         alice.sync().await.expect("Unable to sync.");
         println!("Alice [wallet]: {:?}", alice.assets()).await;
 
+        println!("ALICE PRIVATE TRANSFER 89").await;
         alice
             .post(Transaction::PrivateTransfer(AssetId(0).value(89), bob_key))
             .await
@@ -579,6 +581,7 @@ mod test {
         alice.sync().await.expect("Unable to sync.");
         println!("Alice [wallet]: {:?}", alice.assets()).await;
 
+        println!("BOB PRIVATE TRANSFER 6").await;
         bob.post(Transaction::PrivateTransfer(
             AssetId(0).value(6),
             charlie_key,
@@ -588,6 +591,7 @@ mod test {
         bob.sync().await.expect("Unable to sync.");
         println!("Bob [wallet]: {:?}", bob.assets()).await;
 
+        println!("CHARLIE PRIVATE TRANSFER 1").await;
         charlie
             .post(Transaction::PrivateTransfer(AssetId(0).value(1), alice_key))
             .await
@@ -595,6 +599,7 @@ mod test {
         charlie.sync().await.expect("Unable to sync.");
         println!("Charlie [wallet]: {:?}", charlie.assets()).await;
 
+        println!("ALICE RECLAIM 71").await;
         alice
             .post(Transaction::Reclaim(AssetId(0).value(71)))
             .await
@@ -605,6 +610,7 @@ mod test {
         alice.sync().await.expect("Unable to sync.");
         bob.sync().await.expect("Unable to sync.");
         charlie.sync().await.expect("Unable to sync.");
+
         println!("Alice [wallet]: {:?}", alice.assets()).await;
         println!("Bob [wallet]: {:?}", bob.assets()).await;
         println!("Charlie [wallet]: {:?}", charlie.assets()).await;

@@ -30,7 +30,7 @@
 
 use crate::{
     asset::{Asset, AssetId, AssetMap, AssetValue},
-    key::{self, HierarchicalKeyDerivationScheme, ViewKeySelection},
+    key::{self, HierarchicalKeyDerivationScheme, SpendIndex, ViewKeySelection},
     transfer::{
         self,
         batch::Join,
@@ -66,9 +66,6 @@ pub trait Connection<C>
 where
     C: transfer::Configuration,
 {
-    /// Key Index Type
-    type KeyIndex;
-
     /// Error Type
     type Error;
 
@@ -87,11 +84,8 @@ where
     /// Signs a `transaction` and returns the ledger transfer posts if successful.
     fn sign(&mut self, transaction: Transaction<C>) -> LocalBoxFuture<SignResult<C, Self>>;
 
-    /// Returns a [`ReceivingKey`] for `self` to receive assets with `index`.
-    fn receiving_key(
-        &mut self,
-        index: Self::KeyIndex,
-    ) -> LocalBoxFuture<ReceivingKeyResult<C, Self>>;
+    /// Returns a new [`ReceivingKey`] for `self` to receive assets.
+    fn receiving_key(&mut self) -> LocalBoxFuture<ReceivingKeyResult<C, Self>>;
 }
 
 /// Synchronization Result
@@ -185,24 +179,11 @@ pub trait Configuration: transfer::Configuration {
     type Rng: CryptoRng + RngCore;
 }
 
-/// Index Type
-pub type Index<C> = key::Index<<C as Configuration>::HierarchicalKeyDerivationScheme>;
-
-/// Hierarchical Key Derivation Scheme Index
-type HierarchicalKeyDerivationSchemeIndex<C> =
-    <<C as Configuration>::HierarchicalKeyDerivationScheme as HierarchicalKeyDerivationScheme>::Index;
-
 /// Account Table Type
 pub type AccountTable<C> = key::AccountTable<<C as Configuration>::HierarchicalKeyDerivationScheme>;
 
-/// Spend Index Type
-pub type SpendIndex<C> = HierarchicalKeyDerivationSchemeIndex<C>;
-
-/// View Index Type
-pub type ViewIndex<C> = HierarchicalKeyDerivationSchemeIndex<C>;
-
 /// Asset Map Key Type
-pub type AssetMapKey<C> = (SpendIndex<C>, PublicKey<C>);
+pub type AssetMapKey<C> = (SpendIndex, PublicKey<C>);
 
 /// Proving Context Cache Error Type
 pub type ProvingContextCacheError<C> =
@@ -230,10 +211,7 @@ where
     MissingUtxoMembershipProof,
 
     /// Insufficient Balance
-    InsufficientBalance {
-        /// Attempting to withdraw the given asset
-        withdraw: Asset,
-    },
+    InsufficientBalance(Asset),
 
     /// Inconsistent Synchronization
     InconsistentSynchronization {
@@ -353,12 +331,16 @@ where
                     self.utxo_set.remove_proof(&utxo);
                     self.assets
                         .remove((index.spend, ephemeral_public_key), asset);
-                    withdraw.push(asset);
+                    if !asset.is_zero() {
+                        withdraw.push(asset);
+                    }
                 } else {
                     self.utxo_set.insert(&utxo);
                     self.assets
                         .insert((index.spend, ephemeral_public_key), asset);
-                    deposit.push(asset);
+                    if !asset.is_zero() {
+                        deposit.push(asset);
+                    }
                     return Ok(());
                 }
             }
@@ -389,7 +371,9 @@ where
         let known_void_number = C::void_number(&parameters.void_number_hash, &utxo, secret_key);
         if *void_number == known_void_number {
             utxo_set.remove_proof(&utxo);
-            withdraw.push(asset);
+            if !asset.is_zero() {
+                withdraw.push(asset);
+            }
             false
         } else {
             true
@@ -409,7 +393,6 @@ where
         I: Iterator<Item = (Utxo<C>, EncryptedNote<C>)>,
     {
         // FIXME: Use a more efficient synchronization algorithm for partial vs full.
-        //
         let mut deposit = Vec::new();
         let mut withdraw = Vec::new();
         for (utxo, encrypted_note) in inserts {
@@ -517,7 +500,7 @@ where
     ) -> Result<Selection<C>, Error<C>> {
         let selection = self.assets.select(asset);
         if selection.is_empty() {
-            return Err(Error::InsufficientBalance { withdraw: asset });
+            return Err(Error::InsufficientBalance(asset));
         }
         Selection::new(selection, move |k, v| {
             self.build_pre_sender(parameters, k, asset.id.with(v))
@@ -902,17 +885,22 @@ where
     #[inline]
     pub async fn sign(&mut self, transaction: Transaction<C>) -> SignResult<C, Self> {
         // TODO: Should we do a time-based release mechanism to amortize the cost of reading/writing
-        //       to disk?
+        //       to the proving context cache?
         let result = self.sign_internal(transaction).await;
         self.state.utxo_set.rollback();
         self.parameters.proving_context.release().await;
         result
     }
 
-    /// Returns a [`ReceivingKey`] for `self` to receive assets with `index`.
+    /// Returns a new [`ReceivingKey`] for `self` to receive assets.
     #[inline]
-    pub fn receiving_key(&self, index: Index<C>) -> ReceivingKeyResult<C, Self> {
-        let keypair = self.state.accounts.get_default().keypair(index)?;
+    pub fn receiving_key(&mut self) -> ReceivingKeyResult<C, Self> {
+        let keypair = self
+            .state
+            .accounts
+            .next(Default::default())
+            .unwrap()
+            .map_err(key::Error::KeyDerivationError)?;
         Ok(SpendingKey::new(keypair.spend, keypair.view)
             .derive(&self.parameters.parameters.key_agreement))
     }
@@ -922,7 +910,6 @@ impl<C> Connection<C> for Signer<C>
 where
     C: Configuration,
 {
-    type KeyIndex = Index<C>;
     type Error = Error<C>;
 
     #[inline]
@@ -945,7 +932,7 @@ where
     }
 
     #[inline]
-    fn receiving_key(&mut self, index: Index<C>) -> LocalBoxFuture<ReceivingKeyResult<C, Self>> {
-        Box::pin(async move { (&*self).receiving_key(index) })
+    fn receiving_key(&mut self) -> LocalBoxFuture<ReceivingKeyResult<C, Self>> {
+        Box::pin(async move { self.receiving_key() })
     }
 }

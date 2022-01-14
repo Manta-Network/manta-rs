@@ -26,9 +26,9 @@
 
 use alloc::{format, string::String};
 use bip32::{Seed, XPrv};
-use core::{marker::PhantomData, num::ParseIntError, str::FromStr};
+use core::marker::PhantomData;
 use manta_accounting::key::{
-    self, HierarchicalKeyDerivationParameter, HierarchicalKeyDerivationScheme,
+    self, AccountIndex, HierarchicalKeyDerivationScheme, SpendIndex, ViewIndex,
 };
 use manta_crypto::rand::{CryptoRng, RngCore, Sample, Standard};
 use manta_util::{create_seal, seal};
@@ -88,78 +88,6 @@ pub struct Calamari;
 pub const CALAMARI_COIN_TYPE_ID: CoinTypeId = 612;
 
 impl_coin_type!(Calamari, CALAMARI_COIN_TYPE_ID);
-
-/// Parse Parameter Error
-pub struct ParseParameterError(ParseIntError);
-
-/// Implements some [`From`] traits for `$name`.
-macro_rules! impl_from_for_parameter {
-    ($name:ty, $($from:ty),+$(,)?) => {
-        $(
-            impl From<$from> for $name {
-                #[inline]
-                fn from(t: $from) -> Self {
-                    Self(t.into())
-                }
-            }
-        )+
-    }
-}
-
-/// Implements the [`HierarchicalKeyDerivationParameter`] trait for `$name`.
-macro_rules! impl_parameter {
-    ($name:ty) => {
-        impl HierarchicalKeyDerivationParameter for $name {
-            #[inline]
-            fn increment(&mut self) {
-                self.0 += 1;
-            }
-        }
-
-        impl_from_for_parameter!($name, bool, u8, u16, u32);
-
-        impl FromStr for $name {
-            type Err = ParseParameterError;
-
-            #[inline]
-            fn from_str(s: &str) -> Result<Self, Self::Err> {
-                Ok(Self(s.parse().map_err(ParseParameterError)?))
-            }
-        }
-    };
-}
-
-/// Account Parameter Type
-type AccountParameterType = u64;
-
-/// Account Parameter
-#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct AccountParameter(AccountParameterType);
-
-impl_parameter!(AccountParameter);
-
-impl From<usize> for AccountParameter {
-    #[inline]
-    fn from(index: usize) -> Self {
-        Self(index as u64)
-    }
-}
-
-impl From<AccountParameter> for usize {
-    #[inline]
-    fn from(parameter: AccountParameter) -> Self {
-        parameter.0 as usize
-    }
-}
-
-/// Index Parameter Type
-type IndexParameterType = u128;
-
-/// Index Parameter
-#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct IndexParameter(IndexParameterType);
-
-impl_parameter!(IndexParameter);
 
 /// Testnet [`KeySecret`] Type
 pub type TestnetKeySecret = KeySecret<Testnet>;
@@ -224,22 +152,18 @@ where
 /// [`BIP-0044`]: https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki
 #[inline]
 #[must_use]
-pub fn path_string<C>(
-    account: AccountParameterType,
-    spend: IndexParameterType,
-    view: IndexParameterType,
-) -> String
+pub fn path_string<C>(account: AccountIndex, spend: SpendIndex, view: Option<ViewIndex>) -> String
 where
     C: CoinType,
 {
     const BIP_44_PURPOSE_ID: u8 = 44;
     format!(
-        "m/{}'/{}'/{}'/{}/{}",
+        "m/{}'/{}'/{}'/{}'/{}'",
         BIP_44_PURPOSE_ID,
         C::COIN_TYPE_ID,
-        account,
-        spend,
-        view,
+        account.index(),
+        spend.index(),
+        view.map(move |v| v.index() + 1).unwrap_or_default(),
     )
 }
 
@@ -248,36 +172,16 @@ where
     C: CoinType,
 {
     type SecretKey = XPrv;
-
-    type Account = AccountParameter;
-
-    type Index = IndexParameter;
-
     type Error = Error;
 
     #[inline]
-    fn derive_spend(
+    fn derive(
         &self,
-        account: Self::Account,
-        spend: Self::Index,
+        account: AccountIndex,
+        spend: SpendIndex,
+        view: Option<ViewIndex>,
     ) -> Result<Self::SecretKey, Self::Error> {
-        XPrv::derive_from_path(
-            &self.seed,
-            &path_string::<C>(account.0, spend.0, 0).parse()?,
-        )
-    }
-
-    #[inline]
-    fn derive_view(
-        &self,
-        account: Self::Account,
-        spend: Self::Index,
-        view: Self::Index,
-    ) -> Result<Self::SecretKey, Self::Error> {
-        XPrv::derive_from_path(
-            &self.seed,
-            &path_string::<C>(account.0, spend.0, view.0 + 1).parse()?,
-        )
+        XPrv::derive_from_path(&self.seed, &path_string::<C>(account, spend, view).parse()?)
     }
 }
 

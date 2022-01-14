@@ -89,15 +89,6 @@ pub trait BalanceState: Default {
     fn clear(&mut self);
 }
 
-/// Performs an unchecked withdraw on `balance`, panicking on overflow.
-#[inline]
-fn withdraw_unchecked(balance: Option<&mut AssetValue>, withdraw: AssetValue) {
-    let balance = balance.expect("Trying to withdraw from a zero balance.");
-    *balance = balance
-        .checked_sub(withdraw)
-        .expect("Overdrawn balance state.");
-}
-
 impl BalanceState for AssetList {
     #[inline]
     fn balance(&self, id: AssetId) -> AssetValue {
@@ -118,6 +109,15 @@ impl BalanceState for AssetList {
     fn clear(&mut self) {
         self.clear();
     }
+}
+
+/// Performs an unchecked withdraw on `balance`, panicking on overflow.
+#[inline]
+fn withdraw_unchecked(balance: Option<&mut AssetValue>, withdraw: AssetValue) {
+    let balance = balance.expect("Trying to withdraw from a zero balance.");
+    *balance = balance
+        .checked_sub(withdraw)
+        .expect("Overdrawn balance state.");
 }
 
 /// Adds implementation of [`BalanceState`] for a map type with the given `$entry` type.
@@ -336,10 +336,10 @@ where
         Ok(success)
     }
 
-    /// Returns a [`ReceivingKey`] for `self` to receive assets with `index`.
+    /// Returns a new [`ReceivingKey`] for `self` to receive assets.
     #[inline]
-    pub async fn receiving_key(&mut self, index: S::KeyIndex) -> Result<ReceivingKey<C>, S::Error> {
-        self.signer.receiving_key(index).await
+    pub async fn receiving_key(&mut self) -> Result<ReceivingKey<C>, S::Error> {
+        self.signer.receiving_key().await
     }
 }
 

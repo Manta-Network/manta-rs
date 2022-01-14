@@ -712,13 +712,11 @@ impl AssetList {
         self.map.clear()
     }
 
-    /// Removes all assets with the given `id`.
+    /// Removes all assets with the given `id`, returning their total value. This method returns
+    /// `None` in the case that `id` is not stored in `self`.
     #[inline]
     pub fn remove(&mut self, id: AssetId) -> Option<AssetValue> {
-        match self.find(id) {
-            Ok(index) => Some(self.map.remove(index).value),
-            _ => None,
-        }
+        self.find(id).ok().map(move |i| self.map.remove(i).value)
     }
 }
 
