@@ -61,10 +61,29 @@ pub trait Configuration: tree::Configuration {
 /// [`Index`](Configuration::Index) for a merkle forest configuration, the
 /// [`tree_index`](Configuration::tree_index) method must return values from a distribution over
 /// exactly `N` values.
-pub trait FixedIndex<const N: usize>: Into<usize> {}
+pub trait FixedIndex<const N: usize>: Into<usize> {
+    /// Returns a representative index of type `Self` if `index` is within `0..N`.
+    ///
+    /// # Panics
+    ///
+    /// This method can return any value or panic whenever `index` is out of the correct range but
+    /// cannot run into undefined behavior.
+    fn from_index(index: usize) -> Self;
+}
 
-impl FixedIndex<256> for u8 {}
-impl FixedIndex<65536> for u16 {}
+impl FixedIndex<256> for u8 {
+    #[inline]
+    fn from_index(index: usize) -> Self {
+        index as Self
+    }
+}
+
+impl FixedIndex<65536> for u16 {
+    #[inline]
+    fn from_index(index: usize) -> Self {
+        index as Self
+    }
+}
 
 /// Merkle Forest Structure
 pub trait Forest<C>
@@ -352,6 +371,60 @@ where
         tree.position(&self.parameters.digest(item))
             .map(move |i| tree.remove_path(i))
             .unwrap_or(false)
+    }
+}
+
+/// [`SingleTree`] Merkle Forest Index
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct SingleTreeIndex;
+
+impl FixedIndex<1> for SingleTreeIndex {
+    #[inline]
+    fn from_index(index: usize) -> Self {
+        let _ = index;
+        Self
+    }
+}
+
+impl From<SingleTreeIndex> for usize {
+    #[inline]
+    fn from(index: SingleTreeIndex) -> Self {
+        let _ = index;
+        0
+    }
+}
+
+/// Single Tree Merkle Forest
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct SingleTree<C, COM = ()>(PhantomData<(C, COM)>)
+where
+    C: tree::Configuration<COM>;
+
+impl<C, COM> tree::HashConfiguration<COM> for SingleTree<C, COM>
+where
+    C: tree::Configuration<COM>,
+{
+    type LeafHash = C::LeafHash;
+    type InnerHash = C::InnerHash;
+}
+
+impl<C, COM> tree::Configuration<COM> for SingleTree<C, COM>
+where
+    C: tree::Configuration<COM>,
+{
+    const HEIGHT: usize = C::HEIGHT;
+}
+
+impl<C> Configuration for SingleTree<C>
+where
+    C: tree::Configuration,
+{
+    type Index = SingleTreeIndex;
+
+    #[inline]
+    fn tree_index(leaf: &Leaf<Self>) -> Self::Index {
+        let _ = leaf;
+        Default::default()
     }
 }
 

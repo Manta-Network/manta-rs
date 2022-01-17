@@ -494,9 +494,12 @@ where
     #[inline]
     pub fn position(&self, leaf_digest: &LeafDigest<C>) -> Option<usize>
     where
+        T: WithProofs<C>,
         LeafDigest<C>: PartialEq,
     {
-        self.branch.position(leaf_digest)
+        self.branch
+            .position(leaf_digest)
+            .or_else(move || P::upgrade(&self.base).and_then(move |b| b.position(leaf_digest)))
     }
 
     /// Returns the current (right-most) leaf of the tree.
@@ -524,7 +527,6 @@ where
         InnerDigest<C>: Clone,
     {
         // FIXME: Move this algorithm to `crate::merkle_tree::path`.
-
         let length = self.len();
         if index > 0 && index >= length {
             return Err(PathError::IndexTooLarge { length });
@@ -534,17 +536,14 @@ where
                 Some(base) => {
                     let base_index = Node(index);
                     let base_path = base.path(parameters, base_index.0)?;
-
                     let fork_index = self.branch.starting_leaf_node();
                     let mut fork_path = self.branch.path_unchecked(fork_index.0);
-
                     if !Node::are_siblings(&base_index, &fork_index) {
                         let matching_index = base_index
                             .parents()
                             .zip(fork_index.parents())
                             .position(|(b, f)| Node::are_siblings(&b, &f))
                             .unwrap();
-
                         fork_path.inner_path.path[matching_index] = InnerPath::fold(
                             parameters,
                             fork_index,
@@ -556,11 +555,9 @@ where
                             ),
                             &fork_path.inner_path.path[..matching_index],
                         );
-
                         fork_path.inner_path.path[..matching_index]
                             .clone_from_slice(&base_path.inner_path.path[..matching_index]);
                     }
-
                     fork_path.inner_path.leaf_index = base_path.inner_path.leaf_index;
                     fork_path.sibling_digest = base_path.sibling_digest;
                     Ok(fork_path)

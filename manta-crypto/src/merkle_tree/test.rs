@@ -19,11 +19,13 @@
 use crate::{
     merkle_tree::{
         Configuration, HashConfiguration, IdentityLeafHash, InnerDigest, InnerHash,
-        InnerHashParameters, Leaf, LeafHashParameters, MerkleTree, Parameters, Tree, WithProofs,
+        InnerHashParameters, Leaf, LeafHashParameters, MerkleTree, Parameters, Path, Tree,
+        WithProofs,
     },
     rand::{CryptoRng, RngCore, Sample},
 };
-use core::{fmt::Debug, hash::Hash, marker::PhantomData, ops::BitXor};
+use alloc::string::String;
+use core::{fmt::Debug, hash::Hash, marker::PhantomData};
 
 /// Hash Parameter Sampling
 pub trait HashParameterSampling: HashConfiguration {
@@ -130,13 +132,17 @@ pub fn assert_valid_path<C, T>(tree: &MerkleTree<C, T>, index: usize, leaf: &Lea
 where
     C: Configuration + ?Sized,
     T: Tree<C> + WithProofs<C>,
-    InnerDigest<C>: PartialEq,
+    InnerDigest<C>: Debug + PartialEq,
+    Path<C>: Debug,
 {
+    let path = tree.path(index).expect("Only valid queries are accepted.");
+    let root = tree.root();
     assert!(
-        tree.path(index)
-            .expect("Only valid queries are accepted.")
-            .verify(tree.parameters(), tree.root(), leaf),
-        "Path returned from tree was not valid."
+        path.verify(tree.parameters(), root, leaf),
+        "Path returned from tree was not valid: {:?}. Expected {:?} but got {:?}.",
+        path,
+        root,
+        path.root(&tree.parameters, &tree.parameters.digest(leaf)),
     );
 }
 
@@ -147,7 +153,8 @@ pub fn assert_valid_paths<C, T>(tree: &mut MerkleTree<C, T>, leaves: &[Leaf<C>])
 where
     C: Configuration + ?Sized,
     T: Tree<C> + WithProofs<C>,
-    InnerDigest<C>: PartialEq,
+    InnerDigest<C>: Debug + PartialEq,
+    Path<C>: Debug,
     Leaf<C>: Sized,
 {
     let starting_index = tree.len();
@@ -156,6 +163,33 @@ where
         for (j, previous_leaf) in leaves.iter().enumerate().take(i + 1) {
             assert_valid_path(tree, starting_index + j, previous_leaf);
         }
+    }
+}
+
+/// Test Inner Hash
+///
+/// # Warning
+///
+/// This is only meant for testing purposes, and should not be used in any production or
+/// cryptographically secure environments.
+pub trait TestHash {
+    /// Joins `lhs` and `rhs` into a third hash value.
+    fn join(lhs: &Self, rhs: &Self) -> Self;
+}
+
+impl TestHash for u64 {
+    #[inline]
+    fn join(lhs: &Self, rhs: &Self) -> Self {
+        *lhs ^ *rhs
+    }
+}
+
+impl TestHash for String {
+    #[inline]
+    fn join(lhs: &Self, rhs: &Self) -> Self {
+        let mut lhs = lhs.clone();
+        lhs.push_str(rhs);
+        lhs
     }
 }
 
@@ -168,11 +202,11 @@ where
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Test<T = u64, const HEIGHT: usize = 20>(PhantomData<T>)
 where
-    T: Clone + BitXor<Output = T> + Default + PartialEq;
+    T: Clone + Default + PartialEq + TestHash;
 
 impl<T, const HEIGHT: usize> InnerHash for Test<T, HEIGHT>
 where
-    T: Clone + BitXor<Output = T> + Default + PartialEq,
+    T: Clone + Default + PartialEq + TestHash,
 {
     type LeafDigest = T;
     type Parameters = ();
@@ -186,7 +220,7 @@ where
         _: &mut (),
     ) -> Self::Output {
         let _ = parameters;
-        lhs.clone() ^ rhs.clone()
+        TestHash::join(lhs, rhs)
     }
 
     #[inline]
@@ -197,13 +231,13 @@ where
         _: &mut (),
     ) -> Self::Output {
         let _ = parameters;
-        lhs.clone() ^ rhs.clone()
+        TestHash::join(lhs, rhs)
     }
 }
 
 impl<T, const HEIGHT: usize> HashConfiguration for Test<T, HEIGHT>
 where
-    T: Clone + BitXor<Output = T> + Default + PartialEq,
+    T: Clone + Default + PartialEq + TestHash,
 {
     type LeafHash = IdentityLeafHash<T>;
     type InnerHash = Test<T, HEIGHT>;
@@ -211,7 +245,37 @@ where
 
 impl<T, const HEIGHT: usize> Configuration for Test<T, HEIGHT>
 where
-    T: Clone + BitXor<Output = T> + Default + PartialEq,
+    T: Clone + Default + PartialEq + TestHash,
 {
     const HEIGHT: usize = HEIGHT;
+}
+
+impl<T, const HEIGHT: usize> HashParameterSampling for Test<T, HEIGHT>
+where
+    T: Clone + Default + PartialEq + TestHash,
+{
+    type LeafHashParameterDistribution = ();
+    type InnerHashParameterDistribution = ();
+
+    #[inline]
+    fn sample_leaf_hash_parameters<R>(
+        distribution: Self::LeafHashParameterDistribution,
+        rng: &mut R,
+    ) -> LeafHashParameters<Self>
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        let _ = (distribution, rng);
+    }
+
+    #[inline]
+    fn sample_inner_hash_parameters<R>(
+        distribution: Self::InnerHashParameterDistribution,
+        rng: &mut R,
+    ) -> InnerHashParameters<Self>
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        let _ = (distribution, rng);
+    }
 }

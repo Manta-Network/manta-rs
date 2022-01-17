@@ -608,6 +608,11 @@ impl KeyDerivationFunction for HierarchicalKeyDerivationFunction {
     }
 }
 
+impl MerkleTreeConfiguration {
+    /// Width of the Merkle Forest
+    pub const FOREST_WIDTH: usize = 256;
+}
+
 impl merkle_tree::forest::Configuration for MerkleTreeConfiguration {
     type Index = u8;
 
@@ -626,3 +631,20 @@ impl merkle_tree::forest::Configuration for MerkleTreeConfiguration {
         result[0]
     }
 }
+
+/* NOTE: Configuration for testing single-tree forest.
+impl MerkleTreeConfiguration {
+    /// Width of the Merkle Forest
+    pub const FOREST_WIDTH: usize = 1;
+}
+
+impl merkle_tree::forest::Configuration for MerkleTreeConfiguration {
+    type Index = merkle_tree::forest::SingleTreeIndex;
+
+    #[inline]
+    fn tree_index(leaf: &merkle_tree::Leaf<Self>) -> Self::Index {
+        let _ = leaf;
+        Default::default()
+    }
+}
+*/

@@ -114,10 +114,17 @@ impl BalanceState for AssetList {
 /// Performs an unchecked withdraw on `balance`, panicking on overflow.
 #[inline]
 fn withdraw_unchecked(balance: Option<&mut AssetValue>, withdraw: AssetValue) {
-    let balance = balance.expect("Trying to withdraw from a zero balance.");
-    *balance = balance
-        .checked_sub(withdraw)
-        .expect("Overdrawn balance state.");
+    let balance = match balance {
+        Some(balance) => balance,
+        _ => panic!("Trying to withdraw `{:?}` from a zero balance.", withdraw),
+    };
+    *balance = match balance.checked_sub(withdraw) {
+        Some(balance) => balance,
+        _ => panic!(
+            "Overdrawn balance state. Tried to subtract `{:?}` from `{:?}`.",
+            withdraw, balance
+        ),
+    }
 }
 
 /// Adds implementation of [`BalanceState`] for a map type with the given `$entry` type.
@@ -243,6 +250,12 @@ where
         &self.assets
     }
 
+    /// Returns a shared reference to the ledger connection associated to `self`.
+    #[inline]
+    pub fn ledger(&self) -> &L {
+        &self.ledger
+    }
+
     /// Returns the [`Checkpoint`](ledger::Connection::Checkpoint) representing the current state
     /// of this wallet.
     #[inline]
@@ -284,7 +297,6 @@ where
                 self.assets.withdraw_all_unchecked(withdraw);
             }
             SyncResponse::Full { assets } => {
-                // TODO: Perform these two as one call, something like `self.assets.reset(assets)`.
                 self.assets.clear();
                 self.assets.deposit_all(assets);
             }

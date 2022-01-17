@@ -772,6 +772,16 @@ impl IntoIterator for AssetList {
     }
 }
 
+impl<'a> IntoIterator for &'a AssetList {
+    type Item = &'a Asset;
+    type IntoIter = slice::Iter<'a, Asset>;
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
 /// Asset Map
 ///
 /// This trait represents an asset distribution over some [`Key`](Self::Key) type.
@@ -827,16 +837,18 @@ pub trait AssetMap: Default {
             .for_each(move |key| self.insert(key, Asset::zero(id)));
     }
 
-    /// Removes the `key` from the map.
-    fn remove(&mut self, key: Self::Key, asset: Asset);
+    /// Tries to remove the `key` from the map, returning `true` if the `key` was stored in the
+    /// map and removed.
+    fn remove(&mut self, key: Self::Key, asset: Asset) -> bool;
 
     /// Removes all the keys in `iter` from the map.
     fn remove_all<I>(&mut self, iter: I)
     where
         I: IntoIterator<Item = (Self::Key, Asset)>,
     {
-        iter.into_iter()
-            .for_each(move |(key, asset)| self.remove(key, asset));
+        for (key, asset) in iter {
+            self.remove(key, asset);
+        }
     }
 
     /// Retains the elements from `self` that return `true` after applying `f`.
@@ -911,16 +923,18 @@ macro_rules! impl_asset_map_for_maps_body {
         }
 
         #[inline]
-        fn remove(&mut self, key: Self::Key, asset: Asset) {
+        fn remove(&mut self, key: Self::Key, asset: Asset) -> bool {
             if let $entry::Occupied(mut entry) = self.entry(key) {
                 let assets = entry.get_mut();
                 if let Ok(index) = assets.binary_search(&asset) {
                     assets.remove(index);
-                }
-                if assets.is_empty() {
-                    entry.remove();
+                    if assets.is_empty() {
+                        entry.remove();
+                    }
+                    return true;
                 }
             }
+            false
         }
 
         #[inline]

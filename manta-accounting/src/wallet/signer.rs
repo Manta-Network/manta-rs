@@ -300,7 +300,6 @@ where
         encrypted_note: EncryptedNote<C>,
         void_numbers: &mut Vec<VoidNumber<C>>,
         deposit: &mut Vec<Asset>,
-        withdraw: &mut Vec<Asset>,
     ) -> Result<(), Error<C>> {
         let mut finder = DecryptedMessage::find(encrypted_note);
         if let Some(ViewKeySelection {
@@ -324,16 +323,8 @@ where
                 &asset,
                 &utxo,
             ) {
-                if let Some(void_number_index) =
-                    void_numbers.iter().position(move |v| v == &void_number)
-                {
-                    void_numbers.remove(void_number_index);
-                    self.utxo_set.remove_proof(&utxo);
-                    self.assets
-                        .remove((index.spend, ephemeral_public_key), asset);
-                    if !asset.is_zero() {
-                        withdraw.push(asset);
-                    }
+                if let Some(index) = void_numbers.iter().position(move |v| v == &void_number) {
+                    void_numbers.remove(index);
                 } else {
                     self.utxo_set.insert(&utxo);
                     self.assets
@@ -392,7 +383,6 @@ where
     where
         I: Iterator<Item = (Utxo<C>, EncryptedNote<C>)>,
     {
-        // FIXME: Use a more efficient synchronization algorithm for partial vs full.
         let mut deposit = Vec::new();
         let mut withdraw = Vec::new();
         for (utxo, encrypted_note) in inserts {
@@ -402,7 +392,6 @@ where
                 encrypted_note,
                 &mut void_numbers,
                 &mut deposit,
-                &mut withdraw,
             )?;
         }
         for void_number in void_numbers {
@@ -424,7 +413,6 @@ where
                 !assets.is_empty()
             });
         }
-        self.utxo_set.commit();
         if is_partial {
             Ok(SyncResponse::Partial { deposit, withdraw })
         } else {
@@ -615,7 +603,6 @@ where
         needed_zeroes -= zeroes.len();
         for zero in zeroes {
             let pre_sender = self.build_pre_sender(parameters, zero, Asset::zero(asset_id))?;
-            pre_sender.insert_utxo(&mut self.utxo_set);
             pre_senders.push(pre_sender);
         }
         if needed_zeroes == 0 {
@@ -757,8 +744,6 @@ where
     ///
     /// This method assumes that `accounts` has never been used before, and does not attempt
     /// to perform wallet recovery on this table.
-    //
-    //  FIXME: Check that this warning even makes sense.
     #[inline]
     pub fn new(
         accounts: AccountTable<C>,
@@ -800,12 +785,16 @@ where
         //
         let utxo_set_len = self.state.utxo_set.len();
         match utxo_set_len.checked_sub(starting_index) {
-            Some(diff) => self.state.sync_with(
-                &self.parameters.parameters,
-                inserts.into_iter().skip(diff),
-                removes.into_iter().collect(),
-                diff == 0,
-            ),
+            Some(diff) => {
+                let result = self.state.sync_with(
+                    &self.parameters.parameters,
+                    inserts.into_iter().skip(diff),
+                    removes.into_iter().collect(),
+                    diff == 0,
+                );
+                self.state.utxo_set.commit();
+                result
+            }
             _ => Err(Error::InconsistentSynchronization {
                 starting_index: utxo_set_len,
             }),
@@ -819,6 +808,7 @@ where
         asset: Asset,
         receiver: Option<ReceivingKey<C>>,
     ) -> SignResult<C, Self> {
+        // FIXME: Handle the withdraw of `asset.value == 0` case.
         let selection = self.state.select(&self.parameters.parameters, asset)?;
         let change = self
             .state

@@ -362,7 +362,10 @@ where
         if matches!(leaf_digests.size_hint().1, Some(max) if max <= capacity::<C>() - self.len()) {
             loop {
                 match self.maybe_push_digest(parameters, || leaf_digests.next()) {
-                    Some(result) => assert!(result),
+                    Some(result) => assert!(
+                        result,
+                        "Unable to push digest even though the tree should have enough capacity to do so."
+                    ),
                     _ => return Ok(()),
                 }
             }

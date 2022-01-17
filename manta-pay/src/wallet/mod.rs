@@ -39,7 +39,7 @@ pub type UtxoSet = merkle_tree::forest::TreeArrayMerkleForest<
         MerkleTreeConfiguration,
         merkle_tree::full::Full<MerkleTreeConfiguration>,
     >,
-    256,
+    { MerkleTreeConfiguration::FOREST_WIDTH },
 >;
 
 impl signer::Configuration for Config {

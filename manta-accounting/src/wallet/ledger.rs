@@ -16,6 +16,9 @@
 
 //! Ledger Connection
 
+// TODO: Report a more meaningful error on `push` failure. In some way, it must match the
+//       `TransferPostError` variants.
+
 use crate::transfer::{Configuration, EncryptedNote, TransferPost, Utxo, VoidNumber};
 use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash};

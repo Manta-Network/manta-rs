@@ -17,6 +17,7 @@
 //! Test Ledger Implementation
 
 // FIXME: How to model existential deposits and fee payments?
+// FIXME: Add in some concurrency (and measure how much we need it).
 
 use crate::config::{
     Config, EncryptedNote, MerkleTreeConfiguration, MultiVerifyingContext, ProofSystem,
@@ -38,16 +39,23 @@ use manta_accounting::{
 };
 use manta_crypto::{
     constraint::ProofSystem as _,
-    merkle_tree::{self, forest::Configuration, Tree},
+    merkle_tree::{
+        self,
+        forest::{Configuration, FixedIndex},
+        Tree,
+    },
 };
 use manta_util::{future::LocalBoxFuture, into_array_unchecked};
 use std::collections::{HashMap, HashSet};
+
+/// Merkle Forest Index
+pub type MerkleForestIndex = <MerkleTreeConfiguration as Configuration>::Index;
 
 /// UTXO Merkle Forest Type
 pub type UtxoMerkleForest = merkle_tree::forest::TreeArrayMerkleForest<
     MerkleTreeConfiguration,
     merkle_tree::single_path::SinglePath<MerkleTreeConfiguration>,
-    256,
+    { MerkleTreeConfiguration::FOREST_WIDTH },
 >;
 
 /// Wrap Type
@@ -86,7 +94,7 @@ pub struct Ledger {
     utxos: HashSet<Utxo>,
 
     /// Shards
-    shards: HashMap<u8, HashMap<u64, (Utxo, EncryptedNote)>>,
+    shards: HashMap<MerkleForestIndex, IndexSet<(Utxo, EncryptedNote)>>,
 
     /// UTXO Forest
     utxo_forest: UtxoMerkleForest,
@@ -108,7 +116,9 @@ impl Ledger {
         Self {
             void_numbers: Default::default(),
             utxos: Default::default(),
-            shards: (0..=255).map(move |i| (i, Default::default())).collect(),
+            shards: (0..MerkleTreeConfiguration::FOREST_WIDTH)
+                .map(move |i| (MerkleForestIndex::from_index(i), Default::default()))
+                .collect(),
             utxo_forest: UtxoMerkleForest::new(utxo_forest_parameters),
             accounts: Default::default(),
             verifying_context,
@@ -186,8 +196,8 @@ impl ReceiverLedger<Config> for Ledger {
             .shards
             .get_mut(&MerkleTreeConfiguration::tree_index(&utxo.0))
             .expect("All shards exist when the ledger is constructed.");
-        let len = shard.len();
-        shard.insert(len as u64, (utxo.0, note));
+        // let len = shard.len();
+        shard.insert((utxo.0, note));
         self.utxos.insert(utxo.0);
         self.utxo_forest.push(&utxo.0);
     }
@@ -322,7 +332,7 @@ impl TransferLedger<Config> for Ledger {
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Checkpoint {
     /// Receiver Index
-    pub receiver_index: [usize; 256],
+    pub receiver_index: [usize; MerkleTreeConfiguration::FOREST_WIDTH],
 
     /// Sender Index
     pub sender_index: usize,
@@ -331,7 +341,10 @@ pub struct Checkpoint {
 impl Checkpoint {
     /// Builds a new [`Checkpoint`] from `receiver_index` and `sender_index`.
     #[inline]
-    pub fn new(receiver_index: [usize; 256], sender_index: usize) -> Self {
+    pub fn new(
+        receiver_index: [usize; MerkleTreeConfiguration::FOREST_WIDTH],
+        sender_index: usize,
+    ) -> Self {
         Self {
             receiver_index,
             sender_index,
@@ -342,7 +355,7 @@ impl Checkpoint {
 impl Default for Checkpoint {
     #[inline]
     fn default() -> Self {
-        Self::new([0; 256], 0)
+        Self::new([0; MerkleTreeConfiguration::FOREST_WIDTH], 0)
     }
 }
 
@@ -388,8 +401,8 @@ impl ledger::Connection<Config> for LedgerConnection {
             let ledger = self.ledger.read().await;
             let mut receivers = Vec::new();
             for (i, mut index) in checkpoint.receiver_index.iter().copied().enumerate() {
-                let shard = &ledger.shards[&(i as u8)];
-                while let Some(entry) = shard.get(&(index as u64)) {
+                let shard = &ledger.shards[&MerkleForestIndex::from_index(i)];
+                while let Some(entry) = shard.get_index(index) {
                     receivers.push(*entry);
                     index += 1;
                 }
@@ -451,12 +464,36 @@ mod test {
         wallet::{self, cache::OnDiskMultiProvingContext, Signer, Wallet},
     };
     use async_std::{println, task};
+    use futures::stream::StreamExt;
     use manta_accounting::{
+        asset::{Asset, AssetList},
         key::AccountTable,
-        transfer::{self, canonical::Transaction},
+        transfer,
+        wallet::test::{
+            sim::{ActionSim, Simulator},
+            ActionType, Actor, PublicBalanceOracle, Simulation,
+        },
     };
     use manta_crypto::rand::{CryptoRng, Rand, RngCore};
     use rand::thread_rng;
+
+    impl PublicBalanceOracle for LedgerConnection {
+        #[inline]
+        fn public_balances(&self) -> LocalBoxFuture<Option<AssetList>> {
+            Box::pin(async {
+                Some(
+                    self.ledger
+                        .read()
+                        .await
+                        .accounts
+                        .get(&self.account)?
+                        .iter()
+                        .map(|(id, value)| Asset::new(*id, *value))
+                        .collect(),
+                )
+            })
+        }
+    }
 
     /// Samples an empty wallet for `account` on `ledger`.
     #[inline]
@@ -489,7 +526,7 @@ mod test {
         let directory = task::spawn_blocking(tempfile::tempdir)
             .await
             .expect("Unable to generate temporary test directory.");
-        println!("Temporary Directory: {:?}", directory).await;
+        println!("[INFO] Temporary Directory: {:?}", directory).await;
 
         let mut rng = thread_rng();
         let parameters = rng.gen();
@@ -509,15 +546,20 @@ mod test {
             .expect("Unable to save proving context to disk.");
 
         let mut ledger = Ledger::new(utxo_set_parameters.clone(), verifying_context);
-        ledger.set_public_balance(AccountId(0), AssetId(0), AssetValue(10000));
-        ledger.set_public_balance(AccountId(1), AssetId(0), AssetValue(1000));
-        ledger.set_public_balance(AccountId(2), AssetId(0), AssetValue(100));
 
-        println!("Ledger: {:?}", ledger.accounts).await;
+        ledger.set_public_balance(AccountId(0), AssetId(0), AssetValue(1000000));
+        ledger.set_public_balance(AccountId(0), AssetId(1), AssetValue(1000000));
+        ledger.set_public_balance(AccountId(0), AssetId(2), AssetValue(1000000));
+        ledger.set_public_balance(AccountId(1), AssetId(0), AssetValue(1000000));
+        ledger.set_public_balance(AccountId(1), AssetId(1), AssetValue(1000000));
+        ledger.set_public_balance(AccountId(1), AssetId(2), AssetValue(1000000));
+        ledger.set_public_balance(AccountId(2), AssetId(0), AssetValue(1000000));
+        ledger.set_public_balance(AccountId(2), AssetId(1), AssetValue(1000000));
+        ledger.set_public_balance(AccountId(2), AssetId(2), AssetValue(1000000));
 
         let ledger = Rc::new(RwLock::new(ledger));
 
-        println!("Building Wallets").await;
+        println!("[INFO] Building Wallets").await;
 
         let mut alice = sample_wallet(
             AccountId(0),
@@ -546,74 +588,42 @@ mod test {
             &mut rng,
         );
 
-        let alice_key = alice
-            .receiving_key()
-            .await
-            .expect("Unable to get Alices's public key.");
+        let mut dave = sample_wallet(
+            AccountId(3),
+            &ledger,
+            &cache,
+            &parameters,
+            &utxo_set_parameters,
+            &mut rng,
+        );
 
-        let bob_key = bob
-            .receiving_key()
-            .await
-            .expect("Unable to get Bob's public key.");
+        let alice_key = alice.receiving_key().await.unwrap();
+        let bob_key = bob.receiving_key().await.unwrap();
+        let charlie_key = charlie.receiving_key().await.unwrap();
+        let dave_key = dave.receiving_key().await.unwrap();
 
-        let charlie_key = charlie
-            .receiving_key()
-            .await
-            .expect("Unable to get Charlie's public key.");
+        let mut simulator = Simulator::new(
+            ActionSim(Simulation::new([alice_key, bob_key, charlie_key, dave_key])),
+            vec![
+                Actor::new(alice, Default::default(), 200),
+                Actor::new(bob, Default::default(), 200),
+                Actor::new(charlie, Default::default(), 200),
+                Actor::new(dave, Default::default(), 200),
+            ],
+        );
 
-        println!("Alice [wallet]: {:?}", alice.assets()).await;
-        println!("Bob [wallet]: {:?}", bob.assets()).await;
-        println!("Charlie [wallet]: {:?}", charlie.assets()).await;
+        println!("[INFO] Running Simulation\n").await;
 
-        println!("ALICE MINT 1000").await;
-        alice
-            .post(Transaction::Mint(AssetId(0).value(1000)))
-            .await
-            .expect("Unable to build mint.");
-        alice.sync().await.expect("Unable to sync.");
-        println!("Alice [wallet]: {:?}", alice.assets()).await;
-
-        println!("ALICE PRIVATE TRANSFER 89").await;
-        alice
-            .post(Transaction::PrivateTransfer(AssetId(0).value(89), bob_key))
-            .await
-            .expect("Unable to build private transfer.");
-        alice.sync().await.expect("Unable to sync.");
-        println!("Alice [wallet]: {:?}", alice.assets()).await;
-
-        println!("BOB PRIVATE TRANSFER 6").await;
-        bob.post(Transaction::PrivateTransfer(
-            AssetId(0).value(6),
-            charlie_key,
-        ))
-        .await
-        .expect("Unable to build private transfer.");
-        bob.sync().await.expect("Unable to sync.");
-        println!("Bob [wallet]: {:?}", bob.assets()).await;
-
-        println!("CHARLIE PRIVATE TRANSFER 1").await;
-        charlie
-            .post(Transaction::PrivateTransfer(AssetId(0).value(1), alice_key))
-            .await
-            .expect("Unable to build private transfer.");
-        charlie.sync().await.expect("Unable to sync.");
-        println!("Charlie [wallet]: {:?}", charlie.assets()).await;
-
-        println!("ALICE RECLAIM 71").await;
-        alice
-            .post(Transaction::Reclaim(AssetId(0).value(71)))
-            .await
-            .expect("Unable to build private transfer.");
-        alice.sync().await.expect("Unable to sync.");
-        println!("Alice [wallet]: {:?}", alice.assets()).await;
-
-        alice.sync().await.expect("Unable to sync.");
-        bob.sync().await.expect("Unable to sync.");
-        charlie.sync().await.expect("Unable to sync.");
-
-        println!("Alice [wallet]: {:?}", alice.assets()).await;
-        println!("Bob [wallet]: {:?}", bob.assets()).await;
-        println!("Charlie [wallet]: {:?}", charlie.assets()).await;
+        let mut events = simulator.run(thread_rng);
+        while let Some(event) = events.next().await {
+            match event.event.action {
+                ActionType::Skip | ActionType::GeneratePublicKey => {}
+                _ => println!("{:?}", event).await,
+            }
+            if event.event.result.is_err() {
+                break;
+            }
+        }
 
         task::spawn_blocking(move || directory.close())
             .await
