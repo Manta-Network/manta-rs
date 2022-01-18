@@ -88,10 +88,10 @@ pub type ProofSystem = Groth16<PairingCurve>;
 pub struct PoseidonSpec<const ARITY: usize>;
 
 /// Poseidon-2 Hash Parameters
-pub type Poseidon2 = poseidon::Hash<PoseidonSpec<2>, 2>;
+pub type Poseidon2 = poseidon::Hash<PoseidonSpec<2>, (), 2>;
 
 /// Poseidon-2 Hash Parameters Variable
-pub type Poseidon2Var = poseidon::Hash<PoseidonSpec<2>, 2, Compiler>;
+pub type Poseidon2Var = poseidon::Hash<PoseidonSpec<2>, Compiler, 2>;
 
 impl poseidon::arkworks::Specification for PoseidonSpec<2> {
     type Field = ConstraintField;
@@ -101,10 +101,10 @@ impl poseidon::arkworks::Specification for PoseidonSpec<2> {
 }
 
 /// Poseidon-4 Hash Parameters
-pub type Poseidon4 = poseidon::Hash<PoseidonSpec<4>, 4>;
+pub type Poseidon4 = poseidon::Hash<PoseidonSpec<4>, (), 4>;
 
 /// Poseidon-4 Hash Parameters Variable
-pub type Poseidon4Var = poseidon::Hash<PoseidonSpec<4>, 4, Compiler>;
+pub type Poseidon4Var = poseidon::Hash<PoseidonSpec<4>, Compiler, 4>;
 
 impl poseidon::arkworks::Specification for PoseidonSpec<4> {
     type Field = ConstraintField;

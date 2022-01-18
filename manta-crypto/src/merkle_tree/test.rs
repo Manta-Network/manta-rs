@@ -173,7 +173,7 @@ where
 /// This is only meant for testing purposes, and should not be used in any production or
 /// cryptographically secure environments.
 pub trait TestHash {
-    /// Joins `lhs` and `rhs` into a third hash value.
+    /// Joins `lhs` and `rhs` into an output hash value.
     fn join(lhs: &Self, rhs: &Self) -> Self;
 }
 
@@ -200,7 +200,7 @@ impl TestHash for String {
 /// This is only meant for testing purposes, and should not be used in production or
 /// cryptographically secure environments.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct Test<T = u64, const HEIGHT: usize = 20>(PhantomData<T>)
+pub struct Test<T, const HEIGHT: usize>(PhantomData<T>)
 where
     T: Clone + Default + PartialEq + TestHash;
 

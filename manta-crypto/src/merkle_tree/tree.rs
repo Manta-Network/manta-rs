@@ -179,11 +179,11 @@ pub trait Configuration<COM = ()>: HashConfiguration<COM> {
 /// Since this `struct` is meant to be used as a type parameter, any values of this type have no
 /// meaning, just like values of type [`HashConfiguration`] or [`Configuration`].
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct Config<C, const HEIGHT: usize, COM = ()>(PhantomData<(COM, C)>)
+pub struct Config<C, COM, const HEIGHT: usize>(PhantomData<(COM, C)>)
 where
     C: HashConfiguration<COM> + ?Sized;
 
-impl<C, const HEIGHT: usize, COM> HashConfiguration<COM> for Config<C, HEIGHT, COM>
+impl<C, COM, const HEIGHT: usize> HashConfiguration<COM> for Config<C, COM, HEIGHT>
 where
     C: HashConfiguration<COM> + ?Sized,
 {
@@ -191,7 +191,7 @@ where
     type InnerHash = C::InnerHash;
 }
 
-impl<C, const HEIGHT: usize, COM> Configuration<COM> for Config<C, HEIGHT, COM>
+impl<C, COM, const HEIGHT: usize> Configuration<COM> for Config<C, COM, HEIGHT>
 where
     C: HashConfiguration<COM> + ?Sized,
 {

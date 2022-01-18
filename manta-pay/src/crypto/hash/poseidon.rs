@@ -80,7 +80,7 @@ where
     Hash(bound = "S::Field: core::hash::Hash"),
     PartialEq(bound = "S::Field: PartialEq")
 )]
-pub struct Hash<S, const ARITY: usize = 1, COM = ()>
+pub struct Hash<S, COM, const ARITY: usize>
 where
     S: Specification<COM>,
 {
@@ -91,7 +91,7 @@ where
     mds_matrix: Vec<S::Field>,
 }
 
-impl<S, const ARITY: usize, COM> Hash<S, ARITY, COM>
+impl<S, COM, const ARITY: usize> Hash<S, COM, ARITY>
 where
     S: Specification<COM>,
 {
@@ -204,7 +204,7 @@ where
     }
 }
 
-impl<S, const ARITY: usize, COM> HashFunction<ARITY, COM> for Hash<S, ARITY, COM>
+impl<S, COM, const ARITY: usize> HashFunction<COM, ARITY> for Hash<S, COM, ARITY>
 where
     S: Specification<COM>,
 {
@@ -230,7 +230,7 @@ where
 }
 
 #[cfg(test)] // NOTE: This is only safe to use in a test.
-impl<D, S, const ARITY: usize, COM> Sample<D> for Hash<S, ARITY, COM>
+impl<D, S, COM, const ARITY: usize> Sample<D> for Hash<S, COM, ARITY>
 where
     D: Clone,
     S: Specification<COM>,
@@ -259,12 +259,12 @@ where
 }
 
 /// Poseidon Hash Input Type
-pub type Input<S, const ARITY: usize, COM = ()> =
-    <Hash<S, ARITY, COM> as HashFunction<ARITY, COM>>::Input;
+pub type Input<S, COM, const ARITY: usize> =
+    <Hash<S, COM, ARITY> as HashFunction<COM, ARITY>>::Input;
 
 /// Poseidon Commitment Output Type
-pub type Output<S, const ARITY: usize, COM = ()> =
-    <Hash<S, ARITY, COM> as HashFunction<ARITY, COM>>::Output;
+pub type Output<S, COM, const ARITY: usize> =
+    <Hash<S, COM, ARITY> as HashFunction<COM, ARITY>>::Output;
 
 /// Arkworks Backend
 #[cfg(feature = "arkworks")]
@@ -373,11 +373,11 @@ pub mod arkworks {
         }
     }
 
-    impl<S, const ARITY: usize> Constant<Compiler<S>> for super::Hash<S, ARITY, Compiler<S>>
+    impl<S, const ARITY: usize> Constant<Compiler<S>> for super::Hash<S, Compiler<S>, ARITY>
     where
         S: Specification,
     {
-        type Type = super::Hash<S, ARITY>;
+        type Type = super::Hash<S, (), ARITY>;
 
         #[inline]
         fn new_constant(this: &Self::Type, compiler: &mut Compiler<S>) -> Self {

@@ -19,7 +19,7 @@
 use crate::constraint::Native;
 
 /// Hash Function
-pub trait HashFunction<const ARITY: usize = 1, COM = ()> {
+pub trait HashFunction<COM, const ARITY: usize> {
     /// Input Type
     type Input: ?Sized;
 
