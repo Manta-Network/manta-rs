@@ -19,21 +19,11 @@
 use crate::crypto::constraint::arkworks::{constraint_system::SynthesisResult, R1CS};
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef};
 
-#[cfg(feature = "groth16")]
-use {
-    crate::crypto::constraint::arkworks::constraint_system::SynthesisError,
-    alloc::vec::Vec,
-    ark_crypto_primitives::SNARK,
-    ark_groth16::{Groth16 as ArkGroth16, PreparedVerifyingKey, Proof, ProvingKey},
-    core::marker::PhantomData,
-    manta_crypto::{
-        constraint::ProofSystem,
-        rand::{CryptoRng, RngCore, SizedRng},
-    },
-};
-
 /// Constraint Synthesizer Wrapper
-struct ConstraintSynthesizerWrapper<F>(R1CS<F>)
+///
+/// This wraps an [`R1CS`] constraint system and allows it to be used as a [`ConstraintSynthesizer`]
+/// for building proofs using arkworks proof systems.
+pub struct ConstraintSynthesizerWrapper<F>(pub R1CS<F>)
 where
     F: ark_ff::PrimeField;
 
@@ -56,78 +46,137 @@ where
     }
 }
 
-/// Arkworks Groth16 Proof System
+/// Groth16 Proving System
 #[cfg(feature = "groth16")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "groth16")))]
-#[derive(derivative::Derivative)]
-#[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct Groth16<E>(PhantomData<E>)
-where
-    E: ark_ec::PairingEngine;
+pub mod groth16 {
+    use super::*;
+    use crate::crypto::constraint::arkworks::{self, constraint_system::SynthesisError};
+    use alloc::vec::Vec;
+    use ark_crypto_primitives::SNARK;
+    use ark_ec::PairingEngine;
+    use ark_groth16::{Groth16 as ArkGroth16, PreparedVerifyingKey, ProvingKey};
+    use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+    use core::marker::PhantomData;
+    use manta_crypto::{
+        constraint::ProofSystem,
+        rand::{CryptoRng, RngCore, SizedRng},
+    };
+    use scale_codec::{Decode, Encode, EncodeLike};
 
-#[cfg(feature = "groth16")]
-impl<E> ProofSystem for Groth16<E>
-where
-    E: ark_ec::PairingEngine,
-{
-    type ConstraintSystem = R1CS<E::Fr>;
-    type PublicParameters = ();
-    type ProvingContext = ProvingKey<E>;
-    type VerifyingContext = PreparedVerifyingKey<E>;
-    type Input = Vec<E::Fr>;
-    type Proof = Proof<E>;
-    type Verification = bool;
-    type Error = SynthesisError;
-
-    #[inline]
-    fn for_unknown() -> Self::ConstraintSystem {
-        Self::ConstraintSystem::for_unknown()
-    }
-
-    #[inline]
-    fn for_known() -> Self::ConstraintSystem {
-        Self::ConstraintSystem::for_known()
-    }
-
-    #[inline]
-    fn generate_context<R>(
-        cs: Self::ConstraintSystem,
-        public_parameters: &Self::PublicParameters,
-        rng: &mut R,
-    ) -> Result<(Self::ProvingContext, Self::VerifyingContext), Self::Error>
+    /// Groth16 Proof
+    #[derive(derivative::Derivative)]
+    #[derivative(Clone, Debug, Default, Eq, PartialEq)]
+    pub struct Proof<E>(ark_groth16::Proof<E>)
     where
-        R: CryptoRng + RngCore + ?Sized,
-    {
-        let _ = public_parameters;
-        let (proving_key, verifying_key) = ArkGroth16::circuit_specific_setup(
-            ConstraintSynthesizerWrapper(cs),
-            &mut SizedRng(rng),
-        )?;
-        Ok((proving_key, ArkGroth16::process_vk(&verifying_key)?))
-    }
+        E: PairingEngine;
 
-    #[inline]
-    fn prove<R>(
-        cs: Self::ConstraintSystem,
-        context: &Self::ProvingContext,
-        rng: &mut R,
-    ) -> Result<Self::Proof, Self::Error>
+    impl<E> Decode for Proof<E>
     where
-        R: CryptoRng + RngCore + ?Sized,
+        E: PairingEngine,
     {
-        ArkGroth16::prove(
-            context,
-            ConstraintSynthesizerWrapper(cs),
-            &mut SizedRng(rng),
-        )
+        #[inline]
+        fn decode<I>(input: &mut I) -> Result<Self, scale_codec::Error>
+        where
+            I: scale_codec::Input,
+        {
+            Ok(Self(
+                ark_groth16::Proof::deserialize(arkworks::codec::ScaleCodecReader(input))
+                    .map_err(|_| "Deserialization Error")?,
+            ))
+        }
     }
 
-    #[inline]
-    fn verify(
-        input: &Self::Input,
-        proof: &Self::Proof,
-        context: &Self::VerifyingContext,
-    ) -> Result<Self::Verification, Self::Error> {
-        ArkGroth16::verify_with_processed_vk(context, input, proof)
+    impl<E> Encode for Proof<E>
+    where
+        E: PairingEngine,
+    {
+        #[inline]
+        fn using_encoded<R, Encoder>(&self, f: Encoder) -> R
+        where
+            Encoder: FnOnce(&[u8]) -> R,
+        {
+            let mut buffer = Vec::new();
+            self.0
+                .serialize(&mut buffer)
+                .expect("Encoding is not allowed to fail.");
+            f(&buffer)
+        }
+    }
+
+    impl<E> EncodeLike for Proof<E> where E: PairingEngine {}
+
+    /// Arkworks Groth16 Proof System
+    #[derive(derivative::Derivative)]
+    #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    pub struct Groth16<E>(PhantomData<E>)
+    where
+        E: PairingEngine;
+
+    impl<E> ProofSystem for Groth16<E>
+    where
+        E: PairingEngine,
+    {
+        type ConstraintSystem = R1CS<E::Fr>;
+        type PublicParameters = ();
+        type ProvingContext = ProvingKey<E>;
+        type VerifyingContext = PreparedVerifyingKey<E>;
+        type Input = Vec<E::Fr>;
+        type Proof = Proof<E>;
+        type Verification = bool;
+        type Error = SynthesisError;
+
+        #[inline]
+        fn for_unknown() -> Self::ConstraintSystem {
+            Self::ConstraintSystem::for_unknown()
+        }
+
+        #[inline]
+        fn for_known() -> Self::ConstraintSystem {
+            Self::ConstraintSystem::for_known()
+        }
+
+        #[inline]
+        fn generate_context<R>(
+            cs: Self::ConstraintSystem,
+            public_parameters: &Self::PublicParameters,
+            rng: &mut R,
+        ) -> Result<(Self::ProvingContext, Self::VerifyingContext), Self::Error>
+        where
+            R: CryptoRng + RngCore + ?Sized,
+        {
+            let _ = public_parameters;
+            let (proving_key, verifying_key) = ArkGroth16::circuit_specific_setup(
+                ConstraintSynthesizerWrapper(cs),
+                &mut SizedRng(rng),
+            )?;
+            Ok((proving_key, ArkGroth16::process_vk(&verifying_key)?))
+        }
+
+        #[inline]
+        fn prove<R>(
+            cs: Self::ConstraintSystem,
+            context: &Self::ProvingContext,
+            rng: &mut R,
+        ) -> Result<Self::Proof, Self::Error>
+        where
+            R: CryptoRng + RngCore + ?Sized,
+        {
+            ArkGroth16::prove(
+                context,
+                ConstraintSynthesizerWrapper(cs),
+                &mut SizedRng(rng),
+            )
+            .map(Proof)
+        }
+
+        #[inline]
+        fn verify(
+            input: &Self::Input,
+            proof: &Self::Proof,
+            context: &Self::VerifyingContext,
+        ) -> Result<Self::Verification, Self::Error> {
+            ArkGroth16::verify_with_processed_vk(context, input, &proof.0)
+        }
     }
 }

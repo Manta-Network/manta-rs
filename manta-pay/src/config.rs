@@ -18,7 +18,7 @@
 
 use crate::{
     crypto::{
-        constraint::arkworks::{Boolean, Fp, FpVar, Groth16, R1CS},
+        constraint::arkworks::{groth16, Boolean, Fp, FpVar, R1CS},
         ecc::{self, arkworks::ProjectiveCurve},
         encryption::aes::{self, AesGcm},
         hash::poseidon,
@@ -26,6 +26,7 @@ use crate::{
     },
     key::TestnetKeySecret,
 };
+use alloc::vec::Vec;
 use ark_ff::{PrimeField, ToConstraintField};
 use ark_serialize::CanonicalSerialize;
 use blake2::{
@@ -81,8 +82,11 @@ pub type ConstraintFieldVar = FpVar<ConstraintField>;
 /// Constraint Compiler
 pub type Compiler = R1CS<ConstraintField>;
 
+/// Proof System Proof
+pub type Proof = groth16::Proof<PairingCurve>;
+
 /// Proof System
-pub type ProofSystem = Groth16<PairingCurve>;
+pub type ProofSystem = groth16::Groth16<PairingCurve>;
 
 /// Poseidon Specification
 pub struct PoseidonSpec<const ARITY: usize>;
@@ -413,6 +417,9 @@ impl merkle_tree::InnerHash<Compiler> for InnerHashVar {
     }
 }
 
+/// UTXO Set Output
+pub type UtxoSetOutput = merkle_tree::Root<MerkleTreeConfiguration>;
+
 /// Merkle Tree Configuration
 pub struct MerkleTreeConfiguration;
 
@@ -517,6 +524,10 @@ pub type NoteEncryptionScheme = encryption::Hybrid<
     >,
 >;
 
+/// Asset Ciphertext
+pub type Ciphertext =
+    <NoteEncryptionScheme as encryption::SymmetricKeyEncryptionScheme>::Ciphertext;
+
 /// Base Configuration
 pub struct Config;
 
@@ -566,6 +577,12 @@ pub type PrivateTransfer = transfer::canonical::PrivateTransfer<Config>;
 
 /// Reclaim Transfer Type
 pub type Reclaim = transfer::canonical::Reclaim<Config>;
+
+/// Sender Post Type
+pub type SenderPost = transfer::SenderPost<Config>;
+
+/// Receiver Post Type
+pub type ReceiverPost = transfer::ReceiverPost<Config>;
 
 /// Transfer Post Type
 pub type TransferPost = transfer::TransferPost<Config>;

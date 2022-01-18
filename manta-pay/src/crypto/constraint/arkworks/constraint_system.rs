@@ -16,6 +16,7 @@
 
 //! Arkworks Constraint System Implementation
 
+use alloc::vec::Vec;
 use ark_ff::PrimeField;
 use ark_r1cs_std::{alloc::AllocVar, eq::EqGadget, select::CondSelectGadget};
 use ark_relations::{ns, r1cs as ark_r1cs};
@@ -26,6 +27,7 @@ use manta_crypto::{
     },
     rand::{CryptoRng, RngCore, Sample, Standard},
 };
+use scale_codec::{Decode, Encode, EncodeLike};
 
 pub use ark_r1cs::SynthesisError;
 pub use ark_r1cs_std::{bits::boolean::Boolean, fields::fp::FpVar};
@@ -35,6 +37,40 @@ pub use ark_r1cs_std::{bits::boolean::Boolean, fields::fp::FpVar};
 pub struct Fp<F>(pub F)
 where
     F: PrimeField;
+
+impl<F> Decode for Fp<F>
+where
+    F: PrimeField,
+{
+    #[inline]
+    fn decode<I>(input: &mut I) -> Result<Self, scale_codec::Error>
+    where
+        I: scale_codec::Input,
+    {
+        Ok(Self(
+            F::deserialize(codec::ScaleCodecReader(input)).map_err(|_| "Deserialization Error")?,
+        ))
+    }
+}
+
+impl<F> Encode for Fp<F>
+where
+    F: PrimeField,
+{
+    #[inline]
+    fn using_encoded<R, Encoder>(&self, f: Encoder) -> R
+    where
+        Encoder: FnOnce(&[u8]) -> R,
+    {
+        let mut buffer = Vec::new();
+        self.0
+            .serialize(&mut buffer)
+            .expect("Encoding is not allowed to fail.");
+        f(&buffer)
+    }
+}
+
+impl<F> EncodeLike for Fp<F> where F: PrimeField {}
 
 impl<F> Sample for Fp<F>
 where
@@ -288,5 +324,33 @@ where
     fn add(lhs: Self, rhs: Self, compiler: &mut R1CS<F>) -> Self {
         let _ = compiler;
         lhs + rhs
+    }
+}
+
+/// Codec Utilities
+pub mod codec {
+    use ark_std::io::{Error, ErrorKind, Read};
+    use scale_codec::Input;
+
+    /// Scale-Codec Input as Reader Wrapper
+    #[derive(Debug, Eq, Hash, PartialEq)]
+    pub struct ScaleCodecReader<'i, I>(pub &'i mut I)
+    where
+        I: Input;
+
+    impl<I> Read for ScaleCodecReader<'_, I>
+    where
+        I: Input,
+    {
+        #[inline]
+        fn read(&mut self, buf: &mut [u8]) -> Result<usize, Error> {
+            let len = buf.len();
+            self.read_exact(buf).map(|_| len)
+        }
+
+        #[inline]
+        fn read_exact(&mut self, buf: &mut [u8]) -> Result<(), Error> {
+            Input::read(self.0, buf).map_err(|_| ErrorKind::Other.into())
+        }
     }
 }
