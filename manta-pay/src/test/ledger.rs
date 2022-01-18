@@ -196,7 +196,6 @@ impl ReceiverLedger<Config> for Ledger {
             .shards
             .get_mut(&MerkleTreeConfiguration::tree_index(&utxo.0))
             .expect("All shards exist when the ledger is constructed.");
-        // let len = shard.len();
         shard.insert((utxo.0, note));
         self.utxos.insert(utxo.0);
         self.utxo_forest.push(&utxo.0);
@@ -447,7 +446,10 @@ impl ledger::Connection<Config> for LedgerConnection {
                     Ok(posting_key) => {
                         posting_key.post(&(), &mut *ledger);
                     }
-                    _ => return Ok(PushResponse { success: false }),
+                    Err(err) => {
+                        async_std::println!("\n[INFO] Ledger Validation Error: {:?}\n", err).await;
+                        return Ok(PushResponse { success: false });
+                    }
                 }
             }
             Ok(PushResponse { success: true })
@@ -545,72 +547,38 @@ mod test {
             .await
             .expect("Unable to save proving context to disk.");
 
+        const ACTOR_COUNT: usize = 10;
+
         let mut ledger = Ledger::new(utxo_set_parameters.clone(), verifying_context);
 
-        ledger.set_public_balance(AccountId(0), AssetId(0), AssetValue(1000000));
-        ledger.set_public_balance(AccountId(0), AssetId(1), AssetValue(1000000));
-        ledger.set_public_balance(AccountId(0), AssetId(2), AssetValue(1000000));
-        ledger.set_public_balance(AccountId(1), AssetId(0), AssetValue(1000000));
-        ledger.set_public_balance(AccountId(1), AssetId(1), AssetValue(1000000));
-        ledger.set_public_balance(AccountId(1), AssetId(2), AssetValue(1000000));
-        ledger.set_public_balance(AccountId(2), AssetId(0), AssetValue(1000000));
-        ledger.set_public_balance(AccountId(2), AssetId(1), AssetValue(1000000));
-        ledger.set_public_balance(AccountId(2), AssetId(2), AssetValue(1000000));
+        for i in 0..ACTOR_COUNT {
+            ledger.set_public_balance(AccountId(i as u64), AssetId(0), AssetValue(1000000));
+            ledger.set_public_balance(AccountId(i as u64), AssetId(1), AssetValue(1000000));
+            ledger.set_public_balance(AccountId(i as u64), AssetId(2), AssetValue(1000000));
+        }
 
         let ledger = Rc::new(RwLock::new(ledger));
 
         println!("[INFO] Building Wallets").await;
 
-        let mut alice = sample_wallet(
-            AccountId(0),
-            &ledger,
-            &cache,
-            &parameters,
-            &utxo_set_parameters,
-            &mut rng,
-        );
+        let actors = (0..ACTOR_COUNT)
+            .map(|i| {
+                Actor::new(
+                    sample_wallet(
+                        AccountId(i as u64),
+                        &ledger,
+                        &cache,
+                        &parameters,
+                        &utxo_set_parameters,
+                        &mut rng,
+                    ),
+                    Default::default(),
+                    rand::Rng::gen_range(&mut rng, 50..300),
+                )
+            })
+            .collect::<Vec<_>>();
 
-        let mut bob = sample_wallet(
-            AccountId(1),
-            &ledger,
-            &cache,
-            &parameters,
-            &utxo_set_parameters,
-            &mut rng,
-        );
-
-        let mut charlie = sample_wallet(
-            AccountId(2),
-            &ledger,
-            &cache,
-            &parameters,
-            &utxo_set_parameters,
-            &mut rng,
-        );
-
-        let mut dave = sample_wallet(
-            AccountId(3),
-            &ledger,
-            &cache,
-            &parameters,
-            &utxo_set_parameters,
-            &mut rng,
-        );
-
-        let alice_key = alice.receiving_key().await.unwrap();
-        let bob_key = bob.receiving_key().await.unwrap();
-        let charlie_key = charlie.receiving_key().await.unwrap();
-        let dave_key = dave.receiving_key().await.unwrap();
-
-        let mut simulator = Simulator::new(
-            ActionSim(Simulation::new([alice_key, bob_key, charlie_key, dave_key])),
-            vec![
-                Actor::new(alice, Default::default(), 200),
-                Actor::new(bob, Default::default(), 200),
-                Actor::new(charlie, Default::default(), 200),
-                Actor::new(dave, Default::default(), 200),
-            ],
-        );
+        let mut simulator = Simulator::new(ActionSim(Simulation::default()), actors);
 
         println!("[INFO] Running Simulation\n").await;
 
@@ -620,7 +588,8 @@ mod test {
                 ActionType::Skip | ActionType::GeneratePublicKey => {}
                 _ => println!("{:?}", event).await,
             }
-            if event.event.result.is_err() {
+            if let Err(err) = event.event.result {
+                println!("\n[ERROR] Simulation Error: {:?}\n", err).await;
                 break;
             }
         }

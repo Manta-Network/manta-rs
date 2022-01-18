@@ -16,6 +16,8 @@
 
 //! Testing and Simulation Framework
 
+// TODO: Perform delays instead of just `Skip` which doesn't really spread actors out in time.
+
 use crate::{
     asset::{Asset, AssetList},
     transfer::{canonical::Transaction, Configuration, PublicKey, ReceivingKey},
@@ -92,7 +94,7 @@ impl Default for ActionDistributionPMF {
     #[inline]
     fn default() -> Self {
         Self {
-            skip: 4.0,
+            skip: 0.0,
             mint: 1.0,
             private_transfer: 1.0,
             reclaim: 1.0,
@@ -281,6 +283,8 @@ pub type PublicKeyDatabase<C> = IndexSet<ReceivingKey<C>>;
 pub type SharedPublicKeyDatabase<C> = Rc<RwLock<PublicKeyDatabase<C>>>;
 
 /// Simulation
+#[derive(derivative::Derivative)]
+#[derivative(Default(bound = ""))]
 pub struct Simulation<C, L, S>
 where
     C: Configuration,
@@ -344,10 +348,15 @@ where
                 ActionType::PrivateTransfer => match actor.sample_withdraw(rng).await {
                     Some(asset) => {
                         let public_keys = self.public_keys.read().await;
-                        Action::Post(Transaction::PrivateTransfer(
-                            asset,
-                            public_keys[rng.gen_range(0..public_keys.len())].clone(),
-                        ))
+                        let len = public_keys.len();
+                        if len == 0 {
+                            Action::GeneratePublicKey
+                        } else {
+                            Action::Post(Transaction::PrivateTransfer(
+                                asset,
+                                public_keys[rng.gen_range(0..len)].clone(),
+                            ))
+                        }
                     }
                     _ => match actor.sample_deposit(rng).await {
                         Some(asset) => Action::Post(Transaction::Mint(asset)),
