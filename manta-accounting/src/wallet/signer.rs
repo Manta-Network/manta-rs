@@ -125,7 +125,7 @@ pub enum SyncResponse {
     ///
     /// Whenever the [`Signer`] gets ahead of the synchronization point, it would have updated its
     /// internal balance state further along than any connection following its updates. In this
-    /// case, to entire balance state needs to be sent to catch up.
+    /// case, the entire balance state needs to be sent to catch up.
     Full {
         /// Full Balance State
         assets: Vec<Asset>,
@@ -348,7 +348,7 @@ where
         secret_key: &SecretKey<C>,
         ephemeral_public_key: &PublicKey<C>,
         asset: Asset,
-        void_number: &VoidNumber<C>,
+        void_numbers: &mut Vec<VoidNumber<C>>,
         utxo_set: &mut C::UtxoSet,
         withdraw: &mut Vec<Asset>,
     ) -> bool {
@@ -359,8 +359,9 @@ where
             ephemeral_public_key,
             &asset,
         );
-        let known_void_number = C::void_number(&parameters.void_number_hash, &utxo, secret_key);
-        if *void_number == known_void_number {
+        let void_number = C::void_number(&parameters.void_number_hash, &utxo, secret_key);
+        if let Some(index) = void_numbers.iter().position(move |v| v == &void_number) {
+            void_numbers.remove(index);
             utxo_set.remove_proof(&utxo);
             if !asset.is_zero() {
                 withdraw.push(asset);
@@ -394,25 +395,23 @@ where
                 &mut deposit,
             )?;
         }
-        for void_number in void_numbers {
-            self.assets.retain(|(index, ephemeral_public_key), assets| {
-                assets.retain(
-                    |asset| match self.accounts.get_default().spend_key(*index) {
-                        Ok(secret_key) => Self::is_asset_unspent(
-                            parameters,
-                            &secret_key,
-                            ephemeral_public_key,
-                            *asset,
-                            &void_number,
-                            &mut self.utxo_set,
-                            &mut withdraw,
-                        ),
-                        _ => true,
-                    },
-                );
-                !assets.is_empty()
-            });
-        }
+        self.assets.retain(|(index, ephemeral_public_key), assets| {
+            assets.retain(
+                |asset| match self.accounts.get_default().spend_key(*index) {
+                    Ok(secret_key) => Self::is_asset_unspent(
+                        parameters,
+                        &secret_key,
+                        ephemeral_public_key,
+                        *asset,
+                        &mut void_numbers,
+                        &mut self.utxo_set,
+                        &mut withdraw,
+                    ),
+                    _ => true,
+                },
+            );
+            !assets.is_empty()
+        });
         if is_partial {
             Ok(SyncResponse::Partial { deposit, withdraw })
         } else {
@@ -487,7 +486,7 @@ where
         asset: Asset,
     ) -> Result<Selection<C>, Error<C>> {
         let selection = self.assets.select(asset);
-        if selection.is_empty() {
+        if !asset.is_zero() && selection.is_empty() {
             return Err(Error::InsufficientBalance(asset));
         }
         Selection::new(selection, move |k, v| {
@@ -637,10 +636,6 @@ where
         mut pre_senders: Vec<PreSender<C>>,
         posts: &mut Vec<TransferPost<C>>,
     ) -> Result<[Sender<C>; PrivateTransferShape::SENDERS], Error<C>> {
-        assert!(
-            !pre_senders.is_empty(),
-            "The set of initial senders cannot be empty."
-        );
         let mut new_zeroes = Vec::new();
         while pre_senders.len() > PrivateTransferShape::SENDERS {
             let mut joins = Vec::new();
@@ -808,7 +803,6 @@ where
         asset: Asset,
         receiver: Option<ReceivingKey<C>>,
     ) -> SignResult<C, Self> {
-        // FIXME: Handle the withdraw of `asset.value == 0` case.
         let selection = self.state.select(&self.parameters.parameters, asset)?;
         let change = self
             .state

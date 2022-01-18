@@ -66,14 +66,8 @@ macro_rules! impl_shape {
 /// Builds a new alias using the given shape type.
 macro_rules! alias_type {
     ($type:tt, $t:ident, $shape:tt) => {
-        $type<
-            $t,
-            { $shape::SOURCES },
-            { $shape::SENDERS },
-            { $shape::RECEIVERS },
-            { $shape::SINKS },
-        >
-    }
+        $type<$t, { $shape::SOURCES }, { $shape::SENDERS }, { $shape::RECEIVERS }, { $shape::SINKS }>
+    };
 }
 
 /// Builds a new [`Transfer`] alias using the given shape type.
@@ -242,6 +236,15 @@ impl TransferShape {
 }
 
 /// Canonical Transaction Type
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "ReceivingKey<C>: Clone"),
+    Copy(bound = "ReceivingKey<C>: Copy"),
+    Debug(bound = "ReceivingKey<C>: Debug"),
+    Eq(bound = "ReceivingKey<C>: Eq"),
+    Hash(bound = "ReceivingKey<C>: Hash"),
+    PartialEq(bound = "ReceivingKey<C>: PartialEq")
+)]
 pub enum Transaction<C>
 where
     C: Configuration,

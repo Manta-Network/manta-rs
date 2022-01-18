@@ -96,8 +96,8 @@ impl Default for ActionDistributionPMF {
         Self {
             skip: 0.0,
             mint: 1.0,
-            private_transfer: 1.0,
-            reclaim: 1.0,
+            private_transfer: 2.0,
+            reclaim: 0.5,
             generate_public_key: 0.5,
         }
     }
@@ -393,9 +393,19 @@ where
                         Transaction::PrivateTransfer(_, _) => ActionType::PrivateTransfer,
                         Transaction::Reclaim(_) => ActionType::Reclaim,
                     };
-                    Event {
-                        action,
-                        result: actor.wallet.post(transaction).await,
+                    let mut retries = 4; // TODO: Make this parameter tunable based on concurrency.
+                    loop {
+                        let result = actor.wallet.post(transaction.clone()).await;
+                        if let Ok(false) = result {
+                            if retries == 0 {
+                                break Event { action, result };
+                            } else {
+                                retries -= 1;
+                                continue;
+                            }
+                        } else {
+                            break Event { action, result };
+                        }
                     }
                 }
                 Action::GeneratePublicKey => Event {
