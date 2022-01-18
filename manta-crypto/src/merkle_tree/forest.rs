@@ -281,7 +281,6 @@ where
     InnerDigest<C>: Clone + PartialEq,
 {
     type Item = Leaf<C>;
-
     type Model = Parameters<C>;
 
     #[inline]
@@ -390,7 +389,7 @@ impl From<SingleTreeIndex> for usize {
     #[inline]
     fn from(index: SingleTreeIndex) -> Self {
         let _ = index;
-        0
+        Default::default()
     }
 }
 

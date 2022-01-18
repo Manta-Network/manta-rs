@@ -177,7 +177,7 @@ where
     }
 }
 
-/// Raw Merkle Tree
+/// Raw Merkle Tree Interfaces
 pub mod raw {
     use super::*;
 

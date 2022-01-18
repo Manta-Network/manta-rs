@@ -98,6 +98,15 @@ where
     /// Width of the State Buffer
     pub const WIDTH: usize = ARITY + 1;
 
+    /// Total Number of Rounds
+    pub const ROUNDS: usize = 2 * S::FULL_ROUNDS + S::PARTIAL_ROUNDS;
+
+    /// Number of Entries in the MDS Matrix
+    pub const MDS_MATRIX_SIZE: usize = Self::WIDTH * Self::WIDTH;
+
+    /// Total Number of Additive Rounds Keys
+    pub const ADDITIVE_ROUND_KEYS_COUNT: usize = Self::ROUNDS * Self::WIDTH;
+
     /// Builds a new [`Hash`](self::Hash) from `additive_round_keys` and `mds_matrix`.
     ///
     /// # Panics
@@ -108,12 +117,12 @@ where
     pub fn new(additive_round_keys: Vec<S::Field>, mds_matrix: Vec<S::Field>) -> Self {
         assert_eq!(
             additive_round_keys.len(),
-            Self::additive_round_keys_len(),
+            Self::ADDITIVE_ROUND_KEYS_COUNT,
             "Additive Rounds Keys are not the correct size."
         );
         assert_eq!(
             mds_matrix.len(),
-            Self::mds_matrix_size(),
+            Self::MDS_MATRIX_SIZE,
             "MDS Matrix is not the correct size."
         );
         Self::new_unchecked(additive_round_keys, mds_matrix)
@@ -127,26 +136,6 @@ where
             additive_round_keys,
             mds_matrix,
         }
-    }
-
-    /// Returns the total number of rounds for this Poseidon hash function specification.
-    #[inline]
-    pub fn rounds() -> usize {
-        rounds::<S, COM>()
-    }
-
-    /// Returns the number of additive round keys.
-    #[inline]
-    pub fn additive_round_keys_len() -> usize {
-        Self::rounds() * Self::WIDTH
-    }
-
-    /// Returns the size of the MDS matrix.
-    ///
-    /// This is the square of the [`WIDTH`](Self::WIDTH).
-    #[inline]
-    pub fn mds_matrix_size() -> usize {
-        Self::WIDTH.pow(2)
     }
 
     /// Returns the additive keys for the given `round`.
@@ -220,7 +209,6 @@ where
     S: Specification<COM>,
 {
     type Input = S::Field;
-
     type Output = S::Field;
 
     #[inline]
@@ -241,7 +229,7 @@ where
     }
 }
 
-#[cfg(test)] // NOTE: This is only safe in a test.
+#[cfg(test)] // NOTE: This is only safe to use in a test.
 impl<D, S, const ARITY: usize, COM> Sample<D> for Hash<S, ARITY, COM>
 where
     D: Clone,
@@ -261,10 +249,10 @@ where
     {
         Self {
             additive_round_keys: rng
-                .sample_iter(repeat(distribution.clone()).take(Self::additive_round_keys_len()))
+                .sample_iter(repeat(distribution.clone()).take(Self::ADDITIVE_ROUND_KEYS_COUNT))
                 .collect(),
             mds_matrix: rng
-                .sample_iter(repeat(distribution).take(Self::mds_matrix_size()))
+                .sample_iter(repeat(distribution).take(Self::MDS_MATRIX_SIZE))
                 .collect(),
         }
     }
@@ -315,7 +303,6 @@ pub mod arkworks {
         type Field = Fp<S::Field>;
 
         const FULL_ROUNDS: usize = S::FULL_ROUNDS;
-
         const PARTIAL_ROUNDS: usize = S::PARTIAL_ROUNDS;
 
         #[inline]
@@ -351,7 +338,6 @@ pub mod arkworks {
         type Field = FpVar<S::Field>;
 
         const FULL_ROUNDS: usize = S::FULL_ROUNDS;
-
         const PARTIAL_ROUNDS: usize = S::PARTIAL_ROUNDS;
 
         #[inline]

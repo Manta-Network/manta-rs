@@ -58,18 +58,17 @@ pub type SynthesisResult<T = ()> = Result<T, SynthesisError>;
 /// # Warning
 ///
 /// This does not work for all variable assignments! For some assignemnts, the variable inherits
-/// some structure from its input even though the input itself will not form part of the proving
-/// key and verifying key that we produce after compiling the constraint system. For those cases,
-/// some mocking is required and this function can not be used directly.
+/// some structure from its input, like its length or number of bits, which are only known at
+/// run-time. For those cases, some mocking is required and this function can not be used directly.
 #[inline]
 pub fn empty<T>() -> SynthesisResult<T> {
     Err(SynthesisError::AssignmentMissing)
 }
 
-/// Returns a filled variable assignment.
+/// Returns a filled variable assignment with the given `value`.
 #[inline]
-pub fn full<T>(t: T) -> impl FnOnce() -> SynthesisResult<T> {
-    move || Ok(t)
+pub fn full<T>(value: T) -> impl FnOnce() -> SynthesisResult<T> {
+    move || Ok(value)
 }
 
 /// Arkworks Rank-1 Constraint System
@@ -114,7 +113,7 @@ where
     #[inline]
     fn assert(&mut self, b: Self::Bool) {
         b.enforce_equal(&Boolean::TRUE)
-            .expect("This should never fail.");
+            .expect("Enforcing equality is not allowed to fail.");
     }
 }
 

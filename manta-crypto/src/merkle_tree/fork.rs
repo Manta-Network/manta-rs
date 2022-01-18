@@ -526,7 +526,7 @@ where
         LeafDigest<C>: Clone + Default,
         InnerDigest<C>: Clone,
     {
-        // FIXME: Move this algorithm to `crate::merkle_tree::path`.
+        // TODO: Move this algorithm to `crate::merkle_tree::path`.
         let length = self.len();
         if index > 0 && index >= length {
             return Err(PathError::IndexTooLarge { length });

@@ -446,10 +446,7 @@ impl ledger::Connection<Config> for LedgerConnection {
                     Ok(posting_key) => {
                         posting_key.post(&(), &mut *ledger);
                     }
-                    Err(err) => {
-                        async_std::println!("\n[INFO] Ledger Validation Error: {:?}\n", err).await;
-                        return Ok(PushResponse { success: false });
-                    }
+                    _ => return Ok(PushResponse { success: false }),
                 }
             }
             Ok(PushResponse { success: true })

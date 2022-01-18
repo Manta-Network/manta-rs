@@ -180,11 +180,7 @@ where
                 let sender = PreSender::new(
                     parameters,
                     rng.gen(),
-                    C::KeyAgreementScheme::derive_owned(
-                        &parameters.key_agreement,
-                        rng.gen(),
-                        &mut (),
-                    ),
+                    parameters.key_agreement.derive_owned(rng.gen()),
                     asset_id.with(*v),
                 );
                 sender.insert_utxo(utxo_set);
@@ -197,16 +193,8 @@ where
                 Receiver::new(
                     parameters,
                     rng.gen(),
-                    C::KeyAgreementScheme::derive_owned(
-                        &parameters.key_agreement,
-                        rng.gen(),
-                        &mut (),
-                    ),
-                    C::KeyAgreementScheme::derive_owned(
-                        &parameters.key_agreement,
-                        rng.gen(),
-                        &mut (),
-                    ),
+                    parameters.key_agreement.derive_owned(rng.gen()),
+                    parameters.key_agreement.derive_owned(rng.gen()),
                     asset_id.with(*v),
                 )
             })

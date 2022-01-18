@@ -109,18 +109,16 @@ where
     G: Group<COM>,
 {
     type SecretKey = G::Scalar;
-
     type PublicKey = G;
-
     type SharedSecret = G;
 
     #[inline]
-    fn derive(&self, secret_key: &Self::SecretKey, compiler: &mut COM) -> Self::PublicKey {
-        self.agree(secret_key, &self.generator, compiler)
+    fn derive_in(&self, secret_key: &Self::SecretKey, compiler: &mut COM) -> Self::PublicKey {
+        self.agree_in(secret_key, &self.generator, compiler)
     }
 
     #[inline]
-    fn agree(
+    fn agree_in(
         &self,
         secret_key: &Self::SecretKey,
         public_key: &Self::PublicKey,

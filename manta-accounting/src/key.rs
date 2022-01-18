@@ -16,7 +16,7 @@
 
 //! Hierarchical Key Derivation Schemes
 
-use alloc::vec::Vec;
+use alloc::{vec, vec::Vec};
 use core::{
     fmt::{self, Debug},
     hash::Hash,

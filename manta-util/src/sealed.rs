@@ -28,7 +28,7 @@ macro_rules! create_seal {
     };
 }
 
-/// Adds an `sealed::Sealed` implementation to `$type`.
+/// Adds a `sealed::Sealed` implementation to `$type`.
 #[macro_export]
 macro_rules! seal {
     ($($type:tt),+ $(,)?) => {

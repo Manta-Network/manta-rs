@@ -23,7 +23,7 @@ use crate::{
     transfer::{canonical::Transaction, Configuration, PublicKey, ReceivingKey},
     wallet::{self, ledger, signer, Wallet},
 };
-use alloc::rc::Rc;
+use alloc::{boxed::Box, rc::Rc};
 use async_std::sync::RwLock;
 use core::{fmt::Debug, hash::Hash, marker::PhantomData};
 use indexmap::IndexSet;
@@ -393,7 +393,7 @@ where
                         Transaction::PrivateTransfer(_, _) => ActionType::PrivateTransfer,
                         Transaction::Reclaim(_) => ActionType::Reclaim,
                     };
-                    let mut retries = 4; // TODO: Make this parameter tunable based on concurrency.
+                    let mut retries = 5; // TODO: Make this parameter tunable based on concurrency.
                     loop {
                         let result = actor.wallet.post(transaction.clone()).await;
                         if let Ok(false) = result {

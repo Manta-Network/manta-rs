@@ -21,6 +21,11 @@
 // TODO:  Should have a mode on the signer where we return a generic error which reveals no detail
 //        about what went wrong during signing. The kind of error returned from a signing could
 //        reveal information about the internal state (privacy leak, not a secrecy leak).
+// TODO:  Review which subset of the errors are actually recoverable or not. For example, the
+//        non-existence of a membership proof may be a non-recoverable error since it only relies
+//        on invariants that must be maintained by the `Signer` and not by external sources; i.e.
+//        even if the `Signer` is fed malicious UTXOs, it should not error when looking for
+//        membership proofs and so if this error condition is met, the `Signer` has a bug in it.
 // TODO:  Setup multi-account wallets using `crate::key::AccountTable`.
 // TODO:  Move `sync` to a stream-based algorithm instead of iterator-based.
 // TODO:  Save/Load `SignerState` to/from disk.
@@ -252,7 +257,7 @@ impl<C> SignerParameters<C>
 where
     C: Configuration,
 {
-    /// Returns the parameters by reading from the proving context cache.
+    /// Returns the public parameters by reading from the proving context cache.
     #[inline]
     pub async fn get(
         &mut self,
@@ -412,6 +417,9 @@ where
             );
             !assets.is_empty()
         });
+
+        // TODO: Whenever we are doing a full update, don't even build the `deposit` and `withdraw`
+        //       vectors, since we won't be needing them.
         if is_partial {
             Ok(SyncResponse::Partial { deposit, withdraw })
         } else {
@@ -769,14 +777,11 @@ where
         I: IntoIterator<Item = (Utxo<C>, EncryptedNote<C>)>,
         R: IntoIterator<Item = VoidNumber<C>>,
     {
-        // FIXME: Do a capacity check on the current UTXO set?
+        // TODO: Do a capacity check on the current UTXO set?
         //
         // if self.utxo_set.capacity() < starting_index {
-        //    panic!("something is very wrong here")
+        //    panic!("full capacity")
         // }
-        //
-        // TODO: Use a smarter object than `Vec` for `removes.into_iter().collect()` like a
-        //       `HashSet` or some other set-like container with fast membership and remove ops.
         //
         let utxo_set_len = self.state.utxo_set.len();
         match utxo_set_len.checked_sub(starting_index) {
@@ -868,8 +873,8 @@ where
     /// Signs the `transaction`, generating transfer posts.
     #[inline]
     pub async fn sign(&mut self, transaction: Transaction<C>) -> SignResult<C, Self> {
-        // TODO: Should we do a time-based release mechanism to amortize the cost of reading/writing
-        //       to the proving context cache?
+        // TODO: Should we do a time-based release mechanism to amortize the cost of reading
+        //       from the proving context cache?
         let result = self.sign_internal(transaction).await;
         self.state.utxo_set.rollback();
         self.parameters.proving_context.release().await;

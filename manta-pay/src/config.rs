@@ -414,7 +414,6 @@ impl merkle_tree::InnerHash<Compiler> for InnerHashVar {
 }
 
 /// Merkle Tree Configuration
-#[derive(Clone)]
 pub struct MerkleTreeConfiguration;
 
 impl merkle_tree::HashConfiguration for MerkleTreeConfiguration {
@@ -530,29 +529,23 @@ impl transfer::Configuration for Config {
     type PublicKeyVar =
         <Self::KeyAgreementSchemeVar as key::KeyAgreementScheme<Self::Compiler>>::PublicKey;
     type KeyAgreementSchemeVar = KeyAgreementSchemeVar;
-
     type Utxo = <Self::UtxoCommitmentScheme as CommitmentScheme>::Output;
     type UtxoCommitmentScheme = UtxoCommitmentScheme;
     type UtxoVar = <Self::UtxoCommitmentSchemeVar as CommitmentScheme<Self::Compiler>>::Output;
     type UtxoCommitmentSchemeVar = UtxoCommitmentSchemeVar;
-
     type VoidNumber = <Self::VoidNumberHashFunction as BinaryHashFunction>::Output;
     type VoidNumberHashFunction = VoidNumberHashFunction;
     type VoidNumberVar =
         <Self::VoidNumberHashFunctionVar as BinaryHashFunction<Self::Compiler>>::Output;
     type VoidNumberHashFunctionVar = VoidNumberHashFunctionVar;
-
     type UtxoSetModel = merkle_tree::Parameters<MerkleTreeConfiguration>;
     type UtxoSetWitnessVar = <Self::UtxoSetModelVar as accumulator::Model<Self::Compiler>>::Witness;
     type UtxoSetOutputVar = <Self::UtxoSetModelVar as accumulator::Model<Self::Compiler>>::Output;
     type UtxoSetModelVar = merkle_tree::Parameters<MerkleTreeConfigurationVar, Compiler>;
-
     type AssetIdVar = AssetIdVar;
     type AssetValueVar = AssetValueVar;
-
     type Compiler = Compiler;
     type ProofSystem = ProofSystem;
-
     type NoteEncryptionScheme = NoteEncryptionScheme;
 }
 

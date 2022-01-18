@@ -55,48 +55,75 @@ pub trait CoinType: sealed::Sealed {
     const COIN_TYPE_ID: CoinTypeId;
 }
 
-/// Implements the [`CoinType`] trait for `$name` with coin type id given by `$id`.
+/// Implements the [`CoinType`] trait for `$coin` with coin type id given by `$id`.
 macro_rules! impl_coin_type {
-    ($name:ty, $id:ident) => {
-        seal!($name);
-        impl CoinType for $name {
-            const COIN_TYPE_ID: CoinTypeId = $id;
+    (
+        $coin:ident,
+        $doc:expr,
+        $name:expr,
+        $id:expr,
+        $coin_type_id:ident,
+        $key_secret:ident,
+        $account_table:ident
+    ) => {
+        #[doc = $doc]
+        #[doc = "Network"]
+        #[doc = $name]
+        #[doc = "Coin Type"]
+        pub struct $coin;
+
+        #[doc = stringify!($coin)]
+        #[doc = "Coin Type Id"]
+        pub const $coin_type_id: CoinTypeId = $id;
+
+        #[doc = stringify!($coin)]
+        #[doc = "[`KeySecret`] Type"]
+        pub type $key_secret = KeySecret<$coin>;
+
+        #[doc = stringify!($coin)]
+        #[doc = "[`AccountTable`] Type"]
+        pub type $account_table = AccountTable<$coin>;
+
+        seal!($coin);
+
+        impl CoinType for $coin {
+            const COIN_TYPE_ID: CoinTypeId = $coin_type_id;
         }
     };
 }
 
-/// Test Network `testnet` Coin Type
-pub struct Testnet;
+impl_coin_type!(
+    Testnet,
+    "Test",
+    "`testnet`",
+    1,
+    TESTNET_COIN_TYPE_ID,
+    TestnetKeySecret,
+    TestnetAccountTable
+);
 
-/// Test Network `testnet` Coin Type Id
-pub const TESTNET_COIN_TYPE_ID: CoinTypeId = 1;
+impl_coin_type!(
+    Manta,
+    "Main",
+    "`manta`",
+    611,
+    MANTA_COIN_TYPE_ID,
+    MantaKeySecret,
+    MantaAccountTable
+);
 
-impl_coin_type!(Testnet, TESTNET_COIN_TYPE_ID);
+impl_coin_type!(
+    Calamari,
+    "Canary",
+    "`calamari`",
+    612,
+    CALAMARI_COIN_TYPE_ID,
+    CalamariKeySecret,
+    CalamariAccountTable
+);
 
-/// Main Network `manta` Coin Type
-pub struct Manta;
-
-/// Main Network `manta` Coin Type Id
-pub const MANTA_COIN_TYPE_ID: CoinTypeId = 611;
-
-impl_coin_type!(Manta, MANTA_COIN_TYPE_ID);
-
-/// Canary Network `calamari` Coin Type
-pub struct Calamari;
-
-/// Canary Network `calamari` Coin Type Id
-pub const CALAMARI_COIN_TYPE_ID: CoinTypeId = 612;
-
-impl_coin_type!(Calamari, CALAMARI_COIN_TYPE_ID);
-
-/// Testnet [`KeySecret`] Type
-pub type TestnetKeySecret = KeySecret<Testnet>;
-
-/// Manta [`KeySecret`] Type
-pub type MantaKeySecret = KeySecret<Manta>;
-
-/// Calamari [`KeySecret`] Type
-pub type CalamariKeySecret = KeySecret<Calamari>;
+/// Account Table Type
+pub type AccountTable<C> = key::AccountTable<KeySecret<C>>;
 
 /// Key Secret
 pub struct KeySecret<C>
@@ -184,15 +211,3 @@ where
         XPrv::derive_from_path(&self.seed, &path_string::<C>(account, spend, view).parse()?)
     }
 }
-
-/// Account Table Type
-pub type AccountTable<C> = key::AccountTable<KeySecret<C>>;
-
-/// Testnet [`AccountTable`] Type
-pub type TestnetAccountTable = AccountTable<Testnet>;
-
-/// Manta [`AccountTable`] Type
-pub type MantaAccountTable = AccountTable<Manta>;
-
-/// Calamari [`AccountTable`] Type
-pub type CalamariAccountTable = AccountTable<Calamari>;

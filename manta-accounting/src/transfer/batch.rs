@@ -16,6 +16,8 @@
 
 //! Batched Transfers
 
+// TODO: Move more of the batching algorithm here to improve library interfaces.
+
 use crate::{
     asset::Asset,
     transfer::{Configuration, Parameters, PreSender, Receiver, SpendingKey, Utxo},
@@ -54,8 +56,6 @@ where
     where
         R: CryptoRng + RngCore + ?Sized,
     {
-        // TODO: Add optimization path for receiver re-sampling so that we ensure that all UTXOs
-        //       are maximally independent.
         let mut receivers = Vec::with_capacity(RECEIVERS);
         let mut zeroes = Vec::with_capacity(RECEIVERS - 1);
         let (receiver, pre_sender) = spending_key.internal_pair(parameters, rng.gen(), asset);

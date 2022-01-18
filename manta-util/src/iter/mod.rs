@@ -41,7 +41,7 @@ pub trait IteratorExt: Iterator {
     /// Folds every element into an accumulator by applying an operation, returning the final result.
     ///
     /// This function differs from [`Iterator::fold`] because its initial state is borrowed instead
-    /// of moved. This means that we have to return `Option<B>` in case the iterator is empty.
+    /// of owned. This means that we have to return `Option<B>` in case the iterator is empty.
     #[inline]
     fn fold_ref<B, F>(mut self, init: &B, mut f: F) -> Option<B>
     where

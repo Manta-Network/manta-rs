@@ -18,7 +18,7 @@
 
 // FIXME: Add asynchronous streaming interfaces.
 
-use alloc::vec::Vec;
+use alloc::{boxed::Box, vec::Vec};
 use core::{fmt::Debug, hash::Hash};
 use manta_util::{future::LocalBoxFuture, Deserialize, Serialize};
 

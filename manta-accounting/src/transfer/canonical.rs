@@ -97,7 +97,7 @@ where
     /// Builds a [`Mint`] from `asset` and `receiver`.
     #[inline]
     pub fn build(asset: Asset, receiver: Receiver<C>) -> Self {
-        Self::new(Some(asset.id), [asset.value], [], [receiver], [])
+        Self::new_unchecked(Some(asset.id), [asset.value], [], [receiver], [])
     }
 }
 
@@ -124,7 +124,7 @@ where
         senders: [Sender<C>; PrivateTransferShape::SENDERS],
         receivers: [Receiver<C>; PrivateTransferShape::RECEIVERS],
     ) -> Self {
-        Self::new(None, [], senders, receivers, [])
+        Self::new_unchecked(None, [], senders, receivers, [])
     }
 }
 
@@ -141,10 +141,10 @@ pub struct ReclaimShape;
 
 impl_shape!(
     ReclaimShape,
-    0,
+    PrivateTransferShape::SOURCES,
     PrivateTransferShape::SENDERS,
     PrivateTransferShape::RECEIVERS - 1,
-    1
+    PrivateTransferShape::SINKS + 1
 );
 
 /// [`Reclaim`] Transfer
@@ -161,7 +161,7 @@ where
         receivers: [Receiver<C>; ReclaimShape::RECEIVERS],
         reclaim: Asset,
     ) -> Self {
-        Self::new(reclaim.id, [], senders, receivers, [reclaim.value])
+        Self::new_unchecked(Some(reclaim.id), [], senders, receivers, [reclaim.value])
     }
 }
 

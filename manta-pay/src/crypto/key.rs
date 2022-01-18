@@ -21,13 +21,11 @@ use manta_crypto::key::KeyDerivationFunction;
 use manta_util::into_array_unchecked;
 
 /// Blake2s KDF
-#[derive(derivative::Derivative)]
-#[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Blake2sKdf;
 
 impl KeyDerivationFunction for Blake2sKdf {
     type Key = [u8];
-
     type Output = [u8; 32];
 
     #[inline]

@@ -267,9 +267,8 @@ where
 
     /// Inner Digest Path
     ///
-    /// Inner digests are stored from leaf to root, not including the root.
-    ///
-    /// For [`CurrentInnerPath`], only non-default inner digests are stored in the `path`.
+    /// Inner digests are stored from leaf to root, not including the root. For
+    /// [`CurrentInnerPath`], only non-default inner digests are stored in the `path`.
     pub path: Vec<InnerDigest<C>>,
 }
 
@@ -451,11 +450,9 @@ where
                     accumulator = parameters.join(&accumulator, &default_inner_digest);
                     depth += 1;
                 }
-
                 mem::drop(self.path.drain(0..i));
                 self.path.insert(0, last_accumulator);
                 accumulator = parameters.join(&self.path[0], &accumulator);
-
                 Self::fold(
                     parameters,
                     depth + 1,
@@ -507,7 +504,6 @@ where
     InnerDigest<C>: Default,
 {
     type Item = InnerDigest<C>;
-
     type IntoIter = CurrentInnerPathIntoIter<C>;
 
     #[inline]

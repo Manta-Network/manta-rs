@@ -16,11 +16,11 @@
 
 //! Merkle Trees and Forests
 
+// FIXME: Get rid of as many `pub(super)` declarations as we can.
 // TODO:  Should `Leaf` move into `Tree`/`Configuration` since we might want the tree to have
 //        special kinds of leaf input (metadata along with just the digest)?
 // TODO:  Maybe we should require `INNER_HEIGHT` instead of `HEIGHT` so that we don't have to rely
 //        on the user to check that `HEIGHT >= 2`.
-// FIXME: Get rid of as many `pub(super)` declarations as we can.
 // TODO:  Extend to arbitrary arity.
 
 mod node;

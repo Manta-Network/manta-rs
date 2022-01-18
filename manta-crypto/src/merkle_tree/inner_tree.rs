@@ -668,17 +668,12 @@ where
         M: Default,
         S: Default,
     {
-        // TODO: Remove duplicated method calls.
-
         let mut inner_tree = InnerTree::<C, M, S>::default();
-
         let leaf_index = path.leaf_index.as_left();
         let node_iter = path.into_nodes();
-
         if node_iter.len() == 0 {
             return inner_tree.into();
         }
-
         let root = node_iter.fold(base, |acc, (node, digest)| {
             let index = node.map_index();
             match digest {
@@ -693,9 +688,7 @@ where
                 ),
             }
         });
-
         inner_tree.set_root(root);
-
         Self::new(inner_tree, leaf_index)
     }
 

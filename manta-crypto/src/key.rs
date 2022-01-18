@@ -16,6 +16,7 @@
 
 //! Cryptographic Key Primitives
 
+use crate::constraint::Native;
 use core::marker::PhantomData;
 
 /// Key Derivation Function
@@ -49,7 +50,6 @@ pub mod kdf {
         F: KeyDerivationFunction<Key = [u8]>,
     {
         type Key = T;
-
         type Output = F::Output;
 
         #[inline]
@@ -78,7 +78,6 @@ pub mod kdf {
         F: KeyDerivationFunction<Key = [u8]>,
     {
         type Key = T;
-
         type Output = F::Output;
 
         #[inline]
@@ -113,27 +112,50 @@ pub trait KeyAgreementScheme<COM = ()> {
     /// Shared Secret Type
     type SharedSecret;
 
-    /// Derives a public key corresponding to `secret_key`. This public key should be sent to the
-    /// other party involved in the shared computation.
-    fn derive(&self, secret_key: &Self::SecretKey, compiler: &mut COM) -> Self::PublicKey;
+    /// Derives a public key corresponding to `secret_key` in the given `compiler`. This public key
+    /// should be sent to the other party involved in the shared computation.
+    fn derive_in(&self, secret_key: &Self::SecretKey, compiler: &mut COM) -> Self::PublicKey;
 
     /// Derives a public key corresponding to `secret_key`. This public key should be sent to the
     /// other party involved in the shared computation.
+    #[inline]
+    fn derive(&self, secret_key: &Self::SecretKey) -> Self::PublicKey
+    where
+        COM: Native,
+    {
+        self.derive_in(secret_key, &mut COM::compiler())
+    }
+
+    /// Derives a public key corresponding to `secret_key` in the given `compiler`. This public key
+    /// should be sent to the other party involved in the shared computation.
     ///
     /// # Implementation Note
     ///
-    /// This method is an optimization path for [`derive`] when the `secret_key` value is owned,
-    /// and by default, [`derive`] is used as its implementation. This method must return the same
-    /// value as [`derive`] on the same input.
+    /// This method is an optimization path for [`derive_in`] when the `secret_key` value is owned,
+    /// and by default, [`derive_in`] is used as its implementation. This method must return the same
+    /// value as [`derive_in`] on the same input.
     ///
-    /// [`derive`]: Self::derive
+    /// [`derive_in`]: Self::derive_in
     #[inline]
-    fn derive_owned(&self, secret_key: Self::SecretKey, compiler: &mut COM) -> Self::PublicKey {
-        self.derive(&secret_key, compiler)
+    fn derive_owned_in(&self, secret_key: Self::SecretKey, compiler: &mut COM) -> Self::PublicKey {
+        self.derive_in(&secret_key, compiler)
     }
 
-    /// Computes the shared secret given the known `secret_key` and the given `public_key`.
-    fn agree(
+    /// Derives a public key corresponding to `secret_key`. This public key should be sent to the
+    /// other party involved in the shared computation.
+    ///
+    /// See [`derive_owned_in`](Self::derive_owned_in) for more.
+    #[inline]
+    fn derive_owned(&self, secret_key: Self::SecretKey) -> Self::PublicKey
+    where
+        COM: Native,
+    {
+        self.derive(&secret_key)
+    }
+
+    /// Computes the shared secret given the known `secret_key` and the given `public_key` in the
+    /// given `compiler`.
+    fn agree_in(
         &self,
         secret_key: &Self::SecretKey,
         public_key: &Self::PublicKey,
@@ -141,22 +163,51 @@ pub trait KeyAgreementScheme<COM = ()> {
     ) -> Self::SharedSecret;
 
     /// Computes the shared secret given the known `secret_key` and the given `public_key`.
+    #[inline]
+    fn agree(
+        &self,
+        secret_key: &Self::SecretKey,
+        public_key: &Self::PublicKey,
+    ) -> Self::SharedSecret
+    where
+        COM: Native,
+    {
+        self.agree_in(secret_key, public_key, &mut COM::compiler())
+    }
+
+    /// Computes the shared secret given the known `secret_key` and the given `public_key` in the
+    /// given `compiler`.
     ///
     /// # Implementation Note
     ///
-    /// This method is an optimization path for [`agree`] when the `secret_key` value and
-    /// `public_key` value are owned, and by default, [`agree`] is used as its implementation. This
-    /// method must return the same value as [`agree`] on the same input.
+    /// This method is an optimization path for [`agree_in`] when the `secret_key` value and
+    /// `public_key` value are owned, and by default, [`agree_in`] is used as its implementation. This
+    /// method must return the same value as [`agree_in`] on the same input.
     ///
-    /// [`agree`]: Self::agree
+    /// [`agree_in`]: Self::agree_in
     #[inline]
-    fn agree_owned(
+    fn agree_owned_in(
         &self,
         secret_key: Self::SecretKey,
         public_key: Self::PublicKey,
         compiler: &mut COM,
     ) -> Self::SharedSecret {
-        self.agree(&secret_key, &public_key, compiler)
+        self.agree_in(&secret_key, &public_key, compiler)
+    }
+
+    /// Computes the shared secret given the known `secret_key` and the given `public_key`.
+    ///
+    /// See [`agree_owned_in`](Self::agree_owned_in) for more.
+    #[inline]
+    fn agree_owned(
+        &self,
+        secret_key: Self::SecretKey,
+        public_key: Self::PublicKey,
+    ) -> Self::SharedSecret
+    where
+        COM: Native,
+    {
+        self.agree(&secret_key, &public_key)
     }
 }
 
@@ -175,8 +226,8 @@ pub mod test {
         K::SharedSecret: Debug + PartialEq,
     {
         assert_eq!(
-            parameters.agree(lhs, &parameters.derive(rhs, &mut ()), &mut ()),
-            parameters.agree(rhs, &parameters.derive(lhs, &mut ()), &mut ()),
+            parameters.agree(lhs, &parameters.derive(rhs)),
+            parameters.agree(rhs, &parameters.derive(lhs)),
             "Key agreement schemes should satisfy the agreement property."
         )
     }

@@ -110,7 +110,6 @@ where
     A: Accumulator + ?Sized,
 {
     type Item = A::Item;
-
     type Model = A::Model;
 
     #[inline]

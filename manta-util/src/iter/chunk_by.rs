@@ -90,6 +90,12 @@ where
         }
         Some(into_array_unchecked(vec))
     }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let (min, max) = self.iter.size_hint();
+        (min / N, max.map(|m| m / N))
+    }
 }
 
 impl<I, const N: usize> FusedIterator for ChunkBy<I, N> where I: Iterator {}

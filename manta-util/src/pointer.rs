@@ -63,7 +63,6 @@ macro_rules! impl_pointer_family {
         seal!($type);
         impl<T> PointerFamily<T> for $type {
             type Strong = $strong<T>;
-
             type Weak = $weak<T>;
 
             #[inline]

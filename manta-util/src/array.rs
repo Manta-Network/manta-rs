@@ -56,7 +56,7 @@ pub fn array_map<T, U, F, const N: usize>(array: [T; N], f: F) -> [U; N]
 where
     F: FnMut(T) -> U,
 {
-    into_array_unchecked(IntoIterator::into_iter(array).map(f).collect::<Vec<_>>())
+    into_array_unchecked(array.into_iter().map(f).collect::<Vec<_>>())
 }
 
 /// Maps `f` over the `array` by reference.
@@ -76,9 +76,7 @@ where
     F: FnMut(T) -> Result<U, E>,
 {
     Ok(into_array_unchecked(
-        IntoIterator::into_iter(array)
-            .map(f)
-            .collect::<Result<Vec<_>, _>>()?,
+        array.into_iter().map(f).collect::<Result<Vec<_>, _>>()?,
     ))
 }
 

@@ -71,19 +71,12 @@ where
     E: ark_ec::PairingEngine,
 {
     type ConstraintSystem = R1CS<E::Fr>;
-
     type PublicParameters = ();
-
     type ProvingContext = ProvingKey<E>;
-
     type VerifyingContext = PreparedVerifyingKey<E>;
-
     type Input = Vec<E::Fr>;
-
     type Proof = Proof<E>;
-
     type Verification = bool;
-
     type Error = SynthesisError;
 
     #[inline]

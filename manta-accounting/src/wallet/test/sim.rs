@@ -16,7 +16,7 @@
 
 //! Actor Simulation Framework
 
-use alloc::vec::Vec;
+use alloc::{boxed::Box, vec::Vec};
 use core::{fmt::Debug, hash::Hash};
 use futures::stream::{self, select_all::SelectAll, Stream, StreamExt};
 use manta_crypto::rand::{CryptoRng, RngCore};
@@ -141,7 +141,6 @@ where
     where
         R: 's + CryptoRng + RngCore,
     {
-        // TODO: Look for a more efficient way to allocate the memory here instead of `Box::pin`.
         stream::unfold((actor, rng), move |mut state| {
             Box::pin(async move {
                 simulation
@@ -156,10 +155,10 @@ where
 
     /// Runs the simulator using `rng`, returning a stream of future events.
     #[inline]
-    pub fn run<'s, R, G>(&'s mut self, mut rng: G) -> impl 's + Stream<Item = Event<S>>
+    pub fn run<'s, R, F>(&'s mut self, mut rng: F) -> impl 's + Stream<Item = Event<S>>
     where
         R: 's + CryptoRng + RngCore,
-        G: 's + FnMut() -> R,
+        F: FnMut() -> R,
     {
         let mut streams = SelectAll::new();
         for (i, actor) in self.actors.iter_mut().enumerate() {

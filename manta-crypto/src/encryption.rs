@@ -67,9 +67,7 @@ pub mod symmetric {
         P: Into<S::Plaintext> + TryFrom<S::Plaintext>,
     {
         type Key = S::Key;
-
         type Plaintext = P;
-
         type Ciphertext = S::Ciphertext;
 
         #[inline]
@@ -108,7 +106,7 @@ pub trait HybridPublicKeyEncryptionScheme: SymmetricKeyEncryptionScheme {
         secret_key: &SecretKey<Self>,
         public_key: &PublicKey<Self>,
     ) -> Self::Key {
-        Self::KeyDerivationFunction::derive(&parameters.agree(secret_key, public_key, &mut ()))
+        Self::KeyDerivationFunction::derive(&parameters.agree(secret_key, public_key))
     }
 }
 
@@ -145,9 +143,7 @@ where
     F: KeyDerivationFunction<Key = K::SharedSecret, Output = S::Key>,
 {
     type Key = S::Key;
-
     type Plaintext = S::Plaintext;
-
     type Ciphertext = S::Ciphertext;
 
     #[inline]
@@ -210,7 +206,7 @@ where
                 H::agree_derive(parameters, ephemeral_secret_key, public_key),
                 plaintext,
             ),
-            ephemeral_public_key: parameters.derive(ephemeral_secret_key, &mut ()),
+            ephemeral_public_key: parameters.derive(ephemeral_secret_key),
         }
     }
 
@@ -363,7 +359,7 @@ pub mod test {
     {
         let decrypted_message = EncryptedMessage::<H>::new(
             parameters,
-            &parameters.derive(secret_key, &mut ()),
+            &parameters.derive(secret_key),
             ephemeral_secret_key,
             plaintext.clone(),
         )
@@ -375,7 +371,7 @@ pub mod test {
         );
         assert_eq!(
             decrypted_message.ephemeral_public_key,
-            parameters.derive(ephemeral_secret_key, &mut ()),
+            parameters.derive(ephemeral_secret_key),
             "Decrypted message should have included the correct ephemeral public key.",
         );
     }

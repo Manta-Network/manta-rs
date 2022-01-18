@@ -18,6 +18,7 @@
 
 // TODO: Report a more meaningful error on `push` failure. In some way, it must match the
 //       `TransferPostError` variants.
+// TODO: Move to a streaming protocol for `Connection::pull`.
 
 use crate::transfer::{Configuration, EncryptedNote, TransferPost, Utxo, VoidNumber};
 use alloc::vec::Vec;

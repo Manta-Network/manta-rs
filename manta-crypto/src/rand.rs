@@ -65,7 +65,6 @@ where
     R: block::BlockRngCore + ?Sized,
 {
     type Item = R::Item;
-
     type Results = R::Results;
 
     #[inline]
@@ -138,7 +137,6 @@ where
     R: block::BlockRngCore,
 {
     type Item = R::Item;
-
     type Results = R::Results;
 
     #[inline]

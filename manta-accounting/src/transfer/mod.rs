@@ -176,7 +176,7 @@ pub trait Configuration {
         secret_key: &SecretKeyVar<Self>,
         compiler: &mut Self::Compiler,
     ) -> PublicKeyVar<Self> {
-        parameters.derive(secret_key, compiler)
+        parameters.derive_in(secret_key, compiler)
     }
 
     /// Generates the commitment trapdoor associated to `secret_key` and `public_key`.
@@ -186,7 +186,7 @@ pub trait Configuration {
         secret_key: &SecretKey<Self>,
         public_key: &PublicKey<Self>,
     ) -> Trapdoor<Self> {
-        key_agreement.agree(secret_key, public_key, &mut ())
+        key_agreement.agree(secret_key, public_key)
     }
 
     /// Generates the commitment trapdoor associated to `secret_key` and `public_key`.
@@ -197,7 +197,7 @@ pub trait Configuration {
         public_key: &PublicKeyVar<Self>,
         compiler: &mut Self::Compiler,
     ) -> TrapdoorVar<Self> {
-        key_agreement.agree(secret_key, public_key, compiler)
+        key_agreement.agree_in(secret_key, public_key, compiler)
     }
 
     /// Generates the trapdoor associated to `secret_key` and `public_key` and then uses it to
@@ -508,8 +508,8 @@ where
     #[inline]
     pub fn derive(&self, parameters: &C::KeyAgreementScheme) -> ReceivingKey<C> {
         ReceivingKey {
-            spend: parameters.derive(&self.spend, &mut ()),
-            view: parameters.derive(&self.view, &mut ()),
+            spend: parameters.derive(&self.spend),
+            view: parameters.derive(&self.view),
         }
     }
 
@@ -534,7 +534,6 @@ where
         ephemeral_key: PublicKey<C>,
         asset: Asset,
     ) -> PreSender<C> {
-        // TODO: See if this clone is really needed.
         PreSender::new(parameters, self.spend.clone(), ephemeral_key, asset)
     }
 
@@ -921,7 +920,7 @@ where
     /// # Safety
     ///
     /// This method can only be called once we check that `void_number` is not already stored on
-    /// the ledger. See [`is_unspent`](Self::is_unspent).
+    /// the ledger. See [`is_unspent`](Self::is_unspent) for more.
     fn spend(
         &mut self,
         utxo_set_output: Self::ValidUtxoSetOutput,
@@ -1207,7 +1206,7 @@ where
     /// # Safety
     ///
     /// This method can only be called once we check that `utxo` is not already stored on the
-    /// ledger. See [`is_not_registered`](Self::is_not_registered).
+    /// ledger. See [`is_not_registered`](Self::is_not_registered) for more.
     fn register(
         &mut self,
         utxo: Self::ValidUtxo,
@@ -1481,10 +1480,10 @@ where
             )?,
             asset_id: self.asset_id,
             sources: self.sources.into(),
-            sender_posts: IntoIterator::into_iter(self.senders)
-                .map(Sender::into_post)
-                .collect(),
-            receiver_posts: IntoIterator::into_iter(self.receivers)
+            sender_posts: self.senders.into_iter().map(Sender::into_post).collect(),
+            receiver_posts: self
+                .receivers
+                .into_iter()
                 .map(Receiver::into_post)
                 .collect(),
             sinks: self.sinks.into(),
@@ -1531,7 +1530,6 @@ where
         compiler: &mut C::Compiler,
     ) {
         let mut secret_asset_ids = Vec::with_capacity(SENDERS + RECEIVERS);
-
         let input_sum = Self::value_sum(
             self.senders
                 .into_iter()
@@ -1544,7 +1542,6 @@ where
                 .collect::<Vec<_>>(),
             compiler,
         );
-
         let output_sum = Self::value_sum(
             self.receivers
                 .into_iter()
@@ -1557,9 +1554,7 @@ where
                 .collect::<Vec<_>>(),
             compiler,
         );
-
         compiler.assert_eq(&input_sum, &output_sum);
-
         match self.asset_id {
             Some(asset_id) => compiler.assert_all_eq_to_base(&asset_id, secret_asset_ids.iter()),
             _ => compiler.assert_all_eq(secret_asset_ids.iter()),
@@ -1572,6 +1567,7 @@ where
     where
         I: IntoIterator<Item = C::AssetValueVar>,
     {
+        // TODO: Add a `Sum` trait for `compiler` and just do a sum here.
         iter.into_iter()
             .reduce(move |l, r| Add::add(l, r, compiler))
             .unwrap()
@@ -1700,7 +1696,6 @@ where
         I: Iterator<Item = (Self::AccountId, AssetValue)>;
 
     /// Checks that the transfer `proof` is valid.
-    #[allow(clippy::too_many_arguments)] // FIXME: Write a better abstraction for this.
     fn is_valid(
         &self,
         asset_id: Option<AssetId>,

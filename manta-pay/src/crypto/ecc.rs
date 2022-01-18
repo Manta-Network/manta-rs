@@ -107,7 +107,7 @@ pub mod arkworks {
             let mut buffer = Vec::new();
             self.0
                 .serialize_unchecked(&mut buffer)
-                .expect("Serialization does not fail.");
+                .expect("Serialization is not allowed to fail.");
             buffer
         }
     }
@@ -274,7 +274,7 @@ pub mod arkworks {
             let _ = compiler;
             lhs.0
                 .is_eq(&rhs.0)
-                .expect("Equality check is not allowed to fail.")
+                .expect("Equality checking is not allowed to fail.")
         }
     }
 
