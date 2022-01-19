@@ -23,7 +23,7 @@ use alloc::vec::Vec;
 use core::{fmt::Debug, iter, mem};
 use manta_crypto::hash::HashFunction;
 
-#[cfg(test)]
+#[cfg(any(feature = "test", test))]
 use {
     core::iter::repeat,
     manta_crypto::rand::{CryptoRng, Rand, RngCore, Sample},
@@ -229,7 +229,7 @@ where
     }
 }
 
-#[cfg(test)] // NOTE: This is only safe to use in a test.
+#[cfg(any(feature = "test", test))] // NOTE: This is only safe to use in a test.
 impl<D, S, COM, const ARITY: usize> Sample<D> for Hash<S, COM, ARITY>
 where
     D: Clone,

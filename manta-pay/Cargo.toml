@@ -28,6 +28,10 @@ maintenance = { status = "actively-developed" }
 name = "main"
 harness = false
 
+[[bin]]
+name = "generate_parameters"
+required-features = ["arkworks", "test"]
+
 [features]
 # Enable Arkworks Backend
 arkworks = [

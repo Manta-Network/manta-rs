@@ -24,5 +24,9 @@ is-it-maintained-issue-resolution = { repository = "Manta-Network/manta-rs" }
 is-it-maintained-open-issues = { repository = "Manta-Network/manta-rs" }
 maintenance = { status = "actively-developed" }
 
+[features]
+# Standard Library
+std = []
+
 [dependencies]
-zeroize = { version = "1.4.3", optional = true, default-features = false, features = ["alloc"] }
+derivative = { version = "2.2.0", default-features = false, features = ["use_core"] }

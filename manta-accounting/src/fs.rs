@@ -20,7 +20,10 @@
 
 use alloc::{boxed::Box, vec::Vec};
 use core::{fmt::Debug, hash::Hash};
-use manta_util::{future::LocalBoxFuture, Deserialize, Serialize};
+use manta_util::{
+    future::LocalBoxFuture,
+    serde::{Deserialize, Serialize},
+};
 
 /// Filesystem Encrypted Saving
 pub trait SaveEncrypted {
@@ -130,7 +133,8 @@ pub mod cocoon {
     };
     use cocoon_crate::{Cocoon, Error as CocoonError};
     use core::fmt;
-    use manta_util::{from_variant_impl, zeroize::Zeroizing};
+    use manta_util::from_variant_impl;
+    use zeroize::Zeroizing;
 
     /// Cocoon Loading/Saving Error
     #[derive(Debug)]

@@ -55,7 +55,7 @@ pub mod groth16 {
     use alloc::vec::Vec;
     use ark_crypto_primitives::SNARK;
     use ark_ec::PairingEngine;
-    use ark_groth16::{Groth16 as ArkGroth16, PreparedVerifyingKey, ProvingKey};
+    use ark_groth16::{Groth16 as ArkGroth16, PreparedVerifyingKey};
     use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
     use core::marker::PhantomData;
     use manta_crypto::{
@@ -64,10 +64,12 @@ pub mod groth16 {
     };
     use scale_codec::{Decode, Encode, EncodeLike};
 
+    pub use ark_groth16::ProvingKey;
+
     /// Groth16 Proof
     #[derive(derivative::Derivative)]
     #[derivative(Clone, Debug, Default, Eq, PartialEq)]
-    pub struct Proof<E>(ark_groth16::Proof<E>)
+    pub struct Proof<E>(pub ark_groth16::Proof<E>)
     where
         E: PairingEngine;
 
@@ -106,6 +108,31 @@ pub mod groth16 {
 
     impl<E> EncodeLike for Proof<E> where E: PairingEngine {}
 
+    /// Proving Context
+    #[derive(derivative::Derivative)]
+    #[derivative(Clone, Debug, Eq, PartialEq)]
+    pub struct ProvingContext<E>(pub ProvingKey<E>)
+    where
+        E: PairingEngine;
+
+    impl<E> ProvingContext<E>
+    where
+        E: PairingEngine,
+    {
+        ///
+        #[inline]
+        pub fn new(proving_key: ProvingKey<E>) -> Self {
+            Self(proving_key)
+        }
+    }
+
+    /// Verifying Context
+    #[derive(derivative::Derivative)]
+    #[derivative(Clone, Debug, Default)]
+    pub struct VerifyingContext<E>(pub PreparedVerifyingKey<E>)
+    where
+        E: PairingEngine;
+
     /// Arkworks Groth16 Proof System
     #[derive(derivative::Derivative)]
     #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -119,8 +146,8 @@ pub mod groth16 {
     {
         type ConstraintSystem = R1CS<E::Fr>;
         type PublicParameters = ();
-        type ProvingContext = ProvingKey<E>;
-        type VerifyingContext = PreparedVerifyingKey<E>;
+        type ProvingContext = ProvingContext<E>;
+        type VerifyingContext = VerifyingContext<E>;
         type Input = Vec<E::Fr>;
         type Proof = Proof<E>;
         type Verification = bool;
@@ -150,7 +177,10 @@ pub mod groth16 {
                 ConstraintSynthesizerWrapper(cs),
                 &mut SizedRng(rng),
             )?;
-            Ok((proving_key, ArkGroth16::process_vk(&verifying_key)?))
+            Ok((
+                ProvingContext(proving_key),
+                VerifyingContext(ArkGroth16::process_vk(&verifying_key)?),
+            ))
         }
 
         #[inline]
@@ -163,7 +193,7 @@ pub mod groth16 {
             R: CryptoRng + RngCore + ?Sized,
         {
             ArkGroth16::prove(
-                context,
+                &context.0,
                 ConstraintSynthesizerWrapper(cs),
                 &mut SizedRng(rng),
             )
@@ -176,7 +206,7 @@ pub mod groth16 {
             proof: &Self::Proof,
             context: &Self::VerifyingContext,
         ) -> Result<Self::Verification, Self::Error> {
-            ArkGroth16::verify_with_processed_vk(context, input, &proof.0)
+            ArkGroth16::verify_with_processed_vk(&context.0, input, &proof.0)
         }
     }
 }

@@ -196,12 +196,12 @@ pub type ProvingContextCacheError<C> =
 
 /// Signer Error
 #[derive(derivative::Derivative)]
-#[derivative(Debug(bound = r#"
+#[derivative(Debug(bound = r"
     key::Error<C::HierarchicalKeyDerivationScheme>: Debug,
     ProvingContextCacheError<C>: Debug,
     ProofSystemError<C>: Debug,
     CE: Debug
-"#))]
+"))]
 pub enum Error<C, CE = Infallible>
 where
     C: Configuration,

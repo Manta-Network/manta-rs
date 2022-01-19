@@ -54,7 +54,7 @@ use manta_crypto::{
     merkle_tree,
 };
 
-#[cfg(test)]
+#[cfg(any(feature = "test", test))]
 use manta_crypto::rand::{CryptoRng, Rand, RngCore, Sample, Standard};
 
 #[doc(inline)]
@@ -133,7 +133,7 @@ pub type KeyAgreementSchemeVar = DiffieHellman<GroupVar, Compiler>;
 pub type Utxo = Fp<ConstraintField>;
 
 /// UTXO Commitment Scheme
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct UtxoCommitmentScheme(pub Poseidon4);
 
 impl CommitmentScheme for UtxoCommitmentScheme {
@@ -158,7 +158,7 @@ impl CommitmentScheme for UtxoCommitmentScheme {
     }
 }
 
-#[cfg(test)] // NOTE: This is only safe in a test.
+#[cfg(any(feature = "test", test))] // NOTE: This is only safe in a test.
 impl Sample for UtxoCommitmentScheme {
     #[inline]
     fn sample<R>(distribution: Standard, rng: &mut R) -> Self
@@ -208,7 +208,7 @@ impl Constant<Compiler> for UtxoCommitmentSchemeVar {
 pub type VoidNumber = Fp<ConstraintField>;
 
 /// Void Number Hash Function
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct VoidNumberHashFunction(pub Poseidon2);
 
 impl BinaryHashFunction for VoidNumberHashFunction {
@@ -227,7 +227,7 @@ impl BinaryHashFunction for VoidNumberHashFunction {
     }
 }
 
-#[cfg(test)] // NOTE: This is only safe in a test.
+#[cfg(any(feature = "test", test))] // NOTE: This is only safe in a test.
 impl Sample for VoidNumberHashFunction {
     #[inline]
     fn sample<R>(distribution: Standard, rng: &mut R) -> Self
@@ -359,7 +359,6 @@ pub type LeafHash = merkle_tree::IdentityLeafHash<Utxo>;
 pub type LeafHashVar = merkle_tree::IdentityLeafHash<UtxoVar, Compiler>;
 
 /// Inner Hash Configuration
-#[derive(Clone)]
 pub struct InnerHash;
 
 impl merkle_tree::InnerHash for InnerHash {
@@ -432,7 +431,7 @@ impl merkle_tree::Configuration for MerkleTreeConfiguration {
     const HEIGHT: usize = 20;
 }
 
-#[cfg(test)]
+#[cfg(any(feature = "test", test))]
 impl merkle_tree::test::HashParameterSampling for MerkleTreeConfiguration {
     type LeafHashParameterDistribution = Standard;
     type InnerHashParameterDistribution = Standard;

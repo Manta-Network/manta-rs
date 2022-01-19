@@ -16,7 +16,7 @@
 
 //! Utilities
 
-#![no_std]
+#![cfg_attr(not(any(feature = "std", test)), no_std)]
 #![cfg_attr(doc_cfg, feature(doc_cfg))]
 #![forbid(rustdoc::broken_intra_doc_links)]
 #![forbid(missing_docs)]
@@ -26,21 +26,15 @@ extern crate alloc;
 mod array;
 mod concat;
 mod sealed;
-mod serde;
 
 pub mod cache;
 pub mod future;
 pub mod iter;
 pub mod pointer;
+pub mod serde;
 
 pub use array::*;
 pub use concat::*;
-pub use serde::*;
-
-#[doc(inline)]
-#[cfg(feature = "zeroize")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "zeroize")))]
-pub use zeroize;
 
 /// Implements [`From`]`<$from>` for an enum `$to`, choosing the `$kind` variant.
 // TODO: add `where` clauses

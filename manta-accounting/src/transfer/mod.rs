@@ -354,30 +354,66 @@ pub type ProofInput<C> = <<C as Configuration>::ProofSystem as ProofSystem>::Inp
 /// Transfer Validity Proof Type
 pub type Proof<C> = <ProofSystemType<C> as ProofSystem>::Proof;
 
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 /// Transfer Parameters
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = r"
+                C::KeyAgreementScheme: Deserialize<'de>,
+                C::UtxoCommitmentScheme: Deserialize<'de>,
+                C::VoidNumberHashFunction: Deserialize<'de>,
+            ",
+            serialize = r"
+                C::KeyAgreementScheme: Serialize,
+                C::UtxoCommitmentScheme: Serialize,
+                C::VoidNumberHashFunction: Serialize,
+            ",
+        ),
+        deny_unknown_fields,
+    )
+)]
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(
-        bound = "C::KeyAgreementScheme: Clone, C::UtxoCommitmentScheme: Clone, C::VoidNumberHashFunction: Clone"
-    ),
-    Copy(
-        bound = "C::KeyAgreementScheme: Copy, C::UtxoCommitmentScheme: Copy, C::VoidNumberHashFunction: Copy"
-    ),
-    Debug(
-        bound = "C::KeyAgreementScheme: Debug, C::UtxoCommitmentScheme: Debug, C::VoidNumberHashFunction: Debug"
-    ),
-    Default(
-        bound = "C::KeyAgreementScheme: Default, C::UtxoCommitmentScheme: Default, C::VoidNumberHashFunction: Default"
-    ),
-    Eq(
-        bound = "C::KeyAgreementScheme: Eq, C::UtxoCommitmentScheme: Eq, C::VoidNumberHashFunction: Eq"
-    ),
-    Hash(
-        bound = "C::KeyAgreementScheme: Hash, C::UtxoCommitmentScheme: Hash, C::VoidNumberHashFunction: Hash"
-    ),
-    PartialEq(
-        bound = "C::KeyAgreementScheme: PartialEq, C::UtxoCommitmentScheme: PartialEq, C::VoidNumberHashFunction: PartialEq"
-    )
+    Clone(bound = r"
+        C::KeyAgreementScheme: Clone,
+        C::UtxoCommitmentScheme: Clone,
+        C::VoidNumberHashFunction: Clone
+    "),
+    Copy(bound = r"
+        C::KeyAgreementScheme: Copy,
+        C::UtxoCommitmentScheme: Copy,
+        C::VoidNumberHashFunction: Copy
+    "),
+    Debug(bound = r"
+        C::KeyAgreementScheme: Debug,
+        C::UtxoCommitmentScheme: Debug,
+        C::VoidNumberHashFunction: Debug
+    "),
+    Default(bound = r"
+        C::KeyAgreementScheme: Default,
+        C::UtxoCommitmentScheme: Default,
+        C::VoidNumberHashFunction: Default
+    "),
+    Eq(bound = r"
+        C::KeyAgreementScheme: Eq,
+        C::UtxoCommitmentScheme: Eq,
+        C::VoidNumberHashFunction: Eq
+    "),
+    Hash(bound = r"
+        C::KeyAgreementScheme: Hash,
+        C::UtxoCommitmentScheme: Hash,
+        C::VoidNumberHashFunction: Hash
+    "),
+    PartialEq(bound = r"
+        C::KeyAgreementScheme: PartialEq,
+        C::UtxoCommitmentScheme: PartialEq,
+        C::VoidNumberHashFunction: PartialEq
+    ")
 )]
 pub struct Parameters<C>
 where
