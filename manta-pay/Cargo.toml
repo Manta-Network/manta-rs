@@ -59,7 +59,7 @@ test = ["manta-accounting/test", "manta-crypto/test"]
 simulation = ["rand", "statrs"]
 
 # Standard Library
-std = ["manta-accounting/std"]
+std = ["manta-accounting/std", "manta-util/std"]
 
 [dependencies]
 aes-gcm = { version = "0.9.4", default-features = false, features = ["aes", "alloc"] }

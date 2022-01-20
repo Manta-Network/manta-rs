@@ -37,7 +37,7 @@ use crate::{
     },
 };
 use core::{fmt::Debug, hash::Hash, marker::PhantomData};
-use manta_util::{pointer::PointerFamily, Rollback};
+use manta_util::{persistance::Rollback, pointer::PointerFamily};
 
 /// Merkle Tree Leaf Hash
 pub trait LeafHash<COM = ()> {

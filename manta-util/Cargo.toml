@@ -25,8 +25,11 @@ is-it-maintained-open-issues = { repository = "Manta-Network/manta-rs" }
 maintenance = { status = "actively-developed" }
 
 [features]
+# Allocation
+alloc = []
+
 # Standard Library
-std = []
+std = ["alloc"]
 
 [dependencies]
 derivative = { version = "2.2.0", default-features = false, features = ["use_core"] }

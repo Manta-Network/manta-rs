@@ -36,7 +36,7 @@ use manta_crypto::{
     constraint::{Allocator, Secret, ValueSource, Variable},
     rand::{CryptoRng, Rand, RngCore, Sample, Standard},
 };
-use manta_util::{into_array_unchecked, Concat, ConcatAccumulator};
+use manta_util::into_array_unchecked;
 
 #[cfg(feature = "std")]
 use std::{
@@ -85,23 +85,6 @@ impl AssetId {
     #[inline]
     pub const fn into_bytes(self) -> [u8; Self::SIZE] {
         self.0.to_le_bytes()
-    }
-}
-
-impl Concat for AssetId {
-    type Item = u8;
-
-    #[inline]
-    fn concat<A>(&self, accumulator: &mut A)
-    where
-        A: ConcatAccumulator<Self::Item> + ?Sized,
-    {
-        accumulator.extend(&self.into_bytes());
-    }
-
-    #[inline]
-    fn size_hint(&self) -> Option<usize> {
-        Some(Self::SIZE)
     }
 }
 
@@ -219,23 +202,6 @@ impl AssetValue {
     #[inline]
     pub const fn make_change(self, n: usize) -> Option<Change> {
         Change::new(self.0, n)
-    }
-}
-
-impl Concat for AssetValue {
-    type Item = u8;
-
-    #[inline]
-    fn concat<A>(&self, accumulator: &mut A)
-    where
-        A: ConcatAccumulator<Self::Item> + ?Sized,
-    {
-        accumulator.extend(&self.into_bytes());
-    }
-
-    #[inline]
-    fn size_hint(&self) -> Option<usize> {
-        Some(Self::SIZE)
     }
 }
 
@@ -396,17 +362,19 @@ impl Asset {
     /// Converts a byte array into `self`.
     #[inline]
     pub fn from_bytes(bytes: [u8; Self::SIZE]) -> Self {
-        let split = (AssetId::BITS / 8) as usize;
         Self::new(
-            AssetId::from_bytes(into_array_unchecked(&bytes[..split])),
-            AssetValue::from_bytes(into_array_unchecked(&bytes[split..])),
+            AssetId::from_bytes(into_array_unchecked(&bytes[..AssetId::SIZE])),
+            AssetValue::from_bytes(into_array_unchecked(&bytes[AssetId::SIZE..])),
         )
     }
 
     /// Converts `self` into a byte array.
     #[inline]
     pub fn into_bytes(self) -> [u8; Self::SIZE] {
-        into_array_unchecked(self.accumulated::<Vec<_>>())
+        let mut buffer = [0; Self::SIZE];
+        buffer[..AssetId::SIZE].copy_from_slice(&self.id.into_bytes());
+        buffer[AssetId::SIZE..].copy_from_slice(&self.value.into_bytes());
+        buffer
     }
 
     /// Returns [`self.value`](Self::value) if the given `id` matches [`self.id`](Self::id).
@@ -473,32 +441,6 @@ where
     #[inline]
     fn add_assign(&mut self, rhs: V) {
         self.value += rhs;
-    }
-}
-
-impl<I, V> Concat for Asset<I, V>
-where
-    I: Concat,
-    V: Concat<Item = I::Item>,
-{
-    type Item = I::Item;
-
-    #[inline]
-    fn concat<A>(&self, accumulator: &mut A)
-    where
-        A: ConcatAccumulator<Self::Item> + ?Sized,
-    {
-        self.id.concat(accumulator);
-        self.value.concat(accumulator);
-    }
-
-    #[inline]
-    fn size_hint(&self) -> Option<usize> {
-        if let (Some(id_size), Some(value_size)) = (self.id.size_hint(), self.value.size_hint()) {
-            Some(id_size + value_size)
-        } else {
-            None
-        }
     }
 }
 

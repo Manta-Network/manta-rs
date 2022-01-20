@@ -16,8 +16,10 @@
 
 //! Array Utilities
 
-use alloc::{boxed::Box, vec::Vec};
 use core::convert::TryInto;
+
+#[cfg(feature = "alloc")]
+use alloc::{boxed::Box, vec::Vec};
 
 /// Performs the [`TryInto`] conversion into an array without checking if the conversion succeeded.
 #[inline]
@@ -36,6 +38,8 @@ where
 
 /// Performs the [`TryInto`] conversion into a boxed array without checking if the conversion
 /// succeeded.
+#[cfg(feature = "alloc")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
 #[inline]
 pub fn into_boxed_array_unchecked<T, V, const N: usize>(v: V) -> Box<[T; N]>
 where
@@ -51,6 +55,8 @@ where
 }
 
 /// Maps `f` over the `array`.
+#[cfg(feature = "alloc")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
 #[inline]
 pub fn array_map<T, U, F, const N: usize>(array: [T; N], f: F) -> [U; N]
 where
@@ -60,6 +66,8 @@ where
 }
 
 /// Maps `f` over the `array` by reference.
+#[cfg(feature = "alloc")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
 #[inline]
 pub fn array_map_ref<T, U, F, const N: usize>(array: &[T; N], f: F) -> [U; N]
 where
@@ -70,6 +78,8 @@ where
 
 /// Maps `f` over the `array` returning the target array if all of the mappings succeeded, or
 /// returning the first error that occurs.
+#[cfg(feature = "alloc")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
 #[inline]
 pub fn fallible_array_map<T, U, E, F, const N: usize>(array: [T; N], f: F) -> Result<[U; N], E>
 where
@@ -82,6 +92,8 @@ where
 
 /// Maps `f` over the `array` by reference returning the target array if all of the mappings
 /// succeeded, or returning the first error that occurs.
+#[cfg(feature = "alloc")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
 #[inline]
 pub fn fallible_array_map_ref<T, U, E, F, const N: usize>(array: &[T; N], f: F) -> Result<[U; N], E>
 where

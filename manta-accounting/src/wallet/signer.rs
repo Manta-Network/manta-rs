@@ -63,7 +63,7 @@ use manta_util::{
     future::LocalBoxFuture,
     into_array_unchecked,
     iter::IteratorExt,
-    Rollback,
+    persistance::Rollback,
 };
 
 /// Signer Connection

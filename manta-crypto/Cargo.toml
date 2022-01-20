@@ -29,14 +29,14 @@ maintenance = { status = "actively-developed" }
 getrandom = ["rand_core/getrandom"]
 
 # Standard Library
-std = []
+std = ["manta-util/std"]
 
 # Testing Frameworks
 test = []
 
 [dependencies]
 derivative = { version = "2.2.0", default-features = false, features = ["use_core"] }
-manta-util = { path = "../manta-util" }
+manta-util = { path = "../manta-util", features = ["alloc"] }
 rand_core = { version = "0.6.3", default-features = false }
 serde = { version = "1.0.133", optional = true, default-features = false, features = ["derive"] }
 

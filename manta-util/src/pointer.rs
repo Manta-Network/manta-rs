@@ -16,18 +16,18 @@
 
 //! Pointer Utilities
 
-// TODO: Think about whether we want to keep the `PointerFamily` API sealed or not.
-
-use crate::{create_seal, seal};
-use alloc::{rc::Weak as WeakRc, sync::Weak as WeakArc};
 use core::{borrow::Borrow, ops::Deref};
 
-create_seal! {}
+#[cfg(feature = "alloc")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
+use alloc::{rc::Weak as WeakRc, sync::Weak as WeakArc};
 
+#[cfg(feature = "alloc")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
 pub use alloc::{rc::Rc, sync::Arc};
 
 /// Pointer Family
-pub trait PointerFamily<T>: sealed::Sealed {
+pub trait PointerFamily<T> {
     /// Strong Pointer
     type Strong: AsRef<T> + Borrow<T> + Deref<Target = T>;
 
@@ -37,7 +37,7 @@ pub trait PointerFamily<T>: sealed::Sealed {
     /// Returns a new strong pointer holding `base`.
     fn new(base: T) -> Self::Strong;
 
-    /// Claims ownership of the underlying merkle tree from `strong`.
+    /// Claims ownership of the underlying owned value from `strong`.
     ///
     /// # Panics
     ///
@@ -60,7 +60,8 @@ pub trait PointerFamily<T>: sealed::Sealed {
 /// Implements [`PointerFamily`] for `$type` with `$strong` and `$weak` pointers.
 macro_rules! impl_pointer_family {
     ($type:tt, $strong:ident, $weak:ident) => {
-        seal!($type);
+        #[cfg(feature = "alloc")]
+        #[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
         impl<T> PointerFamily<T> for $type {
             type Strong = $strong<T>;
             type Weak = $weak<T>;

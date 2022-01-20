@@ -20,7 +20,8 @@ use crate::{
     asset::{Asset, AssetId, AssetValue, AssetValueType},
     transfer::{
         has_public_participants, Configuration, FullParameters, Parameters, PreSender,
-        ProofSystemError, ProofSystemPublicParameters, Receiver, Sender, Transfer, Utxo,
+        ProofSystemError, ProofSystemPublicParameters, ProvingContext, Receiver, Sender, Transfer,
+        Utxo, VerifyingContext,
     },
 };
 use alloc::vec::Vec;
@@ -139,6 +140,34 @@ where
         A: Accumulator<Item = Utxo<C>, Model = C::UtxoSetModel>,
         R: CryptoRng + RngCore + ?Sized,
     {
+        let (proving_context, verifying_context) = Self::generate_context(
+            public_parameters,
+            FullParameters::new(parameters, utxo_set.model()),
+            rng,
+        )?;
+        Self::sample_and_check_proof_with_context(
+            &proving_context,
+            &verifying_context,
+            parameters,
+            utxo_set,
+            rng,
+        )
+    }
+
+    /// Samples a new [`Transfer`] and builds a correctness proof for it, checking if it was
+    /// validated using the given `proving_context` and `verifying_context`.
+    #[inline]
+    pub fn sample_and_check_proof_with_context<A, R>(
+        proving_context: &ProvingContext<C>,
+        verifying_context: &VerifyingContext<C>,
+        parameters: &Parameters<C>,
+        utxo_set: &mut A,
+        rng: &mut R,
+    ) -> Result<bool, ProofSystemError<C>>
+    where
+        A: Accumulator<Item = Utxo<C>, Model = C::UtxoSetModel>,
+        R: CryptoRng + RngCore + ?Sized,
+    {
         let transfer = Self::sample(
             TransferDistribution {
                 parameters,
@@ -146,14 +175,15 @@ where
             },
             rng,
         );
-        let full_parameters = FullParameters::new(parameters, utxo_set.model());
-        let (proving_context, verifying_context) =
-            Self::generate_context(public_parameters, full_parameters, rng)?;
-        let post = transfer.into_post(full_parameters, &proving_context, rng)?;
+        let post = transfer.into_post(
+            FullParameters::new(parameters, utxo_set.model()),
+            proving_context,
+            rng,
+        )?;
         C::ProofSystem::verify(
             &post.generate_proof_input(),
             &post.validity_proof,
-            &verifying_context,
+            verifying_context,
         )
     }
 }

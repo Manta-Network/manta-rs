@@ -36,7 +36,7 @@ use crate::{
 };
 use alloc::{boxed::Box, vec::Vec};
 use core::{fmt::Debug, hash::Hash, marker::PhantomData};
-use manta_util::{into_boxed_array_unchecked, pointer::PointerFamily, Rollback};
+use manta_util::{into_boxed_array_unchecked, persistance::Rollback, pointer::PointerFamily};
 
 /// Merkle Forest Configuration
 pub trait Configuration: tree::Configuration {

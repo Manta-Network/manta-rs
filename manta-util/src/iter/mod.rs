@@ -16,8 +16,10 @@
 
 //! Iteration Utilities
 
+#[cfg(feature = "alloc")]
 mod chunk_by;
 
+#[cfg(feature = "alloc")]
 pub use chunk_by::*;
 
 /// Iterator Extensions
@@ -30,6 +32,8 @@ pub trait IteratorExt: Iterator {
     /// chunk size must be known at compile time.
     ///
     /// [`ChunksExact`]: core::slice::ChunksExact
+    #[cfg(feature = "alloc")]
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
     #[inline]
     fn chunk_by<const N: usize>(self) -> ChunkBy<Self, N>
     where

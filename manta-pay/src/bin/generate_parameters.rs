@@ -16,16 +16,19 @@
 
 //! Generate Parameters
 
-use ark_ff::bytes::ToBytes;
-use ark_serialize::{CanonicalSerialize, Write};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use manta_accounting::transfer::Parameters;
 use manta_crypto::{
+    accumulator::Accumulator,
     constraint::{measure::Measure, ProofSystem as _},
     rand::{Rand, SeedableRng},
 };
-use manta_pay::config::{FullParameters, Mint, PrivateTransfer, ProofSystem, Reclaim};
+use manta_pay::{
+    config::{FullParameters, Mint, PrivateTransfer, ProofSystem, Reclaim, VerifyingContext},
+    wallet::UtxoSet,
+};
 use rand_chacha::ChaCha20Rng;
-use std::io;
+use std::{fs::OpenOptions, io};
 
 ///
 #[inline]
@@ -36,8 +39,7 @@ pub fn main() -> io::Result<()> {
     ]);
 
     let parameters = rng.gen();
-    let utxo_set_parameters = rng.gen();
-    let full_parameters = FullParameters::new(&parameters, &utxo_set_parameters);
+    let mut utxo_set = UtxoSet::new(rng.gen());
 
     /*
     let mut bytes = Vec::new();
@@ -59,36 +61,19 @@ pub fn main() -> io::Result<()> {
     println!("UTXO Set Parameters: {:?}", bytes.as_slice());
     */
 
-    let cs = Mint::unknown_constraints(full_parameters);
+    let cs = Mint::unknown_constraints(FullParameters::new(&parameters, utxo_set.model()));
     // println!("Mint: {:#?}", cs.measure());
-    let mut buffer = Vec::new();
-    let (_, verifying_context) = ProofSystem::generate_context(cs, &(), &mut rng).unwrap();
-    verifying_context
-        .0
-        .vk
-        .serialize_unchecked(&mut buffer)
-        .unwrap();
-    verifying_context
-        .0
-        .alpha_g1_beta_g2
-        .serialize_unchecked(&mut buffer)
-        .unwrap();
-    verifying_context
-        .0
-        .gamma_g2_neg_pc
-        .write(&mut buffer)
-        .unwrap();
-    verifying_context
-        .0
-        .delta_g2_neg_pc
-        .write(&mut buffer)
-        .unwrap();
 
-    std::fs::OpenOptions::new()
+    let mut mint_file = OpenOptions::new()
+        .read(true)
         .create(true)
         .write(true)
-        .open("mint")?
-        .write_all(&buffer)?;
+        .open("mint")?;
+
+    let (proving_context, verifying_context) =
+        ProofSystem::generate_context(cs, &(), &mut rng).unwrap();
+
+    verifying_context.serialize(&mut mint_file).unwrap();
 
     // let cs = PrivateTransfer::unknown_constraints(full_parameters);
     // println!("PrivateTransfer: {:#?}", cs.measure());

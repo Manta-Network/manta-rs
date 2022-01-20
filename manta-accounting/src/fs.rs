@@ -21,8 +21,8 @@
 use alloc::{boxed::Box, vec::Vec};
 use core::{fmt::Debug, hash::Hash};
 use manta_util::{
+    codec::{Decode, Encode},
     future::LocalBoxFuture,
-    serde::{Deserialize, Serialize},
 };
 
 /// Filesystem Encrypted Saving
@@ -47,14 +47,14 @@ pub trait SaveEncrypted {
 
     /// Saves the `payload` to `path` after serializing using the `saving_key` to encrypt it.
     #[inline]
-    fn save<'s, P, S>(
+    fn save<'s, P, E, C>(
         path: P,
         saving_key: &'s Self::SavingKey,
-        payload: &'s S,
+        payload: &'s E,
     ) -> LocalBoxFuture<'s, Result<(), Self::Error>>
     where
         P: 's + AsRef<Self::Path>,
-        S: Serialize,
+        E: Encode<C>,
     {
         Self::save_bytes(path, saving_key, payload.to_vec())
     }
@@ -82,17 +82,17 @@ pub trait LoadDecrypted {
     /// Loads a vector of bytes from `path` using `loading_key` to decrypt them, then deserializing
     /// the bytes to a concrete value of type `D`.
     #[inline]
-    fn load<'s, P, D>(
+    fn load<'s, P, D, C>(
         path: P,
         loading_key: &'s Self::LoadingKey,
-    ) -> LocalBoxFuture<'s, Result<D, LoadError<D, Self>>>
+    ) -> LocalBoxFuture<'s, Result<D, LoadError<Self, D, C>>>
     where
         P: 's + AsRef<Self::Path>,
-        D: Deserialize,
+        D: Decode<C>,
     {
         Box::pin(async {
             match Self::load_bytes(path, loading_key).await {
-                Ok(bytes) => D::from_vec(bytes).map_err(LoadError::Deserialize),
+                Ok(bytes) => D::from_vec(bytes).map_err(LoadError::Decode),
                 Err(err) => Err(LoadError::Loading(err)),
             }
         })
@@ -102,23 +102,23 @@ pub trait LoadDecrypted {
 /// Loading Error
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "D::Error: Clone, L::Error: Clone"),
-    Copy(bound = "D::Error: Copy, L::Error: Copy"),
-    Debug(bound = "D::Error: Debug, L::Error: Debug"),
-    Eq(bound = "D::Error: Eq, L::Error: Eq"),
-    Hash(bound = "D::Error: Hash, L::Error: Hash"),
-    PartialEq(bound = "D::Error: PartialEq, L::Error: PartialEq")
+    Clone(bound = "L::Error: Clone, D::Error: Clone"),
+    Copy(bound = "L::Error: Copy, D::Error: Copy"),
+    Debug(bound = "L::Error: Debug, D::Error: Debug"),
+    Eq(bound = "L::Error: Eq, D::Error: Eq"),
+    Hash(bound = "L::Error: Hash, D::Error: Hash"),
+    PartialEq(bound = "L::Error: PartialEq, D::Error: PartialEq")
 )]
-pub enum LoadError<D, L>
+pub enum LoadError<L, D, C = ()>
 where
-    D: Deserialize,
     L: LoadDecrypted + ?Sized,
+    D: Decode<C> + ?Sized,
 {
-    /// Deserialization Error
-    Deserialize(D::Error),
-
     /// Payload Loading Error
     Loading(L::Error),
+
+    /// Decoding Error
+    Decode(D::Error),
 }
 
 /// Cocoon Adapters
