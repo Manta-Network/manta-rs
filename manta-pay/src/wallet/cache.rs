@@ -16,10 +16,7 @@
 
 //! Proving Context Caching
 
-use crate::{
-    config::{MultiProvingContext, ProvingContext},
-    crypto::constraint::arkworks::groth16::ProvingKey,
-};
+use crate::config::{MultiProvingContext, ProvingContext};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use async_std::{
     io,
@@ -103,12 +100,7 @@ impl OnDiskMultiProvingContext {
         Ok(task::spawn_blocking(move || {
             File::open(path.as_ref())
                 .map_err(Error::Io)
-                .and_then(move |f| {
-                    // FIXME: Move to new serde platform so we don't need to specify the key here.
-                    ProvingKey::deserialize_unchecked(f)
-                        .map(ProvingContext::new)
-                        .map_err(Error::Serialization)
-                })
+                .and_then(move |f| ProvingContext::deserialize(f).map_err(Error::Serialization))
         })
         .await?)
     }
@@ -125,12 +117,7 @@ impl OnDiskMultiProvingContext {
                 .create(true)
                 .open(path.as_ref())
                 .map_err(Error::Io)
-                .and_then(move |f| {
-                    context
-                        .0
-                        .serialize_unchecked(f)
-                        .map_err(Error::Serialization)
-                })
+                .and_then(move |f| context.serialize(f).map_err(Error::Serialization))
         })
         .await?)
     }

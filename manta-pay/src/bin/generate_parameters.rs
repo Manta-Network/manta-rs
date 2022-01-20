@@ -16,72 +16,123 @@
 
 //! Generate Parameters
 
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use manta_accounting::transfer::Parameters;
+// TODO: Specify target directory in `main`.
+// TODO: Deduplicate the per-circuit proving context and verifying context serialization code.
+
+use ark_serialize::CanonicalSerialize;
 use manta_crypto::{
-    accumulator::Accumulator,
-    constraint::{measure::Measure, ProofSystem as _},
+    constraint::ProofSystem as _,
     rand::{Rand, SeedableRng},
 };
-use manta_pay::{
-    config::{FullParameters, Mint, PrivateTransfer, ProofSystem, Reclaim, VerifyingContext},
-    wallet::UtxoSet,
-};
+use manta_pay::config::{FullParameters, Mint, PrivateTransfer, ProofSystem, Reclaim};
 use rand_chacha::ChaCha20Rng;
 use std::{fs::OpenOptions, io};
 
+/// Parameter Generation Seed
 ///
+/// This is a nothing-up-my-sleve parameter generation number. Its just the numbers from `0` to `31`
+/// as `u8` bytes.
+///
+/// # Warning
+///
+/// Right now, this seed is also used to generate to the proving and verifying keys for the ZKP
+/// circuits. This is not safe, and a real system must use a Multi-Party-Computation to arrive at
+/// the ZKP parameters.
+pub const SEED: [u8; 32] = [
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
+    26, 27, 28, 29, 30, 31,
+];
+
+/// Generates the parameters using the [`SEED`] and saves them to the filesystem.
 #[inline]
 pub fn main() -> io::Result<()> {
-    let mut rng = ChaCha20Rng::from_seed([
-        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
-        25, 26, 27, 28, 29, 30, 31,
-    ]);
+    let mut rng = ChaCha20Rng::from_seed(SEED);
 
     let parameters = rng.gen();
-    let mut utxo_set = UtxoSet::new(rng.gen());
+    let utxo_set_parameters = rng.gen();
 
-    /*
-    let mut bytes = Vec::new();
-
+    /* TODO:
     let Parameters {
         key_agreement,
         utxo_commitment,
         void_number_hash,
     } = &parameters;
 
-    key_agreement.generator().0.serialize(&mut bytes).unwrap();
-    utxo_commitment.0.serialize(&mut bytes).unwrap();
-    void_number_hash.0.serialize(&mut bytes).unwrap();
+    key_agreement.generator().serialize(&mut bytes).unwrap();
+    utxo_commitment.serialize(&mut bytes).unwrap();
+    void_number_hash.serialize(&mut bytes).unwrap();
 
-    println!("Parameters: {:?}", bytes.as_slice());
-
-    let mut bytes = Vec::new();
-    utxo_set_parameters.serialize(&mut bytes).unwrap();
-    println!("UTXO Set Parameters: {:?}", bytes.as_slice());
+    utxo_set_parameters
+        .serialize(
+            &mut OpenOptions::new()
+                .create(true)
+                .write(true)
+                .open("utxo-set-parameters.dat")?,
+        )
+        .unwrap();
     */
 
-    let cs = Mint::unknown_constraints(FullParameters::new(&parameters, utxo_set.model()));
-    // println!("Mint: {:#?}", cs.measure());
+    let full_parameters = FullParameters::new(&parameters, &utxo_set_parameters);
 
-    let mut mint_file = OpenOptions::new()
-        .read(true)
-        .create(true)
-        .write(true)
-        .open("mint")?;
-
+    let cs = Mint::unknown_constraints(full_parameters);
     let (proving_context, verifying_context) =
         ProofSystem::generate_context(cs, &(), &mut rng).unwrap();
+    proving_context
+        .serialize(
+            &mut OpenOptions::new()
+                .create(true)
+                .write(true)
+                .open("mint.pk")?,
+        )
+        .unwrap();
+    verifying_context
+        .serialize(
+            &mut OpenOptions::new()
+                .create(true)
+                .write(true)
+                .open("mint.vk")?,
+        )
+        .unwrap();
 
-    verifying_context.serialize(&mut mint_file).unwrap();
+    let cs = PrivateTransfer::unknown_constraints(full_parameters);
+    let (proving_context, verifying_context) =
+        ProofSystem::generate_context(cs, &(), &mut rng).unwrap();
+    proving_context
+        .serialize(
+            &mut OpenOptions::new()
+                .create(true)
+                .write(true)
+                .open("private-transfer.pk")?,
+        )
+        .unwrap();
+    verifying_context
+        .serialize(
+            &mut OpenOptions::new()
+                .create(true)
+                .write(true)
+                .open("private-transfer.vk")?,
+        )
+        .unwrap();
 
-    // let cs = PrivateTransfer::unknown_constraints(full_parameters);
-    // println!("PrivateTransfer: {:#?}", cs.measure());
-    // let _ = ProofSystem::generate_context(cs, &(), &mut rng).unwrap();
-
-    // let cs = Reclaim::unknown_constraints(full_parameters);
-    // println!("Reclaim: {:#?}", cs.measure());
-    // let _ = ProofSystem::generate_context(cs, &(), &mut rng).unwrap();
+    let cs = Reclaim::unknown_constraints(full_parameters);
+    let (proving_context, verifying_context) =
+        ProofSystem::generate_context(cs, &(), &mut rng).unwrap();
+    proving_context
+        .serialize(
+            &mut OpenOptions::new()
+                .create(true)
+                .write(true)
+                .open("reclaim.pk")?,
+        )
+        .unwrap();
+    verifying_context
+        .serialize(
+            &mut OpenOptions::new()
+                .create(true)
+                .write(true)
+                .open("reclaim.vk")?,
+        )
+        .unwrap();
 
     Ok(())
 }

@@ -276,7 +276,7 @@ pub mod groth16 {
     impl<E> scale_codec::EncodeLike for Proof<E> where E: PairingEngine {}
 
     /// Proving Context
-    #[derive(derivative::Derivative)]
+    #[derive(derivative::Derivative, CanonicalSerialize, CanonicalDeserialize)]
     #[derivative(Clone, Debug, Eq, PartialEq)]
     pub struct ProvingContext<E>(pub ProvingKey<E>)
     where
