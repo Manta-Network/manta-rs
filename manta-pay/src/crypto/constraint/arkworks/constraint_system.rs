@@ -329,10 +329,11 @@ where
 
 /// Codec Utilities
 pub mod codec {
-    use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
     use ark_std::io::{self, Error, ErrorKind};
     use manta_util::codec::{Read, ReadExactError, Write};
     use scale_codec::Input;
+
+    pub use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 
     /// Arkworks Encoding Marker
     #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -373,42 +374,124 @@ pub mod codec {
     }
 
     /// Arkworks Reader
-    #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-    pub struct ArkReader<R>(pub R)
+    pub struct ArkReader<R>
     where
-        R: Read;
+        R: Read,
+    {
+        /// Reader State
+        state: Result<R, R::Error>,
+    }
+
+    impl<R> ArkReader<R>
+    where
+        R: Read,
+    {
+        /// Builds a new [`ArkReader`] from `reader`.
+        #[inline]
+        pub fn new(reader: R) -> Self {
+            Self { state: Ok(reader) }
+        }
+
+        /// Updates the internal reader state by performing the `f` computation.
+        #[inline]
+        fn update<T, F>(&mut self, f: F) -> Option<T>
+        where
+            F: FnOnce(&mut R) -> Result<T, R::Error>,
+        {
+            if let Ok(reader) = self.state.as_mut() {
+                match f(reader) {
+                    Ok(value) => return Some(value),
+                    Err(err) => self.state = Err(err),
+                }
+            }
+            None
+        }
+
+        /// Returns the reader state back or an error if it occured during any [`Read`](io::Read)
+        /// methods.
+        #[inline]
+        pub fn finish(self) -> Result<R, R::Error> {
+            self.state
+        }
+    }
 
     impl<R> io::Read for ArkReader<R>
     where
-        R: Read<Error = Error>,
+        R: Read,
     {
         #[inline]
         fn read(&mut self, buf: &mut [u8]) -> Result<usize, Error> {
-            self.0.read(buf)
+            self.update(|reader| reader.read(buf))
+                .ok_or_else(|| Error::new(ErrorKind::Other, "Reading Error"))
         }
 
         #[inline]
         fn read_exact(&mut self, buf: &mut [u8]) -> Result<(), Error> {
-            self.0.read_exact(buf).map_err(|err| match err {
-                ReadExactError::UnexpectedEnd(_) => todo!(),
-                ReadExactError::Read(err) => err,
-            })
+            match self.update(|reader| match reader.read_exact(buf) {
+                Ok(value) => Ok(Ok(value)),
+                Err(ReadExactError::Read(err)) => Err(err),
+                Err(ReadExactError::UnexpectedEnd(err)) => Ok(Err(err)),
+            }) {
+                Some(Ok(_)) => Ok(()),
+                Some(Err(_)) => Err(Error::new(
+                    ErrorKind::UnexpectedEof,
+                    "Unexpected end of buffer.",
+                )),
+                _ => Err(Error::new(ErrorKind::Other, "Reading Error")),
+            }
         }
     }
 
     /// Arkworks Writer
-    #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-    pub struct ArkWriter<W>(pub W)
+    pub struct ArkWriter<W>
     where
-        W: Write;
+        W: Write,
+    {
+        /// Writer State
+        state: Result<W, W::Error>,
+    }
+
+    impl<W> ArkWriter<W>
+    where
+        W: Write,
+    {
+        /// Builds a new [`ArkWriter`] from `writer`.
+        #[inline]
+        pub fn new(writer: W) -> Self {
+            Self { state: Ok(writer) }
+        }
+
+        /// Updates the internal writer state by performing the `f` computation.
+        #[inline]
+        fn update<T, F>(&mut self, f: F) -> Option<T>
+        where
+            F: FnOnce(&mut W) -> Result<T, W::Error>,
+        {
+            if let Ok(writer) = self.state.as_mut() {
+                match f(writer) {
+                    Ok(value) => return Some(value),
+                    Err(err) => self.state = Err(err),
+                }
+            }
+            None
+        }
+
+        /// Returns the writer state back or an error if it occured during any [`Write`](io::Write)
+        /// methods.
+        #[inline]
+        pub fn finish(self) -> Result<W, W::Error> {
+            self.state
+        }
+    }
 
     impl<W> io::Write for ArkWriter<W>
     where
-        W: Write<Error = Error>,
+        W: Write,
     {
         #[inline]
         fn write(&mut self, mut buf: &[u8]) -> Result<usize, Error> {
-            self.0.write(&mut buf)
+            self.update(|writer| writer.write(&mut buf))
+                .ok_or_else(|| Error::new(ErrorKind::Other, "Writing Error"))
         }
 
         #[inline]
@@ -418,8 +501,8 @@ pub mod codec {
         }
 
         #[inline]
-        fn write_all(&mut self, mut buf: &[u8]) -> Result<(), Error> {
-            self.0.write(&mut buf)?;
+        fn write_all(&mut self, buf: &[u8]) -> Result<(), Error> {
+            let _ = self.write(buf)?;
             if buf.is_empty() {
                 Ok(())
             } else {

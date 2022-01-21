@@ -18,6 +18,7 @@
 
 // TODO: Specify target directory in `main`.
 // TODO: Deduplicate the per-circuit proving context and verifying context serialization code.
+// TODO: Print some statistics about the parameters and circuits and into a stats file as well.
 
 use ark_serialize::CanonicalSerialize;
 use manta_crypto::{
@@ -25,6 +26,7 @@ use manta_crypto::{
     rand::{Rand, SeedableRng},
 };
 use manta_pay::config::{FullParameters, Mint, PrivateTransfer, ProofSystem, Reclaim};
+use manta_util::codec::{Encode, IoWriter};
 use rand_chacha::ChaCha20Rng;
 use std::{fs::OpenOptions, io};
 
@@ -79,19 +81,19 @@ pub fn main() -> io::Result<()> {
         ProofSystem::generate_context(cs, &(), &mut rng).unwrap();
     proving_context
         .serialize(
-            &mut OpenOptions::new()
+            OpenOptions::new()
                 .create(true)
                 .write(true)
                 .open("mint.pk")?,
         )
         .unwrap();
     verifying_context
-        .serialize(
-            &mut OpenOptions::new()
+        .encode(IoWriter(
+            OpenOptions::new()
                 .create(true)
                 .write(true)
                 .open("mint.vk")?,
-        )
+        ))
         .unwrap();
 
     let cs = PrivateTransfer::unknown_constraints(full_parameters);
@@ -99,19 +101,19 @@ pub fn main() -> io::Result<()> {
         ProofSystem::generate_context(cs, &(), &mut rng).unwrap();
     proving_context
         .serialize(
-            &mut OpenOptions::new()
+            OpenOptions::new()
                 .create(true)
                 .write(true)
                 .open("private-transfer.pk")?,
         )
         .unwrap();
     verifying_context
-        .serialize(
-            &mut OpenOptions::new()
+        .encode(IoWriter(
+            OpenOptions::new()
                 .create(true)
                 .write(true)
                 .open("private-transfer.vk")?,
-        )
+        ))
         .unwrap();
 
     let cs = Reclaim::unknown_constraints(full_parameters);
@@ -119,19 +121,19 @@ pub fn main() -> io::Result<()> {
         ProofSystem::generate_context(cs, &(), &mut rng).unwrap();
     proving_context
         .serialize(
-            &mut OpenOptions::new()
+            OpenOptions::new()
                 .create(true)
                 .write(true)
                 .open("reclaim.pk")?,
         )
         .unwrap();
     verifying_context
-        .serialize(
-            &mut OpenOptions::new()
+        .encode(IoWriter(
+            OpenOptions::new()
                 .create(true)
                 .write(true)
                 .open("reclaim.vk")?,
-        )
+        ))
         .unwrap();
 
     Ok(())

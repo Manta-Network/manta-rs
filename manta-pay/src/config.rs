@@ -612,7 +612,7 @@ impl KeyDerivationFunction for HierarchicalKeyDerivationFunction {
             .private_key()
             .to_bytes()
             .try_into()
-            .expect("The private key has 32 bytes.");
+            .expect("The secret key has 32 bytes.");
         Fp(<Bls12_381_Edwards as ProjectiveCurve>::ScalarField::from_le_bytes_mod_order(&bytes))
     }
 }

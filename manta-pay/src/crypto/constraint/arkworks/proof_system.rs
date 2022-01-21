@@ -51,6 +51,7 @@ pub mod pairing {
     /// BLS-12 Utilities
     pub mod bls12 {
         use crate::crypto::constraint::arkworks::codec::{HasDeserialization, HasSerialization};
+        use alloc::vec::Vec;
         use ark_ec::models::bls12::{g2, Bls12Parameters};
         use ark_ff::Fp2;
         use ark_serialize::{
@@ -215,7 +216,7 @@ pub mod groth16 {
     use super::*;
     use crate::crypto::constraint::arkworks::{
         self,
-        codec::{HasDeserialization, HasSerialization},
+        codec::{ArkReader, ArkWriter, HasDeserialization, HasSerialization},
         SynthesisError,
     };
     use alloc::vec::Vec;
@@ -230,6 +231,7 @@ pub mod groth16 {
         constraint::ProofSystem,
         rand::{CryptoRng, RngCore, SizedRng},
     };
+    use manta_util::codec::{self, DecodeError};
 
     pub use ark_groth16::ProvingKey;
 
@@ -462,6 +464,45 @@ pub mod groth16 {
                     )?
                     .into(),
             }))
+        }
+    }
+
+    impl<E> codec::Encode for VerifyingContext<E>
+    where
+        E: PairingEngine,
+        for<'s> E::G2Prepared: HasSerialization<'s>,
+    {
+        #[inline]
+        fn encode<W>(&self, writer: W) -> Result<(), W::Error>
+        where
+            W: codec::Write,
+        {
+            let mut writer = ArkWriter::new(writer);
+            let _ = self.serialize(&mut writer);
+            writer.finish().map(move |_| ())
+        }
+    }
+
+    impl<E> codec::Decode for VerifyingContext<E>
+    where
+        E: PairingEngine,
+        E::G2Prepared: HasDeserialization,
+    {
+        type Error = SerializationError;
+
+        #[inline]
+        fn decode<R>(reader: R) -> Result<Self, DecodeError<R, Self>>
+        where
+            R: codec::Read,
+        {
+            let mut reader = ArkReader::new(reader);
+            match CanonicalDeserialize::deserialize(&mut reader) {
+                Ok(value) => reader
+                    .finish()
+                    .map(move |_| value)
+                    .map_err(DecodeError::Read),
+                Err(err) => Err(DecodeError::Decode(err)),
+            }
         }
     }
 

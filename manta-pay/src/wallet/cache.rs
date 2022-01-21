@@ -100,7 +100,9 @@ impl OnDiskMultiProvingContext {
         Ok(task::spawn_blocking(move || {
             File::open(path.as_ref())
                 .map_err(Error::Io)
-                .and_then(move |f| ProvingContext::deserialize(f).map_err(Error::Serialization))
+                .and_then(move |f| {
+                    ProvingContext::deserialize_unchecked(f).map_err(Error::Serialization)
+                })
         })
         .await?)
     }
@@ -117,7 +119,7 @@ impl OnDiskMultiProvingContext {
                 .create(true)
                 .open(path.as_ref())
                 .map_err(Error::Io)
-                .and_then(move |f| context.serialize(f).map_err(Error::Serialization))
+                .and_then(move |f| context.serialize_unchecked(f).map_err(Error::Serialization))
         })
         .await?)
     }
