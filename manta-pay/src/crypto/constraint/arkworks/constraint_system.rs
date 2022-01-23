@@ -27,7 +27,7 @@ use manta_crypto::{
     },
     rand::{CryptoRng, RngCore, Sample, Standard},
 };
-use scale_codec::{Decode, Encode, EncodeLike};
+use manta_util::codec::{Decode, DecodeError, Encode, Read, Write};
 
 pub use ark_r1cs::SynthesisError;
 pub use ark_r1cs_std::{bits::boolean::Boolean, fields::fp::FpVar};
@@ -42,18 +42,56 @@ impl<F> Decode for Fp<F>
 where
     F: PrimeField,
 {
+    type Error = codec::SerializationError;
+
+    #[inline]
+    fn decode<R>(reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
+    where
+        R: Read,
+    {
+        let mut reader = codec::ArkReader::new(reader);
+        match codec::CanonicalDeserialize::deserialize(&mut reader) {
+            Ok(value) => reader
+                .finish()
+                .map(move |_| Self(value))
+                .map_err(DecodeError::Read),
+            Err(err) => Err(DecodeError::Decode(err)),
+        }
+    }
+}
+
+impl<F> Encode for Fp<F>
+where
+    F: PrimeField,
+{
+    #[inline]
+    fn encode<W>(&self, writer: W) -> Result<(), W::Error>
+    where
+        W: Write,
+    {
+        let mut writer = codec::ArkWriter::new(writer);
+        let _ = self.0.serialize(&mut writer);
+        writer.finish().map(move |_| ())
+    }
+}
+
+impl<F> scale_codec::Decode for Fp<F>
+where
+    F: PrimeField,
+{
     #[inline]
     fn decode<I>(input: &mut I) -> Result<Self, scale_codec::Error>
     where
         I: scale_codec::Input,
     {
         Ok(Self(
-            F::deserialize(codec::ScaleCodecReader(input)).map_err(|_| "Deserialization Error")?,
+            codec::CanonicalDeserialize::deserialize(codec::ScaleCodecReader(input))
+                .map_err(|_| "Deserialization Error")?,
         ))
     }
 }
 
-impl<F> Encode for Fp<F>
+impl<F> scale_codec::Encode for Fp<F>
 where
     F: PrimeField,
 {
@@ -70,7 +108,7 @@ where
     }
 }
 
-impl<F> EncodeLike for Fp<F> where F: PrimeField {}
+impl<F> scale_codec::EncodeLike for Fp<F> where F: PrimeField {}
 
 impl<F> Sample for Fp<F>
 where
@@ -501,16 +539,10 @@ pub mod codec {
         }
 
         #[inline]
-        fn write_all(&mut self, buf: &[u8]) -> Result<(), Error> {
-            let _ = self.write(buf)?;
-            if buf.is_empty() {
-                Ok(())
-            } else {
-                Err(Error::new(
-                    ErrorKind::WriteZero,
-                    "failed to write whole buffer",
-                ))
-            }
+        fn write_all(&mut self, mut buf: &[u8]) -> Result<(), Error> {
+            self.update(|writer| writer.write(&mut buf))
+                .map(|_| ())
+                .ok_or_else(|| Error::new(ErrorKind::Other, "Writing Error"))
         }
     }
 }

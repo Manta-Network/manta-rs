@@ -295,6 +295,43 @@ pub mod groth16 {
         }
     }
 
+    impl<E> codec::Decode for ProvingContext<E>
+    where
+        E: PairingEngine,
+    {
+        type Error = SerializationError;
+
+        #[inline]
+        fn decode<R>(reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
+        where
+            R: codec::Read,
+        {
+            let mut reader = ArkReader::new(reader);
+            match CanonicalDeserialize::deserialize(&mut reader) {
+                Ok(value) => reader
+                    .finish()
+                    .map(move |_| Self(value))
+                    .map_err(DecodeError::Read),
+                Err(err) => Err(DecodeError::Decode(err)),
+            }
+        }
+    }
+
+    impl<E> codec::Encode for ProvingContext<E>
+    where
+        E: PairingEngine,
+    {
+        #[inline]
+        fn encode<W>(&self, writer: W) -> Result<(), W::Error>
+        where
+            W: codec::Write,
+        {
+            let mut writer = ArkWriter::new(writer);
+            let _ = self.0.serialize(&mut writer);
+            writer.finish().map(move |_| ())
+        }
+    }
+
     /// Verifying Context
     #[derive(derivative::Derivative)]
     #[derivative(Clone, Debug, Default)]
@@ -467,6 +504,29 @@ pub mod groth16 {
         }
     }
 
+    impl<E> codec::Decode for VerifyingContext<E>
+    where
+        E: PairingEngine,
+        E::G2Prepared: HasDeserialization,
+    {
+        type Error = SerializationError;
+
+        #[inline]
+        fn decode<R>(reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
+        where
+            R: codec::Read,
+        {
+            let mut reader = ArkReader::new(reader);
+            match CanonicalDeserialize::deserialize(&mut reader) {
+                Ok(value) => reader
+                    .finish()
+                    .map(move |_| value)
+                    .map_err(DecodeError::Read),
+                Err(err) => Err(DecodeError::Decode(err)),
+            }
+        }
+    }
+
     impl<E> codec::Encode for VerifyingContext<E>
     where
         E: PairingEngine,
@@ -480,29 +540,6 @@ pub mod groth16 {
             let mut writer = ArkWriter::new(writer);
             let _ = self.serialize(&mut writer);
             writer.finish().map(move |_| ())
-        }
-    }
-
-    impl<E> codec::Decode for VerifyingContext<E>
-    where
-        E: PairingEngine,
-        E::G2Prepared: HasDeserialization,
-    {
-        type Error = SerializationError;
-
-        #[inline]
-        fn decode<R>(reader: R) -> Result<Self, DecodeError<R, Self>>
-        where
-            R: codec::Read,
-        {
-            let mut reader = ArkReader::new(reader);
-            match CanonicalDeserialize::deserialize(&mut reader) {
-                Ok(value) => reader
-                    .finish()
-                    .map(move |_| value)
-                    .map_err(DecodeError::Read),
-                Err(err) => Err(DecodeError::Decode(err)),
-            }
         }
     }
 

@@ -563,6 +563,17 @@ pub trait Encode<C = ()> {
     }
 }
 
+impl<C> Encode<C> for () {
+    #[inline]
+    fn encode<W>(&self, writer: W) -> Result<(), W::Error>
+    where
+        W: Write,
+    {
+        let _ = writer;
+        Ok(())
+    }
+}
+
 impl Encode for u8 {
     #[inline]
     fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
@@ -624,7 +635,7 @@ pub trait Decode<C = ()>: Sized {
     type Error;
 
     /// Parses the input `buffer` into a concrete value of type `Self` if possible.
-    fn decode<R>(reader: R) -> Result<Self, DecodeError<R, Self, C>>
+    fn decode<R>(reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
     where
         R: Read;
 
@@ -635,6 +646,19 @@ pub trait Decode<C = ()>: Sized {
     fn from_vec(buffer: Vec<u8>) -> Result<Self, Self::Error> {
         Self::decode(buffer)
             .map_err(move |err| err.decode().expect("Reading from `[u8]` cannot fail."))
+    }
+}
+
+impl<C> Decode<C> for () {
+    type Error = Infallible;
+
+    #[inline]
+    fn decode<R>(reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
+    where
+        R: Read,
+    {
+        let _ = reader;
+        Ok(())
     }
 }
 
@@ -649,85 +673,43 @@ pub trait DecodeExactSize<C, const N: usize>: Decode<C> {
     }
 }
 
+impl<C> DecodeExactSize<C, 0> for () {
+    #[inline]
+    fn from_array(buffer: [u8; 0]) -> Self {
+        let _ = buffer;
+    }
+}
+
 /// Decoding Error
-#[derive(derivative::Derivative)]
-#[derivative(
-    Clone(bound = "R::Error: Clone, D::Error: Clone"),
-    Copy(bound = "R::Error: Copy, D::Error: Copy"),
-    Debug(bound = "R::Error: Debug, D::Error: Debug"),
-    Eq(bound = "R::Error: Eq, D::Error: Eq"),
-    Hash(bound = "R::Error: Hash, D::Error: Hash"),
-    PartialEq(bound = "R::Error: PartialEq, D::Error: PartialEq")
-)]
-pub enum DecodeError<R, D, C = ()>
-where
-    R: Read + ?Sized,
-    D: Decode<C> + ?Sized,
-{
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum DecodeError<R, D> {
     /// Reading Error
     ///
     /// See [`Read`] for more.
-    Read(R::Error),
+    Read(R),
 
     /// Decoding Error
     ///
     /// See [`Decode`] for more.
-    Decode(D::Error),
+    Decode(D),
 }
 
-impl<R, D, C> DecodeError<R, D, C>
-where
-    R: Read + ?Sized,
-    D: Decode<C> + ?Sized,
-{
-    /// Converts `self` into an option over [`R::Error`](Read::Error).
+impl<R, D> DecodeError<R, D> {
+    /// Converts `self` into an option over [`R`](Read::Error).
     #[inline]
-    pub fn read(self) -> Option<R::Error> {
+    pub fn read(self) -> Option<R> {
         match self {
             Self::Read(err) => Some(err),
             _ => None,
         }
     }
 
-    /// Converts `self` into an option over [`D::Error`](Decode::Error).
+    /// Converts `self` into an option over [`D`](Decode::Error).
     #[inline]
-    pub fn decode(self) -> Option<D::Error> {
+    pub fn decode(self) -> Option<D> {
         match self {
             Self::Decode(err) => Some(err),
             _ => None,
         }
-    }
-
-    /// Maps `self` into a [`DecodeError`] with the given `Reader`, `Decoder`, and `Codec`
-    /// implementations using `r` and `d` to convert errors.
-    #[inline]
-    pub fn map<Reader, Decoder, Codec, FR, FD>(
-        self,
-        r: FR,
-        d: FD,
-    ) -> DecodeError<Reader, Decoder, Codec>
-    where
-        Reader: Read + ?Sized,
-        Decoder: Decode<Codec> + ?Sized,
-        FR: FnOnce(R::Error) -> Reader::Error,
-        FD: FnOnce(D::Error) -> Decoder::Error,
-    {
-        match self {
-            Self::Read(err) => DecodeError::Read(r(err)),
-            Self::Decode(err) => DecodeError::Decode(d(err)),
-        }
-    }
-
-    /// Maps `self` into a [`DecodeError`] with the given `Reader`, `Decoder`, and `Codec`
-    /// implementations using [`Into::into`] to convert errors.
-    #[inline]
-    pub fn into<Reader, Decoder, Codec>(self) -> DecodeError<Reader, Decoder, Codec>
-    where
-        Reader: Read + ?Sized,
-        Decoder: Decode<Codec> + ?Sized,
-        R::Error: Into<Reader::Error>,
-        D::Error: Into<Decoder::Error>,
-    {
-        self.map(Into::into, Into::into)
     }
 }

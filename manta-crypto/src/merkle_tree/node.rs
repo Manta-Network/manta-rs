@@ -23,7 +23,6 @@ use core::{
 };
 
 /// Parity of a Subtree
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum Parity {
     /// Left Side of the Subtree
@@ -147,7 +146,6 @@ impl Default for Parity {
 }
 
 /// Node Index
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub struct Node<Idx = usize>(
     /// Level-wise Index to a node in a Binary Tree
@@ -367,7 +365,6 @@ where
 ///
 /// This `struct` is created by the [`parents`](Node::parents) method on [`Node`].
 /// See its documentation for more.
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub struct NodeParents {
     /// Current Index

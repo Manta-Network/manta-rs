@@ -22,6 +22,7 @@
 use alloc::vec::Vec;
 use core::{fmt::Debug, iter, mem};
 use manta_crypto::hash::HashFunction;
+use manta_util::codec::{Decode, DecodeError, Encode, Read, Write};
 
 #[cfg(any(feature = "test", test))]
 use {
@@ -59,7 +60,7 @@ pub trait Specification<COM = ()> {
     fn apply_sbox(point: &mut Self::Field, compiler: &mut COM);
 }
 
-/// Internal State Vector
+/// Poseidon State Vector
 type State<S, COM> = Vec<<S as Specification<COM>>::Field>;
 
 /// Returns the total number of rounds in a Poseidon permutation.
@@ -255,6 +256,49 @@ where
                 .sample_iter(repeat(distribution).take(Self::MDS_MATRIX_SIZE))
                 .collect(),
         }
+    }
+}
+
+impl<S, COM, CODEC, const ARITY: usize> Decode<CODEC> for Hash<S, COM, ARITY>
+where
+    S: Specification<COM>,
+    S::Field: Decode<CODEC>,
+{
+    type Error = <S::Field as Decode<CODEC>>::Error;
+
+    #[inline]
+    fn decode<R>(mut reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
+    where
+        R: Read,
+    {
+        Ok(Self::new_unchecked(
+            (0..Self::ADDITIVE_ROUND_KEYS_COUNT)
+                .map(|_| S::Field::decode(&mut reader))
+                .collect::<Result<Vec<_>, _>>()?,
+            (0..Self::MDS_MATRIX_SIZE)
+                .map(|_| S::Field::decode(&mut reader))
+                .collect::<Result<Vec<_>, _>>()?,
+        ))
+    }
+}
+
+impl<S, COM, CODEC, const ARITY: usize> Encode<CODEC> for Hash<S, COM, ARITY>
+where
+    S: Specification<COM>,
+    S::Field: Encode<CODEC>,
+{
+    #[inline]
+    fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
+    where
+        W: Write,
+    {
+        for key in &self.additive_round_keys {
+            key.encode(&mut writer)?;
+        }
+        for entry in &self.mds_matrix {
+            entry.encode(&mut writer)?;
+        }
+        Ok(())
     }
 }
 

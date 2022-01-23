@@ -37,7 +37,11 @@ use crate::{
     },
 };
 use core::{fmt::Debug, hash::Hash, marker::PhantomData};
-use manta_util::{persistance::Rollback, pointer::PointerFamily};
+use manta_util::{
+    codec::{Decode, DecodeError, Encode, Read, Write},
+    persistance::Rollback,
+    pointer::PointerFamily,
+};
 
 /// Merkle Tree Leaf Hash
 pub trait LeafHash<COM = ()> {
@@ -632,6 +636,63 @@ where
             this.leaf.as_constant(compiler),
             this.inner.as_constant(compiler),
         )
+    }
+}
+
+/// Parameter Decode Error
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum ParameterDecodeError<L, I> {
+    /// Leaf Decoding Error
+    Leaf(L),
+
+    /// Inner Decoding Error
+    Inner(I),
+}
+
+impl<C, COM, CODEC> Decode<CODEC> for Parameters<C, COM>
+where
+    C: HashConfiguration<COM> + ?Sized,
+    LeafHashParameters<C, COM>: Decode<CODEC>,
+    InnerHashParameters<C, COM>: Decode<CODEC>,
+{
+    #[allow(clippy::type_complexity)] // NOTE: This is an implementation type so it doesn't matter.
+    type Error = ParameterDecodeError<
+        <LeafHashParameters<C, COM> as Decode<CODEC>>::Error,
+        <InnerHashParameters<C, COM> as Decode<CODEC>>::Error,
+    >;
+
+    #[inline]
+    fn decode<R>(mut reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
+    where
+        R: Read,
+    {
+        Ok(Self::new(
+            LeafHashParameters::<C, COM>::decode(&mut reader).map_err(|err| match err {
+                DecodeError::Decode(err) => DecodeError::Decode(ParameterDecodeError::Leaf(err)),
+                DecodeError::Read(err) => DecodeError::Read(err),
+            })?,
+            InnerHashParameters::<C, COM>::decode(&mut reader).map_err(|err| match err {
+                DecodeError::Decode(err) => DecodeError::Decode(ParameterDecodeError::Inner(err)),
+                DecodeError::Read(err) => DecodeError::Read(err),
+            })?,
+        ))
+    }
+}
+
+impl<C, COM, CODEC> Encode<CODEC> for Parameters<C, COM>
+where
+    C: HashConfiguration<COM> + ?Sized,
+    LeafHashParameters<C, COM>: Encode<CODEC>,
+    InnerHashParameters<C, COM>: Encode<CODEC>,
+{
+    #[inline]
+    fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
+    where
+        W: Write,
+    {
+        self.leaf.encode(&mut writer)?;
+        self.inner.encode(&mut writer)?;
+        Ok(())
     }
 }
 

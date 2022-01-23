@@ -28,7 +28,7 @@ use crate::{
 };
 use alloc::vec::Vec;
 use ark_ff::{PrimeField, ToConstraintField};
-use ark_serialize::CanonicalSerialize;
+use ark_serialize::{CanonicalSerialize, SerializationError};
 use blake2::{
     digest::{Update, VariableOutput},
     Blake2sVar,
@@ -53,6 +53,7 @@ use manta_crypto::{
     key::KeyDerivationFunction,
     merkle_tree,
 };
+use manta_util::codec::{Decode, DecodeError, Encode, Read, Write};
 
 #[cfg(any(feature = "test", test))]
 use manta_crypto::rand::{CryptoRng, Rand, RngCore, Sample, Standard};
@@ -158,6 +159,28 @@ impl CommitmentScheme for UtxoCommitmentScheme {
     }
 }
 
+impl Decode for UtxoCommitmentScheme {
+    type Error = SerializationError;
+
+    #[inline]
+    fn decode<R>(reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
+    where
+        R: Read,
+    {
+        Ok(Self(Poseidon4::decode(reader)?))
+    }
+}
+
+impl Encode for UtxoCommitmentScheme {
+    #[inline]
+    fn encode<W>(&self, writer: W) -> Result<(), W::Error>
+    where
+        W: Write,
+    {
+        self.0.encode(writer)
+    }
+}
+
 #[cfg(any(feature = "test", test))] // NOTE: This is only safe in a test.
 impl Sample for UtxoCommitmentScheme {
     #[inline]
@@ -224,6 +247,28 @@ impl BinaryHashFunction for VoidNumberHashFunction {
             // cases! We need a better abstraction for this.
             &ecc::arkworks::lift_embedded_scalar::<Bls12_381_Edwards>(right),
         ])
+    }
+}
+
+impl Decode for VoidNumberHashFunction {
+    type Error = SerializationError;
+
+    #[inline]
+    fn decode<R>(reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
+    where
+        R: Read,
+    {
+        Ok(Self(Poseidon2::decode(reader)?))
+    }
+}
+
+impl Encode for VoidNumberHashFunction {
+    #[inline]
+    fn encode<W>(&self, writer: W) -> Result<(), W::Error>
+    where
+        W: Write,
+    {
+        self.0.encode(writer)
     }
 }
 

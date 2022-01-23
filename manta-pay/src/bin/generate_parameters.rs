@@ -20,15 +20,22 @@
 // TODO: Deduplicate the per-circuit proving context and verifying context serialization code.
 // TODO: Print some statistics about the parameters and circuits and into a stats file as well.
 
-use ark_serialize::CanonicalSerialize;
+use manta_accounting::transfer;
 use manta_crypto::{
     constraint::ProofSystem as _,
     rand::{Rand, SeedableRng},
 };
-use manta_pay::config::{FullParameters, Mint, PrivateTransfer, ProofSystem, Reclaim};
+use manta_pay::config::{
+    Config, FullParameters, Mint, Parameters, PrivateTransfer, ProofSystem, Reclaim,
+};
 use manta_util::codec::{Encode, IoWriter};
 use rand_chacha::ChaCha20Rng;
-use std::{fs::OpenOptions, io};
+use std::{
+    env,
+    fs::{self, OpenOptions},
+    io,
+    path::PathBuf,
+};
 
 /// Parameter Generation Seed
 ///
@@ -48,51 +55,92 @@ pub const SEED: [u8; 32] = [
 /// Generates the parameters using the [`SEED`] and saves them to the filesystem.
 #[inline]
 pub fn main() -> io::Result<()> {
+    let target_dir = env::args()
+        .nth(1)
+        .map(PathBuf::from)
+        .unwrap_or(env::current_dir()?);
+    assert!(
+        target_dir.is_dir() || !target_dir.exists(),
+        "Specify a directory to place the generated files: {:?}.",
+        target_dir,
+    );
+    fs::create_dir_all(&target_dir)?;
+
     let mut rng = ChaCha20Rng::from_seed(SEED);
 
     let parameters = rng.gen();
-    let utxo_set_parameters = rng.gen();
+    let utxo_set_parameters: <Config as transfer::Configuration>::UtxoSetModel = rng.gen();
 
-    /* TODO:
     let Parameters {
         key_agreement,
         utxo_commitment,
         void_number_hash,
     } = &parameters;
 
-    key_agreement.generator().serialize(&mut bytes).unwrap();
-    utxo_commitment.serialize(&mut bytes).unwrap();
-    void_number_hash.serialize(&mut bytes).unwrap();
+    let parameters_dir = target_dir.join("parameters");
+    fs::create_dir_all(&parameters_dir)?;
 
-    utxo_set_parameters
-        .serialize(
-            &mut OpenOptions::new()
+    key_agreement
+        .encode(IoWriter(
+            OpenOptions::new()
                 .create(true)
                 .write(true)
-                .open("utxo-set-parameters.dat")?,
-        )
+                .open(parameters_dir.join("key-agreement.dat"))?,
+        ))
         .unwrap();
-    */
+
+    utxo_commitment
+        .encode(IoWriter(
+            OpenOptions::new()
+                .create(true)
+                .write(true)
+                .open(parameters_dir.join("utxo-commitment-scheme.dat"))?,
+        ))
+        .unwrap();
+
+    void_number_hash
+        .encode(IoWriter(
+            OpenOptions::new()
+                .create(true)
+                .write(true)
+                .open(parameters_dir.join("void-number-hash-function.dat"))?,
+        ))
+        .unwrap();
+
+    utxo_set_parameters
+        .encode(IoWriter(
+            OpenOptions::new()
+                .create(true)
+                .write(true)
+                .open(parameters_dir.join("utxo-set-parameters.dat"))?,
+        ))
+        .unwrap();
 
     let full_parameters = FullParameters::new(&parameters, &utxo_set_parameters);
+
+    let proving_context_dir = target_dir.join("proving");
+    fs::create_dir_all(&proving_context_dir)?;
+
+    let verifying_context_dir = target_dir.join("verifying");
+    fs::create_dir_all(&verifying_context_dir)?;
 
     let cs = Mint::unknown_constraints(full_parameters);
     let (proving_context, verifying_context) =
         ProofSystem::generate_context(cs, &(), &mut rng).unwrap();
     proving_context
-        .serialize(
+        .encode(IoWriter(
             OpenOptions::new()
                 .create(true)
                 .write(true)
-                .open("mint.pk")?,
-        )
+                .open(proving_context_dir.join("mint.dat"))?,
+        ))
         .unwrap();
     verifying_context
         .encode(IoWriter(
             OpenOptions::new()
                 .create(true)
                 .write(true)
-                .open("mint.vk")?,
+                .open(verifying_context_dir.join("mint.dat"))?,
         ))
         .unwrap();
 
@@ -100,19 +148,19 @@ pub fn main() -> io::Result<()> {
     let (proving_context, verifying_context) =
         ProofSystem::generate_context(cs, &(), &mut rng).unwrap();
     proving_context
-        .serialize(
+        .encode(IoWriter(
             OpenOptions::new()
                 .create(true)
                 .write(true)
-                .open("private-transfer.pk")?,
-        )
+                .open(proving_context_dir.join("private-transfer.dat"))?,
+        ))
         .unwrap();
     verifying_context
         .encode(IoWriter(
             OpenOptions::new()
                 .create(true)
                 .write(true)
-                .open("private-transfer.vk")?,
+                .open(verifying_context_dir.join("private-transfer.dat"))?,
         ))
         .unwrap();
 
@@ -120,19 +168,19 @@ pub fn main() -> io::Result<()> {
     let (proving_context, verifying_context) =
         ProofSystem::generate_context(cs, &(), &mut rng).unwrap();
     proving_context
-        .serialize(
+        .encode(IoWriter(
             OpenOptions::new()
                 .create(true)
                 .write(true)
-                .open("reclaim.pk")?,
-        )
+                .open(proving_context_dir.join("reclaim.dat"))?,
+        ))
         .unwrap();
     verifying_context
         .encode(IoWriter(
             OpenOptions::new()
                 .create(true)
                 .write(true)
-                .open("reclaim.vk")?,
+                .open(verifying_context_dir.join("reclaim.dat"))?,
         ))
         .unwrap();
 

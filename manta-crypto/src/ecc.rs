@@ -24,6 +24,7 @@ use crate::{
     rand::{CryptoRng, RngCore, Sample},
 };
 use core::marker::PhantomData;
+use manta_util::codec::{Decode, DecodeError, Encode, Read, Write};
 
 /// Elliptic Curve Group
 pub trait Group<COM = ()>: Sized {
@@ -101,6 +102,34 @@ where
     #[inline]
     fn new_constant(value: &Self::Type, compiler: &mut COM) -> Self {
         Self::new(G::new_constant(&value.generator, compiler))
+    }
+}
+
+impl<G, COM, CODEC> Decode<CODEC> for DiffieHellman<G, COM>
+where
+    G: Group<COM> + Decode<CODEC>,
+{
+    type Error = G::Error;
+
+    #[inline]
+    fn decode<R>(reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
+    where
+        R: Read,
+    {
+        Ok(Self::new(G::decode(reader)?))
+    }
+}
+
+impl<G, COM, CODEC> Encode<CODEC> for DiffieHellman<G, COM>
+where
+    G: Group<COM> + Encode<CODEC>,
+{
+    #[inline]
+    fn encode<W>(&self, writer: W) -> Result<(), W::Error>
+    where
+        W: Write,
+    {
+        self.generator.encode(writer)
     }
 }
 

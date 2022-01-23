@@ -354,29 +354,7 @@ pub type ProofInput<C> = <<C as Configuration>::ProofSystem as ProofSystem>::Inp
 /// Transfer Validity Proof Type
 pub type Proof<C> = <ProofSystemType<C> as ProofSystem>::Proof;
 
-#[cfg(feature = "serde")]
-use serde::{Deserialize, Serialize};
-
 /// Transfer Parameters
-#[cfg_attr(
-    feature = "serde",
-    derive(Deserialize, Serialize),
-    serde(
-        bound(
-            deserialize = r"
-                C::KeyAgreementScheme: Deserialize<'de>,
-                C::UtxoCommitmentScheme: Deserialize<'de>,
-                C::VoidNumberHashFunction: Deserialize<'de>,
-            ",
-            serialize = r"
-                C::KeyAgreementScheme: Serialize,
-                C::UtxoCommitmentScheme: Serialize,
-                C::VoidNumberHashFunction: Serialize,
-            ",
-        ),
-        deny_unknown_fields,
-    )
-)]
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = r"

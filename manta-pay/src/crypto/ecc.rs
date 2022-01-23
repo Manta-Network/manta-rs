@@ -20,12 +20,15 @@
 #[cfg(feature = "arkworks")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "arkworks")))]
 pub mod arkworks {
-    use crate::crypto::constraint::arkworks::{self, empty, full, Boolean, Fp, FpVar, R1CS};
+    use crate::crypto::constraint::arkworks::{
+        codec::{ArkReader, ArkWriter, ScaleCodecReader},
+        empty, full, Boolean, Fp, FpVar, R1CS,
+    };
     use alloc::vec::Vec;
     use ark_ff::{BigInteger, Field, FpParameters, PrimeField};
     use ark_r1cs_std::ToBitsGadget;
     use ark_relations::ns;
-    use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+    use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
     use core::marker::PhantomData;
     use manta_crypto::{
         constraint::{Allocator, Constant, Equal, Public, Secret, ValueSource, Variable},
@@ -33,7 +36,7 @@ pub mod arkworks {
         key::kdf,
         rand::{CryptoRng, RngCore, Sample, Standard},
     };
-    use scale_codec::{Decode, Encode, EncodeLike};
+    use manta_util::codec;
 
     pub use ark_ec::{AffineCurve, ProjectiveCurve};
     pub use ark_r1cs_std::groups::CurveVar;
@@ -99,7 +102,44 @@ pub mod arkworks {
     where
         C: ProjectiveCurve;
 
-    impl<C> Decode for Group<C>
+    impl<C> codec::Decode for Group<C>
+    where
+        C: ProjectiveCurve,
+    {
+        type Error = SerializationError;
+
+        #[inline]
+        fn decode<R>(reader: R) -> Result<Self, codec::DecodeError<R::Error, Self::Error>>
+        where
+            R: codec::Read,
+        {
+            let mut reader = ArkReader::new(reader);
+            match CanonicalDeserialize::deserialize(&mut reader) {
+                Ok(value) => reader
+                    .finish()
+                    .map(move |_| Self(value))
+                    .map_err(codec::DecodeError::Read),
+                Err(err) => Err(codec::DecodeError::Decode(err)),
+            }
+        }
+    }
+
+    impl<C> codec::Encode for Group<C>
+    where
+        C: ProjectiveCurve,
+    {
+        #[inline]
+        fn encode<W>(&self, writer: W) -> Result<(), W::Error>
+        where
+            W: codec::Write,
+        {
+            let mut writer = ArkWriter::new(writer);
+            let _ = self.0.serialize(&mut writer);
+            writer.finish().map(|_| ())
+        }
+    }
+
+    impl<C> scale_codec::Decode for Group<C>
     where
         C: ProjectiveCurve,
     {
@@ -109,13 +149,13 @@ pub mod arkworks {
             I: scale_codec::Input,
         {
             Ok(Self(
-                C::Affine::deserialize(arkworks::codec::ScaleCodecReader(input))
+                CanonicalDeserialize::deserialize(ScaleCodecReader(input))
                     .map_err(|_| "Deserialization Error")?,
             ))
         }
     }
 
-    impl<C> Encode for Group<C>
+    impl<C> scale_codec::Encode for Group<C>
     where
         C: ProjectiveCurve,
     {
@@ -132,7 +172,7 @@ pub mod arkworks {
         }
     }
 
-    impl<C> EncodeLike for Group<C> where C: ProjectiveCurve {}
+    impl<C> scale_codec::EncodeLike for Group<C> where C: ProjectiveCurve {}
 
     impl<C> kdf::AsBytes for Group<C>
     where

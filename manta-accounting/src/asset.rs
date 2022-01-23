@@ -26,11 +26,11 @@ use core::{
     fmt::Debug,
     hash::Hash,
     iter::{self, FusedIterator, Sum},
-    ops::{Add, AddAssign, Deref, Mul, Sub, SubAssign},
+    ops::{Add, AddAssign, Deref, Sub, SubAssign},
     slice,
 };
 use derive_more::{
-    Add, AddAssign, Display, Div, DivAssign, From, Mul, MulAssign, Product, Sub, SubAssign, Sum,
+    Add, AddAssign, Display, Div, DivAssign, From, Mul, MulAssign, Sub, SubAssign, Sum,
 };
 use manta_crypto::{
     constraint::{Allocator, Secret, ValueSource, Variable},
@@ -48,7 +48,6 @@ use std::{
 pub type AssetIdType = u32;
 
 /// Asset Id Type
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Clone, Copy, Debug, Default, Display, Eq, From, Hash, Ord, PartialEq, PartialOrd)]
 #[from(forward)]
 pub struct AssetId(
@@ -119,7 +118,6 @@ where
 pub type AssetValueType = u128;
 
 /// Asset Value Type
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(
     Add,
     AddAssign,
@@ -138,7 +136,6 @@ pub type AssetValueType = u128;
     Ord,
     PartialEq,
     PartialOrd,
-    Product,
     Sub,
     SubAssign,
     Sum,
@@ -197,27 +194,12 @@ impl AssetValue {
             _ => None,
         }
     }
-
-    /// Returns an iterator over change amounts in `n` parts.
-    #[inline]
-    pub const fn make_change(self, n: usize) -> Option<Change> {
-        Change::new(self.0, n)
-    }
 }
 
 impl From<AssetValue> for [u8; AssetValue::SIZE] {
     #[inline]
     fn from(entry: AssetValue) -> Self {
         entry.into_bytes()
-    }
-}
-
-impl Mul<AssetValue> for AssetValueType {
-    type Output = AssetValueType;
-
-    #[inline]
-    fn mul(self, rhs: AssetValue) -> Self::Output {
-        self * rhs.0
     }
 }
 
@@ -251,71 +233,7 @@ impl<'a> Sum<&'a AssetValue> for AssetValue {
     }
 }
 
-/// Change Iterator
-///
-/// An iterator over [`AssetValue`] change amounts.
-///
-/// This `struct` is created by the [`make_change`](AssetValue::make_change) method on
-/// [`AssetValue`]. See its documentation for more.
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
-pub struct Change {
-    /// Base Amount
-    base: AssetValueType,
-
-    /// Remainder to be Divided
-    remainder: usize,
-
-    /// Total Number of Units
-    units: usize,
-
-    /// Current Index
-    index: usize,
-}
-
-impl Change {
-    /// Builds a new [`Change`] iterator for `amount` into `n` pieces.
-    #[inline]
-    const fn new(amount: AssetValueType, n: usize) -> Option<Self> {
-        let n_div = n as AssetValueType;
-        match amount.checked_div(n_div) {
-            Some(base) => Some(Self {
-                base,
-                remainder: (amount % n_div) as usize,
-                units: n,
-                index: 0,
-            }),
-            _ => None,
-        }
-    }
-}
-
-impl Iterator for Change {
-    type Item = AssetValue;
-
-    #[inline]
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.index >= self.units {
-            return None;
-        }
-        let amount = self.base + (self.index < self.remainder) as u128;
-        self.index += 1;
-        Some(AssetValue(amount))
-    }
-
-    #[inline]
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        let len = self.units - self.index;
-        (len, Some(len))
-    }
-}
-
-impl ExactSizeIterator for Change {}
-
-impl FusedIterator for Change {}
-
 /// Asset
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Clone, Copy, Debug, Default, Display, Eq, From, Hash, Ord, PartialEq, PartialOrd)]
 #[display(fmt = "{{id: {}, value: {}}}", id, value)]
 pub struct Asset<I = AssetId, V = AssetValue> {
@@ -1013,6 +931,8 @@ where
     }
 }
 
+impl<'s, M> FusedIterator for SelectionIter<'s, M> where M: AssetMap + ?Sized {}
+
 /// [`SelectionKeys`] Map Function Type
 type SelectionKeysMapFnType<'s, M> =
     fn(&'s (<M as AssetMap>::Key, AssetValue)) -> &'s <M as AssetMap>::Key;
@@ -1063,11 +983,13 @@ where
     }
 }
 
+impl<'s, M> FusedIterator for SelectionKeys<'s, M> where M: AssetMap + ?Sized {}
+
 /// Testing Suite
 #[cfg(test)]
 mod test {
     use super::*;
-    use rand::{thread_rng, Rng};
+    use rand::thread_rng;
 
     /// Tests asset conversion into and from bytes.
     #[test]
@@ -1084,24 +1006,11 @@ mod test {
     #[test]
     fn asset_arithmetic() {
         let mut rng = thread_rng();
-        let mut asset = Asset::zero(AssetId::gen(&mut rng));
-        let value = AssetValue::gen(&mut rng);
+        let mut asset = Asset::zero(rng.gen());
+        let value = rng.gen();
         let _ = asset + value;
         asset += value;
         let _ = asset - value;
         asset -= value;
-    }
-
-    /// Tests that the [`Change`] iterator makes the correct change.
-    #[test]
-    fn test_change_iterator() {
-        let mut rng = thread_rng();
-        for _ in 0..0xFFF {
-            let amount = AssetValue(rng.gen_range(0..0xFFFF_FFFF));
-            let n = rng.gen_range(1..0xFFFF);
-            let change = amount.make_change(n).unwrap().collect::<Vec<_>>();
-            assert_eq!(n, change.len());
-            assert_eq!(amount, change.into_iter().sum::<AssetValue>());
-        }
     }
 }
