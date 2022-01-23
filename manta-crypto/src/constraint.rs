@@ -1,4 +1,4 @@
-// Copyright 2019-2021 Manta Network.
+// Copyright 2019-2022 Manta Network.
 // This file is part of manta-rs.
 //
 // manta-rs is free software: you can redistribute it and/or modify
@@ -20,7 +20,7 @@
 //        generation and only known modes for proof generation, instead of relying on the `for_*`
 //        methods to "do the right thing".
 // TODO:  Find ways to enforce public input structure, since it's very easy to extend the input
-//        vector by the wrong amount.
+//        vector by the wrong amount or in the wrong order.
 
 use core::{fmt::Debug, hash::Hash, marker::PhantomData};
 use manta_util::{create_seal, seal};

@@ -1,4 +1,4 @@
-// Copyright 2019-2021 Manta Network.
+// Copyright 2019-2022 Manta Network.
 // This file is part of manta-rs.
 //
 // manta-rs is free software: you can redistribute it and/or modify
@@ -15,9 +15,6 @@
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
 //! Manta Network Crates
-
-// TODO: Reconsider how `manta-codec` is designed. Do we need it? Should it just be part of
-//       `manta-pay` or some `substrate`-specific interoperability crates?
 
 #![cfg_attr(not(any(feature = "std", test)), no_std)]
 #![cfg_attr(doc_cfg, feature(doc_cfg))]

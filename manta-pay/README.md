@@ -5,6 +5,6 @@
 To generate the public parameters use the following command:
 
 ```sh
-cargo run --release --all-features generate_parameters
+cargo run --release --all-features --bin generate_parameters data
 ```
 

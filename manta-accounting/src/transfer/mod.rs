@@ -1,4 +1,4 @@
-// Copyright 2019-2021 Manta Network.
+// Copyright 2019-2022 Manta Network.
 // This file is part of manta-rs.
 //
 // manta-rs is free software: you can redistribute it and/or modify
@@ -1215,7 +1215,7 @@ where
     /// Existence of such a UTXO could indicate a possible double-spend.
     fn is_not_registered(&self, utxo: Utxo<C>) -> Option<Self::ValidUtxo>;
 
-    /// Posts the `utxo` and `encrypted_asset` to the ledger, registering the asset.
+    /// Posts the `utxo` and `note` to the ledger, registering the asset.
     ///
     /// # Safety
     ///
