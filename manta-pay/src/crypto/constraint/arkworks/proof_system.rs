@@ -307,7 +307,7 @@ pub mod groth16 {
             R: codec::Read,
         {
             let mut reader = ArkReader::new(reader);
-            match CanonicalDeserialize::deserialize(&mut reader) {
+            match CanonicalDeserialize::deserialize_unchecked(&mut reader) {
                 Ok(value) => reader
                     .finish()
                     .map(move |_| Self(value))
@@ -327,7 +327,7 @@ pub mod groth16 {
             W: codec::Write,
         {
             let mut writer = ArkWriter::new(writer);
-            let _ = self.0.serialize(&mut writer);
+            let _ = self.0.serialize_unchecked(&mut writer);
             writer.finish().map(move |_| ())
         }
     }
