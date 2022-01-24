@@ -461,6 +461,9 @@ impl merkle_tree::InnerHash<Compiler> for InnerHashVar {
     }
 }
 
+/// UTXO Set Model
+pub type UtxoSetModel = merkle_tree::Parameters<MerkleTreeConfiguration>;
+
 /// UTXO Set Output
 pub type UtxoSetOutput = merkle_tree::Root<MerkleTreeConfiguration>;
 
@@ -593,7 +596,7 @@ impl transfer::Configuration for Config {
     type VoidNumberVar =
         <Self::VoidNumberHashFunctionVar as BinaryHashFunction<Self::Compiler>>::Output;
     type VoidNumberHashFunctionVar = VoidNumberHashFunctionVar;
-    type UtxoSetModel = merkle_tree::Parameters<MerkleTreeConfiguration>;
+    type UtxoSetModel = UtxoSetModel;
     type UtxoSetWitnessVar = <Self::UtxoSetModelVar as accumulator::Model<Self::Compiler>>::Witness;
     type UtxoSetOutputVar = <Self::UtxoSetModelVar as accumulator::Model<Self::Compiler>>::Output;
     type UtxoSetModelVar = merkle_tree::Parameters<MerkleTreeConfigurationVar, Compiler>;
@@ -613,6 +616,21 @@ pub type FullParameters<'p> = transfer::FullParameters<'p, Config>;
 /// Encrypted Note Type
 pub type EncryptedNote = transfer::EncryptedNote<Config>;
 
+/// Sender Type
+pub type Sender = transfer::Sender<Config>;
+
+/// Sender Post Type
+pub type SenderPost = transfer::SenderPost<Config>;
+
+/// Receiver Type
+pub type Receiver = transfer::Receiver<Config>;
+
+/// Receiver Post Type
+pub type ReceiverPost = transfer::ReceiverPost<Config>;
+
+/// Transfer Post Type
+pub type TransferPost = transfer::TransferPost<Config>;
+
 /// Mint Transfer Type
 pub type Mint = transfer::canonical::Mint<Config>;
 
@@ -621,15 +639,6 @@ pub type PrivateTransfer = transfer::canonical::PrivateTransfer<Config>;
 
 /// Reclaim Transfer Type
 pub type Reclaim = transfer::canonical::Reclaim<Config>;
-
-/// Sender Post Type
-pub type SenderPost = transfer::SenderPost<Config>;
-
-/// Receiver Post Type
-pub type ReceiverPost = transfer::ReceiverPost<Config>;
-
-/// Transfer Post Type
-pub type TransferPost = transfer::TransferPost<Config>;
 
 /// Proving Context Type
 pub type ProvingContext = transfer::ProvingContext<Config>;

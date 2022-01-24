@@ -21,7 +21,7 @@
 
 use crate::config::{
     Config, EncryptedNote, MerkleTreeConfiguration, MultiVerifyingContext, ProofSystem,
-    TransferPost, Utxo, VoidNumber,
+    TransferPost, Utxo, UtxoSetModel, VoidNumber,
 };
 use alloc::{rc::Rc, vec::Vec};
 use async_std::sync::RwLock;
@@ -110,7 +110,7 @@ impl Ledger {
     /// Builds an empty [`Ledger`].
     #[inline]
     pub fn new(
-        utxo_forest_parameters: merkle_tree::Parameters<MerkleTreeConfiguration>,
+        utxo_forest_parameters: UtxoSetModel,
         verifying_context: MultiVerifyingContext,
     ) -> Self {
         Self {
@@ -501,7 +501,7 @@ mod test {
         ledger: &SharedLedger,
         cache: &OnDiskMultiProvingContext,
         parameters: &transfer::Parameters<Config>,
-        utxo_set_parameters: &merkle_tree::Parameters<MerkleTreeConfiguration>,
+        utxo_set_model: &UtxoSetModel,
         rng: &mut R,
     ) -> Wallet<LedgerConnection>
     where
@@ -513,7 +513,7 @@ mod test {
                 AccountTable::new(rng.gen()),
                 cache.clone(),
                 parameters.clone(),
-                wallet::UtxoSet::new(utxo_set_parameters.clone()),
+                wallet::UtxoSet::new(utxo_set_model.clone()),
                 rng.seed_rng().expect("Failed to sample PRNG for signer."),
             ),
         )
@@ -529,11 +529,11 @@ mod test {
 
         let mut rng = thread_rng();
         let parameters = rng.gen();
-        let utxo_set_parameters = rng.gen();
+        let utxo_set_model = rng.gen();
 
         let (proving_context, verifying_context) = transfer::canonical::generate_context(
             &(),
-            FullParameters::new(&parameters, &utxo_set_parameters),
+            FullParameters::new(&parameters, &utxo_set_model),
             &mut rng,
         )
         .expect("Failed to generate contexts.");
@@ -546,7 +546,7 @@ mod test {
 
         const ACTOR_COUNT: usize = 10;
 
-        let mut ledger = Ledger::new(utxo_set_parameters.clone(), verifying_context);
+        let mut ledger = Ledger::new(utxo_set_model.clone(), verifying_context);
 
         for i in 0..ACTOR_COUNT {
             ledger.set_public_balance(AccountId(i as u64), AssetId(0), AssetValue(1000000));
@@ -566,7 +566,7 @@ mod test {
                         &ledger,
                         &cache,
                         &parameters,
-                        &utxo_set_parameters,
+                        &utxo_set_model,
                         &mut rng,
                     ),
                     Default::default(),
