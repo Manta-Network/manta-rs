@@ -588,6 +588,24 @@ where
     }
 }
 
+impl<C, D> Sample<D> for SpendingKey<C>
+where
+    C: Configuration,
+    D: Clone,
+    SecretKey<C>: Sample<D>,
+{
+    #[inline]
+    fn sample<R>(distribution: D, rng: &mut R) -> Self
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        Self::new(
+            Sample::sample(distribution.clone(), rng),
+            Sample::sample(distribution, rng),
+        )
+    }
+}
+
 /// Receiving Key
 #[derive(derivative::Derivative)]
 #[derivative(
@@ -716,6 +734,20 @@ where
         S: Accumulator<Item = Utxo<C>, Model = C::UtxoSetModel>,
     {
         Some(self.get_proof(utxo_set)?.upgrade(self))
+    }
+
+    /// Inserts the [`Utxo`] corresponding to `self` into the `utxo_set` and upgrades to a full
+    /// [`Sender`] if the insertion succeeded.
+    #[inline]
+    pub fn insert_and_upgrade<S>(self, utxo_set: &mut S) -> Option<Sender<C>>
+    where
+        S: Accumulator<Item = Utxo<C>, Model = C::UtxoSetModel>,
+    {
+        if self.insert_utxo(utxo_set) {
+            self.try_upgrade(utxo_set)
+        } else {
+            None
+        }
     }
 }
 

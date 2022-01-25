@@ -44,7 +44,7 @@ where
     R: CryptoRng + RngCore + ?Sized,
 {
     if count == 0 {
-        return Default::default();
+        return Vec::default();
     }
     let mut result = Vec::with_capacity(count + 1);
     result.push(AssetValue(0));

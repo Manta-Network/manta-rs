@@ -159,9 +159,9 @@ where
     pub fn build(
         senders: [Sender<C>; ReclaimShape::SENDERS],
         receivers: [Receiver<C>; ReclaimShape::RECEIVERS],
-        reclaim: Asset,
+        asset: Asset,
     ) -> Self {
-        Self::new_unchecked(Some(reclaim.id), [], senders, receivers, [reclaim.value])
+        Self::new_unchecked(Some(asset.id), [], senders, receivers, [asset.value])
     }
 }
 
