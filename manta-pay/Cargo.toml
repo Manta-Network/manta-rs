@@ -52,6 +52,9 @@ groth16 = ["arkworks", "ark-groth16"]
 # Enable PLONK ZKP System
 plonk = ["zk-garage-plonk"]
 
+# Hierarchical-Deterministic Wallet Keys
+hd-wallet = ["bip32"]
+
 # Testing Frameworks
 test = ["manta-accounting/test", "manta-crypto/test"]
 
@@ -74,14 +77,14 @@ ark-relations = { version = "0.3.0", optional = true, default-features = false }
 ark-serialize = { version = "0.3.0", optional = true, default-features = false }
 ark-std = { version = "0.3.0", optional = true, default-features = false }
 async-std = { version = "1.10.0", features = ["unstable"] }
-bip32 = { version = "0.3.0", default-features = false, features = ["bip39", "secp256k1"] }
+bip32 = { version = "0.3.0", default-features = false, features = ["bip39", "secp256k1"], optional = true }
 blake2 = { version = "0.10.0", default-features = false }
 derivative = { version = "2.2.0", default-features = false }
 generic-array = { version = "0.14.4", default-features = false }
 indexmap = { version = "1.8.0", default-features = false }
-manta-accounting = { path = "../manta-accounting" }
-manta-crypto = { path = "../manta-crypto" }
-manta-util = { path = "../manta-util" }
+manta-accounting = { path = "../manta-accounting", default-features = false }
+manta-crypto = { path = "../manta-crypto", default-features = false }
+manta-util = { path = "../manta-util", default-features = false }
 rand = { version = "0.8.4", optional = true }
 rand_chacha = { version = "0.3.1", default-features = false }
 scale-codec = { package = "parity-scale-codec", version = "2.3.1", default-features = false, features = ["derive"] }

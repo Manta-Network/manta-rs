@@ -16,18 +16,15 @@
 
 //! Manta-Pay Configuration
 
-use crate::{
-    crypto::{
-        constraint::arkworks::{groth16, Boolean, Fp, FpVar, R1CS},
-        ecc::{self, arkworks::ProjectiveCurve},
-        encryption::aes::{self, AesGcm},
-        hash::poseidon,
-        key::Blake2sKdf,
-    },
-    key::TestnetKeySecret,
+use crate::crypto::{
+    constraint::arkworks::{groth16, Boolean, Fp, FpVar, R1CS},
+    ecc,
+    encryption::aes::{self, AesGcm},
+    hash::poseidon,
+    key::Blake2sKdf,
 };
 use alloc::vec::Vec;
-use ark_ff::{PrimeField, ToConstraintField};
+use ark_ff::ToConstraintField;
 use ark_serialize::{CanonicalSerialize, SerializationError};
 use blake2::{
     digest::{Update, VariableOutput},
@@ -37,7 +34,6 @@ use bls12_381::Bls12_381;
 use bls12_381_ed::constraints::EdwardsVar as Bls12_381_EdwardsVar;
 use manta_accounting::{
     asset::{Asset, AssetId, AssetValue},
-    key::HierarchicalKeyDerivationScheme,
     transfer,
 };
 use manta_crypto::{
@@ -49,9 +45,7 @@ use manta_crypto::{
     ecc::DiffieHellman,
     encryption,
     hash::{BinaryHashFunction, HashFunction},
-    key,
-    key::KeyDerivationFunction,
-    merkle_tree,
+    key, merkle_tree,
 };
 use manta_util::codec::{Decode, DecodeError, Encode, Read, Write};
 
@@ -651,25 +645,6 @@ pub type MultiProvingContext = transfer::canonical::MultiProvingContext<Config>;
 
 /// Multi-Verifying Context Type
 pub type MultiVerifyingContext = transfer::canonical::MultiVerifyingContext<Config>;
-
-/// Hierarchical Key Derivation Function
-pub struct HierarchicalKeyDerivationFunction;
-
-impl KeyDerivationFunction for HierarchicalKeyDerivationFunction {
-    type Key = <TestnetKeySecret as HierarchicalKeyDerivationScheme>::SecretKey;
-    type Output = SecretKey;
-
-    #[inline]
-    fn derive(secret_key: &Self::Key) -> Self::Output {
-        // FIXME: Check that this conversion is logical/safe.
-        let bytes: [u8; 32] = secret_key
-            .private_key()
-            .to_bytes()
-            .try_into()
-            .expect("The secret key has 32 bytes.");
-        Fp(<Bls12_381_Edwards as ProjectiveCurve>::ScalarField::from_le_bytes_mod_order(&bytes))
-    }
-}
 
 impl MerkleTreeConfiguration {
     /// Width of the Merkle Forest
