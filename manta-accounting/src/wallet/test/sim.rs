@@ -16,11 +16,9 @@
 
 //! Actor Simulation Framework
 
-use alloc::{boxed::Box, vec::Vec};
-use core::{fmt::Debug, hash::Hash};
-use futures::stream::{self, select_all::SelectAll, Stream, StreamExt};
+use alloc::vec::Vec;
+use core::{fmt::Debug, hash::Hash, iter};
 use manta_crypto::rand::{CryptoRng, RngCore};
-use manta_util::future::LocalBoxFuture;
 
 /// Abstract Simulation
 pub trait Simulation {
@@ -34,11 +32,7 @@ pub trait Simulation {
     ///
     /// This method should return `None` when the actor is done being simulated for this round of
     /// the simulation.
-    fn step<'s, R>(
-        &'s self,
-        actor: &'s mut Self::Actor,
-        rng: &'s mut R,
-    ) -> LocalBoxFuture<'s, Option<Self::Event>>
+    fn step<R>(&self, actor: &mut Self::Actor, rng: &mut R) -> Option<Self::Event>
     where
         R: CryptoRng + RngCore + ?Sized;
 }
@@ -51,11 +45,7 @@ where
     type Event = S::Event;
 
     #[inline]
-    fn step<'s, R>(
-        &'s self,
-        actor: &'s mut Self::Actor,
-        rng: &'s mut R,
-    ) -> LocalBoxFuture<'s, Option<Self::Event>>
+    fn step<R>(&self, actor: &mut Self::Actor, rng: &mut R) -> Option<Self::Event>
     where
         R: CryptoRng + RngCore + ?Sized,
     {
@@ -136,26 +126,20 @@ where
         simulation: &'s S,
         index: usize,
         actor: &'s mut S::Actor,
-        rng: R,
-    ) -> impl 's + Stream<Item = Event<S>>
+        mut rng: R,
+    ) -> impl 's + Iterator<Item = Event<S>>
     where
         R: 's + CryptoRng + RngCore,
     {
-        stream::unfold((actor, rng), move |mut state| {
-            Box::pin(async move {
-                simulation
-                    .step(state.0, &mut state.1)
-                    .await
-                    .map(move |event| (event, state))
-            })
-        })
-        .enumerate()
-        .map(move |(step, event)| Event::new(index, step, event))
+        iter::from_fn(move || simulation.step(actor, &mut rng))
+            .enumerate()
+            .map(move |(step, event)| Event::new(index, step, event))
     }
 
+    /* TODO:
     /// Runs the simulator using `rng`, returning a stream of future events.
     #[inline]
-    pub fn run<'s, R, F>(&'s mut self, mut rng: F) -> impl 's + Stream<Item = Event<S>>
+    pub fn run<'s, R, F>(&'s mut self, mut rng: F) -> impl 's + Iterator<Item = Event<S>>
     where
         R: 's + CryptoRng + RngCore,
         F: FnMut() -> R,
@@ -166,6 +150,7 @@ where
         }
         streams
     }
+    */
 }
 
 impl<S> AsRef<S> for Simulator<S>
@@ -193,20 +178,12 @@ pub trait ActionSimulation {
     ///
     /// This method should return `None` when the actor is done being simulated for this round of
     /// the simulation.
-    fn sample<'s, R>(
-        &'s self,
-        actor: &'s mut Self::Actor,
-        rng: &'s mut R,
-    ) -> LocalBoxFuture<'s, Option<Self::Action>>
+    fn sample<R>(&self, actor: &mut Self::Actor, rng: &mut R) -> Option<Self::Action>
     where
         R: CryptoRng + RngCore + ?Sized;
 
     /// Executes the given `action` on `actor` returning a future event.
-    fn act<'s>(
-        &'s self,
-        actor: &'s mut Self::Actor,
-        action: Self::Action,
-    ) -> LocalBoxFuture<'s, Self::Event>;
+    fn act(&self, actor: &mut Self::Actor, action: Self::Action) -> Self::Event;
 }
 
 /// Action Simulation Wrapper
@@ -236,19 +213,12 @@ where
     type Event = S::Event;
 
     #[inline]
-    fn step<'s, R>(
-        &'s self,
-        actor: &'s mut Self::Actor,
-        rng: &'s mut R,
-    ) -> LocalBoxFuture<'s, Option<Self::Event>>
+    fn step<R>(&self, actor: &mut Self::Actor, rng: &mut R) -> Option<Self::Event>
     where
         R: CryptoRng + RngCore + ?Sized,
     {
-        Box::pin(async {
-            match self.0.sample(actor, rng).await {
-                Some(action) => Some(self.0.act(actor, action).await),
-                _ => None,
-            }
-        })
+        self.0
+            .sample(actor, rng)
+            .map(move |action| self.0.act(actor, action))
     }
 }

@@ -16,14 +16,11 @@
 
 //! Encrypted Filesystem Primitives
 
-// FIXME: Add asynchronous streaming interfaces.
+// FIXME: Add streaming interfaces.
 
-use alloc::{boxed::Box, vec::Vec};
+use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash};
-use manta_util::{
-    codec::{Decode, Encode},
-    future::LocalBoxFuture,
-};
+use manta_util::codec::{Decode, Encode};
 
 /// Filesystem Encrypted Saving
 pub trait SaveEncrypted {
@@ -37,23 +34,19 @@ pub trait SaveEncrypted {
     type Error;
 
     /// Saves the `payload` to `path` using the `saving_key` to encrypt it.
-    fn save_bytes<'s, P>(
+    fn save_bytes<P>(
         path: P,
-        saving_key: &'s Self::SavingKey,
+        saving_key: &Self::SavingKey,
         payload: Vec<u8>,
-    ) -> LocalBoxFuture<'s, Result<(), Self::Error>>
+    ) -> Result<(), Self::Error>
     where
-        P: 's + AsRef<Self::Path>;
+        P: AsRef<Self::Path>;
 
     /// Saves the `payload` to `path` after serializing using the `saving_key` to encrypt it.
     #[inline]
-    fn save<'s, P, E, C>(
-        path: P,
-        saving_key: &'s Self::SavingKey,
-        payload: &'s E,
-    ) -> LocalBoxFuture<'s, Result<(), Self::Error>>
+    fn save<P, E, C>(path: P, saving_key: &Self::SavingKey, payload: &E) -> Result<(), Self::Error>
     where
-        P: 's + AsRef<Self::Path>,
+        P: AsRef<Self::Path>,
         E: Encode<C>,
     {
         Self::save_bytes(path, saving_key, payload.to_vec())
@@ -72,30 +65,22 @@ pub trait LoadDecrypted {
     type Error;
 
     /// Loads a vector of bytes from `path` using `loading_key` to decrypt them.
-    fn load_bytes<'s, P>(
-        path: P,
-        loading_key: &'s Self::LoadingKey,
-    ) -> LocalBoxFuture<'s, Result<Vec<u8>, Self::Error>>
+    fn load_bytes<P>(path: P, loading_key: &Self::LoadingKey) -> Result<Vec<u8>, Self::Error>
     where
-        P: 's + AsRef<Self::Path>;
+        P: AsRef<Self::Path>;
 
     /// Loads a vector of bytes from `path` using `loading_key` to decrypt them, then deserializing
     /// the bytes to a concrete value of type `D`.
     #[inline]
-    fn load<'s, P, D, C>(
-        path: P,
-        loading_key: &'s Self::LoadingKey,
-    ) -> LocalBoxFuture<'s, Result<D, LoadError<Self, D, C>>>
+    fn load<P, D, C>(path: P, loading_key: &Self::LoadingKey) -> Result<D, LoadError<Self, D, C>>
     where
-        P: 's + AsRef<Self::Path>,
+        P: AsRef<Self::Path>,
         D: Decode<C>,
     {
-        Box::pin(async {
-            match Self::load_bytes(path, loading_key).await {
-                Ok(bytes) => D::from_vec(bytes).map_err(LoadError::Decode),
-                Err(err) => Err(LoadError::Loading(err)),
-            }
-        })
+        match Self::load_bytes(path, loading_key) {
+            Ok(bytes) => D::from_vec(bytes).map_err(LoadError::Decode),
+            Err(err) => Err(LoadError::Loading(err)),
+        }
     }
 }
 
@@ -126,14 +111,14 @@ where
 #[cfg_attr(doc_cfg, doc(cfg(feature = "cocoon-fs")))]
 pub mod cocoon {
     use super::*;
-    use async_std::{
-        fs::OpenOptions,
-        io::{Error as IoError, ReadExt, WriteExt},
-        path::Path,
-    };
     use cocoon_crate::{Cocoon, Error as CocoonError};
     use core::fmt;
     use manta_util::from_variant_impl;
+    use std::{
+        fs::OpenOptions,
+        io::{Error as IoError, Read, Write},
+        path::Path,
+    };
     use zeroize::Zeroizing;
 
     /// Cocoon Loading/Saving Error
@@ -159,8 +144,6 @@ pub mod cocoon {
         }
     }
 
-    #[cfg(feature = "std")]
-    #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
     impl std::error::Error for Error {}
 
     /// Cocoon [`SaveEncrypted`] Adapter
@@ -173,27 +156,23 @@ pub mod cocoon {
         type Error = Error;
 
         #[inline]
-        fn save_bytes<'s, P>(
+        fn save_bytes<P>(
             path: P,
-            saving_key: &'s Self::SavingKey,
+            saving_key: &Self::SavingKey,
             payload: Vec<u8>,
-        ) -> LocalBoxFuture<'s, Result<(), Self::Error>>
+        ) -> Result<(), Self::Error>
         where
-            P: 's + AsRef<Self::Path>,
+            P: AsRef<Self::Path>,
         {
-            Box::pin(async {
-                let mut buffer = Zeroizing::new(Vec::new());
-                Cocoon::new(saving_key).dump(payload, &mut buffer.as_mut_slice())?;
-                OpenOptions::new()
-                    .create(true)
-                    .truncate(true)
-                    .write(true)
-                    .open(path)
-                    .await?
-                    .write_all(&buffer)
-                    .await?;
-                Ok(())
-            })
+            let mut buffer = Zeroizing::new(Vec::new());
+            Cocoon::new(saving_key).dump(payload, &mut buffer.as_mut_slice())?;
+            OpenOptions::new()
+                .create(true)
+                .truncate(true)
+                .write(true)
+                .open(path)?
+                .write_all(&buffer)?;
+            Ok(())
         }
     }
 
@@ -207,19 +186,14 @@ pub mod cocoon {
         type Error = Error;
 
         #[inline]
-        fn load_bytes<'s, P>(
-            path: P,
-            loading_key: &'s Self::LoadingKey,
-        ) -> LocalBoxFuture<'s, Result<Vec<u8>, Self::Error>>
+        fn load_bytes<P>(path: P, loading_key: &Self::LoadingKey) -> Result<Vec<u8>, Self::Error>
         where
-            P: 's + AsRef<Self::Path>,
+            P: AsRef<Self::Path>,
         {
-            Box::pin(async move {
-                let mut buffer = Zeroizing::new(Vec::new());
-                let mut file = OpenOptions::new().read(true).open(path).await?;
-                file.read_to_end(&mut buffer).await?;
-                Ok(Cocoon::parse_only(loading_key).parse(&mut buffer.as_slice())?)
-            })
+            let mut buffer = Zeroizing::new(Vec::new());
+            let mut file = OpenOptions::new().read(true).open(path)?;
+            file.read_to_end(&mut buffer)?;
+            Ok(Cocoon::parse_only(loading_key).parse(&mut buffer.as_slice())?)
         }
     }
 }

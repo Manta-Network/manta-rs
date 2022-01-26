@@ -23,7 +23,6 @@
 use crate::transfer::{Configuration, EncryptedNote, TransferPost, Utxo, VoidNumber};
 use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash};
-use manta_util::future::LocalBoxFuture;
 
 /// Ledger Checkpoint
 pub trait Checkpoint: Default + PartialOrd {
@@ -53,14 +52,11 @@ where
 
     /// Pulls receiver data from the ledger starting from `checkpoint`, returning the current
     /// [`Checkpoint`](Self::Checkpoint).
-    fn pull<'s>(
-        &'s mut self,
-        checkpoint: &'s Self::Checkpoint,
-    ) -> LocalBoxFuture<'s, PullResult<C, Self>>;
+    fn pull(&mut self, checkpoint: &Self::Checkpoint) -> PullResult<C, Self>;
 
     /// Sends `posts` to the ledger, returning `true` or `false` depending on whether the entire
     /// batch succeeded or not.
-    fn push(&mut self, posts: Vec<TransferPost<C>>) -> LocalBoxFuture<PushResult<C, Self>>;
+    fn push(&mut self, posts: Vec<TransferPost<C>>) -> PushResult<C, Self>;
 }
 
 /// Ledger Source Pull Result

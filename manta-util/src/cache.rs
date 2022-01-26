@@ -16,8 +16,6 @@
 
 //! Caching Utilities
 
-use crate::future::LocalBoxFuture;
-use alloc::boxed::Box;
 use core::{convert::Infallible, ops::Deref};
 
 /// Cached Resource
@@ -35,7 +33,7 @@ pub trait CachedResource<T> {
     ///
     /// This method should be idempotent unless calls to [`aquire`](Self::aquire) are interleaved
     /// with calls to [`release`](Self::release).
-    fn aquire(&mut self) -> LocalBoxFuture<Result<Self::ReadingKey, Self::Error>>;
+    fn aquire(&mut self) -> Result<Self::ReadingKey, Self::Error>;
 
     /// Reads the resource, spending the `reading_key`. The reference can be held on to until
     /// [`release`](Self::release) is called or the reference falls out of scope.
@@ -48,7 +46,7 @@ pub trait CachedResource<T> {
     /// This method should be idempotent unless calls to [`release`](Self::release) are interleaved
     /// with calls to [`aquire`](Self::aquire). This method can be a no-op if the resource was not
     /// aquired.
-    fn release(&mut self) -> LocalBoxFuture;
+    fn release(&mut self);
 }
 
 /// Cached Resource Error Type
@@ -62,8 +60,8 @@ where
     type Error = Infallible;
 
     #[inline]
-    fn aquire(&mut self) -> LocalBoxFuture<Result<Self::ReadingKey, Self::Error>> {
-        Box::pin(async { Ok(()) })
+    fn aquire(&mut self) -> Result<Self::ReadingKey, Self::Error> {
+        Ok(())
     }
 
     #[inline]
@@ -73,7 +71,5 @@ where
     }
 
     #[inline]
-    fn release(&mut self) -> LocalBoxFuture {
-        Box::pin(async {})
-    }
+    fn release(&mut self) {}
 }

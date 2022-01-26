@@ -23,12 +23,11 @@ use crate::{
     transfer::{canonical::Transaction, Configuration, PublicKey, ReceivingKey},
     wallet::{self, ledger, signer, Wallet},
 };
-use alloc::{boxed::Box, rc::Rc};
-use async_std::sync::RwLock;
+use alloc::rc::Rc;
 use core::{fmt::Debug, hash::Hash, marker::PhantomData};
 use indexmap::IndexSet;
 use manta_crypto::rand::{CryptoRng, RngCore, Sample};
-use manta_util::future::LocalBoxFuture;
+use parking_lot::RwLock;
 use rand::{distributions::Distribution, Rng};
 use statrs::{
     distribution::{Categorical, Discrete},
@@ -178,7 +177,7 @@ impl Sample<ActionDistribution> for ActionType {
 /// Public Balance Oracle
 pub trait PublicBalanceOracle {
     /// Returns the public balances of `self`.
-    fn public_balances(&self) -> LocalBoxFuture<Option<AssetList>>;
+    fn public_balances(&self) -> Option<AssetList>;
 }
 
 /// Actor
@@ -223,13 +222,13 @@ where
 
     /// Samples a deposit from `self` using `rng` returning `None` if no deposit is possible.
     #[inline]
-    async fn sample_deposit<R>(&mut self, rng: &mut R) -> Option<Asset>
+    fn sample_deposit<R>(&mut self, rng: &mut R) -> Option<Asset>
     where
         L: PublicBalanceOracle,
         R: CryptoRng + RngCore + ?Sized,
     {
-        let _ = self.wallet.sync().await;
-        let assets = self.wallet.ledger().public_balances().await?;
+        let _ = self.wallet.sync();
+        let assets = self.wallet.ledger().public_balances()?;
         let len = assets.len();
         if len == 0 {
             return None;
@@ -245,11 +244,11 @@ where
     /// This method samples from a uniform distribution over the asset IDs and asset values present
     /// in the balance state of `self`.
     #[inline]
-    async fn sample_withdraw<R>(&mut self, rng: &mut R) -> Option<Asset>
+    fn sample_withdraw<R>(&mut self, rng: &mut R) -> Option<Asset>
     where
         R: CryptoRng + RngCore + ?Sized,
     {
-        let _ = self.wallet.sync().await;
+        let _ = self.wallet.sync();
         let assets = self.wallet.assets();
         let len = assets.len();
         if len == 0 {
@@ -328,97 +327,85 @@ where
     type Event = Event<C, L, S>;
 
     #[inline]
-    fn sample<'s, R>(
-        &'s self,
-        actor: &'s mut Self::Actor,
-        rng: &'s mut R,
-    ) -> LocalBoxFuture<'s, Option<Self::Action>>
+    fn sample<R>(&self, actor: &mut Self::Actor, rng: &mut R) -> Option<Self::Action>
     where
         R: CryptoRng + RngCore + ?Sized,
     {
-        Box::pin(async {
-            actor.reduce_lifetime()?;
-            let action = actor.distribution.sample(rng);
-            Some(match action {
-                ActionType::Skip => Action::Skip,
-                ActionType::Mint => match actor.sample_deposit(rng).await {
+        actor.reduce_lifetime()?;
+        let action = actor.distribution.sample(rng);
+        Some(match action {
+            ActionType::Skip => Action::Skip,
+            ActionType::Mint => match actor.sample_deposit(rng) {
+                Some(asset) => Action::Post(Transaction::Mint(asset)),
+                _ => Action::Skip,
+            },
+            ActionType::PrivateTransfer => match actor.sample_withdraw(rng) {
+                Some(asset) => {
+                    let public_keys = self.public_keys.read();
+                    let len = public_keys.len();
+                    if len == 0 {
+                        Action::GeneratePublicKey
+                    } else {
+                        Action::Post(Transaction::PrivateTransfer(
+                            asset,
+                            public_keys[rng.gen_range(0..len)].clone(),
+                        ))
+                    }
+                }
+                _ => match actor.sample_deposit(rng) {
                     Some(asset) => Action::Post(Transaction::Mint(asset)),
                     _ => Action::Skip,
                 },
-                ActionType::PrivateTransfer => match actor.sample_withdraw(rng).await {
-                    Some(asset) => {
-                        let public_keys = self.public_keys.read().await;
-                        let len = public_keys.len();
-                        if len == 0 {
-                            Action::GeneratePublicKey
-                        } else {
-                            Action::Post(Transaction::PrivateTransfer(
-                                asset,
-                                public_keys[rng.gen_range(0..len)].clone(),
-                            ))
-                        }
-                    }
-                    _ => match actor.sample_deposit(rng).await {
-                        Some(asset) => Action::Post(Transaction::Mint(asset)),
-                        _ => Action::Skip,
-                    },
+            },
+            ActionType::Reclaim => match actor.sample_withdraw(rng) {
+                Some(asset) => Action::Post(Transaction::Reclaim(asset)),
+                _ => match actor.sample_deposit(rng) {
+                    Some(asset) => Action::Post(Transaction::Mint(asset)),
+                    _ => Action::Skip,
                 },
-                ActionType::Reclaim => match actor.sample_withdraw(rng).await {
-                    Some(asset) => Action::Post(Transaction::Reclaim(asset)),
-                    _ => match actor.sample_deposit(rng).await {
-                        Some(asset) => Action::Post(Transaction::Mint(asset)),
-                        _ => Action::Skip,
-                    },
-                },
-                ActionType::GeneratePublicKey => Action::GeneratePublicKey,
-            })
+            },
+            ActionType::GeneratePublicKey => Action::GeneratePublicKey,
         })
     }
 
     #[inline]
-    fn act<'s>(
-        &'s self,
-        actor: &'s mut Self::Actor,
-        action: Self::Action,
-    ) -> LocalBoxFuture<'s, Self::Event> {
-        Box::pin(async move {
-            match action {
-                Action::Skip => Event {
-                    action: ActionType::Skip,
-                    result: Ok(true),
-                },
-                Action::Post(transaction) => {
-                    let action = match &transaction {
-                        Transaction::Mint(_) => ActionType::Mint,
-                        Transaction::PrivateTransfer(_, _) => ActionType::PrivateTransfer,
-                        Transaction::Reclaim(_) => ActionType::Reclaim,
-                    };
-                    let mut retries = 5; // TODO: Make this parameter tunable based on concurrency.
-                    loop {
-                        let result = actor.wallet.post(transaction.clone()).await;
-                        if let Ok(false) = result {
-                            if retries == 0 {
-                                break Event { action, result };
-                            } else {
-                                retries -= 1;
-                                continue;
-                            }
-                        } else {
+    fn act(&self, actor: &mut Self::Actor, action: Self::Action) -> Self::Event {
+        match action {
+            Action::Skip => Event {
+                action: ActionType::Skip,
+                result: Ok(true),
+            },
+            Action::Post(transaction) => {
+                let action = match &transaction {
+                    Transaction::Mint(_) => ActionType::Mint,
+                    Transaction::PrivateTransfer(_, _) => ActionType::PrivateTransfer,
+                    Transaction::Reclaim(_) => ActionType::Reclaim,
+                };
+                let mut retries = 5; // TODO: Make this parameter tunable based on concurrency.
+                loop {
+                    let result = actor.wallet.post(transaction.clone());
+                    if let Ok(false) = result {
+                        if retries == 0 {
                             break Event { action, result };
+                        } else {
+                            retries -= 1;
+                            continue;
                         }
+                    } else {
+                        break Event { action, result };
                     }
                 }
-                Action::GeneratePublicKey => Event {
-                    action: ActionType::GeneratePublicKey,
-                    result: match actor.wallet.receiving_key().await {
-                        Ok(key) => {
-                            self.public_keys.write().await.insert(key);
-                            Ok(true)
-                        }
-                        Err(err) => Err(wallet::Error::SignerError(err)),
-                    },
-                },
             }
-        })
+            Action::GeneratePublicKey => Event {
+                action: ActionType::GeneratePublicKey,
+                result: match actor.wallet.receiving_key() {
+                    Ok(key) => {
+                        self.public_keys.write().insert(key);
+                        Ok(true)
+                    }
+                    Err(err) => Err(wallet::Error::SignerError(err)),
+                },
+            },
+        }
     }
 }

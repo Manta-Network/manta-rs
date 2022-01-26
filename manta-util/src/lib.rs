@@ -27,19 +27,12 @@ extern crate alloc;
 mod array;
 mod sealed;
 
+pub mod cache;
 pub mod codec;
 pub mod convert;
 pub mod iter;
 pub mod persistance;
 pub mod pointer;
-
-#[cfg(feature = "alloc")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
-pub mod cache;
-
-#[cfg(feature = "alloc")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
-pub mod future;
 
 pub use array::*;
 pub use sealed::*;

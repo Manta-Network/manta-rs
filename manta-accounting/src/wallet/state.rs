@@ -265,7 +265,7 @@ where
 
     /// Pulls data from the `ledger`, synchronizing the wallet and balance state.
     #[inline]
-    pub async fn sync(&mut self) -> Result<(), Error<C, L, S>> {
+    pub fn sync(&mut self) -> Result<(), Error<C, L, S>> {
         // FIXME: What should be done when we receive an `InconsistentSynchronization` error from
         //        the signer?
         //          - One option is to do some sort of (exponential) backoff algorithm to find the
@@ -281,7 +281,6 @@ where
         } = self
             .ledger
             .pull(&self.checkpoint)
-            .await
             .map_err(Error::LedgerError)?;
         if checkpoint < self.checkpoint {
             return Err(Error::InconsistentCheckpoint);
@@ -289,7 +288,6 @@ where
         match self
             .signer
             .sync(self.checkpoint.receiver_index(), receivers, senders)
-            .await
             .map_err(Error::SignerError)?
         {
             SyncResponse::Partial { deposit, withdraw } => {
@@ -335,23 +333,19 @@ where
     /// This method returns an error in any other case. The internal state of the wallet is kept
     /// consistent between calls and recoverable errors are returned for the caller to handle.
     #[inline]
-    pub async fn post(&mut self, transaction: Transaction<C>) -> Result<bool, Error<C, L, S>> {
-        self.sync().await?;
+    pub fn post(&mut self, transaction: Transaction<C>) -> Result<bool, Error<C, L, S>> {
+        self.sync()?;
         self.check(&transaction)
             .map_err(Error::InsufficientBalance)?;
-        let SignResponse { posts } = self
-            .signer
-            .sign(transaction)
-            .await
-            .map_err(Error::SignerError)?;
-        let PushResponse { success } = self.ledger.push(posts).await.map_err(Error::LedgerError)?;
+        let SignResponse { posts } = self.signer.sign(transaction).map_err(Error::SignerError)?;
+        let PushResponse { success } = self.ledger.push(posts).map_err(Error::LedgerError)?;
         Ok(success)
     }
 
     /// Returns a new [`ReceivingKey`] for `self` to receive assets.
     #[inline]
-    pub async fn receiving_key(&mut self) -> Result<ReceivingKey<C>, S::Error> {
-        self.signer.receiving_key().await
+    pub fn receiving_key(&mut self) -> Result<ReceivingKey<C>, S::Error> {
+        self.signer.receiving_key()
     }
 }
 

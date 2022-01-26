@@ -48,7 +48,7 @@ use crate::{
         Utxo, VoidNumber,
     },
 };
-use alloc::{boxed::Box, vec, vec::Vec};
+use alloc::{vec, vec::Vec};
 use core::{convert::Infallible, fmt::Debug};
 use manta_crypto::{
     accumulator::{
@@ -59,9 +59,7 @@ use manta_crypto::{
 };
 use manta_util::{
     cache::{CachedResource, CachedResourceError},
-    fallible_array_map,
-    future::LocalBoxFuture,
-    into_array_unchecked,
+    fallible_array_map, into_array_unchecked,
     iter::IteratorExt,
     persistance::Rollback,
 };
@@ -76,21 +74,16 @@ where
 
     /// Pushes updates from the ledger to the wallet, synchronizing it with the ledger state and
     /// returning an updated asset distribution.
-    fn sync<'s, I, R>(
-        &'s mut self,
-        starting_index: usize,
-        inserts: I,
-        removes: R,
-    ) -> LocalBoxFuture<'s, SyncResult<C, Self>>
+    fn sync<I, R>(&mut self, starting_index: usize, inserts: I, removes: R) -> SyncResult<C, Self>
     where
-        I: 's + IntoIterator<Item = (Utxo<C>, EncryptedNote<C>)>,
-        R: 's + IntoIterator<Item = VoidNumber<C>>;
+        I: IntoIterator<Item = (Utxo<C>, EncryptedNote<C>)>,
+        R: IntoIterator<Item = VoidNumber<C>>;
 
     /// Signs a `transaction` and returns the ledger transfer posts if successful.
-    fn sign(&mut self, transaction: Transaction<C>) -> LocalBoxFuture<SignResult<C, Self>>;
+    fn sign(&mut self, transaction: Transaction<C>) -> SignResult<C, Self>;
 
     /// Returns a new [`ReceivingKey`] for `self` to receive assets.
-    fn receiving_key(&mut self) -> LocalBoxFuture<ReceivingKeyResult<C, Self>>;
+    fn receiving_key(&mut self) -> ReceivingKeyResult<C, Self>;
 }
 
 /// Synchronization Result
@@ -259,10 +252,10 @@ where
 {
     /// Returns the public parameters by reading from the proving context cache.
     #[inline]
-    pub async fn get(
+    pub fn get(
         &mut self,
     ) -> Result<(&Parameters<C>, &MultiProvingContext<C>), ProvingContextCacheError<C>> {
-        let reading_key = self.proving_context.aquire().await?;
+        let reading_key = self.proving_context.aquire()?;
         Ok((&self.parameters, self.proving_context.read(reading_key)))
     }
 }
@@ -803,7 +796,7 @@ where
 
     /// Signs a withdraw transaction for `asset` sent to `receiver`.
     #[inline]
-    async fn sign_withdraw(
+    fn sign_withdraw(
         &mut self,
         asset: Asset,
         receiver: Option<ReceivingKey<C>>,
@@ -815,7 +808,6 @@ where
         let (parameters, proving_context) = self
             .parameters
             .get()
-            .await
             .map_err(Error::ProvingContextCacheError)?;
         let mut posts = Vec::new();
         let senders = self.state.compute_batched_transactions(
@@ -846,7 +838,7 @@ where
 
     /// Signs the `transaction`, generating transfer posts without releasing resources.
     #[inline]
-    async fn sign_internal(&mut self, transaction: Transaction<C>) -> SignResult<C, Self> {
+    fn sign_internal(&mut self, transaction: Transaction<C>) -> SignResult<C, Self> {
         match transaction {
             Transaction::Mint(asset) => {
                 let receiver = self
@@ -855,7 +847,6 @@ where
                 let (parameters, proving_context) = self
                     .parameters
                     .get()
-                    .await
                     .map_err(Error::ProvingContextCacheError)?;
                 Ok(SignResponse::new(vec![self.state.mint_post(
                     parameters,
@@ -864,20 +855,20 @@ where
                 )?]))
             }
             Transaction::PrivateTransfer(asset, receiver) => {
-                self.sign_withdraw(asset, Some(receiver)).await
+                self.sign_withdraw(asset, Some(receiver))
             }
-            Transaction::Reclaim(asset) => self.sign_withdraw(asset, None).await,
+            Transaction::Reclaim(asset) => self.sign_withdraw(asset, None),
         }
     }
 
     /// Signs the `transaction`, generating transfer posts.
     #[inline]
-    pub async fn sign(&mut self, transaction: Transaction<C>) -> SignResult<C, Self> {
+    pub fn sign(&mut self, transaction: Transaction<C>) -> SignResult<C, Self> {
         // TODO: Should we do a time-based release mechanism to amortize the cost of reading
         //       from the proving context cache?
-        let result = self.sign_internal(transaction).await;
+        let result = self.sign_internal(transaction);
         self.state.utxo_set.rollback();
-        self.parameters.proving_context.release().await;
+        self.parameters.proving_context.release();
         result
     }
 
@@ -902,26 +893,21 @@ where
     type Error = Error<C>;
 
     #[inline]
-    fn sync<'s, I, R>(
-        &'s mut self,
-        starting_index: usize,
-        inserts: I,
-        removes: R,
-    ) -> LocalBoxFuture<'s, SyncResult<C, Self>>
+    fn sync<I, R>(&mut self, starting_index: usize, inserts: I, removes: R) -> SyncResult<C, Self>
     where
-        I: 's + IntoIterator<Item = (Utxo<C>, EncryptedNote<C>)>,
-        R: 's + IntoIterator<Item = VoidNumber<C>>,
+        I: IntoIterator<Item = (Utxo<C>, EncryptedNote<C>)>,
+        R: IntoIterator<Item = VoidNumber<C>>,
     {
-        Box::pin(async move { self.sync(starting_index, inserts, removes) })
+        self.sync(starting_index, inserts, removes)
     }
 
     #[inline]
-    fn sign(&mut self, transaction: Transaction<C>) -> LocalBoxFuture<SignResult<C, Self>> {
-        Box::pin(self.sign(transaction))
+    fn sign(&mut self, transaction: Transaction<C>) -> SignResult<C, Self> {
+        self.sign(transaction)
     }
 
     #[inline]
-    fn receiving_key(&mut self) -> LocalBoxFuture<ReceivingKeyResult<C, Self>> {
-        Box::pin(async move { self.receiving_key() })
+    fn receiving_key(&mut self) -> ReceivingKeyResult<C, Self> {
+        self.receiving_key()
     }
 }
