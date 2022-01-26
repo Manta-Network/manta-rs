@@ -16,6 +16,8 @@
 
 //! Canonical Transfer Types
 
+// TODO: Add typing for `ProvingContext` and `VerifyingContext` against the canonical shapes.
+
 use crate::{
     asset::{self, Asset, AssetValue},
     transfer::{

@@ -25,5 +25,4 @@ pub mod ledger;
 // #[cfg_attr(doc_cfg, doc(cfg(feature = "simulation")))]
 // pub mod simulation;
 
-#[cfg(test)]
 pub mod transfer;

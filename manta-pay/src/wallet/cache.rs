@@ -17,31 +17,30 @@
 //! Proving Context Caching
 
 use crate::config::{MultiProvingContext, ProvingContext};
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use async_std::{
     io,
     path::{Path, PathBuf},
     task,
 };
 use core::marker::PhantomData;
-use manta_util::{cache::CachedResource, future::LocalBoxFuture};
+use manta_util::{
+    cache::CachedResource,
+    codec::{Decode, Encode, IoReader, IoWriter},
+    future::LocalBoxFuture,
+};
 use std::fs::{File, OpenOptions};
 
 /// Caching Error
 #[derive(Debug)]
 pub enum Error {
-    /// Serialization Error
-    Serialization(SerializationError),
+    /// Encoding Error
+    Encode,
+
+    /// Decoding Error
+    Decode,
 
     /// I/O Error
     Io(io::Error),
-}
-
-impl From<SerializationError> for Error {
-    #[inline]
-    fn from(err: SerializationError) -> Self {
-        Self::Serialization(err)
-    }
 }
 
 impl From<io::Error> for Error {
@@ -100,9 +99,7 @@ impl OnDiskMultiProvingContext {
         Ok(task::spawn_blocking(move || {
             File::open(path.as_ref())
                 .map_err(Error::Io)
-                .and_then(move |f| {
-                    ProvingContext::deserialize_unchecked(f).map_err(Error::Serialization)
-                })
+                .and_then(move |f| ProvingContext::decode(IoReader(f)).map_err(|_| Error::Decode))
         })
         .await?)
     }
@@ -119,7 +116,7 @@ impl OnDiskMultiProvingContext {
                 .create(true)
                 .open(path.as_ref())
                 .map_err(Error::Io)
-                .and_then(move |f| context.serialize_unchecked(f).map_err(Error::Serialization))
+                .and_then(move |f| context.encode(IoWriter(f)).map_err(|_| Error::Encode))
         })
         .await?)
     }

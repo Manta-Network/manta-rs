@@ -14,7 +14,9 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Manta Pay Base Wallet Implementation
+//! Manta Pay Wallet Implementation
+
+// TODO: Build websockets wallet.
 
 use crate::{
     config::{Bls12_381_Edwards, Config, MerkleTreeConfiguration, SecretKey},

@@ -446,7 +446,10 @@ impl ledger::Connection<Config> for LedgerConnection {
                     Ok(posting_key) => {
                         posting_key.post(&(), &mut *ledger);
                     }
-                    _ => return Ok(PushResponse { success: false }),
+                    Err(err) => {
+                        async_std::println!("ERROR: {:?}", err).await;
+                        return Ok(PushResponse { success: false });
+                    }
                 }
             }
             Ok(PushResponse { success: true })
@@ -544,7 +547,7 @@ mod test {
             .await
             .expect("Unable to save proving context to disk.");
 
-        const ACTOR_COUNT: usize = 10;
+        const ACTOR_COUNT: usize = 3;
 
         let mut ledger = Ledger::new(utxo_set_model.clone(), verifying_context);
 
