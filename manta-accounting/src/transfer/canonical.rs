@@ -21,14 +21,14 @@
 use crate::{
     asset::{self, Asset, AssetValue},
     transfer::{
-        has_public_participants, Configuration, FullParameters, PreSender, ProofSystemError,
-        ProofSystemPublicParameters, ProvingContext, Receiver, ReceivingKey, Sender, Transfer,
-        TransferPost, VerifyingContext,
+        has_public_participants, Configuration, FullParameters, Parameters, PreSender,
+        ProofSystemError, ProofSystemPublicParameters, ProvingContext, Receiver, ReceivingKey,
+        Sender, SpendingKey, Transfer, TransferPost, VerifyingContext,
     },
 };
 use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash};
-use manta_crypto::rand::{CryptoRng, RngCore};
+use manta_crypto::rand::{CryptoRng, Rand, RngCore};
 use manta_util::{create_seal, seal};
 
 create_seal! {}
@@ -100,6 +100,36 @@ where
     #[inline]
     pub fn build(asset: Asset, receiver: Receiver<C>) -> Self {
         Self::new_unchecked(Some(asset.id), [asset.value], [], [receiver], [])
+    }
+
+    /// Builds a new [`Mint`] from a [`SpendingKey`] using [`SpendingKey::receiver`].
+    #[inline]
+    pub fn from_spending_key<R>(
+        parameters: &Parameters<C>,
+        spending_key: &SpendingKey<C>,
+        asset: Asset,
+        rng: &mut R,
+    ) -> Self
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        Self::build(asset, spending_key.receiver(parameters, rng.gen(), asset))
+    }
+
+    /// Builds a new [`Mint`] and [`PreSender`] pair from a [`SpendingKey`] using
+    /// [`SpendingKey::internal_pair`].
+    #[inline]
+    pub fn internal_pair<R>(
+        parameters: &Parameters<C>,
+        spending_key: &SpendingKey<C>,
+        asset: Asset,
+        rng: &mut R,
+    ) -> (Self, PreSender<C>)
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        let (receiver, pre_sender) = spending_key.internal_pair(parameters, rng.gen(), asset);
+        (Self::build(asset, receiver), pre_sender)
     }
 }
 

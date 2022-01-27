@@ -471,12 +471,12 @@ where
             .get_default()
             .default_keypair()
             .map_err(key::Error::KeyDerivationError)?;
-        let (receiver, pre_sender) = SpendingKey::new(keypair.spend, keypair.view).internal_pair(
+        Ok(Mint::internal_pair(
             parameters,
-            self.rng.gen(),
+            &SpendingKey::new(keypair.spend, keypair.view),
             asset,
-        );
-        Ok((Mint::build(asset, receiver), pre_sender))
+            &mut self.rng,
+        ))
     }
 
     /// Selects the pre-senders which collectively own at least `asset`, returning any change.

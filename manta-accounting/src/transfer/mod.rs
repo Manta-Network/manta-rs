@@ -1000,7 +1000,7 @@ where
     /// [`spend_all`] can be implemented depending on which is more efficient.
     ///
     /// [`spend`]: Self::spend
-    /// [`spend_all`]: Self::Spend_all
+    /// [`spend_all`]: Self::spend_all
     #[inline]
     fn spend_all<I>(&mut self, iter: I, super_key: &Self::SuperPostingKey)
     where

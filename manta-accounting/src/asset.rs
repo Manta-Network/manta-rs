@@ -196,6 +196,23 @@ impl AssetValue {
     }
 }
 
+impl Add<AssetValueType> for AssetValue {
+    type Output = Self;
+
+    #[inline]
+    fn add(mut self, rhs: AssetValueType) -> Self {
+        self.add_assign(rhs);
+        self
+    }
+}
+
+impl AddAssign<AssetValueType> for AssetValue {
+    #[inline]
+    fn add_assign(&mut self, rhs: AssetValueType) {
+        self.0 += rhs;
+    }
+}
+
 impl From<AssetValue> for [u8; AssetValue::SIZE] {
     #[inline]
     fn from(entry: AssetValue) -> Self {
@@ -220,6 +237,23 @@ where
         R: CryptoRng + RngCore + ?Sized,
     {
         Self(rng.sample(distribution))
+    }
+}
+
+impl Sub<AssetValueType> for AssetValue {
+    type Output = Self;
+
+    #[inline]
+    fn sub(mut self, rhs: AssetValueType) -> Self {
+        self.sub_assign(rhs);
+        self
+    }
+}
+
+impl SubAssign<AssetValueType> for AssetValue {
+    #[inline]
+    fn sub_assign(&mut self, rhs: AssetValueType) {
+        self.0 -= rhs;
     }
 }
 

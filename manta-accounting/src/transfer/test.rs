@@ -19,9 +19,9 @@
 use crate::{
     asset::{Asset, AssetId, AssetValue, AssetValueType},
     transfer::{
-        has_public_participants, Configuration, FullParameters, Parameters, PreSender,
-        ProofSystemError, ProofSystemPublicParameters, ProvingContext, Receiver, Sender, Transfer,
-        Utxo, VerifyingContext,
+        canonical::Mint, has_public_participants, Configuration, FullParameters, Parameters,
+        PreSender, ProofSystemError, ProofSystemPublicParameters, ProvingContext, Receiver, Sender,
+        SpendingKey, Transfer, TransferPost, Utxo, VerifyingContext,
     },
 };
 use alloc::vec::Vec;
@@ -122,11 +122,79 @@ where
     pub utxo_set: &'p mut A,
 }
 
+impl<'p, C, A> From<FixedTransferDistribution<'p, C, A>> for TransferDistribution<'p, C, A>
+where
+    C: Configuration,
+    A: Accumulator<Item = Utxo<C>, Model = C::UtxoSetModel>,
+{
+    #[inline]
+    fn from(distribution: FixedTransferDistribution<'p, C, A>) -> Self {
+        distribution.base
+    }
+}
+
+/// Fixed Transfer Distribution
+///
+/// # Note
+///
+/// This distribution does not check if the input sum is equal to the output sum, and lets the
+/// [`Transfer`] mechanism check this itself.
+pub struct FixedTransferDistribution<'p, C, A>
+where
+    C: Configuration,
+    A: Accumulator<Item = Utxo<C>, Model = C::UtxoSetModel>,
+{
+    /// Base Transfer Distribution
+    pub base: TransferDistribution<'p, C, A>,
+
+    /// Asset Id for this Transfer
+    pub asset_id: AssetId,
+
+    /// Source Asset Value Sum
+    pub source_sum: AssetValue,
+
+    /// Sender Asset Value Sum
+    pub sender_sum: AssetValue,
+
+    /// Receiver Asset Value Sum
+    pub receiver_sum: AssetValue,
+
+    /// Sink Asset Value Sum
+    pub sink_sum: AssetValue,
+}
+
 impl<C, const SOURCES: usize, const SENDERS: usize, const RECEIVERS: usize, const SINKS: usize>
     Transfer<C, SOURCES, SENDERS, RECEIVERS, SINKS>
 where
     C: Configuration,
 {
+    /// Samples a [`TransferPost`] from `parameters` and `utxo_set` using `proving_context` and
+    /// `rng`.
+    #[inline]
+    pub fn sample_post<A, R>(
+        proving_context: &ProvingContext<C>,
+        parameters: &Parameters<C>,
+        utxo_set: &mut A,
+        rng: &mut R,
+    ) -> Result<TransferPost<C>, ProofSystemError<C>>
+    where
+        A: Accumulator<Item = Utxo<C>, Model = C::UtxoSetModel>,
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        Self::sample(
+            TransferDistribution {
+                parameters,
+                utxo_set,
+            },
+            rng,
+        )
+        .into_post(
+            FullParameters::new(parameters, utxo_set.model()),
+            proving_context,
+            rng,
+        )
+    }
+
     /// Samples a new [`Transfer`] and builds a correctness proof for it, checking if it was
     /// validated.
     #[inline]
@@ -168,18 +236,7 @@ where
         A: Accumulator<Item = Utxo<C>, Model = C::UtxoSetModel>,
         R: CryptoRng + RngCore + ?Sized,
     {
-        let transfer = Self::sample(
-            TransferDistribution {
-                parameters,
-                utxo_set,
-            },
-            rng,
-        );
-        let post = transfer.into_post(
-            FullParameters::new(parameters, utxo_set.model()),
-            proving_context,
-            rng,
-        )?;
+        let post = Self::sample_post(proving_context, parameters, utxo_set, rng)?;
         C::ProofSystem::verify(
             &post.generate_proof_input(),
             &post.validity_proof,
@@ -270,4 +327,61 @@ where
             into_array_unchecked(public_output),
         )
     }
+}
+
+impl<
+        C,
+        A,
+        const SOURCES: usize,
+        const SENDERS: usize,
+        const RECEIVERS: usize,
+        const SINKS: usize,
+    > Sample<FixedTransferDistribution<'_, C, A>>
+    for Transfer<C, SOURCES, SENDERS, RECEIVERS, SINKS>
+where
+    C: Configuration,
+    A: Accumulator<Item = Utxo<C>, Model = C::UtxoSetModel>,
+{
+    #[inline]
+    fn sample<R>(distribution: FixedTransferDistribution<'_, C, A>, rng: &mut R) -> Self
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        let (senders, receivers) = sample_senders_and_receivers(
+            distribution.base.parameters,
+            distribution.asset_id,
+            &value_distribution(SENDERS, distribution.sender_sum, rng),
+            &value_distribution(RECEIVERS, distribution.receiver_sum, rng),
+            distribution.base.utxo_set,
+            rng,
+        );
+        Self::new(
+            has_public_participants(SOURCES, SINKS).then(|| distribution.asset_id),
+            sample_asset_values(distribution.source_sum, rng),
+            into_array_unchecked(senders),
+            into_array_unchecked(receivers),
+            sample_asset_values(distribution.sink_sum, rng),
+        )
+    }
+}
+
+/// Samples a [`Mint`] transaction against `spending_key` and `asset` returning a [`TransferPost`]
+/// and [`PreSender`].
+#[inline]
+pub fn sample_mint<C, R>(
+    proving_context: &ProvingContext<C>,
+    full_parameters: FullParameters<C>,
+    spending_key: &SpendingKey<C>,
+    asset: Asset,
+    rng: &mut R,
+) -> Result<(TransferPost<C>, PreSender<C>), ProofSystemError<C>>
+where
+    C: Configuration,
+    R: CryptoRng + RngCore + ?Sized,
+{
+    let (mint, pre_sender) = Mint::internal_pair(full_parameters.base, spending_key, asset, rng);
+    Ok((
+        mint.into_post(full_parameters, proving_context, rng)?,
+        pre_sender,
+    ))
 }
