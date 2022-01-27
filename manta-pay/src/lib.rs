@@ -28,8 +28,8 @@ mod test;
 
 pub mod crypto;
 
-#[cfg(feature = "hd-wallet")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "hd-wallet")))]
+#[cfg(feature = "bip32")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "bip32")))]
 pub mod key;
 
 #[cfg(all(feature = "arkworks", feature = "groth16"))]
@@ -39,7 +39,7 @@ pub mod config;
 #[cfg(all(
     feature = "arkworks",
     feature = "groth16",
-    feature = "hd-wallet",
+    feature = "bip32",
     feature = "std",
 ))]
 #[cfg_attr(
@@ -47,7 +47,7 @@ pub mod config;
     doc(cfg(all(
         feature = "arkworks",
         feature = "groth16",
-        feature = "hd-wallet",
+        feature = "bip32",
         feature = "std",
     )))
 )]

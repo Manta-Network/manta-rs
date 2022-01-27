@@ -456,15 +456,18 @@ mod test {
     use super::*;
     use crate::{
         config::FullParameters,
-        wallet::{self, cache::OnDiskMultiProvingContext, Signer, Wallet},
+        wallet::{self, cache::OnDiskMultiProvingContext, SignerBase},
     };
     use manta_accounting::{
         asset::{Asset, AssetList},
         key::AccountTable,
         transfer,
-        wallet::test::{
-            sim::{ActionSim, Simulator},
-            ActionType, Actor, PublicBalanceOracle, Simulation,
+        wallet::{
+            test::{
+                sim::{ActionSim, Simulator},
+                ActionType, Actor, PublicBalanceOracle, Simulation,
+            },
+            Wallet,
         },
     };
     use manta_crypto::rand::{CryptoRng, Rand, RngCore, SeedableRng};
@@ -494,13 +497,13 @@ mod test {
         parameters: &transfer::Parameters<Config>,
         utxo_set_model: &UtxoSetModel,
         rng: &mut R,
-    ) -> Wallet<LedgerConnection>
+    ) -> Wallet<Config, LedgerConnection, SignerBase>
     where
         R: CryptoRng + RngCore + ?Sized,
     {
         Wallet::empty(
             LedgerConnection::new(account, ledger.clone()),
-            Signer::new(
+            SignerBase::new(
                 AccountTable::new(rng.gen()),
                 cache.clone(),
                 parameters.clone(),

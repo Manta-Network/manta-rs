@@ -28,15 +28,16 @@ use ark_ff::PrimeField;
 use manta_accounting::{
     asset::HashAssetMap,
     key::{self, HierarchicalKeyDerivationScheme},
-    wallet::{
-        self,
-        signer::{self, AssetMapKey},
-    },
+    wallet::{self, signer::AssetMapKey},
 };
 use manta_crypto::{key::KeyDerivationFunction, merkle_tree};
 use manta_util::pointer::ThreadSafe;
 
 pub mod cache;
+
+#[cfg(feature = "tungstenite")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "tungstenite")))]
+pub mod signer;
 
 /// Hierarchical Key Derivation Function
 pub struct HierarchicalKeyDerivationFunction;
@@ -68,7 +69,7 @@ pub type UtxoSet = merkle_tree::forest::TreeArrayMerkleForest<
     { MerkleTreeConfiguration::FOREST_WIDTH },
 >;
 
-impl signer::Configuration for Config {
+impl manta_accounting::wallet::signer::Configuration for Config {
     type HierarchicalKeyDerivationScheme =
         key::Map<TestnetKeySecret, HierarchicalKeyDerivationFunction>;
     type UtxoSet = UtxoSet;
@@ -77,8 +78,15 @@ impl signer::Configuration for Config {
     type Rng = rand_chacha::ChaCha20Rng;
 }
 
-/// Signer
-pub type Signer = signer::Signer<Config>;
+/// Signer Base Type
+pub type SignerBase = manta_accounting::wallet::signer::Signer<Config>;
+
+/// Signer Server
+#[cfg(feature = "tungstenite")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "tungstenite")))]
+pub type Signer = signer::Server;
 
 /// Wallet
-pub type Wallet<L> = wallet::Wallet<Config, L, Signer>;
+#[cfg(feature = "tungstenite")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "tungstenite")))]
+pub type Wallet<L> = wallet::Wallet<Config, L, signer::Client>;

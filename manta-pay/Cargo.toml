@@ -52,9 +52,6 @@ groth16 = ["arkworks", "ark-groth16"]
 # Enable PLONK ZKP System
 plonk = ["zk-garage-plonk"]
 
-# Hierarchical-Deterministic Wallet Keys
-hd-wallet = ["bip32"]
-
 # Testing Frameworks
 test = [
     "indexmap",
@@ -97,12 +94,13 @@ rand_chacha = { version = "0.3.1", default-features = false }
 rayon = { version = "1.5.1", optional = true, default-features = false }
 scale-codec = { package = "parity-scale-codec", version = "2.3.1", default-features = false, features = ["derive"] }
 statrs = { version = "0.15.0", optional = true, default-features = false }
+tungstenite = { version = "0.16.0", optional = true, default-features = false, features = ["native-tls"] }
 zk-garage-plonk = { package = "plonk", git = "https://github.com/zk-garage/plonk", optional = true, default-features = false }
 
 [dev-dependencies]
 criterion = "0.3.5"
 manta-accounting = { path = "../manta-accounting", features = ["test"] }
 manta-crypto = { path = "../manta-crypto", features = ["test"] }
-manta-pay = { path = ".", features = ["arkworks", "groth16", "hd-wallet", "std", "test"] }
+manta-pay = { path = ".", features = ["arkworks", "bip32", "groth16", "std", "test"] }
 rand = "0.8.4"
 tempfile = "3.2.0"
