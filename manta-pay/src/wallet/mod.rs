@@ -34,6 +34,7 @@ use manta_accounting::{
     },
 };
 use manta_crypto::{key::KeyDerivationFunction, merkle_tree};
+use manta_util::pointer::ThreadSafe;
 
 pub mod cache;
 
@@ -62,6 +63,7 @@ pub type UtxoSet = merkle_tree::forest::TreeArrayMerkleForest<
     merkle_tree::fork::ForkedTree<
         MerkleTreeConfiguration,
         merkle_tree::full::Full<MerkleTreeConfiguration>,
+        ThreadSafe,
     >,
     { MerkleTreeConfiguration::FOREST_WIDTH },
 >;

@@ -23,8 +23,7 @@ use crate::config::{
     Config, EncryptedNote, MerkleTreeConfiguration, MultiVerifyingContext, ProofSystem,
     TransferPost, Utxo, UtxoSetModel, VoidNumber,
 };
-use alloc::{rc::Rc, vec::Vec};
-use async_std::sync::RwLock;
+use alloc::{sync::Arc, vec::Vec};
 use core::convert::Infallible;
 use indexmap::IndexSet;
 use manta_accounting::{
@@ -45,7 +44,8 @@ use manta_crypto::{
         Tree,
     },
 };
-use manta_util::{future::LocalBoxFuture, into_array_unchecked};
+use manta_util::into_array_unchecked;
+use parking_lot::RwLock;
 use std::collections::{HashMap, HashSet};
 
 /// Merkle Forest Index
@@ -366,7 +366,7 @@ impl ledger::Checkpoint for Checkpoint {
 }
 
 /// Shared Ledger
-pub type SharedLedger = Rc<RwLock<Ledger>>;
+pub type SharedLedger = Arc<RwLock<Ledger>>;
 
 /// Ledger Connection
 pub struct LedgerConnection {
@@ -392,68 +392,61 @@ impl ledger::Connection<Config> for LedgerConnection {
     type Error = Infallible;
 
     #[inline]
-    fn pull<'s>(
-        &'s mut self,
-        checkpoint: &'s Self::Checkpoint,
-    ) -> LocalBoxFuture<'s, PullResult<Config, Self>> {
-        Box::pin(async {
-            let ledger = self.ledger.read().await;
-            let mut receivers = Vec::new();
-            for (i, mut index) in checkpoint.receiver_index.iter().copied().enumerate() {
-                let shard = &ledger.shards[&MerkleForestIndex::from_index(i)];
-                while let Some(entry) = shard.get_index(index) {
-                    receivers.push(*entry);
-                    index += 1;
-                }
+    fn pull(&mut self, checkpoint: &Self::Checkpoint) -> PullResult<Config, Self> {
+        let ledger = self.ledger.read();
+        let mut receivers = Vec::new();
+        for (i, mut index) in checkpoint.receiver_index.iter().copied().enumerate() {
+            let shard = &ledger.shards[&MerkleForestIndex::from_index(i)];
+            while let Some(entry) = shard.get_index(index) {
+                receivers.push(*entry);
+                index += 1;
             }
-            let senders = ledger
-                .void_numbers
-                .iter()
-                .skip(checkpoint.sender_index)
-                .copied()
-                .collect();
-            Ok(PullResponse {
-                checkpoint: Checkpoint::new(
-                    into_array_unchecked(
-                        ledger
-                            .utxo_forest
-                            .forest
-                            .as_ref()
-                            .iter()
-                            .map(move |t| t.len())
-                            .collect::<Vec<_>>(),
-                    ),
-                    ledger.void_numbers.len(),
+        }
+        let senders = ledger
+            .void_numbers
+            .iter()
+            .skip(checkpoint.sender_index)
+            .copied()
+            .collect();
+        Ok(PullResponse {
+            checkpoint: Checkpoint::new(
+                into_array_unchecked(
+                    ledger
+                        .utxo_forest
+                        .forest
+                        .as_ref()
+                        .iter()
+                        .map(move |t| t.len())
+                        .collect::<Vec<_>>(),
                 ),
-                receivers,
-                senders,
-            })
+                ledger.void_numbers.len(),
+            ),
+            receivers,
+            senders,
         })
     }
 
     #[inline]
-    fn push(&mut self, posts: Vec<TransferPost>) -> LocalBoxFuture<PushResult<Config, Self>> {
-        Box::pin(async {
-            let mut ledger = self.ledger.write().await;
-            for post in posts {
-                let (sources, sinks) = match TransferShape::from_post(&post) {
-                    Some(TransferShape::Mint) => (vec![self.account], vec![]),
-                    Some(TransferShape::PrivateTransfer) => (vec![], vec![]),
-                    Some(TransferShape::Reclaim) => (vec![], vec![self.account]),
-                    _ => return Ok(PushResponse { success: false }),
-                };
-                match post.validate(sources, sinks, &*ledger) {
-                    Ok(posting_key) => {
-                        posting_key.post(&(), &mut *ledger);
-                    }
-                    Err(err) => {
-                        async_std::println!("ERROR: {:?}", err).await;
-                        return Ok(PushResponse { success: false });
-                    }
+    fn push(&mut self, posts: Vec<TransferPost>) -> PushResult<Config, Self> {
+        let mut ledger = self.ledger.write();
+        for post in posts {
+            let (sources, sinks) = match TransferShape::from_post(&post) {
+                Some(TransferShape::Mint) => (vec![self.account], vec![]),
+                Some(TransferShape::PrivateTransfer) => (vec![], vec![]),
+                Some(TransferShape::Reclaim) => (vec![], vec![self.account]),
+                _ => return Ok(PushResponse { success: false }),
+            };
+            match post.validate(sources, sinks, &*ledger) {
+                Ok(posting_key) => {
+                    posting_key.post(&(), &mut *ledger);
+                }
+                Err(err) => {
+                    println!("ERROR: {:?}", err);
+                    return Ok(PushResponse { success: false });
                 }
             }
-            Ok(PushResponse { success: true })
-        })
+        }
+        Ok(PushResponse { success: true })
     }
 }
 
@@ -465,8 +458,6 @@ mod test {
         config::FullParameters,
         wallet::{self, cache::OnDiskMultiProvingContext, Signer, Wallet},
     };
-    use async_std::{println, task};
-    use futures::stream::StreamExt;
     use manta_accounting::{
         asset::{Asset, AssetList},
         key::AccountTable,
@@ -476,24 +467,21 @@ mod test {
             ActionType, Actor, PublicBalanceOracle, Simulation,
         },
     };
-    use manta_crypto::rand::{CryptoRng, Rand, RngCore};
-    use rand::thread_rng;
+    use manta_crypto::rand::{CryptoRng, Rand, RngCore, SeedableRng};
+    use rand::{rngs::StdRng, thread_rng};
 
     impl PublicBalanceOracle for LedgerConnection {
         #[inline]
-        fn public_balances(&self) -> LocalBoxFuture<Option<AssetList>> {
-            Box::pin(async {
-                Some(
-                    self.ledger
-                        .read()
-                        .await
-                        .accounts
-                        .get(&self.account)?
-                        .iter()
-                        .map(|(id, value)| Asset::new(*id, *value))
-                        .collect(),
-                )
-            })
+        fn public_balances(&self) -> Option<AssetList> {
+            Some(
+                self.ledger
+                    .read()
+                    .accounts
+                    .get(&self.account)?
+                    .iter()
+                    .map(|(id, value)| Asset::new(*id, *value))
+                    .collect(),
+            )
         }
     }
 
@@ -523,12 +511,10 @@ mod test {
     }
 
     /// Runs a simple simulation to test that the signer-wallet-ledger connection works.
-    #[async_std::test]
-    async fn test_simulation() {
-        let directory = task::spawn_blocking(tempfile::tempdir)
-            .await
-            .expect("Unable to generate temporary test directory.");
-        println!("[INFO] Temporary Directory: {:?}", directory).await;
+    #[test]
+    fn test_simulation() {
+        let directory = tempfile::tempdir().expect("Unable to generate temporary test directory.");
+        println!("[INFO] Temporary Directory: {:?}", directory);
 
         let mut rng = thread_rng();
         let parameters = rng.gen();
@@ -544,10 +530,9 @@ mod test {
         let cache = OnDiskMultiProvingContext::new(directory.path());
         cache
             .save(proving_context)
-            .await
             .expect("Unable to save proving context to disk.");
 
-        const ACTOR_COUNT: usize = 3;
+        const ACTOR_COUNT: usize = 10;
 
         let mut ledger = Ledger::new(utxo_set_model.clone(), verifying_context);
 
@@ -557,9 +542,9 @@ mod test {
             ledger.set_public_balance(AccountId(i as u64), AssetId(2), AssetValue(1000000));
         }
 
-        let ledger = Rc::new(RwLock::new(ledger));
+        let ledger = Arc::new(RwLock::new(ledger));
 
-        println!("[INFO] Building Wallets").await;
+        println!("[INFO] Building {:?} Wallets", ACTOR_COUNT);
 
         let actors = (0..ACTOR_COUNT)
             .map(|i| {
@@ -580,22 +565,23 @@ mod test {
 
         let mut simulator = Simulator::new(ActionSim(Simulation::default()), actors);
 
-        println!("[INFO] Running Simulation\n").await;
+        println!("[INFO] Starting Simulation\n");
 
-        let mut events = simulator.run(thread_rng);
-        while let Some(event) = events.next().await {
-            match event.event.action {
-                ActionType::Skip | ActionType::GeneratePublicKey => {}
-                _ => println!("{:?}", event).await,
+        rayon::in_place_scope(|scope| {
+            for event in simulator.run(move || StdRng::from_rng(&mut rng).unwrap(), scope) {
+                match event.event.action {
+                    ActionType::Skip | ActionType::GeneratePublicKey => {}
+                    _ => println!("{:?}", event),
+                }
+                if let Err(err) = event.event.result {
+                    println!("\n[ERROR] Simulation Error: {:?}\n", err);
+                    break;
+                }
             }
-            if let Err(err) = event.event.result {
-                println!("\n[ERROR] Simulation Error: {:?}\n", err).await;
-                break;
-            }
-        }
+        });
 
-        task::spawn_blocking(move || directory.close())
-            .await
+        directory
+            .close()
             .expect("Unable to delete temporary test directory.");
     }
 }

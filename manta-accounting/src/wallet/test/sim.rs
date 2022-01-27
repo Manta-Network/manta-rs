@@ -17,8 +17,14 @@
 //! Actor Simulation Framework
 
 use alloc::vec::Vec;
-use core::{fmt::Debug, hash::Hash, iter};
+use core::{fmt::Debug, hash::Hash};
 use manta_crypto::rand::{CryptoRng, RngCore};
+
+#[cfg(feature = "parallel")]
+use {
+    crossbeam::channel::{self, Receiver, Select},
+    rayon::Scope,
+};
 
 /// Abstract Simulation
 pub trait Simulation {
@@ -28,7 +34,7 @@ pub trait Simulation {
     /// Event Type
     type Event;
 
-    /// Runs the given `actor` returning a future event.
+    /// Runs the given `actor` returning an event.
     ///
     /// This method should return `None` when the actor is done being simulated for this round of
     /// the simulation.
@@ -120,37 +126,181 @@ where
         Self { simulation, actors }
     }
 
-    /// Builds a stream of future events for a particular `actor`.
+    /// Runs the simulator using `rng`, returning an iterator over events.
+    #[cfg(feature = "parallel")]
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parallel")))]
     #[inline]
-    fn build_actor_stream<'s, R>(
-        simulation: &'s S,
-        index: usize,
-        actor: &'s mut S::Actor,
-        mut rng: R,
-    ) -> impl 's + Iterator<Item = Event<S>>
+    pub fn run<'s, R, F>(&'s mut self, mut rng: F, scope: &Scope<'s>) -> RunIter<S>
     where
-        R: 's + CryptoRng + RngCore,
-    {
-        iter::from_fn(move || simulation.step(actor, &mut rng))
-            .enumerate()
-            .map(move |(step, event)| Event::new(index, step, event))
-    }
-
-    /* TODO:
-    /// Runs the simulator using `rng`, returning a stream of future events.
-    #[inline]
-    pub fn run<'s, R, F>(&'s mut self, mut rng: F) -> impl 's + Iterator<Item = Event<S>>
-    where
-        R: 's + CryptoRng + RngCore,
+        S: Sync,
+        S::Actor: Send,
+        S::Event: Send,
+        R: 's + CryptoRng + RngCore + Send,
         F: FnMut() -> R,
     {
-        let mut streams = SelectAll::new();
-        for (i, actor) in self.actors.iter_mut().enumerate() {
-            streams.push(Self::build_actor_stream(&self.simulation, i, actor, rng()));
-        }
-        streams
+        RunIter::new(
+            self.actors
+                .iter_mut()
+                .enumerate()
+                .map(|(i, actor)| ActorIter::new(&self.simulation, i, actor, rng()))
+                .collect(),
+            scope,
+        )
     }
-    */
+}
+
+/// Actor Iterator
+pub struct ActorIter<'s, S, R>
+where
+    S: Simulation,
+    R: 's + CryptoRng + RngCore,
+{
+    /// Base Simulation
+    simulation: &'s S,
+
+    /// Simulation Step Index
+    step_index: usize,
+
+    /// Actor Index
+    actor_index: usize,
+
+    /// Actor
+    ///
+    /// If the actor is done for this round of simulation, then this field is `None`.
+    actor: Option<&'s mut S::Actor>,
+
+    /// Actor's Random Number Generator
+    rng: R,
+}
+
+impl<'s, S, R> ActorIter<'s, S, R>
+where
+    S: Simulation,
+    R: 's + CryptoRng + RngCore,
+{
+    /// Builds a new [`ActorIter`] from `simulation`, `actor_index, `actor`, and `rng`.
+    #[inline]
+    pub fn new(simulation: &'s S, actor_index: usize, actor: &'s mut S::Actor, rng: R) -> Self {
+        Self {
+            simulation,
+            step_index: 0,
+            actor_index,
+            actor: Some(actor),
+            rng,
+        }
+    }
+}
+
+impl<'s, S, R> Iterator for ActorIter<'s, S, R>
+where
+    S: Simulation,
+    R: 's + CryptoRng + RngCore,
+{
+    type Item = Event<S>;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(actor) = self.actor.as_mut() {
+            if let Some(event) = self.simulation.step(actor, &mut self.rng) {
+                let event = Event::new(self.actor_index, self.step_index, event);
+                self.step_index += 1;
+                return Some(event);
+            } else {
+                self.actor = None;
+            }
+        }
+        None
+    }
+}
+
+/// Simulation Run Iterator
+#[cfg(feature = "parallel")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "parallel")))]
+pub struct RunIter<S>
+where
+    S: Simulation,
+{
+    /// Receivers
+    receivers: Vec<Receiver<Event<S>>>,
+}
+
+#[cfg(feature = "parallel")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "parallel")))]
+impl<S> RunIter<S>
+where
+    S: Simulation,
+{
+    /// Builds a new [`RunIter`] for `iterators`, pulling from them in parallel using `scope`.
+    #[inline]
+    fn new<'s, R>(iterators: Vec<ActorIter<'s, S, R>>, scope: &Scope<'s>) -> Self
+    where
+        S: Sync,
+        S::Actor: Send,
+        S::Event: Send,
+        R: 's + CryptoRng + RngCore + Send,
+    {
+        let len = iterators.len();
+        let mut senders = Vec::with_capacity(len);
+        let mut receivers = Vec::with_capacity(len);
+        for _ in 0..len {
+            let (sender, receiver) = channel::unbounded();
+            senders.push(sender);
+            receivers.push(receiver);
+        }
+        let (task_sender, task_receiver) = channel::unbounded();
+        let mut tasks = iterators.into_iter().zip(senders).collect::<Vec<_>>();
+        scope.spawn(move |scope| loop {
+            for (mut iter, sender) in tasks.drain(..) {
+                let sender = sender.clone();
+                let task_sender = task_sender.clone();
+                scope.spawn(move |_| {
+                    if let Some(next) = iter.next() {
+                        let _ = sender.send(next);
+                        let _ = task_sender.send((iter, sender));
+                    }
+                });
+            }
+            if let Ok(task) = task_receiver.recv() {
+                tasks.push(task);
+            } else {
+                break;
+            }
+        });
+        Self { receivers }
+    }
+}
+
+#[cfg(feature = "parallel")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "parallel")))]
+impl<S> Iterator for RunIter<S>
+where
+    S: Simulation,
+{
+    type Item = Event<S>;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        let mut drop_indices = Vec::<usize>::with_capacity(self.receivers.len());
+        let mut select = Select::new();
+        for receiver in &self.receivers {
+            select.recv(receiver);
+        }
+        loop {
+            let index = select.ready();
+            match self.receivers[index].try_recv() {
+                Ok(event) => {
+                    drop_indices.sort_unstable_by(move |l, r| r.cmp(l));
+                    drop_indices.dedup();
+                    for index in drop_indices {
+                        self.receivers.remove(index);
+                    }
+                    return Some(event);
+                }
+                Err(e) if e.is_disconnected() => drop_indices.push(index),
+                _ => {}
+            }
+        }
+    }
 }
 
 impl<S> AsRef<S> for Simulator<S>
@@ -182,7 +332,7 @@ pub trait ActionSimulation {
     where
         R: CryptoRng + RngCore + ?Sized;
 
-    /// Executes the given `action` on `actor` returning a future event.
+    /// Executes the given `action` on `actor` returning an event.
     fn act(&self, actor: &mut Self::Actor, action: Self::Action) -> Self::Event;
 }
 

@@ -23,7 +23,7 @@ use crate::{
     transfer::{canonical::Transaction, Configuration, PublicKey, ReceivingKey},
     wallet::{self, ledger, signer, Wallet},
 };
-use alloc::rc::Rc;
+use alloc::sync::Arc;
 use core::{fmt::Debug, hash::Hash, marker::PhantomData};
 use indexmap::IndexSet;
 use manta_crypto::rand::{CryptoRng, RngCore, Sample};
@@ -279,7 +279,7 @@ where
 pub type PublicKeyDatabase<C> = IndexSet<ReceivingKey<C>>;
 
 /// Shared Public Key Database
-pub type SharedPublicKeyDatabase<C> = Rc<RwLock<PublicKeyDatabase<C>>>;
+pub type SharedPublicKeyDatabase<C> = Arc<RwLock<PublicKeyDatabase<C>>>;
 
 /// Simulation
 #[derive(derivative::Derivative)]
@@ -309,7 +309,7 @@ where
     #[inline]
     pub fn new<const N: usize>(keys: [ReceivingKey<C>; N]) -> Self {
         Self {
-            public_keys: Rc::new(RwLock::new(keys.into_iter().collect())),
+            public_keys: Arc::new(RwLock::new(keys.into_iter().collect())),
             __: PhantomData,
         }
     }
