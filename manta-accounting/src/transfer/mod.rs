@@ -749,6 +749,16 @@ where
             None
         }
     }
+
+    /// Returns `true` whenever `self.utxo` and `rhs.utxo` can be inserted in any order into the
+    /// `utxo_set`.
+    #[inline]
+    pub fn is_independent_from<A>(&self, rhs: &Self, utxo_set: &A) -> bool
+    where
+        A: Accumulator<Item = Utxo<C>, Model = C::UtxoSetModel>,
+    {
+        utxo_set.are_independent(&self.utxo, &rhs.utxo)
+    }
 }
 
 /// Sender Proof
@@ -806,6 +816,16 @@ where
     #[inline]
     pub fn asset_value(&self) -> AssetValue {
         self.asset.value
+    }
+
+    /// Returns `true` whenever `self.utxo` and `rhs.utxo` can be inserted in any order into the
+    /// `utxo_set`.
+    #[inline]
+    pub fn is_independent_from<A>(&self, rhs: &Self, utxo_set: &A) -> bool
+    where
+        A: Accumulator<Item = Utxo<C>, Model = C::UtxoSetModel>,
+    {
+        utxo_set.are_independent(&self.utxo, &rhs.utxo)
     }
 
     /// Reverts `self` back into a [`PreSender`].
@@ -1180,6 +1200,16 @@ where
     #[inline]
     pub fn ephemeral_public_key(&self) -> &PublicKey<C> {
         self.note.ephemeral_public_key()
+    }
+
+    /// Returns `true` whenever `self.utxo` and `rhs.utxo` can be inserted in any order into the
+    /// `utxo_set`.
+    #[inline]
+    pub fn is_independent_from<A>(&self, rhs: &Self, utxo_set: &A) -> bool
+    where
+        A: Accumulator<Item = Utxo<C>, Model = C::UtxoSetModel>,
+    {
+        utxo_set.are_independent(&self.utxo, &rhs.utxo)
     }
 
     /// Extracts the ledger posting data from `self`.
