@@ -18,7 +18,7 @@
 
 use crate::asset::{Asset, AssetId, AssetValue};
 use alloc::vec::Vec;
-use core::{fmt::Debug, hash::Hash, marker::PhantomData};
+use core::{fmt::Debug, hash::Hash, iter, marker::PhantomData};
 use manta_crypto::{
     accumulator::{Accumulator, MembershipProof, Model},
     commitment::CommitmentScheme,
@@ -967,12 +967,49 @@ where
     ///
     /// This method can only be called once we check that `void_number` is not already stored on
     /// the ledger. See [`is_unspent`](Self::is_unspent) for more.
+    ///
+    /// # Implementation Note
+    ///
+    /// This method, by defualt, calls the [`spend_all`] method on an iterator of length one
+    /// containing `(utxo, note)`. Either [`spend`] or [`spend_all`] can be implemented
+    /// depending on which is more efficient.
+    ///
+    /// [`spend`]: Self::spend
+    /// [`spend_all`]: Self::spend_all
+    #[inline]
     fn spend(
         &mut self,
         utxo_set_output: Self::ValidUtxoSetOutput,
         void_number: Self::ValidVoidNumber,
         super_key: &Self::SuperPostingKey,
-    );
+    ) {
+        self.spend_all(iter::once((utxo_set_output, void_number)), super_key)
+    }
+
+    /// Posts all of the [`VoidNumber`] to the ledger, spending the assets.
+    ///
+    /// # Safety
+    ///
+    /// This method can only be called once we check that all the [`VoidNumber`] are not already
+    /// stored on the ledger. See [`is_unspent`](Self::is_unspent) for more.
+    ///
+    /// # Implementation Note
+    ///
+    /// This method is an optimization path for multiple calls to [`spend`] and by default just
+    /// iterates over `iter` calling [`spend`] on each item returned. Either [`spend`] or
+    /// [`spend_all`] can be implemented depending on which is more efficient.
+    ///
+    /// [`spend`]: Self::spend
+    /// [`spend_all`]: Self::Spend_all
+    #[inline]
+    fn spend_all<I>(&mut self, iter: I, super_key: &Self::SuperPostingKey)
+    where
+        I: IntoIterator<Item = (Self::ValidUtxoSetOutput, Self::ValidVoidNumber)>,
+    {
+        for (utxo_set_output, void_number) in iter {
+            self.spend(utxo_set_output, void_number, super_key)
+        }
+    }
 }
 
 /// Sender Post Error
@@ -1069,6 +1106,19 @@ where
     #[inline]
     pub fn post(self, super_key: &L::SuperPostingKey, ledger: &mut L) {
         ledger.spend(self.utxo_set_output, self.void_number, super_key);
+    }
+
+    /// Posts all of the [`SenderPostingKey`] in `iter` to the sender `ledger`.
+    #[inline]
+    pub fn post_all<I>(iter: I, super_key: &L::SuperPostingKey, ledger: &mut L)
+    where
+        I: IntoIterator<Item = Self>,
+    {
+        ledger.spend_all(
+            iter.into_iter()
+                .map(move |k| (k.utxo_set_output, k.void_number)),
+            super_key,
+        )
     }
 }
 
@@ -1253,12 +1303,50 @@ where
     ///
     /// This method can only be called once we check that `utxo` is not already stored on the
     /// ledger. See [`is_not_registered`](Self::is_not_registered) for more.
+    ///
+    /// # Implementation Note
+    ///
+    /// This method, by default, calls the [`register_all`] method on an iterator of length one
+    /// containing `(utxo, note)`. Either [`register`] or [`register_all`] can be implemented
+    /// depending on which is more efficient.
+    ///
+    /// [`register`]: Self::register
+    /// [`register_all`]: Self::register_all
+    #[inline]
     fn register(
         &mut self,
         utxo: Self::ValidUtxo,
         note: EncryptedNote<C>,
         super_key: &Self::SuperPostingKey,
-    );
+    ) {
+        self.register_all(iter::once((utxo, note)), super_key)
+    }
+
+    /// Posts all of the [`Utxo`] and [`EncryptedNote`] to the ledger, registering the assets.
+    ///
+    /// # Safety
+    ///
+    /// This method can only be called once we check that all the [`Utxo`] and [`EncryptedNote`] are
+    /// not already stored on the ledger. See [`is_not_registered`](Self::is_not_registered) for
+    /// more.
+    ///
+    /// # Implementation Note
+    ///
+    /// This method is an optimization path for multiple calls to [`register`] and by default just
+    /// iterates over `iter` calling [`register`] on each item returned. Either [`register`] or
+    /// [`register_all`] can be implemented depending on which is more efficient.
+    ///
+    /// [`register`]: Self::register
+    /// [`register_all`]: Self::register_all
+    #[inline]
+    fn register_all<I>(&mut self, iter: I, super_key: &Self::SuperPostingKey)
+    where
+        I: IntoIterator<Item = (Self::ValidUtxo, EncryptedNote<C>)>,
+    {
+        for (utxo, note) in iter {
+            self.register(utxo, note, super_key)
+        }
+    }
 }
 
 /// Receiver Post Error
@@ -1360,6 +1448,15 @@ where
     #[inline]
     pub fn post(self, super_key: &L::SuperPostingKey, ledger: &mut L) {
         ledger.register(self.utxo, self.note, super_key);
+    }
+
+    /// Posts all the of the [`ReceiverPostingKey`] in `iter` to the receiver `ledger`.
+    #[inline]
+    pub fn post_all<I>(iter: I, super_key: &L::SuperPostingKey, ledger: &mut L)
+    where
+        I: IntoIterator<Item = Self>,
+    {
+        ledger.register_all(iter.into_iter().map(move |k| (k.utxo, k.note)), super_key)
     }
 }
 
@@ -2121,12 +2218,8 @@ where
     #[inline]
     pub fn post(self, super_key: &TransferLedgerSuperPostingKey<C, L>, ledger: &mut L) -> L::Event {
         let proof = self.validity_proof;
-        for key in self.sender_posting_keys {
-            key.post(&(proof, *super_key), ledger);
-        }
-        for key in self.receiver_posting_keys {
-            key.post(&(proof, *super_key), ledger);
-        }
+        SenderPostingKey::post_all(self.sender_posting_keys, &(proof, *super_key), ledger);
+        ReceiverPostingKey::post_all(self.receiver_posting_keys, &(proof, *super_key), ledger);
         if let Some(asset_id) = self.asset_id {
             ledger.update_public_balances(
                 asset_id,
