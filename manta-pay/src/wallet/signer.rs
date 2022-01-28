@@ -21,14 +21,9 @@
 use crate::{config::Config, wallet::SignerBase};
 use manta_accounting::{
     transfer::{canonical::Transaction, EncryptedNote, ReceivingKey, Utxo, VoidNumber},
-    wallet::signer::{
-        self, ReceivingKeyResult, SignResponse, SignResult, SyncResponse, SyncResult,
-    },
+    wallet::signer::{self, client::SyncRequest, SignResponse, SyncResponse},
 };
-use manta_util::{
-    convert::{From, TryFrom},
-    message::{ChannelError, MessageProtocol, ParsingError, UniformChannel},
-};
+use manta_util::message::{ChannelError, ParsingError, UniformChannel};
 use std::net::TcpStream;
 use tungstenite::{
     client::IntoClientRequest,
@@ -67,101 +62,9 @@ impl UniformChannel for WebSocket {
 }
 
 ///
-pub struct Synchronize;
+pub type Client = signer::client::Client<Config, signer::Error<Config>, WebSocket>;
 
-///
-pub struct SyncRequest {
-    ///
-    starting_index: usize,
-
-    ///
-    inserts: Vec<(Utxo<Config>, EncryptedNote<Config>)>,
-
-    ///
-    removes: Vec<VoidNumber<Config>>,
-}
-
-impl From<SyncRequest, WebSocket> for Message {
-    #[inline]
-    fn from(request: SyncRequest) -> Self {
-        todo!()
-    }
-}
-
-impl TryFrom<Message, WebSocket> for SyncRequest {
-    type Error = ();
-
-    #[inline]
-    fn try_from(message: Message) -> Result<Self, Self::Error> {
-        todo!()
-    }
-}
-
-impl From<SyncResponse, WebSocket> for Message {
-    #[inline]
-    fn from(response: SyncResponse) -> Self {
-        todo!()
-    }
-}
-
-impl TryFrom<Message, WebSocket> for SyncResponse {
-    type Error = ();
-
-    #[inline]
-    fn try_from(message: Message) -> Result<Self, Self::Error> {
-        todo!()
-    }
-}
-
-impl MessageProtocol for Synchronize {
-    type Request = SyncRequest;
-    type Response = SyncResponse;
-    type Client = WebSocket;
-    type Server = WebSocket;
-}
-
-///
-pub struct Sign;
-
-impl From<Transaction<Config>, WebSocket> for Message {
-    #[inline]
-    fn from(request: Transaction<Config>) -> Message {
-        todo!()
-    }
-}
-
-impl TryFrom<Message, WebSocket> for Transaction<Config> {
-    type Error = ();
-
-    #[inline]
-    fn try_from(message: Message) -> Result<Self, Self::Error> {
-        todo!()
-    }
-}
-
-impl From<SignResponse<Config>, WebSocket> for Message {
-    #[inline]
-    fn from(response: SignResponse<Config>) -> Self {
-        todo!()
-    }
-}
-
-impl TryFrom<Message, WebSocket> for SignResponse<Config> {
-    type Error = ();
-
-    #[inline]
-    fn try_from(message: Message) -> Result<Self, Self::Error> {
-        todo!()
-    }
-}
-
-impl MessageProtocol for Sign {
-    type Request = Transaction<Config>;
-    type Response = SignResponse<Config>;
-    type Client = WebSocket;
-    type Server = WebSocket;
-}
-
+/*
 /// Client
 pub struct Client {
     /// Underlying Connection
@@ -180,42 +83,7 @@ impl Client {
         })
     }
 }
-
-impl signer::Connection<Config> for Client {
-    type Error = ParsingError<Error, ()>;
-
-    #[inline]
-    fn sync<I, R>(
-        &mut self,
-        starting_index: usize,
-        inserts: I,
-        removes: R,
-    ) -> SyncResult<Config, Self>
-    where
-        I: IntoIterator<Item = (Utxo<Config>, EncryptedNote<Config>)>,
-        R: IntoIterator<Item = VoidNumber<Config>>,
-    {
-        Synchronize::send(
-            &mut self.connection,
-            SyncRequest {
-                starting_index,
-                inserts: inserts.into_iter().collect(),
-                removes: removes.into_iter().collect(),
-            },
-        )
-        .map_err(ChannelError::into_parsing_error)
-    }
-
-    #[inline]
-    fn sign(&mut self, transaction: Transaction<Config>) -> SignResult<Config, Self> {
-        Sign::send(&mut self.connection, transaction).map_err(ChannelError::into_parsing_error)
-    }
-
-    #[inline]
-    fn receiving_key(&mut self) -> ReceivingKeyResult<Config, Self> {
-        todo!()
-    }
-}
+*/
 
 /// Signer Server
 pub struct Server {
@@ -242,4 +110,25 @@ impl Server {
         self.connection = Some(WebSocket(tungstenite::accept(stream)?));
         Ok(())
     }
+
+    /*
+    ///
+    #[inline]
+    pub fn sync(&mut self, request: SyncRequest) -> SyncResult<Config, SignerBase> {
+        self.base
+            .sync(request.starting_index, request.inserts, request.removes)
+    }
+
+    ///
+    #[inline]
+    pub fn sign(&mut self, transaction: Transaction<Config>) -> SignResult<Config, SignerBase> {
+        self.base.sign(transaction)
+    }
+
+    ///
+    #[inline]
+    pub fn receiving_key(&mut self) -> ReceivingKeyResult<Config, SignerBase> {
+        self.base.receiving_key()
+    }
+    */
 }

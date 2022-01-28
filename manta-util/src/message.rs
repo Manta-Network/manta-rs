@@ -16,45 +16,61 @@
 
 //! Message-Passing Utilities
 
-use crate::convert::{Into, TryInto};
-
 /// Message-Passing Channel
-pub trait Channel<R, W> {
+pub trait Channel<W, R = W> {
+    /// Write Error Type
+    type WriteError;
+
     /// Read Error Type
     type ReadError;
 
-    /// Write Error Type
-    type WriteError;
+    /// Writes a `message` of type `W` to the channel, or a [`WriteError`](Self::WriteError) if the
+    /// write failed.
+    fn write(&mut self, message: W) -> Result<(), Self::WriteError>;
 
     /// Reads a message of type `R` from the channel, or a [`ReadError`](Self::ReadError) if the
     /// read failed.
     fn read(&mut self) -> Result<R, Self::ReadError>;
 
-    /// Writes a `message` of type `W` to the channel, or a [`WriteError`](Self::WriteError) if the
-    /// write failed.
-    fn write(&mut self, message: W) -> Result<(), Self::WriteError>;
+    /// Sends a `request` of type `W` on the channel using [`write`](Self::write) waiting for a
+    /// response of type `R` on the channel using [`read`](Self::read).
+    #[inline]
+    fn request(
+        &mut self,
+        request: W,
+    ) -> Result<R, ChannelError<Self::WriteError, Self::ReadError>> {
+        self.write(request).map_err(ChannelError::Write)?;
+        self.read().map_err(ChannelError::Read)
+    }
+
+    /// Listens on the channel for a request of type `R` using [`read`](Self::read), processes the
+    /// request using `process` and sends the response message back along the channel using
+    /// [`write`](Self::write).
+    #[inline]
+    fn listen<F>(
+        &mut self,
+        process: F,
+    ) -> Result<(), ChannelError<Self::WriteError, Self::ReadError>>
+    where
+        F: FnOnce(&mut Self, R) -> W,
+    {
+        let request = self.read().map_err(ChannelError::Read)?;
+        let response = process(self, request);
+        self.write(response).map_err(ChannelError::Write)
+    }
 }
 
 /// Channel Error
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum ChannelError<R, W> {
-    /// Read Error
-    Read(R),
-
+pub enum ChannelError<W, R> {
     /// Write Error
     Write(W),
+
+    /// Read Error
+    Read(R),
 }
 
-impl<R, W> ChannelError<R, W> {
-    /// Converts `self` into an `Option` over [`R`](Channel::ReadError).
-    #[inline]
-    pub fn read(self) -> Option<R> {
-        match self {
-            Self::Read(err) => Some(err),
-            _ => None,
-        }
-    }
-
+impl<W, R> ChannelError<W, R> {
     /// Converts `self` into an `Option` over [`W`](Channel::WriteError).
     #[inline]
     pub fn write(self) -> Option<W> {
@@ -63,18 +79,27 @@ impl<R, W> ChannelError<R, W> {
             _ => None,
         }
     }
+
+    /// Converts `self` into an `Option` over [`R`](Channel::ReadError).
+    #[inline]
+    pub fn read(self) -> Option<R> {
+        match self {
+            Self::Read(err) => Some(err),
+            _ => None,
+        }
+    }
 }
 
-impl<E, P> ChannelError<ParsingReadError<E, P>, E> {
+impl<P, E> ChannelError<E, ParsingReadError<E, P>> {
     /// Unwraps the inner error.
     #[inline]
     pub fn into_parsing_error(self) -> ParsingError<E, P> {
         match self {
+            Self::Write(err) => ParsingError::Error(err),
             Self::Read(err) => match err {
                 ParsingReadError::Read(err) => ParsingError::Error(err),
                 ParsingReadError::Parse(err) => ParsingError::Parse(err),
             },
-            Self::Write(err) => ParsingError::Error(err),
         }
     }
 }
@@ -84,8 +109,8 @@ impl<E> ChannelError<E, E> {
     #[inline]
     pub fn into_inner(self) -> E {
         match self {
-            Self::Read(err) => err,
             Self::Write(err) => err,
+            Self::Read(err) => err,
         }
     }
 }
@@ -100,43 +125,56 @@ pub enum ParsingError<E, P> {
     Parse(P),
 }
 
+/// Uniform Channel Input
+pub trait Input<T>: UniformChannel {
+    /// Converts `t` into a message that can be sent in the [`UniformChannel`].
+    fn convert(t: T) -> Self::Message;
+}
+
+/// Uniform Channel Output
+pub trait Output<T>: UniformChannel {
+    /// Parsing Error
+    type Error;
+
+    /// Parses an incoming message that was just output from the [`UniformChannel`] and tries to
+    /// convert it into `T`.
+    fn parse(message: Self::Message) -> Result<T, Self::Error>;
+}
+
 /// Uniform Message-Passing Channel
 pub trait UniformChannel {
     /// Message Type
     type Message;
 
-    /// Read Error Type
-    type ReadError;
-
     /// Write Error Type
     type WriteError;
 
-    /// Reads a message from the channel, or a [`ReadError`](Self::ReadError) if the read failed.
-    fn read(&mut self) -> Result<Self::Message, Self::ReadError>;
+    /// Read Error Type
+    type ReadError;
 
     /// Writes a `message` to the channel, or a [`WriteError`](Self::WriteError) if the write
     /// failed.
     fn write(&mut self, message: Self::Message) -> Result<(), Self::WriteError>;
+
+    /// Reads a message from the channel, or a [`ReadError`](Self::ReadError) if the read failed.
+    fn read(&mut self) -> Result<Self::Message, Self::ReadError>;
 }
 
-impl<C, R, W> Channel<R, W> for C
+impl<C, W, R> Channel<W, R> for C
 where
-    C: UniformChannel,
-    C::Message: TryInto<R, C>,
-    W: Into<C::Message, C>,
+    C: UniformChannel + Input<W> + Output<R>,
 {
-    type ReadError = ParsingReadError<C::ReadError, <C::Message as TryInto<R, C>>::Error>;
     type WriteError = C::WriteError;
-
-    #[inline]
-    fn read(&mut self) -> Result<R, Self::ReadError> {
-        TryInto::try_into(self.read().map_err(ParsingReadError::Read)?)
-            .map_err(ParsingReadError::Parse)
-    }
+    type ReadError = ParsingReadError<C::ReadError, <C as Output<R>>::Error>;
 
     #[inline]
     fn write(&mut self, message: W) -> Result<(), Self::WriteError> {
-        self.write(Into::into(message))
+        self.write(Self::convert(message))
+    }
+
+    #[inline]
+    fn read(&mut self) -> Result<R, Self::ReadError> {
+        Self::parse(self.read().map_err(ParsingReadError::Read)?).map_err(ParsingReadError::Parse)
     }
 }
 
@@ -152,67 +190,4 @@ pub enum ParsingReadError<R, P> {
 
     /// Parse Error
     Parse(P),
-}
-
-/// Client Error Type
-pub type ClientError<P> = ChannelError<
-    <<P as MessageProtocol>::Client as Channel<
-        <P as MessageProtocol>::Response,
-        <P as MessageProtocol>::Request,
-    >>::ReadError,
-    <<P as MessageProtocol>::Client as Channel<
-        <P as MessageProtocol>::Response,
-        <P as MessageProtocol>::Request,
-    >>::WriteError,
->;
-
-/// Server Error Type
-pub type ServerError<P> = ChannelError<
-    <<P as MessageProtocol>::Server as Channel<
-        <P as MessageProtocol>::Request,
-        <P as MessageProtocol>::Response,
-    >>::ReadError,
-    <<P as MessageProtocol>::Server as Channel<
-        <P as MessageProtocol>::Request,
-        <P as MessageProtocol>::Response,
-    >>::WriteError,
->;
-
-/// Message-Passing Protocol
-pub trait MessageProtocol {
-    /// Request Type
-    type Request;
-
-    /// Response Type
-    type Response;
-
-    /// Client Channel Type
-    type Client: Channel<Self::Response, Self::Request>;
-
-    /// Server Channel Type
-    type Server: Channel<Self::Request, Self::Response>;
-
-    /// Sends the `request` from the `client` using [`write`](Channel::write), waiting for a
-    /// [`read`](Channel::read) from the [`Server`](Self::Server) on the other end.
-    #[inline]
-    fn send(
-        client: &mut Self::Client,
-        request: Self::Request,
-    ) -> Result<Self::Response, ClientError<Self>> {
-        client.write(request).map_err(ChannelError::Write)?;
-        client.read().map_err(ChannelError::Read)
-    }
-
-    /// Waits on the result of a [`read`](Channel::read) on the `server` end of the channel, then
-    /// processes the result using `process` and sends the response using a
-    /// [`write`](Channel::write).
-    #[inline]
-    fn recv<F>(server: &mut Self::Server, process: F) -> Result<(), ServerError<Self>>
-    where
-        F: FnOnce(&mut Self::Server, Self::Request) -> Self::Response,
-    {
-        let request = server.read().map_err(ChannelError::Read)?;
-        let response = process(server, request);
-        server.write(response).map_err(ChannelError::Write)
-    }
 }

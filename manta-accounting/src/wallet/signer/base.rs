@@ -74,32 +74,22 @@ where
 
     /// Pushes updates from the ledger to the wallet, synchronizing it with the ledger state and
     /// returning an updated asset distribution.
-    fn sync<I, R>(&mut self, starting_index: usize, inserts: I, removes: R) -> SyncResult<C, Self>
+    fn sync<I, R>(
+        &mut self,
+        starting_index: usize,
+        inserts: I,
+        removes: R,
+    ) -> Result<SyncResponse, Self::Error>
     where
         I: IntoIterator<Item = (Utxo<C>, EncryptedNote<C>)>,
         R: IntoIterator<Item = VoidNumber<C>>;
 
     /// Signs a `transaction` and returns the ledger transfer posts if successful.
-    fn sign(&mut self, transaction: Transaction<C>) -> SignResult<C, Self>;
+    fn sign(&mut self, transaction: Transaction<C>) -> Result<SignResponse<C>, Self::Error>;
 
     /// Returns a new [`ReceivingKey`] for `self` to receive assets.
-    fn receiving_key(&mut self) -> ReceivingKeyResult<C, Self>;
+    fn receiving_key(&mut self) -> Result<ReceivingKey<C>, Self::Error>;
 }
-
-/// Synchronization Result
-///
-/// See the [`sync`](Connection::sync) method on [`Connection`] for more.
-pub type SyncResult<C, S> = Result<SyncResponse, <S as Connection<C>>::Error>;
-
-/// Signing Result
-///
-/// See the [`sign`](Connection::sign) method on [`Connection`] for more.
-pub type SignResult<C, S> = Result<SignResponse<C>, <S as Connection<C>>::Error>;
-
-/// Receving Key Result
-///
-/// See the [`receiving_key`](Connection::receiving_key) method on [`Connection`] for more.
-pub type ReceivingKeyResult<C, S> = Result<ReceivingKey<C>, <S as Connection<C>>::Error>;
 
 /// Signer Synchronization Response
 ///
@@ -378,7 +368,7 @@ where
         inserts: I,
         mut void_numbers: Vec<VoidNumber<C>>,
         is_partial: bool,
-    ) -> SyncResult<C, Signer<C>>
+    ) -> Result<SyncResponse, Error<C>>
     where
         I: Iterator<Item = (Utxo<C>, EncryptedNote<C>)>,
     {
@@ -765,7 +755,7 @@ where
         starting_index: usize,
         inserts: I,
         removes: R,
-    ) -> SyncResult<C, Self>
+    ) -> Result<SyncResponse, Error<C>>
     where
         I: IntoIterator<Item = (Utxo<C>, EncryptedNote<C>)>,
         R: IntoIterator<Item = VoidNumber<C>>,
@@ -800,7 +790,7 @@ where
         &mut self,
         asset: Asset,
         receiver: Option<ReceivingKey<C>>,
-    ) -> SignResult<C, Self> {
+    ) -> Result<SignResponse<C>, Error<C>> {
         let selection = self.state.select(&self.parameters.parameters, asset)?;
         let change = self
             .state
@@ -838,7 +828,7 @@ where
 
     /// Signs the `transaction`, generating transfer posts without releasing resources.
     #[inline]
-    fn sign_internal(&mut self, transaction: Transaction<C>) -> SignResult<C, Self> {
+    fn sign_internal(&mut self, transaction: Transaction<C>) -> Result<SignResponse<C>, Error<C>> {
         match transaction {
             Transaction::Mint(asset) => {
                 let receiver = self
@@ -863,7 +853,7 @@ where
 
     /// Signs the `transaction`, generating transfer posts.
     #[inline]
-    pub fn sign(&mut self, transaction: Transaction<C>) -> SignResult<C, Self> {
+    pub fn sign(&mut self, transaction: Transaction<C>) -> Result<SignResponse<C>, Error<C>> {
         // TODO: Should we do a time-based release mechanism to amortize the cost of reading
         //       from the proving context cache?
         let result = self.sign_internal(transaction);
@@ -874,7 +864,7 @@ where
 
     /// Returns a new [`ReceivingKey`] for `self` to receive assets.
     #[inline]
-    pub fn receiving_key(&mut self) -> ReceivingKeyResult<C, Self> {
+    pub fn receiving_key(&mut self) -> Result<ReceivingKey<C>, Error<C>> {
         let keypair = self
             .state
             .accounts
@@ -893,7 +883,12 @@ where
     type Error = Error<C>;
 
     #[inline]
-    fn sync<I, R>(&mut self, starting_index: usize, inserts: I, removes: R) -> SyncResult<C, Self>
+    fn sync<I, R>(
+        &mut self,
+        starting_index: usize,
+        inserts: I,
+        removes: R,
+    ) -> Result<SyncResponse, Self::Error>
     where
         I: IntoIterator<Item = (Utxo<C>, EncryptedNote<C>)>,
         R: IntoIterator<Item = VoidNumber<C>>,
@@ -902,12 +897,12 @@ where
     }
 
     #[inline]
-    fn sign(&mut self, transaction: Transaction<C>) -> SignResult<C, Self> {
+    fn sign(&mut self, transaction: Transaction<C>) -> Result<SignResponse<C>, Self::Error> {
         self.sign(transaction)
     }
 
     #[inline]
-    fn receiving_key(&mut self) -> ReceivingKeyResult<C, Self> {
+    fn receiving_key(&mut self) -> Result<ReceivingKey<C>, Self::Error> {
         self.receiving_key()
     }
 }

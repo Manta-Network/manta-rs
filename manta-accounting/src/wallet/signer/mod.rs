@@ -14,18 +14,11 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Conversion Utilities
+//! Signer Abstractions
 
-use core::convert::Infallible;
+mod base;
 
-/// The Never Type
-///
-/// This `type` will eventually be replaced by `!`, the primitive never type. See the ongoing
-/// discussion for the [never_type #35121](https://github.com/rust-lang/rust/issues/35121) feature.
-pub type Never = Infallible;
+pub mod client;
+pub mod server;
 
-/// Promotes a [`Never`] value to another type.
-#[inline]
-pub fn never<T>(_: Never) -> T {
-    unreachable!("This type never has any values, so this promotion is safe.")
-}
+pub use base::*;
