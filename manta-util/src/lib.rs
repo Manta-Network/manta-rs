@@ -31,6 +31,7 @@ pub mod cache;
 pub mod codec;
 pub mod convert;
 pub mod iter;
+pub mod message;
 pub mod persistance;
 pub mod pointer;
 
