@@ -24,7 +24,7 @@ use crate::{
     },
     wallet::{
         ledger::{self, Checkpoint, PullResponse, PushResponse},
-        signer::{self, SignResponse, SyncResponse},
+        signer::{self, SignResponse, SyncRequest, SyncResponse},
     },
 };
 use alloc::collections::btree_map::{BTreeMap, Entry as BTreeMapEntry};
@@ -287,7 +287,11 @@ where
         }
         match self
             .signer
-            .sync(self.checkpoint.receiver_index(), receivers, senders)
+            .sync(SyncRequest {
+                starting_index: self.checkpoint.receiver_index(),
+                inserts: receivers.into_iter().collect(),
+                removes: senders.into_iter().collect(),
+            })
             .map_err(Error::SignerError)?
         {
             SyncResponse::Partial { deposit, withdraw } => {

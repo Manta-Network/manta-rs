@@ -74,21 +74,28 @@ where
 
     /// Pushes updates from the ledger to the wallet, synchronizing it with the ledger state and
     /// returning an updated asset distribution.
-    fn sync<I, R>(
-        &mut self,
-        starting_index: usize,
-        inserts: I,
-        removes: R,
-    ) -> Result<SyncResponse, Self::Error>
-    where
-        I: IntoIterator<Item = (Utxo<C>, EncryptedNote<C>)>,
-        R: IntoIterator<Item = VoidNumber<C>>;
+    fn sync(&mut self, request: SyncRequest<C>) -> Result<SyncResponse, Self::Error>;
 
     /// Signs a `transaction` and returns the ledger transfer posts if successful.
     fn sign(&mut self, transaction: Transaction<C>) -> Result<SignResponse<C>, Self::Error>;
 
     /// Returns a new [`ReceivingKey`] for `self` to receive assets.
     fn receiving_key(&mut self) -> Result<ReceivingKey<C>, Self::Error>;
+}
+
+/// Signer Synchronization Request
+pub struct SyncRequest<C>
+where
+    C: transfer::Configuration,
+{
+    /// Starting Index
+    pub starting_index: usize,
+
+    /// Balance Insertions
+    pub inserts: Vec<(Utxo<C>, EncryptedNote<C>)>,
+
+    /// Balance Removals
+    pub removes: Vec<VoidNumber<C>>,
 }
 
 /// Signer Synchronization Response
@@ -883,17 +890,8 @@ where
     type Error = Error<C>;
 
     #[inline]
-    fn sync<I, R>(
-        &mut self,
-        starting_index: usize,
-        inserts: I,
-        removes: R,
-    ) -> Result<SyncResponse, Self::Error>
-    where
-        I: IntoIterator<Item = (Utxo<C>, EncryptedNote<C>)>,
-        R: IntoIterator<Item = VoidNumber<C>>,
-    {
-        self.sync(starting_index, inserts, removes)
+    fn sync(&mut self, request: SyncRequest<C>) -> Result<SyncResponse, Self::Error> {
+        self.sync(request.starting_index, request.inserts, request.removes)
     }
 
     #[inline]

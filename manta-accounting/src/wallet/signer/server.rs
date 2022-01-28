@@ -17,12 +17,12 @@
 //! Signer Server Abstraction
 
 use crate::{
-    transfer::canonical::Transaction,
-    wallet::signer::{Configuration, Error, SignResponse, Signer},
+    transfer::{canonical::Transaction, ReceivingKey},
+    wallet::signer::{Configuration, Error, SignResponse, Signer, SyncRequest, SyncResponse},
 };
 use manta_util::message::{Channel, ChannelError};
 
-///
+/// Signer Server
 pub struct Server<C, H>
 where
     C: Configuration,
@@ -38,7 +38,7 @@ impl<C, H> Server<C, H>
 where
     C: Configuration,
 {
-    ///
+    /// Builds a new [`Server`] from a given `base` signer.
     #[inline]
     pub fn new(base: Signer<C>) -> Self {
         Self {
@@ -47,19 +47,37 @@ where
         }
     }
 
-    ///
+    /// Connects `self` along the given `channel`.
     #[inline]
     pub fn connect(&mut self, channel: H) {
         self.channel = Some(channel);
     }
 
-    ///
+    /// Disconnects `self` from the internal channel.
     #[inline]
     pub fn disconnect(&mut self) {
         self.channel = None;
     }
 
-    ///
+    /// Runs the `sync` command on the [`Signer`].
+    #[inline]
+    pub fn sync(&mut self) -> Result<bool, ChannelError<H::WriteError, H::ReadError>>
+    where
+        H: Channel<Result<SyncResponse, Error<C>>, SyncRequest<C>>,
+    {
+        if let Some(channel) = self.channel.as_mut() {
+            channel
+                .listen(|_, request| {
+                    self.base
+                        .sync(request.starting_index, request.inserts, request.removes)
+                })
+                .map(move |_| true)
+        } else {
+            Ok(false)
+        }
+    }
+
+    /// Runs the `sign` command on the [`Signer`].
     #[inline]
     pub fn sign(&mut self) -> Result<bool, ChannelError<H::WriteError, H::ReadError>>
     where
@@ -68,6 +86,21 @@ where
         if let Some(channel) = self.channel.as_mut() {
             channel
                 .listen(|_, transaction| self.base.sign(transaction))
+                .map(move |_| true)
+        } else {
+            Ok(false)
+        }
+    }
+
+    /// Runs the `receiving_key` command on the [`Signer`].
+    #[inline]
+    pub fn receiving_key(&mut self) -> Result<bool, ChannelError<H::WriteError, H::ReadError>>
+    where
+        H: Channel<Result<ReceivingKey<C>, Error<C>>, ()>,
+    {
+        if let Some(channel) = self.channel.as_mut() {
+            channel
+                .listen(|_, _| self.base.receiving_key())
                 .map(move |_| true)
         } else {
             Ok(false)

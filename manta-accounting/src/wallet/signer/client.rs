@@ -17,10 +17,8 @@
 //! Signer Client Abstraction
 
 use crate::{
-    transfer::{
-        canonical::Transaction, Configuration, EncryptedNote, ReceivingKey, Utxo, VoidNumber,
-    },
-    wallet::signer::{self, SignResponse, SyncResponse},
+    transfer::{canonical::Transaction, Configuration, ReceivingKey},
+    wallet::signer::{self, SignResponse, SyncRequest, SyncResponse},
 };
 use core::marker::PhantomData;
 use manta_util::message::{Channel, ChannelError, Input, Output, ParsingReadError, UniformChannel};
@@ -105,21 +103,6 @@ impl<E, W, R, SY, SI, RE> Error<E, W, R, SY, SI, RE> {
     }
 }
 
-/// Sync Request
-pub struct SyncRequest<C>
-where
-    C: Configuration,
-{
-    /// Starting Index
-    pub starting_index: usize,
-
-    /// Balance Insertions
-    pub inserts: Vec<(Utxo<C>, EncryptedNote<C>)>,
-
-    /// Balance Removals
-    pub removes: Vec<VoidNumber<C>>,
-}
-
 /// Client Connection
 pub struct Client<C, E, H>
 where
@@ -167,21 +150,8 @@ where
     >;
 
     #[inline]
-    fn sync<I, R>(
-        &mut self,
-        starting_index: usize,
-        inserts: I,
-        removes: R,
-    ) -> Result<SyncResponse, Self::Error>
-    where
-        I: IntoIterator<Item = (Utxo<C>, EncryptedNote<C>)>,
-        R: IntoIterator<Item = VoidNumber<C>>,
-    {
-        Error::convert_sync(self.channel.request(SyncRequest {
-            starting_index,
-            inserts: inserts.into_iter().collect(),
-            removes: removes.into_iter().collect(),
-        }))
+    fn sync(&mut self, request: SyncRequest<C>) -> Result<SyncResponse, Self::Error> {
+        Error::convert_sync(self.channel.request(request))
     }
 
     #[inline]
