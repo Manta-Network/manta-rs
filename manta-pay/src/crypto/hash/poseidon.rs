@@ -259,12 +259,12 @@ where
     }
 }
 
-impl<S, COM, CODEC, const ARITY: usize> Decode<CODEC> for Hash<S, COM, ARITY>
+impl<S, COM, const ARITY: usize> Decode for Hash<S, COM, ARITY>
 where
     S: Specification<COM>,
-    S::Field: Decode<CODEC>,
+    S::Field: Decode,
 {
-    type Error = <S::Field as Decode<CODEC>>::Error;
+    type Error = <S::Field as Decode>::Error;
 
     #[inline]
     fn decode<R>(mut reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
@@ -282,10 +282,10 @@ where
     }
 }
 
-impl<S, COM, CODEC, const ARITY: usize> Encode<CODEC> for Hash<S, COM, ARITY>
+impl<S, COM, const ARITY: usize> Encode for Hash<S, COM, ARITY>
 where
     S: Specification<COM>,
-    S::Field: Encode<CODEC>,
+    S::Field: Encode,
 {
     #[inline]
     fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>

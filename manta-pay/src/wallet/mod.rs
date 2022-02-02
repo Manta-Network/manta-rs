@@ -28,15 +28,12 @@ use ark_ff::PrimeField;
 use manta_accounting::{
     asset::HashAssetMap,
     key::{self, HierarchicalKeyDerivationScheme},
-    wallet::{self, signer::AssetMapKey},
+    wallet::signer::AssetMapKey,
 };
 use manta_crypto::{key::KeyDerivationFunction, merkle_tree};
 use manta_util::pointer::ThreadSafe;
 
 pub mod cache;
-
-#[cfg(feature = "tungstenite")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "tungstenite")))]
 pub mod signer;
 
 /// Hierarchical Key Derivation Function
@@ -79,14 +76,4 @@ impl manta_accounting::wallet::signer::Configuration for Config {
 }
 
 /// Signer Base Type
-pub type SignerBase = manta_accounting::wallet::signer::Signer<Config>;
-
-/// Signer Server
-#[cfg(feature = "tungstenite")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "tungstenite")))]
-pub type Signer = signer::Server;
-
-/// Wallet
-#[cfg(feature = "tungstenite")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "tungstenite")))]
-pub type Wallet<L> = wallet::Wallet<Config, L, signer::Client>;
+pub type Signer = manta_accounting::wallet::signer::Signer<Config>;

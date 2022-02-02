@@ -44,10 +44,10 @@ pub trait SaveEncrypted {
 
     /// Saves the `payload` to `path` after serializing using the `saving_key` to encrypt it.
     #[inline]
-    fn save<P, E, C>(path: P, saving_key: &Self::SavingKey, payload: &E) -> Result<(), Self::Error>
+    fn save<P, E>(path: P, saving_key: &Self::SavingKey, payload: &E) -> Result<(), Self::Error>
     where
         P: AsRef<Self::Path>,
-        E: Encode<C>,
+        E: Encode,
     {
         Self::save_bytes(path, saving_key, payload.to_vec())
     }
@@ -72,10 +72,10 @@ pub trait LoadDecrypted {
     /// Loads a vector of bytes from `path` using `loading_key` to decrypt them, then deserializing
     /// the bytes to a concrete value of type `D`.
     #[inline]
-    fn load<P, D, C>(path: P, loading_key: &Self::LoadingKey) -> Result<D, LoadError<Self, D, C>>
+    fn load<P, D>(path: P, loading_key: &Self::LoadingKey) -> Result<D, LoadError<Self, D>>
     where
         P: AsRef<Self::Path>,
-        D: Decode<C>,
+        D: Decode,
     {
         match Self::load_bytes(path, loading_key) {
             Ok(bytes) => D::from_vec(bytes).map_err(LoadError::Decode),
@@ -94,10 +94,10 @@ pub trait LoadDecrypted {
     Hash(bound = "L::Error: Hash, D::Error: Hash"),
     PartialEq(bound = "L::Error: PartialEq, D::Error: PartialEq")
 )]
-pub enum LoadError<L, D, C = ()>
+pub enum LoadError<L, D>
 where
     L: LoadDecrypted + ?Sized,
-    D: Decode<C> + ?Sized,
+    D: Decode + ?Sized,
 {
     /// Payload Loading Error
     Loading(L::Error),

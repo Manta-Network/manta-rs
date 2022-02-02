@@ -31,5 +31,3 @@ alloc = []
 # Standard Library
 std = ["alloc"]
 
-[dependencies]
-derivative = { version = "2.2.0", default-features = false, features = ["use_core"] }

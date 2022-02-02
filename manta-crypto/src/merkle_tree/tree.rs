@@ -649,16 +649,16 @@ pub enum ParameterDecodeError<L, I> {
     Inner(I),
 }
 
-impl<C, COM, CODEC> Decode<CODEC> for Parameters<C, COM>
+impl<C, COM> Decode for Parameters<C, COM>
 where
     C: HashConfiguration<COM> + ?Sized,
-    LeafHashParameters<C, COM>: Decode<CODEC>,
-    InnerHashParameters<C, COM>: Decode<CODEC>,
+    LeafHashParameters<C, COM>: Decode,
+    InnerHashParameters<C, COM>: Decode,
 {
     #[allow(clippy::type_complexity)] // NOTE: This is an implementation type so it doesn't matter.
     type Error = ParameterDecodeError<
-        <LeafHashParameters<C, COM> as Decode<CODEC>>::Error,
-        <InnerHashParameters<C, COM> as Decode<CODEC>>::Error,
+        <LeafHashParameters<C, COM> as Decode>::Error,
+        <InnerHashParameters<C, COM> as Decode>::Error,
     >;
 
     #[inline]
@@ -679,11 +679,11 @@ where
     }
 }
 
-impl<C, COM, CODEC> Encode<CODEC> for Parameters<C, COM>
+impl<C, COM> Encode for Parameters<C, COM>
 where
     C: HashConfiguration<COM> + ?Sized,
-    LeafHashParameters<C, COM>: Encode<CODEC>,
-    InnerHashParameters<C, COM>: Encode<CODEC>,
+    LeafHashParameters<C, COM>: Encode,
+    InnerHashParameters<C, COM>: Encode,
 {
     #[inline]
     fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>

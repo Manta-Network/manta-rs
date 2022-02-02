@@ -27,13 +27,11 @@
 use alloc::{format, string::String};
 use bip32::{Seed, XPrv};
 use core::marker::PhantomData;
-use manta_accounting::key::{
-    self, AccountIndex, HierarchicalKeyDerivationScheme, SpendIndex, ViewIndex,
-};
+use manta_accounting::key::{self, AccountIndex, HierarchicalKeyDerivationScheme, KeyIndex, Kind};
 use manta_crypto::rand::{CryptoRng, RngCore, Sample, Standard};
 use manta_util::{create_seal, seal};
 
-pub use bip32::{Error, Language, Mnemonic};
+pub use bip32::{Language, Mnemonic};
 
 create_seal! {}
 
@@ -179,7 +177,7 @@ where
 /// [`BIP-0044`]: https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki
 #[inline]
 #[must_use]
-pub fn path_string<C>(account: AccountIndex, spend: SpendIndex, view: Option<ViewIndex>) -> String
+pub fn path_string<C>(account: AccountIndex, kind: Kind, index: KeyIndex) -> String
 where
     C: CoinType,
 {
@@ -189,8 +187,8 @@ where
         BIP_44_PURPOSE_ID,
         C::COIN_TYPE_ID,
         account.index(),
-        spend.index(),
-        view.map(move |v| v.index() + 1).unwrap_or_default(),
+        kind as u8,
+        index.index(),
     )
 }
 
@@ -199,15 +197,15 @@ where
     C: CoinType,
 {
     type SecretKey = XPrv;
-    type Error = Error;
 
     #[inline]
-    fn derive(
-        &self,
-        account: AccountIndex,
-        spend: SpendIndex,
-        view: Option<ViewIndex>,
-    ) -> Result<Self::SecretKey, Self::Error> {
-        XPrv::derive_from_path(&self.seed, &path_string::<C>(account, spend, view).parse()?)
+    fn derive(&self, account: AccountIndex, kind: Kind, index: KeyIndex) -> Self::SecretKey {
+        XPrv::derive_from_path(
+            &self.seed,
+            &path_string::<C>(account, kind, index)
+                .parse()
+                .expect("Path string is valid by construction."),
+        )
+        .expect("Unable to generate secret key for valid seed and path string.")
     }
 }

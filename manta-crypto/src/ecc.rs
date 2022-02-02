@@ -105,9 +105,9 @@ where
     }
 }
 
-impl<G, COM, CODEC> Decode<CODEC> for DiffieHellman<G, COM>
+impl<G, COM> Decode for DiffieHellman<G, COM>
 where
-    G: Group<COM> + Decode<CODEC>,
+    G: Group<COM> + Decode,
 {
     type Error = G::Error;
 
@@ -120,9 +120,9 @@ where
     }
 }
 
-impl<G, COM, CODEC> Encode<CODEC> for DiffieHellman<G, COM>
+impl<G, COM> Encode for DiffieHellman<G, COM>
 where
-    G: Group<COM> + Encode<CODEC>,
+    G: Group<COM> + Encode,
 {
     #[inline]
     fn encode<W>(&self, writer: W) -> Result<(), W::Error>

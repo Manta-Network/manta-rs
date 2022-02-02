@@ -35,7 +35,7 @@
 
 use crate::{
     asset::{Asset, AssetId, AssetMap, AssetValue},
-    key::{self, HierarchicalKeyDerivationScheme, SpendIndex, ViewKeySelection},
+    key::{self, HierarchicalKeyDerivationScheme, KeyIndex, ViewKeySelection},
     transfer::{
         self,
         batch::Join,
@@ -58,8 +58,9 @@ use manta_crypto::{
     rand::{CryptoRng, Rand, RngCore},
 };
 use manta_util::{
+    array_map,
     cache::{CachedResource, CachedResourceError},
-    fallible_array_map, into_array_unchecked,
+    into_array_unchecked,
     iter::IteratorExt,
     persistance::Rollback,
 };
@@ -70,14 +71,23 @@ where
     C: transfer::Configuration,
 {
     /// Error Type
+    ///
+    /// This is the error type for the connection itself, not for an error produced during one of
+    /// the signer methods.
     type Error;
 
     /// Pushes updates from the ledger to the wallet, synchronizing it with the ledger state and
     /// returning an updated asset distribution.
-    fn sync(&mut self, request: SyncRequest<C>) -> Result<SyncResponse, Self::Error>;
+    fn sync(
+        &mut self,
+        request: SyncRequest<C>,
+    ) -> Result<Result<SyncResponse, SyncError>, Self::Error>;
 
     /// Signs a `transaction` and returns the ledger transfer posts if successful.
-    fn sign(&mut self, transaction: Transaction<C>) -> Result<SignResponse<C>, Self::Error>;
+    fn sign(
+        &mut self,
+        transaction: Transaction<C>,
+    ) -> Result<Result<SignResponse<C>, SignError<C>>, Self::Error>;
 
     /// Returns a new [`ReceivingKey`] for `self` to receive assets.
     fn receiving_key(&mut self) -> Result<ReceivingKey<C>, Self::Error>;
@@ -127,6 +137,19 @@ pub enum SyncResponse {
     },
 }
 
+/// Signer Synchronization Error
+///
+/// This `enum` is the error state for the [`sync`](Connection::sync) method on [`Connection`].
+/// See its documentation for more.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub enum SyncError {
+    /// Inconsistent Synchronization
+    InconsistentSynchronization {
+        /// Desired starting index to fix synchronization
+        starting_index: usize,
+    },
+}
+
 /// Signer Signing Response
 ///
 /// This `struct` is created by the [`sign`](Connection::sign) method on [`Connection`].
@@ -148,6 +171,24 @@ where
     pub fn new(posts: Vec<TransferPost<C>>) -> Self {
         Self { posts }
     }
+}
+
+/// Signer Signing Error
+///
+/// This `enum` is the error state for the [`sign`](Connection::sign) method on [`Connection`].
+/// See its documentation for more.
+pub enum SignError<C>
+where
+    C: transfer::Configuration,
+{
+    /// Proving Context Cache Error
+    ProvingContextCacheError,
+
+    /// Insufficient Balance
+    InsufficientBalance(Asset),
+
+    /// Proof System Error
+    ProofSystemError(ProofSystemError<C>),
 }
 
 /// Signer Configuration
@@ -178,58 +219,11 @@ pub trait Configuration: transfer::Configuration {
 pub type AccountTable<C> = key::AccountTable<<C as Configuration>::HierarchicalKeyDerivationScheme>;
 
 /// Asset Map Key Type
-pub type AssetMapKey<C> = (SpendIndex, PublicKey<C>);
+pub type AssetMapKey<C> = (KeyIndex, PublicKey<C>);
 
 /// Proving Context Cache Error Type
 pub type ProvingContextCacheError<C> =
     CachedResourceError<MultiProvingContext<C>, <C as Configuration>::ProvingContextCache>;
-
-/// Signer Error
-#[derive(derivative::Derivative)]
-#[derivative(Debug(bound = r"
-    key::Error<C::HierarchicalKeyDerivationScheme>: Debug,
-    ProvingContextCacheError<C>: Debug,
-    ProofSystemError<C>: Debug,
-    CE: Debug
-"))]
-pub enum Error<C, CE = Infallible>
-where
-    C: Configuration,
-{
-    /// Hierarchical Key Derivation Scheme Error
-    HierarchicalKeyDerivationSchemeError(key::Error<C::HierarchicalKeyDerivationScheme>),
-
-    /// Proving Context Cache Error
-    ProvingContextCacheError(ProvingContextCacheError<C>),
-
-    /// Missing [`Utxo`] Membership Proof
-    MissingUtxoMembershipProof,
-
-    /// Insufficient Balance
-    InsufficientBalance(Asset),
-
-    /// Inconsistent Synchronization
-    InconsistentSynchronization {
-        /// Desired starting index to fix synchronization
-        starting_index: usize,
-    },
-
-    /// Proof System Error
-    ProofSystemError(ProofSystemError<C>),
-
-    /// Signer Connection Error
-    ConnectionError(CE),
-}
-
-impl<C, CE> From<key::Error<C::HierarchicalKeyDerivationScheme>> for Error<C, CE>
-where
-    C: Configuration,
-{
-    #[inline]
-    fn from(err: key::Error<C::HierarchicalKeyDerivationScheme>) -> Self {
-        Self::HierarchicalKeyDerivationSchemeError(err)
-    }
-}
 
 /// Signer Parameters
 pub struct SignerParameters<C>
@@ -295,7 +289,7 @@ where
         encrypted_note: EncryptedNote<C>,
         void_numbers: &mut Vec<VoidNumber<C>>,
         deposit: &mut Vec<Asset>,
-    ) -> Result<(), Error<C>> {
+    ) -> Result<(), SyncError> {
         let mut finder = DecryptedMessage::find(encrypted_note);
         if let Some(ViewKeySelection {
             index,
@@ -309,7 +303,6 @@ where
             .accounts
             .get_default()
             .find_index(|k| finder.decrypt(&parameters.key_agreement, k))
-            .map_err(key::Error::KeyDerivationError)?
         {
             if let Some(void_number) = C::check_full_asset(
                 parameters,
@@ -322,8 +315,7 @@ where
                     void_numbers.remove(index);
                 } else {
                     self.utxo_set.insert(&utxo);
-                    self.assets
-                        .insert((index.spend, ephemeral_public_key), asset);
+                    self.assets.insert((index, ephemeral_public_key), asset);
                     if !asset.is_zero() {
                         deposit.push(asset);
                     }
@@ -375,7 +367,7 @@ where
         inserts: I,
         mut void_numbers: Vec<VoidNumber<C>>,
         is_partial: bool,
-    ) -> Result<SyncResponse, Error<C>>
+    ) -> Result<SyncResponse, SyncError>
     where
         I: Iterator<Item = (Utxo<C>, EncryptedNote<C>)>,
     {
@@ -393,7 +385,7 @@ where
         self.assets.retain(|(index, ephemeral_public_key), assets| {
             assets.retain(
                 |asset| match self.accounts.get_default().spend_key(*index) {
-                    Ok(secret_key) => Self::is_asset_unspent(
+                    Some(secret_key) => Self::is_asset_unspent(
                         parameters,
                         &secret_key,
                         ephemeral_public_key,
@@ -426,11 +418,14 @@ where
         parameters: &Parameters<C>,
         key: AssetMapKey<C>,
         asset: Asset,
-    ) -> Result<PreSender<C>, Error<C>> {
+    ) -> Result<PreSender<C>, SignError<C>> {
         let (spend_index, ephemeral_key) = key;
         Ok(PreSender::new(
             parameters,
-            self.accounts.get_default().spend_key(spend_index)?,
+            self.accounts
+                .get_default()
+                .spend_key(spend_index)
+                .expect("Index is guaranteed to be within bounds."),
             ephemeral_key,
             asset,
         ))
@@ -442,12 +437,8 @@ where
         &mut self,
         parameters: &Parameters<C>,
         asset: Asset,
-    ) -> Result<Receiver<C>, Error<C>> {
-        let keypair = self
-            .accounts
-            .get_default()
-            .default_keypair()
-            .map_err(key::Error::KeyDerivationError)?;
+    ) -> Result<Receiver<C>, SignError<C>> {
+        let keypair = self.accounts.get_default().default_keypair();
         Ok(SpendingKey::new(keypair.spend, keypair.view).receiver(
             parameters,
             self.rng.gen(),
@@ -461,13 +452,9 @@ where
         &mut self,
         parameters: &Parameters<C>,
         asset_id: AssetId,
-    ) -> Result<(Mint<C>, PreSender<C>), Error<C>> {
+    ) -> Result<(Mint<C>, PreSender<C>), SignError<C>> {
         let asset = Asset::zero(asset_id);
-        let keypair = self
-            .accounts
-            .get_default()
-            .default_keypair()
-            .map_err(key::Error::KeyDerivationError)?;
+        let keypair = self.accounts.get_default().default_keypair();
         Ok(Mint::internal_pair(
             parameters,
             &SpendingKey::new(keypair.spend, keypair.view),
@@ -482,10 +469,10 @@ where
         &mut self,
         parameters: &Parameters<C>,
         asset: Asset,
-    ) -> Result<Selection<C>, Error<C>> {
+    ) -> Result<Selection<C>, SignError<C>> {
         let selection = self.assets.select(asset);
         if !asset.is_zero() && selection.is_empty() {
-            return Err(Error::InsufficientBalance(asset));
+            return Err(SignError::InsufficientBalance(asset));
         }
         Selection::new(selection, move |k, v| {
             self.build_pre_sender(parameters, k, asset.id.with(v))
@@ -504,10 +491,10 @@ where
         proving_context: &ProvingContext<C>,
         transfer: Transfer<C, SOURCES, SENDERS, RECEIVERS, SINKS>,
         rng: &mut C::Rng,
-    ) -> Result<TransferPost<C>, Error<C>> {
+    ) -> Result<TransferPost<C>, SignError<C>> {
         transfer
             .into_post(parameters, proving_context, rng)
-            .map_err(Error::ProofSystemError)
+            .map_err(SignError::ProofSystemError)
     }
 
     /// Mints an asset with zero value for the given `asset_id`, returning the appropriate
@@ -518,7 +505,7 @@ where
         parameters: &Parameters<C>,
         proving_context: &ProvingContext<C>,
         mint: Mint<C>,
-    ) -> Result<TransferPost<C>, Error<C>> {
+    ) -> Result<TransferPost<C>, SignError<C>> {
         Self::build_post(
             FullParameters::new(parameters, self.utxo_set.model()),
             proving_context,
@@ -534,7 +521,7 @@ where
         parameters: &Parameters<C>,
         proving_context: &ProvingContext<C>,
         private_transfer: PrivateTransfer<C>,
-    ) -> Result<TransferPost<C>, Error<C>> {
+    ) -> Result<TransferPost<C>, SignError<C>> {
         Self::build_post(
             FullParameters::new(parameters, self.utxo_set.model()),
             proving_context,
@@ -550,7 +537,7 @@ where
         parameters: &Parameters<C>,
         proving_context: &ProvingContext<C>,
         reclaim: Reclaim<C>,
-    ) -> Result<TransferPost<C>, Error<C>> {
+    ) -> Result<TransferPost<C>, SignError<C>> {
         Self::build_post(
             FullParameters::new(parameters, self.utxo_set.model()),
             proving_context,
@@ -567,12 +554,8 @@ where
         parameters: &Parameters<C>,
         asset_id: AssetId,
         total: AssetValue,
-    ) -> Result<([Receiver<C>; PrivateTransferShape::RECEIVERS], Join<C>), Error<C>> {
-        let keypair = self
-            .accounts
-            .get_default()
-            .default_keypair()
-            .map_err(key::Error::KeyDerivationError)?;
+    ) -> Result<([Receiver<C>; PrivateTransferShape::RECEIVERS], Join<C>), SignError<C>> {
+        let keypair = self.accounts.get_default().default_keypair();
         Ok(Join::new(
             parameters,
             asset_id.with(total),
@@ -591,7 +574,7 @@ where
         mut new_zeroes: Vec<PreSender<C>>,
         pre_senders: &mut Vec<PreSender<C>>,
         posts: &mut Vec<TransferPost<C>>,
-    ) -> Result<(), Error<C>> {
+    ) -> Result<(), SignError<C>> {
         let mut needed_zeroes = PrivateTransferShape::SENDERS - pre_senders.len();
         if needed_zeroes == 0 {
             return Ok(());
@@ -633,7 +616,7 @@ where
         asset_id: AssetId,
         mut pre_senders: Vec<PreSender<C>>,
         posts: &mut Vec<TransferPost<C>>,
-    ) -> Result<[Sender<C>; PrivateTransferShape::SENDERS], Error<C>> {
+    ) -> Result<[Sender<C>; PrivateTransferShape::SENDERS], SignError<C>> {
         let mut new_zeroes = Vec::new();
         while pre_senders.len() > PrivateTransferShape::SENDERS {
             let mut joins = Vec::new();
@@ -641,10 +624,10 @@ where
                 .into_iter()
                 .chunk_by::<{ PrivateTransferShape::SENDERS }>();
             for chunk in &mut iter {
-                let senders = fallible_array_map(chunk, |s| {
+                let senders = array_map(chunk, |s| {
                     s.try_upgrade(&self.utxo_set)
-                        .ok_or(Error::MissingUtxoMembershipProof)
-                })?;
+                        .expect("Unable to upgrade expected UTXO.")
+                });
                 let (receivers, mut join) = self.next_join(
                     parameters,
                     asset_id,
@@ -675,7 +658,7 @@ where
                 .into_iter()
                 .map(move |s| s.try_upgrade(&self.utxo_set))
                 .collect::<Option<Vec<_>>>()
-                .ok_or(Error::MissingUtxoMembershipProof)?,
+                .expect("Unable to upgrade expected UTXOs."),
         ))
     }
 
@@ -762,7 +745,7 @@ where
         starting_index: usize,
         inserts: I,
         removes: R,
-    ) -> Result<SyncResponse, Error<C>>
+    ) -> Result<SyncResponse, SyncError>
     where
         I: IntoIterator<Item = (Utxo<C>, EncryptedNote<C>)>,
         R: IntoIterator<Item = VoidNumber<C>>,
@@ -785,7 +768,7 @@ where
                 self.state.utxo_set.commit();
                 result
             }
-            _ => Err(Error::InconsistentSynchronization {
+            _ => Err(SyncError::InconsistentSynchronization {
                 starting_index: utxo_set_len,
             }),
         }
@@ -797,7 +780,7 @@ where
         &mut self,
         asset: Asset,
         receiver: Option<ReceivingKey<C>>,
-    ) -> Result<SignResponse<C>, Error<C>> {
+    ) -> Result<SignResponse<C>, SignError<C>> {
         let selection = self.state.select(&self.parameters.parameters, asset)?;
         let change = self
             .state
@@ -805,7 +788,7 @@ where
         let (parameters, proving_context) = self
             .parameters
             .get()
-            .map_err(Error::ProvingContextCacheError)?;
+            .map_err(|_| SignError::ProvingContextCacheError)?;
         let mut posts = Vec::new();
         let senders = self.state.compute_batched_transactions(
             parameters,
@@ -835,7 +818,10 @@ where
 
     /// Signs the `transaction`, generating transfer posts without releasing resources.
     #[inline]
-    fn sign_internal(&mut self, transaction: Transaction<C>) -> Result<SignResponse<C>, Error<C>> {
+    fn sign_internal(
+        &mut self,
+        transaction: Transaction<C>,
+    ) -> Result<SignResponse<C>, SignError<C>> {
         match transaction {
             Transaction::Mint(asset) => {
                 let receiver = self
@@ -844,7 +830,7 @@ where
                 let (parameters, proving_context) = self
                     .parameters
                     .get()
-                    .map_err(Error::ProvingContextCacheError)?;
+                    .map_err(|_| SignError::ProvingContextCacheError)?;
                 Ok(SignResponse::new(vec![self.state.mint_post(
                     parameters,
                     &proving_context.mint,
@@ -860,7 +846,7 @@ where
 
     /// Signs the `transaction`, generating transfer posts.
     #[inline]
-    pub fn sign(&mut self, transaction: Transaction<C>) -> Result<SignResponse<C>, Error<C>> {
+    pub fn sign(&mut self, transaction: Transaction<C>) -> Result<SignResponse<C>, SignError<C>> {
         // TODO: Should we do a time-based release mechanism to amortize the cost of reading
         //       from the proving context cache?
         let result = self.sign_internal(transaction);
@@ -871,15 +857,10 @@ where
 
     /// Returns a new [`ReceivingKey`] for `self` to receive assets.
     #[inline]
-    pub fn receiving_key(&mut self) -> Result<ReceivingKey<C>, Error<C>> {
-        let keypair = self
-            .state
-            .accounts
-            .next(Default::default())
-            .unwrap()
-            .map_err(key::Error::KeyDerivationError)?;
-        Ok(SpendingKey::new(keypair.spend, keypair.view)
-            .derive(&self.parameters.parameters.key_agreement))
+    pub fn receiving_key(&mut self) -> ReceivingKey<C> {
+        let keypair = self.state.accounts.next(Default::default()).unwrap();
+        SpendingKey::new(keypair.spend, keypair.view)
+            .derive(&self.parameters.parameters.key_agreement)
     }
 }
 
@@ -887,20 +868,26 @@ impl<C> Connection<C> for Signer<C>
 where
     C: Configuration,
 {
-    type Error = Error<C>;
+    type Error = Infallible;
 
     #[inline]
-    fn sync(&mut self, request: SyncRequest<C>) -> Result<SyncResponse, Self::Error> {
-        self.sync(request.starting_index, request.inserts, request.removes)
+    fn sync(
+        &mut self,
+        request: SyncRequest<C>,
+    ) -> Result<Result<SyncResponse, SyncError>, Self::Error> {
+        Ok(self.sync(request.starting_index, request.inserts, request.removes))
     }
 
     #[inline]
-    fn sign(&mut self, transaction: Transaction<C>) -> Result<SignResponse<C>, Self::Error> {
-        self.sign(transaction)
+    fn sign(
+        &mut self,
+        transaction: Transaction<C>,
+    ) -> Result<Result<SignResponse<C>, SignError<C>>, Self::Error> {
+        Ok(self.sign(transaction))
     }
 
     #[inline]
     fn receiving_key(&mut self) -> Result<ReceivingKey<C>, Self::Error> {
-        self.receiving_key()
+        Ok(self.receiving_key())
     }
 }

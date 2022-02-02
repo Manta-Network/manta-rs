@@ -456,7 +456,7 @@ mod test {
     use super::*;
     use crate::{
         config::FullParameters,
-        wallet::{self, cache::OnDiskMultiProvingContext, SignerBase},
+        wallet::{self, cache::OnDiskMultiProvingContext, Signer},
     };
     use manta_accounting::{
         asset::{Asset, AssetList},
@@ -497,13 +497,13 @@ mod test {
         parameters: &transfer::Parameters<Config>,
         utxo_set_model: &UtxoSetModel,
         rng: &mut R,
-    ) -> Wallet<Config, LedgerConnection, SignerBase>
+    ) -> Wallet<Config, LedgerConnection, Signer>
     where
         R: CryptoRng + RngCore + ?Sized,
     {
         Wallet::empty(
             LedgerConnection::new(account, ledger.clone()),
-            SignerBase::new(
+            Signer::new(
                 AccountTable::new(rng.gen()),
                 cache.clone(),
                 parameters.clone(),

@@ -19,7 +19,7 @@
 // TODO: Add `ReadFrom` and `WriteInto` traits for conversion between different serde/codec impls
 //       which are specialized so that you can automatically convert between a type and itself.
 
-use core::{convert::Infallible, fmt::Debug, hash::Hash};
+use core::{convert::Infallible, fmt::Debug, hash::Hash, marker::PhantomData};
 
 #[cfg(feature = "alloc")]
 use alloc::vec::Vec;
@@ -37,9 +37,23 @@ pub trait Read {
 
     /// Reads bytes from `self`, pushing them to `output` until exhausting the buffer inside of
     /// `output`.
-    fn read_exact<T>(&mut self, output: &mut T) -> Result<(), ReadExactError<Self>>
+    fn read_exact<T>(&mut self, output: &mut T) -> Result<(), ReadExactError<Self::Error>>
     where
         T: AsMut<[u8]> + ?Sized;
+
+    /// Reads exactly one byte from `self`.
+    ///
+    /// # Implementation Note
+    ///
+    /// This method is an optimization path for [`read_exact`](Self::read_exact) when the desired
+    /// output sequence is exactly one byte. In some cases, there may be an implemention of this
+    /// method which is more efficient than calling [`read_exact`](Self::read_exact) directly.
+    #[inline]
+    fn read_byte(&mut self) -> Result<u8, ReadExactError<Self::Error>> {
+        let mut byte = [0; 1];
+        self.read_exact(&mut byte)?;
+        Ok(byte[0])
+    }
 
     /// Creates a “by mutable reference” adaptor for this instance of [`Read`].
     #[inline]
@@ -72,11 +86,16 @@ where
     }
 
     #[inline]
-    fn read_exact<T>(&mut self, output: &mut T) -> Result<(), ReadExactError<Self>>
+    fn read_exact<T>(&mut self, output: &mut T) -> Result<(), ReadExactError<Self::Error>>
     where
         T: AsMut<[u8]> + ?Sized,
     {
-        (*self).read_exact(output).map_err(ReadExactError::map_same)
+        (*self).read_exact(output)
+    }
+
+    #[inline]
+    fn read_byte(&mut self) -> Result<u8, ReadExactError<Self::Error>> {
+        (*self).read_byte()
     }
 }
 
@@ -108,7 +127,7 @@ impl Read for &[u8] {
     }
 
     #[inline]
-    fn read_exact<T>(&mut self, output: &mut T) -> Result<(), ReadExactError<Self>>
+    fn read_exact<T>(&mut self, output: &mut T) -> Result<(), ReadExactError<Self::Error>>
     where
         T: AsMut<[u8]> + ?Sized,
     {
@@ -148,7 +167,7 @@ impl<const N: usize> Read for [u8; N] {
     }
 
     #[inline]
-    fn read_exact<T>(&mut self, output: &mut T) -> Result<(), ReadExactError<Self>>
+    fn read_exact<T>(&mut self, output: &mut T) -> Result<(), ReadExactError<Self::Error>>
     where
         T: AsMut<[u8]> + ?Sized,
     {
@@ -190,12 +209,12 @@ impl Read for Vec<u8> {
     }
 
     #[inline]
-    fn read_exact<T>(&mut self, output: &mut T) -> Result<(), ReadExactError<Self>>
+    fn read_exact<T>(&mut self, output: &mut T) -> Result<(), ReadExactError<Self::Error>>
     where
         T: AsMut<[u8]> + ?Sized,
     {
         let mut slice = self.as_slice();
-        slice.read_exact(output).map_err(ReadExactError::map_same)?;
+        slice.read_exact(output)?;
         let len = slice.len();
         self.drain(..(self.len() - len));
         Ok(())
@@ -239,7 +258,7 @@ where
     }
 
     #[inline]
-    fn read_exact<T>(&mut self, output: &mut T) -> Result<(), ReadExactError<Self>>
+    fn read_exact<T>(&mut self, output: &mut T) -> Result<(), ReadExactError<Self::Error>>
     where
         T: AsMut<[u8]> + ?Sized,
     {
@@ -267,19 +286,8 @@ where
 ///
 /// This `enum` is the error state for the [`read_exact`](Read::read_exact) method of [`Read`].
 /// See its documentation for more.
-#[derive(derivative::Derivative)]
-#[derivative(
-    Clone(bound = "R::Error: Clone"),
-    Copy(bound = "R::Error: Copy"),
-    Debug(bound = "R::Error: Debug"),
-    Eq(bound = "R::Error: Eq"),
-    Hash(bound = "R::Error: Hash"),
-    PartialEq(bound = "R::Error: PartialEq")
-)]
-pub enum ReadExactError<R>
-where
-    R: Read + ?Sized,
-{
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum ReadExactError<R> {
     /// Unexpected End of Reader
     ///
     /// The reader finished producing bytes before the output buffer was filled. The amount
@@ -287,35 +295,7 @@ where
     UnexpectedEnd(usize),
 
     /// Reading Error
-    Read(R::Error),
-}
-
-impl<R> ReadExactError<R>
-where
-    R: Read + ?Sized,
-{
-    /// Maps `self` along `f` for the [`Self::Read`] variant into another [`ReadExactError`].
-    #[inline]
-    pub fn map<S, F>(self, f: F) -> ReadExactError<S>
-    where
-        S: Read + ?Sized,
-        F: FnOnce(R::Error) -> S::Error,
-    {
-        match self {
-            Self::UnexpectedEnd(remaining) => ReadExactError::UnexpectedEnd(remaining),
-            Self::Read(err) => ReadExactError::Read(f(err)),
-        }
-    }
-
-    /// Maps `self` along `f` for the [`Self::Read`] variant into another [`ReadExactError`]
-    /// using the same error value.
-    #[inline]
-    pub fn map_same<S>(self) -> ReadExactError<S>
-    where
-        S: Read<Error = R::Error> + ?Sized,
-    {
-        self.map(core::convert::identity)
-    }
+    Read(R),
 }
 
 /// Writer
@@ -482,7 +462,7 @@ where
     /// Reads bytes from `self`, pushing them to `output` until exhausting the buffer inside of
     /// `output`.
     #[inline]
-    pub fn read_exact<T>(mut self, output: &mut T) -> Result<Self, ReadExactError<R>>
+    pub fn read_exact<T>(mut self, output: &mut T) -> Result<Self, ReadExactError<R::Error>>
     where
         T: AsMut<[u8]> + ?Sized,
     {
@@ -545,7 +525,7 @@ where
 }
 
 /// Encoding
-pub trait Encode<C = ()> {
+pub trait Encode {
     /// Appends representation of `self` in bytes to `buffer`.
     fn encode<W>(&self, writer: W) -> Result<(), W::Error>
     where
@@ -563,7 +543,18 @@ pub trait Encode<C = ()> {
     }
 }
 
-impl<C> Encode<C> for () {
+impl Encode for () {
+    #[inline]
+    fn encode<W>(&self, writer: W) -> Result<(), W::Error>
+    where
+        W: Write,
+    {
+        let _ = writer;
+        Ok(())
+    }
+}
+
+impl<T> Encode for PhantomData<T> {
     #[inline]
     fn encode<W>(&self, writer: W) -> Result<(), W::Error>
     where
@@ -585,9 +576,9 @@ impl Encode for u8 {
     }
 }
 
-impl<T, C> Encode<C> for [T]
+impl<T> Encode for [T]
 where
-    T: Encode<C>,
+    T: Encode,
 {
     #[inline]
     fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
@@ -601,9 +592,9 @@ where
     }
 }
 
-impl<T, C, const N: usize> Encode<C> for [T; N]
+impl<T, const N: usize> Encode for [T; N]
 where
-    T: Encode<C>,
+    T: Encode,
 {
     #[inline]
     fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
@@ -614,11 +605,53 @@ where
             item.encode(&mut writer)?;
         }
         Ok(())
+    }
+}
+
+impl<T> Encode for Option<T>
+where
+    T: Encode,
+{
+    #[inline]
+    fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
+    where
+        W: Write,
+    {
+        match self {
+            Some(value) => {
+                1u8.encode(&mut writer)?;
+                value.encode(&mut writer)
+            }
+            _ => 0u8.encode(&mut writer),
+        }
+    }
+}
+
+impl<T, E> Encode for Result<T, E>
+where
+    T: Encode,
+    E: Encode,
+{
+    #[inline]
+    fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
+    where
+        W: Write,
+    {
+        match self {
+            Ok(value) => {
+                1u8.encode(&mut writer)?;
+                value.encode(&mut writer)
+            }
+            Err(err) => {
+                0u8.encode(&mut writer)?;
+                err.encode(&mut writer)
+            }
+        }
     }
 }
 
 /// Exact Size Encoding
-pub trait EncodeExactSize<C, const N: usize>: Encode<C> {
+pub trait EncodeExactSize<const N: usize>: Encode {
     /// Converts `self` into an exactly known byte array.
     #[inline]
     fn to_array(&self) -> [u8; N] {
@@ -630,7 +663,7 @@ pub trait EncodeExactSize<C, const N: usize>: Encode<C> {
 }
 
 /// Decoding
-pub trait Decode<C = ()>: Sized {
+pub trait Decode: Sized {
     /// Error Type
     type Error;
 
@@ -649,7 +682,7 @@ pub trait Decode<C = ()>: Sized {
     }
 }
 
-impl<C> Decode<C> for () {
+impl Decode for () {
     type Error = Infallible;
 
     #[inline]
@@ -662,8 +695,115 @@ impl<C> Decode<C> for () {
     }
 }
 
+impl<T> Decode for PhantomData<T> {
+    type Error = Infallible;
+
+    #[inline]
+    fn decode<R>(reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
+    where
+        R: Read,
+    {
+        let _ = reader;
+        Ok(PhantomData)
+    }
+}
+
+impl Decode for u8 {
+    type Error = ();
+
+    #[inline]
+    fn decode<R>(mut reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
+    where
+        R: Read,
+    {
+        match reader.read_byte() {
+            Ok(byte) => Ok(byte),
+            Err(ReadExactError::Read(err)) => Err(DecodeError::Read(err)),
+            _ => Err(DecodeError::Decode(())),
+        }
+    }
+}
+
+/// Option [`Decode`] Error
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum OptionDecodeError<T> {
+    /// Missing Byte
+    MissingByte,
+
+    /// Invalid Byte
+    InvalidByte(u8),
+
+    /// `Some` Variant Error
+    SomeError(T),
+}
+
+impl<T> Decode for Option<T>
+where
+    T: Decode,
+{
+    type Error = OptionDecodeError<T::Error>;
+
+    #[inline]
+    fn decode<R>(mut reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
+    where
+        R: Read,
+    {
+        match u8::decode(&mut reader)
+            .map_err(move |err| err.map_decode(move |_| OptionDecodeError::MissingByte))?
+        {
+            0 => Ok(Some(T::decode(&mut reader).map_err(move |err| {
+                err.map_decode(OptionDecodeError::SomeError)
+            })?)),
+            1 => Ok(None),
+            b => Err(DecodeError::Decode(OptionDecodeError::InvalidByte(b))),
+        }
+    }
+}
+
+/// Result [`Decode`] Error
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum ResultDecodeError<T, E> {
+    /// Missing Byte
+    MissingByte,
+
+    /// Invalid Byte
+    InvalidByte(u8),
+
+    /// `Ok` Variant Error
+    OkError(T),
+
+    /// `Some` Variant Error
+    ErrError(E),
+}
+
+impl<T, E> Decode for Result<T, E>
+where
+    T: Decode,
+    E: Decode,
+{
+    type Error = ResultDecodeError<T::Error, E::Error>;
+
+    #[inline]
+    fn decode<R>(mut reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
+    where
+        R: Read,
+    {
+        match u8::decode(&mut reader)
+            .map_err(move |err| err.map_decode(move |_| ResultDecodeError::MissingByte))?
+        {
+            0 => Ok(Ok(T::decode(&mut reader).map_err(move |err| {
+                err.map_decode(ResultDecodeError::OkError)
+            })?)),
+            1 => Ok(Err(E::decode(&mut reader).map_err(move |err| {
+                err.map_decode(ResultDecodeError::ErrError)
+            })?)),
+            b => Err(DecodeError::Decode(ResultDecodeError::InvalidByte(b))),
+        }
+    }
+}
+
 /// Exact Size Decoding
-pub trait DecodeExactSize<C, const N: usize>: Decode<C> {
+pub trait DecodeExactSize<const N: usize>: Decode {
     /// Converts a fixed-length byte array into a concrete value of type `Self`.
     #[inline]
     fn from_array(buffer: [u8; N]) -> Self {
@@ -673,7 +813,7 @@ pub trait DecodeExactSize<C, const N: usize>: Decode<C> {
     }
 }
 
-impl<C> DecodeExactSize<C, 0> for () {
+impl DecodeExactSize<0> for () {
     #[inline]
     fn from_array(buffer: [u8; 0]) -> Self {
         let _ = buffer;
@@ -710,6 +850,30 @@ impl<R, D> DecodeError<R, D> {
         match self {
             Self::Decode(err) => Some(err),
             _ => None,
+        }
+    }
+
+    /// Maps the [`Read`](Self::Read) variant over `f`.
+    #[inline]
+    pub fn map_read<T, F>(self, f: F) -> DecodeError<T, D>
+    where
+        F: FnOnce(R) -> T,
+    {
+        match self {
+            Self::Read(err) => DecodeError::Read(f(err)),
+            Self::Decode(err) => DecodeError::Decode(err),
+        }
+    }
+
+    /// Maps the [`Decode`](Self::Decode) variant over `f`.
+    #[inline]
+    pub fn map_decode<T, F>(self, f: F) -> DecodeError<R, T>
+    where
+        F: FnOnce(D) -> T,
+    {
+        match self {
+            Self::Read(err) => DecodeError::Read(err),
+            Self::Decode(err) => DecodeError::Decode(f(err)),
         }
     }
 }

@@ -24,7 +24,7 @@ use crate::{
     },
     wallet::{
         ledger::{self, Checkpoint, PullResponse, PushResponse},
-        signer::{self, SignResponse, SyncRequest, SyncResponse},
+        signer::{self, SignError, SignResponse, SyncError, SyncRequest, SyncResponse},
     },
 };
 use alloc::collections::btree_map::{BTreeMap, Entry as BTreeMapEntry};
@@ -266,14 +266,6 @@ where
     /// Pulls data from the `ledger`, synchronizing the wallet and balance state.
     #[inline]
     pub fn sync(&mut self) -> Result<(), Error<C, L, S>> {
-        // FIXME: What should be done when we receive an `InconsistentSynchronization` error from
-        //        the signer?
-        //          - One option is to do some sort of (exponential) backoff algorithm to find the
-        //            point at which the signer and the wallet are able to synchronize again. The
-        //            correct algorithm may be simply to exchange some checkpoints between the
-        //            signer and the wallet until they can agree on a minimal one.
-        //          - In the worst case we would have to recover the entire wallet.
-        //
         let PullResponse {
             checkpoint,
             receivers,
@@ -294,13 +286,26 @@ where
             })
             .map_err(Error::SignerError)?
         {
-            SyncResponse::Partial { deposit, withdraw } => {
+            Ok(SyncResponse::Partial { deposit, withdraw }) => {
                 self.assets.deposit_all(deposit);
                 self.assets.withdraw_all_unchecked(withdraw);
             }
-            SyncResponse::Full { assets } => {
+            Ok(SyncResponse::Full { assets }) => {
                 self.assets.clear();
                 self.assets.deposit_all(assets);
+            }
+            Err(SyncError::InconsistentSynchronization { starting_index }) => {
+                // FIXME: What should be done when we receive an `InconsistentSynchronization` error
+                //        from the signer?
+                //          - One option is to do some sort of (exponential) backoff algorithm to
+                //            find the point at which the signer and the wallet are able to
+                //            synchronize again. The correct algorithm may be simply to exchange
+                //            some checkpoints between the signer and the wallet until they can
+                //            agree on a minimal one.
+                //          - In the worst case we would have to recover the entire wallet.
+                //
+                let _ = starting_index;
+                todo!()
             }
         }
         self.checkpoint = checkpoint;
@@ -341,9 +346,25 @@ where
         self.sync()?;
         self.check(&transaction)
             .map_err(Error::InsufficientBalance)?;
-        let SignResponse { posts } = self.signer.sign(transaction).map_err(Error::SignerError)?;
-        let PushResponse { success } = self.ledger.push(posts).map_err(Error::LedgerError)?;
-        Ok(success)
+        match self.signer.sign(transaction).map_err(Error::SignerError)? {
+            Ok(SignResponse { posts }) => {
+                let PushResponse { success } =
+                    self.ledger.push(posts).map_err(Error::LedgerError)?;
+                Ok(success)
+            }
+            Err(SignError::ProvingContextCacheError) => {
+                // TODO: This kind of error should not bubble up to the wallet level.
+                todo!()
+            }
+            Err(SignError::InsufficientBalance(asset)) => {
+                // FIXME: If we reach this point, the wallet and signer are not synchronized.
+                todo!()
+            }
+            Err(SignError::ProofSystemError(err)) => {
+                // TODO: This kind of error should not bubble up to the wallet level.
+                todo!()
+            }
+        }
     }
 
     /// Returns a new [`ReceivingKey`] for `self` to receive assets.
@@ -371,9 +392,9 @@ where
     /// Inconsistent Checkpoint Error
     InconsistentCheckpoint,
 
-    /// Ledger Error
+    /// Ledger Connection Error
     LedgerError(L::Error),
 
-    /// Signer Error
+    /// Signer Connection Error
     SignerError(S::Error),
 }
