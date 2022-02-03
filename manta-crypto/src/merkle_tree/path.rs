@@ -34,12 +34,26 @@ use core::{
     slice::SliceIndex,
 };
 
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 pub(super) mod prelude {
     #[doc(inline)]
     pub use super::{CurrentPath, Path};
 }
 
 /// Merkle Tree Inner Path
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "InnerDigest<C>: Deserialize<'de>",
+            serialize = "InnerDigest<C>: Serialize"
+        ),
+        deny_unknown_fields
+    )
+)]
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "InnerDigest<C>: Clone"),
@@ -224,6 +238,17 @@ where
 }
 
 /// Merkle Tree Current Inner Path
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "InnerDigest<C>: Deserialize<'de>",
+            serialize = "InnerDigest<C>: Serialize"
+        ),
+        deny_unknown_fields
+    )
+)]
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "InnerDigest<C>: Clone"),
@@ -592,6 +617,17 @@ impl<C> ExactSizeIterator for CurrentInnerPathNodeIter<C> where C: Configuration
 impl<C> FusedIterator for CurrentInnerPathNodeIter<C> where C: Configuration + ?Sized {}
 
 /// Merkle Tree Path
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "LeafDigest<C>: Deserialize<'de>, InnerDigest<C>: Deserialize<'de>",
+            serialize = "LeafDigest<C>: Serialize, InnerDigest<C>: Serialize"
+        ),
+        deny_unknown_fields
+    )
+)]
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "LeafDigest<C>: Clone, InnerDigest<C>: Clone"),
@@ -730,6 +766,17 @@ where
 }
 
 /// Merkle Tree Current Path
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "LeafDigest<C>: Deserialize<'de>, InnerDigest<C>: Deserialize<'de>",
+            serialize = "LeafDigest<C>: Serialize, InnerDigest<C>: Serialize"
+        ),
+        deny_unknown_fields
+    )
+)]
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "LeafDigest<C>: Clone, InnerDigest<C>: Clone"),

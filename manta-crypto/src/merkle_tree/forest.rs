@@ -38,6 +38,9 @@ use alloc::{boxed::Box, vec::Vec};
 use core::{fmt::Debug, hash::Hash, marker::PhantomData};
 use manta_util::{into_boxed_array_unchecked, persistance::Rollback, pointer::PointerFamily};
 
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 /// Merkle Forest Configuration
 pub trait Configuration: tree::Configuration {
     /// Tree Index Type
@@ -171,6 +174,17 @@ where
 }
 
 /// Merkle Forest
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "Parameters<C>: Deserialize<'de>, F: Deserialize<'de>",
+            serialize = "Parameters<C>: Serialize, F: Serialize"
+        ),
+        deny_unknown_fields
+    )
+)]
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "Parameters<C>: Clone, F: Clone"),
@@ -186,11 +200,11 @@ where
     C: Configuration + ?Sized,
     F: Forest<C>,
 {
-    /// Underlying Forest Structure
-    pub forest: F,
-
     /// Merkle Forest Parameters
     pub parameters: Parameters<C>,
+
+    /// Underlying Forest Structure
+    pub forest: F,
 }
 
 impl<C, F> MerkleForest<C, F>
@@ -209,7 +223,7 @@ where
     /// Builds a new [`MerkleForest`] from a pre-constructed `forest` and `parameters`.
     #[inline]
     pub fn from_forest(forest: F, parameters: Parameters<C>) -> Self {
-        Self { forest, parameters }
+        Self { parameters, forest }
     }
 
     /// Returns a shared reference to the parameters used by this merkle forest.
@@ -374,6 +388,7 @@ where
 }
 
 /// [`SingleTree`] Merkle Forest Index
+#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct SingleTreeIndex;
 
@@ -394,6 +409,7 @@ impl From<SingleTreeIndex> for usize {
 }
 
 /// Single Tree Merkle Forest
+#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct SingleTree<C, COM = ()>(PhantomData<(C, COM)>)
 where
@@ -431,6 +447,14 @@ where
 pub type TreeArrayMerkleForest<C, T, const N: usize> = MerkleForest<C, TreeArray<C, T, N>>;
 
 /// Tree Array
+#[cfg_attr(
+    all(feature = "serde", feature = "serde_with"),
+    derive(Deserialize, Serialize),
+    serde(
+        bound(deserialize = "T: Deserialize<'de>", serialize = "T: Serialize"),
+        deny_unknown_fields,
+    )
+)]
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "T: Clone"),
@@ -449,6 +473,10 @@ where
     ///
     /// Typically, even for reasonable `N`, the size of this array is too big to fit on the stack,
     /// so we wrap it in a box to store on the heap.
+    #[cfg_attr(
+        all(feature = "serde", feature = "serde_with"),
+        serde(with = "serde_with::As::<Box<[serde_with::Same; N]>>")
+    )]
     array: Box<[T; N]>,
 
     /// Type Parameter Marker

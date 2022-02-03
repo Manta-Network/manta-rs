@@ -29,9 +29,7 @@ use core::{
     ops::{Add, AddAssign, Deref, Sub, SubAssign},
     slice,
 };
-use derive_more::{
-    Add, AddAssign, Display, Div, DivAssign, From, Mul, MulAssign, Sub, SubAssign, Sum,
-};
+use derive_more::{Add, AddAssign, Display, From, Sub, SubAssign, Sum};
 use manta_crypto::{
     constraint::{Allocator, Secret, ValueSource, Variable},
     rand::{CryptoRng, Rand, RngCore, Sample, Standard},
@@ -44,10 +42,18 @@ use std::{
     hash::BuildHasher,
 };
 
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 /// [`AssetId`] Base Type
 pub type AssetIdType = u32;
 
 /// Asset Id Type
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(deny_unknown_fields)
+)]
 #[derive(Clone, Copy, Debug, Default, Display, Eq, From, Hash, Ord, PartialEq, PartialOrd)]
 #[from(forward)]
 pub struct AssetId(
@@ -118,6 +124,11 @@ where
 pub type AssetValueType = u128;
 
 /// Asset Value Type
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(deny_unknown_fields)
+)]
 #[derive(
     Add,
     AddAssign,
@@ -126,13 +137,9 @@ pub type AssetValueType = u128;
     Debug,
     Default,
     Display,
-    Div,
-    DivAssign,
     Eq,
     From,
     Hash,
-    Mul,
-    MulAssign,
     Ord,
     PartialEq,
     PartialOrd,
@@ -268,6 +275,11 @@ impl<'a> Sum<&'a AssetValue> for AssetValue {
 }
 
 /// Asset
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(deny_unknown_fields)
+)]
 #[derive(Clone, Copy, Debug, Default, Display, Eq, From, Hash, Ord, PartialEq, PartialOrd)]
 #[display(fmt = "{{id: {}, value: {}}}", id, value)]
 pub struct Asset<I = AssetId, V = AssetValue> {
@@ -473,6 +485,11 @@ where
 ///
 /// Stores assets sorted by [`AssetId`] as a flat key-value vector. This type can be relied on to
 /// maintain sorted order for iterating.
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(deny_unknown_fields)
+)]
 #[derive(Clone, Debug, Default, Eq, Hash, PartialEq)]
 pub struct AssetList {
     /// Sorted Asset Vector

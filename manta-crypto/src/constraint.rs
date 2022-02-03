@@ -527,6 +527,7 @@ pub mod measure {
     }
 
     /// Constraint System Size Measurement Report
+    #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
     #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
     pub struct SizeReport {
         /// Number of Constraints

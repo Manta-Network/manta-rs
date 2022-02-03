@@ -19,6 +19,9 @@
 use crate::key::{KeyAgreementScheme, KeyDerivationFunction};
 use core::{fmt::Debug, hash::Hash, marker::PhantomData};
 
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 /// Symmetric Key Encryption Scheme
 ///
 /// # Specification
@@ -54,6 +57,7 @@ pub mod symmetric {
     use super::*;
 
     /// Mapped Symmetric Encryption Scheme
+    #[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
     #[derive(derivative::Derivative)]
     #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
     pub struct Map<S, P = <S as SymmetricKeyEncryptionScheme>::Plaintext>(PhantomData<(S, P)>)
@@ -128,6 +132,7 @@ pub type PublicKey<H> =
 /// implemented.
 ///
 /// [`agree_derive`]: HybridPublicKeyEncryptionScheme::agree_derive
+#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Hybrid<K, S, F>(PhantomData<(K, S, F)>)
@@ -168,6 +173,17 @@ where
 }
 
 /// Encrypted Message
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "H::Ciphertext: Deserialize<'de>, PublicKey<H>: Deserialize<'de>",
+            serialize = "H::Ciphertext: Serialize, PublicKey<H>: Serialize"
+        ),
+        deny_unknown_fields
+    )
+)]
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "H::Ciphertext: Clone, PublicKey<H>: Clone"),
@@ -235,6 +251,17 @@ where
 }
 
 /// Decrypted Message
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "H::Plaintext: Deserialize<'de>, PublicKey<H>: Deserialize<'de>",
+            serialize = "H::Plaintext: Serialize, PublicKey<H>: Serialize"
+        ),
+        deny_unknown_fields
+    )
+)]
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "H::Plaintext: Clone, PublicKey<H>: Clone"),
@@ -317,6 +344,12 @@ where
             }
         }
         None
+    }
+
+    /// Extracts the possible encrypted message which has not yet been decrypted.
+    #[inline]
+    pub fn into_inner(self) -> Option<EncryptedMessage<H>> {
+        self.encrypted_message
     }
 }
 

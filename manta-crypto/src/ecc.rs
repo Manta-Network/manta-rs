@@ -53,6 +53,7 @@ pub trait Group<COM = ()>: Sized {
 }
 
 /// Elliptic-Curve Diffie Hellman Key Exchange
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub struct DiffieHellman<G, COM = ()>

@@ -16,184 +16,283 @@
 
 //! Encrypted Filesystem Primitives
 
-// FIXME: Add streaming interfaces.
-
 use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash};
-use manta_util::codec::{Decode, Encode};
 
-/// Filesystem Encrypted Saving
-pub trait SaveEncrypted {
-    /// Path Type
-    type Path: ?Sized;
+/// Open Options
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub struct OpenOptions {
+    ///
+    read: bool,
 
-    /// Saving Key Type
-    type SavingKey: ?Sized;
+    ///
+    write: bool,
 
-    /// Saving Error
-    type Error;
+    ///
+    append: bool,
 
-    /// Saves the `payload` to `path` using the `saving_key` to encrypt it.
-    fn save_bytes<P>(
-        path: P,
-        saving_key: &Self::SavingKey,
-        payload: Vec<u8>,
-    ) -> Result<(), Self::Error>
-    where
-        P: AsRef<Self::Path>;
+    ///
+    truncate: bool,
 
-    /// Saves the `payload` to `path` after serializing using the `saving_key` to encrypt it.
+    ///
+    create: bool,
+
+    ///
+    create_new: bool,
+}
+
+impl OpenOptions {
+    /// Builds a new default [`OpenOptions`].
     #[inline]
-    fn save<P, E>(path: P, saving_key: &Self::SavingKey, payload: &E) -> Result<(), Self::Error>
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    ///
+    #[inline]
+    pub fn read(mut self, read: bool) -> Self {
+        self.read = read;
+        self
+    }
+
+    ///
+    #[inline]
+    pub fn write(mut self, write: bool) -> Self {
+        self.write = write;
+        self
+    }
+
+    ///
+    #[inline]
+    pub fn append(mut self, append: bool) -> Self {
+        self.append = append;
+        self
+    }
+
+    ///
+    #[inline]
+    pub fn truncate(mut self, truncate: bool) -> Self {
+        self.truncate = truncate;
+        self
+    }
+
+    ///
+    #[inline]
+    pub fn create(mut self, create: bool) -> Self {
+        self.create = create;
+        self
+    }
+
+    ///
+    #[inline]
+    pub fn create_new(mut self, create_new: bool) -> Self {
+        self.create_new = create_new;
+        self
+    }
+
+    ///
+    #[inline]
+    pub fn open<F, P>(&self, path: P, password: &[u8]) -> Result<F, F::Error>
     where
-        P: AsRef<Self::Path>,
-        E: Encode,
+        F: File,
+        P: AsRef<F::Path>,
     {
-        Self::save_bytes(path, saving_key, payload.to_vec())
+        F::open(path, password, self)
     }
 }
 
-/// Filesystem Decrypted Loading
-pub trait LoadDecrypted {
-    /// Path Type
-    type Path: ?Sized;
+/// Data Block
+pub struct Block {
+    /// Block Data
+    data: Box<[u8; 8192]>,
+}
 
-    /// Loading Key Type
-    type LoadingKey: ?Sized;
-
-    /// Loading Error Type
-    type Error;
-
-    /// Loads a vector of bytes from `path` using `loading_key` to decrypt them.
-    fn load_bytes<P>(path: P, loading_key: &Self::LoadingKey) -> Result<Vec<u8>, Self::Error>
-    where
-        P: AsRef<Self::Path>;
-
-    /// Loads a vector of bytes from `path` using `loading_key` to decrypt them, then deserializing
-    /// the bytes to a concrete value of type `D`.
+impl Block {
+    /// Builds a new [`Block`] from an owned collection of bytes.
     #[inline]
-    fn load<P, D>(path: P, loading_key: &Self::LoadingKey) -> Result<D, LoadError<Self, D>>
-    where
-        P: AsRef<Self::Path>,
-        D: Decode,
-    {
-        match Self::load_bytes(path, loading_key) {
-            Ok(bytes) => D::from_vec(bytes).map_err(LoadError::Decode),
-            Err(err) => Err(LoadError::Loading(err)),
-        }
+    pub fn new(data: Vec<u8>) -> Option<Self> {
+        Some(Self {
+            data: data.into_boxed_slice().try_into().ok()?,
+        })
     }
 }
 
-/// Loading Error
-#[derive(derivative::Derivative)]
-#[derivative(
-    Clone(bound = "L::Error: Clone, D::Error: Clone"),
-    Copy(bound = "L::Error: Copy, D::Error: Copy"),
-    Debug(bound = "L::Error: Debug, D::Error: Debug"),
-    Eq(bound = "L::Error: Eq, D::Error: Eq"),
-    Hash(bound = "L::Error: Hash, D::Error: Hash"),
-    PartialEq(bound = "L::Error: PartialEq, D::Error: PartialEq")
-)]
-pub enum LoadError<L, D>
+/// Encrypted File
+pub trait File: Sized {
+    /// Path Type
+    type Path: ?Sized;
+
+    /// Error Type
+    type Error;
+
+    /// Opens a new file at `path` with `password` and `options`.
+    fn open<P>(path: P, password: &[u8], options: &OpenOptions) -> Result<Self, Self::Error>
+    where
+        P: AsRef<Self::Path>;
+
+    /// Creates a new file at `path` with `password`.
+    #[inline]
+    fn create<P>(path: P, password: &[u8]) -> Result<Self, Self::Error>
+    where
+        P: AsRef<Self::Path>,
+    {
+        OpenOptions::new().create(true).open(path, password)
+    }
+
+    /// Writes `block` to `self` after encrypting it.
+    fn write(&mut self, block: Block) -> Result<(), Self::Error>;
+
+    /// Reads a [`Block`] from `self` after decrypting it.
+    fn read(&mut self) -> Result<Block, Self::Error>;
+}
+
+/// Encrypting Serializer
+pub struct Serializer<'f, F>
 where
-    L: LoadDecrypted + ?Sized,
-    D: Decode + ?Sized,
+    F: File,
 {
-    /// Payload Loading Error
-    Loading(L::Error),
-
-    /// Decoding Error
-    Decode(D::Error),
+    /// Encrypted File
+    file: &'f mut F,
 }
 
-/// Cocoon Adapters
+impl<'f, F> Serializer<'f, F>
+where
+    F: File,
+{
+    ///
+    #[inline]
+    pub fn new(file: &'f mut F) -> Self {
+        Self { file }
+    }
+}
+
+// TODO: impl<'f, F> serde::Serializer for Serializer<'f, F> where F: File {}
+
+/// Decrypting Deserializer
+pub struct Deserializer<'f, F>
+where
+    F: File,
+{
+    /// Encrypted File
+    file: &'f mut F,
+}
+
+impl<'f, F> Deserializer<'f, F>
+where
+    F: File,
+{
+    ///
+    #[inline]
+    pub fn new(file: &'f mut F) -> Self {
+        Self { file }
+    }
+}
+
+// TODO: impl<'de, 'f, F> serde::Deserializer<'de> for Deserializer<'f, F> where F: File + Read {}
+
+/// Cocoon Encrypted File System Adapter
 #[cfg(feature = "cocoon-fs")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "cocoon-fs")))]
 pub mod cocoon {
     use super::*;
-    use cocoon_crate::{Cocoon, Error as CocoonError};
+    use cocoon_crate::{Error as CocoonError, MiniCocoon};
     use core::fmt;
+    use manta_crypto::rand::{Rand, SeedableRng};
     use manta_util::from_variant_impl;
+    use rand_chacha::ChaCha20Rng;
     use std::{
-        fs::OpenOptions,
-        io::{Error as IoError, Read, Write},
+        fs::{self, OpenOptions},
+        io::Error as IoError,
         path::Path,
     };
-    use zeroize::Zeroizing;
 
     /// Cocoon Loading/Saving Error
     #[derive(Debug)]
     pub enum Error {
-        /// File Opening Error
-        UnableToOpenFile(IoError),
+        /// I/O Error
+        IoError(IoError),
 
         /// Cocoon Error
         Cocoon(CocoonError),
+
+        /// Invalid Block Size
+        InvalidBlockSize,
     }
 
-    from_variant_impl!(Error, UnableToOpenFile, IoError);
+    from_variant_impl!(Error, IoError, IoError);
     from_variant_impl!(Error, Cocoon, CocoonError);
 
     impl fmt::Display for Error {
         #[inline]
         fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
             match self {
-                Self::UnableToOpenFile(err) => write!(f, "File Opening Error: {}", err),
+                Self::IoError(err) => write!(f, "File I/O Error: {}", err),
                 Self::Cocoon(err) => write!(f, "Cocoon Error: {:?}", err),
+                Self::InvalidBlockSize => write!(f, "Invalid Block Size"),
             }
         }
     }
 
     impl std::error::Error for Error {}
 
-    /// Cocoon [`SaveEncrypted`] Adapter
-    #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-    pub struct Save;
+    /// Encrypted File
+    pub struct File {
+        /// File Pointer
+        file: fs::File,
 
-    impl SaveEncrypted for Save {
-        type Path = Path;
-        type SavingKey = [u8];
-        type Error = Error;
+        /// Encrypting Device
+        cocoon: MiniCocoon,
+    }
 
+    impl File {
+        /// Builds a new [`File`] for encrypted data storage with `password`.
         #[inline]
-        fn save_bytes<P>(
-            path: P,
-            saving_key: &Self::SavingKey,
-            payload: Vec<u8>,
-        ) -> Result<(), Self::Error>
-        where
-            P: AsRef<Self::Path>,
-        {
-            let mut buffer = Zeroizing::new(Vec::new());
-            Cocoon::new(saving_key).dump(payload, &mut buffer.as_mut_slice())?;
-            OpenOptions::new()
-                .create(true)
-                .truncate(true)
-                .write(true)
-                .open(path)?
-                .write_all(&buffer)?;
-            Ok(())
+        fn new(
+            path: &Path,
+            password: &[u8],
+            options: &super::OpenOptions,
+        ) -> Result<Self, IoError> {
+            Ok(Self {
+                file: OpenOptions::new()
+                    .read(options.read)
+                    .write(options.write)
+                    .append(options.append)
+                    .truncate(options.truncate)
+                    .create(options.create)
+                    .create_new(options.create_new)
+                    .open(path)?,
+                cocoon: MiniCocoon::from_password(
+                    password,
+                    &ChaCha20Rng::from_entropy().gen::<_, [u8; 32]>(),
+                ),
+            })
         }
     }
 
-    /// Cocoon [`LoadDecrypted`] Adapter
-    #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-    pub struct Load;
-
-    impl LoadDecrypted for Load {
+    impl super::File for File {
         type Path = Path;
-        type LoadingKey = [u8];
         type Error = Error;
 
         #[inline]
-        fn load_bytes<P>(path: P, loading_key: &Self::LoadingKey) -> Result<Vec<u8>, Self::Error>
+        fn open<P>(
+            path: P,
+            password: &[u8],
+            options: &super::OpenOptions,
+        ) -> Result<Self, Self::Error>
         where
-            P: AsRef<Self::Path>,
+            P: AsRef<Path>,
         {
-            let mut buffer = Zeroizing::new(Vec::new());
-            let mut file = OpenOptions::new().read(true).open(path)?;
-            file.read_to_end(&mut buffer)?;
-            Ok(Cocoon::parse_only(loading_key).parse(&mut buffer.as_slice())?)
+            Ok(Self::new(path.as_ref(), password, options)?)
+        }
+
+        #[inline]
+        fn write(&mut self, block: Block) -> Result<(), Self::Error> {
+            Ok(self.cocoon.dump(block.data.to_vec(), &mut self.file)?)
+        }
+
+        #[inline]
+        fn read(&mut self) -> Result<Block, Self::Error> {
+            Block::new(self.cocoon.parse(&mut self.file)?).ok_or(Error::InvalidBlockSize)
         }
     }
 }

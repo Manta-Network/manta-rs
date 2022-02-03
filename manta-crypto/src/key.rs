@@ -37,6 +37,7 @@ pub mod kdf {
     use alloc::vec::Vec;
 
     /// From Byte Slice Reference Adapter
+    #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
     #[derive(derivative::Derivative)]
     #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
     pub struct FromByteSliceRef<T, F>(PhantomData<(T, F)>)
@@ -65,6 +66,7 @@ pub mod kdf {
     }
 
     /// From Byte Vector Adapter
+    #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
     #[derive(derivative::Derivative)]
     #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
     pub struct FromByteVector<T, F>(PhantomData<(T, F)>)

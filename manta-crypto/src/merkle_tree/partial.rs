@@ -27,10 +27,24 @@ use crate::merkle_tree::{
 use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash};
 
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 /// Partial Merkle Tree Type
 pub type PartialMerkleTree<C, M = BTreeMap<C>> = MerkleTree<C, Partial<C, M>>;
 
 /// Partial Merkle Tree Backing Structure
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "LeafDigest<C>: Deserialize<'de>, InnerDigest<C>: Deserialize<'de>, M: Deserialize<'de>",
+            serialize = "LeafDigest<C>: Serialize, InnerDigest<C>: Serialize, M: Serialize"
+        ),
+        deny_unknown_fields
+    )
+)]
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "LeafDigest<C>: Clone, InnerDigest<C>: Clone, M: Clone"),

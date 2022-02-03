@@ -43,6 +43,9 @@ use manta_util::{
     pointer::PointerFamily,
 };
 
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 /// Merkle Tree Leaf Hash
 pub trait LeafHash<COM = ()> {
     /// Leaf Type
@@ -77,6 +80,11 @@ pub trait LeafHash<COM = ()> {
 ///
 /// This implementation of [`LeafHash`] should only be used when users cannot control the value of a
 /// leaf itself, otherwise, using this implementation may not be safe.
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(deny_unknown_fields)
+)]
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct IdentityLeafHash<L, COM = ()>(PhantomData<(L, COM)>)
@@ -182,6 +190,11 @@ pub trait Configuration<COM = ()>: HashConfiguration<COM> {
 ///
 /// Since this `struct` is meant to be used as a type parameter, any values of this type have no
 /// meaning, just like values of type [`HashConfiguration`] or [`Configuration`].
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(deny_unknown_fields)
+)]
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Config<C, COM, const HEIGHT: usize>(PhantomData<(COM, C)>)
 where
@@ -414,8 +427,13 @@ where
 
 /// Path Error
 ///
-/// This `struct` is returned by the [`path`](WithProofs::path) method of the [`WithProofs`] trait.
-/// See its documentation for more.
+/// This `enum` is the error state of the [`path`](WithProofs::path) method of the [`WithProofs`]
+/// trait. See its documentation for more.
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(deny_unknown_fields)
+)]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum PathError {
     /// Path for the given index was not stored in the tree
@@ -506,6 +524,23 @@ where
 }
 
 /// Merkle Tree Parameters
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = r"
+                LeafHashParameters<C, COM>: Deserialize<'de>,
+                InnerHashParameters<C, COM>: Deserialize<'de>
+            ",
+            serialize = r"
+                LeafHashParameters<C, COM>: Serialize,
+                InnerHashParameters<C, COM>: Serialize,
+            "
+        ),
+        deny_unknown_fields
+    )
+)]
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "LeafHashParameters<C, COM>: Clone, InnerHashParameters<C, COM>: Clone"),
@@ -746,6 +781,17 @@ where
 }
 
 /// Merkle Tree
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "Parameters<C>: Deserialize<'de>, T: Deserialize<'de>",
+            serialize = "Parameters<C>: Serialize, T: Serialize"
+        ),
+        deny_unknown_fields
+    )
+)]
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "Parameters<C>: Clone, T: Clone"),
@@ -761,11 +807,11 @@ where
     C: Configuration + ?Sized,
     T: Tree<C>,
 {
-    /// Underlying Tree Structure
-    pub tree: T,
-
     /// Merkle Tree Parameters
     pub parameters: Parameters<C>,
+
+    /// Underlying Tree Structure
+    pub tree: T,
 }
 
 impl<C, T> MerkleTree<C, T>
@@ -813,7 +859,7 @@ where
     /// Builds a new [`MerkleTree`] from a pre-constructed `tree` and `parameters`.
     #[inline]
     pub fn from_tree(tree: T, parameters: Parameters<C>) -> Self {
-        Self { tree, parameters }
+        Self { parameters, tree }
     }
 
     /// Builds a new [`MerkleTree`] from a `trunk` and `parameters`.

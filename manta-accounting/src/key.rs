@@ -31,6 +31,11 @@ use manta_crypto::{
 pub type IndexType = u32;
 
 /// Hierarchical Key Derivation Parameter
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(deny_unknown_fields)
+)]
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct HierarchicalKeyDerivationParameter<M> {
@@ -93,6 +98,11 @@ impl_index_type!(
 impl_index_type!("Key Index", "KeyIndex", KeyIndexType, KeyIndex);
 
 /// Key Kind
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(deny_unknown_fields)
+)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Kind {
     /// Spend Key
@@ -165,6 +175,11 @@ where
 }
 
 /// Mapping Hierarchical Key Derivation Scheme
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(deny_unknown_fields)
+)]
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub struct Map<H, K>
@@ -398,6 +413,9 @@ pub trait AccountMap {
     /// Builds a new [`AccountMap`] with a starting account with the default maximum index.
     fn new() -> Self;
 
+    /// Returns the last account index stored in the map.
+    fn last_account(&self) -> AccountIndex;
+
     /// Returns the maximum key index for `account`, if it exists.
     fn max_index(&self, account: AccountIndex) -> Option<KeyIndex>;
 
@@ -421,6 +439,15 @@ impl AccountMap for VecAccountMap {
     }
 
     #[inline]
+    fn last_account(&self) -> AccountIndex {
+        AccountIndex::new(
+            (self.len() - 1)
+                .try_into()
+                .expect("AccountIndex is not allowed to exceed IndexType::MAX."),
+        )
+    }
+
+    #[inline]
     fn max_index(&self, account: AccountIndex) -> Option<KeyIndex> {
         self.get(account.index() as usize).copied()
     }
@@ -438,14 +465,19 @@ impl AccountMap for VecAccountMap {
 
     #[inline]
     fn increment_index(&mut self, account: AccountIndex) -> Option<KeyIndex> {
-        self.get_mut(account.index() as usize).map(|k| {
-            k.increment();
-            *k
+        self.get_mut(account.index() as usize).map(|m| {
+            m.increment();
+            *m
         })
     }
 }
 
 /// Account Table
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(deny_unknown_fields)
+)]
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "H: Clone, M: Clone"),

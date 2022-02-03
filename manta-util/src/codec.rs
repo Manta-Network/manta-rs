@@ -19,6 +19,7 @@
 // TODO: Add `ReadFrom` and `WriteInto` traits for conversion between different serde/codec impls
 //       which are specialized so that you can automatically convert between a type and itself.
 
+use crate::into_array_unchecked;
 use core::{convert::Infallible, fmt::Debug, hash::Hash, marker::PhantomData};
 
 #[cfg(feature = "alloc")]
@@ -576,6 +577,39 @@ impl Encode for u8 {
     }
 }
 
+impl Encode for u16 {
+    #[inline]
+    fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
+    where
+        W: Write,
+    {
+        writer.write_ref(&self.to_le_bytes())?;
+        Ok(())
+    }
+}
+
+impl Encode for u32 {
+    #[inline]
+    fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
+    where
+        W: Write,
+    {
+        writer.write_ref(&self.to_le_bytes())?;
+        Ok(())
+    }
+}
+
+impl Encode for u64 {
+    #[inline]
+    fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
+    where
+        W: Write,
+    {
+        writer.write_ref(&self.to_le_bytes())?;
+        Ok(())
+    }
+}
+
 impl<T> Encode for [T]
 where
     T: Encode,
@@ -585,6 +619,7 @@ where
     where
         W: Write,
     {
+        (self.len() as u64).encode(&mut writer)?;
         for item in self {
             item.encode(&mut writer)?;
         }
@@ -721,6 +756,96 @@ impl Decode for u8 {
             Err(ReadExactError::Read(err)) => Err(DecodeError::Read(err)),
             _ => Err(DecodeError::Decode(())),
         }
+    }
+}
+
+impl Decode for u16 {
+    type Error = ();
+
+    #[inline]
+    fn decode<R>(mut reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
+    where
+        R: Read,
+    {
+        let mut bytes = [0; 2];
+        match reader.read_exact(&mut bytes) {
+            Ok(()) => Ok(Self::from_le_bytes(bytes)),
+            Err(ReadExactError::Read(err)) => Err(DecodeError::Read(err)),
+            _ => Err(DecodeError::Decode(())),
+        }
+    }
+}
+
+impl Decode for u32 {
+    type Error = ();
+
+    #[inline]
+    fn decode<R>(mut reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
+    where
+        R: Read,
+    {
+        let mut bytes = [0; 4];
+        match reader.read_exact(&mut bytes) {
+            Ok(()) => Ok(Self::from_le_bytes(bytes)),
+            Err(ReadExactError::Read(err)) => Err(DecodeError::Read(err)),
+            _ => Err(DecodeError::Decode(())),
+        }
+    }
+}
+
+impl Decode for u64 {
+    type Error = ();
+
+    #[inline]
+    fn decode<R>(mut reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
+    where
+        R: Read,
+    {
+        let mut bytes = [0; 8];
+        match reader.read_exact(&mut bytes) {
+            Ok(()) => Ok(Self::from_le_bytes(bytes)),
+            Err(ReadExactError::Read(err)) => Err(DecodeError::Read(err)),
+            _ => Err(DecodeError::Decode(())),
+        }
+    }
+}
+
+impl<T, const N: usize> Decode for [T; N]
+where
+    T: Decode,
+{
+    type Error = Option<T::Error>;
+
+    #[inline]
+    fn decode<R>(mut reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
+    where
+        R: Read,
+    {
+        let mut results = Vec::with_capacity(N);
+        for _ in 0..N {
+            results.push(T::decode(&mut reader).map_err(|err| err.map_decode(Some))?);
+        }
+        Ok(into_array_unchecked(results))
+    }
+}
+
+impl<T> Decode for Vec<T>
+where
+    T: Decode,
+{
+    type Error = Option<T::Error>;
+
+    #[inline]
+    fn decode<R>(mut reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
+    where
+        R: Read,
+    {
+        let len = u64::decode(&mut reader).map_err(|err| err.map_decode(|_| None))?;
+        let mut results = Vec::with_capacity(len as usize);
+        for _ in 0..len {
+            results.push(T::decode(&mut reader).map_err(|err| err.map_decode(Some))?);
+        }
+        Ok(results)
     }
 }
 

@@ -35,6 +35,7 @@
 
 use crate::{
     asset::{Asset, AssetId, AssetMap, AssetValue},
+    fs::{self, File},
     key::{self, HierarchicalKeyDerivationScheme, KeyIndex, ViewKeySelection},
     transfer::{
         self,
@@ -55,7 +56,7 @@ use manta_crypto::{
         Accumulator, ConstantCapacityAccumulator, ExactSizeAccumulator, OptimizedAccumulator,
     },
     encryption::DecryptedMessage,
-    rand::{CryptoRng, Rand, RngCore},
+    rand::{CryptoRng, FromEntropy, Rand, RngCore},
 };
 use manta_util::{
     array_map,
@@ -64,6 +65,9 @@ use manta_util::{
     iter::IteratorExt,
     persistance::Rollback,
 };
+
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
 
 /// Signer Connection
 pub trait Connection<C>
@@ -212,7 +216,7 @@ pub trait Configuration: transfer::Configuration {
     type ProvingContextCache: CachedResource<MultiProvingContext<Self>>;
 
     /// Random Number Generator Type
-    type Rng: CryptoRng + RngCore;
+    type Rng: CryptoRng + FromEntropy + RngCore;
 }
 
 /// Account Table Type
@@ -252,7 +256,26 @@ where
 }
 
 /// Signer State
-struct SignerState<C>
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = r"
+                AccountTable<C>: Deserialize<'de>,
+                C::UtxoSet: Deserialize<'de>,
+                C::AssetMap: Deserialize<'de>
+            ",
+            serialize = r"
+                AccountTable<C>: Serialize,
+                C::UtxoSet: Serialize,
+                C::AssetMap: Serialize
+            ",
+        ),
+        deny_unknown_fields
+    )
+)]
+pub struct SignerState<C>
 where
     C: Configuration,
 {
@@ -272,6 +295,7 @@ where
     assets: C::AssetMap,
 
     /// Random Number Generator
+    #[cfg_attr(feature = "serde", serde(skip, default = "FromEntropy::from_entropy"))]
     rng: C::Rng,
 }
 
@@ -279,6 +303,32 @@ impl<C> SignerState<C>
 where
     C: Configuration,
 {
+    /// Saves the state of `self` to the encrypted `file`.
+    #[cfg(feature = "serde")]
+    #[inline]
+    fn save<F>(&self, file: &mut F) -> Result<(), F::Error>
+    where
+        Self: Serialize,
+        F: File,
+    {
+        let _ = fs::Serializer::new(file);
+        // TODO: let _ = self.serialize(serializer);
+        todo!()
+    }
+
+    /// Loads an encrypted [`SignerState`] from the encrypted `file`.
+    #[cfg(feature = "serde")]
+    #[inline]
+    fn load<'de, F>(file: &mut F) -> Result<Self, F::Error>
+    where
+        Self: Deserialize<'de>,
+        F: File,
+    {
+        let _ = fs::Deserializer::new(file);
+        // TODO: let _ = Self::deserialize(deserializer);
+        todo!()
+    }
+
     /// Inserts the new `utxo`-`encrypted_note` pair if a known key can decrypt the note and
     /// validate the utxo.
     #[inline]
@@ -399,7 +449,6 @@ where
             );
             !assets.is_empty()
         });
-
         // TODO: Whenever we are doing a full update, don't even build the `deposit` and `withdraw`
         //       vectors, since we won't be needing them.
         if is_partial {
@@ -690,6 +739,12 @@ impl<C> Signer<C>
 where
     C: Configuration,
 {
+    /// Builds a new [`Signer`] from `parameters` and `state`.
+    #[inline]
+    fn from_parts(parameters: SignerParameters<C>, state: SignerState<C>) -> Self {
+        Self { parameters, state }
+    }
+
     /// Builds a new [`Signer`].
     #[inline]
     fn new_inner(
@@ -700,18 +755,18 @@ where
         assets: C::AssetMap,
         rng: C::Rng,
     ) -> Self {
-        Self {
-            parameters: SignerParameters {
+        Self::from_parts(
+            SignerParameters {
                 parameters,
                 proving_context,
             },
-            state: SignerState {
+            SignerState {
                 accounts,
                 utxo_set,
                 assets,
                 rng,
             },
-        }
+        )
     }
 
     /// Builds a new [`Signer`] from a fresh set of `accounts`.
@@ -736,6 +791,30 @@ where
             Default::default(),
             rng,
         )
+    }
+
+    /// Saves the state of `self` to the encrypted `file`.
+    #[cfg(feature = "serde")]
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "serde")))]
+    #[inline]
+    pub fn save<F>(&self, file: &mut F) -> Result<(), F::Error>
+    where
+        SignerState<C>: Serialize,
+        F: File,
+    {
+        self.state.save(file)
+    }
+
+    /// Loads an encrypted [`Signer`] state from the encrypted `file`.
+    #[cfg(feature = "serde")]
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "serde")))]
+    #[inline]
+    pub fn load<'de, F>(parameters: SignerParameters<C>, file: &mut F) -> Result<Self, F::Error>
+    where
+        SignerState<C>: Deserialize<'de>,
+        F: File,
+    {
+        Ok(Self::from_parts(parameters, SignerState::load(file)?))
     }
 
     /// Updates the internal ledger state, returning the new asset distribution.

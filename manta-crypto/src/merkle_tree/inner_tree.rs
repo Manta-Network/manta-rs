@@ -30,7 +30,15 @@ use core::{fmt::Debug, hash::Hash, iter::FusedIterator, marker::PhantomData, ops
 #[cfg(feature = "std")]
 use std::{collections::hash_map, hash::BuildHasher};
 
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 /// Inner Tree Node
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(deny_unknown_fields)
+)]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct InnerNode {
     /// Depth
@@ -135,6 +143,11 @@ impl From<InnerNode> for Node {
 ///
 /// This `struct` is created by the [`iter`](InnerNode::iter) method on [`InnerNode`].
 /// See its documentation for more.
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(deny_unknown_fields)
+)]
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub struct InnerNodeIter {
     /// Current Node
@@ -312,6 +325,17 @@ where
 }
 
 /// Sentinel Source for a Single Sentinel Value
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "InnerDigest<C>: Deserialize<'de>",
+            serialize = "InnerDigest<C>: Serialize"
+        ),
+        deny_unknown_fields
+    )
+)]
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "InnerDigest<C>: Clone"),
@@ -352,6 +376,17 @@ where
 ///
 /// [`Tree`]: crate::merkle_tree::Tree
 /// [`Full`]: crate::merkle_tree::full::Full
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "M: Deserialize<'de>, S: Deserialize<'de>",
+            serialize = "M: Serialize, S: Serialize"
+        ),
+        deny_unknown_fields
+    )
+)]
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "M: Clone, S: Clone"),
@@ -620,6 +655,17 @@ where
 /// leaf digests.
 ///
 /// [`Tree`]: crate::merkle_tree::Tree
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "M: Deserialize<'de>, S: Deserialize<'de>",
+            serialize = "M: Serialize, S: Serialize"
+        ),
+        deny_unknown_fields
+    )
+)]
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "M: Clone, S: Clone"),

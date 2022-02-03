@@ -32,6 +32,9 @@ use manta_crypto::{
     rand::{CryptoRng, RngCore, Sample},
 };
 
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 pub mod batch;
 pub mod canonical;
 
@@ -607,6 +610,17 @@ where
 }
 
 /// Receiving Key
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "PublicKey<C>: Deserialize<'de>",
+            serialize = "PublicKey<C>: Serialize"
+        ),
+        deny_unknown_fields
+    )
+)]
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = ""),
@@ -1033,6 +1047,11 @@ where
 }
 
 /// Sender Post Error
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(deny_unknown_fields)
+)]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum SenderPostError {
     /// Asset Spent Error
@@ -1047,6 +1066,17 @@ pub enum SenderPostError {
 }
 
 /// Sender Post
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "UtxoSetOutput<C>: Deserialize<'de>, VoidNumber<C>: Deserialize<'de>",
+            serialize = "UtxoSetOutput<C>: Serialize, VoidNumber<C>: Serialize",
+        ),
+        deny_unknown_fields
+    )
+)]
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "UtxoSetOutput<C>: Clone, VoidNumber<C>: Clone"),
@@ -1380,6 +1410,11 @@ where
 }
 
 /// Receiver Post Error
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(deny_unknown_fields)
+)]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum ReceiverPostError {
     /// Asset Registered Error
@@ -1389,6 +1424,17 @@ pub enum ReceiverPostError {
 }
 
 /// Receiver Post
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "Utxo<C>: Deserialize<'de>, EncryptedNote<C>: Deserialize<'de>",
+            serialize = "Utxo<C>: Serialize, EncryptedNote<C>: Serialize",
+        ),
+        deny_unknown_fields
+    )
+)]
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "Utxo<C>: Clone, EncryptedNote<C>: Clone"),
@@ -1906,6 +1952,11 @@ pub type SinkPostingKey<C, L> = <L as TransferLedger<C>>::ValidSinkAccount;
 pub type TransferLedgerSuperPostingKey<C, L> = <L as TransferLedger<C>>::SuperPostingKey;
 
 /// Account Balance
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(deny_unknown_fields)
+)]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum AccountBalance {
     /// Known Balance
@@ -1919,6 +1970,11 @@ pub enum AccountBalance {
 ///
 /// This `struct` is the error state of the [`TransferLedger::check_source_accounts`] method. See
 /// its documentation for more.
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(deny_unknown_fields)
+)]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct InvalidSourceAccount<AccountId> {
     /// Account Id
@@ -1935,6 +1991,11 @@ pub struct InvalidSourceAccount<AccountId> {
 ///
 /// This `struct` is the error state of the [`TransferLedger::check_sink_accounts`] method. See its
 /// documentation for more.
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(deny_unknown_fields)
+)]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct InvalidSinkAccount<AccountId> {
     /// Account Id
@@ -1945,6 +2006,11 @@ pub struct InvalidSinkAccount<AccountId> {
 ///
 /// This `enum` is the error state of the [`TransferPost::validate`] method. See its documentation
 /// for more.
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(deny_unknown_fields)
+)]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum TransferPostError<AccountId> {
     /// Invalid Transfer Post Shape
@@ -2003,6 +2069,25 @@ impl<AccountId> From<ReceiverPostError> for TransferPostError<AccountId> {
 }
 
 /// Transfer Post
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = r"
+                SenderPost<C>: Deserialize<'de>,
+                ReceiverPost<C>: Deserialize<'de>,
+                Proof<C>: Deserialize<'de>,
+            ",
+            serialize = r"
+                SenderPost<C>: Serialize,
+                ReceiverPost<C>: Serialize,
+                Proof<C>: Serialize,
+            ",
+        ),
+        deny_unknown_fields
+    )
+)]
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "SenderPost<C>: Clone, ReceiverPost<C>: Clone, Proof<C>: Clone"),

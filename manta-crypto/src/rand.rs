@@ -25,6 +25,11 @@ use manta_util::into_array_unchecked;
 pub use rand_core::{block, CryptoRng, Error, RngCore, SeedableRng};
 
 /// Random Number Generator Sized Wrapper
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize),
+    serde(deny_unknown_fields)
+)]
 #[derive(Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct SizedRng<'r, R>(
     /// Mutable Reference to Random Number Generator
@@ -74,6 +79,11 @@ where
 }
 
 /// Seed Into Random Number Generator
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Deserialize, serde::Serialize),
+    serde(deny_unknown_fields)
+)]
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "R: Clone"),
@@ -175,7 +185,30 @@ where
     }
 }
 
+/// Entropy Seedable PRNG
+///
+/// This `trait` is automatically implemented for all [`SeedableRng`] whenever the `getrandom` crate
+/// is in scope. This `trait` is used to capture the behavior of seeding from an entropy source even
+/// if the crate is not imported.
+pub trait FromEntropy {
+    /// Creates a new instance of `Self` seeded via some entropy source.
+    fn from_entropy() -> Self;
+}
+
+#[cfg(feature = "getrandom")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "getrandom")))]
+impl<R> FromEntropy for R
+where
+    R: SeedableRng,
+{
+    #[inline]
+    fn from_entropy() -> Self {
+        SeedableRng::from_entropy()
+    }
+}
+
 /// Standard Distribution
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Standard;
 
