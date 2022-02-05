@@ -16,7 +16,7 @@
 
 //! Encrypted Filesystem Primitives
 
-use alloc::vec::Vec;
+use alloc::{boxed::Box, vec::Vec};
 use core::{fmt::Debug, hash::Hash};
 
 /// Open Options
