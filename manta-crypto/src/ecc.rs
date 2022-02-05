@@ -23,7 +23,7 @@ use crate::{
     key::KeyAgreementScheme,
     rand::{CryptoRng, RngCore, Sample},
 };
-use alloc::boxed::Box;
+use alloc::{boxed::Box, vec::Vec};
 use manta_util::codec::{Decode, DecodeError, Encode, Read, Write};
 
 #[cfg(feature = "serde")]
