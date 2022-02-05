@@ -37,6 +37,9 @@ pub mod pointer;
 pub use array::*;
 pub use sealed::*;
 
+#[doc(inline)]
+pub use serde;
+
 /// Implements [`From`]`<$from>` for an enum `$to`, choosing the `$kind` variant.
 // TODO: add `where` clauses
 #[macro_export]

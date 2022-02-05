@@ -28,6 +28,9 @@ maintenance = { status = "actively-developed" }
 # Enable `getrandom` Entropy Source
 getrandom = ["rand_core/getrandom"]
 
+# Serde
+serde = ["manta-util/serde-alloc", "serde_with"]
+
 # Standard Library
 std = ["manta-util/std"]
 
@@ -38,7 +41,6 @@ test = []
 derivative = { version = "2.2.0", default-features = false, features = ["use_core"] }
 manta-util = { path = "../manta-util", features = ["alloc"] }
 rand_core = { version = "0.6.3", default-features = false }
-serde = { version = "1.0.136", optional = true, default-features = false, features = ["alloc", "derive"] }
 serde_with = { version = "1.11.0", optional = true, default-features = false, features = ["macros"] }
 
 [dev-dependencies]

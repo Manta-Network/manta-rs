@@ -560,7 +560,6 @@ pub mod groth16 {
         type VerifyingContext = VerifyingContext<E>;
         type Input = Vec<E::Fr>;
         type Proof = Proof<E>;
-        type Verification = bool;
         type Error = SynthesisError;
 
         #[inline]
@@ -575,8 +574,8 @@ pub mod groth16 {
 
         #[inline]
         fn generate_context<R>(
-            cs: Self::ConstraintSystem,
             public_parameters: &Self::PublicParameters,
+            cs: Self::ConstraintSystem,
             rng: &mut R,
         ) -> Result<(Self::ProvingContext, Self::VerifyingContext), Self::Error>
         where
@@ -595,8 +594,8 @@ pub mod groth16 {
 
         #[inline]
         fn prove<R>(
-            cs: Self::ConstraintSystem,
             context: &Self::ProvingContext,
+            cs: Self::ConstraintSystem,
             rng: &mut R,
         ) -> Result<Self::Proof, Self::Error>
         where
@@ -612,10 +611,10 @@ pub mod groth16 {
 
         #[inline]
         fn verify(
+            context: &Self::VerifyingContext,
             input: &Self::Input,
             proof: &Self::Proof,
-            context: &Self::VerifyingContext,
-        ) -> Result<Self::Verification, Self::Error> {
+        ) -> Result<bool, Self::Error> {
             ArkGroth16::verify_with_processed_vk(&context.0, input, &proof.0)
         }
     }

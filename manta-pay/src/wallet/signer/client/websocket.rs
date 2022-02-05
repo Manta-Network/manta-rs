@@ -21,7 +21,6 @@ use manta_accounting::{
     transfer::{canonical::Transaction, ReceivingKey},
     wallet::signer::{self, SignError, SignResponse, SyncError, SyncRequest, SyncResponse},
 };
-use manta_util::codec::Encode;
 use std::net::TcpStream;
 use tungstenite::{
     client::IntoClientRequest,

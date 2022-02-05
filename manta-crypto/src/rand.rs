@@ -25,11 +25,6 @@ use manta_util::into_array_unchecked;
 pub use rand_core::{block, CryptoRng, Error, RngCore, SeedableRng};
 
 /// Random Number Generator Sized Wrapper
-#[cfg_attr(
-    feature = "serde",
-    derive(serde::Serialize),
-    serde(deny_unknown_fields)
-)]
 #[derive(Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct SizedRng<'r, R>(
     /// Mutable Reference to Random Number Generator
@@ -79,23 +74,8 @@ where
 }
 
 /// Seed Into Random Number Generator
-#[cfg_attr(
-    feature = "serde",
-    derive(serde::Deserialize, serde::Serialize),
-    serde(deny_unknown_fields)
-)]
 #[derive(derivative::Derivative)]
-#[derivative(
-    Clone(bound = "R: Clone"),
-    Copy(bound = "R: Copy"),
-    Debug(bound = "R: Debug"),
-    Default(bound = "R: Default"),
-    Eq(bound = "R: Eq"),
-    Hash(bound = "R: Hash"),
-    Ord(bound = "R: Ord"),
-    PartialEq(bound = "R: PartialEq"),
-    PartialOrd(bound = "R: PartialOrd")
-)]
+#[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct SeedIntoRng<S, R> {
     /// Inner Rng
     inner: R,
@@ -208,7 +188,6 @@ where
 }
 
 /// Standard Distribution
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Standard;
 

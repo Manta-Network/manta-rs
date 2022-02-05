@@ -403,7 +403,7 @@ where
                         self.public_keys.write().insert(key);
                         Ok(true)
                     }
-                    Err(err) => Err(wallet::Error::SignerError(err)),
+                    Err(err) => Err(wallet::Error::SignerConnectionError(err)),
                 },
             },
         }

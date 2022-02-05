@@ -27,14 +27,17 @@ use manta_crypto::{
     rand::{CryptoRng, RngCore, Sample},
 };
 
+#[cfg(feature = "serde")]
+use manta_util::serde::{Deserialize, Serialize};
+
 /// Hierarchical Key Derivation Parameter Type
 pub type IndexType = u32;
 
 /// Hierarchical Key Derivation Parameter
 #[cfg_attr(
     feature = "serde",
-    derive(serde::Serialize, serde::Deserialize),
-    serde(deny_unknown_fields)
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -95,13 +98,14 @@ impl_index_type!(
     AccountIndexType,
     AccountIndex
 );
+
 impl_index_type!("Key Index", "KeyIndex", KeyIndexType, KeyIndex);
 
 /// Key Kind
 #[cfg_attr(
     feature = "serde",
-    derive(serde::Serialize, serde::Deserialize),
-    serde(deny_unknown_fields)
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Kind {
@@ -177,8 +181,8 @@ where
 /// Mapping Hierarchical Key Derivation Scheme
 #[cfg_attr(
     feature = "serde",
-    derive(serde::Serialize, serde::Deserialize),
-    serde(deny_unknown_fields)
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
@@ -475,8 +479,8 @@ impl AccountMap for VecAccountMap {
 /// Account Table
 #[cfg_attr(
     feature = "serde",
-    derive(serde::Serialize, serde::Deserialize),
-    serde(deny_unknown_fields)
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
 #[derive(derivative::Derivative)]
 #[derivative(

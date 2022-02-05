@@ -36,8 +36,15 @@ pub mod kdf {
     use super::*;
     use alloc::vec::Vec;
 
+    #[cfg(feature = "serde")]
+    use manta_util::serde::{Deserialize, Serialize};
+
     /// From Byte Slice Reference Adapter
-    #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+    #[cfg_attr(
+        feature = "serde",
+        derive(Deserialize, Serialize),
+        serde(crate = "manta_util::serde")
+    )]
     #[derive(derivative::Derivative)]
     #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
     pub struct FromByteSliceRef<T, F>(PhantomData<(T, F)>)
@@ -66,7 +73,11 @@ pub mod kdf {
     }
 
     /// From Byte Vector Adapter
-    #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+    #[cfg_attr(
+        feature = "serde",
+        derive(Deserialize, Serialize),
+        serde(crate = "manta_util::serde")
+    )]
     #[derive(derivative::Derivative)]
     #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
     pub struct FromByteVector<T, F>(PhantomData<(T, F)>)

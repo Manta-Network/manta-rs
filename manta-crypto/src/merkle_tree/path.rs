@@ -35,7 +35,7 @@ use core::{
 };
 
 #[cfg(feature = "serde")]
-use serde::{Deserialize, Serialize};
+use manta_util::serde::{Deserialize, Serialize};
 
 pub(super) mod prelude {
     #[doc(inline)]
@@ -51,6 +51,7 @@ pub(super) mod prelude {
             deserialize = "InnerDigest<C>: Deserialize<'de>",
             serialize = "InnerDigest<C>: Serialize"
         ),
+        crate = "manta_util::serde",
         deny_unknown_fields
     )
 )]
@@ -246,6 +247,7 @@ where
             deserialize = "InnerDigest<C>: Deserialize<'de>",
             serialize = "InnerDigest<C>: Serialize"
         ),
+        crate = "manta_util::serde",
         deny_unknown_fields
     )
 )]
@@ -625,6 +627,7 @@ impl<C> FusedIterator for CurrentInnerPathNodeIter<C> where C: Configuration + ?
             deserialize = "LeafDigest<C>: Deserialize<'de>, InnerDigest<C>: Deserialize<'de>",
             serialize = "LeafDigest<C>: Serialize, InnerDigest<C>: Serialize"
         ),
+        crate = "manta_util::serde",
         deny_unknown_fields
     )
 )]
@@ -774,6 +777,7 @@ where
             deserialize = "LeafDigest<C>: Deserialize<'de>, InnerDigest<C>: Deserialize<'de>",
             serialize = "LeafDigest<C>: Serialize, InnerDigest<C>: Serialize"
         ),
+        crate = "manta_util::serde",
         deny_unknown_fields
     )
 )]

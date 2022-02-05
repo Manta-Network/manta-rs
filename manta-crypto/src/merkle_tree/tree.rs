@@ -44,7 +44,7 @@ use manta_util::{
 };
 
 #[cfg(feature = "serde")]
-use serde::{Deserialize, Serialize};
+use manta_util::serde::{Deserialize, Serialize};
 
 /// Merkle Tree Leaf Hash
 pub trait LeafHash<COM = ()> {
@@ -83,7 +83,7 @@ pub trait LeafHash<COM = ()> {
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(deny_unknown_fields)
+    serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -193,7 +193,7 @@ pub trait Configuration<COM = ()>: HashConfiguration<COM> {
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(deny_unknown_fields)
+    serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Config<C, COM, const HEIGHT: usize>(PhantomData<(COM, C)>)
@@ -432,7 +432,7 @@ where
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(deny_unknown_fields)
+    serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum PathError {
@@ -538,6 +538,7 @@ where
                 InnerHashParameters<C, COM>: Serialize,
             "
         ),
+        crate = "manta_util::serde",
         deny_unknown_fields
     )
 )]
@@ -789,6 +790,7 @@ where
             deserialize = "Parameters<C>: Deserialize<'de>, T: Deserialize<'de>",
             serialize = "Parameters<C>: Serialize, T: Serialize"
         ),
+        crate = "manta_util::serde",
         deny_unknown_fields
     )
 )]

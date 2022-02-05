@@ -436,11 +436,6 @@ pub trait ProofSystem {
     /// Proof Type
     type Proof;
 
-    /// Verification Type
-    ///
-    /// For non-recursive proof systems this is just `bool`.
-    type Verification;
-
     /// Error Type
     type Error;
 
@@ -454,8 +449,8 @@ pub trait ProofSystem {
 
     /// Returns proving and verifying contexts for the constraints contained in `compiler`.
     fn generate_context<R>(
-        compiler: Self::ConstraintSystem,
         public_parameters: &Self::PublicParameters,
+        compiler: Self::ConstraintSystem,
         rng: &mut R,
     ) -> Result<(Self::ProvingContext, Self::VerifyingContext), Self::Error>
     where
@@ -463,8 +458,8 @@ pub trait ProofSystem {
 
     /// Returns a proof that the constraint system `compiler` is consistent.
     fn prove<R>(
-        compiler: Self::ConstraintSystem,
         context: &Self::ProvingContext,
+        compiler: Self::ConstraintSystem,
         rng: &mut R,
     ) -> Result<Self::Proof, Self::Error>
     where
@@ -472,10 +467,10 @@ pub trait ProofSystem {
 
     /// Verifies that a proof generated from this proof system is valid.
     fn verify(
+        context: &Self::VerifyingContext,
         input: &Self::Input,
         proof: &Self::Proof,
-        context: &Self::VerifyingContext,
-    ) -> Result<Self::Verification, Self::Error>;
+    ) -> Result<bool, Self::Error>;
 }
 
 /// Proof System Input
@@ -490,6 +485,9 @@ where
 /// Constraint System Measurement
 pub mod measure {
     use super::*;
+
+    #[cfg(feature = "serde")]
+    use manta_util::serde::{Deserialize, Serialize};
 
     /// Constraint System Measurement
     pub trait Measure {
@@ -527,7 +525,11 @@ pub mod measure {
     }
 
     /// Constraint System Size Measurement Report
-    #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+    #[cfg_attr(
+        feature = "serde",
+        derive(Deserialize, Serialize),
+        serde(crate = "manta_util::serde", deny_unknown_fields)
+    )]
     #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
     pub struct SizeReport {
         /// Number of Constraints

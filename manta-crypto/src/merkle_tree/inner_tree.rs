@@ -27,17 +27,17 @@ use crate::merkle_tree::{
 use alloc::collections::btree_map;
 use core::{fmt::Debug, hash::Hash, iter::FusedIterator, marker::PhantomData, ops::Index};
 
+#[cfg(feature = "serde")]
+use manta_util::serde::{Deserialize, Serialize};
+
 #[cfg(feature = "std")]
 use std::{collections::hash_map, hash::BuildHasher};
-
-#[cfg(feature = "serde")]
-use serde::{Deserialize, Serialize};
 
 /// Inner Tree Node
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(deny_unknown_fields)
+    serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct InnerNode {
@@ -146,7 +146,7 @@ impl From<InnerNode> for Node {
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(deny_unknown_fields)
+    serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub struct InnerNodeIter {
@@ -333,6 +333,7 @@ where
             deserialize = "InnerDigest<C>: Deserialize<'de>",
             serialize = "InnerDigest<C>: Serialize"
         ),
+        crate = "manta_util::serde",
         deny_unknown_fields
     )
 )]
@@ -379,23 +380,10 @@ where
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(
-        bound(
-            deserialize = "M: Deserialize<'de>, S: Deserialize<'de>",
-            serialize = "M: Serialize, S: Serialize"
-        ),
-        deny_unknown_fields
-    )
+    serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
 #[derive(derivative::Derivative)]
-#[derivative(
-    Clone(bound = "M: Clone, S: Clone"),
-    Debug(bound = "M: Debug, S: Debug"),
-    Default(bound = "M: Default, S: Default"),
-    Eq(bound = "M: Eq, S: Eq"),
-    Hash(bound = "M: Hash, S: Hash"),
-    PartialEq(bound = "M: PartialEq, S: PartialEq")
-)]
+#[derivative(Clone, Debug, Default, Eq, Hash, PartialEq)]
 pub struct InnerTree<C, M = BTreeMap<C>, S = Sentinel<C>>
 where
     C: Configuration + ?Sized,
@@ -663,6 +651,7 @@ where
             deserialize = "M: Deserialize<'de>, S: Deserialize<'de>",
             serialize = "M: Serialize, S: Serialize"
         ),
+        crate = "manta_util::serde",
         deny_unknown_fields
     )
 )]

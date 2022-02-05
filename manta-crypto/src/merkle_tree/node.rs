@@ -23,13 +23,13 @@ use core::{
 };
 
 #[cfg(feature = "serde")]
-use serde::{Deserialize, Serialize};
+use manta_util::serde::{Deserialize, Serialize};
 
 /// Parity of a Subtree
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(deny_unknown_fields)
+    serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum Parity {
@@ -157,7 +157,7 @@ impl Default for Parity {
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(deny_unknown_fields)
+    serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub struct Node<Idx = usize>(
@@ -381,7 +381,7 @@ where
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(deny_unknown_fields)
+    serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub struct NodeParents {

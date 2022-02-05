@@ -28,6 +28,11 @@ maintenance = { status = "actively-developed" }
 # Allocation
 alloc = []
 
+# Serde for Alloc Types
+serde-alloc = ["alloc", "serde/alloc"]
+
 # Standard Library
 std = ["alloc"]
 
+[dependencies]
+serde = { version = "1.0.136", optional = true, default-features = false, features = ["derive"] }

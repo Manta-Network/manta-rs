@@ -34,7 +34,7 @@ fn sample_mint_context() {
     let mut rng = thread_rng();
     let cs = Mint::unknown_constraints(FullParameters::new(&rng.gen(), &rng.gen()));
     println!("Mint: {:?}", cs.measure());
-    ProofSystem::generate_context(cs, &(), &mut rng).unwrap();
+    ProofSystem::generate_context(&(), cs, &mut rng).unwrap();
 }
 
 /// Tests the generation of proving/verifying contexts for [`PrivateTransfer`].
@@ -43,7 +43,7 @@ fn sample_private_transfer_context() {
     let mut rng = thread_rng();
     let cs = PrivateTransfer::unknown_constraints(FullParameters::new(&rng.gen(), &rng.gen()));
     println!("PrivateTransfer: {:?}", cs.measure());
-    ProofSystem::generate_context(cs, &(), &mut rng).unwrap();
+    ProofSystem::generate_context(&(), cs, &mut rng).unwrap();
 }
 
 /// Tests the generation of proving/verifying contexts for [`Reclaim`].
@@ -52,7 +52,7 @@ fn sample_reclaim_context() {
     let mut rng = thread_rng();
     let cs = Reclaim::unknown_constraints(FullParameters::new(&rng.gen(), &rng.gen()));
     println!("Reclaim: {:?}", cs.measure());
-    ProofSystem::generate_context(cs, &(), &mut rng).unwrap();
+    ProofSystem::generate_context(&(), cs, &mut rng).unwrap();
 }
 
 /// Tests the generation of a [`Mint`].

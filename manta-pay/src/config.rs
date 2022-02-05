@@ -122,7 +122,7 @@ pub type SecretKey = <KeyAgreementScheme as key::KeyAgreementScheme>::SecretKey;
 pub type PublicKey = <KeyAgreementScheme as key::KeyAgreementScheme>::PublicKey;
 
 /// Key Agreement Scheme Variable Type
-pub type KeyAgreementSchemeVar = DiffieHellman<GroupVar, Compiler>;
+pub type KeyAgreementSchemeVar = DiffieHellman<GroupVar>;
 
 /// Unspent Transaction Output Type
 pub type Utxo = Fp<ConstraintField>;

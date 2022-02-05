@@ -28,7 +28,7 @@ use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash};
 
 #[cfg(feature = "serde")]
-use serde::{Deserialize, Serialize};
+use manta_util::serde::{Deserialize, Serialize};
 
 /// Full Merkle Tree Type
 pub type FullMerkleTree<C, M = BTreeMap<C>> = MerkleTree<C, Full<C, M>>;
@@ -39,9 +39,14 @@ pub type FullMerkleTree<C, M = BTreeMap<C>> = MerkleTree<C, Full<C, M>>;
     derive(Deserialize, Serialize),
     serde(
         bound(
-            deserialize = "LeafDigest<C>: Deserialize<'de>, InnerDigest<C>: Deserialize<'de>, M: Deserialize<'de>",
+            deserialize = r"
+                LeafDigest<C>: Deserialize<'de>,
+                InnerDigest<C>: Deserialize<'de>,
+                M: Deserialize<'de>
+            ",
             serialize = "LeafDigest<C>: Serialize, InnerDigest<C>: Serialize, M: Serialize"
         ),
+        crate = "manta_util::serde",
         deny_unknown_fields
     )
 )]

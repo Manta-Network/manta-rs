@@ -188,19 +188,15 @@ pub mod arkworks {
         }
     }
 
-    impl<C> ecc::Group for Group<C>
+    impl<C> ecc::ScalarMul for Group<C>
     where
         C: ProjectiveCurve,
     {
         type Scalar = Scalar<C>;
+        type Output = Self;
 
         #[inline]
-        fn add(&self, rhs: &Self, _: &mut ()) -> Self {
-            Self(self.0 + rhs.0)
-        }
-
-        #[inline]
-        fn scalar_mul(&self, scalar: &Self::Scalar, _: &mut ()) -> Self {
+        fn scalar_mul(&self, scalar: &Self::Scalar, _: &mut ()) -> Self::Output {
             Self(self.0.mul(scalar.0.into_repr()).into())
         }
     }
@@ -309,21 +305,16 @@ pub mod arkworks {
         }
     }
 
-    impl<C, CV> ecc::Group<Compiler<C>> for GroupVar<C, CV>
+    impl<C, CV> ecc::ScalarMul<Compiler<C>> for GroupVar<C, CV>
     where
         C: ProjectiveCurve,
         CV: CurveVar<C, ConstraintField<C>>,
     {
         type Scalar = ScalarVar<C, CV>;
+        type Output = Self;
 
         #[inline]
-        fn add(&self, rhs: &Self, compiler: &mut Compiler<C>) -> Self {
-            let _ = compiler;
-            Self(self.0.clone() + &rhs.0, PhantomData)
-        }
-
-        #[inline]
-        fn scalar_mul(&self, scalar: &Self::Scalar, compiler: &mut Compiler<C>) -> Self {
+        fn scalar_mul(&self, scalar: &Self::Scalar, compiler: &mut Compiler<C>) -> Self::Output {
             let _ = compiler;
             Self(
                 self.0

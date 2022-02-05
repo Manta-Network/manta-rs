@@ -16,6 +16,8 @@
 
 //! Signer Client Implementations
 
+#[cfg(feature = "reqwest")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "reqwest")))]
 pub mod http;
 
 #[cfg(feature = "tungstenite")]

@@ -15,3 +15,106 @@
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
 //! Signer HTTP Client Implementation
+
+use crate::config::Config;
+use manta_accounting::{
+    transfer::{canonical::Transaction, ReceivingKey},
+    wallet::signer::{self, SignError, SignResponse, SyncError, SyncRequest, SyncResponse},
+};
+use manta_util::serde::Serialize;
+use reqwest::{
+    blocking::{Client as BaseClient, Response},
+    Error, IntoUrl, Method, Url,
+};
+
+/// HTTP Client
+pub struct Client {
+    /// Server URL
+    server_url: Url,
+
+    /// Base HTTP Client
+    client: BaseClient,
+}
+
+impl Client {
+    /// Builds a new HTTP [`Client`] that connects to `server_url`.
+    #[inline]
+    pub fn new<U>(server_url: U) -> Result<Self, Error>
+    where
+        U: IntoUrl,
+    {
+        Ok(Self {
+            client: BaseClient::builder().build()?,
+            server_url: server_url.into_url()?,
+        })
+    }
+
+    /// Sends a new request of type `command` with body `request`.
+    #[inline]
+    fn request<T>(&self, method: Method, command: &str, request: T) -> Result<Response, Error>
+    where
+        T: Serialize,
+    {
+        self.client
+            .request(
+                method,
+                self.server_url
+                    .join(command)
+                    .expect("This error branch is not allowed to happen."),
+            )
+            .json(&request)
+            .send()
+    }
+
+    /// Sends a GET request of type `command` with body `request`.
+    #[inline]
+    fn get<T>(&self, command: &str, request: T) -> Result<Response, Error>
+    where
+        T: Serialize,
+    {
+        self.request(Method::GET, command, request)
+    }
+
+    /// Sends a POST request of type `command` with body `request`.
+    #[inline]
+    fn post<T>(&self, command: &str, request: T) -> Result<Response, Error>
+    where
+        T: Serialize,
+    {
+        self.request(Method::POST, command, request)
+    }
+}
+
+impl signer::Connection<Config> for Client {
+    type Error = Error;
+
+    #[inline]
+    fn sync(
+        &mut self,
+        request: SyncRequest<Config>,
+    ) -> Result<Result<SyncResponse, SyncError>, Self::Error> {
+        // NOTE: The synchronization command modifies the signer so it must be a POST command
+        //       to match the HTTP semantics.
+        // TODO: Ok(self.post("sync", request)?.json()?)
+        todo!()
+    }
+
+    #[inline]
+    fn sign(
+        &mut self,
+        transaction: Transaction<Config>,
+    ) -> Result<Result<SignResponse<Config>, SignError<Config>>, Self::Error> {
+        // NOTE: The signing command does not modify the signer so it must be a GET command to match
+        //       the HTTP semantics.
+        // TODO: Ok(self.get("sign", transaction)?.json()?)
+        todo!()
+    }
+
+    #[inline]
+    fn receiving_key(&mut self) -> Result<ReceivingKey<Config>, Self::Error> {
+        // NOTE: The receiving key command modifies the signer so it must be a POST command to match
+        //       the HTTP semantics.
+        // TODO: Ok(self.post("receivingKey", ())?.json()?)
+        todo!()
+    }
+}

@@ -290,9 +290,9 @@ impl TransferLedger<Config> for Ledger {
             sinks.len(),
         )?);
         ProofSystem::verify(
+            verifying_context,
             &TransferPostingKey::generate_proof_input(asset_id, sources, senders, receivers, sinks),
             &proof,
-            verifying_context,
         )
         .ok()?
         .then(move || (Wrap(()), ()))

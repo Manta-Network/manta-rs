@@ -238,9 +238,9 @@ where
     {
         let post = Self::sample_post(proving_context, parameters, utxo_set, rng)?;
         C::ProofSystem::verify(
+            verifying_context,
             &post.generate_proof_input(),
             &post.validity_proof,
-            verifying_context,
         )
     }
 }

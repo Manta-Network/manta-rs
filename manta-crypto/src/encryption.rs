@@ -20,7 +20,7 @@ use crate::key::{KeyAgreementScheme, KeyDerivationFunction};
 use core::{fmt::Debug, hash::Hash, marker::PhantomData};
 
 #[cfg(feature = "serde")]
-use serde::{Deserialize, Serialize};
+use manta_util::serde::{Deserialize, Serialize};
 
 /// Symmetric Key Encryption Scheme
 ///
@@ -57,7 +57,11 @@ pub mod symmetric {
     use super::*;
 
     /// Mapped Symmetric Encryption Scheme
-    #[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
+    #[cfg_attr(
+        feature = "serde",
+        derive(Deserialize, Serialize),
+        serde(crate = "manta_util::serde")
+    )]
     #[derive(derivative::Derivative)]
     #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
     pub struct Map<S, P = <S as SymmetricKeyEncryptionScheme>::Plaintext>(PhantomData<(S, P)>)
@@ -132,7 +136,11 @@ pub type PublicKey<H> =
 /// implemented.
 ///
 /// [`agree_derive`]: HybridPublicKeyEncryptionScheme::agree_derive
-#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde")
+)]
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Hybrid<K, S, F>(PhantomData<(K, S, F)>)
@@ -181,6 +189,7 @@ where
             deserialize = "H::Ciphertext: Deserialize<'de>, PublicKey<H>: Deserialize<'de>",
             serialize = "H::Ciphertext: Serialize, PublicKey<H>: Serialize"
         ),
+        crate = "manta_util::serde",
         deny_unknown_fields
     )
 )]
@@ -259,6 +268,7 @@ where
             deserialize = "H::Plaintext: Deserialize<'de>, PublicKey<H>: Deserialize<'de>",
             serialize = "H::Plaintext: Serialize, PublicKey<H>: Serialize"
         ),
+        crate = "manta_util::serde",
         deny_unknown_fields
     )
 )]

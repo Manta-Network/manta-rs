@@ -273,7 +273,7 @@ where
         } = self
             .ledger
             .pull(&self.checkpoint)
-            .map_err(Error::LedgerError)?;
+            .map_err(Error::LedgerConnectionError)?;
         if checkpoint < self.checkpoint {
             return Err(Error::InconsistentCheckpoint);
         }
@@ -284,7 +284,7 @@ where
                 inserts: receivers.into_iter().collect(),
                 removes: senders.into_iter().collect(),
             })
-            .map_err(Error::SignerError)?
+            .map_err(Error::SignerConnectionError)?
         {
             Ok(SyncResponse::Partial { deposit, withdraw }) => {
                 self.assets.deposit_all(deposit);
@@ -346,25 +346,16 @@ where
         self.sync()?;
         self.check(&transaction)
             .map_err(Error::InsufficientBalance)?;
-        match self.signer.sign(transaction).map_err(Error::SignerError)? {
-            Ok(SignResponse { posts }) => {
-                let PushResponse { success } =
-                    self.ledger.push(posts).map_err(Error::LedgerError)?;
-                Ok(success)
-            }
-            Err(SignError::ProvingContextCacheError) => {
-                // TODO: This kind of error should not bubble up to the wallet level.
-                todo!()
-            }
-            Err(SignError::InsufficientBalance(asset)) => {
-                // FIXME: If we reach this point, the wallet and signer are not synchronized.
-                todo!()
-            }
-            Err(SignError::ProofSystemError(err)) => {
-                // TODO: This kind of error should not bubble up to the wallet level.
-                todo!()
-            }
-        }
+        let SignResponse { posts } = self
+            .signer
+            .sign(transaction)
+            .map_err(Error::SignerConnectionError)?
+            .map_err(Error::SignError)?;
+        let PushResponse { success } = self
+            .ledger
+            .push(posts)
+            .map_err(Error::LedgerConnectionError)?;
+        Ok(success)
     }
 
     /// Returns a new [`ReceivingKey`] for `self` to receive assets.
@@ -379,7 +370,7 @@ where
 /// This `enum` is the error state for [`Wallet`] methods. See [`sync`](Wallet::sync) and
 /// [`post`](Wallet::post) for more.
 #[derive(derivative::Derivative)]
-#[derivative(Debug(bound = "L::Error: Debug, S::Error: Debug"))]
+#[derivative(Debug(bound = "SignError<C>: Debug, S::Error: Debug, L::Error: Debug"))]
 pub enum Error<C, L, S>
 where
     C: Configuration,
@@ -392,9 +383,12 @@ where
     /// Inconsistent Checkpoint Error
     InconsistentCheckpoint,
 
-    /// Ledger Connection Error
-    LedgerError(L::Error),
+    /// Signing Error
+    SignError(SignError<C>),
 
     /// Signer Connection Error
-    SignerError(S::Error),
+    SignerConnectionError(S::Error),
+
+    /// Ledger Connection Error
+    LedgerConnectionError(L::Error),
 }

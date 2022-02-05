@@ -16,6 +16,8 @@
 
 //! Assets
 
+// FIXME: Make sure that the `AssetList` invariants are safe when deserializing.
+
 use alloc::{
     collections::btree_map::{BTreeMap, Entry as BTreeMapEntry},
     vec,
@@ -36,14 +38,14 @@ use manta_crypto::{
 };
 use manta_util::into_array_unchecked;
 
+#[cfg(feature = "serde")]
+use manta_util::serde::{Deserialize, Serialize};
+
 #[cfg(feature = "std")]
 use std::{
     collections::hash_map::{Entry as HashMapEntry, HashMap, RandomState},
     hash::BuildHasher,
 };
-
-#[cfg(feature = "serde")]
-use serde::{Deserialize, Serialize};
 
 /// [`AssetId`] Base Type
 pub type AssetIdType = u32;
@@ -52,7 +54,7 @@ pub type AssetIdType = u32;
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(deny_unknown_fields)
+    serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
 #[derive(Clone, Copy, Debug, Default, Display, Eq, From, Hash, Ord, PartialEq, PartialOrd)]
 #[from(forward)]
@@ -127,7 +129,7 @@ pub type AssetValueType = u128;
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(deny_unknown_fields)
+    serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
 #[derive(
     Add,
@@ -278,7 +280,7 @@ impl<'a> Sum<&'a AssetValue> for AssetValue {
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(deny_unknown_fields)
+    serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
 #[derive(Clone, Copy, Debug, Default, Display, Eq, From, Hash, Ord, PartialEq, PartialOrd)]
 #[display(fmt = "{{id: {}, value: {}}}", id, value)]
@@ -488,7 +490,7 @@ where
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(deny_unknown_fields)
+    serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
 #[derive(Clone, Debug, Default, Eq, Hash, PartialEq)]
 pub struct AssetList {

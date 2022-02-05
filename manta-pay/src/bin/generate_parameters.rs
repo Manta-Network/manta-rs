@@ -126,7 +126,7 @@ pub fn main() -> io::Result<()> {
 
     let cs = Mint::unknown_constraints(full_parameters);
     let (proving_context, verifying_context) =
-        ProofSystem::generate_context(cs, &(), &mut rng).unwrap();
+        ProofSystem::generate_context(&(), cs, &mut rng).unwrap();
     proving_context
         .encode(IoWriter(
             OpenOptions::new()
@@ -146,7 +146,7 @@ pub fn main() -> io::Result<()> {
 
     let cs = PrivateTransfer::unknown_constraints(full_parameters);
     let (proving_context, verifying_context) =
-        ProofSystem::generate_context(cs, &(), &mut rng).unwrap();
+        ProofSystem::generate_context(&(), cs, &mut rng).unwrap();
     proving_context
         .encode(IoWriter(
             OpenOptions::new()
@@ -166,7 +166,7 @@ pub fn main() -> io::Result<()> {
 
     let cs = Reclaim::unknown_constraints(full_parameters);
     let (proving_context, verifying_context) =
-        ProofSystem::generate_context(cs, &(), &mut rng).unwrap();
+        ProofSystem::generate_context(&(), cs, &mut rng).unwrap();
     proving_context
         .encode(IoWriter(
             OpenOptions::new()

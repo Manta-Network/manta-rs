@@ -33,7 +33,7 @@ use manta_crypto::{
 };
 
 #[cfg(feature = "serde")]
-use serde::{Deserialize, Serialize};
+use manta_util::serde::{Deserialize, Serialize};
 
 pub mod batch;
 pub mod canonical;
@@ -158,7 +158,7 @@ pub trait Configuration {
     type Compiler: ConstraintSystem;
 
     /// Proof System Type
-    type ProofSystem: ProofSystem<ConstraintSystem = Self::Compiler, Verification = bool>
+    type ProofSystem: ProofSystem<ConstraintSystem = Self::Compiler>
         + ProofSystemInput<AssetId>
         + ProofSystemInput<AssetValue>
         + ProofSystemInput<UtxoSetOutput<Self>>
@@ -618,6 +618,7 @@ where
             deserialize = "PublicKey<C>: Deserialize<'de>",
             serialize = "PublicKey<C>: Serialize"
         ),
+        crate = "manta_util::serde",
         deny_unknown_fields
     )
 )]
@@ -1050,7 +1051,7 @@ where
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(deny_unknown_fields)
+    serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum SenderPostError {
@@ -1074,6 +1075,7 @@ pub enum SenderPostError {
             deserialize = "UtxoSetOutput<C>: Deserialize<'de>, VoidNumber<C>: Deserialize<'de>",
             serialize = "UtxoSetOutput<C>: Serialize, VoidNumber<C>: Serialize",
         ),
+        crate = "manta_util::serde",
         deny_unknown_fields
     )
 )]
@@ -1413,7 +1415,7 @@ where
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(deny_unknown_fields)
+    serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum ReceiverPostError {
@@ -1432,6 +1434,7 @@ pub enum ReceiverPostError {
             deserialize = "Utxo<C>: Deserialize<'de>, EncryptedNote<C>: Deserialize<'de>",
             serialize = "Utxo<C>: Serialize, EncryptedNote<C>: Serialize",
         ),
+        crate = "manta_util::serde",
         deny_unknown_fields
     )
 )]
@@ -1674,8 +1677,8 @@ where
         R: CryptoRng + RngCore + ?Sized,
     {
         C::ProofSystem::generate_context(
-            Self::unknown_constraints(parameters),
             public_parameters,
+            Self::unknown_constraints(parameters),
             rng,
         )
     }
@@ -1693,8 +1696,8 @@ where
     {
         Ok(TransferPost {
             validity_proof: C::ProofSystem::prove(
-                self.known_constraints(parameters),
                 context,
+                self.known_constraints(parameters),
                 rng,
             )?,
             asset_id: self.asset_id,
@@ -1955,7 +1958,7 @@ pub type TransferLedgerSuperPostingKey<C, L> = <L as TransferLedger<C>>::SuperPo
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(deny_unknown_fields)
+    serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum AccountBalance {
@@ -1973,7 +1976,7 @@ pub enum AccountBalance {
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(deny_unknown_fields)
+    serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct InvalidSourceAccount<AccountId> {
@@ -1994,7 +1997,7 @@ pub struct InvalidSourceAccount<AccountId> {
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(deny_unknown_fields)
+    serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct InvalidSinkAccount<AccountId> {
@@ -2009,7 +2012,7 @@ pub struct InvalidSinkAccount<AccountId> {
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(deny_unknown_fields)
+    serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum TransferPostError<AccountId> {
@@ -2085,6 +2088,7 @@ impl<AccountId> From<ReceiverPostError> for TransferPostError<AccountId> {
                 Proof<C>: Serialize,
             ",
         ),
+        crate = "manta_util::serde",
         deny_unknown_fields
     )
 )]

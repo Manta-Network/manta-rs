@@ -39,7 +39,7 @@ use core::{fmt::Debug, hash::Hash, marker::PhantomData};
 use manta_util::{into_boxed_array_unchecked, persistance::Rollback, pointer::PointerFamily};
 
 #[cfg(feature = "serde")]
-use serde::{Deserialize, Serialize};
+use manta_util::serde::{Deserialize, Serialize};
 
 /// Merkle Forest Configuration
 pub trait Configuration: tree::Configuration {
@@ -182,6 +182,7 @@ where
             deserialize = "Parameters<C>: Deserialize<'de>, F: Deserialize<'de>",
             serialize = "Parameters<C>: Serialize, F: Serialize"
         ),
+        crate = "manta_util::serde",
         deny_unknown_fields
     )
 )]
@@ -388,7 +389,11 @@ where
 }
 
 /// [`SingleTree`] Merkle Forest Index
-#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct SingleTreeIndex;
 
@@ -409,7 +414,11 @@ impl From<SingleTreeIndex> for usize {
 }
 
 /// Single Tree Merkle Forest
-#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct SingleTree<C, COM = ()>(PhantomData<(C, COM)>)
 where
@@ -452,6 +461,7 @@ pub type TreeArrayMerkleForest<C, T, const N: usize> = MerkleForest<C, TreeArray
     derive(Deserialize, Serialize),
     serde(
         bound(deserialize = "T: Deserialize<'de>", serialize = "T: Serialize"),
+        crate = "manta_util::serde",
         deny_unknown_fields,
     )
 )]
@@ -474,7 +484,7 @@ where
     /// Typically, even for reasonable `N`, the size of this array is too big to fit on the stack,
     /// so we wrap it in a box to store on the heap.
     #[cfg_attr(
-        all(feature = "serde", feature = "serde_with"),
+        feature = "serde",
         serde(with = "serde_with::As::<Box<[serde_with::Same; N]>>")
     )]
     array: Box<[T; N]>,

@@ -16,24 +16,36 @@
 
 //! Elliptic Curve Cryptography
 
-// TODO: Improve ECC abstractions over arkworks.
+// TODO: Make sure we can use `PreprocessedScalarMulTable<G, _>` as a drop-in replacement for `G`.
 
 use crate::{
     constraint::Constant,
     key::KeyAgreementScheme,
     rand::{CryptoRng, RngCore, Sample},
 };
-use core::marker::PhantomData;
+use alloc::boxed::Box;
 use manta_util::codec::{Decode, DecodeError, Encode, Read, Write};
 
-/// Elliptic Curve Group
-pub trait Group<COM = ()>: Sized {
-    /// Scalar Field
-    type Scalar;
+#[cfg(feature = "serde")]
+use manta_util::serde::{Deserialize, Serialize};
+
+/// Elliptic Curve Point Doubling Operation
+pub trait PointDouble<COM = ()> {
+    /// Output Type
+    type Output;
+
+    /// Performs a point doubling of `self` in `compiler`.
+    fn double(&self, compiler: &mut COM) -> Self::Output;
+}
+
+/// Elliptic Curve Point Addition Operation
+pub trait PointAdd<COM = ()> {
+    /// Output Type
+    type Output;
 
     /// Adds `rhs` to `self` in `compiler`, returning a new group element.
     #[must_use]
-    fn add(&self, rhs: &Self, compiler: &mut COM) -> Self;
+    fn add(&self, rhs: &Self, compiler: &mut COM) -> Self::Output;
 
     /// Adds an owned `rhs` value to `self` in `compiler`, returning a new group element.
     ///
@@ -43,41 +55,169 @@ pub trait Group<COM = ()>: Sized {
     /// values is more efficient than with shared references.
     #[inline]
     #[must_use]
-    fn add_owned(self, rhs: Self, compiler: &mut COM) -> Self {
+    fn add_owned(self, rhs: Self, compiler: &mut COM) -> Self::Output
+    where
+        Self: Sized,
+    {
         self.add(&rhs, compiler)
     }
 
+    /// Adds `rhs` to `self` in `compiler`, modifying `self` in-place.
+    #[inline]
+    fn add_assign(&mut self, rhs: &Self, compiler: &mut COM)
+    where
+        Self: PointAdd<COM, Output = Self> + Sized,
+    {
+        *self = self.add(rhs, compiler);
+    }
+}
+
+/// Elliptic Curve Scalar Multiplication Operation
+pub trait ScalarMul<COM = ()> {
+    /// Scalar Field
+    type Scalar;
+
+    /// Output Type
+    type Output;
+
     /// Multiplies `self` by `scalar` in `compiler`, returning a new group element.
     #[must_use]
-    fn scalar_mul(&self, scalar: &Self::Scalar, compiler: &mut COM) -> Self;
+    fn scalar_mul(&self, scalar: &Self::Scalar, compiler: &mut COM) -> Self::Output;
+}
+
+/// Elliptic Curve Pre-processed Scalar Multiplication Operation
+pub trait PreprocessedScalarMul<COM = (), const N: usize = 1>: ScalarMul<COM> + Sized {
+    /// Performs the scalar multiplication against a pre-computed table.
+    #[must_use]
+    fn preprocessed_scalar_mul(
+        table: &[Self; N],
+        scalar: &Self::Scalar,
+        compiler: &mut COM,
+    ) -> Self::Output;
+}
+
+impl<G, COM> PreprocessedScalarMul<COM> for G
+where
+    G: ScalarMul<COM>,
+{
+    #[inline]
+    fn preprocessed_scalar_mul(
+        table: &[Self; 1],
+        scalar: &Self::Scalar,
+        compiler: &mut COM,
+    ) -> Self::Output {
+        table[0].scalar_mul(scalar, compiler)
+    }
+}
+
+/// Elliptic Curve Group
+pub trait Group<COM = ()>:
+    PointAdd<COM> + PointDouble<COM> + PreprocessedScalarMul<COM> + ScalarMul<COM>
+{
+}
+
+/// Pre-processed Scalar Multiplication Table
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(deserialize = "G: Deserialize<'de>", serialize = "G: Serialize"),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
+#[derive(derivative::Derivative)]
+#[derivative(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct PreprocessedScalarMulTable<G, const N: usize = 1> {
+    /// Pre-computed Table
+    #[cfg_attr(
+        feature = "serde",
+        serde(with = "serde_with::As::<Box<[serde_with::Same; N]>>")
+    )]
+    table: Box<[G; N]>,
+}
+
+impl<G, const N: usize> PreprocessedScalarMulTable<G, N> {
+    /// Builds a new [`PreprocessedScalarMulTable`] collection from `base`.
+    #[inline]
+    pub fn from_base<COM>(mut base: G, compiler: &mut COM) -> Self
+    where
+        G: Clone + PointAdd<COM, Output = G> + PointDouble<COM, Output = G>,
+    {
+        let mut powers = Vec::with_capacity(N);
+        let double = base.double(compiler);
+        for _ in 0..N {
+            powers.push(base.clone());
+            base.add_assign(&double, compiler);
+        }
+        Self::from_powers_unchecked(
+            powers
+                .into_boxed_slice()
+                .try_into()
+                .ok()
+                .expect("The size is correct because we perform `N` insertions."),
+        )
+    }
+
+    /// Builds a new [`PreprocessedScalarMulTable`] collection from a known `table` set without
+    /// checking if the table is consistent.
+    #[inline]
+    pub fn from_powers_unchecked(table: Box<[G; N]>) -> Self {
+        Self { table }
+    }
+}
+
+impl<G, const N: usize> AsRef<[G; N]> for PreprocessedScalarMulTable<G, N> {
+    #[inline]
+    fn as_ref(&self) -> &[G; N] {
+        &self.table
+    }
+}
+
+impl<D, G, const N: usize> Sample<D> for PreprocessedScalarMulTable<G, N>
+where
+    G: Clone + PointAdd<Output = G> + PointDouble<Output = G> + Sample<D>,
+{
+    #[inline]
+    fn sample<R>(distribution: D, rng: &mut R) -> Self
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        Self::from_base(G::sample(distribution, rng), &mut ())
+    }
+}
+
+impl<G, COM, const N: usize> ScalarMul<COM> for PreprocessedScalarMulTable<G, N>
+where
+    G: PreprocessedScalarMul<COM, N>,
+{
+    type Scalar = G::Scalar;
+    type Output = G::Output;
+
+    #[inline]
+    fn scalar_mul(&self, scalar: &Self::Scalar, compiler: &mut COM) -> Self::Output {
+        G::preprocessed_scalar_mul(&self.table, scalar, compiler)
+    }
 }
 
 /// Elliptic-Curve Diffie Hellman Key Exchange
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
-pub struct DiffieHellman<G, COM = ()>
-where
-    G: Group<COM>,
-{
+pub struct DiffieHellman<G> {
     /// Base Generator
     generator: G,
-
-    /// Type Parameter Marker
-    __: PhantomData<COM>,
 }
 
-impl<G, COM> DiffieHellman<G, COM>
-where
-    G: Group<COM>,
-{
+impl<G> DiffieHellman<G> {
     /// Builds a new [`DiffieHellman`] protocol structure from `generator`.
     #[inline]
     pub fn new(generator: G) -> Self {
-        Self {
-            generator,
-            __: PhantomData,
-        }
+        Self { generator }
     }
 
     /// Returns a shared reference to the generator for this protocol.
@@ -93,10 +233,9 @@ where
     }
 }
 
-impl<G, COM> Constant<COM> for DiffieHellman<G, COM>
+impl<G, COM> Constant<COM> for DiffieHellman<G>
 where
-    G: Group<COM> + Constant<COM>,
-    G::Type: Group,
+    G: Constant<COM>,
 {
     type Type = DiffieHellman<G::Type>;
 
@@ -106,9 +245,9 @@ where
     }
 }
 
-impl<G, COM> Decode for DiffieHellman<G, COM>
+impl<G> Decode for DiffieHellman<G>
 where
-    G: Group<COM> + Decode,
+    G: Decode,
 {
     type Error = G::Error;
 
@@ -121,9 +260,9 @@ where
     }
 }
 
-impl<G, COM> Encode for DiffieHellman<G, COM>
+impl<G> Encode for DiffieHellman<G>
 where
-    G: Group<COM> + Encode,
+    G: Encode,
 {
     #[inline]
     fn encode<W>(&self, writer: W) -> Result<(), W::Error>
@@ -134,17 +273,18 @@ where
     }
 }
 
-impl<G, COM> KeyAgreementScheme<COM> for DiffieHellman<G, COM>
+impl<G, COM> KeyAgreementScheme<COM> for DiffieHellman<G>
 where
-    G: Group<COM>,
+    G: ScalarMul<COM>,
+    G::Output: ScalarMul<COM, Scalar = G::Scalar, Output = G::Output>,
 {
     type SecretKey = G::Scalar;
-    type PublicKey = G;
-    type SharedSecret = G;
+    type PublicKey = G::Output;
+    type SharedSecret = G::Output;
 
     #[inline]
     fn derive_in(&self, secret_key: &Self::SecretKey, compiler: &mut COM) -> Self::PublicKey {
-        self.agree_in(secret_key, &self.generator, compiler)
+        self.generator.scalar_mul(secret_key, compiler)
     }
 
     #[inline]
@@ -158,9 +298,9 @@ where
     }
 }
 
-impl<D, G, COM> Sample<D> for DiffieHellman<G, COM>
+impl<D, G> Sample<D> for DiffieHellman<G>
 where
-    G: Group<COM> + Sample<D>,
+    G: Sample<D>,
 {
     #[inline]
     fn sample<R>(distribution: D, rng: &mut R) -> Self

@@ -67,7 +67,7 @@ use manta_util::{
 };
 
 #[cfg(feature = "serde")]
-use serde::{Deserialize, Serialize};
+use manta_util::serde::{Deserialize, Serialize};
 
 /// Signer Connection
 pub trait Connection<C>
@@ -181,6 +181,8 @@ where
 ///
 /// This `enum` is the error state for the [`sign`](Connection::sign) method on [`Connection`].
 /// See its documentation for more.
+#[derive(derivative::Derivative)]
+#[derivative(Debug(bound = "ProofSystemError<C>: Debug"))]
 pub enum SignError<C>
 where
     C: transfer::Configuration,
@@ -272,6 +274,7 @@ where
                 C::AssetMap: Serialize
             ",
         ),
+        crate = "manta_util::serde",
         deny_unknown_fields
     )
 )]
