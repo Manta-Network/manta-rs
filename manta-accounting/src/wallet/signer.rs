@@ -21,17 +21,12 @@
 // TODO:  Should have a mode on the signer where we return a generic error which reveals no detail
 //        about what went wrong during signing. The kind of error returned from a signing could
 //        reveal information about the internal state (privacy leak, not a secrecy leak).
-// TODO:  Review which subset of the errors are actually recoverable or not. For example, the
-//        non-existence of a membership proof may be a non-recoverable error since it only relies
-//        on invariants that must be maintained by the `Signer` and not by external sources; i.e.
-//        even if the `Signer` is fed malicious UTXOs, it should not error when looking for
-//        membership proofs and so if this error condition is met, the `Signer` has a bug in it.
+// TODO:  Review which subset of the errors are actually recoverable or not.
 // TODO:  Setup multi-account wallets using `crate::key::AccountTable`.
-// TODO:  Move `sync` to a stream-based algorithm instead of iterator-based.
+// TODO:  Move `sync` to a streaming algorithm.
 // TODO:  Save/Load `SignerState` to/from disk.
 // TODO:  Add self-destruct feature for clearing all secret and private data.
 // TODO:  Compress the `SyncResponse` data before sending (improves privacy and bandwidth).
-// TODO:  Should we split the errors into two groups, one for `sync` and one for `sign`?
 
 use crate::{
     asset::{Asset, AssetId, AssetMap, AssetValue},
@@ -50,11 +45,9 @@ use crate::{
     },
 };
 use alloc::{vec, vec::Vec};
-use core::{convert::Infallible, fmt::Debug};
+use core::{convert::Infallible, fmt::Debug, hash::Hash};
 use manta_crypto::{
-    accumulator::{
-        Accumulator, ConstantCapacityAccumulator, ExactSizeAccumulator, OptimizedAccumulator,
-    },
+    accumulator::{Accumulator, ExactSizeAccumulator, OptimizedAccumulator},
     encryption::DecryptedMessage,
     rand::{CryptoRng, FromEntropy, Rand, RngCore},
 };
@@ -98,6 +91,34 @@ where
 }
 
 /// Signer Synchronization Request
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = r"
+                Utxo<C>: Deserialize<'de>,
+                EncryptedNote<C>: Deserialize<'de>,
+                VoidNumber<C>: Deserialize<'de>
+            ",
+            serialize = r"
+                Utxo<C>: Serialize,
+                EncryptedNote<C>: Serialize,
+                VoidNumber<C>: Serialize
+            ",
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "Utxo<C>: Clone, EncryptedNote<C>: Clone, VoidNumber<C>: Clone"),
+    Debug(bound = "Utxo<C>: Debug, EncryptedNote<C>: Debug, VoidNumber<C>: Debug"),
+    Eq(bound = "Utxo<C>: Eq, EncryptedNote<C>: Eq, VoidNumber<C>: Eq"),
+    Hash(bound = "Utxo<C>: Hash, EncryptedNote<C>: Hash, VoidNumber<C>: Hash"),
+    PartialEq(bound = "Utxo<C>: PartialEq, EncryptedNote<C>: PartialEq, VoidNumber<C>: PartialEq")
+)]
 pub struct SyncRequest<C>
 where
     C: transfer::Configuration,
@@ -116,6 +137,11 @@ where
 ///
 /// This `enum` is created by the [`sync`](Connection::sync) method on [`Connection`].
 /// See its documentation for more.
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum SyncResponse {
     /// Partial Update
@@ -145,7 +171,12 @@ pub enum SyncResponse {
 ///
 /// This `enum` is the error state for the [`sync`](Connection::sync) method on [`Connection`].
 /// See its documentation for more.
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum SyncError {
     /// Inconsistent Synchronization
     InconsistentSynchronization {
@@ -158,6 +189,26 @@ pub enum SyncError {
 ///
 /// This `struct` is created by the [`sign`](Connection::sign) method on [`Connection`].
 /// See its documentation for more.
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "TransferPost<C>: Deserialize<'de>",
+            serialize = "TransferPost<C>: Serialize"
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "TransferPost<C>: Clone"),
+    Debug(bound = "TransferPost<C>: Debug"),
+    Eq(bound = "TransferPost<C>: Eq"),
+    Hash(bound = "TransferPost<C>: Hash"),
+    PartialEq(bound = "TransferPost<C>: PartialEq")
+)]
 pub struct SignResponse<C>
 where
     C: transfer::Configuration,
@@ -181,8 +232,27 @@ where
 ///
 /// This `enum` is the error state for the [`sign`](Connection::sign) method on [`Connection`].
 /// See its documentation for more.
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "ProofSystemError<C>: Deserialize<'de>",
+            serialize = "ProofSystemError<C>: Serialize"
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
 #[derive(derivative::Derivative)]
-#[derivative(Debug(bound = "ProofSystemError<C>: Debug"))]
+#[derivative(
+    Clone(bound = "ProofSystemError<C>: Clone"),
+    Copy(bound = "ProofSystemError<C>: Copy"),
+    Debug(bound = "ProofSystemError<C>: Debug"),
+    Eq(bound = "ProofSystemError<C>: Eq"),
+    Hash(bound = "ProofSystemError<C>: Hash"),
+    PartialEq(bound = "ProofSystemError<C>: PartialEq")
+)]
 pub enum SignError<C>
 where
     C: transfer::Configuration,
@@ -206,7 +276,6 @@ pub trait Configuration: transfer::Configuration {
 
     /// [`Utxo`] Accumulator Type
     type UtxoSet: Accumulator<Item = Self::Utxo, Model = Self::UtxoSetModel>
-        + ConstantCapacityAccumulator
         + ExactSizeAccumulator
         + OptimizedAccumulator
         + Rollback;
