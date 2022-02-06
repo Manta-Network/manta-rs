@@ -501,7 +501,7 @@ mod test {
     where
         R: CryptoRng + RngCore + ?Sized,
     {
-        Wallet::empty(
+        Wallet::new(
             LedgerConnection::new(account, ledger.clone()),
             Signer::new(
                 AccountTable::new(rng.gen()),
