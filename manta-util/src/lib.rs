@@ -37,6 +37,7 @@ pub mod pointer;
 pub use array::*;
 pub use sealed::*;
 
+#[cfg(feature = "serde")]
 #[doc(inline)]
 pub use serde;
 

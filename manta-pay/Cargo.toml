@@ -52,6 +52,15 @@ groth16 = ["arkworks", "ark-groth16"]
 # TODO: Enable PLONK ZKP System
 # TODO: plonk = ["zk-garage-plonk"]
 
+# Serde
+serde = ["manta-accounting/serde", "manta-crypto/serde", "manta-util/serde-alloc"]
+
+# Simulation Framework
+simulation = ["rand", "statrs"]
+
+# Standard Library
+std = ["manta-accounting/std", "manta-util/std"]
+
 # Testing Frameworks
 test = [
     "indexmap",
@@ -62,11 +71,8 @@ test = [
     "rayon",
 ]
 
-# Simulation Framework
-simulation = ["rand", "statrs"]
-
-# Standard Library
-std = ["manta-accounting/std", "manta-util/std"]
+# Wallet
+wallet = ["bip32", "manta-crypto/getrandom", "std"]
 
 [dependencies]
 aes-gcm = { version = "0.9.4", default-features = false, features = ["aes", "alloc"] }
@@ -85,9 +91,9 @@ blake2 = { version = "0.10.0", default-features = false }
 derivative = { version = "2.2.0", default-features = false }
 generic-array = { version = "0.14.4", default-features = false }
 indexmap = { version = "1.8.0", default-features = false, optional = true }
-manta-accounting = { path = "../manta-accounting", default-features = false, features = ["serde"] }
-manta-crypto = { path = "../manta-crypto", default-features = false, features = ["getrandom", "serde"] }
-manta-util = { path = "../manta-util", default-features = false, features = ["serde-alloc"] }
+manta-accounting = { path = "../manta-accounting", default-features = false }
+manta-crypto = { path = "../manta-crypto", default-features = false }
+manta-util = { path = "../manta-util", default-features = false }
 parking_lot = { version = "0.11.2", optional = true, default-features = false }
 rand = { version = "0.8.4", optional = true }
 rand_chacha = { version = "0.3.1", default-features = false }

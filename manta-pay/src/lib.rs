@@ -32,23 +32,10 @@ pub mod crypto;
 #[cfg_attr(doc_cfg, doc(cfg(feature = "bip32")))]
 pub mod key;
 
-#[cfg(all(feature = "arkworks", feature = "groth16"))]
-#[cfg_attr(doc_cfg, doc(cfg(all(feature = "arkworks", feature = "groth16"))))]
+#[cfg(feature = "groth16")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "groth16")))]
 pub mod config;
 
-#[cfg(all(
-    feature = "arkworks",
-    feature = "groth16",
-    feature = "bip32",
-    feature = "std",
-))]
-#[cfg_attr(
-    doc_cfg,
-    doc(cfg(all(
-        feature = "arkworks",
-        feature = "groth16",
-        feature = "bip32",
-        feature = "std",
-    )))
-)]
+#[cfg(all(feature = "groth16", feature = "wallet",))]
+#[cfg_attr(doc_cfg, doc(cfg(all(feature = "groth16", feature = "wallet",))))]
 pub mod wallet;
