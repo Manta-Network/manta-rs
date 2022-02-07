@@ -95,8 +95,7 @@ impl signer::Connection<Config> for Client {
     ) -> Result<Result<SyncResponse, SyncError>, Self::Error> {
         // NOTE: The synchronization command modifies the signer so it must be a POST command
         //       to match the HTTP semantics.
-        // TODO: Ok(self.post("sync", request)?.json()?)
-        todo!()
+        self.post("sync", request)?.json()
     }
 
     #[inline]
@@ -106,15 +105,13 @@ impl signer::Connection<Config> for Client {
     ) -> Result<Result<SignResponse<Config>, SignError<Config>>, Self::Error> {
         // NOTE: The signing command does not modify the signer so it must be a GET command to match
         //       the HTTP semantics.
-        // TODO: Ok(self.get("sign", transaction)?.json()?)
-        todo!()
+        self.get("sign", transaction)?.json()
     }
 
     #[inline]
     fn receiving_key(&mut self) -> Result<ReceivingKey<Config>, Self::Error> {
         // NOTE: The receiving key command modifies the signer so it must be a POST command to match
         //       the HTTP semantics.
-        // TODO: Ok(self.post("receivingKey", ())?.json()?)
-        todo!()
+        self.post("receivingKey", ())?.json()
     }
 }

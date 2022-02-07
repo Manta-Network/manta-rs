@@ -21,6 +21,7 @@ use manta_accounting::{
     transfer::{canonical::Transaction, ReceivingKey},
     wallet::signer::{self, SignError, SignResponse, SyncError, SyncRequest, SyncResponse},
 };
+use manta_util::serde::{de::DeserializeOwned, Serialize};
 use std::net::TcpStream;
 use tungstenite::{
     client::IntoClientRequest,
@@ -51,17 +52,32 @@ impl Client {
     {
         Ok(Self(tungstenite::connect(url)?.0))
     }
+
+    /// Sends a `request` for the given `command` along the websockets and waits for the response.
+    #[inline]
+    pub fn send<Request, Response>(
+        &mut self,
+        command: &str,
+        request: Request,
+    ) -> Result<Response, Error>
+    where
+        Request: Serialize,
+        Response: DeserializeOwned,
+    {
+        // TODO: self.0.read_message(self.0.write_message(request)?)
+        todo!()
+    }
 }
 
 impl signer::Connection<Config> for Client {
-    type Error = ();
+    type Error = Error;
 
     #[inline]
     fn sync(
         &mut self,
         request: SyncRequest<Config>,
     ) -> Result<Result<SyncResponse, SyncError>, Self::Error> {
-        todo!()
+        self.send("sync", request)
     }
 
     #[inline]
@@ -69,11 +85,11 @@ impl signer::Connection<Config> for Client {
         &mut self,
         transaction: Transaction<Config>,
     ) -> Result<Result<SignResponse<Config>, SignError<Config>>, Self::Error> {
-        todo!()
+        self.send("sign", transaction)
     }
 
     #[inline]
     fn receiving_key(&mut self) -> Result<ReceivingKey<Config>, Self::Error> {
-        todo!()
+        self.send("receivingKey", ())
     }
 }

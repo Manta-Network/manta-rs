@@ -32,6 +32,9 @@ use manta_crypto::{
 };
 use manta_util::codec::{Decode, DecodeError, Encode, Read, Write};
 
+#[cfg(feature = "serde")]
+use manta_util::serde::{Deserialize, Serialize, Serializer};
+
 pub use ark_r1cs::SynthesisError;
 pub use ark_r1cs_std::{bits::boolean::Boolean, fields::fp::FpVar};
 
@@ -43,8 +46,25 @@ pub mod pairing;
 pub mod groth16;
 
 /// Prime Field Element
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(deserialize = "", serialize = ""),
+        crate = "manta_util::serde",
+        deny_unknown_fields,
+        try_from = "Vec<u8>"
+    )
+)]
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct Fp<F>(pub F)
+pub struct Fp<F>(
+    /// Field Point Element
+    #[cfg_attr(
+        feature = "serde",
+        serde(serialize_with = "serialize_field_element::<F, _>")
+    )]
+    pub F,
+)
 where
     F: PrimeField;
 
@@ -110,11 +130,7 @@ where
     where
         Encoder: FnOnce(&[u8]) -> R,
     {
-        let mut buffer = Vec::new();
-        self.0
-            .serialize(&mut buffer)
-            .expect("Encoding is not allowed to fail.");
-        f(&buffer)
+        f(&field_element_as_bytes::<F>(&self.0))
     }
 }
 
@@ -132,6 +148,42 @@ where
         let _ = distribution;
         Self(F::rand(rng))
     }
+}
+
+impl<F> TryFrom<Vec<u8>> for Fp<F>
+where
+    F: PrimeField,
+{
+    type Error = codec::SerializationError;
+
+    #[inline]
+    fn try_from(bytes: Vec<u8>) -> Result<Self, Self::Error> {
+        F::deserialize(&mut bytes.as_slice()).map(Self)
+    }
+}
+
+/// Converts `element` into its canonical byte-representation.
+#[inline]
+fn field_element_as_bytes<F>(element: &F) -> Vec<u8>
+where
+    F: PrimeField,
+{
+    let mut buffer = Vec::new();
+    element
+        .serialize(&mut buffer)
+        .expect("Serialization is not allowed to fail.");
+    buffer
+}
+
+/// Uses `serializer` to serialize `element`.
+#[cfg(feature = "serde")]
+#[inline]
+fn serialize_field_element<F, S>(element: &F, serializer: S) -> Result<S::Ok, S::Error>
+where
+    F: PrimeField,
+    S: Serializer,
+{
+    serializer.serialize_bytes(&field_element_as_bytes(element))
 }
 
 /// Synthesis Result

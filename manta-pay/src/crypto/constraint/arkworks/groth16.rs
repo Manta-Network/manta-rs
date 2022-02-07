@@ -18,14 +18,14 @@
 
 use crate::crypto::constraint::arkworks::{
     self,
-    codec::{ArkReader, ArkWriter, HasDeserialization, HasSerialization},
+    codec::{ArkReader, ArkWriter, HasDeserialization, HasSerialization, SerializationError},
     R1CS,
 };
 use alloc::vec::Vec;
 use ark_crypto_primitives::SNARK;
 use ark_ec::PairingEngine;
 use ark_groth16::{Groth16 as ArkGroth16, PreparedVerifyingKey, ProvingKey};
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Read, SerializationError, Write};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Read, Write};
 use core::marker::PhantomData;
 use manta_crypto::{
     constraint::ProofSystem,
@@ -34,7 +34,7 @@ use manta_crypto::{
 use manta_util::codec::{self, DecodeError};
 
 #[cfg(feature = "serde")]
-use manta_util::serde::{Deserialize, Serialize};
+use manta_util::serde::{Deserialize, Serialize, Serializer};
 
 /// Proof System Error
 ///
@@ -49,9 +49,23 @@ use manta_util::serde::{Deserialize, Serialize};
 pub struct Error;
 
 /// Groth16 Proof
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(deserialize = "", serialize = ""),
+        crate = "manta_util::serde",
+        deny_unknown_fields,
+        try_from = "Vec<u8>"
+    )
+)]
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Debug, Default, Eq, PartialEq)]
-pub struct Proof<E>(pub ark_groth16::Proof<E>)
+pub struct Proof<E>(
+    /// Groth16 Proof
+    #[cfg_attr(feature = "serde", serde(serialize_with = "serialize_proof::<E, _>"))]
+    pub ark_groth16::Proof<E>,
+)
 where
     E: PairingEngine;
 
@@ -80,15 +94,47 @@ where
     where
         Encoder: FnOnce(&[u8]) -> R,
     {
-        let mut buffer = Vec::new();
-        self.0
-            .serialize(&mut buffer)
-            .expect("Encoding is not allowed to fail.");
-        f(&buffer)
+        f(&proof_as_bytes::<E>(&self.0))
     }
 }
 
 impl<E> scale_codec::EncodeLike for Proof<E> where E: PairingEngine {}
+
+impl<E> TryFrom<Vec<u8>> for Proof<E>
+where
+    E: PairingEngine,
+{
+    type Error = SerializationError;
+
+    #[inline]
+    fn try_from(bytes: Vec<u8>) -> Result<Self, Self::Error> {
+        CanonicalDeserialize::deserialize(&mut bytes.as_slice()).map(Self)
+    }
+}
+
+/// Converts `proof` into its canonical byte-representation.
+#[inline]
+fn proof_as_bytes<E>(proof: &ark_groth16::Proof<E>) -> Vec<u8>
+where
+    E: PairingEngine,
+{
+    let mut buffer = Vec::new();
+    proof
+        .serialize(&mut buffer)
+        .expect("Serialization is not allowed to fail.");
+    buffer
+}
+
+/// Uses `serializer` to serialize `proof`.
+#[cfg(feature = "serde")]
+#[inline]
+fn serialize_proof<E, S>(proof: &ark_groth16::Proof<E>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    E: PairingEngine,
+    S: Serializer,
+{
+    serializer.serialize_bytes(&proof_as_bytes::<E>(proof))
+}
 
 /// Proving Context
 #[derive(derivative::Derivative, CanonicalSerialize, CanonicalDeserialize)]

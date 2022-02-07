@@ -34,6 +34,9 @@ use manta_crypto::{
 };
 use manta_util::codec;
 
+#[cfg(feature = "serde")]
+use manta_util::serde::{Deserialize, Serialize, Serializer};
+
 pub use ark_ec::{AffineCurve, ProjectiveCurve};
 pub use ark_r1cs_std::groups::CurveVar;
 
@@ -93,8 +96,25 @@ where
 }
 
 /// Elliptic Curve Group Element
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(deserialize = "", serialize = ""),
+        crate = "manta_util::serde",
+        deny_unknown_fields,
+        try_from = "Vec<u8>"
+    )
+)]
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct Group<C>(pub(crate) C::Affine)
+pub struct Group<C>(
+    /// Affine Point Representation
+    #[cfg_attr(
+        feature = "serde",
+        serde(serialize_with = "serialize_group_element::<C, _>")
+    )]
+    pub(crate) C::Affine,
+)
 where
     C: ProjectiveCurve;
 
@@ -160,11 +180,7 @@ where
     where
         Encoder: FnOnce(&[u8]) -> R,
     {
-        let mut buffer = Vec::new();
-        self.0
-            .serialize(&mut buffer)
-            .expect("Encoding is not allowed to fail.");
-        f(&buffer)
+        f(&affine_point_as_bytes::<C>(&self.0))
     }
 }
 
@@ -176,11 +192,7 @@ where
 {
     #[inline]
     fn as_bytes(&self) -> Vec<u8> {
-        let mut buffer = Vec::new();
-        self.0
-            .serialize_unchecked(&mut buffer)
-            .expect("Serialization is not allowed to fail.");
-        buffer
+        affine_point_as_bytes::<C>(&self.0)
     }
 }
 
@@ -209,6 +221,42 @@ where
         let _ = distribution;
         Self(C::rand(rng).into())
     }
+}
+
+impl<C> TryFrom<Vec<u8>> for Group<C>
+where
+    C: ProjectiveCurve,
+{
+    type Error = SerializationError;
+
+    #[inline]
+    fn try_from(bytes: Vec<u8>) -> Result<Self, Self::Error> {
+        CanonicalDeserialize::deserialize(&mut bytes.as_slice()).map(Self)
+    }
+}
+
+/// Converts `point` into its canonical byte-representation.
+#[inline]
+fn affine_point_as_bytes<C>(point: &C::Affine) -> Vec<u8>
+where
+    C: ProjectiveCurve,
+{
+    let mut buffer = Vec::new();
+    point
+        .serialize(&mut buffer)
+        .expect("Serialization is not allowed to fail.");
+    buffer
+}
+
+/// Uses `serializer` to serialize `point`.
+#[cfg(feature = "serde")]
+#[inline]
+fn serialize_group_element<C, S>(point: &C::Affine, serializer: S) -> Result<S::Ok, S::Error>
+where
+    C: ProjectiveCurve,
+    S: Serializer,
+{
+    serializer.serialize_bytes(&affine_point_as_bytes::<C>(point))
 }
 
 /// Elliptic Curve Scalar Element Variable
