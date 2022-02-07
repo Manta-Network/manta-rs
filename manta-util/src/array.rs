@@ -198,7 +198,8 @@ macro_rules! impl_array_traits {
 /// Array
 ///
 /// This type wraps a standard Rust array but provides some additional methods and optional
-/// compatibility with `serde`. The type `Array<T, N>` is mostly a drop-in replacement for `[T; N]`.
+/// compatibility with [`serde`](crate::serde). The type `Array<T, N>` is mostly a drop-in
+/// replacement for `[T; N]`.
 #[cfg_attr(
     feature = "serde-array",
     derive(Deserialize, Serialize),
@@ -299,8 +300,8 @@ impl<T, const N: usize> From<Array<T, N>> for [T; N] {
 /// Boxed Array
 ///
 /// This type wraps a boxed standard Rust array but provides some additional methods and optional
-/// compatibility with `serde`. The type `BoxArray<T, N>` is mostly a drop-in replacement for
-/// `Box<[T; N]>`.
+/// compatibility with [`serde`](crate::serde). The type `BoxArray<T, N>` is mostly a drop-in
+/// replacement for `Box<[T; N]>`.
 #[cfg(feature = "alloc")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
 #[cfg_attr(
