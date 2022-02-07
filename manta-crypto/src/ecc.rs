@@ -89,7 +89,7 @@ pub trait ScalarMul<COM = ()> {
 }
 
 /// Elliptic Curve Pre-processed Scalar Multiplication Operation
-pub trait PreprocessedScalarMul<COM = (), const N: usize = 1>: ScalarMul<COM> + Sized {
+pub trait PreprocessedScalarMul<COM, const N: usize>: ScalarMul<COM> + Sized {
     /// Performs the scalar multiplication against a pre-computed table.
     #[must_use]
     fn preprocessed_scalar_mul(
@@ -99,7 +99,7 @@ pub trait PreprocessedScalarMul<COM = (), const N: usize = 1>: ScalarMul<COM> + 
     ) -> Self::Output;
 }
 
-impl<G, COM> PreprocessedScalarMul<COM> for G
+impl<G, COM> PreprocessedScalarMul<COM, 1> for G
 where
     G: ScalarMul<COM>,
 {
@@ -114,10 +114,7 @@ where
 }
 
 /// Elliptic Curve Group
-pub trait Group<COM = ()>:
-    PointAdd<COM> + PointDouble<COM> + PreprocessedScalarMul<COM> + ScalarMul<COM>
-{
-}
+pub trait Group<COM = ()>: PointAdd<COM> + PointDouble<COM> + ScalarMul<COM> {}
 
 /// Pre-processed Scalar Multiplication Table
 #[cfg_attr(
@@ -131,7 +128,7 @@ pub trait Group<COM = ()>:
 )]
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Debug, Eq, Hash, PartialEq)]
-pub struct PreprocessedScalarMulTable<G, const N: usize = 1> {
+pub struct PreprocessedScalarMulTable<G, const N: usize> {
     /// Pre-computed Table
     table: BoxArray<G, N>,
 }
