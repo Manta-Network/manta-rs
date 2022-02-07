@@ -29,7 +29,7 @@ maintenance = { status = "actively-developed" }
 getrandom = ["rand_core/getrandom"]
 
 # Serde
-serde = ["manta-util/serde-alloc", "serde_with"]
+serde = ["manta-util/serde-alloc", "manta-util/serde-array"]
 
 # Standard Library
 std = ["manta-util/std"]
@@ -41,7 +41,6 @@ test = []
 derivative = { version = "2.2.0", default-features = false, features = ["use_core"] }
 manta-util = { path = "../manta-util", features = ["alloc"] }
 rand_core = { version = "0.6.3", default-features = false }
-serde_with = { version = "1.11.0", optional = true, default-features = false, features = ["macros"] }
 
 [dev-dependencies]
 rand = "0.8.4"

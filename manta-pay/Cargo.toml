@@ -53,7 +53,7 @@ groth16 = ["arkworks", "ark-groth16"]
 # TODO: plonk = ["zk-garage-plonk"]
 
 # Serde
-serde = ["manta-accounting/serde", "manta-crypto/serde", "manta-util/serde-alloc"]
+serde = ["manta-accounting/serde", "manta-crypto/serde"]
 
 # Simulation Framework
 simulation = ["rand", "statrs"]

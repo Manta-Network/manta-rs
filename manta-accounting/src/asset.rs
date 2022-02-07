@@ -16,8 +16,6 @@
 
 //! Assets
 
-// FIXME: Make sure that the `AssetList` invariants are safe when deserializing.
-
 use alloc::{
     collections::btree_map::{BTreeMap, Entry as BTreeMapEntry},
     vec,
@@ -36,7 +34,7 @@ use manta_crypto::{
     constraint::{Allocator, Secret, ValueSource, Variable},
     rand::{CryptoRng, Rand, RngCore, Sample, Standard},
 };
-use manta_util::into_array_unchecked;
+use manta_util::{into_array_unchecked, Array};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
@@ -97,8 +95,8 @@ impl AssetId {
 
 impl From<AssetId> for [u8; AssetId::SIZE] {
     #[inline]
-    fn from(entry: AssetId) -> Self {
-        entry.into_bytes()
+    fn from(id: AssetId) -> Self {
+        id.into_bytes()
     }
 }
 
@@ -224,8 +222,8 @@ impl AddAssign<AssetValueType> for AssetValue {
 
 impl From<AssetValue> for [u8; AssetValue::SIZE] {
     #[inline]
-    fn from(entry: AssetValue) -> Self {
-        entry.into_bytes()
+    fn from(value: AssetValue) -> Self {
+        value.into_bytes()
     }
 }
 
@@ -417,10 +415,24 @@ impl From<[u8; Self::SIZE]> for Asset {
     }
 }
 
+impl From<Array<u8, { Self::SIZE }>> for Asset {
+    #[inline]
+    fn from(array: Array<u8, { Self::SIZE }>) -> Self {
+        array.0.into()
+    }
+}
+
 impl From<Asset> for [u8; Asset::SIZE] {
     #[inline]
-    fn from(entry: Asset) -> Self {
-        entry.into_bytes()
+    fn from(asset: Asset) -> Self {
+        asset.into_bytes()
+    }
+}
+
+impl From<Asset> for Array<u8, { Asset::SIZE }> {
+    #[inline]
+    fn from(asset: Asset) -> Self {
+        Self(asset.into_bytes())
     }
 }
 

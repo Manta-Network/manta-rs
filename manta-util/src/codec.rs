@@ -16,14 +16,12 @@
 
 //! Encoding and Decoding Utilities
 
-// TODO: Add `ReadFrom` and `WriteInto` traits for conversion between different serde/codec impls
-//       which are specialized so that you can automatically convert between a type and itself.
+// TODO: Deprecate this in favor of pure `serde`.
 
-use crate::into_array_unchecked;
 use core::{convert::Infallible, fmt::Debug, hash::Hash, marker::PhantomData};
 
 #[cfg(feature = "alloc")]
-use alloc::vec::Vec;
+use {crate::into_array_unchecked, alloc::vec::Vec};
 
 /// Reader
 pub trait Read {
@@ -810,6 +808,8 @@ impl Decode for u64 {
     }
 }
 
+#[cfg(feature = "alloc")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
 impl<T, const N: usize> Decode for [T; N]
 where
     T: Decode,
@@ -829,6 +829,8 @@ where
     }
 }
 
+#[cfg(feature = "alloc")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
 impl<T> Decode for Vec<T>
 where
     T: Decode,

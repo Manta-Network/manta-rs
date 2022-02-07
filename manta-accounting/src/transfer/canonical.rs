@@ -31,6 +31,9 @@ use core::{fmt::Debug, hash::Hash};
 use manta_crypto::rand::{CryptoRng, Rand, RngCore};
 use manta_util::{create_seal, seal};
 
+#[cfg(feature = "serde")]
+use manta_util::serde::{Deserialize, Serialize};
+
 create_seal! {}
 
 /// Transfer Shapes
@@ -198,6 +201,12 @@ where
 }
 
 /// Transfer Shape
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum TransferShape {
     /// [`Mint`] Transfer
     Mint,
@@ -268,6 +277,18 @@ impl TransferShape {
 }
 
 /// Canonical Transaction Type
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "ReceivingKey<C>: Deserialize<'de>",
+            serialize = "ReceivingKey<C>: Serialize"
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "ReceivingKey<C>: Clone"),

@@ -24,7 +24,10 @@ use crate::{
     rand::{CryptoRng, RngCore, Sample},
 };
 use alloc::{boxed::Box, vec::Vec};
-use manta_util::codec::{Decode, DecodeError, Encode, Read, Write};
+use manta_util::{
+    codec::{Decode, DecodeError, Encode, Read, Write},
+    BoxArray,
+};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
@@ -130,11 +133,7 @@ pub trait Group<COM = ()>:
 #[derivative(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct PreprocessedScalarMulTable<G, const N: usize = 1> {
     /// Pre-computed Table
-    #[cfg_attr(
-        feature = "serde",
-        serde(with = "serde_with::As::<Box<[serde_with::Same; N]>>")
-    )]
-    table: Box<[G; N]>,
+    table: BoxArray<G, N>,
 }
 
 impl<G, const N: usize> PreprocessedScalarMulTable<G, N> {
@@ -163,7 +162,9 @@ impl<G, const N: usize> PreprocessedScalarMulTable<G, N> {
     /// checking if the table is consistent.
     #[inline]
     pub fn from_powers_unchecked(table: Box<[G; N]>) -> Self {
-        Self { table }
+        Self {
+            table: BoxArray(table),
+        }
     }
 }
 

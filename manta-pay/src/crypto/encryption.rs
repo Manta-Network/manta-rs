@@ -26,7 +26,7 @@ pub mod aes {
     };
     use generic_array::GenericArray;
     use manta_crypto::encryption::SymmetricKeyEncryptionScheme;
-    use manta_util::into_array_unchecked;
+    use manta_util::Array;
 
     /// AES-GCM Authentication Tag Size
     #[allow(clippy::cast_possible_truncation)] // NOTE: GCM Tag Size should be smaller than `2^32`.
@@ -49,13 +49,13 @@ pub mod aes {
 
     impl<const P: usize, const C: usize> SymmetricKeyEncryptionScheme for AesGcm<P, C> {
         type Key = [u8; 32];
-        type Plaintext = [u8; P];
-        type Ciphertext = [u8; C];
+        type Plaintext = Array<u8, P>;
+        type Ciphertext = Array<u8, C>;
 
         #[inline]
         fn encrypt(key: Self::Key, plaintext: Self::Plaintext) -> Self::Ciphertext {
             // SAFETY: Using a deterministic nonce is ok since we never reuse keys.
-            into_array_unchecked(
+            Array::from_unchecked(
                 Aes256Gcm::new(GenericArray::from_slice(&key))
                     .encrypt(Nonce::from_slice(Self::NONCE), plaintext.as_ref())
                     .expect("Symmetric encryption is not allowed to fail."),
@@ -68,7 +68,7 @@ pub mod aes {
             Aes256Gcm::new(GenericArray::from_slice(&key))
                 .decrypt(Nonce::from_slice(Self::NONCE), ciphertext.as_ref())
                 .ok()
-                .map(into_array_unchecked)
+                .map(Array::from_unchecked)
         }
     }
 
@@ -90,7 +90,7 @@ pub mod aes {
             rng.fill_bytes(&mut plaintext);
             encryption::test::symmetric_encryption::<
                 AesGcm<{ Asset::SIZE }, { ciphertext_size(Asset::SIZE) }>,
-            >(key, plaintext);
+            >(key, Array(plaintext));
         }
     }
 }

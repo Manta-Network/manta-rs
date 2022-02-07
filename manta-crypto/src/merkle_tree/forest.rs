@@ -36,7 +36,7 @@ use crate::{
 };
 use alloc::{boxed::Box, vec::Vec};
 use core::{fmt::Debug, hash::Hash, marker::PhantomData};
-use manta_util::{into_boxed_array_unchecked, persistance::Rollback, pointer::PointerFamily};
+use manta_util::{persistance::Rollback, pointer::PointerFamily, BoxArray};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
@@ -457,7 +457,7 @@ pub type TreeArrayMerkleForest<C, T, const N: usize> = MerkleForest<C, TreeArray
 
 /// Tree Array
 #[cfg_attr(
-    all(feature = "serde", feature = "serde_with"),
+    feature = "serde",
     derive(Deserialize, Serialize),
     serde(
         bound(deserialize = "T: Deserialize<'de>", serialize = "T: Serialize"),
@@ -483,14 +483,26 @@ where
     ///
     /// Typically, even for reasonable `N`, the size of this array is too big to fit on the stack,
     /// so we wrap it in a box to store on the heap.
-    #[cfg_attr(
-        feature = "serde",
-        serde(with = "serde_with::As::<Box<[serde_with::Same; N]>>")
-    )]
-    array: Box<[T; N]>,
+    array: BoxArray<T, N>,
 
     /// Type Parameter Marker
     __: PhantomData<C>,
+}
+
+impl<C, T, const N: usize> TreeArray<C, T, N>
+where
+    C: Configuration + ?Sized,
+    C::Index: FixedIndex<N>,
+    T: Tree<C>,
+{
+    /// Builds a new [`TreeArray`] from `array`.
+    #[inline]
+    fn new(array: BoxArray<T, N>) -> Self {
+        Self {
+            array,
+            __: PhantomData,
+        }
+    }
 }
 
 impl<C, T, const N: usize> AsRef<[T; N]> for TreeArray<C, T, N>
@@ -525,7 +537,7 @@ where
 {
     #[inline]
     fn default() -> Self {
-        Self::from(into_boxed_array_unchecked(
+        Self::new(BoxArray::from_unchecked(
             (0..N)
                 .into_iter()
                 .map(move |_| Default::default())
@@ -545,7 +557,7 @@ where
 
     #[inline]
     fn new(parameters: &Parameters<C>) -> Self {
-        Self::from(into_boxed_array_unchecked(
+        Self::new(BoxArray::from_unchecked(
             (0..N)
                 .into_iter()
                 .map(move |_| T::new(parameters))
@@ -604,10 +616,7 @@ where
 {
     #[inline]
     fn from(array: Box<[T; N]>) -> Self {
-        Self {
-            array,
-            __: PhantomData,
-        }
+        Self::new(BoxArray(array))
     }
 }
 
