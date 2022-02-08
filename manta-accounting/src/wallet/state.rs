@@ -30,7 +30,10 @@ use crate::{
         },
     },
 };
-use alloc::collections::btree_map::{BTreeMap, Entry as BTreeMapEntry};
+use alloc::{
+    collections::btree_map::{BTreeMap, Entry as BTreeMapEntry},
+    vec::Vec,
+};
 use core::{fmt::Debug, marker::PhantomData};
 
 #[cfg(feature = "serde")]
