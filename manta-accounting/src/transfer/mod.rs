@@ -2264,6 +2264,24 @@ where
             event,
         })
     }
+
+    /// Validates `self` on the transfer `ledger` and then posts the updated state to the `ledger`
+    /// if validation succeeded.
+    #[inline]
+    pub fn post<L>(
+        self,
+        source_accounts: Vec<L::AccountId>,
+        sink_accounts: Vec<L::AccountId>,
+        super_key: &TransferLedgerSuperPostingKey<C, L>,
+        ledger: &mut L,
+    ) -> Result<L::Event, TransferPostError<L::AccountId>>
+    where
+        L: TransferLedger<C>,
+    {
+        Ok(self
+            .validate(source_accounts, sink_accounts, ledger)?
+            .post(super_key, ledger))
+    }
 }
 
 /// Transfer Posting Key

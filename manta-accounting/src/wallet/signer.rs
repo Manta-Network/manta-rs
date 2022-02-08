@@ -30,7 +30,7 @@
 
 use crate::{
     asset::{Asset, AssetId, AssetMap, AssetValue},
-    key::{self, HierarchicalKeyDerivationScheme, KeyIndex, ViewKeySelection},
+    key::{self, HierarchicalKeyDerivationScheme, KeyIndex, SecretKeyPair, ViewKeySelection},
     transfer::{
         self,
         batch::Join,
@@ -88,8 +88,11 @@ where
         transaction: Transaction<C>,
     ) -> Result<Result<SignResponse<C>, SignError<C>>, Self::Error>;
 
-    /// Returns a new [`ReceivingKey`] for `self` to receive assets.
-    fn receiving_key(&mut self) -> Result<ReceivingKey<C>, Self::Error>;
+    /// Returns public receiving keys according to the `request`.
+    fn receiving_keys(
+        &mut self,
+        request: ReceivingKeyRequest,
+    ) -> Result<Vec<ReceivingKey<C>>, Self::Error>;
 }
 
 /// Signer Synchronization Request
@@ -269,6 +272,39 @@ where
     ProofSystemError(ProofSystemError<C>),
 }
 
+/// Receiving Key Request
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum ReceivingKeyRequest {
+    /// Get Specific Key
+    ///
+    /// Requests the key at the specific `index`. If the signer's response is an empty key vector,
+    /// then the index was out of bounds.
+    Get {
+        /// Target Key Index
+        index: KeyIndex,
+    },
+
+    /// Get All Keys
+    ///
+    /// Requests all the public keys associated to the signer. The signer should always respond to
+    /// this request with at least one key, the default public key.
+    GetAll,
+
+    /// New Keys
+    ///
+    /// Requests `count`-many new keys from the hierarchical key derivation scheme. The signer
+    /// should always respond with exactly `count`-many keys.
+    New {
+        /// Number of New Keys to Generate
+        count: usize,
+    },
+}
+
 /// Signer Configuration
 pub trait Configuration: transfer::Configuration {
     /// Hierarchical Key Derivation Scheme
@@ -325,6 +361,16 @@ where
     ) -> Result<(&Parameters<C>, &MultiProvingContext<C>), ProvingContextCacheError<C>> {
         let reading_key = self.proving_context.aquire()?;
         Ok((&self.parameters, self.proving_context.read(reading_key)))
+    }
+
+    /// Converts `keypair` into a [`ReceivingKey`] by using the key-agreement scheme to derive the
+    /// public keys associated to `keypair`.
+    #[inline]
+    fn receiving_key(
+        &self,
+        keypair: SecretKeyPair<C::HierarchicalKeyDerivationScheme>,
+    ) -> ReceivingKey<C> {
+        SpendingKey::new(keypair.spend, keypair.view).derive(&self.parameters.key_agreement)
     }
 }
 
@@ -1008,12 +1054,33 @@ where
         result
     }
 
-    /// Returns a new [`ReceivingKey`] for `self` to receive assets.
+    /// Returns public receiving keys according to the `request`.
     #[inline]
-    pub fn receiving_key(&mut self) -> ReceivingKey<C> {
-        let keypair = self.state.accounts.next(Default::default()).unwrap();
-        SpendingKey::new(keypair.spend, keypair.view)
-            .derive(&self.parameters.parameters.key_agreement)
+    pub fn receiving_keys(&mut self, request: ReceivingKeyRequest) -> Vec<ReceivingKey<C>> {
+        match request {
+            ReceivingKeyRequest::Get { index } => self
+                .state
+                .accounts
+                .get_default()
+                .keypair(index)
+                .into_iter()
+                .map(|k| self.parameters.receiving_key(k))
+                .collect(),
+            ReceivingKeyRequest::GetAll => self
+                .state
+                .accounts
+                .get_default()
+                .keypairs()
+                .map(|k| self.parameters.receiving_key(k))
+                .collect(),
+            ReceivingKeyRequest::New { count } => self
+                .state
+                .accounts
+                .generate_keys(Default::default())
+                .take(count)
+                .map(|k| self.parameters.receiving_key(k))
+                .collect(),
+        }
     }
 }
 
@@ -1040,7 +1107,10 @@ where
     }
 
     #[inline]
-    fn receiving_key(&mut self) -> Result<ReceivingKey<C>, Self::Error> {
-        Ok(self.receiving_key())
+    fn receiving_keys(
+        &mut self,
+        request: ReceivingKeyRequest,
+    ) -> Result<Vec<ReceivingKey<C>>, Self::Error> {
+        Ok(self.receiving_keys(request))
     }
 }

@@ -24,7 +24,10 @@ use crate::{
     },
     wallet::{
         ledger::{self, Checkpoint, PullResponse, PushResponse},
-        signer::{self, SignError, SignResponse, SyncError, SyncRequest, SyncResponse},
+        signer::{
+            self, ReceivingKeyRequest, SignError, SignResponse, SyncError, SyncRequest,
+            SyncResponse,
+        },
     },
 };
 use alloc::collections::btree_map::{BTreeMap, Entry as BTreeMapEntry};
@@ -398,10 +401,13 @@ where
         Ok(success)
     }
 
-    /// Returns a new [`ReceivingKey`] for `self` to receive assets.
+    /// Returns public receiving keys according to the `request`.
     #[inline]
-    pub fn receiving_key(&mut self) -> Result<ReceivingKey<C>, S::Error> {
-        self.signer.receiving_key()
+    pub fn receiving_keys(
+        &mut self,
+        request: ReceivingKeyRequest,
+    ) -> Result<Vec<ReceivingKey<C>>, S::Error> {
+        self.signer.receiving_keys(request)
     }
 }
 

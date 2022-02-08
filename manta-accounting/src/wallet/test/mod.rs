@@ -21,7 +21,11 @@
 use crate::{
     asset::{Asset, AssetList},
     transfer::{canonical::Transaction, Configuration, PublicKey, ReceivingKey},
-    wallet::{self, ledger, signer, Wallet},
+    wallet::{
+        self, ledger,
+        signer::{self, ReceivingKeyRequest},
+        Wallet,
+    },
 };
 use alloc::sync::Arc;
 use core::{fmt::Debug, hash::Hash, marker::PhantomData};
@@ -398,9 +402,14 @@ where
             }
             Action::GeneratePublicKey => Event {
                 action: ActionType::GeneratePublicKey,
-                result: match actor.wallet.receiving_key() {
-                    Ok(key) => {
-                        self.public_keys.write().insert(key);
+                result: match actor
+                    .wallet
+                    .receiving_keys(ReceivingKeyRequest::New { count: 1 })
+                {
+                    Ok(keys) => {
+                        for key in keys {
+                            self.public_keys.write().insert(key);
+                        }
                         Ok(true)
                     }
                     Err(err) => Err(wallet::Error::SignerConnectionError(err)),

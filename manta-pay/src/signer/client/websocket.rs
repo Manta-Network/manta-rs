@@ -19,7 +19,9 @@
 use crate::config::Config;
 use manta_accounting::{
     transfer::{canonical::Transaction, ReceivingKey},
-    wallet::signer::{self, SignError, SignResponse, SyncError, SyncRequest, SyncResponse},
+    wallet::signer::{
+        self, ReceivingKeyRequest, SignError, SignResponse, SyncError, SyncRequest, SyncResponse,
+    },
 };
 use manta_util::serde::{de::DeserializeOwned, Serialize};
 use std::net::TcpStream;
@@ -89,7 +91,10 @@ impl signer::Connection<Config> for Client {
     }
 
     #[inline]
-    fn receiving_key(&mut self) -> Result<ReceivingKey<Config>, Self::Error> {
-        self.send("receivingKey", ())
+    fn receiving_keys(
+        &mut self,
+        request: ReceivingKeyRequest,
+    ) -> Result<Vec<ReceivingKey<Config>>, Self::Error> {
+        self.send("receivingKeys", request)
     }
 }

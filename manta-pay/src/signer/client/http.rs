@@ -19,7 +19,9 @@
 use crate::config::Config;
 use manta_accounting::{
     transfer::{canonical::Transaction, ReceivingKey},
-    wallet::signer::{self, SignError, SignResponse, SyncError, SyncRequest, SyncResponse},
+    wallet::signer::{
+        self, ReceivingKeyRequest, SignError, SignResponse, SyncError, SyncRequest, SyncResponse,
+    },
 };
 use manta_util::serde::Serialize;
 use reqwest::{
@@ -109,9 +111,12 @@ impl signer::Connection<Config> for Client {
     }
 
     #[inline]
-    fn receiving_key(&mut self) -> Result<ReceivingKey<Config>, Self::Error> {
+    fn receiving_keys(
+        &mut self,
+        request: ReceivingKeyRequest,
+    ) -> Result<Vec<ReceivingKey<Config>>, Self::Error> {
         // NOTE: The receiving key command modifies the signer so it must be a POST command to match
         //       the HTTP semantics.
-        self.post("receivingKey", ())?.json()
+        self.post("receivingKeys", request)?.json()
     }
 }
