@@ -14,6 +14,10 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Signer Client and Server Implementations
+//! Manta Pay Signer Tools
 
 pub mod client;
+
+#[cfg(feature = "wallet")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "wallet")))]
+pub mod base;

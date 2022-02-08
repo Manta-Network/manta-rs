@@ -22,10 +22,10 @@ use crate::crypto::constraint::arkworks::{
     R1CS,
 };
 use alloc::vec::Vec;
-use ark_crypto_primitives::SNARK;
 use ark_ec::PairingEngine;
 use ark_groth16::{Groth16 as ArkGroth16, PreparedVerifyingKey, ProvingKey};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Read, Write};
+use ark_snark::SNARK;
 use core::marker::PhantomData;
 use manta_crypto::{
     constraint::ProofSystem,

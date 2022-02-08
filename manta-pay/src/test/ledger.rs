@@ -456,7 +456,7 @@ mod test {
     use super::*;
     use crate::{
         config::FullParameters,
-        wallet::{self, cache::OnDiskMultiProvingContext, Signer},
+        signer::base::{cache::OnDiskMultiProvingContext, Signer, UtxoSet},
     };
     use manta_accounting::{
         asset::{Asset, AssetList},
@@ -471,7 +471,7 @@ mod test {
         },
     };
     use manta_crypto::rand::{CryptoRng, Rand, RngCore, SeedableRng};
-    use rand::{rngs::StdRng, thread_rng};
+    use rand_chacha::ChaCha20Rng;
 
     impl PublicBalanceOracle for LedgerConnection {
         #[inline]
@@ -507,7 +507,7 @@ mod test {
                 AccountTable::new(rng.gen()),
                 cache.clone(),
                 parameters.clone(),
-                wallet::UtxoSet::new(utxo_set_model.clone()),
+                UtxoSet::new(utxo_set_model.clone()),
                 rng.seed_rng().expect("Failed to sample PRNG for signer."),
             ),
         )
@@ -519,7 +519,7 @@ mod test {
         let directory = tempfile::tempdir().expect("Unable to generate temporary test directory.");
         println!("[INFO] Temporary Directory: {:?}", directory);
 
-        let mut rng = thread_rng();
+        let mut rng = ChaCha20Rng::from_entropy();
         let parameters = rng.gen();
         let utxo_set_model = rng.gen();
 
@@ -536,6 +536,7 @@ mod test {
             .expect("Unable to save proving context to disk.");
 
         const ACTOR_COUNT: usize = 10;
+        const ACTOR_LIFETIME: usize = 300;
 
         let mut ledger = Ledger::new(utxo_set_model.clone(), verifying_context);
 
@@ -561,7 +562,7 @@ mod test {
                         &mut rng,
                     ),
                     Default::default(),
-                    rand::Rng::gen_range(&mut rng, 50..300),
+                    ACTOR_LIFETIME,
                 )
             })
             .collect::<Vec<_>>();
@@ -571,7 +572,7 @@ mod test {
         println!("[INFO] Starting Simulation\n");
 
         rayon::in_place_scope(|scope| {
-            for event in simulator.run(move || StdRng::from_rng(&mut rng).unwrap(), scope) {
+            for event in simulator.run(move || ChaCha20Rng::from_rng(&mut rng).unwrap(), scope) {
                 match event.event.action {
                     ActionType::Skip | ActionType::GeneratePublicKey => {}
                     _ => println!("{:?}", event),

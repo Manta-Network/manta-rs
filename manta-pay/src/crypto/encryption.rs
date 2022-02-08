@@ -24,7 +24,6 @@ pub mod aes {
         aead::{Aead, NewAead},
         Aes256Gcm, Nonce,
     };
-    use generic_array::GenericArray;
     use manta_crypto::encryption::SymmetricKeyEncryptionScheme;
     use manta_util::Array;
 
@@ -56,7 +55,8 @@ pub mod aes {
         fn encrypt(key: Self::Key, plaintext: Self::Plaintext) -> Self::Ciphertext {
             // SAFETY: Using a deterministic nonce is ok since we never reuse keys.
             Array::from_unchecked(
-                Aes256Gcm::new(GenericArray::from_slice(&key))
+                Aes256Gcm::new_from_slice(&key)
+                    .expect("The key has the correct size.")
                     .encrypt(Nonce::from_slice(Self::NONCE), plaintext.as_ref())
                     .expect("Symmetric encryption is not allowed to fail."),
             )
@@ -65,7 +65,8 @@ pub mod aes {
         #[inline]
         fn decrypt(key: Self::Key, ciphertext: &Self::Ciphertext) -> Option<Self::Plaintext> {
             // SAFETY: Using a deterministic nonce is ok since we never reuse keys.
-            Aes256Gcm::new(GenericArray::from_slice(&key))
+            Aes256Gcm::new_from_slice(&key)
+                .expect("The key has the correct size.")
                 .decrypt(Nonce::from_slice(Self::NONCE), ciphertext.as_ref())
                 .ok()
                 .map(Array::from_unchecked)

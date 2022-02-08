@@ -39,7 +39,7 @@ test = []
 
 [dependencies]
 derivative = { version = "2.2.0", default-features = false, features = ["use_core"] }
-manta-util = { path = "../manta-util", features = ["alloc"] }
+manta-util = { path = "../manta-util", default-features = false, features = ["alloc"] }
 rand_core = { version = "0.6.3", default-features = false }
 
 [dev-dependencies]

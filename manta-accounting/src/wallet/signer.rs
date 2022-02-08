@@ -30,7 +30,6 @@
 
 use crate::{
     asset::{Asset, AssetId, AssetMap, AssetValue},
-    fs::{self, File},
     key::{self, HierarchicalKeyDerivationScheme, KeyIndex, ViewKeySelection},
     transfer::{
         self,
@@ -60,7 +59,10 @@ use manta_util::{
 };
 
 #[cfg(feature = "serde")]
-use manta_util::serde::{Deserialize, Serialize};
+use {
+    crate::fs::{self, File},
+    manta_util::serde::{Deserialize, Serialize},
+};
 
 /// Signer Connection
 pub trait Connection<C>

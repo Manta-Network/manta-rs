@@ -36,6 +36,6 @@ pub mod key;
 #[cfg_attr(doc_cfg, doc(cfg(feature = "groth16")))]
 pub mod config;
 
-#[cfg(all(feature = "groth16", feature = "wallet",))]
-#[cfg_attr(doc_cfg, doc(cfg(all(feature = "groth16", feature = "wallet",))))]
-pub mod wallet;
+#[cfg(feature = "groth16")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "groth16")))]
+pub mod signer;
