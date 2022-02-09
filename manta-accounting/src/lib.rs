@@ -24,11 +24,11 @@
 extern crate alloc;
 extern crate derive_more;
 
-#[cfg(feature = "cocoon")]
-extern crate cocoon as cocoon_crate;
-
 pub mod asset;
-pub mod fs;
 pub mod key;
 pub mod transfer;
 pub mod wallet;
+
+#[cfg(feature = "fs")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "fs")))]
+pub mod fs;

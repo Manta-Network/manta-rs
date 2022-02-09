@@ -59,10 +59,10 @@ use manta_util::{
 };
 
 #[cfg(feature = "serde")]
-use {
-    crate::fs::{self, File},
-    manta_util::serde::{Deserialize, Serialize},
-};
+use manta_util::serde::{Deserialize, Serialize};
+
+#[cfg(all(feature = "fs", feature = "serde"))]
+use crate::fs::{self, File};
 
 /// Signer Connection
 pub trait Connection<C>
@@ -424,27 +424,27 @@ where
     C: Configuration,
 {
     /// Saves the state of `self` to the encrypted `file`.
-    #[cfg(feature = "serde")]
+    #[cfg(all(feature = "fs", feature = "serde"))]
     #[inline]
     fn save<F>(&self, file: &mut F) -> Result<(), F::Error>
     where
         Self: Serialize,
         F: File,
     {
-        let _ = fs::Serializer::new(file);
+        let _ = fs::serde::Serializer::new(file);
         // TODO: let _ = self.serialize(serializer);
         todo!()
     }
 
     /// Loads an encrypted [`SignerState`] from the encrypted `file`.
-    #[cfg(feature = "serde")]
+    #[cfg(all(feature = "fs", feature = "serde"))]
     #[inline]
     fn load<'de, F>(file: &mut F) -> Result<Self, F::Error>
     where
         Self: Deserialize<'de>,
         F: File,
     {
-        let _ = fs::Deserializer::new(file);
+        let _ = fs::serde::Deserializer::new(file);
         // TODO: let _ = Self::deserialize(deserializer);
         todo!()
     }
@@ -914,8 +914,8 @@ where
     }
 
     /// Saves the state of `self` to the encrypted `file`.
-    #[cfg(feature = "serde")]
-    #[cfg_attr(doc_cfg, doc(cfg(feature = "serde")))]
+    #[cfg(all(feature = "fs", feature = "serde"))]
+    #[cfg_attr(doc_cfg, doc(cfg(all(feature = "fs", feature = "serde"))))]
     #[inline]
     pub fn save<F>(&self, file: &mut F) -> Result<(), F::Error>
     where
@@ -926,8 +926,8 @@ where
     }
 
     /// Loads an encrypted [`Signer`] state from the encrypted `file`.
-    #[cfg(feature = "serde")]
-    #[cfg_attr(doc_cfg, doc(cfg(feature = "serde")))]
+    #[cfg(all(feature = "fs", feature = "serde"))]
+    #[cfg_attr(doc_cfg, doc(cfg(all(feature = "fs", feature = "serde"))))]
     #[inline]
     pub fn load<'de, F>(parameters: SignerParameters<C>, file: &mut F) -> Result<Self, F::Error>
     where

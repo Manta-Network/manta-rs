@@ -19,25 +19,56 @@
 use alloc::{boxed::Box, vec::Vec};
 use core::{fmt::Debug, hash::Hash};
 
+#[cfg(feature = "serde")]
+pub mod serde;
+
+bitflags::bitflags! {
+    /// File Access Mode
+    pub struct AccessMode: u8 {
+        /// Read Access Mode
+        const READ = 0b0001;
+
+        /// Write Access Mode
+        const WRITE = 0b0010;
+
+        /// Append Mode
+        const APPEND = 0b0100;
+    }
+
+    /// File Creation Mode
+    #[derive(Default)]
+    pub struct CreationMode: u8 {
+        /// Create Mode
+        const CREATE = 0b0001;
+
+        /// Truncate Mode
+        const TRUNCATE = 0b0010;
+
+        /// Exclusive Creation Mode
+        const EXCLUSIVE = 0b0100;
+    }
+}
+
 /// Open Options
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+#[must_use]
 pub struct OpenOptions {
-    ///
+    /// Read Access
     read: bool,
 
-    ///
+    /// Write Access
     write: bool,
 
-    ///
+    /// Append Mode
     append: bool,
 
-    ///
+    /// Truncate Mode
     truncate: bool,
 
-    ///
+    /// Create Mode
     create: bool,
 
-    ///
+    /// Create New Mode
     create_new: bool,
 }
 
@@ -48,49 +79,88 @@ impl OpenOptions {
         Self::default()
     }
 
-    ///
+    /// Sets the `read` flag in `self`.
     #[inline]
     pub fn read(mut self, read: bool) -> Self {
         self.read = read;
         self
     }
 
-    ///
+    /// Sets the `write` flag in `self`.
     #[inline]
     pub fn write(mut self, write: bool) -> Self {
         self.write = write;
         self
     }
 
-    ///
+    /// Sets the `append` flag in `self`.
     #[inline]
     pub fn append(mut self, append: bool) -> Self {
         self.append = append;
         self
     }
 
-    ///
+    /// Sets the `truncate` flag in `self`.
     #[inline]
     pub fn truncate(mut self, truncate: bool) -> Self {
         self.truncate = truncate;
         self
     }
 
-    ///
+    /// Sets the `create` flag in `self`.
     #[inline]
     pub fn create(mut self, create: bool) -> Self {
         self.create = create;
         self
     }
 
-    ///
+    /// Sets the `create_new` flag in `self`.
     #[inline]
     pub fn create_new(mut self, create_new: bool) -> Self {
         self.create_new = create_new;
         self
     }
 
-    ///
+    /// Returns the [`AccessMode`] for the combination of options stored in `self`.
+    #[inline]
+    pub fn access_mode(&self) -> Option<AccessMode> {
+        match (self.read, self.write, self.append) {
+            (true, false, false) => Some(AccessMode::READ),
+            (false, true, false) => Some(AccessMode::WRITE),
+            (true, true, false) => Some(AccessMode::READ | AccessMode::WRITE),
+            (false, _, true) => Some(AccessMode::WRITE | AccessMode::APPEND),
+            (true, _, true) => Some(AccessMode::READ | AccessMode::WRITE | AccessMode::APPEND),
+            (false, false, false) => None,
+        }
+    }
+
+    /// Returns the [`CreationMode`] for the combination of options stored in `self`.
+    #[inline]
+    pub fn creation_mode(&self) -> Option<CreationMode> {
+        match (self.write, self.append) {
+            (true, false) => {}
+            (false, false) => {
+                if self.truncate || self.create || self.create_new {
+                    return None;
+                }
+            }
+            (_, true) => {
+                if self.truncate && !self.create_new {
+                    return None;
+                }
+            }
+        }
+        Some(match (self.create, self.truncate, self.create_new) {
+            (false, false, false) => CreationMode::empty(),
+            (true, false, false) => CreationMode::CREATE,
+            (false, true, false) => CreationMode::TRUNCATE,
+            (true, true, false) => CreationMode::CREATE | CreationMode::TRUNCATE,
+            (_, _, true) => CreationMode::CREATE | CreationMode::EXCLUSIVE,
+        })
+    }
+
+    /// Opens a file of type `F` at the given `path` using `self` for opening options and `password`
+    /// for encryption.
     #[inline]
     pub fn open<F, P>(&self, path: P, password: &[u8]) -> Result<F, F::Error>
     where
@@ -101,19 +171,59 @@ impl OpenOptions {
     }
 }
 
+#[cfg(feature = "std")]
+impl From<OpenOptions> for std::fs::OpenOptions {
+    #[inline]
+    fn from(options: OpenOptions) -> Self {
+        let mut result = Self::new();
+        result
+            .read(options.read)
+            .write(options.write)
+            .append(options.append)
+            .truncate(options.truncate)
+            .create(options.create)
+            .create_new(options.create_new);
+        result
+    }
+}
+
 /// Data Block
 pub struct Block {
     /// Block Data
-    data: Box<[u8; 8192]>,
+    data: Box<[u8; Self::SIZE]>,
 }
 
 impl Block {
-    /// Builds a new [`Block`] from an owned collection of bytes.
+    /// Block Size
+    pub const SIZE: usize = 8192;
+
+    /// Builds a new [`Block`] from an owned collection of bytes. If the `data` vector is too short
+    /// it's padded to fit the block and if it's too long, `None` is returned.
     #[inline]
-    pub fn new(data: Vec<u8>) -> Option<Self> {
+    pub fn new(mut data: Vec<u8>) -> Option<Self> {
+        if data.len() > Self::SIZE {
+            return None;
+        }
+        data.resize(Self::SIZE, 0);
         Some(Self {
-            data: data.into_boxed_slice().try_into().ok()?,
+            data: data.into_boxed_slice().try_into().expect(""),
         })
+    }
+}
+
+impl Default for Block {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            data: Box::new([0; Self::SIZE]),
+        }
+    }
+}
+
+impl From<Block> for Vec<u8> {
+    #[inline]
+    fn from(block: Block) -> Self {
+        block.data.to_vec()
     }
 }
 
@@ -136,7 +246,17 @@ pub trait File: Sized {
     where
         P: AsRef<Self::Path>,
     {
-        OpenOptions::new().create(true).open(path, password)
+        Self::options()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(path, password)
+    }
+
+    /// Returns a new [`OpenOptions`] object.
+    #[inline]
+    fn options() -> OpenOptions {
+        OpenOptions::new()
     }
 
     /// Writes `block` to `self` after encrypting it.
@@ -146,65 +266,17 @@ pub trait File: Sized {
     fn read(&mut self) -> Result<Block, Self::Error>;
 }
 
-/// Encrypting Serializer
-pub struct Serializer<'f, F>
-where
-    F: File,
-{
-    /// Encrypted File
-    file: &'f mut F,
-}
-
-impl<'f, F> Serializer<'f, F>
-where
-    F: File,
-{
-    ///
-    #[inline]
-    pub fn new(file: &'f mut F) -> Self {
-        Self { file }
-    }
-}
-
-// TODO: impl<'f, F> serde::Serializer for Serializer<'f, F> where F: File {}
-
-/// Decrypting Deserializer
-pub struct Deserializer<'f, F>
-where
-    F: File,
-{
-    /// Encrypted File
-    file: &'f mut F,
-}
-
-impl<'f, F> Deserializer<'f, F>
-where
-    F: File,
-{
-    ///
-    #[inline]
-    pub fn new(file: &'f mut F) -> Self {
-        Self { file }
-    }
-}
-
-// TODO: impl<'de, 'f, F> serde::Deserializer<'de> for Deserializer<'f, F> where F: File + Read {}
-
 /// Cocoon Encrypted File System Adapter
 #[cfg(feature = "cocoon-fs")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "cocoon-fs")))]
 pub mod cocoon {
-    use super::*;
-    use cocoon_crate::{Error as CocoonError, MiniCocoon};
+    use super::{Block, OpenOptions};
+    use cocoon::{Error as CocoonError, MiniCocoon};
     use core::fmt;
     use manta_crypto::rand::{Rand, SeedableRng};
     use manta_util::from_variant_impl;
     use rand_chacha::ChaCha20Rng;
-    use std::{
-        fs::{self, OpenOptions},
-        io::Error as IoError,
-        path::Path,
-    };
+    use std::{fs, io::Error as IoError, path::Path};
 
     /// Cocoon Loading/Saving Error
     #[derive(Debug)]
@@ -247,20 +319,9 @@ pub mod cocoon {
     impl File {
         /// Builds a new [`File`] for encrypted data storage with `password`.
         #[inline]
-        fn new(
-            path: &Path,
-            password: &[u8],
-            options: &super::OpenOptions,
-        ) -> Result<Self, IoError> {
+        fn new(path: &Path, password: &[u8], options: OpenOptions) -> Result<Self, IoError> {
             Ok(Self {
-                file: OpenOptions::new()
-                    .read(options.read)
-                    .write(options.write)
-                    .append(options.append)
-                    .truncate(options.truncate)
-                    .create(options.create)
-                    .create_new(options.create_new)
-                    .open(path)?,
+                file: fs::OpenOptions::from(options).open(path)?,
                 cocoon: MiniCocoon::from_password(
                     password,
                     &ChaCha20Rng::from_entropy().gen::<_, [u8; 32]>(),
@@ -274,20 +335,16 @@ pub mod cocoon {
         type Error = Error;
 
         #[inline]
-        fn open<P>(
-            path: P,
-            password: &[u8],
-            options: &super::OpenOptions,
-        ) -> Result<Self, Self::Error>
+        fn open<P>(path: P, password: &[u8], options: &OpenOptions) -> Result<Self, Self::Error>
         where
             P: AsRef<Path>,
         {
-            Ok(Self::new(path.as_ref(), password, options)?)
+            Ok(Self::new(path.as_ref(), password, *options)?)
         }
 
         #[inline]
         fn write(&mut self, block: Block) -> Result<(), Self::Error> {
-            Ok(self.cocoon.dump(block.data.to_vec(), &mut self.file)?)
+            Ok(self.cocoon.dump(block.into(), &mut self.file)?)
         }
 
         #[inline]
