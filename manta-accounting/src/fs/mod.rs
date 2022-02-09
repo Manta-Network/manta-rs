@@ -20,6 +20,7 @@ use alloc::{boxed::Box, vec::Vec};
 use core::{fmt::Debug, hash::Hash};
 
 #[cfg(feature = "serde")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "serde")))]
 pub mod serde;
 
 bitflags::bitflags! {
