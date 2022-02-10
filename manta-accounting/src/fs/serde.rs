@@ -17,43 +17,77 @@
 //! Serde-Compatible Encrypted Filesystem
 
 use crate::fs::{Block, File};
-use alloc::vec::Vec;
-use core::marker::PhantomData;
-use manta_util::serde::{
-    self,
-    de::Visitor,
-    ser::{
-        SerializeMap, SerializeSeq, SerializeStruct, SerializeStructVariant, SerializeTuple,
-        SerializeTupleStruct, SerializeTupleVariant,
+use alloc::{format, string::String, vec::Vec};
+use core::{
+    fmt::{self, Debug, Display},
+    write,
+};
+use manta_util::{
+    into_array_unchecked,
+    serde::{
+        self,
+        de::{Error, Visitor},
+        ser::{
+            SerializeMap, SerializeSeq, SerializeStruct, SerializeStructVariant, SerializeTuple,
+            SerializeTupleStruct, SerializeTupleVariant,
+        },
+        Serialize,
     },
-    Serialize,
 };
 
 /// Serialization Module
 pub mod ser {
     use super::*;
-    use core::fmt::Display;
-    use derive_more::Display;
 
     /// Serialization Error
-    #[derive(Debug, Display)]
-    pub enum Error {}
+    #[derive(derivative::Derivative)]
+    #[derivative(Debug(bound = "F::Error: Debug"))]
+    pub enum Error<F>
+    where
+        F: File,
+    {
+        /// Serialization Error
+        Serialization(String),
+
+        /// Encrypted File I/O Error
+        Io(F::Error),
+    }
+
+    impl<F> Display for Error<F>
+    where
+        F: File,
+        F::Error: Display,
+    {
+        #[inline]
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            match self {
+                Self::Serialization(msg) => write!(f, "Serialization Error: {}", msg),
+                Self::Io(err) => write!(f, "File I/O Error: {}", err),
+            }
+        }
+    }
 
     #[cfg(feature = "std")]
-    impl std::error::Error for Error {}
+    impl<F> std::error::Error for Error<F>
+    where
+        F: File,
+        F::Error: Debug + Display,
+    {
+    }
 
-    impl serde::ser::Error for Error {
+    impl<F> serde::ser::Error for Error<F>
+    where
+        F: File,
+        F::Error: Debug + Display,
+    {
         #[inline]
         fn custom<T>(msg: T) -> Self
         where
             T: Display,
         {
-            todo!()
+            Self::Serialization(format!("{}", msg))
         }
     }
-
-    /// Compound Data Structure
-    pub struct Compound<'f, F>(PhantomData<&'f mut F>);
 }
 
 /// Encrypting Serializer
@@ -66,119 +100,228 @@ where
 
     /// Current Block Data
     block_data: Vec<u8>,
+
+    /// Recursion Depth
+    recursion_depth: usize,
 }
 
 impl<'f, F> Serializer<'f, F>
 where
     F: File,
 {
-    ///
+    /// Builds a new [`Serializer`] for `file`.
     #[inline]
     pub fn new(file: &'f mut F) -> Self {
         Self {
             file,
             block_data: Vec::with_capacity(Block::SIZE),
+            recursion_depth: 0,
         }
+    }
+
+    /// Pushes a single byte to the block data.
+    #[inline]
+    fn push(&mut self, byte: u8) {
+        self.block_data.push(byte);
+    }
+
+    /// Extends the block data by appending `bytes`.
+    #[inline]
+    fn extend(&mut self, bytes: &[u8]) {
+        self.block_data.extend_from_slice(bytes);
+    }
+
+    /// Flushes the currently full blocks to the encrypted file system.
+    #[inline]
+    fn flush_intermediate(&mut self) -> Result<(), F::Error> {
+        // TODO: Design a block iterator for `self.block_data` to make this more efficient.
+        while let Some(block) = Block::parse_full(&mut self.block_data) {
+            self.file.write(block)?;
+        }
+        Ok(())
+    }
+
+    /// Flushes all the remaining blocks to the encrypted file system.
+    #[inline]
+    fn flush_end(&mut self) -> Result<(), F::Error> {
+        while !self.block_data.is_empty() {
+            self.file.write(Block::parse(&mut self.block_data))?;
+        }
+        Ok(())
+    }
+
+    /// Flushes bytes to the encrypted file system using either full blocks or the last,
+    /// partially-full block, depending on the recursion depth.
+    #[inline]
+    fn flush(&mut self) -> Result<(), ser::Error<F>> {
+        if self.recursion_depth == 0 {
+            self.flush_end()
+        } else {
+            self.flush_intermediate()
+        }
+        .map_err(ser::Error::Io)
+    }
+
+    /// Starts a new sequence, increasing the recursion depth.
+    #[inline]
+    fn start_sequence(&mut self, len: Option<usize>) -> Result<&mut Self, ser::Error<F>> {
+        self.recursion_depth += 1;
+        if let Some(len) = len {
+            self.extend(&(len as u64).to_le_bytes());
+        }
+        Ok(self)
+    }
+
+    /// Starts a new `struct` or `tuple`, increasing the recursion depth.
+    #[inline]
+    fn start_struct(&mut self) -> Result<&mut Self, ser::Error<F>> {
+        self.recursion_depth += 1;
+        Ok(self)
+    }
+
+    /// Starts a new `struct` or `tuple` relative to the `variant_index`, increasing the recursion
+    /// depth.
+    #[inline]
+    fn start_struct_with_variant(
+        &mut self,
+        variant_index: u32,
+        len: usize,
+    ) -> Result<&mut Self, ser::Error<F>> {
+        self.recursion_depth += 1;
+
+        // TODO: Consider compression of the variant tag. Something like the following:
+        //
+        // ```rust
+        // let leading_zeros = ((len - 1) as u32).leading_zeros();
+        // self.extend(&variant_index.to_le_bytes()[leading_zeros as usize..]);
+        // ```
+        //
+        let _ = len;
+        self.extend(&variant_index.to_le_bytes());
+        Ok(self)
+    }
+
+    /// Ends the compound structure, decreasing the recursion depth and flushing to the encrypted
+    /// file system.
+    #[inline]
+    fn end_compound(&mut self) -> Result<(), ser::Error<F>> {
+        self.recursion_depth -= 1;
+        self.flush()
     }
 }
 
-impl<'f, F> serde::Serializer for &mut Serializer<'f, F>
+impl<'s, 'f, F> serde::Serializer for &'s mut Serializer<'f, F>
 where
     F: File,
+    F::Error: Debug + Display,
 {
     type Ok = ();
-    type Error = ser::Error;
-    type SerializeSeq = ser::Compound<'f, F>;
-    type SerializeTuple = ser::Compound<'f, F>;
-    type SerializeTupleStruct = ser::Compound<'f, F>;
-    type SerializeTupleVariant = ser::Compound<'f, F>;
-    type SerializeMap = ser::Compound<'f, F>;
-    type SerializeStruct = ser::Compound<'f, F>;
-    type SerializeStructVariant = ser::Compound<'f, F>;
+    type Error = ser::Error<F>;
+    type SerializeSeq = Self;
+    type SerializeTuple = Self;
+    type SerializeTupleStruct = Self;
+    type SerializeTupleVariant = Self;
+    type SerializeMap = Self;
+    type SerializeStruct = Self;
+    type SerializeStructVariant = Self;
 
     #[inline]
     fn serialize_bool(self, v: bool) -> Result<Self::Ok, Self::Error> {
-        todo!()
+        self.push(v as u8);
+        self.flush()
     }
 
     #[inline]
     fn serialize_i8(self, v: i8) -> Result<Self::Ok, Self::Error> {
-        todo!()
+        self.extend(&v.to_le_bytes());
+        self.flush()
     }
 
     #[inline]
     fn serialize_i16(self, v: i16) -> Result<Self::Ok, Self::Error> {
-        todo!()
+        self.extend(&v.to_le_bytes());
+        self.flush()
     }
 
     #[inline]
     fn serialize_i32(self, v: i32) -> Result<Self::Ok, Self::Error> {
-        todo!()
+        self.extend(&v.to_le_bytes());
+        self.flush()
     }
 
     #[inline]
     fn serialize_i64(self, v: i64) -> Result<Self::Ok, Self::Error> {
-        todo!()
+        self.extend(&v.to_le_bytes());
+        self.flush()
     }
 
     #[inline]
     fn serialize_i128(self, v: i128) -> Result<Self::Ok, Self::Error> {
-        todo!()
+        self.extend(&v.to_le_bytes());
+        self.flush()
     }
 
     #[inline]
     fn serialize_u8(self, v: u8) -> Result<Self::Ok, Self::Error> {
-        todo!()
+        self.extend(&v.to_le_bytes());
+        self.flush()
     }
 
     #[inline]
     fn serialize_u16(self, v: u16) -> Result<Self::Ok, Self::Error> {
-        todo!()
+        self.extend(&v.to_le_bytes());
+        self.flush()
     }
 
     #[inline]
     fn serialize_u32(self, v: u32) -> Result<Self::Ok, Self::Error> {
-        todo!()
+        self.extend(&v.to_le_bytes());
+        self.flush()
     }
 
     #[inline]
     fn serialize_u64(self, v: u64) -> Result<Self::Ok, Self::Error> {
-        todo!()
+        self.extend(&v.to_le_bytes());
+        self.flush()
     }
 
     #[inline]
     fn serialize_u128(self, v: u128) -> Result<Self::Ok, Self::Error> {
-        todo!()
+        self.extend(&v.to_le_bytes());
+        self.flush()
     }
 
     #[inline]
     fn serialize_f32(self, v: f32) -> Result<Self::Ok, Self::Error> {
-        todo!()
+        self.extend(&v.to_le_bytes());
+        self.flush()
     }
 
     #[inline]
     fn serialize_f64(self, v: f64) -> Result<Self::Ok, Self::Error> {
-        todo!()
+        self.extend(&v.to_le_bytes());
+        self.flush()
     }
 
     #[inline]
     fn serialize_char(self, v: char) -> Result<Self::Ok, Self::Error> {
-        todo!()
+        (v as u32).serialize(self)
     }
 
     #[inline]
     fn serialize_str(self, v: &str) -> Result<Self::Ok, Self::Error> {
-        todo!()
+        v.as_bytes().serialize(self)
     }
 
     #[inline]
     fn serialize_bytes(self, v: &[u8]) -> Result<Self::Ok, Self::Error> {
-        todo!()
+        self.extend(v);
+        self.flush()
     }
 
     #[inline]
     fn serialize_none(self) -> Result<Self::Ok, Self::Error> {
-        todo!()
+        0u8.serialize(self)
     }
 
     #[inline]
@@ -186,17 +329,19 @@ where
     where
         T: Serialize + ?Sized,
     {
-        todo!()
+        self.push(1u8);
+        value.serialize(self)
     }
 
     #[inline]
     fn serialize_unit(self) -> Result<Self::Ok, Self::Error> {
-        todo!()
+        Ok(())
     }
 
     #[inline]
     fn serialize_unit_struct(self, name: &'static str) -> Result<Self::Ok, Self::Error> {
-        todo!()
+        let _ = name;
+        Ok(())
     }
 
     #[inline]
@@ -206,7 +351,8 @@ where
         variant_index: u32,
         variant: &'static str,
     ) -> Result<Self::Ok, Self::Error> {
-        todo!()
+        let _ = (name, variant);
+        variant_index.serialize(self)
     }
 
     #[inline]
@@ -218,7 +364,8 @@ where
     where
         T: Serialize + ?Sized,
     {
-        todo!()
+        let _ = name;
+        value.serialize(self)
     }
 
     #[inline]
@@ -232,17 +379,19 @@ where
     where
         T: Serialize + ?Sized,
     {
-        todo!()
+        let _ = (name, variant);
+        self.extend(&variant_index.to_le_bytes());
+        value.serialize(self)
     }
 
     #[inline]
     fn serialize_seq(self, len: Option<usize>) -> Result<Self::SerializeSeq, Self::Error> {
-        todo!()
+        self.start_sequence(len)
     }
 
     #[inline]
     fn serialize_tuple(self, len: usize) -> Result<Self::SerializeTuple, Self::Error> {
-        todo!()
+        self.start_struct()
     }
 
     #[inline]
@@ -251,7 +400,8 @@ where
         name: &'static str,
         len: usize,
     ) -> Result<Self::SerializeTupleStruct, Self::Error> {
-        todo!()
+        let _ = (name, len);
+        self.start_struct()
     }
 
     #[inline]
@@ -262,12 +412,13 @@ where
         variant: &'static str,
         len: usize,
     ) -> Result<Self::SerializeTupleVariant, Self::Error> {
-        todo!()
+        let _ = (name, variant);
+        self.start_struct_with_variant(variant_index, len)
     }
 
     #[inline]
     fn serialize_map(self, len: Option<usize>) -> Result<Self::SerializeMap, Self::Error> {
-        todo!()
+        self.start_sequence(len)
     }
 
     #[inline]
@@ -276,7 +427,8 @@ where
         name: &'static str,
         len: usize,
     ) -> Result<Self::SerializeStruct, Self::Error> {
-        todo!()
+        let _ = (name, len);
+        self.start_struct()
     }
 
     #[inline]
@@ -287,7 +439,8 @@ where
         variant: &'static str,
         len: usize,
     ) -> Result<Self::SerializeStructVariant, Self::Error> {
-        todo!()
+        let _ = (name, variant);
+        self.start_struct_with_variant(variant_index, len)
     }
 
     #[inline]
@@ -296,87 +449,108 @@ where
     }
 }
 
-impl<'f, F> SerializeSeq for ser::Compound<'f, F> {
+impl<'s, 'f, F> SerializeSeq for &'s mut Serializer<'f, F>
+where
+    F: File,
+    F::Error: Debug + Display,
+{
     type Ok = ();
-    type Error = ser::Error;
+    type Error = ser::Error<F>;
 
     #[inline]
     fn serialize_element<T>(&mut self, value: &T) -> Result<(), Self::Error>
     where
         T: Serialize + ?Sized,
     {
-        todo!()
+        value.serialize(&mut **self)
     }
 
     #[inline]
     fn end(self) -> Result<Self::Ok, Self::Error> {
-        todo!()
+        self.end_compound()
     }
 }
 
-impl<'f, F> SerializeTuple for ser::Compound<'f, F> {
+impl<'s, 'f, F> SerializeTuple for &'s mut Serializer<'f, F>
+where
+    F: File,
+    F::Error: Debug + Display,
+{
     type Ok = ();
-    type Error = ser::Error;
+    type Error = ser::Error<F>;
 
     #[inline]
     fn serialize_element<T>(&mut self, value: &T) -> Result<(), Self::Error>
     where
         T: Serialize + ?Sized,
     {
-        todo!()
+        value.serialize(&mut **self)
     }
+
     #[inline]
     fn end(self) -> Result<Self::Ok, Self::Error> {
-        todo!()
+        self.end_compound()
     }
 }
 
-impl<'f, F> SerializeTupleStruct for ser::Compound<'f, F> {
+impl<'s, 'f, F> SerializeTupleStruct for &'s mut Serializer<'f, F>
+where
+    F: File,
+    F::Error: Debug + Display,
+{
     type Ok = ();
-    type Error = ser::Error;
+    type Error = ser::Error<F>;
 
     #[inline]
     fn serialize_field<T>(&mut self, value: &T) -> Result<(), Self::Error>
     where
         T: Serialize + ?Sized,
     {
-        todo!()
+        value.serialize(&mut **self)
     }
 
     #[inline]
     fn end(self) -> Result<Self::Ok, Self::Error> {
-        todo!()
+        self.end_compound()
     }
 }
 
-impl<'f, F> SerializeTupleVariant for ser::Compound<'f, F> {
+impl<'s, 'f, F> SerializeTupleVariant for &'s mut Serializer<'f, F>
+where
+    F: File,
+    F::Error: Debug + Display,
+{
     type Ok = ();
-    type Error = ser::Error;
+    type Error = ser::Error<F>;
 
     #[inline]
     fn serialize_field<T>(&mut self, value: &T) -> Result<(), Self::Error>
     where
         T: Serialize + ?Sized,
     {
-        todo!()
+        value.serialize(&mut **self)
     }
 
     #[inline]
     fn end(self) -> Result<Self::Ok, Self::Error> {
-        todo!()
+        self.end_compound()
     }
 }
 
-impl<'f, F> SerializeMap for ser::Compound<'f, F> {
+impl<'s, 'f, F> SerializeMap for &'s mut Serializer<'f, F>
+where
+    F: File,
+    F::Error: Debug + Display,
+{
     type Ok = ();
-    type Error = ser::Error;
+    type Error = ser::Error<F>;
 
     #[inline]
     fn serialize_key<T>(&mut self, key: &T) -> Result<(), Self::Error>
     where
         T: Serialize + ?Sized,
     {
-        todo!()
+        key.serialize(&mut **self)
     }
 
     #[inline]
@@ -384,90 +558,124 @@ impl<'f, F> SerializeMap for ser::Compound<'f, F> {
     where
         T: Serialize + ?Sized,
     {
-        todo!()
-    }
-
-    #[inline]
-    fn serialize_entry<K, V>(&mut self, key: &K, value: &V) -> Result<(), Self::Error>
-    where
-        K: Serialize + ?Sized,
-        V: Serialize + ?Sized,
-    {
-        todo!()
+        value.serialize(&mut **self)
     }
 
     #[inline]
     fn end(self) -> Result<Self::Ok, Self::Error> {
-        todo!()
+        self.end_compound()
     }
 }
 
-impl<'f, F> SerializeStruct for ser::Compound<'f, F> {
+impl<'s, 'f, F> SerializeStruct for &'s mut Serializer<'f, F>
+where
+    F: File,
+    F::Error: Debug + Display,
+{
     type Ok = ();
-    type Error = ser::Error;
+    type Error = ser::Error<F>;
 
     #[inline]
     fn serialize_field<T>(&mut self, key: &'static str, value: &T) -> Result<(), Self::Error>
     where
         T: Serialize + ?Sized,
     {
-        todo!()
+        let _ = key;
+        value.serialize(&mut **self)
     }
 
     #[inline]
     fn skip_field(&mut self, key: &'static str) -> Result<(), Self::Error> {
-        todo!()
+        let _ = key;
+        Ok(())
     }
 
     #[inline]
     fn end(self) -> Result<Self::Ok, Self::Error> {
-        todo!()
+        self.end_compound()
     }
 }
 
-impl<'f, F> SerializeStructVariant for ser::Compound<'f, F> {
+impl<'s, 'f, F> SerializeStructVariant for &'s mut Serializer<'f, F>
+where
+    F: File,
+    F::Error: Debug + Display,
+{
     type Ok = ();
-    type Error = ser::Error;
+    type Error = ser::Error<F>;
 
     #[inline]
     fn serialize_field<T>(&mut self, key: &'static str, value: &T) -> Result<(), Self::Error>
     where
         T: Serialize + ?Sized,
     {
-        todo!()
+        let _ = key;
+        value.serialize(&mut **self)
     }
 
     #[inline]
     fn skip_field(&mut self, key: &'static str) -> Result<(), Self::Error> {
-        todo!()
+        let _ = key;
+        Ok(())
     }
 
     #[inline]
     fn end(self) -> Result<Self::Ok, Self::Error> {
-        todo!()
+        self.end_compound()
     }
 }
 
 /// Deserialization Module
 pub mod de {
     use super::*;
-    use core::fmt::Display;
-    use derive_more::Display;
 
     /// Deserialization Error
-    #[derive(Debug, Display)]
-    pub enum Error {}
+    #[derive(derivative::Derivative)]
+    #[derivative(Debug(bound = "F::Error: Debug"))]
+    pub enum Error<F>
+    where
+        F: File,
+    {
+        /// Deserialization Error
+        Deserialization(String),
+
+        /// Encrypted File I/O Error
+        Io(F::Error),
+    }
+
+    impl<F> Display for Error<F>
+    where
+        F: File,
+        F::Error: Display,
+    {
+        #[inline]
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            match self {
+                Self::Deserialization(msg) => write!(f, "Deserialization Error: {}", msg),
+                Self::Io(err) => write!(f, "File I/O Error: {}", err),
+            }
+        }
+    }
 
     #[cfg(feature = "std")]
-    impl std::error::Error for Error {}
+    impl<F> std::error::Error for Error<F>
+    where
+        F: File,
+        F::Error: Debug + Display,
+    {
+    }
 
-    impl serde::de::Error for Error {
+    impl<F> serde::de::Error for Error<F>
+    where
+        F: File,
+        F::Error: Debug + Display,
+    {
         #[inline]
         fn custom<T>(msg: T) -> Self
         where
             T: Display,
         {
-            todo!()
+            Self::Deserialization(format!("{}", msg))
         }
     }
 }
@@ -479,31 +687,94 @@ where
 {
     /// Encrypted File
     file: &'f mut F,
+
+    /// Accumulated Block Data
+    block_data: Vec<u8>,
 }
 
 impl<'f, F> Deserializer<'f, F>
 where
     F: File,
 {
-    ///
+    /// Builds a new [`Deserializer`] for `file`.
     #[inline]
     pub fn new(file: &'f mut F) -> Self {
-        Self { file }
+        Self {
+            file,
+            block_data: Vec::with_capacity(Block::SIZE),
+        }
+    }
+
+    /// Loads a block from the encrypted file system and appends it to the block data, returning
+    /// `true` if the block was loaded and `false` otherwise.
+    #[inline]
+    fn load(&mut self) -> Result<bool, F::Error> {
+        match self.file.read()? {
+            Some(block) => {
+                self.block_data.append(&mut block.into());
+                Ok(true)
+            }
+            _ => Ok(false),
+        }
+    }
+
+    /// Loads at least `n` bytes from the encrypted file system. If there are enough bytes in the
+    /// block data then, it does not perform any reads, and if there are not enough, it continually
+    /// reads until it meets the requirement `n`, returning `true` if the requirement was met.
+    #[inline]
+    fn load_bytes(&mut self, n: usize) -> Result<bool, F::Error> {
+        while self.block_data.len() < n {
+            if self.load()? {
+                continue;
+            } else {
+                return Ok(self.block_data.len() >= n);
+            }
+        }
+        Ok(true)
+    }
+
+    /// Reads an array of bytes of size `N` from the encrypted file system, returning `None` if
+    /// there weren't enough bytes loaded.
+    #[inline]
+    fn read_bytes<const N: usize>(&mut self) -> Result<Option<[u8; N]>, F::Error> {
+        if self.load_bytes(N)? {
+            Ok(Some(into_array_unchecked(
+                self.block_data.drain(..N).collect::<Vec<_>>(),
+            )))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Reads one `u8` from the encrypted file system, returning `None` if the `u8` was missing.
+    #[inline]
+    fn read_u8(&mut self) -> Result<Option<u8>, F::Error> {
+        Ok(self.read_bytes()?.map(u8::from_le_bytes))
+    }
+
+    /// Reads one `u32` from the encrypted file system, returning `None` if the `u32` was missing.
+    #[inline]
+    fn read_u32(&mut self) -> Result<Option<u32>, F::Error> {
+        Ok(self.read_bytes()?.map(u32::from_le_bytes))
     }
 }
 
-impl<'de, 'f, F> manta_util::serde::Deserializer<'de> for &mut Deserializer<'f, F>
+impl<'de, 'f, F> serde::Deserializer<'de> for &mut Deserializer<'f, F>
 where
     F: File,
+    F::Error: Debug + Display,
 {
-    type Error = de::Error;
+    type Error = de::Error<F>;
 
     #[inline]
     fn deserialize_any<V>(self, visitor: V) -> Result<V::Value, Self::Error>
     where
         V: Visitor<'de>,
     {
-        todo!()
+        let _ = visitor;
+        Err(Self::Error::custom(
+            "the Deserializer::deserialize_any method is not supported",
+        ))
     }
 
     #[inline]
@@ -663,7 +934,7 @@ where
     where
         V: Visitor<'de>,
     {
-        todo!()
+        visitor.visit_unit()
     }
 
     #[inline]
@@ -675,7 +946,8 @@ where
     where
         V: Visitor<'de>,
     {
-        todo!()
+        let _ = name;
+        visitor.visit_unit()
     }
 
     #[inline]
@@ -687,6 +959,7 @@ where
     where
         V: Visitor<'de>,
     {
+        let _ = name;
         todo!()
     }
 
@@ -716,6 +989,7 @@ where
     where
         V: Visitor<'de>,
     {
+        let _ = name;
         todo!()
     }
 
@@ -737,6 +1011,7 @@ where
     where
         V: Visitor<'de>,
     {
+        let _ = name;
         todo!()
     }
 
@@ -750,6 +1025,7 @@ where
     where
         V: Visitor<'de>,
     {
+        let _ = name;
         todo!()
     }
 
@@ -758,7 +1034,10 @@ where
     where
         V: Visitor<'de>,
     {
-        todo!()
+        let _ = visitor;
+        Err(Self::Error::custom(
+            "the Deserializer::deserialize_identifier method is not supported",
+        ))
     }
 
     #[inline]
@@ -766,7 +1045,10 @@ where
     where
         V: Visitor<'de>,
     {
-        todo!()
+        let _ = visitor;
+        Err(Self::Error::custom(
+            "the Deserializer::deserialize_ignored_any method is not supported",
+        ))
     }
 
     #[inline]

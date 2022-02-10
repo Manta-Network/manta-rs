@@ -17,7 +17,7 @@
 //! Encrypted Filesystem Primitives
 
 use alloc::{boxed::Box, vec::Vec};
-use core::{fmt::Debug, hash::Hash};
+use core::{cmp, fmt::Debug, hash::Hash};
 
 #[cfg(feature = "serde")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "serde")))]
@@ -201,14 +201,35 @@ impl Block {
     /// Builds a new [`Block`] from an owned collection of bytes. If the `data` vector is too short
     /// it's padded to fit the block and if it's too long, `None` is returned.
     #[inline]
-    pub fn new(mut data: Vec<u8>) -> Option<Self> {
-        if data.len() > Self::SIZE {
-            return None;
-        }
+    pub fn new(data: Vec<u8>) -> Option<Self> {
+        (data.len() <= Self::SIZE).then(|| Self::new_unchecked(data))
+    }
+
+    /// Builds a new [`Block`] from an owned collection of bytes without checking if the data vector
+    /// is too long to fit into a block.
+    #[inline]
+    pub fn new_unchecked(mut data: Vec<u8>) -> Self {
         data.resize(Self::SIZE, 0);
-        Some(Self {
-            data: data.into_boxed_slice().try_into().expect(""),
-        })
+        Self {
+            data: data
+                .into_boxed_slice()
+                .try_into()
+                .expect("Input data is guaranteed to be no greater than the block size."),
+        }
+    }
+
+    /// Parses a [`Block`] from an owned collection of bytes, leaving the remaining bytes in `data`
+    /// that don't fit into a single [`Block`] and padding otherwise.
+    #[inline]
+    pub fn parse(data: &mut Vec<u8>) -> Self {
+        Self::new_unchecked(data.drain(..cmp::min(data.len(), Self::SIZE)).collect())
+    }
+
+    /// Parses a [`Block`] from an owned collection of bytes, if the bytes in `data` fill at least
+    /// one [`Block`] otherwise, return `None`.
+    #[inline]
+    pub fn parse_full(data: &mut Vec<u8>) -> Option<Self> {
+        (data.len() >= Self::SIZE).then(|| Self::parse(data))
     }
 }
 
@@ -263,8 +284,9 @@ pub trait File: Sized {
     /// Writes `block` to `self` after encrypting it.
     fn write(&mut self, block: Block) -> Result<(), Self::Error>;
 
-    /// Reads a [`Block`] from `self` after decrypting it.
-    fn read(&mut self) -> Result<Block, Self::Error>;
+    /// Reads a [`Block`] from `self` after decrypting it, returning `None` if there are no more
+    /// blocks in the file.
+    fn read(&mut self) -> Result<Option<Block>, Self::Error>;
 }
 
 /// Cocoon Encrypted File System Adapter
@@ -287,9 +309,6 @@ pub mod cocoon {
 
         /// Cocoon Error
         Cocoon(CocoonError),
-
-        /// Invalid Block Size
-        InvalidBlockSize,
     }
 
     from_variant_impl!(Error, IoError, IoError);
@@ -301,7 +320,6 @@ pub mod cocoon {
             match self {
                 Self::IoError(err) => write!(f, "File I/O Error: {}", err),
                 Self::Cocoon(err) => write!(f, "Cocoon Error: {:?}", err),
-                Self::InvalidBlockSize => write!(f, "Invalid Block Size"),
             }
         }
     }
@@ -349,8 +367,13 @@ pub mod cocoon {
         }
 
         #[inline]
-        fn read(&mut self) -> Result<Block, Self::Error> {
-            Block::new(self.cocoon.parse(&mut self.file)?).ok_or(Error::InvalidBlockSize)
+        fn read(&mut self) -> Result<Option<Block>, Self::Error> {
+            let data = self.cocoon.parse(&mut self.file)?;
+            if !data.is_empty() {
+                Ok(Block::new(data))
+            } else {
+                Ok(None)
+            }
         }
     }
 }
