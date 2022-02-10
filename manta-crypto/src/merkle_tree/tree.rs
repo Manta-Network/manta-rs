@@ -39,7 +39,7 @@ use crate::{
 use core::{fmt::Debug, hash::Hash, marker::PhantomData};
 use manta_util::{
     codec::{Decode, DecodeError, Encode, Read, Write},
-    persistance::Rollback,
+    persistence::Rollback,
     pointer::PointerFamily,
 };
 

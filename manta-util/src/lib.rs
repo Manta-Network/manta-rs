@@ -33,7 +33,7 @@ pub mod codec;
 pub mod convert;
 pub mod iter;
 pub mod num;
-pub mod persistance;
+pub mod persistence;
 pub mod pointer;
 
 pub use array::*;

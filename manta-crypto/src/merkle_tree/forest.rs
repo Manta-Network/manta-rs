@@ -36,7 +36,7 @@ use crate::{
 };
 use alloc::{boxed::Box, vec::Vec};
 use core::{fmt::Debug, hash::Hash, marker::PhantomData};
-use manta_util::{persistance::Rollback, pointer::PointerFamily, BoxArray};
+use manta_util::{persistence::Rollback, pointer::PointerFamily, BoxArray};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};

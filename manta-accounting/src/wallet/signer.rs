@@ -55,7 +55,7 @@ use manta_util::{
     cache::{CachedResource, CachedResourceError},
     into_array_unchecked,
     iter::IteratorExt,
-    persistance::Rollback,
+    persistence::Rollback,
 };
 
 #[cfg(feature = "serde")]
