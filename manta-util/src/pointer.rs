@@ -59,7 +59,7 @@ pub trait PointerFamily<T> {
 
 /// Implements [`PointerFamily`] for `$type` with `$strong` and `$weak` pointers.
 macro_rules! impl_pointer_family {
-    ($type:tt, $strong:ident, $weak:ident) => {
+    ($type:ty, $strong:ident, $weak:ident) => {
         #[cfg(feature = "alloc")]
         #[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
         impl<T> PointerFamily<T> for $type {

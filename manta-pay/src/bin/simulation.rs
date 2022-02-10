@@ -14,13 +14,16 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Manta Pay Testing
+//! Manta Pay Simulation
 
-// TODO: This is the old simulation. We need to integrate its features into the new asynchronous
-//       simulation.
-//
-// #[cfg(feature = "simulation")]
-// #[cfg_attr(doc_cfg, doc(cfg(feature = "simulation")))]
-// pub mod simulation;
+use std::io;
 
-pub mod transfer;
+/// Runs the Manta Pay simulation.
+#[inline]
+pub fn main() -> io::Result<()> {
+    let directory = tempfile::tempdir()?;
+    println!("[INFO] Temporary Directory: {:?}", directory);
+    manta_pay::simulation::simulate(10, 10, directory.path());
+    directory.close()?;
+    Ok(())
+}

@@ -23,51 +23,78 @@ use manta_accounting::{
         self, ReceivingKeyRequest, SignError, SignResponse, SyncError, SyncRequest, SyncResponse,
     },
 };
-use manta_util::serde::{de::DeserializeOwned, Serialize};
-use std::net::TcpStream;
-use tungstenite::{
-    client::IntoClientRequest,
-    handshake::server::{NoCallback, ServerHandshake},
-    stream::MaybeTlsStream,
-    Message,
+use manta_util::{
+    from_variant_impl,
+    serde::{de::DeserializeOwned, Deserialize, Serialize},
 };
+use std::net::TcpStream;
+use tungstenite::{client::IntoClientRequest, stream::MaybeTlsStream, Message};
 
-/// Stream Type
-pub type Stream = MaybeTlsStream<TcpStream>;
+/// Web Socket Error
+pub type WebSocketError = tungstenite::error::Error;
 
-/// Error Type
-pub type Error = tungstenite::error::Error;
+/// Client Error
+#[derive(Debug)]
+pub enum Error {
+    /// Invalid Message Format
+    ///
+    /// The message received from the WebSocket connection was not a [`Message::Text`].
+    InvalidMessageFormat,
 
-/// Handshake Error Type
-pub type HandshakeError =
-    tungstenite::handshake::HandshakeError<ServerHandshake<Stream, NoCallback>>;
+    /// Serialization Error
+    SerializationError(serde_json::Error),
+
+    /// WebSocket Error
+    WebSocket(WebSocketError),
+}
+
+from_variant_impl!(Error, SerializationError, serde_json::Error);
+from_variant_impl!(Error, WebSocket, WebSocketError);
+
+/// Request
+#[derive(derivative::Derivative, Deserialize, Serialize)]
+#[serde(crate = "manta_util::serde")]
+#[derivative(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub struct Request<R> {
+    /// Request Command
+    ///
+    /// This command is used by the server to decide which command to execute the request on, and to
+    /// parse the request correctly from the serialized data.
+    pub command: &'static str,
+
+    /// Request Body
+    pub request: R,
+}
 
 /// WebSocket Client
-pub struct Client(tungstenite::WebSocket<Stream>);
+pub struct Client(tungstenite::WebSocket<MaybeTlsStream<TcpStream>>);
 
 impl Client {
     /// Builds a new [`Client`] from `url`.
     #[inline]
-    pub fn new<U>(url: U) -> Result<Self, Error>
+    pub fn new<U>(url: U) -> Result<Self, WebSocketError>
     where
         U: IntoClientRequest,
     {
         Ok(Self(tungstenite::connect(url)?.0))
     }
 
-    /// Sends a `request` for the given `command` along the websockets and waits for the response.
+    /// Sends a `request` for the given `command` along the channel and waits for the response.
     #[inline]
-    pub fn send<Request, Response>(
-        &mut self,
-        command: &str,
-        request: Request,
-    ) -> Result<Response, Error>
+    fn send<S, D>(&mut self, command: &'static str, request: S) -> Result<D, Error>
     where
-        Request: Serialize,
-        Response: DeserializeOwned,
+        S: Serialize,
+        D: DeserializeOwned,
     {
-        // TODO: self.0.read_message(self.0.write_message(request)?)
-        todo!()
+        self.0
+            .write_message(Message::Text(serde_json::to_string(&Request {
+                command,
+                request,
+            })?))?;
+        match self.0.read_message()? {
+            Message::Text(message) => Ok(serde_json::from_str(&message)?),
+            _ => Err(Error::InvalidMessageFormat),
+        }
     }
 }
 

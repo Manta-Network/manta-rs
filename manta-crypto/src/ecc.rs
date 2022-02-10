@@ -38,7 +38,31 @@ pub trait PointDouble<COM = ()> {
     type Output;
 
     /// Performs a point doubling of `self` in `compiler`.
+    #[must_use]
     fn double(&self, compiler: &mut COM) -> Self::Output;
+
+    /// Performs a point doubling of `self` in `compiler` using an owned value.
+    ///
+    /// # Implementation Note
+    ///
+    /// This method is an optimization path for [`double`](Self::double) whenever operating with
+    /// owned values is more efficient than with shared references.
+    #[inline]
+    fn double_owned(self, compiler: &mut COM) -> Self::Output
+    where
+        Self: Sized,
+    {
+        self.double(compiler)
+    }
+
+    /// Performs a point doubling of `self` in `compiler`, modifying `self` in-place.
+    #[inline]
+    fn double_assign(&mut self, compiler: &mut COM)
+    where
+        Self: PointDouble<COM, Output = Self> + Sized,
+    {
+        *self = self.double(compiler);
+    }
 }
 
 /// Elliptic Curve Point Addition Operation
@@ -57,7 +81,6 @@ pub trait PointAdd<COM = ()> {
     /// This method is an optimization path for [`add`](Self::add) whenever operating with owned
     /// values is more efficient than with shared references.
     #[inline]
-    #[must_use]
     fn add_owned(self, rhs: Self, compiler: &mut COM) -> Self::Output
     where
         Self: Sized,
@@ -86,6 +109,29 @@ pub trait ScalarMul<COM = ()> {
     /// Multiplies `self` by `scalar` in `compiler`, returning a new group element.
     #[must_use]
     fn scalar_mul(&self, scalar: &Self::Scalar, compiler: &mut COM) -> Self::Output;
+
+    /// Multiplies an owned `scalar` value to `self` in `compiler`, returning a new group element.
+    ///
+    /// # Implementation Note
+    ///
+    /// This method is an optimization path for [`scalar_mul`](Self::scalar_mul) whenever operating
+    /// with owned values is more efficient than with shared references.
+    #[inline]
+    fn scalar_mul_owned(self, scalar: Self::Scalar, compiler: &mut COM) -> Self::Output
+    where
+        Self: Sized,
+    {
+        self.scalar_mul(&scalar, compiler)
+    }
+
+    /// Multiplies `self` by `scalar` in `compiler`, modifying `self` in-place.
+    #[inline]
+    fn scalar_mul_assign(&mut self, scalar: &Self::Scalar, compiler: &mut COM)
+    where
+        Self: ScalarMul<COM, Output = Self> + Sized,
+    {
+        *self = self.scalar_mul(scalar, compiler);
+    }
 }
 
 /// Elliptic Curve Pre-processed Scalar Multiplication Operation

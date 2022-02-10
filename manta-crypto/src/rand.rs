@@ -169,7 +169,7 @@ where
 ///
 /// This `trait` is automatically implemented for all [`SeedableRng`] whenever the `getrandom` crate
 /// is in scope. This `trait` is used to capture the behavior of seeding from an entropy source even
-/// if the crate is not imported.
+/// if the `getrandom` crate is not imported.
 pub trait FromEntropy {
     /// Creates a new instance of `Self` seeded via some entropy source.
     fn from_entropy() -> Self;
@@ -213,7 +213,7 @@ pub trait Sample<D = Standard>: Sized {
 
 /// Generates [`Sample`] implementation for `$type` using conversion from `u32`.
 macro_rules! impl_sample_from_u32 {
-    ($($type:tt),+) => {
+    ($($type:ty),+) => {
         $(
             impl Sample for $type {
                 #[inline]
@@ -229,7 +229,7 @@ macro_rules! impl_sample_from_u32 {
     };
 }
 
-impl_sample_from_u32! { u8, u16, u32 }
+impl_sample_from_u32!(u8, u16, u32);
 
 impl Sample for u64 {
     #[inline]

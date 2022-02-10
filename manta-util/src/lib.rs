@@ -49,7 +49,7 @@ pub use serde;
 // TODO: add `where` clauses
 #[macro_export]
 macro_rules! from_variant_impl {
-    ($to:tt, $kind:ident, $from:tt) => {
+    ($to:ty, $kind:ident, $from:ty) => {
         impl From<$from> for $to {
             #[inline]
             fn from(t: $from) -> Self {

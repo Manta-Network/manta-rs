@@ -16,13 +16,12 @@
 
 //! Generate Parameters
 
-// TODO: Specify target directory in `main`.
 // TODO: Deduplicate the per-circuit proving context and verifying context serialization code.
 // TODO: Print some statistics about the parameters and circuits and into a stats file as well.
 
 use manta_accounting::transfer;
 use manta_crypto::{
-    constraint::ProofSystem as _,
+    constraint::{measure::Measure, ProofSystem as _},
     rand::{Rand, SeedableRng},
 };
 use manta_pay::config::{
@@ -125,6 +124,7 @@ pub fn main() -> io::Result<()> {
     fs::create_dir_all(&verifying_context_dir)?;
 
     let cs = Mint::unknown_constraints(full_parameters);
+    println!("MINT: {:#?}", cs.measure());
     let (proving_context, verifying_context) =
         ProofSystem::generate_context(&(), cs, &mut rng).unwrap();
     proving_context
@@ -145,6 +145,7 @@ pub fn main() -> io::Result<()> {
         .unwrap();
 
     let cs = PrivateTransfer::unknown_constraints(full_parameters);
+    println!("PRIVATE-TRANSFER: {:#?}", cs.measure());
     let (proving_context, verifying_context) =
         ProofSystem::generate_context(&(), cs, &mut rng).unwrap();
     proving_context
@@ -165,6 +166,7 @@ pub fn main() -> io::Result<()> {
         .unwrap();
 
     let cs = Reclaim::unknown_constraints(full_parameters);
+    println!("RECLAIM: {:#?}", cs.measure());
     let (proving_context, verifying_context) =
         ProofSystem::generate_context(&(), cs, &mut rng).unwrap();
     proving_context

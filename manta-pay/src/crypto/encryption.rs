@@ -39,6 +39,7 @@ pub mod aes {
     }
 
     /// AES Galois Counter Mode
+    #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
     pub struct AesGcm<const P: usize, const C: usize>;
 
     impl<const P: usize, const C: usize> AesGcm<P, C> {
@@ -78,13 +79,16 @@ pub mod aes {
     mod test {
         use super::*;
         use manta_accounting::asset::Asset;
-        use manta_crypto::{encryption, rand::RngCore};
-        use rand::thread_rng;
+        use manta_crypto::{
+            encryption,
+            rand::{FromEntropy, RngCore},
+        };
+        use rand_chacha::ChaCha20Rng;
 
         /// Tests if symmetric encryption of [`Asset`] decrypts properly.
         #[test]
         fn asset_encryption() {
-            let mut rng = thread_rng();
+            let mut rng = ChaCha20Rng::from_entropy();
             let mut key = [0; 32];
             rng.fill_bytes(&mut key);
             let mut plaintext = [0; Asset::SIZE];

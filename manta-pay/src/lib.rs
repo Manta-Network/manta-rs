@@ -28,14 +28,18 @@ mod test;
 
 pub mod crypto;
 
+#[cfg(feature = "groth16")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "groth16")))]
+pub mod config;
+
 #[cfg(feature = "bip32")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "bip32")))]
 pub mod key;
 
 #[cfg(feature = "groth16")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "groth16")))]
-pub mod config;
-
-#[cfg(feature = "groth16")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "groth16")))]
 pub mod signer;
+
+#[cfg(all(feature = "groth16", feature = "simulation"))]
+#[cfg_attr(doc_cfg, doc(cfg(all(feature = "groth16", feature = "simulation"))))]
+pub mod simulation;

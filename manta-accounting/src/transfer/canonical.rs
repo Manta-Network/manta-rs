@@ -57,7 +57,7 @@ pub trait Shape: sealed::Sealed {
 
 /// Implements [`Shape`] for a given shape type.
 macro_rules! impl_shape {
-    ($shape:tt, $sources:expr, $senders:expr, $receivers:expr, $sinks:expr) => {
+    ($shape:ty, $sources:expr, $senders:expr, $receivers:expr, $sinks:expr) => {
         seal!($shape);
         impl Shape for $shape {
             const SOURCES: usize = $sources;

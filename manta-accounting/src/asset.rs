@@ -784,7 +784,7 @@ pub trait AssetMap: Default {
 
 /// Implements [`AssetMap`] for map types.
 macro_rules! impl_asset_map_for_maps_body {
-    ($k:tt, $entry:tt) => {
+    ($k:ty, $entry:tt) => {
         type Key = $k;
 
         #[inline]

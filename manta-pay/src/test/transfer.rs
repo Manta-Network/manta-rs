@@ -22,16 +22,16 @@ use crate::config::{
 use manta_crypto::{
     constraint::{measure::Measure, ProofSystem as _},
     merkle_tree,
-    rand::Rand,
+    rand::{FromEntropy, Rand},
 };
-use rand::thread_rng;
+use rand_chacha::ChaCha20Rng;
 
 type UtxoSet = merkle_tree::full::FullMerkleTree<MerkleTreeConfiguration>;
 
 /// Tests the generation of proving/verifying contexts for [`Mint`].
 #[test]
 fn sample_mint_context() {
-    let mut rng = thread_rng();
+    let mut rng = ChaCha20Rng::from_entropy();
     let cs = Mint::unknown_constraints(FullParameters::new(&rng.gen(), &rng.gen()));
     println!("Mint: {:?}", cs.measure());
     ProofSystem::generate_context(&(), cs, &mut rng).unwrap();
@@ -40,7 +40,7 @@ fn sample_mint_context() {
 /// Tests the generation of proving/verifying contexts for [`PrivateTransfer`].
 #[test]
 fn sample_private_transfer_context() {
-    let mut rng = thread_rng();
+    let mut rng = ChaCha20Rng::from_entropy();
     let cs = PrivateTransfer::unknown_constraints(FullParameters::new(&rng.gen(), &rng.gen()));
     println!("PrivateTransfer: {:?}", cs.measure());
     ProofSystem::generate_context(&(), cs, &mut rng).unwrap();
@@ -49,7 +49,7 @@ fn sample_private_transfer_context() {
 /// Tests the generation of proving/verifying contexts for [`Reclaim`].
 #[test]
 fn sample_reclaim_context() {
-    let mut rng = thread_rng();
+    let mut rng = ChaCha20Rng::from_entropy();
     let cs = Reclaim::unknown_constraints(FullParameters::new(&rng.gen(), &rng.gen()));
     println!("Reclaim: {:?}", cs.measure());
     ProofSystem::generate_context(&(), cs, &mut rng).unwrap();
@@ -58,7 +58,7 @@ fn sample_reclaim_context() {
 /// Tests the generation of a [`Mint`].
 #[test]
 fn mint() {
-    let mut rng = thread_rng();
+    let mut rng = ChaCha20Rng::from_entropy();
     assert!(
         Mint::sample_and_check_proof(&(), &rng.gen(), &mut UtxoSet::new(rng.gen()), &mut rng)
             .expect("Random Mint should have successfully produced a proof."),
@@ -69,7 +69,7 @@ fn mint() {
 /// Tests the generation of a [`PrivateTransfer`].
 #[test]
 fn private_transfer() {
-    let mut rng = thread_rng();
+    let mut rng = ChaCha20Rng::from_entropy();
     assert!(
         PrivateTransfer::sample_and_check_proof(
             &(),
@@ -85,7 +85,7 @@ fn private_transfer() {
 /// Tests the generation of a [`Reclaim`].
 #[test]
 fn reclaim() {
-    let mut rng = thread_rng();
+    let mut rng = ChaCha20Rng::from_entropy();
     assert!(
         Reclaim::sample_and_check_proof(&(), &rng.gen(), &mut UtxoSet::new(rng.gen()), &mut rng)
             .expect("Random Reclaim should have successfully produced a proof."),

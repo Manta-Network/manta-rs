@@ -14,27 +14,40 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Test Ledger Implementation
+//! Ledger Simulation
 
-// FIXME: How to model existential deposits and fee payments?
-// FIXME: Add in some concurrency (and measure how much we need it).
+// TODO: Move as much of this code into `manta-accounting` simulation as possible.
+// TODO: How to model existential deposits and fee payments?
+// TODO: Add in some concurrency (and measure how much we need it).
 
-use crate::config::{
-    Config, EncryptedNote, MerkleTreeConfiguration, MultiVerifyingContext, ProofSystem,
-    TransferPost, Utxo, UtxoSetModel, VoidNumber,
+use crate::{
+    config::{
+        Config, EncryptedNote, FullParameters, MerkleTreeConfiguration, MultiVerifyingContext,
+        ProofSystem, TransferPost, Utxo, UtxoSetModel, VoidNumber,
+    },
+    signer::base::{cache::OnDiskMultiProvingContext, Signer, UtxoSet},
 };
 use alloc::{sync::Arc, vec::Vec};
 use core::convert::Infallible;
 use indexmap::IndexSet;
 use manta_accounting::{
-    asset::{AssetId, AssetValue},
+    asset::{Asset, AssetId, AssetList, AssetValue},
+    key::AccountTable,
+    transfer,
     transfer::{
         canonical::TransferShape, AccountBalance, InvalidSinkAccount, InvalidSourceAccount, Proof,
         ReceiverLedger, ReceiverPostingKey, SenderLedger, SenderPostingKey, SinkPostingKey,
         SourcePostingKey, TransferLedger, TransferLedgerSuperPostingKey, TransferPostingKey,
         UtxoSetOutput,
     },
-    wallet::ledger::{self, PullResponse, PullResult, PushResponse, PushResult},
+    wallet::{
+        ledger::{self, PullResponse, PullResult, PushResponse, PushResult},
+        test::{
+            sim::{ActionSim, Simulator},
+            ActionType, Actor, PublicBalanceOracle, Simulation,
+        },
+        Wallet,
+    },
 };
 use manta_crypto::{
     constraint::ProofSystem as _,
@@ -43,10 +56,15 @@ use manta_crypto::{
         forest::{Configuration, FixedIndex},
         Tree,
     },
+    rand::{CryptoRng, Rand, RngCore, SeedableRng},
 };
 use manta_util::into_array_unchecked;
 use parking_lot::RwLock;
-use std::collections::{HashMap, HashSet};
+use rand_chacha::ChaCha20Rng;
+use std::{
+    collections::{HashMap, HashSet},
+    path::Path,
+};
 
 /// Merkle Forest Index
 pub type MerkleForestIndex = <MerkleTreeConfiguration as Configuration>::Index;
@@ -450,142 +468,124 @@ impl ledger::Connection<Config> for LedgerConnection {
     }
 }
 
-/// Testing Suite
-#[cfg(test)]
-mod test {
-    use super::*;
-    use crate::{
-        config::FullParameters,
-        signer::base::{cache::OnDiskMultiProvingContext, Signer, UtxoSet},
-    };
-    use manta_accounting::{
-        asset::{Asset, AssetList},
-        key::AccountTable,
-        transfer,
-        wallet::{
-            test::{
-                sim::{ActionSim, Simulator},
-                ActionType, Actor, PublicBalanceOracle, Simulation,
-            },
-            Wallet,
-        },
-    };
-    use manta_crypto::rand::{CryptoRng, Rand, RngCore, SeedableRng};
-    use rand_chacha::ChaCha20Rng;
-
-    impl PublicBalanceOracle for LedgerConnection {
-        #[inline]
-        fn public_balances(&self) -> Option<AssetList> {
-            Some(
-                self.ledger
-                    .read()
-                    .accounts
-                    .get(&self.account)?
-                    .iter()
-                    .map(|(id, value)| Asset::new(*id, *value))
-                    .collect(),
-            )
-        }
-    }
-
-    /// Samples an empty wallet for `account` on `ledger`.
+impl PublicBalanceOracle for LedgerConnection {
     #[inline]
-    fn sample_wallet<R>(
-        account: AccountId,
-        ledger: &SharedLedger,
-        cache: &OnDiskMultiProvingContext,
-        parameters: &transfer::Parameters<Config>,
-        utxo_set_model: &UtxoSetModel,
-        rng: &mut R,
-    ) -> Wallet<Config, LedgerConnection, Signer>
-    where
-        R: CryptoRng + RngCore + ?Sized,
-    {
-        Wallet::new(
-            LedgerConnection::new(account, ledger.clone()),
-            Signer::new(
-                AccountTable::new(rng.gen()),
-                cache.clone(),
-                parameters.clone(),
-                UtxoSet::new(utxo_set_model.clone()),
-                rng.seed_rng().expect("Failed to sample PRNG for signer."),
-            ),
+    fn public_balances(&self) -> Option<AssetList> {
+        Some(
+            self.ledger
+                .read()
+                .accounts
+                .get(&self.account)?
+                .iter()
+                .map(|(id, value)| Asset::new(*id, *value))
+                .collect(),
         )
     }
+}
 
-    /// Runs a simple simulation to test that the signer-wallet-ledger connection works.
-    #[test]
-    fn test_simulation() {
-        let directory = tempfile::tempdir().expect("Unable to generate temporary test directory.");
-        println!("[INFO] Temporary Directory: {:?}", directory);
+/// Samples an empty wallet for `account` on `ledger`.
+#[inline]
+pub fn sample_wallet<R>(
+    account: AccountId,
+    ledger: &SharedLedger,
+    cache: &OnDiskMultiProvingContext,
+    parameters: &transfer::Parameters<Config>,
+    utxo_set_model: &UtxoSetModel,
+    rng: &mut R,
+) -> Wallet<Config, LedgerConnection, Signer>
+where
+    R: CryptoRng + RngCore + ?Sized,
+{
+    Wallet::new(
+        LedgerConnection::new(account, ledger.clone()),
+        Signer::new(
+            AccountTable::new(rng.gen()),
+            cache.clone(),
+            parameters.clone(),
+            UtxoSet::new(utxo_set_model.clone()),
+            rng.seed_rng().expect("Failed to sample PRNG for signer."),
+        ),
+    )
+}
 
-        let mut rng = ChaCha20Rng::from_entropy();
-        let parameters = rng.gen();
-        let utxo_set_model = rng.gen();
+/// Runs a simple simulation to test that the signer-wallet-ledger connection works.
+#[inline]
+pub fn simulate<P>(actor_count: usize, actor_lifetime: usize, directory: P)
+where
+    P: AsRef<Path>,
+{
+    let mut rng = ChaCha20Rng::from_entropy();
+    let parameters = rng.gen();
+    let utxo_set_model = rng.gen();
 
-        let (proving_context, verifying_context) = transfer::canonical::generate_context(
-            &(),
-            FullParameters::new(&parameters, &utxo_set_model),
-            &mut rng,
-        )
-        .expect("Failed to generate contexts.");
+    let (proving_context, verifying_context) = transfer::canonical::generate_context(
+        &(),
+        FullParameters::new(&parameters, &utxo_set_model),
+        &mut rng,
+    )
+    .expect("Failed to generate contexts.");
 
-        let cache = OnDiskMultiProvingContext::new(directory.path());
-        cache
-            .save(proving_context)
-            .expect("Unable to save proving context to disk.");
+    let cache = OnDiskMultiProvingContext::new(directory);
+    cache
+        .save(proving_context)
+        .expect("Unable to save proving context to disk.");
 
-        const ACTOR_COUNT: usize = 10;
-        const ACTOR_LIFETIME: usize = 300;
+    let mut ledger = Ledger::new(utxo_set_model.clone(), verifying_context);
 
-        let mut ledger = Ledger::new(utxo_set_model.clone(), verifying_context);
+    for i in 0..actor_count {
+        ledger.set_public_balance(AccountId(i as u64), AssetId(0), AssetValue(1000000));
+        ledger.set_public_balance(AccountId(i as u64), AssetId(1), AssetValue(1000000));
+        ledger.set_public_balance(AccountId(i as u64), AssetId(2), AssetValue(1000000));
+    }
 
-        for i in 0..ACTOR_COUNT {
-            ledger.set_public_balance(AccountId(i as u64), AssetId(0), AssetValue(1000000));
-            ledger.set_public_balance(AccountId(i as u64), AssetId(1), AssetValue(1000000));
-            ledger.set_public_balance(AccountId(i as u64), AssetId(2), AssetValue(1000000));
-        }
+    let ledger = Arc::new(RwLock::new(ledger));
 
-        let ledger = Arc::new(RwLock::new(ledger));
+    println!("[INFO] Building {:?} Wallets", actor_count);
 
-        println!("[INFO] Building {:?} Wallets", ACTOR_COUNT);
+    let actors = (0..actor_count)
+        .map(|i| {
+            Actor::new(
+                sample_wallet(
+                    AccountId(i as u64),
+                    &ledger,
+                    &cache,
+                    &parameters,
+                    &utxo_set_model,
+                    &mut rng,
+                ),
+                Default::default(),
+                actor_lifetime,
+            )
+        })
+        .collect::<Vec<_>>();
 
-        let actors = (0..ACTOR_COUNT)
-            .map(|i| {
-                Actor::new(
-                    sample_wallet(
-                        AccountId(i as u64),
-                        &ledger,
-                        &cache,
-                        &parameters,
-                        &utxo_set_model,
-                        &mut rng,
-                    ),
-                    Default::default(),
-                    ACTOR_LIFETIME,
-                )
-            })
-            .collect::<Vec<_>>();
+    let mut simulator = Simulator::new(ActionSim(Simulation::default()), actors);
 
-        let mut simulator = Simulator::new(ActionSim(Simulation::default()), actors);
+    println!("[INFO] Starting Simulation\n");
 
-        println!("[INFO] Starting Simulation\n");
-
-        rayon::in_place_scope(|scope| {
-            for event in simulator.run(move || ChaCha20Rng::from_rng(&mut rng).unwrap(), scope) {
-                match event.event.action {
-                    ActionType::Skip | ActionType::GeneratePublicKey => {}
-                    _ => println!("{:?}", event),
-                }
-                if let Err(err) = event.event.result {
-                    println!("\n[ERROR] Simulation Error: {:?}\n", err);
-                    break;
-                }
+    rayon::in_place_scope(|scope| {
+        for event in simulator.run(move || ChaCha20Rng::from_rng(&mut rng).unwrap(), scope) {
+            match event.event.action {
+                ActionType::Skip | ActionType::GeneratePublicKey => {}
+                _ => println!("{:?}", event),
             }
-        });
+            if let Err(err) = event.event.result {
+                println!("\n[ERROR] Simulation Error: {:?}\n", err);
+                break;
+            }
+        }
+    });
 
-        directory
-            .close()
-            .expect("Unable to delete temporary test directory.");
-    }
+    let balances = simulator
+        .actors
+        .iter()
+        .map(|actor| {
+            (
+                actor.wallet.ledger().public_balances(),
+                actor.wallet.assets(),
+            )
+        })
+        .collect::<Vec<_>>();
+
+    println!("BALANCES: {:#?}", balances);
 }

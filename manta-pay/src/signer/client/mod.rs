@@ -16,10 +16,10 @@
 
 //! Signer Client Implementations
 
-#[cfg(feature = "reqwest")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "reqwest")))]
+#[cfg(feature = "http")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "http")))]
 pub mod http;
 
-#[cfg(feature = "tungstenite")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "tungstenite")))]
+#[cfg(feature = "websocket")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "websocket")))]
 pub mod websocket;
