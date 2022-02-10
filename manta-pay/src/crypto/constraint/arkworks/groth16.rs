@@ -69,6 +69,8 @@ pub struct Proof<E>(
 where
     E: PairingEngine;
 
+#[cfg(feature = "scale")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]
 impl<E> scale_codec::Decode for Proof<E>
 where
     E: PairingEngine,
@@ -85,6 +87,8 @@ where
     }
 }
 
+#[cfg(feature = "scale")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]
 impl<E> scale_codec::Encode for Proof<E>
 where
     E: PairingEngine,
@@ -98,7 +102,23 @@ where
     }
 }
 
+#[cfg(feature = "scale")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]
 impl<E> scale_codec::EncodeLike for Proof<E> where E: PairingEngine {}
+
+#[cfg(feature = "scale")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]
+impl<E> scale_info::TypeInfo for Proof<E>
+where
+    E: PairingEngine,
+{
+    type Identity = [u8];
+
+    #[inline]
+    fn type_info() -> scale_info::Type {
+        Self::Identity::type_info()
+    }
+}
 
 impl<E> TryFrom<Vec<u8>> for Proof<E>
 where

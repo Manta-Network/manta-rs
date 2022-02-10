@@ -105,6 +105,8 @@ where
     }
 }
 
+#[cfg(feature = "scale")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]
 impl<F> scale_codec::Decode for Fp<F>
 where
     F: PrimeField,
@@ -121,6 +123,8 @@ where
     }
 }
 
+#[cfg(feature = "scale")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]
 impl<F> scale_codec::Encode for Fp<F>
 where
     F: PrimeField,
@@ -134,7 +138,23 @@ where
     }
 }
 
+#[cfg(feature = "scale")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]
 impl<F> scale_codec::EncodeLike for Fp<F> where F: PrimeField {}
+
+#[cfg(feature = "scale")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]
+impl<F> scale_info::TypeInfo for Fp<F>
+where
+    F: PrimeField,
+{
+    type Identity = [u8];
+
+    #[inline]
+    fn type_info() -> scale_info::Type {
+        Self::Identity::type_info()
+    }
+}
 
 impl<F> Sample for Fp<F>
 where

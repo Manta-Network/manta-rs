@@ -18,19 +18,22 @@
 
 use ark_std::io::{self, Error, ErrorKind};
 use manta_util::codec::{Read, ReadExactError, Write};
-use scale_codec::Input;
 
 pub use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 
 /// Scale-Codec Input as Reader Wrapper
+#[cfg(feature = "scale")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]
 #[derive(Debug, Eq, Hash, PartialEq)]
 pub struct ScaleCodecReader<'i, I>(pub &'i mut I)
 where
-    I: Input;
+    I: scale_codec::Input;
 
+#[cfg(feature = "scale")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]
 impl<I> io::Read for ScaleCodecReader<'_, I>
 where
-    I: Input,
+    I: scale_codec::Input,
 {
     #[inline]
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, Error> {
@@ -40,7 +43,7 @@ where
 
     #[inline]
     fn read_exact(&mut self, buf: &mut [u8]) -> Result<(), Error> {
-        Input::read(self.0, buf).map_err(|_| ErrorKind::Other.into())
+        scale_codec::Input::read(self.0, buf).map_err(|_| ErrorKind::Other.into())
     }
 }
 
