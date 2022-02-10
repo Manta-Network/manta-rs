@@ -25,19 +25,23 @@
 extern crate alloc;
 
 mod array;
+mod bytes;
 mod sealed;
 
 pub mod cache;
 pub mod codec;
 pub mod convert;
 pub mod iter;
+pub mod num;
 pub mod persistance;
 pub mod pointer;
 
 pub use array::*;
+pub use bytes::*;
 pub use sealed::*;
 
 #[cfg(feature = "serde")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "serde")))]
 #[doc(inline)]
 pub use serde;
 

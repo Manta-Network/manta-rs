@@ -22,22 +22,34 @@ use core::{
     fmt::{self, Debug, Display},
     write,
 };
+use derive_more::Display;
 use manta_util::{
-    into_array_unchecked,
+    into_array_unchecked, num,
     serde::{
         self,
-        de::{Error, Visitor},
+        de::{
+            DeserializeSeed, Deserializer as _, EnumAccess, IntoDeserializer, MapAccess, SeqAccess,
+            VariantAccess, Visitor,
+        },
         ser::{
             SerializeMap, SerializeSeq, SerializeStruct, SerializeStructVariant, SerializeTuple,
             SerializeTupleStruct, SerializeTupleVariant,
         },
         Serialize,
     },
+    FromBytes, IntoBytes,
 };
 
 /// Serialization Module
 pub mod ser {
     use super::*;
+
+    /// Unsupported Feature
+    #[derive(Clone, Copy, Debug, Display, Eq, Hash, PartialEq)]
+    pub enum UnsupportedFeature {
+        /// Unknown Length Iterators
+        UnknownLengthIterators,
+    }
 
     /// Serialization Error
     #[derive(derivative::Derivative)]
@@ -46,6 +58,9 @@ pub mod ser {
     where
         F: File,
     {
+        /// Unsupported Features
+        UnsupportedFeature(UnsupportedFeature),
+
         /// Serialization Error
         Serialization(String),
 
@@ -61,6 +76,7 @@ pub mod ser {
         #[inline]
         fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
             match self {
+                Self::UnsupportedFeature(feature) => write!(f, "Unsupported Feature: {}", feature),
                 Self::Serialization(msg) => write!(f, "Serialization Error: {}", msg),
                 Self::Io(err) => write!(f, "File I/O Error: {}", err),
             }
@@ -119,16 +135,19 @@ where
         }
     }
 
-    /// Pushes a single byte to the block data.
-    #[inline]
-    fn push(&mut self, byte: u8) {
-        self.block_data.push(byte);
-    }
-
     /// Extends the block data by appending `bytes`.
     #[inline]
     fn extend(&mut self, bytes: &[u8]) {
         self.block_data.extend_from_slice(bytes);
+    }
+
+    /// Extends the block data by appending the bytes extracted from `t`.
+    #[inline]
+    fn extend_bytes<T, const N: usize>(&mut self, value: T)
+    where
+        T: IntoBytes<N>,
+    {
+        self.extend(&value.into_bytes());
     }
 
     /// Flushes the currently full blocks to the encrypted file system.
@@ -162,14 +181,29 @@ where
         .map_err(ser::Error::Io)
     }
 
+    /// Writes the bytes of `t` after conversion into `self` and then flushes them to the encrypted
+    /// file system.
+    #[inline]
+    fn write_bytes<T, const N: usize>(&mut self, value: T) -> Result<(), ser::Error<F>>
+    where
+        T: IntoBytes<N>,
+    {
+        self.extend_bytes(value);
+        self.flush()
+    }
+
     /// Starts a new sequence, increasing the recursion depth.
     #[inline]
     fn start_sequence(&mut self, len: Option<usize>) -> Result<&mut Self, ser::Error<F>> {
-        self.recursion_depth += 1;
         if let Some(len) = len {
-            self.extend(&(len as u64).to_le_bytes());
+            self.recursion_depth += 1;
+            self.extend_bytes(len as u64);
+            Ok(self)
+        } else {
+            Err(ser::Error::UnsupportedFeature(
+                ser::UnsupportedFeature::UnknownLengthIterators,
+            ))
         }
-        Ok(self)
     }
 
     /// Starts a new `struct` or `tuple`, increasing the recursion depth.
@@ -193,11 +227,11 @@ where
         //
         // ```rust
         // let leading_zeros = ((len - 1) as u32).leading_zeros();
-        // self.extend(&variant_index.to_le_bytes()[leading_zeros as usize..]);
+        // self.extend(&variant_index.into_bytes()[leading_zeros as usize..]);
         // ```
         //
         let _ = len;
-        self.extend(&variant_index.to_le_bytes());
+        self.extend_bytes(variant_index);
         Ok(self)
     }
 
@@ -210,7 +244,7 @@ where
     }
 }
 
-impl<'s, 'f, F> serde::Serializer for &'s mut Serializer<'f, F>
+impl<'f, F> serde::Serializer for &mut Serializer<'f, F>
 where
     F: File,
     F::Error: Debug + Display,
@@ -227,85 +261,72 @@ where
 
     #[inline]
     fn serialize_bool(self, v: bool) -> Result<Self::Ok, Self::Error> {
-        self.push(v as u8);
-        self.flush()
+        self.write_bytes(v as u8)
     }
 
     #[inline]
     fn serialize_i8(self, v: i8) -> Result<Self::Ok, Self::Error> {
-        self.extend(&v.to_le_bytes());
-        self.flush()
+        self.write_bytes(v)
     }
 
     #[inline]
     fn serialize_i16(self, v: i16) -> Result<Self::Ok, Self::Error> {
-        self.extend(&v.to_le_bytes());
-        self.flush()
+        self.write_bytes(v)
     }
 
     #[inline]
     fn serialize_i32(self, v: i32) -> Result<Self::Ok, Self::Error> {
-        self.extend(&v.to_le_bytes());
-        self.flush()
+        self.write_bytes(v)
     }
 
     #[inline]
     fn serialize_i64(self, v: i64) -> Result<Self::Ok, Self::Error> {
-        self.extend(&v.to_le_bytes());
-        self.flush()
+        self.write_bytes(v)
     }
 
     #[inline]
     fn serialize_i128(self, v: i128) -> Result<Self::Ok, Self::Error> {
-        self.extend(&v.to_le_bytes());
-        self.flush()
+        self.write_bytes(v)
     }
 
     #[inline]
     fn serialize_u8(self, v: u8) -> Result<Self::Ok, Self::Error> {
-        self.extend(&v.to_le_bytes());
-        self.flush()
+        self.write_bytes(v)
     }
 
     #[inline]
     fn serialize_u16(self, v: u16) -> Result<Self::Ok, Self::Error> {
-        self.extend(&v.to_le_bytes());
-        self.flush()
+        self.write_bytes(v)
     }
 
     #[inline]
     fn serialize_u32(self, v: u32) -> Result<Self::Ok, Self::Error> {
-        self.extend(&v.to_le_bytes());
-        self.flush()
+        self.write_bytes(v)
     }
 
     #[inline]
     fn serialize_u64(self, v: u64) -> Result<Self::Ok, Self::Error> {
-        self.extend(&v.to_le_bytes());
-        self.flush()
+        self.write_bytes(v)
     }
 
     #[inline]
     fn serialize_u128(self, v: u128) -> Result<Self::Ok, Self::Error> {
-        self.extend(&v.to_le_bytes());
-        self.flush()
+        self.write_bytes(v)
     }
 
     #[inline]
     fn serialize_f32(self, v: f32) -> Result<Self::Ok, Self::Error> {
-        self.extend(&v.to_le_bytes());
-        self.flush()
+        self.write_bytes(v)
     }
 
     #[inline]
     fn serialize_f64(self, v: f64) -> Result<Self::Ok, Self::Error> {
-        self.extend(&v.to_le_bytes());
-        self.flush()
+        self.write_bytes(v)
     }
 
     #[inline]
     fn serialize_char(self, v: char) -> Result<Self::Ok, Self::Error> {
-        (v as u32).serialize(self)
+        self.write_bytes(v)
     }
 
     #[inline]
@@ -315,13 +336,14 @@ where
 
     #[inline]
     fn serialize_bytes(self, v: &[u8]) -> Result<Self::Ok, Self::Error> {
+        self.extend_bytes(v.len() as u64);
         self.extend(v);
         self.flush()
     }
 
     #[inline]
     fn serialize_none(self) -> Result<Self::Ok, Self::Error> {
-        0u8.serialize(self)
+        self.write_bytes(0u8)
     }
 
     #[inline]
@@ -329,7 +351,7 @@ where
     where
         T: Serialize + ?Sized,
     {
-        self.push(1u8);
+        self.extend_bytes(1u8);
         value.serialize(self)
     }
 
@@ -391,6 +413,7 @@ where
 
     #[inline]
     fn serialize_tuple(self, len: usize) -> Result<Self::SerializeTuple, Self::Error> {
+        let _ = len;
         self.start_struct()
     }
 
@@ -449,7 +472,7 @@ where
     }
 }
 
-impl<'s, 'f, F> SerializeSeq for &'s mut Serializer<'f, F>
+impl<'f, F> SerializeSeq for &mut Serializer<'f, F>
 where
     F: File,
     F::Error: Debug + Display,
@@ -471,7 +494,7 @@ where
     }
 }
 
-impl<'s, 'f, F> SerializeTuple for &'s mut Serializer<'f, F>
+impl<'f, F> SerializeTuple for &mut Serializer<'f, F>
 where
     F: File,
     F::Error: Debug + Display,
@@ -493,7 +516,7 @@ where
     }
 }
 
-impl<'s, 'f, F> SerializeTupleStruct for &'s mut Serializer<'f, F>
+impl<'f, F> SerializeTupleStruct for &mut Serializer<'f, F>
 where
     F: File,
     F::Error: Debug + Display,
@@ -515,7 +538,7 @@ where
     }
 }
 
-impl<'s, 'f, F> SerializeTupleVariant for &'s mut Serializer<'f, F>
+impl<'f, F> SerializeTupleVariant for &mut Serializer<'f, F>
 where
     F: File,
     F::Error: Debug + Display,
@@ -537,7 +560,7 @@ where
     }
 }
 
-impl<'s, 'f, F> SerializeMap for &'s mut Serializer<'f, F>
+impl<'f, F> SerializeMap for &mut Serializer<'f, F>
 where
     F: File,
     F::Error: Debug + Display,
@@ -567,7 +590,7 @@ where
     }
 }
 
-impl<'s, 'f, F> SerializeStruct for &'s mut Serializer<'f, F>
+impl<'f, F> SerializeStruct for &mut Serializer<'f, F>
 where
     F: File,
     F::Error: Debug + Display,
@@ -596,7 +619,7 @@ where
     }
 }
 
-impl<'s, 'f, F> SerializeStructVariant for &'s mut Serializer<'f, F>
+impl<'f, F> SerializeStructVariant for &mut Serializer<'f, F>
 where
     F: File,
     F::Error: Debug + Display,
@@ -628,6 +651,20 @@ where
 /// Deserialization Module
 pub mod de {
     use super::*;
+    use alloc::string::FromUtf8Error;
+
+    /// Unsupported Feature
+    #[derive(Clone, Copy, Debug, Display, Eq, Hash, PartialEq)]
+    pub enum UnsupportedFeature {
+        /// Deserialize Any
+        Any,
+
+        /// Deserialize Identifier
+        Identifier,
+
+        /// Deserialize Ignored Any
+        IgnoredAny,
+    }
 
     /// Deserialization Error
     #[derive(derivative::Derivative)]
@@ -636,11 +673,32 @@ pub mod de {
     where
         F: File,
     {
-        /// Deserialization Error
-        Deserialization(String),
-
         /// Encrypted File I/O Error
         Io(F::Error),
+
+        /// Missing Bytes
+        MissingBytes,
+
+        /// Unsupported Feature
+        UnsupportedFeature(UnsupportedFeature),
+
+        /// Invalid Boolean Tag
+        InvalidBoolTag(u8),
+
+        /// Invalid Option Tag
+        InvalidOptionTag(u8),
+
+        /// Invalid UTF-8 Character
+        InvalidCharacter(u32),
+
+        /// Large Length Tag
+        LargeLengthTag(u64),
+
+        /// From UTF-8 Error
+        FromUtf8Error(FromUtf8Error),
+
+        /// Deserialization Error
+        Deserialization(String),
     }
 
     impl<F> Display for Error<F>
@@ -651,8 +709,15 @@ pub mod de {
         #[inline]
         fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
             match self {
-                Self::Deserialization(msg) => write!(f, "Deserialization Error: {}", msg),
                 Self::Io(err) => write!(f, "File I/O Error: {}", err),
+                Self::MissingBytes => write!(f, "Missing Bytes"),
+                Self::UnsupportedFeature(feature) => write!(f, "Unsupported Feature: {}", feature),
+                Self::InvalidBoolTag(tag) => write!(f, "Invalid Bool Tag: {}", tag),
+                Self::InvalidOptionTag(tag) => write!(f, "Invalid Option Tag: {}", tag),
+                Self::InvalidCharacter(integer) => write!(f, "Invalid Character: {}", integer),
+                Self::LargeLengthTag(len) => write!(f, "Large Length Tag: {}", len),
+                Self::FromUtf8Error(err) => write!(f, "From UTF-8 Error: {}", err),
+                Self::Deserialization(msg) => write!(f, "Deserialization Error: {}", msg),
             }
         }
     }
@@ -677,6 +742,18 @@ pub mod de {
         {
             Self::Deserialization(format!("{}", msg))
         }
+    }
+
+    /// Length Access
+    pub struct LengthAccess<'d, 'f, F>
+    where
+        F: File,
+    {
+        /// Known Length
+        pub(super) len: usize,
+
+        /// Deserializer
+        pub(super) deserializer: &'d mut Deserializer<'f, F>,
     }
 }
 
@@ -724,38 +801,55 @@ where
     #[inline]
     fn load_bytes(&mut self, n: usize) -> Result<bool, F::Error> {
         while self.block_data.len() < n {
-            if self.load()? {
-                continue;
-            } else {
+            if !self.load()? {
                 return Ok(self.block_data.len() >= n);
             }
         }
         Ok(true)
     }
 
-    /// Reads an array of bytes of size `N` from the encrypted file system, returning `None` if
-    /// there weren't enough bytes loaded.
+    /// Reads `len` bytes from the encrypted file system and loads them into an owned vector.
     #[inline]
-    fn read_bytes<const N: usize>(&mut self) -> Result<Option<[u8; N]>, F::Error> {
-        if self.load_bytes(N)? {
-            Ok(Some(into_array_unchecked(
-                self.block_data.drain(..N).collect::<Vec<_>>(),
-            )))
+    fn read_exact(&mut self, len: usize) -> Result<Vec<u8>, de::Error<F>> {
+        if self.load_bytes(len).map_err(de::Error::Io)? {
+            Ok(self.block_data.drain(..len).collect::<Vec<_>>())
         } else {
-            Ok(None)
+            Err(de::Error::MissingBytes)
         }
     }
 
-    /// Reads one `u8` from the encrypted file system, returning `None` if the `u8` was missing.
+    /// Reads an array of bytes of size `N` from the encrypted file system.
     #[inline]
-    fn read_u8(&mut self) -> Result<Option<u8>, F::Error> {
-        Ok(self.read_bytes()?.map(u8::from_le_bytes))
+    fn read_array<const N: usize>(&mut self) -> Result<[u8; N], de::Error<F>> {
+        Ok(into_array_unchecked(self.read_exact(N)?))
     }
 
-    /// Reads one `u32` from the encrypted file system, returning `None` if the `u32` was missing.
+    /// Reads one element of the type `T` from the encrypted file system.
     #[inline]
-    fn read_u32(&mut self) -> Result<Option<u32>, F::Error> {
-        Ok(self.read_bytes()?.map(u32::from_le_bytes))
+    fn read_bytes<T, const N: usize>(&mut self) -> Result<T, de::Error<F>>
+    where
+        T: FromBytes<N>,
+    {
+        Ok(T::from_bytes(self.read_array()?))
+    }
+
+    /// Reads a length tag from `self`, trying to fit it into a `usize`.
+    #[inline]
+    fn read_len(&mut self) -> Result<usize, de::Error<F>> {
+        num::u64_as_usize(self.read_bytes()?).map_err(de::Error::LargeLengthTag)
+    }
+
+    /// Reads a byte vector from `self`.
+    #[inline]
+    fn read_byte_buf(&mut self) -> Result<Vec<u8>, de::Error<F>> {
+        let len = self.read_len()?;
+        self.read_exact(len)
+    }
+
+    /// Reads a string from `self`.
+    #[inline]
+    fn read_string(&mut self) -> Result<String, de::Error<F>> {
+        String::from_utf8(self.read_byte_buf()?).map_err(de::Error::FromUtf8Error)
     }
 }
 
@@ -772,9 +866,7 @@ where
         V: Visitor<'de>,
     {
         let _ = visitor;
-        Err(Self::Error::custom(
-            "the Deserializer::deserialize_any method is not supported",
-        ))
+        Err(Self::Error::UnsupportedFeature(de::UnsupportedFeature::Any))
     }
 
     #[inline]
@@ -782,7 +874,11 @@ where
     where
         V: Visitor<'de>,
     {
-        todo!()
+        match self.read_bytes()? {
+            0u8 => visitor.visit_bool(false),
+            1u8 => visitor.visit_bool(true),
+            tag => Err(Self::Error::InvalidBoolTag(tag)),
+        }
     }
 
     #[inline]
@@ -790,7 +886,7 @@ where
     where
         V: Visitor<'de>,
     {
-        todo!()
+        visitor.visit_i8(self.read_bytes()?)
     }
 
     #[inline]
@@ -798,7 +894,7 @@ where
     where
         V: Visitor<'de>,
     {
-        todo!()
+        visitor.visit_i16(self.read_bytes()?)
     }
 
     #[inline]
@@ -806,7 +902,7 @@ where
     where
         V: Visitor<'de>,
     {
-        todo!()
+        visitor.visit_i32(self.read_bytes()?)
     }
 
     #[inline]
@@ -814,7 +910,7 @@ where
     where
         V: Visitor<'de>,
     {
-        todo!()
+        visitor.visit_i64(self.read_bytes()?)
     }
 
     #[inline]
@@ -822,7 +918,7 @@ where
     where
         V: Visitor<'de>,
     {
-        todo!()
+        visitor.visit_i128(self.read_bytes()?)
     }
 
     #[inline]
@@ -830,7 +926,7 @@ where
     where
         V: Visitor<'de>,
     {
-        todo!()
+        visitor.visit_u8(self.read_bytes()?)
     }
 
     #[inline]
@@ -838,7 +934,7 @@ where
     where
         V: Visitor<'de>,
     {
-        todo!()
+        visitor.visit_u16(self.read_bytes()?)
     }
 
     #[inline]
@@ -846,7 +942,7 @@ where
     where
         V: Visitor<'de>,
     {
-        todo!()
+        visitor.visit_u32(self.read_bytes()?)
     }
 
     #[inline]
@@ -854,7 +950,7 @@ where
     where
         V: Visitor<'de>,
     {
-        todo!()
+        visitor.visit_u64(self.read_bytes()?)
     }
 
     #[inline]
@@ -862,7 +958,7 @@ where
     where
         V: Visitor<'de>,
     {
-        todo!()
+        visitor.visit_u128(self.read_bytes()?)
     }
 
     #[inline]
@@ -870,7 +966,7 @@ where
     where
         V: Visitor<'de>,
     {
-        todo!()
+        visitor.visit_f32(self.read_bytes()?)
     }
 
     #[inline]
@@ -878,7 +974,7 @@ where
     where
         V: Visitor<'de>,
     {
-        todo!()
+        visitor.visit_f64(self.read_bytes()?)
     }
 
     #[inline]
@@ -886,7 +982,11 @@ where
     where
         V: Visitor<'de>,
     {
-        todo!()
+        let integer = self.read_bytes()?;
+        match char::from_u32(integer) {
+            Some(c) => visitor.visit_char(c),
+            _ => Err(Self::Error::InvalidCharacter(integer)),
+        }
     }
 
     #[inline]
@@ -894,7 +994,7 @@ where
     where
         V: Visitor<'de>,
     {
-        todo!()
+        visitor.visit_str(&self.read_string()?)
     }
 
     #[inline]
@@ -902,7 +1002,7 @@ where
     where
         V: Visitor<'de>,
     {
-        todo!()
+        visitor.visit_string(self.read_string()?)
     }
 
     #[inline]
@@ -910,7 +1010,7 @@ where
     where
         V: Visitor<'de>,
     {
-        todo!()
+        visitor.visit_bytes(&self.read_byte_buf()?)
     }
 
     #[inline]
@@ -918,7 +1018,7 @@ where
     where
         V: Visitor<'de>,
     {
-        todo!()
+        visitor.visit_byte_buf(self.read_byte_buf()?)
     }
 
     #[inline]
@@ -926,7 +1026,11 @@ where
     where
         V: Visitor<'de>,
     {
-        todo!()
+        match self.read_bytes()? {
+            0u8 => visitor.visit_none(),
+            1u8 => visitor.visit_some(&mut *self),
+            tag => Err(Self::Error::InvalidOptionTag(tag)),
+        }
     }
 
     #[inline]
@@ -960,7 +1064,7 @@ where
         V: Visitor<'de>,
     {
         let _ = name;
-        todo!()
+        visitor.visit_newtype_struct(self)
     }
 
     #[inline]
@@ -968,7 +1072,8 @@ where
     where
         V: Visitor<'de>,
     {
-        todo!()
+        let len = self.read_len()?;
+        self.deserialize_tuple(len, visitor)
     }
 
     #[inline]
@@ -976,7 +1081,10 @@ where
     where
         V: Visitor<'de>,
     {
-        todo!()
+        visitor.visit_seq(de::LengthAccess {
+            len,
+            deserializer: self,
+        })
     }
 
     #[inline]
@@ -990,7 +1098,7 @@ where
         V: Visitor<'de>,
     {
         let _ = name;
-        todo!()
+        self.deserialize_tuple(len, visitor)
     }
 
     #[inline]
@@ -998,7 +1106,10 @@ where
     where
         V: Visitor<'de>,
     {
-        todo!()
+        visitor.visit_map(de::LengthAccess {
+            len: self.read_len()?,
+            deserializer: self,
+        })
     }
 
     #[inline]
@@ -1012,7 +1123,7 @@ where
         V: Visitor<'de>,
     {
         let _ = name;
-        todo!()
+        self.deserialize_tuple(fields.len(), visitor)
     }
 
     #[inline]
@@ -1025,8 +1136,8 @@ where
     where
         V: Visitor<'de>,
     {
-        let _ = name;
-        todo!()
+        let _ = (name, variants);
+        visitor.visit_enum(self)
     }
 
     #[inline]
@@ -1035,8 +1146,8 @@ where
         V: Visitor<'de>,
     {
         let _ = visitor;
-        Err(Self::Error::custom(
-            "the Deserializer::deserialize_identifier method is not supported",
+        Err(Self::Error::UnsupportedFeature(
+            de::UnsupportedFeature::Identifier,
         ))
     }
 
@@ -1046,13 +1157,127 @@ where
         V: Visitor<'de>,
     {
         let _ = visitor;
-        Err(Self::Error::custom(
-            "the Deserializer::deserialize_ignored_any method is not supported",
+        Err(Self::Error::UnsupportedFeature(
+            de::UnsupportedFeature::IgnoredAny,
         ))
     }
 
     #[inline]
     fn is_human_readable(&self) -> bool {
         false
+    }
+}
+
+impl<'d, 'de, 'f, F> SeqAccess<'de> for de::LengthAccess<'d, 'f, F>
+where
+    F: File,
+    F::Error: Debug + Display,
+{
+    type Error = de::Error<F>;
+
+    #[inline]
+    fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>, Self::Error>
+    where
+        T: DeserializeSeed<'de>,
+    {
+        if self.len > 0 {
+            self.len -= 1;
+            Ok(Some(seed.deserialize(&mut *self.deserializer)?))
+        } else {
+            Ok(None)
+        }
+    }
+
+    #[inline]
+    fn size_hint(&self) -> Option<usize> {
+        Some(self.len)
+    }
+}
+
+impl<'d, 'de, 'f, F> MapAccess<'de> for de::LengthAccess<'d, 'f, F>
+where
+    F: File,
+    F::Error: Debug + Display,
+{
+    type Error = de::Error<F>;
+
+    #[inline]
+    fn next_key_seed<K>(&mut self, seed: K) -> Result<Option<K::Value>, Self::Error>
+    where
+        K: DeserializeSeed<'de>,
+    {
+        self.next_element_seed(seed)
+    }
+
+    #[inline]
+    fn next_value_seed<V>(&mut self, seed: V) -> Result<V::Value, Self::Error>
+    where
+        V: DeserializeSeed<'de>,
+    {
+        seed.deserialize(&mut *self.deserializer)
+    }
+
+    #[inline]
+    fn size_hint(&self) -> Option<usize> {
+        Some(self.len)
+    }
+}
+
+impl<'de, 'f, F> EnumAccess<'de> for &mut Deserializer<'f, F>
+where
+    F: File,
+    F::Error: Debug + Display,
+{
+    type Error = de::Error<F>;
+    type Variant = Self;
+
+    #[inline]
+    fn variant_seed<V>(self, seed: V) -> Result<(V::Value, Self::Variant), Self::Error>
+    where
+        V: DeserializeSeed<'de>,
+    {
+        let variant_index: u32 = self.read_bytes()?;
+        Ok((seed.deserialize(variant_index.into_deserializer())?, self))
+    }
+}
+
+impl<'de, 'f, F> VariantAccess<'de> for &mut Deserializer<'f, F>
+where
+    F: File,
+    F::Error: Debug + Display,
+{
+    type Error = de::Error<F>;
+
+    #[inline]
+    fn unit_variant(self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    #[inline]
+    fn newtype_variant_seed<T>(self, seed: T) -> Result<T::Value, Self::Error>
+    where
+        T: DeserializeSeed<'de>,
+    {
+        seed.deserialize(self)
+    }
+
+    #[inline]
+    fn tuple_variant<V>(self, len: usize, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        self.deserialize_tuple(len, visitor)
+    }
+
+    #[inline]
+    fn struct_variant<V>(
+        self,
+        fields: &'static [&'static str],
+        visitor: V,
+    ) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        self.deserialize_tuple(fields.len(), visitor)
     }
 }
