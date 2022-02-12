@@ -23,7 +23,7 @@ use std::io;
 pub fn main() -> io::Result<()> {
     let directory = tempfile::tempdir()?;
     println!("[INFO] Temporary Directory: {:?}", directory);
-    manta_pay::simulation::simulate(10, 10, directory.path());
+    manta_pay::simulation::simulate(10, 100, directory.path());
     directory.close()?;
     Ok(())
 }

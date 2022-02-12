@@ -22,7 +22,7 @@ use manta_crypto::rand::{CryptoRng, RngCore};
 
 #[cfg(feature = "parallel")]
 use {
-    crossbeam::channel::{self, Receiver, Select},
+    crossbeam::channel::{self, Receiver, Select, Sender},
     rayon::Scope,
 };
 
@@ -213,6 +213,53 @@ where
     }
 }
 
+/// Run Iterator Task
+#[cfg(feature = "parallel")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "parallel")))]
+struct RunTask<'s, S, R>
+where
+    S: Simulation,
+    R: 's + CryptoRng + RngCore,
+{
+    /// Underlying Actor Iterator
+    iter: ActorIter<'s, S, R>,
+
+    /// Event Sender
+    sender: Sender<Event<S>>,
+
+    /// Task Queue Sender
+    queue: Sender<Self>,
+}
+
+#[cfg(feature = "parallel")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "parallel")))]
+impl<'s, S, R> RunTask<'s, S, R>
+where
+    S: Simulation,
+    R: 's + CryptoRng + RngCore,
+{
+    /// Builds a new [`RunTask`] from `iter`, `sender`, and `queue`.
+    #[inline]
+    pub fn new(iter: ActorIter<'s, S, R>, sender: Sender<Event<S>>, queue: &Sender<Self>) -> Self {
+        Self {
+            iter,
+            sender,
+            queue: queue.clone(),
+        }
+    }
+
+    /// Sends the next element in the iterator to its receiver, and enqueue `self` onto the task
+    /// queue if sending was successful.
+    #[inline]
+    pub fn send_next(mut self) {
+        if let Some(next) = self.iter.next() {
+            if self.sender.send(next).is_ok() {
+                let _ = self.queue.clone().send(self);
+            }
+        }
+    }
+}
+
 /// Simulation Run Iterator
 #[cfg(feature = "parallel")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "parallel")))]
@@ -240,30 +287,18 @@ where
         R: 's + CryptoRng + RngCore + Send,
     {
         let len = iterators.len();
-        let mut senders = Vec::with_capacity(len);
+        let (queue, listener) = channel::bounded(len);
         let mut receivers = Vec::with_capacity(len);
-        for _ in 0..len {
+        for iter in iterators {
             let (sender, receiver) = channel::unbounded();
-            senders.push(sender);
+            queue
+                .send(RunTask::new(iter, sender, &queue))
+                .expect("This send is guaranteed because we have access to the receiver.");
             receivers.push(receiver);
         }
-        let (task_sender, task_receiver) = channel::unbounded();
-        let mut tasks = iterators.into_iter().zip(senders).collect::<Vec<_>>();
-        scope.spawn(move |scope| loop {
-            for (mut iter, sender) in tasks.drain(..) {
-                let sender = sender.clone();
-                let task_sender = task_sender.clone();
-                scope.spawn(move |_| {
-                    if let Some(next) = iter.next() {
-                        let _ = sender.send(next);
-                        let _ = task_sender.send((iter, sender));
-                    }
-                });
-            }
-            if let Ok(task) = task_receiver.recv() {
-                tasks.push(task);
-            } else {
-                break;
+        scope.spawn(move |scope| {
+            while let Ok(task) = listener.recv() {
+                scope.spawn(|_| task.send_next());
             }
         });
         Self { receivers }
@@ -280,7 +315,11 @@ where
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        let mut drop_indices = Vec::<usize>::with_capacity(self.receivers.len());
+        let len = self.receivers.len();
+        if len == 0 {
+            return None;
+        }
+        let mut drop_indices = Vec::<usize>::with_capacity(len);
         let mut select = Select::new();
         for receiver in &self.receivers {
             select.recv(receiver);
@@ -296,7 +335,14 @@ where
                     }
                     return Some(event);
                 }
-                Err(e) if e.is_disconnected() => drop_indices.push(index),
+                Err(e) if e.is_disconnected() => {
+                    drop_indices.push(index);
+                    select.remove(index);
+                    if drop_indices.len() == len {
+                        self.receivers.clear();
+                        return None;
+                    }
+                }
                 _ => {}
             }
         }

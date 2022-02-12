@@ -46,7 +46,7 @@ use manta_accounting::{
             sim::{ActionSim, Simulator},
             ActionType, Actor, PublicBalanceOracle, Simulation,
         },
-        Wallet,
+        BalanceState, Wallet,
     },
 };
 use manta_crypto::{
@@ -508,6 +508,26 @@ where
     )
 }
 
+/// Measures the public and secret balances for each wallet, summing them all together.
+#[inline]
+fn measure_balances<'w, I>(wallets: I) -> AssetList
+where
+    I: IntoIterator<Item = &'w mut Wallet<Config, LedgerConnection, Signer>>,
+{
+    let mut balances = AssetList::new();
+    for wallet in wallets {
+        wallet.sync().expect("Failed to synchronize wallet.");
+        balances.deposit_all(wallet.ledger().public_balances().unwrap());
+        balances.deposit_all(
+            wallet
+                .assets()
+                .iter()
+                .map(|(id, value)| Asset::new(*id, *value)),
+        );
+    }
+    balances
+}
+
 /// Runs a simple simulation to test that the signer-wallet-ledger connection works.
 #[inline]
 pub fn simulate<P>(actor_count: usize, actor_lifetime: usize, directory: P)
@@ -561,6 +581,9 @@ where
 
     let mut simulator = Simulator::new(ActionSim(Simulation::default()), actors);
 
+    let initial_balances =
+        measure_balances(simulator.actors.iter_mut().map(|actor| &mut actor.wallet));
+
     println!("[INFO] Starting Simulation\n");
 
     rayon::in_place_scope(|scope| {
@@ -576,16 +599,13 @@ where
         }
     });
 
-    let balances = simulator
-        .actors
-        .iter()
-        .map(|actor| {
-            (
-                actor.wallet.ledger().public_balances(),
-                actor.wallet.assets(),
-            )
-        })
-        .collect::<Vec<_>>();
+    println!("\n[INFO] Simulation Ended");
 
-    println!("BALANCES: {:#?}", balances);
+    let final_balances =
+        measure_balances(simulator.actors.iter_mut().map(|actor| &mut actor.wallet));
+
+    assert_eq!(
+        initial_balances, final_balances,
+        "Simulation balance mismatch."
+    );
 }
