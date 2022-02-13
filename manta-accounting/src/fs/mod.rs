@@ -17,7 +17,7 @@
 //! Encrypted Filesystem Primitives
 
 use alloc::{boxed::Box, vec::Vec};
-use core::{cmp, fmt::Debug, hash::Hash};
+use core::{cmp, hash::Hash, marker::PhantomData};
 
 #[cfg(feature = "serde")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "serde")))]
@@ -51,9 +51,13 @@ bitflags::bitflags! {
 }
 
 /// Open Options
-#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+#[derive(derivative::Derivative)]
+#[derivative(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 #[must_use]
-pub struct OpenOptions {
+pub struct OpenOptions<F>
+where
+    F: File,
+{
     /// Read Access
     read: bool,
 
@@ -71,9 +75,15 @@ pub struct OpenOptions {
 
     /// Create New Mode
     create_new: bool,
+
+    /// Type Parameter Marker
+    __: PhantomData<F>,
 }
 
-impl OpenOptions {
+impl<F> OpenOptions<F>
+where
+    F: File,
+{
     /// Builds a new default [`OpenOptions`].
     #[inline]
     pub fn new() -> Self {
@@ -163,9 +173,8 @@ impl OpenOptions {
     /// Opens a file of type `F` at the given `path` using `self` for opening options and `password`
     /// for encryption.
     #[inline]
-    pub fn open<F, P>(&self, path: P, password: &[u8]) -> Result<F, F::Error>
+    pub fn open<P>(&self, path: P, password: &[u8]) -> Result<F, F::Error>
     where
-        F: File,
         P: AsRef<F::Path>,
     {
         F::open(path, password, self)
@@ -173,9 +182,12 @@ impl OpenOptions {
 }
 
 #[cfg(feature = "std")]
-impl From<OpenOptions> for std::fs::OpenOptions {
+impl<F> From<OpenOptions<F>> for std::fs::OpenOptions
+where
+    F: File,
+{
     #[inline]
-    fn from(options: OpenOptions) -> Self {
+    fn from(options: OpenOptions<F>) -> Self {
         let mut result = Self::new();
         result
             .read(options.read)
@@ -252,13 +264,13 @@ impl From<Block> for Vec<u8> {
 /// Encrypted File
 pub trait File: Sized {
     /// Path Type
-    type Path: ?Sized;
+    type Path: AsRef<Self::Path> + ?Sized;
 
     /// Error Type
     type Error;
 
     /// Opens a new file at `path` with `password` and `options`.
-    fn open<P>(path: P, password: &[u8], options: &OpenOptions) -> Result<Self, Self::Error>
+    fn open<P>(path: P, password: &[u8], options: &OpenOptions<Self>) -> Result<Self, Self::Error>
     where
         P: AsRef<Self::Path>;
 
@@ -277,7 +289,7 @@ pub trait File: Sized {
 
     /// Returns a new [`OpenOptions`] object.
     #[inline]
-    fn options() -> OpenOptions {
+    fn options() -> OpenOptions<Self> {
         OpenOptions::new()
     }
 
@@ -296,9 +308,7 @@ pub mod cocoon {
     use super::{Block, OpenOptions};
     use cocoon::{Error as CocoonError, MiniCocoon};
     use core::fmt;
-    use manta_crypto::rand::{Rand, SeedableRng};
     use manta_util::from_variant_impl;
-    use rand_chacha::ChaCha20Rng;
     use std::{fs, io::Error as IoError, path::Path};
 
     /// Cocoon Loading/Saving Error
@@ -338,13 +348,13 @@ pub mod cocoon {
     impl File {
         /// Builds a new [`File`] for encrypted data storage with `password`.
         #[inline]
-        fn new(path: &Path, password: &[u8], options: OpenOptions) -> Result<Self, IoError> {
+        fn new(path: &Path, password: &[u8], options: OpenOptions<Self>) -> Result<Self, IoError> {
             Ok(Self {
                 file: fs::OpenOptions::from(options).open(path)?,
-                cocoon: MiniCocoon::from_password(
-                    password,
-                    &ChaCha20Rng::from_entropy().gen::<_, [u8; 32]>(),
-                ),
+                cocoon: {
+                    // FIXME: Choose a better seed. Should we hash the password for this?
+                    MiniCocoon::from_password(password, &[0; 32])
+                },
             })
         }
     }
@@ -354,7 +364,11 @@ pub mod cocoon {
         type Error = Error;
 
         #[inline]
-        fn open<P>(path: P, password: &[u8], options: &OpenOptions) -> Result<Self, Self::Error>
+        fn open<P>(
+            path: P,
+            password: &[u8],
+            options: &OpenOptions<Self>,
+        ) -> Result<Self, Self::Error>
         where
             P: AsRef<Path>,
         {

@@ -1281,3 +1281,38 @@ where
         self.deserialize_tuple(fields.len(), visitor)
     }
 }
+
+/// Testing Framework
+pub mod test {
+    use super::*;
+    use manta_util::serde::de::DeserializeOwned;
+
+    /// Asserts that the encryption and decryption of `data` at a new file `path` with `password`
+    /// succeed without error, and that the decrypted value matches the initial data.
+    #[inline]
+    pub fn assert_decryption<F, P, T>(path: P, password: &[u8], data: T)
+    where
+        F: File,
+        F::Error: Debug + Display,
+        P: AsRef<F::Path>,
+        T: Debug + DeserializeOwned + PartialEq + Serialize,
+    {
+        let path = path.as_ref();
+        data.serialize(&mut Serializer::new(
+            &mut F::options()
+                .create_new(true)
+                .write(true)
+                .open(&path, password)
+                .expect("Unable to create file for writing."),
+        ))
+        .expect("Unable to serialize and encrypt the data.");
+        let decrypted_data = T::deserialize(&mut Deserializer::new(
+            &mut F::options()
+                .read(true)
+                .open(&path, password)
+                .expect("Unable to open file for reading."),
+        ))
+        .expect("Unable to decrypt and deserialize the data.");
+        assert_eq!(data, decrypted_data, "Data and decrypted data don't match.");
+    }
+}
