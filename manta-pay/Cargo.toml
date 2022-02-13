@@ -33,6 +33,10 @@ name = "generate_parameters"
 required-features = ["groth16", "manta-util/std", "test"]
 
 [[bin]]
+name = "measure"
+required-features = ["groth16"]
+
+[[bin]]
 name = "simulation"
 required-features = ["groth16", "simulation", "tempfile"]
 

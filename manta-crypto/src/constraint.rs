@@ -485,6 +485,11 @@ where
 /// Constraint System Measurement
 pub mod measure {
     use super::*;
+    use alloc::{format, string::String, vec::Vec};
+    use core::{
+        fmt::Display,
+        ops::{Add, AddAssign, Deref, DerefMut},
+    };
 
     #[cfg(feature = "serde")]
     use manta_util::serde::{Deserialize, Serialize};
@@ -512,26 +517,50 @@ pub mod measure {
             None
         }
 
-        /// Returns a [`SizeReport`] with the number of constraints and variables of each kind.
+        /// Returns a [`Size`] with the number of constraints and variables of each kind.
         #[inline]
-        fn measure(&self) -> SizeReport {
-            SizeReport {
+        fn measure(&self) -> Size {
+            Size {
                 constraint_count: self.constraint_count(),
                 constant_count: self.constant_count(),
                 public_variable_count: self.public_variable_count(),
                 secret_variable_count: self.secret_variable_count(),
             }
         }
+
+        /// Performs a measurement after running `f` on `self`, adding the result to `measurement`.
+        #[inline]
+        fn after<T, F>(&mut self, measurement: &mut Size, f: F) -> T
+        where
+            F: FnOnce(&mut Self) -> T,
+        {
+            let value = f(self);
+            *measurement += self.measure();
+            value
+        }
+
+        /// Performs a measurement after running `f` on `self`, ignoring the resulting value,
+        /// returning the measurement only.
+        #[inline]
+        fn after_ignore<T, F>(&mut self, f: F) -> Size
+        where
+            F: FnOnce(&mut Self) -> T,
+        {
+            let mut measurement = Default::default();
+            self.after(&mut measurement, f);
+            measurement
+        }
     }
 
-    /// Constraint System Size Measurement Report
+    /// Constraint System Size Measurement
     #[cfg_attr(
         feature = "serde",
         derive(Deserialize, Serialize),
         serde(crate = "manta_util::serde", deny_unknown_fields)
     )]
     #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
-    pub struct SizeReport {
+    #[must_use]
+    pub struct Size {
         /// Number of Constraints
         pub constraint_count: usize,
 
@@ -543,5 +572,138 @@ pub mod measure {
 
         /// Number of Secret Variables
         pub secret_variable_count: Option<usize>,
+    }
+
+    impl Size {
+        /// Computes the difference between `self` and `rhs`. If any of the measurements in `rhs`
+        /// are greater than those in `self`, this method returns `None`.
+        #[inline]
+        pub fn checked_sub(&self, rhs: Self) -> Option<Self> {
+            Some(Self {
+                constraint_count: self.constraint_count.checked_sub(rhs.constraint_count)?,
+                constant_count: match (self.constant_count, rhs.constant_count) {
+                    (Some(lhs), Some(rhs)) => Some(lhs.checked_sub(rhs)?),
+                    (Some(lhs), None) => Some(lhs),
+                    _ => None,
+                },
+                public_variable_count: match (self.public_variable_count, rhs.public_variable_count)
+                {
+                    (Some(lhs), Some(rhs)) => Some(lhs.checked_sub(rhs)?),
+                    (Some(lhs), None) => Some(lhs),
+                    _ => None,
+                },
+                secret_variable_count: match (self.secret_variable_count, rhs.secret_variable_count)
+                {
+                    (Some(lhs), Some(rhs)) => Some(lhs.checked_sub(rhs)?),
+                    (Some(lhs), None) => Some(lhs),
+                    _ => None,
+                },
+            })
+        }
+    }
+
+    impl Add for Size {
+        type Output = Self;
+
+        #[inline]
+        fn add(mut self, rhs: Self) -> Self::Output {
+            self += rhs;
+            self
+        }
+    }
+
+    impl AddAssign for Size {
+        #[inline]
+        fn add_assign(&mut self, rhs: Self) {
+            self.constraint_count += rhs.constraint_count;
+            match (self.constant_count.as_mut(), rhs.constant_count) {
+                (Some(lhs), Some(rhs)) => *lhs += rhs,
+                (Some(_), None) => {}
+                (None, rhs) => self.constant_count = rhs,
+            }
+            match (
+                self.public_variable_count.as_mut(),
+                rhs.public_variable_count,
+            ) {
+                (Some(lhs), Some(rhs)) => *lhs += rhs,
+                (Some(_), None) => {}
+                (None, rhs) => self.public_variable_count = rhs,
+            }
+            match (
+                self.secret_variable_count.as_mut(),
+                rhs.secret_variable_count,
+            ) {
+                (Some(lhs), Some(rhs)) => *lhs += rhs,
+                (Some(_), None) => {}
+                (None, rhs) => self.secret_variable_count = rhs,
+            }
+        }
+    }
+
+    /// Measurement Instrument
+    pub struct Instrument<'c, COM>
+    where
+        COM: Measure,
+    {
+        /// Base Compiler
+        pub base: &'c mut COM,
+
+        /// Measurements
+        pub measurements: Vec<(String, Size)>,
+    }
+
+    impl<'c, COM> Instrument<'c, COM>
+    where
+        COM: Measure,
+    {
+        /// Builds a new [`Instrument`] for `base`.
+        #[inline]
+        pub fn new(base: &'c mut COM) -> Self {
+            Self {
+                base,
+                measurements: Default::default(),
+            }
+        }
+
+        /// Measures the size of `f` in the base compiler, attaching `label` to the measurement.
+        #[inline]
+        pub fn measure<D, T, F>(&mut self, label: D, f: F) -> T
+        where
+            D: Display,
+            F: FnOnce(&mut COM) -> T,
+        {
+            let before = self.base.measure();
+            let value = f(self.base);
+            self.measurements.push((
+                format!("{}", label),
+                self.base
+                    .measure()
+                    .checked_sub(before)
+                    .expect("Measurements should increase when adding more constraints."),
+            ));
+            value
+        }
+    }
+
+    impl<'c, COM> Deref for Instrument<'c, COM>
+    where
+        COM: Measure,
+    {
+        type Target = COM;
+
+        #[inline]
+        fn deref(&self) -> &Self::Target {
+            self.base
+        }
+    }
+
+    impl<'c, COM> DerefMut for Instrument<'c, COM>
+    where
+        COM: Measure,
+    {
+        #[inline]
+        fn deref_mut(&mut self) -> &mut Self::Target {
+            self.base
+        }
     }
 }

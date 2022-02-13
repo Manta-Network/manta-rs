@@ -547,7 +547,6 @@ impl ProofSystemInput<Fp<ConstraintField>> for ProofSystem {
 impl ProofSystemInput<Group> for ProofSystem {
     #[inline]
     fn extend(input: &mut Self::Input, next: &Group) {
-        // FIXME: Make sure we can type check the coordinate system here.
         input.append(&mut next.0.to_field_elements().unwrap());
     }
 }
