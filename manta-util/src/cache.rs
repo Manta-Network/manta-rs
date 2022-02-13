@@ -16,7 +16,7 @@
 
 //! Caching Utilities
 
-use core::{convert::Infallible, ops::Deref};
+use core::{borrow::Borrow, convert::Infallible};
 
 /// Cached Resource
 pub trait CachedResource<T> {
@@ -52,9 +52,9 @@ pub trait CachedResource<T> {
 /// Cached Resource Error Type
 pub type CachedResourceError<T, R> = <R as CachedResource<T>>::Error;
 
-impl<T, D> CachedResource<T> for D
+impl<T, B> CachedResource<T> for B
 where
-    D: Deref<Target = T>,
+    B: Borrow<T>,
 {
     type ReadingKey = ();
     type Error = Infallible;
@@ -67,7 +67,7 @@ where
     #[inline]
     fn read(&self, reading_key: Self::ReadingKey) -> &T {
         let _ = reading_key;
-        self
+        self.borrow()
     }
 
     #[inline]

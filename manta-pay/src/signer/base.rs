@@ -17,7 +17,7 @@
 //! Manta Pay Signer Configuration
 
 use crate::{
-    config::{Bls12_381_Edwards, Config, MerkleTreeConfiguration, SecretKey},
+    config::{Bls12_381_Edwards, Config, MerkleTreeConfiguration, MultiProvingContext, SecretKey},
     crypto::constraint::arkworks::Fp,
     key::TestnetKeySecret,
 };
@@ -63,7 +63,8 @@ pub type UtxoSet = merkle_tree::forest::TreeArrayMerkleForest<
 
 /// Proving Context Cache
 pub mod cache {
-    use crate::config::{MultiProvingContext, ProvingContext};
+    use super::*;
+    use crate::config::ProvingContext;
     use core::marker::PhantomData;
     use manta_util::{
         cache::CachedResource,
@@ -215,7 +216,7 @@ impl manta_accounting::wallet::signer::Configuration for Config {
         key::Map<TestnetKeySecret, HierarchicalKeyDerivationFunction>;
     type UtxoSet = UtxoSet;
     type AssetMap = HashAssetMap<AssetMapKey<Self>>;
-    type ProvingContextCache = cache::OnDiskMultiProvingContext;
+    type ProvingContextCache = MultiProvingContext;
     type Rng = rand_chacha::ChaCha20Rng;
 }
 

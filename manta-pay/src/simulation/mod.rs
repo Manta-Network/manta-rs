@@ -22,10 +22,10 @@
 
 use crate::{
     config::{
-        Config, EncryptedNote, FullParameters, MerkleTreeConfiguration, MultiVerifyingContext,
-        ProofSystem, TransferPost, Utxo, UtxoSetModel, VoidNumber,
+        Config, EncryptedNote, FullParameters, MerkleTreeConfiguration, MultiProvingContext,
+        MultiVerifyingContext, ProofSystem, TransferPost, Utxo, UtxoSetModel, VoidNumber,
     },
-    signer::base::{cache::OnDiskMultiProvingContext, Signer, UtxoSet},
+    signer::base::{Signer, UtxoSet},
 };
 use alloc::{sync::Arc, vec::Vec};
 use core::convert::Infallible;
@@ -61,10 +61,7 @@ use manta_crypto::{
 use manta_util::into_array_unchecked;
 use parking_lot::RwLock;
 use rand_chacha::ChaCha20Rng;
-use std::{
-    collections::{HashMap, HashSet},
-    path::Path,
-};
+use std::collections::{HashMap, HashSet};
 
 /// Merkle Forest Index
 pub type MerkleForestIndex = <MerkleTreeConfiguration as Configuration>::Index;
@@ -488,7 +485,7 @@ impl PublicBalanceOracle for LedgerConnection {
 pub fn sample_wallet<R>(
     account: AccountId,
     ledger: &SharedLedger,
-    cache: &OnDiskMultiProvingContext,
+    cache: &MultiProvingContext,
     parameters: &transfer::Parameters<Config>,
     utxo_set_model: &UtxoSetModel,
     rng: &mut R,
@@ -530,10 +527,7 @@ where
 
 /// Runs a simple simulation to test that the signer-wallet-ledger connection works.
 #[inline]
-pub fn simulate<P>(actor_count: usize, actor_lifetime: usize, directory: P)
-where
-    P: AsRef<Path>,
-{
+pub fn simulate(actor_count: usize, actor_lifetime: usize) {
     let mut rng = ChaCha20Rng::from_entropy();
     let parameters = rng.gen();
     let utxo_set_model = rng.gen();
@@ -544,11 +538,6 @@ where
         &mut rng,
     )
     .expect("Failed to generate contexts.");
-
-    let cache = OnDiskMultiProvingContext::new(directory);
-    cache
-        .save(proving_context)
-        .expect("Unable to save proving context to disk.");
 
     let mut ledger = Ledger::new(utxo_set_model.clone(), verifying_context);
 
@@ -568,7 +557,7 @@ where
                 sample_wallet(
                     AccountId(i as u64),
                     &ledger,
-                    &cache,
+                    &proving_context,
                     &parameters,
                     &utxo_set_model,
                     &mut rng,

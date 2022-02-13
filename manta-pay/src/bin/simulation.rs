@@ -16,14 +16,11 @@
 
 //! Manta Pay Simulation
 
-use std::io;
+// TODO: Add CLI interface and configuration for simulation parameters. See the old simulation code
+//       `test/simulation/mod.rs` for more information.
 
 /// Runs the Manta Pay simulation.
 #[inline]
-pub fn main() -> io::Result<()> {
-    let directory = tempfile::tempdir()?;
-    println!("[INFO] Temporary Directory: {:?}", directory);
-    manta_pay::simulation::simulate(10, 100, directory.path());
-    directory.close()?;
-    Ok(())
+pub fn main() {
+    manta_pay::simulation::simulate(10, 100);
 }
