@@ -18,7 +18,6 @@
 
 // TODO: Report a more meaningful error on `push` failure. In some way, it must match the
 //       `TransferPostError` variants.
-// TODO: Move to a streaming protocol for `Connection::pull`.
 
 use crate::transfer::{Configuration, EncryptedNote, TransferPost, Utxo, VoidNumber};
 use alloc::vec::Vec;
@@ -90,7 +89,17 @@ where
     C: Configuration,
     L: Connection<C> + ?Sized,
 {
-    /// Current Ledger Checkpoint
+    /// Pull Continuation Flag
+    ///
+    /// The `should_continue` flag is set to `true` if the client should request more data from the
+    /// ledger to finish the pull.
+    pub should_continue: bool,
+
+    /// Ledger Checkpoint
+    ///
+    /// If the `should_continue` flag is set to `true` then `checkpoint` is the next
+    /// [`Checkpoint`](Connection::Checkpoint) to request data from the ledger. Otherwise, it
+    /// represents the current ledger state.
     pub checkpoint: L::Checkpoint,
 
     /// Ledger Receiver Chunk
@@ -107,5 +116,8 @@ where
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct PushResponse {
     /// Transaction Success Flag
+    ///
+    /// The `success` flag is set to `true` if the ledger accepted the vector of [`TransferPost`]
+    /// and the ledger has been updated to the new state.
     pub success: bool,
 }

@@ -424,6 +424,7 @@ impl ledger::Connection<Config> for LedgerConnection {
             .copied()
             .collect();
         Ok(PullResponse {
+            should_continue: false,
             checkpoint: Checkpoint::new(
                 into_array_unchecked(
                     ledger

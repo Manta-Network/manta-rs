@@ -33,6 +33,7 @@ pub mod codec;
 pub mod convert;
 pub mod iter;
 pub mod num;
+pub mod ops;
 pub mod persistence;
 pub mod pointer;
 

@@ -35,6 +35,7 @@ use alloc::{
     vec::Vec,
 };
 use core::{fmt::Debug, marker::PhantomData};
+use manta_util::ops::ControlFlow;
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
@@ -291,13 +292,23 @@ where
     }
 
     /// Performs full wallet recovery.
+    ///
+    /// # Failure Conditions
+    ///
+    /// This method returns an element of type [`Error`] on failure, which can result from any
+    /// number of synchronization issues between the wallet, the ledger, and the signer. See the
+    /// [`InconsistencyError`] type for more information on the kinds of errors that can occur and
+    /// how to resolve them.
     #[inline]
-    pub fn recover(&mut self) {
-        // TODO: Can we just call `sync` with some extra flag?
-        todo!()
+    pub fn recover(&mut self) -> Result<(), Error<C, L, S>> {
+        self.reset();
+        while self.sync_with(true)?.is_continue() {}
+        Ok(())
     }
 
-    /// Pulls data from the `ledger`, synchronizing the wallet and balance state.
+    /// Pulls data from the ledger, synchronizing the wallet and balance state. This method loops
+    /// continuously calling [`sync_partial`](Self::sync_partial) until all the ledger data has
+    /// arrived at and has been synchronized with the wallet.
     ///
     /// # Failure Conditions
     ///
@@ -307,7 +318,30 @@ where
     /// how to resolve them.
     #[inline]
     pub fn sync(&mut self) -> Result<(), Error<C, L, S>> {
+        while self.sync_partial()?.is_continue() {}
+        Ok(())
+    }
+
+    /// Pulls data from the ledger, synchronizing the wallet and balance state. This method returns
+    /// a [`ControlFlow`] for matching against to determine if the wallet requires more
+    /// synchronization.
+    ///
+    /// # Failure Conditions
+    ///
+    /// This method returns an element of type [`Error`] on failure, which can result from any
+    /// number of synchronization issues between the wallet, the ledger, and the signer. See the
+    /// [`InconsistencyError`] type for more information on the kinds of errors that can occur and
+    /// how to resolve them.
+    #[inline]
+    pub fn sync_partial(&mut self) -> Result<ControlFlow, Error<C, L, S>> {
+        self.sync_with(false)
+    }
+
+    /// Pulls data from the ledger, synchronizing the wallet and balance state.
+    #[inline]
+    fn sync_with(&mut self, with_recovery: bool) -> Result<ControlFlow, Error<C, L, S>> {
         let PullResponse {
+            should_continue,
             checkpoint,
             receivers,
             senders,
@@ -321,6 +355,7 @@ where
         match self
             .signer
             .sync(SyncRequest {
+                with_recovery,
                 starting_index: self.checkpoint.receiver_index(),
                 inserts: receivers.into_iter().collect(),
                 removes: senders.into_iter().collect(),
@@ -355,7 +390,7 @@ where
             }
         }
         self.checkpoint = checkpoint;
-        Ok(())
+        Ok(ControlFlow::should_continue(should_continue))
     }
 
     /// Checks if `transaction` can be executed on the balance state of `self`, returning the

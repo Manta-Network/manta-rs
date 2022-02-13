@@ -16,8 +16,6 @@
 
 //! Wallet Signer
 
-// FIXME: Add wallet recovery i.e. remove the assumption that a new signer represents a completely
-//        new derived secret key generator.
 // TODO:  Should have a mode on the signer where we return a generic error which reveals no detail
 //        about what went wrong during signing. The kind of error returned from a signing could
 //        reveal information about the internal state (privacy leak, not a secrecy leak).
@@ -57,7 +55,7 @@ use manta_util::{
 };
 
 #[cfg(feature = "serde")]
-use manta_util::serde::{de::DeserializeOwned, Deserialize, Serialize};
+use manta_util::serde::{Deserialize, Serialize};
 
 #[cfg(all(feature = "fs", feature = "serde"))]
 use {
@@ -66,12 +64,16 @@ use {
         File,
     },
     core::fmt::Display,
+    manta_util::serde::de::DeserializeOwned,
 };
 
 #[cfg(all(feature = "fs", feature = "serde"))]
 #[cfg_attr(doc_cfg, doc(cfg(all(feature = "fs", feature = "serde"))))]
 #[doc(inline)]
 pub use crate::fs::serde::{de::Error as LoadError, ser::Error as SaveError};
+
+/// Signer Recovery Gap Limit
+pub const GAP_LIMIT: KeyIndex = KeyIndex::new(20);
 
 /// Signer Connection
 pub trait Connection<C>
@@ -137,6 +139,12 @@ pub struct SyncRequest<C>
 where
     C: transfer::Configuration,
 {
+    /// Recovery Flag
+    ///
+    /// If `with_recovery` is set to `true`, the [`GAP_LIMIT`] is used during sync to perform a full
+    /// recovery.
+    pub with_recovery: bool,
+
     /// Starting Index
     pub starting_index: usize,
 
@@ -474,6 +482,7 @@ where
     fn insert_next_item(
         &mut self,
         parameters: &Parameters<C>,
+        gap_limit: KeyIndex,
         utxo: Utxo<C>,
         encrypted_note: EncryptedNote<C>,
         void_numbers: &mut Vec<VoidNumber<C>>,
@@ -491,7 +500,7 @@ where
         }) = self
             .accounts
             .get_default()
-            .find_index(|k| finder.decrypt(&parameters.key_agreement, k))
+            .find_index_with_gap(gap_limit, |k| finder.decrypt(&parameters.key_agreement, k))
         {
             if let Some(void_number) = C::check_full_asset(
                 parameters,
@@ -553,6 +562,7 @@ where
     fn sync_with<I>(
         &mut self,
         parameters: &Parameters<C>,
+        gap_limit: KeyIndex,
         inserts: I,
         mut void_numbers: Vec<VoidNumber<C>>,
         is_partial: bool,
@@ -565,6 +575,7 @@ where
         for (utxo, encrypted_note) in inserts {
             self.insert_next_item(
                 parameters,
+                gap_limit,
                 utxo,
                 encrypted_note,
                 &mut void_numbers,
@@ -971,6 +982,7 @@ where
     #[inline]
     pub fn sync<I, R>(
         &mut self,
+        with_recovery: bool,
         starting_index: usize,
         inserts: I,
         removes: R,
@@ -990,6 +1002,7 @@ where
             Some(diff) => {
                 let result = self.state.sync_with(
                     &self.parameters.parameters,
+                    with_recovery.then(|| GAP_LIMIT).unwrap_or_default(),
                     inserts.into_iter().skip(diff),
                     removes.into_iter().collect(),
                     diff == 0,
@@ -1087,6 +1100,7 @@ where
     /// Returns public receiving keys according to the `request`.
     #[inline]
     pub fn receiving_keys(&mut self, request: ReceivingKeyRequest) -> Vec<ReceivingKey<C>> {
+        // FIXME: Enforce that more than `GAP_LIMIT`-many keys cannot be generated.
         match request {
             ReceivingKeyRequest::Get { index } => self
                 .state
@@ -1125,7 +1139,12 @@ where
         &mut self,
         request: SyncRequest<C>,
     ) -> Result<Result<SyncResponse, SyncError>, Self::Error> {
-        Ok(self.sync(request.starting_index, request.inserts, request.removes))
+        Ok(self.sync(
+            request.with_recovery,
+            request.starting_index,
+            request.inserts,
+            request.removes,
+        ))
     }
 
     #[inline]
