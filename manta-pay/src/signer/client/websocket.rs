@@ -19,8 +19,12 @@
 use crate::config::Config;
 use manta_accounting::{
     transfer::{canonical::Transaction, ReceivingKey},
-    wallet::signer::{
-        self, ReceivingKeyRequest, SignError, SignResponse, SyncError, SyncRequest, SyncResponse,
+    wallet::{
+        self,
+        signer::{
+            self, ReceivingKeyRequest, SignError, SignResponse, SyncError, SyncRequest,
+            SyncResponse,
+        },
     },
 };
 use manta_util::{
@@ -65,6 +69,9 @@ pub struct Request<R> {
     /// Request Body
     pub request: R,
 }
+
+/// Wallet Associated to [`Client`]
+pub type Wallet<L> = wallet::Wallet<Config, L, Client>;
 
 /// WebSocket Client
 pub struct Client(tungstenite::WebSocket<MaybeTlsStream<TcpStream>>);

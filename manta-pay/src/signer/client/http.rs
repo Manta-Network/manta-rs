@@ -19,8 +19,12 @@
 use crate::config::Config;
 use manta_accounting::{
     transfer::{canonical::Transaction, ReceivingKey},
-    wallet::signer::{
-        self, ReceivingKeyRequest, SignError, SignResponse, SyncError, SyncRequest, SyncResponse,
+    wallet::{
+        self,
+        signer::{
+            self, ReceivingKeyRequest, SignError, SignResponse, SyncError, SyncRequest,
+            SyncResponse,
+        },
     },
 };
 use manta_util::serde::Serialize;
@@ -28,6 +32,9 @@ use reqwest::{
     blocking::{Client as BaseClient, Response},
     Error, IntoUrl, Method, Url,
 };
+
+/// Wallet Associated to [`Client`]
+pub type Wallet<L> = wallet::Wallet<Config, L, Client>;
 
 /// HTTP Client
 pub struct Client {

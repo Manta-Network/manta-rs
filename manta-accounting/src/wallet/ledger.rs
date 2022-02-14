@@ -23,6 +23,9 @@ use crate::transfer::{Configuration, EncryptedNote, TransferPost, Utxo, VoidNumb
 use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash};
 
+#[cfg(feature = "serde")]
+use manta_util::serde::{Deserialize, Serialize};
+
 /// Ledger Checkpoint
 pub trait Checkpoint: Default + PartialOrd {
     /// Returns the index into the receiver set for the ledger.
@@ -72,6 +75,26 @@ pub type PushResult<C, L> = Result<PushResponse, <L as Connection<C>>::Error>;
 ///
 /// This `struct` is created by the [`pull`](Connection::pull) method on [`Connection`].
 /// See its documentation for more.
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = r"
+                L::Checkpoint: Deserialize<'de>,
+                L::ReceiverChunk: Deserialize<'de>,
+                L::SenderChunk: Deserialize<'de>
+            ",
+            serialize = r"
+                L::Checkpoint: Serialize,
+                L::ReceiverChunk: Serialize,
+                L::SenderChunk: Serialize
+            ",
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "L::Checkpoint: Clone, L::ReceiverChunk: Clone, L::SenderChunk: Clone"),
@@ -113,6 +136,11 @@ where
 ///
 /// This `struct` is created by the [`push`](Connection::push) method on [`Connection`].
 /// See its documentation for more.
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct PushResponse {
     /// Transaction Success Flag
