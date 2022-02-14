@@ -22,5 +22,5 @@
 /// Runs the Manta Pay simulation.
 #[inline]
 pub fn main() {
-    manta_pay::simulation::simulate(10, 100);
+    manta_pay::simulation::simulate(10, 10);
 }

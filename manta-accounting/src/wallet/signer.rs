@@ -72,9 +72,6 @@ use {
 #[doc(inline)]
 pub use crate::fs::serde::{de::Error as LoadError, ser::Error as SaveError};
 
-/// Signer Recovery Gap Limit
-pub const GAP_LIMIT: KeyIndex = KeyIndex::new(20);
-
 /// Signer Connection
 pub trait Connection<C>
 where
@@ -143,6 +140,8 @@ where
     ///
     /// If `with_recovery` is set to `true`, the [`GAP_LIMIT`] is used during sync to perform a full
     /// recovery.
+    ///
+    /// [`GAP_LIMIT`]: HierarchicalKeyDerivationScheme::GAP_LIMIT
     pub with_recovery: bool,
 
     /// Starting Index
@@ -315,7 +314,8 @@ pub enum ReceivingKeyRequest {
     /// New Keys
     ///
     /// Requests `count`-many new keys from the hierarchical key derivation scheme. The signer
-    /// should always respond with exactly `count`-many keys.
+    /// should always respond with at most `count`-many keys. If there are fewer, this is because,
+    /// adding such keys would exceed the [`GAP_LIMIT`](HierarchicalKeyDerivationScheme::GAP_LIMIT).
     New {
         /// Number of New Keys to Generate
         count: usize,
@@ -482,7 +482,7 @@ where
     fn insert_next_item(
         &mut self,
         parameters: &Parameters<C>,
-        gap_limit: KeyIndex,
+        with_recovery: bool,
         utxo: Utxo<C>,
         encrypted_note: EncryptedNote<C>,
         void_numbers: &mut Vec<VoidNumber<C>>,
@@ -499,8 +499,10 @@ where
                 },
         }) = self
             .accounts
-            .get_default()
-            .find_index_with_gap(gap_limit, |k| finder.decrypt(&parameters.key_agreement, k))
+            .get_mut_default()
+            .find_index_with_maybe_gap(with_recovery, |k| {
+                finder.decrypt(&parameters.key_agreement, k)
+            })
         {
             if let Some(void_number) = C::check_full_asset(
                 parameters,
@@ -562,7 +564,7 @@ where
     fn sync_with<I>(
         &mut self,
         parameters: &Parameters<C>,
-        gap_limit: KeyIndex,
+        with_recovery: bool,
         inserts: I,
         mut void_numbers: Vec<VoidNumber<C>>,
         is_partial: bool,
@@ -575,7 +577,7 @@ where
         for (utxo, encrypted_note) in inserts {
             self.insert_next_item(
                 parameters,
-                gap_limit,
+                with_recovery,
                 utxo,
                 encrypted_note,
                 &mut void_numbers,
@@ -1002,7 +1004,7 @@ where
             Some(diff) => {
                 let result = self.state.sync_with(
                     &self.parameters.parameters,
-                    with_recovery.then(|| GAP_LIMIT).unwrap_or_default(),
+                    with_recovery,
                     inserts.into_iter().skip(diff),
                     removes.into_iter().collect(),
                     diff == 0,
@@ -1100,7 +1102,6 @@ where
     /// Returns public receiving keys according to the `request`.
     #[inline]
     pub fn receiving_keys(&mut self, request: ReceivingKeyRequest) -> Vec<ReceivingKey<C>> {
-        // FIXME: Enforce that more than `GAP_LIMIT`-many keys cannot be generated.
         match request {
             ReceivingKeyRequest::Get { index } => self
                 .state

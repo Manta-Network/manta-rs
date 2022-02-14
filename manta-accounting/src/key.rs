@@ -122,6 +122,9 @@ pub enum Kind {
 
 /// Hierarchical Key Derivation Scheme
 pub trait HierarchicalKeyDerivationScheme {
+    /// [`KeyIndex`] Gap Limit
+    const GAP_LIMIT: IndexType;
+
     /// Secret Key Type
     type SecretKey;
 
@@ -164,6 +167,8 @@ impl<H> HierarchicalKeyDerivationScheme for &H
 where
     H: HierarchicalKeyDerivationScheme + ?Sized,
 {
+    const GAP_LIMIT: IndexType = H::GAP_LIMIT;
+
     type SecretKey = H::SecretKey;
 
     #[inline]
@@ -222,6 +227,8 @@ where
     H: HierarchicalKeyDerivationScheme,
     K: KeyDerivationFunction<Key = H::SecretKey>,
 {
+    const GAP_LIMIT: IndexType = H::GAP_LIMIT;
+
     type SecretKey = K::Output;
 
     #[inline]
@@ -295,23 +302,23 @@ where
     keys: &'h H,
 
     /// Account Index
-    account: AccountIndex,
+    index: AccountIndex,
 
-    /// Maximum Index
-    max_index: KeyIndex,
+    /// Account Information
+    account: Account,
 }
 
 impl<'h, H> AccountKeys<'h, H>
 where
     H: HierarchicalKeyDerivationScheme + ?Sized,
 {
-    /// Builds a new [`AccountKeys`] from `keys`, `account`, and `max_index`.
+    /// Builds a new [`AccountKeys`] from `keys`, `index`, and `account`.
     #[inline]
-    fn new(keys: &'h H, account: AccountIndex, max_index: KeyIndex) -> Self {
+    fn new(keys: &'h H, index: AccountIndex, account: Account) -> Self {
         Self {
             keys,
+            index,
             account,
-            max_index,
         }
     }
 
@@ -321,13 +328,13 @@ where
     where
         F: FnOnce(&Self, KeyIndex) -> T,
     {
-        (index <= self.max_index).then(|| f(self, index))
+        (index <= self.account.maximum_index).then(|| f(self, index))
     }
 
     /// Derives the spend key for this account at `index` without performing bounds checks.
     #[inline]
     fn derive_spend(&self, index: KeyIndex) -> H::SecretKey {
-        self.keys.derive_spend(self.account, index)
+        self.keys.derive_spend(self.index, index)
     }
 
     /// Returns the default spend key for this account.
@@ -345,7 +352,7 @@ where
     /// Derives the view key for this account at `index` without performing bounds checks.
     #[inline]
     fn derive_view(&self, index: KeyIndex) -> H::SecretKey {
-        self.keys.derive_view(self.account, index)
+        self.keys.derive_view(self.index, index)
     }
 
     /// Returns the default view key for this account.
@@ -363,7 +370,119 @@ where
     /// Derives the secret key pair for this account at `index` without performing bounds checks.
     #[inline]
     fn derive_pair(&self, index: KeyIndex) -> SecretKeyPair<H> {
-        self.keys.derive_pair(self.account, index)
+        self.keys.derive_pair(self.index, index)
+    }
+
+    /// Returns the default secret key pair for this account.
+    #[inline]
+    pub fn default_keypair(&self) -> SecretKeyPair<H> {
+        self.derive_pair(Default::default())
+    }
+
+    /// Returns the key pair for this account at the `spend` and `view` indices, if those indices
+    /// do not exceed the maximum indices.
+    #[inline]
+    pub fn keypair(&self, index: KeyIndex) -> Option<SecretKeyPair<H>> {
+        self.with_bounds_check(index, Self::derive_pair)
+    }
+
+    /// Returns an iterator over all the key pairs associated to `self`.
+    #[inline]
+    pub fn keypairs(&self) -> impl '_ + Iterator<Item = SecretKeyPair<H>> {
+        let mut index = KeyIndex::default();
+        iter::from_fn(move || {
+            let next = self.keypair(index);
+            index.increment();
+            next
+        })
+    }
+}
+
+/// Account Keys with Mutable Access to the Account Table
+#[derive(derivative::Derivative)]
+#[derivative(
+    Debug(bound = "H: Debug"),
+    Eq(bound = "H: Eq"),
+    Hash(bound = "H: Hash"),
+    PartialEq(bound = "H: PartialEq")
+)]
+pub struct AccountKeysMut<'h, H>
+where
+    H: HierarchicalKeyDerivationScheme + ?Sized,
+{
+    /// Hierarchical Key Derivation Scheme
+    keys: &'h H,
+
+    /// Account Index
+    index: AccountIndex,
+
+    /// Account Information
+    account: &'h mut Account,
+}
+
+impl<'h, H> AccountKeysMut<'h, H>
+where
+    H: HierarchicalKeyDerivationScheme + ?Sized,
+{
+    /// Builds a new [`AccountKeysMut`] from `keys`, `index`, and `account`.
+    #[inline]
+    fn new(keys: &'h H, index: AccountIndex, account: &'h mut Account) -> Self {
+        Self {
+            keys,
+            index,
+            account,
+        }
+    }
+
+    /// Performs the bounds check on `index` and then runs `f`.
+    #[inline]
+    fn with_bounds_check<T, F>(&self, index: KeyIndex, f: F) -> Option<T>
+    where
+        F: FnOnce(&Self, KeyIndex) -> T,
+    {
+        (index <= self.account.maximum_index).then(|| f(self, index))
+    }
+
+    /// Derives the spend key for this account at `index` without performing bounds checks.
+    #[inline]
+    fn derive_spend(&self, index: KeyIndex) -> H::SecretKey {
+        self.keys.derive_spend(self.index, index)
+    }
+
+    /// Returns the default spend key for this account.
+    #[inline]
+    pub fn default_spend_key(&self) -> H::SecretKey {
+        self.derive_spend(Default::default())
+    }
+
+    /// Returns the spend key for this account at `index`, if it does not exceed the maximum index.
+    #[inline]
+    pub fn spend_key(&self, index: KeyIndex) -> Option<H::SecretKey> {
+        self.with_bounds_check(index, Self::derive_spend)
+    }
+
+    /// Derives the view key for this account at `index` without performing bounds checks.
+    #[inline]
+    fn derive_view(&self, index: KeyIndex) -> H::SecretKey {
+        self.keys.derive_view(self.index, index)
+    }
+
+    /// Returns the default view key for this account.
+    #[inline]
+    pub fn default_view_key(&self) -> H::SecretKey {
+        self.derive_view(Default::default())
+    }
+
+    /// Returns the view key for this account at `index`, if it does not exceed the maximum index.
+    #[inline]
+    pub fn view_key(&self, index: KeyIndex) -> Option<H::SecretKey> {
+        self.with_bounds_check(index, Self::derive_view)
+    }
+
+    /// Derives the secret key pair for this account at `index` without performing bounds checks.
+    #[inline]
+    fn derive_pair(&self, index: KeyIndex) -> SecretKeyPair<H> {
+        self.keys.derive_pair(self.index, index)
     }
 
     /// Returns the default secret key pair for this account.
@@ -394,7 +513,7 @@ where
     /// it's key index and key attached, or returns `None` if every application of `f` returned
     /// `None`.
     #[inline]
-    pub fn find_index<T, F>(&self, mut f: F) -> Option<ViewKeySelection<H, T>>
+    pub fn find_index<T, F>(&mut self, mut f: F) -> Option<ViewKeySelection<H, T>>
     where
         F: FnMut(&H::SecretKey) -> Option<T>,
     {
@@ -402,6 +521,7 @@ where
         loop {
             let view_key = self.view_key(index)?;
             if let Some(item) = f(&view_key) {
+                self.account.last_used_index = cmp::max(self.account.last_used_index, index);
                 return Some(ViewKeySelection {
                     index,
                     keypair: SecretKeyPair::new(self.derive_spend(index), view_key),
@@ -418,29 +538,46 @@ where
     ///
     /// # Gap Limit
     ///
-    /// This method, extends the current maximum index by `gap`-many indices while searching
+    /// This method extends the current maximum index by [`GAP_LIMIT`]-many indices while searching
     /// and then sets the new maximum to the previous maximum or the located index, whichever is
     /// larger.
+    ///
+    /// [`GAP_LIMIT`]: HierarchicalKeyDerivationScheme::GAP_LIMIT
     #[inline]
-    pub fn find_index_with_gap<T, F>(
+    pub fn find_index_with_gap<T, F>(&mut self, f: F) -> Option<ViewKeySelection<H, T>>
+    where
+        F: FnMut(&H::SecretKey) -> Option<T>,
+    {
+        let previous_maximum = self.account.maximum_index;
+        self.account.maximum_index.index += H::GAP_LIMIT;
+        match self.find_index(f) {
+            Some(result) => {
+                self.account.maximum_index = cmp::max(previous_maximum, result.index);
+                Some(result)
+            }
+            _ => {
+                self.account.maximum_index = previous_maximum;
+                None
+            }
+        }
+    }
+
+    /// Runs one of the index search algorithms depending on the value of `use_gap_limit`, where
+    /// [`find_index_with_gap`](Self::find_index_with_gap) is used in the case that `use_gap_limit`
+    /// is `true`, and [`find_index`](Self::find_index) is used otherwise.
+    #[inline]
+    pub fn find_index_with_maybe_gap<T, F>(
         &mut self,
-        gap: KeyIndex,
+        use_gap_limit: bool,
         f: F,
     ) -> Option<ViewKeySelection<H, T>>
     where
         F: FnMut(&H::SecretKey) -> Option<T>,
     {
-        let previous_maximum = self.max_index;
-        self.max_index.index += gap.index;
-        match self.find_index(f) {
-            Some(result) => {
-                self.max_index = cmp::max(previous_maximum, result.index);
-                Some(result)
-            }
-            _ => {
-                self.max_index = previous_maximum;
-                None
-            }
+        if use_gap_limit {
+            self.find_index_with_gap(f)
+        } else {
+            self.find_index(f)
         }
     }
 }
@@ -460,6 +597,18 @@ where
     pub item: T,
 }
 
+/// Account
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub struct Account {
+    /// Last Used Index
+    ///
+    /// This index is used to enforce limits when generating new keys beyond the `maximum_index`.
+    pub last_used_index: KeyIndex,
+
+    /// Maximum Index
+    pub maximum_index: KeyIndex,
+}
+
 /// Account Map Trait
 pub trait AccountMap {
     /// Builds a new [`AccountMap`] with a starting account with the default maximum index.
@@ -468,19 +617,18 @@ pub trait AccountMap {
     /// Returns the last account index stored in the map.
     fn last_account(&self) -> AccountIndex;
 
-    /// Returns the maximum key index for `account`, if it exists.
-    fn max_index(&self, account: AccountIndex) -> Option<KeyIndex>;
-
     /// Adds a new account to the map, returning the new account index.
     fn create_account(&mut self) -> AccountIndex;
 
-    /// Increments the maximum key index for `account`, if it exists, returning the new maximum
-    /// index.
-    fn increment_index(&mut self, account: AccountIndex) -> Option<KeyIndex>;
+    /// Returns the [`Account`] associated to `account`.
+    fn get(&self, account: AccountIndex) -> Option<Account>;
+
+    /// Returns the [`Account`] associated to `account`.
+    fn get_mut(&mut self, account: AccountIndex) -> Option<&mut Account>;
 }
 
 /// [`Vec`] Account Map Type
-pub type VecAccountMap = Vec<KeyIndex>;
+pub type VecAccountMap = Vec<Account>;
 
 impl AccountMap for VecAccountMap {
     #[inline]
@@ -500,11 +648,6 @@ impl AccountMap for VecAccountMap {
     }
 
     #[inline]
-    fn max_index(&self, account: AccountIndex) -> Option<KeyIndex> {
-        self.get(account.index() as usize).copied()
-    }
-
-    #[inline]
     fn create_account(&mut self) -> AccountIndex {
         let index = AccountIndex::new(
             self.len()
@@ -516,11 +659,13 @@ impl AccountMap for VecAccountMap {
     }
 
     #[inline]
-    fn increment_index(&mut self, account: AccountIndex) -> Option<KeyIndex> {
-        self.get_mut(account.index() as usize).map(|m| {
-            m.increment();
-            *m
-        })
+    fn get(&self, account: AccountIndex) -> Option<Account> {
+        self.as_slice().get(account.index() as usize).copied()
+    }
+
+    #[inline]
+    fn get_mut(&mut self, account: AccountIndex) -> Option<&mut Account> {
+        self.as_mut_slice().get_mut(account.index() as usize)
     }
 }
 
@@ -585,7 +730,17 @@ where
         Some(AccountKeys::new(
             &self.keys,
             account,
-            self.accounts.max_index(account)?,
+            self.accounts.get(account)?,
+        ))
+    }
+
+    /// Returns the account keys for `account` if it exists.
+    #[inline]
+    pub fn get_mut(&mut self, account: AccountIndex) -> Option<AccountKeysMut<H>> {
+        Some(AccountKeysMut::new(
+            &self.keys,
+            account,
+            self.accounts.get_mut(account)?,
         ))
     }
 
@@ -595,10 +750,18 @@ where
         self.get(Default::default()).unwrap()
     }
 
+    /// Returns the account keys for the default account.
+    #[inline]
+    pub fn get_mut_default(&mut self) -> AccountKeysMut<H> {
+        self.get_mut(Default::default()).unwrap()
+    }
+
     /// Returns the maximum key index for `account`, if it exists.
     #[inline]
-    pub fn max_index(&self, account: AccountIndex) -> Option<KeyIndex> {
-        self.accounts.max_index(account)
+    pub fn maximum_index(&self, account: AccountIndex) -> Option<KeyIndex> {
+        self.accounts
+            .get(account)
+            .map(|account| account.maximum_index)
     }
 
     /// Adds a new account to the map, returning the new account parameter.
@@ -608,16 +771,27 @@ where
     }
 
     /// Increments the maximum key index for `account`, if it exists, returning the current
-    /// maximum index.
+    /// maximum index. This method also returns `None` in the case that the
+    /// [`GAP_LIMIT`](HierarchicalKeyDerivationScheme::GAP_LIMIT) would be exceeded.
     #[inline]
-    pub fn increment_index(&mut self, account: AccountIndex) -> Option<KeyIndex> {
-        self.accounts.increment_index(account)
+    pub fn increment_maximum_index(&mut self, account: AccountIndex) -> Option<KeyIndex> {
+        self.accounts.get_mut(account).and_then(|account| {
+            match H::GAP_LIMIT
+                .checked_sub(account.maximum_index.index - account.last_used_index.index)
+            {
+                Some(diff) if diff > 0 => {
+                    account.maximum_index.increment();
+                    Some(account.maximum_index)
+                }
+                _ => None,
+            }
+        })
     }
 
     /// Increments the spend index and returns the [`KeyIndex`] for the new index.
     #[inline]
     pub fn next_index(&mut self, account: AccountIndex) -> Option<KeyIndex> {
-        let max_index = self.increment_index(account)?;
+        let max_index = self.increment_maximum_index(account)?;
         Some(max_index)
     }
 
