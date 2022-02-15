@@ -371,6 +371,15 @@ impl<C> SignerParameters<C>
 where
     C: Configuration,
 {
+    /// Builds a new [`SignerParameters`] from `parameters` and `proving_context`.
+    #[inline]
+    pub fn new(parameters: Parameters<C>, proving_context: C::ProvingContextCache) -> Self {
+        Self {
+            parameters,
+            proving_context,
+        }
+    }
+
     /// Returns the public parameters by reading from the proving context cache.
     #[inline]
     pub fn get(
@@ -443,7 +452,7 @@ where
     /// Saves the state of `self` to an encrypted file at `path`.
     #[cfg(all(feature = "fs", feature = "serde"))]
     #[inline]
-    fn save<F, P>(&self, path: P, password: &[u8]) -> Result<(), SaveError<F>>
+    pub fn save<F, P>(&self, path: P, password: &[u8]) -> Result<(), SaveError<F>>
     where
         Self: Serialize,
         F: File,
@@ -462,7 +471,7 @@ where
     /// Loads an encrypted [`SignerState`] from the encrypted file at `path`.
     #[cfg(all(feature = "fs", feature = "serde"))]
     #[inline]
-    fn load<F, P>(path: P, password: &[u8]) -> Result<Self, LoadError<F>>
+    pub fn load<F, P>(path: P, password: &[u8]) -> Result<Self, LoadError<F>>
     where
         Self: DeserializeOwned,
         F: File,
@@ -893,7 +902,7 @@ where
 {
     /// Builds a new [`Signer`] from `parameters` and `state`.
     #[inline]
-    fn from_parts(parameters: SignerParameters<C>, state: SignerState<C>) -> Self {
+    pub fn from_parts(parameters: SignerParameters<C>, state: SignerState<C>) -> Self {
         Self { parameters, state }
     }
 
@@ -982,17 +991,7 @@ where
 
     /// Updates the internal ledger state, returning the new asset distribution.
     #[inline]
-    pub fn sync<I, R>(
-        &mut self,
-        with_recovery: bool,
-        starting_index: usize,
-        inserts: I,
-        removes: R,
-    ) -> Result<SyncResponse, SyncError>
-    where
-        I: IntoIterator<Item = (Utxo<C>, EncryptedNote<C>)>,
-        R: IntoIterator<Item = VoidNumber<C>>,
-    {
+    pub fn sync(&mut self, request: SyncRequest<C>) -> Result<SyncResponse, SyncError> {
         // TODO: Do a capacity check on the current UTXO set?
         //
         // if self.utxo_set.capacity() < starting_index {
@@ -1000,13 +999,13 @@ where
         // }
         //
         let utxo_set_len = self.state.utxo_set.len();
-        match utxo_set_len.checked_sub(starting_index) {
+        match utxo_set_len.checked_sub(request.starting_index) {
             Some(diff) => {
                 let result = self.state.sync_with(
                     &self.parameters.parameters,
-                    with_recovery,
-                    inserts.into_iter().skip(diff),
-                    removes.into_iter().collect(),
+                    request.with_recovery,
+                    request.inserts.into_iter().skip(diff),
+                    request.removes,
                     diff == 0,
                 );
                 self.state.utxo_set.commit();
@@ -1140,12 +1139,7 @@ where
         &mut self,
         request: SyncRequest<C>,
     ) -> Result<Result<SyncResponse, SyncError>, Self::Error> {
-        Ok(self.sync(
-            request.with_recovery,
-            request.starting_index,
-            request.inserts,
-            request.removes,
-        ))
+        Ok(self.sync(request))
     }
 
     #[inline]

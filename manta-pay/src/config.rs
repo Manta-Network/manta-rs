@@ -473,6 +473,47 @@ impl merkle_tree::Configuration for MerkleTreeConfiguration {
     const HEIGHT: usize = 20;
 }
 
+impl MerkleTreeConfiguration {
+    /// Width of the Merkle Forest
+    pub const FOREST_WIDTH: usize = 256;
+}
+
+impl merkle_tree::forest::Configuration for MerkleTreeConfiguration {
+    type Index = u8;
+
+    #[inline]
+    fn tree_index(leaf: &merkle_tree::Leaf<Self>) -> Self::Index {
+        let mut hasher = Blake2sVar::new(1).unwrap();
+        let mut buffer = Vec::new();
+        leaf.0
+            .serialize_unchecked(&mut buffer)
+            .expect("Serializing is not allowed to fail.");
+        hasher.update(&buffer);
+        let mut result = [0];
+        hasher
+            .finalize_variable(&mut result)
+            .expect("Hashing is not allowed to fail.");
+        result[0]
+    }
+}
+
+/* NOTE: Configuration for testing single-tree forest.
+impl MerkleTreeConfiguration {
+    /// Width of the Merkle Forest
+    pub const FOREST_WIDTH: usize = 1;
+}
+
+impl merkle_tree::forest::Configuration for MerkleTreeConfiguration {
+    type Index = merkle_tree::forest::SingleTreeIndex;
+
+    #[inline]
+    fn tree_index(leaf: &merkle_tree::Leaf<Self>) -> Self::Index {
+        let _ = leaf;
+        Default::default()
+    }
+}
+*/
+
 #[cfg(any(feature = "test", test))]
 impl merkle_tree::test::HashParameterSampling for MerkleTreeConfiguration {
     type LeafHashParameterDistribution = Standard;
@@ -645,43 +686,11 @@ pub type MultiProvingContext = transfer::canonical::MultiProvingContext<Config>;
 /// Multi-Verifying Context Type
 pub type MultiVerifyingContext = transfer::canonical::MultiVerifyingContext<Config>;
 
-impl MerkleTreeConfiguration {
-    /// Width of the Merkle Forest
-    pub const FOREST_WIDTH: usize = 256;
-}
+/// Transaction Type
+pub type Transaction = transfer::canonical::Transaction<Config>;
 
-impl merkle_tree::forest::Configuration for MerkleTreeConfiguration {
-    type Index = u8;
+/// Spending Key Type
+pub type SpendingKey = transfer::SpendingKey<Config>;
 
-    #[inline]
-    fn tree_index(leaf: &merkle_tree::Leaf<Self>) -> Self::Index {
-        let mut hasher = Blake2sVar::new(1).unwrap();
-        let mut buffer = Vec::new();
-        leaf.0
-            .serialize_unchecked(&mut buffer)
-            .expect("Serializing is not allowed to fail.");
-        hasher.update(&buffer);
-        let mut result = [0];
-        hasher
-            .finalize_variable(&mut result)
-            .expect("Hashing is not allowed to fail.");
-        result[0]
-    }
-}
-
-/* NOTE: Configuration for testing single-tree forest.
-impl MerkleTreeConfiguration {
-    /// Width of the Merkle Forest
-    pub const FOREST_WIDTH: usize = 1;
-}
-
-impl merkle_tree::forest::Configuration for MerkleTreeConfiguration {
-    type Index = merkle_tree::forest::SingleTreeIndex;
-
-    #[inline]
-    fn tree_index(leaf: &merkle_tree::Leaf<Self>) -> Self::Index {
-        let _ = leaf;
-        Default::default()
-    }
-}
-*/
+/// Receiving Key Type
+pub type ReceivingKey = transfer::ReceivingKey<Config>;

@@ -16,10 +16,7 @@
 
 //! Arkworks Elliptic Curve Primitives
 
-use crate::crypto::constraint::arkworks::{
-    codec::{ArkReader, ArkWriter, ScaleCodecReader},
-    empty, full, Boolean, Fp, FpVar, R1CS,
-};
+use crate::crypto::constraint::arkworks::{self, empty, full, Boolean, Fp, FpVar, R1CS};
 use alloc::vec::Vec;
 use ark_ff::{BigInteger, Field, FpParameters, PrimeField};
 use ark_r1cs_std::ToBitsGadget;
@@ -129,7 +126,7 @@ where
     where
         R: codec::Read,
     {
-        let mut reader = ArkReader::new(reader);
+        let mut reader = arkworks::codec::ArkReader::new(reader);
         match CanonicalDeserialize::deserialize(&mut reader) {
             Ok(value) => reader
                 .finish()
@@ -149,7 +146,7 @@ where
     where
         W: codec::Write,
     {
-        let mut writer = ArkWriter::new(writer);
+        let mut writer = arkworks::codec::ArkWriter::new(writer);
         let _ = self.0.serialize(&mut writer);
         writer.finish().map(|_| ())
     }
@@ -167,7 +164,7 @@ where
         I: scale_codec::Input,
     {
         Ok(Self(
-            CanonicalDeserialize::deserialize(ScaleCodecReader(input))
+            CanonicalDeserialize::deserialize(arkworks::codec::ScaleCodecReader(input))
                 .map_err(|_| "Deserialization Error")?,
         ))
     }

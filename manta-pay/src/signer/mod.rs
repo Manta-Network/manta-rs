@@ -16,8 +16,29 @@
 
 //! Manta Pay Signer Tools
 
+use crate::config::Config;
+use manta_accounting::wallet::signer;
+
 pub mod client;
 
 #[cfg(feature = "wallet")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "wallet")))]
 pub mod base;
+
+/// Synchronization Request
+pub type SyncRequest = signer::SyncRequest<Config>;
+
+/// Synchronization Response
+pub type SyncResponse = signer::SyncResponse;
+
+/// Synchronization Error
+pub type SyncError = signer::SyncError;
+
+/// Sign Response
+pub type SignResponse = signer::SignResponse<Config>;
+
+/// Sign Error
+pub type SignError = signer::SignError<Config>;
+
+/// Receiving Key Request
+pub type ReceivingKeyRequest = signer::ReceivingKeyRequest;

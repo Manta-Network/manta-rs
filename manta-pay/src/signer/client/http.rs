@@ -16,17 +16,11 @@
 
 //! Signer HTTP Client Implementation
 
-use crate::config::Config;
-use manta_accounting::{
-    transfer::{canonical::Transaction, ReceivingKey},
-    wallet::{
-        self,
-        signer::{
-            self, ReceivingKeyRequest, SignError, SignResponse, SyncError, SyncRequest,
-            SyncResponse,
-        },
-    },
+use crate::{
+    config::{Config, ReceivingKey, Transaction},
+    signer::{ReceivingKeyRequest, SignError, SignResponse, SyncError, SyncRequest, SyncResponse},
 };
+use manta_accounting::wallet::{self, signer};
 use manta_util::serde::Serialize;
 use reqwest::{
     blocking::{Client as BaseClient, Response},
@@ -100,7 +94,7 @@ impl signer::Connection<Config> for Client {
     #[inline]
     fn sync(
         &mut self,
-        request: SyncRequest<Config>,
+        request: SyncRequest,
     ) -> Result<Result<SyncResponse, SyncError>, Self::Error> {
         // NOTE: The synchronization command modifies the signer so it must be a POST command
         //       to match the HTTP semantics.
@@ -110,8 +104,8 @@ impl signer::Connection<Config> for Client {
     #[inline]
     fn sign(
         &mut self,
-        transaction: Transaction<Config>,
-    ) -> Result<Result<SignResponse<Config>, SignError<Config>>, Self::Error> {
+        transaction: Transaction,
+    ) -> Result<Result<SignResponse, SignError>, Self::Error> {
         // NOTE: The signing command does not modify the signer so it must be a GET command to match
         //       the HTTP semantics.
         self.get("sign", transaction)?.json()
@@ -121,7 +115,7 @@ impl signer::Connection<Config> for Client {
     fn receiving_keys(
         &mut self,
         request: ReceivingKeyRequest,
-    ) -> Result<Vec<ReceivingKey<Config>>, Self::Error> {
+    ) -> Result<Vec<ReceivingKey>, Self::Error> {
         // NOTE: The receiving key command modifies the signer so it must be a POST command to match
         //       the HTTP semantics.
         self.post("receivingKeys", request)?.json()

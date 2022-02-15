@@ -24,6 +24,11 @@ use manta_util::into_array_unchecked;
 
 pub use rand_core::{block, CryptoRng, Error, RngCore, SeedableRng};
 
+#[cfg(feature = "getrandom")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "getrandom")))]
+#[doc(inline)]
+pub use rand_core::OsRng;
+
 /// Random Number Generator Sized Wrapper
 #[derive(Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct SizedRng<'r, R>(

@@ -24,6 +24,9 @@ use core::{fmt::Debug, iter, mem};
 use manta_crypto::hash::HashFunction;
 use manta_util::codec::{Decode, DecodeError, Encode, Read, Write};
 
+#[cfg(feature = "serde")]
+use manta_util::serde::{Deserialize, Serialize};
+
 #[cfg(any(feature = "test", test))]
 use {
     core::iter::repeat,
@@ -73,6 +76,18 @@ where
 }
 
 /// Poseidon Hash
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "S::Field: Deserialize<'de>",
+            serialize = "S::Field: Serialize"
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "S::Field: Clone"),

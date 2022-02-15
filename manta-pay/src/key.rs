@@ -31,7 +31,10 @@ use manta_accounting::key::{
     self, AccountIndex, HierarchicalKeyDerivationScheme, IndexType, KeyIndex, Kind,
 };
 use manta_crypto::rand::{CryptoRng, RngCore, Sample, Standard};
-use manta_util::{create_seal, seal};
+use manta_util::{create_seal, seal, Array};
+
+#[cfg(feature = "serde")]
+use manta_util::serde::{Deserialize, Serialize};
 
 pub use bip32::{Language, Mnemonic};
 
@@ -125,13 +128,21 @@ impl_coin_type!(
 /// Account Table Type
 pub type AccountTable<C> = key::AccountTable<KeySecret<C>>;
 
+/// Seed Byte Array Type
+type SeedBytes = Array<u8, { Seed::SIZE }>;
+
 /// Key Secret
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields, transparent)
+)]
 pub struct KeySecret<C>
 where
     C: CoinType,
 {
     /// Key Seed
-    seed: Seed,
+    seed: SeedBytes,
 
     /// Type Parameter Marker
     __: PhantomData<C>,
@@ -141,13 +152,19 @@ impl<C> KeySecret<C>
 where
     C: CoinType,
 {
-    /// Builds a [`KeySecret`] from a raw `seed`.
+    /// Builds a [`KeySecret`] from raw bytes.
     #[inline]
-    fn from_seed(seed: Seed) -> Self {
+    fn build(seed: [u8; Seed::SIZE]) -> Self {
         Self {
-            seed,
+            seed: seed.into(),
             __: PhantomData,
         }
+    }
+
+    /// Builds a [`KeySecret`] from a `seed`.
+    #[inline]
+    fn from_seed(seed: Seed) -> Self {
+        Self::build(*seed.as_bytes())
     }
 
     /// Converts a `mnemonic` phrase into a [`KeySecret`], locking it with `password`.
@@ -170,7 +187,7 @@ where
         let _ = distribution;
         let mut seed = [0; Seed::SIZE];
         rng.fill_bytes(&mut seed);
-        Self::from_seed(Seed::new(seed))
+        Self::build(seed)
     }
 }
 

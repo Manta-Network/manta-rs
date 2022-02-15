@@ -29,3 +29,12 @@ pub type Never = Infallible;
 pub fn never<T>(_: Never) -> T {
     unreachable!("This type never has any values, so this promotion is safe.")
 }
+
+/// Promotes a [`Never`] error value to the `Ok` variant.
+#[inline]
+pub fn never_err<T>(result: Result<T, Never>) -> T {
+    match result {
+        Ok(value) => value,
+        Err(err) => never(err),
+    }
+}

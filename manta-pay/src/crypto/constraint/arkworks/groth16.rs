@@ -18,7 +18,7 @@
 
 use crate::crypto::constraint::arkworks::{
     self,
-    codec::{ArkReader, ArkWriter, HasDeserialization, HasSerialization, SerializationError},
+    codec::{HasDeserialization, HasSerialization, SerializationError},
     R1CS,
 };
 use alloc::vec::Vec;
@@ -134,7 +134,7 @@ where
 
 /// Converts `proof` into its canonical byte-representation.
 #[inline]
-fn proof_as_bytes<E>(proof: &ark_groth16::Proof<E>) -> Vec<u8>
+pub fn proof_as_bytes<E>(proof: &ark_groth16::Proof<E>) -> Vec<u8>
 where
     E: PairingEngine,
 {
@@ -185,7 +185,7 @@ where
     where
         R: codec::Read,
     {
-        let mut reader = ArkReader::new(reader);
+        let mut reader = arkworks::codec::ArkReader::new(reader);
         match CanonicalDeserialize::deserialize_unchecked(&mut reader) {
             Ok(value) => reader
                 .finish()
@@ -205,7 +205,7 @@ where
     where
         W: codec::Write,
     {
-        let mut writer = ArkWriter::new(writer);
+        let mut writer = arkworks::codec::ArkWriter::new(writer);
         let _ = self.0.serialize_unchecked(&mut writer);
         writer.finish().map(move |_| ())
     }
@@ -395,7 +395,7 @@ where
     where
         R: codec::Read,
     {
-        let mut reader = ArkReader::new(reader);
+        let mut reader = arkworks::codec::ArkReader::new(reader);
         match CanonicalDeserialize::deserialize(&mut reader) {
             Ok(value) => reader
                 .finish()
@@ -416,7 +416,7 @@ where
     where
         W: codec::Write,
     {
-        let mut writer = ArkWriter::new(writer);
+        let mut writer = arkworks::codec::ArkWriter::new(writer);
         let _ = self.serialize(&mut writer);
         writer.finish().map(move |_| ())
     }

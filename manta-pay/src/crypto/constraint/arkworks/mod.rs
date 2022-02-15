@@ -184,7 +184,7 @@ where
 
 /// Converts `element` into its canonical byte-representation.
 #[inline]
-fn field_element_as_bytes<F>(element: &F) -> Vec<u8>
+pub fn field_element_as_bytes<F>(element: &F) -> Vec<u8>
 where
     F: PrimeField,
 {

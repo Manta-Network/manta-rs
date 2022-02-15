@@ -26,7 +26,7 @@ use ark_ff::PrimeField;
 use manta_accounting::{
     asset::HashAssetMap,
     key::{self, HierarchicalKeyDerivationScheme},
-    wallet::signer::AssetMapKey,
+    wallet::{self, signer::AssetMapKey},
 };
 use manta_crypto::{key::KeyDerivationFunction, merkle_tree};
 use manta_util::pointer::ThreadSafe;
@@ -211,7 +211,7 @@ pub mod cache {
     }
 }
 
-impl manta_accounting::wallet::signer::Configuration for Config {
+impl wallet::signer::Configuration for Config {
     type HierarchicalKeyDerivationScheme =
         key::Map<TestnetKeySecret, HierarchicalKeyDerivationFunction>;
     type UtxoSet = UtxoSet;
@@ -220,5 +220,11 @@ impl manta_accounting::wallet::signer::Configuration for Config {
     type Rng = rand_chacha::ChaCha20Rng;
 }
 
+/// Signer Parameters Type
+pub type SignerParameters = wallet::signer::SignerParameters<Config>;
+
+/// Signer State Type
+pub type SignerState = wallet::signer::SignerState<Config>;
+
 /// Signer Base Type
-pub type Signer = manta_accounting::wallet::signer::Signer<Config>;
+pub type Signer = wallet::signer::Signer<Config>;
