@@ -57,21 +57,6 @@ use manta_util::{
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
 
-#[cfg(all(feature = "fs", feature = "serde"))]
-use {
-    crate::fs::{
-        serde::{Deserializer, Serializer},
-        File,
-    },
-    core::fmt::Display,
-    manta_util::serde::de::DeserializeOwned,
-};
-
-#[cfg(all(feature = "fs", feature = "serde"))]
-#[cfg_attr(doc_cfg, doc(cfg(all(feature = "fs", feature = "serde"))))]
-#[doc(inline)]
-pub use crate::fs::serde::{de::Error as LoadError, ser::Error as SaveError};
-
 /// Signer Connection
 pub trait Connection<C>
 where
@@ -449,42 +434,6 @@ impl<C> SignerState<C>
 where
     C: Configuration,
 {
-    /// Saves the state of `self` to an encrypted file at `path`.
-    #[cfg(all(feature = "fs", feature = "serde"))]
-    #[inline]
-    pub fn save<F, P>(&self, path: P, password: &[u8]) -> Result<(), SaveError<F>>
-    where
-        Self: Serialize,
-        F: File,
-        F::Error: Debug + Display,
-        P: AsRef<F::Path>,
-    {
-        let mut file = F::options()
-            .create(true)
-            .truncate(true)
-            .write(true)
-            .open(path, password)
-            .map_err(SaveError::Io)?;
-        self.serialize(&mut Serializer::new(&mut file))
-    }
-
-    /// Loads an encrypted [`SignerState`] from the encrypted file at `path`.
-    #[cfg(all(feature = "fs", feature = "serde"))]
-    #[inline]
-    pub fn load<F, P>(path: P, password: &[u8]) -> Result<Self, LoadError<F>>
-    where
-        Self: DeserializeOwned,
-        F: File,
-        F::Error: Debug + Display,
-        P: AsRef<F::Path>,
-    {
-        let mut file = F::options()
-            .read(true)
-            .open(path, password)
-            .map_err(LoadError::Io)?;
-        Self::deserialize(&mut Deserializer::new(&mut file))
-    }
-
     /// Inserts the new `utxo`-`encrypted_note` pair if a known key can decrypt the note and
     /// validate the utxo.
     #[inline]
@@ -954,39 +903,16 @@ where
         )
     }
 
-    /// Saves the state of `self` to an encrypted file at `path`.
-    #[cfg(all(feature = "fs", feature = "serde"))]
-    #[cfg_attr(doc_cfg, doc(cfg(all(feature = "fs", feature = "serde"))))]
+    /// Returns a shared reference to the signer parameters.
     #[inline]
-    pub fn save<F, P>(&self, path: P, password: &[u8]) -> Result<(), SaveError<F>>
-    where
-        SignerState<C>: Serialize,
-        F: File,
-        F::Error: Debug + Display,
-        P: AsRef<F::Path>,
-    {
-        self.state.save(path, password)
+    pub fn parameters(&self) -> &SignerParameters<C> {
+        &self.parameters
     }
 
-    /// Loads an encrypted [`Signer`] state from the encrypted file at `path`.
-    #[cfg(all(feature = "fs", feature = "serde"))]
-    #[cfg_attr(doc_cfg, doc(cfg(all(feature = "fs", feature = "serde"))))]
+    /// Returns a shared reference to the signer state.
     #[inline]
-    pub fn load<F, P>(
-        parameters: SignerParameters<C>,
-        path: P,
-        password: &[u8],
-    ) -> Result<Self, LoadError<F>>
-    where
-        SignerState<C>: DeserializeOwned,
-        F: File,
-        F::Error: Debug + Display,
-        P: AsRef<F::Path>,
-    {
-        Ok(Self::from_parts(
-            parameters,
-            SignerState::load(path, password)?,
-        ))
+    pub fn state(&self) -> &SignerState<C> {
+        &self.state
     }
 
     /// Updates the internal ledger state, returning the new asset distribution.

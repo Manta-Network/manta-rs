@@ -35,10 +35,12 @@ use manta_util::{
             SerializeMap, SerializeSeq, SerializeStruct, SerializeStructVariant, SerializeTuple,
             SerializeTupleStruct, SerializeTupleVariant,
         },
-        Serialize,
     },
     FromBytes, IntoBytes,
 };
+
+#[doc(inline)]
+pub use manta_util::serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 /// Serialization Module
 pub mod ser {

@@ -21,6 +21,14 @@ use core::{cmp, hash::Hash, marker::PhantomData};
 
 #[cfg(feature = "serde")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "serde")))]
+use core::fmt::{Debug, Display};
+
+#[cfg(feature = "serde")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "serde")))]
+pub use serde::{de::Error as LoadError, ser::Error as SaveError};
+
+#[cfg(feature = "serde")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "serde")))]
 pub mod serde;
 
 bitflags::bitflags! {
@@ -299,6 +307,42 @@ pub trait File: Sized {
     /// Reads a [`Block`] from `self` after decrypting it, returning `None` if there are no more
     /// blocks in the file.
     fn read(&mut self) -> Result<Option<Block>, Self::Error>;
+
+    /// Saves `value` to `path` by serializing and encrypting with `password`.
+    #[cfg(feature = "serde")]
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "serde")))]
+    #[inline]
+    fn save<P, T>(path: P, password: &[u8], value: T) -> Result<(), SaveError<Self>>
+    where
+        Self::Error: Debug + Display,
+        P: AsRef<Self::Path>,
+        T: serde::Serialize,
+    {
+        let mut file = Self::options()
+            .create(true)
+            .truncate(true)
+            .write(true)
+            .open(path, password)
+            .map_err(SaveError::Io)?;
+        value.serialize(&mut serde::Serializer::new(&mut file))
+    }
+
+    /// Loads a value of type `T` from `path` by deserializing and decrypting with `password`.
+    #[cfg(feature = "serde")]
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "serde")))]
+    #[inline]
+    fn load<P, T>(path: P, password: &[u8]) -> Result<T, LoadError<Self>>
+    where
+        Self::Error: Debug + Display,
+        P: AsRef<Self::Path>,
+        T: serde::DeserializeOwned,
+    {
+        let mut file = Self::options()
+            .read(true)
+            .open(path, password)
+            .map_err(LoadError::Io)?;
+        T::deserialize(&mut serde::Deserializer::new(&mut file))
+    }
 }
 
 /// Cocoon Encrypted File System Adapter
@@ -352,7 +396,9 @@ pub mod cocoon {
             Ok(Self {
                 file: fs::OpenOptions::from(options).open(path)?,
                 cocoon: {
-                    // FIXME: Choose a better seed. Should we hash the password for this?
+                    // FIXME: Use a random seed here. Ideally, we want to rewrite `cocoon` for
+                    //        better security and flexibility and move to a streaming encryption
+                    //        protocol.
                     MiniCocoon::from_password(password, &[0; 32])
                 },
             })
