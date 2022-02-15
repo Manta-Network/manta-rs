@@ -43,7 +43,7 @@ use alloc::{vec, vec::Vec};
 use core::{convert::Infallible, fmt::Debug, hash::Hash};
 use manta_crypto::{
     accumulator::{Accumulator, ExactSizeAccumulator, OptimizedAccumulator},
-    encryption::DecryptedMessage,
+    encryption::hybrid::DecryptedMessage,
     rand::{CryptoRng, FromEntropy, Rand, RngCore},
 };
 use manta_util::{

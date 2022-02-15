@@ -26,7 +26,7 @@ use manta_crypto::{
         Add, Allocator, Constant, ConstraintSystem, Derived, Equal, ProofSystem, ProofSystemInput,
         Public, Secret, ValueSource, Variable,
     },
-    encryption::{DecryptedMessage, EncryptedMessage, HybridPublicKeyEncryptionScheme},
+    encryption::hybrid::{DecryptedMessage, EncryptedMessage, HybridPublicKeyEncryptionScheme},
     hash::BinaryHashFunction,
     key::KeyAgreementScheme,
     rand::{CryptoRng, RngCore, Sample},

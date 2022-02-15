@@ -593,7 +593,7 @@ impl ProofSystemInput<Group> for ProofSystem {
 }
 
 /// Note Encryption Scheme
-pub type NoteEncryptionScheme = encryption::Hybrid<
+pub type NoteEncryptionScheme = encryption::hybrid::Hybrid<
     KeyAgreementScheme,
     encryption::symmetric::Map<
         AesGcm<{ Asset::SIZE }, { aes::ciphertext_size(Asset::SIZE) }>,
@@ -607,7 +607,7 @@ pub type NoteEncryptionScheme = encryption::Hybrid<
 
 /// Asset Ciphertext
 pub type Ciphertext =
-    <NoteEncryptionScheme as encryption::SymmetricKeyEncryptionScheme>::Ciphertext;
+    <NoteEncryptionScheme as encryption::symmetric::SymmetricKeyEncryptionScheme>::Ciphertext;
 
 /// Base Configuration
 pub struct Config;

@@ -24,7 +24,7 @@ pub mod aes {
         aead::{Aead, NewAead},
         Aes256Gcm, Nonce,
     };
-    use manta_crypto::encryption::SymmetricKeyEncryptionScheme;
+    use manta_crypto::encryption::symmetric::SymmetricKeyEncryptionScheme;
     use manta_util::Array;
 
     /// AES-GCM Authentication Tag Size
@@ -93,7 +93,7 @@ pub mod aes {
             rng.fill_bytes(&mut key);
             let mut plaintext = [0; Asset::SIZE];
             rng.fill_bytes(&mut plaintext);
-            encryption::test::symmetric_encryption::<
+            encryption::symmetric::test::encryption::<
                 AesGcm<{ Asset::SIZE }, { ciphertext_size(Asset::SIZE) }>,
             >(key, Array(plaintext));
         }
