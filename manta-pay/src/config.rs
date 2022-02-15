@@ -19,7 +19,7 @@
 use crate::crypto::{
     constraint::arkworks::{groth16, Boolean, Fp, FpVar, R1CS},
     ecc,
-    encryption::aes::{self, AesGcm},
+    encryption::aes::{self, AesGcmSiv},
     hash::poseidon,
     key::Blake2sKdf,
 };
@@ -596,7 +596,7 @@ impl ProofSystemInput<Group> for ProofSystem {
 pub type NoteEncryptionScheme = encryption::hybrid::Hybrid<
     KeyAgreementScheme,
     encryption::symmetric::Map<
-        AesGcm<{ Asset::SIZE }, { aes::ciphertext_size(Asset::SIZE) }>,
+        AesGcmSiv<{ Asset::SIZE }, { aes::ciphertext_size(Asset::SIZE) }>,
         Asset,
     >,
     key::kdf::FromByteVector<
