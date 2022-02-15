@@ -16,7 +16,7 @@
 
 //! Pointer Utilities
 
-use core::{borrow::Borrow, ops::Deref};
+use core::borrow::Borrow;
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
@@ -29,7 +29,7 @@ pub use alloc::{rc::Rc, sync::Arc};
 /// Pointer Family
 pub trait PointerFamily<T> {
     /// Strong Pointer
-    type Strong: AsRef<T> + Borrow<T> + Deref<Target = T>;
+    type Strong: Borrow<T>;
 
     /// Weak Pointer
     type Weak: Default;
@@ -109,3 +109,40 @@ impl_pointer_family!(SingleThreaded, Rc, WeakRc);
 pub struct ThreadSafe;
 
 impl_pointer_family!(ThreadSafe, Arc, WeakArc);
+
+/// No-Pointer Pointer Family
+///
+/// This is the pointer family for a raw value, and does not do any reference counting.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct NoPointer;
+
+impl<T> PointerFamily<T> for NoPointer {
+    type Strong = T;
+    type Weak = ();
+
+    #[inline]
+    fn new(base: T) -> Self::Strong {
+        base
+    }
+
+    #[inline]
+    fn claim(strong: Self::Strong) -> T {
+        strong
+    }
+
+    #[inline]
+    fn downgrade(strong: &Self::Strong) -> Self::Weak {
+        let _ = strong;
+    }
+
+    #[inline]
+    fn upgrade(weak: &Self::Weak) -> Option<Self::Strong> {
+        let _ = weak;
+        None
+    }
+
+    #[inline]
+    fn strong_ptr_eq(lhs: &Self::Strong, rhs: &Self::Strong) -> bool {
+        core::ptr::eq(lhs, rhs)
+    }
+}

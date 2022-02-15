@@ -36,7 +36,7 @@ use crate::{
 };
 use alloc::{boxed::Box, vec::Vec};
 use core::{fmt::Debug, hash::Hash, marker::PhantomData};
-use manta_util::{persistence::Rollback, pointer::PointerFamily, BoxArray};
+use manta_util::{persistence::Rollback, BoxArray};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
@@ -620,13 +620,11 @@ where
     }
 }
 
-impl<C, T, P, M, const N: usize> Rollback
-    for MerkleForest<C, TreeArray<C, ForkedTree<C, T, P, M>, N>>
+impl<C, T, M, const N: usize> Rollback for MerkleForest<C, TreeArray<C, ForkedTree<C, T, M>, N>>
 where
     C: Configuration + ?Sized,
     C::Index: FixedIndex<N>,
     T: Tree<C>,
-    P: PointerFamily<T>,
     M: Default + InnerMap<C>,
     LeafDigest<C>: Clone + Default,
     InnerDigest<C>: Clone + Default + PartialEq,

@@ -1152,11 +1152,10 @@ where
     }
 }
 
-impl<C, T, P, M> Rollback for MerkleTree<C, ForkedTree<C, T, P, M>>
+impl<C, T, M> Rollback for MerkleTree<C, ForkedTree<C, T, M>>
 where
     C: Configuration + ?Sized,
     T: Tree<C>,
-    P: PointerFamily<T>,
     M: Default + InnerMap<C>,
     LeafDigest<C>: Clone + Default,
     InnerDigest<C>: Clone + Default + PartialEq,

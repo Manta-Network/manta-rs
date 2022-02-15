@@ -29,7 +29,6 @@ use manta_accounting::{
     wallet::{self, signer::AssetMapKey},
 };
 use manta_crypto::{key::KeyDerivationFunction, merkle_tree};
-use manta_util::pointer::ThreadSafe;
 
 /// Hierarchical Key Derivation Function
 pub struct HierarchicalKeyDerivationFunction;
@@ -56,7 +55,6 @@ pub type UtxoSet = merkle_tree::forest::TreeArrayMerkleForest<
     merkle_tree::fork::ForkedTree<
         MerkleTreeConfiguration,
         merkle_tree::full::Full<MerkleTreeConfiguration>,
-        ThreadSafe,
     >,
     { MerkleTreeConfiguration::FOREST_WIDTH },
 >;

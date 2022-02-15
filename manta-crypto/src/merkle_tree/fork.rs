@@ -16,9 +16,6 @@
 
 //! Merkle Tree Forks
 
-// TODO: Implement derive-able traits for these types.
-// TODO: See if we can get rid of the smart pointer logic (we can for `ForkedTree` at least).
-
 use crate::merkle_tree::{
     capacity,
     inner_tree::{BTreeMap, InnerMap, PartialInnerTree},
@@ -30,6 +27,9 @@ use crate::merkle_tree::{
 use alloc::{vec, vec::Vec};
 use core::{borrow::Borrow, fmt::Debug, hash::Hash, marker::PhantomData, mem, ops::Deref};
 use manta_util::pointer::{self, PointerFamily};
+
+#[cfg(feature = "serde")]
+use manta_util::serde::{Deserialize, Serialize};
 
 /// Fork-able Merkle Tree
 #[derive(derivative::Derivative)]
@@ -126,7 +126,7 @@ where
     {
         match fork.get_attached_base(self) {
             Some(base) => {
-                self.merge_branch(parameters, base, fork.base_contribution, fork.branch);
+                self.merge_branch(parameters, base, fork.branch);
                 Ok(())
             }
             _ => Err(fork),
@@ -140,27 +140,27 @@ where
         &mut self,
         parameters: &Parameters<C>,
         fork_base: P::Strong,
-        base_contribution: BaseContribution,
-        branch: Partial<C, M>,
+        branch: Branch<C, M>,
     ) where
         M: InnerMap<C> + Default,
         LeafDigest<C>: Default,
     {
         self.base = Some(fork_base);
         let mut base = P::claim(mem::take(&mut self.base).unwrap());
-        assert!(base
-            .extend_digests(
-                parameters,
-                Fork::<C, T, P, M>::extract_leaves(base_contribution, branch)
-            )
-            .is_ok());
+        branch.merge(parameters, &mut base);
         self.base = Some(P::new(base));
     }
 
-    /// Borrows the underlying merkle tree pointer.
+    /// Borrows the underlying merkle tree strong pointer.
     #[inline]
     fn borrow_base(&self) -> &P::Strong {
         self.base.as_ref().unwrap()
+    }
+
+    /// Borrows the underlying merkle tree.
+    #[inline]
+    fn get(&self) -> &T {
+        self.borrow_base().borrow()
     }
 
     /// Returns a new weak pointer to the base tree.
@@ -184,7 +184,7 @@ where
 {
     #[inline]
     fn as_ref(&self) -> &T {
-        self.borrow_base().as_ref()
+        self.get()
     }
 }
 
@@ -196,7 +196,7 @@ where
 {
     #[inline]
     fn borrow(&self) -> &T {
-        self.borrow_base().borrow()
+        self.get()
     }
 }
 
@@ -210,11 +210,16 @@ where
 
     #[inline]
     fn deref(&self) -> &Self::Target {
-        self.borrow_base().deref()
+        self.get()
     }
 }
 
 /// Base Tree Leaf Contribution
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 enum BaseContribution {
     /// No Leaves Contributed
@@ -234,93 +239,77 @@ impl Default for BaseContribution {
     }
 }
 
-/// Merkle Tree Fork
+/// Merkle Tree Branch
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = r"
+                LeafDigest<C>: Deserialize<'de>,
+                InnerDigest<C>: Deserialize<'de>,
+                M: Deserialize<'de>,
+            ",
+            serialize = r"
+                LeafDigest<C>: Serialize,
+                InnerDigest<C>: Serialize,
+                M: Serialize,
+            ",
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields,
+    )
+)]
 #[derive(derivative::Derivative)]
 #[derivative(
-    Debug(bound = "P::Weak: Debug, LeafDigest<C>: Debug, InnerDigest<C>: Debug, M: Debug"),
+    Debug(bound = "LeafDigest<C>: Debug, InnerDigest<C>: Debug, M: Debug"),
     Default(bound = "LeafDigest<C>: Default, InnerDigest<C>: Default")
 )]
-pub struct Fork<C, T, P = pointer::SingleThreaded, M = BTreeMap<C>>
+struct Branch<C, M = BTreeMap<C>>
 where
     C: Configuration + ?Sized,
-    T: Tree<C>,
-    P: PointerFamily<T>,
     M: Default + InnerMap<C>,
 {
-    /// Base Merkle Tree
-    base: P::Weak,
-
     /// Base Tree Contribution
     base_contribution: BaseContribution,
 
     /// Branch Data
-    branch: Partial<C, M>,
+    data: Partial<C, M>,
 }
 
-impl<C, T, P, M> Fork<C, T, P, M>
+impl<C, M> Branch<C, M>
 where
     C: Configuration + ?Sized,
-    T: Tree<C>,
-    P: PointerFamily<T>,
     M: Default + InnerMap<C>,
 {
-    /// Builds a new [`Fork`] from `trunk`.
-    #[inline]
-    pub fn new(parameters: &Parameters<C>, trunk: &Trunk<C, T, P>) -> Self
-    where
-        LeafDigest<C>: Clone + Default,
-        InnerDigest<C>: Default,
-    {
-        Self::with_leaves(parameters, trunk, Default::default()).unwrap()
-    }
-
-    /// Builds a new [`Fork`] from `trunk` extended by `leaf_digests`, returning `None` if
-    /// appending `leaf_digests` would exceed the capacity of the `trunk`.
-    #[inline]
-    pub fn with_leaves(
-        parameters: &Parameters<C>,
-        trunk: &Trunk<C, T, P>,
-        leaf_digests: Vec<LeafDigest<C>>,
-    ) -> Option<Self>
-    where
-        LeafDigest<C>: Clone + Default,
-        InnerDigest<C>: Default,
-    {
-        let (base_contribution, branch) =
-            Self::new_branch(parameters, trunk.borrow_base().as_ref(), leaf_digests)?;
-        Some(Self {
-            base: trunk.downgrade(),
-            base_contribution,
-            branch,
-        })
-    }
-
     /// Builds a new branch off of `base`, extending by `leaf_digests`.
     #[inline]
-    fn new_branch(
+    fn new<T>(
         parameters: &Parameters<C>,
         base: &T,
         leaf_digests: Vec<LeafDigest<C>>,
-    ) -> Option<(BaseContribution, Partial<C, M>)>
+    ) -> Option<Self>
     where
+        T: Tree<C>,
         LeafDigest<C>: Clone + Default,
         InnerDigest<C>: Default,
     {
         if leaf_digests.len() + base.len() >= capacity::<C>() {
             return None;
         }
-        Some(Self::new_branch_unchecked(parameters, base, leaf_digests))
+        Some(Self::new_unchecked(parameters, base, leaf_digests))
     }
 
     /// Builds a new branch off of `base`, extending by `leaf_digests` without checking that
     /// `base` can accept new leaves.
     #[inline]
-    fn new_branch_unchecked(
+    fn new_unchecked<T>(
         parameters: &Parameters<C>,
         base: &T,
         leaf_digests: Vec<LeafDigest<C>>,
-    ) -> (BaseContribution, Partial<C, M>)
+    ) -> Self
     where
+        T: Tree<C>,
         LeafDigest<C>: Clone + Default,
         InnerDigest<C>: Default,
     {
@@ -334,12 +323,15 @@ where
         for (i, digest) in leaf_digests.into_iter().enumerate() {
             partial.push_leaf_digest(parameters, Node(partial_tree_len + i), digest);
         }
-        (base_contribution, partial)
+        Self {
+            base_contribution,
+            data: partial,
+        }
     }
 
-    /// Generates the setup data to compute [`new_branch_unchecked`](Self::new_branch_unchecked).
+    /// Generates the setup data to compute [`new_unchecked`](Self::new_unchecked).
     #[inline]
-    fn generate_branch_setup(
+    fn generate_branch_setup<T>(
         parameters: &Parameters<C>,
         base: &T,
     ) -> (
@@ -349,6 +341,7 @@ where
         CurrentInnerPath<C>,
     )
     where
+        T: Tree<C>,
         LeafDigest<C>: Clone + Default,
         InnerDigest<C>: Default,
     {
@@ -379,43 +372,246 @@ where
         }
     }
 
-    /// Extracts the non-base leaves from `branch`.
+    /// Extracts the non-base leaves from `base_contribution` and `data`.
     #[inline]
     fn extract_leaves(
         base_contribution: BaseContribution,
-        branch: Partial<C, M>,
+        data: Partial<C, M>,
     ) -> Vec<LeafDigest<C>>
     where
         LeafDigest<C>: Default,
     {
-        let mut leaf_digests = branch.into_leaves();
+        let mut leaf_digests = data.into_leaves();
         mem::drop(leaf_digests.drain(0..base_contribution as usize));
         leaf_digests
     }
 
-    /// Tries to rebase `branch` at `base`.
+    /// Tries to rebase `self` at `base`.
     #[inline]
-    fn try_rebase(
+    fn try_rebase<T>(&mut self, parameters: &Parameters<C>, base: &T) -> bool
+    where
+        T: Tree<C>,
+        LeafDigest<C>: Clone + Default,
+        InnerDigest<C>: Default,
+    {
+        if self.data.len() + base.len() - (self.base_contribution as usize) >= capacity::<C>() {
+            return false;
+        }
+        let new_branch = Self::new_unchecked(
+            parameters,
+            base,
+            Self::extract_leaves(self.base_contribution, mem::take(&mut self.data)),
+        );
+        *self = new_branch;
+        true
+    }
+
+    /// Computes the length of this branch of the tree.
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.data.len()
+    }
+
+    /// Returns `true` if this branch is empty.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.data.is_empty()
+    }
+
+    /// Returns the current root of this branch.
+    #[inline]
+    pub fn root(&self) -> &InnerDigest<C> {
+        self.data.root()
+    }
+
+    /// Returns the leaf digest at the given `index` in the tree.
+    #[inline]
+    pub fn leaf_digest(&self, index: usize) -> Option<&LeafDigest<C>> {
+        self.data.leaf_digest(index)
+    }
+
+    /// Returns the current (right-most) leaf of the branch.
+    #[inline]
+    pub fn current_leaf(&self) -> Option<&LeafDigest<C>> {
+        self.data.current_leaf()
+    }
+
+    /// Returns the current (right-most) path of the branch.
+    #[inline]
+    pub fn current_path(&self) -> CurrentPath<C>
+    where
+        LeafDigest<C>: Clone + Default,
+        InnerDigest<C>: Clone + Default + PartialEq,
+    {
+        self.data.current_path()
+    }
+
+    /// Computes the modified path for leaves in the main trunk.
+    #[inline]
+    fn modified_path_unchecked<T>(
+        &self,
         parameters: &Parameters<C>,
+        index: usize,
         base: &T,
-        base_contribution: &mut BaseContribution,
-        branch: &mut Partial<C, M>,
-    ) -> bool
+    ) -> Result<Path<C>, PathError>
+    where
+        T: WithProofs<C>,
+        LeafDigest<C>: Clone + Default,
+        InnerDigest<C>: Clone,
+    {
+        let base_index = Node(index);
+        let base_path = base.path(parameters, base_index.0)?;
+        let fork_index = self.data.starting_leaf_node();
+        let mut fork_path = self.data.path_unchecked(fork_index.0);
+        if !Node::are_siblings(&base_index, &fork_index) {
+            let matching_index = base_index
+                .parents()
+                .zip(fork_index.parents())
+                .position(|(b, f)| Node::are_siblings(&b, &f))
+                .unwrap();
+            fork_path.inner_path.path[matching_index] = InnerPath::fold(
+                parameters,
+                fork_index,
+                fork_index.join_leaves(
+                    parameters,
+                    self.leaf_digest(fork_index.0)
+                        .unwrap_or(&Default::default()),
+                    &fork_path.sibling_digest,
+                ),
+                &fork_path.inner_path.path[..matching_index],
+            );
+            fork_path.inner_path.path[..matching_index]
+                .clone_from_slice(&base_path.inner_path.path[..matching_index]);
+        }
+        fork_path.inner_path.leaf_index = base_path.inner_path.leaf_index;
+        fork_path.sibling_digest = base_path.sibling_digest;
+        Ok(fork_path)
+    }
+
+    /// Computes the path of any leaf in the forked tree, assuming that `modified_path` returns the
+    /// outcome of [`modified_path_unchecked`](Self::modified_path_unchecked) on some base tree.
+    #[inline]
+    fn path<F>(&self, index: usize, modified_path: F) -> Result<Path<C>, PathError>
+    where
+        F: FnOnce(&Self) -> Result<Path<C>, PathError>,
+        LeafDigest<C>: Clone + Default,
+        InnerDigest<C>: Clone,
+    {
+        let length = self.len();
+        if index > 0 && index >= length {
+            return Err(PathError::IndexTooLarge { length });
+        }
+        if index < self.data.starting_leaf_index() {
+            modified_path(self)
+        } else {
+            Ok(self.data.path_unchecked(index))
+        }
+    }
+
+    /// Appends a new `leaf` onto this branch.
+    #[inline]
+    pub fn push(&mut self, parameters: &Parameters<C>, leaf: &Leaf<C>) -> bool
+    where
+        LeafDigest<C>: Default,
+    {
+        self.data.push(parameters, leaf)
+    }
+
+    /// Appends a new `leaf_digest` onto this branch.
+    #[inline]
+    fn maybe_push_digest<F>(&mut self, parameters: &Parameters<C>, leaf_digest: F) -> Option<bool>
+    where
+        F: FnOnce() -> Option<LeafDigest<C>>,
+        LeafDigest<C>: Default,
+    {
+        self.data.maybe_push_digest(parameters, leaf_digest)
+    }
+
+    /// Merges `self` into `base`.
+    ///
+    /// # Panics
+    ///
+    /// This method panics if the [`Tree::extend_digests`] method returns an `Err` variant because
+    /// the capacity invariant should have prevented the addition of leaves to this branch if they
+    /// would have exceeded the capacity limit of `base`.
+    #[inline]
+    fn merge<T>(self, parameters: &Parameters<C>, base: &mut T)
+    where
+        T: Tree<C>,
+        LeafDigest<C>: Default,
+    {
+        assert!(
+            base.extend_digests(
+                parameters,
+                Self::extract_leaves(self.base_contribution, self.data)
+            )
+            .is_ok(),
+            "Should have been able to extend extracted leaves."
+        );
+    }
+}
+
+/// Merkle Tree Fork
+#[derive(derivative::Derivative)]
+#[derivative(
+    Debug(bound = "P::Weak: Debug, LeafDigest<C>: Debug, InnerDigest<C>: Debug, M: Debug"),
+    Default(bound = "LeafDigest<C>: Default, InnerDigest<C>: Default")
+)]
+pub struct Fork<C, T, P = pointer::SingleThreaded, M = BTreeMap<C>>
+where
+    C: Configuration + ?Sized,
+    T: Tree<C>,
+    P: PointerFamily<T>,
+    M: Default + InnerMap<C>,
+{
+    /// Base Merkle Tree
+    base: P::Weak,
+
+    /// Branch Data
+    branch: Branch<C, M>,
+}
+
+impl<C, T, P, M> Fork<C, T, P, M>
+where
+    C: Configuration + ?Sized,
+    T: Tree<C>,
+    P: PointerFamily<T>,
+    M: Default + InnerMap<C>,
+{
+    /// Builds a new [`Fork`] off of `trunk` with the given `base_contribution` and `branch`.
+    #[inline]
+    fn build(trunk: &Trunk<C, T, P>, branch: Branch<C, M>) -> Self {
+        Self {
+            base: trunk.downgrade(),
+            branch,
+        }
+    }
+
+    /// Builds a new [`Fork`] from `trunk`.
+    #[inline]
+    pub fn new(parameters: &Parameters<C>, trunk: &Trunk<C, T, P>) -> Self
     where
         LeafDigest<C>: Clone + Default,
         InnerDigest<C>: Default,
     {
-        if branch.len() + base.len() - (*base_contribution as usize) >= capacity::<C>() {
-            return false;
-        }
-        let (new_base_contribution, new_branch) = Self::new_branch_unchecked(
-            parameters,
-            base,
-            Self::extract_leaves(*base_contribution, mem::take(branch)),
-        );
-        *base_contribution = new_base_contribution;
-        *branch = new_branch;
-        true
+        let branch = Branch::new_unchecked(parameters, trunk.get(), Default::default());
+        Self::build(trunk, branch)
+    }
+
+    /// Builds a new [`Fork`] from `trunk` extended by `leaf_digests`, returning `None` if
+    /// appending `leaf_digests` would exceed the capacity of the `trunk`.
+    #[inline]
+    pub fn with_leaves(
+        parameters: &Parameters<C>,
+        trunk: &Trunk<C, T, P>,
+        leaf_digests: Vec<LeafDigest<C>>,
+    ) -> Option<Self>
+    where
+        LeafDigest<C>: Clone + Default,
+        InnerDigest<C>: Default,
+    {
+        let branch = Branch::new(parameters, trunk.get(), leaf_digests)?;
+        Some(Self::build(trunk, branch))
     }
 
     /// Tries to attach this fork to a new `trunk`, returning `false` if `self` has too many leaves
@@ -426,12 +622,7 @@ where
         LeafDigest<C>: Clone + Default,
         InnerDigest<C>: Default,
     {
-        if !Self::try_rebase(
-            parameters,
-            trunk.borrow_base().as_ref(),
-            &mut self.base_contribution,
-            &mut self.branch,
-        ) {
+        if !self.branch.try_rebase(parameters, trunk.get()) {
             return false;
         }
         self.base = trunk.downgrade();
@@ -497,9 +688,9 @@ where
         T: WithProofs<C>,
         LeafDigest<C>: PartialEq,
     {
-        self.branch
-            .position(leaf_digest)
-            .or_else(move || P::upgrade(&self.base).and_then(move |b| b.position(leaf_digest)))
+        self.branch.data.position(leaf_digest).or_else(move || {
+            P::upgrade(&self.base).and_then(move |b| b.borrow().position(leaf_digest))
+        })
     }
 
     /// Returns the current (right-most) leaf of the tree.
@@ -526,47 +717,11 @@ where
         LeafDigest<C>: Clone + Default,
         InnerDigest<C>: Clone,
     {
-        // TODO: Move this algorithm to `crate::merkle_tree::path`.
-        let length = self.len();
-        if index > 0 && index >= length {
-            return Err(PathError::IndexTooLarge { length });
-        }
-        if index < self.branch.starting_leaf_index() {
-            match P::upgrade(&self.base) {
-                Some(base) => {
-                    let base_index = Node(index);
-                    let base_path = base.path(parameters, base_index.0)?;
-                    let fork_index = self.branch.starting_leaf_node();
-                    let mut fork_path = self.branch.path_unchecked(fork_index.0);
-                    if !Node::are_siblings(&base_index, &fork_index) {
-                        let matching_index = base_index
-                            .parents()
-                            .zip(fork_index.parents())
-                            .position(|(b, f)| Node::are_siblings(&b, &f))
-                            .unwrap();
-                        fork_path.inner_path.path[matching_index] = InnerPath::fold(
-                            parameters,
-                            fork_index,
-                            fork_index.join_leaves(
-                                parameters,
-                                self.leaf_digest(fork_index.0)
-                                    .unwrap_or(&Default::default()),
-                                &fork_path.sibling_digest,
-                            ),
-                            &fork_path.inner_path.path[..matching_index],
-                        );
-                        fork_path.inner_path.path[..matching_index]
-                            .clone_from_slice(&base_path.inner_path.path[..matching_index]);
-                    }
-                    fork_path.inner_path.leaf_index = base_path.inner_path.leaf_index;
-                    fork_path.sibling_digest = base_path.sibling_digest;
-                    Ok(fork_path)
-                }
+        self.branch
+            .path(index, move |branch| match P::upgrade(&self.base) {
+                Some(base) => branch.modified_path_unchecked(parameters, index, base.borrow()),
                 _ => Err(PathError::MissingPath),
-            }
-        } else {
-            Ok(self.branch.path_unchecked(index))
-        }
+            })
     }
 
     /// Appends a new `leaf` onto this fork.
@@ -587,7 +742,11 @@ where
     /// Returns `None` if this fork has been detached from its trunk. Use [`attach`](Self::attach)
     /// to re-associate a trunk to this fork.
     #[inline]
-    fn maybe_push_digest<F>(&mut self, parameters: &Parameters<C>, leaf_digest: F) -> Option<bool>
+    pub fn maybe_push_digest<F>(
+        &mut self,
+        parameters: &Parameters<C>,
+        leaf_digest: F,
+    ) -> Option<bool>
     where
         F: FnOnce() -> Option<LeafDigest<C>>,
         LeafDigest<C>: Default,
@@ -598,29 +757,45 @@ where
 }
 
 /// Forked Tree
-#[derive(derivative::Derivative)]
-#[derivative(Debug(
-    bound = "P::Strong: Debug, P::Weak: Debug, LeafDigest<C>: Debug, InnerDigest<C>: Debug, M: Debug"
-))]
-pub struct ForkedTree<C, T, P = pointer::SingleThreaded, M = BTreeMap<C>>
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = r"
+                T: Deserialize<'de>,
+                LeafDigest<C>: Deserialize<'de>,
+                InnerDigest<C>: Deserialize<'de>,
+                M: Deserialize<'de>,
+            ",
+            serialize = r"
+                T: Serialize,
+                LeafDigest<C>: Serialize,
+                InnerDigest<C>: Serialize,
+                M: Serialize,
+            ",
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields,
+    )
+)]
+pub struct ForkedTree<C, T, M = BTreeMap<C>>
 where
     C: Configuration + ?Sized,
     T: Tree<C>,
-    P: PointerFamily<T>,
     M: Default + InnerMap<C>,
 {
-    /// Base Trunk
-    trunk: Trunk<C, T, P>,
+    /// Base Tree
+    base: T,
 
-    /// Fork
-    fork: Fork<C, T, P, M>,
+    /// Branch Data
+    branch: Branch<C, M>,
 }
 
-impl<C, T, P, M> ForkedTree<C, T, P, M>
+impl<C, T, M> ForkedTree<C, T, M>
 where
     C: Configuration + ?Sized,
     T: Tree<C>,
-    P: PointerFamily<T>,
     M: Default + InnerMap<C>,
 {
     /// Builds a new [`ForkedTree`] for `tree`.
@@ -630,73 +805,121 @@ where
         LeafDigest<C>: Clone + Default,
         InnerDigest<C>: Default,
     {
-        let trunk = Trunk::new(tree);
-        Self {
-            fork: trunk.fork(parameters),
-            trunk,
-        }
+        let branch = Branch::new_unchecked(parameters, &tree, Default::default());
+        Self { base: tree, branch }
     }
 
-    /// Returns a shared reference to the trunk of this tree.
+    /// Computes the length of this forked tree.
     #[inline]
-    pub fn trunk(&self) -> &Trunk<C, T, P> {
-        &self.trunk
+    pub fn len(&self) -> usize {
+        self.branch.len()
     }
 
-    /// Returns a shared reference to the fork of this tree.
+    /// Returns `true` if this forked tree is empty.
     #[inline]
-    pub fn fork(&self) -> &Fork<C, T, P, M> {
-        &self.fork
+    pub fn is_empty(&self) -> bool {
+        self.branch.is_empty()
     }
 
-    /// Returns a mutable reference to the trunk of this tree.
+    /// Returns the current root of this forked tree.
     #[inline]
-    pub fn fork_mut(&mut self) -> &mut Fork<C, T, P, M> {
-        &mut self.fork
+    pub fn root(&self) -> &InnerDigest<C> {
+        self.branch.root()
     }
 
-    /// Resets the fork of this tree back to the trunk.
+    /// Returns the leaf digest at the given `index` in the forked tree.
+    #[inline]
+    pub fn leaf_digest(&self, index: usize) -> Option<&LeafDigest<C>> {
+        self.branch.leaf_digest(index)
+    }
+
+    /// Returns the position of `leaf_digest` in the forked tree.
+    #[inline]
+    pub fn position(&self, leaf_digest: &LeafDigest<C>) -> Option<usize>
+    where
+        T: WithProofs<C>,
+        LeafDigest<C>: PartialEq,
+    {
+        self.branch
+            .data
+            .position(leaf_digest)
+            .or_else(move || self.base.position(leaf_digest))
+    }
+
+    /// Returns the current (right-most) leaf of the forked tree.
+    #[inline]
+    pub fn current_leaf(&self) -> Option<&LeafDigest<C>> {
+        self.branch.current_leaf()
+    }
+
+    /// Returns the current (right-most) path of the forked tree.
+    #[inline]
+    pub fn current_path(&self) -> CurrentPath<C>
+    where
+        LeafDigest<C>: Clone + Default,
+        InnerDigest<C>: Clone + Default + PartialEq,
+    {
+        self.branch.current_path()
+    }
+
+    /// Returns the path at the given `index` in the forked tree.
+    #[inline]
+    pub fn path(&self, parameters: &Parameters<C>, index: usize) -> Result<Path<C>, PathError>
+    where
+        T: WithProofs<C>,
+        LeafDigest<C>: Clone + Default,
+        InnerDigest<C>: Clone,
+    {
+        self.branch.path(index, |branch| {
+            branch.modified_path_unchecked(parameters, index, &self.base)
+        })
+    }
+
+    /// Appends a new `leaf` onto this forked tree.
+    #[inline]
+    pub fn push(&mut self, parameters: &Parameters<C>, leaf: &Leaf<C>) -> bool
+    where
+        LeafDigest<C>: Default,
+    {
+        self.branch.push(parameters, leaf)
+    }
+
+    /// Appends a new `leaf_digest` onto this forked tree.
+    #[inline]
+    fn maybe_push_digest<F>(&mut self, parameters: &Parameters<C>, leaf_digest: F) -> Option<bool>
+    where
+        F: FnOnce() -> Option<LeafDigest<C>>,
+        LeafDigest<C>: Default,
+    {
+        self.branch.maybe_push_digest(parameters, leaf_digest)
+    }
+
+    /// Resets the fork of the base tree back to the trunk.
     #[inline]
     pub fn reset_fork(&mut self, parameters: &Parameters<C>)
     where
         LeafDigest<C>: Clone + Default,
         InnerDigest<C>: Default,
     {
-        self.fork = self.trunk.fork(parameters);
+        self.branch = Branch::new_unchecked(parameters, &self.base, Default::default());
     }
 
-    /// Merges the fork of this tree back into the trunk returning `true` if it was successful.
+    /// Merges the fork of the base tree back into the trunk.
     #[inline]
-    pub fn merge_fork(&mut self, parameters: &Parameters<C>) -> bool
+    pub fn merge_fork(&mut self, parameters: &Parameters<C>)
     where
         LeafDigest<C>: Clone + Default,
         InnerDigest<C>: Default,
     {
-        if let Err(fork) = self.trunk.merge(parameters, mem::take(&mut self.fork)) {
-            self.fork = fork;
-            false
-        } else {
-            self.reset_fork(parameters);
-            true
-        }
-    }
-
-    /// Converts `self` back into its inner [`Tree`].
-    ///
-    /// # Safety
-    ///
-    /// This method automatically detaches all of the forks associated to the trunk of this tree.
-    #[inline]
-    pub fn into_tree(self) -> T {
-        self.trunk.into_tree()
+        mem::take(&mut self.branch).merge(parameters, &mut self.base);
+        self.reset_fork(parameters)
     }
 }
 
-impl<C, T, P, M> Tree<C> for ForkedTree<C, T, P, M>
+impl<C, T, M> Tree<C> for ForkedTree<C, T, M>
 where
     C: Configuration + ?Sized,
     T: Tree<C>,
-    P: PointerFamily<T>,
     M: Default + InnerMap<C>,
     LeafDigest<C>: Clone + Default,
     InnerDigest<C>: Clone + Default + PartialEq,
@@ -708,23 +931,23 @@ where
 
     #[inline]
     fn len(&self) -> usize {
-        self.fork.len()
+        self.len()
     }
 
     #[inline]
     fn current_leaf(&self) -> Option<&LeafDigest<C>> {
-        self.fork.current_leaf()
+        self.current_leaf()
     }
 
     #[inline]
     fn root(&self) -> &Root<C> {
-        self.fork.root()
+        self.root()
     }
 
     #[inline]
     fn current_path(&self, parameters: &Parameters<C>) -> CurrentPath<C> {
         let _ = parameters;
-        self.fork.current_path()
+        self.current_path()
     }
 
     #[inline]
@@ -732,27 +955,26 @@ where
     where
         F: FnOnce() -> Option<LeafDigest<C>>,
     {
-        self.fork.maybe_push_digest(parameters, leaf_digest)
+        self.maybe_push_digest(parameters, leaf_digest)
     }
 }
 
-impl<C, T, P, M> WithProofs<C> for ForkedTree<C, T, P, M>
+impl<C, T, M> WithProofs<C> for ForkedTree<C, T, M>
 where
     C: Configuration + ?Sized,
     T: Tree<C> + WithProofs<C>,
-    P: PointerFamily<T>,
     M: Default + InnerMap<C>,
     LeafDigest<C>: Clone + Default + PartialEq,
     InnerDigest<C>: Clone + Default,
 {
     #[inline]
     fn leaf_digest(&self, index: usize) -> Option<&LeafDigest<C>> {
-        self.fork.leaf_digest(index)
+        self.leaf_digest(index)
     }
 
     #[inline]
     fn position(&self, leaf_digest: &LeafDigest<C>) -> Option<usize> {
-        self.fork.position(leaf_digest)
+        self.position(leaf_digest)
     }
 
     #[inline]
@@ -764,11 +986,11 @@ where
     where
         F: FnOnce() -> Option<LeafDigest<C>>,
     {
-        self.fork.maybe_push_digest(parameters, leaf_digest)
+        self.maybe_push_digest(parameters, leaf_digest)
     }
 
     #[inline]
     fn path(&self, parameters: &Parameters<C>, index: usize) -> Result<Path<C>, PathError> {
-        self.fork.path(parameters, index)
+        self.path(parameters, index)
     }
 }
