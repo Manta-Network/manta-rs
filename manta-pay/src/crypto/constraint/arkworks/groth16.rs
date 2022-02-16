@@ -108,6 +108,18 @@ impl<E> scale_codec::EncodeLike for Proof<E> where E: PairingEngine {}
 
 #[cfg(feature = "scale")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]
+impl<E> scale_codec::MaxEncodedLen for Proof<E>
+where
+    E: PairingEngine,
+{
+    #[inline]
+    fn max_encoded_len() -> usize {
+        todo!()
+    }
+}
+
+#[cfg(feature = "scale")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]
 impl<E> scale_info::TypeInfo for Proof<E>
 where
     E: PairingEngine,

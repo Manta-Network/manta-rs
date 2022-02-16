@@ -144,6 +144,18 @@ impl<F> scale_codec::EncodeLike for Fp<F> where F: PrimeField {}
 
 #[cfg(feature = "scale")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]
+impl<F> scale_codec::MaxEncodedLen for Fp<F>
+where
+    F: PrimeField,
+{
+    #[inline]
+    fn max_encoded_len() -> usize {
+        todo!()
+    }
+}
+
+#[cfg(feature = "scale")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]
 impl<F> scale_info::TypeInfo for Fp<F>
 where
     F: PrimeField,

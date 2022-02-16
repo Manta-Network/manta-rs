@@ -20,16 +20,16 @@
 
 /// AES Encryption Implementation
 pub mod aes {
-    use aes_gcm_siv::{
+    use aes_gcm::{
         aead::{Aead, NewAead},
-        Aes256GcmSiv, Nonce,
+        Aes256Gcm, Nonce,
     };
     use manta_crypto::encryption::symmetric::SymmetricKeyEncryptionScheme;
     use manta_util::Array;
 
     /// AES-GCM Authentication Tag Size
     #[allow(clippy::cast_possible_truncation)] // NOTE: GCM Tag Size should be smaller than `2^32`.
-    const TAG_SIZE: usize = (aes_gcm_siv::C_MAX - aes_gcm_siv::P_MAX) as usize;
+    const TAG_SIZE: usize = (aes_gcm::C_MAX - aes_gcm::P_MAX) as usize;
 
     /// Computes the size of the ciphertext corresponding to a plaintext of the given
     /// `plaintext_size`.
@@ -38,22 +38,21 @@ pub mod aes {
         plaintext_size + TAG_SIZE
     }
 
-    /// AES Galois Counter Mode with Synthetic Initialization Vectors
+    /// Fixed-Nonce AES Galois Counter Mode
     #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-    pub struct AesGcmSiv<const P: usize, const C: usize>;
+    pub struct FixedNonceAesGcm<const P: usize, const C: usize>;
 
-    impl<const P: usize, const C: usize> AesGcmSiv<P, C> {
+    impl<const P: usize, const C: usize> FixedNonceAesGcm<P, C> {
         /// Fixed Random Nonce
         ///
         /// # Safety
         ///
         /// Using a fixed nonce is safe under the assumption that the encryption keys are only used
-        /// once. We add SIV for some extra safety which makes the effective nonce dependent on the
-        /// plaintext.
+        /// once.
         const NONCE: &'static [u8] = b"random nonce";
     }
 
-    impl<const P: usize, const C: usize> SymmetricKeyEncryptionScheme for AesGcmSiv<P, C> {
+    impl<const P: usize, const C: usize> SymmetricKeyEncryptionScheme for FixedNonceAesGcm<P, C> {
         type Key = [u8; 32];
         type Plaintext = Array<u8, P>;
         type Ciphertext = Array<u8, C>;
@@ -61,7 +60,7 @@ pub mod aes {
         #[inline]
         fn encrypt(key: Self::Key, plaintext: Self::Plaintext) -> Self::Ciphertext {
             Array::from_unchecked(
-                Aes256GcmSiv::new_from_slice(&key)
+                Aes256Gcm::new_from_slice(&key)
                     .expect("The key has the correct size.")
                     .encrypt(Nonce::from_slice(Self::NONCE), plaintext.as_ref())
                     .expect("Symmetric encryption is not allowed to fail."),
@@ -70,7 +69,7 @@ pub mod aes {
 
         #[inline]
         fn decrypt(key: Self::Key, ciphertext: &Self::Ciphertext) -> Option<Self::Plaintext> {
-            Aes256GcmSiv::new_from_slice(&key)
+            Aes256Gcm::new_from_slice(&key)
                 .expect("The key has the correct size.")
                 .decrypt(Nonce::from_slice(Self::NONCE), ciphertext.as_ref())
                 .ok()
@@ -98,7 +97,7 @@ pub mod aes {
             let mut plaintext = [0; Asset::SIZE];
             rng.fill_bytes(&mut plaintext);
             encryption::symmetric::test::encryption::<
-                AesGcmSiv<{ Asset::SIZE }, { ciphertext_size(Asset::SIZE) }>,
+                FixedNonceAesGcm<{ Asset::SIZE }, { ciphertext_size(Asset::SIZE) }>,
             >(key, Array(plaintext));
         }
     }

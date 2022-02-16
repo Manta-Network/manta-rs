@@ -191,6 +191,18 @@ impl<C> scale_codec::EncodeLike for Group<C> where C: ProjectiveCurve {}
 
 #[cfg(feature = "scale")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]
+impl<C> scale_codec::MaxEncodedLen for Group<C>
+where
+    C: ProjectiveCurve,
+{
+    #[inline]
+    fn max_encoded_len() -> usize {
+        todo!()
+    }
+}
+
+#[cfg(feature = "scale")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]
 impl<C> scale_info::TypeInfo for Group<C>
 where
     C: ProjectiveCurve,
