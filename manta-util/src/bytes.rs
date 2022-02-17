@@ -80,3 +80,9 @@ impl<const N: usize> IntoBytes<N> for [u8; N] {
         self
     }
 }
+
+/// Counts the number of bytes required to encode a number with the given number of `bits`.
+#[inline]
+pub const fn byte_count(bits: u32) -> u32 {
+    (bits / 8) + (((bits % 8) != 0) as u32)
+}

@@ -114,7 +114,9 @@ where
 {
     #[inline]
     fn max_encoded_len() -> usize {
-        todo!()
+        use crate::crypto::ecc::arkworks::Group;
+        2 * Group::<E::G1Projective>::max_encoded_len()
+            + Group::<E::G2Projective>::max_encoded_len()
     }
 }
 

@@ -17,7 +17,7 @@
 //! Arkworks Constraint System and Proof System Implementations
 
 use alloc::vec::Vec;
-use ark_ff::PrimeField;
+use ark_ff::{Field, FpParameters, PrimeField};
 use ark_r1cs_std::{alloc::AllocVar, eq::EqGadget, select::CondSelectGadget};
 use ark_relations::{
     ns, r1cs as ark_r1cs,
@@ -30,7 +30,10 @@ use manta_crypto::{
     },
     rand::{CryptoRng, RngCore, Sample, Standard},
 };
-use manta_util::codec::{Decode, DecodeError, Encode, Read, Write};
+use manta_util::{
+    byte_count,
+    codec::{Decode, DecodeError, Encode, Read, Write},
+};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize, Serializer};
@@ -45,7 +48,7 @@ pub mod pairing;
 #[cfg_attr(doc_cfg, doc(cfg(feature = "groth16")))]
 pub mod groth16;
 
-/// Prime Field Element
+/// Field Element
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
@@ -58,7 +61,7 @@ pub mod groth16;
 )]
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Fp<F>(
-    /// Field Point Element
+    /// Field Element
     #[cfg_attr(
         feature = "serde",
         serde(serialize_with = "serialize_field_element::<F, _>")
@@ -66,11 +69,11 @@ pub struct Fp<F>(
     pub F,
 )
 where
-    F: PrimeField;
+    F: Field;
 
 impl<F> Decode for Fp<F>
 where
-    F: PrimeField,
+    F: Field,
 {
     type Error = codec::SerializationError;
 
@@ -92,7 +95,7 @@ where
 
 impl<F> Encode for Fp<F>
 where
-    F: PrimeField,
+    F: Field,
 {
     #[inline]
     fn encode<W>(&self, writer: W) -> Result<(), W::Error>
@@ -109,7 +112,7 @@ where
 #[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]
 impl<F> scale_codec::Decode for Fp<F>
 where
-    F: PrimeField,
+    F: Field,
 {
     #[inline]
     fn decode<I>(input: &mut I) -> Result<Self, scale_codec::Error>
@@ -127,7 +130,7 @@ where
 #[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]
 impl<F> scale_codec::Encode for Fp<F>
 where
-    F: PrimeField,
+    F: Field,
 {
     #[inline]
     fn using_encoded<R, Encoder>(&self, f: Encoder) -> R
@@ -140,17 +143,20 @@ where
 
 #[cfg(feature = "scale")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]
-impl<F> scale_codec::EncodeLike for Fp<F> where F: PrimeField {}
+impl<F> scale_codec::EncodeLike for Fp<F> where F: Field {}
 
 #[cfg(feature = "scale")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]
 impl<F> scale_codec::MaxEncodedLen for Fp<F>
 where
-    F: PrimeField,
+    F: Field,
 {
     #[inline]
     fn max_encoded_len() -> usize {
-        todo!()
+        byte_count(
+            <<F::BasePrimeField as PrimeField>::Params as FpParameters>::MODULUS_BITS
+                * (F::extension_degree() as u32),
+        ) as usize
     }
 }
 
@@ -158,7 +164,7 @@ where
 #[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]
 impl<F> scale_info::TypeInfo for Fp<F>
 where
-    F: PrimeField,
+    F: Field,
 {
     type Identity = [u8];
 
@@ -170,7 +176,7 @@ where
 
 impl<F> Sample for Fp<F>
 where
-    F: PrimeField,
+    F: Field,
 {
     #[inline]
     fn sample<R>(distribution: Standard, rng: &mut R) -> Self
@@ -184,7 +190,7 @@ where
 
 impl<F> TryFrom<Vec<u8>> for Fp<F>
 where
-    F: PrimeField,
+    F: Field,
 {
     type Error = codec::SerializationError;
 
@@ -198,7 +204,7 @@ where
 #[inline]
 pub fn field_element_as_bytes<F>(element: &F) -> Vec<u8>
 where
-    F: PrimeField,
+    F: Field,
 {
     let mut buffer = Vec::new();
     element
@@ -212,7 +218,7 @@ where
 #[inline]
 fn serialize_field_element<F, S>(element: &F, serializer: S) -> Result<S::Ok, S::Error>
 where
-    F: PrimeField,
+    F: Field,
     S: Serializer,
 {
     serializer.serialize_bytes(&field_element_as_bytes(element))

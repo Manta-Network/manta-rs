@@ -197,7 +197,9 @@ where
 {
     #[inline]
     fn max_encoded_len() -> usize {
-        todo!()
+        // NOTE: In affine form, we have two base field elements to represent the point. We add
+        //       space for an extra byte flag in case we need to keep track of "infinity".
+        2 * Fp::<C::BaseField>::max_encoded_len() + 1
     }
 }
 
