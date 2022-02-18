@@ -17,7 +17,7 @@
 //! Arkworks Constraint System and Proof System Implementations
 
 use alloc::vec::Vec;
-use ark_ff::{Field, FpParameters, PrimeField};
+use ark_ff::{Field, PrimeField};
 use ark_r1cs_std::{alloc::AllocVar, eq::EqGadget, select::CondSelectGadget};
 use ark_relations::{
     ns, r1cs as ark_r1cs,
@@ -30,10 +30,10 @@ use manta_crypto::{
     },
     rand::{CryptoRng, RngCore, Sample, Standard},
 };
-use manta_util::{
-    byte_count,
-    codec::{Decode, DecodeError, Encode, Read, Write},
-};
+use manta_util::codec::{Decode, DecodeError, Encode, Read, Write};
+
+#[cfg(feature = "scale")]
+use {ark_ff::FpParameters, manta_util::byte_count};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize, Serializer};
