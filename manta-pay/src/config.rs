@@ -132,21 +132,21 @@ pub type Utxo = Fp<ConstraintField>;
 pub struct UtxoCommitmentScheme(pub Poseidon4);
 
 impl CommitmentScheme for UtxoCommitmentScheme {
-    type Trapdoor = Group;
+    type Randomness = Group;
     type Input = Asset;
     type Output = Utxo;
 
     #[inline]
     fn commit_in(
         &self,
-        trapdoor: &Self::Trapdoor,
+        randomness: &Self::Randomness,
         input: &Self::Input,
         _: &mut (),
     ) -> Self::Output {
         // NOTE: The group is already in affine form, so we can extract `x` and `y`.
         self.0.hash([
-            &Fp(trapdoor.0.x),
-            &Fp(trapdoor.0.y),
+            &Fp(randomness.0.x),
+            &Fp(randomness.0.y),
             &Fp(input.id.0.into()),
             &Fp(input.value.0.into()),
         ])
@@ -193,20 +193,25 @@ pub type UtxoVar = ConstraintFieldVar;
 pub struct UtxoCommitmentSchemeVar(pub Poseidon4Var);
 
 impl CommitmentScheme<Compiler> for UtxoCommitmentSchemeVar {
-    type Trapdoor = GroupVar;
+    type Randomness = GroupVar;
     type Input = Asset<AssetIdVar, AssetValueVar>;
     type Output = UtxoVar;
 
     #[inline]
     fn commit_in(
         &self,
-        trapdoor: &Self::Trapdoor,
+        randomness: &Self::Randomness,
         input: &Self::Input,
         compiler: &mut Compiler,
     ) -> Self::Output {
         // NOTE: The group is already in affine form, so we can extract `x` and `y`.
         self.0.hash_in(
-            [&trapdoor.0.x, &trapdoor.0.y, &input.id.0, &input.value.0],
+            [
+                &randomness.0.x,
+                &randomness.0.y,
+                &input.id.0,
+                &input.value.0,
+            ],
             compiler,
         )
     }

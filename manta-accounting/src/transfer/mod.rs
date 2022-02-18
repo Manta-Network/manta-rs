@@ -85,7 +85,7 @@ pub trait Configuration {
 
     /// UTXO Commitment Scheme Type
     type UtxoCommitmentScheme: CommitmentScheme<
-        Trapdoor = Trapdoor<Self>,
+        Randomness = Trapdoor<Self>,
         Input = Asset,
         Output = Self::Utxo,
     >;
@@ -98,7 +98,7 @@ pub trait Configuration {
     /// UTXO Commitment Scheme Variable Type
     type UtxoCommitmentSchemeVar: CommitmentScheme<
             Self::Compiler,
-            Trapdoor = TrapdoorVar<Self>,
+            Randomness = TrapdoorVar<Self>,
             Input = AssetVar<Self>,
             Output = Self::UtxoVar,
         > + Constant<Self::Compiler, Type = Self::UtxoCommitmentScheme>;

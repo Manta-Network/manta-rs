@@ -20,8 +20,8 @@ use crate::constraint::Native;
 
 /// Commitment Scheme
 pub trait CommitmentScheme<COM = ()> {
-    /// Trapdoor Type
-    type Trapdoor;
+    /// Randomness Type
+    type Randomness;
 
     /// Input Type
     type Input;
@@ -29,20 +29,20 @@ pub trait CommitmentScheme<COM = ()> {
     /// Output Type
     type Output;
 
-    /// Commits to the `input` value using the randomness `trapdoor` inside the `compiler`.
+    /// Commits to the `input` value using `randomness` inside the `compiler`.
     fn commit_in(
         &self,
-        trapdoor: &Self::Trapdoor,
+        randomness: &Self::Randomness,
         input: &Self::Input,
         compiler: &mut COM,
     ) -> Self::Output;
 
-    /// Commits to the `input` value using the randomness `trapdoor`.
+    /// Commits to the `input` value using `randomness`
     #[inline]
-    fn commit(&self, trapdoor: &Self::Trapdoor, input: &Self::Input) -> Self::Output
+    fn commit(&self, randomness: &Self::Randomness, input: &Self::Input) -> Self::Output
     where
         COM: Native,
     {
-        self.commit_in(trapdoor, input, &mut COM::compiler())
+        self.commit_in(randomness, input, &mut COM::compiler())
     }
 }
