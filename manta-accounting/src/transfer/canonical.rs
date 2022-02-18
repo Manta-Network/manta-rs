@@ -335,6 +335,16 @@ where
             }
         }
     }
+
+    /// Returns the associated [`TransferShape`] for this [`Transaction`].
+    #[inline]
+    pub fn shape(&self) -> TransferShape {
+        match self {
+            Self::Mint(_) => TransferShape::Mint,
+            Self::PrivateTransfer(_, _) => TransferShape::PrivateTransfer,
+            Self::Reclaim(_) => TransferShape::Reclaim,
+        }
+    }
 }
 
 /// Transaction Kind
