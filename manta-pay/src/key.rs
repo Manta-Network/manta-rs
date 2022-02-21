@@ -25,7 +25,6 @@
 //! [`BIP-0044`]: https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki
 
 use alloc::{format, string::String};
-use bip32::{Seed, XPrv};
 use core::marker::PhantomData;
 use manta_accounting::key::{
     self, AccountIndex, HierarchicalKeyDerivationScheme, IndexType, KeyIndex, Kind,
@@ -34,9 +33,9 @@ use manta_crypto::rand::{CryptoRng, RngCore, Sample, Standard};
 use manta_util::{create_seal, seal, Array};
 
 #[cfg(feature = "serde")]
-use manta_util::serde::{Deserialize, Serialize};
+use manta_util::serde::{Deserialize, Serialize, Serializer};
 
-pub use bip32::{Language, Mnemonic};
+pub use bip32::{Error, Seed, XPrv as SecretKey};
 
 create_seal! {}
 
@@ -217,16 +216,92 @@ where
 {
     const GAP_LIMIT: IndexType = 20;
 
-    type SecretKey = XPrv;
+    type SecretKey = SecretKey;
 
     #[inline]
     fn derive(&self, account: AccountIndex, kind: Kind, index: KeyIndex) -> Self::SecretKey {
-        XPrv::derive_from_path(
+        SecretKey::derive_from_path(
             &self.seed,
             &path_string::<C>(account, kind, index)
                 .parse()
                 .expect("Path string is valid by construction."),
         )
         .expect("Unable to generate secret key for valid seed and path string.")
+    }
+}
+
+/// Mnemonic
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields, try_from = "String")
+)]
+#[derive(Clone)]
+pub struct Mnemonic(
+    /// Underlying BIP39 Mnemonic
+    #[serde(serialize_with = "Mnemonic::serialize")]
+    bip32::Mnemonic,
+);
+
+impl Mnemonic {
+    /// Create a new BIP39 mnemonic phrase from the given string.
+    #[inline]
+    pub fn new<S>(phrase: S) -> Result<Self, Error>
+    where
+        S: AsRef<str>,
+    {
+        bip32::Mnemonic::new(phrase, Default::default()).map(Self)
+    }
+
+    /// Convert this mnemonic phrase into the BIP39 seed value.
+    #[inline]
+    pub fn to_seed(&self, password: &str) -> Seed {
+        self.0.to_seed(password)
+    }
+
+    /// Serializes the underlying `mnemonic` phrase.
+    #[cfg(feature = "serde")]
+    #[inline]
+    fn serialize<S>(mnemonic: &bip32::Mnemonic, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        mnemonic.phrase().serialize(serializer)
+    }
+}
+
+impl AsRef<str> for Mnemonic {
+    #[inline]
+    fn as_ref(&self) -> &str {
+        self.0.phrase()
+    }
+}
+
+impl Eq for Mnemonic {}
+
+impl PartialEq for Mnemonic {
+    #[inline]
+    fn eq(&self, rhs: &Self) -> bool {
+        self.as_ref().eq(rhs.as_ref())
+    }
+}
+
+impl Sample for Mnemonic {
+    #[inline]
+    fn sample<R>(distribution: Standard, rng: &mut R) -> Self
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        let _ = distribution;
+        Self(bip32::Mnemonic::random(rng, Default::default()))
+    }
+}
+
+impl TryFrom<String> for Mnemonic {
+    type Error = Error;
+
+    #[inline]
+    fn try_from(string: String) -> Result<Self, Self::Error> {
+        Self::new(string)
     }
 }

@@ -103,7 +103,7 @@ ark-serialize = { version = "0.3.0", optional = true, default-features = false, 
 ark-snark = { version = "0.3.0", optional = true, default-features = false }
 ark-std = { version = "0.3.0", optional = true, default-features = false }
 bip32 = { version = "0.3.0", optional = true, default-features = false, features = ["bip39", "secp256k1"] }
-blake2 = { version = "0.10.0", default-features = false }
+blake2 = { version = "0.10.4", default-features = false }
 derivative = { version = "2.2.0", default-features = false, features = ["use_core"] }
 indexmap = { version = "1.8.0", optional = true, default-features = false }
 manta-accounting = { path = "../manta-accounting", default-features = false }
@@ -117,7 +117,7 @@ scale-codec = { package = "parity-scale-codec", version = "2.3.1", optional = tr
 scale-info = { version = "1.0.0", optional = true, default-features = false, features = ["derive"] }
 serde_json = { version = "1.0.79", optional = true, default-features = false }
 tempfile = { version = "3.2.0", optional = true, default-features = false }
-tungstenite = { version = "0.17.1", optional = true, default-features = false, features = ["native-tls"] }
+tungstenite = { version = "0.17.2", optional = true, default-features = false, features = ["native-tls"] }
 # TODO: zk-garage-plonk = { package = "plonk", git = "https://github.com/zk-garage/plonk", optional = true, default-features = false }
 
 [dev-dependencies]

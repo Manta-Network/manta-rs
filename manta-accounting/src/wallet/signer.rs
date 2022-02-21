@@ -341,6 +341,14 @@ pub type ProvingContextCacheError<C> =
     CachedResourceError<MultiProvingContext<C>, <C as Configuration>::ProvingContextCache>;
 
 /// Signer Parameters
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "Parameters<C>: Clone, C::ProvingContextCache: Clone"),
+    Debug(bound = "Parameters<C>: Debug, C::ProvingContextCache: Debug"),
+    Eq(bound = "Parameters<C>: Eq, C::ProvingContextCache: Eq"),
+    Hash(bound = "Parameters<C>: Hash, C::ProvingContextCache: Hash"),
+    PartialEq(bound = "Parameters<C>: PartialEq, C::ProvingContextCache: PartialEq")
+)]
 pub struct SignerParameters<C>
 where
     C: Configuration,
@@ -434,6 +442,17 @@ impl<C> SignerState<C>
 where
     C: Configuration,
 {
+    /// Builds a new [`SignerState`] from `keys` and `utxo_set`.
+    #[inline]
+    pub fn new(keys: C::HierarchicalKeyDerivationScheme, utxo_set: C::UtxoSet) -> Self {
+        Self {
+            accounts: AccountTable::<C>::new(keys),
+            utxo_set,
+            assets: Default::default(),
+            rng: C::Rng::from_entropy(),
+        }
+    }
+
     /// Inserts the new `utxo`-`encrypted_note` pair if a known key can decrypt the note and
     /// validate the utxo.
     #[inline]

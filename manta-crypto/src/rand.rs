@@ -234,7 +234,7 @@ macro_rules! impl_sample_from_u32 {
     };
 }
 
-impl_sample_from_u32!(u8, u16, u32);
+impl_sample_from_u32!(i8, i16, i32, u8, u16, u32);
 
 impl Sample for u64 {
     #[inline]
