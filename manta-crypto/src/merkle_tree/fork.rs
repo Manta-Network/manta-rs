@@ -262,6 +262,7 @@ impl Default for BaseContribution {
 )]
 #[derive(derivative::Derivative)]
 #[derivative(
+    Clone(bound = "LeafDigest<C>: Clone, InnerDigest<C>: Clone, M: Clone"),
     Debug(bound = "LeafDigest<C>: Debug, InnerDigest<C>: Debug, M: Debug"),
     Default(bound = "LeafDigest<C>: Default, InnerDigest<C>: Default")
 )]
@@ -778,6 +779,11 @@ where
         crate = "manta_util::serde",
         deny_unknown_fields,
     )
+)]
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "T: Clone, LeafDigest<C>: Clone, InnerDigest<C>: Clone, M: Clone"),
+    Debug(bound = "T: Debug, LeafDigest<C>: Debug, InnerDigest<C>: Debug, M: Debug")
 )]
 pub struct ForkedTree<C, T, M = BTreeMap<C>>
 where

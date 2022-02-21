@@ -136,6 +136,8 @@ type SeedBytes = Array<u8, { Seed::SIZE }>;
     derive(Deserialize, Serialize),
     serde(crate = "manta_util::serde", deny_unknown_fields, transparent)
 )]
+#[derive(derivative::Derivative)]
+#[derivative(Clone(bound = ""))]
 pub struct KeySecret<C>
 where
     C: CoinType,

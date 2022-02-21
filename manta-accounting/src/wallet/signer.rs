@@ -442,15 +442,21 @@ impl<C> SignerState<C>
 where
     C: Configuration,
 {
+    /// Builds a new [`SignerState`] from `keys`, `utxo_set`, and `assets`.
+    #[inline]
+    fn build(accounts: AccountTable<C>, utxo_set: C::UtxoSet, assets: C::AssetMap) -> Self {
+        Self {
+            accounts,
+            utxo_set,
+            assets,
+            rng: FromEntropy::from_entropy(),
+        }
+    }
+
     /// Builds a new [`SignerState`] from `keys` and `utxo_set`.
     #[inline]
     pub fn new(keys: C::HierarchicalKeyDerivationScheme, utxo_set: C::UtxoSet) -> Self {
-        Self {
-            accounts: AccountTable::<C>::new(keys),
-            utxo_set,
-            assets: Default::default(),
-            rng: C::Rng::from_entropy(),
-        }
+        Self::build(AccountTable::<C>::new(keys), utxo_set, Default::default())
     }
 
     /// Inserts the new `utxo`-`encrypted_note` pair if a known key can decrypt the note and
@@ -849,6 +855,23 @@ where
         receiver: ReceivingKey<C>,
     ) -> Receiver<C> {
         receiver.into_receiver(parameters, self.rng.gen(), asset)
+    }
+}
+
+impl<C> Clone for SignerState<C>
+where
+    C: Configuration,
+    C::HierarchicalKeyDerivationScheme: Clone,
+    C::UtxoSet: Clone,
+    C::AssetMap: Clone,
+{
+    #[inline]
+    fn clone(&self) -> Self {
+        Self::build(
+            self.accounts.clone(),
+            self.utxo_set.clone(),
+            self.assets.clone(),
+        )
     }
 }
 
