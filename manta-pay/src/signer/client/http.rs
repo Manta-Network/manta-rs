@@ -19,25 +19,15 @@
 use crate::{
     config::{Config, ReceivingKey, Transaction},
     signer::{ReceivingKeyRequest, SignError, SignResponse, SyncError, SyncRequest, SyncResponse},
+    util::http::{self, Error, IntoUrl},
 };
 use manta_accounting::wallet::{self, signer};
-use manta_util::serde::Serialize;
-use reqwest::{
-    blocking::{Client as BaseClient, Response},
-    Error, IntoUrl, Method, Url,
-};
 
 /// Wallet Associated to [`Client`]
 pub type Wallet<L> = wallet::Wallet<Config, L, Client>;
 
-/// HTTP Client
-pub struct Client {
-    /// Server URL
-    server_url: Url,
-
-    /// Base HTTP Client
-    client: BaseClient,
-}
+/// HTTP Signer Client
+pub struct Client(http::Client);
 
 impl Client {
     /// Builds a new HTTP [`Client`] that connects to `server_url`.
@@ -46,45 +36,7 @@ impl Client {
     where
         U: IntoUrl,
     {
-        Ok(Self {
-            client: BaseClient::builder().build()?,
-            server_url: server_url.into_url()?,
-        })
-    }
-
-    /// Sends a new request of type `command` with body `request`.
-    #[inline]
-    fn request<T>(&self, method: Method, command: &str, request: T) -> Result<Response, Error>
-    where
-        T: Serialize,
-    {
-        self.client
-            .request(
-                method,
-                self.server_url
-                    .join(command)
-                    .expect("This error branch is not allowed to happen."),
-            )
-            .json(&request)
-            .send()
-    }
-
-    /// Sends a GET request of type `command` with body `request`.
-    #[inline]
-    fn get<T>(&self, command: &str, request: T) -> Result<Response, Error>
-    where
-        T: Serialize,
-    {
-        self.request(Method::GET, command, request)
-    }
-
-    /// Sends a POST request of type `command` with body `request`.
-    #[inline]
-    fn post<T>(&self, command: &str, request: T) -> Result<Response, Error>
-    where
-        T: Serialize,
-    {
-        self.request(Method::POST, command, request)
+        Ok(Self(http::Client::new(server_url)?))
     }
 }
 
@@ -98,7 +50,7 @@ impl signer::Connection<Config> for Client {
     ) -> Result<Result<SyncResponse, SyncError>, Self::Error> {
         // NOTE: The synchronization command modifies the signer so it must be a POST command
         //       to match the HTTP semantics.
-        self.post("sync", request)?.json()
+        self.0.post("sync", request)?.json()
     }
 
     #[inline]
@@ -108,7 +60,7 @@ impl signer::Connection<Config> for Client {
     ) -> Result<Result<SignResponse, SignError>, Self::Error> {
         // NOTE: The signing command does not modify the signer so it must be a GET command to match
         //       the HTTP semantics.
-        self.get("sign", transaction)?.json()
+        self.0.get("sign", transaction)?.json()
     }
 
     #[inline]
@@ -118,6 +70,6 @@ impl signer::Connection<Config> for Client {
     ) -> Result<Vec<ReceivingKey>, Self::Error> {
         // NOTE: The receiving key command modifies the signer so it must be a POST command to match
         //       the HTTP semantics.
-        self.post("receivingKeys", request)?.json()
+        self.0.post("receivingKeys", request)?.json()
     }
 }
