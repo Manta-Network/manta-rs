@@ -44,11 +44,19 @@ use manta_crypto::{
         Tree,
     },
 };
-use manta_util::into_array_unchecked;
+use manta_util::Array;
 use parking_lot::RwLock;
 use std::collections::{HashMap, HashSet};
 
+#[cfg(feature = "serde")]
+use manta_util::serde::{Deserialize, Serialize};
+
+#[cfg(feature = "serde")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "serde")))]
 pub mod client;
+
+#[cfg(feature = "serde")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "serde")))]
 pub mod server;
 
 /// Merkle Forest Index
@@ -84,6 +92,11 @@ impl<L, R> AsRef<R> for WrapPair<L, R> {
 }
 
 /// Account Id
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields, transparent)
+)]
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct AccountId(pub u64);
 
@@ -331,10 +344,15 @@ impl TransferLedger<Config> for Ledger {
 }
 
 /// Checkpoint
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Checkpoint {
     /// Receiver Index
-    pub receiver_index: [usize; MerkleTreeConfiguration::FOREST_WIDTH],
+    pub receiver_index: Array<usize, { MerkleTreeConfiguration::FOREST_WIDTH }>,
 
     /// Sender Index
     pub sender_index: usize,
@@ -344,7 +362,7 @@ impl Checkpoint {
     /// Builds a new [`Checkpoint`] from `receiver_index` and `sender_index`.
     #[inline]
     pub fn new(
-        receiver_index: [usize; MerkleTreeConfiguration::FOREST_WIDTH],
+        receiver_index: Array<usize, { MerkleTreeConfiguration::FOREST_WIDTH }>,
         sender_index: usize,
     ) -> Self {
         Self {
@@ -357,7 +375,7 @@ impl Checkpoint {
 impl Default for Checkpoint {
     #[inline]
     fn default() -> Self {
-        Self::new([0; MerkleTreeConfiguration::FOREST_WIDTH], 0)
+        Self::new([0; MerkleTreeConfiguration::FOREST_WIDTH].into(), 0)
     }
 }
 
@@ -414,7 +432,7 @@ impl ledger::Connection<Config> for LedgerConnection {
         Ok(PullResponse {
             should_continue: false,
             checkpoint: Checkpoint::new(
-                into_array_unchecked(
+                Array::from_unchecked(
                     ledger
                         .utxo_forest
                         .forest

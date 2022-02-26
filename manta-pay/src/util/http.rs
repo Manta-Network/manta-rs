@@ -16,7 +16,7 @@
 
 //! HTTP Utilities
 
-use manta_util::serde::Serialize;
+use manta_util::serde::{de::DeserializeOwned, Serialize};
 use reqwest::blocking;
 
 pub use reqwest::{blocking::Response, Error, IntoUrl, Method, Url};
@@ -47,9 +47,10 @@ impl Client {
 
     /// Sends a new request of type `command` with body `request`.
     #[inline]
-    pub fn request<T>(&self, method: Method, command: &str, request: T) -> Result<Response, Error>
+    pub fn request<T, R>(&self, method: Method, command: &str, request: T) -> Result<R, Error>
     where
         T: Serialize,
+        R: DeserializeOwned,
     {
         self.client
             .request(
@@ -59,23 +60,26 @@ impl Client {
                     .expect("This error branch is not allowed to happen."),
             )
             .json(&request)
-            .send()
+            .send()?
+            .json()
     }
 
     /// Sends a GET request of type `command` with body `request`.
     #[inline]
-    pub fn get<T>(&self, command: &str, request: T) -> Result<Response, Error>
+    pub fn get<T, R>(&self, command: &str, request: T) -> Result<R, Error>
     where
         T: Serialize,
+        R: DeserializeOwned,
     {
         self.request(Method::GET, command, request)
     }
 
     /// Sends a POST request of type `command` with body `request`.
     #[inline]
-    pub fn post<T>(&self, command: &str, request: T) -> Result<Response, Error>
+    pub fn post<T, R>(&self, command: &str, request: T) -> Result<R, Error>
     where
         T: Serialize,
+        R: DeserializeOwned,
     {
         self.request(Method::POST, command, request)
     }

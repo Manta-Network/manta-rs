@@ -50,7 +50,7 @@ impl signer::Connection<Config> for Client {
     ) -> Result<Result<SyncResponse, SyncError>, Self::Error> {
         // NOTE: The synchronization command modifies the signer so it must be a POST command
         //       to match the HTTP semantics.
-        self.0.post("sync", request)?.json()
+        self.0.post("sync", request)
     }
 
     #[inline]
@@ -60,7 +60,7 @@ impl signer::Connection<Config> for Client {
     ) -> Result<Result<SignResponse, SignError>, Self::Error> {
         // NOTE: The signing command does not modify the signer so it must be a GET command to match
         //       the HTTP semantics.
-        self.0.get("sign", transaction)?.json()
+        self.0.get("sign", transaction)
     }
 
     #[inline]
@@ -70,6 +70,6 @@ impl signer::Connection<Config> for Client {
     ) -> Result<Vec<ReceivingKey>, Self::Error> {
         // NOTE: The receiving key command modifies the signer so it must be a POST command to match
         //       the HTTP semantics.
-        self.0.post("receivingKeys", request)?.json()
+        self.0.post("receivingKeys", request)
     }
 }
