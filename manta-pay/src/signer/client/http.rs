@@ -21,6 +21,7 @@ use crate::{
     signer::{ReceivingKeyRequest, SignError, SignResponse, SyncError, SyncRequest, SyncResponse},
     util::http::{self, Error, IntoUrl},
 };
+use alloc::vec::Vec;
 use manta_accounting::wallet::{self, signer};
 
 /// Wallet Associated to [`Client`]

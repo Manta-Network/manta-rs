@@ -53,7 +53,7 @@ arkworks = [
 groth16 = ["ark-groth16", "ark-snark", "arkworks"]
 
 # Enable HTTP Signer Client
-http = ["reqwest"]
+http = ["reqwest", "serde"]
 
 # TODO: Enable PLONK ZKP System
 # TODO: plonk = ["zk-garage-plonk"]
