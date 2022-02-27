@@ -241,7 +241,7 @@ where
 #[derive(Clone)]
 pub struct Mnemonic(
     /// Underlying BIP39 Mnemonic
-    #[serde(serialize_with = "Mnemonic::serialize")]
+    #[cfg_attr(feature = "serde", serde(serialize_with = "Mnemonic::serialize"))]
     bip32::Mnemonic,
 );
 

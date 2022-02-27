@@ -17,6 +17,7 @@
 //! Signer WebSocket Client Implementation
 
 use crate::config::Config;
+use alloc::vec::Vec;
 use manta_accounting::{
     transfer::{canonical::Transaction, ReceivingKey},
     wallet::{

@@ -51,8 +51,8 @@ use std::collections::{HashMap, HashSet};
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
 
-#[cfg(feature = "serde")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "serde")))]
+#[cfg(feature = "http")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "http")))]
 pub mod client;
 
 #[cfg(feature = "serde")]
