@@ -85,8 +85,7 @@ pub mod ser {
         }
     }
 
-    #[cfg(feature = "std")]
-    impl<F> std::error::Error for Error<F>
+    impl<F> serde::ser::StdError for Error<F>
     where
         F: File,
         F::Error: Debug + Display,
@@ -724,8 +723,7 @@ pub mod de {
         }
     }
 
-    #[cfg(feature = "std")]
-    impl<F> std::error::Error for Error<F>
+    impl<F> serde::de::StdError for Error<F>
     where
         F: File,
         F::Error: Debug + Display,
