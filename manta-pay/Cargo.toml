@@ -24,10 +24,6 @@ is-it-maintained-issue-resolution = { repository = "Manta-Network/manta-rs" }
 is-it-maintained-open-issues = { repository = "Manta-Network/manta-rs" }
 maintenance = { status = "actively-developed" }
 
-[[bench]]
-name = "main"
-harness = false
-
 [[bin]]
 name = "generate_parameters"
 required-features = ["groth16", "manta-util/std", "test"]
@@ -121,5 +117,4 @@ tungstenite = { version = "0.17.2", optional = true, default-features = false, f
 # TODO: zk-garage-plonk = { package = "plonk", git = "https://github.com/zk-garage/plonk", optional = true, default-features = false }
 
 [dev-dependencies]
-criterion = "0.3.5"
 manta-pay = { path = ".", features = ["groth16", "test"] }
