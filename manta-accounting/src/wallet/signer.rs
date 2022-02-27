@@ -852,9 +852,9 @@ where
         &mut self,
         parameters: &Parameters<C>,
         asset: Asset,
-        receiver: ReceivingKey<C>,
+        receiving_key: ReceivingKey<C>,
     ) -> Receiver<C> {
-        receiver.into_receiver(parameters, self.rng.gen(), asset)
+        receiving_key.into_receiver(parameters, self.rng.gen(), asset)
     }
 }
 
