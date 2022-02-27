@@ -22,7 +22,7 @@ use crate::config::{
 use manta_crypto::{
     constraint::{measure::Measure, ProofSystem as _},
     merkle_tree,
-    rand::{FromEntropy, Rand},
+    rand::{Rand, SeedableRng},
 };
 use rand_chacha::ChaCha20Rng;
 

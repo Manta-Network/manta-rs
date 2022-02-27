@@ -84,7 +84,7 @@ pub mod aes {
         use manta_accounting::asset::Asset;
         use manta_crypto::{
             encryption,
-            rand::{FromEntropy, RngCore},
+            rand::{RngCore, SeedableRng},
         };
         use rand_chacha::ChaCha20Rng;
 
