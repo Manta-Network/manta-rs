@@ -18,10 +18,18 @@
 
 use core::ops;
 
+#[cfg(feature = "serde")]
+use crate::serde::{Deserialize, Serialize};
+
 /// Used to tell an operation whether it should exit early or go on as usual.
 ///
 /// This is an alternative definition and mostly drop-in replacement for [`core::ops::ControlFlow`]
 /// but may diverge from the standard library interface over time.
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "crate::serde", deny_unknown_fields)
+)]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[must_use]
 pub enum ControlFlow<B = (), C = ()> {

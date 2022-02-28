@@ -363,6 +363,11 @@ where
 }
 
 /// Transaction Kind
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum TransactionKind {
     /// Deposit Transaction
