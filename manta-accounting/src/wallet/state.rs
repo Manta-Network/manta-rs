@@ -17,7 +17,7 @@
 //! Full Wallet Implementation
 
 use crate::{
-    asset::{Asset, AssetId, AssetList, AssetValue},
+    asset::{Asset, AssetId, AssetList, AssetMetadata, AssetValue},
     transfer::{
         canonical::{Transaction, TransactionKind},
         Configuration, ReceivingKey,
@@ -25,8 +25,8 @@ use crate::{
     wallet::{
         ledger::{self, Checkpoint, PullResponse, PushResponse},
         signer::{
-            self, ReceivingKeyRequest, SignError, SignResponse, SyncError, SyncRequest,
-            SyncResponse,
+            self, ReceivingKeyRequest, SignError, SignRequest, SignResponse, SyncError,
+            SyncRequest, SyncResponse,
         },
     },
 };
@@ -423,13 +423,20 @@ where
     /// This method returns an error in any other case. The internal state of the wallet is kept
     /// consistent between calls and recoverable errors are returned for the caller to handle.
     #[inline]
-    pub fn post(&mut self, transaction: Transaction<C>) -> Result<bool, Error<C, L, S>> {
+    pub fn post(
+        &mut self,
+        transaction: Transaction<C>,
+        metadata: Option<AssetMetadata>,
+    ) -> Result<bool, Error<C, L, S>> {
         self.sync()?;
         self.check(&transaction)
             .map_err(Error::InsufficientBalance)?;
         let SignResponse { posts } = self
             .signer
-            .sign(transaction)
+            .sign(SignRequest {
+                transaction,
+                metadata,
+            })
             .map_err(Error::SignerConnectionError)?
             .map_err(Error::SignError)?;
         let PushResponse { success } = self

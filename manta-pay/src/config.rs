@@ -49,6 +49,9 @@ use manta_crypto::{
 };
 use manta_util::codec::{Decode, DecodeError, Encode, Read, Write};
 
+#[cfg(feature = "serde")]
+use alloc::string::String;
+
 #[cfg(any(feature = "test", test))]
 use manta_crypto::rand::{CryptoRng, Rand, RngCore, Sample, Standard};
 
@@ -699,3 +702,27 @@ pub type SpendingKey = transfer::SpendingKey<Config>;
 
 /// Receiving Key Type
 pub type ReceivingKey = transfer::ReceivingKey<Config>;
+
+/// Converts a [`ReceivingKey`] into a base58-encoded string.
+#[cfg(feature = "serde")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "serde")))]
+#[inline]
+pub fn receiving_key_to_base58(receiving_key: &ReceivingKey) -> String {
+    bs58::encode(
+        serde_json::to_string(receiving_key)
+            .expect("Can always serialize to JSON.")
+            .as_bytes(),
+    )
+    .into_string()
+}
+
+/// Converts a base58-encoded string into a [`ReceivingKey`].
+#[cfg(feature = "serde")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "serde")))]
+#[inline]
+pub fn receiving_key_from_base58(string: &str) -> Option<ReceivingKey> {
+    serde_json::from_str(
+        core::str::from_utf8(&bs58::decode(string.as_bytes()).into_vec().ok()?).ok()?,
+    )
+    .ok()
+}

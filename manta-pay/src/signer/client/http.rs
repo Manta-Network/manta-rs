@@ -17,8 +17,11 @@
 //! Signer HTTP Client Implementation
 
 use crate::{
-    config::{Config, ReceivingKey, Transaction},
-    signer::{ReceivingKeyRequest, SignError, SignResponse, SyncError, SyncRequest, SyncResponse},
+    config::{Config, ReceivingKey},
+    signer::{
+        ReceivingKeyRequest, SignError, SignRequest, SignResponse, SyncError, SyncRequest,
+        SyncResponse,
+    },
     util::http::{self, Error, IntoUrl},
 };
 use alloc::vec::Vec;
@@ -57,11 +60,11 @@ impl signer::Connection<Config> for Client {
     #[inline]
     fn sign(
         &mut self,
-        transaction: Transaction,
+        request: SignRequest,
     ) -> Result<Result<SignResponse, SignError>, Self::Error> {
         // NOTE: The signing command does not modify the signer so it must be a GET command to match
         //       the HTTP semantics.
-        self.0.get("sign", transaction)
+        self.0.get("sign", request)
     }
 
     #[inline]

@@ -16,18 +16,15 @@
 
 //! Signer WebSocket Client Implementation
 
-use crate::config::Config;
-use alloc::vec::Vec;
-use manta_accounting::{
-    transfer::{canonical::Transaction, ReceivingKey},
-    wallet::{
-        self,
-        signer::{
-            self, ReceivingKeyRequest, SignError, SignResponse, SyncError, SyncRequest,
-            SyncResponse,
-        },
+use crate::{
+    config::{Config, ReceivingKey},
+    signer::{
+        ReceivingKeyRequest, SignError, SignRequest, SignResponse, SyncError, SyncRequest,
+        SyncResponse,
     },
 };
+use alloc::vec::Vec;
+use manta_accounting::wallet::{self, signer};
 use manta_util::{
     from_variant_impl,
     serde::{de::DeserializeOwned, Deserialize, Serialize},
@@ -112,7 +109,7 @@ impl signer::Connection<Config> for Client {
     #[inline]
     fn sync(
         &mut self,
-        request: SyncRequest<Config>,
+        request: SyncRequest,
     ) -> Result<Result<SyncResponse, SyncError>, Self::Error> {
         self.send("sync", request)
     }
@@ -120,16 +117,16 @@ impl signer::Connection<Config> for Client {
     #[inline]
     fn sign(
         &mut self,
-        transaction: Transaction<Config>,
-    ) -> Result<Result<SignResponse<Config>, SignError<Config>>, Self::Error> {
-        self.send("sign", transaction)
+        request: SignRequest,
+    ) -> Result<Result<SignResponse, SignError>, Self::Error> {
+        self.send("sign", request)
     }
 
     #[inline]
     fn receiving_keys(
         &mut self,
         request: ReceivingKeyRequest,
-    ) -> Result<Vec<ReceivingKey<Config>>, Self::Error> {
+    ) -> Result<Vec<ReceivingKey>, Self::Error> {
         self.send("receivingKeys", request)
     }
 }

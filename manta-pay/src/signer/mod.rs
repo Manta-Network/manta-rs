@@ -38,6 +38,9 @@ pub type SyncResponse = signer::SyncResponse;
 /// Synchronization Error
 pub type SyncError = signer::SyncError;
 
+/// Sign Request
+pub type SignRequest = signer::SignRequest<Config>;
+
 /// Sign Response
 pub type SignResponse = signer::SignResponse<Config>;
 

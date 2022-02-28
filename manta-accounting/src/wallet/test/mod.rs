@@ -387,7 +387,7 @@ where
                 };
                 let mut retries = 5; // TODO: Make this parameter tunable based on concurrency.
                 loop {
-                    let result = actor.wallet.post(transaction.clone());
+                    let result = actor.wallet.post(transaction.clone(), None);
                     if let Ok(false) = result {
                         if retries == 0 {
                             break Event { action, result };

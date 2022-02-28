@@ -18,6 +18,8 @@
 
 use alloc::{
     collections::btree_map::{BTreeMap, Entry as BTreeMapEntry},
+    format,
+    string::String,
     vec,
     vec::Vec,
 };
@@ -1049,6 +1051,77 @@ where
 }
 
 impl<'s, M> FusedIterator for SelectionKeys<'s, M> where M: AssetMap + ?Sized {}
+
+/// Asset Metadata
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde")
+)]
+#[derive(Clone, Debug, Default, Eq, Hash, PartialEq)]
+pub struct AssetMetadata {
+    /// Number of Decimals
+    pub decimals: u32,
+
+    /// Asset Ticker
+    pub ticker: String,
+}
+
+impl AssetMetadata {
+    /// Returns a string formatting of only the `value` interpreted using `self` as the metadata.
+    #[inline]
+    pub fn display_value(&self, value: AssetValue) -> String {
+        const FRACTIONAL_DIGITS: u32 = 3;
+        let value_base_units = value.0 / (10u128.pow(self.decimals));
+        let fractional_digits = value.0 / (10u128.pow(self.decimals - FRACTIONAL_DIGITS))
+            % (10u128.pow(FRACTIONAL_DIGITS));
+        format!("{}.{:0>3}", value_base_units, fractional_digits)
+    }
+
+    /// Returns a string formatting of `value` interpreted using `self` as the metadata including
+    /// the ticker.
+    #[inline]
+    pub fn display(&self, value: AssetValue) -> String {
+        format!("{} {}", self.display_value(value), self.ticker)
+    }
+}
+
+/// Asset Manager
+pub trait AssetManager {
+    /// Returns the metadata associated to `id`.
+    fn metadata(&self, id: AssetId) -> Option<&AssetMetadata>;
+}
+
+/// Implements [`AssetManager`] for map types.
+macro_rules! impl_asset_manager_for_maps_body {
+    () => {
+        #[inline]
+        fn metadata(&self, id: AssetId) -> Option<&AssetMetadata> {
+            self.get(&id)
+        }
+    };
+}
+
+/// B-Tree Map [`AssetManager`] Implementation
+pub type BTreeAssetManager = BTreeMap<AssetId, AssetMetadata>;
+
+impl AssetManager for BTreeAssetManager {
+    impl_asset_manager_for_maps_body! {}
+}
+
+/// Hash Map [`AssetManager`] Implementation
+#[cfg(feature = "std")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
+pub type HashAssetManager<S = RandomState> = HashMap<AssetId, AssetMetadata, S>;
+
+#[cfg(feature = "std")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
+impl<S> AssetManager for HashAssetManager<S>
+where
+    S: BuildHasher + Default,
+{
+    impl_asset_manager_for_maps_body! {}
+}
 
 /// Testing Suite
 #[cfg(test)]

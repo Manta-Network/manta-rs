@@ -25,7 +25,7 @@
 // TODO:  Compress the `SyncResponse` data before sending (improves privacy and bandwidth).
 
 use crate::{
-    asset::{Asset, AssetId, AssetMap, AssetValue},
+    asset::{Asset, AssetId, AssetMap, AssetMetadata, AssetValue},
     key::{self, HierarchicalKeyDerivationScheme, KeyIndex, SecretKeyPair, ViewKeySelection},
     transfer::{
         self,
@@ -75,10 +75,10 @@ where
         request: SyncRequest<C>,
     ) -> Result<Result<SyncResponse, SyncError>, Self::Error>;
 
-    /// Signs a `transaction` and returns the ledger transfer posts if successful.
+    /// Signs a transaction and returns the ledger transfer posts if successful.
     fn sign(
         &mut self,
-        transaction: Transaction<C>,
+        request: SignRequest<C>,
     ) -> Result<Result<SignResponse<C>, SignError<C>>, Self::Error>;
 
     /// Returns public receiving keys according to the `request`.
@@ -189,6 +189,41 @@ pub enum SyncError {
         /// Desired starting index to fix synchronization
         starting_index: usize,
     },
+}
+
+/// Signer Signing Request
+///
+/// This `struct` is used by the [`sign`](Connection::sign) method on [`Connection`].
+/// See its documentation for more.
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "Transaction<C>: Deserialize<'de>",
+            serialize = "Transaction<C>: Serialize"
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "Transaction<C>: Clone"),
+    Debug(bound = "Transaction<C>: Debug"),
+    Eq(bound = "Transaction<C>: Eq"),
+    Hash(bound = "Transaction<C>: Hash"),
+    PartialEq(bound = "Transaction<C>: PartialEq")
+)]
+pub struct SignRequest<C>
+where
+    C: transfer::Configuration,
+{
+    /// Transaction Data
+    pub transaction: Transaction<C>,
+
+    /// Asset Metadata
+    pub metadata: Option<AssetMetadata>,
 }
 
 /// Signer Signing Response
@@ -1113,9 +1148,9 @@ where
     #[inline]
     fn sign(
         &mut self,
-        transaction: Transaction<C>,
+        request: SignRequest<C>,
     ) -> Result<Result<SignResponse<C>, SignError<C>>, Self::Error> {
-        Ok(self.sign(transaction))
+        Ok(self.sign(request.transaction))
     }
 
     #[inline]
