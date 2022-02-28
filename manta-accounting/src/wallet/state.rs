@@ -34,7 +34,7 @@ use alloc::{
     collections::btree_map::{BTreeMap, Entry as BTreeMapEntry},
     vec::Vec,
 };
-use core::{fmt::Debug, marker::PhantomData};
+use core::{fmt::Debug, hash::Hash, marker::PhantomData};
 use manta_util::ops::ControlFlow;
 
 #[cfg(feature = "serde")]
@@ -504,8 +504,35 @@ pub enum InconsistencyError {
 ///
 /// This `enum` is the error state for [`Wallet`] methods. See [`sync`](Wallet::sync) and
 /// [`post`](Wallet::post) for more.
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = r"
+                SignError<C>: Deserialize<'de>,
+                L::Error: Deserialize<'de>,
+                S::Error: Deserialize<'de>
+            ",
+            serialize = r"
+                SignError<C>: Serialize,
+                L::Error: Serialize,
+                S::Error: Serialize
+            "
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
 #[derive(derivative::Derivative)]
-#[derivative(Debug(bound = "SignError<C>: Debug, S::Error: Debug, L::Error: Debug"))]
+#[derivative(
+    Clone(bound = "SignError<C>: Clone, L::Error: Clone, S::Error: Clone"),
+    Copy(bound = "SignError<C>: Copy, L::Error: Copy, S::Error: Copy"),
+    Debug(bound = "SignError<C>: Debug, L::Error: Debug, S::Error: Debug"),
+    Eq(bound = "SignError<C>: Eq, L::Error: Eq, S::Error: Eq"),
+    Hash(bound = "SignError<C>: Hash, L::Error: Hash, S::Error: Hash"),
+    PartialEq(bound = "SignError<C>: PartialEq, L::Error: PartialEq, S::Error: PartialEq")
+)]
 pub enum Error<C, L, S>
 where
     C: Configuration,

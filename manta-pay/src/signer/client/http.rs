@@ -22,10 +22,13 @@ use crate::{
         ReceivingKeyRequest, SignError, SignRequest, SignResponse, SyncError, SyncRequest,
         SyncResponse,
     },
-    util::http::{self, Error, IntoUrl},
+    util::http::{self, IntoUrl},
 };
 use alloc::vec::Vec;
 use manta_accounting::wallet::{self, signer};
+
+#[doc(inline)]
+pub use http::Error;
 
 /// Wallet Associated to [`Client`]
 pub type Wallet<L> = wallet::Wallet<Config, L, Client>;
