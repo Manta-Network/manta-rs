@@ -22,7 +22,9 @@ pub use reqwest::{Error, IntoUrl, Method, Response, Url};
 
 /// Blocking HTTP Client
 ///
-/// This client is a wrapper around [`reqwest::blocking::Client`] which has a known server URL.
+/// This client is a wrapper around [`reqwest::Client`] with a known server URL. The
+/// [`request`](Self::request) method on this `struct` uses [`futures::executor::block_on`] to
+/// convert the asynchronous client into a blocking on.
 pub struct Client {
     /// Server URL
     pub server_url: Url,
