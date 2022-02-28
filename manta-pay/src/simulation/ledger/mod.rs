@@ -16,9 +16,12 @@
 
 //! Ledger Simulation
 
-use crate::config::{
-    Config, EncryptedNote, MerkleTreeConfiguration, MultiVerifyingContext, ProofSystem,
-    TransferPost, Utxo, UtxoSetModel, VoidNumber,
+use crate::{
+    config::{
+        Config, EncryptedNote, MerkleTreeConfiguration, MultiVerifyingContext, ProofSystem,
+        TransferPost, Utxo, UtxoSetModel, VoidNumber,
+    },
+    signer::Checkpoint,
 };
 use alloc::{sync::Arc, vec::Vec};
 use core::convert::Infallible;
@@ -340,49 +343,6 @@ impl TransferLedger<Config> for Ledger {
                 .entry(asset_id)
                 .or_default() += deposit;
         }
-    }
-}
-
-/// Checkpoint
-#[cfg_attr(
-    feature = "serde",
-    derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
-)]
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct Checkpoint {
-    /// Receiver Index
-    pub receiver_index: Array<usize, { MerkleTreeConfiguration::FOREST_WIDTH }>,
-
-    /// Sender Index
-    pub sender_index: usize,
-}
-
-impl Checkpoint {
-    /// Builds a new [`Checkpoint`] from `receiver_index` and `sender_index`.
-    #[inline]
-    pub fn new(
-        receiver_index: Array<usize, { MerkleTreeConfiguration::FOREST_WIDTH }>,
-        sender_index: usize,
-    ) -> Self {
-        Self {
-            receiver_index,
-            sender_index,
-        }
-    }
-}
-
-impl Default for Checkpoint {
-    #[inline]
-    fn default() -> Self {
-        Self::new([0; MerkleTreeConfiguration::FOREST_WIDTH].into(), 0)
-    }
-}
-
-impl ledger::Checkpoint for Checkpoint {
-    #[inline]
-    fn receiver_index(&self) -> usize {
-        self.receiver_index.iter().sum()
     }
 }
 

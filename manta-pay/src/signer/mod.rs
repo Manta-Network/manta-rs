@@ -16,8 +16,12 @@
 
 //! Manta Pay Signer Tools
 
-use crate::config::Config;
-use manta_accounting::wallet::signer;
+use crate::config::{Config, MerkleTreeConfiguration};
+use manta_accounting::wallet::{ledger, signer};
+use manta_util::Array;
+
+#[cfg(feature = "serde")]
+use manta_util::serde::{Deserialize, Serialize};
 
 pub mod client;
 
@@ -42,3 +46,46 @@ pub type SignError = signer::SignError<Config>;
 
 /// Receiving Key Request
 pub type ReceivingKeyRequest = signer::ReceivingKeyRequest;
+
+/// Checkpoint
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct Checkpoint {
+    /// Receiver Index
+    pub receiver_index: Array<usize, { MerkleTreeConfiguration::FOREST_WIDTH }>,
+
+    /// Sender Index
+    pub sender_index: usize,
+}
+
+impl Checkpoint {
+    /// Builds a new [`Checkpoint`] from `receiver_index` and `sender_index`.
+    #[inline]
+    pub fn new(
+        receiver_index: Array<usize, { MerkleTreeConfiguration::FOREST_WIDTH }>,
+        sender_index: usize,
+    ) -> Self {
+        Self {
+            receiver_index,
+            sender_index,
+        }
+    }
+}
+
+impl Default for Checkpoint {
+    #[inline]
+    fn default() -> Self {
+        Self::new([0; MerkleTreeConfiguration::FOREST_WIDTH].into(), 0)
+    }
+}
+
+impl ledger::Checkpoint for Checkpoint {
+    #[inline]
+    fn receiver_index(&self) -> usize {
+        self.receiver_index.iter().sum()
+    }
+}
