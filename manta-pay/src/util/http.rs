@@ -17,9 +17,8 @@
 //! HTTP Utilities
 
 use manta_util::serde::{de::DeserializeOwned, Serialize};
-use reqwest::blocking;
 
-pub use reqwest::{blocking::Response, Error, IntoUrl, Method, Url};
+pub use reqwest::{Error, IntoUrl, Method, Response, Url};
 
 /// Blocking HTTP Client
 ///
@@ -29,7 +28,7 @@ pub struct Client {
     pub server_url: Url,
 
     /// Base HTTP Client
-    pub client: blocking::Client,
+    pub client: reqwest::Client,
 }
 
 impl Client {
@@ -40,14 +39,19 @@ impl Client {
         U: IntoUrl,
     {
         Ok(Self {
-            client: blocking::Client::builder().build()?,
+            client: reqwest::Client::builder().build()?,
             server_url: server_url.into_url()?,
         })
     }
 
-    /// Sends a new request of type `command` with body `request`.
+    /// Sends a new request asynchronously of type `command` with body `request`.
     #[inline]
-    pub fn request<T, R>(&self, method: Method, command: &str, request: T) -> Result<R, Error>
+    async fn send_request<T, R>(
+        &self,
+        method: Method,
+        command: &str,
+        request: T,
+    ) -> Result<R, Error>
     where
         T: Serialize,
         R: DeserializeOwned,
@@ -60,8 +64,20 @@ impl Client {
                     .expect("This error branch is not allowed to happen."),
             )
             .json(&request)
-            .send()?
+            .send()
+            .await?
             .json()
+            .await
+    }
+
+    /// Sends a new request of type `command` with body `request`.
+    #[inline]
+    pub fn request<T, R>(&self, method: Method, command: &str, request: T) -> Result<R, Error>
+    where
+        T: Serialize,
+        R: DeserializeOwned,
+    {
+        futures::executor::block_on(async { self.send_request(method, command, request).await })
     }
 
     /// Sends a GET request of type `command` with body `request`.
