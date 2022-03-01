@@ -49,8 +49,8 @@ impl KeyDerivationFunction for HierarchicalKeyDerivationFunction {
     }
 }
 
-/// Signer UTXO Set
-pub type UtxoSet = merkle_tree::forest::TreeArrayMerkleForest<
+/// Signer UTXO Accumulator
+pub type UtxoAccumulator = merkle_tree::forest::TreeArrayMerkleForest<
     MerkleTreeConfiguration,
     merkle_tree::fork::ForkedTree<
         MerkleTreeConfiguration,
@@ -212,7 +212,7 @@ pub mod cache {
 impl wallet::signer::Configuration for Config {
     type HierarchicalKeyDerivationScheme =
         key::Map<TestnetKeySecret, HierarchicalKeyDerivationFunction>;
-    type UtxoSet = UtxoSet;
+    type UtxoAccumulator = UtxoAccumulator;
     type AssetMap = HashAssetMap<AssetMapKey<Self>>;
     type ProvingContextCache = MultiProvingContext;
     type Rng = rand_chacha::ChaCha20Rng;

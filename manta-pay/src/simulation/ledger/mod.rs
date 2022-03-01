@@ -19,7 +19,7 @@
 use crate::{
     config::{
         Config, EncryptedNote, MerkleTreeConfiguration, MultiVerifyingContext, ProofSystem,
-        TransferPost, Utxo, UtxoSetModel, VoidNumber,
+        TransferPost, Utxo, UtxoAccumulatorModel, VoidNumber,
     },
     signer::Checkpoint,
 };
@@ -32,7 +32,7 @@ use manta_accounting::{
         canonical::TransferShape, AccountBalance, InvalidSinkAccount, InvalidSourceAccount, Proof,
         ReceiverLedger, ReceiverPostingKey, SenderLedger, SenderPostingKey, SinkPostingKey,
         SourcePostingKey, TransferLedger, TransferLedgerSuperPostingKey, TransferPostingKey,
-        UtxoSetOutput,
+        UtxoAccumulatorOutput,
     },
     wallet::{
         ledger::{self, PullResponse, PullResult, PushResponse, PushResult},
@@ -129,7 +129,7 @@ impl Ledger {
     /// Builds an empty [`Ledger`].
     #[inline]
     pub fn new(
-        utxo_forest_parameters: UtxoSetModel,
+        utxo_accumulator_model: UtxoAccumulatorModel,
         verifying_context: MultiVerifyingContext,
     ) -> Self {
         Self {
@@ -138,7 +138,7 @@ impl Ledger {
             shards: (0..MerkleTreeConfiguration::FOREST_WIDTH)
                 .map(move |i| (MerkleForestIndex::from_index(i), Default::default()))
                 .collect(),
-            utxo_forest: UtxoMerkleForest::new(utxo_forest_parameters),
+            utxo_forest: UtxoMerkleForest::new(utxo_accumulator_model),
             accounts: Default::default(),
             verifying_context,
         }
@@ -153,7 +153,7 @@ impl Ledger {
 
 impl SenderLedger<Config> for Ledger {
     type ValidVoidNumber = Wrap<VoidNumber>;
-    type ValidUtxoSetOutput = Wrap<UtxoSetOutput<Config>>;
+    type ValidUtxoAccumulatorOutput = Wrap<UtxoAccumulatorOutput<Config>>;
     type SuperPostingKey = (Wrap<()>, ());
 
     #[inline]
@@ -166,10 +166,10 @@ impl SenderLedger<Config> for Ledger {
     }
 
     #[inline]
-    fn has_matching_utxo_set_output(
+    fn has_matching_utxo_accumulator_output(
         &self,
-        output: UtxoSetOutput<Config>,
-    ) -> Option<Self::ValidUtxoSetOutput> {
+        output: UtxoAccumulatorOutput<Config>,
+    ) -> Option<Self::ValidUtxoAccumulatorOutput> {
         for tree in self.utxo_forest.forest.as_ref() {
             if tree.root() == &output {
                 return Some(Wrap(output));
@@ -181,11 +181,11 @@ impl SenderLedger<Config> for Ledger {
     #[inline]
     fn spend(
         &mut self,
-        utxo_set_output: Self::ValidUtxoSetOutput,
+        utxo_accumulator_output: Self::ValidUtxoAccumulatorOutput,
         void_number: Self::ValidVoidNumber,
         super_key: &Self::SuperPostingKey,
     ) {
-        let _ = (utxo_set_output, super_key);
+        let _ = (utxo_accumulator_output, super_key);
         self.void_numbers.insert(void_number.0);
     }
 }

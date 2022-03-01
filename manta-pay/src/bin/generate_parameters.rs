@@ -19,13 +19,12 @@
 // TODO: Deduplicate the per-circuit proving context and verifying context serialization code.
 // TODO: Print some statistics about the parameters and circuits and into a stats file as well.
 
-use manta_accounting::transfer;
 use manta_crypto::{
     constraint::{measure::Measure, ProofSystem as _},
     rand::{Rand, SeedableRng},
 };
 use manta_pay::config::{
-    Config, FullParameters, Mint, Parameters, PrivateTransfer, ProofSystem, Reclaim,
+    FullParameters, Mint, Parameters, PrivateTransfer, ProofSystem, Reclaim, UtxoAccumulatorModel,
 };
 use manta_util::codec::{Encode, IoWriter};
 use rand_chacha::ChaCha20Rng;
@@ -68,7 +67,7 @@ pub fn main() -> io::Result<()> {
     let mut rng = ChaCha20Rng::from_seed(SEED);
 
     let parameters = rng.gen();
-    let utxo_set_parameters: <Config as transfer::Configuration>::UtxoSetModel = rng.gen();
+    let utxo_accumulator_model: UtxoAccumulatorModel = rng.gen();
 
     let Parameters {
         key_agreement,
@@ -106,16 +105,16 @@ pub fn main() -> io::Result<()> {
         ))
         .unwrap();
 
-    utxo_set_parameters
+    utxo_accumulator_model
         .encode(IoWriter(
             OpenOptions::new()
                 .create(true)
                 .write(true)
-                .open(parameters_dir.join("utxo-set-parameters.dat"))?,
+                .open(parameters_dir.join("utxo-accumulator-model.dat"))?,
         ))
         .unwrap();
 
-    let full_parameters = FullParameters::new(&parameters, &utxo_set_parameters);
+    let full_parameters = FullParameters::new(&parameters, &utxo_accumulator_model);
 
     let proving_context_dir = target_dir.join("proving");
     fs::create_dir_all(&proving_context_dir)?;

@@ -26,7 +26,7 @@ use manta_crypto::{
 };
 use rand_chacha::ChaCha20Rng;
 
-type UtxoSet = merkle_tree::full::FullMerkleTree<MerkleTreeConfiguration>;
+type UtxoAccumulator = merkle_tree::full::FullMerkleTree<MerkleTreeConfiguration>;
 
 /// Tests the generation of proving/verifying contexts for [`Mint`].
 #[test]
@@ -60,8 +60,13 @@ fn sample_reclaim_context() {
 fn mint() {
     let mut rng = ChaCha20Rng::from_entropy();
     assert!(
-        Mint::sample_and_check_proof(&(), &rng.gen(), &mut UtxoSet::new(rng.gen()), &mut rng)
-            .expect("Random Mint should have successfully produced a proof."),
+        Mint::sample_and_check_proof(
+            &(),
+            &rng.gen(),
+            &mut UtxoAccumulator::new(rng.gen()),
+            &mut rng
+        )
+        .expect("Random Mint should have successfully produced a proof."),
         "The Mint proof should have been valid."
     );
 }
@@ -74,7 +79,7 @@ fn private_transfer() {
         PrivateTransfer::sample_and_check_proof(
             &(),
             &rng.gen(),
-            &mut UtxoSet::new(rng.gen()),
+            &mut UtxoAccumulator::new(rng.gen()),
             &mut rng
         )
         .expect("Random PrivateTransfer should have successfully produced a proof."),
@@ -87,8 +92,13 @@ fn private_transfer() {
 fn reclaim() {
     let mut rng = ChaCha20Rng::from_entropy();
     assert!(
-        Reclaim::sample_and_check_proof(&(), &rng.gen(), &mut UtxoSet::new(rng.gen()), &mut rng)
-            .expect("Random Reclaim should have successfully produced a proof."),
+        Reclaim::sample_and_check_proof(
+            &(),
+            &rng.gen(),
+            &mut UtxoAccumulator::new(rng.gen()),
+            &mut rng
+        )
+        .expect("Random Reclaim should have successfully produced a proof."),
         "The Reclaim proof should have been valid."
     );
 }

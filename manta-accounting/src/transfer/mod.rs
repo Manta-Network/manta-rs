@@ -15,6 +15,19 @@
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
 //! Transfer Protocol
+//!
+//! This module defines a protocol for the zero-knowledge transfer of private assets. We define the
+//! following structures:
+//!
+//! - Global Configuration: [`Configuration`]
+//! - Sender Abstraction: [`Sender`], [`SenderVar`], [`SenderPost`], [`SenderLedger`]
+//! - Receiver Abstraction: [`Receiver`], [`ReceiverVar`], [`ReceiverPost`], [`ReceiverLedger`]
+//! - Transfer Abstraction: [`Transfer`], [`TransferPost`], [`TransferLedger`]
+//! - Canonical Transactions: [`canonical`]
+//! - Batched Transactions: [`batch`]
+//!
+//! See the [`crate::wallet`] module for more on how this transfer protocol is used in a wallet
+//! protocol for the keeping of accounts for private assets.
 
 use crate::asset::{Asset, AssetId, AssetValue};
 use alloc::vec::Vec;
@@ -125,23 +138,31 @@ pub trait Configuration {
             Output = Self::VoidNumberVar,
         > + Constant<Self::Compiler, Type = Self::VoidNumberHashFunction>;
 
-    /// UTXO Set Model Type
-    type UtxoSetModel: Model<Item = Self::Utxo, Verification = bool>;
+    /// UTXO Accumulator Model Type
+    type UtxoAccumulatorModel: Model<Item = Self::Utxo, Verification = bool>;
 
-    /// UTXO Set Witness Variable Type
-    type UtxoSetWitnessVar: Variable<Secret, Self::Compiler, Type = UtxoSetWitness<Self>>;
+    /// UTXO Accumulator Witness Variable Type
+    type UtxoAccumulatorWitnessVar: Variable<
+        Secret,
+        Self::Compiler,
+        Type = UtxoAccumulatorWitness<Self>,
+    >;
 
-    /// UTXO Set Output Variable Type
-    type UtxoSetOutputVar: Variable<Public, Self::Compiler, Type = UtxoSetOutput<Self>>;
+    /// UTXO Accumulator Output Variable Type
+    type UtxoAccumulatorOutputVar: Variable<
+        Public,
+        Self::Compiler,
+        Type = UtxoAccumulatorOutput<Self>,
+    >;
 
-    /// UTXO Set Model Variable Type
-    type UtxoSetModelVar: Model<
+    /// UTXO Accumulator Model Variable Type
+    type UtxoAccumulatorModelVar: Model<
             Self::Compiler,
             Item = Self::UtxoVar,
-            Witness = Self::UtxoSetWitnessVar,
-            Output = Self::UtxoSetOutputVar,
+            Witness = Self::UtxoAccumulatorWitnessVar,
+            Output = Self::UtxoAccumulatorOutputVar,
             Verification = <Self::Compiler as ConstraintSystem>::Bool,
-        > + Constant<Self::Compiler, Type = Self::UtxoSetModel>;
+        > + Constant<Self::Compiler, Type = Self::UtxoAccumulatorModel>;
 
     /// Asset Id Variable Type
     type AssetIdVar: Variable<Public, Self::Compiler, Type = AssetId>
@@ -161,7 +182,7 @@ pub trait Configuration {
     type ProofSystem: ProofSystem<ConstraintSystem = Self::Compiler>
         + ProofSystemInput<AssetId>
         + ProofSystemInput<AssetValue>
-        + ProofSystemInput<UtxoSetOutput<Self>>
+        + ProofSystemInput<UtxoAccumulatorOutput<Self>>
         + ProofSystemInput<Utxo<Self>>
         + ProofSystemInput<VoidNumber<Self>>
         + ProofSystemInput<PublicKey<Self>>;
@@ -314,18 +335,18 @@ pub type VoidNumber<C> =
 pub type VoidNumberVar<C> =
     <<C as Configuration>::VoidNumberHashFunctionVar as BinaryHashFunction<Compiler<C>>>::Output;
 
-/// UTXO Set Witness Type
-pub type UtxoSetWitness<C> = <<C as Configuration>::UtxoSetModel as Model>::Witness;
+/// UTXO Accumulator Witness Type
+pub type UtxoAccumulatorWitness<C> = <<C as Configuration>::UtxoAccumulatorModel as Model>::Witness;
 
-/// UTXO Set Output Type
-pub type UtxoSetOutput<C> = <<C as Configuration>::UtxoSetModel as Model>::Output;
+/// UTXO Accumulator Output Type
+pub type UtxoAccumulatorOutput<C> = <<C as Configuration>::UtxoAccumulatorModel as Model>::Output;
 
 /// UTXO Membership Proof Type
-pub type UtxoMembershipProof<C> = MembershipProof<<C as Configuration>::UtxoSetModel>;
+pub type UtxoMembershipProof<C> = MembershipProof<<C as Configuration>::UtxoAccumulatorModel>;
 
 /// UTXO Membership Proof Variable Type
 pub type UtxoMembershipProofVar<C> =
-    MembershipProof<<C as Configuration>::UtxoSetModelVar, Compiler<C>>;
+    MembershipProof<<C as Configuration>::UtxoAccumulatorModelVar, Compiler<C>>;
 
 /// Encrypted Note Type
 pub type EncryptedNote<C> = EncryptedMessage<<C as Configuration>::NoteEncryptionScheme>;
@@ -439,20 +460,23 @@ where
     /// Base Parameters
     pub base: &'p Parameters<C>,
 
-    /// UTXO Set Model
-    pub utxo_set_model: &'p C::UtxoSetModel,
+    /// UTXO Accumulator Model
+    pub utxo_accumulator_model: &'p C::UtxoAccumulatorModel,
 }
 
 impl<'p, C> FullParameters<'p, C>
 where
     C: Configuration,
 {
-    /// Builds a new [`FullParameters`] from `base` and `utxo_set_model`.
+    /// Builds a new [`FullParameters`] from `base` and `utxo_accumulator_model`.
     #[inline]
-    pub fn new(base: &'p Parameters<C>, utxo_set_model: &'p C::UtxoSetModel) -> Self {
+    pub fn new(
+        base: &'p Parameters<C>,
+        utxo_accumulator_model: &'p C::UtxoAccumulatorModel,
+    ) -> Self {
         Self {
             base,
-            utxo_set_model,
+            utxo_accumulator_model,
         }
     }
 }
@@ -471,8 +495,8 @@ where
     /// Void Number Hash Function
     void_number_hash: C::VoidNumberHashFunctionVar,
 
-    /// UTXO Set Model
-    utxo_set_model: C::UtxoSetModelVar,
+    /// UTXO Accumulator Model
+    utxo_accumulator_model: C::UtxoAccumulatorModelVar,
 
     /// Type Parameter Marker
     __: PhantomData<&'p ()>,
@@ -491,7 +515,7 @@ where
             key_agreement: this.base.key_agreement.as_constant(compiler),
             utxo_commitment: this.base.utxo_commitment.as_constant(compiler),
             void_number_hash: this.base.void_number_hash.as_constant(compiler),
-            utxo_set_model: this.utxo_set_model.as_constant(compiler),
+            utxo_accumulator_model: this.utxo_accumulator_model.as_constant(compiler),
             __: PhantomData,
         }
     }
@@ -707,25 +731,25 @@ where
         }
     }
 
-    /// Inserts the [`Utxo`] corresponding to `self` into the `utxo_set` with the intention of
-    /// returning a proof later by a call to [`get_proof`](Self::get_proof).
+    /// Inserts the [`Utxo`] corresponding to `self` into the `utxo_accumulator` with the intention
+    /// of returning a proof later by a call to [`get_proof`](Self::get_proof).
     #[inline]
-    pub fn insert_utxo<S>(&self, utxo_set: &mut S) -> bool
+    pub fn insert_utxo<A>(&self, utxo_accumulator: &mut A) -> bool
     where
-        S: Accumulator<Item = Utxo<C>, Model = C::UtxoSetModel>,
+        A: Accumulator<Item = Utxo<C>, Model = C::UtxoAccumulatorModel>,
     {
-        utxo_set.insert(&self.utxo)
+        utxo_accumulator.insert(&self.utxo)
     }
 
-    /// Requests the membership proof of the [`Utxo`] corresponding to `self` from `utxo_set` to
-    /// prepare the conversion from `self` into a [`Sender`].
+    /// Requests the membership proof of the [`Utxo`] corresponding to `self` from
+    /// `utxo_accumulator` to prepare the conversion from `self` into a [`Sender`].
     #[inline]
-    pub fn get_proof<S>(&self, utxo_set: &S) -> Option<SenderProof<C>>
+    pub fn get_proof<A>(&self, utxo_accumulator: &A) -> Option<SenderProof<C>>
     where
-        S: Accumulator<Item = Utxo<C>, Model = C::UtxoSetModel>,
+        A: Accumulator<Item = Utxo<C>, Model = C::UtxoAccumulatorModel>,
     {
         Some(SenderProof {
-            utxo_membership_proof: utxo_set.prove(&self.utxo)?,
+            utxo_membership_proof: utxo_accumulator.prove(&self.utxo)?,
         })
     }
 
@@ -742,37 +766,37 @@ where
         }
     }
 
-    /// Tries to convert `self` into a [`Sender`] by getting a proof from `utxo_set`.
+    /// Tries to convert `self` into a [`Sender`] by getting a proof from `utxo_accumulator`.
     #[inline]
-    pub fn try_upgrade<S>(self, utxo_set: &S) -> Option<Sender<C>>
+    pub fn try_upgrade<A>(self, utxo_accumulator: &A) -> Option<Sender<C>>
     where
-        S: Accumulator<Item = Utxo<C>, Model = C::UtxoSetModel>,
+        A: Accumulator<Item = Utxo<C>, Model = C::UtxoAccumulatorModel>,
     {
-        Some(self.get_proof(utxo_set)?.upgrade(self))
+        Some(self.get_proof(utxo_accumulator)?.upgrade(self))
     }
 
-    /// Inserts the [`Utxo`] corresponding to `self` into the `utxo_set` and upgrades to a full
-    /// [`Sender`] if the insertion succeeded.
+    /// Inserts the [`Utxo`] corresponding to `self` into the `utxo_accumulator` and upgrades to a
+    /// full [`Sender`] if the insertion succeeded.
     #[inline]
-    pub fn insert_and_upgrade<S>(self, utxo_set: &mut S) -> Option<Sender<C>>
+    pub fn insert_and_upgrade<A>(self, utxo_accumulator: &mut A) -> Option<Sender<C>>
     where
-        S: Accumulator<Item = Utxo<C>, Model = C::UtxoSetModel>,
+        A: Accumulator<Item = Utxo<C>, Model = C::UtxoAccumulatorModel>,
     {
-        if self.insert_utxo(utxo_set) {
-            self.try_upgrade(utxo_set)
+        if self.insert_utxo(utxo_accumulator) {
+            self.try_upgrade(utxo_accumulator)
         } else {
             None
         }
     }
 
     /// Returns `true` whenever `self.utxo` and `rhs.utxo` can be inserted in any order into the
-    /// `utxo_set`.
+    /// `utxo_accumulator`.
     #[inline]
-    pub fn is_independent_from<A>(&self, rhs: &Self, utxo_set: &A) -> bool
+    pub fn is_independent_from<A>(&self, rhs: &Self, utxo_accumulator: &A) -> bool
     where
-        A: Accumulator<Item = Utxo<C>, Model = C::UtxoSetModel>,
+        A: Accumulator<Item = Utxo<C>, Model = C::UtxoAccumulatorModel>,
     {
-        utxo_set.are_independent(&self.utxo, &rhs.utxo)
+        utxo_accumulator.are_independent(&self.utxo, &rhs.utxo)
     }
 }
 
@@ -834,13 +858,13 @@ where
     }
 
     /// Returns `true` whenever `self.utxo` and `rhs.utxo` can be inserted in any order into the
-    /// `utxo_set`.
+    /// `utxo_accumulator`.
     #[inline]
-    pub fn is_independent_from<A>(&self, rhs: &Self, utxo_set: &A) -> bool
+    pub fn is_independent_from<A>(&self, rhs: &Self, utxo_accumulator: &A) -> bool
     where
-        A: Accumulator<Item = Utxo<C>, Model = C::UtxoSetModel>,
+        A: Accumulator<Item = Utxo<C>, Model = C::UtxoAccumulatorModel>,
     {
-        utxo_set.are_independent(&self.utxo, &rhs.utxo)
+        utxo_accumulator.are_independent(&self.utxo, &rhs.utxo)
     }
 
     /// Reverts `self` back into a [`PreSender`].
@@ -862,7 +886,7 @@ where
     #[inline]
     pub fn into_post(self) -> SenderPost<C> {
         SenderPost {
-            utxo_set_output: self.utxo_membership_proof.into_output(),
+            utxo_accumulator_output: self.utxo_membership_proof.into_output(),
             void_number: self.void_number,
         }
     }
@@ -909,9 +933,11 @@ where
             &self.asset,
             compiler,
         );
-        let is_valid_proof =
-            self.utxo_membership_proof
-                .verify_in(&parameters.utxo_set_model, &utxo, compiler);
+        let is_valid_proof = self.utxo_membership_proof.verify_in(
+            &parameters.utxo_accumulator_model,
+            &utxo,
+            compiler,
+        );
         compiler.assert(is_valid_proof);
         let void_number =
             C::void_number_var(&parameters.void_number_hash, &utxo, &self.spend, compiler);
@@ -950,6 +976,10 @@ where
 }
 
 /// Sender Ledger
+///
+/// This is the validation trait for ensuring that a particular instance of [`Sender`] is valid
+/// according to the ledger state. These methods are the minimum required for a ledger which accepts
+/// the [`Sender`] abstraction.
 pub trait SenderLedger<C>
 where
     C: Configuration,
@@ -961,20 +991,20 @@ where
     /// This type must be some wrapper around [`VoidNumber`] which can only be constructed by this
     /// implementation of [`SenderLedger`]. This is to prevent that [`spend`](Self::spend) is
     /// called before [`is_unspent`](Self::is_unspent) and
-    /// [`has_matching_utxo_set_output`](Self::has_matching_utxo_set_output).
+    /// [`has_matching_utxo_accumulator_output`](Self::has_matching_utxo_accumulator_output).
     type ValidVoidNumber: AsRef<VoidNumber<C>>;
 
-    /// Valid UTXO Set Output Posting Key
+    /// Valid UTXO Accumulator Output Posting Key
     ///
     /// # Safety
     ///
     /// This type must be some wrapper around [`S::Output`] which can only be constructed by this
     /// implementation of [`SenderLedger`]. This is to prevent that [`spend`](Self::spend) is
     /// called before [`is_unspent`](Self::is_unspent) and
-    /// [`has_matching_utxo_set_output`](Self::has_matching_utxo_set_output).
+    /// [`has_matching_utxo_accumulator_output`](Self::has_matching_utxo_accumulator_output).
     ///
     /// [`S::Output`]: Model::Output
-    type ValidUtxoSetOutput: AsRef<UtxoSetOutput<C>>;
+    type ValidUtxoAccumulatorOutput: AsRef<UtxoAccumulatorOutput<C>>;
 
     /// Super Posting Key
     ///
@@ -986,15 +1016,15 @@ where
     /// Existence of such a void number could indicate a possible double-spend.
     fn is_unspent(&self, void_number: VoidNumber<C>) -> Option<Self::ValidVoidNumber>;
 
-    /// Checks if `output` matches the current accumulated value of the UTXO set that is stored on
-    /// the ledger.
+    /// Checks if `output` matches the current accumulated value of the UTXO accumulator that is
+    /// stored on the ledger.
     ///
     /// Failure to match the ledger state means that the sender was constructed under an invalid or
     /// older state of the ledger.
-    fn has_matching_utxo_set_output(
+    fn has_matching_utxo_accumulator_output(
         &self,
-        output: UtxoSetOutput<C>,
-    ) -> Option<Self::ValidUtxoSetOutput>;
+        output: UtxoAccumulatorOutput<C>,
+    ) -> Option<Self::ValidUtxoAccumulatorOutput>;
 
     /// Posts the `void_number` to the ledger, spending the asset.
     ///
@@ -1014,11 +1044,14 @@ where
     #[inline]
     fn spend(
         &mut self,
-        utxo_set_output: Self::ValidUtxoSetOutput,
+        utxo_accumulator_output: Self::ValidUtxoAccumulatorOutput,
         void_number: Self::ValidVoidNumber,
         super_key: &Self::SuperPostingKey,
     ) {
-        self.spend_all(iter::once((utxo_set_output, void_number)), super_key)
+        self.spend_all(
+            iter::once((utxo_accumulator_output, void_number)),
+            super_key,
+        )
     }
 
     /// Posts all of the [`VoidNumber`] to the ledger, spending the assets.
@@ -1039,10 +1072,10 @@ where
     #[inline]
     fn spend_all<I>(&mut self, iter: I, super_key: &Self::SuperPostingKey)
     where
-        I: IntoIterator<Item = (Self::ValidUtxoSetOutput, Self::ValidVoidNumber)>,
+        I: IntoIterator<Item = (Self::ValidUtxoAccumulatorOutput, Self::ValidVoidNumber)>,
     {
-        for (utxo_set_output, void_number) in iter {
-            self.spend(utxo_set_output, void_number, super_key)
+        for (utxo_accumulator_output, void_number) in iter {
+            self.spend(utxo_accumulator_output, void_number, super_key)
         }
     }
 }
@@ -1060,20 +1093,25 @@ pub enum SenderPostError {
     /// The asset has already been spent.
     AssetSpent,
 
-    /// Invalid UTXO Set Output Error
+    /// Invalid UTXO Accumulator Output Error
     ///
-    /// The sender was not constructed under the current state of the UTXO set.
-    InvalidUtxoSetOutput,
+    /// The sender was not constructed under the current state of the UTXO accumulator.
+    InvalidUtxoAccumulatorOutput,
 }
 
 /// Sender Post
+///
+/// This `struct` represents the public data required to verify that a particular instance of a
+/// [`Sender`] should be valid according to the [`SenderLedger`]. The rest of the information
+/// required to verify a [`Transfer`] is stored in the [`TransferPost`] which includes the [`Proof`]
+/// of validity.
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
     serde(
         bound(
-            deserialize = "UtxoSetOutput<C>: Deserialize<'de>, VoidNumber<C>: Deserialize<'de>",
-            serialize = "UtxoSetOutput<C>: Serialize, VoidNumber<C>: Serialize",
+            deserialize = "UtxoAccumulatorOutput<C>: Deserialize<'de>, VoidNumber<C>: Deserialize<'de>",
+            serialize = "UtxoAccumulatorOutput<C>: Serialize, VoidNumber<C>: Serialize",
         ),
         crate = "manta_util::serde",
         deny_unknown_fields
@@ -1081,19 +1119,19 @@ pub enum SenderPostError {
 )]
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "UtxoSetOutput<C>: Clone, VoidNumber<C>: Clone"),
-    Copy(bound = "UtxoSetOutput<C>: Copy, VoidNumber<C>: Copy"),
-    Debug(bound = "UtxoSetOutput<C>: Debug, VoidNumber<C>: Debug"),
-    Eq(bound = "UtxoSetOutput<C>: Eq, VoidNumber<C>: Eq"),
-    Hash(bound = "UtxoSetOutput<C>: Hash, VoidNumber<C>: Hash"),
-    PartialEq(bound = "UtxoSetOutput<C>: PartialEq, VoidNumber<C>: PartialEq")
+    Clone(bound = "UtxoAccumulatorOutput<C>: Clone, VoidNumber<C>: Clone"),
+    Copy(bound = "UtxoAccumulatorOutput<C>: Copy, VoidNumber<C>: Copy"),
+    Debug(bound = "UtxoAccumulatorOutput<C>: Debug, VoidNumber<C>: Debug"),
+    Eq(bound = "UtxoAccumulatorOutput<C>: Eq, VoidNumber<C>: Eq"),
+    Hash(bound = "UtxoAccumulatorOutput<C>: Hash, VoidNumber<C>: Hash"),
+    PartialEq(bound = "UtxoAccumulatorOutput<C>: PartialEq, VoidNumber<C>: PartialEq")
 )]
 pub struct SenderPost<C>
 where
     C: Configuration,
 {
-    /// UTXO Set Output
-    pub utxo_set_output: UtxoSetOutput<C>,
+    /// UTXO Accumulator Output
+    pub utxo_accumulator_output: UtxoAccumulatorOutput<C>,
 
     /// Void Number
     pub void_number: VoidNumber<C>,
@@ -1108,7 +1146,7 @@ where
     pub fn extend_input(&self, input: &mut ProofInput<C>) {
         // TODO: Add a "public part" trait that extracts the public part of `Sender` (using
         //       `SenderVar` to determine the types), then generate this method automatically.
-        C::ProofSystem::extend(input, &self.utxo_set_output);
+        C::ProofSystem::extend(input, &self.utxo_accumulator_output);
         C::ProofSystem::extend(input, &self.void_number);
     }
 
@@ -1119,9 +1157,9 @@ where
         L: SenderLedger<C>,
     {
         Ok(SenderPostingKey {
-            utxo_set_output: ledger
-                .has_matching_utxo_set_output(self.utxo_set_output)
-                .ok_or(SenderPostError::InvalidUtxoSetOutput)?,
+            utxo_accumulator_output: ledger
+                .has_matching_utxo_accumulator_output(self.utxo_accumulator_output)
+                .ok_or(SenderPostError::InvalidUtxoAccumulatorOutput)?,
             void_number: ledger
                 .is_unspent(self.void_number)
                 .ok_or(SenderPostError::AssetSpent)?,
@@ -1135,8 +1173,8 @@ where
     C: Configuration,
     L: SenderLedger<C> + ?Sized,
 {
-    /// UTXO Set Output Posting Key
-    utxo_set_output: L::ValidUtxoSetOutput,
+    /// UTXO Accumulator Output Posting Key
+    utxo_accumulator_output: L::ValidUtxoAccumulatorOutput,
 
     /// Void Number Posting Key
     void_number: L::ValidVoidNumber,
@@ -1150,14 +1188,14 @@ where
     /// Extends proof public input with `self`.
     #[inline]
     pub fn extend_input(&self, input: &mut ProofInput<C>) {
-        C::ProofSystem::extend(input, self.utxo_set_output.as_ref());
+        C::ProofSystem::extend(input, self.utxo_accumulator_output.as_ref());
         C::ProofSystem::extend(input, self.void_number.as_ref());
     }
 
     /// Posts `self` to the sender `ledger`.
     #[inline]
     pub fn post(self, super_key: &L::SuperPostingKey, ledger: &mut L) {
-        ledger.spend(self.utxo_set_output, self.void_number, super_key);
+        ledger.spend(self.utxo_accumulator_output, self.void_number, super_key);
     }
 
     /// Posts all of the [`SenderPostingKey`] in `iter` to the sender `ledger`.
@@ -1168,7 +1206,7 @@ where
     {
         ledger.spend_all(
             iter.into_iter()
-                .map(move |k| (k.utxo_set_output, k.void_number)),
+                .map(move |k| (k.utxo_accumulator_output, k.void_number)),
             super_key,
         )
     }
@@ -1235,13 +1273,13 @@ where
     }
 
     /// Returns `true` whenever `self.utxo` and `rhs.utxo` can be inserted in any order into the
-    /// `utxo_set`.
+    /// `utxo_accumulator`.
     #[inline]
-    pub fn is_independent_from<A>(&self, rhs: &Self, utxo_set: &A) -> bool
+    pub fn is_independent_from<A>(&self, rhs: &Self, utxo_accumulator: &A) -> bool
     where
-        A: Accumulator<Item = Utxo<C>, Model = C::UtxoSetModel>,
+        A: Accumulator<Item = Utxo<C>, Model = C::UtxoAccumulatorModel>,
     {
-        utxo_set.are_independent(&self.utxo, &rhs.utxo)
+        utxo_accumulator.are_independent(&self.utxo, &rhs.utxo)
     }
 
     /// Extracts the ledger posting data from `self`.
@@ -1336,6 +1374,10 @@ where
 }
 
 /// Receiver Ledger
+///
+/// This is the validation trait for ensuring that a particular instance of [`Receiver`] is valid
+/// according to the ledger state. These methods are the minimum required for a ledger which accepts
+/// the [`Receiver`] abstraction.
 pub trait ReceiverLedger<C>
 where
     C: Configuration,
@@ -1426,6 +1468,11 @@ pub enum ReceiverPostError {
 }
 
 /// Receiver Post
+///
+/// This `struct` represents the public data required to verify that a particular instance of a
+/// [`Receiver`] should be valid according to the [`ReceiverLedger`]. The rest of the information
+/// required to verify a [`Transfer`] is stored in the [`TransferPost`] which includes the [`Proof`]
+/// of validity.
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
@@ -1856,6 +1903,12 @@ where
 }
 
 /// Transfer Ledger
+///
+/// This is the validation trait for ensuring that a particular instance of [`Transfer`] is valid
+/// according to the ledger state. These methods are the minimum required for a ledger which accepts
+/// the [`Transfer`] abstraction. This `trait` inherits from [`SenderLedger`] and [`ReceiverLedger`]
+/// which validate the [`Sender`] and [`Receiver`] parts of any [`Transfer`]. See their
+/// documentation for more.
 pub trait TransferLedger<C>: SenderLedger<C, SuperPostingKey = (Self::ValidProof, TransferLedgerSuperPostingKey<C, Self>)>
     + ReceiverLedger<C, SuperPostingKey = (Self::ValidProof, TransferLedgerSuperPostingKey<C, Self>)>
 where

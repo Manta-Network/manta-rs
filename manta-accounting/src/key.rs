@@ -15,6 +15,11 @@
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
 //! Hierarchical Key Derivation Schemes
+//!
+//! This module defines a Hierarchical Key Derivation Scheme similar to the one defined in the
+//! [`BIP-0044`] specification.
+//!
+//! [`BIP-0044`]: https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki
 
 // TODO: Build custom iterator types for [`keypairs`] and [`generate_keys`].
 
@@ -675,6 +680,10 @@ impl AccountMap for VecAccountMap {
 }
 
 /// Account Table
+///
+/// The account table stores an underlying [`HierarchicalKeyDerivationScheme`] for key generation
+/// and a set of accounts defined by an [`AccountMap`] which can be queried to get the set of
+/// existing keys and for generating new keys.
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),

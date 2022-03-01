@@ -21,8 +21,8 @@
 // TODO: Add in some concurrency (and measure how much we need it).
 
 use crate::{
-    config::{Config, FullParameters, MultiProvingContext, UtxoSetModel},
-    signer::base::{Signer, UtxoSet},
+    config::{Config, FullParameters, MultiProvingContext, UtxoAccumulatorModel},
+    signer::base::{Signer, UtxoAccumulator},
 };
 use alloc::{sync::Arc, vec::Vec};
 use manta_accounting::{
@@ -51,7 +51,7 @@ pub fn sample_wallet<R>(
     ledger: &ledger::SharedLedger,
     cache: &MultiProvingContext,
     parameters: &transfer::Parameters<Config>,
-    utxo_set_model: &UtxoSetModel,
+    utxo_accumulator_model: &UtxoAccumulatorModel,
     rng: &mut R,
 ) -> Wallet<Config, ledger::LedgerConnection, Signer>
 where
@@ -63,7 +63,7 @@ where
             AccountTable::new(rng.gen()),
             cache.clone(),
             parameters.clone(),
-            UtxoSet::new(utxo_set_model.clone()),
+            UtxoAccumulator::new(utxo_accumulator_model.clone()),
             rng.seed_rng().expect("Failed to sample PRNG for signer."),
         ),
     )
@@ -94,16 +94,16 @@ where
 pub fn simulate(actor_count: usize, actor_lifetime: usize) {
     let mut rng = ChaCha20Rng::from_entropy();
     let parameters = rng.gen();
-    let utxo_set_model = rng.gen();
+    let utxo_accumulator_model = rng.gen();
 
     let (proving_context, verifying_context) = transfer::canonical::generate_context(
         &(),
-        FullParameters::new(&parameters, &utxo_set_model),
+        FullParameters::new(&parameters, &utxo_accumulator_model),
         &mut rng,
     )
     .expect("Failed to generate contexts.");
 
-    let mut ledger = ledger::Ledger::new(utxo_set_model.clone(), verifying_context);
+    let mut ledger = ledger::Ledger::new(utxo_accumulator_model.clone(), verifying_context);
 
     for i in 0..actor_count {
         ledger.set_public_balance(ledger::AccountId(i as u64), AssetId(0), AssetValue(1000000));
@@ -123,7 +123,7 @@ pub fn simulate(actor_count: usize, actor_lifetime: usize) {
                     &ledger,
                     &proving_context,
                     &parameters,
-                    &utxo_set_model,
+                    &utxo_accumulator_model,
                     &mut rng,
                 ),
                 Default::default(),

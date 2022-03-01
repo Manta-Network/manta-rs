@@ -15,6 +15,13 @@
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
 //! Serde-Compatible Encrypted Filesystem
+//!
+//! To facilitate the encryption and file I/O of structured data, we define the [`Serializer`] and
+//! [`Deserializer`] which use a [`File`] to encrypt and decrypt [`Block`] data during reading and
+//! writing from the file system. The encoding scheme is a binary-only concatenative format which
+//! stores no type or name metadata for the smallest data sizes: it is not a self-describing nor
+//! human-readable format. See the [`test`](mod@test) module for testing of encrypting serialization
+//! and decrypting deserialization.
 
 use crate::fs::{Block, File};
 use alloc::{format, string::String, vec::Vec};

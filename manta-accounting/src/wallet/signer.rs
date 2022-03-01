@@ -124,12 +124,20 @@ where
     /// Recovery Flag
     ///
     /// If `with_recovery` is set to `true`, the [`GAP_LIMIT`] is used during sync to perform a full
-    /// recovery.
+    /// recovery. See [`Configuration::HierarchicalKeyDerivationScheme`] for the scheme where the
+    /// [`GAP_LIMIT`] is configured.
     ///
     /// [`GAP_LIMIT`]: HierarchicalKeyDerivationScheme::GAP_LIMIT
     pub with_recovery: bool,
 
     /// Starting Index
+    ///
+    /// This index is the starting point for insertions and indicates how far into the
+    /// [`UtxoAccumulator`] the insertions received are starting from. The signer may be ahead of
+    /// this index and so can skip those UTXOs which are in between the `starting_index` and its own
+    /// internal index.
+    ///
+    /// [`UtxoAccumulator`]: Configuration::UtxoAccumulator
     pub starting_index: usize,
 
     /// Balance Insertions
@@ -350,7 +358,7 @@ pub trait Configuration: transfer::Configuration {
     >;
 
     /// [`Utxo`] Accumulator Type
-    type UtxoSet: Accumulator<Item = Self::Utxo, Model = Self::UtxoSetModel>
+    type UtxoAccumulator: Accumulator<Item = Self::Utxo, Model = Self::UtxoAccumulatorModel>
         + ExactSizeAccumulator
         + OptimizedAccumulator
         + Rollback;
@@ -436,12 +444,12 @@ where
         bound(
             deserialize = r"
                 AccountTable<C>: Deserialize<'de>,
-                C::UtxoSet: Deserialize<'de>,
+                C::UtxoAccumulator: Deserialize<'de>,
                 C::AssetMap: Deserialize<'de>
             ",
             serialize = r"
                 AccountTable<C>: Serialize,
-                C::UtxoSet: Serialize,
+                C::UtxoAccumulator: Serialize,
                 C::AssetMap: Serialize
             ",
         ),
@@ -458,12 +466,12 @@ where
     /// # Note
     ///
     /// For now, we only use the default account, and the rest of the storage data is related to
-    /// this account. Eventually, we want to have a global `utxo_set` for all accounts and a local
-    /// `assets` map for each account.
+    /// this account. Eventually, we want to have a global `utxo_accumulator` for all accounts and
+    /// a local `assets` map for each account.
     accounts: AccountTable<C>,
 
-    /// UTXO Set
-    utxo_set: C::UtxoSet,
+    /// UTXO Accumulator
+    utxo_accumulator: C::UtxoAccumulator,
 
     /// Asset Distribution
     assets: C::AssetMap,
@@ -477,21 +485,32 @@ impl<C> SignerState<C>
 where
     C: Configuration,
 {
-    /// Builds a new [`SignerState`] from `keys`, `utxo_set`, and `assets`.
+    /// Builds a new [`SignerState`] from `keys`, `utxo_accumulator`, and `assets`.
     #[inline]
-    fn build(accounts: AccountTable<C>, utxo_set: C::UtxoSet, assets: C::AssetMap) -> Self {
+    fn build(
+        accounts: AccountTable<C>,
+        utxo_accumulator: C::UtxoAccumulator,
+        assets: C::AssetMap,
+    ) -> Self {
         Self {
             accounts,
-            utxo_set,
+            utxo_accumulator,
             assets,
             rng: FromEntropy::from_entropy(),
         }
     }
 
-    /// Builds a new [`SignerState`] from `keys` and `utxo_set`.
+    /// Builds a new [`SignerState`] from `keys` and `utxo_accumulator`.
     #[inline]
-    pub fn new(keys: C::HierarchicalKeyDerivationScheme, utxo_set: C::UtxoSet) -> Self {
-        Self::build(AccountTable::<C>::new(keys), utxo_set, Default::default())
+    pub fn new(
+        keys: C::HierarchicalKeyDerivationScheme,
+        utxo_accumulator: C::UtxoAccumulator,
+    ) -> Self {
+        Self::build(
+            AccountTable::<C>::new(keys),
+            utxo_accumulator,
+            Default::default(),
+        )
     }
 
     /// Inserts the new `utxo`-`encrypted_note` pair if a known key can decrypt the note and
@@ -532,7 +551,7 @@ where
                 if let Some(index) = void_numbers.iter().position(move |v| v == &void_number) {
                     void_numbers.remove(index);
                 } else {
-                    self.utxo_set.insert(&utxo);
+                    self.utxo_accumulator.insert(&utxo);
                     self.assets.insert((index, ephemeral_public_key), asset);
                     if !asset.is_zero() {
                         deposit.push(asset);
@@ -541,12 +560,12 @@ where
                 }
             }
         }
-        self.utxo_set.insert_nonprovable(&utxo);
+        self.utxo_accumulator.insert_nonprovable(&utxo);
         Ok(())
     }
 
-    /// Checks if `asset` matches with `void_number`, removing it from the `utxo_set` and inserting
-    /// it into the `withdraw` set if this is the case.
+    /// Checks if `asset` matches with `void_number`, removing it from the `utxo_accumulator` and
+    /// inserting it into the `withdraw` set if this is the case.
     #[inline]
     fn is_asset_unspent(
         parameters: &Parameters<C>,
@@ -554,7 +573,7 @@ where
         ephemeral_public_key: &PublicKey<C>,
         asset: Asset,
         void_numbers: &mut Vec<VoidNumber<C>>,
-        utxo_set: &mut C::UtxoSet,
+        utxo_accumulator: &mut C::UtxoAccumulator,
         withdraw: &mut Vec<Asset>,
     ) -> bool {
         let utxo = C::utxo(
@@ -567,7 +586,7 @@ where
         let void_number = C::void_number(&parameters.void_number_hash, &utxo, secret_key);
         if let Some(index) = void_numbers.iter().position(move |v| v == &void_number) {
             void_numbers.remove(index);
-            utxo_set.remove_proof(&utxo);
+            utxo_accumulator.remove_proof(&utxo);
             if !asset.is_zero() {
                 withdraw.push(asset);
             }
@@ -611,7 +630,7 @@ where
                         ephemeral_public_key,
                         *asset,
                         &mut void_numbers,
-                        &mut self.utxo_set,
+                        &mut self.utxo_accumulator,
                         &mut withdraw,
                     ),
                     _ => true,
@@ -726,7 +745,7 @@ where
         mint: Mint<C>,
     ) -> Result<TransferPost<C>, SignError<C>> {
         Self::build_post(
-            FullParameters::new(parameters, self.utxo_set.model()),
+            FullParameters::new(parameters, self.utxo_accumulator.model()),
             proving_context,
             mint,
             &mut self.rng,
@@ -742,7 +761,7 @@ where
         private_transfer: PrivateTransfer<C>,
     ) -> Result<TransferPost<C>, SignError<C>> {
         Self::build_post(
-            FullParameters::new(parameters, self.utxo_set.model()),
+            FullParameters::new(parameters, self.utxo_accumulator.model()),
             proving_context,
             private_transfer,
             &mut self.rng,
@@ -758,7 +777,7 @@ where
         reclaim: Reclaim<C>,
     ) -> Result<TransferPost<C>, SignError<C>> {
         Self::build_post(
-            FullParameters::new(parameters, self.utxo_set.model()),
+            FullParameters::new(parameters, self.utxo_accumulator.model()),
             proving_context,
             reclaim,
             &mut self.rng,
@@ -820,7 +839,7 @@ where
         for _ in 0..needed_mints {
             let (mint, pre_sender) = self.mint_zero(parameters, asset_id)?;
             posts.push(self.mint_post(parameters, &proving_context.mint, mint)?);
-            pre_sender.insert_utxo(&mut self.utxo_set);
+            pre_sender.insert_utxo(&mut self.utxo_accumulator);
             pre_senders.push(pre_sender);
         }
         Ok(())
@@ -844,7 +863,7 @@ where
                 .chunk_by::<{ PrivateTransferShape::SENDERS }>();
             for chunk in &mut iter {
                 let senders = array_map(chunk, |s| {
-                    s.try_upgrade(&self.utxo_set)
+                    s.try_upgrade(&self.utxo_accumulator)
                         .expect("Unable to upgrade expected UTXO.")
                 });
                 let (receivers, mut join) = self.next_join(
@@ -857,7 +876,7 @@ where
                     &proving_context.private_transfer,
                     PrivateTransfer::build(senders, receivers),
                 )?);
-                join.insert_utxos(&mut self.utxo_set);
+                join.insert_utxos(&mut self.utxo_accumulator);
                 joins.push(join.pre_sender);
                 new_zeroes.append(&mut join.zeroes);
             }
@@ -875,7 +894,7 @@ where
         Ok(into_array_unchecked(
             pre_senders
                 .into_iter()
-                .map(move |s| s.try_upgrade(&self.utxo_set))
+                .map(move |s| s.try_upgrade(&self.utxo_accumulator))
                 .collect::<Option<Vec<_>>>()
                 .expect("Unable to upgrade expected UTXOs."),
         ))
@@ -897,14 +916,14 @@ impl<C> Clone for SignerState<C>
 where
     C: Configuration,
     C::HierarchicalKeyDerivationScheme: Clone,
-    C::UtxoSet: Clone,
+    C::UtxoAccumulator: Clone,
     C::AssetMap: Clone,
 {
     #[inline]
     fn clone(&self) -> Self {
         Self::build(
             self.accounts.clone(),
-            self.utxo_set.clone(),
+            self.utxo_accumulator.clone(),
             self.assets.clone(),
         )
     }
@@ -938,7 +957,7 @@ where
         accounts: AccountTable<C>,
         proving_context: C::ProvingContextCache,
         parameters: Parameters<C>,
-        utxo_set: C::UtxoSet,
+        utxo_accumulator: C::UtxoAccumulator,
         assets: C::AssetMap,
         rng: C::Rng,
     ) -> Self {
@@ -949,7 +968,7 @@ where
             },
             SignerState {
                 accounts,
-                utxo_set,
+                utxo_accumulator,
                 assets,
                 rng,
             },
@@ -967,14 +986,14 @@ where
         accounts: AccountTable<C>,
         proving_context: C::ProvingContextCache,
         parameters: Parameters<C>,
-        utxo_set: C::UtxoSet,
+        utxo_accumulator: C::UtxoAccumulator,
         rng: C::Rng,
     ) -> Self {
         Self::new_inner(
             accounts,
             proving_context,
             parameters,
-            utxo_set,
+            utxo_accumulator,
             Default::default(),
             rng,
         )
@@ -995,14 +1014,14 @@ where
     /// Updates the internal ledger state, returning the new asset distribution.
     #[inline]
     pub fn sync(&mut self, request: SyncRequest<C>) -> Result<SyncResponse, SyncError> {
-        // TODO: Do a capacity check on the current UTXO set?
+        // TODO: Do a capacity check on the current UTXO accumulator?
         //
-        // if self.utxo_set.capacity() < starting_index {
+        // if self.utxo_accumulator.capacity() < starting_index {
         //    panic!("full capacity")
         // }
         //
-        let utxo_set_len = self.state.utxo_set.len();
-        match utxo_set_len.checked_sub(request.starting_index) {
+        let utxo_accumulator_len = self.state.utxo_accumulator.len();
+        match utxo_accumulator_len.checked_sub(request.starting_index) {
             Some(diff) => {
                 let result = self.state.sync_with(
                     &self.parameters.parameters,
@@ -1011,11 +1030,11 @@ where
                     request.removes,
                     diff == 0,
                 );
-                self.state.utxo_set.commit();
+                self.state.utxo_accumulator.commit();
                 result
             }
             _ => Err(SyncError::InconsistentSynchronization {
-                starting_index: utxo_set_len,
+                starting_index: utxo_accumulator_len,
             }),
         }
     }
@@ -1096,7 +1115,7 @@ where
         // TODO: Should we do a time-based release mechanism to amortize the cost of reading
         //       from the proving context cache?
         let result = self.sign_internal(transaction);
-        self.state.utxo_set.rollback();
+        self.state.utxo_accumulator.rollback();
         self.parameters.proving_context.release();
         result
     }

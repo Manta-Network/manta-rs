@@ -15,6 +15,11 @@
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
 //! Assets
+//!
+//! This module defines the data structures and canonical encodings of the notion of an "asset".
+//! Assets are defined by an [`AssetId`] field and an [`AssetValue`] field. For describing an
+//! [`Asset`] with a particular [`AssetId`] we use [`AssetMetadata`] to assign a ticker and decimal
+//! for human-readable display purposes.
 
 use alloc::{
     collections::btree_map::{BTreeMap, Entry as BTreeMapEntry},
@@ -1071,6 +1076,8 @@ impl AssetMetadata {
     /// Returns a string formatting of only the `value` interpreted using `self` as the metadata.
     #[inline]
     pub fn display_value(&self, value: AssetValue) -> String {
+        // TODO: What if we want more than three `FRACTIONAL_DIGITS`? How do we make this method
+        //       more general?
         const FRACTIONAL_DIGITS: u32 = 3;
         let value_base_units = value.0 / (10u128.pow(self.decimals));
         let fractional_digits = value.0 / (10u128.pow(self.decimals - FRACTIONAL_DIGITS))

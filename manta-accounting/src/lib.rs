@@ -15,6 +15,14 @@
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
 //! Accounting Primitives
+//!
+//! This crate defines the abstractions required for the private transfer of assets and the keeping
+//! of accounts related to private assets, including the definitions of an [asset], a [private
+//! transfer protocol], and a [wallet protocol].
+//!
+//! [asset]: asset
+//! [private transfer protocol]: transfer
+//! [wallet protocol]: wallet
 
 #![cfg_attr(not(any(feature = "std", test)), no_std)]
 #![cfg_attr(doc_cfg, feature(doc_cfg))]

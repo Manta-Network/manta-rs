@@ -113,19 +113,19 @@ where
 pub struct TransferDistribution<'p, C, A>
 where
     C: Configuration,
-    A: Accumulator<Item = Utxo<C>, Model = C::UtxoSetModel>,
+    A: Accumulator<Item = Utxo<C>, Model = C::UtxoAccumulatorModel>,
 {
     /// Parameters
     pub parameters: &'p Parameters<C>,
 
-    /// UTXO Set
-    pub utxo_set: &'p mut A,
+    /// UTXO Accumulator
+    pub utxo_accumulator: &'p mut A,
 }
 
 impl<'p, C, A> From<FixedTransferDistribution<'p, C, A>> for TransferDistribution<'p, C, A>
 where
     C: Configuration,
-    A: Accumulator<Item = Utxo<C>, Model = C::UtxoSetModel>,
+    A: Accumulator<Item = Utxo<C>, Model = C::UtxoAccumulatorModel>,
 {
     #[inline]
     fn from(distribution: FixedTransferDistribution<'p, C, A>) -> Self {
@@ -142,7 +142,7 @@ where
 pub struct FixedTransferDistribution<'p, C, A>
 where
     C: Configuration,
-    A: Accumulator<Item = Utxo<C>, Model = C::UtxoSetModel>,
+    A: Accumulator<Item = Utxo<C>, Model = C::UtxoAccumulatorModel>,
 {
     /// Base Transfer Distribution
     pub base: TransferDistribution<'p, C, A>,
@@ -168,28 +168,28 @@ impl<C, const SOURCES: usize, const SENDERS: usize, const RECEIVERS: usize, cons
 where
     C: Configuration,
 {
-    /// Samples a [`TransferPost`] from `parameters` and `utxo_set` using `proving_context` and
-    /// `rng`.
+    /// Samples a [`TransferPost`] from `parameters` and `utxo_accumulator` using `proving_context`
+    /// and `rng`.
     #[inline]
     pub fn sample_post<A, R>(
         proving_context: &ProvingContext<C>,
         parameters: &Parameters<C>,
-        utxo_set: &mut A,
+        utxo_accumulator: &mut A,
         rng: &mut R,
     ) -> Result<TransferPost<C>, ProofSystemError<C>>
     where
-        A: Accumulator<Item = Utxo<C>, Model = C::UtxoSetModel>,
+        A: Accumulator<Item = Utxo<C>, Model = C::UtxoAccumulatorModel>,
         R: CryptoRng + RngCore + ?Sized,
     {
         Self::sample(
             TransferDistribution {
                 parameters,
-                utxo_set,
+                utxo_accumulator,
             },
             rng,
         )
         .into_post(
-            FullParameters::new(parameters, utxo_set.model()),
+            FullParameters::new(parameters, utxo_accumulator.model()),
             proving_context,
             rng,
         )
@@ -201,23 +201,23 @@ where
     pub fn sample_and_check_proof<A, R>(
         public_parameters: &ProofSystemPublicParameters<C>,
         parameters: &Parameters<C>,
-        utxo_set: &mut A,
+        utxo_accumulator: &mut A,
         rng: &mut R,
     ) -> Result<bool, ProofSystemError<C>>
     where
-        A: Accumulator<Item = Utxo<C>, Model = C::UtxoSetModel>,
+        A: Accumulator<Item = Utxo<C>, Model = C::UtxoAccumulatorModel>,
         R: CryptoRng + RngCore + ?Sized,
     {
         let (proving_context, verifying_context) = Self::generate_context(
             public_parameters,
-            FullParameters::new(parameters, utxo_set.model()),
+            FullParameters::new(parameters, utxo_accumulator.model()),
             rng,
         )?;
         Self::sample_and_check_proof_with_context(
             &proving_context,
             &verifying_context,
             parameters,
-            utxo_set,
+            utxo_accumulator,
             rng,
         )
     }
@@ -229,14 +229,14 @@ where
         proving_context: &ProvingContext<C>,
         verifying_context: &VerifyingContext<C>,
         parameters: &Parameters<C>,
-        utxo_set: &mut A,
+        utxo_accumulator: &mut A,
         rng: &mut R,
     ) -> Result<bool, ProofSystemError<C>>
     where
-        A: Accumulator<Item = Utxo<C>, Model = C::UtxoSetModel>,
+        A: Accumulator<Item = Utxo<C>, Model = C::UtxoAccumulatorModel>,
         R: CryptoRng + RngCore + ?Sized,
     {
-        let post = Self::sample_post(proving_context, parameters, utxo_set, rng)?;
+        let post = Self::sample_post(proving_context, parameters, utxo_accumulator, rng)?;
         C::ProofSystem::verify(
             verifying_context,
             &post.generate_proof_input(),
@@ -252,12 +252,12 @@ fn sample_senders_and_receivers<C, A, R>(
     asset_id: AssetId,
     senders: &[AssetValue],
     receivers: &[AssetValue],
-    utxo_set: &mut A,
+    utxo_accumulator: &mut A,
     rng: &mut R,
 ) -> (Vec<Sender<C>>, Vec<Receiver<C>>)
 where
     C: Configuration,
-    A: Accumulator<Item = Utxo<C>, Model = C::UtxoSetModel>,
+    A: Accumulator<Item = Utxo<C>, Model = C::UtxoAccumulatorModel>,
     R: CryptoRng + RngCore + ?Sized,
 {
     (
@@ -270,8 +270,8 @@ where
                     parameters.key_agreement.derive_owned(rng.gen()),
                     asset_id.with(*v),
                 );
-                sender.insert_utxo(utxo_set);
-                sender.try_upgrade(utxo_set).unwrap()
+                sender.insert_utxo(utxo_accumulator);
+                sender.try_upgrade(utxo_accumulator).unwrap()
             })
             .collect(),
         receivers
@@ -299,7 +299,7 @@ impl<
     > Sample<TransferDistribution<'_, C, A>> for Transfer<C, SOURCES, SENDERS, RECEIVERS, SINKS>
 where
     C: Configuration,
-    A: Accumulator<Item = Utxo<C>, Model = C::UtxoSetModel>,
+    A: Accumulator<Item = Utxo<C>, Model = C::UtxoAccumulatorModel>,
 {
     #[inline]
     fn sample<R>(distribution: TransferDistribution<'_, C, A>, rng: &mut R) -> Self
@@ -316,7 +316,7 @@ where
             asset.id,
             &secret_input,
             &output,
-            distribution.utxo_set,
+            distribution.utxo_accumulator,
             rng,
         );
         Self::new(
@@ -340,7 +340,7 @@ impl<
     for Transfer<C, SOURCES, SENDERS, RECEIVERS, SINKS>
 where
     C: Configuration,
-    A: Accumulator<Item = Utxo<C>, Model = C::UtxoSetModel>,
+    A: Accumulator<Item = Utxo<C>, Model = C::UtxoAccumulatorModel>,
 {
     #[inline]
     fn sample<R>(distribution: FixedTransferDistribution<'_, C, A>, rng: &mut R) -> Self
@@ -352,7 +352,7 @@ where
             distribution.asset_id,
             &value_distribution(SENDERS, distribution.sender_sum, rng),
             &value_distribution(RECEIVERS, distribution.receiver_sum, rng),
-            distribution.base.utxo_set,
+            distribution.base.utxo_accumulator,
             rng,
         );
         Self::new(

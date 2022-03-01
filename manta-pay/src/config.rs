@@ -463,11 +463,11 @@ impl merkle_tree::InnerHash<Compiler> for InnerHashVar {
     }
 }
 
-/// UTXO Set Model
-pub type UtxoSetModel = merkle_tree::Parameters<MerkleTreeConfiguration>;
+/// UTXO Accumulator Model
+pub type UtxoAccumulatorModel = merkle_tree::Parameters<MerkleTreeConfiguration>;
 
-/// UTXO Set Output
-pub type UtxoSetOutput = merkle_tree::Root<MerkleTreeConfiguration>;
+/// UTXO Accumulator Output
+pub type UtxoAccumulatorOutput = merkle_tree::Root<MerkleTreeConfiguration>;
 
 /// Merkle Tree Configuration
 pub struct MerkleTreeConfiguration;
@@ -638,10 +638,12 @@ impl transfer::Configuration for Config {
     type VoidNumberVar =
         <Self::VoidNumberHashFunctionVar as BinaryHashFunction<Self::Compiler>>::Output;
     type VoidNumberHashFunctionVar = VoidNumberHashFunctionVar;
-    type UtxoSetModel = UtxoSetModel;
-    type UtxoSetWitnessVar = <Self::UtxoSetModelVar as accumulator::Model<Self::Compiler>>::Witness;
-    type UtxoSetOutputVar = <Self::UtxoSetModelVar as accumulator::Model<Self::Compiler>>::Output;
-    type UtxoSetModelVar = merkle_tree::Parameters<MerkleTreeConfigurationVar, Compiler>;
+    type UtxoAccumulatorModel = UtxoAccumulatorModel;
+    type UtxoAccumulatorWitnessVar =
+        <Self::UtxoAccumulatorModelVar as accumulator::Model<Self::Compiler>>::Witness;
+    type UtxoAccumulatorOutputVar =
+        <Self::UtxoAccumulatorModelVar as accumulator::Model<Self::Compiler>>::Output;
+    type UtxoAccumulatorModelVar = merkle_tree::Parameters<MerkleTreeConfigurationVar, Compiler>;
     type AssetIdVar = AssetIdVar;
     type AssetValueVar = AssetValueVar;
     type Compiler = Compiler;

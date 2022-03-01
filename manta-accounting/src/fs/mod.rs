@@ -15,6 +15,19 @@
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
 //! Encrypted Filesystem Primitives
+//!
+//! This module defines an abstraction over the standard file system which enforces that data is
+//! encrypted before being written and decrypted after being read. See [`File`] for the main
+//! abstraction which allows for encrypted file systems and [`cocoon`] for a concrete implementation
+//! of this file system.
+//!
+//! # Serialization
+//!
+//! For these file system abstractions we use the [`Block`] type for buffering raw binary data into
+//! an encryption scheme, so to facilitate the encryption of structured data, we have the [`serde`]
+//! module which defines serializers and deserializers which encrypt and decrypt data on the fly
+//! using the [`Block`] as the underlying serialization and deserialization target. See the
+//! [`serde`] module for more.
 
 use alloc::{boxed::Box, vec::Vec};
 use core::{cmp, hash::Hash, marker::PhantomData};

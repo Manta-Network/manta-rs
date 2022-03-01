@@ -69,15 +69,15 @@ where
         (into_array_unchecked(receivers), Self { zeroes, pre_sender })
     }
 
-    /// Inserts UTXOs for each sender in `self` into the `utxo_set` for future proof selection.
+    /// Inserts UTXOs for each sender in `self` into the `utxo_accumulator` for future proof selection.
     #[inline]
-    pub fn insert_utxos<A>(&self, utxo_set: &mut A)
+    pub fn insert_utxos<A>(&self, utxo_accumulator: &mut A)
     where
-        A: Accumulator<Item = Utxo<C>, Model = C::UtxoSetModel>,
+        A: Accumulator<Item = Utxo<C>, Model = C::UtxoAccumulatorModel>,
     {
-        self.pre_sender.insert_utxo(utxo_set);
+        self.pre_sender.insert_utxo(utxo_accumulator);
         for zero in &self.zeroes {
-            zero.insert_utxo(utxo_set);
+            zero.insert_utxo(utxo_accumulator);
         }
     }
 }
