@@ -18,7 +18,7 @@
 //!
 //! This module defines the data structures and canonical encodings of the notion of an "asset".
 //! Assets are defined by an [`AssetId`] field and an [`AssetValue`] field. For describing an
-//! [`Asset`] with a particular [`AssetId`] we use [`AssetMetadata`] to assign a ticker and decimal
+//! [`Asset`] with a particular [`AssetId`] we use [`AssetMetadata`] to assign a symbol and decimals
 //! for human-readable display purposes.
 
 use alloc::{
@@ -1068,8 +1068,8 @@ pub struct AssetMetadata {
     /// Number of Decimals
     pub decimals: u32,
 
-    /// Asset Ticker
-    pub ticker: String,
+    /// Asset Symbol
+    pub symbol: String,
 }
 
 impl AssetMetadata {
@@ -1086,10 +1086,10 @@ impl AssetMetadata {
     }
 
     /// Returns a string formatting of `value` interpreted using `self` as the metadata including
-    /// the ticker.
+    /// the symbol.
     #[inline]
     pub fn display(&self, value: AssetValue) -> String {
-        format!("{} {}", self.display_value(value), self.ticker)
+        format!("{} {}", self.display_value(value), self.symbol)
     }
 }
 
