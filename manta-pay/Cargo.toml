@@ -1,0 +1,122 @@
+[package]
+name = "manta-pay"
+version = "0.4.0"
+edition = "2021"
+authors = ["Manta Network <contact@manta.network>"]
+readme = "README.md"
+license-file = "LICENSE"
+repository = "https://github.com/Manta-Network/manta-rs"
+homepage = "https://github.com/Manta-Network"
+documentation = "https://github.com/Manta-Network/manta-rs"
+categories = [""]
+keywords = [""]
+description = "The Manta-Pay protocol and implementaion."
+publish = false
+
+[package.metadata.docs.rs]
+# To build locally:
+# RUSTDOCFLAGS="--cfg doc_cfg" cargo +nightly doc --all-features --open
+all-features = true
+rustdoc-args = ["--cfg", "doc_cfg"]
+
+[badges]
+is-it-maintained-issue-resolution = { repository = "Manta-Network/manta-rs" }
+is-it-maintained-open-issues = { repository = "Manta-Network/manta-rs" }
+maintenance = { status = "actively-developed" }
+
+[[bin]]
+name = "generate_parameters"
+required-features = ["groth16", "manta-util/std", "test"]
+
+[[bin]]
+name = "measure"
+required-features = ["groth16"]
+
+[[bin]]
+name = "simulation"
+required-features = ["groth16", "simulation", "tempfile"]
+
+[features]
+# Enable Arkworks Backend
+arkworks = [
+    "ark-bls12-381",
+    "ark-ec",
+    "ark-ed-on-bls12-381",
+    "ark-ff",
+    "ark-r1cs-std",
+    "ark-relations",
+    "ark-serialize",
+    "ark-std",
+]
+
+# Enable Groth16 ZKP System
+groth16 = ["ark-groth16", "ark-snark", "arkworks"]
+
+# Enable HTTP Signer Client
+http = ["futures", "reqwest", "serde"]
+
+# TODO: Enable PLONK ZKP System
+# TODO: plonk = ["zk-garage-plonk"]
+
+# SCALE Codec and Type Info
+scale = ["scale-codec", "scale-info"]
+
+# Serde
+serde = ["bs58", "manta-accounting/serde", "manta-crypto/serde", "serde_json"]
+
+# Simulation Framework
+simulation = [
+    "indexmap",
+    "manta-accounting/parallel",
+    "parking_lot",
+    "rayon",
+    "test",
+    "wallet",
+]
+
+# Standard Library
+std = ["manta-accounting/std", "manta-util/std"]
+
+# Testing Frameworks
+test = ["manta-accounting/test", "manta-crypto/test"]
+
+# Wallet
+wallet = ["bip32", "manta-crypto/getrandom", "std"]
+
+# Enable WebSocket Signer Client
+websocket = ["serde", "std", "tungstenite"]
+
+[dependencies]
+aes-gcm = { version = "0.9.4", default-features = false, features = ["aes", "alloc"] }
+ark-bls12-381 = { version = "0.3.0", optional = true, default-features = false, features = ["curve"] }
+ark-ec = { version = "0.3.0", optional = true, default-features = false }
+ark-ed-on-bls12-381 = { version = "0.3.0", optional = true, default-features = false, features = ["r1cs"] }
+ark-ff = { version = "0.3.0", optional = true, default-features = false }
+ark-groth16 = { version = "0.3.0", optional = true, default-features = false }
+ark-r1cs-std = { version = "0.3.1", optional = true, default-features = false }
+ark-relations = { version = "0.3.0", optional = true, default-features = false }
+ark-serialize = { version = "0.3.0", optional = true, default-features = false, features = ["derive"] }
+ark-snark = { version = "0.3.0", optional = true, default-features = false }
+ark-std = { version = "0.3.0", optional = true, default-features = false }
+bip32 = { version = "0.3.0", optional = true, default-features = false, features = ["bip39", "secp256k1"] }
+blake2 = { version = "0.10.4", default-features = false }
+bs58 = { version = "0.4.0", optional = true, default-features = false, features = ["alloc"] }
+derivative = { version = "2.2.0", default-features = false, features = ["use_core"] }
+futures = { version = "0.3.21", optional = true, default-features = false, features = ["executor"] }
+indexmap = { version = "1.8.0", optional = true, default-features = false }
+manta-accounting = { path = "../manta-accounting", default-features = false }
+manta-crypto = { path = "../manta-crypto", default-features = false }
+manta-util = { path = "../manta-util", default-features = false }
+parking_lot = { version = "0.12.0", optional = true, default-features = false }
+rand_chacha = { version = "0.3.1", default-features = false }
+rayon = { version = "1.5.1", optional = true, default-features = false }
+reqwest = { version = "0.11.9", optional = true, default-features = false, features = ["json"] }
+scale-codec = { package = "parity-scale-codec", version = "2.3.1", optional = true, default-features = false, features = ["derive", "max-encoded-len"] }
+scale-info = { version = "1.0.0", optional = true, default-features = false, features = ["derive"] }
+serde_json = { version = "1.0.79", optional = true, default-features = false, features = ["alloc"] }
+tempfile = { version = "3.2.0", optional = true, default-features = false }
+tungstenite = { version = "0.17.2", optional = true, default-features = false, features = ["native-tls"] }
+# TODO: zk-garage-plonk = { package = "plonk", git = "https://github.com/zk-garage/plonk", optional = true, default-features = false }
+
+[dev-dependencies]
+manta-pay = { path = ".", features = ["groth16", "test"] }

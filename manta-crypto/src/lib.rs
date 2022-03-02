@@ -13,3 +13,23 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
+
+//! Cryptographic Primitives Library
+
+#![cfg_attr(not(feature = "std"), no_std)]
+#![cfg_attr(doc_cfg, feature(doc_cfg))]
+#![forbid(rustdoc::broken_intra_doc_links)]
+#![forbid(missing_docs)]
+
+extern crate alloc;
+
+pub mod accumulator;
+pub mod commitment;
+pub mod constraint;
+pub mod ecc;
+pub mod encryption;
+pub mod hash;
+pub mod key;
+pub mod merkle_tree;
+pub mod password;
+pub mod rand;

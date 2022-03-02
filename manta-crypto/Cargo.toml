@@ -1,0 +1,47 @@
+[package]
+name = "manta-crypto"
+version = "0.4.0"
+edition = "2021"
+authors = ["Manta Network <contact@manta.network>"]
+readme = "README.md"
+license-file = "LICENSE"
+repository = "https://github.com/Manta-Network/manta-rs"
+homepage = "https://github.com/Manta-Network"
+documentation = "https://github.com/Manta-Network/manta-rs"
+categories = [""]
+keywords = [""]
+description = "Cryptographic Primitives and Interfaces for Manta."
+publish = false
+
+[package.metadata.docs.rs]
+# To build locally:
+# RUSTDOCFLAGS="--cfg doc_cfg" cargo +nightly doc --all-features --open
+all-features = true
+rustdoc-args = ["--cfg", "doc_cfg"]
+
+[badges]
+is-it-maintained-issue-resolution = { repository = "Manta-Network/manta-rs" }
+is-it-maintained-open-issues = { repository = "Manta-Network/manta-rs" }
+maintenance = { status = "actively-developed" }
+
+[features]
+# Enable `getrandom` Entropy Source
+getrandom = ["rand_core/getrandom"]
+
+# Serde
+serde = ["manta-util/serde-alloc", "manta-util/serde-array"]
+
+# Standard Library
+std = ["manta-util/std"]
+
+# Testing Frameworks
+test = []
+
+[dependencies]
+derivative = { version = "2.2.0", default-features = false, features = ["use_core"] }
+manta-util = { path = "../manta-util", default-features = false, features = ["alloc"] }
+rand_core = { version = "0.6.3", default-features = false }
+
+[dev-dependencies]
+rand = "0.8.4"
+

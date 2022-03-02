@@ -13,3 +13,13 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
+
+//! Signer Client Implementations
+
+#[cfg(feature = "http")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "http")))]
+pub mod http;
+
+#[cfg(feature = "websocket")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "websocket")))]
+pub mod websocket;

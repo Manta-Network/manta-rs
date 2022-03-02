@@ -1,0 +1,43 @@
+[package]
+name = "manta-util"
+version = "0.4.0"
+edition = "2021"
+authors = ["Manta Network <contact@manta.network>"]
+readme = "README.md"
+license-file = "LICENSE" 
+repository = "https://github.com/Manta-Network/manta-rs"
+homepage = "https://github.com/Manta-Network"
+documentation = "https://github.com/Manta-Network/manta-rs"
+categories = [""]
+keywords = ["utilities"]
+description = "Basic utilities for Manta crates."
+publish = false
+
+[package.metadata.docs.rs]
+# To build locally:
+# RUSTDOCFLAGS="--cfg doc_cfg" cargo +nightly doc --all-features --open
+all-features = true
+rustdoc-args = ["--cfg", "doc_cfg"]
+
+[badges]
+is-it-maintained-issue-resolution = { repository = "Manta-Network/manta-rs" }
+is-it-maintained-open-issues = { repository = "Manta-Network/manta-rs" }
+maintenance = { status = "actively-developed" }
+
+[features]
+# Allocation
+alloc = []
+
+# Serde for Alloc Types
+serde-alloc = ["alloc", "serde/alloc"]
+
+# Serde for Arrays
+serde-array = ["serde", "serde_with"]
+
+# Standard Library
+std = ["alloc"]
+
+[dependencies]
+serde = { version = "1.0.136", optional = true, default-features = false, features = ["derive"] }
+serde_with = { version = "1.12.0", optional = true, default-features = false, features = ["macros"] }
+

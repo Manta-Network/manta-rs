@@ -13,3 +13,15 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
+
+//! Numeric Utilities
+
+/// Tries to convert `n` into a `usize` depending on how big the `usize` type is.
+#[inline]
+pub const fn u64_as_usize(n: u64) -> Result<usize, u64> {
+    if n <= usize::MAX as u64 {
+        Ok(n as usize)
+    } else {
+        Err(n)
+    }
+}

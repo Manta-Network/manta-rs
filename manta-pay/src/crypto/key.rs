@@ -13,3 +13,26 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
+
+//! Cryptographic Key Primitive Implementations
+
+use blake2::{Blake2s, Digest};
+use manta_crypto::key::KeyDerivationFunction;
+use manta_util::into_array_unchecked;
+
+/// Blake2s KDF
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct Blake2sKdf;
+
+impl KeyDerivationFunction for Blake2sKdf {
+    type Key = [u8];
+    type Output = [u8; 32];
+
+    #[inline]
+    fn derive(secret: &Self::Key) -> Self::Output {
+        let mut hasher = Blake2s::new();
+        hasher.update(secret);
+        hasher.update(b"manta kdf instantiated with blake2s hash function");
+        into_array_unchecked(hasher.finalize())
+    }
+}

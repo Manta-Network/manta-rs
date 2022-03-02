@@ -1,0 +1,9 @@
+[workspace]
+resolver = "2"
+members = [
+    "manta-accounting",
+    "manta-crypto",
+    "manta-pay",
+    "manta-util",
+]
+

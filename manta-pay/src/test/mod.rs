@@ -13,3 +13,14 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
+
+//! Manta Pay Testing
+
+// TODO: This is the old simulation. We need to integrate its features into the new asynchronous
+//       simulation.
+//
+// #[cfg(feature = "simulation")]
+// #[cfg_attr(doc_cfg, doc(cfg(feature = "simulation")))]
+// pub mod simulation;
+
+pub mod transfer;

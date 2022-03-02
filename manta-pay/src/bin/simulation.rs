@@ -13,3 +13,14 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
+
+//! Manta Pay Simulation
+
+// TODO: Add CLI interface and configuration for simulation parameters. See the old simulation code
+//       `test/simulation/mod.rs` for more information.
+
+/// Runs the Manta Pay simulation.
+#[inline]
+pub fn main() {
+    manta_pay::simulation::simulate(10, 10);
+}
