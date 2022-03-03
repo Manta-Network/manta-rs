@@ -22,18 +22,15 @@ use crate::{
     asset::{Asset, AssetList},
     transfer::{self, canonical::Transaction, PublicKey, ReceivingKey},
     wallet::{
-        self, ledger,
+        ledger,
         signer::{self, ReceivingKeyRequest},
-        BalanceState, Wallet,
+        BalanceState, Error, Wallet,
     },
 };
 use alloc::sync::Arc;
 use core::{fmt::Debug, hash::Hash, marker::PhantomData};
 use indexmap::IndexSet;
-use manta_crypto::{
-    constraint::ProofSystem,
-    rand::{CryptoRng, RngCore, Sample},
-};
+use manta_crypto::rand::{CryptoRng, RngCore, Sample};
 use parking_lot::RwLock;
 use rand::{distributions::Distribution, Rng};
 use statrs::{
@@ -268,7 +265,7 @@ where
 
 /// Simulation Event
 #[derive(derivative::Derivative)]
-#[derivative(Debug(bound = "wallet::Error<C, L, S>: Debug"))]
+#[derivative(Debug(bound = "Error<C, L, S>: Debug"))]
 pub struct Event<C, L, S>
 where
     C: transfer::Configuration,
@@ -279,7 +276,7 @@ where
     pub action: ActionType,
 
     /// Action Result
-    pub result: Result<bool, wallet::Error<C, L, S>>,
+    pub result: Result<bool, Error<C, L, S>>,
 }
 
 /// Public Key Database
@@ -415,7 +412,7 @@ where
                         }
                         Ok(true)
                     }
-                    Err(err) => Err(wallet::Error::SignerConnectionError(err)),
+                    Err(err) => Err(Error::SignerConnectionError(err)),
                 },
             },
         }
@@ -424,7 +421,7 @@ where
 
 /// Measures the public and secret balances for each wallet, summing them all together.
 #[inline]
-pub fn measure_balances<'w, C, L, S, I>(wallets: I) -> Result<AssetList, wallet::Error<C, L, S>>
+pub fn measure_balances<'w, C, L, S, I>(wallets: I) -> Result<AssetList, Error<C, L, S>>
 where
     C: 'w + transfer::Configuration,
     L: 'w + ledger::Connection<C> + PublicBalanceOracle,
@@ -457,13 +454,15 @@ pub struct Config {
 
 impl Config {
     /// Runs the simulation on the configuration defined in `self`.
+    #[cfg(feature = "parallel")]
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parallel")))]
     #[inline]
     pub fn run<C, L, S, R, GL, GS, F>(
         &self,
         mut ledger: GL,
         mut signer: GS,
         rng: F,
-    ) -> Result<bool, wallet::Error<C, L, S>>
+    ) -> Result<bool, Error<C, L, S>>
     where
         C: transfer::Configuration + Send,
         L: ledger::Connection<C> + PublicBalanceOracle + Send + Sync,
@@ -472,10 +471,8 @@ impl Config {
         GL: FnMut(usize) -> L,
         GS: FnMut(usize) -> S,
         F: FnMut() -> R,
-        <C::ProofSystem as ProofSystem>::Error: Debug + Send,
         L::Checkpoint: Send,
-        L::Error: Debug + Send,
-        S::Error: Debug + Send,
+        Error<C, L, S>: Debug + Send,
         PublicKey<C>: Eq + Hash + Send + Sync,
     {
         println!("[INFO] Building {:?} Wallets", self.actor_count);
