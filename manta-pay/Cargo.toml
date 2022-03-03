@@ -62,7 +62,7 @@ http = ["futures", "reqwest", "serde"]
 scale = ["scale-codec", "scale-info"]
 
 # Serde
-serde = ["bs58", "manta-accounting/serde", "manta-crypto/serde", "serde_json"]
+serde = ["manta-accounting/serde", "manta-crypto/serde"]
 
 # Simulation Framework
 simulation = [
@@ -84,7 +84,7 @@ test = ["manta-accounting/test", "manta-crypto/test"]
 wallet = ["bip32", "manta-crypto/getrandom", "std"]
 
 # Enable WebSocket Signer Client
-websocket = ["serde", "std", "tungstenite"]
+websocket = ["serde", "serde_json", "std", "tungstenite"]
 
 [dependencies]
 aes-gcm = { version = "0.9.4", default-features = false, features = ["aes", "alloc"] }
