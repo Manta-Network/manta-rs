@@ -145,20 +145,6 @@ pub trait PreprocessedScalarMul<COM, const N: usize>: ScalarMul<COM> + Sized {
     ) -> Self::Output;
 }
 
-impl<G, COM> PreprocessedScalarMul<COM, 1> for G
-where
-    G: ScalarMul<COM>,
-{
-    #[inline]
-    fn preprocessed_scalar_mul(
-        table: &[Self; 1],
-        scalar: &Self::Scalar,
-        compiler: &mut COM,
-    ) -> Self::Output {
-        table[0].scalar_mul(scalar, compiler)
-    }
-}
-
 /// Elliptic Curve Group
 pub trait Group<COM = ()>: PointAdd<COM> + PointDouble<COM> + ScalarMul<COM> {}
 
