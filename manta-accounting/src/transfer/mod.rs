@@ -2037,8 +2037,8 @@ pub struct InvalidSourceAccount<AccountId> {
     /// Account Id
     pub account_id: AccountId,
 
-     /// Asset Id
-     pub asset_id: AssetId,
+    /// Asset Id
+    pub asset_id: AssetId,
 
     /// Amount Attempting to Withdraw
     pub withdraw: AssetValue,
@@ -2256,7 +2256,8 @@ where
         let sinks = if sinks > 0 {
             ledger.check_sink_accounts(
                 asset_id.unwrap(),
-                sink_accounts.into_iter().zip(sink_values))?
+                sink_accounts.into_iter().zip(sink_values),
+            )?
         } else {
             Vec::new()
         };
@@ -2348,7 +2349,8 @@ where
         L: TransferLedger<C>,
     {
         self.validate(source_accounts, sink_accounts, ledger)?
-            .post(super_key, ledger).or(Err(TransferPostError::LedgerInternalError))
+            .post(super_key, ledger)
+            .or(Err(TransferPostError::LedgerInternalError))
     }
 }
 
@@ -2421,7 +2423,11 @@ where
     /// [`SenderLedger::spend`] and [`ReceiverLedger::register`] for more information on the
     /// contract for this method.
     #[inline]
-    pub fn post(self, super_key: &TransferLedgerSuperPostingKey<C, L>, ledger: &mut L) -> Result<L::Event, LedgerInternalError> {
+    pub fn post(
+        self,
+        super_key: &TransferLedgerSuperPostingKey<C, L>,
+        ledger: &mut L,
+    ) -> Result<L::Event, LedgerInternalError> {
         let proof = self.validity_proof;
         SenderPostingKey::post_all(self.sender_posting_keys, &(proof, *super_key), ledger);
         ReceiverPostingKey::post_all(self.receiver_posting_keys, &(proof, *super_key), ledger);
