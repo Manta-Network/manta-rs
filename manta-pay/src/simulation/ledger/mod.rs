@@ -29,8 +29,8 @@ use indexmap::IndexSet;
 use manta_accounting::{
     asset::{Asset, AssetId, AssetList, AssetValue},
     transfer::{
-        canonical::TransferShape, AccountBalance, InvalidSinkAccount, InvalidSourceAccount, Proof,
-        ReceiverLedger, ReceiverPostingKey, SenderLedger, SenderPostingKey, SinkPostingKey,
+        canonical::TransferShape, InvalidSinkAccount, InvalidSourceAccount, LedgerInternalError,
+        Proof, ReceiverLedger, ReceiverPostingKey, SenderLedger, SenderPostingKey, SinkPostingKey,
         SourcePostingKey, TransferLedger, TransferLedgerSuperPostingKey, TransferPostingKey,
         UtxoAccumulatorOutput,
     },
@@ -248,7 +248,7 @@ impl TransferLedger<Config> for Ledger {
                             } else {
                                 Err(InvalidSourceAccount {
                                     account_id,
-                                    balance: AccountBalance::Known(*balance),
+                                    asset_id,
                                     withdraw,
                                 })
                             }
@@ -257,14 +257,14 @@ impl TransferLedger<Config> for Ledger {
                             // FIXME: What about zero values in `sources`?
                             Err(InvalidSourceAccount {
                                 account_id,
-                                balance: AccountBalance::Known(AssetValue(0)),
+                                asset_id,
                                 withdraw,
                             })
                         }
                     },
                     _ => Err(InvalidSourceAccount {
                         account_id,
-                        balance: AccountBalance::UnknownAccount,
+                        asset_id,
                         withdraw,
                     }),
                 }
@@ -275,6 +275,7 @@ impl TransferLedger<Config> for Ledger {
     #[inline]
     fn check_sink_accounts<I>(
         &self,
+        asset_id: AssetId,
         sinks: I,
     ) -> Result<Vec<Self::ValidSinkAccount>, InvalidSinkAccount<Self::AccountId>>
     where
@@ -285,7 +286,11 @@ impl TransferLedger<Config> for Ledger {
                 if self.accounts.contains_key(&account_id) {
                     Ok(WrapPair(account_id, deposit))
                 } else {
-                    Err(InvalidSinkAccount { account_id })
+                    Err(InvalidSinkAccount {
+                        account_id,
+                        asset_id,
+                        deposit,
+                    })
                 }
             })
             .collect()
@@ -325,7 +330,7 @@ impl TransferLedger<Config> for Ledger {
         sinks: Vec<SinkPostingKey<Config, Self>>,
         proof: Self::ValidProof,
         super_key: &TransferLedgerSuperPostingKey<Config, Self>,
-    ) {
+    ) -> Result<(), LedgerInternalError> {
         let _ = (proof, super_key);
         for WrapPair(account_id, withdraw) in sources {
             *self
@@ -343,6 +348,7 @@ impl TransferLedger<Config> for Ledger {
                 .entry(asset_id)
                 .or_default() += deposit;
         }
+        Ok(())
     }
 }
 
@@ -420,7 +426,7 @@ impl ledger::Connection<Config> for LedgerConnection {
             };
             match post.validate(sources, sinks, &*ledger) {
                 Ok(posting_key) => {
-                    posting_key.post(&(), &mut *ledger);
+                    posting_key.post(&(), &mut *ledger).unwrap();
                 }
                 Err(err) => {
                     println!("ERROR: {:?}", err);
