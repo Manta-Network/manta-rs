@@ -1962,9 +1962,10 @@ where
     where
         I: Iterator<Item = (Self::AccountId, AssetValue)>;
 
-    /// Checks that the sink accounts exist.
+    /// Checks that the sink accounts exist and balance can be increased by the specified amounts.
     fn check_sink_accounts<I>(
         &self,
+        asset_id: AssetId,
         sinks: I,
     ) -> Result<Vec<Self::ValidSinkAccount>, InvalidSinkAccount<Self::AccountId>>
     where
@@ -1995,7 +1996,7 @@ where
         sinks: Vec<SinkPostingKey<C, Self>>,
         proof: Self::ValidProof,
         super_key: &TransferLedgerSuperPostingKey<C, Self>,
-    );
+    ) -> Result<(), LedgerInternalError>;
 }
 
 /// Transfer Source Posting Key Type
@@ -2036,8 +2037,8 @@ pub struct InvalidSourceAccount<AccountId> {
     /// Account Id
     pub account_id: AccountId,
 
-    /// Current Balance if Known
-    pub balance: AccountBalance,
+     /// Asset Id
+     pub asset_id: AssetId,
 
     /// Amount Attempting to Withdraw
     pub withdraw: AssetValue,
@@ -2056,6 +2057,12 @@ pub struct InvalidSourceAccount<AccountId> {
 pub struct InvalidSinkAccount<AccountId> {
     /// Account Id
     pub account_id: AccountId,
+
+    /// Asset Id
+    pub asset_id: AssetId,
+
+    /// Amount Attempting to Deposit
+    pub deposit: AssetValue,
 }
 
 /// Transfer Post Error
@@ -2094,7 +2101,14 @@ pub enum TransferPostError<AccountId> {
     ///
     /// Validity of the transfer could not be proved by the ledger.
     InvalidProof,
+
+    /// Ledger Internal Error
+    LedgerInternalError,
 }
+
+/// Ledger interal error
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct LedgerInternalError;
 
 impl<AccountId> From<InvalidSourceAccount<AccountId>> for TransferPostError<AccountId> {
     #[inline]
@@ -2240,7 +2254,9 @@ where
             Vec::new()
         };
         let sinks = if sinks > 0 {
-            ledger.check_sink_accounts(sink_accounts.into_iter().zip(sink_values))?
+            ledger.check_sink_accounts(
+                asset_id.unwrap(),
+                sink_accounts.into_iter().zip(sink_values))?
         } else {
             Vec::new()
         };
@@ -2331,9 +2347,8 @@ where
     where
         L: TransferLedger<C>,
     {
-        Ok(self
-            .validate(source_accounts, sink_accounts, ledger)?
-            .post(super_key, ledger))
+        self.validate(source_accounts, sink_accounts, ledger)?
+            .post(super_key, ledger).or(Err(TransferPostError::LedgerInternalError))
     }
 }
 
@@ -2406,7 +2421,7 @@ where
     /// [`SenderLedger::spend`] and [`ReceiverLedger::register`] for more information on the
     /// contract for this method.
     #[inline]
-    pub fn post(self, super_key: &TransferLedgerSuperPostingKey<C, L>, ledger: &mut L) -> L::Event {
+    pub fn post(self, super_key: &TransferLedgerSuperPostingKey<C, L>, ledger: &mut L) -> Result<L::Event, LedgerInternalError> {
         let proof = self.validity_proof;
         SenderPostingKey::post_all(self.sender_posting_keys, &(proof, *super_key), ledger);
         ReceiverPostingKey::post_all(self.receiver_posting_keys, &(proof, *super_key), ledger);
@@ -2417,8 +2432,8 @@ where
                 self.sink_posting_keys,
                 proof,
                 super_key,
-            );
+            )?;
         }
-        self.event
+        Ok(self.event)
     }
 }
