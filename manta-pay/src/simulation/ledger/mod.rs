@@ -29,10 +29,10 @@ use indexmap::IndexSet;
 use manta_accounting::{
     asset::{Asset, AssetId, AssetList, AssetValue},
     transfer::{
-        canonical::TransferShape, InvalidSinkAccount, InvalidSourceAccount,
-        Proof, ReceiverLedger, ReceiverPostingKey, SenderLedger, SenderPostingKey, SinkPostingKey,
-        SourcePostingKey, TransferLedger, TransferLedgerSuperPostingKey, TransferPostingKey,
-        UtxoAccumulatorOutput, TransferPostError
+        canonical::TransferShape, InvalidSinkAccount, InvalidSourceAccount, Proof, ReceiverLedger,
+        ReceiverPostingKey, SenderLedger, SenderPostingKey, SinkPostingKey, SourcePostingKey,
+        TransferLedger, TransferLedgerSuperPostingKey, TransferPostError, TransferPostingKey,
+        UtxoAccumulatorOutput,
     },
     wallet::{
         ledger::{self, PullResponse, PullResult, PushResponse, PushResult},
