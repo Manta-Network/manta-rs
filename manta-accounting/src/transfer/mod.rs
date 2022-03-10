@@ -2106,6 +2106,10 @@ pub enum TransferPostError<AccountId> {
     LedgerInternalError,
 }
 
+/// Ledger interal error
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct LedgerInternalError;
+
 impl<AccountId> From<InvalidSourceAccount<AccountId>> for TransferPostError<AccountId> {
     #[inline]
     fn from(err: InvalidSourceAccount<AccountId>) -> Self {
