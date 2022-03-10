@@ -1996,7 +1996,7 @@ where
         sinks: Vec<SinkPostingKey<C, Self>>,
         proof: Self::ValidProof,
         super_key: &TransferLedgerSuperPostingKey<C, Self>,
-    ) -> Result<(), LedgerInternalError>;
+    ) -> Result<(), TransferPostError<Self::AccountId>>;
 }
 
 /// Transfer Source Posting Key Type
@@ -2105,10 +2105,6 @@ pub enum TransferPostError<AccountId> {
     /// Ledger Internal Error
     LedgerInternalError,
 }
-
-/// Ledger interal error
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub struct LedgerInternalError;
 
 impl<AccountId> From<InvalidSourceAccount<AccountId>> for TransferPostError<AccountId> {
     #[inline]
@@ -2427,7 +2423,7 @@ where
         self,
         super_key: &TransferLedgerSuperPostingKey<C, L>,
         ledger: &mut L,
-    ) -> Result<L::Event, LedgerInternalError> {
+    ) -> Result<L::Event, TransferPostError<L::AccountId>> {
         let proof = self.validity_proof;
         SenderPostingKey::post_all(self.sender_posting_keys, &(proof, *super_key), ledger);
         ReceiverPostingKey::post_all(self.receiver_posting_keys, &(proof, *super_key), ledger);

@@ -29,10 +29,10 @@ use indexmap::IndexSet;
 use manta_accounting::{
     asset::{Asset, AssetId, AssetList, AssetValue},
     transfer::{
-        canonical::TransferShape, InvalidSinkAccount, InvalidSourceAccount, LedgerInternalError,
+        canonical::TransferShape, InvalidSinkAccount, InvalidSourceAccount,
         Proof, ReceiverLedger, ReceiverPostingKey, SenderLedger, SenderPostingKey, SinkPostingKey,
         SourcePostingKey, TransferLedger, TransferLedgerSuperPostingKey, TransferPostingKey,
-        UtxoAccumulatorOutput,
+        UtxoAccumulatorOutput, TransferPostError
     },
     wallet::{
         ledger::{self, PullResponse, PullResult, PushResponse, PushResult},
@@ -330,7 +330,7 @@ impl TransferLedger<Config> for Ledger {
         sinks: Vec<SinkPostingKey<Config, Self>>,
         proof: Self::ValidProof,
         super_key: &TransferLedgerSuperPostingKey<Config, Self>,
-    ) -> Result<(), LedgerInternalError> {
+    ) -> Result<(), TransferPostError<Self::AccountId>> {
         let _ = (proof, super_key);
         for WrapPair(account_id, withdraw) in sources {
             *self
