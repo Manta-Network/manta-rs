@@ -19,8 +19,38 @@
 // TODO: Add CLI interface and configuration for simulation parameters. See the old simulation code
 //       `test/simulation/mod.rs` for more information.
 
+use manta_accounting::transfer::canonical::generate_context;
+use manta_crypto::rand::{OsRng, Rand};
+use manta_pay::{
+    config::FullParameters,
+    simulation::{ledger::Ledger, Simulation},
+};
+
 /// Runs the Manta Pay simulation.
 #[inline]
 pub fn main() {
-    manta_pay::simulation::simulate(10, 10);
+    let mut rng = OsRng;
+    let parameters = rng.gen();
+    let utxo_accumulator_model = rng.gen();
+
+    let (proving_context, verifying_context) = generate_context(
+        &(),
+        FullParameters::new(&parameters, &utxo_accumulator_model),
+        &mut rng,
+    )
+    .expect("Failed to generate contexts.");
+
+    Simulation {
+        actor_count: 10,
+        actor_lifetime: 10,
+        asset_id_count: 3,
+        starting_balance: 1000000,
+    }
+    .run(
+        &parameters,
+        &utxo_accumulator_model,
+        &proving_context,
+        Ledger::new(utxo_accumulator_model.clone(), verifying_context),
+        &mut rng,
+    )
 }

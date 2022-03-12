@@ -268,7 +268,7 @@ where
 
 /// Converts `point` into its canonical byte-representation.
 #[inline]
-fn affine_point_as_bytes<C>(point: &C::Affine) -> Vec<u8>
+pub fn affine_point_as_bytes<C>(point: &C::Affine) -> Vec<u8>
 where
     C: ProjectiveCurve,
 {

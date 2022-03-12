@@ -49,7 +49,7 @@ use manta_crypto::{
 };
 use manta_util::codec::{Decode, DecodeError, Encode, Read, Write};
 
-#[cfg(feature = "serde")]
+#[cfg(feature = "bs58")]
 use alloc::string::String;
 
 #[cfg(any(feature = "test", test))]
@@ -706,25 +706,31 @@ pub type SpendingKey = transfer::SpendingKey<Config>;
 pub type ReceivingKey = transfer::ReceivingKey<Config>;
 
 /// Converts a [`ReceivingKey`] into a base58-encoded string.
-#[cfg(feature = "serde")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "serde")))]
+#[cfg(feature = "bs58")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "bs58")))]
 #[inline]
 pub fn receiving_key_to_base58(receiving_key: &ReceivingKey) -> String {
-    bs58::encode(
-        serde_json::to_string(receiving_key)
-            .expect("Can always serialize to JSON.")
-            .as_bytes(),
-    )
-    .into_string()
+    let mut bytes = Vec::new();
+    receiving_key
+        .spend
+        .encode(&mut bytes)
+        .expect("Encoding is not allowed to fail.");
+    receiving_key
+        .view
+        .encode(&mut bytes)
+        .expect("Encoding is not allowed to fail.");
+    bs58::encode(bytes).into_string()
 }
 
 /// Converts a base58-encoded string into a [`ReceivingKey`].
-#[cfg(feature = "serde")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "serde")))]
+#[cfg(feature = "bs58")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "bs58")))]
 #[inline]
 pub fn receiving_key_from_base58(string: &str) -> Option<ReceivingKey> {
-    serde_json::from_str(
-        core::str::from_utf8(&bs58::decode(string.as_bytes()).into_vec().ok()?).ok()?,
-    )
-    .ok()
+    let bytes = bs58::decode(string.as_bytes()).into_vec().ok()?;
+    let (spend, view) = bytes.split_at(bytes.len() / 2);
+    Some(ReceivingKey {
+        spend: spend.to_owned().try_into().ok()?,
+        view: view.to_owned().try_into().ok()?,
+    })
 }

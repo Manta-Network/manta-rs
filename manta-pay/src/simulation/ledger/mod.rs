@@ -16,6 +16,9 @@
 
 //! Ledger Simulation
 
+// TODO: How to model existential deposits and fee payments?
+// TODO: Add in some concurrency (and measure how much we need it).
+
 use crate::{
     config::{
         Config, EncryptedNote, MerkleTreeConfiguration, MultiVerifyingContext, ProofSystem,

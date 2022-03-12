@@ -20,11 +20,11 @@
 
 use crate::{
     asset::{Asset, AssetList},
-    transfer::{canonical::Transaction, Configuration, PublicKey, ReceivingKey},
+    transfer::{self, canonical::Transaction, PublicKey, ReceivingKey},
     wallet::{
-        self, ledger,
+        ledger,
         signer::{self, ReceivingKeyRequest},
-        Wallet,
+        BalanceState, Error, Wallet,
     },
 };
 use alloc::sync::Arc;
@@ -43,7 +43,7 @@ pub mod sim;
 /// Simulation Action Space
 pub enum Action<C>
 where
-    C: Configuration,
+    C: transfer::Configuration,
 {
     /// No Action
     Skip,
@@ -187,7 +187,7 @@ pub trait PublicBalanceOracle {
 /// Actor
 pub struct Actor<C, L, S>
 where
-    C: Configuration,
+    C: transfer::Configuration,
     L: ledger::Connection<C>,
     S: signer::Connection<C>,
 {
@@ -203,7 +203,7 @@ where
 
 impl<C, L, S> Actor<C, L, S>
 where
-    C: Configuration,
+    C: transfer::Configuration,
     L: ledger::Connection<C>,
     S: signer::Connection<C>,
 {
@@ -265,10 +265,10 @@ where
 
 /// Simulation Event
 #[derive(derivative::Derivative)]
-#[derivative(Debug(bound = "wallet::Error<C, L, S>: Debug"))]
+#[derivative(Debug(bound = "Error<C, L, S>: Debug"))]
 pub struct Event<C, L, S>
 where
-    C: Configuration,
+    C: transfer::Configuration,
     L: ledger::Connection<C>,
     S: signer::Connection<C>,
 {
@@ -276,7 +276,7 @@ where
     pub action: ActionType,
 
     /// Action Result
-    pub result: Result<bool, wallet::Error<C, L, S>>,
+    pub result: Result<bool, Error<C, L, S>>,
 }
 
 /// Public Key Database
@@ -290,7 +290,7 @@ pub type SharedPublicKeyDatabase<C> = Arc<RwLock<PublicKeyDatabase<C>>>;
 #[derivative(Default(bound = ""))]
 pub struct Simulation<C, L, S>
 where
-    C: Configuration,
+    C: transfer::Configuration,
     L: ledger::Connection<C>,
     S: signer::Connection<C>,
     PublicKey<C>: Eq + Hash,
@@ -304,7 +304,7 @@ where
 
 impl<C, L, S> Simulation<C, L, S>
 where
-    C: Configuration,
+    C: transfer::Configuration,
     L: ledger::Connection<C>,
     S: signer::Connection<C>,
     PublicKey<C>: Eq + Hash,
@@ -321,7 +321,7 @@ where
 
 impl<C, L, S> sim::ActionSimulation for Simulation<C, L, S>
 where
-    C: Configuration,
+    C: transfer::Configuration,
     L: ledger::Connection<C> + PublicBalanceOracle,
     S: signer::Connection<C>,
     PublicKey<C>: Eq + Hash,
@@ -412,9 +412,106 @@ where
                         }
                         Ok(true)
                     }
-                    Err(err) => Err(wallet::Error::SignerConnectionError(err)),
+                    Err(err) => Err(Error::SignerConnectionError(err)),
                 },
             },
         }
+    }
+}
+
+/// Measures the public and secret balances for each wallet, summing them all together.
+#[inline]
+pub fn measure_balances<'w, C, L, S, I>(wallets: I) -> Result<AssetList, Error<C, L, S>>
+where
+    C: 'w + transfer::Configuration,
+    L: 'w + ledger::Connection<C> + PublicBalanceOracle,
+    S: 'w + signer::Connection<C>,
+    I: IntoIterator<Item = &'w mut Wallet<C, L, S>>,
+{
+    let mut balances = AssetList::new();
+    for wallet in wallets {
+        wallet.sync()?;
+        balances.deposit_all(wallet.ledger().public_balances().unwrap());
+        balances.deposit_all(
+            wallet
+                .assets()
+                .iter()
+                .map(|(id, value)| Asset::new(*id, *value)),
+        );
+    }
+    Ok(balances)
+}
+
+/// Simulation Configuration
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub struct Config {
+    /// Actor Count
+    pub actor_count: usize,
+
+    /// Actor Lifetime
+    pub actor_lifetime: usize,
+}
+
+impl Config {
+    /// Runs the simulation on the configuration defined in `self`.
+    #[cfg(feature = "parallel")]
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parallel")))]
+    #[inline]
+    pub fn run<C, L, S, R, GL, GS, F>(
+        &self,
+        mut ledger: GL,
+        mut signer: GS,
+        rng: F,
+    ) -> Result<bool, Error<C, L, S>>
+    where
+        C: transfer::Configuration + Send,
+        L: ledger::Connection<C> + PublicBalanceOracle + Send + Sync,
+        S: signer::Connection<C> + Send + Sync,
+        R: CryptoRng + RngCore + Send,
+        GL: FnMut(usize) -> L,
+        GS: FnMut(usize) -> S,
+        F: FnMut() -> R,
+        L::Checkpoint: Send,
+        Error<C, L, S>: Debug + Send,
+        PublicKey<C>: Eq + Hash + Send + Sync,
+    {
+        println!("[INFO] Building {:?} Wallets", self.actor_count);
+
+        let actors = (0..self.actor_count)
+            .map(|i| {
+                Actor::new(
+                    Wallet::new(ledger(i), signer(i)),
+                    Default::default(),
+                    self.actor_lifetime,
+                )
+            })
+            .collect::<Vec<_>>();
+
+        let mut simulator = sim::Simulator::new(sim::ActionSim(Simulation::default()), actors);
+
+        let initial_balances =
+            measure_balances(simulator.actors.iter_mut().map(|actor| &mut actor.wallet))?;
+
+        println!("[INFO] Starting Simulation\n");
+
+        rayon::in_place_scope(|scope| {
+            for event in simulator.run(rng, scope) {
+                match event.event.action {
+                    ActionType::Skip | ActionType::GeneratePublicKey => {}
+                    _ => println!("{:?}", event),
+                }
+                if let Err(err) = event.event.result {
+                    println!("\n[ERROR] Simulation Error: {:?}\n", err);
+                    break;
+                }
+            }
+        });
+
+        println!("\n[INFO] Simulation Ended");
+
+        let final_balances =
+            measure_balances(simulator.actors.iter_mut().map(|actor| &mut actor.wallet))?;
+
+        Ok(initial_balances == final_balances)
     }
 }
