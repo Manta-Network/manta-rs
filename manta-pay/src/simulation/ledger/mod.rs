@@ -231,6 +231,7 @@ impl TransferLedger<Config> for Ledger {
     type ValidSinkAccount = WrapPair<Self::AccountId, AssetValue>;
     type ValidProof = Wrap<()>;
     type SuperPostingKey = ();
+    type UpdateError = TransferPostError<Self::AccountId>;
 
     #[inline]
     fn check_source_accounts<I>(
@@ -333,7 +334,7 @@ impl TransferLedger<Config> for Ledger {
         sinks: Vec<SinkPostingKey<Config, Self>>,
         proof: Self::ValidProof,
         super_key: &TransferLedgerSuperPostingKey<Config, Self>,
-    ) -> Result<(), TransferPostError<Self::AccountId>> {
+    ) -> Result<(), Self::UpdateError> {
         let _ = (proof, super_key);
         for WrapPair(account_id, withdraw) in sources {
             *self

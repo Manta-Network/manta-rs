@@ -1920,6 +1920,9 @@ where
     /// Ledger Event
     type Event;
 
+    /// State Update Error
+    type UpdateError;
+
     /// Valid [`AssetValue`] for [`TransferPost`] Source
     ///
     /// # Safety
@@ -1996,7 +1999,7 @@ where
         sinks: Vec<SinkPostingKey<C, Self>>,
         proof: Self::ValidProof,
         super_key: &TransferLedgerSuperPostingKey<C, Self>,
-    ) -> Result<(), TransferPostError<Self::AccountId>>;
+    ) -> Result<(), Self::UpdateError>;
 }
 
 /// Transfer Source Posting Key Type
@@ -2007,21 +2010,6 @@ pub type SinkPostingKey<C, L> = <L as TransferLedger<C>>::ValidSinkAccount;
 
 /// Transfer Ledger Super Posting Key Type
 pub type TransferLedgerSuperPostingKey<C, L> = <L as TransferLedger<C>>::SuperPostingKey;
-
-/// Account Balance
-#[cfg_attr(
-    feature = "serde",
-    derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
-)]
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum AccountBalance {
-    /// Known Balance
-    Known(AssetValue),
-
-    /// Unknown Account
-    UnknownAccount,
-}
 
 /// Invalid Source Accounts
 ///
@@ -2105,10 +2093,6 @@ pub enum TransferPostError<AccountId> {
     /// Ledger Internal Error
     LedgerInternalError,
 }
-
-/// Ledger interal error
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub struct LedgerInternalError;
 
 impl<AccountId> From<InvalidSourceAccount<AccountId>> for TransferPostError<AccountId> {
     #[inline]
@@ -2438,7 +2422,7 @@ where
                 self.sink_posting_keys,
                 proof,
                 super_key,
-            )?;
+            ).map_err(|_| TransferPostError::<L::AccountId>::LedgerInternalError)?;
         }
         Ok(self.event)
     }
