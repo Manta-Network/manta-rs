@@ -2416,13 +2416,15 @@ where
         SenderPostingKey::post_all(self.sender_posting_keys, &(proof, *super_key), ledger);
         ReceiverPostingKey::post_all(self.receiver_posting_keys, &(proof, *super_key), ledger);
         if let Some(asset_id) = self.asset_id {
-            ledger.update_public_balances(
-                asset_id,
-                self.source_posting_keys,
-                self.sink_posting_keys,
-                proof,
-                super_key,
-            ).map_err(|_| TransferPostError::<L::AccountId>::LedgerInternalError)?;
+            ledger
+                .update_public_balances(
+                    asset_id,
+                    self.source_posting_keys,
+                    self.sink_posting_keys,
+                    proof,
+                    super_key,
+                )
+                .map_err(|_| TransferPostError::<L::AccountId>::LedgerInternalError)?;
         }
         Ok(self.event)
     }
