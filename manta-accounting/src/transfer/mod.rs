@@ -1921,6 +1921,10 @@ where
     type Event;
 
     /// State Update Error
+    ///
+    /// This error type is used if the ledger can fail when updating the public state. The
+    /// [`update_public_balances`](Self::update_public_balances) method uses this error type to
+    /// track this condition.
     type UpdateError;
 
     /// Valid [`AssetValue`] for [`TransferPost`] Source
@@ -2063,7 +2067,7 @@ pub struct InvalidSinkAccount<AccountId> {
     serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum TransferPostError<AccountId> {
+pub enum TransferPostError<AccountId, UpdateError> {
     /// Invalid Transfer Post Shape
     InvalidShape,
 
@@ -2090,32 +2094,38 @@ pub enum TransferPostError<AccountId> {
     /// Validity of the transfer could not be proved by the ledger.
     InvalidProof,
 
-    /// Ledger Internal Error
-    LedgerInternalError,
+    /// Update Error
+    ///
+    /// Error happens when update ledger
+    UpdateError(UpdateError),
 }
 
-impl<AccountId> From<InvalidSourceAccount<AccountId>> for TransferPostError<AccountId> {
+impl<AccountId, UpdateError> From<InvalidSourceAccount<AccountId>>
+    for TransferPostError<AccountId, UpdateError>
+{
     #[inline]
     fn from(err: InvalidSourceAccount<AccountId>) -> Self {
         Self::InvalidSourceAccount(err)
     }
 }
 
-impl<AccountId> From<InvalidSinkAccount<AccountId>> for TransferPostError<AccountId> {
+impl<AccountId, UpdateError> From<InvalidSinkAccount<AccountId>>
+    for TransferPostError<AccountId, UpdateError>
+{
     #[inline]
     fn from(err: InvalidSinkAccount<AccountId>) -> Self {
         Self::InvalidSinkAccount(err)
     }
 }
 
-impl<AccountId> From<SenderPostError> for TransferPostError<AccountId> {
+impl<AccountId, UpdateError> From<SenderPostError> for TransferPostError<AccountId, UpdateError> {
     #[inline]
     fn from(err: SenderPostError) -> Self {
         Self::Sender(err)
     }
 }
 
-impl<AccountId> From<ReceiverPostError> for TransferPostError<AccountId> {
+impl<AccountId, UpdateError> From<ReceiverPostError> for TransferPostError<AccountId, UpdateError> {
     #[inline]
     fn from(err: ReceiverPostError) -> Self {
         Self::Receiver(err)
@@ -2213,7 +2223,7 @@ where
         ledger: &L,
     ) -> Result<
         (Vec<L::ValidSourceAccount>, Vec<L::ValidSinkAccount>),
-        TransferPostError<L::AccountId>,
+        TransferPostError<L::AccountId, L::UpdateError>,
     >
     where
         L: TransferLedger<C>,
@@ -2255,7 +2265,7 @@ where
         source_accounts: Vec<L::AccountId>,
         sink_accounts: Vec<L::AccountId>,
         ledger: &L,
-    ) -> Result<TransferPostingKey<C, L>, TransferPostError<L::AccountId>>
+    ) -> Result<TransferPostingKey<C, L>, TransferPostError<L::AccountId, L::UpdateError>>
     where
         L: TransferLedger<C>,
     {
@@ -2328,13 +2338,13 @@ where
         sink_accounts: Vec<L::AccountId>,
         super_key: &TransferLedgerSuperPostingKey<C, L>,
         ledger: &mut L,
-    ) -> Result<L::Event, TransferPostError<L::AccountId>>
+    ) -> Result<L::Event, TransferPostError<L::AccountId, L::UpdateError>>
     where
         L: TransferLedger<C>,
     {
         self.validate(source_accounts, sink_accounts, ledger)?
             .post(super_key, ledger)
-            .or(Err(TransferPostError::LedgerInternalError))
+            .map_err(|err| TransferPostError::UpdateError(err))
     }
 }
 
@@ -2411,20 +2421,18 @@ where
         self,
         super_key: &TransferLedgerSuperPostingKey<C, L>,
         ledger: &mut L,
-    ) -> Result<L::Event, TransferPostError<L::AccountId>> {
+    ) -> Result<L::Event, L::UpdateError> {
         let proof = self.validity_proof;
         SenderPostingKey::post_all(self.sender_posting_keys, &(proof, *super_key), ledger);
         ReceiverPostingKey::post_all(self.receiver_posting_keys, &(proof, *super_key), ledger);
         if let Some(asset_id) = self.asset_id {
-            ledger
-                .update_public_balances(
-                    asset_id,
-                    self.source_posting_keys,
-                    self.sink_posting_keys,
-                    proof,
-                    super_key,
-                )
-                .map_err(|_| TransferPostError::<L::AccountId>::LedgerInternalError)?;
+            ledger.update_public_balances(
+                asset_id,
+                self.source_posting_keys,
+                self.sink_posting_keys,
+                proof,
+                super_key,
+            )?;
         }
         Ok(self.event)
     }

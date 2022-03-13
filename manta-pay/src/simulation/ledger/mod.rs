@@ -34,8 +34,7 @@ use manta_accounting::{
     transfer::{
         canonical::TransferShape, InvalidSinkAccount, InvalidSourceAccount, Proof, ReceiverLedger,
         ReceiverPostingKey, SenderLedger, SenderPostingKey, SinkPostingKey, SourcePostingKey,
-        TransferLedger, TransferLedgerSuperPostingKey, TransferPostError, TransferPostingKey,
-        UtxoAccumulatorOutput,
+        TransferLedger, TransferLedgerSuperPostingKey, TransferPostingKey, UtxoAccumulatorOutput,
     },
     wallet::{
         ledger::{self, PullResponse, PullResult, PushResponse, PushResult},
@@ -231,7 +230,7 @@ impl TransferLedger<Config> for Ledger {
     type ValidSinkAccount = WrapPair<Self::AccountId, AssetValue>;
     type ValidProof = Wrap<()>;
     type SuperPostingKey = ();
-    type UpdateError = TransferPostError<Self::AccountId>;
+    type UpdateError = Infallible;
 
     #[inline]
     fn check_source_accounts<I>(
