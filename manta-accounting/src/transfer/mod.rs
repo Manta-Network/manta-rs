@@ -2344,7 +2344,7 @@ where
     {
         self.validate(source_accounts, sink_accounts, ledger)?
             .post(super_key, ledger)
-            .map_err(|err| TransferPostError::UpdateError(err))
+            .map_err(TransferPostError::UpdateError)
     }
 }
 
