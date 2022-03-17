@@ -6,7 +6,7 @@ on:
     - cron: '0 0 * * */2'
 env:
   CARGO_TERM_COLOR: always
-  RUSTFLAGS: -D warnings
+  RUSTFLAGS: -D warnings -A unknown-lints
   RUST_BACKTRACE: full
 jobs:
   test:
