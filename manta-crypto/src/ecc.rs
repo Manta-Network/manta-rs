@@ -137,12 +137,29 @@ pub trait ScalarMul<COM = ()> {
 /// Elliptic Curve Pre-processed Scalar Multiplication Operation
 pub trait PreprocessedScalarMul<COM, const N: usize>: ScalarMul<COM> + Sized {
     /// Performs the scalar multiplication against a pre-computed table.
+    ///
+    /// The pre-computed table is a list of power-of-two multiples of `scalar`, such that
+    /// `table[i] = scalar * 2^i`.
     #[must_use]
     fn preprocessed_scalar_mul(
         table: &[Self; N],
         scalar: &Self::Scalar,
         compiler: &mut COM,
     ) -> Self::Output;
+}
+
+impl<G, COM> PreprocessedScalarMul<COM, 1> for G
+where
+    G: ScalarMul<COM>,
+{
+    #[inline]
+    fn preprocessed_scalar_mul(
+        table: &[Self; 1],
+        scalar: &Self::Scalar,
+        compiler: &mut COM,
+    ) -> Self::Output {
+        table[0].scalar_mul(scalar, compiler)
+    }
 }
 
 /// Elliptic Curve Group

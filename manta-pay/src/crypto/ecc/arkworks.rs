@@ -35,6 +35,7 @@ use manta_util::codec;
 use manta_util::serde::{Deserialize, Serialize, Serializer};
 
 pub use ark_ec::{AffineCurve, ProjectiveCurve};
+use ark_ed_on_bls12_381::EdwardsProjective;
 pub use ark_r1cs_std::groups::CurveVar;
 
 /// Constraint Field Type
@@ -406,30 +407,42 @@ where
     }
 }
 
-impl<C, CV, const N: usize> ecc::PreprocessedScalarMul<Compiler<C>, N> for GroupVar<C, CV> where
-    C: ProjectiveCurve,
-    CV: CurveVar<C, ConstraintField<C>> {
-    /// Performs the scalar multiplication against a pre-computed table.
-    ///
-    /// The pre-computed table is a list of power-of-two multiples of `scalar`, such that
-    /// `table[i] = scalar * 2^i`.
-    fn preprocessed_scalar_mul(table: &[Self; N], scalar: &Self::Scalar, compiler: &mut Compiler<C>) -> Self::Output {
-        // Computes the standard little-endian double-and-add algorithm
-        // (Algorithm 3.26, Guide to Elliptic Curve Cryptography)
-        // adapted from https://github.com/arkworks-rs/r1cs-std/blob/50ab8ee5ba8c09637044718eceac38e98e0ea67c/src/groups/mod.rs#L110-L139
+macro_rules! impl_processed_scalar_mul {
+    ($curve: ty, $N: expr) => {
+        impl<CV> ecc::PreprocessedScalarMul<Compiler<$curve>, $N> for GroupVar<$curve, CV>
+        where
+            CV: CurveVar<$curve, ConstraintField<EdwardsProjective>>,
+        {
+            fn preprocessed_scalar_mul(
+                table: &[Self; $N],
+                scalar: &Self::Scalar,
+                compiler: &mut Compiler<EdwardsProjective>,
+            ) -> Self::Output {
+                // Computes the standard little-endian double-and-add algorithm
+                // (Algorithm 3.26, Guide to Elliptic Curve Cryptography)
+                // adapted from https://github.com/arkworks-rs/r1cs-std/blob/50ab8ee5ba8c09637044718eceac38e98e0ea67c/src/groups/mod.rs#L110-L139
 
-        let _ = compiler;
-        let mut result: CV = CV::zero();
-        let scalar_bits = scalar.0.to_bits_le().expect("Bit decomposition is not allowed to fail.");
-        debug_assert_eq!(scalar_bits.len(), N, "Scalar is expected to have N bits.");
-        for (bit, base) in scalar_bits.into_iter().zip(table.iter()){
-            // compute `self + 2^i * scalar`
-            let scalar_plus_base = result.clone() + base.0.clone();
-            result = bit.select(&scalar_plus_base, &result).expect("Conditional select is not allowed to fail. ");
+                let _ = compiler;
+                let mut result: CV = CV::zero();
+                let scalar_bits = scalar
+                    .0
+                    .to_bits_le()
+                    .expect("Bit decomposition is not allowed to fail.");
+                debug_assert_eq!(scalar_bits.len(), $N, "Scalar is expected to have N bits.");
+                for (bit, base) in scalar_bits.into_iter().zip(table.iter()) {
+                    // compute `self + 2^i * scalar`
+                    let scalar_plus_base = result.clone() + base.0.clone();
+                    result = bit
+                        .select(&scalar_plus_base, &result)
+                        .expect("Conditional select is not allowed to fail. ");
+                }
+                Self(result, PhantomData)
+            }
         }
-        Self(result, PhantomData)
-    }
+    };
 }
+
+impl_processed_scalar_mul!(EdwardsProjective, 252);
 
 impl<C, CV> Equal<Compiler<C>> for GroupVar<C, CV>
 where
