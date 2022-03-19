@@ -29,12 +29,13 @@
 //! [`Ledger`]: ledger::Connection
 
 use crate::{
-    asset::{Asset, AssetId, AssetList, AssetMetadata, AssetValue},
+    asset::{Asset, AssetId, AssetMetadata, AssetValue},
     transfer::{
         canonical::{Transaction, TransactionKind},
         Configuration, ReceivingKey,
     },
     wallet::{
+        balance::{BTreeMapBalanceState, BalanceState},
         ledger::{Checkpoint, PullResponse, PushResponse},
         signer::{
             ReceivingKeyRequest, SignError, SignRequest, SignResponse, SyncError, SyncRequest,
@@ -42,169 +43,20 @@ use crate::{
         },
     },
 };
-use alloc::{
-    collections::btree_map::{BTreeMap, Entry as BTreeMapEntry},
-    vec::Vec,
-};
+use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash, marker::PhantomData};
 use manta_util::ops::ControlFlow;
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
 
-#[cfg(feature = "std")]
-use std::{
-    collections::hash_map::{Entry as HashMapEntry, HashMap, RandomState},
-    hash::BuildHasher,
-};
-
+pub mod balance;
 pub mod ledger;
 pub mod signer;
 
 #[cfg(feature = "test")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
 pub mod test;
-
-/// Balance State
-pub trait BalanceState: Default {
-    /// Returns the current balance associated with this `id`.
-    fn balance(&self, id: AssetId) -> AssetValue;
-
-    /// Returns true if `self` contains at least `asset.value` of the asset of kind `asset.id`.
-    #[inline]
-    fn contains(&self, asset: Asset) -> bool {
-        self.balance(asset.id) >= asset.value
-    }
-
-    /// Deposits `asset` into the balance state, increasing the balance of the asset stored at
-    /// `asset.id` by an amount equal to `asset.value`.
-    fn deposit(&mut self, asset: Asset);
-
-    /// Deposits every asset in `assets` into the balance state.
-    #[inline]
-    fn deposit_all<I>(&mut self, assets: I)
-    where
-        I: IntoIterator<Item = Asset>,
-    {
-        assets.into_iter().for_each(move |a| self.deposit(a));
-    }
-
-    /// Withdraws `asset` from the balance state returning `false` if it would overdraw the balance.
-    fn withdraw(&mut self, asset: Asset) -> bool;
-
-    /// Withdraws every asset in `assets` from the balance state, returning `false` if it would
-    /// overdraw the balance.
-    #[inline]
-    fn withdraw_all<I>(&mut self, assets: I) -> bool
-    where
-        I: IntoIterator<Item = Asset>,
-    {
-        for asset in AssetList::from_iter(assets) {
-            if !self.withdraw(asset) {
-                return false;
-            }
-        }
-        true
-    }
-
-    /// Clears the entire balance state.
-    fn clear(&mut self);
-}
-
-impl BalanceState for AssetList {
-    #[inline]
-    fn balance(&self, id: AssetId) -> AssetValue {
-        self.value(id)
-    }
-
-    #[inline]
-    fn deposit(&mut self, asset: Asset) {
-        self.deposit(asset)
-    }
-
-    #[inline]
-    fn withdraw(&mut self, asset: Asset) -> bool {
-        self.withdraw(asset)
-    }
-
-    #[inline]
-    fn clear(&mut self) {
-        self.clear();
-    }
-}
-
-/// Performs a withdraw on `balance` returning `false` if it would overflow.
-#[inline]
-fn withdraw(balance: Option<&mut AssetValue>, withdraw: AssetValue) -> bool {
-    match balance {
-        Some(balance) => {
-            *balance = match balance.checked_sub(withdraw) {
-                Some(balance) => balance,
-                _ => return false,
-            };
-            true
-        }
-        _ => false,
-    }
-}
-
-/// Adds implementation of [`BalanceState`] for a map type with the given `$entry` type.
-macro_rules! impl_balance_state_map_body {
-    ($entry:tt) => {
-        #[inline]
-        fn balance(&self, id: AssetId) -> AssetValue {
-            self.get(&id).copied().unwrap_or_default()
-        }
-
-        #[inline]
-        fn deposit(&mut self, asset: Asset) {
-            if asset.is_zero() {
-                return;
-            }
-            match self.entry(asset.id) {
-                $entry::Vacant(entry) => {
-                    entry.insert(asset.value);
-                }
-                $entry::Occupied(entry) => *entry.into_mut() += asset.value,
-            }
-        }
-
-        #[inline]
-        fn withdraw(&mut self, asset: Asset) -> bool {
-            if !asset.is_zero() {
-                withdraw(self.get_mut(&asset.id), asset.value)
-            } else {
-                true
-            }
-        }
-
-        #[inline]
-        fn clear(&mut self) {
-            self.clear();
-        }
-    };
-}
-
-/// B-Tree Map [`BalanceState`] Implementation
-pub type BTreeMapBalanceState = BTreeMap<AssetId, AssetValue>;
-
-impl BalanceState for BTreeMapBalanceState {
-    impl_balance_state_map_body! { BTreeMapEntry }
-}
-
-/// Hash Map [`BalanceState`] Implementation
-#[cfg(feature = "std")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
-pub type HashMapBalanceState<S = RandomState> = HashMap<AssetId, AssetValue, S>;
-
-#[cfg(feature = "std")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
-impl<S> BalanceState for HashMapBalanceState<S>
-where
-    S: BuildHasher + Default,
-{
-    impl_balance_state_map_body! { HashMapEntry }
-}
 
 /// Wallet
 pub struct Wallet<C, L, S = signer::Signer<C>, B = BTreeMapBalanceState>
