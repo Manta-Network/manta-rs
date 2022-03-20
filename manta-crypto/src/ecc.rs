@@ -138,8 +138,8 @@ pub trait ScalarMul<COM = ()> {
 pub trait PreprocessedScalarMul<COM, const N: usize>: ScalarMul<COM> + Sized {
     /// Performs the scalar multiplication against a pre-computed table.
     ///
-    /// The pre-computed table is a list of power-of-two multiples of `scalar`, such that
-    /// `table[i] = scalar * 2^i`.
+    /// The pre-computed table is powers of two of `scalar`, such that
+    /// `table[i] = 2^i * G`.
     #[must_use]
     fn preprocessed_scalar_mul(
         table: &[Self; N],
@@ -165,7 +165,7 @@ where
 /// Elliptic Curve Group
 pub trait Group<COM = ()>: PointAdd<COM> + PointDouble<COM> + ScalarMul<COM> {}
 
-/// Pre-processed Scalar Multiplication Table
+/// Pre-processed Scalar Multiplication Table, represented as powers of two of `scalar`.
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
@@ -183,17 +183,16 @@ pub struct PreprocessedScalarMulTable<G, const N: usize> {
 }
 
 impl<G, const N: usize> PreprocessedScalarMulTable<G, N> {
-    /// Builds a new [`PreprocessedScalarMulTable`] collection from `base`.
+    /// Builds a new [`PreprocessedScalarMulTable`] collection from `base`, such that `table[i] = 2^i * base`.
     #[inline]
     pub fn from_base<COM>(mut base: G, compiler: &mut COM) -> Self
     where
         G: Clone + PointAdd<COM, Output = G> + PointDouble<COM, Output = G>,
     {
         let mut powers = Vec::with_capacity(N);
-        let double = base.double(compiler);
         for _ in 0..N {
             powers.push(base.clone());
-            base.add_assign(&double, compiler);
+            base.double_assign(compiler);
         }
         Self::from_powers_unchecked(
             powers
