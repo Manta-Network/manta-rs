@@ -78,7 +78,7 @@ simulation = [
 std = ["manta-accounting/std", "manta-util/std"]
 
 # Testing Frameworks
-test = ["manta-accounting/test", "manta-crypto/test"]
+test = ["manta-accounting/test", "manta-crypto/test", "manta-crypto/getrandom"]
 
 # Wallet
 wallet = ["bip32", "manta-crypto/getrandom", "std"]

@@ -36,6 +36,7 @@ use manta_util::serde::{Deserialize, Serialize, Serializer};
 
 pub use ark_ec::{AffineCurve, ProjectiveCurve};
 pub use ark_r1cs_std::groups::CurveVar;
+use manta_crypto::ecc::{PointAdd, PointDouble};
 
 /// Constraint Field Type
 type ConstraintField<C> = <<C as ProjectiveCurve>::BaseField as Field>::BasePrimeField;
@@ -363,6 +364,7 @@ where
 }
 
 /// Elliptic Curve Group Element Variable
+#[derive(Clone)]
 pub struct GroupVar<C, CV>(pub(crate) CV, PhantomData<C>)
 where
     C: ProjectiveCurve,
@@ -408,49 +410,41 @@ where
 
 macro_rules! impl_processed_scalar_mul {
     ($curve: ty) => {
-impl<CV>
-    ecc::PreprocessedScalarMul<
-        Compiler<$curve>,
+        impl<CV>
+            ecc::PreprocessedScalarMul<
+                Compiler<$curve>,
+                {
+                    <<$curve as ProjectiveCurve>::ScalarField as PrimeField>::Params::MODULUS_BITS
+                        as usize
+                },
+            > for GroupVar<$curve, CV>
+        where
+            CV: CurveVar<$curve, ConstraintField<$curve>>,
         {
-            <<$curve as ProjectiveCurve>::ScalarField as PrimeField>::Params::MODULUS_BITS
-        as usize
-        },
-    > for GroupVar<$curve, CV>
-where
-    CV: CurveVar<$curve, ConstraintField<$curve>>,
-{
-    #[inline]
-    fn preprocessed_scalar_mul(
-        table: &[Self; {
-             <<$curve as ProjectiveCurve>::ScalarField as PrimeField>::Params::MODULUS_BITS
-                as usize
-         }],
-        scalar: &Self::Scalar,
-        compiler: &mut Compiler<$curve>,
-    ) -> Self::Output {
-        let _ = compiler;
-        let mut result = CV::zero();
-        let scalar_bits = scalar
-            .0
-            .to_bits_le()
-            .expect("Bit decomposition is not allowed to fail.");
-        debug_assert_eq!(
-            scalar_bits.len(),
-            {
-                <<$curve as ProjectiveCurve>::ScalarField as PrimeField>::Params::MODULUS_BITS
-                as usize
-            },
-            "Scalar is expected to have N bits."
-        );
-        // TODO: Add `+` implementations, `conditional_add` to avoid unnecessary clones.
-        for (bit, base) in scalar_bits.into_iter().zip(table.iter()) {
-            result = bit
-                .select(&(result.clone() + &base.0), &result)
-                .expect("Conditional select is not allowed to fail. ");
+            #[inline]
+            fn preprocessed_scalar_mul(
+                table: &[Self; {
+                     <<$curve as ProjectiveCurve>::ScalarField as PrimeField>::Params::MODULUS_BITS
+                         as usize
+                 }],
+                scalar: &Self::Scalar,
+                compiler: &mut Compiler<$curve>,
+            ) -> Self::Output {
+                let _ = compiler;
+                let mut result = CV::zero();
+                let scalar_bits = scalar
+                    .0
+                    .to_bits_le()
+                    .expect("Bit decomposition is not allowed to fail.");
+                // TODO: Add `+` implementations, `conditional_add` to avoid unnecessary clones.
+                for (bit, base) in scalar_bits.into_iter().zip(table.iter()) {
+                    result = bit
+                        .select(&(result.clone() + &base.0), &result)
+                        .expect("Conditional select is not allowed to fail. ");
+                }
+                Self(result, PhantomData)
+            }
         }
-        Self(result, PhantomData)
-    }
-}
     };
 }
 
@@ -543,5 +537,82 @@ where
             )
             .expect("Variable allocation is not allowed to fail."),
         )
+    }
+}
+
+impl<C, CV> PointAdd<Compiler<C>> for GroupVar<C, CV>
+where
+    C: ProjectiveCurve,
+    CV: CurveVar<C, ConstraintField<C>>,
+{
+    type Output = Self;
+
+    fn add(&self, rhs: &Self, compiler: &mut Compiler<C>) -> Self::Output {
+        let _ = compiler;
+        let mut result = self.0.clone();
+        result += &rhs.0;
+        Self::new(result)
+    }
+}
+
+impl<C, CV> PointDouble<Compiler<C>> for GroupVar<C, CV>
+where
+    C: ProjectiveCurve,
+    CV: CurveVar<C, ConstraintField<C>>,
+{
+    type Output = Self;
+
+    fn double(&self, compiler: &mut Compiler<C>) -> Self::Output {
+        let _ = compiler;
+        Self::new(self.0.double().expect("Doubling is not allowed to fail."))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ark_ec::ProjectiveCurve;
+    use ark_ed_on_bls12_381::constraints::EdwardsVar;
+    use ark_ed_on_bls12_381::EdwardsProjective;
+    use manta_crypto::constraint::ConstraintSystem;
+    use manta_crypto::ecc::{PreprocessedScalarMulTable, ScalarMul};
+    use manta_crypto::rand::OsRng;
+    fn preprocessed_scalar_mul_test_template<C, CV, const N: usize>(rng: &mut OsRng)
+    where
+        C: ProjectiveCurve,
+        CV: CurveVar<C, ConstraintField<C>>,
+        GroupVar<C, CV>: ecc::PreprocessedScalarMul<
+            Compiler<C>,
+            N,
+            Scalar = ScalarVar<C, CV>,
+            Output = GroupVar<C, CV>,
+        >,
+    {
+        const NUM_TRIALS: usize = 5;
+
+        let mut cs = R1CS::for_known();
+
+        for _ in 0..NUM_TRIALS {
+            let base = Group::<C>::gen(rng);
+            let base_var = <GroupVar<C, CV> as Variable<Secret, _>>::new_known(&base, &mut cs);
+
+            let scalar = Scalar::<C>::gen(rng);
+            let scalar_var = scalar.as_known::<Secret, ScalarVar<C, CV>>(&mut cs);
+
+            let expected = ScalarMul::scalar_mul(&base_var, &scalar_var, &mut cs);
+
+            let table = PreprocessedScalarMulTable::<_, N>::from_base(base_var, &mut cs);
+            let actual = table.scalar_mul(&scalar_var, &mut cs);
+
+            cs.assert_eq(&expected, &actual);
+        }
+
+        assert!(cs.cs.is_satisfied().unwrap());
+    }
+
+    #[test]
+    fn preprocessed_scalar_mul_test() {
+        let mut rng = OsRng::default();
+        preprocessed_scalar_mul_test_template::<EdwardsProjective, EdwardsVar, 252>(&mut rng);
     }
 }
