@@ -572,11 +572,12 @@ where
 mod tests {
     use super::*;
     use ark_ec::ProjectiveCurve;
-    use ark_ed_on_bls12_381::constraints::EdwardsVar;
-    use ark_ed_on_bls12_381::EdwardsProjective;
-    use manta_crypto::constraint::ConstraintSystem;
-    use manta_crypto::ecc::{PreprocessedScalarMulTable, ScalarMul};
-    use manta_crypto::rand::OsRng;
+    use ark_ed_on_bls12_381::{constraints::EdwardsVar, EdwardsProjective};
+    use manta_crypto::{
+        constraint::ConstraintSystem,
+        ecc::{PreprocessedScalarMulTable, ScalarMul},
+        rand::OsRng,
+    };
     fn preprocessed_scalar_mul_test_template<C, CV, const N: usize>(rng: &mut OsRng)
     where
         C: ProjectiveCurve,
