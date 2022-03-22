@@ -578,6 +578,7 @@ mod tests {
         ecc::{PreprocessedScalarMulTable, ScalarMul},
         rand::OsRng,
     };
+
     fn preprocessed_scalar_mul_test_template<C, CV, const N: usize>(rng: &mut OsRng)
     where
         C: ProjectiveCurve,
@@ -613,7 +614,19 @@ mod tests {
 
     #[test]
     fn preprocessed_scalar_mul_test() {
+        macro_rules! test_on_curve {
+            ($curve: ty, $var: ty, $rng: expr) => {
+                preprocessed_scalar_mul_test_template::<
+            $curve,
+            $var,
+            {
+                <<$curve as ProjectiveCurve>::ScalarField as PrimeField>::Params::MODULUS_BITS as usize
+            },
+        >($rng)
+            }
+        }
+
         let mut rng = OsRng::default();
-        preprocessed_scalar_mul_test_template::<EdwardsProjective, EdwardsVar, 252>(&mut rng);
+        test_on_curve!(EdwardsProjective, EdwardsVar, &mut rng);
     }
 }
