@@ -14,12 +14,12 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Manta Pay Utilities
+//! Manta Pay I/O Utilities
 
-#[cfg(feature = "http")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "http")))]
-pub mod http;
-
-#[cfg(feature = "tokio")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "tokio")))]
-pub mod io;
+///
+#[macro_export]
+macro_rules! println {
+    ($($expr:expr),*) => {
+        ::tokio::io::stdout().write_all(format!($($expr),*).as_bytes())
+    }
+}

@@ -28,7 +28,8 @@ use crate::{
     },
 };
 use alloc::sync::Arc;
-use core::{fmt::Debug, hash::Hash, marker::PhantomData};
+use core::{fmt::Debug, future::Future, hash::Hash, marker::PhantomData};
+use futures::StreamExt;
 use indexmap::IndexSet;
 use manta_crypto::rand::{CryptoRng, RngCore, Sample};
 use manta_util::future::LocalBoxFuture;
@@ -467,31 +468,29 @@ pub struct Config {
 }
 
 impl Config {
-    /* TODO:
-    /// Runs the simulation on the configuration defined in `self`.
-    #[cfg(feature = "parallel")]
-    #[cfg_attr(doc_cfg, doc(cfg(feature = "parallel")))]
+    /// Runs the simulation on the configuration defined in `self`, sending events to the
+    /// `event_subscriber`.
     #[inline]
-    pub fn run<C, L, S, R, GL, GS, F>(
+    pub async fn run<C, L, S, R, GL, GS, F, ES, ESFut>(
         &self,
         mut ledger: GL,
         mut signer: GS,
         rng: F,
+        mut event_subscriber: ES,
     ) -> Result<bool, Error<C, L, S>>
     where
-        C: transfer::Configuration + Send,
-        L: ledger::Connection<C> + PublicBalanceOracle + Send + Sync,
-        S: signer::Connection<C> + Send + Sync,
-        R: CryptoRng + RngCore + Send,
+        C: transfer::Configuration,
+        L: ledger::Connection<C> + PublicBalanceOracle,
+        S: signer::Connection<C>,
+        R: CryptoRng + RngCore,
         GL: FnMut(usize) -> L,
         GS: FnMut(usize) -> S,
         F: FnMut() -> R,
-        L::Checkpoint: Send,
-        Error<C, L, S>: Debug + Send,
-        PublicKey<C>: Eq + Hash + Send + Sync,
+        ES: FnMut(&sim::Event<sim::ActionSim<Simulation<C, L, S>>>) -> ESFut,
+        ESFut: Future<Output = ()>,
+        Error<C, L, S>: Debug,
+        PublicKey<C>: Eq + Hash,
     {
-        println!("[INFO] Building {:?} Wallets", self.actor_count);
-
         let actors = (0..self.actor_count)
             .map(|i| {
                 Actor::new(
@@ -505,29 +504,20 @@ impl Config {
         let mut simulator = sim::Simulator::new(sim::ActionSim(Simulation::default()), actors);
 
         let initial_balances =
-            measure_balances(simulator.actors.iter_mut().map(|actor| &mut actor.wallet))?;
+            measure_balances(simulator.actors.iter_mut().map(|actor| &mut actor.wallet)).await?;
 
-        println!("[INFO] Starting Simulation\n");
-
-        rayon::in_place_scope(|scope| {
-            for event in simulator.run(rng, scope) {
-                match event.event.action {
-                    ActionType::Skip | ActionType::GeneratePublicKey => {}
-                    _ => println!("{:?}", event),
-                }
-                if let Err(err) = event.event.result {
-                    println!("\n[ERROR] Simulation Error: {:?}\n", err);
-                    break;
-                }
+        let mut events = simulator.run(rng);
+        while let Some(event) = events.next().await {
+            event_subscriber(&event).await;
+            if let Err(err) = event.event.result {
+                return Err(err);
             }
-        });
-
-        println!("\n[INFO] Simulation Ended");
+        }
+        drop(events);
 
         let final_balances =
-            measure_balances(simulator.actors.iter_mut().map(|actor| &mut actor.wallet))?;
+            measure_balances(simulator.actors.iter_mut().map(|actor| &mut actor.wallet)).await?;
 
         Ok(initial_balances == final_balances)
     }
-    */
 }

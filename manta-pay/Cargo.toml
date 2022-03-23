@@ -34,7 +34,7 @@ required-features = ["groth16"]
 
 [[bin]]
 name = "simulation"
-required-features = ["groth16", "simulation", "tempfile"]
+required-features = ["groth16", "simulation"]
 
 [features]
 # Enable Arkworks Backend
@@ -53,7 +53,7 @@ arkworks = [
 groth16 = ["ark-groth16", "ark-snark", "arkworks"]
 
 # Enable HTTP Signer Client
-http = ["futures", "reqwest", "serde"]
+http = ["reqwest", "serde"]
 
 # TODO: Enable PLONK ZKP System
 # TODO: plonk = ["zk-garage-plonk"]
@@ -70,6 +70,10 @@ simulation = [
     "parking_lot",
     "rayon",
     "test",
+    "tokio/io-std",
+    "tokio/macros",
+    "tokio/rt-multi-thread",
+    "tokio/sync",
     "wallet",
 ]
 
@@ -83,7 +87,14 @@ test = ["manta-accounting/test", "manta-crypto/test"]
 wallet = ["bip32", "manta-crypto/getrandom", "std"]
 
 # Enable WebSocket Signer Client
-websocket = ["serde", "serde_json", "std", "tungstenite"]
+websocket = [
+    "futures",
+    "serde",
+    "serde_json",
+    "std",
+    "tokio-tungstenite/connect",
+    "ws_stream_wasm",
+]
 
 [dependencies]
 aes-gcm = { version = "0.9.4", default-features = false, features = ["aes", "alloc"] }
@@ -101,7 +112,7 @@ bip32 = { version = "0.3.0", optional = true, default-features = false, features
 blake2 = { version = "0.10.4", default-features = false }
 bs58 = { version = "0.4.0", optional = true, default-features = false, features = ["alloc"] }
 derivative = { version = "2.2.0", default-features = false, features = ["use_core"] }
-futures = { version = "0.3.21", optional = true, default-features = false, features = ["executor"] }
+futures = { version = "0.3.21", optional = true, default-features = false }
 indexmap = { version = "1.8.0", optional = true, default-features = false }
 manta-accounting = { path = "../manta-accounting", default-features = false }
 manta-crypto = { path = "../manta-crypto", default-features = false }
@@ -113,8 +124,9 @@ reqwest = { version = "0.11.9", optional = true, default-features = false, featu
 scale-codec = { package = "parity-scale-codec", version = "2.3.1", optional = true, default-features = false, features = ["derive", "max-encoded-len"] }
 scale-info = { version = "1.0.0", optional = true, default-features = false, features = ["derive"] }
 serde_json = { version = "1.0.79", optional = true, default-features = false, features = ["alloc"] }
-tempfile = { version = "3.2.0", optional = true, default-features = false }
-tungstenite = { version = "0.17.2", optional = true, default-features = false, features = ["native-tls"] }
+tokio = { version = "1.17.0", optional = true, default-features = false }
+tokio-tungstenite = { version = "0.17.1", optional = true, default-features = false, features = ["native-tls"] }
+ws_stream_wasm = { version = "0.7.3", optional = true, default-features = false }
 # TODO: zk-garage-plonk = { package = "plonk", git = "https://github.com/zk-garage/plonk", optional = true, default-features = false }
 
 [dev-dependencies]

@@ -27,8 +27,8 @@ use manta_pay::{
 };
 
 /// Runs the Manta Pay simulation.
-#[inline]
-pub fn main() {
+#[tokio::main]
+pub async fn main() {
     let mut rng = OsRng;
     let parameters = rng.gen();
     let utxo_accumulator_model = rng.gen();
@@ -40,7 +40,6 @@ pub fn main() {
     )
     .expect("Failed to generate contexts.");
 
-    /* TODO:
     Simulation {
         actor_count: 10,
         actor_lifetime: 10,
@@ -54,6 +53,5 @@ pub fn main() {
         Ledger::new(utxo_accumulator_model.clone(), verifying_context),
         &mut rng,
     )
-    */
-    todo!()
+    .await
 }

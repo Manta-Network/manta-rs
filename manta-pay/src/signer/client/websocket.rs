@@ -16,6 +16,8 @@
 
 //! Signer WebSocket Client Implementation
 
+// TODO: Make this code work on WASM and non-WASM by choosing the correct dependency library.
+
 use crate::{
     config::{Config, ReceivingKey},
     signer::{
@@ -23,15 +25,21 @@ use crate::{
         SyncResponse,
     },
 };
-use alloc::vec::Vec;
+use alloc::{boxed::Box, vec::Vec};
+use core::marker::Unpin;
+use futures::stream::StreamExt;
 use manta_accounting::wallet::{self, signer};
 use manta_util::{
     from_variant_impl,
     future::LocalBoxFutureResult,
     serde::{de::DeserializeOwned, Deserialize, Serialize},
 };
-use std::net::TcpStream;
-use tungstenite::{client::IntoClientRequest, stream::MaybeTlsStream, Message};
+use tokio::net::TcpStream;
+use tokio_tungstenite::{
+    connect_async,
+    tungstenite::{self, client::IntoClientRequest, Message},
+    MaybeTlsStream, WebSocketStream,
+};
 
 /// Web Socket Error
 pub type WebSocketError = tungstenite::error::Error;
@@ -73,16 +81,16 @@ pub struct Request<R> {
 pub type Wallet<L> = wallet::Wallet<Config, L, Client>;
 
 /// WebSocket Client
-pub struct Client(tungstenite::WebSocket<MaybeTlsStream<TcpStream>>);
+pub struct Client(WebSocketStream<MaybeTlsStream<TcpStream>>);
 
 impl Client {
     /// Builds a new [`Client`] from `url`.
     #[inline]
-    pub fn new<U>(url: U) -> Result<Self, WebSocketError>
+    pub async fn new<U>(url: U) -> Result<Self, WebSocketError>
     where
-        U: IntoClientRequest,
+        U: IntoClientRequest + Unpin,
     {
-        Ok(Self(tungstenite::connect(url)?.0))
+        Ok(Self(connect_async(url).await?.0))
     }
 
     /// Sends a `request` for the given `command` along the channel and waits for the response.
@@ -98,7 +106,7 @@ impl Client {
                 command,
                 request,
             })?))?;
-        match self.0.read_message()? {
+        match self.0.next().await? {
             Message::Text(message) => Ok(serde_json::from_str(&message)?),
             _ => Err(Error::InvalidMessageFormat),
         }

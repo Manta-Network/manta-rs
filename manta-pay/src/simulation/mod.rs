@@ -20,7 +20,7 @@ use crate::{
     config::{MultiProvingContext, Parameters, UtxoAccumulatorModel},
     signer::base::{Signer, UtxoAccumulator},
 };
-use alloc::sync::Arc;
+use alloc::{format, sync::Arc};
 use manta_accounting::{
     self,
     asset::{AssetId, AssetValue, AssetValueType},
@@ -28,8 +28,8 @@ use manta_accounting::{
     wallet::test,
 };
 use manta_crypto::rand::{CryptoRng, Rand, RngCore, SeedableRng};
-use parking_lot::RwLock;
 use rand_chacha::ChaCha20Rng;
+use tokio::{io::AsyncWriteExt, sync::RwLock};
 
 pub mod ledger;
 
@@ -70,10 +70,9 @@ pub struct Simulation {
 }
 
 impl Simulation {
-    /* TODO:
     /// Runs a simple simulation to test that the signer-wallet-ledger connection works.
     #[inline]
-    pub fn run<R>(
+    pub async fn run<R>(
         &self,
         parameters: &Parameters,
         utxo_accumulator_model: &UtxoAccumulatorModel,
@@ -100,10 +99,16 @@ impl Simulation {
                 |i| ledger::LedgerConnection::new(ledger::AccountId(i as u64), ledger.clone()),
                 |_| sample_signer(proving_context, parameters, utxo_accumulator_model, rng),
                 ChaCha20Rng::from_entropy,
+                |event| {
+                    let event_string = format!("{:?}", event);
+                    async move {
+                        let _ = tokio::io::stdout().write_all(event_string.as_bytes()).await;
+                    }
+                }
             )
+            .await
             .expect("Error during simulation."),
             "Simulation balance mismatch!"
         );
     }
-    */
 }

@@ -53,8 +53,8 @@ use manta_util::{
     future::{LocalBoxFuture, LocalBoxFutureResult},
     Array,
 };
-use parking_lot::RwLock;
 use std::collections::{HashMap, HashSet};
+use tokio::sync::RwLock;
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
@@ -389,41 +389,40 @@ impl ledger::Connection<Config> for LedgerConnection {
         &'s mut self,
         checkpoint: &'s Self::Checkpoint,
     ) -> LocalBoxFutureResult<'s, PullResponse<Config, Self>, Self::Error> {
-        /* TODO:
-        let ledger = self.ledger.read();
-        let mut receivers = Vec::new();
-        for (i, mut index) in checkpoint.receiver_index.iter().copied().enumerate() {
-            let shard = &ledger.shards[&MerkleForestIndex::from_index(i)];
-            while let Some(entry) = shard.get_index(index) {
-                receivers.push(*entry);
-                index += 1;
+        Box::pin(async move {
+            let ledger = self.ledger.read().await;
+            let mut receivers = Vec::new();
+            for (i, mut index) in checkpoint.receiver_index.iter().copied().enumerate() {
+                let shard = &ledger.shards[&MerkleForestIndex::from_index(i)];
+                while let Some(entry) = shard.get_index(index) {
+                    receivers.push(*entry);
+                    index += 1;
+                }
             }
-        }
-        let senders = ledger
-            .void_numbers
-            .iter()
-            .skip(checkpoint.sender_index)
-            .copied()
-            .collect();
-        Ok(PullResponse {
-            should_continue: false,
-            checkpoint: Checkpoint::new(
-                Array::from_unchecked(
-                    ledger
-                        .utxo_forest
-                        .forest
-                        .as_ref()
-                        .iter()
-                        .map(move |t| t.len())
-                        .collect::<Vec<_>>(),
+            let senders = ledger
+                .void_numbers
+                .iter()
+                .skip(checkpoint.sender_index)
+                .copied()
+                .collect();
+            Ok(PullResponse {
+                should_continue: false,
+                checkpoint: Checkpoint::new(
+                    Array::from_unchecked(
+                        ledger
+                            .utxo_forest
+                            .forest
+                            .as_ref()
+                            .iter()
+                            .map(move |t| t.len())
+                            .collect::<Vec<_>>(),
+                    ),
+                    ledger.void_numbers.len(),
                 ),
-                ledger.void_numbers.len(),
-            ),
-            receivers,
-            senders,
+                receivers,
+                senders,
+            })
         })
-        */
-        todo!()
     }
 
     #[inline]
@@ -431,45 +430,44 @@ impl ledger::Connection<Config> for LedgerConnection {
         &mut self,
         posts: Vec<TransferPost>,
     ) -> LocalBoxFutureResult<PushResponse, Self::Error> {
-        /* TODO:
-        let mut ledger = self.ledger.write();
-        for post in posts {
-            let (sources, sinks) = match TransferShape::from_post(&post) {
-                Some(TransferShape::Mint) => (vec![self.account], vec![]),
-                Some(TransferShape::PrivateTransfer) => (vec![], vec![]),
-                Some(TransferShape::Reclaim) => (vec![], vec![self.account]),
-                _ => return Ok(PushResponse { success: false }),
-            };
-            match post.validate(sources, sinks, &*ledger) {
-                Ok(posting_key) => {
-                    posting_key.post(&(), &mut *ledger).unwrap();
-                }
-                Err(err) => {
-                    println!("ERROR: {:?}", err);
-                    return Ok(PushResponse { success: false });
+        Box::pin(async move {
+            let mut ledger = self.ledger.write().await;
+            for post in posts {
+                let (sources, sinks) = match TransferShape::from_post(&post) {
+                    Some(TransferShape::Mint) => (vec![self.account], vec![]),
+                    Some(TransferShape::PrivateTransfer) => (vec![], vec![]),
+                    Some(TransferShape::Reclaim) => (vec![], vec![self.account]),
+                    _ => return Ok(PushResponse { success: false }),
+                };
+                match post.validate(sources, sinks, &*ledger) {
+                    Ok(posting_key) => {
+                        posting_key.post(&(), &mut *ledger).unwrap();
+                    }
+                    Err(err) => {
+                        println!("ERROR: {:?}", err);
+                        return Ok(PushResponse { success: false });
+                    }
                 }
             }
-        }
-        Ok(PushResponse { success: true })
-        */
-        todo!()
+            Ok(PushResponse { success: true })
+        })
     }
 }
 
 impl PublicBalanceOracle for LedgerConnection {
     #[inline]
     fn public_balances(&self) -> LocalBoxFuture<Option<AssetList>> {
-        /* TODO:
-        Some(
-            self.ledger
-                .read()
-                .accounts
-                .get(&self.account)?
-                .iter()
-                .map(|(id, value)| Asset::new(*id, *value))
-                .collect(),
-        )
-        */
-        todo!()
+        Box::pin(async move {
+            Some(
+                self.ledger
+                    .read()
+                    .await
+                    .accounts
+                    .get(&self.account)?
+                    .iter()
+                    .map(|(id, value)| Asset::new(*id, *value))
+                    .collect(),
+            )
+        })
     }
 }
