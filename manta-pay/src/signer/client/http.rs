@@ -24,7 +24,7 @@ use crate::{
     },
     util::http::{self, IntoUrl},
 };
-use alloc::vec::Vec;
+use alloc::{boxed::Box, vec::Vec};
 use manta_accounting::wallet::{self, signer};
 use manta_util::future::LocalBoxFutureResult;
 
