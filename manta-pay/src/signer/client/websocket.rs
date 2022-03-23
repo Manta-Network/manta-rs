@@ -27,7 +27,7 @@ use crate::{
 };
 use alloc::{boxed::Box, vec::Vec};
 use core::marker::Unpin;
-use futures::stream::StreamExt;
+use futures::{SinkExt, StreamExt};
 use manta_accounting::wallet::{self, signer};
 use manta_util::{
     from_variant_impl,
@@ -51,6 +51,11 @@ pub enum Error {
     ///
     /// The message received from the WebSocket connection was not a [`Message::Text`].
     InvalidMessageFormat,
+
+    /// End of Stream Error
+    ///
+    /// The WebSocket stream was closed while waiting for the next message.
+    EndOfStream,
 
     /// Serialization Error
     SerializationError(serde_json::Error),
@@ -100,18 +105,18 @@ impl Client {
         S: Serialize,
         D: DeserializeOwned,
     {
-        /* TODO:
         self.0
-            .write_message(Message::Text(serde_json::to_string(&Request {
+            .send(Message::Text(serde_json::to_string(&Request {
                 command,
                 request,
-            })?))?;
-        match self.0.next().await? {
-            Message::Text(message) => Ok(serde_json::from_str(&message)?),
-            _ => Err(Error::InvalidMessageFormat),
+            })?))
+            .await?;
+        match self.0.next().await {
+            Some(Ok(Message::Text(message))) => Ok(serde_json::from_str(&message)?),
+            Some(Ok(_)) => Err(Error::InvalidMessageFormat),
+            Some(Err(err)) => Err(Error::WebSocket(err)),
+            _ => Err(Error::EndOfStream),
         }
-        */
-        todo!()
     }
 }
 
