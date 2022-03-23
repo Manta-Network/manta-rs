@@ -40,6 +40,7 @@ pub fn main() {
     )
     .expect("Failed to generate contexts.");
 
+    /* TODO:
     Simulation {
         actor_count: 10,
         actor_lifetime: 10,
@@ -53,4 +54,6 @@ pub fn main() {
         Ledger::new(utxo_accumulator_model.clone(), verifying_context),
         &mut rng,
     )
+    */
+    todo!()
 }

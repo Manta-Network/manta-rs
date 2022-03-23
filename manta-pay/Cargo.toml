@@ -67,7 +67,6 @@ serde = ["manta-accounting/serde", "manta-crypto/serde"]
 # Simulation Framework
 simulation = [
     "indexmap",
-    "manta-accounting/parallel",
     "parking_lot",
     "rayon",
     "test",

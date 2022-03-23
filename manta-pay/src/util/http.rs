@@ -20,11 +20,9 @@ use manta_util::serde::{de::DeserializeOwned, Serialize};
 
 pub use reqwest::{Error, IntoUrl, Method, Response, Url};
 
-/// Blocking HTTP Client
+/// Asynchronous HTTP Client
 ///
-/// This client is a wrapper around [`reqwest::Client`] with a known server URL. The
-/// [`request`](Self::request) method on this `struct` uses [`futures::executor::block_on`] to
-/// convert the asynchronous client into a blocking on.
+/// This client is a wrapper around [`reqwest::Client`] with a known server URL.
 pub struct Client {
     /// Server URL
     pub server_url: Url,
@@ -48,12 +46,7 @@ impl Client {
 
     /// Sends a new request asynchronously of type `command` with body `request`.
     #[inline]
-    async fn send_request<T, R>(
-        &self,
-        method: Method,
-        command: &str,
-        request: T,
-    ) -> Result<R, Error>
+    pub async fn request<T, R>(&self, method: Method, command: &str, request: T) -> Result<R, Error>
     where
         T: Serialize,
         R: DeserializeOwned,
@@ -72,33 +65,23 @@ impl Client {
             .await
     }
 
-    /// Sends a new request of type `command` with body `request`.
-    #[inline]
-    pub fn request<T, R>(&self, method: Method, command: &str, request: T) -> Result<R, Error>
-    where
-        T: Serialize,
-        R: DeserializeOwned,
-    {
-        futures::executor::block_on(async { self.send_request(method, command, request).await })
-    }
-
     /// Sends a GET request of type `command` with body `request`.
     #[inline]
-    pub fn get<T, R>(&self, command: &str, request: T) -> Result<R, Error>
+    pub async fn get<T, R>(&self, command: &str, request: T) -> Result<R, Error>
     where
         T: Serialize,
         R: DeserializeOwned,
     {
-        self.request(Method::GET, command, request)
+        self.request(Method::GET, command, request).await
     }
 
     /// Sends a POST request of type `command` with body `request`.
     #[inline]
-    pub fn post<T, R>(&self, command: &str, request: T) -> Result<R, Error>
+    pub async fn post<T, R>(&self, command: &str, request: T) -> Result<R, Error>
     where
         T: Serialize,
         R: DeserializeOwned,
     {
-        self.request(Method::POST, command, request)
+        self.request(Method::POST, command, request).await
     }
 }

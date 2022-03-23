@@ -27,6 +27,7 @@ use alloc::vec::Vec;
 use manta_accounting::wallet::{self, signer};
 use manta_util::{
     from_variant_impl,
+    future::LocalBoxFutureResult,
     serde::{de::DeserializeOwned, Deserialize, Serialize},
 };
 use std::net::TcpStream;
@@ -86,11 +87,12 @@ impl Client {
 
     /// Sends a `request` for the given `command` along the channel and waits for the response.
     #[inline]
-    fn send<S, D>(&mut self, command: &'static str, request: S) -> Result<D, Error>
+    async fn send<S, D>(&mut self, command: &'static str, request: S) -> Result<D, Error>
     where
         S: Serialize,
         D: DeserializeOwned,
     {
+        /* TODO:
         self.0
             .write_message(Message::Text(serde_json::to_string(&Request {
                 command,
@@ -100,6 +102,8 @@ impl Client {
             Message::Text(message) => Ok(serde_json::from_str(&message)?),
             _ => Err(Error::InvalidMessageFormat),
         }
+        */
+        todo!()
     }
 }
 
@@ -110,23 +114,23 @@ impl signer::Connection<Config> for Client {
     fn sync(
         &mut self,
         request: SyncRequest,
-    ) -> Result<Result<SyncResponse, SyncError>, Self::Error> {
-        self.send("sync", request)
+    ) -> LocalBoxFutureResult<Result<SyncResponse, SyncError>, Self::Error> {
+        Box::pin(async move { self.send("sync", request).await })
     }
 
     #[inline]
     fn sign(
         &mut self,
         request: SignRequest,
-    ) -> Result<Result<SignResponse, SignError>, Self::Error> {
-        self.send("sign", request)
+    ) -> LocalBoxFutureResult<Result<SignResponse, SignError>, Self::Error> {
+        Box::pin(async move { self.send("sign", request).await })
     }
 
     #[inline]
     fn receiving_keys(
         &mut self,
         request: ReceivingKeyRequest,
-    ) -> Result<Vec<ReceivingKey>, Self::Error> {
-        self.send("receivingKeys", request)
+    ) -> LocalBoxFutureResult<Vec<ReceivingKey>, Self::Error> {
+        Box::pin(async move { self.send("receivingKeys", request).await })
     }
 }

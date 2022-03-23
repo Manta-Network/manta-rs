@@ -19,12 +19,7 @@
 use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash};
 use manta_crypto::rand::{CryptoRng, RngCore};
-
-#[cfg(feature = "parallel")]
-use {
-    crossbeam::channel::{self, Receiver, Select, Sender},
-    rayon::Scope,
-};
+use manta_util::future::LocalBoxFuture;
 
 /// Abstract Simulation
 pub trait Simulation {
@@ -38,7 +33,11 @@ pub trait Simulation {
     ///
     /// This method should return `None` when the actor is done being simulated for this round of
     /// the simulation.
-    fn step<R>(&self, actor: &mut Self::Actor, rng: &mut R) -> Option<Self::Event>
+    fn step<'s, R>(
+        &'s self,
+        actor: &'s mut Self::Actor,
+        rng: &'s mut R,
+    ) -> LocalBoxFuture<'s, Option<Self::Event>>
     where
         R: CryptoRng + RngCore + ?Sized;
 }
@@ -51,7 +50,11 @@ where
     type Event = S::Event;
 
     #[inline]
-    fn step<R>(&self, actor: &mut Self::Actor, rng: &mut R) -> Option<Self::Event>
+    fn step<'s, R>(
+        &'s self,
+        actor: &'s mut Self::Actor,
+        rng: &'s mut R,
+    ) -> LocalBoxFuture<'s, Option<Self::Event>>
     where
         R: CryptoRng + RngCore + ?Sized,
     {
@@ -126,11 +129,10 @@ where
         Self { simulation, actors }
     }
 
+    /* TODO:
     /// Runs the simulator using `rng`, returning an iterator over events.
-    #[cfg(feature = "parallel")]
-    #[cfg_attr(doc_cfg, doc(cfg(feature = "parallel")))]
     #[inline]
-    pub fn run<'s, R, F>(&'s mut self, mut rng: F, scope: &Scope<'s>) -> RunIter<S>
+    pub fn run<'s, R, F>(&'s mut self, mut rng: F) -> RunIter<S>
     where
         S: Sync,
         S::Actor: Send,
@@ -138,6 +140,7 @@ where
         R: 's + CryptoRng + RngCore + Send,
         F: FnMut() -> R,
     {
+        /*
         RunIter::new(
             self.actors
                 .iter_mut()
@@ -146,9 +149,22 @@ where
                 .collect(),
             scope,
         )
+        */
+    }
+    */
+}
+
+impl<S> AsRef<S> for Simulator<S>
+where
+    S: Simulation,
+{
+    #[inline]
+    fn as_ref(&self) -> &S {
+        &self.simulation
     }
 }
 
+/* TODO:
 /// Actor Iterator
 pub struct ActorIter<'s, S, R>
 where
@@ -348,16 +364,7 @@ where
         }
     }
 }
-
-impl<S> AsRef<S> for Simulator<S>
-where
-    S: Simulation,
-{
-    #[inline]
-    fn as_ref(&self) -> &S {
-        &self.simulation
-    }
-}
+*/
 
 /// Action Simulation
 pub trait ActionSimulation {
@@ -374,12 +381,20 @@ pub trait ActionSimulation {
     ///
     /// This method should return `None` when the actor is done being simulated for this round of
     /// the simulation.
-    fn sample<R>(&self, actor: &mut Self::Actor, rng: &mut R) -> Option<Self::Action>
+    fn sample<'s, R>(
+        &'s self,
+        actor: &'s mut Self::Actor,
+        rng: &'s mut R,
+    ) -> LocalBoxFuture<'s, Option<Self::Action>>
     where
         R: CryptoRng + RngCore + ?Sized;
 
     /// Executes the given `action` on `actor` returning an event.
-    fn act(&self, actor: &mut Self::Actor, action: Self::Action) -> Self::Event;
+    fn act<'s>(
+        &'s self,
+        actor: &'s mut Self::Actor,
+        action: Self::Action,
+    ) -> LocalBoxFuture<'s, Self::Event>;
 }
 
 /// Action Simulation Wrapper
@@ -409,12 +424,19 @@ where
     type Event = S::Event;
 
     #[inline]
-    fn step<R>(&self, actor: &mut Self::Actor, rng: &mut R) -> Option<Self::Event>
+    fn step<'s, R>(
+        &'s self,
+        actor: &'s mut Self::Actor,
+        rng: &'s mut R,
+    ) -> LocalBoxFuture<'s, Option<Self::Event>>
     where
         R: CryptoRng + RngCore + ?Sized,
     {
-        self.0
-            .sample(actor, rng)
-            .map(move |action| self.0.act(actor, action))
+        Box::pin(async {
+            match self.0.sample(actor, rng).await {
+                Some(action) => Some(self.0.act(actor, action).await),
+                _ => None,
+            }
+        })
     }
 }

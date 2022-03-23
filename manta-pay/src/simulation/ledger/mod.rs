@@ -37,7 +37,7 @@ use manta_accounting::{
         TransferLedger, TransferLedgerSuperPostingKey, TransferPostingKey, UtxoAccumulatorOutput,
     },
     wallet::{
-        ledger::{self, PullResponse, PullResult, PushResponse, PushResult},
+        ledger::{self, PullResponse, PushResponse},
         test::PublicBalanceOracle,
     },
 };
@@ -49,7 +49,10 @@ use manta_crypto::{
         Tree,
     },
 };
-use manta_util::Array;
+use manta_util::{
+    future::{LocalBoxFuture, LocalBoxFutureResult},
+    Array,
+};
 use parking_lot::RwLock;
 use std::collections::{HashMap, HashSet};
 
@@ -382,7 +385,11 @@ impl ledger::Connection<Config> for LedgerConnection {
     type Error = Infallible;
 
     #[inline]
-    fn pull(&mut self, checkpoint: &Self::Checkpoint) -> PullResult<Config, Self> {
+    fn pull<'s>(
+        &'s mut self,
+        checkpoint: &'s Self::Checkpoint,
+    ) -> LocalBoxFutureResult<'s, PullResponse<Config, Self>, Self::Error> {
+        /* TODO:
         let ledger = self.ledger.read();
         let mut receivers = Vec::new();
         for (i, mut index) in checkpoint.receiver_index.iter().copied().enumerate() {
@@ -415,10 +422,16 @@ impl ledger::Connection<Config> for LedgerConnection {
             receivers,
             senders,
         })
+        */
+        todo!()
     }
 
     #[inline]
-    fn push(&mut self, posts: Vec<TransferPost>) -> PushResult<Config, Self> {
+    fn push(
+        &mut self,
+        posts: Vec<TransferPost>,
+    ) -> LocalBoxFutureResult<PushResponse, Self::Error> {
+        /* TODO:
         let mut ledger = self.ledger.write();
         for post in posts {
             let (sources, sinks) = match TransferShape::from_post(&post) {
@@ -438,12 +451,15 @@ impl ledger::Connection<Config> for LedgerConnection {
             }
         }
         Ok(PushResponse { success: true })
+        */
+        todo!()
     }
 }
 
 impl PublicBalanceOracle for LedgerConnection {
     #[inline]
-    fn public_balances(&self) -> Option<AssetList> {
+    fn public_balances(&self) -> LocalBoxFuture<Option<AssetList>> {
+        /* TODO:
         Some(
             self.ledger
                 .read()
@@ -453,5 +469,7 @@ impl PublicBalanceOracle for LedgerConnection {
                 .map(|(id, value)| Asset::new(*id, *value))
                 .collect(),
         )
+        */
+        todo!()
     }
 }

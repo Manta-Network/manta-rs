@@ -22,6 +22,7 @@
 use crate::transfer::{Configuration, EncryptedNote, TransferPost, Utxo, VoidNumber};
 use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash};
+use manta_util::future::LocalBoxFutureResult;
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
@@ -54,22 +55,18 @@ where
 
     /// Pulls receiver data from the ledger starting from `checkpoint`, returning the current
     /// [`Checkpoint`](Self::Checkpoint).
-    fn pull(&mut self, checkpoint: &Self::Checkpoint) -> PullResult<C, Self>;
+    fn pull<'s>(
+        &'s mut self,
+        checkpoint: &'s Self::Checkpoint,
+    ) -> LocalBoxFutureResult<'s, PullResponse<C, Self>, Self::Error>;
 
     /// Sends `posts` to the ledger, returning `true` or `false` depending on whether the entire
     /// batch succeeded or not.
-    fn push(&mut self, posts: Vec<TransferPost<C>>) -> PushResult<C, Self>;
+    fn push(
+        &mut self,
+        posts: Vec<TransferPost<C>>,
+    ) -> LocalBoxFutureResult<PushResponse, Self::Error>;
 }
-
-/// Ledger Source Pull Result
-///
-/// See the [`pull`](Connection::pull) method on [`Connection`] for more information.
-pub type PullResult<C, L> = Result<PullResponse<C, L>, <L as Connection<C>>::Error>;
-
-/// Ledger Source Push Result
-///
-/// See the [`push`](Connection::push) method on [`Connection`] for more information.
-pub type PushResult<C, L> = Result<PushResponse, <L as Connection<C>>::Error>;
 
 /// Ledger Source Pull Response
 ///
@@ -141,7 +138,7 @@ where
     derive(Deserialize, Serialize),
     serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub struct PushResponse {
     /// Transaction Success Flag
     ///

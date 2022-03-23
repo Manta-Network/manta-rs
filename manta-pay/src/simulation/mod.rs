@@ -70,6 +70,7 @@ pub struct Simulation {
 }
 
 impl Simulation {
+    /* TODO:
     /// Runs a simple simulation to test that the signer-wallet-ledger connection works.
     #[inline]
     pub fn run<R>(
@@ -104,4 +105,5 @@ impl Simulation {
             "Simulation balance mismatch!"
         );
     }
+    */
 }
