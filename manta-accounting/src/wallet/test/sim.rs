@@ -16,7 +16,7 @@
 
 //! Actor Simulation Framework
 
-use alloc::vec::Vec;
+use alloc::{boxed::Box, vec::Vec};
 use core::{fmt::Debug, hash::Hash};
 use futures::stream::{self, SelectAll, Stream};
 use manta_crypto::rand::{CryptoRng, RngCore};

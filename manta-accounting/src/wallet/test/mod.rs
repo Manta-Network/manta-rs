@@ -27,7 +27,7 @@ use crate::{
         BalanceState, Error, Wallet,
     },
 };
-use alloc::sync::Arc;
+use alloc::{boxed::Box, sync::Arc};
 use core::{fmt::Debug, future::Future, hash::Hash, marker::PhantomData};
 use futures::StreamExt;
 use indexmap::IndexSet;
@@ -499,7 +499,7 @@ impl Config {
                     self.actor_lifetime,
                 )
             })
-            .collect::<Vec<_>>();
+            .collect();
 
         let mut simulator = sim::Simulator::new(sim::ActionSim(Simulation::default()), actors);
 

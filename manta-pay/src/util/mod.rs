@@ -19,7 +19,3 @@
 #[cfg(feature = "http")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "http")))]
 pub mod http;
-
-#[cfg(feature = "tokio")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "tokio")))]
-pub mod io;
