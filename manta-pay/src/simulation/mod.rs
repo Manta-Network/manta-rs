@@ -100,7 +100,7 @@ impl Simulation {
                 |_| sample_signer(proving_context, parameters, utxo_accumulator_model, rng),
                 ChaCha20Rng::from_entropy,
                 |event| {
-                    let event_string = format!("{:?}", event);
+                    let event_string = format!("{:?}\n", event);
                     async move {
                         let _ = tokio::io::stdout().write_all(event_string.as_bytes()).await;
                     }

@@ -41,8 +41,8 @@ pub async fn main() {
     .expect("Failed to generate contexts.");
 
     Simulation {
-        actor_count: 10,
-        actor_lifetime: 10,
+        actor_count: 3,
+        actor_lifetime: 5,
         asset_id_count: 3,
         starting_balance: 1000000,
     }
