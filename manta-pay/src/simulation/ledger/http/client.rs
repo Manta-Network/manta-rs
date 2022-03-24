@@ -18,14 +18,17 @@
 
 use crate::{
     config::{Config, EncryptedNote, TransferPost, Utxo, VoidNumber},
-    simulation::ledger::{AccountId, Checkpoint},
+    simulation::ledger::{http::Request, AccountId, Checkpoint},
     util::http::{self, Error, IntoUrl},
 };
-use manta_accounting::wallet::ledger::{self, PullResponse, PushResponse};
-use manta_util::{
-    future::LocalBoxFutureResult,
-    serde::{Deserialize, Serialize},
+use manta_accounting::{
+    asset::AssetList,
+    wallet::{
+        ledger::{self, PullResponse, PushResponse},
+        test::PublicBalanceOracle,
+    },
 };
+use manta_util::future::{LocalBoxFuture, LocalBoxFutureResult};
 
 /// HTTP Ledger Client
 pub struct Client {
@@ -50,17 +53,6 @@ impl Client {
     }
 }
 
-/// HTTP Client Request
-#[derive(Deserialize, Serialize)]
-#[serde(crate = "manta_util::serde", deny_unknown_fields)]
-struct Request<T> {
-    /// Account Id
-    account: AccountId,
-
-    /// Request Payload
-    request: T,
-}
-
 impl ledger::Connection<Config> for Client {
     type Checkpoint = Checkpoint;
     type ReceiverChunk = Vec<(Utxo, EncryptedNote)>;
@@ -72,13 +64,11 @@ impl ledger::Connection<Config> for Client {
         &'s mut self,
         checkpoint: &'s Self::Checkpoint,
     ) -> LocalBoxFutureResult<'s, PullResponse<Config, Self>, Self::Error> {
-        // NOTE: The pull command does not modify the ledger so it must be a GET command to match
-        //       the HTTP semantics.
         Box::pin(async move {
             self.client
-                .get(
+                .post(
                     "pull",
-                    Request {
+                    &Request {
                         account: self.account,
                         request: checkpoint,
                     },
@@ -92,18 +82,29 @@ impl ledger::Connection<Config> for Client {
         &mut self,
         posts: Vec<TransferPost>,
     ) -> LocalBoxFutureResult<PushResponse, Self::Error> {
-        // NOTE: The push command modifies the ledger so it must be a POST command to match the
-        //       HTTP semantics.
         Box::pin(async move {
             self.client
                 .post(
                     "push",
-                    Request {
+                    &Request {
                         account: self.account,
                         request: posts,
                     },
                 )
                 .await
+        })
+    }
+}
+
+impl PublicBalanceOracle for Client {
+    #[inline]
+    fn public_balances(&self) -> LocalBoxFuture<Option<AssetList>> {
+        Box::pin(async move {
+            self.client
+                .post("publicBalances", &self.account)
+                .await
+                .ok()
+                .flatten()
         })
     }
 }

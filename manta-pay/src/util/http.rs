@@ -16,25 +16,9 @@
 
 //! HTTP Utilities
 
-use manta_util::{
-    from_variant_impl,
-    serde::{de::DeserializeOwned, Serialize},
-};
+use manta_util::serde::{de::DeserializeOwned, Serialize};
 
-pub use reqwest::{IntoUrl, Method, Response, Url};
-
-/// Asynchronous HTTP Client Error
-#[derive(Debug)]
-pub enum Error {
-    /// Serialization Error
-    Serialization(serde_qs::Error),
-
-    /// HTTP Error
-    Http(reqwest::Error),
-}
-
-from_variant_impl!(Error, Serialization, serde_qs::Error);
-from_variant_impl!(Error, Http, reqwest::Error);
+pub use reqwest::{Error, IntoUrl, Method, Response, Url};
 
 /// Asynchronous HTTP Client
 ///
@@ -62,39 +46,46 @@ impl Client {
 
     /// Sends a new request asynchronously of type `command` with query string `request`.
     #[inline]
-    pub async fn request<T, R>(&self, method: Method, command: &str, request: T) -> Result<R, Error>
+    pub async fn request<T, R>(
+        &self,
+        method: Method,
+        command: &str,
+        request: &T,
+    ) -> Result<R, Error>
     where
         T: Serialize,
         R: DeserializeOwned,
     {
-        let request = serde_qs::to_string(&request)?;
-        let mut url = self
-            .server_url
-            .join(command)
-            .expect("Building the URL is not allowed to fail.");
-        url.set_query(Some(&request));
-        Ok(self
-            .client
-            .request(method, url)
+        self.client
+            .request(
+                method,
+                self.server_url
+                    .join(command)
+                    .expect("Building the URL is not allowed to fail."),
+            )
+            .json(request)
             .send()
             .await?
             .json()
-            .await?)
+            .await
     }
 
-    /// Sends a GET request of type `command` with query string `request`.
-    #[inline]
-    pub async fn get<T, R>(&self, command: &str, request: T) -> Result<R, Error>
-    where
-        T: Serialize,
-        R: DeserializeOwned,
-    {
-        self.request(Method::GET, command, request).await
-    }
+    // TODO: Investigate a way to have a uniform interface for GET and POST. For now, all
+    //       implementations should use POST for all methods.
+    //
+    // /// Sends a GET request of type `command` with query string `request`.
+    // #[inline]
+    // pub async fn get<T, R>(&self, command: &str, request: &T) -> Result<R, Error>
+    // where
+    //     T: Serialize,
+    //     R: DeserializeOwned,
+    // {
+    //     self.request(Method::GET, command, request).await
+    // }
 
     /// Sends a POST request of type `command` with query string `request`.
     #[inline]
-    pub async fn post<T, R>(&self, command: &str, request: T) -> Result<R, Error>
+    pub async fn post<T, R>(&self, command: &str, request: &T) -> Result<R, Error>
     where
         T: Serialize,
         R: DeserializeOwned,

@@ -53,7 +53,7 @@ arkworks = [
 groth16 = ["ark-groth16", "ark-snark", "arkworks"]
 
 # Enable HTTP Signer Client
-http = ["reqwest", "serde", "serde_qs"]
+http = ["reqwest", "serde"]
 
 # TODO: Enable PLONK ZKP System
 # TODO: plonk = ["zk-garage-plonk"]
@@ -70,6 +70,7 @@ simulation = [
     "parking_lot",
     "rayon",
     "test",
+    "tide",
     "tokio/io-std",
     "tokio/io-util",
     "tokio/macros",
@@ -126,11 +127,12 @@ reqwest = { version = "0.11.9", optional = true, default-features = false, featu
 scale-codec = { package = "parity-scale-codec", version = "2.3.1", optional = true, default-features = false, features = ["derive", "max-encoded-len"] }
 scale-info = { version = "1.0.0", optional = true, default-features = false, features = ["derive"] }
 serde_json = { version = "1.0.79", optional = true, default-features = false, features = ["alloc"] }
-serde_qs = { version = "0.9.1", optional = true, default-features = false }
+tide = { version = "0.16.0", optional = true, default-features = false, features = ["h1-server"] }
 tokio = { version = "1.17.0", optional = true, default-features = false }
 tokio-tungstenite = { version = "0.17.1", optional = true, default-features = false, features = ["native-tls"] }
 ws_stream_wasm = { version = "0.7.3", optional = true, default-features = false }
 # TODO: zk-garage-plonk = { package = "plonk", git = "https://github.com/zk-garage/plonk", optional = true, default-features = false }
 
 [dev-dependencies]
-manta-pay = { path = ".", features = ["groth16", "test"] }
+manta-crypto = { path = "../manta-crypto", default-features = false, features = ["getrandom"] }
+manta-pay = { path = ".", default-features = false, features = ["groth16", "test"] }

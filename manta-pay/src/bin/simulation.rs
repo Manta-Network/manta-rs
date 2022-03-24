@@ -21,28 +21,23 @@
 
 use manta_accounting::transfer::canonical::generate_context;
 use manta_crypto::rand::{OsRng, Rand};
-use manta_pay::{
-    config::FullParameters,
-    simulation::{ledger::Ledger, Simulation},
-};
+use manta_pay::{config::FullParameters, simulation::Simulation};
 
 /// Runs the Manta Pay simulation.
-#[tokio::main]
+#[tokio::main(flavor = "multi_thread", worker_threads = 4)]
 pub async fn main() {
     let mut rng = OsRng;
     let parameters = rng.gen();
     let utxo_accumulator_model = rng.gen();
-
     let (proving_context, verifying_context) = generate_context(
         &(),
         FullParameters::new(&parameters, &utxo_accumulator_model),
         &mut rng,
     )
     .expect("Failed to generate contexts.");
-
     Simulation {
-        actor_count: 3,
-        actor_lifetime: 5,
+        actor_count: 10,
+        actor_lifetime: 10,
         asset_id_count: 3,
         starting_balance: 1000000,
     }
@@ -50,7 +45,7 @@ pub async fn main() {
         &parameters,
         &utxo_accumulator_model,
         &proving_context,
-        Ledger::new(utxo_accumulator_model.clone(), verifying_context),
+        verifying_context,
         &mut rng,
     )
     .await

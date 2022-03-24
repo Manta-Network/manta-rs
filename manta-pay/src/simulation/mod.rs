@@ -17,19 +17,30 @@
 //! Manta Pay Protocol Simulation
 
 use crate::{
-    config::{MultiProvingContext, Parameters, UtxoAccumulatorModel},
+    config::{
+        Config, MultiProvingContext, MultiVerifyingContext, Parameters, UtxoAccumulatorModel,
+    },
     signer::base::{Signer, UtxoAccumulator},
+    simulation::ledger::{AccountId, Ledger, LedgerConnection},
 };
 use alloc::{format, sync::Arc};
+use core::fmt::Debug;
 use manta_accounting::{
     self,
     asset::{AssetId, AssetValue, AssetValueType},
     key::AccountTable,
-    wallet::test,
+    wallet::{
+        self,
+        test::{self, PublicBalanceOracle},
+        Error,
+    },
 };
 use manta_crypto::rand::{CryptoRng, Rand, RngCore, SeedableRng};
 use rand_chacha::ChaCha20Rng;
-use tokio::{io::AsyncWriteExt, sync::RwLock};
+use tokio::{
+    io::{self, AsyncWriteExt},
+    sync::RwLock,
+};
 
 pub mod ledger;
 
@@ -70,6 +81,27 @@ pub struct Simulation {
 }
 
 impl Simulation {
+    /// Builds the test simulation configuration from `self`.
+    #[inline]
+    pub fn config(&self) -> test::Config {
+        test::Config {
+            actor_count: self.actor_count,
+            actor_lifetime: self.actor_lifetime,
+        }
+    }
+
+    /// Sets the correct public balances for `ledger` to set up the simulation.
+    #[inline]
+    pub fn setup(&self, ledger: &mut Ledger) {
+        let starting_balance = AssetValue(self.starting_balance);
+        for i in 0..self.actor_count {
+            let account = AccountId(i as u64);
+            for id in 0..self.asset_id_count {
+                ledger.set_public_balance(account, AssetId(id as u32), starting_balance);
+            }
+        }
+    }
+
     /// Runs a simple simulation to test that the signer-wallet-ledger connection works.
     #[inline]
     pub async fn run<R>(
@@ -77,38 +109,53 @@ impl Simulation {
         parameters: &Parameters,
         utxo_accumulator_model: &UtxoAccumulatorModel,
         proving_context: &MultiProvingContext,
-        mut ledger: ledger::Ledger,
+        verifying_context: MultiVerifyingContext,
         rng: &mut R,
     ) where
         R: CryptoRng + RngCore + ?Sized,
     {
-        let starting_balance = AssetValue(self.starting_balance);
-        for i in 0..self.actor_count {
-            let account = ledger::AccountId(i as u64);
-            for id in 0..self.asset_id_count {
-                ledger.set_public_balance(account, AssetId(id as u32), starting_balance);
-            }
-        }
+        let mut ledger = Ledger::new(utxo_accumulator_model.clone(), verifying_context);
+        self.setup(&mut ledger);
         let ledger = Arc::new(RwLock::new(ledger));
+        self.run_with(
+            move |i| LedgerConnection::new(AccountId(i as u64), ledger.clone()),
+            move |_| sample_signer(proving_context, parameters, utxo_accumulator_model, rng),
+        )
+        .await
+    }
+
+    /// Runs the simulation with the given ledger connections and signer connections.
+    ///
+    /// # Note
+    ///
+    /// In this case, the ledger must be set up ahead of time with the [`setup`](Self::setup) method
+    /// since this simulation only knows about connections to the ledger.
+    #[inline]
+    pub async fn run_with<L, S, GL, GS>(&self, ledger: GL, signer: GS)
+    where
+        L: wallet::ledger::Connection<Config> + PublicBalanceOracle,
+        S: wallet::signer::Connection<Config>,
+        GL: FnMut(usize) -> L,
+        GS: FnMut(usize) -> S,
+        Error<Config, L, S>: Debug,
+    {
         assert!(
-            test::Config {
-                actor_count: self.actor_count,
-                actor_lifetime: self.actor_lifetime
-            }
-            .run(
-                |i| ledger::LedgerConnection::new(ledger::AccountId(i as u64), ledger.clone()),
-                |_| sample_signer(proving_context, parameters, utxo_accumulator_model, rng),
-                ChaCha20Rng::from_entropy,
-                |event| {
-                    let event_string = format!("{:?}\n", event);
+            self.config()
+                .run(ledger, signer, ChaCha20Rng::from_entropy, |event| {
+                    let event = format!("{:?}\n", event);
                     async move {
-                        let _ = tokio::io::stdout().write_all(event_string.as_bytes()).await;
+                        let _ = write_stdout(event.as_bytes()).await;
                     }
-                }
-            )
-            .await
-            .expect("Error during simulation."),
+                })
+                .await
+                .expect("Error during simulation."),
             "Simulation balance mismatch!"
         );
     }
+}
+
+/// Writes `bytes` to STDOUT using `tokio`.
+#[inline]
+async fn write_stdout(bytes: &[u8]) -> io::Result<()> {
+    tokio::io::stdout().write_all(bytes).await
 }

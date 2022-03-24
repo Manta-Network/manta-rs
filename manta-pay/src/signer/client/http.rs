@@ -56,9 +56,7 @@ impl signer::Connection<Config> for Client {
         &mut self,
         request: SyncRequest,
     ) -> LocalBoxFutureResult<Result<SyncResponse, SyncError>, Self::Error> {
-        // NOTE: The synchronization command modifies the signer so it must be a POST command
-        //       to match the HTTP semantics.
-        Box::pin(async move { self.0.post("sync", request).await })
+        Box::pin(async move { self.0.post("sync", &request).await })
     }
 
     #[inline]
@@ -66,9 +64,7 @@ impl signer::Connection<Config> for Client {
         &mut self,
         request: SignRequest,
     ) -> LocalBoxFutureResult<Result<SignResponse, SignError>, Self::Error> {
-        // NOTE: The signing command does not modify the signer so it must be a GET command to match
-        //       the HTTP semantics.
-        Box::pin(async move { self.0.get("sign", request).await })
+        Box::pin(async move { self.0.post("sign", &request).await })
     }
 
     #[inline]
@@ -76,8 +72,6 @@ impl signer::Connection<Config> for Client {
         &mut self,
         request: ReceivingKeyRequest,
     ) -> LocalBoxFutureResult<Vec<ReceivingKey>, Self::Error> {
-        // NOTE: The receiving key command modifies the signer so it must be a POST command to match
-        //       the HTTP semantics.
-        Box::pin(async move { self.0.post("receivingKeys", request).await })
+        Box::pin(async move { self.0.post("receivingKeys", &request).await })
     }
 }
