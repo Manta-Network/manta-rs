@@ -71,6 +71,7 @@ simulation = [
     "rayon",
     "test",
     "tokio/io-std",
+    "tokio/io-util",
     "tokio/macros",
     "tokio/rt-multi-thread",
     "tokio/sync",
@@ -92,6 +93,7 @@ websocket = [
     "serde",
     "serde_json",
     "std",
+    "tokio",
     "tokio-tungstenite/connect",
     "ws_stream_wasm",
 ]
