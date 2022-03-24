@@ -16,9 +16,25 @@
 
 //! HTTP Utilities
 
-use manta_util::serde::{de::DeserializeOwned, Serialize};
+use manta_util::{
+    from_variant_impl,
+    serde::{de::DeserializeOwned, Serialize},
+};
 
-pub use reqwest::{Error, IntoUrl, Method, Response, Url};
+pub use reqwest::{IntoUrl, Method, Response, Url};
+
+/// Asynchronous HTTP Client Error
+#[derive(Debug)]
+pub enum Error {
+    /// Serialization Error
+    Serialization(serde_qs::Error),
+
+    /// HTTP Error
+    Http(reqwest::Error),
+}
+
+from_variant_impl!(Error, Serialization, serde_qs::Error);
+from_variant_impl!(Error, Http, reqwest::Error);
 
 /// Asynchronous HTTP Client
 ///
@@ -44,28 +60,29 @@ impl Client {
         })
     }
 
-    /// Sends a new request asynchronously of type `command` with body `request`.
+    /// Sends a new request asynchronously of type `command` with query string `request`.
     #[inline]
     pub async fn request<T, R>(&self, method: Method, command: &str, request: T) -> Result<R, Error>
     where
         T: Serialize,
         R: DeserializeOwned,
     {
-        self.client
-            .request(
-                method,
-                self.server_url
-                    .join(command)
-                    .expect("This error branch is not allowed to happen."),
-            )
-            .json(&request)
+        let request = serde_qs::to_string(&request)?;
+        let mut url = self
+            .server_url
+            .join(command)
+            .expect("Building the URL is not allowed to fail.");
+        url.set_query(Some(&request));
+        Ok(self
+            .client
+            .request(method, url)
             .send()
             .await?
             .json()
-            .await
+            .await?)
     }
 
-    /// Sends a GET request of type `command` with body `request`.
+    /// Sends a GET request of type `command` with query string `request`.
     #[inline]
     pub async fn get<T, R>(&self, command: &str, request: T) -> Result<R, Error>
     where
@@ -75,7 +92,7 @@ impl Client {
         self.request(Method::GET, command, request).await
     }
 
-    /// Sends a POST request of type `command` with body `request`.
+    /// Sends a POST request of type `command` with query string `request`.
     #[inline]
     pub async fn post<T, R>(&self, command: &str, request: T) -> Result<R, Error>
     where
