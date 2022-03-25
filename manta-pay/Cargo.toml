@@ -78,7 +78,7 @@ simulation = [
 std = ["manta-accounting/std", "manta-util/std"]
 
 # Testing Frameworks
-test = ["manta-accounting/test", "manta-crypto/test", "manta-crypto/getrandom"]
+test = ["manta-accounting/test", "manta-crypto/test"]
 
 # Wallet
 wallet = ["bip32", "manta-crypto/getrandom", "std"]
@@ -120,3 +120,4 @@ tungstenite = { version = "0.17.2", optional = true, default-features = false, f
 
 [dev-dependencies]
 manta-pay = { path = ".", features = ["groth16", "test"] }
+manta-crypto = { path = "../manta-crypto", default-features = false, features = ["getrandom"] }

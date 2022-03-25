@@ -276,6 +276,14 @@ where
         cs.set_optimization_goal(ark_r1cs::OptimizationGoal::Constraints);
         Self { cs }
     }
+
+    /// Check if all constraints are satisfied.
+    #[inline]
+    pub fn is_satisfied(&self) -> bool {
+        self.cs
+            .is_satisfied()
+            .expect("is_satisfied is not allowed to fail")
+    }
 }
 
 impl<F> ConstraintSystem for R1CS<F>

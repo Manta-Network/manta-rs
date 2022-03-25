@@ -23,9 +23,11 @@ use ark_r1cs_std::ToBitsGadget;
 use ark_relations::ns;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use core::marker::PhantomData;
+use derivative::Derivative;
 use manta_crypto::{
     constraint::{Allocator, Constant, Equal, Public, Secret, ValueSource, Variable},
     ecc,
+    ecc::{PointAdd, PointDouble},
     key::kdf,
     rand::{CryptoRng, RngCore, Sample, Standard},
 };
@@ -36,13 +38,15 @@ use manta_util::serde::{Deserialize, Serialize, Serializer};
 
 pub use ark_ec::{AffineCurve, ProjectiveCurve};
 pub use ark_r1cs_std::groups::CurveVar;
-use manta_crypto::ecc::{PointAdd, PointDouble};
 
 /// Constraint Field Type
 type ConstraintField<C> = <<C as ProjectiveCurve>::BaseField as Field>::BasePrimeField;
 
 /// Compiler Type
 type Compiler<C> = R1CS<ConstraintField<C>>;
+
+/// Curve Scalar Parameter
+type ScalarParam<C> = <<C as ProjectiveCurve>::ScalarField as PrimeField>::Params;
 
 /// Scalar Field Element
 pub type Scalar<C> = Fp<<C as ProjectiveCurve>::ScalarField>;
@@ -364,7 +368,8 @@ where
 }
 
 /// Elliptic Curve Group Element Variable
-#[derive(Clone)]
+#[derive(Derivative)]
+#[derivative(Clone)]
 pub struct GroupVar<C, CV>(pub(crate) CV, PhantomData<C>)
 where
     C: ProjectiveCurve,
@@ -423,10 +428,7 @@ macro_rules! impl_processed_scalar_mul {
         {
             #[inline]
             fn preprocessed_scalar_mul(
-                table: &[Self; {
-                     <<$curve as ProjectiveCurve>::ScalarField as PrimeField>::Params::MODULUS_BITS
-                         as usize
-                 }],
+                table: &[Self; ScalarParam::<$curve>::MODULUS_BITS as usize],
                 scalar: &Self::Scalar,
                 compiler: &mut Compiler<$curve>,
             ) -> Self::Output {
@@ -547,6 +549,7 @@ where
 {
     type Output = Self;
 
+    #[inline]
     fn add(&self, rhs: &Self, compiler: &mut Compiler<C>) -> Self::Output {
         let _ = compiler;
         let mut result = self.0.clone();
@@ -562,6 +565,7 @@ where
 {
     type Output = Self;
 
+    #[inline]
     fn double(&self, compiler: &mut Compiler<C>) -> Self::Output {
         let _ = compiler;
         Self::new(self.0.double().expect("Doubling is not allowed to fail."))
@@ -573,17 +577,19 @@ mod tests {
     use super::*;
     use ark_ec::ProjectiveCurve;
     use ark_ed_on_bls12_381::{constraints::EdwardsVar, EdwardsProjective};
+    use ecc::PreprocessedScalarMul;
     use manta_crypto::{
         constraint::ConstraintSystem,
         ecc::{PreprocessedScalarMulTable, ScalarMul},
         rand::OsRng,
     };
 
+    /// Tests preprocessed scalar multiplication on curve `C`.
     fn preprocessed_scalar_mul_test_template<C, CV, const N: usize>(rng: &mut OsRng)
     where
         C: ProjectiveCurve,
         CV: CurveVar<C, ConstraintField<C>>,
-        GroupVar<C, CV>: ecc::PreprocessedScalarMul<
+        GroupVar<C, CV>: PreprocessedScalarMul<
             Compiler<C>,
             N,
             Scalar = ScalarVar<C, CV>,
@@ -595,38 +601,28 @@ mod tests {
         let mut cs = R1CS::for_known();
 
         for _ in 0..NUM_TRIALS {
-            let base = Group::<C>::gen(rng);
-            let base_var = <GroupVar<C, CV> as Variable<Secret, _>>::new_known(&base, &mut cs);
+            let base = Group::<_>::gen(rng).as_known::<Secret, GroupVar<_, _>>(&mut cs);
 
-            let scalar = Scalar::<C>::gen(rng);
-            let scalar_var = scalar.as_known::<Secret, ScalarVar<C, CV>>(&mut cs);
+            let scalar = Scalar::<C>::gen(rng).as_known::<Secret, _>(&mut cs);
 
-            let expected = ScalarMul::scalar_mul(&base_var, &scalar_var, &mut cs);
+            let expected = ScalarMul::scalar_mul(&base, &scalar, &mut cs);
 
-            let table = PreprocessedScalarMulTable::<_, N>::from_base(base_var, &mut cs);
-            let actual = table.scalar_mul(&scalar_var, &mut cs);
+            let table = PreprocessedScalarMulTable::<_, N>::from_base(base, &mut cs);
+            let actual = table.scalar_mul(&scalar, &mut cs);
 
             cs.assert_eq(&expected, &actual);
         }
 
-        assert!(cs.cs.is_satisfied().unwrap());
+        assert!(cs.is_satisfied());
     }
 
+    /// Tests preprocessed scalar multiplication on different curves.
     #[test]
-    fn preprocessed_scalar_mul_test() {
-        macro_rules! test_on_curve {
-            ($curve: ty, $var: ty, $rng: expr) => {
-                preprocessed_scalar_mul_test_template::<
-            $curve,
-            $var,
-            {
-                <<$curve as ProjectiveCurve>::ScalarField as PrimeField>::Params::MODULUS_BITS as usize
-            },
-        >($rng)
-            }
-        }
-
-        let mut rng = OsRng::default();
-        test_on_curve!(EdwardsProjective, EdwardsVar, &mut rng);
+    fn preprocessed_scalar_mul() {
+        preprocessed_scalar_mul_test_template::<
+            EdwardsProjective,
+            EdwardsVar,
+            { ScalarParam::<EdwardsProjective>::MODULUS_BITS as usize },
+        >(&mut OsRng);
     }
 }
