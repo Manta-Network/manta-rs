@@ -165,7 +165,9 @@ where
 /// Elliptic Curve Group
 pub trait Group<COM = ()>: PointAdd<COM> + PointDouble<COM> + ScalarMul<COM> {}
 
-/// Pre-processed Scalar Multiplication Table, represented as powers of two of `scalar`.
+/// Pre-processed Scalar Multiplication Table.
+///
+/// This table contains power-of-two multiples of a fixed base group element.
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),

@@ -23,11 +23,9 @@ use ark_r1cs_std::ToBitsGadget;
 use ark_relations::ns;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use core::marker::PhantomData;
-use derivative::Derivative;
 use manta_crypto::{
     constraint::{Allocator, Constant, Equal, Public, Secret, ValueSource, Variable},
-    ecc,
-    ecc::{PointAdd, PointDouble},
+    ecc::{self, PointAdd, PointDouble},
     key::kdf,
     rand::{CryptoRng, RngCore, Sample, Standard},
 };
@@ -368,7 +366,7 @@ where
 }
 
 /// Elliptic Curve Group Element Variable
-#[derive(Derivative)]
+#[derive(derivative::Derivative)]
 #[derivative(Clone)]
 pub struct GroupVar<C, CV>(pub(crate) CV, PhantomData<C>)
 where
@@ -573,7 +571,7 @@ where
 }
 
 #[cfg(test)]
-mod tests {
+mod test {
     use super::*;
     use ark_ec::ProjectiveCurve;
     use ark_ed_on_bls12_381::{constraints::EdwardsVar, EdwardsProjective};
@@ -599,20 +597,14 @@ mod tests {
         const NUM_TRIALS: usize = 5;
 
         let mut cs = R1CS::for_known();
-
         for _ in 0..NUM_TRIALS {
             let base = Group::<_>::gen(rng).as_known::<Secret, GroupVar<_, _>>(&mut cs);
-
             let scalar = Scalar::<C>::gen(rng).as_known::<Secret, _>(&mut cs);
-
-            let expected = ScalarMul::scalar_mul(&base, &scalar, &mut cs);
-
+            let expected = base.scalar_mul(&scalar, &mut cs);
             let table = PreprocessedScalarMulTable::<_, N>::from_base(base, &mut cs);
             let actual = table.scalar_mul(&scalar, &mut cs);
-
             cs.assert_eq(&expected, &actual);
         }
-
         assert!(cs.is_satisfied());
     }
 
