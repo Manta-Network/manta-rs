@@ -120,3 +120,4 @@ tungstenite = { version = "0.17.2", optional = true, default-features = false, f
 
 [dev-dependencies]
 manta-pay = { path = ".", features = ["groth16", "test"] }
+manta-crypto = { path = "../manta-crypto", default-features = false, features = ["getrandom"] }
