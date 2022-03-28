@@ -2,13 +2,24 @@
 
 Thank you for contributing to the `manta-rs` codebase! Here are some guidelines to following when adding code or documentation to this repository.
 
+## Use Conventional Commits
+
+Please use conventional commits at least for the major changes introduced by your PR. We use the following types:
+
+- `feat`: adding a new feature, new functionality to the codebase
+- `fix`: fixing old code
+- `wip`: marked whenever a commit should be considered part of a set of commits that together implement a feature or fix
+- `chore`: small changes/commits that are left over from other commits
+
+See the [conventional commits specification](https://www.conventionalcommits.org) for more details on how to write and use conventional commits. We use squash and rebase merge for our PRs so we can add types to commits and reformat them according to the spec if you forget to include them.
+
 ## Style Guide
 
 To keep code and documentation style consistent across all the code in the repository, we are adopting the following style guide. We begin with the formatting style enforced by the Nightly version of `rustfmt` with configuration specified in the [`.rustfmt.toml`](./.rustfmt.toml) file. Beyond what `rustfmt` currently enforces we have specified other rules below.
 
 ### General Gramatical Structures
 
-### `Cargo.toml`
+### The `Cargo.toml` File
 
 The `Cargo.toml` file should ahere to the following template:
 
@@ -63,8 +74,8 @@ Specifically, we have:
 1. Use double quotes instead of single quotes.
 2. Use the standard ordering of the `[package]` map.
 3. `[[bin]]` before `[features]` before `[dependencies]` before `[dev-dependencies]` before `[build-dependencies]` before `[profile]` settings.
-4. When selecting features for a `[features]` entry or when selecting the features on a dependency, order the features alphabetically.
-5. Order dependencies alphabetically.
+4. Order features and dependencies alphabetically.
+5. When selecting features for a `[features]` entry or when selecting the features on a dependency, order the features alphabetically.
 6. For a given dependency use the following structure with `optional` and `features` keys as needed:
     ```toml
     crate-name = { version = "...", optional = true, default-features = false, features = ["..."] }
@@ -128,6 +139,25 @@ use {
     thing1, thing2, thing3, thing4,
 };
 ```
+
+**NOTE**: All imports should occur at the top of any module and a newline should be added between the last import and the first declared object.
+
+### Crate `lib.rs` Module
+
+Every crate has at least a `lib.rs` (or a `main.rs` if there is no library) and it should include at least these macro invocations:
+
+```rust
+//! Module Documentation
+
+#![cfg_attr(not(feature = "std"), no_std)]
+#![cfg_attr(doc_cfg, feature(doc_cfg))]
+#![forbid(rustdoc::broken_intra_doc_links)]
+#![forbid(missing_docs)]
+
+// Imports/Exports
+```
+
+### Clippy
 
 ### Where Clauses
 
