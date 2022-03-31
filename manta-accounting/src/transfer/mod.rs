@@ -2210,6 +2210,19 @@ where
         input
     }
 
+    /// Verifies the validity proof of `self` according to the `verifying_context`.
+    #[inline]
+    pub fn has_valid_proof(
+        &self,
+        verifying_context: &VerifyingContext<C>,
+    ) -> Result<bool, ProofSystemError<C>> {
+        C::ProofSystem::verify(
+            verifying_context,
+            &self.generate_proof_input(),
+            &self.validity_proof,
+        )
+    }
+
     /// Checks that the public participant data is well-formed and runs `ledger` validation on
     /// source and sink accounts.
     #[allow(clippy::type_complexity)] // FIXME: Use a better abstraction for this.

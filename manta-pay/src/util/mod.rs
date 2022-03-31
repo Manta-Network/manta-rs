@@ -19,3 +19,7 @@
 #[cfg(feature = "http")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "http")))]
 pub mod http;
+
+#[cfg(feature = "scale")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]
+pub mod scale;

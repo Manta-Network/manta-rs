@@ -20,11 +20,12 @@ use crate::{
     asset::{Asset, AssetId, AssetValue, AssetValueType},
     transfer::{
         canonical::Mint, has_public_participants, Configuration, FullParameters, Parameters,
-        PreSender, ProofSystemError, ProofSystemPublicParameters, ProvingContext, Receiver, Sender,
-        SpendingKey, Transfer, TransferPost, Utxo, VerifyingContext,
+        PreSender, Proof, ProofSystemError, ProofSystemPublicParameters, ProvingContext, Receiver,
+        Sender, SpendingKey, Transfer, TransferPost, Utxo, VerifyingContext,
     },
 };
 use alloc::vec::Vec;
+use core::fmt::Debug;
 use manta_crypto::{
     accumulator::Accumulator,
     constraint::ProofSystem,
@@ -242,6 +243,26 @@ where
             &post.generate_proof_input(),
             &post.validity_proof,
         )
+    }
+}
+
+impl<C> TransferPost<C>
+where
+    C: Configuration,
+{
+    /// Asserts that `self` contains a valid proof according to the `verifying_context`, returning a
+    /// reference to the proof.
+    #[inline]
+    pub fn assert_valid_proof(&self, verifying_context: &VerifyingContext<C>) -> &Proof<C>
+    where
+        ProofSystemError<C>: Debug,
+    {
+        assert!(
+            self.has_valid_proof(verifying_context)
+                .expect("Unable to verify proof."),
+            "The proof should have been valid."
+        );
+        &self.validity_proof
     }
 }
 
