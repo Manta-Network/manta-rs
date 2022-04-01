@@ -20,11 +20,9 @@ use manta_util::serde::{de::DeserializeOwned, Serialize};
 
 pub use reqwest::{Error, IntoUrl, Method, Response, Url};
 
-/// Blocking HTTP Client
+/// Asynchronous HTTP Client
 ///
-/// This client is a wrapper around [`reqwest::Client`] with a known server URL. The
-/// [`request`](Self::request) method on this `struct` uses [`futures::executor::block_on`] to
-/// convert the asynchronous client into a blocking on.
+/// This client is a wrapper around [`reqwest::Client`] with a known server URL.
 pub struct Client {
     /// Server URL
     pub server_url: Url,
@@ -46,13 +44,13 @@ impl Client {
         })
     }
 
-    /// Sends a new request asynchronously of type `command` with body `request`.
+    /// Sends a new request asynchronously of type `command` with query string `request`.
     #[inline]
-    async fn send_request<T, R>(
+    pub async fn request<T, R>(
         &self,
         method: Method,
         command: &str,
-        request: T,
+        request: &T,
     ) -> Result<R, Error>
     where
         T: Serialize,
@@ -63,42 +61,35 @@ impl Client {
                 method,
                 self.server_url
                     .join(command)
-                    .expect("This error branch is not allowed to happen."),
+                    .expect("Building the URL is not allowed to fail."),
             )
-            .json(&request)
+            .json(request)
             .send()
             .await?
             .json()
             .await
     }
 
-    /// Sends a new request of type `command` with body `request`.
-    #[inline]
-    pub fn request<T, R>(&self, method: Method, command: &str, request: T) -> Result<R, Error>
-    where
-        T: Serialize,
-        R: DeserializeOwned,
-    {
-        futures::executor::block_on(async { self.send_request(method, command, request).await })
-    }
+    // TODO: Investigate a way to have a uniform interface for GET and POST. For now, all
+    //       implementations should use POST for all methods.
+    //
+    // /// Sends a GET request of type `command` with query string `request`.
+    // #[inline]
+    // pub async fn get<T, R>(&self, command: &str, request: &T) -> Result<R, Error>
+    // where
+    //     T: Serialize,
+    //     R: DeserializeOwned,
+    // {
+    //     self.request(Method::GET, command, request).await
+    // }
 
-    /// Sends a GET request of type `command` with body `request`.
+    /// Sends a POST request of type `command` with query string `request`.
     #[inline]
-    pub fn get<T, R>(&self, command: &str, request: T) -> Result<R, Error>
+    pub async fn post<T, R>(&self, command: &str, request: &T) -> Result<R, Error>
     where
         T: Serialize,
         R: DeserializeOwned,
     {
-        self.request(Method::GET, command, request)
-    }
-
-    /// Sends a POST request of type `command` with body `request`.
-    #[inline]
-    pub fn post<T, R>(&self, command: &str, request: T) -> Result<R, Error>
-    where
-        T: Serialize,
-        R: DeserializeOwned,
-    {
-        self.request(Method::POST, command, request)
+        self.request(Method::POST, command, request).await
     }
 }

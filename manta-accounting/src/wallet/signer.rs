@@ -23,6 +23,8 @@
 // TODO:  Move `sync` to a streaming algorithm.
 // TODO:  Add self-destruct feature for clearing all secret and private data.
 // TODO:  Compress the `SyncResponse` data before sending (improves privacy and bandwidth).
+// TODO:  Improve asynchronous interfaces internally in the signer, instead of just blocking
+//        internally.
 
 use crate::{
     asset::{Asset, AssetId, AssetMap, AssetMetadata, AssetValue},
@@ -39,7 +41,7 @@ use crate::{
         Utxo, VoidNumber,
     },
 };
-use alloc::{vec, vec::Vec};
+use alloc::{boxed::Box, vec, vec::Vec};
 use core::{convert::Infallible, fmt::Debug, hash::Hash};
 use manta_crypto::{
     accumulator::{Accumulator, ExactSizeAccumulator, OptimizedAccumulator},
@@ -49,6 +51,7 @@ use manta_crypto::{
 use manta_util::{
     array_map,
     cache::{CachedResource, CachedResourceError},
+    future::LocalBoxFutureResult,
     into_array_unchecked,
     iter::IteratorExt,
     persistence::Rollback,
@@ -73,19 +76,19 @@ where
     fn sync(
         &mut self,
         request: SyncRequest<C>,
-    ) -> Result<Result<SyncResponse, SyncError>, Self::Error>;
+    ) -> LocalBoxFutureResult<Result<SyncResponse, SyncError>, Self::Error>;
 
     /// Signs a transaction and returns the ledger transfer posts if successful.
     fn sign(
         &mut self,
         request: SignRequest<C>,
-    ) -> Result<Result<SignResponse<C>, SignError<C>>, Self::Error>;
+    ) -> LocalBoxFutureResult<Result<SignResponse<C>, SignError<C>>, Self::Error>;
 
     /// Returns public receiving keys according to the `request`.
     fn receiving_keys(
         &mut self,
         request: ReceivingKeyRequest,
-    ) -> Result<Vec<ReceivingKey<C>>, Self::Error>;
+    ) -> LocalBoxFutureResult<Vec<ReceivingKey<C>>, Self::Error>;
 }
 
 /// Signer Synchronization Request
@@ -113,6 +116,7 @@ where
 #[derivative(
     Clone(bound = "Utxo<C>: Clone, EncryptedNote<C>: Clone, VoidNumber<C>: Clone"),
     Debug(bound = "Utxo<C>: Debug, EncryptedNote<C>: Debug, VoidNumber<C>: Debug"),
+    Default(bound = ""),
     Eq(bound = "Utxo<C>: Eq, EncryptedNote<C>: Eq, VoidNumber<C>: Eq"),
     Hash(bound = "Utxo<C>: Hash, EncryptedNote<C>: Hash, VoidNumber<C>: Hash"),
     PartialEq(bound = "Utxo<C>: PartialEq, EncryptedNote<C>: PartialEq, VoidNumber<C>: PartialEq")
@@ -1160,23 +1164,23 @@ where
     fn sync(
         &mut self,
         request: SyncRequest<C>,
-    ) -> Result<Result<SyncResponse, SyncError>, Self::Error> {
-        Ok(self.sync(request))
+    ) -> LocalBoxFutureResult<Result<SyncResponse, SyncError>, Self::Error> {
+        Box::pin(async move { Ok(self.sync(request)) })
     }
 
     #[inline]
     fn sign(
         &mut self,
         request: SignRequest<C>,
-    ) -> Result<Result<SignResponse<C>, SignError<C>>, Self::Error> {
-        Ok(self.sign(request.transaction))
+    ) -> LocalBoxFutureResult<Result<SignResponse<C>, SignError<C>>, Self::Error> {
+        Box::pin(async move { Ok(self.sign(request.transaction)) })
     }
 
     #[inline]
     fn receiving_keys(
         &mut self,
         request: ReceivingKeyRequest,
-    ) -> Result<Vec<ReceivingKey<C>>, Self::Error> {
-        Ok(self.receiving_keys(request))
+    ) -> LocalBoxFutureResult<Vec<ReceivingKey<C>>, Self::Error> {
+        Box::pin(async move { Ok(self.receiving_keys(request)) })
     }
 }

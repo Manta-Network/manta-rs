@@ -171,9 +171,9 @@ where
     /// [`InconsistencyError`] type for more information on the kinds of errors that can occur and
     /// how to resolve them.
     #[inline]
-    pub fn recover(&mut self) -> Result<(), Error<C, L, S>> {
+    pub async fn recover(&mut self) -> Result<(), Error<C, L, S>> {
         self.reset();
-        while self.sync_with(true)?.is_continue() {}
+        while self.sync_with(true).await?.is_continue() {}
         Ok(())
     }
 
@@ -188,8 +188,8 @@ where
     /// [`InconsistencyError`] type for more information on the kinds of errors that can occur and
     /// how to resolve them.
     #[inline]
-    pub fn sync(&mut self) -> Result<(), Error<C, L, S>> {
-        while self.sync_partial()?.is_continue() {}
+    pub async fn sync(&mut self) -> Result<(), Error<C, L, S>> {
+        while self.sync_partial().await?.is_continue() {}
         Ok(())
     }
 
@@ -204,13 +204,13 @@ where
     /// [`InconsistencyError`] type for more information on the kinds of errors that can occur and
     /// how to resolve them.
     #[inline]
-    pub fn sync_partial(&mut self) -> Result<ControlFlow, Error<C, L, S>> {
-        self.sync_with(false)
+    pub async fn sync_partial(&mut self) -> Result<ControlFlow, Error<C, L, S>> {
+        self.sync_with(false).await
     }
 
     /// Pulls data from the ledger, synchronizing the wallet and balance state.
     #[inline]
-    fn sync_with(&mut self, with_recovery: bool) -> Result<ControlFlow, Error<C, L, S>> {
+    async fn sync_with(&mut self, with_recovery: bool) -> Result<ControlFlow, Error<C, L, S>> {
         let PullResponse {
             should_continue,
             checkpoint,
@@ -219,6 +219,7 @@ where
         } = self
             .ledger
             .pull(&self.checkpoint)
+            .await
             .map_err(Error::LedgerConnectionError)?;
         if checkpoint < self.checkpoint {
             return Err(Error::Inconsistency(InconsistencyError::LedgerCheckpoint));
@@ -231,6 +232,7 @@ where
                 inserts: receivers.into_iter().collect(),
                 removes: senders.into_iter().collect(),
             })
+            .await
             .map_err(Error::SignerConnectionError)?
         {
             Ok(SyncResponse::Partial { deposit, withdraw }) => {
@@ -294,12 +296,12 @@ where
     /// This method returns an error in any other case. The internal state of the wallet is kept
     /// consistent between calls and recoverable errors are returned for the caller to handle.
     #[inline]
-    pub fn post(
+    pub async fn post(
         &mut self,
         transaction: Transaction<C>,
         metadata: Option<AssetMetadata>,
     ) -> Result<bool, Error<C, L, S>> {
-        self.sync()?;
+        self.sync().await?;
         self.check(&transaction)
             .map_err(Error::InsufficientBalance)?;
         let SignResponse { posts } = self
@@ -308,22 +310,24 @@ where
                 transaction,
                 metadata,
             })
+            .await
             .map_err(Error::SignerConnectionError)?
             .map_err(Error::SignError)?;
         let PushResponse { success } = self
             .ledger
             .push(posts)
+            .await
             .map_err(Error::LedgerConnectionError)?;
         Ok(success)
     }
 
     /// Returns public receiving keys according to the `request`.
     #[inline]
-    pub fn receiving_keys(
+    pub async fn receiving_keys(
         &mut self,
         request: ReceivingKeyRequest,
     ) -> Result<Vec<ReceivingKey<C>>, S::Error> {
-        self.signer.receiving_keys(request)
+        self.signer.receiving_keys(request).await
     }
 }
 

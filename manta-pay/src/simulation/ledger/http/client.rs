@@ -18,11 +18,17 @@
 
 use crate::{
     config::{Config, EncryptedNote, TransferPost, Utxo, VoidNumber},
-    simulation::ledger::{AccountId, Checkpoint},
+    simulation::ledger::{http::Request, AccountId, Checkpoint},
     util::http::{self, Error, IntoUrl},
 };
-use manta_accounting::wallet::ledger::{self, PullResult, PushResult};
-use manta_util::serde::{Deserialize, Serialize};
+use manta_accounting::{
+    asset::AssetList,
+    wallet::{
+        ledger::{self, PullResponse, PushResponse},
+        test::PublicBalanceOracle,
+    },
+};
+use manta_util::future::{LocalBoxFuture, LocalBoxFutureResult};
 
 /// HTTP Ledger Client
 pub struct Client {
@@ -47,17 +53,6 @@ impl Client {
     }
 }
 
-/// HTTP Client Request
-#[derive(Deserialize, Serialize)]
-#[serde(crate = "manta_util::serde", deny_unknown_fields)]
-struct Request<T> {
-    /// Account Id
-    account: AccountId,
-
-    /// Request Payload
-    request: T,
-}
-
 impl ledger::Connection<Config> for Client {
     type Checkpoint = Checkpoint;
     type ReceiverChunk = Vec<(Utxo, EncryptedNote)>;
@@ -65,28 +60,51 @@ impl ledger::Connection<Config> for Client {
     type Error = Error;
 
     #[inline]
-    fn pull(&mut self, checkpoint: &Self::Checkpoint) -> PullResult<Config, Self> {
-        // NOTE: The pull command does not modify the ledger so it must be a GET command to match
-        //       the HTTP semantics.
-        self.client.get(
-            "pull",
-            Request {
-                account: self.account,
-                request: checkpoint,
-            },
-        )
+    fn pull<'s>(
+        &'s mut self,
+        checkpoint: &'s Self::Checkpoint,
+    ) -> LocalBoxFutureResult<'s, PullResponse<Config, Self>, Self::Error> {
+        Box::pin(async move {
+            self.client
+                .post(
+                    "pull",
+                    &Request {
+                        account: self.account,
+                        request: checkpoint,
+                    },
+                )
+                .await
+        })
     }
 
     #[inline]
-    fn push(&mut self, posts: Vec<TransferPost>) -> PushResult<Config, Self> {
-        // NOTE: The push command modifies the ledger so it must be a POST command to match the
-        //       HTTP semantics.
-        self.client.post(
-            "push",
-            Request {
-                account: self.account,
-                request: posts,
-            },
-        )
+    fn push(
+        &mut self,
+        posts: Vec<TransferPost>,
+    ) -> LocalBoxFutureResult<PushResponse, Self::Error> {
+        Box::pin(async move {
+            self.client
+                .post(
+                    "push",
+                    &Request {
+                        account: self.account,
+                        request: posts,
+                    },
+                )
+                .await
+        })
+    }
+}
+
+impl PublicBalanceOracle for Client {
+    #[inline]
+    fn public_balances(&self) -> LocalBoxFuture<Option<AssetList>> {
+        Box::pin(async move {
+            self.client
+                .post("publicBalances", &self.account)
+                .await
+                .ok()
+                .flatten()
+        })
     }
 }
