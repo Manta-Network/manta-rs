@@ -31,6 +31,7 @@ mod sealed;
 pub mod cache;
 pub mod codec;
 pub mod convert;
+pub mod future;
 pub mod iter;
 pub mod num;
 pub mod ops;

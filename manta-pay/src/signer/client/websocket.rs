@@ -16,6 +16,8 @@
 
 //! Signer WebSocket Client Implementation
 
+// TODO: Make this code work on WASM and non-WASM by choosing the correct dependency library.
+
 use crate::{
     config::{Config, ReceivingKey},
     signer::{
@@ -23,14 +25,21 @@ use crate::{
         SyncResponse,
     },
 };
-use alloc::vec::Vec;
+use alloc::{boxed::Box, vec::Vec};
+use core::marker::Unpin;
+use futures::{SinkExt, StreamExt};
 use manta_accounting::wallet::{self, signer};
 use manta_util::{
     from_variant_impl,
+    future::LocalBoxFutureResult,
     serde::{de::DeserializeOwned, Deserialize, Serialize},
 };
-use std::net::TcpStream;
-use tungstenite::{client::IntoClientRequest, stream::MaybeTlsStream, Message};
+use tokio::net::TcpStream;
+use tokio_tungstenite::{
+    connect_async,
+    tungstenite::{self, client::IntoClientRequest, Message},
+    MaybeTlsStream, WebSocketStream,
+};
 
 /// Web Socket Error
 pub type WebSocketError = tungstenite::error::Error;
@@ -42,6 +51,11 @@ pub enum Error {
     ///
     /// The message received from the WebSocket connection was not a [`Message::Text`].
     InvalidMessageFormat,
+
+    /// End of Stream Error
+    ///
+    /// The WebSocket stream was closed while waiting for the next message.
+    EndOfStream,
 
     /// Serialization Error
     SerializationError(serde_json::Error),
@@ -72,33 +86,36 @@ pub struct Request<R> {
 pub type Wallet<L> = wallet::Wallet<Config, L, Client>;
 
 /// WebSocket Client
-pub struct Client(tungstenite::WebSocket<MaybeTlsStream<TcpStream>>);
+pub struct Client(WebSocketStream<MaybeTlsStream<TcpStream>>);
 
 impl Client {
     /// Builds a new [`Client`] from `url`.
     #[inline]
-    pub fn new<U>(url: U) -> Result<Self, WebSocketError>
+    pub async fn new<U>(url: U) -> Result<Self, WebSocketError>
     where
-        U: IntoClientRequest,
+        U: IntoClientRequest + Unpin,
     {
-        Ok(Self(tungstenite::connect(url)?.0))
+        Ok(Self(connect_async(url).await?.0))
     }
 
     /// Sends a `request` for the given `command` along the channel and waits for the response.
     #[inline]
-    fn send<S, D>(&mut self, command: &'static str, request: S) -> Result<D, Error>
+    async fn send<S, D>(&mut self, command: &'static str, request: S) -> Result<D, Error>
     where
         S: Serialize,
         D: DeserializeOwned,
     {
         self.0
-            .write_message(Message::Text(serde_json::to_string(&Request {
+            .send(Message::Text(serde_json::to_string(&Request {
                 command,
                 request,
-            })?))?;
-        match self.0.read_message()? {
-            Message::Text(message) => Ok(serde_json::from_str(&message)?),
-            _ => Err(Error::InvalidMessageFormat),
+            })?))
+            .await?;
+        match self.0.next().await {
+            Some(Ok(Message::Text(message))) => Ok(serde_json::from_str(&message)?),
+            Some(Ok(_)) => Err(Error::InvalidMessageFormat),
+            Some(Err(err)) => Err(Error::WebSocket(err)),
+            _ => Err(Error::EndOfStream),
         }
     }
 }
@@ -110,23 +127,23 @@ impl signer::Connection<Config> for Client {
     fn sync(
         &mut self,
         request: SyncRequest,
-    ) -> Result<Result<SyncResponse, SyncError>, Self::Error> {
-        self.send("sync", request)
+    ) -> LocalBoxFutureResult<Result<SyncResponse, SyncError>, Self::Error> {
+        Box::pin(async move { self.send("sync", request).await })
     }
 
     #[inline]
     fn sign(
         &mut self,
         request: SignRequest,
-    ) -> Result<Result<SignResponse, SignError>, Self::Error> {
-        self.send("sign", request)
+    ) -> LocalBoxFutureResult<Result<SignResponse, SignError>, Self::Error> {
+        Box::pin(async move { self.send("sign", request).await })
     }
 
     #[inline]
     fn receiving_keys(
         &mut self,
         request: ReceivingKeyRequest,
-    ) -> Result<Vec<ReceivingKey>, Self::Error> {
-        self.send("receivingKeys", request)
+    ) -> LocalBoxFutureResult<Vec<ReceivingKey>, Self::Error> {
+        Box::pin(async move { self.send("receivingKeys", request).await })
     }
 }

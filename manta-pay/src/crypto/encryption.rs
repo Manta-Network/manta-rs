@@ -84,14 +84,13 @@ pub mod aes {
         use manta_accounting::asset::Asset;
         use manta_crypto::{
             encryption,
-            rand::{RngCore, SeedableRng},
+            rand::{OsRng, RngCore},
         };
-        use rand_chacha::ChaCha20Rng;
 
         /// Tests if symmetric encryption of [`Asset`] decrypts properly.
         #[test]
         fn asset_encryption() {
-            let mut rng = ChaCha20Rng::from_entropy();
+            let mut rng = OsRng;
             let mut key = [0; 32];
             rng.fill_bytes(&mut key);
             let mut plaintext = [0; Asset::SIZE];

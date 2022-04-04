@@ -23,7 +23,8 @@ use manta_crypto::{
     rand::{Sample, SeedableRng},
 };
 use manta_pay::config::{
-    Compiler, KeyAgreementScheme, KeyAgreementSchemeVar, Poseidon2, Poseidon2Var,
+    Compiler, KeyAgreementScheme, KeyAgreementSchemeVar, Poseidon2, Poseidon2Var, Poseidon4,
+    Poseidon4Var,
 };
 use rand_chacha::ChaCha20Rng;
 
@@ -41,6 +42,19 @@ pub fn main() {
 
     let _ = instrument.measure("Poseidon ARITY-2", |compiler| {
         hasher.hash_in([&poseidon_lhs, &poseidon_rhs], compiler)
+    });
+
+    let hasher = Poseidon4::gen(&mut rng).as_constant::<Poseidon4Var>(&mut instrument);
+    let poseidon_0 = instrument.base.allocate_unknown::<Secret, _>();
+    let poseidon_1 = instrument.base.allocate_unknown::<Secret, _>();
+    let poseidon_2 = instrument.base.allocate_unknown::<Secret, _>();
+    let poseidon_3 = instrument.base.allocate_unknown::<Secret, _>();
+
+    let _ = instrument.measure("Poseidon ARITY-4", |compiler| {
+        hasher.hash_in(
+            [&poseidon_0, &poseidon_1, &poseidon_2, &poseidon_3],
+            compiler,
+        )
     });
 
     let key_agreement =

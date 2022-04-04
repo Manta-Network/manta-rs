@@ -27,10 +27,12 @@ use crate::{
         BalanceState, Error, Wallet,
     },
 };
-use alloc::sync::Arc;
-use core::{fmt::Debug, hash::Hash, marker::PhantomData};
+use alloc::{boxed::Box, sync::Arc};
+use core::{fmt::Debug, future::Future, hash::Hash, marker::PhantomData};
+use futures::StreamExt;
 use indexmap::IndexSet;
 use manta_crypto::rand::{CryptoRng, RngCore, Sample};
+use manta_util::future::LocalBoxFuture;
 use parking_lot::RwLock;
 use rand::{distributions::Distribution, Rng};
 use statrs::{
@@ -181,7 +183,7 @@ impl Sample<ActionDistribution> for ActionType {
 /// Public Balance Oracle
 pub trait PublicBalanceOracle {
     /// Returns the public balances of `self`.
-    fn public_balances(&self) -> Option<AssetList>;
+    fn public_balances(&self) -> LocalBoxFuture<Option<AssetList>>;
 }
 
 /// Actor
@@ -226,13 +228,13 @@ where
 
     /// Samples a deposit from `self` using `rng` returning `None` if no deposit is possible.
     #[inline]
-    fn sample_deposit<R>(&mut self, rng: &mut R) -> Option<Asset>
+    async fn sample_deposit<R>(&mut self, rng: &mut R) -> Option<Asset>
     where
         L: PublicBalanceOracle,
         R: CryptoRng + RngCore + ?Sized,
     {
-        let _ = self.wallet.sync();
-        let assets = self.wallet.ledger().public_balances()?;
+        let _ = self.wallet.sync().await;
+        let assets = self.wallet.ledger().public_balances().await?;
         let len = assets.len();
         if len == 0 {
             return None;
@@ -248,11 +250,11 @@ where
     /// This method samples from a uniform distribution over the asset IDs and asset values present
     /// in the balance state of `self`.
     #[inline]
-    fn sample_withdraw<R>(&mut self, rng: &mut R) -> Option<Asset>
+    async fn sample_withdraw<R>(&mut self, rng: &mut R) -> Option<Asset>
     where
         R: CryptoRng + RngCore + ?Sized,
     {
-        let _ = self.wallet.sync();
+        let _ = self.wallet.sync().await;
         let assets = self.wallet.assets();
         let len = assets.len();
         if len == 0 {
@@ -331,97 +333,110 @@ where
     type Event = Event<C, L, S>;
 
     #[inline]
-    fn sample<R>(&self, actor: &mut Self::Actor, rng: &mut R) -> Option<Self::Action>
+    fn sample<'s, R>(
+        &'s self,
+        actor: &'s mut Self::Actor,
+        rng: &'s mut R,
+    ) -> LocalBoxFuture<'s, Option<Self::Action>>
     where
         R: CryptoRng + RngCore + ?Sized,
     {
-        actor.reduce_lifetime()?;
-        let action = actor.distribution.sample(rng);
-        Some(match action {
-            ActionType::Skip => Action::Skip,
-            ActionType::Mint => match actor.sample_deposit(rng) {
-                Some(asset) => Action::Post(Transaction::Mint(asset)),
-                _ => Action::Skip,
-            },
-            ActionType::PrivateTransfer => match actor.sample_withdraw(rng) {
-                Some(asset) => {
-                    let public_keys = self.public_keys.read();
-                    let len = public_keys.len();
-                    if len == 0 {
-                        Action::GeneratePublicKey
-                    } else {
-                        Action::Post(Transaction::PrivateTransfer(
-                            asset,
-                            public_keys[rng.gen_range(0..len)].clone(),
-                        ))
+        Box::pin(async move {
+            actor.reduce_lifetime()?;
+            let action = actor.distribution.sample(rng);
+            Some(match action {
+                ActionType::Skip => Action::Skip,
+                ActionType::Mint => match actor.sample_deposit(rng).await {
+                    Some(asset) => Action::Post(Transaction::Mint(asset)),
+                    _ => Action::Skip,
+                },
+                ActionType::PrivateTransfer => match actor.sample_withdraw(rng).await {
+                    Some(asset) => {
+                        let public_keys = self.public_keys.read();
+                        let len = public_keys.len();
+                        if len == 0 {
+                            Action::GeneratePublicKey
+                        } else {
+                            Action::Post(Transaction::PrivateTransfer(
+                                asset,
+                                public_keys[rng.gen_range(0..len)].clone(),
+                            ))
+                        }
                     }
-                }
-                _ => match actor.sample_deposit(rng) {
-                    Some(asset) => Action::Post(Transaction::Mint(asset)),
-                    _ => Action::Skip,
+                    _ => match actor.sample_deposit(rng).await {
+                        Some(asset) => Action::Post(Transaction::Mint(asset)),
+                        _ => Action::Skip,
+                    },
                 },
-            },
-            ActionType::Reclaim => match actor.sample_withdraw(rng) {
-                Some(asset) => Action::Post(Transaction::Reclaim(asset)),
-                _ => match actor.sample_deposit(rng) {
-                    Some(asset) => Action::Post(Transaction::Mint(asset)),
-                    _ => Action::Skip,
+                ActionType::Reclaim => match actor.sample_withdraw(rng).await {
+                    Some(asset) => Action::Post(Transaction::Reclaim(asset)),
+                    _ => match actor.sample_deposit(rng).await {
+                        Some(asset) => Action::Post(Transaction::Mint(asset)),
+                        _ => Action::Skip,
+                    },
                 },
-            },
-            ActionType::GeneratePublicKey => Action::GeneratePublicKey,
+                ActionType::GeneratePublicKey => Action::GeneratePublicKey,
+            })
         })
     }
 
     #[inline]
-    fn act(&self, actor: &mut Self::Actor, action: Self::Action) -> Self::Event {
-        match action {
-            Action::Skip => Event {
-                action: ActionType::Skip,
-                result: Ok(true),
-            },
-            Action::Post(transaction) => {
-                let action = match &transaction {
-                    Transaction::Mint(_) => ActionType::Mint,
-                    Transaction::PrivateTransfer(_, _) => ActionType::PrivateTransfer,
-                    Transaction::Reclaim(_) => ActionType::Reclaim,
-                };
-                let mut retries = 5; // TODO: Make this parameter tunable based on concurrency.
-                loop {
-                    let result = actor.wallet.post(transaction.clone(), None);
-                    if let Ok(false) = result {
-                        if retries == 0 {
-                            break Event { action, result };
+    fn act<'s>(
+        &'s self,
+        actor: &'s mut Self::Actor,
+        action: Self::Action,
+    ) -> LocalBoxFuture<'s, Self::Event> {
+        Box::pin(async move {
+            match action {
+                Action::Skip => Event {
+                    action: ActionType::Skip,
+                    result: Ok(true),
+                },
+                Action::Post(transaction) => {
+                    let action = match &transaction {
+                        Transaction::Mint(_) => ActionType::Mint,
+                        Transaction::PrivateTransfer(_, _) => ActionType::PrivateTransfer,
+                        Transaction::Reclaim(_) => ActionType::Reclaim,
+                    };
+                    let mut retries = 5; // TODO: Make this parameter tunable based on concurrency.
+                    loop {
+                        let result = actor.wallet.post(transaction.clone(), None).await;
+                        if let Ok(false) = result {
+                            if retries == 0 {
+                                break Event { action, result };
+                            } else {
+                                retries -= 1;
+                                continue;
+                            }
                         } else {
-                            retries -= 1;
-                            continue;
+                            break Event { action, result };
                         }
-                    } else {
-                        break Event { action, result };
                     }
                 }
-            }
-            Action::GeneratePublicKey => Event {
-                action: ActionType::GeneratePublicKey,
-                result: match actor
-                    .wallet
-                    .receiving_keys(ReceivingKeyRequest::New { count: 1 })
-                {
-                    Ok(keys) => {
-                        for key in keys {
-                            self.public_keys.write().insert(key);
+                Action::GeneratePublicKey => Event {
+                    action: ActionType::GeneratePublicKey,
+                    result: match actor
+                        .wallet
+                        .receiving_keys(ReceivingKeyRequest::New { count: 1 })
+                        .await
+                    {
+                        Ok(keys) => {
+                            for key in keys {
+                                self.public_keys.write().insert(key);
+                            }
+                            Ok(true)
                         }
-                        Ok(true)
-                    }
-                    Err(err) => Err(Error::SignerConnectionError(err)),
+                        Err(err) => Err(Error::SignerConnectionError(err)),
+                    },
                 },
-            },
-        }
+            }
+        })
     }
 }
 
 /// Measures the public and secret balances for each wallet, summing them all together.
 #[inline]
-pub fn measure_balances<'w, C, L, S, I>(wallets: I) -> Result<AssetList, Error<C, L, S>>
+pub async fn measure_balances<'w, C, L, S, I>(wallets: I) -> Result<AssetList, Error<C, L, S>>
 where
     C: 'w + transfer::Configuration,
     L: 'w + ledger::Connection<C> + PublicBalanceOracle,
@@ -430,8 +445,8 @@ where
 {
     let mut balances = AssetList::new();
     for wallet in wallets {
-        wallet.sync()?;
-        balances.deposit_all(wallet.ledger().public_balances().unwrap());
+        wallet.sync().await?;
+        balances.deposit_all(wallet.ledger().public_balances().await.unwrap());
         balances.deposit_all(
             wallet
                 .assets()
@@ -453,30 +468,29 @@ pub struct Config {
 }
 
 impl Config {
-    /// Runs the simulation on the configuration defined in `self`.
-    #[cfg(feature = "parallel")]
-    #[cfg_attr(doc_cfg, doc(cfg(feature = "parallel")))]
+    /// Runs the simulation on the configuration defined in `self`, sending events to the
+    /// `event_subscriber`.
     #[inline]
-    pub fn run<C, L, S, R, GL, GS, F>(
+    pub async fn run<C, L, S, R, GL, GS, F, ES, ESFut>(
         &self,
         mut ledger: GL,
         mut signer: GS,
         rng: F,
+        mut event_subscriber: ES,
     ) -> Result<bool, Error<C, L, S>>
     where
-        C: transfer::Configuration + Send,
-        L: ledger::Connection<C> + PublicBalanceOracle + Send + Sync,
-        S: signer::Connection<C> + Send + Sync,
-        R: CryptoRng + RngCore + Send,
+        C: transfer::Configuration,
+        L: ledger::Connection<C> + PublicBalanceOracle,
+        S: signer::Connection<C>,
+        R: CryptoRng + RngCore,
         GL: FnMut(usize) -> L,
         GS: FnMut(usize) -> S,
         F: FnMut() -> R,
-        L::Checkpoint: Send,
-        Error<C, L, S>: Debug + Send,
-        PublicKey<C>: Eq + Hash + Send + Sync,
+        ES: FnMut(&sim::Event<sim::ActionSim<Simulation<C, L, S>>>) -> ESFut,
+        ESFut: Future<Output = ()>,
+        Error<C, L, S>: Debug,
+        PublicKey<C>: Eq + Hash,
     {
-        println!("[INFO] Building {:?} Wallets", self.actor_count);
-
         let actors = (0..self.actor_count)
             .map(|i| {
                 Actor::new(
@@ -485,32 +499,24 @@ impl Config {
                     self.actor_lifetime,
                 )
             })
-            .collect::<Vec<_>>();
+            .collect();
 
         let mut simulator = sim::Simulator::new(sim::ActionSim(Simulation::default()), actors);
 
         let initial_balances =
-            measure_balances(simulator.actors.iter_mut().map(|actor| &mut actor.wallet))?;
+            measure_balances(simulator.actors.iter_mut().map(|actor| &mut actor.wallet)).await?;
 
-        println!("[INFO] Starting Simulation\n");
-
-        rayon::in_place_scope(|scope| {
-            for event in simulator.run(rng, scope) {
-                match event.event.action {
-                    ActionType::Skip | ActionType::GeneratePublicKey => {}
-                    _ => println!("{:?}", event),
-                }
-                if let Err(err) = event.event.result {
-                    println!("\n[ERROR] Simulation Error: {:?}\n", err);
-                    break;
-                }
+        let mut events = simulator.run(rng);
+        while let Some(event) = events.next().await {
+            event_subscriber(&event).await;
+            if let Err(err) = event.event.result {
+                return Err(err);
             }
-        });
-
-        println!("\n[INFO] Simulation Ended");
+        }
+        drop(events);
 
         let final_balances =
-            measure_balances(simulator.actors.iter_mut().map(|actor| &mut actor.wallet))?;
+            measure_balances(simulator.actors.iter_mut().map(|actor| &mut actor.wallet)).await?;
 
         Ok(initial_balances == final_balances)
     }

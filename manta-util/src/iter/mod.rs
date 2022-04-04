@@ -17,10 +17,26 @@
 //! Iteration Utilities
 
 #[cfg(feature = "alloc")]
-mod chunk_by;
+#[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
+pub mod chunk_by;
+
+#[cfg(all(feature = "alloc", feature = "crossbeam-channel"))]
+#[cfg_attr(
+    doc_cfg,
+    doc(cfg(all(feature = "alloc", feature = "crossbeam-channel")))
+)]
+pub mod select_all;
 
 #[cfg(feature = "alloc")]
-pub use chunk_by::*;
+#[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
+pub use chunk_by::ChunkBy;
+
+#[cfg(all(feature = "alloc", feature = "crossbeam-channel"))]
+#[cfg_attr(
+    doc_cfg,
+    doc(cfg(all(feature = "alloc", feature = "crossbeam-channel")))
+)]
+pub use select_all::SelectAll;
 
 /// Iterator Extensions
 pub trait IteratorExt: Iterator {
@@ -40,6 +56,23 @@ pub trait IteratorExt: Iterator {
         Self: Sized,
     {
         ChunkBy::new(self)
+    }
+
+    /// Selects items from each iterator in `self` in parallel.
+    #[cfg(all(feature = "alloc", feature = "crossbeam-channel", feature = "rayon"))]
+    #[cfg_attr(
+        doc_cfg,
+        doc(cfg(all(feature = "alloc", feature = "crossbeam-channel", feature = "rayon")))
+    )]
+    #[inline]
+    fn select_all<'s, I>(self, scope: &rayon::Scope<'s>) -> SelectAll<I::Item>
+    where
+        Self: ExactSizeIterator<Item = I> + Sized,
+        I: IntoIterator,
+        I::IntoIter: 's + Send,
+        I::Item: Send,
+    {
+        SelectAll::spawn(self, scope)
     }
 
     /// Folds every element into an accumulator by applying an operation, returning the final result.

@@ -200,9 +200,11 @@ where
 {
     #[inline]
     fn max_encoded_len() -> usize {
-        // NOTE: In affine form, we have two base field elements to represent the point. We add
-        //       space for an extra byte flag in case we need to keep track of "infinity".
-        2 * Fp::<C::BaseField>::max_encoded_len() + 1
+        // NOTE: In affine form, we have two base field elements to represent the point. The
+        //       encoding uses a compressed representation, so we only need to include half as many
+        //       bytes. We add space for an extra byte flag in case we need to keep track of
+        //       "infinity".
+        Fp::<C::BaseField>::max_encoded_len() + 1
     }
 }
 
@@ -583,6 +585,7 @@ mod test {
     };
 
     /// Tests preprocessed scalar multiplication on curve `C`.
+    #[inline]
     fn preprocessed_scalar_mul_test_template<C, CV, const N: usize>(rng: &mut OsRng)
     where
         C: ProjectiveCurve,
@@ -595,10 +598,9 @@ mod test {
         >,
     {
         const NUM_TRIALS: usize = 5;
-
         let mut cs = R1CS::for_known();
         for _ in 0..NUM_TRIALS {
-            let base = Group::<_>::gen(rng).as_known::<Secret, GroupVar<_, _>>(&mut cs);
+            let base = Group::gen(rng).as_known::<Secret, GroupVar<_, _>>(&mut cs);
             let scalar = Scalar::<C>::gen(rng).as_known::<Secret, _>(&mut cs);
             let expected = base.scalar_mul(&scalar, &mut cs);
             let table = PreprocessedScalarMulTable::<_, N>::from_base(base, &mut cs);
