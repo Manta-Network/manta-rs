@@ -87,6 +87,12 @@ Specifically, we have:
 
 When using features, be sure to attach a `doc_cfg` feature declaration as well unless the code is not exported to `pub`.
 
+```rust
+#[cfg(feature = "...")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "...")))]
+pub mod feature_gated_public_module;
+```
+
 ### Imports and Exports
 
 Imports (`use`) and exports (`mod`) should be ordered as follows:
@@ -154,10 +160,25 @@ Every crate has at least a `lib.rs` (or a `main.rs` if there is no library) and 
 #![forbid(rustdoc::broken_intra_doc_links)]
 #![forbid(missing_docs)]
 
-// Imports/Exports
+// IMPORTS AND EXPORTS GO HERE
 ```
 
-### Clippy
+or with `#![no_std]` instead of the first macro if there is no `std` feature.
+
+### Ignoring Compiler Warnings
+
+In certain cases we may want to ignore a particular compiler warning or `clippy` warning. This is especially true in because of some false-positive error or because we are writing some generic macro code. In either case we need to mark the `#[allow(...)]` clause with a note on why we want to ignore this warning. 
+
+```rust
+#[allow(clippy::some_lint)] // NOTE: Here's the reason why this is ok.
+fn some_function() {}
+```
+
+In the case of `allow` we want to be careful of it's scope so as to not ignore warnings except in the exact place where the unexpected behavior exists. Therefore, `#[allow(...)]` should be marked on functions and not modules, even if that means it is repeated multiple times. In some rare cases where this repetition would be too cumbersome, and adding it to the module is cleaner, then also be sure to state in a note why this is better than marking it on the functions themselves.
+
+#### The `lint_reasons` Feature
+
+This kind of pattern will eventually be enforced by `clippy` itself, but is currently an unstable feature. See [allow_attributes_without_reason](https://rust-lang.github.io/rust-clippy/master/index.html#allow_attributes_without_reason) and [rust-lang/rust/54503](https://github.com/rust-lang/rust/issues/54503) for more information. Once it is stable we can move to this pattern.
 
 ### Where Clauses
 
@@ -218,7 +239,82 @@ Every crate has at least a `lib.rs` (or a `main.rs` if there is no library) and 
 
     The ordering should be lifetimes first, then regular traits, then the function traits.
 
-### Documentation
+
+### Magic Numbers
+
+In general, we should avoid magic numbers and constants in general but when they are necessary, they should be declared as such in some module instead of being used in-line with no explanation. Instead of
+
+```text
+/// Checks that all the contributions in the round were valid.
+pub fn check_all_contributions() -> Result<(), ContributionError> {
+    for x in 0..7 {
+        check_contribution(x)?;
+    }
+    Ok(())
+}
+```
+
+you should use
+
+```rust
+/// Contribution Count for the Round-Robin Protocol
+pub const PARTICIPANT_COUNT: usize = 7;
+
+/// Checks that all the contributions in the round were valid.
+pub fn check_all_contributions() -> Result<(), ContributionError> {
+    for x in 0..PARTICIPANT_COUNT {
+        check_contribution(x)?;
+    }
+    Ok(())
+}
+```
+
+Avoid situations where an arbitrary number needs to be chosen, and if so prefer empirically measured numbers. If for some reason an arbitrary number needs to be chosen, and it should have a known order of magnitude, chose a power of two for the arbitrary number, or something close to a power of two unless the situation calls for something distinctly _not_ a power of two.
+
+### Comments and Documentation
+
+In general, documentation should be added on function/interface boundaries instead of inside code blocks which should be written in a way that explains itself. Sometimes however, we have to do something specific that is counter-intuitive or against some known principle in which case we should comment the code to explain ourselves.
+
+**IMPORTANT**: Documentation should explain _what_ behavior an interface provides, and comments explain _why_ the implementation provides this behavior.
+
+When formatting comments we have a few comment types:
+
+1. `NOTE`: Explains some unintuitive behavior or makes note of some invariants that are being preserved by this particular piece of code.
+2. `SAFETY`: Like `NOTE`, except it reflects a safety-critical assumption or invariant and is required for Rust `unsafe` blocks or for some concrete cryptographic code.
+3. `TODO`: Like `NOTE`, but involves relaying the information relevant for a fix or future optimization.
+4. `FIXME`: Something is critically broken or inconveniently written and should be changed whenever possible.
+
+These four kinds of comments should be formatted as follows:
+
+```rust
+#[inline]
+fn last(self) -> Option<Self::Item> {
+    // NOTE: Although this iterator can never be completed, it has a well-defined final element
+    //       "at infinity".
+    Some(Default::default())
+}
+```
+
+The `NOTE` marker and `SAFETY` marker have documentation forms as well but instead are formatted as `# Note` and `# Safety` subsections as follows:
+
+```rust
+/// Returns the leaf digests currently stored in the merkle tree.
+///
+/// # Note
+///
+/// Since this tree does not start its leaf nodes from the first possible index, indexing into
+/// this slice will not be the same as indexing into a slice from a full tree. For all other
+/// indexing, use the full indexing scheme.
+#[inline]
+pub fn leaf_digests(&self) -> &[LeafDigest<C>] {
+    &self.leaf_digests
+}
+```
+
+For documentation headers we also have `# Panics` and `# Errors` as standard headers that describe the conditions under which the function calls `panic` or the error conditions.
+
+Here are some important guidelines to follow for general documentation:
 
 1. All module documentation should exist in the module itself in the header with `//!` doc strings.
 2. Be sure to link all documentation that refers to objects in the code.
+3. Function documentation should be in present tense. It should answer the question "What does this function do?".
