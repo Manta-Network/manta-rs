@@ -45,10 +45,46 @@ pub trait SymmetricKeyEncryptionScheme {
     type Ciphertext;
 
     /// Encrypts `plaintext` using `key`.
-    fn encrypt(key: Self::Key, plaintext: Self::Plaintext) -> Self::Ciphertext;
+    fn encrypt(&self, key: Self::Key, plaintext: Self::Plaintext) -> Self::Ciphertext;
 
     /// Tries to decrypt `ciphertext` using `key`.
-    fn decrypt(key: Self::Key, ciphertext: &Self::Ciphertext) -> Option<Self::Plaintext>;
+    fn decrypt(&self, key: Self::Key, ciphertext: &Self::Ciphertext) -> Option<Self::Plaintext>;
+
+    /// Borrows `self` rather than consuming it, returning an implementation of
+    /// [`SymmetricKeyEncryptionScheme`].
+    #[inline]
+    fn by_ref(&self) -> &Self {
+        self
+    }
+
+    /// Maps the plaintext space into `P` and builds a new [`SymmetricKeyEncryptionScheme`] from it.
+    #[inline]
+    fn map<P>(self) -> Map<Self, P>
+    where
+        Self: Sized,
+        P: Into<Self::Plaintext> + TryFrom<Self::Plaintext>,
+    {
+        Map::new(self)
+    }
+}
+
+impl<S> SymmetricKeyEncryptionScheme for &S
+where
+    S: SymmetricKeyEncryptionScheme,
+{
+    type Key = S::Key;
+    type Plaintext = S::Plaintext;
+    type Ciphertext = S::Ciphertext;
+
+    #[inline]
+    fn encrypt(&self, key: Self::Key, plaintext: Self::Plaintext) -> Self::Ciphertext {
+        (*self).encrypt(key, plaintext)
+    }
+
+    #[inline]
+    fn decrypt(&self, key: Self::Key, ciphertext: &Self::Ciphertext) -> Option<Self::Plaintext> {
+        (*self).decrypt(key, ciphertext)
+    }
 }
 
 /// Mapped Symmetric Encryption Scheme
@@ -59,10 +95,33 @@ pub trait SymmetricKeyEncryptionScheme {
 )]
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct Map<S, P = <S as SymmetricKeyEncryptionScheme>::Plaintext>(PhantomData<(S, P)>)
+pub struct Map<S, P = <S as SymmetricKeyEncryptionScheme>::Plaintext>
 where
     S: SymmetricKeyEncryptionScheme,
-    P: Into<S::Plaintext> + TryFrom<S::Plaintext>;
+    P: Into<S::Plaintext> + TryFrom<S::Plaintext>,
+{
+    /// Symmetric Encryption Scheme
+    cipher: S,
+
+    /// Type Parameter Marker
+    __: PhantomData<P>,
+}
+
+impl<S, P> Map<S, P>
+where
+    S: SymmetricKeyEncryptionScheme,
+    P: Into<S::Plaintext> + TryFrom<S::Plaintext>,
+{
+    /// Builds a new [`SymmetricKeyEncryptionScheme`] from `cipher` mapping the plaintext space over
+    /// `P`.
+    #[inline]
+    pub fn new(cipher: S) -> Self {
+        Self {
+            cipher,
+            __: PhantomData,
+        }
+    }
+}
 
 impl<S, P> SymmetricKeyEncryptionScheme for Map<S, P>
 where
@@ -74,13 +133,15 @@ where
     type Ciphertext = S::Ciphertext;
 
     #[inline]
-    fn encrypt(key: Self::Key, plaintext: Self::Plaintext) -> Self::Ciphertext {
-        S::encrypt(key, plaintext.into())
+    fn encrypt(&self, key: Self::Key, plaintext: Self::Plaintext) -> Self::Ciphertext {
+        self.cipher.encrypt(key, plaintext.into())
     }
 
     #[inline]
-    fn decrypt(key: Self::Key, ciphertext: &Self::Ciphertext) -> Option<Self::Plaintext> {
-        S::decrypt(key, ciphertext).and_then(move |p| p.try_into().ok())
+    fn decrypt(&self, key: Self::Key, ciphertext: &Self::Ciphertext) -> Option<Self::Plaintext> {
+        self.cipher
+            .decrypt(key, ciphertext)
+            .and_then(move |p| p.try_into().ok())
     }
 }
 
@@ -94,14 +155,15 @@ pub mod test {
     /// Tests if symmetric encryption of `plaintext` using `key` returns the same plaintext on
     /// decryption.
     #[inline]
-    pub fn encryption<S>(key: S::Key, plaintext: S::Plaintext)
+    pub fn encryption<S>(cipher: &S, key: S::Key, plaintext: S::Plaintext)
     where
         S: SymmetricKeyEncryptionScheme,
         S::Key: Clone,
         S::Plaintext: Clone + Debug + PartialEq,
     {
         assert_eq!(
-            S::decrypt(key.clone(), &S::encrypt(key, plaintext.clone()))
+            cipher
+                .decrypt(key.clone(), &cipher.encrypt(key, plaintext.clone()))
                 .expect("Decryption of encrypted message should have succeeded."),
             plaintext,
             "Plaintext should have matched decrypted-encrypted plaintext."

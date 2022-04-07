@@ -18,27 +18,6 @@
 
 use crate::constraint::Native;
 
-/// Hash Function
-pub trait HashFunction<COM, const ARITY: usize> {
-    /// Input Type
-    type Input: ?Sized;
-
-    /// Output Type
-    type Output;
-
-    /// Computes the hash over `input` in the given `compiler`.
-    fn hash_in(&self, input: [&Self::Input; ARITY], compiler: &mut COM) -> Self::Output;
-
-    /// Computes the hash over `input`.
-    #[inline]
-    fn hash(&self, input: [&Self::Input; ARITY]) -> Self::Output
-    where
-        COM: Native,
-    {
-        self.hash_in(input, &mut COM::compiler())
-    }
-}
-
 /// Unary Hash Function
 pub trait UnaryHashFunction<COM = ()> {
     /// Input Type
@@ -81,5 +60,91 @@ pub trait BinaryHashFunction<COM = ()> {
         COM: Native,
     {
         self.hash_in(lhs, rhs, &mut COM::compiler())
+    }
+}
+
+/// Array Hash Function
+pub trait ArrayHashFunction<COM, const ARITY: usize> {
+    /// Input Type
+    type Input: ?Sized;
+
+    /// Output Type
+    type Output;
+
+    /// Computes the hash over `input` in the given `compiler`.
+    fn hash_in(&self, input: [&Self::Input; ARITY], compiler: &mut COM) -> Self::Output;
+
+    /// Computes the hash over `input`.
+    #[inline]
+    fn hash(&self, input: [&Self::Input; ARITY]) -> Self::Output
+    where
+        COM: Native,
+    {
+        self.hash_in(input, &mut COM::compiler())
+    }
+}
+
+///
+pub mod array {
+    use super::*;
+    use core::marker::PhantomData;
+
+    ///
+    #[inline]
+    pub fn as_unary<H, COM>(hasher: &H) -> AsUnary<H, COM>
+    where
+        H: ArrayHashFunction<COM, 1>,
+    {
+        AsUnary::new(hasher)
+    }
+
+    ///
+    // TODO: #[derive(derivative::Derivative)]
+    // TODO: #[derivative(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    pub struct AsUnary<'h, H, COM = ()>
+    where
+        H: ArrayHashFunction<COM, 1>,
+    {
+        /// Array Hasher
+        hasher: &'h H,
+
+        /// Type Parameter Marker
+        __: PhantomData<COM>,
+    }
+
+    impl<'h, H, COM> AsUnary<'h, H, COM>
+    where
+        H: ArrayHashFunction<COM, 1>,
+    {
+        /// Builds a new [`UnaryHashFunction`] implementation out of an [`ArrayHashFunction`]
+        /// implementation `hasher`.
+        #[inline]
+        pub fn new(hasher: &'h H) -> Self {
+            Self {
+                hasher,
+                __: PhantomData,
+            }
+        }
+    }
+
+    impl<'h, H, COM> UnaryHashFunction<COM> for AsUnary<'h, H, COM>
+    where
+        H: ArrayHashFunction<COM, 1>,
+    {
+        type Input = H::Input;
+        type Output = H::Output;
+
+        #[inline]
+        fn hash_in(&self, input: &Self::Input, compiler: &mut COM) -> Self::Output {
+            self.hasher.hash_in([input], compiler)
+        }
+
+        #[inline]
+        fn hash(&self, input: &Self::Input) -> Self::Output
+        where
+            COM: Native,
+        {
+            self.hasher.hash([input])
+        }
     }
 }

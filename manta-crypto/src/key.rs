@@ -17,27 +17,83 @@
 //! Cryptographic Key Primitives
 
 use crate::constraint::Native;
-use core::marker::PhantomData;
 
 /// Key Derivation Function
-pub trait KeyDerivationFunction {
+pub trait KeyDerivationFunction<COM = ()> {
     /// Input Key Type
     type Key: ?Sized;
 
     /// Output Key Type
     type Output;
 
-    /// Derives an output key from `secret` computed from a cryptographic agreement scheme.
-    fn derive(secret: &Self::Key) -> Self::Output;
+    /// Derives a key of type [`Output`](Self::Output) from `secret` in `compiler`.
+    fn derive_in(&self, secret: &Self::Key, compiler: &mut COM) -> Self::Output;
+
+    /// Derives a key of type [`Output`](Self::Output) from `secret`.
+    #[inline]
+    fn derive(&self, secret: &Self::Key) -> Self::Output
+    where
+        COM: Native,
+    {
+        self.derive_in(secret, &mut COM::compiler())
+    }
 }
 
-/// Key Derivation Function Adapter
+impl<COM, F> KeyDerivationFunction<COM> for &F
+where
+    F: KeyDerivationFunction<COM>,
+{
+    type Key = F::Key;
+    type Output = F::Output;
+
+    #[inline]
+    fn derive_in(&self, secret: &Self::Key, compiler: &mut COM) -> Self::Output {
+        (*self).derive_in(secret, compiler)
+    }
+
+    #[inline]
+    fn derive(&self, secret: &Self::Key) -> Self::Output
+    where
+        COM: Native,
+    {
+        (*self).derive(secret)
+    }
+}
+
+/// Key Derivation Function Adapters
 pub mod kdf {
     use super::*;
     use alloc::vec::Vec;
+    use core::marker::PhantomData;
 
     #[cfg(feature = "serde")]
     use manta_util::serde::{Deserialize, Serialize};
+
+    /// Identity Key Derivation Function
+    #[cfg_attr(
+        feature = "serde",
+        derive(Deserialize, Serialize),
+        serde(crate = "manta_util::serde")
+    )]
+    #[derive(derivative::Derivative)]
+    #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    pub struct Identity<K, COM = ()>(PhantomData<(K, COM)>)
+    where
+        K: Clone;
+
+    impl<K, COM> KeyDerivationFunction<COM> for Identity<K, COM>
+    where
+        K: Clone,
+    {
+        type Key = K;
+        type Output = K;
+
+        #[inline]
+        fn derive_in(&self, secret: &Self::Key, compiler: &mut COM) -> Self::Output {
+            let _ = compiler;
+            secret.clone()
+        }
+    }
 
     /// From Byte Slice Reference Adapter
     #[cfg_attr(
@@ -47,22 +103,30 @@ pub mod kdf {
     )]
     #[derive(derivative::Derivative)]
     #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-    pub struct FromByteSliceRef<T, F>(PhantomData<(T, F)>)
+    pub struct FromByteSliceRef<T, F, COM = ()>
     where
         T: AsRef<[u8]>,
-        F: KeyDerivationFunction<Key = [u8]>;
+        F: KeyDerivationFunction<COM, Key = [u8]>,
+    {
+        /// Key Derivation Function
+        key_derivation_function: F,
 
-    impl<T, F> KeyDerivationFunction for FromByteSliceRef<T, F>
+        /// Type Parameter Marker
+        __: PhantomData<(T, COM)>,
+    }
+
+    impl<T, F, COM> KeyDerivationFunction<COM> for FromByteSliceRef<T, F, COM>
     where
         T: AsRef<[u8]>,
-        F: KeyDerivationFunction<Key = [u8]>,
+        F: KeyDerivationFunction<COM, Key = [u8]>,
     {
         type Key = T;
         type Output = F::Output;
 
         #[inline]
-        fn derive(secret: &Self::Key) -> Self::Output {
-            F::derive(secret.as_ref())
+        fn derive_in(&self, secret: &Self::Key, compiler: &mut COM) -> Self::Output {
+            self.key_derivation_function
+                .derive_in(secret.as_ref(), compiler)
         }
     }
 
@@ -80,22 +144,30 @@ pub mod kdf {
     )]
     #[derive(derivative::Derivative)]
     #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-    pub struct FromByteVector<T, F>(PhantomData<(T, F)>)
+    pub struct FromByteVector<T, F, COM = ()>
     where
         T: AsBytes,
-        F: KeyDerivationFunction<Key = [u8]>;
+        F: KeyDerivationFunction<COM, Key = [u8]>,
+    {
+        /// Key Derivation Function
+        key_derivation_function: F,
 
-    impl<T, F> KeyDerivationFunction for FromByteVector<T, F>
+        /// Type Parameter Marker
+        __: PhantomData<(T, COM)>,
+    }
+
+    impl<T, F, COM> KeyDerivationFunction<COM> for FromByteVector<T, F, COM>
     where
         T: AsBytes,
-        F: KeyDerivationFunction<Key = [u8]>,
+        F: KeyDerivationFunction<COM, Key = [u8]>,
     {
         type Key = T;
         type Output = F::Output;
 
         #[inline]
-        fn derive(secret: &Self::Key) -> Self::Output {
-            F::derive(&secret.as_bytes())
+        fn derive_in(&self, secret: &Self::Key, compiler: &mut COM) -> Self::Output {
+            self.key_derivation_function
+                .derive_in(&secret.as_bytes(), compiler)
         }
     }
 }
@@ -222,6 +294,92 @@ pub trait KeyAgreementScheme<COM = ()> {
     {
         self.agree(&secret_key, &public_key)
     }
+
+    /// Borrows `self` rather than consuming it, returning an implementation of
+    /// [`KeyAgreementScheme`].
+    #[inline]
+    fn by_ref(&self) -> &Self {
+        self
+    }
+}
+
+impl<K, COM> KeyAgreementScheme<COM> for &K
+where
+    K: KeyAgreementScheme<COM>,
+{
+    type SecretKey = K::SecretKey;
+    type PublicKey = K::PublicKey;
+    type SharedSecret = K::SharedSecret;
+
+    #[inline]
+    fn derive_in(&self, secret_key: &Self::SecretKey, compiler: &mut COM) -> Self::PublicKey {
+        (*self).derive_in(secret_key, compiler)
+    }
+
+    #[inline]
+    fn derive(&self, secret_key: &Self::SecretKey) -> Self::PublicKey
+    where
+        COM: Native,
+    {
+        (*self).derive(secret_key)
+    }
+
+    #[inline]
+    fn derive_owned_in(&self, secret_key: Self::SecretKey, compiler: &mut COM) -> Self::PublicKey {
+        (*self).derive_owned_in(secret_key, compiler)
+    }
+
+    #[inline]
+    fn derive_owned(&self, secret_key: Self::SecretKey) -> Self::PublicKey
+    where
+        COM: Native,
+    {
+        (*self).derive_owned(secret_key)
+    }
+
+    #[inline]
+    fn agree_in(
+        &self,
+        secret_key: &Self::SecretKey,
+        public_key: &Self::PublicKey,
+        compiler: &mut COM,
+    ) -> Self::SharedSecret {
+        (*self).agree_in(secret_key, public_key, compiler)
+    }
+
+    #[inline]
+    fn agree(
+        &self,
+        secret_key: &Self::SecretKey,
+        public_key: &Self::PublicKey,
+    ) -> Self::SharedSecret
+    where
+        COM: Native,
+    {
+        (*self).agree(secret_key, public_key)
+    }
+
+    #[inline]
+    fn agree_owned_in(
+        &self,
+        secret_key: Self::SecretKey,
+        public_key: Self::PublicKey,
+        compiler: &mut COM,
+    ) -> Self::SharedSecret {
+        (*self).agree_owned_in(secret_key, public_key, compiler)
+    }
+
+    #[inline]
+    fn agree_owned(
+        &self,
+        secret_key: Self::SecretKey,
+        public_key: Self::PublicKey,
+    ) -> Self::SharedSecret
+    where
+        COM: Native,
+    {
+        (*self).agree_owned(secret_key, public_key)
+    }
 }
 
 /// Testing Framework
@@ -233,14 +391,14 @@ pub mod test {
 
     /// Tests if the `agreement` property is satisfied for `K`.
     #[inline]
-    pub fn key_agreement<K>(parameters: &K, lhs: &K::SecretKey, rhs: &K::SecretKey)
+    pub fn key_agreement<K>(scheme: &K, lhs: &K::SecretKey, rhs: &K::SecretKey)
     where
         K: KeyAgreementScheme,
         K::SharedSecret: Debug + PartialEq,
     {
         assert_eq!(
-            parameters.agree(lhs, &parameters.derive(rhs)),
-            parameters.agree(rhs, &parameters.derive(lhs)),
+            scheme.agree(lhs, &scheme.derive(rhs)),
+            scheme.agree(rhs, &scheme.derive(lhs)),
             "Key agreement schemes should satisfy the agreement property."
         )
     }

@@ -34,13 +34,11 @@ use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash, iter, marker::PhantomData};
 use manta_crypto::{
     accumulator::{Accumulator, MembershipProof, Model},
-    commitment::CommitmentScheme,
     constraint::{
-        Add, Allocator, Constant, ConstraintSystem, Derived, Equal, ProofSystem, ProofSystemInput,
-        Public, Secret, ValueSource, Variable,
+        Add, Allocator, Constant, ConstraintSystem, Derived, Equal, Native, ProofSystem,
+        ProofSystemInput, Public, Secret, ValueSource, Variable,
     },
     encryption::hybrid::{DecryptedMessage, EncryptedMessage, HybridPublicKeyEncryptionScheme},
-    hash::BinaryHashFunction,
     key::KeyAgreementScheme,
     rand::{CryptoRng, RngCore, Sample},
 };
@@ -64,6 +62,78 @@ pub const fn has_public_participants(sources: usize, sinks: usize) -> bool {
     (sources + sinks) > 0
 }
 
+/// UTXO Commitment Scheme
+pub trait UtxoCommitmentScheme<COM = ()> {
+    /// Ephemeral Secret Key Type
+    type EphemeralSecretKey;
+
+    /// Public Key Type
+    type PublicKey;
+
+    /// Asset Type
+    type Asset;
+
+    /// Unspent Transaction Output Type
+    type Utxo;
+
+    ///
+    fn commit_in(
+        &self,
+        ephemeral_secret_key: &Self::EphemeralSecretKey,
+        public_key: &Self::PublicKey,
+        asset: &Self::Asset,
+        compiler: &mut COM,
+    ) -> Self::Utxo;
+
+    ///
+    #[inline]
+    fn commit(
+        &self,
+        ephemeral_secret_key: &Self::EphemeralSecretKey,
+        public_key: &Self::PublicKey,
+        asset: &Self::Asset,
+    ) -> Self::Utxo
+    where
+        COM: Native,
+    {
+        self.commit_in(
+            ephemeral_secret_key,
+            public_key,
+            asset,
+            &mut COM::compiler(),
+        )
+    }
+}
+
+/// Void Number Commitment Scheme
+pub trait VoidNumberCommitmentScheme<COM = ()> {
+    /// Secret Key Type
+    type SecretKey;
+
+    /// Unspent Transaction Output Type
+    type Utxo;
+
+    /// Void Number Type
+    type VoidNumber;
+
+    ///
+    fn commit_in(
+        &self,
+        secret_key: &Self::SecretKey,
+        utxo: &Self::Utxo,
+        compiler: &mut COM,
+    ) -> Self::VoidNumber;
+
+    ///
+    #[inline]
+    fn commit(&self, secret_key: &Self::SecretKey, utxo: &Self::Utxo) -> Self::VoidNumber
+    where
+        COM: Native,
+    {
+        self.commit_in(secret_key, utxo, &mut COM::compiler())
+    }
+}
+
 /// Transfer Configuration
 pub trait Configuration {
     /// Secret Key Type
@@ -74,8 +144,8 @@ pub trait Configuration {
 
     /// Key Agreement Scheme Type
     type KeyAgreementScheme: KeyAgreementScheme<
-        SecretKey = Self::SecretKey,
-        PublicKey = Self::PublicKey,
+        SecretKey = SecretKey<Self>,
+        PublicKey = PublicKey<Self>,
     >;
 
     /// Secret Key Variable Type
@@ -89,41 +159,43 @@ pub trait Configuration {
     /// Key Agreement Scheme Variable Type
     type KeyAgreementSchemeVar: KeyAgreementScheme<
             Self::Compiler,
-            SecretKey = Self::SecretKeyVar,
-            PublicKey = Self::PublicKeyVar,
+            SecretKey = SecretKeyVar<Self>,
+            PublicKey = PublicKeyVar<Self>,
         > + Constant<Self::Compiler, Type = Self::KeyAgreementScheme>;
 
     /// Unspent Transaction Output Type
     type Utxo: PartialEq;
 
     /// UTXO Commitment Scheme Type
-    type UtxoCommitmentScheme: CommitmentScheme<
-        Randomness = Trapdoor<Self>,
-        Input = Asset,
-        Output = Self::Utxo,
+    type UtxoCommitmentScheme: UtxoCommitmentScheme<
+        EphemeralSecretKey = SecretKey<Self>,
+        PublicKey = PublicKey<Self>,
+        Asset = Asset,
+        Utxo = Utxo<Self>,
     >;
 
     /// UTXO Variable Type
-    type UtxoVar: Variable<Public, Self::Compiler, Type = Self::Utxo>
-        + Variable<Secret, Self::Compiler, Type = Self::Utxo>
+    type UtxoVar: Variable<Public, Self::Compiler, Type = Utxo<Self>>
+        + Variable<Secret, Self::Compiler, Type = Utxo<Self>>
         + Equal<Self::Compiler>;
 
     /// UTXO Commitment Scheme Variable Type
-    type UtxoCommitmentSchemeVar: CommitmentScheme<
+    type UtxoCommitmentSchemeVar: UtxoCommitmentScheme<
             Self::Compiler,
-            Randomness = TrapdoorVar<Self>,
-            Input = AssetVar<Self>,
-            Output = Self::UtxoVar,
+            EphemeralSecretKey = SecretKeyVar<Self>,
+            PublicKey = PublicKeyVar<Self>,
+            Asset = AssetVar<Self>,
+            Utxo = UtxoVar<Self>,
         > + Constant<Self::Compiler, Type = Self::UtxoCommitmentScheme>;
 
     /// Void Number Type
     type VoidNumber: PartialEq;
 
-    /// Void Number Hash Function Type
-    type VoidNumberHashFunction: BinaryHashFunction<
-        Left = Self::Utxo,
-        Right = Self::SecretKey,
-        Output = Self::VoidNumber,
+    /// Void Number Commitment Scheme Type
+    type VoidNumberCommitmentScheme: VoidNumberCommitmentScheme<
+        SecretKey = SecretKey<Self>,
+        Utxo = Utxo<Self>,
+        VoidNumber = VoidNumber<Self>,
     >;
 
     /// Void Number Variable Type
@@ -131,12 +203,12 @@ pub trait Configuration {
         + Equal<Self::Compiler>;
 
     /// Void Number Hash Function Variable Type
-    type VoidNumberHashFunctionVar: BinaryHashFunction<
+    type VoidNumberCommitmentSchemeVar: VoidNumberCommitmentScheme<
             Self::Compiler,
-            Left = Self::UtxoVar,
-            Right = Self::SecretKeyVar,
-            Output = Self::VoidNumberVar,
-        > + Constant<Self::Compiler, Type = Self::VoidNumberHashFunction>;
+            SecretKey = SecretKeyVar<Self>,
+            Utxo = UtxoVar<Self>,
+            VoidNumber = VoidNumberVar<Self>,
+        > + Constant<Self::Compiler, Type = Self::VoidNumberCommitmentScheme>;
 
     /// UTXO Accumulator Model Type
     type UtxoAccumulatorModel: Model<Item = Self::Utxo, Verification = bool>;
@@ -256,7 +328,7 @@ pub trait Configuration {
     /// Generates the void number associated to `utxo` and `secret_key` using `parameters`.
     #[inline]
     fn void_number(
-        parameters: &Self::VoidNumberHashFunction,
+        parameters: &Self::VoidNumberCommitmentScheme,
         utxo: &Utxo<Self>,
         secret_key: &SecretKey<Self>,
     ) -> VoidNumber<Self> {
@@ -266,7 +338,7 @@ pub trait Configuration {
     /// Generates the void number associated to `utxo` and `secret_key` using `parameters`.
     #[inline]
     fn void_number_var(
-        parameters: &Self::VoidNumberHashFunctionVar,
+        parameters: &Self::VoidNumberCommitmentSchemeVar,
         utxo: &UtxoVar<Self>,
         secret_key: &SecretKeyVar<Self>,
         compiler: &mut Self::Compiler,
@@ -321,19 +393,21 @@ pub type TrapdoorVar<C> =
     <<C as Configuration>::KeyAgreementSchemeVar as KeyAgreementScheme<Compiler<C>>>::SharedSecret;
 
 /// Unspend Transaction Output Type
-pub type Utxo<C> = <<C as Configuration>::UtxoCommitmentScheme as CommitmentScheme>::Output;
+pub type Utxo<C> = <<C as Configuration>::UtxoCommitmentScheme as UtxoCommitmentScheme>::Utxo;
 
 /// Unspent Transaction Output Variable Type
 pub type UtxoVar<C> =
-    <<C as Configuration>::UtxoCommitmentSchemeVar as CommitmentScheme<Compiler<C>>>::Output;
+    <<C as Configuration>::UtxoCommitmentSchemeVar as UtxoCommitmentScheme<Compiler<C>>>::Utxo;
 
 /// Void Number Type
 pub type VoidNumber<C> =
-    <<C as Configuration>::VoidNumberHashFunction as BinaryHashFunction>::Output;
+    <<C as Configuration>::VoidNumberCommitmentScheme as VoidNumberCommitmentScheme>::VoidNumber;
 
 /// Void Number Variable Type
 pub type VoidNumberVar<C> =
-    <<C as Configuration>::VoidNumberHashFunctionVar as BinaryHashFunction<Compiler<C>>>::Output;
+    <<C as Configuration>::VoidNumberCommitmentSchemeVar as VoidNumberCommitmentScheme<
+        Compiler<C>,
+    >>::VoidNumber;
 
 /// UTXO Accumulator Witness Type
 pub type UtxoAccumulatorWitness<C> = <<C as Configuration>::UtxoAccumulatorModel as Model>::Witness;
@@ -384,37 +458,37 @@ pub type Proof<C> = <ProofSystemType<C> as ProofSystem>::Proof;
     Clone(bound = r"
         C::KeyAgreementScheme: Clone,
         C::UtxoCommitmentScheme: Clone,
-        C::VoidNumberHashFunction: Clone
+        C::VoidNumberCommitmentScheme: Clone
     "),
     Copy(bound = r"
         C::KeyAgreementScheme: Copy,
         C::UtxoCommitmentScheme: Copy,
-        C::VoidNumberHashFunction: Copy
+        C::VoidNumberCommitmentScheme: Copy
     "),
     Debug(bound = r"
         C::KeyAgreementScheme: Debug,
         C::UtxoCommitmentScheme: Debug,
-        C::VoidNumberHashFunction: Debug
+        C::VoidNumberCommitmentScheme: Debug
     "),
     Default(bound = r"
         C::KeyAgreementScheme: Default,
         C::UtxoCommitmentScheme: Default,
-        C::VoidNumberHashFunction: Default
+        C::VoidNumberCommitmentScheme: Default
     "),
     Eq(bound = r"
         C::KeyAgreementScheme: Eq,
         C::UtxoCommitmentScheme: Eq,
-        C::VoidNumberHashFunction: Eq
+        C::VoidNumberCommitmentScheme: Eq
     "),
     Hash(bound = r"
         C::KeyAgreementScheme: Hash,
         C::UtxoCommitmentScheme: Hash,
-        C::VoidNumberHashFunction: Hash
+        C::VoidNumberCommitmentScheme: Hash
     "),
     PartialEq(bound = r"
         C::KeyAgreementScheme: PartialEq,
         C::UtxoCommitmentScheme: PartialEq,
-        C::VoidNumberHashFunction: PartialEq
+        C::VoidNumberCommitmentScheme: PartialEq
     ")
 )]
 pub struct Parameters<C>
@@ -427,8 +501,8 @@ where
     /// UTXO Commitment Scheme
     pub utxo_commitment: C::UtxoCommitmentScheme,
 
-    /// Void Number Hash Function
-    pub void_number_hash: C::VoidNumberHashFunction,
+    /// Void Number Commitment Scheme
+    pub void_number_commitment: C::VoidNumberCommitmentScheme,
 }
 
 impl<C> Parameters<C>
@@ -440,12 +514,12 @@ where
     pub fn new(
         key_agreement: C::KeyAgreementScheme,
         utxo_commitment: C::UtxoCommitmentScheme,
-        void_number_hash: C::VoidNumberHashFunction,
+        void_number_commitment: C::VoidNumberCommitmentScheme,
     ) -> Self {
         Self {
             key_agreement,
             utxo_commitment,
-            void_number_hash,
+            void_number_commitment,
         }
     }
 }
@@ -492,8 +566,8 @@ where
     /// UTXO Commitment Scheme
     utxo_commitment: C::UtxoCommitmentSchemeVar,
 
-    /// Void Number Hash Function
-    void_number_hash: C::VoidNumberHashFunctionVar,
+    /// Void Number Commitment Scheme
+    void_number_commitment: C::VoidNumberCommitmentSchemeVar,
 
     /// UTXO Accumulator Model
     utxo_accumulator_model: C::UtxoAccumulatorModelVar,

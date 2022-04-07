@@ -95,7 +95,7 @@ where
     C: Configuration,
     C::KeyAgreementScheme: Sample<K>,
     C::UtxoCommitmentScheme: Sample<U>,
-    C::VoidNumberHashFunction: Sample<V>,
+    C::VoidNumberCommitmentScheme: Sample<V>,
 {
     #[inline]
     fn sample<R>(distribution: ParametersDistribution<K, U, V>, rng: &mut R) -> Self
