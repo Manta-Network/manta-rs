@@ -203,7 +203,7 @@ pub trait Configuration {
     type VoidNumberVar: Variable<Public, Self::Compiler, Type = Self::VoidNumber>
         + Equal<Self::Compiler>;
 
-    /// Void Number Hash Function Variable Type
+    /// Void Number Commitment Scheme Variable Type
     type VoidNumberCommitmentSchemeVar: VoidNumberCommitmentScheme<
             Self::Compiler,
             SecretSpendKey = SecretKeyVar<Self>,

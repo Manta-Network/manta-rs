@@ -67,7 +67,7 @@ pub(crate) use bls12_381_ed::EdwardsProjective as Bls12_381_Edwards;
 /// Pairing Curve Type
 pub type PairingCurve = Bls12_381;
 
-/// Embedded Scalar Type
+/// Embedded Scalar Field Type
 pub type EmbeddedScalarField = bls12_381_ed::Fr;
 
 /// Embedded Scalar Type
