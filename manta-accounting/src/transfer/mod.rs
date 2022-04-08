@@ -39,7 +39,7 @@ use manta_crypto::{
         ProofSystemInput, Public, Secret, ValueSource, Variable,
     },
     encryption::hybrid::{DecryptedMessage, EncryptedMessage, HybridPublicKeyEncryptionScheme},
-    key::KeyAgreementScheme,
+    key::{KeyAgreementScheme, KeyDerivationFunction},
     rand::{CryptoRng, RngCore, Sample},
 };
 
@@ -67,8 +67,8 @@ pub trait UtxoCommitmentScheme<COM = ()> {
     /// Ephemeral Secret Key Type
     type EphemeralSecretKey;
 
-    /// Public Key Type
-    type PublicKey;
+    /// Public Spend Key Type
+    type PublicSpendKey;
 
     /// Asset Type
     type Asset;
@@ -76,21 +76,22 @@ pub trait UtxoCommitmentScheme<COM = ()> {
     /// Unspent Transaction Output Type
     type Utxo;
 
-    ///
+    /// Commits to the `ephemeral_secret_key`, `public_spend_key`, and `asset` for a UTXO inside of
+    /// `compiler`.
     fn commit_in(
         &self,
         ephemeral_secret_key: &Self::EphemeralSecretKey,
-        public_key: &Self::PublicKey,
+        public_spend_key: &Self::PublicSpendKey,
         asset: &Self::Asset,
         compiler: &mut COM,
     ) -> Self::Utxo;
 
-    ///
+    /// Commits to the `ephemeral_secret_key`, `public_spend_key`, and `asset` for a UTXO.
     #[inline]
     fn commit(
         &self,
         ephemeral_secret_key: &Self::EphemeralSecretKey,
-        public_key: &Self::PublicKey,
+        public_spend_key: &Self::PublicSpendKey,
         asset: &Self::Asset,
     ) -> Self::Utxo
     where
@@ -98,7 +99,7 @@ pub trait UtxoCommitmentScheme<COM = ()> {
     {
         self.commit_in(
             ephemeral_secret_key,
-            public_key,
+            public_spend_key,
             asset,
             &mut COM::compiler(),
         )
@@ -107,8 +108,8 @@ pub trait UtxoCommitmentScheme<COM = ()> {
 
 /// Void Number Commitment Scheme
 pub trait VoidNumberCommitmentScheme<COM = ()> {
-    /// Secret Key Type
-    type SecretKey;
+    /// Secret Spend Key Type
+    type SecretSpendKey;
 
     /// Unspent Transaction Output Type
     type Utxo;
@@ -116,28 +117,28 @@ pub trait VoidNumberCommitmentScheme<COM = ()> {
     /// Void Number Type
     type VoidNumber;
 
-    ///
+    /// Commits to the `secret_spend_key` and `utxo` for a Void Number inside of `compiler`.
     fn commit_in(
         &self,
-        secret_key: &Self::SecretKey,
+        secret_spend_key: &Self::SecretSpendKey,
         utxo: &Self::Utxo,
         compiler: &mut COM,
     ) -> Self::VoidNumber;
 
-    ///
+    /// Commits to the `secret_spend_key` and `utxo` for a Void Number.
     #[inline]
-    fn commit(&self, secret_key: &Self::SecretKey, utxo: &Self::Utxo) -> Self::VoidNumber
+    fn commit(&self, secret_spend_key: &Self::SecretSpendKey, utxo: &Self::Utxo) -> Self::VoidNumber
     where
         COM: Native,
     {
-        self.commit_in(secret_key, utxo, &mut COM::compiler())
+        self.commit_in(secret_spend_key, utxo, &mut COM::compiler())
     }
 }
 
 /// Transfer Configuration
 pub trait Configuration {
     /// Secret Key Type
-    type SecretKey: Clone + Sample;
+    type SecretKey: Clone + Sample + WithSize;
 
     /// Public Key Type
     type PublicKey: Clone;
@@ -152,8 +153,7 @@ pub trait Configuration {
     type SecretKeyVar: Variable<Secret, Self::Compiler, Type = SecretKey<Self>>;
 
     /// Public Key Variable Type
-    type PublicKeyVar: Variable<Public, Self::Compiler, Type = PublicKey<Self>>
-        + Variable<Secret, Self::Compiler, Type = PublicKey<Self>>
+    type PublicKeyVar: Variable<Secret, Self::Compiler, Type = PublicKey<Self>>
         + Equal<Self::Compiler>;
 
     /// Key Agreement Scheme Variable Type
@@ -169,7 +169,7 @@ pub trait Configuration {
     /// UTXO Commitment Scheme Type
     type UtxoCommitmentScheme: UtxoCommitmentScheme<
         EphemeralSecretKey = SecretKey<Self>,
-        PublicKey = PublicKey<Self>,
+        PublicSpendKey = PublicKey<Self>,
         Asset = Asset,
         Utxo = Utxo<Self>,
     >;
@@ -183,7 +183,7 @@ pub trait Configuration {
     type UtxoCommitmentSchemeVar: UtxoCommitmentScheme<
             Self::Compiler,
             EphemeralSecretKey = SecretKeyVar<Self>,
-            PublicKey = PublicKeyVar<Self>,
+            PublicSpendKey = PublicKeyVar<Self>,
             Asset = AssetVar<Self>,
             Utxo = UtxoVar<Self>,
         > + Constant<Self::Compiler, Type = Self::UtxoCommitmentScheme>;
@@ -193,7 +193,7 @@ pub trait Configuration {
 
     /// Void Number Commitment Scheme Type
     type VoidNumberCommitmentScheme: VoidNumberCommitmentScheme<
-        SecretKey = SecretKey<Self>,
+        SecretSpendKey = SecretKey<Self>,
         Utxo = Utxo<Self>,
         VoidNumber = VoidNumber<Self>,
     >;
@@ -205,7 +205,7 @@ pub trait Configuration {
     /// Void Number Hash Function Variable Type
     type VoidNumberCommitmentSchemeVar: VoidNumberCommitmentScheme<
             Self::Compiler,
-            SecretKey = SecretKeyVar<Self>,
+            SecretSpendKey = SecretKeyVar<Self>,
             Utxo = UtxoVar<Self>,
             VoidNumber = VoidNumberVar<Self>,
         > + Constant<Self::Compiler, Type = Self::VoidNumberCommitmentScheme>;
@@ -261,153 +261,37 @@ pub trait Configuration {
 
     /// Note Encryption Scheme Type
     type NoteEncryptionScheme: HybridPublicKeyEncryptionScheme<
-        Plaintext = Asset,
+        Plaintext = Note<Self>,
         KeyAgreementScheme = Self::KeyAgreementScheme,
     >;
-
-    /// Derives a public key variable from a secret key variable.
-    #[inline]
-    fn ephemeral_public_key_var(
-        parameters: &Self::KeyAgreementSchemeVar,
-        secret_key: &SecretKeyVar<Self>,
-        compiler: &mut Self::Compiler,
-    ) -> PublicKeyVar<Self> {
-        parameters.derive_in(secret_key, compiler)
-    }
-
-    /// Generates the commitment trapdoor associated to `secret_key` and `public_key`.
-    #[inline]
-    fn trapdoor(
-        key_agreement: &Self::KeyAgreementScheme,
-        secret_key: &SecretKey<Self>,
-        public_key: &PublicKey<Self>,
-    ) -> Trapdoor<Self> {
-        key_agreement.agree(secret_key, public_key)
-    }
-
-    /// Generates the commitment trapdoor associated to `secret_key` and `public_key`.
-    #[inline]
-    fn trapdoor_var(
-        key_agreement: &Self::KeyAgreementSchemeVar,
-        secret_key: &SecretKeyVar<Self>,
-        public_key: &PublicKeyVar<Self>,
-        compiler: &mut Self::Compiler,
-    ) -> TrapdoorVar<Self> {
-        key_agreement.agree_in(secret_key, public_key, compiler)
-    }
-
-    /// Generates the trapdoor associated to `secret_key` and `public_key` and then uses it to
-    /// generate the UTXO associated to `asset`.
-    #[inline]
-    fn utxo(
-        key_agreement: &Self::KeyAgreementScheme,
-        utxo_commitment: &Self::UtxoCommitmentScheme,
-        secret_key: &SecretKey<Self>,
-        public_key: &PublicKey<Self>,
-        asset: &Asset,
-    ) -> Utxo<Self> {
-        let trapdoor = Self::trapdoor(key_agreement, secret_key, public_key);
-        utxo_commitment.commit(&trapdoor, asset)
-    }
-
-    /// Generates the trapdoor associated to `secret_key` and `public_key` and then uses it to
-    /// generate the UTXO associated to `asset`.
-    #[inline]
-    fn utxo_var(
-        key_agreement: &Self::KeyAgreementSchemeVar,
-        utxo_commitment: &Self::UtxoCommitmentSchemeVar,
-        secret_key: &SecretKeyVar<Self>,
-        public_key: &PublicKeyVar<Self>,
-        asset: &AssetVar<Self>,
-        compiler: &mut Self::Compiler,
-    ) -> UtxoVar<Self> {
-        let trapdoor = Self::trapdoor_var(key_agreement, secret_key, public_key, compiler);
-        utxo_commitment.commit_in(&trapdoor, asset, compiler)
-    }
-
-    /// Generates the void number associated to `utxo` and `secret_key` using `parameters`.
-    #[inline]
-    fn void_number(
-        parameters: &Self::VoidNumberCommitmentScheme,
-        utxo: &Utxo<Self>,
-        secret_key: &SecretKey<Self>,
-    ) -> VoidNumber<Self> {
-        parameters.hash(utxo, secret_key)
-    }
-
-    /// Generates the void number associated to `utxo` and `secret_key` using `parameters`.
-    #[inline]
-    fn void_number_var(
-        parameters: &Self::VoidNumberCommitmentSchemeVar,
-        utxo: &UtxoVar<Self>,
-        secret_key: &SecretKeyVar<Self>,
-        compiler: &mut Self::Compiler,
-    ) -> VoidNumberVar<Self> {
-        parameters.hash_in(utxo, secret_key, compiler)
-    }
-
-    /// Checks that the `utxo` is correctly constructed from the `secret_key`, `public_key`, and
-    /// `asset`, returning the void number for the asset if so.
-    #[inline]
-    fn check_full_asset(
-        parameters: &Parameters<Self>,
-        secret_key: &SecretKey<Self>,
-        public_key: &PublicKey<Self>,
-        asset: &Asset,
-        utxo: &Utxo<Self>,
-    ) -> Option<VoidNumber<Self>> {
-        (&Self::utxo(
-            &parameters.key_agreement,
-            &parameters.utxo_commitment,
-            secret_key,
-            public_key,
-            asset,
-        ) == utxo)
-            .then(move || Self::void_number(&parameters.void_number_hash, utxo, secret_key))
-    }
 }
 
 /// Asset Variable Type
 pub type AssetVar<C> = Asset<<C as Configuration>::AssetIdVar, <C as Configuration>::AssetValueVar>;
 
 /// Secret Key Type
-pub type SecretKey<C> = <<C as Configuration>::KeyAgreementScheme as KeyAgreementScheme>::SecretKey;
+pub type SecretKey<C> = <C as Configuration>::SecretKey;
 
 /// Secret Key Variable Type
-pub type SecretKeyVar<C> =
-    <<C as Configuration>::KeyAgreementSchemeVar as KeyAgreementScheme<Compiler<C>>>::SecretKey;
+pub type SecretKeyVar<C> = <C as Configuration>::SecretKeyVar;
 
 /// Public Key Type
-pub type PublicKey<C> = <<C as Configuration>::KeyAgreementScheme as KeyAgreementScheme>::PublicKey;
+pub type PublicKey<C> = <C as Configuration>::PublicKey;
 
 /// Public Key Variable Type
-pub type PublicKeyVar<C> =
-    <<C as Configuration>::KeyAgreementSchemeVar as KeyAgreementScheme<Compiler<C>>>::PublicKey;
-
-/// UTXO Trapdoor Type
-pub type Trapdoor<C> =
-    <<C as Configuration>::KeyAgreementScheme as KeyAgreementScheme>::SharedSecret;
-
-/// UTXO Trapdoor Variable Type
-pub type TrapdoorVar<C> =
-    <<C as Configuration>::KeyAgreementSchemeVar as KeyAgreementScheme<Compiler<C>>>::SharedSecret;
+pub type PublicKeyVar<C> = <C as Configuration>::PublicKeyVar;
 
 /// Unspend Transaction Output Type
-pub type Utxo<C> = <<C as Configuration>::UtxoCommitmentScheme as UtxoCommitmentScheme>::Utxo;
+pub type Utxo<C> = <C as Configuration>::Utxo;
 
 /// Unspent Transaction Output Variable Type
-pub type UtxoVar<C> =
-    <<C as Configuration>::UtxoCommitmentSchemeVar as UtxoCommitmentScheme<Compiler<C>>>::Utxo;
+pub type UtxoVar<C> = <C as Configuration>::UtxoVar;
 
 /// Void Number Type
-pub type VoidNumber<C> =
-    <<C as Configuration>::VoidNumberCommitmentScheme as VoidNumberCommitmentScheme>::VoidNumber;
+pub type VoidNumber<C> = <C as Configuration>::VoidNumber;
 
 /// Void Number Variable Type
-pub type VoidNumberVar<C> =
-    <<C as Configuration>::VoidNumberCommitmentSchemeVar as VoidNumberCommitmentScheme<
-        Compiler<C>,
-    >>::VoidNumber;
+pub type VoidNumberVar<C> = <C as Configuration>::VoidNumberVar;
 
 /// UTXO Accumulator Witness Type
 pub type UtxoAccumulatorWitness<C> = <<C as Configuration>::UtxoAccumulatorModel as Model>::Witness;
@@ -426,7 +310,7 @@ pub type UtxoMembershipProofVar<C> =
 pub type EncryptedNote<C> = EncryptedMessage<<C as Configuration>::NoteEncryptionScheme>;
 
 /// Decrypted Note Type
-pub type Note<C> = DecryptedMessage<<C as Configuration>::NoteEncryptionScheme>;
+pub type DecryptedNote<C> = DecryptedMessage<<C as Configuration>::NoteEncryptionScheme>;
 
 /// Transfer Configuration Compiler Type
 pub type Compiler<C> = <C as Configuration>::Compiler;
@@ -456,37 +340,37 @@ pub type Proof<C> = <ProofSystemType<C> as ProofSystem>::Proof;
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = r"
-        C::KeyAgreementScheme: Clone,
+        C::NoteEncryptionScheme: Clone,
         C::UtxoCommitmentScheme: Clone,
         C::VoidNumberCommitmentScheme: Clone
     "),
     Copy(bound = r"
-        C::KeyAgreementScheme: Copy,
+        C::NoteEncryptionScheme: Copy,
         C::UtxoCommitmentScheme: Copy,
         C::VoidNumberCommitmentScheme: Copy
     "),
     Debug(bound = r"
-        C::KeyAgreementScheme: Debug,
+        C::NoteEncryptionScheme: Debug,
         C::UtxoCommitmentScheme: Debug,
         C::VoidNumberCommitmentScheme: Debug
     "),
     Default(bound = r"
-        C::KeyAgreementScheme: Default,
+        C::NoteEncryptionScheme: Default,
         C::UtxoCommitmentScheme: Default,
         C::VoidNumberCommitmentScheme: Default
     "),
     Eq(bound = r"
-        C::KeyAgreementScheme: Eq,
+        C::NoteEncryptionScheme: Eq,
         C::UtxoCommitmentScheme: Eq,
         C::VoidNumberCommitmentScheme: Eq
     "),
     Hash(bound = r"
-        C::KeyAgreementScheme: Hash,
+        C::NoteEncryptionScheme: Hash,
         C::UtxoCommitmentScheme: Hash,
         C::VoidNumberCommitmentScheme: Hash
     "),
     PartialEq(bound = r"
-        C::KeyAgreementScheme: PartialEq,
+        C::NoteEncryptionScheme: PartialEq,
         C::UtxoCommitmentScheme: PartialEq,
         C::VoidNumberCommitmentScheme: PartialEq
     ")
@@ -495,8 +379,8 @@ pub struct Parameters<C>
 where
     C: Configuration + ?Sized,
 {
-    /// Key Agreement Scheme
-    pub key_agreement: C::KeyAgreementScheme,
+    /// Note Encryption Scheme
+    pub note_encryption_scheme: C::NoteEncryptionScheme,
 
     /// UTXO Commitment Scheme
     pub utxo_commitment: C::UtxoCommitmentScheme,
@@ -509,18 +393,73 @@ impl<C> Parameters<C>
 where
     C: Configuration + ?Sized,
 {
-    /// Builds a new [`Parameters`].
+    /// Builds a new [`Parameters`] container from `note_encryption_scheme`, `utxo_commitment`, and
+    /// `void_number_commitment`.
     #[inline]
     pub fn new(
-        key_agreement: C::KeyAgreementScheme,
+        note_encryption_scheme: C::NoteEncryptionScheme,
         utxo_commitment: C::UtxoCommitmentScheme,
         void_number_commitment: C::VoidNumberCommitmentScheme,
     ) -> Self {
         Self {
-            key_agreement,
+            note_encryption_scheme,
             utxo_commitment,
             void_number_commitment,
         }
+    }
+
+    /// Returns the [`KeyAgreementScheme`](Configuration::KeyAgreementScheme) associated to `self`.
+    #[inline]
+    pub fn key_agreement_scheme(&self) -> &C::KeyAgreementScheme {
+        self.note_encryption_scheme.key_agreement_scheme()
+    }
+
+    /// Derives a [`PublicKey`] from a borrowed `secret_key`.
+    #[inline]
+    pub fn derive(&self, secret_key: &SecretKey<C>) -> PublicKey<C> {
+        self.note_encryption_scheme
+            .key_agreement_scheme()
+            .derive(secret_key)
+    }
+
+    /// Derives a [`PublicKey`] from an owned `secret_key`.
+    #[inline]
+    pub fn derive_owned(&self, secret_key: SecretKey<C>) -> PublicKey<C> {
+        self.note_encryption_scheme
+            .key_agreement_scheme()
+            .derive_owned(secret_key)
+    }
+
+    /// Computes the [`Utxo`] associated to `ephemeral_secret_key`, `public_spend_key`, and `asset`.
+    #[inline]
+    pub fn utxo(
+        &self,
+        ephemeral_secret_key: &SecretKey<C>,
+        public_spend_key: &PublicKey<C>,
+        asset: &Asset,
+    ) -> Utxo<C> {
+        self.utxo_commitment
+            .commit(ephemeral_secret_key, public_spend_key, asset)
+    }
+
+    /// Computes the [`VoidNumber`] associated to `secret_spend_key` and `utxo`.
+    #[inline]
+    pub fn void_number(&self, secret_spend_key: &SecretKey<C>, utxo: &Utxo<C>) -> VoidNumber<C> {
+        self.void_number_commitment.commit(secret_spend_key, utxo)
+    }
+
+    /// Validates the `utxo` against the `secret_spend_key` and the given `ephemeral_secret_key`
+    /// and `asset`, returning the void number if the `utxo` is valid.
+    #[inline]
+    pub fn check_full_asset(
+        &self,
+        ephemeral_secret_key: &SecretKey<C>,
+        secret_spend_key: &SecretKey<C>,
+        asset: &Asset,
+        utxo: &Utxo<C>,
+    ) -> Option<VoidNumber<C>> {
+        (&self.utxo(ephemeral_secret_key, &self.derive(secret_spend_key), asset) == utxo)
+            .then(move || self.void_number(secret_spend_key, utxo))
     }
 }
 
@@ -555,6 +494,16 @@ where
     }
 }
 
+impl<'p, C> AsRef<Parameters<C>> for FullParameters<'p, C>
+where
+    C: Configuration,
+{
+    #[inline]
+    fn as_ref(&self) -> &Parameters<C> {
+        self.base
+    }
+}
+
 /// Transfer Full Parameters Variables
 pub struct FullParametersVar<'p, C>
 where
@@ -576,6 +525,44 @@ where
     __: PhantomData<&'p ()>,
 }
 
+impl<'p, C> FullParametersVar<'p, C>
+where
+    C: Configuration,
+{
+    /// Derives a [`PublicKeyVar`] from `secret_key` inside the `compiler`.
+    #[inline]
+    fn derive(&self, secret_key: &SecretKeyVar<C>, compiler: &mut C::Compiler) -> PublicKeyVar<C> {
+        self.key_agreement.derive_in(secret_key, compiler)
+    }
+
+    /// Computes the [`UtxoVar`] associated to `ephemeral_secret_key`, `public_spend_key`, and
+    /// `asset` inside the `compiler`.
+    #[inline]
+    fn utxo(
+        &self,
+        ephemeral_secret_key: &SecretKeyVar<C>,
+        public_spend_key: &PublicKeyVar<C>,
+        asset: &AssetVar<C>,
+        compiler: &mut C::Compiler,
+    ) -> UtxoVar<C> {
+        self.utxo_commitment
+            .commit_in(ephemeral_secret_key, public_spend_key, asset, compiler)
+    }
+
+    /// Computes the [`VoidNumberVar`] associated to `secret_spend_key` and `utxo` in the
+    /// `compiler`.
+    #[inline]
+    fn void_number(
+        &self,
+        secret_spend_key: &SecretKeyVar<C>,
+        utxo: &UtxoVar<C>,
+        compiler: &mut C::Compiler,
+    ) -> VoidNumberVar<C> {
+        self.void_number_commitment
+            .commit_in(secret_spend_key, utxo, compiler)
+    }
+}
+
 impl<'p, C> Constant<C::Compiler> for FullParametersVar<'p, C>
 where
     C: Configuration,
@@ -586,9 +573,13 @@ where
     #[inline]
     fn new_constant(this: &Self::Type, compiler: &mut C::Compiler) -> Self {
         Self {
-            key_agreement: this.base.key_agreement.as_constant(compiler),
+            key_agreement: this
+                .base
+                .note_encryption_scheme
+                .key_agreement_scheme()
+                .as_constant(compiler),
             utxo_commitment: this.base.utxo_commitment.as_constant(compiler),
-            void_number_hash: this.base.void_number_hash.as_constant(compiler),
+            void_number_commitment: this.base.void_number_commitment.as_constant(compiler),
             utxo_accumulator_model: this.utxo_accumulator_model.as_constant(compiler),
             __: PhantomData,
         }
@@ -628,28 +619,28 @@ where
         }
     }
 
-    /// Validates the `utxo` against `self` and the given `ephemeral_key` and `asset`, returning
-    /// the void number if the `utxo` is valid.
+    /// Validates the `utxo` against `self` and the given `ephemeral_secret_key` and `asset`,
+    /// returning the void number if the `utxo` is valid.
     #[inline]
     pub fn check_full_asset(
         &self,
         parameters: &Parameters<C>,
-        ephemeral_key: &PublicKey<C>,
+        ephemeral_secret_key: &SecretKey<C>,
         asset: &Asset,
         utxo: &Utxo<C>,
     ) -> Option<VoidNumber<C>> {
-        C::check_full_asset(parameters, &self.spend, ephemeral_key, asset, utxo)
+        parameters.check_full_asset(ephemeral_secret_key, &self.spend, asset, utxo)
     }
 
-    /// Prepares `self` for spending `asset` with the given `ephemeral_key`.
+    /// Prepares `self` for spending `asset` with the given `ephemeral_secret_key`.
     #[inline]
     pub fn sender(
         &self,
         parameters: &Parameters<C>,
-        ephemeral_key: PublicKey<C>,
+        ephemeral_secret_key: SecretKey<C>,
         asset: Asset,
     ) -> PreSender<C> {
-        PreSender::new(parameters, self.spend.clone(), ephemeral_key, asset)
+        PreSender::new(parameters, self.spend.clone(), ephemeral_secret_key, asset)
     }
 
     /// Prepares `self` for receiving `asset`.
@@ -657,11 +648,11 @@ where
     pub fn receiver(
         &self,
         parameters: &Parameters<C>,
-        ephemeral_key: SecretKey<C>,
+        ephemeral_secret_key: SecretKey<C>,
         asset: Asset,
     ) -> Receiver<C> {
-        self.derive(&parameters.key_agreement)
-            .into_receiver(parameters, ephemeral_key, asset)
+        self.derive(parameters.key_agreement_scheme())
+            .into_receiver(parameters, ephemeral_secret_key, asset)
     }
 
     /// Returns an receiver-sender pair for internal transactions.
@@ -669,11 +660,11 @@ where
     pub fn internal_pair(
         &self,
         parameters: &Parameters<C>,
-        ephemeral_key: SecretKey<C>,
+        ephemeral_secret_key: SecretKey<C>,
         asset: Asset,
     ) -> (Receiver<C>, PreSender<C>) {
-        let receiver = self.receiver(parameters, ephemeral_key, asset);
-        let sender = self.sender(parameters, receiver.ephemeral_public_key().clone(), asset);
+        let receiver = self.receiver(parameters, ephemeral_secret_key.clone(), asset);
+        let sender = self.sender(parameters, ephemeral_secret_key, asset);
         (receiver, sender)
     }
 
@@ -682,10 +673,10 @@ where
     pub fn internal_zero_pair(
         &self,
         parameters: &Parameters<C>,
-        ephemeral_key: SecretKey<C>,
+        ephemeral_secret_key: SecretKey<C>,
         asset_id: AssetId,
     ) -> (Receiver<C>, PreSender<C>) {
-        self.internal_pair(parameters, ephemeral_key, Asset::zero(asset_id))
+        self.internal_pair(parameters, ephemeral_secret_key, Asset::zero(asset_id))
     }
 }
 
@@ -749,10 +740,16 @@ where
     pub fn into_receiver(
         self,
         parameters: &Parameters<C>,
-        ephemeral_key: SecretKey<C>,
+        ephemeral_secret_key: SecretKey<C>,
         asset: Asset,
     ) -> Receiver<C> {
-        Receiver::new(parameters, ephemeral_key, self.spend, self.view, asset)
+        Receiver::new(
+            parameters,
+            ephemeral_secret_key,
+            self.spend,
+            self.view,
+            asset,
+        )
     }
 }
 
@@ -762,10 +759,10 @@ where
     C: Configuration,
 {
     /// Secret Spend Key
-    spend: SecretKey<C>,
+    secret_spend_key: SecretKey<C>,
 
-    /// Ephemeral Public Spend Key
-    ephemeral_public_key: PublicKey<C>,
+    /// Ephemeral Secret Key
+    ephemeral_secret_key: SecretKey<C>,
 
     /// Asset
     asset: Asset,
@@ -781,25 +778,23 @@ impl<C> PreSender<C>
 where
     C: Configuration,
 {
-    /// Builds a new [`PreSender`] for `spend` to spend `asset` with `ephemeral_public_key`.
+    ///
     #[inline]
     pub fn new(
         parameters: &Parameters<C>,
-        spend: SecretKey<C>,
-        ephemeral_public_key: PublicKey<C>,
+        secret_spend_key: SecretKey<C>,
+        ephemeral_secret_key: SecretKey<C>,
         asset: Asset,
     ) -> Self {
-        let utxo = C::utxo(
-            &parameters.key_agreement,
-            &parameters.utxo_commitment,
-            &spend,
-            &ephemeral_public_key,
+        let utxo = parameters.utxo(
+            &ephemeral_secret_key,
+            &parameters.derive(&secret_spend_key),
             &asset,
         );
         Self {
-            void_number: C::void_number(&parameters.void_number_hash, &utxo, &spend),
-            spend,
-            ephemeral_public_key,
+            void_number: parameters.void_number(&secret_spend_key, &utxo),
+            secret_spend_key,
+            ephemeral_secret_key,
             asset,
             utxo,
         }
@@ -831,8 +826,8 @@ where
     #[inline]
     pub fn upgrade(self, proof: SenderProof<C>) -> Sender<C> {
         Sender {
-            spend: self.spend,
-            ephemeral_public_key: self.ephemeral_public_key,
+            secret_spend_key: self.secret_spend_key,
+            ephemeral_secret_key: self.ephemeral_secret_key,
             asset: self.asset,
             utxo: self.utxo,
             utxo_membership_proof: proof.utxo_membership_proof,
@@ -903,10 +898,10 @@ where
     C: Configuration,
 {
     /// Secret Spend Key
-    spend: SecretKey<C>,
+    secret_spend_key: SecretKey<C>,
 
-    /// Ephemeral Public Spend Key
-    ephemeral_public_key: PublicKey<C>,
+    /// Ephemeral Secret Key
+    ephemeral_secret_key: SecretKey<C>,
 
     /// Asset
     asset: Asset,
@@ -948,8 +943,8 @@ where
     #[inline]
     pub fn downgrade(self) -> PreSender<C> {
         PreSender {
-            spend: self.spend,
-            ephemeral_public_key: self.ephemeral_public_key,
+            secret_spend_key: self.secret_spend_key,
+            ephemeral_secret_key: self.ephemeral_secret_key,
             asset: self.asset,
             utxo: self.utxo,
             void_number: self.void_number,
@@ -972,10 +967,10 @@ where
     C: Configuration,
 {
     /// Secret Spend Key
-    spend: SecretKeyVar<C>,
+    secret_spend_key: SecretKeyVar<C>,
 
-    /// Ephemeral Public Spend Key
-    ephemeral_public_key: PublicKeyVar<C>,
+    /// Ephemeral Secret Key
+    ephemeral_secret_key: SecretKeyVar<C>,
 
     /// Asset
     asset: AssetVar<C>,
@@ -991,30 +986,26 @@ impl<C> SenderVar<C>
 where
     C: Configuration,
 {
-    /// Returns the asset for `self`, checking if `self` is well-formed in the given constraint
-    /// system `compiler`.
+    /// Returns the asset for `self`, checking if `self` is well-formed in the given `compiler`.
     #[inline]
     pub fn get_well_formed_asset(
         self,
         parameters: &FullParametersVar<C>,
         compiler: &mut C::Compiler,
     ) -> AssetVar<C> {
-        let utxo = C::utxo_var(
-            &parameters.key_agreement,
-            &parameters.utxo_commitment,
-            &self.spend,
-            &self.ephemeral_public_key,
+        let public_spend_key = parameters.derive(&self.secret_spend_key, compiler);
+        let utxo = parameters.utxo(
+            &self.ephemeral_secret_key,
+            &public_spend_key,
             &self.asset,
             compiler,
         );
-        let is_valid_proof = self.utxo_membership_proof.verify_in(
+        self.utxo_membership_proof.assert_valid(
             &parameters.utxo_accumulator_model,
             &utxo,
             compiler,
         );
-        compiler.assert(is_valid_proof);
-        let void_number =
-            C::void_number_var(&parameters.void_number_hash, &utxo, &self.spend, compiler);
+        let void_number = parameters.void_number(&self.secret_spend_key, &utxo, compiler);
         compiler.assert_eq(&self.void_number, &void_number);
         self.asset
     }
@@ -1029,8 +1020,8 @@ where
     #[inline]
     fn new_known(this: &Self::Type, compiler: &mut C::Compiler) -> Self {
         Self {
-            spend: this.spend.as_known(compiler),
-            ephemeral_public_key: this.ephemeral_public_key.as_known::<Secret, _>(compiler),
+            secret_spend_key: this.secret_spend_key.as_known(compiler),
+            ephemeral_secret_key: this.ephemeral_secret_key.as_known(compiler),
             asset: this.asset.as_known(compiler),
             utxo_membership_proof: this.utxo_membership_proof.as_known(compiler),
             void_number: this.void_number.as_known(compiler),
@@ -1040,8 +1031,8 @@ where
     #[inline]
     fn new_unknown(compiler: &mut C::Compiler) -> Self {
         Self {
-            spend: compiler.allocate_unknown(),
-            ephemeral_public_key: compiler.allocate_unknown::<Secret, _>(),
+            secret_spend_key: compiler.allocate_unknown(),
+            ephemeral_secret_key: compiler.allocate_unknown(),
             asset: compiler.allocate_unknown(),
             utxo_membership_proof: compiler.allocate_unknown(),
             void_number: compiler.allocate_unknown(),
@@ -1110,7 +1101,7 @@ where
     /// # Implementation Note
     ///
     /// This method, by defualt, calls the [`spend_all`] method on an iterator of length one
-    /// containing `(utxo, note)`. Either [`spend`] or [`spend_all`] can be implemented
+    /// containing `(utxo, encrypted_note)`. Either [`spend`] or [`spend_all`] can be implemented
     /// depending on which is more efficient.
     ///
     /// [`spend`]: Self::spend
@@ -1286,6 +1277,41 @@ where
     }
 }
 
+///
+pub trait WithSize {
+    ///
+    const SIZE: usize;
+}
+
+/// Note
+pub struct Note<C>
+where
+    C: Configuration + ?Sized,
+{
+    /// Ephemeral Secret Key
+    pub ephemeral_secret_key: SecretKey<C>,
+
+    /// Asset
+    pub asset: Asset,
+}
+
+impl<C> Note<C>
+where
+    C: Configuration,
+{
+    /// Number of Bytes Required to Represent [`Note`]
+    pub const SIZE: usize = SecretKey::<C>::SIZE + Asset::SIZE;
+
+    /// Builds a new plaintext [`Note`] from `ephemeral_secret_key` and `asset`.
+    #[inline]
+    pub fn new(ephemeral_secret_key: SecretKey<C>, asset: Asset) -> Self {
+        Self {
+            ephemeral_secret_key,
+            asset,
+        }
+    }
+}
+
 /// Receiver
 pub struct Receiver<C>
 where
@@ -1295,7 +1321,7 @@ where
     ephemeral_secret_key: SecretKey<C>,
 
     /// Public Spend Key
-    spend: PublicKey<C>,
+    public_spend_key: PublicKey<C>,
 
     /// Asset
     asset: Asset,
@@ -1303,39 +1329,33 @@ where
     /// Unspent Transaction Output
     utxo: Utxo<C>,
 
-    /// Encrypted Asset Note
-    note: EncryptedNote<C>,
+    /// Encrypted Note
+    encrypted_note: EncryptedNote<C>,
 }
 
 impl<C> Receiver<C>
 where
     C: Configuration,
 {
-    /// Builds a new [`Receiver`] for `spend` to receive `asset` with `ephemeral_secret_key`.
+    ///
     #[inline]
     pub fn new(
         parameters: &Parameters<C>,
         ephemeral_secret_key: SecretKey<C>,
-        spend: PublicKey<C>,
-        view: PublicKey<C>,
+        public_spend_key: PublicKey<C>,
+        public_view_key: PublicKey<C>,
         asset: Asset,
     ) -> Self {
         Self {
-            utxo: C::utxo(
-                &parameters.key_agreement,
-                &parameters.utxo_commitment,
+            utxo: parameters.utxo(&ephemeral_secret_key, &public_spend_key, &asset),
+            encrypted_note: EncryptedMessage::new(
+                &parameters.note_encryption_scheme,
+                &public_view_key,
                 &ephemeral_secret_key,
-                &spend,
-                &asset,
-            ),
-            note: EncryptedMessage::new(
-                &parameters.key_agreement,
-                &view,
-                &ephemeral_secret_key,
-                asset,
+                Note::new(ephemeral_secret_key.clone(), asset),
             ),
             ephemeral_secret_key,
-            spend,
+            public_spend_key,
             asset,
         }
     }
@@ -1343,7 +1363,7 @@ where
     /// Returns the ephemeral public key associated to `self`.
     #[inline]
     pub fn ephemeral_public_key(&self) -> &PublicKey<C> {
-        self.note.ephemeral_public_key()
+        self.encrypted_note.ephemeral_public_key()
     }
 
     /// Returns `true` whenever `self.utxo` and `rhs.utxo` can be inserted in any order into the
@@ -1361,7 +1381,7 @@ where
     pub fn into_post(self) -> ReceiverPost<C> {
         ReceiverPost {
             utxo: self.utxo,
-            note: self.note,
+            encrypted_note: self.encrypted_note,
         }
     }
 }
@@ -1374,11 +1394,8 @@ where
     /// Ephemeral Secret Spend Key
     ephemeral_secret_key: SecretKeyVar<C>,
 
-    /// Ephemeral Public Spend Key
-    ephemeral_public_key: PublicKeyVar<C>,
-
     /// Public Spend Key
-    spend: PublicKeyVar<C>,
+    public_spend_key: PublicKeyVar<C>,
 
     /// Asset
     asset: AssetVar<C>,
@@ -1399,17 +1416,9 @@ where
         parameters: &FullParametersVar<C>,
         compiler: &mut C::Compiler,
     ) -> AssetVar<C> {
-        let ephemeral_public_key = C::ephemeral_public_key_var(
-            &parameters.key_agreement,
+        let utxo = parameters.utxo(
             &self.ephemeral_secret_key,
-            compiler,
-        );
-        compiler.assert_eq(&self.ephemeral_public_key, &ephemeral_public_key);
-        let utxo = C::utxo_var(
-            &parameters.key_agreement,
-            &parameters.utxo_commitment,
-            &self.ephemeral_secret_key,
-            &self.spend,
+            &self.public_spend_key,
             &self.asset,
             compiler,
         );
@@ -1428,8 +1437,7 @@ where
     fn new_known(this: &Self::Type, compiler: &mut C::Compiler) -> Self {
         Self {
             ephemeral_secret_key: this.ephemeral_secret_key.as_known(compiler),
-            ephemeral_public_key: this.ephemeral_public_key().as_known::<Public, _>(compiler),
-            spend: this.spend.as_known::<Secret, _>(compiler),
+            public_spend_key: this.public_spend_key.as_known(compiler),
             asset: this.asset.as_known(compiler),
             utxo: this.utxo.as_known::<Public, _>(compiler),
         }
@@ -1439,8 +1447,7 @@ where
     fn new_unknown(compiler: &mut C::Compiler) -> Self {
         Self {
             ephemeral_secret_key: compiler.allocate_unknown(),
-            ephemeral_public_key: compiler.allocate_unknown::<Public, _>(),
-            spend: compiler.allocate_unknown::<Secret, _>(),
+            public_spend_key: compiler.allocate_unknown(),
             asset: compiler.allocate_unknown(),
             utxo: compiler.allocate_unknown::<Public, _>(),
         }
@@ -1475,7 +1482,7 @@ where
     /// Existence of such a UTXO could indicate a possible double-spend.
     fn is_not_registered(&self, utxo: Utxo<C>) -> Option<Self::ValidUtxo>;
 
-    /// Posts the `utxo` and `note` to the ledger, registering the asset.
+    /// Posts the `utxo` and `encrypted_note` to the ledger, registering the asset.
     ///
     /// # Safety
     ///
@@ -1485,8 +1492,8 @@ where
     /// # Implementation Note
     ///
     /// This method, by default, calls the [`register_all`] method on an iterator of length one
-    /// containing `(utxo, note)`. Either [`register`] or [`register_all`] can be implemented
-    /// depending on which is more efficient.
+    /// containing `(utxo, encrypted_note)`. Either [`register`] or [`register_all`] can be
+    /// implemented depending on which is more efficient.
     ///
     /// [`register`]: Self::register
     /// [`register_all`]: Self::register_all
@@ -1494,10 +1501,10 @@ where
     fn register(
         &mut self,
         utxo: Self::ValidUtxo,
-        note: EncryptedNote<C>,
+        encrypted_note: EncryptedNote<C>,
         super_key: &Self::SuperPostingKey,
     ) {
-        self.register_all(iter::once((utxo, note)), super_key)
+        self.register_all(iter::once((utxo, encrypted_note)), super_key)
     }
 
     /// Posts all of the [`Utxo`] and [`EncryptedNote`] to the ledger, registering the assets.
@@ -1521,8 +1528,8 @@ where
     where
         I: IntoIterator<Item = (Self::ValidUtxo, EncryptedNote<C>)>,
     {
-        for (utxo, note) in iter {
-            self.register(utxo, note, super_key)
+        for (utxo, encrypted_note) in iter {
+            self.register(utxo, encrypted_note, super_key)
         }
     }
 }
@@ -1576,7 +1583,7 @@ where
     pub utxo: Utxo<C>,
 
     /// Encrypted Note
-    pub note: EncryptedNote<C>,
+    pub encrypted_note: EncryptedNote<C>,
 }
 
 impl<C> ReceiverPost<C>
@@ -1586,7 +1593,7 @@ where
     /// Returns the ephemeral public key associated to `self`.
     #[inline]
     pub fn ephemeral_public_key(&self) -> &PublicKey<C> {
-        self.note.ephemeral_public_key()
+        self.encrypted_note.ephemeral_public_key()
     }
 
     /// Extends proof public input with `self`.
@@ -1594,7 +1601,6 @@ where
     pub fn extend_input(&self, input: &mut ProofInput<C>) {
         // TODO: Add a "public part" trait that extracts the public part of `Receiver` (using
         //       `ReceiverVar` to determine the types), then generate this method automatically.
-        C::ProofSystem::extend(input, self.ephemeral_public_key());
         C::ProofSystem::extend(input, &self.utxo);
     }
 
@@ -1608,7 +1614,7 @@ where
             utxo: ledger
                 .is_not_registered(self.utxo)
                 .ok_or(ReceiverPostError::AssetRegistered)?,
-            note: self.note,
+            encrypted_note: self.encrypted_note,
         })
     }
 }
@@ -1623,7 +1629,7 @@ where
     utxo: L::ValidUtxo,
 
     /// Encrypted Note
-    note: EncryptedNote<C>,
+    encrypted_note: EncryptedNote<C>,
 }
 
 impl<C, L> ReceiverPostingKey<C, L>
@@ -1634,20 +1640,19 @@ where
     /// Returns the ephemeral public key associated to `self`.
     #[inline]
     pub fn ephemeral_public_key(&self) -> &PublicKey<C> {
-        self.note.ephemeral_public_key()
+        self.encrypted_note.ephemeral_public_key()
     }
 
     /// Extends proof public input with `self`.
     #[inline]
     pub fn extend_input(&self, input: &mut ProofInput<C>) {
-        C::ProofSystem::extend(input, self.ephemeral_public_key());
         C::ProofSystem::extend(input, self.utxo.as_ref());
     }
 
     /// Posts `self` to the receiver `ledger`.
     #[inline]
     pub fn post(self, super_key: &L::SuperPostingKey, ledger: &mut L) {
-        ledger.register(self.utxo, self.note, super_key);
+        ledger.register(self.utxo, self.encrypted_note, super_key);
     }
 
     /// Posts all the of the [`ReceiverPostingKey`] in `iter` to the receiver `ledger`.
@@ -1656,7 +1661,10 @@ where
     where
         I: IntoIterator<Item = Self>,
     {
-        ledger.register_all(iter.into_iter().map(move |k| (k.utxo, k.note)), super_key)
+        ledger.register_all(
+            iter.into_iter().map(move |k| (k.utxo, k.encrypted_note)),
+            super_key,
+        )
     }
 }
 

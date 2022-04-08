@@ -19,10 +19,11 @@
 use crate::{
     config::{Bls12_381_Edwards, Config, MerkleTreeConfiguration, MultiProvingContext, SecretKey},
     crypto::constraint::arkworks::Fp,
-    key::TestnetKeySecret,
+    key::{CoinType, KeySecret, Testnet, TestnetKeySecret},
 };
 use ark_ec::ProjectiveCurve;
 use ark_ff::PrimeField;
+use core::marker::PhantomData;
 use manta_accounting::{
     asset::HashAssetMap,
     key::{self, HierarchicalKeyDerivationScheme},
@@ -31,16 +32,23 @@ use manta_accounting::{
 use manta_crypto::{key::KeyDerivationFunction, merkle_tree};
 
 /// Hierarchical Key Derivation Function
-pub struct HierarchicalKeyDerivationFunction;
+#[derive(derivative::Derivative)]
+#[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct HierarchicalKeyDerivationFunction<C = Testnet>(PhantomData<C>)
+where
+    C: CoinType;
 
-impl KeyDerivationFunction for HierarchicalKeyDerivationFunction {
-    type Key = <TestnetKeySecret as HierarchicalKeyDerivationScheme>::SecretKey;
+impl<C> KeyDerivationFunction for HierarchicalKeyDerivationFunction<C>
+where
+    C: CoinType,
+{
+    type Key = <KeySecret<C> as HierarchicalKeyDerivationScheme>::SecretKey;
     type Output = SecretKey;
 
     #[inline]
-    fn derive(secret_key: &Self::Key) -> Self::Output {
+    fn derive_in(&self, key: &Self::Key, _: &mut ()) -> Self::Output {
         // FIXME: Check that this conversion is logical/safe.
-        let bytes: [u8; 32] = secret_key
+        let bytes: [u8; 32] = key
             .private_key()
             .to_bytes()
             .try_into()

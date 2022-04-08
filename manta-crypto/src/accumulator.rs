@@ -16,7 +16,7 @@
 
 //! Dynamic Cryptographic Accumulators
 
-use crate::constraint::Native;
+use crate::constraint::{ConstraintSystem, Native};
 
 /// Accumulator Membership Model
 pub trait Model<COM = ()> {
@@ -57,6 +57,22 @@ pub trait Model<COM = ()> {
         COM: Native,
     {
         self.verify_in(item, witness, output, &mut COM::compiler())
+    }
+
+    /// Asserts that the verification of the storage of `item` in the known accumulator is valid
+    /// inside the `compiler`.
+    #[inline]
+    fn assert_valid(
+        &self,
+        item: &Self::Item,
+        witness: &Self::Witness,
+        output: &Self::Output,
+        compiler: &mut COM,
+    ) where
+        COM: ConstraintSystem<Bool = Self::Verification>,
+    {
+        let is_valid_proof = self.verify_in(item, witness, output, compiler);
+        compiler.assert(is_valid_proof)
     }
 }
 
@@ -230,6 +246,16 @@ where
         COM: Native,
     {
         model.verify(item, &self.witness, &self.output)
+    }
+
+    /// Asserts that the verification of the storage of `item` in the known accumulator is valid
+    /// inside the `compiler`.
+    #[inline]
+    pub fn assert_valid(&self, model: &M, item: &M::Item, compiler: &mut COM)
+    where
+        COM: ConstraintSystem<Bool = M::Verification>,
+    {
+        model.assert_valid(item, &self.witness, &self.output, compiler)
     }
 }
 

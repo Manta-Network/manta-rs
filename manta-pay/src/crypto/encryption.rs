@@ -58,7 +58,7 @@ pub mod aes {
         type Ciphertext = Array<u8, C>;
 
         #[inline]
-        fn encrypt(key: Self::Key, plaintext: Self::Plaintext) -> Self::Ciphertext {
+        fn encrypt(&self, key: Self::Key, plaintext: Self::Plaintext) -> Self::Ciphertext {
             Array::from_unchecked(
                 Aes256Gcm::new_from_slice(&key)
                     .expect("The key has the correct size.")
@@ -68,7 +68,11 @@ pub mod aes {
         }
 
         #[inline]
-        fn decrypt(key: Self::Key, ciphertext: &Self::Ciphertext) -> Option<Self::Plaintext> {
+        fn decrypt(
+            &self,
+            key: Self::Key,
+            ciphertext: &Self::Ciphertext,
+        ) -> Option<Self::Plaintext> {
             Aes256Gcm::new_from_slice(&key)
                 .expect("The key has the correct size.")
                 .decrypt(Nonce::from_slice(Self::NONCE), ciphertext.as_ref())

@@ -29,9 +29,9 @@ impl KeyDerivationFunction for Blake2sKdf {
     type Output = [u8; 32];
 
     #[inline]
-    fn derive(secret: &Self::Key) -> Self::Output {
+    fn derive_in(&self, key: &Self::Key, _: &mut ()) -> Self::Output {
         let mut hasher = Blake2s::new();
-        hasher.update(secret);
+        hasher.update(key);
         hasher.update(b"manta kdf instantiated with blake2s hash function");
         into_array_unchecked(hasher.finalize())
     }
