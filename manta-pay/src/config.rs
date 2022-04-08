@@ -621,6 +621,7 @@ impl ProofSystemInput<Group> for ProofSystem {
 }
 
 /// Note Plaintext Mapping
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct NotePlaintextMapping;
 
 impl encryption::symmetric::PlaintextMapping<Array<u8, { Note::SIZE }>> for NotePlaintextMapping {
