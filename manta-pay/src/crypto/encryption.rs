@@ -130,18 +130,16 @@ mod test {
     use crate::config::NoteSymmetricEncryptionScheme;
     use manta_crypto::{
         encryption,
-        rand::{OsRng, Rand, RngCore},
+        rand::{OsRng, Rand},
     };
 
     /// Tests if symmetric encryption of [`Note`] decrypts properly.
     #[test]
     fn note_encryption() {
         let mut rng = OsRng;
-        let mut key = [0; 32];
-        rng.fill_bytes(&mut key);
         encryption::symmetric::test::encryption::<NoteSymmetricEncryptionScheme>(
-            &Default::default(),
-            key,
+            &rng.gen(),
+            rng.gen_bytes(),
             rng.gen(),
         );
     }

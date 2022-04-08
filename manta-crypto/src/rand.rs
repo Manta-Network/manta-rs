@@ -401,6 +401,14 @@ pub trait Rand: CryptoRng + RngCore {
         T::try_gen(self)
     }
 
+    /// Fills a buffer of `N` bytes randomly.
+    #[inline]
+    fn gen_bytes<const N: usize>(&mut self) -> [u8; N] {
+        let mut bytes = [0; N];
+        self.fill_bytes(&mut bytes);
+        bytes
+    }
+
     /// Seeds another random number generator `R` using entropy from `self`.
     #[inline]
     fn seed_rng<R>(&mut self) -> Result<R, Error>
