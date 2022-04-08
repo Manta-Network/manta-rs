@@ -127,7 +127,7 @@ pub mod aes {
 /// Test Suite
 #[cfg(test)]
 mod test {
-    use crate::config::NoteSymmetricEncryptionScheme;
+    use crate::config::{NoteEncryptionScheme, NoteSymmetricEncryptionScheme};
     use manta_crypto::{
         encryption,
         rand::{OsRng, Rand},
@@ -135,11 +135,23 @@ mod test {
 
     /// Tests if symmetric encryption of [`Note`] decrypts properly.
     #[test]
-    fn note_encryption() {
+    fn note_symmetric_encryption() {
         let mut rng = OsRng;
         encryption::symmetric::test::encryption::<NoteSymmetricEncryptionScheme>(
             &rng.gen(),
             rng.gen_bytes(),
+            rng.gen(),
+        );
+    }
+
+    /// Tests if the hybrid encryption of [`Note`] decrypts properly.
+    #[test]
+    fn note_hybrid_encryption() {
+        let mut rng = OsRng;
+        encryption::hybrid::test::encryption::<NoteEncryptionScheme>(
+            &rng.gen(),
+            &rng.gen(),
+            &rng.gen(),
             rng.gen(),
         );
     }
