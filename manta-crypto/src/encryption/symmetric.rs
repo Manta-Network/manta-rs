@@ -103,12 +103,12 @@ pub trait PlaintextMapping<P>: Sized {
     /// Plaintext Type
     type Plaintext;
 
-    /// Converts `self` into the plaintext space `P`.
-    fn into(plaintext: Self::Plaintext) -> P;
+    /// Converts `self` into the base plaintext space `P`.
+    fn into_base(plaintext: Self::Plaintext) -> P;
 
-    /// Converts from `plaintext` to [`Plaintext`](Self::Plaintext) returning `None` if the
+    /// Converts from the base `plaintext` to [`Plaintext`](Self::Plaintext) returning `None` if the
     /// conversion failed.
-    fn from(plaintext: P) -> Option<Self::Plaintext>;
+    fn from_base(plaintext: P) -> Option<Self::Plaintext>;
 }
 
 /// [`TryFrom`] Plaintext Mapping
@@ -130,12 +130,12 @@ where
     type Plaintext = Q;
 
     #[inline]
-    fn into(plaintext: Self::Plaintext) -> P {
+    fn into_base(plaintext: Self::Plaintext) -> P {
         plaintext.into()
     }
 
     #[inline]
-    fn from(plaintext: P) -> Option<Self::Plaintext> {
+    fn from_base(plaintext: P) -> Option<Self::Plaintext> {
         plaintext.try_into().ok()
     }
 }
@@ -236,12 +236,12 @@ where
 
     #[inline]
     fn encrypt(&self, key: Self::Key, plaintext: Self::Plaintext) -> Self::Ciphertext {
-        self.cipher.encrypt(key, F::into(plaintext))
+        self.cipher.encrypt(key, F::into_base(plaintext))
     }
 
     #[inline]
     fn decrypt(&self, key: Self::Key, ciphertext: &Self::Ciphertext) -> Option<Self::Plaintext> {
-        self.cipher.decrypt(key, ciphertext).and_then(F::from)
+        self.cipher.decrypt(key, ciphertext).and_then(F::from_base)
     }
 }
 

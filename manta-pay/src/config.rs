@@ -628,7 +628,7 @@ impl encryption::symmetric::PlaintextMapping<Array<u8, { Note::SIZE }>> for Note
     type Plaintext = Note;
 
     #[inline]
-    fn into(plaintext: Self::Plaintext) -> Array<u8, { Note::SIZE }> {
+    fn into_base(plaintext: Self::Plaintext) -> Array<u8, { Note::SIZE }> {
         // TODO: Use a serialization method to do this.
         let mut bytes = Vec::new();
         bytes.append(&mut field_element_as_bytes(
@@ -641,7 +641,7 @@ impl encryption::symmetric::PlaintextMapping<Array<u8, { Note::SIZE }>> for Note
     }
 
     #[inline]
-    fn from(plaintext: Array<u8, { Note::SIZE }>) -> Option<Self::Plaintext> {
+    fn from_base(plaintext: Array<u8, { Note::SIZE }>) -> Option<Self::Plaintext> {
         // TODO: Use a deserialization method to do this.
         let mut slice = plaintext.as_ref();
         Some(Note {
