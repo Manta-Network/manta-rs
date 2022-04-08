@@ -46,7 +46,10 @@ use manta_crypto::{
     hash::ArrayHashFunction,
     key, merkle_tree,
 };
-use manta_util::codec::{Decode, DecodeError, Encode, Read, Write};
+use manta_util::{
+    codec::{Decode, DecodeError, Encode, Read, Write},
+    SizeLimit,
+};
 
 #[cfg(feature = "bs58")]
 use alloc::string::String;
@@ -622,8 +625,8 @@ pub type NoteEncryptionScheme = encryption::hybrid::Hybrid<
         Blake2sKdf,
     >,
     encryption::symmetric::Map<
-        FixedNonceAesGcm<{ Asset::SIZE }, { aes::ciphertext_size(Asset::SIZE) }>,
-        Asset,
+        FixedNonceAesGcm<{ Note::SIZE }, { aes::ciphertext_size(Note::SIZE) }>,
+        Note,
     >,
 >;
 
@@ -674,6 +677,9 @@ pub type Parameters = transfer::Parameters<Config>;
 
 /// Full Transfer Parameters
 pub type FullParameters<'p> = transfer::FullParameters<'p, Config>;
+
+/// Note Type
+pub type Note = transfer::Note<Config>;
 
 /// Encrypted Note Type
 pub type EncryptedNote = transfer::EncryptedNote<Config>;

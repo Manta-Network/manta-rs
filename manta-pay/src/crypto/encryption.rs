@@ -90,18 +90,39 @@ pub mod aes {
             encryption,
             rand::{OsRng, RngCore},
         };
+        use manta_util::Array;
+
+        /// Tests the encryption of a mapped
+        #[inline]
+        fn encryption<T>()
+        where
+            T: SizeLimit + Into<Array<u8, T::SIZE>> + TryFrom<Array<u8, T::SIZE>>,
+        {
+            let mut rng = OsRng;
+            let mut key = [0; 32];
+            rng.fill_bytes(&mut key);
+            let mut plaintext = [0; T::SIZE];
+            rng.fill_bytes(&mut plaintext);
+            encryption::symmetric::test::encryption::<
+                encryption::symmetric::Map<
+                    FixedNonceAesGcm<{ T::SIZE }, { ciphertext_size(T::SIZE) }>,
+                    T,
+                >,
+            >(key, Array(plaintext));
+        }
 
         /// Tests if symmetric encryption of [`Asset`] decrypts properly.
         #[test]
         fn asset_encryption() {
-            let mut rng = OsRng;
-            let mut key = [0; 32];
-            rng.fill_bytes(&mut key);
-            let mut plaintext = [0; Asset::SIZE];
-            rng.fill_bytes(&mut plaintext);
-            encryption::symmetric::test::encryption::<
-                FixedNonceAesGcm<{ Asset::SIZE }, { ciphertext_size(Asset::SIZE) }>,
-            >(key, Array(plaintext));
+            test::encryption::<Asset>();
         }
+
+        /* TODO:
+        /// Tests if symmetric encryption of [`Note`] decrypts properly.
+        #[test]
+        fn note_encryption() {
+            test::encryption::<Note>();
+        }
+        */
     }
 }

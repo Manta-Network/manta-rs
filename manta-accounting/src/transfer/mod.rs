@@ -42,6 +42,7 @@ use manta_crypto::{
     key::{KeyAgreementScheme, KeyDerivationFunction},
     rand::{CryptoRng, RngCore, Sample},
 };
+use manta_util::{Array, SizeLimit};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
@@ -138,7 +139,7 @@ pub trait VoidNumberCommitmentScheme<COM = ()> {
 /// Transfer Configuration
 pub trait Configuration {
     /// Secret Key Type
-    type SecretKey: Clone + Sample + WithSize;
+    type SecretKey: Clone + Sample + SizeLimit;
 
     /// Public Key Type
     type PublicKey: Clone;
@@ -1277,12 +1278,6 @@ where
     }
 }
 
-///
-pub trait WithSize {
-    ///
-    const SIZE: usize;
-}
-
 /// Note
 pub struct Note<C>
 where
@@ -1299,9 +1294,6 @@ impl<C> Note<C>
 where
     C: Configuration,
 {
-    /// Number of Bytes Required to Represent [`Note`]
-    pub const SIZE: usize = SecretKey::<C>::SIZE + Asset::SIZE;
-
     /// Builds a new plaintext [`Note`] from `ephemeral_secret_key` and `asset`.
     #[inline]
     pub fn new(ephemeral_secret_key: SecretKey<C>, asset: Asset) -> Self {
@@ -1310,6 +1302,13 @@ where
             asset,
         }
     }
+}
+
+impl<C> SizeLimit for Note<C>
+where
+    C: Configuration,
+{
+    const SIZE: usize = SecretKey::<C>::SIZE + Asset::SIZE;
 }
 
 /// Receiver

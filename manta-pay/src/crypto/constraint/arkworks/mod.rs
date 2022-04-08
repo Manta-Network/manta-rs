@@ -30,7 +30,10 @@ use manta_crypto::{
     },
     rand::{CryptoRng, RngCore, Sample, Standard},
 };
-use manta_util::codec::{Decode, DecodeError, Encode, Read, Write};
+use manta_util::{
+    codec::{Decode, DecodeError, Encode, Read, Write},
+    SizeLimit,
+};
 
 #[cfg(feature = "scale")]
 use {ark_ff::FpParameters, manta_util::byte_count};
@@ -186,6 +189,13 @@ where
         let _ = distribution;
         Self(F::rand(rng))
     }
+}
+
+impl<F> SizeLimit for Fp<F>
+where
+    F: PrimeField,
+{
+    const SIZE: usize = byte_count(<F::Params as FpParameters>::MODULUS_BITS) as usize;
 }
 
 impl<F> TryFrom<Vec<u8>> for Fp<F>
