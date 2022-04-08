@@ -51,7 +51,6 @@ where
         (*self).hash_in(input, compiler)
     }
 
-    /// Computes the hash over `input`.
     #[inline]
     fn hash(&self, input: &Self::Input) -> Self::Output
     where
