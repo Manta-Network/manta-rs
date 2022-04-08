@@ -85,8 +85,8 @@ pub struct ParametersDistribution<E = (), U = (), V = ()> {
     /// UTXO Commitment Scheme Distribution
     pub utxo_commitment: U,
 
-    /// Void Number Hash Function Distribution
-    pub void_number_hash: V,
+    /// Void Number Commitment Scheme Distribution
+    pub void_number_commitment_scheme: V,
 }
 
 impl<E, U, V, C> Sample<ParametersDistribution<E, U, V>> for Parameters<C>
@@ -104,7 +104,7 @@ where
         Parameters::new(
             rng.sample(distribution.note_encryption_scheme),
             rng.sample(distribution.utxo_commitment),
-            rng.sample(distribution.void_number_hash),
+            rng.sample(distribution.void_number_commitment_scheme),
         )
     }
 }

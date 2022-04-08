@@ -569,8 +569,8 @@ where
     #[inline]
     fn is_asset_unspent(
         parameters: &Parameters<C>,
-        ephemeral_secret_key: &SecretKey<C>,
         secret_spend_key: &SecretKey<C>,
+        ephemeral_secret_key: &SecretKey<C>,
         asset: Asset,
         void_numbers: &mut Vec<VoidNumber<C>>,
         utxo_accumulator: &mut C::UtxoAccumulator,
@@ -624,8 +624,8 @@ where
                 |asset| match self.accounts.get_default().spend_key(*index) {
                     Some(secret_spend_key) => Self::is_asset_unspent(
                         parameters,
-                        ephemeral_secret_key,
                         &secret_spend_key,
+                        ephemeral_secret_key,
                         *asset,
                         &mut void_numbers,
                         &mut self.utxo_accumulator,
