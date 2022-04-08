@@ -17,8 +17,15 @@
 //! Cryptographic Key Primitive Implementations
 
 use blake2::{Blake2s, Digest};
-use manta_crypto::key::KeyDerivationFunction;
-use manta_util::into_array_unchecked;
+use core::convert::Infallible;
+use manta_crypto::{
+    key::KeyDerivationFunction,
+    rand::{CryptoRng, RngCore, Sample},
+};
+use manta_util::{
+    codec::{Decode, DecodeError, Encode, Read, Write},
+    into_array_unchecked,
+};
 
 /// Blake2s KDF
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -34,5 +41,40 @@ impl KeyDerivationFunction for Blake2sKdf {
         hasher.update(key);
         hasher.update(b"manta kdf instantiated with blake2s hash function");
         into_array_unchecked(hasher.finalize())
+    }
+}
+
+impl Decode for Blake2sKdf {
+    type Error = Infallible;
+
+    #[inline]
+    fn decode<R>(reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
+    where
+        R: Read,
+    {
+        let _ = reader;
+        Ok(Self)
+    }
+}
+
+impl Encode for Blake2sKdf {
+    #[inline]
+    fn encode<W>(&self, writer: W) -> Result<(), W::Error>
+    where
+        W: Write,
+    {
+        let _ = writer;
+        Ok(())
+    }
+}
+
+impl Sample for Blake2sKdf {
+    #[inline]
+    fn sample<R>(distribution: (), rng: &mut R) -> Self
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        let _ = (distribution, rng);
+        Self
     }
 }

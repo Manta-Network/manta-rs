@@ -116,8 +116,10 @@ where
 /// Key Derivation Function Adapters
 pub mod kdf {
     use super::*;
+    use crate::rand::{CryptoRng, RngCore, Sample};
     use alloc::vec::Vec;
     use core::marker::PhantomData;
+    use manta_util::codec::{Decode, DecodeError, Encode, Read, Write};
 
     #[cfg(feature = "serde")]
     use manta_util::serde::{Deserialize, Serialize};
@@ -168,6 +170,56 @@ pub mod kdf {
         __: PhantomData<(T, COM)>,
     }
 
+    impl<T, F, COM> FromByteSliceRef<T, F, COM>
+    where
+        T: AsRef<[u8]>,
+        F: KeyDerivationFunction<COM, Key = [u8]>,
+    {
+        /// Builds a new [`FromByteSliceRef`] adapter for `key_derivation_function`.
+        #[inline]
+        pub fn new(key_derivation_function: F) -> Self {
+            Self {
+                key_derivation_function,
+                __: PhantomData,
+            }
+        }
+    }
+
+    impl<T, F> Decode for FromByteSliceRef<T, F>
+    where
+        T: AsRef<[u8]>,
+        F: Decode + KeyDerivationFunction<Key = [u8]>,
+    {
+        // NOTE: We use a blank error here for simplicity. This trait will be removed in the future
+        //       anyways. See https://github.com/Manta-Network/manta-rs/issues/27.
+        type Error = ();
+
+        #[inline]
+        fn decode<R>(mut reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
+        where
+            R: Read,
+        {
+            Ok(Self::new(
+                F::decode(&mut reader).map_err(|err| err.map_decode(|_| ()))?,
+            ))
+        }
+    }
+
+    impl<T, F> Encode for FromByteSliceRef<T, F>
+    where
+        T: AsRef<[u8]>,
+        F: Encode + KeyDerivationFunction<Key = [u8]>,
+    {
+        #[inline]
+        fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
+        where
+            W: Write,
+        {
+            self.key_derivation_function.encode(&mut writer)?;
+            Ok(())
+        }
+    }
+
     impl<T, F, COM> KeyDerivationFunction<COM> for FromByteSliceRef<T, F, COM>
     where
         T: AsRef<[u8]>,
@@ -180,6 +232,20 @@ pub mod kdf {
         fn derive_in(&self, key: &Self::Key, compiler: &mut COM) -> Self::Output {
             self.key_derivation_function
                 .derive_in(key.as_ref(), compiler)
+        }
+    }
+
+    impl<T, F, D> Sample<D> for FromByteSliceRef<T, F>
+    where
+        T: AsRef<[u8]>,
+        F: KeyDerivationFunction<Key = [u8]> + Sample<D>,
+    {
+        #[inline]
+        fn sample<R>(distribution: D, rng: &mut R) -> Self
+        where
+            R: CryptoRng + RngCore + ?Sized,
+        {
+            Self::new(F::sample(distribution, rng))
         }
     }
 
@@ -209,6 +275,56 @@ pub mod kdf {
         __: PhantomData<(T, COM)>,
     }
 
+    impl<T, F, COM> FromByteVector<T, F, COM>
+    where
+        T: AsBytes,
+        F: KeyDerivationFunction<COM, Key = [u8]>,
+    {
+        /// Builds a new [`FromByteVector`] adapter for `key_derivation_function`.
+        #[inline]
+        pub fn new(key_derivation_function: F) -> Self {
+            Self {
+                key_derivation_function,
+                __: PhantomData,
+            }
+        }
+    }
+
+    impl<T, F> Decode for FromByteVector<T, F>
+    where
+        T: AsBytes,
+        F: Decode + KeyDerivationFunction<Key = [u8]>,
+    {
+        // NOTE: We use a blank error here for simplicity. This trait will be removed in the future
+        //       anyways. See https://github.com/Manta-Network/manta-rs/issues/27.
+        type Error = ();
+
+        #[inline]
+        fn decode<R>(mut reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
+        where
+            R: Read,
+        {
+            Ok(Self::new(
+                F::decode(&mut reader).map_err(|err| err.map_decode(|_| ()))?,
+            ))
+        }
+    }
+
+    impl<T, F> Encode for FromByteVector<T, F>
+    where
+        T: AsBytes,
+        F: Encode + KeyDerivationFunction<Key = [u8]>,
+    {
+        #[inline]
+        fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
+        where
+            W: Write,
+        {
+            self.key_derivation_function.encode(&mut writer)?;
+            Ok(())
+        }
+    }
+
     impl<T, F, COM> KeyDerivationFunction<COM> for FromByteVector<T, F, COM>
     where
         T: AsBytes,
@@ -221,6 +337,20 @@ pub mod kdf {
         fn derive_in(&self, key: &Self::Key, compiler: &mut COM) -> Self::Output {
             self.key_derivation_function
                 .derive_in(&key.as_bytes(), compiler)
+        }
+    }
+
+    impl<T, F, D> Sample<D> for FromByteVector<T, F>
+    where
+        T: AsBytes,
+        F: KeyDerivationFunction<Key = [u8]> + Sample<D>,
+    {
+        #[inline]
+        fn sample<R>(distribution: D, rng: &mut R) -> Self
+        where
+            R: CryptoRng + RngCore + ?Sized,
+        {
+            Self::new(F::sample(distribution, rng))
         }
     }
 }

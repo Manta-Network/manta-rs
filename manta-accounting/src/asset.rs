@@ -39,9 +39,9 @@ use core::{
 use derive_more::{Add, AddAssign, Display, From, Sub, SubAssign, Sum};
 use manta_crypto::{
     constraint::{Allocator, Secret, ValueSource, Variable},
-    rand::{CryptoRng, Rand, RngCore, Sample, Standard},
+    rand::{CryptoRng, Rand, RngCore, Sample},
 };
-use manta_util::{into_array_unchecked, Array};
+use manta_util::{into_array_unchecked, Array, SizeLimit};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
@@ -125,6 +125,10 @@ where
     {
         Self(rng.sample(distribution))
     }
+}
+
+impl SizeLimit for AssetId {
+    const SIZE: usize = Self::SIZE;
 }
 
 /// [`AssetValue`] Base Type
@@ -252,6 +256,10 @@ where
     {
         Self(rng.sample(distribution))
     }
+}
+
+impl SizeLimit for AssetValue {
+    const SIZE: usize = Self::SIZE;
 }
 
 impl Sub<AssetValueType> for AssetValue {
@@ -452,13 +460,17 @@ impl<I, V> From<Asset<I, V>> for (I, V) {
 
 impl Sample for Asset {
     #[inline]
-    fn sample<R>(distribution: Standard, rng: &mut R) -> Self
+    fn sample<R>(distribution: (), rng: &mut R) -> Self
     where
         R: CryptoRng + RngCore + ?Sized,
     {
         let _ = distribution;
         Self::new(rng.gen(), rng.gen())
     }
+}
+
+impl SizeLimit for Asset {
+    const SIZE: usize = Self::SIZE;
 }
 
 impl<I, V> Sub<V> for Asset<I, V>
@@ -682,6 +694,13 @@ impl From<AssetList> for Vec<Asset> {
     }
 }
 
+impl From<Vec<Asset>> for AssetList {
+    #[inline]
+    fn from(vector: Vec<Asset>) -> Self {
+        Self::from_iter(iter::once(vector))
+    }
+}
+
 impl FromIterator<Asset> for AssetList {
     #[inline]
     fn from_iter<I>(iter: I) -> Self
@@ -690,6 +709,32 @@ impl FromIterator<Asset> for AssetList {
     {
         let mut list = Self::new();
         iter.into_iter().for_each(|a| list.deposit(a));
+        list
+    }
+}
+
+impl FromIterator<AssetList> for AssetList {
+    #[inline]
+    fn from_iter<I>(iter: I) -> Self
+    where
+        I: IntoIterator<Item = AssetList>,
+    {
+        iter.into_iter().map::<Vec<_>, _>(Into::into).collect()
+    }
+}
+
+impl FromIterator<Vec<Asset>> for AssetList {
+    #[inline]
+    fn from_iter<I>(iter: I) -> Self
+    where
+        I: IntoIterator<Item = Vec<Asset>>,
+    {
+        let mut list = Self::new();
+        for item in iter {
+            for asset in item {
+                list.deposit(asset);
+            }
+        }
         list
     }
 }

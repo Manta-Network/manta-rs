@@ -24,8 +24,15 @@ pub mod aes {
         aead::{Aead, NewAead},
         Aes256Gcm, Nonce,
     };
-    use manta_crypto::encryption::symmetric::SymmetricKeyEncryptionScheme;
-    use manta_util::Array;
+    use core::convert::Infallible;
+    use manta_crypto::{
+        encryption::symmetric::SymmetricKeyEncryptionScheme,
+        rand::{CryptoRng, RngCore, Sample},
+    };
+    use manta_util::{
+        codec::{Decode, DecodeError, Encode, Read, Write},
+        Array,
+    };
 
     /// AES-GCM Authentication Tag Size
     #[allow(clippy::cast_possible_truncation)] // NOTE: GCM Tag Size should be smaller than `2^32`.
@@ -81,48 +88,61 @@ pub mod aes {
         }
     }
 
-    /// Test Suite
-    #[cfg(test)]
-    mod test {
-        use super::*;
-        use manta_accounting::asset::Asset;
-        use manta_crypto::{
-            encryption,
-            rand::{OsRng, RngCore},
-        };
-        use manta_util::Array;
+    impl<const P: usize, const C: usize> Decode for FixedNonceAesGcm<P, C> {
+        type Error = Infallible;
 
-        /// Tests the encryption of a mapped
         #[inline]
-        fn encryption<T>()
+        fn decode<R>(reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
         where
-            T: SizeLimit + Into<Array<u8, T::SIZE>> + TryFrom<Array<u8, T::SIZE>>,
+            R: Read,
         {
-            let mut rng = OsRng;
-            let mut key = [0; 32];
-            rng.fill_bytes(&mut key);
-            let mut plaintext = [0; T::SIZE];
-            rng.fill_bytes(&mut plaintext);
-            encryption::symmetric::test::encryption::<
-                encryption::symmetric::Map<
-                    FixedNonceAesGcm<{ T::SIZE }, { ciphertext_size(T::SIZE) }>,
-                    T,
-                >,
-            >(key, Array(plaintext));
+            let _ = reader;
+            Ok(Self)
         }
+    }
 
-        /// Tests if symmetric encryption of [`Asset`] decrypts properly.
-        #[test]
-        fn asset_encryption() {
-            test::encryption::<Asset>();
+    impl<const P: usize, const C: usize> Encode for FixedNonceAesGcm<P, C> {
+        #[inline]
+        fn encode<W>(&self, writer: W) -> Result<(), W::Error>
+        where
+            W: Write,
+        {
+            let _ = writer;
+            Ok(())
         }
+    }
 
-        /* TODO:
-        /// Tests if symmetric encryption of [`Note`] decrypts properly.
-        #[test]
-        fn note_encryption() {
-            test::encryption::<Note>();
+    impl<const P: usize, const C: usize> Sample for FixedNonceAesGcm<P, C> {
+        #[inline]
+        fn sample<R>(distribution: (), rng: &mut R) -> Self
+        where
+            R: CryptoRng + RngCore + ?Sized,
+        {
+            let _ = (distribution, rng);
+            Self
         }
-        */
+    }
+}
+
+/// Test Suite
+#[cfg(test)]
+mod test {
+    use crate::config::NoteSymmetricEncryptionScheme;
+    use manta_crypto::{
+        encryption,
+        rand::{OsRng, Rand, RngCore},
+    };
+
+    /// Tests if symmetric encryption of [`Note`] decrypts properly.
+    #[test]
+    fn note_encryption() {
+        let mut rng = OsRng;
+        let mut key = [0; 32];
+        rng.fill_bytes(&mut key);
+        encryption::symmetric::test::encryption::<NoteSymmetricEncryptionScheme>(
+            &Default::default(),
+            key,
+            rng.gen(),
+        );
     }
 }

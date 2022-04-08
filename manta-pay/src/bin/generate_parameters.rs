@@ -70,23 +70,22 @@ pub fn main() -> io::Result<()> {
     let utxo_accumulator_model: UtxoAccumulatorModel = rng.gen();
 
     let Parameters {
-        key_agreement,
+        note_encryption_scheme,
         utxo_commitment,
-        void_number_hash,
+        void_number_commitment,
     } = &parameters;
 
     let parameters_dir = target_dir.join("parameters");
     fs::create_dir_all(&parameters_dir)?;
 
-    key_agreement
+    note_encryption_scheme
         .encode(IoWriter(
             OpenOptions::new()
                 .create(true)
                 .write(true)
-                .open(parameters_dir.join("key-agreement.dat"))?,
+                .open(parameters_dir.join("note-encryption-scheme.dat"))?,
         ))
         .unwrap();
-
     utxo_commitment
         .encode(IoWriter(
             OpenOptions::new()
@@ -95,16 +94,11 @@ pub fn main() -> io::Result<()> {
                 .open(parameters_dir.join("utxo-commitment-scheme.dat"))?,
         ))
         .unwrap();
-
-    void_number_hash
-        .encode(IoWriter(
-            OpenOptions::new()
-                .create(true)
-                .write(true)
-                .open(parameters_dir.join("void-number-hash-function.dat"))?,
-        ))
+    void_number_commitment
+        .encode(IoWriter(OpenOptions::new().create(true).write(true).open(
+            parameters_dir.join("void-number-commitment-scheme.dat"),
+        )?))
         .unwrap();
-
     utxo_accumulator_model
         .encode(IoWriter(
             OpenOptions::new()

@@ -17,7 +17,7 @@
 //! Manta-Pay Configuration
 
 use crate::crypto::{
-    constraint::arkworks::{groth16, Boolean, Fp, FpVar, R1CS},
+    constraint::arkworks::{field_element_as_bytes, groth16, Boolean, Fp, FpVar, R1CS},
     ecc,
     encryption::aes::{self, FixedNonceAesGcm},
     hash::poseidon,
@@ -25,7 +25,7 @@ use crate::crypto::{
 };
 use alloc::vec::Vec;
 use ark_ff::ToConstraintField;
-use ark_serialize::{CanonicalSerialize, SerializationError};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use blake2::{
     digest::{Update, VariableOutput},
     Blake2sVar,
@@ -48,14 +48,14 @@ use manta_crypto::{
 };
 use manta_util::{
     codec::{Decode, DecodeError, Encode, Read, Write},
-    SizeLimit,
+    into_array_unchecked, Array, SizeLimit,
 };
 
 #[cfg(feature = "bs58")]
 use alloc::string::String;
 
 #[cfg(any(feature = "test", test))]
-use manta_crypto::rand::{CryptoRng, Rand, RngCore, Sample, Standard};
+use manta_crypto::rand::{CryptoRng, Rand, RngCore, Sample};
 
 #[doc(inline)]
 pub use ark_bls12_381 as bls12_381;
@@ -66,6 +66,9 @@ pub(crate) use bls12_381_ed::EdwardsProjective as Bls12_381_Edwards;
 
 /// Pairing Curve Type
 pub type PairingCurve = Bls12_381;
+
+/// Embedded Scalar Type
+pub type EmbeddedScalarField = bls12_381_ed::Fr;
 
 /// Embedded Scalar Type
 pub type EmbeddedScalar = ecc::arkworks::Scalar<Bls12_381_Edwards>;
@@ -192,7 +195,7 @@ impl Encode for UtxoCommitmentScheme {
 #[cfg(any(feature = "test", test))] // NOTE: This is only safe in a test.
 impl Sample for UtxoCommitmentScheme {
     #[inline]
-    fn sample<R>(distribution: Standard, rng: &mut R) -> Self
+    fn sample<R>(distribution: (), rng: &mut R) -> Self
     where
         R: CryptoRng + RngCore + ?Sized,
     {
@@ -224,8 +227,8 @@ impl transfer::UtxoCommitmentScheme<Compiler> for UtxoCommitmentSchemeVar {
             [
                 &ephemeral_secret_key.0,
                 &public_spend_key.0.x, // NOTE: Group is in affine form, so we can extract `x`.
-                &asset.id.0.into(),
-                &asset.value.0.into(),
+                &asset.id.0,
+                &asset.value.0,
             ],
             compiler,
         )
@@ -294,7 +297,7 @@ impl Encode for VoidNumberCommitmentScheme {
 #[cfg(any(feature = "test", test))] // NOTE: This is only safe in a test.
 impl Sample for VoidNumberCommitmentScheme {
     #[inline]
-    fn sample<R>(distribution: Standard, rng: &mut R) -> Self
+    fn sample<R>(distribution: (), rng: &mut R) -> Self
     where
         R: CryptoRng + RngCore + ?Sized,
     {
@@ -541,8 +544,8 @@ impl merkle_tree::forest::Configuration for MerkleTreeConfiguration {
 
 #[cfg(any(feature = "test", test))]
 impl merkle_tree::test::HashParameterSampling for MerkleTreeConfiguration {
-    type LeafHashParameterDistribution = Standard;
-    type InnerHashParameterDistribution = Standard;
+    type LeafHashParameterDistribution = ();
+    type InnerHashParameterDistribution = ();
 
     #[inline]
     fn sample_leaf_hash_parameters<R>(
@@ -617,6 +620,42 @@ impl ProofSystemInput<Group> for ProofSystem {
     }
 }
 
+/// Note Plaintext Mapping
+pub struct NotePlaintextMapping;
+
+impl encryption::symmetric::PlaintextMapping<Array<u8, { Note::SIZE }>> for NotePlaintextMapping {
+    type Plaintext = Note;
+
+    #[inline]
+    fn into(plaintext: Self::Plaintext) -> Array<u8, { Note::SIZE }> {
+        // TODO: Use a serialization method to do this.
+        let mut bytes = Vec::new();
+        bytes.append(&mut field_element_as_bytes(
+            &plaintext.ephemeral_secret_key.0,
+        ));
+        bytes
+            .write(&mut plaintext.asset.into_bytes().as_slice())
+            .expect("This can never fail.");
+        Array::from_unchecked(bytes)
+    }
+
+    #[inline]
+    fn from(plaintext: Array<u8, { Note::SIZE }>) -> Option<Self::Plaintext> {
+        // TODO: Use a deserialization method to do this.
+        let mut slice = plaintext.as_ref();
+        Some(Note {
+            ephemeral_secret_key: Fp(EmbeddedScalarField::deserialize(&mut slice).ok()?),
+            asset: Asset::from_bytes(into_array_unchecked(slice)),
+        })
+    }
+}
+
+/// Note Symmetric Encryption Scheme
+pub type NoteSymmetricEncryptionScheme = encryption::symmetric::Map<
+    FixedNonceAesGcm<{ Note::SIZE }, { aes::ciphertext_size(Note::SIZE) }>,
+    NotePlaintextMapping,
+>;
+
 /// Note Encryption Scheme
 pub type NoteEncryptionScheme = encryption::hybrid::Hybrid<
     KeyAgreementScheme,
@@ -624,10 +663,7 @@ pub type NoteEncryptionScheme = encryption::hybrid::Hybrid<
         <KeyAgreementScheme as key::KeyAgreementScheme>::SharedSecret,
         Blake2sKdf,
     >,
-    encryption::symmetric::Map<
-        FixedNonceAesGcm<{ Note::SIZE }, { aes::ciphertext_size(Note::SIZE) }>,
-        Note,
-    >,
+    NoteSymmetricEncryptionScheme,
 >;
 
 /// Asset Ciphertext

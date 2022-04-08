@@ -28,7 +28,7 @@ use manta_crypto::{
         measure::Measure, Add, ConditionalSelect, Constant, ConstraintSystem, Equal, Public,
         Secret, Variable,
     },
-    rand::{CryptoRng, RngCore, Sample, Standard},
+    rand::{CryptoRng, RngCore, Sample},
 };
 use manta_util::{
     codec::{Decode, DecodeError, Encode, Read, Write},
@@ -86,7 +86,7 @@ where
         R: Read,
     {
         let mut reader = codec::ArkReader::new(reader);
-        match codec::CanonicalDeserialize::deserialize(&mut reader) {
+        match F::deserialize(&mut reader) {
             Ok(value) => reader
                 .finish()
                 .map(move |_| Self(value))
@@ -123,8 +123,7 @@ where
         I: scale_codec::Input,
     {
         Ok(Self(
-            codec::CanonicalDeserialize::deserialize(codec::ScaleCodecReader(input))
-                .map_err(|_| "Deserialization Error")?,
+            F::deserialize(codec::ScaleCodecReader(input)).map_err(|_| "Deserialization Error")?,
         ))
     }
 }
@@ -182,7 +181,7 @@ where
     F: Field,
 {
     #[inline]
-    fn sample<R>(distribution: Standard, rng: &mut R) -> Self
+    fn sample<R>(distribution: (), rng: &mut R) -> Self
     where
         R: CryptoRng + RngCore + ?Sized,
     {

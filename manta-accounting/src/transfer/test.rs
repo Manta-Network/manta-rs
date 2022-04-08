@@ -29,7 +29,7 @@ use core::fmt::Debug;
 use manta_crypto::{
     accumulator::Accumulator,
     constraint::ProofSystem,
-    rand::{CryptoRng, Rand, RngCore, Sample, Standard},
+    rand::{CryptoRng, Rand, RngCore, Sample},
 };
 use manta_util::into_array_unchecked;
 
@@ -78,7 +78,7 @@ where
 /// Parameters Distribution
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
-pub struct ParametersDistribution<E = Standard, U = Standard, V = Standard> {
+pub struct ParametersDistribution<E = (), U = (), V = ()> {
     /// Note Encryption Scheme Distribution
     pub note_encryption_scheme: E,
 
@@ -294,9 +294,9 @@ where
             .map(|v| {
                 Receiver::new(
                     parameters,
+                    parameters.derive_owned(rng.gen()),
+                    parameters.derive_owned(rng.gen()),
                     rng.gen(),
-                    parameters.derive_owned(rng.gen()),
-                    parameters.derive_owned(rng.gen()),
                     asset_id.with(*v),
                 )
             })

@@ -546,7 +546,7 @@ where
                 asset,
             } = item.plaintext;
             if let Some(void_number) =
-                parameters.check_full_asset(&ephemeral_secret_key, &keypair.spend, &asset, &utxo)
+                parameters.check_full_asset(&keypair.spend, &ephemeral_secret_key, &asset, &utxo)
             {
                 if let Some(index) = void_numbers.iter().position(move |v| v == &void_number) {
                     void_numbers.remove(index);

@@ -19,8 +19,10 @@
 use crate::{
     encryption::symmetric::SymmetricKeyEncryptionScheme,
     key::{KeyAgreementScheme, KeyDerivationFunction},
+    rand::{CryptoRng, Rand, RngCore, Sample},
 };
 use core::{fmt::Debug, hash::Hash};
+use manta_util::codec::{Decode, DecodeError, Encode, Read, Write};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
@@ -131,6 +133,86 @@ where
     }
 }
 
+impl<K, F, S> HybridPublicKeyEncryptionScheme for Hybrid<K, F, S>
+where
+    K: KeyAgreementScheme,
+    F: KeyDerivationFunction<Key = K::SharedSecret, Output = S::Key>,
+    S: SymmetricKeyEncryptionScheme,
+{
+    type KeyAgreementScheme = K;
+    type KeyDerivationFunction = F;
+
+    #[inline]
+    fn key_agreement_scheme(&self) -> &Self::KeyAgreementScheme {
+        &self.key_agreement_scheme
+    }
+
+    #[inline]
+    fn key_derivation_function(&self) -> &Self::KeyDerivationFunction {
+        &self.key_derivation_function
+    }
+}
+
+impl<K, F, S> Decode for Hybrid<K, F, S>
+where
+    K: Decode + KeyAgreementScheme,
+    F: Decode + KeyDerivationFunction<Key = K::SharedSecret, Output = S::Key>,
+    S: Decode + SymmetricKeyEncryptionScheme,
+{
+    // NOTE: We use a blank error here for simplicity. This trait will be removed in the future
+    //       anyways. See https://github.com/Manta-Network/manta-rs/issues/27.
+    type Error = ();
+
+    #[inline]
+    fn decode<R>(mut reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
+    where
+        R: Read,
+    {
+        Ok(Self::new(
+            K::decode(&mut reader).map_err(|err| err.map_decode(|_| ()))?,
+            F::decode(&mut reader).map_err(|err| err.map_decode(|_| ()))?,
+            S::decode(&mut reader).map_err(|err| err.map_decode(|_| ()))?,
+        ))
+    }
+}
+
+impl<K, F, S> Encode for Hybrid<K, F, S>
+where
+    K: Encode + KeyAgreementScheme,
+    F: Encode + KeyDerivationFunction<Key = K::SharedSecret, Output = S::Key>,
+    S: Encode + SymmetricKeyEncryptionScheme,
+{
+    #[inline]
+    fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
+    where
+        W: Write,
+    {
+        self.key_agreement_scheme.encode(&mut writer)?;
+        self.key_derivation_function.encode(&mut writer)?;
+        self.symmetric_key_encryption_scheme.encode(&mut writer)?;
+        Ok(())
+    }
+}
+
+impl<K, F, S, KD, FD, SD> Sample<(KD, FD, SD)> for Hybrid<K, F, S>
+where
+    K: KeyAgreementScheme + Sample<KD>,
+    F: KeyDerivationFunction<Key = K::SharedSecret, Output = S::Key> + Sample<FD>,
+    S: SymmetricKeyEncryptionScheme + Sample<SD>,
+{
+    #[inline]
+    fn sample<R>(distribution: (KD, FD, SD), rng: &mut R) -> Self
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        Self::new(
+            rng.sample(distribution.0),
+            rng.sample(distribution.1),
+            rng.sample(distribution.2),
+        )
+    }
+}
+
 impl<K, F, S> SymmetricKeyEncryptionScheme for Hybrid<K, F, S>
 where
     K: KeyAgreementScheme,
@@ -150,26 +232,6 @@ where
     fn decrypt(&self, key: Self::Key, ciphertext: &Self::Ciphertext) -> Option<Self::Plaintext> {
         self.symmetric_key_encryption_scheme
             .decrypt(key, ciphertext)
-    }
-}
-
-impl<K, F, S> HybridPublicKeyEncryptionScheme for Hybrid<K, F, S>
-where
-    K: KeyAgreementScheme,
-    F: KeyDerivationFunction<Key = K::SharedSecret, Output = S::Key>,
-    S: SymmetricKeyEncryptionScheme,
-{
-    type KeyAgreementScheme = K;
-    type KeyDerivationFunction = F;
-
-    #[inline]
-    fn key_agreement_scheme(&self) -> &Self::KeyAgreementScheme {
-        &self.key_agreement_scheme
-    }
-
-    #[inline]
-    fn key_derivation_function(&self) -> &Self::KeyDerivationFunction {
-        &self.key_derivation_function
     }
 }
 
@@ -215,8 +277,8 @@ where
     #[inline]
     pub fn new(
         cipher: &H,
-        public_key: &PublicKey<H>,
         ephemeral_secret_key: &SecretKey<H>,
+        public_key: &PublicKey<H>,
         plaintext: H::Plaintext,
     ) -> Self {
         Self {
@@ -378,8 +440,8 @@ pub mod test {
     {
         let decrypted_message = EncryptedMessage::<H>::new(
             cipher,
-            &cipher.key_agreement_scheme().derive(secret_key),
             ephemeral_secret_key,
+            &cipher.key_agreement_scheme().derive(secret_key),
             plaintext.clone(),
         )
         .decrypt(cipher, secret_key)

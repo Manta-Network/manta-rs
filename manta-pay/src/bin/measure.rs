@@ -18,8 +18,8 @@
 
 use manta_crypto::{
     constraint::{measure::Instrument, Allocator, Secret, ValueSource},
-    hash::HashFunction,
-    key::KeyAgreementScheme as _,
+    hash::ArrayHashFunction,
+    key::{KeyAgreementScheme as _, KeyDerivationFunction},
     rand::{Sample, SeedableRng},
 };
 use manta_pay::config::{

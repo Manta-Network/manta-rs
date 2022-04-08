@@ -16,7 +16,9 @@
 
 //! Symmetric Encryption
 
+use crate::rand::{CryptoRng, RngCore, Sample};
 use core::marker::PhantomData;
+use manta_util::codec::{Decode, DecodeError, Encode, Read, Write};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
@@ -57,12 +59,12 @@ pub trait SymmetricKeyEncryptionScheme {
         self
     }
 
-    /// Maps the plaintext space into `P` and builds a new [`SymmetricKeyEncryptionScheme`] from it.
+    /// Maps the plaintext space using `F` and builds a new [`SymmetricKeyEncryptionScheme`] from it.
     #[inline]
-    fn map<P>(self) -> Map<Self, P>
+    fn map<F>(self) -> Map<Self, F>
     where
         Self: Sized,
-        P: Into<Self::Plaintext> + TryFrom<Self::Plaintext>,
+        F: PlaintextMapping<Self::Plaintext>,
     {
         Map::new(self)
     }
@@ -87,6 +89,57 @@ where
     }
 }
 
+/// Symmetric Key Type
+pub type Key<S> = <S as SymmetricKeyEncryptionScheme>::Key;
+
+/// Plaintext Type
+pub type Plaintext<S> = <S as SymmetricKeyEncryptionScheme>::Plaintext;
+
+/// Ciphertext Type
+pub type Ciphertext<S> = <S as SymmetricKeyEncryptionScheme>::Ciphertext;
+
+/// Plaintext Mapping
+pub trait PlaintextMapping<P>: Sized {
+    /// Plaintext Type
+    type Plaintext;
+
+    /// Converts `self` into the plaintext space `P`.
+    fn into(plaintext: Self::Plaintext) -> P;
+
+    /// Converts from `plaintext` to [`Plaintext`](Self::Plaintext) returning `None` if the
+    /// conversion failed.
+    fn from(plaintext: P) -> Option<Self::Plaintext>;
+}
+
+/// [`TryFrom`] Plaintext Mapping
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde")
+)]
+#[derive(derivative::Derivative)]
+#[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct TryFromMapping<P, Q>(PhantomData<(P, Q)>)
+where
+    Q: Into<P> + TryFrom<P>;
+
+impl<P, Q> PlaintextMapping<P> for TryFromMapping<P, Q>
+where
+    Q: Into<P> + TryFrom<P>,
+{
+    type Plaintext = Q;
+
+    #[inline]
+    fn into(plaintext: Self::Plaintext) -> P {
+        plaintext.into()
+    }
+
+    #[inline]
+    fn from(plaintext: P) -> Option<Self::Plaintext> {
+        plaintext.try_into().ok()
+    }
+}
+
 /// Mapped Symmetric Encryption Scheme
 #[cfg_attr(
     feature = "serde",
@@ -95,22 +148,22 @@ where
 )]
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct Map<S, P = <S as SymmetricKeyEncryptionScheme>::Plaintext>
+pub struct Map<S, F>
 where
     S: SymmetricKeyEncryptionScheme,
-    P: Into<S::Plaintext> + TryFrom<S::Plaintext>,
+    F: PlaintextMapping<S::Plaintext>,
 {
     /// Symmetric Encryption Scheme
     cipher: S,
 
     /// Type Parameter Marker
-    __: PhantomData<P>,
+    __: PhantomData<F>,
 }
 
-impl<S, P> Map<S, P>
+impl<S, F> Map<S, F>
 where
     S: SymmetricKeyEncryptionScheme,
-    P: Into<S::Plaintext> + TryFrom<S::Plaintext>,
+    F: PlaintextMapping<S::Plaintext>,
 {
     /// Builds a new [`SymmetricKeyEncryptionScheme`] from `cipher` mapping the plaintext space over
     /// `P`.
@@ -123,25 +176,72 @@ where
     }
 }
 
-impl<S, P> SymmetricKeyEncryptionScheme for Map<S, P>
+impl<S, F> Decode for Map<S, F>
+where
+    S: Decode + SymmetricKeyEncryptionScheme,
+    F: PlaintextMapping<S::Plaintext>,
+{
+    // NOTE: We use a blank error here for simplicity. This trait will be removed in the future
+    //       anyways. See https://github.com/Manta-Network/manta-rs/issues/27.
+    type Error = ();
+
+    #[inline]
+    fn decode<R>(mut reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
+    where
+        R: Read,
+    {
+        Ok(Self::new(
+            S::decode(&mut reader).map_err(|err| err.map_decode(|_| ()))?,
+        ))
+    }
+}
+
+impl<S, F> Encode for Map<S, F>
+where
+    S: Encode + SymmetricKeyEncryptionScheme,
+    F: PlaintextMapping<S::Plaintext>,
+{
+    #[inline]
+    fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
+    where
+        W: Write,
+    {
+        self.cipher.encode(&mut writer)?;
+        Ok(())
+    }
+}
+
+impl<S, F, D> Sample<D> for Map<S, F>
+where
+    S: SymmetricKeyEncryptionScheme + Sample<D>,
+    F: PlaintextMapping<S::Plaintext>,
+{
+    #[inline]
+    fn sample<R>(distribution: D, rng: &mut R) -> Self
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        Self::new(S::sample(distribution, rng))
+    }
+}
+
+impl<S, F> SymmetricKeyEncryptionScheme for Map<S, F>
 where
     S: SymmetricKeyEncryptionScheme,
-    P: Into<S::Plaintext> + TryFrom<S::Plaintext>,
+    F: PlaintextMapping<S::Plaintext>,
 {
     type Key = S::Key;
-    type Plaintext = P;
+    type Plaintext = F::Plaintext;
     type Ciphertext = S::Ciphertext;
 
     #[inline]
     fn encrypt(&self, key: Self::Key, plaintext: Self::Plaintext) -> Self::Ciphertext {
-        self.cipher.encrypt(key, plaintext.into())
+        self.cipher.encrypt(key, F::into(plaintext))
     }
 
     #[inline]
     fn decrypt(&self, key: Self::Key, ciphertext: &Self::Ciphertext) -> Option<Self::Plaintext> {
-        self.cipher
-            .decrypt(key, ciphertext)
-            .and_then(move |p| p.try_into().ok())
+        self.cipher.decrypt(key, ciphertext).and_then(F::from)
     }
 }
 

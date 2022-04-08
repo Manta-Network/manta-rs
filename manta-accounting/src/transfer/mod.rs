@@ -31,7 +31,7 @@
 
 use crate::asset::{Asset, AssetId, AssetValue};
 use alloc::vec::Vec;
-use core::{fmt::Debug, hash::Hash, iter, marker::PhantomData};
+use core::{fmt::Debug, hash::Hash, iter, marker::PhantomData, ops::Deref};
 use manta_crypto::{
     accumulator::{Accumulator, MembershipProof, Model},
     constraint::{
@@ -42,7 +42,7 @@ use manta_crypto::{
     key::{KeyAgreementScheme, KeyDerivationFunction},
     rand::{CryptoRng, RngCore, Sample},
 };
-use manta_util::{Array, SizeLimit};
+use manta_util::SizeLimit;
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
@@ -454,8 +454,8 @@ where
     #[inline]
     pub fn check_full_asset(
         &self,
-        ephemeral_secret_key: &SecretKey<C>,
         secret_spend_key: &SecretKey<C>,
+        ephemeral_secret_key: &SecretKey<C>,
         asset: &Asset,
         utxo: &Utxo<C>,
     ) -> Option<VoidNumber<C>> {
@@ -501,6 +501,18 @@ where
 {
     #[inline]
     fn as_ref(&self) -> &Parameters<C> {
+        self.base
+    }
+}
+
+impl<'p, C> Deref for FullParameters<'p, C>
+where
+    C: Configuration,
+{
+    type Target = Parameters<C>;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
         self.base
     }
 }
@@ -575,12 +587,11 @@ where
     fn new_constant(this: &Self::Type, compiler: &mut C::Compiler) -> Self {
         Self {
             key_agreement: this
-                .base
                 .note_encryption_scheme
                 .key_agreement_scheme()
                 .as_constant(compiler),
-            utxo_commitment: this.base.utxo_commitment.as_constant(compiler),
-            void_number_commitment: this.base.void_number_commitment.as_constant(compiler),
+            utxo_commitment: this.utxo_commitment.as_constant(compiler),
+            void_number_commitment: this.void_number_commitment.as_constant(compiler),
             utxo_accumulator_model: this.utxo_accumulator_model.as_constant(compiler),
             __: PhantomData,
         }
@@ -630,7 +641,7 @@ where
         asset: &Asset,
         utxo: &Utxo<C>,
     ) -> Option<VoidNumber<C>> {
-        parameters.check_full_asset(ephemeral_secret_key, &self.spend, asset, utxo)
+        parameters.check_full_asset(&self.spend, ephemeral_secret_key, asset, utxo)
     }
 
     /// Prepares `self` for spending `asset` with the given `ephemeral_secret_key`.
@@ -746,9 +757,9 @@ where
     ) -> Receiver<C> {
         Receiver::new(
             parameters,
-            ephemeral_secret_key,
             self.spend,
             self.view,
+            ephemeral_secret_key,
             asset,
         )
     }
@@ -779,7 +790,8 @@ impl<C> PreSender<C>
 where
     C: Configuration,
 {
-    ///
+    /// Builds a new [`PreSender`] from `ephemeral_secret_key` to claim `asset` with
+    /// `secret_spend_key`.
     #[inline]
     pub fn new(
         parameters: &Parameters<C>,
@@ -1279,6 +1291,15 @@ where
 }
 
 /// Note
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "SecretKey<C>: Clone"),
+    Copy(bound = "SecretKey<C>: Copy"),
+    Debug(bound = "SecretKey<C>: Debug"),
+    Eq(bound = "SecretKey<C>: Eq"),
+    Hash(bound = "SecretKey<C>: Hash"),
+    PartialEq(bound = "SecretKey<C>: PartialEq")
+)]
 pub struct Note<C>
 where
     C: Configuration + ?Sized,
@@ -1304,6 +1325,24 @@ where
     }
 }
 
+impl<C, SD, AD> Sample<(SD, AD)> for Note<C>
+where
+    C: Configuration,
+    SecretKey<C>: Sample<SD>,
+    Asset: Sample<AD>,
+{
+    #[inline]
+    fn sample<R>(distribution: (SD, AD), rng: &mut R) -> Self
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        Self::new(
+            Sample::sample(distribution.0, rng),
+            Sample::sample(distribution.1, rng),
+        )
+    }
+}
+
 impl<C> SizeLimit for Note<C>
 where
     C: Configuration,
@@ -1316,11 +1355,11 @@ pub struct Receiver<C>
 where
     C: Configuration,
 {
-    /// Ephemeral Secret Spend Key
-    ephemeral_secret_key: SecretKey<C>,
-
     /// Public Spend Key
     public_spend_key: PublicKey<C>,
+
+    /// Ephemeral Secret Spend Key
+    ephemeral_secret_key: SecretKey<C>,
 
     /// Asset
     asset: Asset,
@@ -1336,21 +1375,22 @@ impl<C> Receiver<C>
 where
     C: Configuration,
 {
-    ///
+    /// Build a new [`Receiver`] from `ephemeral_secret_key`, to send `asset` to the owners of
+    /// `public_spend_key` and `public_view_key`.
     #[inline]
     pub fn new(
         parameters: &Parameters<C>,
-        ephemeral_secret_key: SecretKey<C>,
         public_spend_key: PublicKey<C>,
         public_view_key: PublicKey<C>,
+        ephemeral_secret_key: SecretKey<C>,
         asset: Asset,
     ) -> Self {
         Self {
             utxo: parameters.utxo(&ephemeral_secret_key, &public_spend_key, &asset),
             encrypted_note: EncryptedMessage::new(
                 &parameters.note_encryption_scheme,
-                &public_view_key,
                 &ephemeral_secret_key,
+                &public_view_key,
                 Note::new(ephemeral_secret_key.clone(), asset),
             ),
             ephemeral_secret_key,
@@ -2177,7 +2217,7 @@ pub enum TransferPostError<AccountId, UpdateError> {
 
     /// Update Error
     ///
-    /// Error happens when update ledger
+    /// An error occured while updating the ledger state.
     UpdateError(UpdateError),
 }
 
