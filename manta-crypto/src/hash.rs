@@ -39,6 +39,28 @@ pub trait UnaryHashFunction<COM = ()> {
     }
 }
 
+impl<H, COM> UnaryHashFunction<COM> for &H
+where
+    H: UnaryHashFunction<COM>,
+{
+    type Input = H::Input;
+    type Output = H::Output;
+
+    #[inline]
+    fn hash_in(&self, input: &Self::Input, compiler: &mut COM) -> Self::Output {
+        (*self).hash_in(input, compiler)
+    }
+
+    /// Computes the hash over `input`.
+    #[inline]
+    fn hash(&self, input: &Self::Input) -> Self::Output
+    where
+        COM: Native,
+    {
+        (*self).hash(input)
+    }
+}
+
 /// Binary Hash Function
 pub trait BinaryHashFunction<COM = ()> {
     /// Left Input Type
@@ -84,42 +106,50 @@ pub trait ArrayHashFunction<COM, const ARITY: usize> {
     }
 }
 
-///
+/// Array Hashing Utilities
 pub mod array {
     use super::*;
     use core::marker::PhantomData;
 
-    ///
+    #[cfg(feature = "serde")]
+    use manta_util::serde::{Deserialize, Serialize};
+
+    /// Converts `hasher` from an [`ArrayHashFunction`] into a [`UnaryHashFunction`].
     #[inline]
-    pub fn as_unary<H, COM>(hasher: &H) -> AsUnary<H, COM>
+    pub fn as_unary<H, COM>(hasher: H) -> AsUnary<H, COM>
     where
         H: ArrayHashFunction<COM, 1>,
     {
         AsUnary::new(hasher)
     }
 
-    ///
-    // TODO: #[derive(derivative::Derivative)]
-    // TODO: #[derivative(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-    pub struct AsUnary<'h, H, COM = ()>
+    /// Unary Hash Function Converter
+    #[cfg_attr(
+        feature = "serde",
+        derive(Deserialize, Serialize),
+        serde(crate = "manta_util::serde", deny_unknown_fields)
+    )]
+    #[derive(derivative::Derivative)]
+    #[derivative(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    pub struct AsUnary<H, COM = ()>
     where
         H: ArrayHashFunction<COM, 1>,
     {
         /// Array Hasher
-        hasher: &'h H,
+        hasher: H,
 
         /// Type Parameter Marker
         __: PhantomData<COM>,
     }
 
-    impl<'h, H, COM> AsUnary<'h, H, COM>
+    impl<'h, H, COM> AsUnary<H, COM>
     where
         H: ArrayHashFunction<COM, 1>,
     {
         /// Builds a new [`UnaryHashFunction`] implementation out of an [`ArrayHashFunction`]
         /// implementation `hasher`.
         #[inline]
-        pub fn new(hasher: &'h H) -> Self {
+        pub fn new(hasher: H) -> Self {
             Self {
                 hasher,
                 __: PhantomData,
@@ -127,7 +157,7 @@ pub mod array {
         }
     }
 
-    impl<'h, H, COM> UnaryHashFunction<COM> for AsUnary<'h, H, COM>
+    impl<H, COM> UnaryHashFunction<COM> for AsUnary<H, COM>
     where
         H: ArrayHashFunction<COM, 1>,
     {
