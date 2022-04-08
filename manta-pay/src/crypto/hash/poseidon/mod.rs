@@ -14,7 +14,25 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Hash Function Implementations
+//! Poseidon Hash Function
 
-pub mod poseidon_old;
-pub mod poseidon;
+use core::fmt::Debug;
+use crate::crypto::hash::poseidon::constants::ParamField;
+
+/// TODO doc
+pub mod constants;
+/// TODO doc
+pub mod matrix;
+#[cfg(feature = "arkworks")]
+/// TODO doc
+pub mod arkworks;
+
+/// Specification for a Poseidon hash function.
+pub trait Specification<const WIDTH: usize, COM = ()>{
+    /// TODO doc
+    type Field: Debug + Clone;
+    /// TODO doc
+    type ParameterField: ParamField;
+
+    // TODO
+}
