@@ -125,7 +125,7 @@ pub fn main() -> io::Result<()> {
             OpenOptions::new()
                 .create(true)
                 .write(true)
-                .open(proving_context_dir.join("mint.dat"))?,
+                .open(proving_context_dir.join("mint.lfs"))?,
         ))
         .unwrap();
     verifying_context
@@ -146,7 +146,7 @@ pub fn main() -> io::Result<()> {
             OpenOptions::new()
                 .create(true)
                 .write(true)
-                .open(proving_context_dir.join("private-transfer.dat"))?,
+                .open(proving_context_dir.join("private-transfer.lfs"))?,
         ))
         .unwrap();
     verifying_context
@@ -167,7 +167,7 @@ pub fn main() -> io::Result<()> {
             OpenOptions::new()
                 .create(true)
                 .write(true)
-                .open(proving_context_dir.join("reclaim.dat"))?,
+                .open(proving_context_dir.join("reclaim.lfs"))?,
         ))
         .unwrap();
     verifying_context
