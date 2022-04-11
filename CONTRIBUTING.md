@@ -148,6 +148,90 @@ use {
 
 **NOTE**: All imports should occur at the top of any module and a newline should be added between the last import and the first declared object.
 
+### Traits
+
+#### Defining Traits
+
+When defining a trait use the following syntax:
+
+```rust
+/// DOCS
+trait Trait<T> {
+    /// DOCS
+    type Type1: Default;
+
+    /// DOCS
+    type Type2;
+
+    /// DOCS
+    const CONST_1: usize;
+
+    /// DOCS
+    const CONST_2: usize;
+
+    /// DOCS
+    fn required_method(&self, argument: Self::Type1) -> T;
+
+    /// DOCS
+    #[inline]
+    fn optional_method(&self) -> T {
+        Self::required_method(Self::Type1::default())
+    }
+}
+```
+
+Notice the ordering of components:
+
+1. Associated Types
+2. Associated Constants
+3. Methods
+
+Depending on the context and presentation, you can mix the ordering of required and optional methods. Also, notice the name formatting, although `clippy` should detect if naming differs from this pattern.
+
+#### Implementing Traits
+
+When implementing traits use the following syntax:
+
+```rust
+impl<T> Trait for Struct<T> {
+    type Type1 = B;
+    type Type2 = C;
+
+    const CONST_1: usize = 3;
+    const CONST_2: usize = 4;
+
+    #[inline]
+    fn required_method(&self, argument: Self::Type1) -> T {
+        self.struct_method(argument).clone()
+    }
+
+    #[inline]
+    fn optional_method(&self) -> T {
+        short_cut_optimization(self)
+    }
+}
+```
+
+Notice the lack of space between implementaions of the same category except for methods which always get a newline between them (like all methods). Only add space between types and constants if a comment is necessary like in this example:
+
+```rust
+impl Configuration {
+    const SPECIAL_CONSTANT: usize = 1234249;
+
+    /// In this case we have to use this constant because it's very special.
+    const ANOTHER_SPECIAL_CONSTANT: usize = 10000023;
+}
+```
+
+but otherwise it should look like
+
+```rust
+impl Configuration {
+    const SPECIAL_CONSTANT: usize = 1234249;
+    const ANOTHER_SPECIAL_CONSTANT: usize = 10000023;
+}
+```
+
 ### Crate `lib.rs` Module
 
 Every crate has at least a `lib.rs` (or a `main.rs` if there is no library) and it should include at least these macro invocations:
