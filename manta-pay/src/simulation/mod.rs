@@ -133,7 +133,7 @@ impl Simulation {
     #[inline]
     pub async fn run_with<L, S, GL, GS>(&self, ledger: GL, signer: GS)
     where
-        L: wallet::ledger::Connection<Config> + PublicBalanceOracle,
+        L: wallet::ledger::Connection<Config, PushResponse = bool> + PublicBalanceOracle,
         S: wallet::signer::Connection<Config>,
         GL: FnMut(usize) -> L,
         GS: FnMut(usize) -> S,

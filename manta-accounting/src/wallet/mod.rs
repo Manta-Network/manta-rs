@@ -36,7 +36,7 @@ use crate::{
     },
     wallet::{
         balance::{BTreeMapBalanceState, BalanceState},
-        ledger::{Checkpoint, PullResponse, PushResponse},
+        ledger::{Checkpoint, PullResponse},
         signer::{
             ReceivingKeyRequest, SignError, SignRequest, SignResponse, SyncError, SyncRequest,
             SyncResponse,
@@ -300,7 +300,7 @@ where
         &mut self,
         transaction: Transaction<C>,
         metadata: Option<AssetMetadata>,
-    ) -> Result<bool, Error<C, L, S>> {
+    ) -> Result<L::PushResponse, Error<C, L, S>> {
         self.sync().await?;
         self.check(&transaction)
             .map_err(Error::InsufficientBalance)?;
@@ -313,12 +313,10 @@ where
             .await
             .map_err(Error::SignerConnectionError)?
             .map_err(Error::SignError)?;
-        let PushResponse { success } = self
-            .ledger
+        self.ledger
             .push(posts)
             .await
-            .map_err(Error::LedgerConnectionError)?;
-        Ok(success)
+            .map_err(Error::LedgerConnectionError)
     }
 
     /// Returns public receiving keys according to the `request`.

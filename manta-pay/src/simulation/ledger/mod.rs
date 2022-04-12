@@ -37,7 +37,7 @@ use manta_accounting::{
         TransferLedger, TransferLedgerSuperPostingKey, TransferPostingKey, UtxoAccumulatorOutput,
     },
     wallet::{
-        ledger::{self, PullResponse, PushResponse},
+        ledger::{self, PullResponse},
         test::PublicBalanceOracle,
     },
 };
@@ -200,20 +200,20 @@ impl Ledger {
 
     /// Pushes the data from `posts` to the ledger.
     #[inline]
-    pub fn push(&mut self, account: AccountId, posts: Vec<TransferPost>) -> PushResponse {
+    pub fn push(&mut self, account: AccountId, posts: Vec<TransferPost>) -> bool {
         for post in posts {
             let (sources, sinks) = match TransferShape::from_post(&post) {
                 Some(TransferShape::Mint) => (vec![account], vec![]),
                 Some(TransferShape::PrivateTransfer) => (vec![], vec![]),
                 Some(TransferShape::Reclaim) => (vec![], vec![account]),
-                _ => return PushResponse { success: false },
+                _ => return false,
             };
             match post.validate(sources, sinks, &*self) {
                 Ok(posting_key) => posting_key.post(&(), &mut *self).unwrap(),
-                _ => return PushResponse { success: false },
+                _ => return false,
             }
         }
-        PushResponse { success: true }
+        true
     }
 }
 
@@ -443,6 +443,7 @@ impl ledger::Connection<Config> for LedgerConnection {
     type Checkpoint = Checkpoint;
     type ReceiverChunk = Vec<(Utxo, EncryptedNote)>;
     type SenderChunk = Vec<VoidNumber>;
+    type PushResponse = bool;
     type Error = Infallible;
 
     #[inline]
@@ -457,7 +458,7 @@ impl ledger::Connection<Config> for LedgerConnection {
     fn push(
         &mut self,
         posts: Vec<TransferPost>,
-    ) -> LocalBoxFutureResult<PushResponse, Self::Error> {
+    ) -> LocalBoxFutureResult<Self::PushResponse, Self::Error> {
         Box::pin(async move { Ok(self.ledger.write().await.push(self.account, posts)) })
     }
 }

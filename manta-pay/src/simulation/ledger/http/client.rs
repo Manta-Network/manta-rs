@@ -24,7 +24,7 @@ use crate::{
 use manta_accounting::{
     asset::AssetList,
     wallet::{
-        ledger::{self, PullResponse, PushResponse},
+        ledger::{self, PullResponse},
         test::PublicBalanceOracle,
     },
 };
@@ -57,6 +57,7 @@ impl ledger::Connection<Config> for Client {
     type Checkpoint = Checkpoint;
     type ReceiverChunk = Vec<(Utxo, EncryptedNote)>;
     type SenderChunk = Vec<VoidNumber>;
+    type PushResponse = bool;
     type Error = Error;
 
     #[inline]
@@ -81,7 +82,7 @@ impl ledger::Connection<Config> for Client {
     fn push(
         &mut self,
         posts: Vec<TransferPost>,
-    ) -> LocalBoxFutureResult<PushResponse, Self::Error> {
+    ) -> LocalBoxFutureResult<Self::PushResponse, Self::Error> {
         Box::pin(async move {
             self.client
                 .post(

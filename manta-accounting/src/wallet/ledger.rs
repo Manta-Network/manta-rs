@@ -50,6 +50,15 @@ where
     /// Sender Chunk Iterator Type
     type SenderChunk: IntoIterator<Item = VoidNumber<C>>;
 
+    /// Push Response Type
+    ///
+    /// This is the return type of the [`push`](Self::push) method. Use this type to customize the
+    /// ledger's response to posting a set of transactions, valid or otherwise. In most cases `bool`
+    /// or some result type like `Result<(), Error>` is sufficient. In other cases where the ledger
+    /// cannot respond immediately to the [`push`](Self::push) command, a subscription token can be
+    /// returned instead which can be used to listen to the result later on.
+    type PushResponse;
+
     /// Error Type
     type Error;
 
@@ -65,7 +74,7 @@ where
     fn push(
         &mut self,
         posts: Vec<TransferPost<C>>,
-    ) -> LocalBoxFutureResult<PushResponse, Self::Error>;
+    ) -> LocalBoxFutureResult<Self::PushResponse, Self::Error>;
 }
 
 /// Ledger Source Pull Response
@@ -127,22 +136,4 @@ where
 
     /// Ledger Sender Chunk
     pub senders: L::SenderChunk,
-}
-
-/// Ledger Source Push Response
-///
-/// This `struct` is created by the [`push`](Connection::push) method on [`Connection`].
-/// See its documentation for more.
-#[cfg_attr(
-    feature = "serde",
-    derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
-)]
-#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
-pub struct PushResponse {
-    /// Transaction Success Flag
-    ///
-    /// The `success` flag is set to `true` if the ledger accepted the vector of [`TransferPost`]
-    /// and the ledger has been updated to the new state.
-    pub success: bool,
 }
