@@ -30,7 +30,7 @@ required-features = ["groth16", "manta-util/std", "test"]
 
 [[bin]]
 name = "measure"
-required-features = ["groth16"]
+required-features = ["groth16", "manta-crypto/getrandom"]
 
 [[bin]]
 name = "simulation"

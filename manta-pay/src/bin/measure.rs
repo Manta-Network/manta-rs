@@ -20,7 +20,7 @@ use manta_crypto::{
     constraint::{measure::Instrument, Allocator, Secret, ValueSource},
     hash::ArrayHashFunction,
     key::{KeyAgreementScheme as _, KeyDerivationFunction},
-    rand::{Sample, SeedableRng},
+    rand::{FromEntropy, Sample, SeedableRng},
 };
 use manta_pay::config::{
     Compiler, KeyAgreementScheme, KeyAgreementSchemeVar, Poseidon2, Poseidon2Var, Poseidon4,
