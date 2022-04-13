@@ -17,6 +17,7 @@
 //! Testing and Simulation Framework
 
 // TODO: Perform delays instead of just `Skip` which doesn't really spread actors out in time.
+// TODO: Generalize `PushResponse` so that we can test against more general wallet setups.
 
 use crate::{
     asset::{Asset, AssetList},
@@ -267,7 +268,7 @@ where
 
 /// Simulation Event
 #[derive(derivative::Derivative)]
-#[derivative(Debug(bound = "Error<C, L, S>: Debug"))]
+#[derivative(Debug(bound = "L::PushResponse: Debug, Error<C, L, S>: Debug"))]
 pub struct Event<C, L, S>
 where
     C: transfer::Configuration,
@@ -278,7 +279,7 @@ where
     pub action: ActionType,
 
     /// Action Result
-    pub result: Result<bool, Error<C, L, S>>,
+    pub result: Result<L::PushResponse, Error<C, L, S>>,
 }
 
 /// Public Key Database
@@ -324,7 +325,7 @@ where
 impl<C, L, S> sim::ActionSimulation for Simulation<C, L, S>
 where
     C: transfer::Configuration,
-    L: ledger::Connection<C> + PublicBalanceOracle,
+    L: ledger::Connection<C, PushResponse = bool> + PublicBalanceOracle,
     S: signer::Connection<C>,
     PublicKey<C>: Eq + Hash,
 {
@@ -480,7 +481,7 @@ impl Config {
     ) -> Result<bool, Error<C, L, S>>
     where
         C: transfer::Configuration,
-        L: ledger::Connection<C> + PublicBalanceOracle,
+        L: ledger::Connection<C, PushResponse = bool> + PublicBalanceOracle,
         S: signer::Connection<C>,
         R: CryptoRng + RngCore,
         GL: FnMut(usize) -> L,

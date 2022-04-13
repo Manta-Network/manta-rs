@@ -23,6 +23,40 @@ use core::{convert::Infallible, fmt::Debug, hash::Hash, marker::PhantomData};
 #[cfg(feature = "alloc")]
 use {crate::into_array_unchecked, alloc::vec::Vec};
 
+/// Implements [`Decode`] and [`Encode`] for a type with no data that implements [`Default`].
+#[macro_export]
+macro_rules! impl_empty_codec {
+    ($type:ty) => {
+        impl $crate::codec::Decode for $type {
+            type Error = ::core::convert::Infallible;
+
+            #[inline]
+            fn decode<R>(
+                reader: R,
+            ) -> Result<Self, $crate::codec::DecodeError<R::Error, Self::Error>>
+            where
+                R: $crate::codec::Read,
+            {
+                let _ = reader;
+                Ok(Self::default())
+            }
+        }
+
+        impl $crate::codec::Encode for $type {
+            #[inline]
+            fn encode<W>(&self, writer: W) -> Result<(), W::Error>
+            where
+                W: $crate::codec::Write,
+            {
+                let _ = writer;
+                Ok(())
+            }
+        }
+    };
+}
+
+impl_empty_codec! { () }
+
 /// Reader
 pub trait Read {
     /// Error Type
@@ -542,17 +576,6 @@ pub trait Encode {
     }
 }
 
-impl Encode for () {
-    #[inline]
-    fn encode<W>(&self, writer: W) -> Result<(), W::Error>
-    where
-        W: Write,
-    {
-        let _ = writer;
-        Ok(())
-    }
-}
-
 impl<T> Encode for PhantomData<T> {
     #[inline]
     fn encode<W>(&self, writer: W) -> Result<(), W::Error>
@@ -712,19 +735,6 @@ pub trait Decode: Sized {
     fn from_vec(buffer: Vec<u8>) -> Result<Self, Self::Error> {
         Self::decode(buffer)
             .map_err(move |err| err.decode().expect("Reading from `[u8]` cannot fail."))
-    }
-}
-
-impl Decode for () {
-    type Error = Infallible;
-
-    #[inline]
-    fn decode<R>(reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
-    where
-        R: Read,
-    {
-        let _ = reader;
-        Ok(())
     }
 }
 

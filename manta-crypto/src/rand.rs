@@ -192,12 +192,8 @@ where
     }
 }
 
-/// Standard Distribution
-#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct Standard;
-
 /// Sampling Trait
-pub trait Sample<D = Standard>: Sized {
+pub trait Sample<D = ()>: Sized {
     /// Returns a random value of type `Self`, sampled according to the given `distribution`,
     /// generated from the `rng`.
     fn sample<R>(distribution: D, rng: &mut R) -> Self
@@ -222,7 +218,7 @@ macro_rules! impl_sample_from_u32 {
         $(
             impl Sample for $type {
                 #[inline]
-                fn sample<R>(distribution: Standard, rng: &mut R) -> Self
+                fn sample<R>(distribution: (), rng: &mut R) -> Self
                 where
                     R: RngCore + ?Sized,
                 {
@@ -238,7 +234,7 @@ impl_sample_from_u32!(i8, i16, i32, u8, u16, u32);
 
 impl Sample for u64 {
     #[inline]
-    fn sample<R>(distribution: Standard, rng: &mut R) -> Self
+    fn sample<R>(distribution: (), rng: &mut R) -> Self
     where
         R: CryptoRng + RngCore + ?Sized,
     {
@@ -249,7 +245,7 @@ impl Sample for u64 {
 
 impl Sample for u128 {
     #[inline]
-    fn sample<R>(distribution: Standard, rng: &mut R) -> Self
+    fn sample<R>(distribution: (), rng: &mut R) -> Self
     where
         R: CryptoRng + RngCore + ?Sized,
     {
@@ -329,7 +325,7 @@ where
 }
 
 /// Fallible Sampling Trait
-pub trait TrySample<D = Standard>: Sized {
+pub trait TrySample<D = ()>: Sized {
     /// Error Type
     type Error;
 
@@ -403,6 +399,14 @@ pub trait Rand: CryptoRng + RngCore {
         T: TrySample<D>,
     {
         T::try_gen(self)
+    }
+
+    /// Fills a buffer of `N` bytes randomly.
+    #[inline]
+    fn gen_bytes<const N: usize>(&mut self) -> [u8; N] {
+        let mut bytes = [0; N];
+        self.fill_bytes(&mut bytes);
+        bytes
     }
 
     /// Seeds another random number generator `R` using entropy from `self`.

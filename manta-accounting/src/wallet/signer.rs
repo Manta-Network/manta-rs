@@ -36,9 +36,9 @@ use crate::{
             Mint, MultiProvingContext, PrivateTransfer, PrivateTransferShape, Reclaim, Selection,
             Shape, Transaction,
         },
-        EncryptedNote, FullParameters, Parameters, PreSender, ProofSystemError, ProvingContext,
-        PublicKey, Receiver, ReceivingKey, SecretKey, Sender, SpendingKey, Transfer, TransferPost,
-        Utxo, VoidNumber,
+        EncryptedNote, FullParameters, Note, Parameters, PreSender, ProofSystemError,
+        ProvingContext, Receiver, ReceivingKey, SecretKey, Sender, SpendingKey, Transfer,
+        TransferPost, Utxo, VoidNumber,
     },
 };
 use alloc::{boxed::Box, vec, vec::Vec};
@@ -381,7 +381,7 @@ pub trait Configuration: transfer::Configuration {
 pub type AccountTable<C> = key::AccountTable<<C as Configuration>::HierarchicalKeyDerivationScheme>;
 
 /// Asset Map Key Type
-pub type AssetMapKey<C> = (KeyIndex, PublicKey<C>);
+pub type AssetMapKey<C> = (KeyIndex, SecretKey<C>);
 
 /// Proving Context Cache Error Type
 pub type ProvingContextCacheError<C> =
@@ -436,7 +436,7 @@ where
         &self,
         keypair: SecretKeyPair<C::HierarchicalKeyDerivationScheme>,
     ) -> ReceivingKey<C> {
-        SpendingKey::new(keypair.spend, keypair.view).derive(&self.parameters.key_agreement)
+        SpendingKey::new(keypair.spend, keypair.view).derive(self.parameters.key_agreement_scheme())
     }
 }
 
@@ -533,30 +533,26 @@ where
         if let Some(ViewKeySelection {
             index,
             keypair,
-            item:
-                DecryptedMessage {
-                    plaintext: asset,
-                    ephemeral_public_key,
-                },
+            item,
         }) = self
             .accounts
             .get_mut_default()
             .find_index_with_maybe_gap(with_recovery, |k| {
-                finder.decrypt(&parameters.key_agreement, k)
+                finder.decrypt(&parameters.note_encryption_scheme, k)
             })
         {
-            if let Some(void_number) = C::check_full_asset(
-                parameters,
-                &keypair.spend,
-                &ephemeral_public_key,
-                &asset,
-                &utxo,
-            ) {
+            let Note {
+                ephemeral_secret_key,
+                asset,
+            } = item.plaintext;
+            if let Some(void_number) =
+                parameters.check_full_asset(&keypair.spend, &ephemeral_secret_key, &asset, &utxo)
+            {
                 if let Some(index) = void_numbers.iter().position(move |v| v == &void_number) {
                     void_numbers.remove(index);
                 } else {
                     self.utxo_accumulator.insert(&utxo);
-                    self.assets.insert((index, ephemeral_public_key), asset);
+                    self.assets.insert((index, ephemeral_secret_key), asset);
                     if !asset.is_zero() {
                         deposit.push(asset);
                     }
@@ -573,21 +569,19 @@ where
     #[inline]
     fn is_asset_unspent(
         parameters: &Parameters<C>,
-        secret_key: &SecretKey<C>,
-        ephemeral_public_key: &PublicKey<C>,
+        secret_spend_key: &SecretKey<C>,
+        ephemeral_secret_key: &SecretKey<C>,
         asset: Asset,
         void_numbers: &mut Vec<VoidNumber<C>>,
         utxo_accumulator: &mut C::UtxoAccumulator,
         withdraw: &mut Vec<Asset>,
     ) -> bool {
-        let utxo = C::utxo(
-            &parameters.key_agreement,
-            &parameters.utxo_commitment,
-            secret_key,
-            ephemeral_public_key,
+        let utxo = parameters.utxo(
+            ephemeral_secret_key,
+            &parameters.derive(secret_spend_key),
             &asset,
         );
-        let void_number = C::void_number(&parameters.void_number_hash, &utxo, secret_key);
+        let void_number = parameters.void_number(secret_spend_key, &utxo);
         if let Some(index) = void_numbers.iter().position(move |v| v == &void_number) {
             void_numbers.remove(index);
             utxo_accumulator.remove_proof(&utxo);
@@ -625,13 +619,13 @@ where
                 &mut deposit,
             )?;
         }
-        self.assets.retain(|(index, ephemeral_public_key), assets| {
+        self.assets.retain(|(index, ephemeral_secret_key), assets| {
             assets.retain(
                 |asset| match self.accounts.get_default().spend_key(*index) {
-                    Some(secret_key) => Self::is_asset_unspent(
+                    Some(secret_spend_key) => Self::is_asset_unspent(
                         parameters,
-                        &secret_key,
-                        ephemeral_public_key,
+                        &secret_spend_key,
+                        ephemeral_secret_key,
                         *asset,
                         &mut void_numbers,
                         &mut self.utxo_accumulator,
@@ -661,14 +655,14 @@ where
         key: AssetMapKey<C>,
         asset: Asset,
     ) -> Result<PreSender<C>, SignError<C>> {
-        let (spend_index, ephemeral_key) = key;
+        let (spend_index, ephemeral_secret_key) = key;
         Ok(PreSender::new(
             parameters,
             self.accounts
                 .get_default()
                 .spend_key(spend_index)
                 .expect("Index is guaranteed to be within bounds."),
-            ephemeral_key,
+            ephemeral_secret_key,
             asset,
         ))
     }

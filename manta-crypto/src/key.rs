@@ -17,27 +17,138 @@
 //! Cryptographic Key Primitives
 
 use crate::constraint::Native;
-use core::marker::PhantomData;
 
 /// Key Derivation Function
-pub trait KeyDerivationFunction {
+pub trait KeyDerivationFunction<COM = ()> {
     /// Input Key Type
     type Key: ?Sized;
 
     /// Output Key Type
     type Output;
 
-    /// Derives an output key from `secret` computed from a cryptographic agreement scheme.
-    fn derive(secret: &Self::Key) -> Self::Output;
+    /// Derives a key of type [`Output`](Self::Output) from `key` in `compiler`.
+    fn derive_in(&self, key: &Self::Key, compiler: &mut COM) -> Self::Output;
+
+    /// Derives a key of type [`Output`](Self::Output) from `key`.
+    #[inline]
+    fn derive(&self, key: &Self::Key) -> Self::Output
+    where
+        COM: Native,
+    {
+        self.derive_in(key, &mut COM::compiler())
+    }
+
+    /// Derives a key of type [`Output`](Self::Output) from `key` in `compiler`.
+    ///
+    /// # Implementation Note
+    ///
+    /// This method is an optimization path for [`derive_in`] when the `key` value is owned, and by
+    /// default, [`derive_in`] is used as its implementation. This method must return the same value
+    /// as [`derive_in`] on the same input.
+    ///
+    /// [`derive_in`]: Self::derive_in
+    #[inline]
+    fn derive_owned_in(&self, key: Self::Key, compiler: &mut COM) -> Self::Output
+    where
+        Self::Key: Sized,
+    {
+        self.derive_in(&key, compiler)
+    }
+
+    /// Derives a key of type [`Output`](Self::Output) from `key`.
+    ///
+    /// See [`derive_owned_in`](Self::derive_owned_in) for more.
+    #[inline]
+    fn derive_owned(&self, key: Self::Key) -> Self::Output
+    where
+        COM: Native,
+        Self::Key: Sized,
+    {
+        self.derive(&key)
+    }
+
+    /// Borrows `self` rather than consuming it, returning an implementation of
+    /// [`KeyDerivationFunction`].
+    #[inline]
+    fn by_ref(&self) -> &Self {
+        self
+    }
 }
 
-/// Key Derivation Function Adapter
+impl<COM, F> KeyDerivationFunction<COM> for &F
+where
+    F: KeyDerivationFunction<COM>,
+{
+    type Key = F::Key;
+    type Output = F::Output;
+
+    #[inline]
+    fn derive_in(&self, key: &Self::Key, compiler: &mut COM) -> Self::Output {
+        (*self).derive_in(key, compiler)
+    }
+
+    #[inline]
+    fn derive(&self, key: &Self::Key) -> Self::Output
+    where
+        COM: Native,
+    {
+        (*self).derive(key)
+    }
+
+    #[inline]
+    fn derive_owned_in(&self, key: Self::Key, compiler: &mut COM) -> Self::Output
+    where
+        Self::Key: Sized,
+    {
+        (*self).derive_owned_in(key, compiler)
+    }
+
+    #[inline]
+    fn derive_owned(&self, key: Self::Key) -> Self::Output
+    where
+        COM: Native,
+        Self::Key: Sized,
+    {
+        (*self).derive_owned(key)
+    }
+}
+
+/// Key Derivation Function Adapters
 pub mod kdf {
     use super::*;
+    use crate::rand::{CryptoRng, RngCore, Sample};
     use alloc::vec::Vec;
+    use core::marker::PhantomData;
+    use manta_util::codec::{Decode, DecodeError, Encode, Read, Write};
 
     #[cfg(feature = "serde")]
     use manta_util::serde::{Deserialize, Serialize};
+
+    /// Identity Key Derivation Function
+    #[cfg_attr(
+        feature = "serde",
+        derive(Deserialize, Serialize),
+        serde(crate = "manta_util::serde")
+    )]
+    #[derive(derivative::Derivative)]
+    #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    pub struct Identity<K, COM = ()>(PhantomData<(K, COM)>)
+    where
+        K: Clone;
+
+    impl<K, COM> KeyDerivationFunction<COM> for Identity<K, COM>
+    where
+        K: Clone,
+    {
+        type Key = K;
+        type Output = K;
+
+        #[inline]
+        fn derive_in(&self, key: &Self::Key, compiler: &mut COM) -> Self::Output {
+            let _ = compiler;
+            key.clone()
+        }
+    }
 
     /// From Byte Slice Reference Adapter
     #[cfg_attr(
@@ -47,22 +158,94 @@ pub mod kdf {
     )]
     #[derive(derivative::Derivative)]
     #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-    pub struct FromByteSliceRef<T, F>(PhantomData<(T, F)>)
+    pub struct FromByteSliceRef<T, F, COM = ()>
     where
         T: AsRef<[u8]>,
-        F: KeyDerivationFunction<Key = [u8]>;
+        F: KeyDerivationFunction<COM, Key = [u8]>,
+    {
+        /// Key Derivation Function
+        key_derivation_function: F,
 
-    impl<T, F> KeyDerivationFunction for FromByteSliceRef<T, F>
+        /// Type Parameter Marker
+        __: PhantomData<(T, COM)>,
+    }
+
+    impl<T, F, COM> FromByteSliceRef<T, F, COM>
     where
         T: AsRef<[u8]>,
-        F: KeyDerivationFunction<Key = [u8]>,
+        F: KeyDerivationFunction<COM, Key = [u8]>,
+    {
+        /// Builds a new [`FromByteSliceRef`] adapter for `key_derivation_function`.
+        #[inline]
+        pub fn new(key_derivation_function: F) -> Self {
+            Self {
+                key_derivation_function,
+                __: PhantomData,
+            }
+        }
+    }
+
+    impl<T, F> Decode for FromByteSliceRef<T, F>
+    where
+        T: AsRef<[u8]>,
+        F: Decode + KeyDerivationFunction<Key = [u8]>,
+    {
+        // NOTE: We use a blank error here for simplicity. This trait will be removed in the future
+        //       anyways. See https://github.com/Manta-Network/manta-rs/issues/27.
+        type Error = ();
+
+        #[inline]
+        fn decode<R>(mut reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
+        where
+            R: Read,
+        {
+            Ok(Self::new(
+                F::decode(&mut reader).map_err(|err| err.map_decode(|_| ()))?,
+            ))
+        }
+    }
+
+    impl<T, F> Encode for FromByteSliceRef<T, F>
+    where
+        T: AsRef<[u8]>,
+        F: Encode + KeyDerivationFunction<Key = [u8]>,
+    {
+        #[inline]
+        fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
+        where
+            W: Write,
+        {
+            self.key_derivation_function.encode(&mut writer)?;
+            Ok(())
+        }
+    }
+
+    impl<T, F, COM> KeyDerivationFunction<COM> for FromByteSliceRef<T, F, COM>
+    where
+        T: AsRef<[u8]>,
+        F: KeyDerivationFunction<COM, Key = [u8]>,
     {
         type Key = T;
         type Output = F::Output;
 
         #[inline]
-        fn derive(secret: &Self::Key) -> Self::Output {
-            F::derive(secret.as_ref())
+        fn derive_in(&self, key: &Self::Key, compiler: &mut COM) -> Self::Output {
+            self.key_derivation_function
+                .derive_in(key.as_ref(), compiler)
+        }
+    }
+
+    impl<T, F, D> Sample<D> for FromByteSliceRef<T, F>
+    where
+        T: AsRef<[u8]>,
+        F: KeyDerivationFunction<Key = [u8]> + Sample<D>,
+    {
+        #[inline]
+        fn sample<R>(distribution: D, rng: &mut R) -> Self
+        where
+            R: CryptoRng + RngCore + ?Sized,
+        {
+            Self::new(F::sample(distribution, rng))
         }
     }
 
@@ -80,22 +263,94 @@ pub mod kdf {
     )]
     #[derive(derivative::Derivative)]
     #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-    pub struct FromByteVector<T, F>(PhantomData<(T, F)>)
+    pub struct FromByteVector<T, F, COM = ()>
     where
         T: AsBytes,
-        F: KeyDerivationFunction<Key = [u8]>;
+        F: KeyDerivationFunction<COM, Key = [u8]>,
+    {
+        /// Key Derivation Function
+        key_derivation_function: F,
 
-    impl<T, F> KeyDerivationFunction for FromByteVector<T, F>
+        /// Type Parameter Marker
+        __: PhantomData<(T, COM)>,
+    }
+
+    impl<T, F, COM> FromByteVector<T, F, COM>
     where
         T: AsBytes,
-        F: KeyDerivationFunction<Key = [u8]>,
+        F: KeyDerivationFunction<COM, Key = [u8]>,
+    {
+        /// Builds a new [`FromByteVector`] adapter for `key_derivation_function`.
+        #[inline]
+        pub fn new(key_derivation_function: F) -> Self {
+            Self {
+                key_derivation_function,
+                __: PhantomData,
+            }
+        }
+    }
+
+    impl<T, F> Decode for FromByteVector<T, F>
+    where
+        T: AsBytes,
+        F: Decode + KeyDerivationFunction<Key = [u8]>,
+    {
+        // NOTE: We use a blank error here for simplicity. This trait will be removed in the future
+        //       anyways. See https://github.com/Manta-Network/manta-rs/issues/27.
+        type Error = ();
+
+        #[inline]
+        fn decode<R>(mut reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
+        where
+            R: Read,
+        {
+            Ok(Self::new(
+                F::decode(&mut reader).map_err(|err| err.map_decode(|_| ()))?,
+            ))
+        }
+    }
+
+    impl<T, F> Encode for FromByteVector<T, F>
+    where
+        T: AsBytes,
+        F: Encode + KeyDerivationFunction<Key = [u8]>,
+    {
+        #[inline]
+        fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
+        where
+            W: Write,
+        {
+            self.key_derivation_function.encode(&mut writer)?;
+            Ok(())
+        }
+    }
+
+    impl<T, F, COM> KeyDerivationFunction<COM> for FromByteVector<T, F, COM>
+    where
+        T: AsBytes,
+        F: KeyDerivationFunction<COM, Key = [u8]>,
     {
         type Key = T;
         type Output = F::Output;
 
         #[inline]
-        fn derive(secret: &Self::Key) -> Self::Output {
-            F::derive(&secret.as_bytes())
+        fn derive_in(&self, key: &Self::Key, compiler: &mut COM) -> Self::Output {
+            self.key_derivation_function
+                .derive_in(&key.as_bytes(), compiler)
+        }
+    }
+
+    impl<T, F, D> Sample<D> for FromByteVector<T, F>
+    where
+        T: AsBytes,
+        F: KeyDerivationFunction<Key = [u8]> + Sample<D>,
+    {
+        #[inline]
+        fn sample<R>(distribution: D, rng: &mut R) -> Self
+        where
+            R: CryptoRng + RngCore + ?Sized,
+        {
+            Self::new(F::sample(distribution, rng))
         }
     }
 }
@@ -115,7 +370,9 @@ pub mod kdf {
 ///     ```
 ///     This ensures that both parties in the shared computation will arrive at the same conclusion
 ///     about the value of the [`SharedSecret`](Self::SharedSecret).
-pub trait KeyAgreementScheme<COM = ()> {
+pub trait KeyAgreementScheme<COM = ()>:
+    KeyDerivationFunction<COM, Key = Self::SecretKey, Output = Self::PublicKey>
+{
     /// Secret Key Type
     type SecretKey;
 
@@ -124,47 +381,6 @@ pub trait KeyAgreementScheme<COM = ()> {
 
     /// Shared Secret Type
     type SharedSecret;
-
-    /// Derives a public key corresponding to `secret_key` in the given `compiler`. This public key
-    /// should be sent to the other party involved in the shared computation.
-    fn derive_in(&self, secret_key: &Self::SecretKey, compiler: &mut COM) -> Self::PublicKey;
-
-    /// Derives a public key corresponding to `secret_key`. This public key should be sent to the
-    /// other party involved in the shared computation.
-    #[inline]
-    fn derive(&self, secret_key: &Self::SecretKey) -> Self::PublicKey
-    where
-        COM: Native,
-    {
-        self.derive_in(secret_key, &mut COM::compiler())
-    }
-
-    /// Derives a public key corresponding to `secret_key` in the given `compiler`. This public key
-    /// should be sent to the other party involved in the shared computation.
-    ///
-    /// # Implementation Note
-    ///
-    /// This method is an optimization path for [`derive_in`] when the `secret_key` value is owned,
-    /// and by default, [`derive_in`] is used as its implementation. This method must return the same
-    /// value as [`derive_in`] on the same input.
-    ///
-    /// [`derive_in`]: Self::derive_in
-    #[inline]
-    fn derive_owned_in(&self, secret_key: Self::SecretKey, compiler: &mut COM) -> Self::PublicKey {
-        self.derive_in(&secret_key, compiler)
-    }
-
-    /// Derives a public key corresponding to `secret_key`. This public key should be sent to the
-    /// other party involved in the shared computation.
-    ///
-    /// See [`derive_owned_in`](Self::derive_owned_in) for more.
-    #[inline]
-    fn derive_owned(&self, secret_key: Self::SecretKey) -> Self::PublicKey
-    where
-        COM: Native,
-    {
-        self.derive(&secret_key)
-    }
 
     /// Computes the shared secret given the known `secret_key` and the given `public_key` in the
     /// given `compiler`.
@@ -194,8 +410,8 @@ pub trait KeyAgreementScheme<COM = ()> {
     /// # Implementation Note
     ///
     /// This method is an optimization path for [`agree_in`] when the `secret_key` value and
-    /// `public_key` value are owned, and by default, [`agree_in`] is used as its implementation. This
-    /// method must return the same value as [`agree_in`] on the same input.
+    /// `public_key` value are owned, and by default, [`agree_in`] is used as its implementation.
+    /// This method must return the same value as [`agree_in`] on the same input.
     ///
     /// [`agree_in`]: Self::agree_in
     #[inline]
@@ -222,6 +438,66 @@ pub trait KeyAgreementScheme<COM = ()> {
     {
         self.agree(&secret_key, &public_key)
     }
+
+    /// Borrows `self` rather than consuming it, returning an implementation of
+    /// [`KeyAgreementScheme`].
+    #[inline]
+    fn by_ref(&self) -> &Self {
+        self
+    }
+}
+
+impl<K, COM> KeyAgreementScheme<COM> for &K
+where
+    K: KeyAgreementScheme<COM>,
+{
+    type SecretKey = K::SecretKey;
+    type PublicKey = K::PublicKey;
+    type SharedSecret = K::SharedSecret;
+
+    #[inline]
+    fn agree_in(
+        &self,
+        secret_key: &Self::SecretKey,
+        public_key: &Self::PublicKey,
+        compiler: &mut COM,
+    ) -> Self::SharedSecret {
+        (*self).agree_in(secret_key, public_key, compiler)
+    }
+
+    #[inline]
+    fn agree(
+        &self,
+        secret_key: &Self::SecretKey,
+        public_key: &Self::PublicKey,
+    ) -> Self::SharedSecret
+    where
+        COM: Native,
+    {
+        (*self).agree(secret_key, public_key)
+    }
+
+    #[inline]
+    fn agree_owned_in(
+        &self,
+        secret_key: Self::SecretKey,
+        public_key: Self::PublicKey,
+        compiler: &mut COM,
+    ) -> Self::SharedSecret {
+        (*self).agree_owned_in(secret_key, public_key, compiler)
+    }
+
+    #[inline]
+    fn agree_owned(
+        &self,
+        secret_key: Self::SecretKey,
+        public_key: Self::PublicKey,
+    ) -> Self::SharedSecret
+    where
+        COM: Native,
+    {
+        (*self).agree_owned(secret_key, public_key)
+    }
 }
 
 /// Testing Framework
@@ -233,14 +509,14 @@ pub mod test {
 
     /// Tests if the `agreement` property is satisfied for `K`.
     #[inline]
-    pub fn key_agreement<K>(parameters: &K, lhs: &K::SecretKey, rhs: &K::SecretKey)
+    pub fn key_agreement<K>(scheme: &K, lhs: &K::SecretKey, rhs: &K::SecretKey)
     where
         K: KeyAgreementScheme,
         K::SharedSecret: Debug + PartialEq,
     {
         assert_eq!(
-            parameters.agree(lhs, &parameters.derive(rhs)),
-            parameters.agree(rhs, &parameters.derive(lhs)),
+            scheme.agree(lhs, &scheme.derive(rhs)),
+            scheme.agree(rhs, &scheme.derive(lhs)),
             "Key agreement schemes should satisfy the agreement property."
         )
     }

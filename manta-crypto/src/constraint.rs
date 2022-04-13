@@ -22,9 +22,9 @@
 // TODO:  Find ways to enforce public input structure, since it's very easy to extend the input
 //        vector by the wrong amount or in the wrong order.
 
-use core::{fmt::Debug, hash::Hash, marker::PhantomData};
+use crate::rand::{CryptoRng, RngCore};
+use core::{fmt::Debug, hash::Hash, marker::PhantomData, ops};
 use manta_util::{create_seal, seal};
-use rand_core::{CryptoRng, RngCore};
 
 create_seal! {}
 
@@ -321,7 +321,7 @@ impl ConstraintSystem for () {
 
     #[inline]
     fn assert(&mut self, b: Self::Bool) {
-        assert!(b, "Native Constraint System assertion.");
+        assert!(b, "Native Constraint System Assertion");
     }
 }
 */
@@ -366,6 +366,18 @@ where
     }
 }
 
+/* TODO: Implement this:
+impl<T> Equal<()> for T
+where
+    T: PartialEq,
+{
+    #[inline]
+    fn eq(lhs: &Self, rhs: &Self, _: &mut ()) -> bool {
+        lhs.eq(rhs)
+    }
+}
+*/
+
 /// Conditional Selection
 pub trait ConditionalSelect<COM>
 where
@@ -398,6 +410,22 @@ where
     }
 }
 
+/* TODO: Implement this:
+impl<T> ConditionalSelect<()> for T
+where
+    T: Clone,
+{
+    #[inline]
+    fn select(bit: &bool, true_value: &Self, false_value: &Self, _: &mut ()) -> Self {
+        if bit {
+            true_value
+        } else {
+            false_value
+        }
+    }
+}
+*/
+
 /// Addition
 pub trait Add<COM>
 where
@@ -407,6 +435,16 @@ where
     fn add(lhs: Self, rhs: Self, compiler: &mut COM) -> Self;
 }
 
+impl<T> Add<()> for T
+where
+    T: ops::Add<Output = T>,
+{
+    #[inline]
+    fn add(lhs: Self, rhs: Self, _: &mut ()) -> Self {
+        lhs.add(rhs)
+    }
+}
+
 /// Subtraction
 pub trait Sub<COM>
 where
@@ -414,6 +452,16 @@ where
 {
     /// Subtracts `rhs` from `lhs` inside of `compiler`.
     fn sub(lhs: Self, rhs: Self, compiler: &mut COM) -> Self;
+}
+
+impl<T> Sub<()> for T
+where
+    T: ops::Sub<Output = T>,
+{
+    #[inline]
+    fn sub(lhs: Self, rhs: Self, _: &mut ()) -> Self {
+        lhs.sub(rhs)
+    }
 }
 
 /// Proof System

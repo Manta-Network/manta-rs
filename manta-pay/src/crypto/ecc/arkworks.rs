@@ -27,7 +27,7 @@ use manta_crypto::{
     constraint::{Allocator, Constant, Equal, Public, Secret, ValueSource, Variable},
     ecc::{self, PointAdd, PointDouble},
     key::kdf,
-    rand::{CryptoRng, RngCore, Sample, Standard},
+    rand::{CryptoRng, RngCore, Sample},
 };
 use manta_util::codec;
 
@@ -250,7 +250,7 @@ where
     C: ProjectiveCurve,
 {
     #[inline]
-    fn sample<R>(distribution: Standard, rng: &mut R) -> Self
+    fn sample<R>(distribution: (), rng: &mut R) -> Self
     where
         R: CryptoRng + RngCore + ?Sized,
     {

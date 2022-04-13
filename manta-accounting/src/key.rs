@@ -157,14 +157,21 @@ pub trait HierarchicalKeyDerivationScheme {
         )
     }
 
+    /// Borrows `self` rather than consuming it, returning an implementation of
+    /// [`HierarchicalKeyDerivationScheme`].
+    #[inline]
+    fn by_ref(&self) -> &Self {
+        self
+    }
+
     /// Maps `self` along a key derivation function.
     #[inline]
-    fn map<K>(self) -> Map<Self, K>
+    fn map<F>(self, key_derivation_function: F) -> Map<Self, F>
     where
         Self: Sized,
-        K: KeyDerivationFunction<Key = Self::SecretKey>,
+        F: KeyDerivationFunction<Key = Self::SecretKey>,
     {
-        Map::new(self)
+        Map::new(self, key_derivation_function)
     }
 }
 
@@ -200,69 +207,72 @@ where
 )]
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
-pub struct Map<H, K>
+pub struct Map<H, F>
 where
     H: HierarchicalKeyDerivationScheme,
-    K: KeyDerivationFunction<Key = H::SecretKey>,
+    F: KeyDerivationFunction<Key = H::SecretKey>,
 {
     /// Base Derivation Scheme
     base: H,
 
-    /// Type Parameter Marker
-    __: PhantomData<K>,
+    /// Key Derivation Function
+    key_derivation_function: F,
 }
 
-impl<H, K> Map<H, K>
+impl<H, F> Map<H, F>
 where
     H: HierarchicalKeyDerivationScheme,
-    K: KeyDerivationFunction<Key = H::SecretKey>,
+    F: KeyDerivationFunction<Key = H::SecretKey>,
 {
-    /// Builds a new [`Map`] from `base`.
+    /// Builds a new [`Map`] from `base` and `key_derivation_function`.
     #[inline]
-    pub fn new(base: H) -> Self {
+    pub fn new(base: H, key_derivation_function: F) -> Self {
         Self {
             base,
-            __: PhantomData,
+            key_derivation_function,
         }
     }
 }
 
-impl<H, K> HierarchicalKeyDerivationScheme for Map<H, K>
+impl<H, F> HierarchicalKeyDerivationScheme for Map<H, F>
 where
     H: HierarchicalKeyDerivationScheme,
-    K: KeyDerivationFunction<Key = H::SecretKey>,
+    F: KeyDerivationFunction<Key = H::SecretKey>,
 {
     const GAP_LIMIT: IndexType = H::GAP_LIMIT;
 
-    type SecretKey = K::Output;
+    type SecretKey = F::Output;
 
     #[inline]
     fn derive(&self, account: AccountIndex, kind: Kind, index: KeyIndex) -> Self::SecretKey {
-        K::derive(&self.base.derive(account, kind, index))
+        self.key_derivation_function
+            .derive(&self.base.derive(account, kind, index))
     }
 
     #[inline]
     fn derive_spend(&self, account: AccountIndex, index: KeyIndex) -> Self::SecretKey {
-        K::derive(&self.base.derive_spend(account, index))
+        self.key_derivation_function
+            .derive(&self.base.derive_spend(account, index))
     }
 
     #[inline]
     fn derive_view(&self, account: AccountIndex, index: KeyIndex) -> Self::SecretKey {
-        K::derive(&self.base.derive_view(account, index))
+        self.key_derivation_function
+            .derive(&self.base.derive_view(account, index))
     }
 }
 
-impl<H, K, D> Sample<D> for Map<H, K>
+impl<H, F, D> Sample<(D, F)> for Map<H, F>
 where
     H: HierarchicalKeyDerivationScheme + Sample<D>,
-    K: KeyDerivationFunction<Key = H::SecretKey>,
+    F: KeyDerivationFunction<Key = H::SecretKey>,
 {
     #[inline]
-    fn sample<R>(distribution: D, rng: &mut R) -> Self
+    fn sample<R>(distribution: (D, F), rng: &mut R) -> Self
     where
         R: CryptoRng + RngCore + ?Sized,
     {
-        Self::new(H::sample(distribution, rng))
+        Self::new(H::sample(distribution.0, rng), distribution.1)
     }
 }
 

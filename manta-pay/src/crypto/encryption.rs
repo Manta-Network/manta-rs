@@ -24,8 +24,15 @@ pub mod aes {
         aead::{Aead, NewAead},
         Aes256Gcm, Nonce,
     };
-    use manta_crypto::encryption::symmetric::SymmetricKeyEncryptionScheme;
-    use manta_util::Array;
+    use core::convert::Infallible;
+    use manta_crypto::{
+        encryption::symmetric::SymmetricKeyEncryptionScheme,
+        rand::{CryptoRng, RngCore, Sample},
+    };
+    use manta_util::{
+        codec::{Decode, DecodeError, Encode, Read, Write},
+        Array,
+    };
 
     /// AES-GCM Authentication Tag Size
     #[allow(clippy::cast_possible_truncation)] // NOTE: GCM Tag Size should be smaller than `2^32`.
@@ -58,7 +65,7 @@ pub mod aes {
         type Ciphertext = Array<u8, C>;
 
         #[inline]
-        fn encrypt(key: Self::Key, plaintext: Self::Plaintext) -> Self::Ciphertext {
+        fn encrypt(&self, key: Self::Key, plaintext: Self::Plaintext) -> Self::Ciphertext {
             Array::from_unchecked(
                 Aes256Gcm::new_from_slice(&key)
                     .expect("The key has the correct size.")
@@ -68,7 +75,11 @@ pub mod aes {
         }
 
         #[inline]
-        fn decrypt(key: Self::Key, ciphertext: &Self::Ciphertext) -> Option<Self::Plaintext> {
+        fn decrypt(
+            &self,
+            key: Self::Key,
+            ciphertext: &Self::Ciphertext,
+        ) -> Option<Self::Plaintext> {
             Aes256Gcm::new_from_slice(&key)
                 .expect("The key has the correct size.")
                 .decrypt(Nonce::from_slice(Self::NONCE), ciphertext.as_ref())
@@ -77,27 +88,71 @@ pub mod aes {
         }
     }
 
-    /// Test Suite
-    #[cfg(test)]
-    mod test {
-        use super::*;
-        use manta_accounting::asset::Asset;
-        use manta_crypto::{
-            encryption,
-            rand::{OsRng, RngCore},
-        };
+    impl<const P: usize, const C: usize> Decode for FixedNonceAesGcm<P, C> {
+        type Error = Infallible;
 
-        /// Tests if symmetric encryption of [`Asset`] decrypts properly.
-        #[test]
-        fn asset_encryption() {
-            let mut rng = OsRng;
-            let mut key = [0; 32];
-            rng.fill_bytes(&mut key);
-            let mut plaintext = [0; Asset::SIZE];
-            rng.fill_bytes(&mut plaintext);
-            encryption::symmetric::test::encryption::<
-                FixedNonceAesGcm<{ Asset::SIZE }, { ciphertext_size(Asset::SIZE) }>,
-            >(key, Array(plaintext));
+        #[inline]
+        fn decode<R>(reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
+        where
+            R: Read,
+        {
+            let _ = reader;
+            Ok(Self)
         }
+    }
+
+    impl<const P: usize, const C: usize> Encode for FixedNonceAesGcm<P, C> {
+        #[inline]
+        fn encode<W>(&self, writer: W) -> Result<(), W::Error>
+        where
+            W: Write,
+        {
+            let _ = writer;
+            Ok(())
+        }
+    }
+
+    impl<const P: usize, const C: usize> Sample for FixedNonceAesGcm<P, C> {
+        #[inline]
+        fn sample<R>(distribution: (), rng: &mut R) -> Self
+        where
+            R: CryptoRng + RngCore + ?Sized,
+        {
+            let _ = (distribution, rng);
+            Self
+        }
+    }
+}
+
+/// Test Suite
+#[cfg(test)]
+mod test {
+    use crate::config::{NoteEncryptionScheme, NoteSymmetricEncryptionScheme};
+    use manta_crypto::{
+        encryption,
+        rand::{OsRng, Rand},
+    };
+
+    /// Tests if symmetric encryption of [`Note`] decrypts properly.
+    #[test]
+    fn note_symmetric_encryption() {
+        let mut rng = OsRng;
+        encryption::symmetric::test::encryption::<NoteSymmetricEncryptionScheme>(
+            &rng.gen(),
+            rng.gen_bytes(),
+            rng.gen(),
+        );
+    }
+
+    /// Tests if the hybrid encryption of [`Note`] decrypts properly.
+    #[test]
+    fn note_hybrid_encryption() {
+        let mut rng = OsRng;
+        encryption::hybrid::test::encryption::<NoteEncryptionScheme>(
+            &rng.gen(),
+            &rng.gen(),
+            &rng.gen(),
+            rng.gen(),
+        );
     }
 }

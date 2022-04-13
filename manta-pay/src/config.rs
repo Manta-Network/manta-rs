@@ -17,7 +17,7 @@
 //! Manta-Pay Configuration
 
 use crate::crypto::{
-    constraint::arkworks::{groth16, Boolean, Fp, FpVar, R1CS},
+    constraint::arkworks::{field_element_as_bytes, groth16, Boolean, Fp, FpVar, R1CS},
     ecc,
     encryption::aes::{self, FixedNonceAesGcm},
     hash::poseidon,
@@ -25,7 +25,7 @@ use crate::crypto::{
 };
 use alloc::vec::Vec;
 use ark_ff::ToConstraintField;
-use ark_serialize::{CanonicalSerialize, SerializationError};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use blake2::{
     digest::{Update, VariableOutput},
     Blake2sVar,
@@ -38,22 +38,24 @@ use manta_accounting::{
 };
 use manta_crypto::{
     accumulator,
-    commitment::CommitmentScheme,
     constraint::{
         Add, Allocator, Constant, Equal, ProofSystemInput, Public, Secret, ValueSource, Variable,
     },
     ecc::DiffieHellman,
     encryption,
-    hash::{BinaryHashFunction, HashFunction},
+    hash::ArrayHashFunction,
     key, merkle_tree,
 };
-use manta_util::codec::{Decode, DecodeError, Encode, Read, Write};
+use manta_util::{
+    codec::{Decode, DecodeError, Encode, Read, Write},
+    into_array_unchecked, Array, SizeLimit,
+};
 
 #[cfg(feature = "bs58")]
 use alloc::string::String;
 
 #[cfg(any(feature = "test", test))]
-use manta_crypto::rand::{CryptoRng, Rand, RngCore, Sample, Standard};
+use manta_crypto::rand::{CryptoRng, Rand, RngCore, Sample};
 
 #[doc(inline)]
 pub use ark_bls12_381 as bls12_381;
@@ -64,6 +66,15 @@ pub(crate) use bls12_381_ed::EdwardsProjective as Bls12_381_Edwards;
 
 /// Pairing Curve Type
 pub type PairingCurve = Bls12_381;
+
+/// Embedded Scalar Field Type
+pub type EmbeddedScalarField = bls12_381_ed::Fr;
+
+/// Embedded Scalar Type
+pub type EmbeddedScalar = ecc::arkworks::Scalar<Bls12_381_Edwards>;
+
+/// Embedded Scalar Variable Type
+pub type EmbeddedScalarVar = ecc::arkworks::ScalarVar<Bls12_381_Edwards, Bls12_381_EdwardsVar>;
 
 /// Embedded Group Type
 pub type Group = ecc::arkworks::Group<Bls12_381_Edwards>;
@@ -90,10 +101,10 @@ pub type ProofSystem = groth16::Groth16<PairingCurve>;
 pub struct PoseidonSpec<const ARITY: usize>;
 
 /// Poseidon-2 Hash Parameters
-pub type Poseidon2 = poseidon::Hash<PoseidonSpec<2>, (), 2>;
+pub type Poseidon2 = poseidon::Hasher<PoseidonSpec<2>, (), 2>;
 
 /// Poseidon-2 Hash Parameters Variable
-pub type Poseidon2Var = poseidon::Hash<PoseidonSpec<2>, Compiler, 2>;
+pub type Poseidon2Var = poseidon::Hasher<PoseidonSpec<2>, Compiler, 2>;
 
 impl poseidon::arkworks::Specification for PoseidonSpec<2> {
     type Field = ConstraintField;
@@ -103,10 +114,10 @@ impl poseidon::arkworks::Specification for PoseidonSpec<2> {
 }
 
 /// Poseidon-4 Hash Parameters
-pub type Poseidon4 = poseidon::Hash<PoseidonSpec<4>, (), 4>;
+pub type Poseidon4 = poseidon::Hasher<PoseidonSpec<4>, (), 4>;
 
 /// Poseidon-4 Hash Parameters Variable
-pub type Poseidon4Var = poseidon::Hash<PoseidonSpec<4>, Compiler, 4>;
+pub type Poseidon4Var = poseidon::Hasher<PoseidonSpec<4>, Compiler, 4>;
 
 impl poseidon::arkworks::Specification for PoseidonSpec<4> {
     type Field = ConstraintField;
@@ -134,24 +145,27 @@ pub type Utxo = Fp<ConstraintField>;
 #[derive(Clone, Debug)]
 pub struct UtxoCommitmentScheme(pub Poseidon4);
 
-impl CommitmentScheme for UtxoCommitmentScheme {
-    type Randomness = Group;
-    type Input = Asset;
-    type Output = Utxo;
+impl transfer::UtxoCommitmentScheme for UtxoCommitmentScheme {
+    type EphemeralSecretKey = EmbeddedScalar;
+    type PublicSpendKey = Group;
+    type Asset = Asset;
+    type Utxo = Utxo;
 
     #[inline]
     fn commit_in(
         &self,
-        randomness: &Self::Randomness,
-        input: &Self::Input,
+        ephemeral_secret_key: &Self::EphemeralSecretKey,
+        public_spend_key: &Self::PublicSpendKey,
+        asset: &Self::Asset,
         _: &mut (),
-    ) -> Self::Output {
-        // NOTE: The group is already in affine form, so we can extract `x` and `y`.
+    ) -> Self::Utxo {
         self.0.hash([
-            &Fp(randomness.0.x),
-            &Fp(randomness.0.y),
-            &Fp(input.id.0.into()),
-            &Fp(input.value.0.into()),
+            // FIXME: This is the lift from inner scalar to outer scalar and only exists in some
+            // cases! We need a better abstraction for this.
+            &ecc::arkworks::lift_embedded_scalar::<Bls12_381_Edwards>(ephemeral_secret_key),
+            &Fp(public_spend_key.0.x), // NOTE: Group is in affine form, so we can extract `x`.
+            &Fp(asset.id.0.into()),
+            &Fp(asset.value.0.into()),
         ])
     }
 }
@@ -181,7 +195,7 @@ impl Encode for UtxoCommitmentScheme {
 #[cfg(any(feature = "test", test))] // NOTE: This is only safe in a test.
 impl Sample for UtxoCommitmentScheme {
     #[inline]
-    fn sample<R>(distribution: Standard, rng: &mut R) -> Self
+    fn sample<R>(distribution: (), rng: &mut R) -> Self
     where
         R: CryptoRng + RngCore + ?Sized,
     {
@@ -195,25 +209,26 @@ pub type UtxoVar = ConstraintFieldVar;
 /// UTXO Commitment Scheme Variable
 pub struct UtxoCommitmentSchemeVar(pub Poseidon4Var);
 
-impl CommitmentScheme<Compiler> for UtxoCommitmentSchemeVar {
-    type Randomness = GroupVar;
-    type Input = Asset<AssetIdVar, AssetValueVar>;
-    type Output = UtxoVar;
+impl transfer::UtxoCommitmentScheme<Compiler> for UtxoCommitmentSchemeVar {
+    type EphemeralSecretKey = EmbeddedScalarVar;
+    type PublicSpendKey = GroupVar;
+    type Asset = Asset<AssetIdVar, AssetValueVar>;
+    type Utxo = UtxoVar;
 
     #[inline]
     fn commit_in(
         &self,
-        randomness: &Self::Randomness,
-        input: &Self::Input,
+        ephemeral_secret_key: &Self::EphemeralSecretKey,
+        public_spend_key: &Self::PublicSpendKey,
+        asset: &Self::Asset,
         compiler: &mut Compiler,
-    ) -> Self::Output {
-        // NOTE: The group is already in affine form, so we can extract `x` and `y`.
+    ) -> Self::Utxo {
         self.0.hash_in(
             [
-                &randomness.0.x,
-                &randomness.0.y,
-                &input.id.0,
-                &input.value.0,
+                &ephemeral_secret_key.0,
+                &public_spend_key.0.x, // NOTE: Group is in affine form, so we can extract `x`.
+                &asset.id.0,
+                &asset.value.0,
             ],
             compiler,
         )
@@ -232,27 +247,32 @@ impl Constant<Compiler> for UtxoCommitmentSchemeVar {
 /// Void Number Type
 pub type VoidNumber = Fp<ConstraintField>;
 
-/// Void Number Hash Function
+/// Void Number Commitment Scheme
 #[derive(Clone, Debug)]
-pub struct VoidNumberHashFunction(pub Poseidon2);
+pub struct VoidNumberCommitmentScheme(pub Poseidon2);
 
-impl BinaryHashFunction for VoidNumberHashFunction {
-    type Left = Utxo;
-    type Right = <KeyAgreementScheme as key::KeyAgreementScheme>::SecretKey;
-    type Output = VoidNumber;
+impl transfer::VoidNumberCommitmentScheme for VoidNumberCommitmentScheme {
+    type SecretSpendKey = <KeyAgreementScheme as key::KeyAgreementScheme>::SecretKey;
+    type Utxo = Utxo;
+    type VoidNumber = VoidNumber;
 
     #[inline]
-    fn hash_in(&self, left: &Self::Left, right: &Self::Right, _: &mut ()) -> Self::Output {
+    fn commit_in(
+        &self,
+        secret_spend_key: &Self::SecretSpendKey,
+        utxo: &Self::Utxo,
+        _: &mut (),
+    ) -> Self::VoidNumber {
         self.0.hash([
-            left,
             // FIXME: This is the lift from inner scalar to outer scalar and only exists in some
             // cases! We need a better abstraction for this.
-            &ecc::arkworks::lift_embedded_scalar::<Bls12_381_Edwards>(right),
+            &ecc::arkworks::lift_embedded_scalar::<Bls12_381_Edwards>(secret_spend_key),
+            utxo,
         ])
     }
 }
 
-impl Decode for VoidNumberHashFunction {
+impl Decode for VoidNumberCommitmentScheme {
     type Error = SerializationError;
 
     #[inline]
@@ -264,7 +284,7 @@ impl Decode for VoidNumberHashFunction {
     }
 }
 
-impl Encode for VoidNumberHashFunction {
+impl Encode for VoidNumberCommitmentScheme {
     #[inline]
     fn encode<W>(&self, writer: W) -> Result<(), W::Error>
     where
@@ -275,9 +295,9 @@ impl Encode for VoidNumberHashFunction {
 }
 
 #[cfg(any(feature = "test", test))] // NOTE: This is only safe in a test.
-impl Sample for VoidNumberHashFunction {
+impl Sample for VoidNumberCommitmentScheme {
     #[inline]
-    fn sample<R>(distribution: Standard, rng: &mut R) -> Self
+    fn sample<R>(distribution: (), rng: &mut R) -> Self
     where
         R: CryptoRng + RngCore + ?Sized,
     {
@@ -288,27 +308,27 @@ impl Sample for VoidNumberHashFunction {
 /// Void Number Variable Type
 pub type VoidNumberVar = ConstraintFieldVar;
 
-/// Void Number Hash Function Variable
-pub struct VoidNumberHashFunctionVar(pub Poseidon2Var);
+/// Void Number Commitment Scheme Variable
+pub struct VoidNumberCommitmentSchemeVar(pub Poseidon2Var);
 
-impl BinaryHashFunction<Compiler> for VoidNumberHashFunctionVar {
-    type Left = <UtxoCommitmentSchemeVar as CommitmentScheme<Compiler>>::Output;
-    type Right = <KeyAgreementSchemeVar as key::KeyAgreementScheme<Compiler>>::SecretKey;
-    type Output = ConstraintFieldVar;
+impl transfer::VoidNumberCommitmentScheme<Compiler> for VoidNumberCommitmentSchemeVar {
+    type SecretSpendKey = <KeyAgreementSchemeVar as key::KeyAgreementScheme<Compiler>>::SecretKey;
+    type Utxo = <UtxoCommitmentSchemeVar as transfer::UtxoCommitmentScheme<Compiler>>::Utxo;
+    type VoidNumber = ConstraintFieldVar;
 
     #[inline]
-    fn hash_in(
+    fn commit_in(
         &self,
-        left: &Self::Left,
-        right: &Self::Right,
+        secret_spend_key: &Self::SecretSpendKey,
+        utxo: &Self::Utxo,
         compiler: &mut Compiler,
-    ) -> Self::Output {
-        self.0.hash_in([left, &right.0], compiler)
+    ) -> Self::VoidNumber {
+        self.0.hash_in([&secret_spend_key.0, utxo], compiler)
     }
 }
 
-impl Constant<Compiler> for VoidNumberHashFunctionVar {
-    type Type = VoidNumberHashFunction;
+impl Constant<Compiler> for VoidNumberCommitmentSchemeVar {
+    type Type = VoidNumberCommitmentScheme;
 
     #[inline]
     fn new_constant(this: &Self::Type, compiler: &mut Compiler) -> Self {
@@ -524,8 +544,8 @@ impl merkle_tree::forest::Configuration for MerkleTreeConfiguration {
 
 #[cfg(any(feature = "test", test))]
 impl merkle_tree::test::HashParameterSampling for MerkleTreeConfiguration {
-    type LeafHashParameterDistribution = Standard;
-    type InnerHashParameterDistribution = Standard;
+    type LeafHashParameterDistribution = ();
+    type InnerHashParameterDistribution = ();
 
     #[inline]
     fn sample_leaf_hash_parameters<R>(
@@ -600,17 +620,51 @@ impl ProofSystemInput<Group> for ProofSystem {
     }
 }
 
+/// Note Plaintext Mapping
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct NotePlaintextMapping;
+
+impl encryption::symmetric::PlaintextMapping<Array<u8, { Note::SIZE }>> for NotePlaintextMapping {
+    type Plaintext = Note;
+
+    #[inline]
+    fn into_base(plaintext: Self::Plaintext) -> Array<u8, { Note::SIZE }> {
+        // TODO: Use a serialization method to do this.
+        let mut bytes = Vec::new();
+        bytes.append(&mut field_element_as_bytes(
+            &plaintext.ephemeral_secret_key.0,
+        ));
+        bytes
+            .write(&mut plaintext.asset.into_bytes().as_slice())
+            .expect("This can never fail.");
+        Array::from_unchecked(bytes)
+    }
+
+    #[inline]
+    fn from_base(plaintext: Array<u8, { Note::SIZE }>) -> Option<Self::Plaintext> {
+        // TODO: Use a deserialization method to do this.
+        let mut slice = plaintext.as_ref();
+        Some(Note {
+            ephemeral_secret_key: Fp(EmbeddedScalarField::deserialize(&mut slice).ok()?),
+            asset: Asset::from_bytes(into_array_unchecked(slice)),
+        })
+    }
+}
+
+/// Note Symmetric Encryption Scheme
+pub type NoteSymmetricEncryptionScheme = encryption::symmetric::Map<
+    FixedNonceAesGcm<{ Note::SIZE }, { aes::ciphertext_size(Note::SIZE) }>,
+    NotePlaintextMapping,
+>;
+
 /// Note Encryption Scheme
 pub type NoteEncryptionScheme = encryption::hybrid::Hybrid<
     KeyAgreementScheme,
-    encryption::symmetric::Map<
-        FixedNonceAesGcm<{ Asset::SIZE }, { aes::ciphertext_size(Asset::SIZE) }>,
-        Asset,
-    >,
     key::kdf::FromByteVector<
         <KeyAgreementScheme as key::KeyAgreementScheme>::SharedSecret,
         Blake2sKdf,
     >,
+    NoteSymmetricEncryptionScheme,
 >;
 
 /// Asset Ciphertext
@@ -629,15 +683,19 @@ impl transfer::Configuration for Config {
     type PublicKeyVar =
         <Self::KeyAgreementSchemeVar as key::KeyAgreementScheme<Self::Compiler>>::PublicKey;
     type KeyAgreementSchemeVar = KeyAgreementSchemeVar;
-    type Utxo = <Self::UtxoCommitmentScheme as CommitmentScheme>::Output;
+    type Utxo = <Self::UtxoCommitmentScheme as transfer::UtxoCommitmentScheme>::Utxo;
     type UtxoCommitmentScheme = UtxoCommitmentScheme;
-    type UtxoVar = <Self::UtxoCommitmentSchemeVar as CommitmentScheme<Self::Compiler>>::Output;
+    type UtxoVar =
+        <Self::UtxoCommitmentSchemeVar as transfer::UtxoCommitmentScheme<Self::Compiler>>::Utxo;
     type UtxoCommitmentSchemeVar = UtxoCommitmentSchemeVar;
-    type VoidNumber = <Self::VoidNumberHashFunction as BinaryHashFunction>::Output;
-    type VoidNumberHashFunction = VoidNumberHashFunction;
+    type VoidNumber =
+        <Self::VoidNumberCommitmentScheme as transfer::VoidNumberCommitmentScheme>::VoidNumber;
+    type VoidNumberCommitmentScheme = VoidNumberCommitmentScheme;
     type VoidNumberVar =
-        <Self::VoidNumberHashFunctionVar as BinaryHashFunction<Self::Compiler>>::Output;
-    type VoidNumberHashFunctionVar = VoidNumberHashFunctionVar;
+        <Self::VoidNumberCommitmentSchemeVar as transfer::VoidNumberCommitmentScheme<
+            Self::Compiler,
+        >>::VoidNumber;
+    type VoidNumberCommitmentSchemeVar = VoidNumberCommitmentSchemeVar;
     type UtxoAccumulatorModel = UtxoAccumulatorModel;
     type UtxoAccumulatorWitnessVar =
         <Self::UtxoAccumulatorModelVar as accumulator::Model<Self::Compiler>>::Witness;
@@ -656,6 +714,9 @@ pub type Parameters = transfer::Parameters<Config>;
 
 /// Full Transfer Parameters
 pub type FullParameters<'p> = transfer::FullParameters<'p, Config>;
+
+/// Note Type
+pub type Note = transfer::Note<Config>;
 
 /// Encrypted Note Type
 pub type EncryptedNote = transfer::EncryptedNote<Config>;

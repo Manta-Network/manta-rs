@@ -24,10 +24,7 @@ use crate::{
 };
 use alloc::sync::Arc;
 use core::future::Future;
-use manta_accounting::{
-    asset::AssetList,
-    wallet::ledger::{PullResponse, PushResponse},
-};
+use manta_accounting::{asset::AssetList, wallet::ledger::PullResponse};
 use manta_util::serde::{de::DeserializeOwned, Serialize};
 use tide::{listener::ToListener, Body, Response};
 use tokio::{io, sync::RwLock};
@@ -56,7 +53,7 @@ impl State {
 
     /// Pushes data to the ledger with the given `account` and `posts`.
     #[inline]
-    async fn push(self, account: AccountId, posts: Vec<TransferPost>) -> PushResponse {
+    async fn push(self, account: AccountId, posts: Vec<TransferPost>) -> bool {
         self.0.write().await.push(account, posts)
     }
 

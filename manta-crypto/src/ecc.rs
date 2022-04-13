@@ -20,7 +20,7 @@
 
 use crate::{
     constraint::Constant,
-    key::KeyAgreementScheme,
+    key::{KeyAgreementScheme, KeyDerivationFunction},
     rand::{CryptoRng, RngCore, Sample},
 };
 use alloc::{boxed::Box, vec::Vec};
@@ -321,6 +321,19 @@ where
     }
 }
 
+impl<G, COM> KeyDerivationFunction<COM> for DiffieHellman<G>
+where
+    G: ScalarMul<COM>,
+{
+    type Key = G::Scalar;
+    type Output = G::Output;
+
+    #[inline]
+    fn derive_in(&self, key: &Self::Key, compiler: &mut COM) -> Self::Output {
+        self.generator.scalar_mul(key, compiler)
+    }
+}
+
 impl<G, COM> KeyAgreementScheme<COM> for DiffieHellman<G>
 where
     G: ScalarMul<COM>,
@@ -329,11 +342,6 @@ where
     type SecretKey = G::Scalar;
     type PublicKey = G::Output;
     type SharedSecret = G::Output;
-
-    #[inline]
-    fn derive_in(&self, secret_key: &Self::SecretKey, compiler: &mut COM) -> Self::PublicKey {
-        self.generator.scalar_mul(secret_key, compiler)
-    }
 
     #[inline]
     fn agree_in(
