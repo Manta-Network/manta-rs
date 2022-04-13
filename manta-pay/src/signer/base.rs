@@ -31,7 +31,15 @@ use manta_accounting::{
 };
 use manta_crypto::{key::KeyDerivationFunction, merkle_tree};
 
+#[cfg(feature = "serde")]
+use manta_util::serde::{Deserialize, Serialize};
+
 /// Hierarchical Key Derivation Function
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct HierarchicalKeyDerivationFunction<C = Testnet>(PhantomData<C>)
