@@ -17,8 +17,11 @@
 //! Cryptographic Key Primitive Implementations
 
 use blake2::{Blake2s, Digest};
-use manta_crypto::key::KeyDerivationFunction;
-use manta_util::into_array_unchecked;
+use manta_crypto::{
+    key::KeyDerivationFunction,
+    rand::{CryptoRng, RngCore, Sample},
+};
+use manta_util::{impl_empty_codec, into_array_unchecked};
 
 /// Blake2s KDF
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -29,10 +32,23 @@ impl KeyDerivationFunction for Blake2sKdf {
     type Output = [u8; 32];
 
     #[inline]
-    fn derive(secret: &Self::Key) -> Self::Output {
+    fn derive_in(&self, key: &Self::Key, _: &mut ()) -> Self::Output {
         let mut hasher = Blake2s::new();
-        hasher.update(secret);
+        hasher.update(key);
         hasher.update(b"manta kdf instantiated with blake2s hash function");
         into_array_unchecked(hasher.finalize())
+    }
+}
+
+impl_empty_codec! { Blake2sKdf }
+
+impl Sample for Blake2sKdf {
+    #[inline]
+    fn sample<R>(distribution: (), rng: &mut R) -> Self
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        let _ = (distribution, rng);
+        Self
     }
 }

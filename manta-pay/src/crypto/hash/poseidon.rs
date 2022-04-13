@@ -20,8 +20,8 @@
 // TODO: Add more methods to the `Specification` trait for optimization.
 
 use alloc::vec::Vec;
-use core::{fmt::Debug, iter, mem};
-use manta_crypto::hash::HashFunction;
+use core::{fmt::Debug, hash::Hash, iter, mem};
+use manta_crypto::hash::ArrayHashFunction;
 use manta_util::codec::{Decode, DecodeError, Encode, Read, Write};
 
 #[cfg(feature = "serde")]
@@ -93,10 +93,10 @@ where
     Clone(bound = "S::Field: Clone"),
     Debug(bound = "S::Field: Debug"),
     Eq(bound = "S::Field: Eq"),
-    Hash(bound = "S::Field: core::hash::Hash"),
+    Hash(bound = "S::Field: Hash"),
     PartialEq(bound = "S::Field: PartialEq")
 )]
-pub struct Hash<S, COM, const ARITY: usize>
+pub struct Hasher<S, COM, const ARITY: usize>
 where
     S: Specification<COM>,
 {
@@ -107,7 +107,7 @@ where
     mds_matrix: Vec<S::Field>,
 }
 
-impl<S, COM, const ARITY: usize> Hash<S, COM, ARITY>
+impl<S, COM, const ARITY: usize> Hasher<S, COM, ARITY>
 where
     S: Specification<COM>,
 {
@@ -123,7 +123,7 @@ where
     /// Total Number of Additive Rounds Keys
     pub const ADDITIVE_ROUND_KEYS_COUNT: usize = Self::ROUNDS * Self::WIDTH;
 
-    /// Builds a new [`Hash`](self::Hash) from `additive_round_keys` and `mds_matrix`.
+    /// Builds a new [`Hasher`] from `additive_round_keys` and `mds_matrix`.
     ///
     /// # Panics
     ///
@@ -144,7 +144,7 @@ where
         Self::new_unchecked(additive_round_keys, mds_matrix)
     }
 
-    /// Builds a new [`Hash`](self::Hash) from `additive_round_keys` and `mds_matrix` without
+    /// Builds a new [`Hasher`] from `additive_round_keys` and `mds_matrix` without
     /// checking their sizes.
     #[inline]
     fn new_unchecked(additive_round_keys: Vec<S::Field>, mds_matrix: Vec<S::Field>) -> Self {
@@ -220,7 +220,7 @@ where
     }
 }
 
-impl<S, COM, const ARITY: usize> HashFunction<COM, ARITY> for Hash<S, COM, ARITY>
+impl<S, COM, const ARITY: usize> ArrayHashFunction<COM, ARITY> for Hasher<S, COM, ARITY>
 where
     S: Specification<COM>,
 {
@@ -246,7 +246,7 @@ where
 }
 
 #[cfg(any(feature = "test", test))] // NOTE: This is only safe to use in a test.
-impl<D, S, COM, const ARITY: usize> Sample<D> for Hash<S, COM, ARITY>
+impl<D, S, COM, const ARITY: usize> Sample<D> for Hasher<S, COM, ARITY>
 where
     D: Clone,
     S: Specification<COM>,
@@ -274,7 +274,7 @@ where
     }
 }
 
-impl<S, COM, const ARITY: usize> Decode for Hash<S, COM, ARITY>
+impl<S, COM, const ARITY: usize> Decode for Hasher<S, COM, ARITY>
 where
     S: Specification<COM>,
     S::Field: Decode,
@@ -297,7 +297,7 @@ where
     }
 }
 
-impl<S, COM, const ARITY: usize> Encode for Hash<S, COM, ARITY>
+impl<S, COM, const ARITY: usize> Encode for Hasher<S, COM, ARITY>
 where
     S: Specification<COM>,
     S::Field: Encode,
@@ -319,11 +319,11 @@ where
 
 /// Poseidon Hash Input Type
 pub type Input<S, COM, const ARITY: usize> =
-    <Hash<S, COM, ARITY> as HashFunction<COM, ARITY>>::Input;
+    <Hasher<S, COM, ARITY> as ArrayHashFunction<COM, ARITY>>::Input;
 
 /// Poseidon Commitment Output Type
 pub type Output<S, COM, const ARITY: usize> =
-    <Hash<S, COM, ARITY> as HashFunction<COM, ARITY>>::Output;
+    <Hasher<S, COM, ARITY> as ArrayHashFunction<COM, ARITY>>::Output;
 
 /// Arkworks Backend
 #[cfg(feature = "arkworks")]
@@ -432,11 +432,11 @@ pub mod arkworks {
         }
     }
 
-    impl<S, const ARITY: usize> Constant<Compiler<S>> for super::Hash<S, Compiler<S>, ARITY>
+    impl<S, const ARITY: usize> Constant<Compiler<S>> for super::Hasher<S, Compiler<S>, ARITY>
     where
         S: Specification,
     {
-        type Type = super::Hash<S, (), ARITY>;
+        type Type = super::Hasher<S, (), ARITY>;
 
         #[inline]
         fn new_constant(this: &Self::Type, compiler: &mut Compiler<S>) -> Self {

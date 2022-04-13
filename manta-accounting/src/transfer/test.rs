@@ -29,8 +29,7 @@ use core::fmt::Debug;
 use manta_crypto::{
     accumulator::Accumulator,
     constraint::ProofSystem,
-    key::KeyAgreementScheme,
-    rand::{CryptoRng, Rand, RngCore, Sample, Standard},
+    rand::{CryptoRng, Rand, RngCore, Sample},
 };
 use manta_util::into_array_unchecked;
 
@@ -79,33 +78,33 @@ where
 /// Parameters Distribution
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
-pub struct ParametersDistribution<K = Standard, U = Standard, V = Standard> {
-    /// Key Agreement Scheme Distribution
-    pub key_agreement: K,
+pub struct ParametersDistribution<E = (), U = (), V = ()> {
+    /// Note Encryption Scheme Distribution
+    pub note_encryption_scheme: E,
 
     /// UTXO Commitment Scheme Distribution
     pub utxo_commitment: U,
 
-    /// Void Number Hash Function Distribution
-    pub void_number_hash: V,
+    /// Void Number Commitment Scheme Distribution
+    pub void_number_commitment_scheme: V,
 }
 
-impl<K, U, V, C> Sample<ParametersDistribution<K, U, V>> for Parameters<C>
+impl<E, U, V, C> Sample<ParametersDistribution<E, U, V>> for Parameters<C>
 where
     C: Configuration,
-    C::KeyAgreementScheme: Sample<K>,
+    C::NoteEncryptionScheme: Sample<E>,
     C::UtxoCommitmentScheme: Sample<U>,
-    C::VoidNumberHashFunction: Sample<V>,
+    C::VoidNumberCommitmentScheme: Sample<V>,
 {
     #[inline]
-    fn sample<R>(distribution: ParametersDistribution<K, U, V>, rng: &mut R) -> Self
+    fn sample<R>(distribution: ParametersDistribution<E, U, V>, rng: &mut R) -> Self
     where
         R: CryptoRng + RngCore + ?Sized,
     {
         Parameters::new(
-            rng.sample(distribution.key_agreement),
+            rng.sample(distribution.note_encryption_scheme),
             rng.sample(distribution.utxo_commitment),
-            rng.sample(distribution.void_number_hash),
+            rng.sample(distribution.void_number_commitment_scheme),
         )
     }
 }
@@ -285,12 +284,7 @@ where
         senders
             .iter()
             .map(|v| {
-                let sender = PreSender::new(
-                    parameters,
-                    rng.gen(),
-                    parameters.key_agreement.derive_owned(rng.gen()),
-                    asset_id.with(*v),
-                );
+                let sender = PreSender::new(parameters, rng.gen(), rng.gen(), asset_id.with(*v));
                 sender.insert_utxo(utxo_accumulator);
                 sender.try_upgrade(utxo_accumulator).unwrap()
             })
@@ -300,9 +294,9 @@ where
             .map(|v| {
                 Receiver::new(
                     parameters,
+                    parameters.derive_owned(rng.gen()),
+                    parameters.derive_owned(rng.gen()),
                     rng.gen(),
-                    parameters.key_agreement.derive_owned(rng.gen()),
-                    parameters.key_agreement.derive_owned(rng.gen()),
                     asset_id.with(*v),
                 )
             })

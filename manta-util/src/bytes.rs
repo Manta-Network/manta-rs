@@ -16,6 +16,15 @@
 
 //! Utilities for Manipulating Bytes
 
+/// Size Limit
+pub trait SizeLimit {
+    /// Maximum Number of Bytes Required to Represent [`Self`]
+    ///
+    /// If this trait is implemented, then we know that [`Self`] can fit inside a byte array of the
+    /// following type: `[u8; Self::SIZE]`.
+    const SIZE: usize;
+}
+
 /// Exact From Bytes Conversion
 pub trait FromBytes<const SIZE: usize> {
     /// Converts an array of `bytes` into an element of type [`Self`].

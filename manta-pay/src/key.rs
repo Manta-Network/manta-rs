@@ -29,7 +29,7 @@ use core::marker::PhantomData;
 use manta_accounting::key::{
     self, AccountIndex, HierarchicalKeyDerivationScheme, IndexType, KeyIndex, Kind,
 };
-use manta_crypto::rand::{CryptoRng, RngCore, Sample, Standard};
+use manta_crypto::rand::{CryptoRng, RngCore, Sample};
 use manta_util::{create_seal, seal, Array};
 
 #[cfg(feature = "serde")]
@@ -181,7 +181,7 @@ where
     C: CoinType,
 {
     #[inline]
-    fn sample<R>(distribution: Standard, rng: &mut R) -> Self
+    fn sample<R>(distribution: (), rng: &mut R) -> Self
     where
         R: CryptoRng + RngCore + ?Sized,
     {
@@ -290,7 +290,7 @@ impl PartialEq for Mnemonic {
 
 impl Sample for Mnemonic {
     #[inline]
-    fn sample<R>(distribution: Standard, rng: &mut R) -> Self
+    fn sample<R>(distribution: (), rng: &mut R) -> Self
     where
         R: CryptoRng + RngCore + ?Sized,
     {

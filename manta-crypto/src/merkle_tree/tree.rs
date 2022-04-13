@@ -703,14 +703,10 @@ where
         R: Read,
     {
         Ok(Self::new(
-            LeafHashParameters::<C, COM>::decode(&mut reader).map_err(|err| match err {
-                DecodeError::Decode(err) => DecodeError::Decode(ParameterDecodeError::Leaf(err)),
-                DecodeError::Read(err) => DecodeError::Read(err),
-            })?,
-            InnerHashParameters::<C, COM>::decode(&mut reader).map_err(|err| match err {
-                DecodeError::Decode(err) => DecodeError::Decode(ParameterDecodeError::Inner(err)),
-                DecodeError::Read(err) => DecodeError::Read(err),
-            })?,
+            LeafHashParameters::<C, COM>::decode(&mut reader)
+                .map_err(|err| err.map_decode(ParameterDecodeError::Leaf))?,
+            InnerHashParameters::<C, COM>::decode(&mut reader)
+                .map_err(|err| err.map_decode(ParameterDecodeError::Inner))?,
         ))
     }
 }

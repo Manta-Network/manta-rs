@@ -28,18 +28,19 @@ use alloc::{boxed::Box, vec::Vec};
 #[cfg(feature = "serde-array")]
 use crate::serde::{Deserialize, Serialize};
 
+/// Error Message for the [`into_array_unchecked`] and [`into_boxed_array_unchecked`] messages.
+const INTO_UNCHECKED_ERROR_MESSAGE: &str =
+    "Input did not have the correct length to match the output array of length";
+
 /// Performs the [`TryInto`] conversion into an array without checking if the conversion succeeded.
 #[inline]
-pub fn into_array_unchecked<T, V, const N: usize>(v: V) -> [T; N]
+pub fn into_array_unchecked<T, V, const N: usize>(value: V) -> [T; N]
 where
     V: TryInto<[T; N]>,
 {
-    match v.try_into() {
+    match value.try_into() {
         Ok(array) => array,
-        _ => unreachable!(
-            "Input did not have the correct length to match the output slice of length {:?}.",
-            N,
-        ),
+        _ => unreachable!("{} {:?}.", INTO_UNCHECKED_ERROR_MESSAGE, N),
     }
 }
 
@@ -48,16 +49,13 @@ where
 #[cfg(feature = "alloc")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
 #[inline]
-pub fn into_boxed_array_unchecked<T, V, const N: usize>(v: V) -> Box<[T; N]>
+pub fn into_boxed_array_unchecked<T, V, const N: usize>(value: V) -> Box<[T; N]>
 where
     V: TryInto<Box<[T; N]>>,
 {
-    match v.try_into() {
-        Ok(array) => array,
-        _ => unreachable!(
-            "Input did not have the correct length to match the output slice of length {:?}.",
-            N,
-        ),
+    match value.try_into() {
+        Ok(boxed_array) => boxed_array,
+        _ => unreachable!("{} {:?}.", INTO_UNCHECKED_ERROR_MESSAGE, N),
     }
 }
 
