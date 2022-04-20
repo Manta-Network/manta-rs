@@ -14,9 +14,14 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-use crate::crypto::hash::poseidon::matrix::{Matrix, MdsMatrices, SparseMatrix};
+use crate::crypto::hash::poseidon::matrix::{factor_to_sparse_matrixes, Matrix, MdsMatrices, SparseMatrix};
 use core::fmt::Debug;
 use std::ops::{Add, AddAssign, Mul, MulAssign, Sub, SubAssign};
+use crate::crypto::hash::poseidon::constants::preprocess::compress_round_constants;
+use crate::crypto::hash::poseidon::constants::round_constants::generate_round_constants;
+use crate::crypto::hash::poseidon::constants::round_nums::calc_round_numbers;
+
+// TODO: shall we put constant generation code to compile time?
 
 /// TODO doc
 pub trait ParamField:
@@ -73,7 +78,59 @@ pub struct PoseidonConstants<F: ParamField> {
     pub partial_rounds: usize,
 }
 
-mod lfsr {
+impl<F: ParamField> PoseidonConstants<F> {
+    pub(crate) fn default<const WIDTH: usize>() -> Self{
+        let arity = WIDTH - 1;
+
+        let (num_full_rounds, num_partial_rounds) = calc_round_numbers(WIDTH, true);
+
+        debug_assert_eq!(num_full_rounds % 2, 0);
+        let num_half_full_rounds = num_full_rounds / 2;
+        let (round_constants, _) = generate_round_constants(
+            F::MODULUS_BITS as u64,
+            WIDTH.try_into().expect("WIDTH is too large"),
+            num_full_rounds
+                .try_into()
+                .expect("num_full_rounds is too large"),
+            num_partial_rounds
+                .try_into()
+                .expect("num_partial_rounds is too large"),
+        );
+        let domain_tag = F::from(((1 << arity) - 1) as u64);
+
+        let mds_matrices = MdsMatrices::new(WIDTH);
+
+        let compressed_round_constants = compress_round_constants(
+            WIDTH,
+            num_full_rounds,
+            num_partial_rounds,
+            &round_constants,
+            &mds_matrices,
+        );
+
+        let (pre_sparse_matrix, sparse_matrixes) =
+            factor_to_sparse_matrixes(mds_matrices.m.clone(), num_partial_rounds);
+
+        assert!(
+            WIDTH * (num_full_rounds + num_partial_rounds) <= round_constants.len(),
+            "Not enough round constants"
+        );
+
+        PoseidonConstants {
+            mds_matrices,
+            round_constants,
+            domain_tag,
+            full_rounds: num_full_rounds,
+            half_full_rounds: num_half_full_rounds,
+            partial_rounds: num_partial_rounds,
+            compressed_round_constants,
+            pre_sparse_matrix,
+            sparse_matrixes,
+        }
+    }
+}
+
+pub(crate) mod lfsr {
     use crate::crypto::hash::poseidon::constants::ParamField;
 
     /// LFSR for randomness in Poseidon round constants.
@@ -228,7 +285,26 @@ mod lfsr {
     }
 }
 
-mod round_nums{
+pub(crate) mod round_constants{
+    use crate::crypto::hash::poseidon::constants::lfsr::GrainLFSR;
+    use crate::crypto::hash::poseidon::constants::ParamField;
+
+    /// return round constants, and return the LFSR used to generate MDS matrix
+    pub(crate) fn generate_round_constants<F: ParamField>(
+        prime_num_bits: u64,
+        width: usize,
+        r_f: usize,
+        r_p: usize,
+    ) -> (Vec<F>, GrainLFSR) {
+        let num_constants = (r_f + r_p) * width;
+        let mut lfsr = GrainLFSR::new(prime_num_bits, width, r_f, r_p);
+        (lfsr.get_field_elements_rejection_sampling(num_constants), lfsr)
+    }
+
+}
+
+pub(crate) mod round_nums{
+
     // Adapted from https://github.com/filecoin-project/neptune/blob/master/src/round_numbers.rs
 
     // The number of bits of the Poseidon prime field modulus. Denoted `n` in the Poseidon paper
@@ -316,6 +392,88 @@ mod round_nums{
             .max()
             .unwrap();
         rf >= rf_max
+    }
+
+}
+
+pub(crate) mod preprocess{
+    use crate::crypto::hash::poseidon::constants::ParamField;
+    use crate::crypto::hash::poseidon::matrix::{MdsMatrices, vec_add};
+
+    // acknowledgement: adapted from FileCoin Project: https://github.com/filecoin-project/neptune/blob/master/src/preprocessing.rs
+    /// Compress constants by pushing them back through linear layers and through the identity components of partial layers.
+    /// As a result, constants need only be added after each S-box.
+    pub(crate) fn compress_round_constants<F: ParamField>(
+        width: usize,
+        full_rounds: usize,
+        partial_rounds: usize,
+        round_constants: &Vec<F>,
+        mds_matrices: &MdsMatrices<F>,
+    ) -> Vec<F> {
+        let inverse_matrix = &mds_matrices.m_inv;
+
+        let mut res: Vec<F> = Vec::new();
+
+        let round_keys = |r: usize| &round_constants[r*width..(r+1)*width];
+
+        // This is half full-rounds.
+        let half_full_rounds = full_rounds/2;
+
+        // First round constants are unchanged.
+        res.extend(round_keys(0));
+
+        // Post S-box adds for the first set of full rounds should be 'inverted' from next round.
+        // The final round is skipped when fully preprocessing because that value must be obtained from the result of preprocessing the partial rounds.
+        let end = half_full_rounds - 1;
+        for i in 0..end {
+            let next_round = round_keys(i+1);
+            let inverted = inverse_matrix.right_apply(next_round);
+            res.extend(inverted);
+        }
+
+        // The plan:
+        // - Work backwards from last row in this group
+        // - Invert the row.
+        // - Save first constant (corresponding to the one S-box performed).
+        // - Add inverted result to previous row.
+        // - Repeat until all partial round key rows have been consumed.
+        // - Extend the preprocessed result by the final resultant row.
+        // - Move the accumulated list of single round keys to the preprocesed result.
+        // - (Last produced should be first applied, so either pop until empty, or reverse and extend, etc.)
+
+        // 'partial_keys' will accumulated the single post-S-box constant for each partial-round, in reverse order.
+        let mut partial_keys: Vec<F> = Vec::new();
+
+        let final_round = half_full_rounds + partial_rounds;
+        let final_round_key = round_keys(final_round).to_vec();
+
+        // 'round_acc' holds the accumulated result of inverting and adding subsequent round constants (in reverse).
+        let round_acc = (0..partial_rounds)
+            .map(|i| round_keys(final_round - i - 1))
+            .fold(final_round_key, |acc, previous_round_keys| {
+                let mut inverted = inverse_matrix.right_apply(&acc);
+
+                partial_keys.push(inverted[0]);
+                inverted[0] = F::zero();
+
+                vec_add(&previous_round_keys, &inverted)
+            });
+
+        res.extend(inverse_matrix.right_apply(&round_acc));
+
+        while let Some(x) = partial_keys.pop() {
+            res.push(x)
+        }
+
+        // Post S-box adds for the first set of full rounds should be 'inverted' from next round.
+        for i in 1..(half_full_rounds) {
+            let start = half_full_rounds + partial_rounds;
+            let next_round = round_keys(i + start);
+            let inverted = inverse_matrix.right_apply(next_round);
+            res.extend(inverted);
+        }
+
+        res
     }
 
 }

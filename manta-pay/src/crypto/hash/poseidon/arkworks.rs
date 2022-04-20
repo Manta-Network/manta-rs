@@ -2,6 +2,8 @@ use crate::crypto::hash::poseidon::constants::ParamField;
 use ark_ff::{BigInteger, Field, FpParameters, PrimeField};
 use ark_std::{One, Zero};
 
+// TODO: use macro
+
 impl ParamField for ark_bls12_381::Fr {
     const MODULUS_BITS: usize = <Self as PrimeField>::Params::MODULUS_BITS as usize;
 

@@ -20,7 +20,6 @@ use crate::crypto::{
     constraint::arkworks::{field_element_as_bytes, groth16, Boolean, Fp, FpVar, R1CS},
     ecc,
     encryption::aes::{self, FixedNonceAesGcm},
-    hash::poseidon,
     key::Blake2sKdf,
 };
 use alloc::vec::Vec;
@@ -63,6 +62,7 @@ pub use ark_bls12_381 as bls12_381;
 pub use ark_ed_on_bls12_381 as bls12_381_ed;
 
 pub(crate) use bls12_381_ed::EdwardsProjective as Bls12_381_Edwards;
+use crate::crypto::hash::poseidon_old;
 
 /// Pairing Curve Type
 pub type PairingCurve = Bls12_381;
@@ -101,12 +101,12 @@ pub type ProofSystem = groth16::Groth16<PairingCurve>;
 pub struct PoseidonSpec<const ARITY: usize>;
 
 /// Poseidon-2 Hash Parameters
-pub type Poseidon2 = poseidon::Hasher<PoseidonSpec<2>, (), 2>;
+pub type Poseidon2 = poseidon_old::Hasher<PoseidonSpec<2>, (), 2>;
 
 /// Poseidon-2 Hash Parameters Variable
-pub type Poseidon2Var = poseidon::Hasher<PoseidonSpec<2>, Compiler, 2>;
+pub type Poseidon2Var = poseidon_old::Hasher<PoseidonSpec<2>, Compiler, 2>;
 
-impl poseidon::arkworks::Specification for PoseidonSpec<2> {
+impl poseidon_old::arkworks::Specification for PoseidonSpec<2> {
     type Field = ConstraintField;
     const FULL_ROUNDS: usize = 8;
     const PARTIAL_ROUNDS: usize = 57;
@@ -114,12 +114,12 @@ impl poseidon::arkworks::Specification for PoseidonSpec<2> {
 }
 
 /// Poseidon-4 Hash Parameters
-pub type Poseidon4 = poseidon::Hasher<PoseidonSpec<4>, (), 4>;
+pub type Poseidon4 = poseidon_old::Hasher<PoseidonSpec<4>, (), 4>;
 
 /// Poseidon-4 Hash Parameters Variable
-pub type Poseidon4Var = poseidon::Hasher<PoseidonSpec<4>, Compiler, 4>;
+pub type Poseidon4Var = poseidon_old::Hasher<PoseidonSpec<4>, Compiler, 4>;
 
-impl poseidon::arkworks::Specification for PoseidonSpec<4> {
+impl poseidon_old::arkworks::Specification for PoseidonSpec<4> {
     type Field = ConstraintField;
     const FULL_ROUNDS: usize = 8;
     const PARTIAL_ROUNDS: usize = 60;
