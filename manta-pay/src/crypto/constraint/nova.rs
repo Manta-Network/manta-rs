@@ -14,16 +14,4 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Constraint System and Proof System Implementations
-
-#[cfg(feature = "arkworks")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "arkworks")))]
-pub mod arkworks;
-
-#[cfg(feature = "nova")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "nova")))]
-pub mod nova;
-
-#[cfg(feature = "plonk")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "plonk")))]
-pub mod plonk;
+//! Nova Constraint System and Proof System Implementations
