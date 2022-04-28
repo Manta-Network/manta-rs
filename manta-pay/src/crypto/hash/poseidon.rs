@@ -37,6 +37,8 @@ use {
 pub trait Specification<COM = ()> {
     /// Field Type
     type Field;
+    /// Field used as constant
+    type ParameterField;
 
     /// Number of Full Rounds
     ///
@@ -53,11 +55,20 @@ pub trait Specification<COM = ()> {
     /// Adds two field elements together.
     fn add(lhs: &Self::Field, rhs: &Self::Field, compiler: &mut COM) -> Self::Field;
 
+    /// Add a field element with a constant
+    fn addi(lhs: &Self::Field, rhs: &Self::ParameterField, compiler: &mut COM) -> Self::Field;
+
     /// Multiplies two field elements together.
     fn mul(lhs: &Self::Field, rhs: &Self::Field, compiler: &mut COM) -> Self::Field;
 
-    /// Adds the `rhs` field element to `self`, storing the value in `self`.
+    /// Multiplies a field element with a constant
+    fn muli(lhs: &Self::Field, rhs: &Self::ParameterField, compiler: &mut COM) -> Self::Field;
+
+    /// Adds the `rhs` field element to `lhs` field element, storing the value in `lhs`
     fn add_assign(lhs: &mut Self::Field, rhs: &Self::Field, compiler: &mut COM);
+
+    /// Adds the `rhs` constant to `lhs` field element, storing the value in `lhs`
+    fn addi_assign(lhs: &mut Self::Field, rhs: &Self::ParameterField, compiler: &mut COM);
 
     /// Applies the S-BOX to `point`.
     fn apply_sbox(point: &mut Self::Field, compiler: &mut COM);
@@ -81,8 +92,8 @@ where
     derive(Deserialize, Serialize),
     serde(
         bound(
-            deserialize = "S::Field: Deserialize<'de>",
-            serialize = "S::Field: Serialize"
+            deserialize = "S::ParameterField: Deserialize<'de>",
+            serialize = "S::ParameterField: Serialize"
         ),
         crate = "manta_util::serde",
         deny_unknown_fields
@@ -90,21 +101,21 @@ where
 )]
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "S::Field: Clone"),
-    Debug(bound = "S::Field: Debug"),
-    Eq(bound = "S::Field: Eq"),
-    Hash(bound = "S::Field: Hash"),
-    PartialEq(bound = "S::Field: PartialEq")
+    Clone(bound = "S::ParameterField: Clone"),
+    Debug(bound = "S::ParameterField: Debug"),
+    Eq(bound = "S::ParameterField: Eq"),
+    Hash(bound = "S::ParameterField: Hash"),
+    PartialEq(bound = "S::ParameterField: PartialEq")
 )]
 pub struct Hasher<S, COM, const ARITY: usize>
 where
     S: Specification<COM>,
 {
     /// Additive Round Keys
-    additive_round_keys: Vec<S::Field>,
+    additive_round_keys: Vec<S::ParameterField>,
 
     /// MDS Matrix
-    mds_matrix: Vec<S::Field>,
+    mds_matrix: Vec<S::ParameterField>,
 }
 
 impl<S, COM, const ARITY: usize> Hasher<S, COM, ARITY>
@@ -130,7 +141,7 @@ where
     /// This method panics if the input vectors are not the correct size for the specified
     /// [`Specification`].
     #[inline]
-    pub fn new(additive_round_keys: Vec<S::Field>, mds_matrix: Vec<S::Field>) -> Self {
+    pub fn new(additive_round_keys: Vec<S::ParameterField>, mds_matrix: Vec<S::ParameterField>) -> Self {
         assert_eq!(
             additive_round_keys.len(),
             Self::ADDITIVE_ROUND_KEYS_COUNT,
@@ -147,7 +158,7 @@ where
     /// Builds a new [`Hasher`] from `additive_round_keys` and `mds_matrix` without
     /// checking their sizes.
     #[inline]
-    fn new_unchecked(additive_round_keys: Vec<S::Field>, mds_matrix: Vec<S::Field>) -> Self {
+    fn new_unchecked(additive_round_keys: Vec<S::ParameterField>, mds_matrix: Vec<S::ParameterField>) -> Self {
         Self {
             additive_round_keys,
             mds_matrix,
@@ -156,7 +167,7 @@ where
 
     /// Returns the additive keys for the given `round`.
     #[inline]
-    fn additive_keys(&self, round: usize) -> &[S::Field] {
+    fn additive_keys(&self, round: usize) -> &[S::ParameterField] {
         let width = Self::WIDTH;
         let start = round * width;
         &self.additive_round_keys[start..start + width]
@@ -172,8 +183,8 @@ where
             let linear_combination = state
                 .iter()
                 .enumerate()
-                .map(|(j, elem)| S::mul(elem, &self.mds_matrix[width * i + j], compiler))
-                .collect::<Vec<_>>();
+                .map(|(j, elem)| S::muli(elem, &self.mds_matrix[width * i + j], compiler))
+                .collect::<Vec<_>>(); // TODO: Check whether mds_matrix here is correct, in terms of row-major and col-major
             next.push(
                 linear_combination
                     .into_iter()
@@ -189,7 +200,7 @@ where
     fn first_round(&self, input: [&S::Field; ARITY], compiler: &mut COM) -> State<S, COM> {
         let mut state = Vec::with_capacity(Self::WIDTH);
         for (i, point) in iter::once(&S::zero(compiler)).chain(input).enumerate() {
-            let mut elem = S::add(point, &self.additive_round_keys[i], compiler);
+            let mut elem = S::addi(point, &self.additive_round_keys[i], compiler);
             S::apply_sbox(&mut elem, compiler);
             state.push(elem);
         }
@@ -202,7 +213,7 @@ where
     fn full_round(&self, round: usize, state: &mut State<S, COM>, compiler: &mut COM) {
         let keys = self.additive_keys(round);
         for (i, elem) in state.iter_mut().enumerate() {
-            S::add_assign(elem, &keys[i], compiler);
+            S::addi_assign(elem, &keys[i], compiler);
             S::apply_sbox(elem, compiler);
         }
         self.mds_matrix_multiply(state, compiler);
@@ -213,7 +224,7 @@ where
     fn partial_round(&self, round: usize, state: &mut State<S, COM>, compiler: &mut COM) {
         let keys = self.additive_keys(round);
         for (i, elem) in state.iter_mut().enumerate() {
-            S::add_assign(elem, &keys[i], compiler);
+            S::addi_assign(elem, &keys[i], compiler);
         }
         S::apply_sbox(&mut state[0], compiler);
         self.mds_matrix_multiply(state, compiler);
@@ -262,15 +273,16 @@ where
     fn sample<R>(distribution: D, rng: &mut R) -> Self
     where
         R: CryptoRng + RngCore + ?Sized,
-    {
-        Self {
-            additive_round_keys: rng
-                .sample_iter(repeat(distribution.clone()).take(Self::ADDITIVE_ROUND_KEYS_COUNT))
-                .collect(),
-            mds_matrix: rng
-                .sample_iter(repeat(distribution).take(Self::MDS_MATRIX_SIZE))
-                .collect(),
-        }
+    { // TODO
+        // Self {
+        //     additive_round_keys: rng
+        //         .sample_iter(repeat(distribution.clone()).take(Self::ADDITIVE_ROUND_KEYS_COUNT))
+        //         .collect(),
+        //     mds_matrix: rng
+        //         .sample_iter(repeat(distribution).take(Self::MDS_MATRIX_SIZE))
+        //         .collect(),
+        // }
+        todo!()
     }
 }
 
@@ -285,15 +297,16 @@ where
     fn decode<R>(mut reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
     where
         R: Read,
-    {
-        Ok(Self::new_unchecked(
-            (0..Self::ADDITIVE_ROUND_KEYS_COUNT)
-                .map(|_| S::Field::decode(&mut reader))
-                .collect::<Result<Vec<_>, _>>()?,
-            (0..Self::MDS_MATRIX_SIZE)
-                .map(|_| S::Field::decode(&mut reader))
-                .collect::<Result<Vec<_>, _>>()?,
-        ))
+    { // TODO
+        // Ok(Self::new_unchecked(
+        //     (0..Self::ADDITIVE_ROUND_KEYS_COUNT)
+        //         .map(|_| S::Para::decode(&mut reader))
+        //         .collect::<Result<Vec<_>, _>>()?,
+        //     (0..Self::MDS_MATRIX_SIZE)
+        //         .map(|_| S::Field::decode(&mut reader))
+        //         .collect::<Result<Vec<_>, _>>()?,
+        // ))
+        todo!()
     }
 }
 
@@ -306,13 +319,13 @@ where
     fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
     where
         W: Write,
-    {
-        for key in &self.additive_round_keys {
-            key.encode(&mut writer)?;
-        }
-        for entry in &self.mds_matrix {
-            entry.encode(&mut writer)?;
-        }
+    {// TODO
+        // for key in &self.additive_round_keys {
+        //     key.encode(&mut writer)?;
+        // }
+        // for entry in &self.mds_matrix {
+        //     entry.encode(&mut writer)?;
+        // }
         Ok(())
     }
 }
@@ -360,6 +373,7 @@ pub mod arkworks {
         S: Specification,
     {
         type Field = Fp<S::Field>;
+        type ParameterField = Fp<S::Field>;
 
         const FULL_ROUNDS: usize = S::FULL_ROUNDS;
         const PARTIAL_ROUNDS: usize = S::PARTIAL_ROUNDS;
@@ -374,13 +388,31 @@ pub mod arkworks {
             Fp(lhs.0 + rhs.0)
         }
 
+        // When COM = (), we do not distinguish Field and ParameterField. So addi() has the same computation as add()
+        #[inline]
+        fn addi(lhs: &Self::Field, rhs: &Self::ParameterField, compiler: &mut ()) -> Self::Field {
+            Fp(lhs.0 + rhs.0)
+        }
+
         #[inline]
         fn mul(lhs: &Self::Field, rhs: &Self::Field, _: &mut ()) -> Self::Field {
             Fp(lhs.0 * rhs.0)
         }
 
+        // When COM = (), we do not distinguish Field and ParameterField. So muli() has the same computation as mul()
+        #[inline]
+        fn muli(lhs: &Self::Field, rhs: &Self::ParameterField, compiler: &mut ()) -> Self::Field {
+            Fp(lhs.0 * rhs.0)
+        }
+
         #[inline]
         fn add_assign(lhs: &mut Self::Field, rhs: &Self::Field, _: &mut ()) {
+            lhs.0 += rhs.0;
+        }
+
+        // When COM = (), we do not distinguish Field and ParameterField. So addi_assign() has the same computation as add_assign()
+        #[inline]
+        fn addi_assign(lhs: &mut Self::Field, rhs: &Self::ParameterField, compiler: &mut ()) {
             lhs.0 += rhs.0;
         }
 
@@ -395,6 +427,7 @@ pub mod arkworks {
         S: Specification,
     {
         type Field = FpVar<S::Field>;
+        type ParameterField = Fp<S::Field>;
 
         const FULL_ROUNDS: usize = S::FULL_ROUNDS;
         const PARTIAL_ROUNDS: usize = S::PARTIAL_ROUNDS;
@@ -412,9 +445,21 @@ pub mod arkworks {
         }
 
         #[inline]
+        fn addi(lhs: &Self::Field, rhs: &Self::ParameterField, compiler: &mut Compiler<S>) -> Self::Field {
+            let _= compiler;
+            lhs + FpVar::Constant(rhs.0)
+        }
+
+        #[inline]
         fn mul(lhs: &Self::Field, rhs: &Self::Field, compiler: &mut Compiler<S>) -> Self::Field {
             let _ = compiler;
             lhs * rhs
+        }
+
+        #[inline]
+        fn muli(lhs: &Self::Field, rhs: &Self::ParameterField, compiler: &mut Compiler<S>) -> Self::Field {
+            let _ = compiler;
+            lhs * FpVar::Constant(rhs.0)
         }
 
         #[inline]
@@ -423,6 +468,12 @@ pub mod arkworks {
             *lhs += rhs;
         }
 
+        #[inline]
+        fn addi_assign(lhs: &mut Self::Field, rhs: &Self::ParameterField, compiler: &mut Compiler<S>) {
+            let _ = compiler;
+            *lhs += FpVar::Constant(rhs.0)
+        }
+        
         #[inline]
         fn apply_sbox(point: &mut Self::Field, compiler: &mut Compiler<S>) {
             let _ = compiler;
@@ -440,18 +491,21 @@ pub mod arkworks {
 
         #[inline]
         fn new_constant(this: &Self::Type, compiler: &mut Compiler<S>) -> Self {
-            Self {
-                additive_round_keys: this
-                    .additive_round_keys
-                    .iter()
-                    .map(|k| k.as_constant(compiler))
-                    .collect(),
-                mds_matrix: this
-                    .mds_matrix
-                    .iter()
-                    .map(|k| k.as_constant(compiler))
-                    .collect(),
-            }
+            // TODO
+            // Self {
+            //     additive_round_keys: this
+            //         .additive_round_keys
+            //         .iter()
+            //         .map(|k| k.as_constant(compiler)
+            //         )
+            //         .collect(),
+            //     mds_matrix: this
+            //         .mds_matrix
+            //         .iter()
+            //         .map(|k| k.as_constant(compiler))
+            //         .collect(),
+            // }
+            todo!()
         }
     }
 }
