@@ -109,7 +109,7 @@ pub type Poseidon2Var = poseidon::Hasher<PoseidonSpec<2>, Compiler, 2>;
 impl poseidon::arkworks::Specification for PoseidonSpec<2> {
     type Field = ConstraintField;
     const FULL_ROUNDS: usize = 8;
-    const PARTIAL_ROUNDS: usize = 57;
+    const PARTIAL_ROUNDS: usize = 55;
     const SBOX_EXPONENT: u64 = 5;
 }
 
@@ -122,7 +122,7 @@ pub type Poseidon4Var = poseidon::Hasher<PoseidonSpec<4>, Compiler, 4>;
 impl poseidon::arkworks::Specification for PoseidonSpec<4> {
     type Field = ConstraintField;
     const FULL_ROUNDS: usize = 8;
-    const PARTIAL_ROUNDS: usize = 60;
+    const PARTIAL_ROUNDS: usize = 56;
     const SBOX_EXPONENT: u64 = 5;
 }
 
