@@ -52,6 +52,9 @@ pub trait Specification<COM = ()> {
     /// Returns the additive identity of the field.
     fn zero(compiler: &mut COM) -> Self::Field;
 
+    /// Returns the domain tag. TODO: May update domain_tag for different applications
+    fn domain_tag(compiler: &mut COM, arity: usize) -> Self::Field;
+
     /// Adds two field elements together.
     fn add(lhs: &Self::Field, rhs: &Self::Field, compiler: &mut COM) -> Self::Field;
 
@@ -199,7 +202,7 @@ where
     #[inline]
     fn first_round(&self, input: [&S::Field; ARITY], compiler: &mut COM) -> State<S, COM> {
         let mut state = Vec::with_capacity(Self::WIDTH);
-        for (i, point) in iter::once(&S::zero(compiler)).chain(input).enumerate() {
+        for (i, point) in iter::once(&S::domain_tag(compiler, ARITY)).chain(input).enumerate() {
             let mut elem = S::addi(point, &self.additive_round_keys[i], compiler);
             S::apply_sbox(&mut elem, compiler);
             state.push(elem);
@@ -241,13 +244,14 @@ where
     #[inline]
     fn hash_in(&self, input: [&Self::Input; ARITY], compiler: &mut COM) -> Self::Output {
         let mut state = self.first_round(input, compiler);
-        for round in 1..S::FULL_ROUNDS {
+        let half_full_round = S::FULL_ROUNDS/2;
+        for round in 1..half_full_round {
             self.full_round(round, &mut state, compiler);
         }
-        for round in S::FULL_ROUNDS..(S::FULL_ROUNDS + S::PARTIAL_ROUNDS) {
+        for round in half_full_round..(half_full_round + S::PARTIAL_ROUNDS) {
             self.partial_round(round, &mut state, compiler);
         }
-        for round in (S::FULL_ROUNDS + S::PARTIAL_ROUNDS)..(2 * S::FULL_ROUNDS + S::PARTIAL_ROUNDS)
+        for round in (half_full_round + S::PARTIAL_ROUNDS)..(S::FULL_ROUNDS + S::PARTIAL_ROUNDS)
         {
             self.full_round(round, &mut state, compiler);
         }
@@ -261,7 +265,7 @@ impl<D, S, COM, const ARITY: usize> Sample<D> for Hasher<S, COM, ARITY>
 where
     D: Clone,
     S: Specification<COM>,
-    S::Field: Sample<D>,
+    S::ParameterField: Sample<D>,
 {
     /// Samples random Poseidon parameters.
     ///
@@ -273,59 +277,57 @@ where
     fn sample<R>(distribution: D, rng: &mut R) -> Self
     where
         R: CryptoRng + RngCore + ?Sized,
-    { // TODO
-        // Self {
-        //     additive_round_keys: rng
-        //         .sample_iter(repeat(distribution.clone()).take(Self::ADDITIVE_ROUND_KEYS_COUNT))
-        //         .collect(),
-        //     mds_matrix: rng
-        //         .sample_iter(repeat(distribution).take(Self::MDS_MATRIX_SIZE))
-        //         .collect(),
-        // }
-        todo!()
+    {
+        Self {
+            additive_round_keys: rng
+                .sample_iter(repeat(distribution.clone()).take(Self::ADDITIVE_ROUND_KEYS_COUNT))
+                .collect(),
+            mds_matrix: rng
+                .sample_iter(repeat(distribution).take(Self::MDS_MATRIX_SIZE))
+                .collect(),
+        }
     }
 }
 
 impl<S, COM, const ARITY: usize> Decode for Hasher<S, COM, ARITY>
 where
     S: Specification<COM>,
-    S::Field: Decode,
+    S::ParameterField: Decode,
 {
-    type Error = <S::Field as Decode>::Error;
+    type Error = <S::ParameterField as Decode>::Error;
 
     #[inline]
     fn decode<R>(mut reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
     where
         R: Read,
-    { // TODO
-        // Ok(Self::new_unchecked(
-        //     (0..Self::ADDITIVE_ROUND_KEYS_COUNT)
-        //         .map(|_| S::Para::decode(&mut reader))
-        //         .collect::<Result<Vec<_>, _>>()?,
-        //     (0..Self::MDS_MATRIX_SIZE)
-        //         .map(|_| S::Field::decode(&mut reader))
-        //         .collect::<Result<Vec<_>, _>>()?,
-        // ))
-        todo!()
+    {
+        Ok(Self::new_unchecked(
+            (0..Self::ADDITIVE_ROUND_KEYS_COUNT)
+                .map(|_| S::ParameterField::decode(&mut reader))
+                .collect::<Result<Vec<_>, _>>()?,
+            (0..Self::MDS_MATRIX_SIZE)
+                .map(|_| S::ParameterField::decode(&mut reader))
+                .collect::<Result<Vec<_>, _>>()?,
+        ))
     }
 }
 
 impl<S, COM, const ARITY: usize> Encode for Hasher<S, COM, ARITY>
 where
     S: Specification<COM>,
-    S::Field: Encode,
+    S::ParameterField: Encode,
 {
     #[inline]
     fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
     where
         W: Write,
-    {// TODO
-        // for key in &self.additive_round_keys {
-        //     key.encode(&mut writer)?;
-        // }
-        // for entry in &self.mds_matrix {
-        //     entry.encode(&mut writer)?;
-        // }
+    {
+        for key in &self.additive_round_keys {
+            key.encode(&mut writer)?;
+        }
+        for entry in &self.mds_matrix {
+            entry.encode(&mut writer)?;
+        }
         Ok(())
     }
 }
@@ -344,8 +346,8 @@ pub type Output<S, COM, const ARITY: usize> =
 pub mod arkworks {
     use crate::crypto::constraint::arkworks::{Fp, FpVar, R1CS};
     use ark_ff::{Field, PrimeField};
-    use ark_r1cs_std::fields::FieldVar;
-    use manta_crypto::constraint::{Constant, ValueSource};
+    use ark_r1cs_std::{fields::FieldVar, alloc::AllocVar};
+    use manta_crypto::constraint::Constant;
 
     /// Compiler Type
     type Compiler<S> = R1CS<<S as Specification>::Field>;
@@ -384,13 +386,18 @@ pub mod arkworks {
         }
 
         #[inline]
+        fn domain_tag(_: &mut (), arity: usize) -> Self::Field {
+            Fp(S::Field::from(((1 << arity)-1) as u64))
+        }
+
+        #[inline]
         fn add(lhs: &Self::Field, rhs: &Self::Field, _: &mut ()) -> Self::Field {
             Fp(lhs.0 + rhs.0)
         }
 
         // When COM = (), we do not distinguish Field and ParameterField. So addi() has the same computation as add()
         #[inline]
-        fn addi(lhs: &Self::Field, rhs: &Self::ParameterField, compiler: &mut ()) -> Self::Field {
+        fn addi(lhs: &Self::Field, rhs: &Self::ParameterField, _: &mut ()) -> Self::Field {
             Fp(lhs.0 + rhs.0)
         }
 
@@ -401,7 +408,7 @@ pub mod arkworks {
 
         // When COM = (), we do not distinguish Field and ParameterField. So muli() has the same computation as mul()
         #[inline]
-        fn muli(lhs: &Self::Field, rhs: &Self::ParameterField, compiler: &mut ()) -> Self::Field {
+        fn muli(lhs: &Self::Field, rhs: &Self::ParameterField, _: &mut ()) -> Self::Field {
             Fp(lhs.0 * rhs.0)
         }
 
@@ -412,7 +419,7 @@ pub mod arkworks {
 
         // When COM = (), we do not distinguish Field and ParameterField. So addi_assign() has the same computation as add_assign()
         #[inline]
-        fn addi_assign(lhs: &mut Self::Field, rhs: &Self::ParameterField, compiler: &mut ()) {
+        fn addi_assign(lhs: &mut Self::Field, rhs: &Self::ParameterField, _: &mut ()) {
             lhs.0 += rhs.0;
         }
 
@@ -439,44 +446,43 @@ pub mod arkworks {
         }
 
         #[inline]
-        fn add(lhs: &Self::Field, rhs: &Self::Field, compiler: &mut Compiler<S>) -> Self::Field {
-            let _ = compiler;
+        fn domain_tag(compiler: &mut Compiler<S>, arity: usize) -> Self::Field {
+            let v = S::Field::from(((1 << arity)-1) as u64);
+            FpVar::new_witness(compiler.cs.clone(), || Ok(v)).unwrap()
+        }
+
+        #[inline]
+        fn add(lhs: &Self::Field, rhs: &Self::Field, _: &mut Compiler<S>) -> Self::Field {
             lhs + rhs
         }
 
         #[inline]
-        fn addi(lhs: &Self::Field, rhs: &Self::ParameterField, compiler: &mut Compiler<S>) -> Self::Field {
-            let _= compiler;
+        fn addi(lhs: &Self::Field, rhs: &Self::ParameterField, _: &mut Compiler<S>) -> Self::Field {
             lhs + FpVar::Constant(rhs.0)
         }
 
         #[inline]
-        fn mul(lhs: &Self::Field, rhs: &Self::Field, compiler: &mut Compiler<S>) -> Self::Field {
-            let _ = compiler;
+        fn mul(lhs: &Self::Field, rhs: &Self::Field, _: &mut Compiler<S>) -> Self::Field {
             lhs * rhs
         }
 
         #[inline]
-        fn muli(lhs: &Self::Field, rhs: &Self::ParameterField, compiler: &mut Compiler<S>) -> Self::Field {
-            let _ = compiler;
+        fn muli(lhs: &Self::Field, rhs: &Self::ParameterField, _: &mut Compiler<S>) -> Self::Field {
             lhs * FpVar::Constant(rhs.0)
         }
 
         #[inline]
-        fn add_assign(lhs: &mut Self::Field, rhs: &Self::Field, compiler: &mut Compiler<S>) {
-            let _ = compiler;
+        fn add_assign(lhs: &mut Self::Field, rhs: &Self::Field, _: &mut Compiler<S>) {
             *lhs += rhs;
         }
 
         #[inline]
-        fn addi_assign(lhs: &mut Self::Field, rhs: &Self::ParameterField, compiler: &mut Compiler<S>) {
-            let _ = compiler;
+        fn addi_assign(lhs: &mut Self::Field, rhs: &Self::ParameterField, _: &mut Compiler<S>) {
             *lhs += FpVar::Constant(rhs.0)
         }
         
         #[inline]
-        fn apply_sbox(point: &mut Self::Field, compiler: &mut Compiler<S>) {
-            let _ = compiler;
+        fn apply_sbox(point: &mut Self::Field, _: &mut Compiler<S>) {
             *point = point
                 .pow_by_constant(&[Self::SBOX_EXPONENT])
                 .expect("Exponentiation is not allowed to fail.");
@@ -491,21 +497,11 @@ pub mod arkworks {
 
         #[inline]
         fn new_constant(this: &Self::Type, compiler: &mut Compiler<S>) -> Self {
-            // TODO
-            // Self {
-            //     additive_round_keys: this
-            //         .additive_round_keys
-            //         .iter()
-            //         .map(|k| k.as_constant(compiler)
-            //         )
-            //         .collect(),
-            //     mds_matrix: this
-            //         .mds_matrix
-            //         .iter()
-            //         .map(|k| k.as_constant(compiler))
-            //         .collect(),
-            // }
-            todo!()
+            let _ = compiler;
+            Self {
+                additive_round_keys: this.additive_round_keys.clone(),
+                mds_matrix: this.mds_matrix.clone()
+            }
         }
     }
 }
