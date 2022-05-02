@@ -98,6 +98,7 @@ pub type Proof = groth16::Proof<PairingCurve>;
 pub type ProofSystem = groth16::Groth16<PairingCurve>;
 
 /// Poseidon Specification
+#[derive(Clone)]
 pub struct PoseidonSpec<const ARITY: usize>;
 
 /// Poseidon-2 Hash Parameters
