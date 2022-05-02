@@ -27,18 +27,21 @@ use manta_util::codec::{Decode, DecodeError, Encode, Read, Write};
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
 
+use super::poseidon_parameter_generation::{round_constants::generate_round_constants, mds::MdsMatrices};
+
 #[cfg(any(feature = "test", test))]
-use {
-    core::iter::repeat,
-    manta_crypto::rand::{CryptoRng, Rand, RngCore, Sample},
-};
+use manta_crypto::rand::{CryptoRng, RngCore, Sample};
 
 /// Poseidon Permutation Specification
 pub trait Specification<COM = ()> {
-    /// Field Type
+    /// Field used as state
     type Field;
-    /// Field used as constant
+
+    /// Field used as constants
     type ParameterField;
+
+    /// Number of bits of modulus of the field.
+    const MODULUS_BITS: usize;
 
     /// Number of Full Rounds
     ///
@@ -48,9 +51,6 @@ pub trait Specification<COM = ()> {
 
     /// Number of Partial Rounds
     const PARTIAL_ROUNDS: usize;
-
-    /// Returns the additive identity of the field.
-    fn zero(compiler: &mut COM) -> Self::Field;
 
     /// Returns the domain tag. TODO: May update domain_tag for different applications
     fn domain_tag(compiler: &mut COM, arity: usize) -> Self::Field;
@@ -75,6 +75,39 @@ pub trait Specification<COM = ()> {
 
     /// Applies the S-BOX to `point`.
     fn apply_sbox(point: &mut Self::Field, compiler: &mut COM);
+
+    /// Returns the additive identity of the parameter field
+    fn param_zero() -> Self::ParameterField;
+
+    /// Returns the multiplicative identity of the parameter field
+    fn param_one() -> Self::ParameterField;
+
+    /// Add two parameter field elements together
+    fn param_add(lhs: &Self::ParameterField, rhs: &Self::ParameterField) -> Self::ParameterField;
+
+    /// Add the `rhs` parameter field element to `lhs` parameter field element, storing the value in `lhs`
+    fn param_add_assign(lhs: &mut Self::ParameterField, rhs: &Self::ParameterField);
+
+    /// Multiply two parameter field elements together
+    fn param_mul(lhs: &Self::ParameterField, rhs: &Self::ParameterField) -> Self::ParameterField;
+
+    /// returns (lhs - rhs)
+    fn param_sub(lhs: &Self::ParameterField, rhs: &Self::ParameterField) -> Self::ParameterField;
+
+    /// returns (lhs == rhs)
+    fn param_eq(lhs: &Self::ParameterField, rhs: &Self::ParameterField) -> bool;
+
+    /// Computes the multiplicative inverse of a parameter field elements
+    fn inverse(elem: &Self::ParameterField) -> Option<Self::ParameterField>;
+
+    /// Convert from bits into a parameter field element in little endian order. Return None if bits is out of range.
+    fn try_from_bits_le(bits: &[bool]) -> Option<Self::ParameterField>;
+
+    /// Convert from bytes into a parameter field element in little endian order. If the number of bytes is out of range, the result will be modulo.   
+    fn from_le_bytes_mod_order(bytes: &[u8]) -> Self::ParameterField;
+
+    /// Convert a u64 value to a parameter field element
+    fn from_u64_to_param(elem: u64) -> Self::ParameterField;
 }
 
 /// Poseidon State Vector
@@ -260,12 +293,12 @@ where
     }
 }
 
-#[cfg(any(feature = "test", test))] // NOTE: This is only safe to use in a test.
+// #[cfg(any(feature = "test", test))] // NOTE: This is only safe to use in a test.
 impl<D, S, COM, const ARITY: usize> Sample<D> for Hasher<S, COM, ARITY>
 where
     D: Clone,
-    S: Specification<COM>,
-    S::ParameterField: Sample<D>,
+    S: Specification<COM> + Clone,
+    <S as Specification<COM>>::ParameterField: Sample<D> + Debug + Copy + Eq,
 {
     /// Samples random Poseidon parameters.
     ///
@@ -278,14 +311,29 @@ where
     where
         R: CryptoRng + RngCore + ?Sized,
     {
+        let _ = distribution;
+        let _ = rng;
+        let (round_constants, _) = generate_round_constants::<S, COM>(
+            S::MODULUS_BITS as u64, 
+            Self::WIDTH,
+            <S as Specification<COM>>::FULL_ROUNDS, 
+            <S as Specification<COM>>::PARTIAL_ROUNDS,
+        );
+
+        let mds_matrices = MdsMatrices::<S, COM>::generate_mds(Self::WIDTH);
+
         Self {
-            additive_round_keys: rng
-                .sample_iter(repeat(distribution.clone()).take(Self::ADDITIVE_ROUND_KEYS_COUNT))
-                .collect(),
-            mds_matrix: rng
-                .sample_iter(repeat(distribution).take(Self::MDS_MATRIX_SIZE))
-                .collect(),
+            additive_round_keys: round_constants,
+            mds_matrix: mds_matrices.to_row_major(),
         }
+        // Self {
+        //     additive_round_keys: rng
+        //         .sample_iter(repeat(distribution.clone()).take(Self::ADDITIVE_ROUND_KEYS_COUNT))
+        //         .collect(),
+        //     mds_matrix: rng
+        //         .sample_iter(repeat(distribution).take(Self::MDS_MATRIX_SIZE))
+        //         .collect(),
+        // }
     }
 }
 
@@ -345,7 +393,8 @@ pub type Output<S, COM, const ARITY: usize> =
 #[cfg_attr(doc_cfg, doc(cfg(feature = "arkworks")))]
 pub mod arkworks {
     use crate::crypto::constraint::arkworks::{Fp, FpVar, R1CS};
-    use ark_ff::{Field, PrimeField};
+    use ark_std::{One, Zero};
+    use ark_ff::{BigInteger, Field, PrimeField, FpParameters};
     use ark_r1cs_std::{fields::FieldVar, alloc::AllocVar};
     use manta_crypto::constraint::Constant;
 
@@ -377,13 +426,11 @@ pub mod arkworks {
         type Field = Fp<S::Field>;
         type ParameterField = Fp<S::Field>;
 
-        const FULL_ROUNDS: usize = S::FULL_ROUNDS;
-        const PARTIAL_ROUNDS: usize = S::PARTIAL_ROUNDS;
+        const MODULUS_BITS: usize = <S::Field as PrimeField>::Params::MODULUS_BITS as usize;
 
-        #[inline]
-        fn zero(_: &mut ()) -> Self::Field {
-            Default::default()
-        }
+        const FULL_ROUNDS: usize = S::FULL_ROUNDS;
+
+        const PARTIAL_ROUNDS: usize = S::PARTIAL_ROUNDS;
 
         #[inline]
         fn domain_tag(_: &mut (), arity: usize) -> Self::Field {
@@ -427,6 +474,72 @@ pub mod arkworks {
         fn apply_sbox(point: &mut Self::Field, _: &mut ()) {
             point.0 = point.0.pow(&[Self::SBOX_EXPONENT, 0, 0, 0]);
         }
+
+        #[inline]
+        fn param_zero() -> Self::ParameterField {
+            Fp(<S::Field as Zero>::zero())
+        }
+
+        #[inline]
+        fn param_one() -> Self::ParameterField  {
+            Fp(<S::Field as One>::one())
+        }
+
+        #[inline]
+        fn param_add(lhs: &Self::ParameterField, rhs: &Self::ParameterField) -> Self::ParameterField  {
+            Fp(lhs.0 + rhs.0)
+        }
+
+        #[inline]
+        fn param_add_assign(lhs: &mut Self::ParameterField, rhs: &Self::ParameterField) {
+            lhs.0 = lhs.0 + rhs.0;
+        }
+
+        #[inline]
+        fn param_sub(lhs: &Self::ParameterField, rhs: &Self::ParameterField) -> Self::ParameterField {
+            Fp(lhs.0 - rhs.0)
+        }
+
+        #[inline]
+        fn param_mul(lhs: &Self::ParameterField, rhs: &Self::ParameterField) -> Self::ParameterField  {
+            Fp(lhs.0 * rhs.0)
+        }
+
+        #[inline]
+        fn param_eq(lhs: &Self::ParameterField, rhs: &Self::ParameterField) -> bool {
+            lhs.0 == rhs.0
+        }
+
+        #[inline]
+        fn inverse(elem: &Self::ParameterField) -> Option<Self::ParameterField>  {
+            let m_inverse = S::Field::inverse(&elem.0);
+            if let Some(m_inverse) = m_inverse {
+                return Some(Fp(m_inverse));
+            } else {
+                return None;
+            }
+        }
+
+        #[inline]
+        fn try_from_bits_le(bits: &[bool]) -> Option<Self::ParameterField>  {
+            let bigint = <S::Field as PrimeField>::BigInt::from_bits_le(&bits);
+            let value = S::Field::from_repr(bigint);
+            if let Some(value) = value {
+                return Some(Fp(value));
+            } else {
+                return None;
+            }
+        }
+
+        #[inline]
+        fn from_le_bytes_mod_order(bytes: &[u8]) -> Self::ParameterField {
+            Fp(S::Field::from_le_bytes_mod_order(bytes))
+        }
+
+        #[inline]
+        fn from_u64_to_param(elem: u64) -> Self::ParameterField {
+            Fp(S::Field::from(elem))
+        }
     }
 
     impl<S> super::Specification<Compiler<S>> for S
@@ -436,14 +549,10 @@ pub mod arkworks {
         type Field = FpVar<S::Field>;
         type ParameterField = Fp<S::Field>;
 
+        const MODULUS_BITS: usize = <S::Field as PrimeField>::Params::MODULUS_BITS as usize;
+
         const FULL_ROUNDS: usize = S::FULL_ROUNDS;
         const PARTIAL_ROUNDS: usize = S::PARTIAL_ROUNDS;
-
-        #[inline]
-        fn zero(compiler: &mut Compiler<S>) -> Self::Field {
-            let _ = compiler;
-            Self::Field::zero()
-        }
 
         #[inline]
         fn domain_tag(compiler: &mut Compiler<S>, arity: usize) -> Self::Field {
@@ -486,6 +595,72 @@ pub mod arkworks {
             *point = point
                 .pow_by_constant(&[Self::SBOX_EXPONENT])
                 .expect("Exponentiation is not allowed to fail.");
+        }
+
+        #[inline]
+        fn param_zero() -> Self::ParameterField {
+            Fp(<S::Field as Zero>::zero())
+        }
+
+        #[inline]
+        fn param_one() -> Self::ParameterField  {
+            Fp(<S::Field as One>::one())
+        }
+
+        #[inline]
+        fn param_add(lhs: &Self::ParameterField, rhs: &Self::ParameterField) -> Self::ParameterField  {
+            Fp(lhs.0 + rhs.0)
+        }
+
+        #[inline]
+        fn param_add_assign(lhs: &mut Self::ParameterField, rhs: &Self::ParameterField) {
+            lhs.0 = lhs.0 + rhs.0;
+        }
+
+        #[inline]
+        fn param_sub(lhs: &Self::ParameterField, rhs: &Self::ParameterField) -> Self::ParameterField {
+            Fp(lhs.0 - rhs.0)
+        }
+    
+        #[inline]
+        fn param_mul(lhs: &Self::ParameterField, rhs: &Self::ParameterField) -> Self::ParameterField  {
+            Fp(lhs.0 * rhs.0)
+        }
+
+        #[inline]
+        fn param_eq(lhs: &Self::ParameterField, rhs: &Self::ParameterField) -> bool {
+            lhs.0 == rhs.0
+        }
+
+        #[inline]
+        fn inverse(elem: &Self::ParameterField) -> Option<Self::ParameterField>  {
+            let m_inverse = S::Field::inverse(&elem.0);
+            if let Some(m_inverse) = m_inverse {
+                return Some(Fp(m_inverse));
+            } else {
+                return None;
+            }
+        }
+
+        #[inline]
+        fn try_from_bits_le(bits: &[bool]) -> Option<Self::ParameterField>  {
+            let bigint = <S::Field as PrimeField>::BigInt::from_bits_le(&bits);
+            let value = S::Field::from_repr(bigint);
+            if let Some(value) = value {
+                return Some(Fp(value));
+            } else {
+                return None;
+            }
+        }
+
+        #[inline]
+        fn from_le_bytes_mod_order(bytes: &[u8]) -> Self::ParameterField {
+            Fp(S::Field::from_le_bytes_mod_order(bytes))
+        }
+
+        #[inline]
+        fn from_u64_to_param(elem: u64) -> Self::ParameterField {
+            Fp(S::Field::from(elem))
         }
     }
 
