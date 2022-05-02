@@ -65,6 +65,7 @@ where
 }
 
 /// Simulation Configuration
+#[cfg_attr(feature = "clap", derive(clap::Parser))]
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub struct Simulation {
     /// Actor Count
