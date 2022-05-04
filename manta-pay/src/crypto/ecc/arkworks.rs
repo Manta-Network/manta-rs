@@ -450,7 +450,7 @@ macro_rules! impl_processed_scalar_mul {
     };
 }
 
-impl_processed_scalar_mul!(ark_ed_on_bls12_381::EdwardsProjective);
+impl_processed_scalar_mul!(crate::config::GroupType);
 
 impl<C, CV> Equal<Compiler<C>> for GroupVar<C, CV>
 where
@@ -575,8 +575,8 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::config::{GroupType, GroupVarType};
     use ark_ec::ProjectiveCurve;
-    use ark_ed_on_bls12_381::{constraints::EdwardsVar, EdwardsProjective};
     use ecc::PreprocessedScalarMul;
     use manta_crypto::{
         constraint::ConstraintSystem,
@@ -614,9 +614,9 @@ mod test {
     #[test]
     fn preprocessed_scalar_mul() {
         preprocessed_scalar_mul_test_template::<
-            EdwardsProjective,
-            EdwardsVar,
-            { ScalarParam::<EdwardsProjective>::MODULUS_BITS as usize },
+            GroupType,
+            GroupVarType,
+            { ScalarParam::<GroupType>::MODULUS_BITS as usize },
         >(&mut OsRng);
     }
 }

@@ -24,14 +24,16 @@ use crate::crypto::{
     key::Blake2sKdf,
 };
 use alloc::vec::Vec;
+use ark_bls12_377::Bls12_377;
+use ark_ed_on_bls12_377::{
+    constraints::EdwardsVar as Bls12_377_EdwardsVar, EdwardsProjective as Bls12_377_Edwards,
+};
 use ark_ff::ToConstraintField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use blake2::{
     digest::{Update, VariableOutput},
     Blake2sVar,
 };
-use bls12_381::Bls12_381;
-use bls12_381_ed::constraints::EdwardsVar as Bls12_381_EdwardsVar;
 use manta_accounting::{
     asset::{Asset, AssetId, AssetValue},
     transfer,
@@ -57,33 +59,32 @@ use alloc::string::String;
 #[cfg(any(feature = "test", test))]
 use manta_crypto::rand::{CryptoRng, Rand, RngCore, Sample};
 
-#[doc(inline)]
-pub use ark_bls12_381 as bls12_381;
-#[doc(inline)]
-pub use ark_ed_on_bls12_381 as bls12_381_ed;
-
-pub(crate) use bls12_381_ed::EdwardsProjective as Bls12_381_Edwards;
-
 /// Pairing Curve Type
-pub type PairingCurve = Bls12_381;
+pub type PairingCurve = Bls12_377;
 
 /// Embedded Scalar Field Type
-pub type EmbeddedScalarField = bls12_381_ed::Fr;
+pub type EmbeddedScalarField = ark_ed_on_bls12_377::Fr;
 
 /// Embedded Scalar Type
-pub type EmbeddedScalar = ecc::arkworks::Scalar<Bls12_381_Edwards>;
+pub type EmbeddedScalar = ecc::arkworks::Scalar<GroupType>;
 
 /// Embedded Scalar Variable Type
-pub type EmbeddedScalarVar = ecc::arkworks::ScalarVar<Bls12_381_Edwards, Bls12_381_EdwardsVar>;
+pub type EmbeddedScalarVar = ecc::arkworks::ScalarVar<GroupType, GroupVarType>;
+
+/// Embedded Group Curve Type
+pub type GroupType = Bls12_377_Edwards;
 
 /// Embedded Group Type
-pub type Group = ecc::arkworks::Group<Bls12_381_Edwards>;
+pub type Group = ecc::arkworks::Group<GroupType>;
+
+/// Embedded Group Variable Curve Type
+pub type GroupVarType = Bls12_377_EdwardsVar;
 
 /// Embedded Group Variable Type
-pub type GroupVar = ecc::arkworks::GroupVar<Bls12_381_Edwards, Bls12_381_EdwardsVar>;
+pub type GroupVar = ecc::arkworks::GroupVar<GroupType, GroupVarType>;
 
 /// Constraint Field
-pub type ConstraintField = bls12_381::Fr;
+pub type ConstraintField = ark_bls12_377::Fr;
 
 /// Constraint Field Variable
 pub type ConstraintFieldVar = FpVar<ConstraintField>;
@@ -162,7 +163,7 @@ impl transfer::UtxoCommitmentScheme for UtxoCommitmentScheme {
         self.0.hash([
             // FIXME: This is the lift from inner scalar to outer scalar and only exists in some
             // cases! We need a better abstraction for this.
-            &ecc::arkworks::lift_embedded_scalar::<Bls12_381_Edwards>(ephemeral_secret_key),
+            &ecc::arkworks::lift_embedded_scalar::<GroupType>(ephemeral_secret_key),
             &Fp(public_spend_key.0.x), // NOTE: Group is in affine form, so we can extract `x`.
             &Fp(asset.id.0.into()),
             &Fp(asset.value.0.into()),
@@ -266,7 +267,7 @@ impl transfer::VoidNumberCommitmentScheme for VoidNumberCommitmentScheme {
         self.0.hash([
             // FIXME: This is the lift from inner scalar to outer scalar and only exists in some
             // cases! We need a better abstraction for this.
-            &ecc::arkworks::lift_embedded_scalar::<Bls12_381_Edwards>(secret_spend_key),
+            &ecc::arkworks::lift_embedded_scalar::<GroupType>(secret_spend_key),
             utxo,
         ])
     }

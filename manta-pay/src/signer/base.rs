@@ -17,7 +17,7 @@
 //! Manta Pay Signer Configuration
 
 use crate::{
-    config::{Bls12_381_Edwards, Config, MerkleTreeConfiguration, MultiProvingContext, SecretKey},
+    config::{Config, GroupType, MerkleTreeConfiguration, MultiProvingContext, SecretKey},
     crypto::constraint::arkworks::Fp,
     key::{CoinType, KeySecret, Testnet, TestnetKeySecret},
 };
@@ -61,7 +61,7 @@ where
             .to_bytes()
             .try_into()
             .expect("The secret key has 32 bytes.");
-        Fp(<Bls12_381_Edwards as ProjectiveCurve>::ScalarField::from_le_bytes_mod_order(&bytes))
+        Fp(<GroupType as ProjectiveCurve>::ScalarField::from_le_bytes_mod_order(&bytes))
     }
 }
 
