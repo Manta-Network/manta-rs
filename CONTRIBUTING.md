@@ -1,6 +1,6 @@
 # Contributing
 
-Thank you for contributing to the `manta-rs` codebase! Here are some guidelines to following when adding code or documentation to this repository.
+Thank you for contributing to the `manta-rs` codebase! Here are some guidelines to follow when adding code or documentation to this repository.
 
 ## Use Conventional Commits
 
