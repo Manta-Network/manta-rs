@@ -91,4 +91,9 @@ impl ledger::Checkpoint for Checkpoint {
     fn receiver_index(&self) -> usize {
         self.receiver_index.iter().sum()
     }
+
+    #[inline]
+    fn sender_index(&self) -> usize {
+        self.sender_index
+    }
 }

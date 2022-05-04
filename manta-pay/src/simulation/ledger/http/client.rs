@@ -53,10 +53,13 @@ impl Client {
     }
 }
 
-impl ledger::Connection<Config> for Client {
+impl ledger::PullConfiguration<Config> for Client {
     type Checkpoint = Checkpoint;
     type ReceiverChunk = Vec<(Utxo, EncryptedNote)>;
     type SenderChunk = Vec<VoidNumber>;
+}
+
+impl ledger::Connection<Config> for Client {
     type PushResponse = bool;
     type Error = Error;
 
