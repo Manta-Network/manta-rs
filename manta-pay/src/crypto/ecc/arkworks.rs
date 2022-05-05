@@ -418,10 +418,7 @@ macro_rules! impl_processed_scalar_mul {
         impl<CV>
             ecc::PreprocessedScalarMul<
                 Compiler<$curve>,
-                {
-                    <<$curve as ProjectiveCurve>::ScalarField as PrimeField>::Params::MODULUS_BITS
-                        as usize
-                },
+                { ScalarParam::<$curve>::MODULUS_BITS as usize },
             > for GroupVar<$curve, CV>
         where
             CV: CurveVar<$curve, ConstraintField<$curve>>,
@@ -450,8 +447,7 @@ macro_rules! impl_processed_scalar_mul {
     };
 }
 
-#[cfg(feature = "groth16")]
-impl_processed_scalar_mul!(crate::config::GroupType);
+impl_processed_scalar_mul!(ark_ed_on_bls12_377::EdwardsProjective);
 
 impl<C, CV> Equal<Compiler<C>> for GroupVar<C, CV>
 where
