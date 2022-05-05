@@ -236,7 +236,7 @@ S::ParameterField: Copy,
         let mut result = vec![S::param_zero(); v.len()];
         for (j, val) in result.iter_mut().enumerate() {
             for (i, row) in self.0.iter().enumerate() {
-                let mut tmp = S::param_mul(&v[i], &row[j]);
+                let tmp = S::param_mul(&v[i], &row[j]);
                 S::param_add_assign(val, &tmp);
             }
         }
@@ -279,12 +279,12 @@ S::ParameterField: Copy,
     }
 
     /// check if the matrix is invertible
-    pub(crate) fn is_invertible(&self) -> bool {
+    pub fn is_invertible(&self) -> bool {
         self.is_square() && self.invert().is_some()
     }
 
     /// Generate the minor matrix
-    pub(crate) fn minor(&self, i: usize, j: usize) -> Self {
+    pub fn minor(&self, i: usize, j: usize) -> Self {
         assert!(self.is_square());
         let size = self.num_rows();
         assert!(size > 0);
@@ -454,7 +454,7 @@ where S: Specification<COM>
 }
 
 /// elementwisely multiply a vector `v` with `scalar`
-fn scalar_vec_mul<S, COM>(scalar: S::ParameterField, v: &[S::ParameterField]) -> Vec<S::ParameterField>
+pub fn scalar_vec_mul<S, COM>(scalar: S::ParameterField, v: &[S::ParameterField]) -> Vec<S::ParameterField>
 where S: Specification<COM>
 {
     v.iter()

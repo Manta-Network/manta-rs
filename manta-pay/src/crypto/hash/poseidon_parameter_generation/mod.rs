@@ -16,10 +16,10 @@
 
 //! Poseidon hash parameter generation
 
-mod round_numbers;
+pub mod round_numbers;
 mod lfsr;
-mod matrix;
-pub(crate) mod mds;
-pub(crate) mod round_constants;
-mod preprocessing;
-mod constants;
+pub mod matrix;
+pub mod mds;
+pub mod round_constants;
+pub mod preprocessing;
+pub mod constants;

@@ -28,11 +28,15 @@ where S: Specification<COM>
 {
     /// MDS Matrix for naive poseidon hash
     pub m: Matrix<S, COM>,
-    /// The following data are only used in optimized poseidon hash
+    /// inversion of mds matrix. Used in optimzed poseidon hash.
     pub m_inv: Matrix<S, COM>,
+    /// m_hat matrix. Used in optimized poseidon hash
     pub m_hat: Matrix<S, COM>,
+    /// Inversion of m_hat matrix. Used in optimized poseidon hash.
     pub m_hat_inv: Matrix<S, COM>,
+    /// m prime matrix. Used in optimized poseidon hash.
     pub m_prime: Matrix<S, COM>,
+    /// m double prime matrix. Used in optimized poseidon hash.
     pub m_double_prime: Matrix<S, COM>,
 }
 
@@ -111,7 +115,8 @@ S::ParameterField: Clone + Copy + Debug + Eq,
             .collect()
     }
 
-    pub(crate) fn derive_mds_matrices(m: Matrix<S, COM>) -> Self {
+    /// Derive the mds matrices for optimized poseidon hash. Start from mds matrix `m` in naive poseidon hash.
+    pub fn derive_mds_matrices(m: Matrix<S, COM>) -> Self {
         let m_inv = m.invert().expect("Derived MDS matrix is not invertible");
         let m_hat = m.minor(0, 0);
         let m_hat_inv = m_hat.invert().expect("Derived MDS matrix is not correct");
@@ -127,7 +132,8 @@ S::ParameterField: Clone + Copy + Debug + Eq,
         }
     }
 
-    pub(crate) fn generate_mds(t: usize) -> Matrix<S, COM> {
+    /// Generate the mds matrix `m` for naive poseidon hash.
+    pub fn generate_mds(t: usize) -> Matrix<S, COM> {
         let xs: Vec<S::ParameterField> = (0..t as u64).map(S::from_u64_to_param).collect();
         let ys: Vec<S::ParameterField> = (t as u64..2 * t as u64).map(S::from_u64_to_param).collect();
 

@@ -38,9 +38,11 @@ S::ParameterField: Clone,
     pub mds_matrices: MdsMatrices<S, COM>,
     /// a vector of round constants
     pub round_constants: Vec<S::ParameterField>,
-    /// The following three operators are used for optimized poseidon hash
+    /// The compressed round constants used in optimized poseidon hash.
     pub compressed_round_constants: Vec<S::ParameterField>,
+    /// pre sparse matrix used in optimized poseidon hash
     pub pre_sparse_matrix: Matrix<S, COM>,
+    /// Sparse matrix used in optimized poseidon hash
     pub sparse_matrixes: Vec<SparseMatrix<S, COM>>,
     /// domain tag for domain separation
     pub domain_tag: S::ParameterField,
@@ -57,7 +59,8 @@ where
 S: Specification<COM> + Clone,
 S::ParameterField: Clone + Debug + Copy + Eq,
 {
-    pub(crate) fn default<const WIDTH: usize>() -> Self{
+    /// Generate the default poseidon hash parameters 
+    pub fn default<const WIDTH: usize>() -> Self{
         let arity = WIDTH - 1;
 
         let (num_full_rounds, num_partial_rounds) = calc_round_numbers(WIDTH, true);

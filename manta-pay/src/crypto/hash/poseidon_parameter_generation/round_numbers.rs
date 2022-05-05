@@ -58,7 +58,7 @@ pub fn round_numbers_strengthened(arity: usize) -> (usize, usize) {
 /// Returns the round numbers for a given width `t`. Here, the `security_margin` parameter does not
 /// indicate that we are calculating `R_F` and `R_P` for the "strengthened" round numbers, done in
 /// the function `round_numbers_strengthened()`.
-pub(crate) fn calc_round_numbers(t: usize, security_margin: bool) -> (usize, usize) {
+pub fn calc_round_numbers(t: usize, security_margin: bool) -> (usize, usize) {
     let mut rf = 0;
     let mut rp = 0;
     let mut n_sboxes_min = usize::MAX;

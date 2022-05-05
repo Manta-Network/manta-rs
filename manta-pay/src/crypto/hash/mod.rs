@@ -17,4 +17,4 @@
 //! Hash Function Implementations
 
 pub mod poseidon;
-pub(crate) mod poseidon_parameter_generation;
+pub mod poseidon_parameter_generation;
