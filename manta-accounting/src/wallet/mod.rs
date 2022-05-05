@@ -154,8 +154,8 @@ where
         &self.ledger
     }
 
-    /// Returns the [`Checkpoint`](ledger::Connection::Checkpoint) representing the current state
-    /// of this wallet.
+    /// Returns the [`Checkpoint`](ledger::PullConfiguration::Checkpoint) representing the current
+    /// state of this wallet.
     #[inline]
     pub fn checkpoint(&self) -> &L::Checkpoint {
         &self.checkpoint

@@ -16,9 +16,6 @@
 
 //! Ledger Connection
 
-// TODO: Report a more meaningful error on `push` failure. In some way, it must match the
-//       `TransferPostError` variants.
-
 use crate::transfer::{Configuration, EncryptedNote, TransferPost, Utxo, VoidNumber};
 use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash};
@@ -28,16 +25,20 @@ use manta_util::future::LocalBoxFutureResult;
 use manta_util::serde::{Deserialize, Serialize};
 
 /// Ledger Checkpoint
+///
+/// The checkpoint type is responsible for keeping the ledger, signer, and wallet in sync with each
+/// other making sure that they all have the same view of the ledger state. Checkpoints should
+/// be orderable with a bottom element returned by [`Default::default`].
 pub trait Checkpoint: Default + PartialOrd {
     /// Returns the index into the receiver set for the ledger.
-    ///
-    /// This index is used to ensure that wallets are synchronized even during connection failures
-    /// or other errors during synchronization.
     fn receiver_index(&self) -> usize;
+
+    /// Returns the index into the sender set for the ledger.
+    fn sender_index(&self) -> usize;
 }
 
-/// Ledger Source Connection
-pub trait Connection<C>
+/// Ledger Pull Configuration
+pub trait PullConfiguration<C>
 where
     C: Configuration,
 {
@@ -49,7 +50,13 @@ where
 
     /// Sender Chunk Iterator Type
     type SenderChunk: IntoIterator<Item = VoidNumber<C>>;
+}
 
+/// Ledger Source Connection
+pub trait Connection<C>: PullConfiguration<C>
+where
+    C: Configuration,
+{
     /// Push Response Type
     ///
     /// This is the return type of the [`push`](Self::push) method. Use this type to customize the
@@ -60,10 +67,15 @@ where
     type PushResponse;
 
     /// Error Type
+    ///
+    /// This error type corresponds to the communication channel itself setup by the [`Connection`]
+    /// rather than any errors introduced by the [`pull`](Self::pull) or [`push`](Self::push)
+    /// methods themselves which would correspond to an empty [`PullResponse`] or whatever error
+    /// variants are stored in [`PushResponse`](Self::PushResponse).
     type Error;
 
     /// Pulls receiver data from the ledger starting from `checkpoint`, returning the current
-    /// [`Checkpoint`](Self::Checkpoint).
+    /// [`Checkpoint`](PullConfiguration::Checkpoint).
     fn pull<'s>(
         &'s mut self,
         checkpoint: &'s Self::Checkpoint,
@@ -116,7 +128,7 @@ where
 pub struct PullResponse<C, L>
 where
     C: Configuration,
-    L: Connection<C> + ?Sized,
+    L: PullConfiguration<C> + ?Sized,
 {
     /// Pull Continuation Flag
     ///
@@ -127,7 +139,7 @@ where
     /// Ledger Checkpoint
     ///
     /// If the `should_continue` flag is set to `true` then `checkpoint` is the next
-    /// [`Checkpoint`](Connection::Checkpoint) to request data from the ledger. Otherwise, it
+    /// [`Checkpoint`](PullConfiguration::Checkpoint) to request data from the ledger. Otherwise, it
     /// represents the current ledger state.
     pub checkpoint: L::Checkpoint,
 

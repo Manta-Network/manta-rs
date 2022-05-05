@@ -47,6 +47,11 @@ pub use sealed::*;
 #[doc(inline)]
 pub use serde;
 
+#[cfg(feature = "serde_with")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "serde_with")))]
+#[doc(inline)]
+pub use serde_with;
+
 /// Implements [`From`]`<$from>` for an enum `$to`, choosing the `$kind` variant.
 // TODO: add `where` clauses
 #[macro_export]
