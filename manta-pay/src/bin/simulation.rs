@@ -16,16 +16,14 @@
 
 //! Manta Pay Simulation
 
-// TODO: Add CLI interface and configuration for simulation parameters. See the old simulation code
-//       `test/simulation/mod.rs` for more information.
-
+use clap::{error::ErrorKind, CommandFactory, Parser};
 use manta_accounting::transfer::canonical::generate_context;
 use manta_crypto::rand::{OsRng, Rand};
 use manta_pay::{config::FullParameters, simulation::Simulation};
 
 /// Runs the Manta Pay simulation.
-#[tokio::main(flavor = "multi_thread", worker_threads = 4)]
-pub async fn main() {
+pub fn main() {
+    let simulation = Simulation::parse();
     let mut rng = OsRng;
     let parameters = rng.gen();
     let utxo_accumulator_model = rng.gen();
@@ -35,18 +33,26 @@ pub async fn main() {
         &mut rng,
     )
     .expect("Failed to generate contexts.");
-    Simulation {
-        actor_count: 10,
-        actor_lifetime: 10,
-        asset_id_count: 3,
-        starting_balance: 1000000,
+    match tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(4)
+        .build()
+    {
+        Ok(runtime) => runtime.block_on(async {
+            simulation
+                .run(
+                    &parameters,
+                    &utxo_accumulator_model,
+                    &proving_context,
+                    verifying_context,
+                    &mut rng,
+                )
+                .await
+        }),
+        Err(err) => Simulation::command()
+            .error(
+                ErrorKind::Io,
+                format_args!("Unable to start `tokio` runtime: {}", err),
+            )
+            .exit(),
     }
-    .run(
-        &parameters,
-        &utxo_accumulator_model,
-        &proving_context,
-        verifying_context,
-        &mut rng,
-    )
-    .await
 }
