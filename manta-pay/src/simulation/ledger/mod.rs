@@ -439,10 +439,13 @@ impl LedgerConnection {
     }
 }
 
-impl ledger::Connection<Config> for LedgerConnection {
+impl ledger::PullConfiguration<Config> for LedgerConnection {
     type Checkpoint = Checkpoint;
     type ReceiverChunk = Vec<(Utxo, EncryptedNote)>;
     type SenderChunk = Vec<VoidNumber>;
+}
+
+impl ledger::Connection<Config> for LedgerConnection {
     type PushResponse = bool;
     type Error = Infallible;
 
