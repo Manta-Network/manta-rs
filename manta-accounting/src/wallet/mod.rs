@@ -29,7 +29,7 @@
 //! [`Ledger`]: ledger::Connection
 
 use crate::{
-    asset::{Asset, AssetId, AssetMetadata, AssetValue},
+    asset::{Asset, AssetId, AssetList, AssetMetadata, AssetValue},
     transfer::{
         canonical::{Transaction, TransactionKind},
         Configuration, ReceivingKey,
@@ -128,6 +128,18 @@ where
     #[inline]
     pub fn contains(&self, asset: Asset) -> bool {
         self.assets.contains(asset)
+    }
+
+    /// Returns `true` if `self` contains at least every asset in `assets`. Assets are combined
+    /// first by [`AssetId`] before checking for membership.
+    #[inline]
+    pub fn contains_all<I>(&self, assets: I) -> bool
+    where
+        I: IntoIterator<Item = Asset>,
+    {
+        AssetList::from_iter(assets)
+            .into_iter()
+            .all(|asset| self.contains(asset))
     }
 
     /// Returns a shared reference to the balance state associated to `self`.
