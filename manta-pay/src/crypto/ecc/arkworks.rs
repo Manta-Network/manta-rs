@@ -450,6 +450,7 @@ macro_rules! impl_processed_scalar_mul {
     };
 }
 
+#[cfg(feature = "groth16")]
 impl_processed_scalar_mul!(crate::config::GroupType);
 
 impl<C, CV> Equal<Compiler<C>> for GroupVar<C, CV>
