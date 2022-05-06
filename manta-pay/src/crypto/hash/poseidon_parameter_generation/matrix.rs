@@ -61,7 +61,7 @@ S::ParameterField: Copy,
     }
 
     /// Iterator over rows
-    pub fn iter_rows<'a>(&'a self) -> impl Iterator<Item = &'a Vec<S::ParameterField>> {
+    pub fn iter_rows(&self) -> impl Iterator<Item = &Vec<S::ParameterField>> {
         self.0.iter()
     }
 
@@ -262,7 +262,7 @@ S::ParameterField: Copy,
             .map(|input_row| {
                 other_t
                     .iter_rows()
-                    .map(|transposed_column| inner_product::<S, COM>(&input_row, &transposed_column))
+                    .map(|transposed_column| inner_product::<S, COM>(input_row, transposed_column))
                     .collect()
             })
             .collect();
@@ -334,7 +334,7 @@ S::ParameterField: Copy,
                 result.push(row.to_vec());
             } else {
                 let factor = S::param_mul(&val, &inv_pivot);
-                let scaled_pivot = scalar_vec_mul::<S, COM>(factor, &pivot);
+                let scaled_pivot = scalar_vec_mul::<S, COM>(factor, pivot);
                 let eliminated = vec_sub::<S, COM>(row, &scaled_pivot);
                 result.push(eliminated);
 
@@ -393,8 +393,8 @@ S::ParameterField: Copy,
             let val = row[idx];
             let inv = S::inverse(&val)?;
 
-            let mut normalized = scalar_vec_mul::<S, COM>(inv, &row);
-            let mut shadow_normalized = scalar_vec_mul::<S, COM>(inv, &shadow_row);
+            let mut normalized = scalar_vec_mul::<S, COM>(inv, row);
+            let mut shadow_normalized = scalar_vec_mul::<S, COM>(inv, shadow_row);
 
             for j in 0..i {
                 let idx = size - j - 1;

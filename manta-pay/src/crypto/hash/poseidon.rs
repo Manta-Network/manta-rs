@@ -29,7 +29,6 @@ use manta_util::serde::{Deserialize, Serialize};
 
 use super::poseidon_parameter_generation::{round_constants::generate_round_constants, mds::MdsMatrices};
 
-#[cfg(any(feature = "test", test))]
 use manta_crypto::rand::{CryptoRng, RngCore, Sample};
 
 /// Poseidon Permutation Specification
@@ -293,7 +292,6 @@ where
     }
 }
 
-// #[cfg(any(feature = "test", test))] // NOTE: This is only safe to use in a test.
 impl<D, S, COM, const ARITY: usize> Sample<D> for Hasher<S, COM, ARITY>
 where
     D: Clone,

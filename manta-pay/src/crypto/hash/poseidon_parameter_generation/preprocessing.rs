@@ -28,7 +28,7 @@ pub fn compress_round_constants<S, COM>(
     width: usize,
     full_rounds: usize,
     partial_rounds: usize,
-    round_constants: &Vec<S::ParameterField>,
+    round_constants: &[S::ParameterField],
     mds_matrices: &MdsMatrices<S, COM>,
 ) -> Vec<S::ParameterField> 
 where 
@@ -81,7 +81,7 @@ S::ParameterField: Copy,
             partial_keys.push(inverted[0]);
             inverted[0] = S::param_zero();
 
-            vec_add::<S, COM>(&previous_round_keys, &inverted)
+            vec_add::<S, COM>(previous_round_keys, &inverted)
         });
 
     res.extend(inverse_matrix.right_apply(&round_acc));

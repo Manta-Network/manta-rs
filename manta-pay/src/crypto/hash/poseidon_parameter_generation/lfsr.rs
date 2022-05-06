@@ -95,7 +95,7 @@ impl GrainLFSR {
             let mut new_bit = self.update();
 
             // Loop until the first bit is true
-            while new_bit == false {
+            while !new_bit {
                 // Discard the second bit
                 let _ = self.update();
                 // Obtain another first bit

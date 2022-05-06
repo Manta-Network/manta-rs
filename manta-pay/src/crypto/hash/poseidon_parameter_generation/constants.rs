@@ -22,8 +22,8 @@ use super::preprocessing::compress_round_constants;
 use super::matrix::Matrix;
 use super::mds::{factor_to_sparse_matrixes, MdsMatrices, SparseMatrix};
 use crate::crypto::hash::poseidon::Specification;
-use core::fmt::Debug;
 use alloc::vec::Vec;
+use core::fmt::Debug;
 
 // TODO: shall we put constant generation code to compile time?
 
