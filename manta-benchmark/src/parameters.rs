@@ -21,13 +21,13 @@
 //! Adapted from manta-pay/src/bin/generate_parameters.rs
 
 use anyhow::{Ok, Result};
-use manta_pay::config::{
-    FullParameters, Mint, MultiProvingContext, MultiVerifyingContext, Parameters, PrivateTransfer,
-    ProofSystem, Reclaim, UtxoAccumulatorModel,
-};
 use manta_crypto::{
     constraint::ProofSystem as _,
     rand::{Rand, SeedableRng},
+};
+use manta_pay::config::{
+    FullParameters, Mint, MultiProvingContext, MultiVerifyingContext, Parameters, PrivateTransfer,
+    ProofSystem, Reclaim, UtxoAccumulatorModel,
 };
 use rand_chacha::ChaCha20Rng;
 
@@ -61,9 +61,9 @@ pub fn get_parameters() -> Result<(
     let utxo_accumulator_model: UtxoAccumulatorModel = rng.gen();
 
     let Parameters {
-        note_encryption_scheme,
-        utxo_commitment,
-        void_number_commitment,
+        note_encryption_scheme: _,
+        utxo_commitment: _,
+        void_number_commitment: _,
     } = &parameters;
 
     let full_parameters = FullParameters::new(&parameters, &utxo_accumulator_model);

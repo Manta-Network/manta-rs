@@ -92,7 +92,7 @@ pub fn bench_mint_prove_and_verify(c: &mut Criterion) {
     });
 }
 
-// Note: May use the following two lines to benchmark prove and verify separately. 
+// Note: May use the following two lines to benchmark prove and verify separately.
 // criterion_group!(benches, bench_mint_prove);
 // criterion_group!(benches, bench_mint_verify);
 criterion_group!(benches, bench_mint_prove_and_verify);

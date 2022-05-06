@@ -103,7 +103,7 @@ pub fn sample_num_mints<R>(
     verifying_context: &MultiVerifyingContext,
     parameters: &Parameters,
     utxo_accumulator_model: &UtxoAccumulatorModel,
-    assets: &Vec<Asset>,
+    assets: &[Asset],
     rng: &mut R,
 ) -> (
     UtxoAccumulator,
@@ -189,7 +189,7 @@ pub fn bench_private_transfer_wrapper<R>(
     let spending_key_0 = SpendingKey::new(rng.gen(), rng.gen());
     let (mint_0, pre_sender_0) = transfer::test::sample_mint(
         &proving_context.mint,
-        FullParameters::new(&parameters, utxo_accumulator.model()),
+        FullParameters::new(parameters, utxo_accumulator.model()),
         &spending_key_0,
         assets[0],
         rng,
@@ -203,7 +203,7 @@ pub fn bench_private_transfer_wrapper<R>(
     let spending_key_1 = SpendingKey::new(rng.gen(), rng.gen());
     let (mint_1, pre_sender_1) = transfer::test::sample_mint(
         &proving_context.mint,
-        FullParameters::new(&parameters, utxo_accumulator.model()),
+        FullParameters::new(parameters, utxo_accumulator.model()),
         &spending_key_1,
         assets[1],
         rng,
@@ -215,16 +215,16 @@ pub fn bench_private_transfer_wrapper<R>(
         .expect("Just inserted so this should not fail.");
 
     bench_private_transfer(
-        &proving_context,
-        &verifying_context,
-        &parameters,
+        proving_context,
+        verifying_context,
+        parameters,
         &utxo_accumulator,
         &spending_key_0,
         &spending_key_1,
         sender_0,
         sender_1,
-        assets[0].clone(),
-        assets[1].clone(),
+        assets[0],
+        assets[1],
         rng,
     );
 }
@@ -276,7 +276,7 @@ pub fn bench_reclaim_wrapper<R>(
     let spending_key_0 = SpendingKey::new(rng.gen(), rng.gen());
     let (mint_0, pre_sender_0) = transfer::test::sample_mint(
         &proving_context.mint,
-        FullParameters::new(&parameters, utxo_accumulator.model()),
+        FullParameters::new(parameters, utxo_accumulator.model()),
         &spending_key_0,
         assets[0],
         rng,
@@ -290,7 +290,7 @@ pub fn bench_reclaim_wrapper<R>(
     let spending_key_1 = SpendingKey::new(rng.gen(), rng.gen());
     let (mint_1, pre_sender_1) = transfer::test::sample_mint(
         &proving_context.mint,
-        FullParameters::new(&parameters, utxo_accumulator.model()),
+        FullParameters::new(parameters, utxo_accumulator.model()),
         &spending_key_1,
         assets[1],
         rng,
@@ -302,15 +302,15 @@ pub fn bench_reclaim_wrapper<R>(
         .expect("Just inserted so this should not fail.");
 
     bench_reclaim(
-        &proving_context,
-        &verifying_context,
-        &parameters,
+        proving_context,
+        verifying_context,
+        parameters,
         &utxo_accumulator,
         &spending_key_0,
         sender_0,
         sender_1,
-        assets[0].clone(),
-        assets[1].clone(),
+        assets[0],
+        assets[1],
         rng,
     );
 }
