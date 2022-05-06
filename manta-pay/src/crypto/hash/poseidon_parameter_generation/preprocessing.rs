@@ -17,8 +17,8 @@
 //! Preprocess constants for optimized poseidon hash
 //! acknowledgement: adapted from FileCoin Project: https://github.com/filecoin-project/neptune/blob/master/src/preprocessing.rs
 
-use super::mds::MdsMatrices;
 use super::matrix::vec_add;
+use super::mds::MdsMatrices;
 use crate::crypto::hash::poseidon::Specification;
 use alloc::vec::Vec;
 
@@ -30,19 +30,19 @@ pub fn compress_round_constants<S, COM>(
     partial_rounds: usize,
     round_constants: &[S::ParameterField],
     mds_matrices: &MdsMatrices<S, COM>,
-) -> Vec<S::ParameterField> 
-where 
-S: Specification<COM> + Clone,
-S::ParameterField: Copy,
+) -> Vec<S::ParameterField>
+where
+    S: Specification<COM> + Clone,
+    S::ParameterField: Copy,
 {
     let inverse_matrix = &mds_matrices.m_inv;
 
     let mut res: Vec<S::ParameterField> = Vec::new();
 
-    let round_keys = |r: usize| &round_constants[r*width..(r+1)*width];
+    let round_keys = |r: usize| &round_constants[r * width..(r + 1) * width];
 
     // This is half full-rounds.
-    let half_full_rounds = full_rounds/2;
+    let half_full_rounds = full_rounds / 2;
 
     // First round constants are unchanged.
     res.extend(round_keys(0));
@@ -51,7 +51,7 @@ S::ParameterField: Copy,
     // The final round is skipped when fully preprocessing because that value must be obtained from the result of preprocessing the partial rounds.
     let end = half_full_rounds - 1;
     for i in 0..end {
-        let next_round = round_keys(i+1);
+        let next_round = round_keys(i + 1);
         let inverted = inverse_matrix.right_apply(next_round);
         res.extend(inverted);
     }

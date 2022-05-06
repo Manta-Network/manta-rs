@@ -25,5 +25,5 @@ pub mod constants;
 mod lfsr;
 pub mod matrix;
 pub mod mds;
-pub mod round_constants;
 pub mod preprocessing;
+pub mod round_constants;

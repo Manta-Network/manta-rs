@@ -112,8 +112,9 @@ impl GrainLFSR {
     pub fn get_field_elements_rejection_sampling<S, COM>(
         &mut self,
         num_elems: usize,
-    ) -> Vec<S::ParameterField> 
-    where S: Specification<COM>
+    ) -> Vec<S::ParameterField>
+    where
+        S: Specification<COM>,
     {
         assert_eq!(S::MODULUS_BITS as u64, self.prime_num_bits);
 
@@ -136,8 +137,9 @@ impl GrainLFSR {
         res
     }
 
-    pub fn get_field_elements_mod_p<S, COM>(&mut self, num_elems: usize) -> Vec<S::ParameterField> 
-    where S: Specification<COM>
+    pub fn get_field_elements_mod_p<S, COM>(&mut self, num_elems: usize) -> Vec<S::ParameterField>
+    where
+        S: Specification<COM>,
     {
         assert_eq!(S::MODULUS_BITS as u64, self.prime_num_bits);
 
@@ -193,14 +195,16 @@ mod tests {
 
         let mut lfsr = GrainLFSR::new(255, 3, 8, 55);
         assert_eq!(
-            lfsr.get_field_elements_rejection_sampling::<PoseidonSpec, Compiler<PoseidonSpec>>(1)[0],
+            lfsr.get_field_elements_rejection_sampling::<PoseidonSpec, Compiler<PoseidonSpec>>(1)
+                [0],
             Fp(field_new!(
                 ConstraintField,
                 "41764196652518280402801918994067134807238124178723763855975902025540297174931"
             ))
         );
         assert_eq!(
-            lfsr.get_field_elements_rejection_sampling::<PoseidonSpec, Compiler<PoseidonSpec>>(1)[0],
+            lfsr.get_field_elements_rejection_sampling::<PoseidonSpec, Compiler<PoseidonSpec>>(1)
+                [0],
             Fp(field_new!(
                 ConstraintField,
                 "12678502092746318913289523392430826887011664085277767208266352862540971998250"

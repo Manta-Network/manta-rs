@@ -26,10 +26,14 @@ pub fn generate_round_constants<S, COM>(
     width: usize,
     r_f: usize,
     r_p: usize,
-) -> (Vec<S::ParameterField>, GrainLFSR) 
-where S: Specification<COM>
+) -> (Vec<S::ParameterField>, GrainLFSR)
+where
+    S: Specification<COM>,
 {
     let num_constants = (r_f + r_p) * width;
     let mut lfsr = GrainLFSR::new(prime_num_bits, width, r_f, r_p);
-    (lfsr.get_field_elements_rejection_sampling::<S, COM>(num_constants), lfsr)
+    (
+        lfsr.get_field_elements_rejection_sampling::<S, COM>(num_constants),
+        lfsr,
+    )
 }

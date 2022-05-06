@@ -18,27 +18,28 @@
 
 use crate::crypto::hash::poseidon::Specification;
 use alloc::{vec, vec::Vec};
-use core::ops::{Index, IndexMut};
 use core::fmt::Debug;
+use core::ops::{Index, IndexMut};
 
 #[derive(Eq, PartialEq, Debug, Default)]
 /// a struct for matrix data
 pub struct Matrix<S, COM>(pub Vec<Vec<S::ParameterField>>)
-where 
-S: Specification<COM>;
+where
+    S: Specification<COM>;
 
 impl<S, COM> From<Vec<Vec<S::ParameterField>>> for Matrix<S, COM>
-where S: Specification<COM>
+where
+    S: Specification<COM>,
 {
     fn from(v: Vec<Vec<S::ParameterField>>) -> Self {
         Matrix(v)
     }
 }
 
-impl<S, COM> Matrix<S, COM> 
-where 
-S: Specification<COM>,
-S::ParameterField: Copy,
+impl<S, COM> Matrix<S, COM>
+where
+    S: Specification<COM>,
+    S::ParameterField: Copy,
 {
     /// Return the number of rows
     pub fn num_rows(&self) -> usize {
@@ -103,8 +104,9 @@ S::ParameterField: Copy,
     }
 }
 
-impl<S, COM> Index<usize> for Matrix<S, COM> 
-where S: Specification<COM>
+impl<S, COM> Index<usize> for Matrix<S, COM>
+where
+    S: Specification<COM>,
 {
     type Output = Vec<S::ParameterField>;
 
@@ -115,7 +117,8 @@ where S: Specification<COM>
 }
 
 impl<S, COM> IndexMut<usize> for Matrix<S, COM>
-where S: Specification<COM>
+where
+    S: Specification<COM>,
 {
     /// return a mutable reference to the `index`^{th} row in the matrix
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
@@ -124,7 +127,8 @@ where S: Specification<COM>
 }
 
 impl<S, COM> FromIterator<Vec<S::ParameterField>> for Matrix<S, COM>
-where S: Specification<COM>
+where
+    S: Specification<COM>,
 {
     /// from iterator rows
     fn from_iter<T: IntoIterator<Item = Vec<S::ParameterField>>>(iter: T) -> Self {
@@ -135,8 +139,8 @@ where S: Specification<COM>
 
 impl<S, COM> Clone for Matrix<S, COM>
 where
-S: Specification<COM>,
-S::ParameterField: Clone,
+    S: Specification<COM>,
+    S::ParameterField: Clone,
 {
     fn clone(&self) -> Self {
         self.0.clone().into()
@@ -144,9 +148,9 @@ S::ParameterField: Clone,
 }
 
 impl<S, COM> Matrix<S, COM>
-where 
-S: Specification<COM> + Clone,
-S::ParameterField: Copy,
+where
+    S: Specification<COM> + Clone,
+    S::ParameterField: Copy,
 {
     /// return an identity matrix of size `n*n`
     pub fn identity(n: usize) -> Matrix<S, COM> {
@@ -184,9 +188,7 @@ S::ParameterField: Copy,
             .iter()
             .map(|row| {
                 row.iter()
-                    .map(|val| {
-                        S::param_mul(&scalar, val)
-                    })
+                    .map(|val| S::param_mul(&scalar, val))
                     .collect::<Vec<_>>()
             })
             .collect::<Vec<_>>();
@@ -313,8 +315,10 @@ S::ParameterField: Copy,
     ///   - `column` is not the first
     pub fn eliminate(&self, column: usize, shadow: &mut Self) -> Option<Self> {
         let zero = S::param_zero();
-        let pivot_index = (0..self.num_rows())
-            .find(|&i| (!S::param_eq(&self[i][column], &zero)) && (0..column).all(|j| S::param_eq(&self[i][j], &zero)))?;
+        let pivot_index = (0..self.num_rows()).find(|&i| {
+            (!S::param_eq(&self[i][column], &zero))
+                && (0..column).all(|j| S::param_eq(&self[i][j], &zero))
+        })?;
 
         let pivot = &self[pivot_index];
         let pivot_val = pivot[column];
@@ -420,7 +424,8 @@ S::ParameterField: Copy,
 
 /// inner product of two vectors
 pub fn inner_product<S, COM>(a: &[S::ParameterField], b: &[S::ParameterField]) -> S::ParameterField
-where S: Specification<COM>
+where
+    S: Specification<COM>,
 {
     a.iter().zip(b).fold(S::param_zero(), |mut acc, (v1, v2)| {
         let tmp = S::param_mul(v1, v2);
@@ -430,43 +435,44 @@ where S: Specification<COM>
 }
 
 /// elementwise addition of two vectors
-pub fn vec_add<S, COM>(a: &[S::ParameterField], b: &[S::ParameterField]) -> Vec<S::ParameterField> 
-where S: Specification<COM>
+pub fn vec_add<S, COM>(a: &[S::ParameterField], b: &[S::ParameterField]) -> Vec<S::ParameterField>
+where
+    S: Specification<COM>,
 {
     a.iter()
         .zip(b.iter())
-        .map(|(a, b)| {
-            S::param_add(a, b)
-        })
+        .map(|(a, b)| S::param_add(a, b))
         .collect::<Vec<_>>()
 }
 
 /// elementwise subtraction (i.e., out[i] = a[i] - b[i])
-pub fn vec_sub<S, COM>(a: &[S::ParameterField], b: &[S::ParameterField]) -> Vec<S::ParameterField> 
-where S: Specification<COM>
+pub fn vec_sub<S, COM>(a: &[S::ParameterField], b: &[S::ParameterField]) -> Vec<S::ParameterField>
+where
+    S: Specification<COM>,
 {
     a.iter()
         .zip(b.iter())
-        .map(|(a, b)| {
-            S::param_sub(a, b)
-        })
+        .map(|(a, b)| S::param_sub(a, b))
         .collect::<Vec<_>>()
 }
 
 /// elementwisely multiply a vector `v` with `scalar`
-pub fn scalar_vec_mul<S, COM>(scalar: S::ParameterField, v: &[S::ParameterField]) -> Vec<S::ParameterField>
-where S: Specification<COM>
+pub fn scalar_vec_mul<S, COM>(
+    scalar: S::ParameterField,
+    v: &[S::ParameterField],
+) -> Vec<S::ParameterField>
+where
+    S: Specification<COM>,
 {
     v.iter()
-        .map(|val| {
-            S::param_mul(&scalar, val)
-        })
+        .map(|val| S::param_mul(&scalar, val))
         .collect::<Vec<_>>()
 }
 
 /// returns kronecker delta
 pub fn kronecker_delta<S, COM>(i: usize, j: usize) -> S::ParameterField
-where S: Specification<COM>
+where
+    S: Specification<COM>,
 {
     if i == j {
         S::param_one()
@@ -477,7 +483,8 @@ where S: Specification<COM>
 
 /// check whether `elem` equals zero
 pub fn equal_zero<S, COM>(elem: &S::ParameterField) -> bool
-where S: Specification<COM>
+where
+    S: Specification<COM>,
 {
     let zero = S::param_zero();
     S::param_eq(elem, &zero)
@@ -486,13 +493,16 @@ where S: Specification<COM>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::crypto::{hash::poseidon, constraint::arkworks::{R1CS, Fp}};
+    use crate::crypto::{
+        constraint::arkworks::{Fp, R1CS},
+        hash::poseidon,
+    };
     use ark_bls12_381 as bls12_381;
-    
+
     /// Compiler Type
     type Compiler<S> = R1CS<<S as poseidon::arkworks::Specification>::Field>;
     pub type ConstraintField = bls12_381::Fr;
-    
+
     #[derive(Clone)]
     pub struct PoseidonSpec;
     // Only for test purpose
@@ -523,15 +533,78 @@ mod tests {
         .into();
 
         let cases = [
-            (0, 0, Matrix::<PoseidonSpec, Compiler<PoseidonSpec>>(vec![vec![five, six], vec![eight, nine]])),
-            (0, 1, Matrix::<PoseidonSpec, Compiler<PoseidonSpec>>(vec![vec![four, six], vec![seven, nine]])),
-            (0, 2, Matrix::<PoseidonSpec, Compiler<PoseidonSpec>>(vec![vec![four, five], vec![seven, eight]])),
-            (1, 0, Matrix::<PoseidonSpec, Compiler<PoseidonSpec>>(vec![vec![two, three], vec![eight, nine]])),
-            (1, 1, Matrix::<PoseidonSpec, Compiler<PoseidonSpec>>(vec![vec![one, three], vec![seven, nine]])),
-            (1, 2, Matrix::<PoseidonSpec, Compiler<PoseidonSpec>>(vec![vec![one, two], vec![seven, eight]])),
-            (2, 0, Matrix::<PoseidonSpec, Compiler<PoseidonSpec>>(vec![vec![two, three], vec![five, six]])),
-            (2, 1, Matrix::<PoseidonSpec, Compiler<PoseidonSpec>>(vec![vec![one, three], vec![four, six]])),
-            (2, 2, Matrix::<PoseidonSpec, Compiler<PoseidonSpec>>(vec![vec![one, two], vec![four, five]])),
+            (
+                0,
+                0,
+                Matrix::<PoseidonSpec, Compiler<PoseidonSpec>>(vec![
+                    vec![five, six],
+                    vec![eight, nine],
+                ]),
+            ),
+            (
+                0,
+                1,
+                Matrix::<PoseidonSpec, Compiler<PoseidonSpec>>(vec![
+                    vec![four, six],
+                    vec![seven, nine],
+                ]),
+            ),
+            (
+                0,
+                2,
+                Matrix::<PoseidonSpec, Compiler<PoseidonSpec>>(vec![
+                    vec![four, five],
+                    vec![seven, eight],
+                ]),
+            ),
+            (
+                1,
+                0,
+                Matrix::<PoseidonSpec, Compiler<PoseidonSpec>>(vec![
+                    vec![two, three],
+                    vec![eight, nine],
+                ]),
+            ),
+            (
+                1,
+                1,
+                Matrix::<PoseidonSpec, Compiler<PoseidonSpec>>(vec![
+                    vec![one, three],
+                    vec![seven, nine],
+                ]),
+            ),
+            (
+                1,
+                2,
+                Matrix::<PoseidonSpec, Compiler<PoseidonSpec>>(vec![
+                    vec![one, two],
+                    vec![seven, eight],
+                ]),
+            ),
+            (
+                2,
+                0,
+                Matrix::<PoseidonSpec, Compiler<PoseidonSpec>>(vec![
+                    vec![two, three],
+                    vec![five, six],
+                ]),
+            ),
+            (
+                2,
+                1,
+                Matrix::<PoseidonSpec, Compiler<PoseidonSpec>>(vec![
+                    vec![one, three],
+                    vec![four, six],
+                ]),
+            ),
+            (
+                2,
+                2,
+                Matrix::<PoseidonSpec, Compiler<PoseidonSpec>>(vec![
+                    vec![one, two],
+                    vec![four, five],
+                ]),
+            ),
         ];
         for (i, j, expected) in &cases {
             let result = m.minor(*i, *j);
@@ -549,10 +622,12 @@ mod tests {
         let four = Fp(ConstraintField::from(4u64));
         let six = Fp(ConstraintField::from(6u64));
 
-        let m = Matrix::<PoseidonSpec, Compiler<PoseidonSpec>>(vec![vec![zero, one], vec![two, three]]);
+        let m =
+            Matrix::<PoseidonSpec, Compiler<PoseidonSpec>>(vec![vec![zero, one], vec![two, three]]);
         let res = m.mul_by_scalar(two);
 
-        let expected = Matrix::<PoseidonSpec, Compiler<PoseidonSpec>>(vec![vec![zero, two], vec![four, six]]);
+        let expected =
+            Matrix::<PoseidonSpec, Compiler<PoseidonSpec>>(vec![vec![zero, two], vec![four, six]]);
 
         assert_eq!(expected.0, res.0);
     }
@@ -690,15 +765,20 @@ mod tests {
         let base_vec = vec![eight, two, five];
 
         // S + M(B)
-        let add_after_apply = vec_add::<PoseidonSpec, Compiler<PoseidonSpec>>(&some_vec, &m.right_apply(&base_vec));
+        let add_after_apply =
+            vec_add::<PoseidonSpec, Compiler<PoseidonSpec>>(&some_vec, &m.right_apply(&base_vec));
 
         // M(B + M^-1(S))
-        let apply_after_add = m.right_apply(&vec_add::<PoseidonSpec, Compiler<PoseidonSpec>>(&base_vec, &inverse_applied));
+        let apply_after_add = m.right_apply(&vec_add::<PoseidonSpec, Compiler<PoseidonSpec>>(
+            &base_vec,
+            &inverse_applied,
+        ));
 
         // S + M(B) = M(B + M^-1(S))
         assert_eq!(add_after_apply, apply_after_add, "breakin' the law");
 
-        let m = Matrix::<PoseidonSpec, Compiler<PoseidonSpec>>(vec![vec![zero, one], vec![one, zero]]);
+        let m =
+            Matrix::<PoseidonSpec, Compiler<PoseidonSpec>>(vec![vec![zero, one], vec![one, zero]]);
         let m_inv = m.invert().unwrap();
         let computed_identity = m.matmul(&m_inv).unwrap();
         assert!(computed_identity.is_identity());
@@ -760,7 +840,11 @@ mod tests {
         let mut shadow = Matrix::identity(m.num_columns());
         let ut = m.upper_triangular(&mut shadow);
 
-        let res = ut.and_then(|x: Matrix<PoseidonSpec, Compiler<PoseidonSpec>>| x.reduce_to_identity(&mut shadow)).unwrap();
+        let res = ut
+            .and_then(|x: Matrix<PoseidonSpec, Compiler<PoseidonSpec>>| {
+                x.reduce_to_identity(&mut shadow)
+            })
+            .unwrap();
 
         assert!(res.is_identity());
 

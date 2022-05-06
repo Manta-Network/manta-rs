@@ -16,15 +16,16 @@
 
 //! Generate mds data
 
+use crate::crypto::hash::{poseidon::Specification, poseidon_parameter_generation::matrix::Matrix};
 use alloc::{vec, vec::Vec};
 use core::fmt::Debug;
-use crate::crypto::hash::{poseidon::Specification, poseidon_parameter_generation::matrix::Matrix};
 
 /// MDS Matrix for both naive poseidon hash and optimized poseidon hash
 /// For detailed descriptions, please refer to https://hackmd.io/8MdoHwoKTPmQfZyIKEYWXQ
 /// Note: Naive and optimized poseidon hash does not change #constraints in Groth16.
 pub struct MdsMatrices<S, COM>
-where S: Specification<COM>
+where
+    S: Specification<COM>,
 {
     /// MDS Matrix for naive poseidon hash
     pub m: Matrix<S, COM>,
@@ -41,26 +42,26 @@ where S: Specification<COM>
 }
 
 impl<S, COM> Clone for MdsMatrices<S, COM>
-where 
-S: Specification<COM>,
-S::ParameterField: Clone,
+where
+    S: Specification<COM>,
+    S::ParameterField: Clone,
 {
     fn clone(&self) -> Self {
-        MdsMatrices { 
-            m: self.m.clone(), 
-            m_inv: self.m_inv.clone(), 
-            m_hat: self.m_hat.clone(), 
-            m_hat_inv: self.m_hat_inv.clone(), 
-            m_prime: self.m_prime.clone(), 
-            m_double_prime: self.m_double_prime.clone(), 
+        MdsMatrices {
+            m: self.m.clone(),
+            m_inv: self.m_inv.clone(),
+            m_hat: self.m_hat.clone(),
+            m_hat_inv: self.m_hat_inv.clone(),
+            m_prime: self.m_prime.clone(),
+            m_double_prime: self.m_double_prime.clone(),
         }
     }
 }
 
 impl<S, COM> MdsMatrices<S, COM>
-where 
-S: Specification<COM> + Clone,
-S::ParameterField: Clone + Copy + Debug + Eq,
+where
+    S: Specification<COM> + Clone,
+    S::ParameterField: Clone + Copy + Debug + Eq,
 {
     /// Derive MDS matrix of size `dim*dim` and relevant things
     pub fn new(dim: usize) -> Self {
@@ -135,7 +136,8 @@ S::ParameterField: Clone + Copy + Debug + Eq,
     /// Generate the mds matrix `m` for naive poseidon hash.
     pub fn generate_mds(t: usize) -> Matrix<S, COM> {
         let xs: Vec<S::ParameterField> = (0..t as u64).map(S::from_u64_to_param).collect();
-        let ys: Vec<S::ParameterField> = (t as u64..2 * t as u64).map(S::from_u64_to_param).collect();
+        let ys: Vec<S::ParameterField> =
+            (t as u64..2 * t as u64).map(S::from_u64_to_param).collect();
 
         let matrix = xs
             .iter()
@@ -163,7 +165,8 @@ S::ParameterField: Clone + Copy + Debug + Eq,
 /// We will pluralize this compact structure `sparse_matrixes` to distinguish from `sparse_matrices` from which they are created.
 #[derive(Debug, Clone)]
 pub struct SparseMatrix<S, COM>
-where S: Specification<COM>
+where
+    S: Specification<COM>,
 {
     /// `w_hat` is the first column of the M'' matrix. It will be directly multiplied (scalar product) with a row of state elements.
     pub w_hat: Vec<S::ParameterField>,
@@ -171,10 +174,10 @@ where S: Specification<COM>
     pub v_rest: Vec<S::ParameterField>,
 }
 
-impl<S, COM> SparseMatrix<S, COM> 
-where 
-S: Specification<COM> + Clone,
-S::ParameterField: Copy + Clone,
+impl<S, COM> SparseMatrix<S, COM>
+where
+    S: Specification<COM> + Clone,
+    S::ParameterField: Copy + Clone,
 {
     /// Generate sparse matrix from m_double_prime matrix
     pub fn new(m_double_prime: &Matrix<S, COM>) -> Self {
@@ -208,9 +211,9 @@ pub fn factor_to_sparse_matrixes<S, COM>(
     base_matrix: Matrix<S, COM>,
     n: usize,
 ) -> (Matrix<S, COM>, Vec<SparseMatrix<S, COM>>)
-where 
-S: Specification<COM> + Clone,
-S::ParameterField: Clone + Copy + Debug + Eq,
+where
+    S: Specification<COM> + Clone,
+    S::ParameterField: Clone + Copy + Debug + Eq,
 {
     let (pre_sparse, mut sparse_matrices) =
         (0..n).fold((base_matrix.clone(), Vec::new()), |(curr, mut acc), _| {
@@ -231,20 +234,20 @@ S::ParameterField: Clone + Copy + Debug + Eq,
 #[cfg(test)]
 mod tests {
     use super::MdsMatrices;
+    pub use ark_bls12_381 as bls12_381;
     use ark_ff::field_new;
     use ark_std::{test_rng, UniformRand};
-    pub use ark_bls12_381 as bls12_381;
 
+    use crate::crypto::constraint::arkworks::{Fp, R1CS};
     use crate::crypto::hash::poseidon;
     use crate::crypto::hash::poseidon_parameter_generation::matrix::Matrix;
-    use crate::crypto::constraint::arkworks::{Fp, R1CS};
 
     /// Compiler Type
     type Compiler<S> = R1CS<<S as poseidon::arkworks::Specification>::Field>;
 
     type Fr = ark_bls12_381::Fr;
     pub type ConstraintField = bls12_381::Fr;
-    
+
     #[derive(Clone)]
     pub struct PoseidonSpec;
     // Only for test purpose
@@ -294,7 +297,9 @@ mod tests {
         let mut rng = test_rng();
         let mds = MdsMatrices::<PoseidonSpec, Compiler<PoseidonSpec>>::new(width);
 
-        let base = (0..width).map(|_| Fp(Fr::rand(&mut rng))).collect::<Vec<_>>();
+        let base = (0..width)
+            .map(|_| Fp(Fr::rand(&mut rng)))
+            .collect::<Vec<_>>();
         let x = {
             let mut x = base.clone();
             x[0] = Fp(Fr::rand(&mut rng));

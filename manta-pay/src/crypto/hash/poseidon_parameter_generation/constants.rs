@@ -16,11 +16,11 @@
 
 //! Generate constants for optimized poseidon hash
 
-use super::round_numbers::calc_round_numbers;
-use super::round_constants::generate_round_constants;
-use super::preprocessing::compress_round_constants;
 use super::matrix::Matrix;
 use super::mds::{factor_to_sparse_matrixes, MdsMatrices, SparseMatrix};
+use super::preprocessing::compress_round_constants;
+use super::round_constants::generate_round_constants;
+use super::round_numbers::calc_round_numbers;
 use crate::crypto::hash::poseidon::Specification;
 use alloc::vec::Vec;
 use core::fmt::Debug;
@@ -30,9 +30,9 @@ use core::fmt::Debug;
 #[derive(Clone)]
 /// Poseidon Constants struct for optimized poseidon
 pub struct PoseidonConstants<S, COM>
-where 
-S: Specification<COM> + Clone,
-S::ParameterField: Clone,
+where
+    S: Specification<COM> + Clone,
+    S::ParameterField: Clone,
 {
     /// mds matrix data
     pub mds_matrices: MdsMatrices<S, COM>,
@@ -54,13 +54,13 @@ S::ParameterField: Clone,
     pub partial_rounds: usize,
 }
 
-impl<S, COM> PoseidonConstants<S, COM> 
-where 
-S: Specification<COM> + Clone,
-S::ParameterField: Clone + Debug + Copy + Eq,
+impl<S, COM> PoseidonConstants<S, COM>
+where
+    S: Specification<COM> + Clone,
+    S::ParameterField: Clone + Debug + Copy + Eq,
 {
-    /// Generate the default poseidon hash parameters 
-    pub fn default<const WIDTH: usize>() -> Self{
+    /// Generate the default poseidon hash parameters
+    pub fn default<const WIDTH: usize>() -> Self {
         let arity = WIDTH - 1;
 
         let (num_full_rounds, num_partial_rounds) = calc_round_numbers(WIDTH, true);
