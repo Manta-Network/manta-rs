@@ -1,0 +1,42 @@
+[package]
+name = 'manta-benchmark'
+version = '0.4.0'
+edition = "2021"
+authors = ["Manta Network <contact@manta.network>"]
+readme = 'README.md'
+license-file = "LICENSE"
+repository = "https://github.com/Manta-Network/manta-rs"
+homepage = "https://github.com/Manta-Network"
+documentation = "https://github.com/Manta-Network/manta-rs"
+categories = [""]
+keywords = [""]
+description = "Benchmark for Manta."
+publish = false
+
+[package.metadata.docs.rs]
+# To build locally:
+# RUSTDOCFLAGS="--cfg doc_cfg" cargo +nightly doc --all-features --open
+all-features = true
+rustdoc-args = ["--cfg", "doc_cfg"]
+
+[dependencies]
+anyhow = { version = "1.0.55", default-features = false }
+manta-accounting = { path = "../manta-accounting", default-features = false, features = ["test"] }
+manta-crypto = { path = "../manta-crypto", default-features = false, features = ["getrandom", "test"] }
+manta-pay = { path = "../manta-pay", default-features = false, features = ["groth16", "test"] }
+rand_chacha = { version = "0.3.1", default-features = false }
+
+[dev-dependencies]
+criterion = { version = "0.3.4", default-features = false }
+
+[[bench]]
+name = "bench_mint"
+harness = false
+
+[[bench]]
+name = "bench_private_transfer"
+harness = false
+
+[[bench]]
+name = "bench_reclaim"
+harness = false
