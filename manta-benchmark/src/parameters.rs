@@ -1,18 +1,18 @@
 // Copyright 2019-2022 Manta Network.
-// This file is part of pallet-manta-pay.
+// This file is part of manta-rs.
 //
-// pallet-manta-pay is free software: you can redistribute it and/or modify
+// manta-rs is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 //
-// pallet-manta-pay is distributed in the hope that it will be useful,
+// manta-rs is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with pallet-manta-pay.  If not, see <http://www.gnu.org/licenses/>.
+// along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
 //! Generate Parameters
 //! This is a workaround for load_parameters(...) function.
@@ -25,7 +25,6 @@ use manta_pay::config::{
     FullParameters, Mint, MultiProvingContext, MultiVerifyingContext, Parameters, PrivateTransfer,
     ProofSystem, Reclaim, UtxoAccumulatorModel,
 };
-
 use manta_crypto::{
     constraint::ProofSystem as _,
     rand::{Rand, SeedableRng},
@@ -48,8 +47,7 @@ pub const SEED: [u8; 32] = [
 ];
 
 /// Generates the parameters using the [`SEED`] and saves them to the filesystem.
-/// Note: Only for testing purpose.
-/// Note: In Manta repo,
+/// Note: Only for benchmark purpose.
 #[inline]
 pub fn get_parameters() -> Result<(
     MultiProvingContext,
