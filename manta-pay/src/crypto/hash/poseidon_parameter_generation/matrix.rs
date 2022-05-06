@@ -18,8 +18,10 @@
 
 use crate::crypto::hash::poseidon::Specification;
 use alloc::{vec, vec::Vec};
-use core::fmt::Debug;
-use core::ops::{Index, IndexMut};
+use core::{
+    fmt::Debug,
+    ops::{Index, IndexMut},
+};
 
 #[derive(Eq, PartialEq, Debug, Default)]
 /// a struct for matrix data
@@ -445,7 +447,7 @@ where
         .collect::<Vec<_>>()
 }
 
-/// elementwise subtraction (i.e., out[i] = a[i] - b[i])
+/// elementwise subtraction (i.e., out_i = a_i - b_i)
 pub fn vec_sub<S, COM>(a: &[S::ParameterField], b: &[S::ParameterField]) -> Vec<S::ParameterField>
 where
     S: Specification<COM>,

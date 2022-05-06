@@ -15,10 +15,9 @@
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
 //! Preprocess constants for optimized poseidon hash
-//! acknowledgement: adapted from FileCoin Project: https://github.com/filecoin-project/neptune/blob/master/src/preprocessing.rs
+//! acknowledgement: adapted from FileCoin Project: <https://github.com/filecoin-project/neptune/blob/master/src/preprocessing.rs>
 
-use super::matrix::vec_add;
-use super::mds::MdsMatrices;
+use super::{matrix::vec_add, mds::MdsMatrices};
 use crate::crypto::hash::poseidon::Specification;
 use alloc::vec::Vec;
 

@@ -16,11 +16,13 @@
 
 //! Generate constants for optimized poseidon hash
 
-use super::matrix::Matrix;
-use super::mds::{factor_to_sparse_matrixes, MdsMatrices, SparseMatrix};
-use super::preprocessing::compress_round_constants;
-use super::round_constants::generate_round_constants;
-use super::round_numbers::calc_round_numbers;
+use super::{
+    matrix::Matrix,
+    mds::{factor_to_sparse_matrixes, MdsMatrices, SparseMatrix},
+    preprocessing::compress_round_constants,
+    round_constants::generate_round_constants,
+    round_numbers::calc_round_numbers,
+};
 use crate::crypto::hash::poseidon::Specification;
 use alloc::vec::Vec;
 use core::fmt::Debug;

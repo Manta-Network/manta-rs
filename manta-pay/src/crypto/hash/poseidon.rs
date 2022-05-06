@@ -503,7 +503,7 @@ pub mod arkworks {
 
         #[inline]
         fn param_add_assign(lhs: &mut Self::ParameterField, rhs: &Self::ParameterField) {
-            lhs.0 = lhs.0 + rhs.0;
+            lhs.0 += rhs.0;
         }
 
         #[inline]
@@ -531,20 +531,20 @@ pub mod arkworks {
         fn inverse(elem: &Self::ParameterField) -> Option<Self::ParameterField> {
             let m_inverse = S::Field::inverse(&elem.0);
             if let Some(m_inverse) = m_inverse {
-                return Some(Fp(m_inverse));
+                Some(Fp(m_inverse))
             } else {
-                return None;
+                None
             }
         }
 
         #[inline]
         fn try_from_bits_le(bits: &[bool]) -> Option<Self::ParameterField> {
-            let bigint = <S::Field as PrimeField>::BigInt::from_bits_le(&bits);
+            let bigint = <S::Field as PrimeField>::BigInt::from_bits_le(bits);
             let value = S::Field::from_repr(bigint);
             if let Some(value) = value {
-                return Some(Fp(value));
+                Some(Fp(value))
             } else {
-                return None;
+                None
             }
         }
 
@@ -634,7 +634,7 @@ pub mod arkworks {
 
         #[inline]
         fn param_add_assign(lhs: &mut Self::ParameterField, rhs: &Self::ParameterField) {
-            lhs.0 = lhs.0 + rhs.0;
+            lhs.0 += rhs.0;
         }
 
         #[inline]
@@ -662,20 +662,20 @@ pub mod arkworks {
         fn inverse(elem: &Self::ParameterField) -> Option<Self::ParameterField> {
             let m_inverse = S::Field::inverse(&elem.0);
             if let Some(m_inverse) = m_inverse {
-                return Some(Fp(m_inverse));
+                Some(Fp(m_inverse))
             } else {
-                return None;
+                None
             }
         }
 
         #[inline]
         fn try_from_bits_le(bits: &[bool]) -> Option<Self::ParameterField> {
-            let bigint = <S::Field as PrimeField>::BigInt::from_bits_le(&bits);
+            let bigint = <S::Field as PrimeField>::BigInt::from_bits_le(bits);
             let value = S::Field::from_repr(bigint);
             if let Some(value) = value {
-                return Some(Fp(value));
+                Some(Fp(value))
             } else {
-                return None;
+                None
             }
         }
 

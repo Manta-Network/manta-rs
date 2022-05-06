@@ -21,7 +21,7 @@ use alloc::{vec, vec::Vec};
 use core::fmt::Debug;
 
 /// MDS Matrix for both naive poseidon hash and optimized poseidon hash
-/// For detailed descriptions, please refer to https://hackmd.io/8MdoHwoKTPmQfZyIKEYWXQ
+/// For detailed descriptions, please refer to <https://hackmd.io/8MdoHwoKTPmQfZyIKEYWXQ>
 /// Note: Naive and optimized poseidon hash does not change #constraints in Groth16.
 pub struct MdsMatrices<S, COM>
 where
@@ -238,9 +238,10 @@ mod tests {
     use ark_ff::field_new;
     use ark_std::{test_rng, UniformRand};
 
-    use crate::crypto::constraint::arkworks::{Fp, R1CS};
-    use crate::crypto::hash::poseidon;
-    use crate::crypto::hash::poseidon_parameter_generation::matrix::Matrix;
+    use crate::crypto::{
+        constraint::arkworks::{Fp, R1CS},
+        hash::{poseidon, poseidon_parameter_generation::matrix::Matrix},
+    };
 
     /// Compiler Type
     type Compiler<S> = R1CS<<S as poseidon::arkworks::Specification>::Field>;

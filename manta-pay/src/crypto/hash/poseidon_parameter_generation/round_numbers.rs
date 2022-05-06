@@ -15,7 +15,7 @@
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
 //! Generate number of full & partial rounds
-//! Adapted from https://github.com/filecoin-project/neptune/blob/master/src/round_numbers.rs
+//! Adapted from <https://github.com/filecoin-project/neptune/blob/master/src/round_numbers.rs>
 
 // The number of bits of the Poseidon prime field modulus. Denoted `n` in the Poseidon paper
 // (where `n = ceil(log2(p))`). Note that BLS12-381's scalar field modulus is 255 bits, however we
