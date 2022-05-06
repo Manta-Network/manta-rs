@@ -170,9 +170,9 @@ impl GrainLFSR {
 #[cfg(test)]
 mod tests {
     use super::GrainLFSR;
-    use crate::{
-        crypto::constraint::arkworks::{Fp, R1CS},
-        crypto::hash::poseidon::arkworks::Specification,
+    use crate::crypto::{
+        constraint::arkworks::{Fp, R1CS},
+        hash::poseidon::arkworks::Specification,
     };
     use ark_ff::field_new;
 

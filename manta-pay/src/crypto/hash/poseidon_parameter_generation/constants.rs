@@ -71,13 +71,9 @@ where
         let num_half_full_rounds = num_full_rounds / 2;
         let (round_constants, _) = generate_round_constants::<S, COM>(
             S::MODULUS_BITS as u64,
-            WIDTH.try_into().expect("WIDTH is too large"),
-            num_full_rounds
-                .try_into()
-                .expect("num_full_rounds is too large"),
-            num_partial_rounds
-                .try_into()
-                .expect("num_partial_rounds is too large"),
+            WIDTH,
+            num_full_rounds,
+            num_partial_rounds,
         );
         let domain_tag = S::from_u64_to_param(((1 << arity) - 1) as u64);
 

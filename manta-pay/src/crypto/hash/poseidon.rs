@@ -530,22 +530,14 @@ pub mod arkworks {
         #[inline]
         fn inverse(elem: &Self::ParameterField) -> Option<Self::ParameterField> {
             let m_inverse = S::Field::inverse(&elem.0);
-            if let Some(m_inverse) = m_inverse {
-                Some(Fp(m_inverse))
-            } else {
-                None
-            }
+            m_inverse.map(Fp)
         }
 
         #[inline]
         fn try_from_bits_le(bits: &[bool]) -> Option<Self::ParameterField> {
             let bigint = <S::Field as PrimeField>::BigInt::from_bits_le(bits);
             let value = S::Field::from_repr(bigint);
-            if let Some(value) = value {
-                Some(Fp(value))
-            } else {
-                None
-            }
+            value.map(Fp)
         }
 
         #[inline]
@@ -661,22 +653,14 @@ pub mod arkworks {
         #[inline]
         fn inverse(elem: &Self::ParameterField) -> Option<Self::ParameterField> {
             let m_inverse = S::Field::inverse(&elem.0);
-            if let Some(m_inverse) = m_inverse {
-                Some(Fp(m_inverse))
-            } else {
-                None
-            }
+            m_inverse.map(Fp)
         }
 
         #[inline]
         fn try_from_bits_le(bits: &[bool]) -> Option<Self::ParameterField> {
             let bigint = <S::Field as PrimeField>::BigInt::from_bits_le(bits);
             let value = S::Field::from_repr(bigint);
-            if let Some(value) = value {
-                Some(Fp(value))
-            } else {
-                None
-            }
+            value.map(Fp)
         }
 
         #[inline]
