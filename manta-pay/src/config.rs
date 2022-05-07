@@ -111,7 +111,7 @@ impl poseidon::arkworks::Specification for PoseidonSpec<2> {
     type Field = ConstraintField;
     const FULL_ROUNDS: usize = 8;
     const PARTIAL_ROUNDS: usize = 57;
-    const SBOX_EXPONENT: u64 = 5;
+    const SBOX_EXPONENT: u64 = 17;
 }
 
 /// Poseidon-4 Hash Parameters
@@ -124,7 +124,7 @@ impl poseidon::arkworks::Specification for PoseidonSpec<4> {
     type Field = ConstraintField;
     const FULL_ROUNDS: usize = 8;
     const PARTIAL_ROUNDS: usize = 60;
-    const SBOX_EXPONENT: u64 = 5;
+    const SBOX_EXPONENT: u64 = 17;
 }
 
 /// Key Agreement Scheme Type
