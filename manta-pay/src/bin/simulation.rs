@@ -34,7 +34,7 @@ pub fn main() {
     )
     .expect("Failed to generate contexts.");
     match tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(4)
+        .worker_threads(6)
         .build()
     {
         Ok(runtime) => runtime.block_on(async {

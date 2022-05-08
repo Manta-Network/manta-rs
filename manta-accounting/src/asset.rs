@@ -701,6 +701,18 @@ impl From<Vec<Asset>> for AssetList {
     }
 }
 
+impl FromIterator<(AssetId, AssetValue)> for AssetList {
+    #[inline]
+    fn from_iter<I>(iter: I) -> Self
+    where
+        I: IntoIterator<Item = (AssetId, AssetValue)>,
+    {
+        iter.into_iter()
+            .map(move |(id, value)| Asset::new(id, value))
+            .collect()
+    }
+}
+
 impl FromIterator<Asset> for AssetList {
     #[inline]
     fn from_iter<I>(iter: I) -> Self
