@@ -88,6 +88,7 @@ impl Simulation {
         test::Config {
             actor_count: self.actor_count,
             actor_lifetime: self.actor_lifetime,
+            action_distribution: Default::default(),
         }
     }
 
