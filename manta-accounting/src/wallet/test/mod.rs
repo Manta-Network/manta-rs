@@ -36,10 +36,7 @@ use manta_crypto::rand::{CryptoRng, RngCore, Sample};
 use manta_util::future::LocalBoxFuture;
 use parking_lot::RwLock;
 use rand::{distributions::Distribution, Rng};
-use statrs::{
-    distribution::{Categorical, Discrete},
-    StatsError,
-};
+use statrs::{distribution::Categorical, StatsError};
 
 pub mod sim;
 
@@ -56,6 +53,9 @@ where
 
     /// Generate Public Key
     GeneratePublicKey,
+
+    /// Recover Wallet
+    Recover,
 }
 
 /// Action Types
@@ -75,11 +75,14 @@ pub enum ActionType {
 
     /// Generate Public Key Action
     GeneratePublicKey,
+
+    /// Recover Wallet
+    Recover,
 }
 
 /// Action Distribution Probability Mass Function
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct ActionDistributionPMF<T = f64> {
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct ActionDistributionPMF<T = u64> {
     /// No Action Weight
     pub skip: T,
 
@@ -92,32 +95,23 @@ pub struct ActionDistributionPMF<T = f64> {
     /// Reclaim Action Weight
     pub reclaim: T,
 
-    /// Generate Public Key
+    /// Generate Public Key Weight
     pub generate_public_key: T,
+
+    /// Recover Wallet Weight
+    pub recover: T,
 }
 
 impl Default for ActionDistributionPMF {
     #[inline]
     fn default() -> Self {
         Self {
-            skip: 0.0,
-            mint: 1.0,
-            private_transfer: 2.0,
-            reclaim: 0.5,
-            generate_public_key: 0.5,
-        }
-    }
-}
-
-impl From<ActionDistribution> for ActionDistributionPMF {
-    #[inline]
-    fn from(actions: ActionDistribution) -> Self {
-        Self {
-            skip: actions.distribution.pmf(0),
-            mint: actions.distribution.pmf(1),
-            private_transfer: actions.distribution.pmf(2),
-            reclaim: actions.distribution.pmf(3),
-            generate_public_key: actions.distribution.pmf(4),
+            skip: 0,
+            mint: 4,
+            private_transfer: 8,
+            reclaim: 2,
+            generate_public_key: 2,
+            recover: 3,
         }
     }
 }
@@ -144,11 +138,12 @@ impl TryFrom<ActionDistributionPMF> for ActionDistribution {
     fn try_from(pmf: ActionDistributionPMF) -> Result<Self, StatsError> {
         Ok(Self {
             distribution: Categorical::new(&[
-                pmf.skip,
-                pmf.mint,
-                pmf.private_transfer,
-                pmf.reclaim,
-                pmf.generate_public_key,
+                pmf.skip as f64,
+                pmf.mint as f64,
+                pmf.private_transfer as f64,
+                pmf.reclaim as f64,
+                pmf.generate_public_key as f64,
+                pmf.recover as f64,
             ])?,
         })
     }
@@ -166,6 +161,7 @@ impl Distribution<ActionType> for ActionDistribution {
             2 => ActionType::PrivateTransfer,
             3 => ActionType::Reclaim,
             4 => ActionType::GeneratePublicKey,
+            5 => ActionType::Recover,
             _ => unreachable!(),
         }
     }
@@ -263,6 +259,18 @@ where
         }
         let (asset_id, asset_value) = assets.iter().nth(rng.gen_range(0..len)).unwrap();
         Some(asset_id.value(rng.gen_range(0..asset_value.0)))
+    }
+
+    /// Computes the current balance state of the wallet, performs a full recovery, and then
+    /// checks that the balance state has the same or more funds than before the recovery.
+    #[inline]
+    async fn recover(&mut self) -> Result<bool, Error<C, L, S>> {
+        self.wallet.sync().await?;
+        let assets = AssetList::from_iter(self.wallet.assets().clone());
+        self.wallet
+            .recover()
+            .await
+            .map(move |_| self.wallet.contains_all(assets))
     }
 }
 
@@ -377,6 +385,7 @@ where
                     },
                 },
                 ActionType::GeneratePublicKey => Action::GeneratePublicKey,
+                ActionType::Recover => Action::Recover,
             })
         })
     }
@@ -430,6 +439,10 @@ where
                         Err(err) => Err(Error::SignerConnectionError(err)),
                     },
                 },
+                Action::Recover => Event {
+                    action: ActionType::Recover,
+                    result: actor.recover().await,
+                },
             }
         })
     }
@@ -466,6 +479,9 @@ pub struct Config {
 
     /// Actor Lifetime
     pub actor_lifetime: usize,
+
+    /// Action Distribution
+    pub action_distribution: ActionDistributionPMF,
 }
 
 impl Config {
@@ -492,21 +508,20 @@ impl Config {
         Error<C, L, S>: Debug,
         PublicKey<C>: Eq + Hash,
     {
+        let action_distribution = ActionDistribution::try_from(self.action_distribution)
+            .expect("Unable to sample from action distribution.");
         let actors = (0..self.actor_count)
             .map(|i| {
                 Actor::new(
                     Wallet::new(ledger(i), signer(i)),
-                    Default::default(),
+                    action_distribution.clone(),
                     self.actor_lifetime,
                 )
             })
             .collect();
-
         let mut simulator = sim::Simulator::new(sim::ActionSim(Simulation::default()), actors);
-
         let initial_balances =
             measure_balances(simulator.actors.iter_mut().map(|actor| &mut actor.wallet)).await?;
-
         let mut events = simulator.run(rng);
         while let Some(event) = events.next().await {
             event_subscriber(&event).await;
@@ -515,10 +530,8 @@ impl Config {
             }
         }
         drop(events);
-
         let final_balances =
             measure_balances(simulator.actors.iter_mut().map(|actor| &mut actor.wallet)).await?;
-
         Ok(initial_balances == final_balances)
     }
 }
