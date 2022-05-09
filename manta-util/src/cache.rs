@@ -65,8 +65,7 @@ where
     }
 
     #[inline]
-    fn read(&self, reading_key: Self::ReadingKey) -> &T {
-        let _ = reading_key;
+    fn read(&self, _: Self::ReadingKey) -> &T {
         self.borrow()
     }
 

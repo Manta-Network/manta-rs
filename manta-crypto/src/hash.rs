@@ -141,7 +141,7 @@ pub mod array {
         __: PhantomData<COM>,
     }
 
-    impl<'h, H, COM> AsUnary<H, COM>
+    impl<H, COM> AsUnary<H, COM>
     where
         H: ArrayHashFunction<COM, 1>,
     {
