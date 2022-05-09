@@ -139,39 +139,6 @@ where
     (utxo_accumulator, vec_spending_keys, vec_senders)
 }
 
-/// Samples a [`PrivateTransfer`] transaction under 2 [`Mint`]s.
-#[inline]
-pub fn bench_private_transfer<R>(
-    proving_context: &MultiProvingContext,
-    verifying_context: &MultiVerifyingContext,
-    parameters: &Parameters,
-    utxo_accumulator: &UtxoAccumulator,
-    spending_key_0: &config::SpendingKey,
-    spending_key_1: &config::SpendingKey,
-    sender_0: config::Sender,
-    sender_1: config::Sender,
-    asset_0: Asset,
-    asset_1: Asset,
-    rng: &mut R,
-) where
-    R: CryptoRng + RngCore + ?Sized,
-{
-    let private_transfer = PrivateTransfer::build(
-        [sender_0, sender_1],
-        [
-            spending_key_0.receiver(parameters, rng.gen(), asset_1),
-            spending_key_1.receiver(parameters, rng.gen(), asset_0),
-        ],
-    )
-    .into_post(
-        FullParameters::new(parameters, utxo_accumulator.model()),
-        &proving_context.private_transfer,
-        rng,
-    )
-    .expect("Unable to build PRIVATE_TRANSFER proof.");
-    assert_valid_proof(&verifying_context.private_transfer, &private_transfer);
-}
-
 /// a wrapper for 2 mints and 1 private transfer
 #[inline]
 pub fn bench_private_transfer_wrapper<R>(
@@ -214,49 +181,20 @@ pub fn bench_private_transfer_wrapper<R>(
         .insert_and_upgrade(&mut utxo_accumulator)
         .expect("Just inserted so this should not fail.");
 
-    bench_private_transfer(
-        proving_context,
-        verifying_context,
-        parameters,
-        &utxo_accumulator,
-        &spending_key_0,
-        &spending_key_1,
-        sender_0,
-        sender_1,
-        assets[0],
-        assets[1],
-        rng,
-    );
-}
-
-/// Samples a [`Reclaim`] transaction under two [`Mint`]s.
-#[inline]
-pub fn bench_reclaim<R>(
-    proving_context: &MultiProvingContext,
-    verifying_context: &MultiVerifyingContext,
-    parameters: &Parameters,
-    utxo_accumulator: &UtxoAccumulator,
-    spending_key_0: &config::SpendingKey,
-    sender_0: config::Sender,
-    sender_1: config::Sender,
-    asset_0: Asset,
-    asset_1: Asset,
-    rng: &mut R,
-) where
-    R: CryptoRng + RngCore + ?Sized,
-{
-    let reclaim = Reclaim::build(
+    let private_transfer = PrivateTransfer::build(
         [sender_0, sender_1],
-        [spending_key_0.receiver(parameters, rng.gen(), asset_1)],
-        asset_0,
+        [
+            spending_key_0.receiver(parameters, rng.gen(), assets[1]),
+            spending_key_1.receiver(parameters, rng.gen(), assets[0]),
+        ],
     )
     .into_post(
         FullParameters::new(parameters, utxo_accumulator.model()),
-        &proving_context.reclaim,
+        &proving_context.private_transfer,
         rng,
     )
-    .expect("Unable to build RECLAIM proof.");
-    assert_valid_proof(&verifying_context.reclaim, &reclaim);
+    .expect("Unable to build PRIVATE_TRANSFER proof.");
+    assert_valid_proof(&verifying_context.private_transfer, &private_transfer);
 }
 
 /// a wrapper for 2 mints and 1 reclaim
@@ -301,16 +239,16 @@ pub fn bench_reclaim_wrapper<R>(
         .insert_and_upgrade(&mut utxo_accumulator)
         .expect("Just inserted so this should not fail.");
 
-    bench_reclaim(
-        proving_context,
-        verifying_context,
-        parameters,
-        &utxo_accumulator,
-        &spending_key_0,
-        sender_0,
-        sender_1,
+    let reclaim = Reclaim::build(
+        [sender_0, sender_1],
+        [spending_key_0.receiver(parameters, rng.gen(), assets[1])],
         assets[0],
-        assets[1],
+    )
+    .into_post(
+        FullParameters::new(parameters, utxo_accumulator.model()),
+        &proving_context.reclaim,
         rng,
-    );
+    )
+    .expect("Unable to build RECLAIM proof.");
+    assert_valid_proof(&verifying_context.reclaim, &reclaim);
 }
