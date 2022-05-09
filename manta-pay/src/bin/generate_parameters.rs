@@ -19,15 +19,8 @@
 // TODO: Deduplicate the per-circuit proving context and verifying context serialization code.
 // TODO: Print some statistics about the parameters and circuits and into a stats file as well.
 
-use manta_crypto::{
-    constraint::{measure::Measure, ProofSystem as _},
-    rand::{Rand, SeedableRng},
-};
-use manta_pay::config::{
-    FullParameters, Mint, Parameters, PrivateTransfer, ProofSystem, Reclaim, UtxoAccumulatorModel,
-};
+use manta_pay::{config::Parameters, crypto::parameters::generate_parameters};
 use manta_util::codec::{Encode, IoWriter};
-use rand_chacha::ChaCha20Rng;
 use std::{
     env,
     fs::{self, OpenOptions},
@@ -64,10 +57,8 @@ pub fn main() -> io::Result<()> {
     );
     fs::create_dir_all(&target_dir)?;
 
-    let mut rng = ChaCha20Rng::from_seed(SEED);
-
-    let parameters = rng.gen();
-    let utxo_accumulator_model: UtxoAccumulatorModel = rng.gen();
+    let (proving_context, verifying_context, parameters, utxo_accumulator_model) =
+        generate_parameters(SEED).unwrap();
 
     let Parameters {
         note_encryption_scheme,
@@ -108,19 +99,14 @@ pub fn main() -> io::Result<()> {
         ))
         .unwrap();
 
-    let full_parameters = FullParameters::new(&parameters, &utxo_accumulator_model);
-
     let proving_context_dir = target_dir.join("proving");
     fs::create_dir_all(&proving_context_dir)?;
 
     let verifying_context_dir = target_dir.join("verifying");
     fs::create_dir_all(&verifying_context_dir)?;
 
-    let cs = Mint::unknown_constraints(full_parameters);
-    println!("MINT: {:#?}", cs.measure());
-    let (proving_context, verifying_context) =
-        ProofSystem::generate_context(&(), cs, &mut rng).unwrap();
     proving_context
+        .mint
         .encode(IoWriter(
             OpenOptions::new()
                 .create(true)
@@ -129,6 +115,7 @@ pub fn main() -> io::Result<()> {
         ))
         .unwrap();
     verifying_context
+        .mint
         .encode(IoWriter(
             OpenOptions::new()
                 .create(true)
@@ -137,11 +124,8 @@ pub fn main() -> io::Result<()> {
         ))
         .unwrap();
 
-    let cs = PrivateTransfer::unknown_constraints(full_parameters);
-    println!("PRIVATE-TRANSFER: {:#?}", cs.measure());
-    let (proving_context, verifying_context) =
-        ProofSystem::generate_context(&(), cs, &mut rng).unwrap();
     proving_context
+        .private_transfer
         .encode(IoWriter(
             OpenOptions::new()
                 .create(true)
@@ -150,6 +134,7 @@ pub fn main() -> io::Result<()> {
         ))
         .unwrap();
     verifying_context
+        .private_transfer
         .encode(IoWriter(
             OpenOptions::new()
                 .create(true)
@@ -158,11 +143,8 @@ pub fn main() -> io::Result<()> {
         ))
         .unwrap();
 
-    let cs = Reclaim::unknown_constraints(full_parameters);
-    println!("RECLAIM: {:#?}", cs.measure());
-    let (proving_context, verifying_context) =
-        ProofSystem::generate_context(&(), cs, &mut rng).unwrap();
     proving_context
+        .reclaim
         .encode(IoWriter(
             OpenOptions::new()
                 .create(true)
@@ -171,6 +153,7 @@ pub fn main() -> io::Result<()> {
         ))
         .unwrap();
     verifying_context
+        .reclaim
         .encode(IoWriter(
             OpenOptions::new()
                 .create(true)

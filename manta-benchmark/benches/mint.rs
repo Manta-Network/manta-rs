@@ -16,13 +16,14 @@
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use manta_accounting::asset::AssetId;
-use manta_benchmark::{parameters, payment};
+use manta_benchmark::payment;
 use manta_crypto::rand::OsRng;
+use manta_pay::crypto::parameters::generate_parameters;
 
 pub fn bench_mint_prove(c: &mut Criterion) {
     let mut group = c.benchmark_group("bench mint prove");
     let (proving_context, _verifying_context, parameters, utxo_accumulator_model) =
-        parameters::get_parameters().unwrap();
+        generate_parameters(payment::SEED).unwrap();
     let mut rng = OsRng;
 
     group.bench_function("bench mint proof generation", |b| {
@@ -45,7 +46,7 @@ pub fn bench_mint_prove(c: &mut Criterion) {
 pub fn bench_mint_verify(c: &mut Criterion) {
     let mut group = c.benchmark_group("bench mint verify");
     let (proving_context, verifying_context, parameters, utxo_accumulator_model) =
-        parameters::get_parameters().unwrap();
+        generate_parameters(payment::SEED).unwrap();
     let mut rng = OsRng;
 
     let asset_id: u32 = 8;
@@ -71,7 +72,7 @@ pub fn bench_mint_prove_and_verify(c: &mut Criterion) {
     let mut group = c.benchmark_group("bench mint prove and verify");
 
     let (proving_context, verifying_context, parameters, utxo_accumulator_model) =
-        parameters::get_parameters().unwrap();
+        generate_parameters(payment::SEED).unwrap();
     let mut rng = OsRng;
 
     group.bench_function("bench mint prove and verify", |b| {

@@ -36,6 +36,21 @@ use manta_pay::config::{
 type UtxoAccumulator =
     TreeArrayMerkleForest<MerkleTreeConfiguration, Full<MerkleTreeConfiguration>, 256>;
 
+/// Parameter Generation Seed
+///
+/// This is a nothing-up-my-sleve parameter generation number. Its just the numbers from `0` to `31`
+/// as `u8` bytes.
+///
+/// # Warning
+///
+/// Right now, this seed is also used to generate to the proving and verifying keys for the ZKP
+/// circuits. This is not safe, and a real system must use a Multi-Party-Computation to arrive at
+/// the ZKP parameters.
+pub const SEED: [u8; 32] = [
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
+    26, 27, 28, 29, 30, 31,
+];
+
 /// Asserts that `post` represents a valid `Transfer` verifying against `verifying_context`.
 #[inline]
 pub fn assert_valid_proof(verifying_context: &VerifyingContext, post: &config::TransferPost) {
