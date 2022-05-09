@@ -16,24 +16,25 @@
 
 //! Generate round constants
 
+use crate::crypto::hash::poseidon::ParamField;
+
 use super::lfsr::GrainLFSR;
-use crate::crypto::hash::poseidon::Specification;
 use alloc::vec::Vec;
 
 /// return round constants, and return the LFSR used to generate MDS matrix
-pub fn generate_round_constants<S, COM>(
+pub fn generate_round_constants<F>(
     prime_num_bits: u64,
     width: usize,
     r_f: usize,
     r_p: usize,
-) -> (Vec<S::ParameterField>, GrainLFSR)
+) -> (Vec<F>, GrainLFSR)
 where
-    S: Specification<COM>,
+    F: ParamField,
 {
     let num_constants = (r_f + r_p) * width;
     let mut lfsr = GrainLFSR::new(prime_num_bits, width, r_f, r_p);
     (
-        lfsr.get_field_elements_rejection_sampling::<S, COM>(num_constants),
+        lfsr.get_field_elements_rejection_sampling::<F>(num_constants),
         lfsr,
     )
 }

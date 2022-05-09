@@ -18,25 +18,24 @@
 //! acknowledgement: adapted from FileCoin Project: <https://github.com/filecoin-project/neptune/blob/master/src/preprocessing.rs>
 
 use super::{matrix::vec_add, mds::MdsMatrices};
-use crate::crypto::hash::poseidon::Specification;
+use crate::crypto::hash::poseidon::ParamField;
 use alloc::vec::Vec;
 
 /// - Compress constants by pushing them back through linear layers and through the identity components of partial layers.
 /// - As a result, constants need only be added after each S-box.
-pub fn compress_round_constants<S, COM>(
+pub fn compress_round_constants<F>(
     width: usize,
     full_rounds: usize,
     partial_rounds: usize,
-    round_constants: &[S::ParameterField],
-    mds_matrices: &MdsMatrices<S, COM>,
-) -> Vec<S::ParameterField>
+    round_constants: &[F],
+    mds_matrices: &MdsMatrices<F>,
+) -> Vec<F>
 where
-    S: Specification<COM> + Clone,
-    S::ParameterField: Copy,
+    F: ParamField + Copy,
 {
     let inverse_matrix = &mds_matrices.m_inv;
 
-    let mut res: Vec<S::ParameterField> = Vec::new();
+    let mut res: Vec<F> = Vec::new();
 
     let round_keys = |r: usize| &round_constants[r * width..(r + 1) * width];
 
@@ -66,7 +65,7 @@ where
     // - (Last produced should be first applied, so either pop until empty, or reverse and extend, etc.)
 
     // 'partial_keys' will accumulated the single post-S-box constant for each partial-round, in reverse order.
-    let mut partial_keys: Vec<S::ParameterField> = Vec::new();
+    let mut partial_keys: Vec<F> = Vec::new();
 
     let final_round = half_full_rounds + partial_rounds;
     let final_round_key = round_keys(final_round).to_vec();
@@ -78,9 +77,9 @@ where
             let mut inverted = inverse_matrix.right_apply(&acc);
 
             partial_keys.push(inverted[0]);
-            inverted[0] = S::param_zero();
+            inverted[0] = F::param_zero();
 
-            vec_add::<S, COM>(previous_round_keys, &inverted)
+            vec_add::<F>(previous_round_keys, &inverted)
         });
 
     res.extend(inverse_matrix.right_apply(&round_acc));

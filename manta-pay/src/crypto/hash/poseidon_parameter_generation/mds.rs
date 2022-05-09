@@ -16,35 +16,34 @@
 
 //! Generate mds data
 
-use crate::crypto::hash::{poseidon::Specification, poseidon_parameter_generation::matrix::Matrix};
+use crate::crypto::hash::{poseidon::ParamField, poseidon_parameter_generation::matrix::Matrix};
 use alloc::{vec, vec::Vec};
 use core::fmt::Debug;
 
 /// MDS Matrix for both naive poseidon hash and optimized poseidon hash
 /// For detailed descriptions, please refer to <https://hackmd.io/8MdoHwoKTPmQfZyIKEYWXQ>
 /// Note: Naive and optimized poseidon hash does not change #constraints in Groth16.
-pub struct MdsMatrices<S, COM>
+pub struct MdsMatrices<F>
 where
-    S: Specification<COM>,
+    F: ParamField,
 {
     /// MDS Matrix for naive poseidon hash
-    pub m: Matrix<S, COM>,
+    pub m: Matrix<F>,
     /// inversion of mds matrix. Used in optimzed poseidon hash.
-    pub m_inv: Matrix<S, COM>,
+    pub m_inv: Matrix<F>,
     /// m_hat matrix. Used in optimized poseidon hash
-    pub m_hat: Matrix<S, COM>,
+    pub m_hat: Matrix<F>,
     /// Inversion of m_hat matrix. Used in optimized poseidon hash.
-    pub m_hat_inv: Matrix<S, COM>,
+    pub m_hat_inv: Matrix<F>,
     /// m prime matrix. Used in optimized poseidon hash.
-    pub m_prime: Matrix<S, COM>,
+    pub m_prime: Matrix<F>,
     /// m double prime matrix. Used in optimized poseidon hash.
-    pub m_double_prime: Matrix<S, COM>,
+    pub m_double_prime: Matrix<F>,
 }
 
-impl<S, COM> Clone for MdsMatrices<S, COM>
+impl<F> Clone for MdsMatrices<F>
 where
-    S: Specification<COM>,
-    S::ParameterField: Clone,
+    F: ParamField + Clone,
 {
     fn clone(&self) -> Self {
         MdsMatrices {
@@ -58,42 +57,76 @@ where
     }
 }
 
-impl<S, COM> MdsMatrices<S, COM>
+impl<F> MdsMatrices<F>
 where
-    S: Specification<COM> + Clone,
-    S::ParameterField: Clone + Copy + Debug + Eq,
+    F: ParamField + Clone + Copy,
 {
-    /// Derive MDS matrix of size `dim*dim` and relevant things
-    pub fn new(dim: usize) -> Self {
-        let m = Self::generate_mds(dim);
-        Self::derive_mds_matrices(m)
+    fn make_v_w(m: &Matrix<F>) -> (Vec<F>, Vec<F>) {
+        let v = m[0][1..].to_vec();
+        let w = m.iter_rows().skip(1).map(|column| column[0]).collect();
+        (v, w)
     }
+}
 
-    fn make_prime(m: &Matrix<S, COM>) -> Matrix<S, COM> {
+impl<F> MdsMatrices<F>
+where
+    F: ParamField + Copy,
+{    
+    fn make_prime(m: &Matrix<F>) -> Matrix<F> {
         m.iter_rows()
             .enumerate()
             .map(|(i, row)| match i {
                 0 => {
-                    let mut new_row = vec![S::param_zero(); row.len()];
-                    new_row[0] = S::param_one();
+                    let mut new_row = vec![F::param_zero(); row.len()];
+                    new_row[0] = F::param_one();
                     new_row
                 }
                 _ => {
-                    let mut new_row = vec![S::param_zero(); row.len()];
+                    let mut new_row = vec![F::param_zero(); row.len()];
                     new_row[1..].copy_from_slice(&row[1..]);
                     new_row
                 }
             })
             .collect()
     }
+}
 
-    fn make_v_w(m: &Matrix<S, COM>) -> (Vec<S::ParameterField>, Vec<S::ParameterField>) {
-        let v = m[0][1..].to_vec();
-        let w = m.iter_rows().skip(1).map(|column| column[0]).collect();
-        (v, w)
+impl<F> MdsMatrices<F>
+where
+    F: ParamField + Copy + PartialEq + Debug,
+{
+    /// Derive MDS matrix of size `dim*dim` and relevant things
+    pub fn new(dim: usize) -> Self {
+        let m = Self::generate_mds(dim);
+        Self::derive_mds_matrices(m)
+    }
+    
+    /// Generate the mds matrix `m` for naive poseidon hash.
+    pub fn generate_mds(t: usize) -> Matrix<F> {
+        let xs: Vec<F> = (0..t as u64).map(F::from_u64_to_param).collect();
+        let ys: Vec<F> =
+            (t as u64..2 * t as u64).map(F::from_u64_to_param).collect();
+
+        let matrix = xs
+            .iter()
+            .map(|xs_item| {
+                ys.iter()
+                    .map(|ys_item| {
+                        // Generate the entry at (i,j)
+                        let mut tmp = *xs_item;
+                        F::param_add_assign(&mut tmp, ys_item);
+                        F::inverse(&tmp).unwrap()
+                    })
+                    .collect()
+            })
+            .collect::<Matrix<F>>();
+
+        assert!(matrix.is_invertible());
+        assert_eq!(matrix.0, matrix.transpose().0);
+        matrix
     }
 
-    fn make_double_prime(m: &Matrix<S, COM>, m_hat_inv: &Matrix<S, COM>) -> Matrix<S, COM> {
+    fn make_double_prime(m: &Matrix<F>, m_hat_inv: &Matrix<F>) -> Matrix<F> {
         let (v, w) = Self::make_v_w(m);
         let w_hat = m_hat_inv.right_apply(&w);
 
@@ -107,9 +140,9 @@ where
                     new_row
                 }
                 _ => {
-                    let mut new_row = vec![S::param_zero(); row.len()];
+                    let mut new_row = vec![F::param_zero(); row.len()];
                     new_row[0] = w_hat[i - 1];
-                    new_row[i] = S::param_one();
+                    new_row[i] = F::param_one();
                     new_row
                 }
             })
@@ -117,7 +150,7 @@ where
     }
 
     /// Derive the mds matrices for optimized poseidon hash. Start from mds matrix `m` in naive poseidon hash.
-    pub fn derive_mds_matrices(m: Matrix<S, COM>) -> Self {
+    pub fn derive_mds_matrices(m: Matrix<F>) -> Self {
         let m_inv = m.invert().expect("Derived MDS matrix is not invertible");
         let m_hat = m.minor(0, 0);
         let m_hat_inv = m_hat.invert().expect("Derived MDS matrix is not correct");
@@ -132,31 +165,6 @@ where
             m_double_prime,
         }
     }
-
-    /// Generate the mds matrix `m` for naive poseidon hash.
-    pub fn generate_mds(t: usize) -> Matrix<S, COM> {
-        let xs: Vec<S::ParameterField> = (0..t as u64).map(S::from_u64_to_param).collect();
-        let ys: Vec<S::ParameterField> =
-            (t as u64..2 * t as u64).map(S::from_u64_to_param).collect();
-
-        let matrix = xs
-            .iter()
-            .map(|xs_item| {
-                ys.iter()
-                    .map(|ys_item| {
-                        // Generate the entry at (i,j)
-                        let mut tmp = *xs_item;
-                        S::param_add_assign(&mut tmp, ys_item);
-                        S::inverse(&tmp).unwrap()
-                    })
-                    .collect()
-            })
-            .collect::<Matrix<S, COM>>();
-
-        assert!(matrix.is_invertible());
-        assert_eq!(matrix.0, matrix.transpose().0);
-        matrix
-    }
 }
 
 /// A `SparseMatrix` is specifically one of the form of M''.
@@ -164,23 +172,22 @@ where
 /// (minor to the element in both the row and column) is the identity.
 /// We will pluralize this compact structure `sparse_matrixes` to distinguish from `sparse_matrices` from which they are created.
 #[derive(Debug, Clone)]
-pub struct SparseMatrix<S, COM>
+pub struct SparseMatrix<F>
 where
-    S: Specification<COM>,
+    F: ParamField,
 {
     /// `w_hat` is the first column of the M'' matrix. It will be directly multiplied (scalar product) with a row of state elements.
-    pub w_hat: Vec<S::ParameterField>,
+    pub w_hat: Vec<F>,
     /// `v_rest` contains all but the first (already included in `w_hat`).
-    pub v_rest: Vec<S::ParameterField>,
+    pub v_rest: Vec<F>,
 }
 
-impl<S, COM> SparseMatrix<S, COM>
+impl<F> SparseMatrix<F>
 where
-    S: Specification<COM> + Clone,
-    S::ParameterField: Copy + Clone,
+    F: ParamField + Copy,
 {
     /// Generate sparse matrix from m_double_prime matrix
-    pub fn new(m_double_prime: &Matrix<S, COM>) -> Self {
+    pub fn new(m_double_prime: &Matrix<F>) -> Self {
         assert!(m_double_prime.is_sparse());
 
         let w_hat = m_double_prime.iter_rows().map(|r| r[0]).collect();
@@ -194,7 +201,7 @@ where
     }
 
     /// generate dense-matrix representation from sparse matrix representation
-    pub fn to_matrix(&self) -> Matrix<S, COM> {
+    pub fn to_matrix(&self) -> Matrix<F> {
         let mut m = Matrix::identity(self.size());
         for (j, elt) in self.w_hat.iter().enumerate() {
             m[j][0] = *elt;
@@ -207,13 +214,12 @@ where
 }
 
 /// factorize into sparse matrices.
-pub fn factor_to_sparse_matrixes<S, COM>(
-    base_matrix: Matrix<S, COM>,
+pub fn factor_to_sparse_matrixes<F>(
+    base_matrix: Matrix<F>,
     n: usize,
-) -> (Matrix<S, COM>, Vec<SparseMatrix<S, COM>>)
+) -> (Matrix<F>, Vec<SparseMatrix<F>>)
 where
-    S: Specification<COM> + Clone,
-    S::ParameterField: Clone + Copy + Debug + Eq,
+    F: ParamField + Clone + Copy + Debug + PartialEq,
 {
     let (pre_sparse, mut sparse_matrices) =
         (0..n).fold((base_matrix.clone(), Vec::new()), |(curr, mut acc), _| {
@@ -225,7 +231,7 @@ where
     sparse_matrices.reverse();
     let sparse_matrixes = sparse_matrices
         .iter()
-        .map(|m| SparseMatrix::<S, COM>::new(m))
+        .map(|m| SparseMatrix::<F>::new(m))
         .collect::<Vec<_>>();
 
     (pre_sparse, sparse_matrixes)
@@ -234,30 +240,14 @@ where
 #[cfg(test)]
 mod tests {
     use super::MdsMatrices;
-    pub use ark_bls12_381 as bls12_381;
+    pub use ark_bls12_381::Fr;
     use ark_ff::field_new;
     use ark_std::{test_rng, UniformRand};
 
     use crate::crypto::{
-        constraint::arkworks::{Fp, R1CS},
-        hash::{poseidon, poseidon_parameter_generation::matrix::Matrix},
+        constraint::arkworks::Fp,
+        hash::{poseidon_parameter_generation::matrix::Matrix},
     };
-
-    /// Compiler Type
-    type Compiler<S> = R1CS<<S as poseidon::arkworks::Specification>::Field>;
-
-    type Fr = ark_bls12_381::Fr;
-    pub type ConstraintField = bls12_381::Fr;
-
-    #[derive(Clone)]
-    pub struct PoseidonSpec;
-    // Only for test purpose
-    impl poseidon::arkworks::Specification for PoseidonSpec {
-        type Field = ConstraintField;
-        const FULL_ROUNDS: usize = 8;
-        const PARTIAL_ROUNDS: usize = 55;
-        const SBOX_EXPONENT: u64 = 5;
-    }
 
     #[test]
     fn test_mds_matrices_creation() {
@@ -274,7 +264,7 @@ mod tests {
             m_hat_inv: _,
             m_prime,
             m_double_prime,
-        } = MdsMatrices::<PoseidonSpec, Compiler<PoseidonSpec>>::new(width);
+        } = MdsMatrices::<Fp<Fr>>::new(width);
 
         for i in 0..m_hat.num_rows() {
             for j in 0..m_hat.num_columns() {
@@ -296,7 +286,7 @@ mod tests {
 
     fn test_swapping_aux(width: usize) {
         let mut rng = test_rng();
-        let mds = MdsMatrices::<PoseidonSpec, Compiler<PoseidonSpec>>::new(width);
+        let mds = MdsMatrices::<Fp<Fr>>::new(width);
 
         let base = (0..width)
             .map(|_| Fp(Fr::rand(&mut rng)))
@@ -332,7 +322,7 @@ mod tests {
         // value come out from sage script
         let width = 3;
 
-        let expected_mds = Matrix::<PoseidonSpec, Compiler<PoseidonSpec>>(vec![
+        let expected_mds = Matrix::<Fp<Fr>>(vec![
             vec![
                 Fp(field_new!(
                     Fr,
@@ -377,7 +367,7 @@ mod tests {
             ],
         ]);
 
-        let mds = MdsMatrices::<PoseidonSpec, Compiler<PoseidonSpec>>::generate_mds(width);
+        let mds = MdsMatrices::<Fp<Fr>>::generate_mds(width);
         assert_eq!(mds.0, expected_mds.0);
     }
 }

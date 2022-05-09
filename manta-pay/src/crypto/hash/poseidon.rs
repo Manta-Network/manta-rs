@@ -20,18 +20,59 @@
 // TODO: Add more methods to the `Specification` trait for optimization.
 
 use alloc::vec::Vec;
-use core::{fmt::Debug, hash::Hash, iter, mem};
-use manta_crypto::hash::ArrayHashFunction;
+use core::{fmt::Debug, hash::Hash, iter::{self, repeat}, mem};
+use manta_crypto::{hash::ArrayHashFunction, rand::Rand};
 use manta_util::codec::{Decode, DecodeError, Encode, Read, Write};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
 
-use super::poseidon_parameter_generation::{
-    mds::MdsMatrices, round_constants::generate_round_constants,
-};
+// use super::poseidon_parameter_generation::{
+//     mds::MdsMatrices, round_constants::generate_round_constants,
+// };
 
 use manta_crypto::rand::{CryptoRng, RngCore, Sample};
+
+use super::poseidon_parameter_generation::{round_constants::generate_round_constants, mds::MdsMatrices};
+
+/// Trait for Public Parameters in Poseidon Hash
+pub trait ParamField {
+    /// Number of bits of modulus of the field.
+    const MODULUS_BITS: usize;
+
+    /// Returns the additive identity of the parameter field
+    fn param_zero() -> Self;
+
+    /// Returns the multiplicative identity of the parameter field
+    fn param_one() -> Self;
+
+    /// Add two parameter field elements together
+    fn param_add(lhs: &Self, rhs: &Self) -> Self;
+
+    /// Add the `rhs` parameter field element to `lhs` parameter field element, storing the value in `lhs`
+    fn param_add_assign(lhs: &mut Self, rhs: &Self);
+
+    /// Multiply two parameter field elements together
+    fn param_mul(lhs: &Self, rhs: &Self) -> Self;
+
+    /// returns (lhs - rhs)
+    fn param_sub(lhs: &Self, rhs: &Self) -> Self;
+
+    /// returns (lhs == rhs)
+    fn param_eq(lhs: &Self, rhs: &Self) -> bool;
+
+    /// Computes the multiplicative inverse of a parameter field elements
+    fn inverse(elem: &Self) -> Option<Self> where Self: Sized; // TODO： Should we have "where Self:Sized" ?
+
+    /// Convert from bits into a parameter field element in little endian order. Return None if bits is out of range.
+    fn try_from_bits_le(bits: &[bool]) -> Option<Self> where Self: Sized;
+
+    /// Convert from bytes into a parameter field element in little endian order. If the number of bytes is out of range, the result will be modulo.   
+    fn from_le_bytes_mod_order(bytes: &[u8]) -> Self;
+
+    /// Convert a u64 value to a parameter field element
+    fn from_u64_to_param(elem: u64) -> Self;
+}
 
 /// Poseidon Permutation Specification
 pub trait Specification<COM = ()> {
@@ -39,10 +80,7 @@ pub trait Specification<COM = ()> {
     type Field;
 
     /// Field used as constants
-    type ParameterField;
-
-    /// Number of bits of modulus of the field.
-    const MODULUS_BITS: usize;
+    type ParameterField: ParamField + Clone;
 
     /// Number of Full Rounds
     ///
@@ -76,39 +114,6 @@ pub trait Specification<COM = ()> {
 
     /// Applies the S-BOX to `point`.
     fn apply_sbox(point: &mut Self::Field, compiler: &mut COM);
-
-    /// Returns the additive identity of the parameter field
-    fn param_zero() -> Self::ParameterField;
-
-    /// Returns the multiplicative identity of the parameter field
-    fn param_one() -> Self::ParameterField;
-
-    /// Add two parameter field elements together
-    fn param_add(lhs: &Self::ParameterField, rhs: &Self::ParameterField) -> Self::ParameterField;
-
-    /// Add the `rhs` parameter field element to `lhs` parameter field element, storing the value in `lhs`
-    fn param_add_assign(lhs: &mut Self::ParameterField, rhs: &Self::ParameterField);
-
-    /// Multiply two parameter field elements together
-    fn param_mul(lhs: &Self::ParameterField, rhs: &Self::ParameterField) -> Self::ParameterField;
-
-    /// returns (lhs - rhs)
-    fn param_sub(lhs: &Self::ParameterField, rhs: &Self::ParameterField) -> Self::ParameterField;
-
-    /// returns (lhs == rhs)
-    fn param_eq(lhs: &Self::ParameterField, rhs: &Self::ParameterField) -> bool;
-
-    /// Computes the multiplicative inverse of a parameter field elements
-    fn inverse(elem: &Self::ParameterField) -> Option<Self::ParameterField>;
-
-    /// Convert from bits into a parameter field element in little endian order. Return None if bits is out of range.
-    fn try_from_bits_le(bits: &[bool]) -> Option<Self::ParameterField>;
-
-    /// Convert from bytes into a parameter field element in little endian order. If the number of bytes is out of range, the result will be modulo.   
-    fn from_le_bytes_mod_order(bytes: &[u8]) -> Self::ParameterField;
-
-    /// Convert a u64 value to a parameter field element
-    fn from_u64_to_param(elem: u64) -> Self::ParameterField;
 }
 
 /// Poseidon State Vector
@@ -305,8 +310,8 @@ where
 impl<D, S, COM, const ARITY: usize> Sample<D> for Hasher<S, COM, ARITY>
 where
     D: Clone,
-    S: Specification<COM> + Clone,
-    <S as Specification<COM>>::ParameterField: Sample<D> + Debug + Copy + Eq,
+    S: Specification<COM>,
+    <S as Specification<COM>>::ParameterField: Sample<D> + PartialEq + Copy + Debug,
 {
     /// Samples random Poseidon parameters.
     ///
@@ -321,27 +326,19 @@ where
     {
         let _ = distribution;
         let _ = rng;
-        let (round_constants, _) = generate_round_constants::<S, COM>(
-            S::MODULUS_BITS as u64,
+        let (round_constants, _) = generate_round_constants::<S::ParameterField>(
+            S::ParameterField::MODULUS_BITS as u64,
             Self::WIDTH,
             <S as Specification<COM>>::FULL_ROUNDS,
             <S as Specification<COM>>::PARTIAL_ROUNDS,
         );
 
-        let mds_matrices = MdsMatrices::<S, COM>::generate_mds(Self::WIDTH);
+        let mds_matrices = MdsMatrices::<S::ParameterField>::generate_mds(Self::WIDTH);
 
         Self {
             additive_round_keys: round_constants,
             mds_matrix: mds_matrices.to_row_major(),
         }
-        // Self {
-        //     additive_round_keys: rng
-        //         .sample_iter(repeat(distribution.clone()).take(Self::ADDITIVE_ROUND_KEYS_COUNT))
-        //         .collect(),
-        //     mds_matrix: rng
-        //         .sample_iter(repeat(distribution).take(Self::MDS_MATRIX_SIZE))
-        //         .collect(),
-        // }
     }
 }
 
@@ -406,6 +403,8 @@ pub mod arkworks {
     use ark_std::{One, Zero};
     use manta_crypto::constraint::Constant;
 
+    use super::ParamField;
+
     /// Compiler Type
     type Compiler<S> = R1CS<<S as Specification>::Field>;
 
@@ -427,14 +426,66 @@ pub mod arkworks {
         const SBOX_EXPONENT: u64;
     }
 
+    impl<Field> ParamField for Fp<Field> 
+    where
+        Field: PrimeField,
+    {
+        const MODULUS_BITS: usize = <Field as PrimeField>::Params::MODULUS_BITS as usize;
+
+        fn param_zero() -> Self {
+            Fp(<Field as Zero>::zero())
+        }
+
+        fn param_one() -> Self {
+            Fp(<Field as One>::one())
+        }
+
+        fn param_add(lhs: &Self, rhs: &Self) -> Self {
+            Fp(lhs.0 + rhs.0)
+        }
+
+        fn param_add_assign(lhs: &mut Self, rhs: &Self) {
+            lhs.0 += rhs.0;
+        }
+
+        fn param_sub(lhs: &Self, rhs: &Self) -> Self {
+            Fp(lhs.0 - rhs.0)
+        }
+
+        fn param_mul(lhs: &Self, rhs: &Self) -> Self {
+            Fp(lhs.0 * rhs.0)
+        }
+
+        fn param_eq(lhs: &Self, rhs: &Self) -> bool {
+            lhs.0 == rhs.0
+        }
+
+        fn inverse(elem: &Self) -> Option<Self> {
+            let m_inverse = Field::inverse(&elem.0);
+            m_inverse.map(Fp)
+        }
+
+        fn try_from_bits_le(bits: &[bool]) -> Option<Self> {
+            let bigint = <Field as PrimeField>::BigInt::from_bits_le(bits);
+            let value = Field::from_repr(bigint);
+            value.map(Fp)
+        }
+
+        fn from_le_bytes_mod_order(bytes: &[u8]) -> Self {
+            Fp(Field::from_le_bytes_mod_order(bytes))
+        }
+
+        fn from_u64_to_param(elem: u64) -> Self {
+            Fp(Field::from(elem))
+        }
+    }
+
     impl<S> super::Specification for S
     where
         S: Specification,
     {
         type Field = Fp<S::Field>;
         type ParameterField = Fp<S::Field>;
-
-        const MODULUS_BITS: usize = <S::Field as PrimeField>::Params::MODULUS_BITS as usize;
 
         const FULL_ROUNDS: usize = S::FULL_ROUNDS;
 
@@ -482,73 +533,6 @@ pub mod arkworks {
         fn apply_sbox(point: &mut Self::Field, _: &mut ()) {
             point.0 = point.0.pow(&[Self::SBOX_EXPONENT, 0, 0, 0]);
         }
-
-        #[inline]
-        fn param_zero() -> Self::ParameterField {
-            Fp(<S::Field as Zero>::zero())
-        }
-
-        #[inline]
-        fn param_one() -> Self::ParameterField {
-            Fp(<S::Field as One>::one())
-        }
-
-        #[inline]
-        fn param_add(
-            lhs: &Self::ParameterField,
-            rhs: &Self::ParameterField,
-        ) -> Self::ParameterField {
-            Fp(lhs.0 + rhs.0)
-        }
-
-        #[inline]
-        fn param_add_assign(lhs: &mut Self::ParameterField, rhs: &Self::ParameterField) {
-            lhs.0 += rhs.0;
-        }
-
-        #[inline]
-        fn param_sub(
-            lhs: &Self::ParameterField,
-            rhs: &Self::ParameterField,
-        ) -> Self::ParameterField {
-            Fp(lhs.0 - rhs.0)
-        }
-
-        #[inline]
-        fn param_mul(
-            lhs: &Self::ParameterField,
-            rhs: &Self::ParameterField,
-        ) -> Self::ParameterField {
-            Fp(lhs.0 * rhs.0)
-        }
-
-        #[inline]
-        fn param_eq(lhs: &Self::ParameterField, rhs: &Self::ParameterField) -> bool {
-            lhs.0 == rhs.0
-        }
-
-        #[inline]
-        fn inverse(elem: &Self::ParameterField) -> Option<Self::ParameterField> {
-            let m_inverse = S::Field::inverse(&elem.0);
-            m_inverse.map(Fp)
-        }
-
-        #[inline]
-        fn try_from_bits_le(bits: &[bool]) -> Option<Self::ParameterField> {
-            let bigint = <S::Field as PrimeField>::BigInt::from_bits_le(bits);
-            let value = S::Field::from_repr(bigint);
-            value.map(Fp)
-        }
-
-        #[inline]
-        fn from_le_bytes_mod_order(bytes: &[u8]) -> Self::ParameterField {
-            Fp(S::Field::from_le_bytes_mod_order(bytes))
-        }
-
-        #[inline]
-        fn from_u64_to_param(elem: u64) -> Self::ParameterField {
-            Fp(S::Field::from(elem))
-        }
     }
 
     impl<S> super::Specification<Compiler<S>> for S
@@ -557,8 +541,6 @@ pub mod arkworks {
     {
         type Field = FpVar<S::Field>;
         type ParameterField = Fp<S::Field>;
-
-        const MODULUS_BITS: usize = <S::Field as PrimeField>::Params::MODULUS_BITS as usize;
 
         const FULL_ROUNDS: usize = S::FULL_ROUNDS;
         const PARTIAL_ROUNDS: usize = S::PARTIAL_ROUNDS;
@@ -604,73 +586,6 @@ pub mod arkworks {
             *point = point
                 .pow_by_constant(&[Self::SBOX_EXPONENT])
                 .expect("Exponentiation is not allowed to fail.");
-        }
-
-        #[inline]
-        fn param_zero() -> Self::ParameterField {
-            Fp(<S::Field as Zero>::zero())
-        }
-
-        #[inline]
-        fn param_one() -> Self::ParameterField {
-            Fp(<S::Field as One>::one())
-        }
-
-        #[inline]
-        fn param_add(
-            lhs: &Self::ParameterField,
-            rhs: &Self::ParameterField,
-        ) -> Self::ParameterField {
-            Fp(lhs.0 + rhs.0)
-        }
-
-        #[inline]
-        fn param_add_assign(lhs: &mut Self::ParameterField, rhs: &Self::ParameterField) {
-            lhs.0 += rhs.0;
-        }
-
-        #[inline]
-        fn param_sub(
-            lhs: &Self::ParameterField,
-            rhs: &Self::ParameterField,
-        ) -> Self::ParameterField {
-            Fp(lhs.0 - rhs.0)
-        }
-
-        #[inline]
-        fn param_mul(
-            lhs: &Self::ParameterField,
-            rhs: &Self::ParameterField,
-        ) -> Self::ParameterField {
-            Fp(lhs.0 * rhs.0)
-        }
-
-        #[inline]
-        fn param_eq(lhs: &Self::ParameterField, rhs: &Self::ParameterField) -> bool {
-            lhs.0 == rhs.0
-        }
-
-        #[inline]
-        fn inverse(elem: &Self::ParameterField) -> Option<Self::ParameterField> {
-            let m_inverse = S::Field::inverse(&elem.0);
-            m_inverse.map(Fp)
-        }
-
-        #[inline]
-        fn try_from_bits_le(bits: &[bool]) -> Option<Self::ParameterField> {
-            let bigint = <S::Field as PrimeField>::BigInt::from_bits_le(bits);
-            let value = S::Field::from_repr(bigint);
-            value.map(Fp)
-        }
-
-        #[inline]
-        fn from_le_bytes_mod_order(bytes: &[u8]) -> Self::ParameterField {
-            Fp(S::Field::from_le_bytes_mod_order(bytes))
-        }
-
-        #[inline]
-        fn from_u64_to_param(elem: u64) -> Self::ParameterField {
-            Fp(S::Field::from(elem))
         }
     }
 

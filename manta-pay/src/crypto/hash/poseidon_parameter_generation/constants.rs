@@ -23,7 +23,7 @@ use super::{
     round_constants::generate_round_constants,
     round_numbers::calc_round_numbers,
 };
-use crate::crypto::hash::poseidon::Specification;
+use crate::crypto::hash::poseidon::ParamField;
 use alloc::vec::Vec;
 use core::fmt::Debug;
 
@@ -31,23 +31,22 @@ use core::fmt::Debug;
 
 #[derive(Clone)]
 /// Poseidon Constants struct for optimized poseidon
-pub struct PoseidonConstants<S, COM>
+pub struct PoseidonConstants<F>
 where
-    S: Specification<COM> + Clone,
-    S::ParameterField: Clone,
+    F: ParamField,
 {
     /// mds matrix data
-    pub mds_matrices: MdsMatrices<S, COM>,
+    pub mds_matrices: MdsMatrices<F>,
     /// a vector of round constants
-    pub round_constants: Vec<S::ParameterField>,
+    pub round_constants: Vec<F>,
     /// The compressed round constants used in optimized poseidon hash.
-    pub compressed_round_constants: Vec<S::ParameterField>,
+    pub compressed_round_constants: Vec<F>,
     /// pre sparse matrix used in optimized poseidon hash
-    pub pre_sparse_matrix: Matrix<S, COM>,
+    pub pre_sparse_matrix: Matrix<F>,
     /// Sparse matrix used in optimized poseidon hash
-    pub sparse_matrixes: Vec<SparseMatrix<S, COM>>,
+    pub sparse_matrixes: Vec<SparseMatrix<F>>,
     /// domain tag for domain separation
-    pub domain_tag: S::ParameterField,
+    pub domain_tag: F,
     /// number of full rounds. Note: full_rounds % 2 == 0
     pub full_rounds: usize,
     /// number of half full rounds. In particular, half_full_rounds = full_rounds/2
@@ -56,10 +55,9 @@ where
     pub partial_rounds: usize,
 }
 
-impl<S, COM> PoseidonConstants<S, COM>
+impl<F> PoseidonConstants<F>
 where
-    S: Specification<COM> + Clone,
-    S::ParameterField: Clone + Debug + Copy + Eq,
+    F: ParamField + Copy + Debug + PartialEq,
 {
     /// Generate the default poseidon hash parameters
     pub fn default<const WIDTH: usize>() -> Self {
@@ -69,15 +67,15 @@ where
 
         debug_assert_eq!(num_full_rounds % 2, 0);
         let num_half_full_rounds = num_full_rounds / 2;
-        let (round_constants, _) = generate_round_constants::<S, COM>(
-            S::MODULUS_BITS as u64,
+        let (round_constants, _) = generate_round_constants::<F>(
+            F::MODULUS_BITS as u64,
             WIDTH,
             num_full_rounds,
             num_partial_rounds,
         );
-        let domain_tag = S::from_u64_to_param(((1 << arity) - 1) as u64);
+        let domain_tag = F::from_u64_to_param(((1 << arity) - 1) as u64);
 
-        let mds_matrices = MdsMatrices::<S, COM>::new(WIDTH);
+        let mds_matrices = MdsMatrices::<F>::new(WIDTH);
 
         let compressed_round_constants = compress_round_constants(
             WIDTH,

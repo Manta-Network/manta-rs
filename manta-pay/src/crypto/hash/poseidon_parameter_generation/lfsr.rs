@@ -17,8 +17,9 @@
 //! LFSH implementation.
 // adapted from: https://github.com/arkworks-rs/sponge/blob/51d6fc9aac1fa69f44a04839202b5de828584ed8/src/poseidon/grain_lfsr.rs
 
-use crate::crypto::hash::poseidon::Specification;
 use alloc::vec::Vec;
+
+use crate::crypto::hash::poseidon::ParamField;
 
 pub struct GrainLFSR {
     state: [bool; 80],
@@ -109,14 +110,11 @@ impl GrainLFSR {
         res
     }
 
-    pub fn get_field_elements_rejection_sampling<S, COM>(
-        &mut self,
-        num_elems: usize,
-    ) -> Vec<S::ParameterField>
+    pub fn get_field_elements_rejection_sampling<F>(&mut self, num_elems: usize) -> Vec<F>
     where
-        S: Specification<COM>,
+        F: ParamField,
     {
-        assert_eq!(S::MODULUS_BITS as u64, self.prime_num_bits);
+        assert_eq!(F::MODULUS_BITS as u64, self.prime_num_bits);
 
         let mut res = Vec::new();
         for _ in 0..num_elems {
@@ -127,7 +125,7 @@ impl GrainLFSR {
                 bits.reverse();
 
                 // Construct the number
-                if let Some(f) = S::try_from_bits_le(&bits) {
+                if let Some(f) = F::try_from_bits_le(&bits) {
                     res.push(f);
                     break;
                 }
@@ -137,11 +135,11 @@ impl GrainLFSR {
         res
     }
 
-    pub fn get_field_elements_mod_p<S, COM>(&mut self, num_elems: usize) -> Vec<S::ParameterField>
+    pub fn get_field_elements_mod_p<F>(&mut self, num_elems: usize) -> Vec<F>
     where
-        S: Specification<COM>,
+        F: ParamField,
     {
-        assert_eq!(S::MODULUS_BITS as u64, self.prime_num_bits);
+        assert_eq!(F::MODULUS_BITS as u64, self.prime_num_bits);
 
         let mut res = Vec::new();
         for _ in 0..num_elems {
@@ -160,7 +158,7 @@ impl GrainLFSR {
                 })
                 .collect::<Vec<u8>>();
 
-            res.push(S::from_le_bytes_mod_order(&bytes));
+            res.push(F::from_le_bytes_mod_order(&bytes));
         }
 
         res
@@ -170,26 +168,9 @@ impl GrainLFSR {
 #[cfg(test)]
 mod tests {
     use super::GrainLFSR;
-    use crate::crypto::{
-        constraint::arkworks::{Fp, R1CS},
-        hash::poseidon::arkworks::Specification,
-    };
+    use crate::crypto::constraint::arkworks::Fp;
+    use ark_bls12_381::Fr;
     use ark_ff::field_new;
-
-    /// Compiler Type
-    type Compiler<S> = R1CS<<S as Specification>::Field>;
-    pub type ConstraintField = ark_bls12_381::Fr;
-
-    #[derive(Clone)]
-    pub struct PoseidonSpec;
-
-    // Only for test purpose
-    impl Specification for PoseidonSpec {
-        type Field = ConstraintField;
-        const FULL_ROUNDS: usize = 8;
-        const PARTIAL_ROUNDS: usize = 55;
-        const SBOX_EXPONENT: u64 = 5;
-    }
 
     #[test]
     fn test_grain_lfsr_consistency() {
@@ -197,18 +178,16 @@ mod tests {
 
         let mut lfsr = GrainLFSR::new(255, 3, 8, 55);
         assert_eq!(
-            lfsr.get_field_elements_rejection_sampling::<PoseidonSpec, Compiler<PoseidonSpec>>(1)
-                [0],
+            lfsr.get_field_elements_rejection_sampling::<Fp<Fr>>(1)[0],
             Fp(field_new!(
-                ConstraintField,
+                Fr,
                 "41764196652518280402801918994067134807238124178723763855975902025540297174931"
             ))
         );
         assert_eq!(
-            lfsr.get_field_elements_rejection_sampling::<PoseidonSpec, Compiler<PoseidonSpec>>(1)
-                [0],
+            lfsr.get_field_elements_rejection_sampling::<Fp<Fr>>(1)[0],
             Fp(field_new!(
-                ConstraintField,
+                Fr,
                 "12678502092746318913289523392430826887011664085277767208266352862540971998250"
             ))
         );
