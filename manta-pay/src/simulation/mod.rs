@@ -135,8 +135,8 @@ impl Simulation {
     #[inline]
     pub async fn run_with<L, S, GL, GS>(&self, ledger: GL, signer: GS)
     where
-        L: wallet::ledger::Connection<Config, PushResponse = bool> + PublicBalanceOracle,
-        S: wallet::signer::Connection<Config>,
+        L: wallet::test::Ledger<Config> + PublicBalanceOracle,
+        S: wallet::signer::Connection<Config, Checkpoint = L::Checkpoint>,
         GL: FnMut(usize) -> L,
         GS: FnMut(usize) -> S,
         Error<Config, L, S>: Debug,

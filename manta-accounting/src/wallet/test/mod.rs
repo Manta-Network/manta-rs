@@ -21,10 +21,10 @@
 
 use crate::{
     asset::{Asset, AssetList},
-    transfer::{self, canonical::Transaction, PublicKey, ReceivingKey},
+    transfer::{self, canonical::Transaction, PublicKey, ReceivingKey, TransferPost},
     wallet::{
         ledger,
-        signer::{self, ReceivingKeyRequest},
+        signer::{self, ReceivingKeyRequest, SyncData},
         BalanceState, Error, Wallet,
     },
 };
@@ -183,12 +183,30 @@ pub trait PublicBalanceOracle {
     fn public_balances(&self) -> LocalBoxFuture<Option<AssetList>>;
 }
 
+/// Ledger Alias Trait
+///
+/// This `trait` is used as an alias for the [`Read`](ledger::Read) and [`Write`](ledger::Write)
+/// requirements for the simulation ledger.
+pub trait Ledger<C>:
+    ledger::Read<SyncData<C>> + ledger::Write<Vec<TransferPost<C>>, Response = bool>
+where
+    C: transfer::Configuration,
+{
+}
+
+impl<C, L> Ledger<C> for L
+where
+    C: transfer::Configuration,
+    L: ledger::Read<SyncData<C>> + ledger::Write<Vec<TransferPost<C>>, Response = bool>,
+{
+}
+
 /// Actor
 pub struct Actor<C, L, S>
 where
     C: transfer::Configuration,
-    L: ledger::Connection<C>,
-    S: signer::Connection<C>,
+    L: Ledger<C>,
+    S: signer::Connection<C, Checkpoint = L::Checkpoint>,
 {
     /// Wallet
     pub wallet: Wallet<C, L, S>,
@@ -203,8 +221,8 @@ where
 impl<C, L, S> Actor<C, L, S>
 where
     C: transfer::Configuration,
-    L: ledger::Connection<C>,
-    S: signer::Connection<C>,
+    L: Ledger<C>,
+    S: signer::Connection<C, Checkpoint = L::Checkpoint>,
 {
     /// Builds a new [`Actor`] with `wallet`, `distribution`, and `lifetime`.
     #[inline]
@@ -276,18 +294,18 @@ where
 
 /// Simulation Event
 #[derive(derivative::Derivative)]
-#[derivative(Debug(bound = "L::PushResponse: Debug, Error<C, L, S>: Debug"))]
+#[derivative(Debug(bound = "L::Response: Debug, Error<C, L, S>: Debug"))]
 pub struct Event<C, L, S>
 where
     C: transfer::Configuration,
-    L: ledger::Connection<C>,
-    S: signer::Connection<C>,
+    L: Ledger<C>,
+    S: signer::Connection<C, Checkpoint = L::Checkpoint>,
 {
     /// Action Type
     pub action: ActionType,
 
     /// Action Result
-    pub result: Result<L::PushResponse, Error<C, L, S>>,
+    pub result: Result<L::Response, Error<C, L, S>>,
 }
 
 /// Public Key Database
@@ -302,8 +320,8 @@ pub type SharedPublicKeyDatabase<C> = Arc<RwLock<PublicKeyDatabase<C>>>;
 pub struct Simulation<C, L, S>
 where
     C: transfer::Configuration,
-    L: ledger::Connection<C>,
-    S: signer::Connection<C>,
+    L: Ledger<C>,
+    S: signer::Connection<C, Checkpoint = L::Checkpoint>,
     PublicKey<C>: Eq + Hash,
 {
     /// Public Key Database
@@ -316,8 +334,8 @@ where
 impl<C, L, S> Simulation<C, L, S>
 where
     C: transfer::Configuration,
-    L: ledger::Connection<C>,
-    S: signer::Connection<C>,
+    L: Ledger<C>,
+    S: signer::Connection<C, Checkpoint = L::Checkpoint>,
     PublicKey<C>: Eq + Hash,
 {
     /// Builds a new [`Simulation`] with a starting set of public `keys`.
@@ -333,8 +351,8 @@ where
 impl<C, L, S> sim::ActionSimulation for Simulation<C, L, S>
 where
     C: transfer::Configuration,
-    L: ledger::Connection<C, PushResponse = bool> + PublicBalanceOracle,
-    S: signer::Connection<C>,
+    L: Ledger<C> + PublicBalanceOracle,
+    S: signer::Connection<C, Checkpoint = L::Checkpoint>,
     PublicKey<C>: Eq + Hash,
 {
     type Actor = Actor<C, L, S>;
@@ -453,8 +471,8 @@ where
 pub async fn measure_balances<'w, C, L, S, I>(wallets: I) -> Result<AssetList, Error<C, L, S>>
 where
     C: 'w + transfer::Configuration,
-    L: 'w + ledger::Connection<C> + PublicBalanceOracle,
-    S: 'w + signer::Connection<C>,
+    L: 'w + Ledger<C> + PublicBalanceOracle,
+    S: 'w + signer::Connection<C, Checkpoint = L::Checkpoint>,
     I: IntoIterator<Item = &'w mut Wallet<C, L, S>>,
 {
     let mut balances = AssetList::new();
@@ -497,8 +515,8 @@ impl Config {
     ) -> Result<bool, Error<C, L, S>>
     where
         C: transfer::Configuration,
-        L: ledger::Connection<C, PushResponse = bool> + PublicBalanceOracle,
-        S: signer::Connection<C>,
+        L: Ledger<C> + PublicBalanceOracle,
+        S: signer::Connection<C, Checkpoint = L::Checkpoint>,
         R: CryptoRng + RngCore,
         GL: FnMut(usize) -> L,
         GS: FnMut(usize) -> S,

@@ -17,9 +17,11 @@
 //! Array Utilities
 
 use core::{
+    array::IntoIter,
     borrow::{Borrow, BorrowMut},
     convert::TryInto,
     ops::{Deref, DerefMut},
+    slice::Iter,
 };
 
 #[cfg(feature = "alloc")]
@@ -190,6 +192,36 @@ macro_rules! impl_array_traits {
                 Self(array.into())
             }
         }
+
+        impl<T, const N: usize> FromIterator<T> for $type<T, N> {
+            #[inline]
+            fn from_iter<I>(iter: I) -> Self
+            where
+                I: IntoIterator<Item = T>,
+            {
+                Self::from_vec(iter.into_iter().collect::<Vec<_>>())
+            }
+        }
+
+        impl<T, const N: usize> IntoIterator for $type<T, N> {
+            type Item = T;
+            type IntoIter = IntoIter<T, N>;
+
+            #[inline]
+            fn into_iter(self) -> Self::IntoIter {
+                self.0.into_iter()
+            }
+        }
+
+        impl<'t, T, const N: usize> IntoIterator for &'t $type<T, N> {
+            type Item = &'t T;
+            type IntoIter = Iter<'t, T>;
+
+            #[inline]
+            fn into_iter(self) -> Self::IntoIter {
+                self.0.iter()
+            }
+        }
     };
 }
 
@@ -227,6 +259,13 @@ impl<T, const N: usize> Array<T, N> {
         V: TryInto<[T; N]>,
     {
         Self(into_array_unchecked(v))
+    }
+
+    /// Performs the [`TryInto`] conversion from `vec` into an array without checking if the
+    /// conversion succeeded. See [`into_array_unchecked`] for more.
+    #[inline]
+    pub fn from_vec(vec: Vec<T>) -> Self {
+        Self::from_unchecked(vec)
     }
 
     /// Maps `f` over `self` using allocation.
@@ -332,6 +371,13 @@ impl<T, const N: usize> BoxArray<T, N> {
         V: TryInto<Box<[T; N]>>,
     {
         Self(into_boxed_array_unchecked(v))
+    }
+
+    /// Performs the [`TryInto`] conversion from `vec` into a boxed array without checking if the
+    /// conversion succeeded. See [`into_boxed_array_unchecked`] for more.
+    #[inline]
+    pub fn from_vec(vec: Vec<T>) -> Self {
+        Self::from_unchecked(vec.into_boxed_slice())
     }
 }
 

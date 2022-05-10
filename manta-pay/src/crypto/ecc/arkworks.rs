@@ -250,11 +250,10 @@ where
     C: ProjectiveCurve,
 {
     #[inline]
-    fn sample<R>(distribution: (), rng: &mut R) -> Self
+    fn sample<R>(_: (), rng: &mut R) -> Self
     where
         R: CryptoRng + RngCore + ?Sized,
     {
-        let _ = distribution;
         Self(C::rand(rng).into())
     }
 }
