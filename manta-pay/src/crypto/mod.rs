@@ -21,4 +21,3 @@ pub mod ecc;
 pub mod encryption;
 pub mod hash;
 pub mod key;
-pub mod parameters;

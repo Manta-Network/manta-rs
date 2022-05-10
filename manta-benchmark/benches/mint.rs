@@ -18,21 +18,21 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use manta_accounting::asset::AssetId;
 use manta_benchmark::payment;
 use manta_crypto::rand::OsRng;
-use manta_pay::crypto::parameters::generate_parameters;
+use manta_pay::parameters::{generate_parameters, SEED};
 
-pub fn bench_mint_prove(c: &mut Criterion) {
-    let mut group = c.benchmark_group("bench mint prove");
+pub fn prove(c: &mut Criterion) {
+    let mut group = c.benchmark_group("bench");
     let (proving_context, _verifying_context, parameters, utxo_accumulator_model) =
-        generate_parameters(payment::SEED).unwrap();
+        generate_parameters(SEED).unwrap();
     let mut rng = OsRng;
 
-    group.bench_function("bench mint proof generation", |b| {
+    group.bench_function("mint prove", |b| {
         let asset_id: u32 = 8;
         let asset = AssetId(asset_id).value(100_000);
         let asset = black_box(asset);
 
         b.iter(|| {
-            payment::bench_mint_prove(
+            payment::prove_mint(
                 &proving_context.mint,
                 &parameters,
                 &utxo_accumulator_model,
@@ -43,16 +43,16 @@ pub fn bench_mint_prove(c: &mut Criterion) {
     });
 }
 
-pub fn bench_mint_verify(c: &mut Criterion) {
-    let mut group = c.benchmark_group("bench mint verify");
+pub fn verify(c: &mut Criterion) {
+    let mut group = c.benchmark_group("bench");
     let (proving_context, verifying_context, parameters, utxo_accumulator_model) =
-        generate_parameters(payment::SEED).unwrap();
+        generate_parameters(SEED).unwrap();
     let mut rng = OsRng;
 
     let asset_id: u32 = 8;
     let asset = AssetId(asset_id).value(100_000);
 
-    let mint = payment::bench_mint_prove(
+    let mint = payment::prove_mint(
         &proving_context.mint,
         &parameters,
         &utxo_accumulator_model,
@@ -61,40 +61,12 @@ pub fn bench_mint_verify(c: &mut Criterion) {
     );
     let mint = black_box(mint);
 
-    group.bench_function("bench mint verify", |b| {
+    group.bench_function("mint verify", |b| {
         b.iter(|| {
             payment::assert_valid_proof(&verifying_context.mint, &mint);
         })
     });
 }
 
-pub fn bench_mint_prove_and_verify(c: &mut Criterion) {
-    let mut group = c.benchmark_group("bench mint prove and verify");
-
-    let (proving_context, verifying_context, parameters, utxo_accumulator_model) =
-        generate_parameters(payment::SEED).unwrap();
-    let mut rng = OsRng;
-
-    group.bench_function("bench mint prove and verify", |b| {
-        let asset_id: u32 = 8;
-        let asset = AssetId(asset_id).value(100_000);
-        let asset = black_box(asset);
-
-        b.iter(|| {
-            payment::bench_mint_prove_and_verify(
-                &proving_context.mint,
-                &verifying_context.mint,
-                &parameters,
-                &utxo_accumulator_model,
-                asset.clone(),
-                &mut rng,
-            );
-        })
-    });
-}
-
-// Note: May use the following two lines to benchmark prove and verify separately.
-// criterion_group!(benches, bench_mint_prove);
-// criterion_group!(benches, bench_mint_verify);
-criterion_group!(benches, bench_mint_prove_and_verify);
-criterion_main!(benches);
+criterion_group!(mint, prove, verify);
+criterion_main!(mint);

@@ -37,6 +37,10 @@ pub mod config;
 #[cfg_attr(doc_cfg, doc(cfg(feature = "bip32")))]
 pub mod key;
 
+#[cfg(all(feature = "groth16", feature = "test"))]
+#[cfg_attr(doc_cfg, doc(cfg(all(feature = "groth16", feature = "test"))), doc())]
+pub mod parameters;
+
 #[cfg(feature = "groth16")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "groth16")))]
 pub mod signer;

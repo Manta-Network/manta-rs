@@ -2,9 +2,9 @@
 resolver = "2"
 members = [
     "manta-accounting",
+    "manta-benchmark",
     "manta-crypto",
     "manta-pay",
     "manta-util",
-    "manta-benchmark",
 ]
 
