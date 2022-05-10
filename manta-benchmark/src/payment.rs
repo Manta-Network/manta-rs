@@ -76,7 +76,7 @@ where
 /// The context is used in `prove_private_transfer` function and
 ///     `prove_reclaim` for benchmarking.
 /// Note that the mint proof is not included in the context, since it
-///     is not used when prove private transfer or reclaim.
+///     is not used when proving private transfer or reclaim.
 /// The generation of mint proof is also not included so that this function
 ///     is lightweight and we can precisely profile the performance of
 ///     `prove_priate_transfer` and `prove_reclaim`.
@@ -92,9 +92,9 @@ where
 {
     let spending_key = SpendingKey::new(rng.gen(), rng.gen());
 
-    let (_, pre_sender_0) = Mint::internal_pair(parameters, &spending_key, asset, rng);
+    let (_, pre_sender) = Mint::internal_pair(parameters, &spending_key, asset, rng);
 
-    let sender = pre_sender_0
+    let sender = pre_sender
         .insert_and_upgrade(utxo_accumulator)
         .expect("Just inserted so this should not fail.");
 
