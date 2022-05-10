@@ -16,7 +16,7 @@
 
 //! Generate round constants
 
-use crate::crypto::hash::poseidon::ParamField;
+use crate::crypto::hash::ParamField;
 
 use super::lfsr::GrainLFSR;
 use alloc::vec::Vec;

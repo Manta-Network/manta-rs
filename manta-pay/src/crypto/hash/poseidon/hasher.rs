@@ -20,59 +20,19 @@
 // TODO: Add more methods to the `Specification` trait for optimization.
 
 use alloc::vec::Vec;
-use core::{fmt::Debug, hash::Hash, iter::{self, repeat}, mem};
-use manta_crypto::{hash::ArrayHashFunction, rand::Rand};
+use core::{fmt::Debug, hash::Hash, iter, mem};
+use manta_crypto::hash::ArrayHashFunction;
 use manta_util::codec::{Decode, DecodeError, Encode, Read, Write};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
 
-// use super::poseidon_parameter_generation::{
-//     mds::MdsMatrices, round_constants::generate_round_constants,
-// };
-
 use manta_crypto::rand::{CryptoRng, RngCore, Sample};
 
-use super::poseidon_parameter_generation::{round_constants::generate_round_constants, mds::MdsMatrices};
-
-/// Trait for Public Parameters in Poseidon Hash
-pub trait ParamField {
-    /// Number of bits of modulus of the field.
-    const MODULUS_BITS: usize;
-
-    /// Returns the additive identity of the parameter field
-    fn param_zero() -> Self;
-
-    /// Returns the multiplicative identity of the parameter field
-    fn param_one() -> Self;
-
-    /// Add two parameter field elements together
-    fn param_add(lhs: &Self, rhs: &Self) -> Self;
-
-    /// Add the `rhs` parameter field element to `lhs` parameter field element, storing the value in `lhs`
-    fn param_add_assign(lhs: &mut Self, rhs: &Self);
-
-    /// Multiply two parameter field elements together
-    fn param_mul(lhs: &Self, rhs: &Self) -> Self;
-
-    /// returns (lhs - rhs)
-    fn param_sub(lhs: &Self, rhs: &Self) -> Self;
-
-    /// returns (lhs == rhs)
-    fn param_eq(lhs: &Self, rhs: &Self) -> bool;
-
-    /// Computes the multiplicative inverse of a parameter field elements
-    fn inverse(elem: &Self) -> Option<Self> where Self: Sized; // TODO： Should we have "where Self:Sized" ?
-
-    /// Convert from bits into a parameter field element in little endian order. Return None if bits is out of range.
-    fn try_from_bits_le(bits: &[bool]) -> Option<Self> where Self: Sized;
-
-    /// Convert from bytes into a parameter field element in little endian order. If the number of bytes is out of range, the result will be modulo.   
-    fn from_le_bytes_mod_order(bytes: &[u8]) -> Self;
-
-    /// Convert a u64 value to a parameter field element
-    fn from_u64_to_param(elem: u64) -> Self;
-}
+use crate::crypto::hash::{
+    poseidon::parameter_generation::{mds::MdsMatrices, round_constants::generate_round_constants},
+    ParamField,
+};
 
 /// Poseidon Permutation Specification
 pub trait Specification<COM = ()> {
@@ -426,37 +386,37 @@ pub mod arkworks {
         const SBOX_EXPONENT: u64;
     }
 
-    impl<Field> ParamField for Fp<Field> 
+    impl<Field> ParamField for Fp<Field>
     where
         Field: PrimeField,
     {
         const MODULUS_BITS: usize = <Field as PrimeField>::Params::MODULUS_BITS as usize;
 
-        fn param_zero() -> Self {
+        fn zero() -> Self {
             Fp(<Field as Zero>::zero())
         }
 
-        fn param_one() -> Self {
+        fn one() -> Self {
             Fp(<Field as One>::one())
         }
 
-        fn param_add(lhs: &Self, rhs: &Self) -> Self {
+        fn add(lhs: &Self, rhs: &Self) -> Self {
             Fp(lhs.0 + rhs.0)
         }
 
-        fn param_add_assign(lhs: &mut Self, rhs: &Self) {
+        fn add_assign(lhs: &mut Self, rhs: &Self) {
             lhs.0 += rhs.0;
         }
 
-        fn param_sub(lhs: &Self, rhs: &Self) -> Self {
+        fn sub(lhs: &Self, rhs: &Self) -> Self {
             Fp(lhs.0 - rhs.0)
         }
 
-        fn param_mul(lhs: &Self, rhs: &Self) -> Self {
+        fn mul(lhs: &Self, rhs: &Self) -> Self {
             Fp(lhs.0 * rhs.0)
         }
 
-        fn param_eq(lhs: &Self, rhs: &Self) -> bool {
+        fn eq(lhs: &Self, rhs: &Self) -> bool {
             lhs.0 == rhs.0
         }
 

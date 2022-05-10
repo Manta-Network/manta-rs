@@ -16,7 +16,7 @@
 
 //! Basic Linear Algebra Implementation
 
-use crate::crypto::hash::poseidon::ParamField;
+use crate::crypto::hash::ParamField;
 use alloc::{vec, vec::Vec};
 use core::{
     fmt::Debug,
@@ -85,7 +85,7 @@ where
 
         for i in 0..self.num_rows() {
             for j in 0..self.num_columns() {
-                if !F::param_eq(&self.0[i][j], &kronecker_delta::<F>(i, j)) {
+                if !F::eq(&self.0[i][j], &kronecker_delta::<F>(i, j)) {
                     return false;
                 }
             }
@@ -100,7 +100,7 @@ where
             .iter()
             .map(|row| {
                 row.iter()
-                    .map(|val| F::param_mul(&scalar, val))
+                    .map(|val| F::mul(&scalar, val))
                     .collect::<Vec<_>>()
             })
             .collect::<Vec<_>>();
@@ -205,9 +205,9 @@ where
 {
     /// return an identity matrix of size `n*n`
     pub fn identity(n: usize) -> Matrix<F> {
-        let mut m = Matrix(vec![vec![F::param_zero(); n]; n]);
+        let mut m = Matrix(vec![vec![F::zero(); n]; n]);
         for i in 0..n {
-            m.0[i][i] = F::param_one();
+            m.0[i][i] = F::one();
         }
         m
     }
@@ -224,12 +224,12 @@ where
             "Matrix can only be applied to vector of same size."
         );
 
-        let mut result = vec![F::param_zero(); v.len()];
+        let mut result = vec![F::zero(); v.len()];
 
         for (result, row) in result.iter_mut().zip(self.0.iter()) {
             for (mat_val, vec_val) in row.iter().zip(v) {
-                let tmp = F::param_mul(mat_val, vec_val);
-                F::param_add_assign(result, &tmp);
+                let tmp = F::mul(mat_val, vec_val);
+                F::add_assign(result, &tmp);
             }
         }
         result
@@ -252,11 +252,11 @@ where
             "Matrix can only be applied to vector of same size."
         );
 
-        let mut result = vec![F::param_zero(); v.len()];
+        let mut result = vec![F::zero(); v.len()];
         for (j, val) in result.iter_mut().enumerate() {
             for (i, row) in self.0.iter().enumerate() {
-                let tmp = F::param_mul(&v[i], &row[j]);
-                F::param_add_assign(val, &tmp);
+                let tmp = F::mul(&v[i], &row[j]);
+                F::add_assign(val, &tmp);
             }
         }
         result
@@ -306,10 +306,9 @@ where
     ///   - no non-zero pivot can be found for `column`
     ///   - `column` is not the first
     pub fn eliminate(&self, column: usize, shadow: &mut Self) -> Option<Self> {
-        let zero = F::param_zero();
+        let zero = F::zero();
         let pivot_index = (0..self.num_rows()).find(|&i| {
-            (!F::param_eq(&self[i][column], &zero))
-                && (0..column).all(|j| F::param_eq(&self[i][j], &zero))
+            (!F::eq(&self[i][column], &zero)) && (0..column).all(|j| F::eq(&self[i][j], &zero))
         })?;
 
         let pivot = &self[pivot_index];
@@ -326,10 +325,10 @@ where
             };
 
             let val = row[column];
-            if F::param_eq(&val, &zero) {
+            if F::eq(&val, &zero) {
                 result.push(row.to_vec());
             } else {
-                let factor = F::param_mul(&val, &inv_pivot);
+                let factor = F::mul(&val, &inv_pivot);
                 let scaled_pivot = scalar_vec_mul::<F>(factor, pivot);
                 let eliminated = vec_sub::<F>(row, &scaled_pivot);
                 result.push(eliminated);
@@ -437,9 +436,9 @@ pub fn inner_product<F>(a: &[F], b: &[F]) -> F
 where
     F: ParamField,
 {
-    a.iter().zip(b).fold(F::param_zero(), |mut acc, (v1, v2)| {
-        let tmp = F::param_mul(v1, v2);
-        F::param_add_assign(&mut acc, &tmp);
+    a.iter().zip(b).fold(F::zero(), |mut acc, (v1, v2)| {
+        let tmp = F::mul(v1, v2);
+        F::add_assign(&mut acc, &tmp);
         acc
     })
 }
@@ -451,7 +450,7 @@ where
 {
     a.iter()
         .zip(b.iter())
-        .map(|(a, b)| F::param_add(a, b))
+        .map(|(a, b)| F::add(a, b))
         .collect::<Vec<_>>()
 }
 
@@ -462,7 +461,7 @@ where
 {
     a.iter()
         .zip(b.iter())
-        .map(|(a, b)| F::param_sub(a, b))
+        .map(|(a, b)| F::sub(a, b))
         .collect::<Vec<_>>()
 }
 
@@ -471,9 +470,7 @@ pub fn scalar_vec_mul<F>(scalar: F, v: &[F]) -> Vec<F>
 where
     F: ParamField,
 {
-    v.iter()
-        .map(|val| F::param_mul(&scalar, val))
-        .collect::<Vec<_>>()
+    v.iter().map(|val| F::mul(&scalar, val)).collect::<Vec<_>>()
 }
 
 /// returns kronecker delta
@@ -482,9 +479,9 @@ where
     F: ParamField,
 {
     if i == j {
-        F::param_one()
+        F::one()
     } else {
-        F::param_zero()
+        F::zero()
     }
 }
 
@@ -493,8 +490,8 @@ pub fn equal_zero<F>(elem: &F) -> bool
 where
     F: ParamField,
 {
-    let zero = F::param_zero();
-    F::param_eq(elem, &zero)
+    let zero = F::zero();
+    F::eq(elem, &zero)
 }
 
 #[cfg(test)]

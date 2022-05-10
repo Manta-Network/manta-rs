@@ -19,7 +19,7 @@
 
 use alloc::vec::Vec;
 
-use crate::crypto::hash::poseidon::ParamField;
+use crate::crypto::hash::ParamField;
 
 pub struct GrainLFSR {
     state: [bool; 80],

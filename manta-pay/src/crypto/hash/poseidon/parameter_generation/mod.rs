@@ -16,15 +16,14 @@
 
 //! Poseidon hash parameter generation
 
-// #[cfg(feature = "std")]
-pub mod round_numbers;
+#[cfg(feature = "std")]
+pub mod constants;
 
 mod lfsr;
 pub mod matrix;
 pub mod mds;
 pub mod preprocessing;
-
 pub mod round_constants;
 
-// #[cfg(feature = "std")]
-pub mod constants;
+#[cfg(feature = "std")]
+pub mod round_numbers;

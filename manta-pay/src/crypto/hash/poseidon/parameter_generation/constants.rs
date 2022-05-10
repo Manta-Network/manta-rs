@@ -23,7 +23,7 @@ use super::{
     round_constants::generate_round_constants,
     round_numbers::calc_round_numbers,
 };
-use crate::crypto::hash::poseidon::ParamField;
+use crate::crypto::hash::ParamField;
 use alloc::vec::Vec;
 use core::fmt::Debug;
 

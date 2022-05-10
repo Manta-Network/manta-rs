@@ -18,7 +18,7 @@
 //! acknowledgement: adapted from FileCoin Project: <https://github.com/filecoin-project/neptune/blob/master/src/preprocessing.rs>
 
 use super::{matrix::vec_add, mds::MdsMatrices};
-use crate::crypto::hash::poseidon::ParamField;
+use crate::crypto::hash::ParamField;
 use alloc::vec::Vec;
 
 /// - Compress constants by pushing them back through linear layers and through the identity components of partial layers.
@@ -77,7 +77,7 @@ where
             let mut inverted = inverse_matrix.right_apply(&acc);
 
             partial_keys.push(inverted[0]);
-            inverted[0] = F::param_zero();
+            inverted[0] = F::zero();
 
             vec_add::<F>(previous_round_keys, &inverted)
         });

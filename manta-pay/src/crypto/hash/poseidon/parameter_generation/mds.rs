@@ -16,7 +16,7 @@
 
 //! Generate mds data
 
-use crate::crypto::hash::{poseidon::ParamField, poseidon_parameter_generation::matrix::Matrix};
+use crate::crypto::hash::{poseidon::parameter_generation::matrix::Matrix, ParamField};
 use alloc::{vec, vec::Vec};
 use core::fmt::Debug;
 
@@ -71,18 +71,18 @@ where
 impl<F> MdsMatrices<F>
 where
     F: ParamField + Copy,
-{    
+{
     fn make_prime(m: &Matrix<F>) -> Matrix<F> {
         m.iter_rows()
             .enumerate()
             .map(|(i, row)| match i {
                 0 => {
-                    let mut new_row = vec![F::param_zero(); row.len()];
-                    new_row[0] = F::param_one();
+                    let mut new_row = vec![F::zero(); row.len()];
+                    new_row[0] = F::one();
                     new_row
                 }
                 _ => {
-                    let mut new_row = vec![F::param_zero(); row.len()];
+                    let mut new_row = vec![F::zero(); row.len()];
                     new_row[1..].copy_from_slice(&row[1..]);
                     new_row
                 }
@@ -100,12 +100,11 @@ where
         let m = Self::generate_mds(dim);
         Self::derive_mds_matrices(m)
     }
-    
+
     /// Generate the mds matrix `m` for naive poseidon hash.
     pub fn generate_mds(t: usize) -> Matrix<F> {
         let xs: Vec<F> = (0..t as u64).map(F::from_u64_to_param).collect();
-        let ys: Vec<F> =
-            (t as u64..2 * t as u64).map(F::from_u64_to_param).collect();
+        let ys: Vec<F> = (t as u64..2 * t as u64).map(F::from_u64_to_param).collect();
 
         let matrix = xs
             .iter()
@@ -114,7 +113,7 @@ where
                     .map(|ys_item| {
                         // Generate the entry at (i,j)
                         let mut tmp = *xs_item;
-                        F::param_add_assign(&mut tmp, ys_item);
+                        F::add_assign(&mut tmp, ys_item);
                         F::inverse(&tmp).unwrap()
                     })
                     .collect()
@@ -140,9 +139,9 @@ where
                     new_row
                 }
                 _ => {
-                    let mut new_row = vec![F::param_zero(); row.len()];
+                    let mut new_row = vec![F::zero(); row.len()];
                     new_row[0] = w_hat[i - 1];
-                    new_row[i] = F::param_one();
+                    new_row[i] = F::one();
                     new_row
                 }
             })
@@ -245,8 +244,7 @@ mod tests {
     use ark_std::{test_rng, UniformRand};
 
     use crate::crypto::{
-        constraint::arkworks::Fp,
-        hash::{poseidon_parameter_generation::matrix::Matrix},
+        constraint::arkworks::Fp, hash::poseidon::parameter_generation::matrix::Matrix,
     };
 
     #[test]
