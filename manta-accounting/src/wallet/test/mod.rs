@@ -28,7 +28,7 @@ use crate::{
         BalanceState, Error, Wallet,
     },
 };
-use alloc::{boxed::Box, sync::Arc};
+use alloc::{boxed::Box, sync::Arc, vec::Vec};
 use core::{fmt::Debug, future::Future, hash::Hash, marker::PhantomData};
 use futures::StreamExt;
 use indexmap::IndexSet;

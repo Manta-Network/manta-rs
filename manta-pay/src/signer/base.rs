@@ -17,7 +17,7 @@
 //! Manta Pay Signer Configuration
 
 use crate::{
-    config::{Bls12_381_Edwards, Config, EncryptedNote, MerkleTreeConfiguration, SecretKey, Utxo},
+    config::{Bls12_381_Edwards, Config, MerkleTreeConfiguration, SecretKey},
     crypto::constraint::arkworks::Fp,
     key::{CoinType, KeySecret, Testnet, TestnetKeySecret},
     signer::Checkpoint,
@@ -110,15 +110,18 @@ impl wallet::signer::Configuration for Config {
         origin: &Self::Checkpoint,
         checkpoint: &Self::Checkpoint,
     ) -> bool {
-        const PRUNE_PANIC_MESSAGE: &str = "Invalid pruning conditions.";
+        const PRUNE_PANIC_MESSAGE: &str = "ERROR: Invalid pruning conditions";
         if checkpoint < origin {
             return false;
         }
         match checkpoint.sender_index.checked_sub(origin.sender_index) {
             Some(diff) => drop(data.senders.drain(0..diff)),
-            _ => panic!("{}", PRUNE_PANIC_MESSAGE),
+            _ => panic!(
+                "{}: Sender Pruning: {:?} {:?} {:?}",
+                PRUNE_PANIC_MESSAGE, data, origin, checkpoint
+            ),
         }
-        let mut data_map = BTreeMap::<u8, Vec<(Utxo, EncryptedNote)>>::new();
+        let mut data_map = BTreeMap::<_, Vec<_>>::new();
         for receiver in mem::take(&mut data.receivers) {
             let key = MerkleTreeConfiguration::tree_index(&receiver.0);
             match data_map.get_mut(&key) {
@@ -136,18 +139,18 @@ impl wallet::signer::Configuration for Config {
             .enumerate()
         {
             match index.checked_sub(origin_index) {
-                Some(diff) if diff == 0 => {}
                 Some(diff) => {
-                    data.receivers.extend(
-                        data_map
-                            .remove(&(i as u8))
-                            .expect(PRUNE_PANIC_MESSAGE)
-                            .into_iter()
-                            .skip(diff),
-                    );
-                    has_pruned = true;
+                    if let Some(entries) = data_map.remove(&(i as u8)) {
+                        data.receivers.extend(entries.into_iter().skip(diff));
+                        if diff > 0 {
+                            has_pruned = true;
+                        }
+                    }
                 }
-                _ => panic!("{}", PRUNE_PANIC_MESSAGE),
+                _ => panic!(
+                    "{}: Receiver Pruning: {:?} {:?} {:?}",
+                    PRUNE_PANIC_MESSAGE, data, origin, checkpoint
+                ),
             }
         }
         has_pruned
