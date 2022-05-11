@@ -30,10 +30,11 @@ use crate::{
 };
 use alloc::{boxed::Box, sync::Arc, vec::Vec};
 use core::{fmt::Debug, future::Future, hash::Hash, marker::PhantomData};
-use futures::{lock::Mutex, StreamExt};
+use futures::StreamExt;
 use indexmap::IndexSet;
 use manta_crypto::rand::{CryptoRng, RngCore, Sample};
 use manta_util::future::LocalBoxFuture;
+use parking_lot::Mutex;
 use rand::{distributions::Distribution, Rng};
 use statrs::{distribution::Categorical, StatsError};
 
@@ -378,7 +379,7 @@ where
                 },
                 ActionType::PrivateTransfer => match actor.sample_withdraw(rng).await {
                     Some(asset) => {
-                        let public_keys = self.public_keys.lock().await;
+                        let public_keys = self.public_keys.lock();
                         let len = public_keys.len();
                         if len == 0 {
                             Action::GeneratePublicKey
@@ -449,7 +450,7 @@ where
                     {
                         Ok(keys) => {
                             for key in keys {
-                                self.public_keys.lock().await.insert(key);
+                                self.public_keys.lock().insert(key);
                             }
                             Ok(true)
                         }
