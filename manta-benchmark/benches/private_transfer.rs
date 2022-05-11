@@ -21,11 +21,9 @@ use manta_pay::parameters::{generate_parameters, SEED};
 
 fn prove(c: &mut Criterion) {
     let mut group = c.benchmark_group("bench");
-
     let mut rng = OsRng;
     let (proving_context, _, parameters, utxo_accumulator_model) =
         generate_parameters(SEED).unwrap();
-
     group.bench_function("private transfer prove", |b| {
         b.iter(|| {
             let _ = payment::prove_private_transfer(
@@ -40,23 +38,18 @@ fn prove(c: &mut Criterion) {
 
 fn verify(c: &mut Criterion) {
     let mut group = c.benchmark_group("bench");
-
     let mut rng = OsRng;
     let (proving_context, verifying_context, parameters, utxo_accumulator_model) =
         generate_parameters(SEED).unwrap();
-
-    let post = payment::prove_private_transfer(
+    let private_transfer = black_box(payment::prove_private_transfer(
         &proving_context,
         &parameters,
         &utxo_accumulator_model,
         &mut rng,
-    );
-
-    let post = black_box(post);
-
+    ));
     group.bench_function("private transfer verify", |b| {
         b.iter(|| {
-            assert_valid_proof(&verifying_context.private_transfer, &post);
+            assert_valid_proof(&verifying_context.private_transfer, &private_transfer);
         })
     });
 }

@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Precomputed Transactions
+//! prove and verify functions for benchmark
 
 use manta_accounting::{
     asset::{Asset, AssetId},
@@ -50,7 +50,7 @@ pub fn assert_valid_proof(verifying_context: &VerifyingContext, post: &config::T
     );
 }
 
-/// Generate proof for a [`Mint`] transaction.
+/// Generates a proof for a [`Mint`] transaction.
 #[inline]
 pub fn prove_mint<R>(
     proving_context: &ProvingContext,
@@ -62,14 +62,13 @@ pub fn prove_mint<R>(
 where
     R: CryptoRng + RngCore + ?Sized,
 {
-    let post = Mint::from_spending_key(parameters, &SpendingKey::gen(rng), asset, rng)
+    Mint::from_spending_key(parameters, &SpendingKey::gen(rng), asset, rng)
         .into_post(
             FullParameters::new(parameters, utxo_accumulator_model),
             proving_context,
             rng,
         )
-        .expect("Unable to build MINT proof.");
-    post
+        .expect("Unable to build MINT proof.")
 }
 
 /// Samples context of [`Mint`]s for individual assets.
@@ -91,17 +90,14 @@ where
     R: CryptoRng + RngCore + ?Sized,
 {
     let spending_key = SpendingKey::new(rng.gen(), rng.gen());
-
     let (_, pre_sender) = Mint::internal_pair(parameters, &spending_key, asset, rng);
-
     let sender = pre_sender
         .insert_and_upgrade(utxo_accumulator)
         .expect("Just inserted so this should not fail.");
-
     (spending_key, sender)
 }
 
-/// Generate proof for a [`PrivateTransfer`] transaction
+/// Generates a proof for a [`PrivateTransfer`] transaction
 #[inline]
 pub fn prove_private_transfer<R>(
     proving_context: &MultiProvingContext,
@@ -112,18 +108,16 @@ pub fn prove_private_transfer<R>(
 where
     R: CryptoRng + RngCore + ?Sized,
 {
-    let asset_id: u32 = 8;
-    let asset_0 = AssetId(asset_id).value(10_000);
-    let asset_1 = AssetId(asset_id).value(20_000);
+    let asset_id = AssetId(rng.gen());
+    let asset_0 = asset_id.value(10_000);
+    let asset_1 = asset_id.value(20_000);
 
     let mut utxo_accumulator = UtxoAccumulator::new(utxo_accumulator_model.clone());
-
     let (spending_key_0, sender_0) =
         sample_mint_context(parameters, &mut utxo_accumulator, asset_0, rng);
     let (spending_key_1, sender_1) =
         sample_mint_context(parameters, &mut utxo_accumulator, asset_1, rng);
-
-    let post = PrivateTransfer::build(
+    PrivateTransfer::build(
         [sender_0, sender_1],
         [
             spending_key_0.receiver(parameters, rng.gen(), asset_1),
@@ -135,11 +129,10 @@ where
         &proving_context.private_transfer,
         rng,
     )
-    .expect("Unable to build PRIVATE_TRANSFER proof.");
-    post
+    .expect("Unable to build PRIVATE_TRANSFER proof.")
 }
 
-/// Generate proof for a ['Reclaim'] transaction
+/// Generates a proof for a ['Reclaim'] transaction
 #[inline]
 pub fn prove_reclaim<R>(
     proving_context: &MultiProvingContext,
@@ -150,17 +143,14 @@ pub fn prove_reclaim<R>(
 where
     R: CryptoRng + RngCore + ?Sized,
 {
-    let asset_id: u32 = 8;
-    let asset_0 = AssetId(asset_id).value(10_000);
-    let asset_1 = AssetId(asset_id).value(20_000);
-
+    let asset_id = AssetId(rng.gen());
+    let asset_0 = asset_id.value(10_000);
+    let asset_1 = asset_id.value(20_000);
     let mut utxo_accumulator = UtxoAccumulator::new(utxo_accumulator_model.clone());
-
     let (spending_key_0, sender_0) =
         sample_mint_context(parameters, &mut utxo_accumulator, asset_0, rng);
     let (_, sender_1) = sample_mint_context(parameters, &mut utxo_accumulator, asset_1, rng);
-
-    let post = Reclaim::build(
+    Reclaim::build(
         [sender_0, sender_1],
         [spending_key_0.receiver(parameters, rng.gen(), asset_1)],
         asset_0,
@@ -170,6 +160,5 @@ where
         &proving_context.reclaim,
         rng,
     )
-    .expect("Unable to build RECLAIM proof.");
-    post
+    .expect("Unable to build RECLAIM proof.")
 }

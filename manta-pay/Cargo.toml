@@ -86,7 +86,7 @@ simulation = [
 std = ["manta-accounting/std", "manta-util/std"]
 
 # Testing Frameworks
-test = ["manta-accounting/test", "manta-crypto/test", "anyhow"]
+test = ["manta-accounting/test", "manta-crypto/test"]
 
 # Wallet
 wallet = ["bip32", "manta-crypto/getrandom", "std"]
@@ -136,7 +136,6 @@ tokio = { version = "1.17.0", optional = true, default-features = false }
 tokio-tungstenite = { version = "0.17.1", optional = true, default-features = false, features = ["native-tls"] }
 ws_stream_wasm = { version = "0.7.3", optional = true, default-features = false }
 # TODO: zk-garage-plonk = { package = "plonk", git = "https://github.com/zk-garage/plonk", optional = true, default-features = false }
-anyhow = { version = "1.0.55", optional = true, default-features = false }
 
 [dev-dependencies]
 manta-crypto = { path = "../manta-crypto", default-features = false, features = ["getrandom"] }

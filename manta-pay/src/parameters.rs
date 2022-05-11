@@ -14,17 +14,14 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Generate Parameters and Contexts
+//! Generate Parameters and Proving/Verifying Contexts
 
 use crate::config::{
-    FullParameters, Mint, MultiProvingContext, MultiVerifyingContext, Parameters, PrivateTransfer,
-    ProofSystem, Reclaim, UtxoAccumulatorModel,
+    Config, FullParameters, Mint, MultiProvingContext, MultiVerifyingContext, Parameters,
+    PrivateTransfer, Reclaim, UtxoAccumulatorModel,
 };
-use anyhow::{Ok, Result};
-use manta_crypto::{
-    constraint::ProofSystem as _,
-    rand::{Rand, SeedableRng},
-};
+use manta_accounting::transfer::ProofSystemError;
+use manta_crypto::rand::{Rand, SeedableRng};
 use rand_chacha::ChaCha20Rng; // TODO: Should we use ChaCha20Rng here?
 
 /// Parameter Generation Seed
@@ -42,51 +39,40 @@ pub const SEED: [u8; 32] = [
     26, 27, 28, 29, 30, 31,
 ];
 
-/// Generates the parameters using the seed and saves them to the filesystem.
-/// Note: Only for benchmark purpose.
+/// Generates the protocol parameters using `seed`.
 #[inline]
 pub fn generate_parameters(
     seed: [u8; 32],
-) -> Result<(
-    MultiProvingContext,
-    MultiVerifyingContext,
-    Parameters,
-    UtxoAccumulatorModel,
-)> {
+) -> Result<
+    (
+        MultiProvingContext,
+        MultiVerifyingContext,
+        Parameters,
+        UtxoAccumulatorModel,
+    ),
+    ProofSystemError<Config>,
+> {
     let mut rng = ChaCha20Rng::from_seed(seed);
-
     let parameters = rng.gen();
     let utxo_accumulator_model: UtxoAccumulatorModel = rng.gen();
-
     let full_parameters = FullParameters::new(&parameters, &utxo_accumulator_model);
-
-    let cs = Mint::unknown_constraints(full_parameters);
     let (mint_proving_context, mint_verifying_context) =
-        ProofSystem::generate_context(&(), cs, &mut rng).unwrap();
-
-    let cs = PrivateTransfer::unknown_constraints(full_parameters);
+        Mint::generate_context(&(), full_parameters, &mut rng)?;
     let (private_transfer_proving_context, private_transfer_verifying_context) =
-        ProofSystem::generate_context(&(), cs, &mut rng).unwrap();
-
-    let cs = Reclaim::unknown_constraints(full_parameters);
+        PrivateTransfer::generate_context(&(), full_parameters, &mut rng)?;
     let (reclaim_proving_context, reclaim_verifying_context) =
-        ProofSystem::generate_context(&(), cs, &mut rng).unwrap();
-
-    let proving_context = MultiProvingContext {
-        mint: mint_proving_context,
-        private_transfer: private_transfer_proving_context,
-        reclaim: reclaim_proving_context,
-    };
-
-    let verifying_context = MultiVerifyingContext {
-        mint: mint_verifying_context,
-        private_transfer: private_transfer_verifying_context,
-        reclaim: reclaim_verifying_context,
-    };
-
+        Reclaim::generate_context(&(), full_parameters, &mut rng)?;
     Ok((
-        proving_context,
-        verifying_context,
+        MultiProvingContext {
+            mint: mint_proving_context,
+            private_transfer: private_transfer_proving_context,
+            reclaim: reclaim_proving_context,
+        },
+        MultiVerifyingContext {
+            mint: mint_verifying_context,
+            private_transfer: private_transfer_verifying_context,
+            reclaim: reclaim_verifying_context,
+        },
         parameters,
         utxo_accumulator_model,
     ))
