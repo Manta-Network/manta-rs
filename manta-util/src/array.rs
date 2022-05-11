@@ -193,6 +193,8 @@ macro_rules! impl_array_traits {
             }
         }
 
+        #[cfg(feature = "alloc")]
+        #[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
         impl<T, const N: usize> FromIterator<T> for $type<T, N> {
             #[inline]
             fn from_iter<I>(iter: I) -> Self
@@ -263,6 +265,8 @@ impl<T, const N: usize> Array<T, N> {
 
     /// Performs the [`TryInto`] conversion from `vec` into an array without checking if the
     /// conversion succeeded. See [`into_array_unchecked`] for more.
+    #[cfg(feature = "alloc")]
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
     #[inline]
     pub fn from_vec(vec: Vec<T>) -> Self {
         Self::from_unchecked(vec)
@@ -375,6 +379,8 @@ impl<T, const N: usize> BoxArray<T, N> {
 
     /// Performs the [`TryInto`] conversion from `vec` into a boxed array without checking if the
     /// conversion succeeded. See [`into_boxed_array_unchecked`] for more.
+    #[cfg(feature = "alloc")]
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
     #[inline]
     pub fn from_vec(vec: Vec<T>) -> Self {
         Self::from_unchecked(vec.into_boxed_slice())
