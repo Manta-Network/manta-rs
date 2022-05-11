@@ -150,8 +150,8 @@ impl Simulation {
                     }
                 })
                 .await
-                .expect("Error during simulation."),
-            "Simulation balance mismatch!"
+                .expect("An error occured during the simulation."),
+            "ERROR: Simulation balance mismatch. Funds before and after the simulation do not match."
         );
     }
 }
