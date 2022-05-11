@@ -293,22 +293,46 @@ where
         transaction.check(move |a| self.contains(a))
     }
 
-    /// Posts a transaction to the ledger, returning `true` if the `transaction` was successfully
-    /// saved onto the ledger. This method automatically synchronizes with the ledger before
-    /// posting, _but not after_. To amortize the cost of future calls to [`post`](Self::post), the
-    /// [`sync`](Self::sync) method can be used to synchronize with the ledger.
+    /// Signs the `transaction` using the signer connection, sending `metadata` for context. This
+    /// method _does not_ automatically sychronize with the ledger. To do this, call the
+    /// [`sync`](Self::sync) method separately.
+    #[inline]
+    pub async fn sign(
+        &mut self,
+        transaction: Transaction<C>,
+        metadata: Option<AssetMetadata>,
+    ) -> Result<SignResponse<C>, Error<C, L, S>> {
+        self.check(&transaction)
+            .map_err(Error::InsufficientBalance)?;
+        self.signer
+            .sign(SignRequest {
+                transaction,
+                metadata,
+            })
+            .await
+            .map_err(Error::SignerConnectionError)?
+            .map_err(Error::SignError)
+    }
+
+    /// Posts a transaction to the ledger, returning a success [`Response`] if the `transaction`
+    /// was successfully posted to the ledger. This method automatically synchronizes with the
+    /// ledger before posting, _but not after_. To amortize the cost of future calls to [`post`],
+    /// the [`sync`] method can be used to synchronize with the ledger.
     ///
     /// # Failure Conditions
     ///
-    /// This method returns `false` when there were no errors in producing transfer data and
+    /// This method returns a [`Response`] when there were no errors in producing transfer data and
     /// sending and receiving from the ledger, but instead the ledger just did not accept the
-    /// transaction as is. This could be caused by an external update to the ledger while the
-    /// signer was building the transaction that caused the wallet and the ledger to get out of
-    /// sync. In this case, [`post`](Self::post) can safely be called again, to retry the
-    /// transaction.
+    /// transaction as is. This could be caused by an external update to the ledger while the signer
+    /// was building the transaction that caused the wallet and the ledger to get out of sync. In
+    /// this case, [`post`] can safely be called again, to retry the transaction.
     ///
     /// This method returns an error in any other case. The internal state of the wallet is kept
     /// consistent between calls and recoverable errors are returned for the caller to handle.
+    ///
+    /// [`Response`]: ledger::Write::Response
+    /// [`post`]: Self::post
+    /// [`sync`]: Self::sync
     #[inline]
     pub async fn post(
         &mut self,
@@ -320,17 +344,7 @@ where
             + ledger::Write<Vec<TransferPost<C>>>,
     {
         self.sync().await?;
-        self.check(&transaction)
-            .map_err(Error::InsufficientBalance)?;
-        let SignResponse { posts } = self
-            .signer
-            .sign(SignRequest {
-                transaction,
-                metadata,
-            })
-            .await
-            .map_err(Error::SignerConnectionError)?
-            .map_err(Error::SignError)?;
+        let SignResponse { posts } = self.sign(transaction, metadata).await?;
         self.ledger
             .write(posts)
             .await
