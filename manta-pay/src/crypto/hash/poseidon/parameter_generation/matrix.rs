@@ -42,12 +42,12 @@ impl<F> Matrix<F>
 where
     F: ParamField,
 {
-    /// Return the number of rows
+    /// Returns the number of rows
     pub fn num_rows(&self) -> usize {
         self.0.len()
     }
 
-    /// Return the number of columns
+    /// Returns the number of columns
     pub fn num_columns(&self) -> usize {
         if self.0.is_empty() {
             0
@@ -72,12 +72,12 @@ where
         self.0.iter().map(move |row| &row[column])
     }
 
-    /// Check if the matrix is square
+    /// Checks if the matrix is square
     pub fn is_square(&self) -> bool {
         self.num_rows() == self.num_columns()
     }
 
-    /// Check if the matrix is an identity matrix
+    /// Checks if the matrix is an identity matrix
     pub fn is_identity(&self) -> bool {
         if !self.is_square() {
             return false;
@@ -93,7 +93,7 @@ where
         true
     }
 
-    /// elementwisely multiply with `scalar`
+    /// elementwisely multiplies with `scalar`
     pub fn mul_by_scalar(&self, scalar: F) -> Self {
         let res = self
             .0
@@ -112,7 +112,7 @@ impl<F> Matrix<F>
 where
     F: ParamField + Copy,
 {
-    /// Return transpose of the matrix
+    /// Returns the transpose of the matrix
     pub fn transpose(&self) -> Matrix<F> {
         let size = self.num_rows();
         let mut new = Vec::with_capacity(size);
@@ -126,7 +126,7 @@ where
         Matrix(new)
     }
 
-    /// return row major representation of the matrix
+    /// Returns row major representation of the matrix
     pub fn to_row_major(&self) -> Vec<F> {
         let size = self.num_rows() * self.num_columns();
         let mut res = Vec::with_capacity(size);
@@ -139,7 +139,7 @@ where
         res
     }
 
-    /// return `self @ other`
+    /// Returns `self @ other`
     pub fn matmul(&self, other: &Self) -> Option<Self> {
         if self.num_rows() != other.num_columns() {
             return None;
@@ -203,7 +203,7 @@ impl<F> Matrix<F>
 where
     F: ParamField + Clone,
 {
-    /// return an identity matrix of size `n*n`
+    /// Returns an identity matrix of size `n*n`
     pub fn identity(n: usize) -> Matrix<F> {
         let mut m = Matrix(vec![vec![F::zero(); n]; n]);
         for i in 0..n {
@@ -212,7 +212,7 @@ where
         m
     }
 
-    /// return `self @ vec`, treating `vec` as a column vector.
+    /// Returns `self @ vec`, treating `vec` as a column vector.
     pub fn mul_col_vec(&self, v: &[F]) -> Vec<F> {
         assert!(
             self.is_square(),
@@ -235,12 +235,12 @@ where
         result
     }
 
-    /// return `self @ vec`, treating `vec` as a column vector.
+    /// Returns `self @ vec`, treating `vec` as a column vector.
     pub fn left_apply(&self, v: &[F]) -> Vec<F> {
         self.mul_col_vec(v)
     }
 
-    /// return `vec @ self`, treating `vec` as a row vector.
+    /// Returns `vec @ self`, treating `vec` as a row vector.
     pub fn mul_row_vec_at_left(&self, v: &[F]) -> Vec<F> {
         assert!(
             self.is_square(),
@@ -262,12 +262,12 @@ where
         result
     }
 
-    /// return `vec @ self`, treat `vec` as a row vector.
+    /// Returns `vec @ self`, treat `vec` as a row vector.
     pub fn right_apply(&self, v: &[F]) -> Vec<F> {
         self.mul_row_vec_at_left(v)
     }
 
-    /// Generate the minor matrix
+    /// Generates the minor matrix
     pub fn minor(&self, i: usize, j: usize) -> Self {
         assert!(self.is_square());
         let size = self.num_rows();
@@ -291,7 +291,7 @@ where
         res
     }
 
-    /// check if `self` is square and `self[1..][1..]` is identity
+    /// Checks if `self` is square and `self[1..][1..]` is identity
     pub fn is_sparse(&self) -> bool {
         self.is_square() && self.minor(0, 0).is_identity()
     }
@@ -346,7 +346,7 @@ where
         Some(result.into())
     }
 
-    /// generate the upper triangular matrix
+    /// Generates the upper triangular matrix
     pub fn upper_triangular(&self, shadow: &mut Self) -> Option<Self> {
         assert!(self.is_square());
         let mut result = Vec::with_capacity(self.num_rows());
@@ -374,7 +374,7 @@ where
         Some(Matrix(result))
     }
 
-    /// return the inversion of a matrix
+    /// Returns the inversion of a matrix
     pub fn invert(&self) -> Option<Self> {
         let mut shadow = Self::identity(self.num_columns());
         let ut = self.upper_triangular(&mut shadow);
@@ -383,7 +383,7 @@ where
             .and(Some(shadow))
     }
 
-    /// check if the matrix is invertible
+    /// Checks if the matrix is invertible
     pub fn is_invertible(&self) -> bool {
         self.is_square() && self.invert().is_some()
     }
@@ -395,7 +395,7 @@ where
 {
     type Output = Vec<F>;
 
-    /// return an unmutable reference to the `index`^{th} row in the matrix
+    /// Returns an unmutable reference to the `index`^{th} row in the matrix
     fn index(&self, index: usize) -> &Self::Output {
         &self.0[index]
     }
@@ -405,7 +405,7 @@ impl<F> IndexMut<usize> for Matrix<F>
 where
     F: ParamField,
 {
-    /// return a mutable reference to the `index`^{th} row in the matrix
+    /// Returns a mutable reference to the `index`^{th} row in the matrix
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         &mut self.0[index]
     }
@@ -431,7 +431,7 @@ where
     }
 }
 
-/// inner product of two vectors
+/// Inner product of two vectors
 pub fn inner_product<F>(a: &[F], b: &[F]) -> F
 where
     F: ParamField,
@@ -443,7 +443,7 @@ where
     })
 }
 
-/// elementwise addition of two vectors
+/// Elementwise addition of two vectors
 pub fn vec_add<F>(a: &[F], b: &[F]) -> Vec<F>
 where
     F: ParamField,
@@ -454,7 +454,7 @@ where
         .collect::<Vec<_>>()
 }
 
-/// elementwise subtraction (i.e., out_i = a_i - b_i)
+/// Elementwise subtraction (i.e., out_i = a_i - b_i)
 pub fn vec_sub<F>(a: &[F], b: &[F]) -> Vec<F>
 where
     F: ParamField,
@@ -465,7 +465,7 @@ where
         .collect::<Vec<_>>()
 }
 
-/// elementwisely multiply a vector `v` with `scalar`
+/// Elementwisely multiplies a vector `v` with `scalar`
 pub fn scalar_vec_mul<F>(scalar: F, v: &[F]) -> Vec<F>
 where
     F: ParamField,
@@ -473,7 +473,7 @@ where
     v.iter().map(|val| F::mul(&scalar, val)).collect::<Vec<_>>()
 }
 
-/// returns kronecker delta
+/// Returns kronecker delta
 pub fn kronecker_delta<F>(i: usize, j: usize) -> F
 where
     F: ParamField,
@@ -485,7 +485,7 @@ where
     }
 }
 
-/// check whether `elem` equals zero
+/// Checks whether `elem` equals zero
 pub fn equal_zero<F>(elem: &F) -> bool
 where
     F: ParamField,

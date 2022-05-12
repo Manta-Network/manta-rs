@@ -16,9 +16,6 @@
 
 //! Poseidon hash parameter generation
 
-#[cfg(feature = "std")]
-pub mod constants;
-
 mod lfsr;
 pub mod matrix;
 pub mod mds;

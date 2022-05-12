@@ -18,7 +18,7 @@
 
 pub mod poseidon;
 
-/// Trait for Public Parameters in Poseidon Hash
+/// Trait for Public Parameters in Hash Functions
 pub trait ParamField: Sized {
     /// Number of bits of modulus of the field.
     const MODULUS_BITS: usize;
@@ -29,13 +29,13 @@ pub trait ParamField: Sized {
     /// Returns the multiplicative identity of the parameter field
     fn one() -> Self;
 
-    /// Add two parameter field elements together
+    /// Adds two parameter field elements together
     fn add(lhs: &Self, rhs: &Self) -> Self;
 
-    /// Add the `rhs` parameter field element to `lhs` parameter field element, storing the value in `lhs`
+    /// Adds the `rhs` parameter field element to the `lhs` parameter field element, storing the value in `lhs`
     fn add_assign(lhs: &mut Self, rhs: &Self);
 
-    /// Multiply two parameter field elements together
+    /// Multiplies two parameter field elements together
     fn mul(lhs: &Self, rhs: &Self) -> Self;
 
     /// returns (lhs - rhs)
@@ -44,15 +44,15 @@ pub trait ParamField: Sized {
     /// returns (lhs == rhs)
     fn eq(lhs: &Self, rhs: &Self) -> bool;
 
-    /// Computes the multiplicative inverse of a parameter field elements
+    /// Computes the multiplicative inverse of a parameter field element
     fn inverse(elem: &Self) -> Option<Self>;
 
-    /// Convert from bits into a parameter field element in little endian order. Return None if bits is out of range.
+    /// Converts from bits into a parameter field element in little endian order. Return None if bits are out of range.
     fn try_from_bits_le(bits: &[bool]) -> Option<Self>;
 
-    /// Convert from bytes into a parameter field element in little endian order. If the number of bytes is out of range, the result will be modulo.   
+    /// Converts from bytes into a parameter field element in little endian order. If the number of bytes is out of range, the result will be modulo.   
     fn from_le_bytes_mod_order(bytes: &[u8]) -> Self;
 
-    /// Convert a u64 value to a parameter field element
+    /// Converts a u64 value to a parameter field element
     fn from_u64_to_param(elem: u64) -> Self;
 }

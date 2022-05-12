@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Generate mds data
+//! MDS Data Generation
 
 use crate::crypto::hash::{poseidon::parameter_generation::matrix::Matrix, ParamField};
 use alloc::{vec, vec::Vec};
@@ -95,13 +95,13 @@ impl<F> MdsMatrices<F>
 where
     F: ParamField + Copy + PartialEq + Debug,
 {
-    /// Derive MDS matrix of size `dim*dim` and relevant things
+    /// Derives MDS matrix of size `dim*dim` and relevant things
     pub fn new(dim: usize) -> Self {
         let m = Self::generate_mds(dim);
         Self::derive_mds_matrices(m)
     }
 
-    /// Generate the mds matrix `m` for naive poseidon hash.
+    /// Generates the mds matrix `m` for naive poseidon hash.
     pub fn generate_mds(t: usize) -> Matrix<F> {
         let xs: Vec<F> = (0..t as u64).map(F::from_u64_to_param).collect();
         let ys: Vec<F> = (t as u64..2 * t as u64).map(F::from_u64_to_param).collect();
@@ -148,7 +148,7 @@ where
             .collect()
     }
 
-    /// Derive the mds matrices for optimized poseidon hash. Start from mds matrix `m` in naive poseidon hash.
+    /// Derives the mds matrices for optimized poseidon hash. Start from mds matrix `m` in naive poseidon hash.
     pub fn derive_mds_matrices(m: Matrix<F>) -> Self {
         let m_inv = m.invert().expect("Derived MDS matrix is not invertible");
         let m_hat = m.minor(0, 0);
@@ -185,7 +185,7 @@ impl<F> SparseMatrix<F>
 where
     F: ParamField + Copy,
 {
-    /// Generate sparse matrix from m_double_prime matrix
+    /// Generates sparse matrix from m_double_prime matrix
     pub fn new(m_double_prime: &Matrix<F>) -> Self {
         assert!(m_double_prime.is_sparse());
 
@@ -194,12 +194,12 @@ where
         Self { w_hat, v_rest }
     }
 
-    /// size of the sparse matrix
+    /// Size of the sparse matrix
     pub fn size(&self) -> usize {
         self.w_hat.len()
     }
 
-    /// generate dense-matrix representation from sparse matrix representation
+    /// Generates dense-matrix representation from sparse matrix representation
     pub fn to_matrix(&self) -> Matrix<F> {
         let mut m = Matrix::identity(self.size());
         for (j, elt) in self.w_hat.iter().enumerate() {
@@ -212,7 +212,7 @@ where
     }
 }
 
-/// factorize into sparse matrices.
+/// Factorizes into sparse matrices.
 pub fn factor_to_sparse_matrixes<F>(
     base_matrix: Matrix<F>,
     n: usize,
@@ -239,7 +239,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::MdsMatrices;
-    pub use ark_bls12_381::Fr;
+    use ark_bls12_381::Fr;
     use ark_ff::field_new;
     use ark_std::{test_rng, UniformRand};
 

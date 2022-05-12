@@ -92,18 +92,18 @@ impl GrainLFSR {
         let mut res = Vec::new();
 
         for _ in 0..num_bits {
-            // Obtain the first bit
+            // Obtains the first bit
             let mut new_bit = self.update();
 
             // Loop until the first bit is true
             while !new_bit {
-                // Discard the second bit
+                // Discards the second bit
                 let _ = self.update();
-                // Obtain another first bit
+                // Obtains another first bit
                 new_bit = self.update();
             }
 
-            // Obtain the second bit
+            // Obtains the second bit
             res.push(self.update());
         }
 
@@ -118,13 +118,13 @@ impl GrainLFSR {
 
         let mut res = Vec::new();
         for _ in 0..num_elems {
-            // Perform rejection sampling
+            // Performs rejection sampling
             loop {
                 // Obtain n bits and make it most-significant-bit first
                 let mut bits = self.get_bits(self.prime_num_bits as usize);
                 bits.reverse();
 
-                // Construct the number
+                // Constructs the number
                 if let Some(f) = F::try_from_bits_le(&bits) {
                     res.push(f);
                     break;
@@ -143,7 +143,7 @@ impl GrainLFSR {
 
         let mut res = Vec::new();
         for _ in 0..num_elems {
-            // Obtain n bits and make it most-significant-bit first
+            // Obtains n bits and make it most-significant-bit first
             let mut bits = self.get_bits(self.prime_num_bits as usize);
             bits.reverse();
 

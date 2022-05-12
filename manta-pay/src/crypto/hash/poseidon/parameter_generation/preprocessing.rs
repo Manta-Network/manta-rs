@@ -21,8 +21,8 @@ use super::{matrix::vec_add, mds::MdsMatrices};
 use crate::crypto::hash::ParamField;
 use alloc::vec::Vec;
 
-/// - Compress constants by pushing them back through linear layers and through the identity components of partial layers.
-/// - As a result, constants need only be added after each S-box.
+/// Compresses constants by pushing them back through linear layers and through the identity components of partial layers.
+/// As a result, constants need only be added after each S-box.
 pub fn compress_round_constants<F>(
     width: usize,
     full_rounds: usize,

@@ -14,11 +14,10 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Generate round constants
-
-use crate::crypto::hash::ParamField;
+//! Round Constants Generation
 
 use super::lfsr::GrainLFSR;
+use crate::crypto::hash::ParamField;
 use alloc::vec::Vec;
 
 /// return round constants, and return the LFSR used to generate MDS matrix

@@ -40,7 +40,7 @@ pub trait Specification<COM = ()> {
     type Field;
 
     /// Field used as constants
-    type ParameterField: ParamField + Clone;
+    type ParameterField: ParamField + Clone + PartialEq + Copy + Debug;
 
     /// Number of Full Rounds
     ///
@@ -51,13 +51,14 @@ pub trait Specification<COM = ()> {
     /// Number of Partial Rounds
     const PARTIAL_ROUNDS: usize;
 
-    /// Returns the domain tag. TODO: May update domain_tag for different applications
+    /// Returns the domain tag. We use different domain_tags different applications so that defending
+    /// against rainbow table attack.
     fn domain_tag(compiler: &mut COM, arity: usize) -> Self::Field;
 
     /// Adds two field elements together.
     fn add(lhs: &Self::Field, rhs: &Self::Field, compiler: &mut COM) -> Self::Field;
 
-    /// Add a field element with a constant
+    /// Adds a field element with a constant
     fn addi(lhs: &Self::Field, rhs: &Self::ParameterField, compiler: &mut COM) -> Self::Field;
 
     /// Multiplies two field elements together.
@@ -192,7 +193,7 @@ where
                 .iter()
                 .enumerate()
                 .map(|(j, elem)| S::muli(elem, &self.mds_matrix[width * i + j], compiler))
-                .collect::<Vec<_>>(); // TODO: Check whether mds_matrix here is correct, in terms of row-major and col-major
+                .collect::<Vec<_>>(); // NOTE: mds_matrix is constructed to be symmetry so that row-major or col-major representation gives the same output
             next.push(
                 linear_combination
                     .into_iter()
@@ -271,14 +272,9 @@ impl<D, S, COM, const ARITY: usize> Sample<D> for Hasher<S, COM, ARITY>
 where
     D: Clone,
     S: Specification<COM>,
-    <S as Specification<COM>>::ParameterField: Sample<D> + PartialEq + Copy + Debug,
+    S::ParameterField: Sample<D>,
 {
     /// Samples random Poseidon parameters.
-    ///
-    /// # Warning
-    ///
-    /// This method samples the individual field elements of the parameters set, instead of
-    /// producing an actually correct/safe set of additive round keys and MDS matrix.
     #[inline]
     fn sample<R>(distribution: D, rng: &mut R) -> Self
     where
@@ -289,8 +285,8 @@ where
         let (round_constants, _) = generate_round_constants::<S::ParameterField>(
             S::ParameterField::MODULUS_BITS as u64,
             Self::WIDTH,
-            <S as Specification<COM>>::FULL_ROUNDS,
-            <S as Specification<COM>>::PARTIAL_ROUNDS,
+            S::FULL_ROUNDS,
+            S::PARTIAL_ROUNDS,
         );
 
         let mds_matrices = MdsMatrices::<S::ParameterField>::generate_mds(Self::WIDTH);
@@ -357,13 +353,12 @@ pub type Output<S, COM, const ARITY: usize> =
 #[cfg(feature = "arkworks")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "arkworks")))]
 pub mod arkworks {
+    use super::ParamField;
     use crate::crypto::constraint::arkworks::{Fp, FpVar, R1CS};
     use ark_ff::{BigInteger, Field, FpParameters, PrimeField};
     use ark_r1cs_std::{alloc::AllocVar, fields::FieldVar};
     use ark_std::{One, Zero};
     use manta_crypto::constraint::Constant;
-
-    use super::ParamField;
 
     /// Compiler Type
     type Compiler<S> = R1CS<<S as Specification>::Field>;
@@ -448,7 +443,6 @@ pub mod arkworks {
         type ParameterField = Fp<S::Field>;
 
         const FULL_ROUNDS: usize = S::FULL_ROUNDS;
-
         const PARTIAL_ROUNDS: usize = S::PARTIAL_ROUNDS;
 
         #[inline]
@@ -472,7 +466,6 @@ pub mod arkworks {
             Fp(lhs.0 * rhs.0)
         }
 
-        // When COM = (), we do not distinguish Field and ParameterField. So muli() has the same computation as mul()
         #[inline]
         fn muli(lhs: &Self::Field, rhs: &Self::ParameterField, _: &mut ()) -> Self::Field {
             Fp(lhs.0 * rhs.0)
@@ -483,7 +476,6 @@ pub mod arkworks {
             lhs.0 += rhs.0;
         }
 
-        // When COM = (), we do not distinguish Field and ParameterField. So addi_assign() has the same computation as add_assign()
         #[inline]
         fn addi_assign(lhs: &mut Self::Field, rhs: &Self::ParameterField, _: &mut ()) {
             lhs.0 += rhs.0;
