@@ -460,11 +460,10 @@ impl<I, V> From<Asset<I, V>> for (I, V) {
 
 impl Sample for Asset {
     #[inline]
-    fn sample<R>(distribution: (), rng: &mut R) -> Self
+    fn sample<R>(_: (), rng: &mut R) -> Self
     where
         R: CryptoRng + RngCore + ?Sized,
     {
-        let _ = distribution;
         Self::new(rng.gen(), rng.gen())
     }
 }
