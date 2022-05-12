@@ -234,22 +234,20 @@ impl_sample_from_u32!(i8, i16, i32, u8, u16, u32);
 
 impl Sample for u64 {
     #[inline]
-    fn sample<R>(distribution: (), rng: &mut R) -> Self
+    fn sample<R>(_: (), rng: &mut R) -> Self
     where
         R: CryptoRng + RngCore + ?Sized,
     {
-        let _ = distribution;
         rng.next_u64()
     }
 }
 
 impl Sample for u128 {
     #[inline]
-    fn sample<R>(distribution: (), rng: &mut R) -> Self
+    fn sample<R>(_: (), rng: &mut R) -> Self
     where
         R: CryptoRng + RngCore + ?Sized,
     {
-        let _ = distribution;
         (u128::from(rng.next_u64()) << 64) | u128::from(rng.next_u64())
     }
 }
