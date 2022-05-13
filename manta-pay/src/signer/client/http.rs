@@ -19,8 +19,8 @@
 use crate::{
     config::{Config, ReceivingKey},
     signer::{
-        ReceivingKeyRequest, SignError, SignRequest, SignResponse, SyncError, SyncRequest,
-        SyncResponse,
+        Checkpoint, ReceivingKeyRequest, SignError, SignRequest, SignResponse, SyncError,
+        SyncRequest, SyncResponse,
     },
     util::http::{self, IntoUrl},
 };
@@ -49,6 +49,7 @@ impl Client {
 }
 
 impl signer::Connection<Config> for Client {
+    type Checkpoint = Checkpoint;
     type Error = Error;
 
     #[inline]

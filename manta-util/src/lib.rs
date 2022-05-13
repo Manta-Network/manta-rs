@@ -28,7 +28,6 @@ mod array;
 mod bytes;
 mod sealed;
 
-pub mod cache;
 pub mod codec;
 pub mod convert;
 pub mod future;

@@ -40,6 +40,7 @@ use crate::{
         ProvingContext, Receiver, ReceivingKey, SecretKey, Sender, SpendingKey, Transfer,
         TransferPost, Utxo, VoidNumber,
     },
+    wallet::ledger::{Checkpoint, Prune},
 };
 use alloc::{boxed::Box, vec, vec::Vec};
 use core::{convert::Infallible, fmt::Debug, hash::Hash};
@@ -49,11 +50,7 @@ use manta_crypto::{
     rand::{CryptoRng, FromEntropy, Rand, RngCore},
 };
 use manta_util::{
-    array_map,
-    cache::{CachedResource, CachedResourceError},
-    future::LocalBoxFutureResult,
-    into_array_unchecked,
-    iter::IteratorExt,
+    array_map, future::LocalBoxFutureResult, into_array_unchecked, iter::IteratorExt,
     persistence::Rollback,
 };
 
@@ -65,6 +62,11 @@ pub trait Connection<C>
 where
     C: transfer::Configuration,
 {
+    /// Checkpoint Type
+    ///
+    /// This checkpoint is used by the signer to stay synchronized with wallet and the ledger.
+    type Checkpoint: Checkpoint;
+
     /// Error Type
     ///
     /// This is the error type for the connection itself, not for an error produced during one of
@@ -75,8 +77,8 @@ where
     /// returning an updated asset distribution.
     fn sync(
         &mut self,
-        request: SyncRequest<C>,
-    ) -> LocalBoxFutureResult<Result<SyncResponse, SyncError>, Self::Error>;
+        request: SyncRequest<C, Self::Checkpoint>,
+    ) -> LocalBoxFutureResult<Result<SyncResponse, SyncError<Self::Checkpoint>>, Self::Error>;
 
     /// Signs a transaction and returns the ledger transfer posts if successful.
     fn sign(
@@ -91,7 +93,7 @@ where
     ) -> LocalBoxFutureResult<Vec<ReceivingKey<C>>, Self::Error>;
 }
 
-/// Signer Synchronization Request
+/// Signer Synchronization Data
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
@@ -121,9 +123,53 @@ where
     Hash(bound = "Utxo<C>: Hash, EncryptedNote<C>: Hash, VoidNumber<C>: Hash"),
     PartialEq(bound = "Utxo<C>: PartialEq, EncryptedNote<C>: PartialEq, VoidNumber<C>: PartialEq")
 )]
-pub struct SyncRequest<C>
+pub struct SyncData<C>
+where
+    C: transfer::Configuration + ?Sized,
+{
+    /// Receiver Data
+    pub receivers: Vec<(Utxo<C>, EncryptedNote<C>)>,
+
+    /// Sender Data
+    pub senders: Vec<VoidNumber<C>>,
+}
+
+impl<C> Prune<C::Checkpoint> for SyncData<C>
+where
+    C: Configuration,
+{
+    #[inline]
+    fn prune(&mut self, origin: &C::Checkpoint, checkpoint: &C::Checkpoint) -> bool {
+        C::prune_sync_data(self, origin, checkpoint)
+    }
+}
+
+/// Signer Synchronization Request
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "T: Deserialize<'de>, SyncData<C>: Deserialize<'de>",
+            serialize = "T: Serialize, SyncData<C>: Serialize",
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "T: Clone, SyncData<C>: Clone"),
+    Debug(bound = "T: Debug, SyncData<C>: Debug"),
+    Default(bound = "T: Default, SyncData<C>: Default"),
+    Eq(bound = "T: Eq, SyncData<C>: Eq"),
+    Hash(bound = "T: Hash, SyncData<C>: Hash"),
+    PartialEq(bound = "T: PartialEq, SyncData<C>: PartialEq")
+)]
+pub struct SyncRequest<C, T>
 where
     C: transfer::Configuration,
+    T: Checkpoint,
 {
     /// Recovery Flag
     ///
@@ -134,21 +180,33 @@ where
     /// [`GAP_LIMIT`]: HierarchicalKeyDerivationScheme::GAP_LIMIT
     pub with_recovery: bool,
 
-    /// Starting Index
+    /// Origin Checkpoint
     ///
-    /// This index is the starting point for insertions and indicates how far into the
-    /// [`UtxoAccumulator`] the insertions received are starting from. The signer may be ahead of
-    /// this index and so can skip those UTXOs which are in between the `starting_index` and its own
-    /// internal index.
+    /// This checkpoint was the one that was used to retrieve the [`data`](Self::data) from the
+    /// ledger.
+    pub origin_checkpoint: T,
+
+    /// Ledger Synchronization Data
+    pub data: SyncData<C>,
+}
+
+impl<C, T> SyncRequest<C, T>
+where
+    C: transfer::Configuration,
+    T: Checkpoint,
+{
+    /// Prunes the [`data`] in `self` according to the target `checkpoint` given that
+    /// [`origin_checkpoint`] was the origin of the data.
     ///
-    /// [`UtxoAccumulator`]: Configuration::UtxoAccumulator
-    pub starting_index: usize,
-
-    /// Balance Insertions
-    pub inserts: Vec<(Utxo<C>, EncryptedNote<C>)>,
-
-    /// Balance Removals
-    pub removes: Vec<VoidNumber<C>>,
+    /// [`data`]: Self::data
+    /// [`origin_checkpoint`]: Self::origin_checkpoint
+    #[inline]
+    pub fn prune(&mut self, checkpoint: &T) -> bool
+    where
+        SyncData<C>: Prune<T>,
+    {
+        self.data.prune(&self.origin_checkpoint, checkpoint)
+    }
 }
 
 /// Signer Synchronization Response
@@ -164,8 +222,8 @@ where
 pub enum SyncResponse {
     /// Partial Update
     ///
-    /// This is the typical response from the [`Signer`]. In rare cases, we may need to perform a
-    /// [`Full`](Self::Full) update.
+    /// This is the typical response from the [`Signer`]. In rare de-synchronization cases, we may
+    /// need to perform a [`Full`](Self::Full) update.
     Partial {
         /// Assets Deposited in the Last Update
         deposit: Vec<Asset>,
@@ -195,11 +253,19 @@ pub enum SyncResponse {
     serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum SyncError {
+pub enum SyncError<T>
+where
+    T: Checkpoint,
+{
     /// Inconsistent Synchronization
+    ///
+    /// This error occurs whenever the signer checkpoint gets behind the wallet checkpoint and
+    /// cannot safely process the incoming data. The data is dropped and the signer checkpoint is
+    /// sent back up to the wallet. If the wallet determines that it can safely re-synchronize with
+    /// this older checkpoint then it will try again and fetch older data from the ledger.
     InconsistentSynchronization {
-        /// Desired starting index to fix synchronization
-        starting_index: usize,
+        /// Signer Checkpoint
+        checkpoint: T,
     },
 }
 
@@ -310,9 +376,6 @@ pub enum SignError<C>
 where
     C: transfer::Configuration,
 {
-    /// Proving Context Cache Error
-    ProvingContextCacheError,
-
     /// Insufficient Balance
     InsufficientBalance(Asset),
 
@@ -356,6 +419,9 @@ pub enum ReceivingKeyRequest {
 
 /// Signer Configuration
 pub trait Configuration: transfer::Configuration {
+    /// Checkpoint Type
+    type Checkpoint: Checkpoint;
+
     /// Hierarchical Key Derivation Scheme
     type HierarchicalKeyDerivationScheme: HierarchicalKeyDerivationScheme<
         SecretKey = SecretKey<Self>,
@@ -370,11 +436,22 @@ pub trait Configuration: transfer::Configuration {
     /// Asset Map Type
     type AssetMap: AssetMap<Key = AssetMapKey<Self>>;
 
-    /// Proving Context Cache
-    type ProvingContextCache: CachedResource<MultiProvingContext<Self>>;
-
     /// Random Number Generator Type
     type Rng: CryptoRng + FromEntropy + RngCore;
+
+    /// Updates the given `checkpoint` to match the state of the `utxo_accumulator`.
+    fn update_checkpoint(
+        checkpoint: &Self::Checkpoint,
+        utxo_accumulator: &Self::UtxoAccumulator,
+    ) -> Self::Checkpoint;
+
+    /// Prunes the `data` required for a [`sync`](Connection::sync) call against `origin` and
+    /// `checkpoint`.
+    fn prune_sync_data(
+        data: &mut SyncData<Self>,
+        origin: &Self::Checkpoint,
+        checkpoint: &Self::Checkpoint,
+    ) -> bool;
 }
 
 /// Account Table Type
@@ -383,18 +460,14 @@ pub type AccountTable<C> = key::AccountTable<<C as Configuration>::HierarchicalK
 /// Asset Map Key Type
 pub type AssetMapKey<C> = (KeyIndex, SecretKey<C>);
 
-/// Proving Context Cache Error Type
-pub type ProvingContextCacheError<C> =
-    CachedResourceError<MultiProvingContext<C>, <C as Configuration>::ProvingContextCache>;
-
 /// Signer Parameters
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "Parameters<C>: Clone, C::ProvingContextCache: Clone"),
-    Debug(bound = "Parameters<C>: Debug, C::ProvingContextCache: Debug"),
-    Eq(bound = "Parameters<C>: Eq, C::ProvingContextCache: Eq"),
-    Hash(bound = "Parameters<C>: Hash, C::ProvingContextCache: Hash"),
-    PartialEq(bound = "Parameters<C>: PartialEq, C::ProvingContextCache: PartialEq")
+    Clone(bound = "Parameters<C>: Clone, MultiProvingContext<C>: Clone"),
+    Debug(bound = "Parameters<C>: Debug, MultiProvingContext<C>: Debug"),
+    Eq(bound = "Parameters<C>: Eq, MultiProvingContext<C>: Eq"),
+    Hash(bound = "Parameters<C>: Hash, MultiProvingContext<C>: Hash"),
+    PartialEq(bound = "Parameters<C>: PartialEq, MultiProvingContext<C>: PartialEq")
 )]
 pub struct SignerParameters<C>
 where
@@ -404,7 +477,7 @@ where
     pub parameters: Parameters<C>,
 
     /// Proving Context
-    pub proving_context: C::ProvingContextCache,
+    pub proving_context: MultiProvingContext<C>,
 }
 
 impl<C> SignerParameters<C>
@@ -413,20 +486,11 @@ where
 {
     /// Builds a new [`SignerParameters`] from `parameters` and `proving_context`.
     #[inline]
-    pub fn new(parameters: Parameters<C>, proving_context: C::ProvingContextCache) -> Self {
+    pub fn new(parameters: Parameters<C>, proving_context: MultiProvingContext<C>) -> Self {
         Self {
             parameters,
             proving_context,
         }
-    }
-
-    /// Returns the public parameters by reading from the proving context cache.
-    #[inline]
-    pub fn get(
-        &mut self,
-    ) -> Result<(&Parameters<C>, &MultiProvingContext<C>), ProvingContextCacheError<C>> {
-        let reading_key = self.proving_context.aquire()?;
-        Ok((&self.parameters, self.proving_context.read(reading_key)))
     }
 
     /// Converts `keypair` into a [`ReceivingKey`] by using the key-agreement scheme to derive the
@@ -528,7 +592,7 @@ where
         encrypted_note: EncryptedNote<C>,
         void_numbers: &mut Vec<VoidNumber<C>>,
         deposit: &mut Vec<Asset>,
-    ) -> Result<(), SyncError> {
+    ) -> Result<(), SyncError<C::Checkpoint>> {
         let mut finder = DecryptedMessage::find(encrypted_note);
         if let Some(ViewKeySelection {
             index,
@@ -603,7 +667,7 @@ where
         inserts: I,
         mut void_numbers: Vec<VoidNumber<C>>,
         is_partial: bool,
-    ) -> Result<SyncResponse, SyncError>
+    ) -> Result<SyncResponse, SyncError<C::Checkpoint>>
     where
         I: Iterator<Item = (Utxo<C>, EncryptedNote<C>)>,
     {
@@ -953,7 +1017,7 @@ where
     #[inline]
     fn new_inner(
         accounts: AccountTable<C>,
-        proving_context: C::ProvingContextCache,
+        proving_context: MultiProvingContext<C>,
         parameters: Parameters<C>,
         utxo_accumulator: C::UtxoAccumulator,
         assets: C::AssetMap,
@@ -982,7 +1046,7 @@ where
     #[inline]
     pub fn new(
         accounts: AccountTable<C>,
-        proving_context: C::ProvingContextCache,
+        proving_context: MultiProvingContext<C>,
         parameters: Parameters<C>,
         utxo_accumulator: C::UtxoAccumulator,
         rng: C::Rng,
@@ -1011,29 +1075,31 @@ where
 
     /// Updates the internal ledger state, returning the new asset distribution.
     #[inline]
-    pub fn sync(&mut self, request: SyncRequest<C>) -> Result<SyncResponse, SyncError> {
+    pub fn sync(
+        &mut self,
+        mut request: SyncRequest<C, C::Checkpoint>,
+    ) -> Result<SyncResponse, SyncError<C::Checkpoint>> {
         // TODO: Do a capacity check on the current UTXO accumulator?
         //
         // if self.utxo_accumulator.capacity() < starting_index {
         //    panic!("full capacity")
         // }
-        //
-        let utxo_accumulator_len = self.state.utxo_accumulator.len();
-        match utxo_accumulator_len.checked_sub(request.starting_index) {
-            Some(diff) => {
-                let result = self.state.sync_with(
-                    &self.parameters.parameters,
-                    request.with_recovery,
-                    request.inserts.into_iter().skip(diff),
-                    request.removes,
-                    diff == 0,
-                );
-                self.state.utxo_accumulator.commit();
-                result
-            }
-            _ => Err(SyncError::InconsistentSynchronization {
-                starting_index: utxo_accumulator_len,
-            }),
+        let checkpoint =
+            C::update_checkpoint(&request.origin_checkpoint, &self.state.utxo_accumulator);
+        if checkpoint < request.origin_checkpoint {
+            Err(SyncError::InconsistentSynchronization { checkpoint })
+        } else {
+            let has_pruned = request.prune(&checkpoint);
+            let SyncData { receivers, senders } = request.data;
+            let result = self.state.sync_with(
+                &self.parameters.parameters,
+                request.with_recovery,
+                receivers.into_iter(),
+                senders,
+                !has_pruned,
+            );
+            self.state.utxo_accumulator.commit();
+            result
         }
     }
 
@@ -1048,30 +1114,28 @@ where
         let change = self
             .state
             .build_receiver(&self.parameters.parameters, asset.id.with(selection.change))?;
-        let (parameters, proving_context) = self
-            .parameters
-            .get()
-            .map_err(|_| SignError::ProvingContextCacheError)?;
         let mut posts = Vec::new();
         let senders = self.state.compute_batched_transactions(
-            parameters,
-            proving_context,
+            &self.parameters.parameters,
+            &self.parameters.proving_context,
             asset.id,
             selection.pre_senders,
             &mut posts,
         )?;
         let final_post = match receiver {
             Some(receiver) => {
-                let receiver = self.state.prepare_receiver(parameters, asset, receiver);
+                let receiver =
+                    self.state
+                        .prepare_receiver(&self.parameters.parameters, asset, receiver);
                 self.state.private_transfer_post(
-                    parameters,
-                    &proving_context.private_transfer,
+                    &self.parameters.parameters,
+                    &self.parameters.proving_context.private_transfer,
                     PrivateTransfer::build(senders, [change, receiver]),
                 )?
             }
             _ => self.state.reclaim_post(
-                parameters,
-                &proving_context.reclaim,
+                &self.parameters.parameters,
+                &self.parameters.proving_context.reclaim,
                 Reclaim::build(senders, [change], asset),
             )?,
         };
@@ -1090,13 +1154,9 @@ where
                 let receiver = self
                     .state
                     .build_receiver(&self.parameters.parameters, asset)?;
-                let (parameters, proving_context) = self
-                    .parameters
-                    .get()
-                    .map_err(|_| SignError::ProvingContextCacheError)?;
                 Ok(SignResponse::new(vec![self.state.mint_post(
-                    parameters,
-                    &proving_context.mint,
+                    &self.parameters.parameters,
+                    &self.parameters.proving_context.mint,
                     Mint::build(asset, receiver),
                 )?]))
             }
@@ -1110,11 +1170,8 @@ where
     /// Signs the `transaction`, generating transfer posts.
     #[inline]
     pub fn sign(&mut self, transaction: Transaction<C>) -> Result<SignResponse<C>, SignError<C>> {
-        // TODO: Should we do a time-based release mechanism to amortize the cost of reading
-        //       from the proving context cache?
         let result = self.sign_internal(transaction);
         self.state.utxo_accumulator.rollback();
-        self.parameters.proving_context.release();
         result
     }
 
@@ -1152,13 +1209,14 @@ impl<C> Connection<C> for Signer<C>
 where
     C: Configuration,
 {
+    type Checkpoint = C::Checkpoint;
     type Error = Infallible;
 
     #[inline]
     fn sync(
         &mut self,
-        request: SyncRequest<C>,
-    ) -> LocalBoxFutureResult<Result<SyncResponse, SyncError>, Self::Error> {
+        request: SyncRequest<C, C::Checkpoint>,
+    ) -> LocalBoxFutureResult<Result<SyncResponse, SyncError<C::Checkpoint>>, Self::Error> {
         Box::pin(async move { Ok(self.sync(request)) })
     }
 

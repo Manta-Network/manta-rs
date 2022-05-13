@@ -218,11 +218,10 @@ macro_rules! impl_sample_from_u32 {
         $(
             impl Sample for $type {
                 #[inline]
-                fn sample<R>(distribution: (), rng: &mut R) -> Self
+                fn sample<R>(_: (), rng: &mut R) -> Self
                 where
                     R: RngCore + ?Sized,
                 {
-                    let _ = distribution;
                     rng.next_u32() as Self
                 }
             }

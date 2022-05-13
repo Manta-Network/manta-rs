@@ -859,21 +859,38 @@ macro_rules! impl_asset_map_for_maps_body {
 
         #[inline]
         fn select(&self, asset: Asset) -> Selection<Self> {
-            // TODO: Use a smarter coin-selection algorithm (max-heap?).
             if asset.is_zero() {
                 return Selection::default();
             }
             let mut sum = Asset::zero(asset.id);
             let mut values = Vec::new();
-            for (key, assets) in self {
-                for item in assets {
-                    if item.value != AssetValue(0) && sum.try_add_assign(*item) {
-                        values.push((key.clone(), item.value));
-                        if sum.value >= asset.value {
-                            break;
-                        }
+            let mut min_max_asset: Option<($k, AssetValue)> = None;
+            let map = self
+                .iter()
+                .map(|(key, assets)| assets.iter().map(move |asset| (key, asset)))
+                .flatten()
+                .filter_map(|(key, item)| {
+                    if !item.is_zero() && item.id == asset.id {
+                        Some((key, item.value))
+                    } else {
+                        None
                     }
+                });
+            for (key, value) in map {
+                if value > asset.value {
+                    min_max_asset = Some(match min_max_asset.take() {
+                        Some(best) if value >= best.1 => best,
+                        _ => (key.clone(), value),
+                    });
+                } else if value == asset.value {
+                    return Selection::new(Default::default(), vec![(key.clone(), value)]);
+                } else {
+                    sum.add_assign(value);
+                    values.push((key.clone(), value));
                 }
+            }
+            if let Some((best_key, best_value)) = min_max_asset {
+                return Selection::new(best_value - asset.value, vec![(best_key, best_value)]);
             }
             if sum.value < asset.value {
                 Selection::default()
