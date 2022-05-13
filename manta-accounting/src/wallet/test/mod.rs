@@ -21,20 +21,20 @@
 
 use crate::{
     asset::{Asset, AssetList},
-    transfer::{self, canonical::Transaction, PublicKey, ReceivingKey},
+    transfer::{self, canonical::Transaction, PublicKey, ReceivingKey, TransferPost},
     wallet::{
         ledger,
-        signer::{self, ReceivingKeyRequest},
+        signer::{self, ReceivingKeyRequest, SyncData},
         BalanceState, Error, Wallet,
     },
 };
-use alloc::{boxed::Box, sync::Arc};
+use alloc::{boxed::Box, sync::Arc, vec::Vec};
 use core::{fmt::Debug, future::Future, hash::Hash, marker::PhantomData};
 use futures::StreamExt;
 use indexmap::IndexSet;
 use manta_crypto::rand::{CryptoRng, RngCore, Sample};
 use manta_util::future::LocalBoxFuture;
-use parking_lot::RwLock;
+use parking_lot::Mutex;
 use rand::{distributions::Distribution, Rng};
 use statrs::{distribution::Categorical, StatsError};
 
@@ -106,12 +106,12 @@ impl Default for ActionDistributionPMF {
     #[inline]
     fn default() -> Self {
         Self {
-            skip: 0,
-            mint: 4,
-            private_transfer: 8,
-            reclaim: 2,
-            generate_public_key: 2,
-            recover: 3,
+            skip: 2,
+            mint: 5,
+            private_transfer: 9,
+            reclaim: 3,
+            generate_public_key: 3,
+            recover: 4,
         }
     }
 }
@@ -183,12 +183,30 @@ pub trait PublicBalanceOracle {
     fn public_balances(&self) -> LocalBoxFuture<Option<AssetList>>;
 }
 
+/// Ledger Alias Trait
+///
+/// This `trait` is used as an alias for the [`Read`](ledger::Read) and [`Write`](ledger::Write)
+/// requirements for the simulation ledger.
+pub trait Ledger<C>:
+    ledger::Read<SyncData<C>> + ledger::Write<Vec<TransferPost<C>>, Response = bool>
+where
+    C: transfer::Configuration,
+{
+}
+
+impl<C, L> Ledger<C> for L
+where
+    C: transfer::Configuration,
+    L: ledger::Read<SyncData<C>> + ledger::Write<Vec<TransferPost<C>>, Response = bool>,
+{
+}
+
 /// Actor
 pub struct Actor<C, L, S>
 where
     C: transfer::Configuration,
-    L: ledger::Connection<C>,
-    S: signer::Connection<C>,
+    L: Ledger<C>,
+    S: signer::Connection<C, Checkpoint = L::Checkpoint>,
 {
     /// Wallet
     pub wallet: Wallet<C, L, S>,
@@ -203,8 +221,8 @@ where
 impl<C, L, S> Actor<C, L, S>
 where
     C: transfer::Configuration,
-    L: ledger::Connection<C>,
-    S: signer::Connection<C>,
+    L: Ledger<C>,
+    S: signer::Connection<C, Checkpoint = L::Checkpoint>,
 {
     /// Builds a new [`Actor`] with `wallet`, `distribution`, and `lifetime`.
     #[inline]
@@ -276,25 +294,25 @@ where
 
 /// Simulation Event
 #[derive(derivative::Derivative)]
-#[derivative(Debug(bound = "L::PushResponse: Debug, Error<C, L, S>: Debug"))]
+#[derivative(Debug(bound = "L::Response: Debug, Error<C, L, S>: Debug"))]
 pub struct Event<C, L, S>
 where
     C: transfer::Configuration,
-    L: ledger::Connection<C>,
-    S: signer::Connection<C>,
+    L: Ledger<C>,
+    S: signer::Connection<C, Checkpoint = L::Checkpoint>,
 {
     /// Action Type
     pub action: ActionType,
 
     /// Action Result
-    pub result: Result<L::PushResponse, Error<C, L, S>>,
+    pub result: Result<L::Response, Error<C, L, S>>,
 }
 
 /// Public Key Database
 pub type PublicKeyDatabase<C> = IndexSet<ReceivingKey<C>>;
 
 /// Shared Public Key Database
-pub type SharedPublicKeyDatabase<C> = Arc<RwLock<PublicKeyDatabase<C>>>;
+pub type SharedPublicKeyDatabase<C> = Arc<Mutex<PublicKeyDatabase<C>>>;
 
 /// Simulation
 #[derive(derivative::Derivative)]
@@ -302,8 +320,8 @@ pub type SharedPublicKeyDatabase<C> = Arc<RwLock<PublicKeyDatabase<C>>>;
 pub struct Simulation<C, L, S>
 where
     C: transfer::Configuration,
-    L: ledger::Connection<C>,
-    S: signer::Connection<C>,
+    L: Ledger<C>,
+    S: signer::Connection<C, Checkpoint = L::Checkpoint>,
     PublicKey<C>: Eq + Hash,
 {
     /// Public Key Database
@@ -316,15 +334,15 @@ where
 impl<C, L, S> Simulation<C, L, S>
 where
     C: transfer::Configuration,
-    L: ledger::Connection<C>,
-    S: signer::Connection<C>,
+    L: Ledger<C>,
+    S: signer::Connection<C, Checkpoint = L::Checkpoint>,
     PublicKey<C>: Eq + Hash,
 {
     /// Builds a new [`Simulation`] with a starting set of public `keys`.
     #[inline]
     pub fn new<const N: usize>(keys: [ReceivingKey<C>; N]) -> Self {
         Self {
-            public_keys: Arc::new(RwLock::new(keys.into_iter().collect())),
+            public_keys: Arc::new(Mutex::new(keys.into_iter().collect())),
             __: PhantomData,
         }
     }
@@ -333,8 +351,8 @@ where
 impl<C, L, S> sim::ActionSimulation for Simulation<C, L, S>
 where
     C: transfer::Configuration,
-    L: ledger::Connection<C, PushResponse = bool> + PublicBalanceOracle,
-    S: signer::Connection<C>,
+    L: Ledger<C> + PublicBalanceOracle,
+    S: signer::Connection<C, Checkpoint = L::Checkpoint>,
     PublicKey<C>: Eq + Hash,
 {
     type Actor = Actor<C, L, S>;
@@ -361,7 +379,7 @@ where
                 },
                 ActionType::PrivateTransfer => match actor.sample_withdraw(rng).await {
                     Some(asset) => {
-                        let public_keys = self.public_keys.read();
+                        let public_keys = self.public_keys.lock();
                         let len = public_keys.len();
                         if len == 0 {
                             Action::GeneratePublicKey
@@ -432,7 +450,7 @@ where
                     {
                         Ok(keys) => {
                             for key in keys {
-                                self.public_keys.write().insert(key);
+                                self.public_keys.lock().insert(key);
                             }
                             Ok(true)
                         }
@@ -453,8 +471,8 @@ where
 pub async fn measure_balances<'w, C, L, S, I>(wallets: I) -> Result<AssetList, Error<C, L, S>>
 where
     C: 'w + transfer::Configuration,
-    L: 'w + ledger::Connection<C> + PublicBalanceOracle,
-    S: 'w + signer::Connection<C>,
+    L: 'w + Ledger<C> + PublicBalanceOracle,
+    S: 'w + signer::Connection<C, Checkpoint = L::Checkpoint>,
     I: IntoIterator<Item = &'w mut Wallet<C, L, S>>,
 {
     let mut balances = AssetList::new();
@@ -497,13 +515,13 @@ impl Config {
     ) -> Result<bool, Error<C, L, S>>
     where
         C: transfer::Configuration,
-        L: ledger::Connection<C, PushResponse = bool> + PublicBalanceOracle,
-        S: signer::Connection<C>,
+        L: Ledger<C> + PublicBalanceOracle,
+        S: signer::Connection<C, Checkpoint = L::Checkpoint>,
         R: CryptoRng + RngCore,
         GL: FnMut(usize) -> L,
         GS: FnMut(usize) -> S,
         F: FnMut() -> R,
-        ES: FnMut(&sim::Event<sim::ActionSim<Simulation<C, L, S>>>) -> ESFut,
+        ES: Copy + FnMut(&sim::Event<sim::ActionSim<Simulation<C, L, S>>>) -> ESFut,
         ESFut: Future<Output = ()>,
         Error<C, L, S>: Debug,
         PublicKey<C>: Eq + Hash,
@@ -522,14 +540,12 @@ impl Config {
         let mut simulator = sim::Simulator::new(sim::ActionSim(Simulation::default()), actors);
         let initial_balances =
             measure_balances(simulator.actors.iter_mut().map(|actor| &mut actor.wallet)).await?;
-        let mut events = simulator.run(rng);
-        while let Some(event) = events.next().await {
-            event_subscriber(&event).await;
-            if let Err(err) = event.event.result {
-                return Err(err);
-            }
-        }
-        drop(events);
+        simulator
+            .run(rng)
+            .for_each_concurrent(None, move |event| async move {
+                event_subscriber(&event).await;
+            })
+            .await;
         let final_balances =
             measure_balances(simulator.actors.iter_mut().map(|actor| &mut actor.wallet)).await?;
         Ok(initial_balances == final_balances)

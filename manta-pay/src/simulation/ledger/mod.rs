@@ -37,7 +37,8 @@ use manta_accounting::{
         TransferLedger, TransferLedgerSuperPostingKey, TransferPostingKey, UtxoAccumulatorOutput,
     },
     wallet::{
-        ledger::{self, PullResponse},
+        ledger::{self, ReadResponse},
+        signer::SyncData,
         test::PublicBalanceOracle,
     },
 };
@@ -49,10 +50,7 @@ use manta_crypto::{
         Tree,
     },
 };
-use manta_util::{
-    future::{LocalBoxFuture, LocalBoxFutureResult},
-    Array,
-};
+use manta_util::future::{LocalBoxFuture, LocalBoxFutureResult};
 use std::collections::{HashMap, HashSet};
 use tokio::sync::RwLock;
 
@@ -165,7 +163,7 @@ impl Ledger {
 
     /// Pulls the data from the ledger later than the given `checkpoint`.
     #[inline]
-    pub fn pull(&self, checkpoint: &Checkpoint) -> PullResponse<Config, LedgerConnection> {
+    pub fn pull(&self, checkpoint: &Checkpoint) -> ReadResponse<Checkpoint, SyncData<Config>> {
         let mut receivers = Vec::new();
         for (i, mut index) in checkpoint.receiver_index.iter().copied().enumerate() {
             let shard = &self.shards[&MerkleForestIndex::from_index(i)];
@@ -180,21 +178,18 @@ impl Ledger {
             .skip(checkpoint.sender_index)
             .copied()
             .collect();
-        PullResponse {
+        ReadResponse {
             should_continue: false,
-            checkpoint: Checkpoint::new(
-                Array::from_unchecked(
-                    self.utxo_forest
-                        .forest
-                        .as_ref()
-                        .iter()
-                        .map(move |t| t.len())
-                        .collect::<Vec<_>>(),
-                ),
+            next_checkpoint: Checkpoint::new(
+                self.utxo_forest
+                    .forest
+                    .as_ref()
+                    .iter()
+                    .map(move |t| t.len())
+                    .collect(),
                 self.void_numbers.len(),
             ),
-            receivers,
-            senders,
+            data: SyncData { receivers, senders },
         }
     }
 
@@ -439,29 +434,31 @@ impl LedgerConnection {
     }
 }
 
-impl ledger::PullConfiguration<Config> for LedgerConnection {
-    type Checkpoint = Checkpoint;
-    type ReceiverChunk = Vec<(Utxo, EncryptedNote)>;
-    type SenderChunk = Vec<VoidNumber>;
+impl ledger::Connection for LedgerConnection {
+    type Error = Infallible;
 }
 
-impl ledger::Connection<Config> for LedgerConnection {
-    type PushResponse = bool;
-    type Error = Infallible;
+impl ledger::Read<SyncData<Config>> for LedgerConnection {
+    type Checkpoint = Checkpoint;
 
     #[inline]
-    fn pull<'s>(
+    fn read<'s>(
         &'s mut self,
         checkpoint: &'s Self::Checkpoint,
-    ) -> LocalBoxFutureResult<'s, PullResponse<Config, Self>, Self::Error> {
+    ) -> LocalBoxFutureResult<'s, ReadResponse<Self::Checkpoint, SyncData<Config>>, Self::Error>
+    {
         Box::pin(async move { Ok(self.ledger.read().await.pull(checkpoint)) })
     }
+}
+
+impl ledger::Write<Vec<TransferPost>> for LedgerConnection {
+    type Response = bool;
 
     #[inline]
-    fn push(
+    fn write(
         &mut self,
         posts: Vec<TransferPost>,
-    ) -> LocalBoxFutureResult<Self::PushResponse, Self::Error> {
+    ) -> LocalBoxFutureResult<Self::Response, Self::Error> {
         Box::pin(async move { Ok(self.ledger.write().await.push(self.account, posts)) })
     }
 }
