@@ -1871,7 +1871,8 @@ where
             asset_id: self.asset_id,
             sources: self.sources.into(),
             sender_posts: self.senders.into_iter().map(Sender::into_post).collect(),
-            receiver_posts: self.receivers
+            receiver_posts: self
+                .receivers
                 .into_iter()
                 .map(Receiver::into_post)
                 .collect(),

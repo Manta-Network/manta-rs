@@ -2,6 +2,7 @@ import { Context, Proof, prove_mint, prove_private_transfer, prove_reclaim, veri
 
 const pre = document.getElementById("wasm-prover");
 
+const REPEAT = 5;
 
 // Computes the median of an array
 const median = arr => {
@@ -11,9 +12,8 @@ const median = arr => {
   };
 
 function bench_construct_context() {
-  const repeat = 5;
   const perf = Array.from(
-      {length: repeat},
+      {length: REPEAT},
       (_, i) => {
         const t0 = performance.now();
         const context = new Context();
@@ -26,11 +26,10 @@ function bench_construct_context() {
 }
 
 function bench_prove_mint() {
-  const repeat = 5;
+  const context = new Context();
   const perf = Array.from(
-      {length: repeat},
+      {length: REPEAT},
       (_, i) => {
-        const context = new Context();
         const t0 = performance.now();
         prove_mint(context);
         const t1 = performance.now();
@@ -42,12 +41,11 @@ function bench_prove_mint() {
 }
 
 function bench_verify_mint() {
-  const repeat = 5;
+  const context = new Context();
+  const proof = prove_mint(context);
   const perf = Array.from(
-      {length: repeat},
+      {length: REPEAT},
       (_, i) => {
-        const context = new Context();
-        const proof = prove_mint(context);
         const t0 = performance.now();
         verify_mint(context, proof);
         const t1 = performance.now();
@@ -59,11 +57,10 @@ function bench_verify_mint() {
 }
 
 function bench_prove_private_transfer() {
-  const repeat = 5;
+  const context = new Context();
   const perf = Array.from(
-      {length: repeat},
+      {length: REPEAT},
       (_, i) => {
-        const context = new Context();
         const t0 = performance.now();
         prove_private_transfer(context);
         const t1 = performance.now();
@@ -75,12 +72,11 @@ function bench_prove_private_transfer() {
 }
 
 function bench_verify_private_transfer() {
-  const repeat = 5;
+  const context = new Context();
+  const proof = prove_private_transfer(context);
   const perf = Array.from(
-      {length: repeat},
+      {length: REPEAT},
       (_, i) => {
-        const context = new Context();
-        const proof = prove_private_transfer(context);
         const t0 = performance.now();
         verify_private_transfer(context, proof);
         const t1 = performance.now();
@@ -92,11 +88,10 @@ function bench_verify_private_transfer() {
 }
 
 function bench_prove_reclaim() {
-  const repeat = 5;
+  const context = new Context();
   const perf = Array.from(
-      {length: repeat},
+      {length: REPEAT},
       (_, i) => {
-        const context = new Context();
         const t0 = performance.now();
         prove_reclaim(context);
         const t1 = performance.now();
@@ -108,12 +103,11 @@ function bench_prove_reclaim() {
 }
 
 function bench_verify_reclaim() {
-  const repeat = 5;
+  const context = new Context();
+  const proof = prove_reclaim(context);
   const perf = Array.from(
-      {length: repeat},
+      {length: REPEAT},
       (_, i) => {
-        const context = new Context();
-        const proof = prove_reclaim(context);
         const t0 = performance.now();
         verify_reclaim(context, proof);
         const t1 = performance.now();
@@ -125,22 +119,22 @@ function bench_verify_reclaim() {
 }
 
 // benchmarks time for constructing context
-// pre.textContent = bench_construct_context();
+pre.textContent = bench_construct_context();
 
 // benchmarks proof time for mint
-pre.textContent = bench_prove_mint();
+pre.textContent += bench_prove_mint();
 
-// // benchmarks verification time for mint
-// pre.textContent = bench_verify_mint();
+// benchmarks verification time for mint
+pre.textContent += bench_verify_mint();
 
-// // benchmarks proof time for private transfer
-// pre.textContent = bench_prove_private_transfer();
+// benchmarks proof time for private transfer
+pre.textContent += bench_prove_private_transfer();
 
-// // benchmarks verification time for priivate transfer
-// pre.textContent = bench_verify_private_transfer();
+// benchmarks verification time for priivate transfer
+pre.textContent += bench_verify_private_transfer();
 
-// // benchmarks proof time for reclaim
-// pre.textContent = bench_prove_reclaim();
+// benchmarks proof time for reclaim
+pre.textContent += bench_prove_reclaim();
 
-// // benchmarks verification time for reclaim
-// pre.textContent = bench_verify_reclaim();
+// benchmarks verification time for reclaim
+pre.textContent += bench_verify_reclaim();

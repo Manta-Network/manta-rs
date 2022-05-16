@@ -49,11 +49,17 @@ impl Context {
     }
 }
 
+impl Default for Context {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[wasm_bindgen]
 pub struct Proof(TransferPost);
 
 #[wasm_bindgen]
-pub fn prove_mint(context: Context) -> Proof {
+pub fn prove_mint(context: &Context) -> Proof {
     let mut rng = OsRng;
     Proof(payment::prove_mint(
         &context.proving_context.mint,
@@ -65,7 +71,7 @@ pub fn prove_mint(context: Context) -> Proof {
 }
 
 #[wasm_bindgen]
-pub fn prove_private_transfer(context: Context) -> Proof {
+pub fn prove_private_transfer(context: &Context) -> Proof {
     let mut rng = OsRng;
     Proof(payment::prove_private_transfer(
         &context.proving_context,
@@ -76,7 +82,7 @@ pub fn prove_private_transfer(context: Context) -> Proof {
 }
 
 #[wasm_bindgen]
-pub fn prove_reclaim(context: Context) -> Proof {
+pub fn prove_reclaim(context: &Context) -> Proof {
     let mut rng = OsRng;
     Proof(payment::prove_reclaim(
         &context.proving_context,
@@ -87,16 +93,16 @@ pub fn prove_reclaim(context: Context) -> Proof {
 }
 
 #[wasm_bindgen]
-pub fn verify_mint(context: Context, proof: Proof) {
+pub fn verify_mint(context: &Context, proof: &Proof) {
     assert_valid_proof(&context.verifying_context.mint, &proof.0);
 }
 
 #[wasm_bindgen]
-pub fn verify_private_transfer(context: Context, proof: Proof) {
+pub fn verify_private_transfer(context: &Context, proof: &Proof) {
     assert_valid_proof(&context.verifying_context.private_transfer, &proof.0);
 }
 
 #[wasm_bindgen]
-pub fn verify_reclaim(context: Context, proof: Proof) {
+pub fn verify_reclaim(context: &Context, proof: &Proof) {
     assert_valid_proof(&context.verifying_context.reclaim, &proof.0);
 }
