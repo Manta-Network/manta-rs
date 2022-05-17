@@ -32,11 +32,16 @@ use alloc::{boxed::Box, sync::Arc, vec::Vec};
 use core::{fmt::Debug, future::Future, hash::Hash, marker::PhantomData};
 use futures::StreamExt;
 use indexmap::IndexSet;
-use manta_crypto::rand::{CryptoRng, RngCore, Sample};
-use manta_util::future::LocalBoxFuture;
+use manta_crypto::rand::{CryptoRng, Distribution, Rand, RngCore, Sample};
+use manta_util::{future::LocalBoxFuture, vec::VecExt};
 use parking_lot::Mutex;
-use rand::{distributions::Distribution, Rng};
-use statrs::{distribution::Categorical, StatsError};
+use statrs::{
+    distribution::{Categorical, Poisson},
+    StatsError,
+};
+
+#[cfg(feature = "serde")]
+use manta_util::serde::{Deserialize, Serialize};
 
 pub mod sim;
 
@@ -51,15 +56,22 @@ where
     /// Post Transaction Data
     Post {
         /// Flag set to `true` whenever the `transaction` only rebalanaces internal assets without
-        /// sending them out to another agent.
+        /// sending them out to another agent. If this state is unknown, `false` should be chosen.
         is_self: bool,
+
+        /// Flag set to `true` whenever the `transaction` moves all assets in or out of the private
+        /// balance entirely. If this state is unknown, `false` should be chosen.
+        is_maximal: bool,
 
         /// Transaction Data
         transaction: Transaction<C>,
     },
 
-    /// Generate Receiving Key
-    GenerateReceivingKey,
+    /// Generate Receiving Keys
+    GenerateReceivingKeys {
+        /// Number of Keys to Generate
+        count: usize,
+    },
 
     /// Recover Wallet
     Recover,
@@ -69,54 +81,71 @@ impl<C> Action<C>
 where
     C: transfer::Configuration,
 {
-    ///
+    /// Generates a [`Post`](Self::Post) on `transaction` self-pointed if `is_self` is `true` and
+    /// maximal if `is_maximal` is `true`.
     #[inline]
-    pub fn post(is_self: bool, transaction: Transaction<C>) -> Self {
+    pub fn post(is_self: bool, is_maximal: bool, transaction: Transaction<C>) -> Self {
         Self::Post {
             is_self,
+            is_maximal,
             transaction,
         }
     }
 
-    ///
+    /// Generates a [`Post`](Self::Post) on `transaction` self-pointed which is maximal if
+    /// `is_maximal` is `true`.
     #[inline]
-    pub fn self_post(transaction: Transaction<C>) -> Self {
-        Self::post(true, transaction)
+    pub fn self_post(is_maximal: bool, transaction: Transaction<C>) -> Self {
+        Self::post(true, is_maximal, transaction)
     }
 
-    ///
+    /// Generates a [`Transaction::Mint`] for `asset`.
     #[inline]
     pub fn mint(asset: Asset) -> Self {
-        Self::self_post(Transaction::Mint(asset))
+        Self::self_post(false, Transaction::Mint(asset))
     }
 
-    ///
+    /// Generates a [`Transaction::PrivateTransfer`] for `asset` to `key` self-pointed if `is_self`
+    /// is `true`.
     #[inline]
     pub fn private_transfer(is_self: bool, asset: Asset, key: ReceivingKey<C>) -> Self {
-        Self::post(is_self, Transaction::PrivateTransfer(asset, key))
+        Self::post(is_self, false, Transaction::PrivateTransfer(asset, key))
     }
 
-    ///
+    /// Generates a [`Transaction::Reclaim`] for `asset` which is maximal if `is_maximal` is `true`.
     #[inline]
-    pub fn reclaim(asset: Asset) -> Self {
-        Self::self_post(Transaction::Reclaim(asset))
+    pub fn reclaim(is_maximal: bool, asset: Asset) -> Self {
+        Self::self_post(is_maximal, Transaction::Reclaim(asset))
     }
 
-    ///
+    /// Computes the [`ActionType`] for a [`Post`](Self::Post) type with the `is_self`,
+    /// `is_maximal`, and `transaction` parameters.
+    #[inline]
+    pub fn as_post_type(
+        is_self: bool,
+        is_maximal: bool,
+        transaction: &Transaction<C>,
+    ) -> ActionType {
+        match (is_self, is_maximal, transaction) {
+            (_, _, Transaction::Mint { .. }) => ActionType::Mint,
+            (true, _, Transaction::PrivateTransfer { .. }) => ActionType::SelfTransfer,
+            (false, _, Transaction::PrivateTransfer { .. }) => ActionType::PrivateTransfer,
+            (_, true, Transaction::Reclaim { .. }) => ActionType::FlushToPublic,
+            (_, false, Transaction::Reclaim { .. }) => ActionType::Reclaim,
+        }
+    }
+
+    /// Converts `self` into its corresponding [`ActionType`].
     #[inline]
     pub fn as_type(&self) -> ActionType {
         match self {
             Self::Skip => ActionType::Skip,
             Self::Post {
                 is_self,
+                is_maximal,
                 transaction,
-            } => match (is_self, transaction) {
-                (_, Transaction::Mint { .. }) => ActionType::Mint,
-                (true, Transaction::PrivateTransfer { .. }) => ActionType::SelfTransfer,
-                (false, Transaction::PrivateTransfer { .. }) => ActionType::PrivateTransfer,
-                (_, Transaction::Reclaim { .. }) => ActionType::Reclaim,
-            },
-            Self::GenerateReceivingKey => ActionType::GenerateReceivingKey,
+            } => Self::as_post_type(*is_self, *is_maximal, transaction),
+            Self::GenerateReceivingKeys { .. } => ActionType::GenerateReceivingKeys,
             Self::Recover => ActionType::Recover,
         }
     }
@@ -132,10 +161,10 @@ pub struct ActionLabelled<T> {
     pub value: T,
 }
 
-///
+/// [ActionLabelled`] Error Type
 pub type ActionLabelledError<C, L, S> = ActionLabelled<Error<C, L, S>>;
 
-/// Possible [`Action`] or an [`Error`] Variant
+/// Possible [`Action`] or an [`ActionLabelledError`] Variant
 pub type MaybeAction<C, L, S> = Result<Action<C>, ActionLabelledError<C, L, S>>;
 
 /// Action Types
@@ -156,15 +185,18 @@ pub enum ActionType {
     /// Self Private Transfer Action
     SelfTransfer,
 
-    /// Generate Receiving Key Action
-    GenerateReceivingKey,
+    /// Flush-to-Public Transfer Action
+    FlushToPublic,
+
+    /// Generate Receiving Keys Action
+    GenerateReceivingKeys,
 
     /// Recover Wallet Action
     Recover,
 }
 
 impl ActionType {
-    ///
+    /// Generates an [`ActionLabelled`] type over `value` with `self` as the [`ActionType`].
     #[inline]
     pub fn label<T>(self, value: T) -> ActionLabelled<T> {
         ActionLabelled {
@@ -175,6 +207,11 @@ impl ActionType {
 }
 
 /// Action Distribution Probability Mass Function
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct ActionDistributionPMF<T = u64> {
     /// No Action Weight
@@ -192,10 +229,13 @@ pub struct ActionDistributionPMF<T = u64> {
     /// Self Private Transfer Action Weight
     pub self_transfer: T,
 
-    /// Generate Public Key Weight
-    pub generate_public_key: T,
+    /// Flush-to-Public Transfer Action Weight
+    pub flush_to_public: T,
 
-    /// Recover Wallet Weight
+    /// Generate Receiving Keys Action Weight
+    pub generate_receiving_keys: T,
+
+    /// Recover Wallet Action Weight
     pub recover: T,
 }
 
@@ -208,7 +248,8 @@ impl Default for ActionDistributionPMF {
             private_transfer: 9,
             reclaim: 3,
             self_transfer: 2,
-            generate_public_key: 3,
+            flush_to_public: 1,
+            generate_receiving_keys: 3,
             recover: 4,
         }
     }
@@ -241,7 +282,8 @@ impl TryFrom<ActionDistributionPMF> for ActionDistribution {
                 pmf.private_transfer as f64,
                 pmf.reclaim as f64,
                 pmf.self_transfer as f64,
-                pmf.generate_public_key as f64,
+                pmf.flush_to_public as f64,
+                pmf.generate_receiving_keys as f64,
                 pmf.recover as f64,
             ])?,
         })
@@ -260,8 +302,9 @@ impl Distribution<ActionType> for ActionDistribution {
             2 => ActionType::PrivateTransfer,
             3 => ActionType::Reclaim,
             4 => ActionType::SelfTransfer,
-            5 => ActionType::GenerateReceivingKey,
-            6 => ActionType::Recover,
+            5 => ActionType::FlushToPublic,
+            6 => ActionType::GenerateReceivingKeys,
+            7 => ActionType::Recover,
             _ => unreachable!(),
         }
     }
@@ -343,16 +386,14 @@ where
 
     /// Returns the default receiving key for `self`.
     #[inline]
-    async fn default_receiving_key(&self) -> Result<ReceivingKey<C>, Error<C, L, S>> {
-        /*
-        Ok(self
-            .wallet
+    async fn default_receiving_key(&mut self) -> Result<ReceivingKey<C>, Error<C, L, S>> {
+        self.wallet
             .receiving_keys(ReceivingKeyRequest::Get {
                 index: Default::default(),
             })
-            .await?[0])
-        */
-        todo!()
+            .await
+            .map_err(Error::SignerConnectionError)
+            .map(Vec::take_first)
     }
 
     /// Samples a deposit from `self` using `rng` returning `None` if no deposit is possible.
@@ -367,15 +408,10 @@ where
             Some(assets) => assets,
             _ => return Ok(None),
         };
-        let len = assets.len();
-        if len == 0 {
-            return Ok(None);
+        match rng.select_item(assets) {
+            Some(asset) => Ok(Some(asset.id.value(rng.gen_range(0..asset.value.0)))),
+            _ => Ok(None),
         }
-        let asset = assets
-            .iter()
-            .nth(rng.gen_range(0..len))
-            .expect("We query the length first so we can skip this bounds check.");
-        Ok(Some(asset.id.value(rng.gen_range(0..asset.value.0))))
     }
 
     /// Samples a withdraw from `self` using `rng` returning `None` if no withdrawal is possible.
@@ -391,18 +427,17 @@ where
     {
         self.wallet.sync().await?;
         let assets = self.wallet.assets();
-        let len = assets.len();
-        if len == 0 {
-            return Ok(None);
+        match rng.select_item(assets) {
+            Some((id, value)) => Ok(Some(id.value(rng.gen_range(0..value.0)))),
+            _ => Ok(None),
         }
-        let (asset_id, asset_value) = assets
-            .iter()
-            .nth(rng.gen_range(0..len))
-            .expect("We query the length first so we can skip this bounds check.");
-        Ok(Some(asset_id.value(rng.gen_range(0..asset_value.0))))
     }
 
+    /// Samples a [`Post::Mint`] against `self` using `rng`, returning a [`Skip`] if [`Post::Mint`]
+    /// is impossible.
     ///
+    /// [`Post::Mint`]: Action::Post::Mint
+    /// [`Skip`]: Action::Skip
     #[inline]
     async fn sample_mint<R>(&mut self, rng: &mut R) -> MaybeAction<C, L, S>
     where
@@ -416,7 +451,13 @@ where
         }
     }
 
+    /// Samples a [`Post::PrivateTransfer`] against `self` using `rng`, returning a [`Post::Mint`]
+    /// if [`Post::PrivateTransfer`] is impossible and then a [`Skip`] if the [`Post::Mint`] is
+    /// impossible.
     ///
+    /// [`Post::PrivateTransfer`]: Action::Post::PrivateTransfer
+    /// [`Post::Mint`]: Action::Post::Mint
+    /// [`Skip`]: Action::Skip
     #[inline]
     async fn sample_private_transfer<K, R>(
         &mut self,
@@ -437,7 +478,7 @@ where
         match self.sample_withdraw(rng).await {
             Ok(Some(asset)) => match key(rng) {
                 Ok(Some(key)) => Ok(Action::private_transfer(is_self, asset, key)),
-                Ok(_) => Ok(Action::GenerateReceivingKey),
+                Ok(_) => Ok(Action::GenerateReceivingKeys { count: 1 }),
                 Err(err) => Err(action.label(err)),
             },
             Ok(_) => self.sample_mint(rng).await,
@@ -445,7 +486,11 @@ where
         }
     }
 
+    /// Samples a [`Post::Reclaim`] against `self` using `rng`, returning a [`Skip`] if
+    /// [`Post::Reclaim`] is impossible.
     ///
+    /// [`Post::Reclaim`]: Action::Post::Reclaim
+    /// [`Skip`]: Action::Skip
     #[inline]
     async fn sample_reclaim<R>(&mut self, rng: &mut R) -> MaybeAction<C, L, S>
     where
@@ -453,9 +498,26 @@ where
         R: CryptoRng + RngCore + ?Sized,
     {
         match self.sample_withdraw(rng).await {
-            Ok(Some(asset)) => Ok(Action::reclaim(asset)),
+            Ok(Some(asset)) => Ok(Action::reclaim(false, asset)),
             Ok(_) => self.sample_mint(rng).await,
             Err(err) => Err(ActionType::Reclaim.label(err)),
+        }
+    }
+
+    /// Reclaims all of the private balance of a random [`AssetId`] to public balance or [`Skip`] if
+    /// the private balance is empty.
+    #[inline]
+    async fn flush_to_public<R>(&mut self, rng: &mut R) -> MaybeAction<C, L, S>
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        self.wallet
+            .sync()
+            .await
+            .map_err(|err| ActionType::FlushToPublic.label(err))?;
+        match rng.select_item(self.wallet.assets()) {
+            Some((id, value)) => Ok(Action::reclaim(true, id.with(*value))),
+            _ => Ok(Action::Skip),
         }
     }
 
@@ -569,7 +631,13 @@ where
                         .sample_private_transfer(true, rng, |_| key.map(Some))
                         .await
                 }
-                ActionType::GenerateReceivingKey => Ok(Action::GenerateReceivingKey),
+                ActionType::FlushToPublic => actor.flush_to_public(rng).await,
+                ActionType::GenerateReceivingKeys => Ok(Action::GenerateReceivingKeys {
+                    count: Poisson::new(1.0)
+                        .expect("The Poisson parameter is greater than zero.")
+                        .sample(rng)
+                        .ceil() as usize,
+                }),
                 ActionType::Recover => Ok(Action::Recover),
             })
         })
@@ -590,45 +658,33 @@ where
                     },
                     Action::Post {
                         is_self,
+                        is_maximal,
                         transaction,
                     } => {
-                        let action = match &transaction {
-                            Transaction::Mint(_) => ActionType::Mint,
-                            Transaction::PrivateTransfer(_, _) => {
-                                if is_self {
-                                    ActionType::SelfTransfer
-                                } else {
-                                    ActionType::PrivateTransfer
-                                }
-                            }
-                            Transaction::Reclaim(_) => ActionType::Reclaim,
-                        };
+                        let action = Action::as_post_type(is_self, is_maximal, &transaction);
                         let mut retries = 5; // TODO: Make this parameter tunable based on concurrency.
                         loop {
-                            let result = actor.wallet.post(transaction.clone(), None).await;
-                            if let Ok(false) = result {
+                            let event = Event {
+                                action,
+                                value: actor.wallet.post(transaction.clone(), None).await,
+                            };
+                            if let Ok(false) = event.value {
                                 if retries == 0 {
-                                    break Event {
-                                        action,
-                                        value: result,
-                                    };
+                                    break event;
                                 } else {
                                     retries -= 1;
                                     continue;
                                 }
                             } else {
-                                break Event {
-                                    action,
-                                    value: result,
-                                };
+                                break event;
                             }
                         }
                     }
-                    Action::GenerateReceivingKey => Event {
-                        action: ActionType::GenerateReceivingKey,
+                    Action::GenerateReceivingKeys { count } => Event {
+                        action: ActionType::GenerateReceivingKeys,
                         value: match actor
                             .wallet
-                            .receiving_keys(ReceivingKeyRequest::New { count: 1 })
+                            .receiving_keys(ReceivingKeyRequest::New { count })
                             .await
                         {
                             Ok(keys) => {
