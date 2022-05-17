@@ -126,12 +126,17 @@ where
         is_maximal: bool,
         transaction: &Transaction<C>,
     ) -> ActionType {
-        match (is_self, is_maximal, transaction) {
-            (_, _, Transaction::Mint { .. }) => ActionType::Mint,
-            (true, _, Transaction::PrivateTransfer { .. }) => ActionType::SelfTransfer,
-            (false, _, Transaction::PrivateTransfer { .. }) => ActionType::PrivateTransfer,
-            (_, true, Transaction::Reclaim { .. }) => ActionType::FlushToPublic,
-            (_, false, Transaction::Reclaim { .. }) => ActionType::Reclaim,
+        use Transaction::*;
+        match (is_self, is_maximal, transaction.is_zero(), transaction) {
+            (_, _, true, Mint { .. }) => ActionType::MintZero,
+            (_, _, false, Mint { .. }) => ActionType::Mint,
+            (true, _, true, PrivateTransfer { .. }) => ActionType::SelfTransferZero,
+            (true, _, false, PrivateTransfer { .. }) => ActionType::SelfTransfer,
+            (false, _, true, PrivateTransfer { .. }) => ActionType::PrivateTransferZero,
+            (false, _, false, PrivateTransfer { .. }) => ActionType::PrivateTransfer,
+            (_, true, _, Reclaim { .. }) => ActionType::FlushToPublic,
+            (_, false, true, Reclaim { .. }) => ActionType::ReclaimZero,
+            (_, false, false, Reclaim { .. }) => ActionType::Reclaim,
         }
     }
 
@@ -176,14 +181,26 @@ pub enum ActionType {
     /// Mint Action
     Mint,
 
+    /// Mint Zero Action
+    MintZero,
+
     /// Private Transfer Action
     PrivateTransfer,
+
+    /// Private Transfer Zero Action
+    PrivateTransferZero,
 
     /// Reclaim Action
     Reclaim,
 
+    /// Reclaim Zero Action
+    ReclaimZero,
+
     /// Self Private Transfer Action
     SelfTransfer,
+
+    /// Self Private Transfer Zero Action
+    SelfTransferZero,
 
     /// Flush-to-Public Transfer Action
     FlushToPublic,
@@ -220,14 +237,26 @@ pub struct ActionDistributionPMF<T = u64> {
     /// Mint Action Weight
     pub mint: T,
 
+    /// Mint Zero Action Weight
+    pub mint_zero: T,
+
     /// Private Transfer Action Weight
     pub private_transfer: T,
+
+    /// Private Transfer Zero Action Weight
+    pub private_transfer_zero: T,
 
     /// Reclaim Action Weight
     pub reclaim: T,
 
+    /// Reclaim Action Zero Weight
+    pub reclaim_zero: T,
+
     /// Self Private Transfer Action Weight
     pub self_transfer: T,
+
+    /// Self Private Transfer Zero Action Weight
+    pub self_transfer_zero: T,
 
     /// Flush-to-Public Transfer Action Weight
     pub flush_to_public: T,
@@ -245,9 +274,13 @@ impl Default for ActionDistributionPMF {
         Self {
             skip: 2,
             mint: 5,
+            mint_zero: 1,
             private_transfer: 9,
+            private_transfer_zero: 1,
             reclaim: 3,
+            reclaim_zero: 1,
             self_transfer: 2,
+            self_transfer_zero: 1,
             flush_to_public: 1,
             generate_receiving_keys: 3,
             recover: 4,
@@ -279,9 +312,13 @@ impl TryFrom<ActionDistributionPMF> for ActionDistribution {
             distribution: Categorical::new(&[
                 pmf.skip as f64,
                 pmf.mint as f64,
+                pmf.mint_zero as f64,
                 pmf.private_transfer as f64,
+                pmf.private_transfer_zero as f64,
                 pmf.reclaim as f64,
+                pmf.reclaim_zero as f64,
                 pmf.self_transfer as f64,
+                pmf.self_transfer_zero as f64,
                 pmf.flush_to_public as f64,
                 pmf.generate_receiving_keys as f64,
                 pmf.recover as f64,
@@ -299,12 +336,16 @@ impl Distribution<ActionType> for ActionDistribution {
         match self.distribution.sample(rng) as usize {
             0 => ActionType::Skip,
             1 => ActionType::Mint,
-            2 => ActionType::PrivateTransfer,
-            3 => ActionType::Reclaim,
-            4 => ActionType::SelfTransfer,
-            5 => ActionType::FlushToPublic,
-            6 => ActionType::GenerateReceivingKeys,
-            7 => ActionType::Recover,
+            2 => ActionType::MintZero,
+            3 => ActionType::PrivateTransfer,
+            4 => ActionType::PrivateTransferZero,
+            5 => ActionType::Reclaim,
+            6 => ActionType::ReclaimZero,
+            7 => ActionType::SelfTransfer,
+            8 => ActionType::SelfTransferZero,
+            9 => ActionType::FlushToPublic,
+            10 => ActionType::GenerateReceivingKeys,
+            11 => ActionType::Recover,
             _ => unreachable!(),
         }
     }
@@ -396,6 +437,22 @@ where
             .map(Vec::take_first)
     }
 
+    /// Returns the latest public balances from the ledger.
+    #[inline]
+    async fn public_balances(&mut self) -> Result<Option<AssetList>, Error<C, L, S>>
+    where
+        L: PublicBalanceOracle,
+    {
+        self.wallet.sync().await?;
+        Ok(self.wallet.ledger().public_balances().await)
+    }
+
+    /// Synchronizes with the ledger, attaching the `action` marker for the possible error branch.
+    #[inline]
+    async fn sync_with(&mut self, action: ActionType) -> Result<(), ActionLabelledError<C, L, S>> {
+        self.wallet.sync().await.map_err(|err| action.label(err))
+    }
+
     /// Samples a deposit from `self` using `rng` returning `None` if no deposit is possible.
     #[inline]
     async fn sample_deposit<R>(&mut self, rng: &mut R) -> Result<Option<Asset>, Error<C, L, S>>
@@ -403,13 +460,12 @@ where
         L: PublicBalanceOracle,
         R: CryptoRng + RngCore + ?Sized,
     {
-        self.wallet.sync().await?;
-        let assets = match self.wallet.ledger().public_balances().await {
+        let assets = match self.public_balances().await? {
             Some(assets) => assets,
             _ => return Ok(None),
         };
         match rng.select_item(assets) {
-            Some(asset) => Ok(Some(asset.id.value(rng.gen_range(0..asset.value.0)))),
+            Some(asset) => Ok(Some(asset.id.sample_up_to(asset.value, rng))),
             _ => Ok(None),
         }
     }
@@ -426,11 +482,25 @@ where
         R: CryptoRng + RngCore + ?Sized,
     {
         self.wallet.sync().await?;
-        let assets = self.wallet.assets();
-        match rng.select_item(assets) {
-            Some((id, value)) => Ok(Some(id.value(rng.gen_range(0..value.0)))),
+        match rng.select_item(self.wallet.assets()) {
+            Some((id, value)) => Ok(Some(id.sample_up_to(*value, rng))),
             _ => Ok(None),
         }
+    }
+
+    #[inline]
+    async fn sample_asset<R>(
+        &mut self,
+        action: ActionType,
+        rng: &mut R,
+    ) -> Result<Option<Asset>, ActionLabelledError<C, L, S>>
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        self.sync_with(action).await?;
+        Ok(rng
+            .select_item(self.wallet.assets())
+            .map(|(id, value)| Asset::new(*id, *value)))
     }
 
     /// Samples a [`Post::Mint`] against `self` using `rng`, returning a [`Skip`] if [`Post::Mint`]
@@ -448,6 +518,24 @@ where
             Ok(Some(asset)) => Ok(Action::mint(asset)),
             Ok(_) => Ok(Action::Skip),
             Err(err) => Err(ActionType::Mint.label(err)),
+        }
+    }
+
+    /// Samples a [`Post::MintZero`] against `self` using `rng` to select the [`AssetId`], returning
+    /// a [`Skip`] if [`Post::MintZero`] is impossible.
+    #[inline]
+    async fn sample_zero_mint<R>(&mut self, rng: &mut R) -> MaybeAction<C, L, S>
+    where
+        L: PublicBalanceOracle,
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        match self.public_balances().await {
+            Ok(Some(assets)) => match rng.select_item(assets) {
+                Some(asset) => Ok(Action::mint(asset.id.value(0))),
+                _ => Ok(Action::Skip),
+            },
+            Ok(_) => Ok(Action::Skip),
+            Err(err) => Err(ActionType::MintZero.label(err)),
         }
     }
 
@@ -486,6 +574,44 @@ where
         }
     }
 
+    /// Samples a [`Post::PrivateTransferZero`] against `self` using an `rng`, returning a
+    /// [`Post::Mint`] if [`Post::PrivateTransfer`] is impossible and then a [`Skip`] if the
+    /// [`Post::Mint`] is impossible.
+    ///
+    /// [`Post::PrivateTransferZero`]: Action::Post::PrivateTransferZero
+    /// [`Post::PrivateTransfer`]: Action::Post::PrivateTransfer
+    /// [`Post::Mint`]: Action::Post::Mint
+    /// [`Skip`]: Action::Skip
+    #[inline]
+    async fn sample_zero_private_transfer<K, R>(
+        &mut self,
+        is_self: bool,
+        rng: &mut R,
+        key: K,
+    ) -> MaybeAction<C, L, S>
+    where
+        L: PublicBalanceOracle,
+        R: CryptoRng + RngCore + ?Sized,
+        K: FnOnce(&mut R) -> Result<Option<ReceivingKey<C>>, Error<C, L, S>>,
+    {
+        // FIXME: Implement a better faster way it's much starting v2.
+        //
+        let action = if is_self {
+            ActionType::SelfTransfer
+        } else {
+            ActionType::PrivateTransfer
+        };
+        match self.sample_withdraw(rng).await {
+            Ok(Some(asset)) => match key(rng) {
+                Ok(Some(key)) => Ok(Action::private_transfer(is_self, asset.id.value(0), key)),
+                Ok(_) => Ok(Action::GenerateReceivingKeys { count: 1 }),
+                Err(err) => Err(action.label(err)),
+            },
+            Ok(_) => Ok(self.sample_zero_mint(rng).await?),
+            Err(err) => Err(action.label(err)),
+        }
+    }
+
     /// Samples a [`Post::Reclaim`] against `self` using `rng`, returning a [`Skip`] if
     /// [`Post::Reclaim`] is impossible.
     ///
@@ -504,6 +630,23 @@ where
         }
     }
 
+    /// Samples a [`Post::ReclaimZero`] against `self` using `rng`, returning a [`Skip`] if
+    /// [`Post::ReclaimZero`] is impossible.
+    ///
+    /// [`Post::ReclaimZero`]: Action::Post::ReclaimZero
+    /// [`Skip`]: Action::Skip
+    #[inline]
+    async fn sample_zero_reclaim<R>(&mut self, rng: &mut R) -> MaybeAction<C, L, S>
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        Ok(self
+            .sample_asset(ActionType::ReclaimZero, rng)
+            .await?
+            .map(|asset| Action::reclaim(false, asset.id.value(0)))
+            .unwrap_or(Action::Skip))
+    }
+
     /// Reclaims all of the private balance of a random [`AssetId`] to public balance or [`Skip`] if
     /// the private balance is empty.
     #[inline]
@@ -511,14 +654,11 @@ where
     where
         R: CryptoRng + RngCore + ?Sized,
     {
-        self.wallet
-            .sync()
-            .await
-            .map_err(|err| ActionType::FlushToPublic.label(err))?;
-        match rng.select_item(self.wallet.assets()) {
-            Some((id, value)) => Ok(Action::reclaim(true, id.with(*value))),
-            _ => Ok(Action::Skip),
-        }
+        Ok(self
+            .sample_asset(ActionType::FlushToPublic, rng)
+            .await?
+            .map(|asset| Action::reclaim(true, asset))
+            .unwrap_or(Action::Skip))
     }
 
     /// Computes the current balance state of the wallet, performs a full recovery, and then
@@ -583,11 +723,8 @@ where
     where
         R: CryptoRng + RngCore + ?Sized,
     {
-        let receiving_keys = self.receiving_keys.lock();
-        match receiving_keys.len() {
-            0 => None,
-            n => Some(receiving_keys[rng.gen_range(0..n)].clone()),
-        }
+        rng.select_item(self.receiving_keys.lock().iter())
+            .map(Clone::clone)
     }
 }
 
@@ -617,6 +754,7 @@ where
             Some(match action {
                 ActionType::Skip => Ok(Action::Skip),
                 ActionType::Mint => actor.sample_mint(rng).await,
+                ActionType::MintZero => actor.sample_zero_mint(rng).await,
                 ActionType::PrivateTransfer => {
                     actor
                         .sample_private_transfer(false, rng, |rng| {
@@ -624,11 +762,25 @@ where
                         })
                         .await
                 }
+                ActionType::PrivateTransferZero => {
+                    actor
+                        .sample_zero_private_transfer(false, rng, |rng| {
+                            Ok(self.sample_receiving_key(rng))
+                        })
+                        .await
+                }
                 ActionType::Reclaim => actor.sample_reclaim(rng).await,
+                ActionType::ReclaimZero => actor.sample_zero_reclaim(rng).await,
                 ActionType::SelfTransfer => {
                     let key = actor.default_receiving_key().await;
                     actor
                         .sample_private_transfer(true, rng, |_| key.map(Some))
+                        .await
+                }
+                ActionType::SelfTransferZero => {
+                    let key = actor.default_receiving_key().await;
+                    actor
+                        .sample_zero_private_transfer(true, rng, |_| key.map(Some))
                         .await
                 }
                 ActionType::FlushToPublic => actor.flush_to_public(rng).await,

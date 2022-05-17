@@ -346,6 +346,16 @@ where
         }
     }
 
+    /// Returns `true` if `self` is a [`Transaction`] which transfers zero value.
+    #[inline]
+    pub fn is_zero(&self) -> bool {
+        match self {
+            Self::Mint(asset) => asset.is_zero(),
+            Self::PrivateTransfer(asset, _) => asset.is_zero(),
+            Self::Reclaim(asset) => asset.is_zero(),
+        }
+    }
+
     /// Returns a transaction summary given the asset `metadata`.
     #[inline]
     pub fn display<F>(&self, metadata: &AssetMetadata, f: F) -> String
