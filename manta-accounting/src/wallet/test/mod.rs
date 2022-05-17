@@ -503,11 +503,11 @@ where
             .map(|(id, value)| Asset::new(*id, *value)))
     }
 
-    /// Samples a [`Post::Mint`] against `self` using `rng`, returning a [`Skip`] if [`Post::Mint`]
-    /// is impossible.
+    /// Samples a [`Mint`] against `self` using `rng`, returning a [`Skip`] if [`Mint`] is
+    /// impossible.
     ///
-    /// [`Post::Mint`]: Action::Post::Mint
-    /// [`Skip`]: Action::Skip
+    /// [`Mint`]: ActionType::Mint
+    /// [`Skip`]: ActionType::Skip
     #[inline]
     async fn sample_mint<R>(&mut self, rng: &mut R) -> MaybeAction<C, L, S>
     where
@@ -521,8 +521,12 @@ where
         }
     }
 
-    /// Samples a [`Post::MintZero`] against `self` using `rng` to select the [`AssetId`], returning
-    /// a [`Skip`] if [`Post::MintZero`] is impossible.
+    /// Samples a [`MintZero`] against `self` using `rng` to select the [`AssetId`], returning
+    /// a [`Skip`] if [`MintZero`] is impossible.
+    ///
+    /// [`MintZero`]: ActionType::MintZero
+    /// [`AssetId`]: crate::asset::AssetId
+    /// [`Skip`]: ActionType::Skip
     #[inline]
     async fn sample_zero_mint<R>(&mut self, rng: &mut R) -> MaybeAction<C, L, S>
     where
@@ -539,13 +543,12 @@ where
         }
     }
 
-    /// Samples a [`Post::PrivateTransfer`] against `self` using `rng`, returning a [`Post::Mint`]
-    /// if [`Post::PrivateTransfer`] is impossible and then a [`Skip`] if the [`Post::Mint`] is
-    /// impossible.
+    /// Samples a [`PrivateTransfer`] against `self` using `rng`, returning a [`Mint`] if
+    /// [`PrivateTransfer`] is impossible and then a [`Skip`] if the [`Mint`] is impossible.
     ///
-    /// [`Post::PrivateTransfer`]: Action::Post::PrivateTransfer
-    /// [`Post::Mint`]: Action::Post::Mint
-    /// [`Skip`]: Action::Skip
+    /// [`PrivateTransfer`]: ActionType::PrivateTransfer
+    /// [`Mint`]: ActionType::Mint
+    /// [`Skip`]: ActionType::Skip
     #[inline]
     async fn sample_private_transfer<K, R>(
         &mut self,
@@ -574,14 +577,13 @@ where
         }
     }
 
-    /// Samples a [`Post::PrivateTransferZero`] against `self` using an `rng`, returning a
-    /// [`Post::Mint`] if [`Post::PrivateTransfer`] is impossible and then a [`Skip`] if the
-    /// [`Post::Mint`] is impossible.
+    /// Samples a [`PrivateTransferZero`] against `self` using an `rng`, returning a [`Mint`] if
+    /// [`PrivateTransfer`] is impossible and then a [`Skip`] if the [`Mint`] is impossible.
     ///
-    /// [`Post::PrivateTransferZero`]: Action::Post::PrivateTransferZero
-    /// [`Post::PrivateTransfer`]: Action::Post::PrivateTransfer
-    /// [`Post::Mint`]: Action::Post::Mint
-    /// [`Skip`]: Action::Skip
+    /// [`PrivateTransferZero`]: ActionType::PrivateTransferZero
+    /// [`PrivateTransfer`]: ActionType::PrivateTransfer
+    /// [`Mint`]: ActionType::Mint
+    /// [`Skip`]: ActionType::Skip
     #[inline]
     async fn sample_zero_private_transfer<K, R>(
         &mut self,
@@ -612,11 +614,11 @@ where
         }
     }
 
-    /// Samples a [`Post::Reclaim`] against `self` using `rng`, returning a [`Skip`] if
-    /// [`Post::Reclaim`] is impossible.
+    /// Samples a [`Reclaim`] against `self` using `rng`, returning a [`Skip`] if [`Reclaim`] is
+    /// impossible.
     ///
-    /// [`Post::Reclaim`]: Action::Post::Reclaim
-    /// [`Skip`]: Action::Skip
+    /// [`Reclaim`]: ActionType::Reclaim
+    /// [`Skip`]: ActionType::Skip
     #[inline]
     async fn sample_reclaim<R>(&mut self, rng: &mut R) -> MaybeAction<C, L, S>
     where
@@ -630,11 +632,11 @@ where
         }
     }
 
-    /// Samples a [`Post::ReclaimZero`] against `self` using `rng`, returning a [`Skip`] if
-    /// [`Post::ReclaimZero`] is impossible.
+    /// Samples a [`ReclaimZero`] against `self` using `rng`, returning a [`Skip`] if
+    /// [`ReclaimZero`] is impossible.
     ///
-    /// [`Post::ReclaimZero`]: Action::Post::ReclaimZero
-    /// [`Skip`]: Action::Skip
+    /// [`ReclaimZero`]: ActionType::ReclaimZero
+    /// [`Skip`]: ActionType::Skip
     #[inline]
     async fn sample_zero_reclaim<R>(&mut self, rng: &mut R) -> MaybeAction<C, L, S>
     where
@@ -649,6 +651,9 @@ where
 
     /// Reclaims all of the private balance of a random [`AssetId`] to public balance or [`Skip`] if
     /// the private balance is empty.
+    ///
+    /// [`AssetId`]: crate::asset::AssetId
+    /// [`Skip`]: ActionType::Skip
     #[inline]
     async fn flush_to_public<R>(&mut self, rng: &mut R) -> MaybeAction<C, L, S>
     where
