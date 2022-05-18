@@ -17,10 +17,12 @@
 //! LFSH implementation.
 // adapted from: https://github.com/arkworks-rs/sponge/blob/51d6fc9aac1fa69f44a04839202b5de828584ed8/src/poseidon/grain_lfsr.rs
 
+use crate::crypto::hash::poseidon::{Field, FieldGeneration};
 use alloc::vec::Vec;
 
-use crate::crypto::hash::ParamField;
-
+/// An 80-bit linear feedback shift register, described in 
+/// [GKRRS19](https://eprint.iacr.org/2019/458.pdf) Appendix A. `GrainLFSR` 
+/// is used to generate secure parameter for Poseidon Hash. 
 pub struct GrainLFSR {
     state: [bool; 80],
     prime_num_bits: u64,
@@ -37,7 +39,8 @@ fn append_bits<T: Into<u128>>(state: &mut [bool; 80], head: &mut usize, n: usize
 }
 
 impl GrainLFSR {
-    pub fn new(prime_num_bits: u64, width: usize, r_f: usize, r_p: usize) -> Self {
+    /// Return a new `GrainLFSR` for poseidon parameter generation.
+    pub fn new(prime_num_bits: u64, width: usize, num_full_rounds: usize, num_partial_rounds: usize) -> Self {
         let mut init_sequence = [false; 80];
         let mut head = 0;
         // b0, b1 describes the field
@@ -48,10 +51,10 @@ impl GrainLFSR {
         append_bits(&mut init_sequence, &mut head, 12, prime_num_bits);
         // b18...=b29 describes width
         append_bits(&mut init_sequence, &mut head, 12, width as u16);
-        // b30..=39 describes r_f (num_full_rounds)
-        append_bits(&mut init_sequence, &mut head, 10, r_f as u16);
-        // b40..=49 describes r_p (num_partial_rounds)
-        append_bits(&mut init_sequence, &mut head, 10, r_p as u16);
+        // b30..=39 describes num_full_rounds
+        append_bits(&mut init_sequence, &mut head, 10, num_full_rounds as u16);
+        // b40..=49 describes num_partial_rounds
+        append_bits(&mut init_sequence, &mut head, 10, num_partial_rounds as u16);
         // b50..=79 describes the constant 1
         append_bits(
             &mut init_sequence,
@@ -59,7 +62,7 @@ impl GrainLFSR {
             30,
             0b111111111111111111111111111111u128,
         );
-        let mut res = GrainLFSR {
+        let mut res = Self {
             state: init_sequence,
             prime_num_bits,
             head,
@@ -112,7 +115,7 @@ impl GrainLFSR {
 
     pub fn get_field_elements_rejection_sampling<F>(&mut self, num_elems: usize) -> Vec<F>
     where
-        F: ParamField,
+        F: Field + FieldGeneration,
     {
         assert_eq!(F::MODULUS_BITS as u64, self.prime_num_bits);
 
@@ -137,7 +140,7 @@ impl GrainLFSR {
 
     pub fn get_field_elements_mod_p<F>(&mut self, num_elems: usize) -> Vec<F>
     where
-        F: ParamField,
+        F: Field + FieldGeneration,
     {
         assert_eq!(F::MODULUS_BITS as u64, self.prime_num_bits);
 
@@ -166,7 +169,7 @@ impl GrainLFSR {
 }
 
 #[cfg(test)]
-mod tests {
+mod test {
     use super::GrainLFSR;
     use crate::crypto::constraint::arkworks::Fp;
     use ark_bls12_381::Fr;

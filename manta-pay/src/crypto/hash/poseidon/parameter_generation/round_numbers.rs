@@ -104,7 +104,7 @@ fn round_numbers_are_secure(t: usize, rf: usize, rp: usize) -> bool {
 }
 
 #[cfg(test)]
-mod tests {
+mod test {
     use super::*;
 
     #[test]

@@ -19,20 +19,22 @@
 // TODO: Describe the contract for `Specification`.
 // TODO: Add more methods to the `Specification` trait for optimization.
 
+use crate::crypto::hash::poseidon::{
+    Field,
+    parameter_generation::{mds::MdsMatrices, round_constants::generate_round_constants},
+};
 use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash, iter, mem};
-use manta_crypto::hash::ArrayHashFunction;
+use manta_crypto::{
+    rand::{CryptoRng, RngCore, Sample},
+    hash::ArrayHashFunction,
+};
 use manta_util::codec::{Decode, DecodeError, Encode, Read, Write};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
 
-use manta_crypto::rand::{CryptoRng, RngCore, Sample};
-
-use crate::crypto::hash::{
-    poseidon::parameter_generation::{mds::MdsMatrices, round_constants::generate_round_constants},
-    ParamField,
-};
+use super::FieldGeneration;
 
 /// Poseidon Permutation Specification
 pub trait Specification<COM = ()> {
@@ -40,26 +42,26 @@ pub trait Specification<COM = ()> {
     type Field;
 
     /// Field used as constants
-    type ParameterField: ParamField + Clone + PartialEq + Copy + Debug;
-
-    /// Number of Full Rounds
-    ///
-    /// This is counted twice for the first set of full rounds and then the second set after the
-    /// partial rounds.
-    const FULL_ROUNDS: usize;
+    type ParameterField;
 
     /// Number of Partial Rounds
     const PARTIAL_ROUNDS: usize;
 
-    /// Returns the domain tag. We use different domain_tags different applications so that defending
-    /// against rainbow table attack.
-    fn domain_tag(compiler: &mut COM, arity: usize) -> Self::Field;
+    /// Number of Full Rounds
+    ///
+    /// The total number of full rounds in Poseidon hash, including the first set
+    /// of full rounds and then the second set after the partial rounds.
+    const FULL_ROUNDS: usize;
+
+    /// Returns the domain tag. We use different domain_tags different applications
+    /// so that defending against rainbow table attack.
+    fn domain_tag(arity: usize, compiler: &mut COM) -> Self::Field;
 
     /// Adds two field elements together.
     fn add(lhs: &Self::Field, rhs: &Self::Field, compiler: &mut COM) -> Self::Field;
 
     /// Adds a field element with a constant
-    fn addi(lhs: &Self::Field, rhs: &Self::ParameterField, compiler: &mut COM) -> Self::Field;
+    fn add_const(lhs: &Self::Field, rhs: &Self::ParameterField, compiler: &mut COM) -> Self::Field;
 
     /// Multiplies two field elements together.
     fn mul(lhs: &Self::Field, rhs: &Self::Field, compiler: &mut COM) -> Self::Field;
@@ -71,7 +73,7 @@ pub trait Specification<COM = ()> {
     fn add_assign(lhs: &mut Self::Field, rhs: &Self::Field, compiler: &mut COM);
 
     /// Adds the `rhs` constant to `lhs` field element, storing the value in `lhs`
-    fn addi_assign(lhs: &mut Self::Field, rhs: &Self::ParameterField, compiler: &mut COM);
+    fn add_const_assign(lhs: &mut Self::Field, rhs: &Self::ParameterField, compiler: &mut COM);
 
     /// Applies the S-BOX to `point`.
     fn apply_sbox(point: &mut Self::Field, compiler: &mut COM);
@@ -86,7 +88,7 @@ pub fn rounds<S, COM>() -> usize
 where
     S: Specification<COM>,
 {
-    2 * S::FULL_ROUNDS + S::PARTIAL_ROUNDS
+    S::FULL_ROUNDS + S::PARTIAL_ROUNDS
 }
 
 /// Poseidon Hash
@@ -128,8 +130,18 @@ where
     /// Width of the State Buffer
     pub const WIDTH: usize = ARITY + 1;
 
+    /// Half Number of Full Rounds
+    ///
+    /// Poseidon hash first has [`HALF_FULL_ROUNDS`] full rounds in the beginning,
+    /// followed by [`PARTIAL_ROUNDS`] partial rounds in the middle, and finally
+    /// [`HALF_FULL_ROUNDS`] full rounds at the end.
+    /// 
+    /// [`HALF_FULL_ROUNDS`]: Self::HALF_FULL_ROUNDS
+    /// [`PARTIAL_ROUNDS`]: Specification::PARTIAL_ROUNDS
+    pub const HALF_FULL_ROUNDS: usize = S::FULL_ROUNDS / 2;
+
     /// Total Number of Rounds
-    pub const ROUNDS: usize = 2 * S::FULL_ROUNDS + S::PARTIAL_ROUNDS;
+    pub const ROUNDS: usize = S::FULL_ROUNDS + S::PARTIAL_ROUNDS;
 
     /// Number of Entries in the MDS Matrix
     pub const MDS_MATRIX_SIZE: usize = Self::WIDTH * Self::WIDTH;
@@ -193,7 +205,7 @@ where
                 .iter()
                 .enumerate()
                 .map(|(j, elem)| S::muli(elem, &self.mds_matrix[width * i + j], compiler))
-                .collect::<Vec<_>>(); // NOTE: mds_matrix is constructed to be symmetry so that row-major or col-major representation gives the same output
+                .collect::<Vec<_>>();
             next.push(
                 linear_combination
                     .into_iter()
@@ -208,11 +220,11 @@ where
     #[inline]
     fn first_round(&self, input: [&S::Field; ARITY], compiler: &mut COM) -> State<S, COM> {
         let mut state = Vec::with_capacity(Self::WIDTH);
-        for (i, point) in iter::once(&S::domain_tag(compiler, ARITY))
+        for (i, point) in iter::once(&S::domain_tag(ARITY, compiler))
             .chain(input)
             .enumerate()
         {
-            let mut elem = S::addi(point, &self.additive_round_keys[i], compiler);
+            let mut elem = S::add_const(point, &self.additive_round_keys[i], compiler);
             S::apply_sbox(&mut elem, compiler);
             state.push(elem);
         }
@@ -225,7 +237,7 @@ where
     fn full_round(&self, round: usize, state: &mut State<S, COM>, compiler: &mut COM) {
         let keys = self.additive_keys(round);
         for (i, elem) in state.iter_mut().enumerate() {
-            S::addi_assign(elem, &keys[i], compiler);
+            S::add_const_assign(elem, &keys[i], compiler);
             S::apply_sbox(elem, compiler);
         }
         self.mds_matrix_multiply(state, compiler);
@@ -236,7 +248,7 @@ where
     fn partial_round(&self, round: usize, state: &mut State<S, COM>, compiler: &mut COM) {
         let keys = self.additive_keys(round);
         for (i, elem) in state.iter_mut().enumerate() {
-            S::addi_assign(elem, &keys[i], compiler);
+            S::add_const_assign(elem, &keys[i], compiler);
         }
         S::apply_sbox(&mut state[0], compiler);
         self.mds_matrix_multiply(state, compiler);
@@ -253,14 +265,14 @@ where
     #[inline]
     fn hash_in(&self, input: [&Self::Input; ARITY], compiler: &mut COM) -> Self::Output {
         let mut state = self.first_round(input, compiler);
-        let half_full_round = S::FULL_ROUNDS / 2;
-        for round in 1..half_full_round {
+        for round in 1..Self::HALF_FULL_ROUNDS {
             self.full_round(round, &mut state, compiler);
         }
-        for round in half_full_round..(half_full_round + S::PARTIAL_ROUNDS) {
+        for round in Self::HALF_FULL_ROUNDS..(Self::HALF_FULL_ROUNDS + S::PARTIAL_ROUNDS) {
             self.partial_round(round, &mut state, compiler);
         }
-        for round in (half_full_round + S::PARTIAL_ROUNDS)..(S::FULL_ROUNDS + S::PARTIAL_ROUNDS) {
+        for round in (Self::HALF_FULL_ROUNDS + S::PARTIAL_ROUNDS)..(S::FULL_ROUNDS + S::PARTIAL_ROUNDS)
+        {
             self.full_round(round, &mut state, compiler);
         }
         state.truncate(1);
@@ -272,7 +284,7 @@ impl<D, S, COM, const ARITY: usize> Sample<D> for Hasher<S, COM, ARITY>
 where
     D: Clone,
     S: Specification<COM>,
-    S::ParameterField: Sample<D>,
+    S::ParameterField: Copy + Field + FieldGeneration + PartialEq + Sample<D>,
 {
     /// Samples random Poseidon parameters.
     #[inline]
@@ -353,8 +365,10 @@ pub type Output<S, COM, const ARITY: usize> =
 #[cfg(feature = "arkworks")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "arkworks")))]
 pub mod arkworks {
-    use super::ParamField;
-    use crate::crypto::constraint::arkworks::{Fp, FpVar, R1CS};
+    use crate::crypto::{
+        constraint::arkworks::{Fp, FpVar, R1CS},
+        hash::poseidon::FieldGeneration,
+    };
     use ark_ff::{BigInteger, Field, FpParameters, PrimeField};
     use ark_r1cs_std::{alloc::AllocVar, fields::FieldVar};
     use ark_std::{One, Zero};
@@ -370,8 +384,8 @@ pub mod arkworks {
 
         /// Number of Full Rounds
         ///
-        /// This is counted twice for the first set of full rounds and then the second set after the
-        /// partial rounds.
+        /// The total number of full rounds in Poseidon hash, including the first set
+        /// of full rounds and then the second set after the partial rounds.
         const FULL_ROUNDS: usize;
 
         /// Number of Partial Rounds
@@ -381,57 +395,59 @@ pub mod arkworks {
         const SBOX_EXPONENT: u64;
     }
 
-    impl<Field> ParamField for Fp<Field>
+    impl<F> super::Field for Fp<F>
     where
-        Field: PrimeField,
+        F: PrimeField,
     {
-        const MODULUS_BITS: usize = <Field as PrimeField>::Params::MODULUS_BITS as usize;
-
         fn zero() -> Self {
-            Fp(<Field as Zero>::zero())
+            Self(<F as Zero>::zero())
         }
 
         fn one() -> Self {
-            Fp(<Field as One>::one())
+            Self(<F as One>::one())
         }
 
         fn add(lhs: &Self, rhs: &Self) -> Self {
-            Fp(lhs.0 + rhs.0)
+            Self(lhs.0 + rhs.0)
         }
 
-        fn add_assign(lhs: &mut Self, rhs: &Self) {
-            lhs.0 += rhs.0;
+        fn add_assign(&mut self, rhs: &Self) {
+            self.0 += rhs.0;
         }
 
         fn sub(lhs: &Self, rhs: &Self) -> Self {
-            Fp(lhs.0 - rhs.0)
+            Self(lhs.0 - rhs.0)
         }
 
         fn mul(lhs: &Self, rhs: &Self) -> Self {
-            Fp(lhs.0 * rhs.0)
+            Self(lhs.0 * rhs.0)
         }
 
-        fn eq(lhs: &Self, rhs: &Self) -> bool {
-            lhs.0 == rhs.0
+        fn inverse(&self) -> Option<Self> {
+            Field::inverse(&self.0).map(Self)
         }
 
-        fn inverse(elem: &Self) -> Option<Self> {
-            let m_inverse = Field::inverse(&elem.0);
-            m_inverse.map(Fp)
+        fn eq(&self, rhs: &Self) -> bool {
+            self.0 == rhs.0
         }
+    }
+
+    impl<F> FieldGeneration for Fp<F>
+    where
+        F: PrimeField,
+    {
+        const MODULUS_BITS: usize = F::Params::MODULUS_BITS as usize;
 
         fn try_from_bits_le(bits: &[bool]) -> Option<Self> {
-            let bigint = <Field as PrimeField>::BigInt::from_bits_le(bits);
-            let value = Field::from_repr(bigint);
-            value.map(Fp)
+            F::from_repr(F::BigInt::from_bits_le(bits)).map(Self)
         }
 
         fn from_le_bytes_mod_order(bytes: &[u8]) -> Self {
-            Fp(Field::from_le_bytes_mod_order(bytes))
+            Self(F::from_le_bytes_mod_order(bytes))
         }
 
-        fn from_u64_to_param(elem: u64) -> Self {
-            Fp(Field::from(elem))
+        fn from_u64(elem: u64) -> Self {
+            Self(F::from(elem))
         }
     }
 
@@ -442,11 +458,11 @@ pub mod arkworks {
         type Field = Fp<S::Field>;
         type ParameterField = Fp<S::Field>;
 
-        const FULL_ROUNDS: usize = S::FULL_ROUNDS;
         const PARTIAL_ROUNDS: usize = S::PARTIAL_ROUNDS;
+        const FULL_ROUNDS: usize = S::FULL_ROUNDS;
 
         #[inline]
-        fn domain_tag(_: &mut (), arity: usize) -> Self::Field {
+        fn domain_tag(arity: usize, _: &mut ()) -> Self::Field {
             Fp(S::Field::from(((1 << arity) - 1) as u64))
         }
 
@@ -455,9 +471,8 @@ pub mod arkworks {
             Fp(lhs.0 + rhs.0)
         }
 
-        // When COM = (), we do not distinguish Field and ParameterField. So addi() has the same computation as add()
         #[inline]
-        fn addi(lhs: &Self::Field, rhs: &Self::ParameterField, _: &mut ()) -> Self::Field {
+        fn add_const(lhs: &Self::Field, rhs: &Self::ParameterField, _: &mut ()) -> Self::Field {
             Fp(lhs.0 + rhs.0)
         }
 
@@ -477,7 +492,7 @@ pub mod arkworks {
         }
 
         #[inline]
-        fn addi_assign(lhs: &mut Self::Field, rhs: &Self::ParameterField, _: &mut ()) {
+        fn add_const_assign(lhs: &mut Self::Field, rhs: &Self::ParameterField, _: &mut ()) {
             lhs.0 += rhs.0;
         }
 
@@ -494,11 +509,11 @@ pub mod arkworks {
         type Field = FpVar<S::Field>;
         type ParameterField = Fp<S::Field>;
 
-        const FULL_ROUNDS: usize = S::FULL_ROUNDS;
         const PARTIAL_ROUNDS: usize = S::PARTIAL_ROUNDS;
+        const FULL_ROUNDS: usize = S::FULL_ROUNDS;
 
         #[inline]
-        fn domain_tag(compiler: &mut Compiler<S>, arity: usize) -> Self::Field {
+        fn domain_tag(arity: usize, compiler: &mut Compiler<S>) -> Self::Field {
             let v = S::Field::from(((1 << arity) - 1) as u64);
             FpVar::new_witness(compiler.cs.clone(), || Ok(v)).unwrap()
         }
@@ -509,7 +524,7 @@ pub mod arkworks {
         }
 
         #[inline]
-        fn addi(lhs: &Self::Field, rhs: &Self::ParameterField, _: &mut Compiler<S>) -> Self::Field {
+        fn add_const(lhs: &Self::Field, rhs: &Self::ParameterField, _: &mut Compiler<S>) -> Self::Field {
             lhs + FpVar::Constant(rhs.0)
         }
 
@@ -529,7 +544,7 @@ pub mod arkworks {
         }
 
         #[inline]
-        fn addi_assign(lhs: &mut Self::Field, rhs: &Self::ParameterField, _: &mut Compiler<S>) {
+        fn add_const_assign(lhs: &mut Self::Field, rhs: &Self::ParameterField, _: &mut Compiler<S>) {
             *lhs += FpVar::Constant(rhs.0)
         }
 

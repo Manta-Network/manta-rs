@@ -16,32 +16,39 @@
 
 //! Basic Linear Algebra Implementation
 
-use crate::crypto::hash::ParamField;
+use crate::crypto::hash::poseidon::Field;
 use alloc::{vec, vec::Vec};
 use core::{
     fmt::Debug,
     ops::{Index, IndexMut},
+    slice,
 };
 
-#[derive(Eq, PartialEq, Debug, Default)]
-/// a struct for matrix data
-pub struct Matrix<F>(pub Vec<Vec<F>>)
+/// Row Major Matrix Representation
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct Matrix<F>(Vec<Vec<F>>)
 where
-    F: ParamField;
-
-impl<F> From<Vec<Vec<F>>> for Matrix<F>
-where
-    F: ParamField,
-{
-    fn from(v: Vec<Vec<F>>) -> Self {
-        Matrix(v)
-    }
-}
+    F: Field;
 
 impl<F> Matrix<F>
 where
-    F: ParamField,
+    F: Field,
 {
+    /// Constructs a [`Matrix`].
+    /// If `v` is empty then returns `None`.
+    pub fn new(v: Vec<Vec<F>>) -> Option<Self> {
+        if v.is_empty() {
+            return None;
+        }
+        let first_row_length = v[0].len();
+        for row in &v {
+            if row.len() != first_row_length {
+                return None;
+            }
+        }
+        Some(Self(v))
+    }
+
     /// Returns the number of rows
     pub fn num_rows(&self) -> usize {
         self.0.len()
@@ -49,21 +56,11 @@ where
 
     /// Returns the number of columns
     pub fn num_columns(&self) -> usize {
-        if self.0.is_empty() {
-            0
-        } else {
-            let column_length = self.0[0].len();
-            for row in &self.0 {
-                if row.len() != column_length {
-                    panic!("not a matrix");
-                }
-            }
-            column_length
-        }
+        self.0[0].len()
     }
 
     /// Iterator over rows
-    pub fn iter_rows(&self) -> impl Iterator<Item = &Vec<F>> {
+    pub fn iter_rows(&self) -> slice::Iter<Vec<F>> {
         self.0.iter()
     }
 
@@ -82,7 +79,6 @@ where
         if !self.is_square() {
             return false;
         }
-
         for i in 0..self.num_rows() {
             for j in 0..self.num_columns() {
                 if !F::eq(&self.0[i][j], &kronecker_delta::<F>(i, j)) {
@@ -95,58 +91,54 @@ where
 
     /// elementwisely multiplies with `scalar`
     pub fn mul_by_scalar(&self, scalar: F) -> Self {
-        let res = self
-            .0
-            .iter()
-            .map(|row| {
-                row.iter()
-                    .map(|val| F::mul(&scalar, val))
-                    .collect::<Vec<_>>()
-            })
-            .collect::<Vec<_>>();
-        Matrix(res)
+        Self(
+            self.0
+                .iter()
+                .map(|row| {
+                    row.iter()
+                        .map(|val| F::mul(&scalar, val))
+                        .collect()
+                })
+                .collect(),
+        )
+    }
+
+    /// Returns row major representation of the matrix
+    pub fn to_row_major(self) -> Vec<F>
+    {
+        let size = self.num_rows() * self.num_columns();
+        let mut row_major_repr = Vec::with_capacity(size);
+        for mut row in self.0 {
+            row_major_repr.append(&mut row);
+        }
+        row_major_repr
+    }
+
+    /// Returns the transpose of the matrix
+    pub fn transpose(self) -> Self {
+        let num_rows = self.num_rows();
+        let num_columns = self.num_columns();
+        let mut transposed_matrix = Vec::with_capacity(num_rows);
+        transposed_matrix.resize_with(num_rows, || Vec::with_capacity(num_columns));
+        for row in self.0 {
+            for (j, elem) in row.into_iter().enumerate() {
+                transposed_matrix[j].push(elem);
+            }
+        }
+        Self(transposed_matrix)
     }
 }
 
 impl<F> Matrix<F>
 where
-    F: ParamField + Copy,
+    F: Field + Copy,
 {
-    /// Returns the transpose of the matrix
-    pub fn transpose(&self) -> Matrix<F> {
-        let size = self.num_rows();
-        let mut new = Vec::with_capacity(size);
-        for j in 0..size {
-            let mut row = Vec::with_capacity(size);
-            for i in 0..size {
-                row.push(self.0[i][j])
-            }
-            new.push(row);
-        }
-        Matrix(new)
-    }
-
-    /// Returns row major representation of the matrix
-    pub fn to_row_major(&self) -> Vec<F> {
-        let size = self.num_rows() * self.num_columns();
-        let mut res = Vec::with_capacity(size);
-
-        for i in 0..self.num_rows() {
-            for j in 0..self.num_columns() {
-                res.push(self.0[i][j]);
-            }
-        }
-        res
-    }
-
     /// Returns `self @ other`
     pub fn matmul(&self, other: &Self) -> Option<Self> {
         if self.num_rows() != other.num_columns() {
             return None;
         };
-
-        let other_t = other.transpose();
-
+        let other_t = other.clone().transpose();
         let res = self
             .0
             .iter()
@@ -165,35 +157,27 @@ where
         let size = self.num_rows();
         let mut result: Vec<Vec<F>> = Vec::new();
         let mut shadow_result: Vec<Vec<F>> = Vec::new();
-
         for i in 0..size {
             let idx = size - i - 1;
             let row = &self.0[idx];
             let shadow_row = &shadow[idx];
-
             let val = row[idx];
             let inv = F::inverse(&val)?;
-
             let mut normalized = scalar_vec_mul::<F>(inv, row);
             let mut shadow_normalized = scalar_vec_mul::<F>(inv, shadow_row);
-
             for j in 0..i {
                 let idx = size - j - 1;
                 let val = normalized[idx];
                 let subtracted = scalar_vec_mul::<F>(val, &result[j]);
                 let result_subtracted = scalar_vec_mul::<F>(val, &shadow_result[j]);
-
                 normalized = vec_sub::<F>(&normalized, &subtracted);
                 shadow_normalized = vec_sub::<F>(&shadow_normalized, &result_subtracted);
             }
-
             result.push(normalized);
             shadow_result.push(shadow_normalized);
         }
-
         result.reverse();
         shadow_result.reverse();
-
         *shadow = Matrix(shadow_result);
         Some(Matrix(result))
     }
@@ -201,7 +185,7 @@ where
 
 impl<F> Matrix<F>
 where
-    F: ParamField + Clone,
+    F: Field + Clone,
 {
     /// Returns an identity matrix of size `n*n`
     pub fn identity(n: usize) -> Matrix<F> {
@@ -272,7 +256,7 @@ where
         assert!(self.is_square());
         let size = self.num_rows();
         assert!(size > 0);
-        let new: Vec<Vec<F>> = self
+        let new = self
             .0
             .iter()
             .enumerate()
@@ -299,7 +283,7 @@ where
 
 impl<F> Matrix<F>
 where
-    F: ParamField + Clone + Copy,
+    F: Field + Clone + Copy,
 {
     /// Assumes matrix is partially reduced to upper triangular. `column` is the
     /// column to eliminate from all rows. Returns `None` if either:
@@ -389,9 +373,18 @@ where
     }
 }
 
+impl<F> From<Vec<Vec<F>>> for Matrix<F>
+where
+    F: Field,
+{
+    fn from(v: Vec<Vec<F>>) -> Self {
+        Self(v)
+    }
+}
+
 impl<F> Index<usize> for Matrix<F>
 where
-    F: ParamField,
+    F: Field,
 {
     type Output = Vec<F>;
 
@@ -403,7 +396,7 @@ where
 
 impl<F> IndexMut<usize> for Matrix<F>
 where
-    F: ParamField,
+    F: Field,
 {
     /// Returns a mutable reference to the `index`^{th} row in the matrix
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
@@ -413,7 +406,7 @@ where
 
 impl<F> FromIterator<Vec<F>> for Matrix<F>
 where
-    F: ParamField,
+    F: Field,
 {
     /// from iterator rows
     fn from_iter<T: IntoIterator<Item = Vec<F>>>(iter: T) -> Self {
@@ -422,19 +415,10 @@ where
     }
 }
 
-impl<F> Clone for Matrix<F>
-where
-    F: ParamField + Clone,
-{
-    fn clone(&self) -> Self {
-        self.0.clone().into()
-    }
-}
-
 /// Inner product of two vectors
 pub fn inner_product<F>(a: &[F], b: &[F]) -> F
 where
-    F: ParamField,
+    F: Field,
 {
     a.iter().zip(b).fold(F::zero(), |mut acc, (v1, v2)| {
         let tmp = F::mul(v1, v2);
@@ -446,7 +430,7 @@ where
 /// Elementwise addition of two vectors
 pub fn vec_add<F>(a: &[F], b: &[F]) -> Vec<F>
 where
-    F: ParamField,
+    F: Field,
 {
     a.iter()
         .zip(b.iter())
@@ -457,7 +441,7 @@ where
 /// Elementwise subtraction (i.e., out_i = a_i - b_i)
 pub fn vec_sub<F>(a: &[F], b: &[F]) -> Vec<F>
 where
-    F: ParamField,
+    F: Field,
 {
     a.iter()
         .zip(b.iter())
@@ -468,7 +452,7 @@ where
 /// Elementwisely multiplies a vector `v` with `scalar`
 pub fn scalar_vec_mul<F>(scalar: F, v: &[F]) -> Vec<F>
 where
-    F: ParamField,
+    F: Field,
 {
     v.iter().map(|val| F::mul(&scalar, val)).collect::<Vec<_>>()
 }
@@ -476,7 +460,7 @@ where
 /// Returns kronecker delta
 pub fn kronecker_delta<F>(i: usize, j: usize) -> F
 where
-    F: ParamField,
+    F: Field,
 {
     if i == j {
         F::one()
@@ -488,14 +472,14 @@ where
 /// Checks whether `elem` equals zero
 pub fn equal_zero<F>(elem: &F) -> bool
 where
-    F: ParamField,
+    F: Field,
 {
     let zero = F::zero();
     F::eq(elem, &zero)
 }
 
 #[cfg(test)]
-mod tests {
+mod test {
     use super::*;
     use crate::crypto::constraint::arkworks::Fp;
     use ark_bls12_381::Fr;

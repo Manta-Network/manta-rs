@@ -18,7 +18,7 @@
 //! acknowledgement: adapted from FileCoin Project: <https://github.com/filecoin-project/neptune/blob/master/src/preprocessing.rs>
 
 use super::{matrix::vec_add, mds::MdsMatrices};
-use crate::crypto::hash::ParamField;
+use crate::crypto::hash::poseidon::Field;
 use alloc::vec::Vec;
 
 /// Compresses constants by pushing them back through linear layers and through the identity components of partial layers.
@@ -31,7 +31,7 @@ pub fn compress_round_constants<F>(
     mds_matrices: &MdsMatrices<F>,
 ) -> Vec<F>
 where
-    F: ParamField + Copy,
+    F: Field + Copy,
 {
     let inverse_matrix = &mds_matrices.m_inv;
 
