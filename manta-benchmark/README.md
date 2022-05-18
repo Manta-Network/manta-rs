@@ -14,6 +14,10 @@
     ./wasm-bench.sh
     ```
     You can view the result at `localhost:8080`.
+* Headless WASM time for prover time:
+    ```bash
+    wasm-pack test --headless --chrome --release
+    ```
 * Native time:
     ```bash
     cargo bench
