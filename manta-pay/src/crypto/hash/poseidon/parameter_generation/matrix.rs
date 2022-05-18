@@ -17,15 +17,69 @@
 //! Basic Linear Algebra Implementation
 
 use crate::crypto::hash::poseidon::Field;
-use alloc::{vec, vec::Vec};
+use alloc::vec::Vec;
 use core::{
     fmt::Debug,
-    ops::{Index, IndexMut},
+    ops::{Deref, Index, IndexMut},
     slice,
 };
 
+/// Allocates a vector of length `n` and initializes with `f`.
+pub fn vec_with<T, F>(n: usize, f: F) -> Vec<T>
+where
+    F: FnMut() -> T,
+{
+    let mut v = Vec::with_capacity(n);
+    v.resize_with(n, f);
+    v
+}
+
+/// Allocates a matrix of shape `(num_rows, num_columns)`.
+pub fn allocate_matrix<T, F>(
+    num_rows: usize,
+    num_columns: usize,
+    mut allocate_row: F,
+) -> Vec<Vec<T>>
+where
+    F: FnMut(usize) -> Vec<T>,
+{
+    vec_with(num_rows, || allocate_row(num_columns))
+}
+
+/// TODO: Trait
+pub trait MatrixOperations {
+    // TODO: Move owned to this trait
+
+    /// Scalar field
+    type Scalar;
+
+    /// Returns the transpose of the matrix.
+    fn transpose(self) -> Self;
+
+    /// Elementwisely multiplies with `scalar`.
+    fn mul_by_scalar(&self, scalar: Self::Scalar) -> Self;
+
+    /// Returns row major representation of the matrix.
+    fn to_row_major(self) -> Vec<Self::Scalar>;
+
+    /// Multiplies matrix `self` with matrix `other` on the right side.
+    fn matmul(&self, other: &Self) -> Option<Self>
+    where
+        Self: Sized,
+        Self::Scalar: Clone;
+
+    /// Returns an identity matrix of size `n*n`.
+    fn identity(n: usize) -> Self;
+
+    /// Returns the inversion of a matrix
+    fn invert(&self) -> Option<Self>
+    where
+        Self: Sized,
+        Self::Scalar: Copy;
+}
+
 /// Row Major Matrix Representation
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Matrix<F>(Vec<Vec<F>>)
 where
     F: Field;
@@ -41,6 +95,9 @@ where
             return None;
         }
         let first_row_length = v[0].len();
+        if first_row_length == 0 {
+            return None;
+        }
         for row in &v {
             if row.len() != first_row_length {
                 return None;
@@ -49,32 +106,32 @@ where
         Some(Self(v))
     }
 
-    /// Returns the number of rows
+    /// Returns the number of rows.
     pub fn num_rows(&self) -> usize {
         self.0.len()
     }
 
-    /// Returns the number of columns
+    /// Returns the number of columns.
     pub fn num_columns(&self) -> usize {
         self.0[0].len()
     }
 
-    /// Iterator over rows
+    /// Iterator over rows.
     pub fn iter_rows(&self) -> slice::Iter<Vec<F>> {
         self.0.iter()
     }
 
-    /// Iterator over a specific column
+    /// Iterator over a specific column.
     pub fn column(&self, column: usize) -> impl Iterator<Item = &'_ F> {
         self.0.iter().map(move |row| &row[column])
     }
 
-    /// Checks if the matrix is square
+    /// Checks if the matrix is square.
     pub fn is_square(&self) -> bool {
         self.num_rows() == self.num_columns()
     }
 
-    /// Checks if the matrix is an identity matrix
+    /// Checks if the matrix is an identity matrix.
     pub fn is_identity(&self) -> bool {
         if !self.is_square() {
             return false;
@@ -89,23 +146,90 @@ where
         true
     }
 
-    /// elementwisely multiplies with `scalar`
-    pub fn mul_by_scalar(&self, scalar: F) -> Self {
+    /// Checks if the matrix is symmetric.
+    pub fn is_symmetric(&self) -> bool 
+    {
+        // assert!(matrix.0 == matrix.transpose().0);
+        for i in 0..self.num_rows() {
+            for j in 0..self.num_columns() {
+                if !F::eq(&self.0[i][j], &self.0[j][i]) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    /// Returns `self @ vec`, treating `vec` as a column vector.
+    pub fn mul_col_vec(&self, v: &[F]) -> Option<Vec<F>> {
+        if self.num_rows() != v.len() {
+            return None;
+        }
+        let mut result = Vec::with_capacity(v.len());
+        for row in &self.0 {
+            result.push(
+                row.iter()
+                    .zip(v)
+                    .fold(F::zero(), |acc, (r, v)| F::add(&acc, &F::mul(r, v))),
+            );
+        }
+        Some(result)
+    }
+
+    /// Returns `vec @ self`, treating `vec` as a row vector.
+    pub fn mul_row_vec_at_left(&self, v: &[F]) -> Option<Vec<F>> {
+        if self.num_rows() != v.len() {
+            return None;
+        }
+        let mut result = Vec::with_capacity(v.len());
+        for j in 0..v.len() {
+            result.push(
+                self.0
+                    .iter()
+                    .zip(v)
+                    .fold(F::zero(), |acc, (row, v)| F::add(&acc, &F::mul(v, &row[j]))),
+            );
+        }
+        Some(result)
+    }
+}
+
+impl<F> From<SquareMatrix<F>> for Matrix<F>
+where
+    F: Field,
+{
+    fn from(matrix: SquareMatrix<F>) -> Self {
+        matrix.0
+    }
+}
+
+impl<F> MatrixOperations for Matrix<F>
+where
+    F: Field,
+{
+    type Scalar = F;
+
+    fn transpose(self) -> Self {
+        let mut transposed_matrix =
+            allocate_matrix(self.num_columns(), self.num_rows(), Vec::with_capacity);
+        for row in self.0 {
+            for (j, elem) in row.into_iter().enumerate() {
+                transposed_matrix[j].push(elem);
+            }
+        }
+        Self(transposed_matrix)
+    }
+
+    fn mul_by_scalar(&self, scalar: F) -> Self {
         Self(
             self.0
                 .iter()
-                .map(|row| {
-                    row.iter()
-                        .map(|val| F::mul(&scalar, val))
-                        .collect()
-                })
+                .map(|row| row.iter().map(|val| F::mul(&scalar, val)).collect())
                 .collect(),
         )
     }
 
-    /// Returns row major representation of the matrix
-    pub fn to_row_major(self) -> Vec<F>
-    {
+    fn to_row_major(self) -> Vec<F> {
         let size = self.num_rows() * self.num_columns();
         let mut row_major_repr = Vec::with_capacity(size);
         for mut row in self.0 {
@@ -114,18 +238,159 @@ where
         row_major_repr
     }
 
-    /// Returns the transpose of the matrix
-    pub fn transpose(self) -> Self {
-        let num_rows = self.num_rows();
-        let num_columns = self.num_columns();
-        let mut transposed_matrix = Vec::with_capacity(num_rows);
-        transposed_matrix.resize_with(num_rows, || Vec::with_capacity(num_columns));
-        for row in self.0 {
-            for (j, elem) in row.into_iter().enumerate() {
-                transposed_matrix[j].push(elem);
-            }
+    fn matmul(&self, other: &Self) -> Option<Self>
+    where
+        Self::Scalar: Clone,
+    {
+        if self.num_rows() != other.num_columns() {
+            return None;
+        };
+        let other_t = other.clone().transpose();
+        Some(Self(
+            self.0
+                .iter()
+                .map(|input_row| {
+                    other_t
+                        .iter_rows()
+                        .map(|transposed_column| inner_product::<F>(input_row, transposed_column))
+                        .collect()
+                })
+                .collect(),
+        ))
+    }
+
+    fn identity(n: usize) -> Self {
+        let mut identity_matrix = allocate_matrix(n, n, |n| vec_with(n, F::zero));
+        for i in 0..n {
+            identity_matrix[i][i] = F::one();
         }
-        Self(transposed_matrix)
+        Self(identity_matrix)
+    }
+
+    fn invert(&self) -> Option<Self> 
+    where Self::Scalar: Copy,
+    {
+        let mut shadow = Self::identity(self.num_columns());
+        self.upper_triangular(&mut shadow)
+            .and_then(|x| x.reduce_to_identity(&mut shadow))
+            .and(Some(shadow))
+    }
+}
+
+impl<F> MatrixOperations for SquareMatrix<F>
+where
+    F: Field,
+{
+    type Scalar = F;
+
+    fn transpose(self) -> Self {
+        Self(self.0.transpose())
+    }
+
+    fn mul_by_scalar(&self, scalar: Self::Scalar) -> Self {
+        Self(self.0.mul_by_scalar(scalar))
+    }
+
+    fn to_row_major(self) -> Vec<F> {
+        self.0.to_row_major()
+    }
+
+    fn matmul(&self, other: &Self) -> Option<Self>
+    where
+        Self::Scalar: Clone,
+    {
+        self.0.matmul(&other.0).map(Self)
+    }
+
+    fn identity(n: usize) -> Self {
+        Self(Matrix::identity(n))
+    }
+
+    fn invert(&self) -> Option<Self> 
+    where Self::Scalar: Copy,
+    {
+        self.0.invert().map(Self)
+    }
+}
+
+impl<F> PartialEq<SquareMatrix<F>> for Matrix<F>
+where
+    F: Field + PartialEq,
+{
+    fn eq(&self, other: &SquareMatrix<F>) -> bool {
+        self.eq(&other.0)
+    }
+}
+
+/// Row Major Matrix Representation with Square Shapes
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SquareMatrix<F>(Matrix<F>)
+where
+    F: Field;
+
+impl<F> SquareMatrix<F>
+where
+    F: Field,
+{
+    /// Returns a new square matrix
+    pub fn new(m: Matrix<F>) -> Option<Self> {
+        m.is_square().then(|| Self(m))
+    }
+
+    /// Generates the minor matrix
+    pub fn minor(&self, i: usize, j: usize) -> Option<Self>
+    where
+        F: Clone,
+    {
+        let size = self.num_rows();
+        if size <= 1 {
+            return None;
+        }
+        Some(Self(Matrix(
+            self.0
+                 .0
+                .iter()
+                .enumerate()
+                .filter_map(|(ii, row)| {
+                    if ii == i {
+                        None
+                    } else {
+                        let mut row = row.clone();
+                        row.remove(j);
+                        Some(row)
+                    }
+                })
+                .collect(),
+        )))
+    }
+}
+
+impl<F> AsRef<Matrix<F>> for SquareMatrix<F>
+where
+    F: Field,
+{
+    fn as_ref(&self) -> &Matrix<F> {
+        &self.0
+    }
+}
+
+impl<F> Deref for SquareMatrix<F>
+where
+    F: Field,
+{
+    type Target = Matrix<F>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<F> PartialEq<Matrix<F>> for SquareMatrix<F>
+where
+    F: Field + PartialEq,
+{
+    fn eq(&self, other: &Matrix<F>) -> bool {
+        self.0.eq(other)
     }
 }
 
@@ -133,163 +398,11 @@ impl<F> Matrix<F>
 where
     F: Field + Copy,
 {
-    /// Returns `self @ other`
-    pub fn matmul(&self, other: &Self) -> Option<Self> {
-        if self.num_rows() != other.num_columns() {
-            return None;
-        };
-        let other_t = other.clone().transpose();
-        let res = self
-            .0
-            .iter()
-            .map(|input_row| {
-                other_t
-                    .iter_rows()
-                    .map(|transposed_column| inner_product::<F>(input_row, transposed_column))
-                    .collect()
-            })
-            .collect();
-        Some(Matrix(res))
-    }
-
-    /// `matrix` must be upper triangular.
-    pub fn reduce_to_identity(&self, shadow: &mut Self) -> Option<Self> {
-        let size = self.num_rows();
-        let mut result: Vec<Vec<F>> = Vec::new();
-        let mut shadow_result: Vec<Vec<F>> = Vec::new();
-        for i in 0..size {
-            let idx = size - i - 1;
-            let row = &self.0[idx];
-            let shadow_row = &shadow[idx];
-            let val = row[idx];
-            let inv = F::inverse(&val)?;
-            let mut normalized = scalar_vec_mul::<F>(inv, row);
-            let mut shadow_normalized = scalar_vec_mul::<F>(inv, shadow_row);
-            for j in 0..i {
-                let idx = size - j - 1;
-                let val = normalized[idx];
-                let subtracted = scalar_vec_mul::<F>(val, &result[j]);
-                let result_subtracted = scalar_vec_mul::<F>(val, &shadow_result[j]);
-                normalized = vec_sub::<F>(&normalized, &subtracted);
-                shadow_normalized = vec_sub::<F>(&shadow_normalized, &result_subtracted);
-            }
-            result.push(normalized);
-            shadow_result.push(shadow_normalized);
-        }
-        result.reverse();
-        shadow_result.reverse();
-        *shadow = Matrix(shadow_result);
-        Some(Matrix(result))
-    }
-}
-
-impl<F> Matrix<F>
-where
-    F: Field + Clone,
-{
-    /// Returns an identity matrix of size `n*n`
-    pub fn identity(n: usize) -> Matrix<F> {
-        let mut m = Matrix(vec![vec![F::zero(); n]; n]);
-        for i in 0..n {
-            m.0[i][i] = F::one();
-        }
-        m
-    }
-
-    /// Returns `self @ vec`, treating `vec` as a column vector.
-    pub fn mul_col_vec(&self, v: &[F]) -> Vec<F> {
-        assert!(
-            self.is_square(),
-            "Only square matrix can be applied to vector."
-        );
-        assert_eq!(
-            self.num_rows(),
-            v.len(),
-            "Matrix can only be applied to vector of same size."
-        );
-
-        let mut result = vec![F::zero(); v.len()];
-
-        for (result, row) in result.iter_mut().zip(self.0.iter()) {
-            for (mat_val, vec_val) in row.iter().zip(v) {
-                let tmp = F::mul(mat_val, vec_val);
-                F::add_assign(result, &tmp);
-            }
-        }
-        result
-    }
-
-    /// Returns `self @ vec`, treating `vec` as a column vector.
-    pub fn left_apply(&self, v: &[F]) -> Vec<F> {
-        self.mul_col_vec(v)
-    }
-
-    /// Returns `vec @ self`, treating `vec` as a row vector.
-    pub fn mul_row_vec_at_left(&self, v: &[F]) -> Vec<F> {
-        assert!(
-            self.is_square(),
-            "Only square matrix can be applied to vector."
-        );
-        assert_eq!(
-            self.num_rows(),
-            v.len(),
-            "Matrix can only be applied to vector of same size."
-        );
-
-        let mut result = vec![F::zero(); v.len()];
-        for (j, val) in result.iter_mut().enumerate() {
-            for (i, row) in self.0.iter().enumerate() {
-                let tmp = F::mul(&v[i], &row[j]);
-                F::add_assign(val, &tmp);
-            }
-        }
-        result
-    }
-
-    /// Returns `vec @ self`, treat `vec` as a row vector.
-    pub fn right_apply(&self, v: &[F]) -> Vec<F> {
-        self.mul_row_vec_at_left(v)
-    }
-
-    /// Generates the minor matrix
-    pub fn minor(&self, i: usize, j: usize) -> Self {
-        assert!(self.is_square());
-        let size = self.num_rows();
-        assert!(size > 0);
-        let new = self
-            .0
-            .iter()
-            .enumerate()
-            .filter_map(|(ii, row)| {
-                if ii == i {
-                    None
-                } else {
-                    let mut new_row = row.clone();
-                    new_row.remove(j);
-                    Some(new_row)
-                }
-            })
-            .collect();
-        let res = Matrix(new);
-        assert!(res.is_square());
-        res
-    }
-
-    /// Checks if `self` is square and `self[1..][1..]` is identity
-    pub fn is_sparse(&self) -> bool {
-        self.is_square() && self.minor(0, 0).is_identity()
-    }
-}
-
-impl<F> Matrix<F>
-where
-    F: Field + Clone + Copy,
-{
     /// Assumes matrix is partially reduced to upper triangular. `column` is the
     /// column to eliminate from all rows. Returns `None` if either:
     ///   - no non-zero pivot can be found for `column`
     ///   - `column` is not the first
-    pub fn eliminate(&self, column: usize, shadow: &mut Self) -> Option<Self> {
+    fn eliminate(&self, column: usize, shadow: &mut Self) -> Option<Self> {
         let zero = F::zero();
         let pivot_index = (0..self.num_rows()).find(|&i| {
             (!F::eq(&self[i][column], &zero)) && (0..column).all(|j| F::eq(&self[i][j], &zero))
@@ -331,7 +444,7 @@ where
     }
 
     /// Generates the upper triangular matrix
-    pub fn upper_triangular(&self, shadow: &mut Self) -> Option<Self> {
+    fn upper_triangular(&self, shadow: &mut Self) -> Option<Self> {
         assert!(self.is_square());
         let mut result = Vec::with_capacity(self.num_rows());
         let mut shadow_result = Vec::with_capacity(self.num_rows());
@@ -358,13 +471,34 @@ where
         Some(Matrix(result))
     }
 
-    /// Returns the inversion of a matrix
-    pub fn invert(&self) -> Option<Self> {
-        let mut shadow = Self::identity(self.num_columns());
-        let ut = self.upper_triangular(&mut shadow);
-
-        ut.and_then(|x| x.reduce_to_identity(&mut shadow))
-            .and(Some(shadow))
+    /// `matrix` must be upper triangular.
+    fn reduce_to_identity(&self, shadow: &mut Self) -> Option<Self> {
+        let size = self.num_rows();
+        let mut result: Vec<Vec<F>> = Vec::new();
+        let mut shadow_result: Vec<Vec<F>> = Vec::new();
+        for i in 0..size {
+            let idx = size - i - 1;
+            let row = &self.0[idx];
+            let shadow_row = &shadow[idx];
+            let val = row[idx];
+            let inv = F::inverse(&val)?;
+            let mut normalized = scalar_vec_mul::<F>(inv, row);
+            let mut shadow_normalized = scalar_vec_mul::<F>(inv, shadow_row);
+            for j in 0..i {
+                let idx = size - j - 1;
+                let val = normalized[idx];
+                let subtracted = scalar_vec_mul::<F>(val, &result[j]);
+                let result_subtracted = scalar_vec_mul::<F>(val, &shadow_result[j]);
+                normalized = vec_sub::<F>(&normalized, &subtracted);
+                shadow_normalized = vec_sub::<F>(&shadow_normalized, &result_subtracted);
+            }
+            result.push(normalized);
+            shadow_result.push(shadow_normalized);
+        }
+        result.reverse();
+        shadow_result.reverse();
+        *shadow = Matrix(shadow_result);
+        Some(Matrix(result))
     }
 
     /// Checks if the matrix is invertible
@@ -401,17 +535,6 @@ where
     /// Returns a mutable reference to the `index`^{th} row in the matrix
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         &mut self.0[index]
-    }
-}
-
-impl<F> FromIterator<Vec<F>> for Matrix<F>
-where
-    F: Field,
-{
-    /// from iterator rows
-    fn from_iter<T: IntoIterator<Item = Vec<F>>>(iter: T) -> Self {
-        let rows = iter.into_iter().collect::<Vec<_>>();
-        Self(rows)
     }
 }
 
@@ -550,10 +673,10 @@ mod test {
                 Matrix::<Fp<Fr>>(vec![vec![one, two], vec![four, five]]),
             ),
         ];
+        let m = SquareMatrix::new(m).unwrap();
         for (i, j, expected) in &cases {
-            let result = m.minor(*i, *j);
-
-            assert_eq!(expected.0, result.0);
+            let result = m.minor(*i, *j).unwrap();
+            assert_eq!(expected, &result);
         }
     }
 
@@ -691,10 +814,10 @@ mod test {
         let some_vec = vec![six, five, four];
 
         // M^-1(S)
-        let inverse_applied = m_inv.right_apply(&some_vec);
+        let inverse_applied = m_inv.mul_row_vec_at_left(&some_vec).unwrap();
 
         // M(M^-1(S))
-        let m_applied_after_inverse = m.right_apply(&inverse_applied);
+        let m_applied_after_inverse = m.mul_row_vec_at_left(&inverse_applied).unwrap();
 
         // S = M(M^-1(S))
         assert_eq!(
@@ -707,10 +830,13 @@ mod test {
         let base_vec = vec![eight, two, five];
 
         // S + M(B)
-        let add_after_apply = vec_add::<Fp<Fr>>(&some_vec, &m.right_apply(&base_vec));
+        let add_after_apply =
+            vec_add::<Fp<Fr>>(&some_vec, &m.mul_row_vec_at_left(&base_vec).unwrap());
 
         // M(B + M^-1(S))
-        let apply_after_add = m.right_apply(&vec_add::<Fp<Fr>>(&base_vec, &inverse_applied));
+        let apply_after_add = m
+            .mul_row_vec_at_left(&vec_add::<Fp<Fr>>(&base_vec, &inverse_applied))
+            .unwrap();
 
         // S + M(B) = M(B + M^-1(S))
         assert_eq!(add_after_apply, apply_after_add, "breakin' the law");

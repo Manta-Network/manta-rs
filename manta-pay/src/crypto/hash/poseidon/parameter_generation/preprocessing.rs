@@ -50,7 +50,7 @@ where
     let end = half_full_rounds - 1;
     for i in 0..end {
         let next_round = round_keys(i + 1);
-        let inverted = inverse_matrix.right_apply(next_round);
+        let inverted = inverse_matrix.mul_row_vec_at_left(next_round).unwrap();
         res.extend(inverted);
     }
 
@@ -74,7 +74,7 @@ where
     let round_acc = (0..partial_rounds)
         .map(|i| round_keys(final_round - i - 1))
         .fold(final_round_key, |acc, previous_round_keys| {
-            let mut inverted = inverse_matrix.right_apply(&acc);
+            let mut inverted = inverse_matrix.mul_row_vec_at_left(&acc).unwrap();
 
             partial_keys.push(inverted[0]);
             inverted[0] = F::zero();
@@ -82,7 +82,7 @@ where
             vec_add::<F>(previous_round_keys, &inverted)
         });
 
-    res.extend(inverse_matrix.right_apply(&round_acc));
+    res.extend(inverse_matrix.mul_row_vec_at_left(&round_acc).unwrap());
 
     while let Some(x) = partial_keys.pop() {
         res.push(x)
@@ -92,7 +92,7 @@ where
     for i in 1..(half_full_rounds) {
         let start = half_full_rounds + partial_rounds;
         let next_round = round_keys(i + start);
-        let inverted = inverse_matrix.right_apply(next_round);
+        let inverted = inverse_matrix.mul_row_vec_at_left(next_round).unwrap();
         res.extend(inverted);
     }
 

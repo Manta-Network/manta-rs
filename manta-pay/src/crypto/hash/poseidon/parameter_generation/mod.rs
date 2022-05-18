@@ -16,7 +16,7 @@
 
 //! Poseidon hash parameter generation
 
-mod lfsr;
+pub mod lfsr;
 pub mod matrix;
 pub mod mds;
 pub mod preprocessing;

@@ -16,6 +16,7 @@
 
 //! Generate number of full & partial rounds
 //! Adapted from <https://github.com/filecoin-project/neptune/blob/master/src/round_numbers.rs>
+//! Only works for BLS12-381!
 
 // The number of bits of the Poseidon prime field modulus. Denoted `n` in the Poseidon paper
 // (where `n = ceil(log2(p))`). Note that BLS12-381's scalar field modulus is 255 bits, however we
@@ -28,7 +29,7 @@ const M: usize = 128;
 
 /// The number of S-boxes (also called the "cost") given by equation (14) in the Poseidon paper:
 /// `cost = t * R_F + R_P`.
-fn n_sboxes(t: usize, rf: usize, rp: usize) -> usize {
+const fn n_sboxes(t: usize, rf: usize, rp: usize) -> usize {
     t * rf + rp
 }
 
@@ -48,10 +49,8 @@ pub fn round_numbers_base(arity: usize) -> (usize, usize) {
 /// - D Khovratovich
 pub fn round_numbers_strengthened(arity: usize) -> (usize, usize) {
     let (full_round, partial_rounds) = round_numbers_base(arity);
-
     // Increase by 25%, rounding up.
     let strengthened_partial_rounds = f64::ceil(partial_rounds as f64 * 1.25) as usize;
-
     (full_round, strengthened_partial_rounds)
 }
 
@@ -62,7 +61,6 @@ pub fn calc_round_numbers(t: usize, security_margin: bool) -> (usize, usize) {
     let mut rf = 0;
     let mut rp = 0;
     let mut n_sboxes_min = usize::MAX;
-
     for mut rf_test in (2..=1000).step_by(2) {
         for mut rp_test in 4..200 {
             if round_numbers_are_secure(t, rf_test, rp_test) {
@@ -79,7 +77,6 @@ pub fn calc_round_numbers(t: usize, security_margin: bool) -> (usize, usize) {
             }
         }
     }
-
     (rf, rp)
 }
 
@@ -108,7 +105,7 @@ mod test {
     use super::*;
 
     #[test]
-    fn test_round_numbers_against_known_values() {
+    fn round_numbers_against_known_values() {
         // Each case contains a `t` (where `t = arity + 1`) and the `R_P` expected for that `t`.
         let cases = [
             (2usize, 55usize),

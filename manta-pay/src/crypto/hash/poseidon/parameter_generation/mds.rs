@@ -16,48 +16,32 @@
 
 //! MDS Data Generation
 
-use crate::crypto::hash::poseidon::{
-    Field,
-    parameter_generation::matrix::Matrix, FieldGeneration,
-};
+use crate::crypto::hash::poseidon::{parameter_generation::matrix::Matrix, Field, FieldGeneration};
 use alloc::{vec, vec::Vec};
 use core::fmt::Debug;
+
+use super::matrix::{MatrixOperations, SquareMatrix};
 
 /// MDS Matrix for both naive poseidon hash and optimized poseidon hash
 /// For detailed descriptions, please refer to <https://hackmd.io/8MdoHwoKTPmQfZyIKEYWXQ>
 /// Note: Naive and optimized poseidon hash does not change #constraints in Groth16.
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MdsMatrices<F>
 where
     F: Field,
 {
     /// MDS Matrix for naive poseidon hash
-    pub m: Matrix<F>,
+    pub m: SquareMatrix<F>,
     /// inversion of mds matrix. Used in optimzed poseidon hash.
-    pub m_inv: Matrix<F>,
+    pub m_inv: SquareMatrix<F>,
     /// m_hat matrix. Used in optimized poseidon hash
-    pub m_hat: Matrix<F>,
+    pub m_hat: SquareMatrix<F>,
     /// Inversion of m_hat matrix. Used in optimized poseidon hash.
-    pub m_hat_inv: Matrix<F>,
+    pub m_hat_inv: SquareMatrix<F>,
     /// m prime matrix. Used in optimized poseidon hash.
-    pub m_prime: Matrix<F>,
+    pub m_prime: SquareMatrix<F>,
     /// m double prime matrix. Used in optimized poseidon hash.
-    pub m_double_prime: Matrix<F>,
-}
-
-impl<F> Clone for MdsMatrices<F>
-where
-    F: Field + Clone,
-{
-    fn clone(&self) -> Self {
-        MdsMatrices {
-            m: self.m.clone(),
-            m_inv: self.m_inv.clone(),
-            m_hat: self.m_hat.clone(),
-            m_hat_inv: self.m_hat_inv.clone(),
-            m_prime: self.m_prime.clone(),
-            m_double_prime: self.m_double_prime.clone(),
-        }
-    }
+    pub m_double_prime: SquareMatrix<F>,
 }
 
 impl<F> MdsMatrices<F>
@@ -75,22 +59,28 @@ impl<F> MdsMatrices<F>
 where
     F: Field + Copy,
 {
-    fn make_prime(m: &Matrix<F>) -> Matrix<F> {
-        m.iter_rows()
-            .enumerate()
-            .map(|(i, row)| match i {
-                0 => {
-                    let mut new_row = vec![F::zero(); row.len()];
-                    new_row[0] = F::one();
-                    new_row
-                }
-                _ => {
-                    let mut new_row = vec![F::zero(); row.len()];
-                    new_row[1..].copy_from_slice(&row[1..]);
-                    new_row
-                }
-            })
-            .collect()
+    fn make_prime(m: &Matrix<F>) -> SquareMatrix<F> {
+        SquareMatrix::new(
+            Matrix::new(
+                m.iter_rows()
+                    .enumerate()
+                    .map(|(i, row)| match i {
+                        0 => {
+                            let mut new_row = vec![F::zero(); row.len()];
+                            new_row[0] = F::one();
+                            new_row
+                        }
+                        _ => {
+                            let mut new_row = vec![F::zero(); row.len()];
+                            new_row[1..].copy_from_slice(&row[1..]);
+                            new_row
+                        }
+                    })
+                    .collect(),
+            )
+            .unwrap(),
+        )
+        .unwrap()
     }
 }
 
@@ -99,66 +89,67 @@ where
     F: Copy + Field + FieldGeneration + PartialEq,
 {
     /// Derives MDS matrix of size `dim*dim` and relevant things
-    pub fn new(dim: usize) -> Self {
-        let m = Self::generate_mds(dim);
-        Self::derive_mds_matrices(m)
+    pub fn new(dim: usize) -> Option<Self> {
+        Self::generate_mds(dim).map(Self::derive_mds_matrices)
     }
 
     /// Generates the mds matrix `m` for naive poseidon hash.
-    /// mds matrix is constructed to be symmetry so that row-major or col-major 
+    /// mds matrix is constructed to be symmetry so that row-major or col-major
     /// representation gives the same output
-    pub fn generate_mds(t: usize) -> Matrix<F>
-    where F: FieldGeneration,
+    pub fn generate_mds(t: usize) -> Option<SquareMatrix<F>>
+    where
+        F: FieldGeneration,
     {
-        let xs: Vec<F> = (0..t as u64).map(F::from_u64).collect();
         let ys: Vec<F> = (t as u64..2 * t as u64).map(F::from_u64).collect();
-
-        let matrix = xs
-            .iter()
-            .map(|xs_item| {
-                ys.iter()
-                    .map(|ys_item| {
-                        // Generate the entry at (i,j)
-                        let mut tmp = *xs_item;
-                        F::add_assign(&mut tmp, ys_item);
-                        F::inverse(&tmp).unwrap()
-                    })
-                    .collect()
-            })
-            .collect::<Matrix<F>>();
-
-        // assert!(matrix.is_invertible());
-        // assert!(matrix.0 == matrix.transpose().0);
-        matrix
+        let matrix = Matrix::new(
+            (0..t as u64)
+                .map(|x| {
+                    ys.iter()
+                        .map(|y| F::add(&F::from_u64(x), y).inverse().unwrap())
+                        .collect()
+                })
+                .collect(),
+        )
+        .unwrap();
+        if matrix.is_invertible() && matrix.is_symmetric() {
+            Some(SquareMatrix::new(matrix).expect("Expect square matrix"))
+        } else {
+            None
+        }
     }
 
-    fn make_double_prime(m: &Matrix<F>, m_hat_inv: &Matrix<F>) -> Matrix<F> {
+    fn make_double_prime(m: &Matrix<F>, m_hat_inv: &Matrix<F>) -> SquareMatrix<F> {
         let (v, w) = Self::make_v_w(m);
-        let w_hat = m_hat_inv.right_apply(&w);
-
-        m.iter_rows()
-            .enumerate()
-            .map(|(i, row)| match i {
-                0 => {
-                    let mut new_row = Vec::with_capacity(row.len());
-                    new_row.push(row[0]);
-                    new_row.extend(&v);
-                    new_row
-                }
-                _ => {
-                    let mut new_row = vec![F::zero(); row.len()];
-                    new_row[0] = w_hat[i - 1];
-                    new_row[i] = F::one();
-                    new_row
-                }
-            })
-            .collect()
+        let w_hat = m_hat_inv.mul_row_vec_at_left(&w).unwrap();
+        SquareMatrix::new(
+            Matrix::new(
+                m.iter_rows()
+                    .enumerate()
+                    .map(|(i, row)| match i {
+                        0 => {
+                            let mut new_row = Vec::with_capacity(row.len());
+                            new_row.push(row[0]);
+                            new_row.extend(&v);
+                            new_row
+                        }
+                        _ => {
+                            let mut new_row = vec![F::zero(); row.len()];
+                            new_row[0] = w_hat[i - 1];
+                            new_row[i] = F::one();
+                            new_row
+                        }
+                    })
+                    .collect(),
+            )
+            .unwrap(),
+        )
+        .unwrap()
     }
 
     /// Derives the mds matrices for optimized poseidon hash. Start from mds matrix `m` in naive poseidon hash.
-    pub fn derive_mds_matrices(m: Matrix<F>) -> Self {
+    pub fn derive_mds_matrices(m: SquareMatrix<F>) -> Self {
         let m_inv = m.invert().expect("Derived MDS matrix is not invertible");
-        let m_hat = m.minor(0, 0);
+        let m_hat = m.minor(0, 0).expect("Expect minor matrix");
         let m_hat_inv = m_hat.invert().expect("Derived MDS matrix is not correct");
         let m_prime = Self::make_prime(&m);
         let m_double_prime = Self::make_double_prime(&m, &m_hat_inv);
@@ -192,10 +183,21 @@ impl<F> SparseMatrix<F>
 where
     F: Field + Copy,
 {
-    /// Generates sparse matrix from m_double_prime matrix
-    pub fn new(m_double_prime: &Matrix<F>) -> Self {
-        assert!(m_double_prime.is_sparse());
+    /// Checks if `self` is square and `self[1..][1..]` is identity
+    fn is_sparse(m: &SquareMatrix<F>) -> bool
+    where
+        F: Clone,
+    {
+        match m.minor(0, 0) {
+            Some(minor_matrix) => minor_matrix.is_identity(),
+            None => false,
+        }
+    }
 
+    /// Generates sparse matrix from m_double_prime matrix
+    pub fn new(m_double_prime: SquareMatrix<F>) -> Self {
+        assert!(Self::is_sparse(&m_double_prime));
+        let m_double_prime = Matrix::from(m_double_prime);
         let w_hat = m_double_prime.iter_rows().map(|r| r[0]).collect();
         let v_rest = m_double_prime[0][1..].to_vec();
         Self { w_hat, v_rest }
@@ -221,9 +223,9 @@ where
 
 /// Factorizes into sparse matrices.
 pub fn factor_to_sparse_matrixes<F>(
-    base_matrix: Matrix<F>,
+    base_matrix: SquareMatrix<F>,
     n: usize,
-) -> (Matrix<F>, Vec<SparseMatrix<F>>)
+) -> (SquareMatrix<F>, Vec<SparseMatrix<F>>)
 where
     F: Field + Clone + Copy + Debug + PartialEq + FieldGeneration,
 {
@@ -235,17 +237,17 @@ where
             (new, acc)
         });
     sparse_matrices.reverse();
-    let sparse_matrixes = sparse_matrices
-        .iter()
+    let sparse_matrices = sparse_matrices
+        .into_iter()
         .map(|m| SparseMatrix::<F>::new(m))
         .collect::<Vec<_>>();
 
-    (pre_sparse, sparse_matrixes)
+    (pre_sparse, sparse_matrices)
 }
 
 #[cfg(test)]
 mod test {
-    use super::MdsMatrices;
+    use super::*;
     use ark_bls12_381::Fr;
     use ark_ff::field_new;
     use ark_std::{test_rng, UniformRand};
@@ -269,7 +271,7 @@ mod test {
             m_hat_inv: _,
             m_prime,
             m_double_prime,
-        } = MdsMatrices::<Fp<Fr>>::new(width);
+        } = MdsMatrices::<Fp<Fr>>::new(width).unwrap();
 
         for i in 0..m_hat.num_rows() {
             for j in 0..m_hat.num_columns() {
@@ -291,7 +293,7 @@ mod test {
 
     fn swapping_aux(width: usize) {
         let mut rng = test_rng();
-        let mds = MdsMatrices::<Fp<Fr>>::new(width);
+        let mds = MdsMatrices::<Fp<Fr>>::new(width).unwrap();
 
         let base = (0..width)
             .map(|_| Fp(Fr::rand(&mut rng)))
@@ -307,18 +309,24 @@ mod test {
             y
         };
 
-        let qx = mds.m_prime.right_apply(&x);
-        let qy = mds.m_prime.right_apply(&y);
+        let qx = mds.m_prime.mul_row_vec_at_left(&x).unwrap();
+        let qy = mds.m_prime.mul_row_vec_at_left(&y).unwrap();
         assert_eq!(qx[0], x[0]);
         assert_eq!(qy[0], y[0]);
         assert_eq!(qx[1..], qy[1..]);
 
-        let mx = mds.m.left_apply(&x);
-        let m1_m2_x = mds.m_prime.left_apply(&mds.m_double_prime.left_apply(&x));
+        let mx = mds.m.mul_col_vec(&x).unwrap();
+        let m1_m2_x = mds
+            .m_prime
+            .mul_col_vec(&mds.m_double_prime.mul_col_vec(&x).unwrap())
+            .unwrap();
         assert_eq!(mx, m1_m2_x);
 
-        let xm = mds.m.right_apply(&x);
-        let x_m1_m2 = mds.m_double_prime.right_apply(&mds.m_prime.right_apply(&x));
+        let xm = mds.m.mul_row_vec_at_left(&x).unwrap();
+        let x_m1_m2 = mds
+            .m_double_prime
+            .mul_row_vec_at_left(&mds.m_prime.mul_row_vec_at_left(&x).unwrap())
+            .unwrap();
         assert_eq!(xm, x_m1_m2);
     }
 
@@ -370,16 +378,17 @@ mod test {
                     "14981678621464625851270783002338847382197300714436467949315331057125308909861"
                 )),
             ],
-        ]).unwrap();
+        ])
+        .unwrap();
 
-        let mds = MdsMatrices::<Fp<Fr>>::generate_mds(width);
+        let mds = MdsMatrices::<Fp<Fr>>::generate_mds(width).unwrap();
         assert_eq!(mds, expected_mds);
     }
 
     #[test]
     fn mds_is_invertible() {
         for t in 3..10 {
-            let mds = MdsMatrices::<Fp<Fr>>::generate_mds(t);
+            let mds = MdsMatrices::<Fp<Fr>>::generate_mds(t).unwrap();
             assert!(mds.is_invertible());
         }
     }
@@ -387,7 +396,7 @@ mod test {
     #[test]
     fn mds_is_symmetric() {
         for t in 3..10 {
-            let mds = MdsMatrices::<Fp<Fr>>::generate_mds(t);
+            let mds = MdsMatrices::<Fp<Fr>>::generate_mds(t).unwrap();
             assert_eq!(mds, mds.clone().transpose());
         }
     }

@@ -26,14 +26,11 @@ pub fn generate_round_constants<F>(
     width: usize,
     num_full_rounds: usize,
     num_partial_rounds: usize,
-) -> (Vec<F>, GrainLFSR)
+) -> Vec<F>
 where
     F: Field + FieldGeneration,
 {
     let num_constants = (num_full_rounds + num_partial_rounds) * width;
     let mut lfsr = GrainLFSR::new(prime_num_bits, width, num_full_rounds, num_partial_rounds);
-    (
-        lfsr.get_field_elements_rejection_sampling::<F>(num_constants),
-        lfsr,
-    )
+    lfsr.get_field_elements_rejection_sampling::<F>(num_constants)
 }

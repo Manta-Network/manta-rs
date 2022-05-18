@@ -21,7 +21,8 @@
 
 use crate::crypto::hash::poseidon::{
     Field,
-    parameter_generation::{mds::MdsMatrices, round_constants::generate_round_constants},
+    FieldGeneration,
+    parameter_generation::{mds::MdsMatrices, round_constants::generate_round_constants, matrix::MatrixOperations},
 };
 use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash, iter, mem};
@@ -33,8 +34,6 @@ use manta_util::codec::{Decode, DecodeError, Encode, Read, Write};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
-
-use super::FieldGeneration;
 
 /// Poseidon Permutation Specification
 pub trait Specification<COM = ()> {
@@ -294,14 +293,14 @@ where
     {
         let _ = distribution;
         let _ = rng;
-        let (round_constants, _) = generate_round_constants::<S::ParameterField>(
+        let round_constants = generate_round_constants::<S::ParameterField>(
             S::ParameterField::MODULUS_BITS as u64,
             Self::WIDTH,
             S::FULL_ROUNDS,
             S::PARTIAL_ROUNDS,
         );
 
-        let mds_matrices = MdsMatrices::<S::ParameterField>::generate_mds(Self::WIDTH);
+        let mds_matrices = MdsMatrices::<S::ParameterField>::generate_mds(Self::WIDTH).unwrap();
 
         Self {
             additive_round_keys: round_constants,

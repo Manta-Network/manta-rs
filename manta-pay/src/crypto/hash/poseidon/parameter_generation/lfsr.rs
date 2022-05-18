@@ -17,12 +17,12 @@
 //! LFSH implementation.
 // adapted from: https://github.com/arkworks-rs/sponge/blob/51d6fc9aac1fa69f44a04839202b5de828584ed8/src/poseidon/grain_lfsr.rs
 
-use crate::crypto::hash::poseidon::{Field, FieldGeneration};
+use crate::crypto::hash::poseidon::FieldGeneration;
 use alloc::vec::Vec;
 
-/// An 80-bit linear feedback shift register, described in 
-/// [GKRRS19](https://eprint.iacr.org/2019/458.pdf) Appendix A. `GrainLFSR` 
-/// is used to generate secure parameter for Poseidon Hash. 
+/// An 80-bit linear feedback shift register, described in
+/// [GKRRS19](https://eprint.iacr.org/2019/458.pdf) Appendix A. `GrainLFSR`
+/// is used to generate secure parameter for Poseidon Hash.
 pub struct GrainLFSR {
     state: [bool; 80],
     prime_num_bits: u64,
@@ -40,7 +40,12 @@ fn append_bits<T: Into<u128>>(state: &mut [bool; 80], head: &mut usize, n: usize
 
 impl GrainLFSR {
     /// Return a new `GrainLFSR` for poseidon parameter generation.
-    pub fn new(prime_num_bits: u64, width: usize, num_full_rounds: usize, num_partial_rounds: usize) -> Self {
+    pub fn new(
+        prime_num_bits: u64,
+        width: usize,
+        num_full_rounds: usize,
+        num_partial_rounds: usize,
+    ) -> Self {
         let mut init_sequence = [false; 80];
         let mut head = 0;
         // b0, b1 describes the field
@@ -91,13 +96,12 @@ impl GrainLFSR {
         self.state[(index + self.head) % 80]
     }
 
+    /// TODO: Add doc
     pub fn get_bits(&mut self, num_bits: usize) -> Vec<bool> {
         let mut res = Vec::new();
-
         for _ in 0..num_bits {
             // Obtains the first bit
             let mut new_bit = self.update();
-
             // Loop until the first bit is true
             while !new_bit {
                 // Discards the second bit
@@ -105,42 +109,45 @@ impl GrainLFSR {
                 // Obtains another first bit
                 new_bit = self.update();
             }
-
             // Obtains the second bit
             res.push(self.update());
         }
-
         res
     }
 
-    pub fn get_field_elements_rejection_sampling<F>(&mut self, num_elems: usize) -> Vec<F>
+    fn sample_element<F>(&mut self) -> F 
     where
-        F: Field + FieldGeneration,
+        F: FieldGeneration
     {
-        assert_eq!(F::MODULUS_BITS as u64, self.prime_num_bits);
-
-        let mut res = Vec::new();
-        for _ in 0..num_elems {
-            // Performs rejection sampling
-            loop {
-                // Obtain n bits and make it most-significant-bit first
-                let mut bits = self.get_bits(self.prime_num_bits as usize);
-                bits.reverse();
-
-                // Constructs the number
-                if let Some(f) = F::try_from_bits_le(&bits) {
-                    res.push(f);
-                    break;
-                }
+        // Performs rejection sampling
+        loop {
+            // Obtain n bits and make it most-significant-bit first
+            let mut bits = self.get_bits(self.prime_num_bits as usize);
+            bits.reverse();
+            // Constructs the number
+            if let Some(f) = F::try_from_bits_le(&bits) {
+                return f;
             }
         }
+    }
 
+    /// TODO: Add doc
+    pub fn get_field_elements_rejection_sampling<F>(&mut self, num_elems: usize) -> Vec<F>
+    where
+        F: FieldGeneration,
+    {
+        assert_eq!(F::MODULUS_BITS as u64, self.prime_num_bits);
+        let mut res = Vec::new();
+        for _ in 0..num_elems {
+            res.push(self.sample_element());
+        }
         res
     }
 
+    /// TODO: Add doc
     pub fn get_field_elements_mod_p<F>(&mut self, num_elems: usize) -> Vec<F>
     where
-        F: Field + FieldGeneration,
+        F: FieldGeneration,
     {
         assert_eq!(F::MODULUS_BITS as u64, self.prime_num_bits);
 
