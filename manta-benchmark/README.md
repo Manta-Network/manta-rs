@@ -1,6 +1,7 @@
 # manta-benchmark
 
 ## Dependencies:
+
 * [Rust toolchain](https://www.rust-lang.org/tools/install)
 * [npm](https://www.npmjs.com/get-npm)
 * `wasm-pack` package:
@@ -9,6 +10,7 @@
     ```
 
 ## Run the benchmark
+
 * WASM time:
     ```bash
     ./wasm-bench.sh

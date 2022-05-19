@@ -21,71 +21,55 @@ use wasm_bindgen_test::{wasm_bindgen_test, wasm_bindgen_test_configure};
 use web_sys::console;
 wasm_bindgen_test_configure!(run_in_browser);
 
-static REPEAT: usize = 1;
+static REPEAT: usize = 3;
 
 #[wasm_bindgen_test]
-fn bench_construct_context() {
+fn bench_prove_mint() {
+    let context = Context::new();
     let start_time = instant::Instant::now();
     for _ in 0..REPEAT {
-        Context::new();
+        prove_mint(&context);
     }
     let end_time = instant::Instant::now();
     console::log_1(
         &format!(
-            "Construct Context Performance: {:?} ms",
+            "Prove Mint Performance: {:?}",
             ((end_time - start_time) / REPEAT as u32)
         )
         .into(),
     );
 }
 
-// #[wasm_bindgen_test]
-// fn bench_prove_mint() {
-//     let context = Context::new();
-//     let start_time = instant::Instant::now();
-//     for _ in 0..REPEAT {
-//         prove_mint(&context);
-//     }
-//     let end_time = instant::Instant::now();
-//     console::log_1(
-//         &format!(
-//             "Prove Mint Performance: {:?} ms",
-//             ((end_time - start_time) / REPEAT as u32)
-//         )
-//         .into(),
-//     );
-// }
+#[wasm_bindgen_test]
+fn bench_prove_private_transfer() {
+    let context = black_box(Context::new());
+    let start_time = instant::Instant::now();
+    for _ in 0..REPEAT {
+        prove_private_transfer(&context);
+    }
+    let end_time = instant::Instant::now();
+    console::log_1(
+        &format!(
+            "Prove Private Transfer Performance: {:?}",
+            ((end_time - start_time) / REPEAT as u32)
+        )
+        .into(),
+    );
+}
 
-// #[wasm_bindgen_test]
-// fn bench_prove_private_transfer() {
-//     let context = black_box(Context::new());
-//     let start_time = instant::Instant::now();
-//     for _ in 0..REPEAT {
-//         prove_private_transfer(&context);
-//     }
-//     let end_time = instant::Instant::now();
-//     console::log_1(
-//         &format!(
-//             "Prove Private Transfer Performance: {:?} ms, REPEAT: {:?}, raw_latency: {:?} ms",
-//             ((end_time - start_time) / REPEAT as u32), REPEAT, (end_time - start_time)
-//         )
-//         .into(),
-//     );
-// }
-
-// #[wasm_bindgen_test]
-// fn bench_prove_reclaim() {
-//     let context = Context::new();
-//     let start_time = instant::Instant::now();
-//     for _ in 0..REPEAT {
-//         prove_reclaim(&context);
-//     }
-//     let end_time = instant::Instant::now();
-//     console::log_1(
-//         &format!(
-//             "Prove Reclaim Performance: {:?} ms",
-//             ((end_time - start_time) / REPEAT as u32)
-//         )
-//         .into(),
-//     );
-// }
+#[wasm_bindgen_test]
+fn bench_prove_reclaim() {
+    let context = Context::new();
+    let start_time = instant::Instant::now();
+    for _ in 0..REPEAT {
+        prove_reclaim(&context);
+    }
+    let end_time = instant::Instant::now();
+    console::log_1(
+        &format!(
+            "Prove Reclaim Performance: {:?}",
+            ((end_time - start_time) / REPEAT as u32)
+        )
+        .into(),
+    );
+}

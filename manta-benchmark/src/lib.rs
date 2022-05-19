@@ -14,8 +14,6 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-pub mod payment;
-
 use manta_crypto::rand::{OsRng, Rand};
 use manta_pay::{
     config::{
@@ -26,7 +24,10 @@ use manta_pay::{
 use payment::assert_valid_proof;
 use wasm_bindgen::prelude::wasm_bindgen;
 
+pub mod payment;
+
 #[wasm_bindgen]
+#[derive(Clone, Debug)]
 pub struct Context {
     proving_context: MultiProvingContext,
     verifying_context: MultiVerifyingContext,
