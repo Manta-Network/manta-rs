@@ -22,12 +22,23 @@ use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash, iter::repeat, marker::PhantomData};
 use manta_util::into_array_unchecked;
 
+#[cfg(feature = "serde")]
+use manta_util::serde::{Deserialize, Serialize};
+
 pub use rand_core::{block, CryptoRng, Error, RngCore, SeedableRng};
 
 #[cfg(feature = "getrandom")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "getrandom")))]
 #[doc(inline)]
 pub use rand_core::OsRng;
+
+#[cfg(feature = "rand")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "rand")))]
+#[doc(inline)]
+pub use rand::distributions::{
+    uniform::{SampleRange, SampleUniform},
+    Distribution,
+};
 
 /// Random Number Generator Sized Wrapper
 #[derive(Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -268,6 +279,36 @@ where
     }
 }
 
+/// Distribution Sampled Value
+///
+/// This wrapper type automatically implements [`Sample`] whenever the `rand` crate is in scope by
+/// sampling from a `rand::Distribution<T>`.
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct Sampled<T>(
+    /// Sampled Value
+    pub T,
+);
+
+#[cfg(feature = "rand")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "rand")))]
+impl<T, D> Sample<D> for Sampled<T>
+where
+    D: Distribution<T>,
+{
+    #[inline]
+    fn sample<R>(distribution: D, rng: &mut R) -> Self
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        Self(distribution.sample(rng))
+    }
+}
+
 /// Distribution Iterator
 pub struct DistIter<'r, D, T, R>
 where
@@ -404,6 +445,35 @@ pub trait Rand: CryptoRng + RngCore {
         let mut bytes = [0; N];
         self.fill_bytes(&mut bytes);
         bytes
+    }
+
+    /// Generates a random value in the given `range`.
+    #[cfg(feature = "rand")]
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "rand")))]
+    #[inline]
+    fn gen_range<T, R>(&mut self, range: R) -> T
+    where
+        T: SampleUniform,
+        R: SampleRange<T>,
+    {
+        rand::Rng::gen_range(self, range)
+    }
+
+    /// Selects a random item from `iter` by sampling an index less than or equal to the length of
+    /// `iter` and then traversing to that element, returning it if it exists.
+    #[cfg(feature = "rand")]
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "rand")))]
+    #[inline]
+    fn select_item<I>(&mut self, iter: I) -> Option<I::Item>
+    where
+        I: IntoIterator,
+        I::IntoIter: ExactSizeIterator,
+    {
+        let mut iter = iter.into_iter();
+        match iter.len() {
+            0 => None,
+            n => iter.nth(self.gen_range(0..n)),
+        }
     }
 
     /// Seeds another random number generator `R` using entropy from `self`.

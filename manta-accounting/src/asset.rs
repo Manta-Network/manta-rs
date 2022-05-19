@@ -98,6 +98,17 @@ impl AssetId {
     pub const fn into_bytes(self) -> [u8; Self::SIZE] {
         self.0.to_le_bytes()
     }
+
+    /// Samples an [`Asset`] by uniformly choosing between zero and `maximum` when selecting coins.
+    #[cfg(feature = "test")]
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
+    #[inline]
+    pub fn sample_up_to<R>(self, maximum: AssetValue, rng: &mut R) -> Asset
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        self.value(rng.gen_range(0..maximum.0))
+    }
 }
 
 impl From<AssetId> for [u8; AssetId::SIZE] {
