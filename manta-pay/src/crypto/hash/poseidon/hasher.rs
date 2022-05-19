@@ -20,15 +20,16 @@
 // TODO: Add more methods to the `Specification` trait for optimization.
 
 use crate::crypto::hash::poseidon::{
-    Field,
-    FieldGeneration,
-    parameter_generation::{mds::MdsMatrices, round_constants::generate_round_constants, matrix::MatrixOperations},
+    parameter_generation::{
+        matrix::MatrixOperations, mds::MdsMatrices, round_constants::generate_round_constants,
+    },
+    Field, FieldGeneration,
 };
 use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash, iter, mem};
 use manta_crypto::{
-    rand::{CryptoRng, RngCore, Sample},
     hash::ArrayHashFunction,
+    rand::{CryptoRng, RngCore, Sample},
 };
 use manta_util::codec::{Decode, DecodeError, Encode, Read, Write};
 
@@ -134,7 +135,7 @@ where
     /// Poseidon hash first has [`HALF_FULL_ROUNDS`] full rounds in the beginning,
     /// followed by [`PARTIAL_ROUNDS`] partial rounds in the middle, and finally
     /// [`HALF_FULL_ROUNDS`] full rounds at the end.
-    /// 
+    ///
     /// [`HALF_FULL_ROUNDS`]: Self::HALF_FULL_ROUNDS
     /// [`PARTIAL_ROUNDS`]: Specification::PARTIAL_ROUNDS
     pub const HALF_FULL_ROUNDS: usize = S::FULL_ROUNDS / 2;
@@ -270,7 +271,8 @@ where
         for round in Self::HALF_FULL_ROUNDS..(Self::HALF_FULL_ROUNDS + S::PARTIAL_ROUNDS) {
             self.partial_round(round, &mut state, compiler);
         }
-        for round in (Self::HALF_FULL_ROUNDS + S::PARTIAL_ROUNDS)..(S::FULL_ROUNDS + S::PARTIAL_ROUNDS)
+        for round in
+            (Self::HALF_FULL_ROUNDS + S::PARTIAL_ROUNDS)..(S::FULL_ROUNDS + S::PARTIAL_ROUNDS)
         {
             self.full_round(round, &mut state, compiler);
         }
@@ -523,7 +525,11 @@ pub mod arkworks {
         }
 
         #[inline]
-        fn add_const(lhs: &Self::Field, rhs: &Self::ParameterField, _: &mut Compiler<S>) -> Self::Field {
+        fn add_const(
+            lhs: &Self::Field,
+            rhs: &Self::ParameterField,
+            _: &mut Compiler<S>,
+        ) -> Self::Field {
             lhs + FpVar::Constant(rhs.0)
         }
 
@@ -543,7 +549,11 @@ pub mod arkworks {
         }
 
         #[inline]
-        fn add_const_assign(lhs: &mut Self::Field, rhs: &Self::ParameterField, _: &mut Compiler<S>) {
+        fn add_const_assign(
+            lhs: &mut Self::Field,
+            rhs: &Self::ParameterField,
+            _: &mut Compiler<S>,
+        ) {
             *lhs += FpVar::Constant(rhs.0)
         }
 

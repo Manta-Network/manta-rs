@@ -40,7 +40,9 @@ pub trait Field {
     fn sub(lhs: &Self, rhs: &Self) -> Self;
 
     /// Computes the multiplicative inverse of a field element.
-    fn inverse(&self) -> Option<Self> where Self: Sized;
+    fn inverse(&self) -> Option<Self>
+    where
+        Self: Sized;
 
     /// Checks if `self` equals `rhs`.
     fn eq(&self, rhs: &Self) -> bool;
@@ -51,14 +53,16 @@ pub trait FieldGeneration {
     /// Number of bits of modulus of the field.
     const MODULUS_BITS: usize;
 
-    /// Converts from `bits` into a field element in little endian order.
-    /// Return `None` if `bits` are out of range.
-    fn try_from_bits_le(bits: &[bool]) -> Option<Self> where Self: Sized;
-
-    /// Converts from `bytes` into a field element in little endian order. 
+    /// Converts from `bytes` into a field element in little endian order.
     /// If the number of bytes is out of range, the result will be modulo.   
     fn from_le_bytes_mod_order(bytes: &[u8]) -> Self;
 
     /// Converts a `u64` value to a field element.
     fn from_u64(elem: u64) -> Self;
+
+    /// Converts from `bits` into a field element in little endian order.
+    /// Return `None` if `bits` are out of range.
+    fn try_from_bits_le(bits: &[bool]) -> Option<Self>
+    where
+        Self: Sized;
 }

@@ -101,18 +101,21 @@ where
         F: FieldGeneration,
     {
         let ys: Vec<F> = (t as u64..2 * t as u64).map(F::from_u64).collect();
-        let matrix = Matrix::new(
-            (0..t as u64)
-                .map(|x| {
-                    ys.iter()
-                        .map(|y| F::add(&F::from_u64(x), y).inverse().unwrap())
-                        .collect()
-                })
-                .collect(),
+        let matrix = SquareMatrix::new(
+            Matrix::new(
+                (0..t as u64)
+                    .map(|x| {
+                        ys.iter()
+                            .map(|y| F::add(&F::from_u64(x), y).inverse().unwrap())
+                            .collect()
+                    })
+                    .collect(),
+            )
+            .unwrap(),
         )
         .unwrap();
         if matrix.is_invertible() && matrix.is_symmetric() {
-            Some(SquareMatrix::new(matrix).expect("Expect square matrix"))
+            Some(matrix)
         } else {
             None
         }
@@ -257,7 +260,7 @@ mod test {
     };
 
     #[test]
-    fn mds_matrices_creation() {
+    fn mds_matrices_creation_is_correct() {
         for i in 2..5 {
             mds_matrices_creation_aux(i);
         }
@@ -287,7 +290,7 @@ mod test {
     }
 
     #[test]
-    fn swapping() {
+    fn swapping_is_correct() {
         swapping_aux(3)
     }
 

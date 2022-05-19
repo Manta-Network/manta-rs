@@ -105,7 +105,7 @@ mod test {
     use super::*;
 
     #[test]
-    fn round_numbers_against_known_values() {
+    fn round_numbers_matches_known_values() {
         // Each case contains a `t` (where `t = arity + 1`) and the `R_P` expected for that `t`.
         let cases = [
             (2usize, 55usize),

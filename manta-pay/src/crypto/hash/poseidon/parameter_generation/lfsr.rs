@@ -115,9 +115,9 @@ impl GrainLFSR {
         res
     }
 
-    fn sample_element<F>(&mut self) -> F 
+    fn sample_element<F>(&mut self) -> F
     where
-        F: FieldGeneration
+        F: FieldGeneration,
     {
         // Performs rejection sampling
         loop {
@@ -150,13 +150,11 @@ impl GrainLFSR {
         F: FieldGeneration,
     {
         assert_eq!(F::MODULUS_BITS as u64, self.prime_num_bits);
-
         let mut res = Vec::new();
         for _ in 0..num_elems {
             // Obtains n bits and make it most-significant-bit first
             let mut bits = self.get_bits(self.prime_num_bits as usize);
             bits.reverse();
-
             let bytes = bits
                 .chunks(8)
                 .map(|chunk| {
@@ -167,10 +165,8 @@ impl GrainLFSR {
                     result
                 })
                 .collect::<Vec<u8>>();
-
             res.push(F::from_le_bytes_mod_order(&bytes));
         }
-
         res
     }
 }
@@ -183,9 +179,8 @@ mod test {
     use ark_ff::field_new;
 
     #[test]
-    fn test_grain_lfsr_consistency() {
+    fn grain_lfsr_consistency() {
         // sage generate_parameters_grain_deterministic.sage 1 0 255 3 8 55 0x73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001
-
         let mut lfsr = GrainLFSR::new(255, 3, 8, 55);
         assert_eq!(
             lfsr.get_field_elements_rejection_sampling::<Fp<Fr>>(1)[0],
