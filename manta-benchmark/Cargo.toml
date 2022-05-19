@@ -34,6 +34,10 @@ harness = false
 name = "reclaim"
 harness = false
 
+[features]
+browser-bench = []
+
+
 [dependencies]
 getrandom = { version = "0.2", features = ["js"]}
 instant = { version = "0.1", features = [ "wasm-bindgen" ] }

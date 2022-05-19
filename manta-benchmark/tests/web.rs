@@ -14,7 +14,6 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-use criterion::black_box;
 use instant;
 use manta_benchmark::{prove_mint, prove_private_transfer, prove_reclaim, Context};
 use wasm_bindgen_test::{wasm_bindgen_test, wasm_bindgen_test_configure};
@@ -42,7 +41,7 @@ fn bench_prove_mint() {
 
 #[wasm_bindgen_test]
 fn bench_prove_private_transfer() {
-    let context = black_box(Context::new());
+    let context = Context::new();
     let start_time = instant::Instant::now();
     for _ in 0..REPEAT {
         prove_private_transfer(&context);
