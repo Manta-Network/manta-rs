@@ -488,6 +488,8 @@ where
         }
     }
 
+    /// Samples an asset balance from the wallet of `self`, labelling the possible error with
+    /// `action` if it occurs during synchronization.
     #[inline]
     async fn sample_asset<R>(
         &mut self,
@@ -596,21 +598,19 @@ where
         R: CryptoRng + RngCore + ?Sized,
         K: FnOnce(&mut R) -> Result<Option<ReceivingKey<C>>, Error<C, L, S>>,
     {
-        // FIXME: Implement a better faster way it's much starting v2.
-        //
         let action = if is_self {
             ActionType::SelfTransfer
         } else {
             ActionType::PrivateTransfer
         };
-        match self.sample_withdraw(rng).await {
+        match self.sample_asset(action, rng).await {
             Ok(Some(asset)) => match key(rng) {
                 Ok(Some(key)) => Ok(Action::private_transfer(is_self, asset.id.value(0), key)),
                 Ok(_) => Ok(Action::GenerateReceivingKeys { count: 1 }),
                 Err(err) => Err(action.label(err)),
             },
             Ok(_) => Ok(self.sample_zero_mint(rng).await?),
-            Err(err) => Err(action.label(err)),
+            Err(err) => Err(err),
         }
     }
 
