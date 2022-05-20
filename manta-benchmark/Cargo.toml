@@ -19,6 +19,9 @@ publish = false
 all-features = true
 rustdoc-args = ["--cfg", "doc_cfg"]
 
+[lib]
+crate-type = ["cdylib", "lib"]
+
 [[bench]]
 name = "mint"
 harness = false
@@ -32,9 +35,14 @@ name = "reclaim"
 harness = false
 
 [dependencies]
+getrandom = { version = "0.2", features = ["js"]}
+instant = { version = "0.1", features = [ "wasm-bindgen" ] }
 manta-accounting = { path = "../manta-accounting", default-features = false, features = ["test"] }
-manta-crypto = { path = "../manta-crypto", default-features = false, features = ["test"] }
+manta-crypto = { path = "../manta-crypto", default-features = false, features = ["getrandom", "test"] }
 manta-pay = { path = "../manta-pay", default-features = false, features = ["groth16", "test"] }
+wasm-bindgen = "0.2"
+wasm-bindgen-test = { version = "0.3"}
+web-sys = { version = "0.3", features = ["console"]}
 
 [dev-dependencies]
 criterion = { version = "0.3.4", default-features = false }
