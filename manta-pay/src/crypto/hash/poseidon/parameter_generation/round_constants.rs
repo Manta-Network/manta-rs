@@ -20,7 +20,7 @@ use super::lfsr::GrainLFSR;
 use crate::crypto::hash::poseidon::{Field, FieldGeneration};
 use alloc::vec::Vec;
 
-/// return round constants, and return the LFSR used to generate MDS matrix
+/// Generates round constants
 pub fn generate_round_constants<F>(
     prime_num_bits: u64,
     width: usize,

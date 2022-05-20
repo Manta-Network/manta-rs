@@ -48,7 +48,8 @@ where
         let inverted = inverse_matrix.mul_row_vec_at_left(next_round).unwrap();
         res.extend(inverted);
     }
-    // The plan:
+
+    // High-level Workflow Description:
     // - Work backwards from last row in this group
     // - Invert the row.
     // - Save first constant (corresponding to the one S-box performed).

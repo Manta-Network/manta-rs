@@ -406,7 +406,8 @@ where
         )))
     }
 
-    /// `matrix` must be upper triangular.
+    /// Reduces an upper triangular matrix `self.0` to an identity matrix.
+    /// Applies the same computation on `shadow` matrix as `self.0`.
     fn reduce_to_identity(&self, shadow: &mut Self) -> Option<Self>
     where
         F: Copy,
@@ -545,7 +546,7 @@ where
         .fold(F::zero(), |acc, (v1, v2)| F::add(&acc, &F::mul(v1, v2)))
 }
 
-/// Elementwise addition of two vectors
+/// Elementwise addition (i.e., out_i = a_i + b_i)
 pub fn vec_add<F>(a: &[F], b: &[F]) -> Vec<F>
 where
     F: Field,
@@ -607,58 +608,57 @@ mod test {
         let eight = Fp(Fr::from(8u64));
         let nine = Fp(Fr::from(9u64));
 
-        let m: Matrix<Fp<Fr>> = vec![
+        let m = Matrix::new(vec![
             vec![one, two, three],
             vec![four, five, six],
             vec![seven, eight, nine],
-        ]
-        .into();
+        ]).unwrap();
 
         let cases = [
             (
                 0,
                 0,
-                Matrix::<Fp<Fr>>(vec![vec![five, six], vec![eight, nine]]),
+                Matrix::new(vec![vec![five, six], vec![eight, nine]]).unwrap(),
             ),
             (
                 0,
                 1,
-                Matrix::<Fp<Fr>>(vec![vec![four, six], vec![seven, nine]]),
+                Matrix::new(vec![vec![four, six], vec![seven, nine]]).unwrap(),
             ),
             (
                 0,
                 2,
-                Matrix::<Fp<Fr>>(vec![vec![four, five], vec![seven, eight]]),
+                Matrix::new(vec![vec![four, five], vec![seven, eight]]).unwrap(),
             ),
             (
                 1,
                 0,
-                Matrix::<Fp<Fr>>(vec![vec![two, three], vec![eight, nine]]),
+                Matrix::new(vec![vec![two, three], vec![eight, nine]]).unwrap(),
             ),
             (
                 1,
                 1,
-                Matrix::<Fp<Fr>>(vec![vec![one, three], vec![seven, nine]]),
+                Matrix::new(vec![vec![one, three], vec![seven, nine]]).unwrap(),
             ),
             (
                 1,
                 2,
-                Matrix::<Fp<Fr>>(vec![vec![one, two], vec![seven, eight]]),
+                Matrix::new(vec![vec![one, two], vec![seven, eight]]).unwrap(),
             ),
             (
                 2,
                 0,
-                Matrix::<Fp<Fr>>(vec![vec![two, three], vec![five, six]]),
+                Matrix::new(vec![vec![two, three], vec![five, six]]).unwrap(),
             ),
             (
                 2,
                 1,
-                Matrix::<Fp<Fr>>(vec![vec![one, three], vec![four, six]]),
+                Matrix::new(vec![vec![one, three], vec![four, six]]).unwrap(),
             ),
             (
                 2,
                 2,
-                Matrix::<Fp<Fr>>(vec![vec![one, two], vec![four, five]]),
+                Matrix::new(vec![vec![one, two], vec![four, five]]).unwrap(),
             ),
         ];
         let m = SquareMatrix::new(m).unwrap();
@@ -677,10 +677,10 @@ mod test {
         let four = Fp(Fr::from(4u64));
         let six = Fp(Fr::from(6u64));
 
-        let m = Matrix::<Fp<Fr>>(vec![vec![zero, one], vec![two, three]]);
+        let m = Matrix::new(vec![vec![zero, one], vec![two, three]]).unwrap();
         let res = m.mul_by_scalar(two);
 
-        let expected = Matrix::<Fp<Fr>>(vec![vec![zero, two], vec![four, six]]);
+        let expected = Matrix::new(vec![vec![zero, two], vec![four, six]]).unwrap();
 
         assert_eq!(expected.0, res.0);
     }
@@ -696,7 +696,7 @@ mod test {
 
         let a = vec![one, two, three];
         let b = vec![four, five, six];
-        let res = inner_product::<Fp<Fr>>(&a, &b);
+        let res = inner_product(&a, &b);
 
         let expected = Fp(Fr::from(32u64));
 
@@ -715,14 +715,14 @@ mod test {
         let eight = Fp(Fr::from(8u64));
         let nine = Fp(Fr::from(9u64));
 
-        let m: Matrix<Fp<Fr>> = vec![
+        let m: Matrix<_> = vec![
             vec![one, two, three],
             vec![four, five, six],
             vec![seven, eight, nine],
         ]
         .into();
 
-        let expected: Matrix<Fp<Fr>> = vec![
+        let expected: Matrix<_> = vec![
             vec![one, four, seven],
             vec![two, five, eight],
             vec![three, six, nine],
@@ -831,11 +831,11 @@ mod test {
 
         // S + M(B)
         let add_after_apply =
-            vec_add::<Fp<Fr>>(&some_vec, &m.mul_row_vec_at_left(&base_vec).unwrap());
+            vec_add(&some_vec, &m.mul_row_vec_at_left(&base_vec).unwrap());
 
         // M(B + M^-1(S))
         let apply_after_add = m
-            .mul_row_vec_at_left(&vec_add::<Fp<Fr>>(&base_vec, &inverse_applied))
+            .mul_row_vec_at_left(&vec_add(&base_vec, &inverse_applied))
             .unwrap();
 
         // S + M(B) = M(B + M^-1(S))
@@ -859,11 +859,11 @@ mod test {
         let six = Fp(Fr::from(6u64));
         let seven = Fp(Fr::from(7u64));
         let eight = Fp(Fr::from(8u64));
-        let m = Matrix::<Fp<Fr>>(vec![
+        let m: Matrix<_> = vec![
             vec![two, three, four],
             vec![four, five, six],
             vec![seven, eight, eight],
-        ]);
+        ].into();
 
         for i in 0..m.num_rows() {
             let mut shadow = Matrix::identity(m.num_columns());
@@ -879,7 +879,7 @@ mod test {
                 1,
                 res.unwrap()
                     .iter_rows()
-                    .filter(|&row| !equal_zero::<Fp<Fr>>(&row[i]))
+                    .filter(|&row| !equal_zero(&row[i]))
                     .count()
             );
         }

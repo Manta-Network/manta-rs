@@ -60,19 +60,19 @@ pub trait Specification<COM = ()> {
     /// Adds two field elements together.
     fn add(lhs: &Self::Field, rhs: &Self::Field, compiler: &mut COM) -> Self::Field;
 
-    /// Adds a field element with a constant
+    /// Adds a field element `lhs` with a constant `rhs`
     fn add_const(lhs: &Self::Field, rhs: &Self::ParameterField, compiler: &mut COM) -> Self::Field;
 
     /// Multiplies two field elements together.
     fn mul(lhs: &Self::Field, rhs: &Self::Field, compiler: &mut COM) -> Self::Field;
 
-    /// Multiplies a field element with a constant
-    fn muli(lhs: &Self::Field, rhs: &Self::ParameterField, compiler: &mut COM) -> Self::Field;
+    /// Multiplies a field element `lhs` with a constant `rhs`
+    fn mul_const(lhs: &Self::Field, rhs: &Self::ParameterField, compiler: &mut COM) -> Self::Field;
 
-    /// Adds the `rhs` field element to `lhs` field element, storing the value in `lhs`
+    /// Adds the `rhs` field element to `lhs` field element, updating the value in `lhs`
     fn add_assign(lhs: &mut Self::Field, rhs: &Self::Field, compiler: &mut COM);
 
-    /// Adds the `rhs` constant to `lhs` field element, storing the value in `lhs`
+    /// Adds the `rhs` constant to `lhs` field element, updating the value in `lhs`
     fn add_const_assign(lhs: &mut Self::Field, rhs: &Self::ParameterField, compiler: &mut COM);
 
     /// Applies the S-BOX to `point`.
@@ -204,7 +204,7 @@ where
             let linear_combination = state
                 .iter()
                 .enumerate()
-                .map(|(j, elem)| S::muli(elem, &self.mds_matrix[width * i + j], compiler))
+                .map(|(j, elem)| S::mul_const(elem, &self.mds_matrix[width * i + j], compiler))
                 .collect::<Vec<_>>();
             next.push(
                 linear_combination
@@ -483,7 +483,7 @@ pub mod arkworks {
         }
 
         #[inline]
-        fn muli(lhs: &Self::Field, rhs: &Self::ParameterField, _: &mut ()) -> Self::Field {
+        fn mul_const(lhs: &Self::Field, rhs: &Self::ParameterField, _: &mut ()) -> Self::Field {
             Fp(lhs.0 * rhs.0)
         }
 
@@ -539,7 +539,7 @@ pub mod arkworks {
         }
 
         #[inline]
-        fn muli(lhs: &Self::Field, rhs: &Self::ParameterField, _: &mut Compiler<S>) -> Self::Field {
+        fn mul_const(lhs: &Self::Field, rhs: &Self::ParameterField, _: &mut Compiler<S>) -> Self::Field {
             lhs * FpVar::Constant(rhs.0)
         }
 

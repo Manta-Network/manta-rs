@@ -20,6 +20,8 @@
 use crate::crypto::hash::poseidon::FieldGeneration;
 use alloc::vec::Vec;
 
+const LFSR_SIZE: usize = 80;
+
 /// An 80-bit linear feedback shift register, described in
 /// [GKRRS19](https://eprint.iacr.org/2019/458.pdf) Appendix A. `GrainLFSR`
 /// is used to generate secure parameter for Poseidon Hash.
@@ -29,7 +31,10 @@ pub struct GrainLFSR {
     head: usize,
 }
 
-fn append_bits<T: Into<u128>>(state: &mut [bool; 80], head: &mut usize, n: usize, from: T) {
+fn append_bits<T>(state: &mut [bool; 80], head: &mut usize, n: usize, from: T)
+where
+    T: Into<u128>,
+{
     let val = from.into() as u128;
     for i in (0..n).rev() {
         state[*head] = (val >> i) & 1 != 0;
@@ -76,6 +81,7 @@ impl GrainLFSR {
         res
     }
 
+    /// Update `self.state` and `self.head`
     fn update(&mut self) -> bool {
         let new_bit =
             self.bit(62) ^ self.bit(51) ^ self.bit(38) ^ self.bit(23) ^ self.bit(13) ^ self.bit(0);
@@ -86,7 +92,7 @@ impl GrainLFSR {
     }
 
     fn init(&mut self) {
-        for _ in 0..160 {
+        for _ in 0..LFSR_SIZE*2 {
             self.update();
         }
     }
@@ -183,14 +189,14 @@ mod test {
         // sage generate_parameters_grain_deterministic.sage 1 0 255 3 8 55 0x73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001
         let mut lfsr = GrainLFSR::new(255, 3, 8, 55);
         assert_eq!(
-            lfsr.get_field_elements_rejection_sampling::<Fp<Fr>>(1)[0],
+            lfsr.get_field_elements_rejection_sampling::<Fp<_>>(1)[0],
             Fp(field_new!(
                 Fr,
                 "41764196652518280402801918994067134807238124178723763855975902025540297174931"
             ))
         );
         assert_eq!(
-            lfsr.get_field_elements_rejection_sampling::<Fp<Fr>>(1)[0],
+            lfsr.get_field_elements_rejection_sampling::<Fp<_>>(1)[0],
             Fp(field_new!(
                 Fr,
                 "12678502092746318913289523392430826887011664085277767208266352862540971998250"
