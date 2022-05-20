@@ -22,8 +22,7 @@ function bench_prove_mint() {
         return t1 - t0;
       }
   );
-  let out_text = `prove mint performance: ${median(perf)} ms \n`;
-  return out_text;
+  return `prove mint performance: ${median(perf)} ms \n`;
 }
 
 function bench_prove_private_transfer() {
@@ -37,8 +36,7 @@ function bench_prove_private_transfer() {
         return t1 - t0;
       }
   );
-  let out_text = `prove private transfer performance: ${median(perf)} ms \n`;
-  return out_text;
+  return `prove private transfer performance: ${median(perf)} ms \n`;
 }
 
 function bench_prove_reclaim() {
@@ -52,8 +50,7 @@ function bench_prove_reclaim() {
         return t1 - t0;
       }
   );
-  let out_text = `prove reclaim performance: ${median(perf)} ms \n`;
-  return out_text;
+  return `prove reclaim performance: ${median(perf)} ms \n`;
 }
 
 // benchmarks proof time for mint
