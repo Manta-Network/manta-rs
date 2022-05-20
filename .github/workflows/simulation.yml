@@ -1,0 +1,33 @@
+name: Simulation
+on:
+  workflow_dispatch:
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+  RUST_BACKTRACE: full
+jobs:
+  simulation:
+    name: Simulation (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        agents:
+          - 1
+          - 2
+          - 3
+          - 10
+          - 100
+        rounds:
+          - 10
+          - 100
+          - 1000
+          - 10000
+        os:
+          - ubuntu-latest
+        channel:
+          - nightly
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v3
+      - run: rustup update ${{ matrix.channel }} --no-self-update && rustup default ${{ matrix.channel }}
+      - run: cargo run --package manta-pay --all-features --release --bin simulation ${{ matrix.agents }} ${{ matrix.rounds }} 10 100000

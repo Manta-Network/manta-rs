@@ -99,21 +99,6 @@ impl BalanceState for AssetList {
     }
 }
 
-/// Performs a withdraw on `balance` returning `false` if it would overflow.
-#[inline]
-fn withdraw(balance: Option<&mut AssetValue>, withdraw: AssetValue) -> bool {
-    match balance {
-        Some(balance) => {
-            *balance = match balance.checked_sub(withdraw) {
-                Some(balance) => balance,
-                _ => return false,
-            };
-            true
-        }
-        _ => false,
-    }
-}
-
 /// Adds implementation of [`BalanceState`] for a map type with the given `$entry` type.
 macro_rules! impl_balance_state_map_body {
     ($entry:tt) => {
@@ -138,7 +123,18 @@ macro_rules! impl_balance_state_map_body {
         #[inline]
         fn withdraw(&mut self, asset: Asset) -> bool {
             if !asset.is_zero() {
-                withdraw(self.get_mut(&asset.id), asset.value)
+                if let $entry::Occupied(mut entry) = self.entry(asset.id) {
+                    let balance = entry.get_mut();
+                    if let Some(next_balance) = balance.checked_sub(asset.value) {
+                        if next_balance == 0 {
+                            entry.remove();
+                        } else {
+                            *balance = next_balance;
+                        }
+                        return true;
+                    }
+                }
+                false
             } else {
                 true
             }
@@ -205,22 +201,97 @@ pub mod test {
         );
     }
 
-    /// Tests valid withdrawals for an [`AssetList`] balance state.
-    #[test]
-    fn asset_list_valid_withdraw() {
-        assert_valid_withdraw(&mut AssetList::new(), &mut OsRng);
+    /// Asserts that a maximal withdraw that leaves the state with no value should delete its memory
+    /// for this process.
+    #[inline]
+    pub fn assert_full_withdraw_should_remove_entry<S, R>(rng: &mut R)
+    where
+        S: BalanceState,
+        for<'s> &'s S: IntoIterator,
+        for<'s> <&'s S as IntoIterator>::IntoIter: ExactSizeIterator,
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        let mut state = S::default();
+        let asset = Asset::gen(rng);
+        let initial_length = state.into_iter().len();
+        state.deposit(asset);
+        assert_eq!(
+            initial_length + 1,
+            state.into_iter().len(),
+            "Length should have increased by one after depositing a new asset."
+        );
+        let balance = state.balance(asset.id);
+        state.withdraw(asset.id.with(balance));
+        assert_eq!(
+            state.balance(asset.id),
+            0,
+            "Balance in the removed AssetId should be zero."
+        );
+        assert_eq!(
+            initial_length,
+            state.into_iter().len(),
+            "Removed AssetId should remove its entry in the database."
+        );
     }
 
-    /// Tests valid withdrawals for a [`BTreeMapBalanceState`] balance state.
-    #[test]
-    fn btree_map_valid_withdraw() {
-        assert_valid_withdraw(&mut BTreeMapBalanceState::new(), &mut OsRng);
+    /// Defines the tests across multiple different [`BalanceState`] types.
+    macro_rules! define_tests {
+        ($((
+            $type:ty,
+            $doc:expr,
+            $valid_withdraw:ident,
+            $full_withdraw:ident
+        $(,)?)),*$(,)?) => {
+            $(
+                #[doc = "Tests valid withdrawals for an"]
+                #[doc = $doc]
+                #[doc = "balance state."]
+                #[test]
+                fn $valid_withdraw() {
+                    let mut state = <$type>::default();
+                    let mut rng = OsRng;
+                    for _ in 0..0xFFFF {
+                        assert_valid_withdraw(&mut state, &mut rng);
+                    }
+                }
+
+                #[doc = "Tests that there are no empty entries in"]
+                #[doc = $doc]
+                #[doc = "with no value stored in them."]
+                #[test]
+                fn $full_withdraw() {
+                    assert_full_withdraw_should_remove_entry::<$type, _>(&mut OsRng);
+                }
+            )*
+        }
     }
+
+    define_tests!(
+        (
+            AssetList,
+            "[`AssetList`]",
+            asset_list_valid_withdraw,
+            asset_list_full_withdraw,
+        ),
+        (
+            BTreeMapBalanceState,
+            "[`BTreeMapBalanceState`]",
+            btree_map_valid_withdraw,
+            btree_map_full_withdraw,
+        ),
+    );
 
     /// Tests valid withdrawals for a [`HashMapBalanceState`] balance state.
     #[cfg(feature = "std")]
     #[test]
     fn hash_map_valid_withdraw() {
         assert_valid_withdraw(&mut HashMapBalanceState::new(), &mut OsRng);
+    }
+
+    ///
+    #[cfg(feature = "std")]
+    #[test]
+    fn hash_map_full_withdraw() {
+        assert_full_withdraw_should_remove_entry::<HashMapBalanceState, _>(&mut OsRng);
     }
 }
