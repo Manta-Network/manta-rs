@@ -31,7 +31,7 @@ pub fn compress_round_constants<F>(
     mds_matrices: &MdsMatrices<F>,
 ) -> Vec<F>
 where
-    F: Field + Copy,
+    F: Clone + Field,
 {
     let inverse_matrix = &mds_matrices.m_inv;
     let mut res: Vec<F> = Vec::new();
@@ -39,7 +39,7 @@ where
     // This is half full-rounds.
     let half_full_rounds = full_rounds / 2;
     // First round constants are unchanged.
-    res.extend(round_keys(0));
+    res.extend(round_keys(0).to_vec());
     // Post S-box adds for the first set of full rounds should be 'inverted' from next round.
     // The final round is skipped when fully preprocessing because that value must be obtained from the result of preprocessing the partial rounds.
     let end = half_full_rounds - 1;
@@ -68,7 +68,7 @@ where
         .map(|i| round_keys(final_round - i - 1))
         .fold(final_round_key, |acc, previous_round_keys| {
             let mut inverted = inverse_matrix.mul_row_vec_at_left(&acc).unwrap();
-            partial_keys.push(inverted[0]);
+            partial_keys.push(inverted[0].clone());
             inverted[0] = F::zero();
             vec_add::<F>(previous_round_keys, &inverted)
         });

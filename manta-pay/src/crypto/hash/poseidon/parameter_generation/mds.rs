@@ -16,11 +16,11 @@
 
 //! MDS Data Generation
 
+use super::matrix::{MatrixOperations, SquareMatrix};
 use crate::crypto::hash::poseidon::{parameter_generation::matrix::Matrix, Field, FieldGeneration};
 use alloc::{vec, vec::Vec};
 use core::fmt::Debug;
-
-use super::matrix::{MatrixOperations, SquareMatrix};
+use manta_util::vec::VecExt;
 
 /// MDS Matrix for both naive poseidon hash and optimized poseidon hash
 /// For detailed descriptions, please refer to <https://hackmd.io/8MdoHwoKTPmQfZyIKEYWXQ>
@@ -46,33 +46,37 @@ where
 
 impl<F> MdsMatrices<F>
 where
-    F: Field + Clone + Copy,
+    F: Field + Clone,
 {
     fn make_v_w(m: &Matrix<F>) -> (Vec<F>, Vec<F>) {
         let v = m[0][1..].to_vec();
-        let w = m.iter_rows().skip(1).map(|column| column[0]).collect();
+        let w = m
+            .iter_rows()
+            .skip(1)
+            .map(|column| column[0].clone())
+            .collect();
         (v, w)
     }
 }
 
 impl<F> MdsMatrices<F>
 where
-    F: Field + Copy,
+    F: Field + Clone,
 {
-    fn make_prime(m: &Matrix<F>) -> SquareMatrix<F> {
+    fn make_prime(m: &SquareMatrix<F>) -> SquareMatrix<F> {
         SquareMatrix::new(
             Matrix::new(
                 m.iter_rows()
                     .enumerate()
                     .map(|(i, row)| match i {
                         0 => {
-                            let mut new_row = vec![F::zero(); row.len()];
+                            let mut new_row = Vec::allocate_with(row.len(), F::zero);
                             new_row[0] = F::one();
                             new_row
                         }
                         _ => {
-                            let mut new_row = vec![F::zero(); row.len()];
-                            new_row[1..].copy_from_slice(&row[1..]);
+                            let mut new_row = Vec::allocate_with(row.len(), F::zero);
+                            new_row[1..].clone_from_slice(&row[1..]);
                             new_row
                         }
                     })
@@ -86,7 +90,7 @@ where
 
 impl<F> MdsMatrices<F>
 where
-    F: Copy + Field + FieldGeneration + PartialEq,
+    F: Clone + Field + FieldGeneration + PartialEq,
 {
     /// Derives MDS matrix of size `dim*dim` and relevant things
     pub fn new(dim: usize) -> Option<Self> {
@@ -131,13 +135,13 @@ where
                     .map(|(i, row)| match i {
                         0 => {
                             let mut new_row = Vec::with_capacity(row.len());
-                            new_row.push(row[0]);
-                            new_row.extend(&v);
+                            new_row.push(row[0].clone());
+                            new_row.extend(v.clone());
                             new_row
                         }
                         _ => {
                             let mut new_row = vec![F::zero(); row.len()];
-                            new_row[0] = w_hat[i - 1];
+                            new_row[0] = w_hat[i - 1].clone();
                             new_row[i] = F::one();
                             new_row
                         }
@@ -184,7 +188,7 @@ where
 
 impl<F> SparseMatrix<F>
 where
-    F: Field + Copy,
+    F: Field,
 {
     /// Checks if `self` is square and `self[1..][1..]` is identity
     fn is_sparse(m: &SquareMatrix<F>) -> bool
@@ -198,10 +202,13 @@ where
     }
 
     /// Generates sparse matrix from m_double_prime matrix
-    pub fn new(m_double_prime: SquareMatrix<F>) -> Self {
+    pub fn new(m_double_prime: SquareMatrix<F>) -> Self
+    where
+        F: Clone,
+    {
         assert!(Self::is_sparse(&m_double_prime));
         let m_double_prime = Matrix::from(m_double_prime);
-        let w_hat = m_double_prime.iter_rows().map(|r| r[0]).collect();
+        let w_hat = m_double_prime.iter_rows().map(|r| r[0].clone()).collect();
         let v_rest = m_double_prime[0][1..].to_vec();
         Self { w_hat, v_rest }
     }
@@ -212,13 +219,16 @@ where
     }
 
     /// Generates dense-matrix representation from sparse matrix representation
-    pub fn to_matrix(&self) -> Matrix<F> {
+    pub fn to_matrix(&self) -> Matrix<F>
+    where
+        F: Clone,
+    {
         let mut m = Matrix::identity(self.size());
         for (j, elt) in self.w_hat.iter().enumerate() {
-            m[j][0] = *elt;
+            m[j][0] = elt.clone();
         }
         for (i, elt) in self.v_rest.iter().enumerate() {
-            m[0][i + 1] = *elt;
+            m[0][i + 1] = elt.clone();
         }
         m
     }
@@ -230,7 +240,7 @@ pub fn factor_to_sparse_matrixes<F>(
     n: usize,
 ) -> (SquareMatrix<F>, Vec<SparseMatrix<F>>)
 where
-    F: Field + Clone + Copy + Debug + PartialEq + FieldGeneration,
+    F: Clone + Field + FieldGeneration + PartialEq,
 {
     let (pre_sparse, mut sparse_matrices) =
         (0..n).fold((base_matrix.clone(), Vec::new()), |(curr, mut acc), _| {
@@ -242,9 +252,8 @@ where
     sparse_matrices.reverse();
     let sparse_matrices = sparse_matrices
         .into_iter()
-        .map(|m| SparseMatrix::<F>::new(m))
-        .collect::<Vec<_>>();
-
+        .map(SparseMatrix::new)
+        .collect();
     (pre_sparse, sparse_matrices)
 }
 

@@ -17,7 +17,7 @@
 //! Round Constants Generation
 
 use super::lfsr::GrainLFSR;
-use crate::crypto::hash::poseidon::{Field, FieldGeneration};
+use crate::crypto::hash::poseidon::FieldGeneration;
 use alloc::vec::Vec;
 
 /// Generates round constants
@@ -28,9 +28,9 @@ pub fn generate_round_constants<F>(
     num_partial_rounds: usize,
 ) -> Vec<F>
 where
-    F: Field + FieldGeneration,
+    F: FieldGeneration,
 {
     let num_constants = (num_full_rounds + num_partial_rounds) * width;
     let mut lfsr = GrainLFSR::new(prime_num_bits, width, num_full_rounds, num_partial_rounds);
-    lfsr.get_field_elements_rejection_sampling::<F>(num_constants)
+    lfsr.get_field_elements_rejection_sampling(num_constants)
 }
