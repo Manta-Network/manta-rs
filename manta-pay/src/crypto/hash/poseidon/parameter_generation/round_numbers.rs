@@ -85,8 +85,17 @@ pub fn calc_round_numbers(width: usize, security_margin: bool) -> (usize, usize)
 
 /// Returns `true` if the provided round numbers satisfy the security inequalities specified in the
 /// Poseidon paper.
-fn round_numbers_are_secure(width: usize, num_full_rounds: usize, num_partial_rounds: usize) -> bool {
-    let (num_partial_rounds, width, n, m) = (num_partial_rounds as f32, width as f32, PRIME_BITLEN as f32, M as f32);
+fn round_numbers_are_secure(
+    width: usize,
+    num_full_rounds: usize,
+    num_partial_rounds: usize,
+) -> bool {
+    let (num_partial_rounds, width, n, m) = (
+        num_partial_rounds as f32,
+        width as f32,
+        PRIME_BITLEN as f32,
+        M as f32,
+    );
     let num_full_rounds_stat = if m <= (n - 3.0) * (width + 1.0) {
         6.0
     } else {
@@ -95,12 +104,17 @@ fn round_numbers_are_secure(width: usize, num_full_rounds: usize, num_partial_ro
     let num_full_rounds_interp = 0.43 * m + width.log2() - num_partial_rounds;
     let num_full_rounds_grob_1 = 0.21 * n - num_partial_rounds;
     let num_full_rounds_grob_2 = (0.14 * n - 1.0 - num_partial_rounds) / (width - 1.0);
-    let num_full_rounds_max = [num_full_rounds_stat, num_full_rounds_interp, num_full_rounds_grob_1, num_full_rounds_grob_2]
-        .iter()
-        .map(|num_full_rounds| num_full_rounds.ceil() as usize)
-        .max()
-        .unwrap();
-        num_full_rounds >= num_full_rounds_max
+    let num_full_rounds_max = [
+        num_full_rounds_stat,
+        num_full_rounds_interp,
+        num_full_rounds_grob_1,
+        num_full_rounds_grob_2,
+    ]
+    .iter()
+    .map(|num_full_rounds| num_full_rounds.ceil() as usize)
+    .max()
+    .unwrap();
+    num_full_rounds >= num_full_rounds_max
 }
 
 #[cfg(test)]

@@ -612,7 +612,8 @@ mod test {
             vec![one, two, three],
             vec![four, five, six],
             vec![seven, eight, nine],
-        ]).unwrap();
+        ])
+        .unwrap();
 
         let cases = [
             (
@@ -830,8 +831,7 @@ mod test {
         let base_vec = vec![eight, two, five];
 
         // S + M(B)
-        let add_after_apply =
-            vec_add(&some_vec, &m.mul_row_vec_at_left(&base_vec).unwrap());
+        let add_after_apply = vec_add(&some_vec, &m.mul_row_vec_at_left(&base_vec).unwrap());
 
         // M(B + M^-1(S))
         let apply_after_add = m
@@ -863,7 +863,8 @@ mod test {
             vec![two, three, four],
             vec![four, five, six],
             vec![seven, eight, eight],
-        ].into();
+        ]
+        .into();
 
         for i in 0..m.num_rows() {
             let mut shadow = Matrix::identity(m.num_columns());

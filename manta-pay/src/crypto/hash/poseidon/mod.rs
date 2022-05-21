@@ -53,10 +53,6 @@ pub trait FieldGeneration {
     /// Number of bits of modulus of the field.
     const MODULUS_BITS: usize;
 
-    /// Converts from `bytes` into a field element in little endian order.
-    /// If the number of bytes is out of range, the result will be modulo.   
-    fn from_le_bytes_mod_order(bytes: &[u8]) -> Self;
-
     /// Converts a `u64` value to a field element.
     fn from_u64(elem: u64) -> Self;
 

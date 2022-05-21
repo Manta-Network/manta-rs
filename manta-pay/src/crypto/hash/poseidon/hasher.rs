@@ -443,10 +443,6 @@ pub mod arkworks {
             F::from_repr(F::BigInt::from_bits_le(bits)).map(Self)
         }
 
-        fn from_le_bytes_mod_order(bytes: &[u8]) -> Self {
-            Self(F::from_le_bytes_mod_order(bytes))
-        }
-
         fn from_u64(elem: u64) -> Self {
             Self(F::from(elem))
         }
@@ -539,7 +535,11 @@ pub mod arkworks {
         }
 
         #[inline]
-        fn mul_const(lhs: &Self::Field, rhs: &Self::ParameterField, _: &mut Compiler<S>) -> Self::Field {
+        fn mul_const(
+            lhs: &Self::Field,
+            rhs: &Self::ParameterField,
+            _: &mut Compiler<S>,
+        ) -> Self::Field {
             lhs * FpVar::Constant(rhs.0)
         }
 

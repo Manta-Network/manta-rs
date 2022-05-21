@@ -81,7 +81,7 @@ impl GrainLFSR {
         res
     }
 
-    /// Update `self.state` and `self.head`
+    /// Updates 1 bit at `self.state[self.head]` and increases `self.head` by 1.
     fn update(&mut self) -> bool {
         let new_bit =
             self.bit(62) ^ self.bit(51) ^ self.bit(38) ^ self.bit(23) ^ self.bit(13) ^ self.bit(0);
@@ -91,18 +91,20 @@ impl GrainLFSR {
         new_bit
     }
 
+    /// Initializes LFSR in terms of `self.state` and `self.head`.
     fn init(&mut self) {
-        for _ in 0..LFSR_SIZE*2 {
+        for _ in 0..LFSR_SIZE * 2 {
             self.update();
         }
     }
 
+    /// Returns the bit value of `self.state` at the position `index + self.head`.
     #[inline]
     fn bit(&self, index: usize) -> bool {
         self.state[(index + self.head) % 80]
     }
 
-    /// TODO: Add doc
+    /// Gets `num_bits` bits, represent each bit as a bool, and return a vector of bools.
     pub fn get_bits(&mut self, num_bits: usize) -> Vec<bool> {
         let mut res = Vec::new();
         for _ in 0..num_bits {
@@ -121,23 +123,21 @@ impl GrainLFSR {
         res
     }
 
+    /// Performs rejection sampling until the sampled bits can construct a valid field element.
     fn sample_element<F>(&mut self) -> F
     where
         F: FieldGeneration,
     {
-        // Performs rejection sampling
         loop {
-            // Obtain n bits and make it most-significant-bit first
             let mut bits = self.get_bits(self.prime_num_bits as usize);
             bits.reverse();
-            // Constructs the number
             if let Some(f) = F::try_from_bits_le(&bits) {
                 return f;
             }
         }
     }
 
-    /// TODO: Add doc
+    /// Performs rejection sampling until generating `num_elems` field elements.
     pub fn get_field_elements_rejection_sampling<F>(&mut self, num_elems: usize) -> Vec<F>
     where
         F: FieldGeneration,
@@ -146,32 +146,6 @@ impl GrainLFSR {
         let mut res = Vec::new();
         for _ in 0..num_elems {
             res.push(self.sample_element());
-        }
-        res
-    }
-
-    /// TODO: Add doc
-    pub fn get_field_elements_mod_p<F>(&mut self, num_elems: usize) -> Vec<F>
-    where
-        F: FieldGeneration,
-    {
-        assert_eq!(F::MODULUS_BITS as u64, self.prime_num_bits);
-        let mut res = Vec::new();
-        for _ in 0..num_elems {
-            // Obtains n bits and make it most-significant-bit first
-            let mut bits = self.get_bits(self.prime_num_bits as usize);
-            bits.reverse();
-            let bytes = bits
-                .chunks(8)
-                .map(|chunk| {
-                    let mut result = 0u8;
-                    for (i, bit) in chunk.iter().enumerate() {
-                        result |= u8::from(*bit) << i
-                    }
-                    result
-                })
-                .collect::<Vec<u8>>();
-            res.push(F::from_le_bytes_mod_order(&bytes));
         }
         res
     }
