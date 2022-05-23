@@ -246,8 +246,6 @@ where
         })?;
         let inv_pivot = F::inverse(&pivot[column])
             .expect("This should never fail since we have a non-zero `pivot_val` if we got here.");
-        // TODO: Fix an issue with allocate_matrix
-        // let mut result = allocate_matrix(self.num_rows(), self.num_columns(), Vec::with_capacity);
         let mut result = Vec::with_capacity(self.num_rows());
         result.push(pivot.clone());
         for (i, row) in self.iter_rows().enumerate() {
@@ -406,9 +404,6 @@ where
         let size = self.num_rows();
         let mut result: Vec<Vec<F>> = Vec::with_capacity(size);
         let mut shadow_result: Vec<Vec<F>> = Vec::with_capacity(size);
-        // TODO: Fix an issue with allocate_square_matrix
-        // let mut result = allocate_square_matrix(size, Vec::with_capacity);
-        // let mut shadow_result = allocate_square_matrix(size, Vec::with_capacity);
         for i in 0..size {
             let idx = size - i - 1;
             let row = &self.0[idx];
@@ -438,9 +433,6 @@ where
         F: Clone,
     {
         let size = self.num_rows();
-        // TODO: Fix an issue with allocate_square_matrix.
-        // let mut result = allocate_square_matrix(size, Vec::with_capacity);
-        // let mut shadow_result = allocate_square_matrix(size, Vec::with_capacity);
         let mut result = Vec::with_capacity(size);
         let mut shadow_result = Vec::with_capacity(size);
         let mut current = self.0.clone();
