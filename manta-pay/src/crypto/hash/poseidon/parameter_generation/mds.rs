@@ -250,10 +250,7 @@ where
             (new, acc)
         });
     sparse_matrices.reverse();
-    let sparse_matrices = sparse_matrices
-        .into_iter()
-        .map(SparseMatrix::new)
-        .collect();
+    let sparse_matrices = sparse_matrices.into_iter().map(SparseMatrix::new).collect();
     (pre_sparse, sparse_matrices)
 }
 

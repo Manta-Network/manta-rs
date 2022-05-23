@@ -216,7 +216,6 @@ where
 {
     type Output = Vec<F>;
 
-    /// Returns an unmutable reference to the `index`^{th} row in the matrix
     fn index(&self, index: usize) -> &Self::Output {
         &self.0[index]
     }
@@ -226,7 +225,6 @@ impl<F> IndexMut<usize> for Matrix<F>
 where
     F: Field,
 {
-    /// Returns a mutable reference to the `index`^{th} row in the matrix
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         &mut self.0[index]
     }
@@ -248,7 +246,9 @@ where
         })?;
         let inv_pivot = F::inverse(&pivot[column])
             .expect("This should never fail since we have a non-zero `pivot_val` if we got here.");
-        let mut result = allocate_matrix(self.num_rows(), self.num_columns(), Vec::with_capacity);
+        // TODO: Fix an issue with allocate_matrix
+        // let mut result = allocate_matrix(self.num_rows(), self.num_columns(), Vec::with_capacity);
+        let mut result = Vec::with_capacity(self.num_rows());
         result.push(pivot.clone());
         for (i, row) in self.iter_rows().enumerate() {
             if i == pivot_index {
@@ -404,8 +404,11 @@ where
         F: Clone,
     {
         let size = self.num_rows();
-        let mut result = allocate_square_matrix(size, Vec::with_capacity);
-        let mut shadow_result = allocate_square_matrix(size, Vec::with_capacity);
+        let mut result: Vec<Vec<F>> = Vec::with_capacity(size);
+        let mut shadow_result: Vec<Vec<F>> = Vec::with_capacity(size);
+        // TODO: Fix an issue with allocate_square_matrix
+        // let mut result = allocate_square_matrix(size, Vec::with_capacity);
+        // let mut shadow_result = allocate_square_matrix(size, Vec::with_capacity);
         for i in 0..size {
             let idx = size - i - 1;
             let row = &self.0[idx];
@@ -435,8 +438,11 @@ where
         F: Clone,
     {
         let size = self.num_rows();
-        let mut result = allocate_square_matrix(size, Vec::with_capacity);
-        let mut shadow_result = allocate_square_matrix(size, Vec::with_capacity);
+        // TODO: Fix an issue with allocate_square_matrix.
+        // let mut result = allocate_square_matrix(size, Vec::with_capacity);
+        // let mut shadow_result = allocate_square_matrix(size, Vec::with_capacity);
+        let mut result = Vec::with_capacity(size);
+        let mut shadow_result = Vec::with_capacity(size);
         let mut current = self.0.clone();
         let mut shadow_matrix = shadow.0.clone();
         for column in 0..(size - 1) {
@@ -854,7 +860,6 @@ mod test {
             vec![seven, eight, eight],
         ]
         .into();
-
         for i in 0..m.num_rows() {
             let mut shadow = Matrix::identity(m.num_columns());
             let res = m.eliminate(i, &mut shadow);
@@ -864,7 +869,6 @@ mod test {
             } else {
                 assert!(res.is_some());
             }
-
             assert_eq!(
                 1,
                 res.unwrap()
@@ -884,7 +888,6 @@ mod test {
         let six = Fp(Fr::from(6u64));
         let seven = Fp(Fr::from(7u64));
         let eight = Fp(Fr::from(8u64));
-
         let m = SquareMatrix::new(
             Matrix::new(vec![
                 vec![two, three, four],

@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! LFSH implementation.
+//! LFSR implementation.
 // adapted from: https://github.com/arkworks-rs/sponge/blob/51d6fc9aac1fa69f44a04839202b5de828584ed8/src/poseidon/grain_lfsr.rs
 
 use crate::crypto::hash::poseidon::FieldGeneration;
@@ -26,12 +26,12 @@ const LFSR_SIZE: usize = 80;
 /// [GKRRS19](https://eprint.iacr.org/2019/458.pdf) Appendix A. `GrainLFSR`
 /// is used to generate secure parameter for Poseidon Hash.
 pub struct GrainLFSR {
-    state: [bool; 80],
+    state: [bool; LFSR_SIZE],
     prime_num_bits: u64,
     head: usize,
 }
 
-fn append_bits<T>(state: &mut [bool; 80], head: &mut usize, n: usize, from: T)
+fn append_bits<T>(state: &mut [bool; LFSR_SIZE], head: &mut usize, n: usize, from: T)
 where
     T: Into<u128>,
 {
@@ -39,7 +39,7 @@ where
     for i in (0..n).rev() {
         state[*head] = (val >> i) & 1 != 0;
         *head += 1;
-        *head %= 80;
+        *head %= LFSR_SIZE;
     }
 }
 
@@ -51,7 +51,7 @@ impl GrainLFSR {
         num_full_rounds: usize,
         num_partial_rounds: usize,
     ) -> Self {
-        let mut init_sequence = [false; 80];
+        let mut init_sequence = [false; LFSR_SIZE];
         let mut head = 0;
         // b0, b1 describes the field
         append_bits(&mut init_sequence, &mut head, 2, 1u8);
@@ -87,7 +87,7 @@ impl GrainLFSR {
             self.bit(62) ^ self.bit(51) ^ self.bit(38) ^ self.bit(23) ^ self.bit(13) ^ self.bit(0);
         self.state[self.head] = new_bit;
         self.head += 1;
-        self.head %= 80;
+        self.head %= LFSR_SIZE;
         new_bit
     }
 
@@ -101,7 +101,7 @@ impl GrainLFSR {
     /// Returns the bit value of `self.state` at the position `index + self.head`.
     #[inline]
     fn bit(&self, index: usize) -> bool {
-        self.state[(index + self.head) % 80]
+        self.state[(index + self.head) % LFSR_SIZE]
     }
 
     /// Gets `num_bits` bits, represent each bit as a bool, and return a vector of bools.
@@ -161,6 +161,8 @@ mod test {
     #[test]
     fn grain_lfsr_consistency() {
         // sage generate_parameters_grain_deterministic.sage 1 0 255 3 8 55 0x73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001
+        // This sage script can be found at https://github.com/Manta-Network/Plonk-Prototype/tree/poseidon_hash_clean.
+        // TODO: Move sage scripts to Manta-rs repo.
         let mut lfsr = GrainLFSR::new(255, 3, 8, 55);
         assert_eq!(
             lfsr.get_field_elements_rejection_sampling::<Fp<_>>(1)[0],

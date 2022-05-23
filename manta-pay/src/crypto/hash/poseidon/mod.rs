@@ -19,7 +19,7 @@
 pub mod hasher;
 pub mod parameter_generation;
 
-/// Trait for Public Parameters in Hash Functions.
+/// Trait for Public Parameters (i.e., Round constants and MDS) in Hash Functions.
 pub trait Field {
     /// Returns the additive identity of the field.
     fn zero() -> Self;
