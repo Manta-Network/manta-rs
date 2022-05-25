@@ -329,7 +329,7 @@ where
     type Output = G::Output;
 
     #[inline]
-    fn derive_in(&self, key: &Self::Key, compiler: &mut COM) -> Self::Output {
+    fn derive_with(&self, key: &Self::Key, compiler: &mut COM) -> Self::Output {
         self.generator.scalar_mul(key, compiler)
     }
 }

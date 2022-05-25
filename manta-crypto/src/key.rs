@@ -27,7 +27,7 @@ pub trait KeyDerivationFunction<COM = ()> {
     type Output;
 
     /// Derives a key of type [`Output`](Self::Output) from `key` in `compiler`.
-    fn derive_in(&self, key: &Self::Key, compiler: &mut COM) -> Self::Output;
+    fn derive_with(&self, key: &Self::Key, compiler: &mut COM) -> Self::Output;
 
     /// Derives a key of type [`Output`](Self::Output) from `key`.
     #[inline]
@@ -35,24 +35,24 @@ pub trait KeyDerivationFunction<COM = ()> {
     where
         COM: Native,
     {
-        self.derive_in(key, &mut COM::compiler())
+        self.derive_with(key, &mut COM::compiler())
     }
 
     /// Derives a key of type [`Output`](Self::Output) from `key` in `compiler`.
     ///
     /// # Implementation Note
     ///
-    /// This method is an optimization path for [`derive_in`] when the `key` value is owned, and by
-    /// default, [`derive_in`] is used as its implementation. This method must return the same value
-    /// as [`derive_in`] on the same input.
+    /// This method is an optimization path for [`derive_with`] when the `key` value is owned, and
+    /// by default, [`derive_with`] is used as its implementation. This method must return the same
+    /// value as [`derive_with`] on the same input.
     ///
-    /// [`derive_in`]: Self::derive_in
+    /// [`derive_with`]: Self::derive_with
     #[inline]
     fn derive_owned_in(&self, key: Self::Key, compiler: &mut COM) -> Self::Output
     where
         Self::Key: Sized,
     {
-        self.derive_in(&key, compiler)
+        self.derive_with(&key, compiler)
     }
 
     /// Derives a key of type [`Output`](Self::Output) from `key`.
@@ -83,8 +83,8 @@ where
     type Output = F::Output;
 
     #[inline]
-    fn derive_in(&self, key: &Self::Key, compiler: &mut COM) -> Self::Output {
-        (*self).derive_in(key, compiler)
+    fn derive_with(&self, key: &Self::Key, compiler: &mut COM) -> Self::Output {
+        (*self).derive_with(key, compiler)
     }
 
     #[inline]
@@ -144,7 +144,7 @@ pub mod kdf {
         type Output = K;
 
         #[inline]
-        fn derive_in(&self, key: &Self::Key, compiler: &mut COM) -> Self::Output {
+        fn derive_with(&self, key: &Self::Key, compiler: &mut COM) -> Self::Output {
             let _ = compiler;
             key.clone()
         }
@@ -229,9 +229,9 @@ pub mod kdf {
         type Output = F::Output;
 
         #[inline]
-        fn derive_in(&self, key: &Self::Key, compiler: &mut COM) -> Self::Output {
+        fn derive_with(&self, key: &Self::Key, compiler: &mut COM) -> Self::Output {
             self.key_derivation_function
-                .derive_in(key.as_ref(), compiler)
+                .derive_with(key.as_ref(), compiler)
         }
     }
 
@@ -334,9 +334,9 @@ pub mod kdf {
         type Output = F::Output;
 
         #[inline]
-        fn derive_in(&self, key: &Self::Key, compiler: &mut COM) -> Self::Output {
+        fn derive_with(&self, key: &Self::Key, compiler: &mut COM) -> Self::Output {
             self.key_derivation_function
-                .derive_in(&key.as_bytes(), compiler)
+                .derive_with(&key.as_bytes(), compiler)
         }
     }
 

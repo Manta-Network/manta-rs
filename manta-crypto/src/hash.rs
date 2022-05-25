@@ -27,7 +27,7 @@ pub trait UnaryHashFunction<COM = ()> {
     type Output;
 
     /// Computes the hash over `input` in the given `compiler`.
-    fn hash_in(&self, input: &Self::Input, compiler: &mut COM) -> Self::Output;
+    fn hash_with(&self, input: &Self::Input, compiler: &mut COM) -> Self::Output;
 
     /// Computes the hash over `input`.
     #[inline]
@@ -35,7 +35,7 @@ pub trait UnaryHashFunction<COM = ()> {
     where
         COM: Native,
     {
-        self.hash_in(input, &mut COM::compiler())
+        self.hash_with(input, &mut COM::compiler())
     }
 }
 
@@ -47,8 +47,8 @@ where
     type Output = H::Output;
 
     #[inline]
-    fn hash_in(&self, input: &Self::Input, compiler: &mut COM) -> Self::Output {
-        (*self).hash_in(input, compiler)
+    fn hash_with(&self, input: &Self::Input, compiler: &mut COM) -> Self::Output {
+        (*self).hash_with(input, compiler)
     }
 
     #[inline]
@@ -72,7 +72,7 @@ pub trait BinaryHashFunction<COM = ()> {
     type Output;
 
     /// Computes the hash over `lhs` and `rhs` in the given `compiler`.
-    fn hash_in(&self, lhs: &Self::Left, rhs: &Self::Right, compiler: &mut COM) -> Self::Output;
+    fn hash_with(&self, lhs: &Self::Left, rhs: &Self::Right, compiler: &mut COM) -> Self::Output;
 
     /// Computes the hash over `lhs` and `rhs`.
     #[inline]
@@ -80,7 +80,7 @@ pub trait BinaryHashFunction<COM = ()> {
     where
         COM: Native,
     {
-        self.hash_in(lhs, rhs, &mut COM::compiler())
+        self.hash_with(lhs, rhs, &mut COM::compiler())
     }
 }
 
@@ -93,7 +93,7 @@ pub trait ArrayHashFunction<COM, const ARITY: usize> {
     type Output;
 
     /// Computes the hash over `input` in the given `compiler`.
-    fn hash_in(&self, input: [&Self::Input; ARITY], compiler: &mut COM) -> Self::Output;
+    fn hash_with(&self, input: [&Self::Input; ARITY], compiler: &mut COM) -> Self::Output;
 
     /// Computes the hash over `input`.
     #[inline]
@@ -101,7 +101,7 @@ pub trait ArrayHashFunction<COM, const ARITY: usize> {
     where
         COM: Native,
     {
-        self.hash_in(input, &mut COM::compiler())
+        self.hash_with(input, &mut COM::compiler())
     }
 }
 
@@ -164,8 +164,8 @@ pub mod array {
         type Output = H::Output;
 
         #[inline]
-        fn hash_in(&self, input: &Self::Input, compiler: &mut COM) -> Self::Output {
-            self.hasher.hash_in([input], compiler)
+        fn hash_with(&self, input: &Self::Input, compiler: &mut COM) -> Self::Output {
+            self.hasher.hash_with([input], compiler)
         }
 
         #[inline]

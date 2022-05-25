@@ -17,5 +17,5 @@
 //! Encryption Primitives
 
 // TODO: pub mod authenticated;
-pub mod hybrid;
+// TODO: pub mod hybrid;
 pub mod symmetric;

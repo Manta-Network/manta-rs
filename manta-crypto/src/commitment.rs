@@ -30,7 +30,7 @@ pub trait CommitmentScheme<COM = ()> {
     type Output;
 
     /// Commits to the `input` value using `randomness` inside the `compiler`.
-    fn commit_in(
+    fn commit_with(
         &self,
         randomness: &Self::Randomness,
         input: &Self::Input,
@@ -43,6 +43,6 @@ pub trait CommitmentScheme<COM = ()> {
     where
         COM: Native,
     {
-        self.commit_in(randomness, input, &mut COM::compiler())
+        self.commit_with(randomness, input, &mut COM::compiler())
     }
 }

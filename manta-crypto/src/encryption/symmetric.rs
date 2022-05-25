@@ -16,88 +16,185 @@
 
 //! Symmetric Encryption
 
-use crate::rand::{CryptoRng, RngCore, Sample};
+use crate::{
+    constraint::Native,
+    rand::{CryptoRng, RngCore, Sample},
+};
 use core::marker::PhantomData;
 use manta_util::codec::{Decode, DecodeError, Encode, Read, Write};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
 
-/// Symmetric Key Encryption Scheme
+/// Symmetric Encryption Types
 ///
-/// # Specification
-///
-/// All implementations of this trait must adhere to the following properties:
-///
-/// 1. **Invertibility**: For all possible inputs, the following function returns `true`:
-///
-///     ```text
-///     fn invertibility(key: Key, plaintext: Plaintext) -> bool {
-///         matches!(decrypt(key, &encrypt(key, plaintext.clone())), Some(p) if p == plaintext)
-///     }
-///     ```
-pub trait SymmetricKeyEncryptionScheme {
-    /// Encryption/Decryption Key Type
-    type Key;
+/// See the [`Encrypt`] and [`Decrypt`] `trait`s for the definitions of the symmetric encryption
+/// and decryption algorithms.
+pub trait Types {
+    /// Key Type
+    ///
+    /// This type is used to both encrypt plaintext and decrypt ciphertext. To use asymmetric keys,
+    /// use a [`hybrid`](crate::encryption::hybrid) encryption model.
+    type Key: ?Sized;
+
+    /// Randomness Type
+    ///
+    /// This type is used to protect against known weaknesses in symmetric encryption protocols
+    /// whenever an attacker knows two ciphertexts that were encrypted under the same [`Key`]. This
+    /// randomness type can contribute to the nonce, synthetic initialization vector, or whatever
+    /// other randomness is used in a particular protocol. For cryptographic protocols that use
+    /// one-time keys, this may also be set to `()` since the uniqueness of the key already handles
+    /// the randomness required to preserve the encryption.
+    type Randomness: ?Sized;
 
     /// Plaintext Type
     type Plaintext;
 
     /// Ciphertext Type
     type Ciphertext;
-
-    /// Encrypts `plaintext` using `key`.
-    fn encrypt(&self, key: Self::Key, plaintext: Self::Plaintext) -> Self::Ciphertext;
-
-    /// Tries to decrypt `ciphertext` using `key`.
-    fn decrypt(&self, key: Self::Key, ciphertext: &Self::Ciphertext) -> Option<Self::Plaintext>;
-
-    /// Borrows `self` rather than consuming it, returning an implementation of
-    /// [`SymmetricKeyEncryptionScheme`].
-    #[inline]
-    fn by_ref(&self) -> &Self {
-        self
-    }
-
-    /// Maps the plaintext space using `F` and builds a new [`SymmetricKeyEncryptionScheme`] from it.
-    #[inline]
-    fn map<F>(self) -> Map<Self, F>
-    where
-        Self: Sized,
-        F: PlaintextMapping<Self::Plaintext>,
-    {
-        Map::new(self)
-    }
 }
 
-impl<S> SymmetricKeyEncryptionScheme for &S
+impl<S> Types for &S
 where
-    S: SymmetricKeyEncryptionScheme,
+    S: Types,
 {
     type Key = S::Key;
+    type Randomness = S::Randomness;
     type Plaintext = S::Plaintext;
     type Ciphertext = S::Ciphertext;
+}
 
-    #[inline]
-    fn encrypt(&self, key: Self::Key, plaintext: Self::Plaintext) -> Self::Ciphertext {
-        (*self).encrypt(key, plaintext)
-    }
+/// Symmetric Encryption Key Type
+pub type Key<S> = <S as Types>::Key;
 
+/// Symmetric Encryption Randomness Type
+pub type Randomness<S> = <S as Types>::Randomness;
+
+/// Symmetric Encryption Plaintext Type
+pub type Plaintext<S> = <S as Types>::Plaintext;
+
+/// Symmetric Encryption Ciphertext Type
+pub type Ciphertext<S> = <S as Types>::Ciphertext;
+
+/// Symmetric Encryption
+///
+/// This `trait` covers the [`encrypt`](Self::encrypt_with) half of an symmetric encryption
+/// scheme. To use decryption see the [`Decrypt`] `trait`.
+pub trait Encrypt<COM = ()>: Types {
+    /// Encrypts `plaintext` under `key` inside of `compiler`.
+    fn encrypt_with(
+        &self,
+        key: &Self::Key,
+        randomness: &Self::Randomness,
+        plaintext: &Self::Plaintext,
+        compiler: &mut COM,
+    ) -> Self::Ciphertext;
+
+    /// Encrypts `plaintext` under `key`.
     #[inline]
-    fn decrypt(&self, key: Self::Key, ciphertext: &Self::Ciphertext) -> Option<Self::Plaintext> {
-        (*self).decrypt(key, ciphertext)
+    fn encrypt(
+        &self,
+        key: &Self::Key,
+        randomness: &Self::Randomness,
+
+        plaintext: &Self::Plaintext,
+    ) -> Self::Ciphertext
+    where
+        COM: Native,
+    {
+        self.encrypt_with(key, randomness, plaintext, &mut COM::compiler())
     }
 }
 
-/// Symmetric Key Type
-pub type Key<S> = <S as SymmetricKeyEncryptionScheme>::Key;
+impl<S, COM> Encrypt<COM> for &S
+where
+    S: Encrypt<COM>,
+{
+    #[inline]
+    fn encrypt_with(
+        &self,
+        key: &Self::Key,
+        randomness: &Self::Randomness,
+        plaintext: &Self::Plaintext,
+        compiler: &mut COM,
+    ) -> Self::Ciphertext {
+        (*self).encrypt_with(key, randomness, plaintext, compiler)
+    }
 
-/// Plaintext Type
-pub type Plaintext<S> = <S as SymmetricKeyEncryptionScheme>::Plaintext;
+    #[inline]
+    fn encrypt(
+        &self,
+        key: &Self::Key,
+        randomness: &Self::Randomness,
 
-/// Ciphertext Type
-pub type Ciphertext<S> = <S as SymmetricKeyEncryptionScheme>::Ciphertext;
+        plaintext: &Self::Plaintext,
+    ) -> Self::Ciphertext
+    where
+        COM: Native,
+    {
+        (*self).encrypt(key, randomness, plaintext)
+    }
+}
 
+/// Symmetric Decryption
+///
+/// This `trait` covers the [`decrypt`](Self::decrypt) half of a symmetric encryption scheme.
+/// To use encryption see the [`Encrypt`] `trait`.
+pub trait Decrypt<COM = ()>: Types {
+    /// Decrypts `ciphertext` under `key` inside of `compiler`.
+    fn decrypt_with(
+        &self,
+        key: &Self::Key,
+        randomness: &Self::Randomness,
+        ciphertext: &Self::Ciphertext,
+        compiler: &mut COM,
+    ) -> Self::Plaintext;
+
+    /// Decrypts `ciphertext` under `key`.
+    #[inline]
+    fn decrypt(
+        &self,
+        key: &Self::Key,
+        randomness: &Self::Randomness,
+        ciphertext: &Self::Ciphertext,
+    ) -> Self::Plaintext
+    where
+        COM: Native,
+    {
+        self.decrypt_with(key, randomness, ciphertext, &mut COM::compiler())
+    }
+}
+
+impl<S, COM> Decrypt<COM> for &S
+where
+    S: Decrypt<COM>,
+{
+    #[inline]
+    fn decrypt_with(
+        &self,
+        key: &Self::Key,
+        randomness: &Self::Randomness,
+        ciphertext: &Self::Ciphertext,
+        compiler: &mut COM,
+    ) -> Self::Plaintext {
+        (*self).decrypt_with(key, randomness, ciphertext, compiler)
+    }
+
+    #[inline]
+    fn decrypt(
+        &self,
+        key: &Self::Key,
+        randomness: &Self::Randomness,
+        ciphertext: &Self::Ciphertext,
+    ) -> Self::Plaintext
+    where
+        COM: Native,
+    {
+        (*self).decrypt(key, randomness, ciphertext)
+    }
+}
+
+/*
 /// Plaintext Mapping
 pub trait PlaintextMapping<P>: Sized {
     /// Plaintext Type
@@ -270,3 +367,5 @@ pub mod test {
         )
     }
 }
+
+*/
