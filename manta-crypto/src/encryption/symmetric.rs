@@ -44,7 +44,7 @@ pub trait Types {
     /// randomness type can contribute to the nonce, synthetic initialization vector, or whatever
     /// other randomness is used in a particular protocol. For cryptographic protocols that use
     /// one-time keys, this may also be set to `()` since the uniqueness of the key already handles
-    /// the randomness required to preserve the encryption.
+    /// the randomness required to preserve the privacy of the encryption.
     type Randomness: ?Sized;
 
     /// Plaintext Type
@@ -78,10 +78,10 @@ pub type Ciphertext<S> = <S as Types>::Ciphertext;
 
 /// Symmetric Encryption
 ///
-/// This `trait` covers the [`encrypt`](Self::encrypt_with) half of an symmetric encryption
-/// scheme. To use decryption see the [`Decrypt`] `trait`.
+/// This `trait` covers the [`encrypt`](Self::encrypt_with) half of a symmetric encryption scheme.
+/// To use decryption see the [`Decrypt`] `trait`.
 pub trait Encrypt<COM = ()>: Types {
-    /// Encrypts `plaintext` under `key` inside of `compiler`.
+    /// Encrypts `plaintext` under `key` and `randomness` inside of `compiler`.
     fn encrypt_with(
         &self,
         key: &Self::Key,
@@ -90,13 +90,12 @@ pub trait Encrypt<COM = ()>: Types {
         compiler: &mut COM,
     ) -> Self::Ciphertext;
 
-    /// Encrypts `plaintext` under `key`.
+    /// Encrypts `plaintext` under `key` and `randomness`.
     #[inline]
     fn encrypt(
         &self,
         key: &Self::Key,
         randomness: &Self::Randomness,
-
         plaintext: &Self::Plaintext,
     ) -> Self::Ciphertext
     where
@@ -126,7 +125,6 @@ where
         &self,
         key: &Self::Key,
         randomness: &Self::Randomness,
-
         plaintext: &Self::Plaintext,
     ) -> Self::Ciphertext
     where
@@ -138,10 +136,10 @@ where
 
 /// Symmetric Decryption
 ///
-/// This `trait` covers the [`decrypt`](Self::decrypt) half of a symmetric encryption scheme.
-/// To use encryption see the [`Encrypt`] `trait`.
+/// This `trait` covers the [`decrypt`](Self::decrypt) half of a symmetric encryption scheme. To use
+/// encryption see the [`Encrypt`] `trait`.
 pub trait Decrypt<COM = ()>: Types {
-    /// Decrypts `ciphertext` under `key` inside of `compiler`.
+    /// Decrypts `ciphertext` under `key` and `randomness` inside of `compiler`.
     fn decrypt_with(
         &self,
         key: &Self::Key,
@@ -150,7 +148,7 @@ pub trait Decrypt<COM = ()>: Types {
         compiler: &mut COM,
     ) -> Self::Plaintext;
 
-    /// Decrypts `ciphertext` under `key`.
+    /// Decrypts `ciphertext` under `key` and `randomness`.
     #[inline]
     fn decrypt(
         &self,
@@ -194,7 +192,7 @@ where
     }
 }
 
-/*
+/* TODO:
 /// Plaintext Mapping
 pub trait PlaintextMapping<P>: Sized {
     /// Plaintext Type

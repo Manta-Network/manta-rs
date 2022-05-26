@@ -315,17 +315,6 @@ pub trait ConstraintSystem {
     }
 }
 
-/* TODO: Can we safely implement this?
-impl ConstraintSystem for () {
-    type Bool = bool;
-
-    #[inline]
-    fn assert(&mut self, b: Self::Bool) {
-        assert!(b, "Native Constraint System Assertion");
-    }
-}
-*/
-
 /// Equality Trait
 pub trait Equal<COM>
 where
@@ -366,18 +355,6 @@ where
     }
 }
 
-/* TODO: Implement this:
-impl<T> Equal<()> for T
-where
-    T: PartialEq,
-{
-    #[inline]
-    fn eq(lhs: &Self, rhs: &Self, _: &mut ()) -> bool {
-        lhs.eq(rhs)
-    }
-}
-*/
-
 /// Conditional Selection
 pub trait ConditionalSelect<COM>
 where
@@ -409,22 +386,6 @@ where
         *rhs = swapped_rhs;
     }
 }
-
-/* TODO: Implement this:
-impl<T> ConditionalSelect<()> for T
-where
-    T: Clone,
-{
-    #[inline]
-    fn select(bit: &bool, true_value: &Self, false_value: &Self, _: &mut ()) -> Self {
-        if bit {
-            true_value
-        } else {
-            false_value
-        }
-    }
-}
-*/
 
 /// Addition
 pub trait Add<COM>

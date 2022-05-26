@@ -19,7 +19,8 @@
 // TODO: add authenticated data wrapper
 // TODO: distinguish between one-time and nonce-based authenticated encryption
 
-use crate::{constraint::Native, encryption::symmetric};
+use crate::{constraint::Native, encryption::symmetric, mac::MessageAuthenticationCode};
+use core::marker::PhantomData;
 
 pub use symmetric::{Ciphertext, Key, Plaintext, Randomness};
 
@@ -57,225 +58,107 @@ pub trait Authentication<COM = ()>: symmetric::Types {
     {
         self.tag_with(key, randomness, plaintext, ciphertext, &mut COM::compiler())
     }
+}
 
-    ///
+impl<A, COM> Authentication<COM> for &A
+where
+    A: Authentication<COM>,
+{
+    type Tag = A::Tag;
+
     #[inline]
-    fn encrypt_authenticated(
+    fn tag_with(
         &self,
         key: &Self::Key,
         randomness: &Self::Randomness,
         plaintext: &Self::Plaintext,
+        ciphertext: &Self::Ciphertext,
         compiler: &mut COM,
-    ) -> (Self::Tag, Self::Ciphertext)
-    where
-        Self: Encrypt<COM>,
-    {
-        let ciphertext = self.encrypt(key, randomness, plaintext);
-        let tag = self.tag(key, randomness, plaintext, ciphertext);
-        (tag, ciphertext)
+    ) -> Self::Tag {
+        (*self).tag_with(key, randomness, plaintext, ciphertext, compiler)
     }
 
-    ///
     #[inline]
-    fn decrypt_authenticated(
+    fn tag(
         &self,
         key: &Self::Key,
         randomness: &Self::Randomness,
-        tag: &Self::Tag,
+        plaintext: &Self::Plaintext,
         ciphertext: &Self::Ciphertext,
-    ) -> Option<Self::Plaintext>
+    ) -> Self::Tag
     where
-        Self: Decrypt,
+        COM: Native,
     {
-        (tag == self.tag(key, randomness, plaintext, ciphertext))
-            .then(|| self.decrypt(key, ciphertext))
+        (*self).tag(key, randomness, plaintext, ciphertext)
     }
 }
-
-/// Authenticated Encryption Tag Type
-pub type Tag<A> = <A as Authentication>::Tag;
-
-/*
-/// Encrypt-Then-MAC Authenticated Encryption Wrapper
-#[derive(derivative::Derivative)]
-#[derivative(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
-pub struct EncryptThenMac<S, M, COM = ()>
-where
-    S: SymmetricKeyEncryptionScheme<COM>,
-    S::Key: Sized,
-    M: MessageAuthenticationCode<COM, Message = S::Ciphertext>,
-    M::Key: Sized,
-{
-    /// Symmetric Key Encryption Scheme
-    pub symmetric_key_encryption_scheme: S,
-
-    /// Message Authentication Code
-    pub message_authentication_code: M,
-
-    /// Type Parameter Marker
-    __: PhantomData<COM>,
-}
-
-impl<S, M, COM> EncryptThenMac<S, M, COM>
-where
-    S: SymmetricKeyEncryptionScheme<COM>,
-    S::Key: Sized,
-    M: MessageAuthenticationCode<COM, Message = S::Ciphertext>,
-    M::Key: Sized,
-{
-    /// Builds a new [`EncryptThenMac`] adapter for authenticated encryption over
-    /// `symmetric_key_encryption_scheme` using `message_authentication_code` as the
-    /// [`MessageAuthenticationCode`].
-    #[inline]
-    pub fn new(symmetric_key_encryption_scheme: S, message_authentication_code: M) -> Self {
-        Self {
-            symmetric_key_encryption_scheme,
-            message_authentication_code,
-            __: PhantomData,
-        }
-    }
-}
-*/
-
-/*
-
-use crate::{
-    constraint::Native, encryption::symmetric::SymmetricKeyEncryptionScheme,
-    mac::MessageAuthenticationCode,
-};
-use core::marker::PhantomData;
-
-/// Authenticated Encryption Types
-///
-/// See the [`Encrypt`] and [`Decrypt`] `trait`s for the definitions of the authenticated encryption
-/// and decryption algorithms.
-pub trait Types {
-    /// Key Type
-    ///
-    /// This type is used to both encrypt plaintext and decrypt ciphertext. To use asymmetric keys,
-    /// use a [`hybrid`](crate::encryption::hybrid) encryption model.
-    type Key: ?Sized;
-
-    /// Plaintext Type
-    type Plaintext;
-
-    /// Ciphertext Type
-    type Ciphertext;
-
-    /// Tag Type
-    type Tag;
-}
-
-impl<A> Types for &A
-where
-    A: Types,
-{
-    type Key = A::Key;
-    type Plaintext = A::Plaintext;
-    type Ciphertext = A::Ciphertext;
-    type Tag = A::Tag;
-}
-
-/// Authenticated Encryption Key Type
-pub type Key<A> = <A as Types>::Key;
-
-/// Authenticated Encryption Plaintext Type
-pub type Plaintext<A> = <A as Types>::Plaintext;
-
-/// Authenticated Encryption Ciphertext Type
-pub type Ciphertext<A> = <A as Types>::Ciphertext;
-
-/// Authenticated Encryption Tag Type
-pub type Tag<A> = <A as Types>::Tag;
 
 /// Authenticated Encryption
 ///
-/// This `trait` covers the [`encrypt`](Self::encrypt_with) half of an authenticated encryption
-/// scheme. To use decryption see the [`Decrypt`] `trait`.
-pub trait Encrypt<COM = ()>: Types {
-    /// Encrypts `plaintext` under `key`, producing the authentication [`Tag`](Self::Tag) and the
-    /// relevant [`Ciphertext`](Self::Ciphertext) inside the `compiler`.
-    fn encrypt_with(
+/// This `trait` covers the [`authenticated_encrypt`](Self::authenticated_encrypt_with) half of an
+/// authenticated encryption scheme. To use decryption see the [`Decrypt`] `trait`.
+pub trait Encrypt<COM = ()>: Authentication<COM> + symmetric::Encrypt<COM> {
+    /// Encrypts `plaintext` under `key` and `randomness`, producing the authentication
+    /// [`Tag`](Self::Tag) and the relevant [`Ciphertext`](Self::Ciphertext) inside the `compiler`.
+    #[inline]
+    fn authenticated_encrypt_with(
         &self,
         key: &Self::Key,
-        plaintext: &Self::Plaintext,
-        compiler: &mut COM,
-    ) -> (Self::Tag, Self::Ciphertext);
-
-    /// Encrypts `plaintext` under `key`, producing the authentication [`Tag`](Self::Tag) and the
-    /// relevant [`Ciphertext`](Self::Ciphertext).
-    #[inline]
-    fn encrypt(&self, key: &Self::Key, plaintext: &Self::Plaintext) -> (Self::Tag, Self::Ciphertext)
-    where
-        COM: Native,
-    {
-        self.encrypt_with(key, plaintext, &mut COM::compiler())
-    }
-}
-
-impl<A, COM> Encrypt<COM> for &A
-where
-    A: Encrypt<COM>,
-{
-    #[inline]
-    fn encrypt_with(
-        &self,
-        key: &Self::Key,
+        randomness: &Self::Randomness,
         plaintext: &Self::Plaintext,
         compiler: &mut COM,
     ) -> (Self::Tag, Self::Ciphertext) {
-        (*self).encrypt_with(key, plaintext, compiler)
+        let ciphertext = self.encrypt_with(key, randomness, plaintext, compiler);
+        let tag = self.tag_with(key, randomness, plaintext, &ciphertext, compiler);
+        (tag, ciphertext)
     }
 
+    /// Encrypts `plaintext` under `key` and `randomness`, producing the authentication
+    /// [`Tag`](Self::Tag) and the relevant [`Ciphertext`](Self::Ciphertext).
     #[inline]
-    fn encrypt(&self, key: &Self::Key, plaintext: &Self::Plaintext) -> (Self::Tag, Self::Ciphertext)
+    fn authenticated_encrypt(
+        &self,
+        key: &Self::Key,
+        randomness: &Self::Randomness,
+        plaintext: &Self::Plaintext,
+    ) -> (Self::Tag, Self::Ciphertext)
     where
         COM: Native,
     {
-        (*self).encrypt(key, plaintext)
+        self.authenticated_encrypt_with(key, randomness, plaintext, &mut COM::compiler())
     }
 }
 
 /// Authenticated Decryption
 ///
-/// This `trait` covers the [`decrypt`](Self::decrypt) half of an authenticated encryption scheme.
-/// To use encryption see the [`Encrypt`] `trait`.
-pub trait Decrypt: Types {
-    /// Decrypts `ciphertext` under `key`, authenticating under `tag`, returning
-    /// [`Plaintext`](Self::Plaintext) if the authentication succeeded.
-    fn decrypt(
-        &self,
-        key: &Self::Key,
-        tag: &Self::Tag,
-        ciphertext: &Self::Ciphertext,
-    ) -> Option<Self::Plaintext>;
-}
-
-impl<A> Decrypt for &A
+/// This `trait` covers the [`authenticated_decrypt`](Self::authenticated_decrypt) half of an
+/// authenticated encryption scheme. To use decryption see the [`Decrypt`] `trait`.
+pub trait Decrypt: Authentication + symmetric::Decrypt
 where
-    A: Decrypt,
+    Self::Tag: PartialEq,
 {
+    /// Decrypts `ciphertext` under `key` and `randomness`, authenticating under `tag`, returning
+    /// [`Plaintext`](Self::Plaintext) if the authentication succeeded.
     #[inline]
-    fn decrypt(
+    fn authenticated_decrypt(
         &self,
         key: &Self::Key,
+        randomness: &Self::Randomness,
         tag: &Self::Tag,
         ciphertext: &Self::Ciphertext,
     ) -> Option<Self::Plaintext> {
-        (*self).decrypt(key, tag, ciphertext)
+        let plaintext = self.decrypt(key, randomness, ciphertext);
+        (tag == &self.tag(key, randomness, &plaintext, ciphertext)).then(|| plaintext)
     }
 }
+
+/// Authenticated Encryption Tag Type
+pub type Tag<A, COM = ()> = <A as Authentication<COM>>::Tag;
 
 /// Encrypt-Then-MAC Authenticated Encryption Wrapper
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
-pub struct EncryptThenMac<S, M, COM = ()>
-where
-    S: SymmetricKeyEncryptionScheme<COM>,
-    S::Key: Sized,
-    M: MessageAuthenticationCode<COM, Message = S::Ciphertext>,
-    M::Key: Sized,
-{
+pub struct EncryptThenMac<S, M, COM = ()> {
     /// Symmetric Key Encryption Scheme
     pub symmetric_key_encryption_scheme: S,
 
@@ -286,13 +169,7 @@ where
     __: PhantomData<COM>,
 }
 
-impl<S, M, COM> EncryptThenMac<S, M, COM>
-where
-    S: SymmetricKeyEncryptionScheme<COM>,
-    S::Key: Sized,
-    M: MessageAuthenticationCode<COM, Message = S::Ciphertext>,
-    M::Key: Sized,
-{
+impl<S, M, COM> EncryptThenMac<S, M, COM> {
     /// Builds a new [`EncryptThenMac`] adapter for authenticated encryption over
     /// `symmetric_key_encryption_scheme` using `message_authentication_code` as the
     /// [`MessageAuthenticationCode`].
@@ -306,64 +183,109 @@ where
     }
 }
 
-impl<S, M, COM> Types for EncryptThenMac<S, M, COM>
+impl<S, M, COM> symmetric::Types for EncryptThenMac<S, M, COM>
 where
-    S: SymmetricKeyEncryptionScheme<COM>,
+    S: symmetric::Types,
     S::Key: Sized,
     M: MessageAuthenticationCode<COM, Message = S::Ciphertext>,
-    M::Key: Sized,
 {
     type Key = (S::Key, M::Key);
+    type Randomness = S::Randomness;
     type Plaintext = S::Plaintext;
     type Ciphertext = S::Ciphertext;
-    type Tag = M::Digest;
 }
 
-impl<S, M, COM> Encrypt<COM> for EncryptThenMac<S, M, COM>
+impl<S, M, COM> Authentication<COM> for EncryptThenMac<S, M, COM>
 where
-    S: SymmetricKeyEncryptionScheme<COM>,
+    S: symmetric::Types,
     S::Key: Sized,
     M: MessageAuthenticationCode<COM, Message = S::Ciphertext>,
-    M::Key: Sized,
+{
+    type Tag = M::Digest;
+
+    #[inline]
+    fn tag_with(
+        &self,
+        key: &Self::Key,
+        randomness: &Self::Randomness,
+        plaintext: &Self::Plaintext,
+        ciphertext: &Self::Ciphertext,
+        compiler: &mut COM,
+    ) -> Self::Tag {
+        let _ = (randomness, plaintext);
+        self.message_authentication_code
+            .hash_with(&key.1, ciphertext, compiler)
+    }
+}
+
+impl<S, M, COM> symmetric::Encrypt<COM> for EncryptThenMac<S, M, COM>
+where
+    S: symmetric::Encrypt<COM>,
+    S::Key: Sized,
+    M: MessageAuthenticationCode<COM, Message = S::Ciphertext>,
 {
     #[inline]
     fn encrypt_with(
         &self,
         key: &Self::Key,
+        randomness: &Self::Randomness,
         plaintext: &Self::Plaintext,
         compiler: &mut COM,
-    ) -> (Self::Tag, Self::Ciphertext) {
-        let ciphertext = self
-            .symmetric_key_encryption_scheme
-            .encrypt_with(&key.0, plaintext, compiler);
-        (
-            self.message_authentication_code
-                .hash_with(&key.1, &ciphertext, compiler),
-            ciphertext,
-        )
+    ) -> Self::Ciphertext {
+        self.symmetric_key_encryption_scheme
+            .encrypt_with(&key.0, randomness, plaintext, compiler)
+    }
+}
+
+impl<S, M, COM> Encrypt<COM> for EncryptThenMac<S, M, COM>
+where
+    S: symmetric::Encrypt<COM>,
+    S::Key: Sized,
+    M: MessageAuthenticationCode<COM, Message = S::Ciphertext>,
+{
+}
+
+impl<S, M> symmetric::Decrypt for EncryptThenMac<S, M>
+where
+    S: symmetric::Decrypt,
+    S::Key: Sized,
+    M: MessageAuthenticationCode<Message = S::Ciphertext>,
+    M::Digest: PartialEq,
+{
+    #[inline]
+    fn decrypt_with(
+        &self,
+        key: &Self::Key,
+        randomness: &Self::Randomness,
+        ciphertext: &Self::Ciphertext,
+        compiler: &mut (),
+    ) -> Self::Plaintext {
+        let _ = compiler;
+        self.symmetric_key_encryption_scheme
+            .decrypt(&key.0, randomness, ciphertext)
     }
 }
 
 impl<S, M> Decrypt for EncryptThenMac<S, M>
 where
-    S: SymmetricKeyEncryptionScheme,
+    S: symmetric::Decrypt,
     S::Key: Sized,
     M: MessageAuthenticationCode<Message = S::Ciphertext>,
-    M::Key: Sized,
     M::Digest: PartialEq,
 {
     #[inline]
-    fn decrypt(
+    fn authenticated_decrypt(
         &self,
         key: &Self::Key,
+        randomness: &Self::Randomness,
         tag: &Self::Tag,
         ciphertext: &Self::Ciphertext,
     ) -> Option<Self::Plaintext> {
-        (tag == &self.message_authentication_code.hash(&key.1, ciphertext)).then(|| {
+        // NOTE: Since the computation of the tag does not require the plaintext, we can compute the
+        //       tag first and check if it's equal, before decrypting.
+        (tag == &self.message_authentication_code.hash(&key.1, ciphertext)).then(move || {
             self.symmetric_key_encryption_scheme
-                .decrypt(&key.0, ciphertext)
+                .decrypt(&key.0, randomness, ciphertext)
         })
     }
 }
-
-*/
