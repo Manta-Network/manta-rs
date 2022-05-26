@@ -47,9 +47,9 @@ pub trait VecExt<T>: From<Vec<T>> + Into<Vec<T>> + sealed::Sealed + Sized {
     where
         F: FnMut() -> T,
     {
-        let mut v = Vec::with_capacity(n);
-        v.resize_with(n, f);
-        v.into()
+        let mut vec = Vec::with_capacity(n);
+        vec.resize_with(n, f);
+        vec.into()
     }
 }
 

@@ -20,7 +20,7 @@ use crate::crypto::{
     constraint::arkworks::{field_element_as_bytes, groth16, Boolean, Fp, FpVar, R1CS},
     ecc,
     encryption::aes::{self, FixedNonceAesGcm},
-    hash::poseidon::hasher as poseidon,
+    hash::poseidon,
     key::Blake2sKdf,
 };
 use alloc::vec::Vec;

@@ -18,18 +18,18 @@
 //! Adapted from <https://github.com/filecoin-project/neptune/blob/master/src/round_numbers.rs>
 //! Only works for BLS12-381!
 
-// The number of bits of the Poseidon prime field modulus. Denoted `n` in the Poseidon paper
-// (where `n = ceil(log2(p))`). Note that BLS12-381's scalar field modulus is 255 bits, however we
-// use 256 bits for simplicity when operating on bytes as the single bit difference does not affect
-// the round number security properties.
-const PRIME_BITLEN: usize = 256;
+/// The number of bits of the Poseidon prime field modulus. Denoted `n` in the Poseidon paper
+/// (where `n = ceil(log2(p))`). Note that BLS12-381's scalar field modulus is 255 bits, however we
+/// use 256 bits for simplicity when operating on bytes as the single bit difference does not affect
+/// the round number security properties.
+pub const PRIME_BITLEN: usize = 256;
 
 /// Security level (in bits), denoted `M` in the Poseidon paper.
-const M: usize = 128;
+pub const M: usize = 128;
 
 /// The number of S-boxes (also called the "cost") given by equation (14) in the Poseidon paper:
 /// `cost = t * num_full_rounds + num_partial_rounds`.
-const fn n_sboxes(t: usize, num_full_rounds: usize, num_partial_rounds: usize) -> usize {
+pub const fn num_sboxes(t: usize, num_full_rounds: usize, num_partial_rounds: usize) -> usize {
     t * num_full_rounds + num_partial_rounds
 }
 
@@ -49,7 +49,6 @@ pub fn round_numbers_base(arity: usize) -> (usize, usize) {
 /// - D Khovratovich
 pub fn round_numbers_strengthened(arity: usize) -> (usize, usize) {
     let (num_full_round, num_partial_rounds) = round_numbers_base(arity);
-    // Increase by 25%, rounding up.
     let num_strengthened_partial_rounds = f64::ceil(num_partial_rounds as f64 * 1.25) as usize;
     (num_full_round, num_strengthened_partial_rounds)
 }
@@ -69,7 +68,7 @@ pub fn calc_round_numbers(width: usize, security_margin: bool) -> (usize, usize)
                     num_partial_rounds_test =
                         (1.075 * num_partial_rounds_test as f32).ceil() as usize;
                 }
-                let n_sboxes = n_sboxes(width, num_full_rounds_test, num_partial_rounds_test);
+                let n_sboxes = num_sboxes(width, num_full_rounds_test, num_partial_rounds_test);
                 if n_sboxes < n_sboxes_min
                     || (n_sboxes == n_sboxes_min && num_full_rounds_test < num_full_rounds)
                 {
@@ -85,7 +84,7 @@ pub fn calc_round_numbers(width: usize, security_margin: bool) -> (usize, usize)
 
 /// Returns `true` if the provided round numbers satisfy the security inequalities specified in the
 /// Poseidon paper.
-fn round_numbers_are_secure(
+pub fn round_numbers_are_secure(
     width: usize,
     num_full_rounds: usize,
     num_partial_rounds: usize,
@@ -113,15 +112,17 @@ fn round_numbers_are_secure(
     .iter()
     .map(|num_full_rounds| num_full_rounds.ceil() as usize)
     .max()
-    .unwrap();
+    .expect("Iterator is non-empty.");
     num_full_rounds >= num_full_rounds_max
 }
 
+/// Testing Suite
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{config::PoseidonSpec, crypto::hash::poseidon::hasher::arkworks::Specification};
+    use crate::{config::PoseidonSpec, crypto::hash::poseidon::arkworks::Specification};
 
+    /// Checks if values from `calc_round_numbers` matches known values.
     #[test]
     fn round_numbers_matches_known_values() {
         // Each case contains a `t` (where `t = arity + 1`) and the `R_P` expected for that `t`.
@@ -162,6 +163,7 @@ mod test {
         assert_eq!(num_partial_rounds, PoseidonSpec::<ARITY>::PARTIAL_ROUNDS);
     }
 
+    /// Checks if config values matches values from `calc_round_numbers`
     #[test]
     fn round_numbers_matches_config_values() {
         compare_against_config_values::<2>();

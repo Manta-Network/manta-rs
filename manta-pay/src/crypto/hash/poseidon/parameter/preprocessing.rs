@@ -14,8 +14,9 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Preprocess constants for optimized poseidon hash
-//! acknowledgement: adapted from FileCoin Project: <https://github.com/filecoin-project/neptune/blob/master/src/preprocessing.rs>
+//! Preprocess Constants for Optimized Poseidon Hash
+//!
+//! This code is adapted from the Filecoin Project. See [`preprocessing.rs`](https://github.com/filecoin-project/neptune/blob/master/src/preprocessing.rs) for more details.
 
 use super::{matrix::vec_add, mds::MdsMatrices};
 use crate::crypto::hash::poseidon::Field;
@@ -45,7 +46,9 @@ where
     let end = half_full_rounds - 1;
     for i in 0..end {
         let next_round = round_keys(i + 1);
-        let inverted = inverse_matrix.mul_row_vec_at_left(next_round).unwrap();
+        let inverted = inverse_matrix
+            .mul_row_vec_at_left(next_round)
+            .expect("Input shapes match");
         res.extend(inverted);
     }
 
@@ -67,12 +70,18 @@ where
     let round_acc = (0..partial_rounds)
         .map(|i| round_keys(final_round - i - 1))
         .fold(final_round_key, |acc, previous_round_keys| {
-            let mut inverted = inverse_matrix.mul_row_vec_at_left(&acc).unwrap();
+            let mut inverted = inverse_matrix
+                .mul_row_vec_at_left(&acc)
+                .expect("Input shapes match.");
             partial_keys.push(inverted[0].clone());
             inverted[0] = F::zero();
             vec_add::<F>(previous_round_keys, &inverted)
         });
-    res.extend(inverse_matrix.mul_row_vec_at_left(&round_acc).unwrap());
+    res.extend(
+        inverse_matrix
+            .mul_row_vec_at_left(&round_acc)
+            .expect("Input shapes match."),
+    );
     while let Some(x) = partial_keys.pop() {
         res.push(x)
     }
@@ -80,7 +89,9 @@ where
     for i in 1..(half_full_rounds) {
         let start = half_full_rounds + partial_rounds;
         let next_round = round_keys(i + start);
-        let inverted = inverse_matrix.mul_row_vec_at_left(next_round).unwrap();
+        let inverted = inverse_matrix
+            .mul_row_vec_at_left(next_round)
+            .expect("Input shapes match.");
         res.extend(inverted);
     }
     res

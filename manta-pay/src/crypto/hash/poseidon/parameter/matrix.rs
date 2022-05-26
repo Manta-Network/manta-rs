@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Basic Linear Algebra Implementation
+//! Basic Linear Algebra Implementations
 
 use crate::crypto::hash::poseidon::Field;
 use core::{
@@ -24,7 +24,7 @@ use core::{
 };
 use manta_util::vec::{Vec, VecExt};
 
-/// Allocates a matrix of shape `(num_rows, num_columns)`.
+/// Allocates a matrix of shape `(num_rows, num_columns)` where `allocate_row` generates default values.
 pub fn allocate_matrix<T, F>(
     num_rows: usize,
     num_columns: usize,
@@ -36,7 +36,7 @@ where
     Vec::allocate_with(num_rows, || allocate_row(num_columns))
 }
 
-/// Allocates a square matrix of shape `(size, size)`
+/// Allocates a square matrix of shape `(size, size)` where `allocate_row` generates default values.
 pub fn allocate_square_matrix<T, F>(size: usize, allocate_row: F) -> Vec<Vec<T>>
 where
     F: FnMut(usize) -> Vec<T>,
@@ -44,9 +44,9 @@ where
     allocate_matrix(size, size, allocate_row)
 }
 
-/// Trait for matrix operations
+/// Trait for matrix operations.
 pub trait MatrixOperations {
-    /// Scalar field
+    /// Scalar field.
     type Scalar;
 
     /// Assumes matrix is partially reduced to upper triangular. `column` is the
@@ -56,7 +56,7 @@ pub trait MatrixOperations {
     fn eliminate(&self, column: usize, shadow: &mut Self) -> Option<Self>
     where
         Self: Sized,
-        Self::Scalar: Clone;
+        Self::Scalar: Clone + PartialEq;
 
     /// Returns an identity matrix of size `n*n`.
     fn identity(n: usize) -> Self;
@@ -77,7 +77,7 @@ pub trait MatrixOperations {
     fn transpose(self) -> Self;
 }
 
-/// Row Major Matrix Representation
+/// Row Major Matrix Representation.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Matrix<F>(Vec<Vec<F>>)
 where
@@ -87,8 +87,7 @@ impl<F> Matrix<F>
 where
     F: Field,
 {
-    /// Constructs a [`Matrix`].
-    /// If `v` is empty then returns `None`.
+    /// Constructs a non-empty [`Matrix`] returning `None` if `v` is empty or has the wrong shape for a matrix.
     pub fn new(v: Vec<Vec<F>>) -> Option<Self> {
         if v.is_empty() {
             return None;
@@ -105,7 +104,12 @@ where
         Some(Self(v))
     }
 
-    /// Iterator over a specific column.
+    /// Builds a new [`Matrix`] without checking `v` is a valid matrix.
+    pub fn new_unchecked(v: Vec<Vec<F>>) -> Self {
+        Self(v)
+    }
+
+    /// Returns an iterator over a specific column.
     pub fn column(&self, column: usize) -> impl Iterator<Item = &'_ F> {
         self.0.iter().map(move |row| &row[column])
     }
@@ -116,7 +120,10 @@ where
     }
 
     /// Checks if the matrix is an identity matrix.
-    pub fn is_identity(&self) -> bool {
+    pub fn is_identity(&self) -> bool
+    where
+        F: PartialEq,
+    {
         if !self.is_square() {
             return false;
         }
@@ -131,8 +138,13 @@ where
     }
 
     /// Checks if the matrix is symmetric.
-    pub fn is_symmetric(&self) -> bool {
-        // assert!(matrix.0 == matrix.transpose().0);
+    pub fn is_symmetric(&self) -> bool
+    where
+        F: PartialEq,
+    {
+        if self.num_rows() != self.num_columns() {
+            return false;
+        }
         for i in 0..self.num_rows() {
             for j in 0..self.num_columns() {
                 if !F::eq(&self.0[i][j], &self.0[j][i]) {
@@ -143,8 +155,8 @@ where
         true
     }
 
-    /// Iterator over rows.
-    pub fn iter_rows(&self) -> slice::Iter<Vec<F>> {
+    /// Returns an iterator over rows.
+    pub fn rows(&self) -> slice::Iter<Vec<F>> {
         self.0.iter()
     }
 
@@ -158,37 +170,37 @@ where
         self.0[0].len()
     }
 
-    /// Returns `self @ vec`, treating `vec` as a column vector.
+    /// Multiplies matrix `self` with column vector `vec` on the-right hand side.
     pub fn mul_col_vec(&self, v: &[F]) -> Option<Vec<F>> {
         if self.num_rows() != v.len() {
             return None;
         }
-        let mut result = Vec::with_capacity(v.len());
-        for row in &self.0 {
-            result.push(
-                row.iter()
-                    .zip(v)
-                    .fold(F::zero(), |acc, (r, v)| F::add(&acc, &F::mul(r, v))),
-            );
-        }
-        Some(result)
+        Some(
+            self.rows()
+                .map(|row| {
+                    row.iter()
+                        .zip(v)
+                        .fold(F::zero(), |acc, (r, v)| F::add(&acc, &F::mul(r, v)))
+                })
+                .collect(),
+        )
     }
 
-    /// Returns `vec @ self`, treating `vec` as a row vector.
+    /// Multiplies matrix `self` with row vector `vec` on the left-hand side.
     pub fn mul_row_vec_at_left(&self, v: &[F]) -> Option<Vec<F>> {
         if self.num_rows() != v.len() {
             return None;
         }
-        let mut result = Vec::with_capacity(v.len());
-        for j in 0..v.len() {
-            result.push(
-                self.0
-                    .iter()
-                    .zip(v)
-                    .fold(F::zero(), |acc, (row, v)| F::add(&acc, &F::mul(v, &row[j]))),
-            );
-        }
-        Some(result)
+        Some(
+            (0..v.len())
+                .map(|j| {
+                    self.0
+                        .iter()
+                        .zip(v)
+                        .fold(F::zero(), |acc, (row, v)| F::add(&acc, &F::mul(v, &row[j])))
+                })
+                .collect(),
+        )
     }
 }
 
@@ -198,15 +210,6 @@ where
 {
     fn from(matrix: SquareMatrix<F>) -> Self {
         matrix.0
-    }
-}
-
-impl<F> From<Vec<Vec<F>>> for Matrix<F>
-where
-    F: Field,
-{
-    fn from(v: Vec<Vec<F>>) -> Self {
-        Self(v)
     }
 }
 
@@ -238,7 +241,7 @@ where
 
     fn eliminate(&self, column: usize, shadow: &mut Self) -> Option<Self>
     where
-        Self::Scalar: Clone,
+        Self::Scalar: Clone + PartialEq,
     {
         let zero = F::zero();
         let (pivot_index, pivot) = self.0.iter().enumerate().find(|(_, row)| {
@@ -248,7 +251,7 @@ where
             .expect("This should never fail since we have a non-zero `pivot_val` if we got here.");
         let mut result = Vec::with_capacity(self.num_rows());
         result.push(pivot.clone());
-        for (i, row) in self.iter_rows().enumerate() {
+        for (i, row) in self.rows().enumerate() {
             if i == pivot_index {
                 continue;
             };
@@ -263,7 +266,7 @@ where
         }
         let pivot_row = shadow.0.remove(pivot_index);
         shadow.0.insert(0, pivot_row);
-        Some(result.into())
+        Some(Self(result))
     }
 
     fn identity(n: usize) -> Self {
@@ -275,8 +278,7 @@ where
     }
 
     fn to_row_major(self) -> Vec<F> {
-        let size = self.num_rows() * self.num_columns();
-        let mut row_major_repr = Vec::with_capacity(size);
+        let mut row_major_repr = Vec::with_capacity(self.num_rows() * self.num_columns());
         for mut row in self.0 {
             row_major_repr.append(&mut row);
         }
@@ -290,13 +292,12 @@ where
         if self.num_rows() != other.num_columns() {
             return None;
         };
-        let other_t = other.clone().transpose();
+        let other_transpose = other.clone().transpose();
         Some(Self(
-            self.0
-                .iter()
+            self.rows()
                 .map(|input_row| {
-                    other_t
-                        .iter_rows()
+                    other_transpose
+                        .rows()
                         .map(|transposed_column| inner_product(input_row, transposed_column))
                         .collect()
                 })
@@ -334,7 +335,7 @@ where
     }
 }
 
-/// Row Major Matrix Representation with Square Shapes
+/// Row Major Matrix Representation with Square Shape.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SquareMatrix<F>(Matrix<F>)
 where
@@ -344,15 +345,20 @@ impl<F> SquareMatrix<F>
 where
     F: Field,
 {
-    /// Returns a new square matrix
+    /// Returns a new [`SquareMatrix`] representation of `m` if it returns `true` to [`is_square`](Matrix::is_square).
     pub fn new(m: Matrix<F>) -> Option<Self> {
         m.is_square().then(|| Self(m))
     }
 
-    /// Returns the inversion of a matrix
-    pub fn invert(&self) -> Option<Self>
+    /// Builds a new [`SquareMatrix`] without checking whether `m` is a valid square matrix.
+    pub fn new_unchecked(m: Matrix<F>) -> Self {
+        Self(m)
+    }
+
+    /// Returns the inversion of a matrix.
+    pub fn inverse(&self) -> Option<Self>
     where
-        F: Clone,
+        F: Clone + PartialEq,
     {
         let mut shadow = Self::identity(self.num_rows());
         self.upper_triangular(&mut shadow)?
@@ -360,15 +366,15 @@ where
         Some(shadow)
     }
 
-    /// Checks if the matrix is invertible
+    /// Checks if the matrix is invertible.
     pub fn is_invertible(&self) -> bool
     where
-        F: Clone,
+        F: Clone + PartialEq,
     {
-        self.invert().is_some()
+        self.inverse().is_some()
     }
 
-    /// Generates the minor matrix
+    /// Generates the `(i, j)` minor matrix by removing the `i`th row and `j`th column of `self`.
     pub fn minor(&self, i: usize, j: usize) -> Option<Self>
     where
         F: Clone,
@@ -427,10 +433,10 @@ where
         Some(Self(Matrix(result)))
     }
 
-    /// Generates the upper triangular matrix
+    /// Generates the upper triangular matrix such that `self[i][j]` = 0 for all `j`>`i`.
     fn upper_triangular(&self, shadow: &mut Self) -> Option<Self>
     where
-        F: Clone,
+        F: Clone + PartialEq,
     {
         let size = self.num_rows();
         let mut result = Vec::with_capacity(size);
@@ -486,7 +492,7 @@ where
 
     fn eliminate(&self, column: usize, shadow: &mut Self) -> Option<Self>
     where
-        Self::Scalar: Clone,
+        Self::Scalar: Clone + PartialEq,
     {
         self.0.eliminate(column, &mut shadow.0).map(Self)
     }
@@ -515,7 +521,7 @@ where
     }
 }
 
-/// Inner product of two vectors.
+/// Computes the inner product of vector `a` and `b`.
 pub fn inner_product<F>(a: &[F], b: &[F]) -> F
 where
     F: Field,
@@ -525,7 +531,7 @@ where
         .fold(F::zero(), |acc, (v1, v2)| F::add(&acc, &F::mul(v1, v2)))
 }
 
-/// Elementwise addition (i.e., out_i = a_i + b_i).
+/// Adds two vectors elementwise (i.e., `out[i] = a[i] + b[i]`).
 pub fn vec_add<F>(a: &[F], b: &[F]) -> Vec<F>
 where
     F: Field,
@@ -533,7 +539,7 @@ where
     a.iter().zip(b).map(|(a, b)| F::add(a, b)).collect()
 }
 
-/// Elementwise subtraction (i.e., out_i = a_i - b_i).
+/// Subtracts two vectors elementwise (i.e., `out[i] = a[i] - b[i]`).
 pub fn vec_sub<F>(a: &[F], b: &[F]) -> Vec<F>
 where
     F: Field,
@@ -541,7 +547,7 @@ where
     a.iter().zip(b.iter()).map(|(a, b)| F::sub(a, b)).collect()
 }
 
-/// Elementwisely multiplies a vector `v` with `scalar`.
+/// Multiplies a vector `v` with `scalar` elementwise (i.e., `out[i] = scalar * v[i]`).
 pub fn scalar_vec_mul<F>(scalar: &F, v: &[F]) -> Vec<F>
 where
     F: Field,
@@ -549,7 +555,7 @@ where
     v.iter().map(|val| F::mul(scalar, val)).collect()
 }
 
-/// Eliminates `row` with `factor` multiplying `pivot`.
+/// Eliminates `row` with `factor` multiplied by the `pivot`.
 fn eliminate_row<F>(row: &[F], factor: &F, pivot: &[F]) -> Vec<F>
 where
     F: Field,
@@ -557,7 +563,7 @@ where
     vec_sub(row, &scalar_vec_mul(factor, pivot))
 }
 
-/// Returns kronecker delta.
+/// Returns the kronecker delta of `i` and `j`.
 pub fn kronecker_delta<F>(i: usize, j: usize) -> F
 where
     F: Field,
@@ -569,20 +575,14 @@ where
     }
 }
 
-/// Checks whether `elem` equals zero.
-pub fn equal_zero<F>(elem: &F) -> bool
-where
-    F: Field,
-{
-    F::eq(elem, &F::zero())
-}
-
+/// Testing Suite
 #[cfg(test)]
 mod test {
     use super::*;
     use crate::crypto::constraint::arkworks::Fp;
     use ark_bls12_381::Fr;
 
+    /// Checks if generating minor matrix is correct.
     #[test]
     fn minor_is_correct() {
         let one = Fp(Fr::from(1u64));
@@ -594,68 +594,67 @@ mod test {
         let seven = Fp(Fr::from(7u64));
         let eight = Fp(Fr::from(8u64));
         let nine = Fp(Fr::from(9u64));
-
-        let m = Matrix::new(vec![
+        let matrix = SquareMatrix::new_unchecked(Matrix::new_unchecked(vec![
             vec![one, two, three],
             vec![four, five, six],
             vec![seven, eight, nine],
-        ])
-        .unwrap();
-
+        ]));
         let cases = [
             (
                 0,
                 0,
-                Matrix::new(vec![vec![five, six], vec![eight, nine]]).unwrap(),
+                Matrix::new_unchecked(vec![vec![five, six], vec![eight, nine]]),
             ),
             (
                 0,
                 1,
-                Matrix::new(vec![vec![four, six], vec![seven, nine]]).unwrap(),
+                Matrix::new_unchecked(vec![vec![four, six], vec![seven, nine]]),
             ),
             (
                 0,
                 2,
-                Matrix::new(vec![vec![four, five], vec![seven, eight]]).unwrap(),
+                Matrix::new_unchecked(vec![vec![four, five], vec![seven, eight]]),
             ),
             (
                 1,
                 0,
-                Matrix::new(vec![vec![two, three], vec![eight, nine]]).unwrap(),
+                Matrix::new_unchecked(vec![vec![two, three], vec![eight, nine]]),
             ),
             (
                 1,
                 1,
-                Matrix::new(vec![vec![one, three], vec![seven, nine]]).unwrap(),
+                Matrix::new_unchecked(vec![vec![one, three], vec![seven, nine]]),
             ),
             (
                 1,
                 2,
-                Matrix::new(vec![vec![one, two], vec![seven, eight]]).unwrap(),
+                Matrix::new_unchecked(vec![vec![one, two], vec![seven, eight]]),
             ),
             (
                 2,
                 0,
-                Matrix::new(vec![vec![two, three], vec![five, six]]).unwrap(),
+                Matrix::new_unchecked(vec![vec![two, three], vec![five, six]]),
             ),
             (
                 2,
                 1,
-                Matrix::new(vec![vec![one, three], vec![four, six]]).unwrap(),
+                Matrix::new_unchecked(vec![vec![one, three], vec![four, six]]),
             ),
             (
                 2,
                 2,
-                Matrix::new(vec![vec![one, two], vec![four, five]]).unwrap(),
+                Matrix::new_unchecked(vec![vec![one, two], vec![four, five]]),
             ),
         ];
-        let m = SquareMatrix::new(m).unwrap();
         for (i, j, expected) in &cases {
-            let result = m.minor(*i, *j).unwrap();
+            let result = matrix
+                .minor(*i, *j)
+                .expect("A matrix of shape 3x3 should be able to generate minor matrices.");
             assert_eq!(expected, &result);
         }
     }
 
+    /// Checks if scalar multiplication is correct.
     #[test]
     fn scalar_mul_is_correct() {
         let zero = Fp(Fr::from(0u64));
@@ -664,33 +663,29 @@ mod test {
         let three = Fp(Fr::from(3u64));
         let four = Fp(Fr::from(4u64));
         let six = Fp(Fr::from(6u64));
-
-        let m = Matrix::new(vec![vec![zero, one], vec![two, three]]).unwrap();
-        let res = m.mul_by_scalar(two);
-
-        let expected = Matrix::new(vec![vec![zero, two], vec![four, six]]).unwrap();
-
-        assert_eq!(expected.0, res.0);
+        assert_eq!(
+            Matrix::new_unchecked(vec![vec![zero, two], vec![four, six]]).0,
+            Matrix::new_unchecked(vec![vec![zero, one], vec![two, three]])
+                .mul_by_scalar(two)
+                .0
+        );
     }
 
+    /// Checks if `inner_product` is correct.
     #[test]
-    fn vec_mul_is_correct() {
+    fn inner_product_is_correct() {
         let one = Fp(Fr::from(1u64));
         let two = Fp(Fr::from(2u64));
         let three = Fp(Fr::from(3u64));
         let four = Fp(Fr::from(4u64));
         let five = Fp(Fr::from(5u64));
         let six = Fp(Fr::from(6u64));
-
         let a = vec![one, two, three];
         let b = vec![four, five, six];
-        let res = inner_product(&a, &b);
-
-        let expected = Fp(Fr::from(32u64));
-
-        assert_eq!(expected, res);
+        assert_eq!(inner_product(&a, &b), Fp(Fr::from(32u64)));
     }
 
+    /// Checks if `transpose` is correct.
     #[test]
     fn transpose_is_correct() {
         let one = Fp(Fr::from(1u64));
@@ -702,25 +697,20 @@ mod test {
         let seven = Fp(Fr::from(7u64));
         let eight = Fp(Fr::from(8u64));
         let nine = Fp(Fr::from(9u64));
-
-        let m: Matrix<_> = vec![
+        let matrix = Matrix::new_unchecked(vec![
             vec![one, two, three],
             vec![four, five, six],
             vec![seven, eight, nine],
-        ]
-        .into();
-
-        let expected: Matrix<_> = vec![
+        ]);
+        let transpose = Matrix::new_unchecked(vec![
             vec![one, four, seven],
             vec![two, five, eight],
             vec![three, six, nine],
-        ]
-        .into();
-
-        let res = m.transpose();
-        assert_eq!(expected.0, res.0);
+        ]);
+        assert_eq!(matrix.transpose(), transpose);
     }
 
+    /// Checks if generating upper triangular matrix is correct.
     #[test]
     fn upper_triangular_is_correct() {
         let zero = Fp(Fr::from(0u64));
@@ -731,32 +721,26 @@ mod test {
         let six = Fp(Fr::from(6u64));
         let seven = Fp(Fr::from(7u64));
         let eight = Fp(Fr::from(8u64));
-
-        let m = SquareMatrix::new(
-            Matrix::new(vec![
-                vec![two, three, four],
-                vec![four, five, six],
-                vec![seven, eight, eight],
-            ])
-            .unwrap(),
-        )
-        .unwrap();
-
-        let mut shadow = SquareMatrix::identity(m.num_columns());
-        let res = m.upper_triangular(&mut shadow).unwrap();
-
-        // Actually assert things.
-        assert!(res[0][0] != zero);
-        assert!(res[0][1] != zero);
-        assert!(res[0][2] != zero);
-        assert!(res[1][0] == zero);
-        assert!(res[1][1] != zero);
-        assert!(res[1][2] != zero);
-        assert!(res[2][0] == zero);
-        assert!(res[2][1] == zero);
-        assert!(res[2][2] != zero);
+        let matrix = SquareMatrix::new_unchecked(Matrix::new_unchecked(vec![
+            vec![two, three, four],
+            vec![four, five, six],
+            vec![seven, eight, eight],
+        ]));
+        let upper_triangular_form = matrix
+            .upper_triangular(&mut SquareMatrix::identity(matrix.num_rows()))
+            .expect("The upper triangular form for `matrix` should exist.");
+        assert!(upper_triangular_form[0][0] != zero);
+        assert!(upper_triangular_form[0][1] != zero);
+        assert!(upper_triangular_form[0][2] != zero);
+        assert!(upper_triangular_form[1][0] == zero);
+        assert!(upper_triangular_form[1][1] != zero);
+        assert!(upper_triangular_form[1][2] != zero);
+        assert!(upper_triangular_form[2][0] == zero);
+        assert!(upper_triangular_form[2][1] == zero);
+        assert!(upper_triangular_form[2][2] != zero);
     }
 
+    /// Checks if `inverse` is correct.
     #[test]
     fn inverse_is_correct() {
         let zero = Fp(Fr::from(0u64));
@@ -769,74 +753,78 @@ mod test {
         let seven = Fp(Fr::from(7u64));
         let eight = Fp(Fr::from(8u64));
         let nine = Fp(Fr::from(9u64));
+        let matrix = SquareMatrix::new_unchecked(Matrix::new_unchecked(vec![
+            vec![one, two, three],
+            vec![four, three, six],
+            vec![five, eight, seven],
+        ]));
+        let singular_matrix = SquareMatrix::new_unchecked(Matrix::new_unchecked(vec![
+            vec![one, two, three],
+            vec![four, five, six],
+            vec![seven, eight, nine],
+        ]));
+        assert!(matrix.is_invertible());
+        assert!(!singular_matrix.is_invertible());
 
-        let m = SquareMatrix::new(
-            Matrix::new(vec![
-                vec![one, two, three],
-                vec![four, three, six],
-                vec![five, eight, seven],
-            ])
-            .unwrap(),
-        )
-        .unwrap();
-
-        let m1 = SquareMatrix::new(
-            Matrix::new(vec![
-                vec![one, two, three],
-                vec![four, five, six],
-                vec![seven, eight, nine],
-            ])
-            .unwrap(),
-        )
-        .unwrap();
-
-        assert!(!m1.is_invertible());
-        assert!(m.is_invertible());
-
-        let m_inv = m.invert().unwrap();
-
-        let computed_identity = m.matmul(&m_inv).unwrap();
+        let matrix_inverse = matrix
+            .inverse()
+            .expect("This matrix is invertible in theory.");
+        let computed_identity = matrix
+            .matmul(&matrix_inverse)
+            .expect("Shape of `matrix` and `matrix_inverse` matches.");
         assert!(computed_identity.is_identity());
 
         // S
         let some_vec = vec![six, five, four];
-
         // M^-1(S)
-        let inverse_applied = m_inv.mul_row_vec_at_left(&some_vec).unwrap();
-
+        let inverse_applied = matrix_inverse
+            .mul_row_vec_at_left(&some_vec)
+            .expect("`matrix_inverse` and `some_vec` matches on shape.");
         // M(M^-1(S))
-        let m_applied_after_inverse = m.mul_row_vec_at_left(&inverse_applied).unwrap();
-
+        let m_applied_after_inverse = matrix
+            .mul_row_vec_at_left(&inverse_applied)
+            .expect("`matrix` and `inverse_applied` matches on shape.");
         // S = M(M^-1(S))
         assert_eq!(
             some_vec, m_applied_after_inverse,
-            "M(M^-1(V))) = V did not hold"
+            "M(M^-1(V))) = V did not hold."
         );
 
-        // panic!();
         // B
         let base_vec = vec![eight, two, five];
-
         // S + M(B)
-        let add_after_apply = vec_add(&some_vec, &m.mul_row_vec_at_left(&base_vec).unwrap());
-
+        let add_after_apply = vec_add(
+            &some_vec,
+            &matrix
+                .mul_row_vec_at_left(&base_vec)
+                .expect("`matrix` and `base_vec` matches on shape."),
+        );
         // M(B + M^-1(S))
-        let apply_after_add = m
+        let apply_after_add = matrix
             .mul_row_vec_at_left(&vec_add(&base_vec, &inverse_applied))
-            .unwrap();
-
+            .expect("Shape matches.");
         // S + M(B) = M(B + M^-1(S))
-        assert_eq!(add_after_apply, apply_after_add, "breakin' the law");
+        assert_eq!(
+            add_after_apply, apply_after_add,
+            "`add_after_apply` should be same as `apply_after_add` in theory."
+        );
 
-        let m = SquareMatrix::new(Matrix::new(vec![vec![zero, one], vec![one, zero]]).unwrap())
-            .unwrap();
-        let m_inv = m.invert().unwrap();
-        let computed_identity = m.matmul(&m_inv).unwrap();
+        let matrix = SquareMatrix::new_unchecked(Matrix::new_unchecked(vec![
+            vec![zero, one],
+            vec![one, zero],
+        ]));
+        let matrix_inv = matrix.inverse().expect("`matrix` is invertible in theory.");
+        let computed_identity = matrix
+            .matmul(&matrix_inv)
+            .expect("`matrix` and `matrix_inv` match on shape.");
         assert!(computed_identity.is_identity());
-        let computed_identity = m_inv.matmul(&m).unwrap();
+        let computed_identity = matrix_inv
+            .matmul(&matrix)
+            .expect("`matrix` and `matrix_inv` match on shape.");
         assert!(computed_identity.is_identity());
     }
 
+    /// Checks if `eliminate` is correct.
     #[test]
     fn eliminate_is_correct() {
         let two = Fp(Fr::from(2u64));
@@ -846,12 +834,11 @@ mod test {
         let six = Fp(Fr::from(6u64));
         let seven = Fp(Fr::from(7u64));
         let eight = Fp(Fr::from(8u64));
-        let m: Matrix<_> = vec![
+        let m = Matrix::new_unchecked(vec![
             vec![two, three, four],
             vec![four, five, six],
             vec![seven, eight, eight],
-        ]
-        .into();
+        ]);
         for i in 0..m.num_rows() {
             let mut shadow = Matrix::identity(m.num_columns());
             let res = m.eliminate(i, &mut shadow);
@@ -863,14 +850,15 @@ mod test {
             }
             assert_eq!(
                 1,
-                res.unwrap()
-                    .iter_rows()
-                    .filter(|&row| !equal_zero(&row[i]))
+                res.expect("An eliminated matrix should exist.")
+                    .rows()
+                    .filter(|&row| !row[i].is_zero())
                     .count()
             );
         }
     }
 
+    /// Checks if reducing to identity matrix is correct.
     #[test]
     fn reduce_to_identity_is_correct() {
         let two = Fp(Fr::from(2u64));
@@ -880,21 +868,17 @@ mod test {
         let six = Fp(Fr::from(6u64));
         let seven = Fp(Fr::from(7u64));
         let eight = Fp(Fr::from(8u64));
-        let m = SquareMatrix::new(
-            Matrix::new(vec![
-                vec![two, three, four],
-                vec![four, five, six],
-                vec![seven, eight, eight],
-            ])
-            .unwrap(),
-        )
-        .unwrap();
+        let m = SquareMatrix::new_unchecked(Matrix::new_unchecked(vec![
+            vec![two, three, four],
+            vec![four, five, six],
+            vec![seven, eight, eight],
+        ]));
         let mut shadow = SquareMatrix::identity(m.num_columns());
         let ut = m.upper_triangular(&mut shadow);
         let res = ut
             .and_then(|x: SquareMatrix<Fp<Fr>>| x.reduce_to_identity(&mut shadow))
-            .unwrap();
+            .expect("This should generate an identity matrix as output.");
         assert!(res.is_identity());
-        assert!(m.matmul(&shadow).unwrap().is_identity());
+        assert!(m.matmul(&shadow).expect("Matrix shape matches.").is_identity());
     }
 }

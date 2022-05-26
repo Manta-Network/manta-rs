@@ -20,18 +20,16 @@
 use crate::crypto::hash::poseidon::FieldGeneration;
 use alloc::vec::Vec;
 
-const LFSR_SIZE: usize = 80;
-
 /// An 80-bit linear feedback shift register, described in
 /// [GKRRS19](https://eprint.iacr.org/2019/458.pdf) Appendix A. `GrainLFSR`
 /// is used to generate secure parameter for Poseidon Hash.
 pub struct GrainLFSR {
-    state: [bool; LFSR_SIZE],
+    state: [bool; Self::SIZE],
     prime_num_bits: u64,
     head: usize,
 }
 
-fn append_bits<T>(state: &mut [bool; LFSR_SIZE], head: &mut usize, n: usize, from: T)
+fn append_bits<T, const SIZE: usize>(state: &mut [bool; SIZE], head: &mut usize, n: usize, from: T)
 where
     T: Into<u128>,
 {
@@ -39,11 +37,14 @@ where
     for i in (0..n).rev() {
         state[*head] = (val >> i) & 1 != 0;
         *head += 1;
-        *head %= LFSR_SIZE;
+        *head %= SIZE;
     }
 }
 
 impl GrainLFSR {
+    /// LFSR State Size
+    pub const SIZE: usize = 80;
+
     /// Return a new `GrainLFSR` for poseidon parameter generation.
     pub fn new(
         prime_num_bits: u64,
@@ -51,21 +52,21 @@ impl GrainLFSR {
         num_full_rounds: usize,
         num_partial_rounds: usize,
     ) -> Self {
-        let mut init_sequence = [false; LFSR_SIZE];
+        let mut init_sequence = [false; Self::SIZE];
         let mut head = 0;
-        // b0, b1 describes the field
+        // b0, b1 describes the field.
         append_bits(&mut init_sequence, &mut head, 2, 1u8);
-        // b2...=b5 describes s-box: we always use non-inverse s-box
+        // b2...=b5 describes s-box: we always use non-inverse s-box.
         append_bits(&mut init_sequence, &mut head, 4, 0b00000u8);
-        // b6...=b17 describes prime_num_bits
+        // b6...=b17 describes prime_num_bits.
         append_bits(&mut init_sequence, &mut head, 12, prime_num_bits);
-        // b18...=b29 describes width
+        // b18...=b29 describes width.
         append_bits(&mut init_sequence, &mut head, 12, width as u16);
-        // b30..=39 describes num_full_rounds
+        // b30..=39 describes num_full_rounds.
         append_bits(&mut init_sequence, &mut head, 10, num_full_rounds as u16);
-        // b40..=49 describes num_partial_rounds
+        // b40..=49 describes num_partial_rounds.
         append_bits(&mut init_sequence, &mut head, 10, num_partial_rounds as u16);
-        // b50..=79 describes the constant 1
+        // b50..=79 describes the constant 1.
         append_bits(
             &mut init_sequence,
             &mut head,
@@ -87,13 +88,13 @@ impl GrainLFSR {
             self.bit(62) ^ self.bit(51) ^ self.bit(38) ^ self.bit(23) ^ self.bit(13) ^ self.bit(0);
         self.state[self.head] = new_bit;
         self.head += 1;
-        self.head %= LFSR_SIZE;
+        self.head %= Self::SIZE;
         new_bit
     }
 
     /// Initializes LFSR in terms of `self.state` and `self.head`.
     fn init(&mut self) {
-        for _ in 0..LFSR_SIZE * 2 {
+        for _ in 0..Self::SIZE * 2 {
             self.update();
         }
     }
@@ -101,7 +102,7 @@ impl GrainLFSR {
     /// Returns the bit value of `self.state` at the position `index + self.head`.
     #[inline]
     fn bit(&self, index: usize) -> bool {
-        self.state[(index + self.head) % LFSR_SIZE]
+        self.state[(index + self.head) % Self::SIZE]
     }
 
     /// Gets `num_bits` bits, represent each bit as a bool, and return a vector of bools.
@@ -151,6 +152,7 @@ impl GrainLFSR {
     }
 }
 
+/// Testing Suite
 #[cfg(test)]
 mod test {
     use super::GrainLFSR;
@@ -158,8 +160,9 @@ mod test {
     use ark_bls12_381::Fr;
     use ark_ff::field_new;
 
+    /// Tests if `GrainLFSR` is consistent with hardcoded outputs from sage script.
     #[test]
-    fn grain_lfsr_consistency() {
+    fn grain_lfsr_is_consistent() {
         // sage generate_parameters_grain_deterministic.sage 1 0 255 3 8 55 0x73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001
         // This sage script can be found at https://github.com/Manta-Network/Plonk-Prototype/tree/poseidon_hash_clean.
         // TODO: Move sage scripts to Manta-rs repo.
