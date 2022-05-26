@@ -879,6 +879,9 @@ mod test {
             .and_then(|x: SquareMatrix<Fp<Fr>>| x.reduce_to_identity(&mut shadow))
             .expect("This should generate an identity matrix as output.");
         assert!(res.is_identity());
-        assert!(m.matmul(&shadow).expect("Matrix shape matches.").is_identity());
+        assert!(m
+            .matmul(&shadow)
+            .expect("Matrix shape matches.")
+            .is_identity());
     }
 }

@@ -217,7 +217,7 @@ where
 
     /// Generates dense-matrix representation from sparse matrix representation.
     pub fn to_matrix(self) -> Matrix<F>
-    // where
+// where
     //     F: Clone,
     {
         let mut matrix = Matrix::identity(self.size());
@@ -335,7 +335,6 @@ mod test {
         assert_eq!(qx[0], x[0]);
         assert_eq!(qy[0], y[0]);
         assert_eq!(qx[1..], qy[1..]);
-
         let mx = mds.m.mul_col_vec(&x).expect("Input shape matches");
         let m1_m2_x = mds
             .m_prime
@@ -346,7 +345,6 @@ mod test {
             )
             .expect("Input shape matches");
         assert_eq!(mx, m1_m2_x);
-
         let xm = mds.m.mul_row_vec_at_left(&x).expect("Input shape matches");
         let x_m1_m2 = mds
             .m_double_prime
