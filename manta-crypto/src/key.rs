@@ -363,7 +363,7 @@ where
     /// Randomness Type
     type Randomness;
 
-    /// Randomize an input key of type [`Key`](Self::Key) from `key` in `compiler`.
+    /// Randomize an input key of type [`Key`](KeyDerivationFunction::Key) from `key` in `compiler`.
     fn rand_input_in(
         &self,
         randomness: &Self::Randomness,
@@ -371,7 +371,7 @@ where
         compiler: &mut COM,
     ) -> Self::Key;
 
-    /// Randomize an input key of type [`Key`](Self::Key) from `key`.
+    /// Randomize an input key of type [`Key`](KeyDerivationFunction::Key) from `key`.
     #[inline]
     fn rand_input(&self, randomness: &Self::Randomness, input: &Self::Key) -> Self::Key
     where
@@ -380,7 +380,7 @@ where
         self.rand_input_in(randomness, input, &mut COM::compiler())
     }
 
-    /// Randimize an input key of type [`Key`](Self::Key) from `key` in `compiler`.
+    /// Randimize an input key of type [`Key`](KeyDerivationFunction::Key) from `key` in `compiler`.
     ///
     /// # Implementation Note
     ///
@@ -402,7 +402,7 @@ where
         self.rand_input_in(&randomness, &input, compiler)
     }
 
-    /// Randimize an input key of type [`Key`](Self::Key) from `key`.
+    /// Randimize an input key of type [`Key`](KeyDerivationFunction::Key) from `key`.
     ///
     /// See [`rand_input_owned_in`](Self::rand_input_owned_in) for more.
     #[inline]
@@ -414,7 +414,7 @@ where
         self.rand_input(&randomness, &input)
     }
 
-    /// Randomize an output key of type [`Output`](Self::Output) from `key` in `compiler`.
+    /// Randomize an output key of type [`Output`](KeyDerivationFunction::Output) from `key` in `compiler`.
     fn rand_output_in(
         &self,
         randomness: &Self::Randomness,
@@ -422,7 +422,7 @@ where
         compiler: &mut COM,
     ) -> Self::Output;
 
-    /// Randomize an output key of type [`Output`](Self::Output) from `key`.
+    /// Randomize an output key of type [`Output`](KeyDerivationFunction::Output) from `key`.
     #[inline]
     fn rand_output(&self, randomness: &Self::Randomness, output: &Self::Output) -> Self::Output
     where
@@ -431,7 +431,7 @@ where
         self.rand_output_in(randomness, output, &mut COM::compiler())
     }
 
-    /// Randimize an output key of type [`Output`](Self::Output) from `output` in `compiler`.
+    /// Randimize an output key of type [`Output`](KeyDerivationFunction::Output) from `output` in `compiler`.
     ///
     /// # Implementation Note
     ///
@@ -446,12 +446,11 @@ where
         randomness: Self::Randomness,
         output: Self::Output,
         compiler: &mut COM,
-    ) -> Self::Output
-    {
+    ) -> Self::Output {
         self.rand_output_in(&randomness, &output, compiler)
     }
 
-    /// Randimize an output key of type [`Output`](Self::Output) from `Output`.
+    /// Randimize an output key of type [`Output`](KeyDerivationFunction::Output) from `Output`.
     ///
     /// See [`rand_input_owned_in`](Self::rand_input_owned_in) for more.
     #[inline]

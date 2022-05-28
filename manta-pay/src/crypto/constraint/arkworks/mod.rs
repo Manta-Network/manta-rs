@@ -25,8 +25,8 @@ use ark_relations::{
 };
 use manta_crypto::{
     constraint::{
-        measure::Measure, Add, ConditionalSelect, Constant, ConstraintSystem, Equal, Public,
-        Secret, Variable, Mul,
+        measure::Measure, Add, ConditionalSelect, Constant, ConstraintSystem, Equal, Mul, Public,
+        Secret, Variable,
     },
     rand::{CryptoRng, RngCore, Sample},
 };
@@ -501,7 +501,7 @@ where
 
 impl<F> Mul<R1CS<F>> for FpVar<F>
 where
-    F: PrimeField
+    F: PrimeField,
 {
     #[inline]
     fn mul(lhs: Self, rhs: Self, compiler: &mut R1CS<F>) -> Self {
