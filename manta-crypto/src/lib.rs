@@ -21,6 +21,7 @@
 #![forbid(rustdoc::broken_intra_doc_links)]
 #![forbid(missing_docs)]
 
+#[cfg(feature = "alloc")]
 extern crate alloc;
 
 pub mod accumulator;
@@ -33,4 +34,5 @@ pub mod key;
 pub mod mac;
 pub mod merkle_tree;
 pub mod password;
+pub mod permutation;
 pub mod rand;

@@ -25,22 +25,25 @@ is-it-maintained-open-issues = { repository = "Manta-Network/manta-rs" }
 maintenance = { status = "actively-developed" }
 
 [features]
+# Enable Allocation
+alloc = ["manta-util/alloc", "rand/alloc"]
+
 # Enable `getrandom` Entropy Source
 getrandom = ["rand_core/getrandom"]
 
 # Serde
-serde = ["manta-util/serde-alloc", "manta-util/serde-array"]
+serde = ["manta-util/serde-array"]
 
 # Standard Library
 std = ["manta-util/std"]
 
 # Testing Frameworks
-test = []
+test = ["alloc"]
 
 [dependencies]
 derivative = { version = "2.2.0", default-features = false, features = ["use_core"] }
-manta-util = { path = "../manta-util", default-features = false, features = ["alloc"] }
-rand = { version = "0.8.4", optional = true, default-features = false, features = ["alloc"] }
+manta-util = { path = "../manta-util", default-features = false }
+rand = { version = "0.8.4", optional = true, default-features = false }
 rand_core = { version = "0.6.3", default-features = false }
 
 [dev-dependencies]

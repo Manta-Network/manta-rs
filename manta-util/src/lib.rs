@@ -50,6 +50,8 @@ pub use sealed::*;
 #[doc(inline)]
 pub use serde;
 
+/// Serde-With: Serialization and Deserialization Extensions
+///
 #[cfg(feature = "serde_with")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "serde_with")))]
 #[doc(inline)]

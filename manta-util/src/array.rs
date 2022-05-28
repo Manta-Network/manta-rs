@@ -27,7 +27,7 @@ use core::{
 #[cfg(feature = "alloc")]
 use alloc::{boxed::Box, vec::Vec};
 
-#[cfg(feature = "serde-array")]
+#[cfg(feature = "serde")]
 use crate::serde::{Deserialize, Serialize};
 
 /// Error Message for the [`into_array_unchecked`] and [`into_boxed_array_unchecked`] messages.
@@ -346,7 +346,7 @@ impl<T, const N: usize> From<Array<T, N>> for [T; N] {
 #[cfg(feature = "alloc")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
 #[cfg_attr(
-    all(feature = "serde-alloc", feature = "serde-array"),
+    all(feature = "alloc", feature = "serde-array"),
     derive(Deserialize, Serialize),
     serde(
         bound(deserialize = "T: Deserialize<'de>", serialize = "T: Serialize"),
@@ -359,7 +359,7 @@ impl<T, const N: usize> From<Array<T, N>> for [T; N] {
 pub struct BoxArray<T, const N: usize>(
     /// Array Data
     #[cfg_attr(
-        all(feature = "serde-alloc", feature = "serde-array"),
+        all(feature = "alloc", feature = "serde-array"),
         serde(with = "serde_with::As::<Box<[serde_with::Same; N]>>")
     )]
     pub Box<[T; N]>,

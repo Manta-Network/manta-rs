@@ -37,6 +37,7 @@ pub trait Types {
     /// use a [`hybrid`](crate::encryption::hybrid) encryption model.
     type Key: ?Sized;
 
+    /* TODO:
     /// Randomness Type
     ///
     /// This type is used to protect against known weaknesses in symmetric encryption protocols
@@ -46,6 +47,13 @@ pub trait Types {
     /// one-time keys, this may also be set to `()` since the uniqueness of the key already handles
     /// the randomness required to preserve the privacy of the encryption.
     type Randomness: ?Sized;
+    */
+
+    /// Data Header Type
+    ///
+    /// This type is used to describe the associated data and randomness involved in symmetric
+    /// encryption protocols.
+    type Header: ?Sized;
 
     /// Plaintext Type
     type Plaintext;
@@ -59,7 +67,7 @@ where
     S: Types,
 {
     type Key = S::Key;
-    type Randomness = S::Randomness;
+    type Header = S::Header;
     type Plaintext = S::Plaintext;
     type Ciphertext = S::Ciphertext;
 }
@@ -67,8 +75,8 @@ where
 /// Symmetric Encryption Key Type
 pub type Key<S> = <S as Types>::Key;
 
-/// Symmetric Encryption Randomness Type
-pub type Randomness<S> = <S as Types>::Randomness;
+/// Symmetric Encryption Header Type
+pub type Header<S> = <S as Types>::Header;
 
 /// Symmetric Encryption Plaintext Type
 pub type Plaintext<S> = <S as Types>::Plaintext;
@@ -81,27 +89,27 @@ pub type Ciphertext<S> = <S as Types>::Ciphertext;
 /// This `trait` covers the [`encrypt`](Self::encrypt_with) half of a symmetric encryption scheme.
 /// To use decryption see the [`Decrypt`] `trait`.
 pub trait Encrypt<COM = ()>: Types {
-    /// Encrypts `plaintext` under `key` and `randomness` inside of `compiler`.
+    /// Encrypts `plaintext` under `key` and `header` inside of `compiler`.
     fn encrypt_with(
         &self,
         key: &Self::Key,
-        randomness: &Self::Randomness,
+        header: &Self::Header,
         plaintext: &Self::Plaintext,
         compiler: &mut COM,
     ) -> Self::Ciphertext;
 
-    /// Encrypts `plaintext` under `key` and `randomness`.
+    /// Encrypts `plaintext` under `key` and `header`.
     #[inline]
     fn encrypt(
         &self,
         key: &Self::Key,
-        randomness: &Self::Randomness,
+        header: &Self::Header,
         plaintext: &Self::Plaintext,
     ) -> Self::Ciphertext
     where
         COM: Native,
     {
-        self.encrypt_with(key, randomness, plaintext, &mut COM::compiler())
+        self.encrypt_with(key, header, plaintext, &mut COM::compiler())
     }
 }
 
@@ -113,24 +121,24 @@ where
     fn encrypt_with(
         &self,
         key: &Self::Key,
-        randomness: &Self::Randomness,
+        header: &Self::Header,
         plaintext: &Self::Plaintext,
         compiler: &mut COM,
     ) -> Self::Ciphertext {
-        (*self).encrypt_with(key, randomness, plaintext, compiler)
+        (*self).encrypt_with(key, header, plaintext, compiler)
     }
 
     #[inline]
     fn encrypt(
         &self,
         key: &Self::Key,
-        randomness: &Self::Randomness,
+        header: &Self::Header,
         plaintext: &Self::Plaintext,
     ) -> Self::Ciphertext
     where
         COM: Native,
     {
-        (*self).encrypt(key, randomness, plaintext)
+        (*self).encrypt(key, header, plaintext)
     }
 }
 
@@ -139,27 +147,27 @@ where
 /// This `trait` covers the [`decrypt`](Self::decrypt) half of a symmetric encryption scheme. To use
 /// encryption see the [`Encrypt`] `trait`.
 pub trait Decrypt<COM = ()>: Types {
-    /// Decrypts `ciphertext` under `key` and `randomness` inside of `compiler`.
+    /// Decrypts `ciphertext` under `key` and `header` inside of `compiler`.
     fn decrypt_with(
         &self,
         key: &Self::Key,
-        randomness: &Self::Randomness,
+        header: &Self::Header,
         ciphertext: &Self::Ciphertext,
         compiler: &mut COM,
     ) -> Self::Plaintext;
 
-    /// Decrypts `ciphertext` under `key` and `randomness`.
+    /// Decrypts `ciphertext` under `key` and `header`.
     #[inline]
     fn decrypt(
         &self,
         key: &Self::Key,
-        randomness: &Self::Randomness,
+        header: &Self::Header,
         ciphertext: &Self::Ciphertext,
     ) -> Self::Plaintext
     where
         COM: Native,
     {
-        self.decrypt_with(key, randomness, ciphertext, &mut COM::compiler())
+        self.decrypt_with(key, header, ciphertext, &mut COM::compiler())
     }
 }
 
@@ -171,24 +179,24 @@ where
     fn decrypt_with(
         &self,
         key: &Self::Key,
-        randomness: &Self::Randomness,
+        header: &Self::Header,
         ciphertext: &Self::Ciphertext,
         compiler: &mut COM,
     ) -> Self::Plaintext {
-        (*self).decrypt_with(key, randomness, ciphertext, compiler)
+        (*self).decrypt_with(key, header, ciphertext, compiler)
     }
 
     #[inline]
     fn decrypt(
         &self,
         key: &Self::Key,
-        randomness: &Self::Randomness,
+        header: &Self::Header,
         ciphertext: &Self::Ciphertext,
     ) -> Self::Plaintext
     where
         COM: Native,
     {
-        (*self).decrypt(key, randomness, ciphertext)
+        (*self).decrypt(key, header, ciphertext)
     }
 }
 

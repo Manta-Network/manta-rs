@@ -22,7 +22,7 @@
 use crate::{constraint::Native, encryption::symmetric, mac::MessageAuthenticationCode};
 use core::marker::PhantomData;
 
-pub use symmetric::{Ciphertext, Key, Plaintext, Randomness};
+pub use symmetric::{Ciphertext, Header, Key, Plaintext};
 
 /// Authenticated Encryption
 ///
@@ -33,30 +33,30 @@ pub trait Authentication<COM = ()>: symmetric::Types {
     type Tag;
 
     /// Computes the authentication tag for an encryption using all the available data, `key`,
-    /// `randomness`, `plaintext`, `ciphertext` inside the `compiler`.
+    /// `header`, `plaintext`, `ciphertext` inside the `compiler`.
     fn tag_with(
         &self,
         key: &Self::Key,
-        randomness: &Self::Randomness,
+        header: &Self::Header,
         plaintext: &Self::Plaintext,
         ciphertext: &Self::Ciphertext,
         compiler: &mut COM,
     ) -> Self::Tag;
 
     /// Computes the authentication tag for an encryption using all the available data, `key`,
-    /// `randomness`, `plaintext`, `ciphertext`.
+    /// `header`, `plaintext`, `ciphertext`.
     #[inline]
     fn tag(
         &self,
         key: &Self::Key,
-        randomness: &Self::Randomness,
+        header: &Self::Header,
         plaintext: &Self::Plaintext,
         ciphertext: &Self::Ciphertext,
     ) -> Self::Tag
     where
         COM: Native,
     {
-        self.tag_with(key, randomness, plaintext, ciphertext, &mut COM::compiler())
+        self.tag_with(key, header, plaintext, ciphertext, &mut COM::compiler())
     }
 }
 
@@ -70,62 +70,66 @@ where
     fn tag_with(
         &self,
         key: &Self::Key,
-        randomness: &Self::Randomness,
+        header: &Self::Header,
         plaintext: &Self::Plaintext,
         ciphertext: &Self::Ciphertext,
         compiler: &mut COM,
     ) -> Self::Tag {
-        (*self).tag_with(key, randomness, plaintext, ciphertext, compiler)
+        (*self).tag_with(key, header, plaintext, ciphertext, compiler)
     }
 
     #[inline]
     fn tag(
         &self,
         key: &Self::Key,
-        randomness: &Self::Randomness,
+        header: &Self::Header,
         plaintext: &Self::Plaintext,
         ciphertext: &Self::Ciphertext,
     ) -> Self::Tag
     where
         COM: Native,
     {
-        (*self).tag(key, randomness, plaintext, ciphertext)
+        (*self).tag(key, header, plaintext, ciphertext)
     }
 }
+
+/// Authenticated Encryption Tag Type
+pub type Tag<A, COM = ()> = <A as Authentication<COM>>::Tag;
 
 /// Authenticated Encryption
 ///
 /// This `trait` covers the [`authenticated_encrypt`](Self::authenticated_encrypt_with) half of an
 /// authenticated encryption scheme. To use decryption see the [`Decrypt`] `trait`.
 pub trait Encrypt<COM = ()>: Authentication<COM> + symmetric::Encrypt<COM> {
-    /// Encrypts `plaintext` under `key` and `randomness`, producing the authentication
-    /// [`Tag`](Self::Tag) and the relevant [`Ciphertext`](Self::Ciphertext) inside the `compiler`.
+    /// Encrypts `plaintext` under `key` and `header`, producing the authentication
+    /// [`Tag`](Authentication::Tag) and the relevant [`Ciphertext`](symmetric::Types::Ciphertext)
+    /// inside the `compiler`.
     #[inline]
     fn authenticated_encrypt_with(
         &self,
         key: &Self::Key,
-        randomness: &Self::Randomness,
+        header: &Self::Header,
         plaintext: &Self::Plaintext,
         compiler: &mut COM,
     ) -> (Self::Tag, Self::Ciphertext) {
-        let ciphertext = self.encrypt_with(key, randomness, plaintext, compiler);
-        let tag = self.tag_with(key, randomness, plaintext, &ciphertext, compiler);
+        let ciphertext = self.encrypt_with(key, header, plaintext, compiler);
+        let tag = self.tag_with(key, header, plaintext, &ciphertext, compiler);
         (tag, ciphertext)
     }
 
-    /// Encrypts `plaintext` under `key` and `randomness`, producing the authentication
-    /// [`Tag`](Self::Tag) and the relevant [`Ciphertext`](Self::Ciphertext).
+    /// Encrypts `plaintext` under `key` and `header`, producing the authentication
+    /// [`Tag`](Authentication::Tag) and the relevant [`Ciphertext`](symmetric::Types::Ciphertext).
     #[inline]
     fn authenticated_encrypt(
         &self,
         key: &Self::Key,
-        randomness: &Self::Randomness,
+        header: &Self::Header,
         plaintext: &Self::Plaintext,
     ) -> (Self::Tag, Self::Ciphertext)
     where
         COM: Native,
     {
-        self.authenticated_encrypt_with(key, randomness, plaintext, &mut COM::compiler())
+        self.authenticated_encrypt_with(key, header, plaintext, &mut COM::compiler())
     }
 }
 
@@ -137,23 +141,20 @@ pub trait Decrypt: Authentication + symmetric::Decrypt
 where
     Self::Tag: PartialEq,
 {
-    /// Decrypts `ciphertext` under `key` and `randomness`, authenticating under `tag`, returning
-    /// [`Plaintext`](Self::Plaintext) if the authentication succeeded.
+    /// Decrypts `ciphertext` under `key` and `header`, authenticating under `tag`, returning
+    /// [`Plaintext`](symmetric::Types::Plaintext) if the authentication succeeded.
     #[inline]
     fn authenticated_decrypt(
         &self,
         key: &Self::Key,
-        randomness: &Self::Randomness,
+        header: &Self::Header,
         tag: &Self::Tag,
         ciphertext: &Self::Ciphertext,
     ) -> Option<Self::Plaintext> {
-        let plaintext = self.decrypt(key, randomness, ciphertext);
-        (tag == &self.tag(key, randomness, &plaintext, ciphertext)).then(|| plaintext)
+        let plaintext = self.decrypt(key, header, ciphertext);
+        (tag == &self.tag(key, header, &plaintext, ciphertext)).then(|| plaintext)
     }
 }
-
-/// Authenticated Encryption Tag Type
-pub type Tag<A, COM = ()> = <A as Authentication<COM>>::Tag;
 
 /// Encrypt-Then-MAC Authenticated Encryption Wrapper
 #[derive(derivative::Derivative)]
@@ -190,7 +191,7 @@ where
     M: MessageAuthenticationCode<COM, Message = S::Ciphertext>,
 {
     type Key = (S::Key, M::Key);
-    type Randomness = S::Randomness;
+    type Header = S::Header;
     type Plaintext = S::Plaintext;
     type Ciphertext = S::Ciphertext;
 }
@@ -207,12 +208,12 @@ where
     fn tag_with(
         &self,
         key: &Self::Key,
-        randomness: &Self::Randomness,
+        header: &Self::Header,
         plaintext: &Self::Plaintext,
         ciphertext: &Self::Ciphertext,
         compiler: &mut COM,
     ) -> Self::Tag {
-        let _ = (randomness, plaintext);
+        let _ = (header, plaintext);
         self.message_authentication_code
             .hash_with(&key.1, ciphertext, compiler)
     }
@@ -228,12 +229,12 @@ where
     fn encrypt_with(
         &self,
         key: &Self::Key,
-        randomness: &Self::Randomness,
+        header: &Self::Header,
         plaintext: &Self::Plaintext,
         compiler: &mut COM,
     ) -> Self::Ciphertext {
         self.symmetric_key_encryption_scheme
-            .encrypt_with(&key.0, randomness, plaintext, compiler)
+            .encrypt_with(&key.0, header, plaintext, compiler)
     }
 }
 
@@ -256,13 +257,13 @@ where
     fn decrypt_with(
         &self,
         key: &Self::Key,
-        randomness: &Self::Randomness,
+        header: &Self::Header,
         ciphertext: &Self::Ciphertext,
         compiler: &mut (),
     ) -> Self::Plaintext {
         let _ = compiler;
         self.symmetric_key_encryption_scheme
-            .decrypt(&key.0, randomness, ciphertext)
+            .decrypt(&key.0, header, ciphertext)
     }
 }
 
@@ -277,7 +278,7 @@ where
     fn authenticated_decrypt(
         &self,
         key: &Self::Key,
-        randomness: &Self::Randomness,
+        header: &Self::Header,
         tag: &Self::Tag,
         ciphertext: &Self::Ciphertext,
     ) -> Option<Self::Plaintext> {
@@ -285,7 +286,345 @@ where
         //       tag first and check if it's equal, before decrypting.
         (tag == &self.message_authentication_code.hash(&key.1, ciphertext)).then(move || {
             self.symmetric_key_encryption_scheme
-                .decrypt(&key.0, randomness, ciphertext)
+                .decrypt(&key.0, header, ciphertext)
         })
+    }
+}
+
+/// Duplex Sponge Authenticated Encryption Scheme
+#[cfg(feature = "alloc")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
+pub mod duplex {
+    use super::*;
+    use crate::permutation::{
+        sponge::{Absorb, Sponge, Squeeze},
+        PseudorandomPermutation,
+    };
+    use alloc::vec::Vec;
+
+    /// Duplex Sponge Configuration
+    pub trait Configuration<P, COM = ()>
+    where
+        P: PseudorandomPermutation<COM>,
+    {
+        /// Key Type
+        type Key: ?Sized;
+
+        /// Header Type
+        type Header: ?Sized;
+
+        /// Sponge Input Block Type
+        type Input: Absorb<P, COM> + Squeeze<P, COM>;
+
+        /// Sponge Output Block Type
+        type Output: Absorb<P, COM> + Squeeze<P, COM>;
+
+        /// Authentication Tag Type
+        type Tag;
+
+        /// Initializes the [`Sponge`] state for the beginning of the cipher inside of `compiler`.
+        fn initialize_with(&self, compiler: &mut COM) -> P::Domain;
+
+        /// Initializes the [`Sponge`] state for the beginning of the cipher.
+        #[inline]
+        fn initialize(&self) -> P::Domain
+        where
+            COM: Native,
+        {
+            self.initialize_with(&mut COM::compiler())
+        }
+
+        /// Generates the starting input blocks for `key` and `header` data to be inserted into the
+        /// cipher inside of `compiler`.
+        fn generate_starting_blocks_with(
+            &self,
+            key: &Self::Key,
+            header: &Self::Header,
+            compiler: &mut COM,
+        ) -> Vec<Self::Input>;
+
+        /// Generates the starting input blocks for `key` and `header` data to be inserted into the
+        /// cipher.
+        #[inline]
+        fn generate_starting_blocks(
+            &self,
+            key: &Self::Key,
+            header: &Self::Header,
+        ) -> Vec<Self::Input>
+        where
+            COM: Native,
+        {
+            self.generate_starting_blocks_with(key, header, &mut COM::compiler())
+        }
+
+        /// Extracts an instance of the [`Tag`](Self::Tag) type from `state` inside `compiler`.
+        fn as_tag_with(&self, state: &P::Domain, compiler: &mut COM) -> Self::Tag;
+
+        /// Extracts an instance of the [`Tag`](Self::Tag) type from `state`.
+        #[inline]
+        fn as_tag(&self, state: &P::Domain) -> Self::Tag
+        where
+            COM: Native,
+        {
+            self.as_tag_with(state, &mut COM::compiler())
+        }
+    }
+
+    /// Duplex Sponge Authenticated Encryption Scheme
+    pub struct Duplexer<P, C, COM = ()>
+    where
+        P: PseudorandomPermutation<COM>,
+        C: Configuration<P, COM>,
+    {
+        /// Permutation
+        permutation: P,
+
+        /// Duplex Configuration
+        configuration: C,
+
+        /// Type Parameter Marker
+        __: PhantomData<COM>,
+    }
+
+    impl<P, C, COM> Duplexer<P, C, COM>
+    where
+        P: PseudorandomPermutation<COM>,
+        C: Configuration<P, COM>,
+    {
+        /// Builds a new [`DuplexPermutation`] authenticated encryption scheme from `permutation`,
+        /// and `configuration`.
+        #[inline]
+        pub fn new(permutation: P, configuration: C) -> Self {
+            Self {
+                permutation,
+                configuration,
+                __: PhantomData,
+            }
+        }
+
+        ///
+        #[inline]
+        fn setup_with(
+            &self,
+            key: &Key<Self>,
+            header: &Header<Self>,
+            compiler: &mut COM,
+        ) -> P::Domain {
+            let mut state = self.configuration.initialize_with(compiler);
+            Sponge::new(&self.permutation, &mut state).absorb_all_with(
+                &self
+                    .configuration
+                    .generate_starting_blocks_with(key, header, compiler),
+                compiler,
+            );
+            state
+        }
+
+        ///
+        #[inline]
+        fn duplex_encryption_with(
+            &self,
+            key: &Key<Self>,
+            header: &Header<Self>,
+            plaintext: &Plaintext<Self>,
+            compiler: &mut COM,
+        ) -> (P::Domain, Ciphertext<Self>) {
+            let mut state = self.setup_with(key, header, compiler);
+            let ciphertext =
+                Sponge::new(&self.permutation, &mut state).duplex_all_with(plaintext, compiler);
+            (state, ciphertext)
+        }
+
+        ///
+        #[inline]
+        fn duplex_decryption_with(
+            &self,
+            key: &Key<Self>,
+            header: &Header<Self>,
+            ciphertext: &Ciphertext<Self>,
+            compiler: &mut COM,
+        ) -> (P::Domain, Plaintext<Self>) {
+            let mut state = self.setup_with(key, header, compiler);
+            let plaintext =
+                Sponge::new(&self.permutation, &mut state).duplex_all_with(ciphertext, compiler);
+            (state, plaintext)
+        }
+
+        ///
+        #[inline]
+        fn tag_with(&self, mut state: P::Domain, compiler: &mut COM) -> C::Tag {
+            self.permutation.permute_with(&mut state, compiler);
+            self.configuration.as_tag_with(&state, compiler)
+        }
+    }
+
+    impl<P, C, COM> symmetric::Types for Duplexer<P, C, COM>
+    where
+        P: PseudorandomPermutation<COM>,
+        C: Configuration<P, COM>,
+    {
+        type Key = C::Key;
+        type Header = C::Header;
+        type Plaintext = Vec<C::Input>;
+        type Ciphertext = Vec<C::Output>;
+    }
+
+    impl<P, C, COM> symmetric::Encrypt<COM> for Duplexer<P, C, COM>
+    where
+        P: PseudorandomPermutation<COM>,
+        C: Configuration<P, COM>,
+    {
+        #[inline]
+        fn encrypt_with(
+            &self,
+            key: &Self::Key,
+            header: &Self::Header,
+            plaintext: &Self::Plaintext,
+            compiler: &mut COM,
+        ) -> Self::Ciphertext {
+            self.duplex_encryption_with(key, header, plaintext, compiler)
+                .1
+        }
+
+        #[inline]
+        fn encrypt(
+            &self,
+            key: &Self::Key,
+            header: &Self::Header,
+            plaintext: &Self::Plaintext,
+        ) -> Self::Ciphertext
+        where
+            COM: Native,
+        {
+            // TODO: self.duplex_encryption(key, header, plaintext).1
+            todo!()
+        }
+    }
+
+    impl<P, C, COM> symmetric::Decrypt<COM> for Duplexer<P, C, COM>
+    where
+        P: PseudorandomPermutation<COM>,
+        C: Configuration<P, COM>,
+    {
+        #[inline]
+        fn decrypt_with(
+            &self,
+            key: &Self::Key,
+            header: &Self::Header,
+            ciphertext: &Self::Ciphertext,
+            compiler: &mut COM,
+        ) -> Self::Plaintext {
+            self.duplex_decryption_with(key, header, ciphertext, compiler)
+                .1
+        }
+
+        #[inline]
+        fn decrypt(
+            &self,
+            key: &Self::Key,
+            header: &Self::Header,
+            ciphertext: &Self::Ciphertext,
+        ) -> Self::Plaintext
+        where
+            COM: Native,
+        {
+            // TODO: self.duplex_decryption(key, header, plaintext).1
+            todo!()
+        }
+    }
+
+    impl<P, C, COM> Authentication<COM> for Duplexer<P, C, COM>
+    where
+        P: PseudorandomPermutation<COM>,
+        C: Configuration<P, COM>,
+    {
+        type Tag = C::Tag;
+
+        fn tag_with(
+            &self,
+            key: &Self::Key,
+            header: &Self::Header,
+            plaintext: &Self::Plaintext,
+            ciphertext: &Self::Ciphertext,
+            compiler: &mut COM,
+        ) -> Self::Tag {
+            self.configuration.as_tag_with(
+                &self
+                    .duplex_encryption_with(key, header, plaintext, compiler)
+                    .0,
+                compiler,
+            )
+        }
+
+        #[inline]
+        fn tag(
+            &self,
+            key: &Self::Key,
+            header: &Self::Header,
+            plaintext: &Self::Plaintext,
+            ciphertext: &Self::Ciphertext,
+        ) -> Self::Tag
+        where
+            COM: Native,
+        {
+            /* TODO:
+            self.configuration
+                .tag(self.duplex_encryption(key, header, plaintext).0)
+            */
+            todo!()
+        }
+    }
+
+    impl<P, C, COM> Encrypt<COM> for Duplexer<P, C, COM>
+    where
+        P: PseudorandomPermutation<COM>,
+        C: Configuration<P, COM>,
+    {
+        #[inline]
+        fn authenticated_encrypt_with(
+            &self,
+            key: &Self::Key,
+            header: &Self::Header,
+            plaintext: &Self::Plaintext,
+            compiler: &mut COM,
+        ) -> (Self::Tag, Self::Ciphertext) {
+            let (state, ciphertext) = self.duplex_encryption_with(key, header, plaintext, compiler);
+            (self.tag_with(state, compiler), ciphertext)
+        }
+
+        #[inline]
+        fn authenticated_encrypt(
+            &self,
+            key: &Self::Key,
+            header: &Self::Header,
+            plaintext: &Self::Plaintext,
+        ) -> (Self::Tag, Self::Ciphertext)
+        where
+            COM: Native,
+        {
+            todo!()
+        }
+    }
+
+    impl<P, C> Decrypt for Duplexer<P, C>
+    where
+        P: PseudorandomPermutation,
+        C: Configuration<P>,
+        C::Tag: PartialEq,
+    {
+        #[inline]
+        fn authenticated_decrypt(
+            &self,
+            key: &Self::Key,
+            header: &Self::Header,
+            tag: &Self::Tag,
+            ciphertext: &Self::Ciphertext,
+        ) -> Option<Self::Plaintext> {
+            /* TODO:
+            let (state, plaintext) = self.duplex_decryption(key, header, plaintext);
+            (self.tag(state) == tag).then(|| plaintext)
+            */
+            todo!()
+        }
     }
 }

@@ -26,10 +26,7 @@ maintenance = { status = "actively-developed" }
 
 [features]
 # Allocation
-alloc = []
-
-# Serde for Alloc Types
-serde-alloc = ["alloc", "serde/alloc"]
+alloc = ["serde?/alloc"]
 
 # Serde for Arrays
 serde-array = ["serde", "serde_with"]
@@ -42,4 +39,3 @@ crossbeam-channel = { version = "0.5.4", optional = true, default-features = fal
 rayon = { version = "1.5.3", optional = true, default-features = false }
 serde = { version = "1.0.137", optional = true, default-features = false, features = ["derive"] }
 serde_with = { version = "1.13.0", optional = true, default-features = false, features = ["macros"] }
-

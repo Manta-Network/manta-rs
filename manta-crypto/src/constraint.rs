@@ -494,11 +494,13 @@ where
 /// Constraint System Measurement
 pub mod measure {
     use super::*;
-    use alloc::{format, string::String, vec::Vec};
     use core::{
         fmt::Display,
         ops::{Add, AddAssign, Deref, DerefMut},
     };
+
+    #[cfg(feature = "alloc")]
+    use alloc::{format, string::String, vec::Vec};
 
     #[cfg(feature = "serde")]
     use manta_util::serde::{Deserialize, Serialize};
@@ -650,6 +652,8 @@ pub mod measure {
     }
 
     /// Measurement Instrument
+    #[cfg(feature = "alloc")]
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
     pub struct Instrument<'c, COM>
     where
         COM: Measure,
@@ -661,6 +665,8 @@ pub mod measure {
         pub measurements: Vec<(String, Size)>,
     }
 
+    #[cfg(feature = "alloc")]
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
     impl<'c, COM> Instrument<'c, COM>
     where
         COM: Measure,
@@ -694,6 +700,8 @@ pub mod measure {
         }
     }
 
+    #[cfg(feature = "alloc")]
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
     impl<'c, COM> Deref for Instrument<'c, COM>
     where
         COM: Measure,
@@ -706,6 +714,8 @@ pub mod measure {
         }
     }
 
+    #[cfg(feature = "alloc")]
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
     impl<'c, COM> DerefMut for Instrument<'c, COM>
     where
         COM: Measure,

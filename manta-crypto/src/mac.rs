@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Commitment Schemes
+//! Message Authentication Codes
 
 use crate::{constraint::Native, hash::BinaryHashFunction, key::KeyDerivationFunction};
 use core::marker::PhantomData;

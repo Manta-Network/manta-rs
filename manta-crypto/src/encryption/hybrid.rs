@@ -17,7 +17,7 @@
 //! Hybrid Encryption
 
 use crate::{
-    encryption::symmetric::SymmetricKeyEncryptionScheme,
+    encryption::symmetric,
     key::{KeyAgreementScheme, KeyDerivationFunction},
     rand::{CryptoRng, Rand, RngCore, Sample},
 };
@@ -28,7 +28,10 @@ use manta_util::codec::{Decode, DecodeError, Encode, Read, Write};
 use manta_util::serde::{Deserialize, Serialize};
 
 /// Hybrid Public Key Encryption Scheme
-pub trait HybridPublicKeyEncryptionScheme: SymmetricKeyEncryptionScheme {
+pub trait HybridPublicKeyEncryptionScheme: symmetric::Types
+where
+    SymmetricKey<Self>: Sized,
+{
     /// Key Agreement Scheme Type
     type KeyAgreementScheme: KeyAgreementScheme;
 
@@ -76,7 +79,9 @@ pub type PublicKey<H> =
 pub type SharedSecret<H> = <<H as HybridPublicKeyEncryptionScheme>::KeyAgreementScheme as KeyAgreementScheme>::SharedSecret;
 
 /// Symmetric Key Type
-pub type SymmetricKey<H> = <H as SymmetricKeyEncryptionScheme>::Key;
+pub type SymmetricKey<H> = <H as symmetric::Types>::Key;
+
+/*
 
 /// Hybrid Public Key Encryption Scheme
 ///
@@ -457,3 +462,5 @@ pub mod test {
         );
     }
 }
+
+*/

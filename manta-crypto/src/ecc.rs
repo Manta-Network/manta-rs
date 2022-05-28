@@ -23,11 +23,13 @@ use crate::{
     key::{KeyAgreementScheme, KeyDerivationFunction},
     rand::{CryptoRng, RngCore, Sample},
 };
-use alloc::{boxed::Box, vec::Vec};
 use manta_util::{
     codec::{Decode, DecodeError, Encode, Read, Write},
     BoxArray,
 };
+
+#[cfg(feature = "alloc")]
+use alloc::{boxed::Box, vec::Vec};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
