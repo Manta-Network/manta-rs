@@ -19,8 +19,8 @@
 // TODO: Make sure we can use `PreprocessedScalarMulTable<G, _>` as a drop-in replacement for `G`.
 
 use crate::{
-    constraint::Constant,
-    key::{KeyAgreementScheme, KeyDerivationFunction},
+    constraint::{Constant, Mul},
+    key::{KeyAgreementScheme, KeyDerivationFunction, RandomizableKeyDerivationFunction},
     rand::{CryptoRng, RngCore, Sample},
 };
 use alloc::{boxed::Box, vec::Vec};
@@ -331,6 +331,36 @@ where
     #[inline]
     fn derive_in(&self, key: &Self::Key, compiler: &mut COM) -> Self::Output {
         self.generator.scalar_mul(key, compiler)
+    }
+}
+
+// TODO： Simplify the trait properties here.
+// 1. We need `G::Scalar: Clone` and `Self::Key: Clone` since `mul()` takes by value instead of by reference.
+// 2. We need `G: ScalarMul<COM, Output=G>` since the output will be used for `scalar_mul` again.
+impl<G, COM> RandomizableKeyDerivationFunction<COM> for DiffieHellman<G>
+where
+    G: ScalarMul<COM, Output = G>,
+    G::Scalar: Clone + Mul<COM>,
+    Self::Key: Clone,
+{
+    type Randomness = G::Scalar;
+
+    fn rand_input_in(
+        &self,
+        randomness: &Self::Randomness,
+        input: &Self::Key,
+        compiler: &mut COM,
+    ) -> Self::Key {
+        G::Scalar::mul(randomness.clone(), input.clone(), compiler)
+    }
+
+    fn rand_output_in(
+        &self,
+        randomness: &Self::Randomness,
+        output: &Self::Output,
+        compiler: &mut COM,
+    ) -> Self::Output {
+        output.scalar_mul(randomness, compiler)
     }
 }
 

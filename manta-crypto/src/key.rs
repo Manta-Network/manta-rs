@@ -355,21 +355,129 @@ pub mod kdf {
     }
 }
 
+/// Randomizable Key-Derivation Function
+pub trait RandomizableKeyDerivationFunction<COM = ()>: KeyDerivationFunction<COM>
+where
+    Self::Key: Sized,
+{
+    /// Randomness Type
+    type Randomness;
+
+    /// Randomize an input key of type [`Key`](Self::Key) from `key` in `compiler`.
+    fn rand_input_in(
+        &self,
+        randomness: &Self::Randomness,
+        input: &Self::Key,
+        compiler: &mut COM,
+    ) -> Self::Key;
+
+    /// Randomize an input key of type [`Key`](Self::Key) from `key`.
+    #[inline]
+    fn rand_input(&self, randomness: &Self::Randomness, input: &Self::Key) -> Self::Key
+    where
+        COM: Native,
+    {
+        self.rand_input_in(randomness, input, &mut COM::compiler())
+    }
+
+    /// Randimize an input key of type [`Key`](Self::Key) from `key` in `compiler`.
+    ///
+    /// # Implementation Note
+    ///
+    /// This method is an optimization path for [`rand_input_in`] when the `key` value is owned, and by
+    /// default, [`rand_input_in`] is used as its implementation. This method must return the same value
+    /// as [`rand_input_in`] on the same input.
+    ///
+    /// [`rand_input_in`]: Self::rand_input_in
+    #[inline]
+    fn rand_input_owned_in(
+        &self,
+        randomness: Self::Randomness,
+        input: Self::Key,
+        compiler: &mut COM,
+    ) -> Self::Key
+    where
+        Self::Key: Sized,
+    {
+        self.rand_input_in(&randomness, &input, compiler)
+    }
+
+    /// Randimize an input key of type [`Key`](Self::Key) from `key`.
+    ///
+    /// See [`rand_input_owned_in`](Self::rand_input_owned_in) for more.
+    #[inline]
+    fn rand_input_owned(&self, randomness: Self::Randomness, input: Self::Key) -> Self::Key
+    where
+        COM: Native,
+        Self::Key: Sized,
+    {
+        self.rand_input(&randomness, &input)
+    }
+
+    /// Randomize an output key of type [`Output`](Self::Output) from `key` in `compiler`.
+    fn rand_output_in(
+        &self,
+        randomness: &Self::Randomness,
+        output: &Self::Output,
+        compiler: &mut COM,
+    ) -> Self::Output;
+
+    /// Randomize an output key of type [`Output`](Self::Output) from `key`.
+    #[inline]
+    fn rand_output(&self, randomness: &Self::Randomness, output: &Self::Output) -> Self::Output
+    where
+        COM: Native,
+    {
+        self.rand_output_in(randomness, output, &mut COM::compiler())
+    }
+
+    /// Randimize an output key of type [`Output`](Self::Output) from `output` in `compiler`.
+    ///
+    /// # Implementation Note
+    ///
+    /// This method is an optimization path for [`rand_output_in`] when the `key` value is owned, and by
+    /// default, [`rand_output_in`] is used as its implementation. This method must return the same value
+    /// as [`rand_output_in`] on the same input.
+    ///
+    /// [`rand_output_in`]: Self::rand_output_in
+    #[inline]
+    fn rand_output_owned_in(
+        &self,
+        randomness: Self::Randomness,
+        output: Self::Output,
+        compiler: &mut COM,
+    ) -> Self::Output
+    {
+        self.rand_output_in(&randomness, &output, compiler)
+    }
+
+    /// Randimize an output key of type [`Output`](Self::Output) from `Output`.
+    ///
+    /// See [`rand_input_owned_in`](Self::rand_input_owned_in) for more.
+    #[inline]
+    fn rand_output_owned(&self, randomness: Self::Randomness, output: Self::Output) -> Self::Output
+    where
+        COM: Native,
+    {
+        self.rand_output(&randomness, &output)
+    }
+}
+
 /// Key Agreement Scheme
 ///
 /// # Specification
 ///
-/// All implementations of this trait must adhere to the following properties:
+/// All implementations of this trait must adhere to the following property:
 ///
-/// 1. **Agreement**: For all possible inputs, the following function returns `true`:
+/// **Agreement**: For all possible inputs, the following function returns `true`:
 ///
-///     ```text
-///     fn agreement(lhs: SecretKey, rhs: SecretKey) -> bool {
-///         agree(lhs, derive(rhs)) == agree(rhs, derive(lhs))
-///     }
-///     ```
-///     This ensures that both parties in the shared computation will arrive at the same conclusion
-///     about the value of the [`SharedSecret`](Self::SharedSecret).
+/// ```text
+/// fn agreement(lhs: SecretKey, rhs: SecretKey) -> bool {
+///     agree(lhs, derive(rhs)) == agree(rhs, derive(lhs))
+/// }
+/// ```
+/// This ensures that both parties in the shared computation will arrive at the same conclusion
+/// about the value of the [`SharedSecret`](Self::SharedSecret).
 pub trait KeyAgreementScheme<COM = ()>:
     KeyDerivationFunction<COM, Key = Self::SecretKey, Output = Self::PublicKey>
 {

@@ -431,7 +431,7 @@ pub trait Add<COM>
 where
     COM: ?Sized,
 {
-    /// Adds `lhs` and `rhs` inside of `compiler`.
+    /// Adds `lhs` and `rhs` inside `compiler`.
     fn add(lhs: Self, rhs: Self, compiler: &mut COM) -> Self;
 }
 
@@ -450,7 +450,7 @@ pub trait Sub<COM>
 where
     COM: ?Sized,
 {
-    /// Subtracts `rhs` from `lhs` inside of `compiler`.
+    /// Subtracts `rhs` from `lhs` inside `compiler`.
     fn sub(lhs: Self, rhs: Self, compiler: &mut COM) -> Self;
 }
 
@@ -461,6 +461,25 @@ where
     #[inline]
     fn sub(lhs: Self, rhs: Self, _: &mut ()) -> Self {
         lhs.sub(rhs)
+    }
+}
+
+/// Multiplication
+pub trait Mul<COM>
+where
+    COM: ?Sized,
+{
+    /// Multiplies `lhs` and `rhs` inside `compiler`.
+    fn mul(lhs: Self, rhs: Self, compiler: &mut COM) -> Self;
+}
+
+impl<T> Mul<()> for T
+where
+    T: ops::Mul<Output = T>,
+{
+    #[inline]
+    fn mul(lhs: Self, rhs: Self, _: &mut ()) -> Self {
+        lhs.mul(rhs)
     }
 }
 
