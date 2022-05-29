@@ -152,7 +152,7 @@ where
     Hash(bound = "S::ParameterField: Hash"),
     PartialEq(bound = "S::ParameterField: PartialEq")
 )]
-pub struct Hasher<S, COM, const ARITY: usize>
+pub struct Hasher<S, const ARITY: usize, COM = ()>
 where
     S: Specification<COM>,
 {
@@ -163,7 +163,7 @@ where
     mds_matrix: Vec<S::ParameterField>,
 }
 
-impl<S, COM, const ARITY: usize> Hasher<S, COM, ARITY>
+impl<S, const ARITY: usize, COM> Hasher<S, ARITY, COM>
 where
     S: Specification<COM>,
 {
@@ -240,7 +240,10 @@ where
         let width = Self::WIDTH;
         let mut next = Vec::with_capacity(width);
         for i in 0..width {
-            #[allow(clippy::needless_collect)] // NOTE: Clippy is wrong here, we need `&mut` access.
+            // NOTE: clippy false-positive: Without `collect`, the two closures in `map` and
+            //       `reduce` will have simultaneous `&mut` access to `compiler`. Adding `collect`
+            //       allows `map` to be done before `reduce`.
+            #[allow(clippy::needless_collect)]
             let linear_combination = state
                 .iter()
                 .enumerate()
@@ -295,7 +298,7 @@ where
     }
 }
 
-impl<S, COM, const ARITY: usize> ArrayHashFunction<COM, ARITY> for Hasher<S, COM, ARITY>
+impl<S, const ARITY: usize, COM> ArrayHashFunction<ARITY, COM> for Hasher<S, ARITY, COM>
 where
     S: Specification<COM>,
 {
@@ -321,11 +324,11 @@ where
     }
 }
 
-impl<D, S, COM, const ARITY: usize> Sample<D> for Hasher<S, COM, ARITY>
+impl<D, S, const ARITY: usize, COM> Sample<D> for Hasher<S, ARITY, COM>
 where
     D: Clone,
     S: Specification<COM>,
-    S::ParameterField: Copy + Field + FieldGeneration + PartialEq + Sample<D>,
+    S::ParameterField: Field + FieldGeneration + PartialEq + Sample<D>,
 {
     /// Samples random Poseidon parameters.
     #[inline]
@@ -346,7 +349,7 @@ where
     }
 }
 
-impl<S, COM, const ARITY: usize> Decode for Hasher<S, COM, ARITY>
+impl<S, const ARITY: usize, COM> Decode for Hasher<S, ARITY, COM>
 where
     S: Specification<COM>,
     S::ParameterField: Decode,
@@ -369,7 +372,7 @@ where
     }
 }
 
-impl<S, COM, const ARITY: usize> Encode for Hasher<S, COM, ARITY>
+impl<S, const ARITY: usize, COM> Encode for Hasher<S, ARITY, COM>
 where
     S: Specification<COM>,
     S::ParameterField: Encode,
@@ -391,11 +394,11 @@ where
 
 /// Poseidon Hash Input Type.
 pub type Input<S, COM, const ARITY: usize> =
-    <Hasher<S, COM, ARITY> as ArrayHashFunction<COM, ARITY>>::Input;
+    <Hasher<S, ARITY, COM> as ArrayHashFunction<ARITY, COM>>::Input;
 
 /// Poseidon Commitment Output Type.
 pub type Output<S, COM, const ARITY: usize> =
-    <Hasher<S, COM, ARITY> as ArrayHashFunction<COM, ARITY>>::Output;
+    <Hasher<S, ARITY, COM> as ArrayHashFunction<ARITY, COM>>::Output;
 
 /// Arkworks Backend.
 #[cfg(feature = "arkworks")]
@@ -601,11 +604,11 @@ pub mod arkworks {
         }
     }
 
-    impl<S, const ARITY: usize> Constant<Compiler<S>> for super::Hasher<S, Compiler<S>, ARITY>
+    impl<S, const ARITY: usize> Constant<Compiler<S>> for super::Hasher<S, ARITY, Compiler<S>>
     where
         S: Specification,
     {
-        type Type = super::Hasher<S, (), ARITY>;
+        type Type = super::Hasher<S, ARITY>;
 
         #[inline]
         fn new_constant(this: &Self::Type, compiler: &mut Compiler<S>) -> Self {
