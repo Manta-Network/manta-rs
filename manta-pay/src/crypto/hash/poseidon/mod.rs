@@ -335,13 +335,13 @@ where
     {
         let _ = (distribution, rng);
         Self {
-            additive_round_keys: generate_round_constants::<S::ParameterField>(
+            additive_round_keys: generate_round_constants(
                 S::ParameterField::MODULUS_BITS as u64,
                 Self::WIDTH,
                 S::FULL_ROUNDS,
                 S::PARTIAL_ROUNDS,
             ),
-            mds_matrix: MdsMatrices::<S::ParameterField>::generate_mds(Self::WIDTH).to_row_major(),
+            mds_matrix: MdsMatrices::generate_mds(Self::WIDTH).to_row_major(),
         }
     }
 }
@@ -360,11 +360,11 @@ where
     {
         Ok(Self::new_unchecked(
             (0..Self::ADDITIVE_ROUND_KEYS_COUNT)
-                .map(|_| S::ParameterField::decode(&mut reader))
-                .collect::<Result<Vec<_>, _>>()?,
+                .map(|_| Decode::decode(&mut reader))
+                .collect::<Result<_, _>>()?,
             (0..Self::MDS_MATRIX_SIZE)
-                .map(|_| S::ParameterField::decode(&mut reader))
-                .collect::<Result<Vec<_>, _>>()?,
+                .map(|_| Decode::decode(&mut reader))
+                .collect::<Result<_, _>>()?,
         ))
     }
 }
