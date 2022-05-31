@@ -16,31 +16,90 @@
 
 //! Signature Schemes
 
-use crate::{constraint::Native, key::KeyDerivationFunction};
+use crate::{
+    constraint::{Add, Mul, Native, Sub},
+    ecc::ScalarMul,
+    hash::BinaryHashFunction,
+};
+use core::marker::PhantomData;
 
 /// Signature Scheme
-pub trait SignatureScheme<COM = ()>: KeyDerivationFunction<COM> {
+pub trait SignatureScheme<COM = ()> {
+    /// Secret Key Type
+    type SecretKey: ?Sized;
+
+    /// Public Key Type
+    type PublicKey;
+
     /// Message Type
-    type Message;
+    type Message: ?Sized;
 
     /// Signature Type
     type Signature;
 
+    /// Derives a key of type [`PublicKey`](Self::PublicKey) from a key of type [`SecretKey`](Self::SecretKey) in `compiler`.
+    fn derive_in(&self, secret_key: &Self::SecretKey, compiler: &mut COM) -> Self::PublicKey;
+
+    /// Derives a key of type [`PublicKey`](Self::PublicKey) from a key of type [`SecretKey`](Self::SecretKey).
+    fn derive(&self, secret_key: &Self::SecretKey) -> Self::PublicKey
+    where
+        COM: Native,
+    {
+        self.derive_in(secret_key, &mut COM::compiler())
+    }
+
+    /// Derives a key of type [`PublicKey`](Self::PublicKey) from a key of type [`SecretKey`](Self::SecretKey) in `compiler`.
+    ///
+    /// # Implementation Note
+    ///
+    /// This method is an optimization path for [`derive_in`] when the `secret_key` value
+    /// is owned, and by default, [`derive_in`] is used as its implementation. This
+    /// method must return the same value as [`derive_in`] on the same input.
+    ///
+    /// [`derive_in`]: Self::derive_in
+    #[inline]
+    fn derive_owned_in(&self, secret_key: Self::SecretKey, compiler: &mut COM) -> Self::PublicKey
+    where
+        Self::SecretKey: Sized,
+    {
+        self.derive_in(&secret_key, compiler)
+    }
+
+    /// Derives a key of type [`PublicKey`](Self::PublicKey) from a key of type [`SecretKey`](Self::SecretKey).
+    ///
+    /// # Implementation Note
+    ///
+    /// See [`derive_owned_in`](Self::derive_owned_in) for more.
+    #[inline]
+    fn derive_owned(&self, key: Self::SecretKey) -> Self::PublicKey
+    where
+        COM: Native,
+        Self::SecretKey: Sized,
+    {
+        self.derive_in(&key, &mut COM::compiler())
+    }
+
     /// Signs a message of type [`Message`](Self::Message) with `key` in `compiler`.
     fn sign_in(
         &self,
-        key: &Self::Key,
+        ephemeral_secret_key: &Self::SecretKey,
+        key: &Self::SecretKey,
         message: &Self::Message,
         compiler: &mut COM,
     ) -> Self::Signature;
 
     /// Signs a message of type [`Message`](Self::Message) with `key`.
     #[inline]
-    fn sign(&self, key: &Self::Key, message: &Self::Message) -> Self::Signature
+    fn sign(
+        &self,
+        ephemeral_secret_key: &Self::SecretKey,
+        key: &Self::SecretKey,
+        message: &Self::Message,
+    ) -> Self::Signature
     where
         COM: Native,
     {
-        self.sign_in(key, message, &mut COM::compiler())
+        self.sign_in(ephemeral_secret_key, key, message, &mut COM::compiler())
     }
 
     /// Signs a message of type [`Message`](Self::Message) with `key` in `compiler`.
@@ -55,14 +114,16 @@ pub trait SignatureScheme<COM = ()>: KeyDerivationFunction<COM> {
     #[inline]
     fn sign_owned_in(
         &self,
-        key: Self::Key,
+        ephemeral_secret_key: &Self::SecretKey,
+        key: Self::SecretKey,
         message: Self::Message,
         compiler: &mut COM,
     ) -> Self::Signature
     where
-        Self::Key: Sized,
+        Self::Message: Sized,
+        Self::SecretKey: Sized,
     {
-        self.sign_in(&key, &message, compiler)
+        self.sign_in(&ephemeral_secret_key, &key, &message, compiler)
     }
 
     /// Signs a message of type [`Message`](Self::Message) with `key`.
@@ -71,19 +132,25 @@ pub trait SignatureScheme<COM = ()>: KeyDerivationFunction<COM> {
     ///
     /// See [`sign_owned_in`](Self::sign_owned_in) for more.
     #[inline]
-    fn sign_owned(&self, key: Self::Key, message: Self::Message) -> Self::Signature
+    fn sign_owned(
+        &self,
+        ephemeral_secret_key: Self::SecretKey,
+        key: Self::SecretKey,
+        message: Self::Message,
+    ) -> Self::Signature
     where
         COM: Native,
-        Self::Key: Sized,
+        Self::Message: Sized,
+        Self::SecretKey: Sized,
     {
-        self.sign_in(&key, &message, &mut COM::compiler())
+        self.sign_in(&ephemeral_secret_key, &key, &message, &mut COM::compiler())
     }
 
     /// Verifies a signature of type [`Signature`](Self::Signature) with `public_key`
     /// and `message` in `compiler`.
     fn verify_in(
         &self,
-        public_key: &Self::Output,
+        public_key: &Self::PublicKey,
         message: &Self::Message,
         signature: &Self::Signature,
         compiler: &mut COM,
@@ -94,7 +161,7 @@ pub trait SignatureScheme<COM = ()>: KeyDerivationFunction<COM> {
     #[inline]
     fn verify(
         &self,
-        public_key: &Self::Output,
+        public_key: &Self::PublicKey,
         message: &Self::Message,
         signature: &Self::Signature,
     ) -> bool
@@ -113,15 +180,18 @@ pub trait SignatureScheme<COM = ()>: KeyDerivationFunction<COM> {
     /// owned, and by default, [`verify_in`] is used as its implementation. This method
     /// must return the same value as [`verify_in`] on the same input.
     ///
-    /// [`verify_in`]: Self::derive_in
+    /// [`verify_in`]: Self::verify_in
     #[inline]
     fn verify_owned_in(
         &self,
-        public_key: Self::Output,
+        public_key: Self::PublicKey,
         message: Self::Message,
         signature: Self::Signature,
         compiler: &mut COM,
-    ) -> bool {
+    ) -> bool
+    where
+        Self::Message: Sized,
+    {
         self.verify_in(&public_key, &message, &signature, compiler)
     }
 
@@ -132,13 +202,89 @@ pub trait SignatureScheme<COM = ()>: KeyDerivationFunction<COM> {
     #[inline]
     fn verify_owned(
         &self,
-        public_key: Self::Output,
+        public_key: Self::PublicKey,
         message: Self::Message,
         signature: Self::Signature,
     ) -> bool
     where
         COM: Native,
+        Self::Message: Sized,
     {
         self.verify_in(&public_key, &message, &signature, &mut COM::compiler())
+    }
+}
+
+/// Schnorr Signature
+#[derive(derivative::Derivative)]
+#[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct Schnorr<G, H, SK, COM = ()> {
+    /// Base Generator
+    generator: G,
+
+    /// Cryptographic Hash Function
+    hasher: H,
+
+    /// Private Signing Key
+    signing_key: SK,
+
+    /// Type Parameter Marker
+    __: PhantomData<COM>,
+}
+
+impl<G, H, SK, COM> SignatureScheme<COM> for Schnorr<G, H, SK, COM>
+where
+    G: Add<COM> + ScalarMul<COM, Output = G>,
+    G::Scalar: Clone + Sub<COM> + Mul<COM> + PartialEq,
+    G::Output: ScalarMul<COM>,
+    H: BinaryHashFunction<COM, Left = G::Output, Output = G::Scalar>,
+{
+    type SecretKey = G::Scalar;
+
+    type PublicKey = G::Output;
+
+    type Message = H::Right;
+
+    type Signature = (G::Scalar, G::Scalar);
+
+    fn derive_in(&self, secret_key: &Self::SecretKey, compiler: &mut COM) -> Self::PublicKey {
+        self.generator.scalar_mul(secret_key, compiler)
+    }
+
+    fn sign_in(
+        &self,
+        ephemeral_secret_key: &Self::SecretKey,
+        key: &Self::SecretKey,
+        message: &Self::Message,
+        compiler: &mut COM,
+    ) -> Self::Signature {
+        let ephemeral_public_key = self.derive_in(ephemeral_secret_key, compiler);
+        let hash_value = self
+            .hasher
+            .hash_in(&ephemeral_public_key, message, compiler);
+        let s = G::Scalar::sub(
+            ephemeral_secret_key.clone(),
+            G::Scalar::mul(key.clone(), hash_value.clone(), compiler),
+            compiler,
+        );
+        (s, hash_value)
+    }
+
+    fn verify_in(
+        &self,
+        public_key: &Self::PublicKey,
+        message: &Self::Message,
+        signature: &Self::Signature,
+        compiler: &mut COM,
+    ) -> bool {
+        signature.1
+            == self.hasher.hash_in(
+                &G::add(
+                    self.generator.scalar_mul(&signature.0, compiler),
+                    public_key.scalar_mul(&signature.1, compiler),
+                    compiler,
+                ),
+                message,
+                compiler,
+            )
     }
 }

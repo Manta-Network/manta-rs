@@ -464,6 +464,26 @@ where
     }
 }
 
+/// TODO: This is a duplication of code in PR#82.
+/// Multiplication
+pub trait Mul<COM>
+where
+    COM: ?Sized,
+{
+    /// Multiplies `lhs` and `rhs` inside `compiler`.
+    fn mul(lhs: Self, rhs: Self, compiler: &mut COM) -> Self;
+}
+
+impl<T> Mul<()> for T
+where
+    T: ops::Mul<Output = T>,
+{
+    #[inline]
+    fn mul(lhs: Self, rhs: Self, _: &mut ()) -> Self {
+        lhs.mul(rhs)
+    }
+}
+
 /// Proof System
 pub trait ProofSystem {
     /// Constraint System
