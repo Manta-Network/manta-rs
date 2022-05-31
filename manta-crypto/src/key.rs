@@ -356,6 +356,19 @@ pub mod kdf {
 }
 
 /// Randomizable Key-Derivation Function
+/// # Specification
+///
+/// All implementations of this trait must adhere to the following property:
+///
+/// **Random Derivation**: For all possible inputs, the following function returns `true`:
+///
+/// ```text
+/// fn random_derivation(secret_key: SecretKey, randomness: Randomness) -> bool {
+///     derive(rand_input(randomness, secret_key)) == rand_output(randomness, derive(secret_key))
+/// }
+/// ```
+/// This ensures that both parties will arrive at the same conclusion about the value of the
+/// randomized drived key.
 pub trait RandomizableKeyDerivationFunction<COM = ()>: KeyDerivationFunction<COM>
 where
     Self::Key: Sized,
@@ -411,7 +424,7 @@ where
         COM: Native,
         Self::Key: Sized,
     {
-        self.rand_input(&randomness, &input)
+        self.rand_input_owned_in(randomness, input, &mut COM::compiler())
     }
 
     /// Randomize an output key of type [`Output`](KeyDerivationFunction::Output) from `key` in `compiler`.
@@ -452,13 +465,13 @@ where
 
     /// Randimize an output key of type [`Output`](KeyDerivationFunction::Output) from `Output`.
     ///
-    /// See [`rand_input_owned_in`](Self::rand_input_owned_in) for more.
+    /// See [`rand_output_owned_in`](Self::rand_output_owned_in) for more.
     #[inline]
     fn rand_output_owned(&self, randomness: Self::Randomness, output: Self::Output) -> Self::Output
     where
         COM: Native,
     {
-        self.rand_output(&randomness, &output)
+        self.rand_output_owned_in(randomness, output, &mut COM::compiler())
     }
 }
 
@@ -543,7 +556,7 @@ pub trait KeyAgreementScheme<COM = ()>:
     where
         COM: Native,
     {
-        self.agree(&secret_key, &public_key)
+        self.agree_owned_in(secret_key, public_key, &mut COM::compiler())
     }
 
     /// Borrows `self` rather than consuming it, returning an implementation of
@@ -626,5 +639,27 @@ pub mod test {
             scheme.agree(rhs, &scheme.derive(lhs)),
             "Key agreement schemes should satisfy the agreement property."
         )
+    }
+
+    /// Tests if the `random_derivation` property is satisfied for `F`.
+    #[inline]
+    pub fn random_derivation<F>(
+        random_key_derivation_function: &F,
+        secrete_key: &F::Key,
+        randomness: &F::Randomness,
+    ) where
+        F: RandomizableKeyDerivationFunction,
+        F::Key: Sized,
+        F::Output: Debug + PartialEq,
+    {
+        assert_eq!(
+            random_key_derivation_function
+                .derive(&random_key_derivation_function.rand_input(randomness, secrete_key)),
+            random_key_derivation_function.rand_output(
+                randomness,
+                &random_key_derivation_function.derive(secrete_key),
+            ),
+            "Randomizable key derivation function should satisfy the random derivation property."
+        );
     }
 }

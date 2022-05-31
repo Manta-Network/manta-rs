@@ -334,9 +334,6 @@ where
     }
 }
 
-// TODO： Simplify the trait properties here.
-// 1. We need `G::Scalar: Clone` and `Self::Key: Clone` since `mul()` takes by value instead of by reference.
-// 2. We need `G: ScalarMul<COM, Output=G>` since the output will be used for `scalar_mul` again.
 impl<G, COM> RandomizableKeyDerivationFunction<COM> for DiffieHellman<G>
 where
     G: ScalarMul<COM, Output = G>,
@@ -352,6 +349,18 @@ where
         compiler: &mut COM,
     ) -> Self::Key {
         G::Scalar::mul(randomness.clone(), input.clone(), compiler)
+    }
+
+    fn rand_input_owned_in(
+        &self,
+        randomness: Self::Randomness,
+        input: Self::Key,
+        compiler: &mut COM,
+    ) -> Self::Key
+    where
+        Self::Key: Sized,
+    {
+        G::Scalar::mul(randomness, input, compiler)
     }
 
     fn rand_output_in(
