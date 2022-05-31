@@ -16,7 +16,7 @@
 
 //! Poseidon Hash Implementation
 
-use crate::crypto::hash::poseidon::parameter::{
+use crate::crypto::hash::poseidon::{
     matrix::MatrixOperations, mds::MdsMatrices, round_constants::generate_round_constants,
 };
 use alloc::vec::Vec;
@@ -27,18 +27,26 @@ use manta_crypto::{
 };
 use manta_util::codec::{Decode, DecodeError, Encode, Read, Write};
 
-pub mod parameter;
+#[cfg(feature = "serde")]
+use manta_util::serde::{Deserialize, Serialize};
+
+pub mod constants;
+pub mod lfsr;
+pub mod matrix;
+pub mod mds;
+pub mod preprocessing;
+pub mod round_constants;
 
 /// Field Element
 pub trait Field {
     /// Returns the additive identity of the field.
     fn zero() -> Self;
 
+    /// Checks if the field element equals the result of calling [`zero`](Self::zero).
+    fn is_zero(&self) -> bool;
+
     /// Returns the multiplicative identity of the field.
     fn one() -> Self;
-
-    /// Checks if the field element equals `zero()`.
-    fn is_zero(&self) -> bool;
 
     /// Adds two field elements together.
     fn add(lhs: &Self, rhs: &Self) -> Self;
@@ -66,15 +74,12 @@ pub trait FieldGeneration {
     /// Converts a `u64` value to a field element.
     fn from_u64(elem: u64) -> Self;
 
-    /// Converts from `bits` into a field element in little endian order.
-    /// Return `None` if `bits` are out of range.
-    fn try_from_bits_le(bits: &[bool]) -> Option<Self>
+    /// Converts from `bits` into a field element in big endian order, returning `None` if `bits`
+    /// are out of range.
+    fn try_from_bits_be(bits: &[bool]) -> Option<Self>
     where
         Self: Sized;
 }
-
-#[cfg(feature = "serde")]
-use manta_util::serde::{Deserialize, Serialize};
 
 /// Poseidon Permutation Specification
 pub trait Specification<COM = ()> {
@@ -131,7 +136,7 @@ where
     S::FULL_ROUNDS + S::PARTIAL_ROUNDS
 }
 
-/// Poseidon Hash
+/// Poseidon Hasher
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
@@ -339,7 +344,6 @@ where
         let _ = (distribution, rng);
         Self {
             additive_round_keys: generate_round_constants(
-                S::ParameterField::MODULUS_BITS as u64,
                 Self::WIDTH,
                 S::FULL_ROUNDS,
                 S::PARTIAL_ROUNDS,
@@ -417,19 +421,19 @@ pub mod arkworks {
 
     /// Poseidon Permutation Specification.
     pub trait Specification {
-        /// Field Type.
+        /// Field Type
         type Field: PrimeField;
 
-        /// Number of Full Rounds.
+        /// Number of Full Rounds
         ///
         /// The total number of full rounds in Poseidon Hash, including the first set
         /// of full rounds and then the second set after the partial rounds.
         const FULL_ROUNDS: usize;
 
-        /// Number of Partial Rounds.
+        /// Number of Partial Rounds
         const PARTIAL_ROUNDS: usize;
 
-        /// S-BOX Exponenet.
+        /// S-BOX Exponenet
         const SBOX_EXPONENT: u64;
     }
 
@@ -437,34 +441,42 @@ pub mod arkworks {
     where
         F: PrimeField,
     {
+        #[inline]
         fn zero() -> Self {
             Self(F::zero())
         }
 
-        fn one() -> Self {
-            Self(F::one())
-        }
-
+        #[inline]
         fn is_zero(&self) -> bool {
             self.0 == F::zero()
         }
 
+        #[inline]
+        fn one() -> Self {
+            Self(F::one())
+        }
+
+        #[inline]
         fn add(lhs: &Self, rhs: &Self) -> Self {
             Self(lhs.0 + rhs.0)
         }
 
+        #[inline]
         fn add_assign(&mut self, rhs: &Self) {
             self.0 += rhs.0;
         }
 
+        #[inline]
         fn sub(lhs: &Self, rhs: &Self) -> Self {
             Self(lhs.0 - rhs.0)
         }
 
+        #[inline]
         fn mul(lhs: &Self, rhs: &Self) -> Self {
             Self(lhs.0 * rhs.0)
         }
 
+        #[inline]
         fn inverse(&self) -> Option<Self> {
             self.0.inverse().map(Self)
         }
@@ -476,10 +488,12 @@ pub mod arkworks {
     {
         const MODULUS_BITS: usize = F::Params::MODULUS_BITS as usize;
 
-        fn try_from_bits_le(bits: &[bool]) -> Option<Self> {
-            F::from_repr(F::BigInt::from_bits_le(bits)).map(Self)
+        #[inline]
+        fn try_from_bits_be(bits: &[bool]) -> Option<Self> {
+            F::from_repr(F::BigInt::from_bits_be(bits)).map(Self)
         }
 
+        #[inline]
         fn from_u64(elem: u64) -> Self {
             Self(F::from(elem))
         }
