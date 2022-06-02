@@ -25,7 +25,10 @@ use manta_crypto::{
     hash::ArrayHashFunction,
     rand::{CryptoRng, RngCore, Sample},
 };
-use manta_util::codec::{Decode, DecodeError, Encode, Read, Write};
+use manta_util::{
+    codec::{Decode, DecodeError, Encode, Read, Write},
+    vec::VecExt,
+};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
@@ -301,17 +304,10 @@ where
         S::apply_sbox(&mut state[0], compiler);
         self.mds_matrix_multiply(state, compiler);
     }
-}
 
-impl<S, const ARITY: usize, COM> ArrayHashFunction<ARITY, COM> for Hasher<S, ARITY, COM>
-where
-    S: Specification<COM>,
-{
-    type Input = S::Field;
-    type Output = S::Field;
-
+    /// Computes the hash over `input` in the given `compiler` and returns the untruncated state.
     #[inline]
-    fn hash_in(&self, input: [&Self::Input; ARITY], compiler: &mut COM) -> Self::Output {
+    fn hash_untruncated(&self, input: [&S::Field; ARITY], compiler: &mut COM) -> Vec<S::Field> {
         let mut state = self.first_round(input, compiler);
         for round in 1..Self::HALF_FULL_ROUNDS {
             self.full_round(round, &mut state, compiler);
@@ -324,8 +320,20 @@ where
         {
             self.full_round(round, &mut state, compiler);
         }
-        state.truncate(1);
-        state.remove(0)
+        state
+    }
+}
+
+impl<S, const ARITY: usize, COM> ArrayHashFunction<ARITY, COM> for Hasher<S, ARITY, COM>
+where
+    S: Specification<COM>,
+{
+    type Input = S::Field;
+    type Output = S::Field;
+
+    #[inline]
+    fn hash_in(&self, input: [&Self::Input; ARITY], compiler: &mut COM) -> Self::Output {
+        self.hash_untruncated(input, compiler).take_first()
     }
 }
 
@@ -632,5 +640,39 @@ pub mod arkworks {
                 mds_matrix: this.mds_matrix.clone(),
             }
         }
+    }
+}
+
+/// Testing Suite
+#[cfg(test)]
+mod test {
+    use super::Sample;
+    use crate::{config::Poseidon2, crypto::constraint::arkworks::Fp};
+    use ark_bls12_381::Fr;
+    use ark_ff::field_new;
+    use manta_crypto::rand::OsRng;
+
+    /// Tests if [`Poseidon2`] matches the known hash values.
+    #[test]
+    fn poseidon_hash_matches_known_values() {
+        let hasher = Poseidon2::gen(&mut OsRng);
+        let inputs = [&Fp(field_new!(Fr, "1")), &Fp(field_new!(Fr, "2"))];
+        assert_eq!(
+            hasher.hash_untruncated(inputs, &mut ()),
+            vec![
+                Fp(field_new!(
+                    Fr,
+                    "1808609226548932412441401219270714120272118151392880709881321306315053574086"
+                )),
+                Fp(field_new!(
+                    Fr,
+                    "13469396364901763595452591099956641926259481376691266681656453586107981422876"
+                )),
+                Fp(field_new!(
+                    Fr,
+                    "28037046374767189790502007352434539884533225547205397602914398240898150312947"
+                )),
+            ]
+        );
     }
 }
