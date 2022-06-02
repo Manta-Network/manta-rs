@@ -101,28 +101,28 @@ pub type ProofSystem = groth16::Groth16<PairingCurve>;
 pub struct PoseidonSpec<const ARITY: usize>;
 
 /// Poseidon-2 Hash Parameters
-pub type Poseidon2 = poseidon::Hasher<PoseidonSpec<2>, (), 2>;
+pub type Poseidon2 = poseidon::Hasher<PoseidonSpec<2>, 2>;
 
 /// Poseidon-2 Hash Parameters Variable
-pub type Poseidon2Var = poseidon::Hasher<PoseidonSpec<2>, Compiler, 2>;
+pub type Poseidon2Var = poseidon::Hasher<PoseidonSpec<2>, 2, Compiler>;
 
 impl poseidon::arkworks::Specification for PoseidonSpec<2> {
     type Field = ConstraintField;
     const FULL_ROUNDS: usize = 8;
-    const PARTIAL_ROUNDS: usize = 57;
+    const PARTIAL_ROUNDS: usize = 55;
     const SBOX_EXPONENT: u64 = 5;
 }
 
 /// Poseidon-4 Hash Parameters
-pub type Poseidon4 = poseidon::Hasher<PoseidonSpec<4>, (), 4>;
+pub type Poseidon4 = poseidon::Hasher<PoseidonSpec<4>, 4>;
 
 /// Poseidon-4 Hash Parameters Variable
-pub type Poseidon4Var = poseidon::Hasher<PoseidonSpec<4>, Compiler, 4>;
+pub type Poseidon4Var = poseidon::Hasher<PoseidonSpec<4>, 4, Compiler>;
 
 impl poseidon::arkworks::Specification for PoseidonSpec<4> {
     type Field = ConstraintField;
     const FULL_ROUNDS: usize = 8;
-    const PARTIAL_ROUNDS: usize = 60;
+    const PARTIAL_ROUNDS: usize = 56;
     const SBOX_EXPONENT: u64 = 5;
 }
 

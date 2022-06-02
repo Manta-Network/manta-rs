@@ -5,4 +5,3 @@
 
 _Rust Crates for the Manta Network Ecosystem_
 
-
