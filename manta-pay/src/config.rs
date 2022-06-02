@@ -377,10 +377,12 @@ impl Variable<Secret, Compiler> for AssetIdVar {
 /// Asset Value Variable
 pub struct AssetValueVar(ConstraintFieldVar);
 
-impl Add<Compiler> for AssetValueVar {
+impl Add<Self, Compiler> for AssetValueVar {
+    type Output = Self;
+
     #[inline]
-    fn add(lhs: Self, rhs: Self, compiler: &mut Compiler) -> Self {
-        Self(ConstraintFieldVar::add(lhs.0, rhs.0, compiler))
+    fn add(self, rhs: Self, compiler: &mut Compiler) -> Self::Output {
+        Self(ConstraintFieldVar::add(self.0, rhs.0, compiler))
     }
 }
 

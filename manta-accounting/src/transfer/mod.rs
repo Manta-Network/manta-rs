@@ -245,7 +245,7 @@ pub trait Configuration {
     /// Asset Value Variable Type
     type AssetValueVar: Variable<Public, Self::Compiler, Type = AssetValue>
         + Variable<Secret, Self::Compiler, Type = AssetValue>
-        + Add<Self::Compiler>
+        + Add<Self::AssetValueVar, Self::Compiler, Output = Self::AssetValueVar>
         + Equal<Self::Compiler>;
 
     /// Constraint System Type

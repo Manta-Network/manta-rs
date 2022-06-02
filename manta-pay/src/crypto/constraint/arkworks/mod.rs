@@ -488,13 +488,15 @@ where
     }
 }
 
-impl<F> Add<R1CS<F>> for FpVar<F>
+impl<F> Add<Self, R1CS<F>> for FpVar<F>
 where
     F: PrimeField,
 {
+    type Output = Self;
+
     #[inline]
-    fn add(lhs: Self, rhs: Self, compiler: &mut R1CS<F>) -> Self {
+    fn add(self, rhs: Self, compiler: &mut R1CS<F>) -> Self::Output {
         let _ = compiler;
-        lhs + rhs
+        self + rhs
     }
 }

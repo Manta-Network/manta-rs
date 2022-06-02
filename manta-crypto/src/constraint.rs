@@ -427,60 +427,74 @@ where
 */
 
 /// Addition
-pub trait Add<COM>
+pub trait Add<Rhs = Self, COM = ()>
 where
     COM: ?Sized,
 {
+    /// Output Type
+    type Output;
+
     /// Adds `lhs` and `rhs` inside of `compiler`.
-    fn add(lhs: Self, rhs: Self, compiler: &mut COM) -> Self;
+    fn add(self, rhs: Rhs, compiler: &mut COM) -> Self::Output;
 }
 
-impl<T> Add<()> for T
+impl<T, Rhs> Add<Rhs, ()> for T
 where
-    T: ops::Add<Output = T>,
+    T: ops::Add<Rhs>,
 {
+    type Output = T::Output;
+
     #[inline]
-    fn add(lhs: Self, rhs: Self, _: &mut ()) -> Self {
-        lhs.add(rhs)
+    fn add(self, rhs: Rhs, _: &mut ()) -> Self::Output {
+        self.add(rhs)
     }
 }
 
 /// Subtraction
-pub trait Sub<COM>
+pub trait Sub<Rhs = Self, COM = ()>
 where
     COM: ?Sized,
 {
+    /// Output Type
+    type Output;
+
     /// Subtracts `rhs` from `lhs` inside of `compiler`.
-    fn sub(lhs: Self, rhs: Self, compiler: &mut COM) -> Self;
+    fn sub(self, rhs: Rhs, compiler: &mut COM) -> Self::Output;
 }
 
-impl<T> Sub<()> for T
+impl<T, Rhs> Sub<Rhs, ()> for T
 where
-    T: ops::Sub<Output = T>,
+    T: ops::Sub<Rhs>,
 {
+    type Output = T::Output;
+
     #[inline]
-    fn sub(lhs: Self, rhs: Self, _: &mut ()) -> Self {
-        lhs.sub(rhs)
+    fn sub(self, rhs: Rhs, _: &mut ()) -> Self::Output {
+        self.sub(rhs)
     }
 }
 
-/// TODO: This is a duplication of code in PR#82.
 /// Multiplication
-pub trait Mul<COM>
+pub trait Mul<Rhs = Self, COM = ()>
 where
     COM: ?Sized,
 {
+    /// Output Type
+    type Output;
+
     /// Multiplies `lhs` and `rhs` inside `compiler`.
-    fn mul(lhs: Self, rhs: Self, compiler: &mut COM) -> Self;
+    fn mul(self, rhs: Rhs, compiler: &mut COM) -> Self::Output;
 }
 
-impl<T> Mul<()> for T
+impl<T, Rhs> Mul<Rhs, ()> for T
 where
-    T: ops::Mul<Output = T>,
+    T: ops::Mul<Rhs>,
 {
+    type Output = T::Output;
+
     #[inline]
-    fn mul(lhs: Self, rhs: Self, _: &mut ()) -> Self {
-        lhs.mul(rhs)
+    fn mul(self, rhs: Rhs, _: &mut ()) -> Self::Output {
+        self.mul(rhs)
     }
 }
 
