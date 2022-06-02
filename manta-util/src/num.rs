@@ -25,3 +25,27 @@ pub const fn u64_as_usize(n: u64) -> Result<usize, u64> {
         Err(n)
     }
 }
+
+/// Ceiling Operation
+pub trait Ceil<T> {
+    /// Returns the smallest integer greater than or equal to `self` cast into `T`.
+    fn ceil(self) -> T;
+}
+
+#[cfg(feature = "std")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
+impl Ceil<usize> for f32 {
+    #[inline]
+    fn ceil(self) -> usize {
+        self.ceil() as usize
+    }
+}
+
+#[cfg(feature = "std")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
+impl Ceil<usize> for f64 {
+    #[inline]
+    fn ceil(self) -> usize {
+        self.ceil() as usize
+    }
+}
