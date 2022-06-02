@@ -85,7 +85,7 @@ pub trait BinaryHashFunction<COM = ()> {
 }
 
 /// Array Hash Function
-pub trait ArrayHashFunction<COM, const ARITY: usize> {
+pub trait ArrayHashFunction<const ARITY: usize, COM = ()> {
     /// Input Type
     type Input: ?Sized;
 
@@ -117,7 +117,7 @@ pub mod array {
     #[inline]
     pub fn as_unary<H, COM>(hasher: H) -> AsUnary<H, COM>
     where
-        H: ArrayHashFunction<COM, 1>,
+        H: ArrayHashFunction<1, COM>,
     {
         AsUnary::new(hasher)
     }
@@ -132,7 +132,7 @@ pub mod array {
     #[derivative(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     pub struct AsUnary<H, COM = ()>
     where
-        H: ArrayHashFunction<COM, 1>,
+        H: ArrayHashFunction<1, COM>,
     {
         /// Array Hasher
         hasher: H,
@@ -143,7 +143,7 @@ pub mod array {
 
     impl<H, COM> AsUnary<H, COM>
     where
-        H: ArrayHashFunction<COM, 1>,
+        H: ArrayHashFunction<1, COM>,
     {
         /// Builds a new [`UnaryHashFunction`] implementation out of an [`ArrayHashFunction`]
         /// implementation `hasher`.
@@ -158,7 +158,7 @@ pub mod array {
 
     impl<H, COM> UnaryHashFunction<COM> for AsUnary<H, COM>
     where
-        H: ArrayHashFunction<COM, 1>,
+        H: ArrayHashFunction<1, COM>,
     {
         type Input = H::Input;
         type Output = H::Output;
