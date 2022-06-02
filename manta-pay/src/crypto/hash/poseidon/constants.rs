@@ -16,10 +16,10 @@
 
 //! Poseidon Permutation Parameters
 
-use crate::crypto::hash::poseidon::{constants::security::SecurityCondition, Specification};
+use crate::crypto::hash::poseidon::Specification;
 
 #[cfg(feature = "std")]
-use manta_util::num::Ceil;
+use {manta_util::num::Ceil, security::SecurityCondition};
 
 /// Poseidon Security Parameters
 ///
@@ -154,8 +154,8 @@ impl Constants {
 
 /// Security
 pub mod security {
-    use super::*;
-    use core::cmp;
+    #[cfg(feature = "std")]
+    use {core::cmp, manta_util::num::Ceil};
 
     /// Security Conditions
     ///
