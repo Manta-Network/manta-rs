@@ -17,14 +17,16 @@
 //! Vector Utilities
 
 use crate::create_seal;
-use alloc::vec::Vec;
+
+#[doc(inline)]
+pub use alloc::vec::Vec;
 
 create_seal! {}
 
 impl<T> sealed::Sealed for Vec<T> {}
 
 /// Vector Extension Trait
-pub trait VecExt<T>: Into<Vec<T>> + sealed::Sealed + Sized {
+pub trait VecExt<T>: From<Vec<T>> + Into<Vec<T>> + sealed::Sealed + Sized {
     /// Returns the `n`th element of `self`, dropping the rest of the vector.
     #[inline]
     fn take(self, n: usize) -> T {
@@ -37,6 +39,17 @@ pub trait VecExt<T>: Into<Vec<T>> + sealed::Sealed + Sized {
     #[inline]
     fn take_first(self) -> T {
         self.take(0)
+    }
+
+    /// Allocates a vector of length `n` and initializes with `f`.
+    #[inline]
+    fn allocate_with<F>(n: usize, f: F) -> Self
+    where
+        F: FnMut() -> T,
+    {
+        let mut vec = Vec::with_capacity(n);
+        vec.resize_with(n, f);
+        vec.into()
     }
 }
 
