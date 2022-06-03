@@ -18,6 +18,8 @@
 
 use core::iter::FusedIterator;
 
+// TODO; implement RNG for LFSR
+
 /// An 80-bit linear feedback shift register, described in [GKRRS19] Appendix A.
 ///
 /// [GKRRS19]: https://eprint.iacr.org/2019/458.pdf

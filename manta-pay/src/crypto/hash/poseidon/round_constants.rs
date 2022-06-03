@@ -16,13 +16,46 @@
 
 //! Round Constants Generation
 
-use crate::crypto::hash::poseidon::{lfsr::GrainLFSR, FieldGeneration};
+use crate::crypto::hash::poseidon::{lfsr::GrainLFSR, Field, FieldGeneration};
 use alloc::vec::Vec;
 use core::iter;
+use manta_crypto::rand::{CryptoRng, Rand, RngCore, Sample};
+
+/// Additive Round Constants for Poseidon Hash.
+pub struct AdditiveRoundConstants<F>
+where
+    F: Field,
+{
+    constants: Vec<F>,
+}
+
+impl<F> AdditiveRoundConstants<F>
+where
+    F: Field,
+{
+    pub fn new(constants: Vec<F>) -> Self {
+        Self { constants }
+    }
+}
+
+impl<D, F> Sample<D> for AdditiveRoundConstants<F>
+where
+    D: Clone,
+    F: Field + Sample<D>,
+{
+    #[inline]
+    fn sample<R>(distribution: D, rng: &mut R) -> Self
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        Self::new(rng.sample_iter(core::iter::repeat(distribution)).collect())
+    }
+}
 
 /// Samples field elements of type `F` from an iterator over random
 /// bits `iter` with rejection sampling.
 #[inline]
+#[deprecated] // TODO: implement `Sample<D>` for field using rejection sampling.
 pub fn sample_field_element<F, I>(iter: I) -> F
 where
     F: FieldGeneration,
@@ -62,6 +95,7 @@ pub fn generate_lfsr(
 /// `width * (full_rounds + partial_rounds)`-many field elements
 /// using [`sample_field_element`].
 #[inline]
+#[deprecated] // TODO: generate round constants using `Sample` trait.
 pub fn generate_round_constants<F>(
     width: usize,
     full_rounds: usize,
