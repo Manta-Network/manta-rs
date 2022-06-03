@@ -108,10 +108,7 @@ where
     fn sync(
         &mut self,
         request: SyncRequest<C, Self::Checkpoint>,
-    ) -> LocalBoxFutureResult<
-        Result<SyncResponse<Self::Checkpoint>, SyncError<Self::Checkpoint>>,
-        Self::Error,
-    >;
+    ) -> LocalBoxFutureResult<SyncResult<Self::Checkpoint>, Self::Error>;
 
     /// Signs a transaction and returns the ledger transfer posts if successful.
     fn sign(
@@ -325,6 +322,9 @@ where
     },
 }
 
+/// Synchronization Result
+pub type SyncResult<T> = Result<SyncResponse<T>, SyncError<T>>;
+
 /// Signer Signing Request
 ///
 /// This `struct` is used by the [`sign`](Connection::sign) method on [`Connection`].
@@ -438,6 +438,9 @@ where
     /// Proof System Error
     ProofSystemError(ProofSystemError<C>),
 }
+
+/// Signing Result
+pub type SignResult<C> = Result<SignResponse<C>, SignError<C>>;
 
 /// Receiving Key Request
 #[cfg_attr(

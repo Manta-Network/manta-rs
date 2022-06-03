@@ -25,13 +25,13 @@ use crate::{
 use alloc::collections::BTreeMap;
 use ark_ec::ProjectiveCurve;
 use ark_ff::PrimeField;
-use core::{marker::PhantomData, mem};
+use core::{cmp, marker::PhantomData, mem};
 use manta_accounting::{
     asset::HashAssetMap,
     key::{self, HierarchicalKeyDerivationScheme},
     wallet::{
         self,
-        signer::{AssetMapKey, SyncData},
+        signer::{self, AssetMapKey, SyncData},
     },
 };
 use manta_crypto::{key::KeyDerivationFunction, merkle_tree, merkle_tree::forest::Configuration};
@@ -87,29 +87,28 @@ impl wallet::signer::Configuration for Config {
     type UtxoAccumulator = UtxoAccumulator;
     type AssetMap = HashAssetMap<AssetMapKey<Self>>;
     type Rng = rand_chacha::ChaCha20Rng;
+}
+
+impl signer::Checkpoint<Config> for Checkpoint {
+    type UtxoAccumulator = UtxoAccumulator;
 
     #[inline]
-    fn update_checkpoint(
-        checkpoint: &Self::Checkpoint,
-        utxo_accumulator: &Self::UtxoAccumulator,
-    ) -> Self::Checkpoint {
-        Checkpoint::new(
-            utxo_accumulator
-                .forest
-                .as_ref()
-                .iter()
-                .map(move |t| t.len())
-                .collect(),
-            checkpoint.sender_index,
-        )
+    fn update_from_void_numbers(&mut self, count: usize) {
+        self.sender_index += count;
     }
 
     #[inline]
-    fn prune_sync_data(
-        data: &mut SyncData<Config>,
-        origin: &Self::Checkpoint,
-        checkpoint: &Self::Checkpoint,
-    ) -> bool {
+    fn update_from_utxo_accumulator(&mut self, utxo_accumulator: &Self::UtxoAccumulator) {
+        self.receiver_index = self
+            .receiver_index
+            .into_iter()
+            .zip(utxo_accumulator.forest.as_ref())
+            .map(move |(i, t)| cmp::max(i, t.len()))
+            .collect();
+    }
+
+    #[inline]
+    fn prune(data: &mut SyncData<Config>, origin: &Self, checkpoint: &Self) -> bool {
         const PRUNE_PANIC_MESSAGE: &str = "ERROR: Invalid pruning conditions";
         if checkpoint < origin {
             return false;
@@ -154,6 +153,17 @@ impl wallet::signer::Configuration for Config {
             }
         }
         has_pruned
+    }
+
+    #[inline]
+    fn update(&self, data: &SyncData<Config>) -> Self {
+        let mut checkpoint = *self;
+        for receiver in &data.receivers {
+            let key = MerkleTreeConfiguration::tree_index(&receiver.0);
+            checkpoint.receiver_index[key as usize] += 1;
+        }
+        checkpoint.sender_index += data.senders.len();
+        checkpoint
     }
 }
 
