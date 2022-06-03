@@ -18,13 +18,14 @@
 
 use crate::{
     config::{Config, TransferPost},
-    simulation::ledger::{
-        http::Request, AccountId, Checkpoint, Ledger, LedgerConnection, SharedLedger,
-    },
+    simulation::ledger::{http::Request, AccountId, Checkpoint, Ledger, SharedLedger},
 };
 use alloc::sync::Arc;
 use core::future::Future;
-use manta_accounting::{asset::AssetList, wallet::ledger::PullResponse};
+use manta_accounting::{
+    asset::AssetList,
+    wallet::{ledger::ReadResponse, signer::SyncData},
+};
 use manta_util::serde::{de::DeserializeOwned, Serialize};
 use tide::{listener::ToListener, Body, Response};
 use tokio::{io, sync::RwLock};
@@ -46,7 +47,7 @@ impl State {
         self,
         account: AccountId,
         checkpoint: Checkpoint,
-    ) -> PullResponse<Config, LedgerConnection> {
+    ) -> ReadResponse<Checkpoint, SyncData<Config>> {
         let _ = account;
         self.0.read().await.pull(&checkpoint)
     }

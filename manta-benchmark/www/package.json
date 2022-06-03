@@ -1,0 +1,36 @@
+{
+  "name": "wasm-benchmark",
+  "version": "0.1.0",
+  "description": "benchmark wasm performance of manta-rs",
+  "main": "index.js",  
+  "scripts": {
+    "build": "webpack --config webpack.config.js",
+    "start": "webpack-dev-server"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Manta-Network/manta-rs.git"
+  },
+  "keywords": [
+    "webassembly",
+    "wasm",
+    "rust",
+    "webpack",
+    "manta-rs"
+  ],
+  "author": "Boyuan Feng <boyuan@manta.network>",
+  "license": "(MIT OR Apache-2.0)",
+  "bugs": {
+    "url": "https://github.com/Manta-Network/manta-rs/issues"
+  },
+  "homepage": "https://github.com/Manta-Network/manta-rs/blob/main/manta-benchmark/README.md",
+  "dependencies": {
+    "wasm-prover": "file:../pkg"
+  },
+  "devDependencies": {
+    "webpack": "^4.29.3",
+    "webpack-cli": "^3.1.0",
+    "webpack-dev-server": "^3.1.5",
+    "copy-webpack-plugin": "^5.0.0"
+  }
+}

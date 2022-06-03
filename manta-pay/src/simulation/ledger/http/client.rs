@@ -17,14 +17,15 @@
 //! Ledger Simulation Client
 
 use crate::{
-    config::{Config, EncryptedNote, TransferPost, Utxo, VoidNumber},
+    config::{Config, TransferPost},
     simulation::ledger::{http::Request, AccountId, Checkpoint},
     util::http::{self, Error, IntoUrl},
 };
 use manta_accounting::{
     asset::AssetList,
     wallet::{
-        ledger::{self, PullResponse},
+        ledger::{self, ReadResponse},
+        signer::SyncData,
         test::PublicBalanceOracle,
     },
 };
@@ -53,21 +54,19 @@ impl Client {
     }
 }
 
-impl ledger::PullConfiguration<Config> for Client {
-    type Checkpoint = Checkpoint;
-    type ReceiverChunk = Vec<(Utxo, EncryptedNote)>;
-    type SenderChunk = Vec<VoidNumber>;
+impl ledger::Connection for Client {
+    type Error = Error;
 }
 
-impl ledger::Connection<Config> for Client {
-    type PushResponse = bool;
-    type Error = Error;
+impl ledger::Read<SyncData<Config>> for Client {
+    type Checkpoint = Checkpoint;
 
     #[inline]
-    fn pull<'s>(
+    fn read<'s>(
         &'s mut self,
         checkpoint: &'s Self::Checkpoint,
-    ) -> LocalBoxFutureResult<'s, PullResponse<Config, Self>, Self::Error> {
+    ) -> LocalBoxFutureResult<'s, ReadResponse<Self::Checkpoint, SyncData<Config>>, Self::Error>
+    {
         Box::pin(async move {
             self.client
                 .post(
@@ -80,12 +79,16 @@ impl ledger::Connection<Config> for Client {
                 .await
         })
     }
+}
+
+impl ledger::Write<Vec<TransferPost>> for Client {
+    type Response = bool;
 
     #[inline]
-    fn push(
+    fn write(
         &mut self,
         posts: Vec<TransferPost>,
-    ) -> LocalBoxFutureResult<Self::PushResponse, Self::Error> {
+    ) -> LocalBoxFutureResult<Self::Response, Self::Error> {
         Box::pin(async move {
             self.client
                 .post(

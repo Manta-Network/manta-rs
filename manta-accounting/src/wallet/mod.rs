@@ -29,17 +29,17 @@
 //! [`Ledger`]: ledger::Connection
 
 use crate::{
-    asset::{Asset, AssetId, AssetMetadata, AssetValue},
+    asset::{Asset, AssetId, AssetList, AssetMetadata, AssetValue},
     transfer::{
         canonical::{Transaction, TransactionKind},
-        Configuration, ReceivingKey,
+        Configuration, ReceivingKey, TransferPost,
     },
     wallet::{
         balance::{BTreeMapBalanceState, BalanceState},
-        ledger::{Checkpoint, PullResponse},
+        ledger::ReadResponse,
         signer::{
-            ReceivingKeyRequest, SignError, SignRequest, SignResponse, SyncError, SyncRequest,
-            SyncResponse,
+            ReceivingKeyRequest, SignError, SignRequest, SignResponse, SyncData, SyncError,
+            SyncRequest, SyncResponse,
         },
     },
 };
@@ -62,7 +62,7 @@ pub mod test;
 pub struct Wallet<C, L, S = signer::Signer<C>, B = BTreeMapBalanceState>
 where
     C: Configuration,
-    L: ledger::Connection<C>,
+    L: ledger::Connection,
     S: signer::Connection<C>,
     B: BalanceState,
 {
@@ -70,7 +70,7 @@ where
     ledger: L,
 
     /// Ledger Checkpoint
-    checkpoint: L::Checkpoint,
+    checkpoint: S::Checkpoint,
 
     /// Signer Connection
     signer: S,
@@ -85,14 +85,14 @@ where
 impl<C, L, S, B> Wallet<C, L, S, B>
 where
     C: Configuration,
-    L: ledger::Connection<C>,
+    L: ledger::Connection,
     S: signer::Connection<C>,
     B: BalanceState,
 {
     /// Builds a new [`Wallet`] without checking if `ledger`, `checkpoint`, `signer`, and `assets`
     /// are properly synchronized.
     #[inline]
-    fn new_unchecked(ledger: L, checkpoint: L::Checkpoint, signer: S, assets: B) -> Self {
+    fn new_unchecked(ledger: L, checkpoint: S::Checkpoint, signer: S, assets: B) -> Self {
         Self {
             ledger,
             checkpoint,
@@ -130,6 +130,18 @@ where
         self.assets.contains(asset)
     }
 
+    /// Returns `true` if `self` contains at least every asset in `assets`. Assets are combined
+    /// first by [`AssetId`] before checking for membership.
+    #[inline]
+    pub fn contains_all<I>(&self, assets: I) -> bool
+    where
+        I: IntoIterator<Item = Asset>,
+    {
+        AssetList::from_iter(assets)
+            .into_iter()
+            .all(|asset| self.contains(asset))
+    }
+
     /// Returns a shared reference to the balance state associated to `self`.
     #[inline]
     pub fn assets(&self) -> &B {
@@ -142,10 +154,10 @@ where
         &self.ledger
     }
 
-    /// Returns the [`Checkpoint`](ledger::PullConfiguration::Checkpoint) representing the current
-    /// state of this wallet.
+    /// Returns the [`Checkpoint`](ledger::Checkpoint) representing the current state of this
+    /// wallet.
     #[inline]
-    pub fn checkpoint(&self) -> &L::Checkpoint {
+    pub fn checkpoint(&self) -> &S::Checkpoint {
         &self.checkpoint
     }
 
@@ -171,7 +183,10 @@ where
     /// [`InconsistencyError`] type for more information on the kinds of errors that can occur and
     /// how to resolve them.
     #[inline]
-    pub async fn recover(&mut self) -> Result<(), Error<C, L, S>> {
+    pub async fn recover(&mut self) -> Result<(), Error<C, L, S>>
+    where
+        L: ledger::Read<SyncData<C>, Checkpoint = S::Checkpoint>,
+    {
         self.reset();
         while self.sync_with(true).await?.is_continue() {}
         Ok(())
@@ -188,7 +203,10 @@ where
     /// [`InconsistencyError`] type for more information on the kinds of errors that can occur and
     /// how to resolve them.
     #[inline]
-    pub async fn sync(&mut self) -> Result<(), Error<C, L, S>> {
+    pub async fn sync(&mut self) -> Result<(), Error<C, L, S>>
+    where
+        L: ledger::Read<SyncData<C>, Checkpoint = S::Checkpoint>,
+    {
         while self.sync_partial().await?.is_continue() {}
         Ok(())
     }
@@ -204,33 +222,37 @@ where
     /// [`InconsistencyError`] type for more information on the kinds of errors that can occur and
     /// how to resolve them.
     #[inline]
-    pub async fn sync_partial(&mut self) -> Result<ControlFlow, Error<C, L, S>> {
+    pub async fn sync_partial(&mut self) -> Result<ControlFlow, Error<C, L, S>>
+    where
+        L: ledger::Read<SyncData<C>, Checkpoint = S::Checkpoint>,
+    {
         self.sync_with(false).await
     }
 
     /// Pulls data from the ledger, synchronizing the wallet and balance state.
     #[inline]
-    async fn sync_with(&mut self, with_recovery: bool) -> Result<ControlFlow, Error<C, L, S>> {
-        let PullResponse {
+    async fn sync_with(&mut self, with_recovery: bool) -> Result<ControlFlow, Error<C, L, S>>
+    where
+        L: ledger::Read<SyncData<C>, Checkpoint = S::Checkpoint>,
+    {
+        let ReadResponse {
             should_continue,
-            checkpoint,
-            receivers,
-            senders,
+            next_checkpoint,
+            data,
         } = self
             .ledger
-            .pull(&self.checkpoint)
+            .read(&self.checkpoint)
             .await
             .map_err(Error::LedgerConnectionError)?;
-        if checkpoint < self.checkpoint {
+        if next_checkpoint < self.checkpoint {
             return Err(Error::Inconsistency(InconsistencyError::LedgerCheckpoint));
         }
         match self
             .signer
             .sync(SyncRequest {
                 with_recovery,
-                starting_index: self.checkpoint.receiver_index(),
-                inserts: receivers.into_iter().collect(),
-                removes: senders.into_iter().collect(),
+                origin_checkpoint: self.checkpoint.clone(),
+                data,
             })
             .await
             .map_err(Error::SignerConnectionError)?
@@ -245,24 +267,16 @@ where
                 self.assets.clear();
                 self.assets.deposit_all(assets);
             }
-            Err(SyncError::InconsistentSynchronization { starting_index }) => {
-                // FIXME: What should be done when we receive an `InconsistentSynchronization` error
-                //        from the signer?
-                //          - One option is to do some sort of (exponential) backoff algorithm to
-                //            find the point at which the signer and the wallet are able to
-                //            synchronize again. The correct algorithm may be simply to exchange
-                //            some checkpoints between the signer and the wallet until they can
-                //            agree on a minimal one.
-                //          - In the worst case we would have to recover the wallet (not necessarily
-                //            the signer), which is what the docs currently recommend.
-                //
-                let _ = starting_index;
+            Err(SyncError::InconsistentSynchronization { checkpoint }) => {
+                if checkpoint < self.checkpoint {
+                    self.checkpoint = checkpoint;
+                }
                 return Err(Error::Inconsistency(
                     InconsistencyError::SignerSynchronization,
                 ));
             }
         }
-        self.checkpoint = checkpoint;
+        self.checkpoint = next_checkpoint;
         Ok(ControlFlow::should_continue(should_continue))
     }
 
@@ -279,42 +293,60 @@ where
         transaction.check(move |a| self.contains(a))
     }
 
-    /// Posts a transaction to the ledger, returning `true` if the `transaction` was successfully
-    /// saved onto the ledger. This method automatically synchronizes with the ledger before
-    /// posting, _but not after_. To amortize the cost of future calls to [`post`](Self::post), the
-    /// [`sync`](Self::sync) method can be used to synchronize with the ledger.
-    ///
-    /// # Failure Conditions
-    ///
-    /// This method returns `false` when there were no errors in producing transfer data and
-    /// sending and receiving from the ledger, but instead the ledger just did not accept the
-    /// transaction as is. This could be caused by an external update to the ledger while the
-    /// signer was building the transaction that caused the wallet and the ledger to get out of
-    /// sync. In this case, [`post`](Self::post) can safely be called again, to retry the
-    /// transaction.
-    ///
-    /// This method returns an error in any other case. The internal state of the wallet is kept
-    /// consistent between calls and recoverable errors are returned for the caller to handle.
+    /// Signs the `transaction` using the signer connection, sending `metadata` for context. This
+    /// method _does not_ automatically sychronize with the ledger. To do this, call the
+    /// [`sync`](Self::sync) method separately.
     #[inline]
-    pub async fn post(
+    pub async fn sign(
         &mut self,
         transaction: Transaction<C>,
         metadata: Option<AssetMetadata>,
-    ) -> Result<L::PushResponse, Error<C, L, S>> {
-        self.sync().await?;
+    ) -> Result<SignResponse<C>, Error<C, L, S>> {
         self.check(&transaction)
             .map_err(Error::InsufficientBalance)?;
-        let SignResponse { posts } = self
-            .signer
+        self.signer
             .sign(SignRequest {
                 transaction,
                 metadata,
             })
             .await
             .map_err(Error::SignerConnectionError)?
-            .map_err(Error::SignError)?;
+            .map_err(Error::SignError)
+    }
+
+    /// Posts a transaction to the ledger, returning a success [`Response`] if the `transaction`
+    /// was successfully posted to the ledger. This method automatically synchronizes with the
+    /// ledger before posting, _but not after_. To amortize the cost of future calls to [`post`],
+    /// the [`sync`] method can be used to synchronize with the ledger.
+    ///
+    /// # Failure Conditions
+    ///
+    /// This method returns a [`Response`] when there were no errors in producing transfer data and
+    /// sending and receiving from the ledger, but instead the ledger just did not accept the
+    /// transaction as is. This could be caused by an external update to the ledger while the signer
+    /// was building the transaction that caused the wallet and the ledger to get out of sync. In
+    /// this case, [`post`] can safely be called again, to retry the transaction.
+    ///
+    /// This method returns an error in any other case. The internal state of the wallet is kept
+    /// consistent between calls and recoverable errors are returned for the caller to handle.
+    ///
+    /// [`Response`]: ledger::Write::Response
+    /// [`post`]: Self::post
+    /// [`sync`]: Self::sync
+    #[inline]
+    pub async fn post(
+        &mut self,
+        transaction: Transaction<C>,
+        metadata: Option<AssetMetadata>,
+    ) -> Result<L::Response, Error<C, L, S>>
+    where
+        L: ledger::Read<SyncData<C>, Checkpoint = S::Checkpoint>
+            + ledger::Write<Vec<TransferPost<C>>>,
+    {
+        self.sync().await?;
+        let SignResponse { posts } = self.sign(transaction, metadata).await?;
         self.ledger
-            .push(posts)
+            .write(posts)
             .await
             .map_err(Error::LedgerConnectionError)
     }
@@ -409,7 +441,7 @@ pub enum InconsistencyError {
 pub enum Error<C, L, S>
 where
     C: Configuration,
-    L: ledger::Connection<C>,
+    L: ledger::Connection,
     S: signer::Connection<C>,
 {
     /// Insufficient Balance
@@ -428,4 +460,16 @@ where
 
     /// Ledger Connection Error
     LedgerConnectionError(L::Error),
+}
+
+impl<C, L, S> From<InconsistencyError> for Error<C, L, S>
+where
+    C: Configuration,
+    L: ledger::Connection,
+    S: signer::Connection<C>,
+{
+    #[inline]
+    fn from(err: InconsistencyError) -> Self {
+        Self::Inconsistency(err)
+    }
 }

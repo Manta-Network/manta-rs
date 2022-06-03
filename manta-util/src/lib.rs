@@ -28,7 +28,6 @@ mod array;
 mod bytes;
 mod sealed;
 
-pub mod cache;
 pub mod codec;
 pub mod convert;
 pub mod future;
@@ -37,6 +36,10 @@ pub mod num;
 pub mod ops;
 pub mod persistence;
 pub mod pointer;
+
+#[cfg(feature = "alloc")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
+pub mod vec;
 
 pub use array::*;
 pub use bytes::*;

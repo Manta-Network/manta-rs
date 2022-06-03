@@ -187,7 +187,7 @@ where
     S: Simulation,
     R: 's + CryptoRng + RngCore,
 {
-    /// Builds a new [`ActorIter`] from `simulation`, `actor_index, `actor`, and `rng`.
+    /// Builds a new [`ActorStream`] from `simulation`, `actor_index, `actor`, and `rng`.
     #[inline]
     fn new(simulation: &'s S, actor_index: usize, actor: &'s mut S::Actor, rng: R) -> Self {
         Self {

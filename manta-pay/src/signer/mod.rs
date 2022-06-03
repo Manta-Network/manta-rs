@@ -30,13 +30,13 @@ pub mod client;
 pub mod base;
 
 /// Synchronization Request
-pub type SyncRequest = signer::SyncRequest<Config>;
+pub type SyncRequest = signer::SyncRequest<Config, Checkpoint>;
 
 /// Synchronization Response
 pub type SyncResponse = signer::SyncResponse;
 
 /// Synchronization Error
-pub type SyncError = signer::SyncError;
+pub type SyncError = signer::SyncError<Checkpoint>;
 
 /// Sign Request
 pub type SignRequest = signer::SignRequest<Config>;
@@ -96,17 +96,7 @@ impl From<RawCheckpoint> for Checkpoint {
     }
 }
 
-impl ledger::Checkpoint for Checkpoint {
-    #[inline]
-    fn receiver_index(&self) -> usize {
-        self.receiver_index.iter().sum()
-    }
-
-    #[inline]
-    fn sender_index(&self) -> usize {
-        self.sender_index
-    }
-}
+impl ledger::Checkpoint for Checkpoint {}
 
 #[cfg(feature = "scale")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]

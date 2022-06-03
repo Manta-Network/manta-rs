@@ -181,11 +181,10 @@ where
     C: CoinType,
 {
     #[inline]
-    fn sample<R>(distribution: (), rng: &mut R) -> Self
+    fn sample<R>(_: (), rng: &mut R) -> Self
     where
         R: CryptoRng + RngCore + ?Sized,
     {
-        let _ = distribution;
         let mut seed = [0; Seed::SIZE];
         rng.fill_bytes(&mut seed);
         Self::build(seed)
@@ -290,11 +289,10 @@ impl PartialEq for Mnemonic {
 
 impl Sample for Mnemonic {
     #[inline]
-    fn sample<R>(distribution: (), rng: &mut R) -> Self
+    fn sample<R>(_: (), rng: &mut R) -> Self
     where
         R: CryptoRng + RngCore + ?Sized,
     {
-        let _ = distribution;
         Self(bip32::Mnemonic::random(rng, Default::default()))
     }
 }
