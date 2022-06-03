@@ -25,13 +25,13 @@ use manta_util::serde::{Deserialize, Serialize};
 /// Ledger Connection
 ///
 /// This is the base `trait` for defining a connection with a ledger. To communicate with the
-/// ledger, you can establish such a connection first and then interact via the [`Read`] and
-/// [`Write`] traits which send messages along the connection.
+/// ledger, you can establish a connection first and then interact via the [`Read`] and [`Write`]
+/// `trait`s which send messages along the connection.
 pub trait Connection {
     /// Error Type
     ///
     /// This error type corresponds to the communication channel setup by the [`Connection`] rather
-    /// than any errors introduced by [`read`] or [`write`] methods. Instead those methods should
+    /// than any errors introduced by [`read`] or [`write`] methods. Instead, those methods should
     /// return errors in their `Response` types.
     ///
     /// [`read`]: Read::read
@@ -44,12 +44,21 @@ pub trait Connection {
 /// The checkpoint type is responsible for keeping the ledger, signer, and wallet in sync with each
 /// other making sure that they all have the same view of the ledger state. Checkpoints should
 /// be orderable with a bottom element returned by [`Default::default`]. Types implementing this
-/// `trait` must also implement [`Clone`] as it must be safe (but not necessarily efficient) to
-/// copy a checkpoint value.
-pub trait Checkpoint: Clone + Default + PartialOrd {}
+/// `trait` must also implement [`Clone`], [`Send`], and [`Sync`] as it must be safe
+/// (but not necessarily efficient) to copy a checkpoint value and share it across threads.
+pub trait Checkpoint: Clone + Default + PartialOrd + Send + Sync {}
 
-/// Ledger Data Pruning
-pub trait Prune<T>
+/// Ledger Data
+///
+/// In order to keep track of updates from [`read`] calls through the [`Read`] `trait`, all data
+/// that comes from the ledger must be compatible with the checkpoints that request them. This
+/// `trait` requires that data can be pruned to meet a known checkpoint and can also update its own
+/// origin checkpoint to the state that it would be at after the state would return itself from
+/// the [`read`] call. In the same way that the [`Checkpoint`]s represent monotonically increasing
+/// state markers, the data returned from the ledger must fit into this increasing set.
+///
+/// [`read`]: Read::read
+pub trait Data<T>
 where
     T: Checkpoint,
 {
@@ -57,6 +66,10 @@ where
     /// `checkpoint`, dropping data that is older than the given `checkpoint`. This method should
     /// return `true` if it dropped data from `self`.
     fn prune(&mut self, origin: &T, checkpoint: &T) -> bool;
+
+    /// Updates the `origin` checkpoint to the checkpoint that would come after `self` was returned
+    /// from the ledger.
+    fn update(&self, origin: &T) -> T;
 }
 
 /// Ledger Connection Reading
@@ -69,7 +82,7 @@ pub trait Read<D>: Connection {
     fn read<'s>(
         &'s mut self,
         checkpoint: &'s Self::Checkpoint,
-    ) -> LocalBoxFutureResult<'s, ReadResponse<Self::Checkpoint, D>, Self::Error>;
+    ) -> LocalBoxFutureResult<'s, ReadResponse<D>, Self::Error>;
 }
 
 /// Ledger Connection Read Response
@@ -82,25 +95,12 @@ pub trait Read<D>: Connection {
     serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
-pub struct ReadResponse<T, D>
-where
-    T: Checkpoint,
-{
+pub struct ReadResponse<D> {
     /// Read Continuation Flag
     ///
     /// The `should_continue` flag is set to `true` if the client should request more data from the
     /// ledger to finish the requested [`read`](Read::read).
     pub should_continue: bool,
-
-    /// Next Ledger Checkpoint
-    ///
-    /// This checkpoint represents the new checkpoint that the client should be synchronized to when
-    /// incorporating the [`data`] returned by the [`read`] request. To continue the request the
-    /// client should send this checkpoint in their next call to [`read`].
-    ///
-    /// [`data`]: Self::data
-    /// [`read`]: Read::read
-    pub next_checkpoint: T,
 
     /// Data Payload
     ///

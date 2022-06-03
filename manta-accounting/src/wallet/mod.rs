@@ -19,11 +19,10 @@
 //! This module defines the notion of a "wallet" which can store and manage accounts that control
 //! private assets, those defined in [`crate::asset`] and [`crate::transfer`]. The [`Wallet`]
 //! abstraction implements the main interface to an account and requires two asynchronous
-//! connections, one to a zero-knowledge signing source and secret manager called the [`Signer`] and
-//! another connection to the [`Ledger`] itself. The wallet itself only stores the information
-//! related to the current balances of any particular account and queries the [`Signer`] and the
-//! [`Ledger`] to get the newest balances from incoming transactions and to send out transactions of
-//! its own.
+//! connections, one to a transaction signer and secret manager called the [`Signer`] and another
+//! connection to the [`Ledger`] itself. The wallet itself only stores the information related to
+//! the current balances of any particular account and queries the [`Signer`] and the [`Ledger`] to
+//! get the newest balances from incoming transactions and to send out transactions of its own.
 //!
 //! [`Signer`]: signer::Connection
 //! [`Ledger`]: ledger::Connection
@@ -38,8 +37,8 @@ use crate::{
         balance::{BTreeMapBalanceState, BalanceState},
         ledger::ReadResponse,
         signer::{
-            ReceivingKeyRequest, SignError, SignRequest, SignResponse, SyncData, SyncError,
-            SyncRequest, SyncResponse,
+            BalanceUpdate, ReceivingKeyRequest, SignError, SignRequest, SignResponse, SyncData,
+            SyncError, SyncRequest, SyncResponse,
         },
     },
 };
@@ -188,8 +187,15 @@ where
         L: ledger::Read<SyncData<C>, Checkpoint = S::Checkpoint>,
     {
         self.reset();
+        self.load_initial_state().await?;
         while self.sync_with(true).await?.is_continue() {}
         Ok(())
+    }
+
+    ///
+    #[inline]
+    async fn load_initial_state(&mut self) -> Result<(), Error<C, L, S>> {
+        self.perform_sync(Default::default()).await
     }
 
     /// Pulls data from the ledger, synchronizing the wallet and balance state. This method loops
@@ -237,47 +243,61 @@ where
     {
         let ReadResponse {
             should_continue,
-            next_checkpoint,
             data,
         } = self
             .ledger
             .read(&self.checkpoint)
             .await
             .map_err(Error::LedgerConnectionError)?;
-        if next_checkpoint < self.checkpoint {
-            return Err(Error::Inconsistency(InconsistencyError::LedgerCheckpoint));
-        }
+        self.perform_sync(SyncRequest {
+            with_recovery,
+            origin_checkpoint: self.checkpoint.clone(),
+            data,
+        })
+        .await?;
+        Ok(ControlFlow::should_continue(should_continue))
+    }
+
+    ///
+    #[inline]
+    async fn perform_sync(
+        &mut self,
+        request: SyncRequest<C, S::Checkpoint>,
+    ) -> Result<(), Error<C, L, S>> {
         match self
             .signer
-            .sync(SyncRequest {
-                with_recovery,
-                origin_checkpoint: self.checkpoint.clone(),
-                data,
-            })
+            .sync(request)
             .await
             .map_err(Error::SignerConnectionError)?
         {
-            Ok(SyncResponse::Partial { deposit, withdraw }) => {
-                self.assets.deposit_all(deposit);
-                if !self.assets.withdraw_all(withdraw) {
-                    return Err(Error::Inconsistency(InconsistencyError::WalletBalance));
+            Ok(SyncResponse {
+                checkpoint,
+                balance_update,
+            }) => {
+                match balance_update {
+                    BalanceUpdate::Partial { deposit, withdraw } => {
+                        self.assets.deposit_all(deposit);
+                        if !self.assets.withdraw_all(withdraw) {
+                            return Err(Error::Inconsistency(InconsistencyError::WalletBalance));
+                        }
+                    }
+                    BalanceUpdate::Full { assets } => {
+                        self.assets.clear();
+                        self.assets.deposit_all(assets);
+                    }
                 }
-            }
-            Ok(SyncResponse::Full { assets }) => {
-                self.assets.clear();
-                self.assets.deposit_all(assets);
+                self.checkpoint = checkpoint;
+                Ok(())
             }
             Err(SyncError::InconsistentSynchronization { checkpoint }) => {
                 if checkpoint < self.checkpoint {
                     self.checkpoint = checkpoint;
                 }
-                return Err(Error::Inconsistency(
+                Err(Error::Inconsistency(
                     InconsistencyError::SignerSynchronization,
-                ));
+                ))
             }
         }
-        self.checkpoint = next_checkpoint;
-        Ok(ControlFlow::should_continue(should_continue))
     }
 
     /// Checks if `transaction` can be executed on the balance state of `self`, returning the
