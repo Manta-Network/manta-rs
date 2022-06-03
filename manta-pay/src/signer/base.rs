@@ -113,6 +113,19 @@ impl signer::Checkpoint<Config> for Checkpoint {
         if checkpoint < origin {
             return false;
         }
+
+        let mut updated_origin = *origin;
+        for receiver in &data.receivers {
+            let key = MerkleTreeConfiguration::tree_index(&receiver.0);
+            updated_origin.receiver_index[key as usize] += 1;
+        }
+        updated_origin.sender_index += data.senders.len();
+
+        if &updated_origin < checkpoint {
+            *data = Default::default();
+            return true;
+        }
+
         match checkpoint.sender_index.checked_sub(origin.sender_index) {
             Some(diff) => drop(data.senders.drain(0..diff)),
             _ => panic!(
@@ -153,17 +166,6 @@ impl signer::Checkpoint<Config> for Checkpoint {
             }
         }
         has_pruned
-    }
-
-    #[inline]
-    fn update(&self, data: &SyncData<Config>) -> Self {
-        let mut checkpoint = *self;
-        for receiver in &data.receivers {
-            let key = MerkleTreeConfiguration::tree_index(&receiver.0);
-            checkpoint.receiver_index[key as usize] += 1;
-        }
-        checkpoint.sender_index += data.senders.len();
-        checkpoint
     }
 }
 

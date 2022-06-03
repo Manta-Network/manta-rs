@@ -57,36 +57,6 @@ use manta_util::{
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
 
-/// Signer Checkpoint
-pub trait Checkpoint<C>: ledger::Checkpoint
-where
-    C: transfer::Configuration + ?Sized,
-{
-    ///
-    type UtxoAccumulator: Accumulator<Item = C::Utxo, Model = C::UtxoAccumulatorModel>;
-
-    ///
-    fn update_from_void_numbers(&mut self, count: usize);
-
-    ///
-    fn update_from_utxo_accumulator(&mut self, accumulator: &Self::UtxoAccumulator);
-
-    /// Computes a best-effort [`Checkpoint`] from the current `accumulator` state.
-    #[inline]
-    fn from_utxo_accumulator(accumulator: &Self::UtxoAccumulator) -> Self {
-        let mut checkpoint = Self::default();
-        checkpoint.update_from_utxo_accumulator(accumulator);
-        checkpoint
-    }
-
-    /// Prunes the `data` required for a [`sync`](Connection::sync) call against `origin` and
-    /// `checkpoint`.
-    fn prune(data: &mut SyncData<C>, origin: &Self, checkpoint: &Self) -> bool;
-
-    ///
-    fn update(&self, data: &SyncData<C>) -> Self;
-}
-
 /// Signer Connection
 pub trait Connection<C>
 where
@@ -95,7 +65,7 @@ where
     /// Checkpoint Type
     ///
     /// This checkpoint is used by the signer to stay synchronized with wallet and the ledger.
-    type Checkpoint: Checkpoint<C>;
+    type Checkpoint: ledger::Checkpoint;
 
     /// Error Type
     ///
@@ -171,11 +141,6 @@ where
     #[inline]
     fn prune(&mut self, origin: &C::Checkpoint, checkpoint: &C::Checkpoint) -> bool {
         C::Checkpoint::prune(self, origin, checkpoint)
-    }
-
-    #[inline]
-    fn update(&self, origin: &C::Checkpoint) -> C::Checkpoint {
-        origin.update(self)
     }
 }
 
@@ -474,6 +439,33 @@ pub enum ReceivingKeyRequest {
         /// Number of New Keys to Generate
         count: usize,
     },
+}
+
+/// Signer Checkpoint
+pub trait Checkpoint<C>: ledger::Checkpoint
+where
+    C: transfer::Configuration + ?Sized,
+{
+    ///
+    type UtxoAccumulator: Accumulator<Item = C::Utxo, Model = C::UtxoAccumulatorModel>;
+
+    ///
+    fn update_from_void_numbers(&mut self, count: usize);
+
+    ///
+    fn update_from_utxo_accumulator(&mut self, accumulator: &Self::UtxoAccumulator);
+
+    /// Computes a best-effort [`Checkpoint`] from the current `accumulator` state.
+    #[inline]
+    fn from_utxo_accumulator(accumulator: &Self::UtxoAccumulator) -> Self {
+        let mut checkpoint = Self::default();
+        checkpoint.update_from_utxo_accumulator(accumulator);
+        checkpoint
+    }
+
+    /// Prunes the `data` required for a [`sync`](Connection::sync) call against `origin` and
+    /// `checkpoint`.
+    fn prune(data: &mut SyncData<C>, origin: &Self, checkpoint: &Self) -> bool;
 }
 
 /// Signer Configuration

@@ -66,10 +66,6 @@ where
     /// `checkpoint`, dropping data that is older than the given `checkpoint`. This method should
     /// return `true` if it dropped data from `self`.
     fn prune(&mut self, origin: &T, checkpoint: &T) -> bool;
-
-    /// Updates the `origin` checkpoint to the checkpoint that would come after `self` was returned
-    /// from the ledger.
-    fn update(&self, origin: &T) -> T;
 }
 
 /// Ledger Connection Reading
