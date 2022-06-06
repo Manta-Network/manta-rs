@@ -106,12 +106,12 @@ where
     /// # Setting Up the Wallet
     ///
     /// Creating a [`Wallet`] using this method should be followed with a call to [`sync`] or
-    /// [`recover`] to retrieve the current checkpoint and balance for this [`Wallet`]. If the
+    /// [`restart`] to retrieve the current checkpoint and balance for this [`Wallet`]. If the
     /// backing `signer` is known to be already initialized, a call to [`sync`] is enough,
-    /// otherwise, a call to [`recover`] is necessary to retrieve the full balance state.
+    /// otherwise, a call to [`restart`] is necessary to retrieve the full balance state.
     ///
     /// [`sync`]: Self::sync
-    /// [`recover`]: Self::recover
+    /// [`restart`]: Self::restart
     #[inline]
     pub fn new(ledger: L, signer: S) -> Self {
         Self::new_unchecked(ledger, Default::default(), signer, Default::default())
@@ -199,7 +199,7 @@ where
     }
 
     /// Loads initial checkpoint and balance state from the signer. This method is used by
-    /// [`recover`](Self::recover) to avoid querying the ledger at genesis when a known later
+    /// [`restart`](Self::restart) to avoid querying the ledger at genesis when a known later
     /// checkpoint exists.
     #[inline]
     async fn load_initial_state(&mut self) -> Result<(), Error<C, L, S>> {
@@ -401,23 +401,16 @@ where
 )]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum InconsistencyError {
-    /// Ledger Checkpoint Inconsistency
-    ///
-    /// This error state arises when the ledger checkpoint is behind the checkpoint of the wallet.
-    /// To resolve this error, ensure that the ledger connection is correct and try again. This
-    /// error does not result in a bad wallet state.
-    LedgerCheckpoint,
-
     /// Wallet Balance Inconsistency
     ///
     /// ⚠️  This error causes the wallet system to enter an inconsistent state. ⚠️
     ///
     /// This error state arises whenever the signer requests a withdraw from the wallet that would
     /// overdraw the balance. To resolve this error, ensure that the signer connection is correct
-    /// and perform a wallet reset by resetting the checkpoint and balance state with a call to
-    /// [`reset`](Wallet::reset). If other errors continue or if there is reason to suspect that the
-    /// signer or ledger connections (or their true state) are corrupted, a full recovery is
-    /// required. See the [`recover`](Wallet::recover) method for more.
+    /// and perform a wallet restart by resetting the checkpoint and balance state with a call to
+    /// [`restart`](Wallet::restart). If other errors continue or if there is reason to suspect that
+    /// the signer or ledger connections (or their true state) are corrupted, a full recovery is
+    /// required.
     WalletBalance,
 
     /// Signer Synchronization Inconsistency
@@ -426,10 +419,9 @@ pub enum InconsistencyError {
     ///
     /// This error state arises whenever the signer gets behind the wallet checkpoint. To resolve
     /// this error, ensure that the signer connection is correct and perform a wallet reset by
-    /// resetting the checkpoint and balance state with a call to [`reset`](Wallet::reset). If other
-    /// errors continue or if there is reason to suspect that the signer or ledger connections (or
-    /// their true state) are corrupted, a full recovery is required. See the
-    /// [`recover`](Wallet::recover) method for more.
+    /// resetting the checkpoint and balance state with a call to [`restart`](Wallet::restart). If
+    /// other errors continue or if there is reason to suspect that the signer or ledger connections
+    /// (or their true state) are corrupted, a full recovery is required.
     SignerSynchronization,
 }
 
