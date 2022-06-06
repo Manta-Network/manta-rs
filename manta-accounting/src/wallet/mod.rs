@@ -117,6 +117,24 @@ where
         Self::new_unchecked(ledger, Default::default(), signer, Default::default())
     }
 
+    /// Starts a new wallet with `ledger` and `signer` connections.
+    #[inline]
+    pub async fn start(ledger: L, signer: S) -> Result<Self, Error<C, L, S>>
+    where
+        L: ledger::Read<SyncData<C>, Checkpoint = S::Checkpoint>,
+    {
+        let mut wallet = Self::new(ledger, signer);
+        wallet.restart().await?;
+        Ok(wallet)
+    }
+
+    /// Resets the state of the wallet to the default starting state.
+    #[inline]
+    fn reset_state(&mut self) {
+        self.checkpoint = Default::default();
+        self.assets = Default::default();
+    }
+
     /// Returns the current balance associated with this `id`.
     #[inline]
     pub fn balance(&self, id: AssetId) -> AssetValue {
@@ -160,20 +178,8 @@ where
         &self.checkpoint
     }
 
-    /// Resets `self` to the default checkpoint and no balance. A call to this method should be
-    /// followed by a call to [`sync`](Self::sync) to retrieve the correct checkpoint and balance.
-    ///
-    /// # Note
-    ///
-    /// This is not a "full wallet recovery" which would involve resetting the signer as well as
-    /// this wallet state. See the [`recover`](Self::recover) method for more.
-    #[inline]
-    pub fn reset(&mut self) {
-        self.checkpoint = Default::default();
-        self.assets = Default::default();
-    }
-
-    /// Performs full wallet recovery.
+    /// Restarts `self` with an empty state and performs a synchronization against the signer and
+    /// ledger to catch up to the current checkpoint and balance state.
     ///
     /// # Failure Conditions
     ///
@@ -182,20 +188,22 @@ where
     /// [`InconsistencyError`] type for more information on the kinds of errors that can occur and
     /// how to resolve them.
     #[inline]
-    pub async fn recover(&mut self) -> Result<(), Error<C, L, S>>
+    pub async fn restart(&mut self) -> Result<(), Error<C, L, S>>
     where
         L: ledger::Read<SyncData<C>, Checkpoint = S::Checkpoint>,
     {
-        self.reset();
+        self.reset_state();
         self.load_initial_state().await?;
         while self.sync_with(true).await?.is_continue() {}
         Ok(())
     }
 
-    ///
+    /// Loads initial checkpoint and balance state from the signer. This method is used by
+    /// [`recover`](Self::recover) to avoid querying the ledger at genesis when a known later
+    /// checkpoint exists.
     #[inline]
     async fn load_initial_state(&mut self) -> Result<(), Error<C, L, S>> {
-        self.perform_sync(Default::default()).await
+        self.signer_sync(Default::default()).await
     }
 
     /// Pulls data from the ledger, synchronizing the wallet and balance state. This method loops
@@ -249,7 +257,7 @@ where
             .read(&self.checkpoint)
             .await
             .map_err(Error::LedgerConnectionError)?;
-        self.perform_sync(SyncRequest {
+        self.signer_sync(SyncRequest {
             with_recovery,
             origin_checkpoint: self.checkpoint.clone(),
             data,
@@ -258,9 +266,9 @@ where
         Ok(ControlFlow::should_continue(should_continue))
     }
 
-    ///
+    /// Performs a synchronization with the signer against the given `request`.
     #[inline]
-    async fn perform_sync(
+    async fn signer_sync(
         &mut self,
         request: SyncRequest<C, S::Checkpoint>,
     ) -> Result<(), Error<C, L, S>> {
