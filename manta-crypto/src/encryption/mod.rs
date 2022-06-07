@@ -16,6 +16,5 @@
 
 //! Encryption Primitives
 
-pub mod authenticated;
 pub mod hybrid;
 pub mod symmetric;

@@ -31,7 +31,6 @@ pub mod ecc;
 pub mod encryption;
 pub mod hash;
 pub mod key;
-pub mod mac;
 pub mod merkle_tree;
 pub mod password;
 pub mod permutation;
