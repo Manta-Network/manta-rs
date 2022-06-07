@@ -209,6 +209,7 @@ pub trait Sample<D = ()>: Sized {
     /// generated from the `rng`.
     fn sample<R>(distribution: D, rng: &mut R) -> Self
     where
+        // TODO: remove the `CryptoRng` requirement
         R: CryptoRng + RngCore + ?Sized;
 
     /// Returns a random value of type `Self`, sampled according to the default distribution of
@@ -487,3 +488,42 @@ pub trait Rand: CryptoRng + RngCore {
 }
 
 impl<R> Rand for R where R: CryptoRng + RngCore + ?Sized {}
+
+/// Returns the first value from `sample` applied to `rng` that returns `Some`.
+#[inline]
+pub fn find_sample<R, T, F>(rng: &mut R, mut sample: F) -> T
+where
+    F: FnMut(&mut R) -> Option<T>,
+    R: ?Sized,
+{
+    loop {
+        if let Some(value) = sample(rng) {
+            return value;
+        }
+    }
+}
+
+/// Rejection Sampling Distribution
+///
+/// This distribution uses [`find_sample`] to convert a [`TrySample`] sampling algorithm into
+/// a [`Sample`] one by performing rejection sampling.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct RejectionSampling<D = ()>(pub D);
+
+/// Generate for all distribution `D`, [`Sample<RejectionSample<D>>`] for `$type`.  
+// Tom's Note: `impl<D, T> Sample<RejectionSampling<D>> for T` doesn't work because of conflicting implementations.
+// Until Rust supports specialization, we use macro as a workaround.
+#[macro_export]
+macro_rules! impl_rejection_sample {
+    () => {
+        #[inline]
+        fn sample<R>(distribution: RejectionSampling<D>, rng: &mut R) -> Self
+        where
+            R: ?Sized + CryptoRng + RngCore,
+        {
+            find_sample(rng, |rng| {
+                Self::try_sample(distribution.0.clone(), rng).ok()
+            })
+        }
+    };
+}

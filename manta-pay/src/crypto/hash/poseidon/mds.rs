@@ -22,7 +22,6 @@ use crate::crypto::hash::poseidon::{
 };
 use alloc::vec;
 use core::fmt::Debug;
-use futures::StreamExt;
 use manta_crypto::rand::{CryptoRng, RngCore, Sample};
 use manta_util::vec::{Vec, VecExt};
 
@@ -31,19 +30,20 @@ pub struct MaximumDistanceSeparableMatrix<F>
 where
     F: Field,
 {
+    /// The matrix for [`MaximumDistanceSeparableMatrix`]
     pub mat: SquareMatrix<F>,
 }
 
-impl<F, D> Sample for MaximumDistanceSeparableMatrix<F>
+impl<F, D> Sample<D> for MaximumDistanceSeparableMatrix<F>
 where
     F: Field,
     D: CauchyMatrixDistribution<F>,
 {
-    fn sample<R>(distribution: D, rng: &mut R) -> Self
+    fn sample<R>(distribution: D, mut rng: &mut R) -> Self
     where
         R: CryptoRng + RngCore + ?Sized,
     {
-        let mat = distribution.sample_matrix(rng);
+        let mat = distribution.sample_matrix(&mut rng);
         MaximumDistanceSeparableMatrix { mat }
     }
 }
@@ -67,24 +67,22 @@ where
     fn sample_matrix<R: RngCore>(&self, rng: &mut R) -> SquareMatrix<F>;
 }
 
-pub struct NumRangeCauchyMatrixDistribution<F>
-where
-    F: Field,
-{
+/// A constant [`CauchyMatrixDistribution`], where `x = (0..mat_size)` and `y = (mat_size..2*mat_size)`.
+pub struct NumRangeCauchyMatrixDistribution {
     /// Matrix Size
     pub mat_size: usize,
 }
 
-impl<F> CauchyMatrixDistribution<F> for NumRangeCauchyMatrixDistribution<F>
+impl<F> CauchyMatrixDistribution<F> for NumRangeCauchyMatrixDistribution
 where
-    F: Field,
+    F: Field + Clone,
 {
     fn sample_matrix<R: RngCore>(&self, rng: &mut R) -> SquareMatrix<F> {
         let _ = rng;
-        let mut xs_ys = field_range_from_zero(2 * self.mat_size);
-        /// TODO: once we made a more general CauchyMatrixGenerator in this PR, replace below with a single call to it.
-        let xs = xs_ys.by_ref().take(size).collect::<Vec<_>>();
-        let ys = xs_ys.map(|y| F::sub(F::zero(), y)).collect::<Vec<_>>();
+        let mut xs_ys = field_range_from_zero::<F>(2 * self.mat_size);
+        // TODO: once we made a more general CauchyMatrixGenerator in this PR, replace below with a single call to it.
+        let xs = xs_ys.by_ref().take(self.mat_size).collect::<Vec<_>>();
+        let ys = xs_ys.map(|y| F::sub(&F::zero(), &y)).collect::<Vec<_>>();
         let mat = SquareMatrix::new_unchecked(Matrix::new_unchecked(
             xs.iter()
                 .map(|x| {
@@ -99,10 +97,10 @@ where
 }
 
 /// Return an field iterator in 0..len
-fn field_range_from_zero<F: Field>(len: usize) -> impl Iterator<Item = F> {
-    let mut curr = Self::zero();
-    (0..len).map(move || {
-        let ret = curr;
+fn field_range_from_zero<F: Field + Clone>(len: usize) -> impl Iterator<Item = F> {
+    let mut curr = F::zero();
+    (0..len).map(move |_| {
+        let ret = curr.clone();
         curr = F::add(&curr, &F::one());
         ret
     })

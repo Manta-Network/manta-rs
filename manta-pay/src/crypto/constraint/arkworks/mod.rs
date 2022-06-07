@@ -28,6 +28,7 @@ use manta_crypto::{
         measure::Measure, Add, ConditionalSelect, Constant, ConstraintSystem, Equal, Public,
         Secret, Variable,
     },
+    impl_rejection_sample,
     rand::{CryptoRng, RngCore, Sample},
 };
 use manta_util::{
@@ -41,6 +42,7 @@ use manta_util::serde::{Deserialize, Serialize, Serializer};
 
 pub use ark_r1cs::SynthesisError;
 pub use ark_r1cs_std::{bits::boolean::Boolean, fields::fp::FpVar};
+use manta_crypto::rand::{find_sample, RejectionSampling, TrySample};
 
 pub mod codec;
 pub mod pairing;
@@ -185,6 +187,44 @@ where
     {
         Self(F::rand(rng))
     }
+}
+
+impl<F> TrySample for Fp<F>
+where
+    F: PrimeField,
+{
+    type Error = ();
+
+    fn try_sample<R>(distribution: (), rng: &mut R) -> Result<Self, Self::Error>
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        let _ = distribution;
+        // sample from bytes in big endian order. For example, 0x12345678 is sampled from [0x78, 0x56, 0x34, 0x12]
+        // This function is similar to https://github.com/arkworks-rs/algebra/blob/22f742547723f13c11621c55dec6cc6f2fc73f4b/ff/src/fields/mod.rs#L306,
+        // but instead of taking mod order, this function returns an Error if random big endian bytes is larger than modulus.
+        let num_modulus_bytes = ((F::Params::MODULUS_BITS + 7) / 8) as usize;
+
+        let mut random_bytes = (0..num_modulus_bytes).map(|_| 0u8).collect::<Vec<_>>();
+        rng.fill_bytes(&mut random_bytes);
+
+        // convert to little endian
+        random_bytes.reverse();
+
+        // convert to field element, if the bytes are in the field. Otherwise, return an error.
+        F::from_random_bytes(&random_bytes)
+            .ok_or_else(|| ())
+            .map(Self)
+    }
+}
+
+impl<D, F> Sample<RejectionSampling<D>> for Fp<F>
+where
+    D: Clone,
+    F: PrimeField,
+    Self: TrySample<D>,
+{
+    impl_rejection_sample!();
 }
 
 impl<F> SizeLimit for Fp<F>

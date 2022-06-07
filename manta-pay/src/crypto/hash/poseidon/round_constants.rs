@@ -16,7 +16,7 @@
 
 //! Round Constants Generation
 
-use crate::crypto::hash::poseidon::{lfsr::GrainLFSR, Field, FieldGeneration};
+use crate::crypto::hash::poseidon::{lfsr::LinearFeedbackShiftRegister, Field, FieldGeneration};
 use alloc::vec::Vec;
 use core::iter;
 use manta_crypto::rand::{CryptoRng, Rand, RngCore, Sample};
@@ -33,6 +33,7 @@ impl<F> AdditiveRoundConstants<F>
 where
     F: Field,
 {
+    /// Builds a new [`AdditiveRoundConstants`] from `constants`.
     pub fn new(constants: Vec<F>) -> Self {
         Self { constants }
     }
@@ -79,8 +80,8 @@ pub fn generate_lfsr(
     width: usize,
     full_rounds: usize,
     partial_rounds: usize,
-) -> GrainLFSR {
-    GrainLFSR::from_seed([
+) -> LinearFeedbackShiftRegister {
+    LinearFeedbackShiftRegister::from_seed([
         (2, 1),
         (4, 0),
         (12, modulus_bits as u128),
