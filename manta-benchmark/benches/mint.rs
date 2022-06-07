@@ -17,12 +17,12 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use manta_benchmark::payment;
 use manta_crypto::rand::{OsRng, Rand};
-use manta_pay::parameters::{generate_parameters, SEED};
+use manta_pay::parameters;
 
-pub fn prove(c: &mut Criterion) {
+fn prove(c: &mut Criterion) {
     let mut group = c.benchmark_group("bench");
     let (proving_context, _verifying_context, parameters, utxo_accumulator_model) =
-        generate_parameters(SEED).unwrap();
+        parameters::generate().unwrap();
     let mut rng = OsRng;
     group.bench_function("mint prove", |b| {
         let asset = black_box(rng.gen());
@@ -38,10 +38,10 @@ pub fn prove(c: &mut Criterion) {
     });
 }
 
-pub fn verify(c: &mut Criterion) {
+fn verify(c: &mut Criterion) {
     let mut group = c.benchmark_group("bench");
     let (proving_context, verifying_context, parameters, utxo_accumulator_model) =
-        generate_parameters(SEED).unwrap();
+        parameters::generate().unwrap();
     let mut rng = OsRng;
     let mint = black_box(payment::prove_mint(
         &proving_context.mint,

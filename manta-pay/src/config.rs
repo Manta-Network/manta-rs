@@ -20,7 +20,7 @@ use crate::crypto::{
     constraint::arkworks::{field_element_as_bytes, groth16, Boolean, Fp, FpVar, R1CS},
     ecc,
     encryption::aes::{self, FixedNonceAesGcm},
-    hash::poseidon,
+    hash::poseidon::compat as poseidon,
     key::Blake2sKdf,
 };
 use alloc::vec::Vec;
@@ -97,6 +97,9 @@ pub type Proof = groth16::Proof<PairingCurve>;
 /// Proof System
 pub type ProofSystem = groth16::Groth16<PairingCurve>;
 
+/// Proof System Error
+pub type ProofSystemError = groth16::Error;
+
 /// Poseidon Specification
 pub struct PoseidonSpec<const ARITY: usize>;
 
@@ -109,7 +112,7 @@ pub type Poseidon2Var = poseidon::Hasher<PoseidonSpec<2>, 2, Compiler>;
 impl poseidon::arkworks::Specification for PoseidonSpec<2> {
     type Field = ConstraintField;
     const FULL_ROUNDS: usize = 8;
-    const PARTIAL_ROUNDS: usize = 55;
+    const PARTIAL_ROUNDS: usize = 57;
     const SBOX_EXPONENT: u64 = 5;
 }
 
@@ -122,7 +125,7 @@ pub type Poseidon4Var = poseidon::Hasher<PoseidonSpec<4>, 4, Compiler>;
 impl poseidon::arkworks::Specification for PoseidonSpec<4> {
     type Field = ConstraintField;
     const FULL_ROUNDS: usize = 8;
-    const PARTIAL_ROUNDS: usize = 56;
+    const PARTIAL_ROUNDS: usize = 60;
     const SBOX_EXPONENT: u64 = 5;
 }
 

@@ -19,10 +19,7 @@
 // TODO: Deduplicate the per-circuit proving context and verifying context serialization code.
 // TODO: Print some statistics about the parameters and circuits and into a stats file as well.
 
-use manta_pay::{
-    config::Parameters,
-    parameters::{generate_parameters, SEED},
-};
+use manta_pay::{config::Parameters, parameters};
 use manta_util::codec::{Encode, IoWriter};
 use std::{
     env,
@@ -31,7 +28,8 @@ use std::{
     path::PathBuf,
 };
 
-/// Generates the parameters using the [`SEED`] and saves them to the filesystem.
+/// Generates the parameters using the [`SEED`](manta_pay::parameters::SEED) and saves them to the
+/// filesystem.
 #[inline]
 pub fn main() -> io::Result<()> {
     let target_dir = env::args()
@@ -46,7 +44,7 @@ pub fn main() -> io::Result<()> {
     fs::create_dir_all(&target_dir)?;
 
     let (proving_context, verifying_context, parameters, utxo_accumulator_model) =
-        generate_parameters(SEED).unwrap();
+        parameters::generate().unwrap();
 
     let Parameters {
         note_encryption_scheme,
