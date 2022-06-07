@@ -20,7 +20,7 @@ use manta_pay::{
     config::{
         MultiProvingContext, MultiVerifyingContext, Parameters, TransferPost, UtxoAccumulatorModel,
     },
-    parameters::{generate_parameters, SEED},
+    parameters,
 };
 use wasm_bindgen::prelude::wasm_bindgen;
 
@@ -40,7 +40,7 @@ impl Context {
     #[wasm_bindgen(constructor)]
     pub fn new() -> Self {
         let (proving_context, verifying_context, parameters, utxo_accumulator_model) =
-            generate_parameters(SEED).unwrap();
+            parameters::generate().unwrap();
         Self {
             proving_context,
             verifying_context,
