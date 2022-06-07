@@ -17,12 +17,11 @@
 //! Generate Parameters and Proving/Verifying Contexts
 
 use crate::config::{
-    Config, FullParameters, Mint, MultiProvingContext, MultiVerifyingContext, Parameters,
-    PrivateTransfer, Reclaim, UtxoAccumulatorModel,
+    FullParameters, Mint, MultiProvingContext, MultiVerifyingContext, Parameters, PrivateTransfer,
+    ProofSystemError, Reclaim, UtxoAccumulatorModel,
 };
-use manta_accounting::transfer::ProofSystemError;
 use manta_crypto::rand::{Rand, SeedableRng};
-use rand_chacha::ChaCha20Rng; // TODO: Should we use ChaCha20Rng here?
+use rand_chacha::ChaCha20Rng;
 
 /// Parameter Generation Seed
 ///
@@ -39,9 +38,9 @@ pub const SEED: [u8; 32] = [
     26, 27, 28, 29, 30, 31,
 ];
 
-/// Generates the protocol parameters using `seed`.
+/// Generates the protocol parameters starting from `seed`.
 #[inline]
-pub fn generate_parameters(
+pub fn generate_from_seed(
     seed: [u8; 32],
 ) -> Result<
     (
@@ -50,7 +49,7 @@ pub fn generate_parameters(
         Parameters,
         UtxoAccumulatorModel,
     ),
-    ProofSystemError<Config>,
+    ProofSystemError,
 > {
     let mut rng = ChaCha20Rng::from_seed(seed);
     let parameters = rng.gen();
@@ -76,4 +75,18 @@ pub fn generate_parameters(
         parameters,
         utxo_accumulator_model,
     ))
+}
+
+/// Generates the protocol parameters starting from [`SEED`].
+#[inline]
+pub fn generate() -> Result<
+    (
+        MultiProvingContext,
+        MultiVerifyingContext,
+        Parameters,
+        UtxoAccumulatorModel,
+    ),
+    ProofSystemError,
+> {
+    generate_from_seed(SEED)
 }

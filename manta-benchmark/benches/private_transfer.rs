@@ -17,13 +17,12 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use manta_benchmark::payment::{self, assert_valid_proof};
 use manta_crypto::rand::OsRng;
-use manta_pay::parameters::{generate_parameters, SEED};
+use manta_pay::parameters;
 
 fn prove(c: &mut Criterion) {
     let mut group = c.benchmark_group("bench");
     let mut rng = OsRng;
-    let (proving_context, _, parameters, utxo_accumulator_model) =
-        generate_parameters(SEED).unwrap();
+    let (proving_context, _, parameters, utxo_accumulator_model) = parameters::generate().unwrap();
     group.bench_function("private transfer prove", |b| {
         b.iter(|| {
             let _ = payment::prove_private_transfer(
@@ -40,7 +39,7 @@ fn verify(c: &mut Criterion) {
     let mut group = c.benchmark_group("bench");
     let mut rng = OsRng;
     let (proving_context, verifying_context, parameters, utxo_accumulator_model) =
-        generate_parameters(SEED).unwrap();
+        parameters::generate().unwrap();
     let private_transfer = black_box(payment::prove_private_transfer(
         &proving_context,
         &parameters,
