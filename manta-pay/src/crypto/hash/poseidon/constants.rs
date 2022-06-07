@@ -276,7 +276,6 @@ pub mod security {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::config::PoseidonSpec;
 
     /// Tests if the constants match the known constant values.
     #[test]
