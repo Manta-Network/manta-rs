@@ -140,4 +140,6 @@ ws_stream_wasm = { version = "0.7.3", optional = true, default-features = false 
 [dev-dependencies]
 manta-crypto = { path = "../manta-crypto", default-features = false, features = ["getrandom"] }
 manta-pay = { path = ".", default-features = false, features = ["groth16", "scale", "scale-std", "std", "test"] }
+manta-sdk = { git = "https://github.com/manta-network/sdk.git", default-features = false, features = ["download"]}
+anyhow = "1.0.55"
 tempfile = { version = "3.3.0", default-features = false }
