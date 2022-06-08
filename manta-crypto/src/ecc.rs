@@ -187,7 +187,8 @@ pub struct PreprocessedScalarMulTable<G, const N: usize> {
 }
 
 impl<G, const N: usize> PreprocessedScalarMulTable<G, N> {
-    /// Builds a new [`PreprocessedScalarMulTable`] collection from `base`, such that `table[i] = 2^i * base`.
+    /// Builds a new [`PreprocessedScalarMulTable`] collection from `base`, such that
+    /// `table[i] = 2^i * base`.
     #[inline]
     pub fn from_base<COM>(mut base: G, compiler: &mut COM) -> Self
     where

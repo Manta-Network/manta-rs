@@ -29,20 +29,38 @@ pub trait CommitmentScheme<COM = ()> {
     /// Output Type
     type Output;
 
-    /// Commits to the `input` value using `randomness` inside the `compiler`.
-    fn commit_with(
+    /// Commits to the `input` value using `randomness`.
+    fn commit(
         &self,
         randomness: &Self::Randomness,
         input: &Self::Input,
         compiler: &mut COM,
     ) -> Self::Output;
+}
 
-    /// Commits to the `input` value using `randomness`
-    #[inline]
-    fn commit(&self, randomness: &Self::Randomness, input: &Self::Input) -> Self::Output
-    where
-        COM: Native,
-    {
-        self.commit_with(randomness, input, &mut COM::compiler())
-    }
+/// Security Assumptions
+pub mod security {
+    /// Hiding Security Property
+    pub trait Hiding {}
+
+    /// Computational Hiding Security Property
+    pub trait ComputationalHiding: Hiding {}
+
+    /// Statistical Hiding Security Property
+    pub trait StatisticalHiding: Hiding {}
+
+    /// Perfect Hiding Security Property
+    pub trait PerfectHiding: ComputationalHiding + StatisticalHiding {}
+
+    /// Binding Security Property
+    pub trait Binding {}
+
+    /// Computational Binding Security Property
+    pub trait ComputationalBinding: Binding {}
+
+    /// Statistical Binding Security Property
+    pub trait StatisticalBinding: Binding {}
+
+    /// Perfect Binding Security Property
+    pub trait PerfectBinding: ComputationalBinding + StatisticalBinding {}
 }

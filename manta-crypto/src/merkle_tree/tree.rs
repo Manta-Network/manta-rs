@@ -742,7 +742,7 @@ where
     type Verification = bool;
 
     #[inline]
-    fn verify_in(
+    fn verify(
         &self,
         item: &Self::Item,
         witness: &Self::Witness,
@@ -766,7 +766,7 @@ where
     type Verification = COM::Bool;
 
     #[inline]
-    fn verify_in(
+    fn verify(
         &self,
         item: &Self::Item,
         witness: &Self::Witness,

@@ -25,6 +25,7 @@
 extern crate alloc;
 
 pub mod accumulator;
+pub mod algebra;
 pub mod commitment;
 pub mod constraint;
 pub mod ecc;

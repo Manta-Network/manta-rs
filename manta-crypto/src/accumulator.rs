@@ -35,8 +35,8 @@ pub trait Model<COM = ()> {
     type Verification;
 
     /// Verifies that `item` is stored in a known accumulator with accumulated `output` and
-    /// membership `witness` inside the given `compiler`.
-    fn verify_in(
+    /// membership `witness`.
+    fn verify(
         &self,
         item: &Self::Item,
         witness: &Self::Witness,
@@ -44,23 +44,12 @@ pub trait Model<COM = ()> {
         compiler: &mut COM,
     ) -> Self::Verification;
 
-    /// Verifies that `item` is stored in a known accumulator with accumulated `output` and
-    /// membership `witness`.
-    #[inline]
-    fn verify(
-        &self,
-        item: &Self::Item,
-        witness: &Self::Witness,
-        output: &Self::Output,
-    ) -> Self::Verification
-    where
-        COM: Native,
-    {
-        self.verify_in(item, witness, output, &mut COM::compiler())
-    }
-
-    /// Asserts that the verification of the storage of `item` in the known accumulator is valid
-    /// inside the `compiler`.
+    /// Asserts that the verification of the storage of `item` in the known accumulator is valid.
+    ///
+    /// # Optimization
+    ///
+    /// In compilers where assertions for more complex statements other than booleans being `true`,
+    /// this function can provide an optimization path to reduce the cost of assertion.
     #[inline]
     fn assert_valid(
         &self,
@@ -71,7 +60,7 @@ pub trait Model<COM = ()> {
     ) where
         COM: ConstraintSystem<Bool = Self::Verification>,
     {
-        let is_valid_proof = self.verify_in(item, witness, output, compiler);
+        let is_valid_proof = self.verify(item, witness, output, compiler);
         compiler.assert(is_valid_proof)
     }
 }
@@ -233,23 +222,13 @@ where
         self.output
     }
 
-    /// Verifies that `item` is stored in a known accumulator using `model` inside the `compiler`.
-    #[inline]
-    pub fn verify_in(&self, model: &M, item: &M::Item, compiler: &mut COM) -> M::Verification {
-        model.verify_in(item, &self.witness, &self.output, compiler)
-    }
-
     /// Verifies that `item` is stored in a known accumulator using `model`.
     #[inline]
-    pub fn verify(&self, model: &M, item: &M::Item) -> M::Verification
-    where
-        COM: Native,
-    {
-        model.verify(item, &self.witness, &self.output)
+    pub fn verify(&self, model: &M, item: &M::Item, compiler: &mut COM) -> M::Verification {
+        model.verify(item, &self.witness, &self.output, compiler)
     }
 
-    /// Asserts that the verification of the storage of `item` in the known accumulator is valid
-    /// inside the `compiler`.
+    /// Asserts that the verification of the storage of `item` in the known accumulator is valid.
     #[inline]
     pub fn assert_valid(&self, model: &M, item: &M::Item, compiler: &mut COM)
     where
@@ -350,7 +329,7 @@ pub mod test {
         );
         if let Some(proof) = accumulator.prove(item) {
             assert!(
-                proof.verify(accumulator.model(), item),
+                proof.verify(accumulator.model(), item, &mut ()),
                 "Invalid proof returned for inserted item."
             );
             proof.into_output()
