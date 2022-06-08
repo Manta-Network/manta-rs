@@ -16,9 +16,10 @@
 
 //! Commitment Schemes
 
-use crate::constraint::Native;
-
 /// Commitment Scheme
+///
+/// See [`security`] for security properties that should be attached to [`CommitmentScheme`]
+/// instances.
 pub trait CommitmentScheme<COM = ()> {
     /// Randomness Type
     type Randomness;
@@ -39,20 +40,17 @@ pub trait CommitmentScheme<COM = ()> {
 }
 
 /// Security Assumptions
+///
+/// The following outline some standard security assumptions for commitment schemes. These security
+/// properties can be attached to general types that don't exactly conform to the
+/// [`CommitmentScheme`] `trait` to describe the same cryptographic assumptions or guarantees given
+/// by the type.
 pub mod security {
-    /// Hiding Security Property
-    pub trait Hiding {}
-
-    /// Computational Hiding Security Property
-    pub trait ComputationalHiding: Hiding {}
-
-    /// Statistical Hiding Security Property
-    pub trait StatisticalHiding: Hiding {}
-
-    /// Perfect Hiding Security Property
-    pub trait PerfectHiding: ComputationalHiding + StatisticalHiding {}
-
     /// Binding Security Property
+    ///
+    /// This is a generic binding assumption marker whenever one is unsure which kind of binding
+    /// security to require or use. See [`ComputationalBinding`], [`StatisticalBinding`], and
+    /// [`PerfectBinding`] for more details on concrete security assumptions.
     pub trait Binding {}
 
     /// Computational Binding Security Property
@@ -63,4 +61,20 @@ pub mod security {
 
     /// Perfect Binding Security Property
     pub trait PerfectBinding: ComputationalBinding + StatisticalBinding {}
+
+    /// Hiding Security Property
+    ///
+    /// This is a generic hiding assumption marker whenever one is unsure which kind of hiding
+    /// security to require or use. See [`ComputationalHiding`], [`StatisticalHiding`], and
+    /// [`PerfectHiding`] for more details on concrete security assumptions.
+    pub trait Hiding {}
+
+    /// Computational Hiding Security Property
+    pub trait ComputationalHiding: Hiding {}
+
+    /// Statistical Hiding Security Property
+    pub trait StatisticalHiding: Hiding {}
+
+    /// Perfect Hiding Security Property
+    pub trait PerfectHiding: ComputationalHiding + StatisticalHiding {}
 }

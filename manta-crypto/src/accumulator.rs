@@ -16,7 +16,7 @@
 
 //! Dynamic Cryptographic Accumulators
 
-use crate::constraint::{ConstraintSystem, Native};
+use crate::constraint::{Assert, HasBool};
 
 /// Accumulator Membership Model
 pub trait Model<COM = ()> {
@@ -31,7 +31,8 @@ pub trait Model<COM = ()> {
 
     /// Verification Type
     ///
-    /// Typically this is either [`bool`], a [`Result`] type, or a circuit boolean variable.
+    /// This type is typically either [`bool`], a [`Result`] type, or a compiler variable
+    /// representing either of those concrete types.
     type Verification;
 
     /// Verifies that `item` is stored in a known accumulator with accumulated `output` and
@@ -58,10 +59,10 @@ pub trait Model<COM = ()> {
         output: &Self::Output,
         compiler: &mut COM,
     ) where
-        COM: ConstraintSystem<Bool = Self::Verification>,
+        COM: Assert + HasBool<Bool = Self::Verification>,
     {
         let is_valid_proof = self.verify(item, witness, output, compiler);
-        compiler.assert(is_valid_proof)
+        compiler.assert(&is_valid_proof)
     }
 }
 
@@ -232,7 +233,7 @@ where
     #[inline]
     pub fn assert_valid(&self, model: &M, item: &M::Item, compiler: &mut COM)
     where
-        COM: ConstraintSystem<Bool = M::Verification>,
+        COM: Assert + HasBool<Bool = M::Verification>,
     {
         model.assert_valid(item, &self.witness, &self.output, compiler)
     }

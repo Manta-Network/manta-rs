@@ -23,7 +23,7 @@
 //        vector by the wrong amount or in the wrong order.
 
 use crate::rand::{CryptoRng, RngCore};
-use core::{fmt::Debug, hash::Hash, marker::PhantomData, ops};
+use core::{cmp, fmt::Debug, hash::Hash, marker::PhantomData, ops};
 use manta_util::{create_seal, seal};
 
 create_seal! {}
@@ -219,9 +219,9 @@ impl<COM> Allocator for COM where COM: ?Sized {}
 
 /// Native Compiler Marker Trait
 ///
-/// This trait is only implemented for `()`, the only native compiler.
+/// This `trait` is only implemented for `()`, the default native compiler.
 pub trait Native: sealed::Sealed {
-    /// Returns the native compiler.
+    /// Returns an instance of the native compiler.
     fn compiler() -> Self;
 }
 
@@ -232,8 +232,61 @@ impl Native for () {
     fn compiler() -> Self {}
 }
 
+/// Boolean Type
+///
+/// This `trait` should be implemented for compilers that offer a boolean type equivalent to `bool`.
+pub trait HasBool {
+    /// Boolean Type
+    ///
+    /// This type should have a notion of `true` and `false` and negation.
+    type Bool: Not<Self, Output = Self::Bool>;
+}
+
+impl HasBool for () {
+    type Bool = bool;
+}
+
+/// Assertion
+pub trait Assert: HasBool {
+    /// Asserts that `b` reduces to `true`.
+    fn assert(&mut self, b: &Self::Bool);
+}
+
+impl Assert for () {
+    #[inline]
+    fn assert(&mut self, b: &Self::Bool) {
+        // TODO: USe `dbg!` macro here to get more info, but add a feature-flag for this.
+        assert!(b)
+    }
+}
+
+/// Equality Assertion
+pub trait AssertEq<T, Rhs = T>: Assert
+where
+    T: PartialEq<Rhs, Self>,
+{
+    /// Asserts that `lhs` and `rhs` are equal.
+    #[inline]
+    fn assert_eq(&mut self, lhs: &T, rhs: &Rhs) {
+        let are_equal = lhs.eq(rhs, self);
+        self.assert(&are_equal)
+    }
+}
+
+impl<T, Rhs> AssertEq<T, Rhs> for ()
+where
+    T: cmp::PartialEq<Rhs> + Debug,
+    Rhs: Debug,
+{
+    #[inline]
+    fn assert_eq(&mut self, lhs: &T, rhs: &Rhs) {
+        assert_eq!(lhs, rhs)
+    }
+}
+
 /// Constraint System
 pub trait ConstraintSystem {
+    /* TODO:
     /// Boolean Variable Type
     type Bool;
 
@@ -313,48 +366,107 @@ pub trait ConstraintSystem {
     {
         V::swap_in_place(bit, lhs, rhs, self)
     }
+    */
 }
 
-/// Equality Trait
-pub trait Equal<COM>
+///
+pub trait Eq<COM = ()>: PartialEq<Self, COM>
 where
-    COM: ConstraintSystem + ?Sized,
+    COM: HasBool,
 {
-    /// Generates a boolean that represents the fact that `lhs` and `rhs` may be equal.
-    fn eq(lhs: &Self, rhs: &Self, compiler: &mut COM) -> COM::Bool;
+}
 
-    /// Asserts that `lhs` and `rhs` are equal.
-    #[inline]
-    fn assert_eq(lhs: &Self, rhs: &Self, compiler: &mut COM) {
-        let boolean = Self::eq(lhs, rhs, compiler);
-        compiler.assert(boolean);
-    }
+impl<T> Eq for T where T: cmp::Eq {}
 
-    /// Asserts that all the elements in `iter` are equal to some `base` element.
-    #[inline]
-    fn assert_all_eq_to_base<'t, I>(base: &'t Self, iter: I, compiler: &mut COM)
-    where
-        I: IntoIterator<Item = &'t Self>,
-    {
-        for item in iter {
-            Self::assert_eq(base, item, compiler);
-        }
-    }
+///
+pub trait Not<COM = ()>
+where
+    COM: ?Sized,
+{
+    ///
+    type Output;
 
-    /// Asserts that all the elements in `iter` are equal.
+    ///
+    fn not(self, compiler: &mut COM) -> Self::Output;
+}
+
+impl<T> Not for T
+where
+    T: ops::Not,
+{
+    type Output = T::Output;
+
     #[inline]
-    fn assert_all_eq<'t, I>(iter: I, compiler: &mut COM)
-    where
-        Self: 't,
-        I: IntoIterator<Item = &'t Self>,
-    {
-        let mut iter = iter.into_iter();
-        if let Some(base) = iter.next() {
-            Self::assert_all_eq_to_base(base, iter, compiler);
-        }
+    fn not(self, _: &mut ()) -> Self::Output {
+        self.not()
     }
 }
 
+///
+pub trait PartialEq<Rhs = Self, COM = ()>
+where
+    Rhs: ?Sized,
+    COM: HasBool + ?Sized,
+{
+    ///
+    fn eq(&self, rhs: &Rhs, compiler: &mut COM) -> COM::Bool;
+
+    ///
+    #[inline]
+    fn ne(&self, other: &Rhs, compiler: &mut COM) -> COM::Bool {
+        self.eq(other, compiler).not(compiler)
+    }
+
+    /* TODO:
+       /// Asserts that `lhs` and `rhs` are equal.
+       #[inline]
+       fn assert_eq(lhs: &Self, rhs: &Self, compiler: &mut COM) {
+           let boolean = lhs.eq(rhs, compiler);
+           compiler.assert(boolean);
+       }
+
+       /// Asserts that all the elements in `iter` are equal to some `base` element.
+       #[inline]
+       fn assert_all_eq_to_base<'t, I>(base: &'t Self, iter: I, compiler: &mut COM)
+       where
+           I: IntoIterator<Item = &'t Self>,
+       {
+           for item in iter {
+               Self::assert_eq(base, item, compiler);
+           }
+       }
+
+       /// Asserts that all the elements in `iter` are equal.
+       #[inline]
+       fn assert_all_eq<'t, I>(iter: I, compiler: &mut COM)
+       where
+           Self: 't,
+           I: IntoIterator<Item = &'t Self>,
+       {
+           let mut iter = iter.into_iter();
+           if let Some(base) = iter.next() {
+               Self::assert_all_eq_to_base(base, iter, compiler);
+           }
+       }
+    */
+}
+
+impl<T, Rhs> PartialEq<Rhs> for T
+where
+    T: cmp::PartialEq<Rhs>,
+{
+    #[inline]
+    fn eq(&self, rhs: &Rhs, _: &mut ()) -> bool {
+        self.eq(rhs)
+    }
+
+    #[inline]
+    fn ne(&self, rhs: &Rhs, _: &mut ()) -> bool {
+        self.ne(rhs)
+    }
+}
+
+/* TODO:
 /// Conditional Selection
 pub trait ConditionalSelect<COM>
 where
@@ -386,6 +498,7 @@ where
         *rhs = swapped_rhs;
     }
 }
+*/
 
 /// Addition
 pub trait Add<COM>
@@ -427,8 +540,11 @@ where
 
 /// Proof System
 pub trait ProofSystem {
-    /// Constraint System
-    type ConstraintSystem: ConstraintSystem;
+    /// Context Compiler
+    type ContextCompiler;
+
+    /// Proof Compiler
+    type ProofCompiler;
 
     /// Public Parameters Type
     type PublicParameters;
@@ -448,27 +564,29 @@ pub trait ProofSystem {
     /// Error Type
     type Error;
 
-    /// Returns a constraint system which is setup to build proving and verifying contexts.
+    /// Returns a compiler which is setup to build proving and verifying contexts.
     #[must_use]
-    fn for_unknown() -> Self::ConstraintSystem;
+    fn context_compiler() -> Self::ContextCompiler;
 
-    /// Returns a constraint system which is setup to build a proof.
+    /// Returns a compiler which is setup to build a proof.
     #[must_use]
-    fn for_known() -> Self::ConstraintSystem;
+    fn proof_compiler() -> Self::ProofCompiler;
 
-    /// Returns proving and verifying contexts for the constraints contained in `compiler`.
+    /// Returns proving and verifying contexts for the constraints contained in `compiler` using
+    /// `pubpublic_parameters`.
     fn generate_context<R>(
         public_parameters: &Self::PublicParameters,
-        compiler: Self::ConstraintSystem,
+        compiler: &Self::ContextCompiler,
         rng: &mut R,
     ) -> Result<(Self::ProvingContext, Self::VerifyingContext), Self::Error>
     where
         R: CryptoRng + RngCore + ?Sized;
 
-    /// Returns a proof that the constraint system `compiler` is consistent.
+    /// Returns a proof that the constraint system encoded in `compiler` is consistent with the
+    /// proving `context`.
     fn prove<R>(
         context: &Self::ProvingContext,
-        compiler: Self::ConstraintSystem,
+        compiler: &Self::ProofCompiler,
         rng: &mut R,
     ) -> Result<Self::Proof, Self::Error>
     where

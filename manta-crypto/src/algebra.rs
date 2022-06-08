@@ -40,7 +40,8 @@ pub trait Group<COM = ()> {
 /// Security Assumptions
 ///
 /// The following outline some standard security assumptions for cryptographic protocols built on
-/// [`Group`] types.
+/// [`Group`] types. These security properties can be attached to instances of [`Group`] which we
+/// assume to have these hardness properties.
 pub mod security {
     /// Discrete Logarithm Hardness Assumption
     ///
@@ -55,7 +56,7 @@ pub mod security {
     ///     y == g.mul(f(g, y))
     /// }
     /// ```
-    pub trait DL {}
+    pub trait DiscreteLogarithmHardness {}
 
     /// Computational Diffie-Hellman Hardness Assumption
     ///
@@ -70,7 +71,7 @@ pub mod security {
     ///     f(g, g.mul(a), g.mul(b)) == g.mul(a.mul(b))
     /// }
     /// ```
-    pub trait CDH: DL {}
+    pub trait ComputationalDiffieHellmanHardness: DiscreteLogarithmHardness {}
 
     /// Decisional Diffie-Hellman Hardness Assumption
     ///
@@ -87,5 +88,5 @@ pub mod security {
     ///     (g.mul(a), g.mul(b), g.mul(c))
     /// }
     /// ```
-    pub trait DDH: CDH {}
+    pub trait DecisionalDiffieHellmanHardness: ComputationalDiffieHellmanHardness {}
 }
