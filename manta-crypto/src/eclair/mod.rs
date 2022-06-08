@@ -14,27 +14,37 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Cryptographic Primitives Library
+//! **_ECLAIR_**: Embedded Circuit Language And Intermediate Representation
+//!
+//! # Compilers
+//!
+//! ...
+//!
+//! # Execution Environments
+//!
+//! ...
 
-#![cfg_attr(not(feature = "std"), no_std)]
-#![cfg_attr(doc_cfg, feature(doc_cfg))]
-#![forbid(rustdoc::broken_intra_doc_links)]
-#![forbid(missing_docs)]
+use manta_util::{create_seal, seal};
 
-#[cfg(feature = "alloc")]
-extern crate alloc;
+pub mod alloc;
+pub mod cmp;
+pub mod execution;
+pub mod measure;
+pub mod ops;
 
-pub mod accumulator;
-pub mod algebra;
-pub mod commitment;
-pub mod constraint;
-pub mod ecc;
-pub mod eclair;
-// TODO: pub mod encryption;
-pub mod hash;
-pub mod key;
-// TODO: pub mod merkle_tree;
-pub mod password;
-pub mod permutation;
-pub mod rand;
-pub mod signature;
+create_seal! {}
+
+/// Native Compiler Marker Trait
+///
+/// This `trait` is only implemented for `()`, the default native compiler.
+pub trait Native: sealed::Sealed {
+    /// Returns an instance of the native compiler.
+    fn compiler() -> Self;
+}
+
+seal! { () }
+
+impl Native for () {
+    #[inline]
+    fn compiler() -> Self {}
+}
