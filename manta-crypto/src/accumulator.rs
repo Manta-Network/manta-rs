@@ -16,7 +16,7 @@
 
 //! Dynamic Cryptographic Accumulators
 
-use crate::constraint::{Assert, HasBool};
+use crate::constraint::{Assert, Has};
 
 /// Accumulator Membership Model
 pub trait Model<COM = ()> {
@@ -59,7 +59,7 @@ pub trait Model<COM = ()> {
         output: &Self::Output,
         compiler: &mut COM,
     ) where
-        COM: Assert + HasBool<Bool = Self::Verification>,
+        COM: Assert + Has<bool, Type = Self::Verification>,
     {
         let is_valid_proof = self.verify(item, witness, output, compiler);
         compiler.assert(&is_valid_proof)
@@ -233,7 +233,7 @@ where
     #[inline]
     pub fn assert_valid(&self, model: &M, item: &M::Item, compiler: &mut COM)
     where
-        COM: Assert + HasBool<Bool = M::Verification>,
+        COM: Assert + Has<bool, Type = M::Verification>,
     {
         model.assert_valid(item, &self.witness, &self.output, compiler)
     }

@@ -17,14 +17,14 @@
 //! Compiler Allocation
 //!
 //! When building programs, we may need to transfer values across compilers, say from a native
-//! compiler into a circuit-building compiler. This lifing of values into another compiler is known
+//! compiler into a circuit-building compiler. This lifting of values into another compiler is known
 //! as "allocation". The two `trait`s responsible for this allocation scheme are [`Constant`] and
 //! [`Variable`]. See their documentation for more.
 //!
 //! # Note on Terminology
 //!
 //! Allocation does not necessarily refer to allocation of memory nor the simulation of memory-based
-//! abstractions inside of compilers, like heap allocation. Allocation only refers to lifing
+//! abstractions inside of compilers, like heap allocation. Allocation only refers to lifting
 //! constants and variables from one compiler to another.
 
 use core::marker::PhantomData;

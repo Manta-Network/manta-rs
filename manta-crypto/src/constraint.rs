@@ -29,129 +29,11 @@ pub use crate::eclair::{
         mode::{self, Derived, Public, Secret},
         Allocate, Allocator, Const, Constant, Var, Variable,
     },
-    cmp::{Eq, HasBool, PartialEq},
-    ops::{Add, Assert, AssertEq, Not, Sub},
-    Native,
+    bool::{Assert, AssertEq, Bool, ConditionalSelect, ConditionalSwap},
+    cmp::{Eq, PartialEq},
+    ops::{Add, Not, Sub},
+    Has, Native,
 };
-
-/// Constraint System
-pub trait ConstraintSystem {
-    /* TODO:
-    /// Boolean Variable Type
-    type Bool;
-
-    /// Asserts that `b == 1`.
-    fn assert(&mut self, b: Self::Bool);
-
-    /// Asserts that all the booleans in `iter` are equal to `1`.
-    #[inline]
-    fn assert_all<I>(&mut self, iter: I)
-    where
-        I: IntoIterator<Item = Self::Bool>,
-    {
-        iter.into_iter().for_each(move |b| self.assert(b));
-    }
-
-    /// Generates a boolean that represents the fact that `lhs` and `rhs` may be equal.
-    #[inline]
-    fn eq<V>(&mut self, lhs: &V, rhs: &V) -> Self::Bool
-    where
-        V: Equal<Self>,
-    {
-        V::eq(lhs, rhs, self)
-    }
-
-    /// Asserts that `lhs` and `rhs` are equal.
-    #[inline]
-    fn assert_eq<V>(&mut self, lhs: &V, rhs: &V)
-    where
-        V: Equal<Self>,
-    {
-        V::assert_eq(lhs, rhs, self);
-    }
-
-    /// Asserts that all the elements in `iter` are equal to some `base` element.
-    #[inline]
-    fn assert_all_eq_to_base<'t, V, I>(&mut self, base: &'t V, iter: I)
-    where
-        V: 't + Equal<Self>,
-        I: IntoIterator<Item = &'t V>,
-    {
-        V::assert_all_eq_to_base(base, iter, self);
-    }
-
-    /// Asserts that all the elements in `iter` are equal.
-    #[inline]
-    fn assert_all_eq<'t, V, I>(&mut self, iter: I)
-    where
-        V: 't + Equal<Self>,
-        I: IntoIterator<Item = &'t V>,
-    {
-        V::assert_all_eq(iter, self);
-    }
-
-    /// Selects `true_value` when `bit == 1` and `false_value` when `bit == 0`.
-    #[inline]
-    fn conditional_select<V>(&mut self, bit: &Self::Bool, true_value: &V, false_value: &V) -> V
-    where
-        V: ConditionalSelect<Self>,
-    {
-        V::select(bit, true_value, false_value, self)
-    }
-
-    /// Swaps `lhs` and `rhs` if `bit == 1`.
-    #[inline]
-    fn conditional_swap<V>(&mut self, bit: &Self::Bool, lhs: &V, rhs: &V) -> (V, V)
-    where
-        V: ConditionalSelect<Self>,
-    {
-        V::swap(bit, lhs, rhs, self)
-    }
-
-    /// Swaps `lhs` and `rhs` in-place if `bit == 1`.
-    #[inline]
-    fn conditional_swap_in_place<V>(&mut self, bit: &Self::Bool, lhs: &mut V, rhs: &mut V)
-    where
-        V: ConditionalSelect<Self>,
-    {
-        V::swap_in_place(bit, lhs, rhs, self)
-    }
-    */
-}
-
-/* TODO:
-/// Conditional Selection
-pub trait ConditionalSelect<COM>
-where
-    COM: ConstraintSystem + ?Sized,
-{
-    /// Selects `true_value` when `bit == 1` and `false_value` when `bit == 0`.
-    fn select(bit: &COM::Bool, true_value: &Self, false_value: &Self, compiler: &mut COM) -> Self;
-
-    /// Swaps `lhs` and `rhs` if `bit == 1`.
-    #[inline]
-    fn swap(bit: &COM::Bool, lhs: &Self, rhs: &Self, compiler: &mut COM) -> (Self, Self)
-    where
-        Self: Sized,
-    {
-        (
-            Self::select(bit, rhs, lhs, compiler),
-            Self::select(bit, lhs, rhs, compiler),
-        )
-    }
-
-    /// Swaps `lhs` and `rhs` in-place if `bit == 1`.
-    #[inline]
-    fn swap_in_place(bit: &COM::Bool, lhs: &mut Self, rhs: &mut Self, compiler: &mut COM)
-    where
-        Self: Sized,
-    {
-        let (swapped_lhs, swapped_rhs) = Self::swap(bit, lhs, rhs, compiler);
-        *lhs = swapped_lhs;
-        *rhs = swapped_rhs;
-    }
-}
-*/
 
 /// Proof System
 pub trait ProofSystem {
@@ -188,8 +70,8 @@ pub trait ProofSystem {
     fn proof_compiler() -> Self::ProofCompiler;
 
     /// Returns proving and verifying contexts for the constraints contained in `compiler` using
-    /// `pubpublic_parameters`.
-    fn generate_context<R>(
+    /// `public_parameters`.
+    fn compile<R>(
         public_parameters: &Self::PublicParameters,
         compiler: &Self::ContextCompiler,
         rng: &mut R,

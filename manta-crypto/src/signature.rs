@@ -152,7 +152,7 @@ pub mod schnorr {
     use super::*;
     use crate::{
         algebra::{security::DiscreteLogarithmHardness, Group, Scalar},
-        constraint::{HasBool, PartialEq},
+        constraint::{Bool, Has, PartialEq},
         hash::security::PreimageResistance,
     };
     use core::{cmp, fmt::Debug, hash::Hash, marker::PhantomData};
@@ -283,9 +283,9 @@ pub mod schnorr {
     where
         G: DiscreteLogarithmHardness + Group<COM> + PartialEq<G, COM>,
         H: HashFunction<G, COM>,
-        COM: HasBool,
+        COM: Has<bool>,
     {
-        type Verification = COM::Bool;
+        type Verification = Bool<COM>;
 
         #[inline]
         fn verify(

@@ -16,79 +16,35 @@
 
 //! Comparison
 
-use crate::eclair::ops::Not;
+use crate::eclair::{bool::Bool, ops::Not, Has};
 use core::cmp;
 
-/// Boolean Type
-///
-/// This `trait` should be implemented for compilers that offer a boolean type equivalent to `bool`.
-pub trait HasBool {
-    /// Boolean Type
-    ///
-    /// This type should have a notion of `true` and `false` and negation.
-    type Bool: Not<Self, Output = Self::Bool>;
-}
-
-impl HasBool for () {
-    type Bool = bool;
-}
-
-///
+/// Equality
 pub trait Eq<COM = ()>: PartialEq<Self, COM>
 where
-    COM: HasBool,
+    COM: Has<bool>,
 {
 }
 
 impl<T> Eq for T where T: cmp::Eq {}
 
-///
+/// Partial Equivalence Relations
 pub trait PartialEq<Rhs = Self, COM = ()>
 where
     Rhs: ?Sized,
-    COM: HasBool + ?Sized,
+    COM: Has<bool> + ?Sized,
 {
-    ///
-    fn eq(&self, rhs: &Rhs, compiler: &mut COM) -> COM::Bool;
+    /// Returns `true` if `self` and `rhs` are equal.
+    fn eq(&self, rhs: &Rhs, compiler: &mut COM) -> Bool<COM>;
 
-    ///
+    /// Returns `true` if `self` and `rhs` are not equal.
     #[inline]
-    fn ne(&self, other: &Rhs, compiler: &mut COM) -> COM::Bool {
+    fn ne(&self, other: &Rhs, compiler: &mut COM) -> Bool<COM>
+    where
+        Bool<COM>: Not<COM, Output = Bool<COM>>,
+    {
         self.eq(other, compiler).not(compiler)
     }
-
-    /* TODO:
-       /// Asserts that `lhs` and `rhs` are equal.
-       #[inline]
-       fn assert_eq(lhs: &Self, rhs: &Self, compiler: &mut COM) {
-           let boolean = lhs.eq(rhs, compiler);
-           compiler.assert(boolean);
-       }
-
-       /// Asserts that all the elements in `iter` are equal to some `base` element.
-       #[inline]
-       fn assert_all_eq_to_base<'t, I>(base: &'t Self, iter: I, compiler: &mut COM)
-       where
-           I: IntoIterator<Item = &'t Self>,
-       {
-           for item in iter {
-               Self::assert_eq(base, item, compiler);
-           }
-       }
-
-       /// Asserts that all the elements in `iter` are equal.
-       #[inline]
-       fn assert_all_eq<'t, I>(iter: I, compiler: &mut COM)
-       where
-           Self: 't,
-           I: IntoIterator<Item = &'t Self>,
-       {
-           let mut iter = iter.into_iter();
-           if let Some(base) = iter.next() {
-               Self::assert_all_eq_to_base(base, iter, compiler);
-           }
-       }
-    */
 }
 
 impl<T, Rhs> PartialEq<Rhs> for T
