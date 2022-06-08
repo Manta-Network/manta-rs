@@ -23,13 +23,13 @@ use crate::{
     key::{KeyAgreementScheme, KeyDerivationFunction},
     rand::{CryptoRng, RngCore, Sample},
 };
-use manta_util::{
-    codec::{Decode, DecodeError, Encode, Read, Write},
-    BoxArray,
-};
+use manta_util::codec::{Decode, DecodeError, Encode, Read, Write};
 
 #[cfg(feature = "alloc")]
-use alloc::{boxed::Box, vec::Vec};
+use {
+    alloc::{boxed::Box, vec::Vec},
+    manta_util::BoxArray,
+};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
@@ -170,6 +170,8 @@ pub trait Group<COM = ()>: PointAdd<COM> + PointDouble<COM> + ScalarMul<COM> {}
 /// Pre-processed Scalar Multiplication Table.
 ///
 /// This table contains power-of-two multiples of a fixed base group element.
+#[cfg(feature = "alloc")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
@@ -186,6 +188,8 @@ pub struct PreprocessedScalarMulTable<G, const N: usize> {
     table: BoxArray<G, N>,
 }
 
+#[cfg(feature = "alloc")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
 impl<G, const N: usize> PreprocessedScalarMulTable<G, N> {
     /// Builds a new [`PreprocessedScalarMulTable`] collection from `base`, such that
     /// `table[i] = 2^i * base`.
@@ -218,6 +222,8 @@ impl<G, const N: usize> PreprocessedScalarMulTable<G, N> {
     }
 }
 
+#[cfg(feature = "alloc")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
 impl<G, const N: usize> AsRef<[G; N]> for PreprocessedScalarMulTable<G, N> {
     #[inline]
     fn as_ref(&self) -> &[G; N] {
@@ -225,6 +231,8 @@ impl<G, const N: usize> AsRef<[G; N]> for PreprocessedScalarMulTable<G, N> {
     }
 }
 
+#[cfg(feature = "alloc")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
 impl<D, G, const N: usize> Sample<D> for PreprocessedScalarMulTable<G, N>
 where
     G: Clone + PointAdd<Output = G> + PointDouble<Output = G> + Sample<D>,
@@ -238,6 +246,8 @@ where
     }
 }
 
+#[cfg(feature = "alloc")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
 impl<G, COM, const N: usize> ScalarMul<COM> for PreprocessedScalarMulTable<G, N>
 where
     G: PreprocessedScalarMul<COM, N>,

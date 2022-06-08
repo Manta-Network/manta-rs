@@ -110,13 +110,16 @@ where
 pub mod measure {
     use super::mode::{Constant, Public, Secret};
     use core::{
-        fmt::{Debug, Display},
+        fmt::Debug,
         hash::Hash,
-        ops::{Add, AddAssign, Deref, DerefMut},
+        ops::{Add, AddAssign},
     };
 
     #[cfg(feature = "alloc")]
-    use alloc::{format, string::String, vec::Vec};
+    use {
+        alloc::{fmt::Display, format, string::String, vec::Vec},
+        core::ops::{Deref, DerefMut},
+    };
 
     #[cfg(feature = "serde")]
     use manta_util::serde::{Deserialize, Serialize};

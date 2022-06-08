@@ -117,9 +117,11 @@ where
 pub mod kdf {
     use super::*;
     use crate::rand::{CryptoRng, RngCore, Sample};
-    use alloc::vec::Vec;
     use core::marker::PhantomData;
     use manta_util::codec::{Decode, DecodeError, Encode, Read, Write};
+
+    #[cfg(feature = "alloc")]
+    use alloc::vec::Vec;
 
     #[cfg(feature = "serde")]
     use manta_util::serde::{Deserialize, Serialize};
@@ -250,12 +252,16 @@ pub mod kdf {
     }
 
     /// Byte Conversion Trait
+    #[cfg(feature = "alloc")]
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
     pub trait AsBytes {
         /// Returns an owned byte representation of `self`.
         fn as_bytes(&self) -> Vec<u8>;
     }
 
     /// From Byte Vector Adapter
+    #[cfg(feature = "alloc")]
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
     #[cfg_attr(
         feature = "serde",
         derive(Deserialize, Serialize),
@@ -275,6 +281,8 @@ pub mod kdf {
         __: PhantomData<(T, COM)>,
     }
 
+    #[cfg(feature = "alloc")]
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
     impl<T, F, COM> FromByteVector<T, F, COM>
     where
         T: AsBytes,
@@ -290,6 +298,8 @@ pub mod kdf {
         }
     }
 
+    #[cfg(feature = "alloc")]
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
     impl<T, F> Decode for FromByteVector<T, F>
     where
         T: AsBytes,
@@ -310,6 +320,8 @@ pub mod kdf {
         }
     }
 
+    #[cfg(feature = "alloc")]
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
     impl<T, F> Encode for FromByteVector<T, F>
     where
         T: AsBytes,
@@ -325,6 +337,8 @@ pub mod kdf {
         }
     }
 
+    #[cfg(feature = "alloc")]
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
     impl<T, F, COM> KeyDerivationFunction<COM> for FromByteVector<T, F, COM>
     where
         T: AsBytes,
@@ -340,6 +354,8 @@ pub mod kdf {
         }
     }
 
+    #[cfg(feature = "alloc")]
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
     impl<T, F, D> Sample<D> for FromByteVector<T, F>
     where
         T: AsBytes,

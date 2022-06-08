@@ -18,9 +18,10 @@
 
 // TODO: Add a `Sample` derive trait.
 
-use alloc::vec::Vec;
-use core::{fmt::Debug, hash::Hash, iter::repeat, marker::PhantomData};
-use manta_util::into_array_unchecked;
+use core::{fmt::Debug, hash::Hash, marker::PhantomData};
+
+#[cfg(feature = "alloc")]
+use {alloc::vec::Vec, core::iter::repeat, manta_util::into_array_unchecked};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
@@ -262,6 +263,8 @@ impl Sample for u128 {
     }
 }
 
+#[cfg(feature = "alloc")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
 impl<D, T, const N: usize> Sample<D> for [T; N]
 where
     D: Clone,
