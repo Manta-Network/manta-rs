@@ -150,7 +150,7 @@ where
         )
         .expect("Unable to build MINT proof.");
     assert_valid_proof(verifying_context, &mint);
-    mint.into()
+    mint
 }
 
 /// Samples a [`PrivateTransfer`] transaction under two [`Mint`]s.
@@ -208,7 +208,7 @@ where
     )
     .expect("Unable to build PRIVATE_TRANSFER proof.");
     assert_valid_proof(&verifying_context.private_transfer, &private_transfer);
-    ([mint_0.into(), mint_1.into()], private_transfer.into())
+    ([mint_0, mint_1], private_transfer)
 }
 
 /// Samples a [`Reclaim`] transaction under two [`Mint`]s.
@@ -264,7 +264,7 @@ where
     )
     .expect("Unable to build RECLAIM proof.");
     assert_valid_proof(&verifying_context.reclaim, &reclaim);
-    ([mint_0.into(), mint_1.into()], reclaim.into())
+    ([mint_0, mint_1], reclaim)
 }
 
 /// Test validity on sampled transactions.
