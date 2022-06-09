@@ -38,6 +38,8 @@ pub mod permutation;
 pub mod rand;
 pub mod signature;
 
+/* TODO:
 #[cfg(feature = "alloc")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
 pub mod merkle_tree;
+*/
