@@ -65,8 +65,7 @@ impl ledger::Read<SyncData<Config>> for Client {
     fn read<'s>(
         &'s mut self,
         checkpoint: &'s Self::Checkpoint,
-    ) -> LocalBoxFutureResult<'s, ReadResponse<Self::Checkpoint, SyncData<Config>>, Self::Error>
-    {
+    ) -> LocalBoxFutureResult<'s, ReadResponse<SyncData<Config>>, Self::Error> {
         Box::pin(async move {
             self.client
                 .post(
