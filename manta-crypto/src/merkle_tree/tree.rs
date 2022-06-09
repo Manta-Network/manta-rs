@@ -29,7 +29,7 @@ use crate::{
         self, Accumulator, ConstantCapacityAccumulator, ExactSizeAccumulator, MembershipProof,
         OptimizedAccumulator,
     },
-    constraint::{ConditionalSelect, Constant, ConstraintSystem, Equal, Native, ValueSource},
+    constraint::{self, Allocate, Bool, ConditionalSwap, Constant, Has, Native},
     merkle_tree::{
         fork::{ForkedTree, Trunk},
         inner_tree::InnerMap,
@@ -612,12 +612,12 @@ where
         root: &Root<C, COM>,
         leaf: &Leaf<C, COM>,
         compiler: &mut COM,
-    ) -> COM::Bool
+    ) -> Bool<COM>
     where
         C: Configuration<COM>,
-        COM: ConstraintSystem,
-        InnerDigest<C, COM>: ConditionalSelect<COM> + Equal<COM>,
-        LeafDigest<C, COM>: ConditionalSelect<COM>,
+        COM: Has<bool>,
+        InnerDigest<C, COM>: ConditionalSwap<COM> + constraint::PartialEq<InnerDigest<C, COM>, COM>,
+        LeafDigest<C, COM>: ConditionalSwap<COM>,
     {
         path.verify(self, root, leaf, compiler)
     }
@@ -731,6 +731,7 @@ where
 /// Merkle Tree Root
 pub type Root<C, COM = ()> = InnerDigest<C, COM>;
 
+/* FIXME:
 impl<C> accumulator::Model for Parameters<C>
 where
     C: Configuration + ?Sized,
@@ -752,18 +753,19 @@ where
         self.verify_path(witness, output, item)
     }
 }
+*/
 
 impl<C, COM> accumulator::Model<COM> for Parameters<C, COM>
 where
+    COM: Has<bool>,
     C: Configuration<COM> + ?Sized,
-    COM: ConstraintSystem,
-    InnerDigest<C, COM>: ConditionalSelect<COM> + Equal<COM>,
-    LeafDigest<C, COM>: ConditionalSelect<COM>,
+    InnerDigest<C, COM>: ConditionalSwap<COM> + constraint::PartialEq<InnerDigest<C, COM>, COM>,
+    LeafDigest<C, COM>: ConditionalSwap<COM>,
 {
     type Item = Leaf<C, COM>;
     type Witness = PathVar<C, COM>;
     type Output = Root<C, COM>;
-    type Verification = COM::Bool;
+    type Verification = Bool<COM>;
 
     #[inline]
     fn verify(
@@ -1086,11 +1088,14 @@ where
 
     #[inline]
     fn prove(&self, item: &Self::Item) -> Option<MembershipProof<Self::Model>> {
+        /* TODO:
         Some(MembershipProof::new(
             self.path(self.position(&self.parameters.digest(item))?)
                 .ok()?,
             self.root().clone(),
         ))
+        */
+        todo!()
     }
 
     #[inline]

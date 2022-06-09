@@ -33,8 +33,11 @@ pub mod eclair;
 // TODO: pub mod encryption;
 pub mod hash;
 pub mod key;
-// TODO: pub mod merkle_tree;
 pub mod password;
 pub mod permutation;
 pub mod rand;
 pub mod signature;
+
+#[cfg(feature = "alloc")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
+pub mod merkle_tree;
