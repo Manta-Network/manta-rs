@@ -13,7 +13,7 @@ _Rust Crates for the Manta Network Ecosystem_
 
 ## About
 
-The `manta-rs` libraries represent the core logic of the Manta Network protocols shared across all of its products. This project is built as monorepo for the Rust core of the project. See the following repositories for products built by Manta Network that build off of `manta-rs`:
+The `manta-rs` libraries represent the core logic of the Manta Network protocols shared across all of its products. This project is built as a monorepo for the foundational Rust codebase of Manta. See the following repositories for projects by Manta Network that build off of `manta-rs`:
 
 - [`Manta`](https://github.com/manta-network/Manta): Core blockchain node implementations built on [`substrate`](https://github.com/paritytech/substrate)
 - [`manta-signer`](https://github.com/manta-network/manta-signer): Desktop ZKP prover and wallet implementation
