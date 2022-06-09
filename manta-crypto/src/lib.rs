@@ -30,7 +30,7 @@ pub mod commitment;
 pub mod constraint;
 pub mod ecc;
 pub mod eclair;
-// TODO: pub mod encryption;
+pub mod encryption;
 pub mod hash;
 pub mod key;
 pub mod password;

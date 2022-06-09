@@ -16,6 +16,60 @@
 
 //! Encryption Primitives
 
-pub mod authenticated;
-pub mod hybrid;
-pub mod symmetric;
+// TODO: pub mod authenticated;
+// TODO: pub mod hybrid;
+// TODO: pub mod symmetric;
+
+/// Encryption Types
+pub trait Types {
+    /// Encryption Key Type
+    type EncryptionKey;
+
+    /// Decryption Key Type
+    type DecryptionKey;
+
+    /// Encryption Nonce
+    type Nonce;
+
+    /// Plaintext Type
+    type Plaintext;
+
+    /// Ciphertext Type
+    type Ciphertext;
+
+    /// Decrypted Plaintext Type
+    type DecryptedPlaintext;
+}
+
+/// Decryption Key Derivation
+pub trait Derive<COM = ()>: Types {
+    /// Derives a [`DecryptionKey`] from `encryption_key`.
+    fn derive(
+        &self,
+        encryption_key: &Self::EncryptionKey,
+        compiler: &mut COM,
+    ) -> Self::DecryptionKey;
+}
+
+/// Encryption
+pub trait Encrypt<COM = ()>: Types {
+    /// Encrypts `plaintext` with the `encryption_key` and the one-time encryption `nonce`.
+    fn encrypt(
+        &self,
+        encryption_key: &Self::EncryptionKey,
+        nonce: &Self::Nonce,
+        plaintext: &Self::Plaintext,
+        compiler: &mut COM,
+    ) -> Self::Ciphertext;
+}
+
+/// Decryption
+pub trait Decrypt<COM = ()>: Types {
+    /// Decrypts the `ciphertext` with `decryption_key`.
+    fn decrypt(
+        &self,
+        decryption_key: &Self::DecryptionKey,
+        ciphertext: &Self::Ciphertext,
+        compiler: &mut COM,
+    ) -> Self::DecryptedPlaintext;
+}
