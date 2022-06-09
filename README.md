@@ -1,5 +1,5 @@
 <a href="https://github.com/manta-network/manta-rs">
-    <img width="650" alt="github-banner" src="./logo.svg">
+    <img align="left" height="180" alt="github-banner" src="./logo.svg">
 </a>
 
 # manta-rs
@@ -9,11 +9,13 @@
 
 _Rust Crates for the Manta Network Ecosystem_
 
+<br>
+
 ## About
 
 The `manta-rs` libraries represent the core logic of the Manta Network protocols shared across all of its products. This project is built as monorepo for the Rust core of the project. See the following repositories for products built by Manta Network that build off of `manta-rs`:
 
--[`Manta`](https://github.com/manta-network/Manta): Core blockchain node implementations built on [`substrate`](https://github.com/paritytech/substrate)
+- [`Manta`](https://github.com/manta-network/Manta): Core blockchain node implementations built on [`substrate`](https://github.com/paritytech/substrate)
 - [`manta-signer`](https://github.com/manta-network/manta-signer): Desktop ZKP prover and wallet implementation
 - [`manta-front-end`](https://github.com/manta-network/manta-front-end): Web dApp for interacting with Manta networks
 - [`sdk`](https://github.com/manta-network/sdk): Software Development Kit for building wallets and dApps on top of Manta
