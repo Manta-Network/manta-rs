@@ -446,13 +446,13 @@ pub trait Checkpoint<C>: ledger::Checkpoint
 where
     C: transfer::Configuration + ?Sized,
 {
-    ///
+    /// UTXO Accumulator Type
     type UtxoAccumulator: Accumulator<Item = C::Utxo, Model = C::UtxoAccumulatorModel>;
 
-    ///
+    /// Updates `self` by viewing `count`-many void numbers.
     fn update_from_void_numbers(&mut self, count: usize);
 
-    ///
+    /// Updates `self` by viewing a new `accumulator`.
     fn update_from_utxo_accumulator(&mut self, accumulator: &Self::UtxoAccumulator);
 
     /// Computes a best-effort [`Checkpoint`] from the current `accumulator` state.

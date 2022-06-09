@@ -107,25 +107,27 @@ impl signer::Checkpoint<Config> for Checkpoint {
             .collect();
     }
 
+    /// Prunes the `data` by comparing `origin` and `checkpoint` and checks if updating the
+    /// `origin` checkpoint by viewing `data` would exceed the current `checkpoint`. If not, then we
+    /// can prune all the data. Otherwise, we take each entry in `data` and remove by shard index or
+    /// by global void number index until we reach some pruned data that is at least newer than
+    /// `checkpoint`.
     #[inline]
     fn prune(data: &mut SyncData<Config>, origin: &Self, checkpoint: &Self) -> bool {
         const PRUNE_PANIC_MESSAGE: &str = "ERROR: Invalid pruning conditions";
         if checkpoint < origin {
             return false;
         }
-
         let mut updated_origin = *origin;
         for receiver in &data.receivers {
             let key = MerkleTreeConfiguration::tree_index(&receiver.0);
             updated_origin.receiver_index[key as usize] += 1;
         }
         updated_origin.sender_index += data.senders.len();
-
         if &updated_origin < checkpoint {
             *data = Default::default();
             return true;
         }
-
         match checkpoint.sender_index.checked_sub(origin.sender_index) {
             Some(diff) => drop(data.senders.drain(0..diff)),
             _ => panic!(
