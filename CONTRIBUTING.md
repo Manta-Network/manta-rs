@@ -4,20 +4,50 @@ Thank you for contributing to the `manta-rs` codebase! Here are some guidelines 
 
 ## Use Conventional Commits
 
-Please use conventional commits at least for the major changes introduced by your PR. We use the following types:
+Please use conventional commits. We use at least the following types:
 
 - `feat`: adding a new feature, new functionality to the codebase
 - `fix`: fixing old code
-- `wip`: marked whenever a commit should be considered part of a set of commits that together implement a feature or fix
 - `chore`: small changes/commits that are left over from other commits
+- `wip`: marked whenever a commit should be considered part of a set of commits that together implement a feature or fix
 
-See the [conventional commits specification](https://www.conventionalcommits.org) for more details on how to write and use conventional commits. We use squash and rebase merge for our PRs so we can add types to commits and reformat them according to the spec if you forget to include them.
+See the [conventional commits specification](https://www.conventionalcommits.org) for more details on how to write and use conventional commits. We use squashing for our PRs so we can add types to commits and reformat them according to the spec if you forget to include them. PR titles should also follow conventional commits with the major category that the PR belongs to (except for `wip` which should only be for commits).
+
+## Changelog
+
+We use the [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) specification for [`CHANGELOG.md`](./CHANGELOG.md). Whenever we add a new PR we want to make sure to add **one** line to the changelog with the following format:
+
+```text
+- [\#3](https://github.com/Manta-Network/manta-rs/pull/3) Setup Initial Rust CI Pipeline
+```
+
+in any of the relevant categories outlined in the changelog spec:
+
+- `Added` for new features.
+- `Changed` for changes in existing functionality.
+- `Deprecated` for soon-to-be removed features.
+- `Removed` for now removed features.
+- `Fixed` for any bug fixes.
+- `Security` in case of vulnerabilities.
+
+Like the rest of the specification entails, all changes should be presented in reverse-chronological order. To label a PR as belonging to any one of these categories for inclusion in the GitHub auto-generated release notes, use the following labels:
+
+- `changelog:added`
+- `changelog:changed`
+- `changelog:deprecated`
+- `changelog:removed`
+- `changelog:fixed`
+- `changelog:security`
+
+to place each PR in its respective category or use `changelog:skip` if it should not be included in the GitHub auto-generated release notes.
+
+## Pull Requests
+
+See the [`PULL_REQUEST_TEMPLATE.md`](./.github/PULL_REQUEST_TEMPLATE.md) for more details on how to build a good PR.
 
 ## Style Guide
 
 To keep code and documentation style consistent across all the code in the repository, we are adopting the following style guide. We begin with the formatting style enforced by the Nightly version of `rustfmt` with configuration specified in the [`.rustfmt.toml`](./.rustfmt.toml) file. Beyond what `rustfmt` currently enforces we have specified other rules below.
-
-### General Gramatical Structures
 
 ### The `Cargo.toml` File
 
@@ -72,7 +102,7 @@ maintenance = { status = "actively-developed" }
 Specifically, we have:
 
 1. Use double quotes instead of single quotes.
-2. Use the standard ordering of the `[package]` map.
+2. Use the above as the standard ordering of the `[package]` map.
 3. `[[bin]]` before `[features]` before `[dependencies]` before `[dev-dependencies]` before `[build-dependencies]` before `[profile]` settings.
 4. Order features and dependencies alphabetically.
 5. When selecting features for a `[features]` entry or when selecting the features on a dependency, order the features alphabetically.
@@ -80,7 +110,7 @@ Specifically, we have:
     ```toml
     crate-name = { version = "...", optional = true, default-features = false, features = ["..."] }
     ```
-    If the crate is a `path` or `git` dependency, replace those keys with the `version` key.
+    If the crate is a `path` or `git` dependency, replace those keys with the `version` key and add a `tag`, `branch`, or `rev` as needed following the `git` key.
 7. When adding a feature, add a doc string in title case and a newline between each feature.
 
 ### Feature Selection
