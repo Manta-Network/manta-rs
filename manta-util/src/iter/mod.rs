@@ -16,6 +16,8 @@
 
 //! Iteration Utilities
 
+pub mod finder;
+
 #[cfg(feature = "alloc")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
 pub mod chunk_by;
@@ -26,6 +28,8 @@ pub mod chunk_by;
     doc(cfg(all(feature = "alloc", feature = "crossbeam-channel")))
 )]
 pub mod select_all;
+
+pub use finder::Finder;
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
@@ -40,6 +44,16 @@ pub use select_all::SelectAll;
 
 /// Iterator Extensions
 pub trait IteratorExt: Iterator {
+    /// Searches for an element of an iterator that the `finder` matches with, returning the mapped
+    /// value from `f`.
+    #[inline]
+    fn find_with<T, F, R>(&mut self, finder: &mut Finder<T>, f: F) -> Option<R>
+    where
+        F: FnMut(&mut T, Self::Item) -> Option<R>,
+    {
+        finder.find(self, f)
+    }
+
     /// Returns an iterator over chunks of size `N` from `iter`.
     ///
     /// # Note

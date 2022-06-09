@@ -16,6 +16,12 @@
 
 //! Algebraic Constructions
 
+use crate::key;
+use core::marker::PhantomData;
+
+#[cfg(feature = "serde")]
+use manta_util::serde::{Deserialize, Serialize};
+
 /// Ring of Scalars
 pub trait Scalar<COM = ()> {
     /// Adds `rhs` to `self` in the ring.
@@ -35,6 +41,79 @@ pub trait Group<COM = ()> {
 
     /// Multiplies `self` by `scalar` in the group.
     fn mul(&self, scalar: &Self::Scalar, compiler: &mut COM) -> Self;
+}
+
+/// Diffie-Hellman Key Agreement Scheme
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
+#[derive(derivative::Derivative)]
+#[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct DiffieHellman<G, COM = ()>
+where
+    G: Group<COM> + security::ComputationalDiffieHellmanHardness,
+{
+    /// Group Generator
+    pub generator: G,
+
+    /// Type Parameter Marker
+    __: PhantomData<COM>,
+}
+
+impl<G, COM> DiffieHellman<G, COM>
+where
+    G: Group<COM> + security::ComputationalDiffieHellmanHardness,
+{
+    /// Builds a new [`DiffieHellman`] key agreement scheme from the given `generator`.
+    #[inline]
+    pub fn new(generator: G) -> Self {
+        Self {
+            generator,
+            __: PhantomData,
+        }
+    }
+
+    /// Converts `self` into the group generator.
+    #[inline]
+    pub fn into_inner(self) -> G {
+        self.generator
+    }
+}
+
+impl<G, COM> key::agreement::Types for DiffieHellman<G, COM>
+where
+    G: Group<COM> + security::ComputationalDiffieHellmanHardness,
+{
+    type SecretKey = G::Scalar;
+    type PublicKey = G;
+    type SharedSecret = G;
+}
+
+impl<G, COM> key::agreement::Derive<COM> for DiffieHellman<G, COM>
+where
+    G: Group<COM> + security::ComputationalDiffieHellmanHardness,
+{
+    #[inline]
+    fn derive(&self, secret_key: &Self::SecretKey, compiler: &mut COM) -> Self::PublicKey {
+        self.generator.mul(secret_key, compiler)
+    }
+}
+
+impl<G, COM> key::agreement::Agree<COM> for DiffieHellman<G, COM>
+where
+    G: Group<COM> + security::ComputationalDiffieHellmanHardness,
+{
+    #[inline]
+    fn agree(
+        &self,
+        public_key: &Self::PublicKey,
+        secret_key: &Self::SecretKey,
+        compiler: &mut COM,
+    ) -> Self::SharedSecret {
+        public_key.mul(secret_key, compiler)
+    }
 }
 
 /// Security Assumptions

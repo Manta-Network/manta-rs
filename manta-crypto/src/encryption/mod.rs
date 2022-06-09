@@ -16,68 +16,77 @@
 
 //! Encryption Primitives
 
-// TODO: pub mod authenticated;
-// TODO: pub mod hybrid;
-// TODO: pub mod symmetric;
+/// Ciphertext
+pub trait CiphertextType {
+    /// Ciphertext Type
+    type Ciphertext;
+}
 
-/// Types
-pub trait Types {
+/// Ciphertext Type
+pub type Ciphertext<E> = <E as CiphertextType>::Ciphertext;
+
+/// Encryption Key
+pub trait EncryptionKeyType {
     /// Encryption Key Type
-    type Key;
+    type EncryptionKey;
+}
 
+/// Encryption Key Type
+pub type EncryptionKey<E> = <E as EncryptionKeyType>::EncryptionKey;
+
+/// Encryption Types
+pub trait EncryptionTypes: EncryptionKeyType + CiphertextType {
     /// Nonce Type
     type Nonce;
 
     /// Plaintext Type
     type Plaintext;
-
-    /// Ciphertext Type
-    type Ciphertext;
 }
 
-///
-pub type Key<E> = <E as Types>::Key;
+/// Nonce Type
+pub type Nonce<E> = <E as EncryptionTypes>::Nonce;
 
-///
-pub type Nonce<E> = <E as Types>::Nonce;
+/// Plaintext Type
+pub type Plaintext<E> = <E as EncryptionTypes>::Plaintext;
 
-///
-pub type Plaintext<E> = <E as Types>::Plaintext;
+/// Decryption Key
+pub trait DecryptionKeyType {
+    /// Decryption Key Type
+    type DecryptionKey;
+}
 
-///
-pub type Ciphertext<E> = <E as Types>::Ciphertext;
+/// Decryption Key Type
+pub type DecryptionKey<E> = <E as DecryptionKeyType>::DecryptionKey;
+
+/// Decryption Types
+pub trait DecryptionTypes: DecryptionKeyType + CiphertextType {
+    /// Decrypted Plaintext
+    type DecryptedPlaintext;
+}
+
+/// Decrypted Plaintext Type
+pub type DecryptedPlaintext<E> = <E as DecryptionTypes>::DecryptedPlaintext;
+
+/// Decryption Key Derivation
+pub trait Derive<COM = ()>: EncryptionKeyType + DecryptionKeyType {
+    /// Derives an [`EncryptionKey`] from `decryption_key`.
+    fn derive(
+        &self,
+        decryption_key: &Self::DecryptionKey,
+        compiler: &mut COM,
+    ) -> Self::EncryptionKey;
+}
 
 /// Encryption
-pub trait Encrypt<COM = ()>: Types {
+pub trait Encrypt<COM = ()>: EncryptionTypes {
     /// Encrypts `plaintext` with the `encryption_key` and the one-time encryption `nonce`.
     fn encrypt(
         &self,
-        encryption_key: &Self::Key,
+        encryption_key: &Self::EncryptionKey,
         nonce: &Self::Nonce,
         plaintext: &Self::Plaintext,
         compiler: &mut COM,
     ) -> Self::Ciphertext;
-}
-
-/// Decryption Types
-pub trait DecryptionTypes: Types {
-    /// Decryption Key Type
-    type DecryptionKey;
-
-    /// Decrypted Plaintext Type
-    type DecryptedPlaintext;
-}
-
-///
-pub type DecryptionKey<E> = <E as DecryptionTypes>::DecryptionKey;
-
-///
-pub type DecryptedPlaintext<E> = <E as DecryptionTypes>::DecryptedPlaintext;
-
-/// Decryption Key Derivation
-pub trait Derive<COM = ()>: DecryptionTypes {
-    /// Derives a [`DecryptionKey`] from `encryption_key`.
-    fn derive(&self, encryption_key: &Self::Key, compiler: &mut COM) -> Self::DecryptionKey;
 }
 
 /// Decryption
@@ -94,115 +103,168 @@ pub trait Decrypt<COM = ()>: DecryptionTypes {
 /// Hybrid Encryption
 pub mod hybrid {
     use super::*;
+    use crate::key;
+    use core::{fmt::Debug, hash::Hash};
 
-    ///
-    pub trait KeyAgreementScheme {
-        ///
-        type SecretKey;
+    #[cfg(feature = "serde")]
+    use manta_util::serde::{Deserialize, Serialize};
 
-        ///
-        type PublicKey;
-
-        ///
-        type SharedSecret;
-
-        ///
-        fn derive(&self, secret_key: &Self::SecretKey) -> Self::PublicKey;
-
-        ///
-        fn agree(
-            &self,
-            secret_key: &Self::SecretKey,
-            public_key: &Self::PublicKey,
-        ) -> Self::SharedSecret;
-    }
-
-    ///
+    /// Hybrid Encryption Scheme
+    #[cfg_attr(
+        feature = "serde",
+        derive(Deserialize, Serialize),
+        serde(crate = "manta_util::serde", deny_unknown_fields)
+    )]
+    #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
     pub struct Hybrid<K, E>
     where
-        K: KeyAgreementScheme,
-        E: Types<Key = K::SharedSecret>,
+        K: key::agreement::Types,
     {
-        ///
+        /// Key Agreement Scheme
         pub key_agreement_scheme: K,
 
-        ///
+        /// Base Encryption Scheme
         pub encryption_scheme: E,
     }
 
-    ///
-    pub type EncryptionKey<K> = <K as KeyAgreementScheme>::PublicKey;
+    /// Encryption Key
+    pub type EncryptionKey<K> = <K as key::agreement::Types>::PublicKey;
 
-    ///
-    pub type DecryptionKey<K> = <K as KeyAgreementScheme>::SecretKey;
+    /// Decryption Key
+    pub type DecryptionKey<K> = <K as key::agreement::Types>::SecretKey;
 
-    ///
+    /// Encryption Nonce
+    #[cfg_attr(
+        feature = "serde",
+        derive(Deserialize, Serialize),
+        serde(crate = "manta_util::serde", deny_unknown_fields)
+    )]
+    #[derive(derivative::Derivative)]
+    #[derivative(
+        Clone(bound = "K::SecretKey: Clone, E::Nonce: Clone"),
+        Copy(bound = "K::SecretKey: Copy, E::Nonce: Copy"),
+        Debug(bound = "K::SecretKey: Debug, E::Nonce: Debug"),
+        Default(bound = "K::SecretKey: Default, E::Nonce: Default"),
+        Eq(bound = "K::SecretKey: Eq, E::Nonce: Eq"),
+        Hash(bound = "K::SecretKey: Hash, E::Nonce: Hash"),
+        PartialEq(bound = "K::SecretKey: PartialEq, E::Nonce: PartialEq")
+    )]
     pub struct Nonce<K, E>
     where
-        K: KeyAgreementScheme,
-        E: Types<Key = K::SharedSecret>,
+        K: key::agreement::Types,
+        E: EncryptionTypes,
     {
-        ///
+        /// Ephemeral Secret Key
         pub ephemeral_secret_key: K::SecretKey,
 
-        ///
+        /// Base Encryption Nonce
         pub nonce: E::Nonce,
     }
 
-    ///
+    /// Full Ciphertext
+    #[cfg_attr(
+        feature = "serde",
+        derive(Deserialize, Serialize),
+        serde(crate = "manta_util::serde", deny_unknown_fields)
+    )]
+    #[derive(derivative::Derivative)]
+    #[derivative(
+        Clone(bound = "K::PublicKey: Clone, E::Ciphertext: Clone"),
+        Copy(bound = "K::PublicKey: Copy, E::Ciphertext: Copy"),
+        Debug(bound = "K::PublicKey: Debug, E::Ciphertext: Debug"),
+        Default(bound = "K::PublicKey: Default, E::Ciphertext: Default"),
+        Eq(bound = "K::PublicKey: Eq, E::Ciphertext: Eq"),
+        Hash(bound = "K::PublicKey: Hash, E::Ciphertext: Hash"),
+        PartialEq(bound = "K::PublicKey: PartialEq, E::Ciphertext: PartialEq")
+    )]
     pub struct Ciphertext<K, E>
     where
-        K: KeyAgreementScheme,
-        E: Types<Key = K::SharedSecret>,
+        K: key::agreement::Types,
+        E: CiphertextType,
     {
-        ///
+        /// Ephemeral Public Key
         pub ephemeral_public_key: K::PublicKey,
 
-        ///
+        /// Base Encryption Ciphertext
         pub ciphertext: E::Ciphertext,
     }
 
-    impl<K, E> Types for Hybrid<K, E>
+    impl<K, E> CiphertextType for Hybrid<K, E>
     where
-        K: KeyAgreementScheme,
-        E: Types<Key = K::SharedSecret>,
+        K: key::agreement::Types,
+        E: CiphertextType,
     {
-        type Key = EncryptionKey<K>;
+        type Ciphertext = Ciphertext<K, E>;
+    }
+
+    impl<K, E> EncryptionKeyType for Hybrid<K, E>
+    where
+        K: key::agreement::Types,
+    {
+        type EncryptionKey = EncryptionKey<K>;
+    }
+
+    impl<K, E> EncryptionTypes for Hybrid<K, E>
+    where
+        K: key::agreement::Types,
+        E: EncryptionTypes,
+    {
         type Nonce = Nonce<K, E>;
         type Plaintext = Plaintext<E>;
-        type Ciphertext = Ciphertext<K, E>;
+    }
+
+    impl<K, E> DecryptionKeyType for Hybrid<K, E>
+    where
+        K: key::agreement::Types,
+    {
+        type DecryptionKey = DecryptionKey<K>;
     }
 
     impl<K, E> DecryptionTypes for Hybrid<K, E>
     where
-        K: KeyAgreementScheme,
-        E: Types<Key = K::SharedSecret>,
+        K: key::agreement::Types,
+        E: DecryptionTypes,
     {
-        type DecryptionKey = DecryptionKey<K>;
-        type DecryptedPlaintext = Plaintext<E>;
+        type DecryptedPlaintext = DecryptedPlaintext<E>;
     }
 
-    impl<K, E> Encrypt for Hybrid<K, E>
+    impl<K, E, COM> Derive<COM> for Hybrid<K, E>
     where
-        K: KeyAgreementScheme,
-        E: Encrypt<Key = K::SharedSecret>,
+        K: key::agreement::Derive<COM>,
+    {
+        #[inline]
+        fn derive(
+            &self,
+            decryption_key: &Self::DecryptionKey,
+            compiler: &mut COM,
+        ) -> Self::EncryptionKey {
+            self.key_agreement_scheme.derive(decryption_key, compiler)
+        }
+    }
+
+    impl<K, E, COM> Encrypt<COM> for Hybrid<K, E>
+    where
+        K: key::agreement::Derive<COM> + key::agreement::Agree<COM>,
+        E: Encrypt<COM, EncryptionKey = K::SharedSecret>,
     {
         #[inline]
         fn encrypt(
             &self,
-            encryption_key: &Self::Key,
+            encryption_key: &Self::EncryptionKey,
             nonce: &Self::Nonce,
             plaintext: &Self::Plaintext,
-            compiler: &mut (),
+            compiler: &mut COM,
         ) -> Self::Ciphertext {
             Ciphertext {
                 ephemeral_public_key: self
                     .key_agreement_scheme
-                    .derive(&nonce.ephemeral_secret_key),
+                    .derive(&nonce.ephemeral_secret_key, compiler),
                 ciphertext: self.encryption_scheme.encrypt(
-                    &self
-                        .key_agreement_scheme
-                        .agree(&nonce.ephemeral_secret_key, encryption_key),
+                    &self.key_agreement_scheme.agree(
+                        encryption_key,
+                        &nonce.ephemeral_secret_key,
+                        compiler,
+                    ),
                     &nonce.nonce,
                     plaintext,
                     compiler,
@@ -211,29 +273,82 @@ pub mod hybrid {
         }
     }
 
-    impl<K, E> Decrypt for Hybrid<K, E>
+    impl<K, E, COM> Decrypt<COM> for Hybrid<K, E>
     where
-        K: KeyAgreementScheme,
-        E: Decrypt<
-            Key = K::SharedSecret,
-            DecryptionKey = K::SharedSecret,
-            DecryptedPlaintext = <E as Types>::Plaintext,
-        >,
+        K: key::agreement::Agree<COM>,
+        E: Decrypt<COM, DecryptionKey = K::SharedSecret>,
     {
         #[inline]
         fn decrypt(
             &self,
             decryption_key: &Self::DecryptionKey,
             ciphertext: &Self::Ciphertext,
-            compiler: &mut (),
+            compiler: &mut COM,
         ) -> Self::DecryptedPlaintext {
             self.encryption_scheme.decrypt(
-                &self
-                    .key_agreement_scheme
-                    .agree(decryption_key, &ciphertext.ephemeral_public_key),
+                &self.key_agreement_scheme.agree(
+                    &ciphertext.ephemeral_public_key,
+                    decryption_key,
+                    compiler,
+                ),
                 &ciphertext.ciphertext,
                 compiler,
             )
         }
+    }
+}
+
+/// Testing Framework
+#[cfg(feature = "test")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
+pub mod test {
+    use super::*;
+
+    /// Tests if encryption of `plaintext` using `encryption_key` and `nonce` returns the original
+    /// `plaintext` on decryption using `decryption_key`. The `assert_same` function is used to
+    /// assert that the two plaintexts are the same.
+    #[inline]
+    pub fn encryption<E, F>(
+        cipher: &E,
+        encryption_key: &E::EncryptionKey,
+        decryption_key: &E::DecryptionKey,
+        nonce: &E::Nonce,
+        plaintext: &E::Plaintext,
+        assert_same: F,
+    ) where
+        E: Encrypt + Decrypt,
+        F: FnOnce(&E::Plaintext, &E::DecryptedPlaintext),
+    {
+        assert_same(
+            plaintext,
+            &cipher.decrypt(
+                decryption_key,
+                &cipher.encrypt(encryption_key, nonce, plaintext, &mut ()),
+                &mut (),
+            ),
+        )
+    }
+
+    /// Derives an [`EncryptionKey`](EncryptionKeyType::EncryptionKey) from `decryption_key` and
+    /// then runs the [`encryption`] correctness assertion test.
+    #[inline]
+    pub fn derive_encryption<E, F>(
+        cipher: &E,
+        decryption_key: &E::DecryptionKey,
+        nonce: &E::Nonce,
+        plaintext: &E::Plaintext,
+        assert_same: F,
+    ) where
+        E: Derive + Encrypt + Decrypt,
+        F: FnOnce(&E::Plaintext, &E::DecryptedPlaintext),
+    {
+        encryption(
+            cipher,
+            &cipher.derive(decryption_key, &mut ()),
+            decryption_key,
+            nonce,
+            plaintext,
+            assert_same,
+        )
     }
 }
