@@ -464,8 +464,8 @@ where
     }
 
     /// Prunes the `data` required for a [`sync`](Connection::sync) call against `origin` and
-    /// `checkpoint`.
-    fn prune(data: &mut SyncData<C>, origin: &Self, checkpoint: &Self) -> bool;
+    /// `signer_checkpoint`, returning `true` if the data was pruned.
+    fn prune(data: &mut SyncData<C>, origin: &Self, signer_checkpoint: &Self) -> bool;
 }
 
 /// Signer Configuration

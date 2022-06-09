@@ -107,15 +107,15 @@ impl signer::Checkpoint<Config> for Checkpoint {
             .collect();
     }
 
-    /// Prunes the `data` by comparing `origin` and `checkpoint` and checks if updating the
-    /// `origin` checkpoint by viewing `data` would exceed the current `checkpoint`. If not, then we
-    /// can prune all the data. Otherwise, we take each entry in `data` and remove by shard index or
-    /// by global void number index until we reach some pruned data that is at least newer than
-    /// `checkpoint`.
+    /// Prunes the `data` by comparing `origin` and `signer_checkpoint` and checks if updating the
+    /// `origin` checkpoint by viewing `data` would exceed the current `signer_checkpoint`. If not,
+    /// then we can prune all the data. Otherwise, we take each entry in `data` and remove by shard
+    /// index or by global void number index until we reach some pruned data that is at least newer
+    /// than `signer_checkpoint`.
     #[inline]
-    fn prune(data: &mut SyncData<Config>, origin: &Self, checkpoint: &Self) -> bool {
+    fn prune(data: &mut SyncData<Config>, origin: &Self, signer_checkpoint: &Self) -> bool {
         const PRUNE_PANIC_MESSAGE: &str = "ERROR: Invalid pruning conditions";
-        if checkpoint < origin {
+        if signer_checkpoint <= origin {
             return false;
         }
         let mut updated_origin = *origin;
@@ -124,15 +124,24 @@ impl signer::Checkpoint<Config> for Checkpoint {
             updated_origin.receiver_index[key as usize] += 1;
         }
         updated_origin.sender_index += data.senders.len();
-        if &updated_origin < checkpoint {
+        if signer_checkpoint > &updated_origin {
             *data = Default::default();
             return true;
         }
-        match checkpoint.sender_index.checked_sub(origin.sender_index) {
-            Some(diff) => drop(data.senders.drain(0..diff)),
+        let mut has_pruned = false;
+        match signer_checkpoint
+            .sender_index
+            .checked_sub(origin.sender_index)
+        {
+            Some(diff) => {
+                drop(data.senders.drain(0..diff));
+                if diff > 0 {
+                    has_pruned = true;
+                }
+            }
             _ => panic!(
                 "{}: Sender Pruning: {:?} {:?} {:?}",
-                PRUNE_PANIC_MESSAGE, data, origin, checkpoint
+                PRUNE_PANIC_MESSAGE, data, origin, signer_checkpoint
             ),
         }
         let mut data_map = BTreeMap::<_, Vec<_>>::new();
@@ -145,11 +154,10 @@ impl signer::Checkpoint<Config> for Checkpoint {
                 }
             }
         }
-        let mut has_pruned = false;
         for (i, (origin_index, index)) in origin
             .receiver_index
             .into_iter()
-            .zip(checkpoint.receiver_index)
+            .zip(signer_checkpoint.receiver_index)
             .enumerate()
         {
             match index.checked_sub(origin_index) {
@@ -163,7 +171,7 @@ impl signer::Checkpoint<Config> for Checkpoint {
                 }
                 _ => panic!(
                     "{}: Receiver Pruning: {:?} {:?} {:?}",
-                    PRUNE_PANIC_MESSAGE, data, origin, checkpoint
+                    PRUNE_PANIC_MESSAGE, data, origin, signer_checkpoint
                 ),
             }
         }
