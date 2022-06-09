@@ -30,7 +30,16 @@ in any of the relevant categories outlined in the changelog spec:
 - `Fixed` for any bug fixes.
 - `Security` in case of vulnerabilities.
 
-Like the rest of the specification entails, all changes should be presented in reverse-chronological order.
+Like the rest of the specification entails, all changes should be presented in reverse-chronological order. To label a PR as belonging to any one of these categories for inclusion in the GitHub auto-generated release notes, use the following labels:
+
+- `changelog:added`
+- `changelog:changed`
+- `changelog:deprecated`
+- `changelog:removed`
+- `changelog:fixed`
+- `changelog:security`
+
+to place each PR in its respective category or use `changelog:skip` if it should not be included in the GitHub auto-generated release notes.
 
 ## Pull Requests
 
