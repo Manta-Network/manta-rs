@@ -116,6 +116,8 @@ pub mod agreement {
 
 /// Key Derivation Functions
 pub mod kdf {
+    use core::marker::PhantomData;
+
     #[cfg(feature = "serde")]
     use manta_util::serde::{Deserialize, Serialize};
 
@@ -135,8 +137,8 @@ pub mod kdf {
     where
         K: KeyDerivationFunction<COM>,
     {
-        type Key = Self::Key;
-        type Output = Self::Output;
+        type Key = K::Key;
+        type Output = K::Output;
 
         #[inline]
         fn derive(&self, key: &Self::Key, compiler: &mut COM) -> Self::Output {
@@ -164,7 +166,7 @@ pub mod kdf {
         type Output = K;
 
         #[inline]
-        fn derive_with(&self, key: &Self::Key, compiler: &mut COM) -> Self::Output {
+        fn derive(&self, key: &Self::Key, compiler: &mut COM) -> Self::Output {
             let _ = compiler;
             key.clone()
         }

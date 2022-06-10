@@ -35,12 +35,11 @@ use core::{fmt::Debug, hash::Hash, iter, marker::PhantomData, ops::Deref};
 use manta_crypto::{
     accumulator::{Accumulator, MembershipProof, Model},
     constraint::{
-        Add, Allocator, Constant, ConstraintSystem, Derived, Equal, Native, ProofSystem,
-        ProofSystemInput, Public, Secret, ValueSource, Variable,
+        self, Add, Allocate, Allocator, Bool, Constant, Derived, Has, Native, ProofSystem,
+        ProofSystemInput, Public, Secret, Variable,
     },
-    encryption::hybrid::{DecryptedMessage, EncryptedMessage, HybridPublicKeyEncryptionScheme},
-    key::{KeyAgreementScheme, KeyDerivationFunction},
-    rand::{CryptoRng, RngCore, Sample},
+    key::kdf::KeyDerivationFunction,
+    rand::{RngCore, Sample},
 };
 use manta_util::SizeLimit;
 
@@ -155,7 +154,7 @@ pub trait Configuration {
 
     /// Public Key Variable Type
     type PublicKeyVar: Variable<Secret, Self::Compiler, Type = PublicKey<Self>>
-        + Equal<Self::Compiler>;
+        + constraint::PartialEq<Self::PublicKeyVar, Self::Compiler>;
 
     /// Key Agreement Scheme Variable Type
     type KeyAgreementSchemeVar: KeyAgreementScheme<
@@ -178,7 +177,7 @@ pub trait Configuration {
     /// UTXO Variable Type
     type UtxoVar: Variable<Public, Self::Compiler, Type = Utxo<Self>>
         + Variable<Secret, Self::Compiler, Type = Utxo<Self>>
-        + Equal<Self::Compiler>;
+        + constraint::PartialEq<Self::PublicKeyVar, Self::Compiler>;
 
     /// UTXO Commitment Scheme Variable Type
     type UtxoCommitmentSchemeVar: UtxoCommitmentScheme<
@@ -201,7 +200,7 @@ pub trait Configuration {
 
     /// Void Number Variable Type
     type VoidNumberVar: Variable<Public, Self::Compiler, Type = Self::VoidNumber>
-        + Equal<Self::Compiler>;
+        + constraint::PartialEq<Self::VoidNumberVar, Self::Compiler>;
 
     /// Void Number Commitment Scheme Variable Type
     type VoidNumberCommitmentSchemeVar: VoidNumberCommitmentScheme<
@@ -234,22 +233,22 @@ pub trait Configuration {
             Item = Self::UtxoVar,
             Witness = Self::UtxoAccumulatorWitnessVar,
             Output = Self::UtxoAccumulatorOutputVar,
-            Verification = <Self::Compiler as ConstraintSystem>::Bool,
+            Verification = Bool<Self::Compiler>,
         > + Constant<Self::Compiler, Type = Self::UtxoAccumulatorModel>;
 
     /// Asset Id Variable Type
     type AssetIdVar: Variable<Public, Self::Compiler, Type = AssetId>
         + Variable<Secret, Self::Compiler, Type = AssetId>
-        + Equal<Self::Compiler>;
+        + constraint::PartialEq<Self::AssetIdVar, Self::Compiler>;
 
     /// Asset Value Variable Type
     type AssetValueVar: Variable<Public, Self::Compiler, Type = AssetValue>
         + Variable<Secret, Self::Compiler, Type = AssetValue>
         + Add<Self::Compiler>
-        + Equal<Self::Compiler>;
+        + constraint::PartialEq<Self::AssetValueVar, Self::Compiler>;
 
     /// Constraint System Type
-    type Compiler: ConstraintSystem;
+    type Compiler: Has<bool>;
 
     /// Proof System Type
     type ProofSystem: ProofSystem<ConstraintSystem = Self::Compiler>
@@ -701,7 +700,7 @@ where
     #[inline]
     fn sample<R>(distribution: D, rng: &mut R) -> Self
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         Self::new(
             Sample::sample(distribution.clone(), rng),
@@ -1334,7 +1333,7 @@ where
     #[inline]
     fn sample<R>(distribution: (SD, AD), rng: &mut R) -> Self
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         Self::new(
             Sample::sample(distribution.0, rng),
@@ -1842,7 +1841,7 @@ where
         rng: &mut R,
     ) -> Result<(ProvingContext<C>, VerifyingContext<C>), ProofSystemError<C>>
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         C::ProofSystem::generate_context(
             public_parameters,
@@ -1860,7 +1859,7 @@ where
         rng: &mut R,
     ) -> Result<TransferPost<C>, ProofSystemError<C>>
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         Ok(TransferPost {
             validity_proof: C::ProofSystem::prove(
