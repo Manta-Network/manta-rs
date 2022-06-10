@@ -210,7 +210,7 @@ pub trait Sample<D = ()>: Sized {
     /// generated from the `rng`.
     fn sample<R>(distribution: D, rng: &mut R) -> Self
     where
-        R: CryptoRng + RngCore + ?Sized;
+        R: RngCore + ?Sized;
 
     /// Returns a random value of type `Self`, sampled according to the default distribution of
     /// type `D`, generated from the `rng`.
@@ -218,7 +218,7 @@ pub trait Sample<D = ()>: Sized {
     fn gen<R>(rng: &mut R) -> Self
     where
         D: Default,
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         Self::sample(Default::default(), rng)
     }
@@ -247,7 +247,7 @@ impl Sample for u64 {
     #[inline]
     fn sample<R>(_: (), rng: &mut R) -> Self
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         rng.next_u64()
     }
@@ -257,7 +257,7 @@ impl Sample for u128 {
     #[inline]
     fn sample<R>(_: (), rng: &mut R) -> Self
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         (u128::from(rng.next_u64()) << 64) | u128::from(rng.next_u64())
     }
@@ -273,7 +273,7 @@ where
     #[inline]
     fn sample<R>(distribution: D, rng: &mut R) -> Self
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         into_array_unchecked(
             rng.sample_iter(repeat(distribution).take(N))
@@ -306,7 +306,7 @@ where
     #[inline]
     fn sample<R>(distribution: D, rng: &mut R) -> Self
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         Self(distribution.sample(rng))
     }
@@ -317,7 +317,7 @@ pub struct DistIter<'r, D, T, R>
 where
     D: Iterator,
     T: Sample<D::Item>,
-    R: CryptoRng + RngCore + ?Sized,
+    R: RngCore + ?Sized,
 {
     /// Distribution Iterator
     iter: D,
@@ -333,7 +333,7 @@ impl<'r, D, T, R> DistIter<'r, D, T, R>
 where
     D: Iterator,
     T: Sample<D::Item>,
-    R: CryptoRng + RngCore + ?Sized,
+    R: RngCore + ?Sized,
 {
     /// Builds a new [`DistIter`] from `iter` and `rng`.
     #[inline]
@@ -350,7 +350,7 @@ impl<'r, D, T, R> Iterator for DistIter<'r, D, T, R>
 where
     D: Iterator,
     T: Sample<D::Item>,
-    R: CryptoRng + RngCore + ?Sized,
+    R: RngCore + ?Sized,
 {
     type Item = T;
 
@@ -374,7 +374,7 @@ pub trait TrySample<D = ()>: Sized {
     /// `distribution`, generated from the `rng`.
     fn try_sample<R>(distribution: D, rng: &mut R) -> Result<Self, Self::Error>
     where
-        R: CryptoRng + RngCore + ?Sized;
+        R: RngCore + ?Sized;
 
     /// Tries to return a random value of type `Self`, sampled according to the default
     /// distribution of type `D`, generated from the `rng`.
@@ -382,14 +382,14 @@ pub trait TrySample<D = ()>: Sized {
     fn try_gen<R>(rng: &mut R) -> Result<Self, Self::Error>
     where
         D: Default,
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         Self::try_sample(Default::default(), rng)
     }
 }
 
 /// Random Number Generator
-pub trait Rand: CryptoRng + RngCore {
+pub trait Rand: RngCore {
     /// Returns a random value of type `Self`, sampled according to the given `distribution`,
     /// generated from `self`.
     #[inline]
@@ -489,4 +489,4 @@ pub trait Rand: CryptoRng + RngCore {
     }
 }
 
-impl<R> Rand for R where R: CryptoRng + RngCore + ?Sized {}
+impl<R> Rand for R where R: RngCore + ?Sized {}

@@ -16,7 +16,7 @@
 
 //! Cryptographic Key Primitives
 
-/// Key Agreement Scheme
+/// Key Agreement Schemes
 pub mod agreement {
     /// Types
     pub trait Types {
@@ -88,6 +88,85 @@ pub mod agreement {
             compiler: &mut COM,
         ) -> Self::SharedSecret {
             (*self).agree(public_key, secret_key, compiler)
+        }
+    }
+
+    /// Testing Framework
+    #[cfg(feature = "test")]
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
+    pub mod test {
+        use super::*;
+        use core::fmt::Debug;
+
+        /// Tests if the `agreement` property is satisfied for `K`.
+        #[inline]
+        pub fn key_agreement<K>(scheme: &K, lhs: &K::SecretKey, rhs: &K::SecretKey)
+        where
+            K: Derive + Agree,
+            K::SharedSecret: Debug + PartialEq,
+        {
+            assert_eq!(
+                scheme.agree(&scheme.derive(rhs, &mut ()), lhs, &mut ()),
+                scheme.agree(&scheme.derive(lhs, &mut ()), rhs, &mut ()),
+                "Key agreement schemes should satisfy the agreement property."
+            )
+        }
+    }
+}
+
+/// Key Derivation Functions
+pub mod kdf {
+    #[cfg(feature = "serde")]
+    use manta_util::serde::{Deserialize, Serialize};
+
+    /// Key Derivation Function
+    pub trait KeyDerivationFunction<COM = ()> {
+        /// Key Type
+        type Key: ?Sized;
+
+        /// Output Type
+        type Output;
+
+        /// Derives a key of type [`Output`](Self::Output) from `key`.
+        fn derive(&self, key: &Self::Key, compiler: &mut COM) -> Self::Output;
+    }
+
+    impl<K, COM> KeyDerivationFunction<COM> for &K
+    where
+        K: KeyDerivationFunction<COM>,
+    {
+        type Key = Self::Key;
+        type Output = Self::Output;
+
+        #[inline]
+        fn derive(&self, key: &Self::Key, compiler: &mut COM) -> Self::Output {
+            (*self).derive(key, compiler)
+        }
+    }
+
+    /// Identity Key Derivation Function
+    #[cfg_attr(
+        feature = "serde",
+        derive(Deserialize, Serialize),
+        serde(crate = "manta_util::serde")
+    )]
+    #[derive(derivative::Derivative)]
+    #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    pub struct Identity<K, COM = ()>(PhantomData<(K, COM)>)
+    where
+        K: Clone;
+
+    impl<K, COM> KeyDerivationFunction<COM> for Identity<K, COM>
+    where
+        K: Clone,
+    {
+        type Key = K;
+        type Output = K;
+
+        #[inline]
+        fn derive_with(&self, key: &Self::Key, compiler: &mut COM) -> Self::Output {
+            let _ = compiler;
+            key.clone()
         }
     }
 }

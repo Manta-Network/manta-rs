@@ -46,7 +46,7 @@ pub trait Assert: Has<bool> {
 impl Assert for () {
     #[inline]
     fn assert(&mut self, bit: &Bool<Self>) {
-        // TODO: USe `dbg!` macro here to get more info, but add a feature-flag for this.
+        // TODO: Use `dbg!` macro here to get more info, but add a feature-flag for this.
         assert!(bit);
     }
 }

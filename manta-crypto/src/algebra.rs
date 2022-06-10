@@ -16,7 +16,11 @@
 
 //! Algebraic Constructions
 
-use crate::key;
+use crate::{
+    eclair::alloc::Constant,
+    key,
+    rand::{RngCore, Sample},
+};
 use core::marker::PhantomData;
 
 #[cfg(feature = "serde")]
@@ -51,10 +55,7 @@ pub trait Group<COM = ()> {
 )]
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct DiffieHellman<G, COM = ()>
-where
-    G: Group<COM> + security::ComputationalDiffieHellmanHardness,
-{
+pub struct DiffieHellman<G, COM = ()> {
     /// Group Generator
     pub generator: G,
 
@@ -62,10 +63,7 @@ where
     __: PhantomData<COM>,
 }
 
-impl<G, COM> DiffieHellman<G, COM>
-where
-    G: Group<COM> + security::ComputationalDiffieHellmanHardness,
-{
+impl<G, COM> DiffieHellman<G, COM> {
     /// Builds a new [`DiffieHellman`] key agreement scheme from the given `generator`.
     #[inline]
     pub fn new(generator: G) -> Self {
@@ -79,6 +77,18 @@ where
     #[inline]
     pub fn into_inner(self) -> G {
         self.generator
+    }
+}
+
+impl<G, COM> Constant<COM> for DiffieHellman<G, COM>
+where
+    G: Constant<COM>,
+{
+    type Type = DiffieHellman<G::Type>;
+
+    #[inline]
+    fn new_constant(value: &Self::Type, compiler: &mut COM) -> Self {
+        Self::new(G::new_constant(&value.generator, compiler))
     }
 }
 
@@ -113,6 +123,19 @@ where
         compiler: &mut COM,
     ) -> Self::SharedSecret {
         public_key.mul(secret_key, compiler)
+    }
+}
+
+impl<D, G> Sample<D> for DiffieHellman<G>
+where
+    G: Sample<D>,
+{
+    #[inline]
+    fn sample<R>(distribution: D, rng: &mut R) -> Self
+    where
+        R: RngCore + ?Sized,
+    {
+        Self::new(G::sample(distribution, rng))
     }
 }
 
