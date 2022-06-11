@@ -22,7 +22,7 @@
 // TODO:  Setup multi-account wallets using `crate::key::AccountTable`.
 // TODO:  Move `sync` to a streaming algorithm.
 // TODO:  Add self-destruct feature for clearing all secret and private data.
-// TODO:  Compress the `SyncResponse` data before sending (improves privacy and bandwidth).
+// TODO:  Compress the `BalanceUpdate` data before sending (improves privacy and bandwidth).
 // TODO:  Improve asynchronous interfaces internally in the signer, instead of just blocking
 //        internally.
 
@@ -40,7 +40,7 @@ use crate::{
         ProvingContext, Receiver, ReceivingKey, SecretKey, Sender, SpendingKey, Transfer,
         TransferPost, Utxo, VoidNumber,
     },
-    wallet::ledger::{Checkpoint, Prune},
+    wallet::ledger::{self, Data},
 };
 use alloc::{boxed::Box, vec, vec::Vec};
 use core::{convert::Infallible, fmt::Debug, hash::Hash};
@@ -65,7 +65,7 @@ where
     /// Checkpoint Type
     ///
     /// This checkpoint is used by the signer to stay synchronized with wallet and the ledger.
-    type Checkpoint: Checkpoint;
+    type Checkpoint: ledger::Checkpoint;
 
     /// Error Type
     ///
@@ -78,7 +78,7 @@ where
     fn sync(
         &mut self,
         request: SyncRequest<C, Self::Checkpoint>,
-    ) -> LocalBoxFutureResult<Result<SyncResponse, SyncError<Self::Checkpoint>>, Self::Error>;
+    ) -> LocalBoxFutureResult<SyncResult<Self::Checkpoint>, Self::Error>;
 
     /// Signs a transaction and returns the ledger transfer posts if successful.
     fn sign(
@@ -134,13 +134,13 @@ where
     pub senders: Vec<VoidNumber<C>>,
 }
 
-impl<C> Prune<C::Checkpoint> for SyncData<C>
+impl<C> Data<C::Checkpoint> for SyncData<C>
 where
-    C: Configuration,
+    C: Configuration + ?Sized,
 {
     #[inline]
     fn prune(&mut self, origin: &C::Checkpoint, checkpoint: &C::Checkpoint) -> bool {
-        C::prune_sync_data(self, origin, checkpoint)
+        C::Checkpoint::prune(self, origin, checkpoint)
     }
 }
 
@@ -169,7 +169,7 @@ where
 pub struct SyncRequest<C, T>
 where
     C: transfer::Configuration,
-    T: Checkpoint,
+    T: ledger::Checkpoint,
 {
     /// Recovery Flag
     ///
@@ -193,7 +193,7 @@ where
 impl<C, T> SyncRequest<C, T>
 where
     C: transfer::Configuration,
-    T: Checkpoint,
+    T: ledger::Checkpoint,
 {
     /// Prunes the [`data`] in `self` according to the target `checkpoint` given that
     /// [`origin_checkpoint`] was the origin of the data.
@@ -203,7 +203,7 @@ where
     #[inline]
     pub fn prune(&mut self, checkpoint: &T) -> bool
     where
-        SyncData<C>: Prune<T>,
+        SyncData<C>: Data<T>,
     {
         self.data.prune(&self.origin_checkpoint, checkpoint)
     }
@@ -211,7 +211,7 @@ where
 
 /// Signer Synchronization Response
 ///
-/// This `enum` is created by the [`sync`](Connection::sync) method on [`Connection`].
+/// This `struct` is created by the [`sync`](Connection::sync) method on [`Connection`].
 /// See its documentation for more.
 #[cfg_attr(
     feature = "serde",
@@ -219,7 +219,25 @@ where
     serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub enum SyncResponse {
+pub struct SyncResponse<T>
+where
+    T: ledger::Checkpoint,
+{
+    /// Checkpoint
+    pub checkpoint: T,
+
+    /// Balance Update
+    pub balance_update: BalanceUpdate,
+}
+
+/// Balance Update
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub enum BalanceUpdate {
     /// Partial Update
     ///
     /// This is the typical response from the [`Signer`]. In rare de-synchronization cases, we may
@@ -255,7 +273,7 @@ pub enum SyncResponse {
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum SyncError<T>
 where
-    T: Checkpoint,
+    T: ledger::Checkpoint,
 {
     /// Inconsistent Synchronization
     ///
@@ -268,6 +286,9 @@ where
         checkpoint: T,
     },
 }
+
+/// Synchronization Result
+pub type SyncResult<T> = Result<SyncResponse<T>, SyncError<T>>;
 
 /// Signer Signing Request
 ///
@@ -383,6 +404,9 @@ where
     ProofSystemError(ProofSystemError<C>),
 }
 
+/// Signing Result
+pub type SignResult<C> = Result<SignResponse<C>, SignError<C>>;
+
 /// Receiving Key Request
 #[cfg_attr(
     feature = "serde",
@@ -417,10 +441,37 @@ pub enum ReceivingKeyRequest {
     },
 }
 
+/// Signer Checkpoint
+pub trait Checkpoint<C>: ledger::Checkpoint
+where
+    C: transfer::Configuration + ?Sized,
+{
+    /// UTXO Accumulator Type
+    type UtxoAccumulator: Accumulator<Item = C::Utxo, Model = C::UtxoAccumulatorModel>;
+
+    /// Updates `self` by viewing `count`-many void numbers.
+    fn update_from_void_numbers(&mut self, count: usize);
+
+    /// Updates `self` by viewing a new `accumulator`.
+    fn update_from_utxo_accumulator(&mut self, accumulator: &Self::UtxoAccumulator);
+
+    /// Computes a best-effort [`Checkpoint`] from the current `accumulator` state.
+    #[inline]
+    fn from_utxo_accumulator(accumulator: &Self::UtxoAccumulator) -> Self {
+        let mut checkpoint = Self::default();
+        checkpoint.update_from_utxo_accumulator(accumulator);
+        checkpoint
+    }
+
+    /// Prunes the `data` required for a [`sync`](Connection::sync) call against `origin` and
+    /// `signer_checkpoint`, returning `true` if the data was pruned.
+    fn prune(data: &mut SyncData<C>, origin: &Self, signer_checkpoint: &Self) -> bool;
+}
+
 /// Signer Configuration
 pub trait Configuration: transfer::Configuration {
     /// Checkpoint Type
-    type Checkpoint: Checkpoint;
+    type Checkpoint: Checkpoint<Self, UtxoAccumulator = Self::UtxoAccumulator>;
 
     /// Hierarchical Key Derivation Scheme
     type HierarchicalKeyDerivationScheme: HierarchicalKeyDerivationScheme<
@@ -438,20 +489,6 @@ pub trait Configuration: transfer::Configuration {
 
     /// Random Number Generator Type
     type Rng: CryptoRng + FromEntropy + RngCore;
-
-    /// Updates the given `checkpoint` to match the state of the `utxo_accumulator`.
-    fn update_checkpoint(
-        checkpoint: &Self::Checkpoint,
-        utxo_accumulator: &Self::UtxoAccumulator,
-    ) -> Self::Checkpoint;
-
-    /// Prunes the `data` required for a [`sync`](Connection::sync) call against `origin` and
-    /// `checkpoint`.
-    fn prune_sync_data(
-        data: &mut SyncData<Self>,
-        origin: &Self::Checkpoint,
-        checkpoint: &Self::Checkpoint,
-    ) -> bool;
 }
 
 /// Account Table Type
@@ -513,12 +550,14 @@ where
             deserialize = r"
                 AccountTable<C>: Deserialize<'de>,
                 C::UtxoAccumulator: Deserialize<'de>,
-                C::AssetMap: Deserialize<'de>
+                C::AssetMap: Deserialize<'de>,
+                C::Checkpoint: Deserialize<'de>
             ",
             serialize = r"
                 AccountTable<C>: Serialize,
                 C::UtxoAccumulator: Serialize,
-                C::AssetMap: Serialize
+                C::AssetMap: Serialize,
+                C::Checkpoint: Serialize
             ",
         ),
         crate = "manta_util::serde",
@@ -544,7 +583,14 @@ where
     /// Asset Distribution
     assets: C::AssetMap,
 
+    /// Current Checkpoint
+    checkpoint: C::Checkpoint,
+
     /// Random Number Generator
+    ///
+    /// We use this entropy source to add randomness to various cryptographic constructions. The
+    /// state of the RNG should not be saved to the file system and instead should be resampled
+    /// from local entropy whenever the [`SignerState`] is deserialized.
     #[cfg_attr(feature = "serde", serde(skip, default = "FromEntropy::from_entropy"))]
     rng: C::Rng,
 }
@@ -553,18 +599,20 @@ impl<C> SignerState<C>
 where
     C: Configuration,
 {
-    /// Builds a new [`SignerState`] from `keys`, `utxo_accumulator`, and `assets`.
+    /// Builds a new [`SignerState`] from `accounts`, `utxo_accumulator`, `assets`, and `rng`.
     #[inline]
     fn build(
         accounts: AccountTable<C>,
         utxo_accumulator: C::UtxoAccumulator,
         assets: C::AssetMap,
+        rng: C::Rng,
     ) -> Self {
         Self {
             accounts,
+            checkpoint: C::Checkpoint::from_utxo_accumulator(&utxo_accumulator),
             utxo_accumulator,
             assets,
-            rng: FromEntropy::from_entropy(),
+            rng,
         }
     }
 
@@ -578,6 +626,7 @@ where
             AccountTable::<C>::new(keys),
             utxo_accumulator,
             Default::default(),
+            FromEntropy::from_entropy(),
         )
     }
 
@@ -667,10 +716,11 @@ where
         inserts: I,
         mut void_numbers: Vec<VoidNumber<C>>,
         is_partial: bool,
-    ) -> Result<SyncResponse, SyncError<C::Checkpoint>>
+    ) -> Result<SyncResponse<C::Checkpoint>, SyncError<C::Checkpoint>>
     where
         I: Iterator<Item = (Utxo<C>, EncryptedNote<C>)>,
     {
+        let void_number_count = void_numbers.len();
         let mut deposit = Vec::new();
         let mut withdraw = Vec::new();
         for (utxo, encrypted_note) in inserts {
@@ -700,15 +750,21 @@ where
             );
             !assets.is_empty()
         });
-        // TODO: Whenever we are doing a full update, don't even build the `deposit` and `withdraw`
-        //       vectors, since we won't be needing them.
-        if is_partial {
-            Ok(SyncResponse::Partial { deposit, withdraw })
-        } else {
-            Ok(SyncResponse::Full {
-                assets: self.assets.assets().into(),
-            })
-        }
+        self.checkpoint.update_from_void_numbers(void_number_count);
+        self.checkpoint
+            .update_from_utxo_accumulator(&self.utxo_accumulator);
+        Ok(SyncResponse {
+            checkpoint: self.checkpoint.clone(),
+            balance_update: if is_partial {
+                // TODO: Whenever we are doing a full update, don't even build the `deposit` and
+                //       `withdraw` vectors, since we won't be needing them.
+                BalanceUpdate::Partial { deposit, withdraw }
+            } else {
+                BalanceUpdate::Full {
+                    assets: self.assets.assets().into(),
+                }
+            },
+        })
     }
 
     /// Builds the pre-sender associated to `key` and `asset`.
@@ -987,6 +1043,7 @@ where
             self.accounts.clone(),
             self.utxo_accumulator.clone(),
             self.assets.clone(),
+            FromEntropy::from_entropy(),
         )
     }
 }
@@ -1028,12 +1085,7 @@ where
                 parameters,
                 proving_context,
             },
-            SignerState {
-                accounts,
-                utxo_accumulator,
-                assets,
-                rng,
-            },
+            SignerState::build(accounts, utxo_accumulator, assets, rng),
         )
     }
 
@@ -1078,18 +1130,19 @@ where
     pub fn sync(
         &mut self,
         mut request: SyncRequest<C, C::Checkpoint>,
-    ) -> Result<SyncResponse, SyncError<C::Checkpoint>> {
+    ) -> Result<SyncResponse<C::Checkpoint>, SyncError<C::Checkpoint>> {
         // TODO: Do a capacity check on the current UTXO accumulator?
         //
         // if self.utxo_accumulator.capacity() < starting_index {
         //    panic!("full capacity")
         // }
-        let checkpoint =
-            C::update_checkpoint(&request.origin_checkpoint, &self.state.utxo_accumulator);
-        if checkpoint < request.origin_checkpoint {
-            Err(SyncError::InconsistentSynchronization { checkpoint })
+        let checkpoint = &self.state.checkpoint;
+        if checkpoint < &request.origin_checkpoint {
+            Err(SyncError::InconsistentSynchronization {
+                checkpoint: checkpoint.clone(),
+            })
         } else {
-            let has_pruned = request.prune(&checkpoint);
+            let has_pruned = request.prune(checkpoint);
             let SyncData { receivers, senders } = request.data;
             let result = self.state.sync_with(
                 &self.parameters.parameters,
@@ -1216,7 +1269,10 @@ where
     fn sync(
         &mut self,
         request: SyncRequest<C, C::Checkpoint>,
-    ) -> LocalBoxFutureResult<Result<SyncResponse, SyncError<C::Checkpoint>>, Self::Error> {
+    ) -> LocalBoxFutureResult<
+        Result<SyncResponse<C::Checkpoint>, SyncError<C::Checkpoint>>,
+        Self::Error,
+    > {
         Box::pin(async move { Ok(self.sync(request)) })
     }
 

@@ -73,8 +73,8 @@ where
         count: usize,
     },
 
-    /// Recover Wallet
-    Recover,
+    /// Restart Wallet
+    Restart,
 }
 
 impl<C> Action<C>
@@ -151,7 +151,7 @@ where
                 transaction,
             } => Self::as_post_type(*is_self, *is_maximal, transaction),
             Self::GenerateReceivingKeys { .. } => ActionType::GenerateReceivingKeys,
-            Self::Recover => ActionType::Recover,
+            Self::Restart => ActionType::Restart,
         }
     }
 }
@@ -208,8 +208,8 @@ pub enum ActionType {
     /// Generate Receiving Keys Action
     GenerateReceivingKeys,
 
-    /// Recover Wallet Action
-    Recover,
+    /// Restart Wallet Action
+    Restart,
 }
 
 impl ActionType {
@@ -264,8 +264,8 @@ pub struct ActionDistributionPMF<T = u64> {
     /// Generate Receiving Keys Action Weight
     pub generate_receiving_keys: T,
 
-    /// Recover Wallet Action Weight
-    pub recover: T,
+    /// Restart Wallet Action Weight
+    pub restart: T,
 }
 
 impl Default for ActionDistributionPMF {
@@ -283,7 +283,7 @@ impl Default for ActionDistributionPMF {
             self_transfer_zero: 1,
             flush_to_public: 1,
             generate_receiving_keys: 3,
-            recover: 4,
+            restart: 4,
         }
     }
 }
@@ -321,7 +321,7 @@ impl TryFrom<ActionDistributionPMF> for ActionDistribution {
                 pmf.self_transfer_zero as f64,
                 pmf.flush_to_public as f64,
                 pmf.generate_receiving_keys as f64,
-                pmf.recover as f64,
+                pmf.restart as f64,
             ])?,
         })
     }
@@ -345,7 +345,7 @@ impl Distribution<ActionType> for ActionDistribution {
             8 => ActionType::SelfTransferZero,
             9 => ActionType::FlushToPublic,
             10 => ActionType::GenerateReceivingKeys,
-            11 => ActionType::Recover,
+            11 => ActionType::Restart,
             _ => unreachable!(),
         }
     }
@@ -666,14 +666,14 @@ where
             .unwrap_or(Action::Skip))
     }
 
-    /// Computes the current balance state of the wallet, performs a full recovery, and then
-    /// checks that the balance state has the same or more funds than before the recovery.
+    /// Computes the current balance state of the wallet, performs a wallet restart, and then checks
+    /// that the balance state has the same or more funds than before the restart.
     #[inline]
-    async fn recover(&mut self) -> Result<bool, Error<C, L, S>> {
+    async fn restart(&mut self) -> Result<bool, Error<C, L, S>> {
         self.wallet.sync().await?;
         let assets = AssetList::from_iter(self.wallet.assets().clone());
         self.wallet
-            .recover()
+            .restart()
             .await
             .map(move |_| self.wallet.contains_all(assets))
     }
@@ -795,7 +795,7 @@ where
                         .sample(rng)
                         .ceil() as usize,
                 }),
-                ActionType::Recover => Ok(Action::Recover),
+                ActionType::Restart => Ok(Action::Restart),
             })
         })
     }
@@ -853,9 +853,9 @@ where
                             Err(err) => Err(Error::SignerConnectionError(err)),
                         },
                     },
-                    Action::Recover => Event {
-                        action: ActionType::Recover,
-                        value: actor.recover().await,
+                    Action::Restart => Event {
+                        action: ActionType::Restart,
+                        value: actor.restart().await,
                     },
                 },
                 Err(err) => Event {

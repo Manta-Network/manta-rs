@@ -47,7 +47,7 @@ impl State {
         self,
         account: AccountId,
         checkpoint: Checkpoint,
-    ) -> ReadResponse<Checkpoint, SyncData<Config>> {
+    ) -> ReadResponse<SyncData<Config>> {
         let _ = account;
         self.0.read().await.pull(&checkpoint)
     }

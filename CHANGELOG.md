@@ -5,7 +5,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 ### Added
-- [\#93](https://github.com/Manta-Network/manta-rs/pull/93) Add Changelog and Update Contributing Guidelines
 - [\#90](https://github.com/Manta-Network/manta-rs/pull/90) Add Binary Compatibility Test for `manta-pay`
 
 ### Changed
@@ -15,9 +14,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Removed
 
 ### Fixed
-- [\#94](https://github.com/Manta-Network/manta-rs/pull/94) Fix Tag-and-Release CI Pipeline
 
 ### Security
+
+## [0.5.0] - 2022-06-09
+### Added
+- [\#93](https://github.com/Manta-Network/manta-rs/pull/93) Add Changelog and Update Contributing Guidelines
+
+### Changed
+- [\#86](https://github.com/Manta-Network/manta-rs/pull/86) Allow Wallet to Synchronize with Signer before talking to Ledger
+
+### Fixed
+- [\#94](https://github.com/Manta-Network/manta-rs/pull/94) Fix Tag-and-Release CI Pipeline
 
 ## [0.4.0] - 2022-06-08
 ### Added
@@ -44,5 +52,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Security
 - [\#50](https://github.com/Manta-Network/manta-rs/pull/50) Remove Trapdoor from Circuit
 
-[Unreleased]: https://github.com/Manta-Network/manta-rs/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/Manta-Network/manta-rs/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/Manta-Network/manta-rs/releases/tag/v0.5.0
 [0.4.0]: https://github.com/Manta-Network/manta-rs/releases/tag/v0.4.0
