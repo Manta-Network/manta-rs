@@ -14,23 +14,22 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Cryptographic Primitives Library
+//! Pseudo-random Permutation implementation
 
-#![cfg_attr(not(feature = "std"), no_std)]
-#![cfg_attr(doc_cfg, feature(doc_cfg))]
-#![forbid(rustdoc::broken_intra_doc_links)]
-#![forbid(missing_docs)]
+use manta_crypto::permutation::PseudorandomPermutation;
 
-extern crate alloc;
+impl<S, const ARITY: usize, COM> PseudorandomPermutation for super::Hasher<S, ARITY, COM>
+where
+    S: super::Specification<COM>,
+{
+    type State = [S::Field; ARITY];
 
-pub mod accumulator;
-pub mod commitment;
-pub mod constraint;
-pub mod ecc;
-pub mod encryption;
-pub mod hash;
-pub mod key;
-pub mod merkle_tree;
-pub mod password;
-pub mod rand;
-pub mod permutation;
+    fn permute_in(&self, state: &mut Self::State, compiler: &mut COM) -> Self::State {
+        // convert `[S::Field; ARITY]` to `[&S::Field; ARITY]`
+        let mut input = state.iter().collect::<Vec<_>>().try_into().unwrap();
+        // permute
+        let state = self.hash_untruncated(input, compiler);
+        // convert `Vec<S::Field>` to `[S::Field; ARITY]`
+        state.try_into().unwrap()
+    }
+}

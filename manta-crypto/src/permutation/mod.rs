@@ -14,23 +14,26 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Cryptographic Primitives Library
+//! Permutation and Sponge Crypto Primitives
 
-#![cfg_attr(not(feature = "std"), no_std)]
-#![cfg_attr(doc_cfg, feature(doc_cfg))]
-#![forbid(rustdoc::broken_intra_doc_links)]
-#![forbid(missing_docs)]
+use crate::constraint::Native;
 
-extern crate alloc;
+pub mod sponge;
 
-pub mod accumulator;
-pub mod commitment;
-pub mod constraint;
-pub mod ecc;
-pub mod encryption;
-pub mod hash;
-pub mod key;
-pub mod merkle_tree;
-pub mod password;
-pub mod rand;
-pub mod permutation;
+/// Pseudo-random Permutation
+pub trait PseudorandomPermutation<COM = ()> {
+    /// State where the permutation is applied
+    type State;
+
+    /// Permutes the state in the given `compiler`
+    fn permute_in(&self, state: &Self::State, compiler: &mut COM) -> Self::State;
+
+    /// Permutes the state in the native compiler.
+    #[inline]
+    fn permute(&self, state: &Self::State) -> Self::State
+    where
+        COM: Native,
+    {
+        self.permute_in(state, &mut COM::compiler())
+    }
+}
