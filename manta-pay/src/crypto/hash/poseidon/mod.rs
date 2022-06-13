@@ -89,7 +89,7 @@ pub trait FieldGeneration {
 /// Poseidon Permutation Specification
 pub trait Specification<COM = ()> {
     /// Field Type used for Permutation State
-    type Field;
+    type Field: Debug;
 
     /// Field Type used for Constant Parameters
     type ParameterField;

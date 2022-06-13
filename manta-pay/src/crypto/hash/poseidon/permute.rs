@@ -16,17 +16,17 @@
 
 //! Pseudo-random Permutation implementation
 
+use alloc::vec::Vec;
 use manta_crypto::permutation::PseudorandomPermutation;
-
-impl<S, const ARITY: usize, COM> PseudorandomPermutation for super::Hasher<S, ARITY, COM>
+impl<S, const ARITY: usize, COM> PseudorandomPermutation<COM> for super::Hasher<S, ARITY, COM>
 where
     S: super::Specification<COM>,
 {
     type State = [S::Field; ARITY];
 
-    fn permute_in(&self, state: &mut Self::State, compiler: &mut COM) -> Self::State {
+    fn permute_in(&self, state: &Self::State, compiler: &mut COM) -> Self::State {
         // convert `[S::Field; ARITY]` to `[&S::Field; ARITY]`
-        let mut input = state.iter().collect::<Vec<_>>().try_into().unwrap();
+        let input = state.iter().collect::<Vec<_>>().try_into().unwrap();
         // permute
         let state = self.hash_untruncated(input, compiler);
         // convert `Vec<S::Field>` to `[S::Field; ARITY]`
