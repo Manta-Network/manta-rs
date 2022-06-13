@@ -1,0 +1,12 @@
+df87563f5a6366a341f4dd1796ecd7eec85354e0e8e0bb9e2a8cdb33be3a31e9  data/pay/testnet/parameters/note-encryption-scheme.dat
+05e6b3b6a0d6d6debe458b6f7ddaefa51a4d38608024a98fc4dedf5ee8b68e99  data/pay/testnet/parameters/utxo-accumulator-model.dat
+348d7e0072ffdb56fd19d6115c89a3c9172639c5167e8a7e905dc8a575e4f17d  data/pay/testnet/parameters/utxo-commitment-scheme.dat
+9dcf5d51f6ffbcda46eaaab64e7350095465f8cc774f8276b46889c46479a2e4  data/pay/testnet/parameters/void-number-commitment-scheme.dat
+d0dbeec5afcd85025678bf64db3a540622be09e3208ace153446639a7d5de98e  data/pay/testnet/proving/mint.lfs
+04b294703a2588e6a6a4bd98734fb18fa5f8c10b33be63bb9a73f68c05ccaf2c  data/pay/testnet/proving/private-transfer.lfs
+eb5c880bdf3c998a9a081f0259fd536e07f4bb71095bcef5664326bcb1ad6428  data/pay/testnet/proving/reclaim.lfs
+5719387f9625828f46835a8375656578e028d8fc6da6822b765f47e296c0aaac  data/pay/testnet/verifying/mint.dat
+29a8229b59490223372c1f2b918f10d806be64ac4ffa5695dbdfe97b4b52e404  data/pay/testnet/verifying/private-transfer.dat
+bbe115020d563d63d404437c38741f0d527ab0441b4aaf4de463d9e9452dee09  data/pay/testnet/verifying/reclaim.dat
+b0afebeb04bbaafb503393b84003edb1ec515d5bdc822e3df9559285ff23dda3  data/trusted-setup/bls12-381/powers-of-tau-g1.lfs
+3add4e890bb3e82f8346e31b0b4bad3c77da38f0605b4af33ba17eab2dd0e56e  data/trusted-setup/bls12-381/powers-of-tau-g2.lfs
