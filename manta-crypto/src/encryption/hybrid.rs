@@ -23,7 +23,7 @@
 use crate::{
     encryption::{
         CiphertextType, Decrypt, DecryptionKeyType, DecryptionTypes, Derive, Encrypt,
-        EncryptionKeyType, EncryptionTypes, HeaderType,
+        EncryptionKeyType, EncryptionTypes, HeaderType, PlaintextType,
     },
     key,
 };
@@ -156,13 +156,20 @@ where
     }
 }
 
+impl<K, E> PlaintextType for Hybrid<K, E>
+where
+    K: key::agreement::Types,
+    E: PlaintextType,
+{
+    type Plaintext = E::Plaintext;
+}
+
 impl<K, E> EncryptionTypes for Hybrid<K, E>
 where
     K: key::agreement::Types,
     E: EncryptionTypes,
 {
     type Randomness = Randomness<K, E>;
-    type Plaintext = E::Plaintext;
 }
 
 impl<K, E, COM> Encrypt<COM> for Hybrid<K, E>

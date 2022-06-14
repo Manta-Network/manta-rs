@@ -21,7 +21,7 @@
 use crate::{
     encryption::{
         CiphertextType, Decrypt, DecryptionKeyType, DecryptionTypes, Encrypt, EncryptionKeyType,
-        EncryptionTypes, HeaderType,
+        EncryptionTypes, HeaderType, PlaintextType,
     },
     permutation::{
         sponge::{Absorb, Sponge, Squeeze},
@@ -214,13 +214,24 @@ where
     type DecryptionKey = C::Key;
 }
 
+impl<P, C, COM> PlaintextType for Duplexer<P, C, COM>
+where
+    P: PseudorandomPermutation<COM>,
+    C: Configuration<P, COM>,
+{
+    type Plaintext = Vec<C::Input>;
+}
+
 impl<P, C, COM> EncryptionTypes for Duplexer<P, C, COM>
 where
     P: PseudorandomPermutation<COM>,
     C: Configuration<P, COM>,
 {
+    /// Empty Randomness
+    ///
+    /// The current protocol does not support any private randomness injected with the plaintext,
+    /// but may support it in the future.
     type Randomness = ();
-    type Plaintext = Vec<C::Input>;
 }
 
 impl<P, C, COM> Encrypt<COM> for Duplexer<P, C, COM>
