@@ -58,7 +58,8 @@ fn load_parameters(
     };
     let verifying_context = MultiVerifyingContext {
         mint: VerifyingContext::decode(
-            manta_parameters::pay::testnet::verifying::Mint::get().expect("Checksum did not match."),
+            manta_parameters::pay::testnet::verifying::Mint::get()
+                .expect("Checksum did not match."),
         )
         .expect("Unable to decode MINT verifying context."),
         private_transfer: VerifyingContext::decode(
@@ -67,7 +68,8 @@ fn load_parameters(
         )
         .expect("Unable to decode PRIVATE_TRANSFER verifying context."),
         reclaim: VerifyingContext::decode(
-            manta_parameters::pay::testnet::verifying::Reclaim::get().expect("Checksum did not match."),
+            manta_parameters::pay::testnet::verifying::Reclaim::get()
+                .expect("Checksum did not match."),
         )
         .expect("Unable to decode RECLAIM verifying context."),
     };
