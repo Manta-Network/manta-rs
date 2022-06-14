@@ -21,16 +21,20 @@ use crate::constraint::Native;
 pub mod sponge;
 
 /// Pseudo-random Permutation
-pub trait PseudorandomPermutation<COM = ()> {
-    /// State where the permutation is applied
-    type State;
+pub trait PseudorandomPermutation<const ARITY: usize, COM = ()> {
+    /// Element for each permutation
+    type Element;
 
     /// Permutes the state in the given `compiler`
-    fn permute_in(&self, state: &Self::State, compiler: &mut COM) -> Self::State;
+    fn permute_in(
+        &self,
+        state: [&Self::Element; ARITY],
+        compiler: &mut COM,
+    ) -> [Self::Element; ARITY];
 
     /// Permutes the state in the native compiler.
     #[inline]
-    fn permute(&self, state: &Self::State) -> Self::State
+    fn permute(&self, state: [&Self::Element; ARITY]) -> [Self::Element; ARITY]
     where
         COM: Native,
     {
