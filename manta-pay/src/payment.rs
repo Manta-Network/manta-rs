@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! prove and verify functions for benchmark
+//! Prove and Verify Functions for Benchmark and Test Purposes
 
 use manta_accounting::{
     asset::{Asset, AssetId},
@@ -26,7 +26,7 @@ use manta_crypto::{
     merkle_tree::{forest::TreeArrayMerkleForest, full::Full},
     rand::{CryptoRng, Rand, RngCore, Sample},
 };
-use manta_pay::config::{
+use crate::config::{
     self, FullParameters, MerkleTreeConfiguration, Mint, MultiProvingContext, Parameters,
     PrivateTransfer, ProofSystem, ProvingContext, Reclaim, UtxoAccumulatorModel, VerifyingContext,
 };
@@ -111,7 +111,6 @@ where
     let asset_id = AssetId(rng.gen());
     let asset_0 = asset_id.value(10_000);
     let asset_1 = asset_id.value(20_000);
-
     let mut utxo_accumulator = UtxoAccumulator::new(utxo_accumulator_model.clone());
     let (spending_key_0, sender_0) =
         sample_mint_context(parameters, &mut utxo_accumulator, asset_0, rng);

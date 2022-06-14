@@ -27,6 +27,7 @@ extern crate alloc;
 mod test;
 
 pub mod crypto;
+pub mod payment;
 pub mod util;
 
 #[cfg(feature = "groth16")]

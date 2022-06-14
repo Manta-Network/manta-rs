@@ -15,9 +15,8 @@
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use manta_benchmark::payment::{self, assert_valid_proof};
 use manta_crypto::rand::OsRng;
-use manta_pay::parameters;
+use manta_pay::{parameters, payment};
 
 fn prove(c: &mut Criterion) {
     let mut group = c.benchmark_group("bench");
@@ -48,7 +47,7 @@ fn verify(c: &mut Criterion) {
     ));
     group.bench_function("private transfer verify", |b| {
         b.iter(|| {
-            assert_valid_proof(&verifying_context.private_transfer, &private_transfer);
+            payment::assert_valid_proof(&verifying_context.private_transfer, &private_transfer);
         })
     });
 }

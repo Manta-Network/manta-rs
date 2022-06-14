@@ -14,17 +14,14 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-use crate::payment::assert_valid_proof;
 use manta_crypto::rand::{OsRng, Rand};
 use manta_pay::{
     config::{
         MultiProvingContext, MultiVerifyingContext, Parameters, TransferPost, UtxoAccumulatorModel,
     },
-    parameters,
+    parameters, payment,
 };
 use wasm_bindgen::prelude::wasm_bindgen;
-
-pub mod payment;
 
 #[wasm_bindgen]
 #[derive(Clone, Debug)]
@@ -95,15 +92,15 @@ pub fn prove_reclaim(context: &Context) -> Proof {
 
 #[wasm_bindgen]
 pub fn verify_mint(context: &Context, proof: &Proof) {
-    assert_valid_proof(&context.verifying_context.mint, &proof.0);
+    payment::assert_valid_proof(&context.verifying_context.mint, &proof.0);
 }
 
 #[wasm_bindgen]
 pub fn verify_private_transfer(context: &Context, proof: &Proof) {
-    assert_valid_proof(&context.verifying_context.private_transfer, &proof.0);
+    payment::assert_valid_proof(&context.verifying_context.private_transfer, &proof.0);
 }
 
 #[wasm_bindgen]
 pub fn verify_reclaim(context: &Context, proof: &Proof) {
-    assert_valid_proof(&context.verifying_context.reclaim, &proof.0);
+    payment::assert_valid_proof(&context.verifying_context.reclaim, &proof.0);
 }

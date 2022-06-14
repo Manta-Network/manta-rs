@@ -15,9 +15,8 @@
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use manta_benchmark::payment;
 use manta_crypto::rand::{OsRng, Rand};
-use manta_pay::parameters;
+use manta_pay::{parameters, payment};
 
 fn prove(c: &mut Criterion) {
     let mut group = c.benchmark_group("bench");
