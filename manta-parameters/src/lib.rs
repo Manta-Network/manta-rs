@@ -44,7 +44,7 @@ pub mod github {
     pub const REPO: &str = "manta-rs";
 
     /// Manta-Parameters GitHub Repository Name
-    pub const SUB_REPO: &str = "manta-parameters";
+    pub const CRATE: &str = "manta-parameters";
 
     /// Default GitHub Branch
     pub const DEFAULT_BRANCH: &str = "main";
@@ -52,14 +52,16 @@ pub mod github {
     /// Returns the Git-LFS URL for GitHub content at the given `branch` and `data_path`.
     pub fn lfs_url(branch: &str, data_path: &str) -> String {
         std::format!(
-            "https://media.githubusercontent.com/media/{ORGANIZATION}/{REPO}/{branch}/{SUB_REPO}/{data_path}"
+            "https://media.githubusercontent.com/media/{ORGANIZATION}/{REPO}/{branch}/{CRATE}/{data_path}"
         )
     }
 
     /// Returns the raw file storage URL for GitHub content at the given `branch` and `data_path`.
     #[inline]
     pub fn raw_url(branch: &str, data_path: &str) -> String {
-        std::format!("https://raw.githubusercontent.com/{ORGANIZATION}/{REPO}/{branch}/{SUB_REPO}/{data_path}")
+        std::format!(
+            "https://raw.githubusercontent.com/{ORGANIZATION}/{REPO}/{branch}/{CRATE}/{data_path}"
+        )
     }
 
     /// Downloads the data from `url` to `file` returning the number of bytes read.

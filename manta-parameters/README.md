@@ -11,7 +11,7 @@ The data library is comprised of a bunch of data files, either as raw binary dat
 
 ## Checksums
 
-For checksums we use [`BLAKE3`](https://github.com/BLAKE3-team/BLAKE3). Install the `b3sum` command with
+For checksums we use [`BLAKE3`](https://github.com/BLAKE3-team/BLAKE3). Install `b3sum` with
 
 ```sh
 cargo install b3sum
@@ -20,7 +20,7 @@ cargo install b3sum
 to compute the checksums for yourself. The checksums for the [`data`](./data/) directory are stored in [`data.checkfile`](./data.checkfile) which is created by the following command:
 
 ```sh
-b3sum data/**/**/**/* 2>/dev/null > data.checkfile
+sh generate_checkfile.sh
 ```
 
 To check that the checkfile is up-to-date use the following command:
