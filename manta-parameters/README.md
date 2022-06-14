@@ -20,7 +20,7 @@ cargo install b3sum
 to compute the checksums for yourself. The checksums for the [`data`](./data/) directory are stored in [`data.checkfile`](./data.checkfile) which is created by the following command:
 
 ```sh
-sh generate_checkfile.sh
+./generate_checkfile.sh
 ```
 
 To check that the checkfile is up-to-date use the following command:
