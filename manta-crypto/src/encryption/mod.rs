@@ -37,7 +37,7 @@ pub mod hybrid;
 /// more details on types that are required for encryption.
 ///
 /// [`Randomness`]: EncryptionTypes::Randomness
-/// [`Plaintext`]: EncryptionTypes::Plaintext
+/// [`Plaintext`]: PlaintextType::Plaintext
 pub trait HeaderType {
     /// Header Type
     type Header;
@@ -165,8 +165,10 @@ pub trait EncryptionTypes: CiphertextType + EncryptionKeyType + HeaderType + Pla
     ///
     /// The randomness type allows us to inject some extra randomness to hide repeated encryptions
     /// with the same key and same plaintext, independent of the nonce stored in the [`Header`]. In
-    /// this case, note that [`Randomness`](Self::Randomness) is not available to the
-    /// [`Decrypt::decrypt`] method.
+    /// this case, note that [`Randomness`] is not available to the [`Decrypt::decrypt`] method.
+    ///
+    /// [`Header`]: HeaderType::Header
+    /// [`Randomness`]: Self::Randomness
     type Randomness;
 }
 
@@ -219,7 +221,7 @@ pub trait DecryptionTypes: CiphertextType + DecryptionKeyType + HeaderType {
     /// it is fallible. In general, we cannot assume that [`DecryptedPlaintext`] and [`Plaintext`]
     /// are the same type or if they are the same type, are the same value.
     ///
-    /// [`Plaintext`]: EncryptionTypes::Plaintext
+    /// [`Plaintext`]: PlaintextType::Plaintext
     /// [`DecryptedPlaintext`]: Self::DecryptedPlaintext
     type DecryptedPlaintext;
 }

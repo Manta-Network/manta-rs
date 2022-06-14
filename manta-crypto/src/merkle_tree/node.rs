@@ -529,7 +529,8 @@ impl InnerNode {
         (1 << (self.depth + 1)) - 1
     }
 
-    /// Computes an [`InnerMap`] index for the coordinates represented by `self`.
+    /// Computes an [`InnerMap`](crate::merkle_tree::inner_tree::InnerMap) index for the coordinates
+    /// represented by `self`.
     #[inline]
     pub const fn map_index(&self) -> usize {
         self.depth_starting_index() + self.index.0
