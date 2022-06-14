@@ -43,11 +43,11 @@ fn load_parameters(
 )> {
     println!("Loading parameters...");
     let mint_path = directory.join("mint.dat");
-    manta_sdk::pay::testnet::proving::Mint::download(&mint_path)?;
+    manta_parameters::pay::testnet::proving::Mint::download(&mint_path)?;
     let private_transfer_path = directory.join("private-transfer.dat");
-    manta_sdk::pay::testnet::proving::PrivateTransfer::download(&private_transfer_path)?;
+    manta_parameters::pay::testnet::proving::PrivateTransfer::download(&private_transfer_path)?;
     let reclaim_path = directory.join("reclaim.dat");
-    manta_sdk::pay::testnet::proving::Reclaim::download(&reclaim_path)?;
+    manta_parameters::pay::testnet::proving::Reclaim::download(&reclaim_path)?;
     let proving_context = MultiProvingContext {
         mint: ProvingContext::decode(IoReader(File::open(mint_path)?))
             .expect("Unable to decode MINT proving context."),
@@ -58,32 +58,32 @@ fn load_parameters(
     };
     let verifying_context = MultiVerifyingContext {
         mint: VerifyingContext::decode(
-            manta_sdk::pay::testnet::verifying::Mint::get().expect("Checksum did not match."),
+            manta_parameters::pay::testnet::verifying::Mint::get().expect("Checksum did not match."),
         )
         .expect("Unable to decode MINT verifying context."),
         private_transfer: VerifyingContext::decode(
-            manta_sdk::pay::testnet::verifying::PrivateTransfer::get()
+            manta_parameters::pay::testnet::verifying::PrivateTransfer::get()
                 .expect("Checksum did not match."),
         )
         .expect("Unable to decode PRIVATE_TRANSFER verifying context."),
         reclaim: VerifyingContext::decode(
-            manta_sdk::pay::testnet::verifying::Reclaim::get().expect("Checksum did not match."),
+            manta_parameters::pay::testnet::verifying::Reclaim::get().expect("Checksum did not match."),
         )
         .expect("Unable to decode RECLAIM verifying context."),
     };
     let parameters = Parameters {
         note_encryption_scheme: NoteEncryptionScheme::decode(
-            manta_sdk::pay::testnet::parameters::NoteEncryptionScheme::get()
+            manta_parameters::pay::testnet::parameters::NoteEncryptionScheme::get()
                 .expect("Checksum did not match."),
         )
         .expect("Unable to decode NOTE_ENCRYPTION_SCHEME parameters."),
         utxo_commitment: UtxoCommitmentScheme::decode(
-            manta_sdk::pay::testnet::parameters::UtxoCommitmentScheme::get()
+            manta_parameters::pay::testnet::parameters::UtxoCommitmentScheme::get()
                 .expect("Checksum did not match."),
         )
         .expect("Unable to decode UTXO_COMMITMENT_SCHEME parameters."),
         void_number_commitment: VoidNumberCommitmentScheme::decode(
-            manta_sdk::pay::testnet::parameters::VoidNumberCommitmentScheme::get()
+            manta_parameters::pay::testnet::parameters::VoidNumberCommitmentScheme::get()
                 .expect("Checksum did not match."),
         )
         .expect("Unable to decode VOID_NUMBER_COMMITMENT_SCHEME parameters."),
@@ -94,7 +94,7 @@ fn load_parameters(
         verifying_context,
         parameters,
         UtxoAccumulatorModel::decode(
-            manta_sdk::pay::testnet::parameters::UtxoAccumulatorModel::get()
+            manta_parameters::pay::testnet::parameters::UtxoAccumulatorModel::get()
                 .expect("Checksum did not match."),
         )
         .expect("Unable to decode UTXO_ACCUMULATOR_MODEL."),
