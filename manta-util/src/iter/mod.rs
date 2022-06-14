@@ -16,6 +16,8 @@
 
 //! Iteration Utilities
 
+use crate::IsType;
+
 pub mod finder;
 
 #[cfg(feature = "alloc")]
@@ -105,3 +107,17 @@ pub trait IteratorExt: Iterator {
 }
 
 impl<I> IteratorExt for I where I: Iterator {}
+
+/// Borrowing Iterator Trait
+pub trait IterRef<'i, I = &'i Self> {
+    /// Borrowing Iterator Type
+    type Iterator: IntoIterator + IsType<Type = I>;
+}
+
+/// Iterable Type
+///
+/// This `trait` is implemented for any type that has a borrowing [`IntoIterator`] implementation
+/// for any reference of that type.
+pub trait Iterable: for<'i> IterRef<'i> {}
+
+impl<T> Iterable for T where T: for<'i> IterRef<'i> + ?Sized {}

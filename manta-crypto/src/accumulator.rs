@@ -16,8 +16,6 @@
 
 //! Dynamic Cryptographic Accumulators
 
-use crate::constraint::{Assert, Has};
-
 /// Accumulator Membership Model
 pub trait Model<COM = ()> {
     /// Item Type
@@ -44,26 +42,27 @@ pub trait Model<COM = ()> {
         output: &Self::Output,
         compiler: &mut COM,
     ) -> Self::Verification;
+}
 
+/// Accumulator Membership Model Validity Assertion
+///
+/// For situations where we just want to assert validity of the membership proof, we can use this
+/// trait as an optimization path for [`Model::verify`]. See [`assert_valid`](Self::assert_valid)
+/// for more details.
+pub trait AssertValidVerification<COM = ()>: Model<COM> {
     /// Asserts that the verification of the storage of `item` in the known accumulator is valid.
     ///
     /// # Optimization
     ///
     /// In compilers where assertions for more complex statements other than booleans being `true`,
     /// this function can provide an optimization path to reduce the cost of assertion.
-    #[inline]
     fn assert_valid(
         &self,
         item: &Self::Item,
         witness: &Self::Witness,
         output: &Self::Output,
         compiler: &mut COM,
-    ) where
-        COM: Assert + Has<bool, Type = Self::Verification>,
-    {
-        let is_valid_proof = self.verify(item, witness, output, compiler);
-        compiler.assert(&is_valid_proof)
-    }
+    );
 }
 
 /// Accumulator Output Type
@@ -233,7 +232,7 @@ where
     #[inline]
     pub fn assert_valid(&self, model: &M, item: &M::Item, compiler: &mut COM)
     where
-        COM: Assert + Has<bool, Type = M::Verification>,
+        M: AssertValidVerification<COM>,
     {
         model.assert_valid(item, &self.witness, &self.output, compiler)
     }

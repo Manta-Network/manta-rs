@@ -201,7 +201,7 @@ macro_rules! impl_array_traits {
             where
                 I: IntoIterator<Item = T>,
             {
-                Self::from_vec(iter.into_iter().collect::<Vec<_>>())
+                Self::from_vec(iter.into_iter().collect())
             }
         }
 

@@ -42,3 +42,5 @@ pub mod signature;
 #[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
 pub mod merkle_tree;
 */
+
+pub mod merkle_tree2;
