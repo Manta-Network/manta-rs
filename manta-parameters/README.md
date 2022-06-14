@@ -34,7 +34,7 @@ b3sum --check data.checkfile
 To check that the dataset in the [`data`](./data) directory matches the data exported by the `manta-parameters` crate, run 
 
 ```sh
-cargo test --release -- --nocapture
+cargo test --release -- --ignored --nocapture
 ```
 
 which will download all the files on the GitHub source repository for the current branch and check that all the files match the known checksums.

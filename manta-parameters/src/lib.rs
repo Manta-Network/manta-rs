@@ -116,7 +116,7 @@ pub fn verify(data: &[u8], checksum: &[u8; 32]) -> bool {
 #[inline]
 pub fn verify_file<P>(path: P, checksum: &[u8; 32]) -> std::io::Result<bool>
 where
-    P: AsRef<Path>,
+    P: AsRef<std::path::Path>,
 {
     Ok(verify(&std::fs::read(path)?, checksum))
 }
@@ -370,6 +370,7 @@ mod test {
 
     /// Downloads all data from GitHub and checks if they are the same as the data known locally to
     /// this Rust crate.
+    #[ignore] // NOTE: Adds `ignore` such that CI does NOT run this test while still allowing developers to test.
     #[test]
     fn download_all_data() -> Result<()> {
         let current_branch = get_current_branch()?;
