@@ -34,7 +34,7 @@ pub mod github {
     use super::*;
     use std::{
         fs::{File, OpenOptions},
-        string::String, println,
+        string::String,
     };
 
     /// GitHub Organization
@@ -59,7 +59,7 @@ pub mod github {
     /// Returns the raw file storage URL for GitHub content at the given `branch` and `data_path`.
     #[inline]
     pub fn raw_url(branch: &str, data_path: &str) -> String {
-        std::format!("https://raw.githubusercontent.com/{ORGANIZATION}/{REPO}/{branch}/{data_path}")
+        std::format!("https://raw.githubusercontent.com/{ORGANIZATION}/{REPO}/{branch}/{SUB_REPO}/{data_path}")
     }
 
     /// Downloads the data from `url` to `file` returning the number of bytes read.
@@ -80,9 +80,7 @@ pub mod github {
         P: AsRef<Path>,
     {
         let mut file = OpenOptions::new().create(true).write(true).open(path)?;
-        std::println!("lfs_url(branch, data_path): {:?}", lfs_url(branch, data_path));
         if download_from(lfs_url(branch, data_path), &mut file)? == 0 {
-            std::println!("raw_url(branch, data_path): {:?}", raw_url(branch, data_path));
             download_from(raw_url(branch, data_path), &mut file)?;
         }
         Ok(())
@@ -97,7 +95,6 @@ pub mod github {
     {
         let path = path.as_ref();
         download_unchecked(branch, data_path, &path)?;
-        println!("path: {:?}", path);
         anyhow::ensure!(
             verify_file(path, checksum)?,
             "Checksum did not match. Expected: {:?}",
@@ -387,7 +384,6 @@ mod test {
                 println!("[INFO] Checking path: {:?}", path);
                 let target = directory_path.join(path);
                 fs::create_dir_all(target.parent().unwrap())?;
-                println!("current_branch: {:?}", current_branch);
                 github::download(
                     &current_branch,
                     path.to_str().unwrap(),
