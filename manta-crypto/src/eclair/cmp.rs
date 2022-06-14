@@ -17,19 +17,20 @@
 //! Comparison
 
 use crate::eclair::{bool::Bool, ops::Not, Has};
-use core::cmp;
 
 /// Equality
-pub trait Eq<COM = ()>: PartialEq<Self, COM>
+pub trait Eq<COM>: PartialEq<Self, COM>
 where
     COM: Has<bool>,
 {
 }
 
+/* FIXME: We cannot implement this yet.
 impl<T> Eq for T where T: cmp::Eq {}
+*/
 
 /// Partial Equivalence Relations
-pub trait PartialEq<Rhs = Self, COM = ()>
+pub trait PartialEq<Rhs, COM>
 where
     Rhs: ?Sized,
     COM: Has<bool> + ?Sized,
@@ -47,6 +48,7 @@ where
     }
 }
 
+/* FIXME: We cannot implement this yet.
 impl<T, Rhs> PartialEq<Rhs> for T
 where
     T: cmp::PartialEq<Rhs>,
@@ -61,3 +63,4 @@ where
         self.ne(rhs)
     }
 }
+*/

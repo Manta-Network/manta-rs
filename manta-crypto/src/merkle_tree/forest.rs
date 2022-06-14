@@ -317,7 +317,6 @@ where
 
     #[inline]
     fn prove(&self, item: &Self::Item) -> Option<MembershipProof<Self::Model>> {
-        /* TODO:
         let tree = self.forest.get_tree(item);
         Some(MembershipProof::new(
             tree.path(
@@ -327,8 +326,6 @@ where
             .ok()?,
             tree.root().clone(),
         ))
-        */
-        todo!()
     }
 
     #[inline]

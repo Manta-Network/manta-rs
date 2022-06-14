@@ -989,16 +989,13 @@ pub mod constraint {
         where
             LeafDigest<C, COM>: ConditionalSwap<COM>,
         {
-            /* TODO:
             let (lhs, rhs) =
-                LeafDigest::<C, COM>::swap(&self.leaf_index, leaf_digest, sibling_digest, compiler);
+                ConditionalSwap::swap(&self.leaf_index, leaf_digest, sibling_digest, compiler);
             self.root_from_base(
                 parameters,
                 parameters.join_leaves_in(&lhs, &rhs, compiler),
                 compiler,
             )
-            */
-            todo!()
         }
 
         /// Returns the folding algorithm for a path with `index` as its starting index.
@@ -1012,11 +1009,8 @@ pub mod constraint {
             (&'d Bool<COM>, &'d InnerDigest<C, COM>),
         ) -> InnerDigest<C, COM> {
             move |acc, (b, d)| {
-                /* TODO:
-                let (lhs, rhs) = LeafDigest::swap(b, acc, d, compiler);
+                let (lhs, rhs) = ConditionalSwap::swap(b, &acc, d, compiler);
                 parameters.join_in(&lhs, &rhs, compiler)
-                */
-                todo!()
             }
         }
 

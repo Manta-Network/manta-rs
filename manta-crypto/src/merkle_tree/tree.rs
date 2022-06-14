@@ -731,7 +731,6 @@ where
 /// Merkle Tree Root
 pub type Root<C, COM = ()> = InnerDigest<C, COM>;
 
-/* FIXME:
 impl<C> accumulator::Model for Parameters<C>
 where
     C: Configuration + ?Sized,
@@ -753,7 +752,6 @@ where
         self.verify_path(witness, output, item)
     }
 }
-*/
 
 impl<C, COM> accumulator::Model<COM> for Parameters<C, COM>
 where
@@ -1088,14 +1086,11 @@ where
 
     #[inline]
     fn prove(&self, item: &Self::Item) -> Option<MembershipProof<Self::Model>> {
-        /* TODO:
         Some(MembershipProof::new(
             self.path(self.position(&self.parameters.digest(item))?)
                 .ok()?,
             self.root().clone(),
         ))
-        */
-        todo!()
     }
 
     #[inline]

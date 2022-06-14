@@ -21,7 +21,6 @@
 //! [`Bool`].
 
 use crate::eclair::{cmp::PartialEq, Has};
-use core::{cmp, fmt::Debug};
 
 /// Boolean Type Inside of the Compiler
 pub type Bool<COM = ()> = <COM as Has<bool>>::Type;
@@ -43,6 +42,7 @@ pub trait Assert: Has<bool> {
     }
 }
 
+/* FIXME: We cannot implement this yet.
 impl Assert for () {
     #[inline]
     fn assert(&mut self, bit: &Bool<Self>) {
@@ -50,6 +50,7 @@ impl Assert for () {
         assert!(bit);
     }
 }
+*/
 
 /// Equality Assertion
 pub trait AssertEq<T, Rhs = T>: Assert
@@ -90,6 +91,7 @@ where
     }
 }
 
+/* FIXME: We cannot implement this yet.
 impl<T, Rhs> AssertEq<T, Rhs> for ()
 where
     T: cmp::PartialEq<Rhs> + Debug,
@@ -100,9 +102,10 @@ where
         assert_eq!(lhs, rhs);
     }
 }
+*/
 
 /// Conditional Selection
-pub trait ConditionalSelect<COM = ()>: Sized
+pub trait ConditionalSelect<COM>: Sized
 where
     COM: Has<bool> + ?Sized,
 {
@@ -125,6 +128,7 @@ where
     }
 }
 
+/* FIXME: We cannot implement this yet.
 impl<V> ConditionalSelect for V {
     #[inline]
     fn select_from<T, F>(bit: &bool, true_value: T, false_value: F, _: &mut ()) -> Self
@@ -139,17 +143,19 @@ impl<V> ConditionalSelect for V {
         }
     }
 }
+*/
 
 /// Conditional Swap
-pub trait ConditionalSwap<COM = ()>: Sized
+pub trait ConditionalSwap<COM>: Sized
 where
     COM: Has<bool> + ?Sized,
 {
     /// Swaps `lhs` and `rhs` whenever `bit == true` and keeps them in the same order when `bit ==
     /// false`.
-    fn swap(bit: &Bool<COM>, lhs: Self, rhs: Self, compiler: &mut COM) -> (Self, Self);
+    fn swap(bit: &Bool<COM>, lhs: &Self, rhs: &Self, compiler: &mut COM) -> (Self, Self);
 }
 
+/* FIXME: We cannot implement this yet.
 impl<V> ConditionalSwap for V {
     #[inline]
     fn swap(bit: &bool, lhs: Self, rhs: Self, _: &mut ()) -> (Self, Self) {
@@ -160,3 +166,4 @@ impl<V> ConditionalSwap for V {
         }
     }
 }
+*/

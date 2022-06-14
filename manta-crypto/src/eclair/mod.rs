@@ -15,14 +15,6 @@
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
 //! **_ECLAIR_**: Embedded Circuit Language And Intermediate Representation
-//!
-//! # Compilers
-//!
-//! ...
-//!
-//! # Execution Environments
-//!
-//! ...
 
 use manta_util::{create_seal, seal};
 
@@ -61,6 +53,8 @@ pub trait Has<T> {
     type Type;
 }
 
+/* FIXME: We cannot implement this yet.
 impl<T> Has<T> for () {
     type Type = T;
 }
+*/
