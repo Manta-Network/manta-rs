@@ -16,6 +16,10 @@
 
 //! Prove and Verify Functions for Benchmark and Test Purposes
 
+use crate::config::{
+    self, FullParameters, MerkleTreeConfiguration, Mint, MultiProvingContext, Parameters,
+    PrivateTransfer, ProofSystem, ProvingContext, Reclaim, UtxoAccumulatorModel, VerifyingContext,
+};
 use manta_accounting::{
     asset::{Asset, AssetId},
     transfer::SpendingKey,
@@ -25,10 +29,6 @@ use manta_crypto::{
     constraint::ProofSystem as _,
     merkle_tree::{forest::TreeArrayMerkleForest, full::Full},
     rand::{CryptoRng, Rand, RngCore, Sample},
-};
-use crate::config::{
-    self, FullParameters, MerkleTreeConfiguration, Mint, MultiProvingContext, Parameters,
-    PrivateTransfer, ProofSystem, ProvingContext, Reclaim, UtxoAccumulatorModel, VerifyingContext,
 };
 
 /// UTXO Accumulator for Building Circuits

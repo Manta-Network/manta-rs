@@ -27,7 +27,6 @@ extern crate alloc;
 mod test;
 
 pub mod crypto;
-pub mod payment;
 pub mod util;
 
 #[cfg(feature = "groth16")]
@@ -41,6 +40,10 @@ pub mod key;
 #[cfg(all(feature = "groth16", feature = "test"))]
 #[cfg_attr(doc_cfg, doc(cfg(all(feature = "groth16", feature = "test"))))]
 pub mod parameters;
+
+#[cfg(all(feature = "groth16", feature = "test"))]
+#[cfg_attr(doc_cfg, doc(cfg(all(feature = "groth16", feature = "test"))))]
+pub mod payment;
 
 #[cfg(feature = "groth16")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "groth16")))]

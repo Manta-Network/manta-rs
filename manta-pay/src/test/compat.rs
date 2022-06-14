@@ -14,10 +14,8 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! ## Manta Pay UTXO Binary Compatibility
-//! This test checks if current implementation is compatible with precomputed transactions in Manta SDK.
-
-// This test is adapted from https://github.com/Manta-Network/Manta/blob/1c5c4b8750d06cb028fb555813414a5802554817/pallets/manta-pay/src/bin/precompute_coins.rs
+//! Manta Pay UTXO Binary Compatibility
+//! Checks if the current circuit implementation is compatible with precomputed parameters.
 
 use crate::{
     config::{
