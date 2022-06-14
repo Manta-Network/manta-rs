@@ -15,6 +15,15 @@
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
 //! Encryption Primitives
+//!
+//! The encryption abstractions are organized into a two categories, a set of type `trait`s and a
+//! set of behavior `trait`s which require those types to be implemented. See the [`Encrypt`] and
+//! [`Decrypt`] for more.
+
+use core::{fmt::Debug, hash::Hash};
+
+#[cfg(feature = "serde")]
+use manta_util::serde::{Deserialize, Serialize};
 
 pub mod hybrid;
 
@@ -42,6 +51,12 @@ where
 }
 
 /// Ciphertext
+///
+/// The ciphertext type represents the piece of the encrypt-decrypt interface that contains the
+/// hidden information that can be created by encryption and is required for opening by decryption.
+/// For [`hybrid`] and/or authenticating protocols this will also include ephemeral keys, tags, or
+/// other metadata, not just the raw ciphertext. See the [`Encrypt::encrypt`] and
+/// [`Decrypt::decrypt`] methods for more.
 pub trait CiphertextType {
     /// Ciphertext Type
     type Ciphertext;
@@ -55,6 +70,11 @@ where
 }
 
 /// Encryption Key
+///
+/// The encryption key is the information required to produce a valid ciphertext that is targeted
+/// towards some [`DecryptionKey`](DecryptionKeyType::DecryptionKey). In the case when the
+/// decryption key is linked by some computable protocol to the encryption key, [`Derive`] should be
+/// implemented to fascilitate this derivation.
 pub trait EncryptionKeyType {
     /// Encryption Key Type
     type EncryptionKey;
@@ -68,6 +88,11 @@ where
 }
 
 /// Decryption Key
+///
+/// The decryption key is the information required to open a valid ciphertext that was encrypted
+/// with the [`EncryptionKey`](EncryptionKeyType::EncryptionKey) that was targeted towards it. In
+/// the case when the decryption key is linked by some computable protocol to the encryption key,
+/// [`Derive`] should be implemented to fascilitate this derivation.
 pub trait DecryptionKeyType {
     /// Decryption Key Type
     type DecryptionKey;
@@ -81,6 +106,14 @@ where
 }
 
 /// Decryption Key Derivation
+///
+/// For protocols that can derive the [`EncryptionKey`] from the [`DecryptionKey`], this `trait` can
+/// be used to specify the derivation algorithm. The [`DecryptionKey`] should be kept secret
+/// relative to the [`EncryptionKey`] so if they are the same key, then some key exchange protocol
+/// should be used to derive the [`DecryptionKey`] as some shared secret. See [`hybrid`] for more.
+///
+/// [`EncryptionKey`]: EncryptionKeyType::EncryptionKey
+/// [`DecryptionKey`]: DecryptionKeyType::DecryptionKey
 pub trait Derive<COM = ()>: EncryptionKeyType + DecryptionKeyType {
     /// Derives an [`EncryptionKey`](EncryptionKeyType::EncryptionKey) from `decryption_key`.
     fn derive(
@@ -105,11 +138,25 @@ where
 }
 
 /// Encryption Types
+///
+/// This `trait` encapsulates all the types required for [`Encrypt::encrypt`].
 pub trait EncryptionTypes: EncryptionKeyType + HeaderType + CiphertextType {
     /// Randomness Type
+    ///
+    /// The randomness type allows us to inject some extra randomness to hide repeated encryptions
+    /// with the same key and same plaintext, independent of the nonce stored in the [`Header`]. In
+    /// this case, note that [`Randomness`](Self::Randomness) is not available to the
+    /// [`Decrypt::decrypt`] method.
     type Randomness;
 
     /// Plaintext Type
+    ///
+    /// The core payload of the encryption/decryption protocol. All the information in the plaintext
+    /// should be kept secret and not be deducible from the [`Ciphertext`]. For associated data that
+    /// does not go in the [`Ciphertext`] use [`Header`] instead.
+    ///
+    /// [`Ciphertext`]: CiphertextType::Ciphertext
+    /// [`Header`]: HeaderType::Header
     type Plaintext;
 }
 
@@ -152,9 +199,19 @@ where
     }
 }
 
-/// Decryption
+/// Decryption Types
+///
+/// This `trait` encapsulates all the types required for [`Decrypt::decrypt`].
 pub trait DecryptionTypes: DecryptionKeyType + HeaderType + CiphertextType {
     /// Decrypted Plaintext Type
+    ///
+    /// For decryption, we not only get out some data resembling the [`Plaintext`], but also
+    /// authentication tags and other metadata in order to determine if the decryption succeeded if
+    /// it is fallible. In general, we cannot assume that [`DecryptedPlaintext`] and [`Plaintext`]
+    /// are the same type or if they are the same type, are the same value.
+    ///
+    /// [`Plaintext`]: EncryptionTypes::Plaintext
+    /// [`DecryptedPlaintext`]: Self::DecryptedPlaintext
     type DecryptedPlaintext;
 }
 
@@ -191,6 +248,60 @@ where
     ) -> Self::DecryptedPlaintext {
         (*self).decrypt(decryption_key, header, ciphertext, compiler)
     }
+}
+
+/// Message
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "E::Header: Clone, E::Plaintext: Clone"),
+    Copy(bound = "E::Header: Copy, E::Plaintext: Copy"),
+    Debug(bound = "E::Header: Debug, E::Plaintext: Debug"),
+    Default(bound = "E::Header: Default, E::Plaintext: Default"),
+    Eq(bound = "E::Header: Eq, E::Plaintext: Eq"),
+    Hash(bound = "E::Header: Hash, E::Plaintext: Hash"),
+    PartialEq(bound = "E::Header: PartialEq, E::Plaintext: PartialEq")
+)]
+pub struct Message<E>
+where
+    E: HeaderType + CiphertextType,
+{
+    /// Header
+    pub header: E::Header,
+
+    /// Plaintext
+    pub plaintext: E::Plaintext,
+}
+
+/// Encrypted Message
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "E::Header: Clone, E::Ciphertext: Clone"),
+    Copy(bound = "E::Header: Copy, E::Ciphertext: Copy"),
+    Debug(bound = "E::Header: Debug, E::Ciphertext: Debug"),
+    Default(bound = "E::Header: Default, E::Ciphertext: Default"),
+    Eq(bound = "E::Header: Eq, E::Ciphertext: Eq"),
+    Hash(bound = "E::Header: Hash, E::Ciphertext: Hash"),
+    PartialEq(bound = "E::Header: PartialEq, E::Ciphertext: PartialEq")
+)]
+pub struct EncryptedMessage<E>
+where
+    E: HeaderType + CiphertextType,
+{
+    /// Header
+    pub header: E::Header,
+
+    /// Ciphertext
+    pub ciphertext: E::Ciphertext,
 }
 
 /// Testing Framework

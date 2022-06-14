@@ -15,6 +15,10 @@
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
 //! Hybrid Public-Key Encryption
+//!
+//! For encrypting against the same [`EncryptionKey`] and [`DecryptionKey`] we may want to use a
+//! key-exchange protocol in order to generate these keys as unique shared secrets. The [`Hybrid`]
+//! encryption scheme inlines this complexity into the encryption interfaces.
 
 use crate::{
     encryption::{
