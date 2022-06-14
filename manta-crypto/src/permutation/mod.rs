@@ -14,30 +14,82 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Permutation and Sponge Crypto Primitives
+//! Pseudorandom Permutations
 
 use crate::constraint::Native;
 
 pub mod sponge;
 
-/// Pseudo-random Permutation
-pub trait PseudorandomPermutation<const ARITY: usize, COM = ()> {
-    /// Element for each permutation
-    type Element;
+#[cfg(feature = "alloc")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
+pub mod duplex;
 
-    /// Permutes the state in the given `compiler`
-    fn permute_in(
-        &self,
-        state: [&Self::Element; ARITY],
-        compiler: &mut COM,
-    ) -> [Self::Element; ARITY];
+/// Pseudorandom Permutation
+pub trait PseudorandomPermutation<COM = ()> {
+    /// Permutation Domain Type
+    ///
+    /// A pseudorandom permutation acts on this domain, and should be a bijection on this space.
+    type Domain;
 
-    /// Permutes the state in the native compiler.
-    #[inline]
-    fn permute(&self, state: [&Self::Element; ARITY]) -> [Self::Element; ARITY]
+    /// Computes the permutation of `state`.
+    fn permute(&self, state: &mut Self::Domain, compiler: &mut COM);
+
+    /// Computes the permutation of `state` using native compiler.
+    fn permute_in(&self, state: &mut Self::Domain)
     where
         COM: Native,
     {
-        self.permute_in(state, &mut COM::compiler())
+        self.permute(state, &mut COM::compiler())
+    }
+}
+
+impl<P, COM> PseudorandomPermutation<COM> for &P
+where
+    P: PseudorandomPermutation<COM>,
+{
+    type Domain = P::Domain;
+
+    #[inline]
+    fn permute(&self, state: &mut Self::Domain, compiler: &mut COM) {
+        (*self).permute(state, compiler)
+    }
+}
+
+/// Pseudorandom Permutation Family
+pub trait PseudorandomPermutationFamily<COM = ()> {
+    /// Key Type
+    type Key: ?Sized;
+
+    /// Permutation Domain Type
+    ///
+    /// A pseudorandom permutation acts on this domain, and should be a bijection on this space.
+    type Domain;
+
+    /// Permutation Type
+    ///
+    /// Given a [`Key`](Self::Key) we can produce a pseudorandom permutation of this type.
+    type Permutation: PseudorandomPermutation<COM, Domain = Self::Domain>;
+
+    /// Returns the pseudorandom permutation associated to the given `key`.
+    fn permutation(&self, key: &Self::Key, compiler: &mut COM) -> Self::Permutation;
+
+    /// Computes the permutation of `state` under the pseudorandom permutation derived from `key`.
+    #[inline]
+    fn permute(&self, key: &Self::Key, state: &mut Self::Domain, compiler: &mut COM) {
+        self.permutation(key, compiler).permute(state, compiler)
+    }
+}
+
+impl<P, COM> PseudorandomPermutationFamily<COM> for &P
+where
+    P: PseudorandomPermutationFamily<COM>,
+{
+    type Key = P::Key;
+    type Domain = P::Domain;
+    type Permutation = P::Permutation;
+
+    #[inline]
+    fn permutation(&self, key: &Self::Key, compiler: &mut COM) -> Self::Permutation {
+        (*self).permutation(key, compiler)
     }
 }

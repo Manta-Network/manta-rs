@@ -16,21 +16,19 @@
 
 //! Pseudo-random Permutation implementation
 
+use core::convert::identity;
 use manta_crypto::permutation::PseudorandomPermutation;
-impl<S, const ARITY: usize, COM> PseudorandomPermutation<ARITY, COM>
-    for super::Hasher<S, ARITY, COM>
+use manta_util::into_array_unchecked;
+
+impl<S, const ARITY: usize, COM> PseudorandomPermutation for super::Hasher<S, ARITY, COM>
 where
     S: super::Specification<COM>,
 {
-    type Element = S::Field;
+    // width is `ARITY + 1`
+    type Domain = [S::Field; ARITY + 1];
 
-    fn permute_in(
-        &self,
-        state: [&Self::Element; ARITY],
-        compiler: &mut COM,
-    ) -> [Self::Element; ARITY] {
-        self.hash_untruncated(state, compiler)
-            .try_into()
-            .expect("invalid permutation output")
+    fn permute(&self, state: &mut Self::Domain, compiler: &mut COM) {
+        let result = self.hash_untruncated(manta_util::array_map_ref(state, identity), compiler);
+        *state = into_array_unchecked(result)
     }
 }
