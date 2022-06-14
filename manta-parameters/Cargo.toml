@@ -1,6 +1,6 @@
 [package]
 name = "manta-parameters"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2021"
 authors = ["Manta Network <contact@manta.network>"]
 readme = "README.md"
@@ -10,7 +10,7 @@ homepage = "https://github.com/Manta-Network"
 documentation = "https://github.com/Manta-Network/manta-rs"
 categories = [""]
 keywords = [""]
-description = "The Manta-Pay protocol and implementaion."
+description = "Concrete Parameters and Interfaces for Manta."
 publish = false
 
 [package.metadata.docs.rs]
