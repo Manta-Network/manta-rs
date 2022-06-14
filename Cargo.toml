@@ -4,6 +4,7 @@ members = [
     "manta-accounting",
     "manta-benchmark",
     "manta-crypto",
+    "manta-parameters",
     "manta-pay",
     "manta-util",
 ]
