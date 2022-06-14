@@ -17,7 +17,7 @@
 //! MDS Data Generation
 
 use crate::crypto::hash::poseidon::{
-    matrix::{Matrix, MatrixOperations, SquareMatrix},
+    parameters::matrix::{Matrix, MatrixOperations, SquareMatrix},
     Field, FieldGeneration,
 };
 use alloc::vec;

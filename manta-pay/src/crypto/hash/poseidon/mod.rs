@@ -16,7 +16,7 @@
 
 //! Poseidon Hash Implementation
 
-use crate::crypto::hash::poseidon::{
+use crate::crypto::hash::poseidon::parameters::{
     matrix::MatrixOperations, mds::MdsMatrices, round_constants::generate_round_constants,
 };
 use alloc::vec::Vec;
@@ -34,13 +34,9 @@ use manta_util::{
 use manta_util::serde::{Deserialize, Serialize};
 
 pub mod compat;
-pub mod constants;
-pub mod lfsr;
-pub mod matrix;
-pub mod mds;
+pub mod parameters;
 pub mod permute;
-pub mod preprocessing;
-pub mod round_constants;
+pub mod sponge;
 
 /// Field Element
 pub trait Field {

@@ -14,24 +14,4 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Pseudo-random Permutation implementation
-
-use alloc::vec::Vec;
-use manta_crypto::permutation::PseudorandomPermutation;
-use manta_util::into_array_unchecked;
-
-impl<S, const ARITY: usize, COM> PseudorandomPermutation<COM> for super::Hasher<S, ARITY, COM>
-where
-    S: super::Specification<COM>,
-{
-    // domain length is `ARITY + 1`
-    type Domain = Vec<S::Field>;
-
-    fn permute(&self, state: &mut Self::Domain, compiler: &mut COM) {
-        assert_eq!(state.len(), ARITY + 1, "state length must be `ARITY + 1`");
-        self.hash_untruncated(
-            into_array_unchecked(state.iter().collect::<Vec<_>>()),
-            compiler,
-        );
-    }
-}
+//! Poseidon implementation of sponge

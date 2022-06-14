@@ -16,7 +16,7 @@
 
 //! Round Constants Generation
 
-use crate::crypto::hash::poseidon::{lfsr::GrainLFSR, FieldGeneration};
+use crate::crypto::hash::poseidon::{parameters::lfsr::GrainLFSR, FieldGeneration};
 use alloc::vec::Vec;
 use core::iter;
 
