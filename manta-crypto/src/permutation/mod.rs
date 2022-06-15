@@ -20,8 +20,8 @@ use crate::constraint::Native;
 
 pub mod sponge;
 
-#[cfg(feature = "alloc")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
+// #[cfg(feature = "alloc")]
+// #[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
 pub mod duplex;
 
 /// Pseudorandom Permutation

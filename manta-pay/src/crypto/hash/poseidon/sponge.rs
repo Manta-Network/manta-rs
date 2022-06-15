@@ -18,7 +18,7 @@
 
 use alloc::vec::Vec;
 use manta_crypto::permutation::{
-    sponge::{Absorb, Squeeze},
+    sponge::{Absorb, Mask, Squeeze},
     PseudorandomPermutation,
 };
 
@@ -47,5 +47,29 @@ where
         let _ = compiler;
         assert_eq!(state.len(), ARITY);
         state.iter().take(ARITY).cloned().collect()
+    }
+}
+
+impl<S, const ARITY: usize, COM> Mask<super::Hasher<S, ARITY, COM>, COM> for Vec<S::Field>
+where
+    S: super::Specification<COM>,
+    S::Field: Clone,
+{
+    fn mask(&self, mask: &Self, compiler: &mut COM) -> Self {
+        assert_eq!(self.len(), ARITY);
+        assert_eq!(mask.len(), ARITY);
+        self.iter()
+            .zip(mask.iter())
+            .map(|(s, m)| S::add(s, m, compiler))
+            .collect()
+    }
+
+    fn unmask(&self, mask: &Self, compiler: &mut COM) -> Self {
+        assert_eq!(self.len(), ARITY);
+        assert_eq!(mask.len(), ARITY);
+        self.iter()
+            .zip(mask.iter())
+            .map(|(s, m)| S::sub(s, m, compiler))
+            .collect()
     }
 }

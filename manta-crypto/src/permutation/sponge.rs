@@ -17,7 +17,6 @@
 //! Sponges over Pseudorandom Permutations
 
 use crate::permutation::PseudorandomPermutation;
-
 /// Absorb Input Writer
 ///
 /// This `trait` is used to input a single element of data into the state of the sponge. For
@@ -42,6 +41,22 @@ where
 {
     /// Reads a value of type `Self` from the `state` of the [`Sponge`].
     fn read(state: &P::Domain, compiler: &mut COM) -> Self;
+}
+
+/// Mask
+///
+/// This `trait` is used to mask `self` for encryption. For example, for binary field, `XOR` is both a valid mask function and unmask function,
+/// and for prime field, `ADD` is valid mask function and `SUB` is valid unmask function.
+pub trait Mask<P, COM = ()>: Sized
+where
+    P: PseudorandomPermutation<COM>,
+{
+    /// Mask `self` with `mask` of type `Self`.
+    fn mask(&self, mask: &Self, compiler: &mut COM) -> Self;
+
+    /// Unmask `self` with `mask` of type `Self`.
+    /// This is the inverse of `mask`.
+    fn unmask(&self, mask: &Self, compiler: &mut COM) -> Self;
 }
 
 /// Permutation Sponge

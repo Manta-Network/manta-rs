@@ -15,18 +15,13 @@
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
 //! Duplex Sponge Authenticated Encryption Scheme
+//! Reference: [BDPA11](https://eprint.iacr.org/2011/499.pdf), Page 10
 
 // TODO: Find a way to incorporate `Randomness` in this protocol.
 
-use crate::{
-    encryption::{
-        CiphertextType, Decrypt, DecryptionKeyType, DecryptionTypes, Encrypt, EncryptionKeyType,
-        EncryptionTypes, HeaderType,
-    },
-    permutation::{
-        sponge::{Absorb, Sponge, Squeeze},
-        PseudorandomPermutation,
-    },
+use crate::permutation::{
+    sponge::{Absorb, Mask, Sponge, Squeeze},
+    PseudorandomPermutation,
 };
 use alloc::vec::Vec;
 use core::marker::PhantomData;
@@ -55,7 +50,7 @@ where
     type Input: Absorb<P, COM> + Squeeze<P, COM>;
 
     /// Sponge Output Block Type
-    type Output: Absorb<P, COM> + Squeeze<P, COM>;
+    type Output: Absorb<P, COM> + Squeeze<P, COM> + Mask<P, COM>;
 
     /// Authentication Tag Type
     type Tag;
@@ -130,17 +125,25 @@ where
         }
     }
 
-    /// Prepares the duplex sponge by absorbing the `key` and `header`.
+    /// Prepares the duplex sponge by absorbing the `key` and `header`, outputting the updated state and initial pad.   
     #[inline]
-    fn setup(&self, key: &C::Key, header: &C::Header, compiler: &mut COM) -> P::Domain {
+    fn setup(
+        &self,
+        key: &C::Key,
+        header: &C::Header,
+        compiler: &mut COM,
+    ) -> (P::Domain, C::Output) {
+        // line 1 to 7
         let mut state = self.configuration.initialize(compiler);
-        Sponge::new(&self.permutation, &mut state).absorb_all(
-            &self
-                .configuration
-                .generate_starting_blocks(key, header, compiler),
-            compiler,
-        );
-        state
+        // line 11 to 13
+        let mut sponge = Sponge::new(&self.permutation, &mut state);
+        let starting_blocks = self
+            .configuration
+            .generate_starting_blocks(key, header, compiler);
+        sponge.absorb_all(&starting_blocks[0..starting_blocks.len() - 1], compiler);
+        // line 14
+        let z = sponge.duplex(starting_blocks.last().unwrap(), compiler);
+        (state, z)
     }
 
     /// Performs duplex encryption by absorbing the initial state with `key` and `header`, and
@@ -153,9 +156,7 @@ where
         plaintext: &[C::Input],
         compiler: &mut COM,
     ) -> (P::Domain, Vec<C::Output>) {
-        let mut state = self.setup(key, header, compiler);
-        let ciphertext = Sponge::new(&self.permutation, &mut state).duplex_all(plaintext, compiler);
-        (state, ciphertext)
+        todo!()
     }
 
     /// Performs duplex decryption by absorbing the initial state with `key` and `header`, and
@@ -168,9 +169,7 @@ where
         ciphertext: &[C::Output],
         compiler: &mut COM,
     ) -> (P::Domain, Vec<C::Input>) {
-        let mut state = self.setup(key, header, compiler);
-        let plaintext = Sponge::new(&self.permutation, &mut state).duplex_all(ciphertext, compiler);
-        (state, plaintext)
+        todo!()
     }
 
     /// Computes the tag for the final round by running the permutation once on the current
@@ -179,101 +178,5 @@ where
     fn tag(&self, mut state: P::Domain, compiler: &mut COM) -> C::Tag {
         self.permutation.permute(&mut state, compiler);
         self.configuration.as_tag(&state, compiler)
-    }
-}
-
-impl<P, C, COM> HeaderType for Duplexer<P, C, COM>
-where
-    P: PseudorandomPermutation<COM>,
-    C: Configuration<P, COM>,
-{
-    type Header = C::Header;
-}
-
-impl<P, C, COM> CiphertextType for Duplexer<P, C, COM>
-where
-    P: PseudorandomPermutation<COM>,
-    C: Configuration<P, COM>,
-{
-    type Ciphertext = Ciphertext<C::Tag, Vec<C::Output>>;
-}
-
-impl<P, C, COM> EncryptionKeyType for Duplexer<P, C, COM>
-where
-    P: PseudorandomPermutation<COM>,
-    C: Configuration<P, COM>,
-{
-    type EncryptionKey = C::Key;
-}
-
-impl<P, C, COM> DecryptionKeyType for Duplexer<P, C, COM>
-where
-    P: PseudorandomPermutation<COM>,
-    C: Configuration<P, COM>,
-{
-    type DecryptionKey = C::Key;
-}
-
-impl<P, C, COM> EncryptionTypes for Duplexer<P, C, COM>
-where
-    P: PseudorandomPermutation<COM>,
-    C: Configuration<P, COM>,
-{
-    type Randomness = ();
-    type Plaintext = Vec<C::Input>;
-}
-
-impl<P, C, COM> Encrypt<COM> for Duplexer<P, C, COM>
-where
-    P: PseudorandomPermutation<COM>,
-    C: Configuration<P, COM>,
-{
-    #[inline]
-    fn encrypt(
-        &self,
-        encryption_key: &Self::EncryptionKey,
-        randomness: &Self::Randomness,
-        header: &Self::Header,
-        plaintext: &Self::Plaintext,
-        compiler: &mut COM,
-    ) -> Self::Ciphertext {
-        let _ = randomness;
-        let (state, ciphertext) =
-            self.duplex_encryption(encryption_key, header, plaintext, compiler);
-        Ciphertext {
-            tag: self.tag(state, compiler),
-            message: ciphertext,
-        }
-    }
-}
-
-impl<P, C, COM> DecryptionTypes for Duplexer<P, C, COM>
-where
-    P: PseudorandomPermutation<COM>,
-    C: Configuration<P, COM>,
-{
-    type DecryptedPlaintext = (C::Verification, Vec<C::Input>);
-}
-
-impl<P, C, COM> Decrypt<COM> for Duplexer<P, C, COM>
-where
-    P: PseudorandomPermutation<COM>,
-    C: Configuration<P, COM>,
-{
-    #[inline]
-    fn decrypt(
-        &self,
-        decryption_key: &Self::DecryptionKey,
-        header: &Self::Header,
-        ciphertext: &Self::Ciphertext,
-        compiler: &mut COM,
-    ) -> Self::DecryptedPlaintext {
-        let (state, plaintext) =
-            self.duplex_decryption(decryption_key, header, &ciphertext.message, compiler);
-        (
-            self.configuration
-                .verify(&ciphertext.tag, &self.tag(state, compiler), compiler),
-            plaintext,
-        )
     }
 }
