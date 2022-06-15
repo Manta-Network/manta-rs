@@ -22,7 +22,7 @@
 // TODO:  Find ways to enforce public input structure, since it's very easy to extend the input
 //        vector by the wrong amount or in the wrong order.
 
-use crate::rand::{CryptoRng, RngCore};
+use crate::rand::RngCore;
 
 pub use crate::eclair::{
     alloc::{
@@ -38,10 +38,7 @@ pub use crate::eclair::{
 /// Proof System
 pub trait ProofSystem {
     /// Context Compiler
-    type ContextCompiler;
-
-    /// Proof Compiler
-    type ProofCompiler;
+    type Compiler;
 
     /// Public Parameters Type
     type PublicParameters;
@@ -63,31 +60,31 @@ pub trait ProofSystem {
 
     /// Returns a compiler which is setup to build proving and verifying contexts.
     #[must_use]
-    fn context_compiler() -> Self::ContextCompiler;
+    fn context_compiler() -> Self::Compiler;
 
     /// Returns a compiler which is setup to build a proof.
     #[must_use]
-    fn proof_compiler() -> Self::ProofCompiler;
+    fn proof_compiler() -> Self::Compiler;
 
     /// Returns proving and verifying contexts for the constraints contained in `compiler` using
     /// `public_parameters`.
     fn compile<R>(
         public_parameters: &Self::PublicParameters,
-        compiler: &Self::ContextCompiler,
+        compiler: Self::Compiler,
         rng: &mut R,
     ) -> Result<(Self::ProvingContext, Self::VerifyingContext), Self::Error>
     where
-        R: CryptoRng + RngCore + ?Sized;
+        R: RngCore + ?Sized;
 
     /// Returns a proof that the constraint system encoded in `compiler` is consistent with the
     /// proving `context`.
     fn prove<R>(
         context: &Self::ProvingContext,
-        compiler: &Self::ProofCompiler,
+        compiler: Self::Compiler,
         rng: &mut R,
     ) -> Result<Self::Proof, Self::Error>
     where
-        R: CryptoRng + RngCore + ?Sized;
+        R: RngCore + ?Sized;
 
     /// Verifies that a proof generated from this proof system is valid.
     fn verify(

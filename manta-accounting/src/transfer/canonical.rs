@@ -28,7 +28,7 @@ use crate::{
 };
 use alloc::{format, string::String, vec::Vec};
 use core::{fmt::Debug, hash::Hash};
-use manta_crypto::rand::{CryptoRng, Rand, RngCore};
+use manta_crypto::rand::{Rand, RngCore};
 use manta_util::{create_seal, seal};
 
 #[cfg(feature = "serde")]
@@ -114,7 +114,7 @@ where
         rng: &mut R,
     ) -> Self
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         Self::build(asset, spending_key.receiver(parameters, rng.gen(), asset))
     }
@@ -129,7 +129,7 @@ where
         rng: &mut R,
     ) -> (Self, PreSender<C>)
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         let (receiver, pre_sender) = spending_key.internal_pair(parameters, rng.gen(), asset);
         (Self::build(asset, receiver), pre_sender)
@@ -523,7 +523,7 @@ pub fn generate_context<C, R>(
 ) -> Result<(MultiProvingContext<C>, MultiVerifyingContext<C>), ProofSystemError<C>>
 where
     C: Configuration,
-    R: CryptoRng + RngCore + ?Sized,
+    R: RngCore + ?Sized,
 {
     let mint = Mint::generate_context(public_parameters, parameters, rng)?;
     let private_transfer = PrivateTransfer::generate_context(public_parameters, parameters, rng)?;

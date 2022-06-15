@@ -46,11 +46,13 @@ use alloc::{boxed::Box, vec, vec::Vec};
 use core::{convert::Infallible, fmt::Debug, hash::Hash};
 use manta_crypto::{
     accumulator::{Accumulator, ExactSizeAccumulator, OptimizedAccumulator},
-    encryption::hybrid::DecryptedMessage,
     rand::{CryptoRng, FromEntropy, Rand, RngCore},
 };
 use manta_util::{
-    array_map, future::LocalBoxFutureResult, into_array_unchecked, iter::IteratorExt,
+    array_map,
+    future::LocalBoxFutureResult,
+    into_array_unchecked,
+    iter::{Finder, IteratorExt},
     persistence::Rollback,
 };
 
@@ -642,7 +644,7 @@ where
         void_numbers: &mut Vec<VoidNumber<C>>,
         deposit: &mut Vec<Asset>,
     ) -> Result<(), SyncError<C::Checkpoint>> {
-        let mut finder = DecryptedMessage::find(encrypted_note);
+        let mut finder = Finder::new(encrypted_note);
         if let Some(ViewKeySelection {
             index,
             keypair,
@@ -651,13 +653,13 @@ where
             .accounts
             .get_mut_default()
             .find_index_with_maybe_gap(with_recovery, |k| {
-                finder.decrypt(&parameters.note_encryption_scheme, k)
+                finder.next(|note| note.decrypt(&parameters.note_encryption_scheme, k, &mut ()))
             })
         {
             let Note {
                 ephemeral_secret_key,
                 asset,
-            } = item.plaintext;
+            } = item;
             if let Some(void_number) =
                 parameters.check_full_asset(&keypair.spend, &ephemeral_secret_key, &asset, &utxo)
             {

@@ -32,7 +32,7 @@ use alloc::{boxed::Box, sync::Arc, vec::Vec};
 use core::{fmt::Debug, future::Future, hash::Hash, marker::PhantomData};
 use futures::StreamExt;
 use indexmap::IndexSet;
-use manta_crypto::rand::{CryptoRng, Distribution, Rand, RngCore, Sample};
+use manta_crypto::rand::{Distribution, Rand, RngCore, Sample};
 use manta_util::{future::LocalBoxFuture, vec::VecExt};
 use parking_lot::Mutex;
 use statrs::{
@@ -355,7 +355,7 @@ impl Sample<ActionDistribution> for ActionType {
     #[inline]
     fn sample<R>(distribution: ActionDistribution, rng: &mut R) -> Self
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         distribution.sample(rng)
     }
@@ -458,7 +458,7 @@ where
     async fn sample_deposit<R>(&mut self, rng: &mut R) -> Result<Option<Asset>, Error<C, L, S>>
     where
         L: PublicBalanceOracle,
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         let assets = match self.public_balances().await? {
             Some(assets) => assets,
@@ -479,7 +479,7 @@ where
     #[inline]
     async fn sample_withdraw<R>(&mut self, rng: &mut R) -> Result<Option<Asset>, Error<C, L, S>>
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         self.wallet.sync().await?;
         match rng.select_item(self.wallet.assets()) {
@@ -497,7 +497,7 @@ where
         rng: &mut R,
     ) -> Result<Option<Asset>, ActionLabelledError<C, L, S>>
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         self.sync_with(action).await?;
         Ok(rng
@@ -514,7 +514,7 @@ where
     async fn sample_mint<R>(&mut self, rng: &mut R) -> MaybeAction<C, L, S>
     where
         L: PublicBalanceOracle,
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         match self.sample_deposit(rng).await {
             Ok(Some(asset)) => Ok(Action::mint(asset)),
@@ -533,7 +533,7 @@ where
     async fn sample_zero_mint<R>(&mut self, rng: &mut R) -> MaybeAction<C, L, S>
     where
         L: PublicBalanceOracle,
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         match self.public_balances().await {
             Ok(Some(assets)) => match rng.select_item(assets) {
@@ -560,7 +560,7 @@ where
     ) -> MaybeAction<C, L, S>
     where
         L: PublicBalanceOracle,
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
         K: FnOnce(&mut R) -> Result<Option<ReceivingKey<C>>, Error<C, L, S>>,
     {
         let action = if is_self {
@@ -595,7 +595,7 @@ where
     ) -> MaybeAction<C, L, S>
     where
         L: PublicBalanceOracle,
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
         K: FnOnce(&mut R) -> Result<Option<ReceivingKey<C>>, Error<C, L, S>>,
     {
         let action = if is_self {
@@ -623,7 +623,7 @@ where
     async fn sample_reclaim<R>(&mut self, rng: &mut R) -> MaybeAction<C, L, S>
     where
         L: PublicBalanceOracle,
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         match self.sample_withdraw(rng).await {
             Ok(Some(asset)) => Ok(Action::reclaim(false, asset)),
@@ -640,7 +640,7 @@ where
     #[inline]
     async fn sample_zero_reclaim<R>(&mut self, rng: &mut R) -> MaybeAction<C, L, S>
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         Ok(self
             .sample_asset(ActionType::ReclaimZero, rng)
@@ -657,7 +657,7 @@ where
     #[inline]
     async fn flush_to_public<R>(&mut self, rng: &mut R) -> MaybeAction<C, L, S>
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         Ok(self
             .sample_asset(ActionType::FlushToPublic, rng)
@@ -726,7 +726,7 @@ where
     #[inline]
     pub fn sample_receiving_key<R>(&self, rng: &mut R) -> Option<ReceivingKey<C>>
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         rng.select_item(self.receiving_keys.lock().iter())
             .map(Clone::clone)
@@ -751,7 +751,7 @@ where
         rng: &'s mut R,
     ) -> LocalBoxFuture<'s, Option<Self::Action>>
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         Box::pin(async move {
             actor.reduce_lifetime()?;
@@ -918,7 +918,7 @@ impl Config {
         C: transfer::Configuration,
         L: Ledger<C> + PublicBalanceOracle,
         S: signer::Connection<C, Checkpoint = L::Checkpoint>,
-        R: CryptoRng + RngCore,
+        R: RngCore,
         GL: FnMut(usize) -> L,
         GS: FnMut(usize) -> S,
         F: FnMut() -> R,

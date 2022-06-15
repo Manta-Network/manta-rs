@@ -100,9 +100,9 @@ pub mod agreement {
 
         /// Tests if the `agreement` property is satisfied for `K`.
         #[inline]
-        pub fn key_agreement<K>(scheme: &K, lhs: &K::SecretKey, rhs: &K::SecretKey)
+        pub fn agreement<K>(scheme: &K, lhs: &K::SecretKey, rhs: &K::SecretKey)
         where
-            K: Derive + Agree,
+            K: Agree + Derive,
             K::SharedSecret: Debug + PartialEq,
         {
             assert_eq!(

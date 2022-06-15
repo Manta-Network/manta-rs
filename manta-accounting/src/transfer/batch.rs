@@ -25,7 +25,7 @@ use crate::{
 use alloc::vec::Vec;
 use manta_crypto::{
     accumulator::Accumulator,
-    rand::{CryptoRng, Rand, RngCore},
+    rand::{Rand, RngCore},
 };
 use manta_util::into_array_unchecked;
 
@@ -54,7 +54,7 @@ where
         rng: &mut R,
     ) -> ([Receiver<C>; RECEIVERS], Self)
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         let mut receivers = Vec::with_capacity(RECEIVERS);
         let mut zeroes = Vec::with_capacity(RECEIVERS - 1);

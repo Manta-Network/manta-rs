@@ -53,21 +53,22 @@ impl Assert for () {
 */
 
 /// Equality Assertion
-pub trait AssertEq<T, Rhs = T>: Assert
-where
-    T: PartialEq<Rhs, Self>,
-{
+pub trait AssertEq: Assert {
     /// Asserts that `lhs` and `rhs` are equal.
     #[inline]
-    fn assert_eq(&mut self, lhs: &T, rhs: &Rhs) {
+    fn assert_eq<T, Rhs>(&mut self, lhs: &T, rhs: &Rhs)
+    where
+        T: PartialEq<Rhs, Self>,
+    {
         let are_equal = lhs.eq(rhs, self);
         self.assert(&are_equal);
     }
 
     /// Asserts that all the elements in `iter` are equal to some `base` element.
     #[inline]
-    fn assert_all_eq_to_base<'t, I>(&mut self, base: &'t T, iter: I)
+    fn assert_all_eq_to_base<'t, T, Rhs, I>(&mut self, base: &'t T, iter: I)
     where
+        T: PartialEq<Rhs, Self>,
         Rhs: 't,
         I: IntoIterator<Item = &'t Rhs>,
     {
@@ -78,9 +79,8 @@ where
 
     /// Asserts that all the elements in `iter` are equal.
     #[inline]
-    fn assert_all_eq<'t, I>(&mut self, iter: I)
+    fn assert_all_eq<'t, T, I>(&mut self, iter: I)
     where
-        Self: AssertEq<T>,
         T: 't + PartialEq<T, Self>,
         I: IntoIterator<Item = &'t T>,
     {
@@ -90,19 +90,6 @@ where
         }
     }
 }
-
-/* FIXME: We cannot implement this yet.
-impl<T, Rhs> AssertEq<T, Rhs> for ()
-where
-    T: cmp::PartialEq<Rhs> + Debug,
-    Rhs: Debug,
-{
-    #[inline]
-    fn assert_eq(&mut self, lhs: &T, rhs: &Rhs) {
-        assert_eq!(lhs, rhs);
-    }
-}
-*/
 
 /// Conditional Selection
 pub trait ConditionalSelect<COM>: Sized

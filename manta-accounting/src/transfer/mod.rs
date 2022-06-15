@@ -33,12 +33,17 @@ use crate::asset::{Asset, AssetId, AssetValue};
 use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash, iter, marker::PhantomData, ops::Deref};
 use manta_crypto::{
-    accumulator::{Accumulator, MembershipProof, Model},
+    accumulator::{Accumulator, AssertValidVerification, MembershipProof, Model},
     constraint::{
-        self, Add, Allocate, Allocator, Bool, Constant, Derived, Has, Native, ProofSystem,
+        self, Add, Allocate, Allocator, AssertEq, Bool, Constant, Derived, ProofSystem,
         ProofSystemInput, Public, Secret, Variable,
     },
-    key::kdf::KeyDerivationFunction,
+    encryption::{
+        self,
+        hybrid::{self, Hybrid},
+        Encrypt, EncryptedMessage,
+    },
+    key::{self, agreement::Derive},
     rand::{RngCore, Sample},
 };
 use manta_util::SizeLimit;
@@ -76,34 +81,14 @@ pub trait UtxoCommitmentScheme<COM = ()> {
     /// Unspent Transaction Output Type
     type Utxo;
 
-    /// Commits to the `ephemeral_secret_key`, `public_spend_key`, and `asset` for a UTXO inside of
-    /// `compiler`.
-    fn commit_in(
+    /// Commits to the `ephemeral_secret_key`, `public_spend_key`, and `asset` for a UTXO.
+    fn commit(
         &self,
         ephemeral_secret_key: &Self::EphemeralSecretKey,
         public_spend_key: &Self::PublicSpendKey,
         asset: &Self::Asset,
         compiler: &mut COM,
     ) -> Self::Utxo;
-
-    /// Commits to the `ephemeral_secret_key`, `public_spend_key`, and `asset` for a UTXO.
-    #[inline]
-    fn commit(
-        &self,
-        ephemeral_secret_key: &Self::EphemeralSecretKey,
-        public_spend_key: &Self::PublicSpendKey,
-        asset: &Self::Asset,
-    ) -> Self::Utxo
-    where
-        COM: Native,
-    {
-        self.commit_in(
-            ephemeral_secret_key,
-            public_spend_key,
-            asset,
-            &mut COM::compiler(),
-        )
-    }
 }
 
 /// Void Number Commitment Scheme
@@ -117,22 +102,13 @@ pub trait VoidNumberCommitmentScheme<COM = ()> {
     /// Void Number Type
     type VoidNumber;
 
-    /// Commits to the `secret_spend_key` and `utxo` for a Void Number inside of `compiler`.
-    fn commit_in(
+    /// Commits to the `secret_spend_key` and `utxo` for a Void Number.
+    fn commit(
         &self,
         secret_spend_key: &Self::SecretSpendKey,
         utxo: &Self::Utxo,
         compiler: &mut COM,
     ) -> Self::VoidNumber;
-
-    /// Commits to the `secret_spend_key` and `utxo` for a Void Number.
-    #[inline]
-    fn commit(&self, secret_spend_key: &Self::SecretSpendKey, utxo: &Self::Utxo) -> Self::VoidNumber
-    where
-        COM: Native,
-    {
-        self.commit_in(secret_spend_key, utxo, &mut COM::compiler())
-    }
 }
 
 /// Transfer Configuration
@@ -144,10 +120,9 @@ pub trait Configuration {
     type PublicKey: Clone;
 
     /// Key Agreement Scheme Type
-    type KeyAgreementScheme: KeyAgreementScheme<
-        SecretKey = SecretKey<Self>,
-        PublicKey = PublicKey<Self>,
-    >;
+    type KeyAgreementScheme: key::agreement::Types<SecretKey = SecretKey<Self>, PublicKey = PublicKey<Self>>
+        + key::agreement::Derive
+        + key::agreement::Agree;
 
     /// Secret Key Variable Type
     type SecretKeyVar: Variable<Secret, Self::Compiler, Type = SecretKey<Self>>;
@@ -157,11 +132,10 @@ pub trait Configuration {
         + constraint::PartialEq<Self::PublicKeyVar, Self::Compiler>;
 
     /// Key Agreement Scheme Variable Type
-    type KeyAgreementSchemeVar: KeyAgreementScheme<
-            Self::Compiler,
-            SecretKey = SecretKeyVar<Self>,
-            PublicKey = PublicKeyVar<Self>,
-        > + Constant<Self::Compiler, Type = Self::KeyAgreementScheme>;
+    type KeyAgreementSchemeVar: key::agreement::Types<SecretKey = SecretKeyVar<Self>, PublicKey = PublicKeyVar<Self>>
+        + key::agreement::Derive<Self::Compiler>
+        + key::agreement::Agree<Self::Compiler>
+        + Constant<Self::Compiler, Type = Self::KeyAgreementScheme>;
 
     /// Unspent Transaction Output Type
     type Utxo: PartialEq;
@@ -177,7 +151,7 @@ pub trait Configuration {
     /// UTXO Variable Type
     type UtxoVar: Variable<Public, Self::Compiler, Type = Utxo<Self>>
         + Variable<Secret, Self::Compiler, Type = Utxo<Self>>
-        + constraint::PartialEq<Self::PublicKeyVar, Self::Compiler>;
+        + constraint::PartialEq<Self::UtxoVar, Self::Compiler>;
 
     /// UTXO Commitment Scheme Variable Type
     type UtxoCommitmentSchemeVar: UtxoCommitmentScheme<
@@ -228,7 +202,8 @@ pub trait Configuration {
     >;
 
     /// UTXO Accumulator Model Variable Type
-    type UtxoAccumulatorModelVar: Model<
+    type UtxoAccumulatorModelVar: AssertValidVerification<Self::Compiler>
+        + Model<
             Self::Compiler,
             Item = Self::UtxoVar,
             Witness = Self::UtxoAccumulatorWitnessVar,
@@ -244,14 +219,14 @@ pub trait Configuration {
     /// Asset Value Variable Type
     type AssetValueVar: Variable<Public, Self::Compiler, Type = AssetValue>
         + Variable<Secret, Self::Compiler, Type = AssetValue>
-        + Add<Self::Compiler>
+        + Add<Self::AssetValueVar, Self::Compiler, Output = Self::AssetValueVar>
         + constraint::PartialEq<Self::AssetValueVar, Self::Compiler>;
 
     /// Constraint System Type
-    type Compiler: Has<bool>;
+    type Compiler: AssertEq;
 
     /// Proof System Type
-    type ProofSystem: ProofSystem<ConstraintSystem = Self::Compiler>
+    type ProofSystem: ProofSystem<Compiler = Self::Compiler>
         + ProofSystemInput<AssetId>
         + ProofSystemInput<AssetValue>
         + ProofSystemInput<UtxoAccumulatorOutput<Self>>
@@ -259,11 +234,16 @@ pub trait Configuration {
         + ProofSystemInput<VoidNumber<Self>>
         + ProofSystemInput<PublicKey<Self>>;
 
-    /// Note Encryption Scheme Type
-    type NoteEncryptionScheme: HybridPublicKeyEncryptionScheme<
-        Plaintext = Note<Self>,
-        KeyAgreementScheme = Self::KeyAgreementScheme,
-    >;
+    /// Note Base Encryption Scheme Type
+    type NoteEncryptionScheme: encryption::Encrypt<
+            EncryptionKey = SharedSecret<Self>,
+            Randomness = (),
+            Header = (),
+            Plaintext = Note<Self>,
+        > + encryption::Decrypt<
+            DecryptionKey = SharedSecret<Self>,
+            DecryptedPlaintext = Option<Note<Self>>,
+        >;
 }
 
 /// Asset Variable Type
@@ -280,6 +260,9 @@ pub type PublicKey<C> = <C as Configuration>::PublicKey;
 
 /// Public Key Variable Type
 pub type PublicKeyVar<C> = <C as Configuration>::PublicKeyVar;
+
+/// Shared Secret Type
+pub type SharedSecret<C> = key::agreement::SharedSecret<<C as Configuration>::KeyAgreementScheme>;
 
 /// Unspend Transaction Output Type
 pub type Utxo<C> = <C as Configuration>::Utxo;
@@ -307,10 +290,9 @@ pub type UtxoMembershipProofVar<C> =
     MembershipProof<<C as Configuration>::UtxoAccumulatorModelVar, Compiler<C>>;
 
 /// Encrypted Note Type
-pub type EncryptedNote<C> = EncryptedMessage<<C as Configuration>::NoteEncryptionScheme>;
-
-/// Decrypted Note Type
-pub type DecryptedNote<C> = DecryptedMessage<<C as Configuration>::NoteEncryptionScheme>;
+pub type EncryptedNote<C> = EncryptedMessage<
+    Hybrid<<C as Configuration>::KeyAgreementScheme, <C as Configuration>::NoteEncryptionScheme>,
+>;
 
 /// Transfer Configuration Compiler Type
 pub type Compiler<C> = <C as Configuration>::Compiler;
@@ -340,36 +322,43 @@ pub type Proof<C> = <ProofSystemType<C> as ProofSystem>::Proof;
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = r"
+        C::KeyAgreementScheme: Clone,
         C::NoteEncryptionScheme: Clone,
         C::UtxoCommitmentScheme: Clone,
         C::VoidNumberCommitmentScheme: Clone
     "),
     Copy(bound = r"
+        C::KeyAgreementScheme: Copy,
         C::NoteEncryptionScheme: Copy,
         C::UtxoCommitmentScheme: Copy,
         C::VoidNumberCommitmentScheme: Copy
     "),
     Debug(bound = r"
+        C::KeyAgreementScheme: Debug,
         C::NoteEncryptionScheme: Debug,
         C::UtxoCommitmentScheme: Debug,
         C::VoidNumberCommitmentScheme: Debug
     "),
     Default(bound = r"
+        C::KeyAgreementScheme: Default,
         C::NoteEncryptionScheme: Default,
         C::UtxoCommitmentScheme: Default,
         C::VoidNumberCommitmentScheme: Default
     "),
     Eq(bound = r"
+        C::KeyAgreementScheme: Eq,
         C::NoteEncryptionScheme: Eq,
         C::UtxoCommitmentScheme: Eq,
         C::VoidNumberCommitmentScheme: Eq
     "),
     Hash(bound = r"
+        C::KeyAgreementScheme: Hash,
         C::NoteEncryptionScheme: Hash,
         C::UtxoCommitmentScheme: Hash,
         C::VoidNumberCommitmentScheme: Hash
     "),
     PartialEq(bound = r"
+        C::KeyAgreementScheme: PartialEq,
         C::NoteEncryptionScheme: PartialEq,
         C::UtxoCommitmentScheme: PartialEq,
         C::VoidNumberCommitmentScheme: PartialEq
@@ -380,7 +369,7 @@ where
     C: Configuration + ?Sized,
 {
     /// Note Encryption Scheme
-    pub note_encryption_scheme: C::NoteEncryptionScheme,
+    pub note_encryption_scheme: Hybrid<C::KeyAgreementScheme, C::NoteEncryptionScheme>,
 
     /// UTXO Commitment Scheme
     pub utxo_commitment: C::UtxoCommitmentScheme,
@@ -397,12 +386,16 @@ where
     /// `void_number_commitment`.
     #[inline]
     pub fn new(
+        key_agreement_scheme: C::KeyAgreementScheme,
         note_encryption_scheme: C::NoteEncryptionScheme,
         utxo_commitment: C::UtxoCommitmentScheme,
         void_number_commitment: C::VoidNumberCommitmentScheme,
     ) -> Self {
         Self {
-            note_encryption_scheme,
+            note_encryption_scheme: Hybrid {
+                key_agreement_scheme,
+                encryption_scheme: note_encryption_scheme,
+            },
             utxo_commitment,
             void_number_commitment,
         }
@@ -411,23 +404,15 @@ where
     /// Returns the [`KeyAgreementScheme`](Configuration::KeyAgreementScheme) associated to `self`.
     #[inline]
     pub fn key_agreement_scheme(&self) -> &C::KeyAgreementScheme {
-        self.note_encryption_scheme.key_agreement_scheme()
+        &self.note_encryption_scheme.key_agreement_scheme
     }
 
     /// Derives a [`PublicKey`] from a borrowed `secret_key`.
     #[inline]
     pub fn derive(&self, secret_key: &SecretKey<C>) -> PublicKey<C> {
         self.note_encryption_scheme
-            .key_agreement_scheme()
-            .derive(secret_key)
-    }
-
-    /// Derives a [`PublicKey`] from an owned `secret_key`.
-    #[inline]
-    pub fn derive_owned(&self, secret_key: SecretKey<C>) -> PublicKey<C> {
-        self.note_encryption_scheme
-            .key_agreement_scheme()
-            .derive_owned(secret_key)
+            .key_agreement_scheme
+            .derive(secret_key, &mut ())
     }
 
     /// Computes the [`Utxo`] associated to `ephemeral_secret_key`, `public_spend_key`, and `asset`.
@@ -439,13 +424,14 @@ where
         asset: &Asset,
     ) -> Utxo<C> {
         self.utxo_commitment
-            .commit(ephemeral_secret_key, public_spend_key, asset)
+            .commit(ephemeral_secret_key, public_spend_key, asset, &mut ())
     }
 
     /// Computes the [`VoidNumber`] associated to `secret_spend_key` and `utxo`.
     #[inline]
     pub fn void_number(&self, secret_spend_key: &SecretKey<C>, utxo: &Utxo<C>) -> VoidNumber<C> {
-        self.void_number_commitment.commit(secret_spend_key, utxo)
+        self.void_number_commitment
+            .commit(secret_spend_key, utxo, &mut ())
     }
 
     /// Validates the `utxo` against the `secret_spend_key` and the given `ephemeral_secret_key`
@@ -544,7 +530,7 @@ where
     /// Derives a [`PublicKeyVar`] from `secret_key` inside the `compiler`.
     #[inline]
     fn derive(&self, secret_key: &SecretKeyVar<C>, compiler: &mut C::Compiler) -> PublicKeyVar<C> {
-        self.key_agreement.derive_in(secret_key, compiler)
+        self.key_agreement.derive(secret_key, compiler)
     }
 
     /// Computes the [`UtxoVar`] associated to `ephemeral_secret_key`, `public_spend_key`, and
@@ -558,7 +544,7 @@ where
         compiler: &mut C::Compiler,
     ) -> UtxoVar<C> {
         self.utxo_commitment
-            .commit_in(ephemeral_secret_key, public_spend_key, asset, compiler)
+            .commit(ephemeral_secret_key, public_spend_key, asset, compiler)
     }
 
     /// Computes the [`VoidNumberVar`] associated to `secret_spend_key` and `utxo` in the
@@ -571,7 +557,7 @@ where
         compiler: &mut C::Compiler,
     ) -> VoidNumberVar<C> {
         self.void_number_commitment
-            .commit_in(secret_spend_key, utxo, compiler)
+            .commit(secret_spend_key, utxo, compiler)
     }
 }
 
@@ -587,7 +573,7 @@ where
         Self {
             key_agreement: this
                 .note_encryption_scheme
-                .key_agreement_scheme()
+                .key_agreement_scheme
                 .as_constant(compiler),
             utxo_commitment: this.utxo_commitment.as_constant(compiler),
             void_number_commitment: this.void_number_commitment.as_constant(compiler),
@@ -625,8 +611,8 @@ where
     #[inline]
     pub fn derive(&self, parameters: &C::KeyAgreementScheme) -> ReceivingKey<C> {
         ReceivingKey {
-            spend: parameters.derive(&self.spend),
-            view: parameters.derive(&self.view),
+            spend: parameters.derive(&self.spend, &mut ()),
+            view: parameters.derive(&self.view, &mut ()),
         }
     }
 
@@ -1384,15 +1370,17 @@ where
         ephemeral_secret_key: SecretKey<C>,
         asset: Asset,
     ) -> Self {
+        let randomness = hybrid::Randomness::from_key(ephemeral_secret_key);
         Self {
-            utxo: parameters.utxo(&ephemeral_secret_key, &public_spend_key, &asset),
-            encrypted_note: EncryptedMessage::new(
-                &parameters.note_encryption_scheme,
-                &ephemeral_secret_key,
+            utxo: parameters.utxo(&randomness.ephemeral_secret_key, &public_spend_key, &asset),
+            encrypted_note: parameters.note_encryption_scheme.encrypt_into(
                 &public_view_key,
-                Note::new(ephemeral_secret_key.clone(), asset),
+                &randomness,
+                (),
+                &Note::new(randomness.ephemeral_secret_key.clone(), asset),
+                &mut (),
             ),
-            ephemeral_secret_key,
+            ephemeral_secret_key: randomness.ephemeral_secret_key,
             public_spend_key,
             asset,
         }
@@ -1817,7 +1805,7 @@ where
     /// Builds a constraint system which asserts constraints against unknown variables.
     #[inline]
     pub fn unknown_constraints(parameters: FullParameters<C>) -> C::Compiler {
-        let mut compiler = C::ProofSystem::for_unknown();
+        let mut compiler = C::ProofSystem::context_compiler();
         TransferVar::<C, SOURCES, SENDERS, RECEIVERS, SINKS>::new_unknown(&mut compiler)
             .build_validity_constraints(&parameters.as_constant(&mut compiler), &mut compiler);
         compiler
@@ -1826,7 +1814,7 @@ where
     /// Builds a constraint system which asserts constraints against known variables.
     #[inline]
     pub fn known_constraints(&self, parameters: FullParameters<C>) -> C::Compiler {
-        let mut compiler = C::ProofSystem::for_known();
+        let mut compiler = C::ProofSystem::proof_compiler();
         let transfer: TransferVar<C, SOURCES, SENDERS, RECEIVERS, SINKS> =
             self.as_known(&mut compiler);
         transfer.build_validity_constraints(&parameters.as_constant(&mut compiler), &mut compiler);
@@ -1843,7 +1831,7 @@ where
     where
         R: RngCore + ?Sized,
     {
-        C::ProofSystem::generate_context(
+        C::ProofSystem::compile(
             public_parameters,
             Self::unknown_constraints(parameters),
             rng,

@@ -191,6 +191,23 @@ pub trait Encrypt<COM = ()>: EncryptionTypes {
         plaintext: &Self::Plaintext,
         compiler: &mut COM,
     ) -> Self::Ciphertext;
+
+    /// Computes ciphertext using [`encrypt`](Self::encrypt) and stores the result in an
+    /// [`EncryptedMessage`].
+    #[inline]
+    fn encrypt_into(
+        &self,
+        encryption_key: &Self::EncryptionKey,
+        randomness: &Self::Randomness,
+        header: Self::Header,
+        plaintext: &Self::Plaintext,
+        compiler: &mut COM,
+    ) -> EncryptedMessage<Self> {
+        EncryptedMessage {
+            ciphertext: self.encrypt(encryption_key, randomness, &header, plaintext, compiler),
+            header,
+        }
+    }
 }
 
 impl<T, COM> Encrypt<COM> for &T
@@ -279,13 +296,39 @@ where
 )]
 pub struct Message<E>
 where
-    E: HeaderType + PlaintextType,
+    E: HeaderType + PlaintextType + ?Sized,
 {
     /// Header
     pub header: E::Header,
 
     /// Plaintext
     pub plaintext: E::Plaintext,
+}
+
+impl<E> Message<E>
+where
+    E: HeaderType + PlaintextType + ?Sized,
+{
+    /// Builds a new [`Message`] from `header` and `plaintext`.
+    #[inline]
+    pub fn new(header: E::Header, plaintext: E::Plaintext) -> Self {
+        Self { header, plaintext }
+    }
+
+    /// Encrypts `self` against the given `cipher` using `key` and `randomness`.
+    #[inline]
+    pub fn encrypt<COM>(
+        self,
+        cipher: &E,
+        key: &E::EncryptionKey,
+        randomness: &E::Randomness,
+        compiler: &mut COM,
+    ) -> EncryptedMessage<E>
+    where
+        E: Encrypt<COM>,
+    {
+        cipher.encrypt_into(key, randomness, self.header, &self.plaintext, compiler)
+    }
 }
 
 /// Encrypted Message
@@ -306,13 +349,38 @@ where
 )]
 pub struct EncryptedMessage<E>
 where
-    E: CiphertextType + HeaderType,
+    E: CiphertextType + HeaderType + ?Sized,
 {
     /// Header
     pub header: E::Header,
 
     /// Ciphertext
     pub ciphertext: E::Ciphertext,
+}
+
+impl<E> EncryptedMessage<E>
+where
+    E: CiphertextType + HeaderType + ?Sized,
+{
+    /// Builds a new [`EncryptedMessage`] from `header` and `ciphertext`.
+    #[inline]
+    pub fn new(header: E::Header, ciphertext: E::Ciphertext) -> Self {
+        Self { header, ciphertext }
+    }
+
+    /// Decrypts `self` against the given `cipher` using `key`.
+    #[inline]
+    pub fn decrypt<COM>(
+        &self,
+        cipher: &E,
+        key: &E::DecryptionKey,
+        compiler: &mut COM,
+    ) -> E::DecryptedPlaintext
+    where
+        E: Decrypt<COM>,
+    {
+        cipher.decrypt(key, &self.header, &self.ciphertext, compiler)
+    }
 }
 
 /// Testing Framework
@@ -334,7 +402,7 @@ pub mod test {
         plaintext: &E::Plaintext,
         assert_same: F,
     ) where
-        E: Encrypt + Decrypt,
+        E: Decrypt + Encrypt,
         F: FnOnce(&E::Plaintext, &E::DecryptedPlaintext),
     {
         assert_same(
@@ -359,7 +427,7 @@ pub mod test {
         plaintext: &E::Plaintext,
         assert_same: F,
     ) where
-        E: Derive + Encrypt + Decrypt,
+        E: Decrypt + Derive + Encrypt,
         F: FnOnce(&E::Plaintext, &E::DecryptedPlaintext),
     {
         encryption(

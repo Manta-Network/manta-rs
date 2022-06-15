@@ -29,7 +29,7 @@ use core::fmt::Debug;
 use manta_crypto::{
     accumulator::Accumulator,
     constraint::ProofSystem,
-    rand::{CryptoRng, Rand, RngCore, Sample},
+    rand::{Rand, RngCore, Sample},
 };
 use manta_util::into_array_unchecked;
 
@@ -41,7 +41,7 @@ use manta_util::into_array_unchecked;
 #[inline]
 pub fn value_distribution<R>(count: usize, total: AssetValue, rng: &mut R) -> Vec<AssetValue>
 where
-    R: CryptoRng + RngCore + ?Sized,
+    R: RngCore + ?Sized,
 {
     if count == 0 {
         return Vec::default();
@@ -70,7 +70,7 @@ where
 #[inline]
 pub fn sample_asset_values<R, const N: usize>(total: AssetValue, rng: &mut R) -> [AssetValue; N]
 where
-    R: CryptoRng + RngCore + ?Sized,
+    R: RngCore + ?Sized,
 {
     into_array_unchecked(value_distribution(N, total, rng))
 }
@@ -78,7 +78,10 @@ where
 /// Parameters Distribution
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
-pub struct ParametersDistribution<E = (), U = (), V = ()> {
+pub struct ParametersDistribution<K = (), E = (), U = (), V = ()> {
+    /// Key Agreement Scheme Distribution
+    pub key_agreement_scheme: K,
+
     /// Note Encryption Scheme Distribution
     pub note_encryption_scheme: E,
 
@@ -89,19 +92,21 @@ pub struct ParametersDistribution<E = (), U = (), V = ()> {
     pub void_number_commitment_scheme: V,
 }
 
-impl<E, U, V, C> Sample<ParametersDistribution<E, U, V>> for Parameters<C>
+impl<K, E, U, V, C> Sample<ParametersDistribution<K, E, U, V>> for Parameters<C>
 where
     C: Configuration,
+    C::KeyAgreementScheme: Sample<K>,
     C::NoteEncryptionScheme: Sample<E>,
     C::UtxoCommitmentScheme: Sample<U>,
     C::VoidNumberCommitmentScheme: Sample<V>,
 {
     #[inline]
-    fn sample<R>(distribution: ParametersDistribution<E, U, V>, rng: &mut R) -> Self
+    fn sample<R>(distribution: ParametersDistribution<K, E, U, V>, rng: &mut R) -> Self
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         Parameters::new(
+            rng.sample(distribution.key_agreement_scheme),
             rng.sample(distribution.note_encryption_scheme),
             rng.sample(distribution.utxo_commitment),
             rng.sample(distribution.void_number_commitment_scheme),
@@ -179,7 +184,7 @@ where
     ) -> Result<TransferPost<C>, ProofSystemError<C>>
     where
         A: Accumulator<Item = Utxo<C>, Model = C::UtxoAccumulatorModel>,
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         Self::sample(
             TransferDistribution {
@@ -206,7 +211,7 @@ where
     ) -> Result<bool, ProofSystemError<C>>
     where
         A: Accumulator<Item = Utxo<C>, Model = C::UtxoAccumulatorModel>,
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         let (proving_context, verifying_context) = Self::generate_context(
             public_parameters,
@@ -234,7 +239,7 @@ where
     ) -> Result<bool, ProofSystemError<C>>
     where
         A: Accumulator<Item = Utxo<C>, Model = C::UtxoAccumulatorModel>,
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         let post = Self::sample_post(proving_context, parameters, utxo_accumulator, rng)?;
         C::ProofSystem::verify(
@@ -278,7 +283,7 @@ fn sample_senders_and_receivers<C, A, R>(
 where
     C: Configuration,
     A: Accumulator<Item = Utxo<C>, Model = C::UtxoAccumulatorModel>,
-    R: CryptoRng + RngCore + ?Sized,
+    R: RngCore + ?Sized,
 {
     (
         senders
@@ -294,8 +299,8 @@ where
             .map(|v| {
                 Receiver::new(
                     parameters,
-                    parameters.derive_owned(rng.gen()),
-                    parameters.derive_owned(rng.gen()),
+                    parameters.derive(&rng.gen()),
+                    parameters.derive(&rng.gen()),
                     rng.gen(),
                     asset_id.with(*v),
                 )
@@ -319,7 +324,7 @@ where
     #[inline]
     fn sample<R>(distribution: TransferDistribution<'_, C, A>, rng: &mut R) -> Self
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         let asset = Asset::gen(rng);
         let mut input = value_distribution(SOURCES + SENDERS, asset.value, rng);
@@ -360,7 +365,7 @@ where
     #[inline]
     fn sample<R>(distribution: FixedTransferDistribution<'_, C, A>, rng: &mut R) -> Self
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         let (senders, receivers) = sample_senders_and_receivers(
             distribution.base.parameters,
@@ -392,7 +397,7 @@ pub fn sample_mint<C, R>(
 ) -> Result<(TransferPost<C>, PreSender<C>), ProofSystemError<C>>
 where
     C: Configuration,
-    R: CryptoRng + RngCore + ?Sized,
+    R: RngCore + ?Sized,
 {
     let (mint, pre_sender) = Mint::internal_pair(full_parameters.base, spending_key, asset, rng);
     Ok((

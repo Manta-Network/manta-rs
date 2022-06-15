@@ -19,7 +19,7 @@
 use alloc::{boxed::Box, vec::Vec};
 use core::{fmt::Debug, hash::Hash};
 use futures::stream::{self, SelectAll, Stream};
-use manta_crypto::rand::{CryptoRng, RngCore};
+use manta_crypto::rand::RngCore;
 use manta_util::future::LocalBoxFuture;
 
 /// Abstract Simulation
@@ -40,7 +40,7 @@ pub trait Simulation {
         rng: &'s mut R,
     ) -> LocalBoxFuture<'s, Option<Self::Event>>
     where
-        R: CryptoRng + RngCore + ?Sized;
+        R: RngCore + ?Sized;
 }
 
 impl<S> Simulation for &S
@@ -57,7 +57,7 @@ where
         rng: &'s mut R,
     ) -> LocalBoxFuture<'s, Option<Self::Event>>
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         (*self).step(actor, rng)
     }
@@ -134,7 +134,7 @@ where
     #[inline]
     pub fn run<'s, R, F>(&'s mut self, mut rng: F) -> impl 's + Stream<Item = Event<S>>
     where
-        R: 's + CryptoRng + RngCore,
+        R: 's + RngCore,
         F: FnMut() -> R,
     {
         let mut actors = SelectAll::new();
@@ -162,7 +162,7 @@ where
 struct ActorStream<'s, S, R>
 where
     S: Simulation,
-    R: 's + CryptoRng + RngCore,
+    R: 's + RngCore,
 {
     /// Base Simulation
     simulation: &'s S,
@@ -185,7 +185,7 @@ where
 impl<'s, S, R> ActorStream<'s, S, R>
 where
     S: Simulation,
-    R: 's + CryptoRng + RngCore,
+    R: 's + RngCore,
 {
     /// Builds a new [`ActorStream`] from `simulation`, `actor_index, `actor`, and `rng`.
     #[inline]
@@ -236,7 +236,7 @@ pub trait ActionSimulation {
         rng: &'s mut R,
     ) -> LocalBoxFuture<'s, Option<Self::Action>>
     where
-        R: CryptoRng + RngCore + ?Sized;
+        R: RngCore + ?Sized;
 
     /// Executes the given `action` on `actor` returning an event.
     fn act<'s>(
@@ -279,7 +279,7 @@ where
         rng: &'s mut R,
     ) -> LocalBoxFuture<'s, Option<Self::Event>>
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         Box::pin(async move {
             match self.0.sample(actor, rng).await {

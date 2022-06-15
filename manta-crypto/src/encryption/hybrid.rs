@@ -23,7 +23,7 @@
 use crate::{
     encryption::{
         CiphertextType, Decrypt, DecryptionKeyType, DecryptionTypes, Derive, Encrypt,
-        EncryptionKeyType, EncryptionTypes, HeaderType, PlaintextType,
+        EncryptedMessage, EncryptionKeyType, EncryptionTypes, HeaderType, PlaintextType,
     },
     key,
 };
@@ -39,15 +39,36 @@ use manta_util::serde::{Deserialize, Serialize};
     serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
-pub struct Hybrid<K, E>
-where
-    K: key::agreement::Types,
-{
+pub struct Hybrid<K, E> {
     /// Key Agreement Scheme
     pub key_agreement_scheme: K,
 
     /// Base Encryption Scheme
     pub encryption_scheme: E,
+}
+
+impl<K, E> Hybrid<K, E> {
+    /// Builds a new [`Hybrid`] encryption scheme from `key_agreement_scheme` and a base
+    /// `encryption_scheme`.
+    #[inline]
+    pub fn new(key_agreement_scheme: K, encryption_scheme: E) -> Self {
+        Self {
+            key_agreement_scheme,
+            encryption_scheme,
+        }
+    }
+}
+
+impl<K, E> EncryptedMessage<Hybrid<K, E>>
+where
+    K: key::agreement::Types,
+    E: CiphertextType + HeaderType,
+{
+    /// Returns the ephemeral public key associated to `self`, stored in its ciphertext.
+    #[inline]
+    pub fn ephemeral_public_key(&self) -> &K::PublicKey {
+        &self.ciphertext.ephemeral_public_key
+    }
 }
 
 /// Encryption Key
@@ -84,6 +105,33 @@ where
     pub randomness: E::Randomness,
 }
 
+impl<K, E> Randomness<K, E>
+where
+    K: key::agreement::Types,
+    E: EncryptionTypes,
+{
+    /// Builds a new [`Randomness`] from `ephemeral_secret_key` and `randomness`.
+    #[inline]
+    pub fn new(ephemeral_secret_key: K::SecretKey, randomness: E::Randomness) -> Self {
+        Self {
+            ephemeral_secret_key,
+            randomness,
+        }
+    }
+
+    /// Builds a new [`Randomness`] from `ephemeral_secret_key` whenever the base encryption scheme
+    /// has no [`Randomness`] type (i.e. uses `()` as its [`Randomness`] type).
+    ///
+    /// [`Randomness`]: EncryptionTypes::Randomness
+    #[inline]
+    pub fn from_key(ephemeral_secret_key: K::SecretKey) -> Self
+    where
+        E: EncryptionTypes<Randomness = ()>,
+    {
+        Self::new(ephemeral_secret_key, ())
+    }
+}
+
 /// Full Ciphertext
 #[cfg_attr(
     feature = "serde",
@@ -110,6 +158,21 @@ where
 
     /// Base Encryption Ciphertext
     pub ciphertext: E::Ciphertext,
+}
+
+impl<K, E> Ciphertext<K, E>
+where
+    K: key::agreement::Types,
+    E: CiphertextType,
+{
+    /// Builds a new [`Ciphertext`] from `ephemeral_public_key` and `ciphertext`.
+    #[inline]
+    pub fn new(ephemeral_public_key: K::PublicKey, ciphertext: E::Ciphertext) -> Self {
+        Self {
+            ephemeral_public_key,
+            ciphertext,
+        }
+    }
 }
 
 impl<K, E> HeaderType for Hybrid<K, E>
