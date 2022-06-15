@@ -14,12 +14,14 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
+use manta_accounting::transfer::test::assert_valid_proof;
 use manta_crypto::rand::{OsRng, Rand};
 use manta_pay::{
     config::{
         MultiProvingContext, MultiVerifyingContext, Parameters, TransferPost, UtxoAccumulatorModel,
     },
-    parameters, sample_payment,
+    parameters,
+    test::payment,
 };
 use wasm_bindgen::prelude::wasm_bindgen;
 
@@ -59,7 +61,7 @@ pub struct Proof(TransferPost);
 #[wasm_bindgen]
 pub fn prove_mint(context: &Context) -> Proof {
     let mut rng = OsRng;
-    Proof(sample_payment::prove_mint(
+    Proof(payment::prove_mint(
         &context.proving_context.mint,
         &context.parameters,
         &context.utxo_accumulator_model,
@@ -71,7 +73,7 @@ pub fn prove_mint(context: &Context) -> Proof {
 #[wasm_bindgen]
 pub fn prove_private_transfer(context: &Context) -> Proof {
     let mut rng = OsRng;
-    Proof(sample_payment::prove_private_transfer(
+    Proof(payment::prove_private_transfer(
         &context.proving_context,
         &context.parameters,
         &context.utxo_accumulator_model,
@@ -82,7 +84,7 @@ pub fn prove_private_transfer(context: &Context) -> Proof {
 #[wasm_bindgen]
 pub fn prove_reclaim(context: &Context) -> Proof {
     let mut rng = OsRng;
-    Proof(sample_payment::prove_reclaim(
+    Proof(payment::prove_reclaim(
         &context.proving_context,
         &context.parameters,
         &context.utxo_accumulator_model,
@@ -92,15 +94,15 @@ pub fn prove_reclaim(context: &Context) -> Proof {
 
 #[wasm_bindgen]
 pub fn verify_mint(context: &Context, proof: &Proof) {
-    sample_payment::assert_valid_proof(&context.verifying_context.mint, &proof.0);
+    assert_valid_proof(&context.verifying_context.mint, &proof.0);
 }
 
 #[wasm_bindgen]
 pub fn verify_private_transfer(context: &Context, proof: &Proof) {
-    sample_payment::assert_valid_proof(&context.verifying_context.private_transfer, &proof.0);
+    assert_valid_proof(&context.verifying_context.private_transfer, &proof.0);
 }
 
 #[wasm_bindgen]
 pub fn verify_reclaim(context: &Context, proof: &Proof) {
-    sample_payment::assert_valid_proof(&context.verifying_context.reclaim, &proof.0);
+    assert_valid_proof(&context.verifying_context.reclaim, &proof.0);
 }

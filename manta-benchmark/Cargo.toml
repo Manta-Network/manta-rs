@@ -37,6 +37,7 @@ harness = false
 [dependencies]
 getrandom = { version = "0.2.6", features = ["js"]}
 instant = { version = "0.1.12", features = [ "wasm-bindgen" ] }
+manta-accounting = { path = "../manta-accounting", default-features = false, features = ["test"] }
 manta-crypto = { path = "../manta-crypto", default-features = false, features = ["getrandom", "test"] }
 manta-pay = { path = "../manta-pay", default-features = false, features = ["groth16", "test"] }
 wasm-bindgen = { version = "0.2.81", default-features = false }

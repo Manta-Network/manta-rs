@@ -18,7 +18,7 @@
 
 use crate::config::{
     self, FullParameters, MerkleTreeConfiguration, Mint, MultiProvingContext, Parameters,
-    PrivateTransfer, ProofSystem, ProvingContext, Reclaim, UtxoAccumulatorModel, VerifyingContext,
+    PrivateTransfer, ProvingContext, Reclaim, UtxoAccumulatorModel,
 };
 use manta_accounting::{
     asset::{Asset, AssetId},
@@ -26,7 +26,6 @@ use manta_accounting::{
 };
 use manta_crypto::{
     accumulator::Accumulator,
-    constraint::ProofSystem as _,
     merkle_tree::{forest::TreeArrayMerkleForest, full::Full},
     rand::{CryptoRng, Rand, RngCore, Sample},
 };
@@ -34,21 +33,6 @@ use manta_crypto::{
 /// UTXO Accumulator for Building Circuits
 type UtxoAccumulator =
     TreeArrayMerkleForest<MerkleTreeConfiguration, Full<MerkleTreeConfiguration>, 256>;
-
-/// Asserts that `post` represents a valid `Transfer` verifying against `verifying_context`.
-#[inline]
-pub fn assert_valid_proof(verifying_context: &VerifyingContext, post: &config::TransferPost) {
-    assert!(
-        ProofSystem::verify(
-            verifying_context,
-            &post.generate_proof_input(),
-            &post.validity_proof,
-        )
-        .expect("Unable to verify proof."),
-        "Invalid proof: {:?}.",
-        post
-    );
-}
 
 /// Generates a proof for a [`Mint`] transaction.
 #[inline]

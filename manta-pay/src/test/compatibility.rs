@@ -23,10 +23,11 @@ use crate::{
         ProvingContext, UtxoAccumulatorModel, UtxoCommitmentScheme, VerifyingContext,
         VoidNumberCommitmentScheme,
     },
-    sample_payment::{assert_valid_proof, prove_mint, prove_private_transfer, prove_reclaim},
+    test::payment::{prove_mint, prove_private_transfer, prove_reclaim},
 };
 use anyhow::Result;
 use ark_std::rand::thread_rng;
+use manta_accounting::transfer::test::assert_valid_proof;
 use manta_crypto::rand::Rand;
 use manta_util::codec::{Decode, IoReader};
 use std::{fs::File, path::Path};

@@ -15,8 +15,9 @@
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use manta_accounting::transfer::test::assert_valid_proof;
 use manta_crypto::rand::{OsRng, Rand};
-use manta_pay::{parameters, sample_payment};
+use manta_pay::{parameters, test::payment::prove_mint};
 
 fn prove(c: &mut Criterion) {
     let mut group = c.benchmark_group("bench");
@@ -26,7 +27,7 @@ fn prove(c: &mut Criterion) {
     group.bench_function("mint prove", |b| {
         let asset = black_box(rng.gen());
         b.iter(|| {
-            sample_payment::prove_mint(
+            prove_mint(
                 &proving_context.mint,
                 &parameters,
                 &utxo_accumulator_model,
@@ -42,7 +43,7 @@ fn verify(c: &mut Criterion) {
     let (proving_context, verifying_context, parameters, utxo_accumulator_model) =
         parameters::generate().unwrap();
     let mut rng = OsRng;
-    let mint = black_box(sample_payment::prove_mint(
+    let mint = black_box(prove_mint(
         &proving_context.mint,
         &parameters,
         &utxo_accumulator_model,
@@ -51,7 +52,7 @@ fn verify(c: &mut Criterion) {
     ));
     group.bench_function("mint verify", |b| {
         b.iter(|| {
-            sample_payment::assert_valid_proof(&verifying_context.mint, &mint);
+            assert_valid_proof(&verifying_context.mint, &mint);
         })
     });
 }
