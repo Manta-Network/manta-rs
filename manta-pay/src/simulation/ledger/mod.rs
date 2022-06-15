@@ -47,7 +47,6 @@ use manta_crypto::{
     merkle_tree::{
         self,
         forest::{Configuration, FixedIndex},
-        Tree,
     },
 };
 use manta_util::future::{LocalBoxFuture, LocalBoxFutureResult};
@@ -163,7 +162,7 @@ impl Ledger {
 
     /// Pulls the data from the ledger later than the given `checkpoint`.
     #[inline]
-    pub fn pull(&self, checkpoint: &Checkpoint) -> ReadResponse<Checkpoint, SyncData<Config>> {
+    pub fn pull(&self, checkpoint: &Checkpoint) -> ReadResponse<SyncData<Config>> {
         let mut receivers = Vec::new();
         for (i, mut index) in checkpoint.receiver_index.iter().copied().enumerate() {
             let shard = &self.shards[&MerkleForestIndex::from_index(i)];
@@ -180,15 +179,6 @@ impl Ledger {
             .collect();
         ReadResponse {
             should_continue: false,
-            next_checkpoint: Checkpoint::new(
-                self.utxo_forest
-                    .forest
-                    .as_ref()
-                    .iter()
-                    .map(move |t| t.len())
-                    .collect(),
-                self.void_numbers.len(),
-            ),
             data: SyncData { receivers, senders },
         }
     }
@@ -445,8 +435,7 @@ impl ledger::Read<SyncData<Config>> for LedgerConnection {
     fn read<'s>(
         &'s mut self,
         checkpoint: &'s Self::Checkpoint,
-    ) -> LocalBoxFutureResult<'s, ReadResponse<Self::Checkpoint, SyncData<Config>>, Self::Error>
-    {
+    ) -> LocalBoxFutureResult<'s, ReadResponse<SyncData<Config>>, Self::Error> {
         Box::pin(async move { Ok(self.ledger.read().await.pull(checkpoint)) })
     }
 }

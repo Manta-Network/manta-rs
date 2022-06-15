@@ -25,13 +25,13 @@ use crate::{
 use alloc::collections::BTreeMap;
 use ark_ec::ProjectiveCurve;
 use ark_ff::PrimeField;
-use core::{marker::PhantomData, mem};
+use core::{cmp, marker::PhantomData, mem};
 use manta_accounting::{
     asset::HashAssetMap,
     key::{self, HierarchicalKeyDerivationScheme},
     wallet::{
         self,
-        signer::{AssetMapKey, SyncData},
+        signer::{self, AssetMapKey, SyncData},
     },
 };
 use manta_crypto::{key::KeyDerivationFunction, merkle_tree, merkle_tree::forest::Configuration};
@@ -87,38 +87,61 @@ impl wallet::signer::Configuration for Config {
     type UtxoAccumulator = UtxoAccumulator;
     type AssetMap = HashAssetMap<AssetMapKey<Self>>;
     type Rng = rand_chacha::ChaCha20Rng;
+}
+
+impl signer::Checkpoint<Config> for Checkpoint {
+    type UtxoAccumulator = UtxoAccumulator;
 
     #[inline]
-    fn update_checkpoint(
-        checkpoint: &Self::Checkpoint,
-        utxo_accumulator: &Self::UtxoAccumulator,
-    ) -> Self::Checkpoint {
-        Checkpoint::new(
-            utxo_accumulator
-                .forest
-                .as_ref()
-                .iter()
-                .map(move |t| t.len())
-                .collect(),
-            checkpoint.sender_index,
-        )
+    fn update_from_void_numbers(&mut self, count: usize) {
+        self.sender_index += count;
     }
 
     #[inline]
-    fn prune_sync_data(
-        data: &mut SyncData<Config>,
-        origin: &Self::Checkpoint,
-        checkpoint: &Self::Checkpoint,
-    ) -> bool {
+    fn update_from_utxo_accumulator(&mut self, utxo_accumulator: &Self::UtxoAccumulator) {
+        self.receiver_index = self
+            .receiver_index
+            .into_iter()
+            .zip(utxo_accumulator.forest.as_ref())
+            .map(move |(i, t)| cmp::max(i, t.len()))
+            .collect();
+    }
+
+    /// Prunes the `data` by comparing `origin` and `signer_checkpoint` and checks if updating the
+    /// `origin` checkpoint by viewing `data` would exceed the current `signer_checkpoint`. If not,
+    /// then we can prune all the data. Otherwise, we take each entry in `data` and remove by shard
+    /// index or by global void number index until we reach some pruned data that is at least newer
+    /// than `signer_checkpoint`.
+    #[inline]
+    fn prune(data: &mut SyncData<Config>, origin: &Self, signer_checkpoint: &Self) -> bool {
         const PRUNE_PANIC_MESSAGE: &str = "ERROR: Invalid pruning conditions";
-        if checkpoint < origin {
+        if signer_checkpoint <= origin {
             return false;
         }
-        match checkpoint.sender_index.checked_sub(origin.sender_index) {
-            Some(diff) => drop(data.senders.drain(0..diff)),
+        let mut updated_origin = *origin;
+        for receiver in &data.receivers {
+            let key = MerkleTreeConfiguration::tree_index(&receiver.0);
+            updated_origin.receiver_index[key as usize] += 1;
+        }
+        updated_origin.sender_index += data.senders.len();
+        if signer_checkpoint > &updated_origin {
+            *data = Default::default();
+            return true;
+        }
+        let mut has_pruned = false;
+        match signer_checkpoint
+            .sender_index
+            .checked_sub(origin.sender_index)
+        {
+            Some(diff) => {
+                drop(data.senders.drain(0..diff));
+                if diff > 0 {
+                    has_pruned = true;
+                }
+            }
             _ => panic!(
                 "{}: Sender Pruning: {:?} {:?} {:?}",
-                PRUNE_PANIC_MESSAGE, data, origin, checkpoint
+                PRUNE_PANIC_MESSAGE, data, origin, signer_checkpoint
             ),
         }
         let mut data_map = BTreeMap::<_, Vec<_>>::new();
@@ -131,11 +154,10 @@ impl wallet::signer::Configuration for Config {
                 }
             }
         }
-        let mut has_pruned = false;
         for (i, (origin_index, index)) in origin
             .receiver_index
             .into_iter()
-            .zip(checkpoint.receiver_index)
+            .zip(signer_checkpoint.receiver_index)
             .enumerate()
         {
             match index.checked_sub(origin_index) {
@@ -149,7 +171,7 @@ impl wallet::signer::Configuration for Config {
                 }
                 _ => panic!(
                     "{}: Receiver Pruning: {:?} {:?} {:?}",
-                    PRUNE_PANIC_MESSAGE, data, origin, checkpoint
+                    PRUNE_PANIC_MESSAGE, data, origin, signer_checkpoint
                 ),
             }
         }
