@@ -15,3 +15,37 @@
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
 //! Poseidon implementation of sponge
+
+use alloc::vec::Vec;
+use manta_crypto::permutation::{
+    sponge::{Absorb, Squeeze},
+    PseudorandomPermutation,
+};
+
+type Domain<S, COM, const ARITY: usize> =
+    <super::Hasher<S, ARITY, COM> as PseudorandomPermutation<COM>>::Domain;
+
+impl<S, const ARITY: usize, COM> Absorb<super::Hasher<S, ARITY, COM>, COM> for Vec<S::Field>
+where
+    S: super::Specification<COM>,
+{
+    fn write(&self, state: &mut Domain<S, COM, ARITY>, compiler: &mut COM) {
+        assert_eq!(self.len(), ARITY);
+        // corresponds to algorithm 2 in page 7 of BDPA11, replacing XOR with ADD
+        state.iter_mut().zip(self.iter()).for_each(|(s, c)| {
+            S::add_assign(s, c, compiler);
+        });
+    }
+}
+
+impl<S, const ARITY: usize, COM> Squeeze<super::Hasher<S, ARITY, COM>, COM> for Vec<S::Field>
+where
+    S: super::Specification<COM>,
+    S::Field: Clone,
+{
+    fn read(state: &Domain<S, COM, ARITY>, compiler: &mut COM) -> Self {
+        let _ = compiler;
+        assert_eq!(state.len(), ARITY);
+        state.iter().take(ARITY).cloned().collect()
+    }
+}

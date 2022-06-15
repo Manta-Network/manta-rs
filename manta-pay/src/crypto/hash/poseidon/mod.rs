@@ -85,7 +85,7 @@ pub trait FieldGeneration {
 /// Poseidon Permutation Specification
 pub trait Specification<COM = ()> {
     /// Field Type used for Permutation State
-    type Field: Debug;
+    type Field;
 
     /// Field Type used for Constant Parameters
     type ParameterField;
@@ -109,6 +109,12 @@ pub trait Specification<COM = ()> {
     /// Adds a field element `lhs` with a constant `rhs`
     fn add_const(lhs: &Self::Field, rhs: &Self::ParameterField, compiler: &mut COM) -> Self::Field;
 
+    /// Subtracts `rhs` from `lhs`.
+    fn sub(lhs: &Self::Field, rhs: &Self::Field, compiler: &mut COM) -> Self::Field;
+
+    /// Subtracts a constant `rhs` from a field element `lhs`.
+    fn sub_const(lhs: &Self::Field, rhs: &Self::ParameterField, compiler: &mut COM) -> Self::Field;
+
     /// Multiplies two field elements together.
     fn mul(lhs: &Self::Field, rhs: &Self::Field, compiler: &mut COM) -> Self::Field;
 
@@ -117,6 +123,9 @@ pub trait Specification<COM = ()> {
 
     /// Adds the `rhs` field element to `lhs` field element, updating the value in `lhs`
     fn add_assign(lhs: &mut Self::Field, rhs: &Self::Field, compiler: &mut COM);
+
+    /// Subtracts `rhs` from `lhs` field element, updating the value in `lhs`.
+    fn sub_assign(lhs: &mut Self::Field, rhs: &Self::Field, compiler: &mut COM);
 
     /// Adds the `rhs` constant to `lhs` field element, updating the value in `lhs`
     fn add_const_assign(lhs: &mut Self::Field, rhs: &Self::ParameterField, compiler: &mut COM);
@@ -530,6 +539,14 @@ pub mod arkworks {
             Fp(lhs.0 + rhs.0)
         }
 
+        fn sub(lhs: &Self::Field, rhs: &Self::Field, _: &mut ()) -> Self::Field {
+            Fp(lhs.0 - rhs.0)
+        }
+
+        fn sub_const(lhs: &Self::Field, rhs: &Self::ParameterField, _: &mut ()) -> Self::Field {
+            Fp(lhs.0 - rhs.0)
+        }
+
         #[inline]
         fn mul(lhs: &Self::Field, rhs: &Self::Field, _: &mut ()) -> Self::Field {
             Fp(lhs.0 * rhs.0)
@@ -543,6 +560,10 @@ pub mod arkworks {
         #[inline]
         fn add_assign(lhs: &mut Self::Field, rhs: &Self::Field, _: &mut ()) {
             lhs.0 += rhs.0;
+        }
+
+        fn sub_assign(lhs: &mut Self::Field, rhs: &Self::Field, _: &mut ()) {
+            lhs.0 -= rhs.0;
         }
 
         #[inline]
@@ -588,6 +609,18 @@ pub mod arkworks {
             lhs + FpVar::Constant(rhs.0)
         }
 
+        fn sub(lhs: &Self::Field, rhs: &Self::Field, _: &mut Compiler<S>) -> Self::Field {
+            lhs - rhs
+        }
+
+        fn sub_const(
+            lhs: &Self::Field,
+            rhs: &Self::ParameterField,
+            _: &mut Compiler<S>,
+        ) -> Self::Field {
+            lhs - FpVar::Constant(rhs.0)
+        }
+
         #[inline]
         fn mul(lhs: &Self::Field, rhs: &Self::Field, _: &mut Compiler<S>) -> Self::Field {
             lhs * rhs
@@ -605,6 +638,10 @@ pub mod arkworks {
         #[inline]
         fn add_assign(lhs: &mut Self::Field, rhs: &Self::Field, _: &mut Compiler<S>) {
             *lhs += rhs;
+        }
+
+        fn sub_assign(lhs: &mut Self::Field, rhs: &Self::Field, _: &mut Compiler<S>) {
+            *lhs -= rhs;
         }
 
         #[inline]
