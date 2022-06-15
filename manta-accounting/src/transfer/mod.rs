@@ -44,7 +44,7 @@ use manta_crypto::{
         Encrypt, EncryptedMessage,
     },
     key::{self, agreement::Derive},
-    rand::{RngCore, Sample},
+    rand::{CryptoRng, RngCore, Sample},
 };
 use manta_util::SizeLimit;
 
@@ -1829,7 +1829,7 @@ where
         rng: &mut R,
     ) -> Result<(ProvingContext<C>, VerifyingContext<C>), ProofSystemError<C>>
     where
-        R: RngCore + ?Sized,
+        R: CryptoRng + RngCore + ?Sized,
     {
         C::ProofSystem::compile(
             public_parameters,
@@ -1847,7 +1847,7 @@ where
         rng: &mut R,
     ) -> Result<TransferPost<C>, ProofSystemError<C>>
     where
-        R: RngCore + ?Sized,
+        R: CryptoRng + RngCore + ?Sized,
     {
         Ok(TransferPost {
             validity_proof: C::ProofSystem::prove(

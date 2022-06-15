@@ -23,7 +23,7 @@ use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash, iter, mem};
 use manta_crypto::{
     hash::ArrayHashFunction,
-    rand::{CryptoRng, RngCore, Sample},
+    rand::{RngCore, Sample},
 };
 use manta_util::{
     codec::{Decode, DecodeError, Encode, Read, Write},
@@ -348,7 +348,7 @@ where
     #[inline]
     fn sample<R>(distribution: D, rng: &mut R) -> Self
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         let _ = (distribution, rng);
         Self {

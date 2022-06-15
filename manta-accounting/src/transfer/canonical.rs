@@ -28,7 +28,7 @@ use crate::{
 };
 use alloc::{format, string::String, vec::Vec};
 use core::{fmt::Debug, hash::Hash};
-use manta_crypto::rand::{Rand, RngCore};
+use manta_crypto::rand::{CryptoRng, Rand, RngCore};
 use manta_util::{create_seal, seal};
 
 #[cfg(feature = "serde")]
@@ -523,7 +523,7 @@ pub fn generate_context<C, R>(
 ) -> Result<(MultiProvingContext<C>, MultiVerifyingContext<C>), ProofSystemError<C>>
 where
     C: Configuration,
-    R: RngCore + ?Sized,
+    R: CryptoRng + RngCore + ?Sized,
 {
     let mint = Mint::generate_context(public_parameters, parameters, rng)?;
     let private_transfer = PrivateTransfer::generate_context(public_parameters, parameters, rng)?;

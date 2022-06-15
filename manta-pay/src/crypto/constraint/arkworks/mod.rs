@@ -24,12 +24,13 @@ use ark_relations::{
     r1cs::{ConstraintSynthesizer, ConstraintSystemRef},
 };
 use manta_crypto::{
+    algebra,
     constraint::{
         self,
         measure::{Count, Measure},
         mode, Add, Assert, AssertEq, ConditionalSwap, Constant, Has, Public, Secret, Variable,
     },
-    rand::{CryptoRng, RngCore, Sample},
+    rand::{RngCore, Sample},
 };
 use manta_util::{
     byte_count,
@@ -182,9 +183,24 @@ where
     #[inline]
     fn sample<R>(_: (), rng: &mut R) -> Self
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         Self(F::rand(rng))
+    }
+}
+
+impl<F> algebra::Scalar for Fp<F>
+where
+    F: Field,
+{
+    #[inline]
+    fn add(&self, rhs: &Self, _: &mut ()) -> Self {
+        Self(self.0.add(rhs.0))
+    }
+
+    #[inline]
+    fn mul(&self, rhs: &Self, _: &mut ()) -> Self {
+        Self(self.0.mul(rhs.0))
     }
 }
 
@@ -305,7 +321,7 @@ where
     F: PrimeField,
 {
     #[inline]
-    fn assert(&mut self, b: Boolean<F>) {
+    fn assert(&mut self, b: &Boolean<F>) {
         b.enforce_equal(&Boolean::TRUE)
             .expect("Enforcing equality is not allowed to fail.");
     }
@@ -426,9 +442,9 @@ where
     F: PrimeField,
 {
     #[inline]
-    fn eq(lhs: &Self, rhs: &Self, compiler: &mut R1CS<F>) -> Boolean<F> {
+    fn eq(&self, rhs: &Self, compiler: &mut R1CS<F>) -> Boolean<F> {
         let _ = compiler;
-        lhs.is_eq(rhs)
+        self.is_eq(rhs)
             .expect("Equality checking is not allowed to fail.")
     }
 }
@@ -489,9 +505,9 @@ where
     F: PrimeField,
 {
     #[inline]
-    fn eq(lhs: &Self, rhs: &Self, compiler: &mut R1CS<F>) -> Boolean<F> {
+    fn eq(&self, rhs: &Self, compiler: &mut R1CS<F>) -> Boolean<F> {
         let _ = compiler;
-        lhs.is_eq(rhs)
+        self.is_eq(rhs)
             .expect("Equality checking is not allowed to fail.")
     }
 }
@@ -512,9 +528,10 @@ where
 {
     #[inline]
     fn swap(bit: &Boolean<F>, lhs: &Self, rhs: &Self, compiler: &mut R1CS<F>) -> (Self, Self) {
+        let _ = compiler;
         (
-            Self::conditionally_select(bit, lhs, rhs),
-            Self::conditionally_select(bit, rhs, lhs),
+            conditionally_select(bit, lhs, rhs),
+            conditionally_select(bit, rhs, lhs),
         )
     }
 }
@@ -526,8 +543,8 @@ where
     type Output = Self;
 
     #[inline]
-    fn add(lhs: Self, rhs: Self, compiler: &mut R1CS<F>) -> Self {
+    fn add(self, rhs: Self, compiler: &mut R1CS<F>) -> Self {
         let _ = compiler;
-        lhs + rhs
+        self + rhs
     }
 }

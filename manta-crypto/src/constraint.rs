@@ -22,7 +22,7 @@
 // TODO:  Find ways to enforce public input structure, since it's very easy to extend the input
 //        vector by the wrong amount or in the wrong order.
 
-use crate::rand::RngCore;
+use crate::rand::{CryptoRng, RngCore};
 
 pub use crate::eclair::{
     alloc::{
@@ -74,7 +74,7 @@ pub trait ProofSystem {
         rng: &mut R,
     ) -> Result<(Self::ProvingContext, Self::VerifyingContext), Self::Error>
     where
-        R: RngCore + ?Sized;
+        R: CryptoRng + RngCore + ?Sized;
 
     /// Returns a proof that the constraint system encoded in `compiler` is consistent with the
     /// proving `context`.
@@ -84,7 +84,7 @@ pub trait ProofSystem {
         rng: &mut R,
     ) -> Result<Self::Proof, Self::Error>
     where
-        R: RngCore + ?Sized;
+        R: CryptoRng + RngCore + ?Sized;
 
     /// Verifies that a proof generated from this proof system is valid.
     fn verify(

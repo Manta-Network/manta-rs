@@ -29,7 +29,7 @@ use ark_snark::SNARK;
 use core::marker::PhantomData;
 use manta_crypto::{
     constraint::ProofSystem,
-    rand::{RngCore, SizedRng},
+    rand::{CryptoRng, RngCore, SizedRng},
 };
 use manta_util::codec::{self, DecodeError};
 
@@ -474,7 +474,7 @@ where
         rng: &mut R,
     ) -> Result<(Self::ProvingContext, Self::VerifyingContext), Self::Error>
     where
-        R: RngCore + ?Sized,
+        R: CryptoRng + RngCore + ?Sized,
     {
         let _ = public_parameters;
         let (proving_key, verifying_key) =
@@ -492,7 +492,7 @@ where
         rng: &mut R,
     ) -> Result<Self::Proof, Self::Error>
     where
-        R: RngCore + ?Sized,
+        R: CryptoRng + RngCore + ?Sized,
     {
         ArkGroth16::prove(&context.0, cs, &mut SizedRng(rng))
             .map(Proof)

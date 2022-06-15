@@ -29,7 +29,7 @@ use core::fmt::Debug;
 use manta_crypto::{
     accumulator::Accumulator,
     constraint::ProofSystem,
-    rand::{Rand, RngCore, Sample},
+    rand::{CryptoRng, Rand, RngCore, Sample},
 };
 use manta_util::into_array_unchecked;
 
@@ -184,7 +184,7 @@ where
     ) -> Result<TransferPost<C>, ProofSystemError<C>>
     where
         A: Accumulator<Item = Utxo<C>, Model = C::UtxoAccumulatorModel>,
-        R: RngCore + ?Sized,
+        R: CryptoRng + RngCore + ?Sized,
     {
         Self::sample(
             TransferDistribution {
@@ -211,7 +211,7 @@ where
     ) -> Result<bool, ProofSystemError<C>>
     where
         A: Accumulator<Item = Utxo<C>, Model = C::UtxoAccumulatorModel>,
-        R: RngCore + ?Sized,
+        R: CryptoRng + RngCore + ?Sized,
     {
         let (proving_context, verifying_context) = Self::generate_context(
             public_parameters,
@@ -239,7 +239,7 @@ where
     ) -> Result<bool, ProofSystemError<C>>
     where
         A: Accumulator<Item = Utxo<C>, Model = C::UtxoAccumulatorModel>,
-        R: RngCore + ?Sized,
+        R: CryptoRng + RngCore + ?Sized,
     {
         let post = Self::sample_post(proving_context, parameters, utxo_accumulator, rng)?;
         C::ProofSystem::verify(
@@ -397,7 +397,7 @@ pub fn sample_mint<C, R>(
 ) -> Result<(TransferPost<C>, PreSender<C>), ProofSystemError<C>>
 where
     C: Configuration,
-    R: RngCore + ?Sized,
+    R: CryptoRng + RngCore + ?Sized,
 {
     let (mint, pre_sender) = Mint::internal_pair(full_parameters.base, spending_key, asset, rng);
     Ok((

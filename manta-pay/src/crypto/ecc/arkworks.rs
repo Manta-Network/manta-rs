@@ -27,7 +27,7 @@ use manta_crypto::{
     algebra,
     constraint::{self, Allocate, Allocator, Constant, Public, Secret, Variable},
     key::kdf,
-    rand::{CryptoRng, RngCore, Sample},
+    rand::{RngCore, Sample},
 };
 use manta_util::codec;
 
@@ -48,18 +48,6 @@ type ScalarParam<C> = <<C as ProjectiveCurve>::ScalarField as PrimeField>::Param
 
 /// Scalar Field Element
 pub type Scalar<C> = Fp<<C as ProjectiveCurve>::ScalarField>;
-
-impl<C> algebra::Scalar for Scalar<C> {
-    #[inline]
-    fn add(&self, rhs: &Self, _: &mut ()) -> Self {
-        Self(self.0.add(rhs.0))
-    }
-
-    #[inline]
-    fn mul(&self, rhs: &Self, _: &mut ()) -> Self {
-        Self(self.0.mul(rhs.0))
-    }
-}
 
 /// Converts `scalar` to the bit representation of `O`.
 #[inline]
@@ -234,6 +222,7 @@ where
     }
 }
 
+/* TODO:
 impl<C> kdf::AsBytes for Group<C>
 where
     C: ProjectiveCurve,
@@ -243,6 +232,7 @@ where
         affine_point_as_bytes::<C>(&self.0)
     }
 }
+*/
 
 impl<C> algebra::Group for Group<C>
 where
@@ -252,7 +242,7 @@ where
 
     #[inline]
     fn add(&self, rhs: &Self, _: &mut ()) -> Self {
-        Self(&self.0 + &rhs.0)
+        Self([self.0, rhs.0].into_iter().sum())
     }
 
     #[inline]
@@ -268,7 +258,7 @@ where
     #[inline]
     fn sample<R>(_: (), rng: &mut R) -> Self
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         Self(C::rand(rng).into())
     }
@@ -343,6 +333,24 @@ where
     #[inline]
     fn new_constant(this: &Self::Type, compiler: &mut Compiler<C>) -> Self {
         Self::new(lift_embedded_scalar::<C>(this).as_constant(compiler))
+    }
+}
+
+impl<C, CV> algebra::Scalar<Compiler<C>> for ScalarVar<C, CV>
+where
+    C: ProjectiveCurve,
+    CV: CurveVar<C, ConstraintField<C>>,
+{
+    #[inline]
+    fn add(&self, rhs: &Self, compiler: &mut Compiler<C>) -> Self {
+        let _ = compiler;
+        Self::new(&self.0 + &rhs.0)
+    }
+
+    #[inline]
+    fn mul(&self, rhs: &Self, compiler: &mut Compiler<C>) -> Self {
+        let _ = compiler;
+        Self::new(&self.0 * &rhs.0)
     }
 }
 
@@ -449,9 +457,9 @@ where
     CV: CurveVar<C, ConstraintField<C>>,
 {
     #[inline]
-    fn eq(lhs: &Self, rhs: &Self, compiler: &mut Compiler<C>) -> Boolean<ConstraintField<C>> {
+    fn eq(&self, rhs: &Self, compiler: &mut Compiler<C>) -> Boolean<ConstraintField<C>> {
         let _ = compiler;
-        lhs.0
+        self.0
             .is_eq(&rhs.0)
             .expect("Equality checking is not allowed to fail.")
     }
@@ -543,11 +551,14 @@ where
     #[inline]
     fn add(&self, rhs: &Self, compiler: &mut Compiler<C>) -> Self {
         let _ = compiler;
-        Self::new(&self.0 + &rhs.0)
+        let mut result = self.0.clone();
+        result += &rhs.0;
+        Self::new(result)
     }
 
     #[inline]
     fn mul(&self, scalar: &Self::Scalar, compiler: &mut Compiler<C>) -> Self {
+        let _ = compiler;
         Self::new(
             self.0
                 .scalar_mul_le(

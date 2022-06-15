@@ -636,26 +636,36 @@ impl ProofSystemInput<Group> for ProofSystem {
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct NotePlaintextMapping;
 
-impl encryption::symmetric::PlaintextMapping<Array<u8, { Note::SIZE }>> for NotePlaintextMapping {
+impl encryption::convert::ForwardType for NotePlaintextMapping {
     type Plaintext = Note;
+}
+
+impl encryption::convert::Forward for NotePlaintextMapping {
+    type TargetPlaintext = Array<u8, { Note::SIZE }>;
 
     #[inline]
-    fn into_base(plaintext: Self::Plaintext) -> Array<u8, { Note::SIZE }> {
-        // TODO: Use a serialization method to do this.
+    fn as_target(source: &Self::Plaintext, _: &mut ()) -> Self::TargetPlaintext {
         let mut bytes = Vec::new();
-        bytes.append(&mut field_element_as_bytes(
-            &plaintext.ephemeral_secret_key.0,
-        ));
+        bytes.append(&mut field_element_as_bytes(&source.ephemeral_secret_key.0));
         bytes
-            .write(&mut plaintext.asset.into_bytes().as_slice())
+            .write(&mut source.asset.into_bytes().as_slice())
             .expect("This can never fail.");
         Array::from_unchecked(bytes)
     }
+}
+
+impl encryption::convert::ReverseType for NotePlaintextMapping {
+    type DecryptedPlaintext = Option<Note>;
+}
+
+impl encryption::convert::Reverse for NotePlaintextMapping {
+    type TargetDecryptedPlaintext = Option<Array<u8, { Note::SIZE }>>;
 
     #[inline]
-    fn from_base(plaintext: Array<u8, { Note::SIZE }>) -> Option<Self::Plaintext> {
+    fn into_source(target: Self::TargetDecryptedPlaintext, _: &mut ()) -> Self::DecryptedPlaintext {
         // TODO: Use a deserialization method to do this.
-        let mut slice = plaintext.as_ref();
+        let target = target?;
+        let mut slice = target.as_ref();
         Some(Note {
             ephemeral_secret_key: Fp(EmbeddedScalarField::deserialize(&mut slice).ok()?),
             asset: Asset::from_bytes(into_array_unchecked(slice)),
@@ -664,21 +674,10 @@ impl encryption::symmetric::PlaintextMapping<Array<u8, { Note::SIZE }>> for Note
 }
 
 /// Note Symmetric Encryption Scheme
-pub type NoteSymmetricEncryptionScheme = encryption::symmetric::Map<
+pub type NoteSymmetricEncryptionScheme = encryption::convert::PlaintextConverter<
     FixedNonceAesGcm<{ Note::SIZE }, { aes::ciphertext_size(Note::SIZE) }>,
     NotePlaintextMapping,
 >;
-
-/// Note Encryption Scheme
-pub type NoteEncryptionScheme = encryption::hybrid::Hybrid<
-    KeyAgreementScheme,
-    key::kdf::FromByteVector<SharedSecret, Blake2sKdf>,
-    NoteSymmetricEncryptionScheme,
->;
-
-/// Asset Ciphertext
-pub type Ciphertext =
-    <NoteEncryptionScheme as encryption::symmetric::SymmetricKeyEncryptionScheme>::Ciphertext;
 
 /// Base Configuration
 pub struct Config;
@@ -713,7 +712,7 @@ impl transfer::Configuration for Config {
     type AssetValueVar = AssetValueVar;
     type Compiler = Compiler;
     type ProofSystem = ProofSystem;
-    type NoteEncryptionScheme = NoteEncryptionScheme;
+    type NoteEncryptionScheme = NoteSymmetricEncryptionScheme;
 }
 
 /// Transfer Parameters
