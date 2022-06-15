@@ -23,5 +23,5 @@
 // #[cfg_attr(doc_cfg, doc(cfg(feature = "simulation")))]
 // pub mod simulation;
 
-pub mod compat;
+pub mod compatibility;
 pub mod transfer;

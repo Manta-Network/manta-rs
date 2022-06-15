@@ -43,7 +43,7 @@ pub mod parameters;
 
 #[cfg(all(feature = "groth16", feature = "test"))]
 #[cfg_attr(doc_cfg, doc(cfg(all(feature = "groth16", feature = "test"))))]
-pub mod payment;
+pub mod sample_payment;
 
 #[cfg(feature = "groth16")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "groth16")))]

@@ -23,7 +23,7 @@ use crate::{
         ProvingContext, UtxoAccumulatorModel, UtxoCommitmentScheme, VerifyingContext,
         VoidNumberCommitmentScheme,
     },
-    payment::{assert_valid_proof, prove_mint, prove_private_transfer, prove_reclaim},
+    sample_payment::{assert_valid_proof, prove_mint, prove_private_transfer, prove_reclaim},
 };
 use anyhow::Result;
 use ark_std::rand::thread_rng;
@@ -31,7 +31,7 @@ use manta_crypto::rand::Rand;
 use manta_util::codec::{Decode, IoReader};
 use std::{fs::File, path::Path};
 
-/// Loads parameters from the SDK, using `directory` as a temporary directory to store files.
+/// Loads parameters from the `manta-parameters`, using `directory` as a temporary directory to store files.
 #[inline]
 fn load_parameters(
     directory: &Path,
@@ -48,6 +48,7 @@ fn load_parameters(
     manta_parameters::pay::testnet::proving::PrivateTransfer::download(&private_transfer_path)?;
     let reclaim_path = directory.join("reclaim.dat");
     manta_parameters::pay::testnet::proving::Reclaim::download(&reclaim_path)?;
+    println!("mint_path: {:?}", mint_path);
     let proving_context = MultiProvingContext {
         mint: ProvingContext::decode(IoReader(File::open(mint_path)?))
             .expect("Unable to decode MINT proving context."),
