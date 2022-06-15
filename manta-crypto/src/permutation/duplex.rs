@@ -47,10 +47,13 @@ where
     type Header;
 
     /// Sponge Input Block Type
-    type Input: Absorb<P, COM> + Squeeze<P, COM>;
+    type Input: Absorb<P, COM> + Mask<P, Self::Pad, Self::Output, COM>;
 
     /// Sponge Output Block Type
-    type Output: Absorb<P, COM> + Squeeze<P, COM> + Mask<P, COM>;
+    type Output: Absorb<P, COM> + Mask<P, Self::Pad, Self::Input, COM>;
+
+    /// Duplex Output Type (same as `Z` in paper)
+    type Pad: Squeeze<P, COM>;
 
     /// Authentication Tag Type
     type Tag;
@@ -127,12 +130,7 @@ where
 
     /// Prepares the duplex sponge by absorbing the `key` and `header`, outputting the updated state and initial pad.   
     #[inline]
-    fn setup(
-        &self,
-        key: &C::Key,
-        header: &C::Header,
-        compiler: &mut COM,
-    ) -> (P::Domain, C::Output) {
+    fn setup(&self, key: &C::Key, header: &C::Header, compiler: &mut COM) -> (P::Domain, C::Pad) {
         // line 1 to 7
         let mut state = self.configuration.initialize(compiler);
         // line 11 to 13
@@ -156,6 +154,11 @@ where
         plaintext: &[C::Input],
         compiler: &mut COM,
     ) -> (P::Domain, Vec<C::Output>) {
+        // line 11 to 14
+        let (mut state, z) = self.setup(key, header, compiler);
+        let mut ciphertext = Vec::<C::Output>::with_capacity(plaintext.len());
+        // line 15
+        ciphertext.push(plaintext[0].mask(&z, compiler));
         todo!()
     }
 
