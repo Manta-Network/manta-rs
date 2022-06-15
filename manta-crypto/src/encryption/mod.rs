@@ -25,6 +25,7 @@ use core::{fmt::Debug, hash::Hash};
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
 
+pub mod convert;
 pub mod hybrid;
 
 /// Encryption Header
