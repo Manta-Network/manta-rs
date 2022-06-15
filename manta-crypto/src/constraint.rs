@@ -124,6 +124,7 @@ pub mod measure {
     /// Variable Counting
     pub trait Count<M> {
         /// Returns the number of variables of the given mode `M` are stored in `self`.
+        #[inline]
         fn count(&self) -> Option<usize> {
             None
         }

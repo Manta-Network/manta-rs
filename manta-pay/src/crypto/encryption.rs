@@ -26,7 +26,7 @@ pub mod aes {
     };
     use core::convert::Infallible;
     use manta_crypto::{
-        encryption::symmetric::SymmetricKeyEncryptionScheme,
+        encryption,
         rand::{CryptoRng, RngCore, Sample},
     };
     use manta_util::{

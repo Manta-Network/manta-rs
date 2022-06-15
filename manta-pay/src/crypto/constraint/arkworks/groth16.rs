@@ -29,7 +29,7 @@ use ark_snark::SNARK;
 use core::marker::PhantomData;
 use manta_crypto::{
     constraint::ProofSystem,
-    rand::{CryptoRng, RngCore, SizedRng},
+    rand::{RngCore, SizedRng},
 };
 use manta_util::codec::{self, DecodeError};
 
@@ -449,7 +449,7 @@ impl<E> ProofSystem for Groth16<E>
 where
     E: PairingEngine,
 {
-    type ConstraintSystem = R1CS<E::Fr>;
+    type Compiler = R1CS<E::Fr>;
     type PublicParameters = ();
     type ProvingContext = ProvingContext<E>;
     type VerifyingContext = VerifyingContext<E>;
@@ -458,23 +458,23 @@ where
     type Error = Error;
 
     #[inline]
-    fn for_unknown() -> Self::ConstraintSystem {
-        Self::ConstraintSystem::for_unknown()
+    fn context_compiler() -> Self::Compiler {
+        Self::Compiler::for_contexts()
     }
 
     #[inline]
-    fn for_known() -> Self::ConstraintSystem {
-        Self::ConstraintSystem::for_known()
+    fn proof_compiler() -> Self::Compiler {
+        Self::Compiler::for_proofs()
     }
 
     #[inline]
-    fn generate_context<R>(
+    fn compile<R>(
         public_parameters: &Self::PublicParameters,
-        cs: Self::ConstraintSystem,
+        cs: Self::Compiler,
         rng: &mut R,
     ) -> Result<(Self::ProvingContext, Self::VerifyingContext), Self::Error>
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         let _ = public_parameters;
         let (proving_key, verifying_key) =
@@ -488,11 +488,11 @@ where
     #[inline]
     fn prove<R>(
         context: &Self::ProvingContext,
-        cs: Self::ConstraintSystem,
+        cs: Self::Compiler,
         rng: &mut R,
     ) -> Result<Self::Proof, Self::Error>
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         ArkGroth16::prove(&context.0, cs, &mut SizedRng(rng))
             .map(Proof)

@@ -24,8 +24,8 @@ use ark_relations::ns;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use core::marker::PhantomData;
 use manta_crypto::{
-    constraint::{Allocator, Constant, Equal, Public, Secret, ValueSource, Variable},
-    ecc::{self, PointAdd, PointDouble},
+    algebra,
+    constraint::{self, Allocate, Allocator, Constant, Public, Secret, Variable},
     key::kdf,
     rand::{CryptoRng, RngCore, Sample},
 };
@@ -48,6 +48,18 @@ type ScalarParam<C> = <<C as ProjectiveCurve>::ScalarField as PrimeField>::Param
 
 /// Scalar Field Element
 pub type Scalar<C> = Fp<<C as ProjectiveCurve>::ScalarField>;
+
+impl<C> algebra::Scalar for Scalar<C> {
+    #[inline]
+    fn add(&self, rhs: &Self, _: &mut ()) -> Self {
+        Self(self.0.add(rhs.0))
+    }
+
+    #[inline]
+    fn mul(&self, rhs: &Self, _: &mut ()) -> Self {
+        Self(self.0.mul(rhs.0))
+    }
+}
 
 /// Converts `scalar` to the bit representation of `O`.
 #[inline]
@@ -232,15 +244,19 @@ where
     }
 }
 
-impl<C> ecc::ScalarMul for Group<C>
+impl<C> algebra::Group for Group<C>
 where
     C: ProjectiveCurve,
 {
     type Scalar = Scalar<C>;
-    type Output = Self;
 
     #[inline]
-    fn scalar_mul(&self, scalar: &Self::Scalar, _: &mut ()) -> Self::Output {
+    fn add(&self, rhs: &Self, _: &mut ()) -> Self {
+        Self(&self.0 + &rhs.0)
+    }
+
+    #[inline]
+    fn mul(&self, scalar: &Self::Scalar, _: &mut ()) -> Self {
         Self(self.0.mul(scalar.0.into_repr()).into())
     }
 }
@@ -386,32 +402,7 @@ where
     }
 }
 
-impl<C, CV> ecc::ScalarMul<Compiler<C>> for GroupVar<C, CV>
-where
-    C: ProjectiveCurve,
-    CV: CurveVar<C, ConstraintField<C>>,
-{
-    type Scalar = ScalarVar<C, CV>;
-    type Output = Self;
-
-    #[inline]
-    fn scalar_mul(&self, scalar: &Self::Scalar, compiler: &mut Compiler<C>) -> Self::Output {
-        let _ = compiler;
-        Self(
-            self.0
-                .scalar_mul_le(
-                    scalar
-                        .0
-                        .to_bits_le()
-                        .expect("Bit decomposition is not allowed to fail.")
-                        .iter(),
-                )
-                .expect("Scalar multiplication is not allowed to fail."),
-            PhantomData,
-        )
-    }
-}
-
+/* TODO:
 macro_rules! impl_processed_scalar_mul {
     ($curve: ty) => {
         impl<CV>
@@ -450,8 +441,9 @@ macro_rules! impl_processed_scalar_mul {
 }
 
 impl_processed_scalar_mul!(ark_ed_on_bls12_381::EdwardsProjective);
+*/
 
-impl<C, CV> Equal<Compiler<C>> for GroupVar<C, CV>
+impl<C, CV> constraint::PartialEq<Self, Compiler<C>> for GroupVar<C, CV>
 where
     C: ProjectiveCurve,
     CV: CurveVar<C, ConstraintField<C>>,
@@ -541,33 +533,32 @@ where
     }
 }
 
-impl<C, CV> PointAdd<Compiler<C>> for GroupVar<C, CV>
+impl<C, CV> algebra::Group<Compiler<C>> for GroupVar<C, CV>
 where
     C: ProjectiveCurve,
     CV: CurveVar<C, ConstraintField<C>>,
 {
-    type Output = Self;
+    type Scalar = ScalarVar<C, CV>;
 
     #[inline]
-    fn add(&self, rhs: &Self, compiler: &mut Compiler<C>) -> Self::Output {
+    fn add(&self, rhs: &Self, compiler: &mut Compiler<C>) -> Self {
         let _ = compiler;
-        let mut result = self.0.clone();
-        result += &rhs.0;
-        Self::new(result)
+        Self::new(&self.0 + &rhs.0)
     }
-}
-
-impl<C, CV> PointDouble<Compiler<C>> for GroupVar<C, CV>
-where
-    C: ProjectiveCurve,
-    CV: CurveVar<C, ConstraintField<C>>,
-{
-    type Output = Self;
 
     #[inline]
-    fn double(&self, compiler: &mut Compiler<C>) -> Self::Output {
-        let _ = compiler;
-        Self::new(self.0.double().expect("Doubling is not allowed to fail."))
+    fn mul(&self, scalar: &Self::Scalar, compiler: &mut Compiler<C>) -> Self {
+        Self::new(
+            self.0
+                .scalar_mul_le(
+                    scalar
+                        .0
+                        .to_bits_le()
+                        .expect("Bit decomposition is not allowed to fail.")
+                        .iter(),
+                )
+                .expect("Scalar multiplication is not allowed to fail."),
+        )
     }
 }
 

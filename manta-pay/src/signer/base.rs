@@ -34,7 +34,9 @@ use manta_accounting::{
         signer::{self, AssetMapKey, SyncData},
     },
 };
-use manta_crypto::{key::KeyDerivationFunction, merkle_tree, merkle_tree::forest::Configuration};
+use manta_crypto::{
+    key::kdf::KeyDerivationFunction, merkle_tree, merkle_tree::forest::Configuration,
+};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
@@ -59,7 +61,7 @@ where
     type Output = SecretKey;
 
     #[inline]
-    fn derive_in(&self, key: &Self::Key, _: &mut ()) -> Self::Output {
+    fn derive(&self, key: &Self::Key, _: &mut ()) -> Self::Output {
         // FIXME: Check that this conversion is logical/safe.
         let bytes: [u8; 32] = key
             .private_key()

@@ -38,10 +38,10 @@ use manta_accounting::{
 };
 use manta_crypto::{
     accumulator,
+    algebra::DiffieHellman,
     constraint::{
-        Add, Allocator, Constant, Equal, ProofSystemInput, Public, Secret, ValueSource, Variable,
+        self, Add, Allocate, Allocator, Constant, ProofSystemInput, Public, Secret, Variable,
     },
-    ecc::DiffieHellman,
     encryption,
     hash::ArrayHashFunction,
     key, merkle_tree,
@@ -133,13 +133,22 @@ impl poseidon::arkworks::Specification for PoseidonSpec<4> {
 pub type KeyAgreementScheme = DiffieHellman<Group>;
 
 /// Secret Key Type
-pub type SecretKey = <KeyAgreementScheme as key::KeyAgreementScheme>::SecretKey;
+pub type SecretKey = <KeyAgreementScheme as key::agreement::Types>::SecretKey;
 
 /// Public Key Type
-pub type PublicKey = <KeyAgreementScheme as key::KeyAgreementScheme>::PublicKey;
+pub type PublicKey = <KeyAgreementScheme as key::agreement::Types>::PublicKey;
+
+/// Shared Secret Type
+pub type SharedSecret = <KeyAgreementScheme as key::agreement::Types>::SharedSecret;
 
 /// Key Agreement Scheme Variable Type
 pub type KeyAgreementSchemeVar = DiffieHellman<GroupVar>;
+
+/// Secret Key Variable Type
+pub type SecretKeyVar = <KeyAgreementSchemeVar as key::agreement::Types>::SecretKey;
+
+/// Public Key Variable Type
+pub type PublicKeyVar = <KeyAgreementSchemeVar as key::agreement::Types>::PublicKey;
 
 /// Unspent Transaction Output Type
 pub type Utxo = Fp<ConstraintField>;
@@ -155,7 +164,7 @@ impl transfer::UtxoCommitmentScheme for UtxoCommitmentScheme {
     type Utxo = Utxo;
 
     #[inline]
-    fn commit_in(
+    fn commit(
         &self,
         ephemeral_secret_key: &Self::EphemeralSecretKey,
         public_spend_key: &Self::PublicSpendKey,
@@ -219,7 +228,7 @@ impl transfer::UtxoCommitmentScheme<Compiler> for UtxoCommitmentSchemeVar {
     type Utxo = UtxoVar;
 
     #[inline]
-    fn commit_in(
+    fn commit(
         &self,
         ephemeral_secret_key: &Self::EphemeralSecretKey,
         public_spend_key: &Self::PublicSpendKey,
@@ -255,12 +264,12 @@ pub type VoidNumber = Fp<ConstraintField>;
 pub struct VoidNumberCommitmentScheme(pub Poseidon2);
 
 impl transfer::VoidNumberCommitmentScheme for VoidNumberCommitmentScheme {
-    type SecretSpendKey = <KeyAgreementScheme as key::KeyAgreementScheme>::SecretKey;
+    type SecretSpendKey = SecretKey;
     type Utxo = Utxo;
     type VoidNumber = VoidNumber;
 
     #[inline]
-    fn commit_in(
+    fn commit(
         &self,
         secret_spend_key: &Self::SecretSpendKey,
         utxo: &Self::Utxo,
@@ -315,12 +324,12 @@ pub type VoidNumberVar = ConstraintFieldVar;
 pub struct VoidNumberCommitmentSchemeVar(pub Poseidon2Var);
 
 impl transfer::VoidNumberCommitmentScheme<Compiler> for VoidNumberCommitmentSchemeVar {
-    type SecretSpendKey = <KeyAgreementSchemeVar as key::KeyAgreementScheme<Compiler>>::SecretKey;
+    type SecretSpendKey = SecretKeyVar;
     type Utxo = <UtxoCommitmentSchemeVar as transfer::UtxoCommitmentScheme<Compiler>>::Utxo;
     type VoidNumber = ConstraintFieldVar;
 
     #[inline]
-    fn commit_in(
+    fn commit(
         &self,
         secret_spend_key: &Self::SecretSpendKey,
         utxo: &Self::Utxo,
@@ -342,7 +351,7 @@ impl Constant<Compiler> for VoidNumberCommitmentSchemeVar {
 /// Asset ID Variable
 pub struct AssetIdVar(ConstraintFieldVar);
 
-impl Equal<Compiler> for AssetIdVar {
+impl constraint::PartialEq<Self, Compiler> for AssetIdVar {
     #[inline]
     fn eq(lhs: &Self, rhs: &Self, compiler: &mut Compiler) -> Boolean<ConstraintField> {
         ConstraintFieldVar::eq(&lhs.0, &rhs.0, compiler)
@@ -387,7 +396,7 @@ impl Add<Compiler> for AssetValueVar {
     }
 }
 
-impl Equal<Compiler> for AssetValueVar {
+impl constraint::PartialEq<Self, Compiler> for AssetValueVar {
     #[inline]
     fn eq(lhs: &Self, rhs: &Self, compiler: &mut Compiler) -> Boolean<ConstraintField> {
         ConstraintFieldVar::eq(&lhs.0, &rhs.0, compiler)
@@ -663,10 +672,7 @@ pub type NoteSymmetricEncryptionScheme = encryption::symmetric::Map<
 /// Note Encryption Scheme
 pub type NoteEncryptionScheme = encryption::hybrid::Hybrid<
     KeyAgreementScheme,
-    key::kdf::FromByteVector<
-        <KeyAgreementScheme as key::KeyAgreementScheme>::SharedSecret,
-        Blake2sKdf,
-    >,
+    key::kdf::FromByteVector<SharedSecret, Blake2sKdf>,
     NoteSymmetricEncryptionScheme,
 >;
 
@@ -678,13 +684,11 @@ pub type Ciphertext =
 pub struct Config;
 
 impl transfer::Configuration for Config {
-    type SecretKey = <Self::KeyAgreementScheme as key::KeyAgreementScheme>::SecretKey;
-    type PublicKey = <Self::KeyAgreementScheme as key::KeyAgreementScheme>::PublicKey;
+    type SecretKey = SecretKey;
+    type PublicKey = PublicKey;
     type KeyAgreementScheme = KeyAgreementScheme;
-    type SecretKeyVar =
-        <Self::KeyAgreementSchemeVar as key::KeyAgreementScheme<Self::Compiler>>::SecretKey;
-    type PublicKeyVar =
-        <Self::KeyAgreementSchemeVar as key::KeyAgreementScheme<Self::Compiler>>::PublicKey;
+    type SecretKeyVar = SecretKeyVar;
+    type PublicKeyVar = PublicKeyVar;
     type KeyAgreementSchemeVar = KeyAgreementSchemeVar;
     type Utxo = <Self::UtxoCommitmentScheme as transfer::UtxoCommitmentScheme>::Utxo;
     type UtxoCommitmentScheme = UtxoCommitmentScheme;

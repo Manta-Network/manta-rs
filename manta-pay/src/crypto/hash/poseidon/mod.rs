@@ -333,7 +333,7 @@ where
     type Output = S::Field;
 
     #[inline]
-    fn hash_in(&self, input: [&Self::Input; ARITY], compiler: &mut COM) -> Self::Output {
+    fn hash(&self, input: [&Self::Input; ARITY], compiler: &mut COM) -> Self::Output {
         self.hash_untruncated(input, compiler).take_first()
     }
 }

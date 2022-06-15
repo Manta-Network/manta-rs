@@ -18,7 +18,7 @@
 
 use blake2::{Blake2s, Digest};
 use manta_crypto::{
-    key::KeyDerivationFunction,
+    key::kdf::KeyDerivationFunction,
     rand::{CryptoRng, RngCore, Sample},
 };
 use manta_util::{impl_empty_codec, into_array_unchecked};
@@ -32,7 +32,7 @@ impl KeyDerivationFunction for Blake2sKdf {
     type Output = [u8; 32];
 
     #[inline]
-    fn derive_in(&self, key: &Self::Key, _: &mut ()) -> Self::Output {
+    fn derive(&self, key: &Self::Key, _: &mut ()) -> Self::Output {
         let mut hasher = Blake2s::new();
         hasher.update(key);
         hasher.update(b"manta kdf instantiated with blake2s hash function");
