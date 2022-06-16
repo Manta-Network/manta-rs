@@ -55,7 +55,7 @@ use manta_util::{
 use alloc::string::String;
 
 #[cfg(any(feature = "test", test))]
-use manta_crypto::rand::{CryptoRng, Rand, RngCore, Sample};
+use manta_crypto::rand::{Rand, RngCore, Sample};
 
 #[doc(inline)]
 pub use ark_bls12_381 as bls12_381;
@@ -142,7 +142,7 @@ pub type PublicKey = <KeyAgreementScheme as key::agreement::Types>::PublicKey;
 pub type SharedSecret = <KeyAgreementScheme as key::agreement::Types>::SharedSecret;
 
 /// Key Agreement Scheme Variable Type
-pub type KeyAgreementSchemeVar = DiffieHellman<GroupVar>;
+pub type KeyAgreementSchemeVar = DiffieHellman<GroupVar, Compiler>;
 
 /// Secret Key Variable Type
 pub type SecretKeyVar = <KeyAgreementSchemeVar as key::agreement::Types>::SecretKey;
@@ -169,16 +169,19 @@ impl transfer::UtxoCommitmentScheme for UtxoCommitmentScheme {
         ephemeral_secret_key: &Self::EphemeralSecretKey,
         public_spend_key: &Self::PublicSpendKey,
         asset: &Self::Asset,
-        _: &mut (),
+        compiler: &mut (),
     ) -> Self::Utxo {
-        self.0.hash([
-            // FIXME: This is the lift from inner scalar to outer scalar and only exists in some
-            // cases! We need a better abstraction for this.
-            &ecc::arkworks::lift_embedded_scalar::<Bls12_381_Edwards>(ephemeral_secret_key),
-            &Fp(public_spend_key.0.x), // NOTE: Group is in affine form, so we can extract `x`.
-            &Fp(asset.id.0.into()),
-            &Fp(asset.value.0.into()),
-        ])
+        self.0.hash(
+            [
+                // FIXME: This is the lift from inner scalar to outer scalar and only exists in some
+                // cases! We need a better abstraction for this.
+                &ecc::arkworks::lift_embedded_scalar::<Bls12_381_Edwards>(ephemeral_secret_key),
+                &Fp(public_spend_key.0.x), // NOTE: Group is in affine form, so we can extract `x`.
+                &Fp(asset.id.0.into()),
+                &Fp(asset.value.0.into()),
+            ],
+            compiler,
+        )
     }
 }
 
@@ -209,7 +212,7 @@ impl Sample for UtxoCommitmentScheme {
     #[inline]
     fn sample<R>(distribution: (), rng: &mut R) -> Self
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         Self(rng.sample(distribution))
     }
@@ -235,7 +238,7 @@ impl transfer::UtxoCommitmentScheme<Compiler> for UtxoCommitmentSchemeVar {
         asset: &Self::Asset,
         compiler: &mut Compiler,
     ) -> Self::Utxo {
-        self.0.hash_in(
+        self.0.hash(
             [
                 &ephemeral_secret_key.0,
                 &public_spend_key.0.x, // NOTE: Group is in affine form, so we can extract `x`.
@@ -273,14 +276,17 @@ impl transfer::VoidNumberCommitmentScheme for VoidNumberCommitmentScheme {
         &self,
         secret_spend_key: &Self::SecretSpendKey,
         utxo: &Self::Utxo,
-        _: &mut (),
+        compiler: &mut (),
     ) -> Self::VoidNumber {
-        self.0.hash([
-            // FIXME: This is the lift from inner scalar to outer scalar and only exists in some
-            // cases! We need a better abstraction for this.
-            &ecc::arkworks::lift_embedded_scalar::<Bls12_381_Edwards>(secret_spend_key),
-            utxo,
-        ])
+        self.0.hash(
+            [
+                // FIXME: This is the lift from inner scalar to outer scalar and only exists in some
+                // cases! We need a better abstraction for this.
+                &ecc::arkworks::lift_embedded_scalar::<Bls12_381_Edwards>(secret_spend_key),
+                utxo,
+            ],
+            compiler,
+        )
     }
 }
 
@@ -311,7 +317,7 @@ impl Sample for VoidNumberCommitmentScheme {
     #[inline]
     fn sample<R>(distribution: (), rng: &mut R) -> Self
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         Self(rng.sample(distribution))
     }
@@ -335,7 +341,7 @@ impl transfer::VoidNumberCommitmentScheme<Compiler> for VoidNumberCommitmentSche
         utxo: &Self::Utxo,
         compiler: &mut Compiler,
     ) -> Self::VoidNumber {
-        self.0.hash_in([&secret_spend_key.0, utxo], compiler)
+        self.0.hash([&secret_spend_key.0, utxo], compiler)
     }
 }
 
@@ -353,8 +359,8 @@ pub struct AssetIdVar(ConstraintFieldVar);
 
 impl constraint::PartialEq<Self, Compiler> for AssetIdVar {
     #[inline]
-    fn eq(lhs: &Self, rhs: &Self, compiler: &mut Compiler) -> Boolean<ConstraintField> {
-        ConstraintFieldVar::eq(&lhs.0, &rhs.0, compiler)
+    fn eq(&self, rhs: &Self, compiler: &mut Compiler) -> Boolean<ConstraintField> {
+        ConstraintFieldVar::eq(&self.0, &rhs.0, compiler)
     }
 }
 
@@ -389,17 +395,19 @@ impl Variable<Secret, Compiler> for AssetIdVar {
 /// Asset Value Variable
 pub struct AssetValueVar(ConstraintFieldVar);
 
-impl Add<Compiler> for AssetValueVar {
+impl Add<Self, Compiler> for AssetValueVar {
+    type Output = AssetValueVar;
+
     #[inline]
-    fn add(lhs: Self, rhs: Self, compiler: &mut Compiler) -> Self {
-        Self(ConstraintFieldVar::add(lhs.0, rhs.0, compiler))
+    fn add(self, rhs: Self, compiler: &mut Compiler) -> Self::Output {
+        Self(ConstraintFieldVar::add(self.0, rhs.0, compiler))
     }
 }
 
 impl constraint::PartialEq<Self, Compiler> for AssetValueVar {
     #[inline]
-    fn eq(lhs: &Self, rhs: &Self, compiler: &mut Compiler) -> Boolean<ConstraintField> {
-        ConstraintFieldVar::eq(&lhs.0, &rhs.0, compiler)
+    fn eq(&self, rhs: &Self, compiler: &mut Compiler) -> Boolean<ConstraintField> {
+        ConstraintFieldVar::eq(&self.0, &rhs.0, compiler)
     }
 }
 
@@ -450,9 +458,9 @@ impl merkle_tree::InnerHash for InnerHash {
         parameters: &Self::Parameters,
         lhs: &Self::Output,
         rhs: &Self::Output,
-        _: &mut (),
+        compiler: &mut (),
     ) -> Self::Output {
-        parameters.hash([lhs, rhs])
+        parameters.hash([lhs, rhs], compiler)
     }
 
     #[inline]
@@ -460,9 +468,9 @@ impl merkle_tree::InnerHash for InnerHash {
         parameters: &Self::Parameters,
         lhs: &Self::LeafDigest,
         rhs: &Self::LeafDigest,
-        _: &mut (),
+        compiler: &mut (),
     ) -> Self::Output {
-        parameters.hash([lhs, rhs])
+        parameters.hash([lhs, rhs], compiler)
     }
 }
 
@@ -481,7 +489,7 @@ impl merkle_tree::InnerHash<Compiler> for InnerHashVar {
         rhs: &Self::Output,
         compiler: &mut Compiler,
     ) -> Self::Output {
-        parameters.hash_in([lhs, rhs], compiler)
+        parameters.hash([lhs, rhs], compiler)
     }
 
     #[inline]
@@ -491,7 +499,7 @@ impl merkle_tree::InnerHash<Compiler> for InnerHashVar {
         rhs: &Self::LeafDigest,
         compiler: &mut Compiler,
     ) -> Self::Output {
-        parameters.hash_in([lhs, rhs], compiler)
+        parameters.hash([lhs, rhs], compiler)
     }
 }
 
@@ -565,7 +573,7 @@ impl merkle_tree::test::HashParameterSampling for MerkleTreeConfiguration {
         rng: &mut R,
     ) -> merkle_tree::LeafHashParameters<Self>
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         let _ = (distribution, rng);
     }
@@ -576,7 +584,7 @@ impl merkle_tree::test::HashParameterSampling for MerkleTreeConfiguration {
         rng: &mut R,
     ) -> merkle_tree::InnerHashParameters<Self>
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         rng.sample(distribution)
     }

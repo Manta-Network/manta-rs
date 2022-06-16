@@ -29,7 +29,7 @@ use crate::{
         self, Accumulator, ConstantCapacityAccumulator, ExactSizeAccumulator, MembershipProof,
         OptimizedAccumulator,
     },
-    constraint::{self, Allocate, Bool, ConditionalSwap, Constant, Has, Native},
+    constraint::{self, Allocate, AssertEq, Bool, ConditionalSwap, Constant, Has, Native},
     merkle_tree::{
         fork::{ForkedTree, Trunk},
         inner_tree::InnerMap,
@@ -774,6 +774,26 @@ where
         compiler: &mut COM,
     ) -> Self::Verification {
         self.verify_path_in(witness, output, item, compiler)
+    }
+}
+
+impl<C, COM> accumulator::AssertValidVerification<COM> for Parameters<C, COM>
+where
+    COM: AssertEq,
+    C: Configuration<COM> + ?Sized,
+    InnerDigest<C, COM>: ConditionalSwap<COM> + constraint::PartialEq<InnerDigest<C, COM>, COM>,
+    LeafDigest<C, COM>: ConditionalSwap<COM>,
+{
+    #[inline]
+    fn assert_valid(
+        &self,
+        item: &Self::Item,
+        witness: &Self::Witness,
+        output: &Self::Output,
+        compiler: &mut COM,
+    ) {
+        let root = witness.root(self, &self.digest_in(item, compiler), compiler);
+        compiler.assert_eq(output, &root)
     }
 }
 

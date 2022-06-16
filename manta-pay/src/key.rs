@@ -29,7 +29,7 @@ use core::marker::PhantomData;
 use manta_accounting::key::{
     self, AccountIndex, HierarchicalKeyDerivationScheme, IndexType, KeyIndex, Kind,
 };
-use manta_crypto::rand::{CryptoRng, RngCore, Sample};
+use manta_crypto::rand::{RngCore, Sample};
 use manta_util::{create_seal, seal, Array};
 
 #[cfg(feature = "serde")]
@@ -183,7 +183,7 @@ where
     #[inline]
     fn sample<R>(_: (), rng: &mut R) -> Self
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         let mut seed = [0; Seed::SIZE];
         rng.fill_bytes(&mut seed);
@@ -287,15 +287,17 @@ impl PartialEq for Mnemonic {
     }
 }
 
+/* FIXME:
 impl Sample for Mnemonic {
     #[inline]
     fn sample<R>(_: (), rng: &mut R) -> Self
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         Self(bip32::Mnemonic::random(rng, Default::default()))
     }
 }
+*/
 
 impl TryFrom<String> for Mnemonic {
     type Error = Error;

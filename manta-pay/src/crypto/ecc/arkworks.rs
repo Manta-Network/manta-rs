@@ -251,6 +251,16 @@ where
     }
 }
 
+/// Discrete Logarithm Hardness
+///
+/// We assume that the DL problem is hard for all `arkworks` implementations of elliptic curves.
+impl<C> algebra::security::DiscreteLogarithmHardness for Group<C> where C: ProjectiveCurve {}
+
+/// Computational Diffie-Hellman Hardness
+///
+/// We assume that the CDH problem is hard for all `arkworks` implementations of elliptic curves.
+impl<C> algebra::security::ComputationalDiffieHellmanHardness for Group<C> where C: ProjectiveCurve {}
+
 impl<C> Sample for Group<C>
 where
     C: ProjectiveCurve,
@@ -571,6 +581,26 @@ where
                 .expect("Scalar multiplication is not allowed to fail."),
         )
     }
+}
+
+/// Discrete Logarithm Hardness
+///
+/// We assume that the DL problem is hard for all `arkworks` implementations of elliptic curves.
+impl<C, CV> algebra::security::DiscreteLogarithmHardness for GroupVar<C, CV>
+where
+    C: ProjectiveCurve,
+    CV: CurveVar<C, ConstraintField<C>>,
+{
+}
+
+/// Computational Diffie-Hellman Hardness
+///
+/// We assume that the CDH problem is hard for all `arkworks` implementations of elliptic curves.
+impl<C, CV> algebra::security::ComputationalDiffieHellmanHardness for GroupVar<C, CV>
+where
+    C: ProjectiveCurve,
+    CV: CurveVar<C, ConstraintField<C>>,
+{
 }
 
 #[cfg(test)]
