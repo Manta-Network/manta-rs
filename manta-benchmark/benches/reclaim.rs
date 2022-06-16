@@ -15,9 +15,9 @@
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use manta_benchmark::payment::{self, assert_valid_proof};
+use manta_accounting::transfer::test::assert_valid_proof;
 use manta_crypto::rand::OsRng;
-use manta_pay::parameters;
+use manta_pay::{parameters, test::payment::prove_reclaim};
 
 fn prove(c: &mut Criterion) {
     let mut group = c.benchmark_group("bench");
@@ -25,7 +25,7 @@ fn prove(c: &mut Criterion) {
     let (proving_context, _, parameters, utxo_accumulator_model) = parameters::generate().unwrap();
     group.bench_function("reclaim prove", |b| {
         b.iter(|| {
-            let _ = payment::prove_reclaim(
+            prove_reclaim(
                 &proving_context,
                 &parameters,
                 &utxo_accumulator_model,
@@ -40,7 +40,7 @@ fn verify(c: &mut Criterion) {
     let mut rng = OsRng;
     let (proving_context, verifying_context, parameters, utxo_accumulator_model) =
         parameters::generate().unwrap();
-    let reclaim = black_box(payment::prove_reclaim(
+    let reclaim = black_box(prove_reclaim(
         &proving_context,
         &parameters,
         &utxo_accumulator_model,
