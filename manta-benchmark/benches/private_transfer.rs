@@ -25,7 +25,7 @@ fn prove(c: &mut Criterion) {
     let (proving_context, _, parameters, utxo_accumulator_model) = parameters::generate().unwrap();
     group.bench_function("private transfer prove", |b| {
         b.iter(|| {
-            let _ = prove_private_transfer(
+            prove_private_transfer(
                 &proving_context,
                 &parameters,
                 &utxo_accumulator_model,

@@ -26,9 +26,8 @@ use crate::{
     test::payment::{prove_mint, prove_private_transfer, prove_reclaim},
 };
 use anyhow::Result;
-use ark_std::rand::thread_rng;
 use manta_accounting::transfer::test::assert_valid_proof;
-use manta_crypto::rand::Rand;
+use manta_crypto::rand::{OsRng, Rand};
 use manta_util::codec::{Decode, IoReader};
 use std::{fs::File, path::Path};
 
@@ -105,11 +104,11 @@ fn load_parameters(
     ))
 }
 
-/// Test validity on sampled transactions.
+/// Tests that the circuit is compatible with the current known parameters in `manta-parameters`.
 #[test]
 fn compatibility() {
     let directory = tempfile::tempdir().expect("Unable to generate temporary test directory.");
-    let mut rng = thread_rng();
+    let mut rng = OsRng;
     let (proving_context, verifying_context, parameters, utxo_accumulator_model) =
         load_parameters(directory.path()).expect("Failed to load parameters");
     assert_valid_proof(
