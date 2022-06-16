@@ -18,7 +18,6 @@
 
 use alloc::vec::Vec;
 use manta_crypto::permutation::PseudorandomPermutation;
-use manta_util::into_array_unchecked;
 
 impl<S, const ARITY: usize, COM> PseudorandomPermutation<COM> for super::Hasher<S, ARITY, COM>
 where
@@ -27,11 +26,24 @@ where
     // domain length is `ARITY + 1`
     type Domain = Vec<S::Field>;
 
+    #[inline]
     fn permute(&self, state: &mut Self::Domain, compiler: &mut COM) {
-        assert_eq!(state.len(), ARITY + 1, "state length must be `ARITY + 1`");
-        self.hash_untruncated(
-            into_array_unchecked(state.iter().collect::<Vec<_>>()),
-            compiler,
-        );
+        // first round
+        for (i, point) in state.iter_mut().enumerate() {
+            let mut elem = S::add_const(point, &self.additive_round_keys[i], compiler);
+            S::apply_sbox(&mut elem, compiler);
+            *point = elem;
+        }
+        for round in 1..Self::HALF_FULL_ROUNDS {
+            self.full_round(round, state, compiler);
+        }
+        for round in Self::HALF_FULL_ROUNDS..(Self::HALF_FULL_ROUNDS + S::PARTIAL_ROUNDS) {
+            self.partial_round(round, state, compiler);
+        }
+        for round in
+            (Self::HALF_FULL_ROUNDS + S::PARTIAL_ROUNDS)..(S::FULL_ROUNDS + S::PARTIAL_ROUNDS)
+        {
+            self.full_round(round, state, compiler);
+        }
     }
 }

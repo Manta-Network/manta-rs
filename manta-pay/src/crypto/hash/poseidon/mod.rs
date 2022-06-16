@@ -23,6 +23,7 @@ use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash, iter, mem};
 use manta_crypto::{
     hash::ArrayHashFunction,
+    permutation::PseudorandomPermutation,
     rand::{CryptoRng, RngCore, Sample},
 };
 use manta_util::{
@@ -85,7 +86,7 @@ pub trait FieldGeneration {
 /// Poseidon Permutation Specification
 pub trait Specification<COM = ()> {
     /// Field Type used for Permutation State
-    type Field;
+    type Field: Clone;
 
     /// Field Type used for Constant Parameters
     type ParameterField;
@@ -274,20 +275,13 @@ where
         mem::swap(&mut next, state);
     }
 
-    /// Computes the first round of the Poseidon permutation from `trapdoor` and `input`.
+    /// Get the initial state of the Poseidon permutation from `trapdoor` and `input`.
     #[inline]
-    fn first_round(&self, input: [&S::Field; ARITY], compiler: &mut COM) -> State<S, COM> {
-        let mut state = Vec::with_capacity(Self::WIDTH);
-        for (i, point) in iter::once(&S::domain_tag(ARITY, compiler))
+    fn initial_state(&self, input: [&S::Field; ARITY], compiler: &mut COM) -> State<S, COM> {
+        iter::once(&S::domain_tag(ARITY, compiler))
             .chain(input)
-            .enumerate()
-        {
-            let mut elem = S::add_const(point, &self.additive_round_keys[i], compiler);
-            S::apply_sbox(&mut elem, compiler);
-            state.push(elem);
-        }
-        self.mds_matrix_multiply(&mut state, compiler);
-        state
+            .cloned()
+            .collect()
     }
 
     /// Computes a full round at the given `round` index on the internal permutation `state`.
@@ -315,18 +309,8 @@ where
     /// Computes the hash over `input` in the given `compiler` and returns the untruncated state.
     #[inline]
     fn hash_untruncated(&self, input: [&S::Field; ARITY], compiler: &mut COM) -> Vec<S::Field> {
-        let mut state = self.first_round(input, compiler);
-        for round in 1..Self::HALF_FULL_ROUNDS {
-            self.full_round(round, &mut state, compiler);
-        }
-        for round in Self::HALF_FULL_ROUNDS..(Self::HALF_FULL_ROUNDS + S::PARTIAL_ROUNDS) {
-            self.partial_round(round, &mut state, compiler);
-        }
-        for round in
-            (Self::HALF_FULL_ROUNDS + S::PARTIAL_ROUNDS)..(S::FULL_ROUNDS + S::PARTIAL_ROUNDS)
-        {
-            self.full_round(round, &mut state, compiler);
-        }
+        let mut state = self.initial_state(input, compiler);
+        self.permute(&mut state, compiler);
         state
     }
 }

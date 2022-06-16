@@ -43,9 +43,15 @@ where
     S: super::Specification<COM>,
     S::Field: Clone,
 {
+    #[inline]
     fn read(state: &Domain<S, COM, ARITY>, compiler: &mut COM) -> Self {
         let _ = compiler;
-        assert_eq!(state.len(), ARITY);
+        assert_eq!(
+            state.len(),
+            ARITY + 1,
+            "expect state to be of length ARITY + 1, got {}",
+            state.len()
+        );
         state.iter().take(ARITY).cloned().collect()
     }
 }
@@ -57,22 +63,134 @@ where
 
     S::Field: Clone,
 {
+    #[inline]
     fn mask(&self, mask: &Self, compiler: &mut COM) -> Self {
-        assert_eq!(self.len(), ARITY);
-        assert_eq!(mask.len(), ARITY);
+        assert_eq!(
+            self.len(),
+            ARITY,
+            "expect state to be of length ARITY, got {}",
+            self.len()
+        );
+        assert_eq!(
+            mask.len(),
+            ARITY,
+            "expect mask to be of length ARITY, got {}",
+            mask.len()
+        );
         self.iter()
             .zip(mask.iter())
             .map(|(s, m)| S::add(s, m, compiler))
             .collect()
     }
 
+    #[inline]
     fn unmask(masked: &Self, mask: &Self, compiler: &mut COM) -> Self {
-        assert_eq!(masked.len(), ARITY);
-        assert_eq!(mask.len(), ARITY);
+        assert_eq!(
+            masked.len(),
+            ARITY,
+            "expect state to be of length ARITY, got {}",
+            masked.len()
+        );
+        assert_eq!(
+            mask.len(),
+            ARITY,
+            "expect mask to be of length ARITY, got {}",
+            mask.len()
+        );
         masked
             .iter()
             .zip(mask.iter())
             .map(|(s, m)| S::sub(s, m, compiler))
             .collect()
+    }
+}
+
+#[cfg(test)]
+#[cfg(feature = "arkworks")]
+mod tests {
+    use crate::crypto::{constraint::arkworks::Fp, hash::poseidon::arkworks::Specification};
+    use ark_ff::field_new;
+    use manta_crypto::permutation::{
+        duplex::{Configuration, Duplexer},
+        PseudorandomPermutation,
+    };
+    use rand_chacha::ChaChaRng;
+
+    type Fr = ark_bls12_381::Fr;
+
+    struct TestSpec;
+    impl Specification for TestSpec {
+        type Field = Fr;
+        const FULL_ROUNDS: usize = 8;
+        const PARTIAL_ROUNDS: usize = 57;
+        const SBOX_EXPONENT: u64 = 5;
+    }
+
+    type Permutation = crate::crypto::hash::poseidon::Hasher<TestSpec, 2>;
+
+    struct TestDuplexConfig;
+    impl Configuration<Permutation> for TestDuplexConfig {
+        type Key = ();
+        type Header = ();
+        type Input = Vec<Fp<Fr>>;
+        type Output = Vec<Fp<Fr>>;
+        type Mask = Vec<Fp<Fr>>;
+        type Tag = ();
+        type Verification = ();
+
+        fn initialize(&self, _: &mut ()) -> <Permutation as PseudorandomPermutation>::Domain {
+            vec![
+                Fp(field_new!(Fr, "1")),
+                Fp(field_new!(Fr, "2")),
+                Fp(field_new!(Fr, "3")),
+            ]
+        }
+
+        fn generate_starting_blocks(
+            &self,
+            key: &Self::Key,
+            header: &Self::Header,
+            compiler: &mut (),
+        ) -> Vec<Self::Input> {
+            let _ = (key, header, compiler);
+            // return some arbitrary starting state
+            vec![
+                vec![Fp(field_new!(Fr, "4")), Fp(field_new!(Fr, "5"))],
+                vec![Fp(field_new!(Fr, "7")), Fp(field_new!(Fr, "8"))],
+            ]
+        }
+
+        fn as_tag(
+            &self,
+            _state: &<Permutation as PseudorandomPermutation>::Domain,
+            _compiler: &mut (),
+        ) -> Self::Tag {
+            unimplemented!("not needed for this test")
+        }
+
+        fn verify(
+            &self,
+            _encryption_tag: &Self::Tag,
+            _decryption_tag: &Self::Tag,
+            _compiler: &mut (),
+        ) -> Self::Verification {
+            unimplemented!("not needed for this test")
+        }
+    }
+
+    #[test]
+    fn encryption_consistency() {
+        use manta_crypto::rand::*;
+        let mut rng = ChaChaRng::seed_from_u64(0);
+        let permutation = rng.gen();
+        let duplex = Duplexer::new(permutation, TestDuplexConfig);
+
+        let plaintext = (0..7)
+            .map(|_| (0..2).map(|_| rng.gen()).collect())
+            .collect::<Vec<_>>();
+        let (_, ciphertext) = duplex.duplex_encryption(&(), &(), &plaintext, &mut ());
+        let (_, decrypted) = duplex.duplex_decryption(&(), &(), &ciphertext, &mut ());
+
+        assert_eq!(plaintext, decrypted);
     }
 }
