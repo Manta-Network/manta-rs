@@ -23,4 +23,12 @@
 // #[cfg_attr(doc_cfg, doc(cfg(feature = "simulation")))]
 // pub mod simulation;
 
+#[cfg(test)]
+pub mod compatibility;
+
+#[cfg(test)]
 pub mod transfer;
+
+#[cfg(feature = "groth16")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "groth16")))]
+pub mod payment;
