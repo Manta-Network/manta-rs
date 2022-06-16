@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 ### Added
 - [\#102](https://github.com/Manta-Network/manta-rs/pull/102) Add concrete parameters to `manta-parameters`
+- [\#101](https://github.com/Manta-Network/manta-rs/pull/101) Add duplex encryption and Poseidon implementation
 
 ### Changed
 
