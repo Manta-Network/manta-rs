@@ -400,3 +400,21 @@ where
         pre_sender,
     ))
 }
+
+/// Asserts that `post` represents a valid `Transfer` verifying against `verifying_context`.
+#[inline]
+pub fn assert_valid_proof<C>(verifying_context: &VerifyingContext<C>, post: &TransferPost<C>)
+where
+    C: Configuration,
+    <C::ProofSystem as ProofSystem>::Error: Debug,
+{
+    assert!(
+        C::ProofSystem::verify(
+            verifying_context,
+            &post.generate_proof_input(),
+            &post.validity_proof,
+        )
+        .expect("Unable to verify proof."),
+        "Invalid proof.",
+    );
+}
