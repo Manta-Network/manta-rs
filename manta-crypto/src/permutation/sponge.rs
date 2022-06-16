@@ -47,12 +47,14 @@ where
 ///
 /// This `trait` is used to mask `self` for encryption. For example, for binary field, `XOR` is both a valid mask function and unmask function,
 /// and for prime field, `ADD` is valid mask function and `SUB` is valid unmask function.
+///
+/// * `M`: Type of mask
+/// * `T`: Type of masked value
 pub trait Mask<P, M, T, COM = ()>: Sized
 where
     P: PseudorandomPermutation<COM>,
-    T: Sized
+    T: Sized,
 {
-    
     /// Mask `self` with `mask` of type `Self`.
     fn mask(&self, mask: &M, compiler: &mut COM) -> T;
 

@@ -47,13 +47,13 @@ where
     type Header;
 
     /// Sponge Input Block Type
-    type Input: Absorb<P, COM> + Mask<P, Self::Pad, Self::Output, COM>;
+    type Input: Absorb<P, COM> + Mask<P, Self::Mask, Self::Output, COM>;
 
     /// Sponge Output Block Type
-    type Output: Absorb<P, COM> + Mask<P, Self::Pad, Self::Input, COM>;
+    type Output: Absorb<P, COM> + Mask<P, Self::Mask, Self::Input, COM>;
 
-    /// Duplex Output Type (same as `Z` in paper)
-    type Pad: Squeeze<P, COM>;
+    /// Duplex Output Type, this is used to mask [`Self::Input`] for encryption and unmask [`Self::Output`] for decryption.
+    type Mask: Squeeze<P, COM>;
 
     /// Authentication Tag Type
     type Tag;
@@ -130,7 +130,7 @@ where
 
     /// Prepares the duplex sponge by absorbing the `key` and `header`, outputting the updated state and initial pad.   
     #[inline]
-    fn setup(&self, key: &C::Key, header: &C::Header, compiler: &mut COM) -> (P::Domain, C::Pad) {
+    fn setup(&self, key: &C::Key, header: &C::Header, compiler: &mut COM) -> (P::Domain, C::Mask) {
         // line 1 to 7
         let mut state = self.configuration.initialize(compiler);
         // line 11 to 13
@@ -147,38 +147,64 @@ where
     /// Performs duplex encryption by absorbing the initial state with `key` and `header`, and
     /// then duplexing `plaintext`, outputing the squeezed ciphertext blocks.
     #[inline]
-    fn duplex_encryption(
+    pub fn duplex_encryption(
         &self,
         key: &C::Key,
         header: &C::Header,
         plaintext: &[C::Input],
         compiler: &mut COM,
     ) -> (P::Domain, Vec<C::Output>) {
-        // line 11 to 14
-        let (mut state, z) = self.setup(key, header, compiler);
+        // line 11-14: setup initial blocks and first mask
+        let (mut state, mut z) = self.setup(key, header, compiler);
+        let mut sponge = Sponge::new(&self.permutation, &mut state);
         let mut ciphertext = Vec::<C::Output>::with_capacity(plaintext.len());
-        // line 15
+        // line 15: get first block of ciphertext
         ciphertext.push(plaintext[0].mask(&z, compiler));
-        todo!()
+        // line 16-19: absorb plaintext blocks and get masks, and apply it to plaintext to get ciphertext
+        for i in 0..plaintext.len() - 1 {
+            z = sponge.duplex(&plaintext[i], compiler);
+            ciphertext.push(plaintext[i + 1].mask(&z, compiler));
+        }
+        // line 20-24: authentication
+        // remark: unlike paper where we use duplex for authentication and get tag, we return end state here, and
+        // move tag generation to another function.
+        // we use `write` instead of `absorb` because [`Self::tag`] will do the permutation
+        plaintext[plaintext.len() - 1].write(&mut state, compiler);
+
+        (state, ciphertext)
     }
 
     /// Performs duplex decryption by absorbing the initial state with `key` and `header`, and
     /// then duplexing `ciphertext`, outputing the squeezed plaintext blocks.
     #[inline]
-    fn duplex_decryption(
+    pub fn duplex_decryption(
         &self,
         key: &C::Key,
         header: &C::Header,
         ciphertext: &[C::Output],
         compiler: &mut COM,
     ) -> (P::Domain, Vec<C::Input>) {
-        todo!()
+        // line 30-33: setup initial blocks and first mask
+        let (mut state, mut z) = self.setup(key, header, compiler);
+        let mut sponge = Sponge::new(&self.permutation, &mut state);
+        let mut plaintext = Vec::<C::Input>::with_capacity(ciphertext.len());
+        // line 34: get first block of plaintext
+        plaintext.push(C::Input::unmask(&ciphertext[0], &z, compiler));
+        // line 35-38: absorb decrypted plaintext blocks and get masks, and apply it to ciphertext to get next plaintext
+        for i in 0..ciphertext.len() - 1 {
+            z = sponge.duplex(&plaintext[i], compiler);
+            plaintext.push(C::Input::unmask(&ciphertext[i + 1], &z, compiler));
+        }
+        // line 39: authentication
+        plaintext[plaintext.len() - 1].write(&mut state, compiler);
+
+        (state, plaintext)
     }
 
     /// Computes the tag for the final round by running the permutation once on the current
     /// `state`.
     #[inline]
-    fn tag(&self, mut state: P::Domain, compiler: &mut COM) -> C::Tag {
+    pub fn tag(&self, mut state: P::Domain, compiler: &mut COM) -> C::Tag {
         self.permutation.permute(&mut state, compiler);
         self.configuration.as_tag(&state, compiler)
     }
