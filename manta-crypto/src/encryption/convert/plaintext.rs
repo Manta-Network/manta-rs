@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Conversion Primitives and Adapters
+//! Plaintext Conversion Primitives and Adapters
 
 use crate::encryption::{
     CiphertextType, Decrypt, DecryptionKeyType, DecryptionTypes, Derive, Encrypt,
@@ -89,20 +89,20 @@ pub trait Reverse<COM = ()>: ReverseType {
 )]
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct PlaintextConverter<E, C> {
+pub struct Converter<E, C> {
     /// Base Encryption Scheme
-    pub encryption_scheme: E,
+    pub base: E,
 
     /// Type Parameter Marker
     __: PhantomData<C>,
 }
 
-impl<E, C> PlaintextConverter<E, C> {
-    /// Builds a new [`PlaintextConverter`] over `encryption_scheme`.
+impl<E, C> Converter<E, C> {
+    /// Builds a new [`Converter`] over `base`.
     #[inline]
-    pub fn new(encryption_scheme: E) -> Self {
+    pub fn new(base: E) -> Self {
         Self {
-            encryption_scheme,
+            base,
             __: PhantomData,
         }
     }
@@ -110,53 +110,53 @@ impl<E, C> PlaintextConverter<E, C> {
     /// Returns the inner encryption scheme from `self`.
     #[inline]
     pub fn into_inner(self) -> E {
-        self.encryption_scheme
+        self.base
     }
 }
 
-impl<E, C> HeaderType for PlaintextConverter<E, C>
+impl<E, C> HeaderType for Converter<E, C>
 where
     E: HeaderType,
 {
     type Header = E::Header;
 }
 
-impl<E, C> CiphertextType for PlaintextConverter<E, C>
+impl<E, C> CiphertextType for Converter<E, C>
 where
     E: CiphertextType,
 {
     type Ciphertext = E::Ciphertext;
 }
 
-impl<E, C> EncryptionKeyType for PlaintextConverter<E, C>
+impl<E, C> EncryptionKeyType for Converter<E, C>
 where
     E: EncryptionKeyType,
 {
     type EncryptionKey = E::EncryptionKey;
 }
 
-impl<E, C> DecryptionKeyType for PlaintextConverter<E, C>
+impl<E, C> DecryptionKeyType for Converter<E, C>
 where
     E: DecryptionKeyType,
 {
     type DecryptionKey = E::DecryptionKey;
 }
 
-impl<E, C> Derive for PlaintextConverter<E, C>
+impl<E, C, COM> Derive<COM> for Converter<E, C>
 where
-    E: Derive,
+    E: Derive<COM>,
 {
     #[inline]
     fn derive(
         &self,
         decryption_key: &Self::DecryptionKey,
-        compiler: &mut (),
+        compiler: &mut COM,
     ) -> Self::EncryptionKey {
-        self.encryption_scheme.derive(decryption_key, compiler)
+        self.base.derive(decryption_key, compiler)
     }
 }
 
-impl<E, C> PlaintextType for PlaintextConverter<E, C>
+impl<E, C> PlaintextType for Converter<E, C>
 where
     E: PlaintextType,
     C: ForwardType,
@@ -164,7 +164,7 @@ where
     type Plaintext = C::Plaintext;
 }
 
-impl<E, C> EncryptionTypes for PlaintextConverter<E, C>
+impl<E, C> EncryptionTypes for Converter<E, C>
 where
     E: EncryptionTypes,
     C: ForwardType,
@@ -172,7 +172,7 @@ where
     type Randomness = E::Randomness;
 }
 
-impl<E, C, COM> Encrypt<COM> for PlaintextConverter<E, C>
+impl<E, C, COM> Encrypt<COM> for Converter<E, C>
 where
     E: Encrypt<COM>,
     C: Forward<COM, TargetPlaintext = E::Plaintext>,
@@ -186,7 +186,7 @@ where
         plaintext: &Self::Plaintext,
         compiler: &mut COM,
     ) -> Self::Ciphertext {
-        self.encryption_scheme.encrypt(
+        self.base.encrypt(
             encryption_key,
             randomness,
             header,
@@ -196,7 +196,7 @@ where
     }
 }
 
-impl<E, C> DecryptionTypes for PlaintextConverter<E, C>
+impl<E, C> DecryptionTypes for Converter<E, C>
 where
     E: DecryptionTypes,
     C: ReverseType,
@@ -204,7 +204,7 @@ where
     type DecryptedPlaintext = C::DecryptedPlaintext;
 }
 
-impl<E, C, COM> Decrypt<COM> for PlaintextConverter<E, C>
+impl<E, C, COM> Decrypt<COM> for Converter<E, C>
 where
     E: Decrypt<COM>,
     C: Reverse<COM, TargetDecryptedPlaintext = E::DecryptedPlaintext>,
@@ -218,7 +218,7 @@ where
         compiler: &mut COM,
     ) -> Self::DecryptedPlaintext {
         C::into_source(
-            self.encryption_scheme
+            self.base
                 .decrypt(decryption_key, header, ciphertext, compiler),
             compiler,
         )

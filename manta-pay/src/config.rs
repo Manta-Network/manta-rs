@@ -644,11 +644,11 @@ impl ProofSystemInput<Group> for ProofSystem {
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct NotePlaintextMapping;
 
-impl encryption::convert::ForwardType for NotePlaintextMapping {
+impl encryption::convert::plaintext::ForwardType for NotePlaintextMapping {
     type Plaintext = Note;
 }
 
-impl encryption::convert::Forward for NotePlaintextMapping {
+impl encryption::convert::plaintext::Forward for NotePlaintextMapping {
     type TargetPlaintext = Array<u8, { Note::SIZE }>;
 
     #[inline]
@@ -662,11 +662,11 @@ impl encryption::convert::Forward for NotePlaintextMapping {
     }
 }
 
-impl encryption::convert::ReverseType for NotePlaintextMapping {
+impl encryption::convert::plaintext::ReverseType for NotePlaintextMapping {
     type DecryptedPlaintext = Option<Note>;
 }
 
-impl encryption::convert::Reverse for NotePlaintextMapping {
+impl encryption::convert::plaintext::Reverse for NotePlaintextMapping {
     type TargetDecryptedPlaintext = Option<Array<u8, { Note::SIZE }>>;
 
     #[inline]
@@ -682,7 +682,7 @@ impl encryption::convert::Reverse for NotePlaintextMapping {
 }
 
 /// Note Symmetric Encryption Scheme
-pub type NoteSymmetricEncryptionScheme = encryption::convert::PlaintextConverter<
+pub type NoteSymmetricEncryptionScheme = encryption::convert::plaintext::Converter<
     FixedNonceAesGcm<{ Note::SIZE }, { aes::ciphertext_size(Note::SIZE) }>,
     NotePlaintextMapping,
 >;
