@@ -23,7 +23,7 @@
 // #[cfg_attr(doc_cfg, doc(cfg(feature = "simulation")))]
 // pub mod simulation;
 
-#[cfg(test)]
+#[cfg(all(test, feature = "download"))]
 pub mod compatibility;
 
 #[cfg(test)]
