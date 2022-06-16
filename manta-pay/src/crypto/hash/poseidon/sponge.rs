@@ -50,12 +50,12 @@ where
     }
 }
 
-impl<S, const ARITY: usize, COM> Mask<super::Hasher<S, ARITY, COM>, Self, Self, COM> for Vec<S::Field>
+impl<S, const ARITY: usize, COM> Mask<super::Hasher<S, ARITY, COM>, Self, Self, COM>
+    for Vec<S::Field>
 where
     S: super::Specification<COM>,
 
     S::Field: Clone,
-
 {
     fn mask(&self, mask: &Self, compiler: &mut COM) -> Self {
         assert_eq!(self.len(), ARITY);
@@ -69,7 +69,8 @@ where
     fn unmask(masked: &Self, mask: &Self, compiler: &mut COM) -> Self {
         assert_eq!(masked.len(), ARITY);
         assert_eq!(mask.len(), ARITY);
-        masked.iter()
+        masked
+            .iter()
             .zip(mask.iter())
             .map(|(s, m)| S::sub(s, m, compiler))
             .collect()

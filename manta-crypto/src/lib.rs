@@ -32,5 +32,5 @@ pub mod hash;
 pub mod key;
 pub mod merkle_tree;
 pub mod password;
-pub mod rand;
 pub mod permutation;
+pub mod rand;

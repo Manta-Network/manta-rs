@@ -23,7 +23,7 @@ use {manta_util::num::Ceil, security::SecurityCondition};
 
 /// Poseidon Security Parameters
 ///
-/// See the [`Specification`](super::Specification) for more on how these constants are part of the
+/// See the [`Specification`](super::super::Specification) for more on how these constants are part of the
 /// Poseidon Permutation algorithm.
 ///
 /// # Safety
