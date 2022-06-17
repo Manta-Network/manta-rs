@@ -17,13 +17,25 @@
 //! Generate Parameters and Proving/Verifying Contexts
 
 use crate::config::{
-    FullParameters, Mint, MultiProvingContext, MultiVerifyingContext, NoteEncryptionScheme,
-    Parameters, PrivateTransfer, ProofSystemError, ProvingContext, Reclaim, UtxoAccumulatorModel,
-    UtxoCommitmentScheme, VerifyingContext, VoidNumberCommitmentScheme,
+    FullParameters, Mint, MultiProvingContext, MultiVerifyingContext, Parameters, PrivateTransfer,
+    ProofSystemError, Reclaim, UtxoAccumulatorModel,
 };
 use manta_crypto::rand::{Rand, SeedableRng};
-use manta_util::codec::{Decode, IoReader};
 use rand_chacha::ChaCha20Rng;
+
+#[cfg(all(feature = "download", feature = "std"))]
+#[cfg_attr(doc_cfg, doc(all(feature = "download", feature = "std")))]
+use crate::config::{
+    NoteEncryptionScheme, ProvingContext, UtxoCommitmentScheme, VerifyingContext,
+    VoidNumberCommitmentScheme,
+};
+
+#[cfg(all(feature = "download", feature = "std"))]
+#[cfg_attr(doc_cfg, doc(all(feature = "download", feature = "std")))]
+use manta_util::codec::{Decode, IoReader};
+
+#[cfg(all(feature = "download", feature = "std"))]
+#[cfg_attr(doc_cfg, doc(all(feature = "download", feature = "std")))]
 use std::{fs::File, path::Path};
 
 /// Parameter Generation Seed
@@ -95,8 +107,8 @@ pub fn generate() -> Result<
 }
 
 /// Loads parameters from the `manta-parameters`, using `directory` as a temporary directory to store files.
-#[cfg(feature = "download")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "download")))]
+#[cfg(all(feature = "download", feature = "std"))]
+#[cfg_attr(doc_cfg, doc(cfg(all(feature = "download", feature = "std"))))]
 #[inline]
 pub fn load_parameters(
     directory: &Path,
