@@ -29,6 +29,7 @@ use crate::{
     rand::{Rand, RngCore, Sample},
 };
 use core::{fmt::Debug, hash::Hash};
+use manta_util::codec::{Decode, DecodeError, Encode, Read, Write};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
@@ -329,6 +330,41 @@ where
             &ciphertext.ciphertext,
             compiler,
         )
+    }
+}
+
+impl<K, E> Decode for Hybrid<K, E>
+where
+    K: Decode,
+    E: Decode,
+{
+    type Error = ();
+
+    #[inline]
+    fn decode<R>(mut reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
+    where
+        R: Read,
+    {
+        Ok(Self::new(
+            K::decode(&mut reader).map_err(|err| err.map_decode(|_| ()))?,
+            E::decode(&mut reader).map_err(|err| err.map_decode(|_| ()))?,
+        ))
+    }
+}
+
+impl<K, E> Encode for Hybrid<K, E>
+where
+    K: Encode,
+    E: Encode,
+{
+    #[inline]
+    fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
+    where
+        W: Write,
+    {
+        self.key_agreement_scheme.encode(&mut writer)?;
+        self.encryption_scheme.encode(&mut writer)?;
+        Ok(())
     }
 }
 

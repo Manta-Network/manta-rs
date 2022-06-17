@@ -24,6 +24,7 @@ use crate::{
     rand::{Rand, RngCore, Sample},
 };
 use core::marker::PhantomData;
+use manta_util::codec::{Decode, DecodeError, Encode, Read, Write};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
@@ -202,6 +203,35 @@ where
             ciphertext,
             compiler,
         )
+    }
+}
+
+impl<E, C> Decode for Converter<E, C>
+where
+    E: Decode,
+{
+    type Error = E::Error;
+
+    #[inline]
+    fn decode<R>(mut reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
+    where
+        R: Read,
+    {
+        Ok(Self::new(E::decode(&mut reader)?))
+    }
+}
+
+impl<E, C> Encode for Converter<E, C>
+where
+    E: Encode,
+{
+    #[inline]
+    fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
+    where
+        W: Write,
+    {
+        self.base.encode(&mut writer)?;
+        Ok(())
     }
 }
 

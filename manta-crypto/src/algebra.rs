@@ -22,6 +22,7 @@ use crate::{
     rand::{RngCore, Sample},
 };
 use core::marker::PhantomData;
+use manta_util::codec::{Decode, DecodeError, Encode, Read, Write};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
@@ -123,6 +124,35 @@ where
         compiler: &mut COM,
     ) -> Self::SharedSecret {
         public_key.mul(secret_key, compiler)
+    }
+}
+
+impl<G, COM> Decode for DiffieHellman<G, COM>
+where
+    G: Decode,
+{
+    type Error = G::Error;
+
+    #[inline]
+    fn decode<R>(mut reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
+    where
+        R: Read,
+    {
+        Ok(Self::new(G::decode(&mut reader)?))
+    }
+}
+
+impl<G, COM> Encode for DiffieHellman<G, COM>
+where
+    G: Encode,
+{
+    #[inline]
+    fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
+    where
+        W: Write,
+    {
+        self.generator.encode(&mut writer)?;
+        Ok(())
     }
 }
 

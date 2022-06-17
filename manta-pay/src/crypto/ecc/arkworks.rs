@@ -42,9 +42,6 @@ type ConstraintField<C> = <<C as ProjectiveCurve>::BaseField as Field>::BasePrim
 /// Compiler Type
 type Compiler<C> = R1CS<ConstraintField<C>>;
 
-/// Curve Scalar Parameter
-type ScalarParam<C> = <<C as ProjectiveCurve>::ScalarField as PrimeField>::Params;
-
 /// Scalar Field Element
 pub type Scalar<C> = Fp<<C as ProjectiveCurve>::ScalarField>;
 
@@ -418,47 +415,6 @@ where
     }
 }
 
-/* TODO:
-macro_rules! impl_processed_scalar_mul {
-    ($curve: ty) => {
-        impl<CV>
-            ecc::PreprocessedScalarMul<
-                Compiler<$curve>,
-                {
-                    <<$curve as ProjectiveCurve>::ScalarField as PrimeField>::Params::MODULUS_BITS
-                        as usize
-                },
-            > for GroupVar<$curve, CV>
-        where
-            CV: CurveVar<$curve, ConstraintField<$curve>>,
-        {
-            #[inline]
-            fn preprocessed_scalar_mul(
-                table: &[Self; ScalarParam::<$curve>::MODULUS_BITS as usize],
-                scalar: &Self::Scalar,
-                compiler: &mut Compiler<$curve>,
-            ) -> Self::Output {
-                let _ = compiler;
-                let mut result = CV::zero();
-                let scalar_bits = scalar
-                    .0
-                    .to_bits_le()
-                    .expect("Bit decomposition is not allowed to fail.");
-                // TODO: Add `+` implementations, `conditional_add` to avoid unnecessary clones.
-                for (bit, base) in scalar_bits.into_iter().zip(table.iter()) {
-                    result = bit
-                        .select(&(result.clone() + &base.0), &result)
-                        .expect("Conditional select is not allowed to fail. ");
-                }
-                Self(result, PhantomData)
-            }
-        }
-    };
-}
-
-impl_processed_scalar_mul!(ark_ed_on_bls12_381::EdwardsProjective);
-*/
-
 impl<C, CV> constraint::PartialEq<Self, Compiler<C>> for GroupVar<C, CV>
 where
     C: ProjectiveCurve,
@@ -599,53 +555,4 @@ where
     C: ProjectiveCurve,
     CV: CurveVar<C, ConstraintField<C>>,
 {
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    use ark_ec::ProjectiveCurve;
-    use ark_ed_on_bls12_381::{constraints::EdwardsVar, EdwardsProjective};
-    use ecc::PreprocessedScalarMul;
-    use manta_crypto::{
-        constraint::ConstraintSystem,
-        ecc::{PreprocessedScalarMulTable, ScalarMul},
-        rand::OsRng,
-    };
-
-    /// Tests preprocessed scalar multiplication on curve `C`.
-    #[inline]
-    fn preprocessed_scalar_mul_test_template<C, CV, const N: usize>(rng: &mut OsRng)
-    where
-        C: ProjectiveCurve,
-        CV: CurveVar<C, ConstraintField<C>>,
-        GroupVar<C, CV>: PreprocessedScalarMul<
-            Compiler<C>,
-            N,
-            Scalar = ScalarVar<C, CV>,
-            Output = GroupVar<C, CV>,
-        >,
-    {
-        const NUM_TRIALS: usize = 5;
-        let mut cs = R1CS::for_known();
-        for _ in 0..NUM_TRIALS {
-            let base = Group::gen(rng).as_known::<Secret, GroupVar<_, _>>(&mut cs);
-            let scalar = Scalar::<C>::gen(rng).as_known::<Secret, _>(&mut cs);
-            let expected = base.scalar_mul(&scalar, &mut cs);
-            let table = PreprocessedScalarMulTable::<_, N>::from_base(base, &mut cs);
-            let actual = table.scalar_mul(&scalar, &mut cs);
-            cs.assert_eq(&expected, &actual);
-        }
-        assert!(cs.is_satisfied());
-    }
-
-    /// Tests preprocessed scalar multiplication on different curves.
-    #[test]
-    fn preprocessed_scalar_mul() {
-        preprocessed_scalar_mul_test_template::<
-            EdwardsProjective,
-            EdwardsVar,
-            { ScalarParam::<EdwardsProjective>::MODULUS_BITS as usize },
-        >(&mut OsRng);
-    }
 }
