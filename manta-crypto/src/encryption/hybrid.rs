@@ -22,8 +22,8 @@
 
 use crate::{
     encryption::{
-        CiphertextType, Decrypt, DecryptionKeyType, DecryptionTypes, Derive, Encrypt,
-        EncryptedMessage, EncryptionKeyType, EncryptionTypes, HeaderType, PlaintextType,
+        CiphertextType, Decrypt, DecryptedPlaintextType, DecryptionKeyType, Derive, Encrypt,
+        EncryptedMessage, EncryptionKeyType, HeaderType, PlaintextType, RandomnessType,
     },
     key,
 };
@@ -96,7 +96,7 @@ pub type DecryptionKey<K> = <K as key::agreement::Types>::SecretKey;
 pub struct Randomness<K, E>
 where
     K: key::agreement::Types,
-    E: EncryptionTypes,
+    E: RandomnessType,
 {
     /// Ephemeral Secret Key
     pub ephemeral_secret_key: K::SecretKey,
@@ -108,7 +108,7 @@ where
 impl<K, E> Randomness<K, E>
 where
     K: key::agreement::Types,
-    E: EncryptionTypes,
+    E: RandomnessType,
 {
     /// Builds a new [`Randomness`] from `ephemeral_secret_key` and `randomness`.
     #[inline]
@@ -122,11 +122,11 @@ where
     /// Builds a new [`Randomness`] from `ephemeral_secret_key` whenever the base encryption scheme
     /// has no [`Randomness`] type (i.e. uses `()` as its [`Randomness`] type).
     ///
-    /// [`Randomness`]: EncryptionTypes::Randomness
+    /// [`Randomness`]: RandomnessType::Randomness
     #[inline]
     pub fn from_key(ephemeral_secret_key: K::SecretKey) -> Self
     where
-        E: EncryptionTypes<Randomness = ()>,
+        E: RandomnessType<Randomness = ()>,
     {
         Self::new(ephemeral_secret_key, ())
     }
@@ -177,7 +177,6 @@ where
 
 impl<K, E> HeaderType for Hybrid<K, E>
 where
-    K: key::agreement::Types,
     E: HeaderType,
 {
     type Header = E::Header;
@@ -205,6 +204,28 @@ where
     type DecryptionKey = DecryptionKey<K>;
 }
 
+impl<K, E> PlaintextType for Hybrid<K, E>
+where
+    E: PlaintextType,
+{
+    type Plaintext = E::Plaintext;
+}
+
+impl<K, E> RandomnessType for Hybrid<K, E>
+where
+    K: key::agreement::Types,
+    E: RandomnessType,
+{
+    type Randomness = Randomness<K, E>;
+}
+
+impl<K, E> DecryptedPlaintextType for Hybrid<K, E>
+where
+    E: DecryptedPlaintextType,
+{
+    type DecryptedPlaintext = E::DecryptedPlaintext;
+}
+
 impl<K, E, COM> Derive<COM> for Hybrid<K, E>
 where
     K: key::agreement::Derive<COM>,
@@ -217,22 +238,6 @@ where
     ) -> Self::EncryptionKey {
         self.key_agreement_scheme.derive(decryption_key, compiler)
     }
-}
-
-impl<K, E> PlaintextType for Hybrid<K, E>
-where
-    K: key::agreement::Types,
-    E: PlaintextType,
-{
-    type Plaintext = E::Plaintext;
-}
-
-impl<K, E> EncryptionTypes for Hybrid<K, E>
-where
-    K: key::agreement::Types,
-    E: EncryptionTypes,
-{
-    type Randomness = Randomness<K, E>;
 }
 
 impl<K, E, COM> Encrypt<COM> for Hybrid<K, E>
@@ -266,14 +271,6 @@ where
             ),
         }
     }
-}
-
-impl<K, E> DecryptionTypes for Hybrid<K, E>
-where
-    K: key::agreement::Types,
-    E: DecryptionTypes,
-{
-    type DecryptedPlaintext = E::DecryptedPlaintext;
 }
 
 impl<K, E, COM> Decrypt<COM> for Hybrid<K, E>

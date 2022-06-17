@@ -25,8 +25,8 @@ use aes_gcm::{
 use core::convert::Infallible;
 use manta_crypto::{
     encryption::{
-        CiphertextType, Decrypt, DecryptionKeyType, DecryptionTypes, Derive, Encrypt,
-        EncryptionKeyType, EncryptionTypes, HeaderType, PlaintextType,
+        CiphertextType, Decrypt, DecryptedPlaintextType, DecryptionKeyType, Derive, Encrypt,
+        EncryptionKeyType, HeaderType, PlaintextType, RandomnessType,
     },
     rand::{RngCore, Sample},
 };
@@ -87,8 +87,12 @@ impl<const P: usize, const C: usize> PlaintextType for FixedNonceAesGcm<P, C> {
     type Plaintext = Array<u8, P>;
 }
 
-impl<const P: usize, const C: usize> EncryptionTypes for FixedNonceAesGcm<P, C> {
+impl<const P: usize, const C: usize> RandomnessType for FixedNonceAesGcm<P, C> {
     type Randomness = ();
+}
+
+impl<const P: usize, const C: usize> DecryptedPlaintextType for FixedNonceAesGcm<P, C> {
+    type DecryptedPlaintext = Option<Array<u8, P>>;
 }
 
 impl<const P: usize, const C: usize> Encrypt for FixedNonceAesGcm<P, C> {
@@ -108,10 +112,6 @@ impl<const P: usize, const C: usize> Encrypt for FixedNonceAesGcm<P, C> {
                 .expect("Symmetric encryption is not allowed to fail."),
         )
     }
-}
-
-impl<const P: usize, const C: usize> DecryptionTypes for FixedNonceAesGcm<P, C> {
-    type DecryptedPlaintext = Option<Array<u8, P>>;
 }
 
 impl<const P: usize, const C: usize> Decrypt for FixedNonceAesGcm<P, C> {

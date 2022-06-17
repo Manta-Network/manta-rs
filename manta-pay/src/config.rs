@@ -644,7 +644,7 @@ impl ProofSystemInput<Group> for ProofSystem {
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct NotePlaintextMapping;
 
-impl encryption::convert::plaintext::ForwardType for NotePlaintextMapping {
+impl encryption::PlaintextType for NotePlaintextMapping {
     type Plaintext = Note;
 }
 
@@ -662,7 +662,7 @@ impl encryption::convert::plaintext::Forward for NotePlaintextMapping {
     }
 }
 
-impl encryption::convert::plaintext::ReverseType for NotePlaintextMapping {
+impl encryption::DecryptedPlaintextType for NotePlaintextMapping {
     type DecryptedPlaintext = Option<Note>;
 }
 

@@ -17,19 +17,13 @@
 //! Plaintext Conversion Primitives and Adapters
 
 use crate::encryption::{
-    CiphertextType, Decrypt, DecryptionKeyType, DecryptionTypes, Derive, Encrypt,
-    EncryptionKeyType, EncryptionTypes, HeaderType, PlaintextType,
+    CiphertextType, Decrypt, DecryptedPlaintextType, DecryptionKeyType, Derive, Encrypt,
+    EncryptionKeyType, HeaderType, PlaintextType, RandomnessType,
 };
 use core::marker::PhantomData;
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
-
-/// Forward Conversion Type
-pub trait ForwardType {
-    /// Plaintext Type
-    type Plaintext;
-}
 
 /// Forward Conversion
 ///
@@ -38,19 +32,13 @@ pub trait ForwardType {
 ///
 /// [`TargetPlaintext`]: Self::TargetPlaintext
 /// [`as_target`]: Self::as_target
-/// [`Plaintext`]: ForwardType::Plaintext
-pub trait Forward<COM = ()>: ForwardType {
+/// [`Plaintext`]: PlaintextType::Plaintext
+pub trait Forward<COM = ()>: PlaintextType {
     /// Target Plaintext Type
     type TargetPlaintext;
 
     /// Converts `source` into the [`TargetPlaintext`](Self::TargetPlaintext) type.
     fn as_target(source: &Self::Plaintext, compiler: &mut COM) -> Self::TargetPlaintext;
-}
-
-/// Reverse Conversion Type
-pub trait ReverseType {
-    /// Decrypted Plaintext Type
-    type DecryptedPlaintext;
 }
 
 /// Reverse Conversion
@@ -61,20 +49,21 @@ pub trait ReverseType {
 ///
 /// [`TargetDecryptedPlaintext`]: Self::TargetDecryptedPlaintext
 /// [`into_source`]: Self::into_source
-/// [`DecryptedPlaintext`]: ReverseType::DecryptedPlaintext
-pub trait Reverse<COM = ()>: ReverseType {
+/// [`DecryptedPlaintext`]: DecryptedPlaintextType::DecryptedPlaintext
+pub trait Reverse<COM = ()>: DecryptedPlaintextType {
     /// Target Decrypted Plaintext Type
     type TargetDecryptedPlaintext;
 
-    /// Converts `target` into the source [`DecryptedPlaintext`](ReverseType::DecryptedPlaintext)
-    /// type.
+    /// Converts `target` into the source [`DecryptedPlaintext`] type.
+    ///
+    /// [`DecryptedPlaintext`]: DecryptedPlaintextType::DecryptedPlaintext
     fn into_source(
         target: Self::TargetDecryptedPlaintext,
         compiler: &mut COM,
     ) -> Self::DecryptedPlaintext;
 }
 
-/// Plaintext Converting Encryption Scheme Adapter
+/// Plaintext-Converting Encryption Scheme Adapter
 ///
 /// In many applications we may have some structured plaintext data that feeds into a generic
 /// encryption scheme over some unstructured type (like encryption over bit-strings). This converter
@@ -142,6 +131,27 @@ where
     type DecryptionKey = E::DecryptionKey;
 }
 
+impl<E, C> PlaintextType for Converter<E, C>
+where
+    C: PlaintextType,
+{
+    type Plaintext = C::Plaintext;
+}
+
+impl<E, C> RandomnessType for Converter<E, C>
+where
+    E: RandomnessType,
+{
+    type Randomness = E::Randomness;
+}
+
+impl<E, C> DecryptedPlaintextType for Converter<E, C>
+where
+    C: DecryptedPlaintextType,
+{
+    type DecryptedPlaintext = C::DecryptedPlaintext;
+}
+
 impl<E, C, COM> Derive<COM> for Converter<E, C>
 where
     E: Derive<COM>,
@@ -154,22 +164,6 @@ where
     ) -> Self::EncryptionKey {
         self.base.derive(decryption_key, compiler)
     }
-}
-
-impl<E, C> PlaintextType for Converter<E, C>
-where
-    E: PlaintextType,
-    C: ForwardType,
-{
-    type Plaintext = C::Plaintext;
-}
-
-impl<E, C> EncryptionTypes for Converter<E, C>
-where
-    E: EncryptionTypes,
-    C: ForwardType,
-{
-    type Randomness = E::Randomness;
 }
 
 impl<E, C, COM> Encrypt<COM> for Converter<E, C>
@@ -194,14 +188,6 @@ where
             compiler,
         )
     }
-}
-
-impl<E, C> DecryptionTypes for Converter<E, C>
-where
-    E: DecryptionTypes,
-    C: ReverseType,
-{
-    type DecryptedPlaintext = C::DecryptedPlaintext;
 }
 
 impl<E, C, COM> Decrypt<COM> for Converter<E, C>

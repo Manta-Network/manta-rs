@@ -17,45 +17,46 @@
 //! Encryption and Decryption Key Conversion Primitives and Adapters
 
 use crate::encryption::{
-    CiphertextType, Decrypt, DecryptionKeyType, DecryptionTypes, Derive, Encrypt,
-    EncryptionKeyType, EncryptionTypes, HeaderType, PlaintextType,
+    CiphertextType, Decrypt, DecryptedPlaintextType, DecryptionKeyType, Derive, Encrypt,
+    EncryptionKeyType, HeaderType, PlaintextType, RandomnessType,
 };
 use core::marker::PhantomData;
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
 
-///
-pub trait ForwardType {
-    ///
-    type EncryptionKey;
-}
-
-///
-pub trait Forward<COM = ()>: ForwardType {
-    ///
+/// Encryption Key Conversion
+pub trait Encryption<COM = ()>: EncryptionKeyType {
+    /// Target Encryption Key Type
     type TargetEncryptionKey;
 
-    ///
+    /// Converts `source` into the [`TargetEncryptionKey`](Self::TargetEncryptionKey) type.
     fn as_target(source: &Self::EncryptionKey, compiler: &mut COM) -> Self::TargetEncryptionKey;
 }
 
-///
-pub trait ReverseType {
-    ///
-    type DecryptionKey;
-}
-
-///
-pub trait Reverse<COM = ()>: ReverseType {
-    ///
+/// Decryption Key Conversion
+pub trait Decryption<COM = ()>: DecryptionKeyType {
+    /// Target Decryption Key Type
     type TargetDecryptionKey;
 
-    ///
+    /// Converts `source` into the [`TargetDecryptionKey`](Self::TargetDecryptionKey) type.
     fn as_target(source: &Self::DecryptionKey, compiler: &mut COM) -> Self::TargetDecryptionKey;
 }
 
+/// Key-Converting Encryption Scheme Adapter
 ///
+/// In many applications we may have some encryption schemes that are layered on top of each other
+/// where one cipher generates a key for a base cipher. If the key spaces are not exactly equal, we
+/// need some mechanism to convert between them.
+///
+/// For example, instantiations of a [`hybrid`] encryption scheme will use the key-agreement scheme
+/// to generate a shared secret between the encryptor and the decryptor, which should be the
+/// underlying key for the base encryption scheme. However, in most cases, the key-agreement scheme
+/// has the wrong key-size for the base encryption (i.e. ECDH + AES), so we need a key-derivation
+/// function to convert the keys. This [`Converter`] type facilitates the conversion between these
+/// key spaces.
+///
+/// [`hybrid`]: crate::encryption::hybrid
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
@@ -104,16 +105,14 @@ where
 
 impl<E, C> EncryptionKeyType for Converter<E, C>
 where
-    E: EncryptionKeyType,
-    C: ForwardType,
+    C: EncryptionKeyType,
 {
     type EncryptionKey = C::EncryptionKey;
 }
 
 impl<E, C> DecryptionKeyType for Converter<E, C>
 where
-    E: DecryptionKeyType,
-    C: ReverseType,
+    C: DecryptionKeyType,
 {
     type DecryptionKey = C::DecryptionKey;
 }
@@ -125,18 +124,42 @@ where
     type Plaintext = E::Plaintext;
 }
 
-impl<E, C> EncryptionTypes for Converter<E, C>
+impl<E, C> RandomnessType for Converter<E, C>
 where
-    E: EncryptionTypes,
-    C: ForwardType,
+    E: RandomnessType,
 {
     type Randomness = E::Randomness;
+}
+
+impl<E, C> DecryptedPlaintextType for Converter<E, C>
+where
+    E: DecryptedPlaintextType,
+{
+    type DecryptedPlaintext = E::DecryptedPlaintext;
+}
+
+impl<E, C, COM> Derive<COM> for Converter<E, C>
+where
+    E: Derive<COM, DecryptionKey = C::DecryptionKey, EncryptionKey = C::EncryptionKey>,
+    C: DecryptionKeyType + EncryptionKeyType,
+{
+    /// For key-derivation, we don't assume any structure on the underlying keys that would allow
+    /// derivation, so we use the trivial structure where the converter's decryption key and
+    /// encryption key are the same as those as the base encryption scheme.
+    #[inline]
+    fn derive(
+        &self,
+        decryption_key: &Self::DecryptionKey,
+        compiler: &mut COM,
+    ) -> Self::EncryptionKey {
+        self.base.derive(decryption_key, compiler)
+    }
 }
 
 impl<E, C, COM> Encrypt<COM> for Converter<E, C>
 where
     E: Encrypt<COM>,
-    C: Forward<COM, TargetEncryptionKey = E::EncryptionKey>,
+    C: Encryption<COM, TargetEncryptionKey = E::EncryptionKey>,
 {
     #[inline]
     fn encrypt(
@@ -157,18 +180,10 @@ where
     }
 }
 
-impl<E, C> DecryptionTypes for Converter<E, C>
-where
-    E: DecryptionTypes,
-    C: ReverseType,
-{
-    type DecryptedPlaintext = E::DecryptedPlaintext;
-}
-
 impl<E, C, COM> Decrypt<COM> for Converter<E, C>
 where
     E: Decrypt<COM>,
-    C: Reverse<COM, TargetDecryptionKey = E::DecryptionKey>,
+    C: Decryption<COM, TargetDecryptionKey = E::DecryptionKey>,
 {
     #[inline]
     fn decrypt(

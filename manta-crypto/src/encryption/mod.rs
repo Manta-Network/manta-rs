@@ -37,7 +37,7 @@ pub mod hybrid;
 /// both encryption and decryption, only the [`Plaintext`] is encrypted. See [`EncryptionTypes`] for
 /// more details on types that are required for encryption.
 ///
-/// [`Randomness`]: EncryptionTypes::Randomness
+/// [`Randomness`]: RandomnessType::Randomness
 /// [`Plaintext`]: PlaintextType::Plaintext
 pub trait HeaderType {
     /// Header Type
@@ -106,7 +106,68 @@ where
     type DecryptionKey = T::DecryptionKey;
 }
 
-/// Decryption Key Derivation
+/// Plaintext
+///
+/// The core payload of the encryption/decryption protocol. All the information in the plaintext
+/// should be kept secret and not be deducible from the [`Ciphertext`]. For associated data that
+/// does not go in the [`Ciphertext`] use [`Header`] instead.
+///
+/// [`Ciphertext`]: CiphertextType::Ciphertext
+/// [`Header`]: HeaderType::Header
+pub trait PlaintextType {
+    /// Plaintext Type
+    type Plaintext;
+}
+
+impl<T> PlaintextType for &T
+where
+    T: PlaintextType,
+{
+    type Plaintext = T::Plaintext;
+}
+
+/// Randomness
+///
+/// The randomness type allows us to inject some extra randomness to hide repeated encryptions
+/// with the same key and same plaintext, independent of the nonce stored in the [`Header`]. In
+/// this case, note that [`Randomness`] is not available to the [`Decrypt::decrypt`] method.
+///
+/// [`Header`]: HeaderType::Header
+/// [`Randomness`]: Self::Randomness
+pub trait RandomnessType {
+    /// Randomness Type
+    type Randomness;
+}
+
+impl<T> RandomnessType for &T
+where
+    T: RandomnessType,
+{
+    type Randomness = T::Randomness;
+}
+
+/// Decrypted Plaintext
+///
+/// For decryption, we not only get out some data resembling the [`Plaintext`], but also
+/// authentication tags and other metadata in order to determine if the decryption succeeded if it
+/// is fallible. In general, we cannot assume that [`DecryptedPlaintext`] and [`Plaintext`] are the
+/// same type or if they are the same type, are the same value.
+///
+/// [`Plaintext`]: PlaintextType::Plaintext
+/// [`DecryptedPlaintext`]: Self::DecryptedPlaintext
+pub trait DecryptedPlaintextType {
+    /// Decrypted Plaintext Type
+    type DecryptedPlaintext;
+}
+
+impl<T> DecryptedPlaintextType for &T
+where
+    T: DecryptedPlaintextType,
+{
+    type DecryptedPlaintext = T::DecryptedPlaintext;
+}
+
+/// Encryption Key Derivation
 ///
 /// For protocols that can derive the [`EncryptionKey`] from the [`DecryptionKey`], this `trait` can
 /// be used to specify the derivation algorithm. The [`DecryptionKey`] should be kept secret
@@ -138,46 +199,17 @@ where
     }
 }
 
-/// Plaintext
-///
-/// The core payload of the encryption/decryption protocol. All the information in the plaintext
-/// should be kept secret and not be deducible from the [`Ciphertext`]. For associated data that
-/// does not go in the [`Ciphertext`] use [`Header`] instead.
-///
-/// [`Ciphertext`]: CiphertextType::Ciphertext
-/// [`Header`]: HeaderType::Header
-pub trait PlaintextType {
-    /// Plaintext Type
-    type Plaintext;
-}
-
-impl<T> PlaintextType for &T
-where
-    T: PlaintextType,
-{
-    type Plaintext = T::Plaintext;
-}
-
 /// Encryption Types
 ///
 /// This `trait` encapsulates all the types required for [`Encrypt::encrypt`].
-pub trait EncryptionTypes: CiphertextType + EncryptionKeyType + HeaderType + PlaintextType {
-    /// Randomness Type
-    ///
-    /// The randomness type allows us to inject some extra randomness to hide repeated encryptions
-    /// with the same key and same plaintext, independent of the nonce stored in the [`Header`]. In
-    /// this case, note that [`Randomness`] is not available to the [`Decrypt::decrypt`] method.
-    ///
-    /// [`Header`]: HeaderType::Header
-    /// [`Randomness`]: Self::Randomness
-    type Randomness;
+pub trait EncryptionTypes:
+    CiphertextType + EncryptionKeyType + HeaderType + PlaintextType + RandomnessType
+{
 }
 
-impl<T> EncryptionTypes for &T
-where
-    T: EncryptionTypes,
+impl<T> EncryptionTypes for T where
+    T: CiphertextType + EncryptionKeyType + HeaderType + PlaintextType + RandomnessType
 {
-    type Randomness = T::Randomness;
 }
 
 /// Encryption
@@ -231,24 +263,14 @@ where
 /// Decryption Types
 ///
 /// This `trait` encapsulates all the types required for [`Decrypt::decrypt`].
-pub trait DecryptionTypes: CiphertextType + DecryptionKeyType + HeaderType {
-    /// Decrypted Plaintext Type
-    ///
-    /// For decryption, we not only get out some data resembling the [`Plaintext`], but also
-    /// authentication tags and other metadata in order to determine if the decryption succeeded if
-    /// it is fallible. In general, we cannot assume that [`DecryptedPlaintext`] and [`Plaintext`]
-    /// are the same type or if they are the same type, are the same value.
-    ///
-    /// [`Plaintext`]: PlaintextType::Plaintext
-    /// [`DecryptedPlaintext`]: Self::DecryptedPlaintext
-    type DecryptedPlaintext;
+pub trait DecryptionTypes:
+    CiphertextType + DecryptedPlaintextType + DecryptionKeyType + HeaderType
+{
 }
 
-impl<T> DecryptionTypes for &T
-where
-    T: DecryptionTypes,
+impl<T> DecryptionTypes for T where
+    T: CiphertextType + DecryptedPlaintextType + DecryptionKeyType + HeaderType
 {
-    type DecryptedPlaintext = T::DecryptedPlaintext;
 }
 
 /// Decryption
