@@ -21,7 +21,7 @@ pub mod aes;
 /// Testing Suite
 #[cfg(test)]
 mod test {
-    use crate::config::{NoteEncryptionScheme, NoteSymmetricEncryptionScheme};
+    use crate::config::NoteSymmetricEncryptionScheme;
     use manta_crypto::{
         encryption,
         rand::{OsRng, Rand},
@@ -31,22 +31,20 @@ mod test {
     #[test]
     fn note_symmetric_encryption() {
         let mut rng = OsRng;
-        encryption::test::encryption::<NoteSymmetricEncryptionScheme>(
+        let key = rng.gen();
+        encryption::test::encryption::<NoteSymmetricEncryptionScheme, _>(
             &rng.gen(),
-            rng.gen_bytes(),
-            rng.gen(),
-        );
-    }
-
-    /// Tests if the hybrid encryption of [`Note`] decrypts properly.
-    #[test]
-    fn note_hybrid_encryption() {
-        let mut rng = OsRng;
-        encryption::hybrid::test::encryption::<NoteEncryptionScheme>(
+            &key,
+            &key,
+            &(),
+            &(),
             &rng.gen(),
-            &rng.gen(),
-            &rng.gen(),
-            rng.gen(),
+            |plaintext, decrypted_plaintext| {
+                assert_eq!(
+                    plaintext,
+                    &decrypted_plaintext.expect("Unable to decrypt ciphertext.")
+                );
+            },
         );
     }
 }

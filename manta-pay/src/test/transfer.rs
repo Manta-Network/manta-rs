@@ -38,7 +38,7 @@ fn sample_mint_context() {
     let mut rng = OsRng;
     let cs = Mint::unknown_constraints(FullParameters::new(&rng.gen(), &rng.gen()));
     println!("Mint: {:?}", cs.measure());
-    ProofSystem::generate_context(&(), cs, &mut rng).expect("Unable to generate Mint context.");
+    ProofSystem::compile(&(), cs, &mut rng).expect("Unable to generate Mint context.");
 }
 
 /// Tests the generation of proving/verifying contexts for [`PrivateTransfer`].
@@ -47,8 +47,7 @@ fn sample_private_transfer_context() {
     let mut rng = OsRng;
     let cs = PrivateTransfer::unknown_constraints(FullParameters::new(&rng.gen(), &rng.gen()));
     println!("PrivateTransfer: {:?}", cs.measure());
-    ProofSystem::generate_context(&(), cs, &mut rng)
-        .expect("Unable to generate PrivateTransfer context.");
+    ProofSystem::compile(&(), cs, &mut rng).expect("Unable to generate PrivateTransfer context.");
 }
 
 /// Tests the generation of proving/verifying contexts for [`Reclaim`].
@@ -57,7 +56,7 @@ fn sample_reclaim_context() {
     let mut rng = OsRng;
     let cs = Reclaim::unknown_constraints(FullParameters::new(&rng.gen(), &rng.gen()));
     println!("Reclaim: {:?}", cs.measure());
-    ProofSystem::generate_context(&(), cs, &mut rng).expect("Unable to generate Reclaim context.");
+    ProofSystem::compile(&(), cs, &mut rng).expect("Unable to generate Reclaim context.");
 }
 
 /// Tests the generation of a [`Mint`].

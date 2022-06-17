@@ -719,6 +719,10 @@ pub type NoteSymmetricEncryptionScheme = encryption::convert::key::Converter<
     NoteEncryptionKDF,
 >;
 
+/// Note Encryption Scheme
+pub type NoteEncryptionScheme =
+    encryption::hybrid::Hybrid<KeyAgreementScheme, NoteSymmetricEncryptionScheme>;
+
 /// Base Configuration
 pub struct Config;
 
