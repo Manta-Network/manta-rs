@@ -530,8 +530,8 @@ where
     fn swap(bit: &Boolean<F>, lhs: &Self, rhs: &Self, compiler: &mut R1CS<F>) -> (Self, Self) {
         let _ = compiler;
         (
-            conditionally_select(bit, lhs, rhs),
             conditionally_select(bit, rhs, lhs),
+            conditionally_select(bit, lhs, rhs),
         )
     }
 }
