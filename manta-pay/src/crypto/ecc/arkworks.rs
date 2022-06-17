@@ -26,7 +26,6 @@ use core::marker::PhantomData;
 use manta_crypto::{
     algebra,
     constraint::{self, Allocate, Allocator, Constant, Public, Secret, Variable},
-    key::kdf,
     rand::{RngCore, Sample},
 };
 use manta_util::codec;
@@ -117,6 +116,17 @@ pub struct Group<C>(
 )
 where
     C: ProjectiveCurve;
+
+impl<C> Group<C>
+where
+    C: ProjectiveCurve,
+{
+    /// Converts `self` into its serialized representation.
+    #[inline]
+    pub fn as_bytes(&self) -> Vec<u8> {
+        affine_point_as_bytes::<C>(&self.0)
+    }
+}
 
 impl<C> codec::Decode for Group<C>
 where
@@ -221,18 +231,6 @@ where
         Self::Identity::type_info()
     }
 }
-
-/* TODO:
-impl<C> kdf::AsBytes for Group<C>
-where
-    C: ProjectiveCurve,
-{
-    #[inline]
-    fn as_bytes(&self) -> Vec<u8> {
-        affine_point_as_bytes::<C>(&self.0)
-    }
-}
-*/
 
 impl<C> algebra::Group for Group<C>
 where

@@ -16,9 +16,12 @@
 
 //! Encryption and Decryption Key Conversion Primitives and Adapters
 
-use crate::encryption::{
-    CiphertextType, Decrypt, DecryptedPlaintextType, DecryptionKeyType, Derive, Encrypt,
-    EncryptionKeyType, HeaderType, PlaintextType, RandomnessType,
+use crate::{
+    encryption::{
+        CiphertextType, Decrypt, DecryptedPlaintextType, DecryptionKeyType, Derive, Encrypt,
+        EncryptionKeyType, HeaderType, PlaintextType, RandomnessType,
+    },
+    rand::{Rand, RngCore, Sample},
 };
 use core::marker::PhantomData;
 
@@ -199,5 +202,18 @@ where
             ciphertext,
             compiler,
         )
+    }
+}
+
+impl<E, C, D> Sample<D> for Converter<E, C>
+where
+    E: Sample<D>,
+{
+    #[inline]
+    fn sample<R>(distribution: D, rng: &mut R) -> Self
+    where
+        R: RngCore + ?Sized,
+    {
+        Self::new(rng.sample(distribution))
     }
 }

@@ -26,50 +26,12 @@ use crate::{
         EncryptedMessage, EncryptionKeyType, HeaderType, PlaintextType, RandomnessType,
     },
     key,
+    rand::{Rand, RngCore, Sample},
 };
 use core::{fmt::Debug, hash::Hash};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
-
-/// Hybrid Encryption Scheme
-#[cfg_attr(
-    feature = "serde",
-    derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
-)]
-#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
-pub struct Hybrid<K, E> {
-    /// Key Agreement Scheme
-    pub key_agreement_scheme: K,
-
-    /// Base Encryption Scheme
-    pub encryption_scheme: E,
-}
-
-impl<K, E> Hybrid<K, E> {
-    /// Builds a new [`Hybrid`] encryption scheme from `key_agreement_scheme` and a base
-    /// `encryption_scheme`.
-    #[inline]
-    pub fn new(key_agreement_scheme: K, encryption_scheme: E) -> Self {
-        Self {
-            key_agreement_scheme,
-            encryption_scheme,
-        }
-    }
-}
-
-impl<K, E> EncryptedMessage<Hybrid<K, E>>
-where
-    K: key::agreement::Types,
-    E: CiphertextType + HeaderType,
-{
-    /// Returns the ephemeral public key associated to `self`, stored in its ciphertext.
-    #[inline]
-    pub fn ephemeral_public_key(&self) -> &K::PublicKey {
-        &self.ciphertext.ephemeral_public_key
-    }
-}
 
 /// Encryption Key
 pub type EncryptionKey<K> = <K as key::agreement::Types>::PublicKey;
@@ -132,6 +94,22 @@ where
     }
 }
 
+impl<K, E, DS, DR> Sample<(DS, DR)> for Randomness<K, E>
+where
+    K: key::agreement::Types,
+    E: RandomnessType,
+    K::SecretKey: Sample<DS>,
+    E::Randomness: Sample<DR>,
+{
+    #[inline]
+    fn sample<R>(distribution: (DS, DR), rng: &mut R) -> Self
+    where
+        R: RngCore + ?Sized,
+    {
+        Self::new(rng.sample(distribution.0), rng.sample(distribution.1))
+    }
+}
+
 /// Full Ciphertext
 #[cfg_attr(
     feature = "serde",
@@ -172,6 +150,61 @@ where
             ephemeral_public_key,
             ciphertext,
         }
+    }
+}
+
+impl<K, E, DP, DC> Sample<(DP, DC)> for Ciphertext<K, E>
+where
+    K: key::agreement::Types,
+    E: CiphertextType,
+    K::PublicKey: Sample<DP>,
+    E::Ciphertext: Sample<DC>,
+{
+    #[inline]
+    fn sample<R>(distribution: (DP, DC), rng: &mut R) -> Self
+    where
+        R: RngCore + ?Sized,
+    {
+        Self::new(rng.sample(distribution.0), rng.sample(distribution.1))
+    }
+}
+
+/// Hybrid Encryption Scheme
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub struct Hybrid<K, E> {
+    /// Key Agreement Scheme
+    pub key_agreement_scheme: K,
+
+    /// Base Encryption Scheme
+    pub encryption_scheme: E,
+}
+
+impl<K, E> Hybrid<K, E> {
+    /// Builds a new [`Hybrid`] encryption scheme from `key_agreement_scheme` and a base
+    /// `encryption_scheme`.
+    #[inline]
+    pub fn new(key_agreement_scheme: K, encryption_scheme: E) -> Self {
+        Self {
+            key_agreement_scheme,
+            encryption_scheme,
+        }
+    }
+}
+
+impl<K, E> EncryptedMessage<Hybrid<K, E>>
+where
+    K: key::agreement::Types,
+    E: CiphertextType + HeaderType,
+{
+    /// Returns the ephemeral public key associated to `self`, stored in its ciphertext.
+    #[inline]
+    pub fn ephemeral_public_key(&self) -> &K::PublicKey {
+        &self.ciphertext.ephemeral_public_key
     }
 }
 
@@ -296,5 +329,19 @@ where
             &ciphertext.ciphertext,
             compiler,
         )
+    }
+}
+
+impl<K, E, DK, DE> Sample<(DK, DE)> for Hybrid<K, E>
+where
+    K: Sample<DK>,
+    E: Sample<DE>,
+{
+    #[inline]
+    fn sample<R>(distribution: (DK, DE), rng: &mut R) -> Self
+    where
+        R: RngCore + ?Sized,
+    {
+        Self::new(rng.sample(distribution.0), rng.sample(distribution.1))
     }
 }

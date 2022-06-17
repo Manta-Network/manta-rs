@@ -20,6 +20,7 @@
 //! set of behavior `trait`s which require those types to be implemented. See the [`Encrypt`] and
 //! [`Decrypt`] for more.
 
+use crate::rand::{Rand, RngCore, Sample};
 use core::{fmt::Debug, hash::Hash};
 
 #[cfg(feature = "serde")]
@@ -319,7 +320,7 @@ where
 )]
 pub struct Message<E>
 where
-    E: HeaderType + PlaintextType + ?Sized,
+    E: HeaderType + PlaintextType,
 {
     /// Header
     pub header: E::Header,
@@ -330,7 +331,7 @@ where
 
 impl<E> Message<E>
 where
-    E: HeaderType + PlaintextType + ?Sized,
+    E: HeaderType + PlaintextType,
 {
     /// Builds a new [`Message`] from `header` and `plaintext`.
     #[inline]
@@ -351,6 +352,21 @@ where
         E: Encrypt<COM>,
     {
         cipher.encrypt_into(key, randomness, self.header, &self.plaintext, compiler)
+    }
+}
+
+impl<E, H, P> Sample<(H, P)> for Message<E>
+where
+    E: HeaderType + PlaintextType,
+    E::Header: Sample<H>,
+    E::Plaintext: Sample<P>,
+{
+    #[inline]
+    fn sample<R>(distribution: (H, P), rng: &mut R) -> Self
+    where
+        R: RngCore + ?Sized,
+    {
+        Self::new(rng.sample(distribution.0), rng.sample(distribution.1))
     }
 }
 
@@ -403,6 +419,21 @@ where
         E: Decrypt<COM>,
     {
         cipher.decrypt(key, &self.header, &self.ciphertext, compiler)
+    }
+}
+
+impl<E, H, C> Sample<(H, C)> for EncryptedMessage<E>
+where
+    E: HeaderType + CiphertextType,
+    E::Header: Sample<H>,
+    E::Ciphertext: Sample<C>,
+{
+    #[inline]
+    fn sample<R>(distribution: (H, C), rng: &mut R) -> Self
+    where
+        R: RngCore + ?Sized,
+    {
+        Self::new(rng.sample(distribution.0), rng.sample(distribution.1))
     }
 }
 

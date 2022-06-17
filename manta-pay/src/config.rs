@@ -44,7 +44,8 @@ use manta_crypto::{
     },
     encryption,
     hash::ArrayHashFunction,
-    key, merkle_tree,
+    key::{self, kdf::KeyDerivationFunction},
+    merkle_tree,
 };
 use manta_util::{
     codec::{Decode, DecodeError, Encode, Read, Write},
@@ -681,10 +682,41 @@ impl encryption::convert::plaintext::Reverse for NotePlaintextMapping {
     }
 }
 
+/// Note Encryption KDF
+pub struct NoteEncryptionKDF;
+
+impl encryption::EncryptionKeyType for NoteEncryptionKDF {
+    type EncryptionKey = Group;
+}
+
+impl encryption::DecryptionKeyType for NoteEncryptionKDF {
+    type DecryptionKey = Group;
+}
+
+impl encryption::convert::key::Encryption for NoteEncryptionKDF {
+    type TargetEncryptionKey = [u8; 32];
+
+    #[inline]
+    fn as_target(source: &Self::EncryptionKey, compiler: &mut ()) -> Self::TargetEncryptionKey {
+        Blake2sKdf.derive(&source.as_bytes(), compiler)
+    }
+}
+impl encryption::convert::key::Decryption for NoteEncryptionKDF {
+    type TargetDecryptionKey = [u8; 32];
+
+    #[inline]
+    fn as_target(source: &Self::DecryptionKey, compiler: &mut ()) -> Self::TargetDecryptionKey {
+        Blake2sKdf.derive(&source.as_bytes(), compiler)
+    }
+}
+
 /// Note Symmetric Encryption Scheme
-pub type NoteSymmetricEncryptionScheme = encryption::convert::plaintext::Converter<
-    FixedNonceAesGcm<{ Note::SIZE }, { aes::ciphertext_size(Note::SIZE) }>,
-    NotePlaintextMapping,
+pub type NoteSymmetricEncryptionScheme = encryption::convert::key::Converter<
+    encryption::convert::plaintext::Converter<
+        FixedNonceAesGcm<{ Note::SIZE }, { aes::ciphertext_size(Note::SIZE) }>,
+        NotePlaintextMapping,
+    >,
+    NoteEncryptionKDF,
 >;
 
 /// Base Configuration
