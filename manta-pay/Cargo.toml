@@ -86,7 +86,7 @@ simulation = [
 std = ["manta-accounting/std", "manta-util/std"]
 
 # Testing Frameworks
-test = ["manta-accounting/test", "manta-crypto/test"]
+test = ["anyhow", "manta-accounting/test", "manta-crypto/test", "tempfile"]
 
 # Wallet
 wallet = ["bip32", "manta-crypto/getrandom", "std"]
@@ -104,6 +104,7 @@ websocket = [
 
 [dependencies]
 aes-gcm = { version = "0.9.4", default-features = false, features = ["aes", "alloc"] }
+anyhow = { version = "1.0.57", optional = true, default-features = false }
 ark-bls12-381 = { version = "0.3.0", optional = true, default-features = false, features = ["curve"] }
 ark-ec = { version = "0.3.0", optional = true, default-features = false }
 ark-ed-on-bls12-381 = { version = "0.3.0", optional = true, default-features = false, features = ["r1cs"] }
@@ -131,6 +132,7 @@ reqwest = { version = "0.11.9", optional = true, default-features = false, featu
 scale-codec = { package = "parity-scale-codec", version = "3.1.2", optional = true, default-features = false, features = ["derive", "max-encoded-len"] }
 scale-info = { version = "2.1.2", optional = true, default-features = false, features = ["derive"] }
 serde_json = { version = "1.0.79", optional = true, default-features = false, features = ["alloc"] }
+tempfile = { version = "3.3.0", optional = true, default-features = false }
 tide = { version = "0.16.0", optional = true, default-features = false, features = ["h1-server"] }
 tokio = { version = "1.18.2", optional = true, default-features = false }
 tokio-tungstenite = { version = "0.17.1", optional = true, default-features = false, features = ["native-tls"] }
@@ -139,5 +141,5 @@ ws_stream_wasm = { version = "0.7.3", optional = true, default-features = false 
 
 [dev-dependencies]
 manta-crypto = { path = "../manta-crypto", default-features = false, features = ["getrandom"] }
+manta-parameters = { path = "../manta-parameters", default-features = false, features = ["download"] }
 manta-pay = { path = ".", default-features = false, features = ["groth16", "scale", "scale-std", "std", "test"] }
-tempfile = { version = "3.3.0", default-features = false }
