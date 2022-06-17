@@ -18,7 +18,8 @@
 //! Checks if the current circuit implementation is compatible with precomputed parameters.
 
 use crate::{
-    test::payment::{prove_mint, prove_private_transfer, prove_reclaim}, parameters::load_parameters,
+    parameters::load_parameters,
+    test::payment::{prove_mint, prove_private_transfer, prove_reclaim},
 };
 use manta_accounting::transfer::test::assert_valid_proof;
 use manta_crypto::rand::{OsRng, Rand};

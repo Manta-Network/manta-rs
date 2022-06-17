@@ -24,19 +24,14 @@ use manta_crypto::rand::{Rand, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 
 #[cfg(all(feature = "download", feature = "std"))]
-#[cfg_attr(doc_cfg, doc(all(feature = "download", feature = "std")))]
-use crate::config::{
-    NoteEncryptionScheme, ProvingContext, UtxoCommitmentScheme, VerifyingContext,
-    VoidNumberCommitmentScheme,
+use {
+    crate::config::{
+        NoteEncryptionScheme, ProvingContext, UtxoCommitmentScheme, VerifyingContext,
+        VoidNumberCommitmentScheme,
+    },
+    manta_util::codec::{Decode, IoReader},
+    std::{fs::File, path::Path},
 };
-
-#[cfg(all(feature = "download", feature = "std"))]
-#[cfg_attr(doc_cfg, doc(all(feature = "download", feature = "std")))]
-use manta_util::codec::{Decode, IoReader};
-
-#[cfg(all(feature = "download", feature = "std"))]
-#[cfg_attr(doc_cfg, doc(all(feature = "download", feature = "std")))]
-use std::{fs::File, path::Path};
 
 /// Parameter Generation Seed
 ///
