@@ -18,6 +18,9 @@
 
 use crate::IsType;
 
+#[cfg(feature = "serde")]
+use crate::serde::{Deserialize, Serialize};
+
 pub mod finder;
 
 #[cfg(feature = "alloc")]
@@ -121,3 +124,26 @@ pub trait IterRef<'i, I = &'i Self> {
 pub trait Iterable: for<'i> IterRef<'i> {}
 
 impl<T> Iterable for T where T: for<'i> IterRef<'i> + ?Sized {}
+
+/// For-Each Collector
+///
+/// In the same way that `() : FromIterator<()>` which just calls [`Iterator::for_each`] internally,
+/// this `struct` does the same but for `FromIterator<T>` for all `T`.
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "crate::serde", deny_unknown_fields)
+)]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct ForEach;
+
+impl<T> FromIterator<T> for ForEach {
+    #[inline]
+    fn from_iter<I>(iter: I) -> Self
+    where
+        I: IntoIterator<Item = T>,
+    {
+        iter.into_iter().for_each(|_| {});
+        Self
+    }
+}

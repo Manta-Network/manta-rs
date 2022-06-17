@@ -18,30 +18,25 @@
 
 use crate::permutation::PseudorandomPermutation;
 
-/// Absorb Input Writer
-///
-/// This `trait` is used to input a single element of data into the state of the sponge. For
-/// multiple elements, the sponge needs to run [`absorb_all`](Sponge::absorb_all) to run the
-/// permutation between elements.
-pub trait Absorb<P, COM = ()>: Sized
+/// Sponge Reader
+pub trait Read<P, COM = ()>: Sized
 where
     P: PseudorandomPermutation<COM>,
 {
-    /// Writes `self` into the `state` of the [`Sponge`].
-    fn write(&self, state: &mut P::Domain, compiler: &mut COM);
+    /// Reads an element of type `Self` from the `state`.
+    fn read(state: &P::Domain, compiler: &mut COM) -> Self;
 }
 
-/// Squeeze Output Reader
-///
-/// This `trait` is used to output a single element of data from the state of the sponge. For
-/// multiple elements, the sponge needs to run [`squeeze`](Sponge::squeeze) multiple times to run
-/// the permutation between elements.
-pub trait Squeeze<P, COM = ()>: Sized
+/// Sponge Writer
+pub trait Write<P, COM = ()>
 where
     P: PseudorandomPermutation<COM>,
 {
-    /// Reads a value of type `Self` from the `state` of the [`Sponge`].
-    fn read(state: &P::Domain, compiler: &mut COM) -> Self;
+    /// Output Type
+    type Output;
+
+    /// Writes `self` to the `state`, returning some output data computed from `self` and `state`.
+    fn write(&self, state: &mut P::Domain, compiler: &mut COM) -> Self::Output;
 }
 
 /// Permutation Sponge
@@ -76,62 +71,38 @@ where
 
     /// Updates `self` by absorbing writes into the state with `input`.
     #[inline]
-    pub fn absorb<A>(&mut self, input: &A, compiler: &mut COM)
+    pub fn absorb<W>(&mut self, input: &W, compiler: &mut COM) -> W::Output
     where
-        A: Absorb<P, COM>,
+        W: Write<P, COM>,
     {
-        input.write(self.state, compiler);
-        self.permutation.permute(self.state, compiler);
-    }
-
-    /// Absorbs all the items in the `input` iterator.
-    #[inline]
-    pub fn absorb_all<'a, A, I>(&mut self, input: I, compiler: &mut COM)
-    where
-        A: 'a + Absorb<P, COM>,
-        I: IntoIterator<Item = &'a A>,
-    {
-        input
-            .into_iter()
-            .for_each(|item| self.absorb(item, compiler))
-    }
-
-    /// Returns the next values from `self` by squeezing reads of the values from the state.
-    #[inline]
-    pub fn squeeze<S>(&mut self, compiler: &mut COM) -> S
-    where
-        S: Squeeze<P, COM>,
-    {
-        let out = S::read(self.state, compiler);
+        let out = input.write(self.state, compiler);
         self.permutation.permute(self.state, compiler);
         out
     }
 
-    /// Duplexes the permutation state by first modifying the state on `input`, running one
-    /// permutation, and then extracting the state.
+    /// Absorbs all the items in the `input` iterator, collecting all output items from writes into
+    /// the state. See [`Write::write`] for more.
     #[inline]
-    pub fn duplex<A, S>(&mut self, input: &A, compiler: &mut COM) -> S
+    pub fn absorb_all<'w, W, I, C>(&mut self, input: I, compiler: &mut COM) -> C
     where
-        A: Absorb<P, COM>,
-        S: Squeeze<P, COM>,
-    {
-        input.write(self.state, compiler);
-        self.permutation.permute(self.state, compiler);
-        S::read(self.state, compiler)
-    }
-
-    /// Duplexes the permutation state against all the items in the `input`.
-    #[inline]
-    pub fn duplex_all<'a, A, I, S, C>(&mut self, input: I, compiler: &mut COM) -> C
-    where
-        A: 'a + Absorb<P, COM>,
-        I: IntoIterator<Item = &'a A>,
-        S: Squeeze<P, COM>,
-        C: FromIterator<S>,
+        W: 'w + Write<P, COM>,
+        I: IntoIterator<Item = &'w W>,
+        C: FromIterator<W::Output>,
     {
         input
             .into_iter()
-            .map(|item| self.duplex(item, compiler))
+            .map(|item| self.absorb(item, compiler))
             .collect()
+    }
+
+    /// Returns the next values from `self` by squeezing reads of the values from the state.
+    #[inline]
+    pub fn squeeze<R>(&mut self, compiler: &mut COM) -> R
+    where
+        R: Read<P, COM>,
+    {
+        let out = R::read(self.state, compiler);
+        self.permutation.permute(self.state, compiler);
+        out
     }
 }
