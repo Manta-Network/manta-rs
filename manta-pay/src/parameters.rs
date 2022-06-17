@@ -23,7 +23,7 @@ use crate::config::{
 use manta_crypto::rand::{Rand, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 
-#[cfg(all(feature = "download", feature = "std"))]
+#[cfg(feature = "download")]
 use {
     crate::config::{
         NoteEncryptionScheme, ProvingContext, UtxoCommitmentScheme, VerifyingContext,
@@ -102,8 +102,8 @@ pub fn generate() -> Result<
 }
 
 /// Loads parameters from the `manta-parameters`, using `directory` as a temporary directory to store files.
-#[cfg(all(feature = "download", feature = "std"))]
-#[cfg_attr(doc_cfg, doc(cfg(all(feature = "download", feature = "std"))))]
+#[cfg(feature = "download")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "download")))]
 #[inline]
 pub fn load_parameters(
     directory: &Path,
