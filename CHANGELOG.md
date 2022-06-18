@@ -5,9 +5,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 ### Added
-- [\#90](https://github.com/Manta-Network/manta-rs/pull/90) Add Binary Compatibility Test for `manta-pay`
-- [\#102](https://github.com/Manta-Network/manta-rs/pull/102) Add concrete parameters to `manta-parameters`
-- [\#106](https://github.com/Manta-Network/manta-rs/pull/106) Add `load_parameter` as a library function
 
 ### Changed
 
@@ -16,9 +13,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Removed
 
 ### Fixed
-- [\#103](https://github.com/Manta-Network/manta-rs/pull/103) Remove download dependency from `manta-benchmark`
 
 ### Security
+
+## [0.5.1] - 2022-06-17
+### Added
+- [\#90](https://github.com/Manta-Network/manta-rs/pull/90) Add Binary Compatibility Test for `manta-pay`
+- [\#102](https://github.com/Manta-Network/manta-rs/pull/102) Add concrete parameters to `manta-parameters`
+- [\#106](https://github.com/Manta-Network/manta-rs/pull/106) Add `load_parameter` as a library function
+
+### Fixed
+- [\#103](https://github.com/Manta-Network/manta-rs/pull/103) Remove download dependency from `manta-benchmark`
 
 ## [0.5.0] - 2022-06-09
 ### Added
@@ -55,6 +60,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Security
 - [\#50](https://github.com/Manta-Network/manta-rs/pull/50) Remove Trapdoor from Circuit
 
-[Unreleased]: https://github.com/Manta-Network/manta-rs/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/Manta-Network/manta-rs/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/Manta-Network/manta-rs/releases/tag/v0.5.1
 [0.5.0]: https://github.com/Manta-Network/manta-rs/releases/tag/v0.5.0
 [0.4.0]: https://github.com/Manta-Network/manta-rs/releases/tag/v0.4.0
