@@ -16,7 +16,7 @@
 
 //! Poseidon Permutation Implementation
 
-use crate::crypto::poseidon::{Permutation, Specification, State};
+use crate::crypto::poseidon::{Field, Permutation, Specification, State};
 use alloc::{boxed::Box, vec::Vec};
 use core::{fmt::Debug, hash::Hash, iter, marker::PhantomData, mem, slice};
 use manta_crypto::{
@@ -32,7 +32,9 @@ use manta_crypto::{
 use manta_util::serde::{Deserialize, Serialize};
 
 ///
-pub struct SetupBlock<S, COM = ()>(PhantomData<(S, COM)>);
+pub struct SetupBlock<S, COM = ()>(PhantomData<(S, COM)>)
+where
+    S: Specification<COM>;
 
 impl<S, COM> Write<Permutation<S, COM>, COM> for SetupBlock<S, COM>
 where
@@ -47,31 +49,46 @@ where
 }
 
 ///
-pub struct PlaintextBlock<S, COM = ()>(PhantomData<(S, COM)>);
+pub struct PlaintextBlock<S, COM = ()>(Box<[S::Field]>)
+where
+    S: Specification<COM>;
 
 impl<S, COM> Write<Permutation<S, COM>, COM> for PlaintextBlock<S, COM>
 where
     S: Specification<COM>,
+    S::Field: Clone,
 {
     type Output = CiphertextBlock<S, COM>;
 
     #[inline]
     fn write(&self, state: &mut State<S, COM>, compiler: &mut COM) -> Self::Output {
-        todo!()
+        for (i, elem) in state.iter_mut().skip(1).enumerate() {
+            *elem = S::add(elem, &self.0[i], compiler);
+        }
+        CiphertextBlock(state.iter().skip(1).cloned().collect())
     }
 }
 
 ///
-pub struct CiphertextBlock<S, COM = ()>(PhantomData<(S, COM)>);
+pub struct CiphertextBlock<S, COM = ()>(Box<[S::Field]>)
+where
+    S: Specification<COM>;
 
 impl<S, COM> Write<Permutation<S, COM>, COM> for CiphertextBlock<S, COM>
 where
     S: Specification<COM>,
+    S::Field: Clone,
 {
     type Output = PlaintextBlock<S, COM>;
 
     #[inline]
     fn write(&self, state: &mut State<S, COM>, compiler: &mut COM) -> Self::Output {
+        /* TODO:
+        for (i, elem) in state.iter_mut().skip(1).enumerate() {
+            *elem = self.0[i].sub(elem, compiler);
+        }
+        PlaintextBlock(state.iter().skip(1).cloned().collect())
+        */
         todo!()
     }
 }
@@ -126,8 +143,8 @@ where
     S: Specification<COM>,
     S::Field: Clone,
 {
-    type Key = ();
-    type Header = ();
+    type Key = Vec<S::Field>;
+    type Header = Vec<S::Field>;
     type SetupBlock = SetupBlock<S, COM>;
     type PlaintextBlock = PlaintextBlock<S, COM>;
     type CiphertextBlock = CiphertextBlock<S, COM>;

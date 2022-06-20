@@ -56,16 +56,16 @@ pub trait Field {
     fn one() -> Self;
 
     /// Adds two field elements together.
-    fn add(lhs: &Self, rhs: &Self) -> Self;
+    fn add(&self, rhs: &Self) -> Self;
 
     /// Adds the `rhs` field element to the `self` field element, storing the value in `self`.
     fn add_assign(&mut self, rhs: &Self);
 
     /// Multiplies two field elements together.
-    fn mul(lhs: &Self, rhs: &Self) -> Self;
+    fn mul(&self, rhs: &Self) -> Self;
 
     /// Subtracts `rhs` from `lhs`.
-    fn sub(lhs: &Self, rhs: &Self) -> Self;
+    fn sub(&self, rhs: &Self) -> Self;
 
     /// Computes the multiplicative inverse of a field element.
     fn inverse(&self) -> Option<Self>

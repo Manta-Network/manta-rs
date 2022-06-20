@@ -70,8 +70,8 @@ where
     }
 
     #[inline]
-    fn add(lhs: &Self, rhs: &Self) -> Self {
-        Self(lhs.0 + rhs.0)
+    fn add(&self, rhs: &Self) -> Self {
+        Self(self.0 + rhs.0)
     }
 
     #[inline]
@@ -80,13 +80,13 @@ where
     }
 
     #[inline]
-    fn sub(lhs: &Self, rhs: &Self) -> Self {
-        Self(lhs.0 - rhs.0)
+    fn sub(&self, rhs: &Self) -> Self {
+        Self(self.0 - rhs.0)
     }
 
     #[inline]
-    fn mul(lhs: &Self, rhs: &Self) -> Self {
-        Self(lhs.0 * rhs.0)
+    fn mul(&self, rhs: &Self) -> Self {
+        Self(self.0 * rhs.0)
     }
 
     #[inline]
