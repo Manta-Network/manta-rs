@@ -35,11 +35,8 @@ use core::marker::PhantomData;
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
 
-/// Duplex Sponge Configuration
-///
-/// This `trait` configures the behavior of the [`Duplexer`] for duplex-sponge authenticated
-/// encryption (with associated data) using a [`PseudorandomPermutation`].
-pub trait Configuration<P, COM = ()>
+/// Duplex Sponge Encryption Types
+pub trait Types<P, COM = ()>
 where
     P: PseudorandomPermutation<COM>,
 {
@@ -66,10 +63,13 @@ where
 
     /// Authentication Tag Type
     type Tag: Read<P, COM>;
+}
 
-    /// Tag Verification Type
-    type Verification;
-
+/// Duplex Sponge Initialization and Setup
+pub trait Setup<P, COM = ()>: Types<P, COM>
+where
+    P: PseudorandomPermutation<COM>,
+{
     /// Initializes the [`Sponge`] state for the beginning of the cipher.
     fn initialize(&self, compiler: &mut COM) -> P::Domain;
 
@@ -81,6 +81,15 @@ where
         header: &Self::Header,
         compiler: &mut COM,
     ) -> Vec<Self::SetupBlock>;
+}
+
+/// Duplex Sponge Tag Verification
+pub trait Verify<P, COM = ()>: Types<P, COM>
+where
+    P: PseudorandomPermutation<COM>,
+{
+    /// Tag Verification Type
+    type Verification;
 
     /// Verifies that the `encryption_tag` returned by encryption matches the `decryption_tag`
     /// returned by decryption, returning a verification type.
@@ -118,7 +127,7 @@ pub struct Ciphertext<T, C> {
 pub struct Duplexer<P, C, COM = ()>
 where
     P: PseudorandomPermutation<COM>,
-    C: Configuration<P, COM>,
+    C: Types<P, COM>,
 {
     /// Permutation
     permutation: P,
@@ -133,7 +142,7 @@ where
 impl<P, C, COM> Duplexer<P, C, COM>
 where
     P: PseudorandomPermutation<COM>,
-    C: Configuration<P, COM>,
+    C: Types<P, COM>,
 {
     /// Builds a new [`Duplexer`] authenticated encryption scheme from `permutation`, and
     /// `configuration`.
@@ -148,7 +157,10 @@ where
 
     /// Prepares the duplex sponge by absorbing the `key` and `header`.
     #[inline]
-    fn setup(&self, key: &C::Key, header: &C::Header, compiler: &mut COM) -> P::Domain {
+    fn setup(&self, key: &C::Key, header: &C::Header, compiler: &mut COM) -> P::Domain
+    where
+        C: Setup<P, COM>,
+    {
         let mut state = self.configuration.initialize(compiler);
         Sponge::new(&self.permutation, &mut state)
             .absorb_all::<_, _, ()>(&self.configuration.setup(key, header, compiler), compiler);
@@ -164,7 +176,10 @@ where
         header: &C::Header,
         plaintext: &[C::PlaintextBlock],
         compiler: &mut COM,
-    ) -> (C::Tag, Vec<C::CiphertextBlock>) {
+    ) -> (C::Tag, Vec<C::CiphertextBlock>)
+    where
+        C: Setup<P, COM>,
+    {
         let mut state = self.setup(key, header, compiler);
         let ciphertext = Sponge::new(&self.permutation, &mut state).absorb_all(plaintext, compiler);
         (C::Tag::read(&state, compiler), ciphertext)
@@ -179,7 +194,10 @@ where
         header: &C::Header,
         ciphertext: &[C::CiphertextBlock],
         compiler: &mut COM,
-    ) -> (C::Tag, Vec<C::PlaintextBlock>) {
+    ) -> (C::Tag, Vec<C::PlaintextBlock>)
+    where
+        C: Setup<P, COM>,
+    {
         let mut state = self.setup(key, header, compiler);
         let plaintext = Sponge::new(&self.permutation, &mut state).absorb_all(ciphertext, compiler);
         (C::Tag::read(&state, compiler), plaintext)
@@ -189,7 +207,7 @@ where
 impl<P, C, COM> HeaderType for Duplexer<P, C, COM>
 where
     P: PseudorandomPermutation<COM>,
-    C: Configuration<P, COM>,
+    C: Types<P, COM>,
 {
     type Header = C::Header;
 }
@@ -197,7 +215,7 @@ where
 impl<P, C, COM> CiphertextType for Duplexer<P, C, COM>
 where
     P: PseudorandomPermutation<COM>,
-    C: Configuration<P, COM>,
+    C: Types<P, COM>,
 {
     type Ciphertext = Ciphertext<C::Tag, Vec<C::CiphertextBlock>>;
 }
@@ -205,7 +223,7 @@ where
 impl<P, C, COM> EncryptionKeyType for Duplexer<P, C, COM>
 where
     P: PseudorandomPermutation<COM>,
-    C: Configuration<P, COM>,
+    C: Types<P, COM>,
 {
     type EncryptionKey = C::Key;
 }
@@ -213,7 +231,7 @@ where
 impl<P, C, COM> DecryptionKeyType for Duplexer<P, C, COM>
 where
     P: PseudorandomPermutation<COM>,
-    C: Configuration<P, COM>,
+    C: Types<P, COM>,
 {
     type DecryptionKey = C::Key;
 }
@@ -221,7 +239,7 @@ where
 impl<P, C, COM> PlaintextType for Duplexer<P, C, COM>
 where
     P: PseudorandomPermutation<COM>,
-    C: Configuration<P, COM>,
+    C: Types<P, COM>,
 {
     type Plaintext = Vec<C::PlaintextBlock>;
 }
@@ -229,7 +247,7 @@ where
 impl<P, C, COM> RandomnessType for Duplexer<P, C, COM>
 where
     P: PseudorandomPermutation<COM>,
-    C: Configuration<P, COM>,
+    C: Types<P, COM>,
 {
     /// Empty Randomness
     ///
@@ -241,7 +259,7 @@ where
 impl<P, C, COM> DecryptedPlaintextType for Duplexer<P, C, COM>
 where
     P: PseudorandomPermutation<COM>,
-    C: Configuration<P, COM>,
+    C: Verify<P, COM>,
 {
     type DecryptedPlaintext = (C::Verification, Vec<C::PlaintextBlock>);
 }
@@ -249,7 +267,7 @@ where
 impl<P, C, COM> Encrypt<COM> for Duplexer<P, C, COM>
 where
     P: PseudorandomPermutation<COM>,
-    C: Configuration<P, COM>,
+    C: Setup<P, COM>,
 {
     #[inline]
     fn encrypt(
@@ -272,7 +290,7 @@ where
 impl<P, C, COM> Decrypt<COM> for Duplexer<P, C, COM>
 where
     P: PseudorandomPermutation<COM>,
-    C: Configuration<P, COM>,
+    C: Setup<P, COM> + Verify<P, COM>,
 {
     #[inline]
     fn decrypt(
