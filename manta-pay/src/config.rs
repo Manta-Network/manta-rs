@@ -20,8 +20,8 @@ use crate::crypto::{
     constraint::arkworks::{field_element_as_bytes, groth16, Boolean, Fp, FpVar, R1CS},
     ecc,
     encryption::aes::{self, FixedNonceAesGcm},
-    hash::poseidon::compat as poseidon,
     key::Blake2sKdf,
+    poseidon::compat as poseidon,
 };
 use alloc::vec::Vec;
 use ark_ff::ToConstraintField;

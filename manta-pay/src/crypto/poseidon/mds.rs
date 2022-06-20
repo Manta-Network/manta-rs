@@ -16,7 +16,7 @@
 
 //! MDS Data Generation
 
-use crate::crypto::hash::poseidon::{
+use crate::crypto::poseidon::{
     matrix::{Matrix, MatrixOperations, SquareMatrix},
     Field, FieldGeneration,
 };
@@ -264,7 +264,7 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::crypto::{constraint::arkworks::Fp, hash::poseidon::matrix::Matrix};
+    use crate::crypto::{constraint::arkworks::Fp, poseidon::matrix::Matrix};
     use ark_bls12_381::Fr;
     use ark_ff::{field_new, UniformRand};
     use manta_crypto::rand::OsRng;

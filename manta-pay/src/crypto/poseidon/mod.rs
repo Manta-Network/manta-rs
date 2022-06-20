@@ -14,16 +14,17 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Poseidon Hash Implementation
+//! Poseidon Permutation Implementation
 
-use crate::crypto::hash::poseidon::{
+use crate::crypto::poseidon::{
     matrix::MatrixOperations, mds::MdsMatrices, round_constants::generate_round_constants,
 };
-use alloc::vec::Vec;
-use core::{fmt::Debug, hash::Hash, iter, mem};
+use alloc::{boxed::Box, vec::Vec};
+use core::{fmt::Debug, hash::Hash, iter, mem, slice};
 use manta_crypto::{
     hash::ArrayHashFunction,
-    rand::{RngCore, Sample},
+    permutation::PseudorandomPermutation,
+    rand::{Rand, RngCore, Sample},
 };
 use manta_util::{
     codec::{Decode, DecodeError, Encode, Read, Write},
@@ -93,18 +94,19 @@ pub trait Specification<COM = ()> {
     /// Field Type used for Constant Parameters
     type ParameterField;
 
+    /// Width of the Permutation
+    ///
+    /// This number is the total number `t` of field elements in the state which is `F^t`.
+    const WIDTH: usize;
+
     /// Number of Partial Rounds
     const PARTIAL_ROUNDS: usize;
 
     /// Number of Full Rounds
     ///
-    /// The total number of full rounds in Poseidon Hash, including the first set
-    /// of full rounds and then the second set after the partial rounds.
+    /// The total number of full rounds in the Poseidon permutation, including the first set of full
+    /// rounds and then the second set after the partial rounds.
     const FULL_ROUNDS: usize;
-
-    /// Returns the domain tag for `arity`. We use different domain tags for different applications
-    /// to defend against rainbow table attacks.
-    fn domain_tag(arity: usize, compiler: &mut COM) -> Self::Field;
 
     /// Adds two field elements together.
     fn add(lhs: &Self::Field, rhs: &Self::Field, compiler: &mut COM) -> Self::Field;
@@ -128,19 +130,44 @@ pub trait Specification<COM = ()> {
     fn apply_sbox(point: &mut Self::Field, compiler: &mut COM);
 }
 
-/// Poseidon State Vector
-type State<S, COM> = Vec<<S as Specification<COM>>::Field>;
+/// Poseidon Internal State
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "S::Field: Clone"),
+    Debug(bound = "S::Field: Debug"),
+    Eq(bound = "S::Field: Eq"),
+    Hash(bound = "S::Field: Hash"),
+    PartialEq(bound = "S::Field: PartialEq")
+)]
+pub struct State<S, COM = ()>(Box<[S::Field]>)
+where
+    S: Specification<COM>;
 
-/// Returns the total number of rounds in a Poseidon permutation.
-#[inline]
-pub fn rounds<S, COM>() -> usize
+impl<S, COM> State<S, COM>
 where
     S: Specification<COM>,
 {
-    S::FULL_ROUNDS + S::PARTIAL_ROUNDS
+    /// Builds a new [`State`] from `state`.
+    #[inline]
+    pub fn new(state: Box<[S::Field]>) -> Self {
+        assert_eq!(state.len(), S::WIDTH);
+        Self(state)
+    }
+
+    /// Returns a slice iterator over the state.
+    #[inline]
+    pub fn iter(&self) -> slice::Iter<S::Field> {
+        self.0.iter()
+    }
+
+    /// Returns a mutable slice iterator over the state.
+    #[inline]
+    pub fn iter_mut(&mut self) -> slice::IterMut<S::Field> {
+        self.0.iter_mut()
+    }
 }
 
-/// Poseidon Hasher
+/// Poseidon Permutation
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
@@ -161,24 +188,21 @@ where
     Hash(bound = "S::ParameterField: Hash"),
     PartialEq(bound = "S::ParameterField: PartialEq")
 )]
-pub struct Hasher<S, const ARITY: usize, COM = ()>
+pub struct Permutation<S, COM = ()>
 where
     S: Specification<COM>,
 {
     /// Additive Round Keys
-    additive_round_keys: Vec<S::ParameterField>,
+    additive_round_keys: Box<[S::ParameterField]>,
 
     /// MDS Matrix
-    mds_matrix: Vec<S::ParameterField>,
+    mds_matrix: Box<[S::ParameterField]>,
 }
 
-impl<S, const ARITY: usize, COM> Hasher<S, ARITY, COM>
+impl<S, COM> Permutation<S, COM>
 where
     S: Specification<COM>,
 {
-    /// Width of the State Buffer
-    pub const WIDTH: usize = ARITY + 1;
-
     /// Half Number of Full Rounds
     ///
     /// Poseidon Hash first has [`HALF_FULL_ROUNDS`]-many full rounds in the beginning,
@@ -193,12 +217,12 @@ where
     pub const ROUNDS: usize = S::FULL_ROUNDS + S::PARTIAL_ROUNDS;
 
     /// Number of Entries in the MDS Matrix
-    pub const MDS_MATRIX_SIZE: usize = Self::WIDTH * Self::WIDTH;
+    pub const MDS_MATRIX_SIZE: usize = S::WIDTH * S::WIDTH;
 
     /// Total Number of Additive Rounds Keys
-    pub const ADDITIVE_ROUND_KEYS_COUNT: usize = Self::ROUNDS * Self::WIDTH;
+    pub const ADDITIVE_ROUND_KEYS_COUNT: usize = Self::ROUNDS * S::WIDTH;
 
-    /// Builds a new [`Hasher`] from `additive_round_keys` and `mds_matrix`.
+    /// Builds a new [`Permutation`] from `additive_round_keys` and `mds_matrix`.
     ///
     /// # Panics
     ///
@@ -206,8 +230,8 @@ where
     /// [`Specification`].
     #[inline]
     pub fn new(
-        additive_round_keys: Vec<S::ParameterField>,
-        mds_matrix: Vec<S::ParameterField>,
+        additive_round_keys: Box<[S::ParameterField]>,
+        mds_matrix: Box<[S::ParameterField]>,
     ) -> Self {
         assert_eq!(
             additive_round_keys.len(),
@@ -222,12 +246,12 @@ where
         Self::new_unchecked(additive_round_keys, mds_matrix)
     }
 
-    /// Builds a new [`Hasher`] from `additive_round_keys` and `mds_matrix` without
+    /// Builds a new [`Permutation`] from `additive_round_keys` and `mds_matrix` without
     /// checking their sizes.
     #[inline]
     fn new_unchecked(
-        additive_round_keys: Vec<S::ParameterField>,
-        mds_matrix: Vec<S::ParameterField>,
+        additive_round_keys: Box<[S::ParameterField]>,
+        mds_matrix: Box<[S::ParameterField]>,
     ) -> Self {
         Self {
             additive_round_keys,
@@ -237,18 +261,16 @@ where
 
     /// Returns the additive keys for the given `round`.
     #[inline]
-    fn additive_keys(&self, round: usize) -> &[S::ParameterField] {
-        let width = Self::WIDTH;
-        let start = round * width;
-        &self.additive_round_keys[start..start + width]
+    pub fn additive_keys(&self, round: usize) -> &[S::ParameterField] {
+        let start = round * S::WIDTH;
+        &self.additive_round_keys[start..start + S::WIDTH]
     }
 
     /// Computes the MDS matrix multiplication against the `state`.
     #[inline]
-    fn mds_matrix_multiply(&self, state: &mut State<S, COM>, compiler: &mut COM) {
-        let width = Self::WIDTH;
-        let mut next = Vec::with_capacity(width);
-        for i in 0..width {
+    pub fn mds_matrix_multiply(&self, state: &mut State<S, COM>, compiler: &mut COM) {
+        let mut next = Vec::with_capacity(S::WIDTH);
+        for i in 0..S::WIDTH {
             // NOTE: clippy false-positive: Without `collect`, the two closures in `map` and
             //       `reduce` will have simultaneous `&mut` access to `compiler`. Adding `collect`
             //       allows `map` to be done before `reduce`.
@@ -256,7 +278,7 @@ where
             let linear_combination = state
                 .iter()
                 .enumerate()
-                .map(|(j, elem)| S::mul_const(elem, &self.mds_matrix[width * i + j], compiler))
+                .map(|(j, elem)| S::mul_const(elem, &self.mds_matrix[S::WIDTH * i + j], compiler))
                 .collect::<Vec<_>>();
             next.push(
                 linear_combination
@@ -265,28 +287,12 @@ where
                     .unwrap(),
             );
         }
-        mem::swap(&mut next, state);
-    }
-
-    /// Computes the first round of the Poseidon permutation from `trapdoor` and `input`.
-    #[inline]
-    fn first_round(&self, input: [&S::Field; ARITY], compiler: &mut COM) -> State<S, COM> {
-        let mut state = Vec::with_capacity(Self::WIDTH);
-        for (i, point) in iter::once(&S::domain_tag(ARITY, compiler))
-            .chain(input)
-            .enumerate()
-        {
-            let mut elem = S::add_const(point, &self.additive_round_keys[i], compiler);
-            S::apply_sbox(&mut elem, compiler);
-            state.push(elem);
-        }
-        self.mds_matrix_multiply(&mut state, compiler);
-        state
+        mem::swap(&mut next.into_boxed_slice(), &mut state.0);
     }
 
     /// Computes a full round at the given `round` index on the internal permutation `state`.
     #[inline]
-    fn full_round(&self, round: usize, state: &mut State<S, COM>, compiler: &mut COM) {
+    pub fn full_round(&self, round: usize, state: &mut State<S, COM>, compiler: &mut COM) {
         let keys = self.additive_keys(round);
         for (i, elem) in state.iter_mut().enumerate() {
             S::add_const_assign(elem, &keys[i], compiler);
@@ -297,72 +303,53 @@ where
 
     /// Computes a partial round at the given `round` index on the internal permutation `state`.
     #[inline]
-    fn partial_round(&self, round: usize, state: &mut State<S, COM>, compiler: &mut COM) {
+    pub fn partial_round(&self, round: usize, state: &mut State<S, COM>, compiler: &mut COM) {
         let keys = self.additive_keys(round);
         for (i, elem) in state.iter_mut().enumerate() {
             S::add_const_assign(elem, &keys[i], compiler);
         }
-        S::apply_sbox(&mut state[0], compiler);
+        S::apply_sbox(&mut state.0[0], compiler);
         self.mds_matrix_multiply(state, compiler);
     }
 
-    /// Computes the hash over `input` in the given `compiler` and returns the untruncated state.
+    /// Computes the full permutation without the first round.
     #[inline]
-    fn hash_untruncated(&self, input: [&S::Field; ARITY], compiler: &mut COM) -> Vec<S::Field> {
-        let mut state = self.first_round(input, compiler);
+    fn permute_without_first_round(&self, state: &mut State<S, COM>, compiler: &mut COM) {
         for round in 1..Self::HALF_FULL_ROUNDS {
-            self.full_round(round, &mut state, compiler);
+            self.full_round(round, state, compiler);
         }
         for round in Self::HALF_FULL_ROUNDS..(Self::HALF_FULL_ROUNDS + S::PARTIAL_ROUNDS) {
-            self.partial_round(round, &mut state, compiler);
+            self.partial_round(round, state, compiler);
         }
         for round in
             (Self::HALF_FULL_ROUNDS + S::PARTIAL_ROUNDS)..(S::FULL_ROUNDS + S::PARTIAL_ROUNDS)
         {
-            self.full_round(round, &mut state, compiler);
+            self.full_round(round, state, compiler);
         }
+    }
+
+    /// Computes the first round borrowing the `input` and `domain_tag` returning the [`State`]
+    /// after the first round. This method does not check that `N + 1 = S::WIDTH`.
+    #[inline]
+    fn first_round_with_domain_tag_unchecked<const N: usize>(
+        &self,
+        domain_tag: &S::Field,
+        input: [&S::Field; N],
+        compiler: &mut COM,
+    ) -> State<S, COM> {
+        let mut state = Vec::with_capacity(S::WIDTH);
+        for (i, point) in iter::once(domain_tag).chain(input).enumerate() {
+            let mut elem = S::add_const(point, &self.additive_round_keys[i], compiler);
+            S::apply_sbox(&mut elem, compiler);
+            state.push(elem);
+        }
+        let mut state = State(state.into_boxed_slice());
+        self.mds_matrix_multiply(&mut state, compiler);
         state
     }
 }
 
-impl<S, const ARITY: usize, COM> ArrayHashFunction<ARITY, COM> for Hasher<S, ARITY, COM>
-where
-    S: Specification<COM>,
-{
-    type Input = S::Field;
-    type Output = S::Field;
-
-    #[inline]
-    fn hash(&self, input: [&Self::Input; ARITY], compiler: &mut COM) -> Self::Output {
-        self.hash_untruncated(input, compiler).take_first()
-    }
-}
-
-impl<D, S, const ARITY: usize, COM> Sample<D> for Hasher<S, ARITY, COM>
-where
-    D: Clone,
-    S: Specification<COM>,
-    S::ParameterField: Field + FieldGeneration + PartialEq + Sample<D>,
-{
-    /// Samples random Poseidon parameters.
-    #[inline]
-    fn sample<R>(distribution: D, rng: &mut R) -> Self
-    where
-        R: RngCore + ?Sized,
-    {
-        let _ = (distribution, rng);
-        Self {
-            additive_round_keys: generate_round_constants(
-                Self::WIDTH,
-                S::FULL_ROUNDS,
-                S::PARTIAL_ROUNDS,
-            ),
-            mds_matrix: MdsMatrices::generate_mds(Self::WIDTH).to_row_major(),
-        }
-    }
-}
-
-impl<S, const ARITY: usize, COM> Decode for Hasher<S, ARITY, COM>
+impl<S, COM> Decode for Permutation<S, COM>
 where
     S: Specification<COM>,
     S::ParameterField: Decode,
@@ -385,7 +372,7 @@ where
     }
 }
 
-impl<S, const ARITY: usize, COM> Encode for Hasher<S, ARITY, COM>
+impl<S, COM> Encode for Permutation<S, COM>
 where
     S: Specification<COM>,
     S::ParameterField: Encode,
@@ -395,23 +382,177 @@ where
     where
         W: Write,
     {
-        for key in &self.additive_round_keys {
+        for key in self.additive_round_keys.iter() {
             key.encode(&mut writer)?;
         }
-        for entry in &self.mds_matrix {
+        for entry in self.mds_matrix.iter() {
             entry.encode(&mut writer)?;
         }
         Ok(())
     }
 }
 
-/// Poseidon Hash Input Type.
-pub type Input<S, COM, const ARITY: usize> =
-    <Hasher<S, ARITY, COM> as ArrayHashFunction<ARITY, COM>>::Input;
+impl<S, COM> PseudorandomPermutation<COM> for Permutation<S, COM>
+where
+    S: Specification<COM>,
+{
+    type Domain = State<S, COM>;
 
-/// Poseidon Commitment Output Type.
-pub type Output<S, COM, const ARITY: usize> =
-    <Hasher<S, ARITY, COM> as ArrayHashFunction<ARITY, COM>>::Output;
+    #[inline]
+    fn permute(&self, state: &mut Self::Domain, compiler: &mut COM) {
+        self.full_round(0, state, compiler);
+        self.permute_without_first_round(state, compiler);
+    }
+}
+
+impl<D, S, COM> Sample<D> for Permutation<S, COM>
+where
+    D: Clone,
+    S: Specification<COM>,
+    S::ParameterField: Field + FieldGeneration + PartialEq + Sample<D>,
+{
+    /// Samples random Poseidon parameters.
+    #[inline]
+    fn sample<R>(distribution: D, rng: &mut R) -> Self
+    where
+        R: RngCore + ?Sized,
+    {
+        let _ = (distribution, rng);
+        Self {
+            additive_round_keys: generate_round_constants(
+                S::WIDTH,
+                S::FULL_ROUNDS,
+                S::PARTIAL_ROUNDS,
+            )
+            .into_boxed_slice(),
+            mds_matrix: MdsMatrices::generate_mds(S::WIDTH)
+                .to_row_major()
+                .into_boxed_slice(),
+        }
+    }
+}
+
+/// Poseidon Hasher
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "Permutation<S, COM>: Deserialize<'de>, S::Field: Deserialize<'de>",
+            serialize = "Permutation<S, COM>: Serialize, S::Field: Serialize"
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "Permutation<S, COM>: Clone, S::Field: Clone"),
+    Debug(bound = "Permutation<S, COM>: Debug, S::Field: Debug"),
+    Eq(bound = "Permutation<S, COM>: Eq, S::Field: Eq"),
+    Hash(bound = "Permutation<S, COM>: Hash, S::Field: Hash"),
+    PartialEq(bound = "Permutation<S, COM>: PartialEq, S::Field: PartialEq")
+)]
+pub struct Hasher<S, const ARITY: usize, COM = ()>
+where
+    S: Specification<COM>,
+{
+    /// Poseidon Permutation
+    permutation: Permutation<S, COM>,
+
+    /// Domain Tag
+    domain_tag: S::Field,
+}
+
+impl<S, const ARITY: usize, COM> Hasher<S, ARITY, COM>
+where
+    S: Specification<COM>,
+{
+    /// Builds a new [`Hasher`] over `permutation` and `domain_tag`.
+    #[inline]
+    pub fn new(permutation: Permutation<S, COM>, domain_tag: S::Field) -> Self {
+        assert_eq!(ARITY + 1, S::WIDTH);
+        Self {
+            permutation,
+            domain_tag,
+        }
+    }
+}
+
+impl<S, const ARITY: usize, COM> ArrayHashFunction<ARITY, COM> for Hasher<S, ARITY, COM>
+where
+    S: Specification<COM>,
+{
+    type Input = S::Field;
+    type Output = S::Field;
+
+    #[inline]
+    fn hash(&self, input: [&Self::Input; ARITY], compiler: &mut COM) -> Self::Output {
+        let mut state = self.permutation.first_round_with_domain_tag_unchecked(
+            &self.domain_tag,
+            input,
+            compiler,
+        );
+        self.permutation
+            .permute_without_first_round(&mut state, compiler);
+        state.0.into_vec().take_first()
+    }
+}
+
+impl<S, const ARITY: usize, COM> Decode for Hasher<S, ARITY, COM>
+where
+    S: Specification<COM>,
+    S::Field: Decode,
+    S::ParameterField: Decode<Error = <S::Field as Decode>::Error>,
+{
+    type Error = <S::Field as Decode>::Error;
+
+    #[inline]
+    fn decode<R>(mut reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
+    where
+        R: Read,
+    {
+        Ok(Self::new(
+            Decode::decode(&mut reader)?,
+            Decode::decode(&mut reader)?,
+        ))
+    }
+}
+
+impl<S, const ARITY: usize, COM> Encode for Hasher<S, ARITY, COM>
+where
+    S: Specification<COM>,
+    S::Field: Encode,
+    S::ParameterField: Encode,
+{
+    #[inline]
+    fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
+    where
+        W: Write,
+    {
+        self.permutation.encode(&mut writer)?;
+        self.domain_tag.encode(&mut writer)?;
+        Ok(())
+    }
+}
+
+impl<D, S, const ARITY: usize, COM> Sample<D> for Hasher<S, ARITY, COM>
+where
+    D: Clone,
+    S: Specification<COM>,
+    S::Field: Sample<D>,
+    S::ParameterField: Field + FieldGeneration + PartialEq + Sample<D>,
+{
+    /// Samples random Poseidon parameters.
+    #[inline]
+    fn sample<R>(distribution: D, rng: &mut R) -> Self
+    where
+        R: RngCore + ?Sized,
+    {
+        // FIXME: Use a proper domain tag sampling method.
+        Self::new(rng.sample(distribution.clone()), rng.sample(distribution))
+    }
+}
 
 /// Arkworks Backend.
 #[cfg(feature = "arkworks")]
@@ -419,10 +560,10 @@ pub type Output<S, COM, const ARITY: usize> =
 pub mod arkworks {
     use crate::crypto::{
         constraint::arkworks::{Fp, FpVar, R1CS},
-        hash::poseidon::FieldGeneration,
+        poseidon::FieldGeneration,
     };
     use ark_ff::{BigInteger, Field, FpParameters, PrimeField};
-    use ark_r1cs_std::{alloc::AllocVar, fields::FieldVar};
+    use ark_r1cs_std::fields::FieldVar;
     use manta_crypto::constraint::Constant;
 
     /// Compiler Type.
@@ -433,14 +574,19 @@ pub mod arkworks {
         /// Field Type
         type Field: PrimeField;
 
-        /// Number of Full Rounds
+        /// Width of the Permutation
         ///
-        /// The total number of full rounds in Poseidon Hash, including the first set
-        /// of full rounds and then the second set after the partial rounds.
-        const FULL_ROUNDS: usize;
+        /// This number is the total number `t` of field elements in the state which is `F^t`.
+        const WIDTH: usize;
 
         /// Number of Partial Rounds
         const PARTIAL_ROUNDS: usize;
+
+        /// Number of Full Rounds
+        ///
+        /// The total number of full rounds in the Poseidon permutation, including the first set of
+        /// full rounds and then the second set after the partial rounds.
+        const FULL_ROUNDS: usize;
 
         /// S-BOX Exponenet
         const SBOX_EXPONENT: u64;
@@ -515,13 +661,9 @@ pub mod arkworks {
         type Field = Fp<S::Field>;
         type ParameterField = Fp<S::Field>;
 
-        const PARTIAL_ROUNDS: usize = S::PARTIAL_ROUNDS;
+        const WIDTH: usize = S::WIDTH;
         const FULL_ROUNDS: usize = S::FULL_ROUNDS;
-
-        #[inline]
-        fn domain_tag(arity: usize, _: &mut ()) -> Self::Field {
-            Fp(S::Field::from(((1 << arity) - 1) as u64))
-        }
+        const PARTIAL_ROUNDS: usize = S::PARTIAL_ROUNDS;
 
         #[inline]
         fn add(lhs: &Self::Field, rhs: &Self::Field, _: &mut ()) -> Self::Field {
@@ -566,16 +708,9 @@ pub mod arkworks {
         type Field = FpVar<S::Field>;
         type ParameterField = Fp<S::Field>;
 
-        const PARTIAL_ROUNDS: usize = S::PARTIAL_ROUNDS;
+        const WIDTH: usize = S::WIDTH;
         const FULL_ROUNDS: usize = S::FULL_ROUNDS;
-
-        #[inline]
-        fn domain_tag(arity: usize, compiler: &mut Compiler<S>) -> Self::Field {
-            FpVar::new_witness(compiler.cs.clone(), || {
-                Ok(S::Field::from(((1 << arity) - 1) as u64))
-            })
-            .unwrap()
-        }
+        const PARTIAL_ROUNDS: usize = S::PARTIAL_ROUNDS;
 
         #[inline]
         fn add(lhs: &Self::Field, rhs: &Self::Field, _: &mut Compiler<S>) -> Self::Field {
@@ -627,11 +762,11 @@ pub mod arkworks {
         }
     }
 
-    impl<S, const ARITY: usize> Constant<Compiler<S>> for super::Hasher<S, ARITY, Compiler<S>>
+    impl<S> Constant<Compiler<S>> for super::Permutation<S, Compiler<S>>
     where
         S: Specification,
     {
-        type Type = super::Hasher<S, ARITY>;
+        type Type = super::Permutation<S>;
 
         #[inline]
         fn new_constant(this: &Self::Type, compiler: &mut Compiler<S>) -> Self {
