@@ -135,7 +135,7 @@ pub mod array {
 
 /// Security Assumptions
 ///
-/// The following outline some standard security assumptions for hash functions. These security
+/// The following outlines some standard security assumptions for hash functions. These security
 /// properties can be attached to general types that don't exactly conform to the hash function
 /// `trait`s to describe the same cryptographic assumptions or guarantees given by the type.
 pub mod security {

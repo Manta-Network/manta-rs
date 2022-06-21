@@ -16,39 +16,87 @@
 
 //! Poseidon Permutation Implementation
 
-use crate::crypto::poseidon::{Field, Permutation, Specification, State};
+use crate::crypto::poseidon::{Permutation, Specification, State};
 use alloc::{boxed::Box, vec::Vec};
-use core::{fmt::Debug, hash::Hash, iter, marker::PhantomData, mem, slice};
-use manta_crypto::{
-    permutation::{
-        duplex::{Setup, Types, Verify},
-        sponge::{Read, Write},
-        PseudorandomPermutation,
-    },
-    rand::{Rand, RngCore, Sample},
+use core::{fmt::Debug, hash::Hash};
+use manta_crypto::permutation::{
+    duplex::{self, Setup, Types, Verify},
+    sponge::{Read, Write},
 };
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
 
-///
-pub struct SetupBlock<S, COM = ()>(PhantomData<(S, COM)>)
+/// Block Element
+pub trait BlockElement<COM = ()> {
+    /// Adds `self` to `rhs`.
+    fn add(&self, rhs: &Self, compiler: &mut COM) -> Self;
+
+    /// Subtracts `rhs` from `self`.
+    fn sub(&self, rhs: &Self, compiler: &mut COM) -> Self;
+}
+
+/// Setup Block
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "S::Field: Deserialize<'de>",
+            serialize = "S::Field: Serialize"
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "S::Field: Clone"),
+    Debug(bound = "S::Field: Debug"),
+    Eq(bound = "S::Field: Eq"),
+    Hash(bound = "S::Field: Hash"),
+    PartialEq(bound = "S::Field: PartialEq")
+)]
+pub struct SetupBlock<S, COM = ()>(Box<[S::Field]>)
 where
     S: Specification<COM>;
 
 impl<S, COM> Write<Permutation<S, COM>, COM> for SetupBlock<S, COM>
 where
     S: Specification<COM>,
+    S::Field: BlockElement<COM>,
 {
     type Output = ();
 
     #[inline]
     fn write(&self, state: &mut State<S, COM>, compiler: &mut COM) -> Self::Output {
-        todo!()
+        for (i, elem) in state.iter_mut().skip(1).enumerate() {
+            *elem = elem.add(&self.0[i], compiler);
+        }
     }
 }
 
-///
+/// Plaintext Block
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "S::Field: Deserialize<'de>",
+            serialize = "S::Field: Serialize"
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "S::Field: Clone"),
+    Debug(bound = "S::Field: Debug"),
+    Eq(bound = "S::Field: Eq"),
+    Hash(bound = "S::Field: Hash"),
+    PartialEq(bound = "S::Field: PartialEq")
+)]
 pub struct PlaintextBlock<S, COM = ()>(Box<[S::Field]>)
 where
     S: Specification<COM>;
@@ -56,20 +104,40 @@ where
 impl<S, COM> Write<Permutation<S, COM>, COM> for PlaintextBlock<S, COM>
 where
     S: Specification<COM>,
-    S::Field: Clone,
+    S::Field: Clone + BlockElement<COM>,
 {
     type Output = CiphertextBlock<S, COM>;
 
     #[inline]
     fn write(&self, state: &mut State<S, COM>, compiler: &mut COM) -> Self::Output {
         for (i, elem) in state.iter_mut().skip(1).enumerate() {
-            *elem = S::add(elem, &self.0[i], compiler);
+            *elem = elem.add(&self.0[i], compiler);
         }
         CiphertextBlock(state.iter().skip(1).cloned().collect())
     }
 }
 
-///
+/// Ciphertext Block
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "S::Field: Deserialize<'de>",
+            serialize = "S::Field: Serialize"
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "S::Field: Clone"),
+    Debug(bound = "S::Field: Debug"),
+    Eq(bound = "S::Field: Eq"),
+    Hash(bound = "S::Field: Hash"),
+    PartialEq(bound = "S::Field: PartialEq")
+)]
 pub struct CiphertextBlock<S, COM = ()>(Box<[S::Field]>)
 where
     S: Specification<COM>;
@@ -77,23 +145,20 @@ where
 impl<S, COM> Write<Permutation<S, COM>, COM> for CiphertextBlock<S, COM>
 where
     S: Specification<COM>,
-    S::Field: Clone,
+    S::Field: Clone + BlockElement<COM>,
 {
     type Output = PlaintextBlock<S, COM>;
 
     #[inline]
     fn write(&self, state: &mut State<S, COM>, compiler: &mut COM) -> Self::Output {
-        /* TODO:
         for (i, elem) in state.iter_mut().skip(1).enumerate() {
             *elem = self.0[i].sub(elem, compiler);
         }
         PlaintextBlock(state.iter().skip(1).cloned().collect())
-        */
-        todo!()
     }
 }
 
-/// Tag
+/// Authentication Tag
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
@@ -125,23 +190,44 @@ where
 {
     #[inline]
     fn read(state: &State<S, COM>, compiler: &mut COM) -> Self {
-        Self(state.0[0].clone())
+        let _ = compiler;
+        Self(state.0[1].clone())
     }
 }
 
-///
+/// Encryption Configuration
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "S::Field: Deserialize<'de>",
+            serialize = "S::Field: Serialize"
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "S::Field: Clone"),
+    Debug(bound = "S::Field: Debug"),
+    Eq(bound = "S::Field: Eq"),
+    Hash(bound = "S::Field: Hash"),
+    PartialEq(bound = "S::Field: PartialEq")
+)]
 pub struct Encryption<S, COM = ()>
 where
     S: Specification<COM>,
 {
-    ///
+    /// Initial State
     pub initial_state: State<S, COM>,
 }
 
 impl<S, COM> Types<Permutation<S, COM>, COM> for Encryption<S, COM>
 where
     S: Specification<COM>,
-    S::Field: Clone,
+    S::Field: Clone + BlockElement<COM>,
 {
     type Key = Vec<S::Field>;
     type Header = Vec<S::Field>;
@@ -154,10 +240,11 @@ where
 impl<S, COM> Setup<Permutation<S, COM>, COM> for Encryption<S, COM>
 where
     S: Specification<COM>,
-    S::Field: Clone,
+    S::Field: Clone + Default + BlockElement<COM>,
 {
     #[inline]
     fn initialize(&self, compiler: &mut COM) -> State<S, COM> {
+        let _ = compiler;
         self.initial_state.clone()
     }
 
@@ -168,14 +255,37 @@ where
         header: &Self::Header,
         compiler: &mut COM,
     ) -> Vec<Self::SetupBlock> {
-        todo!()
+        let _ = compiler;
+        let mut blocks = Vec::<Vec<_>>::with_capacity((key.len() + header.len()) / (S::WIDTH - 1));
+        for elem in key.iter().chain(header).cloned() {
+            match blocks.last_mut() {
+                Some(block) => match S::WIDTH - block.len() {
+                    1 => blocks.push(vec![elem]),
+                    2 => {
+                        block.push(elem);
+                        blocks.push(vec![]);
+                    }
+                    _ => block.push(elem),
+                },
+                _ => blocks.push(vec![elem]),
+            }
+        }
+        if let Some(last) = blocks.last_mut() {
+            if !last.is_empty() {
+                last.resize_with(S::WIDTH - 1, Default::default);
+            }
+        }
+        blocks
+            .into_iter()
+            .map(|b| SetupBlock(b.into_boxed_slice()))
+            .collect()
     }
 }
 
 impl<S> Verify<Permutation<S>> for Encryption<S>
 where
     S: Specification,
-    S::Field: Clone + PartialEq,
+    S::Field: Clone + PartialEq + BlockElement,
 {
     type Verification = bool;
 
@@ -189,3 +299,6 @@ where
         encryption_tag == decryption_tag
     }
 }
+
+/// Encryption Duplexer
+pub type Duplexer<S, COM> = duplex::Duplexer<Permutation<S, COM>, Encryption<S, COM>, COM>;

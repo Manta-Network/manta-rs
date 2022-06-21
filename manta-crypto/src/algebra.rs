@@ -171,7 +171,7 @@ where
 
 /// Security Assumptions
 ///
-/// The following outline some standard security assumptions for cryptographic protocols built on
+/// The following outlines some standard security assumptions for cryptographic protocols built on
 /// [`Group`] types. These security properties can be attached to instances of [`Group`] which we
 /// assume to have these hardness properties.
 pub mod security {

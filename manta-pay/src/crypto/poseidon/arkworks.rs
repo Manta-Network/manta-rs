@@ -18,7 +18,7 @@
 
 use crate::crypto::{
     constraint::arkworks::{Fp, FpVar, R1CS},
-    poseidon::FieldGeneration,
+    poseidon::{encryption::BlockElement, FieldGeneration},
 };
 use ark_ff::{BigInteger, Field, FpParameters, PrimeField};
 use ark_r1cs_std::fields::FieldVar;
@@ -48,6 +48,22 @@ pub trait Specification {
 
     /// S-BOX Exponenet
     const SBOX_EXPONENT: u64;
+}
+
+impl<S> Constant<Compiler<S>> for super::Permutation<S, Compiler<S>>
+where
+    S: Specification,
+{
+    type Type = super::Permutation<S>;
+
+    #[inline]
+    fn new_constant(this: &Self::Type, compiler: &mut Compiler<S>) -> Self {
+        let _ = compiler;
+        Self {
+            additive_round_keys: this.additive_round_keys.clone(),
+            mds_matrix: this.mds_matrix.clone(),
+        }
+    }
 }
 
 impl<F> super::Field for Fp<F>
@@ -216,18 +232,32 @@ where
     }
 }
 
-impl<S> Constant<Compiler<S>> for super::Permutation<S, Compiler<S>>
+impl<F> BlockElement for Fp<F>
 where
-    S: Specification,
+    F: PrimeField,
 {
-    type Type = super::Permutation<S>;
+    #[inline]
+    fn add(&self, rhs: &Self, _: &mut ()) -> Self {
+        Self(self.0 + rhs.0)
+    }
 
     #[inline]
-    fn new_constant(this: &Self::Type, compiler: &mut Compiler<S>) -> Self {
-        let _ = compiler;
-        Self {
-            additive_round_keys: this.additive_round_keys.clone(),
-            mds_matrix: this.mds_matrix.clone(),
-        }
+    fn sub(&self, rhs: &Self, _: &mut ()) -> Self {
+        Self(self.0 - rhs.0)
+    }
+}
+
+impl<F> BlockElement for FpVar<F>
+where
+    F: PrimeField,
+{
+    #[inline]
+    fn add(&self, rhs: &Self, _: &mut ()) -> Self {
+        self + rhs
+    }
+
+    #[inline]
+    fn sub(&self, rhs: &Self, _: &mut ()) -> Self {
+        self - rhs
     }
 }

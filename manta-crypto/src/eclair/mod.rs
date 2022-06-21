@@ -22,7 +22,6 @@ pub mod alloc;
 pub mod bool;
 pub mod cmp;
 pub mod execution;
-pub mod measure;
 pub mod ops;
 
 /// Native Compiler Marker Trait

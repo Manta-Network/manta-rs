@@ -41,7 +41,7 @@ pub trait CommitmentScheme<COM = ()> {
 
 /// Security Assumptions
 ///
-/// The following outline some standard security assumptions for commitment schemes. These security
+/// The following outlines some standard security assumptions for commitment schemes. These security
 /// properties can be attached to general types that don't exactly conform to the
 /// [`CommitmentScheme`] `trait` to describe the same cryptographic assumptions or guarantees given
 /// by the type.

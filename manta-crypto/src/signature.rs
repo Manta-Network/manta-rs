@@ -66,7 +66,7 @@ pub trait Derive<COM = ()>: Types {
     /// Derives the verifying key from `signing_key`.
     ///
     /// This function is used by the signer to generate their [`VerifyingKey`](Types::VerifyingKey)
-    /// that is sent to the verififer to check that the signature was valid.
+    /// that is sent to the verifier to check that the signature was valid.
     fn derive(&self, signing_key: &Self::SigningKey, compiler: &mut COM) -> Self::VerifyingKey;
 }
 
