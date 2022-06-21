@@ -597,7 +597,7 @@ mod test {
         >,
     {
         const NUM_TRIALS: usize = 5;
-        let mut cs = R1CS::for_contexts();
+        let mut cs = R1CS::for_proofs();
         for _ in 0..NUM_TRIALS {
             let base = Group::gen(rng).as_known::<Secret, GroupVar<_, _>>(&mut cs);
             let scalar = Scalar::<C>::gen(rng).as_known::<Secret, _>(&mut cs);
