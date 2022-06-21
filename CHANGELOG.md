@@ -5,6 +5,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 ### Added
+- [\#126](https://github.com/Manta-Network/manta-rs/pull/126) Add ECLAIR v0 scaffolding and deprecate old compiler patterns
 
 ### Changed
 
