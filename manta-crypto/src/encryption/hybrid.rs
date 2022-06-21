@@ -59,8 +59,12 @@ pub trait HybridPublicKeyEncryptionScheme: SymmetricKeyEncryptionScheme {
         secret_key: &SecretKey<Self>,
         public_key: &PublicKey<Self>,
     ) -> SymmetricKey<Self> {
-        self.key_derivation_function()
-            .derive(&self.key_agreement_scheme().agree(secret_key, public_key))
+        self.key_derivation_function().derive(
+            &self
+                .key_agreement_scheme()
+                .agree(secret_key, public_key, &mut ()),
+            &mut (),
+        )
     }
 }
 
@@ -286,7 +290,9 @@ where
                 cipher.agree_derive(ephemeral_secret_key, public_key),
                 plaintext,
             ),
-            ephemeral_public_key: cipher.key_agreement_scheme().derive(ephemeral_secret_key),
+            ephemeral_public_key: cipher
+                .key_agreement_scheme()
+                .derive(ephemeral_secret_key, &mut ()),
         }
     }
 
@@ -441,7 +447,7 @@ pub mod test {
         let decrypted_message = EncryptedMessage::<H>::new(
             cipher,
             ephemeral_secret_key,
-            &cipher.key_agreement_scheme().derive(secret_key),
+            &cipher.key_agreement_scheme().derive(secret_key, &mut ()),
             plaintext.clone(),
         )
         .decrypt(cipher, secret_key)
@@ -452,7 +458,9 @@ pub mod test {
         );
         assert_eq!(
             decrypted_message.ephemeral_public_key,
-            cipher.key_agreement_scheme().derive(ephemeral_secret_key),
+            cipher
+                .key_agreement_scheme()
+                .derive(ephemeral_secret_key, &mut ()),
             "Decrypted message should have included the correct ephemeral public key.",
         );
     }

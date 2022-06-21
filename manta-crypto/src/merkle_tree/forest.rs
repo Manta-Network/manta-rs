@@ -170,7 +170,7 @@ where
     C: Configuration + ?Sized,
     F: ConstantWidthForest<C>,
 {
-    F::WIDTH * tree::capacity::<C>()
+    F::WIDTH * tree::capacity::<C, _>()
 }
 
 /// Merkle Forest

@@ -62,7 +62,7 @@ impl InnerNode {
     where
         C: Configuration + ?Sized,
     {
-        Self::new(path_length::<C>(), leaf_index).parent()
+        Self::new(path_length::<C, _>(), leaf_index).parent()
     }
 
     /// Returns the [`Parity`] of this inner node.

@@ -24,7 +24,7 @@ use ark_relations::ns;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use core::marker::PhantomData;
 use manta_crypto::{
-    constraint::{Allocator, Constant, Equal, Public, Secret, ValueSource, Variable},
+    constraint::{self, Allocate, Allocator, Constant, Public, Secret, Variable},
     ecc::{self, PointAdd, PointDouble},
     key::kdf,
     rand::{CryptoRng, RngCore, Sample},
@@ -451,15 +451,15 @@ macro_rules! impl_processed_scalar_mul {
 
 impl_processed_scalar_mul!(ark_ed_on_bls12_381::EdwardsProjective);
 
-impl<C, CV> Equal<Compiler<C>> for GroupVar<C, CV>
+impl<C, CV> constraint::PartialEq<Self, Compiler<C>> for GroupVar<C, CV>
 where
     C: ProjectiveCurve,
     CV: CurveVar<C, ConstraintField<C>>,
 {
     #[inline]
-    fn eq(lhs: &Self, rhs: &Self, compiler: &mut Compiler<C>) -> Boolean<ConstraintField<C>> {
+    fn eq(&self, rhs: &Self, compiler: &mut Compiler<C>) -> Boolean<ConstraintField<C>> {
         let _ = compiler;
-        lhs.0
+        self.0
             .is_eq(&rhs.0)
             .expect("Equality checking is not allowed to fail.")
     }
@@ -578,7 +578,7 @@ mod test {
     use ark_ed_on_bls12_381::{constraints::EdwardsVar, EdwardsProjective};
     use ecc::PreprocessedScalarMul;
     use manta_crypto::{
-        constraint::ConstraintSystem,
+        constraint::AssertEq,
         ecc::{PreprocessedScalarMulTable, ScalarMul},
         rand::OsRng,
     };
@@ -597,7 +597,7 @@ mod test {
         >,
     {
         const NUM_TRIALS: usize = 5;
-        let mut cs = R1CS::for_known();
+        let mut cs = R1CS::for_contexts();
         for _ in 0..NUM_TRIALS {
             let base = Group::gen(rng).as_known::<Secret, GroupVar<_, _>>(&mut cs);
             let scalar = Scalar::<C>::gen(rng).as_known::<Secret, _>(&mut cs);

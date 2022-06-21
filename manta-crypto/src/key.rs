@@ -16,8 +16,6 @@
 
 //! Cryptographic Key Primitives
 
-use crate::constraint::Native;
-
 /// Key Derivation Function
 pub trait KeyDerivationFunction<COM = ()> {
     /// Input Key Type
@@ -26,45 +24,24 @@ pub trait KeyDerivationFunction<COM = ()> {
     /// Output Key Type
     type Output;
 
-    /// Derives a key of type [`Output`](Self::Output) from `key` in `compiler`.
-    fn derive_in(&self, key: &Self::Key, compiler: &mut COM) -> Self::Output;
+    /// Derives a key of type [`Output`](Self::Output) from `key`.
+    fn derive(&self, key: &Self::Key, compiler: &mut COM) -> Self::Output;
 
     /// Derives a key of type [`Output`](Self::Output) from `key`.
-    #[inline]
-    fn derive(&self, key: &Self::Key) -> Self::Output
-    where
-        COM: Native,
-    {
-        self.derive_in(key, &mut COM::compiler())
-    }
-
-    /// Derives a key of type [`Output`](Self::Output) from `key` in `compiler`.
     ///
     /// # Implementation Note
     ///
-    /// This method is an optimization path for [`derive_in`] when the `key` value is owned, and by
-    /// default, [`derive_in`] is used as its implementation. This method must return the same value
-    /// as [`derive_in`] on the same input.
+    /// This method is an optimization path for [`derive`] when the `key` value is owned, and by
+    /// default, [`derive`] is used as its implementation. This method must return the same value
+    /// as [`derive`] on the same input.
     ///
-    /// [`derive_in`]: Self::derive_in
+    /// [`derive`]: Self::derive
     #[inline]
-    fn derive_owned_in(&self, key: Self::Key, compiler: &mut COM) -> Self::Output
+    fn derive_owned(&self, key: Self::Key, compiler: &mut COM) -> Self::Output
     where
         Self::Key: Sized,
     {
-        self.derive_in(&key, compiler)
-    }
-
-    /// Derives a key of type [`Output`](Self::Output) from `key`.
-    ///
-    /// See [`derive_owned_in`](Self::derive_owned_in) for more.
-    #[inline]
-    fn derive_owned(&self, key: Self::Key) -> Self::Output
-    where
-        COM: Native,
-        Self::Key: Sized,
-    {
-        self.derive(&key)
+        self.derive(&key, compiler)
     }
 
     /// Borrows `self` rather than consuming it, returning an implementation of
@@ -83,33 +60,16 @@ where
     type Output = F::Output;
 
     #[inline]
-    fn derive_in(&self, key: &Self::Key, compiler: &mut COM) -> Self::Output {
-        (*self).derive_in(key, compiler)
+    fn derive(&self, key: &Self::Key, compiler: &mut COM) -> Self::Output {
+        (*self).derive(key, compiler)
     }
 
     #[inline]
-    fn derive(&self, key: &Self::Key) -> Self::Output
-    where
-        COM: Native,
-    {
-        (*self).derive(key)
-    }
-
-    #[inline]
-    fn derive_owned_in(&self, key: Self::Key, compiler: &mut COM) -> Self::Output
+    fn derive_owned(&self, key: Self::Key, compiler: &mut COM) -> Self::Output
     where
         Self::Key: Sized,
     {
-        (*self).derive_owned_in(key, compiler)
-    }
-
-    #[inline]
-    fn derive_owned(&self, key: Self::Key) -> Self::Output
-    where
-        COM: Native,
-        Self::Key: Sized,
-    {
-        (*self).derive_owned(key)
+        (*self).derive_owned(key, compiler)
     }
 }
 
@@ -144,7 +104,7 @@ pub mod kdf {
         type Output = K;
 
         #[inline]
-        fn derive_in(&self, key: &Self::Key, compiler: &mut COM) -> Self::Output {
+        fn derive(&self, key: &Self::Key, compiler: &mut COM) -> Self::Output {
             let _ = compiler;
             key.clone()
         }
@@ -229,9 +189,8 @@ pub mod kdf {
         type Output = F::Output;
 
         #[inline]
-        fn derive_in(&self, key: &Self::Key, compiler: &mut COM) -> Self::Output {
-            self.key_derivation_function
-                .derive_in(key.as_ref(), compiler)
+        fn derive(&self, key: &Self::Key, compiler: &mut COM) -> Self::Output {
+            self.key_derivation_function.derive(key.as_ref(), compiler)
         }
     }
 
@@ -334,9 +293,9 @@ pub mod kdf {
         type Output = F::Output;
 
         #[inline]
-        fn derive_in(&self, key: &Self::Key, compiler: &mut COM) -> Self::Output {
+        fn derive(&self, key: &Self::Key, compiler: &mut COM) -> Self::Output {
             self.key_derivation_function
-                .derive_in(&key.as_bytes(), compiler)
+                .derive(&key.as_bytes(), compiler)
         }
     }
 
@@ -382,9 +341,8 @@ pub trait KeyAgreementScheme<COM = ()>:
     /// Shared Secret Type
     type SharedSecret;
 
-    /// Computes the shared secret given the known `secret_key` and the given `public_key` in the
-    /// given `compiler`.
-    fn agree_in(
+    /// Computes the shared secret given the known `secret_key` and the given `public_key`.
+    fn agree(
         &self,
         secret_key: &Self::SecretKey,
         public_key: &Self::PublicKey,
@@ -392,51 +350,22 @@ pub trait KeyAgreementScheme<COM = ()>:
     ) -> Self::SharedSecret;
 
     /// Computes the shared secret given the known `secret_key` and the given `public_key`.
-    #[inline]
-    fn agree(
-        &self,
-        secret_key: &Self::SecretKey,
-        public_key: &Self::PublicKey,
-    ) -> Self::SharedSecret
-    where
-        COM: Native,
-    {
-        self.agree_in(secret_key, public_key, &mut COM::compiler())
-    }
-
-    /// Computes the shared secret given the known `secret_key` and the given `public_key` in the
-    /// given `compiler`.
     ///
     /// # Implementation Note
     ///
-    /// This method is an optimization path for [`agree_in`] when the `secret_key` value and
-    /// `public_key` value are owned, and by default, [`agree_in`] is used as its implementation.
-    /// This method must return the same value as [`agree_in`] on the same input.
+    /// This method is an optimization path for [`agree`] when the `secret_key` value and
+    /// `public_key` value are owned, and by default, [`agree`] is used as its implementation. This
+    /// method must return the same value as [`agree`] on the same input.
     ///
-    /// [`agree_in`]: Self::agree_in
-    #[inline]
-    fn agree_owned_in(
-        &self,
-        secret_key: Self::SecretKey,
-        public_key: Self::PublicKey,
-        compiler: &mut COM,
-    ) -> Self::SharedSecret {
-        self.agree_in(&secret_key, &public_key, compiler)
-    }
-
-    /// Computes the shared secret given the known `secret_key` and the given `public_key`.
-    ///
-    /// See [`agree_owned_in`](Self::agree_owned_in) for more.
+    /// [`agree`]: Self::agree
     #[inline]
     fn agree_owned(
         &self,
         secret_key: Self::SecretKey,
         public_key: Self::PublicKey,
-    ) -> Self::SharedSecret
-    where
-        COM: Native,
-    {
-        self.agree(&secret_key, &public_key)
+        compiler: &mut COM,
+    ) -> Self::SharedSecret {
+        self.agree(&secret_key, &public_key, compiler)
     }
 
     /// Borrows `self` rather than consuming it, returning an implementation of
@@ -456,35 +385,13 @@ where
     type SharedSecret = K::SharedSecret;
 
     #[inline]
-    fn agree_in(
-        &self,
-        secret_key: &Self::SecretKey,
-        public_key: &Self::PublicKey,
-        compiler: &mut COM,
-    ) -> Self::SharedSecret {
-        (*self).agree_in(secret_key, public_key, compiler)
-    }
-
-    #[inline]
     fn agree(
         &self,
         secret_key: &Self::SecretKey,
         public_key: &Self::PublicKey,
-    ) -> Self::SharedSecret
-    where
-        COM: Native,
-    {
-        (*self).agree(secret_key, public_key)
-    }
-
-    #[inline]
-    fn agree_owned_in(
-        &self,
-        secret_key: Self::SecretKey,
-        public_key: Self::PublicKey,
         compiler: &mut COM,
     ) -> Self::SharedSecret {
-        (*self).agree_owned_in(secret_key, public_key, compiler)
+        (*self).agree(secret_key, public_key, compiler)
     }
 
     #[inline]
@@ -492,11 +399,9 @@ where
         &self,
         secret_key: Self::SecretKey,
         public_key: Self::PublicKey,
-    ) -> Self::SharedSecret
-    where
-        COM: Native,
-    {
-        (*self).agree_owned(secret_key, public_key)
+        compiler: &mut COM,
+    ) -> Self::SharedSecret {
+        (*self).agree_owned(secret_key, public_key, compiler)
     }
 }
 
@@ -515,8 +420,8 @@ pub mod test {
         K::SharedSecret: Debug + PartialEq,
     {
         assert_eq!(
-            scheme.agree(lhs, &scheme.derive(rhs)),
-            scheme.agree(rhs, &scheme.derive(lhs)),
+            scheme.agree(lhs, &scheme.derive(rhs, &mut ()), &mut ()),
+            scheme.agree(rhs, &scheme.derive(lhs, &mut ()), &mut ()),
             "Key agreement schemes should satisfy the agreement property."
         )
     }

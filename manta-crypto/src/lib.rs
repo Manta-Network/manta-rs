@@ -27,6 +27,7 @@ pub mod accumulator;
 pub mod commitment;
 pub mod constraint;
 pub mod ecc;
+pub mod eclair;
 pub mod encryption;
 pub mod hash;
 pub mod key;

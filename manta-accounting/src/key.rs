@@ -246,19 +246,19 @@ where
     #[inline]
     fn derive(&self, account: AccountIndex, kind: Kind, index: KeyIndex) -> Self::SecretKey {
         self.key_derivation_function
-            .derive(&self.base.derive(account, kind, index))
+            .derive(&self.base.derive(account, kind, index), &mut ())
     }
 
     #[inline]
     fn derive_spend(&self, account: AccountIndex, index: KeyIndex) -> Self::SecretKey {
         self.key_derivation_function
-            .derive(&self.base.derive_spend(account, index))
+            .derive(&self.base.derive_spend(account, index), &mut ())
     }
 
     #[inline]
     fn derive_view(&self, account: AccountIndex, index: KeyIndex) -> Self::SecretKey {
         self.key_derivation_function
-            .derive(&self.base.derive_view(account, index))
+            .derive(&self.base.derive_view(account, index), &mut ())
     }
 }
 

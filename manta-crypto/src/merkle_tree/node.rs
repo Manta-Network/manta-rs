@@ -126,7 +126,7 @@ impl Parity {
         C: HashConfiguration + ?Sized,
     {
         let (lhs, rhs) = self.order(lhs, rhs);
-        C::InnerHash::join(&parameters.inner, lhs, rhs)
+        C::InnerHash::join(&parameters.inner, lhs, rhs, &mut ())
     }
 
     /// Combines two leaf digests into a new inner digest using `parameters`, swapping the order
@@ -142,7 +142,7 @@ impl Parity {
         C: HashConfiguration + ?Sized,
     {
         let (lhs, rhs) = self.order(lhs, rhs);
-        C::InnerHash::join_leaves(&parameters.inner, lhs, rhs)
+        C::InnerHash::join_leaves(&parameters.inner, lhs, rhs, &mut ())
     }
 }
 

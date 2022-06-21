@@ -226,7 +226,7 @@ where
     type Output = S::Field;
 
     #[inline]
-    fn hash_in(&self, input: [&Self::Input; ARITY], compiler: &mut COM) -> Self::Output {
+    fn hash(&self, input: [&Self::Input; ARITY], compiler: &mut COM) -> Self::Output {
         let mut state = self.first_round(input, compiler);
         for round in 1..S::FULL_ROUNDS {
             self.full_round(round, &mut state, compiler);
@@ -330,7 +330,7 @@ pub mod arkworks {
     use crate::crypto::constraint::arkworks::{Fp, FpVar, R1CS};
     use ark_ff::{Field, PrimeField};
     use ark_r1cs_std::fields::FieldVar;
-    use manta_crypto::constraint::{Constant, ValueSource};
+    use manta_crypto::constraint::{Allocate, Constant};
 
     /// Compiler Type
     type Compiler<S> = R1CS<<S as Specification>::Field>;
