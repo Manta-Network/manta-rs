@@ -17,7 +17,7 @@
 //! Poseidon Permutation Implementation
 
 use crate::crypto::poseidon::{Permutation, Specification, State};
-use alloc::{boxed::Box, vec::Vec};
+use alloc::{boxed::Box, vec, vec::Vec};
 use core::{fmt::Debug, hash::Hash};
 use manta_crypto::permutation::{
     duplex::{self, Setup, Types, Verify},
