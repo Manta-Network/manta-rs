@@ -23,12 +23,6 @@ use crate::config::{
 use manta_crypto::rand::{Rand, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 
-#[cfg(feature = "std")]
-use std::{
-    fs::File,
-    path::{Path, PathBuf},
-};
-
 #[cfg(feature = "download")]
 use {
     crate::config::{
@@ -37,6 +31,9 @@ use {
     },
     manta_util::codec::{Decode, IoReader},
 };
+
+#[cfg(feature = "std")]
+use std::{fs::File, path::Path};
 
 /// Parameter Generation Seed
 ///
@@ -106,7 +103,7 @@ pub fn generate() -> Result<
     generate_from_seed(SEED)
 }
 
-/// Loads parameters from `manta-parameters`, using `directory` as a temporary directory to store files.
+/// Loads parameters from [`manta-parameters`], using `directory` as a temporary directory to store files.
 #[cfg(feature = "download")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "download")))]
 #[inline]
@@ -121,22 +118,19 @@ pub fn load_parameters(
     ),
     ProofSystemError,
 > {
-    let proving_context = load_proving_context(directory);
-    let verifying_context = MultiVerifyingContext {
-        mint: load_mint_verifying_context(),
-        private_transfer: load_private_transfer_verifying_context(),
-        reclaim: load_reclaim_verifying_context(),
-    };
-    let parameters = load_transfer_parameters();
     Ok((
-        proving_context,
-        verifying_context,
-        parameters,
+        load_proving_context(directory),
+        MultiVerifyingContext {
+            mint: load_mint_verifying_context(),
+            private_transfer: load_private_transfer_verifying_context(),
+            reclaim: load_reclaim_verifying_context(),
+        },
+        load_transfer_parameters(),
         load_utxo_accumulator_model(),
     ))
 }
 
-/// Loads [`UtxoAccumulatorModel`].
+/// Loads the [`UtxoAccumulatorModel`] from [`manta_parameters`].
 #[inline]
 pub fn load_utxo_accumulator_model() -> UtxoAccumulatorModel {
     UtxoAccumulatorModel::decode(
@@ -146,7 +140,7 @@ pub fn load_utxo_accumulator_model() -> UtxoAccumulatorModel {
     .expect("Unable to decode UTXO_ACCUMULATOR_MODEL.")
 }
 
-/// Loads transfer [`Parameters`].
+/// Loads the transfer [`Parameters`] from [`manta_parameters`].
 #[inline]
 pub fn load_transfer_parameters() -> Parameters {
     Parameters {
@@ -168,7 +162,8 @@ pub fn load_transfer_parameters() -> Parameters {
     }
 }
 
-/// Loads the [`MultiProvingContext`], using `directory` as a temporary directory to store files.
+/// Loads the [`MultiProvingContext`] from [`manta_parameters`], using `directory` as a
+/// temporary directory to store files.
 #[cfg(feature = "download")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "download")))]
 #[inline]
@@ -185,8 +180,12 @@ pub fn load_proving_context(directory: &Path) -> MultiProvingContext {
     decode_proving_context(mint_path, private_transfer_path, reclaim_path)
 }
 
-/// Loads the [`MultiProvingContext`], using `directory` as a temporary directory to store files.
-/// Skips downloading parameters if parameters have been downloaded before.
+/// Loads the [`MultiProvingContext`] from [`manta_parameters`], using `directory` as
+/// a temporary directory to store files.
+///
+/// This function skips downloading the proving contexts if they have been
+/// downloaded before and their checksum matches the expected one. See
+/// [`manta_parameters::verify_file`] for more on checksum verification.
 #[cfg(feature = "download")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "download")))]
 #[inline]
@@ -202,7 +201,7 @@ pub fn try_load_proving_context(directory: &Path) -> MultiProvingContext {
     let reclaim_path = directory.join("reclaim.dat");
     manta_parameters::pay::testnet::proving::Reclaim::download_if_invalid(&reclaim_path)
         .expect("Unable to download RECLAIM proving context.");
-    decode_proving_context(mint_path, private_transfer_path, reclaim_path)
+    decode_proving_context(&mint_path, &private_transfer_path, &reclaim_path)
 }
 
 /// Decodes [`MultiProvingContext`] by loading from `mint_path`, `private_transfer_path`, and `reclaim_path`.
@@ -210,9 +209,9 @@ pub fn try_load_proving_context(directory: &Path) -> MultiProvingContext {
 #[cfg_attr(doc_cfg, doc(cfg(feature = "download")))]
 #[inline]
 pub fn decode_proving_context(
-    mint_path: PathBuf,
-    private_transfer_path: PathBuf,
-    reclaim_path: PathBuf,
+    mint_path: &Path,
+    private_transfer_path: &Path,
+    reclaim_path: &Path,
 ) -> MultiProvingContext {
     MultiProvingContext {
         mint: ProvingContext::decode(IoReader(
@@ -231,7 +230,8 @@ pub fn decode_proving_context(
     }
 }
 
-/// Loads MINT verifying contexts.
+/// Loads the `Mint` verifying contexts from [`manta_parameters`].
+#[inline]
 pub fn load_mint_verifying_context() -> VerifyingContext {
     VerifyingContext::decode(
         manta_parameters::pay::testnet::verifying::Mint::get().expect("Checksum did not match."),
@@ -239,7 +239,8 @@ pub fn load_mint_verifying_context() -> VerifyingContext {
     .expect("Unable to decode MINT verifying context.")
 }
 
-/// Loads PRIVATE_TRANSFER verifying context.
+/// Loads the `PrivateTransfer` verifying context from [`manta_parameters`].
+#[inline]
 pub fn load_private_transfer_verifying_context() -> VerifyingContext {
     VerifyingContext::decode(
         manta_parameters::pay::testnet::verifying::PrivateTransfer::get()
@@ -248,7 +249,8 @@ pub fn load_private_transfer_verifying_context() -> VerifyingContext {
     .expect("Unable to decode PRIVATE_TRANSFER verifying context.")
 }
 
-/// Loads RECLAIM verifying context.
+/// Loads the `Reclaim` verifying context from [`manta_parameters`].
+#[inline]
 pub fn load_reclaim_verifying_context() -> VerifyingContext {
     VerifyingContext::decode(
         manta_parameters::pay::testnet::verifying::Reclaim::get().expect("Checksum did not match."),
