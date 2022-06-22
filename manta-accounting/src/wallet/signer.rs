@@ -28,7 +28,10 @@
 
 use crate::{
     asset::{Asset, AssetId, AssetMap, AssetMetadata, AssetValue},
-    key::{self, HierarchicalKeyDerivationScheme, KeyIndex, SecretKeyPair, ViewKeySelection},
+    key::{
+        self, HierarchicalKeyDerivationScheme, KeyIndex, SecretKeyPair, ViewKeySelection,
+        ViewKeyTable,
+    },
     transfer::{
         self,
         batch::Join,
@@ -630,63 +633,69 @@ where
         )
     }
 
-    /// Inserts the new `utxo`-`encrypted_note` pair if a known key can decrypt the note and
-    /// validate the utxo.
+    /// Finds the next viewing key that can decrypt the `encrypted_note` from the `view_key_table`.
     #[inline]
-    fn insert_next_item(
-        &mut self,
+    fn find_next_key<'h>(
+        view_key_table: &mut ViewKeyTable<'h, C::HierarchicalKeyDerivationScheme>,
         parameters: &Parameters<C>,
         with_recovery: bool,
-        utxo: Utxo<C>,
         encrypted_note: EncryptedNote<C>,
-        void_numbers: &mut Vec<VoidNumber<C>>,
-        deposit: &mut Vec<Asset>,
-    ) -> Result<(), SyncError<C::Checkpoint>> {
+    ) -> Option<ViewKeySelection<C::HierarchicalKeyDerivationScheme, Note<C>>> {
         let mut finder = DecryptedMessage::find(encrypted_note);
-        if let Some(ViewKeySelection {
-            index,
-            keypair,
-            item,
-        }) = self
-            .accounts
-            .get_mut_default()
-            .find_index_with_maybe_gap(with_recovery, |k| {
+        view_key_table
+            .find_index_with_maybe_gap(with_recovery, move |k| {
                 finder.decrypt(&parameters.note_encryption_scheme, k)
             })
-        {
-            let Note {
+            .map(|selection| selection.map(|item| item.plaintext))
+    }
+
+    /// Inserts the new `utxo`-`note` pair into the `utxo_accumulator` adding the spendable amount
+    /// to `assets` if there is no void number to match it.
+    #[inline]
+    fn insert_next_item(
+        utxo_accumulator: &mut C::UtxoAccumulator,
+        assets: &mut C::AssetMap,
+        parameters: &Parameters<C>,
+        utxo: Utxo<C>,
+        selection: ViewKeySelection<C::HierarchicalKeyDerivationScheme, Note<C>>,
+        void_numbers: &mut Vec<VoidNumber<C>>,
+        deposit: &mut Vec<Asset>,
+    ) {
+        let ViewKeySelection {
+            index,
+            keypair,
+            item: Note {
                 ephemeral_secret_key,
                 asset,
-            } = item.plaintext;
-            if let Some(void_number) =
-                parameters.check_full_asset(&keypair.spend, &ephemeral_secret_key, &asset, &utxo)
-            {
-                if let Some(index) = void_numbers.iter().position(move |v| v == &void_number) {
-                    void_numbers.remove(index);
-                } else {
-                    self.utxo_accumulator.insert(&utxo);
-                    self.assets.insert((index, ephemeral_secret_key), asset);
-                    if !asset.is_zero() {
-                        deposit.push(asset);
-                    }
-                    return Ok(());
+            },
+        } = selection;
+        if let Some(void_number) =
+            parameters.check_full_asset(&keypair.spend, &ephemeral_secret_key, &asset, &utxo)
+        {
+            if let Some(index) = void_numbers.iter().position(move |v| v == &void_number) {
+                void_numbers.remove(index);
+            } else {
+                utxo_accumulator.insert(&utxo);
+                assets.insert((index, ephemeral_secret_key), asset);
+                if !asset.is_zero() {
+                    deposit.push(asset);
                 }
+                return;
             }
         }
-        self.utxo_accumulator.insert_nonprovable(&utxo);
-        Ok(())
+        utxo_accumulator.insert_nonprovable(&utxo);
     }
 
     /// Checks if `asset` matches with `void_number`, removing it from the `utxo_accumulator` and
     /// inserting it into the `withdraw` set if this is the case.
     #[inline]
     fn is_asset_unspent(
+        utxo_accumulator: &mut C::UtxoAccumulator,
         parameters: &Parameters<C>,
         secret_spend_key: &SecretKey<C>,
         ephemeral_secret_key: &SecretKey<C>,
         asset: Asset,
         void_numbers: &mut Vec<VoidNumber<C>>,
-        utxo_accumulator: &mut C::UtxoAccumulator,
         withdraw: &mut Vec<Asset>,
     ) -> bool {
         let utxo = parameters.utxo(
@@ -716,33 +725,44 @@ where
         inserts: I,
         mut void_numbers: Vec<VoidNumber<C>>,
         is_partial: bool,
-    ) -> Result<SyncResponse<C::Checkpoint>, SyncError<C::Checkpoint>>
+    ) -> SyncResponse<C::Checkpoint>
     where
         I: Iterator<Item = (Utxo<C>, EncryptedNote<C>)>,
     {
         let void_number_count = void_numbers.len();
         let mut deposit = Vec::new();
         let mut withdraw = Vec::new();
+        let mut view_key_table = self.accounts.get_mut_default().view_key_table();
         for (utxo, encrypted_note) in inserts {
-            self.insert_next_item(
+            if let Some(selection) = Self::find_next_key(
+                &mut view_key_table,
                 parameters,
                 with_recovery,
-                utxo,
                 encrypted_note,
-                &mut void_numbers,
-                &mut deposit,
-            )?;
+            ) {
+                Self::insert_next_item(
+                    &mut self.utxo_accumulator,
+                    &mut self.assets,
+                    parameters,
+                    utxo,
+                    selection,
+                    &mut void_numbers,
+                    &mut deposit,
+                );
+            } else {
+                self.utxo_accumulator.insert_nonprovable(&utxo);
+            }
         }
         self.assets.retain(|(index, ephemeral_secret_key), assets| {
             assets.retain(
                 |asset| match self.accounts.get_default().spend_key(*index) {
                     Some(secret_spend_key) => Self::is_asset_unspent(
+                        &mut self.utxo_accumulator,
                         parameters,
                         &secret_spend_key,
                         ephemeral_secret_key,
                         *asset,
                         &mut void_numbers,
-                        &mut self.utxo_accumulator,
                         &mut withdraw,
                     ),
                     _ => true,
@@ -753,7 +773,7 @@ where
         self.checkpoint.update_from_void_numbers(void_number_count);
         self.checkpoint
             .update_from_utxo_accumulator(&self.utxo_accumulator);
-        Ok(SyncResponse {
+        SyncResponse {
             checkpoint: self.checkpoint.clone(),
             balance_update: if is_partial {
                 // TODO: Whenever we are doing a full update, don't even build the `deposit` and
@@ -764,7 +784,7 @@ where
                     assets: self.assets.assets().into(),
                 }
             },
-        })
+        }
     }
 
     /// Builds the pre-sender associated to `key` and `asset`.
@@ -1144,7 +1164,7 @@ where
         } else {
             let has_pruned = request.prune(checkpoint);
             let SyncData { receivers, senders } = request.data;
-            let result = self.state.sync_with(
+            let response = self.state.sync_with(
                 &self.parameters.parameters,
                 request.with_recovery,
                 receivers.into_iter(),
@@ -1152,7 +1172,7 @@ where
                 !has_pruned,
             );
             self.state.utxo_accumulator.commit();
-            result
+            Ok(response)
         }
     }
 
