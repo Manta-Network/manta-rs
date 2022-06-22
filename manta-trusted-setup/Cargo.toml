@@ -1,0 +1,31 @@
+[package]
+name = "manta-trusted-setup"
+version = "0.5.1"
+edition = "2021"
+authors = ["Manta Network <contact@manta.network>"]
+readme = "README.md"
+license-file = "LICENSE" 
+repository = "https://github.com/Manta-Network/manta-rs"
+homepage = "https://github.com/Manta-Network"
+documentation = "https://github.com/Manta-Network/manta-rs"
+categories = [""]
+keywords = [""]
+description = "MPC Ceremonies for Trusted Setup SRS Generation"
+publish = false
+
+[package.metadata.docs.rs]
+# To build locally:
+# RUSTDOCFLAGS="--cfg doc_cfg" cargo +nightly doc --all-features --open
+all-features = true
+rustdoc-args = ["--cfg", "doc_cfg"]
+
+[badges]
+is-it-maintained-issue-resolution = { repository = "Manta-Network/manta-rs" }
+is-it-maintained-open-issues = { repository = "Manta-Network/manta-rs" }
+maintenance = { status = "actively-developed" }
+
+[features]
+# Standard Library
+std = []
+
+[dependencies]

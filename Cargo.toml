@@ -6,5 +6,6 @@ members = [
     "manta-crypto",
     "manta-parameters",
     "manta-pay",
+    "manta-trusted-setup",
     "manta-util",
 ]
