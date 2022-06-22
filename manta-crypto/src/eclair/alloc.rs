@@ -34,10 +34,10 @@ pub type Const<C, COM> = <C as Constant<COM>>::Type;
 
 /// Compiler Constant
 ///
-/// A compiler constant is a kind of allocated value that **must** be known at _compilation time_.
-/// In this case, we take an explicit value of the underlying type and directly return an allocated
-/// value in the `COM` compiler. Contrast this with [`Variable`] types who's values are not known at
-/// _compilation time_ and are only known at _execution time_.
+/// A compiler [`Constant`] is a kind of allocated value that **must** be known at
+/// _compilation time_. In this case, we take an explicit value of the underlying type and directly
+/// return an allocated value in the `COM` compiler. Contrast this with [`Variable`] types whose
+/// values are not known at _compilation time_ and are only known at _execution time_.
 pub trait Constant<COM>
 where
     COM: ?Sized,
@@ -79,11 +79,11 @@ pub type Var<V, M, COM> = <V as Variable<M, COM>>::Type;
 
 /// Compiler Variable
 ///
-/// A compiler variable is a kind of allocated value that **cannot** have a known value at
+/// A compiler [`Variable`] is a kind of allocated value that **cannot** have a known value at
 /// _compilation time_ but _does_ have one at _execution time_. In this case, we require two
 /// allocation methods [`new_unknown`](Self::new_unknown) and [`new_known`](Self::new_known) in
-/// order to use the variables in `COM` during both processing phases. Contrast this with
-/// [`Constant`] types who's values must be known at _compilation time_.
+/// order to use the variables in `COM` during both the compilation and execution phases. Contrast
+/// this with [`Constant`] types whose values must be known at _compilation time_.
 ///
 /// # Allocation Modes
 ///

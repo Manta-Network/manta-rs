@@ -18,17 +18,6 @@
 
 use crate::eclair::{bool::Bool, ops::Not, Has};
 
-/// Equality
-pub trait Eq<COM>: PartialEq<Self, COM>
-where
-    COM: Has<bool>,
-{
-}
-
-/* FIXME: We cannot implement this yet.
-impl<T> Eq for T where T: cmp::Eq {}
-*/
-
 /// Partial Equivalence Relations
 pub trait PartialEq<Rhs, COM>
 where
@@ -63,4 +52,15 @@ where
         self.ne(rhs)
     }
 }
+*/
+
+/// Equality
+pub trait Eq<COM>: PartialEq<Self, COM>
+where
+    COM: Has<bool>,
+{
+}
+
+/* FIXME: We cannot implement this yet.
+impl<T> Eq for T where T: cmp::Eq {}
 */

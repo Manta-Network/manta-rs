@@ -64,7 +64,7 @@ pub trait ProofSystem {
     /// Verification Error
     type Error;
 
-    /// Verifies that `proof` with `input` are valid with respect to the [`ContextEngine`] and
+    /// Verifies that `proof` with `input` is valid with respect to the [`ContextEngine`] and
     /// [`ProofEngine`] for this proof system.
     ///
     /// [`ContextEngine`]: Self::ContextEngine

@@ -20,6 +20,7 @@ use crate::{
     config::{
         FullParameters, MerkleTreeConfiguration, Mint, PrivateTransfer, Proof, ProofSystem, Reclaim,
     },
+    test::payment::UtxoAccumulator,
     util::scale::{assert_valid_codec, assert_valid_io_codec},
 };
 use manta_crypto::{
@@ -29,8 +30,6 @@ use manta_crypto::{
     rand::{OsRng, Rand},
 };
 use std::io::Cursor;
-
-type UtxoAccumulator = merkle_tree::full::FullMerkleTree<MerkleTreeConfiguration>;
 
 /// Tests the generation of proving/verifying contexts for [`Mint`].
 #[test]
