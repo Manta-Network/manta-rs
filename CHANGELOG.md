@@ -21,6 +21,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - [\#90](https://github.com/Manta-Network/manta-rs/pull/90) Add Binary Compatibility Test for `manta-pay`
 - [\#102](https://github.com/Manta-Network/manta-rs/pull/102) Add concrete parameters to `manta-parameters`
 - [\#106](https://github.com/Manta-Network/manta-rs/pull/106) Add `load_parameter` as a library function
+- [\#128](https://github.com/Manta-Network/manta-rs/pull/128) Add more parameter loading utilities
 
 ### Fixed
 - [\#103](https://github.com/Manta-Network/manta-rs/pull/103) Remove download dependency from `manta-benchmark`
