@@ -17,23 +17,20 @@
 //! Generate Parameters and Proving/Verifying Contexts
 
 use crate::config::{
-    FullParameters, Mint, MultiProvingContext, MultiVerifyingContext, Parameters, PrivateTransfer,
-    ProofSystemError, Reclaim, UtxoAccumulatorModel,
+    FullParameters, Mint, MultiProvingContext, MultiVerifyingContext, NoteEncryptionScheme,
+    Parameters, PrivateTransfer, ProofSystemError, Reclaim, UtxoAccumulatorModel,
+    UtxoCommitmentScheme, VerifyingContext, VoidNumberCommitmentScheme,
 };
 use manta_crypto::rand::{Rand, SeedableRng};
+use manta_util::codec::Decode;
 use rand_chacha::ChaCha20Rng;
 
-#[cfg(feature = "download")]
-use {
-    crate::config::{
-        NoteEncryptionScheme, ProvingContext, UtxoCommitmentScheme, VerifyingContext,
-        VoidNumberCommitmentScheme,
-    },
-    manta_util::codec::{Decode, IoReader},
-};
-
 #[cfg(feature = "std")]
-use std::{fs::File, path::Path};
+use {
+    crate::config::ProvingContext,
+    manta_util::codec::IoReader,
+    std::{fs::File, path::Path},
+};
 
 /// Parameter Generation Seed
 ///
@@ -130,38 +127,6 @@ pub fn load_parameters(
     ))
 }
 
-/// Loads the [`UtxoAccumulatorModel`] from [`manta_parameters`].
-#[inline]
-pub fn load_utxo_accumulator_model() -> UtxoAccumulatorModel {
-    UtxoAccumulatorModel::decode(
-        manta_parameters::pay::testnet::parameters::UtxoAccumulatorModel::get()
-            .expect("Checksum did not match."),
-    )
-    .expect("Unable to decode UTXO_ACCUMULATOR_MODEL.")
-}
-
-/// Loads the transfer [`Parameters`] from [`manta_parameters`].
-#[inline]
-pub fn load_transfer_parameters() -> Parameters {
-    Parameters {
-        note_encryption_scheme: NoteEncryptionScheme::decode(
-            manta_parameters::pay::testnet::parameters::NoteEncryptionScheme::get()
-                .expect("Checksum did not match."),
-        )
-        .expect("Unable to decode NOTE_ENCRYPTION_SCHEME parameters."),
-        utxo_commitment: UtxoCommitmentScheme::decode(
-            manta_parameters::pay::testnet::parameters::UtxoCommitmentScheme::get()
-                .expect("Checksum did not match."),
-        )
-        .expect("Unable to decode UTXO_COMMITMENT_SCHEME parameters."),
-        void_number_commitment: VoidNumberCommitmentScheme::decode(
-            manta_parameters::pay::testnet::parameters::VoidNumberCommitmentScheme::get()
-                .expect("Checksum did not match."),
-        )
-        .expect("Unable to decode VOID_NUMBER_COMMITMENT_SCHEME parameters."),
-    }
-}
-
 /// Loads the [`MultiProvingContext`] from [`manta_parameters`], using `directory` as a
 /// temporary directory to store files.
 #[cfg(feature = "download")]
@@ -177,7 +142,7 @@ pub fn load_proving_context(directory: &Path) -> MultiProvingContext {
     let reclaim_path = directory.join("reclaim.dat");
     manta_parameters::pay::testnet::proving::Reclaim::download(&reclaim_path)
         .expect("Unable to download RECLAIM proving context.");
-    decode_proving_context(mint_path, private_transfer_path, reclaim_path)
+    decode_proving_context(&mint_path, &private_transfer_path, &reclaim_path)
 }
 
 /// Loads the [`MultiProvingContext`] from [`manta_parameters`], using `directory` as
@@ -205,8 +170,8 @@ pub fn try_load_proving_context(directory: &Path) -> MultiProvingContext {
 }
 
 /// Decodes [`MultiProvingContext`] by loading from `mint_path`, `private_transfer_path`, and `reclaim_path`.
-#[cfg(feature = "download")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "download")))]
+#[cfg(feature = "std")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
 #[inline]
 pub fn decode_proving_context(
     mint_path: &Path,
@@ -256,4 +221,36 @@ pub fn load_reclaim_verifying_context() -> VerifyingContext {
         manta_parameters::pay::testnet::verifying::Reclaim::get().expect("Checksum did not match."),
     )
     .expect("Unable to decode RECLAIM verifying context.")
+}
+
+/// Loads the transfer [`Parameters`] from [`manta_parameters`].
+#[inline]
+pub fn load_transfer_parameters() -> Parameters {
+    Parameters {
+        note_encryption_scheme: NoteEncryptionScheme::decode(
+            manta_parameters::pay::testnet::parameters::NoteEncryptionScheme::get()
+                .expect("Checksum did not match."),
+        )
+        .expect("Unable to decode NOTE_ENCRYPTION_SCHEME parameters."),
+        utxo_commitment: UtxoCommitmentScheme::decode(
+            manta_parameters::pay::testnet::parameters::UtxoCommitmentScheme::get()
+                .expect("Checksum did not match."),
+        )
+        .expect("Unable to decode UTXO_COMMITMENT_SCHEME parameters."),
+        void_number_commitment: VoidNumberCommitmentScheme::decode(
+            manta_parameters::pay::testnet::parameters::VoidNumberCommitmentScheme::get()
+                .expect("Checksum did not match."),
+        )
+        .expect("Unable to decode VOID_NUMBER_COMMITMENT_SCHEME parameters."),
+    }
+}
+
+/// Loads the [`UtxoAccumulatorModel`] from [`manta_parameters`].
+#[inline]
+pub fn load_utxo_accumulator_model() -> UtxoAccumulatorModel {
+    UtxoAccumulatorModel::decode(
+        manta_parameters::pay::testnet::parameters::UtxoAccumulatorModel::get()
+            .expect("Checksum did not match."),
+    )
+    .expect("Unable to decode UTXO_ACCUMULATOR_MODEL.")
 }
