@@ -18,7 +18,7 @@
 
 /// Implements [`From`]`<$from>` for an enum `$to`, choosing the `$kind` variant.
 #[macro_export]
-macro_rules! from_variant_impl {
+macro_rules! from_variant {
     ($to:ty, $kind:ident, $from:ty) => {
         impl From<$from> for $to {
             #[inline]
@@ -32,144 +32,115 @@ macro_rules! from_variant_impl {
 /// Calls the `into_iter` method on `$e` or the `into_par_iter` Rayon method if the `rayon` feature
 /// is enabled.
 #[macro_export]
-macro_rules! into_iter {
+macro_rules! cfg_into_iter {
     ($e:expr) => {{
         #[cfg(feature = "rayon")]
-        let result = ::rayon::iter::IntoParallelIterator::into_par_iter($e);
+        {
+            use ::rayon::iter::IntoParallelIterator as _;
+            $e.into_par_iter()
+        }
         #[cfg(not(feature = "rayon"))]
-        let result = $e.into_iter();
-        result
+        $e.into_iter()
+    }};
+    ($e:expr, $min_len:expr) => {{
+        #[cfg(feature = "rayon")]
+        {
+            use ::rayon::iter::IntoParallelIterator as _;
+            $e.into_par_iter().with_min_len($min_len)
+        }
+        #[cfg(not(feature = "rayon"))]
+        $e.into_iter()
     }};
 }
 
 /// Calls the `iter` method on `$e` or the `par_iter` Rayon method if the `rayon` feature is
 /// enabled.
 #[macro_export]
-macro_rules! iter {
+macro_rules! cfg_iter {
     ($e:expr) => {{
         #[cfg(feature = "rayon")]
-        let result = ::rayon::iter::IntoParallelRefIterator::par_iter($e);
+        {
+            use ::rayon::iter::IntoParallelRefIterator as _;
+            $e.par_iter()
+        }
         #[cfg(not(feature = "rayon"))]
-        let result = $e.iter();
-        result
+        $e.iter()
+    }};
+    ($e:expr, $min_len:expr) => {{
+        #[cfg(feature = "rayon")]
+        {
+            use ::rayon::iter::IntoParallelRefIterator as _;
+            $e.par_iter().with_min_len($min_len)
+        }
+        #[cfg(not(feature = "rayon"))]
+        $e.iter()
     }};
 }
 
 /// Calls the `iter_mut` method on `$e` or the `par_iter_mut` Rayon method if the `rayon` feature is
 /// enabled.
 #[macro_export]
-macro_rules! iter_mut {
+macro_rules! cfg_iter_mut {
     ($e:expr) => {{
         #[cfg(feature = "rayon")]
-        let result = ::rayon::iter::IntoParallelRefMutIterator::par_iter_mut($e);
+        {
+            use ::rayon::iter::IntoParallelRefMutIterator as _;
+            $e.par_iter_mut()
+        }
         #[cfg(not(feature = "rayon"))]
-        let result = $e.iter_mut();
-        result
+        $e.iter_mut()
+    }};
+    ($e:expr, $min_len:expr) => {{
+        #[cfg(feature = "rayon")]
+        {
+            use ::rayon::iter::IntoParallelRefMutIterator as _;
+            $e.par_iter_mut().with_min_len($min_len)
+        }
+        #[cfg(not(feature = "rayon"))]
+        $e.iter_mut()
     }};
 }
 
 /// Calls the `chunks` method on `$e` or the `par_chunks` Rayon method if the `rayon` feature is
 /// enabled.
 #[macro_export]
-macro_rules! chunks {
+macro_rules! cfg_chunks {
     ($e:expr, $size:expr) => {{
         #[cfg(feature = "rayon")]
-        let result = ::rayon::slice::ParallelSlice::par_chunks($e, $size);
+        {
+            use ::rayon::iter::ParallelIterator as _;
+            $e.par_chunks($size)
+        }
         #[cfg(not(feature = "rayon"))]
-        let result = $e.chunks($size);
-        result
+        $e.chunks($size)
     }};
 }
 
 /// Calls the `chunks_mut` method on `$e` or the `par_chunks_mut` Rayon method if the `rayon`
 /// feature is enabled.
 #[macro_export]
-macro_rules! chunks_mut {
+macro_rules! cfg_chunks_mut {
     ($e:expr, $size:expr) => {{
         #[cfg(feature = "rayon")]
-        let result = ::rayon::slice::ParallelSliceMut::par_chunks_mut($e, $size);
+        {
+            use ::rayon::iter::ParallelIterator as _;
+            $e.par_chunks_mut($size)
+        }
         #[cfg(not(feature = "rayon"))]
-        let result = $e.chunks_mut($size);
-        result
+        $e.chunks_mut($size)
     }};
 }
 
 /// Calls the `fold` method on `$e` or the `reduce` Rayon method if the `rayon` feature is enabled.
 #[macro_export]
-macro_rules! reduce {
+macro_rules! cfg_reduce {
     ($e:expr, $default:expr, $op:expr) => {{
         #[cfg(feature = "rayon")]
-        let result = ::rayon::iter::ParallelIterator::reduce($e, $default, $op);
+        {
+            use ::rayon::iter::ParallelIterator as _;
+            $e.reduce($default, $op)
+        }
         #[cfg(not(feature = "rayon"))]
-        let result = $e.fold($default(), $op);
-        result
-    }};
-}
-
-/// Calls the `sum` method on `$e` or the `sum` Rayon method if the `rayon` feature is enabled.
-#[macro_export]
-macro_rules! sum {
-    ($e:expr) => {{
-        $crate::sum!($e, _)
-    }};
-    ($e:expr, $T:ty) => {{
-        #[cfg(feature = "rayon")]
-        let result = ::rayon::iter::ParallelIterator::sum::<$T>($e);
-        #[cfg(not(feature = "rayon"))]
-        let result = $e.sum::<$T>();
-        result
-    }};
-}
-
-/// Calls the `product` method on `$e` or the `product` Rayon method if the `rayon` feature is
-/// enabled.
-#[macro_export]
-macro_rules! product {
-    ($e:expr) => {{
-        $crate::product!($e, _)
-    }};
-    ($e:expr, $T:ty) => {{
-        #[cfg(feature = "rayon")]
-        let result = ::rayon::iter::ParallelIterator::product::<$T>($e);
-        #[cfg(not(feature = "rayon"))]
-        let result = $e.product::<$T>();
-        result
-    }};
-}
-
-/// Calls the `min` method on `$e` or the `min` Rayon method if the `rayon` feature is enabled.
-#[macro_export]
-macro_rules! min {
-    ($e:expr) => {{
-        #[cfg(feature = "rayon")]
-        let result = ::rayon::iter::ParallelIterator::min($e);
-        #[cfg(not(feature = "rayon"))]
-        let result = $e.min();
-        result
-    }};
-}
-
-/// Calls the `max` method on `$e` or the `max` Rayon method if the `rayon` feature is enabled.
-#[macro_export]
-macro_rules! max {
-    ($e:expr) => {{
-        #[cfg(feature = "rayon")]
-        let result = ::rayon::iter::ParallelIterator::max($e);
-        #[cfg(not(feature = "rayon"))]
-        let result = $e.max();
-        result
-    }};
-}
-
-/// Calls the `try_for_each` method on `$e` or the `try_for_each` Rayon method if the `rayon`
-/// feature is enabled.
-#[macro_export]
-macro_rules! try_for_each {
-    ($e:expr, $op:expr) => {{
-        #[cfg(feature = "rayon")]
-        let result = ::rayon::iter::ParallelIterator::try_for_each($e, $op);
-        #[cfg(not(feature = "rayon"))]
-        let result = $e.try_for_each($op);
-        result
+        $e.fold($default(), $op)
     }};
 }

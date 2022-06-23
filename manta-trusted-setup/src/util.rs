@@ -16,8 +16,15 @@
 
 //! Utilities
 
+use ark_ec::{wnaf::WnafContext, AffineCurve, PairingEngine, ProjectiveCurve};
+use ark_ff::{BigInteger, PrimeField, UniformRand};
 use ark_std::io;
-use core::marker::PhantomData;
+use core::{iter, marker::PhantomData};
+use manta_crypto::rand::OsRng;
+use manta_util::{cfg_into_iter, cfg_iter, cfg_iter_mut, cfg_reduce};
+
+#[cfg(feature = "rayon")]
+use rayon::iter::{IndexedParallelIterator, ParallelIterator};
 
 pub use ark_ff::{One, Zero};
 pub use ark_serialize::{
@@ -28,7 +35,7 @@ pub use manta_crypto::rand::Sample;
 /// Distribution Type Extension
 pub trait HasDistribution {
     /// Distribution Type
-    type Distribution;
+    type Distribution: Default;
 }
 
 /// Custom Serialization Adapter
@@ -217,3 +224,168 @@ where
         Ok(item)
     }
 }
+
+/// Multiplies `point` by `scalar` in-place.
+#[inline]
+pub fn scalar_mul<G>(point: &mut G, scalar: G::ScalarField)
+where
+    G: AffineCurve,
+{
+    *point = point.mul(scalar).into_affine();
+}
+
+/// Multiplies each element in `bases` by `scalar`.
+#[inline]
+pub fn batch_scalar_mul_affine<G>(points: &mut [G], scalar: G::ScalarField)
+where
+    G: AffineCurve,
+{
+    cfg_iter_mut!(points).for_each(|point| scalar_mul(point, scalar))
+}
+
+/// Converts each affine point in `points` into its projective form.
+#[inline]
+pub fn batch_into_projective<G>(points: &[G]) -> Vec<G::Projective>
+where
+    G: AffineCurve,
+{
+    cfg_iter!(points).map(G::into_projective).collect()
+}
+
+/// Returns the empirically-recommended window size for WNAF on the given `scalar`.
+#[inline]
+pub fn wnaf_empirical_recommended_window_size<F>(scalar: &F) -> usize
+where
+    F: BigInteger,
+{
+    let num_bits = scalar.num_bits() as usize;
+    if num_bits >= 130 {
+        4
+    } else if num_bits >= 34 {
+        3
+    } else {
+        2
+    }
+}
+
+/// Returns a [`WnafContext`] with the empirically-recommended window size. See
+/// [`wnaf_empirical_recommended_window_size`] for more.
+#[inline]
+pub fn recommended_wnaf<F>(scalar: &F) -> WnafContext
+where
+    F: PrimeField,
+{
+    WnafContext::new(wnaf_empirical_recommended_window_size(&scalar.into_repr()))
+}
+
+/// Compresses `lhs` and `rhs` into a pair of curve points by random linear combination. The same
+/// random linear combination is used for both `lhs` and `rhs`, allowing this pair to be used in a
+/// consistent ratio test.
+#[inline]
+pub fn merge_pairs_projective<G>(lhs: &[G], rhs: &[G]) -> (G, G)
+where
+    G: ProjectiveCurve,
+{
+    assert_eq!(lhs.len(), rhs.len());
+    let tmp = cfg_into_iter!(0..lhs.len())
+        .map(|_| G::ScalarField::rand(&mut OsRng))
+        .zip(lhs)
+        .zip(rhs)
+        .map(|((rho, lhs), rhs)| {
+            let wnaf = recommended_wnaf(&rho);
+            (wnaf.mul(*lhs, &rho), wnaf.mul(*rhs, &rho))
+        });
+    cfg_reduce!(tmp, || (G::zero(), G::zero()), |mut acc, next| {
+        acc.0 += next.0;
+        acc.1 += next.1;
+        acc
+    })
+}
+
+/// Compresses `lhs` and `rhs` into a pair of curve points by random linear combination. The same
+/// random linear combination is used for both `lhs` and `rhs`, allowing this pair to be used in a
+/// consistent ratio test.
+#[inline]
+pub fn merge_pairs_affine<G>(lhs: &[G], rhs: &[G]) -> (G, G)
+where
+    G: AffineCurve,
+{
+    assert_eq!(lhs.len(), rhs.len());
+    let tmp = cfg_into_iter!(0..lhs.len())
+        .map(|_| G::ScalarField::rand(&mut OsRng))
+        .zip(lhs)
+        .zip(rhs)
+        .map(|((rho, lhs), rhs)| (lhs.mul(rho).into_affine(), rhs.mul(rho).into_affine()));
+    cfg_reduce!(tmp, || (Zero::zero(), Zero::zero()), |mut acc, next| {
+        acc.0 = acc.0 + next.0;
+        acc.1 = acc.1 + next.1;
+        acc
+    })
+}
+
+/// Computes a representative ratio pair for `points` by taking consecutive linear combinations
+/// across `points`. This prepares `points` for a check that consecutive elements have the same
+/// ratio, by computing a pairing ratio against a known pair that share the consecutive scaling
+/// ratio.
+#[inline]
+pub fn power_pairs<G>(points: &[G]) -> (G, G)
+where
+    G: AffineCurve,
+{
+    let points_proj = batch_into_projective(points);
+    let (g1_proj, g2_proj) =
+        merge_pairs_projective(&points_proj[..(points_proj.len() - 1)], &points_proj[1..]);
+    (g1_proj.into_affine(), g2_proj.into_affine())
+}
+
+/// Pair from a [`PairingEngine`]
+type Pair<P> = (
+    <P as PairingEngine>::G1Prepared,
+    <P as PairingEngine>::G2Prepared,
+);
+
+/// Pairing Engine Extension
+pub trait PairingEngineExt: PairingEngine {
+    /// Evaluates the pairing function on `pair`.
+    #[inline]
+    fn eval(pair: &Pair<Self>) -> Self::Fqk {
+        Self::product_of_pairings(iter::once(pair))
+    }
+
+    /// Checks if `lhs` and `rhs` evaluate to the same point under the pairing function.
+    #[inline]
+    fn has_same(lhs: &Pair<Self>, rhs: &Pair<Self>) -> bool {
+        Self::eval(lhs) == Self::eval(rhs)
+    }
+
+    /// Checks if `lhs` and `rhs` evaluate to the same point under the pairing function, returning
+    /// `Some` with prepared points if the pairing outcome is the same. This function checks if
+    /// there exists an `r` such that `(r * lhs.0 == rhs.0) && (r * lhs.1 == rhs.1)`.
+    #[inline]
+    fn same<L1, L2, R1, R2>(lhs: (L1, L2), rhs: (R1, R2)) -> Option<(Pair<Self>, Pair<Self>)>
+    where
+        L1: Into<Self::G1Prepared>,
+        L2: Into<Self::G2Prepared>,
+        R1: Into<Self::G1Prepared>,
+        R2: Into<Self::G2Prepared>,
+    {
+        let lhs = (lhs.0.into(), lhs.1.into());
+        let rhs = (rhs.0.into(), rhs.1.into());
+        Self::has_same(&lhs, &rhs).then(|| (lhs, rhs))
+    }
+
+    /// Checks if the ratio of `(lhs.0, lhs.1)` from `G1` is the same as the ratio of
+    /// `(lhs.0, lhs.1)` from `G2`.
+    #[inline]
+    fn same_ratio<L1, L2, R1, R2>(lhs: (L1, R1), rhs: (L2, R2)) -> bool
+    where
+        L1: Into<Self::G1Prepared>,
+        L2: Into<Self::G2Prepared>,
+        R1: Into<Self::G1Prepared>,
+        R2: Into<Self::G2Prepared>,
+    {
+        Self::has_same(&(lhs.0.into(), rhs.1.into()), &(lhs.1.into(), rhs.0.into()))
+    }
+}
+
+impl<E> PairingEngineExt for E where E: PairingEngine {}

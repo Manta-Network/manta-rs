@@ -39,10 +39,10 @@ pub trait Contribute: Types {
     /// Comptues the next state from `state`, `challenge`, and `contribution`.
     fn contribute(
         &self,
-        state: &Self::State,
+        state: &mut Self::State,
         challenge: &Self::Challenge,
         contribution: &Self::Contribution,
-    ) -> (Self::State, Self::Response, Self::Proof);
+    ) -> (Self::Response, Self::Proof);
 }
 
 /// Verification
@@ -62,19 +62,19 @@ pub trait Verify: Types {
         challenge: Self::Challenge,
     ) -> Self::Response;
 
-    /// Verifies the transformation from `last` to `next` using the `next_proof` and `next_response`
-    /// as evidence for the correct update of the state. This method returns the `next` state
-    /// and `next_response`.
+    /// Verifies the transformation from `last` to `next` using the `challenge` and `proof` as
+    /// evidence for the correct update of the state. This method returns the `next` state and
+    /// the next response.
     fn verify(
         &self,
         last: Self::State,
         next: Self::State,
-        next_proof: Self::Proof,
-        next_response: Self::Challenge,
+        challenge: Self::Challenge,
+        proof: Self::Proof,
     ) -> Result<(Self::State, Self::Response), Self::Error>;
 
     /// Verifies all contributions in `iter` chaining from `last` and `last_response` returning the
-    /// newest [`State`](Self::State) and [`Response`](Self::Response) if all the contributions in
+    /// newest [`State`](Types::State) and [`Response`](Types::Response) if all the contributions in
     /// the chain had valid transitions.
     #[inline]
     fn verify_all<E, I>(
@@ -90,7 +90,7 @@ pub trait Verify: Types {
         for item in iter {
             let (next, next_proof) = item.map_err(Into::into)?;
             let next_challenge = self.challenge(&next, &last_response);
-            (last, last_response) = self.verify(last, next, next_proof, next_challenge)?;
+            (last, last_response) = self.verify(last, next, next_challenge, next_proof)?;
         }
         Ok((last, last_response))
     }

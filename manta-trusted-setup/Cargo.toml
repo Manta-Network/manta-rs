@@ -25,6 +25,9 @@ is-it-maintained-open-issues = { repository = "Manta-Network/manta-rs" }
 maintenance = { status = "actively-developed" }
 
 [features]
+# Rayon Parallelization
+rayon = ["dep:rayon", "manta-util/rayon"]
+
 # Standard Library
 std = []
 
@@ -38,5 +41,6 @@ ark-serialize = { version = "0.3.0", default-features = false, features = ["deri
 ark-snark = { version = "0.3.0", default-features = false }
 ark-std = { version = "0.3.0", default-features = false }
 derivative = { version = "2.2.0", default-features = false, features = ["use_core"] }
-manta-crypto = { path = "../manta-crypto", default-features = false }
+manta-crypto = { path = "../manta-crypto", default-features = false, features = ["getrandom"] }
 manta-util = { path = "../manta-util", default-features = false, features = ["alloc"] }
+rayon = { version = "1.5.3", optional = true, default-features = false }
