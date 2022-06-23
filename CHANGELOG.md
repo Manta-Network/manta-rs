@@ -5,6 +5,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 ### Added
+- [\#130](https://github.com/Manta-Network/manta-rs/pull/130) Add the sage script and the hardcoded tests for the security of mds matrix
 
 ### Changed
 

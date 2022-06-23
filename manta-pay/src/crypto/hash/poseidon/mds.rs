@@ -359,17 +359,23 @@ mod test {
     #[test]
     fn mds_matches_hardcoded_sage_output() {
         let test_cases = [
+            (2, include!("mds_hardcoded_tests/width2")),
             (3, include!("mds_hardcoded_tests/width3")),
             (4, include!("mds_hardcoded_tests/width4")),
             (5, include!("mds_hardcoded_tests/width5")),
             (6, include!("mds_hardcoded_tests/width6")),
             (7, include!("mds_hardcoded_tests/width7")),
             (8, include!("mds_hardcoded_tests/width8")),
+            (9, include!("mds_hardcoded_tests/width9")),
+            (10, include!("mds_hardcoded_tests/width10")),
+            (11, include!("mds_hardcoded_tests/width11")),
+            (12, include!("mds_hardcoded_tests/width12")),
         ];
-
         for (width, matrix) in test_cases {
-            let expected_mds = Matrix::<Fp<Fr>>::new_unchecked(matrix);
-            assert_eq!(MdsMatrices::<Fp<Fr>>::generate_mds(width), expected_mds);
+            assert_eq!(
+                MdsMatrices::generate_mds(width),
+                Matrix::new_unchecked(matrix)
+            );
         }
     }
 
