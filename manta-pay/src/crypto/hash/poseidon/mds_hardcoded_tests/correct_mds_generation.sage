@@ -43,7 +43,7 @@ def create_mds_p(t):
             continue
         return M
 
-def generate_vectorspace(round_num, M, M_round, NUM_CELLS):
+def generate_vectorspace(round_num, M_round, NUM_CELLS):
     t = NUM_CELLS
     s = 1
     V = VectorSpace(F, t)
@@ -94,7 +94,7 @@ def algorithm_1(M, NUM_CELLS):
         if (mat_test - mat_target) == matrix.circulant(vector([F(0)] * (t))):
             return [False, 1]
 
-        S = generate_vectorspace(i, M, M_round, t)
+        S = generate_vectorspace(i, M_round, t)
         V = VectorSpace(F, t)
 
         basis_vectors= []
@@ -153,11 +153,8 @@ def algorithm_2(M, NUM_CELLS):
 # Returns True if the matrix is considered secure, False otherwise
 def algorithm_3(M, NUM_CELLS):
     t = NUM_CELLS
-    s = 1
-    V = VectorSpace(F, t)
     l = 4*t
     for r in range(2, l+1):
-        next_r = False
         res_alg_2 = algorithm_2(M^r, t)
         if res_alg_2[0] == False:
             return [False, None]
@@ -179,7 +176,7 @@ def generate_matrix(FIELD, NUM_CELLS):
             result_3 = algorithm_3(mds_matrix, NUM_CELLS)
         return mds_matrix
 
-def print_linear_layer_arkff(M,  t):
+def output_linear_layer_arkff(M,  t):
     matrix_string = "vec!["
     for i in range(0, t):
         matrix_string += "vec![" + ",".join(["Fp(field_new!(Fr, \"{}\"))".format(int(entry)) for entry in M[i]]) + "]"
@@ -190,4 +187,4 @@ def print_linear_layer_arkff(M,  t):
     file.write(matrix_string)
 
 linear_layer = generate_matrix(FIELD, NUM_CELLS)
-print_linear_layer_arkff(linear_layer,  NUM_CELLS)
+output_linear_layer_arkff(linear_layer,  NUM_CELLS)
