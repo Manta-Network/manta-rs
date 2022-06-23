@@ -14,14 +14,4 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Trusted Setup
-
-#![cfg_attr(not(feature = "std"), no_std)]
-#![cfg_attr(doc_cfg, feature(doc_cfg))]
-#![forbid(rustdoc::broken_intra_doc_links)]
-#![forbid(missing_docs)]
-
-pub mod groth16;
-pub mod kzg;
-pub mod mpc;
-pub mod util;
+//! Groth16 Trusted Setup
