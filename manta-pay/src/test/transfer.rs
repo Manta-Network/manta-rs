@@ -17,16 +17,13 @@
 //! Manta Pay Transfer Testing
 
 use crate::{
-    config::{
-        FullParameters, MerkleTreeConfiguration, Mint, PrivateTransfer, Proof, ProofSystem, Reclaim,
-    },
+    config::{FullParameters, Mint, PrivateTransfer, Proof, ProofSystem, Reclaim},
     test::payment::UtxoAccumulator,
     util::scale::{assert_valid_codec, assert_valid_io_codec},
 };
 use manta_crypto::{
     accumulator::Accumulator,
     constraint::{measure::Measure, ProofSystem as _},
-    merkle_tree,
     rand::{OsRng, Rand},
 };
 use std::io::Cursor;
