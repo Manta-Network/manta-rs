@@ -54,10 +54,16 @@ pub trait Serializer<T> {
     where
         W: Write;
 
+    /// Returns the size in bytes of the uncompressed form of `item`.
+    fn uncompressed_size(item: &T) -> usize;
+
     /// Serializes `item` in compressed form to the `writer`, performing all well-formedness checks.
     fn serialize_compressed<W>(item: &T, writer: &mut W) -> Result<(), io::Error>
     where
         W: Write;
+
+    /// Returns the size in bytes of the compressed form of `item`.
+    fn compressed_size(item: &T) -> usize;
 }
 
 /// Custom Deserialization Adapter

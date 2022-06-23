@@ -26,6 +26,7 @@ extern crate alloc;
 
 mod array;
 mod bytes;
+mod macros;
 mod sealed;
 
 pub mod codec;
@@ -54,17 +55,3 @@ pub use serde;
 #[cfg_attr(doc_cfg, doc(cfg(feature = "serde_with")))]
 #[doc(inline)]
 pub use serde_with;
-
-/// Implements [`From`]`<$from>` for an enum `$to`, choosing the `$kind` variant.
-// TODO: add `where` clauses
-#[macro_export]
-macro_rules! from_variant_impl {
-    ($to:ty, $kind:ident, $from:ty) => {
-        impl From<$from> for $to {
-            #[inline]
-            fn from(t: $from) -> Self {
-                Self::$kind(t)
-            }
-        }
-    };
-}

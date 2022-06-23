@@ -21,6 +21,7 @@ use crate::util::{
     SerializationError, Serializer, Write, Zero,
 };
 use ark_ec::{AffineCurve, PairingEngine};
+use manta_util::{iter, sum, try_for_each, vec::VecExt};
 
 /// KZG Trusted Setup Size
 pub trait Size {
@@ -89,22 +90,22 @@ pub struct PublicKey<C>
 where
     C: Pairing,
 {
-    ///
+    /// Tau G1 Ratio
     pub tau_g1_ratio: (C::G1, C::G1),
 
-    ///
+    /// Alpha G1 Ratio
     pub alpha_g1_ratio: (C::G1, C::G1),
 
-    ///
+    /// Beta G1 Ratio
     pub beta_g1_ratio: (C::G1, C::G1),
 
-    ///
+    /// Tau in G2
     pub tau_g2: C::G2,
 
-    ///
+    /// Alpha in G2
     pub alpha_g2: C::G2,
 
-    ///
+    /// Beta in G2
     pub beta_g2: C::G2,
 }
 
@@ -131,12 +132,15 @@ where
 
     #[inline]
     fn serialized_size(&self) -> usize {
-        /* TODO:
-        // Compressed G1 is 48 bytes
-        // Compressed G2 is 96 bytes
-        48 * 2 * 3 + 96 * 3
-        */
-        todo!()
+        C::compressed_size(&self.tau_g1_ratio.0)
+            + C::compressed_size(&self.tau_g1_ratio.1)
+            + C::compressed_size(&self.alpha_g1_ratio.0)
+            + C::compressed_size(&self.alpha_g1_ratio.1)
+            + C::compressed_size(&self.beta_g1_ratio.0)
+            + C::compressed_size(&self.beta_g1_ratio.1)
+            + C::compressed_size(&self.tau_g2)
+            + C::compressed_size(&self.alpha_g2)
+            + C::compressed_size(&self.beta_g2)
     }
 
     #[inline]
@@ -158,12 +162,15 @@ where
 
     #[inline]
     fn uncompressed_size(&self) -> usize {
-        /* TODO:
-        // Compressed G1 is 96 bytes
-        // Compressed G2 is 192 bytes
-        96 * 2 * 3 + 192 * 3
-        */
-        todo!()
+        C::uncompressed_size(&self.tau_g1_ratio.0)
+            + C::uncompressed_size(&self.tau_g1_ratio.1)
+            + C::uncompressed_size(&self.alpha_g1_ratio.0)
+            + C::uncompressed_size(&self.alpha_g1_ratio.1)
+            + C::uncompressed_size(&self.beta_g1_ratio.0)
+            + C::uncompressed_size(&self.beta_g1_ratio.1)
+            + C::uncompressed_size(&self.tau_g2)
+            + C::uncompressed_size(&self.alpha_g2)
+            + C::uncompressed_size(&self.beta_g2)
     }
 }
 
@@ -226,19 +233,19 @@ pub struct Accumulator<C>
 where
     C: Pairing + Size,
 {
-    ///
+    /// Vector of Tau Powers in G1 of size [`G1_POWERS`]
     tau_powers_g1: Vec<C::G1>,
 
-    ///
+    /// Vector of Tau Powers in G2 of size [`G2_POWERS`]
     tau_powers_g2: Vec<C::G2>,
 
-    ///
+    /// Vector of Alpha Multiplied by Tau Powers in G1 of size [`G2_POWERS`]
     alpha_tau_powers_g1: Vec<C::G1>,
 
-    ///
+    /// Vector of Beta Multiplied by Tau Powers in G1 of size [`G2_POWERS`]
     beta_tau_powers_g1: Vec<C::G1>,
 
-    ///
+    /// Beta in G2
     beta_g2: C::G2,
 }
 
@@ -269,12 +276,17 @@ where
 
     #[inline]
     fn serialized_size(&self) -> usize {
-        /* TODO:
-        // A compressed G1 element is 48 bytes
-        // A compressed G2 element is 96 bytes
-        C::G1_POWERS * 48 + C::G2_POWERS * 96 + C::G1_POWERS * 48 * 2 + 96
-        */
-        todo!()
+        sum!(iter!(self.tau_powers_g1).map(C::compressed_size), usize)
+            + sum!(iter!(self.tau_powers_g2).map(C::compressed_size), usize)
+            + sum!(
+                iter!(self.alpha_tau_powers_g1).map(C::compressed_size),
+                usize
+            )
+            + sum!(
+                iter!(self.beta_tau_powers_g1).map(C::compressed_size),
+                usize
+            )
+            + C::compressed_size(&self.beta_g2)
     }
 
     #[inline]
@@ -300,12 +312,17 @@ where
 
     #[inline]
     fn uncompressed_size(&self) -> usize {
-        /* TODO:
-        // An uncompressed G1 element is 96 bytes
-        // An uncompressed G2 element is 192 bytes
-        C::G1_POWERS * 96 + C::G2_POWERS * 192 + C::G1_POWERS * 96 * 2 + 192
-        */
-        todo!()
+        sum!(iter!(self.tau_powers_g1).map(C::uncompressed_size), usize)
+            + sum!(iter!(self.tau_powers_g2).map(C::uncompressed_size), usize)
+            + sum!(
+                iter!(self.alpha_tau_powers_g1).map(C::uncompressed_size),
+                usize
+            )
+            + sum!(
+                iter!(self.beta_tau_powers_g1).map(C::uncompressed_size),
+                usize
+            )
+            + C::uncompressed_size(&self.beta_g2)
     }
 }
 
@@ -318,45 +335,29 @@ where
     where
         R: Read,
     {
-        /*
         let mut tau_powers_g1 = Vec::with_capacity(C::G1_POWERS);
         for _ in 0..C::G1_POWERS {
-            tau_powers_g1.push(
-                C::deserialize_g1_compressed(&mut reader)
-                    .map_err(C::convert_serialization_error)?,
-            );
+            tau_powers_g1.push(C::deserialize_compressed(&mut reader).map_err(Into::into)?);
         }
         let mut tau_powers_g2 = Vec::with_capacity(C::G2_POWERS);
         for _ in 0..C::G2_POWERS {
-            tau_powers_g2.push(
-                C::deserialize_g2_compressed(&mut reader)
-                    .map_err(C::convert_serialization_error)?,
-            );
+            tau_powers_g2.push(C::deserialize_compressed(&mut reader).map_err(Into::into)?);
         }
         let mut alpha_tau_powers_g1 = Vec::with_capacity(C::G2_POWERS);
         for _ in 0..C::G2_POWERS {
-            alpha_tau_powers_g1.push(
-                C::deserialize_g1_compressed(&mut reader)
-                    .map_err(C::convert_serialization_error)?,
-            );
+            alpha_tau_powers_g1.push(C::deserialize_compressed(&mut reader).map_err(Into::into)?);
         }
         let mut beta_tau_powers_g1 = Vec::with_capacity(C::G2_POWERS);
         for _ in 0..C::G2_POWERS {
-            beta_tau_powers_g1.push(
-                C::deserialize_g1_compressed(&mut reader)
-                    .map_err(C::convert_serialization_error)?,
-            );
+            beta_tau_powers_g1.push(C::deserialize_compressed(&mut reader).map_err(Into::into)?);
         }
         Ok(Self {
             tau_powers_g1,
             tau_powers_g2,
             alpha_tau_powers_g1,
             beta_tau_powers_g1,
-            beta_g2: C::deserialize_g2_compressed(&mut reader)
-                .map_err(C::convert_serialization_error)?,
+            beta_g2: C::deserialize_compressed(&mut reader).map_err(Into::into)?,
         })
-        */
-        todo!()
     }
 
     #[inline]
@@ -364,36 +365,13 @@ where
     where
         R: Read,
     {
-        /* TODO:
-        let unchecked = Self::deserialize_unchecked(reader)?;
-        let counter = std::sync::atomic::AtomicU64::new(0);
-        cfg_try_for_each!(cfg_iter!(&unchecked.tau_powers_g1), |point| {
-            counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            if counter.load(std::sync::atomic::Ordering::SeqCst) % 1000000 == 0 {
-                println!("Checked this many elements: {:?}", counter);
-            }
-            C::curve_point_checks_g1(point)
-        })
-        .map_err(C::convert_serialization_error)?;
-        cfg_try_for_each!(
-            cfg_iter!(&unchecked.tau_powers_g2),
-            C::curve_point_checks_g2
-        )
-        .map_err(C::convert_serialization_error)?;
-        cfg_try_for_each!(
-            cfg_iter!(&unchecked.alpha_tau_powers_g1),
-            C::curve_point_checks_g1
-        )
-        .map_err(C::convert_serialization_error)?;
-        cfg_try_for_each!(
-            cfg_iter!(&unchecked.beta_tau_powers_g1),
-            C::curve_point_checks_g1
-        )
-        .map_err(C::convert_serialization_error)?;
-        C::curve_point_checks_g2(&unchecked.beta_g2).map_err(C::convert_serialization_error)?;
-        Ok(unchecked)
-        */
-        todo!()
+        let accumulator = Self::deserialize_unchecked(reader)?;
+        try_for_each!(iter!(&accumulator.tau_powers_g1), C::check).map_err(Into::into)?;
+        try_for_each!(iter!(&accumulator.tau_powers_g2), C::check).map_err(Into::into)?;
+        try_for_each!(iter!(&accumulator.alpha_tau_powers_g1), C::check).map_err(Into::into)?;
+        try_for_each!(iter!(&accumulator.beta_tau_powers_g1), C::check).map_err(Into::into)?;
+        C::check(&accumulator.beta_g2).map_err(Into::into)?;
+        Ok(accumulator)
     }
 
     #[inline]
@@ -401,41 +379,25 @@ where
     where
         R: Read,
     {
-        /* TODO:
-        let mut tau_powers_g1 = Vec::with_capacity(C::G1_POWERS);
-        for i in 0..C::G1_POWERS {
-            tau_powers_g1.push(
-                C::deserialize_g1_unchecked(&mut reader).map_err(C::convert_serialization_error)?,
-            );
-        }
-        let mut tau_powers_g2 = Vec::with_capacity(C::G2_POWERS);
-        for i in 0..C::G2_POWERS {
-            tau_powers_g2.push(
-                C::deserialize_g2_unchecked(&mut reader).map_err(C::convert_serialization_error)?,
-            );
-        }
-        let mut alpha_tau_powers_g1 = Vec::with_capacity(C::G2_POWERS);
-        for i in 0..C::G2_POWERS {
-            alpha_tau_powers_g1.push(
-                C::deserialize_g1_unchecked(&mut reader).map_err(C::convert_serialization_error)?,
-            );
-        }
-        let mut beta_tau_powers_g1 = Vec::with_capacity(C::G2_POWERS);
-        for i in 0..C::G2_POWERS {
-            beta_tau_powers_g1.push(
-                C::deserialize_g1_unchecked(&mut reader).map_err(C::convert_serialization_error)?,
-            );
-        }
         Ok(Self {
-            tau_powers_g1,
-            tau_powers_g2,
-            alpha_tau_powers_g1,
-            beta_tau_powers_g1,
-            beta_g2: C::deserialize_g2_unchecked(&mut reader)
-                .map_err(C::convert_serialization_error)?,
+            tau_powers_g1: Vec::try_allocate_with(C::G1_POWERS, |_| {
+                C::deserialize_unchecked(&mut reader)
+            })
+            .map_err(Into::into)?,
+            tau_powers_g2: Vec::try_allocate_with(C::G2_POWERS, |_| {
+                C::deserialize_unchecked(&mut reader)
+            })
+            .map_err(Into::into)?,
+            alpha_tau_powers_g1: Vec::try_allocate_with(C::G2_POWERS, |_| {
+                C::deserialize_unchecked(&mut reader)
+            })
+            .map_err(Into::into)?,
+            beta_tau_powers_g1: Vec::try_allocate_with(C::G2_POWERS, |_| {
+                C::deserialize_unchecked(&mut reader)
+            })
+            .map_err(Into::into)?,
+            beta_g2: C::deserialize_unchecked(&mut reader).map_err(Into::into)?,
         })
-        */
-        todo!()
     }
 }
 
