@@ -16,8 +16,6 @@
 
 //! Hash Functions
 
-use crate::constraint::Native;
-
 /// Unary Hash Function
 pub trait UnaryHashFunction<COM = ()> {
     /// Input Type
@@ -26,17 +24,8 @@ pub trait UnaryHashFunction<COM = ()> {
     /// Output Type
     type Output;
 
-    /// Computes the hash over `input` in the given `compiler`.
-    fn hash_in(&self, input: &Self::Input, compiler: &mut COM) -> Self::Output;
-
     /// Computes the hash over `input`.
-    #[inline]
-    fn hash(&self, input: &Self::Input) -> Self::Output
-    where
-        COM: Native,
-    {
-        self.hash_in(input, &mut COM::compiler())
-    }
+    fn hash(&self, input: &Self::Input, compiler: &mut COM) -> Self::Output;
 }
 
 impl<H, COM> UnaryHashFunction<COM> for &H
@@ -47,16 +36,8 @@ where
     type Output = H::Output;
 
     #[inline]
-    fn hash_in(&self, input: &Self::Input, compiler: &mut COM) -> Self::Output {
-        (*self).hash_in(input, compiler)
-    }
-
-    #[inline]
-    fn hash(&self, input: &Self::Input) -> Self::Output
-    where
-        COM: Native,
-    {
-        (*self).hash(input)
+    fn hash(&self, input: &Self::Input, compiler: &mut COM) -> Self::Output {
+        (*self).hash(input, compiler)
     }
 }
 
@@ -71,17 +52,8 @@ pub trait BinaryHashFunction<COM = ()> {
     /// Output Type
     type Output;
 
-    /// Computes the hash over `lhs` and `rhs` in the given `compiler`.
-    fn hash_in(&self, lhs: &Self::Left, rhs: &Self::Right, compiler: &mut COM) -> Self::Output;
-
     /// Computes the hash over `lhs` and `rhs`.
-    #[inline]
-    fn hash(&self, lhs: &Self::Left, rhs: &Self::Right) -> Self::Output
-    where
-        COM: Native,
-    {
-        self.hash_in(lhs, rhs, &mut COM::compiler())
-    }
+    fn hash(&self, lhs: &Self::Left, rhs: &Self::Right, compiler: &mut COM) -> Self::Output;
 }
 
 /// Array Hash Function
@@ -92,17 +64,8 @@ pub trait ArrayHashFunction<const ARITY: usize, COM = ()> {
     /// Output Type
     type Output;
 
-    /// Computes the hash over `input` in the given `compiler`.
-    fn hash_in(&self, input: [&Self::Input; ARITY], compiler: &mut COM) -> Self::Output;
-
     /// Computes the hash over `input`.
-    #[inline]
-    fn hash(&self, input: [&Self::Input; ARITY]) -> Self::Output
-    where
-        COM: Native,
-    {
-        self.hash_in(input, &mut COM::compiler())
-    }
+    fn hash(&self, input: [&Self::Input; ARITY], compiler: &mut COM) -> Self::Output;
 }
 
 /// Array Hashing Utilities
@@ -164,16 +127,8 @@ pub mod array {
         type Output = H::Output;
 
         #[inline]
-        fn hash_in(&self, input: &Self::Input, compiler: &mut COM) -> Self::Output {
-            self.hasher.hash_in([input], compiler)
-        }
-
-        #[inline]
-        fn hash(&self, input: &Self::Input) -> Self::Output
-        where
-            COM: Native,
-        {
-            self.hasher.hash([input])
+        fn hash(&self, input: &Self::Input, compiler: &mut COM) -> Self::Output {
+            self.hasher.hash([input], compiler)
         }
     }
 }

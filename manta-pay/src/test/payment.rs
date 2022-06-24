@@ -30,8 +30,8 @@ use manta_crypto::{
     rand::{CryptoRng, Rand, RngCore, Sample},
 };
 
-/// UTXO Accumulator for Building Circuits
-type UtxoAccumulator =
+/// UTXO Accumulator for Building Test Circuits
+pub type UtxoAccumulator =
     TreeArrayMerkleForest<MerkleTreeConfiguration, Full<MerkleTreeConfiguration>, 256>;
 
 /// Generates a proof for a [`Mint`] transaction.
@@ -55,16 +55,13 @@ where
         .expect("Unable to build MINT proof.")
 }
 
-/// Samples context of [`Mint`]s for individual assets.
-/// The context is used in `prove_private_transfer` function and
-///     `prove_reclaim` for benchmarking.
-/// Note that the mint proof is not included in the context, since it
-///     is not used when proving private transfer or reclaim.
-/// The generation of mint proof is also not included so that this function
-///     is lightweight and we can precisely profile the performance of
-///     `prove_priate_transfer` and `prove_reclaim`.
+/// Samples a [`Mint`] spender.
+///
+/// The spender is used in the [`prove_private_transfer`] and [`prove_reclaim`] functions for
+/// benchmarking. Note that the [`Mint`] proof is not returned since it is not used when proving a
+/// [`PrivateTransfer`] or [`Reclaim`].
 #[inline]
-pub fn sample_mint_context<R>(
+pub fn sample_mint_spender<R>(
     parameters: &Parameters,
     utxo_accumulator: &mut UtxoAccumulator,
     asset: Asset,
@@ -81,7 +78,7 @@ where
     (spending_key, sender)
 }
 
-/// Generates a proof for a [`PrivateTransfer`] transaction
+/// Generates a proof for a [`PrivateTransfer`] transaction.
 #[inline]
 pub fn prove_private_transfer<R>(
     proving_context: &MultiProvingContext,
@@ -97,9 +94,9 @@ where
     let asset_1 = asset_id.value(20_000);
     let mut utxo_accumulator = UtxoAccumulator::new(utxo_accumulator_model.clone());
     let (spending_key_0, sender_0) =
-        sample_mint_context(parameters, &mut utxo_accumulator, asset_0, rng);
+        sample_mint_spender(parameters, &mut utxo_accumulator, asset_0, rng);
     let (spending_key_1, sender_1) =
-        sample_mint_context(parameters, &mut utxo_accumulator, asset_1, rng);
+        sample_mint_spender(parameters, &mut utxo_accumulator, asset_1, rng);
     PrivateTransfer::build(
         [sender_0, sender_1],
         [
@@ -115,7 +112,7 @@ where
     .expect("Unable to build PRIVATE_TRANSFER proof.")
 }
 
-/// Generates a proof for a ['Reclaim'] transaction
+/// Generates a proof for a [`Reclaim`] transaction.
 #[inline]
 pub fn prove_reclaim<R>(
     proving_context: &MultiProvingContext,
@@ -131,8 +128,8 @@ where
     let asset_1 = asset_id.value(20_000);
     let mut utxo_accumulator = UtxoAccumulator::new(utxo_accumulator_model.clone());
     let (spending_key_0, sender_0) =
-        sample_mint_context(parameters, &mut utxo_accumulator, asset_0, rng);
-    let (_, sender_1) = sample_mint_context(parameters, &mut utxo_accumulator, asset_1, rng);
+        sample_mint_spender(parameters, &mut utxo_accumulator, asset_0, rng);
+    let (_, sender_1) = sample_mint_spender(parameters, &mut utxo_accumulator, asset_1, rng);
     Reclaim::build(
         [sender_0, sender_1],
         [spending_key_0.receiver(parameters, rng.gen(), asset_1)],

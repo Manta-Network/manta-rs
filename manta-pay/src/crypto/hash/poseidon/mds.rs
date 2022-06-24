@@ -358,52 +358,25 @@ mod test {
     /// Checks if `mds` matches hardcoded sage outputs.
     #[test]
     fn mds_matches_hardcoded_sage_output() {
-        let width = 3;
-        let expected_mds = Matrix::<Fp<Fr>>::new_unchecked(vec![
-            vec![
-                Fp(field_new!(
-                    Fr,
-                    "34957250116750793652965160338790643891793701667018425215069105799959054123009"
-                )),
-                Fp(field_new!(
-                    Fr,
-                    "39326906381344642859585805381139474378267914375395728366952744024953935888385"
-                )),
-                Fp(field_new!(
-                    Fr,
-                    "31461525105075714287668644304911579502614331500316582693562195219963148710708"
-                )),
-            ],
-            vec![
-                Fp(field_new!(
-                    Fr,
-                    "39326906381344642859585805381139474378267914375395728366952744024953935888385"
-                )),
-                Fp(field_new!(
-                    Fr,
-                    "31461525105075714287668644304911579502614331500316582693562195219963148710708"
-                )),
-                Fp(field_new!(
-                    Fr,
-                    "43696562645938492066206450423488304864742127083773031518836382249948817653761"
-                )),
-            ],
-            vec![
-                Fp(field_new!(
-                    Fr,
-                    "31461525105075714287668644304911579502614331500316582693562195219963148710708"
-                )),
-                Fp(field_new!(
-                    Fr,
-                    "43696562645938492066206450423488304864742127083773031518836382249948817653761"
-                )),
-                Fp(field_new!(
-                    Fr,
-                    "14981678621464625851270783002338847382197300714436467949315331057125308909861"
-                )),
-            ],
-        ]);
-        assert_eq!(MdsMatrices::<Fp<Fr>>::generate_mds(width), expected_mds);
+        let test_cases = [
+            (2, include!("mds_hardcoded_tests/width2")),
+            (3, include!("mds_hardcoded_tests/width3")),
+            (4, include!("mds_hardcoded_tests/width4")),
+            (5, include!("mds_hardcoded_tests/width5")),
+            (6, include!("mds_hardcoded_tests/width6")),
+            (7, include!("mds_hardcoded_tests/width7")),
+            (8, include!("mds_hardcoded_tests/width8")),
+            (9, include!("mds_hardcoded_tests/width9")),
+            (10, include!("mds_hardcoded_tests/width10")),
+            (11, include!("mds_hardcoded_tests/width11")),
+            (12, include!("mds_hardcoded_tests/width12")),
+        ];
+        for (width, matrix) in test_cases {
+            assert_eq!(
+                MdsMatrices::generate_mds(width),
+                Matrix::new_unchecked(matrix)
+            );
+        }
     }
 
     /// Checks if mds is invertible.

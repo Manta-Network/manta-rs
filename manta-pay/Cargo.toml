@@ -50,7 +50,7 @@ arkworks = [
 ]
 
 # Enable Download Parameters
-download = ["manta-parameters", "std"]
+download = ["manta-parameters/download", "std"]
 
 # Enable Groth16 ZKP System
 groth16 = ["ark-groth16", "ark-snark", "arkworks"]
@@ -86,7 +86,7 @@ simulation = [
 std = ["manta-accounting/std", "manta-util/std"]
 
 # Testing Frameworks
-test = ["manta-accounting/test", "manta-crypto/test", "tempfile"]
+test = ["manta-accounting/test", "manta-crypto/test", "manta-parameters", "tempfile"]
 
 # Wallet
 wallet = ["bip32", "manta-crypto/getrandom", "std"]
@@ -117,13 +117,13 @@ ark-std = { version = "0.3.0", optional = true, default-features = false }
 bip32 = { version = "0.3.0", optional = true, default-features = false, features = ["bip39", "secp256k1"] }
 blake2 = { version = "0.10.4", default-features = false }
 bs58 = { version = "0.4.0", optional = true, default-features = false, features = ["alloc"] }
-clap = { version = "3.2.4", optional = true, default-features = false, features = ["color", "derive", "std", "suggestions", "unicode", "wrap_help"] }
+clap = { version = "3.2.6", optional = true, default-features = false, features = ["color", "derive", "std", "suggestions", "unicode", "wrap_help"] }
 derivative = { version = "2.2.0", default-features = false, features = ["use_core"] }
 futures = { version = "0.3.21", optional = true, default-features = false }
 indexmap = { version = "1.8.2", optional = true, default-features = false }
 manta-accounting = { path = "../manta-accounting", default-features = false }
 manta-crypto = { path = "../manta-crypto", default-features = false }
-manta-parameters = { path = "../manta-parameters", optional = true, default-features = false, features = ["download"] }
+manta-parameters = { path = "../manta-parameters", optional = true, default-features = false }
 manta-util = { path = "../manta-util", default-features = false }
 parking_lot = { version = "0.12.1", optional = true, default-features = false }
 rand_chacha = { version = "0.3.1", default-features = false }
