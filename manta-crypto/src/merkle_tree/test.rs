@@ -213,7 +213,7 @@ where
     type Output = T;
 
     #[inline]
-    fn join_in(
+    fn join(
         parameters: &Self::Parameters,
         lhs: &Self::Output,
         rhs: &Self::Output,
@@ -224,7 +224,7 @@ where
     }
 
     #[inline]
-    fn join_leaves_in(
+    fn join_leaves(
         parameters: &Self::Parameters,
         lhs: &Self::LeafDigest,
         rhs: &Self::LeafDigest,

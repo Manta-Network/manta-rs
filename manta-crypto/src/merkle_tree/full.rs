@@ -203,7 +203,7 @@ where
         F: FnOnce() -> Option<LeafDigest<C>>,
     {
         let len = self.len();
-        if len >= capacity::<C>() {
+        if len >= capacity::<C, _>() {
             return Some(false);
         }
         self.push_leaf_digest(parameters, Node(len), leaf_digest()?);

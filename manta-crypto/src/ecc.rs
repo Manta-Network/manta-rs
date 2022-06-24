@@ -329,7 +329,7 @@ where
     type Output = G::Output;
 
     #[inline]
-    fn derive_in(&self, key: &Self::Key, compiler: &mut COM) -> Self::Output {
+    fn derive(&self, key: &Self::Key, compiler: &mut COM) -> Self::Output {
         self.generator.scalar_mul(key, compiler)
     }
 }
@@ -344,7 +344,7 @@ where
     type SharedSecret = G::Output;
 
     #[inline]
-    fn agree_in(
+    fn agree(
         &self,
         secret_key: &Self::SecretKey,
         public_key: &Self::PublicKey,

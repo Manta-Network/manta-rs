@@ -59,7 +59,7 @@ where
     type Output = SecretKey;
 
     #[inline]
-    fn derive_in(&self, key: &Self::Key, _: &mut ()) -> Self::Output {
+    fn derive(&self, key: &Self::Key, _: &mut ()) -> Self::Output {
         // FIXME: Check that this conversion is logical/safe.
         let bytes: [u8; 32] = key
             .private_key()

@@ -25,10 +25,11 @@ use ark_relations::{
 };
 use manta_crypto::{
     constraint::{
-        measure::Measure, Add, ConditionalSelect, Constant, ConstraintSystem, Equal, Public,
-        Secret, Variable,
+        self,
+        measure::{Count, Measure},
+        mode, Add, Assert, AssertEq, ConditionalSwap, Constant, Has, Public, Secret, Variable,
     },
-    rand::{CryptoRng, RngCore, Sample},
+    rand::{RngCore, Sample},
 };
 use manta_util::{
     byte_count,
@@ -181,7 +182,7 @@ where
     #[inline]
     fn sample<R>(_: (), rng: &mut R) -> Self
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         Self(F::rand(rng))
     }
@@ -266,7 +267,7 @@ where
 {
     /// Constructs a new constraint system which is ready for unknown variables.
     #[inline]
-    pub fn for_unknown() -> Self {
+    pub fn for_contexts() -> Self {
         // FIXME: This might not be the right setup for all proof systems.
         let cs = ark_r1cs::ConstraintSystem::new_ref();
         cs.set_optimization_goal(ark_r1cs::OptimizationGoal::Constraints);
@@ -276,7 +277,7 @@ where
 
     /// Constructs a new constraint system which is ready for known variables.
     #[inline]
-    pub fn for_known() -> Self {
+    pub fn for_proofs() -> Self {
         // FIXME: This might not be the right setup for all proof systems.
         let cs = ark_r1cs::ConstraintSystem::new_ref();
         cs.set_optimization_goal(ark_r1cs::OptimizationGoal::Constraints);
@@ -292,16 +293,50 @@ where
     }
 }
 
-impl<F> ConstraintSystem for R1CS<F>
+impl<F> Has<bool> for R1CS<F>
 where
     F: PrimeField,
 {
-    type Bool = Boolean<F>;
+    type Type = Boolean<F>;
+}
 
+impl<F> Assert for R1CS<F>
+where
+    F: PrimeField,
+{
     #[inline]
-    fn assert(&mut self, b: Self::Bool) {
+    fn assert(&mut self, b: &Boolean<F>) {
         b.enforce_equal(&Boolean::TRUE)
             .expect("Enforcing equality is not allowed to fail.");
+    }
+}
+
+impl<F> AssertEq for R1CS<F>
+where
+    F: PrimeField,
+{
+    // TODO: Implement these optimizations.
+}
+
+impl<F> Count<mode::Constant> for R1CS<F> where F: PrimeField {}
+
+impl<F> Count<Public> for R1CS<F>
+where
+    F: PrimeField,
+{
+    #[inline]
+    fn count(&self) -> Option<usize> {
+        Some(self.cs.num_instance_variables())
+    }
+}
+
+impl<F> Count<Secret> for R1CS<F>
+where
+    F: PrimeField,
+{
+    #[inline]
+    fn count(&self) -> Option<usize> {
+        Some(self.cs.num_witness_variables())
     }
 }
 
@@ -312,16 +347,6 @@ where
     #[inline]
     fn constraint_count(&self) -> usize {
         self.cs.num_constraints()
-    }
-
-    #[inline]
-    fn public_variable_count(&self) -> Option<usize> {
-        Some(self.cs.num_instance_variables())
-    }
-
-    #[inline]
-    fn secret_variable_count(&self) -> Option<usize> {
-        Some(self.cs.num_witness_variables())
     }
 }
 
@@ -396,14 +421,14 @@ where
     }
 }
 
-impl<F> Equal<R1CS<F>> for Boolean<F>
+impl<F> constraint::PartialEq<Self, R1CS<F>> for Boolean<F>
 where
     F: PrimeField,
 {
     #[inline]
-    fn eq(lhs: &Self, rhs: &Self, compiler: &mut R1CS<F>) -> Boolean<F> {
+    fn eq(&self, rhs: &Self, compiler: &mut R1CS<F>) -> Boolean<F> {
         let _ = compiler;
-        lhs.is_eq(rhs)
+        self.is_eq(rhs)
             .expect("Equality checking is not allowed to fail.")
     }
 }
@@ -459,42 +484,51 @@ where
     }
 }
 
-impl<F> Equal<R1CS<F>> for FpVar<F>
+impl<F> constraint::PartialEq<Self, R1CS<F>> for FpVar<F>
 where
     F: PrimeField,
 {
     #[inline]
-    fn eq(lhs: &Self, rhs: &Self, compiler: &mut R1CS<F>) -> Boolean<F> {
+    fn eq(&self, rhs: &Self, compiler: &mut R1CS<F>) -> Boolean<F> {
         let _ = compiler;
-        lhs.is_eq(rhs)
+        self.is_eq(rhs)
             .expect("Equality checking is not allowed to fail.")
     }
 }
 
-impl<F> ConditionalSelect<R1CS<F>> for FpVar<F>
+/// Conditionally select from `lhs` and `rhs` depending on the value of `bit`.
+#[inline]
+fn conditionally_select<F>(bit: &Boolean<F>, lhs: &FpVar<F>, rhs: &FpVar<F>) -> FpVar<F>
+where
+    F: PrimeField,
+{
+    FpVar::conditionally_select(bit, lhs, rhs)
+        .expect("Conditionally selecting from two values is not allowed to fail.")
+}
+
+impl<F> ConditionalSwap<R1CS<F>> for FpVar<F>
 where
     F: PrimeField,
 {
     #[inline]
-    fn select(
-        bit: &Boolean<F>,
-        true_value: &Self,
-        false_value: &Self,
-        compiler: &mut R1CS<F>,
-    ) -> Self {
+    fn swap(bit: &Boolean<F>, lhs: &Self, rhs: &Self, compiler: &mut R1CS<F>) -> (Self, Self) {
         let _ = compiler;
-        Self::conditionally_select(bit, true_value, false_value)
-            .expect("Conditionally selecting from two values is not allowed to fail.")
+        (
+            conditionally_select(bit, rhs, lhs),
+            conditionally_select(bit, lhs, rhs),
+        )
     }
 }
 
-impl<F> Add<R1CS<F>> for FpVar<F>
+impl<F> Add<Self, R1CS<F>> for FpVar<F>
 where
     F: PrimeField,
 {
+    type Output = Self;
+
     #[inline]
-    fn add(lhs: Self, rhs: Self, compiler: &mut R1CS<F>) -> Self {
+    fn add(self, rhs: Self, compiler: &mut R1CS<F>) -> Self {
         let _ = compiler;
-        lhs + rhs
+        self + rhs
     }
 }

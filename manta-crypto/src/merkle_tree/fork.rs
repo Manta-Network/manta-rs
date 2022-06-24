@@ -295,7 +295,7 @@ where
         LeafDigest<C>: Clone + Default,
         InnerDigest<C>: Default,
     {
-        if leaf_digests.len() + base.len() >= capacity::<C>() {
+        if leaf_digests.len() + base.len() >= capacity::<C, _>() {
             return None;
         }
         Some(Self::new_unchecked(parameters, base, leaf_digests))
@@ -395,7 +395,7 @@ where
         LeafDigest<C>: Clone + Default,
         InnerDigest<C>: Default,
     {
-        if self.data.len() + base.len() - (self.base_contribution as usize) >= capacity::<C>() {
+        if self.data.len() + base.len() - (self.base_contribution as usize) >= capacity::<C, _>() {
             return false;
         }
         let new_branch = Self::new_unchecked(
