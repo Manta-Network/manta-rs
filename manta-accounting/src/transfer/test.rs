@@ -407,6 +407,7 @@ pub fn assert_valid_proof<C>(verifying_context: &VerifyingContext<C>, post: &Tra
 where
     C: Configuration,
     <C::ProofSystem as ProofSystem>::Error: Debug,
+    TransferPost<C>: Debug,
 {
     assert!(
         C::ProofSystem::verify(
@@ -415,6 +416,7 @@ where
             &post.validity_proof,
         )
         .expect("Unable to verify proof."),
-        "Invalid proof.",
+        "Invalid proof: {:?}",
+        post,
     );
 }
