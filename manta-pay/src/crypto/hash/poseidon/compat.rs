@@ -27,7 +27,7 @@ use manta_util::serde::{Deserialize, Serialize};
 #[cfg(any(feature = "test", test))]
 use {
     core::iter::repeat,
-    manta_crypto::rand::{CryptoRng, Rand, RngCore, Sample},
+    manta_crypto::rand::{Rand, RngCore, Sample},
 };
 
 /// Poseidon Permutation Specification
@@ -259,7 +259,7 @@ where
     #[inline]
     fn sample<R>(distribution: D, rng: &mut R) -> Self
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         Self {
             additive_round_keys: rng

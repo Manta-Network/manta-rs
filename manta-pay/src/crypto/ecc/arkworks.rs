@@ -27,7 +27,7 @@ use manta_crypto::{
     constraint::{self, Allocate, Allocator, Constant, Public, Secret, Variable},
     ecc::{self, PointAdd, PointDouble},
     key::kdf,
-    rand::{CryptoRng, RngCore, Sample},
+    rand::{RngCore, Sample},
 };
 use manta_util::codec;
 
@@ -252,7 +252,7 @@ where
     #[inline]
     fn sample<R>(_: (), rng: &mut R) -> Self
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         Self(C::rand(rng).into())
     }
