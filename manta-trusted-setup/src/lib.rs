@@ -21,6 +21,8 @@
 #![forbid(rustdoc::broken_intra_doc_links)]
 #![forbid(missing_docs)]
 
+extern crate alloc;
+
 pub mod groth16;
 pub mod kzg;
 pub mod mpc;

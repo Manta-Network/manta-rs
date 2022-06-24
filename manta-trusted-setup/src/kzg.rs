@@ -21,6 +21,7 @@ use crate::util::{
     HasDistribution, NonZero, One, PairingEngineExt, Read, Sample, SerializationError, Serializer,
     Write, Zero,
 };
+use alloc::{vec, vec::Vec};
 use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
 use ark_ff::{PrimeField, UniformRand};
 use core::{iter, ops::Mul};
@@ -548,12 +549,12 @@ where
 
     /// Verifies that `next` was computed properly from `last` with `proof` of the contribution.
     #[inline]
-    pub fn verify(
+    pub fn verify_transform(
         last: Self,
         next: Self,
-        challenge: C::Challenge,
+        next_challenge: C::Challenge,
         proof: Proof<C>,
-    ) -> Result<(Self, C::Response), VerificationError>
+    ) -> Result<Self, VerificationError>
     where
         C: Configuration,
     {
@@ -563,8 +564,7 @@ where
         if next.tau_powers_g2[0] != C::g2_prime_subgroup_generator() {
             return Err(VerificationError::PrimeSubgroupGeneratorG2);
         }
-        let response = C::response(&next, &challenge, &proof);
-        let KnowledgeProofCeritificate { tau, alpha, beta } = proof.verify(&challenge)?;
+        let KnowledgeProofCeritificate { tau, alpha, beta } = proof.verify(&next_challenge)?;
         C::Pairing::same(
             (last.tau_powers_g1[1], tau.0),
             (next.tau_powers_g1[1], tau.1),
@@ -599,7 +599,7 @@ where
         let (lhs, rhs) = power_pairs(&next.beta_tau_powers_g1);
         C::Pairing::same((lhs, next_tau_powers_g2_1), (rhs, next_tau_powers_g2_0))
             .ok_or(VerificationError::BetaG1Powers)?;
-        Ok((next, response))
+        Ok(next)
     }
 }
 

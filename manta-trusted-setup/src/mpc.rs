@@ -21,14 +21,11 @@ pub trait Types {
     /// State Type
     type State;
 
-    /// Contribution Proof Type
-    type Proof;
-
     /// Challenge Type
     type Challenge;
 
-    /// Response Type
-    type Response;
+    /// Contribution Proof Type
+    type Proof;
 }
 
 /// Contribution
@@ -42,7 +39,7 @@ pub trait Contribute: Types {
         state: &mut Self::State,
         challenge: &Self::Challenge,
         contribution: &Self::Contribution,
-    ) -> (Self::Response, Self::Proof);
+    ) -> Self::Proof;
 }
 
 /// Verification
@@ -50,48 +47,40 @@ pub trait Verify: Types {
     /// Error
     type Error;
 
-    /// Computes the challenge associated to `last` and `last_response` for the next player.
-    fn challenge(&self, last: &Self::State, last_response: &Self::Response) -> Self::Challenge;
+    /// Computes the challenge associated to `state` and `challenge` for the next player.
+    fn challenge(&self, state: &Self::State, challenge: &Self::Challenge) -> Self::Challenge;
 
-    /// Computes the response from `next` and `next_proof` to the `challenge` presented by the
-    /// previous state.
-    fn response(
-        &self,
-        next: &Self::State,
-        next_proof: &Self::Proof,
-        challenge: Self::Challenge,
-    ) -> Self::Response;
-
-    /// Verifies the transformation from `last` to `next` using the `challenge` and `proof` as
+    /// Verifies the transformation from `last` to `next` using the `next_challenge` and `proof` as
     /// evidence for the correct update of the state. This method returns the `next` state and
     /// the next response.
-    fn verify(
+    fn verify_transform(
         &self,
         last: Self::State,
         next: Self::State,
-        challenge: Self::Challenge,
+        next_challenge: Self::Challenge,
         proof: Self::Proof,
-    ) -> Result<(Self::State, Self::Response), Self::Error>;
+    ) -> Result<Self::State, Self::Error>;
 
     /// Verifies all contributions in `iter` chaining from `last` and `last_response` returning the
     /// newest [`State`](Types::State) and [`Response`](Types::Response) if all the contributions in
     /// the chain had valid transitions.
     #[inline]
-    fn verify_all<E, I>(
+    fn verify_transform_all<E, I>(
         &self,
-        mut last: Self::State,
-        mut last_response: Self::Response,
+        mut state: Self::State,
+        mut challenge: Self::Challenge,
         iter: I,
-    ) -> Result<(Self::State, Self::Response), Self::Error>
+    ) -> Result<(Self::State, Self::Challenge), Self::Error>
     where
         E: Into<Self::Error>,
         I: IntoIterator<Item = Result<(Self::State, Self::Proof), E>>,
     {
         for item in iter {
             let (next, next_proof) = item.map_err(Into::into)?;
-            let next_challenge = self.challenge(&next, &last_response);
-            (last, last_response) = self.verify(last, next, next_challenge, next_proof)?;
+            let next_challenge = self.challenge(&state, &challenge);
+            challenge = self.challenge(&next, &next_challenge);
+            state = self.verify_transform(state, next, next_challenge, next_proof)?;
         }
-        Ok((last, last_response))
+        Ok((state, challenge))
     }
 }

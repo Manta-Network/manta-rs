@@ -16,6 +16,7 @@
 
 //! Utilities
 
+use alloc::vec::Vec;
 use ark_ec::{wnaf::WnafContext, AffineCurve, PairingEngine, ProjectiveCurve};
 use ark_ff::{BigInteger, PrimeField, UniformRand};
 use ark_std::io;
