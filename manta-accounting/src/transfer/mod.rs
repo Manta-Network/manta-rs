@@ -1723,6 +1723,28 @@ where
         Self::new_unchecked(asset_id, sources, senders, receivers, sinks)
     }
 
+    /// Generates the public input for the [`Transfer`] validation proof.
+    #[inline]
+    pub fn generate_proof_input(self) -> ProofInput<C> {
+        let mut input = Default::default();
+        if let Some(asset_id) = self.asset_id {
+            C::ProofSystem::extend(&mut input, &asset_id);
+        }
+        self.sources
+            .into_iter()
+            .for_each(|source| C::ProofSystem::extend(&mut input, &source));
+        self.senders
+            .into_iter()
+            .for_each(|sender| sender.into_post().extend_input(&mut input));
+        self.receivers
+            .into_iter()
+            .for_each(|receiver| receiver.into_post().extend_input(&mut input));
+        self.sinks
+            .into_iter()
+            .for_each(|sink| C::ProofSystem::extend(&mut input, &sink));
+        input
+    }
+
     /// Checks that the [`Transfer`] has a valid shape.
     #[inline]
     fn check_shape(has_visible_asset_id: bool) {
