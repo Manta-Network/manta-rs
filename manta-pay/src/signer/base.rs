@@ -34,7 +34,9 @@ use manta_accounting::{
         signer::{self, AssetMapKey, SyncData},
     },
 };
-use manta_crypto::{key::KeyDerivationFunction, merkle_tree, merkle_tree::forest::Configuration};
+use manta_crypto::{
+    key::kdf::KeyDerivationFunction, merkle_tree, merkle_tree::forest::Configuration,
+};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};

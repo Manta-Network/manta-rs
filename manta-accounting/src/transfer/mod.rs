@@ -39,7 +39,7 @@ use manta_crypto::{
         ProofSystemInput, Public, Secret, Variable,
     },
     encryption::hybrid::{DecryptedMessage, EncryptedMessage, HybridPublicKeyEncryptionScheme},
-    key::{KeyAgreementScheme, KeyDerivationFunction},
+    key::{self, agreement::Derive},
     rand::{CryptoRng, RngCore, Sample},
 };
 use manta_util::SizeLimit;
@@ -116,10 +116,9 @@ pub trait Configuration {
     type PublicKey: Clone;
 
     /// Key Agreement Scheme Type
-    type KeyAgreementScheme: KeyAgreementScheme<
-        SecretKey = SecretKey<Self>,
-        PublicKey = PublicKey<Self>,
-    >;
+    type KeyAgreementScheme: key::agreement::Types<SecretKey = SecretKey<Self>, PublicKey = PublicKey<Self>>
+        + key::agreement::Agree
+        + key::agreement::Derive;
 
     /// Secret Key Variable Type
     type SecretKeyVar: Variable<Secret, Self::Compiler, Type = SecretKey<Self>>;
@@ -129,11 +128,10 @@ pub trait Configuration {
         + constraint::PartialEq<Self::PublicKeyVar, Self::Compiler>;
 
     /// Key Agreement Scheme Variable Type
-    type KeyAgreementSchemeVar: KeyAgreementScheme<
-            Self::Compiler,
-            SecretKey = SecretKeyVar<Self>,
-            PublicKey = PublicKeyVar<Self>,
-        > + Constant<Self::Compiler, Type = Self::KeyAgreementScheme>;
+    type KeyAgreementSchemeVar: Constant<Self::Compiler, Type = Self::KeyAgreementScheme>
+        + key::agreement::Types<SecretKey = SecretKeyVar<Self>, PublicKey = PublicKeyVar<Self>>
+        + key::agreement::Agree<Self::Compiler>
+        + key::agreement::Derive<Self::Compiler>;
 
     /// Unspent Transaction Output Type
     type Utxo: PartialEq;
@@ -152,13 +150,14 @@ pub trait Configuration {
         + constraint::PartialEq<Self::UtxoVar, Self::Compiler>;
 
     /// UTXO Commitment Scheme Variable Type
-    type UtxoCommitmentSchemeVar: UtxoCommitmentScheme<
+    type UtxoCommitmentSchemeVar: Constant<Self::Compiler, Type = Self::UtxoCommitmentScheme>
+        + UtxoCommitmentScheme<
             Self::Compiler,
             EphemeralSecretKey = SecretKeyVar<Self>,
             PublicSpendKey = PublicKeyVar<Self>,
             Asset = AssetVar<Self>,
             Utxo = UtxoVar<Self>,
-        > + Constant<Self::Compiler, Type = Self::UtxoCommitmentScheme>;
+        >;
 
     /// Void Number Type
     type VoidNumber: PartialEq;
@@ -175,12 +174,13 @@ pub trait Configuration {
         + constraint::PartialEq<Self::VoidNumberVar, Self::Compiler>;
 
     /// Void Number Commitment Scheme Variable Type
-    type VoidNumberCommitmentSchemeVar: VoidNumberCommitmentScheme<
+    type VoidNumberCommitmentSchemeVar: Constant<Self::Compiler, Type = Self::VoidNumberCommitmentScheme>
+        + VoidNumberCommitmentScheme<
             Self::Compiler,
             SecretSpendKey = SecretKeyVar<Self>,
             Utxo = UtxoVar<Self>,
             VoidNumber = VoidNumberVar<Self>,
-        > + Constant<Self::Compiler, Type = Self::VoidNumberCommitmentScheme>;
+        >;
 
     /// UTXO Accumulator Model Type
     type UtxoAccumulatorModel: Model<Item = Self::Utxo, Verification = bool>;
@@ -200,14 +200,15 @@ pub trait Configuration {
     >;
 
     /// UTXO Accumulator Model Variable Type
-    type UtxoAccumulatorModelVar: AssertValidVerification<Self::Compiler>
+    type UtxoAccumulatorModelVar: Constant<Self::Compiler, Type = Self::UtxoAccumulatorModel>
+        + AssertValidVerification<Self::Compiler>
         + Model<
             Self::Compiler,
             Item = Self::UtxoVar,
             Witness = Self::UtxoAccumulatorWitnessVar,
             Output = Self::UtxoAccumulatorOutputVar,
             Verification = Bool<Self::Compiler>,
-        > + Constant<Self::Compiler, Type = Self::UtxoAccumulatorModel>;
+        >;
 
     /// Asset Id Variable Type
     type AssetIdVar: Variable<Public, Self::Compiler, Type = AssetId>
@@ -400,7 +401,7 @@ where
     pub fn derive_owned(&self, secret_key: SecretKey<C>) -> PublicKey<C> {
         self.note_encryption_scheme
             .key_agreement_scheme()
-            .derive_owned(secret_key, &mut ())
+            .derive(&secret_key, &mut ())
     }
 
     /// Computes the [`Utxo`] associated to `ephemeral_secret_key`, `public_spend_key`, and `asset`.
