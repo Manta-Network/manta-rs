@@ -673,7 +673,7 @@ where
     #[inline]
     fn sample<R>(distribution: D, rng: &mut R) -> Self
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         Self::new(
             Sample::sample(distribution.clone(), rng),
@@ -1306,7 +1306,7 @@ where
     #[inline]
     fn sample<R>(distribution: (SD, AD), rng: &mut R) -> Self
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         Self::new(
             Sample::sample(distribution.0, rng),
