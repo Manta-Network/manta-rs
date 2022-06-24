@@ -23,451 +23,22 @@
 //        vector by the wrong amount or in the wrong order.
 
 use crate::rand::{CryptoRng, RngCore};
-use core::{fmt::Debug, hash::Hash, marker::PhantomData, ops};
-use manta_util::{create_seal, seal};
 
-create_seal! {}
-
-/// Generic Derived Allocation Mode
-#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct Derived;
-
-/// Public Allocation Mode
-#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct Public;
-
-impl From<Derived> for Public {
-    #[inline]
-    fn from(d: Derived) -> Self {
-        let _ = d;
-        Self
-    }
-}
-
-/// Secret Allocation Mode
-#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct Secret;
-
-impl From<Derived> for Secret {
-    #[inline]
-    fn from(d: Derived) -> Self {
-        let _ = d;
-        Self
-    }
-}
-
-/// Constant Type Alias
-pub type Const<C, COM> = <C as Constant<COM>>::Type;
-
-/// Compiler Constant
-pub trait Constant<COM>
-where
-    COM: ?Sized,
-{
-    /// Underlying Type
-    type Type;
-
-    /// Allocates a new constant from `this` into the `compiler`.
-    fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self;
-}
-
-impl<COM> Constant<COM> for ()
-where
-    COM: ?Sized,
-{
-    type Type = ();
-
-    #[inline]
-    fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
-        let _ = (this, compiler);
-    }
-}
-
-impl<T, COM> Constant<COM> for PhantomData<T>
-where
-    COM: ?Sized,
-{
-    type Type = PhantomData<T>;
-
-    #[inline]
-    fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
-        let _ = (this, compiler);
-        PhantomData
-    }
-}
-
-/// Variable Type Alias
-pub type Var<V, M, COM> = <V as Variable<M, COM>>::Type;
-
-/// Compiler Variable
-pub trait Variable<M, COM>
-where
-    COM: ?Sized,
-{
-    /// Underlying Type
-    type Type;
-
-    /// Allocates a new known value from `this` into the `compiler`.
-    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self;
-
-    /// Allocates a new unknown value into the `compiler`.
-    fn new_unknown(compiler: &mut COM) -> Self;
-}
-
-impl<M, COM> Variable<M, COM> for ()
-where
-    COM: ?Sized,
-{
-    type Type = ();
-
-    #[inline]
-    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
-        let _ = (this, compiler);
-    }
-
-    #[inline]
-    fn new_unknown(compiler: &mut COM) -> Self {
-        let _ = compiler;
-    }
-}
-
-impl<T, M, COM> Variable<M, COM> for PhantomData<T>
-where
-    COM: ?Sized,
-{
-    type Type = PhantomData<T>;
-
-    #[inline]
-    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
-        let _ = (this, compiler);
-        PhantomData
-    }
-
-    #[inline]
-    fn new_unknown(compiler: &mut COM) -> Self {
-        let _ = compiler;
-        PhantomData
-    }
-}
-
-/// Value Source Auto-Trait
-pub trait ValueSource<COM>
-where
-    COM: ?Sized,
-{
-    /// Allocates `self` as a constant in `compiler`.
-    #[inline]
-    fn as_constant<C>(&self, compiler: &mut COM) -> C
-    where
-        C: Constant<COM, Type = Self>,
-    {
-        C::new_constant(self, compiler)
-    }
-
-    /// Allocates `self` as a known value in `compiler`.
-    #[inline]
-    fn as_known<M, V>(&self, compiler: &mut COM) -> V
-    where
-        V: Variable<M, COM, Type = Self>,
-    {
-        V::new_known(self, compiler)
-    }
-
-    /// Allocates an unknown value of type `Self` into `compiler`.
-    #[inline]
-    fn as_unknown<M, V>(compiler: &mut COM) -> V
-    where
-        V: Variable<M, COM, Type = Self>,
-    {
-        V::new_unknown(compiler)
-    }
-}
-
-impl<COM, T> ValueSource<COM> for T where T: ?Sized {}
-
-/// Allocator Auto-Trait
-pub trait Allocator {
-    /// Allocates a constant with the given `value` into `self`.
-    #[inline]
-    fn allocate_constant<C>(&mut self, value: &C::Type) -> C
-    where
-        C: Constant<Self>,
-    {
-        C::new_constant(value, self)
-    }
-
-    /// Allocates a known variable with the given `value` into `self`.
-    #[inline]
-    fn allocate_known<M, V>(&mut self, value: &V::Type) -> V
-    where
-        V: Variable<M, Self>,
-    {
-        V::new_known(value, self)
-    }
-
-    /// Allocates an unknown variable into `self`.
-    #[inline]
-    fn allocate_unknown<M, V>(&mut self) -> V
-    where
-        V: Variable<M, Self>,
-    {
-        V::new_unknown(self)
-    }
-}
-
-impl<COM> Allocator for COM where COM: ?Sized {}
-
-/// Native Compiler Marker Trait
-///
-/// This trait is only implemented for `()`, the only native compiler.
-pub trait Native: sealed::Sealed {
-    /// Returns the native compiler.
-    fn compiler() -> Self;
-}
-
-seal! { () }
-
-impl Native for () {
-    #[inline]
-    fn compiler() -> Self {}
-}
-
-/// Constraint System
-pub trait ConstraintSystem {
-    /// Boolean Variable Type
-    type Bool;
-
-    /// Asserts that `b == 1`.
-    fn assert(&mut self, b: Self::Bool);
-
-    /// Asserts that all the booleans in `iter` are equal to `1`.
-    #[inline]
-    fn assert_all<I>(&mut self, iter: I)
-    where
-        I: IntoIterator<Item = Self::Bool>,
-    {
-        iter.into_iter().for_each(move |b| self.assert(b));
-    }
-
-    /// Generates a boolean that represents the fact that `lhs` and `rhs` may be equal.
-    #[inline]
-    fn eq<V>(&mut self, lhs: &V, rhs: &V) -> Self::Bool
-    where
-        V: Equal<Self>,
-    {
-        V::eq(lhs, rhs, self)
-    }
-
-    /// Asserts that `lhs` and `rhs` are equal.
-    #[inline]
-    fn assert_eq<V>(&mut self, lhs: &V, rhs: &V)
-    where
-        V: Equal<Self>,
-    {
-        V::assert_eq(lhs, rhs, self);
-    }
-
-    /// Asserts that all the elements in `iter` are equal to some `base` element.
-    #[inline]
-    fn assert_all_eq_to_base<'t, V, I>(&mut self, base: &'t V, iter: I)
-    where
-        V: 't + Equal<Self>,
-        I: IntoIterator<Item = &'t V>,
-    {
-        V::assert_all_eq_to_base(base, iter, self);
-    }
-
-    /// Asserts that all the elements in `iter` are equal.
-    #[inline]
-    fn assert_all_eq<'t, V, I>(&mut self, iter: I)
-    where
-        V: 't + Equal<Self>,
-        I: IntoIterator<Item = &'t V>,
-    {
-        V::assert_all_eq(iter, self);
-    }
-
-    /// Selects `true_value` when `bit == 1` and `false_value` when `bit == 0`.
-    #[inline]
-    fn conditional_select<V>(&mut self, bit: &Self::Bool, true_value: &V, false_value: &V) -> V
-    where
-        V: ConditionalSelect<Self>,
-    {
-        V::select(bit, true_value, false_value, self)
-    }
-
-    /// Swaps `lhs` and `rhs` if `bit == 1`.
-    #[inline]
-    fn conditional_swap<V>(&mut self, bit: &Self::Bool, lhs: &V, rhs: &V) -> (V, V)
-    where
-        V: ConditionalSelect<Self>,
-    {
-        V::swap(bit, lhs, rhs, self)
-    }
-
-    /// Swaps `lhs` and `rhs` in-place if `bit == 1`.
-    #[inline]
-    fn conditional_swap_in_place<V>(&mut self, bit: &Self::Bool, lhs: &mut V, rhs: &mut V)
-    where
-        V: ConditionalSelect<Self>,
-    {
-        V::swap_in_place(bit, lhs, rhs, self)
-    }
-}
-
-/* TODO: Can we safely implement this?
-impl ConstraintSystem for () {
-    type Bool = bool;
-
-    #[inline]
-    fn assert(&mut self, b: Self::Bool) {
-        assert!(b, "Native Constraint System Assertion");
-    }
-}
-*/
-
-/// Equality Trait
-pub trait Equal<COM>
-where
-    COM: ConstraintSystem + ?Sized,
-{
-    /// Generates a boolean that represents the fact that `lhs` and `rhs` may be equal.
-    fn eq(lhs: &Self, rhs: &Self, compiler: &mut COM) -> COM::Bool;
-
-    /// Asserts that `lhs` and `rhs` are equal.
-    #[inline]
-    fn assert_eq(lhs: &Self, rhs: &Self, compiler: &mut COM) {
-        let boolean = Self::eq(lhs, rhs, compiler);
-        compiler.assert(boolean);
-    }
-
-    /// Asserts that all the elements in `iter` are equal to some `base` element.
-    #[inline]
-    fn assert_all_eq_to_base<'t, I>(base: &'t Self, iter: I, compiler: &mut COM)
-    where
-        I: IntoIterator<Item = &'t Self>,
-    {
-        for item in iter {
-            Self::assert_eq(base, item, compiler);
-        }
-    }
-
-    /// Asserts that all the elements in `iter` are equal.
-    #[inline]
-    fn assert_all_eq<'t, I>(iter: I, compiler: &mut COM)
-    where
-        Self: 't,
-        I: IntoIterator<Item = &'t Self>,
-    {
-        let mut iter = iter.into_iter();
-        if let Some(base) = iter.next() {
-            Self::assert_all_eq_to_base(base, iter, compiler);
-        }
-    }
-}
-
-/* TODO: Implement this:
-impl<T> Equal<()> for T
-where
-    T: PartialEq,
-{
-    #[inline]
-    fn eq(lhs: &Self, rhs: &Self, _: &mut ()) -> bool {
-        lhs.eq(rhs)
-    }
-}
-*/
-
-/// Conditional Selection
-pub trait ConditionalSelect<COM>
-where
-    COM: ConstraintSystem + ?Sized,
-{
-    /// Selects `true_value` when `bit == 1` and `false_value` when `bit == 0`.
-    fn select(bit: &COM::Bool, true_value: &Self, false_value: &Self, compiler: &mut COM) -> Self;
-
-    /// Swaps `lhs` and `rhs` if `bit == 1`.
-    #[inline]
-    fn swap(bit: &COM::Bool, lhs: &Self, rhs: &Self, compiler: &mut COM) -> (Self, Self)
-    where
-        Self: Sized,
-    {
-        (
-            Self::select(bit, rhs, lhs, compiler),
-            Self::select(bit, lhs, rhs, compiler),
-        )
-    }
-
-    /// Swaps `lhs` and `rhs` in-place if `bit == 1`.
-    #[inline]
-    fn swap_in_place(bit: &COM::Bool, lhs: &mut Self, rhs: &mut Self, compiler: &mut COM)
-    where
-        Self: Sized,
-    {
-        let (swapped_lhs, swapped_rhs) = Self::swap(bit, lhs, rhs, compiler);
-        *lhs = swapped_lhs;
-        *rhs = swapped_rhs;
-    }
-}
-
-/* TODO: Implement this:
-impl<T> ConditionalSelect<()> for T
-where
-    T: Clone,
-{
-    #[inline]
-    fn select(bit: &bool, true_value: &Self, false_value: &Self, _: &mut ()) -> Self {
-        if bit {
-            true_value
-        } else {
-            false_value
-        }
-    }
-}
-*/
-
-/// Addition
-pub trait Add<COM>
-where
-    COM: ?Sized,
-{
-    /// Adds `lhs` and `rhs` inside of `compiler`.
-    fn add(lhs: Self, rhs: Self, compiler: &mut COM) -> Self;
-}
-
-impl<T> Add<()> for T
-where
-    T: ops::Add<Output = T>,
-{
-    #[inline]
-    fn add(lhs: Self, rhs: Self, _: &mut ()) -> Self {
-        lhs.add(rhs)
-    }
-}
-
-/// Subtraction
-pub trait Sub<COM>
-where
-    COM: ?Sized,
-{
-    /// Subtracts `rhs` from `lhs` inside of `compiler`.
-    fn sub(lhs: Self, rhs: Self, compiler: &mut COM) -> Self;
-}
-
-impl<T> Sub<()> for T
-where
-    T: ops::Sub<Output = T>,
-{
-    #[inline]
-    fn sub(lhs: Self, rhs: Self, _: &mut ()) -> Self {
-        lhs.sub(rhs)
-    }
-}
+pub use crate::eclair::{
+    alloc::{
+        mode::{self, Derived, Public, Secret},
+        Allocate, Allocator, Const, Constant, Var, Variable,
+    },
+    bool::{Assert, AssertEq, Bool, ConditionalSelect, ConditionalSwap},
+    cmp::{Eq, PartialEq},
+    ops::{Add, Not, Sub},
+    Has, Native,
+};
 
 /// Proof System
 pub trait ProofSystem {
-    /// Constraint System
-    type ConstraintSystem: ConstraintSystem;
+    /// Context Compiler
+    type Compiler;
 
     /// Public Parameters Type
     type PublicParameters;
@@ -487,27 +58,29 @@ pub trait ProofSystem {
     /// Error Type
     type Error;
 
-    /// Returns a constraint system which is setup to build proving and verifying contexts.
+    /// Returns a compiler which is setup to build proving and verifying contexts.
     #[must_use]
-    fn for_unknown() -> Self::ConstraintSystem;
+    fn context_compiler() -> Self::Compiler;
 
-    /// Returns a constraint system which is setup to build a proof.
+    /// Returns a compiler which is setup to build a proof.
     #[must_use]
-    fn for_known() -> Self::ConstraintSystem;
+    fn proof_compiler() -> Self::Compiler;
 
-    /// Returns proving and verifying contexts for the constraints contained in `compiler`.
-    fn generate_context<R>(
+    /// Returns proving and verifying contexts for the constraints contained in `compiler` using
+    /// `public_parameters`.
+    fn compile<R>(
         public_parameters: &Self::PublicParameters,
-        compiler: Self::ConstraintSystem,
+        compiler: Self::Compiler,
         rng: &mut R,
     ) -> Result<(Self::ProvingContext, Self::VerifyingContext), Self::Error>
     where
         R: CryptoRng + RngCore + ?Sized;
 
-    /// Returns a proof that the constraint system `compiler` is consistent.
+    /// Returns a proof that the constraint system encoded in `compiler` is consistent with the
+    /// proving `context`.
     fn prove<R>(
         context: &Self::ProvingContext,
-        compiler: Self::ConstraintSystem,
+        compiler: Self::Compiler,
         rng: &mut R,
     ) -> Result<Self::Proof, Self::Error>
     where
@@ -532,47 +105,39 @@ where
 
 /// Constraint System Measurement
 pub mod measure {
-    use super::*;
-    use alloc::{format, string::String, vec::Vec};
+    use super::mode::{Constant, Public, Secret};
+    use alloc::{fmt::Display, format, string::String, vec::Vec};
     use core::{
-        fmt::Display,
+        fmt::Debug,
+        hash::Hash,
         ops::{Add, AddAssign, Deref, DerefMut},
     };
 
     #[cfg(feature = "serde")]
     use manta_util::serde::{Deserialize, Serialize};
 
+    /// Variable Counting
+    pub trait Count<M> {
+        /// Returns the number of variables of the given mode `M` stored in `self`.
+        #[inline]
+        fn count(&self) -> Option<usize> {
+            None
+        }
+    }
+
     /// Constraint System Measurement
-    pub trait Measure {
+    pub trait Measure: Count<Constant> + Count<Public> + Count<Secret> {
         /// Returns the number of constraints stored in `self`.
         fn constraint_count(&self) -> usize;
-
-        /// Returns the number of allocated constants.
-        #[inline]
-        fn constant_count(&self) -> Option<usize> {
-            None
-        }
-
-        /// Returns the number of allocated public variables.
-        #[inline]
-        fn public_variable_count(&self) -> Option<usize> {
-            None
-        }
-
-        /// Returns the number of allocated secret variables.
-        #[inline]
-        fn secret_variable_count(&self) -> Option<usize> {
-            None
-        }
 
         /// Returns a [`Size`] with the number of constraints and variables of each kind.
         #[inline]
         fn measure(&self) -> Size {
             Size {
                 constraint_count: self.constraint_count(),
-                constant_count: self.constant_count(),
-                public_variable_count: self.public_variable_count(),
-                secret_variable_count: self.secret_variable_count(),
+                constant_count: Count::<Constant>::count(self),
+                public_variable_count: Count::<Public>::count(self),
+                secret_variable_count: Count::<Secret>::count(self),
             }
         }
 

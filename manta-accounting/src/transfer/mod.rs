@@ -33,10 +33,10 @@ use crate::asset::{Asset, AssetId, AssetValue};
 use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash, iter, marker::PhantomData, ops::Deref};
 use manta_crypto::{
-    accumulator::{Accumulator, MembershipProof, Model},
+    accumulator::{Accumulator, AssertValidVerification, MembershipProof, Model},
     constraint::{
-        Add, Allocator, Constant, ConstraintSystem, Derived, Equal, Native, ProofSystem,
-        ProofSystemInput, Public, Secret, ValueSource, Variable,
+        self, Add, Allocate, Allocator, AssertEq, Bool, Constant, Derived, ProofSystem,
+        ProofSystemInput, Public, Secret, Variable,
     },
     encryption::hybrid::{DecryptedMessage, EncryptedMessage, HybridPublicKeyEncryptionScheme},
     key::{KeyAgreementScheme, KeyDerivationFunction},
@@ -77,34 +77,14 @@ pub trait UtxoCommitmentScheme<COM = ()> {
     /// Unspent Transaction Output Type
     type Utxo;
 
-    /// Commits to the `ephemeral_secret_key`, `public_spend_key`, and `asset` for a UTXO inside of
-    /// `compiler`.
-    fn commit_in(
+    /// Commits to the `ephemeral_secret_key`, `public_spend_key`, and `asset` for a UTXO.
+    fn commit(
         &self,
         ephemeral_secret_key: &Self::EphemeralSecretKey,
         public_spend_key: &Self::PublicSpendKey,
         asset: &Self::Asset,
         compiler: &mut COM,
     ) -> Self::Utxo;
-
-    /// Commits to the `ephemeral_secret_key`, `public_spend_key`, and `asset` for a UTXO.
-    #[inline]
-    fn commit(
-        &self,
-        ephemeral_secret_key: &Self::EphemeralSecretKey,
-        public_spend_key: &Self::PublicSpendKey,
-        asset: &Self::Asset,
-    ) -> Self::Utxo
-    where
-        COM: Native,
-    {
-        self.commit_in(
-            ephemeral_secret_key,
-            public_spend_key,
-            asset,
-            &mut COM::compiler(),
-        )
-    }
 }
 
 /// Void Number Commitment Scheme
@@ -118,22 +98,13 @@ pub trait VoidNumberCommitmentScheme<COM = ()> {
     /// Void Number Type
     type VoidNumber;
 
-    /// Commits to the `secret_spend_key` and `utxo` for a Void Number inside of `compiler`.
-    fn commit_in(
+    /// Commits to the `secret_spend_key` and `utxo` for a Void Number.
+    fn commit(
         &self,
         secret_spend_key: &Self::SecretSpendKey,
         utxo: &Self::Utxo,
         compiler: &mut COM,
     ) -> Self::VoidNumber;
-
-    /// Commits to the `secret_spend_key` and `utxo` for a Void Number.
-    #[inline]
-    fn commit(&self, secret_spend_key: &Self::SecretSpendKey, utxo: &Self::Utxo) -> Self::VoidNumber
-    where
-        COM: Native,
-    {
-        self.commit_in(secret_spend_key, utxo, &mut COM::compiler())
-    }
 }
 
 /// Transfer Configuration
@@ -155,7 +126,7 @@ pub trait Configuration {
 
     /// Public Key Variable Type
     type PublicKeyVar: Variable<Secret, Self::Compiler, Type = PublicKey<Self>>
-        + Equal<Self::Compiler>;
+        + constraint::PartialEq<Self::PublicKeyVar, Self::Compiler>;
 
     /// Key Agreement Scheme Variable Type
     type KeyAgreementSchemeVar: KeyAgreementScheme<
@@ -178,7 +149,7 @@ pub trait Configuration {
     /// UTXO Variable Type
     type UtxoVar: Variable<Public, Self::Compiler, Type = Utxo<Self>>
         + Variable<Secret, Self::Compiler, Type = Utxo<Self>>
-        + Equal<Self::Compiler>;
+        + constraint::PartialEq<Self::UtxoVar, Self::Compiler>;
 
     /// UTXO Commitment Scheme Variable Type
     type UtxoCommitmentSchemeVar: UtxoCommitmentScheme<
@@ -201,7 +172,7 @@ pub trait Configuration {
 
     /// Void Number Variable Type
     type VoidNumberVar: Variable<Public, Self::Compiler, Type = Self::VoidNumber>
-        + Equal<Self::Compiler>;
+        + constraint::PartialEq<Self::VoidNumberVar, Self::Compiler>;
 
     /// Void Number Commitment Scheme Variable Type
     type VoidNumberCommitmentSchemeVar: VoidNumberCommitmentScheme<
@@ -229,30 +200,31 @@ pub trait Configuration {
     >;
 
     /// UTXO Accumulator Model Variable Type
-    type UtxoAccumulatorModelVar: Model<
+    type UtxoAccumulatorModelVar: AssertValidVerification<Self::Compiler>
+        + Model<
             Self::Compiler,
             Item = Self::UtxoVar,
             Witness = Self::UtxoAccumulatorWitnessVar,
             Output = Self::UtxoAccumulatorOutputVar,
-            Verification = <Self::Compiler as ConstraintSystem>::Bool,
+            Verification = Bool<Self::Compiler>,
         > + Constant<Self::Compiler, Type = Self::UtxoAccumulatorModel>;
 
     /// Asset Id Variable Type
     type AssetIdVar: Variable<Public, Self::Compiler, Type = AssetId>
         + Variable<Secret, Self::Compiler, Type = AssetId>
-        + Equal<Self::Compiler>;
+        + constraint::PartialEq<Self::AssetIdVar, Self::Compiler>;
 
     /// Asset Value Variable Type
     type AssetValueVar: Variable<Public, Self::Compiler, Type = AssetValue>
         + Variable<Secret, Self::Compiler, Type = AssetValue>
-        + Add<Self::Compiler>
-        + Equal<Self::Compiler>;
+        + Add<Self::AssetValueVar, Self::Compiler, Output = Self::AssetValueVar>
+        + constraint::PartialEq<Self::AssetValueVar, Self::Compiler>;
 
     /// Constraint System Type
-    type Compiler: ConstraintSystem;
+    type Compiler: AssertEq;
 
     /// Proof System Type
-    type ProofSystem: ProofSystem<ConstraintSystem = Self::Compiler>
+    type ProofSystem: ProofSystem<Compiler = Self::Compiler>
         + ProofSystemInput<AssetId>
         + ProofSystemInput<AssetValue>
         + ProofSystemInput<UtxoAccumulatorOutput<Self>>
@@ -420,7 +392,7 @@ where
     pub fn derive(&self, secret_key: &SecretKey<C>) -> PublicKey<C> {
         self.note_encryption_scheme
             .key_agreement_scheme()
-            .derive(secret_key)
+            .derive(secret_key, &mut ())
     }
 
     /// Derives a [`PublicKey`] from an owned `secret_key`.
@@ -428,7 +400,7 @@ where
     pub fn derive_owned(&self, secret_key: SecretKey<C>) -> PublicKey<C> {
         self.note_encryption_scheme
             .key_agreement_scheme()
-            .derive_owned(secret_key)
+            .derive_owned(secret_key, &mut ())
     }
 
     /// Computes the [`Utxo`] associated to `ephemeral_secret_key`, `public_spend_key`, and `asset`.
@@ -440,13 +412,14 @@ where
         asset: &Asset,
     ) -> Utxo<C> {
         self.utxo_commitment
-            .commit(ephemeral_secret_key, public_spend_key, asset)
+            .commit(ephemeral_secret_key, public_spend_key, asset, &mut ())
     }
 
     /// Computes the [`VoidNumber`] associated to `secret_spend_key` and `utxo`.
     #[inline]
     pub fn void_number(&self, secret_spend_key: &SecretKey<C>, utxo: &Utxo<C>) -> VoidNumber<C> {
-        self.void_number_commitment.commit(secret_spend_key, utxo)
+        self.void_number_commitment
+            .commit(secret_spend_key, utxo, &mut ())
     }
 
     /// Validates the `utxo` against the `secret_spend_key` and the given `ephemeral_secret_key`
@@ -542,14 +515,14 @@ impl<'p, C> FullParametersVar<'p, C>
 where
     C: Configuration,
 {
-    /// Derives a [`PublicKeyVar`] from `secret_key` inside the `compiler`.
+    /// Derives a [`PublicKeyVar`] from `secret_key`.
     #[inline]
     fn derive(&self, secret_key: &SecretKeyVar<C>, compiler: &mut C::Compiler) -> PublicKeyVar<C> {
-        self.key_agreement.derive_in(secret_key, compiler)
+        self.key_agreement.derive(secret_key, compiler)
     }
 
     /// Computes the [`UtxoVar`] associated to `ephemeral_secret_key`, `public_spend_key`, and
-    /// `asset` inside the `compiler`.
+    /// `asset`.
     #[inline]
     fn utxo(
         &self,
@@ -559,11 +532,10 @@ where
         compiler: &mut C::Compiler,
     ) -> UtxoVar<C> {
         self.utxo_commitment
-            .commit_in(ephemeral_secret_key, public_spend_key, asset, compiler)
+            .commit(ephemeral_secret_key, public_spend_key, asset, compiler)
     }
 
-    /// Computes the [`VoidNumberVar`] associated to `secret_spend_key` and `utxo` in the
-    /// `compiler`.
+    /// Computes the [`VoidNumberVar`] associated to `secret_spend_key` and `utxo`.
     #[inline]
     fn void_number(
         &self,
@@ -572,7 +544,7 @@ where
         compiler: &mut C::Compiler,
     ) -> VoidNumberVar<C> {
         self.void_number_commitment
-            .commit_in(secret_spend_key, utxo, compiler)
+            .commit(secret_spend_key, utxo, compiler)
     }
 }
 
@@ -626,8 +598,8 @@ where
     #[inline]
     pub fn derive(&self, parameters: &C::KeyAgreementScheme) -> ReceivingKey<C> {
         ReceivingKey {
-            spend: parameters.derive(&self.spend),
-            view: parameters.derive(&self.view),
+            spend: parameters.derive(&self.spend, &mut ()),
+            view: parameters.derive(&self.view, &mut ()),
         }
     }
 
@@ -999,7 +971,7 @@ impl<C> SenderVar<C>
 where
     C: Configuration,
 {
-    /// Returns the asset for `self`, checking if `self` is well-formed in the given `compiler`.
+    /// Returns the asset for `self`, checking if `self` is well-formed.
     #[inline]
     pub fn get_well_formed_asset(
         self,
@@ -1447,8 +1419,7 @@ impl<C> ReceiverVar<C>
 where
     C: Configuration,
 {
-    /// Returns the asset for `self`, checking if `self` is well-formed in the given constraint
-    /// system `compiler`.
+    /// Returns the asset for `self`, checking if `self` is well-formed.
     #[inline]
     pub fn get_well_formed_asset(
         self,
@@ -1818,7 +1789,7 @@ where
     /// Builds a constraint system which asserts constraints against unknown variables.
     #[inline]
     pub fn unknown_constraints(parameters: FullParameters<C>) -> C::Compiler {
-        let mut compiler = C::ProofSystem::for_unknown();
+        let mut compiler = C::ProofSystem::context_compiler();
         TransferVar::<C, SOURCES, SENDERS, RECEIVERS, SINKS>::new_unknown(&mut compiler)
             .build_validity_constraints(&parameters.as_constant(&mut compiler), &mut compiler);
         compiler
@@ -1827,7 +1798,7 @@ where
     /// Builds a constraint system which asserts constraints against known variables.
     #[inline]
     pub fn known_constraints(&self, parameters: FullParameters<C>) -> C::Compiler {
-        let mut compiler = C::ProofSystem::for_known();
+        let mut compiler = C::ProofSystem::proof_compiler();
         let transfer: TransferVar<C, SOURCES, SENDERS, RECEIVERS, SINKS> =
             self.as_known(&mut compiler);
         transfer.build_validity_constraints(&parameters.as_constant(&mut compiler), &mut compiler);
@@ -1844,7 +1815,7 @@ where
     where
         R: CryptoRng + RngCore + ?Sized,
     {
-        C::ProofSystem::generate_context(
+        C::ProofSystem::compile(
             public_parameters,
             Self::unknown_constraints(parameters),
             rng,
@@ -1951,7 +1922,7 @@ where
         }
     }
 
-    /// Computes the sum of the asset values over `iter` inside of `compiler`.
+    /// Computes the sum of the asset values over `iter`.
     #[inline]
     fn value_sum<I>(iter: I, compiler: &mut C::Compiler) -> C::AssetValueVar
     where

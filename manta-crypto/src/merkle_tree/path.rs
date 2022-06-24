@@ -186,7 +186,7 @@ where
 {
     #[inline]
     fn default() -> Self {
-        let path_length = path_length::<C>();
+        let path_length = path_length::<C, _>();
         let mut path = Vec::with_capacity(path_length);
         path.resize_with(path_length, InnerDigest::<C>::default);
         Self::new(Default::default(), path)
@@ -403,7 +403,7 @@ where
         I: IntoIterator<Item = &'i InnerDigest<C>>,
     {
         let mut iter = iter.into_iter().peekable();
-        (depth..path_length::<C>()).fold(base, move |acc, _| {
+        (depth..path_length::<C, _>()).fold(base, move |acc, _| {
             Self::fold_fn(parameters, index.into_parent(), &acc, default, || {
                 iter.next().unwrap()
             })
@@ -931,23 +931,22 @@ pub mod constraint {
     use super::*;
     use crate::{
         constraint::{
-            Allocator, ConditionalSelect, Constant, ConstraintSystem, Equal, Secret, ValueSource,
-            Variable,
+            Allocate, Allocator, Bool, ConditionalSwap, Constant, Has, PartialEq, Secret, Variable,
         },
-        merkle_tree::path_length_in,
+        merkle_tree::path_length,
     };
 
     /// Inner Path Variable
     pub struct InnerPathVar<C, COM>
     where
         C: Configuration<COM> + ?Sized,
-        COM: ConstraintSystem,
+        COM: Has<bool>,
     {
         /// Leaf Index
-        pub leaf_index: COM::Bool,
+        pub leaf_index: Bool<COM>,
 
         /// Digest Indices
-        pub inner_indices: Vec<COM::Bool>,
+        pub inner_indices: Vec<Bool<COM>>,
 
         /// Inner Digest Path
         ///
@@ -958,8 +957,8 @@ pub mod constraint {
     impl<C, COM> InnerPathVar<C, COM>
     where
         C: Configuration<COM> + ?Sized,
-        COM: ConstraintSystem,
-        InnerDigest<C, COM>: ConditionalSelect<COM>,
+        COM: Has<bool>,
+        InnerDigest<C, COM>: ConditionalSwap<COM>,
     {
         /// Computes the root of the merkle tree relative to `base` using `parameters`.
         #[inline]
@@ -988,13 +987,13 @@ pub mod constraint {
             compiler: &mut COM,
         ) -> Root<C, COM>
         where
-            LeafDigest<C, COM>: ConditionalSelect<COM>,
+            LeafDigest<C, COM>: ConditionalSwap<COM>,
         {
             let (lhs, rhs) =
-                compiler.conditional_swap(&self.leaf_index, leaf_digest, sibling_digest);
+                ConditionalSwap::swap(&self.leaf_index, leaf_digest, sibling_digest, compiler);
             self.root_from_base(
                 parameters,
-                parameters.join_leaves_in(&lhs, &rhs, compiler),
+                parameters.join_leaves_with(&lhs, &rhs, compiler),
                 compiler,
             )
         }
@@ -1007,11 +1006,11 @@ pub mod constraint {
         ) -> impl 'd
                + FnMut(
             InnerDigest<C, COM>,
-            (&'d COM::Bool, &'d InnerDigest<C, COM>),
+            (&'d Bool<COM>, &'d InnerDigest<C, COM>),
         ) -> InnerDigest<C, COM> {
             move |acc, (b, d)| {
-                let (lhs, rhs) = compiler.conditional_swap(b, &acc, d);
-                parameters.join_in(&lhs, &rhs, compiler)
+                let (lhs, rhs) = ConditionalSwap::swap(b, &acc, d, compiler);
+                parameters.join_with(&lhs, &rhs, compiler)
             }
         }
 
@@ -1025,7 +1024,7 @@ pub mod constraint {
         ) -> Root<C, COM>
         where
             InnerDigest<C, COM>: 'i,
-            I: IntoIterator<Item = (&'i COM::Bool, &'i InnerDigest<C, COM>)>,
+            I: IntoIterator<Item = (&'i Bool<COM>, &'i InnerDigest<C, COM>)>,
         {
             iter.into_iter()
                 .fold(base, Self::fold_fn(parameters, compiler))
@@ -1034,8 +1033,8 @@ pub mod constraint {
 
     impl<C, COM> Variable<Secret, COM> for InnerPathVar<C, COM>
     where
-        COM: ConstraintSystem,
-        COM::Bool: Variable<Secret, COM, Type = bool>,
+        COM: Has<bool>,
+        Bool<COM>: Variable<Secret, COM, Type = bool>,
         C: Configuration<COM> + Constant<COM> + ?Sized,
         C::Type: Configuration,
         InnerDigest<C, COM>: Variable<Secret, COM, Type = InnerDigest<C::Type>>,
@@ -1049,7 +1048,7 @@ pub mod constraint {
                 inner_indices: this
                     .leaf_index
                     .parents()
-                    .take(path_length_in::<C, _>())
+                    .take(path_length::<C, _>())
                     .map(|i| i.is_right().as_known(compiler))
                     .collect(),
                 path: this.path.iter().map(|d| d.as_known(compiler)).collect(),
@@ -1060,10 +1059,10 @@ pub mod constraint {
         fn new_unknown(compiler: &mut COM) -> Self {
             Self {
                 leaf_index: compiler.allocate_unknown(),
-                inner_indices: (0..path_length_in::<C, _>())
+                inner_indices: (0..path_length::<C, _>())
                     .map(|_| compiler.allocate_unknown())
                     .collect(),
-                path: (0..path_length_in::<C, _>())
+                path: (0..path_length::<C, _>())
                     .map(|_| compiler.allocate_unknown())
                     .collect(),
             }
@@ -1074,7 +1073,7 @@ pub mod constraint {
     pub struct PathVar<C, COM>
     where
         C: Configuration<COM> + ?Sized,
-        COM: ConstraintSystem,
+        COM: Has<bool>,
     {
         /// Sibling Digest
         pub sibling_digest: LeafDigest<C, COM>,
@@ -1086,9 +1085,9 @@ pub mod constraint {
     impl<C, COM> PathVar<C, COM>
     where
         C: Configuration<COM> + ?Sized,
-        COM: ConstraintSystem,
-        InnerDigest<C, COM>: ConditionalSelect<COM>,
-        LeafDigest<C, COM>: ConditionalSelect<COM>,
+        COM: Has<bool>,
+        InnerDigest<C, COM>: ConditionalSwap<COM>,
+        LeafDigest<C, COM>: ConditionalSwap<COM>,
     {
         /// Computes the root of the merkle tree relative to `leaf_digest` using `parameters`.
         #[inline]
@@ -1111,12 +1110,12 @@ pub mod constraint {
             root: &Root<C, COM>,
             leaf_digest: &LeafDigest<C, COM>,
             compiler: &mut COM,
-        ) -> COM::Bool
+        ) -> Bool<COM>
         where
-            Root<C, COM>: Equal<COM>,
+            Root<C, COM>: PartialEq<Root<C, COM>, COM>,
         {
             let computed_root = self.root(parameters, leaf_digest, compiler);
-            compiler.eq(root, &computed_root)
+            root.eq(&computed_root, compiler)
         }
 
         /// Returns `true` if `self` is a witness to the fact that `leaf` is stored in a merkle tree
@@ -1128,14 +1127,14 @@ pub mod constraint {
             root: &Root<C, COM>,
             leaf: &Leaf<C, COM>,
             compiler: &mut COM,
-        ) -> COM::Bool
+        ) -> Bool<COM>
         where
-            Root<C, COM>: Equal<COM>,
+            Root<C, COM>: PartialEq<Root<C, COM>, COM>,
         {
             self.verify_digest(
                 parameters,
                 root,
-                &parameters.digest_in(leaf, compiler),
+                &parameters.digest_with(leaf, compiler),
                 compiler,
             )
         }
@@ -1143,8 +1142,8 @@ pub mod constraint {
 
     impl<C, COM> Variable<Secret, COM> for PathVar<C, COM>
     where
-        COM: ConstraintSystem,
-        COM::Bool: Variable<Secret, COM, Type = bool>,
+        COM: Has<bool>,
+        Bool<COM>: Variable<Secret, COM, Type = bool>,
         C: Configuration<COM> + Constant<COM> + ?Sized,
         C::Type: Configuration,
         InnerDigest<C, COM>: Variable<Secret, COM, Type = InnerDigest<C::Type>>,
