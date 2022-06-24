@@ -117,6 +117,7 @@ pub mod agreement {
 /// Key Derivation Functions
 pub mod kdf {
     use crate::rand::{CryptoRng, RngCore, Sample};
+    use alloc::vec::Vec;
     use core::marker::PhantomData;
     use manta_util::codec::{Decode, DecodeError, Encode, Read, Write};
 
