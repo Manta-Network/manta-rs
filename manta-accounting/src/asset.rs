@@ -39,7 +39,7 @@ use core::{
 use derive_more::{Add, AddAssign, Display, From, Sub, SubAssign, Sum};
 use manta_crypto::{
     constraint::{Allocate, Allocator, Secret, Variable},
-    rand::{CryptoRng, Rand, RngCore, Sample},
+    rand::{Rand, RngCore, Sample},
 };
 use manta_util::{into_array_unchecked, Array, SizeLimit};
 
@@ -105,7 +105,7 @@ impl AssetId {
     #[inline]
     pub fn sample_up_to<R>(self, maximum: AssetValue, rng: &mut R) -> Asset
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         self.value(rng.gen_range(0..maximum.0))
     }
@@ -132,7 +132,7 @@ where
     #[inline]
     fn sample<R>(distribution: D, rng: &mut R) -> Self
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         Self(rng.sample(distribution))
     }
@@ -263,7 +263,7 @@ where
     #[inline]
     fn sample<R>(distribution: D, rng: &mut R) -> Self
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         Self(rng.sample(distribution))
     }
@@ -473,7 +473,7 @@ impl Sample for Asset {
     #[inline]
     fn sample<R>(_: (), rng: &mut R) -> Self
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         Self::new(rng.gen(), rng.gen())
     }

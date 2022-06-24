@@ -21,7 +21,7 @@
 use crate::{
     constraint::Constant,
     key::{KeyAgreementScheme, KeyDerivationFunction},
-    rand::{CryptoRng, RngCore, Sample},
+    rand::{RngCore, Sample},
 };
 use alloc::{boxed::Box, vec::Vec};
 use manta_util::{
@@ -229,7 +229,7 @@ where
     #[inline]
     fn sample<R>(distribution: D, rng: &mut R) -> Self
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         Self::from_base(G::sample(distribution, rng), &mut ())
     }
@@ -361,7 +361,7 @@ where
     #[inline]
     fn sample<R>(distribution: D, rng: &mut R) -> Self
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         Self::new(G::sample(distribution, rng))
     }

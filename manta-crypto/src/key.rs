@@ -76,7 +76,7 @@ where
 /// Key Derivation Function Adapters
 pub mod kdf {
     use super::*;
-    use crate::rand::{CryptoRng, RngCore, Sample};
+    use crate::rand::{RngCore, Sample};
     use alloc::vec::Vec;
     use core::marker::PhantomData;
     use manta_util::codec::{Decode, DecodeError, Encode, Read, Write};
@@ -202,7 +202,7 @@ pub mod kdf {
         #[inline]
         fn sample<R>(distribution: D, rng: &mut R) -> Self
         where
-            R: CryptoRng + RngCore + ?Sized,
+            R: RngCore + ?Sized,
         {
             Self::new(F::sample(distribution, rng))
         }
@@ -307,7 +307,7 @@ pub mod kdf {
         #[inline]
         fn sample<R>(distribution: D, rng: &mut R) -> Self
         where
-            R: CryptoRng + RngCore + ?Sized,
+            R: RngCore + ?Sized,
         {
             Self::new(F::sample(distribution, rng))
         }

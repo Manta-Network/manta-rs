@@ -55,7 +55,7 @@ use manta_util::{
 use alloc::string::String;
 
 #[cfg(any(feature = "test", test))]
-use manta_crypto::rand::{CryptoRng, Rand, RngCore, Sample};
+use manta_crypto::rand::{Rand, RngCore, Sample};
 
 #[doc(inline)]
 pub use ark_bls12_381 as bls12_381;
@@ -203,7 +203,7 @@ impl Sample for UtxoCommitmentScheme {
     #[inline]
     fn sample<R>(distribution: (), rng: &mut R) -> Self
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         Self(rng.sample(distribution))
     }
@@ -308,7 +308,7 @@ impl Sample for VoidNumberCommitmentScheme {
     #[inline]
     fn sample<R>(distribution: (), rng: &mut R) -> Self
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         Self(rng.sample(distribution))
     }
@@ -564,7 +564,7 @@ impl merkle_tree::test::HashParameterSampling for MerkleTreeConfiguration {
         rng: &mut R,
     ) -> merkle_tree::LeafHashParameters<Self>
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         let _ = (distribution, rng);
     }
@@ -575,7 +575,7 @@ impl merkle_tree::test::HashParameterSampling for MerkleTreeConfiguration {
         rng: &mut R,
     ) -> merkle_tree::InnerHashParameters<Self>
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         rng.sample(distribution)
     }
