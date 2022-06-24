@@ -27,7 +27,7 @@ pub mod aes {
     use core::convert::Infallible;
     use manta_crypto::{
         encryption::symmetric::SymmetricKeyEncryptionScheme,
-        rand::{CryptoRng, RngCore, Sample},
+        rand::{RngCore, Sample},
     };
     use manta_util::{
         codec::{Decode, DecodeError, Encode, Read, Write},
@@ -116,7 +116,7 @@ pub mod aes {
         #[inline]
         fn sample<R>(distribution: (), rng: &mut R) -> Self
         where
-            R: CryptoRng + RngCore + ?Sized,
+            R: RngCore + ?Sized,
         {
             let _ = (distribution, rng);
             Self

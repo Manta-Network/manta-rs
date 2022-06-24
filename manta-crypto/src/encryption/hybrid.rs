@@ -23,7 +23,7 @@ use crate::{
         agreement::{Agree, Derive},
         kdf::KeyDerivationFunction,
     },
-    rand::{CryptoRng, Rand, RngCore, Sample},
+    rand::{Rand, RngCore, Sample},
 };
 use core::{fmt::Debug, hash::Hash};
 use manta_util::codec::{Decode, DecodeError, Encode, Read, Write};
@@ -211,7 +211,7 @@ where
     #[inline]
     fn sample<R>(distribution: (KD, FD, SD), rng: &mut R) -> Self
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         Self::new(
             rng.sample(distribution.0),

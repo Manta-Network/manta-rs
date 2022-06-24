@@ -183,7 +183,7 @@ where
     #[inline]
     fn sample<R>(_: (), rng: &mut R) -> Self
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         let mut seed = [0; Seed::SIZE];
         rng.fill_bytes(&mut seed);
@@ -254,6 +254,15 @@ impl Mnemonic {
         bip32::Mnemonic::new(phrase, Default::default()).map(Self)
     }
 
+    /// Samples a random [`Mnemonic`] using the entropy returned from `rng`.
+    #[inline]
+    pub fn sample<R>(rng: &mut R) -> Self
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        Self(bip32::Mnemonic::random(rng, Default::default()))
+    }
+
     /// Convert this mnemonic phrase into the BIP39 seed value.
     #[inline]
     pub fn to_seed(&self, password: &str) -> Seed {
@@ -284,16 +293,6 @@ impl PartialEq for Mnemonic {
     #[inline]
     fn eq(&self, rhs: &Self) -> bool {
         self.as_ref().eq(rhs.as_ref())
-    }
-}
-
-impl Sample for Mnemonic {
-    #[inline]
-    fn sample<R>(_: (), rng: &mut R) -> Self
-    where
-        R: CryptoRng + RngCore + ?Sized,
-    {
-        Self(bip32::Mnemonic::random(rng, Default::default()))
     }
 }
 
