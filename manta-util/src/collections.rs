@@ -73,4 +73,19 @@ pub mod btree_map {
             f(map)
         }
     }
+
+    /// Inserts the `key`-`value` pair into the `map`, returning a reference to the inserted value.
+    #[inline]
+    pub fn insert_then_get<K, V>(map: &mut BTreeMap<K, V>, key: K, value: V) -> &mut V
+    where
+        K: Ord,
+    {
+        match map.entry(key) {
+            Entry::Vacant(entry) => entry.insert(value),
+            Entry::Occupied(mut entry) => {
+                entry.insert(value);
+                entry.into_mut()
+            }
+        }
+    }
 }

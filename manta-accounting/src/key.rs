@@ -583,8 +583,7 @@ where
             if map.len() == Self::VIEW_KEY_BUFFER_LIMIT {
                 btree_map::pop_last(map);
             }
-            map.insert(index, next_key);
-            map.get(&index)
+            Some(btree_map::insert_then_get(map, index, next_key))
         })
     }
 
