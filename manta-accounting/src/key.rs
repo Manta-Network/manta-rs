@@ -33,7 +33,7 @@ use core::{
 };
 use manta_crypto::{
     key::KeyDerivationFunction,
-    rand::{CryptoRng, RngCore, Sample},
+    rand::{RngCore, Sample},
 };
 
 #[cfg(feature = "serde")]
@@ -270,7 +270,7 @@ where
     #[inline]
     fn sample<R>(distribution: (D, F), rng: &mut R) -> Self
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         Self::new(H::sample(distribution.0, rng), distribution.1)
     }

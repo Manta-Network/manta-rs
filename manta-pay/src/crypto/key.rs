@@ -19,7 +19,7 @@
 use blake2::{Blake2s, Digest};
 use manta_crypto::{
     key::KeyDerivationFunction,
-    rand::{CryptoRng, RngCore, Sample},
+    rand::{RngCore, Sample},
 };
 use manta_util::{impl_empty_codec, into_array_unchecked};
 
@@ -46,7 +46,7 @@ impl Sample for Blake2sKdf {
     #[inline]
     fn sample<R>(distribution: (), rng: &mut R) -> Self
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         let _ = (distribution, rng);
         Self
