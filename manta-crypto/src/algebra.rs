@@ -19,7 +19,7 @@
 use crate::{
     eclair::alloc::Constant,
     key,
-    rand::{CryptoRng, RngCore, Sample},
+    rand::{RngCore, Sample},
 };
 use core::marker::PhantomData;
 use manta_util::codec::{Decode, DecodeError, Encode, Read, Write};
