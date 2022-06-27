@@ -1202,8 +1202,6 @@ where
     /// Extends proof public input with `self`.
     #[inline]
     pub fn extend_input(&self, input: &mut ProofInput<C>) {
-        // TODO: Add a "public part" trait that extracts the public part of `Sender` (using
-        //       `SenderVar` to determine the types), then generate this method automatically.
         C::ProofSystem::extend(input, &self.utxo_accumulator_output);
         C::ProofSystem::extend(input, &self.void_number);
     }
@@ -1623,8 +1621,6 @@ where
     /// Extends proof public input with `self`.
     #[inline]
     pub fn extend_input(&self, input: &mut ProofInput<C>) {
-        // TODO: Add a "public part" trait that extracts the public part of `Receiver` (using
-        //       `ReceiverVar` to determine the types), then generate this method automatically.
         C::ProofSystem::extend(input, &self.utxo);
     }
 

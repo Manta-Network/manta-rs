@@ -246,7 +246,7 @@ where
         )
     }
 
-    /// Checkes if `generate_proof_input` from [`Transfer`] and [`TransferPost`] gives the same [`ProofInput`].
+    /// Checks if `generate_proof_input` from [`Transfer`] and [`TransferPost`] gives the same [`ProofInput`].
     #[inline]
     pub fn sample_and_check_generate_proof_input_compatibility<A, R>(
         public_parameters: &ProofSystemPublicParameters<C>,

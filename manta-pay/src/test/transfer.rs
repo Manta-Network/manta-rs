@@ -114,7 +114,7 @@ fn generate_proof_input_is_compatibile() {
             &mut UtxoAccumulator::new(rng.gen()),
             &mut rng
         )
-        .expect("For a random Mint, `generate_proof_input` from `Transfer` and `ProofInput` should generate the same `ProofInput`."),
+        .expect("For a random Mint, `generate_proof_input` from `Transfer` and `ProofInput` should give the same `ProofInput`."),
         "For a random Mint, `generate_proof_input` from `Transfer` and `TransferPost` should have given the same `ProofInput`."
     );
     assert!(
@@ -124,7 +124,7 @@ fn generate_proof_input_is_compatibile() {
             &mut UtxoAccumulator::new(rng.gen()),
             &mut rng
         )
-        .expect("For a random PrivateTransfer, `generate_proof_input` from `Transfer` and `ProofInput` should generate the same `ProofInput`."),
+        .expect("For a random PrivateTransfer, `generate_proof_input` from `Transfer` and `ProofInput` should give the same `ProofInput`."),
         "For a random PrivateTransfer, `generate_proof_input` from `Transfer` and `TransferPost` should have given the same `ProofInput`."
     );
     assert!(
@@ -134,7 +134,7 @@ fn generate_proof_input_is_compatibile() {
             &mut UtxoAccumulator::new(rng.gen()),
             &mut rng
         )
-        .expect("For a random Reclaim, `generate_proof_input` from `Transfer` and `ProofInput` should generate the same `ProofInput`."),
+        .expect("For a random Reclaim, `generate_proof_input` from `Transfer` and `ProofInput` should give the same `ProofInput`."),
         "For a random Reclaim, `generate_proof_input` from `Transfer` and `TransferPost` should have given the same `ProofInput`."
     );
 }
