@@ -19,7 +19,7 @@
 use manta_crypto::{
     constraint::{measure::Instrument, Allocate, Allocator, Secret},
     hash::ArrayHashFunction,
-    key::{KeyAgreementScheme as _, KeyDerivationFunction},
+    key::agreement::{Agree, Derive},
     rand::{Sample, SeedableRng},
 };
 use manta_pay::config::{
@@ -67,7 +67,7 @@ pub fn main() {
     });
 
     let _ = instrument.measure("DHKE `agree`", |compiler| {
-        key_agreement.agree(&secret_key_1, &public_key_0, compiler)
+        key_agreement.agree(&public_key_0, &secret_key_1, compiler)
     });
 
     println!("{:#?}", instrument.measurements);

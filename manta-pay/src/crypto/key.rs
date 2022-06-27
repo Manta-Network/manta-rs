@@ -18,7 +18,7 @@
 
 use blake2::{Blake2s, Digest};
 use manta_crypto::{
-    key::KeyDerivationFunction,
+    key::kdf::KeyDerivationFunction,
     rand::{RngCore, Sample},
 };
 use manta_util::{impl_empty_codec, into_array_unchecked};

@@ -24,6 +24,7 @@ use ark_relations::{
     r1cs::{ConstraintSynthesizer, ConstraintSystemRef},
 };
 use manta_crypto::{
+    algebra,
     constraint::{
         self,
         measure::{Count, Measure},
@@ -185,6 +186,21 @@ where
         R: RngCore + ?Sized,
     {
         Self(F::rand(rng))
+    }
+}
+
+impl<F> algebra::Scalar for Fp<F>
+where
+    F: Field,
+{
+    #[inline]
+    fn add(&self, rhs: &Self, _: &mut ()) -> Self {
+        Self(self.0 + rhs.0)
+    }
+
+    #[inline]
+    fn mul(&self, rhs: &Self, _: &mut ()) -> Self {
+        Self(self.0 * rhs.0)
     }
 }
 
