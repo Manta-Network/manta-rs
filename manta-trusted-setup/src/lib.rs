@@ -24,6 +24,5 @@
 extern crate alloc;
 
 pub mod groth16;
-pub mod kzg;
 pub mod mpc;
 pub mod util;

@@ -288,7 +288,7 @@ where
     G: ProjectiveCurve,
 {
     assert_eq!(lhs.len(), rhs.len());
-    let tmp = cfg_into_iter!(0..lhs.len())
+    let pairs = cfg_into_iter!(0..lhs.len())
         .map(|_| G::ScalarField::rand(&mut OsRng))
         .zip(lhs)
         .zip(rhs)
@@ -296,7 +296,7 @@ where
             let wnaf = recommended_wnaf(&rho);
             (wnaf.mul(*lhs, &rho), wnaf.mul(*rhs, &rho))
         });
-    cfg_reduce!(tmp, || (G::zero(), G::zero()), |mut acc, next| {
+    cfg_reduce!(pairs, || (G::zero(), G::zero()), |mut acc, next| {
         acc.0 += next.0;
         acc.1 += next.1;
         acc
@@ -307,26 +307,26 @@ where
 /// random linear combination is used for both `lhs` and `rhs`, allowing this pair to be used in a
 /// consistent ratio test.
 #[inline]
-pub fn merge_pairs_affine<G>(lhs: &[G], rhs: &[G]) -> (G, G)
+pub fn merge_pairs_affine<G>(lhs: &[G], rhs: &[G]) -> (G::Projective, G::Projective)
 where
     G: AffineCurve,
 {
     assert_eq!(lhs.len(), rhs.len());
-    let tmp = cfg_into_iter!(0..lhs.len())
+    let pairs = cfg_into_iter!(0..lhs.len())
         .map(|_| G::ScalarField::rand(&mut OsRng))
         .zip(lhs)
         .zip(rhs)
-        .map(|((rho, lhs), rhs)| (lhs.mul(rho).into_affine(), rhs.mul(rho).into_affine()));
-    cfg_reduce!(tmp, || (Zero::zero(), Zero::zero()), |mut acc, next| {
-        acc.0 = acc.0 + next.0;
-        acc.1 = acc.1 + next.1;
+        .map(|((rho, lhs), rhs)| (lhs.mul(rho), rhs.mul(rho)));
+    cfg_reduce!(pairs, || (Zero::zero(), Zero::zero()), |mut acc, next| {
+        acc.0 += next.0;
+        acc.1 += next.1;
         acc
     })
 }
 
-/// Prepares a sequence of curve points for a check that subsequent terms differ by a constant ratio.  
-/// Concretely, this computes a random linear combination of all but the last point of the sequence 
-/// and the same linear combination of all but the first point of the sequence.  The original check 
+/// Prepares a sequence of curve points for a check that subsequent terms differ by a constant ratio.
+/// Concretely, this computes a random linear combination of all but the last point of the sequence
+/// and the same linear combination of all but the first point of the sequence. The original check
 /// reduces to checking that these linear combinations differ by the expected ratio.
 #[inline]
 pub fn power_pairs<G>(points: &[G]) -> (G, G)

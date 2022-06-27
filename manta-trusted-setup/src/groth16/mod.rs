@@ -15,3 +15,5 @@
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
 //! Groth16 Trusted Setup
+
+pub mod kzg;

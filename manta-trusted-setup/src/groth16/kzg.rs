@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! KZG Trusted Setup
+//! KZG Trusted Setup for Groth16
 
 use crate::util::{
     power_pairs, scalar_mul, CanonicalDeserialize, CanonicalSerialize, Deserializer,
@@ -202,7 +202,7 @@ where
     #[inline]
     fn sample<R>(_: (), rng: &mut R) -> Self
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         Self {
             tau: C::Scalar::rand(rng),
@@ -564,7 +564,7 @@ where
         if next.tau_powers_g2[0] != C::g2_prime_subgroup_generator() {
             return Err(VerificationError::PrimeSubgroupGeneratorG2);
         }
-        let KnowledgeProofCeritificate { tau, alpha, beta } = proof.verify(&next_challenge)?;
+        let KnowledgeProofCertificate { tau, alpha, beta } = proof.verify(&next_challenge)?;
         C::Pairing::same(
             (last.tau_powers_g1[1], tau.0),
             (next.tau_powers_g1[1], tau.1),
