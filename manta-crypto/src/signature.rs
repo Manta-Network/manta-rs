@@ -31,6 +31,8 @@
 //!     verify(derive(signing_key), message, sign(randomness, signing_key, message))
 //! }
 //! ```
+//!
+//! See the [`correctness`](test::correctness) test for more.
 
 /// Signing Key
 pub trait SigningKeyType {
@@ -101,8 +103,10 @@ where
 pub trait Derive<COM = ()>: SigningKeyType + VerifyingKeyType {
     /// Derives the verifying key from `signing_key`.
     ///
-    /// This function is used by the signer to generate their [`VerifyingKey`](Types::VerifyingKey)
-    /// that is sent to the verifier to check that the signature was valid.
+    /// This function is used by the signer to generate their [`VerifyingKey`] that is sent to the
+    /// verifier to check that the signature was valid.
+    ///
+    /// [`VerifyingKey`]: VerifyingKeyType::VerifyingKey
     fn derive(&self, signing_key: &Self::SigningKey, compiler: &mut COM) -> Self::VerifyingKey;
 }
 
@@ -118,11 +122,11 @@ where
 
 /// Signature Creation
 pub trait Sign<COM = ()>: MessageType + RandomnessType + SignatureType + SigningKeyType {
-    /// Signs `message` with the `signing_key` using the randomly sampled `randomness`.
+    /// Signs `message` with the `signing_key` using `randomness` to hide the signature.
     fn sign(
         &self,
-        randomness: &Self::Randomness,
         signing_key: &Self::SigningKey,
+        randomness: &Self::Randomness,
         message: &Self::Message,
         compiler: &mut COM,
     ) -> Self::Signature;
@@ -135,12 +139,12 @@ where
     #[inline]
     fn sign(
         &self,
-        randomness: &Self::Randomness,
         signing_key: &Self::SigningKey,
+        randomness: &Self::Randomness,
         message: &Self::Message,
         compiler: &mut COM,
     ) -> Self::Signature {
-        (*self).sign(randomness, signing_key, message, compiler)
+        (*self).sign(signing_key, randomness, message, compiler)
     }
 }
 
@@ -182,8 +186,6 @@ where
         (*self).verify(verifying_key, message, signature, compiler)
     }
 }
-
-/* TODO:
 
 /// Schnorr Signatures
 pub mod schnorr {
@@ -229,6 +231,9 @@ pub mod schnorr {
         G: DiscreteLogarithmHardness + Group<COM>,
     {
         /// Scalar
+        ///
+        /// This scalar is the hash output multiplied by the secret key, blinded by the nonce
+        /// factor.
         pub scalar: G::Scalar,
 
         /// Nonce Point
@@ -262,16 +267,44 @@ pub mod schnorr {
         __: PhantomData<COM>,
     }
 
-    impl<G, H, COM> Types for Schnorr<G, H, COM>
+    impl<G, H, COM> SigningKeyType for Schnorr<G, H, COM>
+    where
+        G: DiscreteLogarithmHardness + Group<COM>,
+        H: HashFunction<G, COM>,
+    {
+        type SigningKey = G::Scalar;
+    }
+
+    impl<G, H, COM> VerifyingKeyType for Schnorr<G, H, COM>
+    where
+        G: DiscreteLogarithmHardness + Group<COM>,
+        H: HashFunction<G, COM>,
+    {
+        type VerifyingKey = G;
+    }
+
+    impl<G, H, COM> MessageType for Schnorr<G, H, COM>
+    where
+        G: DiscreteLogarithmHardness + Group<COM>,
+        H: HashFunction<G, COM>,
+    {
+        type Message = H::Message;
+    }
+
+    impl<G, H, COM> SignatureType for Schnorr<G, H, COM>
+    where
+        G: DiscreteLogarithmHardness + Group<COM>,
+        H: HashFunction<G, COM>,
+    {
+        type Signature = Signature<G, COM>;
+    }
+
+    impl<G, H, COM> RandomnessType for Schnorr<G, H, COM>
     where
         G: DiscreteLogarithmHardness + Group<COM>,
         H: HashFunction<G, COM>,
     {
         type Randomness = G::Scalar;
-        type SigningKey = G::Scalar;
-        type VerifyingKey = G;
-        type Message = H::Message;
-        type Signature = Signature<G, COM>;
     }
 
     impl<G, H, COM> Derive<COM> for Schnorr<G, H, COM>
@@ -353,4 +386,29 @@ pub mod schnorr {
     }
 }
 
-*/
+/// Testing Framework
+#[cfg(feature = "test")]
+pub mod test {
+    use super::*;
+
+    /// Verifies that `scheme` produces self-consistent results on the given `signing_key`,
+    /// `randomness`, and `message`.
+    #[inline]
+    pub fn correctness<S, COM>(
+        scheme: &S,
+        signing_key: &S::SigningKey,
+        randomness: &S::Randomness,
+        message: &S::Message,
+        compiler: &mut COM,
+    ) -> S::Verification
+    where
+        S: Derive<COM> + Sign<COM> + Verify<COM>,
+    {
+        scheme.verify(
+            &scheme.derive(signing_key, compiler),
+            message,
+            &scheme.sign(signing_key, randomness, message, compiler),
+            compiler,
+        )
+    }
+}
