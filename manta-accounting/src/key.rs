@@ -32,7 +32,7 @@ use core::{
     marker::PhantomData,
 };
 use manta_crypto::{
-    key::KeyDerivationFunction,
+    key::kdf::KeyDerivationFunction,
     rand::{RngCore, Sample},
 };
 
