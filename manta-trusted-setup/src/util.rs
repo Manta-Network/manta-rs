@@ -324,10 +324,10 @@ where
     })
 }
 
-/// Computes a representative ratio pair for `points` by taking consecutive linear combinations
-/// across `points`. This prepares `points` for a check that consecutive elements have the same
-/// ratio, by computing a pairing ratio against a known pair that share the consecutive scaling
-/// ratio.
+/// Prepares a sequence of curve points for a check that subsequent terms differ by a constant ratio.  
+/// Concretely, this computes a random linear combination of all but the last point of the sequence 
+/// and the same linear combination of all but the first point of the sequence.  The original check 
+/// reduces to checking that these linear combinations differ by the expected ratio.
 #[inline]
 pub fn power_pairs<G>(points: &[G]) -> (G, G)
 where

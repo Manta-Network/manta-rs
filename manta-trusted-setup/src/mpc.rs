@@ -33,7 +33,7 @@ pub trait Contribute: Types {
     /// Private Contribution Data
     type Contribution;
 
-    /// Comptues the next state from `state`, `challenge`, and `contribution`.
+    /// Computes the next state from `state`, `challenge`, and `contribution`.
     fn contribute(
         &self,
         state: &mut Self::State,

@@ -295,7 +295,7 @@ where
 }
 
 /// Knowledge Proof Certificate
-pub struct KnowledgeProofCeritificate<C>
+pub struct KnowledgeProofCertificate<C>
 where
     C: Pairing,
 {
@@ -336,11 +336,11 @@ where
     pub fn verify(
         self,
         challenge: &C::Challenge,
-    ) -> Result<KnowledgeProofCeritificate<C>, KnowledgeError>
+    ) -> Result<KnowledgeProofCertificate<C>, KnowledgeError>
     where
         C: Configuration,
     {
-        Ok(KnowledgeProofCeritificate {
+        Ok(KnowledgeProofCertificate {
             tau: self
                 .tau
                 .verify(C::TAU_DOMAIN_TAG, challenge)
