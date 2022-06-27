@@ -944,6 +944,13 @@ where
             void_number: self.void_number,
         }
     }
+
+    /// Extends proof public input with `self`.
+    #[inline]
+    pub fn extend_input(&self, input: &mut ProofInput<C>) {
+        C::ProofSystem::extend(input, self.utxo_membership_proof.output());
+        C::ProofSystem::extend(input, &self.void_number);
+    }
 }
 
 /// Sender Variable
@@ -1395,6 +1402,12 @@ where
             encrypted_note: self.encrypted_note,
         }
     }
+
+    /// Extends proof public input with `self`
+    #[inline]
+    pub fn extend_input(&self, input: &mut ProofInput<C>) {
+        C::ProofSystem::extend(input, &self.utxo);
+    }
 }
 
 /// Receiver Variable
@@ -1725,23 +1738,23 @@ where
 
     /// Generates the public input for the [`Transfer`] validation proof.
     #[inline]
-    pub fn generate_proof_input(self) -> ProofInput<C> {
+    pub fn generate_proof_input(&self) -> ProofInput<C> {
         let mut input = Default::default();
         if let Some(asset_id) = self.asset_id {
             C::ProofSystem::extend(&mut input, &asset_id);
         }
         self.sources
-            .into_iter()
-            .for_each(|source| C::ProofSystem::extend(&mut input, &source));
+            .iter()
+            .for_each(|source| C::ProofSystem::extend(&mut input, source));
         self.senders
-            .into_iter()
-            .for_each(|sender| sender.into_post().extend_input(&mut input));
+            .iter()
+            .for_each(|sender| sender.extend_input(&mut input));
         self.receivers
-            .into_iter()
-            .for_each(|receiver| receiver.into_post().extend_input(&mut input));
+            .iter()
+            .for_each(|receiver| receiver.extend_input(&mut input));
         self.sinks
-            .into_iter()
-            .for_each(|sink| C::ProofSystem::extend(&mut input, &sink));
+            .iter()
+            .for_each(|sink| C::ProofSystem::extend(&mut input, sink));
         input
     }
 

@@ -420,3 +420,9 @@ where
         post,
     );
 }
+
+/// Asserts
+#[inline]
+pub fn assert_generate_proof_input() {
+    
+}
