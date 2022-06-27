@@ -237,7 +237,7 @@ where
 
     #[inline]
     fn add(&self, rhs: &Self, _: &mut ()) -> Self {
-        Self([self.0, rhs.0].into_iter().sum())
+        Self(self.0 + rhs.0)
     }
 
     #[inline]
