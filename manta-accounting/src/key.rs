@@ -30,7 +30,7 @@ use core::{
     marker::PhantomData,
 };
 use manta_crypto::{
-    key::KeyDerivationFunction,
+    key::kdf::KeyDerivationFunction,
     rand::{RngCore, Sample},
 };
 use manta_util::collections::btree_map::{self, BTreeMap};

@@ -38,10 +38,10 @@ use manta_accounting::{
 };
 use manta_crypto::{
     accumulator,
+    algebra::DiffieHellman,
     constraint::{
         self, Add, Allocate, Allocator, Constant, ProofSystemInput, Public, Secret, Variable,
     },
-    ecc::DiffieHellman,
     encryption,
     hash::ArrayHashFunction,
     key, merkle_tree,
@@ -133,13 +133,13 @@ impl poseidon::arkworks::Specification for PoseidonSpec<4> {
 pub type KeyAgreementScheme = DiffieHellman<Group>;
 
 /// Secret Key Type
-pub type SecretKey = <KeyAgreementScheme as key::KeyAgreementScheme>::SecretKey;
+pub type SecretKey = <KeyAgreementScheme as key::agreement::Types>::SecretKey;
 
 /// Public Key Type
-pub type PublicKey = <KeyAgreementScheme as key::KeyAgreementScheme>::PublicKey;
+pub type PublicKey = <KeyAgreementScheme as key::agreement::Types>::PublicKey;
 
 /// Key Agreement Scheme Variable Type
-pub type KeyAgreementSchemeVar = DiffieHellman<GroupVar>;
+pub type KeyAgreementSchemeVar = DiffieHellman<GroupVar, Compiler>;
 
 /// Unspent Transaction Output Type
 pub type Utxo = Fp<ConstraintField>;
@@ -258,7 +258,7 @@ pub type VoidNumber = Fp<ConstraintField>;
 pub struct VoidNumberCommitmentScheme(pub Poseidon2);
 
 impl transfer::VoidNumberCommitmentScheme for VoidNumberCommitmentScheme {
-    type SecretSpendKey = <KeyAgreementScheme as key::KeyAgreementScheme>::SecretKey;
+    type SecretSpendKey = SecretKey;
     type Utxo = Utxo;
     type VoidNumber = VoidNumber;
 
@@ -321,7 +321,7 @@ pub type VoidNumberVar = ConstraintFieldVar;
 pub struct VoidNumberCommitmentSchemeVar(pub Poseidon2Var);
 
 impl transfer::VoidNumberCommitmentScheme<Compiler> for VoidNumberCommitmentSchemeVar {
-    type SecretSpendKey = <KeyAgreementSchemeVar as key::KeyAgreementScheme<Compiler>>::SecretKey;
+    type SecretSpendKey = <KeyAgreementSchemeVar as key::agreement::Types>::SecretKey;
     type Utxo = <UtxoCommitmentSchemeVar as transfer::UtxoCommitmentScheme<Compiler>>::Utxo;
     type VoidNumber = ConstraintFieldVar;
 
@@ -672,7 +672,7 @@ pub type NoteSymmetricEncryptionScheme = encryption::symmetric::Map<
 pub type NoteEncryptionScheme = encryption::hybrid::Hybrid<
     KeyAgreementScheme,
     key::kdf::FromByteVector<
-        <KeyAgreementScheme as key::KeyAgreementScheme>::SharedSecret,
+        <KeyAgreementScheme as key::agreement::Types>::SharedSecret,
         Blake2sKdf,
     >,
     NoteSymmetricEncryptionScheme,
@@ -686,13 +686,11 @@ pub type Ciphertext =
 pub struct Config;
 
 impl transfer::Configuration for Config {
-    type SecretKey = <Self::KeyAgreementScheme as key::KeyAgreementScheme>::SecretKey;
-    type PublicKey = <Self::KeyAgreementScheme as key::KeyAgreementScheme>::PublicKey;
+    type SecretKey = SecretKey;
+    type PublicKey = PublicKey;
     type KeyAgreementScheme = KeyAgreementScheme;
-    type SecretKeyVar =
-        <Self::KeyAgreementSchemeVar as key::KeyAgreementScheme<Self::Compiler>>::SecretKey;
-    type PublicKeyVar =
-        <Self::KeyAgreementSchemeVar as key::KeyAgreementScheme<Self::Compiler>>::PublicKey;
+    type SecretKeyVar = <Self::KeyAgreementSchemeVar as key::agreement::Types>::SecretKey;
+    type PublicKeyVar = <Self::KeyAgreementSchemeVar as key::agreement::Types>::PublicKey;
     type KeyAgreementSchemeVar = KeyAgreementSchemeVar;
     type Utxo = <Self::UtxoCommitmentScheme as transfer::UtxoCommitmentScheme>::Utxo;
     type UtxoCommitmentScheme = UtxoCommitmentScheme;
