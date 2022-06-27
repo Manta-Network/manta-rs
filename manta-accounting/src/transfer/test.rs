@@ -33,6 +33,8 @@ use manta_crypto::{
 };
 use manta_util::into_array_unchecked;
 
+use super::ProofInput;
+
 /// Samples a distribution over `count`-many values summing to `total`.
 ///
 /// # Warning
@@ -243,6 +245,36 @@ where
             &post.validity_proof,
         )
     }
+
+    /// Checkes if `generate_proof_input` from [`Transfer`] and [`TransferPost`] gives the same [`ProofInput`].
+    #[inline]
+    pub fn sample_and_check_generate_proof_input_compatibility<A, R>(
+        public_parameters: &ProofSystemPublicParameters<C>,
+        parameters: &Parameters<C>,
+        utxo_accumulator: &mut A,
+        rng: &mut R,
+    ) -> Result<bool, ProofSystemError<C>>
+    where
+        A: Accumulator<Item = Utxo<C>, Model = C::UtxoAccumulatorModel>,
+        R: CryptoRng + RngCore + ?Sized,
+        ProofInput<C>: PartialEq,
+        ProofSystemError<C>: Debug,
+    {
+        let transfer = Self::sample(
+            TransferDistribution {
+                parameters,
+                utxo_accumulator,
+            },
+            rng,
+        );
+        let full_parameters = FullParameters::new(parameters, utxo_accumulator.model());
+        let (proving_context, _) = Self::generate_context(public_parameters, full_parameters, rng)?;
+        Ok(transfer.generate_proof_input()
+            == transfer
+                .into_post(full_parameters, &proving_context, rng)
+                .expect("Unable to convert `Transfer` into `TransferPost`.")
+                .generate_proof_input())
+    }
 }
 
 impl<C> TransferPost<C>
@@ -419,10 +451,4 @@ where
         "Invalid proof: {:?}",
         post,
     );
-}
-
-/// Asserts
-#[inline]
-pub fn assert_generate_proof_input() {
-    
 }

@@ -1404,7 +1404,7 @@ where
         }
     }
 
-    /// Extends proof public input with `self`
+    /// Extends proof public input with `self`.
     #[inline]
     pub fn extend_input(&self, input: &mut ProofInput<C>) {
         C::ProofSystem::extend(input, &self.utxo);

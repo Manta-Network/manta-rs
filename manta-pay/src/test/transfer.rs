@@ -103,6 +103,42 @@ fn reclaim() {
     );
 }
 
+/// Tests that `generate_proof_input` from [`Transfer`] and [`TransferPost`] gives the same [`ProofInput`].
+#[test]
+fn generate_proof_input_is_compatibile() {
+    let mut rng = OsRng;
+    assert!(
+        Mint::sample_and_check_generate_proof_input_compatibility(
+            &(),
+            &rng.gen(),
+            &mut UtxoAccumulator::new(rng.gen()),
+            &mut rng
+        )
+        .expect("For a random Mint, `generate_proof_input` from `Transfer` and `ProofInput` should generate the same `ProofInput`."),
+        "For a random Mint, `generate_proof_input` from `Transfer` and `TransferPost` should have given the same `ProofInput`."
+    );
+    assert!(
+        PrivateTransfer::sample_and_check_generate_proof_input_compatibility(
+            &(),
+            &rng.gen(),
+            &mut UtxoAccumulator::new(rng.gen()),
+            &mut rng
+        )
+        .expect("For a random PrivateTransfer, `generate_proof_input` from `Transfer` and `ProofInput` should generate the same `ProofInput`."),
+        "For a random PrivateTransfer, `generate_proof_input` from `Transfer` and `TransferPost` should have given the same `ProofInput`."
+    );
+    assert!(
+        Reclaim::sample_and_check_generate_proof_input_compatibility(
+            &(),
+            &rng.gen(),
+            &mut UtxoAccumulator::new(rng.gen()),
+            &mut rng
+        )
+        .expect("For a random Reclaim, `generate_proof_input` from `Transfer` and `ProofInput` should generate the same `ProofInput`."),
+        "For a random Reclaim, `generate_proof_input` from `Transfer` and `TransferPost` should have given the same `ProofInput`."
+    );
+}
+
 /// Asserts that `proof` can be SCALE encoded and decoded with at least [`Vec`], [`Cursor`], and
 /// [`File`](std::fs::File).
 #[inline]
