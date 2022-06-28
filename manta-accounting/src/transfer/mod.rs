@@ -121,8 +121,8 @@ pub trait Configuration {
 
     /// Key Agreement Scheme Type
     type KeyAgreementScheme: key::agreement::Types<SecretKey = SecretKey<Self>, PublicKey = PublicKey<Self>>
-        + key::agreement::Derive
-        + key::agreement::Agree;
+        + key::agreement::Agree
+        + key::agreement::Derive;
 
     /// Secret Key Variable Type
     type SecretKeyVar: Variable<Secret, Self::Compiler, Type = SecretKey<Self>>;
@@ -132,10 +132,10 @@ pub trait Configuration {
         + constraint::PartialEq<Self::PublicKeyVar, Self::Compiler>;
 
     /// Key Agreement Scheme Variable Type
-    type KeyAgreementSchemeVar: key::agreement::Types<SecretKey = SecretKeyVar<Self>, PublicKey = PublicKeyVar<Self>>
-        + key::agreement::Derive<Self::Compiler>
+    type KeyAgreementSchemeVar: Constant<Self::Compiler, Type = Self::KeyAgreementScheme>
+        + key::agreement::Types<SecretKey = SecretKeyVar<Self>, PublicKey = PublicKeyVar<Self>>
         + key::agreement::Agree<Self::Compiler>
-        + Constant<Self::Compiler, Type = Self::KeyAgreementScheme>;
+        + key::agreement::Derive<Self::Compiler>;
 
     /// Unspent Transaction Output Type
     type Utxo: PartialEq;
@@ -154,13 +154,14 @@ pub trait Configuration {
         + constraint::PartialEq<Self::UtxoVar, Self::Compiler>;
 
     /// UTXO Commitment Scheme Variable Type
-    type UtxoCommitmentSchemeVar: UtxoCommitmentScheme<
+    type UtxoCommitmentSchemeVar: Constant<Self::Compiler, Type = Self::UtxoCommitmentScheme>
+        + UtxoCommitmentScheme<
             Self::Compiler,
             EphemeralSecretKey = SecretKeyVar<Self>,
             PublicSpendKey = PublicKeyVar<Self>,
             Asset = AssetVar<Self>,
             Utxo = UtxoVar<Self>,
-        > + Constant<Self::Compiler, Type = Self::UtxoCommitmentScheme>;
+        >;
 
     /// Void Number Type
     type VoidNumber: PartialEq;
@@ -177,12 +178,13 @@ pub trait Configuration {
         + constraint::PartialEq<Self::VoidNumberVar, Self::Compiler>;
 
     /// Void Number Commitment Scheme Variable Type
-    type VoidNumberCommitmentSchemeVar: VoidNumberCommitmentScheme<
+    type VoidNumberCommitmentSchemeVar: Constant<Self::Compiler, Type = Self::VoidNumberCommitmentScheme>
+        + VoidNumberCommitmentScheme<
             Self::Compiler,
             SecretSpendKey = SecretKeyVar<Self>,
             Utxo = UtxoVar<Self>,
             VoidNumber = VoidNumberVar<Self>,
-        > + Constant<Self::Compiler, Type = Self::VoidNumberCommitmentScheme>;
+        >;
 
     /// UTXO Accumulator Model Type
     type UtxoAccumulatorModel: Model<Item = Self::Utxo, Verification = bool>;
@@ -202,14 +204,15 @@ pub trait Configuration {
     >;
 
     /// UTXO Accumulator Model Variable Type
-    type UtxoAccumulatorModelVar: AssertValidVerification<Self::Compiler>
+    type UtxoAccumulatorModelVar: Constant<Self::Compiler, Type = Self::UtxoAccumulatorModel>
+        + AssertValidVerification<Self::Compiler>
         + Model<
             Self::Compiler,
             Item = Self::UtxoVar,
             Witness = Self::UtxoAccumulatorWitnessVar,
             Output = Self::UtxoAccumulatorOutputVar,
             Verification = Bool<Self::Compiler>,
-        > + Constant<Self::Compiler, Type = Self::UtxoAccumulatorModel>;
+        >;
 
     /// Asset Id Variable Type
     type AssetIdVar: Variable<Public, Self::Compiler, Type = AssetId>
@@ -527,14 +530,14 @@ impl<'p, C> FullParametersVar<'p, C>
 where
     C: Configuration,
 {
-    /// Derives a [`PublicKeyVar`] from `secret_key` inside the `compiler`.
+    /// Derives a [`PublicKeyVar`] from `secret_key`.
     #[inline]
     fn derive(&self, secret_key: &SecretKeyVar<C>, compiler: &mut C::Compiler) -> PublicKeyVar<C> {
         self.key_agreement.derive(secret_key, compiler)
     }
 
     /// Computes the [`UtxoVar`] associated to `ephemeral_secret_key`, `public_spend_key`, and
-    /// `asset` inside the `compiler`.
+    /// `asset`.
     #[inline]
     fn utxo(
         &self,
@@ -547,8 +550,7 @@ where
             .commit(ephemeral_secret_key, public_spend_key, asset, compiler)
     }
 
-    /// Computes the [`VoidNumberVar`] associated to `secret_spend_key` and `utxo` in the
-    /// `compiler`.
+    /// Computes the [`VoidNumberVar`] associated to `secret_spend_key` and `utxo`.
     #[inline]
     fn void_number(
         &self,
@@ -984,7 +986,7 @@ impl<C> SenderVar<C>
 where
     C: Configuration,
 {
-    /// Returns the asset for `self`, checking if `self` is well-formed in the given `compiler`.
+    /// Returns the asset for `self`, checking if `self` is well-formed.
     #[inline]
     pub fn get_well_formed_asset(
         self,
@@ -1434,8 +1436,7 @@ impl<C> ReceiverVar<C>
 where
     C: Configuration,
 {
-    /// Returns the asset for `self`, checking if `self` is well-formed in the given constraint
-    /// system `compiler`.
+    /// Returns the asset for `self`, checking if `self` is well-formed.
     #[inline]
     pub fn get_well_formed_asset(
         self,
@@ -1938,7 +1939,7 @@ where
         }
     }
 
-    /// Computes the sum of the asset values over `iter` inside of `compiler`.
+    /// Computes the sum of the asset values over `iter`.
     #[inline]
     fn value_sum<I>(iter: I, compiler: &mut C::Compiler) -> C::AssetValueVar
     where
