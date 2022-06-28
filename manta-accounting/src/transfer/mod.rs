@@ -945,6 +945,13 @@ where
             void_number: self.void_number,
         }
     }
+
+    /// Extends proof public input with `self`.
+    #[inline]
+    pub fn extend_input(&self, input: &mut ProofInput<C>) {
+        C::ProofSystem::extend(input, self.utxo_membership_proof.output());
+        C::ProofSystem::extend(input, &self.void_number);
+    }
 }
 
 /// Sender Variable
@@ -1195,8 +1202,6 @@ where
     /// Extends proof public input with `self`.
     #[inline]
     pub fn extend_input(&self, input: &mut ProofInput<C>) {
-        // TODO: Add a "public part" trait that extracts the public part of `Sender` (using
-        //       `SenderVar` to determine the types), then generate this method automatically.
         C::ProofSystem::extend(input, &self.utxo_accumulator_output);
         C::ProofSystem::extend(input, &self.void_number);
     }
@@ -1395,6 +1400,12 @@ where
             utxo: self.utxo,
             encrypted_note: self.encrypted_note,
         }
+    }
+
+    /// Extends proof public input with `self`.
+    #[inline]
+    pub fn extend_input(&self, input: &mut ProofInput<C>) {
+        C::ProofSystem::extend(input, &self.utxo);
     }
 }
 
@@ -1610,8 +1621,6 @@ where
     /// Extends proof public input with `self`.
     #[inline]
     pub fn extend_input(&self, input: &mut ProofInput<C>) {
-        // TODO: Add a "public part" trait that extracts the public part of `Receiver` (using
-        //       `ReceiverVar` to determine the types), then generate this method automatically.
         C::ProofSystem::extend(input, &self.utxo);
     }
 
@@ -1722,6 +1731,28 @@ where
         let asset_id = asset_id.into();
         Self::check_shape(asset_id.is_some());
         Self::new_unchecked(asset_id, sources, senders, receivers, sinks)
+    }
+
+    /// Generates the public input for the [`Transfer`] validation proof.
+    #[inline]
+    pub fn generate_proof_input(&self) -> ProofInput<C> {
+        let mut input = Default::default();
+        if let Some(asset_id) = self.asset_id {
+            C::ProofSystem::extend(&mut input, &asset_id);
+        }
+        self.sources
+            .iter()
+            .for_each(|source| C::ProofSystem::extend(&mut input, source));
+        self.senders
+            .iter()
+            .for_each(|sender| sender.extend_input(&mut input));
+        self.receivers
+            .iter()
+            .for_each(|receiver| receiver.extend_input(&mut input));
+        self.sinks
+            .iter()
+            .for_each(|sink| C::ProofSystem::extend(&mut input, sink));
+        input
     }
 
     /// Checks that the [`Transfer`] has a valid shape.
