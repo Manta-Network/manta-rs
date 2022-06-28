@@ -78,7 +78,10 @@ where
 /// Parameters Distribution
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
-pub struct ParametersDistribution<E = (), U = (), V = ()> {
+pub struct ParametersDistribution<K = (), E = (), U = (), V = ()> {
+    /// Key Agreement Scheme Distribution
+    pub key_agreement_scheme: K,
+
     /// Note Encryption Scheme Distribution
     pub note_encryption_scheme: E,
 
@@ -89,19 +92,21 @@ pub struct ParametersDistribution<E = (), U = (), V = ()> {
     pub void_number_commitment_scheme: V,
 }
 
-impl<E, U, V, C> Sample<ParametersDistribution<E, U, V>> for Parameters<C>
+impl<K, E, U, V, C> Sample<ParametersDistribution<K, E, U, V>> for Parameters<C>
 where
     C: Configuration,
+    C::KeyAgreementScheme: Sample<K>,
     C::NoteEncryptionScheme: Sample<E>,
     C::UtxoCommitmentScheme: Sample<U>,
     C::VoidNumberCommitmentScheme: Sample<V>,
 {
     #[inline]
-    fn sample<R>(distribution: ParametersDistribution<E, U, V>, rng: &mut R) -> Self
+    fn sample<R>(distribution: ParametersDistribution<K, E, U, V>, rng: &mut R) -> Self
     where
         R: RngCore + ?Sized,
     {
         Parameters::new(
+            rng.sample(distribution.key_agreement_scheme),
             rng.sample(distribution.note_encryption_scheme),
             rng.sample(distribution.utxo_commitment),
             rng.sample(distribution.void_number_commitment_scheme),
@@ -294,8 +299,8 @@ where
             .map(|v| {
                 Receiver::new(
                     parameters,
-                    parameters.derive_owned(rng.gen()),
-                    parameters.derive_owned(rng.gen()),
+                    parameters.derive(&rng.gen()),
+                    parameters.derive(&rng.gen()),
                     rng.gen(),
                     asset_id.with(*v),
                 )
@@ -407,7 +412,6 @@ pub fn assert_valid_proof<C>(verifying_context: &VerifyingContext<C>, post: &Tra
 where
     C: Configuration,
     <C::ProofSystem as ProofSystem>::Error: Debug,
-    TransferPost<C>: Debug,
 {
     assert!(
         C::ProofSystem::verify(
@@ -416,7 +420,6 @@ where
             &post.validity_proof,
         )
         .expect("Unable to verify proof."),
-        "Invalid proof: {:?}",
-        post,
+        "Invalid proof.",
     );
 }

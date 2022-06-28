@@ -44,7 +44,11 @@ use manta_crypto::{
     },
     encryption,
     hash::ArrayHashFunction,
-    key, merkle_tree,
+    key::{
+        self,
+        kdf::{AsBytes, KeyDerivationFunction},
+    },
+    merkle_tree,
 };
 use manta_util::{
     codec::{Decode, DecodeError, Encode, Read, Write},
@@ -138,8 +142,17 @@ pub type SecretKey = <KeyAgreementScheme as key::agreement::Types>::SecretKey;
 /// Public Key Type
 pub type PublicKey = <KeyAgreementScheme as key::agreement::Types>::PublicKey;
 
+/// Shared Secret Type
+pub type SharedSecret = <KeyAgreementScheme as key::agreement::Types>::SharedSecret;
+
 /// Key Agreement Scheme Variable Type
 pub type KeyAgreementSchemeVar = DiffieHellman<GroupVar, Compiler>;
+
+/// Secret Key Variable Type
+pub type SecretKeyVar = <KeyAgreementSchemeVar as key::agreement::Types>::SecretKey;
+
+/// Public Key Variable Type
+pub type PublicKeyVar = <KeyAgreementSchemeVar as key::agreement::Types>::PublicKey;
 
 /// Unspent Transaction Output Type
 pub type Utxo = Fp<ConstraintField>;
@@ -160,7 +173,7 @@ impl transfer::UtxoCommitmentScheme for UtxoCommitmentScheme {
         ephemeral_secret_key: &Self::EphemeralSecretKey,
         public_spend_key: &Self::PublicSpendKey,
         asset: &Self::Asset,
-        _: &mut (),
+        compiler: &mut (),
     ) -> Self::Utxo {
         self.0.hash(
             [
@@ -171,7 +184,7 @@ impl transfer::UtxoCommitmentScheme for UtxoCommitmentScheme {
                 &Fp(asset.id.0.into()),
                 &Fp(asset.value.0.into()),
             ],
-            &mut (),
+            compiler,
         )
     }
 }
@@ -267,7 +280,7 @@ impl transfer::VoidNumberCommitmentScheme for VoidNumberCommitmentScheme {
         &self,
         secret_spend_key: &Self::SecretSpendKey,
         utxo: &Self::Utxo,
-        _: &mut (),
+        compiler: &mut (),
     ) -> Self::VoidNumber {
         self.0.hash(
             [
@@ -276,7 +289,7 @@ impl transfer::VoidNumberCommitmentScheme for VoidNumberCommitmentScheme {
                 &ecc::arkworks::lift_embedded_scalar::<Bls12_381_Edwards>(secret_spend_key),
                 utxo,
             ],
-            &mut (),
+            compiler,
         )
     }
 }
@@ -321,7 +334,7 @@ pub type VoidNumberVar = ConstraintFieldVar;
 pub struct VoidNumberCommitmentSchemeVar(pub Poseidon2Var);
 
 impl transfer::VoidNumberCommitmentScheme<Compiler> for VoidNumberCommitmentSchemeVar {
-    type SecretSpendKey = <KeyAgreementSchemeVar as key::agreement::Types>::SecretKey;
+    type SecretSpendKey = SecretKeyVar;
     type Utxo = <UtxoCommitmentSchemeVar as transfer::UtxoCommitmentScheme<Compiler>>::Utxo;
     type VoidNumber = ConstraintFieldVar;
 
@@ -387,7 +400,7 @@ impl Variable<Secret, Compiler> for AssetIdVar {
 pub struct AssetValueVar(ConstraintFieldVar);
 
 impl Add<Self, Compiler> for AssetValueVar {
-    type Output = Self;
+    type Output = AssetValueVar;
 
     #[inline]
     fn add(self, rhs: Self, compiler: &mut Compiler) -> Self::Output {
@@ -541,10 +554,8 @@ impl MerkleTreeConfiguration {
     /// Width of the Merkle Forest
     pub const FOREST_WIDTH: usize = 1;
 }
-
 impl merkle_tree::forest::Configuration for MerkleTreeConfiguration {
     type Index = merkle_tree::forest::SingleTreeIndex;
-
     #[inline]
     fn tree_index(leaf: &merkle_tree::Leaf<Self>) -> Self::Index {
         let _ = leaf;
@@ -635,26 +646,36 @@ impl ProofSystemInput<Group> for ProofSystem {
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct NotePlaintextMapping;
 
-impl encryption::symmetric::PlaintextMapping<Array<u8, { Note::SIZE }>> for NotePlaintextMapping {
+impl encryption::PlaintextType for NotePlaintextMapping {
     type Plaintext = Note;
+}
+
+impl encryption::convert::plaintext::Forward for NotePlaintextMapping {
+    type TargetPlaintext = Array<u8, { Note::SIZE }>;
 
     #[inline]
-    fn into_base(plaintext: Self::Plaintext) -> Array<u8, { Note::SIZE }> {
-        // TODO: Use a serialization method to do this.
+    fn as_target(source: &Self::Plaintext, _: &mut ()) -> Self::TargetPlaintext {
         let mut bytes = Vec::new();
-        bytes.append(&mut field_element_as_bytes(
-            &plaintext.ephemeral_secret_key.0,
-        ));
+        bytes.append(&mut field_element_as_bytes(&source.ephemeral_secret_key.0));
         bytes
-            .write(&mut plaintext.asset.into_bytes().as_slice())
+            .write(&mut source.asset.into_bytes().as_slice())
             .expect("This can never fail.");
         Array::from_unchecked(bytes)
     }
+}
+
+impl encryption::DecryptedPlaintextType for NotePlaintextMapping {
+    type DecryptedPlaintext = Option<Note>;
+}
+
+impl encryption::convert::plaintext::Reverse for NotePlaintextMapping {
+    type TargetDecryptedPlaintext = Option<Array<u8, { Note::SIZE }>>;
 
     #[inline]
-    fn from_base(plaintext: Array<u8, { Note::SIZE }>) -> Option<Self::Plaintext> {
+    fn into_source(target: Self::TargetDecryptedPlaintext, _: &mut ()) -> Self::DecryptedPlaintext {
         // TODO: Use a deserialization method to do this.
-        let mut slice = plaintext.as_ref();
+        let target = target?;
+        let mut slice = target.as_ref();
         Some(Note {
             ephemeral_secret_key: Fp(EmbeddedScalarField::deserialize(&mut slice).ok()?),
             asset: Asset::from_bytes(into_array_unchecked(slice)),
@@ -662,25 +683,46 @@ impl encryption::symmetric::PlaintextMapping<Array<u8, { Note::SIZE }>> for Note
     }
 }
 
+/// Note Encryption KDF
+pub struct NoteEncryptionKDF;
+
+impl encryption::EncryptionKeyType for NoteEncryptionKDF {
+    type EncryptionKey = Group;
+}
+
+impl encryption::DecryptionKeyType for NoteEncryptionKDF {
+    type DecryptionKey = Group;
+}
+
+impl encryption::convert::key::Encryption for NoteEncryptionKDF {
+    type TargetEncryptionKey = [u8; 32];
+
+    #[inline]
+    fn as_target(source: &Self::EncryptionKey, compiler: &mut ()) -> Self::TargetEncryptionKey {
+        Blake2sKdf.derive(&source.as_bytes(), compiler)
+    }
+}
+impl encryption::convert::key::Decryption for NoteEncryptionKDF {
+    type TargetDecryptionKey = [u8; 32];
+
+    #[inline]
+    fn as_target(source: &Self::DecryptionKey, compiler: &mut ()) -> Self::TargetDecryptionKey {
+        Blake2sKdf.derive(&source.as_bytes(), compiler)
+    }
+}
+
 /// Note Symmetric Encryption Scheme
-pub type NoteSymmetricEncryptionScheme = encryption::symmetric::Map<
-    FixedNonceAesGcm<{ Note::SIZE }, { aes::ciphertext_size(Note::SIZE) }>,
-    NotePlaintextMapping,
+pub type NoteSymmetricEncryptionScheme = encryption::convert::key::Converter<
+    encryption::convert::plaintext::Converter<
+        FixedNonceAesGcm<{ Note::SIZE }, { aes::ciphertext_size(Note::SIZE) }>,
+        NotePlaintextMapping,
+    >,
+    NoteEncryptionKDF,
 >;
 
 /// Note Encryption Scheme
-pub type NoteEncryptionScheme = encryption::hybrid::Hybrid<
-    KeyAgreementScheme,
-    key::kdf::FromByteVector<
-        <KeyAgreementScheme as key::agreement::Types>::SharedSecret,
-        Blake2sKdf,
-    >,
-    NoteSymmetricEncryptionScheme,
->;
-
-/// Asset Ciphertext
-pub type Ciphertext =
-    <NoteEncryptionScheme as encryption::symmetric::SymmetricKeyEncryptionScheme>::Ciphertext;
+pub type NoteEncryptionScheme =
+    encryption::hybrid::Hybrid<KeyAgreementScheme, NoteSymmetricEncryptionScheme>;
 
 /// Base Configuration
 pub struct Config;
@@ -689,8 +731,8 @@ impl transfer::Configuration for Config {
     type SecretKey = SecretKey;
     type PublicKey = PublicKey;
     type KeyAgreementScheme = KeyAgreementScheme;
-    type SecretKeyVar = <Self::KeyAgreementSchemeVar as key::agreement::Types>::SecretKey;
-    type PublicKeyVar = <Self::KeyAgreementSchemeVar as key::agreement::Types>::PublicKey;
+    type SecretKeyVar = SecretKeyVar;
+    type PublicKeyVar = PublicKeyVar;
     type KeyAgreementSchemeVar = KeyAgreementSchemeVar;
     type Utxo = <Self::UtxoCommitmentScheme as transfer::UtxoCommitmentScheme>::Utxo;
     type UtxoCommitmentScheme = UtxoCommitmentScheme;
@@ -715,7 +757,7 @@ impl transfer::Configuration for Config {
     type AssetValueVar = AssetValueVar;
     type Compiler = Compiler;
     type ProofSystem = ProofSystem;
-    type NoteEncryptionScheme = NoteEncryptionScheme;
+    type NoteEncryptionScheme = NoteSymmetricEncryptionScheme;
 }
 
 /// Transfer Parameters

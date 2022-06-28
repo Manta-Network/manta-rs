@@ -38,7 +38,11 @@ use manta_crypto::{
         self, Add, Allocate, Allocator, AssertEq, Bool, Constant, Derived, ProofSystem,
         ProofSystemInput, Public, Secret, Variable,
     },
-    encryption::hybrid::{DecryptedMessage, EncryptedMessage, HybridPublicKeyEncryptionScheme},
+    encryption::{
+        self,
+        hybrid::{self, Hybrid},
+        Encrypt, EncryptedMessage,
+    },
     key::{self, agreement::Derive},
     rand::{CryptoRng, RngCore, Sample},
 };
@@ -117,8 +121,8 @@ pub trait Configuration {
 
     /// Key Agreement Scheme Type
     type KeyAgreementScheme: key::agreement::Types<SecretKey = SecretKey<Self>, PublicKey = PublicKey<Self>>
-        + key::agreement::Agree
-        + key::agreement::Derive;
+        + key::agreement::Derive
+        + key::agreement::Agree;
 
     /// Secret Key Variable Type
     type SecretKeyVar: Variable<Secret, Self::Compiler, Type = SecretKey<Self>>;
@@ -128,10 +132,10 @@ pub trait Configuration {
         + constraint::PartialEq<Self::PublicKeyVar, Self::Compiler>;
 
     /// Key Agreement Scheme Variable Type
-    type KeyAgreementSchemeVar: Constant<Self::Compiler, Type = Self::KeyAgreementScheme>
-        + key::agreement::Types<SecretKey = SecretKeyVar<Self>, PublicKey = PublicKeyVar<Self>>
+    type KeyAgreementSchemeVar: key::agreement::Types<SecretKey = SecretKeyVar<Self>, PublicKey = PublicKeyVar<Self>>
+        + key::agreement::Derive<Self::Compiler>
         + key::agreement::Agree<Self::Compiler>
-        + key::agreement::Derive<Self::Compiler>;
+        + Constant<Self::Compiler, Type = Self::KeyAgreementScheme>;
 
     /// Unspent Transaction Output Type
     type Utxo: PartialEq;
@@ -150,14 +154,13 @@ pub trait Configuration {
         + constraint::PartialEq<Self::UtxoVar, Self::Compiler>;
 
     /// UTXO Commitment Scheme Variable Type
-    type UtxoCommitmentSchemeVar: Constant<Self::Compiler, Type = Self::UtxoCommitmentScheme>
-        + UtxoCommitmentScheme<
+    type UtxoCommitmentSchemeVar: UtxoCommitmentScheme<
             Self::Compiler,
             EphemeralSecretKey = SecretKeyVar<Self>,
             PublicSpendKey = PublicKeyVar<Self>,
             Asset = AssetVar<Self>,
             Utxo = UtxoVar<Self>,
-        >;
+        > + Constant<Self::Compiler, Type = Self::UtxoCommitmentScheme>;
 
     /// Void Number Type
     type VoidNumber: PartialEq;
@@ -174,13 +177,12 @@ pub trait Configuration {
         + constraint::PartialEq<Self::VoidNumberVar, Self::Compiler>;
 
     /// Void Number Commitment Scheme Variable Type
-    type VoidNumberCommitmentSchemeVar: Constant<Self::Compiler, Type = Self::VoidNumberCommitmentScheme>
-        + VoidNumberCommitmentScheme<
+    type VoidNumberCommitmentSchemeVar: VoidNumberCommitmentScheme<
             Self::Compiler,
             SecretSpendKey = SecretKeyVar<Self>,
             Utxo = UtxoVar<Self>,
             VoidNumber = VoidNumberVar<Self>,
-        >;
+        > + Constant<Self::Compiler, Type = Self::VoidNumberCommitmentScheme>;
 
     /// UTXO Accumulator Model Type
     type UtxoAccumulatorModel: Model<Item = Self::Utxo, Verification = bool>;
@@ -200,15 +202,14 @@ pub trait Configuration {
     >;
 
     /// UTXO Accumulator Model Variable Type
-    type UtxoAccumulatorModelVar: Constant<Self::Compiler, Type = Self::UtxoAccumulatorModel>
-        + AssertValidVerification<Self::Compiler>
+    type UtxoAccumulatorModelVar: AssertValidVerification<Self::Compiler>
         + Model<
             Self::Compiler,
             Item = Self::UtxoVar,
             Witness = Self::UtxoAccumulatorWitnessVar,
             Output = Self::UtxoAccumulatorOutputVar,
             Verification = Bool<Self::Compiler>,
-        >;
+        > + Constant<Self::Compiler, Type = Self::UtxoAccumulatorModel>;
 
     /// Asset Id Variable Type
     type AssetIdVar: Variable<Public, Self::Compiler, Type = AssetId>
@@ -233,11 +234,16 @@ pub trait Configuration {
         + ProofSystemInput<VoidNumber<Self>>
         + ProofSystemInput<PublicKey<Self>>;
 
-    /// Note Encryption Scheme Type
-    type NoteEncryptionScheme: HybridPublicKeyEncryptionScheme<
-        Plaintext = Note<Self>,
-        KeyAgreementScheme = Self::KeyAgreementScheme,
-    >;
+    /// Note Base Encryption Scheme Type
+    type NoteEncryptionScheme: encryption::Encrypt<
+            EncryptionKey = SharedSecret<Self>,
+            Randomness = (),
+            Header = (),
+            Plaintext = Note<Self>,
+        > + encryption::Decrypt<
+            DecryptionKey = SharedSecret<Self>,
+            DecryptedPlaintext = Option<Note<Self>>,
+        >;
 }
 
 /// Asset Variable Type
@@ -254,6 +260,9 @@ pub type PublicKey<C> = <C as Configuration>::PublicKey;
 
 /// Public Key Variable Type
 pub type PublicKeyVar<C> = <C as Configuration>::PublicKeyVar;
+
+/// Shared Secret Type
+pub type SharedSecret<C> = key::agreement::SharedSecret<<C as Configuration>::KeyAgreementScheme>;
 
 /// Unspend Transaction Output Type
 pub type Utxo<C> = <C as Configuration>::Utxo;
@@ -281,10 +290,9 @@ pub type UtxoMembershipProofVar<C> =
     MembershipProof<<C as Configuration>::UtxoAccumulatorModelVar, Compiler<C>>;
 
 /// Encrypted Note Type
-pub type EncryptedNote<C> = EncryptedMessage<<C as Configuration>::NoteEncryptionScheme>;
-
-/// Decrypted Note Type
-pub type DecryptedNote<C> = DecryptedMessage<<C as Configuration>::NoteEncryptionScheme>;
+pub type EncryptedNote<C> = EncryptedMessage<
+    Hybrid<<C as Configuration>::KeyAgreementScheme, <C as Configuration>::NoteEncryptionScheme>,
+>;
 
 /// Transfer Configuration Compiler Type
 pub type Compiler<C> = <C as Configuration>::Compiler;
@@ -314,36 +322,43 @@ pub type Proof<C> = <ProofSystemType<C> as ProofSystem>::Proof;
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = r"
+        C::KeyAgreementScheme: Clone,
         C::NoteEncryptionScheme: Clone,
         C::UtxoCommitmentScheme: Clone,
         C::VoidNumberCommitmentScheme: Clone
     "),
     Copy(bound = r"
+        C::KeyAgreementScheme: Copy,
         C::NoteEncryptionScheme: Copy,
         C::UtxoCommitmentScheme: Copy,
         C::VoidNumberCommitmentScheme: Copy
     "),
     Debug(bound = r"
+        C::KeyAgreementScheme: Debug,
         C::NoteEncryptionScheme: Debug,
         C::UtxoCommitmentScheme: Debug,
         C::VoidNumberCommitmentScheme: Debug
     "),
     Default(bound = r"
+        C::KeyAgreementScheme: Default,
         C::NoteEncryptionScheme: Default,
         C::UtxoCommitmentScheme: Default,
         C::VoidNumberCommitmentScheme: Default
     "),
     Eq(bound = r"
+        C::KeyAgreementScheme: Eq,
         C::NoteEncryptionScheme: Eq,
         C::UtxoCommitmentScheme: Eq,
         C::VoidNumberCommitmentScheme: Eq
     "),
     Hash(bound = r"
+        C::KeyAgreementScheme: Hash,
         C::NoteEncryptionScheme: Hash,
         C::UtxoCommitmentScheme: Hash,
         C::VoidNumberCommitmentScheme: Hash
     "),
     PartialEq(bound = r"
+        C::KeyAgreementScheme: PartialEq,
         C::NoteEncryptionScheme: PartialEq,
         C::UtxoCommitmentScheme: PartialEq,
         C::VoidNumberCommitmentScheme: PartialEq
@@ -354,7 +369,7 @@ where
     C: Configuration + ?Sized,
 {
     /// Note Encryption Scheme
-    pub note_encryption_scheme: C::NoteEncryptionScheme,
+    pub note_encryption_scheme: Hybrid<C::KeyAgreementScheme, C::NoteEncryptionScheme>,
 
     /// UTXO Commitment Scheme
     pub utxo_commitment: C::UtxoCommitmentScheme,
@@ -371,12 +386,16 @@ where
     /// `void_number_commitment`.
     #[inline]
     pub fn new(
+        key_agreement_scheme: C::KeyAgreementScheme,
         note_encryption_scheme: C::NoteEncryptionScheme,
         utxo_commitment: C::UtxoCommitmentScheme,
         void_number_commitment: C::VoidNumberCommitmentScheme,
     ) -> Self {
         Self {
-            note_encryption_scheme,
+            note_encryption_scheme: Hybrid {
+                key_agreement_scheme,
+                encryption_scheme: note_encryption_scheme,
+            },
             utxo_commitment,
             void_number_commitment,
         }
@@ -385,23 +404,15 @@ where
     /// Returns the [`KeyAgreementScheme`](Configuration::KeyAgreementScheme) associated to `self`.
     #[inline]
     pub fn key_agreement_scheme(&self) -> &C::KeyAgreementScheme {
-        self.note_encryption_scheme.key_agreement_scheme()
+        &self.note_encryption_scheme.key_agreement_scheme
     }
 
     /// Derives a [`PublicKey`] from a borrowed `secret_key`.
     #[inline]
     pub fn derive(&self, secret_key: &SecretKey<C>) -> PublicKey<C> {
         self.note_encryption_scheme
-            .key_agreement_scheme()
+            .key_agreement_scheme
             .derive(secret_key, &mut ())
-    }
-
-    /// Derives a [`PublicKey`] from an owned `secret_key`.
-    #[inline]
-    pub fn derive_owned(&self, secret_key: SecretKey<C>) -> PublicKey<C> {
-        self.note_encryption_scheme
-            .key_agreement_scheme()
-            .derive(&secret_key, &mut ())
     }
 
     /// Computes the [`Utxo`] associated to `ephemeral_secret_key`, `public_spend_key`, and `asset`.
@@ -516,14 +527,14 @@ impl<'p, C> FullParametersVar<'p, C>
 where
     C: Configuration,
 {
-    /// Derives a [`PublicKeyVar`] from `secret_key`.
+    /// Derives a [`PublicKeyVar`] from `secret_key` inside the `compiler`.
     #[inline]
     fn derive(&self, secret_key: &SecretKeyVar<C>, compiler: &mut C::Compiler) -> PublicKeyVar<C> {
         self.key_agreement.derive(secret_key, compiler)
     }
 
     /// Computes the [`UtxoVar`] associated to `ephemeral_secret_key`, `public_spend_key`, and
-    /// `asset`.
+    /// `asset` inside the `compiler`.
     #[inline]
     fn utxo(
         &self,
@@ -536,7 +547,8 @@ where
             .commit(ephemeral_secret_key, public_spend_key, asset, compiler)
     }
 
-    /// Computes the [`VoidNumberVar`] associated to `secret_spend_key` and `utxo`.
+    /// Computes the [`VoidNumberVar`] associated to `secret_spend_key` and `utxo` in the
+    /// `compiler`.
     #[inline]
     fn void_number(
         &self,
@@ -561,7 +573,7 @@ where
         Self {
             key_agreement: this
                 .note_encryption_scheme
-                .key_agreement_scheme()
+                .key_agreement_scheme
                 .as_constant(compiler),
             utxo_commitment: this.utxo_commitment.as_constant(compiler),
             void_number_commitment: this.void_number_commitment.as_constant(compiler),
@@ -972,7 +984,7 @@ impl<C> SenderVar<C>
 where
     C: Configuration,
 {
-    /// Returns the asset for `self`, checking if `self` is well-formed.
+    /// Returns the asset for `self`, checking if `self` is well-formed in the given `compiler`.
     #[inline]
     pub fn get_well_formed_asset(
         self,
@@ -1358,15 +1370,17 @@ where
         ephemeral_secret_key: SecretKey<C>,
         asset: Asset,
     ) -> Self {
+        let randomness = hybrid::Randomness::from_key(ephemeral_secret_key);
         Self {
-            utxo: parameters.utxo(&ephemeral_secret_key, &public_spend_key, &asset),
-            encrypted_note: EncryptedMessage::new(
-                &parameters.note_encryption_scheme,
-                &ephemeral_secret_key,
+            utxo: parameters.utxo(&randomness.ephemeral_secret_key, &public_spend_key, &asset),
+            encrypted_note: parameters.note_encryption_scheme.encrypt_into(
                 &public_view_key,
-                Note::new(ephemeral_secret_key.clone(), asset),
+                &randomness,
+                (),
+                &Note::new(randomness.ephemeral_secret_key.clone(), asset),
+                &mut (),
             ),
-            ephemeral_secret_key,
+            ephemeral_secret_key: randomness.ephemeral_secret_key,
             public_spend_key,
             asset,
         }
@@ -1420,7 +1434,8 @@ impl<C> ReceiverVar<C>
 where
     C: Configuration,
 {
-    /// Returns the asset for `self`, checking if `self` is well-formed.
+    /// Returns the asset for `self`, checking if `self` is well-formed in the given constraint
+    /// system `compiler`.
     #[inline]
     pub fn get_well_formed_asset(
         self,
@@ -1923,7 +1938,7 @@ where
         }
     }
 
-    /// Computes the sum of the asset values over `iter`.
+    /// Computes the sum of the asset values over `iter` inside of `compiler`.
     #[inline]
     fn value_sum<I>(iter: I, compiler: &mut C::Compiler) -> C::AssetValueVar
     where
