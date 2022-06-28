@@ -7,4 +7,5 @@ members = [
     "manta-parameters",
     "manta-pay",
     "manta-util",
+    "manta-workspace-hack",
 ]
