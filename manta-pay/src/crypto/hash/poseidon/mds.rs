@@ -41,7 +41,7 @@ where
 {
     fn sample<R>(distribution: D, mut rng: &mut R) -> Self
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         let mat = distribution.sample_matrix(&mut rng);
         MaximumDistanceSeparableMatrix { mat }

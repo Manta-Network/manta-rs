@@ -47,7 +47,7 @@ where
     #[inline]
     fn sample<R>(distribution: D, rng: &mut R) -> Self
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         Self::new(rng.sample_iter(core::iter::repeat(distribution)).collect())
     }
