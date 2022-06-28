@@ -127,7 +127,7 @@ fn generate_proof_input_is_compatibile() {
                 &mut UtxoAccumulator::new(rng.gen()),
                 &mut rng
             ),
-            Ok(true),    
+            Ok(true),
         ),
         "For a random PrivateTransfer, `generate_proof_input` from `Transfer` and `TransferPost` should have given the same `ProofInput`."
     );
@@ -139,7 +139,7 @@ fn generate_proof_input_is_compatibile() {
                 &mut UtxoAccumulator::new(rng.gen()),
                 &mut rng
             ),
-            Ok(true),    
+            Ok(true),
         ),
         "For a random Reclaim, `generate_proof_input` from `Transfer` and `TransferPost` should have given the same `ProofInput`."
     );
