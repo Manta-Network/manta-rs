@@ -50,7 +50,7 @@ pub const fn ciphertext_size(plaintext_size: usize) -> usize {
 ///
 /// # Safety
 ///
-/// The encryption key can be only used once.
+/// The encryption key can be used only once.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct FixedNonceAesGcm<const P: usize, const C: usize>;
 
