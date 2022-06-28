@@ -271,8 +271,7 @@ where
         let (proving_context, _) = Self::generate_context(public_parameters, full_parameters, rng)?;
         Ok(transfer.generate_proof_input()
             == transfer
-                .into_post(full_parameters, &proving_context, rng)
-                .expect("Unable to convert `Transfer` into `TransferPost`.")
+                .into_post(full_parameters, &proving_context, rng)?
                 .generate_proof_input())
     }
 }
