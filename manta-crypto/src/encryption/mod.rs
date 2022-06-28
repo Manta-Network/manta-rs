@@ -76,7 +76,7 @@ where
 /// The encryption key is the information required to produce a valid ciphertext that is targeted
 /// towards some [`DecryptionKey`](DecryptionKeyType::DecryptionKey). In the case when the
 /// decryption key is linked by some computable protocol to the encryption key, [`Derive`] should be
-/// implemented to fascilitate this derivation.
+/// implemented to facilitate this derivation.
 pub trait EncryptionKeyType {
     /// Encryption Key Type
     type EncryptionKey;
@@ -94,7 +94,7 @@ where
 /// The decryption key is the information required to open a valid ciphertext that was encrypted
 /// with the [`EncryptionKey`](EncryptionKeyType::EncryptionKey) that was targeted towards it. In
 /// the case when the decryption key is linked by some computable protocol to the encryption key,
-/// [`Derive`] should be implemented to fascilitate this derivation.
+/// [`Derive`] should be implemented to facilitate this derivation.
 pub trait DecryptionKeyType {
     /// Decryption Key Type
     type DecryptionKey;

@@ -168,7 +168,7 @@ where
     }
 
     /// Performs duplex encryption by absorbing the initial state with `key` and `header`, and
-    /// then duplexing `plaintext`, outputing the ciphertext blocks.
+    /// then duplexing `plaintext`, outputting the encryption tag and the ciphertext blocks.
     #[inline]
     fn duplex_encryption(
         &self,
@@ -186,7 +186,7 @@ where
     }
 
     /// Performs duplex decryption by absorbing the initial state with `key` and `header`, and
-    /// then duplexing `ciphertext`, outputing the plaintext blocks.
+    /// then duplexing `ciphertext`, outputting the decryption tag and the plaintext blocks.
     #[inline]
     fn duplex_decryption(
         &self,
