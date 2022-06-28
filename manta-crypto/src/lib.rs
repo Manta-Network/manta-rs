@@ -34,3 +34,4 @@ pub mod key;
 pub mod merkle_tree;
 pub mod password;
 pub mod rand;
+pub mod signature;
