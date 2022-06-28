@@ -5,10 +5,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 ### Added
+- [\#131](https://github.com/Manta-Network/manta-rs/pull/131) Add abstract Phase 1 for Groth16 trusted setup
+
+### Changed
+
+### Deprecated
+
+### Removed
+
+### Fixed
+
+### Security
+
+## [0.5.2] - 2022-06-28
+### Added
 - [\#126](https://github.com/Manta-Network/manta-rs/pull/126) Add ECLAIR v0 scaffolding and deprecate old compiler patterns
 - [\#128](https://github.com/Manta-Network/manta-rs/pull/128) Add more parameter loading utilities
 - [\#130](https://github.com/Manta-Network/manta-rs/pull/130) Add the sage script and the hardcoded tests for the security of mds matrix
-- [\#131](https://github.com/Manta-Network/manta-rs/pull/131) Add abstract Phase 1 for Groth16 trusted setup
+- [\#133](https://github.com/Manta-Network/manta-rs/pull/133) Add public input genenration to `Transfer`
 - [\#136](https://github.com/Manta-Network/manta-rs/pull/136) Add pseudorandom permutation and sponge abstractions
 - [\#134](https://github.com/Manta-Network/manta-rs/pull/134) Add signature scheme API and Schnorr signature implementaion
 
@@ -16,14 +30,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - [\#132](https://github.com/Manta-Network/manta-rs/pull/132) Simplify algebra APIs and removing ECC-specific design
 - [\#127](https://github.com/Manta-Network/manta-rs/pull/127) Remove the `CryptoRng` requirement from the `Sample` API
 
-### Deprecated
-
-### Removed
-
 ### Fixed
 - [\#129](https://github.com/Manta-Network/manta-rs/pull/129) Reduce cost of signer key-search algorithm by adding dynamic pre-computation table
-
-### Security
 
 ## [0.5.1] - 2022-06-17
 ### Added
@@ -69,7 +77,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Security
 - [\#50](https://github.com/Manta-Network/manta-rs/pull/50) Remove Trapdoor from Circuit
 
-[Unreleased]: https://github.com/Manta-Network/manta-rs/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/Manta-Network/manta-rs/compare/v0.5.2...HEAD
+[0.5.2]: https://github.com/Manta-Network/manta-rs/releases/tag/v0.5.2
 [0.5.1]: https://github.com/Manta-Network/manta-rs/releases/tag/v0.5.1
 [0.5.0]: https://github.com/Manta-Network/manta-rs/releases/tag/v0.5.0
 [0.4.0]: https://github.com/Manta-Network/manta-rs/releases/tag/v0.4.0
