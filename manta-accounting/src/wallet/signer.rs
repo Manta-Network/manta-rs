@@ -643,12 +643,10 @@ where
         with_recovery: bool,
         encrypted_note: EncryptedNote<C>,
     ) -> Option<ViewKeySelection<C::HierarchicalKeyDerivationScheme, Note<C>>> {
-        let mut finder = DecryptedMessage::find(encrypted_note);
-        view_key_table
-            .find_index_with_maybe_gap(with_recovery, move |k| {
-                finder.decrypt(&parameters.note_encryption_scheme, k)
-            })
-            .map(|selection| selection.map(|item| item.plaintext))
+        let mut finder = Finder::new(encrypted_note);
+        view_key_table.find_index_with_maybe_gap(with_recovery, move |k| {
+            finder.next(|note| note.decrypt(&parameters.note_encryption_scheme, k, &mut ()))
+        })
     }
 
     /// Inserts the new `utxo`-`note` pair into the `utxo_accumulator` adding the spendable amount
