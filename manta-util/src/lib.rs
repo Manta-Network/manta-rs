@@ -39,6 +39,10 @@ pub mod pointer;
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
+pub mod collections;
+
+#[cfg(feature = "alloc")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
 pub mod vec;
 
 pub use array::*;
