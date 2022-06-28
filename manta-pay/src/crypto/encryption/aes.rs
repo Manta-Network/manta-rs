@@ -47,6 +47,10 @@ pub const fn ciphertext_size(plaintext_size: usize) -> usize {
 }
 
 /// Fixed-Nonce AES Galois Counter Mode
+///
+/// # Safety
+///
+/// The encryption key can be only used once.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct FixedNonceAesGcm<const P: usize, const C: usize>;
 
