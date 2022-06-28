@@ -1,6 +1,6 @@
 [package]
 name = "manta-benchmark"
-version = "0.5.1"
+version = "0.5.2"
 edition = "2021"
 authors = ["Manta Network <contact@manta.network>"]
 readme = "README.md"
