@@ -18,7 +18,7 @@
 //!
 //! The encryption abstractions are organized into a two categories, a set of type `trait`s and a
 //! set of behavior `trait`s which require those types to be implemented. See the [`Encrypt`] and
-//! [`Decrypt`] for more.
+//! [`Decrypt`] `trait`s for more.
 
 use crate::rand::{Rand, RngCore, Sample};
 use core::{fmt::Debug, hash::Hash};
@@ -471,7 +471,7 @@ pub mod test {
     }
 
     /// Derives an [`EncryptionKey`](EncryptionKeyType::EncryptionKey) from `decryption_key` and
-    /// then runs the [`encryption`] correctness assertion test.
+    /// then runs the [`correctness`] assertion test.
     #[inline]
     pub fn correctness_with_derive<E, F>(
         cipher: &E,
