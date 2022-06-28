@@ -400,7 +400,7 @@ impl Variable<Secret, Compiler> for AssetIdVar {
 pub struct AssetValueVar(ConstraintFieldVar);
 
 impl Add<Self, Compiler> for AssetValueVar {
-    type Output = AssetValueVar;
+    type Output = Self;
 
     #[inline]
     fn add(self, rhs: Self, compiler: &mut Compiler) -> Self::Output {
