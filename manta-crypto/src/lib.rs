@@ -35,3 +35,4 @@ pub mod merkle_tree;
 pub mod password;
 pub mod permutation;
 pub mod rand;
+pub mod signature;
