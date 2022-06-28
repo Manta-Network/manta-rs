@@ -20,6 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Removed
 
 ### Fixed
+- [\#129](https://github.com/Manta-Network/manta-rs/pull/129) Reduce cost of signer key-search algorithm by adding dynamic pre-computation table
 
 ### Security
 

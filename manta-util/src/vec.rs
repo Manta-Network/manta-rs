@@ -14,12 +14,12 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Vector Utilities
+//! Vectors
 
 use crate::create_seal;
 
 #[doc(inline)]
-pub use alloc::vec::Vec;
+pub use alloc::vec::*;
 
 create_seal! {}
 
