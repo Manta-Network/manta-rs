@@ -16,7 +16,7 @@
 
 //! Symmetric Encryption
 
-use crate::rand::{CryptoRng, RngCore, Sample};
+use crate::rand::{RngCore, Sample};
 use core::marker::PhantomData;
 use manta_util::codec::{Decode, DecodeError, Encode, Read, Write};
 
@@ -219,7 +219,7 @@ where
     #[inline]
     fn sample<R>(distribution: D, rng: &mut R) -> Self
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         Self::new(S::sample(distribution, rng))
     }

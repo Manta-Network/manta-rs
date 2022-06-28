@@ -22,7 +22,7 @@ use crate::{
         InnerHashParameters, Leaf, LeafHashParameters, MerkleTree, Parameters, Path, Tree,
         WithProofs,
     },
-    rand::{CryptoRng, RngCore, Sample},
+    rand::{RngCore, Sample},
 };
 use alloc::string::String;
 use core::{fmt::Debug, hash::Hash, marker::PhantomData};
@@ -41,7 +41,7 @@ pub trait HashParameterSampling: HashConfiguration {
         rng: &mut R,
     ) -> LeafHashParameters<Self>
     where
-        R: CryptoRng + RngCore + ?Sized;
+        R: RngCore + ?Sized;
 
     /// Sample inner hash parameters from `distribution` using the given `rng`.
     fn sample_inner_hash_parameters<R>(
@@ -49,7 +49,7 @@ pub trait HashParameterSampling: HashConfiguration {
         rng: &mut R,
     ) -> InnerHashParameters<Self>
     where
-        R: CryptoRng + RngCore + ?Sized;
+        R: RngCore + ?Sized;
 }
 
 /// Hash Parameter Distribution
@@ -92,7 +92,7 @@ where
     #[inline]
     fn sample<R>(distribution: HashParameterDistribution<C>, rng: &mut R) -> Self
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         Self::new(
             C::sample_leaf_hash_parameters(distribution.leaf, rng),
@@ -213,7 +213,7 @@ where
     type Output = T;
 
     #[inline]
-    fn join_in(
+    fn join(
         parameters: &Self::Parameters,
         lhs: &Self::Output,
         rhs: &Self::Output,
@@ -224,7 +224,7 @@ where
     }
 
     #[inline]
-    fn join_leaves_in(
+    fn join_leaves(
         parameters: &Self::Parameters,
         lhs: &Self::LeafDigest,
         rhs: &Self::LeafDigest,
@@ -263,7 +263,7 @@ where
         rng: &mut R,
     ) -> LeafHashParameters<Self>
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         let _ = (distribution, rng);
     }
@@ -274,7 +274,7 @@ where
         rng: &mut R,
     ) -> InnerHashParameters<Self>
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         let _ = (distribution, rng);
     }

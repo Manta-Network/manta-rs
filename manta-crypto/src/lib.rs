@@ -24,12 +24,15 @@
 extern crate alloc;
 
 pub mod accumulator;
+pub mod algebra;
 pub mod commitment;
 pub mod constraint;
-pub mod ecc;
+pub mod eclair;
 pub mod encryption;
 pub mod hash;
 pub mod key;
 pub mod merkle_tree;
 pub mod password;
+pub mod permutation;
 pub mod rand;
+pub mod signature;

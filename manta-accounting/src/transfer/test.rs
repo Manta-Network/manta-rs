@@ -33,6 +33,8 @@ use manta_crypto::{
 };
 use manta_util::into_array_unchecked;
 
+use super::ProofInput;
+
 /// Samples a distribution over `count`-many values summing to `total`.
 ///
 /// # Warning
@@ -41,7 +43,7 @@ use manta_util::into_array_unchecked;
 #[inline]
 pub fn value_distribution<R>(count: usize, total: AssetValue, rng: &mut R) -> Vec<AssetValue>
 where
-    R: CryptoRng + RngCore + ?Sized,
+    R: RngCore + ?Sized,
 {
     if count == 0 {
         return Vec::default();
@@ -70,7 +72,7 @@ where
 #[inline]
 pub fn sample_asset_values<R, const N: usize>(total: AssetValue, rng: &mut R) -> [AssetValue; N]
 where
-    R: CryptoRng + RngCore + ?Sized,
+    R: RngCore + ?Sized,
 {
     into_array_unchecked(value_distribution(N, total, rng))
 }
@@ -99,7 +101,7 @@ where
     #[inline]
     fn sample<R>(distribution: ParametersDistribution<E, U, V>, rng: &mut R) -> Self
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         Parameters::new(
             rng.sample(distribution.note_encryption_scheme),
@@ -243,6 +245,35 @@ where
             &post.validity_proof,
         )
     }
+
+    /// Checks if `generate_proof_input` from [`Transfer`] and [`TransferPost`] gives the same [`ProofInput`].
+    #[inline]
+    pub fn sample_and_check_generate_proof_input_compatibility<A, R>(
+        public_parameters: &ProofSystemPublicParameters<C>,
+        parameters: &Parameters<C>,
+        utxo_accumulator: &mut A,
+        rng: &mut R,
+    ) -> Result<bool, ProofSystemError<C>>
+    where
+        A: Accumulator<Item = Utxo<C>, Model = C::UtxoAccumulatorModel>,
+        R: CryptoRng + RngCore + ?Sized,
+        ProofInput<C>: PartialEq,
+        ProofSystemError<C>: Debug,
+    {
+        let transfer = Self::sample(
+            TransferDistribution {
+                parameters,
+                utxo_accumulator,
+            },
+            rng,
+        );
+        let full_parameters = FullParameters::new(parameters, utxo_accumulator.model());
+        let (proving_context, _) = Self::generate_context(public_parameters, full_parameters, rng)?;
+        Ok(transfer.generate_proof_input()
+            == transfer
+                .into_post(full_parameters, &proving_context, rng)?
+                .generate_proof_input())
+    }
 }
 
 impl<C> TransferPost<C>
@@ -278,7 +309,7 @@ fn sample_senders_and_receivers<C, A, R>(
 where
     C: Configuration,
     A: Accumulator<Item = Utxo<C>, Model = C::UtxoAccumulatorModel>,
-    R: CryptoRng + RngCore + ?Sized,
+    R: RngCore + ?Sized,
 {
     (
         senders
@@ -319,7 +350,7 @@ where
     #[inline]
     fn sample<R>(distribution: TransferDistribution<'_, C, A>, rng: &mut R) -> Self
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         let asset = Asset::gen(rng);
         let mut input = value_distribution(SOURCES + SENDERS, asset.value, rng);
@@ -360,7 +391,7 @@ where
     #[inline]
     fn sample<R>(distribution: FixedTransferDistribution<'_, C, A>, rng: &mut R) -> Self
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         let (senders, receivers) = sample_senders_and_receivers(
             distribution.base.parameters,
@@ -407,6 +438,7 @@ pub fn assert_valid_proof<C>(verifying_context: &VerifyingContext<C>, post: &Tra
 where
     C: Configuration,
     <C::ProofSystem as ProofSystem>::Error: Debug,
+    TransferPost<C>: Debug,
 {
     assert!(
         C::ProofSystem::verify(
@@ -415,6 +447,7 @@ where
             &post.validity_proof,
         )
         .expect("Unable to verify proof."),
-        "Invalid proof.",
+        "Invalid proof: {:?}",
+        post,
     );
 }

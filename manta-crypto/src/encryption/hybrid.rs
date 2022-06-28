@@ -18,8 +18,12 @@
 
 use crate::{
     encryption::symmetric::SymmetricKeyEncryptionScheme,
-    key::{KeyAgreementScheme, KeyDerivationFunction},
-    rand::{CryptoRng, Rand, RngCore, Sample},
+    key::{
+        self,
+        agreement::{Agree, Derive},
+        kdf::KeyDerivationFunction,
+    },
+    rand::{Rand, RngCore, Sample},
 };
 use core::{fmt::Debug, hash::Hash};
 use manta_util::codec::{Decode, DecodeError, Encode, Read, Write};
@@ -30,7 +34,7 @@ use manta_util::serde::{Deserialize, Serialize};
 /// Hybrid Public Key Encryption Scheme
 pub trait HybridPublicKeyEncryptionScheme: SymmetricKeyEncryptionScheme {
     /// Key Agreement Scheme Type
-    type KeyAgreementScheme: KeyAgreementScheme;
+    type KeyAgreementScheme: key::agreement::Agree + key::agreement::Derive;
 
     /// Key Derivation Function Type
     type KeyDerivationFunction: KeyDerivationFunction<
@@ -51,29 +55,33 @@ pub trait HybridPublicKeyEncryptionScheme: SymmetricKeyEncryptionScheme {
     ///
     /// # Implementation Note
     ///
-    /// This method is an optimization path for calling [`KeyAgreementScheme::agree`] and then
+    /// This method is an optimization path for calling [`Agree::agree`] and then
     /// [`KeyDerivationFunction::derive`].
     #[inline]
     fn agree_derive(
         &self,
-        secret_key: &SecretKey<Self>,
         public_key: &PublicKey<Self>,
+        secret_key: &SecretKey<Self>,
     ) -> SymmetricKey<Self> {
-        self.key_derivation_function()
-            .derive(&self.key_agreement_scheme().agree(secret_key, public_key))
+        self.key_derivation_function().derive(
+            &self
+                .key_agreement_scheme()
+                .agree(public_key, secret_key, &mut ()),
+            &mut (),
+        )
     }
 }
 
 /// Secret Key Type
 pub type SecretKey<H> =
-    <<H as HybridPublicKeyEncryptionScheme>::KeyAgreementScheme as KeyAgreementScheme>::SecretKey;
+    <<H as HybridPublicKeyEncryptionScheme>::KeyAgreementScheme as key::agreement::Types>::SecretKey;
 
 /// Public Key Type
 pub type PublicKey<H> =
-    <<H as HybridPublicKeyEncryptionScheme>::KeyAgreementScheme as KeyAgreementScheme>::PublicKey;
+    <<H as HybridPublicKeyEncryptionScheme>::KeyAgreementScheme as key::agreement::Types>::PublicKey;
 
 /// Shared Secret Type
-pub type SharedSecret<H> = <<H as HybridPublicKeyEncryptionScheme>::KeyAgreementScheme as KeyAgreementScheme>::SharedSecret;
+pub type SharedSecret<H> = <<H as HybridPublicKeyEncryptionScheme>::KeyAgreementScheme as key::agreement::Types>::SharedSecret;
 
 /// Symmetric Key Type
 pub type SymmetricKey<H> = <H as SymmetricKeyEncryptionScheme>::Key;
@@ -97,7 +105,7 @@ pub type SymmetricKey<H> = <H as SymmetricKeyEncryptionScheme>::Key;
 #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Hybrid<K, F, S>
 where
-    K: KeyAgreementScheme,
+    K: key::agreement::Agree + key::agreement::Derive,
     F: KeyDerivationFunction<Key = K::SharedSecret, Output = S::Key>,
     S: SymmetricKeyEncryptionScheme,
 {
@@ -113,7 +121,7 @@ where
 
 impl<K, F, S> Hybrid<K, F, S>
 where
-    K: KeyAgreementScheme,
+    K: key::agreement::Agree + key::agreement::Derive,
     F: KeyDerivationFunction<Key = K::SharedSecret, Output = S::Key>,
     S: SymmetricKeyEncryptionScheme,
 {
@@ -135,7 +143,7 @@ where
 
 impl<K, F, S> HybridPublicKeyEncryptionScheme for Hybrid<K, F, S>
 where
-    K: KeyAgreementScheme,
+    K: key::agreement::Agree + key::agreement::Derive,
     F: KeyDerivationFunction<Key = K::SharedSecret, Output = S::Key>,
     S: SymmetricKeyEncryptionScheme,
 {
@@ -155,7 +163,7 @@ where
 
 impl<K, F, S> Decode for Hybrid<K, F, S>
 where
-    K: Decode + KeyAgreementScheme,
+    K: Decode + key::agreement::Agree + key::agreement::Derive,
     F: Decode + KeyDerivationFunction<Key = K::SharedSecret, Output = S::Key>,
     S: Decode + SymmetricKeyEncryptionScheme,
 {
@@ -178,7 +186,7 @@ where
 
 impl<K, F, S> Encode for Hybrid<K, F, S>
 where
-    K: Encode + KeyAgreementScheme,
+    K: Encode + key::agreement::Agree + key::agreement::Derive,
     F: Encode + KeyDerivationFunction<Key = K::SharedSecret, Output = S::Key>,
     S: Encode + SymmetricKeyEncryptionScheme,
 {
@@ -196,14 +204,14 @@ where
 
 impl<K, F, S, KD, FD, SD> Sample<(KD, FD, SD)> for Hybrid<K, F, S>
 where
-    K: KeyAgreementScheme + Sample<KD>,
+    K: key::agreement::Agree + key::agreement::Derive + Sample<KD>,
     F: KeyDerivationFunction<Key = K::SharedSecret, Output = S::Key> + Sample<FD>,
     S: SymmetricKeyEncryptionScheme + Sample<SD>,
 {
     #[inline]
     fn sample<R>(distribution: (KD, FD, SD), rng: &mut R) -> Self
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         Self::new(
             rng.sample(distribution.0),
@@ -215,7 +223,7 @@ where
 
 impl<K, F, S> SymmetricKeyEncryptionScheme for Hybrid<K, F, S>
 where
-    K: KeyAgreementScheme,
+    K: key::agreement::Agree + key::agreement::Derive,
     F: KeyDerivationFunction<Key = K::SharedSecret, Output = S::Key>,
     S: SymmetricKeyEncryptionScheme,
 {
@@ -283,10 +291,12 @@ where
     ) -> Self {
         Self {
             ciphertext: cipher.encrypt(
-                cipher.agree_derive(ephemeral_secret_key, public_key),
+                cipher.agree_derive(public_key, ephemeral_secret_key),
                 plaintext,
             ),
-            ephemeral_public_key: cipher.key_agreement_scheme().derive(ephemeral_secret_key),
+            ephemeral_public_key: cipher
+                .key_agreement_scheme()
+                .derive(ephemeral_secret_key, &mut ()),
         }
     }
 
@@ -305,7 +315,7 @@ where
         secret_key: &SecretKey<H>,
     ) -> Result<DecryptedMessage<H>, Self> {
         match cipher.decrypt(
-            cipher.agree_derive(secret_key, &self.ephemeral_public_key),
+            cipher.agree_derive(&self.ephemeral_public_key, secret_key),
             &self.ciphertext,
         ) {
             Some(plaintext) => Ok(DecryptedMessage::new(self.ephemeral_public_key, plaintext)),
@@ -441,7 +451,7 @@ pub mod test {
         let decrypted_message = EncryptedMessage::<H>::new(
             cipher,
             ephemeral_secret_key,
-            &cipher.key_agreement_scheme().derive(secret_key),
+            &cipher.key_agreement_scheme().derive(secret_key, &mut ()),
             plaintext.clone(),
         )
         .decrypt(cipher, secret_key)
@@ -452,7 +462,9 @@ pub mod test {
         );
         assert_eq!(
             decrypted_message.ephemeral_public_key,
-            cipher.key_agreement_scheme().derive(ephemeral_secret_key),
+            cipher
+                .key_agreement_scheme()
+                .derive(ephemeral_secret_key, &mut ()),
             "Decrypted message should have included the correct ephemeral public key.",
         );
     }

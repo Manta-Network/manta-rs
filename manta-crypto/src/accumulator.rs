@@ -16,8 +16,6 @@
 
 //! Dynamic Cryptographic Accumulators
 
-use crate::constraint::{ConstraintSystem, Native};
-
 /// Accumulator Membership Model
 pub trait Model<COM = ()> {
     /// Item Type
@@ -35,45 +33,35 @@ pub trait Model<COM = ()> {
     type Verification;
 
     /// Verifies that `item` is stored in a known accumulator with accumulated `output` and
-    /// membership `witness` inside the given `compiler`.
-    fn verify_in(
+    /// membership `witness`.
+    fn verify(
         &self,
         item: &Self::Item,
         witness: &Self::Witness,
         output: &Self::Output,
         compiler: &mut COM,
     ) -> Self::Verification;
+}
 
-    /// Verifies that `item` is stored in a known accumulator with accumulated `output` and
-    /// membership `witness`.
-    #[inline]
-    fn verify(
-        &self,
-        item: &Self::Item,
-        witness: &Self::Witness,
-        output: &Self::Output,
-    ) -> Self::Verification
-    where
-        COM: Native,
-    {
-        self.verify_in(item, witness, output, &mut COM::compiler())
-    }
-
-    /// Asserts that the verification of the storage of `item` in the known accumulator is valid
-    /// inside the `compiler`.
-    #[inline]
+/// Accumulator Membership Model Validity Assertion
+///
+/// For situations where we just want to assert validity of the membership proof, we can use this
+/// trait as an optimization path for [`Model::verify`]. See [`assert_valid`](Self::assert_valid)
+/// for more details.
+pub trait AssertValidVerification<COM = ()>: Model<COM> {
+    /// Asserts that the verification of the storage of `item` in the known accumulator is valid.
+    ///
+    /// # Optimization
+    ///
+    /// In compilers where assertions for more complex statements other than booleans being `true`,
+    /// this function can provide an optimization path to reduce the cost of assertion.
     fn assert_valid(
         &self,
         item: &Self::Item,
         witness: &Self::Witness,
         output: &Self::Output,
         compiler: &mut COM,
-    ) where
-        COM: ConstraintSystem<Bool = Self::Verification>,
-    {
-        let is_valid_proof = self.verify_in(item, witness, output, compiler);
-        compiler.assert(is_valid_proof)
-    }
+    );
 }
 
 /// Accumulator Output Type
@@ -233,27 +221,23 @@ where
         self.output
     }
 
-    /// Verifies that `item` is stored in a known accumulator using `model` inside the `compiler`.
+    /// Returns a reference to the accumulated output part of `self`.
     #[inline]
-    pub fn verify_in(&self, model: &M, item: &M::Item, compiler: &mut COM) -> M::Verification {
-        model.verify_in(item, &self.witness, &self.output, compiler)
+    pub fn output(&self) -> &M::Output {
+        &self.output
     }
 
     /// Verifies that `item` is stored in a known accumulator using `model`.
     #[inline]
-    pub fn verify(&self, model: &M, item: &M::Item) -> M::Verification
-    where
-        COM: Native,
-    {
-        model.verify(item, &self.witness, &self.output)
+    pub fn verify(&self, model: &M, item: &M::Item, compiler: &mut COM) -> M::Verification {
+        model.verify(item, &self.witness, &self.output, compiler)
     }
 
-    /// Asserts that the verification of the storage of `item` in the known accumulator is valid
-    /// inside the `compiler`.
+    /// Asserts that the verification of the storage of `item` in the known accumulator is valid.
     #[inline]
     pub fn assert_valid(&self, model: &M, item: &M::Item, compiler: &mut COM)
     where
-        COM: ConstraintSystem<Bool = M::Verification>,
+        M: AssertValidVerification<COM>,
     {
         model.assert_valid(item, &self.witness, &self.output, compiler)
     }
@@ -262,7 +246,7 @@ where
 /// Constraint System Gadgets
 pub mod constraint {
     use super::*;
-    use crate::constraint::{Allocator, Constant, Derived, ValueSource, Variable};
+    use crate::constraint::{Allocate, Allocator, Constant, Derived, Variable};
     use core::marker::PhantomData;
 
     /// Membership Proof Allocation Mode Entry
@@ -350,7 +334,7 @@ pub mod test {
         );
         if let Some(proof) = accumulator.prove(item) {
             assert!(
-                proof.verify(accumulator.model(), item),
+                proof.verify(accumulator.model(), item, &mut ()),
                 "Invalid proof returned for inserted item."
             );
             proof.into_output()

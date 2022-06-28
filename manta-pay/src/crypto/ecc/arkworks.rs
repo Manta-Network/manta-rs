@@ -24,10 +24,10 @@ use ark_relations::ns;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use core::marker::PhantomData;
 use manta_crypto::{
-    constraint::{Allocator, Constant, Equal, Public, Secret, ValueSource, Variable},
-    ecc::{self, PointAdd, PointDouble},
+    algebra,
+    constraint::{self, Allocate, Allocator, Constant, Public, Secret, Variable},
     key::kdf,
-    rand::{CryptoRng, RngCore, Sample},
+    rand::{RngCore, Sample},
 };
 use manta_util::codec;
 
@@ -42,9 +42,6 @@ type ConstraintField<C> = <<C as ProjectiveCurve>::BaseField as Field>::BasePrim
 
 /// Compiler Type
 type Compiler<C> = R1CS<ConstraintField<C>>;
-
-/// Curve Scalar Parameter
-type ScalarParam<C> = <<C as ProjectiveCurve>::ScalarField as PrimeField>::Params;
 
 /// Scalar Field Element
 pub type Scalar<C> = Fp<<C as ProjectiveCurve>::ScalarField>;
@@ -232,18 +229,32 @@ where
     }
 }
 
-impl<C> ecc::ScalarMul for Group<C>
+impl<C> algebra::Group for Group<C>
 where
     C: ProjectiveCurve,
 {
     type Scalar = Scalar<C>;
-    type Output = Self;
 
     #[inline]
-    fn scalar_mul(&self, scalar: &Self::Scalar, _: &mut ()) -> Self::Output {
+    fn add(&self, rhs: &Self, _: &mut ()) -> Self {
+        Self(self.0 + rhs.0)
+    }
+
+    #[inline]
+    fn mul(&self, scalar: &Self::Scalar, _: &mut ()) -> Self {
         Self(self.0.mul(scalar.0.into_repr()).into())
     }
 }
+
+/// Discrete Logarithm Hardness
+///
+/// We assume that the DL problem is hard for all `arkworks` implementations of elliptic curves.
+impl<C> algebra::security::DiscreteLogarithmHardness for Group<C> where C: ProjectiveCurve {}
+
+/// Computational Diffie-Hellman Hardness
+///
+/// We assume that the CDH problem is hard for all `arkworks` implementations of elliptic curves.
+impl<C> algebra::security::ComputationalDiffieHellmanHardness for Group<C> where C: ProjectiveCurve {}
 
 impl<C> Sample for Group<C>
 where
@@ -252,7 +263,7 @@ where
     #[inline]
     fn sample<R>(_: (), rng: &mut R) -> Self
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         Self(C::rand(rng).into())
     }
@@ -314,6 +325,24 @@ where
     #[inline]
     fn new(scalar: FpVar<ConstraintField<C>>) -> Self {
         Self(scalar, PhantomData)
+    }
+}
+
+impl<C, CV> algebra::Scalar<Compiler<C>> for ScalarVar<C, CV>
+where
+    C: ProjectiveCurve,
+    CV: CurveVar<C, ConstraintField<C>>,
+{
+    #[inline]
+    fn add(&self, rhs: &Self, compiler: &mut Compiler<C>) -> Self {
+        let _ = compiler;
+        Self::new(&self.0 + &rhs.0)
+    }
+
+    #[inline]
+    fn mul(&self, rhs: &Self, compiler: &mut Compiler<C>) -> Self {
+        let _ = compiler;
+        Self::new(&self.0 * &rhs.0)
     }
 }
 
@@ -386,18 +415,25 @@ where
     }
 }
 
-impl<C, CV> ecc::ScalarMul<Compiler<C>> for GroupVar<C, CV>
+impl<C, CV> algebra::Group<Compiler<C>> for GroupVar<C, CV>
 where
     C: ProjectiveCurve,
     CV: CurveVar<C, ConstraintField<C>>,
 {
     type Scalar = ScalarVar<C, CV>;
-    type Output = Self;
 
     #[inline]
-    fn scalar_mul(&self, scalar: &Self::Scalar, compiler: &mut Compiler<C>) -> Self::Output {
+    fn add(&self, rhs: &Self, compiler: &mut Compiler<C>) -> Self {
         let _ = compiler;
-        Self(
+        let mut result = self.0.clone();
+        result += &rhs.0;
+        Self::new(result)
+    }
+
+    #[inline]
+    fn mul(&self, scalar: &Self::Scalar, compiler: &mut Compiler<C>) -> Self {
+        let _ = compiler;
+        Self::new(
             self.0
                 .scalar_mul_le(
                     scalar
@@ -407,59 +443,39 @@ where
                         .iter(),
                 )
                 .expect("Scalar multiplication is not allowed to fail."),
-            PhantomData,
         )
     }
 }
 
-macro_rules! impl_processed_scalar_mul {
-    ($curve: ty) => {
-        impl<CV>
-            ecc::PreprocessedScalarMul<
-                Compiler<$curve>,
-                {
-                    <<$curve as ProjectiveCurve>::ScalarField as PrimeField>::Params::MODULUS_BITS
-                        as usize
-                },
-            > for GroupVar<$curve, CV>
-        where
-            CV: CurveVar<$curve, ConstraintField<$curve>>,
-        {
-            #[inline]
-            fn preprocessed_scalar_mul(
-                table: &[Self; ScalarParam::<$curve>::MODULUS_BITS as usize],
-                scalar: &Self::Scalar,
-                compiler: &mut Compiler<$curve>,
-            ) -> Self::Output {
-                let _ = compiler;
-                let mut result = CV::zero();
-                let scalar_bits = scalar
-                    .0
-                    .to_bits_le()
-                    .expect("Bit decomposition is not allowed to fail.");
-                // TODO: Add `+` implementations, `conditional_add` to avoid unnecessary clones.
-                for (bit, base) in scalar_bits.into_iter().zip(table.iter()) {
-                    result = bit
-                        .select(&(result.clone() + &base.0), &result)
-                        .expect("Conditional select is not allowed to fail. ");
-                }
-                Self(result, PhantomData)
-            }
-        }
-    };
+/// Discrete Logarithm Hardness
+///
+/// We assume that the DL problem is hard for all `arkworks` implementations of elliptic curves.
+impl<C, CV> algebra::security::DiscreteLogarithmHardness for GroupVar<C, CV>
+where
+    C: ProjectiveCurve,
+    CV: CurveVar<C, ConstraintField<C>>,
+{
 }
 
-impl_processed_scalar_mul!(ark_ed_on_bls12_381::EdwardsProjective);
+/// Computational Diffie-Hellman Hardness
+///
+/// We assume that the CDH problem is hard for all `arkworks` implementations of elliptic curves.
+impl<C, CV> algebra::security::ComputationalDiffieHellmanHardness for GroupVar<C, CV>
+where
+    C: ProjectiveCurve,
+    CV: CurveVar<C, ConstraintField<C>>,
+{
+}
 
-impl<C, CV> Equal<Compiler<C>> for GroupVar<C, CV>
+impl<C, CV> constraint::PartialEq<Self, Compiler<C>> for GroupVar<C, CV>
 where
     C: ProjectiveCurve,
     CV: CurveVar<C, ConstraintField<C>>,
 {
     #[inline]
-    fn eq(lhs: &Self, rhs: &Self, compiler: &mut Compiler<C>) -> Boolean<ConstraintField<C>> {
+    fn eq(&self, rhs: &Self, compiler: &mut Compiler<C>) -> Boolean<ConstraintField<C>> {
         let _ = compiler;
-        lhs.0
+        self.0
             .is_eq(&rhs.0)
             .expect("Equality checking is not allowed to fail.")
     }
@@ -538,84 +554,5 @@ where
             )
             .expect("Variable allocation is not allowed to fail."),
         )
-    }
-}
-
-impl<C, CV> PointAdd<Compiler<C>> for GroupVar<C, CV>
-where
-    C: ProjectiveCurve,
-    CV: CurveVar<C, ConstraintField<C>>,
-{
-    type Output = Self;
-
-    #[inline]
-    fn add(&self, rhs: &Self, compiler: &mut Compiler<C>) -> Self::Output {
-        let _ = compiler;
-        let mut result = self.0.clone();
-        result += &rhs.0;
-        Self::new(result)
-    }
-}
-
-impl<C, CV> PointDouble<Compiler<C>> for GroupVar<C, CV>
-where
-    C: ProjectiveCurve,
-    CV: CurveVar<C, ConstraintField<C>>,
-{
-    type Output = Self;
-
-    #[inline]
-    fn double(&self, compiler: &mut Compiler<C>) -> Self::Output {
-        let _ = compiler;
-        Self::new(self.0.double().expect("Doubling is not allowed to fail."))
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    use ark_ec::ProjectiveCurve;
-    use ark_ed_on_bls12_381::{constraints::EdwardsVar, EdwardsProjective};
-    use ecc::PreprocessedScalarMul;
-    use manta_crypto::{
-        constraint::ConstraintSystem,
-        ecc::{PreprocessedScalarMulTable, ScalarMul},
-        rand::OsRng,
-    };
-
-    /// Tests preprocessed scalar multiplication on curve `C`.
-    #[inline]
-    fn preprocessed_scalar_mul_test_template<C, CV, const N: usize>(rng: &mut OsRng)
-    where
-        C: ProjectiveCurve,
-        CV: CurveVar<C, ConstraintField<C>>,
-        GroupVar<C, CV>: PreprocessedScalarMul<
-            Compiler<C>,
-            N,
-            Scalar = ScalarVar<C, CV>,
-            Output = GroupVar<C, CV>,
-        >,
-    {
-        const NUM_TRIALS: usize = 5;
-        let mut cs = R1CS::for_known();
-        for _ in 0..NUM_TRIALS {
-            let base = Group::gen(rng).as_known::<Secret, GroupVar<_, _>>(&mut cs);
-            let scalar = Scalar::<C>::gen(rng).as_known::<Secret, _>(&mut cs);
-            let expected = base.scalar_mul(&scalar, &mut cs);
-            let table = PreprocessedScalarMulTable::<_, N>::from_base(base, &mut cs);
-            let actual = table.scalar_mul(&scalar, &mut cs);
-            cs.assert_eq(&expected, &actual);
-        }
-        assert!(cs.is_satisfied());
-    }
-
-    /// Tests preprocessed scalar multiplication on different curves.
-    #[test]
-    fn preprocessed_scalar_mul() {
-        preprocessed_scalar_mul_test_template::<
-            EdwardsProjective,
-            EdwardsVar,
-            { ScalarParam::<EdwardsProjective>::MODULUS_BITS as usize },
-        >(&mut OsRng);
     }
 }

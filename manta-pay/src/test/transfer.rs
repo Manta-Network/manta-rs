@@ -17,20 +17,16 @@
 //! Manta Pay Transfer Testing
 
 use crate::{
-    config::{
-        FullParameters, MerkleTreeConfiguration, Mint, PrivateTransfer, Proof, ProofSystem, Reclaim,
-    },
+    config::{FullParameters, Mint, PrivateTransfer, Proof, ProofSystem, Reclaim},
+    test::payment::UtxoAccumulator,
     util::scale::{assert_valid_codec, assert_valid_io_codec},
 };
 use manta_crypto::{
     accumulator::Accumulator,
     constraint::{measure::Measure, ProofSystem as _},
-    merkle_tree,
     rand::{OsRng, Rand},
 };
 use std::io::Cursor;
-
-type UtxoAccumulator = merkle_tree::full::FullMerkleTree<MerkleTreeConfiguration>;
 
 /// Tests the generation of proving/verifying contexts for [`Mint`].
 #[test]
@@ -38,7 +34,7 @@ fn sample_mint_context() {
     let mut rng = OsRng;
     let cs = Mint::unknown_constraints(FullParameters::new(&rng.gen(), &rng.gen()));
     println!("Mint: {:?}", cs.measure());
-    ProofSystem::generate_context(&(), cs, &mut rng).expect("Unable to generate Mint context.");
+    ProofSystem::compile(&(), cs, &mut rng).expect("Unable to generate Mint context.");
 }
 
 /// Tests the generation of proving/verifying contexts for [`PrivateTransfer`].
@@ -47,8 +43,7 @@ fn sample_private_transfer_context() {
     let mut rng = OsRng;
     let cs = PrivateTransfer::unknown_constraints(FullParameters::new(&rng.gen(), &rng.gen()));
     println!("PrivateTransfer: {:?}", cs.measure());
-    ProofSystem::generate_context(&(), cs, &mut rng)
-        .expect("Unable to generate PrivateTransfer context.");
+    ProofSystem::compile(&(), cs, &mut rng).expect("Unable to generate PrivateTransfer context.");
 }
 
 /// Tests the generation of proving/verifying contexts for [`Reclaim`].
@@ -57,7 +52,7 @@ fn sample_reclaim_context() {
     let mut rng = OsRng;
     let cs = Reclaim::unknown_constraints(FullParameters::new(&rng.gen(), &rng.gen()));
     println!("Reclaim: {:?}", cs.measure());
-    ProofSystem::generate_context(&(), cs, &mut rng).expect("Unable to generate Reclaim context.");
+    ProofSystem::compile(&(), cs, &mut rng).expect("Unable to generate Reclaim context.");
 }
 
 /// Tests the generation of a [`Mint`].
@@ -105,6 +100,48 @@ fn reclaim() {
         )
         .expect("Random Reclaim should have successfully produced a proof."),
         "The Reclaim proof should have been valid."
+    );
+}
+
+/// Tests that `generate_proof_input` from [`Transfer`] and [`TransferPost`] gives the same [`ProofInput`].
+#[test]
+fn generate_proof_input_is_compatibile() {
+    let mut rng = OsRng;
+    assert!(
+        matches!(
+            Mint::sample_and_check_generate_proof_input_compatibility(
+                &(),
+                &rng.gen(),
+                &mut UtxoAccumulator::new(rng.gen()),
+                &mut rng
+            ),
+            Ok(true),
+        ),
+        "For a random Mint, `generate_proof_input` from `Transfer` and `TransferPost` should have given the same `ProofInput`."
+    );
+    assert!(
+        matches!(
+            PrivateTransfer::sample_and_check_generate_proof_input_compatibility(
+                &(),
+                &rng.gen(),
+                &mut UtxoAccumulator::new(rng.gen()),
+                &mut rng
+            ),
+            Ok(true),
+        ),
+        "For a random PrivateTransfer, `generate_proof_input` from `Transfer` and `TransferPost` should have given the same `ProofInput`."
+    );
+    assert!(
+        matches!(
+            Reclaim::sample_and_check_generate_proof_input_compatibility(
+                &(),
+                &rng.gen(),
+                &mut UtxoAccumulator::new(rng.gen()),
+                &mut rng
+            ),
+            Ok(true),
+        ),
+        "For a random Reclaim, `generate_proof_input` from `Transfer` and `TransferPost` should have given the same `ProofInput`."
     );
 }
 

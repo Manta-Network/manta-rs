@@ -29,7 +29,7 @@ use crate::{
         self, Accumulator, ConstantCapacityAccumulator, ExactSizeAccumulator, MembershipProof,
         OptimizedAccumulator,
     },
-    constraint::{ConditionalSelect, Constant, ConstraintSystem, Equal, Native, ValueSource},
+    constraint::{self, Allocate, AssertEq, Bool, ConditionalSwap, Constant, Has},
     merkle_tree::{
         fork::{ForkedTree, Trunk},
         inner_tree::InnerMap,
@@ -57,21 +57,9 @@ pub trait LeafHash<COM = ()> {
     /// Leaf Hash Output Type
     type Output;
 
-    /// Computes the digest of the `leaf` using `parameters` inside the given `compiler`.
-    fn digest_in(
-        parameters: &Self::Parameters,
-        leaf: &Self::Leaf,
-        compiler: &mut COM,
-    ) -> Self::Output;
-
     /// Computes the digest of the `leaf` using `parameters`.
-    #[inline]
-    fn digest(parameters: &Self::Parameters, leaf: &Self::Leaf) -> Self::Output
-    where
-        COM: Native,
-    {
-        Self::digest_in(parameters, leaf, &mut COM::compiler())
-    }
+    fn digest(parameters: &Self::Parameters, leaf: &Self::Leaf, compiler: &mut COM)
+        -> Self::Output;
 }
 
 /// Identity Leaf Hash
@@ -100,7 +88,7 @@ where
     type Output = L;
 
     #[inline]
-    fn digest_in(
+    fn digest(
         parameters: &Self::Parameters,
         leaf: &Self::Leaf,
         compiler: &mut COM,
@@ -121,45 +109,21 @@ pub trait InnerHash<COM = ()> {
     /// Inner Hash Output Type
     type Output;
 
-    /// Combines two inner digests into a new inner digest using `parameters` inside the given
-    /// `compiler`.
-    fn join_in(
+    /// Combines two inner digests into a new inner digest using `parameters`.
+    fn join(
         parameters: &Self::Parameters,
         lhs: &Self::Output,
         rhs: &Self::Output,
         compiler: &mut COM,
     ) -> Self::Output;
 
-    /// Combines two inner digests into a new inner digest using `parameters`.
-    #[inline]
-    fn join(parameters: &Self::Parameters, lhs: &Self::Output, rhs: &Self::Output) -> Self::Output
-    where
-        COM: Native,
-    {
-        Self::join_in(parameters, lhs, rhs, &mut COM::compiler())
-    }
-
-    /// Combines two [`LeafDigest`](Self::LeafDigest) values into an inner digest inside the given
-    /// `compiler`.
-    fn join_leaves_in(
+    /// Combines two [`LeafDigest`](Self::LeafDigest) values into an inner digest.
+    fn join_leaves(
         parameters: &Self::Parameters,
         lhs: &Self::LeafDigest,
         rhs: &Self::LeafDigest,
         compiler: &mut COM,
     ) -> Self::Output;
-
-    /// Combines two [`LeafDigest`](Self::LeafDigest) values into an inner digest.
-    #[inline]
-    fn join_leaves(
-        parameters: &Self::Parameters,
-        lhs: &Self::LeafDigest,
-        rhs: &Self::LeafDigest,
-    ) -> Self::Output
-    where
-        COM: Native,
-    {
-        Self::join_leaves_in(parameters, lhs, rhs, &mut COM::compiler())
-    }
 }
 
 /// Merkle Tree Hash Configuration
@@ -240,20 +204,7 @@ pub type InnerDigest<C, COM = ()> =
 /// The capacity of a merkle tree with height `H` is `2^(H-1)`.
 #[inline]
 #[must_use]
-pub fn capacity<C>() -> usize
-where
-    C: Configuration + ?Sized,
-{
-    capacity_in::<C, _>()
-}
-
-/// Returns the capacity of the merkle tree with the given [`C::HEIGHT`](Configuration::HEIGHT)
-/// parameter.
-///
-/// The capacity of a merkle tree with height `H` is `2^(H-1)`.
-#[inline]
-#[must_use]
-pub fn capacity_in<C, COM>() -> usize
+pub fn capacity<C, COM>() -> usize
 where
     C: Configuration<COM> + ?Sized,
 {
@@ -266,20 +217,7 @@ where
 /// The path length of a merkle tree with height `H` is `H - 2`.
 #[inline]
 #[must_use]
-pub fn path_length<C>() -> usize
-where
-    C: Configuration + ?Sized,
-{
-    path_length_in::<C, _>()
-}
-
-/// Returns the path length of the merkle tree with the given [`C::HEIGHT`](Configuration::HEIGHT)
-/// parameter.
-///
-/// The path length of a merkle tree with height `H` is `H - 2`.
-#[inline]
-#[must_use]
-pub fn path_length_in<C, COM>() -> usize
+pub fn path_length<C, COM>() -> usize
 where
     C: Configuration<COM> + ?Sized,
 {
@@ -376,7 +314,8 @@ where
         L: IntoIterator<Item = LeafDigest<C>>,
     {
         let mut leaf_digests = leaf_digests.into_iter();
-        if matches!(leaf_digests.size_hint().1, Some(max) if max <= capacity::<C>() - self.len()) {
+        if matches!(leaf_digests.size_hint().1, Some(max) if max <= capacity::<C, _>() - self.len())
+        {
             loop {
                 match self.maybe_push_digest(parameters, || leaf_digests.next()) {
                     Some(result) => assert!(
@@ -577,47 +516,47 @@ where
 
     /// Computes the leaf digest of `leaf` using `self`.
     #[inline]
-    pub fn digest_in(&self, leaf: &Leaf<C, COM>, compiler: &mut COM) -> LeafDigest<C, COM> {
-        C::LeafHash::digest_in(&self.leaf, leaf, compiler)
+    pub fn digest_with(&self, leaf: &Leaf<C, COM>, compiler: &mut COM) -> LeafDigest<C, COM> {
+        C::LeafHash::digest(&self.leaf, leaf, compiler)
     }
 
     /// Combines two inner digests into a new inner digest using `self`.
     #[inline]
-    pub fn join_in(
+    pub fn join_with(
         &self,
         lhs: &InnerDigest<C, COM>,
         rhs: &InnerDigest<C, COM>,
         compiler: &mut COM,
     ) -> InnerDigest<C, COM> {
-        C::InnerHash::join_in(&self.inner, lhs, rhs, compiler)
+        C::InnerHash::join(&self.inner, lhs, rhs, compiler)
     }
 
     /// Combines two leaf digests into a new inner digest using `self`.
     #[inline]
-    pub fn join_leaves_in(
+    pub fn join_leaves_with(
         &self,
         lhs: &LeafDigest<C, COM>,
         rhs: &LeafDigest<C, COM>,
         compiler: &mut COM,
     ) -> InnerDigest<C, COM> {
-        C::InnerHash::join_leaves_in(&self.inner, lhs, rhs, compiler)
+        C::InnerHash::join_leaves(&self.inner, lhs, rhs, compiler)
     }
 
     /// Verify that `path` witnesses the fact that `leaf` is a member of a merkle tree with the
     /// given `root`.
     #[inline]
-    pub fn verify_path_in(
+    pub fn verify_path_with(
         &self,
         path: &PathVar<C, COM>,
         root: &Root<C, COM>,
         leaf: &Leaf<C, COM>,
         compiler: &mut COM,
-    ) -> COM::Bool
+    ) -> Bool<COM>
     where
         C: Configuration<COM>,
-        COM: ConstraintSystem,
-        InnerDigest<C, COM>: ConditionalSelect<COM> + Equal<COM>,
-        LeafDigest<C, COM>: ConditionalSelect<COM>,
+        COM: Has<bool>,
+        InnerDigest<C, COM>: ConditionalSwap<COM> + constraint::PartialEq<InnerDigest<C, COM>, COM>,
+        LeafDigest<C, COM>: ConditionalSwap<COM>,
     {
         path.verify(self, root, leaf, compiler)
     }
@@ -630,19 +569,19 @@ where
     /// Computes the leaf digest of `leaf` using `self`.
     #[inline]
     pub fn digest(&self, leaf: &Leaf<C>) -> LeafDigest<C> {
-        C::LeafHash::digest(&self.leaf, leaf)
+        C::LeafHash::digest(&self.leaf, leaf, &mut ())
     }
 
     /// Combines two inner digests into a new inner digest using `self`.
     #[inline]
     pub fn join(&self, lhs: &InnerDigest<C>, rhs: &InnerDigest<C>) -> InnerDigest<C> {
-        C::InnerHash::join(&self.inner, lhs, rhs)
+        C::InnerHash::join(&self.inner, lhs, rhs, &mut ())
     }
 
     /// Combines two leaf digests into a new inner digest using `self`.
     #[inline]
     pub fn join_leaves(&self, lhs: &LeafDigest<C>, rhs: &LeafDigest<C>) -> InnerDigest<C> {
-        C::InnerHash::join_leaves(&self.inner, lhs, rhs)
+        C::InnerHash::join_leaves(&self.inner, lhs, rhs, &mut ())
     }
 
     /// Verify that `path` witnesses the fact that `leaf` is a member of a merkle tree with the
@@ -742,7 +681,7 @@ where
     type Verification = bool;
 
     #[inline]
-    fn verify_in(
+    fn verify(
         &self,
         item: &Self::Item,
         witness: &Self::Witness,
@@ -756,24 +695,44 @@ where
 impl<C, COM> accumulator::Model<COM> for Parameters<C, COM>
 where
     C: Configuration<COM> + ?Sized,
-    COM: ConstraintSystem,
-    InnerDigest<C, COM>: ConditionalSelect<COM> + Equal<COM>,
-    LeafDigest<C, COM>: ConditionalSelect<COM>,
+    COM: Has<bool>,
+    InnerDigest<C, COM>: ConditionalSwap<COM> + constraint::PartialEq<InnerDigest<C, COM>, COM>,
+    LeafDigest<C, COM>: ConditionalSwap<COM>,
 {
     type Item = Leaf<C, COM>;
     type Witness = PathVar<C, COM>;
     type Output = Root<C, COM>;
-    type Verification = COM::Bool;
+    type Verification = Bool<COM>;
 
     #[inline]
-    fn verify_in(
+    fn verify(
         &self,
         item: &Self::Item,
         witness: &Self::Witness,
         output: &Self::Output,
         compiler: &mut COM,
     ) -> Self::Verification {
-        self.verify_path_in(witness, output, item, compiler)
+        self.verify_path_with(witness, output, item, compiler)
+    }
+}
+
+impl<C, COM> accumulator::AssertValidVerification<COM> for Parameters<C, COM>
+where
+    COM: AssertEq,
+    C: Configuration<COM> + ?Sized,
+    InnerDigest<C, COM>: ConditionalSwap<COM> + constraint::PartialEq<InnerDigest<C, COM>, COM>,
+    LeafDigest<C, COM>: ConditionalSwap<COM>,
+{
+    #[inline]
+    fn assert_valid(
+        &self,
+        item: &Self::Item,
+        witness: &Self::Witness,
+        output: &Self::Output,
+        compiler: &mut COM,
+    ) {
+        let root = witness.root(self, &self.digest_with(item, compiler), compiler);
+        compiler.assert_eq(output, &root)
     }
 }
 
@@ -880,7 +839,7 @@ where
     /// See [`capacity`] for more.
     #[inline]
     pub fn capacity(&self) -> usize {
-        capacity::<C>()
+        capacity::<C, _>()
     }
 
     /// Returns the number of items this merkle tree.
@@ -1107,7 +1066,7 @@ where
 {
     #[inline]
     fn capacity() -> usize {
-        capacity::<C>()
+        capacity::<C, _>()
     }
 }
 

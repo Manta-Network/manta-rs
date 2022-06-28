@@ -16,8 +16,6 @@
 
 //! Commitment Schemes
 
-use crate::constraint::Native;
-
 /// Commitment Scheme
 pub trait CommitmentScheme<COM = ()> {
     /// Randomness Type
@@ -29,20 +27,11 @@ pub trait CommitmentScheme<COM = ()> {
     /// Output Type
     type Output;
 
-    /// Commits to the `input` value using `randomness` inside the `compiler`.
-    fn commit_in(
+    /// Commits to the `input` value using `randomness`.
+    fn commit(
         &self,
         randomness: &Self::Randomness,
         input: &Self::Input,
         compiler: &mut COM,
     ) -> Self::Output;
-
-    /// Commits to the `input` value using `randomness`
-    #[inline]
-    fn commit(&self, randomness: &Self::Randomness, input: &Self::Input) -> Self::Output
-    where
-        COM: Native,
-    {
-        self.commit_in(randomness, input, &mut COM::compiler())
-    }
 }

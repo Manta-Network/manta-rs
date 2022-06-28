@@ -30,7 +30,7 @@ use alloc::{boxed::Box, vec::Vec};
 #[cfg(feature = "serde-array")]
 use crate::serde::{Deserialize, Serialize};
 
-/// Error Message for the [`into_array_unchecked`] and [`into_boxed_array_unchecked`] messages.
+/// Error Message for the [`into_array_unchecked`] and [`into_boxed_array_unchecked`] Functions
 const INTO_UNCHECKED_ERROR_MESSAGE: &str =
     "Input did not have the correct length to match the output array of length";
 
