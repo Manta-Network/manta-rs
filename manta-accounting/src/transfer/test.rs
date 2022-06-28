@@ -41,7 +41,7 @@ use manta_util::into_array_unchecked;
 #[inline]
 pub fn value_distribution<R>(count: usize, total: AssetValue, rng: &mut R) -> Vec<AssetValue>
 where
-    R: CryptoRng + RngCore + ?Sized,
+    R: RngCore + ?Sized,
 {
     if count == 0 {
         return Vec::default();
@@ -70,7 +70,7 @@ where
 #[inline]
 pub fn sample_asset_values<R, const N: usize>(total: AssetValue, rng: &mut R) -> [AssetValue; N]
 where
-    R: CryptoRng + RngCore + ?Sized,
+    R: RngCore + ?Sized,
 {
     into_array_unchecked(value_distribution(N, total, rng))
 }
@@ -99,7 +99,7 @@ where
     #[inline]
     fn sample<R>(distribution: ParametersDistribution<E, U, V>, rng: &mut R) -> Self
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         Parameters::new(
             rng.sample(distribution.note_encryption_scheme),
@@ -278,7 +278,7 @@ fn sample_senders_and_receivers<C, A, R>(
 where
     C: Configuration,
     A: Accumulator<Item = Utxo<C>, Model = C::UtxoAccumulatorModel>,
-    R: CryptoRng + RngCore + ?Sized,
+    R: RngCore + ?Sized,
 {
     (
         senders
@@ -319,7 +319,7 @@ where
     #[inline]
     fn sample<R>(distribution: TransferDistribution<'_, C, A>, rng: &mut R) -> Self
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         let asset = Asset::gen(rng);
         let mut input = value_distribution(SOURCES + SENDERS, asset.value, rng);
@@ -360,7 +360,7 @@ where
     #[inline]
     fn sample<R>(distribution: FixedTransferDistribution<'_, C, A>, rng: &mut R) -> Self
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         let (senders, receivers) = sample_senders_and_receivers(
             distribution.base.parameters,
@@ -407,6 +407,7 @@ pub fn assert_valid_proof<C>(verifying_context: &VerifyingContext<C>, post: &Tra
 where
     C: Configuration,
     <C::ProofSystem as ProofSystem>::Error: Debug,
+    TransferPost<C>: Debug,
 {
     assert!(
         C::ProofSystem::verify(
@@ -415,6 +416,7 @@ where
             &post.validity_proof,
         )
         .expect("Unable to verify proof."),
-        "Invalid proof.",
+        "Invalid proof: {:?}",
+        post,
     );
 }

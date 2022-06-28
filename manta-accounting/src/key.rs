@@ -32,8 +32,8 @@ use core::{
     marker::PhantomData,
 };
 use manta_crypto::{
-    key::KeyDerivationFunction,
-    rand::{CryptoRng, RngCore, Sample},
+    key::kdf::KeyDerivationFunction,
+    rand::{RngCore, Sample},
 };
 
 #[cfg(feature = "serde")]
@@ -246,19 +246,19 @@ where
     #[inline]
     fn derive(&self, account: AccountIndex, kind: Kind, index: KeyIndex) -> Self::SecretKey {
         self.key_derivation_function
-            .derive(&self.base.derive(account, kind, index))
+            .derive(&self.base.derive(account, kind, index), &mut ())
     }
 
     #[inline]
     fn derive_spend(&self, account: AccountIndex, index: KeyIndex) -> Self::SecretKey {
         self.key_derivation_function
-            .derive(&self.base.derive_spend(account, index))
+            .derive(&self.base.derive_spend(account, index), &mut ())
     }
 
     #[inline]
     fn derive_view(&self, account: AccountIndex, index: KeyIndex) -> Self::SecretKey {
         self.key_derivation_function
-            .derive(&self.base.derive_view(account, index))
+            .derive(&self.base.derive_view(account, index), &mut ())
     }
 }
 
@@ -270,7 +270,7 @@ where
     #[inline]
     fn sample<R>(distribution: (D, F), rng: &mut R) -> Self
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         Self::new(H::sample(distribution.0, rng), distribution.1)
     }

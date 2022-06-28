@@ -192,7 +192,7 @@ pub mod raw {
     {
         if leaf_digest.is_none() {
             Length::Empty
-        } else if current_path.leaf_index().0 < capacity::<C>() - 1 {
+        } else if current_path.leaf_index().0 < capacity::<C, _>() - 1 {
             Length::CanAccept
         } else {
             Length::Full

@@ -17,9 +17,9 @@
 //! Manta Pay Circuit Measurements
 
 use manta_crypto::{
-    constraint::{measure::Instrument, Allocator, Secret, ValueSource},
+    constraint::{measure::Instrument, Allocate, Allocator, Secret},
     hash::ArrayHashFunction,
-    key::{KeyAgreementScheme as _, KeyDerivationFunction},
+    key::agreement::{Agree, Derive},
     rand::{Sample, SeedableRng},
 };
 use manta_pay::config::{
@@ -32,7 +32,7 @@ use rand_chacha::ChaCha20Rng;
 #[inline]
 pub fn main() {
     let mut rng = ChaCha20Rng::from_entropy();
-    let mut compiler = Compiler::for_unknown();
+    let mut compiler = Compiler::for_contexts();
 
     let mut instrument = Instrument::new(&mut compiler);
 
@@ -41,7 +41,7 @@ pub fn main() {
     let poseidon_rhs = instrument.base.allocate_unknown::<Secret, _>();
 
     let _ = instrument.measure("Poseidon ARITY-2", |compiler| {
-        hasher.hash_in([&poseidon_lhs, &poseidon_rhs], compiler)
+        hasher.hash([&poseidon_lhs, &poseidon_rhs], compiler)
     });
 
     let hasher = Poseidon4::gen(&mut rng).as_constant::<Poseidon4Var>(&mut instrument);
@@ -51,7 +51,7 @@ pub fn main() {
     let poseidon_3 = instrument.base.allocate_unknown::<Secret, _>();
 
     let _ = instrument.measure("Poseidon ARITY-4", |compiler| {
-        hasher.hash_in(
+        hasher.hash(
             [&poseidon_0, &poseidon_1, &poseidon_2, &poseidon_3],
             compiler,
         )
@@ -63,11 +63,11 @@ pub fn main() {
     let secret_key_1 = instrument.base.allocate_unknown::<Secret, _>();
 
     let public_key_0 = instrument.measure("DHKE `derive`", |compiler| {
-        key_agreement.derive_in(&secret_key_0, compiler)
+        key_agreement.derive(&secret_key_0, compiler)
     });
 
     let _ = instrument.measure("DHKE `agree`", |compiler| {
-        key_agreement.agree_in(&secret_key_1, &public_key_0, compiler)
+        key_agreement.agree(&public_key_0, &secret_key_1, compiler)
     });
 
     println!("{:#?}", instrument.measurements);

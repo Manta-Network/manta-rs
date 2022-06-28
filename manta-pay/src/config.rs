@@ -38,10 +38,10 @@ use manta_accounting::{
 };
 use manta_crypto::{
     accumulator,
+    algebra::DiffieHellman,
     constraint::{
-        Add, Allocator, Constant, Equal, ProofSystemInput, Public, Secret, ValueSource, Variable,
+        self, Add, Allocate, Allocator, Constant, ProofSystemInput, Public, Secret, Variable,
     },
-    ecc::DiffieHellman,
     encryption,
     hash::ArrayHashFunction,
     key, merkle_tree,
@@ -55,7 +55,7 @@ use manta_util::{
 use alloc::string::String;
 
 #[cfg(any(feature = "test", test))]
-use manta_crypto::rand::{CryptoRng, Rand, RngCore, Sample};
+use manta_crypto::rand::{Rand, RngCore, Sample};
 
 #[doc(inline)]
 pub use ark_bls12_381 as bls12_381;
@@ -133,13 +133,13 @@ impl poseidon::arkworks::Specification for PoseidonSpec<4> {
 pub type KeyAgreementScheme = DiffieHellman<Group>;
 
 /// Secret Key Type
-pub type SecretKey = <KeyAgreementScheme as key::KeyAgreementScheme>::SecretKey;
+pub type SecretKey = <KeyAgreementScheme as key::agreement::Types>::SecretKey;
 
 /// Public Key Type
-pub type PublicKey = <KeyAgreementScheme as key::KeyAgreementScheme>::PublicKey;
+pub type PublicKey = <KeyAgreementScheme as key::agreement::Types>::PublicKey;
 
 /// Key Agreement Scheme Variable Type
-pub type KeyAgreementSchemeVar = DiffieHellman<GroupVar>;
+pub type KeyAgreementSchemeVar = DiffieHellman<GroupVar, Compiler>;
 
 /// Unspent Transaction Output Type
 pub type Utxo = Fp<ConstraintField>;
@@ -155,21 +155,24 @@ impl transfer::UtxoCommitmentScheme for UtxoCommitmentScheme {
     type Utxo = Utxo;
 
     #[inline]
-    fn commit_in(
+    fn commit(
         &self,
         ephemeral_secret_key: &Self::EphemeralSecretKey,
         public_spend_key: &Self::PublicSpendKey,
         asset: &Self::Asset,
         _: &mut (),
     ) -> Self::Utxo {
-        self.0.hash([
-            // FIXME: This is the lift from inner scalar to outer scalar and only exists in some
-            // cases! We need a better abstraction for this.
-            &ecc::arkworks::lift_embedded_scalar::<Bls12_381_Edwards>(ephemeral_secret_key),
-            &Fp(public_spend_key.0.x), // NOTE: Group is in affine form, so we can extract `x`.
-            &Fp(asset.id.0.into()),
-            &Fp(asset.value.0.into()),
-        ])
+        self.0.hash(
+            [
+                // FIXME: This is the lift from inner scalar to outer scalar and only exists in some
+                // cases! We need a better abstraction for this.
+                &ecc::arkworks::lift_embedded_scalar::<Bls12_381_Edwards>(ephemeral_secret_key),
+                &Fp(public_spend_key.0.x), // NOTE: Group is in affine form, so we can extract `x`.
+                &Fp(asset.id.0.into()),
+                &Fp(asset.value.0.into()),
+            ],
+            &mut (),
+        )
     }
 }
 
@@ -200,7 +203,7 @@ impl Sample for UtxoCommitmentScheme {
     #[inline]
     fn sample<R>(distribution: (), rng: &mut R) -> Self
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         Self(rng.sample(distribution))
     }
@@ -219,14 +222,14 @@ impl transfer::UtxoCommitmentScheme<Compiler> for UtxoCommitmentSchemeVar {
     type Utxo = UtxoVar;
 
     #[inline]
-    fn commit_in(
+    fn commit(
         &self,
         ephemeral_secret_key: &Self::EphemeralSecretKey,
         public_spend_key: &Self::PublicSpendKey,
         asset: &Self::Asset,
         compiler: &mut Compiler,
     ) -> Self::Utxo {
-        self.0.hash_in(
+        self.0.hash(
             [
                 &ephemeral_secret_key.0,
                 &public_spend_key.0.x, // NOTE: Group is in affine form, so we can extract `x`.
@@ -255,23 +258,26 @@ pub type VoidNumber = Fp<ConstraintField>;
 pub struct VoidNumberCommitmentScheme(pub Poseidon2);
 
 impl transfer::VoidNumberCommitmentScheme for VoidNumberCommitmentScheme {
-    type SecretSpendKey = <KeyAgreementScheme as key::KeyAgreementScheme>::SecretKey;
+    type SecretSpendKey = SecretKey;
     type Utxo = Utxo;
     type VoidNumber = VoidNumber;
 
     #[inline]
-    fn commit_in(
+    fn commit(
         &self,
         secret_spend_key: &Self::SecretSpendKey,
         utxo: &Self::Utxo,
         _: &mut (),
     ) -> Self::VoidNumber {
-        self.0.hash([
-            // FIXME: This is the lift from inner scalar to outer scalar and only exists in some
-            // cases! We need a better abstraction for this.
-            &ecc::arkworks::lift_embedded_scalar::<Bls12_381_Edwards>(secret_spend_key),
-            utxo,
-        ])
+        self.0.hash(
+            [
+                // FIXME: This is the lift from inner scalar to outer scalar and only exists in some
+                // cases! We need a better abstraction for this.
+                &ecc::arkworks::lift_embedded_scalar::<Bls12_381_Edwards>(secret_spend_key),
+                utxo,
+            ],
+            &mut (),
+        )
     }
 }
 
@@ -302,7 +308,7 @@ impl Sample for VoidNumberCommitmentScheme {
     #[inline]
     fn sample<R>(distribution: (), rng: &mut R) -> Self
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         Self(rng.sample(distribution))
     }
@@ -315,18 +321,18 @@ pub type VoidNumberVar = ConstraintFieldVar;
 pub struct VoidNumberCommitmentSchemeVar(pub Poseidon2Var);
 
 impl transfer::VoidNumberCommitmentScheme<Compiler> for VoidNumberCommitmentSchemeVar {
-    type SecretSpendKey = <KeyAgreementSchemeVar as key::KeyAgreementScheme<Compiler>>::SecretKey;
+    type SecretSpendKey = <KeyAgreementSchemeVar as key::agreement::Types>::SecretKey;
     type Utxo = <UtxoCommitmentSchemeVar as transfer::UtxoCommitmentScheme<Compiler>>::Utxo;
     type VoidNumber = ConstraintFieldVar;
 
     #[inline]
-    fn commit_in(
+    fn commit(
         &self,
         secret_spend_key: &Self::SecretSpendKey,
         utxo: &Self::Utxo,
         compiler: &mut Compiler,
     ) -> Self::VoidNumber {
-        self.0.hash_in([&secret_spend_key.0, utxo], compiler)
+        self.0.hash([&secret_spend_key.0, utxo], compiler)
     }
 }
 
@@ -342,10 +348,10 @@ impl Constant<Compiler> for VoidNumberCommitmentSchemeVar {
 /// Asset ID Variable
 pub struct AssetIdVar(ConstraintFieldVar);
 
-impl Equal<Compiler> for AssetIdVar {
+impl constraint::PartialEq<Self, Compiler> for AssetIdVar {
     #[inline]
-    fn eq(lhs: &Self, rhs: &Self, compiler: &mut Compiler) -> Boolean<ConstraintField> {
-        ConstraintFieldVar::eq(&lhs.0, &rhs.0, compiler)
+    fn eq(&self, rhs: &Self, compiler: &mut Compiler) -> Boolean<ConstraintField> {
+        ConstraintFieldVar::eq(&self.0, &rhs.0, compiler)
     }
 }
 
@@ -380,17 +386,19 @@ impl Variable<Secret, Compiler> for AssetIdVar {
 /// Asset Value Variable
 pub struct AssetValueVar(ConstraintFieldVar);
 
-impl Add<Compiler> for AssetValueVar {
+impl Add<Self, Compiler> for AssetValueVar {
+    type Output = Self;
+
     #[inline]
-    fn add(lhs: Self, rhs: Self, compiler: &mut Compiler) -> Self {
-        Self(ConstraintFieldVar::add(lhs.0, rhs.0, compiler))
+    fn add(self, rhs: Self, compiler: &mut Compiler) -> Self::Output {
+        Self(ConstraintFieldVar::add(self.0, rhs.0, compiler))
     }
 }
 
-impl Equal<Compiler> for AssetValueVar {
+impl constraint::PartialEq<Self, Compiler> for AssetValueVar {
     #[inline]
-    fn eq(lhs: &Self, rhs: &Self, compiler: &mut Compiler) -> Boolean<ConstraintField> {
-        ConstraintFieldVar::eq(&lhs.0, &rhs.0, compiler)
+    fn eq(&self, rhs: &Self, compiler: &mut Compiler) -> Boolean<ConstraintField> {
+        ConstraintFieldVar::eq(&self.0, &rhs.0, compiler)
     }
 }
 
@@ -437,23 +445,23 @@ impl merkle_tree::InnerHash for InnerHash {
     type Output = Fp<ConstraintField>;
 
     #[inline]
-    fn join_in(
+    fn join(
         parameters: &Self::Parameters,
         lhs: &Self::Output,
         rhs: &Self::Output,
-        _: &mut (),
+        compiler: &mut (),
     ) -> Self::Output {
-        parameters.hash([lhs, rhs])
+        parameters.hash([lhs, rhs], compiler)
     }
 
     #[inline]
-    fn join_leaves_in(
+    fn join_leaves(
         parameters: &Self::Parameters,
         lhs: &Self::LeafDigest,
         rhs: &Self::LeafDigest,
-        _: &mut (),
+        compiler: &mut (),
     ) -> Self::Output {
-        parameters.hash([lhs, rhs])
+        parameters.hash([lhs, rhs], compiler)
     }
 }
 
@@ -466,23 +474,23 @@ impl merkle_tree::InnerHash<Compiler> for InnerHashVar {
     type Output = ConstraintFieldVar;
 
     #[inline]
-    fn join_in(
+    fn join(
         parameters: &Self::Parameters,
         lhs: &Self::Output,
         rhs: &Self::Output,
         compiler: &mut Compiler,
     ) -> Self::Output {
-        parameters.hash_in([lhs, rhs], compiler)
+        parameters.hash([lhs, rhs], compiler)
     }
 
     #[inline]
-    fn join_leaves_in(
+    fn join_leaves(
         parameters: &Self::Parameters,
         lhs: &Self::LeafDigest,
         rhs: &Self::LeafDigest,
         compiler: &mut Compiler,
     ) -> Self::Output {
-        parameters.hash_in([lhs, rhs], compiler)
+        parameters.hash([lhs, rhs], compiler)
     }
 }
 
@@ -556,7 +564,7 @@ impl merkle_tree::test::HashParameterSampling for MerkleTreeConfiguration {
         rng: &mut R,
     ) -> merkle_tree::LeafHashParameters<Self>
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         let _ = (distribution, rng);
     }
@@ -567,7 +575,7 @@ impl merkle_tree::test::HashParameterSampling for MerkleTreeConfiguration {
         rng: &mut R,
     ) -> merkle_tree::InnerHashParameters<Self>
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         rng.sample(distribution)
     }
@@ -664,7 +672,7 @@ pub type NoteSymmetricEncryptionScheme = encryption::symmetric::Map<
 pub type NoteEncryptionScheme = encryption::hybrid::Hybrid<
     KeyAgreementScheme,
     key::kdf::FromByteVector<
-        <KeyAgreementScheme as key::KeyAgreementScheme>::SharedSecret,
+        <KeyAgreementScheme as key::agreement::Types>::SharedSecret,
         Blake2sKdf,
     >,
     NoteSymmetricEncryptionScheme,
@@ -678,13 +686,11 @@ pub type Ciphertext =
 pub struct Config;
 
 impl transfer::Configuration for Config {
-    type SecretKey = <Self::KeyAgreementScheme as key::KeyAgreementScheme>::SecretKey;
-    type PublicKey = <Self::KeyAgreementScheme as key::KeyAgreementScheme>::PublicKey;
+    type SecretKey = SecretKey;
+    type PublicKey = PublicKey;
     type KeyAgreementScheme = KeyAgreementScheme;
-    type SecretKeyVar =
-        <Self::KeyAgreementSchemeVar as key::KeyAgreementScheme<Self::Compiler>>::SecretKey;
-    type PublicKeyVar =
-        <Self::KeyAgreementSchemeVar as key::KeyAgreementScheme<Self::Compiler>>::PublicKey;
+    type SecretKeyVar = <Self::KeyAgreementSchemeVar as key::agreement::Types>::SecretKey;
+    type PublicKeyVar = <Self::KeyAgreementSchemeVar as key::agreement::Types>::PublicKey;
     type KeyAgreementSchemeVar = KeyAgreementSchemeVar;
     type Utxo = <Self::UtxoCommitmentScheme as transfer::UtxoCommitmentScheme>::Utxo;
     type UtxoCommitmentScheme = UtxoCommitmentScheme;
