@@ -156,7 +156,7 @@ impl<V> ConditionalSwap for V {
 */
 
 /// Checks a value smaller than 2^[`BITS`]
-pub trait AssertWithinRange<T, const BITS: usize>: Assert {
+pub trait AssertWithinRange<T, const BITS: usize> {
     /// Asserts that `value` is smaller than 2^[`BITS`]
     fn assert_within_range(&mut self, value: &T);
 }

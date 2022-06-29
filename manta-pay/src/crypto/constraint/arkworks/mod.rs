@@ -37,12 +37,14 @@ use manta_util::{
     codec::{Decode, DecodeError, Encode, Read, Write},
     SizeLimit,
 };
+use std::cmp::Ordering;
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize, Serializer};
 
 pub use ark_r1cs::SynthesisError;
 pub use ark_r1cs_std::{bits::boolean::Boolean, fields::fp::FpVar};
+use manta_crypto::eclair::bool::AssertWithinRange;
 
 pub mod codec;
 pub mod pairing;
@@ -332,6 +334,22 @@ where
     F: PrimeField,
 {
     // TODO: Implement these optimizations.
+}
+
+impl<F, const BITS: usize> AssertWithinRange<FpVar<F>, BITS> for R1CS<F>
+where
+    F: PrimeField,
+{
+    fn assert_within_range(&mut self, value: &FpVar<F>) {
+        // TODO: Can we reuse this computation for all assert_within_range?
+        let bound = FpVar::Constant(F::pow(F::from(2u128), &[BITS as u64]));
+        // TODO: we can indeed use `enforce_cmp_unchecked` in many cases, but that requires
+        // `value` and `2<<BITS` are both <= (MODULUS - 1) / 2. We may need extra logic to
+        // make sure this assumption is correct.
+        value
+            .enforce_cmp(&bound, Ordering::Less, true)
+            .expect("Enforcing comparison is not allowed to fail.");
+    }
 }
 
 impl<F> Count<mode::Constant> for R1CS<F> where F: PrimeField {}
