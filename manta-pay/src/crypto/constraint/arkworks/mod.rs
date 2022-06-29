@@ -343,12 +343,24 @@ where
     fn assert_within_range(&mut self, value: &FpVar<F>) {
         // TODO: Can we reuse this computation for all assert_within_range?
         let bound = FpVar::Constant(F::pow(&F::from(2u128), &[BITS as u64]));
-        // TODO: we can indeed use `enforce_cmp_unchecked` in many cases, but that requires
-        // `value` and `2<<BITS` are both <= (MODULUS - 1) / 2. We may need extra logic to
-        // make sure this assumption is correct.
         value
-            .enforce_cmp(&bound, Ordering::Less, true)
-            .expect("Enforcing comparison is not allowed to fail.");
+            .enforce_smaller_or_equal_than_mod_minus_one_div_two()
+            .expect(
+                "Enforcing smaller or equal than mod minus one div two is not allowed to fail.",
+            );
+        // if BITS < F::MODULUS_BITS - 1, then 2^BITS is guaranteed to be less than (MODULUS - 1) / 2
+        if BITS as u32 >= F::Params::MODULUS_BITS - 1 {
+            bound
+                .enforce_smaller_or_equal_than_mod_minus_one_div_two()
+                .expect(
+                    "Enforcing smaller or equal than mod minus one div two is not allowed to fail.",
+                );
+        };
+        value
+            .enforce_cmp_unchecked(&bound, Ordering::Less, true)
+            .expect(
+                "Enforcing smaller or equal than mod minus one div two is not allowed to fail.",
+            );
     }
 }
 
