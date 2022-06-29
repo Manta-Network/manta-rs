@@ -342,7 +342,7 @@ where
 {
     fn assert_within_range(&mut self, value: &FpVar<F>) {
         // TODO: Can we reuse this computation for all assert_within_range?
-        let bound = FpVar::Constant(F::pow(F::from(2u128), &[BITS as u64]));
+        let bound = FpVar::Constant(F::pow(&F::from(2u128), &[BITS as u64]));
         // TODO: we can indeed use `enforce_cmp_unchecked` in many cases, but that requires
         // `value` and `2<<BITS` are both <= (MODULUS - 1) / 2. We may need extra logic to
         // make sure this assumption is correct.
