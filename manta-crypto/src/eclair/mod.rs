@@ -23,6 +23,7 @@ pub mod bool;
 pub mod cmp;
 pub mod execution;
 pub mod ops;
+pub mod uint;
 
 /// Native Compiler Marker Trait
 ///
