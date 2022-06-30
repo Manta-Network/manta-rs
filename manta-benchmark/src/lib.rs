@@ -25,6 +25,8 @@ use manta_pay::{
 };
 use wasm_bindgen::prelude::wasm_bindgen;
 
+pub mod ec;
+
 #[wasm_bindgen]
 #[derive(Clone, Debug)]
 pub struct Context {

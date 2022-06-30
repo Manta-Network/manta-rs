@@ -28,6 +28,10 @@ maintenance = { status = "actively-developed" }
 crate-type = ["cdylib", "lib"]
 
 [[bench]]
+name = "ec"
+harness = false
+
+[[bench]]
 name = "mint"
 harness = false
 
@@ -40,6 +44,9 @@ name = "reclaim"
 harness = false
 
 [dependencies]
+ark-bls12-381 = { version = "0.3.0", default-features = false }
+ark-ec = { version = "0.3.0", default-features = false }
+ark-ff = { version = "0.3.0", default-features = false }
 getrandom = { version = "0.2.6", features = ["js"] }
 instant = { version = "0.1.12", features = [ "wasm-bindgen" ] }
 manta-accounting = { path = "../manta-accounting", default-features = false, features = ["test"] }
