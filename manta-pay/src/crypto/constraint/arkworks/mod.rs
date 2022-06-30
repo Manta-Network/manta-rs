@@ -340,6 +340,7 @@ impl<F, const BITS: usize> AssertWithinRange<FpVar<F>, BITS> for R1CS<F>
 where
     F: PrimeField,
 {
+    #[inline]
     fn assert_within_range(&mut self, value: &FpVar<F>) {
         // TODO: Can we reuse this computation for all assert_within_range?
         let bound = FpVar::Constant(F::pow(&F::from(2u128), &[BITS as u64]));

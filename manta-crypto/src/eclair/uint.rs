@@ -45,6 +45,7 @@ where
 {
     type Output = Self;
 
+    #[inline]
     fn add(self, rhs: Self, compiler: &mut COM) -> Self::Output {
         Self::new(self.0.add(rhs.0, compiler), compiler)
     }
@@ -55,6 +56,7 @@ where
     COM: AssertWithinRange<T, 128>,
     T: AddAssign<T, COM>,
 {
+    #[inline]
     fn add_assign(&mut self, rhs: Self, compiler: &mut COM) {
         self.0.add_assign(rhs.0, compiler);
         compiler.assert_within_range(&self.0);
@@ -70,6 +72,7 @@ where
 
     // TODO: Should we check self.0 > rhs.0 before subtraction?
     // TODO: Should we check self > rhs instead of `AssertWithinRange`?
+    #[inline]
     fn sub(self, rhs: Self, compiler: &mut COM) -> Self::Output {
         Self::new(self.0.sub(rhs.0, compiler), compiler)
     }
@@ -81,6 +84,7 @@ where
     T: SubAssign<T, COM>,
 {
     // TODO: Should we check self.0 > rhs.0 before subtraction?
+    #[inline]
     fn sub_assign(&mut self, rhs: Self, compiler: &mut COM) {
         self.0.sub_assign(rhs.0, compiler);
         compiler.assert_within_range(&self.0);
