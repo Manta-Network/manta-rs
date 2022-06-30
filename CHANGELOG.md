@@ -5,6 +5,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 ### Added
+- [\#147](https://github.com/Manta-Network/manta-rs/pull/147) Add benchmarks for Arkworks elliptic curve operations.
 
 ### Changed
 
