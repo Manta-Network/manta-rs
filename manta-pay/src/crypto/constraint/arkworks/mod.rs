@@ -31,6 +31,7 @@ use manta_crypto::{
         measure::{Count, Measure},
         mode, Add, Assert, AssertEq, ConditionalSwap, Constant, Has, Public, Secret, Variable,
     },
+    eclair::bool::AssertWithinRange,
     rand::{RngCore, Sample},
 };
 use manta_util::{
@@ -44,7 +45,6 @@ use manta_util::serde::{Deserialize, Serialize, Serializer};
 
 pub use ark_r1cs::SynthesisError;
 pub use ark_r1cs_std::{bits::boolean::Boolean, fields::fp::FpVar};
-use manta_crypto::eclair::bool::AssertWithinRange;
 
 pub mod codec;
 pub mod pairing;

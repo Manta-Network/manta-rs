@@ -23,7 +23,7 @@ use crate::{
     },
 };
 
-/// 128-Bit Unsigned Integer.
+/// Unsigned 128-bit Integer
 pub struct U128<T>(T);
 
 impl<T> U128<T> {
