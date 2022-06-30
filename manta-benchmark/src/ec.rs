@@ -100,7 +100,7 @@ where
     P: ProjectiveCurve,
 {
     point_vec
-        .into_iter()
+        .iter()
         .map(|point| point.into_affine())
         .collect::<Vec<_>>()
 }
