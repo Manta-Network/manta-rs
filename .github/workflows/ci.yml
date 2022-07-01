@@ -16,6 +16,7 @@ env:
 jobs:
   test:
     name: Test (${{ matrix.os }} + ${{ matrix.channel }})
+    needs: format
     strategy:
       fail-fast: false
       matrix:
@@ -33,6 +34,7 @@ jobs:
       - run: cargo test --all-features --workspace --release
   lint:
     name: Lint (${{ matrix.os }} + ${{ matrix.channel }})
+    needs: format
     strategy:
       fail-fast: false
       matrix:
@@ -59,6 +61,7 @@ jobs:
     - run: cargo fmt --all -- --check
   docs:
     name: Docs
+    needs: format
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -66,6 +69,7 @@ jobs:
       - run: RUSTDOCFLAGS="-D warnings --cfg doc_cfg" cargo +nightly doc --workspace --all-features --no-deps --document-private-items
   compile-bench:
     name: Compile Bench (${{ matrix.os }} + ${{ matrix.channel }})
+    needs: format
     strategy:
       fail-fast: false
       matrix:
@@ -91,4 +95,3 @@ jobs:
       - run: cargo hakari verify
       - run: cargo hakari generate --diff
       - run: cargo hakari manage-deps --dry-run
-
