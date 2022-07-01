@@ -59,3 +59,16 @@ pub use serde;
 #[cfg_attr(doc_cfg, doc(cfg(feature = "serde_with")))]
 #[doc(inline)]
 pub use serde_with;
+
+/// Type Identity Reflection Mechanism
+pub trait IsType {
+    /// Type Equal to `Self`
+    type Type: ?Sized;
+}
+
+impl<T> IsType for T
+where
+    T: ?Sized,
+{
+    type Type = T;
+}
