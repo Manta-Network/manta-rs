@@ -31,7 +31,7 @@ use manta_crypto::{
         measure::{Count, Measure},
         mode, Add, Assert, AssertEq, ConditionalSwap, Constant, Has, Public, Secret, Variable,
     },
-    eclair::bool::AssertWithinRange,
+    eclair::assert::AssertWithinRange,
     rand::{RngCore, Sample},
 };
 use manta_util::{

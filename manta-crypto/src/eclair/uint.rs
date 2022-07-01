@@ -18,10 +18,7 @@
 
 use crate::{
     constraint::Add,
-    eclair::{
-        assert::AssertWithinRange,
-        ops::AddAssign,
-    },
+    eclair::{assert::AssertWithinRange, ops::AddAssign},
 };
 
 /// Unsigned 128-bit Integer
@@ -44,11 +41,11 @@ where
     COM: AssertWithinRange<O, 128>,
     T: Add<T, COM, Output = O>,
 {
-    type Output = O;
+    type Output = U128<O>;
 
     #[inline]
     fn add(self, rhs: Self, compiler: &mut COM) -> Self::Output {
-        Self::new(self.0.add(rhs.0, compiler), compiler)
+        Self::Output::new(self.0.add(rhs.0, compiler), compiler)
     }
 }
 
