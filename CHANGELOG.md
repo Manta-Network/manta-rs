@@ -5,7 +5,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 ### Added
-[\#141](https://github.com/Manta-Network/manta-rs/pull/141) Add `U128` type and range assertion trait to ECLAIR
+- [\#141](https://github.com/Manta-Network/manta-rs/pull/141) Add `U128` type and range assertion trait to ECLAIR
+- [\#144](https://github.com/Manta-Network/manta-rs/pull/144) Add new release PR template for future releases
+
 ### Changed
 
 ### Deprecated
