@@ -27,9 +27,9 @@ maintenance = { status = "actively-developed" }
 [lib]
 crate-type = ["cdylib", "lib"]
 
-[[bench]]
-name = "ec"
-harness = false
+# [[bench]]
+# name = "ec"
+# harness = false
 
 [[bench]]
 name = "mint"
