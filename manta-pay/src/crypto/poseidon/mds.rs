@@ -16,7 +16,7 @@
 
 //! MDS Data Generation
 
-use crate::crypto::hash::poseidon::{
+use crate::crypto::poseidon::{
     matrix::{Matrix, MatrixOperations, SquareMatrix},
     Field, FieldGeneration,
 };
