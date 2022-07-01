@@ -19,9 +19,10 @@ use ark_ec::{
     AffineCurve, ProjectiveCurve, SWModelParameters,
 };
 use ark_ff::UniformRand;
+use core::ops::{AddAssign, MulAssign};
 use manta_crypto::rand::RngCore;
-use std::ops::{AddAssign, MulAssign};
 
+#[inline]
 pub fn sample_affine_point<A, R>(rng: &mut R) -> A
 where
     A: AffineCurve,
@@ -30,6 +31,7 @@ where
     A::Projective::rand(rng).into_affine()
 }
 
+#[inline]
 pub fn sample_projective_point<P, R>(rng: &mut R) -> P
 where
     P: ProjectiveCurve,
@@ -38,6 +40,7 @@ where
     P::rand(rng)
 }
 
+#[inline]
 pub fn sample_scalar<P, R>(rng: &mut R) -> P::ScalarField
 where
     P: SWModelParameters,
@@ -46,6 +49,7 @@ where
     P::ScalarField::rand(rng)
 }
 
+#[inline]
 pub fn affine_affine_add_assign<P>(lhs: &mut GroupAffine<P>, rhs: &GroupAffine<P>)
 where
     P: SWModelParameters,
@@ -53,6 +57,7 @@ where
     lhs.add_assign(rhs);
 }
 
+#[inline]
 pub fn projective_affine_add_assign<P>(lhs: &mut GroupProjective<P>, rhs: &GroupAffine<P>)
 where
     P: SWModelParameters,
@@ -60,6 +65,7 @@ where
     lhs.add_assign_mixed(rhs);
 }
 
+#[inline]
 pub fn projective_projective_add_assign<P>(lhs: &mut GroupProjective<P>, rhs: &GroupProjective<P>)
 where
     P: SWModelParameters,
@@ -67,6 +73,7 @@ where
     lhs.add_assign(rhs);
 }
 
+#[inline]
 pub fn affine_scalar_mul<P>(point: &GroupAffine<P>, scalar: P::ScalarField) -> GroupProjective<P>
 where
     P: SWModelParameters,
@@ -74,6 +81,7 @@ where
     point.mul(scalar)
 }
 
+#[inline]
 pub fn projective_scalar_mul_assign<P>(point: &mut GroupProjective<P>, scalar: P::ScalarField)
 where
     P: SWModelParameters,
@@ -81,6 +89,7 @@ where
     point.mul_assign(scalar);
 }
 
+#[inline]
 pub fn projective_to_affine_normalization<P>(point: &P) -> P::Affine
 where
     P: ProjectiveCurve,
@@ -88,6 +97,7 @@ where
     point.into_affine()
 }
 
+#[inline]
 pub fn batch_vector_projective_to_affine_normalization<P>(point_vec: &[P]) -> Vec<P::Affine>
 where
     P: ProjectiveCurve,
@@ -95,14 +105,12 @@ where
     P::batch_normalization_into_affine(point_vec)
 }
 
+#[inline]
 pub fn naive_vector_projective_to_affine_normalization<P>(point_vec: &[P]) -> Vec<P::Affine>
 where
     P: ProjectiveCurve,
 {
-    point_vec
-        .iter()
-        .map(|point| point.into_affine())
-        .collect::<Vec<_>>()
+    point_vec.iter().map(P::into_affine).collect()
 }
 
 #[cfg(test)]
@@ -142,7 +150,7 @@ mod test {
         projective_scalar_mul_assign(&mut lhs_projective, scalar);
         assert!(
             out_projective == lhs_projective,
-            "Multiplication is consistent between projective curve and affine curve."
+            "Multiplication is not consistent between projective curve and affine curve."
         );
     }
 }

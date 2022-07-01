@@ -58,11 +58,11 @@ fn projective_projective_addition(c: &mut Criterion) {
 fn affine_scalar_multiplication(c: &mut Criterion) {
     let mut group = c.benchmark_group("bench");
     let mut rng = OsRng;
-    let mut point = black_box(ec::sample_affine_point::<G1Affine, _>(&mut rng));
+    let point = black_box(ec::sample_affine_point::<G1Affine, _>(&mut rng));
     let scalar = black_box(ec::sample_scalar::<Parameters, _>(&mut rng));
     group.bench_function("affine-scalar multiplication", |b| {
         b.iter(|| {
-            let _ = ec::affine_scalar_mul(&mut point, scalar);
+            let _ = ec::affine_scalar_mul(&point, scalar);
         })
     });
 }
@@ -82,10 +82,10 @@ fn projective_scalar_multiplication(c: &mut Criterion) {
 fn projective_to_affine_normalization(c: &mut Criterion) {
     let mut group = c.benchmark_group("bench");
     let mut rng = OsRng;
-    let mut point = black_box(ec::sample_projective_point::<G1Projective, _>(&mut rng));
+    let point = black_box(ec::sample_projective_point::<G1Projective, _>(&mut rng));
     group.bench_function("projective to affine normalization", |b| {
         b.iter(|| {
-            let _ = ec::projective_to_affine_normalization(&mut point);
+            let _ = ec::projective_to_affine_normalization(&point);
         })
     });
 }
