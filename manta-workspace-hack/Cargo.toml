@@ -41,7 +41,7 @@ rand = { version = "0.8.5", features = ["alloc", "getrandom", "libc", "rand_chac
 rand_chacha = { version = "0.3.1", default-features = false, features = ["std"] }
 rand_core = { version = "0.6.3", default-features = false, features = ["alloc", "getrandom", "std"] }
 serde = { version = "1.0.137", features = ["alloc", "derive", "serde_derive", "std"] }
-serde_json = { version = "1.0.81", features = ["alloc", "std"] }
+serde_json = { version = "1.0.82", features = ["alloc", "std"] }
 sha2 = { version = "0.9.9", features = ["std"] }
 standback = { version = "0.2.17", default-features = false, features = ["std"] }
 subtle = { version = "2.4.1", default-features = false, features = ["i128"] }
