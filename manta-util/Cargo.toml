@@ -42,4 +42,4 @@ crossbeam-channel = { version = "0.5.4", optional = true, default-features = fal
 rayon = { version = "1.5.3", optional = true, default-features = false }
 serde = { version = "1.0.137", optional = true, default-features = false, features = ["derive"] }
 serde_with = { version = "1.14.0", optional = true, default-features = false, features = ["macros"] }
-manta-workspace-hack = { version = "0.1", path = "../manta-workspace-hack" }
+manta-workspace-hack = { version = "0.1.0", path = "../manta-workspace-hack" }
