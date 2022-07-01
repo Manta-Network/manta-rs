@@ -115,10 +115,10 @@ mod test {
     fn addition_is_consistent_for_projective_and_affine_curve() {
         let mut rng = OsRng;
         let mut lhs_affine = sample_affine_point::<G1Affine, _>(&mut rng);
-        let mut lhs_projective = lhs_affine.clone().into_projective();
-        let mut lhs_projective_clone = lhs_projective.clone();
+        let mut lhs_projective = lhs_affine.into_projective();
+        let mut lhs_projective_clone = lhs_projective;
         let rhs_affine = sample_affine_point::<G1Affine, _>(&mut rng);
-        let rhs_projective = rhs_affine.clone().into_projective();
+        let rhs_projective = rhs_affine.into_projective();
         affine_affine_add_assign(&mut lhs_affine, &rhs_affine);
         projective_affine_add_assign(&mut lhs_projective, &rhs_affine);
         projective_projective_add_assign(&mut lhs_projective_clone, &rhs_projective);
@@ -136,7 +136,7 @@ mod test {
     fn multiplication_is_consistent_for_projective_and_affine_curve() {
         let mut rng = OsRng;
         let lhs_affine = sample_affine_point::<G1Affine, _>(&mut rng);
-        let mut lhs_projective = lhs_affine.clone().into_projective();
+        let mut lhs_projective = lhs_affine.into_projective();
         let scalar = sample_scalar::<Parameters, _>(&mut rng);
         let out_projective = affine_scalar_mul(&lhs_affine, scalar);
         projective_scalar_mul_assign(&mut lhs_projective, scalar);
