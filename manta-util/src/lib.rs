@@ -72,3 +72,16 @@ macro_rules! from_variant_impl {
         }
     };
 }
+
+/// Type Identity Reflection Mechanism
+pub trait IsType {
+    /// Type Equal to `Self`
+    type Type: ?Sized;
+}
+
+impl<T> IsType for T
+where
+    T: ?Sized,
+{
+    type Type = T;
+}

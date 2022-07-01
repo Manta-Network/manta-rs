@@ -16,6 +16,7 @@
 
 //! Pseudorandom Permutations
 
+pub mod duplex;
 pub mod sponge;
 
 /// Pseudorandom Permutation
