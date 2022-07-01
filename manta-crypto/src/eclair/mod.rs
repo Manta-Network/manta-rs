@@ -19,6 +19,7 @@
 use manta_util::{create_seal, seal};
 
 pub mod alloc;
+pub mod assert;
 pub mod bool;
 pub mod cmp;
 pub mod execution;
@@ -46,7 +47,7 @@ pub trait Has<T> {
     /// Compiler Type
     ///
     /// This type represents the allocation of `T` into `Self` as a compiler. Whenever we need to
-    /// define absractions that require the compiler to have access to some type internally, we can
+    /// define abstractions that require the compiler to have access to some type internally, we can
     /// use this `trait` as a requirement of that abstraction.
     ///
     /// See the [`bool`](crate::eclair::bool) module for an example of how to use introspection.

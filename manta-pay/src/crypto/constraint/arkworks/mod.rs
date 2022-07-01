@@ -356,7 +356,7 @@ where
                 .expect(
                     "Enforcing smaller or equal than mod minus one div two is not allowed to fail.",
                 );
-        };
+        }
         value
             .enforce_cmp_unchecked(&bound, Ordering::Less, true)
             .expect(
