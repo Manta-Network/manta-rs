@@ -49,11 +49,13 @@ use alloc::{boxed::Box, vec, vec::Vec};
 use core::{convert::Infallible, fmt::Debug, hash::Hash};
 use manta_crypto::{
     accumulator::{Accumulator, ExactSizeAccumulator, OptimizedAccumulator},
-    encryption::hybrid::DecryptedMessage,
     rand::{CryptoRng, FromEntropy, Rand, RngCore},
 };
 use manta_util::{
-    array_map, future::LocalBoxFutureResult, into_array_unchecked, iter::IteratorExt,
+    array_map,
+    future::LocalBoxFutureResult,
+    into_array_unchecked,
+    iter::{Finder, IteratorExt},
     persistence::Rollback,
 };
 
@@ -641,12 +643,10 @@ where
         with_recovery: bool,
         encrypted_note: EncryptedNote<C>,
     ) -> Option<ViewKeySelection<C::HierarchicalKeyDerivationScheme, Note<C>>> {
-        let mut finder = DecryptedMessage::find(encrypted_note);
-        view_key_table
-            .find_index_with_maybe_gap(with_recovery, move |k| {
-                finder.decrypt(&parameters.note_encryption_scheme, k)
-            })
-            .map(|selection| selection.map(|item| item.plaintext))
+        let mut finder = Finder::new(encrypted_note);
+        view_key_table.find_index_with_maybe_gap(with_recovery, move |k| {
+            finder.next(|note| note.decrypt(&parameters.note_encryption_scheme, k, &mut ()))
+        })
     }
 
     /// Inserts the new `utxo`-`note` pair into the `utxo_accumulator` adding the spendable amount
