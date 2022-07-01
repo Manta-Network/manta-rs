@@ -6,6 +6,9 @@ on:
       - 'main'
   schedule:
     - cron: '0 0 * * */2'
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -D warnings -A unknown-lints
@@ -26,7 +29,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v3
-      - run: rustup update ${{ matrix.channel }} --no-self-update && rustup default ${{ matrix.channel }}
+      - run: rustup update ${{ matrix.channel }} && rustup default ${{ matrix.channel }}
       - run: cargo test --all-features --workspace --release
   lint:
     name: Lint (${{ matrix.os }} + ${{ matrix.channel }})
