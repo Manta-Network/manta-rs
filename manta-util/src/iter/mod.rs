@@ -16,6 +16,13 @@
 
 //! Iteration Utilities
 
+use crate::IsType;
+
+#[cfg(feature = "serde")]
+use crate::serde::{Deserialize, Serialize};
+
+pub mod finder;
+
 #[cfg(feature = "alloc")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
 pub mod chunk_by;
@@ -26,6 +33,8 @@ pub mod chunk_by;
     doc(cfg(all(feature = "alloc", feature = "crossbeam-channel")))
 )]
 pub mod select_all;
+
+pub use finder::Finder;
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
@@ -40,6 +49,16 @@ pub use select_all::SelectAll;
 
 /// Iterator Extensions
 pub trait IteratorExt: Iterator {
+    /// Searches for an element of an iterator that the `finder` matches with, returning the mapped
+    /// value from `f`.
+    #[inline]
+    fn find_with<T, F, R>(&mut self, finder: &mut Finder<T>, f: F) -> Option<R>
+    where
+        F: FnMut(&mut T, Self::Item) -> Option<R>,
+    {
+        finder.find(self, f)
+    }
+
     /// Returns an iterator over chunks of size `N` from `iter`.
     ///
     /// # Note
@@ -91,3 +110,40 @@ pub trait IteratorExt: Iterator {
 }
 
 impl<I> IteratorExt for I where I: Iterator {}
+
+/// Borrowing Iterator Trait
+pub trait IterRef<'i, I = &'i Self> {
+    /// Borrowing Iterator Type
+    type Iterator: IntoIterator + IsType<Type = I>;
+}
+
+/// Iterable Type
+///
+/// This `trait` is implemented for any type that has a borrowing [`IntoIterator`] implementation
+/// for any reference of that type.
+pub trait Iterable: for<'i> IterRef<'i> {}
+
+impl<T> Iterable for T where T: for<'i> IterRef<'i> + ?Sized {}
+
+/// For-Each Collector
+///
+/// In the same way that `() : FromIterator<()>` which just calls [`Iterator::for_each`] internally,
+/// this `struct` does the same but for `FromIterator<T>` for all `T`.
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "crate::serde", deny_unknown_fields)
+)]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct ForEach;
+
+impl<T> FromIterator<T> for ForEach {
+    #[inline]
+    fn from_iter<I>(iter: I) -> Self
+    where
+        I: IntoIterator<Item = T>,
+    {
+        iter.into_iter().for_each(|_| {});
+        Self
+    }
+}
