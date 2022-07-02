@@ -388,6 +388,7 @@ pub mod schnorr {
 
 /// Testing Framework
 #[cfg(feature = "test")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
 pub mod test {
     use super::*;
 
