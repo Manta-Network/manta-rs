@@ -14,12 +14,9 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-use ark_ec::{
-    short_weierstrass_jacobian::{GroupAffine, GroupProjective},
-    AffineCurve, ProjectiveCurve, SWModelParameters,
-};
+use ark_ec::{AffineCurve, ProjectiveCurve};
 use ark_ff::UniformRand;
-use core::ops::{AddAssign, MulAssign};
+use core::ops::AddAssign;
 use manta_crypto::rand::RngCore;
 
 #[inline]
@@ -41,12 +38,12 @@ where
 }
 
 #[inline]
-pub fn sample_scalar<P, R>(rng: &mut R) -> P::ScalarField
+pub fn sample_scalar<A, R>(rng: &mut R) -> A::ScalarField
 where
-    P: SWModelParameters,
+    A: AffineCurve,
     R: RngCore + ?Sized,
 {
-    P::ScalarField::rand(rng)
+    A::ScalarField::rand(rng)
 }
 
 #[inline]
@@ -66,9 +63,9 @@ where
 }
 
 #[inline]
-pub fn projective_projective_add_assign<'a, P>(lhs: &mut P, rhs: &'a P)
+pub fn projective_projective_add_assign<'a, P>(lhs: &mut P, rhs: P)
 where
-    P: ProjectiveCurve, // + AddAssign<&'a P>, // TODO
+    P: ProjectiveCurve,
 {
     lhs.add_assign(rhs);
 }
@@ -82,9 +79,9 @@ where
 }
 
 #[inline]
-pub fn projective_scalar_mul_assign<P>(point: &mut GroupProjective<P>, scalar: P::ScalarField)
+pub fn projective_scalar_mul_assign<P>(point: &mut P, scalar: P::ScalarField)
 where
-    P: SWModelParameters,
+    P: ProjectiveCurve,
 {
     point.mul_assign(scalar);
 }
@@ -116,7 +113,7 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
-    use ark_bls12_381::{g1::Parameters, G1Affine};
+    use ark_bls12_381::G1Affine;
     use manta_crypto::rand::OsRng;
 
     #[test]
@@ -126,31 +123,30 @@ mod test {
         let mut lhs_projective = lhs_affine.into_projective();
         let mut lhs_projective_clone = lhs_projective;
         let rhs_affine = sample_affine_point::<G1Affine, _>(&mut rng);
-        let rhs_projective = rhs_affine.into_projective();
         affine_affine_add_assign(&mut lhs_affine, &rhs_affine);
         projective_affine_add_assign(&mut lhs_projective, &rhs_affine);
-        projective_projective_add_assign(&mut lhs_projective_clone, &rhs_projective);
+        projective_projective_add_assign(&mut lhs_projective_clone, rhs_affine.into_projective());
         assert!(
             lhs_affine == lhs_projective,
-            "add_assign is not equivalent to add_assign_mixed and into_affine"
+            "Addition is not consistent for affine curve and projective curve."
         );
         assert!(
             lhs_affine == lhs_projective_clone,
-            "add_assign is not equivalent to add_assign_mixed and into_affine"
+            "Addition is not consistent for affine curve and projective curve."
         );
     }
 
-    // #[test]
-    // fn multiplication_is_consistent_for_projective_and_affine_curve() {
-    //     let mut rng = OsRng;
-    //     let lhs_affine = sample_affine_point::<G1Affine, _>(&mut rng);
-    //     let mut lhs_projective = lhs_affine.into_projective();
-    //     let scalar = sample_scalar::<Parameters, _>(&mut rng);
-    //     let out_projective = affine_scalar_mul(&lhs_affine, scalar);
-    //     projective_scalar_mul_assign(&mut lhs_projective, scalar);
-    //     assert!(
-    //         out_projective == lhs_projective,
-    //         "Multiplication is not consistent between projective curve and affine curve."
-    //     );
-    // }
+    #[test]
+    fn multiplication_is_consistent_for_projective_and_affine_curve() {
+        let mut rng = OsRng;
+        let lhs_affine = sample_affine_point::<G1Affine, _>(&mut rng);
+        let mut lhs_projective = lhs_affine.into_projective();
+        let scalar = sample_scalar::<G1Affine, _>(&mut rng);
+        let out_projective = affine_scalar_mul(&lhs_affine, scalar);
+        projective_scalar_mul_assign(&mut lhs_projective, scalar);
+        assert!(
+            out_projective == lhs_projective,
+            "Multiplication is not consistent between projective curve and affine curve."
+        );
+    }
 }
