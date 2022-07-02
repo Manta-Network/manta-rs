@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 ### Added
 - [\#144](https://github.com/Manta-Network/manta-rs/pull/144) Add new release PR template for future releases
+- [\#145](https://github.com/Manta-Network/manta-rs/pull/145) Add `cargo-hakari` and `cargo-nextest` to speed up CI pipeline
 - [\#147](https://github.com/Manta-Network/manta-rs/pull/147) Add benchmarks for Arkworks elliptic curve operations
 
 ### Changed

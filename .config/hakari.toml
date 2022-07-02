@@ -1,0 +1,5 @@
+dep-format-version = "2"
+exact-versions = true
+hakari-package = "manta-workspace-hack"
+platforms = []
+resolver = "2"

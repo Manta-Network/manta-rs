@@ -35,6 +35,7 @@ std = ["anyhow?/std"]
 anyhow = { version = "1.0.57", optional = true, default-features = false }
 attohttpc = { version = "0.19.1", optional = true }
 blake3 = { version = "1.3.1", default-features = false }
+manta-workspace-hack = { version = "0.1.0", path = "../manta-workspace-hack" }
 
 [dev-dependencies]
 git2 = { version = "0.14.4", default-features = false }
