@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 ### Added
 - [\#144](https://github.com/Manta-Network/manta-rs/pull/144) Add new release PR template for future releases
+- [\#149](https://github.com/Manta-Network/manta-rs/pull/149/files) Add poseidon encryption implementation
 
 ### Changed
 
