@@ -126,12 +126,12 @@ mod test {
         affine_affine_add_assign(&mut lhs_affine, &rhs_affine);
         projective_affine_add_assign(&mut lhs_projective, &rhs_affine);
         projective_projective_add_assign(&mut lhs_projective_clone, rhs_affine.into_projective());
-        assert!(
-            lhs_affine == lhs_projective,
+        assert_eq!(
+            lhs_affine, lhs_projective,
             "Addition is not consistent for affine curve and projective curve."
         );
-        assert!(
-            lhs_affine == lhs_projective_clone,
+        assert_eq!(
+            lhs_affine, lhs_projective_clone,
             "Addition is not consistent for affine curve and projective curve."
         );
     }
@@ -144,8 +144,8 @@ mod test {
         let scalar = sample_scalar::<G1Affine, _>(&mut rng);
         let out_projective = affine_scalar_mul(&lhs_affine, scalar);
         projective_scalar_mul_assign(&mut lhs_projective, scalar);
-        assert!(
-            out_projective == lhs_projective,
+        assert_eq!(
+            out_projective, lhs_projective,
             "Multiplication is not consistent between projective curve and affine curve."
         );
     }
