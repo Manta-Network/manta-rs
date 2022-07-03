@@ -346,22 +346,16 @@ where
         let bound = FpVar::Constant(F::pow(&F::from(2u128), &[BITS as u64]));
         value
             .enforce_smaller_or_equal_than_mod_minus_one_div_two()
-            .expect(
-                "value is not smaller or equal than mod minus one div two.",
-            );
+            .expect("value is not smaller or equal than mod minus one div two.");
         // if BITS < F::MODULUS_BITS - 1, then 2^BITS is guaranteed to be less than (MODULUS - 1) / 2
         if BITS as u32 >= F::Params::MODULUS_BITS - 1 {
             bound
                 .enforce_smaller_or_equal_than_mod_minus_one_div_two()
-                .expect(
-                    "bound is not smaller or equal than mod minus one div two.",
-                );
+                .expect("bound is not smaller or equal than mod minus one div two.");
         }
         value
             .enforce_cmp_unchecked(&bound, Ordering::Less, true)
-            .expect(
-                "value is not smaller than bound.",
-            );
+            .expect("value is not smaller than bound.");
     }
 }
 
