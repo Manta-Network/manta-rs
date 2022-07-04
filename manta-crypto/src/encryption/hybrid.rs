@@ -21,6 +21,7 @@
 //! encryption scheme inlines this complexity into the encryption interfaces.
 
 use crate::{
+    constraint::{Allocate, Allocator, Constant, Derived, Var, Variable},
     encryption::{
         CiphertextType, Decrypt, DecryptedPlaintextType, DecryptionKeyType, Derive, Encrypt,
         EncryptedMessage, EncryptionKeyType, HeaderType, PlaintextType, RandomnessType,
@@ -111,6 +112,31 @@ where
     }
 }
 
+impl<K, E, S, R, COM> Variable<Derived<(S, R)>, COM> for Randomness<K, E>
+where
+    K: key::agreement::Types + Constant<COM>,
+    E: RandomnessType + Constant<COM>,
+    K::SecretKey: Variable<S, COM>,
+    E::Randomness: Variable<R, COM>,
+    K::Type: key::agreement::Types<SecretKey = Var<K::SecretKey, S, COM>>,
+    E::Type: RandomnessType<Randomness = Var<E::Randomness, R, COM>>,
+{
+    type Type = Randomness<K::Type, E::Type>;
+
+    #[inline]
+    fn new_unknown(compiler: &mut COM) -> Self {
+        Self::new(compiler.allocate_unknown(), compiler.allocate_unknown())
+    }
+
+    #[inline]
+    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
+        Self::new(
+            this.ephemeral_secret_key.as_known(compiler),
+            this.randomness.as_known(compiler),
+        )
+    }
+}
+
 /// Full Ciphertext
 #[cfg_attr(
     feature = "serde",
@@ -167,6 +193,31 @@ where
         R: RngCore + ?Sized,
     {
         Self::new(rng.sample(distribution.0), rng.sample(distribution.1))
+    }
+}
+
+impl<K, E, P, C, COM> Variable<Derived<(P, C)>, COM> for Ciphertext<K, E>
+where
+    K: key::agreement::Types + Constant<COM>,
+    E: CiphertextType + Constant<COM>,
+    K::PublicKey: Variable<P, COM>,
+    E::Ciphertext: Variable<C, COM>,
+    K::Type: key::agreement::Types<PublicKey = Var<K::PublicKey, P, COM>>,
+    E::Type: CiphertextType<Ciphertext = Var<E::Ciphertext, C, COM>>,
+{
+    type Type = Ciphertext<K::Type, E::Type>;
+
+    #[inline]
+    fn new_unknown(compiler: &mut COM) -> Self {
+        Self::new(compiler.allocate_unknown(), compiler.allocate_unknown())
+    }
+
+    #[inline]
+    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
+        Self::new(
+            this.ephemeral_public_key.as_known(compiler),
+            this.ciphertext.as_known(compiler),
+        )
     }
 }
 
@@ -379,5 +430,21 @@ where
         R: RngCore + ?Sized,
     {
         Self::new(rng.sample(distribution.0), rng.sample(distribution.1))
+    }
+}
+
+impl<K, E, COM> Constant<COM> for Hybrid<K, E>
+where
+    K: Constant<COM>,
+    E: Constant<COM>,
+{
+    type Type = Hybrid<K::Type, E::Type>;
+
+    #[inline]
+    fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
+        Self::new(
+            this.key_agreement_scheme.as_constant(compiler),
+            this.encryption_scheme.as_constant(compiler),
+        )
     }
 }

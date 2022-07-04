@@ -20,7 +20,10 @@
 //! set of behavior `trait`s which require those types to be implemented. See the [`Encrypt`] and
 //! [`Decrypt`] `trait`s for more.
 
-use crate::rand::{Rand, RngCore, Sample};
+use crate::{
+    constraint::{Allocate, Allocator, Constant, Derived, Public, Var, Variable},
+    rand::{Rand, RngCore, Sample},
+};
 use core::{fmt::Debug, hash::Hash};
 
 #[cfg(feature = "serde")]
@@ -370,6 +373,30 @@ where
     }
 }
 
+impl<E, H, P, COM> Variable<Derived<(H, P)>, COM> for Message<E>
+where
+    E: HeaderType + PlaintextType + Constant<COM>,
+    E::Header: Variable<H, COM>,
+    E::Plaintext: Variable<P, COM>,
+    E::Type: HeaderType<Header = Var<E::Header, H, COM>>
+        + PlaintextType<Plaintext = Var<E::Plaintext, P, COM>>,
+{
+    type Type = Message<E::Type>;
+
+    #[inline]
+    fn new_unknown(compiler: &mut COM) -> Self {
+        Self::new(compiler.allocate_unknown(), compiler.allocate_unknown())
+    }
+
+    #[inline]
+    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
+        Self::new(
+            this.header.as_known(compiler),
+            this.plaintext.as_known(compiler),
+        )
+    }
+}
+
 /// Encrypted Message
 #[cfg_attr(
     feature = "serde",
@@ -424,7 +451,7 @@ where
 
 impl<E, H, C> Sample<(H, C)> for EncryptedMessage<E>
 where
-    E: HeaderType + CiphertextType,
+    E: CiphertextType + HeaderType,
     E::Header: Sample<H>,
     E::Ciphertext: Sample<C>,
 {
@@ -434,6 +461,54 @@ where
         R: RngCore + ?Sized,
     {
         Self::new(rng.sample(distribution.0), rng.sample(distribution.1))
+    }
+}
+
+impl<E, H, C, COM> Variable<Derived<(H, C)>, COM> for EncryptedMessage<E>
+where
+    E: CiphertextType + HeaderType + Constant<COM>,
+    E::Header: Variable<H, COM>,
+    E::Ciphertext: Variable<C, COM>,
+    E::Type: CiphertextType<Ciphertext = Var<E::Ciphertext, C, COM>>
+        + HeaderType<Header = Var<E::Header, H, COM>>,
+{
+    type Type = EncryptedMessage<E::Type>;
+
+    #[inline]
+    fn new_unknown(compiler: &mut COM) -> Self {
+        Self::new(compiler.allocate_unknown(), compiler.allocate_unknown())
+    }
+
+    #[inline]
+    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
+        Self::new(
+            this.header.as_known(compiler),
+            this.ciphertext.as_known(compiler),
+        )
+    }
+}
+
+impl<E, COM> Variable<Public, COM> for EncryptedMessage<E>
+where
+    E: CiphertextType + HeaderType + Constant<COM>,
+    E::Header: Variable<Public, COM>,
+    E::Ciphertext: Variable<Public, COM>,
+    E::Type: CiphertextType<Ciphertext = Var<E::Ciphertext, Public, COM>>
+        + HeaderType<Header = Var<E::Header, Public, COM>>,
+{
+    type Type = EncryptedMessage<E::Type>;
+
+    #[inline]
+    fn new_unknown(compiler: &mut COM) -> Self {
+        Self::new(compiler.allocate_unknown(), compiler.allocate_unknown())
+    }
+
+    #[inline]
+    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
+        Self::new(
+            this.header.as_known(compiler),
+            this.ciphertext.as_known(compiler),
+        )
     }
 }
 
