@@ -433,7 +433,7 @@ impl Write for Vec<u8> {
     fn write(&mut self, input: &mut &[u8]) -> Result<usize, Self::Error> {
         let len = input.len();
         self.reserve(len);
-        self.extend_from_slice(*input);
+        self.extend_from_slice(input);
         Ok(len)
     }
 
