@@ -35,7 +35,7 @@ indexmap = { version = "1.9.1", default-features = false, features = ["std"] }
 log = { version = "0.4.17", default-features = false, features = ["kv_unstable", "kv_unstable_std", "std", "value-bag"] }
 memchr = { version = "2.5.0", features = ["std"] }
 num-traits = { version = "0.2.15", features = ["i128", "libm", "std"] }
-pbkdf2 = { version = "0.9.0", default-features = false, features = ["hmac", "sha2"] }
+pbkdf2 = { version = "0.11.0", default-features = false, features = ["hmac", "sha2"] }
 ppv-lite86 = { version = "0.2.16", default-features = false, features = ["simd", "std"] }
 rand = { version = "0.8.5", features = ["alloc", "getrandom", "libc", "rand_chacha", "std", "std_rng"] }
 rand_chacha = { version = "0.3.1", default-features = false, features = ["std"] }
