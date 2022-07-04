@@ -43,7 +43,7 @@ rand_core = { version = "0.6.3", default-features = false, features = ["alloc", 
 serde = { version = "1.0.137", features = ["alloc", "derive", "serde_derive", "std"] }
 serde_json = { version = "1.0.82", features = ["alloc", "std"] }
 sha2 = { version = "0.9.9", features = ["std"] }
-standback = { version = "0.2.17", default-features = false, features = ["std"] }
+standback = { version = "0.4.4", default-features = false, features = ["std"] }
 subtle = { version = "2.4.1", default-features = false, features = ["i128"] }
 url = { version = "2.2.2", default-features = false, features = ["serde"] }
 web-sys = { version = "0.3.58", default-features = false, features = ["BinaryType", "Blob", "CloseEvent", "DomException", "Event", "EventTarget", "MessageEvent", "WebSocket", "console"] }
@@ -59,7 +59,7 @@ generic-array = { version = "0.14.5", default-features = false, features = ["mor
 log = { version = "0.4.17", default-features = false, features = ["kv_unstable", "kv_unstable_std", "std", "value-bag"] }
 num-traits = { version = "0.2.15", features = ["i128", "libm", "std"] }
 serde = { version = "1.0.137", features = ["alloc", "derive", "serde_derive", "std"] }
-standback = { version = "0.2.17", default-features = false, features = ["std"] }
+standback = { version = "0.4.4", default-features = false, features = ["std"] }
 subtle = { version = "2.4.1", default-features = false, features = ["i128"] }
 syn = { version = "1.0.98", features = ["clone-impls", "derive", "extra-traits", "fold", "full", "parsing", "printing", "proc-macro", "quote", "visit", "visit-mut"] }
 
