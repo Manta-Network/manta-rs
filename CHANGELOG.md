@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - [\#149](https://github.com/Manta-Network/manta-rs/pull/149) Add poseidon encryption implementation
 
 ### Changed
+- [\#152](https://github.com/Manta-Network/manta-rs/pull/152) Make `format` and `docs` as prerequisites for the rest of the CI pipeline
 
 ### Deprecated
 
