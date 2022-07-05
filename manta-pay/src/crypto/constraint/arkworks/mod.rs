@@ -23,7 +23,6 @@ use ark_relations::{
     ns, r1cs as ark_r1cs,
     r1cs::{ConstraintSynthesizer, ConstraintSystemRef},
 };
-use core::cmp::Ordering;
 use manta_crypto::{
     algebra,
     constraint::{
