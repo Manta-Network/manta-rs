@@ -18,7 +18,7 @@
 
 use alloc::vec::Vec;
 use ark_ff::{Field, FpParameters, PrimeField};
-use ark_r1cs_std::{alloc::AllocVar, eq::EqGadget, select::CondSelectGadget};
+use ark_r1cs_std::{alloc::AllocVar, eq::EqGadget, select::CondSelectGadget, ToBitsGadget};
 use ark_relations::{
     ns, r1cs as ark_r1cs,
     r1cs::{ConstraintSynthesizer, ConstraintSystemRef},
@@ -342,20 +342,17 @@ where
 {
     #[inline]
     fn assert_within_range(&mut self, value: &FpVar<F>) {
-        // TODO: Can we reuse this computation for all assert_within_range?
-        let bound = FpVar::Constant(F::pow(&F::from(2u128), &[BITS as u64]));
-        value
-            .enforce_smaller_or_equal_than_mod_minus_one_div_two()
-            .expect("value is not smaller or equal than mod minus one div two.");
-        // if BITS < F::MODULUS_BITS - 1, then 2^BITS is guaranteed to be less than (MODULUS - 1) / 2
-        if BITS as u32 >= F::Params::MODULUS_BITS - 1 {
-            bound
-                .enforce_smaller_or_equal_than_mod_minus_one_div_two()
-                .expect("bound is not smaller or equal than mod minus one div two.");
+        assert!(
+            BITS < F::Params::MODULUS_BITS as usize,
+            "BITS must be less than modulus bits of `F`"
+        );
+        let value_bits = value
+            .to_bits_le()
+            .expect("to_bits_be is not allowed to fail");
+        for bit in &value_bits[BITS..] {
+            bit.enforce_equal(&Boolean::FALSE)
+                .expect("Enforcing equality is not allowed to fail.");
         }
-        value
-            .enforce_cmp_unchecked(&bound, Ordering::Less, true)
-            .expect("value is not smaller than bound.");
     }
 }
 
