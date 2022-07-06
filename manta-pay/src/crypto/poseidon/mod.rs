@@ -425,7 +425,6 @@ where
     S: Specification<COM>,
     S::ParameterField: Field + FieldGeneration + PartialEq + Sample<D>,
 {
-    /// Samples random Poseidon parameters.
     #[inline]
     fn sample<R>(distribution: D, rng: &mut R) -> Self
     where
