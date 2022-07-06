@@ -16,7 +16,7 @@
 
 //! UTXO Version 1 Protocol
 
-use crate::transfer::utxo::VersionType;
+use crate::transfer::utxo::{Generate, VersionType};
 use core::marker::PhantomData;
 use manta_crypto::{
     constraint::{
@@ -95,12 +95,7 @@ where
     type EncryptionScheme: Encrypt<
         COM,
         Header = IncomingNoteHeader<Self, COM>,
-        Plaintext = (
-            CommitmentRandomness<Self, COM>,
-            Self::AssetId,
-            Self::AssetValue,
-            Self::KeyDiversifier,
-        ),
+        Plaintext = Plaintext<Self, COM>,
         Ciphertext = Self::IncomingNoteCiphertext,
     >;
 }
@@ -121,10 +116,43 @@ pub type EncryptionKey<C, COM = ()> =
 pub type EncryptionRandomness<C, COM = ()> =
     <<C as Configuration<COM>>::EncryptionScheme as RandomnessType>::Randomness;
 
+/// UTXO Model
+pub struct Model<C, COM = ()>
+where
+    C: Configuration<COM>,
+    COM: Has<bool, Type = C::Bool>,
+{
+    /// Commitment Scheme
+    pub commitment_scheme: C::CommitmentScheme,
+
+    /// Encryption Scheme
+    pub encryption_scheme: C::EncryptionScheme,
+}
+
+impl<C, COM> Generate<COM> for Model<C, COM>
+where
+    C: Configuration<COM>,
+    COM: Has<bool, Type = C::Bool> + AssertEq,
+{
+    type Asset = Asset<C, COM>;
+    type Secret = UtxoSecret<C, COM>;
+    type Utxo = Utxo<C, COM>;
+
+    #[inline]
+    fn asset(&self, secret: &Self::Secret, utxo: &Self::Utxo, compiler: &mut COM) -> Self::Asset {
+        secret.get_well_formed_asset(
+            &self.commitment_scheme,
+            &self.encryption_scheme,
+            utxo,
+            compiler,
+        )
+    }
+}
+
 /// Asset Definition
 pub struct Asset<C, COM = ()>
 where
-    C: Configuration<COM>,
+    C: Configuration<COM> + ?Sized,
     COM: Has<bool, Type = C::Bool>,
 {
     /// Asset Id
@@ -136,7 +164,7 @@ where
 
 impl<C, COM> Asset<C, COM>
 where
-    C: Configuration<COM>,
+    C: Configuration<COM> + ?Sized,
     COM: Has<bool, Type = C::Bool>,
 {
     /// Builds a new [`Asset`] from `id` and `value`.
@@ -156,7 +184,7 @@ where
 
 impl<C, COM> ConditionalSelect<COM> for Asset<C, COM>
 where
-    C: Configuration<COM>,
+    C: Configuration<COM> + ?Sized,
     COM: Has<bool, Type = C::Bool>,
 {
     #[inline]
@@ -170,7 +198,7 @@ where
 
 impl<C, COM, M> Variable<M, COM> for Asset<C, COM>
 where
-    C: Configuration<COM> + Constant<COM>,
+    C: Configuration<COM> + Constant<COM> + ?Sized,
     COM: Has<bool, Type = C::Bool>,
     C::Type: Configuration<Bool = bool>,
     C::AssetId: Variable<M, COM, Type = <C::Type as Configuration>::AssetId>,
@@ -279,8 +307,7 @@ where
     COM: Has<bool, Type = C::Bool>,
 {
     /// Builds a new [`Utxo`] from `is_transparent`, `public_asset`, `commitment`, and
-    /// `incoming_note`. To build a [`Utxo`] from its secret pre-image use
-    /// [`UtxoSecret::into_well_formed_asset`].
+    /// `incoming_note`.
     #[inline]
     pub fn new(
         is_transparent: C::Bool,
@@ -330,6 +357,72 @@ where
     }
 }
 
+/// Plaintext
+pub struct Plaintext<C, COM = ()>
+where
+    C: Configuration<COM> + ?Sized,
+    COM: Has<bool, Type = C::Bool>,
+{
+    /// Commitment Randomness
+    pub commitment_randomness: CommitmentRandomness<C, COM>,
+
+    /// Secret Asset
+    pub asset: Asset<C, COM>,
+
+    /// Key Diversifier
+    pub key_diversifier: C::KeyDiversifier,
+}
+
+impl<C, COM> Plaintext<C, COM>
+where
+    C: Configuration<COM> + ?Sized,
+    COM: Has<bool, Type = C::Bool>,
+{
+    /// Builds a new [`Plaintext`] from `commitment_randomness`, `asset`, and `key_diversifier`.
+    #[inline]
+    pub fn new(
+        commitment_randomness: CommitmentRandomness<C, COM>,
+        asset: Asset<C, COM>,
+        key_diversifier: C::KeyDiversifier,
+    ) -> Self {
+        Self {
+            commitment_randomness,
+            asset,
+            key_diversifier,
+        }
+    }
+}
+
+impl<C, COM> Variable<Secret, COM> for Plaintext<C, COM>
+where
+    C: Configuration<COM> + Constant<COM> + ?Sized,
+    COM: Has<bool, Type = C::Bool>,
+    C::Type: Configuration<Bool = bool>,
+    CommitmentRandomness<C, COM>: Variable<Secret, COM, Type = CommitmentRandomness<C::Type>>,
+    Asset<C, COM>: Variable<Secret, COM, Type = Asset<C::Type>>,
+    C::KeyDiversifier: Variable<Secret, COM, Type = <C::Type as Configuration>::KeyDiversifier>,
+{
+    type Type = Plaintext<C::Type>;
+
+    #[inline]
+    fn new_unknown(compiler: &mut COM) -> Self {
+        Self::new(
+            compiler.allocate_unknown(),
+            compiler.allocate_unknown(),
+            compiler.allocate_unknown(),
+        )
+    }
+
+    #[inline]
+    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
+        Self::new(
+            this.commitment_randomness.as_known(compiler),
+            this.asset.as_known(compiler),
+            this.key_diversifier.as_known(compiler),
+        )
+    }
+}
+
 /// UTXO Secret
 pub struct UtxoSecret<C, COM = ()>
 where
@@ -342,14 +435,11 @@ where
     /// Encryption Randomness
     pub encryption_randomness: EncryptionRandomness<C, COM>,
 
-    /// Commitment Randomness
-    pub commitment_randomness: CommitmentRandomness<C, COM>,
+    /// Plaintext
+    pub plaintext: Plaintext<C, COM>,
 
-    /// Secret Asset
-    pub asset: Asset<C, COM>,
-
-    /// Shielded Address
-    pub shielded_address: ShieldedAddress<C, COM>,
+    /// Receiving Key
+    pub receiving_key: C::ReceivingKey,
 }
 
 impl<C, COM> UtxoSecret<C, COM>
@@ -363,24 +453,22 @@ where
     pub fn new(
         encryption_key: EncryptionKey<C, COM>,
         encryption_randomness: EncryptionRandomness<C, COM>,
-        commitment_randomness: CommitmentRandomness<C, COM>,
-        asset: Asset<C, COM>,
-        shielded_address: ShieldedAddress<C, COM>,
+        plaintext: Plaintext<C, COM>,
+        receiving_key: C::ReceivingKey,
     ) -> Self {
         Self {
             encryption_key,
             encryption_randomness,
-            commitment_randomness,
-            asset,
-            shielded_address,
+            plaintext,
+            receiving_key,
         }
     }
 
     /// Returns the usable `asset` from `self` and its public-form `utxo` asserting that it is
     /// well-formed.
     #[inline]
-    pub fn into_well_formed_asset(
-        self,
+    pub fn get_well_formed_asset(
+        &self,
         commitment_scheme: &C::CommitmentScheme,
         encryption_scheme: &C::EncryptionScheme,
         utxo: &Utxo<C, COM>,
@@ -389,19 +477,19 @@ where
     where
         COM: AssertEq,
     {
-        let is_transparent = self.asset.is_empty(compiler);
+        let is_transparent = self.plaintext.asset.is_empty(compiler);
         compiler.assert_eq(&utxo.is_transparent, &is_transparent);
         let asset = Asset::select(
             &utxo.is_transparent,
             &utxo.public_asset,
-            &self.asset,
+            &self.plaintext.asset,
             compiler,
         );
         let commitment = commitment_scheme.commit(
-            &self.commitment_randomness,
-            &self.asset.id,
-            &self.asset.value,
-            &self.shielded_address.receiving_key,
+            &self.plaintext.commitment_randomness,
+            &self.plaintext.asset.id,
+            &self.plaintext.asset.value,
+            &self.receiving_key,
             compiler,
         );
         compiler.assert_eq(&utxo.commitment, &commitment);
@@ -410,12 +498,7 @@ where
                 &self.encryption_key,
                 &self.encryption_randomness,
                 IncomingNoteHeader::default(),
-                &(
-                    self.commitment_randomness,
-                    self.asset.id,
-                    self.asset.value,
-                    self.shielded_address.key_diversifier,
-                ),
+                &self.plaintext,
                 compiler,
             )
             .ciphertext;
@@ -431,16 +514,14 @@ where
     C::Type: Configuration<Bool = bool>,
     EncryptionKey<C, COM>: Variable<Secret, COM, Type = EncryptionKey<C::Type>>,
     EncryptionRandomness<C, COM>: Variable<Secret, COM, Type = EncryptionRandomness<C::Type>>,
-    CommitmentRandomness<C, COM>: Variable<Secret, COM, Type = CommitmentRandomness<C::Type>>,
-    Asset<C, COM>: Variable<Secret, COM, Type = Asset<C::Type>>,
-    ShieldedAddress<C, COM>: Variable<Secret, COM, Type = ShieldedAddress<C::Type>>,
+    Plaintext<C, COM>: Variable<Secret, COM, Type = Plaintext<C::Type>>,
+    C::ReceivingKey: Variable<Secret, COM, Type = <C::Type as Configuration>::ReceivingKey>,
 {
     type Type = UtxoSecret<C::Type>;
 
     #[inline]
     fn new_unknown(compiler: &mut COM) -> Self {
         Self::new(
-            compiler.allocate_unknown(),
             compiler.allocate_unknown(),
             compiler.allocate_unknown(),
             compiler.allocate_unknown(),
@@ -453,9 +534,8 @@ where
         Self::new(
             this.encryption_key.as_known(compiler),
             this.encryption_randomness.as_known(compiler),
-            this.commitment_randomness.as_known(compiler),
-            this.asset.as_known(compiler),
-            this.shielded_address.as_known(compiler),
+            this.plaintext.as_known(compiler),
+            this.receiving_key.as_known(compiler),
         )
     }
 }

@@ -47,14 +47,8 @@ pub trait Generate<COM = ()> {
     /// Utxo Type
     type Utxo;
 
-    /// Converts `secret` into it's well-formed asset, asserting that it can derive into the given
-    /// `utxo`.
-    fn assert_well_formed_asset(
-        &self,
-        secret: Self::Secret,
-        utxo: &Self::Utxo,
-        compiler: &mut COM,
-    ) -> Self::Asset;
+    /// Returns the asset inside the UTXO, asserting that the `secret` and `utxo` are well-formed.
+    fn asset(&self, secret: &Self::Secret, utxo: &Self::Utxo, compiler: &mut COM) -> Self::Asset;
 }
 
 /// UTXO Spending
@@ -77,12 +71,12 @@ pub trait Spend<COM = ()>: Generate<COM> {
     /// Computes the void number associated to `utxo`.
     fn void_number(&self, utxo: &Self::Utxo, compiler: &mut COM) -> Self::VoidNumber;
 
-    /// Asserts that `secret` generates a well-formed spending asset given `utxo`,
-    /// `membership_proof`, and `void_number`.
+    /// Returns the asset inside the UTXo, asserting that the `secret` and `utxo` are well-formed
+    /// and that the asset is spendable according to `membership_proof` and `void_number`.
     #[inline]
-    fn assert_well_formed_spend_asset(
+    fn spendable_asset(
         &self,
-        secret: Self::Secret,
+        secret: &Self::Secret,
         utxo: &Self::Utxo,
         membership_proof: &Self::MembershipProof,
         void_number: &Self::VoidNumber,
@@ -92,7 +86,7 @@ pub trait Spend<COM = ()>: Generate<COM> {
         COM: AssertEq,
         Self::VoidNumber: PartialEq<Self::VoidNumber, COM>,
     {
-        let asset = self.assert_well_formed_asset(secret, utxo, compiler);
+        let asset = self.asset(secret, utxo, compiler);
         self.assert_membership(utxo, membership_proof, compiler);
         let expected_void_number = self.void_number(utxo, compiler);
         compiler.assert_eq(&expected_void_number, void_number);
