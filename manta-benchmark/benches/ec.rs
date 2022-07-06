@@ -62,7 +62,7 @@ fn affine_scalar_multiplication(c: &mut Criterion) {
     let scalar = black_box(ec::sample_scalar::<G1Affine, _>(&mut rng));
     group.bench_function("affine-scalar multiplication", |b| {
         b.iter(|| {
-            let _ = ec::affine_scalar_mul(&point, scalar);
+            let _ = black_box(ec::affine_scalar_mul(&point, scalar));
         })
     });
 }
@@ -85,7 +85,7 @@ fn projective_to_affine_normalization(c: &mut Criterion) {
     let point = black_box(ec::sample_projective_point::<G1Projective, _>(&mut rng));
     group.bench_function("projective to affine normalization", |b| {
         b.iter(|| {
-            let _ = ec::projective_to_affine_normalization(&point);
+            let _ = black_box(ec::projective_to_affine_normalization(black_box(&point)));
         })
     });
 }
@@ -98,7 +98,7 @@ fn batch_vector_projective_to_affine_normalization(c: &mut Criterion) {
         .collect::<Vec<_>>();
     group.bench_function("batch vector of projective to affine normalization", |b| {
         b.iter(|| {
-            let _ = ec::batch_vector_projective_to_affine_normalization(point_vec.as_slice());
+            let _ = black_box(ec::batch_vector_projective_to_affine_normalization(black_box(point_vec.as_slice())));
         })
     });
 }
@@ -111,7 +111,7 @@ fn naive_vector_projective_to_affine_normalization(c: &mut Criterion) {
         .collect::<Vec<_>>();
     group.bench_function("naive vector of projective to affine normalization", |b| {
         b.iter(|| {
-            let _ = ec::naive_vector_projective_to_affine_normalization(point_vec.as_slice());
+            let _ = black_box(ec::naive_vector_projective_to_affine_normalization(black_box(point_vec.as_slice())));
         })
     });
 }
