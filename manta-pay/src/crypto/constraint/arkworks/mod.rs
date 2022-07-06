@@ -621,7 +621,7 @@ mod tests {
     }
 
     #[test]
-    /// Test if `assert_within_range` works correctly with range `BITS`. This test
+    /// Test if `assert_within_range` works correctly with range `BITS`, using Field `ark_bls12_381::Fr`. This test
     /// will generate 16 randomized test cases and some edge cases to check correctness.
     fn assert_within_128_bits() {
         assert_within_range::<ark_bls12_381::Fr, 128, 16>();
