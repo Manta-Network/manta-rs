@@ -14,6 +14,8 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
+//! Mint Benchmarks
+
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use manta_accounting::transfer::test::assert_valid_proof;
 use manta_crypto::rand::{OsRng, Rand};

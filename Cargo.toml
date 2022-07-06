@@ -1,12 +1,3 @@
 [workspace]
 resolver = "2"
-members = [
-    "manta-accounting",
-    "manta-benchmark",
-    "manta-crypto",
-    "manta-parameters",
-    "manta-pay",
-    "manta-trusted-setup",
-    "manta-util",
-    "manta-workspace-hack",
-]
+members = ["manta-*"]
