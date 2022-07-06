@@ -43,13 +43,12 @@ pub trait Size {
 /// Pairing Configuration
 pub trait Pairing: HasDistribution {
     /// Underlying Scalar Field
-    type Scalar: PrimeField + One;
+    type Scalar: PrimeField;
 
     /// First Group of the Pairing
     type G1: AffineCurve<ScalarField = Self::Scalar>
         + Into<Self::G1Prepared>
-        + Sample<Self::Distribution>
-        + Zero;
+        + Sample<Self::Distribution>;
 
     /// First Group Pairing-Prepared Point
     type G1Prepared;
@@ -57,8 +56,7 @@ pub trait Pairing: HasDistribution {
     /// Second Group of the Pairing
     type G2: AffineCurve<ScalarField = Self::Scalar>
         + Into<Self::G2Prepared>
-        + Sample<Self::Distribution>
-        + Zero;
+        + Sample<Self::Distribution>;
 
     /// Second Group Pairing-Prepared Point
     type G2Prepared;
