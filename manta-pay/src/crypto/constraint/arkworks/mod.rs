@@ -604,23 +604,24 @@ mod tests {
         F: PrimeField,
     {
         let mut rng = OsRng;
-
         assert_within_range::<_, BITS>(Fp(F::zero()), true);
         for _ in 0..NUM_TESTS {
-            let value_le = (0..BITS)
-                .map(|_| (rng.gen::<_, u8>() & 1) == 1)
-                .collect::<Vec<_>>();
-            let value = Fp(F::from_repr(F::BigInt::from_bits_le(&value_le))
-                .expect("BITS should be less than modulus bits of field."));
-            assert_within_range::<_, BITS>(value, true);
+            assert_within_range::<_, BITS>(
+                Fp(F::from_repr(F::BigInt::from_bits_le(
+                    &(0..BITS)
+                        .map(|_| (rng.gen::<_, u8>() & 1) == 1)
+                        .collect::<Vec<_>>(),
+                ))
+                .expect("BITS should be less than modulus bits of field.")),
+                true,
+            );
         }
         let bound = Fp(F::from(2u64).pow(&[BITS as u64]));
         assert_within_range::<F, BITS>(Fp(bound.0 - F::one()), true);
         assert_within_range::<F, BITS>(bound, false);
         for _ in 0..NUM_TESTS {
-            // we sample until a point is greater than or equal to 2^BITS
             let mut value = rng.gen();
-            while value < bound {
+            while value <= bound {
                 value = rng.gen();
             }
             assert_within_range::<_, BITS>(value, false);
