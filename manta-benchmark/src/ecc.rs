@@ -41,7 +41,7 @@ where
     P::rand(rng)
 }
 
-/// Samples a scalar from scalar field.
+/// Samples a scalar field element.
 #[inline]
 pub fn sample_scalar<A, R>(rng: &mut R) -> A::ScalarField
 where
@@ -96,7 +96,7 @@ where
     point.mul_assign(scalar);
 }
 
-/// Normalizes a projective point to an affine point.
+/// Normalizes a projective point into an affine point.
 #[inline]
 pub fn projective_to_affine_normalization<P>(point: &P) -> P::Affine
 where
@@ -105,7 +105,7 @@ where
     point.into_affine()
 }
 
-/// Normalizes each projective point in `point_vec` to an affine point in a batch style.
+/// Normalizes each projective point of `point_vec` into an affine point with the batching optimization.
 #[inline]
 pub fn batch_vector_projective_to_affine_normalization<P>(point_vec: &[P]) -> Vec<P::Affine>
 where
@@ -114,7 +114,7 @@ where
     P::batch_normalization_into_affine(point_vec)
 }
 
-/// Naively normalizes each projective point in `point_vec` to an affine point without batching.
+/// Naively normalizes each projective point of `point_vec` into an affine point without the batching optimization.
 #[inline]
 pub fn naive_vector_projective_to_affine_normalization<P>(point_vec: &[P]) -> Vec<P::Affine>
 where
@@ -130,7 +130,7 @@ mod test {
     use manta_crypto::rand::OsRng;
 
     /// Tests if affine-affine addition, affine-projective addition, and projective-projective
-    /// addition give the same result.
+    /// addition give same results.
     #[test]
     fn addition_is_consistent_for_projective_and_affine_curve() {
         let mut rng = OsRng;
@@ -152,7 +152,7 @@ mod test {
     }
 
     /// Tests if affine-scalar multiplication and projective-scalar multiplication give
-    /// the same result.
+    /// same results.
     #[test]
     fn multiplication_is_consistent_for_projective_and_affine_curve() {
         let mut rng = OsRng;
