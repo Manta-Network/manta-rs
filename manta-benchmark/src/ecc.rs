@@ -21,6 +21,7 @@ use ark_ff::UniformRand;
 use core::ops::AddAssign;
 use manta_crypto::rand::RngCore;
 
+/// Samples an affine point.
 #[inline]
 pub fn sample_affine_point<A, R>(rng: &mut R) -> A
 where
@@ -30,6 +31,7 @@ where
     A::Projective::rand(rng).into_affine()
 }
 
+/// Samples a projective point.
 #[inline]
 pub fn sample_projective_point<P, R>(rng: &mut R) -> P
 where
@@ -39,6 +41,7 @@ where
     P::rand(rng)
 }
 
+/// Samples a scalar from scalar field.
 #[inline]
 pub fn sample_scalar<A, R>(rng: &mut R) -> A::ScalarField
 where
@@ -48,6 +51,7 @@ where
     A::ScalarField::rand(rng)
 }
 
+/// Adds two affine points.
 #[inline]
 pub fn affine_affine_add_assign<'a, A>(lhs: &mut A, rhs: &'a A)
 where
@@ -56,6 +60,7 @@ where
     lhs.add_assign(rhs);
 }
 
+/// Adds a projective point with an affine point.
 #[inline]
 pub fn projective_affine_add_assign<P>(lhs: &mut P, rhs: &P::Affine)
 where
@@ -64,6 +69,7 @@ where
     lhs.add_assign_mixed(rhs);
 }
 
+/// Adds two projective points.
 #[inline]
 pub fn projective_projective_add_assign<P>(lhs: &mut P, rhs: P)
 where
@@ -72,6 +78,7 @@ where
     lhs.add_assign(rhs);
 }
 
+/// Multiplies an affine point `point` with a scalar field element `scalar`.
 #[inline]
 pub fn affine_scalar_mul<A>(point: &A, scalar: A::ScalarField) -> A::Projective
 where
@@ -80,6 +87,7 @@ where
     point.mul(scalar)
 }
 
+/// Multiplies a projective point `point` with a scalar field element `scalar`.
 #[inline]
 pub fn projective_scalar_mul_assign<P>(point: &mut P, scalar: P::ScalarField)
 where
@@ -88,6 +96,7 @@ where
     point.mul_assign(scalar);
 }
 
+/// Normalizes a projective point to an affine point.
 #[inline]
 pub fn projective_to_affine_normalization<P>(point: &P) -> P::Affine
 where
@@ -96,6 +105,7 @@ where
     point.into_affine()
 }
 
+/// Normalizes each projective point in `point_vec` to an affine point in a batch style.
 #[inline]
 pub fn batch_vector_projective_to_affine_normalization<P>(point_vec: &[P]) -> Vec<P::Affine>
 where
@@ -104,6 +114,7 @@ where
     P::batch_normalization_into_affine(point_vec)
 }
 
+/// Naively normalizes each projective point in `point_vec` to an affine point without batching.
 #[inline]
 pub fn naive_vector_projective_to_affine_normalization<P>(point_vec: &[P]) -> Vec<P::Affine>
 where
@@ -118,7 +129,8 @@ mod test {
     use ark_bls12_381::G1Affine;
     use manta_crypto::rand::OsRng;
 
-    ///
+    /// Tests if affine-affine addition, affine-projective addition, and projective-projective
+    /// addition give the same result.
     #[test]
     fn addition_is_consistent_for_projective_and_affine_curve() {
         let mut rng = OsRng;
@@ -139,7 +151,8 @@ mod test {
         );
     }
 
-    ///
+    /// Tests if affine-scalar multiplication and projective-scalar multiplication give
+    /// the same result.
     #[test]
     fn multiplication_is_consistent_for_projective_and_affine_curve() {
         let mut rng = OsRng;

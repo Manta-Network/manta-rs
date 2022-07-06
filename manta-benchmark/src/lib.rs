@@ -33,6 +33,7 @@ use wasm_bindgen::prelude::wasm_bindgen;
 
 pub mod ecc;
 
+/// Context Type
 #[wasm_bindgen]
 #[derive(Clone, Debug)]
 pub struct Context {
@@ -44,6 +45,7 @@ pub struct Context {
 
 #[wasm_bindgen]
 impl Context {
+    /// Constructs a new [`Context`] which can be used for proving and verifying [`Proof`].
     #[wasm_bindgen(constructor)]
     pub fn new() -> Self {
         let (proving_context, verifying_context, parameters, utxo_accumulator_model) =
@@ -63,9 +65,11 @@ impl Default for Context {
     }
 }
 
+/// Proof Type
 #[wasm_bindgen]
 pub struct Proof(TransferPost);
 
+/// Proves a mint [`Proof`] given the [`Context`].
 #[wasm_bindgen]
 pub fn prove_mint(context: &Context) -> Proof {
     let mut rng = OsRng;
@@ -78,6 +82,7 @@ pub fn prove_mint(context: &Context) -> Proof {
     ))
 }
 
+/// Proves a private transfer [`Proof`] given the [`Context`].
 #[wasm_bindgen]
 pub fn prove_private_transfer(context: &Context) -> Proof {
     let mut rng = OsRng;
@@ -89,6 +94,7 @@ pub fn prove_private_transfer(context: &Context) -> Proof {
     ))
 }
 
+/// Proves a reclaim [`Proof`] given the [`Context`].
 #[wasm_bindgen]
 pub fn prove_reclaim(context: &Context) -> Proof {
     let mut rng = OsRng;
@@ -100,16 +106,19 @@ pub fn prove_reclaim(context: &Context) -> Proof {
     ))
 }
 
+/// Verifies a mint [`Proof`] given the [`Context`].
 #[wasm_bindgen]
 pub fn verify_mint(context: &Context, proof: &Proof) {
     assert_valid_proof(&context.verifying_context.mint, &proof.0);
 }
 
+/// Verifies a private transfer [`Proof`] given the [`Context`].
 #[wasm_bindgen]
 pub fn verify_private_transfer(context: &Context, proof: &Proof) {
     assert_valid_proof(&context.verifying_context.private_transfer, &proof.0);
 }
 
+/// Verifies a reclaim [`Proof`] given the [`Context`].
 #[wasm_bindgen]
 pub fn verify_reclaim(context: &Context, proof: &Proof) {
     assert_valid_proof(&context.verifying_context.reclaim, &proof.0);
