@@ -98,7 +98,9 @@ fn batch_vector_projective_to_affine_normalization(c: &mut Criterion) {
         .collect::<Vec<_>>();
     group.bench_function("batch vector of projective to affine normalization", |b| {
         b.iter(|| {
-            let _ = black_box(ec::batch_vector_projective_to_affine_normalization(black_box(point_vec.as_slice())));
+            let _ = black_box(ec::batch_vector_projective_to_affine_normalization(
+                black_box(point_vec.as_slice()),
+            ));
         })
     });
 }
@@ -111,7 +113,9 @@ fn naive_vector_projective_to_affine_normalization(c: &mut Criterion) {
         .collect::<Vec<_>>();
     group.bench_function("naive vector of projective to affine normalization", |b| {
         b.iter(|| {
-            let _ = black_box(ec::naive_vector_projective_to_affine_normalization(black_box(point_vec.as_slice())));
+            let _ = black_box(ec::naive_vector_projective_to_affine_normalization(
+                black_box(point_vec.as_slice()),
+            ));
         })
     });
 }
