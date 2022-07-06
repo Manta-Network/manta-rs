@@ -352,9 +352,9 @@ pub mod schnorr {
 
     impl<G, H, COM> Verify<COM> for Schnorr<G, H, COM>
     where
+        COM: Has<bool>,
         G: DiscreteLogarithmHardness + Group<COM> + PartialEq<G, COM>,
         H: HashFunction<G, COM>,
-        COM: Has<bool>,
     {
         type Verification = Bool<COM>;
 

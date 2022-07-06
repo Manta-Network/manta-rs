@@ -16,6 +16,8 @@
 
 //! Dynamic Cryptographic Accumulators
 
+use crate::constraint::{Allocate, Allocator, Constant, Derived, Variable};
+
 /// Accumulator Membership Model
 pub trait Model<COM = ()> {
     /// Item Type
@@ -243,69 +245,26 @@ where
     }
 }
 
-/// Constraint System Gadgets
-pub mod constraint {
-    use super::*;
-    use crate::constraint::{Allocate, Allocator, Constant, Derived, Variable};
-    use core::marker::PhantomData;
+impl<M, W, O, COM> Variable<Derived<(W, O)>, COM> for MembershipProof<M, COM>
+where
+    M: Model<COM> + Constant<COM>,
+    M::Type: Model,
+    M::Witness: Variable<W, COM, Type = <M::Type as Model>::Witness>,
+    M::Output: Variable<O, COM, Type = <M::Type as Model>::Output>,
+{
+    type Type = MembershipProof<M::Type>;
 
-    /// Membership Proof Allocation Mode Entry
-    #[derive(derivative::Derivative)]
-    #[derivative(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
-    pub struct MembershipProofModeEntry<WitnessMode, OutputMode> {
-        /// Secret Witness Allocation Mode
-        pub witness: WitnessMode,
-
-        /// Accumulated Value Allocation Mode
-        pub output: OutputMode,
+    #[inline]
+    fn new_unknown(compiler: &mut COM) -> Self {
+        Self::new(compiler.allocate_unknown(), compiler.allocate_unknown())
     }
 
-    impl<WitnessMode, OutputMode> MembershipProofModeEntry<WitnessMode, OutputMode> {
-        /// Builds a new [`MembershipProofModeEntry`] from a witness` mode and an `output` mode.
-        #[inline]
-        pub fn new(witness: WitnessMode, output: OutputMode) -> Self {
-            Self { witness, output }
-        }
-    }
-
-    impl<WitnessMode, OutputMode> From<Derived> for MembershipProofModeEntry<WitnessMode, OutputMode>
-    where
-        WitnessMode: From<Derived>,
-        OutputMode: From<Derived>,
-    {
-        #[inline]
-        fn from(d: Derived) -> Self {
-            Self::new(d.into(), d.into())
-        }
-    }
-
-    /// Membership Proof Allocation Mode
-    #[derive(derivative::Derivative)]
-    #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-    pub struct MembershipProofMode<WitnessMode, OutputMode>(PhantomData<(WitnessMode, OutputMode)>);
-
-    impl<M, WitnessMode, OutputMode, COM>
-        Variable<MembershipProofMode<WitnessMode, OutputMode>, COM> for MembershipProof<M, COM>
-    where
-        M: Model<COM> + Constant<COM>,
-        M::Type: Model,
-        M::Witness: Variable<WitnessMode, COM, Type = <M::Type as Model>::Witness>,
-        M::Output: Variable<OutputMode, COM, Type = <M::Type as Model>::Output>,
-    {
-        type Type = MembershipProof<M::Type>;
-
-        #[inline]
-        fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
-            Self::new(
-                this.witness.as_known(compiler),
-                this.output.as_known(compiler),
-            )
-        }
-
-        #[inline]
-        fn new_unknown(compiler: &mut COM) -> Self {
-            Self::new(compiler.allocate_unknown(), compiler.allocate_unknown())
-        }
+    #[inline]
+    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
+        Self::new(
+            this.witness.as_known(compiler),
+            this.output.as_known(compiler),
+        )
     }
 }
 

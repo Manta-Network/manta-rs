@@ -33,7 +33,7 @@ pub use crate::eclair::{
     cmp::{Eq, PartialEq},
     num::Zero,
     ops::{Add, BitAnd, Not, Sub},
-    Has, Native,
+    Has, Native, NonNative,
 };
 
 /// Proof System

@@ -29,7 +29,7 @@ use crate::{
         self, Accumulator, ConstantCapacityAccumulator, ExactSizeAccumulator, MembershipProof,
         OptimizedAccumulator,
     },
-    constraint::{self, Allocate, AssertEq, Bool, ConditionalSwap, Constant, Has},
+    constraint::{self, Allocate, AssertEq, Bool, ConditionalSwap, Constant, Has, NonNative},
     merkle_tree::{
         fork::{ForkedTree, Trunk},
         inner_tree::InnerMap,
@@ -695,7 +695,7 @@ where
 impl<C, COM> accumulator::Model<COM> for Parameters<C, COM>
 where
     C: Configuration<COM> + ?Sized,
-    COM: Has<bool>,
+    COM: Has<bool> + NonNative,
     InnerDigest<C, COM>: ConditionalSwap<COM> + constraint::PartialEq<InnerDigest<C, COM>, COM>,
     LeafDigest<C, COM>: ConditionalSwap<COM>,
 {
@@ -718,8 +718,8 @@ where
 
 impl<C, COM> accumulator::AssertValidVerification<COM> for Parameters<C, COM>
 where
-    COM: AssertEq,
     C: Configuration<COM> + ?Sized,
+    COM: AssertEq + NonNative,
     InnerDigest<C, COM>: ConditionalSwap<COM> + constraint::PartialEq<InnerDigest<C, COM>, COM>,
     LeafDigest<C, COM>: ConditionalSwap<COM>,
 {

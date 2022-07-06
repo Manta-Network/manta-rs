@@ -20,6 +20,8 @@
 //! version number. The [`VERSION`] number can be queried for the current protocol and can be used
 //! to select the protocol version.
 
+use manta_crypto::constraint::{AssertEq, PartialEq};
+
 pub mod v1;
 
 #[doc(inline)]
@@ -32,4 +34,68 @@ pub const VERSION: u8 = protocol::VERSION;
 pub trait VersionType {
     /// Version Type
     type Version;
+}
+
+/// UTXO Generation
+pub trait Generate<COM = ()> {
+    /// Asset Type
+    type Asset;
+
+    /// Secret Type
+    type Secret;
+
+    /// Utxo Type
+    type Utxo;
+
+    /// Converts `secret` into it's well-formed asset, asserting that it can derive into the given
+    /// `utxo`.
+    fn assert_well_formed_asset(
+        &self,
+        secret: Self::Secret,
+        utxo: &Self::Utxo,
+        compiler: &mut COM,
+    ) -> Self::Asset;
+}
+
+/// UTXO Spending
+pub trait Spend<COM = ()>: Generate<COM> {
+    /// UTXO Membership Proof
+    type MembershipProof;
+
+    /// Void Number Type
+    type VoidNumber;
+
+    /// Asserts that `membership_proof` constitutes a proof that `utxo` is contained in the
+    /// appropriate accumulator.
+    fn assert_membership(
+        &self,
+        utxo: &Self::Utxo,
+        membership_proof: &Self::MembershipProof,
+        compiler: &mut COM,
+    );
+
+    /// Computes the void number associated to `utxo`.
+    fn void_number(&self, utxo: &Self::Utxo, compiler: &mut COM) -> Self::VoidNumber;
+
+    /// Asserts that `secret` generates a well-formed spending asset given `utxo`,
+    /// `membership_proof`, and `void_number`.
+    #[inline]
+    fn assert_well_formed_spend_asset(
+        &self,
+        secret: Self::Secret,
+        utxo: &Self::Utxo,
+        membership_proof: &Self::MembershipProof,
+        void_number: &Self::VoidNumber,
+        compiler: &mut COM,
+    ) -> Self::Asset
+    where
+        COM: AssertEq,
+        Self::VoidNumber: PartialEq<Self::VoidNumber, COM>,
+    {
+        let asset = self.assert_well_formed_asset(secret, utxo, compiler);
+        self.assert_membership(utxo, membership_proof, compiler);
+        let expected_void_number = self.void_number(utxo, compiler);
+        compiler.assert_eq(&expected_void_number, void_number);
+        asset
+    }
 }
