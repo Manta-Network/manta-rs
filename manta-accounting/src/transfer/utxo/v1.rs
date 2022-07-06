@@ -16,7 +16,7 @@
 
 //! UTXO Version 1 Protocol
 
-use crate::transfer::utxo::{Generate, VersionType};
+use crate::transfer::utxo::{Mint, VersionType};
 use core::marker::PhantomData;
 use manta_crypto::{
     constraint::{
@@ -129,18 +129,23 @@ where
     pub encryption_scheme: C::EncryptionScheme,
 }
 
-impl<C, COM> Generate<COM> for Model<C, COM>
+impl<C, COM> Mint<COM> for Model<C, COM>
 where
     C: Configuration<COM>,
     COM: Has<bool, Type = C::Bool> + AssertEq,
 {
+    type MintSecret = UtxoSecret<C, COM>;
     type Asset = Asset<C, COM>;
-    type Secret = UtxoSecret<C, COM>;
     type Utxo = Utxo<C, COM>;
 
     #[inline]
-    fn asset(&self, secret: &Self::Secret, utxo: &Self::Utxo, compiler: &mut COM) -> Self::Asset {
-        secret.get_well_formed_asset(
+    fn asset(
+        &self,
+        mint_secret: &Self::MintSecret,
+        utxo: &Self::Utxo,
+        compiler: &mut COM,
+    ) -> Self::Asset {
+        mint_secret.get_well_formed_asset(
             &self.commitment_scheme,
             &self.encryption_scheme,
             utxo,

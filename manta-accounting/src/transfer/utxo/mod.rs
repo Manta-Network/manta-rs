@@ -36,49 +36,56 @@ pub trait VersionType {
     type Version;
 }
 
-/// UTXO Generation
-pub trait Generate<COM = ()> {
+/// UTXO Minting
+pub trait Mint<COM = ()> {
+    /// Minting Secret Type
+    type MintSecret;
+
     /// Asset Type
     type Asset;
-
-    /// Secret Type
-    type Secret;
 
     /// Utxo Type
     type Utxo;
 
-    /// Returns the asset inside the UTXO, asserting that the `secret` and `utxo` are well-formed.
-    fn asset(&self, secret: &Self::Secret, utxo: &Self::Utxo, compiler: &mut COM) -> Self::Asset;
+    /// Returns the asset inside of `utxo` asserting that `mint_secret` and `utxo` are well-formed.
+    fn asset(
+        &self,
+        mint_secret: &Self::MintSecret,
+        utxo: &Self::Utxo,
+        compiler: &mut COM,
+    ) -> Self::Asset;
 }
 
 /// UTXO Spending
-pub trait Spend<COM = ()>: Generate<COM> {
-    /// UTXO Membership Proof
-    type MembershipProof;
+pub trait Spend<COM = ()>: Mint<COM> {
+    /// Spending Secret Type
+    type SpendSecret;
 
     /// Void Number Type
     type VoidNumber;
 
-    /// Asserts that `membership_proof` constitutes a proof that `utxo` is contained in the
-    /// appropriate accumulator.
-    fn assert_membership(
+    /// Returns the [`VoidNumber`](Self::VoidNumber) for `utxo` asserting that `mint_secret` and
+    /// `spend_secret` are well-formed.
+    fn void_number(
         &self,
+        mint_secret: &Self::MintSecret,
+        spend_secret: &Self::SpendSecret,
         utxo: &Self::Utxo,
-        membership_proof: &Self::MembershipProof,
         compiler: &mut COM,
-    );
+    ) -> Self::VoidNumber;
 
-    /// Computes the void number associated to `utxo`.
-    fn void_number(&self, utxo: &Self::Utxo, compiler: &mut COM) -> Self::VoidNumber;
-
-    /// Returns the asset inside the UTXo, asserting that the `secret` and `utxo` are well-formed
-    /// and that the asset is spendable according to `membership_proof` and `void_number`.
+    /// Returns the asset inside of `utxo` asserting that it is spendable by calling [`asset`] and
+    /// [`void_number`] and checking that the computed [`VoidNumber`] is equal to `void_number`.
+    ///
+    /// [`asset`]: Mint::asset
+    /// [`void_number`]: Self::void_number
+    /// [`VoidNumber`]: Self::VoidNumber
     #[inline]
     fn spendable_asset(
         &self,
-        secret: &Self::Secret,
+        mint_secret: &Self::MintSecret,
+        spend_secret: &Self::SpendSecret,
         utxo: &Self::Utxo,
-        membership_proof: &Self::MembershipProof,
         void_number: &Self::VoidNumber,
         compiler: &mut COM,
     ) -> Self::Asset
@@ -86,10 +93,9 @@ pub trait Spend<COM = ()>: Generate<COM> {
         COM: AssertEq,
         Self::VoidNumber: PartialEq<Self::VoidNumber, COM>,
     {
-        let asset = self.asset(secret, utxo, compiler);
-        self.assert_membership(utxo, membership_proof, compiler);
-        let expected_void_number = self.void_number(utxo, compiler);
-        compiler.assert_eq(&expected_void_number, void_number);
+        let asset = self.asset(mint_secret, utxo, compiler);
+        let computed_void_number = self.void_number(mint_secret, spend_secret, utxo, compiler);
+        compiler.assert_eq(void_number, &computed_void_number);
         asset
     }
 }
