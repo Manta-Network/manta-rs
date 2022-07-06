@@ -609,8 +609,7 @@ mod tests {
         let fp_bits = Fp(F::from(2u64).pow(&[BITS as u64]));
         for _ in 0..NUM_TESTS {
             let mut value = rng.gen::<_, Fp<F>>();
-            // It's quite unlikely that the value is less than 2^`BITS` since `BITS` is smaller than modulus bits.
-            // We resample it until we get one that is.
+            // we sample until a point is greater than 2^`BITS`
             while value < fp_bits {
                 value = rng.gen::<_, Fp<F>>();
             }
