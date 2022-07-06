@@ -573,8 +573,7 @@ where
 #[cfg(test)]
 mod tests {
     use crate::crypto::constraint::arkworks::{Fp, R1CS};
-    use ark_bls12_381::Fr;
-    use ark_ff::{field_new, fields::Field};
+    use ark_ff::PrimeField;
     use ark_r1cs_std::fields::fp::FpVar;
     use manta_crypto::{
         constraint::{Allocate, Secret},
@@ -583,8 +582,8 @@ mod tests {
     };
 
     /// Checks if `assert_within_range` on `value` passes when `should_pass` is `true` and fails when `should_pass` is `false`.  
-    fn assert_within_range<const BITS: usize>(value: Fp<Fr>, should_pass: bool) {
-        let mut cs = R1CS::<Fr>::for_proofs();
+    fn check_correct_range<F: PrimeField, const BITS: usize>(value: Fp<F>, should_pass: bool) {
+        let mut cs = R1CS::<F>::for_proofs();
         let var = value.as_known::<Secret, FpVar<_>>(&mut cs);
         <R1CS<_> as AssertWithinRange<_, BITS>>::assert_within_range(&mut cs, &var);
         let satisfied = cs.is_satisfied();
@@ -595,30 +594,36 @@ mod tests {
         );
     }
 
-    /// Test if `assert_within_range` on `value` works correctly with range is 128 bits.
-    #[test]
-    fn assert_within_128_bits() {
-        const BITS: usize = 128;
-        const NUM_TESTS: usize = 16;
+    /// Test if `assert_within_range` works correctly with range `BITS`. This test
+    /// will generate `NUM_TESTS` randomized test cases and some edge cases to check correctness.
+    fn assert_within_range<F: PrimeField, const BITS: usize, const NUM_TESTS: usize>() {
         let mut rng = OsRng;
-        // anything lower than 2^128 needs to pass
+        // anything lower than 2^`BITS` needs to pass
         for _ in 0..NUM_TESTS {
-            let value = Fp(Fr::from(rng.gen::<_, u128>()));
-            assert_within_range::<BITS>(value, true);
+            let value = Fp(F::from(rng.gen::<_, u128>()));
+            check_correct_range::<_, BITS>(value, true);
         }
-        // anything greater or equal to 2^128 needs to fail
-        let fp128 = Fp(field_new!(Fr, "2").pow(&[128u64]));
+        // anything greater or equal to 2^`BITS` needs to fail
+        let fp_bits = Fp(F::from(2u64).pow(&[BITS as u64]));
         for _ in 0..NUM_TESTS {
-            let mut value = rng.gen::<_, Fp<Fr>>();
-            // It's quite unlikely that the value is less than 2^128. We resample it until we get one that is.
-            while value < fp128 {
-                value = rng.gen::<_, Fp<Fr>>();
+            let mut value = rng.gen::<_, Fp<F>>();
+            // It's quite unlikely that the value is less than 2^`BITS` since `BITS` is smaller than modulus bits.
+            // We resample it until we get one that is.
+            while value < fp_bits {
+                value = rng.gen::<_, Fp<F>>();
             }
-            assert_within_range::<BITS>(value, false);
+            check_correct_range::<_, BITS>(value, false);
         }
-        // edge case: 2^128 should fail
-        assert_within_range::<BITS>(fp128, false);
-        // edge case: 2^128-1 should pass
-        assert_within_range::<BITS>(Fp(fp128.0 - field_new!(Fr, "1")), true);
+        // edge case: 2^`BITS` should fail
+        check_correct_range::<_, BITS>(fp_bits, false);
+        // edge case: 2^`BITS`-1 should pass
+        check_correct_range::<_, BITS>(Fp(fp_bits.0 - F::one()), true);
+    }
+
+    #[test]
+    /// Test if `assert_within_range` works correctly with range `BITS`. This test
+    /// will generate 16 randomized test cases and some edge cases to check correctness.
+    fn assert_within_128_bits() {
+        assert_within_range::<ark_bls12_381::Fr, 128, 16>();
     }
 }
