@@ -14,6 +14,8 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
+//! Elliptic Curve Cryptography Utilities
+
 use ark_ec::{AffineCurve, ProjectiveCurve};
 use ark_ff::UniformRand;
 use core::ops::AddAssign;
@@ -116,6 +118,7 @@ mod test {
     use ark_bls12_381::G1Affine;
     use manta_crypto::rand::OsRng;
 
+    ///
     #[test]
     fn addition_is_consistent_for_projective_and_affine_curve() {
         let mut rng = OsRng;
@@ -136,6 +139,7 @@ mod test {
         );
     }
 
+    ///
     #[test]
     fn multiplication_is_consistent_for_projective_and_affine_curve() {
         let mut rng = OsRng;
