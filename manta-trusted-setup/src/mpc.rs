@@ -61,7 +61,7 @@ pub trait Verify: Types {
         proof: Self::Proof,
     ) -> Result<Self::State, Self::Error>;
 
-    /// Verifies all contributions in `iter` chaining from `last` and `last_response` returning the
+    /// Verifies all contributions in `iter` chaining from an initial `state` and `challenge` returning the
     /// newest [`State`](Types::State) and [`Challenge`](Types::Challenge) if all the contributions
     /// in the chain had valid transitions.
     #[inline]

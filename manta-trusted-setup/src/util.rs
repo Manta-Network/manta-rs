@@ -361,7 +361,7 @@ pub trait PairingEngineExt: PairingEngine {
 
     /// Checks if `lhs` and `rhs` evaluate to the same point under the pairing function, returning
     /// `Some` with prepared points if the pairing outcome is the same. This function checks if
-    /// there exists an `r` such that `(r * lhs.0 == rhs.0) && (r * lhs.1 == rhs.1)`.
+    /// there exists an `r` such that `(r * lhs.0 == rhs.0) && (lhs.1 == r * rhs.1)`.
     #[inline]
     fn same<L1, L2, R1, R2>(lhs: (L1, L2), rhs: (R1, R2)) -> Option<(Pair<Self>, Pair<Self>)>
     where
