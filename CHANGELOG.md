@@ -9,12 +9,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - [\#145](https://github.com/Manta-Network/manta-rs/pull/145) Add `cargo-hakari` and `cargo-nextest` to speed up CI pipeline
 
 ### Changed
+- [\#152](https://github.com/Manta-Network/manta-rs/pull/152) Make `format` and `docs` as prerequisites for the rest of the CI pipeline
 
 ### Deprecated
 
 ### Removed
 
 ### Fixed
+- [\#151](https://github.com/Manta-Network/manta-rs/pull/151) Split the `Sender` and `Receiver` logic out of the `transfer` module into new `sender` and `receiver` modules
 
 ### Security
 
