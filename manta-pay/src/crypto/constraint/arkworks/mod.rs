@@ -573,6 +573,7 @@ where
 #[cfg(test)]
 mod tests {
     use crate::crypto::constraint::arkworks::{Fp, R1CS};
+    use ark_bls12_381::Fr;
     use ark_ff::PrimeField;
     use ark_r1cs_std::fields::fp::FpVar;
     use manta_crypto::{
@@ -581,9 +582,11 @@ mod tests {
         rand::{OsRng, Rand},
     };
 
-    /// Checks if `assert_within_range` on `value` passes when `should_pass` is `true` and fails when `should_pass` is `false`.
-    #[inline]
-    fn check_correct_range<F: PrimeField, const BITS: usize>(value: Fp<F>, should_pass: bool) {
+    /// Checks if `assert_within_range` passes when `should_pass` is `true` and fails when `should_pass` is `false`.  
+    fn assert_within_range<F, const BITS: usize>(value: Fp<F>, should_pass: bool)
+    where
+        F: PrimeField,
+    {
         let mut cs = R1CS::<F>::for_proofs();
         let var = value.as_known::<Secret, FpVar<_>>(&mut cs);
         <R1CS<_> as AssertWithinRange<_, BITS>>::assert_within_range(&mut cs, &var);
@@ -595,36 +598,44 @@ mod tests {
         );
     }
 
-    /// Test if `assert_within_range` works correctly with range `BITS`. This test
-    /// will generate `NUM_TESTS` randomized test cases and some edge cases to check correctness.
-    #[inline]
-    fn assert_within_range<F: PrimeField, const BITS: usize, const NUM_TESTS: usize>() {
+    /// Checks if `assert_within_range` works correctly for `BITS` bits.
+    fn assert_within_range_bits<F, const BITS: usize, const NUM_TESTS: usize>()
+    where
+        F: PrimeField,
+    {
         let mut rng = OsRng;
-        // anything lower than 2^`BITS` needs to pass
+        let bound = Fp(F::from(2u64).pow(&[BITS as u64]));
+        assert_within_range::<_, BITS>(Fp(F::zero()), true);
         for _ in 0..NUM_TESTS {
-            let value = Fp(F::from(rng.gen::<_, u128>()));
-            check_correct_range::<_, BITS>(value, true);
+            match BITS {
+                8 => assert_within_range::<_, BITS>(Fp(F::from(rng.gen::<_, u8>())), true),
+                16 => assert_within_range::<_, BITS>(Fp(F::from(rng.gen::<_, u16>())), true),
+                32 => assert_within_range::<_, BITS>(Fp(F::from(rng.gen::<_, u32>())), true),
+                64 => assert_within_range::<_, BITS>(Fp(F::from(rng.gen::<_, u64>())), true),
+                128 => assert_within_range::<_, BITS>(Fp(F::from(rng.gen::<_, u128>())), true),
+                _ => unimplemented!(
+                    "Only implemented assert_within_range_bits tests for u32, u64 and u128."
+                ),
+            }
         }
-        // anything greater or equal to 2^`BITS` needs to fail
-        let fp_bits = Fp(F::from(2u64).pow(&[BITS as u64]));
+        assert_within_range::<F, BITS>(Fp(bound.0 - F::one()), true);
+        assert_within_range::<F, BITS>(bound, false);
         for _ in 0..NUM_TESTS {
             let mut value = rng.gen::<_, Fp<F>>();
-            // we sample until a point is greater than 2^`BITS`
-            while value < fp_bits {
+            while value <= bound {
                 value = rng.gen::<_, Fp<F>>();
             }
-            check_correct_range::<_, BITS>(value, false);
+            assert_within_range::<_, BITS>(value, false);
         }
-        // edge case: 2^`BITS` should fail
-        check_correct_range::<_, BITS>(fp_bits, false);
-        // edge case: 2^`BITS`-1 should pass
-        check_correct_range::<_, BITS>(Fp(fp_bits.0 - F::one()), true);
     }
 
+    /// Tests if `assert_within_range` works correctly for U64 and U128.
     #[test]
-    /// Test if `assert_within_range` works correctly with range `BITS`, using Field `ark_bls12_381::Fr`. This test
-    /// will generate 16 randomized test cases and some edge cases to check correctness.
-    fn assert_within_128_bits() {
-        assert_within_range::<ark_bls12_381::Fr, 128, 16>();
+    fn assert_within_range_is_correct() {
+        assert_within_range_bits::<Fr, 8, 32>();
+        assert_within_range_bits::<Fr, 16, 32>();
+        assert_within_range_bits::<Fr, 32, 32>();
+        assert_within_range_bits::<Fr, 64, 32>();
+        assert_within_range_bits::<Fr, 128, 32>();
     }
 }

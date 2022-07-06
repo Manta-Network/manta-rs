@@ -35,15 +35,15 @@ impl<T, const BITS: usize> UnsignedInteger<T, BITS> {
         Self(value)
     }
 
-    #[inline]
     /// Consumes the [`UnsignedInteger`] and returns the underlying value.
+    #[inline]
     pub fn into_inner(self) -> T {
         self.0
     }
 
     /// Mutates an [`UnsignedInteger`] with a function `f`.
     #[inline]
-    fn mutate<F, U, COM>(&mut self, f: F, compiler: &mut COM) -> U
+    pub fn mutate<F, U, COM>(&mut self, f: F, compiler: &mut COM) -> U
     where
         COM: AssertWithinRange<T, BITS>,
         F: FnOnce(&mut T, &mut COM) -> U,
