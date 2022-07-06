@@ -581,7 +581,8 @@ mod tests {
         rand::{OsRng, Rand},
     };
 
-    /// Checks if `assert_within_range` on `value` passes when `should_pass` is `true` and fails when `should_pass` is `false`.  
+    /// Checks if `assert_within_range` on `value` passes when `should_pass` is `true` and fails when `should_pass` is `false`.
+    #[inline]
     fn check_correct_range<F: PrimeField, const BITS: usize>(value: Fp<F>, should_pass: bool) {
         let mut cs = R1CS::<F>::for_proofs();
         let var = value.as_known::<Secret, FpVar<_>>(&mut cs);
@@ -596,6 +597,7 @@ mod tests {
 
     /// Test if `assert_within_range` works correctly with range `BITS`. This test
     /// will generate `NUM_TESTS` randomized test cases and some edge cases to check correctness.
+    #[inline]
     fn assert_within_range<F: PrimeField, const BITS: usize, const NUM_TESTS: usize>() {
         let mut rng = OsRng;
         // anything lower than 2^`BITS` needs to pass
