@@ -574,7 +574,7 @@ where
 mod tests {
     use crate::crypto::constraint::arkworks::{Fp, R1CS};
     use ark_bls12_381::Fr;
-    use ark_ff::PrimeField;
+    use ark_ff::{BigInteger, PrimeField};
     use ark_r1cs_std::fields::fp::FpVar;
     use manta_crypto::{
         constraint::{Allocate, Secret},
@@ -604,32 +604,30 @@ mod tests {
         F: PrimeField,
     {
         let mut rng = OsRng;
-        let bound = Fp(F::from(2u64).pow(&[BITS as u64]));
+
         assert_within_range::<_, BITS>(Fp(F::zero()), true);
         for _ in 0..NUM_TESTS {
-            match BITS {
-                8 => assert_within_range::<_, BITS>(Fp(F::from(rng.gen::<_, u8>())), true),
-                16 => assert_within_range::<_, BITS>(Fp(F::from(rng.gen::<_, u16>())), true),
-                32 => assert_within_range::<_, BITS>(Fp(F::from(rng.gen::<_, u32>())), true),
-                64 => assert_within_range::<_, BITS>(Fp(F::from(rng.gen::<_, u64>())), true),
-                128 => assert_within_range::<_, BITS>(Fp(F::from(rng.gen::<_, u128>())), true),
-                _ => unimplemented!(
-                    "Only implemented assert_within_range_bits tests for u32, u64 and u128."
-                ),
-            }
+            let value_le = (0..BITS)
+                .map(|_| (rng.gen::<_, u8>() & 1) == 1)
+                .collect::<Vec<_>>();
+            let value = Fp(F::from_repr(F::BigInt::from_bits_le(&value_le))
+                .expect("BITS should be less than modulus bits of field."));
+            assert_within_range::<_, BITS>(value, true);
         }
+        let bound = Fp(F::from(2u64).pow(&[BITS as u64]));
         assert_within_range::<F, BITS>(Fp(bound.0 - F::one()), true);
         assert_within_range::<F, BITS>(bound, false);
         for _ in 0..NUM_TESTS {
-            let mut value = rng.gen::<_, Fp<F>>();
-            while value <= bound {
-                value = rng.gen::<_, Fp<F>>();
+            // we sample until a point is greater than or equal to 2^BITS
+            let mut value = rng.gen();
+            while value < bound {
+                value = rng.gen();
             }
             assert_within_range::<_, BITS>(value, false);
         }
     }
 
-    /// Tests if `assert_within_range` works correctly for U64 and U128.
+    /// Tests if `assert_within_range` works correctly for U8, U16, U32, U64, and U128.
     #[test]
     fn assert_within_range_is_correct() {
         assert_within_range_bits::<Fr, 8, 32>();
