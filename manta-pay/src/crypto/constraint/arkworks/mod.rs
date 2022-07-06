@@ -569,3 +569,56 @@ where
         self + rhs
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::crypto::constraint::arkworks::{Fp, R1CS};
+    use ark_bls12_381::Fr;
+    use ark_ff::{field_new, fields::Field};
+    use ark_r1cs_std::fields::fp::FpVar;
+    use manta_crypto::{
+        constraint::{Allocate, Secret},
+        eclair::assert::AssertWithinRange,
+        rand::{OsRng, Rand},
+    };
+
+    /// Checks if `assert_within_range` on `value` passes when `should_pass` is `true` and fails when `should_pass` is `false`.  
+    fn assert_within_range<const BITS: usize>(value: Fp<Fr>, should_pass: bool) {
+        let mut cs = R1CS::<Fr>::for_proofs();
+        let var = value.as_known::<Secret, FpVar<_>>(&mut cs);
+        <R1CS<_> as AssertWithinRange<_, BITS>>::assert_within_range(&mut cs, &var);
+        let satisfied = cs.is_satisfied();
+        assert_eq!(
+            should_pass, satisfied,
+            "on value {:?}, expect satisfied = {}, but got {}",
+            value, should_pass, satisfied
+        );
+    }
+
+    /// Test if `assert_within_range` on `value` works correctly with range is 128 bits.
+    #[test]
+    fn assert_within_128_bits() {
+        const BITS: usize = 128;
+        const NUM_TESTS: usize = 16;
+        let mut rng = OsRng;
+        // anything lower than 2^128 needs to pass
+        for _ in 0..NUM_TESTS {
+            let value = Fp(Fr::from(rng.gen::<_, u128>()));
+            assert_within_range::<BITS>(value, true);
+        }
+        // anything greater or equal to 2^128 needs to fail
+        let fp128 = Fp(field_new!(Fr, "2").pow(&[128u64]));
+        for _ in 0..NUM_TESTS {
+            let mut value = rng.gen::<_, Fp<Fr>>();
+            // It's quite unlikely that the value is less than 2^128. We resample it until we get one that is.
+            while value < fp128 {
+                value = rng.gen::<_, Fp<Fr>>();
+            }
+            assert_within_range::<BITS>(value, false);
+        }
+        // edge case: 2^128 should fail
+        assert_within_range::<BITS>(fp128, false);
+        // edge case: 2^128-1 should pass
+        assert_within_range::<BITS>(Fp(fp128.0 - field_new!(Fr, "1")), true);
+    }
+}
