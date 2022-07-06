@@ -63,7 +63,7 @@ where
 }
 
 #[inline]
-pub fn projective_projective_add_assign<'a, P>(lhs: &mut P, rhs: P)
+pub fn projective_projective_add_assign<P>(lhs: &mut P, rhs: P)
 where
     P: ProjectiveCurve,
 {
