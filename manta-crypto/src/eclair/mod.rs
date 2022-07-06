@@ -19,12 +19,11 @@
 use manta_util::{create_seal, seal};
 
 pub mod alloc;
-pub mod assert;
 pub mod bool;
 pub mod cmp;
 pub mod execution;
+pub mod num;
 pub mod ops;
-pub mod uint;
 
 /// Native Compiler Marker Trait
 ///

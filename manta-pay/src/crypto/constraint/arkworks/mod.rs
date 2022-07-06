@@ -30,7 +30,7 @@ use manta_crypto::{
         measure::{Count, Measure},
         mode, Add, Assert, AssertEq, ConditionalSwap, Constant, Has, Public, Secret, Variable,
     },
-    eclair::assert::AssertWithinRange,
+    eclair::num::AssertWithinBitRange,
     rand::{RngCore, Sample},
 };
 use manta_util::{
@@ -335,7 +335,7 @@ where
     // TODO: Implement these optimizations.
 }
 
-impl<F, const BITS: usize> AssertWithinRange<FpVar<F>, BITS> for R1CS<F>
+impl<F, const BITS: usize> AssertWithinBitRange<FpVar<F>, BITS> for R1CS<F>
 where
     F: PrimeField,
 {
@@ -343,11 +343,11 @@ where
     fn assert_within_range(&mut self, value: &FpVar<F>) {
         assert!(
             BITS < F::Params::MODULUS_BITS as usize,
-            "BITS must be less than modulus bits of `F`"
+            "BITS must be strictly less than modulus bits of `F`."
         );
         let value_bits = value
             .to_bits_le()
-            .expect("to_bits_be is not allowed to fail");
+            .expect("Bit decomposition is not allowed to fail.");
         for bit in &value_bits[BITS..] {
             bit.enforce_equal(&Boolean::FALSE)
                 .expect("Enforcing equality is not allowed to fail.");
@@ -582,7 +582,7 @@ mod tests {
         rand::{OsRng, Rand},
     };
 
-    /// Checks if `assert_within_range` passes when `should_pass` is `true` and fails when `should_pass` is `false`.  
+    /// Checks if `assert_within_range` passes when `should_pass` is `true` and fails when `should_pass` is `false`.
     fn assert_within_range<F, const BITS: usize>(value: Fp<F>, should_pass: bool)
     where
         F: PrimeField,
