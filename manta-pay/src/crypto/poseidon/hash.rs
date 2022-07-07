@@ -68,11 +68,11 @@ where
 {
     /// Builds a new [`Hasher`] over `permutation` and `domain_tag`.
     #[inline]
-    pub fn new(permutation: Permutation<S, COM>, domain_tag: S::Field) -> Self {
+    pub fn new(permutation: Permutation<S, COM>, domain_tag: S::ParameterField) -> Self {
         assert_eq!(ARITY + 1, S::WIDTH);
         Self {
             permutation,
-            domain_tag,
+            domain_tag: S::from_parameter(domain_tag),
         }
     }
 }

@@ -73,15 +73,6 @@ where
     /// Initializes the [`Sponge`] state for the beginning of the cipher.
     fn initialize(&self, compiler: &mut COM) -> P::Domain;
 
-    /// Generates the starting input blocks for `key` and `header` data to be inserted into the
-    /// cipher.
-    fn setup(
-        &self,
-        key: &Self::Key,
-        header: &Self::Header,
-        compiler: &mut COM,
-    ) -> Vec<Self::SetupBlock>;
-
     /// Pads a slice `input` into `num_vecs` vectors where each vector has a length of `width - 1`.
     fn padding<T>(
         &self,
@@ -115,6 +106,15 @@ where
         }
         blocks
     }
+
+    /// Generates the starting input blocks for `key` and `header` data to be inserted into the
+    /// cipher.
+    fn setup(
+        &self,
+        key: &Self::Key,
+        header: &Self::Header,
+        compiler: &mut COM,
+    ) -> Vec<Self::SetupBlock>;
 }
 
 /// Duplex Sponge Tag Verification

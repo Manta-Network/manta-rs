@@ -130,6 +130,9 @@ pub trait Specification<COM = ()> {
 
     /// Applies the S-BOX to `point`.
     fn apply_sbox(point: &mut Self::Field, compiler: &mut COM);
+
+    /// Converts a constant parameter `point` for permutation state.
+    fn from_parameter(point: Self::ParameterField) -> Self::Field;
 }
 
 /// Poseidon Internal State

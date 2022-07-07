@@ -173,6 +173,11 @@ where
     fn apply_sbox(point: &mut Self::Field, _: &mut ()) {
         point.0 = point.0.pow(&[Self::SBOX_EXPONENT, 0, 0, 0]);
     }
+
+    #[inline]
+    fn from_parameter(point: Self::ParameterField) -> Self::Field {
+        point
+    }
 }
 
 impl<S> poseidon::Specification<Compiler<S>> for S
@@ -229,6 +234,11 @@ where
         *point = point
             .pow_by_constant(&[Self::SBOX_EXPONENT])
             .expect("Exponentiation is not allowed to fail.");
+    }
+
+    #[inline]
+    fn from_parameter(point: Self::ParameterField) -> Self::Field {
+        FpVar::Constant(point.0)
     }
 }
 
