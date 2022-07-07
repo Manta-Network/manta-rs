@@ -127,9 +127,9 @@ where
         if !self.is_square() {
             return false;
         }
-        for i in 0..self.num_rows() {
-            for j in 0..self.num_columns() {
-                if !F::eq(&self.0[i][j], &kronecker_delta(i, j)) {
+        for (i, element) in self.0.iter().enumerate() {
+            for (j, inner_element) in element.iter().enumerate() {
+                if !F::eq(&inner_element, &kronecker_delta(i, j)) {
                     return false;
                 }
             }
@@ -145,9 +145,10 @@ where
         if self.num_rows() != self.num_columns() {
             return false;
         }
-        for i in 0..self.num_rows() {
-            for j in 0..self.num_columns() {
-                if !F::eq(&self.0[i][j], &self.0[j][i]) {
+        // Check the lower triangle against the upper triangle
+        for (i, element) in self.0.iter().enumerate() {
+            for (j, inner_element) in element.iter().enumerate().skip(i + 1) {
+                if !F::eq(&inner_element, &self.0[j][i]) {
                     return false;
                 }
             }
@@ -564,6 +565,7 @@ where
 }
 
 /// Returns the kronecker delta of `i` and `j`.
+#[inline]
 pub fn kronecker_delta<F>(i: usize, j: usize) -> F
 where
     F: Field,
