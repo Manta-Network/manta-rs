@@ -16,9 +16,6 @@
 
 //! Merkle Trees and Forests
 
-// NOTE: clippy false-positive: https://github.com/rust-lang/rust-clippy/pull/8869
-#![allow(clippy::derive_partial_eq_without_eq)]
-
 // FIXME: Get rid of as many `pub(super)` declarations as we can.
 // TODO:  Should `Leaf` move into `Tree`/`Configuration` since we might want the tree to have
 //        special kinds of leaf input (metadata along with just the digest)?
