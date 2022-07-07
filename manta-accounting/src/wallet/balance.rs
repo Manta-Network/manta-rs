@@ -81,13 +81,11 @@ impl BalanceState for AssetList {
         self.value(id)
     }
 
-    #[allow(clippy::only_used_in_recursion)] // NOTE: False-positive: rust-clippy/issues/8560
     #[inline]
     fn deposit(&mut self, asset: Asset) {
         self.deposit(asset);
     }
 
-    #[allow(clippy::only_used_in_recursion)] // NOTE: False-positive: rust-clippy/issues/8560
     #[inline]
     fn withdraw(&mut self, asset: Asset) -> bool {
         self.withdraw(asset)
