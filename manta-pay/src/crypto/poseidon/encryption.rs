@@ -23,6 +23,7 @@ use manta_crypto::permutation::{
     duplex::{self, Setup, Types, Verify},
     sponge::{Read, Write},
 };
+use manta_util::vec::padded_chunks;
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
@@ -259,18 +260,8 @@ where
         compiler: &mut COM,
     ) -> Vec<Self::SetupBlock> {
         let _ = compiler;
-        let mut blocks = self.padding(
-            key.as_slice(),
-            S::WIDTH,
-            key.len() / (S::WIDTH - 1),
-            compiler,
-        );
-        blocks.extend(self.padding(
-            header.as_slice(),
-            S::WIDTH,
-            header.len() / (S::WIDTH - 1),
-            compiler,
-        ));
+        let mut blocks = padded_chunks(key.as_slice(), S::WIDTH - 1);
+        blocks.extend(padded_chunks(header.as_slice(), S::WIDTH - 1));
         blocks
             .into_iter()
             .map(|b| SetupBlock(b.into_boxed_slice()))

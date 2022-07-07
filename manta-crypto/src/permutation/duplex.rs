@@ -73,40 +73,6 @@ where
     /// Initializes the [`Sponge`] state for the beginning of the cipher.
     fn initialize(&self, compiler: &mut COM) -> P::Domain;
 
-    /// Pads a slice `input` into `num_vecs` vectors where each vector has a length of `width - 1`.
-    fn padding<T>(
-        &self,
-        input: &[T],
-        width: usize,
-        num_vecs: usize,
-        compiler: &mut COM,
-    ) -> Vec<Vec<T>>
-    where
-        T: Clone + Default,
-    {
-        let _ = compiler;
-        let mut blocks = Vec::<Vec<_>>::with_capacity(num_vecs);
-        for elem in input.iter().cloned() {
-            match blocks.last_mut() {
-                Some(block) => match width - block.len() {
-                    1 => blocks.push(vec![elem]),
-                    2 => {
-                        block.push(elem);
-                        blocks.push(vec![]);
-                    }
-                    _ => block.push(elem),
-                },
-                _ => blocks.push(vec![elem]),
-            }
-        }
-        if let Some(last) = blocks.last_mut() {
-            if !last.is_empty() {
-                last.resize_with(width - 1, Default::default);
-            }
-        }
-        blocks
-    }
-
     /// Generates the starting input blocks for `key` and `header` data to be inserted into the
     /// cipher.
     fn setup(
