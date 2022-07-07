@@ -18,7 +18,7 @@
 
 use alloc::vec::Vec;
 use ark_ff::{Field, FpParameters, PrimeField};
-use ark_r1cs_std::{alloc::AllocVar, eq::EqGadget, select::CondSelectGadget};
+use ark_r1cs_std::{alloc::AllocVar, eq::EqGadget, select::CondSelectGadget, ToBitsGadget};
 use ark_relations::{
     ns, r1cs as ark_r1cs,
     r1cs::{ConstraintSynthesizer, ConstraintSystemRef},
@@ -31,6 +31,7 @@ use manta_crypto::{
         mode, Add, Assert, AssertEq, BitAnd, ConditionalSwap, Constant, Has, NonNative, Public,
         Secret, Variable,
     },
+    eclair::num::AssertWithinBitRange,
     rand::{RngCore, Sample},
 };
 use manta_util::{
@@ -332,6 +333,26 @@ where
 
 impl<F> AssertEq for R1CS<F> where F: PrimeField {}
 
+impl<F, const BITS: usize> AssertWithinBitRange<FpVar<F>, BITS> for R1CS<F>
+where
+    F: PrimeField,
+{
+    #[inline]
+    fn assert_within_range(&mut self, value: &FpVar<F>) {
+        assert!(
+            BITS < F::Params::MODULUS_BITS as usize,
+            "BITS must be strictly less than modulus bits of `F`."
+        );
+        let value_bits = value
+            .to_bits_le()
+            .expect("Bit decomposition is not allowed to fail.");
+        for bit in &value_bits[BITS..] {
+            bit.enforce_equal(&Boolean::FALSE)
+                .expect("Enforcing equality is not allowed to fail.");
+        }
+    }
+}
+
 impl<F> Count<mode::Constant> for R1CS<F> where F: PrimeField {}
 
 impl<F> Count<Public> for R1CS<F>
@@ -557,5 +578,92 @@ where
     fn add(self, rhs: Self, compiler: &mut R1CS<F>) -> Self {
         let _ = compiler;
         self + rhs
+    }
+}
+
+/// Testing Suite
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ark_bls12_381::Fr;
+    use ark_ff::BigInteger;
+    use core::iter::repeat_with;
+    use manta_crypto::{
+        constraint::Allocate,
+        rand::{OsRng, Rand},
+    };
+
+    /// Checks if `assert_within_range` passes when `should_pass` is `true` and fails when
+    /// `should_pass` is `false`.
+    #[inline]
+    fn check_assert_within_range<F, const BITS: usize>(value: Fp<F>, should_pass: bool)
+    where
+        F: PrimeField,
+    {
+        let mut cs = R1CS::<F>::for_proofs();
+        let variable = value.as_known::<Secret, FpVar<_>>(&mut cs);
+        AssertWithinBitRange::<_, BITS>::assert_within_range(&mut cs, &variable);
+        let satisfied = cs.is_satisfied();
+        assert_eq!(
+            should_pass, satisfied,
+            "on value {:?}, expect satisfied = {}, but got {}",
+            value, should_pass, satisfied
+        );
+    }
+
+    /// Samples a field element with fewer than `BITS`-many bits using `rng`.
+    #[inline]
+    fn sample_smaller_than<R, F, const BITS: usize>(rng: &mut R) -> Fp<F>
+    where
+        R: RngCore + ?Sized,
+        F: PrimeField,
+    {
+        Fp(F::from_repr(F::BigInt::from_bits_le(
+            &repeat_with(|| rng.gen()).take(BITS).collect::<Vec<_>>(),
+        ))
+        .expect("BITS should be less than modulus bits of field."))
+    }
+
+    /// Samples a field element larger than `bound` using `rng`.
+    #[inline]
+    fn sample_larger_than<R, F>(bound: &Fp<F>, rng: &mut R) -> Fp<F>
+    where
+        R: RngCore + ?Sized,
+        F: PrimeField,
+    {
+        let mut value = rng.gen();
+        while &value <= bound {
+            value = rng.gen();
+        }
+        value
+    }
+
+    /// Checks if [`assert_within_range`] works correctly for `BITS`-many bits with `ROUNDS`-many
+    /// tests for less than the range and more than the range.
+    #[inline]
+    fn test_assert_within_range<R, F, const BITS: usize, const ROUNDS: usize>(rng: &mut R)
+    where
+        R: RngCore + ?Sized,
+        F: PrimeField,
+    {
+        let bound = Fp(F::from(2u64).pow(&[BITS as u64]));
+        check_assert_within_range::<_, BITS>(Fp(F::zero()), true);
+        check_assert_within_range::<_, BITS>(Fp(bound.0 - F::one()), true);
+        check_assert_within_range::<_, BITS>(bound, false);
+        for _ in 0..ROUNDS {
+            check_assert_within_range::<_, BITS>(sample_smaller_than::<_, F, BITS>(rng), true);
+            check_assert_within_range::<_, BITS>(sample_larger_than(&bound, rng), false);
+        }
+    }
+
+    /// Tests if `assert_within_range` works correctly for U8, U16, U32, U64, and U128.
+    #[test]
+    fn assert_within_range_is_correct() {
+        let mut rng = OsRng;
+        test_assert_within_range::<_, Fr, 8, 32>(&mut rng);
+        test_assert_within_range::<_, Fr, 16, 32>(&mut rng);
+        test_assert_within_range::<_, Fr, 32, 32>(&mut rng);
+        test_assert_within_range::<_, Fr, 64, 32>(&mut rng);
+        test_assert_within_range::<_, Fr, 128, 32>(&mut rng);
     }
 }

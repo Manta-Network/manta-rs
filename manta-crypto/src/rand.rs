@@ -223,6 +223,24 @@ pub trait Sample<D = ()>: Sized {
     }
 }
 
+impl Sample for bool {
+    #[inline]
+    fn sample<R>(_: (), rng: &mut R) -> Self
+    where
+        R: RngCore + ?Sized,
+    {
+        // NOTE: See the docstring from [`rand`]:
+        //
+        // > We can compare against an arbitrary bit of an u32 to get a bool.
+        // > Because the least significant bits of a lower quality RNG can have
+        // > simple patterns, we compare against the most significant bit. This is
+        // > easiest done using a sign test.
+        //
+        // [`rand`]: https://docs.rs/rand/latest/rand/distributions/struct.Standard.html#impl-Distribution%3Cbool%3E
+        (rng.next_u32() as i32) < 0
+    }
+}
+
 /// Generates [`Sample`] implementation for `$type` using conversion from `u32`.
 macro_rules! impl_sample_from_u32 {
     ($($type:ty),+) => {
