@@ -259,25 +259,18 @@ where
         compiler: &mut COM,
     ) -> Vec<Self::SetupBlock> {
         let _ = compiler;
-        let mut blocks = Vec::<Vec<_>>::with_capacity((key.len() + header.len()) / (S::WIDTH - 1));
-        for elem in key.iter().chain(header).cloned() {
-            match blocks.last_mut() {
-                Some(block) => match S::WIDTH - block.len() {
-                    1 => blocks.push(vec![elem]),
-                    2 => {
-                        block.push(elem);
-                        blocks.push(vec![]);
-                    }
-                    _ => block.push(elem),
-                },
-                _ => blocks.push(vec![elem]),
-            }
-        }
-        if let Some(last) = blocks.last_mut() {
-            if !last.is_empty() {
-                last.resize_with(S::WIDTH - 1, Default::default);
-            }
-        }
+        let mut blocks = self.padding(
+            key.as_slice(),
+            S::WIDTH,
+            key.len() / (S::WIDTH - 1),
+            compiler,
+        );
+        blocks.extend(self.padding(
+            header.as_slice(),
+            S::WIDTH,
+            header.len() / (S::WIDTH - 1),
+            compiler,
+        ));
         blocks
             .into_iter()
             .map(|b| SetupBlock(b.into_boxed_slice()))
