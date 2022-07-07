@@ -22,9 +22,94 @@ use crate::crypto::hash::poseidon::{
 };
 use alloc::vec;
 use core::fmt::Debug;
+use manta_crypto::rand::{CryptoRng, RngCore, Sample};
 use manta_util::vec::{Vec, VecExt};
 
-/// MDS Matrix for both naive Poseidon Hash and optimized Poseidon Hash
+/// Maximum Distance Separable Matrix for Poseidon Hash
+pub struct MaximumDistanceSeparableMatrix<F>
+where
+    F: Field,
+{
+    /// The matrix for [`MaximumDistanceSeparableMatrix`]
+    pub mat: SquareMatrix<F>,
+}
+
+impl<F, D> Sample<D> for MaximumDistanceSeparableMatrix<F>
+where
+    F: Field,
+    D: CauchyMatrixDistribution<F>,
+{
+    fn sample<R>(distribution: D, mut rng: &mut R) -> Self
+    where
+        R: RngCore + ?Sized,
+    {
+        let mat = distribution.sample_matrix(&mut rng);
+        MaximumDistanceSeparableMatrix { mat }
+    }
+}
+
+impl<F> MaximumDistanceSeparableMatrix<F>
+where
+    F: Field,
+{
+    /// Return a new Maximum Distance Separable Matrix
+    pub fn new(mat: SquareMatrix<F>) -> Self {
+        Self { mat }
+    }
+}
+
+/// Distribution for generation Cauchy Matrix
+pub trait CauchyMatrixDistribution<F>
+where
+    F: Field,
+{
+    /// Sample an MDS.
+    fn sample_matrix<R: RngCore>(&self, rng: &mut R) -> SquareMatrix<F>;
+}
+
+/// A constant [`CauchyMatrixDistribution`], where `x = (0..mat_size)` and `y = (mat_size..2*mat_size)`.
+pub struct NumRangeCauchyMatrixDistribution {
+    /// Matrix Size
+    pub mat_size: usize,
+}
+
+impl<F> CauchyMatrixDistribution<F> for NumRangeCauchyMatrixDistribution
+where
+    F: Field + Clone,
+{
+    fn sample_matrix<R: RngCore>(&self, rng: &mut R) -> SquareMatrix<F> {
+        let _ = rng;
+        let mut xs_ys = field_range_from_zero::<F>(2 * self.mat_size);
+        // TODO: once we made a more general CauchyMatrixGenerator in this PR, replace below with a single call to it.
+        let xs = xs_ys.by_ref().take(self.mat_size).collect::<Vec<_>>();
+        let ys = xs_ys.map(|y| F::sub(&F::zero(), &y)).collect::<Vec<_>>();
+        let mat = SquareMatrix::new_unchecked(Matrix::new_unchecked(
+            xs.iter()
+                .map(|x| {
+                    ys.iter()
+                        .map(|y| F::sub(x, y).inverse().expect("`x-y` is invertible."))
+                        .collect()
+                })
+                .collect(),
+        ));
+        mat
+    }
+}
+
+/// Return an field iterator in 0..len
+fn field_range_from_zero<F: Field + Clone>(len: usize) -> impl Iterator<Item = F> {
+    let mut curr = F::zero();
+    (0..len).map(move |_| {
+        let ret = curr.clone();
+        curr = F::add(&curr, &F::one());
+        ret
+    })
+}
+
+// TODO: Add a more general `CauchyMatrixGenerator` (see issue)
+
+/// MDS Matrix and some of its transformations using by Poseidon Hash.
+///
 /// For detailed descriptions, please refer to <https://hackmd.io/8MdoHwoKTPmQfZyIKEYWXQ>
 /// Note: Naive and optimized Poseidon Hash does not change #constraints in Groth16.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -32,7 +117,8 @@ pub struct MdsMatrices<F>
 where
     F: Field,
 {
-    /// MDS Matrix for naive Poseidon Hash.
+    /// Maximum Distance Separable Matrix.
+    // TODO: change it to MaximumDistanceSeparableMatrix<F>
     pub m: SquareMatrix<F>,
     /// inversion of mds matrix. Used in optimzed Poseidon Hash.
     pub m_inv: SquareMatrix<F>,
@@ -97,6 +183,7 @@ where
     /// Generates the mds matrix `m` for naive Poseidon Hash
     /// mds matrix is constructed to be symmetry so that row-major or col-major
     /// representation gives the same output.
+    #[deprecated] // TODO: use `MaximumDistanceSeparableMatrix::sample`
     pub fn generate_mds(t: usize) -> SquareMatrix<F>
     where
         F: FieldGeneration,
