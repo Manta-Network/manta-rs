@@ -18,7 +18,8 @@
 //!
 //! The current protocol is referred to by [`protocol`] and older protocols are marked by their
 //! version number. The [`VERSION`] number can be queried for the current protocol and can be used
-//! to select the protocol version.
+//! to select the protocol version. The transfer protocol is built up from a given [`Mint`] and
+//! [`Spend`] implementation.
 
 use manta_crypto::constraint::{AssertEq, PartialEq};
 
