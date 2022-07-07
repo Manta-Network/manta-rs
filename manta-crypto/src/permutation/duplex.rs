@@ -29,7 +29,7 @@ use crate::{
         PseudorandomPermutation,
     },
 };
-use alloc::{vec, vec::Vec};
+use alloc::vec::Vec;
 use core::marker::PhantomData;
 
 #[cfg(feature = "serde")]
