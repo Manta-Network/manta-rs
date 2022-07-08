@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 ### Added
 - [\#131](https://github.com/Manta-Network/manta-rs/pull/131) Add abstract Phase 1 for Groth16 trusted setup
+
+### Changed
+
+### Deprecated
+
+### Removed
+
+### Fixed
+
+### Security
+
+## [0.5.3] - 2022-07-08
+### Added
 - [\#141](https://github.com/Manta-Network/manta-rs/pull/141) Add `U128` type and range assertion trait to ECLAIR
 - [\#144](https://github.com/Manta-Network/manta-rs/pull/144) Add new release PR template for future releases
 - [\#145](https://github.com/Manta-Network/manta-rs/pull/145) Add `cargo-hakari` and `cargo-nextest` to speed up CI pipeline
@@ -16,14 +29,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Changed
 - [\#152](https://github.com/Manta-Network/manta-rs/pull/152) Make `format` and `docs` as prerequisites for the rest of the CI pipeline
 
-### Deprecated
-
-### Removed
-
 ### Fixed
 - [\#151](https://github.com/Manta-Network/manta-rs/pull/151) Split the `Sender` and `Receiver` logic out of the `transfer` module into new `sender` and `receiver` modules
-
-### Security
 
 ## [0.5.2] - 2022-06-28
 ### Added
@@ -86,7 +93,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Security
 - [\#50](https://github.com/Manta-Network/manta-rs/pull/50) Remove Trapdoor from Circuit
 
-[Unreleased]: https://github.com/Manta-Network/manta-rs/compare/v0.5.2...HEAD
+[Unreleased]: https://github.com/Manta-Network/manta-rs/compare/v0.5.3...HEAD
+[0.5.3]: https://github.com/Manta-Network/manta-rs/releases/tag/v0.5.3
 [0.5.2]: https://github.com/Manta-Network/manta-rs/releases/tag/v0.5.2
 [0.5.1]: https://github.com/Manta-Network/manta-rs/releases/tag/v0.5.1
 [0.5.0]: https://github.com/Manta-Network/manta-rs/releases/tag/v0.5.0
