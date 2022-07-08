@@ -16,7 +16,7 @@
 
 //! Poseidon Permutation Round Numbers
 
-use crate::crypto::hash::poseidon::Specification;
+use crate::crypto::poseidon::Specification;
 
 #[cfg(feature = "std")]
 use {manta_util::num::Ceil, security::SecurityCondition};
