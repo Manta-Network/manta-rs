@@ -17,6 +17,7 @@
 //! Vectors
 
 use crate::create_seal;
+use core::iter::{once, repeat_with};
 
 #[doc(inline)]
 pub use alloc::vec::*;
@@ -64,3 +65,43 @@ pub trait VecExt<T>: From<Vec<T>> + Into<Vec<T>> + sealed::Sealed + Sized {
 }
 
 impl<T> VecExt<T> for Vec<T> {}
+
+/// Chunks `slice` into vectors of length `width` and pads the last vector with `default`
+/// if its length is less than `width`.
+///
+/// # Panics
+///
+/// Panics if `width` is `0`.
+#[inline]
+pub fn padded_chunks_with<T, F>(slice: &[T], width: usize, default: F) -> Vec<Vec<T>>
+where
+    T: Clone,
+    F: FnMut() -> T,
+{
+    let chunks = slice.chunks_exact(width);
+    let remainder = chunks.remainder();
+    chunks
+        .map(Vec::from)
+        .chain(once(
+            remainder
+                .iter()
+                .cloned()
+                .chain(repeat_with(default).take(width - remainder.len()))
+                .collect(),
+        ))
+        .collect()
+}
+
+/// Chunks `slice` into vectors of length `width` and pads the last vector if its length
+/// is less than `width`.
+///
+/// # Panics
+///
+/// Panics if `width` is `0`.
+#[inline]
+pub fn padded_chunks<T>(slice: &[T], width: usize) -> Vec<Vec<T>>
+where
+    T: Clone + Default,
+{
+    padded_chunks_with(slice, width, Default::default)
+}

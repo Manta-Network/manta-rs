@@ -16,12 +16,12 @@
 
 //! Round Constants Generation
 
-use crate::crypto::hash::poseidon::{lfsr::GrainLFSR, FieldGeneration};
+use crate::crypto::poseidon::{lfsr::GrainLFSR, FieldGeneration};
 use alloc::vec::Vec;
 use core::iter;
 
-/// Samples field elements of type `F` from an iterator over random
-/// bits `iter` with rejection sampling.
+/// Samples field elements of type `F` from an iterator over random bits `iter` with rejection
+/// sampling.
 #[inline]
 pub fn sample_field_element<F, I>(iter: I) -> F
 where
@@ -37,9 +37,8 @@ where
     }
 }
 
-/// Generates the [`GrainLFSR`] for the parameter configuration of a field
-/// with `modulus_bits` and a Poseidon configuration with `width`, `full_rounds`,
-/// and `partial_rounds`.
+/// Generates the [`GrainLFSR`] for the parameter configuration of a field with `modulus_bits` and a
+/// Poseidon configuration with `width`, `full_rounds`, and `partial_rounds`.
 #[inline]
 pub fn generate_lfsr(
     modulus_bits: usize,
@@ -59,8 +58,7 @@ pub fn generate_lfsr(
 }
 
 /// Generates the round constants for Poseidon by sampling
-/// `width * (full_rounds + partial_rounds)`-many field elements
-/// using [`sample_field_element`].
+/// `width * (full_rounds + partial_rounds)`-many field elements using [`sample_field_element`].
 #[inline]
 pub fn generate_round_constants<F>(
     width: usize,
