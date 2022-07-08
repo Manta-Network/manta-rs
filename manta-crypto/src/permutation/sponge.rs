@@ -69,18 +69,27 @@ where
         Self { permutation, state }
     }
 
+    /// Writes `input` into `self`.
+    #[inline]
+    pub fn write<W>(&mut self, input: &W, compiler: &mut COM) -> W::Output
+    where
+        W: Write<P, COM>,
+    {
+        input.write(self.state, compiler)
+    }
+
     /// Updates `self` by absorbing writes into the state with `input`.
     #[inline]
     pub fn absorb<W>(&mut self, input: &W, compiler: &mut COM) -> W::Output
     where
         W: Write<P, COM>,
     {
-        let out = input.write(self.state, compiler);
+        let out = self.write(input, compiler);
         self.permutation.permute(self.state, compiler);
         out
     }
 
-    /// Absorbs all the items in the `input` iterator, collecting all output items from writes into
+    /// Absorbs all items in the `input` iterator, collecting all output items from writes into
     /// the state. See [`Write::write`] for more.
     #[inline]
     pub fn absorb_all<'w, W, I, C>(&mut self, input: I, compiler: &mut COM) -> C
@@ -95,13 +104,22 @@ where
             .collect()
     }
 
+    /// Reads values from `self`.
+    #[inline]
+    pub fn read<R>(&self, compiler: &mut COM) -> R
+    where
+        R: Read<P, COM>,
+    {
+        R::read(self.state, compiler)
+    }
+
     /// Returns the next values from `self` by squeezing reads of the values from the state.
     #[inline]
     pub fn squeeze<R>(&mut self, compiler: &mut COM) -> R
     where
         R: Read<P, COM>,
     {
-        let out = R::read(self.state, compiler);
+        let out = self.read(compiler);
         self.permutation.permute(self.state, compiler);
         out
     }
