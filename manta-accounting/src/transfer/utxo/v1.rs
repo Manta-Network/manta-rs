@@ -19,7 +19,7 @@
 use crate::transfer::utxo;
 use core::marker::PhantomData;
 use manta_crypto::{
-    accumulator::{self, MembershipProof},
+    accumulator::{self, ItemHashFunction, MembershipProof},
     algebra::{security::ComputationalDiffieHellmanHardness, DiffieHellman, Group, Scalar},
     constraint::{
         Allocate, Allocator, Assert, AssertEq, BitAnd, BitOr, Bool, ConditionalSelect, Constant,
@@ -285,8 +285,8 @@ where
     }
 }
 
-/// UTXO Model
-pub struct Model<C, COM = ()>
+/// UTXO Model Parameters
+pub struct Parameters<C, COM = ()>
 where
     C: Configuration<COM>,
     COM: Has<bool, Type = C::Bool>,
@@ -303,9 +303,6 @@ where
     /// UTXO Accumulator Item Hash
     pub utxo_accumulator_item_hash: C::UtxoAccumulatorItemHash,
 
-    /// UTXO Accumulator Model
-    pub utxo_accumulator_model: C::UtxoAccumulatorModel,
-
     /// Nullifier Commitment Scheme
     pub nullifier_commitment_scheme: C::NullifierCommitmentScheme,
 
@@ -313,7 +310,7 @@ where
     pub outgoing_base_encryption_scheme: C::OutgoingBaseEncryptionScheme,
 }
 
-impl<C, COM> utxo::Types for Model<C, COM>
+impl<C, COM> utxo::Types for Parameters<C, COM>
 where
     C: Configuration<COM>,
     COM: AssertEq + Has<bool, Type = C::Bool>,
@@ -322,19 +319,20 @@ where
     type Utxo = Utxo<C, COM>;
 }
 
-impl<C, COM> utxo::Mint<MintSecret<C, COM>, COM> for Model<C, COM>
+impl<C, COM> utxo::Mint<COM> for Parameters<C, COM>
 where
     C: Configuration<COM>,
     COM: AssertEq + Has<bool, Type = C::Bool>,
 {
     type Authority = ();
+    type Secret = MintSecret<C, COM>;
     type Note = IncomingNote<C, COM>;
 
     #[inline]
     fn well_formed_asset(
         &self,
         authority: &Self::Authority,
-        secret: &MintSecret<C, COM>,
+        secret: &Self::Secret,
         utxo: &Self::Utxo,
         note: &Self::Note,
         compiler: &mut COM,
@@ -350,23 +348,52 @@ where
     }
 }
 
-impl<C, COM> utxo::Spend<SpendSecret<C, COM>, COM> for Model<C, COM>
+impl<C, COM> accumulator::ItemHashFunction<Utxo<C, COM>, COM> for Parameters<C, COM>
 where
     C: Configuration<COM>,
     COM: AssertEq + Has<bool, Type = C::Bool>,
 {
+    type Item = UtxoAccumulatorItem<C, COM>;
+
+    #[inline]
+    fn item_hash(&self, utxo: &Utxo<C, COM>, compiler: &mut COM) -> Self::Item {
+        self.utxo_accumulator_item_hash.hash(
+            &utxo.is_transparent,
+            &utxo.public_asset,
+            &utxo.commitment,
+            compiler,
+        )
+    }
+}
+
+impl<C, COM> utxo::Spend<COM> for Parameters<C, COM>
+where
+    C: Configuration<COM>,
+    COM: AssertEq + Has<bool, Type = C::Bool>,
+{
+    type UtxoAccumulatorModel = C::UtxoAccumulatorModel;
     type Authority = ProofAuthority<C, COM>;
+    type Secret = SpendSecret<C, COM>;
     type Nullifier = Nullifier<C, COM>;
 
     #[inline]
     fn well_formed_asset(
         &self,
+        utxo_accumulator_model: &Self::UtxoAccumulatorModel,
         authority: &Self::Authority,
-        secret: &SpendSecret<C, COM>,
+        secret: &Self::Secret,
         utxo: &Self::Utxo,
+        utxo_membership_proof: &UtxoMembershipProof<C, COM>,
         compiler: &mut COM,
     ) -> (Self::Asset, Self::Nullifier) {
-        secret.well_formed_asset(self, authority, utxo, compiler)
+        secret.well_formed_asset(
+            self,
+            utxo_accumulator_model,
+            authority,
+            utxo,
+            utxo_membership_proof,
+            compiler,
+        )
     }
 }
 
@@ -741,9 +768,6 @@ where
     C: Configuration<COM>,
     COM: Has<bool, Type = C::Bool>,
 {
-    /// UTXO Membership Proof
-    utxo_membership_proof: UtxoMembershipProof<C, COM>,
-
     /// Outgoing Randomness
     outgoing_randomness: OutgoingRandomness<C, COM>,
 
@@ -756,16 +780,13 @@ where
     C: Configuration<COM>,
     COM: Has<bool, Type = C::Bool>,
 {
-    /// Builds a new [`SpendSecret`] from `utxo_membership_proof`, `outgoing_randomness`, and
-    /// `plaintext`.
+    /// Builds a new [`SpendSecret`] from `outgoing_randomness`, and `plaintext`.
     #[inline]
     pub fn new(
-        utxo_membership_proof: UtxoMembershipProof<C, COM>,
         outgoing_randomness: OutgoingRandomness<C, COM>,
         plaintext: IncomingPlaintext<C, COM>,
     ) -> Self {
         Self {
-            utxo_membership_proof,
             outgoing_randomness,
             plaintext,
         }
@@ -776,9 +797,11 @@ where
     #[inline]
     pub fn well_formed_asset(
         &self,
-        model: &Model<C, COM>,
+        parameters: &Parameters<C, COM>,
+        utxo_accumulator_model: &C::UtxoAccumulatorModel,
         authority: &ProofAuthority<C, COM>,
         utxo: &Utxo<C, COM>,
+        utxo_membership_proof: &UtxoMembershipProof<C, COM>,
         compiler: &mut COM,
     ) -> (Asset<C, COM>, Nullifier<C, COM>)
     where
@@ -793,7 +816,7 @@ where
             compiler,
         );
         let receiving_key = authority.receiving_key(&self.plaintext.key_diversifier, compiler);
-        let utxo_commitment = model.utxo_commitment_scheme.commit(
+        let utxo_commitment = parameters.utxo_commitment_scheme.commit(
             &self.plaintext.utxo_commitment_randomness,
             &self.plaintext.asset.id,
             &self.plaintext.asset.value,
@@ -801,26 +824,20 @@ where
             compiler,
         );
         compiler.assert_eq(&utxo.commitment, &utxo_commitment);
-        let item = model.utxo_accumulator_item_hash.hash(
-            &utxo.is_transparent,
-            &utxo.public_asset,
-            &utxo.commitment,
-            compiler,
-        );
+        let item = parameters.item_hash(utxo, compiler);
         let has_valid_membership = &asset.value.is_zero(compiler).bitor(
-            self.utxo_membership_proof
-                .verify(&model.utxo_accumulator_model, &item, compiler),
+            utxo_membership_proof.verify(utxo_accumulator_model, &item, compiler),
             compiler,
         );
         compiler.assert(has_valid_membership);
-        let nullifier_commitment = model.nullifier_commitment_scheme.commit(
+        let nullifier_commitment = parameters.nullifier_commitment_scheme.commit(
             &authority.proof_authorization_key,
             &item,
             compiler,
         );
         let outgoing_note = Hybrid::new(
             DiffieHellman::<_, COM>::new(self.plaintext.key_diversifier.clone()),
-            model.outgoing_base_encryption_scheme.clone(),
+            parameters.outgoing_base_encryption_scheme.clone(),
         )
         .encrypt_into(
             &receiving_key,
@@ -838,7 +855,6 @@ where
     C: Configuration<COM> + Constant<COM>,
     C::Type: Configuration<Bool = bool>,
     COM: Has<bool, Type = C::Bool>,
-    UtxoMembershipProof<C, COM>: Variable<Secret, COM, Type = UtxoMembershipProof<C::Type>>,
     OutgoingRandomness<C, COM>: Variable<Secret, COM, Type = OutgoingRandomness<C::Type>>,
     IncomingPlaintext<C, COM>: Variable<Secret, COM, Type = IncomingPlaintext<C::Type>>,
 {
@@ -846,17 +862,12 @@ where
 
     #[inline]
     fn new_unknown(compiler: &mut COM) -> Self {
-        Self::new(
-            compiler.allocate_unknown(),
-            compiler.allocate_unknown(),
-            compiler.allocate_unknown(),
-        )
+        Self::new(compiler.allocate_unknown(), compiler.allocate_unknown())
     }
 
     #[inline]
     fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
         Self::new(
-            this.utxo_membership_proof.as_known(compiler),
             this.outgoing_randomness.as_known(compiler),
             this.plaintext.as_known(compiler),
         )

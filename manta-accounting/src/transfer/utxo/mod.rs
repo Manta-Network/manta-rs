@@ -21,6 +21,8 @@
 //! to select the protocol version. The transfer protocol is built up from a given [`Mint`] and
 //! [`Spend`] implementation.
 
+use manta_crypto::accumulator::{self, ItemHashFunction, MembershipProof};
+
 pub mod v1;
 
 #[doc(inline)]
@@ -34,14 +36,17 @@ pub trait Types {
     /// Asset Type
     type Asset;
 
-    /// UTXO Type
+    /// Unspent Transaction Output Type
     type Utxo;
 }
 
 /// UTXO Minting
-pub trait Mint<S, COM = ()>: Types {
-    /// Base Authority
+pub trait Mint<COM = ()>: Types {
+    /// Base Authority Type
     type Authority;
+
+    /// Mint Secret Type
+    type Secret;
 
     /// UTXO Note Type
     type Note;
@@ -51,7 +56,7 @@ pub trait Mint<S, COM = ()>: Types {
     fn well_formed_asset(
         &self,
         authority: &Self::Authority,
-        secret: &S,
+        secret: &Self::Secret,
         utxo: &Self::Utxo,
         note: &Self::Note,
         compiler: &mut COM,
@@ -59,20 +64,62 @@ pub trait Mint<S, COM = ()>: Types {
 }
 
 /// UTXO Spending
-pub trait Spend<S, COM = ()>: Types {
-    /// Base Authority
+pub trait Spend<COM = ()>: Types + ItemHashFunction<Self::Utxo, COM> {
+    /// UTXO Accumulator Model Type
+    type UtxoAccumulatorModel: accumulator::Model<COM, Item = Self::Item>;
+
+    /// Base Authority Type
     type Authority;
+
+    /// Spend Secret Type
+    type Secret;
 
     /// Nullifier Type
     type Nullifier;
 
     /// Returns the asset and its nullifier inside of `utxo` asserting that `secret` and `utxo` are
-    /// well-formed.
+    /// well-formed and that `utxo_membership_proof` is a valid proof.
     fn well_formed_asset(
         &self,
+        utxo_accumulator_model: &Self::UtxoAccumulatorModel,
         authority: &Self::Authority,
-        secret: &S,
+        secret: &Self::Secret,
         utxo: &Self::Utxo,
+        utxo_membership_proof: &UtxoMembershipProof<Self, COM>,
         compiler: &mut COM,
     ) -> (Self::Asset, Self::Nullifier);
+
+    ///
+    #[inline]
+    fn well_formed_nullifier(
+        &self,
+        utxo_accumulator_model: &Self::UtxoAccumulatorModel,
+        authority: &Self::Authority,
+        secret: &Self::Secret,
+        utxo: &Self::Utxo,
+        utxo_membership_proof: &UtxoMembershipProof<Self, COM>,
+        compiler: &mut COM,
+    ) -> Self::Nullifier {
+        self.well_formed_asset(
+            utxo_accumulator_model,
+            authority,
+            secret,
+            utxo,
+            utxo_membership_proof,
+            compiler,
+        )
+        .1
+    }
 }
+
+/// UTXO Membership Proof Type
+pub type UtxoMembershipProof<S, COM = ()> =
+    MembershipProof<<S as Spend<COM>>::UtxoAccumulatorModel, COM>;
+
+/// UTXO Accumulator Output Type
+pub type UtxoAccumulatorOutput<S, COM = ()> =
+    <<S as Spend<COM>>::UtxoAccumulatorModel as accumulator::Types>::Output;
+
+/// UTXO Accumulator Item Type
+pub type UtxoAccumulatorItem<S, COM = ()> =
+    <<S as Spend<COM>>::UtxoAccumulatorModel as accumulator::Types>::Item;
