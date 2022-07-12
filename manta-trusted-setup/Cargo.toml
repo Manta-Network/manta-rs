@@ -1,0 +1,47 @@
+[package]
+name = "manta-trusted-setup"
+version = "0.5.3"
+edition = "2021"
+authors = ["Manta Network <contact@manta.network>"]
+readme = "README.md"
+license-file = "LICENSE" 
+repository = "https://github.com/Manta-Network/manta-rs"
+homepage = "https://github.com/Manta-Network"
+documentation = "https://github.com/Manta-Network/manta-rs"
+categories = [""]
+keywords = [""]
+description = "MPC Ceremonies for Trusted Setup SRS Generation"
+publish = false
+
+[package.metadata.docs.rs]
+# To build locally:
+# RUSTDOCFLAGS="--cfg doc_cfg" cargo +nightly doc --all-features --open
+all-features = true
+rustdoc-args = ["--cfg", "doc_cfg"]
+
+[badges]
+is-it-maintained-issue-resolution = { repository = "Manta-Network/manta-rs" }
+is-it-maintained-open-issues = { repository = "Manta-Network/manta-rs" }
+maintenance = { status = "actively-developed" }
+
+[features]
+# Rayon Parallelization
+rayon = ["dep:rayon", "manta-util/rayon"]
+
+# Standard Library
+std = []
+
+[dependencies]
+ark-ec = { version = "0.3.0", default-features = false }
+ark-ff = { version = "0.3.0", default-features = false }
+ark-groth16 = { version = "0.3.0", default-features = false }
+ark-r1cs-std = { version = "0.3.1", default-features = false }
+ark-relations = { version = "0.3.0", default-features = false }
+ark-serialize = { version = "0.3.0", default-features = false, features = ["derive"] }
+ark-snark = { version = "0.3.0", default-features = false }
+ark-std = { version = "0.3.0", default-features = false }
+derivative = { version = "2.2.0", default-features = false, features = ["use_core"] }
+manta-crypto = { path = "../manta-crypto", default-features = false, features = ["getrandom"] }
+manta-util = { path = "../manta-util", default-features = false, features = ["alloc"] }
+rayon = { version = "1.5.3", optional = true, default-features = false }
+workspace-hack = { version = "0.1.0", path = "../workspace-hack" }
