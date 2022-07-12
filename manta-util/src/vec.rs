@@ -52,6 +52,16 @@ pub trait VecExt<T>: From<Vec<T>> + Into<Vec<T>> + sealed::Sealed + Sized {
         vec.resize_with(n, f);
         vec.into()
     }
+
+    /// Allocates a vector of length `n` and tries to initialize it with `f`, returning an error if
+    /// `f` ever fails.
+    #[inline]
+    fn try_allocate_with<E, F>(n: usize, f: F) -> Result<Self, E>
+    where
+        F: FnMut(usize) -> Result<T, E>,
+    {
+        (0..n).map(f).collect::<Result<Vec<_>, _>>().map(Into::into)
+    }
 }
 
 impl<T> VecExt<T> for Vec<T> {}

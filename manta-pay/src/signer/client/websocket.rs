@@ -30,7 +30,7 @@ use core::marker::Unpin;
 use futures::{SinkExt, StreamExt};
 use manta_accounting::wallet::{self, signer};
 use manta_util::{
-    from_variant_impl,
+    from_variant,
     future::LocalBoxFutureResult,
     serde::{de::DeserializeOwned, Deserialize, Serialize},
 };
@@ -64,8 +64,8 @@ pub enum Error {
     WebSocket(WebSocketError),
 }
 
-from_variant_impl!(Error, SerializationError, serde_json::Error);
-from_variant_impl!(Error, WebSocket, WebSocketError);
+from_variant!(Error, SerializationError, serde_json::Error);
+from_variant!(Error, WebSocket, WebSocketError);
 
 /// Request
 #[derive(derivative::Derivative, Deserialize, Serialize)]
