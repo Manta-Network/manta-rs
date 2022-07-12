@@ -195,7 +195,7 @@ where
 
     #[inline]
     fn sample_domain_tag() -> Self::ParameterField {
-        Fp(S::Field::from((1<<(Self::WIDTH-1)-1) as u128))
+        Fp(S::Field::from(((1<<(Self::WIDTH-1))-1) as u128))
     }
 }
 
@@ -262,7 +262,7 @@ where
 
     #[inline]
     fn sample_domain_tag() -> Self::ParameterField {
-        Fp(S::Field::from((1<<(Self::WIDTH-1)-1) as u128))
+        Fp(S::Field::from(((1<<(Self::WIDTH-1))-1) as u128))
     }
 }
 

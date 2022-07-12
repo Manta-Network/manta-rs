@@ -35,11 +35,13 @@ where
 {
     /// Builds a new [`Hasher`] over `permutation` and `domain_tag`.
     #[inline]
-    pub fn new(permutation: Permutation<S, COM>) -> Self {
+    pub fn new(permutation: Permutation<S, COM>, domain_tag: S::ParameterField) -> Self {
         assert_eq!(ARITY + 1, S::WIDTH);
         Self {
             permutation,
-            domain_tag: S::from_parameter(T::domain_tag()),
+            // TODO
+            // domain_tag: S::from_parameter(T::domain_tag()),
+            domain_tag: S::from_parameter(domain_tag),
         }
     }
 }
@@ -111,20 +113,24 @@ where
     }
 }
 
-trait DomainTag<S, COM = ()>
-where S: Specification<COM>,
-{
-    /// TODO
-    fn domain_tag()-> S::ParameterField;
-}
+// trait DomainTag<S, COM = ()>
+// where
+//     S: Specification<COM>,
+// {
+//     /// TODO
+//     fn domain_tag() -> S::ParameterField;
+// }
 
-impl<D, S, T, const ARITY: usize, COM> Sample<D> for Hasher<S, T, ARITY, COM>
+// TODO
+// impl<D, S, T, const ARITY: usize, COM> Sample<D> for Hasher<S, T, ARITY, COM>
+impl<D, S, const ARITY: usize, COM> Sample<D> for Hasher<S, ARITY, COM>
 where
     D: Clone,
     S: Specification<COM>,
     S::Field: Sample<D>,
     S::ParameterField: Field + FieldGeneration + PartialEq + Sample<D>,
-    T: DomainTag<S, COM>,
+    // TODO
+    // T: DomainTag<S, COM>,
 {
     /// Samples random Poseidon parameters.
     #[inline]
@@ -133,7 +139,9 @@ where
         R: RngCore + ?Sized,
     {
         // FIXME: Use a proper domain tag sampling method.
-        Self::new(rng.sample(distribution.clone()), T::domain_tag()) // TODO: Should we have a struct DomainTag<S::Field> and implement sample_domain_tag for it?
+        // TODO
+        // Self::new(rng.sample(distribution.clone()), T::domain_tag()) // TODO: Should we have a struct DomainTag<S::Field> and implement sample_domain_tag for it?
+        Self::new(rng.sample(distribution.clone()), S::sample_domain_tag()) // T::domain_tag()) // TODO: Should we have a struct DomainTag<S::Field> and implement sample_domain_tag for it?
     }
 }
 
