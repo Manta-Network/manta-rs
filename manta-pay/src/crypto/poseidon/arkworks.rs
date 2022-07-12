@@ -22,7 +22,7 @@ use crate::crypto::{
 };
 use ark_ff::{BigInteger, Field as _, FpParameters, PrimeField};
 use ark_r1cs_std::fields::FieldVar;
-use manta_crypto::constraint::Constant;
+use manta_crypto::constraint::{Allocate, Constant};
 
 /// Compiler Type.
 type Compiler<S> = R1CS<<S as Specification>::Field>;
@@ -62,6 +62,20 @@ where
         Self {
             additive_round_keys: this.additive_round_keys.clone(),
             mds_matrix: this.mds_matrix.clone(),
+        }
+    }
+}
+
+impl<S, const ARITY: usize> Constant<Compiler<S>> for super::Hasher<S, ARITY, Compiler<S>>
+where
+    S: Specification,
+{
+    type Type = super::Hasher<S, ARITY>;
+
+    fn new_constant(this: &Self::Type, compiler: &mut Compiler<S>) -> Self {
+        Self {
+            permutation: this.permutation.as_constant(compiler),
+            domain_tag: this.domain_tag.as_constant(compiler),
         }
     }
 }
@@ -178,6 +192,11 @@ where
     fn from_parameter(point: Self::ParameterField) -> Self::Field {
         point
     }
+
+    #[inline]
+    fn sample_domain_tag() -> Self::ParameterField {
+        Fp(S::Field::from((1<<(Self::WIDTH-1)-1) as u128))
+    }
 }
 
 impl<S> poseidon::Specification<Compiler<S>> for S
@@ -239,6 +258,11 @@ where
     #[inline]
     fn from_parameter(point: Self::ParameterField) -> Self::Field {
         FpVar::Constant(point.0)
+    }
+
+    #[inline]
+    fn sample_domain_tag() -> Self::ParameterField {
+        Fp(S::Field::from((1<<(Self::WIDTH-1)-1) as u128))
     }
 }
 

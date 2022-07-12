@@ -16,8 +16,7 @@
 
 //! Poseidon Hash Implementation
 
-use crate::crypto::poseidon::{Field, FieldGeneration, Permutation, Specification};
-use core::{fmt::Debug, hash::Hash};
+use crate::crypto::poseidon::{Field, FieldGeneration, Hasher, Permutation, Specification};
 use manta_crypto::{
     hash::ArrayHashFunction,
     rand::{Rand, RngCore, Sample},
@@ -30,50 +29,35 @@ use manta_util::{
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
 
-/// Poseidon Hasher
-#[cfg_attr(
-    feature = "serde",
-    derive(Deserialize, Serialize),
-    serde(
-        bound(
-            deserialize = "Permutation<S, COM>: Deserialize<'de>, S::Field: Deserialize<'de>",
-            serialize = "Permutation<S, COM>: Serialize, S::Field: Serialize"
-        ),
-        crate = "manta_util::serde",
-        deny_unknown_fields
-    )
-)]
-#[derive(derivative::Derivative)]
-#[derivative(
-    Clone(bound = "Permutation<S, COM>: Clone, S::Field: Clone"),
-    Debug(bound = "Permutation<S, COM>: Debug, S::Field: Debug"),
-    Eq(bound = "Permutation<S, COM>: Eq, S::Field: Eq"),
-    Hash(bound = "Permutation<S, COM>: Hash, S::Field: Hash"),
-    PartialEq(bound = "Permutation<S, COM>: PartialEq, S::Field: PartialEq")
-)]
-pub struct Hasher<S, const ARITY: usize, COM = ()>
-where
-    S: Specification<COM>,
-{
-    /// Poseidon Permutation
-    permutation: Permutation<S, COM>,
-
-    /// Domain Tag
-    domain_tag: S::Field,
-}
-
 impl<S, const ARITY: usize, COM> Hasher<S, ARITY, COM>
 where
     S: Specification<COM>,
 {
     /// Builds a new [`Hasher`] over `permutation` and `domain_tag`.
     #[inline]
-    pub fn new(permutation: Permutation<S, COM>, domain_tag: S::ParameterField) -> Self {
+    pub fn new(permutation: Permutation<S, COM>) -> Self {
         assert_eq!(ARITY + 1, S::WIDTH);
         Self {
             permutation,
-            domain_tag: S::from_parameter(domain_tag),
+            domain_tag: S::from_parameter(T::domain_tag()),
         }
+    }
+}
+
+impl<S, const ARITY: usize, COM> Hasher<S, ARITY, COM>
+where
+    S: Specification<COM>,
+{
+    /// Computes the hash over `input` in the given `compiler` and returns the untruncated state.
+    pub fn hash_untruncated(&self, input: [&S::Field; ARITY], compiler: &mut COM) -> Vec<S::Field> {
+        let mut state = self.permutation.first_round_with_domain_tag_unchecked(
+            &self.domain_tag,
+            input,
+            compiler,
+        );
+        self.permutation
+            .permute_without_first_round(&mut state, compiler);
+        state.0.into_vec()
     }
 }
 
@@ -86,14 +70,7 @@ where
 
     #[inline]
     fn hash(&self, input: [&Self::Input; ARITY], compiler: &mut COM) -> Self::Output {
-        let mut state = self.permutation.first_round_with_domain_tag_unchecked(
-            &self.domain_tag,
-            input,
-            compiler,
-        );
-        self.permutation
-            .permute_without_first_round(&mut state, compiler);
-        state.0.into_vec().take_first()
+        self.hash_untruncated(input, compiler).take_first()
     }
 }
 
@@ -134,12 +111,20 @@ where
     }
 }
 
-impl<D, S, const ARITY: usize, COM> Sample<D> for Hasher<S, ARITY, COM>
+trait DomainTag<S, COM = ()>
+where S: Specification<COM>,
+{
+    /// TODO
+    fn domain_tag()-> S::ParameterField;
+}
+
+impl<D, S, T, const ARITY: usize, COM> Sample<D> for Hasher<S, T, ARITY, COM>
 where
     D: Clone,
     S: Specification<COM>,
     S::Field: Sample<D>,
     S::ParameterField: Field + FieldGeneration + PartialEq + Sample<D>,
+    T: DomainTag<S, COM>,
 {
     /// Samples random Poseidon parameters.
     #[inline]
@@ -148,17 +133,21 @@ where
         R: RngCore + ?Sized,
     {
         // FIXME: Use a proper domain tag sampling method.
-        Self::new(rng.sample(distribution.clone()), rng.sample(distribution))
+        Self::new(rng.sample(distribution.clone()), T::domain_tag()) // TODO: Should we have a struct DomainTag<S::Field> and implement sample_domain_tag for it?
     }
 }
 
 /// Testing Suite
 #[cfg(test)]
 mod test {
+    use crate::{config::Poseidon2, crypto::constraint::arkworks::Fp};
+    use ark_bls12_381::Fr;
+    use ark_ff::field_new;
+    use manta_crypto::rand::{OsRng, Sample};
+
     /// Tests if [`Poseidon2`](crate::config::Poseidon2) matches the known hash values.
     #[test]
     fn poseidon_hash_matches_known_values() {
-        /* TODO: After upgrading to new Poseidon, we have to enable these tests.
         let hasher = Poseidon2::gen(&mut OsRng);
         let inputs = [&Fp(field_new!(Fr, "1")), &Fp(field_new!(Fr, "2"))];
         assert_eq!(
@@ -178,6 +167,5 @@ mod test {
                 )),
             ]
         );
-        */
     }
 }

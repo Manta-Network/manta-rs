@@ -130,7 +130,7 @@ impl Constants {
         S: Specification,
     {
         Self {
-            width: ARITY + 1,
+            width: ARITY + 1, // TODO: Why not use S::WIDTH?
             full_rounds: S::FULL_ROUNDS,
             partial_rounds: S::PARTIAL_ROUNDS,
         }
@@ -276,6 +276,7 @@ pub mod security {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::config::PoseidonSpec;
 
     /// Tests if the constants match the known constant values.
     #[test]
@@ -322,7 +323,6 @@ mod test {
     /// Tests if the specifications match the known constant values.
     #[test]
     fn specifications_match_known_values() {
-        /* TODO: After upgrading to new Poseidon, we have to enable these tests.
         assert_eq!(
             Constants::from_arity(2),
             Constants::from_specification::<PoseidonSpec<2>, 2>()
@@ -331,6 +331,5 @@ mod test {
             Constants::from_arity(4),
             Constants::from_specification::<PoseidonSpec<4>, 4>()
         );
-        */
     }
 }

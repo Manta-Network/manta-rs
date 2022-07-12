@@ -30,7 +30,6 @@ use manta_util::codec::{Decode, DecodeError, Encode, Read, Write};
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
 
-pub mod compat;
 pub mod constants;
 pub mod encryption;
 pub mod hash;
@@ -133,6 +132,9 @@ pub trait Specification<COM = ()> {
 
     /// Converts a constant parameter `point` for permutation state.
     fn from_parameter(point: Self::ParameterField) -> Self::Field;
+
+    /// Samples a domain tag.
+    fn sample_domain_tag() -> Self::ParameterField;
 }
 
 /// Poseidon Internal State
@@ -446,4 +448,36 @@ where
                 .into_boxed_slice(),
         }
     }
+}
+
+/// Poseidon Hasher
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "Permutation<S, COM>: Deserialize<'de>, S::Field: Deserialize<'de>",
+            serialize = "Permutation<S, COM>: Serialize, S::Field: Serialize"
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "Permutation<S, COM>: Clone, S::Field: Clone"),
+    Debug(bound = "Permutation<S, COM>: Debug, S::Field: Debug"),
+    Eq(bound = "Permutation<S, COM>: Eq, S::Field: Eq"),
+    Hash(bound = "Permutation<S, COM>: Hash, S::Field: Hash"),
+    PartialEq(bound = "Permutation<S, COM>: PartialEq, S::Field: PartialEq")
+)]
+pub struct Hasher<S, const ARITY: usize, COM = ()>
+where
+    S: Specification<COM>,
+{
+    /// Poseidon Permutation.
+    permutation: Permutation<S, COM>,
+
+    /// Domain Tag.
+    domain_tag: S::Field,
 }
