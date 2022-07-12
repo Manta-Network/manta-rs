@@ -16,7 +16,11 @@
 
 //! Comparison
 
-use crate::eclair::{bool::Bool, ops::Not, Has};
+use crate::eclair::{
+    bool::{Assert, Bool},
+    ops::Not,
+    Has,
+};
 use core::cmp;
 
 /// Partial Equivalence Relations
@@ -35,6 +39,21 @@ where
         Bool<COM>: Not<COM, Output = Bool<COM>>,
     {
         self.eq(other, compiler).not(compiler)
+    }
+
+    /// Asserts that `self` and `rhs` are equal.
+    ///
+    /// # Implementation Note
+    ///
+    /// This method is an optimization path for the case when comparing for equality and then
+    /// asserting is more expensive than a custom assertion.
+    #[inline]
+    fn assert_equal(&self, rhs: &Rhs, compiler: &mut COM)
+    where
+        COM: Assert,
+    {
+        let are_equal = self.eq(rhs, compiler);
+        compiler.assert(&are_equal);
     }
 }
 

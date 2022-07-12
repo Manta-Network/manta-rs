@@ -21,8 +21,6 @@
 //! to select the protocol version. The transfer protocol is built up from a given [`Mint`] and
 //! [`Spend`] implementation.
 
-use manta_crypto::constraint::{AssertEq, PartialEq};
-
 pub mod v1;
 
 #[doc(inline)]
@@ -31,72 +29,50 @@ pub use v1 as protocol;
 /// Current UTXO Protocol Version
 pub const VERSION: u8 = protocol::VERSION;
 
-/// Version
-pub trait VersionType {
-    /// Version Type
-    type Version;
-}
-
-/// UTXO Minting
-pub trait Mint<COM = ()> {
-    /// Minting Secret Type
-    type MintSecret;
-
+/// UTXO Protocol Types
+pub trait Types {
     /// Asset Type
     type Asset;
 
-    /// Utxo Type
+    /// UTXO Type
     type Utxo;
+}
 
-    /// Returns the asset inside of `utxo` asserting that `mint_secret` and `utxo` are well-formed.
-    fn asset(
+/// UTXO Minting
+pub trait Mint<S, COM = ()>: Types {
+    /// Base Authority
+    type Authority;
+
+    /// UTXO Note Type
+    type Note;
+
+    /// Returns the asset inside of `utxo` asserting that `secret`, `utxo`, and `note` are
+    /// well-formed.
+    fn well_formed_asset(
         &self,
-        mint_secret: &Self::MintSecret,
+        authority: &Self::Authority,
+        secret: &S,
         utxo: &Self::Utxo,
+        note: &Self::Note,
         compiler: &mut COM,
     ) -> Self::Asset;
 }
 
 /// UTXO Spending
-pub trait Spend<COM = ()>: Mint<COM> {
-    /// Spending Secret Type
-    type SpendSecret;
+pub trait Spend<S, COM = ()>: Types {
+    /// Base Authority
+    type Authority;
 
-    /// Void Number Type
-    type VoidNumber;
+    /// Nullifier Type
+    type Nullifier;
 
-    /// Returns the [`VoidNumber`](Self::VoidNumber) for `utxo` asserting that `mint_secret` and
-    /// `spend_secret` are well-formed.
-    fn void_number(
+    /// Returns the asset and its nullifier inside of `utxo` asserting that `secret` and `utxo` are
+    /// well-formed.
+    fn well_formed_asset(
         &self,
-        mint_secret: &Self::MintSecret,
-        spend_secret: &Self::SpendSecret,
+        authority: &Self::Authority,
+        secret: &S,
         utxo: &Self::Utxo,
         compiler: &mut COM,
-    ) -> Self::VoidNumber;
-
-    /// Returns the asset inside of `utxo` asserting that it is spendable by calling [`asset`] and
-    /// [`void_number`] and checking that the computed [`VoidNumber`] is equal to `void_number`.
-    ///
-    /// [`asset`]: Mint::asset
-    /// [`void_number`]: Self::void_number
-    /// [`VoidNumber`]: Self::VoidNumber
-    #[inline]
-    fn spendable_asset(
-        &self,
-        mint_secret: &Self::MintSecret,
-        spend_secret: &Self::SpendSecret,
-        utxo: &Self::Utxo,
-        void_number: &Self::VoidNumber,
-        compiler: &mut COM,
-    ) -> Self::Asset
-    where
-        COM: AssertEq,
-        Self::VoidNumber: PartialEq<Self::VoidNumber, COM>,
-    {
-        let asset = self.asset(mint_secret, utxo, compiler);
-        let computed_void_number = self.void_number(mint_secret, spend_secret, utxo, compiler);
-        compiler.assert_eq(void_number, &computed_void_number);
-        asset
-    }
+    ) -> (Self::Asset, Self::Nullifier);
 }

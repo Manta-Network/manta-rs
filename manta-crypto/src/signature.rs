@@ -192,7 +192,7 @@ pub mod schnorr {
     use super::*;
     use crate::{
         algebra::{security::DiscreteLogarithmHardness, Group, Scalar},
-        constraint::{Bool, Has, PartialEq},
+        constraint::{Bool, Constant, Has, PartialEq},
         hash::security::PreimageResistance,
     };
     use core::{cmp, fmt::Debug, hash::Hash, marker::PhantomData};
@@ -265,6 +265,22 @@ pub mod schnorr {
 
         /// Type Parameter Marker
         __: PhantomData<COM>,
+    }
+
+    impl<G, H, COM> Schnorr<G, H, COM>
+    where
+        G: DiscreteLogarithmHardness + Group<COM>,
+        H: HashFunction<G, COM>,
+    {
+        /// Builds a new [`Schnorr`] signature scheme over `generator` and `hash_function`.
+        #[inline]
+        pub fn new(generator: G, hash_function: H) -> Self {
+            Self {
+                generator,
+                hash_function,
+                __: PhantomData,
+            }
+        }
     }
 
     impl<G, H, COM> SigningKeyType for Schnorr<G, H, COM>
@@ -381,6 +397,24 @@ pub mod schnorr {
                     compiler,
                 ),
                 compiler,
+            )
+        }
+    }
+
+    impl<G, H, COM> Constant<COM> for Schnorr<G, H, COM>
+    where
+        G: Constant<COM> + DiscreteLogarithmHardness + Group<COM>,
+        G::Type: DiscreteLogarithmHardness + Group,
+        H: Constant<COM> + HashFunction<G, COM>,
+        H::Type: HashFunction<G::Type>,
+    {
+        type Type = Schnorr<G::Type, H::Type>;
+
+        #[inline]
+        fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
+            Self::new(
+                G::new_constant(&this.generator, compiler),
+                H::new_constant(&this.hash_function, compiler),
             )
         }
     }

@@ -50,8 +50,7 @@ pub trait AssertEq: Assert {
     where
         T: PartialEq<Rhs, Self>,
     {
-        let are_equal = lhs.eq(rhs, self);
-        self.assert(&are_equal);
+        T::assert_equal(lhs, rhs, self);
     }
 
     /// Asserts that all the elements in `iter` are equal to some `base` element.
@@ -80,6 +79,8 @@ pub trait AssertEq: Assert {
         }
     }
 }
+
+impl<COM> AssertEq for COM where COM: Assert {}
 
 /// Conditional Selection
 pub trait ConditionalSelect<COM = ()>: Sized

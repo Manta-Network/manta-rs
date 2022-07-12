@@ -16,21 +16,23 @@
 
 //! UTXO Version 1 Protocol
 
-use crate::transfer::utxo::{Mint, VersionType};
+use crate::transfer::utxo;
 use core::marker::PhantomData;
 use manta_crypto::{
+    accumulator::{self, MembershipProof},
+    algebra::{security::ComputationalDiffieHellmanHardness, DiffieHellman, Group, Scalar},
     constraint::{
-        Allocate, Allocator, AssertEq, BitAnd, Bool, ConditionalSelect, Constant, Has, PartialEq,
-        Secret, Variable, Zero,
+        Allocate, Allocator, Assert, AssertEq, BitAnd, BitOr, Bool, ConditionalSelect, Constant,
+        Has, PartialEq, Public, Secret, Variable, Zero,
     },
-    encryption::{Encrypt, EncryptedMessage, EncryptionKeyType, RandomnessType},
+    encryption::{hybrid::Hybrid, Encrypt, EncryptedMessage, RandomnessType},
 };
 
 /// UTXO Version Number
 pub const VERSION: u8 = 1;
 
 /// UTXO Commitment Scheme
-pub trait CommitmentScheme<COM = ()>
+pub trait UtxoCommitmentScheme<COM = ()>
 where
     COM: Has<bool>,
 {
@@ -60,13 +62,76 @@ where
     ) -> Self::Commitment;
 }
 
+/// Viewing Key Derivation Function
+pub trait ViewingKeyDerivationFunction<COM = ()> {
+    /// Proof Authorization Key
+    type ProofAuthorizationKey;
+
+    /// Viewing Key
+    type ViewingKey;
+
+    /// Computes the [`ViewingKey`](Self::ViewingKey) from `proof_authorization_key`.
+    fn viewing_key(
+        &self,
+        proof_authorization_key: &Self::ProofAuthorizationKey,
+        compiler: &mut COM,
+    ) -> Self::ViewingKey;
+}
+
+/// UTXO Accumulator Item Hash
+pub trait UtxoAccumulatorItemHash<COM = ()> {
+    /// Boolean Type
+    type Bool;
+
+    /// Asset Type
+    type Asset;
+
+    /// UTXO Commitment Type
+    type Commitment;
+
+    /// Item Type
+    type Item;
+
+    /// Computes the accumulator item by hashing `is_transparent`, `public_asset`, and `commitment`.
+    fn hash(
+        &self,
+        is_transparent: &Self::Bool,
+        public_asset: &Self::Asset,
+        commitment: &Self::Commitment,
+        compiler: &mut COM,
+    ) -> Self::Item;
+}
+
+/// Nullifier Commitment Scheme
+pub trait NullifierCommitmentScheme<COM = ()> {
+    /// Proof Authorization Key
+    type ProofAuthorizationKey;
+
+    /// UTXO Accumulator Item
+    type UtxoAccumulatorItem;
+
+    /// Nullifier Commitment
+    type Commitment;
+
+    /// Commits to the `item` using `proof_authorization_key`.
+    fn commit(
+        &self,
+        proof_authorization_key: &Self::ProofAuthorizationKey,
+        item: &Self::UtxoAccumulatorItem,
+        compiler: &mut COM,
+    ) -> Self::Commitment;
+}
+
 /// UTXO Configuration
-pub trait Configuration<COM = ()>: VersionType
+pub trait Configuration<COM = ()>
 where
     COM: Has<bool, Type = Self::Bool>,
 {
     /// Boolean Type
-    type Bool: BitAnd<Self::Bool, COM, Output = Self::Bool> + PartialEq<Self::Bool, COM>;
+    type Bool: Constant<COM, Type = bool>
+        + BitAnd<Self::Bool, COM, Output = Self::Bool>
+        + BitOr<Self::Bool, COM, Output = Self::Bool>
+        + PartialEq<Self::Bool, COM>;
 
     /// Asset Id Type
     type AssetId: ConditionalSelect<COM> + Zero<COM, Verification = Self::Bool>;
@@ -74,47 +139,151 @@ where
     /// Asset Value Type
     type AssetValue: ConditionalSelect<COM> + Zero<COM, Verification = Self::Bool>;
 
-    /// Key Diversifier
-    type KeyDiversifier;
+    /// Scalar Type
+    type Scalar: Scalar<COM>;
 
-    /// Receiving Key
-    type ReceivingKey;
-
-    /// Incoming Note Ciphertext Type
-    type IncomingNoteCiphertext: PartialEq<Self::IncomingNoteCiphertext, COM>;
+    /// Group Type
+    type Group: Clone
+        + ComputationalDiffieHellmanHardness
+        + Group<COM, Scalar = Self::Scalar>
+        + PartialEq<Self::Group, COM>;
 
     /// UTXO Commitment Scheme
-    type CommitmentScheme: CommitmentScheme<
+    type UtxoCommitmentScheme: UtxoCommitmentScheme<
         COM,
         AssetId = Self::AssetId,
         AssetValue = Self::AssetValue,
-        ReceivingKey = Self::ReceivingKey,
+        ReceivingKey = Self::Group,
     >;
 
-    /// Encryption Scheme for [`IncomingNote`]
-    type EncryptionScheme: Encrypt<
+    /// Viewing Key Derivation Function
+    type ViewingKeyDerivationFunction: ViewingKeyDerivationFunction<
         COM,
-        Header = IncomingNoteHeader<Self, COM>,
-        Plaintext = Plaintext<Self, COM>,
-        Ciphertext = Self::IncomingNoteCiphertext,
+        ProofAuthorizationKey = Self::Group,
+        ViewingKey = Self::Scalar,
     >;
+
+    /// Incoming Ciphertext Type
+    type IncomingCiphertext: PartialEq<Self::IncomingCiphertext, COM>;
+
+    /// Base Encryption Scheme for [`IncomingNote`]
+    type IncomingBaseEncryptionScheme: Clone
+        + Encrypt<
+            COM,
+            EncryptionKey = Self::Group,
+            Header = EmptyHeader<Self, COM>,
+            Plaintext = IncomingPlaintext<Self, COM>,
+            Ciphertext = Self::IncomingCiphertext,
+        >;
+
+    /// UTXO Accumulator Item Hash
+    type UtxoAccumulatorItemHash: UtxoAccumulatorItemHash<
+        COM,
+        Bool = Self::Bool,
+        Asset = Asset<Self, COM>,
+        Commitment = UtxoCommitment<Self, COM>,
+    >;
+
+    /// UTXO Accumulator Model
+    type UtxoAccumulatorModel: accumulator::Model<
+        COM,
+        Item = UtxoAccumulatorItem<Self, COM>,
+        Verification = Self::Bool,
+    >;
+
+    /// Nullifier Commitment Scheme Type
+    type NullifierCommitmentScheme: NullifierCommitmentScheme<
+        COM,
+        ProofAuthorizationKey = Self::Group,
+        UtxoAccumulatorItem = UtxoAccumulatorItem<Self, COM>,
+    >;
+
+    /// Outgoing Ciphertext Type
+    type OutgoingCiphertext: PartialEq<Self::IncomingCiphertext, COM>;
+
+    /// Base Encryption Scheme for [`OutgoingNote`]
+    type OutgoingBaseEncryptionScheme: Clone
+        + Encrypt<
+            COM,
+            EncryptionKey = Self::Group,
+            Header = EmptyHeader<Self, COM>,
+            Plaintext = Asset<Self, COM>,
+            Ciphertext = Self::OutgoingCiphertext,
+        >;
 }
 
 /// UTXO Commitment
-pub type Commitment<C, COM = ()> =
-    <<C as Configuration<COM>>::CommitmentScheme as CommitmentScheme<COM>>::Commitment;
+pub type UtxoCommitment<C, COM = ()> =
+    <<C as Configuration<COM>>::UtxoCommitmentScheme as UtxoCommitmentScheme<COM>>::Commitment;
 
 /// UTXO Commitment Randomness
-pub type CommitmentRandomness<C, COM = ()> =
-    <<C as Configuration<COM>>::CommitmentScheme as CommitmentScheme<COM>>::Randomness;
+pub type UtxoCommitmentRandomness<C, COM = ()> =
+    <<C as Configuration<COM>>::UtxoCommitmentScheme as UtxoCommitmentScheme<COM>>::Randomness;
 
-/// UTXO Encryption Key
-pub type EncryptionKey<C, COM = ()> =
-    <<C as Configuration<COM>>::EncryptionScheme as EncryptionKeyType>::EncryptionKey;
+/// Incoming Encryption Scheme
+pub type IncomingEncryptionScheme<C, COM = ()> = Hybrid<
+    DiffieHellman<<C as Configuration<COM>>::Group, COM>,
+    <C as Configuration<COM>>::IncomingBaseEncryptionScheme,
+>;
 
-/// UTXO Encryption Randomness
-pub type EncryptionRandomness<C, COM = ()> =
-    <<C as Configuration<COM>>::EncryptionScheme as RandomnessType>::Randomness;
+/// Incoming Randomness
+pub type IncomingRandomness<C, COM = ()> =
+    <IncomingEncryptionScheme<C, COM> as RandomnessType>::Randomness;
+
+/// Incoming Encrypted Note
+pub type IncomingNote<C, COM = ()> = EncryptedMessage<IncomingEncryptionScheme<C, COM>>;
+
+/// UTXO Accumulator Item
+pub type UtxoAccumulatorItem<C, COM = ()> =
+    <<C as Configuration<COM>>::UtxoAccumulatorItemHash as UtxoAccumulatorItemHash<COM>>::Item;
+
+/// UTXO Membership Proof
+pub type UtxoMembershipProof<C, COM = ()> =
+    MembershipProof<<C as Configuration<COM>>::UtxoAccumulatorModel, COM>;
+
+/// Nullifier Commitment
+pub type NullifierCommitment<C, COM = ()> =
+    <<C as Configuration<COM>>::NullifierCommitmentScheme as NullifierCommitmentScheme<COM>>::Commitment;
+
+/// Outgoing Encryption Scheme
+pub type OutgoingEncryptionScheme<C, COM = ()> = Hybrid<
+    DiffieHellman<<C as Configuration<COM>>::Group, COM>,
+    <C as Configuration<COM>>::OutgoingBaseEncryptionScheme,
+>;
+
+/// Outgoing Randomness
+pub type OutgoingRandomness<C, COM = ()> =
+    <OutgoingEncryptionScheme<C, COM> as RandomnessType>::Randomness;
+
+/// Outgoing Note
+pub type OutgoingNote<C, COM = ()> = EncryptedMessage<OutgoingEncryptionScheme<C, COM>>;
+
+/// Empty Header
+///
+/// The header is unused for this version of the UTXO protocol.
+#[derive(derivative::Derivative)]
+#[derivative(Default)]
+pub struct EmptyHeader<C, COM = ()>(PhantomData<C>, PhantomData<COM>)
+where
+    C: Configuration<COM> + ?Sized,
+    COM: Has<bool, Type = C::Bool>;
+
+impl<C, COM> PartialEq<Self, COM> for EmptyHeader<C, COM>
+where
+    C: Configuration<COM> + ?Sized,
+    COM: Has<bool, Type = C::Bool>,
+{
+    #[inline]
+    fn eq(&self, rhs: &Self, compiler: &mut COM) -> Bool<COM> {
+        let _ = rhs;
+        C::Bool::new_constant(&true, compiler)
+    }
+
+    #[inline]
+    fn assert_equal(&self, rhs: &Self, compiler: &mut COM) {
+        let _ = (rhs, compiler);
+    }
+}
 
 /// UTXO Model
 pub struct Model<C, COM = ()>
@@ -122,34 +291,149 @@ where
     C: Configuration<COM>,
     COM: Has<bool, Type = C::Bool>,
 {
-    /// Commitment Scheme
-    pub commitment_scheme: C::CommitmentScheme,
+    /// UTXO Commitment Scheme
+    pub utxo_commitment_scheme: C::UtxoCommitmentScheme,
 
-    /// Encryption Scheme
-    pub encryption_scheme: C::EncryptionScheme,
+    /// Incoming Base Encryption Scheme
+    pub incoming_base_encryption_scheme: C::IncomingBaseEncryptionScheme,
+
+    /// Viewing Key Derivation Function
+    pub viewing_key_derivation_function: C::ViewingKeyDerivationFunction,
+
+    /// UTXO Accumulator Item Hash
+    pub utxo_accumulator_item_hash: C::UtxoAccumulatorItemHash,
+
+    /// UTXO Accumulator Model
+    pub utxo_accumulator_model: C::UtxoAccumulatorModel,
+
+    /// Nullifier Commitment Scheme
+    pub nullifier_commitment_scheme: C::NullifierCommitmentScheme,
+
+    /// Outgoing Base Encryption Scheme
+    pub outgoing_base_encryption_scheme: C::OutgoingBaseEncryptionScheme,
 }
 
-impl<C, COM> Mint<COM> for Model<C, COM>
+impl<C, COM> utxo::Types for Model<C, COM>
 where
     C: Configuration<COM>,
-    COM: Has<bool, Type = C::Bool> + AssertEq,
+    COM: AssertEq + Has<bool, Type = C::Bool>,
 {
-    type MintSecret = UtxoSecret<C, COM>;
     type Asset = Asset<C, COM>;
     type Utxo = Utxo<C, COM>;
+}
+
+impl<C, COM> utxo::Mint<MintSecret<C, COM>, COM> for Model<C, COM>
+where
+    C: Configuration<COM>,
+    COM: AssertEq + Has<bool, Type = C::Bool>,
+{
+    type Authority = ();
+    type Note = IncomingNote<C, COM>;
 
     #[inline]
-    fn asset(
+    fn well_formed_asset(
         &self,
-        mint_secret: &Self::MintSecret,
+        authority: &Self::Authority,
+        secret: &MintSecret<C, COM>,
         utxo: &Self::Utxo,
+        note: &Self::Note,
         compiler: &mut COM,
     ) -> Self::Asset {
-        mint_secret.get_well_formed_asset(
-            &self.commitment_scheme,
-            &self.encryption_scheme,
+        let _ = authority;
+        secret.well_formed_asset(
+            &self.utxo_commitment_scheme,
+            &self.incoming_base_encryption_scheme,
             utxo,
+            note,
             compiler,
+        )
+    }
+}
+
+impl<C, COM> utxo::Spend<SpendSecret<C, COM>, COM> for Model<C, COM>
+where
+    C: Configuration<COM>,
+    COM: AssertEq + Has<bool, Type = C::Bool>,
+{
+    type Authority = ProofAuthority<C, COM>;
+    type Nullifier = Nullifier<C, COM>;
+
+    #[inline]
+    fn well_formed_asset(
+        &self,
+        authority: &Self::Authority,
+        secret: &SpendSecret<C, COM>,
+        utxo: &Self::Utxo,
+        compiler: &mut COM,
+    ) -> (Self::Asset, Self::Nullifier) {
+        secret.well_formed_asset(self, authority, utxo, compiler)
+    }
+}
+
+/// Incoming Note Plaintext
+pub struct IncomingPlaintext<C, COM = ()>
+where
+    C: Configuration<COM> + ?Sized,
+    COM: Has<bool, Type = C::Bool>,
+{
+    /// UTXO Commitment Randomness
+    pub utxo_commitment_randomness: UtxoCommitmentRandomness<C, COM>,
+
+    /// Secret Asset
+    pub asset: Asset<C, COM>,
+
+    /// Key Diversifier
+    pub key_diversifier: C::Group,
+}
+
+impl<C, COM> IncomingPlaintext<C, COM>
+where
+    C: Configuration<COM> + ?Sized,
+    COM: Has<bool, Type = C::Bool>,
+{
+    /// Builds a new [`IncomingPlaintext`] from `utxo_commitment_randomness`, `asset`, and
+    /// `key_diversifier`.
+    #[inline]
+    pub fn new(
+        utxo_commitment_randomness: UtxoCommitmentRandomness<C, COM>,
+        asset: Asset<C, COM>,
+        key_diversifier: C::Group,
+    ) -> Self {
+        Self {
+            utxo_commitment_randomness,
+            asset,
+            key_diversifier,
+        }
+    }
+}
+
+impl<C, COM> Variable<Secret, COM> for IncomingPlaintext<C, COM>
+where
+    C: Configuration<COM> + Constant<COM> + ?Sized,
+    COM: Has<bool, Type = C::Bool>,
+    C::Type: Configuration<Bool = bool>,
+    UtxoCommitmentRandomness<C, COM>:
+        Variable<Secret, COM, Type = UtxoCommitmentRandomness<C::Type>>,
+    Asset<C, COM>: Variable<Secret, COM, Type = Asset<C::Type>>,
+    C::Group: Variable<Secret, COM, Type = <C::Type as Configuration>::Group>,
+{
+    type Type = IncomingPlaintext<C::Type>;
+
+    #[inline]
+    fn new_unknown(compiler: &mut COM) -> Self {
+        Self::new(
+            compiler.allocate_unknown(),
+            compiler.allocate_unknown(),
+            compiler.allocate_unknown(),
+        )
+    }
+
+    #[inline]
+    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
+        Self::new(
+            this.utxo_commitment_randomness.as_known(compiler),
+            this.asset.as_known(compiler),
+            this.key_diversifier.as_known(compiler),
         )
     }
 }
@@ -222,71 +506,6 @@ where
     }
 }
 
-/// Shielded Address
-pub struct ShieldedAddress<C, COM = ()>
-where
-    C: Configuration<COM>,
-    COM: Has<bool, Type = C::Bool>,
-{
-    /// Key Diversifier
-    pub key_diversifier: C::KeyDiversifier,
-
-    /// Receiving Key
-    pub receiving_key: C::ReceivingKey,
-}
-
-impl<C, COM> ShieldedAddress<C, COM>
-where
-    C: Configuration<COM>,
-    COM: Has<bool, Type = C::Bool>,
-{
-    /// Builds a new [`ShieldedAddress`] from `key_diversifier` and `receiving_key`.
-    #[inline]
-    pub fn new(key_diversifier: C::KeyDiversifier, receiving_key: C::ReceivingKey) -> Self {
-        Self {
-            key_diversifier,
-            receiving_key,
-        }
-    }
-}
-
-impl<C, COM, M> Variable<M, COM> for ShieldedAddress<C, COM>
-where
-    C: Configuration<COM> + Constant<COM>,
-    COM: Has<bool, Type = C::Bool>,
-    C::Type: Configuration<Bool = bool>,
-    C::KeyDiversifier: Variable<M, COM, Type = <C::Type as Configuration>::KeyDiversifier>,
-    C::ReceivingKey: Variable<M, COM, Type = <C::Type as Configuration>::ReceivingKey>,
-{
-    type Type = ShieldedAddress<C::Type>;
-
-    #[inline]
-    fn new_unknown(compiler: &mut COM) -> Self {
-        Self::new(compiler.allocate_unknown(), compiler.allocate_unknown())
-    }
-
-    #[inline]
-    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
-        Self::new(
-            this.key_diversifier.as_known(compiler),
-            this.receiving_key.as_known(compiler),
-        )
-    }
-}
-
-/// Incoming Note Unused Header
-///
-/// The header is unused for this version of the UTXO protocol.
-#[derive(derivative::Derivative)]
-#[derivative(Default)]
-pub struct IncomingNoteHeader<C, COM = ()>(PhantomData<C>, PhantomData<COM>)
-where
-    C: Configuration<COM> + ?Sized,
-    COM: Has<bool, Type = C::Bool>;
-
-/// Incoming Note Type
-pub type IncomingNote<C, COM = ()> = EncryptedMessage<<C as Configuration<COM>>::EncryptionScheme>;
-
 /// UTXO
 pub struct Utxo<C, COM = ()>
 where
@@ -294,16 +513,13 @@ where
     COM: Has<bool, Type = C::Bool>,
 {
     /// Transparency Flag
-    pub is_transparent: C::Bool,
+    is_transparent: C::Bool,
 
     /// Public Asset Data
-    pub public_asset: Asset<C, COM>,
+    public_asset: Asset<C, COM>,
 
-    /// Commitment
-    pub commitment: Commitment<C, COM>,
-
-    /// Incoming Encrypted Note
-    pub incoming_note: IncomingNote<C, COM>,
+    /// UTXO Commitment
+    commitment: UtxoCommitment<C, COM>,
 }
 
 impl<C, COM> Utxo<C, COM>
@@ -311,20 +527,17 @@ where
     C: Configuration<COM>,
     COM: Has<bool, Type = C::Bool>,
 {
-    /// Builds a new [`Utxo`] from `is_transparent`, `public_asset`, `commitment`, and
-    /// `incoming_note`.
+    /// Builds a new [`Utxo`] from `is_transparent`, `public_asset`, and `commitment`.
     #[inline]
     pub fn new(
         is_transparent: C::Bool,
         public_asset: Asset<C, COM>,
-        commitment: Commitment<C, COM>,
-        incoming_note: IncomingNote<C, COM>,
+        commitment: UtxoCommitment<C, COM>,
     ) -> Self {
         Self {
             is_transparent,
             public_asset,
             commitment,
-            incoming_note,
         }
     }
 }
@@ -336,15 +549,13 @@ where
     C::Type: Configuration<Bool = bool>,
     C::Bool: Variable<M, COM, Type = <C::Type as Configuration>::Bool>,
     Asset<C, COM>: Variable<M, COM, Type = Asset<C::Type>>,
-    Commitment<C, COM>: Variable<M, COM, Type = Commitment<C::Type>>,
-    IncomingNote<C, COM>: Variable<M, COM, Type = IncomingNote<C::Type>>,
+    UtxoCommitment<C, COM>: Variable<M, COM, Type = UtxoCommitment<C::Type>>,
 {
     type Type = Utxo<C::Type>;
 
     #[inline]
     fn new_unknown(compiler: &mut COM) -> Self {
         Self::new(
-            compiler.allocate_unknown(),
             compiler.allocate_unknown(),
             compiler.allocate_unknown(),
             compiler.allocate_unknown(),
@@ -357,126 +568,54 @@ where
             this.is_transparent.as_known(compiler),
             this.public_asset.as_known(compiler),
             this.commitment.as_known(compiler),
-            this.incoming_note.as_known(compiler),
         )
     }
 }
 
-/// Plaintext
-pub struct Plaintext<C, COM = ()>
-where
-    C: Configuration<COM> + ?Sized,
-    COM: Has<bool, Type = C::Bool>,
-{
-    /// Commitment Randomness
-    pub commitment_randomness: CommitmentRandomness<C, COM>,
-
-    /// Secret Asset
-    pub asset: Asset<C, COM>,
-
-    /// Key Diversifier
-    pub key_diversifier: C::KeyDiversifier,
-}
-
-impl<C, COM> Plaintext<C, COM>
-where
-    C: Configuration<COM> + ?Sized,
-    COM: Has<bool, Type = C::Bool>,
-{
-    /// Builds a new [`Plaintext`] from `commitment_randomness`, `asset`, and `key_diversifier`.
-    #[inline]
-    pub fn new(
-        commitment_randomness: CommitmentRandomness<C, COM>,
-        asset: Asset<C, COM>,
-        key_diversifier: C::KeyDiversifier,
-    ) -> Self {
-        Self {
-            commitment_randomness,
-            asset,
-            key_diversifier,
-        }
-    }
-}
-
-impl<C, COM> Variable<Secret, COM> for Plaintext<C, COM>
-where
-    C: Configuration<COM> + Constant<COM> + ?Sized,
-    COM: Has<bool, Type = C::Bool>,
-    C::Type: Configuration<Bool = bool>,
-    CommitmentRandomness<C, COM>: Variable<Secret, COM, Type = CommitmentRandomness<C::Type>>,
-    Asset<C, COM>: Variable<Secret, COM, Type = Asset<C::Type>>,
-    C::KeyDiversifier: Variable<Secret, COM, Type = <C::Type as Configuration>::KeyDiversifier>,
-{
-    type Type = Plaintext<C::Type>;
-
-    #[inline]
-    fn new_unknown(compiler: &mut COM) -> Self {
-        Self::new(
-            compiler.allocate_unknown(),
-            compiler.allocate_unknown(),
-            compiler.allocate_unknown(),
-        )
-    }
-
-    #[inline]
-    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
-        Self::new(
-            this.commitment_randomness.as_known(compiler),
-            this.asset.as_known(compiler),
-            this.key_diversifier.as_known(compiler),
-        )
-    }
-}
-
-/// UTXO Secret
-pub struct UtxoSecret<C, COM = ()>
+/// Secret required to Mint a UTXO
+pub struct MintSecret<C, COM = ()>
 where
     C: Configuration<COM>,
     COM: Has<bool, Type = C::Bool>,
 {
-    /// Encryption Key
-    pub encryption_key: EncryptionKey<C, COM>,
+    /// Receiving Key
+    receiving_key: C::Group,
 
-    /// Encryption Randomness
-    pub encryption_randomness: EncryptionRandomness<C, COM>,
+    /// Incoming Randomness
+    incoming_randomness: IncomingRandomness<C, COM>,
 
     /// Plaintext
-    pub plaintext: Plaintext<C, COM>,
-
-    /// Receiving Key
-    pub receiving_key: C::ReceivingKey,
+    plaintext: IncomingPlaintext<C, COM>,
 }
 
-impl<C, COM> UtxoSecret<C, COM>
+impl<C, COM> MintSecret<C, COM>
 where
     C: Configuration<COM>,
     COM: Has<bool, Type = C::Bool>,
 {
-    /// Builds a new [`UtxoSecret`] from `encryption_key`, `encryption_randomness`,
-    /// `commitment_randomness`, `asset`, and `shielded_address`.
+    /// Builds a new [`MintSecret`] from `receiving_key`, `incoming_randomness`, and `plaintext`.
     #[inline]
     pub fn new(
-        encryption_key: EncryptionKey<C, COM>,
-        encryption_randomness: EncryptionRandomness<C, COM>,
-        plaintext: Plaintext<C, COM>,
-        receiving_key: C::ReceivingKey,
+        receiving_key: C::Group,
+        incoming_randomness: IncomingRandomness<C, COM>,
+        plaintext: IncomingPlaintext<C, COM>,
     ) -> Self {
         Self {
-            encryption_key,
-            encryption_randomness,
-            plaintext,
             receiving_key,
+            incoming_randomness,
+            plaintext,
         }
     }
 
-    /// Returns the usable `asset` from `self` and its public-form `utxo` asserting that it is
-    /// well-formed.
+    /// Returns the representative [`Asset`] from `self` and its public-form `utxo` asserting that
+    /// it is well-formed.
     #[inline]
-    pub fn get_well_formed_asset(
+    pub fn well_formed_asset(
         &self,
-        commitment_scheme: &C::CommitmentScheme,
-        encryption_scheme: &C::EncryptionScheme,
+        utxo_commitment_scheme: &C::UtxoCommitmentScheme,
+        encryption_scheme: &C::IncomingBaseEncryptionScheme,
         utxo: &Utxo<C, COM>,
+        note: &IncomingNote<C, COM>,
         compiler: &mut COM,
     ) -> Asset<C, COM>
     where
@@ -490,44 +629,44 @@ where
             &self.plaintext.asset,
             compiler,
         );
-        let commitment = commitment_scheme.commit(
-            &self.plaintext.commitment_randomness,
+        let utxo_commitment = utxo_commitment_scheme.commit(
+            &self.plaintext.utxo_commitment_randomness,
             &self.plaintext.asset.id,
             &self.plaintext.asset.value,
             &self.receiving_key,
             compiler,
         );
-        compiler.assert_eq(&utxo.commitment, &commitment);
-        let ciphertext = encryption_scheme
-            .encrypt_into(
-                &self.encryption_key,
-                &self.encryption_randomness,
-                IncomingNoteHeader::default(),
-                &self.plaintext,
-                compiler,
-            )
-            .ciphertext;
-        compiler.assert_eq(&utxo.incoming_note.ciphertext, &ciphertext);
+        compiler.assert_eq(&utxo.commitment, &utxo_commitment);
+        let incoming_note = Hybrid::new(
+            DiffieHellman::<_, COM>::new(self.plaintext.key_diversifier.clone()),
+            encryption_scheme.clone(),
+        )
+        .encrypt_into(
+            &self.receiving_key,
+            &self.incoming_randomness,
+            EmptyHeader::default(),
+            &self.plaintext,
+            compiler,
+        );
+        compiler.assert_eq(note, &incoming_note);
         asset
     }
 }
 
-impl<C, COM> Variable<Secret, COM> for UtxoSecret<C, COM>
+impl<C, COM> Variable<Secret, COM> for MintSecret<C, COM>
 where
     C: Configuration<COM> + Constant<COM>,
     COM: Has<bool, Type = C::Bool>,
     C::Type: Configuration<Bool = bool>,
-    EncryptionKey<C, COM>: Variable<Secret, COM, Type = EncryptionKey<C::Type>>,
-    EncryptionRandomness<C, COM>: Variable<Secret, COM, Type = EncryptionRandomness<C::Type>>,
-    Plaintext<C, COM>: Variable<Secret, COM, Type = Plaintext<C::Type>>,
-    C::ReceivingKey: Variable<Secret, COM, Type = <C::Type as Configuration>::ReceivingKey>,
+    C::Group: Variable<Secret, COM, Type = <C::Type as Configuration>::Group>,
+    IncomingRandomness<C, COM>: Variable<Secret, COM, Type = IncomingRandomness<C::Type>>,
+    IncomingPlaintext<C, COM>: Variable<Secret, COM, Type = IncomingPlaintext<C::Type>>,
 {
-    type Type = UtxoSecret<C::Type>;
+    type Type = MintSecret<C::Type>;
 
     #[inline]
     fn new_unknown(compiler: &mut COM) -> Self {
         Self::new(
-            compiler.allocate_unknown(),
             compiler.allocate_unknown(),
             compiler.allocate_unknown(),
             compiler.allocate_unknown(),
@@ -537,10 +676,244 @@ where
     #[inline]
     fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
         Self::new(
-            this.encryption_key.as_known(compiler),
-            this.encryption_randomness.as_known(compiler),
-            this.plaintext.as_known(compiler),
             this.receiving_key.as_known(compiler),
+            this.incoming_randomness.as_known(compiler),
+            this.plaintext.as_known(compiler),
+        )
+    }
+}
+
+/// Proof Authority
+pub struct ProofAuthority<C, COM = ()>
+where
+    C: Configuration<COM>,
+    COM: Has<bool, Type = C::Bool>,
+{
+    /// Proof Authorization Key
+    proof_authorization_key: C::Group,
+
+    /// Viewing Key
+    viewing_key: C::Scalar,
+}
+
+impl<C, COM> ProofAuthority<C, COM>
+where
+    C: Configuration<COM>,
+    COM: Has<bool, Type = C::Bool>,
+{
+    /// Builds a new [`ProofAuthority`] over `proof_authorization_key`, asserting that the
+    /// `randomized_proof_authorization_key` is derived from the `randomizer` and the
+    /// `proof_authorization_key`.
+    #[inline]
+    pub fn new(
+        viewing_key_derivation_function: &C::ViewingKeyDerivationFunction,
+        randomizer: &C::Scalar,
+        randomized_proof_authorization_key: &C::Group,
+        proof_authorization_key: C::Group,
+        compiler: &mut COM,
+    ) -> Self
+    where
+        COM: Assert,
+    {
+        let computed_randomized_proof_authorization_key =
+            proof_authorization_key.mul(randomizer, compiler);
+        compiler.assert_eq(
+            randomized_proof_authorization_key,
+            &computed_randomized_proof_authorization_key,
+        );
+        Self {
+            viewing_key: viewing_key_derivation_function
+                .viewing_key(&proof_authorization_key, compiler),
+            proof_authorization_key,
+        }
+    }
+
+    /// Returns the receiving key over `key_diversifier` for this [`ProofAuthority`].
+    #[inline]
+    pub fn receiving_key(&self, key_diversifier: &C::Group, compiler: &mut COM) -> C::Group {
+        key_diversifier.mul(&self.viewing_key, compiler)
+    }
+}
+
+/// Spend Secret
+pub struct SpendSecret<C, COM = ()>
+where
+    C: Configuration<COM>,
+    COM: Has<bool, Type = C::Bool>,
+{
+    /// UTXO Membership Proof
+    utxo_membership_proof: UtxoMembershipProof<C, COM>,
+
+    /// Outgoing Randomness
+    outgoing_randomness: OutgoingRandomness<C, COM>,
+
+    /// Plaintext
+    plaintext: IncomingPlaintext<C, COM>,
+}
+
+impl<C, COM> SpendSecret<C, COM>
+where
+    C: Configuration<COM>,
+    COM: Has<bool, Type = C::Bool>,
+{
+    /// Builds a new [`SpendSecret`] from `utxo_membership_proof`, `outgoing_randomness`, and
+    /// `plaintext`.
+    #[inline]
+    pub fn new(
+        utxo_membership_proof: UtxoMembershipProof<C, COM>,
+        outgoing_randomness: OutgoingRandomness<C, COM>,
+        plaintext: IncomingPlaintext<C, COM>,
+    ) -> Self {
+        Self {
+            utxo_membership_proof,
+            outgoing_randomness,
+            plaintext,
+        }
+    }
+
+    /// Returns the representative [`Asset`] from `self` and its public-form `utxo` asserting that
+    /// it is well-formed.
+    #[inline]
+    pub fn well_formed_asset(
+        &self,
+        model: &Model<C, COM>,
+        authority: &ProofAuthority<C, COM>,
+        utxo: &Utxo<C, COM>,
+        compiler: &mut COM,
+    ) -> (Asset<C, COM>, Nullifier<C, COM>)
+    where
+        COM: AssertEq,
+    {
+        let is_transparent = self.plaintext.asset.is_empty(compiler);
+        compiler.assert_eq(&utxo.is_transparent, &is_transparent);
+        let asset = Asset::select(
+            &utxo.is_transparent,
+            &utxo.public_asset,
+            &self.plaintext.asset,
+            compiler,
+        );
+        let receiving_key = authority.receiving_key(&self.plaintext.key_diversifier, compiler);
+        let utxo_commitment = model.utxo_commitment_scheme.commit(
+            &self.plaintext.utxo_commitment_randomness,
+            &self.plaintext.asset.id,
+            &self.plaintext.asset.value,
+            &receiving_key,
+            compiler,
+        );
+        compiler.assert_eq(&utxo.commitment, &utxo_commitment);
+        let item = model.utxo_accumulator_item_hash.hash(
+            &utxo.is_transparent,
+            &utxo.public_asset,
+            &utxo.commitment,
+            compiler,
+        );
+        let has_valid_membership = &asset.value.is_zero(compiler).bitor(
+            self.utxo_membership_proof
+                .verify(&model.utxo_accumulator_model, &item, compiler),
+            compiler,
+        );
+        compiler.assert(has_valid_membership);
+        let nullifier_commitment = model.nullifier_commitment_scheme.commit(
+            &authority.proof_authorization_key,
+            &item,
+            compiler,
+        );
+        let outgoing_note = Hybrid::new(
+            DiffieHellman::<_, COM>::new(self.plaintext.key_diversifier.clone()),
+            model.outgoing_base_encryption_scheme.clone(),
+        )
+        .encrypt_into(
+            &receiving_key,
+            &self.outgoing_randomness,
+            EmptyHeader::default(),
+            &self.plaintext.asset,
+            compiler,
+        );
+        (asset, Nullifier::new(nullifier_commitment, outgoing_note))
+    }
+}
+
+impl<C, COM> Variable<Secret, COM> for SpendSecret<C, COM>
+where
+    C: Configuration<COM> + Constant<COM>,
+    C::Type: Configuration<Bool = bool>,
+    COM: Has<bool, Type = C::Bool>,
+    UtxoMembershipProof<C, COM>: Variable<Secret, COM, Type = UtxoMembershipProof<C::Type>>,
+    OutgoingRandomness<C, COM>: Variable<Secret, COM, Type = OutgoingRandomness<C::Type>>,
+    IncomingPlaintext<C, COM>: Variable<Secret, COM, Type = IncomingPlaintext<C::Type>>,
+{
+    type Type = SpendSecret<C::Type>;
+
+    #[inline]
+    fn new_unknown(compiler: &mut COM) -> Self {
+        Self::new(
+            compiler.allocate_unknown(),
+            compiler.allocate_unknown(),
+            compiler.allocate_unknown(),
+        )
+    }
+
+    #[inline]
+    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
+        Self::new(
+            this.utxo_membership_proof.as_known(compiler),
+            this.outgoing_randomness.as_known(compiler),
+            this.plaintext.as_known(compiler),
+        )
+    }
+}
+
+/// Nullifier
+pub struct Nullifier<C, COM = ()>
+where
+    C: Configuration<COM>,
+    COM: Has<bool, Type = C::Bool>,
+{
+    /// Nullifier Commitment
+    pub commitment: NullifierCommitment<C, COM>,
+
+    /// Outgoing Note
+    pub outgoing_note: OutgoingNote<C, COM>,
+}
+
+impl<C, COM> Nullifier<C, COM>
+where
+    C: Configuration<COM>,
+    COM: Has<bool, Type = C::Bool>,
+{
+    /// Builds a new [`Nullifier`] from `commitment` and `outgoing_note`.
+    #[inline]
+    pub fn new(
+        commitment: NullifierCommitment<C, COM>,
+        outgoing_note: OutgoingNote<C, COM>,
+    ) -> Self {
+        Self {
+            commitment,
+            outgoing_note,
+        }
+    }
+}
+
+impl<C, COM> Variable<Public, COM> for Nullifier<C, COM>
+where
+    C: Configuration<COM> + Constant<COM>,
+    C::Type: Configuration<Bool = bool>,
+    COM: Has<bool, Type = C::Bool>,
+    NullifierCommitment<C, COM>: Variable<Public, COM, Type = NullifierCommitment<C::Type>>,
+    OutgoingNote<C, COM>: Variable<Public, COM, Type = OutgoingNote<C::Type>>,
+{
+    type Type = Nullifier<C::Type>;
+
+    #[inline]
+    fn new_unknown(compiler: &mut COM) -> Self {
+        Self::new(compiler.allocate_unknown(), compiler.allocate_unknown())
+    }
+
+    #[inline]
+    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
+        Self::new(
+            this.commitment.as_known(compiler),
+            this.outgoing_note.as_known(compiler),
         )
     }
 }

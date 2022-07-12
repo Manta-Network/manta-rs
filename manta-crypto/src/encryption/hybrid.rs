@@ -21,7 +21,10 @@
 //! encryption scheme inlines this complexity into the encryption interfaces.
 
 use crate::{
-    constraint::{Allocate, Allocator, Constant, Derived, Var, Variable},
+    constraint::{
+        self, Allocate, Allocator, Assert, AssertEq, BitAnd, Bool, Constant, Derived, Has, Var,
+        Variable,
+    },
     encryption::{
         CiphertextType, Decrypt, DecryptedPlaintextType, DecryptionKeyType, Derive, Encrypt,
         EncryptedMessage, EncryptionKeyType, HeaderType, PlaintextType, RandomnessType,
@@ -149,9 +152,7 @@ where
     Copy(bound = "K::PublicKey: Copy, E::Ciphertext: Copy"),
     Debug(bound = "K::PublicKey: Debug, E::Ciphertext: Debug"),
     Default(bound = "K::PublicKey: Default, E::Ciphertext: Default"),
-    Eq(bound = "K::PublicKey: Eq, E::Ciphertext: Eq"),
-    Hash(bound = "K::PublicKey: Hash, E::Ciphertext: Hash"),
-    PartialEq(bound = "K::PublicKey: PartialEq, E::Ciphertext: PartialEq")
+    Hash(bound = "K::PublicKey: Hash, E::Ciphertext: Hash")
 )]
 pub struct Ciphertext<K, E>
 where
@@ -177,6 +178,32 @@ where
             ephemeral_public_key,
             ciphertext,
         }
+    }
+}
+
+impl<K, E, COM> constraint::PartialEq<Self, COM> for Ciphertext<K, E>
+where
+    COM: Has<bool>,
+    Bool<COM>: BitAnd<Bool<COM>, COM, Output = Bool<COM>>,
+    K: key::agreement::Types,
+    E: CiphertextType,
+    K::PublicKey: constraint::PartialEq<K::PublicKey, COM>,
+    E::Ciphertext: constraint::PartialEq<E::Ciphertext, COM>,
+{
+    #[inline]
+    fn eq(&self, rhs: &Self, compiler: &mut COM) -> Bool<COM> {
+        self.ephemeral_public_key
+            .eq(&rhs.ephemeral_public_key, compiler)
+            .bitand(self.ciphertext.eq(&rhs.ciphertext, compiler), compiler)
+    }
+
+    #[inline]
+    fn assert_equal(&self, rhs: &Self, compiler: &mut COM)
+    where
+        COM: Assert,
+    {
+        compiler.assert_eq(&self.ephemeral_public_key, &rhs.ephemeral_public_key);
+        compiler.assert_eq(&self.ciphertext, &rhs.ciphertext);
     }
 }
 

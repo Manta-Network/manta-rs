@@ -21,7 +21,10 @@
 //! [`Decrypt`] `trait`s for more.
 
 use crate::{
-    constraint::{Allocate, Allocator, Constant, Derived, Public, Var, Variable},
+    constraint::{
+        self, Allocate, Allocator, Assert, AssertEq, BitAnd, Bool, Constant, Derived, Has, Public,
+        Var, Variable,
+    },
     rand::{Rand, RngCore, Sample},
 };
 use core::{fmt::Debug, hash::Hash};
@@ -409,9 +412,7 @@ where
     Copy(bound = "E::Header: Copy, E::Ciphertext: Copy"),
     Debug(bound = "E::Header: Debug, E::Ciphertext: Debug"),
     Default(bound = "E::Header: Default, E::Ciphertext: Default"),
-    Eq(bound = "E::Header: Eq, E::Ciphertext: Eq"),
-    Hash(bound = "E::Header: Hash, E::Ciphertext: Hash"),
-    PartialEq(bound = "E::Header: PartialEq, E::Ciphertext: PartialEq")
+    Hash(bound = "E::Header: Hash, E::Ciphertext: Hash")
 )]
 pub struct EncryptedMessage<E>
 where
@@ -446,6 +447,43 @@ where
         E: Decrypt<COM>,
     {
         cipher.decrypt(key, &self.header, &self.ciphertext, compiler)
+    }
+
+    /// Converts the [`EncryptedMessage`] into the new cipher `F` converting the ciphertext and
+    /// header.
+    #[inline]
+    pub fn into<F>(self) -> EncryptedMessage<F>
+    where
+        F: CiphertextType + HeaderType + ?Sized,
+        E::Ciphertext: Into<F::Ciphertext>,
+        E::Header: Into<F::Header>,
+    {
+        EncryptedMessage::new(self.header.into(), self.ciphertext.into())
+    }
+}
+
+impl<E, COM> constraint::PartialEq<Self, COM> for EncryptedMessage<E>
+where
+    E: CiphertextType + HeaderType + ?Sized,
+    COM: Has<bool>,
+    Bool<COM>: BitAnd<Bool<COM>, COM, Output = Bool<COM>>,
+    E::Ciphertext: constraint::PartialEq<E::Ciphertext, COM>,
+    E::Header: constraint::PartialEq<E::Header, COM>,
+{
+    #[inline]
+    fn eq(&self, rhs: &Self, compiler: &mut COM) -> Bool<COM> {
+        self.header
+            .eq(&rhs.header, compiler)
+            .bitand(self.ciphertext.eq(&rhs.ciphertext, compiler), compiler)
+    }
+
+    #[inline]
+    fn assert_equal(&self, rhs: &Self, compiler: &mut COM)
+    where
+        COM: Assert,
+    {
+        compiler.assert_eq(&self.header, &rhs.header);
+        compiler.assert_eq(&self.ciphertext, &rhs.ciphertext);
     }
 }
 
