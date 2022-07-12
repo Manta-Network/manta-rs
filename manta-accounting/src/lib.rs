@@ -32,7 +32,7 @@
 extern crate alloc;
 extern crate derive_more;
 
-// pub mod asset;
+pub mod asset;
 // pub mod key;
 pub mod transfer;
 // pub mod wallet;

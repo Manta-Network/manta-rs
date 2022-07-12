@@ -20,8 +20,8 @@
 //! following structures:
 //!
 //! - Global Configuration: [`Configuration`]
-//! - Sender Abstraction: [`Sender`], [`SenderVar`], [`SenderPost`], [`SenderLedger`]
-//! - Receiver Abstraction: [`Receiver`], [`ReceiverVar`], [`ReceiverPost`], [`ReceiverLedger`]
+//! - Sender Abstraction: [`Sender`], [`SenderPost`], [`SenderLedger`]
+//! - Receiver Abstraction: [`Receiver`], [`ReceiverPost`], [`ReceiverLedger`]
 //! - Transfer Abstraction: [`Transfer`], [`TransferPost`], [`TransferLedger`]
 //! - Canonical Transactions: [`canonical`]
 //! - Batched Transactions: [`batch`]
@@ -49,11 +49,25 @@ use manta_util::SizeLimit;
 use manta_util::serde::{Deserialize, Serialize};
 */
 
-mod receiver;
-mod sender;
+use crate::{
+    asset,
+    transfer::utxo::{
+        Mint, Note, Nullifier, Spend, Utxo, UtxoAccumulatorItem, UtxoAccumulatorOutput,
+    },
+};
+use alloc::vec::Vec;
+use manta_crypto::{
+    accumulator,
+    constraint::{
+        Add, Allocate, Allocator, Assert, AssertEq, Constant, Derived, PartialEq, ProofSystem,
+        ProofSystemInput, Public, Secret, Variable,
+    },
+};
 
 // TODO: pub mod batch;
 // TODO: pub mod canonical;
+pub mod receiver;
+pub mod sender;
 pub mod utxo;
 
 /* TODO:
@@ -63,16 +77,14 @@ pub mod test;
 */
 
 // TODO: pub use canonical::Shape;
-pub use receiver::*;
-pub use sender::*;
-
-/*
 
 /// Returns `true` if the [`Transfer`] with this shape would have public participants.
 #[inline]
 pub const fn has_public_participants(sources: usize, sinks: usize) -> bool {
     (sources + sinks) > 0
 }
+
+/*
 
 /// UTXO Commitment Scheme
 pub trait UtxoCommitmentScheme<COM = ()> {
@@ -819,6 +831,122 @@ where
     const SIZE: usize = SecretKey::<C>::SIZE + Asset::SIZE;
 }
 
+*/
+
+/// Configuration
+pub trait Configuration {
+    /// Compiler Type
+    type Compiler: Assert;
+
+    /// Asset Id Type
+    type AssetId;
+
+    /// Asset Value Type
+    type AssetValue;
+
+    /// Parameters Type
+    type Parameters: utxo::Types<Asset = Asset<Self>> + Mint + Spend;
+
+    /// Asset Id Variable Type
+    type AssetIdVar: PartialEq<Self::AssetIdVar, Self::Compiler>;
+
+    /// Asset Value Variable Type
+    type AssetValueVar: Add<Self::AssetValueVar, Self::Compiler, Output = Self::AssetValueVar>
+        + PartialEq<Self::AssetValueVar, Self::Compiler>;
+
+    /// UTXO Accumulator Model Variable Type
+    type UtxoAccumulatorModelVar: Constant<Self::Compiler, Type = UtxoAccumulatorModel<Self>>
+        + accumulator::Model<Self::Compiler>;
+
+    /// Parameters Variable Type
+    type ParametersVar: Constant<Self::Compiler, Type = Self::Parameters>
+        + utxo::Types<Asset = AssetVar<Self>>
+        + Mint<Self::Compiler>
+        + Spend<Self::Compiler, UtxoAccumulatorModel = Self::UtxoAccumulatorModelVar>;
+
+    /// Proof System Type
+    type ProofSystem: ProofSystem<Compiler = Self::Compiler>
+        + ProofSystemInput<Self::AssetId>
+        + ProofSystemInput<Self::AssetValue>
+        + ProofSystemInput<UtxoAccumulatorOutput<Self::Parameters>>
+        + ProofSystemInput<Utxo<Self::Parameters>>
+        + ProofSystemInput<Note<Self::Parameters>>
+        + ProofSystemInput<Nullifier<Self::Parameters>>;
+}
+
+/// Transfer Compiler Type
+pub type Compiler<C> = <C as Configuration>::Compiler;
+
+/// Transfer Proof System Type
+type ProofSystemType<C> = <C as Configuration>::ProofSystem;
+
+/// Transfer Proof System Error Type
+pub type ProofSystemError<C> = <ProofSystemType<C> as ProofSystem>::Error;
+
+/// Transfer Proof System Public Parameters Type
+pub type ProofSystemPublicParameters<C> = <ProofSystemType<C> as ProofSystem>::PublicParameters;
+
+/// Transfer Proving Context Type
+pub type ProvingContext<C> = <ProofSystemType<C> as ProofSystem>::ProvingContext;
+
+/// Transfer Verifying Context Type
+pub type VerifyingContext<C> = <ProofSystemType<C> as ProofSystem>::VerifyingContext;
+
+/// Transfer Proof System Input Type
+pub type ProofInput<C> = <ProofSystemType<C> as ProofSystem>::Input;
+
+/// Transfer Validity Proof Type
+pub type Proof<C> = <ProofSystemType<C> as ProofSystem>::Proof;
+
+/// Transfer Parameters Type
+pub type Parameters<C> = <C as Configuration>::Parameters;
+
+/// Transfer Parameters Variable Type
+pub type ParametersVar<C> = <C as Configuration>::ParametersVar;
+
+/// Transfer Full Parameters Type
+pub type FullParameters<'p, C> = utxo::FullParameters<'p, Parameters<C>>;
+
+/// Transfer Full Parameters Variable Type
+pub type FullParametersVar<'p, C> = utxo::FullParameters<'p, ParametersVar<C>, Compiler<C>>;
+
+/// Transfer Full Parameters Reference Type
+pub type FullParametersRef<'p, C> = utxo::FullParametersRef<'p, Parameters<C>>;
+
+/// Transfer Full Parameters Reference Variable Type
+pub type FullParametersRefVar<'p, C> = utxo::FullParametersRef<'p, ParametersVar<C>, Compiler<C>>;
+
+/// Transfer UTXO Accumulator Model Type
+pub type UtxoAccumulatorModel<C> = utxo::UtxoAccumulatorModel<Parameters<C>>;
+
+/// Transfer UTXO Accumulator Model Variable Type
+pub type UtxoAccumulatorModelVar<C> = utxo::UtxoAccumulatorModel<ParametersVar<C>>;
+
+/// Transfer Asset Type
+pub type Asset<C> = asset::Asset<<C as Configuration>::AssetId, <C as Configuration>::AssetValue>;
+
+/// Transfer Asset Variable Type
+pub type AssetVar<C> =
+    asset::Asset<<C as Configuration>::AssetIdVar, <C as Configuration>::AssetValueVar>;
+
+/// Transfer Authority Type
+pub type Authority<C> = utxo::Authority<Parameters<C>>;
+
+/// Transfer Authority Variable Type
+pub type AuthorityVar<C> = utxo::Authority<ParametersVar<C>>;
+
+/// Transfer Sender Type
+pub type Sender<C> = sender::Sender<Parameters<C>>;
+
+/// Transfer Sender Variable Type
+pub type SenderVar<C> = sender::Sender<ParametersVar<C>, Compiler<C>>;
+
+/// Transfer Receiver Type
+pub type Receiver<C> = receiver::Receiver<Parameters<C>>;
+
+/// Transfer Receiver Variable Type
+pub type ReceiverVar<C> = receiver::Receiver<ParametersVar<C>, Compiler<C>>;
+
 /// Transfer
 pub struct Transfer<
     C,
@@ -829,11 +957,14 @@ pub struct Transfer<
 > where
     C: Configuration,
 {
+    /// Authority
+    authority: Authority<C>,
+
     /// Asset Id
-    asset_id: Option<AssetId>,
+    asset_id: Option<C::AssetId>,
 
     /// Sources
-    sources: [AssetValue; SOURCES],
+    sources: [C::AssetValue; SOURCES],
 
     /// Senders
     senders: [Sender<C>; SENDERS],
@@ -842,7 +973,7 @@ pub struct Transfer<
     receivers: [Receiver<C>; RECEIVERS],
 
     /// Sinks
-    sinks: [AssetValue; SINKS],
+    sinks: [C::AssetValue; SINKS],
 }
 
 impl<C, const SOURCES: usize, const SENDERS: usize, const RECEIVERS: usize, const SINKS: usize>
@@ -853,37 +984,16 @@ where
     /// Builds a new [`Transfer`].
     #[inline]
     pub fn new(
-        asset_id: impl Into<Option<AssetId>>,
-        sources: [AssetValue; SOURCES],
+        authority: Authority<C>,
+        asset_id: impl Into<Option<C::AssetId>>,
+        sources: [C::AssetValue; SOURCES],
         senders: [Sender<C>; SENDERS],
         receivers: [Receiver<C>; RECEIVERS],
-        sinks: [AssetValue; SINKS],
+        sinks: [C::AssetValue; SINKS],
     ) -> Self {
         let asset_id = asset_id.into();
         Self::check_shape(asset_id.is_some());
-        Self::new_unchecked(asset_id, sources, senders, receivers, sinks)
-    }
-
-    /// Generates the public input for the [`Transfer`] validation proof.
-    #[inline]
-    pub fn generate_proof_input(&self) -> ProofInput<C> {
-        let mut input = Default::default();
-        if let Some(asset_id) = self.asset_id {
-            C::ProofSystem::extend(&mut input, &asset_id);
-        }
-        self.sources
-            .iter()
-            .for_each(|source| C::ProofSystem::extend(&mut input, source));
-        self.senders
-            .iter()
-            .for_each(|sender| sender.extend_input(&mut input));
-        self.receivers
-            .iter()
-            .for_each(|receiver| receiver.extend_input(&mut input));
-        self.sinks
-            .iter()
-            .for_each(|sink| C::ProofSystem::extend(&mut input, sink));
-        input
+        Self::new_unchecked(authority, asset_id, sources, senders, receivers, sinks)
     }
 
     /// Checks that the [`Transfer`] has a valid shape.
@@ -934,13 +1044,15 @@ where
     /// output sides.
     #[inline]
     fn new_unchecked(
-        asset_id: Option<AssetId>,
-        sources: [AssetValue; SOURCES],
+        authority: Authority<C>,
+        asset_id: Option<C::AssetId>,
+        sources: [C::AssetValue; SOURCES],
         senders: [Sender<C>; SENDERS],
         receivers: [Receiver<C>; RECEIVERS],
-        sinks: [AssetValue; SINKS],
+        sinks: [C::AssetValue; SINKS],
     ) -> Self {
         Self {
+            authority,
             asset_id,
             sources,
             senders,
@@ -949,9 +1061,32 @@ where
         }
     }
 
+    /// Generates the public input for the [`Transfer`] validation proof.
+    #[inline]
+    pub fn generate_proof_input(&self) -> ProofInput<C> {
+        let mut input = Default::default();
+        // FIXME: For the correct subset we need: C::ProofSystem::extend(&mut input, &self.authority);
+        if let Some(asset_id) = &self.asset_id {
+            C::ProofSystem::extend(&mut input, asset_id);
+        }
+        self.sources
+            .iter()
+            .for_each(|source| C::ProofSystem::extend(&mut input, source));
+        self.senders
+            .iter()
+            .for_each(|sender| sender.extend_input::<C::ProofSystem>(&mut input));
+        self.receivers
+            .iter()
+            .for_each(|receiver| receiver.extend_input::<C::ProofSystem>(&mut input));
+        self.sinks
+            .iter()
+            .for_each(|sink| C::ProofSystem::extend(&mut input, sink));
+        input
+    }
+
     /// Builds a constraint system which asserts constraints against unknown variables.
     #[inline]
-    pub fn unknown_constraints(parameters: FullParameters<C>) -> C::Compiler {
+    pub fn unknown_constraints(parameters: FullParametersRef<C>) -> C::Compiler {
         let mut compiler = C::ProofSystem::context_compiler();
         TransferVar::<C, SOURCES, SENDERS, RECEIVERS, SINKS>::new_unknown(&mut compiler)
             .build_validity_constraints(&parameters.as_constant(&mut compiler), &mut compiler);
@@ -960,7 +1095,7 @@ where
 
     /// Builds a constraint system which asserts constraints against known variables.
     #[inline]
-    pub fn known_constraints(&self, parameters: FullParameters<C>) -> C::Compiler {
+    pub fn known_constraints(&self, parameters: FullParametersRef<C>) -> C::Compiler {
         let mut compiler = C::ProofSystem::proof_compiler();
         let transfer: TransferVar<C, SOURCES, SENDERS, RECEIVERS, SINKS> =
             self.as_known(&mut compiler);
@@ -968,6 +1103,7 @@ where
         compiler
     }
 
+    /*
     /// Generates a proving and verifying context for this transfer shape.
     #[inline]
     pub fn generate_context<R>(
@@ -1013,6 +1149,7 @@ where
             sinks: self.sinks.into(),
         })
     }
+    */
 }
 
 /// Transfer Variable
@@ -1025,6 +1162,9 @@ struct TransferVar<
 > where
     C: Configuration,
 {
+    /// Authority
+    authority: AuthorityVar<C>,
+
     /// Asset Id
     asset_id: Option<C::AssetIdVar>,
 
@@ -1053,12 +1193,18 @@ where
         parameters: &FullParametersVar<C>,
         compiler: &mut C::Compiler,
     ) {
+        // FIXME: constrain `authority`
         let mut secret_asset_ids = Vec::with_capacity(SENDERS + RECEIVERS);
         let input_sum = Self::value_sum(
             self.senders
                 .into_iter()
                 .map(|s| {
-                    let asset = s.get_well_formed_asset(parameters, compiler);
+                    let asset = s.well_formed_asset(
+                        &parameters.base,
+                        &parameters.utxo_accumulator_model,
+                        &self.authority,
+                        compiler,
+                    );
                     secret_asset_ids.push(asset.id);
                     asset.value
                 })
@@ -1070,7 +1216,7 @@ where
             self.receivers
                 .into_iter()
                 .map(|r| {
-                    let asset = r.get_well_formed_asset(parameters, compiler);
+                    let asset = r.well_formed_asset(&parameters.base, &self.authority, compiler);
                     secret_asset_ids.push(asset.id);
                     asset.value
                 })
@@ -1107,6 +1253,7 @@ where
 
     #[inline]
     fn new_known(this: &Self::Type, compiler: &mut C::Compiler) -> Self {
+        /* TODO:
         Self {
             asset_id: this.asset_id.map(|id| id.as_known::<Public, _>(compiler)),
             sources: this
@@ -1130,10 +1277,13 @@ where
                 .map(|sink| sink.as_known::<Public, _>(compiler))
                 .collect(),
         }
+        */
+        todo!()
     }
 
     #[inline]
     fn new_unknown(compiler: &mut C::Compiler) -> Self {
+        /* TODO:
         Self {
             asset_id: has_public_participants(SOURCES, SINKS)
                 .then(|| compiler.allocate_unknown::<Public, _>()),
@@ -1154,8 +1304,12 @@ where
                 .map(|_| compiler.allocate_unknown::<Public, _>())
                 .collect(),
         }
+        */
+        todo!()
     }
 }
+
+/*
 
 /// Transfer Ledger
 ///

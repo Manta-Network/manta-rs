@@ -16,7 +16,7 @@
 
 //! UTXO Version 1 Protocol
 
-use crate::transfer::utxo;
+use crate::{asset, transfer::utxo};
 use core::marker::PhantomData;
 use manta_crypto::{
     accumulator::{self, ItemHashFunction, MembershipProof},
@@ -103,7 +103,10 @@ pub trait UtxoAccumulatorItemHash<COM = ()> {
 }
 
 /// Nullifier Commitment Scheme
-pub trait NullifierCommitmentScheme<COM = ()> {
+pub trait NullifierCommitmentScheme<COM = ()>
+where
+    COM: Has<bool>,
+{
     /// Proof Authorization Key
     type ProofAuthorizationKey;
 
@@ -111,7 +114,7 @@ pub trait NullifierCommitmentScheme<COM = ()> {
     type UtxoAccumulatorItem;
 
     /// Nullifier Commitment
-    type Commitment;
+    type Commitment: PartialEq<Self::Commitment, COM>;
 
     /// Commits to the `item` using `proof_authorization_key`.
     fn commit(
@@ -199,7 +202,7 @@ where
     >;
 
     /// Outgoing Ciphertext Type
-    type OutgoingCiphertext: PartialEq<Self::IncomingCiphertext, COM>;
+    type OutgoingCiphertext: PartialEq<Self::OutgoingCiphertext, COM>;
 
     /// Base Encryption Scheme for [`OutgoingNote`]
     type OutgoingBaseEncryptionScheme: Clone
@@ -211,6 +214,10 @@ where
             Ciphertext = Self::OutgoingCiphertext,
         >;
 }
+
+///
+pub type Asset<C, COM = ()> =
+    asset::Asset<<C as Configuration<COM>>::AssetId, <C as Configuration<COM>>::AssetValue>;
 
 /// UTXO Commitment
 pub type UtxoCommitment<C, COM = ()> =
@@ -313,8 +320,9 @@ where
 impl<C, COM> utxo::Types for Parameters<C, COM>
 where
     C: Configuration<COM>,
-    COM: AssertEq + Has<bool, Type = C::Bool>,
+    COM: Assert + Has<bool, Type = C::Bool>,
 {
+    type Authority = ProofAuthority<C, COM>;
     type Asset = Asset<C, COM>;
     type Utxo = Utxo<C, COM>;
 }
@@ -322,9 +330,8 @@ where
 impl<C, COM> utxo::Mint<COM> for Parameters<C, COM>
 where
     C: Configuration<COM>,
-    COM: AssertEq + Has<bool, Type = C::Bool>,
+    COM: Assert + Has<bool, Type = C::Bool>,
 {
-    type Authority = ();
     type Secret = MintSecret<C, COM>;
     type Note = IncomingNote<C, COM>;
 
@@ -351,7 +358,7 @@ where
 impl<C, COM> accumulator::ItemHashFunction<Utxo<C, COM>, COM> for Parameters<C, COM>
 where
     C: Configuration<COM>,
-    COM: AssertEq + Has<bool, Type = C::Bool>,
+    COM: Assert + Has<bool, Type = C::Bool>,
 {
     type Item = UtxoAccumulatorItem<C, COM>;
 
@@ -369,12 +376,21 @@ where
 impl<C, COM> utxo::Spend<COM> for Parameters<C, COM>
 where
     C: Configuration<COM>,
-    COM: AssertEq + Has<bool, Type = C::Bool>,
+    COM: Assert + Has<bool, Type = C::Bool>,
 {
     type UtxoAccumulatorModel = C::UtxoAccumulatorModel;
-    type Authority = ProofAuthority<C, COM>;
     type Secret = SpendSecret<C, COM>;
     type Nullifier = Nullifier<C, COM>;
+
+    #[inline]
+    fn assert_equal_nullifiers(
+        &self,
+        lhs: &Self::Nullifier,
+        rhs: &Self::Nullifier,
+        compiler: &mut COM,
+    ) {
+        compiler.assert_eq(lhs, rhs);
+    }
 
     #[inline]
     fn well_formed_asset(
@@ -462,74 +478,6 @@ where
             this.asset.as_known(compiler),
             this.key_diversifier.as_known(compiler),
         )
-    }
-}
-
-/// Asset Definition
-pub struct Asset<C, COM = ()>
-where
-    C: Configuration<COM> + ?Sized,
-    COM: Has<bool, Type = C::Bool>,
-{
-    /// Asset Id
-    pub id: C::AssetId,
-
-    /// Asset Value
-    pub value: C::AssetValue,
-}
-
-impl<C, COM> Asset<C, COM>
-where
-    C: Configuration<COM> + ?Sized,
-    COM: Has<bool, Type = C::Bool>,
-{
-    /// Builds a new [`Asset`] from `id` and `value`.
-    #[inline]
-    pub fn new(id: C::AssetId, value: C::AssetValue) -> Self {
-        Self { id, value }
-    }
-
-    /// Returns `true` if `self` is an empty [`Asset`], i.e. both the `id` and `value` are zero.
-    #[inline]
-    pub fn is_empty(&self, compiler: &mut COM) -> C::Bool {
-        self.id
-            .is_zero(compiler)
-            .bitand(self.value.is_zero(compiler), compiler)
-    }
-}
-
-impl<C, COM> ConditionalSelect<COM> for Asset<C, COM>
-where
-    C: Configuration<COM> + ?Sized,
-    COM: Has<bool, Type = C::Bool>,
-{
-    #[inline]
-    fn select(bit: &Bool<COM>, true_value: &Self, false_value: &Self, compiler: &mut COM) -> Self {
-        Self::new(
-            C::AssetId::select(bit, &true_value.id, &false_value.id, compiler),
-            C::AssetValue::select(bit, &true_value.value, &false_value.value, compiler),
-        )
-    }
-}
-
-impl<C, COM, M> Variable<M, COM> for Asset<C, COM>
-where
-    C: Configuration<COM> + Constant<COM> + ?Sized,
-    COM: Has<bool, Type = C::Bool>,
-    C::Type: Configuration<Bool = bool>,
-    C::AssetId: Variable<M, COM, Type = <C::Type as Configuration>::AssetId>,
-    C::AssetValue: Variable<M, COM, Type = <C::Type as Configuration>::AssetValue>,
-{
-    type Type = Asset<C::Type>;
-
-    #[inline]
-    fn new_unknown(compiler: &mut COM) -> Self {
-        Self::new(compiler.allocate_unknown(), compiler.allocate_unknown())
-    }
-
-    #[inline]
-    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
-        Self::new(this.id.as_known(compiler), this.value.as_known(compiler))
     }
 }
 
@@ -650,7 +598,7 @@ where
     {
         let is_transparent = self.plaintext.asset.is_empty(compiler);
         compiler.assert_eq(&utxo.is_transparent, &is_transparent);
-        let asset = Asset::select(
+        let asset = Asset::<C, _>::select(
             &utxo.is_transparent,
             &utxo.public_asset,
             &self.plaintext.asset,
@@ -809,7 +757,7 @@ where
     {
         let is_transparent = self.plaintext.asset.is_empty(compiler);
         compiler.assert_eq(&utxo.is_transparent, &is_transparent);
-        let asset = Asset::select(
+        let asset = Asset::<C, _>::select(
             &utxo.is_transparent,
             &utxo.public_asset,
             &self.plaintext.asset,
@@ -902,6 +850,29 @@ where
             commitment,
             outgoing_note,
         }
+    }
+}
+
+impl<C, COM> PartialEq<Self, COM> for Nullifier<C, COM>
+where
+    C: Configuration<COM>,
+    COM: Has<bool, Type = C::Bool>,
+{
+    #[inline]
+    fn eq(&self, rhs: &Self, compiler: &mut COM) -> Bool<COM> {
+        self.commitment.eq(&rhs.commitment, compiler).bitand(
+            self.outgoing_note.eq(&rhs.outgoing_note, compiler),
+            compiler,
+        )
+    }
+
+    #[inline]
+    fn assert_equal(&self, rhs: &Self, compiler: &mut COM)
+    where
+        COM: Assert,
+    {
+        compiler.assert_eq(&self.commitment, &rhs.commitment);
+        compiler.assert_eq(&self.outgoing_note, &rhs.outgoing_note);
     }
 }
 

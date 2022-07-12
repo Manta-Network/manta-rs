@@ -211,7 +211,7 @@ where
     /// iterates over `iter` calling [`register`] on each item returned. Either [`register`] or
     /// [`register_all`] can be implemented depending on which is more efficient.
     ///
-    /// [`Utxo`]: Mint::Utxo
+    /// [`Utxo`]: crate::transfer::utxo::Types::Utxo
     /// [`Note`]: Mint::Note
     /// [`register`]: Self::register
     /// [`register_all`]: Self::register_all

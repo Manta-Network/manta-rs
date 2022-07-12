@@ -38,7 +38,9 @@ use core::{
 };
 use derive_more::{Add, AddAssign, Display, From, Sub, SubAssign, Sum};
 use manta_crypto::{
-    constraint::{Allocate, Allocator, Secret, Variable},
+    constraint::{
+        Allocate, Allocator, BitAnd, Bool, ConditionalSelect, Has, Secret, Variable, Zero,
+    },
     rand::{Rand, RngCore, Sample},
 };
 use manta_util::{into_array_unchecked, Array, SizeLimit};
@@ -322,6 +324,20 @@ impl<I, V> Asset<I, V> {
     pub const fn new(id: I, value: V) -> Self {
         Self { id, value }
     }
+
+    /// Returns `true` if `self` is an empty [`Asset`], i.e. both the `id` and `value` are zero.
+    #[inline]
+    pub fn is_empty<COM>(&self, compiler: &mut COM) -> Bool<COM>
+    where
+        COM: Has<bool>,
+        I: Zero<COM, Verification = Bool<COM>>,
+        V: Zero<COM, Verification = Bool<COM>>,
+        Bool<COM>: BitAnd<Bool<COM>, COM, Output = Bool<COM>>,
+    {
+        self.id
+            .is_zero(compiler)
+            .bitand(self.value.is_zero(compiler), compiler)
+    }
 }
 
 impl Asset {
@@ -503,6 +519,21 @@ where
     #[inline]
     fn sub_assign(&mut self, rhs: V) {
         self.value -= rhs;
+    }
+}
+
+impl<I, V, COM> ConditionalSelect<COM> for Asset<I, V>
+where
+    COM: Has<bool>,
+    I: ConditionalSelect<COM>,
+    V: ConditionalSelect<COM>,
+{
+    #[inline]
+    fn select(bit: &Bool<COM>, true_value: &Self, false_value: &Self, compiler: &mut COM) -> Self {
+        Self::new(
+            I::select(bit, &true_value.id, &false_value.id, compiler),
+            V::select(bit, &true_value.value, &false_value.value, compiler),
+        )
     }
 }
 

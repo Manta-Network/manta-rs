@@ -62,6 +62,8 @@ where
 
     /// Inserts the [`Utxo`] corresponding to `self` into the `utxo_accumulator` with the intention
     /// of returning a proof later by a call to [`get_proof`](Self::get_proof).
+    ///
+    /// [`Utxo`]: crate::transfer::utxo::Types::Utxo
     #[inline]
     pub fn insert_utxo<A>(&self, parameters: &S, utxo_accumulator: &mut A) -> bool
     where
@@ -72,6 +74,8 @@ where
 
     /// Requests the membership proof of the [`Utxo`] corresponding to `self` from
     /// `utxo_accumulator` to prepare the conversion from `self` into a [`Sender`].
+    ///
+    /// [`Utxo`]: crate::transfer::utxo::Types::Utxo
     #[inline]
     pub fn get_proof<A>(&self, parameters: &S, utxo_accumulator: &A) -> Option<SenderProof<S>>
     where
@@ -105,6 +109,8 @@ where
 
     /// Inserts the [`Utxo`] corresponding to `self` into the `utxo_accumulator` and upgrades to a
     /// full [`Sender`] if the insertion succeeded.
+    ///
+    /// [`Utxo`]: crate::transfer::utxo::Types::Utxo
     #[inline]
     pub fn insert_and_upgrade<A>(
         self,
@@ -204,11 +210,7 @@ where
         utxo_accumulator_model: &S::UtxoAccumulatorModel,
         authority: &S::Authority,
         compiler: &mut COM,
-    ) -> S::Asset
-    where
-        COM: Assert,
-        S::Nullifier: constraint::PartialEq<S::Nullifier, COM>,
-    {
+    ) -> S::Asset {
         let (asset, nullifier) = parameters.well_formed_asset(
             utxo_accumulator_model,
             authority,
@@ -217,7 +219,7 @@ where
             &self.utxo_membership_proof,
             compiler,
         );
-        compiler.assert_eq(&self.nullifier, &nullifier);
+        parameters.assert_equal_nullifiers(&self.nullifier, &nullifier, compiler);
         asset
     }
 }
@@ -319,6 +321,7 @@ where
     /// implementation of [`SenderLedger`]. This is to prevent that [`spend`] is called before
     /// [`is_unspent`] and [`has_matching_utxo_accumulator_output`].
     ///
+    /// [`Nullifier`]: crate::transfer::utxo::Spend::Nullifier
     /// [`spend`]: Self::spend
     /// [`is_unspent`]: Self::is_unspent
     /// [`has_matching_utxo_accumulator_output`]: Self::has_matching_utxo_accumulator_output
@@ -378,6 +381,7 @@ where
     /// iterates over `iter` calling [`spend`] on each item returned. Either [`spend`] or
     /// [`spend_all`] can be implemented depending on which is more efficient.
     ///
+    /// [`Nullifier`]: crate::transfer::utxo::Spend::Nullifier
     /// [`spend`]: Self::spend
     /// [`spend_all`]: Self::spend_all
     #[inline]

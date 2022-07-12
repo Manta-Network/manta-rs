@@ -21,7 +21,11 @@
 //! to select the protocol version. The transfer protocol is built up from a given [`Mint`] and
 //! [`Spend`] implementation.
 
-use manta_crypto::accumulator::{self, ItemHashFunction, MembershipProof};
+use core::{fmt::Debug, hash::Hash, marker::PhantomData, ops::Deref};
+use manta_crypto::{
+    accumulator::{self, ItemHashFunction, MembershipProof},
+    constraint::{Allocate, Constant},
+};
 
 pub mod v1;
 
@@ -33,6 +37,9 @@ pub const VERSION: u8 = protocol::VERSION;
 
 /// UTXO Protocol Types
 pub trait Types {
+    /// Base Authority Type
+    type Authority;
+
     /// Asset Type
     type Asset;
 
@@ -40,11 +47,17 @@ pub trait Types {
     type Utxo;
 }
 
+/// Authority Type
+pub type Authority<T> = <T as Types>::Authority;
+
+/// Asset Type
+pub type Asset<T> = <T as Types>::Asset;
+
+/// Unspent Transaction Output Type
+pub type Utxo<T> = <T as Types>::Utxo;
+
 /// UTXO Minting
 pub trait Mint<COM = ()>: Types {
-    /// Base Authority Type
-    type Authority;
-
     /// Mint Secret Type
     type Secret;
 
@@ -63,19 +76,27 @@ pub trait Mint<COM = ()>: Types {
     ) -> Self::Asset;
 }
 
+/// Note Type
+pub type Note<M, COM = ()> = <M as Mint<COM>>::Note;
+
 /// UTXO Spending
 pub trait Spend<COM = ()>: Types + ItemHashFunction<Self::Utxo, COM> {
     /// UTXO Accumulator Model Type
     type UtxoAccumulatorModel: accumulator::Model<COM, Item = Self::Item>;
-
-    /// Base Authority Type
-    type Authority;
 
     /// Spend Secret Type
     type Secret;
 
     /// Nullifier Type
     type Nullifier;
+
+    /// Asserts that the two nullifiers, `lhs` and `rhs`, are equal.
+    fn assert_equal_nullifiers(
+        &self,
+        lhs: &Self::Nullifier,
+        rhs: &Self::Nullifier,
+        compiler: &mut COM,
+    );
 
     /// Returns the asset and its nullifier inside of `utxo` asserting that `secret` and `utxo` are
     /// well-formed and that `utxo_membership_proof` is a valid proof.
@@ -89,7 +110,16 @@ pub trait Spend<COM = ()>: Types + ItemHashFunction<Self::Utxo, COM> {
         compiler: &mut COM,
     ) -> (Self::Asset, Self::Nullifier);
 
+    /// Returns the nullifier inside of `utxo` asserting that `secret` and `utxo` are well-formed
+    /// and that `utxo_membership_proof` is a valid proof.
     ///
+    /// # Implementation Note
+    ///
+    /// By default this method calls [`well_formed_asset`] and projects out the nullifier from the
+    /// tuple. An implementation of this method should be given whenever computing _only_ the
+    /// nullifier is more efficient than this default.
+    ///
+    /// [`well_formed_asset`]: Self::well_formed_asset
     #[inline]
     fn well_formed_nullifier(
         &self,
@@ -112,14 +142,127 @@ pub trait Spend<COM = ()>: Types + ItemHashFunction<Self::Utxo, COM> {
     }
 }
 
-/// UTXO Membership Proof Type
-pub type UtxoMembershipProof<S, COM = ()> =
-    MembershipProof<<S as Spend<COM>>::UtxoAccumulatorModel, COM>;
-
-/// UTXO Accumulator Output Type
-pub type UtxoAccumulatorOutput<S, COM = ()> =
-    <<S as Spend<COM>>::UtxoAccumulatorModel as accumulator::Types>::Output;
+/// UTXO Accumulator Model Type
+pub type UtxoAccumulatorModel<S, COM = ()> = <S as Spend<COM>>::UtxoAccumulatorModel;
 
 /// UTXO Accumulator Item Type
 pub type UtxoAccumulatorItem<S, COM = ()> =
-    <<S as Spend<COM>>::UtxoAccumulatorModel as accumulator::Types>::Item;
+    <UtxoAccumulatorModel<S, COM> as accumulator::Types>::Item;
+
+/// UTXO Accumulator Output Type
+pub type UtxoAccumulatorOutput<S, COM = ()> =
+    <UtxoAccumulatorModel<S, COM> as accumulator::Types>::Output;
+
+/// UTXO Membership Proof Type
+pub type UtxoMembershipProof<S, COM = ()> = MembershipProof<UtxoAccumulatorModel<S, COM>, COM>;
+
+/// Nullifier Type
+pub type Nullifier<S, COM = ()> = <S as Spend<COM>>::Nullifier;
+
+/// Full Parameters Owned
+///
+/// This `struct` uses a lifetime marker to tie it down to a particular instance of
+/// [`FullParametersRef`] during allocation.
+pub struct FullParameters<'p, P, COM = ()>
+where
+    P: Mint<COM> + Spend<COM>,
+{
+    /// Base Parameters
+    pub base: P,
+
+    /// UTXO Accumulator Model
+    pub utxo_accumulator_model: P::UtxoAccumulatorModel,
+
+    /// Type Parameter Marker
+    __: PhantomData<&'p ()>,
+}
+
+impl<'p, P, COM> FullParameters<'p, P, COM>
+where
+    P: Mint<COM> + Spend<COM>,
+{
+    /// Builds a new [`FullParameters`] from `base` and `utxo_accumulator_model`.
+    #[inline]
+    pub fn new(base: P, utxo_accumulator_model: P::UtxoAccumulatorModel) -> Self {
+        Self {
+            base,
+            utxo_accumulator_model,
+            __: PhantomData,
+        }
+    }
+}
+
+impl<'p, P, COM> Constant<COM> for FullParameters<'p, P, COM>
+where
+    P: Mint<COM> + Spend<COM> + Constant<COM>,
+    P::UtxoAccumulatorModel: Constant<COM, Type = UtxoAccumulatorModel<P::Type>>,
+    P::Type: 'p + Mint + Spend,
+    UtxoAccumulatorModel<P::Type>: 'p,
+{
+    type Type = FullParametersRef<'p, P::Type>;
+
+    #[inline]
+    fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
+        Self::new(
+            this.base.as_constant(compiler),
+            this.utxo_accumulator_model.as_constant(compiler),
+        )
+    }
+}
+
+/// Full Parameters Reference
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = ""),
+    Copy(bound = ""),
+    Debug(bound = "P: Debug, P::UtxoAccumulatorModel: Debug"),
+    Eq(bound = "P: Eq, P::UtxoAccumulatorModel: Eq"),
+    Hash(bound = "P: Hash, P::UtxoAccumulatorModel: Hash"),
+    PartialEq(bound = "P: PartialEq, P::UtxoAccumulatorModel: PartialEq")
+)]
+pub struct FullParametersRef<'p, P, COM = ()>
+where
+    P: Mint<COM> + Spend<COM>,
+{
+    /// Base Parameters
+    pub base: &'p P,
+
+    /// UTXO Accumulator Model
+    pub utxo_accumulator_model: &'p P::UtxoAccumulatorModel,
+}
+
+impl<'p, P, COM> FullParametersRef<'p, P, COM>
+where
+    P: Mint<COM> + Spend<COM>,
+{
+    /// Builds a new [`FullParametersRef`] from `base` and `utxo_accumulator_model`.
+    #[inline]
+    pub fn new(base: &'p P, utxo_accumulator_model: &'p P::UtxoAccumulatorModel) -> Self {
+        Self {
+            base,
+            utxo_accumulator_model,
+        }
+    }
+}
+
+impl<'p, P, COM> AsRef<P> for FullParametersRef<'p, P, COM>
+where
+    P: Mint<COM> + Spend<COM>,
+{
+    #[inline]
+    fn as_ref(&self) -> &P {
+        self.base
+    }
+}
+
+impl<'p, P, COM> Deref for FullParametersRef<'p, P, COM>
+where
+    P: Mint<COM> + Spend<COM>,
+{
+    type Target = P;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        self.base
+    }
+}
