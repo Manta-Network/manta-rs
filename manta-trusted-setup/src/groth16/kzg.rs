@@ -41,6 +41,7 @@ pub trait Size {
     /// Number of G2 Powers to Produce
     ///
     /// The number of G2 powers must be smaller than or equal to the number of G1 powers.
+    const G2_POWERS: usize;
 }
 
 /// Pairing Configuration
