@@ -34,6 +34,7 @@ std = []
 [dependencies]
 ark-ec = { version = "0.3.0", default-features = false }
 ark-ff = { version = "0.3.0", default-features = false }
+ark-bls12-381 = {version = "0.3.0", default-features = false, features = ["curve", "scalar_field"]}
 ark-groth16 = { version = "0.3.0", default-features = false }
 ark-r1cs-std = { version = "0.3.1", default-features = false }
 ark-relations = { version = "0.3.0", default-features = false }
@@ -45,3 +46,4 @@ manta-crypto = { path = "../manta-crypto", default-features = false, features = 
 manta-util = { path = "../manta-util", default-features = false, features = ["alloc"] }
 rayon = { version = "1.5.3", optional = true, default-features = false }
 workspace-hack = { version = "0.1.0", path = "../workspace-hack" }
+blake2b = {version = "0.99.0", default-features = false}

@@ -17,3 +17,8 @@
 //! Groth16 Trusted Setup
 
 pub mod kzg;
+pub mod phase1;
+
+/// Holds `N`-byte hash outputs.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct Digest<const N: usize>(pub [u8; N]);

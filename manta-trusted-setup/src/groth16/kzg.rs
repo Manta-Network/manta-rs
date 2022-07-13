@@ -50,17 +50,15 @@ pub trait Pairing: HasDistribution {
     type Scalar: PrimeField;
 
     /// First Group of the Pairing
-    type G1: AffineCurve<ScalarField = Self::Scalar>
-        + Into<Self::G1Prepared>
-        + Sample<Self::Distribution>;
+    type G1: AffineCurve<ScalarField = Self::Scalar> + Into<Self::G1Prepared>;
+    // + Sample<Self::Distribution>; TODO
 
     /// First Group Pairing-Prepared Point
     type G1Prepared;
 
     /// Second Group of the Pairing
-    type G2: AffineCurve<ScalarField = Self::Scalar>
-        + Into<Self::G2Prepared>
-        + Sample<Self::Distribution>;
+    type G2: AffineCurve<ScalarField = Self::Scalar> + Into<Self::G2Prepared>;
+    // + Sample<Self::Distribution>; TODO
 
     /// Second Group Pairing-Prepared Point
     type G2Prepared;
@@ -72,6 +70,15 @@ pub trait Pairing: HasDistribution {
         G1Prepared = Self::G1Prepared,
         G2Prepared = Self::G2Prepared,
     >;
+
+    /// TODO
+    fn sample_g1_affine<R>(rng: &mut R) -> Self::G1
+    where
+        R: CryptoRng + RngCore + ?Sized;
+    /// TODO
+    fn sample_g2_affine<R>(rng: &mut R) -> Self::G2
+    where
+        R: CryptoRng + RngCore + ?Sized;
 
     /// Returns the base G1 generator for this configuration.
     fn g1_prime_subgroup_generator() -> Self::G1;
@@ -244,7 +251,7 @@ where
         C: Configuration,
         R: CryptoRng + RngCore + ?Sized,
     {
-        let g1_point = rng.gen::<_, C::G1>();
+        let g1_point = C::sample_g1_affine(rng);
         if g1_point.is_zero() {
             return None;
         }

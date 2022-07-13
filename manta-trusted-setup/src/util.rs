@@ -32,6 +32,7 @@ pub use ark_serialize::{
     CanonicalDeserialize, CanonicalSerialize, Read, SerializationError, Write,
 };
 pub use manta_crypto::rand::Sample;
+use rand_chacha::{rand_core::SeedableRng, ChaCha20Rng};
 
 /// Distribution Type Extension
 pub trait HasDistribution {
@@ -390,3 +391,36 @@ pub trait PairingEngineExt: PairingEngine {
 }
 
 impl<E> PairingEngineExt for E where E: PairingEngine {}
+
+/// TODO
+pub fn hash_to_group<G, D, const ARITY: usize>(digest: [u8; ARITY]) -> G
+where
+    G: AffineCurve + Sample<D>,
+    D: Default,
+{
+    let mut digest = digest.as_slice();
+    let mut seed = Vec::with_capacity(8);
+    for _ in 0..8 {
+        let mut le_bytes = [0u8; 8];
+        let word = digest
+            .read(&mut le_bytes[..])
+            .expect("This is always possible since we have enough bytes to begin with.");
+        seed.extend(word.to_le_bytes());
+    }
+    G::gen(&mut ChaCha20Rng::from_seed(into_array_unchecked(seed)))
+}
+
+/// Performs the [`TryInto`] conversion into an array without checking if the conversion succeeded.
+#[inline]
+pub fn into_array_unchecked<T, V, const N: usize>(value: V) -> [T; N]
+where
+    V: TryInto<[T; N]>,
+{
+    match value.try_into() {
+        Ok(array) => array,
+        _ => unreachable!(
+            "{} {:?}.",
+            "Input did not have the correct length to match the output array of length", N
+        ),
+    }
+}
