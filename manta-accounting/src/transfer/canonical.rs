@@ -21,9 +21,9 @@
 use crate::{
     asset::{self, Asset, AssetMap, AssetMetadata, AssetValue},
     transfer::{
-        has_public_participants, Configuration, FullParameters, Parameters, PreSender,
-        ProofSystemError, ProofSystemPublicParameters, ProvingContext, Receiver, ReceivingKey,
-        Sender, SpendingKey, Transfer, TransferPost, VerifyingContext,
+        has_public_participants, Configuration, FullParametersRef, Parameters, PreSender,
+        ProofSystemError, ProofSystemPublicParameters, ProvingContext, Receiver, Sender, Transfer,
+        TransferPost, VerifyingContext,
     },
 };
 use alloc::{format, string::String, vec::Vec};
@@ -82,30 +82,31 @@ macro_rules! transfer_alias {
     };
 }
 
-/// [`Mint`] Transfer Shape
+/// [`ToPrivate`] Transfer Shape
 ///
 /// ```text
 /// <1, 0, 1, 0>
 /// ```
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq, Ord, PartialOrd)]
-pub struct MintShape;
+pub struct ToPrivateShape;
 
-impl_shape!(MintShape, 1, 0, 1, 0);
+impl_shape!(ToPrivateShape, 1, 0, 1, 0);
 
-/// [`Mint`] Transfer Type
-pub type Mint<C> = transfer_alias!(C, MintShape);
+/// [`ToPrivate`] Transfer Type
+pub type ToPrivate<C> = transfer_alias!(C, ToPrivateShape);
 
-impl<C> Mint<C>
+impl<C> ToPrivate<C>
 where
     C: Configuration,
 {
-    /// Builds a [`Mint`] from `asset` and `receiver`.
+    /* TODO:
+    /// Builds a [`ToPrivate`] from `asset` and `receiver`.
     #[inline]
     pub fn build(asset: Asset, receiver: Receiver<C>) -> Self {
         Self::new_unchecked(Some(asset.id), [asset.value], [], [receiver], [])
     }
 
-    /// Builds a new [`Mint`] from a [`SpendingKey`] using [`SpendingKey::receiver`].
+    /// Builds a new [`ToPrivate`] from a [`SpendingKey`] using [`SpendingKey::receiver`].
     #[inline]
     pub fn from_spending_key<R>(
         parameters: &Parameters<C>,
@@ -119,7 +120,7 @@ where
         Self::build(asset, spending_key.receiver(parameters, rng.gen(), asset))
     }
 
-    /// Builds a new [`Mint`] and [`PreSender`] pair from a [`SpendingKey`] using
+    /// Builds a new [`ToPrivate`] and [`PreSender`] pair from a [`SpendingKey`] using
     /// [`SpendingKey::internal_pair`].
     #[inline]
     pub fn internal_pair<R>(
@@ -134,6 +135,7 @@ where
         let (receiver, pre_sender) = spending_key.internal_pair(parameters, rng.gen(), asset);
         (Self::build(asset, receiver), pre_sender)
     }
+    */
 }
 
 /// [`PrivateTransfer`] Transfer Shape
@@ -153,6 +155,7 @@ impl<C> PrivateTransfer<C>
 where
     C: Configuration,
 {
+    /*
     /// Builds a [`PrivateTransfer`] from `senders` and `receivers`.
     #[inline]
     pub fn build(
@@ -161,43 +164,46 @@ where
     ) -> Self {
         Self::new_unchecked(None, [], senders, receivers, [])
     }
+    */
 }
 
-/// [`Reclaim`] Transfer Shape
+/// [`ToPublic`] Transfer Shape
 ///
 /// ```text
 /// <0, 2, 1, 1>
 /// ```
 ///
-/// The [`ReclaimShape`] is defined in terms of the [`PrivateTransferShape`]. It is defined to
+/// The [`ToPublicShape`] is defined in terms of the [`PrivateTransferShape`]. It is defined to
 /// have the same number of senders and one secret receiver turned into a public sink.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq, Ord, PartialOrd)]
-pub struct ReclaimShape;
+pub struct ToPublicShape;
 
 impl_shape!(
-    ReclaimShape,
+    ToPublicShape,
     PrivateTransferShape::SOURCES,
     PrivateTransferShape::SENDERS,
     PrivateTransferShape::RECEIVERS - 1,
     PrivateTransferShape::SINKS + 1
 );
 
-/// [`Reclaim`] Transfer
-pub type Reclaim<C> = transfer_alias!(C, ReclaimShape);
+/// [`ToPublic`] Transfer
+pub type ToPublic<C> = transfer_alias!(C, ToPublicShape);
 
-impl<C> Reclaim<C>
+impl<C> ToPublic<C>
 where
     C: Configuration,
 {
-    /// Builds a [`Reclaim`] from `senders`, `receivers`, and `reclaim`.
+    /* TODO:
+    /// Builds a [`ToPublic`] from `senders`, `receivers`, and `asset`.
     #[inline]
     pub fn build(
-        senders: [Sender<C>; ReclaimShape::SENDERS],
-        receivers: [Receiver<C>; ReclaimShape::RECEIVERS],
+        senders: [Sender<C>; ToPublicShape::SENDERS],
+        receivers: [Receiver<C>; ToPublicShape::RECEIVERS],
         asset: Asset,
     ) -> Self {
         Self::new_unchecked(Some(asset.id), [], senders, receivers, [asset.value])
     }
+    */
 }
 
 /// Transfer Shape
@@ -208,17 +214,18 @@ where
 )]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum TransferShape {
-    /// [`Mint`] Transfer
-    Mint,
+    /// [`ToPrivate`] Transfer
+    ToPrivate,
 
     /// [`PrivateTransfer`] Transfer
     PrivateTransfer,
 
-    /// [`Reclaim`] Transfer
-    Reclaim,
+    /// [`ToPublic`] Transfer
+    ToPublic,
 }
 
 impl TransferShape {
+    /* TODO:
     /// Selects the [`TransferShape`] for the given shape if it matches a canonical shape.
     #[inline]
     pub fn select(
@@ -228,20 +235,20 @@ impl TransferShape {
         receivers: usize,
         sinks: usize,
     ) -> Option<Self> {
-        const MINT_VISIBLE_ASSET_ID: bool =
-            has_public_participants(MintShape::SOURCES, MintShape::SINKS);
+        const TO_PRIVATE_VISIBLE_ASSET_ID: bool =
+            has_public_participants(ToPrivateShape::SOURCES, ToPrivateShape::SINKS);
         const PRIVATE_TRANSFER_VISIBLE_ASSET_ID: bool =
             has_public_participants(PrivateTransferShape::SOURCES, PrivateTransferShape::SINKS);
-        const RECLAIM_VISIBLE_ASSET_ID: bool =
-            has_public_participants(ReclaimShape::SOURCES, ReclaimShape::SINKS);
+        const TO_PUBLIC_VISIBLE_ASSET_ID: bool =
+            has_public_participants(ToPublicShape::SOURCES, ToPublicShape::SINKS);
         match (asset_id_is_some, sources, senders, receivers, sinks) {
             (
-                MINT_VISIBLE_ASSET_ID,
-                MintShape::SOURCES,
-                MintShape::SENDERS,
-                MintShape::RECEIVERS,
-                MintShape::SINKS,
-            ) => Some(Self::Mint),
+                TO_PRIVATE_VISIBLE_ASSET_ID,
+                ToPrivateShape::SOURCES,
+                ToPrivateShape::SENDERS,
+                ToPrivateShape::RECEIVERS,
+                ToPrivateShape::SINKS,
+            ) => Some(Self::ToPrivate),
             (
                 PRIVATE_TRANSFER_VISIBLE_ASSET_ID,
                 PrivateTransferShape::SOURCES,
@@ -250,12 +257,12 @@ impl TransferShape {
                 PrivateTransferShape::SINKS,
             ) => Some(Self::PrivateTransfer),
             (
-                RECLAIM_VISIBLE_ASSET_ID,
-                ReclaimShape::SOURCES,
-                ReclaimShape::SENDERS,
-                ReclaimShape::RECEIVERS,
-                ReclaimShape::SINKS,
-            ) => Some(Self::Reclaim),
+                TO_PUBLIC_VISIBLE_ASSET_ID,
+                ToPublicShape::SOURCES,
+                ToPublicShape::SENDERS,
+                ToPublicShape::RECEIVERS,
+                ToPublicShape::SINKS,
+            ) => Some(Self::ToPublic),
             _ => None,
         }
     }
@@ -274,8 +281,10 @@ impl TransferShape {
             post.sinks.len(),
         )
     }
+    */
 }
 
+/* TODO:
 /// Canonical Transaction Type
 #[cfg_attr(
     feature = "serde",
@@ -302,14 +311,14 @@ pub enum Transaction<C>
 where
     C: Configuration,
 {
-    /// Mint Private Asset
-    Mint(Asset),
+    /// Convert Public Asset into Private Asset
+    ToPrivate(Asset),
 
     /// Private Transfer Asset to Receiver
     PrivateTransfer(Asset, ReceivingKey<C>),
 
-    /// Reclaim Private Asset
-    Reclaim(Asset),
+    /// Convert Private Asset into Public Asset
+    ToPublic(Asset),
 }
 
 impl<C> Transaction<C>
@@ -325,8 +334,8 @@ where
         F: FnOnce(Asset) -> bool,
     {
         match self {
-            Self::Mint(asset) => Ok(TransactionKind::Deposit(*asset)),
-            Self::PrivateTransfer(asset, _) | Self::Reclaim(asset) => {
+            Self::ToPrivate(asset) => Ok(TransactionKind::Deposit(*asset)),
+            Self::PrivateTransfer(asset, _) | Self::ToPublic(asset) => {
                 if balance(*asset) {
                     Ok(TransactionKind::Withdraw(*asset))
                 } else {
@@ -340,9 +349,9 @@ where
     #[inline]
     pub fn shape(&self) -> TransferShape {
         match self {
-            Self::Mint(_) => TransferShape::Mint,
+            Self::ToPrivate(_) => TransferShape::ToPrivate,
             Self::PrivateTransfer(_, _) => TransferShape::PrivateTransfer,
-            Self::Reclaim(_) => TransferShape::Reclaim,
+            Self::ToPublic(_) => TransferShape::ToPublic,
         }
     }
 
@@ -350,12 +359,13 @@ where
     #[inline]
     pub fn is_zero(&self) -> bool {
         match self {
-            Self::Mint(asset) => asset.is_zero(),
+            Self::ToPrivate(asset) => asset.is_zero(),
             Self::PrivateTransfer(asset, _) => asset.is_zero(),
-            Self::Reclaim(asset) => asset.is_zero(),
+            Self::ToPublic(asset) => asset.is_zero(),
         }
     }
 
+    /* TODO:
     /// Returns a transaction summary given the asset `metadata`.
     #[inline]
     pub fn display<F>(&self, metadata: &AssetMetadata, f: F) -> String
@@ -363,14 +373,16 @@ where
         F: FnOnce(&ReceivingKey<C>) -> String,
     {
         match self {
-            Self::Mint(Asset { value, .. }) => format!("Deposit {}", metadata.display(*value)),
+            Self::ToPrivate(Asset { value, .. }) => format!("Deposit {}", metadata.display(*value)),
             Self::PrivateTransfer(Asset { value, .. }, receiving_key) => {
                 format!("Send {} to {}", metadata.display(*value), f(receiving_key))
             }
-            Self::Reclaim(Asset { value, .. }) => format!("Withdraw {}", metadata.display(*value)),
+            Self::ToPublic(Asset { value, .. }) => format!("Withdraw {}", metadata.display(*value)),
         }
     }
+    */
 }
+*/
 
 /// Transaction Kind
 #[cfg_attr(
@@ -391,6 +403,7 @@ pub enum TransactionKind {
     Withdraw(Asset),
 }
 
+/* TODO:
 /// Transfer Asset Selection
 pub struct Selection<C>
 where
@@ -433,6 +446,7 @@ where
         ))
     }
 }
+*/
 
 /// Canonical Multi-Proving Contexts
 #[derive(derivative::Derivative)]
@@ -449,14 +463,14 @@ pub struct MultiProvingContext<C>
 where
     C: Configuration + ?Sized,
 {
-    /// Mint Proving Context
-    pub mint: ProvingContext<C>,
+    /// [`ToPrivate`] Proving Context
+    pub to_private: ProvingContext<C>,
 
-    /// Private Transfer Proving Context
+    /// [`PrivateTransfer`] Proving Context
     pub private_transfer: ProvingContext<C>,
 
-    /// Reclaim Proving Context
-    pub reclaim: ProvingContext<C>,
+    /// [`ToPublic`] Proving Context
+    pub to_public: ProvingContext<C>,
 }
 
 impl<C> MultiProvingContext<C>
@@ -467,9 +481,9 @@ where
     #[inline]
     pub fn select(&self, shape: TransferShape) -> &ProvingContext<C> {
         match shape {
-            TransferShape::Mint => &self.mint,
+            TransferShape::ToPrivate => &self.to_private,
             TransferShape::PrivateTransfer => &self.private_transfer,
-            TransferShape::Reclaim => &self.reclaim,
+            TransferShape::ToPublic => &self.to_public,
         }
     }
 }
@@ -489,14 +503,14 @@ pub struct MultiVerifyingContext<C>
 where
     C: Configuration + ?Sized,
 {
-    /// Mint Verifying Context
-    pub mint: VerifyingContext<C>,
+    /// [`ToPrivate`] Verifying Context
+    pub to_private: VerifyingContext<C>,
 
-    /// Private Transfer Verifying Context
+    /// [`PrivateTransfer`] Verifying Context
     pub private_transfer: VerifyingContext<C>,
 
-    /// Reclaim Verifying Context
-    pub reclaim: VerifyingContext<C>,
+    /// [`ToPublic`] Verifying Context
+    pub to_public: VerifyingContext<C>,
 }
 
 impl<C> MultiVerifyingContext<C>
@@ -507,9 +521,9 @@ where
     #[inline]
     pub fn select(&self, shape: TransferShape) -> &VerifyingContext<C> {
         match shape {
-            TransferShape::Mint => &self.mint,
+            TransferShape::ToPrivate => &self.to_private,
             TransferShape::PrivateTransfer => &self.private_transfer,
-            TransferShape::Reclaim => &self.reclaim,
+            TransferShape::ToPublic => &self.to_public,
         }
     }
 }
@@ -518,26 +532,27 @@ where
 #[inline]
 pub fn generate_context<C, R>(
     public_parameters: &ProofSystemPublicParameters<C>,
-    parameters: FullParameters<C>,
+    parameters: FullParametersRef<C>,
     rng: &mut R,
 ) -> Result<(MultiProvingContext<C>, MultiVerifyingContext<C>), ProofSystemError<C>>
 where
     C: Configuration,
     R: CryptoRng + RngCore + ?Sized,
 {
-    let mint = Mint::generate_context(public_parameters, parameters, rng)?;
-    let private_transfer = PrivateTransfer::generate_context(public_parameters, parameters, rng)?;
-    let reclaim = Reclaim::generate_context(public_parameters, parameters, rng)?;
+    let to_private = ToPrivate::<C>::generate_context(public_parameters, parameters, rng)?;
+    let private_transfer =
+        PrivateTransfer::<C>::generate_context(public_parameters, parameters, rng)?;
+    let to_public = ToPublic::<C>::generate_context(public_parameters, parameters, rng)?;
     Ok((
         MultiProvingContext {
-            mint: mint.0,
+            to_private: to_private.0,
             private_transfer: private_transfer.0,
-            reclaim: reclaim.0,
+            to_public: to_public.0,
         },
         MultiVerifyingContext {
-            mint: mint.1,
+            to_private: to_private.1,
             private_transfer: private_transfer.1,
-            reclaim: reclaim.1,
+            to_public: to_public.1,
         },
     ))
 }

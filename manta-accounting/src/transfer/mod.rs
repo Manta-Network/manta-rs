@@ -70,7 +70,7 @@ use manta_util::vec::{all_unequal, Vec};
 use manta_util::serde::{Deserialize, Serialize};
 
 // TODO: pub mod batch;
-// TODO: pub mod canonical;
+pub mod canonical;
 pub mod receiver;
 pub mod sender;
 pub mod utxo;
@@ -81,7 +81,7 @@ pub mod utxo;
 pub mod test;
 */
 
-// TODO: pub use canonical::Shape;
+pub use canonical::Shape;
 
 /// Returns `true` if the [`Transfer`] with this shape would have public participants.
 #[inline]
@@ -1045,6 +1045,9 @@ pub type AuthorizationSigningKey<C> =
 /// Transfer Authorization Signature Type
 pub type AuthorizationSignature<C> =
     signature::Signature<<C as Configuration>::AuthorizationSignatureScheme>;
+
+/// Transfer Pre-Sender Type
+pub type PreSender<C> = sender::PreSender<Parameters<C>>;
 
 /// Transfer Sender Type
 pub type Sender<C> = sender::Sender<Parameters<C>>;
