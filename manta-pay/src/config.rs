@@ -21,7 +21,7 @@ use crate::crypto::{
     ecc,
     encryption::aes::{self, FixedNonceAesGcm},
     key::Blake2sKdf,
-    poseidon::{self, Hasher},
+    poseidon::{self, arkworks::TwoPowerMinusOneDomainTag, hash::Hasher},
 };
 use alloc::vec::Vec;
 use ark_ff::ToConstraintField;
@@ -107,31 +107,47 @@ pub type ProofSystemError = groth16::Error;
 /// Poseidon Specification
 pub struct PoseidonSpec<const ARITY: usize>;
 
+impl<COM, const ARITY: usize> Constant<COM> for PoseidonSpec<ARITY> {
+    type Type = Self;
+
+    #[inline]
+    fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
+        let _ = (this, compiler);
+        Self
+    }
+}
+
 /// Poseidon-2 Hash Parameters
-pub type Poseidon2 = Hasher<PoseidonSpec<2>, 2>;
+pub type Poseidon2 = Hasher<PoseidonSpec<2>, TwoPowerMinusOneDomainTag, 2>;
 
 /// Poseidon-2 Hash Parameters Variable
-pub type Poseidon2Var = Hasher<PoseidonSpec<2>, 2, Compiler>;
+pub type Poseidon2Var = Hasher<PoseidonSpec<2>, TwoPowerMinusOneDomainTag, 2, Compiler>;
 
-impl poseidon::arkworks::Specification for PoseidonSpec<2> {
-    type Field = ConstraintField;
+impl poseidon::Constants for PoseidonSpec<2> {
     const WIDTH: usize = 3;
     const FULL_ROUNDS: usize = 8;
     const PARTIAL_ROUNDS: usize = 55;
+}
+
+impl poseidon::arkworks::Specification for PoseidonSpec<2> {
+    type Field = ConstraintField;
     const SBOX_EXPONENT: u64 = 5;
 }
 
 /// Poseidon-4 Hash Parameters
-pub type Poseidon4 = Hasher<PoseidonSpec<4>, 4>;
+pub type Poseidon4 = Hasher<PoseidonSpec<4>, TwoPowerMinusOneDomainTag, 4>;
 
 /// Poseidon-4 Hash Parameters Variable
-pub type Poseidon4Var = Hasher<PoseidonSpec<4>, 4, Compiler>;
+pub type Poseidon4Var = Hasher<PoseidonSpec<4>, TwoPowerMinusOneDomainTag, 4, Compiler>;
 
-impl poseidon::arkworks::Specification for PoseidonSpec<4> {
-    type Field = ConstraintField;
+impl poseidon::Constants for PoseidonSpec<4> {
     const WIDTH: usize = 5;
     const FULL_ROUNDS: usize = 8;
     const PARTIAL_ROUNDS: usize = 56;
+}
+
+impl poseidon::arkworks::Specification for PoseidonSpec<4> {
+    type Field = ConstraintField;
     const SBOX_EXPONENT: u64 = 5;
 }
 

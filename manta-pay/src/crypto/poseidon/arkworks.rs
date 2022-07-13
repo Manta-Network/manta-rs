@@ -18,66 +18,25 @@
 
 use crate::crypto::{
     constraint::arkworks::{Fp, FpVar, R1CS},
-    poseidon::{self, encryption::BlockElement, Field, FieldGeneration},
+    poseidon::{
+        self, encryption::BlockElement, hash::DomainTag, Constants, Field, FieldGeneration,
+        ParameterFieldType,
+    },
 };
 use ark_ff::{BigInteger, Field as _, FpParameters, PrimeField};
 use ark_r1cs_std::fields::FieldVar;
-use manta_crypto::constraint::{Allocate, Constant};
+use manta_crypto::constraint::Constant;
 
 /// Compiler Type.
 type Compiler<S> = R1CS<<S as Specification>::Field>;
 
 /// Poseidon Permutation Specification.
-pub trait Specification {
+pub trait Specification: Constants {
     /// Field Type
     type Field: PrimeField;
 
-    /// Width of the Permutation
-    ///
-    /// This number is the total number `t` of field elements in the state which is `F^t`.
-    const WIDTH: usize;
-
-    /// Number of Full Rounds
-    ///
-    /// The total number of full rounds in Poseidon Hash, including the first set
-    /// of full rounds and then the second set after the partial rounds.
-    const FULL_ROUNDS: usize;
-
-    /// Number of Partial Rounds
-    const PARTIAL_ROUNDS: usize;
-
     /// S-BOX Exponenet
     const SBOX_EXPONENT: u64;
-}
-
-impl<S> Constant<Compiler<S>> for super::Permutation<S, Compiler<S>>
-where
-    S: Specification,
-{
-    type Type = super::Permutation<S>;
-
-    #[inline]
-    fn new_constant(this: &Self::Type, compiler: &mut Compiler<S>) -> Self {
-        let _ = compiler;
-        Self {
-            additive_round_keys: this.additive_round_keys.clone(),
-            mds_matrix: this.mds_matrix.clone(),
-        }
-    }
-}
-
-impl<S, const ARITY: usize> Constant<Compiler<S>> for super::Hasher<S, ARITY, Compiler<S>>
-where
-    S: Specification,
-{
-    type Type = super::Hasher<S, ARITY>;
-
-    fn new_constant(this: &Self::Type, compiler: &mut Compiler<S>) -> Self {
-        Self {
-            permutation: this.permutation.as_constant(compiler),
-            domain_tag: this.domain_tag.as_constant(compiler),
-        }
-    }
 }
 
 impl<F> Field for Fp<F>
@@ -142,16 +101,18 @@ where
     }
 }
 
+impl<S> ParameterFieldType for S
+where
+    S: Specification,
+{
+    type ParameterField = Fp<S::Field>;
+}
+
 impl<S> poseidon::Specification for S
 where
     S: Specification,
 {
     type Field = Fp<S::Field>;
-    type ParameterField = Fp<S::Field>;
-
-    const WIDTH: usize = S::WIDTH;
-    const PARTIAL_ROUNDS: usize = S::PARTIAL_ROUNDS;
-    const FULL_ROUNDS: usize = S::FULL_ROUNDS;
 
     #[inline]
     fn add(lhs: &Self::Field, rhs: &Self::Field, _: &mut ()) -> Self::Field {
@@ -192,11 +153,6 @@ where
     fn from_parameter(point: Self::ParameterField) -> Self::Field {
         point
     }
-
-    #[inline]
-    fn sample_domain_tag() -> Self::ParameterField {
-        Fp(S::Field::from(((1<<(Self::WIDTH-1))-1) as u128))
-    }
 }
 
 impl<S> poseidon::Specification<Compiler<S>> for S
@@ -204,11 +160,6 @@ where
     S: Specification,
 {
     type Field = FpVar<S::Field>;
-    type ParameterField = Fp<S::Field>;
-
-    const WIDTH: usize = S::WIDTH;
-    const PARTIAL_ROUNDS: usize = S::PARTIAL_ROUNDS;
-    const FULL_ROUNDS: usize = S::FULL_ROUNDS;
 
     #[inline]
     fn add(lhs: &Self::Field, rhs: &Self::Field, _: &mut Compiler<S>) -> Self::Field {
@@ -259,11 +210,6 @@ where
     fn from_parameter(point: Self::ParameterField) -> Self::Field {
         FpVar::Constant(point.0)
     }
-
-    #[inline]
-    fn sample_domain_tag() -> Self::ParameterField {
-        Fp(S::Field::from(((1<<(Self::WIDTH-1))-1) as u128))
-    }
 }
 
 impl<F> BlockElement for Fp<F>
@@ -293,5 +239,28 @@ where
     #[inline]
     fn sub(&self, rhs: &Self, _: &mut ()) -> Self {
         self - rhs
+    }
+}
+
+/// TODO
+pub struct TwoPowerMinusOneDomainTag;
+
+impl<COM> Constant<COM> for TwoPowerMinusOneDomainTag {
+    type Type = Self;
+
+    #[inline]
+    fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
+        let _ = (this, compiler);
+        Self
+    }
+}
+
+impl<S> DomainTag<S> for TwoPowerMinusOneDomainTag
+where
+    S: Specification,
+{
+    #[inline]
+    fn domain_tag() -> Fp<S::Field> {
+        Fp(S::Field::from(((1 << (S::WIDTH - 1)) - 1) as u128))
     }
 }

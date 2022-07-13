@@ -16,8 +16,12 @@
 
 //! Poseidon Hash Implementation
 
-use crate::crypto::poseidon::{Field, FieldGeneration, Hasher, Permutation, Specification};
+use crate::crypto::poseidon::{
+    Field, FieldGeneration, ParameterFieldType, Permutation, Specification,
+};
+use core::{fmt::Debug, hash::Hash, marker::PhantomData};
 use manta_crypto::{
+    constraint::{Allocate, Const, Constant},
     hash::ArrayHashFunction,
     rand::{Rand, RngCore, Sample},
 };
@@ -29,27 +33,73 @@ use manta_util::{
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
 
-impl<S, const ARITY: usize, COM> Hasher<S, ARITY, COM>
+/// Domain Tag
+pub trait DomainTag<T>
 where
-    S: Specification<COM>,
+    T: ParameterFieldType,
 {
-    /// Builds a new [`Hasher`] over `permutation` and `domain_tag`.
-    #[inline]
-    pub fn new(permutation: Permutation<S, COM>, domain_tag: S::ParameterField) -> Self {
-        assert_eq!(ARITY + 1, S::WIDTH);
-        Self {
-            permutation,
-            // TODO
-            // domain_tag: S::from_parameter(T::domain_tag()),
-            domain_tag: S::from_parameter(domain_tag),
-        }
-    }
+    /// Generates domain tag as a constant parameter.
+    fn domain_tag() -> T::ParameterField;
 }
 
-impl<S, const ARITY: usize, COM> Hasher<S, ARITY, COM>
+/// Poseidon Hasher
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "Permutation<S, COM>: Deserialize<'de>, S::Field: Deserialize<'de>",
+            serialize = "Permutation<S, COM>: Serialize, S::Field: Serialize"
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "Permutation<S, COM>: Clone, S::Field: Clone"),
+    Debug(bound = "Permutation<S, COM>: Debug, S::Field: Debug"),
+    Eq(bound = "Permutation<S, COM>: Eq, S::Field: Eq"),
+    Hash(bound = "Permutation<S, COM>: Hash, S::Field: Hash"),
+    PartialEq(bound = "Permutation<S, COM>: PartialEq, S::Field: PartialEq")
+)]
+pub struct Hasher<S, T, const ARITY: usize, COM = ()>
 where
     S: Specification<COM>,
+    T: DomainTag<S>,
 {
+    /// Poseidon Permutation
+    permutation: Permutation<S, COM>,
+
+    /// Domain Tag
+    domain_tag: S::Field,
+
+    /// Type Parameter Marker
+    __: PhantomData<T>,
+}
+
+impl<S, T, const ARITY: usize, COM> Hasher<S, T, ARITY, COM>
+where
+    S: Specification<COM>,
+    T: DomainTag<S>,
+{
+    /// Builds a new [`Hasher`] over `permutation`.
+    #[inline]
+    pub fn new(permutation: Permutation<S, COM>) -> Self {
+        assert_eq!(ARITY + 1, S::WIDTH);
+        Self::new_unchecked(permutation, S::from_parameter(T::domain_tag()))
+    }
+
+    /// Builds a new [`Hasher`] over `permutation` and `domain_tag` without checking.
+    #[inline]
+    fn new_unchecked(permutation: Permutation<S, COM>, domain_tag: S::Field) -> Self {
+        Self {
+            permutation,
+            domain_tag,
+            __: PhantomData,
+        }
+    }
+
     /// Computes the hash over `input` in the given `compiler` and returns the untruncated state.
     pub fn hash_untruncated(&self, input: [&S::Field; ARITY], compiler: &mut COM) -> Vec<S::Field> {
         let mut state = self.permutation.first_round_with_domain_tag_unchecked(
@@ -63,9 +113,26 @@ where
     }
 }
 
-impl<S, const ARITY: usize, COM> ArrayHashFunction<ARITY, COM> for Hasher<S, ARITY, COM>
+impl<S, T, const ARITY: usize, COM> Constant<COM> for Hasher<S, T, ARITY, COM>
+where
+    S: Specification<COM> + Constant<COM>,
+    S::Type: Specification<ParameterField = Const<S::ParameterField, COM>>,
+    S::ParameterField: Constant<COM>,
+    T: DomainTag<S> + Constant<COM>,
+    T::Type: DomainTag<S::Type>,
+{
+    type Type = Hasher<S::Type, T::Type, ARITY>;
+
+    #[inline]
+    fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
+        Self::new(this.permutation.as_constant(compiler))
+    }
+}
+
+impl<S, T, const ARITY: usize, COM> ArrayHashFunction<ARITY, COM> for Hasher<S, T, ARITY, COM>
 where
     S: Specification<COM>,
+    T: DomainTag<S>,
 {
     type Input = S::Field;
     type Output = S::Field;
@@ -76,11 +143,12 @@ where
     }
 }
 
-impl<S, const ARITY: usize, COM> Decode for Hasher<S, ARITY, COM>
+impl<S, T, const ARITY: usize, COM> Decode for Hasher<S, T, ARITY, COM>
 where
     S: Specification<COM>,
     S::Field: Decode,
     S::ParameterField: Decode<Error = <S::Field as Decode>::Error>,
+    T: DomainTag<S>,
 {
     type Error = <S::Field as Decode>::Error;
 
@@ -89,18 +157,19 @@ where
     where
         R: Read,
     {
-        Ok(Self::new(
+        Ok(Self::new_unchecked(
             Decode::decode(&mut reader)?,
             Decode::decode(&mut reader)?,
         ))
     }
 }
 
-impl<S, const ARITY: usize, COM> Encode for Hasher<S, ARITY, COM>
+impl<S, T, const ARITY: usize, COM> Encode for Hasher<S, T, ARITY, COM>
 where
     S: Specification<COM>,
     S::Field: Encode,
     S::ParameterField: Encode,
+    T: DomainTag<S>,
 {
     #[inline]
     fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
@@ -113,35 +182,20 @@ where
     }
 }
 
-// trait DomainTag<S, COM = ()>
-// where
-//     S: Specification<COM>,
-// {
-//     /// TODO
-//     fn domain_tag() -> S::ParameterField;
-// }
-
-// TODO
-// impl<D, S, T, const ARITY: usize, COM> Sample<D> for Hasher<S, T, ARITY, COM>
-impl<D, S, const ARITY: usize, COM> Sample<D> for Hasher<S, ARITY, COM>
+impl<D, S, T, const ARITY: usize, COM> Sample<D> for Hasher<S, T, ARITY, COM>
 where
     D: Clone,
     S: Specification<COM>,
     S::Field: Sample<D>,
     S::ParameterField: Field + FieldGeneration + PartialEq + Sample<D>,
-    // TODO
-    // T: DomainTag<S, COM>,
+    T: DomainTag<S>,
 {
-    /// Samples random Poseidon parameters.
     #[inline]
     fn sample<R>(distribution: D, rng: &mut R) -> Self
     where
         R: RngCore + ?Sized,
     {
-        // FIXME: Use a proper domain tag sampling method.
-        // TODO
-        // Self::new(rng.sample(distribution.clone()), T::domain_tag()) // TODO: Should we have a struct DomainTag<S::Field> and implement sample_domain_tag for it?
-        Self::new(rng.sample(distribution.clone()), S::sample_domain_tag()) // T::domain_tag()) // TODO: Should we have a struct DomainTag<S::Field> and implement sample_domain_tag for it?
+        Self::new(rng.sample(distribution.clone()))
     }
 }
 

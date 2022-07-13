@@ -20,8 +20,9 @@ use crate::crypto::poseidon::{
     matrix::MatrixOperations, mds::MdsMatrices, round_constants::generate_round_constants,
 };
 use alloc::{boxed::Box, vec::Vec};
-use core::{fmt::Debug, hash::Hash, iter, mem, slice};
+use core::{fmt::Debug, hash::Hash, iter, marker::PhantomData, mem, slice};
 use manta_crypto::{
+    constraint::{Allocate, Const, Constant},
     permutation::PseudorandomPermutation,
     rand::{RngCore, Sample},
 };
@@ -87,27 +88,33 @@ pub trait FieldGeneration {
         Self: Sized;
 }
 
-/// Poseidon Permutation Specification
-pub trait Specification<COM = ()> {
-    /// Field Type used for Permutation State
-    type Field;
-
-    /// Field Type used for Constant Parameters
-    type ParameterField;
-
+/// Poseidon Constants
+pub trait Constants {
     /// Width of the Permutation
     ///
     /// This number is the total number `t` of field elements in the state which is `F^t`.
     const WIDTH: usize;
-
-    /// Number of Partial Rounds
-    const PARTIAL_ROUNDS: usize;
 
     /// Number of Full Rounds
     ///
     /// The total number of full rounds in the Poseidon permutation, including the first set of full
     /// rounds and then the second set after the partial rounds.
     const FULL_ROUNDS: usize;
+
+    /// Number of Partial Rounds
+    const PARTIAL_ROUNDS: usize;
+}
+
+/// Parameter Field Type
+pub trait ParameterFieldType {
+    /// Field Type used for Constant Parameters
+    type ParameterField;
+}
+
+/// Poseidon Permutation Specification
+pub trait Specification<COM = ()>: Constants + ParameterFieldType {
+    /// Field Type used for Permutation State
+    type Field;
 
     /// Adds two field elements together.
     fn add(lhs: &Self::Field, rhs: &Self::Field, compiler: &mut COM) -> Self::Field;
@@ -132,9 +139,6 @@ pub trait Specification<COM = ()> {
 
     /// Converts a constant parameter `point` for permutation state.
     fn from_parameter(point: Self::ParameterField) -> Self::Field;
-
-    /// Samples a domain tag.
-    fn sample_domain_tag() -> Self::ParameterField;
 }
 
 /// Poseidon Internal State
@@ -216,6 +220,9 @@ where
 
     /// MDS Matrix
     mds_matrix: Box<[S::ParameterField]>,
+
+    /// Type Parameter Marker
+    __: PhantomData<COM>,
 }
 
 impl<S, COM> Permutation<S, COM>
@@ -275,6 +282,7 @@ where
         Self {
             additive_round_keys,
             mds_matrix,
+            __: PhantomData,
         }
     }
 
@@ -368,6 +376,29 @@ where
     }
 }
 
+impl<S, COM> Constant<COM> for Permutation<S, COM>
+where
+    S: Specification<COM> + Constant<COM>,
+    S::Type: Specification<ParameterField = Const<S::ParameterField, COM>>,
+    S::ParameterField: Constant<COM>,
+{
+    type Type = Permutation<S::Type>;
+
+    #[inline]
+    fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
+        Self::new_unchecked(
+            this.additive_round_keys
+                .iter()
+                .map(|e| e.as_constant(compiler))
+                .collect(),
+            this.mds_matrix
+                .iter()
+                .map(|e| e.as_constant(compiler))
+                .collect(),
+        )
+    }
+}
+
 impl<S, COM> Decode for Permutation<S, COM>
 where
     S: Specification<COM>,
@@ -436,48 +467,12 @@ where
         R: RngCore + ?Sized,
     {
         let _ = (distribution, rng);
-        Self {
-            additive_round_keys: generate_round_constants(
-                S::WIDTH,
-                S::FULL_ROUNDS,
-                S::PARTIAL_ROUNDS,
-            )
-            .into_boxed_slice(),
-            mds_matrix: MdsMatrices::generate_mds(S::WIDTH)
+        Self::new_unchecked(
+            generate_round_constants(S::WIDTH, S::FULL_ROUNDS, S::PARTIAL_ROUNDS)
+                .into_boxed_slice(),
+            MdsMatrices::generate_mds(S::WIDTH)
                 .to_row_major()
                 .into_boxed_slice(),
-        }
+        )
     }
-}
-
-/// Poseidon Hasher
-#[cfg_attr(
-    feature = "serde",
-    derive(Deserialize, Serialize),
-    serde(
-        bound(
-            deserialize = "Permutation<S, COM>: Deserialize<'de>, S::Field: Deserialize<'de>",
-            serialize = "Permutation<S, COM>: Serialize, S::Field: Serialize"
-        ),
-        crate = "manta_util::serde",
-        deny_unknown_fields
-    )
-)]
-#[derive(derivative::Derivative)]
-#[derivative(
-    Clone(bound = "Permutation<S, COM>: Clone, S::Field: Clone"),
-    Debug(bound = "Permutation<S, COM>: Debug, S::Field: Debug"),
-    Eq(bound = "Permutation<S, COM>: Eq, S::Field: Eq"),
-    Hash(bound = "Permutation<S, COM>: Hash, S::Field: Hash"),
-    PartialEq(bound = "Permutation<S, COM>: PartialEq, S::Field: PartialEq")
-)]
-pub struct Hasher<S, const ARITY: usize, COM = ()>
-where
-    S: Specification<COM>,
-{
-    /// Poseidon Permutation.
-    permutation: Permutation<S, COM>,
-
-    /// Domain Tag.
-    domain_tag: S::Field,
 }
