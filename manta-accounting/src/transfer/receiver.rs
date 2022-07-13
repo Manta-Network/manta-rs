@@ -59,19 +59,8 @@ where
 
     /// Returns the asset underlying `self`, asserting that `self` is well-formed.
     #[inline]
-    pub fn well_formed_asset(
-        &self,
-        parameters: &M,
-        authority: &M::Authority,
-        compiler: &mut COM,
-    ) -> M::Asset {
-        parameters.well_formed_asset(
-            authority,
-            &self.secret,
-            &self.utxo,
-            &self.incoming_note,
-            compiler,
-        )
+    pub fn well_formed_asset(&self, parameters: &M, compiler: &mut COM) -> M::Asset {
+        parameters.well_formed_asset(&self.secret, &self.utxo, &self.incoming_note, compiler)
     }
 }
 

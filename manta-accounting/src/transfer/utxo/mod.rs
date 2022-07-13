@@ -24,7 +24,7 @@
 use core::{fmt::Debug, hash::Hash, marker::PhantomData, ops::Deref};
 use manta_crypto::{
     accumulator::{self, ItemHashFunction, MembershipProof},
-    constraint::{Allocate, Constant},
+    constraint::{Allocate, Allocator, Constant, Derived, ProofSystemInput, Var, Variable},
     signature::Sign,
 };
 
@@ -54,6 +54,70 @@ pub trait AuthorizationType {
 /// Authorization Type
 pub type Authorization<T> = <T as AuthorizationType>::Authorization;
 
+/// Authorization Proof
+pub struct AuthorizationProof<T>
+where
+    T: AuthorityType + AuthorizationType,
+{
+    /// Authority
+    pub authority: T::Authority,
+
+    /// Authorization
+    pub authorization: T::Authorization,
+}
+
+impl<T> AuthorizationProof<T>
+where
+    T: AuthorityType + AuthorizationType,
+{
+    /// Builds a new [`AuthorizationProof`] from `authority` and `authorization`.
+    #[inline]
+    pub fn new(authority: T::Authority, authorization: T::Authorization) -> Self {
+        Self {
+            authority,
+            authorization,
+        }
+    }
+
+    /// Extends proof public input with `self`.
+    #[inline]
+    pub fn extend_input<P>(&self, input: &mut P::Input)
+    where
+        P: ProofSystemInput<T::Authorization>,
+    {
+        P::extend(input, &self.authorization)
+    }
+
+    /// Asserts that `self` is a valid [`AuthorizationProof`] according to `authorization_scheme`.
+    #[inline]
+    pub fn assert_valid<COM>(&self, authorization_scheme: &T, compiler: &mut COM)
+    where
+        T: Authorize<COM>,
+    {
+        authorization_scheme.assert_authorized(&self.authority, &self.authorization, compiler)
+    }
+}
+
+impl<T, M, N, COM> Variable<Derived<(M, N)>, COM> for AuthorizationProof<T>
+where
+    T: AuthorityType + AuthorizationType + Constant<COM>,
+    T::Type: AuthorityType + AuthorizationType,
+{
+    type Type = AuthorizationProof<T::Type>;
+
+    #[inline]
+    fn new_unknown(compiler: &mut COM) -> Self {
+        // TODO: Self::new(compiler.allocate_unknown(), compiler.allocate_unknown())
+        todo!()
+    }
+
+    #[inline]
+    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
+        // TODO:
+        todo!()
+    }
+}
+
 /// Authorize
 pub trait Authorize<COM = ()>: AuthorityType + AuthorizationType {
     /// Asserts that `authority` produces the correct `authorization`.
@@ -67,13 +131,13 @@ pub trait Authorize<COM = ()>: AuthorityType + AuthorizationType {
 
 /// Authorization Verification
 pub trait VerifyAuthorization: AuthorizationType {
-    /// Verification Key
-    type VerificationKey;
+    /// Verifying Key
+    type VerifyingKey;
 
-    /// Verifies that `authorization` is well-formed with `verification_key`.
-    fn verify(
+    /// Verifies that `authorization` is well-formed with `verifying_key`.
+    fn verify_authorization(
         &self,
-        verification_key: &Self::VerificationKey,
+        verifying_key: &Self::VerifyingKey,
         authorization: &Self::Authorization,
     ) -> bool;
 }
@@ -81,19 +145,17 @@ pub trait VerifyAuthorization: AuthorizationType {
 /// Verifies the `authorization` with `signing_key` and then signs the `message` if the verification
 /// passed.
 #[inline]
-pub fn verify_and_sign<V, S>(
-    verifier: &V,
+pub fn sign_authorization<S>(
     signature_scheme: &S,
     signing_key: &S::SigningKey,
-    authorization: &V::Authorization,
+    authorization: &S::Authorization,
     randomness: &S::Randomness,
     message: &S::Message,
 ) -> Option<S::Signature>
 where
-    V: VerifyAuthorization<VerificationKey = S::SigningKey>,
-    S: Sign,
+    S: Sign + VerifyAuthorization<VerifyingKey = S::SigningKey>,
 {
-    if verifier.verify(signing_key, authorization) {
+    if signature_scheme.verify_authorization(signing_key, authorization) {
         Some(signature_scheme.sign(signing_key, randomness, message, &mut ()))
     } else {
         None
@@ -119,7 +181,7 @@ pub trait UtxoType {
 pub type Utxo<T> = <T as UtxoType>::Utxo;
 
 /// UTXO Minting
-pub trait Mint<COM = ()>: Authorize<COM> + AssetType + UtxoType {
+pub trait Mint<COM = ()>: AssetType + UtxoType {
     /// Mint Secret Type
     type Secret;
 
@@ -130,7 +192,6 @@ pub trait Mint<COM = ()>: Authorize<COM> + AssetType + UtxoType {
     /// well-formed.
     fn well_formed_asset(
         &self,
-        authority: &Self::Authority,
         secret: &Self::Secret,
         utxo: &Self::Utxo,
         note: &Self::Note,

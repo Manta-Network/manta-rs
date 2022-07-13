@@ -44,18 +44,15 @@ use manta_crypto::{
     rand::{CryptoRng, RngCore, Sample},
 };
 use manta_util::SizeLimit;
-
-#[cfg(feature = "serde")]
-use manta_util::serde::{Deserialize, Serialize};
 */
 
 use crate::{
     asset,
     transfer::utxo::{
-        Authorize, Mint, Note, Nullifier, Spend, Utxo, UtxoAccumulatorItem, UtxoAccumulatorOutput,
+        sign_authorization, Authorize, Mint, Note, Nullifier, Spend, Utxo, UtxoAccumulatorItem,
+        UtxoAccumulatorOutput, VerifyAuthorization,
     },
 };
-use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash};
 use manta_crypto::{
     accumulator,
@@ -63,9 +60,13 @@ use manta_crypto::{
         self, Add, Allocate, Allocator, Assert, AssertEq, Constant, Derived, ProofSystem,
         ProofSystemInput, Public, Secret, Variable,
     },
-    rand::{CryptoRng, RngCore},
-    signature,
+    rand::{CryptoRng, Rand, RngCore, Sample},
+    signature::{self, Sign, Verify},
 };
+use manta_util::vec::{all_unequal, Vec};
+
+#[cfg(feature = "serde")]
+use manta_util::serde::{Deserialize, Serialize};
 
 // TODO: pub mod batch;
 // TODO: pub mod canonical;
@@ -85,6 +86,12 @@ pub mod test;
 #[inline]
 pub const fn has_public_participants(sources: usize, sinks: usize) -> bool {
     (sources + sinks) > 0
+}
+
+/// Returns `true` if the [`Transfer`] with this shape would have secret participants.
+#[inline]
+pub const fn has_secret_participants(senders: usize, receivers: usize) -> bool {
+    (senders + receivers) > 0
 }
 
 /*
@@ -847,8 +854,17 @@ pub trait Configuration {
     /// Asset Value Type
     type AssetValue;
 
+    /// Unspent Transaction Output Type
+    type Utxo: PartialEq;
+
+    /// Nullifier Type
+    type Nullifier: PartialEq;
+
     /// Parameters Type
-    type Parameters: utxo::AssetType<Asset = Asset<Self>> + Mint + Spend;
+    type Parameters: utxo::AssetType<Asset = Asset<Self>>
+        + utxo::UtxoType<Utxo = Self::Utxo>
+        + Mint
+        + Spend<Nullifier = Self::Nullifier>;
 
     /// Asset Id Variable Type
     type AssetIdVar: constraint::PartialEq<Self::AssetIdVar, Self::Compiler>;
@@ -877,9 +893,18 @@ pub trait Configuration {
         + ProofSystemInput<Note<Self::Parameters>>
         + ProofSystemInput<Nullifier<Self::Parameters>>;
 
+    /// Authorization Signature Randomness
+    type AuthorizationSignatureRandomness: Sample;
+
     /// Authorization Signature Scheme
-    type AuthorizationSignatureScheme: signature::Sign<Message = TransferPostBody<Self>>
-        + signature::Verify;
+    type AuthorizationSignatureScheme: signature::Sign<
+            Randomness = Self::AuthorizationSignatureRandomness,
+            Message = TransferPostBody<Self>,
+        > + signature::Verify<VerifyingKey = Authorization<Self>, Verification = bool>
+        + VerifyAuthorization<
+            Authorization = Authorization<Self>,
+            VerifyingKey = AuthorizationSigningKey<Self>,
+        >;
 }
 
 /// Transfer Compiler Type
@@ -949,6 +974,20 @@ pub type Authorization<C> = utxo::Authorization<Parameters<C>>;
 /// Transfer Authorization Variable Type
 pub type AuthorizationVar<C> = utxo::Authorization<ParametersVar<C>>;
 
+/// Transfer Authorization Proof Type
+pub type AuthorizationProof<C> = utxo::AuthorizationProof<Parameters<C>>;
+
+/// Transfer Authorization Proof Variable Type
+pub type AuthorizationProofVar<C> = utxo::AuthorizationProof<ParametersVar<C>>;
+
+/// Transfer Authorization Signing Key Type
+pub type AuthorizationSigningKey<C> =
+    signature::SigningKey<<C as Configuration>::AuthorizationSignatureScheme>;
+
+/// Transfer Authorization Signature Type
+pub type AuthorizationSignature<C> =
+    signature::Signature<<C as Configuration>::AuthorizationSignatureScheme>;
+
 /// Transfer Sender Type
 pub type Sender<C> = sender::Sender<Parameters<C>>;
 
@@ -977,11 +1016,8 @@ pub struct Transfer<
 > where
     C: Configuration,
 {
-    /// Authority
-    authority: Authority<C>,
-
-    /// Authorization
-    authorization: Authorization<C>,
+    /// Authorization Proof
+    authorization_proof: Option<AuthorizationProof<C>>,
 
     /// Asset Id
     asset_id: Option<C::AssetId>,
@@ -1007,19 +1043,18 @@ where
     /// Builds a new [`Transfer`].
     #[inline]
     pub fn new(
-        authority: Authority<C>,
-        authorization: Authorization<C>,
+        authorization_proof: impl Into<Option<AuthorizationProof<C>>>,
         asset_id: impl Into<Option<C::AssetId>>,
         sources: [C::AssetValue; SOURCES],
         senders: [Sender<C>; SENDERS],
         receivers: [Receiver<C>; RECEIVERS],
         sinks: [C::AssetValue; SINKS],
     ) -> Self {
+        let authorization_proof = authorization_proof.into();
         let asset_id = asset_id.into();
-        Self::check_shape(asset_id.is_some());
+        Self::check_shape(authorization_proof.is_some(), asset_id.is_some());
         Self::new_unchecked(
-            authority,
-            authorization,
+            authorization_proof,
             asset_id,
             sources,
             senders,
@@ -1030,9 +1065,10 @@ where
 
     /// Checks that the [`Transfer`] has a valid shape.
     #[inline]
-    fn check_shape(has_visible_asset_id: bool) {
+    fn check_shape(has_authorization_proof: bool, has_visible_asset_id: bool) {
         Self::has_nonempty_input_shape();
         Self::has_nonempty_output_shape();
+        Self::has_authorization_proof_when_required(has_authorization_proof);
         Self::has_visible_asset_id_when_required(has_visible_asset_id);
     }
 
@@ -1056,6 +1092,23 @@ where
         );
     }
 
+    /// Checks that the given `authorization_proof` for [`Transfer`] building is present exactly
+    /// when required.
+    #[inline]
+    fn has_authorization_proof_when_required(has_authorization_proof: bool) {
+        if SENDERS > 0 {
+            assert!(
+                has_authorization_proof,
+                "Missing authorization proof when required."
+            );
+        } else {
+            assert!(
+                !has_authorization_proof,
+                "Given authorization proof when not required."
+            );
+        }
+    }
+
     /// Checks that the given `asset_id` for [`Transfer`] building is visible exactly when required.
     #[inline]
     fn has_visible_asset_id_when_required(has_visible_asset_id: bool) {
@@ -1076,8 +1129,7 @@ where
     /// output sides.
     #[inline]
     fn new_unchecked(
-        authority: Authority<C>,
-        authorization: Authorization<C>,
+        authorization_proof: Option<AuthorizationProof<C>>,
         asset_id: Option<C::AssetId>,
         sources: [C::AssetValue; SOURCES],
         senders: [Sender<C>; SENDERS],
@@ -1085,8 +1137,7 @@ where
         sinks: [C::AssetValue; SINKS],
     ) -> Self {
         Self {
-            authority,
-            authorization,
+            authorization_proof,
             asset_id,
             sources,
             senders,
@@ -1099,7 +1150,9 @@ where
     #[inline]
     pub fn generate_proof_input(&self) -> ProofInput<C> {
         let mut input = Default::default();
-        C::ProofSystem::extend(&mut input, &self.authorization);
+        if let Some(authorization_proof) = &self.authorization_proof {
+            authorization_proof.extend_input::<C::ProofSystem>(&mut input);
+        }
         if let Some(asset_id) = &self.asset_id {
             C::ProofSystem::extend(&mut input, asset_id);
         }
@@ -1154,24 +1207,24 @@ where
         )
     }
 
-    /// Converts `self` into its ledger post.
+    /// Converts `self` into its [`TransferPostBody`] by building the [`Transfer`] validity proof.
     #[inline]
-    pub fn into_post<R>(
+    pub fn into_post_body<R>(
         self,
         parameters: FullParametersRef<C>,
-        context: &ProvingContext<C>,
+        proving_context: &ProvingContext<C>,
         rng: &mut R,
-    ) -> Result<TransferPost<C>, ProofSystemError<C>>
+    ) -> Result<TransferPostBody<C>, ProofSystemError<C>>
     where
         R: CryptoRng + RngCore + ?Sized,
     {
-        let body = TransferPostBody {
+        Ok(TransferPostBody {
             validity_proof: C::ProofSystem::prove(
-                context,
+                proving_context,
                 self.known_constraints(parameters),
                 rng,
             )?,
-            authorization: self.authorization,
+            authorization: self.authorization_proof.map(|p| p.authorization),
             asset_id: self.asset_id,
             sources: self.sources.into(),
             sender_posts: self
@@ -1185,11 +1238,6 @@ where
                 .map(Receiver::<C>::into_post)
                 .collect(),
             sinks: self.sinks.into(),
-        };
-        let authorization_signature = (); // TODO: = parameters.sign(body);
-        Ok(TransferPost {
-            body,
-            authorization_signature,
         })
     }
 }
@@ -1204,11 +1252,8 @@ struct TransferVar<
 > where
     C: Configuration,
 {
-    /// Authority
-    authority: AuthorityVar<C>,
-
-    /// Authorization
-    authorization: AuthorizationVar<C>,
+    /// Authorization Proof
+    authorization_proof: Option<AuthorizationProofVar<C>>,
 
     /// Asset Id
     asset_id: Option<C::AssetIdVar>,
@@ -1238,37 +1283,20 @@ where
         parameters: &FullParametersVar<C>,
         compiler: &mut C::Compiler,
     ) {
-        parameters
-            .base
-            .assert_authorized(&self.authority, &self.authorization, compiler);
         let mut secret_asset_ids = Vec::with_capacity(SENDERS + RECEIVERS);
-        let input_sum = Self::value_sum(
-            self.senders
-                .into_iter()
-                .map(|s| {
-                    let asset = s.well_formed_asset(
-                        &parameters.base,
-                        &parameters.utxo_accumulator_model,
-                        &self.authority,
-                        compiler,
-                    );
-                    secret_asset_ids.push(asset.id);
-                    asset.value
-                })
-                .chain(self.sources)
-                .collect::<Vec<_>>(),
+        let input_sum = Self::input_sum(
+            parameters,
+            &mut secret_asset_ids,
+            self.authorization_proof,
+            self.senders,
+            self.sources,
             compiler,
         );
-        let output_sum = Self::value_sum(
-            self.receivers
-                .into_iter()
-                .map(|r| {
-                    let asset = r.well_formed_asset(&parameters.base, &self.authority, compiler);
-                    secret_asset_ids.push(asset.id);
-                    asset.value
-                })
-                .chain(self.sinks)
-                .collect::<Vec<_>>(),
+        let output_sum = Self::output_sum(
+            parameters,
+            &mut secret_asset_ids,
+            self.receivers,
+            self.sinks,
             compiler,
         );
         compiler.assert_eq(&input_sum, &output_sum);
@@ -1276,6 +1304,63 @@ where
             Some(asset_id) => compiler.assert_all_eq_to_base(&asset_id, secret_asset_ids.iter()),
             _ => compiler.assert_all_eq(secret_asset_ids.iter()),
         }
+    }
+
+    /// Computes the sum over all the input assets, asserting that they are all well-formed.
+    #[inline]
+    fn input_sum(
+        parameters: &FullParametersVar<C>,
+        secret_asset_ids: &mut Vec<C::AssetIdVar>,
+        authorization_proof: Option<AuthorizationProofVar<C>>,
+        senders: Vec<SenderVar<C>>,
+        sources: Vec<C::AssetValueVar>,
+        compiler: &mut C::Compiler,
+    ) -> C::AssetValueVar {
+        if let Some(authorization_proof) = authorization_proof {
+            authorization_proof.assert_valid(&parameters.base, compiler);
+            Self::value_sum(
+                senders
+                    .into_iter()
+                    .map(|s| {
+                        let asset = s.well_formed_asset(
+                            &parameters.base,
+                            &parameters.utxo_accumulator_model,
+                            &authorization_proof.authority,
+                            compiler,
+                        );
+                        secret_asset_ids.push(asset.id);
+                        asset.value
+                    })
+                    .chain(sources)
+                    .collect::<Vec<_>>(),
+                compiler,
+            )
+        } else {
+            Self::value_sum(sources, compiler)
+        }
+    }
+
+    /// Computes the sum over all the output assets, asserting that they are all well-formed.
+    #[inline]
+    fn output_sum(
+        parameters: &FullParametersVar<C>,
+        secret_asset_ids: &mut Vec<C::AssetIdVar>,
+        receivers: Vec<ReceiverVar<C>>,
+        sinks: Vec<C::AssetValueVar>,
+        compiler: &mut C::Compiler,
+    ) -> C::AssetValueVar {
+        Self::value_sum(
+            receivers
+                .into_iter()
+                .map(|r| {
+                    let asset = r.well_formed_asset(&parameters.base, compiler);
+                    secret_asset_ids.push(asset.id);
+                    asset.value
+                })
+                .chain(sinks)
+                .collect::<Vec<_>>(),
+            compiler,
+        )
     }
 
     /// Computes the sum of the asset values over `iter`.
@@ -1297,6 +1382,33 @@ where
     C: Configuration,
 {
     type Type = Transfer<C, SOURCES, SENDERS, RECEIVERS, SINKS>;
+
+    #[inline]
+    fn new_unknown(compiler: &mut C::Compiler) -> Self {
+        /* TODO:
+        Self {
+            asset_id: has_public_participants(SOURCES, SINKS)
+                .then(|| compiler.allocate_unknown::<Public, _>()),
+            sources: (0..SOURCES)
+                .into_iter()
+                .map(|_| compiler.allocate_unknown::<Public, _>())
+                .collect(),
+            senders: (0..SENDERS)
+                .into_iter()
+                .map(|_| compiler.allocate_unknown())
+                .collect(),
+            receivers: (0..RECEIVERS)
+                .into_iter()
+                .map(|_| compiler.allocate_unknown())
+                .collect(),
+            sinks: (0..SINKS)
+                .into_iter()
+                .map(|_| compiler.allocate_unknown::<Public, _>())
+                .collect(),
+        }
+        */
+        todo!()
+    }
 
     #[inline]
     fn new_known(this: &Self::Type, compiler: &mut C::Compiler) -> Self {
@@ -1327,36 +1439,7 @@ where
         */
         todo!()
     }
-
-    #[inline]
-    fn new_unknown(compiler: &mut C::Compiler) -> Self {
-        /* TODO:
-        Self {
-            asset_id: has_public_participants(SOURCES, SINKS)
-                .then(|| compiler.allocate_unknown::<Public, _>()),
-            sources: (0..SOURCES)
-                .into_iter()
-                .map(|_| compiler.allocate_unknown::<Public, _>())
-                .collect(),
-            senders: (0..SENDERS)
-                .into_iter()
-                .map(|_| compiler.allocate_unknown())
-                .collect(),
-            receivers: (0..RECEIVERS)
-                .into_iter()
-                .map(|_| compiler.allocate_unknown())
-                .collect(),
-            sinks: (0..SINKS)
-                .into_iter()
-                .map(|_| compiler.allocate_unknown::<Public, _>())
-                .collect(),
-        }
-        */
-        todo!()
-    }
 }
-
-/*
 
 /// Transfer Ledger
 ///
@@ -1365,11 +1448,22 @@ where
 /// the [`Transfer`] abstraction. This `trait` inherits from [`SenderLedger`] and [`ReceiverLedger`]
 /// which validate the [`Sender`] and [`Receiver`] parts of any [`Transfer`]. See their
 /// documentation for more.
-pub trait TransferLedger<C>: SenderLedger<C, SuperPostingKey = (Self::ValidProof, TransferLedgerSuperPostingKey<C, Self>)>
-    + ReceiverLedger<C, SuperPostingKey = (Self::ValidProof, TransferLedgerSuperPostingKey<C, Self>)>
+pub trait TransferLedger<C>:
+    sender::SenderLedger<
+        Parameters<C>,
+        SuperPostingKey = (Self::ValidProof, TransferLedgerSuperPostingKey<C, Self>),
+    > + receiver::ReceiverLedger<
+        Parameters<C>,
+        SuperPostingKey = (Self::ValidProof, TransferLedgerSuperPostingKey<C, Self>),
+    >
 where
-    C: Configuration,
+    C: Configuration + ?Sized,
 {
+    /// Super Posting Key
+    ///
+    /// Type that allows super-traits of [`TransferLedger`] to customize posting key behavior.
+    type SuperPostingKey: Copy;
+
     /// Account Identifier
     type AccountId;
 
@@ -1389,7 +1483,7 @@ where
     ///
     /// This type must be restricted so that it can only be constructed by this implementation of
     /// [`TransferLedger`].
-    type ValidSourceAccount: AsRef<AssetValue>;
+    type ValidSourceAccount: AsRef<C::AssetValue>;
 
     /// Valid [`AssetValue`] for [`TransferPost`] Sink
     ///
@@ -1397,7 +1491,7 @@ where
     ///
     /// This type must be restricted so that it can only be constructed by this implementation of
     /// [`TransferLedger`].
-    type ValidSinkAccount: AsRef<AssetValue>;
+    type ValidSinkAccount: AsRef<C::AssetValue>;
 
     /// Valid [`Proof`] Posting Key
     ///
@@ -1410,39 +1504,29 @@ where
     /// [`check_sink_accounts`](Self::check_sink_accounts) and [`is_valid`](Self::is_valid).
     type ValidProof: Copy;
 
-    /// Super Posting Key
-    ///
-    /// Type that allows super-traits of [`TransferLedger`] to customize posting key behavior.
-    type SuperPostingKey: Copy;
-
     /// Checks that the balances associated to the source accounts are sufficient to withdraw the
     /// amount given in `sources`.
     fn check_source_accounts<I>(
         &self,
-        asset_id: AssetId,
+        asset_id: &C::AssetId,
         sources: I,
-    ) -> Result<Vec<Self::ValidSourceAccount>, InvalidSourceAccount<Self::AccountId>>
+    ) -> Result<Vec<Self::ValidSourceAccount>, InvalidSourceAccount<C, Self::AccountId>>
     where
-        I: Iterator<Item = (Self::AccountId, AssetValue)>;
+        I: Iterator<Item = (Self::AccountId, C::AssetValue)>;
 
     /// Checks that the sink accounts exist and balance can be increased by the specified amounts.
     fn check_sink_accounts<I>(
         &self,
-        asset_id: AssetId,
+        asset_id: &C::AssetId,
         sinks: I,
-    ) -> Result<Vec<Self::ValidSinkAccount>, InvalidSinkAccount<Self::AccountId>>
+    ) -> Result<Vec<Self::ValidSinkAccount>, InvalidSinkAccount<C, Self::AccountId>>
     where
-        I: Iterator<Item = (Self::AccountId, AssetValue)>;
+        I: Iterator<Item = (Self::AccountId, C::AssetValue)>;
 
     /// Checks that the transfer `proof` is valid.
     fn is_valid(
         &self,
-        asset_id: Option<AssetId>,
-        sources: &[SourcePostingKey<C, Self>],
-        senders: &[SenderPostingKey<C, Self>],
-        receivers: &[ReceiverPostingKey<C, Self>],
-        sinks: &[SinkPostingKey<C, Self>],
-        proof: Proof<C>,
+        posting_key: TransferPostingKeyRef<C, Self>,
     ) -> Option<(Self::ValidProof, Self::Event)>;
 
     /// Updates the public balances in the ledger, finishing the transaction.
@@ -1454,11 +1538,11 @@ where
     /// [`is_valid`](Self::is_valid) for more.
     fn update_public_balances(
         &mut self,
-        asset_id: AssetId,
+        super_key: &TransferLedgerSuperPostingKey<C, Self>,
+        asset_id: C::AssetId,
         sources: Vec<SourcePostingKey<C, Self>>,
         sinks: Vec<SinkPostingKey<C, Self>>,
         proof: Self::ValidProof,
-        super_key: &TransferLedgerSuperPostingKey<C, Self>,
     ) -> Result<(), Self::UpdateError>;
 }
 
@@ -1468,85 +1552,126 @@ pub type SourcePostingKey<C, L> = <L as TransferLedger<C>>::ValidSourceAccount;
 /// Transfer Sink Posting Key Type
 pub type SinkPostingKey<C, L> = <L as TransferLedger<C>>::ValidSinkAccount;
 
+/// Transfer Sender Posting Key Type
+pub type SenderPostingKey<C, L> = sender::SenderPostingKey<Parameters<C>, L>;
+
+/// Transfer Receiver Posting Key Type
+pub type ReceiverPostingKey<C, L> = receiver::ReceiverPostingKey<Parameters<C>, L>;
+
 /// Transfer Ledger Super Posting Key Type
 pub type TransferLedgerSuperPostingKey<C, L> = <L as TransferLedger<C>>::SuperPostingKey;
 
-*/
-
-/*
-/// Invalid Source Accounts
-///
-/// This `struct` is the error state of the [`TransferLedger::check_source_accounts`] method. See
-/// its documentation for more.
+/// Invalid Authorization Signature Error
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
     serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub struct InvalidSourceAccount<AccountId> {
+pub enum InvalidAuthorizationSignature {
+    /// Missing Signature
+    MissingSignature,
+
+    /// Missing Authorization
+    MissingAuthorization,
+
+    /// Bad Signature
+    BadSignature,
+}
+
+/// Invalid Source Accounts
+///
+/// This `struct` is the error state of the [`TransferLedger::check_source_accounts`] method. See
+/// its documentation for more.
+/* TODO:
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+*/
+pub struct InvalidSourceAccount<C, AccountId>
+where
+    C: Configuration + ?Sized,
+{
     /// Account Id
     pub account_id: AccountId,
 
     /// Asset Id
-    pub asset_id: AssetId,
+    pub asset_id: C::AssetId,
 
     /// Amount Attempting to Withdraw
-    pub withdraw: AssetValue,
+    pub withdraw: C::AssetValue,
 }
 
 /// Invalid Sink Accounts
 ///
 /// This `struct` is the error state of the [`TransferLedger::check_sink_accounts`] method. See its
 /// documentation for more.
+/* TODO:
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
     serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub struct InvalidSinkAccount<AccountId> {
+*/
+pub struct InvalidSinkAccount<C, AccountId>
+where
+    C: Configuration + ?Sized,
+{
     /// Account Id
     pub account_id: AccountId,
 
     /// Asset Id
-    pub asset_id: AssetId,
+    pub asset_id: C::AssetId,
 
     /// Amount Attempting to Deposit
-    pub deposit: AssetValue,
+    pub deposit: C::AssetValue,
 }
 
 /// Transfer Post Error
 ///
 /// This `enum` is the error state of the [`TransferPost::validate`] method. See its documentation
 /// for more.
+/* TODO:
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
     serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum TransferPostError<AccountId, UpdateError> {
+*/
+pub enum TransferPostError<C, AccountId, UpdateError>
+where
+    C: Configuration + ?Sized,
+{
     /// Invalid Transfer Post Shape
     InvalidShape,
 
+    /// Invalid Authorization Signature
+    ///
+    /// The authorization signature for the [`TransferPost`] was not valid.
+    InvalidAuthorizationSignature(InvalidAuthorizationSignature),
+
     /// Invalid Source Accounts
-    InvalidSourceAccount(InvalidSourceAccount<AccountId>),
+    InvalidSourceAccount(InvalidSourceAccount<C, AccountId>),
 
     /// Invalid Sink Accounts
-    InvalidSinkAccount(InvalidSinkAccount<AccountId>),
+    InvalidSinkAccount(InvalidSinkAccount<C, AccountId>),
 
     /// Sender Post Error
-    Sender(SenderPostError),
+    Sender(sender::SenderPostError),
 
     /// Receiver Post Error
-    Receiver(ReceiverPostError),
+    Receiver(receiver::ReceiverPostError),
 
     /// Duplicate Spend Error
     DuplicateSpend,
 
-    /// Duplicate Register Error
-    DuplicateRegister,
+    /// Duplicate Mint Error
+    DuplicateMint,
 
     /// Invalid Transfer Proof Error
     ///
@@ -1559,46 +1684,98 @@ pub enum TransferPostError<AccountId, UpdateError> {
     UpdateError(UpdateError),
 }
 
-impl<AccountId, UpdateError> From<InvalidSourceAccount<AccountId>>
-    for TransferPostError<AccountId, UpdateError>
+impl<C, AccountId, UpdateError> From<InvalidAuthorizationSignature>
+    for TransferPostError<C, AccountId, UpdateError>
+where
+    C: Configuration + ?Sized,
 {
     #[inline]
-    fn from(err: InvalidSourceAccount<AccountId>) -> Self {
+    fn from(err: InvalidAuthorizationSignature) -> Self {
+        Self::InvalidAuthorizationSignature(err)
+    }
+}
+
+impl<C, AccountId, UpdateError> From<InvalidSourceAccount<C, AccountId>>
+    for TransferPostError<C, AccountId, UpdateError>
+where
+    C: Configuration + ?Sized,
+{
+    #[inline]
+    fn from(err: InvalidSourceAccount<C, AccountId>) -> Self {
         Self::InvalidSourceAccount(err)
     }
 }
 
-impl<AccountId, UpdateError> From<InvalidSinkAccount<AccountId>>
-    for TransferPostError<AccountId, UpdateError>
+impl<C, AccountId, UpdateError> From<InvalidSinkAccount<C, AccountId>>
+    for TransferPostError<C, AccountId, UpdateError>
+where
+    C: Configuration + ?Sized,
 {
     #[inline]
-    fn from(err: InvalidSinkAccount<AccountId>) -> Self {
+    fn from(err: InvalidSinkAccount<C, AccountId>) -> Self {
         Self::InvalidSinkAccount(err)
     }
 }
 
-impl<AccountId, UpdateError> From<SenderPostError> for TransferPostError<AccountId, UpdateError> {
+impl<C, AccountId, UpdateError> From<sender::SenderPostError>
+    for TransferPostError<C, AccountId, UpdateError>
+where
+    C: Configuration + ?Sized,
+{
     #[inline]
-    fn from(err: SenderPostError) -> Self {
+    fn from(err: sender::SenderPostError) -> Self {
         Self::Sender(err)
     }
 }
 
-impl<AccountId, UpdateError> From<ReceiverPostError> for TransferPostError<AccountId, UpdateError> {
+impl<C, AccountId, UpdateError> From<receiver::ReceiverPostError>
+    for TransferPostError<C, AccountId, UpdateError>
+where
+    C: Configuration + ?Sized,
+{
     #[inline]
-    fn from(err: ReceiverPostError) -> Self {
+    fn from(err: receiver::ReceiverPostError) -> Self {
         Self::Receiver(err)
     }
 }
-*/
 
 /// Transfer Post Body
+/* TODO:
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = r"
+                SenderPost<C>: Deserialize<'de>,
+                ReceiverPost<C>: Deserialize<'de>,
+                Proof<C>: Deserialize<'de>,
+            ",
+            serialize = r"
+                SenderPost<C>: Serialize,
+                ReceiverPost<C>: Serialize,
+                Proof<C>: Serialize,
+            ",
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "SenderPost<C>: Clone, ReceiverPost<C>: Clone, Proof<C>: Clone"),
+    Debug(bound = "SenderPost<C>: Debug, ReceiverPost<C>: Debug, Proof<C>: Debug"),
+    Eq(bound = "SenderPost<C>: Eq, ReceiverPost<C>: Eq, Proof<C>: Eq"),
+    Hash(bound = "SenderPost<C>: Hash, ReceiverPost<C>: Hash, Proof<C>: Hash"),
+    PartialEq(bound = "SenderPost<C>: PartialEq, ReceiverPost<C>: PartialEq, Proof<C>: PartialEq")
+)]
+*/
 pub struct TransferPostBody<C>
 where
     C: Configuration + ?Sized,
 {
     /// Authorization
-    pub authorization: Authorization<C>,
+    pub authorization: Option<Authorization<C>>,
 
     /// Asset Id
     pub asset_id: Option<C::AssetId>,
@@ -1627,7 +1804,9 @@ where
     #[inline]
     pub fn generate_proof_input(&self) -> ProofInput<C> {
         let mut input = Default::default();
-        C::ProofSystem::extend(&mut input, &self.authorization);
+        if let Some(authorization) = &self.authorization {
+            C::ProofSystem::extend(&mut input, authorization);
+        }
         if let Some(asset_id) = &self.asset_id {
             C::ProofSystem::extend(&mut input, asset_id);
         }
@@ -1645,10 +1824,37 @@ where
             .for_each(|sink| C::ProofSystem::extend(&mut input, sink));
         input
     }
+
+    /// Verifies the validity proof of `self` according to the `verifying_context`.
+    #[inline]
+    pub fn has_valid_proof(
+        &self,
+        verifying_context: &VerifyingContext<C>,
+    ) -> Result<bool, ProofSystemError<C>> {
+        C::ProofSystem::verify(
+            verifying_context,
+            &self.generate_proof_input(),
+            &self.validity_proof,
+        )
+    }
+
+    /// Signs `self` with the authorization `signing_key`.
+    #[inline]
+    pub fn sign<R>(
+        self,
+        authorization_signature_scheme: &C::AuthorizationSignatureScheme,
+        signing_key: &AuthorizationSigningKey<C>,
+        rng: &mut R,
+    ) -> Option<TransferPost<C>>
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        TransferPost::signed(authorization_signature_scheme, signing_key, self, rng)
+    }
 }
 
 /// Transfer Post
-/*
+/* TODO:
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
@@ -1680,19 +1886,67 @@ where
 */
 pub struct TransferPost<C>
 where
-    C: Configuration,
+    C: Configuration + ?Sized,
 {
+    /// Authorization Signature
+    pub authorization_signature: Option<AuthorizationSignature<C>>,
+
     /// Transfer Post Body
     pub body: TransferPostBody<C>,
-
-    /// Authorization Signature
-    pub authorization_signature: (),
 }
 
 impl<C> TransferPost<C>
 where
-    C: Configuration,
+    C: Configuration + ?Sized,
 {
+    /// Builds a new signed [`TransferPost`].
+    #[inline]
+    pub fn signed<R>(
+        authorization_signature_scheme: &C::AuthorizationSignatureScheme,
+        signing_key: &AuthorizationSigningKey<C>,
+        body: TransferPostBody<C>,
+        rng: &mut R,
+    ) -> Option<Self>
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        if let Some(authorization) = &body.authorization {
+            Some(Self::new_unchecked(
+                sign_authorization(
+                    authorization_signature_scheme,
+                    signing_key,
+                    authorization,
+                    &rng.gen(),
+                    &body,
+                ),
+                body,
+            ))
+        } else {
+            None
+        }
+    }
+
+    /// Builds a new unsigned [`TransferPost`].
+    #[inline]
+    pub fn unsigned(body: TransferPostBody<C>) -> Option<Self> {
+        body.authorization
+            .is_none()
+            .then(|| Self::new_unchecked(None, body))
+    }
+
+    /// Builds a new [`TransferPost`] without checking the consistency conditions between the `body`
+    /// and the `authorization_signature`.
+    #[inline]
+    pub fn new_unchecked(
+        authorization_signature: Option<AuthorizationSignature<C>>,
+        body: TransferPostBody<C>,
+    ) -> Self {
+        Self {
+            authorization_signature,
+            body,
+        }
+    }
+
     /// Generates the public input for the [`Transfer`] validation proof.
     #[inline]
     pub fn generate_proof_input(&self) -> ProofInput<C> {
@@ -1705,28 +1959,49 @@ where
         &self,
         verifying_context: &VerifyingContext<C>,
     ) -> Result<bool, ProofSystemError<C>> {
-        C::ProofSystem::verify(
-            verifying_context,
-            &self.generate_proof_input(),
-            &self.body.validity_proof,
-        )
+        self.body.has_valid_proof(verifying_context)
     }
 
-    /*
+    /// Verifies that the authorization signature for `self` is valid according to the
+    /// `authorization_signature_scheme`.
+    #[inline]
+    pub fn has_valid_authorization_signature(
+        &self,
+        authorization_signature_scheme: &C::AuthorizationSignatureScheme,
+    ) -> Result<(), InvalidAuthorizationSignature> {
+        match (&self.authorization_signature, &self.body.authorization) {
+            (Some(authorization_signature), Some(authorization)) => {
+                if authorization_signature_scheme.verify(
+                    authorization,
+                    &self.body,
+                    authorization_signature,
+                    &mut (),
+                ) {
+                    Ok(())
+                } else {
+                    Err(InvalidAuthorizationSignature::BadSignature)
+                }
+            }
+            (Some(_), None) => Err(InvalidAuthorizationSignature::MissingAuthorization),
+            (None, Some(_)) => Err(InvalidAuthorizationSignature::MissingSignature),
+            _ => Ok(()),
+        }
+    }
+
     /// Checks that the public participant data is well-formed and runs `ledger` validation on
     /// source and sink accounts.
     #[allow(clippy::type_complexity)] // FIXME: Use a better abstraction for this.
     #[inline]
     fn check_public_participants<L>(
-        asset_id: Option<AssetId>,
+        asset_id: &Option<C::AssetId>,
         source_accounts: Vec<L::AccountId>,
-        source_values: Vec<AssetValue>,
+        source_values: Vec<C::AssetValue>,
         sink_accounts: Vec<L::AccountId>,
-        sink_values: Vec<AssetValue>,
+        sink_values: Vec<C::AssetValue>,
         ledger: &L,
     ) -> Result<
         (Vec<L::ValidSourceAccount>, Vec<L::ValidSinkAccount>),
-        TransferPostError<L::AccountId, L::UpdateError>,
+        TransferPostError<C, L::AccountId, L::UpdateError>,
     >
     where
         L: TransferLedger<C>,
@@ -1744,7 +2019,7 @@ where
         }
         let sources = if sources > 0 {
             ledger.check_source_accounts(
-                asset_id.unwrap(),
+                asset_id.as_ref().unwrap(),
                 source_accounts.into_iter().zip(source_values),
             )?
         } else {
@@ -1752,7 +2027,7 @@ where
         };
         let sinks = if sinks > 0 {
             ledger.check_sink_accounts(
-                asset_id.unwrap(),
+                asset_id.as_ref().unwrap(),
                 sink_accounts.into_iter().zip(sink_values),
             )?
         } else {
@@ -1760,71 +2035,61 @@ where
         };
         Ok((sources, sinks))
     }
-    */
 
-    /*
     /// Validates `self` on the transfer `ledger`.
     #[inline]
     pub fn validate<L>(
         self,
+        authorization_signature_scheme: &C::AuthorizationSignatureScheme,
+        ledger: &L,
         source_accounts: Vec<L::AccountId>,
         sink_accounts: Vec<L::AccountId>,
-        ledger: &L,
-    ) -> Result<TransferPostingKey<C, L>, TransferPostError<L::AccountId, L::UpdateError>>
+    ) -> Result<TransferPostingKey<C, L>, TransferPostError<C, L::AccountId, L::UpdateError>>
     where
         L: TransferLedger<C>,
     {
+        self.has_valid_authorization_signature(authorization_signature_scheme)?;
         let (source_posting_keys, sink_posting_keys) = Self::check_public_participants(
-            self.asset_id,
+            &self.body.asset_id,
             source_accounts,
-            self.sources,
+            self.body.sources,
             sink_accounts,
-            self.sinks,
+            self.body.sinks,
             ledger,
         )?;
-        for (i, p) in self.sender_posts.iter().enumerate() {
-            if self
-                .sender_posts
-                .iter()
-                .skip(i + 1)
-                .any(move |q| p.void_number == q.void_number)
-            {
-                return Err(TransferPostError::DuplicateSpend);
-            }
+        if !all_unequal(&self.body.sender_posts, |p, q| p.nullifier == q.nullifier) {
+            return Err(TransferPostError::DuplicateSpend);
         }
-        for (i, p) in self.receiver_posts.iter().enumerate() {
-            if self
-                .receiver_posts
-                .iter()
-                .skip(i + 1)
-                .any(move |q| p.utxo == q.utxo)
-            {
-                return Err(TransferPostError::DuplicateRegister);
-            }
+        if !all_unequal(&self.body.receiver_posts, |p, q| p.utxo == q.utxo) {
+            return Err(TransferPostError::DuplicateMint);
         }
         let sender_posting_keys = self
+            .body
             .sender_posts
             .into_iter()
             .map(move |s| s.validate(ledger))
             .collect::<Result<Vec<_>, _>>()?;
         let receiver_posting_keys = self
+            .body
             .receiver_posts
             .into_iter()
             .map(move |r| r.validate(ledger))
             .collect::<Result<Vec<_>, _>>()?;
-        let (validity_proof, event) = match ledger.is_valid(
-            self.asset_id,
-            &source_posting_keys,
-            &sender_posting_keys,
-            &receiver_posting_keys,
-            &sink_posting_keys,
-            self.validity_proof,
-        ) {
+        let (validity_proof, event) = match ledger.is_valid(TransferPostingKeyRef {
+            authorization: &self.body.authorization,
+            asset_id: &self.body.asset_id,
+            sources: &source_posting_keys,
+            senders: &sender_posting_keys,
+            receivers: &receiver_posting_keys,
+            sinks: &sink_posting_keys,
+            proof: self.body.validity_proof,
+        }) {
             Some((validity_proof, event)) => (validity_proof, event),
             _ => return Err(TransferPostError::InvalidProof),
         };
         Ok(TransferPostingKey {
-            asset_id: self.asset_id,
+            authorization: self.body.authorization,
+            asset_id: self.body.asset_id,
             source_posting_keys,
             sender_posting_keys,
             receiver_posting_keys,
@@ -1833,39 +2098,43 @@ where
             event,
         })
     }
-    */
 
-    /*
     /// Validates `self` on the transfer `ledger` and then posts the updated state to the `ledger`
     /// if validation succeeded.
     #[inline]
     pub fn post<L>(
         self,
+        authorization_signature_scheme: &C::AuthorizationSignatureScheme,
+        ledger: &mut L,
+        super_key: &TransferLedgerSuperPostingKey<C, L>,
         source_accounts: Vec<L::AccountId>,
         sink_accounts: Vec<L::AccountId>,
-        super_key: &TransferLedgerSuperPostingKey<C, L>,
-        ledger: &mut L,
-    ) -> Result<L::Event, TransferPostError<L::AccountId, L::UpdateError>>
+    ) -> Result<L::Event, TransferPostError<C, L::AccountId, L::UpdateError>>
     where
         L: TransferLedger<C>,
     {
-        self.validate(source_accounts, sink_accounts, ledger)?
-            .post(super_key, ledger)
-            .map_err(TransferPostError::UpdateError)
+        self.validate(
+            authorization_signature_scheme,
+            ledger,
+            source_accounts,
+            sink_accounts,
+        )?
+        .post(ledger, super_key)
+        .map_err(TransferPostError::UpdateError)
     }
-    */
 }
-
-/*
 
 /// Transfer Posting Key
 pub struct TransferPostingKey<C, L>
 where
-    C: Configuration,
+    C: Configuration + ?Sized,
     L: TransferLedger<C>,
 {
+    /// Authorization
+    authorization: Option<Authorization<C>>,
+
     /// Asset Id
-    asset_id: Option<AssetId>,
+    asset_id: Option<C::AssetId>,
 
     /// Source Posting Keys
     source_posting_keys: Vec<SourcePostingKey<C, L>>,
@@ -1888,37 +2157,9 @@ where
 
 impl<C, L> TransferPostingKey<C, L>
 where
-    C: Configuration,
+    C: Configuration + ?Sized,
     L: TransferLedger<C>,
 {
-    /// Generates the public input for the [`Transfer`] validation proof.
-    #[inline]
-    pub fn generate_proof_input(
-        asset_id: Option<AssetId>,
-        sources: &[SourcePostingKey<C, L>],
-        senders: &[SenderPostingKey<C, L>],
-        receivers: &[ReceiverPostingKey<C, L>],
-        sinks: &[SinkPostingKey<C, L>],
-    ) -> ProofInput<C> {
-        let mut input = Default::default();
-        if let Some(asset_id) = asset_id {
-            C::ProofSystem::extend(&mut input, &asset_id);
-        }
-        sources
-            .iter()
-            .for_each(|source| C::ProofSystem::extend(&mut input, source.as_ref()));
-        senders
-            .iter()
-            .for_each(|post| post.extend_input(&mut input));
-        receivers
-            .iter()
-            .for_each(|post| post.extend_input(&mut input));
-        sinks
-            .iter()
-            .for_each(|sink| C::ProofSystem::extend(&mut input, sink.as_ref()));
-        input
-    }
-
     /// Posts `self` to the transfer `ledger`.
     ///
     /// # Safety
@@ -1929,23 +2170,84 @@ where
     #[inline]
     pub fn post(
         self,
-        super_key: &TransferLedgerSuperPostingKey<C, L>,
         ledger: &mut L,
+        super_key: &TransferLedgerSuperPostingKey<C, L>,
     ) -> Result<L::Event, L::UpdateError> {
         let proof = self.validity_proof;
-        SenderPostingKey::post_all(self.sender_posting_keys, &(proof, *super_key), ledger);
-        ReceiverPostingKey::post_all(self.receiver_posting_keys, &(proof, *super_key), ledger);
+        SenderPostingKey::<C, _>::post_all(self.sender_posting_keys, ledger, &(proof, *super_key));
+        ReceiverPostingKey::<C, _>::post_all(
+            self.receiver_posting_keys,
+            ledger,
+            &(proof, *super_key),
+        );
         if let Some(asset_id) = self.asset_id {
             ledger.update_public_balances(
+                super_key,
                 asset_id,
                 self.source_posting_keys,
                 self.sink_posting_keys,
                 proof,
-                super_key,
             )?;
         }
         Ok(self.event)
     }
 }
 
-*/
+/// Transfer Posting Key Reference
+pub struct TransferPostingKeyRef<'k, C, L>
+where
+    C: Configuration + ?Sized,
+    L: TransferLedger<C> + ?Sized,
+{
+    /// Authorization
+    pub authorization: &'k Option<Authorization<C>>,
+
+    /// Asset Id
+    pub asset_id: &'k Option<C::AssetId>,
+
+    /// Sources
+    pub sources: &'k [SourcePostingKey<C, L>],
+
+    /// Senders
+    pub senders: &'k [SenderPostingKey<C, L>],
+
+    /// Receivers
+    pub receivers: &'k [ReceiverPostingKey<C, L>],
+
+    /// Sinks
+    pub sinks: &'k [SinkPostingKey<C, L>],
+
+    /// Proof
+    pub proof: Proof<C>,
+}
+
+impl<'k, C, L> TransferPostingKeyRef<'k, C, L>
+where
+    C: Configuration + ?Sized,
+    L: TransferLedger<C> + ?Sized,
+{
+    /// Generates the public input for the [`Transfer`] validation proof.
+    #[inline]
+    pub fn generate_proof_input(&self) -> ProofInput<C> {
+        let mut input = Default::default();
+        if let Some(authorization) = &self.authorization {
+            C::ProofSystem::extend(&mut input, authorization);
+        }
+        if let Some(asset_id) = &self.asset_id {
+            C::ProofSystem::extend(&mut input, asset_id);
+        }
+        self.sources
+            .iter()
+            .for_each(|source| C::ProofSystem::extend(&mut input, source.as_ref()));
+        self.senders
+            .iter()
+            .for_each(|post| post.extend_input::<C::ProofSystem>(&mut input));
+        self.receivers
+            .iter()
+            .for_each(|post| post.extend_input::<C::ProofSystem>(&mut input));
+        self.sinks
+            .iter()
+            .for_each(|sink| C::ProofSystem::extend(&mut input, sink.as_ref()));
+        input
+    }
+}

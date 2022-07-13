@@ -49,6 +49,9 @@ where
     type SigningKey = T::SigningKey;
 }
 
+/// Signing Key Type
+pub type SigningKey<T> = <T as SigningKeyType>::SigningKey;
+
 /// Verifying Key
 pub trait VerifyingKeyType {
     /// Verifying Key Type
@@ -61,6 +64,9 @@ where
 {
     type VerifyingKey = T::VerifyingKey;
 }
+
+/// Verifying Key Type
+pub type VerifyingKey<T> = <T as VerifyingKeyType>::VerifyingKey;
 
 /// Message
 pub trait MessageType {
@@ -75,6 +81,9 @@ where
     type Message = T::Message;
 }
 
+/// Message Type
+pub type Message<T> = <T as MessageType>::Message;
+
 /// Signature
 pub trait SignatureType {
     /// Signature Type
@@ -88,6 +97,9 @@ where
     type Signature = T::Signature;
 }
 
+/// Signature Type
+pub type Signature<T> = <T as SignatureType>::Signature;
+
 /// Randomness
 pub trait RandomnessType {
     /// Randomness Type
@@ -100,6 +112,9 @@ where
 {
     type Randomness = T::Randomness;
 }
+
+/// Randomness Type
+pub type Randomness<T> = <T as RandomnessType>::Randomness;
 
 /// Signature Verifying Key Derivation Function
 pub trait Derive<COM = ()>: SigningKeyType + VerifyingKeyType {

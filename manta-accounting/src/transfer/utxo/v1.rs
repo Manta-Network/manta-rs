@@ -330,7 +330,7 @@ where
     C: Configuration<COM>,
     COM: Assert + Has<bool, Type = C::Bool>,
 {
-    type Authorization = ();
+    type Authorization = C::Group;
 }
 
 impl<C, COM> utxo::AssetType for Parameters<C, COM>
@@ -361,7 +361,8 @@ where
         authorization: &Self::Authorization,
         compiler: &mut COM,
     ) {
-        todo!()
+        let expected_authorization = authority.randomized_proof_authorization_key(compiler);
+        compiler.assert_eq(&expected_authorization, authorization);
     }
 }
 
@@ -376,13 +377,11 @@ where
     #[inline]
     fn well_formed_asset(
         &self,
-        authority: &Self::Authority,
         secret: &Self::Secret,
         utxo: &Self::Utxo,
         note: &Self::Note,
         compiler: &mut COM,
     ) -> Self::Asset {
-        let _ = authority;
         secret.well_formed_asset(
             &self.utxo_commitment_scheme,
             &self.incoming_base_encryption_scheme,
@@ -705,8 +704,11 @@ where
     /// Proof Authorization Key
     proof_authorization_key: C::Group,
 
+    /// Proof Authorization Randomizer
+    randomizer: C::Scalar,
+
     /// Viewing Key
-    viewing_key: C::Scalar,
+    viewing_key: Option<C::Scalar>,
 }
 
 impl<C, COM> Authority<C, COM>
@@ -714,37 +716,42 @@ where
     C: Configuration<COM>,
     COM: Has<bool, Type = C::Bool>,
 {
-    /// Builds a new [`Authority`] over `proof_authorization_key`, asserting that the
-    /// `randomized_proof_authorization_key` is derived from the `randomizer` and the
-    /// `proof_authorization_key`.
+    ///
     #[inline]
-    pub fn new(
-        viewing_key_derivation_function: &C::ViewingKeyDerivationFunction,
-        randomizer: &C::Scalar,
-        randomized_proof_authorization_key: &C::Group,
-        proof_authorization_key: C::Group,
-        compiler: &mut COM,
-    ) -> Self
-    where
-        COM: Assert,
-    {
-        let computed_randomized_proof_authorization_key =
-            proof_authorization_key.mul(randomizer, compiler);
-        compiler.assert_eq(
-            randomized_proof_authorization_key,
-            &computed_randomized_proof_authorization_key,
-        );
+    pub fn new(proof_authorization_key: C::Group, randomizer: C::Scalar) -> Self {
         Self {
-            viewing_key: viewing_key_derivation_function
-                .viewing_key(&proof_authorization_key, compiler),
             proof_authorization_key,
+            randomizer,
+            viewing_key: None,
         }
+    }
+
+    ///
+    #[inline]
+    pub fn randomized_proof_authorization_key(&self, compiler: &mut COM) -> C::Group {
+        self.proof_authorization_key.mul(&self.randomizer, compiler)
     }
 
     /// Returns the receiving key over `key_diversifier` for this [`Authority`].
     #[inline]
-    pub fn receiving_key(&self, key_diversifier: &C::Group, compiler: &mut COM) -> C::Group {
-        key_diversifier.mul(&self.viewing_key, compiler)
+    pub fn receiving_key(
+        &self,
+        viewing_key_derivation_function: &C::ViewingKeyDerivationFunction,
+        key_diversifier: &C::Group,
+        compiler: &mut COM,
+    ) -> C::Group {
+        /* TODO:
+        let viewing_key = match self.viewing_key.take() {
+            Some(viewing_key) => viewing_key,
+            _ => {
+                viewing_key_derivation_function.viewing_key(&self.proof_authorization_key, compiler)
+            }
+        };
+        let receiving_key = key_diversifier.mul(&viewing_key, compiler);
+        self.viewing_key = Some(viewing_key);
+        receiving_key
+        */
+        todo!()
     }
 }
 
@@ -801,7 +808,11 @@ where
             &self.plaintext.asset,
             compiler,
         );
-        let receiving_key = authority.receiving_key(&self.plaintext.key_diversifier, compiler);
+        let receiving_key = authority.receiving_key(
+            &parameters.viewing_key_derivation_function,
+            &self.plaintext.key_diversifier,
+            compiler,
+        );
         let utxo_commitment = parameters.utxo_commitment_scheme.commit(
             &self.plaintext.utxo_commitment_randomness,
             &self.plaintext.asset.id,
