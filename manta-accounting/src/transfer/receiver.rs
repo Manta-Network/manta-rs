@@ -154,7 +154,7 @@ where
     /// implementation of [`ReceiverLedger`]. This is to prevent that [`register`](Self::register)
     /// is called before [`is_not_registered`](Self::is_not_registered).
     ///
-    /// [`Utxo`]: crate::transfer::utxo::Types::Utxo
+    /// [`Utxo`]: crate::transfer::utxo::UtxoType::Utxo
     type ValidUtxo: AsRef<M::Utxo>;
 
     /// Checks if the ledger already contains the `utxo` in its set of UTXOs.
@@ -200,7 +200,7 @@ where
     /// iterates over `iter` calling [`register`] on each item returned. Either [`register`] or
     /// [`register_all`] can be implemented depending on which is more efficient.
     ///
-    /// [`Utxo`]: crate::transfer::utxo::Types::Utxo
+    /// [`Utxo`]: crate::transfer::utxo::UtxoType::Utxo
     /// [`Note`]: Mint::Note
     /// [`register`]: Self::register
     /// [`register_all`]: Self::register_all

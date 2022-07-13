@@ -23,8 +23,8 @@ use core::{fmt::Debug, hash::Hash, iter};
 use manta_crypto::{
     accumulator::{self, Accumulator},
     constraint::{
-        self, Allocate, Allocator, Assert, AssertEq, Const, Constant, Derived, ProofSystemInput,
-        Public, Secret, Var, Variable,
+        Allocate, Allocator, Const, Constant, Derived, ProofSystemInput, Public, Secret, Var,
+        Variable,
     },
 };
 
@@ -63,7 +63,7 @@ where
     /// Inserts the [`Utxo`] corresponding to `self` into the `utxo_accumulator` with the intention
     /// of returning a proof later by a call to [`get_proof`](Self::get_proof).
     ///
-    /// [`Utxo`]: crate::transfer::utxo::Types::Utxo
+    /// [`Utxo`]: crate::transfer::utxo::UtxoType::Utxo
     #[inline]
     pub fn insert_utxo<A>(&self, parameters: &S, utxo_accumulator: &mut A) -> bool
     where
@@ -75,7 +75,7 @@ where
     /// Requests the membership proof of the [`Utxo`] corresponding to `self` from
     /// `utxo_accumulator` to prepare the conversion from `self` into a [`Sender`].
     ///
-    /// [`Utxo`]: crate::transfer::utxo::Types::Utxo
+    /// [`Utxo`]: crate::transfer::utxo::UtxoType::Utxo
     #[inline]
     pub fn get_proof<A>(&self, parameters: &S, utxo_accumulator: &A) -> Option<SenderProof<S>>
     where
@@ -110,7 +110,7 @@ where
     /// Inserts the [`Utxo`] corresponding to `self` into the `utxo_accumulator` and upgrades to a
     /// full [`Sender`] if the insertion succeeded.
     ///
-    /// [`Utxo`]: crate::transfer::utxo::Types::Utxo
+    /// [`Utxo`]: crate::transfer::utxo::UtxoType::Utxo
     #[inline]
     pub fn insert_and_upgrade<A>(
         self,

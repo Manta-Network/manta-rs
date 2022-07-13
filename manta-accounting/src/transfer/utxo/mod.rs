@@ -101,20 +101,24 @@ where
 impl<T, M, N, COM> Variable<Derived<(M, N)>, COM> for AuthorizationProof<T>
 where
     T: AuthorityType + AuthorizationType + Constant<COM>,
-    T::Type: AuthorityType + AuthorizationType,
+    T::Authority: Variable<M, COM>,
+    T::Authorization: Variable<N, COM>,
+    T::Type: AuthorityType<Authority = Var<T::Authority, M, COM>>
+        + AuthorizationType<Authorization = Var<T::Authorization, N, COM>>,
 {
     type Type = AuthorizationProof<T::Type>;
 
     #[inline]
     fn new_unknown(compiler: &mut COM) -> Self {
-        // TODO: Self::new(compiler.allocate_unknown(), compiler.allocate_unknown())
-        todo!()
+        Self::new(compiler.allocate_unknown(), compiler.allocate_unknown())
     }
 
     #[inline]
     fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
-        // TODO:
-        todo!()
+        Self::new(
+            this.authority.as_known(compiler),
+            this.authorization.as_known(compiler),
+        )
     }
 }
 
@@ -273,6 +277,10 @@ pub type UtxoAccumulatorModel<S, COM = ()> = <S as Spend<COM>>::UtxoAccumulatorM
 /// UTXO Accumulator Item Type
 pub type UtxoAccumulatorItem<S, COM = ()> =
     <UtxoAccumulatorModel<S, COM> as accumulator::Types>::Item;
+
+/// UTXO Accumulator Witness Type
+pub type UtxoAccumulatorWitness<S, COM = ()> =
+    <UtxoAccumulatorModel<S, COM> as accumulator::Types>::Witness;
 
 /// UTXO Accumulator Output Type
 pub type UtxoAccumulatorOutput<S, COM = ()> =

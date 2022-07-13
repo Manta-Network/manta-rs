@@ -20,7 +20,7 @@
 //! following structures:
 //!
 //! - Global Configuration: [`Configuration`]
-//! - Sender Abstraction: [`Sender`], [`SenderPost`], [`SenderLedger`]
+//! - Sender Abstraction: [`Sender`], [`SenderPost`], [`SenderLedger`](
 //! - Receiver Abstraction: [`Receiver`], [`ReceiverPost`], [`ReceiverLedger`]
 //! - Transfer Abstraction: [`Transfer`], [`TransferPost`], [`TransferLedger`]
 //! - Canonical Transactions: [`canonical`]
@@ -48,9 +48,10 @@ use manta_util::SizeLimit;
 
 use crate::{
     asset,
-    transfer::utxo::{
-        sign_authorization, Authorize, Mint, Note, Nullifier, Spend, Utxo, UtxoAccumulatorItem,
-        UtxoAccumulatorOutput, VerifyAuthorization,
+    transfer::{
+        receiver::{ReceiverLedger, ReceiverPostError},
+        sender::{SenderLedger, SenderPostError},
+        utxo::{sign_authorization, Mint, Note, Nullifier, Spend, Utxo, VerifyAuthorization},
     },
 };
 use core::{fmt::Debug, hash::Hash};
@@ -61,7 +62,7 @@ use manta_crypto::{
         ProofSystemInput, Public, Secret, Variable,
     },
     rand::{CryptoRng, Rand, RngCore, Sample},
-    signature::{self, Sign, Verify},
+    signature::{self, Verify},
 };
 use manta_util::vec::{all_unequal, Vec};
 
@@ -95,7 +96,6 @@ pub const fn has_secret_participants(senders: usize, receivers: usize) -> bool {
 }
 
 /*
-
 /// UTXO Commitment Scheme
 pub trait UtxoCommitmentScheme<COM = ()> {
     /// Ephemeral Secret Key Type
@@ -860,39 +860,6 @@ pub trait Configuration {
     /// Nullifier Type
     type Nullifier: PartialEq;
 
-    /// Parameters Type
-    type Parameters: utxo::AssetType<Asset = Asset<Self>>
-        + utxo::UtxoType<Utxo = Self::Utxo>
-        + Mint
-        + Spend<Nullifier = Self::Nullifier>;
-
-    /// Asset Id Variable Type
-    type AssetIdVar: constraint::PartialEq<Self::AssetIdVar, Self::Compiler>;
-
-    /// Asset Value Variable Type
-    type AssetValueVar: Add<Self::AssetValueVar, Self::Compiler, Output = Self::AssetValueVar>
-        + constraint::PartialEq<Self::AssetValueVar, Self::Compiler>;
-
-    /// UTXO Accumulator Model Variable Type
-    type UtxoAccumulatorModelVar: Constant<Self::Compiler, Type = UtxoAccumulatorModel<Self>>
-        + accumulator::Model<Self::Compiler>;
-
-    /// Parameters Variable Type
-    type ParametersVar: Constant<Self::Compiler, Type = Self::Parameters>
-        + utxo::AssetType<Asset = AssetVar<Self>>
-        + Mint<Self::Compiler>
-        + Spend<Self::Compiler, UtxoAccumulatorModel = Self::UtxoAccumulatorModelVar>;
-
-    /// Proof System Type
-    type ProofSystem: ProofSystem<Compiler = Self::Compiler>
-        + ProofSystemInput<Authorization<Self>>
-        + ProofSystemInput<Self::AssetId>
-        + ProofSystemInput<Self::AssetValue>
-        + ProofSystemInput<UtxoAccumulatorOutput<Self::Parameters>>
-        + ProofSystemInput<Utxo<Self::Parameters>>
-        + ProofSystemInput<Note<Self::Parameters>>
-        + ProofSystemInput<Nullifier<Self::Parameters>>;
-
     /// Authorization Signature Randomness
     type AuthorizationSignatureRandomness: Sample;
 
@@ -905,6 +872,91 @@ pub trait Configuration {
             Authorization = Authorization<Self>,
             VerifyingKey = AuthorizationSigningKey<Self>,
         >;
+
+    /// Parameters Type
+    type Parameters: utxo::AssetType<Asset = Asset<Self>>
+        + utxo::UtxoType<Utxo = Self::Utxo>
+        + Mint
+        + Spend<Nullifier = Self::Nullifier>;
+
+    /// Authority Variable Type
+    type AuthorityVar: Variable<Secret, Self::Compiler, Type = Authority<Self>>;
+
+    /// Authorization Variable Type
+    type AuthorizationVar: Variable<Public, Self::Compiler, Type = Authorization<Self>>;
+
+    /// Asset Id Variable Type
+    type AssetIdVar: Variable<Secret, Self::Compiler, Type = Self::AssetId>
+        + Variable<Public, Self::Compiler, Type = Self::AssetId>
+        + constraint::PartialEq<Self::AssetIdVar, Self::Compiler>;
+
+    /// Asset Value Variable Type
+    type AssetValueVar: Variable<Secret, Self::Compiler, Type = Self::AssetValue>
+        + Variable<Public, Self::Compiler, Type = Self::AssetValue>
+        + Add<Self::AssetValueVar, Self::Compiler, Output = Self::AssetValueVar>
+        + constraint::PartialEq<Self::AssetValueVar, Self::Compiler>;
+
+    /// Unspent Transaction Output Variable Type
+    type UtxoVar: Variable<Secret, Self::Compiler, Type = Self::Utxo>
+        + Variable<Public, Self::Compiler, Type = Self::Utxo>;
+
+    /// Note Variable Type
+    type NoteVar: Variable<Public, Self::Compiler, Type = <Self::Parameters as Mint>::Note>;
+
+    /// Nullifier Variable Type
+    type NullifierVar: Variable<Public, Self::Compiler, Type = Self::Nullifier>;
+
+    /// UTXO Accumulator Witness Variable Type
+    type UtxoAccumulatorWitnessVar: Variable<
+        Secret,
+        Self::Compiler,
+        Type = UtxoAccumulatorWitness<Self>,
+    >;
+
+    /// UTXO Accumulator Output Variable Type
+    type UtxoAccumulatorOutputVar: Variable<
+        Public,
+        Self::Compiler,
+        Type = UtxoAccumulatorOutput<Self>,
+    >;
+
+    /// UTXO Accumulator Model Variable Type
+    type UtxoAccumulatorModelVar: Constant<Self::Compiler, Type = UtxoAccumulatorModel<Self>>
+        + accumulator::Model<
+            Self::Compiler,
+            Witness = Self::UtxoAccumulatorWitnessVar,
+            Output = Self::UtxoAccumulatorOutputVar,
+        >;
+
+    /// Mint Secret Variable Type
+    type MintSecret: Variable<Secret, Self::Compiler, Type = <Self::Parameters as Mint>::Secret>;
+
+    /// Spend Secret Variable Type
+    type SpendSecret: Variable<Secret, Self::Compiler, Type = <Self::Parameters as Spend>::Secret>;
+
+    /// Parameters Variable Type
+    type ParametersVar: Constant<Self::Compiler, Type = Self::Parameters>
+        + utxo::AssetType<Asset = AssetVar<Self>>
+        + utxo::UtxoType<Utxo = Self::UtxoVar>
+        + Mint<Self::Compiler, Secret = Self::MintSecret, Note = Self::NoteVar>
+        + Spend<
+            Self::Compiler,
+            Authority = Self::AuthorityVar,
+            Authorization = Self::AuthorizationVar,
+            UtxoAccumulatorModel = Self::UtxoAccumulatorModelVar,
+            Secret = Self::SpendSecret,
+            Nullifier = Self::NullifierVar,
+        >;
+
+    /// Proof System Type
+    type ProofSystem: ProofSystem<Compiler = Self::Compiler>
+        + ProofSystemInput<Authorization<Self>>
+        + ProofSystemInput<Self::AssetId>
+        + ProofSystemInput<Self::AssetValue>
+        + ProofSystemInput<UtxoAccumulatorOutput<Self>>
+        + ProofSystemInput<Utxo<Self::Parameters>>
+        + ProofSystemInput<Note<Self::Parameters>>
+        + ProofSystemInput<Nullifier<Self::Parameters>>;
 }
 
 /// Transfer Compiler Type
@@ -953,7 +1005,13 @@ pub type FullParametersRefVar<'p, C> = utxo::FullParametersRef<'p, ParametersVar
 pub type UtxoAccumulatorModel<C> = utxo::UtxoAccumulatorModel<Parameters<C>>;
 
 /// Transfer UTXO Accumulator Model Variable Type
-pub type UtxoAccumulatorModelVar<C> = utxo::UtxoAccumulatorModel<ParametersVar<C>>;
+pub type UtxoAccumulatorModelVar<C> = utxo::UtxoAccumulatorModel<ParametersVar<C>, Compiler<C>>;
+
+/// Transfer UTXO Accumulator Witness Type
+pub type UtxoAccumulatorWitness<C> = utxo::UtxoAccumulatorWitness<Parameters<C>>;
+
+/// Transfer UTXO Accumulator Output Type
+pub type UtxoAccumulatorOutput<C> = utxo::UtxoAccumulatorOutput<Parameters<C>>;
 
 /// Transfer Asset Type
 pub type Asset<C> = asset::Asset<<C as Configuration>::AssetId, <C as Configuration>::AssetValue>;
@@ -1040,7 +1098,7 @@ impl<C, const SOURCES: usize, const SENDERS: usize, const RECEIVERS: usize, cons
 where
     C: Configuration,
 {
-    /// Builds a new [`Transfer`].
+    /// Builds a new [`Transfer`] from its component parts.
     #[inline]
     pub fn new(
         authorization_proof: impl Into<Option<AuthorizationProof<C>>>,
@@ -1065,7 +1123,7 @@ where
 
     /// Checks that the [`Transfer`] has a valid shape.
     #[inline]
-    fn check_shape(has_authorization_proof: bool, has_visible_asset_id: bool) {
+    pub fn check_shape(has_authorization_proof: bool, has_visible_asset_id: bool) {
         Self::has_nonempty_input_shape();
         Self::has_nonempty_output_shape();
         Self::has_authorization_proof_when_required(has_authorization_proof);
@@ -1074,7 +1132,7 @@ where
 
     /// Checks that the input side of the transfer is not empty.
     #[inline]
-    fn has_nonempty_input_shape() {
+    pub fn has_nonempty_input_shape() {
         assert_ne!(
             SOURCES + SENDERS,
             0,
@@ -1084,7 +1142,7 @@ where
 
     /// Checks that the output side of the transfer is not empty.
     #[inline]
-    fn has_nonempty_output_shape() {
+    pub fn has_nonempty_output_shape() {
         assert_ne!(
             RECEIVERS + SINKS,
             0,
@@ -1095,7 +1153,7 @@ where
     /// Checks that the given `authorization_proof` for [`Transfer`] building is present exactly
     /// when required.
     #[inline]
-    fn has_authorization_proof_when_required(has_authorization_proof: bool) {
+    pub fn has_authorization_proof_when_required(has_authorization_proof: bool) {
         if SENDERS > 0 {
             assert!(
                 has_authorization_proof,
@@ -1111,7 +1169,7 @@ where
 
     /// Checks that the given `asset_id` for [`Transfer`] building is visible exactly when required.
     #[inline]
-    fn has_visible_asset_id_when_required(has_visible_asset_id: bool) {
+    pub fn has_visible_asset_id_when_required(has_visible_asset_id: bool) {
         if has_public_participants(SOURCES, SINKS) {
             assert!(
                 has_visible_asset_id,
@@ -1385,8 +1443,9 @@ where
 
     #[inline]
     fn new_unknown(compiler: &mut C::Compiler) -> Self {
-        /* TODO:
         Self {
+            authorization_proof: (SENDERS > 0)
+                .then(|| compiler.allocate_unknown::<Derived<(Secret, Public)>, _>()),
             asset_id: has_public_participants(SOURCES, SINKS)
                 .then(|| compiler.allocate_unknown::<Public, _>()),
             sources: (0..SOURCES)
@@ -1406,15 +1465,19 @@ where
                 .map(|_| compiler.allocate_unknown::<Public, _>())
                 .collect(),
         }
-        */
-        todo!()
     }
 
     #[inline]
     fn new_known(this: &Self::Type, compiler: &mut C::Compiler) -> Self {
-        /* TODO:
         Self {
-            asset_id: this.asset_id.map(|id| id.as_known::<Public, _>(compiler)),
+            authorization_proof: this
+                .authorization_proof
+                .as_ref()
+                .map(|proof| proof.as_known::<Derived<(Secret, Public)>, _>(compiler)),
+            asset_id: this
+                .asset_id
+                .as_ref()
+                .map(|id| id.as_known::<Public, _>(compiler)),
             sources: this
                 .sources
                 .iter()
@@ -1436,8 +1499,6 @@ where
                 .map(|sink| sink.as_known::<Public, _>(compiler))
                 .collect(),
         }
-        */
-        todo!()
     }
 }
 
@@ -1449,10 +1510,10 @@ where
 /// which validate the [`Sender`] and [`Receiver`] parts of any [`Transfer`]. See their
 /// documentation for more.
 pub trait TransferLedger<C>:
-    sender::SenderLedger<
+    SenderLedger<
         Parameters<C>,
         SuperPostingKey = (Self::ValidProof, TransferLedgerSuperPostingKey<C, Self>),
-    > + receiver::ReceiverLedger<
+    > + ReceiverLedger<
         Parameters<C>,
         SuperPostingKey = (Self::ValidProof, TransferLedgerSuperPostingKey<C, Self>),
     >
@@ -1477,7 +1538,7 @@ where
     /// track this condition.
     type UpdateError;
 
-    /// Valid [`AssetValue`] for [`TransferPost`] Source
+    /// Valid [`AssetValue`](Configuration::AssetValue) for [`TransferPost`] Source
     ///
     /// # Safety
     ///
@@ -1485,7 +1546,7 @@ where
     /// [`TransferLedger`].
     type ValidSourceAccount: AsRef<C::AssetValue>;
 
-    /// Valid [`AssetValue`] for [`TransferPost`] Sink
+    /// Valid [`AssetValue`](Configuration::AssetValue) for [`TransferPost`] Sink
     ///
     /// # Safety
     ///
@@ -1662,10 +1723,10 @@ where
     InvalidSinkAccount(InvalidSinkAccount<C, AccountId>),
 
     /// Sender Post Error
-    Sender(sender::SenderPostError),
+    Sender(SenderPostError),
 
     /// Receiver Post Error
-    Receiver(receiver::ReceiverPostError),
+    Receiver(ReceiverPostError),
 
     /// Duplicate Spend Error
     DuplicateSpend,
@@ -2037,6 +2098,7 @@ where
     }
 
     /// Validates `self` on the transfer `ledger`.
+    #[allow(clippy::type_complexity)] // FIXME: Use a better abstraction for this.
     #[inline]
     pub fn validate<L>(
         self,
@@ -2088,7 +2150,6 @@ where
             _ => return Err(TransferPostError::InvalidProof),
         };
         Ok(TransferPostingKey {
-            authorization: self.body.authorization,
             asset_id: self.body.asset_id,
             source_posting_keys,
             sender_posting_keys,
@@ -2130,9 +2191,6 @@ where
     C: Configuration + ?Sized,
     L: TransferLedger<C>,
 {
-    /// Authorization
-    authorization: Option<Authorization<C>>,
-
     /// Asset Id
     asset_id: Option<C::AssetId>,
 
