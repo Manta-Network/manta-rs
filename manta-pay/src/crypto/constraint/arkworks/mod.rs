@@ -492,7 +492,7 @@ where
     #[inline]
     fn new_constant(this: &Self::Type, compiler: &mut R1CS<F>) -> Self {
         let _ = compiler;
-        this.clone()
+        *this
     }
 }
 

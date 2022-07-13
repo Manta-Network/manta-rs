@@ -19,6 +19,7 @@
 use crate::crypto::poseidon::{
     Field, FieldGeneration, ParameterFieldType, Permutation, Specification,
 };
+use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash, marker::PhantomData};
 use manta_crypto::{
     constraint::{Allocate, Const, Constant},
@@ -195,7 +196,7 @@ where
     where
         R: RngCore + ?Sized,
     {
-        Self::new(rng.sample(distribution.clone()))
+        Self::new(rng.sample(distribution))
     }
 }
 
