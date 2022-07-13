@@ -317,14 +317,52 @@ where
     pub outgoing_base_encryption_scheme: C::OutgoingBaseEncryptionScheme,
 }
 
-impl<C, COM> utxo::Types for Parameters<C, COM>
+impl<C, COM> utxo::AuthorityType for Parameters<C, COM>
 where
     C: Configuration<COM>,
     COM: Assert + Has<bool, Type = C::Bool>,
 {
-    type Authority = ProofAuthority<C, COM>;
+    type Authority = Authority<C, COM>;
+}
+
+impl<C, COM> utxo::AuthorizationType for Parameters<C, COM>
+where
+    C: Configuration<COM>,
+    COM: Assert + Has<bool, Type = C::Bool>,
+{
+    type Authorization = ();
+}
+
+impl<C, COM> utxo::AssetType for Parameters<C, COM>
+where
+    C: Configuration<COM>,
+    COM: Assert + Has<bool, Type = C::Bool>,
+{
     type Asset = Asset<C, COM>;
+}
+
+impl<C, COM> utxo::UtxoType for Parameters<C, COM>
+where
+    C: Configuration<COM>,
+    COM: Assert + Has<bool, Type = C::Bool>,
+{
     type Utxo = Utxo<C, COM>;
+}
+
+impl<C, COM> utxo::Authorize<COM> for Parameters<C, COM>
+where
+    C: Configuration<COM>,
+    COM: Assert + Has<bool, Type = C::Bool>,
+{
+    #[inline]
+    fn assert_authorized(
+        &self,
+        authority: &Self::Authority,
+        authorization: &Self::Authorization,
+        compiler: &mut COM,
+    ) {
+        todo!()
+    }
 }
 
 impl<C, COM> utxo::Mint<COM> for Parameters<C, COM>
@@ -658,8 +696,8 @@ where
     }
 }
 
-/// Proof Authority
-pub struct ProofAuthority<C, COM = ()>
+/// Authority
+pub struct Authority<C, COM = ()>
 where
     C: Configuration<COM>,
     COM: Has<bool, Type = C::Bool>,
@@ -671,12 +709,12 @@ where
     viewing_key: C::Scalar,
 }
 
-impl<C, COM> ProofAuthority<C, COM>
+impl<C, COM> Authority<C, COM>
 where
     C: Configuration<COM>,
     COM: Has<bool, Type = C::Bool>,
 {
-    /// Builds a new [`ProofAuthority`] over `proof_authorization_key`, asserting that the
+    /// Builds a new [`Authority`] over `proof_authorization_key`, asserting that the
     /// `randomized_proof_authorization_key` is derived from the `randomizer` and the
     /// `proof_authorization_key`.
     #[inline]
@@ -703,7 +741,7 @@ where
         }
     }
 
-    /// Returns the receiving key over `key_diversifier` for this [`ProofAuthority`].
+    /// Returns the receiving key over `key_diversifier` for this [`Authority`].
     #[inline]
     pub fn receiving_key(&self, key_diversifier: &C::Group, compiler: &mut COM) -> C::Group {
         key_diversifier.mul(&self.viewing_key, compiler)
@@ -747,7 +785,7 @@ where
         &self,
         parameters: &Parameters<C, COM>,
         utxo_accumulator_model: &C::UtxoAccumulatorModel,
-        authority: &ProofAuthority<C, COM>,
+        authority: &Authority<C, COM>,
         utxo: &Utxo<C, COM>,
         utxo_membership_proof: &UtxoMembershipProof<C, COM>,
         compiler: &mut COM,

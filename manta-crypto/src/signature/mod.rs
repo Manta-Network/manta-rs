@@ -34,6 +34,8 @@
 //!
 //! See the [`correctness`](test::correctness) test for more.
 
+pub mod convert;
+
 /// Signing Key
 pub trait SigningKeyType {
     /// Signing Key Type
@@ -176,6 +178,7 @@ where
 {
     type Verification = V::Verification;
 
+    #[inline]
     fn verify(
         &self,
         verifying_key: &Self::VerifyingKey,

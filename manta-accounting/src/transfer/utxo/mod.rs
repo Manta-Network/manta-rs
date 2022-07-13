@@ -25,6 +25,7 @@ use core::{fmt::Debug, hash::Hash, marker::PhantomData, ops::Deref};
 use manta_crypto::{
     accumulator::{self, ItemHashFunction, MembershipProof},
     constraint::{Allocate, Constant},
+    signature::Sign,
 };
 
 pub mod v1;
@@ -35,29 +36,90 @@ pub use v1 as protocol;
 /// Current UTXO Protocol Version
 pub const VERSION: u8 = protocol::VERSION;
 
-/// UTXO Protocol Types
-pub trait Types {
-    /// Base Authority Type
+/// Authority
+pub trait AuthorityType {
+    /// Authority Type
     type Authority;
+}
 
+/// Authority Type
+pub type Authority<T> = <T as AuthorityType>::Authority;
+
+/// Authorization
+pub trait AuthorizationType {
+    /// Authorization Type
+    type Authorization;
+}
+
+/// Authorization Type
+pub type Authorization<T> = <T as AuthorizationType>::Authorization;
+
+/// Authorize
+pub trait Authorize<COM = ()>: AuthorityType + AuthorizationType {
+    /// Asserts that `authority` produces the correct `authorization`.
+    fn assert_authorized(
+        &self,
+        authority: &Self::Authority,
+        authorization: &Self::Authorization,
+        compiler: &mut COM,
+    );
+}
+
+/// Authorization Verification
+pub trait VerifyAuthorization: AuthorizationType {
+    /// Verification Key
+    type VerificationKey;
+
+    /// Verifies that `authorization` is well-formed with `verification_key`.
+    fn verify(
+        &self,
+        verification_key: &Self::VerificationKey,
+        authorization: &Self::Authorization,
+    ) -> bool;
+}
+
+/// Verifies the `authorization` with `signing_key` and then signs the `message` if the verification
+/// passed.
+#[inline]
+pub fn verify_and_sign<V, S>(
+    verifier: &V,
+    signature_scheme: &S,
+    signing_key: &S::SigningKey,
+    authorization: &V::Authorization,
+    randomness: &S::Randomness,
+    message: &S::Message,
+) -> Option<S::Signature>
+where
+    V: VerifyAuthorization<VerificationKey = S::SigningKey>,
+    S: Sign,
+{
+    if verifier.verify(signing_key, authorization) {
+        Some(signature_scheme.sign(signing_key, randomness, message, &mut ()))
+    } else {
+        None
+    }
+}
+
+/// Asset
+pub trait AssetType {
     /// Asset Type
     type Asset;
+}
 
+/// Asset Type
+pub type Asset<T> = <T as AssetType>::Asset;
+
+/// Unspent Transaction Output
+pub trait UtxoType {
     /// Unspent Transaction Output Type
     type Utxo;
 }
 
-/// Authority Type
-pub type Authority<T> = <T as Types>::Authority;
-
-/// Asset Type
-pub type Asset<T> = <T as Types>::Asset;
-
 /// Unspent Transaction Output Type
-pub type Utxo<T> = <T as Types>::Utxo;
+pub type Utxo<T> = <T as UtxoType>::Utxo;
 
 /// UTXO Minting
-pub trait Mint<COM = ()>: Types {
+pub trait Mint<COM = ()>: Authorize<COM> + AssetType + UtxoType {
     /// Mint Secret Type
     type Secret;
 
@@ -80,7 +142,9 @@ pub trait Mint<COM = ()>: Types {
 pub type Note<M, COM = ()> = <M as Mint<COM>>::Note;
 
 /// UTXO Spending
-pub trait Spend<COM = ()>: Types + ItemHashFunction<Self::Utxo, COM> {
+pub trait Spend<COM = ()>:
+    Authorize<COM> + ItemHashFunction<Self::Utxo, COM> + AssetType + UtxoType
+{
     /// UTXO Accumulator Model Type
     type UtxoAccumulatorModel: accumulator::Model<COM, Item = Self::Item>;
 
