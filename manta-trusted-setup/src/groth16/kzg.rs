@@ -34,10 +34,13 @@ use rayon::iter::{IndexedParallelIterator, ParallelIterator};
 /// KZG Trusted Setup Size
 pub trait Size {
     /// Number of G1 Powers to Produce
+    ///
+    /// The number of G1 powers must be greater than or equal to the number of G2 powers.
     const G1_POWERS: usize;
 
     /// Number of G2 Powers to Produce
-    const G2_POWERS: usize;
+    ///
+    /// The number of G2 powers must be smaller than or equal to the number of G1 powers.
 }
 
 /// Pairing Configuration
@@ -523,6 +526,7 @@ where
     pub fn update(&mut self, contribution: &Contribution<C>) {
         let mut tau_powers =
             iter::successors(Some(C::Scalar::one()), |x| Some(x.mul(contribution.tau)))
+                .take(C::G1_POWERS)
                 .collect::<Vec<_>>();
         let remaining_tau_powers = tau_powers.split_off(C::G2_POWERS);
         cfg_iter_mut!(self.tau_powers_g1)
