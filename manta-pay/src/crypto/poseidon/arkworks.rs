@@ -242,7 +242,7 @@ where
     }
 }
 
-/// TODO
+/// Domain tag as 2^arity - 1
 pub struct TwoPowerMinusOneDomainTag;
 
 impl<COM> Constant<COM> for TwoPowerMinusOneDomainTag {

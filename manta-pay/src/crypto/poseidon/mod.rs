@@ -236,7 +236,7 @@ where
     /// [`HALF_FULL_ROUNDS`]-many full rounds at the end.
     ///
     /// [`HALF_FULL_ROUNDS`]: Self::HALF_FULL_ROUNDS
-    /// [`PARTIAL_ROUNDS`]: Specification::PARTIAL_ROUNDS
+    /// [`PARTIAL_ROUNDS`]: Constants::PARTIAL_ROUNDS
     pub const HALF_FULL_ROUNDS: usize = S::FULL_ROUNDS / 2;
 
     /// Total Number of Rounds
