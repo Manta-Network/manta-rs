@@ -33,7 +33,7 @@ use core::{
     fmt::Debug,
     hash::Hash,
     iter::{self, FusedIterator, Sum},
-    ops::{Add, AddAssign, Deref, Sub, SubAssign},
+    ops::{Add, AddAssign, Deref, Div, Sub, SubAssign},
     slice,
 };
 use derive_more::{Add, AddAssign, Display, From, Sub, SubAssign, Sum};
@@ -565,21 +565,15 @@ where
     serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
 #[derive(Clone, Debug, Default, Eq, Hash, PartialEq)]
-pub struct AssetList {
+pub struct AssetList<I = AssetId, V = AssetValue> {
     /// Sorted Asset Vector
     ///
     /// The elements of the vector are sorted by [`AssetId`]. To insert/remove we perform a binary
     /// search on the [`AssetId`] and update the [`AssetValue`] at that location.
-    map: Vec<Asset>,
+    map: Vec<Asset<I, V>>,
 }
 
-impl AssetList {
-    /// Builds a new empty [`AssetList`].
-    #[inline]
-    pub const fn new() -> Self {
-        Self { map: Vec::new() }
-    }
-
+impl<I, V> AssetList<I, V> {
     /// Returns the number of entries stored in `self`.
     #[inline]
     pub fn len(&self) -> usize {
@@ -602,28 +596,144 @@ impl AssetList {
     /// Finds the insertion point for an [`Asset`] with the given `id`, returning `Ok` if there is
     /// an [`Asset`] at that index, or `Err` otherwise.
     #[inline]
-    fn find(&self, id: AssetId) -> Result<usize, usize> {
-        self.map.binary_search_by_key(&id, move |a| a.id)
+    fn find(&self, id: &I) -> Result<usize, usize>
+    where
+        I: Ord,
+    {
+        self.map.binary_search_by(move |a| a.id.cmp(id))
     }
 
     /// Returns the total value for assets with the given `id`.
     #[inline]
-    pub fn value(&self, id: AssetId) -> AssetValue {
+    pub fn value(&self, id: &I) -> V
+    where
+        I: Ord,
+        V: Clone + Default,
+    {
         self.find(id)
-            .map(move |i| self.map[i].value)
+            .map(move |i| self.map[i].value.clone())
             .unwrap_or_default()
+    }
+
+    /* TODO:
+    /// Returns `true` if `self` contains at least `asset.value` of the asset of kind `asset.id`.
+    #[inline]
+    pub fn contains(&self, asset: &Asset<I, V>) -> bool {
+        self.value(&asset.id) >= asset.value
+    }
+    */
+
+    /// Returns an iterator over the assets in `self`.
+    #[inline]
+    pub fn iter(&self) -> slice::Iter<Asset<I, V>> {
+        self.map.iter()
+    }
+
+    /* TODO:
+    /// Inserts `asset` into `self` increasing the [`AssetValue`] at `asset.id`.
+    #[inline]
+    pub fn deposit(&mut self, asset: Asset<I, V>)
+    where
+        I: Ord,
+    {
+        if asset.is_zero() {
+            return;
+        }
+        match self.find(&asset.id) {
+            Ok(index) => self.map[index] += asset.value,
+            Err(index) => self.map.insert(index, asset),
+        }
+    }
+    */
+
+    /// Sets the value at the `index` to `value` or removes the entry at `index` if `value == 0`.
+    #[inline]
+    fn set_or_remove(&mut self, index: usize, value: V)
+    where
+        V: Default + PartialEq,
+    {
+        if value == Default::default() {
+            self.map.remove(index);
+        } else {
+            self.map[index].value = value;
+        }
+    }
+
+    /* TODO:
+    /// Tries to remove `asset` from `self` decreasing the [`AssetValue`] at `asset.id`, returning
+    /// `false` if this would overflow. To skip the overflow check, use
+    /// [`withdraw_unchecked`](Self::withdraw_unchecked) instead.
+    #[inline]
+    pub fn withdraw(&mut self, asset: Asset) -> bool {
+        if asset.is_zero() {
+            return true;
+        }
+        if let Ok(index) = self.find(&asset.id) {
+            if let Some(value) = self.map[index].value.checked_sub(asset.value) {
+                self.set_or_remove(index, value);
+                return true;
+            }
+        }
+        false
+    }
+    */
+
+    /* TODO:
+    /// Removes `asset` from `self` decreasing the [`AssetValue`] at `asset.id`.
+    ///
+    /// # Panics
+    ///
+    /// The method panics if removing `asset` would decrease the value of any entry to below zero.
+    /// To catch this condition, use [`withdraw`](Self::withdraw) instead.
+    #[inline]
+    pub fn withdraw_unchecked(&mut self, asset: Asset) {
+        if asset.is_zero() {
+            return;
+        }
+        match self.find(&asset.id) {
+            Ok(index) => self.set_or_remove(index, self.map[index].value - asset.value),
+            _ => panic!("Trying to subtract from an Asset with zero value."),
+        }
+    }
+    */
+
+    /// Removes all entries in `self` which return `false` after applying `f`.
+    #[inline]
+    pub fn retain<F>(&mut self, mut f: F)
+    where
+        F: FnMut(&Asset<I, V>) -> bool,
+    {
+        self.map.retain(move |asset| f(asset))
+    }
+
+    /// Removes all assets from `self`.
+    #[inline]
+    pub fn clear(&mut self) {
+        self.map.clear()
+    }
+
+    /// Removes all assets with the given `id`, returning their total value. This method returns
+    /// `None` in the case that `id` is not stored in `self`.
+    #[inline]
+    pub fn remove(&mut self, id: I) -> Option<V>
+    where
+        I: Ord,
+    {
+        self.find(&id).ok().map(move |i| self.map.remove(i).value)
+    }
+}
+
+impl AssetList {
+    /// Builds a new empty [`AssetList`].
+    #[inline]
+    pub const fn new() -> Self {
+        Self { map: Vec::new() }
     }
 
     /// Returns `true` if `self` contains at least `asset.value` of the asset of kind `asset.id`.
     #[inline]
-    pub fn contains(&self, asset: Asset) -> bool {
-        self.value(asset.id) >= asset.value
-    }
-
-    /// Returns an iterator over the assets in `self`.
-    #[inline]
-    pub fn iter(&self) -> slice::Iter<Asset> {
-        self.map.iter()
+    pub fn contains(&self, asset: &Asset) -> bool {
+        self.value(&asset.id) >= asset.value
     }
 
     /// Inserts `asset` into `self` increasing the [`AssetValue`] at `asset.id`.
@@ -632,19 +742,9 @@ impl AssetList {
         if asset.is_zero() {
             return;
         }
-        match self.find(asset.id) {
+        match self.find(&asset.id) {
             Ok(index) => self.map[index] += asset.value,
             Err(index) => self.map.insert(index, asset),
-        }
-    }
-
-    /// Sets the value at the `index` to `value` or removes the entry at `index` if `value == 0`.
-    #[inline]
-    fn set_or_remove(&mut self, index: usize, value: AssetValue) {
-        if value == 0 {
-            self.map.remove(index);
-        } else {
-            self.map[index].value = value;
         }
     }
 
@@ -656,7 +756,7 @@ impl AssetList {
         if asset.is_zero() {
             return true;
         }
-        if let Ok(index) = self.find(asset.id) {
+        if let Ok(index) = self.find(&asset.id) {
             if let Some(value) = self.map[index].value.checked_sub(asset.value) {
                 self.set_or_remove(index, value);
                 return true;
@@ -676,61 +776,39 @@ impl AssetList {
         if asset.is_zero() {
             return;
         }
-        match self.find(asset.id) {
+        match self.find(&asset.id) {
             Ok(index) => self.set_or_remove(index, self.map[index].value - asset.value),
             _ => panic!("Trying to subtract from an Asset with zero value."),
         }
     }
-
-    /// Removes all entries in `self` which return `false` after applying `f`.
-    #[inline]
-    pub fn retain<F>(&mut self, mut f: F)
-    where
-        F: FnMut(Asset) -> bool,
-    {
-        self.map.retain(move |asset| f(*asset))
-    }
-
-    /// Removes all assets from `self`.
-    #[inline]
-    pub fn clear(&mut self) {
-        self.map.clear()
-    }
-
-    /// Removes all assets with the given `id`, returning their total value. This method returns
-    /// `None` in the case that `id` is not stored in `self`.
-    #[inline]
-    pub fn remove(&mut self, id: AssetId) -> Option<AssetValue> {
-        self.find(id).ok().map(move |i| self.map.remove(i).value)
-    }
 }
 
-impl AsRef<[Asset]> for AssetList {
+impl<I, V> AsRef<[Asset<I, V>]> for AssetList<I, V> {
     #[inline]
-    fn as_ref(&self) -> &[Asset] {
+    fn as_ref(&self) -> &[Asset<I, V>] {
         self.map.as_ref()
     }
 }
 
-impl Borrow<[Asset]> for AssetList {
+impl<I, V> Borrow<[Asset<I, V>]> for AssetList<I, V> {
     #[inline]
-    fn borrow(&self) -> &[Asset] {
+    fn borrow(&self) -> &[Asset<I, V>] {
         self.map.borrow()
     }
 }
 
-impl Deref for AssetList {
-    type Target = [Asset];
+impl<I, V> Deref for AssetList<I, V> {
+    type Target = [Asset<I, V>];
 
     #[inline]
-    fn deref(&self) -> &[Asset] {
+    fn deref(&self) -> &[Asset<I, V>] {
         self.map.deref()
     }
 }
 
-impl From<AssetList> for Vec<Asset> {
+impl<I, V> From<AssetList<I, V>> for Vec<Asset<I, V>> {
     #[inline]
-    fn from(list: AssetList) -> Self {
+    fn from(list: AssetList<I, V>) -> Self {
         list.map
     }
 }
@@ -792,9 +870,9 @@ impl FromIterator<Vec<Asset>> for AssetList {
     }
 }
 
-impl IntoIterator for AssetList {
-    type Item = Asset;
-    type IntoIter = vec::IntoIter<Asset>;
+impl<I, V> IntoIterator for AssetList<I, V> {
+    type Item = Asset<I, V>;
+    type IntoIter = vec::IntoIter<Asset<I, V>>;
 
     #[inline]
     fn into_iter(self) -> Self::IntoIter {
@@ -802,9 +880,9 @@ impl IntoIterator for AssetList {
     }
 }
 
-impl<'a> IntoIterator for &'a AssetList {
-    type Item = &'a Asset;
-    type IntoIter = slice::Iter<'a, Asset>;
+impl<'a, I, V> IntoIterator for &'a AssetList<I, V> {
+    type Item = &'a Asset<I, V>;
+    type IntoIter = slice::Iter<'a, Asset<I, V>>;
 
     #[inline]
     fn into_iter(self) -> Self::IntoIter {
@@ -1190,12 +1268,15 @@ pub struct AssetMetadata {
 impl AssetMetadata {
     /// Returns a string formatting of only the `value` interpreted using `self` as the metadata.
     #[inline]
-    pub fn display_value(&self, value: AssetValue) -> String {
+    pub fn display_value<V>(&self, value: V) -> String
+    where
+        for<'v> &'v V: Div<u128, Output = u128>,
+    {
         // TODO: What if we want more than three `FRACTIONAL_DIGITS`? How do we make this method
         //       more general?
         const FRACTIONAL_DIGITS: u32 = 3;
-        let value_base_units = value.0 / (10u128.pow(self.decimals));
-        let fractional_digits = value.0 / (10u128.pow(self.decimals - FRACTIONAL_DIGITS))
+        let value_base_units = &value / (10u128.pow(self.decimals));
+        let fractional_digits = &value / (10u128.pow(self.decimals - FRACTIONAL_DIGITS))
             % (10u128.pow(FRACTIONAL_DIGITS));
         format!("{}.{:0>3}", value_base_units, fractional_digits)
     }
@@ -1203,46 +1284,53 @@ impl AssetMetadata {
     /// Returns a string formatting of `value` interpreted using `self` as the metadata including
     /// the symbol.
     #[inline]
-    pub fn display(&self, value: AssetValue) -> String {
+    pub fn display<V>(&self, value: V) -> String
+    where
+        for<'v> &'v V: Div<u128, Output = u128>,
+    {
         format!("{} {}", self.display_value(value), self.symbol)
     }
 }
 
 /// Asset Manager
-pub trait AssetManager {
+pub trait AssetManager<I> {
     /// Returns the metadata associated to `id`.
-    fn metadata(&self, id: AssetId) -> Option<&AssetMetadata>;
+    fn metadata(&self, id: &I) -> Option<&AssetMetadata>;
 }
 
 /// Implements [`AssetManager`] for map types.
 macro_rules! impl_asset_manager_for_maps_body {
-    () => {
+    ($I:ident) => {
         #[inline]
-        fn metadata(&self, id: AssetId) -> Option<&AssetMetadata> {
-            self.get(&id)
+        fn metadata(&self, id: &$I) -> Option<&AssetMetadata> {
+            self.get(id)
         }
     };
 }
 
 /// B-Tree Map [`AssetManager`] Implementation
-pub type BTreeAssetManager = BTreeMap<AssetId, AssetMetadata>;
+pub type BTreeAssetManager<I = AssetId> = BTreeMap<I, AssetMetadata>;
 
-impl AssetManager for BTreeAssetManager {
-    impl_asset_manager_for_maps_body! {}
+impl<I> AssetManager<I> for BTreeAssetManager<I>
+where
+    I: Ord,
+{
+    impl_asset_manager_for_maps_body! { I }
 }
 
 /// Hash Map [`AssetManager`] Implementation
 #[cfg(feature = "std")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
-pub type HashAssetManager<S = RandomState> = HashMap<AssetId, AssetMetadata, S>;
+pub type HashAssetManager<I = AssetId, S = RandomState> = HashMap<I, AssetMetadata, S>;
 
 #[cfg(feature = "std")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
-impl<S> AssetManager for HashAssetManager<S>
+impl<I, S> AssetManager<I> for HashAssetManager<I, S>
 where
+    I: Eq + Hash,
     S: BuildHasher + Default,
 {
-    impl_asset_manager_for_maps_body! {}
+    impl_asset_manager_for_maps_body! { I }
 }
 
 /// Testing Suite

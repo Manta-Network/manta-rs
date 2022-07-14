@@ -27,11 +27,12 @@
 //! [`Signer`]: signer::Connection
 //! [`Ledger`]: ledger::Connection
 
+/*
 use crate::{
-    asset::{Asset, AssetId, AssetList, AssetMetadata, AssetValue},
+    asset::{AssetList, AssetMetadata},
     transfer::{
         canonical::{Transaction, TransactionKind},
-        Configuration, ReceivingKey, TransferPost,
+        Address, Asset, Configuration, TransferPost,
     },
     wallet::{
         balance::{BTreeMapBalanceState, BalanceState},
@@ -45,32 +46,45 @@ use crate::{
 use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash, marker::PhantomData};
 use manta_util::ops::ControlFlow;
+*/
+
+use crate::{
+    transfer::Configuration,
+    wallet::{
+        balance::{BTreeMapBalanceState, BalanceState},
+        ledger::ReadResponse,
+    },
+};
+use core::marker::PhantomData;
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
 
 pub mod balance;
 pub mod ledger;
-pub mod signer;
+// TODO: pub mod signer;
 
+/* TODO:
 #[cfg(feature = "test")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
 pub mod test;
+*/
 
 /// Wallet
-pub struct Wallet<C, L, S = signer::Signer<C>, B = BTreeMapBalanceState>
+pub struct Wallet<C, L, S /*= signer::Signer<C>*/, B = BTreeMapBalanceState>
 where
     C: Configuration,
     L: ledger::Connection,
-    S: signer::Connection<C>,
+    // TODO: S: signer::Connection<C>,
     B: BalanceState,
 {
     /// Ledger Connection
     ledger: L,
 
+    /* TODO:
     /// Ledger Checkpoint
     checkpoint: S::Checkpoint,
-
+    */
     /// Signer Connection
     signer: S,
 
@@ -85,16 +99,16 @@ impl<C, L, S, B> Wallet<C, L, S, B>
 where
     C: Configuration,
     L: ledger::Connection,
-    S: signer::Connection<C>,
+    // TODO: S: signer::Connection<C>,
     B: BalanceState,
 {
     /// Builds a new [`Wallet`] without checking if `ledger`, `checkpoint`, `signer`, and `assets`
     /// are properly synchronized.
     #[inline]
-    fn new_unchecked(ledger: L, checkpoint: S::Checkpoint, signer: S, assets: B) -> Self {
+    fn new_unchecked(ledger: L, /* checkpoint: S::Checkpoint,*/ signer: S, assets: B) -> Self {
         Self {
             ledger,
-            checkpoint,
+            // TODO: checkpoint,
             signer,
             assets,
             __: PhantomData,
@@ -114,9 +128,14 @@ where
     /// [`restart`]: Self::restart
     #[inline]
     pub fn new(ledger: L, signer: S) -> Self {
-        Self::new_unchecked(ledger, Default::default(), signer, Default::default())
+        Self::new_unchecked(
+            ledger,
+            /*Default::default(),*/ signer,
+            Default::default(),
+        )
     }
 
+    /*
     /// Starts a new wallet with `ledger` and `signer` connections.
     #[inline]
     pub async fn start(ledger: L, signer: S) -> Result<Self, Error<C, L, S>>
@@ -137,13 +156,13 @@ where
 
     /// Returns the current balance associated with this `id`.
     #[inline]
-    pub fn balance(&self, id: AssetId) -> AssetValue {
+    pub fn balance(&self, id: C::AssetId) -> C::AssetValue {
         self.assets.balance(id)
     }
 
     /// Returns true if `self` contains at least `asset.value` of the asset of kind `asset.id`.
     #[inline]
-    pub fn contains(&self, asset: Asset) -> bool {
+    pub fn contains(&self, asset: Asset<C>) -> bool {
         self.assets.contains(asset)
     }
 
@@ -152,11 +171,14 @@ where
     #[inline]
     pub fn contains_all<I>(&self, assets: I) -> bool
     where
-        I: IntoIterator<Item = Asset>,
+        I: IntoIterator<Item = Asset<C>>,
     {
+        /* TODO:
         AssetList::from_iter(assets)
             .into_iter()
             .all(|asset| self.contains(asset))
+        */
+        todo!()
     }
 
     /// Returns a shared reference to the balance state associated to `self`.
@@ -317,7 +339,7 @@ where
     /// This method is already called by [`post`](Self::post), but can be used by custom
     /// implementations to perform checks elsewhere.
     #[inline]
-    pub fn check(&self, transaction: &Transaction<C>) -> Result<TransactionKind, Asset> {
+    pub fn check(&self, transaction: &Transaction<C>) -> Result<TransactionKind<C>, Asset<C>> {
         transaction.check(move |a| self.contains(a))
     }
 
@@ -387,6 +409,7 @@ where
     ) -> Result<Vec<ReceivingKey<C>>, S::Error> {
         self.signer.receiving_keys(request).await
     }
+    */
 }
 
 /// Inconsistency Error
@@ -425,6 +448,7 @@ pub enum InconsistencyError {
     SignerSynchronization,
 }
 
+/*
 /// Wallet Error
 ///
 /// This `enum` is the error state for [`Wallet`] methods. See [`sync`](Wallet::sync) and
@@ -465,7 +489,7 @@ where
     S: signer::Connection<C>,
 {
     /// Insufficient Balance
-    InsufficientBalance(Asset),
+    InsufficientBalance(Asset<C>),
 
     /// Inconsistency Error
     ///
@@ -493,3 +517,4 @@ where
         Self::Inconsistency(err)
     }
 }
+*/

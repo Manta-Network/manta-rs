@@ -18,11 +18,14 @@
 
 // TODO: Add typing for `ProvingContext` and `VerifyingContext` against the canonical shapes.
 
-use crate::transfer::{
-    has_public_participants, requires_authorization, Address, Asset, AuthorizationProof,
-    Configuration, FullParametersRef, Parameters, PreSender, ProofSystemError,
-    ProofSystemPublicParameters, ProvingContext, Receiver, Sender, Transfer, TransferPost,
-    VerifyingContext,
+use crate::{
+    asset::AssetMetadata,
+    transfer::{
+        has_public_participants, requires_authorization, Address, Asset, AuthorizationProof,
+        Configuration, FullParametersRef, Parameters, PreSender, ProofSystemError,
+        ProofSystemPublicParameters, ProvingContext, Receiver, Sender, Transfer, TransferPost,
+        VerifyingContext,
+    },
 };
 use alloc::{format, string::String, vec::Vec};
 use core::{fmt::Debug, hash::Hash};
@@ -387,22 +390,23 @@ where
         todo!()
     }
 
-    /* TODO:
     /// Returns a transaction summary given the asset `metadata`.
     #[inline]
-    pub fn display<F>(&self, metadata: &AssetMetadata, f: F) -> String
+    pub fn display<F>(&self, metadata: &AssetMetadata, f: F) -> (String, Option<String>)
     where
         F: FnOnce(&Address<C>) -> String,
     {
+        /* TODO:
         match self {
-            Self::ToPrivate(Asset { value, .. }) => format!("Deposit {}", metadata.display(*value)),
+            Self::ToPrivate(Asset { value, .. }) => (metadata.display(*value), None),
             Self::PrivateTransfer(Asset { value, .. }, address) => {
-                format!("Send {} to {}", metadata.display(*value), f(address))
+                (metadata.display(*value), Some(f(address)))
             }
-            Self::ToPublic(Asset { value, .. }) => format!("Withdraw {}", metadata.display(*value)),
+            Self::ToPublic(Asset { value, .. }) => (metadata.display(*value), None),
         }
+        */
+        todo!()
     }
-    */
 }
 
 /// Transaction Kind
