@@ -236,13 +236,27 @@ where
     *point = point.mul(scalar).into_affine();
 }
 
-/// Multiplies each element in `bases` by `scalar`.
+/// Multiplies each element in `bases` by a fixed `scalar`.
 #[inline]
-pub fn batch_scalar_mul_affine<G>(points: &mut [G], scalar: G::ScalarField)
+pub fn batch_mul_fixed_scalar<G>(points: &mut [G], scalar: G::ScalarField)
 where
     G: AffineCurve,
 {
     cfg_iter_mut!(points).for_each(|point| scalar_mul(point, scalar))
+}
+
+/// Pointwise multiplication of a vector of `points` and a vector of `scalars`.
+#[inline]
+pub fn batch_mul_pointwise<G>(points: &mut [G], scalars: &[G::ScalarField])
+where
+    G: ProjectiveCurve,
+{
+    assert_eq!(points.len(), scalars.len(), "Points should have the same length as scalars.");
+    cfg_iter_mut!(points)
+        .zip(cfg_iter!(scalars))
+        .for_each(|(base, scalar)| {
+            base.mul_assign(*scalar);
+        })
 }
 
 /// Converts each affine point in `points` into its projective form.
@@ -393,7 +407,7 @@ pub trait PairingEngineExt: PairingEngine {
 impl<E> PairingEngineExt for E where E: PairingEngine {}
 
 /// TODO
-pub fn hash_to_group<G, D, const ARITY: usize>(digest: [u8; ARITY]) -> G
+pub fn hash_to_group<G, D, const N: usize>(digest: [u8; N]) -> G
 where
     G: AffineCurve + Sample<D>,
     D: Default,

@@ -14,11 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Groth16 Trusted Setup
+//! Powers of Tau Trusted Setup
 
-pub mod kzg;
-pub mod sapling;
 
-/// Holds `N`-byte hash outputs.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub struct Digest<const N: usize>(pub [u8; N]);
+
