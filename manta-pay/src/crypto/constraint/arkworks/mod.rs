@@ -483,6 +483,19 @@ where
     }
 }
 
+impl<F> Constant<R1CS<F>> for Fp<F>
+where
+    F: PrimeField,
+{
+    type Type = Self;
+
+    #[inline]
+    fn new_constant(this: &Self::Type, compiler: &mut R1CS<F>) -> Self {
+        let _ = compiler;
+        *this
+    }
+}
+
 impl<F> Variable<Public, R1CS<F>> for FpVar<F>
 where
     F: PrimeField,
