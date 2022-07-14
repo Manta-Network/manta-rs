@@ -92,7 +92,7 @@ where
     }
 
     /// Builds a new [`Hasher`] over `permutation` and `domain_tag` without checking
-    /// [`S::WIDTH`] equals `ARITY+1` and `domain_tag` as a constant.
+    /// `WIDTH` equals `ARITY+1` and `domain_tag` as a constant.
     #[inline]
     fn new_unchecked(permutation: Permutation<S, COM>, domain_tag: S::Field) -> Self {
         Self {
