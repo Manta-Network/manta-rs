@@ -25,6 +25,7 @@ use core::{fmt::Debug, hash::Hash, marker::PhantomData, ops::Deref};
 use manta_crypto::{
     accumulator::{self, ItemHashFunction, MembershipProof},
     constraint::{Allocate, Allocator, Constant, Derived, ProofSystemInput, Var, Variable},
+    rand::{CryptoRng, RngCore},
     signature::Sign,
 };
 
@@ -184,13 +185,65 @@ pub trait UtxoType {
 /// Unspent Transaction Output Type
 pub type Utxo<T> = <T as UtxoType>::Utxo;
 
+/// Note
+pub trait NoteType {
+    /// Note Type
+    type Note;
+}
+
+/// Note Type
+pub type Note<T> = <T as NoteType>::Note;
+
+/// Identifier
+pub trait IdentifierType {
+    /// Identifier Type
+    type Identifier;
+}
+
+/// Identifier Type
+pub type Identifier<T> = <T as IdentifierType>::Identifier;
+
+/// Address
+pub trait AddressType {
+    /// Address Type
+    type Address;
+}
+
+/// Address Type
+pub type Address<T> = <T as AddressType>::Address;
+
+/// Minting Secret
+pub trait MintSecret: AssetType + AddressType {
+    /// Samples a minting secret to send `asset` to `address`.
+    fn sample<R>(address: Self::Address, asset: Self::Asset, rng: &mut R) -> Self
+    where
+        R: CryptoRng + RngCore + ?Sized;
+}
+
+/// Note Opening
+pub trait NoteOpen: AssetType + NoteType + IdentifierType {
+    /// Decryption Key Type
+    type DecryptionKey;
+
+    /// Tries to open `note` with `decryption_key`, returning a note [`Identifier`] and its stored
+    /// [`Asset`].
+    ///
+    /// [`Identifier`]: IdentifierType::Identifier
+    /// [`Asset`]: AssetType::Asset
+    fn open(
+        &self,
+        decryption_key: &Self::DecryptionKey,
+        note: Self::Note,
+    ) -> Option<(Self::Identifier, Self::Asset)>;
+}
+
 /// UTXO Minting
-pub trait Mint<COM = ()>: AssetType + UtxoType {
+pub trait Mint<COM = ()>: AssetType + NoteType + UtxoType {
     /// Mint Secret Type
     type Secret;
 
-    /// UTXO Note Type
-    type Note;
+    /// Derives the [`Utxo`](UtxoType::Utxo) and [`Note`](NoteType::Note) from `secret`.
+    fn derive(&self, secret: &Self::Secret, compiler: &mut COM) -> (Self::Utxo, Self::Note);
 
     /// Returns the asset inside of `utxo` asserting that `secret`, `utxo`, and `note` are
     /// well-formed.
@@ -203,8 +256,13 @@ pub trait Mint<COM = ()>: AssetType + UtxoType {
     ) -> Self::Asset;
 }
 
-/// Note Type
-pub type Note<M, COM = ()> = <M as Mint<COM>>::Note;
+/// Spending Secret
+pub trait SpendSecret: AssetType + IdentifierType {
+    /// Samples a spending secret to spend `asset` with the given `identifier`.
+    fn sample<R>(identifier: Self::Identifier, asset: Self::Asset, rng: &mut R) -> Self
+    where
+        R: CryptoRng + RngCore + ?Sized;
+}
 
 /// UTXO Spending
 pub trait Spend<COM = ()>:
@@ -219,13 +277,14 @@ pub trait Spend<COM = ()>:
     /// Nullifier Type
     type Nullifier;
 
-    /// Asserts that the two nullifiers, `lhs` and `rhs`, are equal.
-    fn assert_equal_nullifiers(
+    /// Derives the [`Utxo`](UtxoType::Utxo) and [`Nullifier`](Self::Nullifier) from `authority` and
+    /// `secret`.
+    fn derive(
         &self,
-        lhs: &Self::Nullifier,
-        rhs: &Self::Nullifier,
+        authority: &Self::Authority,
+        secret: &Self::Secret,
         compiler: &mut COM,
-    );
+    ) -> (Self::Utxo, Self::Nullifier);
 
     /// Returns the asset and its nullifier inside of `utxo` asserting that `secret` and `utxo` are
     /// well-formed and that `utxo_membership_proof` is a valid proof.
@@ -239,36 +298,13 @@ pub trait Spend<COM = ()>:
         compiler: &mut COM,
     ) -> (Self::Asset, Self::Nullifier);
 
-    /// Returns the nullifier inside of `utxo` asserting that `secret` and `utxo` are well-formed
-    /// and that `utxo_membership_proof` is a valid proof.
-    ///
-    /// # Implementation Note
-    ///
-    /// By default this method calls [`well_formed_asset`] and projects out the nullifier from the
-    /// tuple. An implementation of this method should be given whenever computing _only_ the
-    /// nullifier is more efficient than this default.
-    ///
-    /// [`well_formed_asset`]: Self::well_formed_asset
-    #[inline]
-    fn well_formed_nullifier(
+    /// Asserts that the two nullifiers, `lhs` and `rhs`, are equal.
+    fn assert_equal_nullifiers(
         &self,
-        utxo_accumulator_model: &Self::UtxoAccumulatorModel,
-        authority: &Self::Authority,
-        secret: &Self::Secret,
-        utxo: &Self::Utxo,
-        utxo_membership_proof: &UtxoMembershipProof<Self, COM>,
+        lhs: &Self::Nullifier,
+        rhs: &Self::Nullifier,
         compiler: &mut COM,
-    ) -> Self::Nullifier {
-        self.well_formed_asset(
-            utxo_accumulator_model,
-            authority,
-            secret,
-            utxo,
-            utxo_membership_proof,
-            compiler,
-        )
-        .1
-    }
+    );
 }
 
 /// UTXO Accumulator Model Type

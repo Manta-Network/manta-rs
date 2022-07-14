@@ -58,6 +58,9 @@ where
     type Header = T::Header;
 }
 
+/// Header Type
+pub type Header<T> = <T as HeaderType>::Header;
+
 /// Ciphertext
 ///
 /// The ciphertext type represents the piece of the encrypt-decrypt interface that contains the
@@ -77,6 +80,9 @@ where
     type Ciphertext = T::Ciphertext;
 }
 
+/// Ciphertext Type
+pub type Ciphertext<T> = <T as CiphertextType>::Ciphertext;
+
 /// Encryption Key
 ///
 /// The encryption key is the information required to produce a valid ciphertext that is targeted
@@ -95,6 +101,9 @@ where
     type EncryptionKey = T::EncryptionKey;
 }
 
+/// Encryption Key Type
+pub type EncryptionKey<T> = <T as EncryptionKeyType>::EncryptionKey;
+
 /// Decryption Key
 ///
 /// The decryption key is the information required to open a valid ciphertext that was encrypted
@@ -112,6 +121,9 @@ where
 {
     type DecryptionKey = T::DecryptionKey;
 }
+
+/// Decryption Key Type
+pub type DecryptionKey<T> = <T as DecryptionKeyType>::DecryptionKey;
 
 /// Plaintext
 ///
@@ -133,6 +145,9 @@ where
     type Plaintext = T::Plaintext;
 }
 
+/// Plaintext Type
+pub type Plaintext<T> = <T as PlaintextType>::Plaintext;
+
 /// Randomness
 ///
 /// The randomness type allows us to inject some extra randomness to hide repeated encryptions
@@ -152,6 +167,9 @@ where
 {
     type Randomness = T::Randomness;
 }
+
+/// Randomness Type
+pub type Randomness<T> = <T as RandomnessType>::Randomness;
 
 /// Decrypted Plaintext
 ///
@@ -173,6 +191,9 @@ where
 {
     type DecryptedPlaintext = T::DecryptedPlaintext;
 }
+
+/// Decrypted Plaintext Type
+pub type DecryptedPlaintext<T> = <T as DecryptedPlaintextType>::DecryptedPlaintext;
 
 /// Encryption Key Derivation
 ///

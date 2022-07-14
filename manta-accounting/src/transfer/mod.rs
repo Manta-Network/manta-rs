@@ -901,7 +901,7 @@ pub trait Configuration {
         + Variable<Public, Self::Compiler, Type = Self::Utxo>;
 
     /// Note Variable Type
-    type NoteVar: Variable<Public, Self::Compiler, Type = <Self::Parameters as Mint>::Note>;
+    type NoteVar: Variable<Public, Self::Compiler, Type = utxo::Note<Self::Parameters>>;
 
     /// Nullifier Variable Type
     type NullifierVar: Variable<Public, Self::Compiler, Type = Self::Nullifier>;

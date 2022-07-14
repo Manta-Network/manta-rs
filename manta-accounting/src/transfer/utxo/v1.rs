@@ -25,7 +25,8 @@ use manta_crypto::{
         Allocate, Allocator, Assert, AssertEq, BitAnd, BitOr, Bool, ConditionalSelect, Constant,
         Has, PartialEq, Public, Secret, Variable, Zero,
     },
-    encryption::{hybrid::Hybrid, Encrypt, EncryptedMessage, RandomnessType},
+    encryption::{self, hybrid::Hybrid, Encrypt, EncryptedMessage, RandomnessType},
+    rand::{CryptoRng, Rand, RngCore, Sample},
 };
 
 /// UTXO Version Number
@@ -234,8 +235,7 @@ pub type IncomingEncryptionScheme<C, COM = ()> = Hybrid<
 >;
 
 /// Incoming Randomness
-pub type IncomingRandomness<C, COM = ()> =
-    <IncomingEncryptionScheme<C, COM> as RandomnessType>::Randomness;
+pub type IncomingRandomness<C, COM = ()> = encryption::Randomness<IncomingEncryptionScheme<C, COM>>;
 
 /// Incoming Encrypted Note
 pub type IncomingNote<C, COM = ()> = EncryptedMessage<IncomingEncryptionScheme<C, COM>>;
@@ -259,8 +259,7 @@ pub type OutgoingEncryptionScheme<C, COM = ()> = Hybrid<
 >;
 
 /// Outgoing Randomness
-pub type OutgoingRandomness<C, COM = ()> =
-    <OutgoingEncryptionScheme<C, COM> as RandomnessType>::Randomness;
+pub type OutgoingRandomness<C, COM = ()> = encryption::Randomness<OutgoingEncryptionScheme<C, COM>>;
 
 /// Outgoing Note
 pub type OutgoingNote<C, COM = ()> = EncryptedMessage<OutgoingEncryptionScheme<C, COM>>;
@@ -341,6 +340,14 @@ where
     type Asset = Asset<C, COM>;
 }
 
+impl<C, COM> utxo::NoteType for Parameters<C, COM>
+where
+    C: Configuration<COM>,
+    COM: Assert + Has<bool, Type = C::Bool>,
+{
+    type Note = IncomingNote<C, COM>;
+}
+
 impl<C, COM> utxo::UtxoType for Parameters<C, COM>
 where
     C: Configuration<COM>,
@@ -372,7 +379,33 @@ where
     COM: Assert + Has<bool, Type = C::Bool>,
 {
     type Secret = MintSecret<C, COM>;
-    type Note = IncomingNote<C, COM>;
+
+    #[inline]
+    fn derive(&self, secret: &Self::Secret, compiler: &mut COM) -> (Self::Utxo, Self::Note) {
+        /*
+        let is_transparent = secret.plaintext.asset.is_empty(compiler);
+        let asset = Asset::<C, _>::select(&is_transparent, &(), &secret.plaintext.asset, compiler);
+        let utxo_commitment = self.utxo_commitment_scheme.commit(
+            &secret.plaintext.utxo_commitment_randomness,
+            &secret.plaintext.asset.id,
+            &secret.plaintext.asset.value,
+            &secret.receiving_key,
+            compiler,
+        );
+        let incoming_note = Hybrid::new(
+            DiffieHellman::<_, COM>::new(secret.plaintext.key_diversifier.clone()),
+            encryption_scheme.clone(),
+        )
+        .encrypt_into(
+            &secret.receiving_key,
+            &secret.incoming_randomness,
+            EmptyHeader::default(),
+            &secret.plaintext,
+            compiler,
+        );
+        */
+        todo!()
+    }
 
     #[inline]
     fn well_formed_asset(
@@ -420,13 +453,56 @@ where
     type Nullifier = Nullifier<C, COM>;
 
     #[inline]
-    fn assert_equal_nullifiers(
+    fn derive(
         &self,
-        lhs: &Self::Nullifier,
-        rhs: &Self::Nullifier,
+        authority: &Self::Authority,
+        secret: &Self::Secret,
         compiler: &mut COM,
-    ) {
-        compiler.assert_eq(lhs, rhs);
+    ) -> (Self::Utxo, Self::Nullifier) {
+        /*
+        let is_transparent = self.plaintext.asset.is_empty(compiler);
+        let asset = Asset::<C, _>::select(
+            &utxo.is_transparent,
+            &utxo.public_asset,
+            &self.plaintext.asset,
+            compiler,
+        );
+        let receiving_key = authority.receiving_key(
+            &parameters.viewing_key_derivation_function,
+            &self.plaintext.key_diversifier,
+            compiler,
+        );
+        let utxo_commitment = parameters.utxo_commitment_scheme.commit(
+            &self.plaintext.utxo_commitment_randomness,
+            &self.plaintext.asset.id,
+            &self.plaintext.asset.value,
+            &receiving_key,
+            compiler,
+        );
+        let item = parameters.item_hash(utxo, compiler);
+        let has_valid_membership = &asset.value.is_zero(compiler).bitor(
+            utxo_membership_proof.verify(utxo_accumulator_model, &item, compiler),
+            compiler,
+        );
+        let nullifier_commitment = parameters.nullifier_commitment_scheme.commit(
+            &authority.proof_authorization_key,
+            &item,
+            compiler,
+        );
+        let outgoing_note = Hybrid::new(
+            DiffieHellman::<_, COM>::new(self.plaintext.key_diversifier.clone()),
+            parameters.outgoing_base_encryption_scheme.clone(),
+        )
+        .encrypt_into(
+            &receiving_key,
+            &secret.outgoing_randomness,
+            EmptyHeader::default(),
+            &secret.plaintext.asset,
+            compiler,
+        );
+        (utxo, Nullifier::new(nullifier_commitment, outgoing_note))
+        */
+        todo!()
     }
 
     #[inline]
@@ -448,6 +524,29 @@ where
             compiler,
         )
     }
+
+    #[inline]
+    fn assert_equal_nullifiers(
+        &self,
+        lhs: &Self::Nullifier,
+        rhs: &Self::Nullifier,
+        compiler: &mut COM,
+    ) {
+        compiler.assert_eq(lhs, rhs);
+    }
+}
+
+/// Shielded Address
+pub struct ShieldedAddress<C, COM = ()>
+where
+    C: Configuration<COM> + ?Sized,
+    COM: Has<bool, Type = C::Bool>,
+{
+    /// Key Diversifier
+    pub key_diversifier: C::Group,
+
+    /// Receiving Key
+    pub receiving_key: C::Group,
 }
 
 /// Incoming Note Plaintext
@@ -619,6 +718,42 @@ where
         }
     }
 
+    /// Returns the UTXO commitment for `self` under `utxo_commitment_scheme`.
+    #[inline]
+    pub fn utxo_commitment(
+        &self,
+        utxo_commitment_scheme: &C::UtxoCommitmentScheme,
+        compiler: &mut COM,
+    ) -> UtxoCommitment<C, COM> {
+        utxo_commitment_scheme.commit(
+            &self.plaintext.utxo_commitment_randomness,
+            &self.plaintext.asset.id,
+            &self.plaintext.asset.value,
+            &self.receiving_key,
+            compiler,
+        )
+    }
+
+    /// Returns the incoming note for `self` under `encryption_scheme`.
+    #[inline]
+    pub fn incoming_note(
+        &self,
+        encryption_scheme: &C::IncomingBaseEncryptionScheme,
+        compiler: &mut COM,
+    ) -> IncomingNote<C, COM> {
+        Hybrid::new(
+            DiffieHellman::<_, COM>::new(self.plaintext.key_diversifier.clone()),
+            encryption_scheme.clone(),
+        )
+        .encrypt_into(
+            &self.receiving_key,
+            &self.incoming_randomness,
+            EmptyHeader::default(),
+            &self.plaintext,
+            compiler,
+        )
+    }
+
     /// Returns the representative [`Asset`] from `self` and its public-form `utxo` asserting that
     /// it is well-formed.
     #[inline]
@@ -641,27 +776,47 @@ where
             &self.plaintext.asset,
             compiler,
         );
-        let utxo_commitment = utxo_commitment_scheme.commit(
-            &self.plaintext.utxo_commitment_randomness,
-            &self.plaintext.asset.id,
-            &self.plaintext.asset.value,
-            &self.receiving_key,
-            compiler,
-        );
+        let utxo_commitment = self.utxo_commitment(utxo_commitment_scheme, compiler);
         compiler.assert_eq(&utxo.commitment, &utxo_commitment);
-        let incoming_note = Hybrid::new(
-            DiffieHellman::<_, COM>::new(self.plaintext.key_diversifier.clone()),
-            encryption_scheme.clone(),
-        )
-        .encrypt_into(
-            &self.receiving_key,
-            &self.incoming_randomness,
-            EmptyHeader::default(),
-            &self.plaintext,
-            compiler,
-        );
+        let incoming_note = self.incoming_note(encryption_scheme, compiler);
         compiler.assert_eq(note, &incoming_note);
         asset
+    }
+}
+
+impl<C, COM> utxo::AssetType for MintSecret<C, COM>
+where
+    C: Configuration<COM>,
+    COM: Has<bool, Type = C::Bool>,
+{
+    type Asset = Asset<C, COM>;
+}
+
+impl<C, COM> utxo::AddressType for MintSecret<C, COM>
+where
+    C: Configuration<COM>,
+    COM: Has<bool, Type = C::Bool>,
+{
+    type Address = ShieldedAddress<C, COM>;
+}
+
+impl<C> utxo::MintSecret for MintSecret<C>
+where
+    C: Configuration<Bool = bool>,
+    C::Scalar: Sample,
+    encryption::Randomness<C::IncomingBaseEncryptionScheme>: Sample,
+    UtxoCommitmentRandomness<C>: Sample,
+{
+    #[inline]
+    fn sample<R>(address: Self::Address, asset: Self::Asset, rng: &mut R) -> Self
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        MintSecret::new(
+            address.receiving_key,
+            rng.gen(),
+            IncomingPlaintext::new(rng.gen(), asset, address.key_diversifier),
+        )
     }
 }
 
@@ -716,7 +871,7 @@ where
     C: Configuration<COM>,
     COM: Has<bool, Type = C::Bool>,
 {
-    ///
+    /// Builds a new [`Authority`] from `proof_authorization_key` and `randomizer`.
     #[inline]
     pub fn new(proof_authorization_key: C::Group, randomizer: C::Scalar) -> Self {
         Self {
@@ -726,7 +881,7 @@ where
         }
     }
 
-    ///
+    /// Computes the randomized proof authorization key from `self`.
     #[inline]
     pub fn randomized_proof_authorization_key(&self, compiler: &mut COM) -> C::Group {
         self.proof_authorization_key.mul(&self.randomizer, compiler)
@@ -740,7 +895,7 @@ where
         key_diversifier: &C::Group,
         compiler: &mut COM,
     ) -> C::Group {
-        /* TODO:
+        /*:
         let viewing_key = match self.viewing_key.take() {
             Some(viewing_key) => viewing_key,
             _ => {
@@ -753,6 +908,19 @@ where
         */
         todo!()
     }
+}
+
+/// Identifier
+pub struct Identifier<C, COM = ()>
+where
+    C: Configuration<COM>,
+    COM: Has<bool, Type = C::Bool>,
+{
+    /// UTXO Commitment Randomness
+    pub utxo_commitment_randomness: UtxoCommitmentRandomness<C, COM>,
+
+    /// Key Diversifier
+    pub key_diversifier: C::Group,
 }
 
 /// Spend Secret
@@ -785,6 +953,46 @@ where
         }
     }
 
+    /// Returns the UTXO commitment for `self` with the given `receiving_key` under
+    /// `utxo_commitment_scheme`.
+    #[inline]
+    pub fn utxo_commitment(
+        &self,
+        utxo_commitment_scheme: &C::UtxoCommitmentScheme,
+        receiving_key: &C::Group,
+        compiler: &mut COM,
+    ) -> UtxoCommitment<C, COM> {
+        utxo_commitment_scheme.commit(
+            &self.plaintext.utxo_commitment_randomness,
+            &self.plaintext.asset.id,
+            &self.plaintext.asset.value,
+            receiving_key,
+            compiler,
+        )
+    }
+
+    /// Returns the outgoing note for `self` with the given `receiving_key` under
+    /// `encryption_scheme`.
+    #[inline]
+    pub fn outgoing_note(
+        &self,
+        outgoing_base_encryption_scheme: &C::OutgoingBaseEncryptionScheme,
+        receiving_key: &C::Group,
+        compiler: &mut COM,
+    ) -> OutgoingNote<C, COM> {
+        Hybrid::new(
+            DiffieHellman::<_, COM>::new(self.plaintext.key_diversifier.clone()),
+            outgoing_base_encryption_scheme.clone(),
+        )
+        .encrypt_into(
+            receiving_key,
+            &self.outgoing_randomness,
+            EmptyHeader::default(),
+            &self.plaintext.asset,
+            compiler,
+        )
+    }
+
     /// Returns the representative [`Asset`] from `self` and its public-form `utxo` asserting that
     /// it is well-formed.
     #[inline]
@@ -813,13 +1021,8 @@ where
             &self.plaintext.key_diversifier,
             compiler,
         );
-        let utxo_commitment = parameters.utxo_commitment_scheme.commit(
-            &self.plaintext.utxo_commitment_randomness,
-            &self.plaintext.asset.id,
-            &self.plaintext.asset.value,
-            &receiving_key,
-            compiler,
-        );
+        let utxo_commitment =
+            self.utxo_commitment(&parameters.utxo_commitment_scheme, &receiving_key, compiler);
         compiler.assert_eq(&utxo.commitment, &utxo_commitment);
         let item = parameters.item_hash(utxo, compiler);
         let has_valid_membership = &asset.value.is_zero(compiler).bitor(
@@ -832,18 +1035,50 @@ where
             &item,
             compiler,
         );
-        let outgoing_note = Hybrid::new(
-            DiffieHellman::<_, COM>::new(self.plaintext.key_diversifier.clone()),
-            parameters.outgoing_base_encryption_scheme.clone(),
-        )
-        .encrypt_into(
+        let outgoing_note = self.outgoing_note(
+            &parameters.outgoing_base_encryption_scheme,
             &receiving_key,
-            &self.outgoing_randomness,
-            EmptyHeader::default(),
-            &self.plaintext.asset,
             compiler,
         );
         (asset, Nullifier::new(nullifier_commitment, outgoing_note))
+    }
+}
+
+impl<C, COM> utxo::AssetType for SpendSecret<C, COM>
+where
+    C: Configuration<COM>,
+    COM: Has<bool, Type = C::Bool>,
+{
+    type Asset = Asset<C, COM>;
+}
+
+impl<C, COM> utxo::IdentifierType for SpendSecret<C, COM>
+where
+    C: Configuration<COM>,
+    COM: Has<bool, Type = C::Bool>,
+{
+    type Identifier = Identifier<C, COM>;
+}
+
+impl<C> utxo::SpendSecret for SpendSecret<C>
+where
+    C: Configuration<Bool = bool>,
+    C::Scalar: Sample,
+    encryption::Randomness<C::OutgoingBaseEncryptionScheme>: Sample,
+{
+    #[inline]
+    fn sample<R>(identifier: Self::Identifier, asset: Self::Asset, rng: &mut R) -> Self
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        SpendSecret::new(
+            rng.gen(),
+            IncomingPlaintext::new(
+                identifier.utxo_commitment_randomness,
+                asset,
+                identifier.key_diversifier,
+            ),
+        )
     }
 }
 

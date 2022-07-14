@@ -17,7 +17,7 @@
 //! Transfer Sender
 
 use crate::transfer::utxo::{
-    Spend, UtxoAccumulatorItem, UtxoAccumulatorOutput, UtxoMembershipProof,
+    Identifier, Spend, SpendSecret, UtxoAccumulatorItem, UtxoAccumulatorOutput, UtxoMembershipProof,
 };
 use core::{fmt::Debug, hash::Hash, iter};
 use manta_crypto::{
@@ -26,6 +26,7 @@ use manta_crypto::{
         Allocate, Allocator, Const, Constant, Derived, ProofSystemInput, Public, Secret, Var,
         Variable,
     },
+    rand::{CryptoRng, RngCore},
 };
 
 #[cfg(feature = "serde")]
@@ -58,6 +59,24 @@ where
             utxo,
             nullifier,
         }
+    }
+
+    /// Samples a new [`PreSender`] that will control `asset` at the given `identifier`.
+    #[inline]
+    pub fn sample<R>(
+        parameters: &S,
+        authority: &S::Authority,
+        identifier: Identifier<S::Secret>,
+        asset: S::Asset,
+        rng: &mut R,
+    ) -> Self
+    where
+        S::Secret: SpendSecret<Asset = S::Asset>,
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        let secret = S::Secret::sample(identifier, asset, rng);
+        let (utxo, nullifier) = parameters.derive(authority, &secret, &mut ());
+        Self::new(secret, utxo, nullifier)
     }
 
     /// Inserts the [`Utxo`] corresponding to `self` into the `utxo_accumulator` with the intention
@@ -543,318 +562,3 @@ where
         )
     }
 }
-
-/*
-use crate::{
-    asset::{Asset, AssetValue},
-    transfer::{
-        AssetVar, Configuration, FullParametersVar, Parameters, ProofInput, SecretKey,
-        SecretKeyVar, Utxo, UtxoAccumulatorOutput, UtxoMembershipProof, UtxoMembershipProofVar,
-        VoidNumber, VoidNumberVar,
-    },
-};
-use core::{fmt::Debug, hash::Hash, iter};
-use manta_crypto::{
-    accumulator::Accumulator,
-    constraint::{Allocate, Allocator, AssertEq, Derived, ProofSystemInput, Variable},
-};
-
-#[cfg(feature = "serde")]
-use manta_util::serde::{Deserialize, Serialize};
-
-/// Pre-Sender
-pub struct PreSender<C>
-where
-    C: Configuration,
-{
-    /// Secret Spend Key
-    secret_spend_key: SecretKey<C>,
-
-    /// Ephemeral Secret Key
-    ephemeral_secret_key: SecretKey<C>,
-
-    /// Asset
-    asset: Asset,
-
-    /// Unspent Transaction Output
-    utxo: Utxo<C>,
-
-    /// Void Number
-    nullifier: S::Nullifier,
-}
-
-impl<C> PreSender<C>
-where
-    C: Configuration,
-{
-    /// Builds a new [`PreSender`] from `ephemeral_secret_key` to claim `asset` with
-    /// `secret_spend_key`.
-    #[inline]
-    pub fn new(
-        parameters: &Parameters<C>,
-        secret_spend_key: SecretKey<C>,
-        ephemeral_secret_key: SecretKey<C>,
-        asset: Asset,
-    ) -> Self {
-        let utxo = parameters.utxo(
-            &ephemeral_secret_key,
-            &parameters.derive(&secret_spend_key),
-            &asset,
-        );
-        Self {
-            nullifier: parameters.nullifier(&secret_spend_key, &utxo),
-            secret_spend_key,
-            ephemeral_secret_key,
-            asset,
-            utxo,
-        }
-    }
-
-    /// Inserts the [`Utxo`] corresponding to `self` into the `utxo_accumulator` with the intention
-    /// of returning a proof later by a call to [`get_proof`](Self::get_proof).
-    #[inline]
-    pub fn insert_utxo<A>(&self, utxo_accumulator: &mut A) -> bool
-    where
-        A: Accumulator<Item = Utxo<C>, Model = C::UtxoAccumulatorModel>,
-    {
-        utxo_accumulator.insert(&self.utxo)
-    }
-
-    /// Requests the membership proof of the [`Utxo`] corresponding to `self` from
-    /// `utxo_accumulator` to prepare the conversion from `self` into a [`Sender`].
-    #[inline]
-    pub fn get_proof<A>(&self, utxo_accumulator: &A) -> Option<SenderProof<C>>
-    where
-        A: Accumulator<Item = Utxo<C>, Model = C::UtxoAccumulatorModel>,
-    {
-        Some(SenderProof {
-            utxo_membership_proof: utxo_accumulator.prove(&self.utxo)?,
-        })
-    }
-
-    /// Converts `self` into a [`Sender`] by attaching `proof` to it.
-    #[inline]
-    pub fn upgrade(self, proof: SenderProof<C>) -> Sender<C> {
-        Sender {
-            secret_spend_key: self.secret_spend_key,
-            ephemeral_secret_key: self.ephemeral_secret_key,
-            asset: self.asset,
-            utxo: self.utxo,
-            utxo_membership_proof: proof.utxo_membership_proof,
-            nullifier: self.nullifier,
-        }
-    }
-
-    /// Tries to convert `self` into a [`Sender`] by getting a proof from `utxo_accumulator`.
-    #[inline]
-    pub fn try_upgrade<A>(self, utxo_accumulator: &A) -> Option<Sender<C>>
-    where
-        A: Accumulator<Item = Utxo<C>, Model = C::UtxoAccumulatorModel>,
-    {
-        Some(self.get_proof(utxo_accumulator)?.upgrade(self))
-    }
-
-    /// Inserts the [`Utxo`] corresponding to `self` into the `utxo_accumulator` and upgrades to a
-    /// full [`Sender`] if the insertion succeeded.
-    #[inline]
-    pub fn insert_and_upgrade<A>(self, utxo_accumulator: &mut A) -> Option<Sender<C>>
-    where
-        A: Accumulator<Item = Utxo<C>, Model = C::UtxoAccumulatorModel>,
-    {
-        if self.insert_utxo(utxo_accumulator) {
-            self.try_upgrade(utxo_accumulator)
-        } else {
-            None
-        }
-    }
-
-    /// Returns `true` whenever `self.utxo` and `rhs.utxo` can be inserted in any order into the
-    /// `utxo_accumulator`.
-    #[inline]
-    pub fn is_independent_from<A>(&self, rhs: &Self, utxo_accumulator: &A) -> bool
-    where
-        A: Accumulator<Item = Utxo<C>, Model = C::UtxoAccumulatorModel>,
-    {
-        utxo_accumulator.are_independent(&self.utxo, &rhs.utxo)
-    }
-}
-
-/// Sender Proof
-///
-/// This `struct` is created by the [`get_proof`](PreSender::get_proof) method on [`PreSender`].
-/// See its documentation for more.
-pub struct SenderProof<C>
-where
-    C: Configuration,
-{
-    /// UTXO Membership Proof
-    utxo_membership_proof: UtxoMembershipProof<C>,
-}
-
-impl<C> SenderProof<C>
-where
-    C: Configuration,
-{
-    /// Upgrades the `pre_sender` to a [`Sender`] by attaching `self` to it.
-    #[inline]
-    pub fn upgrade(self, pre_sender: PreSender<C>) -> Sender<C> {
-        pre_sender.upgrade(self)
-    }
-}
-
-/// Sender
-pub struct Sender<C>
-where
-    C: Configuration,
-{
-    /// Secret Spend Key
-    secret_spend_key: SecretKey<C>,
-
-    /// Ephemeral Secret Key
-    ephemeral_secret_key: SecretKey<C>,
-
-    /// Asset
-    asset: Asset,
-
-    /// Unspent Transaction Output
-    utxo: Utxo<C>,
-
-    /// UTXO Membership Proof
-    utxo_membership_proof: UtxoMembershipProof<C>,
-
-    /// Void Number
-    nullifier: S::Nullifier,
-}
-
-impl<C> Sender<C>
-where
-    C: Configuration,
-{
-    /// Returns the asset value sent by `self` in the transaction.
-    #[inline]
-    pub fn asset_value(&self) -> AssetValue {
-        self.asset.value
-    }
-
-    /// Returns `true` whenever `self.utxo` and `rhs.utxo` can be inserted in any order into the
-    /// `utxo_accumulator`.
-    #[inline]
-    pub fn is_independent_from<A>(&self, rhs: &Self, utxo_accumulator: &A) -> bool
-    where
-        A: Accumulator<Item = Utxo<C>, Model = C::UtxoAccumulatorModel>,
-    {
-        utxo_accumulator.are_independent(&self.utxo, &rhs.utxo)
-    }
-
-    /// Reverts `self` back into a [`PreSender`].
-    ///
-    /// This method should be called if the [`Utxo`] membership proof attached to `self` was deemed
-    /// invalid or had expired.
-    #[inline]
-    pub fn downgrade(self) -> PreSender<C> {
-        PreSender {
-            secret_spend_key: self.secret_spend_key,
-            ephemeral_secret_key: self.ephemeral_secret_key,
-            asset: self.asset,
-            utxo: self.utxo,
-            nullifier: self.nullifier,
-        }
-    }
-
-    /// Extracts the ledger posting data from `self`.
-    #[inline]
-    pub fn into_post(self) -> SenderPost<C> {
-        SenderPost {
-            utxo_accumulator_output: self.utxo_membership_proof.into_output(),
-            nullifier: self.nullifier,
-        }
-    }
-
-    /// Extends proof public input with `self`.
-    #[inline]
-    pub fn extend_input(&self, input: &mut ProofInput<C>) {
-        C::ProofSystem::extend(input, self.utxo_membership_proof.output());
-        C::ProofSystem::extend(input, &self.nullifier);
-    }
-}
-
-/// Sender Variable
-pub struct SenderVar<C>
-where
-    C: Configuration,
-{
-    /// Secret Spend Key
-    secret_spend_key: SecretKeyVar<C>,
-
-    /// Ephemeral Secret Key
-    ephemeral_secret_key: SecretKeyVar<C>,
-
-    /// Asset
-    asset: AssetVar<C>,
-
-    /// UTXO Membership Proof
-    utxo_membership_proof: UtxoMembershipProofVar<C>,
-
-    /// Void Number
-    nullifier: VoidNumberVar<C>,
-}
-
-impl<C> SenderVar<C>
-where
-    C: Configuration,
-{
-    /// Returns the asset for `self`, checking if `self` is well-formed.
-    #[inline]
-    pub fn get_well_formed_asset(
-        self,
-        parameters: &FullParametersVar<C>,
-        compiler: &mut C::Compiler,
-    ) -> AssetVar<C> {
-        let public_spend_key = parameters.derive(&self.secret_spend_key, compiler);
-        let utxo = parameters.utxo(
-            &self.ephemeral_secret_key,
-            &public_spend_key,
-            &self.asset,
-            compiler,
-        );
-        self.utxo_membership_proof.assert_valid(
-            &parameters.utxo_accumulator_model,
-            &utxo,
-            compiler,
-        );
-        let nullifier = parameters.nullifier(&self.secret_spend_key, &utxo, compiler);
-        compiler.assert_eq(&self.nullifier, &nullifier);
-        self.asset
-    }
-}
-
-impl<C> Variable<Derived, C::Compiler> for SenderVar<C>
-where
-    C: Configuration,
-{
-    type Type = Sender<C>;
-
-    #[inline]
-    fn new_known(this: &Self::Type, compiler: &mut C::Compiler) -> Self {
-        Self {
-            secret_spend_key: this.secret_spend_key.as_known(compiler),
-            ephemeral_secret_key: this.ephemeral_secret_key.as_known(compiler),
-            asset: this.asset.as_known(compiler),
-            utxo_membership_proof: this.utxo_membership_proof.as_known(compiler),
-            nullifier: this.nullifier.as_known(compiler),
-        }
-    }
-
-    #[inline]
-    fn new_unknown(compiler: &mut C::Compiler) -> Self {
-        Self {
-            secret_spend_key: compiler.allocate_unknown(),
-            ephemeral_secret_key: compiler.allocate_unknown(),
-            asset: compiler.allocate_unknown(),
-            utxo_membership_proof: compiler.allocate_unknown(),
-            nullifier: compiler.allocate_unknown(),
-        }
-    }
-}
-
-*/

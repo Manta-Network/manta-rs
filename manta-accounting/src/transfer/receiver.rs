@@ -16,13 +16,14 @@
 
 //! Transfer Receiver
 
-use crate::transfer::utxo::Mint;
+use crate::transfer::utxo::{Address, Mint, MintSecret};
 use core::{fmt::Debug, hash::Hash, iter};
 use manta_crypto::{
     accumulator::{Accumulator, ItemHashFunction},
     constraint::{
         Allocate, Allocator, Constant, Derived, ProofSystemInput, Public, Secret, Var, Variable,
     },
+    rand::{CryptoRng, RngCore},
 };
 
 #[cfg(feature = "serde")]
@@ -68,6 +69,23 @@ impl<M> Receiver<M>
 where
     M: Mint,
 {
+    /// Samples a new [`Receiver`] that will control `asset` at the given `address`.
+    #[inline]
+    pub fn sample<R>(
+        parameters: &M,
+        address: Address<M::Secret>,
+        asset: M::Asset,
+        rng: &mut R,
+    ) -> Self
+    where
+        M::Secret: MintSecret<Asset = M::Asset>,
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        let secret = M::Secret::sample(address, asset, rng);
+        let (utxo, incoming_note) = parameters.derive(&secret, &mut ());
+        Self::new(secret, utxo, incoming_note)
+    }
+
     /// Returns `true` whenever `self.utxo` and `rhs.utxo` can be inserted in any order into the
     /// `utxo_accumulator`.
     #[inline]
