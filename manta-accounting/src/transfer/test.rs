@@ -19,9 +19,9 @@
 use crate::{
     asset::{Asset, AssetId, AssetValue, AssetValueType},
     transfer::{
-        canonical::Mint, has_public_participants, Configuration, FullParameters, Parameters,
-        PreSender, Proof, ProofSystemError, ProofSystemPublicParameters, ProvingContext, Receiver,
-        Sender, SpendingKey, Transfer, TransferPost, Utxo, VerifyingContext,
+        canonical::ToPrivate, has_public_participants, Address, Configuration, FullParametersRef,
+        Parameters, PreSender, Proof, ProofInput, ProofSystemError, ProofSystemPublicParameters,
+        ProvingContext, Receiver, Sender, Transfer, TransferPost, Utxo, VerifyingContext,
     },
 };
 use alloc::vec::Vec;
@@ -32,8 +32,6 @@ use manta_crypto::{
     rand::{CryptoRng, Rand, RngCore, Sample},
 };
 use manta_util::into_array_unchecked;
-
-use super::ProofInput;
 
 /// Samples a distribution over `count`-many values summing to `total`.
 ///
@@ -76,6 +74,8 @@ where
 {
     into_array_unchecked(value_distribution(N, total, rng))
 }
+
+/*
 
 /// Parameters Distribution
 #[derive(derivative::Derivative)]
@@ -415,14 +415,13 @@ where
         )
     }
 }
+*/
 
-/// Samples a [`Mint`] transaction against `spending_key` and `asset` returning a [`TransferPost`]
-/// and [`PreSender`].
+///
 #[inline]
 pub fn sample_mint<C, R>(
     proving_context: &ProvingContext<C>,
-    full_parameters: FullParameters<C>,
-    spending_key: &SpendingKey<C>,
+    full_parameters: FullParametersRef<C>,
     asset: Asset,
     rng: &mut R,
 ) -> Result<(TransferPost<C>, PreSender<C>), ProofSystemError<C>>
@@ -430,29 +429,12 @@ where
     C: Configuration,
     R: CryptoRng + RngCore + ?Sized,
 {
+    /* TODO:
     let (mint, pre_sender) = Mint::internal_pair(full_parameters.base, spending_key, asset, rng);
     Ok((
         mint.into_post(full_parameters, proving_context, rng)?,
         pre_sender,
     ))
-}
-
-/// Asserts that `post` represents a valid `Transfer` verifying against `verifying_context`.
-#[inline]
-pub fn assert_valid_proof<C>(verifying_context: &VerifyingContext<C>, post: &TransferPost<C>)
-where
-    C: Configuration,
-    <C::ProofSystem as ProofSystem>::Error: Debug,
-    TransferPost<C>: Debug,
-{
-    assert!(
-        C::ProofSystem::verify(
-            verifying_context,
-            &post.generate_proof_input(),
-            &post.validity_proof,
-        )
-        .expect("Unable to verify proof."),
-        "Invalid proof: {:?}.",
-        post,
-    );
+    */
+    todo!()
 }

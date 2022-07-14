@@ -18,13 +18,11 @@
 
 // TODO: Add typing for `ProvingContext` and `VerifyingContext` against the canonical shapes.
 
-use crate::{
-    asset::{self, Asset, AssetMap, AssetMetadata, AssetValue},
-    transfer::{
-        has_public_participants, Configuration, FullParametersRef, Parameters, PreSender,
-        ProofSystemError, ProofSystemPublicParameters, ProvingContext, Receiver, Sender, Transfer,
-        TransferPost, VerifyingContext,
-    },
+use crate::transfer::{
+    has_public_participants, requires_authorization, Address, Asset, AuthorizationProof,
+    Configuration, FullParametersRef, Parameters, PreSender, ProofSystemError,
+    ProofSystemPublicParameters, ProvingContext, Receiver, Sender, Transfer, TransferPost,
+    VerifyingContext,
 };
 use alloc::{format, string::String, vec::Vec};
 use core::{fmt::Debug, hash::Hash};
@@ -99,43 +97,46 @@ impl<C> ToPrivate<C>
 where
     C: Configuration,
 {
-    /* TODO:
     /// Builds a [`ToPrivate`] from `asset` and `receiver`.
     #[inline]
-    pub fn build(asset: Asset, receiver: Receiver<C>) -> Self {
-        Self::new_unchecked(Some(asset.id), [asset.value], [], [receiver], [])
+    pub fn build(asset: Asset<C>, receiver: Receiver<C>) -> Self {
+        Self::new_unchecked(None, Some(asset.id), [asset.value], [], [receiver], [])
     }
 
-    /// Builds a new [`ToPrivate`] from a [`SpendingKey`] using [`SpendingKey::receiver`].
+    /// Builds a new [`ToPrivate`] from `address` and `asset`.
     #[inline]
-    pub fn from_spending_key<R>(
+    pub fn from_address<R>(
         parameters: &Parameters<C>,
-        spending_key: &SpendingKey<C>,
-        asset: Asset,
+        address: Address<C>,
+        asset: Asset<C>,
         rng: &mut R,
     ) -> Self
     where
         R: CryptoRng + RngCore + ?Sized,
     {
-        Self::build(asset, spending_key.receiver(parameters, rng.gen(), asset))
+        Self::build(
+            asset.clone(),
+            Receiver::<C>::sample(parameters, address, asset, rng),
+        )
     }
 
-    /// Builds a new [`ToPrivate`] and [`PreSender`] pair from a [`SpendingKey`] using
-    /// [`SpendingKey::internal_pair`].
+    /// Builds a new [`ToPrivate`] and [`PreSender`] pair from `spending_key` and `asset`.
     #[inline]
     pub fn internal_pair<R>(
         parameters: &Parameters<C>,
-        spending_key: &SpendingKey<C>,
-        asset: Asset,
+        spending_key: C::SpendingKey,
+        asset: Asset<C>,
         rng: &mut R,
     ) -> (Self, PreSender<C>)
     where
         R: CryptoRng + RngCore + ?Sized,
     {
+        /* TODO:
         let (receiver, pre_sender) = spending_key.internal_pair(parameters, rng.gen(), asset);
         (Self::build(asset, receiver), pre_sender)
+        */
+        todo!()
     }
-    */
 }
 
 /// [`PrivateTransfer`] Transfer Shape
@@ -155,16 +156,15 @@ impl<C> PrivateTransfer<C>
 where
     C: Configuration,
 {
-    /*
     /// Builds a [`PrivateTransfer`] from `senders` and `receivers`.
     #[inline]
     pub fn build(
+        authorization_proof: AuthorizationProof<C>,
         senders: [Sender<C>; PrivateTransferShape::SENDERS],
         receivers: [Receiver<C>; PrivateTransferShape::RECEIVERS],
     ) -> Self {
-        Self::new_unchecked(None, [], senders, receivers, [])
+        Self::new_unchecked(Some(authorization_proof), None, [], senders, receivers, [])
     }
-    */
 }
 
 /// [`ToPublic`] Transfer Shape
@@ -193,17 +193,23 @@ impl<C> ToPublic<C>
 where
     C: Configuration,
 {
-    /* TODO:
     /// Builds a [`ToPublic`] from `senders`, `receivers`, and `asset`.
     #[inline]
     pub fn build(
+        authorization_proof: AuthorizationProof<C>,
         senders: [Sender<C>; ToPublicShape::SENDERS],
         receivers: [Receiver<C>; ToPublicShape::RECEIVERS],
-        asset: Asset,
+        asset: Asset<C>,
     ) -> Self {
-        Self::new_unchecked(Some(asset.id), [], senders, receivers, [asset.value])
+        Self::new_unchecked(
+            Some(authorization_proof),
+            Some(asset.id),
+            [],
+            senders,
+            receivers,
+            [asset.value],
+        )
     }
-    */
 }
 
 /// Transfer Shape
@@ -225,39 +231,53 @@ pub enum TransferShape {
 }
 
 impl TransferShape {
-    /* TODO:
     /// Selects the [`TransferShape`] for the given shape if it matches a canonical shape.
     #[inline]
     pub fn select(
-        asset_id_is_some: bool,
+        has_authorization: bool,
+        has_visible_asset_id: bool,
         sources: usize,
         senders: usize,
         receivers: usize,
         sinks: usize,
     ) -> Option<Self> {
-        const TO_PRIVATE_VISIBLE_ASSET_ID: bool =
+        const TO_PRIVATE_HAS_AUTHORIZATION: bool = requires_authorization(ToPrivateShape::SENDERS);
+        const TO_PRIVATE_HAS_VISIBLE_ASSET_ID: bool =
             has_public_participants(ToPrivateShape::SOURCES, ToPrivateShape::SINKS);
-        const PRIVATE_TRANSFER_VISIBLE_ASSET_ID: bool =
+        const PRIVATE_TRANSFER_HAS_AUTHORIZATION: bool =
+            requires_authorization(PrivateTransferShape::SENDERS);
+        const PRIVATE_TRANSFER_HAS_VISIBLE_ASSET_ID: bool =
             has_public_participants(PrivateTransferShape::SOURCES, PrivateTransferShape::SINKS);
-        const TO_PUBLIC_VISIBLE_ASSET_ID: bool =
+        const TO_PUBLIC_HAS_AUTHORIZATION: bool = requires_authorization(ToPublicShape::SENDERS);
+        const TO_PUBLIC_HAS_VISIBLE_ASSET_ID: bool =
             has_public_participants(ToPublicShape::SOURCES, ToPublicShape::SINKS);
-        match (asset_id_is_some, sources, senders, receivers, sinks) {
+        match (
+            has_authorization,
+            has_visible_asset_id,
+            sources,
+            senders,
+            receivers,
+            sinks,
+        ) {
             (
-                TO_PRIVATE_VISIBLE_ASSET_ID,
+                TO_PRIVATE_HAS_AUTHORIZATION,
+                TO_PRIVATE_HAS_VISIBLE_ASSET_ID,
                 ToPrivateShape::SOURCES,
                 ToPrivateShape::SENDERS,
                 ToPrivateShape::RECEIVERS,
                 ToPrivateShape::SINKS,
             ) => Some(Self::ToPrivate),
             (
-                PRIVATE_TRANSFER_VISIBLE_ASSET_ID,
+                PRIVATE_TRANSFER_HAS_AUTHORIZATION,
+                PRIVATE_TRANSFER_HAS_VISIBLE_ASSET_ID,
                 PrivateTransferShape::SOURCES,
                 PrivateTransferShape::SENDERS,
                 PrivateTransferShape::RECEIVERS,
                 PrivateTransferShape::SINKS,
             ) => Some(Self::PrivateTransfer),
             (
-                TO_PUBLIC_VISIBLE_ASSET_ID,
+                TO_PUBLIC_HAS_AUTHORIZATION,
+                TO_PUBLIC_HAS_VISIBLE_ASSET_ID,
                 ToPublicShape::SOURCES,
                 ToPublicShape::SENDERS,
                 ToPublicShape::RECEIVERS,
@@ -274,25 +294,24 @@ impl TransferShape {
         C: Configuration,
     {
         Self::select(
-            post.asset_id.is_some(),
-            post.sources.len(),
-            post.sender_posts.len(),
-            post.receiver_posts.len(),
-            post.sinks.len(),
+            post.authorization_signature.is_some(),
+            post.body.asset_id.is_some(),
+            post.body.sources.len(),
+            post.body.sender_posts.len(),
+            post.body.receiver_posts.len(),
+            post.body.sinks.len(),
         )
     }
-    */
 }
 
-/* TODO:
 /// Canonical Transaction Type
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
     serde(
         bound(
-            deserialize = "ReceivingKey<C>: Deserialize<'de>",
-            serialize = "ReceivingKey<C>: Serialize"
+            deserialize = "Asset<C>: Deserialize<'de>, Address<C>: Deserialize<'de>",
+            serialize = "Asset<C>: Serialize, Address<C>: Serialize"
         ),
         crate = "manta_util::serde",
         deny_unknown_fields
@@ -300,25 +319,25 @@ impl TransferShape {
 )]
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "ReceivingKey<C>: Clone"),
-    Copy(bound = "ReceivingKey<C>: Copy"),
-    Debug(bound = "ReceivingKey<C>: Debug"),
-    Eq(bound = "ReceivingKey<C>: Eq"),
-    Hash(bound = "ReceivingKey<C>: Hash"),
-    PartialEq(bound = "ReceivingKey<C>: PartialEq")
+    Clone(bound = "Asset<C>: Clone, Address<C>: Clone"),
+    Copy(bound = "Asset<C>: Copy, Address<C>: Copy"),
+    Debug(bound = "Asset<C>: Debug, Address<C>: Debug"),
+    Eq(bound = "Asset<C>: Eq, Address<C>: Eq"),
+    Hash(bound = "Asset<C>: Hash, Address<C>: Hash"),
+    PartialEq(bound = "Asset<C>: PartialEq, Address<C>: PartialEq")
 )]
 pub enum Transaction<C>
 where
     C: Configuration,
 {
     /// Convert Public Asset into Private Asset
-    ToPrivate(Asset),
+    ToPrivate(Asset<C>),
 
-    /// Private Transfer Asset to Receiver
-    PrivateTransfer(Asset, ReceivingKey<C>),
+    /// Private Transfer Asset to Address
+    PrivateTransfer(Asset<C>, Address<C>),
 
     /// Convert Private Asset into Public Asset
-    ToPublic(Asset),
+    ToPublic(Asset<C>),
 }
 
 impl<C> Transaction<C>
@@ -329,17 +348,17 @@ where
     /// transaction kind if successful, and returning the asset back if the balance was
     /// insufficient.
     #[inline]
-    pub fn check<F>(&self, balance: F) -> Result<TransactionKind, Asset>
+    pub fn check<F>(&self, balance: F) -> Result<TransactionKind<C>, &Asset<C>>
     where
-        F: FnOnce(Asset) -> bool,
+        F: FnOnce(&Asset<C>) -> bool,
     {
         match self {
-            Self::ToPrivate(asset) => Ok(TransactionKind::Deposit(*asset)),
+            Self::ToPrivate(asset) => Ok(TransactionKind::Deposit(asset)),
             Self::PrivateTransfer(asset, _) | Self::ToPublic(asset) => {
-                if balance(*asset) {
-                    Ok(TransactionKind::Withdraw(*asset))
+                if balance(asset) {
+                    Ok(TransactionKind::Withdraw(asset))
                 } else {
-                    Err(*asset)
+                    Err(asset)
                 }
             }
         }
@@ -358,11 +377,14 @@ where
     /// Returns `true` if `self` is a [`Transaction`] which transfers zero value.
     #[inline]
     pub fn is_zero(&self) -> bool {
+        /* TODO:
         match self {
             Self::ToPrivate(asset) => asset.is_zero(),
             Self::PrivateTransfer(asset, _) => asset.is_zero(),
             Self::ToPublic(asset) => asset.is_zero(),
         }
+        */
+        todo!()
     }
 
     /* TODO:
@@ -370,47 +392,42 @@ where
     #[inline]
     pub fn display<F>(&self, metadata: &AssetMetadata, f: F) -> String
     where
-        F: FnOnce(&ReceivingKey<C>) -> String,
+        F: FnOnce(&Address<C>) -> String,
     {
         match self {
             Self::ToPrivate(Asset { value, .. }) => format!("Deposit {}", metadata.display(*value)),
-            Self::PrivateTransfer(Asset { value, .. }, receiving_key) => {
-                format!("Send {} to {}", metadata.display(*value), f(receiving_key))
+            Self::PrivateTransfer(Asset { value, .. }, address) => {
+                format!("Send {} to {}", metadata.display(*value), f(address))
             }
             Self::ToPublic(Asset { value, .. }) => format!("Withdraw {}", metadata.display(*value)),
         }
     }
     */
 }
-*/
 
 /// Transaction Kind
-#[cfg_attr(
-    feature = "serde",
-    derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
-)]
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum TransactionKind {
+pub enum TransactionKind<'a, C>
+where
+    C: Configuration,
+{
     /// Deposit Transaction
     ///
     /// A transaction of this kind will result in a deposit of `asset`.
-    Deposit(Asset),
+    Deposit(&'a Asset<C>),
 
     /// Withdraw Transaction
     ///
     /// A transaction of this kind will result in a withdraw of `asset`.
-    Withdraw(Asset),
+    Withdraw(&'a Asset<C>),
 }
 
-/* TODO:
 /// Transfer Asset Selection
 pub struct Selection<C>
 where
     C: Configuration,
 {
     /// Change Value
-    pub change: AssetValue,
+    pub change: C::AssetValue,
 
     /// Pre-Senders
     pub pre_senders: Vec<PreSender<C>>,
@@ -422,13 +439,14 @@ where
 {
     /// Builds a new [`Selection`] from `change` and `pre_senders`.
     #[inline]
-    fn build(change: AssetValue, pre_senders: Vec<PreSender<C>>) -> Self {
+    fn build(change: C::AssetValue, pre_senders: Vec<PreSender<C>>) -> Self {
         Self {
             change,
             pre_senders,
         }
     }
 
+    /* TODO:
     /// Builds a new [`Selection`] by mapping over an asset selection with `builder`.
     #[inline]
     pub fn new<M, E, F>(selection: asset::Selection<M>, mut builder: F) -> Result<Self, E>
@@ -445,8 +463,8 @@ where
                 .collect::<Result<_, _>>()?,
         ))
     }
+    */
 }
-*/
 
 /// Canonical Multi-Proving Contexts
 #[derive(derivative::Derivative)]

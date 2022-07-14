@@ -29,23 +29,6 @@
 //! See the [`crate::wallet`] module for more on how this transfer protocol is used in a wallet
 //! protocol for the keeping of accounts for private assets.
 
-/*
-use crate::asset::{Asset, AssetId, AssetValue};
-use alloc::vec::Vec;
-use core::{fmt::Debug, hash::Hash, marker::PhantomData, ops::Deref};
-use manta_crypto::{
-    accumulator::{AssertValidVerification, MembershipProof, Model},
-    constraint::{
-        self, Add, Allocate, Allocator, AssertEq, Bool, Constant, Derived, ProofSystem,
-        ProofSystemInput, Public, Secret, Variable,
-    },
-    encryption::{self, hybrid::Hybrid, EncryptedMessage},
-    key::{self, agreement::Derive},
-    rand::{CryptoRng, RngCore, Sample},
-};
-use manta_util::SizeLimit;
-*/
-
 use crate::{
     asset,
     transfer::{
@@ -69,17 +52,15 @@ use manta_util::vec::{all_unequal, Vec};
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
 
-// TODO: pub mod batch;
+pub mod batch;
 pub mod canonical;
 pub mod receiver;
 pub mod sender;
 pub mod utxo;
 
-/* TODO:
 #[cfg(feature = "test")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
 pub mod test;
-*/
 
 pub use canonical::Shape;
 
@@ -95,753 +76,11 @@ pub const fn has_secret_participants(senders: usize, receivers: usize) -> bool {
     (senders + receivers) > 0
 }
 
-/*
-/// UTXO Commitment Scheme
-pub trait UtxoCommitmentScheme<COM = ()> {
-    /// Ephemeral Secret Key Type
-    type EphemeralSecretKey;
-
-    /// Public Spend Key Type
-    type PublicSpendKey;
-
-    /// Asset Type
-    type Asset;
-
-    /// Unspent Transaction Output Type
-    type Utxo;
-
-    /// Commits to the `ephemeral_secret_key`, `public_spend_key`, and `asset` for a UTXO.
-    fn commit(
-        &self,
-        ephemeral_secret_key: &Self::EphemeralSecretKey,
-        public_spend_key: &Self::PublicSpendKey,
-        asset: &Self::Asset,
-        compiler: &mut COM,
-    ) -> Self::Utxo;
+/// Returns `true` if the [`Transfer`] with this shape would require an authorization.
+#[inline]
+pub const fn requires_authorization(senders: usize) -> bool {
+    senders > 0
 }
-
-/// Void Number Commitment Scheme
-pub trait VoidNumberCommitmentScheme<COM = ()> {
-    /// Secret Spend Key Type
-    type SecretSpendKey;
-
-    /// Unspent Transaction Output Type
-    type Utxo;
-
-    /// Void Number Type
-    type VoidNumber;
-
-    /// Commits to the `secret_spend_key` and `utxo` for a Void Number.
-    fn commit(
-        &self,
-        secret_spend_key: &Self::SecretSpendKey,
-        utxo: &Self::Utxo,
-        compiler: &mut COM,
-    ) -> Self::VoidNumber;
-}
-
-/// Transfer Configuration
-pub trait Configuration {
-    /// Secret Key Type
-    type SecretKey: Clone + Sample + SizeLimit;
-
-    /// Public Key Type
-    type PublicKey: Clone;
-
-    /// Key Agreement Scheme Type
-    type KeyAgreementScheme: key::agreement::Types<SecretKey = SecretKey<Self>, PublicKey = PublicKey<Self>>
-        + key::agreement::Agree
-        + key::agreement::Derive;
-
-    /// Secret Key Variable Type
-    type SecretKeyVar: Variable<Secret, Self::Compiler, Type = SecretKey<Self>>;
-
-    /// Public Key Variable Type
-    type PublicKeyVar: Variable<Secret, Self::Compiler, Type = PublicKey<Self>>
-        + constraint::PartialEq<Self::PublicKeyVar, Self::Compiler>;
-
-    /// Key Agreement Scheme Variable Type
-    type KeyAgreementSchemeVar: Constant<Self::Compiler, Type = Self::KeyAgreementScheme>
-        + key::agreement::Types<SecretKey = SecretKeyVar<Self>, PublicKey = PublicKeyVar<Self>>
-        + key::agreement::Agree<Self::Compiler>
-        + key::agreement::Derive<Self::Compiler>;
-
-    /// Unspent Transaction Output Type
-    type Utxo: PartialEq;
-
-    /// UTXO Commitment Scheme Type
-    type UtxoCommitmentScheme: UtxoCommitmentScheme<
-        EphemeralSecretKey = SecretKey<Self>,
-        PublicSpendKey = PublicKey<Self>,
-        Asset = Asset,
-        Utxo = Utxo<Self>,
-    >;
-
-    /// UTXO Variable Type
-    type UtxoVar: Variable<Public, Self::Compiler, Type = Utxo<Self>>
-        + Variable<Secret, Self::Compiler, Type = Utxo<Self>>
-        + constraint::PartialEq<Self::UtxoVar, Self::Compiler>;
-
-    /// UTXO Commitment Scheme Variable Type
-    type UtxoCommitmentSchemeVar: Constant<Self::Compiler, Type = Self::UtxoCommitmentScheme>
-        + UtxoCommitmentScheme<
-            Self::Compiler,
-            EphemeralSecretKey = SecretKeyVar<Self>,
-            PublicSpendKey = PublicKeyVar<Self>,
-            Asset = AssetVar<Self>,
-            Utxo = UtxoVar<Self>,
-        >;
-
-    /// Void Number Type
-    type VoidNumber: PartialEq;
-
-    /// Void Number Commitment Scheme Type
-    type VoidNumberCommitmentScheme: VoidNumberCommitmentScheme<
-        SecretSpendKey = SecretKey<Self>,
-        Utxo = Utxo<Self>,
-        VoidNumber = VoidNumber<Self>,
-    >;
-
-    /// Void Number Variable Type
-    type VoidNumberVar: Variable<Public, Self::Compiler, Type = Self::VoidNumber>
-        + constraint::PartialEq<Self::VoidNumberVar, Self::Compiler>;
-
-    /// Void Number Commitment Scheme Variable Type
-    type VoidNumberCommitmentSchemeVar: Constant<Self::Compiler, Type = Self::VoidNumberCommitmentScheme>
-        + VoidNumberCommitmentScheme<
-            Self::Compiler,
-            SecretSpendKey = SecretKeyVar<Self>,
-            Utxo = UtxoVar<Self>,
-            VoidNumber = VoidNumberVar<Self>,
-        >;
-
-    /// UTXO Accumulator Model Type
-    type UtxoAccumulatorModel: Model<Item = Self::Utxo, Verification = bool>;
-
-    /// UTXO Accumulator Witness Variable Type
-    type UtxoAccumulatorWitnessVar: Variable<
-        Secret,
-        Self::Compiler,
-        Type = UtxoAccumulatorWitness<Self>,
-    >;
-
-    /// UTXO Accumulator Output Variable Type
-    type UtxoAccumulatorOutputVar: Variable<
-        Public,
-        Self::Compiler,
-        Type = UtxoAccumulatorOutput<Self>,
-    >;
-
-    /// UTXO Accumulator Model Variable Type
-    type UtxoAccumulatorModelVar: Constant<Self::Compiler, Type = Self::UtxoAccumulatorModel>
-        + AssertValidVerification<Self::Compiler>
-        + Model<
-            Self::Compiler,
-            Item = Self::UtxoVar,
-            Witness = Self::UtxoAccumulatorWitnessVar,
-            Output = Self::UtxoAccumulatorOutputVar,
-            Verification = Bool<Self::Compiler>,
-        >;
-
-    /// Asset Id Variable Type
-    type AssetIdVar: Variable<Public, Self::Compiler, Type = AssetId>
-        + Variable<Secret, Self::Compiler, Type = AssetId>
-        + constraint::PartialEq<Self::AssetIdVar, Self::Compiler>;
-
-    /// Asset Value Variable Type
-    type AssetValueVar: Variable<Public, Self::Compiler, Type = AssetValue>
-        + Variable<Secret, Self::Compiler, Type = AssetValue>
-        + Add<Self::AssetValueVar, Self::Compiler, Output = Self::AssetValueVar>
-        + constraint::PartialEq<Self::AssetValueVar, Self::Compiler>;
-
-    /// Constraint System Type
-    type Compiler: AssertEq;
-
-    /// Proof System Type
-    type ProofSystem: ProofSystem<Compiler = Self::Compiler>
-        + ProofSystemInput<AssetId>
-        + ProofSystemInput<AssetValue>
-        + ProofSystemInput<UtxoAccumulatorOutput<Self>>
-        + ProofSystemInput<Utxo<Self>>
-        + ProofSystemInput<VoidNumber<Self>>
-        + ProofSystemInput<PublicKey<Self>>;
-
-    /// Note Base Encryption Scheme Type
-    type NoteEncryptionScheme: encryption::Encrypt<
-            EncryptionKey = SharedSecret<Self>,
-            Randomness = (),
-            Header = (),
-            Plaintext = Note<Self>,
-        > + encryption::Decrypt<
-            DecryptionKey = SharedSecret<Self>,
-            DecryptedPlaintext = Option<Note<Self>>,
-        >;
-}
-
-/// Asset Variable Type
-pub type AssetVar<C> = Asset<<C as Configuration>::AssetIdVar, <C as Configuration>::AssetValueVar>;
-
-/// Secret Key Type
-pub type SecretKey<C> = <C as Configuration>::SecretKey;
-
-/// Secret Key Variable Type
-pub type SecretKeyVar<C> = <C as Configuration>::SecretKeyVar;
-
-/// Public Key Type
-pub type PublicKey<C> = <C as Configuration>::PublicKey;
-
-/// Public Key Variable Type
-pub type PublicKeyVar<C> = <C as Configuration>::PublicKeyVar;
-
-/// Shared Secret Type
-pub type SharedSecret<C> = key::agreement::SharedSecret<<C as Configuration>::KeyAgreementScheme>;
-
-/// Unspend Transaction Output Type
-pub type Utxo<C> = <C as Configuration>::Utxo;
-
-/// Unspent Transaction Output Variable Type
-pub type UtxoVar<C> = <C as Configuration>::UtxoVar;
-
-/// Void Number Type
-pub type VoidNumber<C> = <C as Configuration>::VoidNumber;
-
-/// Void Number Variable Type
-pub type VoidNumberVar<C> = <C as Configuration>::VoidNumberVar;
-
-/// UTXO Accumulator Witness Type
-pub type UtxoAccumulatorWitness<C> = <<C as Configuration>::UtxoAccumulatorModel as Model>::Witness;
-
-/// UTXO Accumulator Output Type
-pub type UtxoAccumulatorOutput<C> = <<C as Configuration>::UtxoAccumulatorModel as Model>::Output;
-
-/// UTXO Membership Proof Type
-pub type UtxoMembershipProof<C> = MembershipProof<<C as Configuration>::UtxoAccumulatorModel>;
-
-/// UTXO Membership Proof Variable Type
-pub type UtxoMembershipProofVar<C> =
-    MembershipProof<<C as Configuration>::UtxoAccumulatorModelVar, Compiler<C>>;
-
-/// Encrypted Note Type
-pub type EncryptedNote<C> = EncryptedMessage<
-    Hybrid<<C as Configuration>::KeyAgreementScheme, <C as Configuration>::NoteEncryptionScheme>,
->;
-
-/// Transfer Configuration Compiler Type
-pub type Compiler<C> = <C as Configuration>::Compiler;
-
-/// Transfer Proof System Type
-type ProofSystemType<C> = <C as Configuration>::ProofSystem;
-
-/// Transfer Proof System Error Type
-pub type ProofSystemError<C> = <ProofSystemType<C> as ProofSystem>::Error;
-
-/// Transfer Proof System Public Parameters Type
-pub type ProofSystemPublicParameters<C> = <ProofSystemType<C> as ProofSystem>::PublicParameters;
-
-/// Transfer Proving Context Type
-pub type ProvingContext<C> = <ProofSystemType<C> as ProofSystem>::ProvingContext;
-
-/// Transfer Verifying Context Type
-pub type VerifyingContext<C> = <ProofSystemType<C> as ProofSystem>::VerifyingContext;
-
-/// Transfer Proof System Input Type
-pub type ProofInput<C> = <<C as Configuration>::ProofSystem as ProofSystem>::Input;
-
-/// Transfer Validity Proof Type
-pub type Proof<C> = <ProofSystemType<C> as ProofSystem>::Proof;
-
-/// Transfer Parameters
-#[derive(derivative::Derivative)]
-#[derivative(
-    Clone(bound = r"
-        C::KeyAgreementScheme: Clone,
-        C::NoteEncryptionScheme: Clone,
-        C::UtxoCommitmentScheme: Clone,
-        C::VoidNumberCommitmentScheme: Clone
-    "),
-    Copy(bound = r"
-        C::KeyAgreementScheme: Copy,
-        C::NoteEncryptionScheme: Copy,
-        C::UtxoCommitmentScheme: Copy,
-        C::VoidNumberCommitmentScheme: Copy
-    "),
-    Debug(bound = r"
-        C::KeyAgreementScheme: Debug,
-        C::NoteEncryptionScheme: Debug,
-        C::UtxoCommitmentScheme: Debug,
-        C::VoidNumberCommitmentScheme: Debug
-    "),
-    Default(bound = r"
-        C::KeyAgreementScheme: Default,
-        C::NoteEncryptionScheme: Default,
-        C::UtxoCommitmentScheme: Default,
-        C::VoidNumberCommitmentScheme: Default
-    "),
-    Eq(bound = r"
-        C::KeyAgreementScheme: Eq,
-        C::NoteEncryptionScheme: Eq,
-        C::UtxoCommitmentScheme: Eq,
-        C::VoidNumberCommitmentScheme: Eq
-    "),
-    Hash(bound = r"
-        C::KeyAgreementScheme: Hash,
-        C::NoteEncryptionScheme: Hash,
-        C::UtxoCommitmentScheme: Hash,
-        C::VoidNumberCommitmentScheme: Hash
-    "),
-    PartialEq(bound = r"
-        C::KeyAgreementScheme: PartialEq,
-        C::NoteEncryptionScheme: PartialEq,
-        C::UtxoCommitmentScheme: PartialEq,
-        C::VoidNumberCommitmentScheme: PartialEq
-    ")
-)]
-pub struct Parameters<C>
-where
-    C: Configuration + ?Sized,
-{
-    /// Note Encryption Scheme
-    pub note_encryption_scheme: Hybrid<C::KeyAgreementScheme, C::NoteEncryptionScheme>,
-
-    /// UTXO Commitment Scheme
-    pub utxo_commitment: C::UtxoCommitmentScheme,
-
-    /// Void Number Commitment Scheme
-    pub void_number_commitment: C::VoidNumberCommitmentScheme,
-}
-
-impl<C> Parameters<C>
-where
-    C: Configuration + ?Sized,
-{
-    /// Builds a new [`Parameters`] container from `note_encryption_scheme`, `utxo_commitment`, and
-    /// `void_number_commitment`.
-    #[inline]
-    pub fn new(
-        key_agreement_scheme: C::KeyAgreementScheme,
-        note_encryption_scheme: C::NoteEncryptionScheme,
-        utxo_commitment: C::UtxoCommitmentScheme,
-        void_number_commitment: C::VoidNumberCommitmentScheme,
-    ) -> Self {
-        Self {
-            note_encryption_scheme: Hybrid {
-                key_agreement_scheme,
-                encryption_scheme: note_encryption_scheme,
-            },
-            utxo_commitment,
-            void_number_commitment,
-        }
-    }
-
-    /// Returns the [`KeyAgreementScheme`](Configuration::KeyAgreementScheme) associated to `self`.
-    #[inline]
-    pub fn key_agreement_scheme(&self) -> &C::KeyAgreementScheme {
-        &self.note_encryption_scheme.key_agreement_scheme
-    }
-
-    /// Derives a [`PublicKey`] from a borrowed `secret_key`.
-    #[inline]
-    pub fn derive(&self, secret_key: &SecretKey<C>) -> PublicKey<C> {
-        self.note_encryption_scheme
-            .key_agreement_scheme
-            .derive(secret_key, &mut ())
-    }
-
-    /// Computes the [`Utxo`] associated to `ephemeral_secret_key`, `public_spend_key`, and `asset`.
-    #[inline]
-    pub fn utxo(
-        &self,
-        ephemeral_secret_key: &SecretKey<C>,
-        public_spend_key: &PublicKey<C>,
-        asset: &Asset,
-    ) -> Utxo<C> {
-        self.utxo_commitment
-            .commit(ephemeral_secret_key, public_spend_key, asset, &mut ())
-    }
-
-    /// Computes the [`VoidNumber`] associated to `secret_spend_key` and `utxo`.
-    #[inline]
-    pub fn void_number(&self, secret_spend_key: &SecretKey<C>, utxo: &Utxo<C>) -> VoidNumber<C> {
-        self.void_number_commitment
-            .commit(secret_spend_key, utxo, &mut ())
-    }
-
-    /// Validates the `utxo` against the `secret_spend_key` and the given `ephemeral_secret_key`
-    /// and `asset`, returning the void number if the `utxo` is valid.
-    #[inline]
-    pub fn check_full_asset(
-        &self,
-        secret_spend_key: &SecretKey<C>,
-        ephemeral_secret_key: &SecretKey<C>,
-        asset: &Asset,
-        utxo: &Utxo<C>,
-    ) -> Option<VoidNumber<C>> {
-        (&self.utxo(ephemeral_secret_key, &self.derive(secret_spend_key), asset) == utxo)
-            .then(move || self.void_number(secret_spend_key, utxo))
-    }
-}
-
-/// Transfer Full Parameters
-#[derive(derivative::Derivative)]
-#[derivative(Clone(bound = ""), Copy(bound = ""))]
-pub struct FullParameters<'p, C>
-where
-    C: Configuration,
-{
-    /// Base Parameters
-    pub base: &'p Parameters<C>,
-
-    /// UTXO Accumulator Model
-    pub utxo_accumulator_model: &'p C::UtxoAccumulatorModel,
-}
-
-impl<'p, C> FullParameters<'p, C>
-where
-    C: Configuration,
-{
-    /// Builds a new [`FullParameters`] from `base` and `utxo_accumulator_model`.
-    #[inline]
-    pub fn new(
-        base: &'p Parameters<C>,
-        utxo_accumulator_model: &'p C::UtxoAccumulatorModel,
-    ) -> Self {
-        Self {
-            base,
-            utxo_accumulator_model,
-        }
-    }
-}
-
-impl<'p, C> AsRef<Parameters<C>> for FullParameters<'p, C>
-where
-    C: Configuration,
-{
-    #[inline]
-    fn as_ref(&self) -> &Parameters<C> {
-        self.base
-    }
-}
-
-impl<'p, C> Deref for FullParameters<'p, C>
-where
-    C: Configuration,
-{
-    type Target = Parameters<C>;
-
-    #[inline]
-    fn deref(&self) -> &Self::Target {
-        self.base
-    }
-}
-
-/// Transfer Full Parameters Variables
-pub struct FullParametersVar<'p, C>
-where
-    C: Configuration,
-{
-    /// Key Agreement Scheme
-    key_agreement: C::KeyAgreementSchemeVar,
-
-    /// UTXO Commitment Scheme
-    utxo_commitment: C::UtxoCommitmentSchemeVar,
-
-    /// Void Number Commitment Scheme
-    void_number_commitment: C::VoidNumberCommitmentSchemeVar,
-
-    /// UTXO Accumulator Model
-    utxo_accumulator_model: C::UtxoAccumulatorModelVar,
-
-    /// Type Parameter Marker
-    __: PhantomData<&'p ()>,
-}
-
-impl<'p, C> FullParametersVar<'p, C>
-where
-    C: Configuration,
-{
-    /// Derives a [`PublicKeyVar`] from `secret_key`.
-    #[inline]
-    fn derive(&self, secret_key: &SecretKeyVar<C>, compiler: &mut C::Compiler) -> PublicKeyVar<C> {
-        self.key_agreement.derive(secret_key, compiler)
-    }
-
-    /// Computes the [`UtxoVar`] associated to `ephemeral_secret_key`, `public_spend_key`, and
-    /// `asset`.
-    #[inline]
-    fn utxo(
-        &self,
-        ephemeral_secret_key: &SecretKeyVar<C>,
-        public_spend_key: &PublicKeyVar<C>,
-        asset: &AssetVar<C>,
-        compiler: &mut C::Compiler,
-    ) -> UtxoVar<C> {
-        self.utxo_commitment
-            .commit(ephemeral_secret_key, public_spend_key, asset, compiler)
-    }
-
-    /// Computes the [`VoidNumberVar`] associated to `secret_spend_key` and `utxo`.
-    #[inline]
-    fn void_number(
-        &self,
-        secret_spend_key: &SecretKeyVar<C>,
-        utxo: &UtxoVar<C>,
-        compiler: &mut C::Compiler,
-    ) -> VoidNumberVar<C> {
-        self.void_number_commitment
-            .commit(secret_spend_key, utxo, compiler)
-    }
-}
-
-impl<'p, C> Constant<C::Compiler> for FullParametersVar<'p, C>
-where
-    C: Configuration,
-    Parameters<C>: 'p,
-{
-    type Type = FullParameters<'p, C>;
-
-    #[inline]
-    fn new_constant(this: &Self::Type, compiler: &mut C::Compiler) -> Self {
-        Self {
-            key_agreement: this
-                .note_encryption_scheme
-                .key_agreement_scheme
-                .as_constant(compiler),
-            utxo_commitment: this.utxo_commitment.as_constant(compiler),
-            void_number_commitment: this.void_number_commitment.as_constant(compiler),
-            utxo_accumulator_model: this.utxo_accumulator_model.as_constant(compiler),
-            __: PhantomData,
-        }
-    }
-}
-
-/// Spending Key
-#[derive(derivative::Derivative)]
-#[derivative(Clone(bound = ""))]
-pub struct SpendingKey<C>
-where
-    C: Configuration,
-{
-    /// Spend Part of the Spending Key
-    spend: SecretKey<C>,
-
-    /// View Part of the Spending Key
-    view: SecretKey<C>,
-}
-
-impl<C> SpendingKey<C>
-where
-    C: Configuration,
-{
-    /// Builds a new [`SpendingKey`] from `spend` and `view`.
-    #[inline]
-    pub fn new(spend: SecretKey<C>, view: SecretKey<C>) -> Self {
-        Self { spend, view }
-    }
-
-    /// Derives the receiving key for `self`.
-    #[inline]
-    pub fn derive(&self, parameters: &C::KeyAgreementScheme) -> ReceivingKey<C> {
-        ReceivingKey {
-            spend: parameters.derive(&self.spend, &mut ()),
-            view: parameters.derive(&self.view, &mut ()),
-        }
-    }
-
-    /// Validates the `utxo` against `self` and the given `ephemeral_secret_key` and `asset`,
-    /// returning the void number if the `utxo` is valid.
-    #[inline]
-    pub fn check_full_asset(
-        &self,
-        parameters: &Parameters<C>,
-        ephemeral_secret_key: &SecretKey<C>,
-        asset: &Asset,
-        utxo: &Utxo<C>,
-    ) -> Option<VoidNumber<C>> {
-        parameters.check_full_asset(&self.spend, ephemeral_secret_key, asset, utxo)
-    }
-
-    /// Prepares `self` for spending `asset` with the given `ephemeral_secret_key`.
-    #[inline]
-    pub fn sender(
-        &self,
-        parameters: &Parameters<C>,
-        ephemeral_secret_key: SecretKey<C>,
-        asset: Asset,
-    ) -> PreSender<C> {
-        PreSender::new(parameters, self.spend.clone(), ephemeral_secret_key, asset)
-    }
-
-    /// Prepares `self` for receiving `asset`.
-    #[inline]
-    pub fn receiver(
-        &self,
-        parameters: &Parameters<C>,
-        ephemeral_secret_key: SecretKey<C>,
-        asset: Asset,
-    ) -> Receiver<C> {
-        self.derive(parameters.key_agreement_scheme())
-            .into_receiver(parameters, ephemeral_secret_key, asset)
-    }
-
-    /// Returns an receiver-sender pair for internal transactions.
-    #[inline]
-    pub fn internal_pair(
-        &self,
-        parameters: &Parameters<C>,
-        ephemeral_secret_key: SecretKey<C>,
-        asset: Asset,
-    ) -> (Receiver<C>, PreSender<C>) {
-        let receiver = self.receiver(parameters, ephemeral_secret_key.clone(), asset);
-        let sender = self.sender(parameters, ephemeral_secret_key, asset);
-        (receiver, sender)
-    }
-
-    /// Returns an receiver-sender pair of zeroes for internal transactions.
-    #[inline]
-    pub fn internal_zero_pair(
-        &self,
-        parameters: &Parameters<C>,
-        ephemeral_secret_key: SecretKey<C>,
-        asset_id: AssetId,
-    ) -> (Receiver<C>, PreSender<C>) {
-        self.internal_pair(parameters, ephemeral_secret_key, Asset::zero(asset_id))
-    }
-}
-
-impl<C, D> Sample<D> for SpendingKey<C>
-where
-    C: Configuration,
-    D: Clone,
-    SecretKey<C>: Sample<D>,
-{
-    #[inline]
-    fn sample<R>(distribution: D, rng: &mut R) -> Self
-    where
-        R: RngCore + ?Sized,
-    {
-        Self::new(
-            Sample::sample(distribution.clone(), rng),
-            Sample::sample(distribution, rng),
-        )
-    }
-}
-
-/// Receiving Key
-#[cfg_attr(
-    feature = "serde",
-    derive(Deserialize, Serialize),
-    serde(
-        bound(
-            deserialize = "PublicKey<C>: Deserialize<'de>",
-            serialize = "PublicKey<C>: Serialize"
-        ),
-        crate = "manta_util::serde",
-        deny_unknown_fields
-    )
-)]
-#[derive(derivative::Derivative)]
-#[derivative(
-    Clone(bound = ""),
-    Copy(bound = "PublicKey<C>: Copy"),
-    Debug(bound = "PublicKey<C>: Debug"),
-    Eq(bound = "PublicKey<C>: Eq"),
-    Hash(bound = "PublicKey<C>: Hash"),
-    PartialEq(bound = "PublicKey<C>: PartialEq")
-)]
-pub struct ReceivingKey<C>
-where
-    C: Configuration,
-{
-    /// Spend Part of the Receiving Key
-    pub spend: PublicKey<C>,
-
-    /// View Part of the Receiving Key
-    pub view: PublicKey<C>,
-}
-
-impl<C> ReceivingKey<C>
-where
-    C: Configuration,
-{
-    /// Prepares `self` for receiving `asset`.
-    #[inline]
-    pub fn into_receiver(
-        self,
-        parameters: &Parameters<C>,
-        ephemeral_secret_key: SecretKey<C>,
-        asset: Asset,
-    ) -> Receiver<C> {
-        Receiver::new(
-            parameters,
-            self.spend,
-            self.view,
-            ephemeral_secret_key,
-            asset,
-        )
-    }
-}
-
-/// Note
-#[derive(derivative::Derivative)]
-#[derivative(
-    Clone(bound = "SecretKey<C>: Clone"),
-    Copy(bound = "SecretKey<C>: Copy"),
-    Debug(bound = "SecretKey<C>: Debug"),
-    Eq(bound = "SecretKey<C>: Eq"),
-    Hash(bound = "SecretKey<C>: Hash"),
-    PartialEq(bound = "SecretKey<C>: PartialEq")
-)]
-pub struct Note<C>
-where
-    C: Configuration + ?Sized,
-{
-    /// Ephemeral Secret Key
-    pub ephemeral_secret_key: SecretKey<C>,
-
-    /// Asset
-    pub asset: Asset,
-}
-
-impl<C> Note<C>
-where
-    C: Configuration,
-{
-    /// Builds a new plaintext [`Note`] from `ephemeral_secret_key` and `asset`.
-    #[inline]
-    pub fn new(ephemeral_secret_key: SecretKey<C>, asset: Asset) -> Self {
-        Self {
-            ephemeral_secret_key,
-            asset,
-        }
-    }
-}
-
-impl<C, SD, AD> Sample<(SD, AD)> for Note<C>
-where
-    C: Configuration,
-    SecretKey<C>: Sample<SD>,
-    Asset: Sample<AD>,
-{
-    #[inline]
-    fn sample<R>(distribution: (SD, AD), rng: &mut R) -> Self
-    where
-        R: RngCore + ?Sized,
-    {
-        Self::new(
-            Sample::sample(distribution.0, rng),
-            Sample::sample(distribution.1, rng),
-        )
-    }
-}
-
-impl<C> SizeLimit for Note<C>
-where
-    C: Configuration,
-{
-    const SIZE: usize = SecretKey::<C>::SIZE + Asset::SIZE;
-}
-
-*/
 
 /// Configuration
 pub trait Configuration {
@@ -849,16 +88,19 @@ pub trait Configuration {
     type Compiler: Assert;
 
     /// Asset Id Type
-    type AssetId;
+    type AssetId: Clone;
 
     /// Asset Value Type
-    type AssetValue;
+    type AssetValue: Clone;
 
     /// Unspent Transaction Output Type
     type Utxo: PartialEq;
 
     /// Nullifier Type
     type Nullifier: PartialEq;
+
+    /// Spending Key
+    type SpendingKey;
 
     /// Authorization Signature Randomness
     type AuthorizationSignatureRandomness: Sample;
@@ -873,11 +115,17 @@ pub trait Configuration {
             VerifyingKey = AuthorizationSigningKey<Self>,
         >;
 
+    /// Mint Secret Type
+    type MintSecret: utxo::MintSecret<Asset = Asset<Self>>;
+
+    /// Spend Secret Type
+    type SpendSecret: utxo::SpendSecret<Asset = Asset<Self>>;
+
     /// Parameters Type
     type Parameters: utxo::AssetType<Asset = Asset<Self>>
         + utxo::UtxoType<Utxo = Self::Utxo>
-        + Mint
-        + Spend<Nullifier = Self::Nullifier>;
+        + Mint<Secret = Self::MintSecret>
+        + Spend<Secret = Self::SpendSecret, Nullifier = Self::Nullifier>;
 
     /// Authority Variable Type
     type AuthorityVar: Variable<Secret, Self::Compiler, Type = Authority<Self>>;
@@ -929,22 +177,26 @@ pub trait Configuration {
         >;
 
     /// Mint Secret Variable Type
-    type MintSecret: Variable<Secret, Self::Compiler, Type = <Self::Parameters as Mint>::Secret>;
+    type MintSecretVar: Variable<Secret, Self::Compiler, Type = <Self::Parameters as Mint>::Secret>;
 
     /// Spend Secret Variable Type
-    type SpendSecret: Variable<Secret, Self::Compiler, Type = <Self::Parameters as Spend>::Secret>;
+    type SpendSecretVar: Variable<
+        Secret,
+        Self::Compiler,
+        Type = <Self::Parameters as Spend>::Secret,
+    >;
 
     /// Parameters Variable Type
     type ParametersVar: Constant<Self::Compiler, Type = Self::Parameters>
         + utxo::AssetType<Asset = AssetVar<Self>>
         + utxo::UtxoType<Utxo = Self::UtxoVar>
-        + Mint<Self::Compiler, Secret = Self::MintSecret, Note = Self::NoteVar>
+        + Mint<Self::Compiler, Secret = Self::MintSecretVar, Note = Self::NoteVar>
         + Spend<
             Self::Compiler,
             Authority = Self::AuthorityVar,
             Authorization = Self::AuthorizationVar,
             UtxoAccumulatorModel = Self::UtxoAccumulatorModelVar,
-            Secret = Self::SpendSecret,
+            Secret = Self::SpendSecretVar,
             Nullifier = Self::NullifierVar,
         >;
 
@@ -1007,11 +259,17 @@ pub type UtxoAccumulatorModel<C> = utxo::UtxoAccumulatorModel<Parameters<C>>;
 /// Transfer UTXO Accumulator Model Variable Type
 pub type UtxoAccumulatorModelVar<C> = utxo::UtxoAccumulatorModel<ParametersVar<C>, Compiler<C>>;
 
+/// Transfer UTXO Accumulator Item Type
+pub type UtxoAccumulatorItem<C> = utxo::UtxoAccumulatorItem<Parameters<C>>;
+
 /// Transfer UTXO Accumulator Witness Type
 pub type UtxoAccumulatorWitness<C> = utxo::UtxoAccumulatorWitness<Parameters<C>>;
 
 /// Transfer UTXO Accumulator Output Type
 pub type UtxoAccumulatorOutput<C> = utxo::UtxoAccumulatorOutput<Parameters<C>>;
+
+/// Transfer Address Type
+pub type Address<C> = utxo::Address<<C as Configuration>::MintSecret>;
 
 /// Transfer Asset Type
 pub type Asset<C> = asset::Asset<<C as Configuration>::AssetId, <C as Configuration>::AssetValue>;
@@ -1157,7 +415,7 @@ where
     /// when required.
     #[inline]
     pub fn has_authorization_proof_when_required(has_authorization_proof: bool) {
-        if SENDERS > 0 {
+        if requires_authorization(SENDERS) {
             assert!(
                 has_authorization_proof,
                 "Missing authorization proof when required."
@@ -1447,7 +705,7 @@ where
     #[inline]
     fn new_unknown(compiler: &mut C::Compiler) -> Self {
         Self {
-            authorization_proof: (SENDERS > 0)
+            authorization_proof: requires_authorization(SENDERS)
                 .then(|| compiler.allocate_unknown::<Derived<(Secret, Public)>, _>()),
             asset_id: has_public_participants(SOURCES, SINKS)
                 .then(|| compiler.allocate_unknown::<Public, _>()),
@@ -1902,6 +1160,22 @@ where
         )
     }
 
+    /// Asserts that `self` has a valid proof. See [`has_valid_proof`](Self::has_valid_proof) for
+    /// more.
+    #[inline]
+    pub fn assert_valid_proof(&self, verifying_context: &VerifyingContext<C>)
+    where
+        Self: Debug,
+        ProofSystemError<C>: Debug,
+    {
+        assert!(
+            self.has_valid_proof(verifying_context)
+                .expect("Unable to verify proof."),
+            "Invalid TransferPostBody: {:?}.",
+            self,
+        );
+    }
+
     /// Signs `self` with the authorization `signing_key`.
     #[inline]
     pub fn sign<R>(
@@ -2024,6 +1298,22 @@ where
         verifying_context: &VerifyingContext<C>,
     ) -> Result<bool, ProofSystemError<C>> {
         self.body.has_valid_proof(verifying_context)
+    }
+
+    /// Asserts that `self` has a valid proof. See [`has_valid_proof`](Self::has_valid_proof) for
+    /// more.
+    #[inline]
+    pub fn assert_valid_proof(&self, verifying_context: &VerifyingContext<C>)
+    where
+        Self: Debug,
+        ProofSystemError<C>: Debug,
+    {
+        assert!(
+            self.has_valid_proof(verifying_context)
+                .expect("Unable to verify proof."),
+            "Invalid TransferPost: {:?}.",
+            self,
+        );
     }
 
     /// Verifies that the authorization signature for `self` is valid according to the

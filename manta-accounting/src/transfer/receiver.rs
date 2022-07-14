@@ -219,7 +219,7 @@ where
     /// [`register_all`] can be implemented depending on which is more efficient.
     ///
     /// [`Utxo`]: crate::transfer::utxo::UtxoType::Utxo
-    /// [`Note`]: Mint::Note
+    /// [`Note`]: crate::transfer::utxo::NoteType::Note
     /// [`register`]: Self::register
     /// [`register_all`]: Self::register_all
     #[inline]

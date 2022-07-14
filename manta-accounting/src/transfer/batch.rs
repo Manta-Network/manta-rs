@@ -18,9 +18,9 @@
 
 // TODO: Move more of the batching algorithm here to improve library interfaces.
 
-use crate::{
-    asset::Asset,
-    transfer::{Configuration, Parameters, PreSender, Receiver, SpendingKey, Utxo},
+use crate::transfer::{
+    Address, Asset, Configuration, Parameters, PreSender, Receiver, Utxo, UtxoAccumulatorItem,
+    UtxoAccumulatorModel,
 };
 use alloc::vec::Vec;
 use manta_crypto::{
@@ -45,17 +45,18 @@ impl<C> Join<C>
 where
     C: Configuration,
 {
-    /// Builds a new [`Join`] for `asset` using `spending_key` and `zero_key`.
+    /// Builds a new [`Join`] for `asset` using `address`.
     #[inline]
     pub fn new<R, const RECEIVERS: usize>(
         parameters: &Parameters<C>,
-        asset: Asset,
-        spending_key: &SpendingKey<C>,
+        address: Address<C>,
+        asset: Asset<C>,
         rng: &mut R,
     ) -> ([Receiver<C>; RECEIVERS], Self)
     where
         R: CryptoRng + RngCore + ?Sized,
     {
+        /* TODO:
         let mut receivers = Vec::with_capacity(RECEIVERS);
         let mut zeroes = Vec::with_capacity(RECEIVERS - 1);
         let (receiver, pre_sender) = spending_key.internal_pair(parameters, rng.gen(), asset);
@@ -67,17 +68,19 @@ where
             zeroes.push(pre_sender);
         }
         (into_array_unchecked(receivers), Self { zeroes, pre_sender })
+        */
+        todo!()
     }
 
     /// Inserts UTXOs for each sender in `self` into the `utxo_accumulator` for future proof selection.
     #[inline]
-    pub fn insert_utxos<A>(&self, utxo_accumulator: &mut A)
+    pub fn insert_utxos<A>(&self, parameters: &Parameters<C>, utxo_accumulator: &mut A)
     where
-        A: Accumulator<Item = Utxo<C>, Model = C::UtxoAccumulatorModel>,
+        A: Accumulator<Item = UtxoAccumulatorItem<C>, Model = UtxoAccumulatorModel<C>>,
     {
-        self.pre_sender.insert_utxo(utxo_accumulator);
+        self.pre_sender.insert_utxo(parameters, utxo_accumulator);
         for zero in &self.zeroes {
-            zero.insert_utxo(utxo_accumulator);
+            zero.insert_utxo(parameters, utxo_accumulator);
         }
     }
 }
