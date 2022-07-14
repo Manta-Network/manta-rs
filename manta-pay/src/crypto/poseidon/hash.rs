@@ -91,7 +91,8 @@ where
         Self::new_unchecked(permutation, S::from_parameter(T::domain_tag()))
     }
 
-    /// Builds a new [`Hasher`] over `permutation` and `domain_tag` without checking.
+    /// Builds a new [`Hasher`] over `permutation` and `domain_tag` without checking
+    /// [`S::WIDTH`] equals `ARITY+1` and `domain_tag` as a constant.
     #[inline]
     fn new_unchecked(permutation: Permutation<S, COM>, domain_tag: S::Field) -> Self {
         Self {
@@ -102,6 +103,7 @@ where
     }
 
     /// Computes the hash over `input` in the given `compiler` and returns the untruncated state.
+    #[inline]
     pub fn hash_untruncated(&self, input: [&S::Field; ARITY], compiler: &mut COM) -> Vec<S::Field> {
         let mut state = self.permutation.first_round_with_domain_tag_unchecked(
             &self.domain_tag,
@@ -185,10 +187,8 @@ where
 
 impl<D, S, T, const ARITY: usize, COM> Sample<D> for Hasher<S, T, ARITY, COM>
 where
-    D: Clone,
     S: Specification<COM>,
-    S::Field: Sample<D>,
-    S::ParameterField: Field + FieldGeneration + PartialEq + Sample<D>,
+    S::ParameterField: Field + FieldGeneration + Sample<D>,
     T: DomainTag<S>,
 {
     #[inline]
@@ -208,27 +208,14 @@ mod test {
     use ark_ff::field_new;
     use manta_crypto::rand::{OsRng, Sample};
 
-    /// Tests if [`Poseidon2`](crate::config::Poseidon2) matches the known hash values.
+    /// Tests if [`Poseidon2`](crate::config::Poseidon2) matches hardcoded sage outputs.
     #[test]
     fn poseidon_hash_matches_known_values() {
         let hasher = Poseidon2::gen(&mut OsRng);
         let inputs = [&Fp(field_new!(Fr, "1")), &Fp(field_new!(Fr, "2"))];
         assert_eq!(
             hasher.hash_untruncated(inputs, &mut ()),
-            vec![
-                Fp(field_new!(
-                    Fr,
-                    "1808609226548932412441401219270714120272118151392880709881321306315053574086"
-                )),
-                Fp(field_new!(
-                    Fr,
-                    "13469396364901763595452591099956641926259481376691266681656453586107981422876"
-                )),
-                Fp(field_new!(
-                    Fr,
-                    "28037046374767189790502007352434539884533225547205397602914398240898150312947"
-                )),
-            ]
+            include!("permutation_hardcoded_test/width3")
         );
     }
 }

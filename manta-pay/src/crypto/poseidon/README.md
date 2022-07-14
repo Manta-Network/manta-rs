@@ -25,3 +25,13 @@ do
 done
 cd ..
 ```
+
+## Generate permutation Hardcoded Tests for BLS12-381 from SAGE
+
+The following script generates permutation hardcoded test values:
+
+```sh
+cd permutation_hardcoded_test
+sage poseidonperm_bls381_width3.sage
+cd ..
+```

@@ -457,9 +457,8 @@ where
 
 impl<D, S, COM> Sample<D> for Permutation<S, COM>
 where
-    D: Clone,
     S: Specification<COM>,
-    S::ParameterField: Field + FieldGeneration + PartialEq + Sample<D>,
+    S::ParameterField: Field + FieldGeneration,
 {
     #[inline]
     fn sample<R>(distribution: D, rng: &mut R) -> Self
