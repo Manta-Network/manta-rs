@@ -84,23 +84,28 @@ where
     S: Specification<COM>,
     T: DomainTag<S>,
 {
-    /// Builds a new [`Hasher`] over `permutation`.
-    #[inline]
-    pub fn new(permutation: Permutation<S, COM>) -> Self {
-        assert_eq!(ARITY + 1, S::WIDTH);
-        Self::new_unchecked(permutation, S::from_parameter(T::domain_tag()))
-    }
-
-    /// Builds a new [`Hasher`] over `permutation` and `domain_tag` without checking
-    /// `WIDTH` equals `ARITY+1` and `domain_tag` as a constant.
+    /// Builds a new [`Hasher`] over `permutation` and `domain_tag` without checking that
+    /// `ARITY + 1 == S::WIDTH`.
     #[inline]
     fn new_unchecked(permutation: Permutation<S, COM>, domain_tag: S::Field) -> Self {
-        assert_eq!(ARITY + 1, S::WIDTH);
         Self {
             permutation,
             domain_tag,
             __: PhantomData,
         }
+    }
+
+    /// Builds a new [`Hasher`] over `permutation` and `domain_tag`.
+    #[inline]
+    pub fn new(permutation: Permutation<S, COM>, domain_tag: S::Field) -> Self {
+        assert_eq!(ARITY + 1, S::WIDTH);
+        Self::new_unchecked(permutation, domain_tag)
+    }
+
+    /// Builds a new [`Hasher`] over `permutation` using `T` to generate the domain tag.
+    #[inline]
+    pub fn from_permutation(permutation: Permutation<S, COM>) -> Self {
+        Self::new(permutation, S::from_parameter(T::domain_tag()))
     }
 
     /// Computes the hash over `input` in the given `compiler` and returns the untruncated state.
@@ -129,7 +134,7 @@ where
 
     #[inline]
     fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
-        Self::new(this.permutation.as_constant(compiler))
+        Self::from_permutation(this.permutation.as_constant(compiler))
     }
 }
 
@@ -161,7 +166,7 @@ where
     where
         R: Read,
     {
-        Ok(Self::new_unchecked(
+        Ok(Self::new(
             Decode::decode(&mut reader)?,
             Decode::decode(&mut reader)?,
         ))
@@ -197,7 +202,7 @@ where
     where
         R: RngCore + ?Sized,
     {
-        Self::new(rng.sample(distribution))
+        Self::from_permutation(rng.sample(distribution))
     }
 }
 

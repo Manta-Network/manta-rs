@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Poseidon Hash Implementation
+//! Poseidon Permutation Implementation
 
 use crate::crypto::poseidon::{
     matrix::MatrixOperations, mds::MdsMatrices, round_constants::generate_round_constants,
