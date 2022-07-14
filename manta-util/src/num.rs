@@ -49,3 +49,21 @@ impl Ceil<usize> for f64 {
         self.ceil() as usize
     }
 }
+
+/// Checked Addition
+pub trait CheckedAdd<Rhs = Self> {
+    /// Output Type
+    type Output;
+
+    /// Checked integer subtraction. Computes `self + rhs`, returning `None` if overflow occurred.
+    fn checked_add(self, rhs: Rhs) -> Option<Self::Output>;
+}
+
+/// Checked Subtraction
+pub trait CheckedSub<Rhs = Self> {
+    /// Output Type
+    type Output;
+
+    /// Checked integer subtraction. Computes `self - rhs`, returning `None` if overflow occurred.
+    fn checked_sub(self, rhs: Rhs) -> Option<Self::Output>;
+}

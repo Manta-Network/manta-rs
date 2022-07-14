@@ -19,7 +19,7 @@
 // TODO: Add typing for `ProvingContext` and `VerifyingContext` against the canonical shapes.
 
 use crate::{
-    asset::AssetMetadata,
+    asset::{AssetMetadata, MetadataDisplay},
     transfer::{
         has_public_participants, requires_authorization, Address, Asset, AuthorizationProof,
         Configuration, FullParametersRef, Parameters, PreSender, ProofSystemError,
@@ -377,35 +377,39 @@ where
         }
     }
 
-    /// Returns `true` if `self` is a [`Transaction`] which transfers zero value.
+    /// Returns the amount of value being transfered in `self`.
     #[inline]
-    pub fn is_zero(&self) -> bool {
-        /* TODO:
+    pub fn value(&self) -> &C::AssetValue {
         match self {
-            Self::ToPrivate(asset) => asset.is_zero(),
-            Self::PrivateTransfer(asset, _) => asset.is_zero(),
-            Self::ToPublic(asset) => asset.is_zero(),
+            Self::ToPrivate(asset) => &asset.value,
+            Self::PrivateTransfer(asset, _) => &asset.value,
+            Self::ToPublic(asset) => &asset.value,
         }
-        */
-        todo!()
     }
 
-    /// Returns a transaction summary given the asset `metadata`.
+    /// Returns `true` if `self` is a [`Transaction`] which transfers zero value.
+    #[inline]
+    pub fn is_zero(&self) -> bool
+    where
+        C::AssetValue: Default + PartialEq,
+    {
+        self.value() == &Default::default()
+    }
+
+    /// Returns a display for the asset and address internal to `self` given the asset `metadata`.
     #[inline]
     pub fn display<F>(&self, metadata: &AssetMetadata, f: F) -> (String, Option<String>)
     where
         F: FnOnce(&Address<C>) -> String,
+        C::AssetValue: MetadataDisplay,
     {
-        /* TODO:
         match self {
-            Self::ToPrivate(Asset { value, .. }) => (metadata.display(*value), None),
-            Self::PrivateTransfer(Asset { value, .. }, address) => {
-                (metadata.display(*value), Some(f(address)))
+            Self::ToPrivate(asset) => (asset.value.display(metadata), None),
+            Self::PrivateTransfer(asset, address) => {
+                (asset.value.display(metadata), Some(f(address)))
             }
-            Self::ToPublic(Asset { value, .. }) => (metadata.display(*value), None),
+            Self::ToPublic(asset) => (asset.value.display(metadata), None),
         }
-        */
-        todo!()
     }
 }
 

@@ -39,9 +39,8 @@ use crate::{
             Mint, MultiProvingContext, PrivateTransfer, PrivateTransferShape, Reclaim, Selection,
             Shape, Transaction,
         },
-        EncryptedNote, FullParameters, Note, Parameters, PreSender, ProofSystemError,
-        ProvingContext, Receiver, ReceivingKey, SecretKey, Sender, SpendingKey, Transfer,
-        TransferPost, Utxo, VoidNumber,
+        FullParameters, Note, Parameters, PreSender, ProofSystemError, ProvingContext, Receiver,
+        ReceivingKey, SecretKey, Sender, SpendingKey, Transfer, TransferPost, Utxo, VoidNumber,
     },
     wallet::ledger::{self, Data},
 };
@@ -106,12 +105,12 @@ where
         bound(
             deserialize = r"
                 Utxo<C>: Deserialize<'de>,
-                EncryptedNote<C>: Deserialize<'de>,
+                Note<C>: Deserialize<'de>,
                 VoidNumber<C>: Deserialize<'de>
             ",
             serialize = r"
                 Utxo<C>: Serialize,
-                EncryptedNote<C>: Serialize,
+                Note<C>: Serialize,
                 VoidNumber<C>: Serialize
             ",
         ),
@@ -121,19 +120,19 @@ where
 )]
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "Utxo<C>: Clone, EncryptedNote<C>: Clone, VoidNumber<C>: Clone"),
-    Debug(bound = "Utxo<C>: Debug, EncryptedNote<C>: Debug, VoidNumber<C>: Debug"),
+    Clone(bound = "Utxo<C>: Clone, Note<C>: Clone, VoidNumber<C>: Clone"),
+    Debug(bound = "Utxo<C>: Debug, Note<C>: Debug, VoidNumber<C>: Debug"),
     Default(bound = ""),
-    Eq(bound = "Utxo<C>: Eq, EncryptedNote<C>: Eq, VoidNumber<C>: Eq"),
-    Hash(bound = "Utxo<C>: Hash, EncryptedNote<C>: Hash, VoidNumber<C>: Hash"),
-    PartialEq(bound = "Utxo<C>: PartialEq, EncryptedNote<C>: PartialEq, VoidNumber<C>: PartialEq")
+    Eq(bound = "Utxo<C>: Eq, Note<C>: Eq, VoidNumber<C>: Eq"),
+    Hash(bound = "Utxo<C>: Hash, Note<C>: Hash, VoidNumber<C>: Hash"),
+    PartialEq(bound = "Utxo<C>: PartialEq, Note<C>: PartialEq, VoidNumber<C>: PartialEq")
 )]
 pub struct SyncData<C>
 where
     C: transfer::Configuration + ?Sized,
 {
     /// Receiver Data
-    pub receivers: Vec<(Utxo<C>, EncryptedNote<C>)>,
+    pub receivers: Vec<(Utxo<C>, Note<C>)>,
 
     /// Sender Data
     pub senders: Vec<VoidNumber<C>>,
@@ -641,7 +640,7 @@ where
         view_key_table: &mut ViewKeyTable<'h, C::HierarchicalKeyDerivationScheme>,
         parameters: &Parameters<C>,
         with_recovery: bool,
-        encrypted_note: EncryptedNote<C>,
+        encrypted_note: Note<C>,
     ) -> Option<ViewKeySelection<C::HierarchicalKeyDerivationScheme, Note<C>>> {
         let mut finder = Finder::new(encrypted_note);
         view_key_table.find_index_with_maybe_gap(with_recovery, move |k| {
@@ -727,7 +726,7 @@ where
         is_partial: bool,
     ) -> SyncResponse<C::Checkpoint>
     where
-        I: Iterator<Item = (Utxo<C>, EncryptedNote<C>)>,
+        I: Iterator<Item = (Utxo<C>, Note<C>)>,
     {
         let void_number_count = void_numbers.len();
         let mut deposit = Vec::new();

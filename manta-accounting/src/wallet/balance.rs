@@ -22,7 +22,8 @@
 
 use crate::asset::{Asset, AssetId, AssetList, AssetValue};
 use alloc::collections::btree_map::{BTreeMap, Entry as BTreeMapEntry};
-use core::hash::Hash;
+use core::{hash::Hash, ops::AddAssign};
+use manta_util::num::CheckedSub;
 
 #[cfg(feature = "std")]
 use std::{
@@ -82,20 +83,25 @@ pub trait BalanceState<I = AssetId, V = AssetValue>: Default {
     fn clear(&mut self);
 }
 
-impl BalanceState for AssetList {
+impl<I, V> BalanceState<I, V> for AssetList<I, V>
+where
+    I: Ord,
+    V: AddAssign + Clone + Default + PartialEq,
+    for<'v> &'v V: CheckedSub<Output = V>,
+{
     #[inline]
-    fn balance(&self, id: &AssetId) -> AssetValue {
+    fn balance(&self, id: &I) -> V {
         self.value(id)
     }
 
     #[inline]
-    fn deposit(&mut self, asset: Asset) {
+    fn deposit(&mut self, asset: Asset<I, V>) {
         self.deposit(asset);
     }
 
     #[inline]
-    fn withdraw(&mut self, asset: Asset) -> bool {
-        self.withdraw(asset)
+    fn withdraw(&mut self, asset: Asset<I, V>) -> bool {
+        self.withdraw(&asset)
     }
 
     #[inline]
@@ -106,7 +112,7 @@ impl BalanceState for AssetList {
 
 /// Adds implementation of [`BalanceState`] for a map type with the given `$entry` type.
 macro_rules! impl_balance_state_map_body {
-    ($I:ident, $V:ident, $entry:tt) => {
+    ($I:ty, $V:ty, $entry:tt) => {
         #[inline]
         fn balance(&self, id: &$I) -> $V {
             self.get(id).cloned().unwrap_or_default()
@@ -114,8 +120,7 @@ macro_rules! impl_balance_state_map_body {
 
         #[inline]
         fn deposit(&mut self, asset: Asset<$I, $V>) {
-            /* TODO:
-            if asset.is_zero() {
+            if asset.value == Default::default() {
                 return;
             }
             match self.entry(asset.id) {
@@ -124,18 +129,15 @@ macro_rules! impl_balance_state_map_body {
                 }
                 $entry::Occupied(entry) => *entry.into_mut() += asset.value,
             }
-            */
-            todo!()
         }
 
         #[inline]
         fn withdraw(&mut self, asset: Asset<$I, $V>) -> bool {
-            /* TODO:
-            if !asset.is_zero() {
+            if asset.value != Default::default() {
                 if let $entry::Occupied(mut entry) = self.entry(asset.id) {
                     let balance = entry.get_mut();
-                    if let Some(next_balance) = balance.checked_sub(asset.value) {
-                        if next_balance == 0 {
+                    if let Some(next_balance) = balance.checked_sub(&asset.value) {
+                        if next_balance == Default::default() {
                             entry.remove();
                         } else {
                             *balance = next_balance;
@@ -147,8 +149,6 @@ macro_rules! impl_balance_state_map_body {
             } else {
                 true
             }
-            */
-            todo!()
         }
 
         #[inline]
@@ -164,7 +164,8 @@ pub type BTreeMapBalanceState<I = AssetId, V = AssetValue> = BTreeMap<I, V>;
 impl<I, V> BalanceState<I, V> for BTreeMapBalanceState<I, V>
 where
     I: Ord,
-    V: Clone + Default,
+    V: AddAssign + Clone + Default + PartialEq,
+    for<'v> &'v V: CheckedSub<Output = V>,
 {
     impl_balance_state_map_body! { I, V, BTreeMapEntry }
 }
@@ -179,7 +180,8 @@ pub type HashMapBalanceState<I = AssetId, V = AssetValue, S = RandomState> = Has
 impl<I, V, S> BalanceState<I, V> for HashMapBalanceState<I, V, S>
 where
     I: Eq + Hash,
-    V: Clone + Default,
+    V: AddAssign + Clone + Default + PartialEq,
+    for<'v> &'v V: CheckedSub<Output = V>,
     S: BuildHasher + Default,
 {
     impl_balance_state_map_body! { I, V, HashMapEntry }
