@@ -34,7 +34,7 @@ use crate::{
     transfer::{
         receiver::{ReceiverLedger, ReceiverPostError},
         sender::{SenderLedger, SenderPostError},
-        utxo::{sign_authorization, Mint, Note, Nullifier, Spend, Utxo, VerifyAuthorization},
+        utxo::{sign_authorization, Mint, Spend, VerifyAuthorization},
     },
 };
 use core::{fmt::Debug, hash::Hash};
@@ -91,7 +91,7 @@ pub trait Configuration {
     type AssetId: Clone;
 
     /// Asset Value Type
-    type AssetValue: Clone;
+    type AssetValue: Clone + Default + PartialOrd;
 
     /// Unspent Transaction Output Type
     type Utxo: PartialEq;
@@ -206,123 +206,135 @@ pub trait Configuration {
         + ProofSystemInput<Self::AssetId>
         + ProofSystemInput<Self::AssetValue>
         + ProofSystemInput<UtxoAccumulatorOutput<Self>>
-        + ProofSystemInput<Utxo<Self::Parameters>>
-        + ProofSystemInput<Note<Self::Parameters>>
-        + ProofSystemInput<Nullifier<Self::Parameters>>;
+        + ProofSystemInput<Utxo<Self>>
+        + ProofSystemInput<Note<Self>>
+        + ProofSystemInput<Nullifier<Self>>;
 }
 
-/// Transfer Compiler Type
+/// Compiler Type
 pub type Compiler<C> = <C as Configuration>::Compiler;
 
-/// Transfer Proof System Type
+/// Proof System Type
 type ProofSystemType<C> = <C as Configuration>::ProofSystem;
 
-/// Transfer Proof System Error Type
+/// Proof System Error Type
 pub type ProofSystemError<C> = <ProofSystemType<C> as ProofSystem>::Error;
 
-/// Transfer Proof System Public Parameters Type
+/// Proof System Public Parameters Type
 pub type ProofSystemPublicParameters<C> = <ProofSystemType<C> as ProofSystem>::PublicParameters;
 
-/// Transfer Proving Context Type
+/// Proving Context Type
 pub type ProvingContext<C> = <ProofSystemType<C> as ProofSystem>::ProvingContext;
 
-/// Transfer Verifying Context Type
+/// Verifying Context Type
 pub type VerifyingContext<C> = <ProofSystemType<C> as ProofSystem>::VerifyingContext;
 
-/// Transfer Proof System Input Type
+/// Proof System Input Type
 pub type ProofInput<C> = <ProofSystemType<C> as ProofSystem>::Input;
 
-/// Transfer Validity Proof Type
+/// Validity Proof Type
 pub type Proof<C> = <ProofSystemType<C> as ProofSystem>::Proof;
 
-/// Transfer Parameters Type
+/// Parameters Type
 pub type Parameters<C> = <C as Configuration>::Parameters;
 
-/// Transfer Parameters Variable Type
+/// Parameters Variable Type
 pub type ParametersVar<C> = <C as Configuration>::ParametersVar;
 
-/// Transfer Full Parameters Type
+/// Full Parameters Type
 pub type FullParameters<'p, C> = utxo::FullParameters<'p, Parameters<C>>;
 
-/// Transfer Full Parameters Variable Type
+/// Full Parameters Variable Type
 pub type FullParametersVar<'p, C> = utxo::FullParameters<'p, ParametersVar<C>, Compiler<C>>;
 
-/// Transfer Full Parameters Reference Type
+/// Full Parameters Reference Type
 pub type FullParametersRef<'p, C> = utxo::FullParametersRef<'p, Parameters<C>>;
 
-/// Transfer Full Parameters Reference Variable Type
+/// Full Parameters Reference Variable Type
 pub type FullParametersRefVar<'p, C> = utxo::FullParametersRef<'p, ParametersVar<C>, Compiler<C>>;
 
-/// Transfer UTXO Accumulator Model Type
+/// UTXO Accumulator Model Type
 pub type UtxoAccumulatorModel<C> = utxo::UtxoAccumulatorModel<Parameters<C>>;
 
-/// Transfer UTXO Accumulator Model Variable Type
+/// UTXO Accumulator Model Variable Type
 pub type UtxoAccumulatorModelVar<C> = utxo::UtxoAccumulatorModel<ParametersVar<C>, Compiler<C>>;
 
-/// Transfer UTXO Accumulator Item Type
+/// UTXO Accumulator Item Type
 pub type UtxoAccumulatorItem<C> = utxo::UtxoAccumulatorItem<Parameters<C>>;
 
-/// Transfer UTXO Accumulator Witness Type
+/// UTXO Accumulator Witness Type
 pub type UtxoAccumulatorWitness<C> = utxo::UtxoAccumulatorWitness<Parameters<C>>;
 
-/// Transfer UTXO Accumulator Output Type
+/// UTXO Accumulator Output Type
 pub type UtxoAccumulatorOutput<C> = utxo::UtxoAccumulatorOutput<Parameters<C>>;
 
-/// Transfer Address Type
+/// Address Type
 pub type Address<C> = utxo::Address<<C as Configuration>::MintSecret>;
 
-/// Transfer Asset Type
+/// Asset Type
 pub type Asset<C> = asset::Asset<<C as Configuration>::AssetId, <C as Configuration>::AssetValue>;
 
-/// Transfer Asset Variable Type
+/// Asset Variable Type
 pub type AssetVar<C> =
     asset::Asset<<C as Configuration>::AssetIdVar, <C as Configuration>::AssetValueVar>;
 
-/// Transfer Authority Type
+/// Authority Type
 pub type Authority<C> = utxo::Authority<Parameters<C>>;
 
-/// Transfer Authority Variable Type
+/// Authority Variable Type
 pub type AuthorityVar<C> = utxo::Authority<ParametersVar<C>>;
 
-/// Transfer Authorization Type
+/// Authorization Type
 pub type Authorization<C> = utxo::Authorization<Parameters<C>>;
 
-/// Transfer Authorization Variable Type
+/// Authorization Variable Type
 pub type AuthorizationVar<C> = utxo::Authorization<ParametersVar<C>>;
 
-/// Transfer Authorization Proof Type
+/// Authorization Proof Type
 pub type AuthorizationProof<C> = utxo::AuthorizationProof<Parameters<C>>;
 
-/// Transfer Authorization Proof Variable Type
+/// Authorization Proof Variable Type
 pub type AuthorizationProofVar<C> = utxo::AuthorizationProof<ParametersVar<C>>;
 
-/// Transfer Authorization Signing Key Type
+/// Authorization Signing Key Type
 pub type AuthorizationSigningKey<C> =
     signature::SigningKey<<C as Configuration>::AuthorizationSignatureScheme>;
 
-/// Transfer Authorization Signature Type
+/// Authorization Signature Type
 pub type AuthorizationSignature<C> =
     signature::Signature<<C as Configuration>::AuthorizationSignatureScheme>;
 
-/// Transfer Pre-Sender Type
+/// Unspent Transaction Output Type
+pub type Utxo<C> = utxo::Utxo<Parameters<C>>;
+
+/// Incoming Note Type
+pub type Note<C> = utxo::Note<Parameters<C>>;
+
+/// Nullifier Type
+pub type Nullifier<C> = utxo::Nullifier<Parameters<C>>;
+
+/// Identifier Type
+pub type Identifier<C> = utxo::Identifier<<C as Configuration>::SpendSecret>;
+
+/// Pre-Sender Type
 pub type PreSender<C> = sender::PreSender<Parameters<C>>;
 
-/// Transfer Sender Type
+/// Sender Type
 pub type Sender<C> = sender::Sender<Parameters<C>>;
 
-/// Transfer Sender Variable Type
+/// Sender Variable Type
 pub type SenderVar<C> = sender::Sender<ParametersVar<C>, Compiler<C>>;
 
-/// Transfer Sender Post Type
+/// Sender Post Type
 pub type SenderPost<C> = sender::SenderPost<Parameters<C>>;
 
-/// Transfer Receiver Type
+/// Receiver Type
 pub type Receiver<C> = receiver::Receiver<Parameters<C>>;
 
-/// Transfer Receiver Variable Type
+/// Receiver Variable Type
 pub type ReceiverVar<C> = receiver::Receiver<ParametersVar<C>, Compiler<C>>;
 
-/// Transfer Receiver Post Type
+/// Receiver Post Type
 pub type ReceiverPost<C> = receiver::ReceiverPost<Parameters<C>>;
 
 /// Transfer
@@ -635,7 +647,7 @@ where
         sources: Vec<C::AssetValueVar>,
         compiler: &mut C::Compiler,
     ) -> C::AssetValueVar {
-        if let Some(authorization_proof) = authorization_proof {
+        if let Some(mut authorization_proof) = authorization_proof {
             authorization_proof.assert_valid(&parameters.base, compiler);
             Self::value_sum(
                 senders
@@ -644,7 +656,7 @@ where
                         let asset = s.well_formed_asset(
                             &parameters.base,
                             &parameters.utxo_accumulator_model,
-                            &authorization_proof.authority,
+                            &mut authorization_proof.authority,
                             compiler,
                         );
                         secret_asset_ids.push(asset.id);

@@ -19,7 +19,7 @@
 // TODO: Add typing for `ProvingContext` and `VerifyingContext` against the canonical shapes.
 
 use crate::{
-    asset::{AssetMetadata, MetadataDisplay},
+    asset::{self, AssetMap, AssetMetadata, MetadataDisplay},
     transfer::{
         has_public_participants, requires_authorization, Address, Asset, AuthorizationProof,
         Configuration, FullParametersRef, Parameters, PreSender, ProofSystemError,
@@ -454,13 +454,15 @@ where
         }
     }
 
-    /* TODO:
     /// Builds a new [`Selection`] by mapping over an asset selection with `builder`.
     #[inline]
-    pub fn new<M, E, F>(selection: asset::Selection<M>, mut builder: F) -> Result<Self, E>
+    pub fn new<M, E, F>(
+        selection: asset::Selection<C::AssetId, C::AssetValue, M>,
+        mut builder: F,
+    ) -> Result<Self, E>
     where
-        M: AssetMap,
-        F: FnMut(M::Key, AssetValue) -> Result<PreSender<C>, E>,
+        M: AssetMap<C::AssetId, C::AssetValue>,
+        F: FnMut(M::Key, C::AssetValue) -> Result<PreSender<C>, E>,
     {
         Ok(Self::build(
             selection.change,
@@ -471,7 +473,6 @@ where
                 .collect::<Result<_, _>>()?,
         ))
     }
-    */
 }
 
 /// Canonical Multi-Proving Contexts

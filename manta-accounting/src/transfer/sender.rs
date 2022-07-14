@@ -65,7 +65,7 @@ where
     #[inline]
     pub fn sample<R>(
         parameters: &S,
-        authority: &S::Authority,
+        authority: &mut S::Authority,
         identifier: Identifier<S::Secret>,
         asset: S::Asset,
         rng: &mut R,
@@ -227,7 +227,7 @@ where
         &self,
         parameters: &S,
         utxo_accumulator_model: &S::UtxoAccumulatorModel,
-        authority: &S::Authority,
+        authority: &mut S::Authority,
         compiler: &mut COM,
     ) -> S::Asset {
         let (asset, nullifier) = parameters.well_formed_asset(

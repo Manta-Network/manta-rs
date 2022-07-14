@@ -984,45 +984,47 @@ macro_rules! impl_asset_map_for_maps_body {
 
         #[inline]
         fn select(&self, asset: &Asset<$I, $V>) -> Selection<$I, $V, Self> {
-            /* TODO:
             if asset.value == Default::default() {
                 return Selection::default();
             }
-            let mut sum = Asset::zero(asset.id);
+            let mut sum = Asset::<$I, $V>::zero(asset.id.clone());
             let mut values = Vec::new();
-            let mut min_max_asset: Option<($k, AssetValue)> = None;
+            let mut min_max_asset = Option::<(&$K, &$V)>::None;
             let map = self
                 .iter()
                 .map(|(key, assets)| assets.iter().map(move |asset| (key, asset)))
                 .flatten()
-                        Some((key, item.value))
+                .filter_map(|(key, item)| {
+                    if item.value != Default::default() && item.id == asset.id {
+                        Some((key, &item.value))
                     } else {
                         None
                     }
                 });
             for (key, value) in map {
-                if value > asset.value {
+                if value > &asset.value {
                     min_max_asset = Some(match min_max_asset.take() {
-                        Some(best) if value >= best.1 => best,
-                        _ => (key.clone(), value),
+                        Some(best) if value >= &best.1 => best,
+                        _ => (key, value),
                     });
-                } else if value == asset.value {
-                    return Selection::new(Default::default(), vec![(key.clone(), value)]);
+                } else if value == &asset.value {
+                    return Selection::new(Default::default(), vec![(key.clone(), value.clone())]);
                 } else {
-                    sum.add_assign(value);
-                    values.push((key.clone(), value));
+                    sum.value.add_assign(value);
+                    values.push((key.clone(), value.clone()));
                 }
             }
             if let Some((best_key, best_value)) = min_max_asset {
-                return Selection::new(best_value - asset.value, vec![(best_key, best_value)]);
+                return Selection::new(
+                    best_value - &asset.value,
+                    vec![(best_key.clone(), best_value.clone())],
+                );
             }
             if sum.value < asset.value {
                 Selection::default()
             } else {
-                Selection::new(sum.value - asset.value, values)
+                Selection::new(&sum.value - &asset.value, values)
             }
-            */
-            todo!()
         }
 
         #[inline]
@@ -1084,8 +1086,9 @@ pub type BTreeAssetMap<K, I = AssetId, V = AssetValue> = BTreeMap<K, Vec<Asset<I
 impl<K, I, V> AssetMap<I, V> for BTreeAssetMap<K, I, V>
 where
     K: Clone + Ord,
-    I: Ord,
-    V: Default + Ord,
+    I: Clone + Ord,
+    V: Clone + Default + Ord + Sub<Output = V> + for<'v> AddAssign<&'v V>,
+    for<'v> &'v V: Sub<Output = V>,
 {
     impl_asset_map_for_maps_body! { K, I, V, BTreeMapEntry }
 }
@@ -1101,8 +1104,9 @@ pub type HashAssetMap<K, I = AssetId, V = AssetValue, S = RandomState> =
 impl<K, I, V, S> AssetMap<I, V> for HashAssetMap<K, I, V, S>
 where
     K: Clone + Hash + Eq,
-    I: Ord,
-    V: Default + Ord,
+    I: Clone + Ord,
+    V: Clone + Default + Ord + Sub<Output = V> + for<'v> AddAssign<&'v V>,
+    for<'v> &'v V: Sub<Output = V>,
     S: BuildHasher + Default,
 {
     impl_asset_map_for_maps_body! { K, I, V, HashMapEntry }

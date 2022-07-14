@@ -455,7 +455,7 @@ where
     #[inline]
     fn derive(
         &self,
-        authority: &Self::Authority,
+        authority: &mut Self::Authority,
         secret: &Self::Secret,
         compiler: &mut COM,
     ) -> (Self::Utxo, Self::Nullifier) {
@@ -509,7 +509,7 @@ where
     fn well_formed_asset(
         &self,
         utxo_accumulator_model: &Self::UtxoAccumulatorModel,
-        authority: &Self::Authority,
+        authority: &mut Self::Authority,
         secret: &Self::Secret,
         utxo: &Self::Utxo,
         utxo_membership_proof: &UtxoMembershipProof<C, COM>,
@@ -890,23 +890,17 @@ where
     /// Returns the receiving key over `key_diversifier` for this [`Authority`].
     #[inline]
     pub fn receiving_key(
-        &self,
+        &mut self,
         viewing_key_derivation_function: &C::ViewingKeyDerivationFunction,
         key_diversifier: &C::Group,
         compiler: &mut COM,
     ) -> C::Group {
-        /*:
-        let viewing_key = match self.viewing_key.take() {
-            Some(viewing_key) => viewing_key,
-            _ => {
+        key_diversifier.mul(
+            self.viewing_key.get_or_insert_with(|| {
                 viewing_key_derivation_function.viewing_key(&self.proof_authorization_key, compiler)
-            }
-        };
-        let receiving_key = key_diversifier.mul(&viewing_key, compiler);
-        self.viewing_key = Some(viewing_key);
-        receiving_key
-        */
-        todo!()
+            }),
+            compiler,
+        )
     }
 }
 
@@ -1000,7 +994,7 @@ where
         &self,
         parameters: &Parameters<C, COM>,
         utxo_accumulator_model: &C::UtxoAccumulatorModel,
-        authority: &Authority<C, COM>,
+        authority: &mut Authority<C, COM>,
         utxo: &Utxo<C, COM>,
         utxo_membership_proof: &UtxoMembershipProof<C, COM>,
         compiler: &mut COM,

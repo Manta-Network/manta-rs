@@ -281,7 +281,7 @@ pub trait Spend<COM = ()>:
     /// `secret`.
     fn derive(
         &self,
-        authority: &Self::Authority,
+        authority: &mut Self::Authority,
         secret: &Self::Secret,
         compiler: &mut COM,
     ) -> (Self::Utxo, Self::Nullifier);
@@ -291,7 +291,7 @@ pub trait Spend<COM = ()>:
     fn well_formed_asset(
         &self,
         utxo_accumulator_model: &Self::UtxoAccumulatorModel,
-        authority: &Self::Authority,
+        authority: &mut Self::Authority,
         secret: &Self::Secret,
         utxo: &Self::Utxo,
         utxo_membership_proof: &UtxoMembershipProof<Self, COM>,
