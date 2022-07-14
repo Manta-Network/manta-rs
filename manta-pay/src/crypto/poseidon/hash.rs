@@ -95,6 +95,7 @@ where
     /// `WIDTH` equals `ARITY+1` and `domain_tag` as a constant.
     #[inline]
     fn new_unchecked(permutation: Permutation<S, COM>, domain_tag: S::Field) -> Self {
+        assert_eq!(ARITY + 1, S::WIDTH);
         Self {
             permutation,
             domain_tag,

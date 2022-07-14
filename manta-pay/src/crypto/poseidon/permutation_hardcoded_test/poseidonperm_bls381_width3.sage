@@ -1,4 +1,5 @@
 # adapted from https://extgit.iaik.tugraz.at/krypto/hadeshash/-/blob/master/code/poseidonperm_x5_255_3.sage
+# Targeting BLS12-381 curve and WIDTH3 permutation with input as [3,1,2].
 
 # M = 128
 N = 765
