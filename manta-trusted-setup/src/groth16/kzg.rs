@@ -502,19 +502,19 @@ where
     C: Pairing + Size + ?Sized,
 {
     /// Vector of Tau Powers in G1 of size [`G1_POWERS`](Size::G1_POWERS)
-    tau_powers_g1: Vec<C::G1>,
+    pub(crate) tau_powers_g1: Vec<C::G1>,
 
     /// Vector of Tau Powers in G2 of size [`G2_POWERS`](Size::G2_POWERS)
-    tau_powers_g2: Vec<C::G2>,
+    pub(crate) tau_powers_g2: Vec<C::G2>,
 
     /// Vector of Alpha Multiplied by Tau Powers in G1 of size [`G2_POWERS`](Size::G2_POWERS)
-    alpha_tau_powers_g1: Vec<C::G1>,
+    pub(crate) alpha_tau_powers_g1: Vec<C::G1>,
 
     /// Vector of Beta Multiplied by Tau Powers in G1 of size [`G2_POWERS`](Size::G2_POWERS)
-    beta_tau_powers_g1: Vec<C::G1>,
+    pub(crate) beta_tau_powers_g1: Vec<C::G1>,
 
     /// Beta in G2
-    beta_g2: C::G2,
+    pub(crate) beta_g2: C::G2,
 }
 
 impl<C> Accumulator<C>
