@@ -236,15 +236,6 @@ where
     *point = point.mul(scalar).into_affine();
 }
 
-/// Multiplies each element in `bases` by `scalar`.
-#[inline]
-pub fn batch_scalar_mul_affine<G>(points: &mut [G], scalar: G::ScalarField)
-where
-    G: AffineCurve,
-{
-    cfg_iter_mut!(points).for_each(|point| scalar_mul(point, scalar))
-}
-
 /// Converts each affine point in `points` into its projective form.
 #[inline]
 pub fn batch_into_projective<G>(points: &[G]) -> Vec<G::Projective>
@@ -317,7 +308,7 @@ where
         .map(|_| G::ScalarField::rand(&mut OsRng))
         .zip(lhs)
         .zip(rhs)
-        .map(|((rho, lhs), rhs)| (lhs.mul(rho), rhs.mul(rho)));
+        .map(|((rho, lhs), rhs)| (lhs.mul(rho), rhs.mul(rho))); // TODO
     cfg_reduce!(pairs, || (Zero::zero(), Zero::zero()), |mut acc, next| {
         acc.0 += next.0;
         acc.1 += next.1;
@@ -433,4 +424,27 @@ where
             "Input did not have the correct length to match the output array of length", N
         ),
     }
+}
+
+/// Multiplies each element in `bases` by a fixed `scalar`.
+#[inline]
+pub fn batch_mul_fixed_scalar<G>(points: &mut [G], scalar: G::ScalarField)
+where
+    G: AffineCurve,
+{
+    cfg_iter_mut!(points).for_each(|point| scalar_mul(point, scalar))
+}
+
+/// Pointwise multiplication of a vector of `points` and a vector of `scalars`.
+#[inline]
+pub fn batch_mul_pointwise<G>(points: &mut [G], scalars: &[G::ScalarField])
+where
+    G: ProjectiveCurve,
+{
+    assert_eq!(points.len(), scalars.len(), "Points should have the same length as scalars.");
+    cfg_iter_mut!(points)
+        .zip(cfg_iter!(scalars))
+        .for_each(|(base, scalar)| {
+            base.mul_assign(*scalar);
+        })
 }

@@ -17,22 +17,28 @@
 //! Groth16 Phase 2
 use crate::{
     groth16::kzg::{Accumulator, Configuration, Pairing},
-    util::{batch_into_projective, hash_to_group, Digest, Zero},
+    util::{
+        batch_into_projective, batch_mul_fixed_scalar, hash_to_group, into_array_unchecked,
+        merge_pairs_affine, Digest, PairingEngineExt, Zero,
+    },
 };
 use alloc::{vec, vec::Vec};
 use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
-use ark_ff::PrimeField;
+use ark_ff::{Field, PrimeField};
 use ark_groth16::{ProvingKey, VerifyingKey};
 use ark_poly::{EvaluationDomain, Radix2EvaluationDomain};
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem};
 use ark_serialize::{CanonicalSerialize, SerializationError, Write};
 use ark_std::rand::{CryptoRng, Rng};
-use manta_crypto::rand::Sample;
-use std::marker::PhantomData;
+use core::marker::PhantomData;
+use manta_crypto::{accumulator::ConstantCapacityAccumulator, rand::Sample};
+
+/// TODO
+pub type Contribution<E> = <E as PairingEngine>::Fr;
 
 /// Groth16 Phase 2
 pub struct Phase2<E, const N: usize> {
-    _curve: PhantomData<E>,
+    __: PhantomData<E>,
 }
 
 /// TODO: may change the name
@@ -90,12 +96,9 @@ where
             + self.s.serialized_size()
             + self.s_delta.serialized_size()
             + self.r_delta.serialized_size()
-            + N
+            + N // TODO: There might be an error related to u8 vs usize.
     }
 }
-
-/// TODO
-pub type Contribution<E> = <E as PairingEngine>::Fr;
 
 impl<E, const N: usize> Phase2<E, N>
 where
@@ -246,7 +249,7 @@ where
         state: &State<E>,
         previous_contributions: &ContributionAndHashes<E, N>,
         rng: &mut R,
-    ) -> (Contribution<E>, Proof<E, N>)
+    ) -> (Proof<E, N>, Contribution<E>)
     where
         D: Default,
         R: Rng + CryptoRng,
@@ -285,7 +288,6 @@ where
         let r_delta = r.mul(delta).into_affine();
 
         (
-            delta,
             Proof {
                 delta_after: state.pk.delta_g1.mul(delta).into_affine(),
                 s,
@@ -293,7 +295,212 @@ where
                 r_delta,
                 transcript: h,
             },
+            delta,
         )
+    }
+
+    /// Contribute randomness to the parameters.  The `PublicKey`
+    /// of this contribution is then added to a hash chain
+    /// to allow a user to later confirm that their
+    /// contribution has been included in the final parameters.
+    pub fn contribute<D, R, H>(
+        state: &mut State<E>,
+        previous_contributions: &mut ContributionAndHashes<E, N>,
+        rng: &mut R,
+    ) -> [u8; N]
+    where
+        D: Default,
+        E::Fr: Sample<D>,
+        E::G1Affine: Sample<D>,
+        E::G2Affine: Sample<D>,
+        R: Rng + CryptoRng,
+        H: Digest<N>,
+    {
+        // Generate a keypair
+        let (proof, contribution) = Self::keypair::<D, R, H>(state, previous_contributions, rng);
+        // Invert delta and multiply the `l` and `h` parameters
+        let delta_inv = contribution.inverse().expect("nonzero");
+        batch_mul_fixed_scalar(&mut state.pk.l_query, delta_inv);
+        batch_mul_fixed_scalar(&mut state.pk.h_query, delta_inv);
+        // Multiply the `delta_g1` and `delta_g2` elements by the private key delta
+        state.pk.delta_g1 = state.pk.delta_g1.mul(contribution).into_affine();
+        state.pk.vk.delta_g2 = state.pk.vk.delta_g2.mul(contribution).into_affine();
+        // Ensure the private key is no longer used
+        drop(contribution);
+        previous_contributions.contributions.push(proof);
+        let mut hasher = H::new();
+        hasher.update(&previous_contributions.hash[..]);
+        for pubkey in previous_contributions.contributions.clone() {
+            pubkey
+                .serialize(&mut hasher)
+                .expect("Blake2b Hasher never returns an error");
+        }
+        into_array_unchecked(hasher.finalize())
+    }
+
+    /// Verify the validity of all contributions made so far to these parameters.
+    /// This method checks that only the parameters affected by Phase2 have changed
+    /// and that they were all modified consistently (i.e. pass the same-ratio check).
+    /// Output is a list of hashes of public keys that participants may use to confirm
+    /// that their contribution is included.
+    pub fn verify<B, C, D, H>(
+        state: &State<E>,
+        contribution_and_hashes: &ContributionAndHashes<E, N>,
+        cs: B,
+        powers: Accumulator<C>,
+    ) -> Result<Vec<[u8; N]>, PhaseTwoError>
+    where
+        B: ConstraintSynthesizer<C::Scalar>,
+        C: Configuration<Pairing = E, G1 = E::G1Affine, G2 = E::G2Affine, Scalar = E::Fr>,
+        E::G2Affine: Sample<D>,
+        D: Default,
+        H: Clone + Digest<N>,
+        <E as PairingEngine>::G1Prepared: From<<E as PairingEngine>::G1Projective>
+    {
+        // Build default MPCParameters from phase 1 accumulator
+        let (initial_state, initial_contribution_and_hashes) = Self::initialize::<B, C, H>(cs, powers)?;
+
+        Self::check_phase_2_invariants(
+            state,
+            &initial_state,
+            contribution_and_hashes,
+            &initial_contribution_and_hashes,
+        )?;
+
+        let mut cumulative_hasher = H::new();
+        cumulative_hasher.update(&contribution_and_hashes.hash[..]);
+        let mut current_delta = C::g1_prime_subgroup_generator();
+        // Record the hash of each contribution's signature here
+        let mut result = Vec::<[u8; N]>::with_capacity(contribution_and_hashes.contributions.len());
+        for pubkey in &contribution_and_hashes.contributions {
+            // Check the validity of this contribution
+            // First we need the same G2 challenge point used in `pubkey`
+            let h: [u8; N] = {
+                let mut hasher = cumulative_hasher.clone();
+                pubkey
+                    .s
+                    .serialize_uncompressed(&mut hasher)
+                    .expect("Blake2b Hasher never returns an error");
+                pubkey
+                    .s_delta
+                    .serialize_uncompressed(&mut hasher)
+                    .expect("Blake2b Hasher never returns an error");
+                hasher.finalize().into()
+            };
+
+            // This check is superfluous: if the transcripts weren't equal then
+            // hash_to_group would produce different challenge points and the same_ratio
+            // check would fail (with overwhelming probability).  However this error
+            // is informative and the check is cheap so we leave it.
+            if pubkey.transcript != h {
+                return Err(PhaseTwoError::PubKeyTranscriptsDiffer);
+            }
+
+            let r: E::G2Affine = hash_to_group(h);
+
+            // Check the signature of knowledge
+            if !<C::Pairing as PairingEngineExt>::same_ratio(
+                (pubkey.s, pubkey.s_delta),
+                (r, pubkey.r_delta),
+            ) {
+                return Err(PhaseTwoError::SignatureInvalid);
+            }
+
+            // Check the change from the old delta is consistent
+            if !<C::Pairing as PairingEngineExt>::same_ratio(
+                (current_delta, pubkey.delta_after),
+                (r, pubkey.r_delta),
+            ) {
+                return Err(PhaseTwoError::InconsistentDeltaChange);
+            }
+
+            current_delta = pubkey.delta_after;
+
+            // Record hash of this contribution
+            pubkey
+                .serialize(&mut cumulative_hasher)
+                .expect("Blake2b Hasher never returns an error");
+            result.push(into_array_unchecked(cumulative_hasher.clone().finalize()));
+        }
+
+        // Current parameters should have consistent delta in G1
+        if current_delta != state.pk.delta_g1 {
+            return Err(PhaseTwoError::InconsistentDeltaChange);
+        }
+        // Current parameters should have consistent delta in G2
+        if !<C::Pairing as PairingEngineExt>::same_ratio(
+            (C::g1_prime_subgroup_generator(), current_delta),
+            (C::g2_prime_subgroup_generator(), state.pk.vk.delta_g2),
+        ) {
+            return Err(PhaseTwoError::InconsistentDeltaChange);
+        }
+        // H and L queries should be updated with delta^-1x
+        if !<C::Pairing as PairingEngineExt>::same_ratio(
+            merge_pairs_affine(&initial_state.pk.l_query, &state.pk.l_query),
+            (state.pk.vk.delta_g2, C::g2_prime_subgroup_generator()), // reversed for delta inverse
+        ) {
+            return Err(PhaseTwoError::InconsistentLChange);
+        }
+        if !<C::Pairing as PairingEngineExt>::same_ratio(
+            merge_pairs_affine(&initial_state.pk.h_query, &state.pk.h_query),
+            (state.pk.vk.delta_g2, C::g2_prime_subgroup_generator()), // reversed for delta inverse
+        ) {
+            return Err(PhaseTwoError::InconsistentHChange);
+        }
+        Ok(result)
+    }
+
+    /// Checks that the parameters which are not changed by Phase 2 contributions
+    /// are the same.
+    pub fn check_phase_2_invariants(
+        state: &State<E>,
+        initial_state: &State<E>,
+        contribution_and_hashes: &ContributionAndHashes<E, N>,
+        initial_contribution_and_hashes: &ContributionAndHashes<E, N>,
+    ) -> Result<(), PhaseTwoError> {
+        // H/L will change, but should have same length
+        if initial_state.pk.h_query.len() != state.pk.h_query.len() {
+            return Err(PhaseTwoError::Phase2InvariantViolated("H length changed"));
+        }
+        if initial_state.pk.l_query.len() != state.pk.l_query.len() {
+            return Err(PhaseTwoError::Phase2InvariantViolated("L length changed"));
+        }
+        // A/B_G1/B_G2 doesn't change at all
+        if initial_state.pk.a_query != state.pk.a_query {
+            return Err(PhaseTwoError::Phase2InvariantViolated("A query changed"));
+        }
+        if initial_state.pk.b_g1_query != state.pk.b_g1_query {
+            return Err(PhaseTwoError::Phase2InvariantViolated("B_G1 query changed"));
+        }
+        if initial_state.pk.b_g2_query != state.pk.b_g2_query {
+            return Err(PhaseTwoError::Phase2InvariantViolated("B_G2 query changed"));
+        }
+        // alpha/beta/gamma don't change
+        if initial_state.pk.vk.alpha_g1 != state.pk.vk.alpha_g1 {
+            return Err(PhaseTwoError::Phase2InvariantViolated("alpha_G1 changed"));
+        }
+        if initial_state.pk.beta_g1 != state.pk.beta_g1 {
+            return Err(PhaseTwoError::Phase2InvariantViolated("beta_G1 changed"));
+        }
+        if initial_state.pk.vk.beta_g2 != state.pk.vk.beta_g2 {
+            return Err(PhaseTwoError::Phase2InvariantViolated("beta_G2 changed"));
+        }
+        if initial_state.pk.vk.gamma_g2 != state.pk.vk.gamma_g2 {
+            return Err(PhaseTwoError::Phase2InvariantViolated("gamma_G2 changed"));
+        }
+        // IC shouldn't change, as gamma doesn't change
+        if initial_state.pk.vk.gamma_abc_g1 != state.pk.vk.gamma_abc_g1 {
+            return Err(PhaseTwoError::Phase2InvariantViolated(
+                "Public input cross terms changed",
+            ));
+        }
+        // cs_hash should be the same
+        if contribution_and_hashes.hash != initial_contribution_and_hashes.hash {
+            return Err(PhaseTwoError::Phase2InvariantViolated(
+                "Constraint system hash changed",
+            ));
+        }
+        Ok(())
     }
 }
 
@@ -380,3 +587,17 @@ pub enum PhaseTwoError {
     /// TODO
     Phase2InvariantViolated(&'static str),
 }
+
+// /// Reads from file to get a "raw" version of the parameters derived from
+// /// the final sapling phase 1 parameters with no contributions made (delta = 1).
+// pub fn default_reclaim_mpc() -> MPCParameters<<Sapling as Configuration>::Pairing> {
+//     let mut reader = OpenOptions::new()
+//         .read(true)
+//         .open("phase2_reclaim_raw_mpc")
+//         .expect("file not found");
+
+//     CanonicalDeserialize::deserialize_unchecked(&mut reader).unwrap()
+// }
+
+
+
