@@ -390,3 +390,13 @@ pub trait PairingEngineExt: PairingEngine {
 }
 
 impl<E> PairingEngineExt for E where E: PairingEngine {}
+
+/// Convenience wrapper trait covering functionality of cryptographic hash functions with fixed output size.
+pub trait Digest<const N: usize> {
+    /// TODO
+    fn new() -> Self;
+    /// TODO
+    fn update(&mut self, data: impl AsRef<[u8]>);
+    /// TODO
+    fn finalize(self) -> [u8; N];
+}

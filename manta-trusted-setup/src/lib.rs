@@ -22,6 +22,7 @@
 #![forbid(missing_docs)]
 
 extern crate alloc;
+extern crate core;
 
 pub mod groth16;
 pub mod mpc;
