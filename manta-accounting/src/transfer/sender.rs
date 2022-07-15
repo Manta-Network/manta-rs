@@ -247,6 +247,12 @@ impl<S> Sender<S>
 where
     S: Spend,
 {
+    /// Returns the underlying asset for `self`.
+    #[inline]
+    pub fn asset(&self) -> &S::Asset {
+        todo!()
+    }
+
     /// Extends proof public input with `self`.
     #[inline]
     pub fn extend_input<P>(&self, input: &mut P::Input)

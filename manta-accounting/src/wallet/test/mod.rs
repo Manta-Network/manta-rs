@@ -20,8 +20,8 @@
 // TODO: Generalize `PushResponse` so that we can test against more general wallet setups.
 
 use crate::{
-    asset::AssetList,
-    transfer::{self, canonical::Transaction, Address, Asset, TransferPost},
+    asset::{AssetList, AssetMetadata},
+    transfer::{self, canonical::Transaction, Address, Asset, Configuration, TransferPost},
     wallet::{
         ledger,
         signer::{self, AddressRequest, SyncData},
@@ -48,7 +48,7 @@ pub mod sim;
 /// Simulation Action Space
 pub enum Action<C>
 where
-    C: transfer::Configuration,
+    C: Configuration,
 {
     /// No Action
     Skip,
@@ -79,7 +79,7 @@ where
 
 impl<C> Action<C>
 where
-    C: transfer::Configuration,
+    C: Configuration,
 {
     /// Generates a [`Post`](Self::Post) on `transaction` self-pointed if `is_self` is `true` and
     /// maximal if `is_maximal` is `true`.
@@ -361,13 +361,14 @@ impl Sample<ActionDistribution> for ActionType {
     }
 }
 
-/* TODO:
 /// Public Balance Oracle
-pub trait PublicBalanceOracle {
+pub trait PublicBalanceOracle<C>
+where
+    C: Configuration,
+{
     /// Returns the public balances of `self`.
-    fn public_balances(&self) -> LocalBoxFuture<Option<AssetList>>;
+    fn public_balances(&self) -> LocalBoxFuture<Option<AssetList<C::AssetId, C::AssetValue>>>;
 }
-*/
 
 /// Ledger Alias Trait
 ///
@@ -376,28 +377,30 @@ pub trait PublicBalanceOracle {
 pub trait Ledger<C>:
     ledger::Read<SyncData<C>> + ledger::Write<Vec<TransferPost<C>>, Response = bool>
 where
-    C: transfer::Configuration,
+    C: Configuration,
 {
 }
 
 impl<C, L> Ledger<C> for L
 where
-    C: transfer::Configuration,
+    C: Configuration,
     L: ledger::Read<SyncData<C>> + ledger::Write<Vec<TransferPost<C>>, Response = bool>,
 {
 }
 
-/*
-
 /// Actor
 pub struct Actor<C, L, S>
 where
-    C: transfer::Configuration,
+    C: Configuration,
     L: Ledger<C>,
     S: signer::Connection<C, Checkpoint = L::Checkpoint>,
 {
+    /*
     /// Wallet
     pub wallet: Wallet<C, L, S>,
+    */
+    /// FIXME:
+    __FIXME: PhantomData<(C, L, S)>,
 
     /// Action Distribution
     pub distribution: ActionDistribution,
@@ -408,10 +411,11 @@ where
 
 impl<C, L, S> Actor<C, L, S>
 where
-    C: transfer::Configuration,
+    C: Configuration,
     L: Ledger<C>,
     S: signer::Connection<C, Checkpoint = L::Checkpoint>,
 {
+    /*
     /// Builds a new [`Actor`] with `wallet`, `distribution`, and `lifetime`.
     #[inline]
     pub fn new(wallet: Wallet<C, L, S>, distribution: ActionDistribution, lifetime: usize) -> Self {
@@ -421,6 +425,7 @@ where
             lifetime,
         }
     }
+    */
 
     /// Reduces the lifetime of `self` returning `None` if the lifetime is zero.
     #[inline]
@@ -432,6 +437,7 @@ where
     /// Returns the default address for `self`.
     #[inline]
     async fn default_address(&mut self) -> Result<Address<C>, Error<C, L, S>> {
+        /*
         self.wallet
             .addresses(AddressRequest::Get {
                 index: Default::default(),
@@ -439,39 +445,74 @@ where
             .await
             .map_err(Error::SignerConnectionError)
             .map(Vec::take_first)
+        */
+        todo!()
     }
 
     /// Returns the latest public balances from the ledger.
     #[inline]
-    async fn public_balances(&mut self) -> Result<Option<AssetList>, Error<C, L, S>>
+    async fn public_balances(
+        &mut self,
+    ) -> Result<Option<AssetList<C::AssetId, C::AssetValue>>, Error<C, L, S>>
     where
-        L: PublicBalanceOracle,
+        L: PublicBalanceOracle<C>,
     {
+        /*
         self.wallet.sync().await?;
         Ok(self.wallet.ledger().public_balances().await)
+        */
+        todo!()
+    }
+
+    ///
+    #[inline]
+    async fn sync(&mut self) -> Result<(), Error<C, L, S>> {
+        // TODO: self.wallet.sync().await
+        todo!()
     }
 
     /// Synchronizes with the ledger, attaching the `action` marker for the possible error branch.
     #[inline]
     async fn sync_with(&mut self, action: ActionType) -> Result<(), ActionLabelledError<C, L, S>> {
-        self.wallet.sync().await.map_err(|err| action.label(err))
+        self.sync().await.map_err(|err| action.label(err))
+    }
+
+    ///
+    #[inline]
+    async fn post(
+        &mut self,
+        transaction: Transaction<C>,
+        metadata: Option<AssetMetadata>,
+    ) -> Result<L::Response, Error<C, L, S>> {
+        // TODO: self.wallet.post(transaction, metadata).await
+        todo!()
+    }
+
+    ///
+    #[inline]
+    async fn addresses(&mut self, request: AddressRequest) -> Result<Vec<Address<C>>, S::Error> {
+        // TODO: self.wallet.addresses(request).await
+        todo!()
     }
 
     /// Samples a deposit from `self` using `rng` returning `None` if no deposit is possible.
     #[inline]
-    async fn sample_deposit<R>(&mut self, rng: &mut R) -> Result<Option<Asset>, Error<C, L, S>>
+    async fn sample_deposit<R>(&mut self, rng: &mut R) -> Result<Option<Asset<C>>, Error<C, L, S>>
     where
-        L: PublicBalanceOracle,
+        L: PublicBalanceOracle<C>,
         R: RngCore + ?Sized,
     {
         let assets = match self.public_balances().await? {
             Some(assets) => assets,
             _ => return Ok(None),
         };
+        /*
         match rng.select_item(assets) {
             Some(asset) => Ok(Some(asset.id.sample_up_to(asset.value, rng))),
             _ => Ok(None),
         }
+        */
+        todo!()
     }
 
     /// Samples a withdraw from `self` using `rng` returning `None` if no withdrawal is possible.
@@ -481,15 +522,18 @@ where
     /// This method samples from a uniform distribution over the asset IDs and asset values present
     /// in the balance state of `self`.
     #[inline]
-    async fn sample_withdraw<R>(&mut self, rng: &mut R) -> Result<Option<Asset>, Error<C, L, S>>
+    async fn sample_withdraw<R>(&mut self, rng: &mut R) -> Result<Option<Asset<C>>, Error<C, L, S>>
     where
         R: RngCore + ?Sized,
     {
-        self.wallet.sync().await?;
+        self.sync().await?;
+        /*
         match rng.select_item(self.wallet.assets()) {
             Some((id, value)) => Ok(Some(id.sample_up_to(*value, rng))),
             _ => Ok(None),
         }
+        */
+        todo!()
     }
 
     /// Samples an asset balance from the wallet of `self`, labelling the possible error with
@@ -499,14 +543,17 @@ where
         &mut self,
         action: ActionType,
         rng: &mut R,
-    ) -> Result<Option<Asset>, ActionLabelledError<C, L, S>>
+    ) -> Result<Option<Asset<C>>, ActionLabelledError<C, L, S>>
     where
         R: RngCore + ?Sized,
     {
         self.sync_with(action).await?;
+        /*
         Ok(rng
             .select_item(self.wallet.assets())
             .map(|(id, value)| Asset::new(*id, *value)))
+        */
+        todo!()
     }
 
     /// Samples a [`ToPrivate`] against `self` using `rng`, returning a [`Skip`] if [`ToPrivate`] is
@@ -517,7 +564,7 @@ where
     #[inline]
     async fn sample_to_private<R>(&mut self, rng: &mut R) -> MaybeAction<C, L, S>
     where
-        L: PublicBalanceOracle,
+        L: PublicBalanceOracle<C>,
         R: RngCore + ?Sized,
     {
         match self.sample_deposit(rng).await {
@@ -536,12 +583,12 @@ where
     #[inline]
     async fn sample_zero_to_private<R>(&mut self, rng: &mut R) -> MaybeAction<C, L, S>
     where
-        L: PublicBalanceOracle,
+        L: PublicBalanceOracle<C>,
         R: RngCore + ?Sized,
     {
         match self.public_balances().await {
             Ok(Some(assets)) => match rng.select_item(assets) {
-                Some(asset) => Ok(Action::to_private(asset.id.value(0))),
+                Some(asset) => Ok(Action::to_private(Asset::<C>::zero(asset.id))),
                 _ => Ok(Action::Skip),
             },
             Ok(_) => Ok(Action::Skip),
@@ -563,7 +610,7 @@ where
         address: A,
     ) -> MaybeAction<C, L, S>
     where
-        L: PublicBalanceOracle,
+        L: PublicBalanceOracle<C>,
         R: RngCore + ?Sized,
         A: FnOnce(&mut R) -> Result<Option<Address<C>>, Error<C, L, S>>,
     {
@@ -598,7 +645,7 @@ where
         address: A,
     ) -> MaybeAction<C, L, S>
     where
-        L: PublicBalanceOracle,
+        L: PublicBalanceOracle<C>,
         R: RngCore + ?Sized,
         A: FnOnce(&mut R) -> Result<Option<Address<C>>, Error<C, L, S>>,
     {
@@ -611,7 +658,7 @@ where
             Ok(Some(asset)) => match address(rng) {
                 Ok(Some(address)) => Ok(Action::private_transfer(
                     is_self,
-                    asset.id.value(0),
+                    Asset::<C>::zero(asset.id),
                     address,
                 )),
                 Ok(_) => Ok(Action::GenerateAddresses { count: 1 }),
@@ -630,7 +677,7 @@ where
     #[inline]
     async fn sample_to_public<R>(&mut self, rng: &mut R) -> MaybeAction<C, L, S>
     where
-        L: PublicBalanceOracle,
+        L: PublicBalanceOracle<C>,
         R: RngCore + ?Sized,
     {
         match self.sample_withdraw(rng).await {
@@ -653,7 +700,7 @@ where
         Ok(self
             .sample_asset(ActionType::ToPublicZero, rng)
             .await?
-            .map(|asset| Action::to_public(false, asset.id.value(0)))
+            .map(|asset| Action::to_public(false, Asset::<C>::zero(asset.id)))
             .unwrap_or(Action::Skip))
     }
 
@@ -678,12 +725,15 @@ where
     /// that the balance state has the same or more funds than before the restart.
     #[inline]
     async fn restart(&mut self) -> Result<bool, Error<C, L, S>> {
-        self.wallet.sync().await?;
+        self.sync().await?;
+        /*
         let assets = AssetList::from_iter(self.wallet.assets().clone());
         self.wallet
             .restart()
             .await
             .map(move |_| self.wallet.contains_all(assets))
+        */
+        todo!()
     }
 }
 
@@ -702,7 +752,7 @@ pub type SharedAddressDatabase<C> = Arc<Mutex<AddressDatabase<C>>>;
 #[derivative(Default(bound = ""))]
 pub struct Simulation<C, L, S>
 where
-    C: transfer::Configuration,
+    C: Configuration,
     L: Ledger<C>,
     S: signer::Connection<C, Checkpoint = L::Checkpoint>,
 {
@@ -715,9 +765,10 @@ where
 
 impl<C, L, S> Simulation<C, L, S>
 where
-    C: transfer::Configuration,
+    C: Configuration,
     L: Ledger<C>,
     S: signer::Connection<C, Checkpoint = L::Checkpoint>,
+    Address<C>: Clone + Eq + Hash,
 {
     /// Builds a new [`Simulation`] with a starting set of public `addresses`.
     #[inline]
@@ -741,9 +792,10 @@ where
 
 impl<C, L, S> sim::ActionSimulation for Simulation<C, L, S>
 where
-    C: transfer::Configuration,
-    L: Ledger<C> + PublicBalanceOracle,
+    C: Configuration,
+    L: Ledger<C> + PublicBalanceOracle<C>,
     S: signer::Connection<C, Checkpoint = L::Checkpoint>,
+    Address<C>: Clone + Eq + Hash,
 {
     type Actor = Actor<C, L, S>;
     type Action = MaybeAction<C, L, S>;
@@ -828,7 +880,7 @@ where
                         loop {
                             let event = Event {
                                 action,
-                                value: actor.wallet.post(transaction.clone(), None).await,
+                                value: actor.post(transaction.clone(), None).await,
                             };
                             if let Ok(false) = event.value {
                                 if retries == 0 {
@@ -844,7 +896,7 @@ where
                     }
                     Action::GenerateAddresses { count } => Event {
                         action: ActionType::GenerateAddresses,
-                        value: match actor.wallet.addresses(AddressRequest::New { count }).await {
+                        value: match actor.addresses(AddressRequest::New { count }).await {
                             Ok(addresses) => {
                                 for address in addresses {
                                     self.addresses.lock().insert(address);
@@ -868,12 +920,13 @@ where
     }
 }
 
+/*
 /// Measures the public and secret balances for each wallet, summing them all together.
 #[inline]
 pub async fn measure_balances<'w, C, L, S, I>(wallets: I) -> Result<AssetList, Error<C, L, S>>
 where
-    C: 'w + transfer::Configuration,
-    L: 'w + Ledger<C> + PublicBalanceOracle,
+    C: 'w + Configuration,
+    L: 'w + Ledger<C> + PublicBalanceOracle<C>,
     S: 'w + signer::Connection<C, Checkpoint = L::Checkpoint>,
     I: IntoIterator<Item = &'w mut Wallet<C, L, S>>,
 {
@@ -890,6 +943,7 @@ where
     }
     Ok(balances)
 }
+*/
 
 /// Simulation Configuration
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
@@ -916,8 +970,8 @@ impl Config {
         mut event_subscriber: ES,
     ) -> Result<bool, Error<C, L, S>>
     where
-        C: transfer::Configuration,
-        L: Ledger<C> + PublicBalanceOracle,
+        C: Configuration,
+        L: Ledger<C> + PublicBalanceOracle<C>,
         S: signer::Connection<C, Checkpoint = L::Checkpoint>,
         R: CryptoRng + RngCore,
         GL: FnMut(usize) -> L,
@@ -929,6 +983,7 @@ impl Config {
     {
         let action_distribution = ActionDistribution::try_from(self.action_distribution)
             .expect("Unable to sample from action distribution.");
+        /*
         let actors = (0..self.actor_count)
             .map(|i| {
                 Actor::new(
@@ -950,7 +1005,7 @@ impl Config {
         let final_balances =
             measure_balances(simulator.actors.iter_mut().map(|actor| &mut actor.wallet)).await?;
         Ok(initial_balances == final_balances)
+        */
+        todo!()
     }
 }
-
-*/

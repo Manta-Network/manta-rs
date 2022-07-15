@@ -343,6 +343,15 @@ impl<I, V> Asset<I, V> {
         Self::new(id, Default::default())
     }
 
+    /// Returns `true` if `self` is a zero [`Asset`] of some asset id.
+    #[inline]
+    pub fn is_zero(&self) -> bool
+    where
+        V: Default + PartialEq,
+    {
+        self.value == Default::default()
+    }
+
     /// Returns `true` if `self` is an empty [`Asset`], i.e. both the `id` and `value` are zero.
     #[inline]
     pub fn is_empty<COM>(&self, compiler: &mut COM) -> Bool<COM>
@@ -364,12 +373,6 @@ impl Asset {
 
     /// The size of the data in this type in bytes.
     pub const SIZE: usize = (Self::BITS / 8) as usize;
-
-    /// Returns `true` if `self` is a zero [`Asset`] of some [`AssetId`].
-    #[inline]
-    pub const fn is_zero(&self) -> bool {
-        self.value.0 == 0
-    }
 
     /// Checks if the `rhs` asset has the same [`AssetId`].
     #[inline]

@@ -129,6 +129,12 @@ pub trait Account {
 
     /// Returns the address at the given `index` for this account.
     fn address(&mut self, index: AddressIndex) -> Self::Address;
+
+    /// Returns the default address for this account.
+    #[inline]
+    fn default_address(&mut self) -> Self::Address {
+        self.address(Default::default())
+    }
 }
 
 impl<A> Account for &mut A
@@ -140,12 +146,17 @@ where
 
     #[inline]
     fn spending_key(&self) -> Self::SpendingKey {
-        (*self).spending_key()
+        (**self).spending_key()
     }
 
     #[inline]
     fn address(&mut self, index: AddressIndex) -> Self::Address {
         (*self).address(index)
+    }
+
+    #[inline]
+    fn default_address(&mut self) -> Self::Address {
+        (*self).default_address()
     }
 }
 
@@ -162,16 +173,46 @@ where
     A: Account,
 {
     /// Account Data
-    pub account: A,
+    account: A,
 
     /// Address Limit
-    pub address_limit: AddressIndex,
+    address_limit: AddressIndex,
 }
 
 impl<A> LimitAccount<A>
 where
     A: Account,
 {
+    /// Builds a new [`LimitAccount`] over `account` without checking that the `address_limit` is
+    /// positive.
+    #[inline]
+    fn new_unchecked(account: A, address_limit: AddressIndex) -> Self {
+        Self {
+            account,
+            address_limit,
+        }
+    }
+
+    /// Builds a new [`LimitAccount`] over `account`.
+    #[inline]
+    pub fn new(account: A) -> Self {
+        Self::new_unchecked(account, 1.into())
+    }
+
+    /// Builds a new [`LimitAccount`] over `account` with the given `address_limit`.
+    ///
+    /// # Panics
+    ///
+    /// This constructor panics if `address_limit == 0`.
+    #[inline]
+    pub fn with_limit(account: A, address_limit: AddressIndex) -> Self {
+        assert!(
+            address_limit.index() > 0,
+            "Address limit should be positive."
+        );
+        Self::new_unchecked(account, address_limit)
+    }
+
     /// Returns the next new address for `self`.
     #[inline]
     pub fn next_address(&mut self) -> Address<Self> {
@@ -209,6 +250,11 @@ where
     fn address(&mut self, index: AddressIndex) -> Self::Address {
         self.address_limit = cmp::max(self.address_limit, index);
         self.account.address(index)
+    }
+
+    #[inline]
+    fn default_address(&mut self) -> Self::Address {
+        self.account.default_address()
     }
 }
 

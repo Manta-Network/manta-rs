@@ -37,7 +37,7 @@ use crate::{
         utxo::{sign_authorization, Mint, Spend, VerifyAuthorization},
     },
 };
-use core::{fmt::Debug, hash::Hash};
+use core::{fmt::Debug, hash::Hash, iter::Sum, ops::AddAssign};
 use manta_crypto::{
     accumulator,
     constraint::{
@@ -62,6 +62,7 @@ pub mod utxo;
 #[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
 pub mod test;
 
+#[doc(inline)]
 pub use canonical::Shape;
 
 /// Returns `true` if the [`Transfer`] with this shape would have public participants.
@@ -91,7 +92,7 @@ pub trait Configuration {
     type AssetId: Clone;
 
     /// Asset Value Type
-    type AssetValue: Clone + Default + PartialOrd;
+    type AssetValue: AddAssign + Clone + Default + PartialOrd + Sum;
 
     /// Unspent Transaction Output Type
     type Utxo: PartialEq;
@@ -107,13 +108,11 @@ pub trait Configuration {
 
     /// Authorization Signature Scheme
     type AuthorizationSignatureScheme: signature::Sign<
+            SigningKey = Self::SpendingKey,
             Randomness = Self::AuthorizationSignatureRandomness,
             Message = TransferPostBody<Self>,
         > + signature::Verify<VerifyingKey = Authorization<Self>, Verification = bool>
-        + VerifyAuthorization<
-            Authorization = Authorization<Self>,
-            VerifyingKey = AuthorizationSigningKey<Self>,
-        >;
+        + VerifyAuthorization<Authorization = Authorization<Self>, VerifyingKey = Self::SpendingKey>;
 
     /// Mint Secret Type
     type MintSecret: utxo::MintSecret<Asset = Asset<Self>>;
@@ -295,10 +294,6 @@ pub type AuthorizationProof<C> = utxo::AuthorizationProof<Parameters<C>>;
 
 /// Authorization Proof Variable Type
 pub type AuthorizationProofVar<C> = utxo::AuthorizationProof<ParametersVar<C>>;
-
-/// Authorization Signing Key Type
-pub type AuthorizationSigningKey<C> =
-    signature::SigningKey<<C as Configuration>::AuthorizationSignatureScheme>;
 
 /// Authorization Signature Type
 pub type AuthorizationSignature<C> =
@@ -570,6 +565,27 @@ where
                 .collect(),
             sinks: self.sinks.into(),
         })
+    }
+
+    ///
+    #[inline]
+    pub fn into_post<R>(
+        self,
+        authorization_signature_scheme: &C::AuthorizationSignatureScheme,
+        parameters: FullParametersRef<C>,
+        proving_context: &ProvingContext<C>,
+        spending_key: Option<&C::SpendingKey>,
+        rng: &mut R,
+    ) -> Result<Option<TransferPost<C>>, ProofSystemError<C>>
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        Ok(TransferPost::new(
+            authorization_signature_scheme,
+            spending_key,
+            self.into_post_body(parameters, proving_context, rng)?,
+            rng,
+        ))
     }
 }
 
@@ -1188,18 +1204,18 @@ where
         );
     }
 
-    /// Signs `self` with the authorization `signing_key`.
+    /// Signs `self` with the authorization `spending_key`.
     #[inline]
     pub fn sign<R>(
         self,
         authorization_signature_scheme: &C::AuthorizationSignatureScheme,
-        signing_key: &AuthorizationSigningKey<C>,
+        spending_key: &C::SpendingKey,
         rng: &mut R,
     ) -> Option<TransferPost<C>>
     where
         R: CryptoRng + RngCore + ?Sized,
     {
-        TransferPost::signed(authorization_signature_scheme, signing_key, self, rng)
+        TransferPost::signed(authorization_signature_scheme, spending_key, self, rng)
     }
 }
 
@@ -1253,7 +1269,7 @@ where
     #[inline]
     pub fn signed<R>(
         authorization_signature_scheme: &C::AuthorizationSignatureScheme,
-        signing_key: &AuthorizationSigningKey<C>,
+        spending_key: &C::SpendingKey,
         body: TransferPostBody<C>,
         rng: &mut R,
     ) -> Option<Self>
@@ -1264,7 +1280,7 @@ where
             Some(Self::new_unchecked(
                 sign_authorization(
                     authorization_signature_scheme,
-                    signing_key,
+                    spending_key,
                     authorization,
                     &rng.gen(),
                     &body,
@@ -1284,10 +1300,39 @@ where
             .then(|| Self::new_unchecked(None, body))
     }
 
+    /// Builds a new [`TransferPost`] using `spending_key` and `body` to determine if the signed or
+    /// unsigned variant should be used.
+    #[inline]
+    pub fn new<R>(
+        authorization_signature_scheme: &C::AuthorizationSignatureScheme,
+        spending_key: Option<&C::SpendingKey>,
+        body: TransferPostBody<C>,
+        rng: &mut R,
+    ) -> Option<Self>
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        match (spending_key, &body.authorization) {
+            (Some(spending_key), Some(authorization)) => Some(Self::new_unchecked(
+                sign_authorization(
+                    authorization_signature_scheme,
+                    spending_key,
+                    authorization,
+                    &rng.gen(),
+                    &body,
+                ),
+                body,
+            )),
+            (Some(_), None) => None,
+            (None, Some(_)) => None,
+            _ => Some(Self::new_unchecked(None, body)),
+        }
+    }
+
     /// Builds a new [`TransferPost`] without checking the consistency conditions between the `body`
     /// and the `authorization_signature`.
     #[inline]
-    pub fn new_unchecked(
+    fn new_unchecked(
         authorization_signature: Option<AuthorizationSignature<C>>,
         body: TransferPostBody<C>,
     ) -> Self {

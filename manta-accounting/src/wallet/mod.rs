@@ -152,7 +152,7 @@ where
     }
 
     /// Returns `true` if `self` contains at least every asset in `assets`. Assets are combined
-    /// first by [`AssetId`] before checking for membership.
+    /// first by asset id before checking for membership.
     #[inline]
     pub fn contains_all<A>(&self, assets: A) -> bool
     where

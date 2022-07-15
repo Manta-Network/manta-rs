@@ -31,9 +31,14 @@ use crate::{
     key::{Account, AccountMap, LimitAccount},
     transfer::{
         self,
-        canonical::{MultiProvingContext, Transaction},
-        Address, Asset, Identifier, Note, Nullifier, Parameters, ProofSystemError, TransferPost,
-        Utxo, UtxoAccumulatorItem, UtxoAccumulatorModel,
+        batch::Join,
+        canonical::{
+            MultiProvingContext, PrivateTransfer, PrivateTransferShape, Selection, ToPrivate,
+            ToPublic, Transaction,
+        },
+        requires_authorization, Address, Asset, FullParametersRef, Identifier, Note, Nullifier,
+        Parameters, PreSender, ProofSystemError, ProvingContext, Receiver, Sender, Shape, Transfer,
+        TransferPost, Utxo, UtxoAccumulatorItem, UtxoAccumulatorModel,
     },
     wallet::ledger::{self, Data},
 };
@@ -493,11 +498,21 @@ pub trait Configuration: transfer::Configuration {
 /// Signer Parameters
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "Parameters<C>: Clone, MultiProvingContext<C>: Clone"),
-    Debug(bound = "Parameters<C>: Debug, MultiProvingContext<C>: Debug"),
-    Eq(bound = "Parameters<C>: Eq, MultiProvingContext<C>: Eq"),
-    Hash(bound = "Parameters<C>: Hash, MultiProvingContext<C>: Hash"),
-    PartialEq(bound = "Parameters<C>: PartialEq, MultiProvingContext<C>: PartialEq")
+    Clone(
+        bound = "Parameters<C>: Clone, C::AuthorizationSignatureScheme: Clone, MultiProvingContext<C>: Clone"
+    ),
+    Debug(
+        bound = "Parameters<C>: Debug, C::AuthorizationSignatureScheme: Debug, MultiProvingContext<C>: Debug"
+    ),
+    Eq(
+        bound = "Parameters<C>: Eq, C::AuthorizationSignatureScheme: Eq, MultiProvingContext<C>: Eq"
+    ),
+    Hash(
+        bound = "Parameters<C>: Hash, C::AuthorizationSignatureScheme: Hash, MultiProvingContext<C>: Hash"
+    ),
+    PartialEq(
+        bound = "Parameters<C>: PartialEq, C::AuthorizationSignatureScheme: PartialEq, MultiProvingContext<C>: PartialEq"
+    )
 )]
 pub struct SignerParameters<C>
 where
@@ -505,6 +520,9 @@ where
 {
     /// Parameters
     pub parameters: Parameters<C>,
+
+    /// Authorization Signature Scheme
+    pub authorization_signature_scheme: C::AuthorizationSignatureScheme,
 
     /// Proving Context
     pub proving_context: MultiProvingContext<C>,
@@ -514,11 +532,17 @@ impl<C> SignerParameters<C>
 where
     C: Configuration,
 {
-    /// Builds a new [`SignerParameters`] from `parameters` and `proving_context`.
+    /// Builds a new [`SignerParameters`] from `parameters`, `authorization_signature_scheme`, and
+    /// `proving_context`.
     #[inline]
-    pub fn new(parameters: Parameters<C>, proving_context: MultiProvingContext<C>) -> Self {
+    pub fn new(
+        parameters: Parameters<C>,
+        authorization_signature_scheme: C::AuthorizationSignatureScheme,
+        proving_context: MultiProvingContext<C>,
+    ) -> Self {
         Self {
             parameters,
+            authorization_signature_scheme,
             proving_context,
         }
     }
@@ -610,18 +634,32 @@ where
         )
     }
 
-    /*
-    /// Finds the next viewing key that can decrypt the `encrypted_note` from the `view_key_table`.
+    /// Returns the default account for `self`.
     #[inline]
-    fn find_next_key<'h>(
-        view_key_table: &mut ViewKeyTable<'h, C::HierarchicalKeyDerivationScheme>,
+    fn default_account(&self) -> &LimitAccount<C::Account> {
+        self.accounts.get_default()
+    }
+
+    /// Returns the default spending key for `self`.
+    #[inline]
+    fn default_spending_key(&self) -> C::SpendingKey {
+        self.default_account().spending_key()
+    }
+
+    /// Returns the default address for the default account of `self`.
+    #[inline]
+    fn default_address(&mut self) -> Address<C> {
+        self.accounts.get_mut_default().default_address()
+    }
+
+    ///
+    #[inline]
+    fn try_open<'h>(
         parameters: &Parameters<C>,
-        encrypted_note: Note<C>,
-    ) -> Option<ViewKeySelection<C::HierarchicalKeyDerivationScheme, Note<C>>> {
-        let mut finder = Finder::new(encrypted_note);
-        view_key_table.find_index_with_maybe_gap(move |k| {
-            finder.next(|note| note.decrypt(&parameters.note_encryption_scheme, k, &mut ()))
-        })
+        viewing_key: &(),
+        note: Note<C>,
+    ) -> Option<(Identifier<C>, Asset<C>)> {
+        todo!()
     }
 
     /// Inserts the new `utxo`-`note` pair into the `utxo_accumulator` adding the spendable amount
@@ -632,10 +670,12 @@ where
         assets: &mut C::AssetMap,
         parameters: &Parameters<C>,
         utxo: Utxo<C>,
-        selection: ViewKeySelection<C::HierarchicalKeyDerivationScheme, Note<C>>,
-        void_numbers: &mut Vec<Nullifier<C>>,
-        deposit: &mut Vec<Asset>,
+        identifier: Identifier<C>,
+        asset: Asset<C>,
+        nullifiers: &mut Vec<Nullifier<C>>,
+        deposit: &mut Vec<Asset<C>>,
     ) {
+        /*
         let ViewKeySelection {
             index,
             keypair,
@@ -659,9 +699,12 @@ where
             }
         }
         utxo_accumulator.insert_nonprovable(&utxo);
+        */
+        todo!()
     }
 
-    /// Checks if `asset` matches with `void_number`, removing it from the `utxo_accumulator` and
+    /*
+    /// Checks if `asset` matches with `nullifier`, removing it from the `utxo_accumulator` and
     /// inserting it into the `withdraw` set if this is the case.
     #[inline]
     fn is_asset_unspent(
@@ -669,8 +712,8 @@ where
         parameters: &Parameters<C>,
         secret_spend_key: &SecretKey<C>,
         ephemeral_secret_key: &SecretKey<C>,
-        asset: Asset,
-        void_numbers: &mut Vec<Nullifier<C>>,
+        asset: Asset<C>,
+        nullifiers: &mut Vec<Nullifier<C>>,
         withdraw: &mut Vec<Asset>,
     ) -> bool {
         let utxo = parameters.utxo(
@@ -678,9 +721,9 @@ where
             &parameters.derive(secret_spend_key),
             &asset,
         );
-        let void_number = parameters.void_number(secret_spend_key, &utxo);
-        if let Some(index) = void_numbers.iter().position(move |v| v == &void_number) {
-            void_numbers.remove(index);
+        let nullifier = parameters.nullifiers(secret_spend_key, &utxo);
+        if let Some(index) = nullifiers.iter().position(move |n| n == &nullifier) {
+            nullifiers.remove(index);
             utxo_accumulator.remove_proof(&utxo);
             if !asset.is_zero() {
                 withdraw.push(asset);
@@ -698,54 +741,58 @@ where
         &mut self,
         parameters: &Parameters<C>,
         inserts: I,
-        mut void_numbers: Vec<Nullifier<C>>,
+        mut nullifiers: Vec<Nullifier<C>>,
         is_partial: bool,
     ) -> SyncResponse<C, C::Checkpoint>
     where
         I: Iterator<Item = (Utxo<C>, Note<C>)>,
     {
-        /*
-        let void_number_count = void_numbers.len();
+        let nullifier_count = nullifiers.len();
         let mut deposit = Vec::new();
         let mut withdraw = Vec::new();
-        let mut view_key_table = self.accounts.get_mut_default().view_key_table();
-        for (utxo, encrypted_note) in inserts {
-            if let Some(selection) = Self::find_next_key(
-                &mut view_key_table,
-                parameters,
-                encrypted_note,
-            ) {
+        let viewing_key = ();
+        for (utxo, note) in inserts {
+            if let Some((identifier, asset)) = Self::try_open(parameters, &viewing_key, note) {
                 Self::insert_next_item(
                     &mut self.utxo_accumulator,
                     &mut self.assets,
                     parameters,
                     utxo,
-                    selection,
-                    &mut void_numbers,
+                    identifier,
+                    asset,
+                    &mut nullifiers,
                     &mut deposit,
                 );
             } else {
-                self.utxo_accumulator.insert_nonprovable(&utxo);
+                // FIXME: self.utxo_accumulator.insert_nonprovable(&utxo);
+                todo!()
             }
         }
-        self.assets.retain(|(index, ephemeral_secret_key), assets| {
+        self.assets.retain(|identifier, assets| {
+            /*
             assets.retain(
                 |asset| match self.accounts.get_default().spend_key(*index) {
-                    Some(secret_spend_key) => Self::is_asset_unspent(
-                        &mut self.utxo_accumulator,
-                        parameters,
-                        &secret_spend_key,
-                        ephemeral_secret_key,
-                        *asset,
-                        &mut void_numbers,
-                        &mut withdraw,
-                    ),
+                    Some(secret_spend_key) => {
+                        /*
+                        Self::is_asset_unspent(
+                            &mut self.utxo_accumulator,
+                            parameters,
+                            &secret_spend_key,
+                            ephemeral_secret_key,
+                            *asset,
+                            &mut void_numbers,
+                            &mut withdraw,
+                        )
+                        */
+                        todo!()
+                    }
                     _ => true,
                 },
             );
+            */
             !assets.is_empty()
         });
-        self.checkpoint.update_from_void_numbers(void_number_count);
+        self.checkpoint.update_from_nullifiers(nullifier_count);
         self.checkpoint
             .update_from_utxo_accumulator(&self.utxo_accumulator);
         SyncResponse {
@@ -760,61 +807,45 @@ where
                 }
             },
         }
+    }
+
+    /// Builds the pre-sender associated to `key` and `asset`.
+    #[inline]
+    fn build_pre_sender(
+        &mut self,
+        parameters: &Parameters<C>,
+        key: Identifier<C>,
+        asset: Asset<C>,
+    ) -> PreSender<C> {
+        let default_spending_key = self.default_spending_key();
+        /*
+        PreSender::sample(
+            parameters,
+            default_spending_key.into(),
+            key,
+            asset,
+            &mut self.rng,
+        )
         */
         todo!()
     }
 
-    /*
-    /// Builds the pre-sender associated to `key` and `asset`.
+    ///
     #[inline]
-    fn build_pre_sender(
-        &self,
-        parameters: &Parameters<C>,
-        key: AssetMapKey<C>,
-        asset: Asset,
-    ) -> Result<PreSender<C>, SignError<C>> {
-        let (spend_index, ephemeral_secret_key) = key;
-        Ok(PreSender::new(
-            parameters,
-            self.accounts
-                .get_default()
-                .spend_key(spend_index)
-                .expect("Index is guaranteed to be within bounds."),
-            ephemeral_secret_key,
-            asset,
-        ))
-    }
-
-    /// Builds the receiver for `asset`.
-    #[inline]
-    fn build_receiver(
+    fn receiver(
         &mut self,
         parameters: &Parameters<C>,
-        asset: Asset,
-    ) -> Result<Receiver<C>, SignError<C>> {
-        let keypair = self.accounts.get_default().default_keypair();
-        Ok(SpendingKey::new(keypair.spend, keypair.view).receiver(
-            parameters,
-            self.rng.gen(),
-            asset,
-        ))
+        address: Address<C>,
+        asset: Asset<C>,
+    ) -> Receiver<C> {
+        Receiver::<C>::sample(parameters, address, asset, &mut self.rng)
     }
 
-    /// Builds a new internal [`Mint`] for zero assets.
+    ///
     #[inline]
-    fn mint_zero(
-        &mut self,
-        parameters: &Parameters<C>,
-        asset_id: AssetId,
-    ) -> Result<(Mint<C>, PreSender<C>), SignError<C>> {
-        let asset = Asset::zero(asset_id);
-        let keypair = self.accounts.get_default().default_keypair();
-        Ok(Mint::internal_pair(
-            parameters,
-            &SpendingKey::new(keypair.spend, keypair.view),
-            asset,
-            &mut self.rng,
-        ))
+    fn default_receiver(&mut self, parameters: &Parameters<C>, asset: Asset<C>) -> Receiver<C> {
+        let default_address = self.default_address();
+        self.receiver(parameters, default_address, asset)
     }
 
     /// Selects the pre-senders which collectively own at least `asset`, returning any change.
@@ -822,15 +853,42 @@ where
     fn select(
         &mut self,
         parameters: &Parameters<C>,
-        asset: Asset,
+        asset: &Asset<C>,
     ) -> Result<Selection<C>, SignError<C>> {
         let selection = self.assets.select(asset);
         if !asset.is_zero() && selection.is_empty() {
-            return Err(SignError::InsufficientBalance(asset));
+            return Err(SignError::InsufficientBalance(asset.clone()));
         }
         Selection::new(selection, move |k, v| {
-            self.build_pre_sender(parameters, k, asset.id.with(v))
+            Ok(self.build_pre_sender(parameters, k, Asset::<C>::new(asset.id.clone(), v)))
         })
+    }
+
+    /// Builds a [`TransferPost`] for the given `transfer`.
+    #[inline]
+    fn build_post_inner<
+        const SOURCES: usize,
+        const SENDERS: usize,
+        const RECEIVERS: usize,
+        const SINKS: usize,
+    >(
+        parameters: FullParametersRef<C>,
+        authorization_signature_scheme: &C::AuthorizationSignatureScheme,
+        proving_context: &ProvingContext<C>,
+        spending_key: Option<&C::SpendingKey>,
+        transfer: Transfer<C, SOURCES, SENDERS, RECEIVERS, SINKS>,
+        rng: &mut C::Rng,
+    ) -> Result<TransferPost<C>, SignError<C>> {
+        transfer
+            .into_post(
+                authorization_signature_scheme,
+                parameters,
+                proving_context,
+                spending_key,
+                rng,
+            )
+            .map(|p| p.expect("Internally, all transfer posts are constructed correctly."))
+            .map_err(SignError::ProofSystemError)
     }
 
     /// Builds a [`TransferPost`] for the given `transfer`.
@@ -841,61 +899,18 @@ where
         const RECEIVERS: usize,
         const SINKS: usize,
     >(
-        parameters: FullParameters<C>,
+        &mut self,
+        parameters: &SignerParameters<C>,
         proving_context: &ProvingContext<C>,
         transfer: Transfer<C, SOURCES, SENDERS, RECEIVERS, SINKS>,
-        rng: &mut C::Rng,
     ) -> Result<TransferPost<C>, SignError<C>> {
-        transfer
-            .into_post(parameters, proving_context, rng)
-            .map_err(SignError::ProofSystemError)
-    }
-
-    /// Mints an asset with zero value for the given `asset_id`, returning the appropriate
-    /// Builds a [`TransferPost`] for `mint`.
-    #[inline]
-    fn mint_post(
-        &mut self,
-        parameters: &Parameters<C>,
-        proving_context: &ProvingContext<C>,
-        mint: Mint<C>,
-    ) -> Result<TransferPost<C>, SignError<C>> {
-        Self::build_post(
-            FullParameters::new(parameters, self.utxo_accumulator.model()),
+        let spending_key = self.default_spending_key();
+        Self::build_post_inner(
+            FullParametersRef::<C>::new(&parameters.parameters, self.utxo_accumulator.model()),
+            &parameters.authorization_signature_scheme,
             proving_context,
-            mint,
-            &mut self.rng,
-        )
-    }
-
-    /// Builds a [`TransferPost`] for `private_transfer`.
-    #[inline]
-    fn private_transfer_post(
-        &mut self,
-        parameters: &Parameters<C>,
-        proving_context: &ProvingContext<C>,
-        private_transfer: PrivateTransfer<C>,
-    ) -> Result<TransferPost<C>, SignError<C>> {
-        Self::build_post(
-            FullParameters::new(parameters, self.utxo_accumulator.model()),
-            proving_context,
-            private_transfer,
-            &mut self.rng,
-        )
-    }
-
-    /// Builds a [`TransferPost`] for `reclaim`.
-    #[inline]
-    fn reclaim_post(
-        &mut self,
-        parameters: &Parameters<C>,
-        proving_context: &ProvingContext<C>,
-        reclaim: Reclaim<C>,
-    ) -> Result<TransferPost<C>, SignError<C>> {
-        Self::build_post(
-            FullParameters::new(parameters, self.utxo_accumulator.model()),
-            proving_context,
-            reclaim,
+            requires_authorization(SENDERS).then(|| &spending_key),
+            transfer,
             &mut self.rng,
         )
     }
@@ -906,9 +921,10 @@ where
     fn next_join(
         &mut self,
         parameters: &Parameters<C>,
-        asset_id: AssetId,
-        total: AssetValue,
+        asset_id: &C::AssetId,
+        total: C::AssetValue,
     ) -> Result<([Receiver<C>; PrivateTransferShape::RECEIVERS], Join<C>), SignError<C>> {
+        /* TODO:
         let keypair = self.accounts.get_default().default_keypair();
         Ok(Join::new(
             parameters,
@@ -916,6 +932,8 @@ where
             &SpendingKey::new(keypair.spend, keypair.view),
             &mut self.rng,
         ))
+        */
+        todo!()
     }
 
     /// Prepares the final pre-senders for the last part of the transaction.
@@ -924,11 +942,14 @@ where
         &mut self,
         parameters: &Parameters<C>,
         proving_context: &MultiProvingContext<C>,
-        asset_id: AssetId,
+        asset_id: &C::AssetId,
         mut new_zeroes: Vec<PreSender<C>>,
         pre_senders: &mut Vec<PreSender<C>>,
         posts: &mut Vec<TransferPost<C>>,
     ) -> Result<(), SignError<C>> {
+        /* FIXME: We need a new algorithm for this:
+         *
+         *
         let mut needed_zeroes = PrivateTransferShape::SENDERS - pre_senders.len();
         if needed_zeroes == 0 {
             return Ok(());
@@ -959,6 +980,8 @@ where
             pre_senders.push(pre_sender);
         }
         Ok(())
+        */
+        todo!()
     }
 
     /// Computes the batched transactions for rebalancing before a final transfer.
@@ -967,7 +990,7 @@ where
         &mut self,
         parameters: &Parameters<C>,
         proving_context: &MultiProvingContext<C>,
-        asset_id: AssetId,
+        asset_id: &C::AssetId,
         mut pre_senders: Vec<PreSender<C>>,
         posts: &mut Vec<TransferPost<C>>,
     ) -> Result<[Sender<C>; PrivateTransferShape::SENDERS], SignError<C>> {
@@ -979,20 +1002,22 @@ where
                 .chunk_by::<{ PrivateTransferShape::SENDERS }>();
             for chunk in &mut iter {
                 let senders = array_map(chunk, |s| {
-                    s.try_upgrade(&self.utxo_accumulator)
+                    s.try_upgrade(parameters, &self.utxo_accumulator)
                         .expect("Unable to upgrade expected UTXO.")
                 });
                 let (receivers, mut join) = self.next_join(
                     parameters,
                     asset_id,
-                    senders.iter().map(Sender::asset_value).sum(),
+                    senders.iter().map(|s| s.asset().value.clone()).sum(),
                 )?;
-                posts.push(self.private_transfer_post(
+                /*
+                posts.push(self.build_post(
                     parameters,
                     &proving_context.private_transfer,
                     PrivateTransfer::build(senders, receivers),
                 )?);
-                join.insert_utxos(&mut self.utxo_accumulator);
+                */
+                join.insert_utxos(parameters, &mut self.utxo_accumulator);
                 joins.push(join.pre_sender);
                 new_zeroes.append(&mut join.zeroes);
             }
@@ -1010,23 +1035,11 @@ where
         Ok(into_array_unchecked(
             pre_senders
                 .into_iter()
-                .map(move |s| s.try_upgrade(&self.utxo_accumulator))
+                .map(move |s| s.try_upgrade(parameters, &self.utxo_accumulator))
                 .collect::<Option<Vec<_>>>()
                 .expect("Unable to upgrade expected UTXOs."),
         ))
     }
-
-    /// Prepares a given [`ReceivingKey`] for receiving `asset`.
-    #[inline]
-    fn prepare_receiver(
-        &mut self,
-        parameters: &Parameters<C>,
-        asset: Asset,
-        receiving_key: ReceivingKey<C>,
-    ) -> Receiver<C> {
-        receiving_key.into_receiver(parameters, self.rng.gen(), asset)
-    }
-    */
 }
 
 impl<C> Clone for SignerState<C>
@@ -1073,8 +1086,9 @@ where
     #[inline]
     fn new_inner(
         accounts: C::AccountMap,
-        proving_context: MultiProvingContext<C>,
         parameters: Parameters<C>,
+        authorization_signature_scheme: C::AuthorizationSignatureScheme,
+        proving_context: MultiProvingContext<C>,
         utxo_accumulator: C::UtxoAccumulator,
         assets: C::AssetMap,
         rng: C::Rng,
@@ -1082,6 +1096,7 @@ where
         Self::from_parts(
             SignerParameters {
                 parameters,
+                authorization_signature_scheme,
                 proving_context,
             },
             SignerState::build(accounts, utxo_accumulator, assets, rng),
@@ -1097,15 +1112,17 @@ where
     #[inline]
     pub fn new(
         accounts: C::AccountMap,
-        proving_context: MultiProvingContext<C>,
         parameters: Parameters<C>,
+        authorization_signature_scheme: C::AuthorizationSignatureScheme,
+        proving_context: MultiProvingContext<C>,
         utxo_accumulator: C::UtxoAccumulator,
         rng: C::Rng,
     ) -> Self {
         Self::new_inner(
             accounts,
-            proving_context,
             parameters,
+            authorization_signature_scheme,
+            proving_context,
             utxo_accumulator,
             Default::default(),
             rng,
@@ -1130,7 +1147,6 @@ where
         &mut self,
         mut request: SyncRequest<C, C::Checkpoint>,
     ) -> Result<SyncResponse<C, C::Checkpoint>, SyncError<C::Checkpoint>> {
-        /*
         // TODO: Do a capacity check on the current UTXO accumulator?
         //
         // if self.utxo_accumulator.capacity() < starting_index {
@@ -1143,61 +1159,68 @@ where
             })
         } else {
             let has_pruned = request.prune(checkpoint);
-            let SyncData { receivers, senders } = request.data;
+            let SyncData {
+                utxo_note_data,
+                nullifier_data,
+            } = request.data;
             let response = self.state.sync_with(
                 &self.parameters.parameters,
-                receivers.into_iter(),
-                senders,
+                utxo_note_data.into_iter(),
+                nullifier_data,
                 !has_pruned,
             );
             self.state.utxo_accumulator.commit();
             Ok(response)
         }
-        */
-        todo!()
     }
 
-    /// Signs a withdraw transaction for `asset` sent to `receiver`.
+    /// Signs a withdraw transaction for `asset` sent to `address`.
     #[inline]
     fn sign_withdraw(
         &mut self,
         asset: Asset<C>,
-        receiver: Option<Address<C>>,
+        address: Option<Address<C>>,
     ) -> Result<SignResponse<C>, SignError<C>> {
-        /*
-        let selection = self.state.select(&self.parameters.parameters, asset)?;
-        let change = self
-            .state
-            .build_receiver(&self.parameters.parameters, asset.id.with(selection.change))?;
+        let selection = self.state.select(&self.parameters.parameters, &asset)?;
         let mut posts = Vec::new();
         let senders = self.state.compute_batched_transactions(
             &self.parameters.parameters,
             &self.parameters.proving_context,
-            asset.id,
+            &asset.id,
             selection.pre_senders,
             &mut posts,
         )?;
-        let final_post = match receiver {
-            Some(receiver) => {
-                let receiver =
-                    self.state
-                        .prepare_receiver(&self.parameters.parameters, asset, receiver);
-                self.state.private_transfer_post(
+        let change = self.state.default_receiver(
+            &self.parameters.parameters,
+            Asset::<C>::new(asset.id.clone(), selection.change),
+        );
+        let final_post = match address {
+            Some(address) => {
+                let receiver = self
+                    .state
+                    .receiver(&self.parameters.parameters, address, asset);
+                /*
+                self.state.build_post(
                     &self.parameters.parameters,
                     &self.parameters.proving_context.private_transfer,
                     PrivateTransfer::build(senders, [change, receiver]),
                 )?
+                */
+                todo!()
             }
-            _ => self.state.reclaim_post(
-                &self.parameters.parameters,
-                &self.parameters.proving_context.reclaim,
-                Reclaim::build(senders, [change], asset),
-            )?,
+            _ => {
+                /*
+                    self.state.build_post(
+                    &self.parameters.parameters,
+                    &self.parameters.proving_context.reclaim,
+                    ToPublic::build(senders, [change], asset),
+                )?
+                    */
+                todo!()
+            }
         };
         posts.push(final_post);
         Ok(SignResponse::new(posts))
-        */
-        todo!()
     }
 
     /// Signs the `transaction`, generating transfer posts without releasing resources.
@@ -1206,25 +1229,22 @@ where
         &mut self,
         transaction: Transaction<C>,
     ) -> Result<SignResponse<C>, SignError<C>> {
-        /*
         match transaction {
-            Transaction::Mint(asset) => {
+            Transaction::ToPrivate(asset) => {
                 let receiver = self
                     .state
-                    .build_receiver(&self.parameters.parameters, asset)?;
-                Ok(SignResponse::new(vec![self.state.mint_post(
-                    &self.parameters.parameters,
-                    &self.parameters.proving_context.mint,
-                    Mint::build(asset, receiver),
+                    .default_receiver(&self.parameters.parameters, asset.clone());
+                Ok(SignResponse::new(vec![self.state.build_post(
+                    &self.parameters,
+                    &self.parameters.proving_context.to_private,
+                    ToPrivate::build(asset, receiver),
                 )?]))
             }
-            Transaction::PrivateTransfer(asset, receiver) => {
-                self.sign_withdraw(asset, Some(receiver))
+            Transaction::PrivateTransfer(asset, address) => {
+                self.sign_withdraw(asset, Some(address))
             }
-            Transaction::Reclaim(asset) => self.sign_withdraw(asset, None),
+            Transaction::ToPublic(asset) => self.sign_withdraw(asset, None),
         }
-        */
-        todo!()
     }
 
     /// Signs the `transaction`, generating transfer posts.

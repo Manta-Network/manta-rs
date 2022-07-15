@@ -27,9 +27,9 @@ use crate::{
         VerifyingContext,
     },
 };
-use alloc::{format, string::String, vec::Vec};
+use alloc::{string::String, vec::Vec};
 use core::{fmt::Debug, hash::Hash};
-use manta_crypto::rand::{CryptoRng, Rand, RngCore};
+use manta_crypto::rand::{CryptoRng, RngCore};
 use manta_util::{create_seal, seal};
 
 #[cfg(feature = "serde")]
