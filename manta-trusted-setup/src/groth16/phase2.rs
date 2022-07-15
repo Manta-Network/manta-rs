@@ -17,7 +17,7 @@
 //! Groth16 Phase 2
 use crate::{
     groth16::kzg::{Accumulator, Configuration, Pairing},
-    util::{batch_into_projective, Digest, Zero},
+    util::{batch_into_projective, hash_to_group, Digest, Zero},
 };
 use alloc::{vec, vec::Vec};
 use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
@@ -25,10 +25,18 @@ use ark_ff::PrimeField;
 use ark_groth16::{ProvingKey, VerifyingKey};
 use ark_poly::{EvaluationDomain, Radix2EvaluationDomain};
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem};
-use ark_serialize::CanonicalSerialize;
+use ark_serialize::{CanonicalSerialize, SerializationError, Write};
+use ark_std::rand::{CryptoRng, Rng};
+use manta_crypto::rand::Sample;
+use std::marker::PhantomData;
+
+/// Groth16 Phase 2
+pub struct Phase2<E, const N: usize> {
+    _curve: PhantomData<E>,
+}
 
 /// TODO: may change the name
-pub struct MPCContributeParameter<E, const N: usize>
+pub struct State<E>
 where
     E: PairingEngine,
 {
@@ -37,7 +45,7 @@ where
 }
 
 /// TODO: may change the name
-pub struct MPCVerifyingParameter<E, const N: usize>
+pub struct ContributionAndHashes<E, const N: usize>
 where
     E: PairingEngine,
 {
@@ -64,15 +72,40 @@ where
     transcript: [u8; N],
 }
 
-impl<E, const N: usize> MPCContributeParameter<E, N>
+impl<E, const N: usize> CanonicalSerialize for Proof<E, N>
+where
+    E: PairingEngine,
+{
+    fn serialize<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {
+        self.delta_after.serialize(&mut writer)?;
+        self.s.serialize(&mut writer)?;
+        self.s_delta.serialize(&mut writer)?;
+        self.r_delta.serialize(&mut writer)?;
+        writer.write_all(&self.transcript)?;
+        Ok(())
+    }
+
+    fn serialized_size(&self) -> usize {
+        self.delta_after.serialized_size()
+            + self.s.serialized_size()
+            + self.s_delta.serialized_size()
+            + self.r_delta.serialized_size()
+            + N
+    }
+}
+
+/// TODO
+pub type Contribution<E> = <E as PairingEngine>::Fr;
+
+impl<E, const N: usize> Phase2<E, N>
 where
     E: PairingEngine,
 {
     /// TODO
-    pub fn new<B, C, H>(
+    pub fn initialize<B, C, H>(
         cs: B,
         powers: Accumulator<C>,
-    ) -> Result<(Self, MPCVerifyingParameter<E, N>), PhaseTwoError>
+    ) -> Result<(State<E>, ContributionAndHashes<E, N>), PhaseTwoError>
     where
         B: ConstraintSynthesizer<C::Scalar>,
         C: Configuration<Pairing = E, G1 = E::G1Affine, G2 = E::G2Affine, Scalar = E::Fr>,
@@ -195,19 +228,72 @@ where
 
         // Hash the proving key, store this as `cs_hash`
         let mut hasher = H::new();
-        let mut pk_bytes: Vec<u8> = Vec::new();
-        pk.serialize(&mut pk_bytes)
-            .expect("Serialize is not expected to fail");
-        hasher.update(pk_bytes);
+        pk.serialize(&mut hasher)
+            .expect("Hasher is not allowed to fail");
         let hash = hasher.finalize();
 
         Ok((
-            MPCContributeParameter { pk },
-            MPCVerifyingParameter {
+            State { pk },
+            ContributionAndHashes {
                 contributions: Vec::new(),
                 hash,
             },
         ))
+    }
+
+    /// Sample `delta` from `rng` and generate a range proof for it.
+    pub fn keypair<D, R, H>(
+        state: &State<E>,
+        previous_contributions: &ContributionAndHashes<E, N>,
+        rng: &mut R,
+    ) -> (Contribution<E>, Proof<E, N>)
+    where
+        D: Default,
+        R: Rng + CryptoRng,
+        E: PairingEngine,
+        E::Fr: Sample<D>,
+        E::G1Affine: Sample<D>,
+        E::G2Affine: Sample<D>,
+        H: Digest<N>,
+    {
+        // Sample random delta
+        let delta = E::Fr::gen(rng);
+
+        // Compute delta s-pair in G1
+        let s = E::G1Affine::gen(rng); // Is projective mul. faster ?
+        let s_delta = s.mul(delta).into_affine();
+
+        let h = {
+            let mut hasher = H::new();
+            hasher.update(&previous_contributions.hash[..]);
+            for pubkey in previous_contributions.contributions.clone() {
+                // ? better solution than clone ?
+                pubkey
+                    .serialize(&mut hasher)
+                    .expect("Blake2b Hasher never returns an error");
+            }
+            s.serialize_uncompressed(&mut hasher)
+                .expect("Blake2b Hasher never returns an error");
+            s_delta
+                .serialize_uncompressed(&mut hasher)
+                .expect("Blake2b Hasher never returns an error");
+            hasher.finalize()
+        };
+
+        // Compute delta s-pair in G2
+        let r: E::G2Affine = hash_to_group(h); // could fix distribution D here for phase two, or can leave
+        let r_delta = r.mul(delta).into_affine();
+
+        (
+            delta,
+            Proof {
+                delta_after: state.pk.delta_g1.mul(delta).into_affine(),
+                s,
+                s_delta,
+                r_delta,
+                transcript: h,
+            },
+        )
     }
 }
 

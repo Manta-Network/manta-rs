@@ -44,5 +44,6 @@ ark-std = { version = "0.3.0", default-features = false }
 derivative = { version = "2.2.0", default-features = false, features = ["use_core"] }
 manta-crypto = { path = "../manta-crypto", default-features = false, features = ["getrandom"] }
 manta-util = { path = "../manta-util", default-features = false, features = ["alloc"] }
+rand_chacha = { version = "0.3.1", default-features = false }
 rayon = { version = "1.5.3", optional = true, default-features = false }
 workspace-hack = { version = "0.1.0", path = "../workspace-hack" }
