@@ -43,7 +43,13 @@ to place each PR in its respective category or use `changelog:skip` if it should
 
 ## Pull Requests
 
-See the [`PULL_REQUEST_TEMPLATE.md`](./.github/PULL_REQUEST_TEMPLATE.md) for more details on how to build a good PR.
+### Templates
+
+We use pull-request templates to standardize the PR process. See the [`PULL_REQUEST_TEMPLATE.md`](./.github/PULL_REQUEST_TEMPLATE.md) for more details on how to build a good PR.
+
+### CI Pipeline
+
+When writing a new PR, the Continuous Integration (CI) system will trigger linting and tests to run on every commit. See the [`.github/workflows/ci.yml`](./.github/workflows/ci.yml) for more detail on this workflow and see the [`workspace-hack`](./workspace-hack/) directory for dependency upgrade issues.
 
 ## Style Guide
 
