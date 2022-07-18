@@ -37,6 +37,25 @@ pub use v1 as protocol;
 /// Current UTXO Protocol Version
 pub const VERSION: u8 = protocol::VERSION;
 
+/// Spending Key
+pub trait SpendingKeyType {
+    /// Spending Key Type
+    type SpendingKey;
+}
+
+/// Spending Key Type
+pub type SpendingKey<T> = <T as SpendingKeyType>::SpendingKey;
+
+///
+pub trait SpendAuthorize: AuthorityType + AuthorizationType + SpendingKeyType {
+    ///
+    fn generate<R>(
+        &self,
+        spending_key: &Self::SpendingKey,
+        rng: &mut R,
+    ) -> AuthorizationProof<Self>;
+}
+
 /// Authority
 pub trait AuthorityType {
     /// Authority Type
@@ -58,7 +77,7 @@ pub type Authorization<T> = <T as AuthorizationType>::Authorization;
 /// Authorization Proof
 pub struct AuthorizationProof<T>
 where
-    T: AuthorityType + AuthorizationType,
+    T: AuthorityType + AuthorizationType + ?Sized,
 {
     /// Authority
     pub authority: T::Authority,
@@ -69,7 +88,7 @@ where
 
 impl<T> AuthorizationProof<T>
 where
-    T: AuthorityType + AuthorizationType,
+    T: AuthorityType + AuthorizationType + ?Sized,
 {
     /// Builds a new [`AuthorizationProof`] from `authority` and `authorization`.
     #[inline]

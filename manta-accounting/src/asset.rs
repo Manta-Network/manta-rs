@@ -977,12 +977,9 @@ macro_rules! impl_asset_map_for_maps_body {
 
         #[inline]
         fn assets(&self) -> AssetList<$I, $V> {
-            /* TODO:
             self.iter()
                 .flat_map(move |(_, assets)| assets.iter().cloned())
                 .collect()
-            */
-            todo!()
         }
 
         #[inline]
@@ -1090,7 +1087,7 @@ impl<K, I, V> AssetMap<I, V> for BTreeAssetMap<K, I, V>
 where
     K: Clone + Ord,
     I: Clone + Ord,
-    V: Clone + Default + Ord + Sub<Output = V> + for<'v> AddAssign<&'v V>,
+    V: AddAssign + Clone + Default + Ord + Sub<Output = V> + for<'v> AddAssign<&'v V>,
     for<'v> &'v V: Sub<Output = V>,
 {
     impl_asset_map_for_maps_body! { K, I, V, BTreeMapEntry }
@@ -1108,7 +1105,7 @@ impl<K, I, V, S> AssetMap<I, V> for HashAssetMap<K, I, V, S>
 where
     K: Clone + Hash + Eq,
     I: Clone + Ord,
-    V: Clone + Default + Ord + Sub<Output = V> + for<'v> AddAssign<&'v V>,
+    V: AddAssign + Clone + Default + Ord + Sub<Output = V> + for<'v> AddAssign<&'v V>,
     for<'v> &'v V: Sub<Output = V>,
     S: BuildHasher + Default,
 {

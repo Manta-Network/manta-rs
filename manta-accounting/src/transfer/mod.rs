@@ -933,14 +933,20 @@ pub enum InvalidAuthorizationSignature {
 ///
 /// This `struct` is the error state of the [`TransferLedger::check_source_accounts`] method. See
 /// its documentation for more.
-/* TODO:
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
     serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-*/
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "AccountId: Clone, C::AssetId: Clone, C::AssetValue: Clone"),
+    Copy(bound = "AccountId: Copy, C::AssetId: Copy, C::AssetValue: Copy"),
+    Debug(bound = "AccountId: Debug, C::AssetId: Debug, C::AssetValue: Debug"),
+    Eq(bound = "AccountId: Eq, C::AssetId: Eq, C::AssetValue: Eq"),
+    Hash(bound = "AccountId: Hash, C::AssetId: Hash, C::AssetValue: Hash"),
+    PartialEq(bound = "AccountId: PartialEq, C::AssetId: PartialEq, C::AssetValue: PartialEq")
+)]
 pub struct InvalidSourceAccount<C, AccountId>
 where
     C: Configuration + ?Sized,
@@ -959,14 +965,20 @@ where
 ///
 /// This `struct` is the error state of the [`TransferLedger::check_sink_accounts`] method. See its
 /// documentation for more.
-/* TODO:
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
     serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-*/
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "AccountId: Clone, C::AssetId: Clone, C::AssetValue: Clone"),
+    Copy(bound = "AccountId: Copy, C::AssetId: Copy, C::AssetValue: Copy"),
+    Debug(bound = "AccountId: Debug, C::AssetId: Debug, C::AssetValue: Debug"),
+    Eq(bound = "AccountId: Eq, C::AssetId: Eq, C::AssetValue: Eq"),
+    Hash(bound = "AccountId: Hash, C::AssetId: Hash, C::AssetValue: Hash"),
+    PartialEq(bound = "AccountId: PartialEq, C::AssetId: PartialEq, C::AssetValue: PartialEq")
+)]
 pub struct InvalidSinkAccount<C, AccountId>
 where
     C: Configuration + ?Sized,
@@ -991,7 +1003,17 @@ where
     derive(Deserialize, Serialize),
     serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "AccountId: Clone, UpdateError: Clone, C::AssetId: Clone, C::AssetValue: Clone"),
+    Copy(bound = "AccountId: Copy, UpdateError: Copy, C::AssetId: Copy, C::AssetValue: Copy"),
+    Debug(bound = "AccountId: Debug, UpdateError: Debug, C::AssetId: Debug, C::AssetValue: Debug"),
+    Eq(bound = "AccountId: Eq, UpdateError: Eq, C::AssetId: Eq, C::AssetValue: Eq"),
+    Hash(bound = "AccountId: Hash, UpdateError: Hash, C::AssetId: Hash, C::AssetValue: Hash"),
+    PartialEq(
+        bound = "AccountId: PartialEq, UpdateError: PartialEq, C::AssetId: PartialEq, C::AssetValue: PartialEq"
+    )
+)]
 */
 pub enum TransferPostError<C, AccountId, UpdateError>
 where
@@ -1090,18 +1112,23 @@ where
 }
 
 /// Transfer Post Body
-/* TODO:
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
     serde(
         bound(
             deserialize = r"
+                Authorization<C>: Deserialize<'de>,
+                C::AssetId: Deserialize<'de>,
+                C::AssetValue: Deserialize<'de>,
                 SenderPost<C>: Deserialize<'de>,
                 ReceiverPost<C>: Deserialize<'de>,
                 Proof<C>: Deserialize<'de>,
             ",
             serialize = r"
+                Authorization<C>: Serialize,
+                C::AssetId: Serialize,
+                C::AssetValue: Serialize,
                 SenderPost<C>: Serialize,
                 ReceiverPost<C>: Serialize,
                 Proof<C>: Serialize,
@@ -1113,13 +1140,47 @@ where
 )]
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "SenderPost<C>: Clone, ReceiverPost<C>: Clone, Proof<C>: Clone"),
-    Debug(bound = "SenderPost<C>: Debug, ReceiverPost<C>: Debug, Proof<C>: Debug"),
-    Eq(bound = "SenderPost<C>: Eq, ReceiverPost<C>: Eq, Proof<C>: Eq"),
-    Hash(bound = "SenderPost<C>: Hash, ReceiverPost<C>: Hash, Proof<C>: Hash"),
-    PartialEq(bound = "SenderPost<C>: PartialEq, ReceiverPost<C>: PartialEq, Proof<C>: PartialEq")
+    Clone(bound = r"
+        Authorization<C>: Clone,
+        C::AssetId: Clone,
+        C::AssetValue: Clone,
+        SenderPost<C>: Clone,
+        ReceiverPost<C>: Clone,
+        Proof<C>: Clone
+    "),
+    Debug(bound = r"
+        Authorization<C>: Debug,
+        C::AssetId: Debug,
+        C::AssetValue: Debug,
+        SenderPost<C>: Debug,
+        ReceiverPost<C>: Debug,
+        Proof<C>: Debug
+    "),
+    Eq(bound = r"
+        Authorization<C>: Eq,
+        C::AssetId: Eq,
+        C::AssetValue: Eq,
+        SenderPost<C>: Eq,
+        ReceiverPost<C>: Eq,
+        Proof<C>: Eq
+    "),
+    Hash(bound = r"
+        Authorization<C>: Hash,
+        C::AssetId: Hash,
+        C::AssetValue: Hash,
+        SenderPost<C>: Hash,
+        ReceiverPost<C>: Hash,
+        Proof<C>: Hash
+    "),
+    PartialEq(bound = r"
+        Authorization<C>: PartialEq,
+        C::AssetId: PartialEq,
+        C::AssetValue: PartialEq,
+        SenderPost<C>: PartialEq,
+        ReceiverPost<C>: PartialEq,
+        Proof<C>: PartialEq
+    ")
 )]
-*/
 pub struct TransferPostBody<C>
 where
     C: Configuration + ?Sized,
@@ -1220,21 +1281,18 @@ where
 }
 
 /// Transfer Post
-/* TODO:
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
     serde(
         bound(
             deserialize = r"
-                SenderPost<C>: Deserialize<'de>,
-                ReceiverPost<C>: Deserialize<'de>,
-                Proof<C>: Deserialize<'de>,
+                AuthorizationSignature<C>: Deserialize<'de>,
+                TransferPostBody<C>: Deserialize<'de>,
             ",
             serialize = r"
-                SenderPost<C>: Serialize,
-                ReceiverPost<C>: Serialize,
-                Proof<C>: Serialize,
+                AuthorizationSignature<C>: Serialize,
+                TransferPostBody<C>: Serialize,
             ",
         ),
         crate = "manta_util::serde",
@@ -1243,13 +1301,12 @@ where
 )]
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "SenderPost<C>: Clone, ReceiverPost<C>: Clone, Proof<C>: Clone"),
-    Debug(bound = "SenderPost<C>: Debug, ReceiverPost<C>: Debug, Proof<C>: Debug"),
-    Eq(bound = "SenderPost<C>: Eq, ReceiverPost<C>: Eq, Proof<C>: Eq"),
-    Hash(bound = "SenderPost<C>: Hash, ReceiverPost<C>: Hash, Proof<C>: Hash"),
-    PartialEq(bound = "SenderPost<C>: PartialEq, ReceiverPost<C>: PartialEq, Proof<C>: PartialEq")
+    Clone(bound = "AuthorizationSignature<C>: Clone, TransferPostBody<C>: Clone"),
+    Debug(bound = "AuthorizationSignature<C>: Debug, TransferPostBody<C>: Debug"),
+    Eq(bound = "AuthorizationSignature<C>: Eq, TransferPostBody<C>: Eq"),
+    Hash(bound = "AuthorizationSignature<C>: Hash, TransferPostBody<C>: Hash"),
+    PartialEq(bound = "AuthorizationSignature<C>: PartialEq, TransferPostBody<C>: PartialEq")
 )]
-*/
 pub struct TransferPost<C>
 where
     C: Configuration + ?Sized,
