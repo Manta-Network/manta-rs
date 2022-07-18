@@ -41,7 +41,7 @@ pub struct Phase2<E, const N: usize> {
     __: PhantomData<E>,
 }
 
-/// TODO: may change the name
+/// State of the Groth16 Phase 2
 pub struct State<E>
 where
     E: PairingEngine,
@@ -50,13 +50,13 @@ where
     pub pk: ProvingKey<E>,
 }
 
-/// TODO: may change the name
-pub struct ContributionAndHashes<E, const N: usize>
+/// Contributions and Hashes
+pub struct Contributions<E, const N: usize>
 where
     E: PairingEngine,
 {
     /// TODO
-    pub hash: [u8; N],
+    pub cs_hash: [u8; N],
 
     /// TODO
     pub contributions: Vec<Proof<E, N>>,
@@ -108,7 +108,7 @@ where
     pub fn initialize<B, C, H>(
         cs: B,
         powers: Accumulator<C>,
-    ) -> Result<(State<E>, ContributionAndHashes<E, N>), PhaseTwoError>
+    ) -> Result<(State<E>, Contributions<E, N>), PhaseTwoError>
     where
         B: ConstraintSynthesizer<C::Scalar>,
         C: Configuration<Pairing = E, G1 = E::G1Affine, G2 = E::G2Affine, Scalar = E::Fr>,
@@ -237,17 +237,17 @@ where
 
         Ok((
             State { pk },
-            ContributionAndHashes {
+            Contributions {
                 contributions: Vec::new(),
-                hash,
+                cs_hash: hash,
             },
         ))
     }
 
     /// Sample `delta` from `rng` and generate a range proof for it.
-    pub fn keypair<D, R, H>(
+    fn sample_contribution<D, R, H>(
         state: &State<E>,
-        previous_contributions: &ContributionAndHashes<E, N>,
+        previous_contributions: &Contributions<E, N>,
         rng: &mut R,
     ) -> (Proof<E, N>, Contribution<E>)
     where
@@ -268,7 +268,7 @@ where
 
         let h = {
             let mut hasher = H::new();
-            hasher.update(&previous_contributions.hash[..]);
+            hasher.update(&previous_contributions.cs_hash[..]);
             for pubkey in previous_contributions.contributions.clone() {
                 // ? better solution than clone ?
                 pubkey
@@ -305,7 +305,7 @@ where
     /// contribution has been included in the final parameters.
     pub fn contribute<D, R, H>(
         state: &mut State<E>,
-        previous_contributions: &mut ContributionAndHashes<E, N>,
+        previous_contributions: &mut Contributions<E, N>,
         rng: &mut R,
     ) -> [u8; N]
     where
@@ -317,7 +317,8 @@ where
         H: Digest<N>,
     {
         // Generate a keypair
-        let (proof, contribution) = Self::keypair::<D, R, H>(state, previous_contributions, rng);
+        let (proof, contribution) =
+            Self::sample_contribution::<D, R, H>(state, previous_contributions, rng);
         // Invert delta and multiply the `l` and `h` parameters
         let delta_inv = contribution.inverse().expect("nonzero");
         batch_mul_fixed_scalar(&mut state.pk.l_query, delta_inv);
@@ -326,10 +327,10 @@ where
         state.pk.delta_g1 = state.pk.delta_g1.mul(contribution).into_affine();
         state.pk.vk.delta_g2 = state.pk.vk.delta_g2.mul(contribution).into_affine();
         // Ensure the private key is no longer used
-        drop(contribution);
+        let _ = contribution;
         previous_contributions.contributions.push(proof);
         let mut hasher = H::new();
-        hasher.update(&previous_contributions.hash[..]);
+        hasher.update(&previous_contributions.cs_hash[..]);
         for pubkey in previous_contributions.contributions.clone() {
             pubkey
                 .serialize(&mut hasher)
@@ -345,7 +346,7 @@ where
     /// that their contribution is included.
     pub fn verify<B, C, D, H>(
         state: &State<E>,
-        contribution_and_hashes: &ContributionAndHashes<E, N>,
+        contributions: &Contributions<E, N>,
         cs: B,
         powers: Accumulator<C>,
     ) -> Result<Vec<[u8; N]>, PhaseTwoError>
@@ -355,44 +356,45 @@ where
         E::G2Affine: Sample<D>,
         D: Default,
         H: Clone + Digest<N>,
-        <E as PairingEngine>::G1Prepared: From<<E as PairingEngine>::G1Projective>
+        <E as PairingEngine>::G1Prepared: From<<E as PairingEngine>::G1Projective>,
     {
         // Build default MPCParameters from phase 1 accumulator
-        let (initial_state, initial_contribution_and_hashes) = Self::initialize::<B, C, H>(cs, powers)?;
+        let (initial_state, initial_contribution_and_hashes) =
+            Self::initialize::<B, C, H>(cs, powers)?;
 
-        Self::check_phase_2_invariants(
-            state,
-            &initial_state,
-            contribution_and_hashes,
-            &initial_contribution_and_hashes,
-        )?;
+        Self::check_phase_2_invariants(state, &initial_state)?;
+        if initial_contribution_and_hashes.cs_hash != contributions.cs_hash {
+            return Err(PhaseTwoError::Phase2InvariantViolated(
+                "Constraint system hash changed",
+            ));
+        }
 
         let mut cumulative_hasher = H::new();
-        cumulative_hasher.update(&contribution_and_hashes.hash[..]);
+        cumulative_hasher.update(&contributions.cs_hash[..]);
         let mut current_delta = C::g1_prime_subgroup_generator();
         // Record the hash of each contribution's signature here
-        let mut result = Vec::<[u8; N]>::with_capacity(contribution_and_hashes.contributions.len());
-        for pubkey in &contribution_and_hashes.contributions {
+        let mut result = Vec::<[u8; N]>::with_capacity(contributions.contributions.len());
+        for contribution in &contributions.contributions {
             // Check the validity of this contribution
-            // First we need the same G2 challenge point used in `pubkey`
+            // First we need the same G2 challenge point used in `proof`
             let h: [u8; N] = {
                 let mut hasher = cumulative_hasher.clone();
-                pubkey
+                contribution
                     .s
                     .serialize_uncompressed(&mut hasher)
-                    .expect("Blake2b Hasher never returns an error");
-                pubkey
+                    .expect("Hasher never returns an error");
+                contribution
                     .s_delta
                     .serialize_uncompressed(&mut hasher)
-                    .expect("Blake2b Hasher never returns an error");
-                hasher.finalize().into()
+                    .expect("Hasher never returns an error");
+                hasher.finalize()
             };
 
             // This check is superfluous: if the transcripts weren't equal then
             // hash_to_group would produce different challenge points and the same_ratio
             // check would fail (with overwhelming probability).  However this error
             // is informative and the check is cheap so we leave it.
-            if pubkey.transcript != h {
+            if contribution.transcript != h {
                 return Err(PhaseTwoError::PubKeyTranscriptsDiffer);
             }
 
@@ -400,24 +402,24 @@ where
 
             // Check the signature of knowledge
             if !<C::Pairing as PairingEngineExt>::same_ratio(
-                (pubkey.s, pubkey.s_delta),
-                (r, pubkey.r_delta),
+                (contribution.s, contribution.s_delta),
+                (r, contribution.r_delta),
             ) {
                 return Err(PhaseTwoError::SignatureInvalid);
             }
 
             // Check the change from the old delta is consistent
             if !<C::Pairing as PairingEngineExt>::same_ratio(
-                (current_delta, pubkey.delta_after),
-                (r, pubkey.r_delta),
+                (current_delta, contribution.delta_after),
+                (r, contribution.r_delta),
             ) {
                 return Err(PhaseTwoError::InconsistentDeltaChange);
             }
 
-            current_delta = pubkey.delta_after;
+            current_delta = contribution.delta_after;
 
             // Record hash of this contribution
-            pubkey
+            contribution
                 .serialize(&mut cumulative_hasher)
                 .expect("Blake2b Hasher never returns an error");
             result.push(into_array_unchecked(cumulative_hasher.clone().finalize()));
@@ -455,8 +457,6 @@ where
     pub fn check_phase_2_invariants(
         state: &State<E>,
         initial_state: &State<E>,
-        contribution_and_hashes: &ContributionAndHashes<E, N>,
-        initial_contribution_and_hashes: &ContributionAndHashes<E, N>,
     ) -> Result<(), PhaseTwoError> {
         // H/L will change, but should have same length
         if initial_state.pk.h_query.len() != state.pk.h_query.len() {
@@ -494,14 +494,98 @@ where
                 "Public input cross terms changed",
             ));
         }
-        // cs_hash should be the same
-        if contribution_and_hashes.hash != initial_contribution_and_hashes.hash {
-            return Err(PhaseTwoError::Phase2InvariantViolated(
-                "Constraint system hash changed",
-            ));
-        }
+        // TODO: check cs_hash elsewhere?
         Ok(())
     }
+
+    /// Verifies whether given the `proof` of contribution, the `last` [`State`] leads to `next` [`State`].  
+    pub fn verify_transform<H, D>(
+        last: State<E>,
+        next: State<E>,
+        previous_contributions: &Contributions<E, N>, // TODO: change this to challenge to match the trait?
+        proof: &Proof<E, N>,
+    ) -> Result<State<E>, PhaseTwoError>
+    where
+        D: Default,
+        H: Digest<N>,
+        E::Fr: Sample<D>,
+        E::G1Affine: Sample<D>,
+        E::G2Affine: Sample<D>,
+    {
+        // check phase 2 invariants:
+        Self::check_phase_2_invariants(&last, &next)?;
+        // compute challenge
+        let h = {
+            let mut hasher = H::new();
+            hasher.update(&previous_contributions.cs_hash);
+            for proof in &previous_contributions.contributions {
+                proof
+                    .serialize(&mut hasher)
+                    .expect("Hasher never returns an error");
+            }
+            proof
+                .s
+                .serialize_uncompressed(&mut hasher)
+                .expect("Hasher never returns an error");
+            proof
+                .s_delta
+                .serialize_uncompressed(&mut hasher)
+                .expect("Hasher never returns an error");
+            hasher.finalize()
+        };
+        // The transcript must be consistent
+        if proof.transcript != h {
+            return Err(PhaseTwoError::PubKeyTranscriptsDiffer);
+        }
+
+        let r = hash_to_group::<E::G2Affine, _, N>(h);
+        // check the signature of knowledge
+        if !<E as PairingEngineExt>::same_ratio((proof.s, proof.s_delta), (r, proof.r_delta)) {
+            return Err(PhaseTwoError::SignatureInvalid);
+        }
+        // Check the change from the old delta is consistent
+        if !<E as PairingEngineExt>::same_ratio(
+            (last.pk.delta_g1, proof.delta_after),
+            (r, proof.r_delta),
+        ) {
+            return Err(PhaseTwoError::InconsistentDeltaChange);
+        }
+        // Current parameters should have consistent delta in G1
+        if proof.delta_after != next.pk.delta_g1 {
+            return Err(PhaseTwoError::InconsistentDeltaChange);
+        }
+        // Current parameters should have consistent delta in G2
+        if !<E as PairingEngineExt>::same_ratio(
+            (E::G1Affine::prime_subgroup_generator(), proof.delta_after),
+            (E::G2Affine::prime_subgroup_generator(), next.pk.vk.delta_g2),
+        ) {
+            return Err(PhaseTwoError::InconsistentDeltaChange);
+        }
+        // H and L queries should be updated with delta^-1
+        if !<E as PairingEngineExt>::same_ratio(
+            merge_pairs::<E>(&last.pk.h_query, &next.pk.h_query),
+            (next.pk.vk.delta_g2, last.pk.vk.delta_g2), // reversed for inverse
+        ) {
+            return Err(PhaseTwoError::InconsistentHChange);
+        }
+        if !<E as PairingEngineExt>::same_ratio(
+            merge_pairs::<E>(&last.pk.l_query, &next.pk.l_query),
+            (next.pk.vk.delta_g2, last.pk.vk.delta_g2), // reversed for inverse
+        ) {
+            return Err(PhaseTwoError::InconsistentLChange);
+        }
+        // TODO: if we want to return hash here, adapt the following:
+        // https://github.com/Manta-Network/trusted-setup/blob/d1d77633429f3898280dd9b8fd9a8713ceec98a3/src/phase_two.rs#L671-L682
+
+        Ok(next)
+    }
+}
+
+fn merge_pairs<E: PairingEngine>(
+    _a: &[E::G1Affine],
+    _b: &[E::G1Affine],
+) -> (E::G1Affine, E::G1Affine) {
+    todo!()
 }
 
 /// Specialize all phase1 parameters to phase2 parameters (except `h_query`) at once.
@@ -574,7 +658,7 @@ pub enum PhaseTwoError {
     MissingCSMatrices,
     /// TODO
     ConstraintSystemHashesDiffer,
-    /// TODO
+    /// TODO: change PubKey to `Proof`
     PubKeyTranscriptsDiffer,
     /// TODO
     SignatureInvalid,
@@ -598,6 +682,3 @@ pub enum PhaseTwoError {
 
 //     CanonicalDeserialize::deserialize_unchecked(&mut reader).unwrap()
 // }
-
-
-
