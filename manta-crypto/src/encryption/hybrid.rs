@@ -21,6 +21,10 @@
 //! encryption scheme inlines this complexity into the encryption interfaces.
 
 use crate::{
+    constraint::{
+        self, Allocate, Allocator, Assert, AssertEq, BitAnd, Bool, Constant, Derived, Has, Var,
+        Variable,
+    },
     encryption::{
         CiphertextType, Decrypt, DecryptedPlaintextType, DecryptionKeyType, Derive, Encrypt,
         EncryptedMessage, EncryptionKeyType, HeaderType, PlaintextType, RandomnessType,
@@ -111,6 +115,31 @@ where
     }
 }
 
+impl<K, E, S, R, COM> Variable<Derived<(S, R)>, COM> for Randomness<K, E>
+where
+    K: key::agreement::Types + Constant<COM>,
+    E: RandomnessType + Constant<COM>,
+    K::SecretKey: Variable<S, COM>,
+    E::Randomness: Variable<R, COM>,
+    K::Type: key::agreement::Types<SecretKey = Var<K::SecretKey, S, COM>>,
+    E::Type: RandomnessType<Randomness = Var<E::Randomness, R, COM>>,
+{
+    type Type = Randomness<K::Type, E::Type>;
+
+    #[inline]
+    fn new_unknown(compiler: &mut COM) -> Self {
+        Self::new(compiler.allocate_unknown(), compiler.allocate_unknown())
+    }
+
+    #[inline]
+    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
+        Self::new(
+            this.ephemeral_secret_key.as_known(compiler),
+            this.randomness.as_known(compiler),
+        )
+    }
+}
+
 /// Full Ciphertext
 #[cfg_attr(
     feature = "serde",
@@ -123,9 +152,7 @@ where
     Copy(bound = "K::PublicKey: Copy, E::Ciphertext: Copy"),
     Debug(bound = "K::PublicKey: Debug, E::Ciphertext: Debug"),
     Default(bound = "K::PublicKey: Default, E::Ciphertext: Default"),
-    Eq(bound = "K::PublicKey: Eq, E::Ciphertext: Eq"),
-    Hash(bound = "K::PublicKey: Hash, E::Ciphertext: Hash"),
-    PartialEq(bound = "K::PublicKey: PartialEq, E::Ciphertext: PartialEq")
+    Hash(bound = "K::PublicKey: Hash, E::Ciphertext: Hash")
 )]
 pub struct Ciphertext<K, E>
 where
@@ -167,6 +194,57 @@ where
         R: RngCore + ?Sized,
     {
         Self::new(rng.sample(distribution.0), rng.sample(distribution.1))
+    }
+}
+
+impl<K, E, COM> constraint::PartialEq<Self, COM> for Ciphertext<K, E>
+where
+    COM: Has<bool>,
+    Bool<COM>: BitAnd<Bool<COM>, COM, Output = Bool<COM>>,
+    K: key::agreement::Types,
+    E: CiphertextType,
+    K::PublicKey: constraint::PartialEq<K::PublicKey, COM>,
+    E::Ciphertext: constraint::PartialEq<E::Ciphertext, COM>,
+{
+    #[inline]
+    fn eq(&self, rhs: &Self, compiler: &mut COM) -> Bool<COM> {
+        self.ephemeral_public_key
+            .eq(&rhs.ephemeral_public_key, compiler)
+            .bitand(self.ciphertext.eq(&rhs.ciphertext, compiler), compiler)
+    }
+
+    #[inline]
+    fn assert_equal(&self, rhs: &Self, compiler: &mut COM)
+    where
+        COM: Assert,
+    {
+        compiler.assert_eq(&self.ephemeral_public_key, &rhs.ephemeral_public_key);
+        compiler.assert_eq(&self.ciphertext, &rhs.ciphertext);
+    }
+}
+
+impl<K, E, P, C, COM> Variable<Derived<(P, C)>, COM> for Ciphertext<K, E>
+where
+    K: key::agreement::Types + Constant<COM>,
+    E: CiphertextType + Constant<COM>,
+    K::PublicKey: Variable<P, COM>,
+    E::Ciphertext: Variable<C, COM>,
+    K::Type: key::agreement::Types<PublicKey = Var<K::PublicKey, P, COM>>,
+    E::Type: CiphertextType<Ciphertext = Var<E::Ciphertext, C, COM>>,
+{
+    type Type = Ciphertext<K::Type, E::Type>;
+
+    #[inline]
+    fn new_unknown(compiler: &mut COM) -> Self {
+        Self::new(compiler.allocate_unknown(), compiler.allocate_unknown())
+    }
+
+    #[inline]
+    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
+        Self::new(
+            this.ephemeral_public_key.as_known(compiler),
+            this.ciphertext.as_known(compiler),
+        )
     }
 }
 
@@ -346,8 +424,8 @@ where
         R: Read,
     {
         Ok(Self::new(
-            K::decode(&mut reader).map_err(|err| err.map_decode(|_| ()))?,
-            E::decode(&mut reader).map_err(|err| err.map_decode(|_| ()))?,
+            Decode::decode(&mut reader).map_err(|err| err.map_decode(|_| ()))?,
+            Decode::decode(&mut reader).map_err(|err| err.map_decode(|_| ()))?,
         ))
     }
 }
@@ -379,5 +457,21 @@ where
         R: RngCore + ?Sized,
     {
         Self::new(rng.sample(distribution.0), rng.sample(distribution.1))
+    }
+}
+
+impl<K, E, COM> Constant<COM> for Hybrid<K, E>
+where
+    K: Constant<COM>,
+    E: Constant<COM>,
+{
+    type Type = Hybrid<K::Type, E::Type>;
+
+    #[inline]
+    fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
+        Self::new(
+            this.key_agreement_scheme.as_constant(compiler),
+            this.encryption_scheme.as_constant(compiler),
+        )
     }
 }

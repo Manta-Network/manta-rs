@@ -27,6 +27,8 @@
 //! abstractions inside of compilers, like heap allocation. Allocation only refers to lifting
 //! constants and variables from one compiler to another.
 
+// TODO: How can we have objects that have both `Constant` and `Variable` parts?
+
 use core::marker::PhantomData;
 
 /// Constant Type Alias
@@ -253,12 +255,20 @@ impl<COM> Allocator for COM where COM: ?Sized {}
 /// [`Secret`]: mode::Secret
 /// [`ProofSystem`]: crate::eclair::execution::ProofSystem
 pub mod mode {
+    use super::*;
+
     /// Generic Derived Allocation Mode
     ///
     /// Whenever a variable has internal structure that employs different allocation modes for
     /// different internal variables, it should be marked with this allocation mode.
+    ///
+    /// # Optional Type Annotations
+    ///
+    /// To ensure that all types are constrained when implementing [`Variable`], we can provide
+    /// optional types to [`Derived`]. See [E0207](https://doc.rust-lang.org/error-index.html#E0207)
+    /// for more on unconstrained type errors.
     #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-    pub struct Derived;
+    pub struct Derived<T = ()>(PhantomData<T>);
 
     /// Constant Allocation Mode
     ///
@@ -267,9 +277,6 @@ pub mod mode {
     /// this allocation mode may be useful to add some leakage to the [`Variable`] abstraction. This
     /// marker can also be used in situations where a canonical name is needed to refer to
     /// constants.
-    ///
-    /// [`Constant`]: super::Constant
-    /// [`Variable`]: super::Variable
     #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
     pub struct Constant;
 
@@ -280,9 +287,9 @@ pub mod mode {
     #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
     pub struct Public;
 
-    impl From<Derived> for Public {
+    impl<T> From<Derived<T>> for Public {
         #[inline]
-        fn from(d: Derived) -> Self {
+        fn from(d: Derived<T>) -> Self {
             let _ = d;
             Self
         }
@@ -295,9 +302,9 @@ pub mod mode {
     #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
     pub struct Secret;
 
-    impl From<Derived> for Secret {
+    impl<T> From<Derived<T>> for Secret {
         #[inline]
-        fn from(d: Derived) -> Self {
+        fn from(d: Derived<T>) -> Self {
             let _ = d;
             Self
         }

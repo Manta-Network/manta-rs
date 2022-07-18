@@ -20,7 +20,13 @@
 //! set of behavior `trait`s which require those types to be implemented. See the [`Encrypt`] and
 //! [`Decrypt`] `trait`s for more.
 
-use crate::rand::{Rand, RngCore, Sample};
+use crate::{
+    constraint::{
+        self, Allocate, Allocator, Assert, AssertEq, BitAnd, Bool, Constant, Derived, Has, Public,
+        Var, Variable,
+    },
+    rand::{Rand, RngCore, Sample},
+};
 use core::{fmt::Debug, hash::Hash};
 
 #[cfg(feature = "serde")]
@@ -52,6 +58,9 @@ where
     type Header = T::Header;
 }
 
+/// Header Type
+pub type Header<T> = <T as HeaderType>::Header;
+
 /// Ciphertext
 ///
 /// The ciphertext type represents the piece of the encrypt-decrypt interface that contains the
@@ -71,6 +80,9 @@ where
     type Ciphertext = T::Ciphertext;
 }
 
+/// Ciphertext Type
+pub type Ciphertext<T> = <T as CiphertextType>::Ciphertext;
+
 /// Encryption Key
 ///
 /// The encryption key is the information required to produce a valid ciphertext that is targeted
@@ -89,6 +101,9 @@ where
     type EncryptionKey = T::EncryptionKey;
 }
 
+/// Encryption Key Type
+pub type EncryptionKey<T> = <T as EncryptionKeyType>::EncryptionKey;
+
 /// Decryption Key
 ///
 /// The decryption key is the information required to open a valid ciphertext that was encrypted
@@ -106,6 +121,9 @@ where
 {
     type DecryptionKey = T::DecryptionKey;
 }
+
+/// Decryption Key Type
+pub type DecryptionKey<T> = <T as DecryptionKeyType>::DecryptionKey;
 
 /// Plaintext
 ///
@@ -127,6 +145,9 @@ where
     type Plaintext = T::Plaintext;
 }
 
+/// Plaintext Type
+pub type Plaintext<T> = <T as PlaintextType>::Plaintext;
+
 /// Randomness
 ///
 /// The randomness type allows us to inject some extra randomness to hide repeated encryptions
@@ -146,6 +167,9 @@ where
 {
     type Randomness = T::Randomness;
 }
+
+/// Randomness Type
+pub type Randomness<T> = <T as RandomnessType>::Randomness;
 
 /// Decrypted Plaintext
 ///
@@ -167,6 +191,9 @@ where
 {
     type DecryptedPlaintext = T::DecryptedPlaintext;
 }
+
+/// Decrypted Plaintext Type
+pub type DecryptedPlaintext<T> = <T as DecryptedPlaintextType>::DecryptedPlaintext;
 
 /// Encryption Key Derivation
 ///
@@ -370,6 +397,30 @@ where
     }
 }
 
+impl<E, H, P, COM> Variable<Derived<(H, P)>, COM> for Message<E>
+where
+    E: HeaderType + PlaintextType + Constant<COM>,
+    E::Header: Variable<H, COM>,
+    E::Plaintext: Variable<P, COM>,
+    E::Type: HeaderType<Header = Var<E::Header, H, COM>>
+        + PlaintextType<Plaintext = Var<E::Plaintext, P, COM>>,
+{
+    type Type = Message<E::Type>;
+
+    #[inline]
+    fn new_unknown(compiler: &mut COM) -> Self {
+        Self::new(compiler.allocate_unknown(), compiler.allocate_unknown())
+    }
+
+    #[inline]
+    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
+        Self::new(
+            this.header.as_known(compiler),
+            this.plaintext.as_known(compiler),
+        )
+    }
+}
+
 /// Encrypted Message
 #[cfg_attr(
     feature = "serde",
@@ -382,9 +433,7 @@ where
     Copy(bound = "E::Header: Copy, E::Ciphertext: Copy"),
     Debug(bound = "E::Header: Debug, E::Ciphertext: Debug"),
     Default(bound = "E::Header: Default, E::Ciphertext: Default"),
-    Eq(bound = "E::Header: Eq, E::Ciphertext: Eq"),
-    Hash(bound = "E::Header: Hash, E::Ciphertext: Hash"),
-    PartialEq(bound = "E::Header: PartialEq, E::Ciphertext: PartialEq")
+    Hash(bound = "E::Header: Hash, E::Ciphertext: Hash")
 )]
 pub struct EncryptedMessage<E>
 where
@@ -420,11 +469,48 @@ where
     {
         cipher.decrypt(key, &self.header, &self.ciphertext, compiler)
     }
+
+    /// Converts the [`EncryptedMessage`] into the new cipher `F` converting the ciphertext and
+    /// header.
+    #[inline]
+    pub fn into<F>(self) -> EncryptedMessage<F>
+    where
+        F: CiphertextType + HeaderType + ?Sized,
+        E::Ciphertext: Into<F::Ciphertext>,
+        E::Header: Into<F::Header>,
+    {
+        EncryptedMessage::new(self.header.into(), self.ciphertext.into())
+    }
+}
+
+impl<E, COM> constraint::PartialEq<Self, COM> for EncryptedMessage<E>
+where
+    E: CiphertextType + HeaderType + ?Sized,
+    COM: Has<bool>,
+    Bool<COM>: BitAnd<Bool<COM>, COM, Output = Bool<COM>>,
+    E::Ciphertext: constraint::PartialEq<E::Ciphertext, COM>,
+    E::Header: constraint::PartialEq<E::Header, COM>,
+{
+    #[inline]
+    fn eq(&self, rhs: &Self, compiler: &mut COM) -> Bool<COM> {
+        self.header
+            .eq(&rhs.header, compiler)
+            .bitand(self.ciphertext.eq(&rhs.ciphertext, compiler), compiler)
+    }
+
+    #[inline]
+    fn assert_equal(&self, rhs: &Self, compiler: &mut COM)
+    where
+        COM: Assert,
+    {
+        compiler.assert_eq(&self.header, &rhs.header);
+        compiler.assert_eq(&self.ciphertext, &rhs.ciphertext);
+    }
 }
 
 impl<E, H, C> Sample<(H, C)> for EncryptedMessage<E>
 where
-    E: HeaderType + CiphertextType,
+    E: CiphertextType + HeaderType,
     E::Header: Sample<H>,
     E::Ciphertext: Sample<C>,
 {
@@ -434,6 +520,54 @@ where
         R: RngCore + ?Sized,
     {
         Self::new(rng.sample(distribution.0), rng.sample(distribution.1))
+    }
+}
+
+impl<E, H, C, COM> Variable<Derived<(H, C)>, COM> for EncryptedMessage<E>
+where
+    E: CiphertextType + HeaderType + Constant<COM>,
+    E::Header: Variable<H, COM>,
+    E::Ciphertext: Variable<C, COM>,
+    E::Type: CiphertextType<Ciphertext = Var<E::Ciphertext, C, COM>>
+        + HeaderType<Header = Var<E::Header, H, COM>>,
+{
+    type Type = EncryptedMessage<E::Type>;
+
+    #[inline]
+    fn new_unknown(compiler: &mut COM) -> Self {
+        Self::new(compiler.allocate_unknown(), compiler.allocate_unknown())
+    }
+
+    #[inline]
+    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
+        Self::new(
+            this.header.as_known(compiler),
+            this.ciphertext.as_known(compiler),
+        )
+    }
+}
+
+impl<E, COM> Variable<Public, COM> for EncryptedMessage<E>
+where
+    E: CiphertextType + HeaderType + Constant<COM>,
+    E::Header: Variable<Public, COM>,
+    E::Ciphertext: Variable<Public, COM>,
+    E::Type: CiphertextType<Ciphertext = Var<E::Ciphertext, Public, COM>>
+        + HeaderType<Header = Var<E::Header, Public, COM>>,
+{
+    type Type = EncryptedMessage<E::Type>;
+
+    #[inline]
+    fn new_unknown(compiler: &mut COM) -> Self {
+        Self::new(compiler.allocate_unknown(), compiler.allocate_unknown())
+    }
+
+    #[inline]
+    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
+        Self::new(
+            this.header.as_known(compiler),
+            this.ciphertext.as_known(compiler),
+        )
     }
 }
 

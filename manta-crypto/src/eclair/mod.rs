@@ -41,6 +41,13 @@ impl Native for () {
     fn compiler() -> Self {}
 }
 
+/// Non-Native Compiler Marker Trait
+///
+/// This `trait` is explicitly not implemented for `()`, the default native compiler. This marker
+/// can be used to write explicitly different implementations for native and non-native compilers
+/// where otherwise a generic implementation would have to exist.
+pub trait NonNative {}
+
 /// Compiler Type Introspection
 pub trait Has<T> {
     /// Compiler Type
@@ -53,8 +60,10 @@ pub trait Has<T> {
     type Type;
 }
 
-/* FIXME: We cannot implement this yet.
+/// Introspection for the Native Compiler
+///
+/// The native compiler has access to all the types available to Rust and has access to them in
+/// their native form so the allocated type [`Type`](Has::Type) is exactly the generic type `T`.
 impl<T> Has<T> for () {
     type Type = T;
 }
-*/
