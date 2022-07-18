@@ -15,6 +15,9 @@
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
 //! Groth16 Phase 2
+
+extern crate std;
+
 use crate::{
     groth16::kzg::{Accumulator, Configuration, Pairing},
     util::{
@@ -31,7 +34,7 @@ use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem};
 use ark_serialize::{CanonicalSerialize, SerializationError, Write};
 use ark_std::rand::{CryptoRng, Rng};
 use core::marker::PhantomData;
-use manta_crypto::{accumulator::ConstantCapacityAccumulator, rand::Sample};
+use manta_crypto::rand::Sample;
 
 /// TODO
 pub type Contribution<E> = <E as PairingEngine>::Fr;
@@ -112,7 +115,7 @@ where
     where
         B: ConstraintSynthesizer<C::Scalar>,
         C: Configuration<Pairing = E, G1 = E::G1Affine, G2 = E::G2Affine, Scalar = E::Fr>,
-        H: Digest<N>,
+        H: Digest<N> + Write,
     {
         let constraints = ConstraintSystem::new_ref();
         cs.generate_constraints(constraints.clone())
@@ -257,7 +260,7 @@ where
         E::Fr: Sample<D>,
         E::G1Affine: Sample<D>,
         E::G2Affine: Sample<D>,
-        H: Digest<N>,
+        H: Digest<N> + Write,
     {
         // Sample random delta
         let delta = E::Fr::gen(rng);
@@ -314,7 +317,7 @@ where
         E::G1Affine: Sample<D>,
         E::G2Affine: Sample<D>,
         R: Rng + CryptoRng,
-        H: Digest<N>,
+        H: Digest<N> + Write,
     {
         // Generate a keypair
         let (proof, contribution) =
@@ -355,7 +358,7 @@ where
         C: Configuration<Pairing = E, G1 = E::G1Affine, G2 = E::G2Affine, Scalar = E::Fr>,
         E::G2Affine: Sample<D>,
         D: Default,
-        H: Clone + Digest<N>,
+        H: Clone + Digest<N> + Write,
         <E as PairingEngine>::G1Prepared: From<<E as PairingEngine>::G1Projective>,
     {
         // Build default MPCParameters from phase 1 accumulator
@@ -507,7 +510,7 @@ where
     ) -> Result<State<E>, PhaseTwoError>
     where
         D: Default,
-        H: Digest<N>,
+        H: Digest<N> + Write,
         E::Fr: Sample<D>,
         E::G1Affine: Sample<D>,
         E::G2Affine: Sample<D>,
@@ -672,13 +675,118 @@ pub enum PhaseTwoError {
     Phase2InvariantViolated(&'static str),
 }
 
-// /// Reads from file to get a "raw" version of the parameters derived from
-// /// the final sapling phase 1 parameters with no contributions made (delta = 1).
-// pub fn default_reclaim_mpc() -> MPCParameters<<Sapling as Configuration>::Pairing> {
-//     let mut reader = OpenOptions::new()
-//         .read(true)
-//         .open("phase2_reclaim_raw_mpc")
-//         .expect("file not found");
+/// Testing Suite
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::{
+        groth16::kzg::{Pairing, Size},
+        util::{HasDistribution, BlakeHasher},
+    };
+    use ark_ec::bls12::Bls12;
+    use ark_ff::Fp256;
+    use manta_crypto::accumulator::Accumulator as _;
+    use manta_crypto::rand;
 
 //     CanonicalDeserialize::deserialize_unchecked(&mut reader).unwrap()
 // }
+    use manta_pay::{
+        config::{FullParameters, Reclaim},
+        test::payment::UtxoAccumulator,
+    };
+    use rand::SeedableRng;
+    use rand_chacha::ChaCha20Rng;
+    use std::{
+        println,
+    };
+    use ark_std::UniformRand;
+    use manta_pay::crypto::constraint::arkworks::R1CS;
+
+
+    /// Sapling MPC
+    #[derive(Clone)]
+    pub struct Sapling;
+
+    impl Size for Sapling {
+        const G1_POWERS: usize = (Self::G2_POWERS << 1) - 1;
+        const G2_POWERS: usize = 1 << 21;
+    }
+
+    impl HasDistribution for Sapling {
+        // TODO
+        type Distribution = ();
+    }
+
+    impl Pairing for Sapling {
+        type Scalar = ark_bls12_381::Fr;
+        type G1 = ark_bls12_381::G1Affine;
+        type G1Prepared = <ark_bls12_381::Bls12_381 as PairingEngine>::G1Prepared;
+        type G2 = ark_bls12_381::G2Affine;
+        type G2Prepared = <ark_bls12_381::Bls12_381 as PairingEngine>::G2Prepared;
+        type Pairing = ark_bls12_381::Bls12_381;
+
+        fn sample_g1_affine<R>(rng: &mut R) -> Self::G1
+        where
+            R: ark_std::rand::CryptoRng + ark_std::rand::RngCore + ?Sized,
+        {
+            <ark_bls12_381::Bls12_381 as PairingEngine>::G1Projective::rand(rng).into_affine()
+        }
+
+        fn sample_g2_affine<R>(rng: &mut R) -> Self::G2
+        where
+            R: ark_std::rand::CryptoRng + ark_std::rand::RngCore + ?Sized,
+        {
+            <ark_bls12_381::Bls12_381 as PairingEngine>::G2Projective::rand(rng).into_affine()
+        }
+
+        fn g1_prime_subgroup_generator() -> Self::G1 {
+            ark_bls12_381::G1Affine::prime_subgroup_generator()
+        }
+
+        fn g2_prime_subgroup_generator() -> Self::G2 {
+            ark_bls12_381::G2Affine::prime_subgroup_generator()
+        }
+    }
+
+    impl Configuration for Sapling {
+        type DomainTag = u8;
+        type Challenge = [u8; 64];
+        type Response = [u8; 64];
+        const TAU_DOMAIN_TAG : Self::DomainTag = 0;
+        const ALPHA_DOMAIN_TAG: Self::DomainTag = 1;
+        const BETA_DOMAIN_TAG: Self::DomainTag = 2;
+
+        fn hash_to_g2(
+            domain_tag: Self::DomainTag,
+            challenge: &Self::Challenge,
+            ratio: (&Self::G1, &Self::G1),
+        ) -> Self::G2 {
+            todo!()
+        }
+
+        fn response(
+            state: &Accumulator<Self>,
+            challenge: &Self::Challenge,
+            proof: &crate::groth16::kzg::Proof<Self>,
+        ) -> Self::Response {
+            todo!()
+        }
+    }
+
+    /// TODO
+    #[test]
+    pub fn test_create_raw_parameters() {
+        // Read the final Accumulator from file
+        let accumulator = Accumulator::<Sapling>::default();
+
+        let mut rng = ChaCha20Rng::from_seed([0; 32]);
+        let utxo_accumulator = UtxoAccumulator::new(manta_crypto::rand::Rand::gen(&mut rng));
+        let parameters = manta_crypto::rand::Rand::gen(&mut rng);
+        let cs = Reclaim::unknown_constraints(FullParameters::new(
+            &parameters,
+            utxo_accumulator.model(),
+        ));
+        println!("Specializing to phase 2 parameters");
+        let params = Phase2::<Bls12<ark_bls12_381::Parameters>, 64>::initialize::<R1CS<Fp256<ark_bls12_381::FrParameters>>, Sapling, BlakeHasher>(cs, accumulator).unwrap();
+    }
+}

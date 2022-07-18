@@ -24,6 +24,7 @@ use core::{iter, marker::PhantomData};
 use manta_crypto::rand::OsRng;
 use manta_util::{cfg_into_iter, cfg_iter, cfg_iter_mut, cfg_reduce};
 use rand_chacha::{rand_core::SeedableRng, ChaCha20Rng};
+use blake2::{Blake2b, digest::consts::U8};
 
 #[cfg(feature = "rayon")]
 use rayon::iter::{IndexedParallelIterator, ParallelIterator};
@@ -384,7 +385,7 @@ pub trait PairingEngineExt: PairingEngine {
 impl<E> PairingEngineExt for E where E: PairingEngine {}
 
 /// Convenience wrapper trait covering functionality of cryptographic hash functions with fixed output size.
-pub trait Digest<const N: usize>: Write {
+pub trait Digest<const N: usize> {
     /// TODO
     fn new() -> Self;
     /// TODO
@@ -392,6 +393,34 @@ pub trait Digest<const N: usize>: Write {
     /// TODO
     fn finalize(self) -> [u8; N];
 }
+
+/// TODO: Add doc; update Size U8
+pub struct BlakeHasher(Blake2b<U8>);
+
+impl<const N: usize> Digest<N> for BlakeHasher {
+    fn new() -> Self {
+        BlakeHasher(Blake2b::default())
+    }
+
+    fn update(&mut self, data: impl AsRef<[u8]>) {
+        todo!()
+    }
+
+    fn finalize(self) -> [u8; N] {
+        todo!()
+    }
+}
+
+impl Write for BlakeHasher {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        todo!()
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        todo!()
+    }
+}
+
 
 /// TODO
 pub fn hash_to_group<G, D, const N: usize>(digest: [u8; N]) -> G
