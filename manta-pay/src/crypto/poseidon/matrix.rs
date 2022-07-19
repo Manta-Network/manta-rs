@@ -330,6 +330,7 @@ impl<F> PartialEq<SquareMatrix<F>> for Matrix<F>
 where
     F: Field + PartialEq,
 {
+    #[inline]
     fn eq(&self, other: &SquareMatrix<F>) -> bool {
         self.eq(&other.0)
     }
@@ -346,16 +347,19 @@ where
     F: Field,
 {
     /// Returns a new [`SquareMatrix`] representation of `m` if it returns `true` to [`is_square`](Matrix::is_square).
+    #[inline]
     pub fn new(m: Matrix<F>) -> Option<Self> {
-        m.is_square().then(|| Self(m))
+        m.is_square().then_some(Self::new_unchecked(m))
     }
 
     /// Builds a new [`SquareMatrix`] without checking whether `m` is a valid square matrix.
+    #[inline]
     pub fn new_unchecked(m: Matrix<F>) -> Self {
         Self(m)
     }
 
     /// Returns the inversion of a matrix.
+    #[inline]
     pub fn inverse(&self) -> Option<Self>
     where
         F: Clone + PartialEq,
@@ -367,6 +371,7 @@ where
     }
 
     /// Checks if the matrix is invertible.
+    #[inline]
     pub fn is_invertible(&self) -> bool
     where
         F: Clone + PartialEq,
@@ -459,6 +464,7 @@ impl<F> AsRef<Matrix<F>> for SquareMatrix<F>
 where
     F: Field,
 {
+    #[inline]
     fn as_ref(&self) -> &Matrix<F> {
         &self.0
     }
@@ -470,6 +476,7 @@ where
 {
     type Target = Matrix<F>;
 
+    #[inline]
     fn deref(&self) -> &Self::Target {
         &self.0
     }
@@ -479,6 +486,7 @@ impl<F> PartialEq<Matrix<F>> for SquareMatrix<F>
 where
     F: Field + PartialEq,
 {
+    #[inline]
     fn eq(&self, other: &Matrix<F>) -> bool {
         self.0.eq(other)
     }
