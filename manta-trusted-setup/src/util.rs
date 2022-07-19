@@ -17,14 +17,15 @@
 //! Utilities
 
 use alloc::vec::Vec;
+use ark_bls12_381::G1Affine;
 use ark_ec::{wnaf::WnafContext, AffineCurve, PairingEngine, ProjectiveCurve};
-use ark_ff::{BigInteger, PrimeField, UniformRand};
+use ark_ff::{BigInteger, PrimeField, ToBytes, UniformRand};
 use ark_std::io;
+use blake2::{digest::consts::U8, Blake2b};
 use core::{iter, marker::PhantomData};
 use manta_crypto::rand::OsRng;
 use manta_util::{cfg_into_iter, cfg_iter, cfg_iter_mut, cfg_reduce};
 use rand_chacha::{rand_core::SeedableRng, ChaCha20Rng};
-use blake2::{Blake2b, digest::consts::U8};
 
 #[cfg(feature = "rayon")]
 use rayon::iter::{IndexedParallelIterator, ParallelIterator};
@@ -395,7 +396,7 @@ pub trait Digest<const N: usize> {
 }
 
 /// TODO: Add doc; update Size U8
-pub struct BlakeHasher(Blake2b<U8>);
+pub struct BlakeHasher(pub Blake2b<U8>);
 
 impl<const N: usize> Digest<N> for BlakeHasher {
     fn new() -> Self {
@@ -420,7 +421,6 @@ impl Write for BlakeHasher {
         todo!()
     }
 }
-
 
 /// TODO
 pub fn hash_to_group<G, D, const N: usize>(digest: [u8; N]) -> G
@@ -470,7 +470,11 @@ pub fn batch_mul_pointwise<G>(points: &mut [G], scalars: &[G::ScalarField])
 where
     G: ProjectiveCurve,
 {
-    assert_eq!(points.len(), scalars.len(), "Points should have the same length as scalars.");
+    assert_eq!(
+        points.len(),
+        scalars.len(),
+        "Points should have the same length as scalars."
+    );
     cfg_iter_mut!(points)
         .zip(cfg_iter!(scalars))
         .for_each(|(base, scalar)| {

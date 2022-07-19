@@ -700,11 +700,12 @@ mod test {
     use super::*;
     use crate::{
         groth16::kzg::{Pairing, Size},
-        util::{BlakeHasher, HasDistribution},
+        util::{BlakeHasher, HasDistribution}, serialize::serialize_g1_uncompressed,
     };
     use ark_ec::bls12::Bls12;
     use ark_ff::Fp256;
     use manta_crypto::{accumulator::Accumulator as _, rand};
+    use blake2::{Blake2b, Digest as Blake2bDigest};
 
     //     CanonicalDeserialize::deserialize_unchecked(&mut reader).unwrap()
     // }
@@ -776,6 +777,16 @@ mod test {
             challenge: &Self::Challenge,
             ratio: (&Self::G1, &Self::G1),
         ) -> Self::G2 {
+            let mut hasher = BlakeHasher;
+            hasher.update(&[domain_tag]);
+            hasher.update(challenge);
+            serialize_g1_uncompressed(&ratio.0, &mut hasher);
+            
+            // C::serialize_uncompressed(&ratio.0, &mut hasher)
+            //     .expect(HASHER_WRITER_EXPECT_MESSAGE);
+            // C::serialize_g1_uncompressed(&ratio.1, &mut hasher)
+            //     .expect(HASHER_WRITER_EXPECT_MESSAGE);
+            // hash_to_group::<_, D>(into_array_unchecked(hasher.finalize()))
             todo!()
         }
 
@@ -791,14 +802,11 @@ mod test {
     /// TODO
     #[test]
     pub fn test_create_raw_parameters() {
-
-
         // Read the final Accumulator from file
         let accumulator = Accumulator::<Sapling>::default();
 
         // Step2: Contribute to accumulator with Phase 1
         // Also verify contribution
-
         let mut rng = ChaCha20Rng::from_seed([0; 32]);
         let utxo_accumulator = UtxoAccumulator::new(manta_crypto::rand::Rand::gen(&mut rng));
         let parameters = manta_crypto::rand::Rand::gen(&mut rng);

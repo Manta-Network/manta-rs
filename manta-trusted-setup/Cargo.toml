@@ -50,6 +50,6 @@ manta-util = { path = "../manta-util", default-features = false, features = ["al
 rand_chacha = { version = "0.3.1", default-features = false }
 rayon = { version = "1.5.3", optional = true, default-features = false }
 workspace-hack = { version = "0.1.0", path = "../workspace-hack" }
+ark-bls12-381 = {version = "0.3.0", default-features = false, features = ["curve", "scalar_field"]}
 
 [dev-dependencies]
-ark-bls12-381 = {version = "0.3.0", default-features = false, features = ["curve", "scalar_field"]}

@@ -27,3 +27,4 @@ extern crate core;
 pub mod groth16;
 pub mod mpc;
 pub mod util;
+pub mod serialize;
