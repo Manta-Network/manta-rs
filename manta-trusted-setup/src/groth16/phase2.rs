@@ -719,7 +719,7 @@ mod test {
     use std::println;
 
     /// Sapling MPC
-    #[derive(Clone)]
+    #[derive(Clone, Default)]
     pub struct Sapling;
 
     impl Size for Sapling {
@@ -791,8 +791,13 @@ mod test {
     /// TODO
     #[test]
     pub fn test_create_raw_parameters() {
+
+
         // Read the final Accumulator from file
         let accumulator = Accumulator::<Sapling>::default();
+
+        // Step2: Contribute to accumulator with Phase 1
+        // Also verify contribution
 
         let mut rng = ChaCha20Rng::from_seed([0; 32]);
         let utxo_accumulator = UtxoAccumulator::new(manta_crypto::rand::Rand::gen(&mut rng));
@@ -802,11 +807,15 @@ mod test {
             utxo_accumulator.model(),
         ));
         println!("Specializing to phase 2 parameters");
-        let params = Phase2::<Bls12<ark_bls12_381::Parameters>, 64>::initialize::<
-            R1CS<Fp256<ark_bls12_381::FrParameters>>,
-            Sapling,
-            BlakeHasher,
-        >(cs, accumulator)
-        .unwrap();
+
+        // Step3: Phase2 initialize
+        // 1) Find domain size 2) FFT to find Lagrange Polynomial 3) Get co-efficient from the circuit; 4) generate proving key from coefficient
+        let params = Phase2::<Bls12<ark_bls12_381::Parameters>, 64>::initialize::<R1CS<Fp256<ark_bls12_381::FrParameters>>, Sapling, BlakeHasher>(cs, accumulator).unwrap();
+        
+        // Step4: Contribute to Phase 2 params
+    
+        // Step5: Verify contribution
+
+        // Phase 3: Generate Proof from random circuits & verify proof
     }
 }
