@@ -347,7 +347,7 @@ where
 {
     /// Returns a new [`SquareMatrix`] representation of `m` if it returns `true` to [`is_square`](Matrix::is_square).
     pub fn new(m: Matrix<F>) -> Option<Self> {
-        m.is_square().then(|| Self(m))
+        m.is_square().then_some(Self(m))
     }
 
     /// Builds a new [`SquareMatrix`] without checking whether `m` is a valid square matrix.
