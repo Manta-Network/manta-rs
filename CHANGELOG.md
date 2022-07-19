@@ -5,12 +5,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 ### Added
+- [\#131](https://github.com/Manta-Network/manta-rs/pull/131) Add abstract Phase 1 for Groth16 trusted setup
 
 ### Changed
 
 ### Deprecated
 
 ### Removed
+- [\#168](https://github.com/Manta-Network/manta-rs/pull/168) Remove old Poseidon hash
 
 ### Fixed
 

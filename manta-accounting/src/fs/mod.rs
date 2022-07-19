@@ -365,7 +365,7 @@ pub mod cocoon {
     use super::{Block, OpenOptions};
     use cocoon::{Error as CocoonError, MiniCocoon};
     use core::fmt;
-    use manta_util::from_variant_impl;
+    use manta_util::from_variant;
     use std::{fs, io::Error as IoError, path::Path};
 
     /// Cocoon Loading/Saving Error
@@ -378,8 +378,8 @@ pub mod cocoon {
         Cocoon(CocoonError),
     }
 
-    from_variant_impl!(Error, IoError, IoError);
-    from_variant_impl!(Error, Cocoon, CocoonError);
+    from_variant!(Error, IoError, IoError);
+    from_variant!(Error, Cocoon, CocoonError);
 
     impl fmt::Display for Error {
         #[inline]

@@ -14,22 +14,6 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Manta Pay Testing
+//! Groth16 Trusted Setup
 
-// TODO: This is the old simulation. We need to integrate its features into the new asynchronous
-//       simulation.
-//
-// #[cfg(feature = "simulation")]
-// #[cfg_attr(doc_cfg, doc(cfg(feature = "simulation")))]
-// pub mod simulation;
-
-// TODO: Recover this tests when finishing v0.6.0
-// #[cfg(test)]
-// pub mod compatibility;
-
-#[cfg(test)]
-pub mod transfer;
-
-#[cfg(feature = "groth16")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "groth16")))]
-pub mod payment;
+pub mod kzg;
