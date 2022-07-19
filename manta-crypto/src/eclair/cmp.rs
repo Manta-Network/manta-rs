@@ -21,7 +21,6 @@ use crate::eclair::{
     ops::Not,
     Has,
 };
-use core::cmp;
 
 /// Partial Equivalence Relations
 pub trait PartialEq<Rhs, COM = ()>
@@ -57,6 +56,7 @@ where
     }
 }
 
+/* TODO:
 impl<T, Rhs> PartialEq<Rhs> for T
 where
     T: cmp::PartialEq<Rhs>,
@@ -71,6 +71,7 @@ where
         self.ne(rhs)
     }
 }
+*/
 
 /// Equality
 pub trait Eq<COM = ()>: PartialEq<Self, COM>
@@ -79,4 +80,6 @@ where
 {
 }
 
+/* TODO:
 impl<T> Eq for T where T: cmp::Eq {}
+*/

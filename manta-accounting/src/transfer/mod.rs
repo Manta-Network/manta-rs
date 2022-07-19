@@ -33,7 +33,7 @@ use crate::asset::{Asset, AssetId, AssetValue};
 use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash, marker::PhantomData, ops::Deref};
 use manta_crypto::{
-    accumulator::{AssertValidVerification, MembershipProof, Model},
+    accumulator::{self, AssertValidVerification, MembershipProof, Model},
     constraint::{
         self, Add, Allocate, Allocator, AssertEq, Bool, Constant, Derived, ProofSystem,
         ProofSystemInput, Public, Secret, Variable,
@@ -280,10 +280,12 @@ pub type VoidNumber<C> = <C as Configuration>::VoidNumber;
 pub type VoidNumberVar<C> = <C as Configuration>::VoidNumberVar;
 
 /// UTXO Accumulator Witness Type
-pub type UtxoAccumulatorWitness<C> = <<C as Configuration>::UtxoAccumulatorModel as Model>::Witness;
+pub type UtxoAccumulatorWitness<C> =
+    <<C as Configuration>::UtxoAccumulatorModel as accumulator::Types>::Witness;
 
 /// UTXO Accumulator Output Type
-pub type UtxoAccumulatorOutput<C> = <<C as Configuration>::UtxoAccumulatorModel as Model>::Output;
+pub type UtxoAccumulatorOutput<C> =
+    <<C as Configuration>::UtxoAccumulatorModel as accumulator::Types>::Output;
 
 /// UTXO Membership Proof Type
 pub type UtxoMembershipProof<C> = MembershipProof<<C as Configuration>::UtxoAccumulatorModel>;

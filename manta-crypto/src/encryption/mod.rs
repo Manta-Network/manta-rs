@@ -433,7 +433,9 @@ where
     Copy(bound = "E::Header: Copy, E::Ciphertext: Copy"),
     Debug(bound = "E::Header: Debug, E::Ciphertext: Debug"),
     Default(bound = "E::Header: Default, E::Ciphertext: Default"),
-    Hash(bound = "E::Header: Hash, E::Ciphertext: Hash")
+    Eq(bound = "E::Header: Eq, E::Ciphertext: Eq"),
+    Hash(bound = "E::Header: Hash, E::Ciphertext: Hash"),
+    PartialEq(bound = "E::Header: PartialEq, E::Ciphertext: PartialEq")
 )]
 pub struct EncryptedMessage<E>
 where
@@ -506,6 +508,16 @@ where
         compiler.assert_eq(&self.header, &rhs.header);
         compiler.assert_eq(&self.ciphertext, &rhs.ciphertext);
     }
+}
+
+impl<E, COM> constraint::Eq<COM> for EncryptedMessage<E>
+where
+    E: CiphertextType + HeaderType + ?Sized,
+    COM: Has<bool>,
+    Bool<COM>: BitAnd<Bool<COM>, COM, Output = Bool<COM>>,
+    E::Ciphertext: constraint::Eq<COM>,
+    E::Header: constraint::Eq<COM>,
+{
 }
 
 impl<E, H, C> Sample<(H, C)> for EncryptedMessage<E>
