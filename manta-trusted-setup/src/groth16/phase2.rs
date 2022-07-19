@@ -18,6 +18,9 @@
 
 extern crate std;
 
+#[cfg(feature = "rayon")]
+use rayon::prelude::*;
+
 use crate::{
     groth16::kzg::{Accumulator, Configuration, Pairing},
     util::{
@@ -32,12 +35,13 @@ use ark_groth16::{ProvingKey, VerifyingKey};
 use ark_poly::{EvaluationDomain, Radix2EvaluationDomain};
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem};
 use ark_serialize::{CanonicalSerialize, SerializationError, Write};
-use ark_std::rand::{CryptoRng, Rng};
+use ark_std::{
+    rand::{CryptoRng, Rng},
+    UniformRand,
+};
 use core::marker::PhantomData;
-use manta_crypto::rand::Sample;
-
-/// TODO
-pub type Contribution<E> = <E as PairingEngine>::Fr;
+use manta_crypto::rand::{OsRng, Sample};
+use manta_util::{cfg_into_iter, cfg_reduce};
 
 /// Groth16 Phase 2
 pub struct Phase2<E, const N: usize> {
@@ -66,9 +70,7 @@ where
 }
 
 /// This struct carries the data from a contribution
-/// that allows others to test it.  The hash returned
-/// by MPCParameters::contribute is the Blake2b hash
-/// of this object.
+/// that allows others to test it.
 #[derive(Clone, PartialEq, Eq)]
 pub struct Proof<E, const N: usize>
 where
@@ -252,7 +254,7 @@ where
         state: &State<E>,
         previous_contributions: &Contributions<E, N>,
         rng: &mut R,
-    ) -> (Proof<E, N>, Contribution<E>)
+    ) -> (E::Fr, Proof<E, N>)
     where
         D: Default,
         R: Rng + CryptoRng,
@@ -291,6 +293,7 @@ where
         let r_delta = r.mul(delta).into_affine();
 
         (
+            delta,
             Proof {
                 delta_after: state.pk.delta_g1.mul(delta).into_affine(),
                 s,
@@ -298,7 +301,6 @@ where
                 r_delta,
                 transcript: h,
             },
-            delta,
         )
     }
 
@@ -320,17 +322,17 @@ where
         H: Digest<N> + Write,
     {
         // Generate a keypair
-        let (proof, contribution) =
+        let (delta, proof) =
             Self::sample_contribution::<D, R, H>(state, previous_contributions, rng);
         // Invert delta and multiply the `l` and `h` parameters
-        let delta_inv = contribution.inverse().expect("nonzero");
+        let delta_inv = delta.inverse().expect("nonzero");
         batch_mul_fixed_scalar(&mut state.pk.l_query, delta_inv);
         batch_mul_fixed_scalar(&mut state.pk.h_query, delta_inv);
         // Multiply the `delta_g1` and `delta_g2` elements by the private key delta
-        state.pk.delta_g1 = state.pk.delta_g1.mul(contribution).into_affine();
-        state.pk.vk.delta_g2 = state.pk.vk.delta_g2.mul(contribution).into_affine();
-        // Ensure the private key is no longer used
-        let _ = contribution;
+        state.pk.delta_g1 = state.pk.delta_g1.mul(delta).into_affine();
+        state.pk.vk.delta_g2 = state.pk.vk.delta_g2.mul(delta).into_affine();
+        // Ensure delta (the toxic waste) is no longer used
+        let _ = delta;
         previous_contributions.contributions.push(proof);
         let mut hasher = H::new();
         hasher.update(&previous_contributions.cs_hash[..]);
@@ -339,7 +341,7 @@ where
                 .serialize(&mut hasher)
                 .expect("Blake2b Hasher never returns an error");
         }
-        into_array_unchecked(hasher.finalize())
+        hasher.finalize()
     }
 
     /// Verify the validity of all contributions made so far to these parameters.
@@ -398,7 +400,7 @@ where
             // check would fail (with overwhelming probability).  However this error
             // is informative and the check is cheap so we leave it.
             if contribution.transcript != h {
-                return Err(PhaseTwoError::PubKeyTranscriptsDiffer);
+                return Err(PhaseTwoError::ProofTranscriptsDiffer);
             }
 
             let r: E::G2Affine = hash_to_group(h);
@@ -538,7 +540,7 @@ where
         };
         // The transcript must be consistent
         if proof.transcript != h {
-            return Err(PhaseTwoError::PubKeyTranscriptsDiffer);
+            return Err(PhaseTwoError::ProofTranscriptsDiffer);
         }
 
         let r = hash_to_group::<E::G2Affine, _, N>(h);
@@ -566,13 +568,13 @@ where
         }
         // H and L queries should be updated with delta^-1
         if !<E as PairingEngineExt>::same_ratio(
-            merge_pairs::<E>(&last.pk.h_query, &next.pk.h_query),
+            random_linear_combindations::<E>(&last.pk.h_query, &next.pk.h_query),
             (next.pk.vk.delta_g2, last.pk.vk.delta_g2), // reversed for inverse
         ) {
             return Err(PhaseTwoError::InconsistentHChange);
         }
         if !<E as PairingEngineExt>::same_ratio(
-            merge_pairs::<E>(&last.pk.l_query, &next.pk.l_query),
+            random_linear_combindations::<E>(&last.pk.l_query, &next.pk.l_query),
             (next.pk.vk.delta_g2, last.pk.vk.delta_g2), // reversed for inverse
         ) {
             return Err(PhaseTwoError::InconsistentLChange);
@@ -584,11 +586,28 @@ where
     }
 }
 
-fn merge_pairs<E: PairingEngine>(
-    _a: &[E::G1Affine],
-    _b: &[E::G1Affine],
+/// Compress two vectors of curve points into a pair of
+/// curve points by random linear combination. The same
+/// random linear combination is used for both vectors,
+/// allowing this pair to be used in a consistent ratio test.
+fn random_linear_combindations<E: PairingEngine>(
+    lhs: &[E::G1Affine],
+    rhs: &[E::G1Affine],
 ) -> (E::G1Affine, E::G1Affine) {
-    todo!()
+    assert_eq!(lhs.len(), rhs.len());
+    let tmp = cfg_into_iter!(0..lhs.len())
+        .map(|_| {
+            let mut rng = OsRng;
+            E::Fr::rand(&mut rng)
+        })
+        .zip(lhs)
+        .zip(rhs)
+        .map(|((rho, lhs), rhs)| (lhs.mul(rho).into_affine(), rhs.mul(rho).into_affine()));
+    cfg_reduce!(tmp, || (Zero::zero(), Zero::zero()), |mut acc, next| {
+        acc.0 = acc.0 + next.0;
+        acc.1 = acc.1 + next.1;
+        acc
+    })
 }
 
 /// Specialize all phase1 parameters to phase2 parameters (except `h_query`) at once.
@@ -661,8 +680,8 @@ pub enum PhaseTwoError {
     MissingCSMatrices,
     /// TODO
     ConstraintSystemHashesDiffer,
-    /// TODO: change PubKey to `Proof`
-    PubKeyTranscriptsDiffer,
+    /// TODO
+    ProofTranscriptsDiffer,
     /// TODO
     SignatureInvalid,
     /// TODO
@@ -681,27 +700,23 @@ mod test {
     use super::*;
     use crate::{
         groth16::kzg::{Pairing, Size},
-        util::{HasDistribution, BlakeHasher},
+        util::{BlakeHasher, HasDistribution},
     };
     use ark_ec::bls12::Bls12;
     use ark_ff::Fp256;
-    use manta_crypto::accumulator::Accumulator as _;
-    use manta_crypto::rand;
+    use manta_crypto::{accumulator::Accumulator as _, rand};
 
-//     CanonicalDeserialize::deserialize_unchecked(&mut reader).unwrap()
-// }
+    //     CanonicalDeserialize::deserialize_unchecked(&mut reader).unwrap()
+    // }
+    use ark_std::UniformRand;
     use manta_pay::{
         config::{FullParameters, Reclaim},
+        crypto::constraint::arkworks::R1CS,
         test::payment::UtxoAccumulator,
     };
     use rand::SeedableRng;
     use rand_chacha::ChaCha20Rng;
-    use std::{
-        println,
-    };
-    use ark_std::UniformRand;
-    use manta_pay::crypto::constraint::arkworks::R1CS;
-
+    use std::println;
 
     /// Sapling MPC
     #[derive(Clone)]
@@ -752,7 +767,7 @@ mod test {
         type DomainTag = u8;
         type Challenge = [u8; 64];
         type Response = [u8; 64];
-        const TAU_DOMAIN_TAG : Self::DomainTag = 0;
+        const TAU_DOMAIN_TAG: Self::DomainTag = 0;
         const ALPHA_DOMAIN_TAG: Self::DomainTag = 1;
         const BETA_DOMAIN_TAG: Self::DomainTag = 2;
 
@@ -787,6 +802,11 @@ mod test {
             utxo_accumulator.model(),
         ));
         println!("Specializing to phase 2 parameters");
-        let params = Phase2::<Bls12<ark_bls12_381::Parameters>, 64>::initialize::<R1CS<Fp256<ark_bls12_381::FrParameters>>, Sapling, BlakeHasher>(cs, accumulator).unwrap();
+        let params = Phase2::<Bls12<ark_bls12_381::Parameters>, 64>::initialize::<
+            R1CS<Fp256<ark_bls12_381::FrParameters>>,
+            Sapling,
+            BlakeHasher,
+        >(cs, accumulator)
+        .unwrap();
     }
 }
