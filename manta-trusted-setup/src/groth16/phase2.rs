@@ -17,7 +17,6 @@
 //! Groth16 Phase 2
 
 use crate::{
-    distribution::Sample as _,
     groth16::kzg::{Accumulator, Configuration, Pairing},
     util::{
         batch_into_projective, batch_mul_fixed_scalar, hash_to_group, into_array_unchecked,
@@ -30,7 +29,6 @@ use ark_ff::{Field, PrimeField};
 use ark_groth16::{ProvingKey, VerifyingKey};
 use ark_poly::{EvaluationDomain, Radix2EvaluationDomain};
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem};
-pub use ark_serialize::{CanonicalDeserialize, Read};
 use ark_serialize::{CanonicalSerialize, SerializationError, Write};
 use ark_std::{
     rand::{CryptoRng, Rng},
@@ -39,7 +37,12 @@ use ark_std::{
 use core::marker::PhantomData;
 use manta_crypto::rand::{OsRng, Sample};
 use manta_util::{cfg_into_iter, cfg_reduce};
-use rayon::iter::{IndexedParallelIterator, ParallelIterator};
+use rayon::iter::ParallelIterator;
+use rayon::iter::IndexedParallelIterator;
+pub use ark_serialize::{
+    CanonicalDeserialize, Read, 
+};
+use crate::distribution::Sample as _;
 
 /// Proof
 #[derive(Clone, PartialEq, Eq)]
@@ -82,7 +85,10 @@ where
 }
 
 /// Challenge
-pub struct Challenge<const N: usize> {}
+pub struct Challenge<const N: usize>
+{
+
+}
 
 /// Contributions and Hashes
 pub struct Contributions<E, const N: usize>
@@ -285,8 +291,7 @@ where
         let s = E::G1Affine::gen(rng); // Is projective mul. faster ?
         let s_delta = s.mul(delta).into_affine();
 
-        let h = [0; N];
-        {
+        let h = [0; N]; {
             let mut hasher = H::new();
             hasher.update(&previous_contributions.cs_hash[..]);
             for pubkey in previous_contributions.contributions.clone() {
@@ -583,13 +588,13 @@ where
         }
         // H and L queries should be updated with delta^-1
         if !<E as PairingEngineExt>::same_ratio(
-            random_linear_combindations::<E>(&last.pk.h_query, &next.pk.h_query),
+            random_linear_combinations::<E>(&last.pk.h_query, &next.pk.h_query),
             (next.pk.vk.delta_g2, last.pk.vk.delta_g2), // reversed for inverse
         ) {
             return Err(PhaseTwoError::InconsistentHChange);
         }
         if !<E as PairingEngineExt>::same_ratio(
-            random_linear_combindations::<E>(&last.pk.l_query, &next.pk.l_query),
+            random_linear_combinations::<E>(&last.pk.l_query, &next.pk.l_query),
             (next.pk.vk.delta_g2, last.pk.vk.delta_g2), // reversed for inverse
         ) {
             return Err(PhaseTwoError::InconsistentLChange);
@@ -605,7 +610,7 @@ where
 /// curve points by random linear combination. The same
 /// random linear combination is used for both vectors,
 /// allowing this pair to be used in a consistent ratio test.
-fn random_linear_combindations<E: PairingEngine>(
+fn random_linear_combinations<E: PairingEngine>(
     lhs: &[E::G1Affine],
     rhs: &[E::G1Affine],
 ) -> (E::G1Affine, E::G1Affine) {
@@ -716,24 +721,20 @@ mod test {
 
     use super::*;
     use crate::{
-        distribution::SaplingDistribution,
-        groth16::kzg::{Contribution, Pairing, Size},
+        groth16::kzg::{Pairing, Size, Contribution},
         serialize::serialize_g1_uncompressed,
-        util::{BlakeHasher, HasDistribution},
+        util::{HasDistribution, BlakeHasher}, distribution::SaplingDistribution,
     };
     use ark_ec::bls12::Bls12;
-    use ark_ff::Fp256;
-    use ark_std::UniformRand;
     use blake2::{Blake2b, Digest as Blake2bDigest};
+    use ark_std::UniformRand;
     use manta_crypto::accumulator::Accumulator as _;
-    use manta_pay::{
-        config::{FullParameters, Reclaim},
-        crypto::constraint::arkworks::R1CS,
-        test::payment::UtxoAccumulator,
-    };
-    use rand::SeedableRng;
+    use manta_pay::{test::payment::UtxoAccumulator, config::Reclaim, crypto::constraint::arkworks::R1CS};
     use rand_chacha::ChaCha20Rng;
     use std::println;
+    use manta_pay::config::FullParameters;
+    use rand::SeedableRng;
+    use ark_ff::Fp256;
 
     /// Sapling MPC
     #[derive(Clone, Default)]
@@ -801,6 +802,7 @@ mod test {
             serialize_g1_uncompressed(ratio.1, &mut hasher).unwrap();
             let digest: [u8; 32] = into_array_unchecked(hasher.finalize());
 
+
             let mut digest = digest.as_slice();
             let mut seed = Vec::with_capacity(8);
             for _ in 0..8 {
@@ -839,59 +841,17 @@ mod test {
             }
             state.beta_g2.serialize_uncompressed(&mut hasher).unwrap();
             hasher.update(&challenge);
-            proof
-                .tau
-                .ratio
-                .0
-                .serialize_uncompressed(&mut hasher)
-                .unwrap();
-            proof
-                .tau
-                .ratio
-                .1
-                .serialize_uncompressed(&mut hasher)
-                .unwrap();
-            proof
-                .tau
-                .matching_point
-                .serialize_uncompressed(&mut hasher)
-                .unwrap();
+            proof.tau.ratio.0.serialize_uncompressed(&mut hasher).unwrap();
+            proof.tau.ratio.1.serialize_uncompressed(&mut hasher).unwrap();
+            proof.tau.matching_point.serialize_uncompressed(&mut hasher).unwrap();
 
-            proof
-                .alpha
-                .ratio
-                .0
-                .serialize_uncompressed(&mut hasher)
-                .unwrap();
-            proof
-                .alpha
-                .ratio
-                .1
-                .serialize_uncompressed(&mut hasher)
-                .unwrap();
-            proof
-                .alpha
-                .matching_point
-                .serialize_uncompressed(&mut hasher)
-                .unwrap();
+            proof.alpha.ratio.0.serialize_uncompressed(&mut hasher).unwrap();
+            proof.alpha.ratio.1.serialize_uncompressed(&mut hasher).unwrap();
+            proof.alpha.matching_point.serialize_uncompressed(&mut hasher).unwrap();
 
-            proof
-                .beta
-                .ratio
-                .0
-                .serialize_uncompressed(&mut hasher)
-                .unwrap();
-            proof
-                .beta
-                .ratio
-                .1
-                .serialize_uncompressed(&mut hasher)
-                .unwrap();
-            proof
-                .beta
-                .matching_point
-                .serialize_uncompressed(&mut hasher)
-                .unwrap();
+            proof.beta.ratio.0.serialize_uncompressed(&mut hasher).unwrap();
+            proof.beta.ratio.1.serialize_uncompressed(&mut hasher).unwrap();
+            proof.beta.matching_point.serialize_uncompressed(&mut hasher).unwrap();
             into_array_unchecked(hasher.finalize())
         }
     }
@@ -912,9 +872,7 @@ mod test {
         next_accumulator.update(&contribution);
 
         // TODO: Need a function for next challenge.
-        let next_accumulator =
-            Accumulator::verify_transform(last_accumulator, next_accumulator, challenge, proof)
-                .unwrap();
+        let next_accumulator = Accumulator::verify_transform(last_accumulator, next_accumulator, challenge, proof).unwrap();
 
         // Step3: Phase2 initialize
         // 1) Find domain size 2) FFT to find Lagrange Polynomial 3) Get co-efficient from the circuit; 4) generate proving key from coefficient
@@ -939,5 +897,6 @@ mod test {
         // Phase 3: Generate Proof from random circuits & verify proof
         // TODO
         println!("Specializing to phase 2 parameters");
+
     }
 }
