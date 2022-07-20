@@ -28,9 +28,6 @@ pub use ark_serialize::{
 use ark_std::io;
 pub use manta_crypto::rand::Sample;
 
-use blake2::{digest::consts::U8, Blake2b};
-
-
 /// TODO
 pub enum PointDeserializeError {
     /// TODO

@@ -536,7 +536,7 @@ where
     /// Updates `self` by multiplying each element of the accumulator by the powers of its
     /// respective element in the `contribution`.
     #[inline]
-    pub fn update(&mut self, contribution: &Contribution<C>) {
+    pub fn update(&mut self, contribution: &Contribution<C>) { // TODO: Should be statelss
         let mut tau_powers =
             iter::successors(Some(C::Scalar::one()), |x| Some(x.mul(contribution.tau)))
                 .take(C::G1_POWERS)

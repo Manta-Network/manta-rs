@@ -23,7 +23,6 @@ use crate::{
         merge_pairs_affine, Digest, PairingEngineExt, Zero,
     },
 };
-use rand::SeedableRng;
 use alloc::{vec, vec::Vec};
 use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
 use ark_ff::{Field, PrimeField};
@@ -720,10 +719,11 @@ mod test {
 
     use super::*;
     use crate::{
-        groth16::kzg::{Pairing, Size},
+        groth16::kzg::{Pairing, Size, Contribution},
         serialize::serialize_g1_uncompressed,
-        util::HasDistribution, distribution::SaplingDistribution,
+        util::{HasDistribution, BlakeHasher}, distribution::SaplingDistribution,
     };
+    use ark_ec::bls12::Bls12;
     use blake2::{Blake2b, Digest as Blake2bDigest};
     use ark_std::UniformRand;
     use manta_crypto::accumulator::Accumulator as _;
@@ -731,9 +731,9 @@ mod test {
     use rand_chacha::ChaCha20Rng;
     use std::println;
     use manta_pay::config::FullParameters;
-    use ark_ec::bls12::Bls12;
+    use rand::SeedableRng;
     use ark_ff::Fp256;
-    
+
     /// Sapling MPC
     #[derive(Clone, Default)]
     pub struct Sapling;
@@ -792,6 +792,7 @@ mod test {
             challenge: &Self::Challenge,
             ratio: (&Self::G1, &Self::G1),
         ) -> Self::G2 {
+            // TODO: Use Hash trait.
             let mut hasher = Blake2b::default();
             hasher.update(&[domain_tag]);
             hasher.update(&challenge);
@@ -821,6 +822,7 @@ mod test {
             challenge: &Self::Challenge,
             proof: &crate::groth16::kzg::Proof<Self>,
         ) -> Self::Response {
+            // TODO: Use Hash trait.
             // let _ = (state, challenge, proof);
             let mut hasher = Blake2b::default();
             for item in &state.tau_powers_g1 {
@@ -856,10 +858,22 @@ mod test {
     #[test]
     pub fn test_create_raw_parameters() {
         // Read the final Accumulator from file
-        let accumulator = Accumulator::<Sapling>::default();
+        let last_accumulator = Accumulator::<Sapling>::default();
 
         // Step2: Contribute to accumulator with Phase 1
         // Also verify contribution
+        let mut rng = OsRng;
+        let challenge = [0; 64];
+        let contribution: Contribution<Sapling> = Contribution::gen(&mut rng);
+        let proof = contribution.proof(&challenge, &mut rng).unwrap();
+        let mut next_accumulator = last_accumulator.clone();
+        next_accumulator.update(&contribution);
+
+        // TODO: Need a function for next challenge.
+        let next_accumulator = Accumulator::verify_transform(last_accumulator, next_accumulator, challenge, proof).unwrap();
+
+        // Step3: Phase2 initialize
+        // 1) Find domain size 2) FFT to find Lagrange Polynomial 3) Get co-efficient from the circuit; 4) generate proving key from coefficient
         let mut rng = ChaCha20Rng::from_seed([0; 32]);
         let utxo_accumulator = UtxoAccumulator::new(manta_crypto::rand::Rand::gen(&mut rng));
         let parameters = manta_crypto::rand::Rand::gen(&mut rng);
@@ -867,21 +881,20 @@ mod test {
             &parameters,
             utxo_accumulator.model(),
         ));
-        println!("Specializing to phase 2 parameters");
-
-        // Step3: Phase2 initialize
-        // 1) Find domain size 2) FFT to find Lagrange Polynomial 3) Get co-efficient from the circuit; 4) generate proving key from coefficient
-        // let params = Phase2::<Bls12<ark_bls12_381::Parameters>, 64>::initialize::<
-        //     R1CS<Fp256<ark_bls12_381::FrParameters>>,
-        //     Sapling,
-        //     Blake2,
-        // >(cs, accumulator)
-        // .unwrap();
+        let params = Phase2::<Bls12<ark_bls12_381::Parameters>, 64>::initialize::<
+            R1CS<Fp256<ark_bls12_381::FrParameters>>,
+            Sapling,
+            BlakeHasher,
+        >(cs, next_accumulator)
+        .unwrap();
 
         // Step4: Contribute to Phase 2 params
 
         // Step5: Verify contribution
 
         // Phase 3: Generate Proof from random circuits & verify proof
+        // TODO
+        println!("Specializing to phase 2 parameters");
+
     }
 }
