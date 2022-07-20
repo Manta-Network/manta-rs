@@ -16,11 +16,6 @@
 
 //! Groth16 Phase 2
 
-extern crate std;
-
-#[cfg(feature = "rayon")]
-use rayon::prelude::*;
-
 use crate::{
     groth16::kzg::{Accumulator, Configuration, Pairing},
     util::{
@@ -28,6 +23,7 @@ use crate::{
         merge_pairs_affine, Digest, PairingEngineExt, Zero,
     },
 };
+use rand::SeedableRng;
 use alloc::{vec, vec::Vec};
 use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
 use ark_ff::{Field, PrimeField};
@@ -42,19 +38,55 @@ use ark_std::{
 use core::marker::PhantomData;
 use manta_crypto::rand::{OsRng, Sample};
 use manta_util::{cfg_into_iter, cfg_reduce};
+pub use ark_serialize::{
+    CanonicalDeserialize, Read, 
+};
+use crate::distribution::Sample as _;
+
+/// Proof
+#[derive(Clone, PartialEq, Eq)]
+pub struct Proof<E, const N: usize>
+where
+    E: PairingEngine,
+{
+    // TODO: To be refactored
+    delta_after: E::G1Affine,
+    s: E::G1Affine,
+    s_delta: E::G1Affine,
+    r_delta: E::G2Affine,
+    transcript: [u8; N],
+}
+
+/// Server States. TODO: To be used for refactor.
+pub struct Server<E, const N: usize>
+where
+    E: PairingEngine,
+{
+    /// TODO
+    pub state: ProvingKey<E>,
+
+    /// TODO
+    pub proof_history: Vec<Proof<E, N>>,
+}
 
 /// Groth16 Phase 2
 pub struct Phase2<E, const N: usize> {
     __: PhantomData<E>,
 }
 
-/// State of the Groth16 Phase 2
+/// State
 pub struct State<E>
 where
     E: PairingEngine,
 {
-    /// TODO
+    /// Groth16 Proving Keys
     pub pk: ProvingKey<E>,
+}
+
+/// Challenge
+pub struct Challenge<const N: usize>
+{
+
 }
 
 /// Contributions and Hashes
@@ -67,20 +99,6 @@ where
 
     /// TODO
     pub contributions: Vec<Proof<E, N>>,
-}
-
-/// This struct carries the data from a contribution
-/// that allows others to test it.
-#[derive(Clone, PartialEq, Eq)]
-pub struct Proof<E, const N: usize>
-where
-    E: PairingEngine,
-{
-    delta_after: E::G1Affine,
-    s: E::G1Affine,
-    s_delta: E::G1Affine,
-    r_delta: E::G2Affine,
-    transcript: [u8; N],
 }
 
 impl<E, const N: usize> CanonicalSerialize for Proof<E, N>
@@ -252,6 +270,7 @@ where
     /// Sample `delta` from `rng` and generate a range proof for it.
     fn sample_contribution<D, R, H>(
         state: &State<E>,
+        // challenge: xxx [TODO]
         previous_contributions: &Contributions<E, N>,
         rng: &mut R,
     ) -> (E::Fr, Proof<E, N>)
@@ -271,7 +290,7 @@ where
         let s = E::G1Affine::gen(rng); // Is projective mul. faster ?
         let s_delta = s.mul(delta).into_affine();
 
-        let h = {
+        let h = [0; N]; {
             let mut hasher = H::new();
             hasher.update(&previous_contributions.cs_hash[..]);
             for pubkey in previous_contributions.contributions.clone() {
@@ -503,7 +522,7 @@ where
         Ok(())
     }
 
-    /// Verifies whether given the `proof` of contribution, the `last` [`State`] leads to `next` [`State`].  
+    /// Verifies whether given the `proof` of contribution, the `last` [`State`] leads to `next` [`State`].
     pub fn verify_transform<H, D>(
         last: State<E>,
         next: State<E>,
@@ -697,28 +716,24 @@ pub enum PhaseTwoError {
 /// Testing Suite
 #[cfg(test)]
 mod test {
+    extern crate std;
+
     use super::*;
     use crate::{
         groth16::kzg::{Pairing, Size},
-        util::{BlakeHasher, HasDistribution}, serialize::serialize_g1_uncompressed,
+        serialize::serialize_g1_uncompressed,
+        util::HasDistribution, distribution::SaplingDistribution,
     };
-    use ark_ec::bls12::Bls12;
-    use ark_ff::Fp256;
-    use manta_crypto::{accumulator::Accumulator as _, rand};
     use blake2::{Blake2b, Digest as Blake2bDigest};
-
-    //     CanonicalDeserialize::deserialize_unchecked(&mut reader).unwrap()
-    // }
     use ark_std::UniformRand;
-    use manta_pay::{
-        config::{FullParameters, Reclaim},
-        crypto::constraint::arkworks::R1CS,
-        test::payment::UtxoAccumulator,
-    };
-    use rand::SeedableRng;
+    use manta_crypto::accumulator::Accumulator as _;
+    use manta_pay::{test::payment::UtxoAccumulator, config::Reclaim, crypto::constraint::arkworks::R1CS};
     use rand_chacha::ChaCha20Rng;
     use std::println;
-
+    use manta_pay::config::FullParameters;
+    use ark_ec::bls12::Bls12;
+    use ark_ff::Fp256;
+    
     /// Sapling MPC
     #[derive(Clone, Default)]
     pub struct Sapling;
@@ -730,7 +745,7 @@ mod test {
 
     impl HasDistribution for Sapling {
         // TODO
-        type Distribution = ();
+        type Distribution = SaplingDistribution;
     }
 
     impl Pairing for Sapling {
@@ -777,17 +792,28 @@ mod test {
             challenge: &Self::Challenge,
             ratio: (&Self::G1, &Self::G1),
         ) -> Self::G2 {
-            let mut hasher = BlakeHasher;
+            let mut hasher = Blake2b::default();
             hasher.update(&[domain_tag]);
-            hasher.update(challenge);
-            serialize_g1_uncompressed(&ratio.0, &mut hasher);
-            
-            // C::serialize_uncompressed(&ratio.0, &mut hasher)
-            //     .expect(HASHER_WRITER_EXPECT_MESSAGE);
-            // C::serialize_g1_uncompressed(&ratio.1, &mut hasher)
-            //     .expect(HASHER_WRITER_EXPECT_MESSAGE);
-            // hash_to_group::<_, D>(into_array_unchecked(hasher.finalize()))
-            todo!()
+            hasher.update(&challenge);
+            serialize_g1_uncompressed(ratio.0, &mut hasher).unwrap();
+            serialize_g1_uncompressed(ratio.1, &mut hasher).unwrap();
+            let digest: [u8; 32] = into_array_unchecked(hasher.finalize());
+
+
+            let mut digest = digest.as_slice();
+            let mut seed = Vec::with_capacity(8);
+            for _ in 0..8 {
+                let mut le_bytes = [0u8; 8];
+                let word = digest
+                    .read(&mut le_bytes[..])
+                    .expect("This is always possible since we have enough bytes to begin with.");
+                seed.extend(word.to_le_bytes());
+            }
+            let mut rng_chacha = ChaCha20Rng::from_seed(into_array_unchecked(seed));
+            let distribution = SaplingDistribution;
+            Self::G2::sample::<ChaCha20Rng>(distribution, &mut rng_chacha)
+            // Self::G2::gen::<ChaCha20Rng>(&mut rng_chacha)
+            // hash_to_group::<Self::G2, SaplingDistribution, 64>(into_array_unchecked(hasher.finalize()))
         }
 
         fn response(
@@ -795,7 +821,34 @@ mod test {
             challenge: &Self::Challenge,
             proof: &crate::groth16::kzg::Proof<Self>,
         ) -> Self::Response {
-            todo!()
+            // let _ = (state, challenge, proof);
+            let mut hasher = Blake2b::default();
+            for item in &state.tau_powers_g1 {
+                item.serialize_uncompressed(&mut hasher).unwrap();
+            }
+            for item in &state.tau_powers_g2 {
+                item.serialize_uncompressed(&mut hasher).unwrap();
+            }
+            for item in &state.alpha_tau_powers_g1 {
+                item.serialize_uncompressed(&mut hasher).unwrap();
+            }
+            for item in &state.beta_tau_powers_g1 {
+                item.serialize_uncompressed(&mut hasher).unwrap();
+            }
+            state.beta_g2.serialize_uncompressed(&mut hasher).unwrap();
+            hasher.update(&challenge);
+            proof.tau.ratio.0.serialize_uncompressed(&mut hasher).unwrap();
+            proof.tau.ratio.1.serialize_uncompressed(&mut hasher).unwrap();
+            proof.tau.matching_point.serialize_uncompressed(&mut hasher).unwrap();
+
+            proof.alpha.ratio.0.serialize_uncompressed(&mut hasher).unwrap();
+            proof.alpha.ratio.1.serialize_uncompressed(&mut hasher).unwrap();
+            proof.alpha.matching_point.serialize_uncompressed(&mut hasher).unwrap();
+
+            proof.beta.ratio.0.serialize_uncompressed(&mut hasher).unwrap();
+            proof.beta.ratio.1.serialize_uncompressed(&mut hasher).unwrap();
+            proof.beta.matching_point.serialize_uncompressed(&mut hasher).unwrap();
+            into_array_unchecked(hasher.finalize())
         }
     }
 
@@ -818,10 +871,15 @@ mod test {
 
         // Step3: Phase2 initialize
         // 1) Find domain size 2) FFT to find Lagrange Polynomial 3) Get co-efficient from the circuit; 4) generate proving key from coefficient
-        let params = Phase2::<Bls12<ark_bls12_381::Parameters>, 64>::initialize::<R1CS<Fp256<ark_bls12_381::FrParameters>>, Sapling, BlakeHasher>(cs, accumulator).unwrap();
-        
+        // let params = Phase2::<Bls12<ark_bls12_381::Parameters>, 64>::initialize::<
+        //     R1CS<Fp256<ark_bls12_381::FrParameters>>,
+        //     Sapling,
+        //     Blake2,
+        // >(cs, accumulator)
+        // .unwrap();
+
         // Step4: Contribute to Phase 2 params
-    
+
         // Step5: Verify contribution
 
         // Phase 3: Generate Proof from random circuits & verify proof

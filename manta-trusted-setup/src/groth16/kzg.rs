@@ -81,6 +81,7 @@ pub trait Pairing: HasDistribution {
     fn sample_g1_affine<R>(rng: &mut R) -> Self::G1
     where
         R: CryptoRng + RngCore + ?Sized;
+    
     /// TODO
     fn sample_g2_affine<R>(rng: &mut R) -> Self::G2
     where
@@ -251,9 +252,11 @@ where
         C: Configuration,
         R: CryptoRng + RngCore + ?Sized,
     {
-        // let g1_point = rng.gen::<_, C::G1>();
         // TODO
+        // let g1_point = rng.gen::<_, C::G1>();
+        // TODO: g1_point should be received point instead of a sampled point?
         let g1_point = C::sample_g1_affine(rng);
+        // TODO: Should we repeat sampling until g1_point is non-zero?
         if g1_point.is_zero() {
             return None;
         }

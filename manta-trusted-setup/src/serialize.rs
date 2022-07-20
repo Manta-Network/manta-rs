@@ -16,24 +16,20 @@
 
 //! Serialization Utilities
 
-use alloc::vec::Vec;
 use ark_bls12_381::{G1Affine, G2Affine};
 use ark_ec::{
-    bls12::Bls12Parameters, wnaf::WnafContext, AffineCurve, ModelParameters, PairingEngine,
-    ProjectiveCurve,
+    bls12::Bls12Parameters, ModelParameters,
 };
-use ark_ff::{BigInteger, PrimeField, ToBytes, UniformRand};
+use ark_ff::{PrimeField, ToBytes};
 pub use ark_ff::{One, Zero};
 pub use ark_serialize::{
     CanonicalDeserialize, CanonicalSerialize, Read, SerializationError, Write,
 };
 use ark_std::io;
-use blake2::{digest::consts::U8, Blake2b};
-use core::{iter, marker::PhantomData};
-use manta_crypto::rand::OsRng;
 pub use manta_crypto::rand::Sample;
-use manta_util::{cfg_into_iter, cfg_iter, cfg_iter_mut, cfg_reduce};
-use rand_chacha::{rand_core::SeedableRng, ChaCha20Rng};
+
+use blake2::{digest::consts::U8, Blake2b};
+
 
 /// TODO
 pub enum PointDeserializeError {
@@ -78,7 +74,7 @@ where
 
 /// TODO
 #[inline]
-fn deserialize_g1_compressed<R>(reader: &mut R) -> Result<G1Affine, PointDeserializeError>
+pub fn deserialize_g1_compressed<R>(reader: &mut R) -> Result<G1Affine, PointDeserializeError>
 where
     R: Read,
 {
@@ -123,10 +119,10 @@ where
     }
 }
 
-// Only makes sense for this to be deserialization from uncompressed bytes since
-// deserializing from compressed implies at least doing an on-curve check
+/// Only makes sense for this to be deserialization from uncompressed bytes since
+/// deserializing from compressed implies at least doing an on-curve check
 #[inline]
-fn deserialize_g1_unchecked<R>(reader: &mut R) -> Result<G1Affine, PointDeserializeError>
+pub fn deserialize_g1_unchecked<R>(reader: &mut R) -> Result<G1Affine, PointDeserializeError>
 where
     R: Read,
 {
@@ -169,7 +165,8 @@ where
     }
 }
 
-fn serialize_g2_compressed<W>(point: &G2Affine, writer: &mut W) -> Result<(), io::Error>
+/// TODO
+pub fn serialize_g2_compressed<W>(point: &G2Affine, writer: &mut W) -> Result<(), io::Error>
 where
     W: Write,
 {
@@ -203,8 +200,9 @@ where
     Ok(())
 }
 
+/// TODO
 #[inline]
-fn serialize_g2_uncompressed<W>(point: &G2Affine, writer: &mut W) -> Result<(), io::Error>
+pub fn serialize_g2_uncompressed<W>(point: &G2Affine, writer: &mut W) -> Result<(), io::Error>
 where
     W: Write,
 {
@@ -233,7 +231,8 @@ where
     Ok(())
 }
 
-fn deserialize_g2_compressed<R>(reader: &mut R) -> Result<G2Affine, PointDeserializeError>
+/// TODO
+pub fn deserialize_g2_compressed<R>(reader: &mut R) -> Result<G2Affine, PointDeserializeError>
 where
     R: Read,
 {
@@ -284,8 +283,9 @@ where
     }
 }
 
+/// TODO
 #[inline]
-fn deserialize_g2_unchecked<R>(reader: &mut R) -> Result<G2Affine, PointDeserializeError>
+pub fn deserialize_g2_unchecked<R>(reader: &mut R) -> Result<G2Affine, PointDeserializeError>
 where
     R: Read,
 {

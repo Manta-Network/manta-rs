@@ -15,11 +15,9 @@
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
 //! Utilities
-
 use alloc::vec::Vec;
-use ark_bls12_381::G1Affine;
 use ark_ec::{wnaf::WnafContext, AffineCurve, PairingEngine, ProjectiveCurve};
-use ark_ff::{BigInteger, PrimeField, ToBytes, UniformRand};
+use ark_ff::{BigInteger, PrimeField, UniformRand};
 use ark_std::io;
 use blake2::{digest::consts::U8, Blake2b};
 use core::{iter, marker::PhantomData};
@@ -404,6 +402,7 @@ impl<const N: usize> Digest<N> for BlakeHasher {
     }
 
     fn update(&mut self, data: impl AsRef<[u8]>) {
+        let _ = data;
         todo!()
     }
 
@@ -414,6 +413,7 @@ impl<const N: usize> Digest<N> for BlakeHasher {
 
 impl Write for BlakeHasher {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        let _ = buf;
         todo!()
     }
 

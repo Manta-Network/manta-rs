@@ -18,5 +18,3 @@
 
 pub mod kzg;
 pub mod phase2;
-
-// TODO
