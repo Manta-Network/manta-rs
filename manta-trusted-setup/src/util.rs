@@ -32,7 +32,8 @@ pub use ark_ff::{One, Zero};
 pub use ark_serialize::{
     CanonicalDeserialize, CanonicalSerialize, Read, SerializationError, Write,
 };
-pub use manta_crypto::rand::Sample;
+// pub use manta_crypto::rand::Sample;
+pub use crate::distribution::Sample;
 
 /// Distribution Type Extension
 pub trait HasDistribution {

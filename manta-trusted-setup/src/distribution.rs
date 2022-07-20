@@ -18,10 +18,10 @@
 
 use ark_ec::{short_weierstrass_jacobian::GroupAffine, ProjectiveCurve, SWModelParameters};
 use ark_ff::{UniformRand, Zero};
-use rand::{distributions::Standard, prelude::Distribution, CryptoRng, Rng, RngCore};
+use rand::{prelude::Distribution, CryptoRng, Rng, RngCore, distributions::Standard};
 
 /// Sampling Trait
-pub trait Sample<D = Standard>: Sized {
+pub trait Sample<D = ()>: Sized {
     /// Returns a random value of type `Self`, sampled according to the given `distribution`,
     /// generated from the `rng`.
     fn sample<R>(distribution: D, rng: &mut R) -> Self
@@ -104,7 +104,7 @@ impl Distribution<ark_bls12_381::Fr> for SaplingDistribution {
     // but there's actually no need to make phase2 match their distribution
     // The question is how many unused bits to throw away for this field
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ark_bls12_381::Fr {
-        rng.sample(Standard)
+        rng.sample(())
     }
 }
 

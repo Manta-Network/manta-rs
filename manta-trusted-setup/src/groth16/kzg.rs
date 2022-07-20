@@ -573,6 +573,7 @@ where
     where
         C: Configuration,
     {
+        // TODO: any different between input next and the output Self?
         if next.tau_powers_g1[0] != C::g1_prime_subgroup_generator() {
             return Err(VerificationError::PrimeSubgroupGeneratorG1);
         }
