@@ -18,7 +18,8 @@
 
 use ark_ec::{short_weierstrass_jacobian::GroupAffine, ProjectiveCurve, SWModelParameters};
 use ark_ff::{UniformRand, Zero};
-use rand::{prelude::Distribution, CryptoRng, Rng, RngCore, distributions::Standard};
+use ark_std::rand::{distributions::Standard, Rng};
+use manta_crypto::rand::{CryptoRng, Distribution, RngCore};
 
 /// Sampling Trait
 pub trait Sample<D = ()>: Sized {
@@ -44,7 +45,8 @@ impl<P, D> Sample<D> for GroupAffine<P>
 where
     P: SWModelParameters,
     P::BaseField: Sample<D>,
-    D: Clone + Distribution<bool>,
+    D: Clone,
+    bool: Sample<D>,
 {
     fn sample<R>(distribution: D, rng: &mut R) -> Self
     where
@@ -52,7 +54,7 @@ where
     {
         loop {
             let x = P::BaseField::sample(distribution.clone(), rng);
-            let greatest = rng.sample(distribution.clone());
+            let greatest = <bool as Sample<D>>::sample(distribution.clone(), rng);
             if let Some(p) = Self::get_point_from_x(x, greatest) {
                 let p = p.scale_by_cofactor();
                 if !p.is_zero() {
@@ -104,7 +106,7 @@ impl Distribution<ark_bls12_381::Fr> for SaplingDistribution {
     // but there's actually no need to make phase2 match their distribution
     // The question is how many unused bits to throw away for this field
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ark_bls12_381::Fr {
-        rng.sample(())
+        rng.sample(Standard)
     }
 }
 
@@ -139,7 +141,7 @@ impl Sample<SaplingDistribution> for ark_bls12_381::Fq {
 
 /// Implementing Sample for the base field of G1
 impl Sample for ark_bls12_381::Fq {
-    fn sample<R>(_: Standard, rng: &mut R) -> Self
+    fn sample<R>(_: (), rng: &mut R) -> Self
     where
         R: CryptoRng + RngCore + ?Sized,
     {
@@ -159,7 +161,7 @@ impl Sample<SaplingDistribution> for ark_bls12_381::Fq2 {
 
 /// Implementing Sample for the base field of G2
 impl Sample for ark_bls12_381::Fq2 {
-    fn sample<R>(_: Standard, rng: &mut R) -> Self
+    fn sample<R>(_: (), rng: &mut R) -> Self
     where
         R: CryptoRng + RngCore + ?Sized,
     {
@@ -177,10 +179,28 @@ impl Sample<SaplingDistribution> for ark_bls12_381::Fr {
 }
 
 impl Sample for ark_bls12_381::Fr {
-    fn sample<R>(_: Standard, rng: &mut R) -> Self
+    fn sample<R>(_: (), rng: &mut R) -> Self
     where
         R: CryptoRng + RngCore + ?Sized,
     {
         Self::rand(rng)
+    }
+}
+
+impl Sample for bool {
+    fn sample<R>(_: (), rng: &mut R) -> Self
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        rng.next_u32() as u8 & 1 == 1
+    }
+}
+
+impl Sample<SaplingDistribution> for bool {
+    fn sample<R>(distribution: SaplingDistribution, rng: &mut R) -> Self
+        where
+            R: CryptoRng + RngCore + ?Sized,
+    {
+        distribution.sample(rng)
     }
 }

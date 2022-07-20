@@ -20,7 +20,7 @@ use crate::{
     groth16::kzg::{Accumulator, Configuration, Pairing},
     util::{
         batch_into_projective, batch_mul_fixed_scalar, hash_to_group, into_array_unchecked,
-        merge_pairs_affine, Digest, PairingEngineExt, Zero,
+        merge_pairs_affine, Digest, PairingEngineExt, Sample, Zero,
     },
 };
 use alloc::{vec, vec::Vec};
@@ -36,8 +36,7 @@ use ark_std::{
     UniformRand,
 };
 use core::marker::PhantomData;
-use manta_crypto::rand::{OsRng};
-use crate::util::Sample;
+use manta_crypto::rand::OsRng;
 use manta_util::{cfg_into_iter, cfg_reduce};
 
 #[cfg(feature = "rayon")]
@@ -75,6 +74,7 @@ pub struct Phase2<E, const N: usize> {
 }
 
 /// State
+#[derive(Clone)]
 pub struct State<E>
 where
     E: PairingEngine,
@@ -727,13 +727,12 @@ mod test {
     use ark_ff::Fp256;
     use ark_std::UniformRand;
     use blake2::{Blake2b, Digest as Blake2bDigest};
-    use manta_crypto::accumulator::Accumulator as _;
+    use manta_crypto::{accumulator::Accumulator as _, rand::SeedableRng};
     use manta_pay::{
         config::{FullParameters, Reclaim},
         crypto::constraint::arkworks::R1CS,
         test::payment::UtxoAccumulator,
     };
-    use rand::SeedableRng;
     use rand_chacha::ChaCha20Rng;
     use std::println;
 
@@ -812,9 +811,13 @@ mod test {
                     .expect("This is always possible since we have enough bytes to begin with.");
                 seed.extend(word.to_le_bytes());
             }
-            let mut rng_chacha = ChaCha20Rng::from_seed(into_array_unchecked(seed));
+            let mut rng_chacha =
+                <ChaCha20Rng as SeedableRng>::from_seed(into_array_unchecked(seed));
             let distribution = SaplingDistribution;
-            Self::G2::sample::<ChaCha20Rng>(distribution, &mut rng_chacha)
+            <Self::G2 as Sample<SaplingDistribution>>::sample::<ChaCha20Rng>(
+                distribution,
+                &mut rng_chacha,
+            )
             // Self::G2::gen::<ChaCha20Rng>(&mut rng_chacha)
             // hash_to_group::<Self::G2, SaplingDistribution, 64>(into_array_unchecked(hasher.finalize()))
         }
@@ -920,30 +923,43 @@ mod test {
 
         // Step3: Phase2 initialize
         // 1) Find domain size 2) FFT to find Lagrange Polynomial 3) Get co-efficient from the circuit; 4) generate proving key from coefficient
-        let mut rng = ChaCha20Rng::from_seed([0; 32]);
+        // let mut rng = ChaCha20Rng::from_seed([0; 32]);
+        let mut rng = OsRng;
         let utxo_accumulator = UtxoAccumulator::new(manta_crypto::rand::Rand::gen(&mut rng));
         let parameters = manta_crypto::rand::Rand::gen(&mut rng);
         let cs = Reclaim::unknown_constraints(FullParameters::new(
             &parameters,
             utxo_accumulator.model(),
         ));
-        let (mut state, mut contributions) = Phase2::<Bls12<ark_bls12_381::Parameters>, 64>::initialize::<
-            R1CS<Fp256<ark_bls12_381::FrParameters>>,
-            Sapling,
-            BlakeHasher,
-        >(cs, next_accumulator)
-        .unwrap();
+        let (mut state, mut contributions) =
+            Phase2::<Bls12<ark_bls12_381::Parameters>, 64>::initialize::<
+                R1CS<Fp256<ark_bls12_381::FrParameters>>,
+                Sapling,
+                BlakeHasher,
+            >(cs, next_accumulator)
+            .unwrap();
+
+        let last_state = state.clone();
 
         // Step4: Contribute to Phase 2 params
-        let os_rng = OsRng;
-        // let new_contribution = Phase2::<Bls12<ark_bls12_381::Parameters>, 64>::contribute::<
-        //     (),
-        //     _,
-        //     BlakeHasher,
-        // >(&mut state, &mut contributions, &mut os_rng);
-
+        let _ = Phase2::<Bls12<ark_bls12_381::Parameters>, 64>::contribute::<(), _, BlakeHasher>(
+            &mut state,
+            &mut contributions,
+            &mut rng,
+        );
 
         // Step5: Verify contribution
+
+        Phase2::<Bls12<ark_bls12_381::Parameters>, 64>::verify_transform::<BlakeHasher, ()>(
+            last_state,
+            state,
+            &Contributions {
+                cs_hash: contributions.cs_hash,
+                contributions: Vec::new(),
+            },
+            &contributions.contributions[0],
+        )
+        .expect("verify transform failed");
 
         // Phase 3: Generate Proof from random circuits & verify proof
         // TODO
