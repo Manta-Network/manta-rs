@@ -723,14 +723,19 @@ mod test {
         serialize::serialize_g1_uncompressed,
         util::{BlakeHasher, HasDistribution},
     };
+    use ark_bls12_381::Fr;
     use ark_ec::bls12::Bls12;
-    use ark_ff::Fp256;
+    use ark_ff::{field_new, Fp256};
+    use ark_r1cs_std::{eq::EqGadget, fields::fp::FpVar};
     use ark_std::UniformRand;
     use blake2::{Blake2b, Digest as Blake2bDigest};
-    use manta_crypto::{accumulator::Accumulator as _, rand::SeedableRng};
+    use manta_crypto::{
+        constraint::{Allocate, Public, Secret},
+        rand::SeedableRng,
+    };
     use manta_pay::{
-        config::{FullParameters, Reclaim},
-        crypto::constraint::arkworks::R1CS,
+        config::{Mint, Reclaim},
+        crypto::constraint::arkworks::{Fp, R1CS},
         test::payment::UtxoAccumulator,
     };
     use rand_chacha::ChaCha20Rng;
@@ -741,8 +746,10 @@ mod test {
     pub struct Sapling;
 
     impl Size for Sapling {
+        // const G1_POWERS: usize = (Self::G2_POWERS << 1) - 1;
+        // const G2_POWERS: usize = 1 << 21;
         const G1_POWERS: usize = (Self::G2_POWERS << 1) - 1;
-        const G2_POWERS: usize = 1 << 21;
+        const G2_POWERS: usize = 1 << 3;
     }
 
     impl HasDistribution for Sapling {
@@ -800,11 +807,11 @@ mod test {
             hasher.update(&challenge);
             serialize_g1_uncompressed(ratio.0, &mut hasher).unwrap();
             serialize_g1_uncompressed(ratio.1, &mut hasher).unwrap();
-            let digest: [u8; 32] = into_array_unchecked(hasher.finalize());
+            let digest: [u8; 64] = into_array_unchecked(hasher.finalize());
 
             let mut digest = digest.as_slice();
-            let mut seed = Vec::with_capacity(8);
-            for _ in 0..8 {
+            let mut seed = Vec::with_capacity(32);
+            for _ in 0..4 {
                 let mut le_bytes = [0u8; 8];
                 let word = digest
                     .read(&mut le_bytes[..])
@@ -925,24 +932,29 @@ mod test {
         // 1) Find domain size 2) FFT to find Lagrange Polynomial 3) Get co-efficient from the circuit; 4) generate proving key from coefficient
         // let mut rng = ChaCha20Rng::from_seed([0; 32]);
         let mut rng = OsRng;
-        let utxo_accumulator = UtxoAccumulator::new(manta_crypto::rand::Rand::gen(&mut rng));
-        let parameters = manta_crypto::rand::Rand::gen(&mut rng);
-        let cs = Reclaim::unknown_constraints(FullParameters::new(
-            &parameters,
-            utxo_accumulator.model(),
-        ));
+        // let utxo_accumulator = UtxoAccumulator::new(manta_crypto::rand::Rand::gen(&mut rng));
+        // let parameters = manta_crypto::rand::Rand::gen(&mut rng);
+        let mut cs = R1CS::for_contexts();
+        let a = Fp(field_new!(Fr, "2")).as_known::<Secret, FpVar<_>>(&mut cs);
+        let b = Fp(field_new!(Fr, "3")).as_known::<Secret, FpVar<_>>(&mut cs);
+        let c = &a * &b;
+        let d = Fp(field_new!(Fr, "6")).as_known::<Public, FpVar<_>>(&mut cs);
+        c.enforce_equal(&d)
+            .expect("enforce_equal is not allowed to fail");
+        // TODO
+
         let (mut state, mut contributions) =
             Phase2::<Bls12<ark_bls12_381::Parameters>, 64>::initialize::<
                 R1CS<Fp256<ark_bls12_381::FrParameters>>,
                 Sapling,
-                BlakeHasher,
+                BlakeHasher<64>,
             >(cs, next_accumulator)
             .unwrap();
 
         let last_state = state.clone();
 
         // Step4: Contribute to Phase 2 params
-        let _ = Phase2::<Bls12<ark_bls12_381::Parameters>, 64>::contribute::<(), _, BlakeHasher>(
+        let _ = Phase2::<Bls12<ark_bls12_381::Parameters>, 64>::contribute::<(), _, BlakeHasher<64>>(
             &mut state,
             &mut contributions,
             &mut rng,
@@ -950,7 +962,7 @@ mod test {
 
         // Step5: Verify contribution
 
-        Phase2::<Bls12<ark_bls12_381::Parameters>, 64>::verify_transform::<BlakeHasher, ()>(
+        Phase2::<Bls12<ark_bls12_381::Parameters>, 64>::verify_transform::<BlakeHasher<64>, ()>(
             last_state,
             state,
             &Contributions {

@@ -15,11 +15,15 @@
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
 //! Utilities
+//!
+//!
+extern crate std;
+
 use alloc::vec::Vec;
 use ark_ec::{wnaf::WnafContext, AffineCurve, PairingEngine, ProjectiveCurve};
 use ark_ff::{BigInteger, PrimeField, UniformRand};
 use ark_std::io;
-use blake2::{digest::consts::U8, Blake2b};
+use blake2::{Blake2b, Blake2b512, Digest as Blake2Digest};
 use core::{iter, marker::PhantomData};
 use manta_crypto::rand::OsRng;
 use manta_util::{cfg_into_iter, cfg_iter, cfg_iter_mut, cfg_reduce};
@@ -395,31 +399,31 @@ pub trait Digest<const N: usize> {
 }
 
 /// TODO: Add doc; update Size U8
-pub struct BlakeHasher(pub Blake2b<U8>);
+pub struct BlakeHasher<const N: usize>(pub Blake2b512);
 
-impl<const N: usize> Digest<N> for BlakeHasher {
+impl<const N: usize> Digest<N> for BlakeHasher<N> {
     fn new() -> Self {
         BlakeHasher(Blake2b::default())
     }
 
     fn update(&mut self, data: impl AsRef<[u8]>) {
-        let _ = data;
-        todo!()
+        <Blake2b512 as Blake2Digest>::update(&mut self.0, data.as_ref())
     }
 
     fn finalize(self) -> [u8; N] {
-        todo!()
+        let result = <Blake2b512 as Blake2Digest>::finalize(self.0);
+        into_array_unchecked(result.as_slice())
     }
 }
 
-impl Write for BlakeHasher {
+impl<const N: usize> Write for BlakeHasher<N> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        let _ = buf;
-        todo!()
+        self.update(buf);
+        Ok(buf.len())
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        todo!()
+        Ok(())
     }
 }
 
