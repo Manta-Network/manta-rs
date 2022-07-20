@@ -434,14 +434,15 @@ where
     D: Default,
 {
     let mut digest = digest.as_slice();
-    let mut seed = Vec::with_capacity(8);
-    for _ in 0..8 {
+    let mut seed = Vec::with_capacity(32);
+    for _ in 0..4 {
         let mut le_bytes = [0u8; 8];
         let word = digest
             .read(&mut le_bytes[..])
             .expect("This is always possible since we have enough bytes to begin with.");
         seed.extend(word.to_le_bytes());
     }
+    // TODO: from_seed requires 32 bytes
     G::gen(&mut ChaCha20Rng::from_seed(into_array_unchecked(seed)))
 }
 

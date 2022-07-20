@@ -287,7 +287,7 @@ where
         let s = E::G1Affine::gen(rng); // Is projective mul. faster ?
         let s_delta = s.mul(delta).into_affine();
 
-        let h = [0; N];
+        let h: [u8; N] = 
         {
             let mut hasher = H::new();
             hasher.update(&previous_contributions.cs_hash[..]);
@@ -726,7 +726,7 @@ mod test {
     use ark_bls12_381::Fr;
     use ark_ec::bls12::Bls12;
     use ark_ff::{field_new, Fp256};
-    use ark_r1cs_std::{eq::EqGadget, fields::fp::FpVar};
+    use ark_r1cs_std::{alloc::AllocVar, eq::EqGadget, fields::fp::FpVar, prelude::UInt8};
     use ark_std::UniformRand;
     use blake2::{Blake2b, Digest as Blake2bDigest};
     use manta_crypto::{
@@ -818,6 +818,9 @@ mod test {
                     .expect("This is always possible since we have enough bytes to begin with.");
                 seed.extend(word.to_le_bytes());
             }
+
+            // println!("seed.len(): {}", seed.len());
+
             let mut rng_chacha =
                 <ChaCha20Rng as SeedableRng>::from_seed(into_array_unchecked(seed));
             let distribution = SaplingDistribution;
@@ -908,6 +911,27 @@ mod test {
         }
     }
 
+    // pub struct DummyCircuit {
+    //     pub a: u8,
+    //     pub b: u8,
+    //     pub c: u8,
+    // }
+
+    // impl ConstraintSynthesizer<ark_bls12_381::Fr> for DummyCircuit {
+    //     fn generate_constraints(
+    //         self,
+    //         cs: ark_relations::r1cs::ConstraintSystemRef<ark_bls12_381::Fr>,
+    //     ) -> ark_relations::r1cs::Result<()> {
+    //         let a = UInt8::new_input(ark_relations::ns!(cs, "lhs a"), || Ok(&self.a))?;
+    //         let b = UInt8::new_input(ark_relations::ns!(cs, "rhs b"), || Ok(&self.b))?;
+    //         let c = UInt8::new_input(ark_relations::ns!(cs, "res c"), || Ok(&self.c))?;
+
+
+
+    //         todo!()
+    //     }
+    // }
+
     /// TODO
     #[test]
     pub fn test_create_raw_parameters() {
@@ -935,12 +959,12 @@ mod test {
         // let utxo_accumulator = UtxoAccumulator::new(manta_crypto::rand::Rand::gen(&mut rng));
         // let parameters = manta_crypto::rand::Rand::gen(&mut rng);
         let mut cs = R1CS::for_contexts();
-        let a = Fp(field_new!(Fr, "2")).as_known::<Secret, FpVar<_>>(&mut cs);
-        let b = Fp(field_new!(Fr, "3")).as_known::<Secret, FpVar<_>>(&mut cs);
-        let c = &a * &b;
-        let d = Fp(field_new!(Fr, "6")).as_known::<Public, FpVar<_>>(&mut cs);
-        c.enforce_equal(&d)
-            .expect("enforce_equal is not allowed to fail");
+        // let a = Fp(field_new!(Fr, "2")).as_known::<Secret, FpVar<_>>(&mut cs);
+        // let b = Fp(field_new!(Fr, "3")).as_known::<Secret, FpVar<_>>(&mut cs);
+        // let c = &a * &b;
+        // let d = Fp(field_new!(Fr, "6")).as_known::<Public, FpVar<_>>(&mut cs);
+        // c.enforce_equal(&d)
+        //     .expect("enforce_equal is not allowed to fail");
         // TODO
 
         let (mut state, mut contributions) =
@@ -960,7 +984,7 @@ mod test {
             &mut rng,
         );
 
-        // Step5: Verify contribution
+        // // Step5: Verify contribution
 
         Phase2::<Bls12<ark_bls12_381::Parameters>, 64>::verify_transform::<BlakeHasher<64>, ()>(
             last_state,
