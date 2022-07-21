@@ -395,20 +395,9 @@ where
     /// into the proof system traits defined in `arkworks`.
     #[inline]
     fn generate_constraints(self, cs: ConstraintSystemRef<F>) -> SynthesisResult {
-        // let precomputed_cs = self
-        //     .cs
-        //     .into_inner()
-        //     .expect("We own this constraint system so we can consume it.");
-        // let mut target_cs = cs
-        //     .borrow_mut()
-        //     .expect("This is given to us to mutate so it can't be borrowed by anyone else.");
-        // *target_cs = precomputed_cs;
-        // Ok(())
         let precomputed_cs = self
-            .cs;
-        let precomputed_cs = precomputed_cs
-            .into_inner();
-        let precomputed_cs = precomputed_cs
+            .cs
+            .into_inner()
             .expect("We own this constraint system so we can consume it.");
         let mut target_cs = cs
             .borrow_mut()

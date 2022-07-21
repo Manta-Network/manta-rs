@@ -15,29 +15,26 @@
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
 //! Utilities
-//!
-//!
-extern crate std;
 
 use alloc::vec::Vec;
-use ark_ec::{wnaf::WnafContext, AffineCurve, PairingEngine, ProjectiveCurve};
-use ark_ff::{BigInteger, PrimeField, UniformRand};
+use ark_ec::{short_weierstrass_jacobian::GroupAffine, wnaf::WnafContext, SWModelParameters};
+use ark_ff::{BigInteger, Fp256};
 use ark_std::io;
 use blake2::{Blake2b, Blake2b512, Digest as Blake2Digest};
+use byteorder::{BigEndian, ReadBytesExt};
 use core::{iter, marker::PhantomData};
-use manta_crypto::rand::OsRng;
+use manta_crypto::rand::{CryptoRng, OsRng, RngCore};
 use manta_util::{cfg_into_iter, cfg_iter, cfg_iter_mut, cfg_reduce};
 use rand_chacha::{rand_core::SeedableRng, ChaCha20Rng};
 
 #[cfg(feature = "rayon")]
 use rayon::iter::{IndexedParallelIterator, ParallelIterator};
 
-pub use ark_ff::{One, Zero};
+pub use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
+pub use ark_ff::{One, PrimeField, UniformRand, Zero};
 pub use ark_serialize::{
     CanonicalDeserialize, CanonicalSerialize, Read, SerializationError, Write,
 };
-// pub use manta_crypto::rand::Sample;
-pub use crate::distribution::Sample;
 
 /// Distribution Type Extension
 pub trait HasDistribution {
@@ -388,20 +385,22 @@ pub trait PairingEngineExt: PairingEngine {
 
 impl<E> PairingEngineExt for E where E: PairingEngine {}
 
-/// Convenience wrapper trait covering functionality of cryptographic hash functions with fixed output size.
-pub trait Digest<const N: usize> {
-    /// TODO
+/// Cryptographic Hash traits
+pub trait Hash<const N: usize> {
+    /// Creates new hasher instance.
     fn new() -> Self;
-    /// TODO
+
+    /// Updates internal state by processing `data`.
     fn update(&mut self, data: impl AsRef<[u8]>);
-    /// TODO
+
+    /// Retrieves results and consumes hasher instance.
     fn finalize(self) -> [u8; N];
 }
 
-/// TODO: Add doc; update Size U8
+/// Blake Hasher
 pub struct BlakeHasher<const N: usize>(pub Blake2b512);
 
-impl<const N: usize> Digest<N> for BlakeHasher<N> {
+impl<const N: usize> Hash<N> for BlakeHasher<N> {
     fn new() -> Self {
         BlakeHasher(Blake2b::default())
     }
@@ -427,22 +426,21 @@ impl<const N: usize> Write for BlakeHasher<N> {
     }
 }
 
-/// TODO
+/// Hashes `digest` to a group point on affine curve.
 pub fn hash_to_group<G, D, const N: usize>(digest: [u8; N]) -> G
 where
     G: AffineCurve + Sample<D>,
     D: Default,
 {
+    assert!(N >= 32, "Needs at least 32 bytes to seed ChaCha20.");
     let mut digest = digest.as_slice();
     let mut seed = Vec::with_capacity(32);
-    for _ in 0..4 {
-        let mut le_bytes = [0u8; 8];
+    for _ in 0..8 {
         let word = digest
-            .read(&mut le_bytes[..])
+            .read_u32::<BigEndian>()
             .expect("This is always possible since we have enough bytes to begin with.");
         seed.extend(word.to_le_bytes());
     }
-    // TODO: from_seed requires 32 bytes
     G::gen(&mut ChaCha20Rng::from_seed(into_array_unchecked(seed)))
 }
 
@@ -486,4 +484,48 @@ where
         .for_each(|(base, scalar)| {
             base.mul_assign(*scalar);
         })
+}
+
+/// Sampling Trait
+pub trait Sample<D = ()>: Sized {
+    /// Returns a random value of type `Self`, sampled according to the given `distribution`,
+    /// generated from the `rng`.
+    fn sample<R>(distribution: D, rng: &mut R) -> Self
+    where
+        R: CryptoRng + RngCore + ?Sized;
+
+    /// Returns a random value of type `Self`, sampled according to the default distribution of
+    /// type `D`, generated from the `rng`.
+    #[inline]
+    fn gen<R>(rng: &mut R) -> Self
+    where
+        D: Default,
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        Self::sample(Default::default(), rng)
+    }
+}
+
+impl<P, D> Sample<D> for GroupAffine<P>
+where
+    P: SWModelParameters,
+{
+    fn sample<R>(_: D, rng: &mut R) -> Self
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        <GroupAffine<P> as AffineCurve>::Projective::rand(rng).into_affine()
+    }
+}
+
+impl<P> Sample for Fp256<P>
+where
+    Fp256<P>: UniformRand,
+{
+    fn sample<R>(_: (), rng: &mut R) -> Self
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        Self::rand(rng)
+    }
 }

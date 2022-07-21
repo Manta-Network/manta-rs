@@ -20,7 +20,7 @@ use crate::{
     groth16::kzg::{Accumulator, Configuration, Pairing},
     util::{
         batch_into_projective, batch_mul_fixed_scalar, hash_to_group, into_array_unchecked,
-        merge_pairs_affine, Digest, PairingEngineExt, Sample, Zero,
+        merge_pairs_affine, Hash, PairingEngineExt, Sample, Zero,
     },
 };
 use alloc::{vec, vec::Vec};
@@ -132,7 +132,7 @@ where
     where
         B: ConstraintSynthesizer<C::Scalar>,
         C: Configuration<Pairing = E, G1 = E::G1Affine, G2 = E::G2Affine, Scalar = E::Fr>,
-        H: Digest<N> + Write,
+        H: Hash<N> + Write,
     {
         let constraints = ConstraintSystem::new_ref();
         cs.generate_constraints(constraints.clone())
@@ -278,7 +278,7 @@ where
         E::Fr: Sample<D>,
         E::G1Affine: Sample<D>,
         E::G2Affine: Sample<D>,
-        H: Digest<N> + Write,
+        H: Hash<N> + Write,
     {
         // Sample random delta
         let delta = E::Fr::gen(rng);
@@ -287,8 +287,7 @@ where
         let s = E::G1Affine::gen(rng); // Is projective mul. faster ?
         let s_delta = s.mul(delta).into_affine();
 
-        let h: [u8; N] = 
-        {
+        let h: [u8; N] = {
             let mut hasher = H::new();
             hasher.update(&previous_contributions.cs_hash[..]);
             for pubkey in previous_contributions.contributions.clone() {
@@ -336,7 +335,7 @@ where
         E::G1Affine: Sample<D>,
         E::G2Affine: Sample<D>,
         R: Rng + CryptoRng,
-        H: Digest<N> + Write,
+        H: Hash<N> + Write,
     {
         // Generate a keypair
         let (delta, proof) =
@@ -377,7 +376,7 @@ where
         C: Configuration<Pairing = E, G1 = E::G1Affine, G2 = E::G2Affine, Scalar = E::Fr>,
         E::G2Affine: Sample<D>,
         D: Default,
-        H: Clone + Digest<N> + Write,
+        H: Clone + Hash<N> + Write,
         <E as PairingEngine>::G1Prepared: From<<E as PairingEngine>::G1Projective>,
     {
         // Build default MPCParameters from phase 1 accumulator
@@ -529,7 +528,7 @@ where
     ) -> Result<State<E>, PhaseTwoError>
     where
         D: Default,
-        H: Digest<N> + Write,
+        H: Hash<N> + Write,
         E::Fr: Sample<D>,
         E::G1Affine: Sample<D>,
         E::G2Affine: Sample<D>,
@@ -718,39 +717,37 @@ mod test {
 
     use super::*;
     use crate::{
-        distribution::{Sample as _, SaplingDistribution},
         groth16::kzg::{Contribution, Pairing, Size},
         serialize::serialize_g1_uncompressed,
         util::{BlakeHasher, HasDistribution},
     };
     use ark_bls12_381::Fr;
     use ark_ec::bls12::Bls12;
-    use ark_ff::Fp256;
+    use ark_ff::{field_new, Fp256};
+    use ark_r1cs_std::eq::EqGadget;
     use ark_snark::SNARK;
-    use ark_std::UniformRand;
-    use blake2::{Blake2b, Digest as Blake2bDigest};
+    use blake2::{Blake2b, Digest};
     use manta_crypto::{
+        constraint::Allocate,
+        eclair::alloc::mode::{Public, Secret},
         rand::SeedableRng,
     };
-    use manta_pay::{
-        crypto::constraint::arkworks::R1CS,
-    };
+    use manta_pay::crypto::constraint::arkworks::{Fp, FpVar, R1CS};
     use rand_chacha::ChaCha20Rng;
+    use std::println;
 
     /// Sapling MPC
     #[derive(Clone, Default)]
     pub struct Sapling;
 
     impl Size for Sapling {
-        // const G1_POWERS: usize = (Self::G2_POWERS << 1) - 1;
-        // const G2_POWERS: usize = 1 << 21;
         const G1_POWERS: usize = (Self::G2_POWERS << 1) - 1;
         const G2_POWERS: usize = 1 << 3;
     }
 
     impl HasDistribution for Sapling {
         // TODO
-        type Distribution = SaplingDistribution;
+        type Distribution = ();
     }
 
     impl Pairing for Sapling {
@@ -760,20 +757,6 @@ mod test {
         type G2 = ark_bls12_381::G2Affine;
         type G2Prepared = <ark_bls12_381::Bls12_381 as PairingEngine>::G2Prepared;
         type Pairing = ark_bls12_381::Bls12_381;
-
-        fn sample_g1_affine<R>(rng: &mut R) -> Self::G1
-        where
-            R: ark_std::rand::CryptoRng + ark_std::rand::RngCore + ?Sized,
-        {
-            <ark_bls12_381::Bls12_381 as PairingEngine>::G1Projective::rand(rng).into_affine()
-        }
-
-        fn sample_g2_affine<R>(rng: &mut R) -> Self::G2
-        where
-            R: ark_std::rand::CryptoRng + ark_std::rand::RngCore + ?Sized,
-        {
-            <ark_bls12_381::Bls12_381 as PairingEngine>::G2Projective::rand(rng).into_affine()
-        }
 
         fn g1_prime_subgroup_generator() -> Self::G1 {
             ark_bls12_381::G1Affine::prime_subgroup_generator()
@@ -792,6 +775,8 @@ mod test {
         const ALPHA_DOMAIN_TAG: Self::DomainTag = 1;
         const BETA_DOMAIN_TAG: Self::DomainTag = 2;
 
+        // TODO: Make this generic with Digest trait.
+        // TODO: Have another module outside this library in util.rs.
         fn hash_to_g2(
             domain_tag: Self::DomainTag,
             challenge: &Self::Challenge,
@@ -811,20 +796,16 @@ mod test {
                 // This forms the `seed` for ChaCha as the first 32 bytes of digest, reversed in chunks of 4 bytes
                 // That choice was made to preserve compatibility with ZCash's Sapling Phase 1
                 let mut word = [0u8; 4];
-                let _ = digest.read(&mut word[..]).expect("This is always possible since we have enough bytes to begin with.");
+                let _ = digest
+                    .read(&mut word[..])
+                    .expect("This is always possible since we have enough bytes to begin with.");
                 word[..].reverse();
                 seed.extend(word)
             }
 
-            // println!("seed.len(): {}", seed.len());
-
             let mut rng_chacha =
                 <ChaCha20Rng as SeedableRng>::from_seed(into_array_unchecked(seed));
-            let distribution = SaplingDistribution;
-            <Self::G2 as Sample<SaplingDistribution>>::sample::<ChaCha20Rng>(
-                distribution,
-                &mut rng_chacha,
-            )
+            <Self::G2 as Sample<()>>::sample::<ChaCha20Rng>((), &mut rng_chacha)
             // Self::G2::gen::<ChaCha20Rng>(&mut rng_chacha)
             // hash_to_group::<Self::G2, SaplingDistribution, 64>(into_array_unchecked(hasher.finalize()))
         }
@@ -908,27 +889,6 @@ mod test {
         }
     }
 
-    // pub struct DummyCircuit {
-    //     pub a: u8,
-    //     pub b: u8,
-    //     pub c: u8,
-    // }
-
-    // impl ConstraintSynthesizer<ark_bls12_381::Fr> for DummyCircuit {
-    //     fn generate_constraints(
-    //         self,
-    //         cs: ark_relations::r1cs::ConstraintSystemRef<ark_bls12_381::Fr>,
-    //     ) -> ark_relations::r1cs::Result<()> {
-    //         let a = UInt8::new_input(ark_relations::ns!(cs, "lhs a"), || Ok(&self.a))?;
-    //         let b = UInt8::new_input(ark_relations::ns!(cs, "rhs b"), || Ok(&self.b))?;
-    //         let c = UInt8::new_input(ark_relations::ns!(cs, "res c"), || Ok(&self.c))?;
-
-
-
-    //         todo!()
-    //     }
-    // }
-
     /// TODO
     #[test]
     pub fn test_create_raw_parameters() {
@@ -952,14 +912,6 @@ mod test {
             Accumulator::verify_transform(last_accumulator, next_accumulator, challenge, proof)
                 .unwrap();
 
-        use manta_crypto::eclair::alloc::mode::Secret;
-        use manta_pay::crypto::constraint::arkworks::FpVar;
-        use ark_ff::field_new;
-        use manta_pay::crypto::constraint::arkworks::Fp;
-        use manta_crypto::eclair::alloc::mode::Public;
-        use manta_crypto::constraint::Allocate;
-        use ark_r1cs_std::eq::EqGadget;
-
         // Step3: Phase2 initialize
         // 1) Find domain size 2) FFT to find Lagrange Polynomial 3) Get co-efficient from the circuit; 4) generate proving key from coefficient
         // let mut rng = ChaCha20Rng::from_seed([0; 32]);
@@ -970,10 +922,10 @@ mod test {
         {
             let a = Fp(field_new!(Fr, "2")).as_known::<Secret, FpVar<_>>(&mut cs);
             let b = Fp(field_new!(Fr, "3")).as_known::<Secret, FpVar<_>>(&mut cs);
-            let c = &a * &b;    
+            let c = &a * &b;
             let d = Fp(field_new!(Fr, "6")).as_known::<Public, FpVar<_>>(&mut cs);
             c.enforce_equal(&d)
-            .expect("enforce_equal is not allowed to fail");
+                .expect("enforce_equal is not allowed to fail");
         }
 
         let (mut state, mut contributions) =
@@ -995,7 +947,10 @@ mod test {
 
         // // Step5: Verify contribution
 
-        let state = Phase2::<Bls12<ark_bls12_381::Parameters>, 64>::verify_transform::<BlakeHasher<64>, ()>(
+        let state = Phase2::<Bls12<ark_bls12_381::Parameters>, 64>::verify_transform::<
+            BlakeHasher<64>,
+            (),
+        >(
             last_state,
             state,
             &Contributions {
@@ -1013,19 +968,19 @@ mod test {
         {
             let a = Fp(field_new!(Fr, "2")).as_known::<Secret, FpVar<_>>(&mut cs);
             let b = Fp(field_new!(Fr, "3")).as_known::<Secret, FpVar<_>>(&mut cs);
-            let c = &a * &b;    
+            let c = &a * &b;
             let d = Fp(field_new!(Fr, "6")).as_known::<Public, FpVar<_>>(&mut cs);
             c.enforce_equal(&d)
-            .expect("enforce_equal is not allowed to fail");
+                .expect("enforce_equal is not allowed to fail");
         }
-        
-        use ark_groth16::Groth16 as ArkGroth16;
 
+        use ark_groth16::Groth16 as ArkGroth16;
 
         let proof = ArkGroth16::prove(&state.pk, cs, &mut rng).unwrap();
 
-        assert_eq!(ArkGroth16::verify(&state.pk.vk, &[field_new!(Fr, "6")], &proof).unwrap(), true);
+        assert_eq!(
+            ArkGroth16::verify(&state.pk.vk, &[field_new!(Fr, "6")], &proof).unwrap(),
+            true
+        );
     }
 }
-
-

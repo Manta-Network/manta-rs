@@ -17,13 +17,11 @@
 //! KZG Trusted Setup for Groth16
 
 use crate::util::{
-    power_pairs, scalar_mul, CanonicalDeserialize, CanonicalSerialize, Deserializer,
-    HasDistribution, NonZero, One, PairingEngineExt, Read, Sample, SerializationError, Serializer,
-    Write, Zero,
+    power_pairs, scalar_mul, AffineCurve, CanonicalDeserialize, CanonicalSerialize, Deserializer,
+    HasDistribution, NonZero, One, PairingEngine, PairingEngineExt, PrimeField, ProjectiveCurve,
+    Read, Sample, SerializationError, Serializer, UniformRand, Write, Zero,
 };
 use alloc::{vec, vec::Vec};
-use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
-use ark_ff::{PrimeField, UniformRand};
 use core::{iter, ops::Mul};
 use manta_crypto::rand::{CryptoRng, RngCore};
 use manta_util::{cfg_iter, cfg_iter_mut, from_variant, vec::VecExt};
@@ -50,15 +48,17 @@ pub trait Pairing: HasDistribution {
     type Scalar: PrimeField;
 
     /// First Group of the Pairing
-    type G1: AffineCurve<ScalarField = Self::Scalar> + Into<Self::G1Prepared>;
-    // + Sample<Self::Distribution>; // TODO
+    type G1: AffineCurve<ScalarField = Self::Scalar>
+        + Into<Self::G1Prepared>
+        + Sample<Self::Distribution>;
 
     /// First Group Pairing-Prepared Point
     type G1Prepared;
 
     /// Second Group of the Pairing
-    type G2: AffineCurve<ScalarField = Self::Scalar> + Into<Self::G2Prepared>;
-    // + Sample<Self::Distribution>; // TODO
+    type G2: AffineCurve<ScalarField = Self::Scalar>
+        + Into<Self::G2Prepared>
+        + Sample<Self::Distribution>;
 
     /// Second Group Pairing-Prepared Point
     type G2Prepared;
@@ -76,16 +76,6 @@ pub trait Pairing: HasDistribution {
 
     /// Returns the base G2 generator for this configuration.
     fn g2_prime_subgroup_generator() -> Self::G2;
-
-    /// TODO
-    fn sample_g1_affine<R>(rng: &mut R) -> Self::G1
-    where
-        R: CryptoRng + RngCore + ?Sized;
-    
-    /// TODO
-    fn sample_g2_affine<R>(rng: &mut R) -> Self::G2
-    where
-        R: CryptoRng + RngCore + ?Sized;
 }
 
 /// Trusted Setup Configuration
@@ -252,10 +242,7 @@ where
         C: Configuration,
         R: CryptoRng + RngCore + ?Sized,
     {
-        // TODO
-        // let g1_point = rng.gen::<_, C::G1>();
-        // TODO: g1_point should be received point instead of a sampled point?
-        let g1_point = C::sample_g1_affine(rng);
+        let g1_point: C::G1 = Sample::gen(rng);
         // TODO: Should we repeat sampling until g1_point is non-zero?
         if g1_point.is_zero() {
             return None;
@@ -264,8 +251,7 @@ where
         if scaled_g1_point.is_zero() {
             return None;
         }
-        let ratio = (g1_point, scaled_g1_point);
-        let g2_point = C::hash_to_g2(domain_tag, challenge, (&ratio.0, &ratio.1));
+        let g2_point = C::hash_to_g2(domain_tag, challenge, (&g1_point, &scaled_g1_point));
         if g2_point.is_zero() {
             return None;
         }
@@ -274,7 +260,7 @@ where
             return None;
         }
         Some(Self {
-            ratio,
+            ratio: (g1_point, scaled_g1_point),
             matching_point: scaled_g2_point,
         })
     }
@@ -536,7 +522,8 @@ where
     /// Updates `self` by multiplying each element of the accumulator by the powers of its
     /// respective element in the `contribution`.
     #[inline]
-    pub fn update(&mut self, contribution: &Contribution<C>) { // TODO: Should be statelss
+    pub fn update(&mut self, contribution: &Contribution<C>) {
+        // TODO: Should be statelss
         let mut tau_powers =
             iter::successors(Some(C::Scalar::one()), |x| Some(x.mul(contribution.tau)))
                 .take(C::G1_POWERS)

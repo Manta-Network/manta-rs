@@ -16,33 +16,30 @@
 
 //! Serialization Utilities
 
+use crate::util::{PrimeField, Read, Write, Zero};
 use ark_bls12_381::{G1Affine, G2Affine};
-use ark_ec::{
-    bls12::Bls12Parameters, ModelParameters,
-};
-use ark_ff::{PrimeField, ToBytes};
-pub use ark_ff::{One, Zero};
-pub use ark_serialize::{
-    CanonicalDeserialize, CanonicalSerialize, Read, SerializationError, Write,
-};
+use ark_ec::{bls12::Bls12Parameters, ModelParameters};
+use ark_ff::ToBytes;
 use ark_std::io;
-pub use manta_crypto::rand::Sample;
 
-/// TODO
+/// Point Deserialize Error Types
 pub enum PointDeserializeError {
-    /// TODO
-    CompressionFlag,
-    /// TODO
+    /// Expected Compressed Format Error
     ExpectedCompressed,
-    /// TODO
+
+    /// Expected Uncompressed Format Error
     ExpectedUncompressed,
-    /// TODO
+
+    /// Point at Infinity Error
     PointAtInfinity,
-    /// TODO
+
+    /// Unexpected extra Y Coordinate Error
     ExtraYCoordinate,
-    /// TODO
+
+    /// Not on Curve Error
     NotOnCurve,
-    /// TODO
+
+    /// Not in Subgroup Error
     NotInSubgroup,
 }
 
