@@ -806,13 +806,14 @@ mod test {
             let digest: [u8; 64] = into_array_unchecked(hasher.finalize());
 
             let mut digest = digest.as_slice();
-            let mut seed = Vec::with_capacity(32);
-            for _ in 0..4 {
-                let mut le_bytes = [0u8; 8];
-                let word = digest
-                    .read(&mut le_bytes[..])
-                    .expect("This is always possible since we have enough bytes to begin with.");
-                seed.extend(word.to_le_bytes());
+            let mut seed = Vec::with_capacity(8);
+            for _ in 0..8 {
+                // This forms the `seed` for ChaCha as the first 32 bytes of digest, reversed in chunks of 4 bytes
+                // That choice was made to preserve compatibility with ZCash's Sapling Phase 1
+                let mut word = [0u8; 4];
+                let _ = digest.read(&mut word[..]).expect("This is always possible since we have enough bytes to begin with.");
+                word[..].reverse();
+                seed.extend(word)
             }
 
             // println!("seed.len(): {}", seed.len());
@@ -938,9 +939,12 @@ mod test {
         // Also verify contribution
         let mut rng = OsRng;
         let challenge = [0; 64];
+        println!("Generating a contribution...");
         let contribution: Contribution<Sapling> = Contribution::gen(&mut rng);
+        println!("Generating a proof of contribution...");
         let proof = contribution.proof(&challenge, &mut rng).unwrap();
         let mut next_accumulator = last_accumulator.clone();
+        println!("Updating accumulator...");
         next_accumulator.update(&contribution);
 
         // TODO: Need a function for next challenge.
