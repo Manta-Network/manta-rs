@@ -725,21 +725,17 @@ mod test {
     };
     use ark_bls12_381::Fr;
     use ark_ec::bls12::Bls12;
-    use ark_ff::{field_new, Fp256};
-    use ark_r1cs_std::{alloc::AllocVar, eq::EqGadget, fields::fp::FpVar, prelude::UInt8};
+    use ark_ff::Fp256;
+    use ark_snark::SNARK;
     use ark_std::UniformRand;
     use blake2::{Blake2b, Digest as Blake2bDigest};
     use manta_crypto::{
-        constraint::{Allocate, Public, Secret},
         rand::SeedableRng,
     };
     use manta_pay::{
-        config::{Mint, Reclaim},
-        crypto::constraint::arkworks::{Fp, R1CS},
-        test::payment::UtxoAccumulator,
+        crypto::constraint::arkworks::R1CS,
     };
     use rand_chacha::ChaCha20Rng;
-    use std::println;
 
     /// Sapling MPC
     #[derive(Clone, Default)]
@@ -952,6 +948,14 @@ mod test {
             Accumulator::verify_transform(last_accumulator, next_accumulator, challenge, proof)
                 .unwrap();
 
+        use manta_crypto::eclair::alloc::mode::Secret;
+        use manta_pay::crypto::constraint::arkworks::FpVar;
+        use ark_ff::field_new;
+        use manta_pay::crypto::constraint::arkworks::Fp;
+        use manta_crypto::eclair::alloc::mode::Public;
+        use manta_crypto::constraint::Allocate;
+        use ark_r1cs_std::eq::EqGadget;
+
         // Step3: Phase2 initialize
         // 1) Find domain size 2) FFT to find Lagrange Polynomial 3) Get co-efficient from the circuit; 4) generate proving key from coefficient
         // let mut rng = ChaCha20Rng::from_seed([0; 32]);
@@ -959,13 +963,14 @@ mod test {
         // let utxo_accumulator = UtxoAccumulator::new(manta_crypto::rand::Rand::gen(&mut rng));
         // let parameters = manta_crypto::rand::Rand::gen(&mut rng);
         let mut cs = R1CS::for_contexts();
-        // let a = Fp(field_new!(Fr, "2")).as_known::<Secret, FpVar<_>>(&mut cs);
-        // let b = Fp(field_new!(Fr, "3")).as_known::<Secret, FpVar<_>>(&mut cs);
-        // let c = &a * &b;
-        // let d = Fp(field_new!(Fr, "6")).as_known::<Public, FpVar<_>>(&mut cs);
-        // c.enforce_equal(&d)
-        //     .expect("enforce_equal is not allowed to fail");
-        // TODO
+        {
+            let a = Fp(field_new!(Fr, "2")).as_known::<Secret, FpVar<_>>(&mut cs);
+            let b = Fp(field_new!(Fr, "3")).as_known::<Secret, FpVar<_>>(&mut cs);
+            let c = &a * &b;    
+            let d = Fp(field_new!(Fr, "6")).as_known::<Public, FpVar<_>>(&mut cs);
+            c.enforce_equal(&d)
+            .expect("enforce_equal is not allowed to fail");
+        }
 
         let (mut state, mut contributions) =
             Phase2::<Bls12<ark_bls12_381::Parameters>, 64>::initialize::<
@@ -986,7 +991,7 @@ mod test {
 
         // // Step5: Verify contribution
 
-        Phase2::<Bls12<ark_bls12_381::Parameters>, 64>::verify_transform::<BlakeHasher<64>, ()>(
+        let state = Phase2::<Bls12<ark_bls12_381::Parameters>, 64>::verify_transform::<BlakeHasher<64>, ()>(
             last_state,
             state,
             &Contributions {
@@ -999,6 +1004,24 @@ mod test {
 
         // Phase 3: Generate Proof from random circuits & verify proof
         // TODO
-        println!("Specializing to phase 2 parameters");
+
+        let mut cs = R1CS::for_proofs();
+        {
+            let a = Fp(field_new!(Fr, "2")).as_known::<Secret, FpVar<_>>(&mut cs);
+            let b = Fp(field_new!(Fr, "3")).as_known::<Secret, FpVar<_>>(&mut cs);
+            let c = &a * &b;    
+            let d = Fp(field_new!(Fr, "6")).as_known::<Public, FpVar<_>>(&mut cs);
+            c.enforce_equal(&d)
+            .expect("enforce_equal is not allowed to fail");
+        }
+        
+        use ark_groth16::Groth16 as ArkGroth16;
+
+
+        let proof = ArkGroth16::prove(&state.pk, cs, &mut rng).unwrap();
+
+        assert_eq!(ArkGroth16::verify(&state.pk.vk, &[field_new!(Fr, "6")], &proof).unwrap(), true);
     }
 }
+
+
