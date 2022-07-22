@@ -371,7 +371,7 @@ where
             rng,
         );
         Self::new(
-            has_public_participants(SOURCES, SINKS).then(|| asset.id),
+            has_public_participants(SOURCES, SINKS).then_some(asset.id),
             into_array_unchecked(input),
             into_array_unchecked(senders),
             into_array_unchecked(receivers),
@@ -407,7 +407,7 @@ where
             rng,
         );
         Self::new(
-            has_public_participants(SOURCES, SINKS).then(|| distribution.asset_id),
+            has_public_participants(SOURCES, SINKS).then_some(distribution.asset_id),
             sample_asset_values(distribution.source_sum, rng),
             into_array_unchecked(senders),
             into_array_unchecked(receivers),
