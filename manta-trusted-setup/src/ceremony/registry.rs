@@ -16,8 +16,8 @@
 //! Registry for the ceremony.
 
 use crate::ceremony::CeremonyError;
+use alloc::collections::BTreeMap;
 use core::{hash::Hash, marker::PhantomData};
-use std::collections::BTreeMap;
 
 /// Map used by registry.
 pub trait Map<K, V>: Default {
