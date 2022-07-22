@@ -241,7 +241,7 @@ where
         L: IntoIterator<Item = &'l Leaf<C>>,
     {
         let mut tree = Self::new(parameters);
-        tree.extend(parameters, leaves).then(move || tree)
+        tree.extend(parameters, leaves).then_some(tree)
     }
 
     /// Builds a new merkle tree with the given `leaves` returning `None` if the slice
