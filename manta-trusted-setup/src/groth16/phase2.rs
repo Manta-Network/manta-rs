@@ -17,10 +17,10 @@
 //! Groth16 Phase 2
 
 use crate::{
-    groth16::kzg::{Accumulator, Configuration, Pairing},
+    groth16::kzg::{Accumulator, Configuration},
     util::{
         batch_into_projective, batch_mul_fixed_scalar, hash_to_group, into_array_unchecked,
-        merge_pairs_affine, Hash, PairingEngineExt, Sample, Zero,
+        merge_pairs_affine, Hash, PairingEngineExt, Sample, Zero, Pairing, 
     },
 };
 use alloc::{vec, vec::Vec};
@@ -42,19 +42,7 @@ use manta_util::{cfg_into_iter, cfg_reduce};
 #[cfg(feature = "rayon")]
 use rayon::iter::{IndexedParallelIterator, ParallelIterator};
 
-/// Proof
-#[derive(Clone, PartialEq, Eq)]
-pub struct Proof<E, const N: usize>
-where
-    E: PairingEngine,
-{
-    // TODO: To be refactored
-    delta_after: E::G1Affine,
-    s: E::G1Affine,
-    s_delta: E::G1Affine,
-    r_delta: E::G2Affine,
-    transcript: [u8; N],
-}
+use super::kzg::Size;
 
 /// Groth16 Phase 2
 pub struct Phase2<E, const N: usize> {
@@ -63,60 +51,69 @@ pub struct Phase2<E, const N: usize> {
 
 /// State
 #[derive(Clone)]
-pub struct State<E>
+pub struct State<P>
 where
-    E: PairingEngine,
+    P: Pairing,
 {
     /// Groth16 Proving Keys
-    pub pk: ProvingKey<E>,
+    pub pk: ProvingKey<P::Pairing>,
+}
+
+/// Proof
+#[derive(Clone, PartialEq, Eq)]
+pub struct Proof<P, const N: usize>
+where
+    P: Pairing,
+{
+    // TODO: To be refactored
+    delta_before: P::G1,
+    delta_after: P::G1,
+    r_delta: P::G2,
 }
 
 /// Contributions and Hashes
-pub struct Contributions<E, const N: usize>
+pub struct Contributions<P, const N: usize>
 where
-    E: PairingEngine,
+    P: Pairing,
 {
     /// TODO
     pub cs_hash: [u8; N],
 
     /// TODO
-    pub contributions: Vec<Proof<E, N>>,
+    pub contributions: Vec<Proof<P, N>>,
 }
 
-impl<E, const N: usize> CanonicalSerialize for Proof<E, N>
+impl<P, const N: usize> CanonicalSerialize for Proof<P, N>
 where
-    E: PairingEngine,
+    P: Pairing,
 {
     fn serialize<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {
+        self.delta_before.serialize(&mut writer)?;
         self.delta_after.serialize(&mut writer)?;
-        self.s.serialize(&mut writer)?;
-        self.s_delta.serialize(&mut writer)?;
         self.r_delta.serialize(&mut writer)?;
-        writer.write_all(&self.transcript)?;
         Ok(())
     }
 
     fn serialized_size(&self) -> usize {
-        self.delta_after.serialized_size()
-            + self.s.serialized_size()
-            + self.s_delta.serialized_size()
+        self.delta_before.serialized_size()
+            + self.delta_after.serialized_size()
             + self.r_delta.serialized_size()
             + N // TODO: There might be an error related to u8 vs usize.
     }
 }
 
-impl<E, const N: usize> Phase2<E, N>
+impl<P, const N: usize> Phase2<P, N>
 where
-    E: PairingEngine,
+    P: Pairing,
 {
     /// TODO
     pub fn initialize<B, C, H>(
         cs: B,
         powers: Accumulator<C>,
-    ) -> Result<(State<E>, Contributions<E, N>), PhaseTwoError>
+    ) -> Result<(State<P>, Contributions<P, N>), PhaseTwoError>
     where
         B: ConstraintSynthesizer<C::Scalar>,
-        C: Configuration<Pairing = E, G1 = E::G1Affine, G2 = E::G2Affine, Scalar = E::Fr>,
+        C: Configuration<Pairing = P::Pairing, G1 = P::G1, G2 = P::G2, Scalar = P::Scalar>,
         H: Hash<N> + Write,
     {
         let constraints = ConstraintSystem::new_ref();
@@ -249,48 +246,44 @@ where
 
     /// Sample `delta` from `rng` and generate a range proof for it.
     fn sample_contribution<D, R, H>(
-        state: &State<E>,
+        state: &State<P>,
         // challenge: xxx [TODO]
-        previous_contributions: &Contributions<E, N>,
+        previous_contributions: &Contributions<P, N>,
         rng: &mut R,
-    ) -> (E::Fr, Proof<E, N>)
+    ) -> (P::Scalar, Proof<P, N>)
     where
         D: Default,
         R: Rng + CryptoRng,
-        E: PairingEngine,
-        E::Fr: Sample<D>,
-        E::G1Affine: Sample<D>,
-        E::G2Affine: Sample<D>,
+        P::Scalar: Sample<D>,
+        P::G1: Sample<D>,
+        P::G2: Sample<D>,
         H: Hash<N> + Write,
     {
-        let delta = E::Fr::gen(rng);
-        let s = E::G1Affine::gen(rng);
-        let s_delta = s.mul(delta).into_affine();
+        let delta = P::Scalar::gen(rng);
+        let delta_before = state.pk.delta_g1;
+        let delta_after = state.pk.delta_g1.mul(delta).into_affine();
         let h: [u8; N] = {
             let mut hasher = H::new();
             hasher.update(&previous_contributions.cs_hash[..]);
-            for pubkey in previous_contributions.contributions.clone() {
-                // ? better solution than clone ?
-                pubkey
-                    .serialize(&mut hasher)
-                    .expect("Blake2b Hasher never returns an error");
-            }
-            s.serialize_uncompressed(&mut hasher)
+            // for proof in previous_contributions.contributions.clone() {
+            //     // ? better solution than clone ?
+            //     proof
+            //         .serialize(&mut hasher)
+            //         .expect("Blake2b Hasher never returns an error");
+            // }
+            delta_before.serialize_uncompressed(&mut hasher)
                 .expect("Blake2b Hasher never returns an error");
-            s_delta
+            delta_after
                 .serialize_uncompressed(&mut hasher)
                 .expect("Blake2b Hasher never returns an error");
             hasher.finalize()
         };
-        let r: E::G2Affine = hash_to_group(h);
         (
             delta,
             Proof {
-                delta_after: state.pk.delta_g1.mul(delta).into_affine(),
-                s,
-                s_delta,
-                r_delta: r.mul(delta).into_affine(),
-                transcript: h,
+                delta_before,
+                delta_after,
+                r_delta: hash_to_group::<P::G2, _, N>(h).mul(delta).into_affine(),
             },
         )
     }
@@ -300,17 +293,18 @@ where
     /// to allow a user to later confirm that their
     /// contribution has been included in the final parameters.
     pub fn contribute<D, R, H>(
-        state: &mut State<E>,
-        previous_contributions: &mut Contributions<E, N>,
+        state: &mut State<P>,
+        previous_contributions: &mut Contributions<P, N>,
         rng: &mut R,
     ) -> [u8; N]
     where
         D: Default,
-        E::Fr: Sample<D>,
-        E::G1Affine: Sample<D>,
-        E::G2Affine: Sample<D>,
+        P::Scalar: Sample<D>,
+        P::G1: Sample<D>,
+        P::G2: Sample<D>,
         R: Rng + CryptoRng,
         H: Hash<N> + Write,
+        Proof<P, N>: Clone,
     {
         // Generate a keypair
         let (delta, proof) =
@@ -341,18 +335,17 @@ where
     /// Output is a list of hashes of public keys that participants may use to confirm
     /// that their contribution is included.
     pub fn verify<B, C, D, H>(
-        state: &State<E>,
-        contributions: &Contributions<E, N>,
+        state: &State<P>,
+        contributions: &Contributions<P, N>,
         cs: B,
         powers: Accumulator<C>,
     ) -> Result<Vec<[u8; N]>, PhaseTwoError>
     where
+        P: Size,
         B: ConstraintSynthesizer<C::Scalar>,
-        C: Configuration<Pairing = E, G1 = E::G1Affine, G2 = E::G2Affine, Scalar = E::Fr>,
-        E::G2Affine: Sample<D>,
-        D: Default,
-        H: Clone + Hash<N> + Write,
-        <E as PairingEngine>::G1Prepared: From<<E as PairingEngine>::G1Projective>,
+        C: Configuration<Pairing = P::Pairing, G1 = P::G1, G2 = P::G2, Scalar = P::Scalar>,
+        H: Hash<N> + Write + Clone,
+        <P as Pairing>::G1Prepared: From<<<P as Pairing>::G1 as AffineCurve>::Projective>
     {
         // Build default MPCParameters from phase 1 accumulator
         let (initial_state, initial_contribution_and_hashes) =
@@ -376,33 +369,17 @@ where
             let h: [u8; N] = {
                 let mut hasher = cumulative_hasher.clone();
                 contribution
-                    .s
+                    .delta_before
                     .serialize_uncompressed(&mut hasher)
                     .expect("Hasher never returns an error");
                 contribution
-                    .s_delta
+                    .delta_after
                     .serialize_uncompressed(&mut hasher)
                     .expect("Hasher never returns an error");
                 hasher.finalize()
             };
 
-            // This check is superfluous: if the transcripts weren't equal then
-            // hash_to_group would produce different challenge points and the same_ratio
-            // check would fail (with overwhelming probability).  However this error
-            // is informative and the check is cheap so we leave it.
-            if contribution.transcript != h {
-                return Err(PhaseTwoError::ProofTranscriptsDiffer);
-            }
-
-            let r: E::G2Affine = hash_to_group(h);
-
-            // Check the signature of knowledge
-            if !<C::Pairing as PairingEngineExt>::same_ratio(
-                (contribution.s, contribution.s_delta),
-                (r, contribution.r_delta),
-            ) {
-                return Err(PhaseTwoError::SignatureInvalid);
-            }
+            let r: P::G2 = hash_to_group(h);
 
             // Check the change from the old delta is consistent
             if !<C::Pairing as PairingEngineExt>::same_ratio(
@@ -451,17 +428,15 @@ where
     /// Checks that the parameters which are not changed by Phase 2 contributions
     /// are the same.
     pub fn check_phase_2_invariants(
-        state: &State<E>,
-        initial_state: &State<E>,
+        state: &State<P>,
+        initial_state: &State<P>,
     ) -> Result<(), PhaseTwoError> {
-        // H/L will change, but should have same length
         if initial_state.pk.h_query.len() != state.pk.h_query.len() {
             return Err(PhaseTwoError::Phase2InvariantViolated("H length changed"));
         }
         if initial_state.pk.l_query.len() != state.pk.l_query.len() {
             return Err(PhaseTwoError::Phase2InvariantViolated("L length changed"));
         }
-        // A/B_G1/B_G2 doesn't change at all
         if initial_state.pk.a_query != state.pk.a_query {
             return Err(PhaseTwoError::Phase2InvariantViolated("A query changed"));
         }
@@ -471,7 +446,6 @@ where
         if initial_state.pk.b_g2_query != state.pk.b_g2_query {
             return Err(PhaseTwoError::Phase2InvariantViolated("B_G2 query changed"));
         }
-        // alpha/beta/gamma don't change
         if initial_state.pk.vk.alpha_g1 != state.pk.vk.alpha_g1 {
             return Err(PhaseTwoError::Phase2InvariantViolated("alpha_G1 changed"));
         }
@@ -484,7 +458,6 @@ where
         if initial_state.pk.vk.gamma_g2 != state.pk.vk.gamma_g2 {
             return Err(PhaseTwoError::Phase2InvariantViolated("gamma_G2 changed"));
         }
-        // IC shouldn't change, as gamma doesn't change
         if initial_state.pk.vk.gamma_abc_g1 != state.pk.vk.gamma_abc_g1 {
             return Err(PhaseTwoError::Phase2InvariantViolated(
                 "Public input cross terms changed",
@@ -495,17 +468,17 @@ where
 
     /// Verifies whether given the `proof` of contribution, the `last` [`State`] leads to `next` [`State`].
     pub fn verify_transform<H, D>(
-        last: State<E>,
-        next: State<E>,
-        previous_contributions: &Contributions<E, N>, // TODO: change this to challenge to match the trait?
-        proof: &Proof<E, N>,
-    ) -> Result<State<E>, PhaseTwoError>
+        last: State<P>,
+        next: State<P>,
+        previous_contributions: &Contributions<P, N>, // TODO: change this to challenge to match the trait?
+        proof: &Proof<P, N>,
+    ) -> Result<State<P>, PhaseTwoError>
     where
         D: Default,
         H: Hash<N> + Write,
-        E::Fr: Sample<D>,
-        E::G1Affine: Sample<D>,
-        E::G2Affine: Sample<D>,
+        P::Scalar: Sample<D>,
+        P::G1: Sample<D>,
+        P::G2: Sample<D>,
     {
         // check phase2 invariants:
         Self::check_phase_2_invariants(&next, &last)?;
@@ -519,27 +492,18 @@ where
                     .expect("Hasher never returns an error");
             }
             proof
-                .s
+                .delta_before
                 .serialize_uncompressed(&mut hasher)
                 .expect("Hasher never returns an error");
             proof
-                .s_delta
+                .delta_after
                 .serialize_uncompressed(&mut hasher)
                 .expect("Hasher never returns an error");
             hasher.finalize()
         };
-        // The transcript must be consistent
-        if proof.transcript != h {
-            return Err(PhaseTwoError::ProofTranscriptsDiffer);
-        }
-
-        let r = hash_to_group::<E::G2Affine, _, N>(h);
-        // check the signature of knowledge
-        if !<E as PairingEngineExt>::same_ratio((proof.s, proof.s_delta), (r, proof.r_delta)) {
-            return Err(PhaseTwoError::SignatureInvalid);
-        }
+        let r = hash_to_group::<P::G2, _, N>(h);
         // Check the change from the old delta is consistent
-        if !<E as PairingEngineExt>::same_ratio(
+        if !<P::Pairing as PairingEngineExt>::same_ratio(
             (last.pk.delta_g1, proof.delta_after),
             (r, proof.r_delta),
         ) {
@@ -550,21 +514,21 @@ where
             return Err(PhaseTwoError::InconsistentDeltaChange);
         }
         // Current parameters should have consistent delta in G2
-        if !<E as PairingEngineExt>::same_ratio(
-            (E::G1Affine::prime_subgroup_generator(), proof.delta_after),
-            (E::G2Affine::prime_subgroup_generator(), next.pk.vk.delta_g2),
+        if !<P::Pairing as PairingEngineExt>::same_ratio(
+            (P::G1::prime_subgroup_generator(), proof.delta_after),
+            (P::G2::prime_subgroup_generator(), next.pk.vk.delta_g2),
         ) {
             return Err(PhaseTwoError::InconsistentDeltaChange);
         }
         // H and L queries should be updated with delta^-1
-        if !<E as PairingEngineExt>::same_ratio(
-            random_linear_combinations::<E>(&last.pk.h_query, &next.pk.h_query),
+        if !<P::Pairing as PairingEngineExt>::same_ratio(
+            random_linear_combinations::<P>(&last.pk.h_query, &next.pk.h_query),
             (next.pk.vk.delta_g2, last.pk.vk.delta_g2), // reversed for inverse
         ) {
             return Err(PhaseTwoError::InconsistentHChange);
         }
-        if !<E as PairingEngineExt>::same_ratio(
-            random_linear_combinations::<E>(&last.pk.l_query, &next.pk.l_query),
+        if !<P::Pairing as PairingEngineExt>::same_ratio(
+            random_linear_combinations::<P>(&last.pk.l_query, &next.pk.l_query),
             (next.pk.vk.delta_g2, last.pk.vk.delta_g2), // reversed for inverse
         ) {
             return Err(PhaseTwoError::InconsistentLChange);
@@ -574,21 +538,24 @@ where
 
         Ok(next)
     }
+// }
 }
 
 /// Compress two vectors of curve points into a pair of
 /// curve points by random linear combination. The same
 /// random linear combination is used for both vectors,
 /// allowing this pair to be used in a consistent ratio test.
-fn random_linear_combinations<E: PairingEngine>(
-    lhs: &[E::G1Affine],
-    rhs: &[E::G1Affine],
-) -> (E::G1Affine, E::G1Affine) {
+pub fn random_linear_combinations<P>(
+    lhs: &[P::G1],
+    rhs: &[P::G1],
+) -> (P::G1, P::G1) 
+where P: Pairing
+{
     assert_eq!(lhs.len(), rhs.len());
     let tmp = cfg_into_iter!(0..lhs.len())
         .map(|_| {
             let mut rng = OsRng;
-            E::Fr::rand(&mut rng)
+            P::Scalar::rand(&mut rng)
         })
         .zip(lhs)
         .zip(rhs)
@@ -691,7 +658,7 @@ mod test {
 
     use super::*;
     use crate::{
-        groth16::kzg::{Contribution, Pairing, Size},
+        groth16::kzg::{Contribution, Size},
         serialize::serialize_g1_uncompressed,
         util::{BlakeHasher, HasDistribution},
     };

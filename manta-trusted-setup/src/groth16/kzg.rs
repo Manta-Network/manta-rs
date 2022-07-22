@@ -18,8 +18,8 @@
 
 use crate::util::{
     power_pairs, scalar_mul, AffineCurve, CanonicalDeserialize, CanonicalSerialize, Deserializer,
-    HasDistribution, NonZero, One, PairingEngine, PairingEngineExt, PrimeField, ProjectiveCurve,
-    Read, Sample, SerializationError, Serializer, UniformRand, Write, Zero,
+    NonZero, One, PairingEngineExt, ProjectiveCurve,
+    Read, Pairing, Sample, SerializationError, Serializer, UniformRand, Write, Zero,
 };
 use alloc::{vec, vec::Vec};
 use core::{iter, ops::Mul};
@@ -40,42 +40,6 @@ pub trait Size {
     ///
     /// The number of G2 powers must be smaller than or equal to the number of G1 powers.
     const G2_POWERS: usize;
-}
-
-/// Pairing Configuration
-pub trait Pairing: HasDistribution {
-    /// Underlying Scalar Field
-    type Scalar: PrimeField;
-
-    /// First Group of the Pairing
-    type G1: AffineCurve<ScalarField = Self::Scalar>
-        + Into<Self::G1Prepared>
-        + Sample<Self::Distribution>;
-
-    /// First Group Pairing-Prepared Point
-    type G1Prepared;
-
-    /// Second Group of the Pairing
-    type G2: AffineCurve<ScalarField = Self::Scalar>
-        + Into<Self::G2Prepared>
-        + Sample<Self::Distribution>;
-
-    /// Second Group Pairing-Prepared Point
-    type G2Prepared;
-
-    /// Pairing Engine Type
-    type Pairing: PairingEngine<
-        G1Affine = Self::G1,
-        G2Affine = Self::G2,
-        G1Prepared = Self::G1Prepared,
-        G2Prepared = Self::G2Prepared,
-    >;
-
-    /// Returns the base G1 generator for this configuration.
-    fn g1_prime_subgroup_generator() -> Self::G1;
-
-    /// Returns the base G2 generator for this configuration.
-    fn g2_prime_subgroup_generator() -> Self::G2;
 }
 
 /// Trusted Setup Configuration
@@ -104,6 +68,24 @@ pub trait Configuration: Pairing + Size {
         challenge: &Self::Challenge,
         ratio: (&Self::G1, &Self::G1),
     ) -> Self::G2;
+
+    // fn hasher(domain_tag: Self::DomainTag) -> Self::HashToGroup;
+
+    // fn hasher(domain_tag: Self::DomainTag) -> Self::HashToGroup;
+
+    // type HashToGroup: HashToGroup;
+
+    /*
+    fn hasher(domain_tag: Self::DomainTag) -> Self::HashToGroup {
+        HashToGroup {
+            domain_tag,
+        }
+    }
+
+    fn hash(&self, challenge, ratio) {
+        Blake(self.domain_tag, ...)
+    }
+    */
 
     /// Computes the challenge response from `state`, `challenge`, and `proof`.
     fn response(
@@ -224,6 +206,15 @@ where
 
     /// Matching Point in G2
     pub matching_point: C::G2,
+}
+
+//TODO: Add a trait `HashToGroup`
+
+/// TODO
+pub trait HashToGroup {
+    /// TODO
+    fn hash();
+    
 }
 
 impl<C> RatioProof<C>

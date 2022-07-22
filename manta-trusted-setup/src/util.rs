@@ -42,6 +42,42 @@ pub trait HasDistribution {
     type Distribution: Default;
 }
 
+/// Pairing Configuration
+pub trait Pairing: HasDistribution {
+    /// Underlying Scalar Field
+    type Scalar: PrimeField;
+
+    /// First Group of the Pairing
+    type G1: AffineCurve<ScalarField = Self::Scalar>
+        + Into<Self::G1Prepared>
+        + Sample<Self::Distribution>;
+
+    /// First Group Pairing-Prepared Point
+    type G1Prepared;
+
+    /// Second Group of the Pairing
+    type G2: AffineCurve<ScalarField = Self::Scalar>
+        + Into<Self::G2Prepared>
+        + Sample<Self::Distribution>;
+
+    /// Second Group Pairing-Prepared Point
+    type G2Prepared;
+
+    /// Pairing Engine Type
+    type Pairing: PairingEngine<
+        G1Affine = Self::G1,
+        G2Affine = Self::G2,
+        G1Prepared = Self::G1Prepared,
+        G2Prepared = Self::G2Prepared,
+    >;
+
+    /// Returns the base G1 generator for this configuration.
+    fn g1_prime_subgroup_generator() -> Self::G1;
+
+    /// Returns the base G2 generator for this configuration.
+    fn g2_prime_subgroup_generator() -> Self::G2;
+}
+
 /// Custom Serialization Adapter
 ///
 /// In the majority of cases we can just use [`CanonicalSerialize`] and [`CanonicalDeserialize`] to
