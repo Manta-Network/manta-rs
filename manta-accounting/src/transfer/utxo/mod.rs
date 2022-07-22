@@ -29,162 +29,16 @@ use manta_crypto::{
     signature::Sign,
 };
 
-pub mod v1;
+pub mod auth;
+// TODO: pub mod v1;
+
+/*
 
 #[doc(inline)]
 pub use v1 as protocol;
 
 /// Current UTXO Protocol Version
 pub const VERSION: u8 = protocol::VERSION;
-
-/// Spending Key
-pub trait SpendingKeyType {
-    /// Spending Key Type
-    type SpendingKey;
-}
-
-/// Spending Key Type
-pub type SpendingKey<T> = <T as SpendingKeyType>::SpendingKey;
-
-///
-pub trait SpendAuthorize: AuthorityType + AuthorizationType + SpendingKeyType {
-    ///
-    fn generate<R>(
-        &self,
-        spending_key: &Self::SpendingKey,
-        rng: &mut R,
-    ) -> AuthorizationProof<Self>;
-}
-
-/// Authority
-pub trait AuthorityType {
-    /// Authority Type
-    type Authority;
-}
-
-/// Authority Type
-pub type Authority<T> = <T as AuthorityType>::Authority;
-
-/// Authorization
-pub trait AuthorizationType {
-    /// Authorization Type
-    type Authorization;
-}
-
-/// Authorization Type
-pub type Authorization<T> = <T as AuthorizationType>::Authorization;
-
-/// Authorization Proof
-pub struct AuthorizationProof<T>
-where
-    T: AuthorityType + AuthorizationType + ?Sized,
-{
-    /// Authority
-    pub authority: T::Authority,
-
-    /// Authorization
-    pub authorization: T::Authorization,
-}
-
-impl<T> AuthorizationProof<T>
-where
-    T: AuthorityType + AuthorizationType + ?Sized,
-{
-    /// Builds a new [`AuthorizationProof`] from `authority` and `authorization`.
-    #[inline]
-    pub fn new(authority: T::Authority, authorization: T::Authorization) -> Self {
-        Self {
-            authority,
-            authorization,
-        }
-    }
-
-    /// Extends proof public input with `self`.
-    #[inline]
-    pub fn extend_input<P>(&self, input: &mut P::Input)
-    where
-        P: ProofSystemInput<T::Authorization>,
-    {
-        P::extend(input, &self.authorization)
-    }
-
-    /// Asserts that `self` is a valid [`AuthorizationProof`] according to `authorization_scheme`.
-    #[inline]
-    pub fn assert_valid<COM>(&self, authorization_scheme: &T, compiler: &mut COM)
-    where
-        T: Authorize<COM>,
-    {
-        authorization_scheme.assert_authorized(&self.authority, &self.authorization, compiler)
-    }
-}
-
-impl<T, M, N, COM> Variable<Derived<(M, N)>, COM> for AuthorizationProof<T>
-where
-    T: AuthorityType + AuthorizationType + Constant<COM>,
-    T::Authority: Variable<M, COM>,
-    T::Authorization: Variable<N, COM>,
-    T::Type: AuthorityType<Authority = Var<T::Authority, M, COM>>
-        + AuthorizationType<Authorization = Var<T::Authorization, N, COM>>,
-{
-    type Type = AuthorizationProof<T::Type>;
-
-    #[inline]
-    fn new_unknown(compiler: &mut COM) -> Self {
-        Self::new(compiler.allocate_unknown(), compiler.allocate_unknown())
-    }
-
-    #[inline]
-    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
-        Self::new(
-            this.authority.as_known(compiler),
-            this.authorization.as_known(compiler),
-        )
-    }
-}
-
-/// Authorize
-pub trait Authorize<COM = ()>: AuthorityType + AuthorizationType {
-    /// Asserts that `authority` produces the correct `authorization`.
-    fn assert_authorized(
-        &self,
-        authority: &Self::Authority,
-        authorization: &Self::Authorization,
-        compiler: &mut COM,
-    );
-}
-
-/// Authorization Verification
-pub trait VerifyAuthorization: AuthorizationType {
-    /// Verifying Key
-    type VerifyingKey;
-
-    /// Verifies that `authorization` is well-formed with `verifying_key`.
-    fn verify_authorization(
-        &self,
-        verifying_key: &Self::VerifyingKey,
-        authorization: &Self::Authorization,
-    ) -> bool;
-}
-
-/// Verifies the `authorization` with `signing_key` and then signs the `message` if the verification
-/// passed.
-#[inline]
-pub fn sign_authorization<S>(
-    signature_scheme: &S,
-    signing_key: &S::SigningKey,
-    authorization: &S::Authorization,
-    randomness: &S::Randomness,
-    message: &S::Message,
-) -> Option<S::Signature>
-where
-    S: Sign + VerifyAuthorization<VerifyingKey = S::SigningKey>,
-{
-    if signature_scheme.verify_authorization(signing_key, authorization) {
-        Some(signature_scheme.sign(signing_key, randomness, message, &mut ()))
-    } else {
-        None
-    }
-}
 
 /// Asset
 pub trait AssetType {
@@ -285,7 +139,7 @@ pub trait SpendSecret: AssetType + IdentifierType {
 
 /// UTXO Spending
 pub trait Spend<COM = ()>:
-    Authorize<COM> + ItemHashFunction<Self::Utxo, COM> + AssetType + UtxoType
+    auth::Authorize<COM> + ItemHashFunction<Self::Utxo, COM> + AssetType + UtxoType
 {
     /// UTXO Accumulator Model Type
     type UtxoAccumulatorModel: accumulator::Model<COM, Item = Self::Item>;
@@ -454,3 +308,5 @@ where
         self.base
     }
 }
+
+*/

@@ -124,16 +124,19 @@ pub trait Account {
     /// Address Type
     type Address;
 
+    /// Account Key-Generation Parameters
+    type Parameters;
+
     /// Returns the spending key associated to this account.
-    fn spending_key(&self) -> Self::SpendingKey;
+    fn spending_key(&self, parameters: &Self::Parameters) -> Self::SpendingKey;
 
     /// Returns the address at the given `index` for this account.
-    fn address(&mut self, index: AddressIndex) -> Self::Address;
+    fn address(&mut self, parameters: &Self::Parameters, index: AddressIndex) -> Self::Address;
 
     /// Returns the default address for this account.
     #[inline]
-    fn default_address(&mut self) -> Self::Address {
-        self.address(Default::default())
+    fn default_address(&mut self, parameters: &Self::Parameters) -> Self::Address {
+        self.address(parameters, Default::default())
     }
 }
 
@@ -143,20 +146,21 @@ where
 {
     type SpendingKey = A::SpendingKey;
     type Address = A::Address;
+    type Parameters = A::Parameters;
 
     #[inline]
-    fn spending_key(&self) -> Self::SpendingKey {
-        (**self).spending_key()
+    fn spending_key(&self, parameters: &Self::Parameters) -> Self::SpendingKey {
+        (**self).spending_key(parameters)
     }
 
     #[inline]
-    fn address(&mut self, index: AddressIndex) -> Self::Address {
-        (*self).address(index)
+    fn address(&mut self, parameters: &Self::Parameters, index: AddressIndex) -> Self::Address {
+        (*self).address(parameters, index)
     }
 
     #[inline]
-    fn default_address(&mut self) -> Self::Address {
-        (*self).default_address()
+    fn default_address(&mut self, parameters: &Self::Parameters) -> Self::Address {
+        (*self).default_address(parameters)
     }
 }
 
@@ -165,6 +169,9 @@ pub type SpendingKey<A> = <A as Account>::SpendingKey;
 
 /// Address Type
 pub type Address<A> = <A as Account>::Address;
+
+/// Parameters Type
+pub type Parameters<A> = <A as Account>::Parameters;
 
 /// Limit Account
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
@@ -215,22 +222,28 @@ where
 
     /// Returns the next new address for `self`.
     #[inline]
-    pub fn next_address(&mut self) -> Address<Self> {
-        let address = self.account.address(self.address_limit);
+    pub fn next_address(&mut self, parameters: &Parameters<Self>) -> Address<Self> {
+        let address = self.account.address(parameters, self.address_limit);
         self.address_limit.increment();
         address
     }
 
     /// Returns an iterator over all of the already observed addresses.
     #[inline]
-    pub fn iter_observed(&mut self) -> impl '_ + Iterator<Item = Address<Self>> {
-        (0..self.address_limit.index()).map(|i| self.account.address(i.into()))
+    pub fn iter_observed<'s>(
+        &'s mut self,
+        parameters: &'s Parameters<Self>,
+    ) -> impl 's + Iterator<Item = Address<Self>> {
+        (0..self.address_limit.index()).map(|i| self.account.address(parameters, i.into()))
     }
 
     /// Returns an iterator over all addresses beyond what have already been observed.
     #[inline]
-    pub fn iter_new(&mut self) -> impl '_ + Iterator<Item = Address<Self>> {
-        iter::repeat_with(|| self.next_address())
+    pub fn iter_new<'s>(
+        &'s mut self,
+        parameters: &'s Parameters<Self>,
+    ) -> impl 's + Iterator<Item = Address<Self>> {
+        iter::repeat_with(|| self.next_address(parameters))
     }
 }
 
@@ -240,21 +253,22 @@ where
 {
     type SpendingKey = A::SpendingKey;
     type Address = A::Address;
+    type Parameters = A::Parameters;
 
     #[inline]
-    fn spending_key(&self) -> Self::SpendingKey {
-        self.account.spending_key()
+    fn spending_key(&self, parameters: &Self::Parameters) -> Self::SpendingKey {
+        self.account.spending_key(parameters)
     }
 
     #[inline]
-    fn address(&mut self, index: AddressIndex) -> Self::Address {
+    fn address(&mut self, parameters: &Self::Parameters, index: AddressIndex) -> Self::Address {
         self.address_limit = cmp::max(self.address_limit, index);
-        self.account.address(index)
+        self.account.address(parameters, index)
     }
 
     #[inline]
-    fn default_address(&mut self) -> Self::Address {
-        self.account.default_address()
+    fn default_address(&mut self, parameters: &Self::Parameters) -> Self::Address {
+        self.account.default_address(parameters)
     }
 }
 

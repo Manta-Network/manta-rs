@@ -29,6 +29,7 @@
 //! See the [`crate::wallet`] module for more on how this transfer protocol is used in a wallet
 //! protocol for the keeping of accounts for private assets.
 
+/*
 use crate::{
     asset,
     transfer::{
@@ -51,12 +52,15 @@ use manta_util::vec::{all_unequal, Vec};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
+*/
 
-pub mod batch;
-pub mod canonical;
-pub mod receiver;
-pub mod sender;
+// TODO: pub mod batch;
+// TODO: pub mod canonical;
+// TODO: pub mod receiver;
+// TODO: pub mod sender;
 pub mod utxo;
+
+/*
 
 #[cfg(feature = "test")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
@@ -1716,3 +1720,5 @@ where
         input
     }
 }
+
+*/

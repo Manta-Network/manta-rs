@@ -909,7 +909,7 @@ where
             FullParametersRef::<C>::new(&parameters.parameters, self.utxo_accumulator.model()),
             &parameters.authorization_signature_scheme,
             proving_context,
-            requires_authorization(SENDERS).then(|| &spending_key),
+            requires_authorization(SENDERS).then_some(&spending_key),
             transfer,
             &mut self.rng,
         )
