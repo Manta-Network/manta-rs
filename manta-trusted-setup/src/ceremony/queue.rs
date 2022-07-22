@@ -34,6 +34,7 @@ pub trait Identifier {
     /// Get the identifier.
     fn identifier(&self) -> Self::Identifier;
     /// Consume `self` and return the identifier.
+    #[inline]
     fn into_identifier(self) -> Self::Identifier
     where
         Self: Sized,

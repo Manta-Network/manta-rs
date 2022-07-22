@@ -15,3 +15,10 @@
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 //! Client and Server Interfaces and Implementations for Manta Trusted Setup Ceremony.
 pub mod queue;
+pub mod registry;
+
+/// Ceremony Error
+pub enum CeremonyError {
+    /// Participant already registered.
+    ParticipantAlreadyRegistered,
+}
