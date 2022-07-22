@@ -17,60 +17,57 @@
 
 use crate::ceremony::CeremonyError;
 use alloc::collections::BTreeMap;
-use core::{hash::Hash, marker::PhantomData};
 
 /// Map used by registry.
-pub trait Map<K, V>: Default {
+pub trait Map: Default {
+    /// Key of map
+    type Key;
+    /// Value of map
+    type Value;
+
     /// Inserts a key-value pair into the map.
     /// If the map did not have this key present, `None` is returned.
     /// If the map did have this key present, the value is updated, and the old value is returned.
-    fn _insert(&mut self, key: K, value: V) -> Option<V>;
+    fn _insert(&mut self, key: Self::Key, value: Self::Value) -> Option<Self::Value>;
 
     /// Return `true` if the map contains a value for the specified key.
-    fn _contains_key(&self, key: &K) -> bool;
+    fn _contains_key(&self, key: &Self::Key) -> bool;
 
     /// Returns a reference to the value corresponding to the key.
-    fn _get(&self, key: &K) -> Option<&V>;
+    fn _get(&self, key: &Self::Key) -> Option<&Self::Value>;
 }
 
 /// Registry for the ceremony.
-pub struct Registry<K, V, M>
+pub struct Registry<M>
 where
-    M: Map<K, V>,
+    M: Map,
 {
     map: M,
-    __: PhantomData<(K, V)>,
 }
 
-impl<K, V, M> Default for Registry<K, V, M>
+impl<M> Default for Registry<M>
 where
-    M: Map<K, V>,
+    M: Map,
 {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<K, V, M> Registry<K, V, M>
+impl<M> Registry<M>
 where
-    M: Map<K, V>,
+    M: Map,
 {
     /// Returns an empty registry.
     pub fn new() -> Self {
-        Self {
-            map: M::default(),
-            __: PhantomData,
-        }
+        Self { map: M::default() }
     }
 
     /// Add a participant to the registry.
     ///
     /// # Errors
     /// If the participant is already registered, returns `CeremonyError::ParticipantAlreadyRegistered`.
-    pub fn insert(&mut self, id: K, participant: V) -> Result<(), CeremonyError>
-    where
-        K: Hash + Eq,
-    {
+    pub fn insert(&mut self, id: M::Key, participant: M::Value) -> Result<(), CeremonyError> {
         if self.map._contains_key(&id) {
             return Err(CeremonyError::ParticipantAlreadyRegistered);
         }
@@ -79,7 +76,7 @@ where
     }
 
     /// Get the participant data from the registry using their `id`. Returns `None` if the participant is not registered.
-    pub fn get(&self, id: &K) -> Option<&V> {
+    pub fn get(&self, id: &M::Key) -> Option<&M::Value> {
         self.map._get(id)
     }
 }
@@ -92,11 +89,14 @@ mod std_impl {
         hash::{BuildHasher, Hash},
     };
 
-    impl<K, V, S> Map<K, V> for HashMap<K, V, S>
+    impl<K, V, S> Map for HashMap<K, V, S>
     where
         K: Eq + Hash,
         S: BuildHasher + Default,
     {
+        type Key = K;
+        type Value = V;
+
         fn _insert(&mut self, key: K, value: V) -> Option<V> {
             self.insert(key, value)
         }
@@ -111,10 +111,13 @@ mod std_impl {
     }
 }
 
-impl<K, V> Map<K, V> for BTreeMap<K, V>
+impl<K, V> Map for BTreeMap<K, V>
 where
     K: Ord,
 {
+    type Key = K;
+    type Value = V;
+
     fn _insert(&mut self, key: K, value: V) -> Option<V> {
         self.insert(key, value)
     }

@@ -28,10 +28,10 @@ pub struct Coordinator<V, P, M, const N: usize>
 where
     V: Verify,
     P: Priority + Identifier,
-    M: Map<P::Identifier, P>,
+    M: Map<Key = P::Identifier, Value = P>,
 {
     state: V::State,
-    registry: Registry<P::Identifier, P, M>,
+    registry: Registry<M>,
     queue: Queue<P, N>,
 }
 
@@ -39,7 +39,7 @@ impl<V, P, M, const N: usize> Coordinator<V, P, M, N>
 where
     V: Verify,
     P: Priority + Identifier,
-    M: Map<P::Identifier, P>,
+    M: Map<Key = P::Identifier, Value = P>,
 {
     // TODO
 }
