@@ -16,7 +16,10 @@
 //! Waiting queue for the ceremony.
 
 use alloc::{collections::VecDeque, vec::Vec};
-use manta_util::into_array_unchecked;
+use manta_util::{
+    into_array_unchecked,
+    iter::{Finder, IteratorExt},
+};
 
 /// Priority
 pub trait Priority {
@@ -68,22 +71,46 @@ where
     }
 
     /// Checks if a participant is at the front of the queue.
+    ///
+    /// It is required that the priority of participant is the same as when it was added.
     pub fn is_front(&self, participant: &T) -> bool {
         let priority = participant.priority();
-        if (priority..N).any(|p| !self.0[p].is_empty()) {
+        if (priority + 1..N).rev().any(|p| !self.0[p].is_empty()) {
             return false;
         }
         self.0[priority].front() == Some(&participant.identifier())
     }
 
-    /// Return the approximate position of the participant.
-    pub fn position(&self, _participant: &T) -> bool {
-        todo!()
+    /// Return the approximate position of the participant, or `None` if the participant is not in the queue.
+    /// It is required that the priority of participant is the same as when it was added.
+    pub fn position(&self, participant: &T) -> Option<usize> {
+        let priority = participant.priority();
+        let identifier = participant.identifier();
+        assert!(priority < N, "invalid priority value");
+        let num_participants_with_higher_priority =
+            (priority..N).map(|p| self.0[p].len()).sum::<usize>();
+        let num_participants_at_front =
+            self.0[priority]
+                .iter()
+                .find_with(&mut Finder::new(0), |count, item| {
+                    if item == &identifier {
+                        Some(*count)
+                    } else {
+                        None
+                    }
+                })?;
+        Some(num_participants_with_higher_priority + num_participants_at_front)
     }
 
-    /// Removes the participant from the queue and returns its identifier.
+    /// Removes the participant from the queue and returns its identifier.  
+    /// It is required that the priority of participant is the same as when it was added.
     pub fn pop(&mut self) -> Option<T::Identifier> {
-        todo!()
+        for priority in (0..N).rev() {
+            if let Some(identifier) = self.0[priority].pop_front() {
+                return Some(identifier);
+            }
+        }
+        None
     }
 
     /// Return the number of participants in the queue, also refered to as the length.
@@ -104,4 +131,9 @@ where
     fn default() -> Self {
         Self::new()
     }
+}
+
+#[cfg(test)]
+mod tests {
+    // TODO: add test for queue
 }
