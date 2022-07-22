@@ -13,15 +13,33 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
-//! Client and Server Interfaces and Implementations for Manta Trusted Setup Ceremony.
-pub mod coordinator;
-pub mod queue;
-pub mod registry;
+//! Ceremony coordinator.
 
-/// Ceremony Error
-pub enum CeremonyError {
-    /// Participant already registered.
-    ParticipantAlreadyRegistered,
-    /// Invalid Contribution // TODO: derive this error from trusted setup error
-    InvalidContribution,
+use crate::{
+    ceremony::{
+        queue::{Identifier, Priority, Queue},
+        registry::{Map, Registry},
+    },
+    mpc::Verify,
+};
+
+/// Coordinator with `V` as trusted setup verifier, `P` as participant, `M` as the map used by registry, `N` as the number of priority levels.
+pub struct Coordinator<V, P, M, const N: usize>
+where
+    V: Verify,
+    P: Priority + Identifier,
+    M: Map<P::Identifier, P>,
+{
+    state: V::State,
+    registry: Registry<P::Identifier, P, M>,
+    queue: Queue<P, N>,
+}
+
+impl<V, P, M, const N: usize> Coordinator<V, P, M, N>
+where
+    V: Verify,
+    P: Priority + Identifier,
+    M: Map<P::Identifier, P>,
+{
+    // TODO
 }

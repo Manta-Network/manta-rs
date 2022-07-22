@@ -50,11 +50,11 @@ pub trait Identifier {
 /// A mutex is required to access the queue.
 pub struct Queue<T, const N: usize>([VecDeque<T::Identifier>; N])
 where
-    T: PartialEq + Priority + Identifier;
+    T: Priority + Identifier;
 
 impl<T, const N: usize> Queue<T, N>
 where
-    T: PartialEq + Priority + Identifier,
+    T: Priority + Identifier,
 {
     /// Creates a new empty [`Queue`].
     pub fn new() -> Self {
