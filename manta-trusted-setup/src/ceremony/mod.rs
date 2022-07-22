@@ -17,12 +17,22 @@
 pub mod coordinator;
 pub mod queue;
 pub mod registry;
-
+pub mod signature;
 /// Ceremony Error
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum CeremonyError {
     /// Participant already registered.
-    ParticipantAlreadyRegistered,
+    AlreadyRegistered,
     /// Invalid Contribution // TODO: derive this error from trusted setup error
     InvalidContribution,
+    /// Invalid Signature
+    InvalidSignature,
+    /// Not your turn
+    NotYourTurn,
+    /// Not Registered
+    NotRegistered,
+    /// Trusted Setup Error
+    TrustedSetupError, // TODO: add more description here
+    /// The waiting queue is empty.
+    WaitingQueueEmpty,
 }

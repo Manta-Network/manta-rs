@@ -127,7 +127,7 @@ where
 
 impl<T, const N: usize> Default for Queue<T, N>
 where
-    T: PartialEq + Priority + Identifier,
+    T: Priority + Identifier,
 {
     fn default() -> Self {
         Self::new()

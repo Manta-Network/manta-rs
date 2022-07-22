@@ -25,15 +25,18 @@ pub trait Map: Default {
     /// Value of map
     type Value;
 
-    /// Inserts a key-value pair into the map.
-    /// If the map did not have this key present, `None` is returned.
-    /// If the map did have this key present, the value is updated, and the old value is returned.
-    fn insert(&mut self, key: Self::Key, value: Self::Value) -> Option<Self::Value>;
+    /// Try to insert a key into the map and get the reference of the value. If the key already exists,
+    /// return `None`.
+    fn try_insert_and_get_reference(
+        &mut self,
+        key: Self::Key,
+        value: Self::Value,
+    ) -> Option<&Self::Value>;
 
-    /// Return `true` if the map contains a value for the specified key.
-    fn contains_key(&self, key: &Self::Key) -> bool;
+    /// Remove a key from the map. If the key does not exist, return `None`.
+    fn remove(&mut self, key: &Self::Key) -> Option<Self::Value>;
 
-    /// Returns a reference to the value corresponding to the key.
+    /// Return the value for the specified key. If the key does not exist, return `None`.
     fn get(&self, key: &Self::Key) -> Option<&Self::Value>;
 }
 
@@ -63,16 +66,26 @@ where
         Self { map: M::default() }
     }
 
-    /// Add a participant to the registry.
+    /// Add a participant to the registry, and return its reference in the registry.
     ///
     /// # Errors
-    /// If the participant is already registered, returns `CeremonyError::ParticipantAlreadyRegistered`.
-    pub fn insert(&mut self, id: M::Key, participant: M::Value) -> Result<(), CeremonyError> {
-        if self.map.contains_key(&id) {
-            return Err(CeremonyError::ParticipantAlreadyRegistered);
-        }
-        self.map.insert(id, participant);
-        Ok(())
+    /// If the participant is already registered, returns [`CeremonyError::AlreadyRegistered`].
+    pub fn try_register(
+        &mut self,
+        id: M::Key,
+        participant: M::Value,
+    ) -> Result<&M::Value, CeremonyError> {
+        self.map
+            .try_insert_and_get_reference(id, participant)
+            .map_or_else(|| Err(CeremonyError::AlreadyRegistered), |v| Ok(v))
+    }
+
+    /// Unregister a participant from the registry, using their identifier.
+    /// If the participant is not registered, returns [`CeremonyError::NotRegistered`].
+    pub fn unregister(&mut self, id: &M::Key) -> Result<M::Value, CeremonyError> {
+        self.map
+            .remove(id)
+            .ok_or_else(|| CeremonyError::NotRegistered)
     }
 
     /// Get the participant data from the registry using their `id`. Returns `None` if the participant is not registered.
@@ -97,15 +110,18 @@ mod std_impl {
         type Key = K;
         type Value = V;
 
-        fn insert(&mut self, key: K, value: V) -> Option<V> {
-            self.insert(key, value)
+        fn try_insert_and_get_reference(&mut self, key: K, value: V) -> Option<&V> {
+            match self.entry(key) {
+                std::collections::hash_map::Entry::Occupied(_) => None,
+                std::collections::hash_map::Entry::Vacant(entry) => Some(entry.insert(value)),
+            }
         }
 
-        fn contains_key(&self, key: &K) -> bool {
-            self.contains_key(key)
+        fn remove(&mut self, key: &Self::Key) -> Option<Self::Value> {
+            self.remove(key)
         }
 
-        fn get(&self, key: &K) -> Option<&V> {
+        fn get(&self, key: &Self::Key) -> Option<&Self::Value> {
             self.get(key)
         }
     }
@@ -113,17 +129,20 @@ mod std_impl {
 
 impl<K, V> Map for BTreeMap<K, V>
 where
-    K: Ord,
+    K: Ord + Clone,
 {
     type Key = K;
     type Value = V;
 
-    fn insert(&mut self, key: K, value: V) -> Option<V> {
-        self.insert(key, value)
+    fn try_insert_and_get_reference(&mut self, key: K, value: V) -> Option<&V> {
+        match self.entry(key) {
+            alloc::collections::btree_map::Entry::Occupied(_) => None,
+            alloc::collections::btree_map::Entry::Vacant(entry) => Some(entry.insert(value)),
+        }
     }
 
-    fn contains_key(&self, key: &K) -> bool {
-        self.contains_key(key)
+    fn remove(&mut self, key: &Self::Key) -> Option<Self::Value> {
+        self.remove(key)
     }
 
     fn get(&self, key: &K) -> Option<&V> {
@@ -140,17 +159,17 @@ mod tests {
     fn duplicate_participant() {
         let mut registry = Registry::<BTreeMap<_, _>>::new();
         registry
-            .insert(1, "alice")
+            .try_register(1, "alice")
             .expect("(1, alice) should be inserted");
         registry
-            .insert(2, "bob")
+            .try_register(2, "bob")
             .expect("(2, bob) should be inserted");
         registry
-            .insert(3, "alice")
+            .try_register(3, "alice")
             .expect("(3, alice) should be inserted even if value is the same as (1, alice)");
         assert_eq!(
-            registry.insert(2, "charlie"),
-            Err(CeremonyError::ParticipantAlreadyRegistered),
+            registry.try_register(2, "charlie"),
+            Err(CeremonyError::AlreadyRegistered),
             "duplicate participant should not be inserted"
         );
     }
