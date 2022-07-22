@@ -56,18 +56,6 @@ where
     transcript: [u8; N],
 }
 
-/// Server States. TODO: To be used for refactor.
-pub struct Server<E, const N: usize>
-where
-    E: PairingEngine,
-{
-    /// TODO
-    pub state: ProvingKey<E>,
-
-    /// TODO
-    pub proof_history: Vec<Proof<E, N>>,
-}
-
 /// Groth16 Phase 2
 pub struct Phase2<E, const N: usize> {
     __: PhantomData<E>,
@@ -82,9 +70,6 @@ where
     /// Groth16 Proving Keys
     pub pk: ProvingKey<E>,
 }
-
-/// Challenge
-pub struct Challenge<const N: usize> {}
 
 /// Contributions and Hashes
 pub struct Contributions<E, const N: usize>
@@ -249,17 +234,15 @@ where
             l_query: private_cross_terms,
         };
 
-        // Hash the proving key, store this as `cs_hash`
         let mut hasher = H::new();
         pk.serialize(&mut hasher)
             .expect("Hasher is not allowed to fail");
-        let hash = hasher.finalize();
 
         Ok((
             State { pk },
             Contributions {
                 contributions: Vec::new(),
-                cs_hash: hash,
+                cs_hash: hasher.finalize(),
             },
         ))
     }
@@ -280,13 +263,9 @@ where
         E::G2Affine: Sample<D>,
         H: Hash<N> + Write,
     {
-        // Sample random delta
         let delta = E::Fr::gen(rng);
-
-        // Compute delta s-pair in G1
-        let s = E::G1Affine::gen(rng); // Is projective mul. faster ?
+        let s = E::G1Affine::gen(rng);
         let s_delta = s.mul(delta).into_affine();
-
         let h: [u8; N] = {
             let mut hasher = H::new();
             hasher.update(&previous_contributions.cs_hash[..]);
@@ -303,18 +282,14 @@ where
                 .expect("Blake2b Hasher never returns an error");
             hasher.finalize()
         };
-
-        // Compute delta s-pair in G2
-        let r: E::G2Affine = hash_to_group(h); // could fix distribution D here for phase two, or can leave
-        let r_delta = r.mul(delta).into_affine();
-
+        let r: E::G2Affine = hash_to_group(h);
         (
             delta,
             Proof {
                 delta_after: state.pk.delta_g1.mul(delta).into_affine(),
                 s,
                 s_delta,
-                r_delta,
+                r_delta: r.mul(delta).into_affine(),
                 transcript: h,
             },
         )
@@ -515,7 +490,6 @@ where
                 "Public input cross terms changed",
             ));
         }
-        // TODO: check cs_hash elsewhere?
         Ok(())
     }
 
@@ -533,14 +507,14 @@ where
         E::G1Affine: Sample<D>,
         E::G2Affine: Sample<D>,
     {
-        // check phase 2 invariants:
-        Self::check_phase_2_invariants(&last, &next)?;
+        // check phase2 invariants:
+        Self::check_phase_2_invariants(&next, &last)?;
         // compute challenge
         let h = {
             let mut hasher = H::new();
             hasher.update(&previous_contributions.cs_hash);
-            for proof in &previous_contributions.contributions {
-                proof
+            for previous_proof in &previous_contributions.contributions {
+                previous_proof
                     .serialize(&mut hasher)
                     .expect("Hasher never returns an error");
             }
