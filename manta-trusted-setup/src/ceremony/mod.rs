@@ -19,6 +19,7 @@ pub mod queue;
 pub mod registry;
 
 /// Ceremony Error
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum CeremonyError {
     /// Participant already registered.
     ParticipantAlreadyRegistered,
