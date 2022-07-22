@@ -371,7 +371,7 @@ impl TransferLedger<Config> for Ledger {
             &proof,
         )
         .ok()?
-        .then(move || (Wrap(()), ()))
+        .then_some((Wrap(()), ()))
     }
 
     #[inline]

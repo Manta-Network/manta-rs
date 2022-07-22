@@ -366,7 +366,7 @@ pub trait PairingEngineExt: PairingEngine {
     {
         let lhs = (lhs.0.into(), lhs.1.into());
         let rhs = (rhs.0.into(), rhs.1.into());
-        Self::has_same(&lhs, &rhs).then(|| (lhs, rhs))
+        Self::has_same(&lhs, &rhs).then_some((lhs, rhs))
     }
 
     /// Checks if the ratio of `(lhs.0, lhs.1)` from `G1` is the same as the ratio of
