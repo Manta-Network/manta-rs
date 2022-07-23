@@ -246,7 +246,7 @@ where
 /// Constraint System Gadgets
 pub mod constraint {
     use super::*;
-    use crate::constraint::{Allocate, Allocator, Constant, Derived, Variable};
+    use crate::eclair::alloc::{mode::Derived, Allocate, Allocator, Constant, Variable};
     use core::marker::PhantomData;
 
     /// Membership Proof Allocation Mode Entry
