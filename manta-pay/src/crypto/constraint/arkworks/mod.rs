@@ -25,12 +25,19 @@ use ark_relations::{
 };
 use manta_crypto::{
     algebra,
-    constraint::{
+    constraint::measure::{Count, Measure},
+    eclair::{
         self,
-        measure::{Count, Measure},
-        mode, Add, Assert, AssertEq, ConditionalSwap, Constant, Has, Public, Secret, Variable,
+        alloc::{
+            mode,
+            mode::{Public, Secret},
+            Constant, Variable,
+        },
+        bool::{Assert, AssertEq, ConditionalSwap},
+        num::AssertWithinBitRange,
+        ops::Add,
+        Has,
     },
-    eclair::num::AssertWithinBitRange,
     rand::{RngCore, Sample},
 };
 use manta_util::{
@@ -458,7 +465,7 @@ where
     }
 }
 
-impl<F> constraint::PartialEq<Self, R1CS<F>> for Boolean<F>
+impl<F> eclair::cmp::PartialEq<Self, R1CS<F>> for Boolean<F>
 where
     F: PrimeField,
 {
@@ -534,7 +541,7 @@ where
     }
 }
 
-impl<F> constraint::PartialEq<Self, R1CS<F>> for FpVar<F>
+impl<F> eclair::cmp::PartialEq<Self, R1CS<F>> for FpVar<F>
 where
     F: PrimeField,
 {
@@ -591,7 +598,7 @@ mod tests {
     use ark_ff::BigInteger;
     use core::iter::repeat_with;
     use manta_crypto::{
-        constraint::Allocate,
+        eclair::alloc::Allocate,
         rand::{OsRng, Rand},
     };
 

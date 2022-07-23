@@ -34,9 +34,15 @@ use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash, marker::PhantomData, ops::Deref};
 use manta_crypto::{
     accumulator::{AssertValidVerification, MembershipProof, Model},
-    constraint::{
-        self, Add, Allocate, Allocator, AssertEq, Bool, Constant, Derived, ProofSystem,
-        ProofSystemInput, Public, Secret, Variable,
+    constraint::{ProofSystem, ProofSystemInput},
+    eclair::{
+        self,
+        alloc::{
+            mode::{Derived, Public, Secret},
+            Allocate, Allocator, Constant, Variable,
+        },
+        bool::{AssertEq, Bool},
+        ops::Add,
     },
     encryption::{self, hybrid::Hybrid, EncryptedMessage},
     key::{self, agreement::Derive},
@@ -129,7 +135,7 @@ pub trait Configuration {
 
     /// Public Key Variable Type
     type PublicKeyVar: Variable<Secret, Self::Compiler, Type = PublicKey<Self>>
-        + constraint::PartialEq<Self::PublicKeyVar, Self::Compiler>;
+        + eclair::cmp::PartialEq<Self::PublicKeyVar, Self::Compiler>;
 
     /// Key Agreement Scheme Variable Type
     type KeyAgreementSchemeVar: Constant<Self::Compiler, Type = Self::KeyAgreementScheme>
@@ -151,7 +157,7 @@ pub trait Configuration {
     /// UTXO Variable Type
     type UtxoVar: Variable<Public, Self::Compiler, Type = Utxo<Self>>
         + Variable<Secret, Self::Compiler, Type = Utxo<Self>>
-        + constraint::PartialEq<Self::UtxoVar, Self::Compiler>;
+        + eclair::cmp::PartialEq<Self::UtxoVar, Self::Compiler>;
 
     /// UTXO Commitment Scheme Variable Type
     type UtxoCommitmentSchemeVar: Constant<Self::Compiler, Type = Self::UtxoCommitmentScheme>
@@ -175,7 +181,7 @@ pub trait Configuration {
 
     /// Void Number Variable Type
     type VoidNumberVar: Variable<Public, Self::Compiler, Type = Self::VoidNumber>
-        + constraint::PartialEq<Self::VoidNumberVar, Self::Compiler>;
+        + eclair::cmp::PartialEq<Self::VoidNumberVar, Self::Compiler>;
 
     /// Void Number Commitment Scheme Variable Type
     type VoidNumberCommitmentSchemeVar: Constant<Self::Compiler, Type = Self::VoidNumberCommitmentScheme>
@@ -217,13 +223,13 @@ pub trait Configuration {
     /// Asset Id Variable Type
     type AssetIdVar: Variable<Public, Self::Compiler, Type = AssetId>
         + Variable<Secret, Self::Compiler, Type = AssetId>
-        + constraint::PartialEq<Self::AssetIdVar, Self::Compiler>;
+        + eclair::cmp::PartialEq<Self::AssetIdVar, Self::Compiler>;
 
     /// Asset Value Variable Type
     type AssetValueVar: Variable<Public, Self::Compiler, Type = AssetValue>
         + Variable<Secret, Self::Compiler, Type = AssetValue>
         + Add<Self::AssetValueVar, Self::Compiler, Output = Self::AssetValueVar>
-        + constraint::PartialEq<Self::AssetValueVar, Self::Compiler>;
+        + eclair::cmp::PartialEq<Self::AssetValueVar, Self::Compiler>;
 
     /// Constraint System Type
     type Compiler: AssertEq;

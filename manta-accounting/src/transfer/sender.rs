@@ -27,7 +27,11 @@ use crate::{
 use core::{fmt::Debug, hash::Hash, iter};
 use manta_crypto::{
     accumulator::Accumulator,
-    constraint::{Allocate, Allocator, AssertEq, Derived, ProofSystemInput, Variable},
+    constraint::ProofSystemInput,
+    eclair::{
+        alloc::{mode::Derived, Allocate, Allocator, Variable},
+        bool::AssertEq,
+    },
 };
 
 #[cfg(feature = "serde")]

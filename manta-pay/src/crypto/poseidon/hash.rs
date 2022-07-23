@@ -22,7 +22,7 @@ use crate::crypto::poseidon::{
 use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash, marker::PhantomData};
 use manta_crypto::{
-    constraint::{Allocate, Const, Constant},
+    eclair::alloc::{Allocate, Const, Constant},
     hash::ArrayHashFunction,
     rand::{Rand, RngCore, Sample},
 };

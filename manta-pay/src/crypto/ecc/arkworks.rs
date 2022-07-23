@@ -25,7 +25,13 @@ use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError
 use core::marker::PhantomData;
 use manta_crypto::{
     algebra,
-    constraint::{self, Allocate, Allocator, Constant, Public, Secret, Variable},
+    eclair::{
+        self,
+        alloc::{
+            mode::{Public, Secret},
+            Allocate, Allocator, Constant, Variable,
+        },
+    },
     key::kdf,
     rand::{RngCore, Sample},
 };
@@ -467,7 +473,7 @@ where
 {
 }
 
-impl<C, CV> constraint::PartialEq<Self, Compiler<C>> for GroupVar<C, CV>
+impl<C, CV> eclair::cmp::PartialEq<Self, Compiler<C>> for GroupVar<C, CV>
 where
     C: ProjectiveCurve,
     CV: CurveVar<C, ConstraintField<C>>,
