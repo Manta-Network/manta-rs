@@ -20,7 +20,7 @@ use crate::{
         queue::{Identifier, Priority, Queue},
         registry::{Map, Registry},
         signature,
-        signature::Verify as _,
+        signature::{SignatureScheme, Verify as _},
         CeremonyError,
     },
     mpc,
@@ -32,7 +32,7 @@ pub struct Coordinator<V, P, M, S, const N: usize>
 where
     V: mpc::Verify,
     P: Priority + Identifier + signature::HasPublicKey,
-    S: signature::Verifier,
+    S: SignatureScheme,
     M: Map<Key = P::Identifier, Value = P>,
     V::State: signature::Verify<S>,
     V::Proof: signature::Verify<S>,
@@ -49,7 +49,7 @@ impl<V, P, M, S, const N: usize> Coordinator<V, P, M, S, N>
 where
     V: mpc::Verify,
     P: Priority + Identifier + signature::HasPublicKey,
-    S: signature::Verifier<PublicKey = P::PublicKey>,
+    S: SignatureScheme<PublicKey = P::PublicKey>,
     M: Map<Key = P::Identifier, Value = P>,
     V::State: signature::Verify<S>,
     V::Proof: signature::Verify<S>,

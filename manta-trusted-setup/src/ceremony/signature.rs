@@ -27,7 +27,7 @@ pub trait HasPublicKey {
 }
 
 /// Signature Scheme types
-pub trait Types {
+pub trait SignatureScheme {
     /// Public Key
     type PublicKey;
 
@@ -38,40 +38,10 @@ pub trait Types {
     type Signature;
 }
 
-/// Message Verifier
-pub trait Verifier: Types {
-    /// Verify a message is correct
-    fn verify<M>(
-        message: &M,
-        public_key: &Self::PublicKey,
-        signature: &Self::Signature,
-    ) -> Result<(), CeremonyError>
-    where
-        M: Verify<Self> + ?Sized,
-    {
-        message.verify_integrity(public_key, signature)
-    }
-}
-
-/// Message Signer
-pub trait Signer: Types {
-    /// Sign a message
-    fn sign<M>(
-        message: &M,
-        public_key: &Self::PublicKey,
-        private_key: &Self::PrivateKey,
-    ) -> Result<Self::Signature, CeremonyError>
-    where
-        M: Sign<Self> + ?Sized,
-    {
-        message.sign(public_key, private_key)
-    }
-}
-
 /// Verifiable Message
 pub trait Verify<S>
 where
-    S: Verifier + ?Sized,
+    S: SignatureScheme + ?Sized,
 {
     /// Verify the integrity of the message
     fn verify_integrity(
@@ -84,7 +54,7 @@ where
 /// Signable Message
 pub trait Sign<S>
 where
-    S: Signer + ?Sized,
+    S: SignatureScheme + ?Sized,
 {
     /// Sign the message
     fn sign(
