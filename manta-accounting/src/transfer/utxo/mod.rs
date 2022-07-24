@@ -21,24 +21,22 @@
 //! to select the protocol version. The transfer protocol is built up from a given [`Mint`] and
 //! [`Spend`] implementation.
 
+use crate::transfer::utxo::auth::AuthorizationKeyType;
 use core::{fmt::Debug, hash::Hash, marker::PhantomData, ops::Deref};
 use manta_crypto::{
     accumulator::{self, ItemHashFunction, MembershipProof},
-    constraint::{Allocate, Allocator, Constant, Derived, ProofSystemInput, Var, Variable},
+    eclair::alloc::{Allocate, Constant},
     rand::{CryptoRng, RngCore},
-    signature::Sign,
 };
 
 pub mod auth;
 // TODO: pub mod v1;
 
-/*
+// TODO: #[doc(inline)]
+// TODO: pub use v1 as protocol;
 
-#[doc(inline)]
-pub use v1 as protocol;
-
-/// Current UTXO Protocol Version
-pub const VERSION: u8 = protocol::VERSION;
+// TODO: /// Current UTXO Protocol Version
+// TODO: pub const VERSION: u8 = protocol::VERSION;
 
 /// Asset
 pub trait AssetType {
@@ -139,7 +137,7 @@ pub trait SpendSecret: AssetType + IdentifierType {
 
 /// UTXO Spending
 pub trait Spend<COM = ()>:
-    auth::Authorize<COM> + ItemHashFunction<Self::Utxo, COM> + AssetType + UtxoType
+    ItemHashFunction<Self::Utxo, COM> + AssetType + UtxoType + AuthorizationKeyType
 {
     /// UTXO Accumulator Model Type
     type UtxoAccumulatorModel: accumulator::Model<COM, Item = Self::Item>;
@@ -154,7 +152,7 @@ pub trait Spend<COM = ()>:
     /// `secret`.
     fn derive(
         &self,
-        authority: &mut Self::Authority,
+        authorization_key: &mut Self::AuthorizationKey,
         secret: &Self::Secret,
         compiler: &mut COM,
     ) -> (Self::Utxo, Self::Nullifier);
@@ -164,7 +162,7 @@ pub trait Spend<COM = ()>:
     fn well_formed_asset(
         &self,
         utxo_accumulator_model: &Self::UtxoAccumulatorModel,
-        authority: &mut Self::Authority,
+        authorization_key: &mut Self::AuthorizationKey,
         secret: &Self::Secret,
         utxo: &Self::Utxo,
         utxo_membership_proof: &UtxoMembershipProof<Self, COM>,
@@ -308,5 +306,3 @@ where
         self.base
     }
 }
-
-*/

@@ -16,7 +16,13 @@
 
 //! Authorization
 
+use core::{fmt::Debug, hash::Hash};
 use manta_crypto::{
+    constraint::ProofSystemInput,
+    eclair::alloc::{
+        mode::{Derived, Public, Secret},
+        Allocate, Allocator, Constant, Variable,
+    },
     rand::{CryptoRng, RngCore},
     signature::{self, SigningKeyType},
 };
@@ -40,6 +46,16 @@ pub trait RandomnessType {
 pub type Randomness<T> = <T as RandomnessType>::Randomness;
 
 /// Authorization
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "T::AuthorizationKey: Clone, T::Randomness: Clone"),
+    Copy(bound = "T::AuthorizationKey: Copy, T::Randomness: Copy"),
+    Debug(bound = "T::AuthorizationKey: Debug, T::Randomness: Debug"),
+    Default(bound = "T::AuthorizationKey: Default, T::Randomness: Default"),
+    Eq(bound = "T::AuthorizationKey: Eq, T::Randomness: Eq"),
+    Hash(bound = "T::AuthorizationKey: Hash, T::Randomness: Hash"),
+    PartialEq(bound = "T::AuthorizationKey: PartialEq, T::Randomness: PartialEq")
+)]
 pub struct Authorization<T>
 where
     T: AuthorizationKeyType + RandomnessType + ?Sized,
@@ -73,7 +89,7 @@ where
         parameters.randomize(&self.authorization_key, &self.randomness, compiler)
     }
 
-    ///
+    /// Converts `self` into a complete [`AuthorizationProof`] under the given `parameters`.
     #[inline]
     pub fn into_proof<COM>(self, parameters: &T, compiler: &mut COM) -> AuthorizationProof<T>
     where
@@ -86,7 +102,40 @@ where
     }
 }
 
+impl<T, COM> Variable<Secret, COM> for Authorization<T>
+where
+    T: AuthorizationKeyType + RandomnessType + Constant<COM> + ?Sized,
+    AuthorizationKey<T>: Variable<Secret, COM, Type = AuthorizationKey<T::Type>>,
+    Randomness<T>: Variable<Secret, COM, Type = Randomness<T::Type>>,
+    T::Type: AuthorizationKeyType + RandomnessType,
+{
+    type Type = Authorization<T::Type>;
+
+    #[inline]
+    fn new_unknown(compiler: &mut COM) -> Self {
+        Self::new(compiler.allocate_unknown(), compiler.allocate_unknown())
+    }
+
+    #[inline]
+    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
+        Self::new(
+            this.authorization_key.as_known(compiler),
+            this.randomness.as_known(compiler),
+        )
+    }
+}
+
 /// Authorization Proof
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "Authorization<T>: Clone, T::AuthorizationKey: Clone"),
+    Copy(bound = "Authorization<T>: Copy, T::AuthorizationKey: Copy"),
+    Debug(bound = "Authorization<T>: Debug, T::AuthorizationKey: Debug"),
+    Default(bound = "Authorization<T>: Default, T::AuthorizationKey: Default"),
+    Eq(bound = "Authorization<T>: Eq, T::AuthorizationKey: Eq"),
+    Hash(bound = "Authorization<T>: Hash, T::AuthorizationKey: Hash"),
+    PartialEq(bound = "Authorization<T>: PartialEq, T::AuthorizationKey: PartialEq")
+)]
 pub struct AuthorizationProof<T>
 where
     T: AuthorizationKeyType + RandomnessType + ?Sized,
@@ -102,7 +151,19 @@ impl<T> AuthorizationProof<T>
 where
     T: AuthorizationKeyType + RandomnessType + ?Sized,
 {
-    ///
+    /// Builds a new [`AuthorizationProof`] from `authorization` and `randomized_authorization_key`.
+    #[inline]
+    pub fn new(
+        authorization: Authorization<T>,
+        randomized_authorization_key: T::AuthorizationKey,
+    ) -> Self {
+        Self {
+            authorization,
+            randomized_authorization_key,
+        }
+    }
+
+    /// Verifies that `self` was generated with the `signing_key`.
     #[inline]
     pub fn verify(&self, parameters: &T, signing_key: &T::SigningKey) -> bool
     where
@@ -113,6 +174,43 @@ where
             &self.authorization.authorization_key,
             &self.authorization.randomness,
             &self.randomized_authorization_key,
+        )
+    }
+
+    /// Extends proof public input with `self`.
+    #[inline]
+    pub fn extend_input<P>(&self, input: &mut P::Input)
+    where
+        P: ProofSystemInput<T::AuthorizationKey>,
+    {
+        P::extend(input, &self.randomized_authorization_key)
+    }
+}
+
+impl<T, COM> Variable<Derived, COM> for AuthorizationProof<T>
+where
+    T: AuthorizationKeyType + RandomnessType + Constant<COM> + ?Sized,
+    AuthorizationKey<T>: Variable<Secret, COM, Type = AuthorizationKey<T::Type>>
+        + Variable<Public, COM, Type = AuthorizationKey<T::Type>>,
+    Randomness<T>: Variable<Secret, COM, Type = Randomness<T::Type>>,
+    T::Type: AuthorizationKeyType + RandomnessType,
+{
+    type Type = AuthorizationProof<T::Type>;
+
+    #[inline]
+    fn new_unknown(compiler: &mut COM) -> Self {
+        Self::new(
+            compiler.allocate_unknown(),
+            compiler.allocate_unknown::<Public, _>(),
+        )
+    }
+
+    #[inline]
+    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
+        Self::new(
+            this.authorization.as_known(compiler),
+            this.randomized_authorization_key
+                .as_known::<Public, _>(compiler),
         )
     }
 }
@@ -133,7 +231,8 @@ pub trait Generate: AuthorizationKeyType + RandomnessType + SigningKeyType {
 
 /// Authorization Verification
 pub trait Verify: AuthorizationKeyType + RandomnessType + SigningKeyType {
-    ///
+    /// Verifies that `authorization_key`, `randomness`, and `randomized_authorization_key` were
+    /// generated correctly using `signing_key`.
     fn verify(
         &self,
         signing_key: &Self::SigningKey,
@@ -143,34 +242,36 @@ pub trait Verify: AuthorizationKeyType + RandomnessType + SigningKeyType {
     ) -> bool;
 }
 
-/*
-/// Signs `message` by first verifiying the `authorization_proof` and using it to generate the
-/// signing key from `authorization_key`.
+/// Signs `message` by first verifiying that the `authorization_proof` was created using
+/// `signing_key` and using it to generate the signing key from `signing_key`.
 #[inline]
-pub fn sign<S>(
+pub fn sign<S, F>(
     scheme: &S,
-    authorization_key: &S::AuthorizationKey,
-    authorization_proof: &AuthorizationProof<S>,
-    randomized_authorization: &S::Authorization,
+    signing_key: &S::SigningKey,
+    authorization_proof: AuthorizationProof<S>,
     signing_randomness: &signature::Randomness<S>,
-    message: &S::Message,
-) -> Option<S::Signature>
+    assign_authorization_key: F,
+) -> Option<(S::Signature, S::Message)>
 where
+    F: FnOnce(S::AuthorizationKey) -> S::Message,
     S: Randomize<S::AuthorizationKey> + signature::Sign<SigningKey = S::AuthorizationKey> + Verify,
 {
-    if scheme.verify(
-        authorization_key,
-        authorization_proof,
-        randomized_authorization,
-    ) {
-        Some(scheme.sign(
-            &scheme.randomize(authorization_key, &authorization_proof.randomness, &mut ()),
-            signing_randomness,
+    if authorization_proof.verify(scheme, signing_key) {
+        let message = assign_authorization_key(authorization_proof.randomized_authorization_key);
+        Some((
+            scheme.sign(
+                &scheme.randomize(
+                    signing_key,
+                    &authorization_proof.authorization.randomness,
+                    &mut (),
+                ),
+                signing_randomness,
+                &message,
+                &mut (),
+            ),
             message,
-            &mut (),
         ))
     } else {
         None
     }
 }
-*/
