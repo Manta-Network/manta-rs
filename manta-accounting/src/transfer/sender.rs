@@ -65,7 +65,7 @@ where
     #[inline]
     pub fn sample<R>(
         parameters: &S,
-        authority: &mut S::Authority,
+        authorization_key: &mut S::AuthorizationKey,
         identifier: Identifier<S::Secret>,
         asset: S::Asset,
         rng: &mut R,
@@ -75,7 +75,7 @@ where
         R: CryptoRng + RngCore + ?Sized,
     {
         let secret = S::Secret::sample(identifier, asset, rng);
-        let (utxo, nullifier) = parameters.derive(authority, &secret, &mut ());
+        let (utxo, nullifier) = parameters.derive(authorization_key, &secret, &mut ());
         Self::new(secret, utxo, nullifier)
     }
 
@@ -227,12 +227,12 @@ where
         &self,
         parameters: &S,
         utxo_accumulator_model: &S::UtxoAccumulatorModel,
-        authority: &mut S::Authority,
+        authorization_key: &mut S::AuthorizationKey,
         compiler: &mut COM,
     ) -> S::Asset {
         let (asset, nullifier) = parameters.well_formed_asset(
             utxo_accumulator_model,
-            authority,
+            authorization_key,
             &self.secret,
             &self.utxo,
             &self.utxo_membership_proof,

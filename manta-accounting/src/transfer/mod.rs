@@ -29,13 +29,12 @@
 //! See the [`crate::wallet`] module for more on how this transfer protocol is used in a wallet
 //! protocol for the keeping of accounts for private assets.
 
-/*
 use crate::{
     asset,
     transfer::{
         receiver::{ReceiverLedger, ReceiverPostError},
         sender::{SenderLedger, SenderPostError},
-        utxo::{sign_authorization, Mint, Spend, VerifyAuthorization},
+        utxo::{Mint, Spend},
     },
 };
 use core::{fmt::Debug, hash::Hash, iter::Sum, ops::AddAssign};
@@ -52,22 +51,21 @@ use manta_util::vec::{all_unequal, Vec};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
-*/
 
 // TODO: pub mod batch;
 // TODO: pub mod canonical;
-// TODO: pub mod receiver;
-// TODO: pub mod sender;
+pub mod receiver;
+pub mod sender;
 pub mod utxo;
 
 /*
-
 #[cfg(feature = "test")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
 pub mod test;
 
 #[doc(inline)]
 pub use canonical::Shape;
+*/
 
 /// Returns `true` if the [`Transfer`] with this shape would have public participants.
 #[inline]
@@ -87,6 +85,7 @@ pub const fn requires_authorization(senders: usize) -> bool {
     senders > 0
 }
 
+/*
 /// Configuration
 pub trait Configuration {
     /// Compiler Type

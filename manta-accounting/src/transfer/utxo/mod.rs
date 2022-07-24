@@ -83,14 +83,6 @@ pub trait AddressType {
 /// Address Type
 pub type Address<T> = <T as AddressType>::Address;
 
-/// Minting Secret
-pub trait MintSecret: AssetType + AddressType {
-    /// Samples a minting secret to send `asset` to `address`.
-    fn sample<R>(address: Self::Address, asset: Self::Asset, rng: &mut R) -> Self
-    where
-        R: CryptoRng + RngCore + ?Sized;
-}
-
 /// Note Opening
 pub trait NoteOpen: AssetType + NoteType + IdentifierType + UtxoType {
     /// Decryption Key Type
@@ -107,6 +99,14 @@ pub trait NoteOpen: AssetType + NoteType + IdentifierType + UtxoType {
         utxo: &Self::Utxo,
         note: Self::Note,
     ) -> Option<(Self::Identifier, Self::Asset)>;
+}
+
+/// Minting Secret
+pub trait MintSecret: AssetType + AddressType {
+    /// Samples a minting secret to send `asset` to `address`.
+    fn sample<R>(address: Self::Address, asset: Self::Asset, rng: &mut R) -> Self
+    where
+        R: CryptoRng + RngCore + ?Sized;
 }
 
 /// UTXO Minting
