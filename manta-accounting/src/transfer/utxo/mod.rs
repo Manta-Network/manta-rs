@@ -30,13 +30,13 @@ use manta_crypto::{
 };
 
 pub mod auth;
-// TODO: pub mod v1;
+pub mod v1;
 
-// TODO: #[doc(inline)]
-// TODO: pub use v1 as protocol;
+#[doc(inline)]
+pub use v1 as protocol;
 
-// TODO: /// Current UTXO Protocol Version
-// TODO: pub const VERSION: u8 = protocol::VERSION;
+/// Current UTXO Protocol Version
+pub const VERSION: u8 = protocol::VERSION;
 
 /// Asset
 pub trait AssetType {
@@ -92,7 +92,7 @@ pub trait MintSecret: AssetType + AddressType {
 }
 
 /// Note Opening
-pub trait NoteOpen: AssetType + NoteType + IdentifierType {
+pub trait NoteOpen: AssetType + NoteType + IdentifierType + UtxoType {
     /// Decryption Key Type
     type DecryptionKey;
 
@@ -104,6 +104,7 @@ pub trait NoteOpen: AssetType + NoteType + IdentifierType {
     fn open(
         &self,
         decryption_key: &Self::DecryptionKey,
+        utxo: &Self::Utxo,
         note: Self::Note,
     ) -> Option<(Self::Identifier, Self::Asset)>;
 }

@@ -42,6 +42,13 @@ pub trait Assert: Has<bool> {
     }
 }
 
+impl Assert for () {
+    #[inline]
+    fn assert(&mut self, bit: &bool) {
+        assert!(bit)
+    }
+}
+
 /// Equality Assertion
 pub trait AssertEq: Assert {
     /// Asserts that `lhs` and `rhs` are equal.

@@ -316,20 +316,20 @@ where
     pub outgoing_base_encryption_scheme: C::OutgoingBaseEncryptionScheme,
 }
 
-impl<C, COM> utxo::AuthorityType for Parameters<C, COM>
+impl<C, COM> utxo::auth::AuthorizationKeyType for Parameters<C, COM>
 where
     C: Configuration<COM>,
     COM: Assert + Has<bool, Type = C::Bool>,
 {
-    type Authority = Authority<C, COM>;
+    type AuthorizationKey = AuthorizationKey<C, COM>;
 }
 
-impl<C, COM> utxo::AuthorizationType for Parameters<C, COM>
+impl<C, COM> utxo::auth::RandomnessType for Parameters<C, COM>
 where
     C: Configuration<COM>,
     COM: Assert + Has<bool, Type = C::Bool>,
 {
-    type Authorization = C::Group;
+    type Randomness = C::Scalar;
 }
 
 impl<C, COM> utxo::AssetType for Parameters<C, COM>
@@ -354,23 +354,6 @@ where
     COM: Assert + Has<bool, Type = C::Bool>,
 {
     type Utxo = Utxo<C, COM>;
-}
-
-impl<C, COM> utxo::Authorize<COM> for Parameters<C, COM>
-where
-    C: Configuration<COM>,
-    COM: Assert + Has<bool, Type = C::Bool>,
-{
-    #[inline]
-    fn assert_authorized(
-        &self,
-        authority: &Self::Authority,
-        authorization: &Self::Authorization,
-        compiler: &mut COM,
-    ) {
-        let expected_authorization = authority.randomized_proof_authorization_key(compiler);
-        compiler.assert_eq(&expected_authorization, authorization);
-    }
 }
 
 impl<C, COM> utxo::Mint<COM> for Parameters<C, COM>
@@ -455,7 +438,7 @@ where
     #[inline]
     fn derive(
         &self,
-        authority: &mut Self::Authority,
+        authorization_key: &mut Self::AuthorizationKey,
         secret: &Self::Secret,
         compiler: &mut COM,
     ) -> (Self::Utxo, Self::Nullifier) {
@@ -509,7 +492,7 @@ where
     fn well_formed_asset(
         &self,
         utxo_accumulator_model: &Self::UtxoAccumulatorModel,
-        authority: &mut Self::Authority,
+        authorization_key: &mut Self::AuthorizationKey,
         secret: &Self::Secret,
         utxo: &Self::Utxo,
         utxo_membership_proof: &UtxoMembershipProof<C, COM>,
@@ -518,7 +501,7 @@ where
         secret.well_formed_asset(
             self,
             utxo_accumulator_model,
-            authority,
+            authorization_key,
             utxo,
             utxo_membership_proof,
             compiler,
@@ -533,6 +516,31 @@ where
         compiler: &mut COM,
     ) {
         compiler.assert_eq(lhs, rhs);
+    }
+}
+
+impl<C, COM> utxo::IdentifierType for Parameters<C, COM>
+where
+    C: Configuration<COM>,
+    COM: Has<bool, Type = C::Bool>,
+{
+    type Identifier = Identifier<C, COM>;
+}
+
+impl<C> utxo::NoteOpen for Parameters<C>
+where
+    C: Configuration<Bool = bool>,
+{
+    type DecryptionKey = C::Scalar;
+
+    #[inline]
+    fn open(
+        &self,
+        decryption_key: &Self::DecryptionKey,
+        utxo: &Self::Utxo,
+        note: Self::Note,
+    ) -> Option<(Self::Identifier, Self::Asset)> {
+        todo!()
     }
 }
 
@@ -850,8 +858,8 @@ where
     }
 }
 
-/// Authority
-pub struct Authority<C, COM = ()>
+/// Authorization Key
+pub struct AuthorizationKey<C, COM = ()>
 where
     C: Configuration<COM>,
     COM: Has<bool, Type = C::Bool>,
@@ -859,35 +867,25 @@ where
     /// Proof Authorization Key
     proof_authorization_key: C::Group,
 
-    /// Proof Authorization Randomizer
-    randomizer: C::Scalar,
-
-    /// Viewing Key
+    /// ViewingKey
     viewing_key: Option<C::Scalar>,
 }
 
-impl<C, COM> Authority<C, COM>
+impl<C, COM> AuthorizationKey<C, COM>
 where
     C: Configuration<COM>,
     COM: Has<bool, Type = C::Bool>,
 {
-    /// Builds a new [`Authority`] from `proof_authorization_key` and `randomizer`.
+    /// Builds a new [`AuthorizationKey`] from `proof_authorization_key`.
     #[inline]
-    pub fn new(proof_authorization_key: C::Group, randomizer: C::Scalar) -> Self {
+    pub fn new(proof_authorization_key: C::Group) -> Self {
         Self {
             proof_authorization_key,
-            randomizer,
             viewing_key: None,
         }
     }
 
-    /// Computes the randomized proof authorization key from `self`.
-    #[inline]
-    pub fn randomized_proof_authorization_key(&self, compiler: &mut COM) -> C::Group {
-        self.proof_authorization_key.mul(&self.randomizer, compiler)
-    }
-
-    /// Returns the receiving key over `key_diversifier` for this [`Authority`].
+    /// Returns the receiving key over `key_diversifier` for this [`AuthorizationKey`].
     #[inline]
     pub fn receiving_key(
         &mut self,
@@ -910,6 +908,9 @@ where
     C: Configuration<COM>,
     COM: Has<bool, Type = C::Bool>,
 {
+    /// Transparency Flag
+    pub is_transparent: C::Bool,
+
     /// UTXO Commitment Randomness
     pub utxo_commitment_randomness: UtxoCommitmentRandomness<C, COM>,
 
@@ -994,7 +995,7 @@ where
         &self,
         parameters: &Parameters<C, COM>,
         utxo_accumulator_model: &C::UtxoAccumulatorModel,
-        authority: &mut Authority<C, COM>,
+        authorization_key: &mut AuthorizationKey<C, COM>,
         utxo: &Utxo<C, COM>,
         utxo_membership_proof: &UtxoMembershipProof<C, COM>,
         compiler: &mut COM,
@@ -1010,7 +1011,7 @@ where
             &self.plaintext.asset,
             compiler,
         );
-        let receiving_key = authority.receiving_key(
+        let receiving_key = authorization_key.receiving_key(
             &parameters.viewing_key_derivation_function,
             &self.plaintext.key_diversifier,
             compiler,
@@ -1025,7 +1026,7 @@ where
         );
         compiler.assert(has_valid_membership);
         let nullifier_commitment = parameters.nullifier_commitment_scheme.commit(
-            &authority.proof_authorization_key,
+            &authorization_key.proof_authorization_key,
             &item,
             compiler,
         );
