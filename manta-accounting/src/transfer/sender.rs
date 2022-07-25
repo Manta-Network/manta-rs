@@ -17,7 +17,8 @@
 //! Transfer Sender
 
 use crate::transfer::utxo::{
-    Identifier, Spend, SpendSecret, UtxoAccumulatorItem, UtxoAccumulatorOutput, UtxoMembershipProof,
+    Identifier, QueryAsset, Spend, SpendSecret, UtxoAccumulatorItem, UtxoAccumulatorOutput,
+    UtxoMembershipProof,
 };
 use core::{fmt::Debug, hash::Hash, iter};
 use manta_crypto::{
@@ -249,8 +250,11 @@ where
 {
     /// Returns the underlying asset for `self`.
     #[inline]
-    pub fn asset(&self) -> &S::Asset {
-        todo!()
+    pub fn asset(&self) -> &S::Asset
+    where
+        S::Secret: QueryAsset<Asset = S::Asset, Utxo = S::Utxo>,
+    {
+        self.secret.query_asset(&self.utxo)
     }
 
     /// Extends proof public input with `self`.

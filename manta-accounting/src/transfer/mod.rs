@@ -34,7 +34,7 @@ use crate::{
     transfer::{
         receiver::{ReceiverLedger, ReceiverPostError},
         sender::{SenderLedger, SenderPostError},
-        utxo::{Mint, Spend},
+        utxo::{auth, Mint, Spend},
     },
 };
 use core::{fmt::Debug, hash::Hash, iter::Sum, ops::AddAssign};
@@ -52,8 +52,8 @@ use manta_util::vec::{all_unequal, Vec};
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
 
-// TODO: pub mod batch;
-// TODO: pub mod canonical;
+pub mod batch;
+pub mod canonical;
 pub mod receiver;
 pub mod sender;
 pub mod utxo;
@@ -62,10 +62,10 @@ pub mod utxo;
 #[cfg(feature = "test")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
 pub mod test;
+*/
 
 #[doc(inline)]
 pub use canonical::Shape;
-*/
 
 /// Returns `true` if the [`Transfer`] with this shape would have public participants.
 #[inline]
@@ -85,7 +85,6 @@ pub const fn requires_authorization(senders: usize) -> bool {
     senders > 0
 }
 
-/*
 /// Configuration
 pub trait Configuration {
     /// Compiler Type
@@ -109,14 +108,6 @@ pub trait Configuration {
     /// Authorization Signature Randomness
     type AuthorizationSignatureRandomness: Sample;
 
-    /// Authorization Signature Scheme
-    type AuthorizationSignatureScheme: signature::Sign<
-            SigningKey = Self::SpendingKey,
-            Randomness = Self::AuthorizationSignatureRandomness,
-            Message = TransferPostBody<Self>,
-        > + signature::Verify<VerifyingKey = Authorization<Self>, Verification = bool>
-        + VerifyAuthorization<Authorization = Authorization<Self>, VerifyingKey = Self::SpendingKey>;
-
     /// Mint Secret Type
     type MintSecret: utxo::MintSecret<Asset = Asset<Self>>;
 
@@ -124,16 +115,28 @@ pub trait Configuration {
     type SpendSecret: utxo::SpendSecret<Asset = Asset<Self>>;
 
     /// Parameters Type
-    type Parameters: utxo::AssetType<Asset = Asset<Self>>
+    type Parameters: auth::Randomize<Self::SpendingKey>
+        + signature::Sign<
+            SigningKey = Self::SpendingKey,
+            Randomness = Self::AuthorizationSignatureRandomness,
+            Message = TransferPostBody<Self>,
+        > + signature::Verify<VerifyingKey = AuthorizationKey<Self>, Verification = bool>
+        + utxo::AssetType<Asset = Asset<Self>>
         + utxo::UtxoType<Utxo = Self::Utxo>
         + Mint<Secret = Self::MintSecret>
         + Spend<Secret = Self::SpendSecret, Nullifier = Self::Nullifier>;
 
-    /// Authority Variable Type
-    type AuthorityVar: Variable<Secret, Self::Compiler, Type = Authority<Self>>;
+    /// Authorization Key Type  Variable
+    type AuthorizationKeyVar: Variable<Secret, Self::Compiler, Type = AuthorizationKey<Self>>
+        + Variable<Public, Self::Compiler, Type = AuthorizationKey<Self>>
+        + constraint::PartialEq<Self::AuthorizationKeyVar, Self::Compiler>;
 
-    /// Authorization Variable Type
-    type AuthorizationVar: Variable<Public, Self::Compiler, Type = Authorization<Self>>;
+    /// Authorization Randomness Type Variable
+    type AuthorizationRandomnessVar: Variable<
+        Secret,
+        Self::Compiler,
+        Type = AuthorizationRandomness<Self>,
+    >;
 
     /// Asset Id Variable Type
     type AssetIdVar: Variable<Secret, Self::Compiler, Type = Self::AssetId>
@@ -190,13 +193,16 @@ pub trait Configuration {
 
     /// Parameters Variable Type
     type ParametersVar: Constant<Self::Compiler, Type = Self::Parameters>
-        + utxo::AssetType<Asset = AssetVar<Self>>
+        + auth::Randomize<
+            Self::AuthorizationKeyVar,
+            Self::Compiler,
+            Randomness = Self::AuthorizationRandomnessVar,
+        > + utxo::AssetType<Asset = AssetVar<Self>>
         + utxo::UtxoType<Utxo = Self::UtxoVar>
         + Mint<Self::Compiler, Secret = Self::MintSecretVar, Note = Self::NoteVar>
         + Spend<
             Self::Compiler,
-            Authority = Self::AuthorityVar,
-            Authorization = Self::AuthorizationVar,
+            AuthorizationKey = Self::AuthorizationKeyVar,
             UtxoAccumulatorModel = Self::UtxoAccumulatorModelVar,
             Secret = Self::SpendSecretVar,
             Nullifier = Self::NullifierVar,
@@ -204,7 +210,7 @@ pub trait Configuration {
 
     /// Proof System Type
     type ProofSystem: ProofSystem<Compiler = Self::Compiler>
-        + ProofSystemInput<Authorization<Self>>
+        + ProofSystemInput<AuthorizationKey<Self>>
         + ProofSystemInput<Self::AssetId>
         + ProofSystemInput<Self::AssetValue>
         + ProofSystemInput<UtxoAccumulatorOutput<Self>>
@@ -280,27 +286,32 @@ pub type Asset<C> = asset::Asset<<C as Configuration>::AssetId, <C as Configurat
 pub type AssetVar<C> =
     asset::Asset<<C as Configuration>::AssetIdVar, <C as Configuration>::AssetValueVar>;
 
-/// Authority Type
-pub type Authority<C> = utxo::Authority<Parameters<C>>;
+/// Authorization Key Type
+pub type AuthorizationKey<C> = auth::AuthorizationKey<Parameters<C>>;
 
-/// Authority Variable Type
-pub type AuthorityVar<C> = utxo::Authority<ParametersVar<C>>;
+/// Authorization Key Type Variable
+pub type AuthorizationKeyVar<C> = auth::AuthorizationKey<ParametersVar<C>>;
+
+/// Authorization Randomness Type
+pub type AuthorizationRandomness<C> = auth::Randomness<Parameters<C>>;
+
+/// Authorization Randomness Type Variable
+pub type AuthorizationRandomnessVar<C> = auth::Randomness<ParametersVar<C>>;
 
 /// Authorization Type
-pub type Authorization<C> = utxo::Authorization<Parameters<C>>;
+pub type Authorization<C> = auth::Authorization<Parameters<C>>;
 
 /// Authorization Variable Type
-pub type AuthorizationVar<C> = utxo::Authorization<ParametersVar<C>>;
+pub type AuthorizationVar<C> = auth::Authorization<ParametersVar<C>>;
 
 /// Authorization Proof Type
-pub type AuthorizationProof<C> = utxo::AuthorizationProof<Parameters<C>>;
+pub type AuthorizationProof<C> = auth::AuthorizationProof<Parameters<C>>;
 
 /// Authorization Proof Variable Type
-pub type AuthorizationProofVar<C> = utxo::AuthorizationProof<ParametersVar<C>>;
+pub type AuthorizationProofVar<C> = auth::AuthorizationProof<ParametersVar<C>>;
 
 /// Authorization Signature Type
-pub type AuthorizationSignature<C> =
-    signature::Signature<<C as Configuration>::AuthorizationSignatureScheme>;
+pub type AuthorizationSignature<C> = signature::Signature<Parameters<C>>;
 
 /// Unspent Transaction Output Type
 pub type Utxo<C> = utxo::Utxo<Parameters<C>>;
@@ -536,6 +547,31 @@ where
         )
     }
 
+    /// Builds a [`TransferPostBody`].
+    #[inline]
+    fn build_post_body(
+        validity_proof: Proof<C>,
+        randomized_authorization_key: Option<AuthorizationKey<C>>,
+        asset_id: Option<C::AssetId>,
+        sources: [C::AssetValue; SOURCES],
+        senders: [Sender<C>; SENDERS],
+        receivers: [Receiver<C>; RECEIVERS],
+        sinks: [C::AssetValue; SINKS],
+    ) -> TransferPostBody<C> {
+        TransferPostBody {
+            randomized_authorization_key,
+            asset_id,
+            sources: sources.into(),
+            sender_posts: senders.into_iter().map(Sender::<C>::into_post).collect(),
+            receiver_posts: receivers
+                .into_iter()
+                .map(Receiver::<C>::into_post)
+                .collect(),
+            sinks: sinks.into(),
+            validity_proof,
+        }
+    }
+
     /// Converts `self` into its [`TransferPostBody`] by building the [`Transfer`] validity proof.
     #[inline]
     pub fn into_post_body<R>(
@@ -547,34 +583,22 @@ where
     where
         R: CryptoRng + RngCore + ?Sized,
     {
-        Ok(TransferPostBody {
-            validity_proof: C::ProofSystem::prove(
-                proving_context,
-                self.known_constraints(parameters),
-                rng,
-            )?,
-            authorization: self.authorization_proof.map(|p| p.authorization),
-            asset_id: self.asset_id,
-            sources: self.sources.into(),
-            sender_posts: self
-                .senders
-                .into_iter()
-                .map(Sender::<C>::into_post)
-                .collect(),
-            receiver_posts: self
-                .receivers
-                .into_iter()
-                .map(Receiver::<C>::into_post)
-                .collect(),
-            sinks: self.sinks.into(),
-        })
+        Ok(Self::build_post_body(
+            C::ProofSystem::prove(proving_context, self.known_constraints(parameters), rng)?,
+            self.authorization_proof
+                .map(AuthorizationProof::<C>::into_post),
+            self.asset_id,
+            self.sources,
+            self.senders,
+            self.receivers,
+            self.sinks,
+        ))
     }
 
     ///
     #[inline]
     pub fn into_post<R>(
         self,
-        authorization_signature_scheme: &C::AuthorizationSignatureScheme,
         parameters: FullParametersRef<C>,
         proving_context: &ProvingContext<C>,
         spending_key: Option<&C::SpendingKey>,
@@ -584,11 +608,49 @@ where
         R: CryptoRng + RngCore + ?Sized,
     {
         Ok(TransferPost::new(
-            authorization_signature_scheme,
+            parameters.base,
             spending_key,
             self.into_post_body(parameters, proving_context, rng)?,
             rng,
         ))
+    }
+
+    ///
+    #[inline]
+    pub fn into_post2<R>(
+        self,
+        parameters: FullParametersRef<C>,
+        proving_context: &ProvingContext<C>,
+        spending_key: Option<&C::SpendingKey>,
+        rng: &mut R,
+    ) -> Result<Option<TransferPost<C>>, ProofSystemError<C>>
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        match (requires_authorization(SENDERS), spending_key) {
+            (true, Some(spending_key)) => {
+                /*
+                let _ = auth::sign(
+                    parameters.base,
+                    spending_key,
+                    self.authorization_proof,
+                    rng.gen(),
+                    |k| {
+                    },
+                );
+                */
+                todo!()
+            }
+            (false, None) => {
+                /*
+                let _ = self
+                    .into_post_body(parameters, proving_context, rng)
+                    .map(Some);
+                */
+                todo!()
+            }
+            _ => todo!(),
+        }
     }
 }
 
@@ -675,7 +737,7 @@ where
                         let asset = s.well_formed_asset(
                             &parameters.base,
                             &parameters.utxo_accumulator_model,
-                            &mut authorization_proof.authority,
+                            &mut authorization_proof.authorization.authorization_key,
                             compiler,
                         );
                         secret_asset_ids.push(asset.id);
@@ -737,7 +799,7 @@ where
     fn new_unknown(compiler: &mut C::Compiler) -> Self {
         Self {
             authorization_proof: requires_authorization(SENDERS)
-                .then(|| compiler.allocate_unknown::<Derived<(Secret, Public)>, _>()),
+                .then(|| compiler.allocate_unknown()),
             asset_id: has_public_participants(SOURCES, SINKS)
                 .then(|| compiler.allocate_unknown::<Public, _>()),
             sources: (0..SOURCES)
@@ -765,7 +827,7 @@ where
             authorization_proof: this
                 .authorization_proof
                 .as_ref()
-                .map(|proof| proof.as_known::<Derived<(Secret, Public)>, _>(compiler)),
+                .map(|proof| proof.as_known(compiler)),
             asset_id: this
                 .asset_id
                 .as_ref()
@@ -922,6 +984,9 @@ pub type TransferLedgerSuperPostingKey<C, L> = <L as TransferLedger<C>>::SuperPo
 )]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum InvalidAuthorizationSignature {
+    /// Invalid Authorization Signature Shape
+    InvalidShape,
+
     /// Missing Signature
     MissingSignature,
 
@@ -1121,7 +1186,7 @@ where
     serde(
         bound(
             deserialize = r"
-                Authorization<C>: Deserialize<'de>,
+                AuthorizationKey<C>: Deserialize<'de>,
                 C::AssetId: Deserialize<'de>,
                 C::AssetValue: Deserialize<'de>,
                 SenderPost<C>: Deserialize<'de>,
@@ -1129,7 +1194,7 @@ where
                 Proof<C>: Deserialize<'de>,
             ",
             serialize = r"
-                Authorization<C>: Serialize,
+                AuthorizationKey<C>: Serialize,
                 C::AssetId: Serialize,
                 C::AssetValue: Serialize,
                 SenderPost<C>: Serialize,
@@ -1144,7 +1209,7 @@ where
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = r"
-        Authorization<C>: Clone,
+        AuthorizationKey<C>: Clone,
         C::AssetId: Clone,
         C::AssetValue: Clone,
         SenderPost<C>: Clone,
@@ -1152,7 +1217,7 @@ where
         Proof<C>: Clone
     "),
     Debug(bound = r"
-        Authorization<C>: Debug,
+        AuthorizationKey<C>: Debug,
         C::AssetId: Debug,
         C::AssetValue: Debug,
         SenderPost<C>: Debug,
@@ -1160,7 +1225,7 @@ where
         Proof<C>: Debug
     "),
     Eq(bound = r"
-        Authorization<C>: Eq,
+        AuthorizationKey<C>: Eq,
         C::AssetId: Eq,
         C::AssetValue: Eq,
         SenderPost<C>: Eq,
@@ -1168,7 +1233,7 @@ where
         Proof<C>: Eq
     "),
     Hash(bound = r"
-        Authorization<C>: Hash,
+        AuthorizationKey<C>: Hash,
         C::AssetId: Hash,
         C::AssetValue: Hash,
         SenderPost<C>: Hash,
@@ -1176,7 +1241,7 @@ where
         Proof<C>: Hash
     "),
     PartialEq(bound = r"
-        Authorization<C>: PartialEq,
+        AuthorizationKey<C>: PartialEq,
         C::AssetId: PartialEq,
         C::AssetValue: PartialEq,
         SenderPost<C>: PartialEq,
@@ -1188,8 +1253,8 @@ pub struct TransferPostBody<C>
 where
     C: Configuration + ?Sized,
 {
-    /// Authorization
-    pub authorization: Option<Authorization<C>>,
+    /// Randomized Authorization Key
+    pub randomized_authorization_key: Option<AuthorizationKey<C>>,
 
     /// Asset Id
     pub asset_id: Option<C::AssetId>,
@@ -1218,8 +1283,8 @@ where
     #[inline]
     pub fn generate_proof_input(&self) -> ProofInput<C> {
         let mut input = Default::default();
-        if let Some(authorization) = &self.authorization {
-            C::ProofSystem::extend(&mut input, authorization);
+        if let Some(randomized_authorization_key) = &self.randomized_authorization_key {
+            C::ProofSystem::extend(&mut input, randomized_authorization_key);
         }
         if let Some(asset_id) = &self.asset_id {
             C::ProofSystem::extend(&mut input, asset_id);
@@ -1272,14 +1337,14 @@ where
     #[inline]
     pub fn sign<R>(
         self,
-        authorization_signature_scheme: &C::AuthorizationSignatureScheme,
+        parameters: &C::Parameters,
         spending_key: &C::SpendingKey,
         rng: &mut R,
     ) -> Option<TransferPost<C>>
     where
         R: CryptoRng + RngCore + ?Sized,
     {
-        TransferPost::signed(authorization_signature_scheme, spending_key, self, rng)
+        TransferPost::signed(parameters, spending_key, self, rng)
     }
 }
 
@@ -1328,7 +1393,7 @@ where
     /// Builds a new signed [`TransferPost`].
     #[inline]
     pub fn signed<R>(
-        authorization_signature_scheme: &C::AuthorizationSignatureScheme,
+        parameters: &C::Parameters,
         spending_key: &C::SpendingKey,
         body: TransferPostBody<C>,
         rng: &mut R,
@@ -1336,12 +1401,13 @@ where
     where
         R: CryptoRng + RngCore + ?Sized,
     {
+        /*
         if let Some(authorization) = &body.authorization {
             Some(Self::new_unchecked(
-                sign_authorization(
-                    authorization_signature_scheme,
+                auth::sign(
+                    parameters,
                     spending_key,
-                    authorization,
+                    authorization_proof,
                     &rng.gen(),
                     &body,
                 ),
@@ -1350,12 +1416,14 @@ where
         } else {
             None
         }
+        */
+        todo!()
     }
 
     /// Builds a new unsigned [`TransferPost`].
     #[inline]
     pub fn unsigned(body: TransferPostBody<C>) -> Option<Self> {
-        body.authorization
+        body.randomized_authorization_key
             .is_none()
             .then(|| Self::new_unchecked(None, body))
     }
@@ -1364,7 +1432,7 @@ where
     /// unsigned variant should be used.
     #[inline]
     pub fn new<R>(
-        authorization_signature_scheme: &C::AuthorizationSignatureScheme,
+        parameters: &C::Parameters,
         spending_key: Option<&C::SpendingKey>,
         body: TransferPostBody<C>,
         rng: &mut R,
@@ -1372,6 +1440,7 @@ where
     where
         R: CryptoRng + RngCore + ?Sized,
     {
+        /*
         match (spending_key, &body.authorization) {
             (Some(spending_key), Some(authorization)) => Some(Self::new_unchecked(
                 sign_authorization(
@@ -1387,6 +1456,8 @@ where
             (None, Some(_)) => None,
             _ => Some(Self::new_unchecked(None, body)),
         }
+        */
+        todo!()
     }
 
     /// Builds a new [`TransferPost`] without checking the consistency conditions between the `body`
@@ -1433,17 +1504,20 @@ where
         );
     }
 
-    /// Verifies that the authorization signature for `self` is valid according to the
-    /// `authorization_signature_scheme`.
+    /// Verifies that the authorization signature for `self` is valid under the `parameters`.
     #[inline]
     pub fn has_valid_authorization_signature(
         &self,
-        authorization_signature_scheme: &C::AuthorizationSignatureScheme,
+        parameters: &C::Parameters,
     ) -> Result<(), InvalidAuthorizationSignature> {
-        match (&self.authorization_signature, &self.body.authorization) {
-            (Some(authorization_signature), Some(authorization)) => {
-                if authorization_signature_scheme.verify(
-                    authorization,
+        match (
+            &self.authorization_signature,
+            &self.body.randomized_authorization_key,
+            requires_authorization(self.body.sender_posts.len()),
+        ) {
+            (Some(authorization_signature), Some(randomized_authorization_key), true) => {
+                if parameters.verify(
+                    randomized_authorization_key,
                     &self.body,
                     authorization_signature,
                     &mut (),
@@ -1453,9 +1527,10 @@ where
                     Err(InvalidAuthorizationSignature::BadSignature)
                 }
             }
-            (Some(_), None) => Err(InvalidAuthorizationSignature::MissingAuthorization),
-            (None, Some(_)) => Err(InvalidAuthorizationSignature::MissingSignature),
-            _ => Ok(()),
+            (Some(_), None, true) => Err(InvalidAuthorizationSignature::MissingAuthorization),
+            (None, Some(_), true) => Err(InvalidAuthorizationSignature::MissingSignature),
+            (None, None, false) => Ok(()),
+            _ => Err(InvalidAuthorizationSignature::InvalidShape),
         }
     }
 
@@ -1512,7 +1587,7 @@ where
     #[inline]
     pub fn validate<L>(
         self,
-        authorization_signature_scheme: &C::AuthorizationSignatureScheme,
+        parameters: &C::Parameters,
         ledger: &L,
         source_accounts: Vec<L::AccountId>,
         sink_accounts: Vec<L::AccountId>,
@@ -1520,7 +1595,7 @@ where
     where
         L: TransferLedger<C>,
     {
-        self.has_valid_authorization_signature(authorization_signature_scheme)?;
+        self.has_valid_authorization_signature(parameters)?;
         let (source_posting_keys, sink_posting_keys) = Self::check_public_participants(
             &self.body.asset_id,
             source_accounts,
@@ -1548,7 +1623,7 @@ where
             .map(move |r| r.validate(ledger))
             .collect::<Result<Vec<_>, _>>()?;
         let (validity_proof, event) = match ledger.is_valid(TransferPostingKeyRef {
-            authorization: &self.body.authorization,
+            randomized_authorization_key: &self.body.randomized_authorization_key,
             asset_id: &self.body.asset_id,
             sources: &source_posting_keys,
             senders: &sender_posting_keys,
@@ -1575,7 +1650,7 @@ where
     #[inline]
     pub fn post<L>(
         self,
-        authorization_signature_scheme: &C::AuthorizationSignatureScheme,
+        parameters: &C::Parameters,
         ledger: &mut L,
         super_key: &TransferLedgerSuperPostingKey<C, L>,
         source_accounts: Vec<L::AccountId>,
@@ -1584,14 +1659,9 @@ where
     where
         L: TransferLedger<C>,
     {
-        self.validate(
-            authorization_signature_scheme,
-            ledger,
-            source_accounts,
-            sink_accounts,
-        )?
-        .post(ledger, super_key)
-        .map_err(TransferPostError::UpdateError)
+        self.validate(parameters, ledger, source_accounts, sink_accounts)?
+            .post(ledger, super_key)
+            .map_err(TransferPostError::UpdateError)
     }
 }
 
@@ -1667,8 +1737,8 @@ where
     C: Configuration + ?Sized,
     L: TransferLedger<C> + ?Sized,
 {
-    /// Authorization
-    pub authorization: &'k Option<Authorization<C>>,
+    /// Randomized Authorization Key
+    pub randomized_authorization_key: &'k Option<AuthorizationKey<C>>,
 
     /// Asset Id
     pub asset_id: &'k Option<C::AssetId>,
@@ -1698,8 +1768,8 @@ where
     #[inline]
     pub fn generate_proof_input(&self) -> ProofInput<C> {
         let mut input = Default::default();
-        if let Some(authorization) = &self.authorization {
-            C::ProofSystem::extend(&mut input, authorization);
+        if let Some(randomized_authorization_key) = &self.randomized_authorization_key {
+            C::ProofSystem::extend(&mut input, randomized_authorization_key);
         }
         if let Some(asset_id) = &self.asset_id {
             C::ProofSystem::extend(&mut input, asset_id);
@@ -1719,5 +1789,3 @@ where
         input
     }
 }
-
-*/

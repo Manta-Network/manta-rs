@@ -19,9 +19,13 @@
 use core::{fmt::Debug, hash::Hash};
 use manta_crypto::{
     constraint::ProofSystemInput,
-    eclair::alloc::{
-        mode::{Derived, Public, Secret},
-        Allocate, Allocator, Constant, Variable,
+    eclair::{
+        self,
+        alloc::{
+            mode::{Derived, Public, Secret},
+            Allocate, Allocator, Constant, Variable,
+        },
+        bool::AssertEq,
     },
     rand::{CryptoRng, RngCore},
     signature::{self, SigningKeyType},
@@ -163,9 +167,24 @@ where
         }
     }
 
+    /// Asserts that `self` is a valid [`AuthorizationProof`].
+    #[inline]
+    pub fn assert_valid<COM>(&self, parameters: &T, compiler: &mut COM)
+    where
+        T: Randomize<T::AuthorizationKey, COM>,
+        T::AuthorizationKey: eclair::cmp::PartialEq<T::AuthorizationKey, COM>,
+        COM: AssertEq,
+    {
+        let randomized_authorization_key = self.authorization.randomize(parameters, compiler);
+        compiler.assert_eq(
+            &randomized_authorization_key,
+            &self.randomized_authorization_key,
+        )
+    }
+
     /// Verifies that `self` was generated with the `signing_key`.
     #[inline]
-    pub fn verify(&self, parameters: &T, signing_key: &T::SigningKey) -> bool
+    pub fn verify_construction(&self, parameters: &T, signing_key: &T::SigningKey) -> bool
     where
         T: Verify,
     {
@@ -184,6 +203,12 @@ where
         P: ProofSystemInput<T::AuthorizationKey>,
     {
         P::extend(input, &self.randomized_authorization_key)
+    }
+
+    /// Extracts the ledger posting data from `self`.
+    #[inline]
+    pub fn into_post(self) -> T::AuthorizationKey {
+        self.randomized_authorization_key
     }
 }
 
@@ -245,32 +270,34 @@ pub trait Verify: AuthorizationKeyType + RandomnessType + SigningKeyType {
 /// Signs `message` by first verifiying that the `authorization_proof` was created using
 /// `signing_key` and using it to generate the signing key from `signing_key`.
 #[inline]
-pub fn sign<S, F>(
+pub fn sign<S, F, E>(
     scheme: &S,
     signing_key: &S::SigningKey,
     authorization_proof: AuthorizationProof<S>,
     signing_randomness: &signature::Randomness<S>,
     assign_authorization_key: F,
-) -> Option<(S::Signature, S::Message)>
+) -> Option<Result<(S::Signature, S::Message), E>>
 where
-    F: FnOnce(S::AuthorizationKey) -> S::Message,
-    S: Randomize<S::AuthorizationKey> + signature::Sign<SigningKey = S::AuthorizationKey> + Verify,
+    F: FnOnce(S::AuthorizationKey) -> Result<S::Message, E>,
+    S: Verify + Randomize<S::SigningKey> + signature::Sign,
 {
-    if authorization_proof.verify(scheme, signing_key) {
-        let message = assign_authorization_key(authorization_proof.randomized_authorization_key);
-        Some((
-            scheme.sign(
-                &scheme.randomize(
-                    signing_key,
-                    &authorization_proof.authorization.randomness,
+    if authorization_proof.verify_construction(scheme, signing_key) {
+        match assign_authorization_key(authorization_proof.randomized_authorization_key) {
+            Ok(message) => Some(Ok((
+                scheme.sign(
+                    &scheme.randomize(
+                        signing_key,
+                        &authorization_proof.authorization.randomness,
+                        &mut (),
+                    ),
+                    signing_randomness,
+                    &message,
                     &mut (),
                 ),
-                signing_randomness,
-                &message,
-                &mut (),
-            ),
-            message,
-        ))
+                message,
+            ))),
+            Err(err) => Some(Err(err)),
+        }
     } else {
         None
     }

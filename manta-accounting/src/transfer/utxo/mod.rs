@@ -136,6 +136,12 @@ pub trait SpendSecret: AssetType + IdentifierType {
         R: CryptoRng + RngCore + ?Sized;
 }
 
+/// Queries Asset Value
+pub trait QueryAsset: AssetType + UtxoType {
+    /// Queries the underlying asset from `self` and `utxo`.
+    fn query_asset(&self, utxo: &Self::Utxo) -> &Self::Asset;
+}
+
 /// UTXO Spending
 pub trait Spend<COM = ()>:
     ItemHashFunction<Self::Utxo, COM> + AssetType + UtxoType + AuthorizationKeyType

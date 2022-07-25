@@ -57,6 +57,7 @@ where
     }
 }
 
+/*
 impl<T, Rhs> PartialEq<Rhs> for T
 where
     T: cmp::PartialEq<Rhs>,
@@ -71,6 +72,7 @@ where
         self.ne(rhs)
     }
 }
+*/
 
 /// Equality
 pub trait Eq<COM = ()>: PartialEq<Self, COM>
@@ -79,4 +81,6 @@ where
 {
 }
 
+/*
 impl<T> Eq for T where T: cmp::Eq {}
+*/
