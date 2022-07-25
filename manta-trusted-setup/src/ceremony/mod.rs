@@ -17,7 +17,7 @@
 pub mod coordinator;
 pub mod queue;
 pub mod registry;
-// pub mod requests;
+pub mod requests;
 pub mod signature;
 /// Ceremony Error
 #[derive(Debug, Clone, Eq, PartialEq)]

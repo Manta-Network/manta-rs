@@ -16,6 +16,16 @@
 //! Waiting queue for the ceremony.
 
 use manta_trusted_setup::ceremony::coordinator::*;
+use std::collections::{BTreeMap, HashMap};
 // use manta_trusted_setup::ceremony::CeremonyError;
+
+// Define the kind of `Coordinator` this server is
+// type BlsCoordinator = Coordinator<BlsVerifier, BlsParticipantId, BTreeMap<_, _>, EdDalekSignature, 2>;
+
+pub struct BlsVerifier {}
+
+pub struct BlsParticipantId {}
+
+pub struct EdDalekSignature {}
 
 fn main() {}

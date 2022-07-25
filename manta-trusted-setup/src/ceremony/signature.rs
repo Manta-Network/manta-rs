@@ -63,3 +63,121 @@ where
         private_key: &S::PrivateKey,
     ) -> Result<S::Signature, CeremonyError>;
 }
+
+mod ed_dalek_signatures {
+    use super::{Sign, Verify};
+    use crate::ceremony::signature::SignatureScheme;
+    use ed25519_dalek::{PublicKey, Signer, Verifier};
+    use serde::{Deserialize, Serialize};
+
+    /// The dalek implementation of `ed25519` signatures.
+    pub struct Ed25519 {}
+
+    /// The public key for signed messages from contributors. This is a wrapper around the
+    /// byte representation of an `ed25519_dalek::PublicKey` type.  The original type does
+    /// not implement `Hash` and so cannot be used as a key in the `Registry`.
+    #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+    pub struct ContributorPublicKey(pub [u8; 32]);
+
+    /// The private key for signed messages from contributors. This is a wrapper around the
+    /// byte representation of an `ed25519_dalek::SecretKey` type. The byte representation
+    /// is used to be consistent with the choice made for `ContributorPublicKey`.
+    #[derive(Debug)]
+    pub struct ContributorPrivateKey(pub [u8; 32]);
+
+    /// The type for message signatures.
+    #[derive(Debug)]
+    pub struct Signature(pub ed25519_dalek::Signature);
+
+    impl Serialize for Signature {
+        fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: serde::Serializer,
+        {
+            let bytes = ed25519::signature::Signature::as_bytes(&self.0);
+            Serialize::serialize(&bytes, serializer)
+        }
+    }
+
+    impl<'de> Deserialize<'de> for Signature {
+        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where
+            D: serde::Deserializer<'de>,
+        {
+            match <Vec<u8> as Deserialize>::deserialize(deserializer) {
+                Ok(bytes) => Ok(Signature(
+                    ed25519_dalek::Signature::from_bytes(&bytes).unwrap(),
+                )),
+                Err(e) => Err(e),
+            }
+        }
+    }
+
+    /// The type of signature on messages from Client to Server.
+
+    impl SignatureScheme for Ed25519 {
+        type PublicKey = ContributorPublicKey;
+
+        type PrivateKey = ContributorPrivateKey;
+
+        type Signature = Signature;
+    }
+
+    /// The signable messages
+    pub struct Message<'a>(&'a [u8]);
+
+    impl<'a> Sign<Ed25519> for Message<'a> {
+        fn sign(
+            &self,
+            public_key: &<Ed25519 as SignatureScheme>::PublicKey,
+            private_key: &<Ed25519 as SignatureScheme>::PrivateKey,
+        ) -> Result<<Ed25519 as SignatureScheme>::Signature, crate::ceremony::CeremonyError>
+        {
+            // Read keypair from byte representation of pub/priv keys
+            let keypair = ed25519_dalek::Keypair::from_bytes(
+                &[&private_key.0[..], &public_key.0[..]].concat(),
+            )
+            .expect("Failed to decode keypair from bytes"); // todo: error handling
+
+            Ok(Signature(keypair.sign(self.0)))
+        }
+    }
+
+    impl<'a> Verify<Ed25519> for Message<'a> {
+        fn verify_integrity(
+            &self,
+            public_key: &<Ed25519 as SignatureScheme>::PublicKey,
+            signature: &<Ed25519 as SignatureScheme>::Signature,
+        ) -> Result<(), crate::ceremony::CeremonyError> {
+            let pub_key = ed25519_dalek::PublicKey::from_bytes(&public_key.0[..]).unwrap(); // todo: error handling
+            let _ =
+                <PublicKey as Verifier<ed25519::Signature>>::verify(&pub_key, self.0, &signature.0)
+                    .unwrap();
+            Ok(())
+        }
+    }
+
+    pub fn test_keypair() -> (ContributorPrivateKey, ContributorPublicKey) {
+        (
+            ContributorPrivateKey([
+                149, 167, 173, 208, 224, 206, 37, 70, 87, 169, 157, 198, 120, 32, 151, 88, 25, 10,
+                12, 215, 80, 124, 187, 129, 183, 96, 103, 11, 191, 255, 33, 105,
+            ]),
+            ContributorPublicKey([
+                104, 148, 44, 244, 61, 116, 39, 8, 68, 216, 6, 24, 232, 68, 239, 203, 198, 2, 138,
+                148, 242, 73, 122, 3, 19, 236, 195, 133, 136, 137, 146, 108,
+            ]),
+        )
+    }
+
+    #[test]
+    fn signature_test() {
+        let (priv_key, pub_key) = test_keypair();
+        let message = Message(b"Test message");
+        let signature = <Message as Sign<Ed25519>>::sign(&message, &pub_key, &priv_key).unwrap();
+
+        assert!(
+            <Message as Verify<Ed25519>>::verify_integrity(&message, &pub_key, &signature).is_ok()
+        )
+    }
+}
