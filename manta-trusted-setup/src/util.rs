@@ -31,7 +31,7 @@ use rand_chacha::{rand_core::SeedableRng, ChaCha20Rng};
 use rayon::iter::{IndexedParallelIterator, ParallelIterator};
 
 pub use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
-pub use ark_ff::{One, PrimeField, UniformRand, Zero};
+pub use ark_ff::{Field, One, PrimeField, UniformRand, Zero};
 pub use ark_serialize::{
     CanonicalDeserialize, CanonicalSerialize, Read, SerializationError, Write,
 };

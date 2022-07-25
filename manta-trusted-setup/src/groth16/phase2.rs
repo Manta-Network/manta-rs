@@ -21,16 +21,13 @@ use crate::{
     util::{
         batch_into_projective, batch_mul_fixed_scalar, hash_to_group, into_array_unchecked,
         merge_pairs_affine, AffineCurve, Hash, Pairing, PairingEngineExt, ProjectiveCurve, Sample,
-        Zero,
+        Zero, PrimeField, CanonicalSerialize, Write, Field, 
     },
 };
 use alloc::{vec, vec::Vec};
-use ark_ff::{Field, PrimeField};
 use ark_groth16::{ProvingKey, VerifyingKey};
 use ark_poly::{EvaluationDomain, Radix2EvaluationDomain};
-use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem};
-pub use ark_serialize::{CanonicalDeserialize, Read};
-use ark_serialize::{CanonicalSerialize, Write};
+use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem, SynthesisError};
 use ark_std::{
     rand::{CryptoRng, Rng},
     UniformRand,
@@ -595,7 +592,7 @@ pub enum PhaseTwoError {
     /// TODO
     TooManyConstraints,
     /// TODO
-    ConstraintSystemError(ark_relations::r1cs::SynthesisError),
+    ConstraintSystemError(SynthesisError),
     /// TODO
     MissingCSMatrices,
     /// TODO
@@ -622,11 +619,10 @@ mod test {
     use super::*;
     use crate::{
         groth16::kzg::{Contribution, Size},
-        serialize::serialize_g1_uncompressed,
-        util::{BlakeHasher, HasDistribution, PairingEngine},
+        util::{BlakeHasher, HasDistribution, PairingEngine, Read},
     };
-    use ark_bls12_381::Fr;
-    use ark_ff::{field_new, Fp256};
+    use ark_bls12_381::{Fr, G1Affine};
+    use ark_ff::{field_new, Fp256, ToBytes};
     use ark_r1cs_std::eq::EqGadget;
     use ark_snark::SNARK;
     use blake2::{Blake2b, Digest};
@@ -638,6 +634,8 @@ mod test {
     use manta_pay::crypto::constraint::arkworks::{Fp, FpVar, R1CS};
     use rand_chacha::ChaCha20Rng;
     use std::println;
+    use ark_std::io;
+    use ark_groth16::Groth16 as ArkGroth16;
 
     /// Sapling MPC
     #[derive(Clone, Default)]
@@ -793,6 +791,24 @@ mod test {
     }
 
     /// TODO
+    pub fn serialize_g1_uncompressed<W>(point: &G1Affine, writer: &mut W) -> Result<(), io::Error>
+    where
+        W: Write,
+    {
+        let mut res = [0u8; 96];
+        if point.is_zero() {
+            res[95] |= 1 << 6;
+        } else {
+            let mut temp_writer = &mut res[..];
+            point.y.write(&mut temp_writer)?;
+            point.x.write(&mut temp_writer)?;
+        }
+        res.reverse();
+        writer.write_all(&res)?;
+        Ok(())
+    }
+
+    /// TODO
     #[test]
     pub fn test_create_raw_parameters() {
         // Read the final Accumulator from file
@@ -871,8 +887,6 @@ mod test {
             c.enforce_equal(&d)
                 .expect("enforce_equal is not allowed to fail");
         }
-
-        use ark_groth16::Groth16 as ArkGroth16;
 
         let proof = ArkGroth16::prove(&state.pk, cs, &mut rng).unwrap();
 

@@ -54,7 +54,7 @@ pub trait Configuration: Pairing + Size {
     type Response;
 
     /// Hash To Group Type
-    type HashToGroup: HashToGroup;
+    // type HashToGroup: HashToGroup;
 
     /// Tau Domain Tag for [`hash_to_g2`](Self::hash_to_g2)
     const TAU_DOMAIN_TAG: Self::DomainTag;
@@ -72,9 +72,10 @@ pub trait Configuration: Pairing + Size {
         ratio: (&Self::G1, &Self::G1),
     ) -> Self::G2;
 
-    // fn hasher(domain_tag: Self::DomainTag) -> Self::HashToGroup;
-
-    // fn hasher(domain_tag: Self::DomainTag) -> Self::HashToGroup;
+    // /// TODO
+    // fn hasher(domain_tag: Self::DomainTag) -> Self::HashToGroup {
+    //     HashToGroup::hash()
+    // }
 
     /*
     fn hasher(domain_tag: Self::DomainTag) -> Self::HashToGroup {
