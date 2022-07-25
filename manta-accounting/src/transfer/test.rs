@@ -17,15 +17,19 @@
 //! Transfer Protocol Testing Framework
 
 use crate::{
-    asset::{Asset, AssetId, AssetValue, AssetValueType},
+    asset::{AssetId, AssetValue, AssetValueType},
     transfer::{
-        canonical::ToPrivate, has_public_participants, Address, Configuration, FullParametersRef,
-        Parameters, PreSender, Proof, ProofInput, ProofSystemError, ProofSystemPublicParameters,
-        ProvingContext, Receiver, Sender, Transfer, TransferPost, Utxo, VerifyingContext,
+        canonical::ToPrivate, has_public_participants, utxo::Mint, Address, Asset,
+        AuthorizationKey, Configuration, FullParametersRef, Parameters, PreSender, Proof,
+        ProofInput, ProofSystemError, ProofSystemPublicParameters, ProvingContext, Receiver,
+        Sender, Transfer, TransferPost, Utxo, VerifyingContext,
     },
 };
 use alloc::vec::Vec;
-use core::fmt::Debug;
+use core::{
+    fmt::Debug,
+    ops::{Rem, Sub},
+};
 use manta_crypto::{
     accumulator::Accumulator,
     constraint::ProofSystem,
@@ -39,22 +43,24 @@ use manta_util::into_array_unchecked;
 ///
 /// This is a naive algorithm and should only be used for testing purposes.
 #[inline]
-pub fn value_distribution<R>(count: usize, total: AssetValue, rng: &mut R) -> Vec<AssetValue>
+pub fn value_distribution<V, R>(count: usize, total: V, rng: &mut R) -> Vec<V>
 where
+    V: Default + Ord + Sample,
+    for<'v> &'v V: Rem<Output = V> + Sub<Output = V>,
     R: RngCore + ?Sized,
 {
     if count == 0 {
         return Vec::default();
     }
     let mut result = Vec::with_capacity(count + 1);
-    result.push(AssetValue(0));
+    result.push(V::default());
     for _ in 1..count {
-        result.push(AssetValue(AssetValueType::gen(rng) % total.0));
+        result.push(&rng.gen::<_, V>() % &total);
     }
     result.push(total);
     result.sort_unstable();
     for i in 0..count {
-        result[i] = result[i + 1] - result[i];
+        result[i] = &result[i + 1] - &result[i];
     }
     result
         .pop()
@@ -68,8 +74,10 @@ where
 ///
 /// This is a naive algorithm and should only be used for testing purposes.
 #[inline]
-pub fn sample_asset_values<R, const N: usize>(total: AssetValue, rng: &mut R) -> [AssetValue; N]
+pub fn sample_asset_values<V, R, const N: usize>(total: V, rng: &mut R) -> [V; N]
 where
+    V: Default + Ord + Sample,
+    for<'v> &'v V: Rem<Output = V> + Sub<Output = V>,
     R: RngCore + ?Sized,
 {
     into_array_unchecked(value_distribution(N, total, rng))
@@ -420,21 +428,21 @@ where
 ///
 #[inline]
 pub fn sample_mint<C, R>(
+    parameters: FullParametersRef<C>,
     proving_context: &ProvingContext<C>,
-    full_parameters: FullParametersRef<C>,
-    asset: Asset,
+    authorization_key: &mut AuthorizationKey<C>,
+    asset: Asset<C>,
     rng: &mut R,
 ) -> Result<(TransferPost<C>, PreSender<C>), ProofSystemError<C>>
 where
     C: Configuration,
     R: CryptoRng + RngCore + ?Sized,
 {
-    /* TODO:
-    let (mint, pre_sender) = Mint::internal_pair(full_parameters.base, spending_key, asset, rng);
+    let (mint, pre_sender) =
+        ToPrivate::internal_pair(parameters.base, authorization_key, asset, rng);
     Ok((
-        mint.into_post(full_parameters, proving_context, rng)?,
+        mint.into_post(parameters, proving_context, None, rng)?
+            .unwrap(),
         pre_sender,
     ))
-    */
-    todo!()
 }

@@ -25,7 +25,7 @@ use manta_crypto::{
         Allocate, Allocator, Assert, AssertEq, BitAnd, BitOr, Bool, ConditionalSelect, Constant,
         Has, PartialEq, Public, Secret, Variable, Zero,
     },
-    encryption::{self, hybrid::Hybrid, Encrypt, EncryptedMessage, RandomnessType},
+    encryption::{self, hybrid::Hybrid, Decrypt, Encrypt, EncryptedMessage, RandomnessType},
     rand::{CryptoRng, Rand, RngCore, Sample},
 };
 
@@ -530,6 +530,8 @@ where
 impl<C> utxo::NoteOpen for Parameters<C>
 where
     C: Configuration<Bool = bool>,
+    C::IncomingBaseEncryptionScheme:
+        Decrypt<DecryptionKey = C::Group, DecryptedPlaintext = Option<IncomingPlaintext<C>>>,
 {
     type DecryptionKey = C::Scalar;
 
@@ -540,7 +542,20 @@ where
         utxo: &Self::Utxo,
         note: Self::Note,
     ) -> Option<(Self::Identifier, Self::Asset)> {
-        todo!()
+        let plaintext = self.incoming_base_encryption_scheme.decrypt(
+            &note.ephemeral_public_key().mul(decryption_key, &mut ()),
+            &EmptyHeader::default(),
+            &note.ciphertext.ciphertext,
+            &mut (),
+        )?;
+        Some((
+            Identifier::new(
+                utxo.is_transparent,
+                plaintext.utxo_commitment_randomness,
+                plaintext.key_diversifier,
+            ),
+            plaintext.asset,
+        ))
     }
 }
 
@@ -916,6 +931,27 @@ where
 
     /// Key Diversifier
     pub key_diversifier: C::Group,
+}
+
+impl<C, COM> Identifier<C, COM>
+where
+    C: Configuration<COM>,
+    COM: Has<bool, Type = C::Bool>,
+{
+    /// Builds a new [`Identifier`] from `is_transparent`, `utxo_commitment_randomness`, and
+    /// `key_diversifier`.
+    #[inline]
+    pub fn new(
+        is_transparent: C::Bool,
+        utxo_commitment_randomness: UtxoCommitmentRandomness<C, COM>,
+        key_diversifier: C::Group,
+    ) -> Self {
+        Self {
+            is_transparent,
+            utxo_commitment_randomness,
+            key_diversifier,
+        }
+    }
 }
 
 /// Spend Secret

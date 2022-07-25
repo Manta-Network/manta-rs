@@ -128,6 +128,7 @@ pub trait Configuration {
         + utxo::AssetType<Asset = Asset<Self>>
         + utxo::UtxoType<Utxo = Self::Utxo>
         + utxo::DefaultAddress<Self::SpendingKey, Address = Address<Self>>
+        + utxo::DefaultAddress<AuthorizationKey<Self>, Address = Address<Self>>
         + Mint<Secret = Self::MintSecret>
         + Spend<Secret = Self::SpendSecret, Nullifier = Self::Nullifier>;
 
@@ -355,7 +356,7 @@ pub type ReceiverPost<C> = receiver::ReceiverPost<Parameters<C>>;
 #[inline]
 pub fn internal_pair<C, R>(
     parameters: &Parameters<C>,
-    spending_key: &C::SpendingKey,
+    authorization_key: &mut AuthorizationKey<C>,
     asset: Asset<C>,
     rng: &mut R,
 ) -> (Receiver<C>, PreSender<C>)
@@ -365,14 +366,13 @@ where
 {
     let receiver = Receiver::<C>::sample(
         parameters,
-        parameters.default_address(spending_key),
+        parameters.default_address(authorization_key),
         asset.clone(),
         rng,
     );
-    let mut authorization = parameters.generate(spending_key, rng);
     let pre_sender = PreSender::<C>::sample(
         parameters,
-        &mut authorization.authorization_key,
+        authorization_key,
         receiver.identifier(),
         asset,
         rng,
@@ -384,7 +384,7 @@ where
 #[inline]
 pub fn internal_zero_pair<C, R>(
     parameters: &Parameters<C>,
-    spending_key: &C::SpendingKey,
+    authorization_key: &mut AuthorizationKey<C>,
     asset_id: C::AssetId,
     rng: &mut R,
 ) -> (Receiver<C>, PreSender<C>)
@@ -392,7 +392,12 @@ where
     C: Configuration,
     R: CryptoRng + RngCore + ?Sized,
 {
-    internal_pair::<C, R>(parameters, spending_key, Asset::<C>::zero(asset_id), rng)
+    internal_pair::<C, R>(
+        parameters,
+        authorization_key,
+        Asset::<C>::zero(asset_id),
+        rng,
+    )
 }
 
 /// Transfer
