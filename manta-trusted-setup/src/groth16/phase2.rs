@@ -17,20 +17,20 @@
 //! Groth16 Phase 2
 
 use crate::{
-    groth16::kzg::{Accumulator, Configuration},
+    groth16::kzg::{Accumulator, Configuration, RatioProof, Size},
     util::{
         batch_into_projective, batch_mul_fixed_scalar, hash_to_group, into_array_unchecked,
-        merge_pairs_affine, Hash, PairingEngineExt, Sample, Zero, Pairing, 
+        merge_pairs_affine, AffineCurve, Hash, Pairing, PairingEngineExt, ProjectiveCurve, Sample,
+        Zero,
     },
 };
 use alloc::{vec, vec::Vec};
-use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
 use ark_ff::{Field, PrimeField};
 use ark_groth16::{ProvingKey, VerifyingKey};
 use ark_poly::{EvaluationDomain, Radix2EvaluationDomain};
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem};
 pub use ark_serialize::{CanonicalDeserialize, Read};
-use ark_serialize::{CanonicalSerialize, SerializationError, Write};
+use ark_serialize::{CanonicalSerialize, Write};
 use ark_std::{
     rand::{CryptoRng, Rng},
     UniformRand,
@@ -42,11 +42,9 @@ use manta_util::{cfg_into_iter, cfg_reduce};
 #[cfg(feature = "rayon")]
 use rayon::iter::{IndexedParallelIterator, ParallelIterator};
 
-use super::kzg::Size;
-
 /// Groth16 Phase 2
-pub struct Phase2<E, const N: usize> {
-    __: PhantomData<E>,
+pub struct Phase2<P, const N: usize> {
+    __: PhantomData<P>,
 }
 
 /// State
@@ -59,18 +57,6 @@ where
     pub pk: ProvingKey<P::Pairing>,
 }
 
-/// Proof
-#[derive(Clone, PartialEq, Eq)]
-pub struct Proof<P, const N: usize>
-where
-    P: Pairing,
-{
-    // TODO: To be refactored
-    delta_before: P::G1,
-    delta_after: P::G1,
-    r_delta: P::G2,
-}
-
 /// Contributions and Hashes
 pub struct Contributions<P, const N: usize>
 where
@@ -80,26 +66,7 @@ where
     pub cs_hash: [u8; N],
 
     /// TODO
-    pub contributions: Vec<Proof<P, N>>,
-}
-
-impl<P, const N: usize> CanonicalSerialize for Proof<P, N>
-where
-    P: Pairing,
-{
-    fn serialize<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {
-        self.delta_before.serialize(&mut writer)?;
-        self.delta_after.serialize(&mut writer)?;
-        self.r_delta.serialize(&mut writer)?;
-        Ok(())
-    }
-
-    fn serialized_size(&self) -> usize {
-        self.delta_before.serialized_size()
-            + self.delta_after.serialized_size()
-            + self.r_delta.serialized_size()
-            + N // TODO: There might be an error related to u8 vs usize.
-    }
+    pub contributions: Vec<RatioProof<P>>,
 }
 
 impl<P, const N: usize> Phase2<P, N>
@@ -250,7 +217,7 @@ where
         // challenge: xxx [TODO]
         previous_contributions: &Contributions<P, N>,
         rng: &mut R,
-    ) -> (P::Scalar, Proof<P, N>)
+    ) -> (P::Scalar, RatioProof<P>)
     where
         D: Default,
         R: Rng + CryptoRng,
@@ -265,13 +232,8 @@ where
         let h: [u8; N] = {
             let mut hasher = H::new();
             hasher.update(&previous_contributions.cs_hash[..]);
-            // for proof in previous_contributions.contributions.clone() {
-            //     // ? better solution than clone ?
-            //     proof
-            //         .serialize(&mut hasher)
-            //         .expect("Blake2b Hasher never returns an error");
-            // }
-            delta_before.serialize_uncompressed(&mut hasher)
+            delta_before
+                .serialize_uncompressed(&mut hasher)
                 .expect("Blake2b Hasher never returns an error");
             delta_after
                 .serialize_uncompressed(&mut hasher)
@@ -280,10 +242,9 @@ where
         };
         (
             delta,
-            Proof {
-                delta_before,
-                delta_after,
-                r_delta: hash_to_group::<P::G2, _, N>(h).mul(delta).into_affine(),
+            RatioProof {
+                ratio: (delta_before, delta_after),
+                matching_point: hash_to_group::<P::G2, _, N>(h).mul(delta).into_affine(),
             },
         )
     }
@@ -304,7 +265,7 @@ where
         P::G2: Sample<D>,
         R: Rng + CryptoRng,
         H: Hash<N> + Write,
-        Proof<P, N>: Clone,
+        RatioProof<P>: Clone,
     {
         // Generate a keypair
         let (delta, proof) =
@@ -345,7 +306,7 @@ where
         B: ConstraintSynthesizer<C::Scalar>,
         C: Configuration<Pairing = P::Pairing, G1 = P::G1, G2 = P::G2, Scalar = P::Scalar>,
         H: Hash<N> + Write + Clone,
-        <P as Pairing>::G1Prepared: From<<<P as Pairing>::G1 as AffineCurve>::Projective>
+        <P as Pairing>::G1Prepared: From<<<P as Pairing>::G1 as AffineCurve>::Projective>,
     {
         // Build default MPCParameters from phase 1 accumulator
         let (initial_state, initial_contribution_and_hashes) =
@@ -369,11 +330,13 @@ where
             let h: [u8; N] = {
                 let mut hasher = cumulative_hasher.clone();
                 contribution
-                    .delta_before
+                    .ratio
+                    .0
                     .serialize_uncompressed(&mut hasher)
                     .expect("Hasher never returns an error");
                 contribution
-                    .delta_after
+                    .ratio
+                    .1
                     .serialize_uncompressed(&mut hasher)
                     .expect("Hasher never returns an error");
                 hasher.finalize()
@@ -383,13 +346,13 @@ where
 
             // Check the change from the old delta is consistent
             if !<C::Pairing as PairingEngineExt>::same_ratio(
-                (current_delta, contribution.delta_after),
-                (r, contribution.r_delta),
+                (current_delta, contribution.ratio.1),
+                (r, contribution.matching_point),
             ) {
                 return Err(PhaseTwoError::InconsistentDeltaChange);
             }
 
-            current_delta = contribution.delta_after;
+            current_delta = contribution.ratio.1;
 
             // Record hash of this contribution
             contribution
@@ -471,7 +434,7 @@ where
         last: State<P>,
         next: State<P>,
         previous_contributions: &Contributions<P, N>, // TODO: change this to challenge to match the trait?
-        proof: &Proof<P, N>,
+        proof: &RatioProof<P>,
     ) -> Result<State<P>, PhaseTwoError>
     where
         D: Default,
@@ -492,11 +455,13 @@ where
                     .expect("Hasher never returns an error");
             }
             proof
-                .delta_before
+                .ratio
+                .0
                 .serialize_uncompressed(&mut hasher)
                 .expect("Hasher never returns an error");
             proof
-                .delta_after
+                .ratio
+                .1
                 .serialize_uncompressed(&mut hasher)
                 .expect("Hasher never returns an error");
             hasher.finalize()
@@ -504,18 +469,18 @@ where
         let r = hash_to_group::<P::G2, _, N>(h);
         // Check the change from the old delta is consistent
         if !<P::Pairing as PairingEngineExt>::same_ratio(
-            (last.pk.delta_g1, proof.delta_after),
-            (r, proof.r_delta),
+            (last.pk.delta_g1, proof.ratio.1),
+            (r, proof.matching_point),
         ) {
             return Err(PhaseTwoError::InconsistentDeltaChange);
         }
         // Current parameters should have consistent delta in G1
-        if proof.delta_after != next.pk.delta_g1 {
+        if proof.ratio.1 != next.pk.delta_g1 {
             return Err(PhaseTwoError::InconsistentDeltaChange);
         }
         // Current parameters should have consistent delta in G2
         if !<P::Pairing as PairingEngineExt>::same_ratio(
-            (P::G1::prime_subgroup_generator(), proof.delta_after),
+            (P::G1::prime_subgroup_generator(), proof.ratio.1),
             (P::G2::prime_subgroup_generator(), next.pk.vk.delta_g2),
         ) {
             return Err(PhaseTwoError::InconsistentDeltaChange);
@@ -538,18 +503,16 @@ where
 
         Ok(next)
     }
-// }
+    // }
 }
 
 /// Compress two vectors of curve points into a pair of
 /// curve points by random linear combination. The same
 /// random linear combination is used for both vectors,
 /// allowing this pair to be used in a consistent ratio test.
-pub fn random_linear_combinations<P>(
-    lhs: &[P::G1],
-    rhs: &[P::G1],
-) -> (P::G1, P::G1) 
-where P: Pairing
+pub fn random_linear_combinations<P>(lhs: &[P::G1], rhs: &[P::G1]) -> (P::G1, P::G1)
+where
+    P: Pairing,
 {
     assert_eq!(lhs.len(), rhs.len());
     let tmp = cfg_into_iter!(0..lhs.len())
@@ -660,10 +623,9 @@ mod test {
     use crate::{
         groth16::kzg::{Contribution, Size},
         serialize::serialize_g1_uncompressed,
-        util::{BlakeHasher, HasDistribution},
+        util::{BlakeHasher, HasDistribution, PairingEngine},
     };
     use ark_bls12_381::Fr;
-    use ark_ec::bls12::Bls12;
     use ark_ff::{field_new, Fp256};
     use ark_r1cs_std::eq::EqGadget;
     use ark_snark::SNARK;
@@ -869,29 +831,24 @@ mod test {
                 .expect("enforce_equal is not allowed to fail");
         }
 
-        let (mut state, mut contributions) =
-            Phase2::<Bls12<ark_bls12_381::Parameters>, 64>::initialize::<
-                R1CS<Fp256<ark_bls12_381::FrParameters>>,
-                Sapling,
-                BlakeHasher<64>,
-            >(cs, next_accumulator)
-            .unwrap();
+        let (mut state, mut contributions) = Phase2::<Sapling, 64>::initialize::<
+            R1CS<Fp256<ark_bls12_381::FrParameters>>,
+            Sapling,
+            BlakeHasher<64>,
+        >(cs, next_accumulator)
+        .unwrap();
 
         let last_state = state.clone();
 
         // Step4: Contribute to Phase 2 params
-        let _ = Phase2::<Bls12<ark_bls12_381::Parameters>, 64>::contribute::<(), _, BlakeHasher<64>>(
+        let _ = Phase2::<Sapling, 64>::contribute::<(), _, BlakeHasher<64>>(
             &mut state,
             &mut contributions,
             &mut rng,
         );
 
         // // Step5: Verify contribution
-
-        let state = Phase2::<Bls12<ark_bls12_381::Parameters>, 64>::verify_transform::<
-            BlakeHasher<64>,
-            (),
-        >(
+        let state = Phase2::<Sapling, 64>::verify_transform::<BlakeHasher<64>, ()>(
             last_state,
             state,
             &Contributions {

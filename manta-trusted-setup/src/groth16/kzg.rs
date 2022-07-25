@@ -53,6 +53,9 @@ pub trait Configuration: Pairing + Size {
     /// Response Type
     type Response;
 
+    /// Hash To Group Type
+    type HashToGroup: HashToGroup;
+
     /// Tau Domain Tag for [`hash_to_g2`](Self::hash_to_g2)
     const TAU_DOMAIN_TAG: Self::DomainTag;
 
@@ -73,8 +76,6 @@ pub trait Configuration: Pairing + Size {
 
     // fn hasher(domain_tag: Self::DomainTag) -> Self::HashToGroup;
 
-    // type HashToGroup: HashToGroup;
-
     /*
     fn hasher(domain_tag: Self::DomainTag) -> Self::HashToGroup {
         HashToGroup {
@@ -93,6 +94,14 @@ pub trait Configuration: Pairing + Size {
         challenge: &Self::Challenge,
         proof: &Proof<Self>,
     ) -> Self::Response;
+}
+
+//TODO: Add a trait `HashToGroup`
+
+/// TODO
+pub trait HashToGroup {
+    /// TODO
+    fn hash();
 }
 
 /// Knowledge Proof Error
@@ -197,24 +206,33 @@ where
 /// Pairing Ratio Proof of Knowledge
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Debug, Default, Eq, Hash, PartialEq)]
-pub struct RatioProof<C>
+pub struct RatioProof<P>
 where
-    C: Pairing + ?Sized,
+    P: Pairing + ?Sized,
 {
     /// Ratio in G1
-    pub ratio: (C::G1, C::G1),
+    pub ratio: (P::G1, P::G1),
 
     /// Matching Point in G2
-    pub matching_point: C::G2,
+    pub matching_point: P::G2,
 }
 
-//TODO: Add a trait `HashToGroup`
+impl<P> CanonicalSerialize for RatioProof<P>
+where
+    P: Pairing,
+{
+    fn serialize<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {
+        self.ratio.0.serialize(&mut writer)?;
+        self.ratio.1.serialize(&mut writer)?;
+        self.matching_point.serialize(&mut writer)?;
+        Ok(())
+    }
 
-/// TODO
-pub trait HashToGroup {
-    /// TODO
-    fn hash();
-    
+    fn serialized_size(&self) -> usize {
+        self.ratio.0.serialized_size()
+            + self.ratio.1.serialized_size()
+            + self.matching_point.serialized_size()
+    }
 }
 
 impl<C> RatioProof<C>
