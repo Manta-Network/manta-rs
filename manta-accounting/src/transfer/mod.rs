@@ -115,7 +115,8 @@ pub trait Configuration {
     type SpendSecret: utxo::SpendSecret<Asset = Asset<Self>>;
 
     /// Parameters Type
-    type Parameters: auth::Randomize<Self::SpendingKey>
+    type Parameters: auth::Verify
+        + auth::Randomize<Self::SpendingKey>
         + signature::Sign<
             SigningKey = Self::SpendingKey,
             Randomness = Self::AuthorizationSignatureRandomness,
@@ -547,31 +548,6 @@ where
         )
     }
 
-    /// Builds a [`TransferPostBody`].
-    #[inline]
-    fn build_post_body(
-        validity_proof: Proof<C>,
-        randomized_authorization_key: Option<AuthorizationKey<C>>,
-        asset_id: Option<C::AssetId>,
-        sources: [C::AssetValue; SOURCES],
-        senders: [Sender<C>; SENDERS],
-        receivers: [Receiver<C>; RECEIVERS],
-        sinks: [C::AssetValue; SINKS],
-    ) -> TransferPostBody<C> {
-        TransferPostBody {
-            randomized_authorization_key,
-            asset_id,
-            sources: sources.into(),
-            sender_posts: senders.into_iter().map(Sender::<C>::into_post).collect(),
-            receiver_posts: receivers
-                .into_iter()
-                .map(Receiver::<C>::into_post)
-                .collect(),
-            sinks: sinks.into(),
-            validity_proof,
-        }
-    }
-
     /// Converts `self` into its [`TransferPostBody`] by building the [`Transfer`] validity proof.
     #[inline]
     pub fn into_post_body<R>(
@@ -583,7 +559,7 @@ where
     where
         R: CryptoRng + RngCore + ?Sized,
     {
-        Ok(Self::build_post_body(
+        Ok(TransferPostBody::build(
             C::ProofSystem::prove(proving_context, self.known_constraints(parameters), rng)?,
             self.authorization_proof
                 .map(AuthorizationProof::<C>::into_post),
@@ -598,7 +574,7 @@ where
     ///
     #[inline]
     pub fn into_post<R>(
-        self,
+        mut self,
         parameters: FullParametersRef<C>,
         proving_context: &ProvingContext<C>,
         spending_key: Option<&C::SpendingKey>,
@@ -607,48 +583,43 @@ where
     where
         R: CryptoRng + RngCore + ?Sized,
     {
-        Ok(TransferPost::new(
-            parameters.base,
+        match (
+            requires_authorization(SENDERS),
+            self.authorization_proof.take(),
             spending_key,
-            self.into_post_body(parameters, proving_context, rng)?,
-            rng,
-        ))
-    }
-
-    ///
-    #[inline]
-    pub fn into_post2<R>(
-        self,
-        parameters: FullParametersRef<C>,
-        proving_context: &ProvingContext<C>,
-        spending_key: Option<&C::SpendingKey>,
-        rng: &mut R,
-    ) -> Result<Option<TransferPost<C>>, ProofSystemError<C>>
-    where
-        R: CryptoRng + RngCore + ?Sized,
-    {
-        match (requires_authorization(SENDERS), spending_key) {
-            (true, Some(spending_key)) => {
-                /*
-                let _ = auth::sign(
-                    parameters.base,
-                    spending_key,
-                    self.authorization_proof,
-                    rng.gen(),
-                    |k| {
-                    },
-                );
-                */
-                todo!()
-            }
-            (false, None) => {
-                /*
-                let _ = self
-                    .into_post_body(parameters, proving_context, rng)
-                    .map(Some);
-                */
-                todo!()
-            }
+        ) {
+            (true, Some(authorization_proof), Some(spending_key)) => match auth::sign(
+                parameters.base,
+                spending_key,
+                authorization_proof,
+                &rng.gen(),
+                |randomized_authorization_key| match C::ProofSystem::prove(
+                    proving_context,
+                    self.known_constraints(parameters),
+                    rng,
+                ) {
+                    Ok(proof) => Ok(TransferPostBody::build(
+                        proof,
+                        Some(randomized_authorization_key),
+                        self.asset_id,
+                        self.sources,
+                        self.senders,
+                        self.receivers,
+                        self.sinks,
+                    )),
+                    Err(err) => Err(err),
+                },
+            ) {
+                Some(Ok((signature, body))) => {
+                    Ok(Some(TransferPost::new_unchecked(Some(signature), body)))
+                }
+                Some(Err(err)) => Err(err),
+                _ => Ok(None),
+            },
+            (false, None, None) => Ok(Some(TransferPost::new_unchecked(
+                None,
+                self.into_post_body(parameters, proving_context, rng)?,
+            ))),
             _ => todo!(),
         }
     }
@@ -1279,6 +1250,36 @@ impl<C> TransferPostBody<C>
 where
     C: Configuration + ?Sized,
 {
+    /// Builds a new [`TransferPostBody`].
+    #[inline]
+    fn build<
+        const SOURCES: usize,
+        const SENDERS: usize,
+        const RECEIVERS: usize,
+        const SINKS: usize,
+    >(
+        validity_proof: Proof<C>,
+        randomized_authorization_key: Option<AuthorizationKey<C>>,
+        asset_id: Option<C::AssetId>,
+        sources: [C::AssetValue; SOURCES],
+        senders: [Sender<C>; SENDERS],
+        receivers: [Receiver<C>; RECEIVERS],
+        sinks: [C::AssetValue; SINKS],
+    ) -> Self {
+        Self {
+            randomized_authorization_key,
+            asset_id,
+            sources: sources.into(),
+            sender_posts: senders.into_iter().map(Sender::<C>::into_post).collect(),
+            receiver_posts: receivers
+                .into_iter()
+                .map(Receiver::<C>::into_post)
+                .collect(),
+            sinks: sinks.into(),
+            validity_proof,
+        }
+    }
+
     /// Generates the public input for the [`Transfer`] validation proof.
     #[inline]
     pub fn generate_proof_input(&self) -> ProofInput<C> {
@@ -1332,20 +1333,6 @@ where
             self,
         );
     }
-
-    /// Signs `self` with the authorization `spending_key`.
-    #[inline]
-    pub fn sign<R>(
-        self,
-        parameters: &C::Parameters,
-        spending_key: &C::SpendingKey,
-        rng: &mut R,
-    ) -> Option<TransferPost<C>>
-    where
-        R: CryptoRng + RngCore + ?Sized,
-    {
-        TransferPost::signed(parameters, spending_key, self, rng)
-    }
 }
 
 /// Transfer Post
@@ -1390,76 +1377,6 @@ impl<C> TransferPost<C>
 where
     C: Configuration + ?Sized,
 {
-    /// Builds a new signed [`TransferPost`].
-    #[inline]
-    pub fn signed<R>(
-        parameters: &C::Parameters,
-        spending_key: &C::SpendingKey,
-        body: TransferPostBody<C>,
-        rng: &mut R,
-    ) -> Option<Self>
-    where
-        R: CryptoRng + RngCore + ?Sized,
-    {
-        /*
-        if let Some(authorization) = &body.authorization {
-            Some(Self::new_unchecked(
-                auth::sign(
-                    parameters,
-                    spending_key,
-                    authorization_proof,
-                    &rng.gen(),
-                    &body,
-                ),
-                body,
-            ))
-        } else {
-            None
-        }
-        */
-        todo!()
-    }
-
-    /// Builds a new unsigned [`TransferPost`].
-    #[inline]
-    pub fn unsigned(body: TransferPostBody<C>) -> Option<Self> {
-        body.randomized_authorization_key
-            .is_none()
-            .then(|| Self::new_unchecked(None, body))
-    }
-
-    /// Builds a new [`TransferPost`] using `spending_key` and `body` to determine if the signed or
-    /// unsigned variant should be used.
-    #[inline]
-    pub fn new<R>(
-        parameters: &C::Parameters,
-        spending_key: Option<&C::SpendingKey>,
-        body: TransferPostBody<C>,
-        rng: &mut R,
-    ) -> Option<Self>
-    where
-        R: CryptoRng + RngCore + ?Sized,
-    {
-        /*
-        match (spending_key, &body.authorization) {
-            (Some(spending_key), Some(authorization)) => Some(Self::new_unchecked(
-                sign_authorization(
-                    authorization_signature_scheme,
-                    spending_key,
-                    authorization,
-                    &rng.gen(),
-                    &body,
-                ),
-                body,
-            )),
-            (Some(_), None) => None,
-            (None, Some(_)) => None,
-            _ => Some(Self::new_unchecked(None, body)),
-        }
-        */
-        todo!()
-    }
-
     /// Builds a new [`TransferPost`] without checking the consistency conditions between the `body`
     /// and the `authorization_signature`.
     #[inline]
