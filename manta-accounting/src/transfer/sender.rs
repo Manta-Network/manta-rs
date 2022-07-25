@@ -250,7 +250,7 @@ where
 {
     /// Returns the underlying asset for `self`.
     #[inline]
-    pub fn asset(&self) -> &S::Asset
+    pub fn asset(&self) -> S::Asset
     where
         S::Secret: QueryAsset<Asset = S::Asset, Utxo = S::Utxo>,
     {

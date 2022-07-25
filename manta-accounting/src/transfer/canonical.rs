@@ -21,10 +21,10 @@
 use crate::{
     asset::{self, AssetMap, AssetMetadata, MetadataDisplay},
     transfer::{
-        has_public_participants, requires_authorization, Address, Asset, AuthorizationProof,
-        Configuration, FullParametersRef, Parameters, PreSender, ProofSystemError,
-        ProofSystemPublicParameters, ProvingContext, Receiver, Sender, Transfer, TransferPost,
-        VerifyingContext,
+        has_public_participants, internal_pair, requires_authorization, Address, Asset,
+        AuthorizationProof, Configuration, FullParametersRef, Parameters, PreSender,
+        ProofSystemError, ProofSystemPublicParameters, ProvingContext, Receiver, Sender, Transfer,
+        TransferPost, VerifyingContext,
     },
 };
 use alloc::{string::String, vec::Vec};
@@ -127,18 +127,16 @@ where
     #[inline]
     pub fn internal_pair<R>(
         parameters: &Parameters<C>,
-        spending_key: C::SpendingKey,
+        spending_key: &C::SpendingKey,
         asset: Asset<C>,
         rng: &mut R,
     ) -> (Self, PreSender<C>)
     where
         R: CryptoRng + RngCore + ?Sized,
     {
-        /* TODO:
-        let (receiver, pre_sender) = spending_key.internal_pair(parameters, rng.gen(), asset);
+        let (receiver, pre_sender) =
+            internal_pair::<C, _>(parameters, spending_key, asset.clone(), rng);
         (Self::build(asset, receiver), pre_sender)
-        */
-        todo!()
     }
 }
 

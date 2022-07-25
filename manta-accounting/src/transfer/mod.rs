@@ -34,7 +34,10 @@ use crate::{
     transfer::{
         receiver::{ReceiverLedger, ReceiverPostError},
         sender::{SenderLedger, SenderPostError},
-        utxo::{auth, Mint, Spend},
+        utxo::{
+            auth::{self, Generate},
+            DefaultAddress, Mint, Spend,
+        },
     },
 };
 use core::{fmt::Debug, hash::Hash, iter::Sum, ops::AddAssign};
@@ -58,11 +61,9 @@ pub mod receiver;
 pub mod sender;
 pub mod utxo;
 
-/*
 #[cfg(feature = "test")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
 pub mod test;
-*/
 
 #[doc(inline)]
 pub use canonical::Shape;
@@ -109,13 +110,15 @@ pub trait Configuration {
     type AuthorizationSignatureRandomness: Sample;
 
     /// Mint Secret Type
-    type MintSecret: utxo::MintSecret<Asset = Asset<Self>>;
+    type MintSecret: utxo::MintSecret<Asset = Asset<Self>>
+        + utxo::QueryIdentifier<Identifier = Identifier<Self>, Utxo = Self::Utxo>;
 
     /// Spend Secret Type
     type SpendSecret: utxo::SpendSecret<Asset = Asset<Self>>;
 
     /// Parameters Type
-    type Parameters: auth::Verify
+    type Parameters: auth::Generate
+        + auth::Verify
         + auth::Randomize<Self::SpendingKey>
         + signature::Sign<
             SigningKey = Self::SpendingKey,
@@ -124,6 +127,7 @@ pub trait Configuration {
         > + signature::Verify<VerifyingKey = AuthorizationKey<Self>, Verification = bool>
         + utxo::AssetType<Asset = Asset<Self>>
         + utxo::UtxoType<Utxo = Self::Utxo>
+        + utxo::DefaultAddress<Self::SpendingKey, Address = Address<Self>>
         + Mint<Secret = Self::MintSecret>
         + Spend<Secret = Self::SpendSecret, Nullifier = Self::Nullifier>;
 
@@ -346,6 +350,50 @@ pub type ReceiverVar<C> = receiver::Receiver<ParametersVar<C>, Compiler<C>>;
 
 /// Receiver Post Type
 pub type ReceiverPost<C> = receiver::ReceiverPost<Parameters<C>>;
+
+/// Generates an internal pair for `asset` against `spending_key`.
+#[inline]
+pub fn internal_pair<C, R>(
+    parameters: &Parameters<C>,
+    spending_key: &C::SpendingKey,
+    asset: Asset<C>,
+    rng: &mut R,
+) -> (Receiver<C>, PreSender<C>)
+where
+    C: Configuration,
+    R: CryptoRng + RngCore + ?Sized,
+{
+    let receiver = Receiver::<C>::sample(
+        parameters,
+        parameters.default_address(spending_key),
+        asset.clone(),
+        rng,
+    );
+    let mut authorization = parameters.generate(spending_key, rng);
+    let pre_sender = PreSender::<C>::sample(
+        parameters,
+        &mut authorization.authorization_key,
+        receiver.identifier(),
+        asset,
+        rng,
+    );
+    (receiver, pre_sender)
+}
+
+/// Generates an internal pair for a zero-asset with the given `asset_id` against `spending_key`.
+#[inline]
+pub fn internal_zero_pair<C, R>(
+    parameters: &Parameters<C>,
+    spending_key: &C::SpendingKey,
+    asset_id: C::AssetId,
+    rng: &mut R,
+) -> (Receiver<C>, PreSender<C>)
+where
+    C: Configuration,
+    R: CryptoRng + RngCore + ?Sized,
+{
+    internal_pair::<C, R>(parameters, spending_key, Asset::<C>::zero(asset_id), rng)
+}
 
 /// Transfer
 pub struct Transfer<

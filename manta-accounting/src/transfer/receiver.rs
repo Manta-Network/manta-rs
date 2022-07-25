@@ -16,7 +16,7 @@
 
 //! Transfer Receiver
 
-use crate::transfer::utxo::{Address, Mint, MintSecret};
+use crate::transfer::utxo::{Address, Identifier, Mint, MintSecret, QueryIdentifier};
 use core::{fmt::Debug, hash::Hash, iter};
 use manta_crypto::{
     accumulator::{Accumulator, ItemHashFunction},
@@ -84,6 +84,15 @@ where
         let secret = M::Secret::sample(address, asset, rng);
         let (utxo, incoming_note) = parameters.derive(&secret, &mut ());
         Self::new(secret, utxo, incoming_note)
+    }
+
+    ///
+    #[inline]
+    pub fn identifier(&self) -> Identifier<M::Secret>
+    where
+        M::Secret: QueryIdentifier<Utxo = M::Utxo>,
+    {
+        self.secret.query_identifier(&self.utxo)
     }
 
     /// Returns `true` whenever `self.utxo` and `rhs.utxo` can be inserted in any order into the

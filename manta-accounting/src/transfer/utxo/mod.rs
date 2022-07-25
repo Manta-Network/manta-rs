@@ -83,6 +83,12 @@ pub trait AddressType {
 /// Address Type
 pub type Address<T> = <T as AddressType>::Address;
 
+/// Default Address
+pub trait DefaultAddress<T>: AddressType {
+    /// Constructs the default receiving address given the `base` secret.
+    fn default_address(&self, base: &T) -> Self::Address;
+}
+
 /// Note Opening
 pub trait NoteOpen: AssetType + NoteType + IdentifierType + UtxoType {
     /// Decryption Key Type
@@ -107,6 +113,12 @@ pub trait MintSecret: AssetType + AddressType {
     fn sample<R>(address: Self::Address, asset: Self::Asset, rng: &mut R) -> Self
     where
         R: CryptoRng + RngCore + ?Sized;
+}
+
+/// Query Identifier Value
+pub trait QueryIdentifier: IdentifierType + UtxoType {
+    /// Queries the underlying identifier from `self` and `utxo`.
+    fn query_identifier(&self, utxo: &Self::Utxo) -> Self::Identifier;
 }
 
 /// UTXO Minting
@@ -136,10 +148,10 @@ pub trait SpendSecret: AssetType + IdentifierType {
         R: CryptoRng + RngCore + ?Sized;
 }
 
-/// Queries Asset Value
+/// Query Asset Value
 pub trait QueryAsset: AssetType + UtxoType {
     /// Queries the underlying asset from `self` and `utxo`.
-    fn query_asset(&self, utxo: &Self::Utxo) -> &Self::Asset;
+    fn query_asset(&self, utxo: &Self::Utxo) -> Self::Asset;
 }
 
 /// UTXO Spending
