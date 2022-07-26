@@ -88,12 +88,14 @@ pub trait PhaseTwoConfiguration<const N: usize>: Sized {
         H: Hash<N> + Write;
 
     /// TODO
-    fn challenge(
+    fn challenge<H>(
         challenge: Self::Challenge,
         prev_state: State<Self::Pairing>,
         cur_state: State<Self::Pairing>,
         ratio_proof: RatioProof<Self::Pairing>,
-    ) -> Self::Challenge;
+    ) -> Self::Challenge
+    where
+        H: Hash<N> + Write;
 
     /// Samples a randomness from `rng`, contributes to `state`, and generates a
     /// ratio proof with `challenge`.
@@ -141,10 +143,10 @@ pub trait PhaseTwoConfiguration<const N: usize>: Sized {
             G2 = <Self::Pairing as Pairing>::G2,
             Scalar = <Self::Pairing as Pairing>::Scalar,
         >,
-        H: Hash<N> + Write + Clone,
-        <Self::Pairing as Pairing>::G1Prepared:
-            From<<<Self::Pairing as Pairing>::G1 as AffineCurve>::Projective>,
         H: Hash<N> + Write,
+        // <Self::Pairing as Pairing>::G1Prepared:
+        //     From<<<Self::Pairing as Pairing>::G1 as AffineCurve>::Projective>,
+        // H: Hash<N> + Write,
         <Self::Pairing as Pairing>::Scalar: Sample<D>,
         <Self::Pairing as Pairing>::G1: Sample<D>,
         <Self::Pairing as Pairing>::G2: Sample<D>,
@@ -156,7 +158,7 @@ pub trait PhaseTwoConfiguration<const N: usize>: Sized {
         state: State<Self::Pairing>,
         ratio_proof: RatioProof<Self::Pairing>,
         contributions: Contributions<Self::Pairing, N>,
-    );
+    ) -> Contributions<Self::Pairing, N>;
 }
 
 /// Groth16 Phase 2
@@ -316,13 +318,40 @@ where
         ))
     }
 
-    fn challenge(
+    fn challenge<H>(
         challenge: Self::Challenge,
         prev_state: State<Self::Pairing>,
         cur_state: State<Self::Pairing>,
         ratio_proof: RatioProof<Self::Pairing>,
-    ) -> Self::Challenge {
-        todo!()
+    ) -> Self::Challenge
+    where
+        H: Hash<N> + Write,
+    {
+        let mut hasher = H::new();
+        hasher.update(challenge);
+        prev_state
+            .pk
+            .serialize(&mut hasher)
+            .expect("Consuming `prev_state` failed.");
+        cur_state
+            .pk
+            .serialize(&mut hasher)
+            .expect("Consuming `cur_state` failed.");
+        ratio_proof
+            .ratio
+            .0
+            .serialize(&mut hasher)
+            .expect("Consuming ratio_proof failed");
+        ratio_proof
+            .ratio
+            .1
+            .serialize(&mut hasher)
+            .expect("Consuming ratio_proof failed");
+        ratio_proof
+            .matching_point
+            .serialize(&mut hasher)
+            .expect("Consuming ratio_proof failed");
+        hasher.finalize()
     }
 
     /// Sample `delta` from `rng` and generate a range proof for it.
@@ -409,7 +438,7 @@ where
         }
         Ok((
             cur_state.clone(),
-            Self::challenge(prev_challenge, prev_state, cur_state, ratio_proof),
+            Self::challenge::<H>(prev_challenge, prev_state, cur_state, ratio_proof),
         ))
     }
 
@@ -417,16 +446,17 @@ where
         state: State<Self::Pairing>,
         ratio_proof: RatioProof<Self::Pairing>,
         mut contributions: Contributions<Self::Pairing, N>,
-    ) {
+    ) -> Contributions<Self::Pairing, N> {
         contributions.states.push(state);
         contributions.proofs.push(ratio_proof);
+        contributions
     }
 
     fn verify_transform_all<B, C, D, H>(
         state: State<Self::Pairing>,
         contributions: Contributions<Self::Pairing, N>,
         constraint_system: B,
-        powers: Accumulator<C>,
+        accumulator: Accumulator<C>,
     ) -> Result<(), PhaseTwoError>
     where
         B: ConstraintSynthesizer<C::Scalar>,
@@ -436,9 +466,9 @@ where
             G2 = <Self::Pairing as Pairing>::G2,
             Scalar = <Self::Pairing as Pairing>::Scalar,
         >,
-        H: Hash<N> + Write + Clone,
-        <Self::Pairing as Pairing>::G1Prepared:
-            From<<<Self::Pairing as Pairing>::G1 as AffineCurve>::Projective>,
+        H: Hash<N> + Write,
+        // <Self::Pairing as Pairing>::G1Prepared:
+        //     From<<<Self::Pairing as Pairing>::G1 as AffineCurve>::Projective>,
         <Self::Pairing as Pairing>::Scalar: Sample<D>,
         <Self::Pairing as Pairing>::G1: Sample<D>,
         <Self::Pairing as Pairing>::G2: Sample<D>,
@@ -452,12 +482,10 @@ where
             "Langth of `proofs` and `states` does not match."
         );
         let (initial_state, initial_contribution) =
-            Self::initialize::<B, C, H>(constraint_system, powers)?;
+            Self::initialize::<B, C, H>(constraint_system, accumulator)?;
         check_phase_2_invariants(&state, &initial_state)?;
         if initial_contribution.cs_hash != contributions.cs_hash {
-            return Err(PhaseTwoError::Phase2InvariantViolated(
-                "Constraint system hash changed",
-            ));
+            return Err(PhaseTwoError::ConstraintSystemHashesDiffer);
         }
         let mut cumulative_hasher = H::new();
         cumulative_hasher.update(&contributions.cs_hash[..]);
@@ -473,25 +501,6 @@ where
         }
         Ok(())
     }
-}
-
-/// TODO
-pub fn hash_to_g2<P, H, const N: usize>(cs_hash: &[u8], ratio: (&P::G1, &P::G1)) -> P::G2
-where
-    H: Hash<N> + Write,
-    P: Pairing,
-{
-    let mut hasher = H::new();
-    hasher.update(cs_hash);
-    ratio
-        .0
-        .serialize_uncompressed(&mut hasher)
-        .expect("Blake2b Hasher never returns an error");
-    ratio
-        .1
-        .serialize_uncompressed(&mut hasher)
-        .expect("Blake2b Hasher never returns an error");
-    hash_to_group::<P::G2, _, N>(hasher.finalize())
 }
 
 /// Checks that the parameters which are not changed by Phase 2 contributions
@@ -623,8 +632,8 @@ pub fn specialize_to_phase_2<G1, G2>(
         );
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 /// TODO
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum PhaseTwoError {
     /// TODO
     TooManyConstraints,
@@ -634,8 +643,6 @@ pub enum PhaseTwoError {
     MissingCSMatrices,
     /// TODO
     ConstraintSystemHashesDiffer,
-    /// TODO
-    ProofTranscriptsDiffer,
     /// TODO
     SignatureInvalid,
     /// TODO
@@ -648,288 +655,275 @@ pub enum PhaseTwoError {
     Phase2InvariantViolated(&'static str),
 }
 
-// /// Testing Suite
-// #[cfg(test)]
-// mod test {
-//     extern crate std;
+/// Testing Suite
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::{
+        groth16::kzg::{Contribution, Size},
+        util::{into_array_unchecked, BlakeHasher, HasDistribution, PairingEngine, Read},
+    };
+    use ark_bls12_381::{Fr, FrParameters, G1Affine};
+    use ark_ff::{field_new, Fp256, ToBytes};
+    use ark_groth16::Groth16 as ArkGroth16;
+    use ark_r1cs_std::eq::EqGadget;
+    use ark_snark::SNARK;
+    use ark_std::io;
+    use blake2::{Blake2b, Digest};
+    use manta_crypto::{
+        constraint::Allocate,
+        eclair::alloc::mode::{Public, Secret},
+        rand::SeedableRng,
+    };
+    use manta_pay::crypto::constraint::arkworks::{Fp, FpVar, R1CS};
+    use rand_chacha::ChaCha20Rng;
 
-//     use super::*;
-//     use crate::{
-//         groth16::kzg::{Contribution, Size},
-//         util::{BlakeHasher, HasDistribution, PairingEngine, Read},
-//     };
-//     use ark_bls12_381::{Fr, G1Affine};
-//     use ark_ff::{field_new, Fp256, ToBytes};
-//     use ark_groth16::Groth16 as ArkGroth16;
-//     use ark_r1cs_std::eq::EqGadget;
-//     use ark_snark::SNARK;
-//     use ark_std::io;
-//     use blake2::{Blake2b, Digest};
-//     use manta_crypto::{
-//         constraint::Allocate,
-//         eclair::alloc::mode::{Public, Secret},
-//         rand::SeedableRng,
-//     };
-//     use manta_pay::crypto::constraint::arkworks::{Fp, FpVar, R1CS};
-//     use rand_chacha::ChaCha20Rng;
-//     use std::println;
+    /// Sapling MPC
+    #[derive(Clone, Default)]
+    pub struct Sapling;
 
-//     /// Sapling MPC
-//     #[derive(Clone, Default)]
-//     pub struct Sapling;
+    impl Size for Sapling {
+        const G1_POWERS: usize = (Self::G2_POWERS << 1) - 1;
+        const G2_POWERS: usize = 1 << 3;
+    }
 
-//     impl Size for Sapling {
-//         const G1_POWERS: usize = (Self::G2_POWERS << 1) - 1;
-//         const G2_POWERS: usize = 1 << 3;
-//     }
+    impl HasDistribution for Sapling {
+        type Distribution = ();
+    }
 
-//     impl HasDistribution for Sapling {
-//         // TODO
-//         type Distribution = ();
-//     }
+    impl Pairing for Sapling {
+        type Scalar = ark_bls12_381::Fr;
+        type G1 = ark_bls12_381::G1Affine;
+        type G1Prepared = <ark_bls12_381::Bls12_381 as PairingEngine>::G1Prepared;
+        type G2 = ark_bls12_381::G2Affine;
+        type G2Prepared = <ark_bls12_381::Bls12_381 as PairingEngine>::G2Prepared;
+        type Pairing = ark_bls12_381::Bls12_381;
 
-//     impl Pairing for Sapling {
-//         type Scalar = ark_bls12_381::Fr;
-//         type G1 = ark_bls12_381::G1Affine;
-//         type G1Prepared = <ark_bls12_381::Bls12_381 as PairingEngine>::G1Prepared;
-//         type G2 = ark_bls12_381::G2Affine;
-//         type G2Prepared = <ark_bls12_381::Bls12_381 as PairingEngine>::G2Prepared;
-//         type Pairing = ark_bls12_381::Bls12_381;
+        fn g1_prime_subgroup_generator() -> Self::G1 {
+            ark_bls12_381::G1Affine::prime_subgroup_generator()
+        }
 
-//         fn g1_prime_subgroup_generator() -> Self::G1 {
-//             ark_bls12_381::G1Affine::prime_subgroup_generator()
-//         }
+        fn g2_prime_subgroup_generator() -> Self::G2 {
+            ark_bls12_381::G2Affine::prime_subgroup_generator()
+        }
+    }
 
-//         fn g2_prime_subgroup_generator() -> Self::G2 {
-//             ark_bls12_381::G2Affine::prime_subgroup_generator()
-//         }
-//     }
+    impl Configuration for Sapling {
+        type DomainTag = u8;
+        type Challenge = [u8; 64];
+        type Response = [u8; 64];
+        const TAU_DOMAIN_TAG: Self::DomainTag = 0;
+        const ALPHA_DOMAIN_TAG: Self::DomainTag = 1;
+        const BETA_DOMAIN_TAG: Self::DomainTag = 2;
 
-//     impl Configuration for Sapling {
-//         type DomainTag = u8;
-//         type Challenge = [u8; 64];
-//         type Response = [u8; 64];
-//         const TAU_DOMAIN_TAG: Self::DomainTag = 0;
-//         const ALPHA_DOMAIN_TAG: Self::DomainTag = 1;
-//         const BETA_DOMAIN_TAG: Self::DomainTag = 2;
+        // TODO: Make this generic with Digest trait.
+        // TODO: Have another module outside this library in util.rs.
+        fn hash_to_g2(
+            domain_tag: Self::DomainTag,
+            challenge: &Self::Challenge,
+            ratio: (&Self::G1, &Self::G1),
+        ) -> Self::G2 {
+            // TODO: Use Hash trait.
+            let mut hasher = Blake2b::default();
+            hasher.update(&[domain_tag]);
+            hasher.update(&challenge);
+            serialize_g1_uncompressed(ratio.0, &mut hasher).unwrap();
+            serialize_g1_uncompressed(ratio.1, &mut hasher).unwrap();
+            let digest: [u8; 64] = into_array_unchecked(hasher.finalize());
 
-//         // TODO: Make this generic with Digest trait.
-//         // TODO: Have another module outside this library in util.rs.
-//         fn hash_to_g2(
-//             domain_tag: Self::DomainTag,
-//             challenge: &Self::Challenge,
-//             ratio: (&Self::G1, &Self::G1),
-//         ) -> Self::G2 {
-//             // TODO: Use Hash trait.
-//             let mut hasher = Blake2b::default();
-//             hasher.update(&[domain_tag]);
-//             hasher.update(&challenge);
-//             serialize_g1_uncompressed(ratio.0, &mut hasher).unwrap();
-//             serialize_g1_uncompressed(ratio.1, &mut hasher).unwrap();
-//             let digest: [u8; 64] = into_array_unchecked(hasher.finalize());
+            let mut digest = digest.as_slice();
+            let mut seed = Vec::with_capacity(8);
+            for _ in 0..8 {
+                // This forms the `seed` for ChaCha as the first 32 bytes of digest, reversed in chunks of 4 bytes
+                // That choice was made to preserve compatibility with ZCash's Sapling Phase 1
+                let mut word = [0u8; 4];
+                let _ = digest
+                    .read(&mut word[..])
+                    .expect("This is always possible since we have enough bytes to begin with.");
+                word[..].reverse();
+                seed.extend(word)
+            }
 
-//             let mut digest = digest.as_slice();
-//             let mut seed = Vec::with_capacity(8);
-//             for _ in 0..8 {
-//                 // This forms the `seed` for ChaCha as the first 32 bytes of digest, reversed in chunks of 4 bytes
-//                 // That choice was made to preserve compatibility with ZCash's Sapling Phase 1
-//                 let mut word = [0u8; 4];
-//                 let _ = digest
-//                     .read(&mut word[..])
-//                     .expect("This is always possible since we have enough bytes to begin with.");
-//                 word[..].reverse();
-//                 seed.extend(word)
-//             }
+            let mut rng_chacha =
+                <ChaCha20Rng as SeedableRng>::from_seed(into_array_unchecked(seed));
+            <Self::G2 as Sample<()>>::sample::<ChaCha20Rng>((), &mut rng_chacha)
+            // Self::G2::gen::<ChaCha20Rng>(&mut rng_chacha)
+            // hash_to_group::<Self::G2, SaplingDistribution, 64>(into_array_unchecked(hasher.finalize()))
+        }
 
-//             let mut rng_chacha =
-//                 <ChaCha20Rng as SeedableRng>::from_seed(into_array_unchecked(seed));
-//             <Self::G2 as Sample<()>>::sample::<ChaCha20Rng>((), &mut rng_chacha)
-//             // Self::G2::gen::<ChaCha20Rng>(&mut rng_chacha)
-//             // hash_to_group::<Self::G2, SaplingDistribution, 64>(into_array_unchecked(hasher.finalize()))
-//         }
+        fn response(
+            state: &Accumulator<Self>,
+            challenge: &Self::Challenge,
+            proof: &crate::groth16::kzg::Proof<Self>,
+        ) -> Self::Response {
+            // TODO: Use Hash trait.
+            // let _ = (state, challenge, proof);
+            let mut hasher = Blake2b::default();
+            for item in &state.tau_powers_g1 {
+                item.serialize_uncompressed(&mut hasher).unwrap();
+            }
+            for item in &state.tau_powers_g2 {
+                item.serialize_uncompressed(&mut hasher).unwrap();
+            }
+            for item in &state.alpha_tau_powers_g1 {
+                item.serialize_uncompressed(&mut hasher).unwrap();
+            }
+            for item in &state.beta_tau_powers_g1 {
+                item.serialize_uncompressed(&mut hasher).unwrap();
+            }
+            state.beta_g2.serialize_uncompressed(&mut hasher).unwrap();
+            hasher.update(&challenge);
+            proof
+                .tau
+                .ratio
+                .0
+                .serialize_uncompressed(&mut hasher)
+                .unwrap();
+            proof
+                .tau
+                .ratio
+                .1
+                .serialize_uncompressed(&mut hasher)
+                .unwrap();
+            proof
+                .tau
+                .matching_point
+                .serialize_uncompressed(&mut hasher)
+                .unwrap();
 
-//         fn response(
-//             state: &Accumulator<Self>,
-//             challenge: &Self::Challenge,
-//             proof: &crate::groth16::kzg::Proof<Self>,
-//         ) -> Self::Response {
-//             // TODO: Use Hash trait.
-//             // let _ = (state, challenge, proof);
-//             let mut hasher = Blake2b::default();
-//             for item in &state.tau_powers_g1 {
-//                 item.serialize_uncompressed(&mut hasher).unwrap();
-//             }
-//             for item in &state.tau_powers_g2 {
-//                 item.serialize_uncompressed(&mut hasher).unwrap();
-//             }
-//             for item in &state.alpha_tau_powers_g1 {
-//                 item.serialize_uncompressed(&mut hasher).unwrap();
-//             }
-//             for item in &state.beta_tau_powers_g1 {
-//                 item.serialize_uncompressed(&mut hasher).unwrap();
-//             }
-//             state.beta_g2.serialize_uncompressed(&mut hasher).unwrap();
-//             hasher.update(&challenge);
-//             proof
-//                 .tau
-//                 .ratio
-//                 .0
-//                 .serialize_uncompressed(&mut hasher)
-//                 .unwrap();
-//             proof
-//                 .tau
-//                 .ratio
-//                 .1
-//                 .serialize_uncompressed(&mut hasher)
-//                 .unwrap();
-//             proof
-//                 .tau
-//                 .matching_point
-//                 .serialize_uncompressed(&mut hasher)
-//                 .unwrap();
+            proof
+                .alpha
+                .ratio
+                .0
+                .serialize_uncompressed(&mut hasher)
+                .unwrap();
+            proof
+                .alpha
+                .ratio
+                .1
+                .serialize_uncompressed(&mut hasher)
+                .unwrap();
+            proof
+                .alpha
+                .matching_point
+                .serialize_uncompressed(&mut hasher)
+                .unwrap();
 
-//             proof
-//                 .alpha
-//                 .ratio
-//                 .0
-//                 .serialize_uncompressed(&mut hasher)
-//                 .unwrap();
-//             proof
-//                 .alpha
-//                 .ratio
-//                 .1
-//                 .serialize_uncompressed(&mut hasher)
-//                 .unwrap();
-//             proof
-//                 .alpha
-//                 .matching_point
-//                 .serialize_uncompressed(&mut hasher)
-//                 .unwrap();
+            proof
+                .beta
+                .ratio
+                .0
+                .serialize_uncompressed(&mut hasher)
+                .unwrap();
+            proof
+                .beta
+                .ratio
+                .1
+                .serialize_uncompressed(&mut hasher)
+                .unwrap();
+            proof
+                .beta
+                .matching_point
+                .serialize_uncompressed(&mut hasher)
+                .unwrap();
+            into_array_unchecked(hasher.finalize())
+        }
+    }
 
-//             proof
-//                 .beta
-//                 .ratio
-//                 .0
-//                 .serialize_uncompressed(&mut hasher)
-//                 .unwrap();
-//             proof
-//                 .beta
-//                 .ratio
-//                 .1
-//                 .serialize_uncompressed(&mut hasher)
-//                 .unwrap();
-//             proof
-//                 .beta
-//                 .matching_point
-//                 .serialize_uncompressed(&mut hasher)
-//                 .unwrap();
-//             into_array_unchecked(hasher.finalize())
-//         }
-//     }
+    /// TODO
+    pub fn serialize_g1_uncompressed<W>(point: &G1Affine, writer: &mut W) -> Result<(), io::Error>
+    where
+        W: Write,
+    {
+        let mut res = [0u8; 96];
+        if point.is_zero() {
+            res[95] |= 1 << 6;
+        } else {
+            let mut temp_writer = &mut res[..];
+            point.y.write(&mut temp_writer)?;
+            point.x.write(&mut temp_writer)?;
+        }
+        res.reverse();
+        writer.write_all(&res)?;
+        Ok(())
+    }
 
-//     /// TODO
-//     pub fn serialize_g1_uncompressed<W>(point: &G1Affine, writer: &mut W) -> Result<(), io::Error>
-//     where
-//         W: Write,
-//     {
-//         let mut res = [0u8; 96];
-//         if point.is_zero() {
-//             res[95] |= 1 << 6;
-//         } else {
-//             let mut temp_writer = &mut res[..];
-//             point.y.write(&mut temp_writer)?;
-//             point.x.write(&mut temp_writer)?;
-//         }
-//         res.reverse();
-//         writer.write_all(&res)?;
-//         Ok(())
-//     }
+    /// TODO
+    pub fn dummy_phase_one_trusted_setup() -> Accumulator<Sapling> {
+        let mut rng = OsRng;
+        let accumulator = Accumulator::<Sapling>::default();
+        let challenge = [0; 64];
+        let contribution: Contribution<Sapling> = Contribution::gen(&mut rng);
+        let proof = contribution.proof(&challenge, &mut rng).unwrap();
+        let mut next_accumulator = accumulator.clone();
+        next_accumulator.update(&contribution);
+        Accumulator::verify_transform(accumulator, next_accumulator, challenge, proof).unwrap()
+    }
 
-//     /// TODO
-//     #[test]
-//     pub fn test_create_raw_parameters() {
-//         // Read the final Accumulator from file
-//         let last_accumulator = Accumulator::<Sapling>::default();
+    /// TODO
+    pub fn dummy_circuit(cs: &mut R1CS<Fp256<FrParameters>>) {
+        let a = Fp(field_new!(Fr, "2")).as_known::<Secret, FpVar<_>>(cs);
+        let b = Fp(field_new!(Fr, "3")).as_known::<Secret, FpVar<_>>(cs);
+        let c = &a * &b;
+        let d = Fp(field_new!(Fr, "6")).as_known::<Public, FpVar<_>>(cs);
+        c.enforce_equal(&d)
+            .expect("enforce_equal is not allowed to fail");
+    }
 
-//         // Step2: Contribute to accumulator with Phase 1
-//         // Also verify contribution
-//         let mut rng = OsRng;
-//         let challenge = [0; 64];
-//         println!("Generating a contribution...");
-//         let contribution: Contribution<Sapling> = Contribution::gen(&mut rng);
-//         println!("Generating a proof of contribution...");
-//         let proof = contribution.proof(&challenge, &mut rng).unwrap();
-//         let mut next_accumulator = last_accumulator.clone();
-//         println!("Updating accumulator...");
-//         next_accumulator.update(&contribution);
+    /// TODO
+    pub fn prove_and_verify_circuit<P, R>(pk: ProvingKey<P>, rng: &mut R)
+    where
+        P: PairingEngine<Fr = Fp256<ark_bls12_381::FrParameters>>,
+        R: Rng + CryptoRng,
+    {
+        let mut cs = R1CS::for_proofs();
+        dummy_circuit(&mut cs);
+        let proof = ArkGroth16::prove(&pk, cs, rng).unwrap();
+        assert_eq!(
+            ArkGroth16::verify(&pk.vk, &[field_new!(Fr, "6")], &proof).unwrap(),
+            true
+        );
+    }
 
-//         // TODO: Need a function for next challenge.
-//         let next_accumulator =
-//             Accumulator::verify_transform(last_accumulator, next_accumulator, challenge, proof)
-//                 .unwrap();
-
-//         // Step3: Phase2 initialize
-//         // 1) Find domain size 2) FFT to find Lagrange Polynomial 3) Get co-efficient from the circuit; 4) generate proving key from coefficient
-//         // let mut rng = ChaCha20Rng::from_seed([0; 32]);
-//         let mut rng = OsRng;
-//         // let utxo_accumulator = UtxoAccumulator::new(manta_crypto::rand::Rand::gen(&mut rng));
-//         // let parameters = manta_crypto::rand::Rand::gen(&mut rng);
-//         let mut cs = R1CS::for_contexts();
-//         {
-//             let a = Fp(field_new!(Fr, "2")).as_known::<Secret, FpVar<_>>(&mut cs);
-//             let b = Fp(field_new!(Fr, "3")).as_known::<Secret, FpVar<_>>(&mut cs);
-//             let c = &a * &b;
-//             let d = Fp(field_new!(Fr, "6")).as_known::<Public, FpVar<_>>(&mut cs);
-//             c.enforce_equal(&d)
-//                 .expect("enforce_equal is not allowed to fail");
-//         }
-
-//         let (mut state, mut contributions) = Phase2::<Sapling, 64>::initialize::<
-//             R1CS<Fp256<ark_bls12_381::FrParameters>>,
-//             Sapling,
-//             BlakeHasher<64>,
-//         >(cs, next_accumulator)
-//         .unwrap();
-
-//         let last_state = state.clone();
-
-//         // Step4: Contribute to Phase 2 params
-//         let _ = Phase2::<Sapling, 64>::contribute::<(), _, BlakeHasher<64>>(
-//             &mut state,
-//             &mut contributions,
-//             &mut rng,
-//         );
-
-//         // // Step5: Verify contribution
-//         let state = Phase2::<Sapling, 64>::verify_transform::<BlakeHasher<64>, ()>(
-//             last_state,
-//             state,
-//             &Contributions {
-//                 cs_hash: contributions.cs_hash,
-//                 contributions: Vec::new(),
-//             },
-//             &contributions.contributions[0],
-//         )
-//         .expect("verify transform failed");
-
-//         // Phase 3: Generate Proof from random circuits & verify proof
-//         // TODO
-
-//         let mut cs = R1CS::for_proofs();
-//         {
-//             let a = Fp(field_new!(Fr, "2")).as_known::<Secret, FpVar<_>>(&mut cs);
-//             let b = Fp(field_new!(Fr, "3")).as_known::<Secret, FpVar<_>>(&mut cs);
-//             let c = &a * &b;
-//             let d = Fp(field_new!(Fr, "6")).as_known::<Public, FpVar<_>>(&mut cs);
-//             c.enforce_equal(&d)
-//                 .expect("enforce_equal is not allowed to fail");
-//         }
-
-//         let proof = ArkGroth16::prove(&state.pk, cs, &mut rng).unwrap();
-
-//         assert_eq!(
-//             ArkGroth16::verify(&state.pk.vk, &[field_new!(Fr, "6")], &proof).unwrap(),
-//             true
-//         );
-//     }
-// }
+    /// TODO
+    #[test]
+    pub fn trusted_setup_phase_two_is_valid() {
+        let mut rng = OsRng;
+        let mut cs = R1CS::for_contexts();
+        dummy_circuit(&mut cs);
+        let accumulator = dummy_phase_one_trusted_setup();
+        let (mut state, mut contributions) = Phase2::<Sapling, 64>::initialize::<
+            R1CS<Fp256<ark_bls12_381::FrParameters>>,
+            Sapling,
+            BlakeHasher<64>,
+        >(cs, accumulator.clone())
+        .unwrap();
+        let (mut prev_state, mut ratio_proof);
+        let mut challenge = contributions.cs_hash;
+        for _ in 0..5 {
+            prev_state = state.clone();
+            (state, ratio_proof) = Phase2::<Sapling, 64>::contribute::<_, (), BlakeHasher<64>>(
+                &mut state, challenge, &mut rng,
+            );
+            (state, challenge) = Phase2::<Sapling, 64>::verify_transform::<BlakeHasher<64>, ()>(
+                challenge,
+                prev_state,
+                state,
+                ratio_proof.clone(),
+            )
+            .expect("verify transform failed");
+            contributions =
+                Phase2::<Sapling, 64>::update(state.clone(), ratio_proof.clone(), contributions);
+        }
+        let mut cs = R1CS::for_contexts();
+        dummy_circuit(&mut cs);
+        Phase2::<Sapling, 64>::verify_transform_all::<_, _, (), BlakeHasher<64>>(
+            state.clone(),
+            contributions,
+            cs,
+            accumulator,
+        )
+        .expect("Verify transform all failed.");
+        prove_and_verify_circuit(state.pk, &mut rng);
+    }
+}
