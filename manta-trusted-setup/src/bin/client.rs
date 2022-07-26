@@ -20,6 +20,4 @@
 // use manta_trusted_setup::ceremony::queue::*;
 // use manta_trusted_setup::ceremony::CeremonyError;
 
-
-
 fn main() {}

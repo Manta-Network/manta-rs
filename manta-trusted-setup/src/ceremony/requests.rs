@@ -15,11 +15,14 @@
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 //! Registry for the ceremony.
 
-use crate::ceremony::queue::Priority;
-use crate::mpc::Types;
 use crate::{
-    ceremony::{queue::Identifier, signature, signature::SignatureScheme},
+    ceremony::{
+        queue::{Identifier, Priority},
+        signature,
+        signature::SignatureScheme,
+    },
     mpc,
+    mpc::Types,
 };
 use core::{fmt::Debug, marker::PhantomData};
 use serde::{Deserialize, Serialize};
@@ -38,7 +41,7 @@ where
 ///
 pub struct JoinQueueRequest<P, S>
 where
-    P: Identifier,
+    P: Identifier + Priority + signature::HasPublicKey<PublicKey = S::PublicKey>,
     S: SignatureScheme,
 {
     participant: P,
@@ -47,13 +50,16 @@ where
 
 #[derive(Debug, Deserialize, Serialize)]
 ///
-pub struct GetMpcRequest<S, V>
+pub struct GetMpcRequest<P, S, V>
 where
+    P: Identifier + signature::HasPublicKey<PublicKey = S::PublicKey>,
     S: SignatureScheme,
     V: mpc::Verify,
     V::State: signature::Verify<S>,
     V::Proof: signature::Verify<S>,
 {
+    ///
+    pub participant: P,
     sig: S::Signature,
     __: PhantomData<V>,
 }
@@ -72,11 +78,27 @@ where
     ___: PhantomData<S>,
 }
 
+impl<S, V> Default for GetMpcResponse<S, V>
+where
+    S: SignatureScheme,
+    V: mpc::Verify,
+    V::State: signature::Verify<S>,
+    V::Proof: signature::Verify<S>,
+{
+    fn default() -> Self {
+        Self {
+            __: PhantomData,
+            ___: PhantomData,
+        }
+    }
+}
+
 #[derive(Debug)] //, Deserialize, Serialize)]
 ///
-pub enum MpcResponse<V> 
-where 
-    V: mpc::Verify, {
+pub enum MpcResponse<V>
+where
+    V: mpc::Verify,
+{
     ///
     QueuePosition,
     ///
@@ -85,14 +107,20 @@ where
 
 #[derive(Debug, Deserialize, Serialize)]
 ///
-pub struct ContributeRequest<S, V>
+pub struct ContributeRequest<P, S, V>
 where
+    P: Identifier + signature::HasPublicKey<PublicKey = S::PublicKey>,
     S: SignatureScheme,
     V: mpc::Verify,
     V::State: signature::Verify<S>,
     V::Proof: signature::Verify<S>,
 {
-    state: V::State,
-    proof: V::Proof,
-    sig: S::Signature,
+    ///
+    pub participant: P,
+    ///
+    pub transformed_state: V::State,
+    ///
+    pub proof: V::Proof,
+    ///
+    pub sig: S::Signature,
 }

@@ -80,6 +80,11 @@ where
         (&self.state, &self.challenge)
     }
 
+    /// Check if participant is next.
+    pub fn is_next(&self, participant: &P) -> bool {
+        self.queue.is_front(participant)
+    }
+
     /// Update the MPC state and challenge using client's contribution.
     /// If the contribution is valid, the participant will be removed from the waiting queue, and cannot
     /// participate in this ceremony again.

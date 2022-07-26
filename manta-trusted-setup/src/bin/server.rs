@@ -15,8 +15,7 @@
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 //! Waiting queue for the ceremony.
 
-use core::future::Future;
-use manta_trusted_setup::ceremony::CeremonyError;
+use core::{future::Future, marker::PhantomData};
 use manta_trusted_setup::{
     ceremony::{
         coordinator::*,
@@ -25,6 +24,7 @@ use manta_trusted_setup::{
         requests::*,
         signature,
         signature::{ed_dalek_signatures::*, SignatureScheme},
+        CeremonyError,
     },
     mpc,
 };
@@ -54,7 +54,7 @@ where
     P: Priority + Identifier + signature::HasPublicKey<PublicKey = S::PublicKey>,
     S: SignatureScheme,
     M: Map<Key = P::Identifier, Value = P>,
-    V::State: signature::Verify<S>,
+    V::State: Default + signature::Verify<S>,
     V::Proof: signature::Verify<S>,
 {
     /// Registers then queues a participant // TODO The registration is by hand, so queueing should be split from it
@@ -64,11 +64,42 @@ where
         state.register(request.participant).map_err(Error::from)
     }
 
+    /// Adds a participant to the queue if they are registered. Todo: join queue should return position
+    #[inline]
+    async fn join_queue(self, request: JoinQueueRequest<P, S>) -> Result<usize> {
+        let mut state = self.0.lock();
+        todo!()
+    }
+
     /// Gives current MPC state and challenge if participant is at front of queue.
     #[inline]
-    async fn get_state_and_challenge(self, request: GetMpcRequest<S, V>) -> Result<GetMpcResponse<S, V>> {
+    async fn get_state_and_challenge(
+        self,
+        request: GetMpcRequest<P, S, V>,
+    ) -> Result<GetMpcResponse<S, V>> {
+        let state = self.0.lock();
 
-        todo!()
+        if state.is_next(&request.participant) {
+            println!("Served state to next participant");
+            Ok(GetMpcResponse::default()) // this is the variant with the state
+        } else {
+            println!("Told participant to wait their turn.");
+            Ok(GetMpcResponse::default()) // this is the variant with queue position
+        }
+    }
+
+    /// Processes a request to update the MPC state. If successful then participant is removed from queue.
+    #[inline]
+    async fn update(self, request: ContributeRequest<P, S, V>) -> Result<()> {
+        let mut state = self.0.lock();
+        state
+            .update(
+                &request.participant.identifier(),
+                request.transformed_state,
+                request.proof,
+                &request.sig,
+            )
+            .map_err(Error::from)
     }
 
     // /// Executes `f` on the incoming `request`.

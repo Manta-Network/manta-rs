@@ -15,12 +15,11 @@
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 //! Waiting queue for the ceremony.
 
-use crate::ceremony::signature::{HasPublicKey};
 use crate::{
     ceremony::{
         coordinator::Coordinator,
         queue::{Identifier, Priority},
-        signature::{self,Sign, ed_dalek_signatures},
+        signature::{self, ed_dalek_signatures, HasPublicKey, Sign},
     },
     mpc::{Contribute, Types, Verify},
 };
@@ -32,9 +31,8 @@ use ark_sapling_mpc_verify::{
 };
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use core::marker::PhantomData;
-use std::fs::OpenOptions;
 use manta_crypto::rand::OsRng;
-use std::collections::HashMap;
+use std::{collections::HashMap, fs::OpenOptions};
 
 /// The MPC
 pub struct BlsPhase2Ceremony<E>
@@ -173,7 +171,7 @@ type SaplingBls12Coordinator =
 fn construct_coordinator_test() {
     let mpc_verifier = SaplingBls12Ceremony { __: PhantomData };
     let state = default_reclaim_mpc();
-    
+
     let _coordinator = SaplingBls12Coordinator::new(mpc_verifier, state, ());
 }
 
@@ -189,7 +187,7 @@ pub fn default_reclaim_mpc() -> phase_two::MPCParameters<<Sapling as Configurati
 
 #[test]
 fn verify_signature_test() {
-    use ed_dalek_signatures::{Message, test_keypair};
+    use ed_dalek_signatures::{test_keypair, Message};
 
     let state = default_reclaim_mpc();
 
