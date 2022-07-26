@@ -41,9 +41,8 @@ pub trait Map: Default {
 }
 
 #[derive(derivative::Derivative)]
-#[derivative(
-    Clone(bound = "M: Clone")
-)]/// Registry for the ceremony.
+#[derivative(Clone(bound = "M: Clone"))]
+/// Registry for the ceremony.
 pub struct Registry<M>
 where
     M: Map,

@@ -28,9 +28,9 @@ use crate::{
 use core::marker::PhantomData;
 
 #[derive(derivative::Derivative)]
-#[derivative(
-    Clone(bound = "P::Identifier: Clone, V::State: Clone, V::Challenge: Clone, M: Clone, V: Clone")
-)]
+#[derivative(Clone(
+    bound = "P::Identifier: Clone, V::State: Clone, V::Challenge: Clone, M: Clone, V: Clone"
+))]
 /// Coordinator with `V` as trusted setup verifier, `P` as participant, `M` as the map used by registry, `N` as the number of priority levels.
 pub struct Coordinator<V, P, M, S, const N: usize>
 where

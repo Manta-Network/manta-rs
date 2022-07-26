@@ -127,6 +127,12 @@ pub mod ed_dalek_signatures {
     /// The signable messages
     pub struct Message<'a>(&'a [u8]);
 
+    impl<'a> From<&'a [u8]> for Message<'a> {
+        fn from(s: &'a [u8]) -> Self {
+            Self(s)
+        }
+    }
+
     impl<'a> Sign<Ed25519> for Message<'a> {
         fn sign(
             &self,
