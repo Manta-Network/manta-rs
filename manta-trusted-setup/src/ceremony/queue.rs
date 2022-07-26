@@ -43,6 +43,10 @@ pub trait Identifier {
     }
 }
 
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "T::Identifier: Clone")
+)]
 /// First-in first-out queue of type `T::Identifier` with priority levels in range `0..N`.
 /// Participants with higher priority are served first.
 ///

@@ -40,7 +40,10 @@ pub trait Map: Default {
     fn get(&self, key: &Self::Key) -> Option<&Self::Value>;
 }
 
-/// Registry for the ceremony.
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "M: Clone")
+)]/// Registry for the ceremony.
 pub struct Registry<M>
 where
     M: Map,
