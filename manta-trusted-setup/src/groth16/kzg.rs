@@ -18,8 +18,8 @@
 
 use crate::util::{
     power_pairs, scalar_mul, AffineCurve, CanonicalDeserialize, CanonicalSerialize, Deserializer,
-    NonZero, One, Pairing, PairingEngineExt, ProjectiveCurve, Read, Sample, SerializationError,
-    Serializer, UniformRand, Write, Zero, HashToGroup,
+    HashToGroup, NonZero, One, Pairing, PairingEngineExt, ProjectiveCurve, Read, Sample,
+    SerializationError, Serializer, UniformRand, Write, Zero,
 };
 use alloc::{vec, vec::Vec};
 use core::{iter, ops::Mul};
@@ -56,13 +56,13 @@ pub trait Configuration: Pairing + Size {
     /// Hash To Group Type
     type HashToGroup: HashToGroup<Self, ()>;
 
-    /// Tau Domain Tag for [`hash_to_g2`](Self::hash_to_g2)
+    /// Tau Domain Tag Type
     const TAU_DOMAIN_TAG: Self::DomainTag;
 
-    /// Alpha Domain Tag for [`hash_to_g2`](Self::hash_to_g2)
+    /// Alpha Domain Tag Type
     const ALPHA_DOMAIN_TAG: Self::DomainTag;
 
-    /// Beta Domain Tag for [`hash_to_g2`](Self::hash_to_g2)
+    /// Beta Domain Tag Type
     const BETA_DOMAIN_TAG: Self::DomainTag;
 
     /// Generates a [`hasher`](Self::HashToGroup) guided by [`domain_tag`](Self::DomainTag).

@@ -37,7 +37,7 @@ use manta_crypto::rand::OsRng;
 use manta_util::{cfg_into_iter, cfg_reduce};
 
 #[cfg(feature = "rayon")]
-use rayon::iter::{IndexedParallelIterator, ParallelIterator};
+use rayon::iter::IndexedParallelIterator;
 
 /// State
 #[derive(Clone)]

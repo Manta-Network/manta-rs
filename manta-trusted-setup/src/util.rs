@@ -481,27 +481,21 @@ where
 /// Phase One Hash To Group Struct
 pub struct PhaseOneHashToGroup<C, const N: usize>
 where
-    // C: Configuration + ?Sized,
-    C: Configuration<Challenge = [u8; N]> + ?Sized,
+    C: Configuration + ?Sized,
 {
     /// Domain Tag Type
     pub domain_tag: C::DomainTag,
 }
 
-impl<C, D, const N: usize> HashToGroup<C, D> for PhaseOneHashToGroup<C, N> 
+impl<C, D, const N: usize> HashToGroup<C, D> for PhaseOneHashToGroup<C, N>
 where
-    // C: Configuration + ?Sized,
-    C: Configuration<Challenge = [u8; N]> + ?Sized,
-    [C::DomainTag; 1]: AsRef<[u8]>,
-    C::DomainTag: Clone,
+    C: Configuration<Challenge = [u8; N], DomainTag = u8> + ?Sized,
     C::G2: Sample<D>,
-    C::Challenge: AsRef<[u8]>,
     D: Default,
 {
-    fn hash(&self, challenge: &C::Challenge, ratio: (&C::G1, &C::G1)) -> C::G2 
-    {
+    fn hash(&self, challenge: &C::Challenge, ratio: (&C::G1, &C::G1)) -> C::G2 {
         let mut hasher = BlakeHasher::new();
-        hasher.update(&[self.domain_tag.clone()]);
+        hasher.update(&[self.domain_tag]);
         hasher.update(challenge);
         ratio.0.serialize(&mut hasher).unwrap();
         ratio.1.serialize(&mut hasher).unwrap();
@@ -509,7 +503,7 @@ where
     }
 }
 
-impl<C, D, const N: usize> HashToGroup<C, D> for BlakeHasher<N> 
+impl<C, D, const N: usize> HashToGroup<C, D> for BlakeHasher<N>
 where
     C: Configuration<Challenge = [u8; N]> + ?Sized,
     C::G2: Sample<D>,
