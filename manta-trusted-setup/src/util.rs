@@ -36,6 +36,8 @@ pub use ark_serialize::{
     CanonicalDeserialize, CanonicalSerialize, Read, SerializationError, Write,
 };
 
+use crate::groth16::kzg::Configuration;
+
 /// Distribution Type Extension
 pub trait HasDistribution {
     /// Distribution Type
@@ -464,6 +466,61 @@ impl<const N: usize> Write for BlakeHasher<N> {
     #[inline]
     fn flush(&mut self) -> io::Result<()> {
         Ok(())
+    }
+}
+
+/// Hash to Group Trait for Ratio Proof
+pub trait HashToGroup<C, D>
+where
+    C: Configuration + ?Sized,
+{
+    /// Hashes `challenge` and `ratio` into a group point.
+    fn hash(&self, challenge: &C::Challenge, ratio: (&C::G1, &C::G1)) -> C::G2;
+}
+
+/// Phase One Hash To Group Struct
+pub struct PhaseOneHashToGroup<C, const N: usize>
+where
+    // C: Configuration + ?Sized,
+    C: Configuration<Challenge = [u8; N]> + ?Sized,
+{
+    /// Domain Tag Type
+    pub domain_tag: C::DomainTag,
+}
+
+impl<C, D, const N: usize> HashToGroup<C, D> for PhaseOneHashToGroup<C, N> 
+where
+    // C: Configuration + ?Sized,
+    C: Configuration<Challenge = [u8; N]> + ?Sized,
+    [C::DomainTag; 1]: AsRef<[u8]>,
+    C::DomainTag: Clone,
+    C::G2: Sample<D>,
+    C::Challenge: AsRef<[u8]>,
+    D: Default,
+{
+    fn hash(&self, challenge: &C::Challenge, ratio: (&C::G1, &C::G1)) -> C::G2 
+    {
+        let mut hasher = BlakeHasher::new();
+        hasher.update(&[self.domain_tag.clone()]);
+        hasher.update(challenge);
+        ratio.0.serialize(&mut hasher).unwrap();
+        ratio.1.serialize(&mut hasher).unwrap();
+        hash_to_group::<C::G2, D, 64>(into_array_unchecked(hasher.finalize()))
+    }
+}
+
+impl<C, D, const N: usize> HashToGroup<C, D> for BlakeHasher<N> 
+where
+    C: Configuration<Challenge = [u8; N]> + ?Sized,
+    C::G2: Sample<D>,
+    D: Default,
+{
+    fn hash(&self, challenge: &C::Challenge, ratio: (&<C>::G1, &<C>::G1)) -> <C>::G2 {
+        let mut hasher = BlakeHasher::new();
+        hasher.update(challenge);
+        ratio.0.serialize(&mut hasher).unwrap();
+        ratio.1.serialize(&mut hasher).unwrap();
+        hash_to_group::<C::G2, D, 64>(into_array_unchecked(hasher.finalize()))
     }
 }
 

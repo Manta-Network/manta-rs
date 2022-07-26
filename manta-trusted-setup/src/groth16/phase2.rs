@@ -19,9 +19,9 @@
 use crate::{
     groth16::kzg::{Accumulator, Configuration, RatioProof},
     util::{
-        batch_into_projective, batch_mul_fixed_scalar, hash_to_group, AffineCurve,
-        CanonicalSerialize, Field, Hash, Pairing, PairingEngineExt, PrimeField, ProjectiveCurve,
-        Sample, Write, Zero,
+        batch_into_projective, batch_mul_fixed_scalar, AffineCurve, BlakeHasher,
+        CanonicalSerialize, Field, Hash, HashToGroup, Pairing, PairingEngineExt, PrimeField,
+        ProjectiveCurve, Sample, Write, Zero,
     },
 };
 use alloc::{vec, vec::Vec};
@@ -65,128 +65,106 @@ where
 }
 
 /// Trusted Setup Phase2 Configuuration
-pub trait PhaseTwoConfiguration<const N: usize>: Sized {
+pub trait PhaseTwoConfiguration<C, const N: usize>: Sized
+where
+    C: Configuration,
+{
     /// Challenge Type
     type Challenge;
 
-    /// Pairing Type
-    type Pairing: Pairing;
+    /// Hasher Type
+    type Hasher: Hash<N> + Write;
 
     /// Initializes state and contributions for phase2 trusted setup.
-    fn initialize<B, C, H>(
+    fn initialize<B>(
         cs: B,
         powers: Accumulator<C>,
-    ) -> Result<(State<Self::Pairing>, Contributions<Self::Pairing, N>), PhaseTwoError>
+    ) -> Result<(State<C>, Contributions<C, N>), PhaseTwoError>
     where
-        B: ConstraintSynthesizer<C::Scalar>,
-        C: Configuration<
-            Pairing = <Self::Pairing as Pairing>::Pairing,
-            G1 = <Self::Pairing as Pairing>::G1,
-            G2 = <Self::Pairing as Pairing>::G2,
-            Scalar = <Self::Pairing as Pairing>::Scalar,
-        >,
-        H: Hash<N> + Write;
+        B: ConstraintSynthesizer<C::Scalar>;
 
     /// Generates a challenge based on previous `challenge`, previous state
     /// `prev_state`, current state `cur_state`, and `ratio_proof`.
-    fn challenge<H>(
+    fn challenge(
         challenge: Self::Challenge,
-        prev_state: State<Self::Pairing>,
-        cur_state: State<Self::Pairing>,
-        ratio_proof: RatioProof<Self::Pairing>,
-    ) -> Self::Challenge
-    where
-        H: Hash<N> + Write;
+        prev_state: State<C>,
+        cur_state: State<C>,
+        ratio_proof: RatioProof<C>,
+    ) -> Self::Challenge;
 
     /// Samples a randomness from `rng`, contributes to `state`, and generates a
     /// ratio proof with `challenge`.
-    fn contribute<R, D, H>(
-        state: &mut State<Self::Pairing>,
+    fn contribute<R, D>(
+        state: &mut State<C>,
         challenge: Self::Challenge,
         rng: &mut R,
-    ) -> (State<Self::Pairing>, RatioProof<Self::Pairing>)
+    ) -> (State<C>, RatioProof<C>)
     where
         D: Default,
         R: Rng + CryptoRng,
-        <Self::Pairing as Pairing>::Scalar: Sample<D>,
-        <Self::Pairing as Pairing>::G1: Sample<D>,
-        <Self::Pairing as Pairing>::G2: Sample<D>,
-        H: Hash<N> + Write;
+        C::Scalar: Sample<D>,
+        C::G1: Sample<D>,
+        C::G2: Sample<D>;
 
     /// Verifies if transformation from `prev_state` to `cur_state` is valid
     /// given the `ratio_proof` and `prev_challenge`.
-    fn verify_transform<H, D>(
+    fn verify_transform<D>(
         prev_challenge: Self::Challenge,
-        prev_state: State<Self::Pairing>,
-        cur_state: State<Self::Pairing>,
-        ratio_proof: RatioProof<Self::Pairing>,
-    ) -> Result<(State<Self::Pairing>, Self::Challenge), PhaseTwoError>
+        prev_state: State<C>,
+        cur_state: State<C>,
+        ratio_proof: RatioProof<C>,
+    ) -> Result<(State<C>, Self::Challenge), PhaseTwoError>
     where
         D: Default,
-        H: Hash<N> + Write,
-        <Self::Pairing as Pairing>::Scalar: Sample<D>,
-        <Self::Pairing as Pairing>::G1: Sample<D>,
-        <Self::Pairing as Pairing>::G2: Sample<D>,
-        State<Self::Pairing>: Clone;
+        C::Scalar: Sample<D>,
+        C::G1: Sample<D>,
+        C::G2: Sample<D>,
+        State<C>: Clone;
 
     /// Verifies if `state` and all received `contributions` are valid given
     /// `constraint_system` and `accumulator` from trusted setup phase 1.
-    fn verify_transform_all<B, C, D, H>(
-        state: State<Self::Pairing>,
-        contributions: Contributions<Self::Pairing, N>,
+    fn verify_transform_all<B, D>(
+        state: State<C>,
+        contributions: Contributions<C, N>,
         constraint_system: B,
         accumulator: Accumulator<C>,
     ) -> Result<(), PhaseTwoError>
     where
         B: ConstraintSynthesizer<C::Scalar>,
-        C: Configuration<
-            Pairing = <Self::Pairing as Pairing>::Pairing,
-            G1 = <Self::Pairing as Pairing>::G1,
-            G2 = <Self::Pairing as Pairing>::G2,
-            Scalar = <Self::Pairing as Pairing>::Scalar,
-        >,
-        H: Hash<N> + Write,
-        <Self::Pairing as Pairing>::Scalar: Sample<D>,
-        <Self::Pairing as Pairing>::G1: Sample<D>,
-        <Self::Pairing as Pairing>::G2: Sample<D>,
-        State<Self::Pairing>: Clone,
+        C::Scalar: Sample<D>,
+        C::G1: Sample<D>,
+        C::G2: Sample<D>,
+        State<C>: Clone,
         D: Default;
 
     /// Updates `contributions` with `state` and `ratio_proof`.
     fn update(
-        state: State<Self::Pairing>,
-        ratio_proof: RatioProof<Self::Pairing>,
-        contributions: Contributions<Self::Pairing, N>,
-    ) -> Contributions<Self::Pairing, N>;
+        state: State<C>,
+        ratio_proof: RatioProof<C>,
+        contributions: Contributions<C, N>,
+    ) -> Contributions<C, N>;
 }
 
 /// Groth16 Phase 2
-pub struct Phase2<P, const N: usize> {
-    __: PhantomData<P>,
+pub struct Phase2<C, const N: usize> {
+    __: PhantomData<C>,
 }
 
-impl<P, const N: usize> PhaseTwoConfiguration<N> for Phase2<P, N>
+impl<C, const N: usize> PhaseTwoConfiguration<C, N> for Phase2<C, N>
 where
-    P: Pairing,
+    Self: Sized,
+    C: Configuration<Challenge = [u8; N]>,
 {
     type Challenge = [u8; N];
-
-    type Pairing = P;
+    type Hasher = BlakeHasher<N>;
 
     #[inline]
-    fn initialize<B, C, H>(
+    fn initialize<B>(
         cs: B,
         powers: Accumulator<C>,
-    ) -> Result<(State<P>, Contributions<P, N>), PhaseTwoError>
+    ) -> Result<(State<C>, Contributions<C, N>), PhaseTwoError>
     where
         B: ConstraintSynthesizer<C::Scalar>,
-        C: Configuration<
-            Pairing = <Self::Pairing as Pairing>::Pairing,
-            G1 = <Self::Pairing as Pairing>::G1,
-            G2 = <Self::Pairing as Pairing>::G2,
-            Scalar = <Self::Pairing as Pairing>::Scalar,
-        >,
-        H: Hash<N> + Write,
     {
         let constraints = ConstraintSystem::new_ref();
         cs.generate_constraints(constraints.clone())
@@ -210,7 +188,6 @@ where
         for i in 0..degree {
             let tmp = powers.tau_powers_g1[i + degree].into_projective();
             let tmp2 = powers.tau_powers_g1[i].into_projective();
-
             h_query.push((tmp - tmp2).into_affine());
         }
         let tau_lagrange_g1 = domain.ifft(&batch_into_projective(&powers.tau_powers_g1));
@@ -269,7 +246,7 @@ where
             h_query,
             l_query: private_cross_terms,
         };
-        let mut hasher = H::new();
+        let mut hasher = Self::Hasher::new();
         pk.serialize(&mut hasher)
             .expect("Hasher is not allowed to fail");
         Ok((
@@ -283,16 +260,13 @@ where
     }
 
     #[inline]
-    fn challenge<H>(
+    fn challenge(
         challenge: Self::Challenge,
-        prev_state: State<Self::Pairing>,
-        cur_state: State<Self::Pairing>,
-        ratio_proof: RatioProof<Self::Pairing>,
-    ) -> Self::Challenge
-    where
-        H: Hash<N> + Write,
-    {
-        let mut hasher = H::new();
+        prev_state: State<C>,
+        cur_state: State<C>,
+        ratio_proof: RatioProof<C>,
+    ) -> Self::Challenge {
+        let mut hasher = Self::Hasher::new();
         hasher.update(challenge);
         prev_state
             .pk
@@ -320,126 +294,126 @@ where
     }
 
     #[inline]
-    fn contribute<R, D, H>(
-        state: &mut State<Self::Pairing>,
+    fn contribute<R, D>(
+        state: &mut State<C>,
         challenge: Self::Challenge,
         rng: &mut R,
-    ) -> (State<Self::Pairing>, RatioProof<Self::Pairing>)
+    ) -> (State<C>, RatioProof<C>)
     where
         D: Default,
         R: Rng + CryptoRng,
-        <Self::Pairing as Pairing>::Scalar: Sample<D>,
-        <Self::Pairing as Pairing>::G1: Sample<D>,
-        <Self::Pairing as Pairing>::G2: Sample<D>,
-        H: Hash<N> + Write,
+        C::Scalar: Sample<D>,
+        C::G1: Sample<D>,
+        C::G2: Sample<D>,
     {
-        let delta = P::Scalar::gen(rng);
+        let delta = C::Scalar::gen(rng);
         let delta_inv = delta.inverse().expect("nonzero");
-        let g = P::G1::gen(rng);
+        let g = C::G1::gen(rng);
         batch_mul_fixed_scalar(&mut state.pk.l_query, delta_inv);
         batch_mul_fixed_scalar(&mut state.pk.h_query, delta_inv);
         state.pk.delta_g1 = state.pk.delta_g1.mul(delta).into_affine();
         state.pk.vk.delta_g2 = state.pk.vk.delta_g2.mul(delta).into_affine();
+        let ratio = (g, g.mul(delta).into_affine());
         (
             State {
                 pk: state.pk.clone(),
             },
             RatioProof {
-                ratio: (g, g.mul(delta).into_affine()),
-                matching_point: hash_to_group::<P::G2, _, N>(challenge)
-                    .mul(delta)
-                    .into_affine(),
+                matching_point: <BlakeHasher<N> as HashToGroup<C, D>>::hash(
+                    &Self::Hasher::new(),
+                    &challenge,
+                    (&ratio.0, &ratio.1),
+                )
+                .mul(delta)
+                .into_affine(),
+                ratio,
             },
         )
     }
 
     #[inline]
-    fn verify_transform<H, D>(
+    fn verify_transform<D>(
         prev_challenge: Self::Challenge,
-        prev_state: State<Self::Pairing>,
-        cur_state: State<Self::Pairing>,
-        ratio_proof: RatioProof<Self::Pairing>,
-    ) -> Result<(State<Self::Pairing>, Self::Challenge), PhaseTwoError>
+        prev_state: State<C>,
+        cur_state: State<C>,
+        ratio_proof: RatioProof<C>,
+    ) -> Result<(State<C>, Self::Challenge), PhaseTwoError>
     where
         D: Default,
-        H: Hash<N> + Write,
-        P::Scalar: Sample<D>,
-        P::G1: Sample<D>,
-        P::G2: Sample<D>,
-        State<Self::Pairing>: Clone,
+        C::Scalar: Sample<D>,
+        C::G1: Sample<D>,
+        C::G2: Sample<D>,
+        State<C>: Clone,
     {
         check_phase_2_invariants(&prev_state, &cur_state)?;
-        if !<P::Pairing as PairingEngineExt>::same_ratio(
+        if !<C::Pairing as PairingEngineExt>::same_ratio(
             (ratio_proof.ratio.0, ratio_proof.ratio.1),
             (
-                hash_to_group::<P::G2, _, N>(prev_challenge),
+                <BlakeHasher<N> as HashToGroup<C, D>>::hash(
+                    &Self::Hasher::new(),
+                    &prev_challenge,
+                    (&ratio_proof.ratio.0, &ratio_proof.ratio.1),
+                ),
                 ratio_proof.matching_point,
             ),
         ) {
             return Err(PhaseTwoError::InconsistentDeltaChange);
         }
-        if !<P::Pairing as PairingEngineExt>::same_ratio(
+        if !<C::Pairing as PairingEngineExt>::same_ratio(
             (ratio_proof.ratio.0, ratio_proof.ratio.1),
             (prev_state.pk.vk.delta_g2, cur_state.pk.vk.delta_g2),
         ) {
             return Err(PhaseTwoError::InconsistentHChange);
         }
-        if !<P::Pairing as PairingEngineExt>::same_ratio(
+        if !<C::Pairing as PairingEngineExt>::same_ratio(
             (prev_state.pk.delta_g1, cur_state.pk.delta_g1),
             (prev_state.pk.vk.delta_g2, cur_state.pk.vk.delta_g2),
         ) {
             return Err(PhaseTwoError::InconsistentHChange);
         }
-        if !<P::Pairing as PairingEngineExt>::same_ratio(
-            random_linear_combinations::<P>(&cur_state.pk.h_query, &prev_state.pk.h_query),
+        if !<C::Pairing as PairingEngineExt>::same_ratio(
+            random_linear_combinations::<C>(&cur_state.pk.h_query, &prev_state.pk.h_query),
             (prev_state.pk.vk.delta_g2, cur_state.pk.vk.delta_g2),
         ) {
             return Err(PhaseTwoError::InconsistentHChange);
         }
-        if !<P::Pairing as PairingEngineExt>::same_ratio(
-            random_linear_combinations::<P>(&cur_state.pk.l_query, &prev_state.pk.l_query),
+        if !<C::Pairing as PairingEngineExt>::same_ratio(
+            random_linear_combinations::<C>(&cur_state.pk.l_query, &prev_state.pk.l_query),
             (prev_state.pk.vk.delta_g2, cur_state.pk.vk.delta_g2),
         ) {
             return Err(PhaseTwoError::InconsistentLChange);
         }
         Ok((
             cur_state.clone(),
-            Self::challenge::<H>(prev_challenge, prev_state, cur_state, ratio_proof),
+            Self::challenge(prev_challenge, prev_state, cur_state, ratio_proof),
         ))
     }
 
     #[inline]
     fn update(
-        state: State<Self::Pairing>,
-        ratio_proof: RatioProof<Self::Pairing>,
-        mut contributions: Contributions<Self::Pairing, N>,
-    ) -> Contributions<Self::Pairing, N> {
+        state: State<C>,
+        ratio_proof: RatioProof<C>,
+        mut contributions: Contributions<C, N>,
+    ) -> Contributions<C, N> {
         contributions.states.push(state);
         contributions.proofs.push(ratio_proof);
         contributions
     }
 
     #[inline]
-    fn verify_transform_all<B, C, D, H>(
-        state: State<Self::Pairing>,
-        contributions: Contributions<Self::Pairing, N>,
+    fn verify_transform_all<B, D>(
+        state: State<C>,
+        contributions: Contributions<C, N>,
         constraint_system: B,
         accumulator: Accumulator<C>,
     ) -> Result<(), PhaseTwoError>
     where
         B: ConstraintSynthesizer<C::Scalar>,
-        C: Configuration<
-            Pairing = <Self::Pairing as Pairing>::Pairing,
-            G1 = <Self::Pairing as Pairing>::G1,
-            G2 = <Self::Pairing as Pairing>::G2,
-            Scalar = <Self::Pairing as Pairing>::Scalar,
-        >,
-        H: Hash<N> + Write,
-        <Self::Pairing as Pairing>::Scalar: Sample<D>,
-        <Self::Pairing as Pairing>::G1: Sample<D>,
-        <Self::Pairing as Pairing>::G2: Sample<D>,
-        State<Self::Pairing>: Clone,
-        RatioProof<Self::Pairing>: Clone,
+        C::Scalar: Sample<D>,
+        C::G1: Sample<D>,
+        C::G2: Sample<D>,
+        State<C>: Clone,
+        RatioProof<C>: Clone,
         D: Default,
     {
         assert_eq!(
@@ -448,7 +422,7 @@ where
             "Langth of `proofs` and `states` does not match."
         );
         let (initial_state, initial_contribution) =
-            Self::initialize::<B, C, H>(constraint_system, accumulator)?;
+            Self::initialize::<B>(constraint_system, accumulator)?;
         check_phase_2_invariants(&state, &initial_state)?;
         if initial_contribution.cs_hash != contributions.cs_hash {
             return Err(PhaseTwoError::ConstraintSystemHashesDiffer);
@@ -457,7 +431,7 @@ where
         let mut prev_state = initial_state;
         for (proof, state) in contributions.proofs.iter().zip(&contributions.states) {
             (prev_state, challenge) =
-                Self::verify_transform::<H, D>(challenge, prev_state, state.clone(), proof.clone())
+                Self::verify_transform::<D>(challenge, prev_state, state.clone(), proof.clone())
                     .expect("Verify transform failed.");
         }
         if prev_state.pk != state.pk {
@@ -631,14 +605,15 @@ mod test {
     use super::*;
     use crate::{
         groth16::kzg::{Contribution, Size},
-        util::{into_array_unchecked, BlakeHasher, HasDistribution, PairingEngine},
+        util::{
+            into_array_unchecked, BlakeHasher, HasDistribution, PairingEngine, PhaseOneHashToGroup,
+        },
     };
-    use ark_bls12_381::{Fr, FrParameters, G1Affine};
-    use ark_ff::{field_new, Fp256, ToBytes};
+    use ark_bls12_381::{Fr, FrParameters};
+    use ark_ff::{field_new, Fp256};
     use ark_groth16::Groth16 as ArkGroth16;
     use ark_r1cs_std::eq::EqGadget;
     use ark_snark::SNARK;
-    use ark_std::io;
     use manta_crypto::{
         constraint::Allocate,
         eclair::alloc::mode::{Public, Secret},
@@ -679,23 +654,10 @@ mod test {
         type DomainTag = u8;
         type Challenge = [u8; 64];
         type Response = [u8; 64];
+        type HashToGroup = PhaseOneHashToGroup<Self, 64>;
         const TAU_DOMAIN_TAG: Self::DomainTag = 0;
         const ALPHA_DOMAIN_TAG: Self::DomainTag = 1;
         const BETA_DOMAIN_TAG: Self::DomainTag = 2;
-
-        fn hash_to_g2(
-            domain_tag: Self::DomainTag,
-            challenge: &Self::Challenge,
-            ratio: (&Self::G1, &Self::G1),
-        ) -> Self::G2 {
-            let mut hasher = BlakeHasher::new();
-            hasher.update(&[domain_tag]);
-            hasher.update(&challenge);
-            serialize_g1_uncompressed(ratio.0, &mut hasher).unwrap();
-            serialize_g1_uncompressed(ratio.1, &mut hasher).unwrap();
-            let digest: [u8; 64] = into_array_unchecked(hasher.finalize());
-            hash_to_group::<Self::G2, (), 64>(digest)
-        }
 
         fn response(
             state: &Accumulator<Self>,
@@ -772,24 +734,10 @@ mod test {
                 .unwrap();
             into_array_unchecked(hasher.finalize())
         }
-    }
 
-    /// Serializes a `point` on G1 curve to `writer`.
-    pub fn serialize_g1_uncompressed<W>(point: &G1Affine, writer: &mut W) -> Result<(), io::Error>
-    where
-        W: Write,
-    {
-        let mut res = [0u8; 96];
-        if point.is_zero() {
-            res[95] |= 1 << 6;
-        } else {
-            let mut temp_writer = &mut res[..];
-            point.y.write(&mut temp_writer)?;
-            point.x.write(&mut temp_writer)?;
+        fn hasher(domain_tag: Self::DomainTag) -> Self::HashToGroup {
+            Self::HashToGroup { domain_tag }
         }
-        res.reverse();
-        writer.write_all(&res)?;
-        Ok(())
     }
 
     /// Conducts a dummy phase one trusted setup.
@@ -839,18 +787,15 @@ mod test {
         let accumulator = dummy_phase_one_trusted_setup();
         let (mut state, mut contributions) = Phase2::<Sapling, 64>::initialize::<
             R1CS<Fp256<ark_bls12_381::FrParameters>>,
-            Sapling,
-            BlakeHasher<64>,
         >(cs, accumulator.clone())
         .unwrap();
         let (mut prev_state, mut ratio_proof);
         let mut challenge = contributions.cs_hash;
         for _ in 0..5 {
             prev_state = state.clone();
-            (state, ratio_proof) = Phase2::<Sapling, 64>::contribute::<_, (), BlakeHasher<64>>(
-                &mut state, challenge, &mut rng,
-            );
-            (state, challenge) = Phase2::<Sapling, 64>::verify_transform::<BlakeHasher<64>, ()>(
+            (state, ratio_proof) =
+                Phase2::<Sapling, 64>::contribute::<_, ()>(&mut state, challenge, &mut rng);
+            (state, challenge) = Phase2::<Sapling, 64>::verify_transform::<()>(
                 challenge,
                 prev_state,
                 state,
@@ -862,7 +807,7 @@ mod test {
         }
         let mut cs = R1CS::for_contexts();
         dummy_circuit(&mut cs);
-        Phase2::<Sapling, 64>::verify_transform_all::<_, _, (), BlakeHasher<64>>(
+        Phase2::<Sapling, 64>::verify_transform_all::<_, ()>(
             state.clone(),
             contributions,
             cs,

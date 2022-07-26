@@ -19,7 +19,7 @@
 use crate::util::{
     power_pairs, scalar_mul, AffineCurve, CanonicalDeserialize, CanonicalSerialize, Deserializer,
     NonZero, One, Pairing, PairingEngineExt, ProjectiveCurve, Read, Sample, SerializationError,
-    Serializer, UniformRand, Write, Zero,
+    Serializer, UniformRand, Write, Zero, HashToGroup,
 };
 use alloc::{vec, vec::Vec};
 use core::{iter, ops::Mul};
@@ -54,7 +54,7 @@ pub trait Configuration: Pairing + Size {
     type Response;
 
     /// Hash To Group Type
-    // type HashToGroup: HashToGroup;
+    type HashToGroup: HashToGroup<Self, ()>;
 
     /// Tau Domain Tag for [`hash_to_g2`](Self::hash_to_g2)
     const TAU_DOMAIN_TAG: Self::DomainTag;
@@ -65,29 +65,8 @@ pub trait Configuration: Pairing + Size {
     /// Beta Domain Tag for [`hash_to_g2`](Self::hash_to_g2)
     const BETA_DOMAIN_TAG: Self::DomainTag;
 
-    /// Computes the challenge G2 point from `domain_tag`, `challenge`, and `ratio`.
-    fn hash_to_g2(
-        domain_tag: Self::DomainTag,
-        challenge: &Self::Challenge,
-        ratio: (&Self::G1, &Self::G1),
-    ) -> Self::G2;
-
-    // /// TODO
-    // fn hasher(domain_tag: Self::DomainTag) -> Self::HashToGroup {
-    //     HashToGroup::hash()
-    // }
-
-    /*
-    fn hasher(domain_tag: Self::DomainTag) -> Self::HashToGroup {
-        HashToGroup {
-            domain_tag,
-        }
-    }
-
-    fn hash(&self, challenge, ratio) {
-        Blake(self.domain_tag, ...)
-    }
-    */
+    /// Generates a [`hasher`](Self::HashToGroup) guided by [`domain_tag`](Self::DomainTag).
+    fn hasher(domain_tag: Self::DomainTag) -> Self::HashToGroup;
 
     /// Computes the challenge response from `state`, `challenge`, and `proof`.
     fn response(
@@ -95,14 +74,6 @@ pub trait Configuration: Pairing + Size {
         challenge: &Self::Challenge,
         proof: &Proof<Self>,
     ) -> Self::Response;
-}
-
-//TODO: Add a trait `HashToGroup`
-
-/// TODO
-pub trait HashToGroup {
-    /// TODO
-    fn hash();
 }
 
 /// Knowledge Proof Error
@@ -261,7 +232,7 @@ where
         if scaled_g1_point.is_zero() {
             return None;
         }
-        let g2_point = C::hash_to_g2(domain_tag, challenge, (&g1_point, &scaled_g1_point));
+        let g2_point = C::hasher(domain_tag).hash(challenge, (&g1_point, &scaled_g1_point));
         if g2_point.is_zero() {
             return None;
         }
@@ -281,7 +252,7 @@ where
     where
         C: Configuration,
     {
-        C::hash_to_g2(domain_tag, challenge, (&self.ratio.0, &self.ratio.1))
+        C::hasher(domain_tag).hash(challenge, (&self.ratio.0, &self.ratio.1))
     }
 
     /// Verifies that `self` is a valid ratio proof-of-knowledge, returning the G2 ratio of the
