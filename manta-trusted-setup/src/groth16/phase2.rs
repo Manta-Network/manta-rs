@@ -87,7 +87,8 @@ pub trait PhaseTwoConfiguration<const N: usize>: Sized {
         >,
         H: Hash<N> + Write;
 
-    /// TODO
+    /// Generates a challenge based on previous `challenge`, previous state
+    /// `prev_state`, current state `cur_state`, and `ratio_proof`.
     fn challenge<H>(
         challenge: Self::Challenge,
         prev_state: State<Self::Pairing>,
@@ -128,12 +129,13 @@ pub trait PhaseTwoConfiguration<const N: usize>: Sized {
         <Self::Pairing as Pairing>::G2: Sample<D>,
         State<Self::Pairing>: Clone;
 
-    /// TODO
+    /// Verifies if `state` and all received `contributions` are valid given
+    /// `constraint_system` and `accumulator` from trusted setup phase 1.
     fn verify_transform_all<B, C, D, H>(
         state: State<Self::Pairing>,
         contributions: Contributions<Self::Pairing, N>,
         constraint_system: B,
-        powers: Accumulator<C>,
+        accumulator: Accumulator<C>,
     ) -> Result<(), PhaseTwoError>
     where
         B: ConstraintSynthesizer<C::Scalar>,
@@ -144,16 +146,13 @@ pub trait PhaseTwoConfiguration<const N: usize>: Sized {
             Scalar = <Self::Pairing as Pairing>::Scalar,
         >,
         H: Hash<N> + Write,
-        // <Self::Pairing as Pairing>::G1Prepared:
-        //     From<<<Self::Pairing as Pairing>::G1 as AffineCurve>::Projective>,
-        // H: Hash<N> + Write,
         <Self::Pairing as Pairing>::Scalar: Sample<D>,
         <Self::Pairing as Pairing>::G1: Sample<D>,
         <Self::Pairing as Pairing>::G2: Sample<D>,
         State<Self::Pairing>: Clone,
         D: Default;
 
-    /// TODO
+    /// Updates `contributions` with `state` and `ratio_proof`.
     fn update(
         state: State<Self::Pairing>,
         ratio_proof: RatioProof<Self::Pairing>,
@@ -174,7 +173,7 @@ where
 
     type Pairing = P;
 
-    /// Initializes state and contributions for phase2 trusted setup.
+    #[inline]
     fn initialize<B, C, H>(
         cs: B,
         powers: Accumulator<C>,
@@ -193,8 +192,6 @@ where
         cs.generate_constraints(constraints.clone())
             .map_err(PhaseTwoError::ConstraintSystemError)?;
         constraints.finalize();
-
-        // Determine evaluation domain size from constraint system
         let num_constraints = constraints.num_constraints();
         let num_instance_variables = constraints.num_instance_variables();
         let domain = match Radix2EvaluationDomain::<C::Scalar>::new(
@@ -203,52 +200,29 @@ where
             Some(domain) => domain,
             None => return Err(PhaseTwoError::TooManyConstraints),
         };
-
-        // Get a, b, c matrices
         let constraint_matrices = match constraints.to_matrices() {
             Some(matrices) => matrices,
             None => return Err(PhaseTwoError::MissingCSMatrices),
         };
-
-        // Grab the commitment `beta * g1` before it's consumed by IFFT
-        // (Only necessary if you IFFT in place)
         let beta_g1 = powers.beta_tau_powers_g1[0];
-
-        // Compute the tau^i Z(tau) commitments before powers of tau are IFFT'd.
-        // Since Z(tau) = (tau^degree - 1) this is computed as
-        // tau^(i + degree) - tau^i
-        let degree = domain.size as usize; // safe because domain.size is at most 2^22
+        let degree = domain.size as usize;
         let mut h_query = Vec::with_capacity(degree - 1);
         for i in 0..degree {
             let tmp = powers.tau_powers_g1[i + degree].into_projective();
             let tmp2 = powers.tau_powers_g1[i].into_projective();
 
-            h_query.push((tmp - tmp2).into_affine()); // ? Does it really make snse to convert to affine right now?
+            h_query.push((tmp - tmp2).into_affine());
         }
-
-        // `Accumulator` holds commitments in monomial basis; use IFFT to transform
-        // to Lagrange basis.
-        // // INEFFICIENT: probably should ifft in place b/c these vectors are huge -- but should the Accumulator really be mutable ?
-        // let tau_powers_g1_proj = powers.tau_powers_g1.iter().map(|p| p.into_projective()).collect::<Vec<_>>();
-        // TODO: Those should be written to disk after phase 1 and read in from there
         let tau_lagrange_g1 = domain.ifft(&batch_into_projective(&powers.tau_powers_g1));
         let tau_lagrange_g2 = domain.ifft(&batch_into_projective(&powers.tau_powers_g2));
         let alpha_lagrange_g1 = domain.ifft(&batch_into_projective(&powers.alpha_tau_powers_g1));
         let beta_lagrange_g1 = domain.ifft(&batch_into_projective(&powers.beta_tau_powers_g1));
-
-        // Compute the various circuit-specific polynomial commitments
-        // Note that all curve points are projective here
         let num_witnesses =
             constraint_matrices.num_witness_variables + constraint_matrices.num_instance_variables;
-
         let mut a_g1 = vec![<C as Pairing>::G1::zero().into_projective(); num_witnesses];
         let mut b_g1 = vec![<C as Pairing>::G1::zero().into_projective(); num_witnesses];
         let mut b_g2 = vec![<C as Pairing>::G2::zero().into_projective(); num_witnesses];
         let mut ext = vec![<C as Pairing>::G1::zero().into_projective(); num_witnesses];
-
-        // Adds public input constraints to ensure their consistency, as in "Libsnark reduction"
-        // This is essentially adding the constraint pi * 0 = 0 for each public input.  I do not
-        // understand why it is necessary.
         {
             let start = 0;
             let end = num_instance_variables;
@@ -259,7 +233,6 @@ where
                 &beta_lagrange_g1[(start + num_constraints)..(end + num_constraints)],
             );
         }
-
         specialize_to_phase_2(
             &tau_lagrange_g1,
             &tau_lagrange_g2,
@@ -273,26 +246,19 @@ where
             &mut b_g2,
             &mut ext,
         );
-
-        // Projective -> Affine
         let a_query = ProjectiveCurve::batch_normalization_into_affine(&a_g1);
         let b_g1_query = ProjectiveCurve::batch_normalization_into_affine(&b_g1);
         let b_g2_query = ProjectiveCurve::batch_normalization_into_affine(&b_g2);
         let ext = ProjectiveCurve::batch_normalization_into_affine(&ext);
-        // Split `ext` into public and private witness parts
         let public_cross_terms = Vec::from(&ext[..constraint_matrices.num_instance_variables]);
         let private_cross_terms = Vec::from(&ext[constraint_matrices.num_instance_variables..]);
-
-        // Make the verifying key using default values for the `delta_g` curve points
         let vk = VerifyingKey::<C::Pairing> {
             alpha_g1: powers.alpha_tau_powers_g1[0],
             beta_g2: powers.beta_g2,
-            gamma_g2: C::g2_prime_subgroup_generator(), // This will not be modified by contributions. See Bowe, Gabizon '19
+            gamma_g2: C::g2_prime_subgroup_generator(),
             delta_g2: C::g2_prime_subgroup_generator(),
-            gamma_abc_g1: public_cross_terms, // `gamma` = 1 actually BG'19
+            gamma_abc_g1: public_cross_terms,
         };
-
-        // Make the proving key
         let pk = ProvingKey::<C::Pairing> {
             vk,
             beta_g1,
@@ -303,11 +269,9 @@ where
             h_query,
             l_query: private_cross_terms,
         };
-
         let mut hasher = H::new();
         pk.serialize(&mut hasher)
             .expect("Hasher is not allowed to fail");
-
         Ok((
             State { pk: pk.clone() },
             Contributions {
@@ -318,6 +282,7 @@ where
         ))
     }
 
+    #[inline]
     fn challenge<H>(
         challenge: Self::Challenge,
         prev_state: State<Self::Pairing>,
@@ -354,7 +319,7 @@ where
         hasher.finalize()
     }
 
-    /// Sample `delta` from `rng` and generate a range proof for it.
+    #[inline]
     fn contribute<R, D, H>(
         state: &mut State<Self::Pairing>,
         challenge: Self::Challenge,
@@ -388,6 +353,7 @@ where
         )
     }
 
+    #[inline]
     fn verify_transform<H, D>(
         prev_challenge: Self::Challenge,
         prev_state: State<Self::Pairing>,
@@ -442,6 +408,7 @@ where
         ))
     }
 
+    #[inline]
     fn update(
         state: State<Self::Pairing>,
         ratio_proof: RatioProof<Self::Pairing>,
@@ -452,6 +419,7 @@ where
         contributions
     }
 
+    #[inline]
     fn verify_transform_all<B, C, D, H>(
         state: State<Self::Pairing>,
         contributions: Contributions<Self::Pairing, N>,
@@ -467,8 +435,6 @@ where
             Scalar = <Self::Pairing as Pairing>::Scalar,
         >,
         H: Hash<N> + Write,
-        // <Self::Pairing as Pairing>::G1Prepared:
-        //     From<<<Self::Pairing as Pairing>::G1 as AffineCurve>::Projective>,
         <Self::Pairing as Pairing>::Scalar: Sample<D>,
         <Self::Pairing as Pairing>::G1: Sample<D>,
         <Self::Pairing as Pairing>::G2: Sample<D>,
@@ -487,8 +453,6 @@ where
         if initial_contribution.cs_hash != contributions.cs_hash {
             return Err(PhaseTwoError::ConstraintSystemHashesDiffer);
         }
-        let mut cumulative_hasher = H::new();
-        cumulative_hasher.update(&contributions.cs_hash[..]);
         let mut challenge = initial_contribution.cs_hash;
         let mut prev_state = initial_state;
         for (proof, state) in contributions.proofs.iter().zip(&contributions.states) {
@@ -505,6 +469,7 @@ where
 
 /// Checks that the parameters which are not changed by Phase 2 contributions
 /// are the same.
+#[inline]
 pub fn check_phase_2_invariants<P>(
     state: &State<P>,
     initial_state: &State<P>,
@@ -551,6 +516,7 @@ where
 /// curve points by random linear combination. The same
 /// random linear combination is used for both vectors,
 /// allowing this pair to be used in a consistent ratio test.
+#[inline]
 pub fn random_linear_combinations<P>(lhs: &[P::G1], rhs: &[P::G1]) -> (P::G1, P::G1)
 where
     P: Pairing,
@@ -602,9 +568,6 @@ pub fn specialize_to_phase_2<G1, G2>(
     assert_eq!(a_g1.len(), b_g1.len());
     assert_eq!(a_g1.len(), b_g2.len());
     assert_eq!(a_g1.len(), ext.len());
-
-    // Performs matrix multiplications, but not in parallel. Iteration is over the constraints, not the witnesses
-    // TODO How can you parallelize this?
     a_poly
         .iter()
         .zip(b_poly.iter())
@@ -616,7 +579,6 @@ pub fn specialize_to_phase_2<G1, G2>(
         .for_each(
             |((((((a_poly, b_poly), c_poly), tau_g1), tau_g2), alpha_tau), beta_tau)| {
                 for (coeff, index) in a_poly.iter() {
-                    // index is indexing a variable, not a constraint
                     a_g1[*index] += tau_g1.mul(coeff.into_repr());
                     ext[*index] += beta_tau.mul(coeff.into_repr());
                 }
@@ -632,26 +594,34 @@ pub fn specialize_to_phase_2<G1, G2>(
         );
 }
 
-/// TODO
+/// Phase Two Error Types
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum PhaseTwoError {
-    /// TODO
+    /// Too Many Constraints Error
     TooManyConstraints,
-    /// TODO
+
+    /// Constraint System Error
     ConstraintSystemError(SynthesisError),
-    /// TODO
+
+    /// Missing Constraint System Matrices Error
     MissingCSMatrices,
-    /// TODO
+
+    /// Constraint System Hashes Mismatch Error
     ConstraintSystemHashesDiffer,
-    /// TODO
+
+    /// Invalid Signature Error
     SignatureInvalid,
-    /// TODO
+
+    /// Inconsistent Delta Change Error
     InconsistentDeltaChange,
-    /// TODO
+
+    /// Inconsistent L Change Error
     InconsistentLChange,
-    /// TODO
+
+    /// Inconsistent H Change Error
     InconsistentHChange,
-    /// TODO
+
+    /// Phase2 Invariant Violation Error
     Phase2InvariantViolated(&'static str),
 }
 
@@ -661,7 +631,7 @@ mod test {
     use super::*;
     use crate::{
         groth16::kzg::{Contribution, Size},
-        util::{into_array_unchecked, BlakeHasher, HasDistribution, PairingEngine, Read},
+        util::{into_array_unchecked, BlakeHasher, HasDistribution, PairingEngine},
     };
     use ark_bls12_381::{Fr, FrParameters, G1Affine};
     use ark_ff::{field_new, Fp256, ToBytes};
@@ -669,14 +639,11 @@ mod test {
     use ark_r1cs_std::eq::EqGadget;
     use ark_snark::SNARK;
     use ark_std::io;
-    use blake2::{Blake2b, Digest};
     use manta_crypto::{
         constraint::Allocate,
         eclair::alloc::mode::{Public, Secret},
-        rand::SeedableRng,
     };
     use manta_pay::crypto::constraint::arkworks::{Fp, FpVar, R1CS};
-    use rand_chacha::ChaCha20Rng;
 
     /// Sapling MPC
     #[derive(Clone, Default)]
@@ -716,39 +683,18 @@ mod test {
         const ALPHA_DOMAIN_TAG: Self::DomainTag = 1;
         const BETA_DOMAIN_TAG: Self::DomainTag = 2;
 
-        // TODO: Make this generic with Digest trait.
-        // TODO: Have another module outside this library in util.rs.
         fn hash_to_g2(
             domain_tag: Self::DomainTag,
             challenge: &Self::Challenge,
             ratio: (&Self::G1, &Self::G1),
         ) -> Self::G2 {
-            // TODO: Use Hash trait.
-            let mut hasher = Blake2b::default();
+            let mut hasher = BlakeHasher::new();
             hasher.update(&[domain_tag]);
             hasher.update(&challenge);
             serialize_g1_uncompressed(ratio.0, &mut hasher).unwrap();
             serialize_g1_uncompressed(ratio.1, &mut hasher).unwrap();
             let digest: [u8; 64] = into_array_unchecked(hasher.finalize());
-
-            let mut digest = digest.as_slice();
-            let mut seed = Vec::with_capacity(8);
-            for _ in 0..8 {
-                // This forms the `seed` for ChaCha as the first 32 bytes of digest, reversed in chunks of 4 bytes
-                // That choice was made to preserve compatibility with ZCash's Sapling Phase 1
-                let mut word = [0u8; 4];
-                let _ = digest
-                    .read(&mut word[..])
-                    .expect("This is always possible since we have enough bytes to begin with.");
-                word[..].reverse();
-                seed.extend(word)
-            }
-
-            let mut rng_chacha =
-                <ChaCha20Rng as SeedableRng>::from_seed(into_array_unchecked(seed));
-            <Self::G2 as Sample<()>>::sample::<ChaCha20Rng>((), &mut rng_chacha)
-            // Self::G2::gen::<ChaCha20Rng>(&mut rng_chacha)
-            // hash_to_group::<Self::G2, SaplingDistribution, 64>(into_array_unchecked(hasher.finalize()))
+            hash_to_group::<Self::G2, (), 64>(digest)
         }
 
         fn response(
@@ -756,9 +702,7 @@ mod test {
             challenge: &Self::Challenge,
             proof: &crate::groth16::kzg::Proof<Self>,
         ) -> Self::Response {
-            // TODO: Use Hash trait.
-            // let _ = (state, challenge, proof);
-            let mut hasher = Blake2b::default();
+            let mut hasher = BlakeHasher::new();
             for item in &state.tau_powers_g1 {
                 item.serialize_uncompressed(&mut hasher).unwrap();
             }
@@ -830,7 +774,7 @@ mod test {
         }
     }
 
-    /// TODO
+    /// Serializes a `point` on G1 curve to `writer`.
     pub fn serialize_g1_uncompressed<W>(point: &G1Affine, writer: &mut W) -> Result<(), io::Error>
     where
         W: Write,
@@ -848,7 +792,7 @@ mod test {
         Ok(())
     }
 
-    /// TODO
+    /// Conducts a dummy phase one trusted setup.
     pub fn dummy_phase_one_trusted_setup() -> Accumulator<Sapling> {
         let mut rng = OsRng;
         let accumulator = Accumulator::<Sapling>::default();
@@ -860,7 +804,7 @@ mod test {
         Accumulator::verify_transform(accumulator, next_accumulator, challenge, proof).unwrap()
     }
 
-    /// TODO
+    /// Generates a dummy R1CS circuit.
     pub fn dummy_circuit(cs: &mut R1CS<Fp256<FrParameters>>) {
         let a = Fp(field_new!(Fr, "2")).as_known::<Secret, FpVar<_>>(cs);
         let b = Fp(field_new!(Fr, "3")).as_known::<Secret, FpVar<_>>(cs);
@@ -870,8 +814,8 @@ mod test {
             .expect("enforce_equal is not allowed to fail");
     }
 
-    /// TODO
-    pub fn prove_and_verify_circuit<P, R>(pk: ProvingKey<P>, rng: &mut R)
+    /// Proves and verifies a dummy circuit with proving key `pk` and a random number generator `rng`.
+    pub fn dummy_prove_and_verify_circuit<P, R>(pk: ProvingKey<P>, rng: &mut R)
     where
         P: PairingEngine<Fr = Fp256<ark_bls12_381::FrParameters>>,
         R: Rng + CryptoRng,
@@ -885,7 +829,8 @@ mod test {
         );
     }
 
-    /// TODO
+    /// Tests if trusted setup phase 2 is valid with trusted setup phase 1 and proves
+    /// and verifies a dummy circuit.
     #[test]
     pub fn trusted_setup_phase_two_is_valid() {
         let mut rng = OsRng;
@@ -924,6 +869,6 @@ mod test {
             accumulator,
         )
         .expect("Verify transform all failed.");
-        prove_and_verify_circuit(state.pk, &mut rng);
+        dummy_prove_and_verify_circuit(state.pk, &mut rng);
     }
 }
