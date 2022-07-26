@@ -53,8 +53,11 @@ pub trait Configuration: Pairing + Size {
     /// Response Type
     type Response;
 
+    /// Distribution Type
+    type Distribution;
+
     /// Hash To Group Type
-    type HashToGroup: HashToGroup<Self, ()>;
+    type HashToGroup: HashToGroup<Self, <Self as Configuration>::Distribution>;
 
     /// Tau Domain Tag Type
     const TAU_DOMAIN_TAG: Self::DomainTag;

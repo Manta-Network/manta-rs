@@ -654,6 +654,7 @@ mod test {
         type DomainTag = u8;
         type Challenge = [u8; 64];
         type Response = [u8; 64];
+        type Distribution = ();
         type HashToGroup = PhaseOneHashToGroup<Self, 64>;
         const TAU_DOMAIN_TAG: Self::DomainTag = 0;
         const ALPHA_DOMAIN_TAG: Self::DomainTag = 1;
