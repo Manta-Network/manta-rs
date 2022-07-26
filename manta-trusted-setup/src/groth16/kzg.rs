@@ -18,8 +18,8 @@
 
 use crate::util::{
     power_pairs, scalar_mul, AffineCurve, CanonicalDeserialize, CanonicalSerialize, Deserializer,
-    NonZero, One, PairingEngineExt, ProjectiveCurve,
-    Read, Pairing, Sample, SerializationError, Serializer, UniformRand, Write, Zero,
+    NonZero, One, Pairing, PairingEngineExt, ProjectiveCurve, Read, Sample, SerializationError,
+    Serializer, UniformRand, Write, Zero,
 };
 use alloc::{vec, vec::Vec};
 use core::{iter, ops::Mul};
@@ -533,7 +533,6 @@ where
     /// respective element in the `contribution`.
     #[inline]
     pub fn update(&mut self, contribution: &Contribution<C>) {
-        // TODO: Should be statelss
         let mut tau_powers =
             iter::successors(Some(C::Scalar::one()), |x| Some(x.mul(contribution.tau)))
                 .take(C::G1_POWERS)
@@ -570,7 +569,6 @@ where
     where
         C: Configuration,
     {
-        // TODO: any different between input next and the output Self?
         if next.tau_powers_g1[0] != C::g1_prime_subgroup_generator() {
             return Err(VerificationError::PrimeSubgroupGeneratorG1);
         }

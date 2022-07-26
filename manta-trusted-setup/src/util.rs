@@ -346,7 +346,7 @@ where
         .map(|_| G::ScalarField::rand(&mut OsRng))
         .zip(lhs)
         .zip(rhs)
-        .map(|((rho, lhs), rhs)| (lhs.mul(rho), rhs.mul(rho))); // TODO
+        .map(|((rho, lhs), rhs)| (lhs.mul(rho), rhs.mul(rho)));
     cfg_reduce!(pairs, || (Zero::zero(), Zero::zero()), |mut acc, next| {
         acc.0 += next.0;
         acc.1 += next.1;
@@ -437,14 +437,17 @@ pub trait Hash<const N: usize> {
 pub struct BlakeHasher<const N: usize>(pub Blake2b512);
 
 impl<const N: usize> Hash<N> for BlakeHasher<N> {
+    #[inline]
     fn new() -> Self {
         BlakeHasher(Blake2b::default())
     }
 
+    #[inline]
     fn update(&mut self, data: impl AsRef<[u8]>) {
         <Blake2b512 as Blake2Digest>::update(&mut self.0, data.as_ref())
     }
 
+    #[inline]
     fn finalize(self) -> [u8; N] {
         let result = <Blake2b512 as Blake2Digest>::finalize(self.0);
         into_array_unchecked(result.as_slice())
@@ -452,17 +455,20 @@ impl<const N: usize> Hash<N> for BlakeHasher<N> {
 }
 
 impl<const N: usize> Write for BlakeHasher<N> {
+    #[inline]
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         self.update(buf);
         Ok(buf.len())
     }
 
+    #[inline]
     fn flush(&mut self) -> io::Result<()> {
         Ok(())
     }
 }
 
 /// Hashes `digest` to a group point on affine curve.
+#[inline]
 pub fn hash_to_group<G, D, const N: usize>(digest: [u8; N]) -> G
 where
     G: AffineCurve + Sample<D>,
@@ -546,6 +552,7 @@ impl<P, D> Sample<D> for GroupAffine<P>
 where
     P: SWModelParameters,
 {
+    #[inline]
     fn sample<R>(_: D, rng: &mut R) -> Self
     where
         R: CryptoRng + RngCore + ?Sized,
@@ -558,6 +565,7 @@ impl<P> Sample for Fp256<P>
 where
     Fp256<P>: UniformRand,
 {
+    #[inline]
     fn sample<R>(_: (), rng: &mut R) -> Self
     where
         R: CryptoRng + RngCore + ?Sized,
