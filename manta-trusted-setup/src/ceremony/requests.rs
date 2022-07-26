@@ -63,8 +63,8 @@ where
 pub struct GetMpcResponse<S, V>
 where
     S: SignatureScheme,
-    V: mpc::Verify + Deserialize<'static> + Serialize ,
-    V::State: Debug + Deserialize<'static> + Serialize + signature::Verify<S>,
+    V: mpc::Verify,
+    V::State: signature::Verify<S>,
     V::Proof: signature::Verify<S>,
 {
     // response: MpcResponse<V>,

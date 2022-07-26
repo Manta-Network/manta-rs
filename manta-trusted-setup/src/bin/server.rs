@@ -54,7 +54,7 @@ where
     P: Priority + Identifier + signature::HasPublicKey<PublicKey = S::PublicKey>,
     S: SignatureScheme,
     M: Map<Key = P::Identifier, Value = P>,
-    V::State: Debug + Deserialize<'static> + Serialize + signature::Verify<S>,
+    V::State: signature::Verify<S>,
     V::Proof: signature::Verify<S>,
 {
     /// Registers then queues a participant // TODO The registration is by hand, so queueing should be split from it
