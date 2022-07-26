@@ -16,6 +16,7 @@
 //! Waiting queue for the ceremony.
 
 use core::future::Future;
+use manta_trusted_setup::ceremony::CeremonyError;
 use manta_trusted_setup::{
     ceremony::{
         coordinator::*,
@@ -41,7 +42,7 @@ use tide::{Body, Request, Response, StatusCode};
 pub struct Server<V, P, M, S, const N: usize>(Arc<Mutex<Coordinator<V, P, M, S, N>>>)
 where
     V: mpc::Verify,
-    P: Priority + Identifier + signature::HasPublicKey,
+    P: Priority + Identifier + signature::HasPublicKey<PublicKey = S::PublicKey>,
     S: SignatureScheme,
     M: Map<Key = P::Identifier, Value = P>,
     V::State: signature::Verify<S>,
@@ -50,16 +51,24 @@ where
 impl<V, P, M, S, const N: usize> Server<V, P, M, S, N>
 where
     V: mpc::Verify,
-    P: Priority + Identifier + signature::HasPublicKey,
+    P: Priority + Identifier + signature::HasPublicKey<PublicKey = S::PublicKey>,
     S: SignatureScheme,
     M: Map<Key = P::Identifier, Value = P>,
     V::State: signature::Verify<S>,
     V::Proof: signature::Verify<S>,
 {
-    /// Registers a participant
+    /// Registers then queues a participant // TODO The registration is by hand, so queueing should be split from it
     #[inline]
     async fn register_participant<'a>(self, request: RegisterRequest<P>) -> Result<()> {
-        Ok(())
+        let mut state = self.0.lock();
+        state.register(request.participant).map_err(Error::from)
+    }
+
+    /// Gives current MPC state and challenge if participant is at front of queue.
+    #[inline]
+    async fn get_state_and_challenge(self, request: GetMpcRequest<S, V>) -> Result<GetMpcResponse<S, V>> {
+
+        todo!()
     }
 
     // /// Executes `f` on the incoming `request`.
@@ -87,6 +96,7 @@ fn main() {}
 pub enum Error {
     AlreadyQueued,
     InvalidSignature,
+    CeremonyError(CeremonyError),
 } // all server errors go into this enum
 
 impl From<Error> for tide::Error {
@@ -98,6 +108,13 @@ impl From<Error> for tide::Error {
                 "unable to complete request",
             ),
         }
+    }
+}
+
+impl From<CeremonyError> for Error {
+    #[inline]
+    fn from(e: CeremonyError) -> Self {
+        Self::CeremonyError(e)
     }
 }
 

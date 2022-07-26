@@ -15,6 +15,8 @@
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 //! Registry for the ceremony.
 
+use crate::ceremony::queue::Priority;
+use crate::mpc::Types;
 use crate::{
     ceremony::{queue::Identifier, signature, signature::SignatureScheme},
     mpc,
@@ -26,9 +28,10 @@ use serde::{Deserialize, Serialize};
 /// Only for testing
 pub struct RegisterRequest<P>
 where
-    P: Identifier,
+    P: Identifier + Priority + signature::HasPublicKey,
 {
-    id: P,
+    /// The Participant to register
+    pub participant: P,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -38,7 +41,7 @@ where
     P: Identifier,
     S: SignatureScheme,
 {
-    id: P,
+    participant: P,
     sig: S::Signature,
 }
 
@@ -64,17 +67,20 @@ where
     V::State: signature::Verify<S>,
     V::Proof: signature::Verify<S>,
 {
-    response: MpcSubstate<V>,
-    __: PhantomData<S>,
+    // response: MpcResponse<V>,
+    __: PhantomData<V>,
+    ___: PhantomData<S>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 ///
-pub enum MpcResponse<V> {
+pub enum MpcResponse<V> 
+where 
+    V: mpc::Verify, {
     ///
     QueuePosition,
     ///
-    Mpc(MpcSubstate<V>),
+    Mpc(V::State),
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -86,7 +92,8 @@ where
     V::State: signature::Verify<S>,
     V::Proof: signature::Verify<S>,
 {
-    mpc: MpcSubstate<V>,
+    state: V::State,
+    proof: V::Proof,
     sig: S::Signature,
 }
 
