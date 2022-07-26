@@ -115,8 +115,6 @@ pub mod ed_dalek_signatures {
         }
     }
 
-    /// The type of signature on messages from Client to Server.
-
     impl SignatureScheme for Ed25519 {
         type PublicKey = ContributorPublicKey;
 

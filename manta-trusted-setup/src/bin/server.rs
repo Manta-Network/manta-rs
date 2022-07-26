@@ -83,6 +83,7 @@ where
         self,
         request: GetMpcRequest<P, S, V>,
     ) -> Result<GetMpcResponse<S, V>> {
+        println!("Received a request for state");
         let state = self.0.lock();
 
         if state.is_next(&request.participant) {
@@ -97,6 +98,7 @@ where
     /// Processes a request to update the MPC state. If successful then participant is removed from queue.
     #[inline]
     async fn update(self, request: ContributeRequest<P, S, V>) -> Result<()> {
+        println!("Received an update request");
         let mut state = self.0.lock();
         state
             .update(
@@ -135,7 +137,7 @@ impl Default for Server<SaplingBls12Ceremony, Participant, RegistryMap, Ed25519,
 
         Self(Arc::new(Mutex::new(SaplingBls12Coordinator::new(
             mpc_verifier,
-            state,
+            state.into(),
             (),
         ))))
     }
@@ -153,14 +155,10 @@ async fn main() -> tide::Result<()> {
 
     api.at("/register")
         .post(|r| Server::execute(r, Server::register_participant));
-    // api.at("/get_mpc")
-    //     .post(|r| Server::execute(r, Server::get_mpc));
-    // api.at("/update_mpc")
-    //     .post(|r| Server::execute(r, Server::update_mpc::<SaplingDistribution>));
-    // api.at("/check_basic_signature")
-    //     .post(|r| Server::execute(r, Server::check_basic_signature));
-    // api.at("/register_participant")
-    //     .post(|r| Server::execute(r, Server::register_participant));
+    api.at("/get_state_and_challenge")
+        .post(|r| Server::execute(r, Server::get_state_and_challenge));
+    api.at("/update")
+        .post(|r| Server::execute(r, Server::update));
 
     api.listen("127.0.0.1:8080").await?;
 

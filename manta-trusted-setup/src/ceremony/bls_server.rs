@@ -19,7 +19,7 @@ use crate::{
     ceremony::{
         coordinator::Coordinator,
         queue::{Identifier, Priority},
-        signature::{self, ed_dalek_signatures, HasPublicKey, Sign},
+        signature::{self, ed_dalek_signatures, HasPublicKey, },
     },
     mpc::{Contribute, Types, Verify},
 };
@@ -53,23 +53,97 @@ where
     }
 }
 
+#[derive(Clone, Serialize, Deserialize)]
+/// Byte representation of a public key (to allow Serde to work later)
+pub struct BlsPhase2Proof {
+    /// `CanonicalSerialize::serialize` of a `phase2::PublicKey<E>`
+    proof: Vec<u8>,
+}
+
+impl<E> From<phase_two::PublicKey<E>> for BlsPhase2Proof
+where
+    E: PairingEngine,
+{
+    fn from(proof: phase_two::PublicKey<E>) -> Self {
+        let mut writer = Vec::<u8>::new();
+        let _ = CanonicalSerialize::serialize(&proof, &mut writer);
+        Self { proof: writer }
+    }
+}
+
+impl<E> From<BlsPhase2Proof> for phase_two::PublicKey<E>
+where
+    E: PairingEngine,
+{
+    fn from(proof: BlsPhase2Proof) -> Self {
+        CanonicalDeserialize::deserialize(&proof.proof[..]).unwrap()
+    }
+}
+
+impl<E> From<&BlsPhase2Proof> for phase_two::PublicKey<E>
+where
+    E: PairingEngine,
+{
+    fn from(proof: &BlsPhase2Proof) -> Self {
+        CanonicalDeserialize::deserialize(&proof.proof[..]).unwrap()
+    }
+}
+
+#[derive(Clone, Default, Serialize, Deserialize)] // TODO: I don't understand why default was needed by Server::execute
+/// Byte representation of a `MPCParameters` (to allow Serde to work later)
+pub struct BlsPhase2State {
+    /// `CanonicalSerialize::serialize` of a `phase2::MPCParameters<E>`
+    state: Vec<u8>,
+}
+
+impl<E> From<phase_two::MPCParameters<E>> for BlsPhase2State
+where
+    E: PairingEngine,
+{
+    fn from(state: phase_two::MPCParameters<E>) -> Self {
+        let mut writer = Vec::<u8>::new();
+        let _ = CanonicalSerialize::serialize(&state, &mut writer);
+        Self { state: writer }
+    }
+}
+
+impl<E> From<BlsPhase2State> for phase_two::MPCParameters<E>
+where
+    E: PairingEngine,
+{
+    fn from(state: BlsPhase2State) -> Self {
+        CanonicalDeserialize::deserialize(&state.state[..]).unwrap()
+    }
+}
+
+impl<E> From<&mut BlsPhase2State> for phase_two::MPCParameters<E>
+where
+    E: PairingEngine,
+{
+    fn from(state: &mut BlsPhase2State) -> Self {
+        CanonicalDeserialize::deserialize(&state.state[..]).unwrap()
+    }
+}
+
 impl<E> Types for BlsPhase2Ceremony<E>
 where
     E: PairingEngine,
 {
-    type State = phase_two::MPCParameters<E>;
+    type State = BlsPhase2State;
+    // type State = phase_two::MPCParameters<E>;
 
     type Challenge = (); // todo ? the challenge refactoring hasn't been done yet
 
-    type Proof = phase_two::PublicKey<E>;
+    type Proof = BlsPhase2Proof;
+    // type Proof = phase_two::PublicKey<E>;
 }
 
 /// The ceremony for phase 2 with Bls12-381
 pub type SaplingBls12Ceremony = BlsPhase2Ceremony<<Sapling as Configuration>::Pairing>;
 
 impl Contribute for SaplingBls12Ceremony {
-    type Contribution =
-        phase_two::PrivateKey<<<Sapling as Configuration>::Pairing as PairingEngine>::Fr>;
+    type Contribution = (); // todo: change this to a scalar and change contribute method below
+                            // phase_two::PrivateKey<<<Sapling as Configuration>::Pairing as PairingEngine>::Fr>;
 
     fn contribute(
         &self,
@@ -78,10 +152,17 @@ impl Contribute for SaplingBls12Ceremony {
         _contribution: &Self::Contribution,
     ) -> Self::Proof {
         let mut rng = OsRng;
-        let _digest = state.contribute::<SaplingDistribution, _>(&mut rng);
-        // Now the proof has been stuck inside the MpcParameters struct, so
+        // Keep in mind the Self::State type here is a byte encoding of MPC Parameters
+
+        let mut mpc =
+            phase_two::MPCParameters::<<Sapling as Configuration>::Pairing>::from(state.clone());
+        let _digest = mpc.contribute::<SaplingDistribution, _>(&mut rng);
+
+        // Don't forget to change the underlying state
+        *state = BlsPhase2State::from(mpc.clone());
+        // TODO: Now the proof has been stuck inside the MpcParameters struct, so
         // for now we'll just pull it back out to return it.
-        state.contributions.clone().last().cloned().unwrap()
+        mpc.contributions.clone().last().cloned().unwrap().into()
     }
 }
 
@@ -97,14 +178,18 @@ impl Verify for SaplingBls12Ceremony {
         _next_challenge: Self::Challenge,
         _proof: Self::Proof,
     ) -> Result<Self::State, Self::Error> {
-        match phase_two::verify_contribution::<SaplingDistribution, _>(&last, &next) {
+        match phase_two::verify_contribution::<
+            SaplingDistribution,
+            <Sapling as Configuration>::Pairing,
+        >(&last.into(), &next.clone().into())
+        {
             Ok(_) => Ok(next),
             Err(e) => Err(e),
         }
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 ///
 pub struct Participant {
     ///
@@ -116,7 +201,7 @@ pub struct Participant {
 }
 
 ///
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub enum CeremonyPriority {
     ///
     High,
@@ -156,9 +241,9 @@ impl signature::Verify<ed_dalek_signatures::Ed25519> for <SaplingBls12Ceremony a
     ) -> Result<(), super::CeremonyError> {
         let mut state = Vec::<u8>::new();
         state.extend_from_slice(b"State Contribution:");
-        let _ = self.serialize(&mut state);
-        // state.copy_from_slice(b"Public Key:");
-        // let _ = public_key.serialize(&mut state);
+        state.extend_from_slice(&self.state);
+        state.extend_from_slice(b"Public Key:");
+        state.extend_from_slice(&public_key.0);
 
         let message = ed_dalek_signatures::Message::from(&state[..]);
         message.verify_integrity(public_key, signature)
@@ -173,9 +258,9 @@ impl signature::Verify<ed_dalek_signatures::Ed25519> for <SaplingBls12Ceremony a
     ) -> Result<(), super::CeremonyError> {
         let mut state = Vec::<u8>::new();
         state.extend_from_slice(b"Contribution Proof:");
-        let _ = self.serialize(&mut state);
-        // state.copy_from_slice(b"Public Key:");
-        // let _ = public_key.serialize(&mut state);
+        state.extend_from_slice(&self.proof);
+        state.copy_from_slice(b"Public Key:");
+        state.extend_from_slice(&public_key.0);
 
         let message = ed_dalek_signatures::Message::from(&state[..]);
         message.verify_integrity(public_key, signature)

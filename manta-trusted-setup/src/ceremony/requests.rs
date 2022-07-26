@@ -22,7 +22,6 @@ use crate::{
         signature::SignatureScheme,
     },
     mpc,
-    mpc::Types,
 };
 use core::{fmt::Debug, marker::PhantomData};
 use serde::{Deserialize, Serialize};
@@ -60,8 +59,27 @@ where
 {
     ///
     pub participant: P,
-    sig: S::Signature,
+    /// Signature of the message "GetMpcRequest"
+    pub sig: S::Signature,
     __: PhantomData<V>,
+}
+
+impl<P, S, V> GetMpcRequest<P, S, V>
+where
+    P: Identifier + signature::HasPublicKey<PublicKey = S::PublicKey>,
+    S: SignatureScheme,
+    V: mpc::Verify,
+    V::State: signature::Verify<S>,
+    V::Proof: signature::Verify<S>,
+{
+    ///
+    pub fn new(participant: P, sig: S::Signature) -> Self {
+        Self {
+            participant,
+            sig,
+            __: PhantomData,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize)]
