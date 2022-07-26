@@ -16,8 +16,35 @@
 //! Waiting queue for the ceremony.
 
 // use manta_trusted_setup::ceremony::coordinator::*;
-// use manta_trusted_setup::ceremony::signature::ed_dalek_signatures::*;
+use manta_trusted_setup::ceremony::{
+    bls_server::{CeremonyPriority, Participant},
+    requests::*,
+    signature::ed_dalek_signatures::*,
+};
 // use manta_trusted_setup::ceremony::queue::*;
 // use manta_trusted_setup::ceremony::CeremonyError;
 
-fn main() {}
+#[async_std::main]
+async fn main() -> Result<(), reqwest::Error> {
+    let client = reqwest::Client::new();
+
+    // Generate a keypair
+    let (private_key, public_key) = test_keypair();
+    // Form a registration request
+    let participant = Participant {
+        id: public_key,
+        priority: CeremonyPriority::High,
+        has_contributed: false,
+    };
+    let request = RegisterRequest { participant };
+    // Send to server
+    client
+        .post("http://127.0.0.1:8080/register")
+        .json(&request)
+        .send()
+        .await?
+        .json()
+        .await?; // todo: that can be compressed, I just broke apart the request to illustrate
+
+    Ok(())
+}

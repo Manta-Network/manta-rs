@@ -46,6 +46,7 @@ ark-relations = { version = "0.3.0", default-features = false }
 ark-serialize = { version = "0.3.0", default-features = false, features = ["derive"] }
 ark-snark = { version = "0.3.0", default-features = false }
 ark-std = { version = "0.3.0", default-features = false }
+async-std = { version = "1.6.0", features = ["attributes", "tokio1"] }
 derivative = { version = "2.2.0", default-features = false, features = ["use_core"] }
 ed25519 = { version = "1.5.2", default-features = false }
 ed25519-dalek = { version = "1.0.1", default-features = false, features = ["rand", "u64_backend"] } # was unsure what features to use here 

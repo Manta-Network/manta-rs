@@ -65,7 +65,7 @@ where
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-///
+/// TODO: Can't get the enum version to derive serde
 pub struct GetMpcResponse<S, V>
 where
     S: SignatureScheme,
@@ -78,6 +78,7 @@ where
     ___: PhantomData<S>,
 }
 
+// TODO: delete when GetMpcResponse is fixed
 impl<S, V> Default for GetMpcResponse<S, V>
 where
     S: SignatureScheme,

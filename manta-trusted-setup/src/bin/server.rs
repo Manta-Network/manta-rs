@@ -18,6 +18,10 @@
 use core::{future::Future, marker::PhantomData};
 use manta_trusted_setup::{
     ceremony::{
+        bls_server::{
+            default_reclaim_mpc, Participant, RegistryMap, SaplingBls12Ceremony,
+            SaplingBls12Coordinator,
+        },
         coordinator::*,
         queue::*,
         registry::Map,
@@ -37,7 +41,8 @@ use std::{
 use tide::{Body, Request, Response, StatusCode};
 // use manta_trusted_setup::ceremony::CeremonyError;
 
-#[derive(Clone)]
+#[derive(derivative::Derivative)]
+#[derivative(Clone(bound = ""))]
 /// Server with `V` as trusted setup verifier, `P` as participant, `M` as the map used by registry, `N` as the number of priority levels.
 pub struct Server<V, P, M, S, const N: usize>(Arc<Mutex<Coordinator<V, P, M, S, N>>>)
 where
@@ -60,6 +65,7 @@ where
     /// Registers then queues a participant // TODO The registration is by hand, so queueing should be split from it
     #[inline]
     async fn register_participant<'a>(self, request: RegisterRequest<P>) -> Result<()> {
+        println!("Registering a participant");
         let mut state = self.0.lock();
         state.register(request.participant).map_err(Error::from)
     }
@@ -102,28 +108,64 @@ where
             .map_err(Error::from)
     }
 
-    // /// Executes `f` on the incoming `request`.
-    // #[inline]
-    // async fn execute<T, R, F, Fut>(
-    //     mut request: Request<Self>, // get json from here
-    //     f: F,
-    // ) -> Result<Response, tide::Error>
-    // where
-    //     T: DeserializeOwned, // Request type that would have been received from Client
-    //     R: Serialize,        // Response
-    //     F: FnOnce(Self, T) -> Fut, // endpoint must be of this form
-    //     Fut: Future<Output = Result<R>>, // R is the type returned by Server, like Attestation
-    // {
-    //     let args = request.body_json::<T>().await?; // parse json into its args
-    //     into_body(move || async move {
-    //         f(request.state().clone(), args).await // pass those args to f, as well as a copy of the State -- rather ArcMutex<State>, hence clonable
-    //     })
-    //     .await
-    // }
+    /// Executes `f` on the incoming `request`.
+    #[inline]
+    async fn execute<T, R, F, Fut>(
+        mut request: Request<Self>, // get json from here
+        f: F,
+    ) -> Result<Response, tide::Error>
+    where
+        T: DeserializeOwned, // Request type that would have been received from Client
+        R: Serialize,        // Response
+        F: FnOnce(Self, T) -> Fut, // endpoint must be of this form
+        Fut: Future<Output = Result<R>>, // R is the type returned by Server, like Attestation
+    {
+        let args = request.body_json::<T>().await?; // parse json into its args
+        into_body(move || async move {
+            f(request.state().clone(), args).await // pass those args to f, as well as a copy of the State -- rather ArcMutex<State>, hence clonable
+        })
+        .await
+    }
 }
 
-fn main() {}
+impl Default for Server<SaplingBls12Ceremony, Participant, RegistryMap, Ed25519, 2> {
+    fn default() -> Self {
+        let mpc_verifier = SaplingBls12Ceremony::default();
+        let state = default_reclaim_mpc();
 
+        Self(Arc::new(Mutex::new(SaplingBls12Coordinator::new(
+            mpc_verifier,
+            state,
+            (),
+        ))))
+    }
+}
+
+#[async_std::main]
+async fn main() -> tide::Result<()> {
+    let mut api = tide::Server::with_state(Server::<
+        SaplingBls12Ceremony,
+        Participant,
+        RegistryMap,
+        Ed25519,
+        2,
+    >::default());
+
+    api.at("/register")
+        .post(|r| Server::execute(r, Server::register_participant));
+    // api.at("/get_mpc")
+    //     .post(|r| Server::execute(r, Server::get_mpc));
+    // api.at("/update_mpc")
+    //     .post(|r| Server::execute(r, Server::update_mpc::<SaplingDistribution>));
+    // api.at("/check_basic_signature")
+    //     .post(|r| Server::execute(r, Server::check_basic_signature));
+    // api.at("/register_participant")
+    //     .post(|r| Server::execute(r, Server::register_participant));
+
+    api.listen("127.0.0.1:8080").await?;
+
+    Ok(())
+}
 pub enum Error {
     AlreadyQueued,
     InvalidSignature,

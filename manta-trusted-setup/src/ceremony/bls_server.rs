@@ -23,6 +23,7 @@ use crate::{
     },
     mpc::{Contribute, Types, Verify},
 };
+use alloc::vec::Vec;
 use ark_ec::PairingEngine;
 use ark_sapling_mpc_verify::{
     phase_one::{powersoftau::Configuration, sapling::Sapling},
@@ -32,6 +33,7 @@ use ark_sapling_mpc_verify::{
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use core::marker::PhantomData;
 use manta_crypto::rand::OsRng;
+use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fs::OpenOptions};
 
 /// The MPC
@@ -40,6 +42,15 @@ where
     E: PairingEngine,
 {
     __: PhantomData<E>,
+}
+
+impl<E> Default for BlsPhase2Ceremony<E>
+where
+    E: PairingEngine,
+{
+    fn default() -> Self {
+        Self { __: PhantomData }
+    }
 }
 
 impl<E> Types for BlsPhase2Ceremony<E>
@@ -53,7 +64,8 @@ where
     type Proof = phase_two::PublicKey<E>;
 }
 
-type SaplingBls12Ceremony = BlsPhase2Ceremony<<Sapling as Configuration>::Pairing>;
+/// The ceremony for phase 2 with Bls12-381
+pub type SaplingBls12Ceremony = BlsPhase2Ceremony<<Sapling as Configuration>::Pairing>;
 
 impl Contribute for SaplingBls12Ceremony {
     type Contribution =
@@ -92,15 +104,23 @@ impl Verify for SaplingBls12Ceremony {
     }
 }
 
+#[derive(Serialize, Deserialize)]
 ///
 pub struct Participant {
-    id: ed_dalek_signatures::ContributorPublicKey,
-    priority: CeremonyPriority,
-    has_contributed: bool,
+    ///
+    pub id: ed_dalek_signatures::ContributorPublicKey,
+    ///
+    pub priority: CeremonyPriority,
+    ///
+    pub has_contributed: bool,
 }
 
-enum CeremonyPriority {
+///
+#[derive(Serialize, Deserialize)]
+pub enum CeremonyPriority {
+    ///
     High,
+    ///
     Low,
 }
 
@@ -162,14 +182,16 @@ impl signature::Verify<ed_dalek_signatures::Ed25519> for <SaplingBls12Ceremony a
     }
 }
 
-type RegistryMap = HashMap<<Participant as Identifier>::Identifier, Participant>;
+/// Registry map for participants in this ceremony.
+pub type RegistryMap = HashMap<<Participant as Identifier>::Identifier, Participant>;
 
-type SaplingBls12Coordinator =
+/// A coordinator for phase2 with Bls12-381, Ed25519 signatures
+pub type SaplingBls12Coordinator =
     Coordinator<SaplingBls12Ceremony, Participant, RegistryMap, ed_dalek_signatures::Ed25519, 2>;
 
 #[test]
 fn construct_coordinator_test() {
-    let mpc_verifier = SaplingBls12Ceremony { __: PhantomData };
+    let mpc_verifier = SaplingBls12Ceremony::default();
     let state = default_reclaim_mpc();
 
     let _coordinator = SaplingBls12Coordinator::new(mpc_verifier, state, ());

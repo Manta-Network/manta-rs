@@ -68,6 +68,7 @@ where
 pub mod ed_dalek_signatures {
     use super::{Sign, Verify};
     use crate::ceremony::signature::SignatureScheme;
+    use alloc::vec::Vec;
     use ed25519_dalek::{PublicKey, Signer, Verifier};
     use serde::{Deserialize, Serialize};
 
