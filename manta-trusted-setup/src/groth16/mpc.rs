@@ -33,9 +33,6 @@ use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem, SynthesisErro
 use core::clone::Clone;
 use manta_crypto::rand::{CryptoRng, RngCore};
 
-#[cfg(feature = "rayon")]
-use rayon::iter::IndexedParallelIterator;
-
 /// Proving Key Hasher
 pub trait ProvingKeyHasher<P>
 where
@@ -263,13 +260,14 @@ where
 
 /// Configuration
 pub trait Configuration: Pairing {
-    /// TODO
+    /// Challenge Type
     type Challenge;
 
-    /// TODO
+    /// Hasher Type
     type Hasher: Default + HashToGroup<Self, Self::Challenge>;
 
-    /// TODO
+    /// Generates the next [`Challenge`](Self::Challenge) from `challenge`, `prev` state, `next` state,
+    /// and `proof`.
     fn challenge(
         challenge: &Self::Challenge,
         prev: &State<Self>,
@@ -278,7 +276,7 @@ pub trait Configuration: Pairing {
     ) -> Self::Challenge;
 }
 
-/// TODO
+/// Contributes to `state` with `hasher`, `challenge`, and `rng`, returning a [`proof`](Proof).
 #[inline]
 pub fn contribute<C, R>(
     hasher: &C::Hasher,
@@ -302,7 +300,7 @@ where
     Proof::prove(hasher, challenge, &delta, rng)
 }
 
-/// TODO
+/// Verifies transforming from `prev` to `next` is correct given `challenge` and `proof`.
 #[inline]
 pub fn verify_transform<C>(
     challenge: &C::Challenge,

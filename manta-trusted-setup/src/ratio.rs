@@ -96,6 +96,7 @@ where
 
     /// Verifies that `self` is a valid ratio proof-of-knowledge, returning the ratio of the
     /// underlying scalar.
+    #[allow(clippy::type_complexity)]
     #[inline]
     pub fn verify<H, C>(
         self,

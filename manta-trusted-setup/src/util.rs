@@ -346,7 +346,7 @@ where
 pub struct BlakeHasher(pub Blake2b512);
 
 impl BlakeHasher {
-    /// TODO
+    /// Builds a new [`BlakeHasher`].
     pub fn new() -> Self {
         BlakeHasher(Blake2b512::new())
     }

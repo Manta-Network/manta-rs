@@ -16,22 +16,21 @@
 
 //! Groth16 Trusted Setup Testing
 
-use super::kzg::Configuration;
 use crate::{
     groth16::{
-        kzg::{self, Accumulator, Contribution, Size},
+        kzg::{self, Accumulator, Configuration, Contribution, Size},
         mpc::{self, contribute, initialize, verify_transform, Proof, State},
     },
-    // mpc::Transcript,
+    mpc::{Transcript, Types},
     pairing::Pairing,
     ratio::RatioProof,
     util::{
-        into_array_unchecked, BlakeHasher, HasDistribution, KZGBlakeHasher, PairingEngine, Sample,
+        into_array_unchecked, AffineCurve, BlakeHasher, HasDistribution, KZGBlakeHasher,
+        PairingEngine, Sample,
     },
 };
 use alloc::vec::Vec;
 use ark_bls12_381::{Fr, FrParameters};
-use ark_ec::AffineCurve;
 use ark_ff::{field_new, Fp256, UniformRand};
 use ark_groth16::{Groth16 as ArkGroth16, ProvingKey};
 use ark_r1cs_std::eq::EqGadget;
@@ -140,7 +139,6 @@ impl kzg::Configuration for Test {
             .matching_point
             .serialize_uncompressed(&mut hasher)
             .unwrap();
-
         proof
             .beta
             .ratio
@@ -217,6 +215,14 @@ where
     }
 }
 
+impl Types for Test {
+    type State = State<Test>;
+
+    type Challenge = [u8; 64];
+
+    type Proof = Proof<Test>;
+}
+
 /// Conducts a dummy phase one trusted setup.
 pub fn dummy_phase_one_trusted_setup() -> Accumulator<Test> {
     let mut rng = OsRng;
@@ -254,20 +260,7 @@ where
     );
 }
 
-/// TODO
-pub struct Transcript<P>
-where
-    P: Pairing,
-{
-    /// TODO
-    pub initial_challenge: [u8; 64],
-    /// TODO
-    pub initial_state: State<P>,
-    /// TODO
-    pub rounds: Vec<(State<P>, Proof<P>)>,
-}
-
-/// TODO
+/// Tests if proving and verifying ratio proof is correct.
 #[test]
 pub fn proving_and_verifying_ratio_proof_is_correct() {
     let mut rng = OsRng;
@@ -279,10 +272,12 @@ pub fn proving_and_verifying_ratio_proof_is_correct() {
         &mut rng,
     )
     .expect("Proving a ratio proof should be correct.");
-    proof.verify(
-        &<Test as kzg::Configuration>::hasher(Test::TAU_DOMAIN_TAG),
-        &[0; 64],
-    ).expect("Verifying a ratio proof should be correct.");
+    proof
+        .verify(
+            &<Test as kzg::Configuration>::hasher(Test::TAU_DOMAIN_TAG),
+            &[0; 64],
+        )
+        .expect("Verifying a ratio proof should be correct.");
 }
 
 /// Tests if trusted setup phase 2 is valid with trusted setup phase 1 and proves
