@@ -486,12 +486,12 @@ pub trait Sample<D = ()>: Sized {
     }
 }
 
-impl<P, D> Sample<D> for GroupAffine<P>
+impl<P> Sample for GroupAffine<P>
 where
     P: SWModelParameters,
 {
     #[inline]
-    fn sample<R>(_: D, rng: &mut R) -> Self
+    fn sample<R>(_: (), rng: &mut R) -> Self
     where
         R: CryptoRng + RngCore + ?Sized,
     {

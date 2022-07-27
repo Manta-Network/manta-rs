@@ -19,7 +19,7 @@
 use crate::{
     groth16::{
         kzg::{self, Accumulator, Configuration, Contribution, Size},
-        mpc::{self, contribute, initialize, verify_transform, Proof, State},
+        mpc::{self, contribute, initialize, verify_transform, verify_transform_all, Proof, State},
     },
     mpc::{Transcript, Types},
     pairing::Pairing,
@@ -303,9 +303,15 @@ pub fn trusted_setup_phase_two_is_valid() {
         prev_state = state.clone();
         proof = contribute::<Test, _>(&hasher, &challenge, &mut state, &mut rng).unwrap();
         (challenge, state) = verify_transform::<Test>(&challenge, prev_state, state, proof.clone())
-            .expect("verify transform failed");
+            .expect("Verify transform failed");
         transcript.rounds.push((state.clone(), proof));
     }
+    verify_transform_all(
+        transcript.initial_challenge,
+        transcript.initial_state,
+        transcript.rounds,
+    )
+    .expect("Verifying all transformations failed.");
     let mut cs = R1CS::for_contexts();
     dummy_circuit(&mut cs);
     dummy_prove_and_verify_circuit(state, &mut rng);

@@ -339,3 +339,22 @@ where
     }
     Ok((next_challenge, next))
 }
+
+/// Verifies all contributions in `iter` chaining from an initial `state` and `challenge`
+/// returning the newest [`State`](State<C>) and [`Challenge`](Configuration::Challenge) if all the
+/// contributions in the chain had valid transitions.
+#[inline]
+pub fn verify_transform_all<C, I>(
+    mut challenge: C::Challenge,
+    mut state: State<C>,
+    iter: I,
+) -> Result<(), Error>
+where
+    C: Configuration,
+    I: IntoIterator<Item = (State<C>, Proof<C>)>,
+{
+    for (next, next_proof) in iter {
+        (challenge, state) = verify_transform(&challenge, state, next, next_proof)?;
+    }
+    Ok(())
+}
