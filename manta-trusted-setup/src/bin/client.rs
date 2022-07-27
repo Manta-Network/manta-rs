@@ -15,13 +15,10 @@
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 //! Waiting queue for the ceremony.
 
-use ark_sapling_mpc_verify::{
-    phase_two,
-};
-use manta_trusted_setup::ceremony::bls_server::{SaplingBls12Ceremony, BlsPhase2State};
+use ark_sapling_mpc_verify::phase_two;
 use manta_trusted_setup::{
     ceremony::{
-        bls_server::{CeremonyPriority, Participant},
+        bls_server::{BlsPhase2State, CeremonyPriority, Participant, SaplingBls12Ceremony},
         requests::*,
         signature::{ed_dalek_signatures::*, Sign},
     },

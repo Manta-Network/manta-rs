@@ -15,16 +15,45 @@
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 //! Registry for the ceremony.
 
+use crate::ceremony::signature::Verify;
 use crate::{
     ceremony::{
         queue::{Identifier, Priority},
         signature,
-        signature::SignatureScheme,
+        signature::{ed_dalek_signatures, Sign, SignatureScheme},
+        CeremonyError,
     },
     mpc,
 };
 use core::{fmt::Debug, marker::PhantomData};
 use serde::{Deserialize, Serialize};
+
+/// Signed requests from client to server.
+pub trait SignedRequest<S>
+where
+    S: SignatureScheme,
+{
+    /// Data to sign, such as a proof of contribution.
+    type Data: Clone;
+    /// Nonce specific to this request
+    type Nonce;
+
+    /// Computes signatures of `Data` and assembles data and
+    /// signatures into a request. This should use the nonce.
+    fn form_request(
+        data: &Self::Data,
+        public_key: &S::PublicKey,
+        private_key: &S::PrivateKey,
+    ) -> Result<Self, CeremonyError>
+    where
+        Self: std::marker::Sized;
+
+    /// Checks all signatures in a request.
+    fn check_signatures(&self, public_key: &S::PublicKey) -> Result<(), CeremonyError>;
+
+    /// Define a nonce to use for requests of this type
+    fn nonce() -> Self::Nonce;
+}
 
 #[derive(Debug, Deserialize, Serialize)]
 /// Only for testing
@@ -79,6 +108,58 @@ where
             sig,
             __: PhantomData,
         }
+    }
+}
+
+impl<P, V> SignedRequest<ed_dalek_signatures::Ed25519>
+    for GetMpcRequest<P, ed_dalek_signatures::Ed25519, V>
+where
+    P: Clone
+        + Identifier
+        + signature::HasPublicKey<
+            PublicKey = <ed_dalek_signatures::Ed25519 as SignatureScheme>::PublicKey,
+        >,
+    V: mpc::Verify,
+    V::State: signature::Verify<ed_dalek_signatures::Ed25519>,
+    V::Proof: signature::Verify<ed_dalek_signatures::Ed25519>,
+{
+    type Data = P;
+
+    type Nonce = Vec<u8>; // todo : what's a better choice here?
+
+    fn form_request(
+        data: &Self::Data,
+        public_key: &<ed_dalek_signatures::Ed25519 as SignatureScheme>::PublicKey,
+        private_key: &<ed_dalek_signatures::Ed25519 as SignatureScheme>::PrivateKey,
+    ) -> Result<Self, CeremonyError> {
+        // These requests will be signed with just the participant's public key
+        let mut message = Self::nonce();
+        message.extend_from_slice(&public_key.0);
+        let message = ed_dalek_signatures::Message::from(&message[..]);
+        let signature = message.sign(public_key, private_key)?;
+        Ok(Self::new(data.clone(), signature))
+    }
+
+    fn check_signatures(
+        &self,
+        public_key: &<ed_dalek_signatures::Ed25519 as SignatureScheme>::PublicKey,
+    ) -> Result<(), CeremonyError> {
+        // These requests should have been signed with just the participant's public key
+        let mut message = Self::nonce();
+        message.extend_from_slice(&public_key.0);
+        
+        // broken !
+        message.extend_from_slice(&public_key.0);
+
+
+        let message = ed_dalek_signatures::Message::from(&message[..]);
+        message.verify_integrity(public_key, &self.sig)
+    }
+
+    fn nonce() -> Self::Nonce {
+        let mut nonce = Vec::<u8>::new();
+        nonce.extend_from_slice(b"GetMpcRequest");
+        nonce
     }
 }
 

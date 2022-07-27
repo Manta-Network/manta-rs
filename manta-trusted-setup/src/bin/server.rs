@@ -53,14 +53,14 @@ where
     V::State: signature::Verify<S>,
     V::Proof: signature::Verify<S>;
 
-impl<V, P, M, S, const N: usize> Server<V, P, M, S, N>
+    // Note the implementation is currently not generic over S: SignatureScheme
+impl<V, P, M, const N: usize> Server<V, P, M, Ed25519, N>
 where
     V: mpc::Verify,
-    P: Priority + Identifier + signature::HasPublicKey<PublicKey = S::PublicKey>,
-    S: SignatureScheme,
+    P: Clone + Priority + Identifier + signature::HasPublicKey<PublicKey = <Ed25519 as SignatureScheme>::PublicKey>,
     M: Map<Key = P::Identifier, Value = P>,
-    V::State: Default + signature::Verify<S>,
-    V::Proof: signature::Verify<S>,
+    V::State: Default + signature::Verify<Ed25519>,
+    V::Proof: signature::Verify<Ed25519>,
 {
     /// Registers then queues a participant // TODO The registration is by hand, so queueing should be split from it
     #[inline]
@@ -72,7 +72,7 @@ where
 
     /// Adds a participant to the queue if they are registered. Todo: join queue should return position
     #[inline]
-    async fn join_queue(self, request: JoinQueueRequest<P, S>) -> Result<usize> {
+    async fn join_queue(self, request: JoinQueueRequest<P, Ed25519>) -> Result<usize> {
         let mut state = self.0.lock();
         todo!()
     }
@@ -81,10 +81,14 @@ where
     #[inline]
     async fn get_state_and_challenge(
         self,
-        request: GetMpcRequest<P, S, V>,
-    ) -> Result<GetMpcResponse<S, V>> {
-        println!("Received a request for state");
+        request: GetMpcRequest<P, Ed25519, V>,
+    ) -> Result<GetMpcResponse<Ed25519, V>> {
+        println!("Received a request for state, checking signature.");
         let state = self.0.lock();
+
+        // Check signatures
+        SignedRequest::check_signatures(&request, &request.participant.public_key())?;
+        println!("Signature was valid, checking position in queue");
 
         if state.is_next(&request.participant) {
             println!("Served state to next participant");
@@ -97,7 +101,7 @@ where
 
     /// Processes a request to update the MPC state. If successful then participant is removed from queue.
     #[inline]
-    async fn update(self, request: ContributeRequest<P, S, V>) -> Result<()> {
+    async fn update(self, request: ContributeRequest<P, Ed25519, V>) -> Result<()> {
         println!("Received an update request");
         let mut state = self.0.lock();
         state

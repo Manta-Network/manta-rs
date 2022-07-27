@@ -19,7 +19,7 @@ use crate::{
     ceremony::{
         coordinator::Coordinator,
         queue::{Identifier, Priority},
-        signature::{self, ed_dalek_signatures, HasPublicKey, },
+        signature::{self, ed_dalek_signatures, HasPublicKey},
     },
     mpc::{Contribute, Types, Verify},
 };
