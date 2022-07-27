@@ -16,10 +16,13 @@
 
 //! KZG Trusted Setup for Groth16
 
-use crate::util::{
-    power_pairs, scalar_mul, AffineCurve, CanonicalDeserialize, CanonicalSerialize, Deserializer,
-    HashToGroup, NonZero, One, Pairing, PairingEngineExt, ProjectiveCurve, Read, Sample,
-    SerializationError, Serializer, UniformRand, Write, Zero,
+use crate::{
+    pairing::{Pairing, PairingEngineExt},
+    ratio::{HashToGroup, RatioProof},
+    util::{
+        power_pairs, scalar_mul, CanonicalDeserialize, CanonicalSerialize, Deserializer, NonZero,
+        One, Read, Sample, SerializationError, Serializer, UniformRand, Write,
+    },
 };
 use alloc::{vec, vec::Vec};
 use core::{iter, ops::Mul};
@@ -57,7 +60,7 @@ pub trait Configuration: Pairing + Size {
     type Distribution;
 
     /// Hash To Group Type
-    type HashToGroup: HashToGroup<Self, <Self as Configuration>::Distribution>;
+    type HashToGroup: HashToGroup<Self, Self::Challenge>;
 
     /// Tau Domain Tag Type
     const TAU_DOMAIN_TAG: Self::DomainTag;
@@ -68,7 +71,7 @@ pub trait Configuration: Pairing + Size {
     /// Beta Domain Tag Type
     const BETA_DOMAIN_TAG: Self::DomainTag;
 
-    /// Generates a [`hasher`](Self::HashToGroup) guided by [`domain_tag`](Self::DomainTag).
+    /// Generates a [`HashToGroup`](Self::HashToGroup) instance paramterized by `domain_tag`.
     fn hasher(domain_tag: Self::DomainTag) -> Self::HashToGroup;
 
     /// Computes the challenge response from `state`, `challenge`, and `proof`.
@@ -154,9 +157,9 @@ where
         R: CryptoRng + RngCore + ?Sized,
     {
         Some(Proof {
-            tau: RatioProof::build(C::TAU_DOMAIN_TAG, challenge, &self.tau, rng)?,
-            alpha: RatioProof::build(C::ALPHA_DOMAIN_TAG, challenge, &self.alpha, rng)?,
-            beta: RatioProof::build(C::BETA_DOMAIN_TAG, challenge, &self.beta, rng)?,
+            tau: RatioProof::prove(&C::hasher(C::TAU_DOMAIN_TAG), challenge, &self.tau, rng)?,
+            alpha: RatioProof::prove(&C::hasher(C::ALPHA_DOMAIN_TAG), challenge, &self.alpha, rng)?,
+            beta: RatioProof::prove(&C::hasher(C::BETA_DOMAIN_TAG), challenge, &self.beta, rng)?,
         })
     }
 }
@@ -175,87 +178,6 @@ where
             alpha: C::Scalar::rand(rng),
             beta: C::Scalar::rand(rng),
         }
-    }
-}
-
-/// Pairing Ratio Proof of Knowledge
-#[derive(derivative::Derivative, CanonicalSerialize)]
-#[derivative(Clone, Debug, Default, Eq, Hash, PartialEq)]
-pub struct RatioProof<P>
-where
-    P: Pairing + ?Sized,
-{
-    /// Ratio in G1
-    pub ratio: (P::G1, P::G1),
-
-    /// Matching Point in G2
-    pub matching_point: P::G2,
-}
-
-impl<C> RatioProof<C>
-where
-    C: Pairing,
-{
-    /// Builds a [`RatioProof`] for `scalar` against `challenge`.
-    #[inline]
-    pub fn build<R>(
-        domain_tag: C::DomainTag,
-        challenge: &C::Challenge,
-        scalar: &C::Scalar,
-        rng: &mut R,
-    ) -> Option<Self>
-    where
-        C: Configuration,
-        R: CryptoRng + RngCore + ?Sized,
-    {
-        let g1_point: C::G1 = Sample::gen(rng);
-        if g1_point.is_zero() {
-            return None;
-        }
-        let scaled_g1_point = g1_point.mul(*scalar).into_affine();
-        if scaled_g1_point.is_zero() {
-            return None;
-        }
-        let g2_point = C::hasher(domain_tag).hash(challenge, (&g1_point, &scaled_g1_point));
-        if g2_point.is_zero() {
-            return None;
-        }
-        let scaled_g2_point = g2_point.mul(*scalar).into_affine();
-        if scaled_g2_point.is_zero() {
-            return None;
-        }
-        Some(Self {
-            ratio: (g1_point, scaled_g1_point),
-            matching_point: scaled_g2_point,
-        })
-    }
-
-    /// Computes the challenge point that corresponds with the given `challenge`.
-    #[inline]
-    pub fn challenge_point(&self, domain_tag: C::DomainTag, challenge: &C::Challenge) -> C::G2
-    where
-        C: Configuration,
-    {
-        C::hasher(domain_tag).hash(challenge, (&self.ratio.0, &self.ratio.1))
-    }
-
-    /// Verifies that `self` is a valid ratio proof-of-knowledge, returning the G2 ratio of the
-    /// underlying scalar.
-    #[inline]
-    pub fn verify(
-        self,
-        domain_tag: C::DomainTag,
-        challenge: &C::Challenge,
-    ) -> Option<(C::G2Prepared, C::G2Prepared)>
-    where
-        C: Configuration,
-    {
-        let challenge_point = self.challenge_point(domain_tag, challenge);
-        let ((_, matching_point), (_, challenge_point)) = C::Pairing::same(
-            (self.ratio.0, self.matching_point),
-            (self.ratio.1, challenge_point),
-        )?;
-        Some((matching_point, challenge_point))
     }
 }
 
@@ -308,16 +230,19 @@ where
         Ok(KnowledgeProofCertificate {
             tau: self
                 .tau
-                .verify(C::TAU_DOMAIN_TAG, challenge)
-                .ok_or(KnowledgeError::TauKnowledgeProof)?,
+                .verify(&C::hasher(C::TAU_DOMAIN_TAG), challenge)
+                .ok_or(KnowledgeError::TauKnowledgeProof)?
+                .1,
             alpha: self
                 .alpha
-                .verify(C::ALPHA_DOMAIN_TAG, challenge)
-                .ok_or(KnowledgeError::AlphaKnowledgeProof)?,
+                .verify(&C::hasher(C::ALPHA_DOMAIN_TAG), challenge)
+                .ok_or(KnowledgeError::AlphaKnowledgeProof)?
+                .1,
             beta: self
                 .beta
-                .verify(C::BETA_DOMAIN_TAG, challenge)
-                .ok_or(KnowledgeError::BetaKnowledgeProof)?,
+                .verify(&C::hasher(C::BETA_DOMAIN_TAG), challenge)
+                .ok_or(KnowledgeError::BetaKnowledgeProof)?
+                .1,
         })
     }
 }

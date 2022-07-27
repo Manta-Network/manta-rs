@@ -17,4 +17,4 @@
 //! Groth16 Trusted Setup
 
 pub mod kzg;
-pub mod phase2;
+pub mod mpc;

@@ -7,7 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Added
 - [\#131](https://github.com/Manta-Network/manta-rs/pull/131) Add abstract Phase 1 for Groth16 trusted setup
 - [\#175](https://github.com/Manta-Network/manta-rs/pull/175) Add more documentation around `cargo-hakari`
-- [\#172](https://github.com/Manta-Network/manta-rs/pull/172) Add trusted setup phase 2.
+- [\#172](https://github.com/Manta-Network/manta-rs/pull/172) Add abstract Phase 2 for Groth16 trusted setup 
 
 ### Changed
 

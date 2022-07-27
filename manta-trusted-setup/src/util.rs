@@ -16,11 +16,12 @@
 
 //! Utilities
 
+use crate::{groth16::kzg, ratio::HashToGroup};
 use alloc::vec::Vec;
 use ark_ec::{short_weierstrass_jacobian::GroupAffine, wnaf::WnafContext, SWModelParameters};
 use ark_ff::{BigInteger, Fp256};
 use ark_std::io;
-use blake2::{Blake2b, Blake2b512, Digest as Blake2Digest};
+use blake2::{Blake2b512, Digest as Blake2Digest};
 use byteorder::{BigEndian, ReadBytesExt};
 use core::{iter, marker::PhantomData};
 use manta_crypto::rand::{CryptoRng, OsRng, RngCore};
@@ -36,48 +37,10 @@ pub use ark_serialize::{
     CanonicalDeserialize, CanonicalSerialize, Read, SerializationError, Write,
 };
 
-use crate::groth16::kzg::Configuration;
-
 /// Distribution Type Extension
 pub trait HasDistribution {
     /// Distribution Type
     type Distribution: Default;
-}
-
-/// Pairing Configuration
-pub trait Pairing: HasDistribution {
-    /// Underlying Scalar Field
-    type Scalar: PrimeField;
-
-    /// First Group of the Pairing
-    type G1: AffineCurve<ScalarField = Self::Scalar>
-        + Into<Self::G1Prepared>
-        + Sample<Self::Distribution>;
-
-    /// First Group Pairing-Prepared Point
-    type G1Prepared;
-
-    /// Second Group of the Pairing
-    type G2: AffineCurve<ScalarField = Self::Scalar>
-        + Into<Self::G2Prepared>
-        + Sample<Self::Distribution>;
-
-    /// Second Group Pairing-Prepared Point
-    type G2Prepared;
-
-    /// Pairing Engine Type
-    type Pairing: PairingEngine<
-        G1Affine = Self::G1,
-        G2Affine = Self::G2,
-        G1Prepared = Self::G1Prepared,
-        G2Prepared = Self::G2Prepared,
-    >;
-
-    /// Returns the base G1 generator for this configuration.
-    fn g1_prime_subgroup_generator() -> Self::G1;
-
-    /// Returns the base G2 generator for this configuration.
-    fn g2_prime_subgroup_generator() -> Self::G2;
 }
 
 /// Custom Serialization Adapter
@@ -371,86 +334,37 @@ where
     (g1_proj.into_affine(), g2_proj.into_affine())
 }
 
-/// Pair from a [`PairingEngine`]
-type Pair<P> = (
-    <P as PairingEngine>::G1Prepared,
-    <P as PairingEngine>::G2Prepared,
-);
-
-/// Pairing Engine Extension
-pub trait PairingEngineExt: PairingEngine {
-    /// Evaluates the pairing function on `pair`.
-    #[inline]
-    fn eval(pair: &Pair<Self>) -> Self::Fqk {
-        Self::product_of_pairings(iter::once(pair))
-    }
-
-    /// Checks if `lhs` and `rhs` evaluate to the same point under the pairing function.
-    #[inline]
-    fn has_same(lhs: &Pair<Self>, rhs: &Pair<Self>) -> bool {
-        Self::eval(lhs) == Self::eval(rhs)
-    }
-
-    /// Checks if `lhs` and `rhs` evaluate to the same point under the pairing function, returning
-    /// `Some` with prepared points if the pairing outcome is the same. This function checks if
-    /// there exists an `r` such that `(r * lhs.0 == rhs.0) && (lhs.1 == r * rhs.1)`.
-    #[inline]
-    fn same<L1, L2, R1, R2>(lhs: (L1, L2), rhs: (R1, R2)) -> Option<(Pair<Self>, Pair<Self>)>
-    where
-        L1: Into<Self::G1Prepared>,
-        L2: Into<Self::G2Prepared>,
-        R1: Into<Self::G1Prepared>,
-        R2: Into<Self::G2Prepared>,
-    {
-        let lhs = (lhs.0.into(), lhs.1.into());
-        let rhs = (rhs.0.into(), rhs.1.into());
-        Self::has_same(&lhs, &rhs).then_some((lhs, rhs))
-    }
-
-    /// Checks if the ratio of `(lhs.0, lhs.1)` from `G1` is the same as the ratio of
-    /// `(lhs.0, lhs.1)` from `G2`.
-    #[inline]
-    fn same_ratio<L1, L2, R1, R2>(lhs: (L1, R1), rhs: (L2, R2)) -> bool
-    where
-        L1: Into<Self::G1Prepared>,
-        L2: Into<Self::G2Prepared>,
-        R1: Into<Self::G1Prepared>,
-        R2: Into<Self::G2Prepared>,
-    {
-        Self::has_same(&(lhs.0.into(), rhs.1.into()), &(lhs.1.into(), rhs.0.into()))
-    }
-}
-
-impl<E> PairingEngineExt for E where E: PairingEngine {}
-
-/// Cryptographic Hash traits
-pub trait Hash<const N: usize> {
-    /// Creates new hasher instance.
-    fn new() -> Self;
+/// Cryptographic Hasher Trait
+pub trait Hasher: Default {
+    /// Output Type
+    type Output;
 
     /// Updates internal state by processing `data`.
-    fn update(&mut self, data: impl AsRef<[u8]>);
+    fn update<T>(&mut self, data: &T)
+    where
+        T: AsRef<[u8]> + ?Sized;
 
     /// Retrieves results and consumes hasher instance.
-    fn finalize(self) -> [u8; N];
+    fn finalize(self) -> Self::Output;
 }
 
 /// Blake Hasher
+#[derive(Default)]
 pub struct BlakeHasher<const N: usize>(pub Blake2b512);
 
-impl<const N: usize> Hash<N> for BlakeHasher<N> {
-    #[inline]
-    fn new() -> Self {
-        BlakeHasher(Blake2b::default())
-    }
+impl<const N: usize> Hasher for BlakeHasher<N> {
+    type Output = [u8; N];
 
     #[inline]
-    fn update(&mut self, data: impl AsRef<[u8]>) {
+    fn update<T>(&mut self, data: &T)
+    where
+        T: AsRef<[u8]> + ?Sized,
+    {
         <Blake2b512 as Blake2Digest>::update(&mut self.0, data.as_ref())
     }
 
     #[inline]
-    fn finalize(self) -> [u8; N] {
+    fn finalize(self) -> Self::Output {
         let result = <Blake2b512 as Blake2Digest>::finalize(self.0);
         into_array_unchecked(result.as_slice())
     }
@@ -469,46 +383,15 @@ impl<const N: usize> Write for BlakeHasher<N> {
     }
 }
 
-/// Hash to Group Trait for Ratio Proof
-pub trait HashToGroup<C, D>
+/*
+impl<C, const N: usize> HashToGroup<P> for BlakeHasher<N>
 where
-    C: Configuration + ?Sized,
-{
-    /// Hashes `challenge` and `ratio` into a group point.
-    fn hash(&self, challenge: &C::Challenge, ratio: (&C::G1, &C::G1)) -> C::G2;
-}
-
-/// Phase One Hash To Group Struct
-pub struct PhaseOneHashToGroup<C, const N: usize>
-where
-    C: Configuration + ?Sized,
-{
-    /// Domain Tag Type
-    pub domain_tag: C::DomainTag,
-}
-
-impl<C, D, const N: usize> HashToGroup<C, D> for PhaseOneHashToGroup<C, N>
-where
-    C: Configuration<Challenge = [u8; N], DomainTag = u8> + ?Sized,
-    C::G2: Sample<D>,
-    D: Default,
-{
-    fn hash(&self, challenge: &C::Challenge, ratio: (&C::G1, &C::G1)) -> C::G2 {
-        let mut hasher = BlakeHasher::new();
-        hasher.update(&[self.domain_tag]);
-        hasher.update(challenge);
-        ratio.0.serialize(&mut hasher).unwrap();
-        ratio.1.serialize(&mut hasher).unwrap();
-        hash_to_group::<C::G2, D, 64>(into_array_unchecked(hasher.finalize()))
-    }
-}
-
-impl<C, D, const N: usize> HashToGroup<C, D> for BlakeHasher<N>
-where
+    C: Pairing,
     C: Configuration<Challenge = [u8; N]> + ?Sized,
     C::G2: Sample<D>,
     D: Default,
 {
+    #[inline]
     fn hash(&self, challenge: &C::Challenge, ratio: (&<C>::G1, &<C>::G1)) -> <C>::G2 {
         let mut hasher = BlakeHasher::new();
         hasher.update(challenge);
@@ -517,6 +400,37 @@ where
         hash_to_group::<C::G2, D, 64>(into_array_unchecked(hasher.finalize()))
     }
 }
+
+///
+pub struct KZGBlakeHasher<C, const N: usize>
+where
+    C: kzg::Configuration + ?Sized,
+{
+    /// Domain Tag Type
+    pub domain_tag: C::DomainTag,
+}
+
+impl<C, const N: usize> HashToGroup<C> for KZGBlakeHasher<C, N>
+where
+    C: kzg::Configuration<DomainTag = u8> + ?Sized,
+    C::G2: Sample<C::Distribution>,
+{
+    type Challenge = C::Challenge;
+
+    #[inline]
+    fn hash(&self, challenge: &Self::Challenge, ratio: (&C::G1, &C::G1)) -> C::G2 {
+        /*
+        let mut hasher = BlakeHasher::new();
+        hasher.update(&[self.domain_tag]);
+        hasher.update(challenge);
+        ratio.0.serialize(&mut hasher).unwrap();
+        ratio.1.serialize(&mut hasher).unwrap();
+        hash_to_group::<C::G2, D, N>(into_array_unchecked(hasher.finalize()))
+        */
+        todo!()
+    }
+}
+*/
 
 /// Hashes `digest` to a group point on affine curve.
 #[inline]
