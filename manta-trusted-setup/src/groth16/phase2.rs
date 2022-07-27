@@ -772,10 +772,7 @@ mod test {
         let mut cs = R1CS::for_proofs();
         dummy_circuit(&mut cs);
         let proof = ArkGroth16::prove(&pk, cs, rng).unwrap();
-        assert_eq!(
-            ArkGroth16::verify(&pk.vk, &[field_new!(Fr, "6")], &proof).unwrap(),
-            true
-        );
+        assert!(ArkGroth16::verify(&pk.vk, &[field_new!(Fr, "6")], &proof).unwrap(), "Verify proof should succeed.");
     }
 
     /// Tests if trusted setup phase 2 is valid with trusted setup phase 1 and proves
