@@ -31,7 +31,7 @@ use manta_util::pointer::{self, PointerFamily};
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
 
-/// Fork-able Merkle Tree
+/// Fork-able Merkle Tree: test push
 #[derive(derivative::Derivative)]
 #[derivative(Debug(bound = "P::Strong: Debug"))]
 pub struct Trunk<C, T, P = pointer::SingleThreaded>
