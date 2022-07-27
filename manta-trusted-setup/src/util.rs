@@ -334,7 +334,7 @@ where
     (g1_proj.into_affine(), g2_proj.into_affine())
 }
 
-/// Cryptographic Hasher Trait
+/// Cryptographic Hasher Trait. TODO: Remove
 pub trait Hasher: Default {
     /// Output Type
     type Output;

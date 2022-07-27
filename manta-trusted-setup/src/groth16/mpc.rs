@@ -37,6 +37,8 @@ use manta_util::{cfg_into_iter, cfg_reduce};
 #[cfg(feature = "rayon")]
 use rayon::iter::IndexedParallelIterator;
 
+// TODO: Remove Sample trait in HashToGroup.
+
 /// Proving Key Hasher
 pub trait ProvingKeyHasher<P>
 where
@@ -201,7 +203,7 @@ where
             acc
         }
     )
-}
+} //TODO: May remove. Exist in util.rs
 
 /// Initialize [`State`] using the KZG accumulator `powers` and the given `constraint_system`.
 #[inline]
@@ -370,7 +372,7 @@ where
     Ok((next_challenge, next))
 }
 
-/*
+/* TODO
 
 /// Testing Suite
 #[cfg(test)]
