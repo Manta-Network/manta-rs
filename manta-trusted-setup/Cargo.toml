@@ -34,8 +34,8 @@ std = []
 [dependencies]
 ark-ec = { version = "0.3.0", default-features = false }
 ark-ff = { version = "0.3.0", default-features = false }
-ark-poly = {version = "0.3.0", default-features = false}
 ark-groth16 = { version = "0.3.0", default-features = false }
+ark-poly = {version = "0.3.0", default-features = false}
 ark-relations = { version = "0.3.0", default-features = false }
 ark-serialize = { version = "0.3.0", default-features = false, features = ["derive"] }
 ark-snark = { version = "0.3.0", default-features = false }
