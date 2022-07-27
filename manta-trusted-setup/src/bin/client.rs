@@ -20,7 +20,7 @@ use manta_trusted_setup::{
     ceremony::{
         bls_server::{BlsPhase2State, CeremonyPriority, Participant, SaplingBls12Ceremony},
         requests::*,
-        signature::{ed_dalek_signatures::*, Sign},
+        signature::{ed_dalek_signatures::*},
     },
     mpc::Contribute,
 };
@@ -47,17 +47,19 @@ async fn main() -> Result<(), reqwest::Error> {
         .send()
         .await?
         .json()
-        .await?; // todo: that can be compressed, I just broke apart the request to illustrate
+        .await?;
 
-    // Now client is in queue, todo: this will change to a separate request
+    // Now client is in queue
+    // TODO: adding to `Registry` and adding to `Queue` need to be 
+    // separate events because we are populating the registry "by hand"
 
     // Form a request for MPC:
-    let mut message = Vec::<u8>::new();
-    message.extend_from_slice(b"GetMpcRequest");
-    message.extend_from_slice(&public_key.0[..]); // I would use Serialize here but &[u8] doesn't
-    let message = Message::from(&message[..]);
-    let signature = <Message as Sign<Ed25519>>::sign(&message, &public_key, &private_key).unwrap();
-    let request = GetMpcRequest::<_, _, SaplingBls12Ceremony>::new(participant.clone(), signature);
+    let request = GetMpcRequest::<Participant, Ed25519, SaplingBls12Ceremony>::form_request(
+        &participant,
+        &public_key,
+        &private_key,
+    )
+    .unwrap();
     // Send to server
     let _response = client
         .post("http://127.0.0.1:8080/get_state_and_challenge")
@@ -78,18 +80,12 @@ async fn main() -> Result<(), reqwest::Error> {
     println!("Finished contribution");
 
     // Form a ContributeRequest
-    let mut message = Vec::<u8>::new();
-    message.extend_from_slice(b"ContributeRequest");
-    message.extend_from_slice(&public_key.0[..]);
-    // let _ = CanonicalSerialize::serialize(&proof, &mut message[..]);
-    let message = Message::from(&message[..]);
-    let sig = <Message as Sign<Ed25519>>::sign(&message, &public_key, &private_key).unwrap();
-    let request: ContributeRequest<_, _, SaplingBls12Ceremony> = ContributeRequest {
-        participant,
-        transformed_state: state,
-        proof,
-        sig,
-    };
+    let request = ContributeRequest::<Participant, Ed25519, SaplingBls12Ceremony>::form_request(
+        &(state, proof, participant),
+        &public_key,
+        &private_key,
+    )
+    .unwrap();
     // Send to server
     client
         .post("http://127.0.0.1:8080/update")

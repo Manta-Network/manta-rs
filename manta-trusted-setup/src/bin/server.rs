@@ -53,14 +53,14 @@ where
     V::State: signature::Verify<S>,
     V::Proof: signature::Verify<S>;
 
-    // Note the implementation is currently not generic over S: SignatureScheme
-impl<V, P, M, const N: usize> Server<V, P, M, Ed25519, N>
+// Note the implementation is currently not generic over S: SignatureScheme
+impl<P, M, const N: usize> Server<SaplingBls12Ceremony, P, M, Ed25519, N>
 where
-    V: mpc::Verify,
-    P: Clone + Priority + Identifier + signature::HasPublicKey<PublicKey = <Ed25519 as SignatureScheme>::PublicKey>,
+    P: Clone
+        + Priority
+        + Identifier
+        + signature::HasPublicKey<PublicKey = <Ed25519 as SignatureScheme>::PublicKey>,
     M: Map<Key = P::Identifier, Value = P>,
-    V::State: Default + signature::Verify<Ed25519>,
-    V::Proof: signature::Verify<Ed25519>,
 {
     /// Registers then queues a participant // TODO The registration is by hand, so queueing should be split from it
     #[inline]
@@ -81,15 +81,14 @@ where
     #[inline]
     async fn get_state_and_challenge(
         self,
-        request: GetMpcRequest<P, Ed25519, V>,
-    ) -> Result<GetMpcResponse<Ed25519, V>> {
-        println!("Received a request for state, checking signature.");
-        let state = self.0.lock();
-
+        request: GetMpcRequest<P, Ed25519, SaplingBls12Ceremony>,
+    ) -> Result<GetMpcResponse<Ed25519, SaplingBls12Ceremony>> {
         // Check signatures
+        println!("Received a request for state, checking signature.");
         SignedRequest::check_signatures(&request, &request.participant.public_key())?;
         println!("Signature was valid, checking position in queue");
 
+        let state = self.0.lock();
         if state.is_next(&request.participant) {
             println!("Served state to next participant");
             Ok(GetMpcResponse::default()) // this is the variant with the state
@@ -101,15 +100,21 @@ where
 
     /// Processes a request to update the MPC state. If successful then participant is removed from queue.
     #[inline]
-    async fn update(self, request: ContributeRequest<P, Ed25519, V>) -> Result<()> {
-        println!("Received an update request");
+    async fn update(
+        self,
+        request: ContributeRequest<P, Ed25519, SaplingBls12Ceremony>,
+    ) -> Result<()> {
+        // Check signatures
+        println!("Received an update request. Checking signatures");
+        SignedRequest::check_signatures(&request, &request.participant.public_key())?;
+        println!("Signatures valid. Checking proof of contribution");
+
         let mut state = self.0.lock();
         state
             .update(
                 &request.participant.identifier(),
                 request.transformed_state,
                 request.proof,
-                &request.sig,
             )
             .map_err(Error::from)
     }

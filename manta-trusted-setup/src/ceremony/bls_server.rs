@@ -57,7 +57,7 @@ where
 /// Byte representation of a public key (to allow Serde to work later)
 pub struct BlsPhase2Proof {
     /// `CanonicalSerialize::serialize` of a `phase2::PublicKey<E>`
-    proof: Vec<u8>,
+    pub proof: Vec<u8>,
 }
 
 impl<E> From<phase_two::PublicKey<E>> for BlsPhase2Proof
@@ -93,7 +93,7 @@ where
 /// Byte representation of a `MPCParameters` (to allow Serde to work later)
 pub struct BlsPhase2State {
     /// `CanonicalSerialize::serialize` of a `phase2::MPCParameters<E>`
-    state: Vec<u8>,
+    pub state: Vec<u8>,
 }
 
 impl<E> From<phase_two::MPCParameters<E>> for BlsPhase2State
@@ -130,20 +130,17 @@ where
     E: PairingEngine,
 {
     type State = BlsPhase2State;
-    // type State = phase_two::MPCParameters<E>;
 
-    type Challenge = (); // todo ? the challenge refactoring hasn't been done yet
+    type Challenge = (); // TODO: when the phase2 refactoring is done the challenge will go here and State type will change
 
     type Proof = BlsPhase2Proof;
-    // type Proof = phase_two::PublicKey<E>;
 }
 
 /// The ceremony for phase 2 with Bls12-381
 pub type SaplingBls12Ceremony = BlsPhase2Ceremony<<Sapling as Configuration>::Pairing>;
 
 impl Contribute for SaplingBls12Ceremony {
-    type Contribution = (); // todo: change this to a scalar and change contribute method below
-                            // phase_two::PrivateKey<<<Sapling as Configuration>::Pairing as PairingEngine>::Fr>;
+    type Contribution = (); // TODO : This will change to scalar, for now scalar is generated within the implementation of contribute
 
     fn contribute(
         &self,
@@ -156,7 +153,8 @@ impl Contribute for SaplingBls12Ceremony {
 
         let mut mpc =
             phase_two::MPCParameters::<<Sapling as Configuration>::Pairing>::from(state.clone());
-        let _digest = mpc.contribute::<SaplingDistribution, _>(&mut rng);
+        let digest = mpc.contribute::<SaplingDistribution, _>(&mut rng);
+        println!("The digest for my contribution is {:?}", digest);
 
         // Don't forget to change the underlying state
         *state = BlsPhase2State::from(mpc.clone());
@@ -274,13 +272,6 @@ pub type RegistryMap = HashMap<<Participant as Identifier>::Identifier, Particip
 pub type SaplingBls12Coordinator =
     Coordinator<SaplingBls12Ceremony, Participant, RegistryMap, ed_dalek_signatures::Ed25519, 2>;
 
-#[test]
-fn construct_coordinator_test() {
-    let mpc_verifier = SaplingBls12Ceremony::default();
-    let state = default_reclaim_mpc();
-
-    let _coordinator = SaplingBls12Coordinator::new(mpc_verifier, state, ());
-}
 
 /// Reads from file to get a "raw" version of the parameters derived from
 /// the final sapling phase 1 parameters with no contributions made (delta = 1).
@@ -292,20 +283,28 @@ pub fn default_reclaim_mpc() -> phase_two::MPCParameters<<Sapling as Configurati
     CanonicalDeserialize::deserialize_unchecked(&mut reader).unwrap()
 }
 
-#[test]
-fn verify_signature_test() {
-    use ed_dalek_signatures::{test_keypair, Message};
+// #[test]
+// fn construct_coordinator_test() {
+//     let mpc_verifier = SaplingBls12Ceremony::default();
+//     let state = default_reclaim_mpc();
 
-    let state = default_reclaim_mpc();
+//     let _coordinator = SaplingBls12Coordinator::new(mpc_verifier, state, ());
+// }
 
-    // Sign a message
-    let mut message = Vec::<u8>::new();
-    message.extend_from_slice(b"State Contribution:");
-    CanonicalSerialize::serialize(&state, &mut message).unwrap();
-    let message = Message::from(&message[..]);
-    let (private_key, public_key) = test_keypair();
-    let signature = message.sign(&public_key, &private_key).unwrap();
+// #[test]
+// fn verify_signature_test() {
+//     use ed_dalek_signatures::{test_keypair, Message};
 
-    // Verify the signature
-    crate::ceremony::signature::Verify::verify_integrity(&state, &public_key, &signature).unwrap();
-}
+//     let state = default_reclaim_mpc();
+
+//     // Sign a message
+//     let mut message = Vec::<u8>::new();
+//     message.extend_from_slice(b"State Contribution:");
+//     CanonicalSerialize::serialize(&state, &mut message).unwrap();
+//     let message = Message::from(&message[..]);
+//     let (private_key, public_key) = test_keypair();
+//     let signature = message.sign(&public_key, &private_key).unwrap();
+
+//     // Verify the signature
+//     crate::ceremony::signature::Verify::verify_integrity(&state, &public_key, &signature).unwrap();
+// }

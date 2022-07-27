@@ -20,7 +20,7 @@ use crate::{
         queue::{Identifier, Priority, Queue},
         registry::{Map, Registry},
         signature,
-        signature::{SignatureScheme, Verify as _},
+        signature::{SignatureScheme},
         CeremonyError,
     },
     mpc,
@@ -84,12 +84,12 @@ where
     /// Update the MPC state and challenge using client's contribution.
     /// If the contribution is valid, the participant will be removed from the waiting queue, and cannot
     /// participate in this ceremony again.
+    /// Assumes that signatures on the state and proof have already been checked.
     pub fn update(
         &mut self,
         participant: &P::Identifier,
         transformed_state: V::State,
         proof: V::Proof,
-        signature: &S::Signature,
     ) -> Result<(), CeremonyError>
     where
         V::State: Default, // we need this because `verify_transform` takes ownership of `self.state`
@@ -100,10 +100,7 @@ where
             .registry
             .get(participant)
             .ok_or(CeremonyError::NotRegistered)?;
-        // make sure the message is from the participant
-        let participant_public_key = participant.public_key();
-        transformed_state.verify_integrity(&participant_public_key, signature)?;
-        proof.verify_integrity(&participant_public_key, &signature)?;
+
         // make sure it is participant's turn
         if !self.queue.is_front(participant) {
             return Err(CeremonyError::NotYourTurn);
@@ -126,6 +123,7 @@ where
         // will noe be removed from the registry, so the participant will not
         // be able to participate in this ceremony again.
         self.queue.pop();
+        println!("MPC state updated");
         Ok(())
     }
 
