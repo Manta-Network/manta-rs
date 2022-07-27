@@ -98,7 +98,7 @@ where
         state: &mut State<C>,
         challenge: Self::Challenge,
         rng: &mut R,
-    ) -> (State<C>, RatioProof<C>)
+    ) -> Option<(State<C>, RatioProof<C>)>
     where
         D: Default,
         R: Rng + CryptoRng,
@@ -298,7 +298,7 @@ where
         state: &mut State<C>,
         challenge: Self::Challenge,
         rng: &mut R,
-    ) -> (State<C>, RatioProof<C>)
+    ) -> Option<(State<C>, RatioProof<C>)>
     where
         D: Default,
         R: Rng + CryptoRng,
@@ -308,27 +308,39 @@ where
     {
         let delta = C::Scalar::gen(rng);
         let delta_inv = delta.inverse().expect("nonzero");
-        let g = C::G1::gen(rng);
         batch_mul_fixed_scalar(&mut state.pk.l_query, delta_inv);
         batch_mul_fixed_scalar(&mut state.pk.h_query, delta_inv);
         state.pk.delta_g1 = state.pk.delta_g1.mul(delta).into_affine();
         state.pk.vk.delta_g2 = state.pk.vk.delta_g2.mul(delta).into_affine();
-        let ratio = (g, g.mul(delta).into_affine());
-        (
+        let g = C::G1::gen(rng);
+        if g.is_zero() {
+            return None;
+        }
+        let delta_g = g.mul(delta).into_affine();
+        if delta_g.is_zero() {
+            return None;
+        }
+        let h = <BlakeHasher<N> as HashToGroup<C, D>>::hash(
+            &Self::Hasher::new(),
+            &challenge,
+            (&g, &delta_g),
+        );
+        if h.is_zero() {
+            return None;
+        }
+        let delta_h = h.mul(delta).into_affine();
+        if delta_h.is_zero() {
+            return None;
+        }
+        Some((
             State {
                 pk: state.pk.clone(),
             },
             RatioProof {
-                matching_point: <BlakeHasher<N> as HashToGroup<C, D>>::hash(
-                    &Self::Hasher::new(),
-                    &challenge,
-                    (&ratio.0, &ratio.1),
-                )
-                .mul(delta)
-                .into_affine(),
-                ratio,
+                matching_point: delta_h,
+                ratio: (g, delta_g),
             },
-        )
+        ))
     }
 
     #[inline]
@@ -795,7 +807,8 @@ mod test {
         for _ in 0..5 {
             prev_state = state.clone();
             (state, ratio_proof) =
-                Phase2::<Sapling, 64>::contribute::<_, ()>(&mut state, challenge, &mut rng);
+                Phase2::<Sapling, 64>::contribute::<_, ()>(&mut state, challenge, &mut rng)
+                    .expect("Should sample non-zero point.");
             (state, challenge) = Phase2::<Sapling, 64>::verify_transform::<()>(
                 challenge,
                 prev_state,

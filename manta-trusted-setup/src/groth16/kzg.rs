@@ -179,7 +179,7 @@ where
 }
 
 /// Pairing Ratio Proof of Knowledge
-#[derive(derivative::Derivative)]
+#[derive(derivative::Derivative, CanonicalSerialize)]
 #[derivative(Clone, Debug, Default, Eq, Hash, PartialEq)]
 pub struct RatioProof<P>
 where
@@ -190,24 +190,6 @@ where
 
     /// Matching Point in G2
     pub matching_point: P::G2,
-}
-
-impl<P> CanonicalSerialize for RatioProof<P>
-where
-    P: Pairing,
-{
-    fn serialize<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {
-        self.ratio.0.serialize(&mut writer)?;
-        self.ratio.1.serialize(&mut writer)?;
-        self.matching_point.serialize(&mut writer)?;
-        Ok(())
-    }
-
-    fn serialized_size(&self) -> usize {
-        self.ratio.0.serialized_size()
-            + self.ratio.1.serialized_size()
-            + self.matching_point.serialized_size()
-    }
 }
 
 impl<C> RatioProof<C>
@@ -227,7 +209,6 @@ where
         R: CryptoRng + RngCore + ?Sized,
     {
         let g1_point: C::G1 = Sample::gen(rng);
-        // TODO: Should we repeat sampling until g1_point is non-zero?
         if g1_point.is_zero() {
             return None;
         }
@@ -484,19 +465,19 @@ where
     C: Pairing + Size + ?Sized,
 {
     /// Vector of Tau Powers in G1 of size [`G1_POWERS`](Size::G1_POWERS)
-    pub(crate) tau_powers_g1: Vec<C::G1>,
+    pub tau_powers_g1: Vec<C::G1>,
 
     /// Vector of Tau Powers in G2 of size [`G2_POWERS`](Size::G2_POWERS)
-    pub(crate) tau_powers_g2: Vec<C::G2>,
+    pub tau_powers_g2: Vec<C::G2>,
 
     /// Vector of Alpha Multiplied by Tau Powers in G1 of size [`G2_POWERS`](Size::G2_POWERS)
-    pub(crate) alpha_tau_powers_g1: Vec<C::G1>,
+    pub alpha_tau_powers_g1: Vec<C::G1>,
 
     /// Vector of Beta Multiplied by Tau Powers in G1 of size [`G2_POWERS`](Size::G2_POWERS)
-    pub(crate) beta_tau_powers_g1: Vec<C::G1>,
+    pub beta_tau_powers_g1: Vec<C::G1>,
 
     /// Beta in G2
-    pub(crate) beta_g2: C::G2,
+    pub beta_g2: C::G2,
 }
 
 impl<C> Accumulator<C>
