@@ -16,6 +16,8 @@
 
 //! Secure Multi-Party Computation Primitives
 
+use alloc::vec::Vec;
+
 /// Secure Multi-Party Computation Types
 pub trait Types {
     /// State Type

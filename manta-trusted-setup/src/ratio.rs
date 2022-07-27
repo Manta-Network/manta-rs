@@ -71,7 +71,7 @@ where
         }
         let g1_point = g1_point.into_affine();
         let scaled_g1_point = scaled_g1_point.into_affine();
-        let g2_point = hasher.hash(challenge, (&g1_point, &scaled_g1_point));
+        let g2_point = Self::challenge_point(hasher, challenge, (&g1_point, &scaled_g1_point));
         if g2_point.is_zero() {
             return None;
         }
@@ -87,14 +87,14 @@ where
 
     /// Computes the challenge point that corresponds with the given `challenge`.
     #[inline]
-    pub fn challenge_point<H, C>(&self, hasher: &H, challenge: &C) -> P::G2
+    pub fn challenge_point<H, C>(hasher: &H, challenge: &C, ratio: (&P::G1, &P::G1)) -> P::G2
     where
         H: HashToGroup<P, C>,
     {
-        hasher.hash(challenge, (&self.ratio.0, &self.ratio.1))
+        hasher.hash(challenge, (ratio.0, ratio.1))
     }
 
-    /// Verifies that `self` is a valid ratio proof-of-knowledge, returning the G2 ratio of the
+    /// Verifies that `self` is a valid ratio proof-of-knowledge, returning the ratio of the
     /// underlying scalar.
     #[inline]
     pub fn verify<H, C>(
@@ -108,7 +108,8 @@ where
     where
         H: HashToGroup<P, C>,
     {
-        let challenge_point = self.challenge_point(hasher, challenge);
+        let challenge_point =
+            Self::challenge_point(hasher, challenge, (&self.ratio.0, &self.ratio.1));
         let ((ratio_0, matching_point), (ratio_1, challenge_point)) = P::Pairing::same(
             (self.ratio.0, self.matching_point),
             (self.ratio.1, challenge_point),

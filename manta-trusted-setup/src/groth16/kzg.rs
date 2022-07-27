@@ -56,9 +56,6 @@ pub trait Configuration: Pairing + Size {
     /// Response Type
     type Response;
 
-    /// Distribution Type
-    type Distribution;
-
     /// Hash To Group Type
     type HashToGroup: HashToGroup<Self, Self::Challenge>;
 

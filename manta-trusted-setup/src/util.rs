@@ -23,7 +23,7 @@ use ark_ff::{BigInteger, Fp256};
 use ark_std::io;
 use blake2::{Blake2b512, Digest as Blake2Digest};
 use byteorder::{BigEndian, ReadBytesExt};
-use core::{iter, marker::PhantomData};
+use core::marker::PhantomData;
 use manta_crypto::rand::{CryptoRng, OsRng, RngCore};
 use manta_util::{cfg_into_iter, cfg_iter, cfg_iter_mut, cfg_reduce};
 use rand_chacha::{rand_core::SeedableRng, ChaCha20Rng};
@@ -31,6 +31,7 @@ use rand_chacha::{rand_core::SeedableRng, ChaCha20Rng};
 #[cfg(feature = "rayon")]
 use rayon::iter::{IndexedParallelIterator, ParallelIterator};
 
+pub use crate::pairing::Pairing;
 pub use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
 pub use ark_ff::{Field, One, PrimeField, UniformRand, Zero};
 pub use ark_serialize::{
@@ -283,40 +284,46 @@ where
     G: ProjectiveCurve,
 {
     assert_eq!(lhs.len(), rhs.len());
-    let pairs = cfg_into_iter!(0..lhs.len())
-        .map(|_| G::ScalarField::rand(&mut OsRng))
-        .zip(lhs)
-        .zip(rhs)
-        .map(|((rho, lhs), rhs)| {
-            let wnaf = recommended_wnaf(&rho);
-            (wnaf.mul(*lhs, &rho), wnaf.mul(*rhs, &rho))
-        });
-    cfg_reduce!(pairs, || (G::zero(), G::zero()), |mut acc, next| {
-        acc.0 += next.0;
-        acc.1 += next.1;
-        acc
-    })
+    cfg_reduce!(
+        cfg_into_iter!(0..lhs.len())
+            .map(|_| G::ScalarField::rand(&mut OsRng))
+            .zip(lhs)
+            .zip(rhs)
+            .map(|((rho, lhs), rhs)| {
+                let wnaf = recommended_wnaf(&rho);
+                (wnaf.mul(*lhs, &rho), wnaf.mul(*rhs, &rho))
+            }),
+        || (G::zero(), G::zero()),
+        |mut acc, next| {
+            acc.0 += next.0;
+            acc.1 += next.1;
+            acc
+        }
+    )
 }
 
 /// Compresses `lhs` and `rhs` into a pair of curve points by random linear combination. The same
 /// random linear combination is used for both `lhs` and `rhs`, allowing this pair to be used in a
 /// consistent ratio test.
 #[inline]
-pub fn merge_pairs_affine<G>(lhs: &[G], rhs: &[G]) -> (G::Projective, G::Projective)
+pub fn merge_pairs_affine<G>(lhs: &[G], rhs: &[G]) -> (G, G)
 where
     G: AffineCurve,
 {
     assert_eq!(lhs.len(), rhs.len());
-    let pairs = cfg_into_iter!(0..lhs.len())
-        .map(|_| G::ScalarField::rand(&mut OsRng))
-        .zip(lhs)
-        .zip(rhs)
-        .map(|((rho, lhs), rhs)| (lhs.mul(rho), rhs.mul(rho)));
-    cfg_reduce!(pairs, || (Zero::zero(), Zero::zero()), |mut acc, next| {
-        acc.0 += next.0;
-        acc.1 += next.1;
-        acc
-    })
+    cfg_reduce!(
+        cfg_into_iter!(0..lhs.len())
+            .map(|_| { G::ScalarField::rand(&mut OsRng) })
+            .zip(lhs)
+            .zip(rhs)
+            .map(|((rho, lhs), rhs)| (lhs.mul(rho).into_affine(), rhs.mul(rho).into_affine())),
+        || (Zero::zero(), Zero::zero()),
+        |mut acc, next| {
+            acc.0 = acc.0 + next.0;
+            acc.1 = acc.1 + next.1;
+            acc
+        }
+    )
 }
 
 /// Prepares a sequence of curve points for a check that subsequent terms differ by a constant ratio.
@@ -334,46 +341,21 @@ where
     (g1_proj.into_affine(), g2_proj.into_affine())
 }
 
-/// Cryptographic Hasher Trait. TODO: Remove
-pub trait Hasher: Default {
-    /// Output Type
-    type Output;
-
-    /// Updates internal state by processing `data`.
-    fn update<T>(&mut self, data: &T)
-    where
-        T: AsRef<[u8]> + ?Sized;
-
-    /// Retrieves results and consumes hasher instance.
-    fn finalize(self) -> Self::Output;
-}
-
 /// Blake Hasher
 #[derive(Default)]
-pub struct BlakeHasher<const N: usize>(pub Blake2b512);
+pub struct BlakeHasher(pub Blake2b512);
 
-impl<const N: usize> Hasher for BlakeHasher<N> {
-    type Output = [u8; N];
-
-    #[inline]
-    fn update<T>(&mut self, data: &T)
-    where
-        T: AsRef<[u8]> + ?Sized,
-    {
-        <Blake2b512 as Blake2Digest>::update(&mut self.0, data.as_ref())
-    }
-
-    #[inline]
-    fn finalize(self) -> Self::Output {
-        let result = <Blake2b512 as Blake2Digest>::finalize(self.0);
-        into_array_unchecked(result.as_slice())
+impl BlakeHasher {
+    /// TODO
+    pub fn new() -> Self {
+        BlakeHasher(Blake2b512::new())
     }
 }
 
-impl<const N: usize> Write for BlakeHasher<N> {
+impl Write for BlakeHasher {
     #[inline]
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.update(buf);
+        self.0.update(buf);
         Ok(buf.len())
     }
 
@@ -383,26 +365,23 @@ impl<const N: usize> Write for BlakeHasher<N> {
     }
 }
 
-/*
-impl<C, const N: usize> HashToGroup<P> for BlakeHasher<N>
+impl<P, const N: usize> HashToGroup<P, [u8; N]> for BlakeHasher
 where
-    C: Pairing,
-    C: Configuration<Challenge = [u8; N]> + ?Sized,
-    C::G2: Sample<D>,
-    D: Default,
+    P: Pairing,
+    P::G2: Sample,
 {
     #[inline]
-    fn hash(&self, challenge: &C::Challenge, ratio: (&<C>::G1, &<C>::G1)) -> <C>::G2 {
+    fn hash(&self, challenge: &[u8; N], ratio: (&P::G1, &P::G1)) -> P::G2 {
         let mut hasher = BlakeHasher::new();
-        hasher.update(challenge);
+        hasher.0.update(challenge);
         ratio.0.serialize(&mut hasher).unwrap();
         ratio.1.serialize(&mut hasher).unwrap();
-        hash_to_group::<C::G2, D, 64>(into_array_unchecked(hasher.finalize()))
+        hash_to_group::<P::G2, (), 64>(into_array_unchecked(hasher.0.finalize()))
     }
 }
 
-///
-pub struct KZGBlakeHasher<C, const N: usize>
+/// KZG Blake Hasher
+pub struct KZGBlakeHasher<C>
 where
     C: kzg::Configuration + ?Sized,
 {
@@ -410,27 +389,21 @@ where
     pub domain_tag: C::DomainTag,
 }
 
-impl<C, const N: usize> HashToGroup<C> for KZGBlakeHasher<C, N>
+impl<P, const N: usize> HashToGroup<P, [u8; N]> for KZGBlakeHasher<P>
 where
-    C: kzg::Configuration<DomainTag = u8> + ?Sized,
-    C::G2: Sample<C::Distribution>,
+    P: kzg::Configuration<DomainTag = u8> + ?Sized,
+    P::G2: Sample,
 {
-    type Challenge = C::Challenge;
-
     #[inline]
-    fn hash(&self, challenge: &Self::Challenge, ratio: (&C::G1, &C::G1)) -> C::G2 {
-        /*
-        let mut hasher = BlakeHasher::new();
-        hasher.update(&[self.domain_tag]);
-        hasher.update(challenge);
+    fn hash(&self, challenge: &[u8; N], ratio: (&P::G1, &P::G1)) -> P::G2 {
+        let mut hasher = BlakeHasher(Blake2b512::new());
+        hasher.0.update(&[self.domain_tag]);
+        hasher.0.update(challenge);
         ratio.0.serialize(&mut hasher).unwrap();
         ratio.1.serialize(&mut hasher).unwrap();
-        hash_to_group::<C::G2, D, N>(into_array_unchecked(hasher.finalize()))
-        */
-        todo!()
+        hash_to_group::<P::G2, (), 64>(into_array_unchecked(hasher.0.finalize()))
     }
 }
-*/
 
 /// Hashes `digest` to a group point on affine curve.
 #[inline]
