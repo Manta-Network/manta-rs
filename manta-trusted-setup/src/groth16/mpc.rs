@@ -315,15 +315,15 @@ where
     let next_challenge = C::challenge(challenge, &prev, &next, &proof);
     let ((ratio_0, ratio_1), _) = proof
         .verify(&C::Hasher::default(), challenge)
-        .ok_or(Error::InconsistentDeltaChange)?;
+        .ok_or(Error::SignatureInvalid)?;
     if !C::Pairing::same_ratio((ratio_0, ratio_1), (prev.vk.delta_g2, next.vk.delta_g2)) {
-        return Err(Error::InconsistentHChange);
+        return Err(Error::InconsistentDeltaChange);
     }
     if !C::Pairing::same_ratio(
         (prev.delta_g1, next.delta_g1),
         (prev.vk.delta_g2, next.vk.delta_g2),
     ) {
-        return Err(Error::InconsistentHChange);
+        return Err(Error::InconsistentDeltaChange);
     }
     if !C::Pairing::same_ratio(
         merge_pairs_affine::<C::G1>(&next.h_query, &prev.h_query),

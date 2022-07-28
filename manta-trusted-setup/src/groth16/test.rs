@@ -26,16 +26,15 @@ use crate::{
     ratio::test::prove_and_verify_ratio_proof,
     util::{
         into_array_unchecked, AffineCurve, BlakeHasher, HasDistribution, KZGBlakeHasher,
-        PairingEngine, Sample, Serializer,
+        PairingEngine, Sample,
     },
 };
 use alloc::vec::Vec;
 use ark_bls12_381::Fr;
-use ark_std::io;
 use ark_ff::{field_new, UniformRand};
 use ark_groth16::{Groth16, ProvingKey};
 use ark_r1cs_std::eq::EqGadget;
-use ark_serialize::{CanonicalSerialize, Write};
+use ark_serialize::CanonicalSerialize;
 use ark_snark::SNARK;
 use blake2::Digest;
 use manta_crypto::{
@@ -75,41 +74,6 @@ impl Pairing for Test {
     }
 }
 
-// TODO
-// impl<T> Serializer<T> for T
-// where
-//     T: AffineCurve,
-// {
-//     fn serialize_unchecked<W>(item: &T, writer: &mut W) -> Result<(), io::Error>
-//     where
-//         W: Write,
-//     {
-//         T::serialize_unchecked(item, writer).into()
-//     }
-
-//     fn serialize_uncompressed<W>(item: &T, writer: &mut W) -> Result<(), io::Error>
-//     where
-//         W: Write,
-//     {
-//         todo!()
-//     }
-
-//     fn uncompressed_size(item: &T) -> usize {
-//         todo!()
-//     }
-
-//     fn serialize_compressed<W>(item: &T, writer: &mut W) -> Result<(), io::Error>
-//     where
-//         W: Write,
-//     {
-//         todo!()
-//     }
-
-//     fn compressed_size(item: &T) -> usize {
-//         todo!()
-//     }
-// }
-
 impl kzg::Configuration for Test {
     type DomainTag = u8;
     type Challenge = [u8; 64];
@@ -142,56 +106,16 @@ impl kzg::Configuration for Test {
         hasher.0.update(&challenge);
         proof
             .tau
-            .ratio
-            .0
-            .serialize_uncompressed(&mut hasher)
-            .unwrap();
-        proof
-            .tau
-            .ratio
-            .1
-            .serialize_uncompressed(&mut hasher)
-            .unwrap();
-        proof
-            .tau
-            .matching_point
-            .serialize_uncompressed(&mut hasher)
-            .unwrap();
-
+            .serialize(&mut hasher)
+            .expect("Consuming ratio proof of tau failed.");
         proof
             .alpha
-            .ratio
-            .0
-            .serialize_uncompressed(&mut hasher)
-            .unwrap();
-        proof
-            .alpha
-            .ratio
-            .1
-            .serialize_uncompressed(&mut hasher)
-            .unwrap();
-        proof
-            .alpha
-            .matching_point
-            .serialize_uncompressed(&mut hasher)
-            .unwrap();
+            .serialize(&mut hasher)
+            .expect("Consuming ratio proof of alpha failed.");
         proof
             .beta
-            .ratio
-            .0
-            .serialize_uncompressed(&mut hasher)
-            .unwrap();
-        proof
-            .beta
-            .ratio
-            .1
-            .serialize_uncompressed(&mut hasher)
-            .unwrap();
-        proof
-            .beta
-            .matching_point
-            .serialize_uncompressed(&mut hasher)
-            .unwrap();
+            .serialize(&mut hasher)
+            .expect("Consuming ratio proof of beta failed.");
         into_array_unchecked(hasher.0.finalize())
     }
 

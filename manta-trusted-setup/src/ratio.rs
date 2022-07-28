@@ -31,6 +31,12 @@ where
     fn hash(&self, challenge: &C, ratio: (&P::G1, &P::G1)) -> P::G2;
 }
 
+/// Prepared Ratio Proof Type
+pub type PreparedRatioProof<P> = (
+    (<P as Pairing>::G1Prepared, <P as Pairing>::G1Prepared),
+    (<P as Pairing>::G2Prepared, <P as Pairing>::G2Prepared),
+);
+
 /// Pairing Ratio Proof of Knowledge
 #[derive(derivative::Derivative, CanonicalDeserialize, CanonicalSerialize)]
 #[derivative(Clone, Debug, Default, Eq, Hash, PartialEq)]
@@ -96,16 +102,8 @@ where
 
     /// Verifies that `self` is a valid ratio proof-of-knowledge, returning the ratio of the
     /// underlying scalar.
-    #[allow(clippy::type_complexity)]
     #[inline]
-    pub fn verify<H, C>(
-        self,
-        hasher: &H,
-        challenge: &C,
-    ) -> Option<(
-        (P::G1Prepared, P::G1Prepared),
-        (P::G2Prepared, P::G2Prepared),
-    )>
+    pub fn verify<H, C>(self, hasher: &H, challenge: &C) -> Option<PreparedRatioProof<P>>
     where
         H: HashToGroup<P, C>,
     {
