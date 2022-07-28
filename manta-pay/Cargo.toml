@@ -132,13 +132,13 @@ reqwest = { version = "0.11.9", optional = true, default-features = false, featu
 scale-codec = { package = "parity-scale-codec", version = "3.1.2", optional = true, default-features = false, features = ["derive", "max-encoded-len"] }
 scale-info = { version = "2.1.2", optional = true, default-features = false, features = ["derive"] }
 serde_json = { version = "1.0.82", optional = true, default-features = false, features = ["alloc"] }
+syn = { version = "=1.0.96", optional = true } # FIXME: Workaround until polkadot-v0.9.24 for https://github.com/paritytech/substrate/issues/11706
 tempfile = { version = "3.3.0", optional = true, default-features = false }
 tide = { version = "0.16.0", optional = true, default-features = false, features = ["h1-server"] }
 tokio = { version = "1.20.1", optional = true, default-features = false }
 tokio-tungstenite = { version = "0.17.2", optional = true, default-features = false, features = ["native-tls"] }
 workspace-hack = { version = "0.1.0", path = "../workspace-hack" }
 ws_stream_wasm = { version = "0.7.3", optional = true, default-features = false }
-syn = { version = "=1.0.96", optional = true } # Workaround until polkadot-v0.9.24 for https://github.com/paritytech/substrate/issues/11706
 
 [dev-dependencies]
 manta-crypto = { path = "../manta-crypto", default-features = false, features = ["getrandom"] }
