@@ -30,7 +30,7 @@ use manta_crypto::rand::{CryptoRng, RngCore};
 use manta_util::{cfg_iter, cfg_iter_mut, from_variant, vec::VecExt};
 
 #[cfg(feature = "rayon")]
-use rayon::iter::{IndexedParallelIterator, ParallelIterator};
+use manta_util::rayon::iter::{IndexedParallelIterator, ParallelIterator};
 
 /// KZG Trusted Setup Size
 pub trait Size {

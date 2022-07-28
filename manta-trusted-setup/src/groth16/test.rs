@@ -32,7 +32,7 @@ use crate::{
 use alloc::vec::Vec;
 use ark_bls12_381::{Fr, FrParameters};
 use ark_ff::{field_new, Fp256, UniformRand};
-use ark_groth16::{Groth16 as ArkGroth16, ProvingKey};
+use ark_groth16::{Groth16, ProvingKey};
 use ark_r1cs_std::eq::EqGadget;
 use ark_serialize::CanonicalSerialize;
 use ark_snark::SNARK;
@@ -40,10 +40,9 @@ use blake2::Digest;
 use manta_crypto::{
     constraint::Allocate,
     eclair::alloc::mode::{Public, Secret},
-    rand::{CryptoRng, OsRng},
+    rand::{CryptoRng, OsRng, RngCore},
 };
 use manta_pay::crypto::constraint::arkworks::{Fp, FpVar, R1CS};
-use rand::Rng;
 
 /// Test MPC
 #[derive(Clone, Default)]
@@ -80,6 +79,7 @@ impl kzg::Configuration for Test {
     type Challenge = [u8; 64];
     type Response = [u8; 64];
     type HashToGroup = KZGBlakeHasher<Self>;
+
     const TAU_DOMAIN_TAG: Self::DomainTag = 0;
     const ALPHA_DOMAIN_TAG: Self::DomainTag = 1;
     const BETA_DOMAIN_TAG: Self::DomainTag = 2;
@@ -166,7 +166,6 @@ impl kzg::Configuration for Test {
 
 impl mpc::Configuration for Test {
     type Challenge = [u8; 64];
-
     type Hasher = BlakeHasher;
 
     fn challenge(
@@ -217,16 +216,14 @@ where
 
 impl Types for Test {
     type State = State<Test>;
-
     type Challenge = [u8; 64];
-
     type Proof = Proof<Test>;
 }
 
 /// Conducts a dummy phase one trusted setup.
 pub fn dummy_phase_one_trusted_setup() -> Accumulator<Test> {
     let mut rng = OsRng;
-    let accumulator = Accumulator::<Test>::default();
+    let accumulator = Accumulator::default();
     let challenge = [0; 64];
     let contribution = Contribution::gen(&mut rng);
     let proof = contribution.proof(&challenge, &mut rng).unwrap();
@@ -246,16 +243,16 @@ pub fn dummy_circuit(cs: &mut R1CS<Fp256<FrParameters>>) {
 }
 
 /// Proves and verifies a dummy circuit with proving key `pk` and a random number generator `rng`.
-pub fn dummy_prove_and_verify_circuit<P, R>(pk: ProvingKey<P>, rng: &mut R)
+pub fn dummy_prove_and_verify_circuit<P, R>(pk: ProvingKey<P>, mut rng: &mut R)
 where
     P: PairingEngine<Fr = Fp256<ark_bls12_381::FrParameters>>,
-    R: Rng + CryptoRng,
+    R: CryptoRng + RngCore + ?Sized,
 {
     let mut cs = R1CS::for_proofs();
     dummy_circuit(&mut cs);
-    let proof = ArkGroth16::prove(&pk, cs, rng).unwrap();
+    let proof = Groth16::prove(&pk, cs, &mut rng).unwrap();
     assert!(
-        ArkGroth16::verify(&pk.vk, &[field_new!(Fr, "6")], &proof).unwrap(),
+        Groth16::verify(&pk.vk, &[field_new!(Fr, "6")], &proof).unwrap(),
         "Verify proof should succeed."
     );
 }
@@ -280,8 +277,8 @@ pub fn proving_and_verifying_ratio_proof_is_correct() {
         .expect("Verifying a ratio proof should be correct.");
 }
 
-/// Tests if trusted setup phase 2 is valid with trusted setup phase 1 and proves
-/// and verifies a dummy circuit.
+/// Tests if trusted setup phase 2 is valid with trusted setup phase 1 and proves and verifies a
+/// dummy circuit.
 #[test]
 pub fn trusted_setup_phase_two_is_valid() {
     let mut rng = OsRng;
@@ -289,8 +286,7 @@ pub fn trusted_setup_phase_two_is_valid() {
     dummy_circuit(&mut cs);
     let accumulator = dummy_phase_one_trusted_setup();
     let mut state =
-        initialize::<Test, R1CS<Fp256<ark_bls12_381::FrParameters>>>(accumulator.clone(), cs)
-            .unwrap();
+        initialize::<Test, R1CS<Fp256<ark_bls12_381::FrParameters>>>(accumulator, cs).unwrap();
     let mut transcript = Transcript::<Test> {
         initial_challenge: <Test as mpc::ProvingKeyHasher<Test>>::hash(&state),
         initial_state: state.clone(),

@@ -24,12 +24,12 @@ use ark_std::io;
 use blake2::{Blake2b512, Digest as Blake2Digest};
 use byteorder::{BigEndian, ReadBytesExt};
 use core::marker::PhantomData;
-use manta_crypto::rand::{CryptoRng, OsRng, RngCore};
+use manta_crypto::rand::{CryptoRng, OsRng, RngCore, SeedableRng};
 use manta_util::{cfg_into_iter, cfg_iter, cfg_iter_mut, cfg_reduce};
-use rand_chacha::{rand_core::SeedableRng, ChaCha20Rng};
+use rand_chacha::ChaCha20Rng;
 
 #[cfg(feature = "rayon")]
-use rayon::iter::{IndexedParallelIterator, ParallelIterator};
+use manta_util::rayon::iter::{IndexedParallelIterator, ParallelIterator};
 
 pub use crate::pairing::Pairing;
 pub use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
