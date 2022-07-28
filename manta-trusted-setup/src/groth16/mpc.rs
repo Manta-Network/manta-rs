@@ -353,8 +353,38 @@ where
     C: Configuration,
     I: IntoIterator<Item = (State<C>, Proof<C>)>,
 {
-    for (next, next_proof) in iter {
-        (challenge, state) = verify_transform(&challenge, state, next, next_proof)?;
+    let initial_state = state.clone();
+    for (next_state, next_proof) in iter {
+        let next_challenge = C::challenge(&challenge, &state, &next_state, &next_proof);
+        let ((ratio_0, ratio_1), _) = next_proof
+            .verify(&C::Hasher::default(), &challenge)
+            .ok_or(Error::SignatureInvalid)?;
+        if !C::Pairing::same_ratio(
+            (ratio_0, ratio_1),
+            (state.vk.delta_g2, next_state.vk.delta_g2),
+        ) {
+            return Err(Error::InconsistentDeltaChange);
+        }
+        (state, challenge) = (next_state, next_challenge);
+    }
+    check_invariants::<C>(&initial_state, &state)?;
+    if !C::Pairing::same_ratio(
+        (initial_state.delta_g1, state.delta_g1),
+        (initial_state.vk.delta_g2, state.vk.delta_g2),
+    ) {
+        return Err(Error::InconsistentDeltaChange);
+    }
+    if !C::Pairing::same_ratio(
+        merge_pairs_affine::<C::G1>(&state.h_query, &initial_state.h_query),
+        (initial_state.vk.delta_g2, state.vk.delta_g2),
+    ) {
+        return Err(Error::InconsistentHChange);
+    }
+    if !C::Pairing::same_ratio(
+        merge_pairs_affine::<C::G1>(&state.l_query, &initial_state.l_query),
+        (initial_state.vk.delta_g2, state.vk.delta_g2),
+    ) {
+        return Err(Error::InconsistentLChange);
     }
     Ok(())
 }
