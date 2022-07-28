@@ -28,7 +28,8 @@ use manta_crypto::{
     constraint::{
         self,
         measure::{Count, Measure},
-        mode, Add, Assert, AssertEq, ConditionalSwap, Constant, Has, Public, Secret, Variable,
+        mode, Add, Assert, BitAnd, ConditionalSwap, Constant, Has, NonNative, Public, Secret,
+        Variable,
     },
     eclair::num::AssertWithinBitRange,
     rand::{RngCore, Sample},
@@ -310,6 +311,8 @@ where
     }
 }
 
+impl<F> NonNative for R1CS<F> where F: PrimeField {}
+
 impl<F> Has<bool> for R1CS<F>
 where
     F: PrimeField,
@@ -326,13 +329,6 @@ where
         b.enforce_equal(&Boolean::TRUE)
             .expect("Enforcing equality is not allowed to fail.");
     }
-}
-
-impl<F> AssertEq for R1CS<F>
-where
-    F: PrimeField,
-{
-    // TODO: Implement these optimizations.
 }
 
 impl<F, const BITS: usize> AssertWithinBitRange<FpVar<F>, BITS> for R1CS<F>
@@ -467,6 +463,19 @@ where
         let _ = compiler;
         self.is_eq(rhs)
             .expect("Equality checking is not allowed to fail.")
+    }
+}
+
+impl<F> BitAnd<Self, R1CS<F>> for Boolean<F>
+where
+    F: PrimeField,
+{
+    type Output = Self;
+
+    #[inline]
+    fn bitand(self, rhs: Self, compiler: &mut R1CS<F>) -> Self::Output {
+        let _ = compiler;
+        self.and(&rhs).expect("Bitwise AND is not allowed to fail.")
     }
 }
 

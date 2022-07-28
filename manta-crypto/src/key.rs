@@ -231,7 +231,7 @@ pub mod kdf {
             R: Read,
         {
             Ok(Self::new(
-                F::decode(&mut reader).map_err(|err| err.map_decode(|_| ()))?,
+                Decode::decode(&mut reader).map_err(|err| err.map_decode(|_| ()))?,
             ))
         }
     }

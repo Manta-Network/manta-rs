@@ -16,10 +16,14 @@
 
 //! Comparison
 
-use crate::eclair::{bool::Bool, ops::Not, Has};
+use crate::eclair::{
+    bool::{Assert, Bool},
+    ops::Not,
+    Has,
+};
 
 /// Partial Equivalence Relations
-pub trait PartialEq<Rhs, COM>
+pub trait PartialEq<Rhs, COM = ()>
 where
     Rhs: ?Sized,
     COM: Has<bool> + ?Sized,
@@ -35,9 +39,24 @@ where
     {
         self.eq(other, compiler).not(compiler)
     }
+
+    /// Asserts that `self` and `rhs` are equal.
+    ///
+    /// # Implementation Note
+    ///
+    /// This method is an optimization path for the case when comparing for equality and then
+    /// asserting is more expensive than a custom assertion.
+    #[inline]
+    fn assert_equal(&self, rhs: &Rhs, compiler: &mut COM)
+    where
+        COM: Assert,
+    {
+        let are_equal = self.eq(rhs, compiler);
+        compiler.assert(&are_equal);
+    }
 }
 
-/* FIXME: We cannot implement this yet.
+/* TODO:
 impl<T, Rhs> PartialEq<Rhs> for T
 where
     T: cmp::PartialEq<Rhs>,
@@ -55,12 +74,12 @@ where
 */
 
 /// Equality
-pub trait Eq<COM>: PartialEq<Self, COM>
+pub trait Eq<COM = ()>: PartialEq<Self, COM>
 where
     COM: Has<bool>,
 {
 }
 
-/* FIXME: We cannot implement this yet.
+/* TODO:
 impl<T> Eq for T where T: cmp::Eq {}
 */
