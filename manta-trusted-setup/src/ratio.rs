@@ -118,3 +118,26 @@ where
         Some(((ratio_0, ratio_1), (matching_point, challenge_point)))
     }
 }
+
+/// Testing Suite
+#[cfg(test)]
+pub mod test {
+    use super::*;
+
+    /// Abstract tests Tests if proving and verifying ratio proof is correct.
+    pub fn prove_and_verify_ratio_proof<P, H, C, R>(
+        hasher: &H,
+        challenge: &C,
+        scalar: &P::Scalar,
+        rng: &mut R,
+    ) where
+        P: Pairing,
+        H: HashToGroup<P, C>,
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        RatioProof::prove(hasher, challenge, scalar, rng)
+            .expect("Proving a ratio proof should be correct.")
+            .verify(hasher, challenge)
+            .expect("Verifying a ratio proof should be correct.");
+    }
+}

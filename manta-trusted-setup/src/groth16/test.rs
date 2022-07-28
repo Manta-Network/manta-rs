@@ -23,18 +23,19 @@ use crate::{
     },
     mpc::{Transcript, Types},
     pairing::Pairing,
-    ratio::RatioProof,
+    ratio::test::prove_and_verify_ratio_proof,
     util::{
         into_array_unchecked, AffineCurve, BlakeHasher, HasDistribution, KZGBlakeHasher,
-        PairingEngine, Sample,
+        PairingEngine, Sample, Serializer,
     },
 };
 use alloc::vec::Vec;
-use ark_bls12_381::{Fr, FrParameters};
-use ark_ff::{field_new, Fp256, UniformRand};
+use ark_bls12_381::Fr;
+use ark_std::io;
+use ark_ff::{field_new, UniformRand};
 use ark_groth16::{Groth16, ProvingKey};
 use ark_r1cs_std::eq::EqGadget;
-use ark_serialize::CanonicalSerialize;
+use ark_serialize::{CanonicalSerialize, Write};
 use ark_snark::SNARK;
 use blake2::Digest;
 use manta_crypto::{
@@ -74,6 +75,41 @@ impl Pairing for Test {
     }
 }
 
+// TODO
+// impl<T> Serializer<T> for T
+// where
+//     T: AffineCurve,
+// {
+//     fn serialize_unchecked<W>(item: &T, writer: &mut W) -> Result<(), io::Error>
+//     where
+//         W: Write,
+//     {
+//         T::serialize_unchecked(item, writer).into()
+//     }
+
+//     fn serialize_uncompressed<W>(item: &T, writer: &mut W) -> Result<(), io::Error>
+//     where
+//         W: Write,
+//     {
+//         todo!()
+//     }
+
+//     fn uncompressed_size(item: &T) -> usize {
+//         todo!()
+//     }
+
+//     fn serialize_compressed<W>(item: &T, writer: &mut W) -> Result<(), io::Error>
+//     where
+//         W: Write,
+//     {
+//         todo!()
+//     }
+
+//     fn compressed_size(item: &T) -> usize {
+//         todo!()
+//     }
+// }
+
 impl kzg::Configuration for Test {
     type DomainTag = u8;
     type Challenge = [u8; 64];
@@ -87,7 +123,7 @@ impl kzg::Configuration for Test {
     fn response(
         state: &Accumulator<Self>,
         challenge: &Self::Challenge,
-        proof: &crate::groth16::kzg::Proof<Self>,
+        proof: &kzg::Proof<Self>,
     ) -> Self::Response {
         let mut hasher = BlakeHasher::default();
         for item in &state.tau_powers_g1 {
@@ -181,17 +217,6 @@ impl mpc::Configuration for Test {
         next.serialize(&mut hasher)
             .expect("Consuming the current state failed.");
         proof
-            .ratio
-            .0
-            .serialize(&mut hasher)
-            .expect("Consuming proof failed");
-        proof
-            .ratio
-            .1
-            .serialize(&mut hasher)
-            .expect("Consuming proof failed");
-        proof
-            .matching_point
             .serialize(&mut hasher)
             .expect("Consuming proof failed");
         into_array_unchecked(hasher.0.finalize())
@@ -233,7 +258,7 @@ pub fn dummy_phase_one_trusted_setup() -> Accumulator<Test> {
 }
 
 /// Generates a dummy R1CS circuit.
-pub fn dummy_circuit(cs: &mut R1CS<Fp256<FrParameters>>) {
+pub fn dummy_circuit(cs: &mut R1CS<Fr>) {
     let a = Fp(field_new!(Fr, "2")).as_known::<Secret, FpVar<_>>(cs);
     let b = Fp(field_new!(Fr, "3")).as_known::<Secret, FpVar<_>>(cs);
     let c = &a * &b;
@@ -245,7 +270,7 @@ pub fn dummy_circuit(cs: &mut R1CS<Fp256<FrParameters>>) {
 /// Proves and verifies a dummy circuit with proving key `pk` and a random number generator `rng`.
 pub fn dummy_prove_and_verify_circuit<P, R>(pk: ProvingKey<P>, mut rng: &mut R)
 where
-    P: PairingEngine<Fr = Fp256<ark_bls12_381::FrParameters>>,
+    P: PairingEngine<Fr = Fr>,
     R: CryptoRng + RngCore + ?Sized,
 {
     let mut cs = R1CS::for_proofs();
@@ -260,21 +285,12 @@ where
 /// Tests if proving and verifying ratio proof is correct.
 #[test]
 pub fn proving_and_verifying_ratio_proof_is_correct() {
-    let mut rng = OsRng;
-    let delta = <Test as Pairing>::Scalar::rand(&mut rng);
-    let proof = RatioProof::prove(
+    prove_and_verify_ratio_proof(
         &<Test as kzg::Configuration>::hasher(Test::TAU_DOMAIN_TAG),
         &[0; 64],
-        &delta,
-        &mut rng,
-    )
-    .expect("Proving a ratio proof should be correct.");
-    proof
-        .verify(
-            &<Test as kzg::Configuration>::hasher(Test::TAU_DOMAIN_TAG),
-            &[0; 64],
-        )
-        .expect("Verifying a ratio proof should be correct.");
+        &<Test as Pairing>::Scalar::rand(&mut OsRng),
+        &mut OsRng,
+    );
 }
 
 /// Tests if trusted setup phase 2 is valid with trusted setup phase 1 and proves and verifies a
@@ -285,8 +301,7 @@ pub fn trusted_setup_phase_two_is_valid() {
     let mut cs = R1CS::for_contexts();
     dummy_circuit(&mut cs);
     let accumulator = dummy_phase_one_trusted_setup();
-    let mut state =
-        initialize::<Test, R1CS<Fp256<ark_bls12_381::FrParameters>>>(accumulator, cs).unwrap();
+    let mut state = initialize::<Test, R1CS<Fr>>(accumulator, cs).unwrap();
     let mut transcript = Transcript::<Test> {
         initial_challenge: <Test as mpc::ProvingKeyHasher<Test>>::hash(&state),
         initial_state: state.clone(),
