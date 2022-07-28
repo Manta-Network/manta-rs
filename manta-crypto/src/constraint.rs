@@ -31,8 +31,9 @@ pub use crate::eclair::{
     },
     bool::{Assert, AssertEq, Bool, ConditionalSelect, ConditionalSwap},
     cmp::{Eq, PartialEq},
-    ops::{Add, Not, Sub},
-    Has, Native,
+    num::Zero,
+    ops::{Add, BitAnd, BitOr, Not, Sub},
+    Has, Native, NonNative,
 };
 
 /// Proof System

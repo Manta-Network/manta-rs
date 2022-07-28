@@ -19,6 +19,24 @@
 use crate::eclair::ops::{Add, AddAssign, Mul, MulAssign};
 use core::{borrow::Borrow, ops::Deref};
 
+/// Additive Identity
+pub trait Zero<COM = ()> {
+    /// Verification Type
+    type Verification;
+
+    /// Returns a truthy value if `self` is equal to the additive identity.
+    fn is_zero(&self, compiler: &mut COM) -> Self::Verification;
+}
+
+/// Multiplicative Identity
+pub trait One<COM = ()> {
+    /// Verification Type
+    type Verification;
+
+    /// Returns a truthy value if `self` is equal to the multiplicative identity.
+    fn is_one(&self, compiler: &mut COM) -> Self::Verification;
+}
+
 /// Within-Bit-Range Assertion
 pub trait AssertWithinBitRange<T, const BITS: usize> {
     /// Asserts that `value` is smaller than `2^BITS`

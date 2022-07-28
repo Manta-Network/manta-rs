@@ -138,7 +138,7 @@ where
     where
         R: Read,
     {
-        Ok(Self::new(G::decode(&mut reader)?))
+        Ok(Self::new(Decode::decode(&mut reader)?))
     }
 }
 
@@ -165,7 +165,7 @@ where
     where
         R: RngCore + ?Sized,
     {
-        Self::new(G::sample(distribution, rng))
+        Self::new(Sample::sample(distribution, rng))
     }
 }
 
