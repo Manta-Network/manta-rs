@@ -44,4 +44,4 @@ derivative = { version = "2.2.0", default-features = false, features = ["use_cor
 manta-crypto = { path = "../manta-crypto", default-features = false, features = ["getrandom"] }
 manta-util = { path = "../manta-util", default-features = false, features = ["alloc"] }
 rayon = { version = "1.5.3", optional = true, default-features = false }
-workspace-hack = { version = "0.1", path = "../workspace-hack" }
+workspace-hack = { version = "0.1.0", path = "../workspace-hack" }
