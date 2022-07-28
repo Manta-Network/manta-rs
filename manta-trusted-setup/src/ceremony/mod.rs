@@ -14,12 +14,15 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 //! Client and Server Interfaces and Implementations for Manta Trusted Setup Ceremony.
-pub mod bls_server;
+// pub mod bls_server;
 pub mod coordinator;
 pub mod queue;
 pub mod registry;
 pub mod requests;
+#[cfg(feature = "std")]
+pub mod server;
 pub mod signature;
+
 /// Ceremony Error
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum CeremonyError {

@@ -13,7 +13,8 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
-//! Waiting queue for the ceremony.
+
+// TODO; recover this under `test`
 
 use crate::{
     ceremony::{
@@ -271,7 +272,6 @@ pub type RegistryMap = HashMap<<Participant as Identifier>::Identifier, Particip
 /// A coordinator for phase2 with Bls12-381, Ed25519 signatures
 pub type SaplingBls12Coordinator =
     Coordinator<SaplingBls12Ceremony, Participant, RegistryMap, ed_dalek_signatures::Ed25519, 2>;
-
 
 /// Reads from file to get a "raw" version of the parameters derived from
 /// the final sapling phase 1 parameters with no contributions made (delta = 1).

@@ -19,40 +19,30 @@ use crate::{
     ceremony::{
         queue::{Identifier, Priority, Queue},
         registry::{Map, Registry},
-        signature,
-        signature::{SignatureScheme},
         CeremonyError,
     },
     mpc,
 };
-use core::marker::PhantomData;
 
 /// Coordinator with `V` as trusted setup verifier, `P` as participant, `M` as the map used by registry, `N` as the number of priority levels.
-pub struct Coordinator<V, P, M, S, const N: usize>
+pub struct Coordinator<V, P, M, const N: usize>
 where
     V: mpc::Verify,
-    P: Priority + Identifier + signature::HasPublicKey,
-    S: SignatureScheme,
+    P: Priority + Identifier,
     M: Map<Key = P::Identifier, Value = P>,
-    V::State: signature::Verify<S>,
-    V::Proof: signature::Verify<S>,
 {
     state: V::State,
     challenge: V::Challenge,
     registry: Registry<M>,
     queue: Queue<P, N>,
     mpc_verifier: V,
-    __: PhantomData<S>,
 }
 
-impl<V, P, M, S, const N: usize> Coordinator<V, P, M, S, N>
+impl<V, P, M, const N: usize> Coordinator<V, P, M, N>
 where
     V: mpc::Verify,
-    P: Priority + Identifier + signature::HasPublicKey,
-    S: SignatureScheme<PublicKey = P::PublicKey>,
+    P: Priority + Identifier,
     M: Map<Key = P::Identifier, Value = P>,
-    V::State: signature::Verify<S>,
-    V::Proof: signature::Verify<S>,
 {
     /// Initialize the coordinator with the initial state and challenge.
     pub fn new(
@@ -67,7 +57,6 @@ where
             registry: Registry::default(),
             queue: Queue::default(),
             mpc_verifier,
-            __: PhantomData,
         }
     }
 
@@ -92,8 +81,7 @@ where
         proof: V::Proof,
     ) -> Result<(), CeremonyError>
     where
-        V::State: Default, // we need this because `verify_transform` takes ownership of `self.state`
-                           // I don't understand...?
+        V::State: Default, // TODO: we can use `take_mut` crate to avoid this, but need to think more
     {
         // get participant
         let participant = self
@@ -123,7 +111,7 @@ where
         // will noe be removed from the registry, so the participant will not
         // be able to participate in this ceremony again.
         self.queue.pop();
-        println!("MPC state updated");
+        // println!("MPC state updated");
         Ok(())
     }
 

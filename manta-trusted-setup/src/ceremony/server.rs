@@ -1,0 +1,128 @@
+// Copyright 2019-2022 Manta Network.
+// This file is part of manta-rs.
+//
+// manta-rs is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// manta-rs is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
+//! Asyncronous server for trusted setup.
+
+use crate::{
+    ceremony::{
+        coordinator::Coordinator,
+        queue::{Identifier, Priority},
+        registry::Map,
+        requests::{
+            ContributeRequest, GetMpcRequest, GetMpcResponse, JoinQueueRequest, RegisterRequest,
+        },
+        signature,
+        signature::{SignatureScheme, Signed},
+        CeremonyError,
+    },
+    mpc,
+};
+use std::{
+    marker::PhantomData,
+    sync::{Arc, Mutex},
+};
+
+#[derive(derivative::Derivative)]
+#[derivative(Clone(bound = ""))]
+/// Server with `V` as trusted setup verifier, `P` as participant, `M` as the map used by registry, `N` as the number of priority levels.
+pub struct Server<V, P, M, S, const N: usize>
+where
+    V: mpc::Verify,
+    P: Priority + Identifier + signature::HasPublicKey<PublicKey = S::PublicKey>,
+    S: SignatureScheme,
+    M: Map<Key = P::Identifier, Value = P>,
+{
+    coordinator: Arc<Mutex<Coordinator<V, P, M, N>>>,
+    __: PhantomData<S>,
+}
+
+// Note the implementation is currently not generic over S: SignatureScheme
+impl<V, P, M, S, const N: usize> Server<V, P, M, S, N>
+where
+    V: mpc::Verify,
+    P: Clone + Priority + Identifier + signature::HasPublicKey<PublicKey = S::PublicKey>,
+    S: SignatureScheme,
+    M: Map<Key = P::Identifier, Value = P>,
+    V::State: Clone + signature::Verify<S>,
+    V::Proof: Clone + signature::Verify<S>,
+    P::PublicKey: signature::Verify<S>,
+{
+    /// Registers then queues a participant // TODO The registration is by hand, so queueing should be split from it
+    #[inline]
+    async fn register_participant<'a>(
+        self,
+        request: Signed<RegisterRequest<P>, S>,
+    ) -> Result<(), CeremonyError>
+    where
+        Signed<RegisterRequest<P>, S>: Sized,
+    {
+        // Check signatures
+        let public_key = request.message.participant.public_key();
+        request.verify_integrity(&public_key)?;
+        let mut state = self.coordinator.lock().expect("Failed to lock coordinator");
+        state.register(request.message.participant)
+    }
+
+    /// Adds a participant to the queue if they are registered. Todo: join queue should return position
+    #[inline]
+    async fn join_queue(self, request: JoinQueueRequest<P>) -> Result<usize, CeremonyError> {
+        let mut state = self.coordinator.lock();
+        todo!()
+    }
+
+    /// Gives current MPC state and challenge if participant is at front of queue.
+    #[inline]
+    async fn get_state_and_challenge(
+        self,
+        request: Signed<GetMpcRequest<P, V>, S>,
+    ) -> Result<GetMpcResponse<V>, CeremonyError>
+    where
+        Signed<GetMpcRequest<P, V>, S>: Sized,
+    {
+        // Check signatures
+        let public_key = request.message.participant.public_key();
+        request.verify_integrity(&public_key)?;
+
+        let state = self.coordinator.lock().expect("Failed to lock coordinator");
+        if state.is_next(&request.message.participant) {
+            println!("Served state to next participant");
+            Ok(GetMpcResponse::default()) // this is the variant with the state
+        } else {
+            println!("Told participant to wait their turn.");
+            Ok(GetMpcResponse::default()) // this is the variant with queue position
+        }
+    }
+
+    /// Processes a request to update the MPC state. If successful then participant is removed from queue.
+    #[inline]
+    async fn update(self, request: Signed<ContributeRequest<P, V>, S>) -> Result<(), CeremonyError>
+    where
+        Signed<ContributeRequest<P, V>, S>: Sized,
+        V::State: Default,
+    {
+        // Check signatures
+        let public_key = request.message.participant.public_key();
+        request.verify_integrity(&public_key)?;
+
+        let mut state = self.coordinator.lock().expect("Failed to lock coordinator");
+        state.update(
+            &request.message.participant.identifier(),
+            request.message.transformed_state,
+            request.message.proof,
+        )
+    }
+
+    // TODO: execute
+}

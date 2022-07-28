@@ -17,10 +17,9 @@
 
 use crate::{
     ceremony::{
-        bls_server::SaplingBls12Ceremony,
         queue::{Identifier, Priority},
         signature,
-        signature::{ed_dalek_signatures, Sign, SignatureScheme, Verify},
+        signature::{Sign as _, SignatureScheme, Verify as _},
         CeremonyError,
     },
     mpc,
@@ -28,35 +27,8 @@ use crate::{
 use core::{fmt::Debug, marker::PhantomData};
 use serde::{Deserialize, Serialize};
 
-/// Signed requests from client to server.
-pub trait SignedRequest<S>
-where
-    S: SignatureScheme,
-{
-    /// Data to sign, such as a proof of contribution.
-    type Data: Clone;
-    /// Nonce specific to this request
-    type Nonce; // TODO? Maybe "Nonce" is the wrong term, maybe this is a domain tag?
-
-    /// Computes signatures of `Data` and assembles data and
-    /// signatures into a request. This should use the nonce.
-    fn form_request(
-        data: &Self::Data,
-        public_key: &S::PublicKey,
-        private_key: &S::PrivateKey,
-    ) -> Result<Self, CeremonyError>
-    where
-        Self: std::marker::Sized;
-
-    /// Checks all signatures in a request.
-    fn check_signatures(&self, public_key: &S::PublicKey) -> Result<(), CeremonyError>;
-
-    /// Define a nonce to use for requests of this type
-    fn nonce() -> Self::Nonce;
-}
-
 #[derive(Debug, Deserialize, Serialize)]
-/// Only for testing
+/// Register Request
 pub struct RegisterRequest<P>
 where
     P: Identifier + Priority + signature::HasPublicKey,
@@ -65,134 +37,143 @@ where
     pub participant: P,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-/// Signed request to join the contributor queue as `participant`.
-pub struct JoinQueueRequest<P, S>
+// TODO: Current SignatureScheme is subject to replay attacks.
+impl<P, S> signature::Sign<S> for RegisterRequest<P>
 where
     P: Identifier + Priority + signature::HasPublicKey<PublicKey = S::PublicKey>,
     S: SignatureScheme,
+    P::PublicKey: signature::Sign<S>,
+{
+    type Signature = S::Signature;
+
+    fn sign(
+        &self,
+        public_key: &S::PublicKey,
+        private_key: &S::PrivateKey,
+    ) -> Result<S::Signature, CeremonyError> {
+        // sign the public key
+        todo!()
+    }
+}
+
+impl<P, S> signature::Verify<S> for RegisterRequest<P>
+where
+    P: Identifier + Priority + signature::HasPublicKey<PublicKey = S::PublicKey>,
+    S: SignatureScheme,
+    P::PublicKey: signature::Verify<S>,
+{
+    type Signature = S::Signature;
+
+    fn verify_integrity(
+        &self,
+        public_key: &S::PublicKey,
+        signature: &S::Signature,
+    ) -> Result<(), CeremonyError> {
+        // verify the public key
+        todo!()
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+/// Request to join the contributor queue as `participant`.
+pub struct JoinQueueRequest<P>
+where
+    P: Identifier + Priority,
 {
     /// Participant
     participant: P,
-    /// Signature
-    sig: S::Signature,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 /// Signed request to get the MPC state.
-pub struct GetMpcRequest<P, S, V>
+pub struct GetMpcRequest<P, V>
 where
-    P: Identifier + signature::HasPublicKey<PublicKey = S::PublicKey>,
-    S: SignatureScheme,
+    P: Identifier,
     V: mpc::Verify,
-    V::State: signature::Verify<S>,
-    V::Proof: signature::Verify<S>,
 {
     /// Participant
     pub participant: P,
-    /// Signature of the message "GetMpcRequest"
-    pub sig: S::Signature,
-    __: PhantomData<V>,
+    __: PhantomData<(V)>,
 }
 
-impl<P, S, V> GetMpcRequest<P, S, V>
+impl<P, S, V> signature::Sign<S> for GetMpcRequest<P, V>
 where
     P: Identifier + signature::HasPublicKey<PublicKey = S::PublicKey>,
     S: SignatureScheme,
     V: mpc::Verify,
-    V::State: signature::Verify<S>,
-    V::Proof: signature::Verify<S>,
 {
-    ///
-    pub fn new(participant: P, sig: S::Signature) -> Self {
-        Self {
-            participant,
-            sig,
-            __: PhantomData,
-        }
+    type Signature = S::Signature;
+
+    fn sign(
+        &self,
+        public_key: &S::PublicKey,
+        private_key: &S::PrivateKey,
+    ) -> Result<S::Signature, CeremonyError> {
+        // sign the public key
+        todo!()
     }
 }
 
-impl<P, V> SignedRequest<ed_dalek_signatures::Ed25519>
-    for GetMpcRequest<P, ed_dalek_signatures::Ed25519, V>
+impl<P, S, V> signature::Verify<S> for GetMpcRequest<P, V>
 where
-    P: Clone
-        + Identifier
-        + signature::HasPublicKey<
-            PublicKey = <ed_dalek_signatures::Ed25519 as SignatureScheme>::PublicKey,
-        >,
+    P: Identifier + signature::HasPublicKey<PublicKey = S::PublicKey>,
+    S: SignatureScheme,
     V: mpc::Verify,
-    V::State: signature::Verify<ed_dalek_signatures::Ed25519>,
-    V::Proof: signature::Verify<ed_dalek_signatures::Ed25519>,
 {
-    type Data = P;
-
-    type Nonce = Vec<u8>; // todo : what's a better choice here?
-
-    fn form_request(
-        data: &Self::Data,
-        public_key: &<ed_dalek_signatures::Ed25519 as SignatureScheme>::PublicKey,
-        private_key: &<ed_dalek_signatures::Ed25519 as SignatureScheme>::PrivateKey,
-    ) -> Result<Self, CeremonyError> {
-        // These requests will be signed with just the participant's public key
-        let mut message = Self::nonce();
-        message.extend_from_slice(&public_key.0);
-        let message = ed_dalek_signatures::Message::from(&message[..]);
-        let signature = message.sign(public_key, private_key)?;
-        Ok(Self::new(data.clone(), signature))
-    }
-
-    fn check_signatures(
+    type Signature = S::Signature;
+    fn verify_integrity(
         &self,
-        public_key: &<ed_dalek_signatures::Ed25519 as SignatureScheme>::PublicKey,
+        public_key: &S::PublicKey,
+        signature: &S::Signature,
     ) -> Result<(), CeremonyError> {
-        // These requests should have been signed with just the participant's public key
-        let mut message = Self::nonce();
-        message.extend_from_slice(&public_key.0);
-        let message = ed_dalek_signatures::Message::from(&message[..]);
-        message.verify_integrity(public_key, &self.sig)
+        // verify the public key
+        todo!()
     }
+}
 
-    fn nonce() -> Self::Nonce {
-        let mut nonce = Vec::<u8>::new();
-        nonce.extend_from_slice(b"GetMpcRequest");
-        nonce
+impl<P, V> GetMpcRequest<P, V>
+where
+    P: Identifier,
+    V: mpc::Verify,
+{
+    /// TODO
+    pub fn new(participant: P) -> Self {
+        Self {
+            participant,
+            __: PhantomData,
+        }
     }
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-/// The response to a `GetMpcRequest` is either a queue position or, 
+/// The response to a `GetMpcRequest` is either a queue position or,
 /// if participant is at front of queue, the MPC state.
-pub struct GetMpcResponse<S, V>
+pub struct GetMpcResponse<V>
 where
-    S: SignatureScheme,
     V: mpc::Verify,
-    V::State: signature::Verify<S>,
-    V::Proof: signature::Verify<S>,
 {
     __: PhantomData<V>, // TODO: Replace this with response: MpcResponse<V>,
-    ___: PhantomData<S>,
 }
 
 // TODO: delete when GetMpcResponse is fixed
-impl<S, V> Default for GetMpcResponse<S, V>
+impl<V> Default for GetMpcResponse<V>
 where
-    S: SignatureScheme,
     V: mpc::Verify,
-    V::State: signature::Verify<S>,
-    V::Proof: signature::Verify<S>,
 {
     fn default() -> Self {
-        Self {
-            __: PhantomData,
-            ___: PhantomData,
-        }
+        Self { __: PhantomData }
     }
 }
 
-// #[derive(Debug, Deserialize, Serialize)]
-#[derive(Debug)]
-///
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(
+    bound(
+        serialize = r"V::State: Serialize",
+        deserialize = "V::State: Deserialize<'de>",
+    ),
+    deny_unknown_fields
+)]
+/// MPC Response for `GetMpcRequest`
 pub enum MpcResponse<V>
 where
     V: mpc::Verify,
@@ -205,13 +186,10 @@ where
 
 #[derive(Debug, Deserialize, Serialize)]
 ///
-pub struct ContributeRequest<P, S, V>
+pub struct ContributeRequest<P, V>
 where
-    P: Identifier + signature::HasPublicKey<PublicKey = S::PublicKey>,
-    S: SignatureScheme,
+    P: Identifier,
     V: mpc::Verify,
-    V::State: Clone + signature::Verify<S>,
-    V::Proof: Clone + signature::Verify<S>,
 {
     ///
     pub participant: P,
@@ -219,77 +197,116 @@ where
     pub transformed_state: V::State,
     ///
     pub proof: V::Proof,
-    ///
-    pub state_sig: S::Signature,
-    ///
-    pub proof_sig: S::Signature,
 }
 
-impl<P> SignedRequest<ed_dalek_signatures::Ed25519>
-    for ContributeRequest<P, ed_dalek_signatures::Ed25519, SaplingBls12Ceremony>
+impl<P, S, V> signature::Sign<S> for ContributeRequest<P, V>
 where
-    P: Clone
-        + Identifier
-        + signature::HasPublicKey<
-            PublicKey = <ed_dalek_signatures::Ed25519 as SignatureScheme>::PublicKey,
-        >,
+    P: Identifier + signature::HasPublicKey<PublicKey = S::PublicKey>,
+    S: SignatureScheme,
+    V: mpc::Verify,
+    V::State: Clone + signature::Sign<S>,
+    V::Proof: Clone + signature::Sign<S>,
 {
-    type Data = (
-        <SaplingBls12Ceremony as mpc::Types>::State,
-        <SaplingBls12Ceremony as mpc::Types>::Proof,
-        P,
+    type Signature = (
+        <V::State as signature::Sign<S>>::Signature,
+        <V::Proof as signature::Sign<S>>::Signature,
     );
-
-    type Nonce = Vec<u8>;
-
-    fn form_request(
-        data: &Self::Data,
-        public_key: &<ed_dalek_signatures::Ed25519 as SignatureScheme>::PublicKey,
-        private_key: &<ed_dalek_signatures::Ed25519 as SignatureScheme>::PrivateKey,
-    ) -> Result<Self, CeremonyError>
-    where
-        Self: std::marker::Sized,
-    {
-        // First sign the new state
-        let mut message = Self::nonce();
-        message.extend_from_slice(&data.0.state);
-        let message = ed_dalek_signatures::Message::from(&message[..]);
-        let state_sig = message.sign(public_key, private_key)?;
-
-        // Next sign the proof
-        let mut message = Self::nonce();
-        message.extend_from_slice(&data.1.proof);
-        let message = ed_dalek_signatures::Message::from(&message[..]);
-        let proof_sig = message.sign(public_key, private_key)?;
-        Ok(Self {
-            participant: data.2.clone(),
-            transformed_state: data.0.clone(),
-            proof: data.1.clone(),
-            state_sig,
-            proof_sig,
-        })
-    }
-
-    fn check_signatures(
+    fn sign(
         &self,
-        public_key: &<ed_dalek_signatures::Ed25519 as SignatureScheme>::PublicKey,
-    ) -> Result<(), CeremonyError> {
-        // Check the signature on the state
-        let mut message = Self::nonce();
-        message.extend_from_slice(&self.transformed_state.state);
-        let message = ed_dalek_signatures::Message::from(&message[..]);
-        message.verify_integrity(public_key, &self.state_sig)?;
-
-        // Check the signature on the proof
-        let mut message = Self::nonce();
-        message.extend_from_slice(&self.proof.proof);
-        let message = ed_dalek_signatures::Message::from(&message[..]);
-        message.verify_integrity(public_key, &self.proof_sig)
-    }
-
-    fn nonce() -> Self::Nonce {
-        let mut nonce = Vec::<u8>::new();
-        nonce.extend_from_slice(b"ContributeRequest");
-        nonce
+        public_key: &S::PublicKey,
+        private_key: &S::PrivateKey,
+    ) -> Result<Self::Signature, CeremonyError> {
+        let state_sig = self.transformed_state.sign(public_key, private_key)?;
+        let proof_sig = self.proof.sign(public_key, private_key)?;
+        Ok((state_sig, proof_sig))
     }
 }
+
+impl<P, S, V> signature::Verify<S> for ContributeRequest<P, V>
+where
+    P: Identifier + signature::HasPublicKey<PublicKey = S::PublicKey>,
+    S: SignatureScheme,
+    V: mpc::Verify,
+    V::State: Clone + signature::Verify<S>,
+    V::Proof: Clone + signature::Verify<S>,
+{
+    type Signature = (
+        <V::State as signature::Verify<S>>::Signature,
+        <V::Proof as signature::Verify<S>>::Signature,
+    );
+    fn verify_integrity(
+        &self,
+        public_key: &S::PublicKey,
+        signature: &Self::Signature,
+    ) -> Result<(), CeremonyError> {
+        let (state_sig, proof_sig) = signature;
+        self.transformed_state
+            .verify_integrity(public_key, state_sig)?;
+        self.proof.verify_integrity(public_key, proof_sig)?;
+        Ok(())
+    }
+}
+
+// impl<P, S, V> SignedRequest<S> for ContributeRequest<P, S, V>
+// where
+//     P: Clone + Identifier + signature::HasPublicKey<PublicKey = <S as SignatureScheme>::PublicKey>,
+//     S: SignatureScheme,
+//     V: mpc::Verify,
+//     V::State: Clone + signature::Verify<S>,
+//     V::Proof: Clone + signature::Verify<S>,
+// {
+//     type Data = (<V as mpc::Types>::State, <V as mpc::Types>::Proof, P);
+//
+//     type Nonce = Vec<u8>;
+//
+//     fn new(
+//         data: &Self::Data,
+//         public_key: &S::PublicKey,
+//         private_key: &S::PrivateKey,
+//     ) -> Result<Self, CeremonyError>
+//     where
+//         Self: std::marker::Sized,
+//     {
+//         // First sign the new state
+//         let mut message = Self::nonce();
+//         message.extend_from_slice(&data.0.state);
+//         let message = ed_dalek_signatures::Message::from(&message[..]);
+//         let state_sig = message.sign(public_key, private_key)?;
+//
+//         // Next sign the proof
+//         let mut message = Self::nonce();
+//         message.extend_from_slice(&data.1.proof);
+//         let message = ed_dalek_signatures::Message::from(&message[..]);
+//         let proof_sig = message.sign(public_key, private_key)?;
+//         Ok(Self {
+//             participant: data.2.clone(),
+//             transformed_state: data.0.clone(),
+//             proof: data.1.clone(),
+//             state_sig,
+//             proof_sig,
+//         })
+//     }
+//
+//     fn check_signatures(
+//         &self,
+//         public_key: &<ed_dalek_signatures::Ed25519 as SignatureScheme>::PublicKey,
+//     ) -> Result<(), CeremonyError> {
+//         // Check the signature on the state
+//         let mut message = Self::nonce();
+//         message.extend_from_slice(&self.transformed_state.state);
+//         let message = ed_dalek_signatures::Message::from(&message[..]);
+//         message.verify_integrity(public_key, &self.state_sig)?;
+//
+//         // Check the signature on the proof
+//         let mut message = Self::nonce();
+//         message.extend_from_slice(&self.proof.proof);
+//         let message = ed_dalek_signatures::Message::from(&message[..]);
+//         message.verify_integrity(public_key, &self.proof_sig)
+//     }
+//
+//     fn nonce() -> Self::Nonce {
+//         let mut nonce = Vec::<u8>::new();
+//         nonce.extend_from_slice(b"ContributeRequest");
+//         nonce
+//     }
+// }
