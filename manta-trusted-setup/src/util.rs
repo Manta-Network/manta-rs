@@ -376,7 +376,7 @@ where
         hasher.0.update(challenge);
         ratio.0.serialize(&mut hasher).unwrap();
         ratio.1.serialize(&mut hasher).unwrap();
-        hash_to_group::<P::G2, (), 64>(into_array_unchecked(hasher.0.finalize()))
+        hash_to_group::<_, (), 64>(into_array_unchecked(hasher.0.finalize()))
     }
 }
 
@@ -401,7 +401,7 @@ where
         hasher.0.update(challenge);
         ratio.0.serialize(&mut hasher).unwrap();
         ratio.1.serialize(&mut hasher).unwrap();
-        hash_to_group::<P::G2, (), 64>(into_array_unchecked(hasher.0.finalize()))
+        hash_to_group::<_, (), 64>(into_array_unchecked(hasher.0.finalize()))
     }
 }
 

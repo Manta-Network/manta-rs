@@ -225,7 +225,7 @@ pub fn trusted_setup_phase_two_is_valid() {
     let mut cs = R1CS::for_contexts();
     dummy_circuit(&mut cs);
     let accumulator = dummy_phase_one_trusted_setup();
-    let mut state = initialize::<Test, R1CS<Fr>>(accumulator, cs).unwrap();
+    let mut state = initialize(accumulator, cs).unwrap();
     let mut transcript = Transcript::<Test> {
         initial_challenge: <Test as mpc::ProvingKeyHasher<Test>>::hash(&state),
         initial_state: state.clone(),
@@ -236,8 +236,8 @@ pub fn trusted_setup_phase_two_is_valid() {
     let mut challenge = transcript.initial_challenge;
     for _ in 0..5 {
         prev_state = state.clone();
-        proof = contribute::<Test, _>(&hasher, &challenge, &mut state, &mut rng).unwrap();
-        (challenge, state) = verify_transform::<Test>(&challenge, prev_state, state, proof.clone())
+        proof = contribute(&hasher, &challenge, &mut state, &mut rng).unwrap();
+        (challenge, state) = verify_transform(&challenge, prev_state, state, proof.clone())
             .expect("Verify transform failed");
         transcript.rounds.push((state.clone(), proof));
     }
@@ -247,7 +247,7 @@ pub fn trusted_setup_phase_two_is_valid() {
         transcript.rounds,
     )
     .expect("Verifying all transformations failed.");
-    let mut cs = R1CS::for_contexts();
+    let mut cs = R1CS::for_proofs();
     dummy_circuit(&mut cs);
     dummy_prove_and_verify_circuit(state, &mut rng);
 }

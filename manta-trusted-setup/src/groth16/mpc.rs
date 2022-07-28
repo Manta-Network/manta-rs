@@ -326,13 +326,13 @@ where
         return Err(Error::InconsistentDeltaChange);
     }
     if !C::Pairing::same_ratio(
-        merge_pairs_affine::<C::G1>(&next.h_query, &prev.h_query),
+        merge_pairs_affine(&next.h_query, &prev.h_query),
         (prev.vk.delta_g2, next.vk.delta_g2),
     ) {
         return Err(Error::InconsistentHChange);
     }
     if !C::Pairing::same_ratio(
-        merge_pairs_affine::<C::G1>(&next.l_query, &prev.l_query),
+        merge_pairs_affine(&next.l_query, &prev.l_query),
         (prev.vk.delta_g2, next.vk.delta_g2),
     ) {
         return Err(Error::InconsistentLChange);
@@ -375,13 +375,13 @@ where
         return Err(Error::InconsistentDeltaChange);
     }
     if !C::Pairing::same_ratio(
-        merge_pairs_affine::<C::G1>(&state.h_query, &initial_state.h_query),
+        merge_pairs_affine(&state.h_query, &initial_state.h_query),
         (initial_state.vk.delta_g2, state.vk.delta_g2),
     ) {
         return Err(Error::InconsistentHChange);
     }
     if !C::Pairing::same_ratio(
-        merge_pairs_affine::<C::G1>(&state.l_query, &initial_state.l_query),
+        merge_pairs_affine(&state.l_query, &initial_state.l_query),
         (initial_state.vk.delta_g2, state.vk.delta_g2),
     ) {
         return Err(Error::InconsistentLChange);
