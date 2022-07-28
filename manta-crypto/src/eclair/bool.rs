@@ -42,16 +42,6 @@ pub trait Assert: Has<bool> {
     }
 }
 
-/* FIXME: We cannot implement this yet.
-impl Assert for () {
-    #[inline]
-    fn assert(&mut self, bit: &Bool<Self>) {
-        // TODO: Use `dbg!` macro here to get more info, but add a feature-flag for this.
-        assert!(bit);
-    }
-}
-*/
-
 /// Equality Assertion
 pub trait AssertEq: Assert {
     /// Asserts that `lhs` and `rhs` are equal.
@@ -60,8 +50,7 @@ pub trait AssertEq: Assert {
     where
         T: PartialEq<Rhs, Self>,
     {
-        let are_equal = lhs.eq(rhs, self);
-        self.assert(&are_equal);
+        T::assert_equal(lhs, rhs, self);
     }
 
     /// Asserts that all the elements in `iter` are equal to some `base` element.
@@ -91,49 +80,19 @@ pub trait AssertEq: Assert {
     }
 }
 
+impl<COM> AssertEq for COM where COM: Assert {}
+
 /// Conditional Selection
-pub trait ConditionalSelect<COM>: Sized
+pub trait ConditionalSelect<COM = ()>: Sized
 where
     COM: Has<bool> + ?Sized,
 {
-    /// Selects the result of `true_value` when `bit == true` and the result of `false_value` when
-    /// `bit == false`.
-    fn select_from<T, F>(
-        bit: &Bool<COM>,
-        true_value: T,
-        false_value: F,
-        compiler: &mut COM,
-    ) -> Self
-    where
-        T: FnOnce() -> Self,
-        F: FnOnce() -> Self;
-
     /// Selects `true_value` when `bit == true` and `false_value` when `bit == false`.
-    #[inline]
-    fn select(bit: &Bool<COM>, true_value: Self, false_value: Self, compiler: &mut COM) -> Self {
-        Self::select_from(bit, || true_value, || false_value, compiler)
-    }
+    fn select(bit: &Bool<COM>, true_value: &Self, false_value: &Self, compiler: &mut COM) -> Self;
 }
-
-/* FIXME: We cannot implement this yet.
-impl<V> ConditionalSelect for V {
-    #[inline]
-    fn select_from<T, F>(bit: &bool, true_value: T, false_value: F, _: &mut ()) -> Self
-    where
-        T: FnOnce() -> Self,
-        F: FnOnce() -> Self,
-    {
-        if *bit {
-            true_value()
-        } else {
-            false_value()
-        }
-    }
-}
-*/
 
 /// Conditional Swap
-pub trait ConditionalSwap<COM>: Sized
+pub trait ConditionalSwap<COM = ()>: Sized
 where
     COM: Has<bool> + ?Sized,
 {
@@ -141,16 +100,3 @@ where
     /// false`.
     fn swap(bit: &Bool<COM>, lhs: &Self, rhs: &Self, compiler: &mut COM) -> (Self, Self);
 }
-
-/* FIXME: We cannot implement this yet.
-impl<V> ConditionalSwap for V {
-    #[inline]
-    fn swap(bit: &bool, lhs: Self, rhs: Self, _: &mut ()) -> (Self, Self) {
-        if *bit {
-            (rhs, lhs)
-        } else {
-            (lhs, rhs)
-        }
-    }
-}
-*/

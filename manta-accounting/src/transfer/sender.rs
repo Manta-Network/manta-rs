@@ -356,7 +356,7 @@ where
     /// called before [`is_unspent`](Self::is_unspent) and
     /// [`has_matching_utxo_accumulator_output`](Self::has_matching_utxo_accumulator_output).
     ///
-    /// [`S::Output`]: manta_crypto::accumulator::Model::Output
+    /// [`S::Output`]: manta_crypto::accumulator::Types::Output
     type ValidUtxoAccumulatorOutput: AsRef<UtxoAccumulatorOutput<C>>;
 
     /// Super Posting Key

@@ -766,10 +766,8 @@ impl transfer::Configuration for Config {
         >>::VoidNumber;
     type VoidNumberCommitmentSchemeVar = VoidNumberCommitmentSchemeVar;
     type UtxoAccumulatorModel = UtxoAccumulatorModel;
-    type UtxoAccumulatorWitnessVar =
-        <Self::UtxoAccumulatorModelVar as accumulator::Model<Self::Compiler>>::Witness;
-    type UtxoAccumulatorOutputVar =
-        <Self::UtxoAccumulatorModelVar as accumulator::Model<Self::Compiler>>::Output;
+    type UtxoAccumulatorWitnessVar = <Self::UtxoAccumulatorModelVar as accumulator::Types>::Witness;
+    type UtxoAccumulatorOutputVar = <Self::UtxoAccumulatorModelVar as accumulator::Types>::Output;
     type UtxoAccumulatorModelVar = merkle_tree::Parameters<MerkleTreeConfigurationVar, Compiler>;
     type AssetIdVar = AssetIdVar;
     type AssetValueVar = AssetValueVar;

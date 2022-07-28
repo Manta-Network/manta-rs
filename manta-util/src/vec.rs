@@ -105,3 +105,21 @@ where
 {
     padded_chunks_with(slice, width, Default::default)
 }
+
+/// Returns `true` if all elements of `slice` return `false` when compared with `eq`.
+///
+/// # Partial Equivalence Relation
+///
+/// The `eq` function _must_ satisfy all the requirements for a [`PartialEq`] implementation.
+#[inline]
+pub fn all_unequal<T, F>(slice: &[T], mut eq: F) -> bool
+where
+    F: FnMut(&T, &T) -> bool,
+{
+    for (i, x) in slice.iter().enumerate() {
+        if slice.iter().skip(i + 1).any(|y| eq(x, y)) {
+            return false;
+        }
+    }
+    true
+}
