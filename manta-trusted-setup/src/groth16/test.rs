@@ -134,7 +134,7 @@ impl mpc::Configuration for Test {
         next: &State<Self>,
         proof: &Proof<Self>,
     ) -> Self::Challenge {
-        let mut hasher = Self::Hasher::new();
+        let mut hasher = Self::Hasher::default();
         hasher.0.update(challenge);
         prev.serialize(&mut hasher)
             .expect("Consuming the previous state failed.");
@@ -232,7 +232,7 @@ pub fn trusted_setup_phase_two_is_valid() {
         initial_state: state.clone(),
         rounds: Vec::new(),
     };
-    let hasher = <Test as mpc::Configuration>::Hasher::new();
+    let hasher = <Test as mpc::Configuration>::Hasher::default();
     let (mut prev_state, mut proof);
     let mut challenge = transcript.initial_challenge;
     for _ in 0..5 {
