@@ -137,8 +137,8 @@ tempfile = { version = "3.3.0", optional = true, default-features = false }
 tide = { version = "0.16.0", optional = true, default-features = false, features = ["h1-server"] }
 tokio = { version = "1.20.1", optional = true, default-features = false }
 tokio-tungstenite = { version = "0.17.2", optional = true, default-features = false, features = ["native-tls"] }
-ws_stream_wasm = { version = "0.7.3", optional = true, default-features = false }
 workspace-hack = { version = "0.1", path = "../workspace-hack" }
+ws_stream_wasm = { version = "0.7.3", optional = true, default-features = false }
 
 [dev-dependencies]
 manta-crypto = { path = "../manta-crypto", default-features = false, features = ["getrandom"] }
