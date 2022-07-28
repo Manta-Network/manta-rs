@@ -13,57 +13,8 @@ publish = false
 # are managed by hakari.
 
 ### BEGIN HAKARI SECTION
-[dependencies]
-aes-gcm = { version = "0.9.4", features = ["aes", "alloc"] }
-anyhow = { version = "1.0.58", features = ["std"] }
-bitflags = { version = "1.3.2" }
-blake3 = { version = "1.3.1", default-features = false, features = ["digest", "std"] }
-crypto-common = { version = "0.1.6", default-features = false, features = ["std"] }
-digest-93f6ce9d446188ac = { package = "digest", version = "0.10.3", features = ["alloc", "block-buffer", "core-api", "mac", "std", "subtle"] }
-digest-274715c4dabd11b0 = { package = "digest", version = "0.9.0", default-features = false, features = ["alloc", "std"] }
-futures = { version = "0.3.21", features = ["alloc", "async-await", "executor", "futures-executor", "std"] }
-futures-channel = { version = "0.3.21", default-features = false, features = ["alloc", "futures-sink", "sink", "std"] }
-futures-core = { version = "0.3.21", features = ["alloc", "std"] }
-futures-io = { version = "0.3.21", features = ["std"] }
-futures-sink = { version = "0.3.21", default-features = false, features = ["alloc", "std"] }
-futures-task = { version = "0.3.21", default-features = false, features = ["alloc", "std"] }
-futures-util = { version = "0.3.21", features = ["alloc", "async-await", "async-await-macro", "channel", "futures-channel", "futures-io", "futures-macro", "futures-sink", "io", "memchr", "sink", "slab", "std"] }
-generic-array = { version = "0.14.5", default-features = false, features = ["more_lengths"] }
-getrandom = { version = "0.2.7", default-features = false, features = ["js", "js-sys", "std", "wasm-bindgen"] }
-indexmap = { version = "1.9.1", default-features = false, features = ["std"] }
-log = { version = "0.4.17", default-features = false, features = ["kv_unstable", "kv_unstable_std", "std", "value-bag"] }
-memchr = { version = "2.5.0", features = ["std"] }
-num-traits = { version = "0.2.15", features = ["i128", "libm", "std"] }
-ppv-lite86 = { version = "0.2.16", default-features = false, features = ["simd", "std"] }
-proc-macro2 = { version = "1.0.42", features = ["proc-macro"] }
-quote = { version = "1.0.20", features = ["proc-macro"] }
-rand = { version = "0.8.5", features = ["alloc", "getrandom", "libc", "rand_chacha", "std", "std_rng"] }
-rand_chacha = { version = "0.3.1", default-features = false, features = ["std"] }
-rand_core = { version = "0.6.3", default-features = false, features = ["alloc", "getrandom", "std"] }
-serde = { version = "1.0.140", features = ["alloc", "derive", "serde_derive", "std"] }
-serde_json = { version = "1.0.82", features = ["alloc", "std"] }
-sha2 = { version = "0.9.9", features = ["std"] }
-standback = { version = "0.2.17", default-features = false, features = ["std"] }
-subtle = { version = "2.4.1", default-features = false, features = ["i128"] }
-syn = { version = "1.0.96", features = ["clone-impls", "derive", "extra-traits", "fold", "full", "parsing", "printing", "proc-macro", "quote", "visit", "visit-mut"] }
-url = { version = "2.2.2", default-features = false, features = ["serde"] }
-web-sys = { version = "0.3.59", default-features = false, features = ["BinaryType", "Blob", "CloseEvent", "DomException", "Event", "EventTarget", "MessageEvent", "WebSocket", "console"] }
-zeroize = { version = "1.5.7", default-features = false, features = ["alloc", "zeroize_derive"] }
 
-[build-dependencies]
-anyhow = { version = "1.0.58", features = ["std"] }
-blake3 = { version = "1.3.1", default-features = false, features = ["digest", "std"] }
-cc = { version = "1.0.73", default-features = false, features = ["jobserver", "parallel"] }
-crypto-common = { version = "0.1.6", default-features = false, features = ["std"] }
-digest-93f6ce9d446188ac = { package = "digest", version = "0.10.3", features = ["alloc", "block-buffer", "core-api", "mac", "std", "subtle"] }
-generic-array = { version = "0.14.5", default-features = false, features = ["more_lengths"] }
-log = { version = "0.4.17", default-features = false, features = ["kv_unstable", "kv_unstable_std", "std", "value-bag"] }
-num-traits = { version = "0.2.15", features = ["i128", "libm", "std"] }
-proc-macro2 = { version = "1.0.42", features = ["proc-macro"] }
-quote = { version = "1.0.20", features = ["proc-macro"] }
-serde = { version = "1.0.140", features = ["alloc", "derive", "serde_derive", "std"] }
-standback = { version = "0.2.17", default-features = false, features = ["std"] }
-subtle = { version = "2.4.1", default-features = false, features = ["i128"] }
-syn = { version = "1.0.96", features = ["clone-impls", "derive", "extra-traits", "fold", "full", "parsing", "printing", "proc-macro", "quote", "visit", "visit-mut"] }
-
+# Disabled by running `cargo hakari disable`.
+# To re-enable, run:
+#     cargo hakari generate
 ### END HAKARI SECTION
