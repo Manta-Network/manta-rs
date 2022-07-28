@@ -345,13 +345,6 @@ where
 #[derive(Default)]
 pub struct BlakeHasher(pub Blake2b512);
 
-impl BlakeHasher {
-    /// Builds a new [`BlakeHasher`].
-    pub fn new() -> Self {
-        BlakeHasher(Blake2b512::new())
-    }
-}
-
 impl Write for BlakeHasher {
     #[inline]
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
@@ -372,7 +365,7 @@ where
 {
     #[inline]
     fn hash(&self, challenge: &[u8; N], ratio: (&P::G1, &P::G1)) -> P::G2 {
-        let mut hasher = BlakeHasher::new();
+        let mut hasher = BlakeHasher::default();
         hasher.0.update(challenge);
         ratio.0.serialize(&mut hasher).unwrap();
         ratio.1.serialize(&mut hasher).unwrap();

@@ -83,7 +83,7 @@ pub enum Error {
 }
 
 /// Specialize all phase1 parameters to phase2 parameters (except `h_query`) at once. This is like
-/// doing `eval_poly` in parallel on all four kinds of commitments that phase 2 param.s require
+/// doing `eval_poly` in parallel on all four kinds of commitments that phase2 params require
 /// (`a_g1`, `b_g1`, `b_g2`, `extra`) where `extra` is the cross term that we (may wish to) compute
 /// separately for public/private inputs.
 #[inline]

@@ -155,7 +155,7 @@ where
 
     #[inline]
     fn hash(proving_key: &ProvingKey<P::Pairing>) -> Self::Output {
-        let mut hasher = BlakeHasher::new();
+        let mut hasher = BlakeHasher::default();
         proving_key
             .serialize(&mut hasher)
             .expect("Hasher is not allowed to fail");
@@ -191,17 +191,19 @@ pub fn dummy_circuit(cs: &mut R1CS<Fr>) {
         .expect("enforce_equal is not allowed to fail");
 }
 
-/// Proves and verifies a dummy circuit with proving key `pk` and a random number generator `rng`.
-pub fn dummy_prove_and_verify_circuit<P, R>(pk: ProvingKey<P>, mut rng: &mut R)
+/// Proves and verifies a R1CS circuit with proving key `pk` and a random number generator `rng`.
+pub fn prove_and_verify_circuit<P, R>(pk: ProvingKey<P>, cs: R1CS<Fr>, mut rng: &mut R)
 where
     P: PairingEngine<Fr = Fr>,
     R: CryptoRng + RngCore + ?Sized,
 {
-    let mut cs = R1CS::for_proofs();
-    dummy_circuit(&mut cs);
-    let proof = Groth16::prove(&pk, cs, &mut rng).unwrap();
     assert!(
-        Groth16::verify(&pk.vk, &[field_new!(Fr, "6")], &proof).unwrap(),
+        Groth16::verify(
+            &pk.vk,
+            &[field_new!(Fr, "6")],
+            &Groth16::prove(&pk, cs, &mut rng).unwrap()
+        )
+        .unwrap(),
         "Verify proof should succeed."
     );
 }
@@ -224,8 +226,7 @@ pub fn trusted_setup_phase_two_is_valid() {
     let mut rng = OsRng;
     let mut cs = R1CS::for_contexts();
     dummy_circuit(&mut cs);
-    let accumulator = dummy_phase_one_trusted_setup();
-    let mut state = initialize(accumulator, cs).unwrap();
+    let mut state = initialize(dummy_phase_one_trusted_setup(), cs).unwrap();
     let mut transcript = Transcript::<Test> {
         initial_challenge: <Test as mpc::ProvingKeyHasher<Test>>::hash(&state),
         initial_state: state.clone(),
@@ -249,5 +250,5 @@ pub fn trusted_setup_phase_two_is_valid() {
     .expect("Verifying all transformations failed.");
     let mut cs = R1CS::for_proofs();
     dummy_circuit(&mut cs);
-    dummy_prove_and_verify_circuit(state, &mut rng);
+    prove_and_verify_circuit(state, cs, &mut rng);
 }
