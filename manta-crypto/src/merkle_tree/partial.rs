@@ -120,7 +120,7 @@ where
         self.starting_leaf_node().0
     }
 
-    /// Returns the number of leaves in this tree.
+    /// Returns the number of nodes in this tree.
     #[inline]
     pub fn len(&self) -> usize {
         self.starting_leaf_index() + self.leaf_digests.len()
@@ -356,6 +356,26 @@ where
     #[inline]
     fn remove_path(&mut self, index: usize) -> bool {
         // TODO: Implement this optimization.
+        let mut node = Node(self.starting_leaf_index() + index);
+        let height = C::HEIGHT;
+        let mut nodes_to_be_removed: Vec<Node> = Vec::new();
+        for level in 0..height-1 {
+            nodes_to_be_removed.push(node.sibling());
+            if node.sibling().descendants(level).iter()
+            .map(|x| x.0 - self.starting_leaf_index())
+            .map(|y| self.leaf_digest(y))
+            .any(|z| match z {
+                None => false, 
+                Some(q) => self.contains(q),
+            } ) {
+                break;
+            }
+            else {
+                node = node.parent();
+            }
+        }
+        // So far: the nodes that can be pruned are computed
+        // TODO: delete the corresponding digests
         let _ = index;
         false
     }
