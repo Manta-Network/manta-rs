@@ -19,7 +19,7 @@ use crate::{
     ceremony::{
         queue::{Identifier, Priority},
         signature,
-        signature::{Sign as _, SignatureScheme, Verify as _},
+        signature::SignatureScheme,
         CeremonyError,
     },
     mpc,
@@ -44,15 +44,15 @@ where
     S: SignatureScheme,
     P::PublicKey: signature::Sign<S>,
 {
-    type Signature = S::Signature;
+    type Signature = <P::PublicKey as signature::Sign<S>>::Signature;
 
     fn sign(
         &self,
+        domain_tag: &S::DomainTag,
         public_key: &S::PublicKey,
         private_key: &S::PrivateKey,
-    ) -> Result<S::Signature, CeremonyError> {
-        // sign the public key
-        todo!()
+    ) -> Result<Self::Signature, CeremonyError> {
+        public_key.sign(domain_tag, &public_key, &private_key)
     }
 }
 
@@ -62,15 +62,15 @@ where
     S: SignatureScheme,
     P::PublicKey: signature::Verify<S>,
 {
-    type Signature = S::Signature;
+    type Signature = <P::PublicKey as signature::Verify<S>>::Signature;
 
     fn verify_integrity(
         &self,
+        domain_tag: &S::DomainTag,
         public_key: &S::PublicKey,
-        signature: &S::Signature,
+        signature: &Self::Signature,
     ) -> Result<(), CeremonyError> {
-        // verify the public key
-        todo!()
+        public_key.verify_integrity(domain_tag, public_key, signature)
     }
 }
 
@@ -93,24 +93,28 @@ where
 {
     /// Participant
     pub participant: P,
-    __: PhantomData<(V)>,
+    __: PhantomData<V>,
 }
 
+// TODO: need further discussion: with fixed `domain_tag`, if user leaks the signature during the trusted setup
+// then someone can mock this `GetMpcRequest` and get the user's position.
 impl<P, S, V> signature::Sign<S> for GetMpcRequest<P, V>
 where
     P: Identifier + signature::HasPublicKey<PublicKey = S::PublicKey>,
     S: SignatureScheme,
     V: mpc::Verify,
+    P::PublicKey: signature::Sign<S>,
 {
-    type Signature = S::Signature;
+    type Signature = <P::PublicKey as signature::Sign<S>>::Signature;
 
     fn sign(
         &self,
+        domain_tag: &S::DomainTag,
         public_key: &S::PublicKey,
         private_key: &S::PrivateKey,
-    ) -> Result<S::Signature, CeremonyError> {
+    ) -> Result<Self::Signature, CeremonyError> {
         // sign the public key
-        todo!()
+        public_key.sign(domain_tag, &public_key, &private_key)
     }
 }
 
@@ -119,15 +123,17 @@ where
     P: Identifier + signature::HasPublicKey<PublicKey = S::PublicKey>,
     S: SignatureScheme,
     V: mpc::Verify,
+    P::PublicKey: signature::Verify<S>,
 {
-    type Signature = S::Signature;
+    type Signature = <P::PublicKey as signature::Verify<S>>::Signature;
     fn verify_integrity(
         &self,
+        domain_tag: &S::DomainTag,
         public_key: &S::PublicKey,
-        signature: &S::Signature,
+        signature: &Self::Signature,
     ) -> Result<(), CeremonyError> {
         // verify the public key
-        todo!()
+        public_key.verify_integrity(domain_tag, public_key, signature)
     }
 }
 
@@ -136,7 +142,7 @@ where
     P: Identifier,
     V: mpc::Verify,
 {
-    /// TODO
+    /// Creates a new [`GetMpcRequest`] with the given `participant`.
     pub fn new(participant: P) -> Self {
         Self {
             participant,
@@ -213,11 +219,14 @@ where
     );
     fn sign(
         &self,
+        domain_tag: &S::DomainTag,
         public_key: &S::PublicKey,
         private_key: &S::PrivateKey,
     ) -> Result<Self::Signature, CeremonyError> {
-        let state_sig = self.transformed_state.sign(public_key, private_key)?;
-        let proof_sig = self.proof.sign(public_key, private_key)?;
+        let state_sig = self
+            .transformed_state
+            .sign(domain_tag, public_key, private_key)?;
+        let proof_sig = self.proof.sign(domain_tag, public_key, private_key)?;
         Ok((state_sig, proof_sig))
     }
 }
@@ -236,13 +245,15 @@ where
     );
     fn verify_integrity(
         &self,
+        domain_tag: &S::DomainTag,
         public_key: &S::PublicKey,
         signature: &Self::Signature,
     ) -> Result<(), CeremonyError> {
         let (state_sig, proof_sig) = signature;
         self.transformed_state
-            .verify_integrity(public_key, state_sig)?;
-        self.proof.verify_integrity(public_key, proof_sig)?;
+            .verify_integrity(domain_tag, public_key, state_sig)?;
+        self.proof
+            .verify_integrity(domain_tag, public_key, proof_sig)?;
         Ok(())
     }
 }

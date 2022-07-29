@@ -15,7 +15,6 @@
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 //! Signature Scheme for trusted setup.
 use crate::ceremony::CeremonyError;
-
 /// Public Key of participant
 pub trait HasPublicKey {
     /// Public Key of participant
@@ -33,6 +32,9 @@ pub trait SignatureScheme {
     /// Private Key
     type PrivateKey;
 
+    /// Domain Tag specific to the use case
+    type DomainTag: ?Sized;
+
     /// Signature
     type Signature;
 }
@@ -47,6 +49,7 @@ where
     /// Verify the integrity of the message
     fn verify_integrity(
         &self,
+        domain_tag: &S::DomainTag,
         public_key: &S::PublicKey,
         signature: &Self::Signature,
     ) -> Result<(), CeremonyError>;
@@ -62,6 +65,7 @@ where
     /// Sign the message
     fn sign(
         &self,
+        domain_tag: &S::DomainTag,
         public_key: &S::PublicKey,
         private_key: &S::PrivateKey,
     ) -> Result<Self::Signature, CeremonyError>;
@@ -87,8 +91,13 @@ where
     <T as Verify<S>>::Signature: Sized,
 {
     /// Verify integrity of the message
-    pub fn verify_integrity(&self, public_key: &S::PublicKey) -> Result<(), CeremonyError> {
-        self.message.verify_integrity(&public_key, &self.signature)
+    pub fn verify_integrity(
+        &self,
+        domain_tag: &S::DomainTag,
+        public_key: &S::PublicKey,
+    ) -> Result<(), CeremonyError> {
+        self.message
+            .verify_integrity(domain_tag, &public_key, &self.signature)
     }
 }
 
@@ -98,6 +107,7 @@ pub mod ed_dalek {
         signature::{Sign, SignatureScheme, Verify},
         CeremonyError,
     };
+    use alloc::vec::Vec;
     use ed25519_dalek::{self, Signer, Verifier};
     use manta_util::{
         into_array_unchecked,
@@ -144,6 +154,7 @@ pub mod ed_dalek {
         type PublicKey = PublicKey;
         type PrivateKey = PrivateKey;
         type Signature = Signature;
+        type DomainTag = [u8];
     }
 
     /// The signable messages
@@ -160,6 +171,7 @@ pub mod ed_dalek {
 
         fn sign(
             &self,
+            domain_tag: &[u8],
             public_key: &<Ed25519 as SignatureScheme>::PublicKey,
             private_key: &<Ed25519 as SignatureScheme>::PrivateKey,
         ) -> Result<<Ed25519 as SignatureScheme>::Signature, CeremonyError> {
@@ -169,7 +181,13 @@ pub mod ed_dalek {
             )
             .expect("Failed to decode keypair from bytes"); // todo: error handling
 
-            let sig = keypair.sign(self.0);
+            let msg = domain_tag
+                .iter()
+                .chain(self.0.iter())
+                .copied()
+                .collect::<Vec<_>>();
+
+            let sig = keypair.sign(&msg);
             Ok(Signature(into_array_unchecked(sig)))
         }
     }
@@ -179,12 +197,18 @@ pub mod ed_dalek {
 
         fn verify_integrity(
             &self,
+            domain_tag: &[u8],
             public_key: &<Ed25519 as SignatureScheme>::PublicKey,
             signature: &<Ed25519 as SignatureScheme>::Signature,
         ) -> Result<(), CeremonyError> {
             let pub_key = ed25519_dalek::PublicKey::from_bytes(&public_key.0[..]).unwrap(); // todo: error handling
+            let msg = domain_tag
+                .iter()
+                .chain(self.0.iter())
+                .copied()
+                .collect::<Vec<_>>();
             pub_key
-                .verify(self.0, &((*signature).into()))
+                .verify(&msg, &((*signature).into()))
                 .map_err(|_| CeremonyError::InvalidSignature)
         }
     }
@@ -211,12 +235,15 @@ pub mod ed_dalek {
             let (priv_key, pub_key) = test_keypair();
             let message = Message(b"Test message");
             let signature =
-                <Message as Sign<Ed25519>>::sign(&message, &pub_key, &priv_key).unwrap();
+                <Message as Sign<Ed25519>>::sign(&message, "".into(), &pub_key, &priv_key).unwrap();
 
-            assert!(
-                <Message as Verify<Ed25519>>::verify_integrity(&message, &pub_key, &signature)
-                    .is_ok()
+            assert!(<Message as Verify<Ed25519>>::verify_integrity(
+                &message,
+                "".into(),
+                &pub_key,
+                &signature
             )
+            .is_ok())
         }
     }
 }
