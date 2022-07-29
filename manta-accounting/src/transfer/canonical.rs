@@ -22,9 +22,9 @@ use crate::{
     asset::{self, AssetMap, AssetMetadata, MetadataDisplay},
     transfer::{
         has_public_participants, internal_pair, requires_authorization, Address, Asset,
-        AuthorizationKey, AuthorizationProof, Configuration, FullParametersRef, Parameters,
-        PreSender, ProofSystemError, ProofSystemPublicParameters, ProvingContext, Receiver, Sender,
-        Transfer, TransferPost, VerifyingContext,
+        AuthorizationKey, AuthorizationProof, Configuration, FullParametersRef, Metadata,
+        Parameters, PreSender, ProofSystemError, ProofSystemPublicParameters, ProvingContext,
+        Receiver, Sender, Transfer, TransferPost, VerifyingContext,
     },
 };
 use alloc::{string::String, vec::Vec};
@@ -112,6 +112,7 @@ where
         parameters: &Parameters<C>,
         address: Address<C>,
         asset: Asset<C>,
+        metadata: Metadata<C>,
         rng: &mut R,
     ) -> Self
     where
@@ -119,7 +120,7 @@ where
     {
         Self::build(
             asset.clone(),
-            Receiver::<C>::sample(parameters, address, asset, rng),
+            Receiver::<C>::sample(parameters, address, asset, metadata, rng),
         )
     }
 
@@ -129,13 +130,14 @@ where
         parameters: &Parameters<C>,
         authorization_key: &mut AuthorizationKey<C>,
         asset: Asset<C>,
+        metadata: Metadata<C>,
         rng: &mut R,
     ) -> (Self, PreSender<C>)
     where
         R: CryptoRng + RngCore + ?Sized,
     {
         let (receiver, pre_sender) =
-            internal_pair::<C, _>(parameters, authorization_key, asset.clone(), rng);
+            internal_pair::<C, _>(parameters, authorization_key, asset.clone(), metadata, rng);
         (Self::build(asset, receiver), pre_sender)
     }
 }

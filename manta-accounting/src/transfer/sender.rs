@@ -17,8 +17,7 @@
 //! Transfer Sender
 
 use crate::transfer::utxo::{
-    Identifier, QueryAsset, Spend, SpendSecret, UtxoAccumulatorItem, UtxoAccumulatorOutput,
-    UtxoMembershipProof,
+    DeriveSpend, QueryAsset, Spend, UtxoAccumulatorItem, UtxoAccumulatorOutput, UtxoMembershipProof,
 };
 use core::{fmt::Debug, hash::Hash, iter};
 use manta_crypto::{
@@ -67,16 +66,16 @@ where
     pub fn sample<R>(
         parameters: &S,
         authorization_key: &mut S::AuthorizationKey,
-        identifier: Identifier<S::Secret>,
+        identifier: S::Identifier,
         asset: S::Asset,
         rng: &mut R,
     ) -> Self
     where
-        S::Secret: SpendSecret<Asset = S::Asset>,
+        S: DeriveSpend,
         R: CryptoRng + RngCore + ?Sized,
     {
-        let secret = S::Secret::sample(identifier, asset, rng);
-        let (utxo, nullifier) = parameters.derive(authorization_key, &secret, &mut ());
+        let (secret, utxo, nullifier) =
+            parameters.derive(authorization_key, identifier, asset, rng);
         Self::new(secret, utxo, nullifier)
     }
 

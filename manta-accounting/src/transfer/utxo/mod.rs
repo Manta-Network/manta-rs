@@ -83,6 +83,15 @@ pub trait AddressType {
 /// Address Type
 pub type Address<T> = <T as AddressType>::Address;
 
+/// Metadata
+pub trait MetadataType {
+    /// Metadata Type
+    type Metadata;
+}
+
+/// Metadata Type
+pub type Metadata<T> = <T as MetadataType>::Metadata;
+
 /// Default Address
 pub trait DefaultAddress<T>: AddressType {
     /// Constructs the default receiving address given the `base` secret.
@@ -90,7 +99,7 @@ pub trait DefaultAddress<T>: AddressType {
 }
 
 /// Note Opening
-pub trait NoteOpen: AssetType + NoteType + IdentifierType + UtxoType {
+pub trait NoteOpen: AssetType + IdentifierType + NoteType + UtxoType {
     /// Decryption Key Type
     type DecryptionKey;
 
@@ -107,14 +116,6 @@ pub trait NoteOpen: AssetType + NoteType + IdentifierType + UtxoType {
     ) -> Option<(Self::Identifier, Self::Asset)>;
 }
 
-/// Minting Secret
-pub trait MintSecret: AssetType + AddressType {
-    /// Samples a minting secret to send `asset` to `address`.
-    fn sample<R>(address: Self::Address, asset: Self::Asset, rng: &mut R) -> Self
-    where
-        R: CryptoRng + RngCore + ?Sized;
-}
-
 /// Query Identifier Value
 pub trait QueryIdentifier: IdentifierType + UtxoType {
     /// Queries the underlying identifier from `self` and `utxo`.
@@ -125,9 +126,6 @@ pub trait QueryIdentifier: IdentifierType + UtxoType {
 pub trait Mint<COM = ()>: AssetType + NoteType + UtxoType {
     /// Mint Secret Type
     type Secret;
-
-    /// Derives the [`Utxo`](UtxoType::Utxo) and [`Note`](NoteType::Note) from `secret`.
-    fn derive(&self, secret: &Self::Secret, compiler: &mut COM) -> (Self::Utxo, Self::Note);
 
     /// Returns the asset inside of `utxo` asserting that `secret`, `utxo`, and `note` are
     /// well-formed.
@@ -140,10 +138,16 @@ pub trait Mint<COM = ()>: AssetType + NoteType + UtxoType {
     ) -> Self::Asset;
 }
 
-/// Spending Secret
-pub trait SpendSecret: AssetType + IdentifierType {
-    /// Samples a spending secret to spend `asset` with the given `identifier`.
-    fn sample<R>(identifier: Self::Identifier, asset: Self::Asset, rng: &mut R) -> Self
+/// Derive Minting Data
+pub trait DeriveMint: AddressType + Mint + MetadataType {
+    ///
+    fn derive<R>(
+        &self,
+        address: Self::Address,
+        asset: Self::Asset,
+        metadata: Self::Metadata,
+        rng: &mut R,
+    ) -> (Self::Secret, Self::Utxo, Self::Note)
     where
         R: CryptoRng + RngCore + ?Sized;
 }
@@ -167,15 +171,6 @@ pub trait Spend<COM = ()>:
     /// Nullifier Type
     type Nullifier;
 
-    /// Derives the [`Utxo`](UtxoType::Utxo) and [`Nullifier`](Self::Nullifier) from `authority` and
-    /// `secret`.
-    fn derive(
-        &self,
-        authorization_key: &mut Self::AuthorizationKey,
-        secret: &Self::Secret,
-        compiler: &mut COM,
-    ) -> (Self::Utxo, Self::Nullifier);
-
     /// Returns the asset and its nullifier inside of `utxo` asserting that `secret` and `utxo` are
     /// well-formed and that `utxo_membership_proof` is a valid proof.
     fn well_formed_asset(
@@ -195,6 +190,20 @@ pub trait Spend<COM = ()>:
         rhs: &Self::Nullifier,
         compiler: &mut COM,
     );
+}
+
+/// Derive Spending Data
+pub trait DeriveSpend: Spend + IdentifierType {
+    ///
+    fn derive<R>(
+        &self,
+        authorization_key: &mut Self::AuthorizationKey,
+        identifier: Self::Identifier,
+        asset: Self::Asset,
+        rng: &mut R,
+    ) -> (Self::Secret, Self::Utxo, Self::Nullifier)
+    where
+        R: CryptoRng + RngCore + ?Sized;
 }
 
 /// UTXO Accumulator Model Type

@@ -16,7 +16,7 @@
 
 //! Transfer Receiver
 
-use crate::transfer::utxo::{Address, Identifier, Mint, MintSecret, QueryIdentifier};
+use crate::transfer::utxo::{Address, DeriveMint, Identifier, Mint, QueryIdentifier};
 use core::{fmt::Debug, hash::Hash, iter};
 use manta_crypto::{
     accumulator::{Accumulator, ItemHashFunction},
@@ -40,28 +40,24 @@ where
     /// Unspent Transaction Output
     utxo: M::Utxo,
 
-    /// Incoming Note
-    incoming_note: M::Note,
+    /// Note
+    note: M::Note,
 }
 
 impl<M, COM> Receiver<M, COM>
 where
     M: Mint<COM>,
 {
-    /// Builds a new [`Receiver`] from `secret`, `utxo`, and `incoming_note`.
+    /// Builds a new [`Receiver`] from `secret`, `utxo`, and `note`.
     #[inline]
-    pub fn new(secret: M::Secret, utxo: M::Utxo, incoming_note: M::Note) -> Self {
-        Self {
-            secret,
-            utxo,
-            incoming_note,
-        }
+    pub fn new(secret: M::Secret, utxo: M::Utxo, note: M::Note) -> Self {
+        Self { secret, utxo, note }
     }
 
     /// Returns the asset underlying `self`, asserting that `self` is well-formed.
     #[inline]
     pub fn well_formed_asset(&self, parameters: &M, compiler: &mut COM) -> M::Asset {
-        parameters.well_formed_asset(&self.secret, &self.utxo, &self.incoming_note, compiler)
+        parameters.well_formed_asset(&self.secret, &self.utxo, &self.note, compiler)
     }
 }
 
@@ -73,17 +69,17 @@ where
     #[inline]
     pub fn sample<R>(
         parameters: &M,
-        address: Address<M::Secret>,
+        address: M::Address,
         asset: M::Asset,
+        metadata: M::Metadata,
         rng: &mut R,
     ) -> Self
     where
-        M::Secret: MintSecret<Asset = M::Asset>,
+        M: DeriveMint,
         R: CryptoRng + RngCore + ?Sized,
     {
-        let secret = M::Secret::sample(address, asset, rng);
-        let (utxo, incoming_note) = parameters.derive(&secret, &mut ());
-        Self::new(secret, utxo, incoming_note)
+        let (secret, utxo, note) = parameters.derive(address, asset, metadata, rng);
+        Self::new(secret, utxo, note)
     }
 
     ///
@@ -116,13 +112,13 @@ where
         P: ProofSystemInput<M::Utxo> + ProofSystemInput<M::Note>,
     {
         P::extend(input, &self.utxo);
-        P::extend(input, &self.incoming_note);
+        P::extend(input, &self.note);
     }
 
     /// Extracts the ledger posting data from `self`.
     #[inline]
     pub fn into_post(self) -> ReceiverPost<M> {
-        ReceiverPost::new(self.utxo, self.incoming_note)
+        ReceiverPost::new(self.utxo, self.note)
     }
 }
 
@@ -154,7 +150,7 @@ where
         Self::new(
             this.secret.as_known(compiler),
             this.utxo.as_known(compiler),
-            this.incoming_note.as_known(compiler),
+            this.note.as_known(compiler),
         )
     }
 }
@@ -189,7 +185,7 @@ where
     /// Existence of such a UTXO could indicate a possible double-spend.
     fn is_not_registered(&self, utxo: M::Utxo) -> Option<Self::ValidUtxo>;
 
-    /// Posts the `utxo` and `incoming_note` to the ledger, registering the asset.
+    /// Posts the `utxo` and `note` to the ledger, registering the asset.
     ///
     /// # Safety
     ///
@@ -199,8 +195,8 @@ where
     /// # Implementation Note
     ///
     /// This method, by default, calls the [`register_all`] method on an iterator of length one
-    /// containing `(utxo, incoming_note)`. Either [`register`] or [`register_all`] can be
-    /// implemented depending on which is more efficient.
+    /// containing `(utxo, note)`. Either [`register`] or [`register_all`] can be implemented
+    /// depending on which is more efficient.
     ///
     /// [`register`]: Self::register
     /// [`register_all`]: Self::register_all
@@ -209,9 +205,9 @@ where
         &mut self,
         super_key: &Self::SuperPostingKey,
         utxo: Self::ValidUtxo,
-        incoming_note: M::Note,
+        note: M::Note,
     ) {
-        self.register_all(super_key, iter::once((utxo, incoming_note)))
+        self.register_all(super_key, iter::once((utxo, note)))
     }
 
     /// Posts all of the [`Utxo`] and [`Note`] to the ledger, registering the assets.
@@ -236,8 +232,8 @@ where
     where
         I: IntoIterator<Item = (Self::ValidUtxo, M::Note)>,
     {
-        for (utxo, incoming_note) in iter {
-            self.register(super_key, utxo, incoming_note)
+        for (utxo, note) in iter {
+            self.register(super_key, utxo, note)
         }
     }
 }
@@ -294,21 +290,18 @@ where
     /// Unspent Transaction Output
     pub utxo: M::Utxo,
 
-    /// Incoming Note
-    pub incoming_note: M::Note,
+    /// Note
+    pub note: M::Note,
 }
 
 impl<M> ReceiverPost<M>
 where
     M: Mint,
 {
-    /// Builds a new [`ReceiverPost`] from `utxo` and `incoming_note`.
+    /// Builds a new [`ReceiverPost`] from `utxo` and `note`.
     #[inline]
-    pub fn new(utxo: M::Utxo, incoming_note: M::Note) -> Self {
-        Self {
-            utxo,
-            incoming_note,
-        }
+    pub fn new(utxo: M::Utxo, note: M::Note) -> Self {
+        Self { utxo, note }
     }
 
     /// Extends proof public input with `self`.
@@ -330,7 +323,7 @@ where
             utxo: ledger
                 .is_not_registered(self.utxo)
                 .ok_or(ReceiverPostError::AssetRegistered)?,
-            incoming_note: self.incoming_note,
+            note: self.note,
         })
     }
 }
@@ -344,8 +337,8 @@ where
     /// Valid UTXO Posting Key
     utxo: L::ValidUtxo,
 
-    /// Incoming Note
-    incoming_note: M::Note,
+    /// Note
+    note: M::Note,
 }
 
 impl<M, L> ReceiverPostingKey<M, L>
@@ -365,7 +358,7 @@ where
     /// Posts `self` to the receiver `ledger`.
     #[inline]
     pub fn post(self, ledger: &mut L, super_key: &L::SuperPostingKey) {
-        ledger.register(super_key, self.utxo, self.incoming_note);
+        ledger.register(super_key, self.utxo, self.note);
     }
 
     /// Posts all the of the [`ReceiverPostingKey`]s in `iter` to the receiver `ledger`.
@@ -374,9 +367,6 @@ where
     where
         I: IntoIterator<Item = Self>,
     {
-        ledger.register_all(
-            super_key,
-            iter.into_iter().map(move |k| (k.utxo, k.incoming_note)),
-        )
+        ledger.register_all(super_key, iter.into_iter().map(move |k| (k.utxo, k.note)))
     }
 }

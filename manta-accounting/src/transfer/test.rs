@@ -20,7 +20,7 @@ use crate::{
     asset::{AssetId, AssetValue, AssetValueType},
     transfer::{
         canonical::ToPrivate, has_public_participants, utxo::Mint, Address, Asset,
-        AuthorizationKey, Configuration, FullParametersRef, Parameters, PreSender, Proof,
+        AuthorizationKey, Configuration, FullParametersRef, Metadata, Parameters, PreSender, Proof,
         ProofInput, ProofSystemError, ProofSystemPublicParameters, ProvingContext, Receiver,
         Sender, Transfer, TransferPost, Utxo, VerifyingContext,
     },
@@ -432,6 +432,7 @@ pub fn sample_mint<C, R>(
     proving_context: &ProvingContext<C>,
     authorization_key: &mut AuthorizationKey<C>,
     asset: Asset<C>,
+    metadata: Metadata<C>,
     rng: &mut R,
 ) -> Result<(TransferPost<C>, PreSender<C>), ProofSystemError<C>>
 where
@@ -439,7 +440,7 @@ where
     R: CryptoRng + RngCore + ?Sized,
 {
     let (mint, pre_sender) =
-        ToPrivate::internal_pair(parameters.base, authorization_key, asset, rng);
+        ToPrivate::internal_pair(parameters.base, authorization_key, asset, metadata, rng);
     Ok((
         mint.into_post(parameters, proving_context, None, rng)?
             .unwrap(),

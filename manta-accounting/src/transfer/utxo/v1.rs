@@ -32,6 +32,56 @@ use manta_crypto::{
 /// UTXO Version Number
 pub const VERSION: u8 = 1;
 
+/// UTXO Visibility
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub enum Visibility {
+    /// Opaque UTXO
+    #[default]
+    Opaque,
+
+    /// Transparent UTXO
+    Transparent,
+}
+
+impl Visibility {
+    /// Returns `true` if `self` represents the opaque visibility mode.
+    #[inline]
+    pub const fn is_opaque(self) -> bool {
+        matches!(self, Self::Opaque)
+    }
+
+    /// Returns `true` if `self` represents the transparent visibility mode.
+    #[inline]
+    pub const fn is_transparent(self) -> bool {
+        matches!(self, Self::Transparent)
+    }
+
+    /// Returns `value` if `self` is [`Opaque`](Self::Opaque) and the default value otherwise.
+    #[inline]
+    pub fn secret<T>(self, value: &T) -> T
+    where
+        T: Clone + Default,
+    {
+        match self {
+            Self::Opaque => value.clone(),
+            _ => Default::default(),
+        }
+    }
+
+    /// Returns `value` if `self` is [`Transparent`](Self::Transparent) and the default value
+    /// otherwise.
+    #[inline]
+    pub fn public<T>(self, value: &T) -> T
+    where
+        T: Clone + Default,
+    {
+        match self {
+            Self::Transparent => value.clone(),
+            _ => Default::default(),
+        }
+    }
+}
+
 /// UTXO Commitment Scheme
 pub trait UtxoCommitmentScheme<COM = ()>
 where
@@ -216,7 +266,7 @@ where
         >;
 }
 
-///
+/// Asset Type
 pub type Asset<C, COM = ()> =
     asset::Asset<<C as Configuration<COM>>::AssetId, <C as Configuration<COM>>::AssetValue>;
 
@@ -340,6 +390,21 @@ where
     type Asset = Asset<C, COM>;
 }
 
+impl<C> utxo::MetadataType for Parameters<C>
+where
+    C: Configuration<Bool = bool>,
+{
+    type Metadata = Visibility;
+}
+
+impl<C, COM> utxo::AddressType for Parameters<C, COM>
+where
+    C: Configuration<COM>,
+    COM: Assert + Has<bool, Type = C::Bool>,
+{
+    type Address = Address<C, COM>;
+}
+
 impl<C, COM> utxo::NoteType for Parameters<C, COM>
 where
     C: Configuration<COM>,
@@ -364,33 +429,6 @@ where
     type Secret = MintSecret<C, COM>;
 
     #[inline]
-    fn derive(&self, secret: &Self::Secret, compiler: &mut COM) -> (Self::Utxo, Self::Note) {
-        /*
-        let is_transparent = secret.plaintext.asset.is_empty(compiler);
-        let asset = Asset::<C, _>::select(&is_transparent, &(), &secret.plaintext.asset, compiler);
-        let utxo_commitment = self.utxo_commitment_scheme.commit(
-            &secret.plaintext.utxo_commitment_randomness,
-            &secret.plaintext.asset.id,
-            &secret.plaintext.asset.value,
-            &secret.receiving_key,
-            compiler,
-        );
-        let incoming_note = Hybrid::new(
-            DiffieHellman::<_, COM>::new(secret.plaintext.key_diversifier.clone()),
-            encryption_scheme.clone(),
-        )
-        .encrypt_into(
-            &secret.receiving_key,
-            &secret.incoming_randomness,
-            EmptyHeader::default(),
-            &secret.plaintext,
-            compiler,
-        );
-        */
-        todo!()
-    }
-
-    #[inline]
     fn well_formed_asset(
         &self,
         secret: &Self::Secret,
@@ -404,6 +442,61 @@ where
             utxo,
             note,
             compiler,
+        )
+    }
+}
+
+impl<C> utxo::DeriveMint for Parameters<C>
+where
+    C: Configuration<Bool = bool>,
+    C::AssetId: Clone + Default,
+    C::AssetValue: Clone + Default,
+    C::Scalar: Sample,
+    encryption::Randomness<C::IncomingBaseEncryptionScheme>: Sample,
+    UtxoCommitmentRandomness<C>: Sample,
+{
+    #[inline]
+    fn derive<R>(
+        &self,
+        address: Self::Address,
+        asset: Self::Asset,
+        metadata: Self::Metadata,
+        rng: &mut R,
+    ) -> (Self::Secret, Self::Utxo, Self::Note)
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        let secret = MintSecret::<C>::new(
+            address.receiving_key,
+            rng.gen(),
+            IncomingPlaintext::new(rng.gen(), metadata.secret(&asset), address.key_diversifier),
+        );
+        let utxo_commitment = self.utxo_commitment_scheme.commit(
+            &secret.plaintext.utxo_commitment_randomness,
+            &secret.plaintext.asset.id,
+            &secret.plaintext.asset.value,
+            &secret.receiving_key,
+            &mut (),
+        );
+        let incoming_note = Hybrid::new(
+            DiffieHellman::new(secret.plaintext.key_diversifier.clone()),
+            self.incoming_base_encryption_scheme.clone(),
+        )
+        .encrypt_into(
+            &secret.receiving_key,
+            &secret.incoming_randomness,
+            EmptyHeader::default(),
+            &secret.plaintext,
+            &mut (),
+        );
+        (
+            secret,
+            Utxo::new(
+                metadata.is_transparent(),
+                metadata.public(&asset),
+                utxo_commitment,
+            ),
+            incoming_note,
         )
     }
 }
@@ -436,59 +529,6 @@ where
     type Nullifier = Nullifier<C, COM>;
 
     #[inline]
-    fn derive(
-        &self,
-        authorization_key: &mut Self::AuthorizationKey,
-        secret: &Self::Secret,
-        compiler: &mut COM,
-    ) -> (Self::Utxo, Self::Nullifier) {
-        /*
-        let is_transparent = self.plaintext.asset.is_empty(compiler);
-        let asset = Asset::<C, _>::select(
-            &utxo.is_transparent,
-            &utxo.public_asset,
-            &self.plaintext.asset,
-            compiler,
-        );
-        let receiving_key = authority.receiving_key(
-            &parameters.viewing_key_derivation_function,
-            &self.plaintext.key_diversifier,
-            compiler,
-        );
-        let utxo_commitment = parameters.utxo_commitment_scheme.commit(
-            &self.plaintext.utxo_commitment_randomness,
-            &self.plaintext.asset.id,
-            &self.plaintext.asset.value,
-            &receiving_key,
-            compiler,
-        );
-        let item = parameters.item_hash(utxo, compiler);
-        let has_valid_membership = &asset.value.is_zero(compiler).bitor(
-            utxo_membership_proof.verify(utxo_accumulator_model, &item, compiler),
-            compiler,
-        );
-        let nullifier_commitment = parameters.nullifier_commitment_scheme.commit(
-            &authority.proof_authorization_key,
-            &item,
-            compiler,
-        );
-        let outgoing_note = Hybrid::new(
-            DiffieHellman::<_, COM>::new(self.plaintext.key_diversifier.clone()),
-            parameters.outgoing_base_encryption_scheme.clone(),
-        )
-        .encrypt_into(
-            &receiving_key,
-            &secret.outgoing_randomness,
-            EmptyHeader::default(),
-            &secret.plaintext.asset,
-            compiler,
-        );
-        (utxo, Nullifier::new(nullifier_commitment, outgoing_note))
-        */
-        todo!()
-    }
-
-    #[inline]
     fn well_formed_asset(
         &self,
         utxo_accumulator_model: &Self::UtxoAccumulatorModel,
@@ -516,6 +556,80 @@ where
         compiler: &mut COM,
     ) {
         compiler.assert_eq(lhs, rhs);
+    }
+}
+
+impl<C> utxo::DeriveSpend for Parameters<C>
+where
+    C: Configuration<Bool = bool>,
+    C::AssetId: Clone + Default,
+    C::AssetValue: Clone + Default,
+    C::Scalar: Sample,
+    encryption::Randomness<C::OutgoingBaseEncryptionScheme>: Sample,
+{
+    #[inline]
+    fn derive<R>(
+        &self,
+        authorization_key: &mut Self::AuthorizationKey,
+        identifier: Self::Identifier,
+        asset: Self::Asset,
+        rng: &mut R,
+    ) -> (Self::Secret, Self::Utxo, Self::Nullifier)
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        let metadata = if identifier.is_transparent {
+            Visibility::Transparent
+        } else {
+            Visibility::Opaque
+        };
+        let secret = SpendSecret::<C>::new(
+            rng.gen(),
+            IncomingPlaintext::new(
+                identifier.utxo_commitment_randomness,
+                metadata.secret(&asset),
+                identifier.key_diversifier,
+            ),
+        );
+        let receiving_key = authorization_key.receiving_key(
+            &self.viewing_key_derivation_function,
+            &secret.plaintext.key_diversifier,
+            &mut (),
+        );
+        let utxo_commitment = self.utxo_commitment_scheme.commit(
+            &secret.plaintext.utxo_commitment_randomness,
+            &secret.plaintext.asset.id,
+            &secret.plaintext.asset.value,
+            &receiving_key,
+            &mut (),
+        );
+        let utxo = Utxo::<C>::new(
+            identifier.is_transparent,
+            metadata.public(&asset),
+            utxo_commitment,
+        );
+
+        let nullifier_commitment = self.nullifier_commitment_scheme.commit(
+            &authorization_key.proof_authorization_key,
+            &self.item_hash(&utxo, &mut ()),
+            &mut (),
+        );
+        let outgoing_note = Hybrid::new(
+            DiffieHellman::new(secret.plaintext.key_diversifier.clone()),
+            self.outgoing_base_encryption_scheme.clone(),
+        )
+        .encrypt_into(
+            &receiving_key,
+            &secret.outgoing_randomness,
+            EmptyHeader::default(),
+            &secret.plaintext.asset,
+            &mut (),
+        );
+        (
+            secret,
+            utxo,
+            Nullifier::new(nullifier_commitment, outgoing_note),
+        )
     }
 }
 
@@ -559,8 +673,8 @@ where
     }
 }
 
-/// Shielded Address
-pub struct ShieldedAddress<C, COM = ()>
+/// Address
+pub struct Address<C, COM = ()>
 where
     C: Configuration<COM> + ?Sized,
     COM: Has<bool, Type = C::Bool>,
@@ -765,7 +879,7 @@ where
         compiler: &mut COM,
     ) -> IncomingNote<C, COM> {
         Hybrid::new(
-            DiffieHellman::<_, COM>::new(self.plaintext.key_diversifier.clone()),
+            DiffieHellman::new(self.plaintext.key_diversifier.clone()),
             encryption_scheme.clone(),
         )
         .encrypt_into(
@@ -804,42 +918,6 @@ where
         let incoming_note = self.incoming_note(encryption_scheme, compiler);
         compiler.assert_eq(note, &incoming_note);
         asset
-    }
-}
-
-impl<C, COM> utxo::AssetType for MintSecret<C, COM>
-where
-    C: Configuration<COM>,
-    COM: Has<bool, Type = C::Bool>,
-{
-    type Asset = Asset<C, COM>;
-}
-
-impl<C, COM> utxo::AddressType for MintSecret<C, COM>
-where
-    C: Configuration<COM>,
-    COM: Has<bool, Type = C::Bool>,
-{
-    type Address = ShieldedAddress<C, COM>;
-}
-
-impl<C> utxo::MintSecret for MintSecret<C>
-where
-    C: Configuration<Bool = bool>,
-    C::Scalar: Sample,
-    encryption::Randomness<C::IncomingBaseEncryptionScheme>: Sample,
-    UtxoCommitmentRandomness<C>: Sample,
-{
-    #[inline]
-    fn sample<R>(address: Self::Address, asset: Self::Asset, rng: &mut R) -> Self
-    where
-        R: CryptoRng + RngCore + ?Sized,
-    {
-        MintSecret::new(
-            address.receiving_key,
-            rng.gen(),
-            IncomingPlaintext::new(rng.gen(), asset, address.key_diversifier),
-        )
     }
 }
 
@@ -1012,7 +1090,7 @@ where
         compiler: &mut COM,
     ) -> OutgoingNote<C, COM> {
         Hybrid::new(
-            DiffieHellman::<_, COM>::new(self.plaintext.key_diversifier.clone()),
+            DiffieHellman::new(self.plaintext.key_diversifier.clone()),
             outgoing_base_encryption_scheme.clone(),
         )
         .encrypt_into(
@@ -1072,44 +1150,6 @@ where
             compiler,
         );
         (asset, Nullifier::new(nullifier_commitment, outgoing_note))
-    }
-}
-
-impl<C, COM> utxo::AssetType for SpendSecret<C, COM>
-where
-    C: Configuration<COM>,
-    COM: Has<bool, Type = C::Bool>,
-{
-    type Asset = Asset<C, COM>;
-}
-
-impl<C, COM> utxo::IdentifierType for SpendSecret<C, COM>
-where
-    C: Configuration<COM>,
-    COM: Has<bool, Type = C::Bool>,
-{
-    type Identifier = Identifier<C, COM>;
-}
-
-impl<C> utxo::SpendSecret for SpendSecret<C>
-where
-    C: Configuration<Bool = bool>,
-    C::Scalar: Sample,
-    encryption::Randomness<C::OutgoingBaseEncryptionScheme>: Sample,
-{
-    #[inline]
-    fn sample<R>(identifier: Self::Identifier, asset: Self::Asset, rng: &mut R) -> Self
-    where
-        R: CryptoRng + RngCore + ?Sized,
-    {
-        SpendSecret::new(
-            rng.gen(),
-            IncomingPlaintext::new(
-                identifier.utxo_commitment_randomness,
-                asset,
-                identifier.key_diversifier,
-            ),
-        )
     }
 }
 

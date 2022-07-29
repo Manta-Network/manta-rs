@@ -506,6 +506,7 @@ where
         compiler.assert_eq(&self.header, &rhs.header);
         compiler.assert_eq(&self.ciphertext, &rhs.ciphertext);
     }
+}
 
 impl<E, COM> constraint::Eq<COM> for EncryptedMessage<E>
 where

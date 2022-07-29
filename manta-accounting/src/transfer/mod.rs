@@ -110,11 +110,7 @@ pub trait Configuration {
     type AuthorizationSignatureRandomness: Sample;
 
     /// Mint Secret Type
-    type MintSecret: utxo::MintSecret<Asset = Asset<Self>>
-        + utxo::QueryIdentifier<Identifier = Identifier<Self>, Utxo = Self::Utxo>;
-
-    /// Spend Secret Type
-    type SpendSecret: utxo::SpendSecret<Asset = Asset<Self>>;
+    type MintSecret: utxo::QueryIdentifier<Identifier = Identifier<Self>, Utxo = Self::Utxo>;
 
     /// Parameters Type
     type Parameters: auth::Generate
@@ -127,10 +123,10 @@ pub trait Configuration {
         > + signature::Verify<VerifyingKey = AuthorizationKey<Self>, Verification = bool>
         + utxo::AssetType<Asset = Asset<Self>>
         + utxo::UtxoType<Utxo = Self::Utxo>
-        + utxo::DefaultAddress<Self::SpendingKey, Address = Address<Self>>
-        + utxo::DefaultAddress<AuthorizationKey<Self>, Address = Address<Self>>
-        + Mint<Secret = Self::MintSecret>
-        + Spend<Secret = Self::SpendSecret, Nullifier = Self::Nullifier>;
+        + utxo::DefaultAddress<Self::SpendingKey>
+        + utxo::DefaultAddress<AuthorizationKey<Self>>
+        + utxo::DeriveMint<Secret = Self::MintSecret>
+        + utxo::DeriveSpend<Nullifier = Self::Nullifier>;
 
     /// Authorization Key Type  Variable
     type AuthorizationKeyVar: Variable<Secret, Self::Compiler, Type = AuthorizationKey<Self>>
@@ -283,7 +279,7 @@ pub type UtxoAccumulatorWitness<C> = utxo::UtxoAccumulatorWitness<Parameters<C>>
 pub type UtxoAccumulatorOutput<C> = utxo::UtxoAccumulatorOutput<Parameters<C>>;
 
 /// Address Type
-pub type Address<C> = utxo::Address<<C as Configuration>::MintSecret>;
+pub type Address<C> = utxo::Address<Parameters<C>>;
 
 /// Asset Type
 pub type Asset<C> = asset::Asset<<C as Configuration>::AssetId, <C as Configuration>::AssetValue>;
@@ -291,6 +287,9 @@ pub type Asset<C> = asset::Asset<<C as Configuration>::AssetId, <C as Configurat
 /// Asset Variable Type
 pub type AssetVar<C> =
     asset::Asset<<C as Configuration>::AssetIdVar, <C as Configuration>::AssetValueVar>;
+
+/// Metadata Type
+pub type Metadata<C> = utxo::Metadata<Parameters<C>>;
 
 /// Authorization Key Type
 pub type AuthorizationKey<C> = auth::AuthorizationKey<Parameters<C>>;
@@ -322,14 +321,14 @@ pub type AuthorizationSignature<C> = signature::Signature<Parameters<C>>;
 /// Unspent Transaction Output Type
 pub type Utxo<C> = utxo::Utxo<Parameters<C>>;
 
-/// Incoming Note Type
+/// Note Type
 pub type Note<C> = utxo::Note<Parameters<C>>;
 
 /// Nullifier Type
 pub type Nullifier<C> = utxo::Nullifier<Parameters<C>>;
 
 /// Identifier Type
-pub type Identifier<C> = utxo::Identifier<<C as Configuration>::SpendSecret>;
+pub type Identifier<C> = utxo::Identifier<Parameters<C>>;
 
 /// Pre-Sender Type
 pub type PreSender<C> = sender::PreSender<Parameters<C>>;
@@ -358,6 +357,7 @@ pub fn internal_pair<C, R>(
     parameters: &Parameters<C>,
     authorization_key: &mut AuthorizationKey<C>,
     asset: Asset<C>,
+    metadata: Metadata<C>,
     rng: &mut R,
 ) -> (Receiver<C>, PreSender<C>)
 where
@@ -368,6 +368,7 @@ where
         parameters,
         parameters.default_address(authorization_key),
         asset.clone(),
+        metadata,
         rng,
     );
     let pre_sender = PreSender::<C>::sample(
@@ -386,6 +387,7 @@ pub fn internal_zero_pair<C, R>(
     parameters: &Parameters<C>,
     authorization_key: &mut AuthorizationKey<C>,
     asset_id: C::AssetId,
+    metadata: Metadata<C>,
     rng: &mut R,
 ) -> (Receiver<C>, PreSender<C>)
 where
@@ -396,6 +398,7 @@ where
         parameters,
         authorization_key,
         Asset::<C>::zero(asset_id),
+        metadata,
         rng,
     )
 }
