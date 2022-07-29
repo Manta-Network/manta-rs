@@ -36,7 +36,7 @@ macro_rules! cfg_into_iter {
     ($e:expr) => {{
         #[cfg(feature = "rayon")]
         {
-            use ::rayon::iter::IntoParallelIterator as _;
+            use $crate::rayon::iter::IntoParallelIterator as _;
             $e.into_par_iter()
         }
         #[cfg(not(feature = "rayon"))]
@@ -45,7 +45,7 @@ macro_rules! cfg_into_iter {
     ($e:expr, $min_len:expr) => {{
         #[cfg(feature = "rayon")]
         {
-            use ::rayon::iter::IntoParallelIterator as _;
+            use $crate::rayon::iter::IntoParallelIterator as _;
             $e.into_par_iter().with_min_len($min_len)
         }
         #[cfg(not(feature = "rayon"))]
@@ -60,7 +60,7 @@ macro_rules! cfg_iter {
     ($e:expr) => {{
         #[cfg(feature = "rayon")]
         {
-            use ::rayon::iter::IntoParallelRefIterator as _;
+            use $crate::rayon::iter::IntoParallelRefIterator as _;
             $e.par_iter()
         }
         #[cfg(not(feature = "rayon"))]
@@ -69,7 +69,7 @@ macro_rules! cfg_iter {
     ($e:expr, $min_len:expr) => {{
         #[cfg(feature = "rayon")]
         {
-            use ::rayon::iter::IntoParallelRefIterator as _;
+            use $crate::rayon::iter::IntoParallelRefIterator as _;
             $e.par_iter().with_min_len($min_len)
         }
         #[cfg(not(feature = "rayon"))]
@@ -84,7 +84,7 @@ macro_rules! cfg_iter_mut {
     ($e:expr) => {{
         #[cfg(feature = "rayon")]
         {
-            use ::rayon::iter::IntoParallelRefMutIterator as _;
+            use $crate::rayon::iter::IntoParallelRefMutIterator as _;
             $e.par_iter_mut()
         }
         #[cfg(not(feature = "rayon"))]
@@ -93,7 +93,7 @@ macro_rules! cfg_iter_mut {
     ($e:expr, $min_len:expr) => {{
         #[cfg(feature = "rayon")]
         {
-            use ::rayon::iter::IntoParallelRefMutIterator as _;
+            use $crate::rayon::iter::IntoParallelRefMutIterator as _;
             $e.par_iter_mut().with_min_len($min_len)
         }
         #[cfg(not(feature = "rayon"))]
@@ -108,7 +108,7 @@ macro_rules! cfg_chunks {
     ($e:expr, $size:expr) => {{
         #[cfg(feature = "rayon")]
         {
-            use ::rayon::iter::ParallelIterator as _;
+            use $crate::rayon::iter::ParallelIterator as _;
             $e.par_chunks($size)
         }
         #[cfg(not(feature = "rayon"))]
@@ -123,7 +123,7 @@ macro_rules! cfg_chunks_mut {
     ($e:expr, $size:expr) => {{
         #[cfg(feature = "rayon")]
         {
-            use ::rayon::iter::ParallelIterator as _;
+            use $crate::rayon::iter::ParallelIterator as _;
             $e.par_chunks_mut($size)
         }
         #[cfg(not(feature = "rayon"))]
@@ -137,7 +137,7 @@ macro_rules! cfg_reduce {
     ($e:expr, $default:expr, $op:expr) => {{
         #[cfg(feature = "rayon")]
         {
-            use ::rayon::iter::ParallelIterator as _;
+            use $crate::rayon::iter::ParallelIterator as _;
             $e.reduce($default, $op)
         }
         #[cfg(not(feature = "rayon"))]

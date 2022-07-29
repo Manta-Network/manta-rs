@@ -16,6 +16,8 @@
 
 //! Secure Multi-Party Computation Primitives
 
+use alloc::vec::Vec;
+
 /// Secure Multi-Party Computation Types
 pub trait Types {
     /// State Type
@@ -44,20 +46,27 @@ pub trait Contribute: Types {
 
 /// Verification
 pub trait Verify: Types {
-    /// Error
+    /// Verification Error Type
     type Error;
 
-    /// Computes the challenge associated to `state` and `challenge` for the next player.
-    fn challenge(&self, state: &Self::State, challenge: &Self::Challenge) -> Self::Challenge;
+    /// Computes the challenge associated to `challenge`, `prev`, `next`, and `proof` for the next
+    /// player.
+    fn challenge(
+        &self,
+        challenge: &Self::Challenge,
+        prev: &Self::State,
+        next: &Self::State,
+        proof: &Self::Proof,
+    ) -> Self::Challenge;
 
-    /// Verifies the transformation from `last` to `next` using the `next_challenge` and `proof` as
+    /// Verifies the transformation from `last` to `next` using the `challenge` and `proof` as
     /// evidence for the correct update of the state. This method returns the `next` state and
     /// the next response.
     fn verify_transform(
         &self,
+        challenge: &Self::Challenge,
         last: Self::State,
         next: Self::State,
-        next_challenge: Self::Challenge,
         proof: Self::Proof,
     ) -> Result<Self::State, Self::Error>;
 
@@ -67,20 +76,35 @@ pub trait Verify: Types {
     #[inline]
     fn verify_transform_all<E, I>(
         &self,
-        mut state: Self::State,
         mut challenge: Self::Challenge,
+        mut state: Self::State,
         iter: I,
-    ) -> Result<(Self::State, Self::Challenge), Self::Error>
+    ) -> Result<(Self::Challenge, Self::State), Self::Error>
     where
         E: Into<Self::Error>,
         I: IntoIterator<Item = Result<(Self::State, Self::Proof), E>>,
     {
         for item in iter {
             let (next, next_proof) = item.map_err(Into::into)?;
-            let next_challenge = self.challenge(&state, &challenge);
-            challenge = self.challenge(&next, &next_challenge);
-            state = self.verify_transform(state, next, next_challenge, next_proof)?;
+            let next_challenge = self.challenge(&challenge, &state, &next, &next_proof);
+            state = self.verify_transform(&challenge, state, next, next_proof)?;
+            challenge = next_challenge;
         }
-        Ok((state, challenge))
+        Ok((challenge, state))
     }
+}
+
+/// MPC Transcript
+pub struct Transcript<T>
+where
+    T: Types,
+{
+    /// Initial Challenge
+    pub initial_challenge: T::Challenge,
+
+    /// Initial State
+    pub initial_state: T::State,
+
+    /// Rounds
+    pub rounds: Vec<(T::State, T::Proof)>,
 }

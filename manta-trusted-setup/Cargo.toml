@@ -31,26 +31,32 @@ name = "server"
 
 [features]
 # Rayon Parallelization
-rayon = ["dep:rayon", "manta-util/rayon"]
+rayon = ["manta-util/rayon"]
 
 # Standard Library
 std = []
+
+# Testing Frameworks
+test = []
 
 [dependencies]
 ark-bls12-381 = { version = "0.3.0", default-features = false, features = ["curve"] }
 ark-ec = { version = "0.3.0", default-features = false }
 ark-ff = { version = "0.3.0", default-features = false }
 ark-groth16 = { version = "0.3.0", default-features = false }
-ark-r1cs-std = { version = "0.3.1", default-features = false }
+ark-poly = { version = "0.3.0", default-features = false }
 ark-relations = { version = "0.3.0", default-features = false }
 ark-serialize = { version = "0.3.0", default-features = false, features = ["derive"] }
-ark-snark = { version = "0.3.0", default-features = false }
 ark-std = { version = "0.3.0", default-features = false }
 async-std = { version = "1.6.0", features = ["attributes", "tokio1"] }
+blake2 = { version = "0.10.4", default-features = false }
+byteorder = { version = "1.4.3", default-features = false }
+
 derivative = { version = "2.2.0", default-features = false, features = ["use_core"] }
 ed25519 = { version = "1.5.2", default-features = false }
 ed25519-dalek = { version = "1.0.1", default-features = false, features = ["rand", "u64_backend"] } # was unsure what features to use here 
 manta-crypto = { path = "../manta-crypto", default-features = false, features = ["getrandom"] }
+
 manta-util = { path = "../manta-util", default-features = false, features = ["alloc"] }
 parking_lot = "0.12.1"
 rayon = { version = "1.5.3", optional = true, default-features = false }
@@ -58,4 +64,12 @@ reqwest = {version = "0.11.11", features = ["json"]}
 serde = { version = "1.0", features = ["derive"] }
 tide = "0.14.0"
 workspace-hack = { version = "0.1.0", path = "../workspace-hack" }
-#ark-sapling-mpc-verify = { version = "0.1.0", path = "/Users/thomascnorton/Documents/Manta/trusted-setup", optional = true} # TODO: fix this
+rand_chacha = { version = "0.3.1", default-features = false }
+
+[dev-dependencies]
+ark-bls12-381 = { version = "0.3.0", default-features = false, features = ["curve", "scalar_field"] }
+ark-r1cs-std = { version = "0.3.1", default-features = false }
+ark-snark = { version = "0.3.0", default-features = false }
+manta-pay = { path = "../manta-pay", default-features = false, features = ["groth16"] } # TODO: To be removed
+manta-trusted-setup = { path = ".", default-features = false, features = ["test"] }
+
