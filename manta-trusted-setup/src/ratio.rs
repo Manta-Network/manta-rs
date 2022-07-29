@@ -31,8 +31,13 @@ where
     fn hash(&self, challenge: &C, ratio: (&P::G1, &P::G1)) -> P::G2;
 }
 
-/// Prepared Ratio Proof Type
-pub type PreparedRatioProof<P> = (
+/// Prepared Ratio Type
+///
+/// # Note
+///
+/// Expected format is `((g1, r * g1), (r * g2, g2))` given curve points
+/// [`g1`](Pairing::G1Prepared), [`g2`](Pairing::G2Prepared) and a scalar [`r`](Pairing::Scalar).
+pub type PreparedRatio<P> = (
     (<P as Pairing>::G1Prepared, <P as Pairing>::G1Prepared),
     (<P as Pairing>::G2Prepared, <P as Pairing>::G2Prepared),
 );
@@ -44,10 +49,12 @@ pub struct RatioProof<P>
 where
     P: Pairing + ?Sized,
 {
-    /// Ratio in G1
+    /// Ratio in G1 of the form `(g1, r * g1)` given a curve point [`g1`](Pairing::G1) and
+    /// a scalar [`r`](Pairing::Scalar)
     pub ratio: (P::G1, P::G1),
 
-    /// Matching Point in G2
+    /// Matching Point in G2 of the form [`r * g2`](Pairing::G2) given a challenge point
+    /// [`g2`](Pairing::G2) and a scalar [`r`](Pairing::Scalar)
     pub matching_point: P::G2,
 }
 
@@ -103,7 +110,7 @@ where
     /// Verifies that `self` is a valid ratio proof-of-knowledge, returning the ratio of the
     /// underlying scalar.
     #[inline]
-    pub fn verify<H, C>(self, hasher: &H, challenge: &C) -> Option<PreparedRatioProof<P>>
+    pub fn verify<H, C>(self, hasher: &H, challenge: &C) -> Option<PreparedRatio<P>>
     where
         H: HashToGroup<P, C>,
     {

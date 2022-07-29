@@ -103,3 +103,30 @@ pub trait PairingEngineExt: PairingEngine {
 }
 
 impl<E> PairingEngineExt for E where E: PairingEngine {}
+
+#[cfg(test)]
+mod test {
+    use crate::{pairing::PairingEngineExt, util::Sample};
+    use ark_bls12_381::{Bls12_381, Fr, G1Affine, G2Affine};
+    use ark_ec::{AffineCurve, ProjectiveCurve};
+    use manta_crypto::rand::OsRng;
+
+    /// Tests if the ratio check is correct.
+    #[test]
+    fn ratio_check_is_correct() {
+        let mut rng = OsRng;
+        let g1 = G1Affine::gen(&mut rng);
+        let g2 = G2Affine::gen(&mut rng);
+        let scalar = Fr::gen(&mut rng);
+        assert!(Bls12_381::same(
+            (g1, g2.mul(scalar).into_affine()),
+            (g1.mul(scalar).into_affine(), g2)
+        )
+        .is_some());
+        assert!(!Bls12_381::same(
+            (g1, g2.mul(scalar).into_affine()),
+            (g1.mul(Fr::gen(&mut rng)).into_affine(), g2)
+        )
+        .is_some())
+    }
+}
