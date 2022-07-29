@@ -69,5 +69,4 @@ subtle = { version = "2.4.1", default-features = false, features = ["i128"] }
 sval = { version = "1.0.0-alpha.5", default-features = false, features = ["alloc", "fmt", "serde1", "serde1_lib", "std"] }
 syn = { version = "1.0.98", features = ["clone-impls", "derive", "extra-traits", "fold", "full", "parsing", "printing", "proc-macro", "quote", "visit", "visit-mut"] }
 value-bag = { version = "1.0.0-alpha.9", default-features = false, features = ["erased-serde1", "error", "serde", "serde1", "serde1_fmt", "serde1_lib", "std", "sval1_lib"] }
-
 ### END HAKARI SECTION
