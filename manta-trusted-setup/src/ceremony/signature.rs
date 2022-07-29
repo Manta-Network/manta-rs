@@ -33,7 +33,7 @@ pub trait SignatureScheme {
     type PrivateKey;
 
     /// Domain Tag specific to the use case
-    type DomainTag: ?Sized;
+    type DomainTag: ?Sized + 'static;
 
     /// Signature
     type Signature;

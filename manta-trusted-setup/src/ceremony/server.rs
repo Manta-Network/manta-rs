@@ -20,9 +20,7 @@ use crate::{
         coordinator::Coordinator,
         queue::{Identifier, Priority},
         registry::Map,
-        requests::{
-            ContributeRequest, GetMpcRequest, GetMpcResponse, JoinQueueRequest, RegisterRequest,
-        },
+        requests::{ContributeRequest, GetMpcRequest, GetMpcResponse, RegisterRequest},
         signature,
         signature::{SignatureScheme, Signed},
         CeremonyError,
@@ -48,6 +46,7 @@ where
     M: Map<Key = P::Identifier, Value = P>,
 {
     coordinator: Arc<Mutex<Coordinator<V, P, M, N>>>,
+    domain_tag: &'static S::DomainTag,
     __: PhantomData<S>,
 }
 
@@ -73,7 +72,7 @@ where
     {
         // Check signatures
         let public_key = request.message.participant.public_key();
-        request.verify_integrity(&public_key)?;
+        request.verify_integrity(self.domain_tag, &public_key)?;
         let mut state = self.coordinator.lock().expect("Failed to lock coordinator");
         state.register(request.message.participant)
     }
@@ -89,7 +88,7 @@ where
     {
         // Check signatures
         let public_key = request.message.participant.public_key();
-        request.verify_integrity(&public_key)?;
+        request.verify_integrity(self.domain_tag, &public_key)?;
 
         let state = self.coordinator.lock().expect("Failed to lock coordinator");
         if state.is_next(&request.message.participant) {
@@ -113,7 +112,7 @@ where
     {
         // Check signatures
         let public_key = request.message.participant.public_key();
-        request.verify_integrity(&public_key)?;
+        request.verify_integrity(self.domain_tag, &public_key)?;
 
         let mut state = self.coordinator.lock().expect("Failed to lock coordinator");
         state.update(
@@ -125,7 +124,7 @@ where
 
     /// Executes `f` on the incoming `request`.
     #[inline]
-    async fn execute<T, R, F, Fut>(
+    pub async fn execute<T, R, F, Fut>(
         mut request: Request<Self>, // get json from here
         f: F,
     ) -> Result<Response, tide::Error>
@@ -145,7 +144,7 @@ where
 
 /// Generates the JSON body for the output of `f`, returning an HTTP reponse.
 #[inline]
-async fn into_body<R, F, Fut>(f: F) -> Result<Response, tide::Error>
+pub async fn into_body<R, F, Fut>(f: F) -> Result<Response, tide::Error>
 where
     R: Serialize,
     F: FnOnce() -> Fut,
