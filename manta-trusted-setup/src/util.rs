@@ -16,22 +16,24 @@
 
 //! Utilities
 
+use crate::{groth16::kzg, pairing::Pairing, ratio::HashToGroup};
 use alloc::vec::Vec;
-use ark_ec::{wnaf::WnafContext, AffineCurve, PairingEngine, ProjectiveCurve};
-use ark_ff::{BigInteger, PrimeField, UniformRand};
+use ark_ec::{
+    short_weierstrass_jacobian::GroupAffine, wnaf::WnafContext, AffineCurve, ProjectiveCurve,
+    SWModelParameters,
+};
+use ark_ff::{BigInteger, Fp256, PrimeField, UniformRand, Zero};
+use ark_serialize::{CanonicalSerialize, Read, SerializationError, Write};
 use ark_std::io;
-use core::{iter, marker::PhantomData};
-use manta_crypto::rand::OsRng;
-use manta_util::{cfg_into_iter, cfg_iter, cfg_iter_mut, cfg_reduce};
+use blake2::{Blake2b512, Digest as Blake2Digest};
+use byteorder::{BigEndian, ReadBytesExt};
+use core::marker::PhantomData;
+use manta_crypto::rand::{CryptoRng, OsRng, RngCore, SeedableRng};
+use manta_util::{cfg_into_iter, cfg_iter, cfg_iter_mut, cfg_reduce, into_array_unchecked};
+use rand_chacha::ChaCha20Rng;
 
 #[cfg(feature = "rayon")]
-use rayon::iter::{IndexedParallelIterator, ParallelIterator};
-
-pub use ark_ff::{One, Zero};
-pub use ark_serialize::{
-    CanonicalDeserialize, CanonicalSerialize, Read, SerializationError, Write,
-};
-pub use manta_crypto::rand::Sample;
+use manta_util::rayon::iter::{IndexedParallelIterator, ParallelIterator};
 
 /// Distribution Type Extension
 pub trait HasDistribution {
@@ -235,15 +237,6 @@ where
     *point = point.mul(scalar).into_affine();
 }
 
-/// Multiplies each element in `bases` by `scalar`.
-#[inline]
-pub fn batch_scalar_mul_affine<G>(points: &mut [G], scalar: G::ScalarField)
-where
-    G: AffineCurve,
-{
-    cfg_iter_mut!(points).for_each(|point| scalar_mul(point, scalar))
-}
-
 /// Converts each affine point in `points` into its projective form.
 #[inline]
 pub fn batch_into_projective<G>(points: &[G]) -> Vec<G::Projective>
@@ -288,40 +281,46 @@ where
     G: ProjectiveCurve,
 {
     assert_eq!(lhs.len(), rhs.len());
-    let pairs = cfg_into_iter!(0..lhs.len())
-        .map(|_| G::ScalarField::rand(&mut OsRng))
-        .zip(lhs)
-        .zip(rhs)
-        .map(|((rho, lhs), rhs)| {
-            let wnaf = recommended_wnaf(&rho);
-            (wnaf.mul(*lhs, &rho), wnaf.mul(*rhs, &rho))
-        });
-    cfg_reduce!(pairs, || (G::zero(), G::zero()), |mut acc, next| {
-        acc.0 += next.0;
-        acc.1 += next.1;
-        acc
-    })
+    cfg_reduce!(
+        cfg_into_iter!(0..lhs.len())
+            .map(|_| G::ScalarField::rand(&mut OsRng))
+            .zip(lhs)
+            .zip(rhs)
+            .map(|((rho, lhs), rhs)| {
+                let wnaf = recommended_wnaf(&rho);
+                (wnaf.mul(*lhs, &rho), wnaf.mul(*rhs, &rho))
+            }),
+        || (G::zero(), G::zero()),
+        |mut acc, next| {
+            acc.0 += next.0;
+            acc.1 += next.1;
+            acc
+        }
+    )
 }
 
 /// Compresses `lhs` and `rhs` into a pair of curve points by random linear combination. The same
 /// random linear combination is used for both `lhs` and `rhs`, allowing this pair to be used in a
 /// consistent ratio test.
 #[inline]
-pub fn merge_pairs_affine<G>(lhs: &[G], rhs: &[G]) -> (G::Projective, G::Projective)
+pub fn merge_pairs_affine<G>(lhs: &[G], rhs: &[G]) -> (G, G)
 where
     G: AffineCurve,
 {
     assert_eq!(lhs.len(), rhs.len());
-    let pairs = cfg_into_iter!(0..lhs.len())
-        .map(|_| G::ScalarField::rand(&mut OsRng))
-        .zip(lhs)
-        .zip(rhs)
-        .map(|((rho, lhs), rhs)| (lhs.mul(rho), rhs.mul(rho)));
-    cfg_reduce!(pairs, || (Zero::zero(), Zero::zero()), |mut acc, next| {
-        acc.0 += next.0;
-        acc.1 += next.1;
-        acc
-    })
+    cfg_reduce!(
+        cfg_into_iter!(0..lhs.len())
+            .map(|_| { G::ScalarField::rand(&mut OsRng) })
+            .zip(lhs)
+            .zip(rhs)
+            .map(|((rho, lhs), rhs)| (lhs.mul(rho).into_affine(), rhs.mul(rho).into_affine())),
+        || (Zero::zero(), Zero::zero()),
+        |mut acc, next| {
+            acc.0 = acc.0 + next.0;
+            acc.1 = acc.1 + next.1;
+            acc
+        }
+    )
 }
 
 /// Prepares a sequence of curve points for a check that subsequent terms differ by a constant ratio.
@@ -339,54 +338,152 @@ where
     (g1_proj.into_affine(), g2_proj.into_affine())
 }
 
-/// Pair from a [`PairingEngine`]
-type Pair<P> = (
-    <P as PairingEngine>::G1Prepared,
-    <P as PairingEngine>::G2Prepared,
-);
+/// Blake Hasher
+#[derive(Default)]
+pub struct BlakeHasher(pub Blake2b512);
 
-/// Pairing Engine Extension
-pub trait PairingEngineExt: PairingEngine {
-    /// Evaluates the pairing function on `pair`.
+impl Write for BlakeHasher {
     #[inline]
-    fn eval(pair: &Pair<Self>) -> Self::Fqk {
-        Self::product_of_pairings(iter::once(pair))
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.0.update(buf);
+        Ok(buf.len())
     }
 
-    /// Checks if `lhs` and `rhs` evaluate to the same point under the pairing function.
     #[inline]
-    fn has_same(lhs: &Pair<Self>, rhs: &Pair<Self>) -> bool {
-        Self::eval(lhs) == Self::eval(rhs)
-    }
-
-    /// Checks if `lhs` and `rhs` evaluate to the same point under the pairing function, returning
-    /// `Some` with prepared points if the pairing outcome is the same. This function checks if
-    /// there exists an `r` such that `(r * lhs.0 == rhs.0) && (lhs.1 == r * rhs.1)`.
-    #[inline]
-    fn same<L1, L2, R1, R2>(lhs: (L1, L2), rhs: (R1, R2)) -> Option<(Pair<Self>, Pair<Self>)>
-    where
-        L1: Into<Self::G1Prepared>,
-        L2: Into<Self::G2Prepared>,
-        R1: Into<Self::G1Prepared>,
-        R2: Into<Self::G2Prepared>,
-    {
-        let lhs = (lhs.0.into(), lhs.1.into());
-        let rhs = (rhs.0.into(), rhs.1.into());
-        Self::has_same(&lhs, &rhs).then_some((lhs, rhs))
-    }
-
-    /// Checks if the ratio of `(lhs.0, lhs.1)` from `G1` is the same as the ratio of
-    /// `(lhs.0, lhs.1)` from `G2`.
-    #[inline]
-    fn same_ratio<L1, L2, R1, R2>(lhs: (L1, R1), rhs: (L2, R2)) -> bool
-    where
-        L1: Into<Self::G1Prepared>,
-        L2: Into<Self::G2Prepared>,
-        R1: Into<Self::G1Prepared>,
-        R2: Into<Self::G2Prepared>,
-    {
-        Self::has_same(&(lhs.0.into(), rhs.1.into()), &(lhs.1.into(), rhs.0.into()))
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
     }
 }
 
-impl<E> PairingEngineExt for E where E: PairingEngine {}
+impl<P, const N: usize> HashToGroup<P, [u8; N]> for BlakeHasher
+where
+    P: Pairing,
+    P::G2: Sample,
+{
+    #[inline]
+    fn hash(&self, challenge: &[u8; N], ratio: (&P::G1, &P::G1)) -> P::G2 {
+        let mut hasher = BlakeHasher::default();
+        hasher.0.update(challenge);
+        ratio.0.serialize(&mut hasher).unwrap();
+        ratio.1.serialize(&mut hasher).unwrap();
+        hash_to_group::<_, (), 64>(into_array_unchecked(hasher.0.finalize()))
+    }
+}
+
+/// KZG Blake Hasher
+pub struct KZGBlakeHasher<C>
+where
+    C: kzg::Configuration + ?Sized,
+{
+    /// Domain Tag Type
+    pub domain_tag: C::DomainTag,
+}
+
+impl<P, const N: usize> HashToGroup<P, [u8; N]> for KZGBlakeHasher<P>
+where
+    P: kzg::Configuration<DomainTag = u8> + ?Sized,
+    P::G2: Sample,
+{
+    #[inline]
+    fn hash(&self, challenge: &[u8; N], ratio: (&P::G1, &P::G1)) -> P::G2 {
+        let mut hasher = BlakeHasher::default();
+        hasher.0.update(&[self.domain_tag]);
+        hasher.0.update(challenge);
+        ratio.0.serialize(&mut hasher).unwrap();
+        ratio.1.serialize(&mut hasher).unwrap();
+        hash_to_group::<_, (), 64>(into_array_unchecked(hasher.0.finalize()))
+    }
+}
+
+/// Consumes `digest` as a seed to an RNG and use the RNG to sample a group point `G`
+/// on affine curve.
+#[inline]
+pub fn hash_to_group<G, D, const N: usize>(digest: [u8; N]) -> G
+where
+    G: AffineCurve + Sample<D>,
+    D: Default,
+{
+    assert!(N >= 32, "Needs at least 32 bytes to seed ChaCha20.");
+    let mut digest = digest.as_slice();
+    let mut seed = Vec::with_capacity(32);
+    for _ in 0..8 {
+        let word = digest
+            .read_u32::<BigEndian>()
+            .expect("This is always possible since we have enough bytes to begin with.");
+        seed.extend(word.to_le_bytes());
+    }
+    G::gen(&mut ChaCha20Rng::from_seed(into_array_unchecked(seed)))
+}
+
+/// Multiplies each element in `bases` by a fixed `scalar`.
+#[inline]
+pub fn batch_mul_fixed_scalar<G>(points: &mut [G], scalar: G::ScalarField)
+where
+    G: AffineCurve,
+{
+    cfg_iter_mut!(points).for_each(|point| scalar_mul(point, scalar))
+}
+
+/// Pointwise multiplication of a vector of `points` and a vector of `scalars`.
+#[inline]
+pub fn batch_mul_pointwise<G>(points: &mut [G], scalars: &[G::ScalarField])
+where
+    G: ProjectiveCurve,
+{
+    assert_eq!(
+        points.len(),
+        scalars.len(),
+        "Points should have the same length as scalars."
+    );
+    cfg_iter_mut!(points)
+        .zip(cfg_iter!(scalars))
+        .for_each(|(base, scalar)| {
+            base.mul_assign(*scalar);
+        })
+}
+
+/// Sampling Trait
+pub trait Sample<D = ()>: Sized {
+    /// Returns a random value of type `Self`, sampled according to the given `distribution`,
+    /// generated from the `rng`.
+    fn sample<R>(distribution: D, rng: &mut R) -> Self
+    where
+        R: CryptoRng + RngCore + ?Sized;
+
+    /// Returns a random value of type `Self`, sampled according to the default distribution of
+    /// type `D`, generated from the `rng`.
+    #[inline]
+    fn gen<R>(rng: &mut R) -> Self
+    where
+        D: Default,
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        Self::sample(Default::default(), rng)
+    }
+}
+
+impl<P> Sample for GroupAffine<P>
+where
+    P: SWModelParameters,
+{
+    #[inline]
+    fn sample<R>(_: (), rng: &mut R) -> Self
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        <GroupAffine<P> as AffineCurve>::Projective::rand(rng).into_affine()
+    }
+}
+
+impl<P> Sample for Fp256<P>
+where
+    Fp256<P>: UniformRand,
+{
+    #[inline]
+    fn sample<R>(_: (), rng: &mut R) -> Self
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        Self::rand(rng)
+    }
+}

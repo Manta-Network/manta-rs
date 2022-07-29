@@ -60,6 +60,11 @@ pub use serde;
 #[doc(inline)]
 pub use serde_with;
 
+#[cfg(feature = "rayon")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "rayon")))]
+#[doc(inline)]
+pub use rayon;
+
 /// Type Identity Reflection Mechanism
 pub trait IsType {
     /// Type Equal to `Self`
