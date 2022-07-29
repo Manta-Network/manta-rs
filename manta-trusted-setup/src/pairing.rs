@@ -108,25 +108,30 @@ impl<E> PairingEngineExt for E where E: PairingEngine {}
 mod test {
     use crate::{pairing::PairingEngineExt, util::Sample};
     use ark_bls12_381::{Bls12_381, Fr, G1Affine, G2Affine};
-    use ark_ec::{AffineCurve, ProjectiveCurve};
+    use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
     use manta_crypto::rand::OsRng;
 
-    /// Tests if the ratio check is correct.
-    #[test]
-    fn ratio_check_is_correct() {
-        let mut rng = OsRng;
-        let g1 = G1Affine::gen(&mut rng);
-        let g2 = G2Affine::gen(&mut rng);
-        let scalar = Fr::gen(&mut rng);
-        assert!(Bls12_381::same(
+    /// Asserts that `g1` and `g1*scalar` are in the same ratio as `g2` and `g2*scalar`.
+    #[inline]
+    pub fn assert_valid_pairing_ratio<E>(g1: E::G1Affine, g2: E::G2Affine, scalar: E::Fr)
+    where
+        E: PairingEngine,
+    {
+        assert!(E::same(
             (g1, g2.mul(scalar).into_affine()),
             (g1.mul(scalar).into_affine(), g2)
         )
         .is_some());
-        assert!(!Bls12_381::same(
-            (g1, g2.mul(scalar).into_affine()),
-            (g1.mul(Fr::gen(&mut rng)).into_affine(), g2)
-        )
-        .is_some())
+    }
+
+    /// Tests if bls13_381 pairing ratio is valid.
+    #[test]
+    fn has_valid_bls12_381_pairing_ratio() {
+        let mut rng = OsRng;
+        assert_valid_pairing_ratio::<Bls12_381>(
+            G1Affine::gen(&mut rng),
+            G2Affine::gen(&mut rng),
+            Fr::gen(&mut rng),
+        );
     }
 }

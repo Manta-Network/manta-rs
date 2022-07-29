@@ -395,7 +395,8 @@ where
     }
 }
 
-/// Hashes `digest` to a group point on affine curve.
+/// Consumes `digest` as a seed to an RNG and use the RNG to sample a group point `G`
+/// on affine curve.
 #[inline]
 pub fn hash_to_group<G, D, const N: usize>(digest: [u8; N]) -> G
 where

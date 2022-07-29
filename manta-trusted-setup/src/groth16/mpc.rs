@@ -64,8 +64,8 @@ pub enum Error {
     /// Constraint System Hashes Mismatch Error
     ConstraintSystemHashesDiffer,
 
-    /// Invalid Signature Error
-    SignatureInvalid,
+    /// Invalid Ratio Proof Error
+    InvalidRatioProof,
 
     /// Inconsistent Delta Change Error
     InconsistentDeltaChange,
@@ -313,7 +313,7 @@ where
     let next_challenge = C::challenge(challenge, &prev, &next, &proof);
     let ((ratio_0, ratio_1), _) = proof
         .verify(&C::Hasher::default(), challenge)
-        .ok_or(Error::SignatureInvalid)?;
+        .ok_or(Error::InvalidRatioProof)?;
     if !C::Pairing::same_ratio((ratio_0, ratio_1), (prev.vk.delta_g2, next.vk.delta_g2)) {
         return Err(Error::InconsistentDeltaChange);
     }
@@ -356,7 +356,7 @@ where
         let next_challenge = C::challenge(&challenge, &state, &next_state, &next_proof);
         let ((ratio_0, ratio_1), _) = next_proof
             .verify(&C::Hasher::default(), &challenge)
-            .ok_or(Error::SignatureInvalid)?;
+            .ok_or(Error::InvalidRatioProof)?;
         if !C::Pairing::same_ratio(
             (ratio_0, ratio_1),
             (state.vk.delta_g2, next_state.vk.delta_g2),
