@@ -235,11 +235,12 @@ pub mod ed_dalek {
             let (priv_key, pub_key) = test_keypair();
             let message = Message(b"Test message");
             let signature =
-                <Message as Sign<Ed25519>>::sign(&message, "".into(), &pub_key, &priv_key).unwrap();
+                <Message as Sign<Ed25519>>::sign(&message, "".as_bytes(), &pub_key, &priv_key)
+                    .unwrap();
 
             assert!(<Message as Verify<Ed25519>>::verify_integrity(
                 &message,
-                "".into(),
+                "".as_bytes(),
                 &pub_key,
                 &signature
             )
