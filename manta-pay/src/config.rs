@@ -21,7 +21,7 @@ use crate::crypto::{
     ecc,
     encryption::aes::{self, FixedNonceAesGcm},
     key::Blake2sKdf,
-    poseidon::{self, arkworks::TwoPowerMinusOneDomainTag, hash::Hasher},
+    poseidon::compat as poseidon,
 };
 use alloc::vec::Vec;
 use ark_ff::ToConstraintField;
@@ -118,36 +118,28 @@ impl<COM, const ARITY: usize> Constant<COM> for PoseidonSpec<ARITY> {
 }
 
 /// Poseidon-2 Hash Parameters
-pub type Poseidon2 = Hasher<PoseidonSpec<2>, TwoPowerMinusOneDomainTag, 2>;
+pub type Poseidon2 = poseidon::Hasher<PoseidonSpec<2>, 2>;
 
 /// Poseidon-2 Hash Parameters Variable
-pub type Poseidon2Var = Hasher<PoseidonSpec<2>, TwoPowerMinusOneDomainTag, 2, Compiler>;
-
-impl poseidon::Constants for PoseidonSpec<2> {
-    const WIDTH: usize = 3;
-    const FULL_ROUNDS: usize = 8;
-    const PARTIAL_ROUNDS: usize = 55;
-}
+pub type Poseidon2Var = poseidon::Hasher<PoseidonSpec<2>, 2, Compiler>;
 
 impl poseidon::arkworks::Specification for PoseidonSpec<2> {
     type Field = ConstraintField;
+    const FULL_ROUNDS: usize = 8;
+    const PARTIAL_ROUNDS: usize = 57;
     const SBOX_EXPONENT: u64 = 5;
 }
 
 /// Poseidon-4 Hash Parameters
-pub type Poseidon4 = Hasher<PoseidonSpec<4>, TwoPowerMinusOneDomainTag, 4>;
+pub type Poseidon4 = poseidon::Hasher<PoseidonSpec<4>, 4>;
 
 /// Poseidon-4 Hash Parameters Variable
-pub type Poseidon4Var = Hasher<PoseidonSpec<4>, TwoPowerMinusOneDomainTag, 4, Compiler>;
-
-impl poseidon::Constants for PoseidonSpec<4> {
-    const WIDTH: usize = 5;
-    const FULL_ROUNDS: usize = 8;
-    const PARTIAL_ROUNDS: usize = 56;
-}
+pub type Poseidon4Var = poseidon::Hasher<PoseidonSpec<4>, 4, Compiler>;
 
 impl poseidon::arkworks::Specification for PoseidonSpec<4> {
     type Field = ConstraintField;
+    const FULL_ROUNDS: usize = 8;
+    const PARTIAL_ROUNDS: usize = 60;
     const SBOX_EXPONENT: u64 = 5;
 }
 
@@ -766,10 +758,8 @@ impl transfer::Configuration for Config {
         >>::VoidNumber;
     type VoidNumberCommitmentSchemeVar = VoidNumberCommitmentSchemeVar;
     type UtxoAccumulatorModel = UtxoAccumulatorModel;
-    type UtxoAccumulatorWitnessVar =
-        <Self::UtxoAccumulatorModelVar as accumulator::Model<Self::Compiler>>::Witness;
-    type UtxoAccumulatorOutputVar =
-        <Self::UtxoAccumulatorModelVar as accumulator::Model<Self::Compiler>>::Output;
+    type UtxoAccumulatorWitnessVar = <Self::UtxoAccumulatorModelVar as accumulator::Types>::Witness;
+    type UtxoAccumulatorOutputVar = <Self::UtxoAccumulatorModelVar as accumulator::Types>::Output;
     type UtxoAccumulatorModelVar = merkle_tree::Parameters<MerkleTreeConfigurationVar, Compiler>;
     type AssetIdVar = AssetIdVar;
     type AssetValueVar = AssetValueVar;
