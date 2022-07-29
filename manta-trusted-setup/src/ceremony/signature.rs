@@ -121,7 +121,7 @@ pub mod ed_dalek {
     /// The public key for signed messages from contributors. This is a wrapper around the
     /// byte representation of an `ed25519_dalek::PublicKey` type.  The original type does
     /// not implement `Hash` and so cannot be used as a key in the `Registry`.
-    #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+    #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, Ord, PartialOrd)]
     pub struct PublicKey(pub [u8; 32]);
 
     /// The private key for signed messages from contributors. This is a wrapper around the

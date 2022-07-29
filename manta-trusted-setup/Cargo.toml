@@ -25,9 +25,7 @@ is-it-maintained-open-issues = { repository = "Manta-Network/manta-rs" }
 maintenance = { status = "actively-developed" }
 
 [[bin]]
-name = "client"
-[[bin]]
-name = "server"
+name = "groth16_phase2_server"
 
 [features]
 # Rayon Parallelization
