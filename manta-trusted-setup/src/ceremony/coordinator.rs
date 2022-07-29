@@ -67,7 +67,7 @@ where
 
     /// Check if participant is next.
     pub fn is_next(&self, participant: &P) -> bool {
-        self.queue.is_front(participant)
+        self.queue.is_at_front(participant)
     }
 
     /// Update the MPC state and challenge using client's contribution.
@@ -90,7 +90,7 @@ where
             .ok_or(CeremonyError::NotRegistered)?;
 
         // make sure it is participant's turn
-        if !self.queue.is_front(participant) {
+        if !self.queue.is_at_front(participant) {
             return Err(CeremonyError::NotYourTurn);
         };
 
