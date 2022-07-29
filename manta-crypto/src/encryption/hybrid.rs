@@ -223,6 +223,32 @@ where
     }
 }
 
+impl<K, E, COM> constraint::PartialEq<Self, COM> for Ciphertext<K, E>
+where
+    COM: Has<bool>,
+    Bool<COM>: BitAnd<Bool<COM>, COM, Output = Bool<COM>>,
+    K: key::agreement::Types,
+    E: CiphertextType,
+    K::PublicKey: constraint::PartialEq<K::PublicKey, COM>,
+    E::Ciphertext: constraint::PartialEq<E::Ciphertext, COM>,
+{
+    #[inline]
+    fn eq(&self, rhs: &Self, compiler: &mut COM) -> Bool<COM> {
+        self.ephemeral_public_key
+            .eq(&rhs.ephemeral_public_key, compiler)
+            .bitand(self.ciphertext.eq(&rhs.ciphertext, compiler), compiler)
+    }
+
+    #[inline]
+    fn assert_equal(&self, rhs: &Self, compiler: &mut COM)
+    where
+        COM: Assert,
+    {
+        compiler.assert_eq(&self.ephemeral_public_key, &rhs.ephemeral_public_key);
+        compiler.assert_eq(&self.ciphertext, &rhs.ciphertext);
+    }
+}
+
 impl<K, E, P, C, COM> Variable<Derived<(P, C)>, COM> for Ciphertext<K, E>
 where
     K: key::agreement::Types + Constant<COM>,
@@ -424,8 +450,8 @@ where
         R: Read,
     {
         Ok(Self::new(
-            K::decode(&mut reader).map_err(|err| err.map_decode(|_| ()))?,
-            E::decode(&mut reader).map_err(|err| err.map_decode(|_| ()))?,
+            Decode::decode(&mut reader).map_err(|err| err.map_decode(|_| ()))?,
+            Decode::decode(&mut reader).map_err(|err| err.map_decode(|_| ()))?,
         ))
     }
 }

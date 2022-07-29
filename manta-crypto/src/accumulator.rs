@@ -364,7 +364,12 @@ where
         model.assert_valid(item, &self.witness, &self.output, compiler)
     }
 
+    /// Converts `self` from the `M` accumulator model to the `N` accumulator model.
     ///
+    /// # Validity
+    ///
+    /// This function cannot guarantee that the point-wise conversion of the witness and output
+    /// preserves the membership proof validity.
     #[inline]
     pub fn into<N>(self) -> MembershipProof<N, COM>
     where

@@ -55,7 +55,7 @@ pub trait CheckedAdd<Rhs = Self> {
     /// Output Type
     type Output;
 
-    /// Checked integer subtraction. Computes `self + rhs`, returning `None` if overflow occurred.
+    /// Checked integer addition. Computes `self + rhs`, returning `None` if overflow occurred.
     fn checked_add(self, rhs: Rhs) -> Option<Self::Output>;
 }
 

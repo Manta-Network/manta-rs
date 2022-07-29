@@ -252,9 +252,9 @@ where
         } = &self.0;
         vk.serialize(&mut writer)?;
         alpha_g1_beta_g2.serialize(&mut writer)?;
-        <E::G2Prepared as HasSerialization>::Serialize::from(gamma_g2_neg_pc)
+        <E::G2Prepared as HasSerialization<'_>>::Serialize::from(gamma_g2_neg_pc)
             .serialize(&mut writer)?;
-        <E::G2Prepared as HasSerialization>::Serialize::from(delta_g2_neg_pc)
+        <E::G2Prepared as HasSerialization<'_>>::Serialize::from(delta_g2_neg_pc)
             .serialize(&mut writer)?;
         Ok(())
     }
@@ -269,9 +269,9 @@ where
         } = &self.0;
         vk.serialized_size()
             + alpha_g1_beta_g2.serialized_size()
-            + <E::G2Prepared as HasSerialization>::Serialize::from(gamma_g2_neg_pc)
+            + <E::G2Prepared as HasSerialization<'_>>::Serialize::from(gamma_g2_neg_pc)
                 .serialized_size()
-            + <E::G2Prepared as HasSerialization>::Serialize::from(delta_g2_neg_pc)
+            + <E::G2Prepared as HasSerialization<'_>>::Serialize::from(delta_g2_neg_pc)
                 .serialized_size()
     }
 
@@ -288,9 +288,9 @@ where
         } = &self.0;
         vk.serialize_uncompressed(&mut writer)?;
         alpha_g1_beta_g2.serialize_uncompressed(&mut writer)?;
-        <E::G2Prepared as HasSerialization>::Serialize::from(gamma_g2_neg_pc)
+        <E::G2Prepared as HasSerialization<'_>>::Serialize::from(gamma_g2_neg_pc)
             .serialize_uncompressed(&mut writer)?;
-        <E::G2Prepared as HasSerialization>::Serialize::from(delta_g2_neg_pc)
+        <E::G2Prepared as HasSerialization<'_>>::Serialize::from(delta_g2_neg_pc)
             .serialize_uncompressed(&mut writer)?;
         Ok(())
     }
@@ -308,9 +308,9 @@ where
         } = &self.0;
         vk.serialize_unchecked(&mut writer)?;
         alpha_g1_beta_g2.serialize_unchecked(&mut writer)?;
-        <E::G2Prepared as HasSerialization>::Serialize::from(gamma_g2_neg_pc)
+        <E::G2Prepared as HasSerialization<'_>>::Serialize::from(gamma_g2_neg_pc)
             .serialize_unchecked(&mut writer)?;
-        <E::G2Prepared as HasSerialization>::Serialize::from(delta_g2_neg_pc)
+        <E::G2Prepared as HasSerialization<'_>>::Serialize::from(delta_g2_neg_pc)
             .serialize_unchecked(&mut writer)?;
         Ok(())
     }
@@ -325,9 +325,9 @@ where
         } = &self.0;
         vk.uncompressed_size()
             + alpha_g1_beta_g2.uncompressed_size()
-            + <E::G2Prepared as HasSerialization>::Serialize::from(gamma_g2_neg_pc)
+            + <E::G2Prepared as HasSerialization<'_>>::Serialize::from(gamma_g2_neg_pc)
                 .uncompressed_size()
-            + <E::G2Prepared as HasSerialization>::Serialize::from(delta_g2_neg_pc)
+            + <E::G2Prepared as HasSerialization<'_>>::Serialize::from(delta_g2_neg_pc)
                 .uncompressed_size()
     }
 }

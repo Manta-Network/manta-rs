@@ -506,6 +506,15 @@ where
         compiler.assert_eq(&self.header, &rhs.header);
         compiler.assert_eq(&self.ciphertext, &rhs.ciphertext);
     }
+
+impl<E, COM> constraint::Eq<COM> for EncryptedMessage<E>
+where
+    E: CiphertextType + HeaderType + ?Sized,
+    COM: Has<bool>,
+    Bool<COM>: BitAnd<Bool<COM>, COM, Output = Bool<COM>>,
+    E::Ciphertext: constraint::Eq<COM>,
+    E::Header: constraint::Eq<COM>,
+{
 }
 
 impl<E, H, C> Sample<(H, C)> for EncryptedMessage<E>
