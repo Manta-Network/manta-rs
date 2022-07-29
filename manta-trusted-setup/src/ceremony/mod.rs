@@ -16,6 +16,8 @@
 
 //! Client and Server Interfaces and Implementations for Manta Trusted Setup Ceremony.
 
+use core::fmt::Display;
+
 // pub mod bls_server;
 pub mod coordinator;
 pub mod queue;
@@ -49,4 +51,18 @@ pub enum CeremonyError {
 
     /// The waiting queue is empty.
     WaitingQueueEmpty,
+}
+
+impl Display for CeremonyError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            CeremonyError::AlreadyRegistered => write!(f, "Already registered"),
+            CeremonyError::InvalidContribution => write!(f, "Invalid contribution"),
+            CeremonyError::InvalidSignature => write!(f, "Invalid signature"),
+            CeremonyError::NotYourTurn => write!(f, "Not your turn"),
+            CeremonyError::NotRegistered => write!(f, "Not registered"),
+            CeremonyError::TrustedSetupError => write!(f, "Trusted Setup Error"),
+            CeremonyError::WaitingQueueEmpty => write!(f, "Waiting queue is empty"),
+        }
+    }
 }

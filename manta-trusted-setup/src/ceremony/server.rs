@@ -29,10 +29,13 @@ use crate::{
     },
     mpc,
 };
+use serde::de::DeserializeOwned;
 use std::{
+    future::Future,
     marker::PhantomData,
     sync::{Arc, Mutex},
 };
+use tide::{prelude::*, Body, Request, Response};
 
 #[derive(derivative::Derivative)]
 #[derivative(Clone(bound = ""))]
@@ -61,7 +64,7 @@ where
 {
     /// Registers then queues a participant // TODO The registration is by hand, so queueing should be split from it
     #[inline]
-    async fn register_participant<'a>(
+    pub async fn register_participant<'a>(
         self,
         request: Signed<RegisterRequest<P>, S>,
     ) -> Result<(), CeremonyError>
@@ -75,16 +78,9 @@ where
         state.register(request.message.participant)
     }
 
-    /// Adds a participant to the queue if they are registered. Todo: join queue should return position
-    #[inline]
-    async fn join_queue(self, request: JoinQueueRequest<P>) -> Result<usize, CeremonyError> {
-        let mut state = self.coordinator.lock();
-        todo!()
-    }
-
     /// Gives current MPC state and challenge if participant is at front of queue.
     #[inline]
-    async fn get_state_and_challenge(
+    pub async fn get_state_and_challenge(
         self,
         request: Signed<GetMpcRequest<P, V>, S>,
     ) -> Result<GetMpcResponse<V>, CeremonyError>
@@ -107,7 +103,10 @@ where
 
     /// Processes a request to update the MPC state. If successful then participant is removed from queue.
     #[inline]
-    async fn update(self, request: Signed<ContributeRequest<P, V>, S>) -> Result<(), CeremonyError>
+    pub async fn update(
+        self,
+        request: Signed<ContributeRequest<P, V>, S>,
+    ) -> Result<(), CeremonyError>
     where
         Signed<ContributeRequest<P, V>, S>: Sized,
         V::State: Default,
@@ -124,5 +123,33 @@ where
         )
     }
 
-    // TODO: execute
+    /// Executes `f` on the incoming `request`.
+    #[inline]
+    async fn execute<T, R, F, Fut>(
+        mut request: Request<Self>, // get json from here
+        f: F,
+    ) -> Result<Response, tide::Error>
+    where
+        T: DeserializeOwned, // Request type that would have been received from Client
+        R: Serialize,        // Response
+        F: FnOnce(Self, T) -> Fut, // endpoint must be of this form
+        Fut: Future<Output = Result<R, CeremonyError>>, // R is the type returned by Server, like Attestation
+    {
+        let args = request.body_json::<T>().await?; // parse json into its args
+        into_body(move || async move {
+            f(request.state().clone(), args).await // pass those args to f, as well as a copy of the State -- rather ArcMutex<State>, hence clonable
+        })
+        .await
+    }
+}
+
+/// Generates the JSON body for the output of `f`, returning an HTTP reponse.
+#[inline]
+async fn into_body<R, F, Fut>(f: F) -> Result<Response, tide::Error>
+where
+    R: Serialize,
+    F: FnOnce() -> Fut,
+    Fut: Future<Output = Result<R, CeremonyError>>,
+{
+    Ok(Body::from_json(&f().await.map_err(tide::Error::from_display)?)?.into())
 }

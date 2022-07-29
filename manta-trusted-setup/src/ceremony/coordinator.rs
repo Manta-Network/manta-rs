@@ -95,13 +95,15 @@ where
         };
 
         // verify and update the state and challenge
-        let next_challenge = self.mpc_verifier.challenge(&self.state, &self.challenge);
+        let next_challenge =
+            self.mpc_verifier
+                .challenge(&self.challenge, &self.state, &transformed_state, &proof);
         let transformed_state = self
             .mpc_verifier
             .verify_transform(
+                &next_challenge,
                 core::mem::take(&mut self.state),
                 transformed_state,
-                next_challenge,
                 proof,
             )
             .map_err(|_| CeremonyError::TrustedSetupError)?; // TODO: add more error description
