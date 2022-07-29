@@ -18,6 +18,7 @@
 
 use crate::{
     groth16::kzg::{self, Accumulator},
+    mpc::{Types, Verify},
     pairing::{Pairing, PairingEngineExt},
     ratio::{HashToGroup, RatioProof},
     util::{batch_into_projective, batch_mul_fixed_scalar, merge_pairs_affine},
@@ -385,4 +386,49 @@ where
         return Err(Error::InconsistentLChange);
     }
     Ok(())
+}
+
+/// Groth 16 Phase 2
+pub struct Groth16Phase2<C>
+where
+    C: Configuration,
+{
+    __: core::marker::PhantomData<C>,
+}
+
+impl<C> Types for Groth16Phase2<C>
+where
+    C: Configuration,
+{
+    type Challenge = C::Challenge;
+    type State = State<C>;
+    type Proof = Proof<C>;
+}
+
+impl<C> Verify for Groth16Phase2<C>
+where
+    C: Configuration,
+{
+    type Error = Error;
+
+    fn challenge(
+        &self,
+        challenge: &Self::Challenge,
+        prev: &Self::State,
+        next: &Self::State,
+        proof: &Self::Proof,
+    ) -> Self::Challenge {
+        C::challenge(challenge, prev, next, proof)
+    }
+
+    fn verify_transform(
+        &self,
+        challenge: &Self::Challenge,
+        last: Self::State,
+        next: Self::State,
+        proof: Self::Proof,
+    ) -> Result<Self::State, Self::Error> {
+        let (_, transformed_state) = verify_transform::<C>(challenge, last, next, proof)?;
+        Ok(transformed_state)
+    }
 }
