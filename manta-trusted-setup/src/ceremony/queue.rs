@@ -86,8 +86,9 @@ where
                     .iter()
                     .find_with(&mut Finder::new(0), |count, item| {
                         if item == &identifier {
-                            Some(*count+1)
+                            Some(*count)
                         } else {
+                            *count += 1;
                             None
                         }
                     })?,
@@ -127,5 +128,65 @@ where
 
 #[cfg(test)]
 mod tests {
-    // TODO: add test for queue
+    use super::*;
+    use crate::ceremony::queue::Queue;
+    use alloc::string::{String, ToString};
+    #[derive(Debug, PartialEq)]
+    struct Item {
+        id: String,
+        priority: usize,
+    }
+
+    impl Priority for Item {
+        fn priority(&self) -> usize {
+            self.priority
+        }
+    }
+
+    impl Identifier for Item {
+        type Identifier = String;
+        fn identifier(&self) -> Self::Identifier {
+            self.id.clone()
+        }
+    }
+
+    #[test]
+    fn test_queue() {
+        let mut queue = Queue::<_, 2>::new();
+        let item1 = Item {
+            id: "a".to_string(),
+            priority: 0,
+        };
+        let item2 = Item {
+            id: "b".to_string(),
+            priority: 1,
+        };
+        let item3 = Item {
+            id: "c".to_string(),
+            priority: 0,
+        };
+        let item4 = Item {
+            id: "d".to_string(),
+            priority: 1,
+        };
+        queue.push(&item1);
+        queue.push(&item2);
+        queue.push(&item3);
+        queue.push(&item4);
+        assert_eq!(queue.len(), 4);
+        assert_eq!(queue.position(&item2), Some(0));
+        assert_eq!(queue.position(&item4), Some(1));
+        assert_eq!(queue.position(&item1), Some(2));
+        assert_eq!(queue.position(&item3), Some(3));
+
+        assert_eq!(queue.pop(), Some("b".to_string()));
+        assert!(!queue.is_at_front(&item2));
+        assert!(queue.is_at_front(&item4));
+        assert_eq!(queue.pop(), Some("d".to_string()));
+        assert!(queue.is_at_front(&item1));
+        assert_eq!(queue.pop(), Some("a".to_string()));
+        assert_eq!(queue.pop(), Some("c".to_string()));
+        assert_eq!(queue.pop(), None);
+        assert_eq!(queue.len(), 0);
+    }
 }
