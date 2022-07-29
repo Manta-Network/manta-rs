@@ -16,27 +16,24 @@
 
 //! Utilities
 
-use crate::{groth16::kzg, ratio::HashToGroup};
+use crate::{groth16::kzg, pairing::Pairing, ratio::HashToGroup};
 use alloc::vec::Vec;
-use ark_ec::{short_weierstrass_jacobian::GroupAffine, wnaf::WnafContext, SWModelParameters};
-use ark_ff::{BigInteger, Fp256};
+use ark_ec::{
+    short_weierstrass_jacobian::GroupAffine, wnaf::WnafContext, AffineCurve, ProjectiveCurve,
+    SWModelParameters,
+};
+use ark_ff::{BigInteger, Fp256, PrimeField, UniformRand, Zero};
+use ark_serialize::{CanonicalSerialize, Read, SerializationError, Write};
 use ark_std::io;
 use blake2::{Blake2b512, Digest as Blake2Digest};
 use byteorder::{BigEndian, ReadBytesExt};
 use core::marker::PhantomData;
 use manta_crypto::rand::{CryptoRng, OsRng, RngCore, SeedableRng};
-use manta_util::{cfg_into_iter, cfg_iter, cfg_iter_mut, cfg_reduce};
+use manta_util::{cfg_into_iter, cfg_iter, cfg_iter_mut, cfg_reduce, into_array_unchecked};
 use rand_chacha::ChaCha20Rng;
 
 #[cfg(feature = "rayon")]
 use manta_util::rayon::iter::{IndexedParallelIterator, ParallelIterator};
-
-pub use crate::pairing::Pairing;
-pub use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
-pub use ark_ff::{Field, One, PrimeField, UniformRand, Zero};
-pub use ark_serialize::{
-    CanonicalDeserialize, CanonicalSerialize, Read, SerializationError, Write,
-};
 
 /// Distribution Type Extension
 pub trait HasDistribution {
@@ -415,21 +412,6 @@ where
         seed.extend(word.to_le_bytes());
     }
     G::gen(&mut ChaCha20Rng::from_seed(into_array_unchecked(seed)))
-}
-
-/// Performs the [`TryInto`] conversion into an array without checking if the conversion succeeded.
-#[inline]
-pub fn into_array_unchecked<T, V, const N: usize>(value: V) -> [T; N]
-where
-    V: TryInto<[T; N]>,
-{
-    match value.try_into() {
-        Ok(array) => array,
-        _ => unreachable!(
-            "{} {:?}.",
-            "Input did not have the correct length to match the output array of length", N
-        ),
-    }
 }
 
 /// Multiplies each element in `bases` by a fixed `scalar`.

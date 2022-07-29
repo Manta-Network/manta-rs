@@ -19,12 +19,11 @@
 use crate::{
     pairing::{Pairing, PairingEngineExt},
     ratio::{HashToGroup, RatioProof},
-    util::{
-        power_pairs, scalar_mul, CanonicalDeserialize, CanonicalSerialize, Deserializer, NonZero,
-        One, Read, Sample, SerializationError, Serializer, UniformRand, Write,
-    },
+    util::{power_pairs, scalar_mul, Deserializer, NonZero, Sample, Serializer},
 };
 use alloc::{vec, vec::Vec};
+use ark_ff::{One, UniformRand};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Read, SerializationError, Write};
 use core::{iter, ops::Mul};
 use manta_crypto::rand::{CryptoRng, RngCore};
 use manta_util::{cfg_iter, cfg_iter_mut, from_variant, vec::VecExt};

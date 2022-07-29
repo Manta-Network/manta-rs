@@ -31,6 +31,9 @@ rayon = ["manta-util/rayon"]
 # Standard Library
 std = []
 
+# Testing Frameworks
+test = []
+
 [dependencies]
 ark-ec = { version = "0.3.0", default-features = false }
 ark-ff = { version = "0.3.0", default-features = false }
@@ -52,3 +55,4 @@ ark-bls12-381 = { version = "0.3.0", default-features = false, features = ["curv
 ark-r1cs-std = { version = "0.3.1", default-features = false }
 ark-snark = { version = "0.3.0", default-features = false }
 manta-pay = { path = "../manta-pay", default-features = false, features = ["groth16"] } # TODO: To be removed
+manta-trusted-setup = { path = ".", default-features = false, features = ["test"] }

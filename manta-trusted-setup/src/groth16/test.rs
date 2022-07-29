@@ -23,14 +23,12 @@ use crate::{
     },
     mpc::{Transcript, Types},
     pairing::Pairing,
-    ratio::test::prove_and_verify_ratio_proof,
-    util::{
-        into_array_unchecked, AffineCurve, BlakeHasher, HasDistribution, KZGBlakeHasher,
-        PairingEngine, Sample,
-    },
+    ratio::test::assert_valid_ratio_proof,
+    util::{BlakeHasher, HasDistribution, KZGBlakeHasher, Sample},
 };
 use alloc::vec::Vec;
 use ark_bls12_381::Fr;
+use ark_ec::{AffineCurve, PairingEngine};
 use ark_ff::{field_new, UniformRand};
 use ark_groth16::{Groth16, ProvingKey};
 use ark_r1cs_std::eq::EqGadget;
@@ -43,6 +41,7 @@ use manta_crypto::{
     rand::{CryptoRng, OsRng, RngCore},
 };
 use manta_pay::crypto::constraint::arkworks::{Fp, FpVar, R1CS};
+use manta_util::into_array_unchecked;
 
 /// Test MPC
 #[derive(Clone, Default)]
@@ -65,10 +64,12 @@ impl Pairing for Test {
     type G2Prepared = <ark_bls12_381::Bls12_381 as PairingEngine>::G2Prepared;
     type Pairing = ark_bls12_381::Bls12_381;
 
+    #[inline]
     fn g1_prime_subgroup_generator() -> Self::G1 {
         ark_bls12_381::G1Affine::prime_subgroup_generator()
     }
 
+    #[inline]
     fn g2_prime_subgroup_generator() -> Self::G2 {
         ark_bls12_381::G2Affine::prime_subgroup_generator()
     }
@@ -84,6 +85,12 @@ impl kzg::Configuration for Test {
     const ALPHA_DOMAIN_TAG: Self::DomainTag = 1;
     const BETA_DOMAIN_TAG: Self::DomainTag = 2;
 
+    #[inline]
+    fn hasher(domain_tag: Self::DomainTag) -> Self::HashToGroup {
+        Self::HashToGroup { domain_tag }
+    }
+
+    #[inline]
     fn response(
         state: &Accumulator<Self>,
         challenge: &Self::Challenge,
@@ -118,16 +125,13 @@ impl kzg::Configuration for Test {
             .expect("Consuming ratio proof of beta failed.");
         into_array_unchecked(hasher.0.finalize())
     }
-
-    fn hasher(domain_tag: Self::DomainTag) -> Self::HashToGroup {
-        Self::HashToGroup { domain_tag }
-    }
 }
 
 impl mpc::Configuration for Test {
     type Challenge = [u8; 64];
     type Hasher = BlakeHasher;
 
+    #[inline]
     fn challenge(
         challenge: &Self::Challenge,
         prev: &State<Self>,
@@ -170,18 +174,23 @@ impl Types for Test {
 }
 
 /// Conducts a dummy phase one trusted setup.
+#[inline]
 pub fn dummy_phase_one_trusted_setup() -> Accumulator<Test> {
     let mut rng = OsRng;
     let accumulator = Accumulator::default();
     let challenge = [0; 64];
     let contribution = Contribution::gen(&mut rng);
-    let proof = contribution.proof(&challenge, &mut rng).unwrap();
+    let proof = contribution
+        .proof(&challenge, &mut rng)
+        .expect("The contribution proof should have been generated correctly.");
     let mut next_accumulator = accumulator.clone();
     next_accumulator.update(&contribution);
-    Accumulator::verify_transform(accumulator, next_accumulator, challenge, proof).unwrap()
+    Accumulator::verify_transform(accumulator, next_accumulator, challenge, proof)
+        .expect("Accumulator should have been generated correctly.")
 }
 
 /// Generates a dummy R1CS circuit.
+#[inline]
 pub fn dummy_circuit(cs: &mut R1CS<Fr>) {
     let a = Fp(field_new!(Fr, "2")).as_known::<Secret, FpVar<_>>(cs);
     let b = Fp(field_new!(Fr, "3")).as_known::<Secret, FpVar<_>>(cs);
@@ -192,6 +201,7 @@ pub fn dummy_circuit(cs: &mut R1CS<Fr>) {
 }
 
 /// Proves and verifies a R1CS circuit with proving key `pk` and a random number generator `rng`.
+#[inline]
 pub fn prove_and_verify_circuit<P, R>(pk: ProvingKey<P>, cs: R1CS<Fr>, mut rng: &mut R)
 where
     P: PairingEngine<Fr = Fr>,
@@ -210,9 +220,9 @@ where
 
 /// Tests if proving and verifying ratio proof is correct.
 #[test]
-pub fn proving_and_verifying_ratio_proof_is_correct() {
-    prove_and_verify_ratio_proof(
-        &<Test as kzg::Configuration>::hasher(Test::TAU_DOMAIN_TAG),
+fn proving_and_verifying_ratio_proof_is_correct() {
+    assert_valid_ratio_proof(
+        &Test::hasher(Test::TAU_DOMAIN_TAG),
         &[0; 64],
         &<Test as Pairing>::Scalar::rand(&mut OsRng),
         &mut OsRng,
@@ -222,7 +232,7 @@ pub fn proving_and_verifying_ratio_proof_is_correct() {
 /// Tests if trusted setup phase 2 is valid with trusted setup phase 1 and proves and verifies a
 /// dummy circuit.
 #[test]
-pub fn trusted_setup_phase_two_is_valid() {
+fn trusted_setup_phase_two_is_valid() {
     let mut rng = OsRng;
     let mut cs = R1CS::for_contexts();
     dummy_circuit(&mut cs);

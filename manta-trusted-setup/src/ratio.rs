@@ -117,13 +117,15 @@ where
     }
 }
 
-/// Testing Suite
-#[cfg(test)]
+/// Testing Framework
+#[cfg(feature = "test")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
 pub mod test {
     use super::*;
 
-    /// Abstract tests Tests if proving and verifying ratio proof is correct.
-    pub fn prove_and_verify_ratio_proof<P, H, C, R>(
+    /// Asserts that generating a ratio proof always produces a valid result.
+    #[inline]
+    pub fn assert_valid_ratio_proof<P, C, H, R>(
         hasher: &H,
         challenge: &C,
         scalar: &P::Scalar,

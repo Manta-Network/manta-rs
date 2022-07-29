@@ -20,13 +20,11 @@ use crate::{
     groth16::kzg::{self, Accumulator},
     pairing::{Pairing, PairingEngineExt},
     ratio::{HashToGroup, RatioProof},
-    util::{
-        batch_into_projective, batch_mul_fixed_scalar, merge_pairs_affine, AffineCurve, Field,
-        PrimeField, ProjectiveCurve, Zero,
-    },
+    util::{batch_into_projective, batch_mul_fixed_scalar, merge_pairs_affine},
 };
 use alloc::{vec, vec::Vec};
-use ark_ff::UniformRand;
+use ark_ec::{AffineCurve, ProjectiveCurve};
+use ark_ff::{Field, PrimeField, UniformRand, Zero};
 use ark_groth16::{ProvingKey, VerifyingKey};
 use ark_poly::{EvaluationDomain, Radix2EvaluationDomain};
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem, SynthesisError};
