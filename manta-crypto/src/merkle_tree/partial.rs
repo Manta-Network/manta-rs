@@ -359,18 +359,21 @@ where
         let mut node = Node(self.starting_leaf_index() + index);
         let height = C::HEIGHT;
         let mut nodes_to_be_removed: Vec<Node> = Vec::new();
-        for level in 0..height-1 {
+        for level in 0..height - 1 {
             nodes_to_be_removed.push(node.sibling());
-            if node.sibling().descendants(level).iter()
-            .map(|x| x.0 - self.starting_leaf_index())
-            .map(|y| self.leaf_digest(y))
-            .any(|z| match z {
-                None => false, 
-                Some(q) => self.contains(q),
-            } ) {
+            if node
+                .sibling()
+                .descendants(level)
+                .iter()
+                .map(|x| x.0 - self.starting_leaf_index())
+                .map(|y| self.leaf_digest(y))
+                .any(|z| match z {
+                    None => false,
+                    Some(q) => self.contains(q),
+                })
+            {
                 break;
-            }
-            else {
+            } else {
                 node = node.parent();
             }
         }

@@ -256,8 +256,10 @@ impl Node {
     }
 
     /// Returns the [`Node`] k-th descendants of this node.
-    pub fn descendants(&self, k:usize) -> Vec<Self> {
-        let descendant_nodes: Vec<Node> = ((self.0 << k)..((self.0+1) << k)).map(|x| Node(x)).collect();
+    pub fn descendants(&self, k: usize) -> Vec<Self> {
+        let descendant_nodes: Vec<Node> = ((self.0 << k)..((self.0 + 1) << k))
+            .map(|x| Node(x))
+            .collect();
         descendant_nodes
     }
 
