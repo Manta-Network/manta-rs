@@ -930,6 +930,38 @@ where
         pre_senders: &mut Vec<PreSender<C>>,
         posts: &mut Vec<TransferPost<C>>,
     ) -> Result<(), SignError<C>> {
+        let mut needed_zeroes = PrivateTransferShape::SENDERS - pre_senders.len();
+        if needed_zeroes == 0 {
+            return Ok(());
+        }
+        let zeroes = self.assets.zeroes(needed_zeroes, asset_id);
+        needed_zeroes -= zeroes.len();
+        for zero in zeroes {
+            let pre_sender = self.build_pre_sender(
+                parameters,
+                zero,
+                Asset::<C>::new(asset_id.clone(), Default::default()),
+            );
+            pre_senders.push(pre_sender);
+        }
+        if needed_zeroes == 0 {
+            return Ok(());
+        }
+        let needed_fake_zeroes = needed_zeroes.saturating_sub(new_zeroes.len());
+        for _ in 0..needed_zeroes {
+            match new_zeroes.pop() {
+                Some(zero) => pre_senders.push(zero),
+                _ => break,
+            }
+        }
+        if needed_fake_zeroes == 0 {
+            return Ok(());
+        }
+        for _ in 0..needed_fake_zeroes {
+            todo!()
+        }
+        Ok(())
+
         /* FIXME: We need a new algorithm for this:
          *
          *
@@ -964,7 +996,6 @@ where
         }
         Ok(())
         */
-        todo!()
     }
 
     /// Computes the batched transactions for rebalancing before a final transfer.
