@@ -56,6 +56,12 @@ where
         let _ = rhs;
         C::DEFAULT
     }
+
+    /// Returns the negation of the [`is_independent`](Self::is_independent) method.
+    #[inline]
+    fn is_related(&self, rhs: &Self) -> bool {
+        !self.is_independent(rhs)
+    }
 }
 
 impl<C, T> Independence<C> for &T

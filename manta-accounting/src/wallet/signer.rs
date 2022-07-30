@@ -37,10 +37,14 @@ use crate::{
             ToPublic, Transaction,
         },
         requires_authorization,
-        utxo::{auth::Generate, NoteOpen},
+        utxo::{
+            self,
+            auth::{self, Authorization},
+            NoteOpen,
+        },
         Address, Asset, AssociatedData, AuthorizationKey, AuthorizationProof, FullParametersRef,
-        Identifier, Note, Nullifier, Parameters, PreSender, ProofSystemError, ProvingContext,
-        Receiver, Sender, Shape, Transfer, TransferPost, Utxo, UtxoAccumulatorItem,
+        IdentifiedAsset, Identifier, Note, Nullifier, Parameters, PreSender, ProofSystemError,
+        ProvingContext, Receiver, Sender, Shape, Transfer, TransferPost, Utxo, UtxoAccumulatorItem,
         UtxoAccumulatorModel,
     },
     wallet::ledger::{self, Data},
@@ -48,11 +52,12 @@ use crate::{
 use alloc::{boxed::Box, vec, vec::Vec};
 use core::{convert::Infallible, fmt::Debug, hash::Hash};
 use manta_crypto::{
-    accumulator::{Accumulator, ExactSizeAccumulator, OptimizedAccumulator},
+    accumulator::{Accumulator, ExactSizeAccumulator, ItemHashFunction, OptimizedAccumulator},
     rand::{CryptoRng, FromEntropy, Rand, RngCore},
 };
 use manta_util::{
     array_map,
+    cmp::Independence,
     future::LocalBoxFutureResult,
     into_array_unchecked,
     iter::{Finder, IteratorExt},
@@ -636,12 +641,17 @@ where
 
     ///
     #[inline]
+    fn default_authorization_key(&self, parameters: &C::Parameters) -> AuthorizationKey<C> {
+        auth::Derive::derive(parameters, &self.default_spending_key(parameters))
+    }
+
+    ///
+    #[inline]
     fn authorization_proof_for_default_spending_key(
         &mut self,
         parameters: &C::Parameters,
     ) -> AuthorizationProof<C> {
-        parameters
-            .generate(&self.default_spending_key(parameters), &mut self.rng)
+        Authorization::new(self.default_authorization_key(parameters), self.rng.gen())
             .into_proof(parameters, &mut ())
     }
 
@@ -651,8 +661,7 @@ where
         self.accounts.get_mut_default().default_address(parameters)
     }
 
-    /// Inserts the new `utxo`-`note` pair into the `utxo_accumulator` adding the spendable amount
-    /// to `assets` if there is no void number to match it.
+    ///
     #[inline]
     fn insert_next_item<R>(
         authorization_key: &mut AuthorizationKey<C>,
@@ -660,86 +669,68 @@ where
         assets: &mut C::AssetMap,
         parameters: &Parameters<C>,
         utxo: Utxo<C>,
-        identifier: Identifier<C>,
-        asset: Asset<C>,
+        identified_asset: IdentifiedAsset<C>,
         nullifiers: &mut Vec<Nullifier<C>>,
         deposit: &mut Vec<Asset<C>>,
         rng: &mut R,
     ) where
         R: CryptoRng + RngCore + ?Sized,
     {
-        /*
-        if let Some(nullifier) =
-            parameters.derive_consistent_nullifier(authorization_key, &identifier, &asset, &utxo)
-        {
-            todo!()
-        }
-        */
-        /*
-        let (_, computed_utxo, nullifier) =
-            parameters.derive((), identifier.clone(), asset.clone(), rng);
-        if computed_utxo == utxo {
+        let IdentifiedAsset::<C> { identifier, asset } = identified_asset;
+        let (_, computed_utxo, nullifier) = utxo::DeriveSpend::derive(
+            parameters,
+            authorization_key,
+            identifier.clone(),
+            asset.clone(),
+            rng,
+        );
+        if computed_utxo.is_related(&utxo) {
             if let Some(index) = nullifiers
                 .iter()
-                .position(move |n| n.eq(nullifier, &mut ()))
+                .position(move |n| n.is_related(&nullifier))
             {
                 nullifiers.remove(index);
             } else {
-                todo!()
-            }
-        }
-        */
-
-        /*
-        let ViewKeySelection {
-            index,
-            keypair,
-            item: Note {
-                ephemeral_secret_key,
-                asset,
-            },
-        } = selection;
-        if let Some(void_number) =
-            parameters.check_full_asset(&keypair.spend, &ephemeral_secret_key, &asset, &utxo)
-        {
-            if let Some(index) = void_numbers.iter().position(move |v| v == &void_number) {
-                void_numbers.remove(index);
-            } else {
-                utxo_accumulator.insert(&utxo);
-                assets.insert((index, ephemeral_secret_key), asset);
+                utxo_accumulator.insert(&parameters.item_hash(&utxo, &mut ()));
                 if !asset.is_zero() {
-                    deposit.push(asset);
+                    deposit.push(asset.clone());
                 }
+                assets.insert(identifier, asset);
                 return;
             }
         }
-        utxo_accumulator.insert_nonprovable(&utxo);
-        */
-        todo!()
+        utxo_accumulator.insert_nonprovable(&parameters.item_hash(&utxo, &mut ()));
     }
 
-    /*
     /// Checks if `asset` matches with `nullifier`, removing it from the `utxo_accumulator` and
     /// inserting it into the `withdraw` set if this is the case.
     #[inline]
-    fn is_asset_unspent(
+    fn is_asset_unspent<R>(
+        authorization_key: &mut AuthorizationKey<C>,
         utxo_accumulator: &mut C::UtxoAccumulator,
         parameters: &Parameters<C>,
-        secret_spend_key: &SecretKey<C>,
-        ephemeral_secret_key: &SecretKey<C>,
+        identifier: Identifier<C>,
         asset: Asset<C>,
         nullifiers: &mut Vec<Nullifier<C>>,
-        withdraw: &mut Vec<Asset>,
-    ) -> bool {
-        let utxo = parameters.utxo(
-            ephemeral_secret_key,
-            &parameters.derive(secret_spend_key),
-            &asset,
+        withdraw: &mut Vec<Asset<C>>,
+        rng: &mut R,
+    ) -> bool
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        let (_, utxo, nullifier) = utxo::DeriveSpend::derive(
+            parameters,
+            authorization_key,
+            identifier,
+            asset.clone(),
+            rng,
         );
-        let nullifier = parameters.nullifiers(secret_spend_key, &utxo);
-        if let Some(index) = nullifiers.iter().position(move |n| n == &nullifier) {
+        if let Some(index) = nullifiers
+            .iter()
+            .position(move |n| n.is_related(&nullifier))
+        {
             nullifiers.remove(index);
-            utxo_accumulator.remove_proof(&utxo);
+            utxo_accumulator.remove_proof(&parameters.item_hash(&utxo, &mut ()));
             if !asset.is_zero() {
                 withdraw.push(asset);
             }
@@ -748,7 +739,6 @@ where
             true
         }
     }
-    */
 
     /// Updates the internal ledger state, returning the new asset distribution.
     #[inline]
@@ -765,49 +755,39 @@ where
         let nullifier_count = nullifiers.len();
         let mut deposit = Vec::new();
         let mut withdraw = Vec::new();
-        let viewing_key = ();
+        let mut authorization_key = self.default_authorization_key(parameters);
+        let decryption_key = utxo::DeriveDecryptionKey::derive(parameters, &mut authorization_key);
         for (utxo, note) in inserts {
-            /*
-            if let Some((identifier, asset)) = parameters.open(&viewing_key, &utxo, note) {
+            if let Some(identified_asset) = parameters.open_into(&decryption_key, &utxo, note) {
                 Self::insert_next_item(
+                    &mut authorization_key,
                     &mut self.utxo_accumulator,
                     &mut self.assets,
                     parameters,
                     utxo,
-                    identifier,
-                    asset,
+                    identified_asset,
                     &mut nullifiers,
                     &mut deposit,
+                    &mut self.rng,
                 );
             } else {
-                // FIXME: self.utxo_accumulator.insert_nonprovable(&utxo);
-                todo!()
+                self.utxo_accumulator
+                    .insert_nonprovable(&parameters.item_hash(&utxo, &mut ()));
             }
-            */
-            todo!()
         }
         self.assets.retain(|identifier, assets| {
-            /*
-            assets.retain(
-                |asset| match self.accounts.get_default().spend_key(*index) {
-                    Some(secret_spend_key) => {
-                        /*
-                        Self::is_asset_unspent(
-                            &mut self.utxo_accumulator,
-                            parameters,
-                            &secret_spend_key,
-                            ephemeral_secret_key,
-                            *asset,
-                            &mut void_numbers,
-                            &mut withdraw,
-                        )
-                        */
-                        todo!()
-                    }
-                    _ => true,
-                },
-            );
-            */
+            assets.retain(|asset| {
+                Self::is_asset_unspent(
+                    &mut authorization_key,
+                    &mut self.utxo_accumulator,
+                    parameters,
+                    identifier.clone(),
+                    asset.clone(),
+                    &mut nullifiers,
+                    &mut withdraw,
+                    &mut self.rng,
+                )
+            });
             !assets.is_empty()
         });
         self.checkpoint.update_from_nullifiers(nullifier_count);
@@ -827,25 +807,21 @@ where
         }
     }
 
-    /// Builds the pre-sender associated to `key` and `asset`.
+    /// Builds the pre-sender associated to `identifier` and `asset`.
     #[inline]
     fn build_pre_sender(
         &mut self,
         parameters: &Parameters<C>,
-        key: Identifier<C>,
+        identifier: Identifier<C>,
         asset: Asset<C>,
     ) -> PreSender<C> {
-        let default_spending_key = self.default_spending_key(parameters);
-        /*
-        PreSender::sample(
+        PreSender::<C>::sample(
             parameters,
-            default_spending_key.into(),
-            key,
+            &mut self.default_authorization_key(parameters),
+            identifier,
             asset,
             &mut self.rng,
         )
-        */
-        todo!()
     }
 
     ///
@@ -912,13 +888,13 @@ where
         const SINKS: usize,
     >(
         &mut self,
-        parameters: &SignerParameters<C>,
+        parameters: &Parameters<C>,
         proving_context: &ProvingContext<C>,
         transfer: Transfer<C, SOURCES, SENDERS, RECEIVERS, SINKS>,
     ) -> Result<TransferPost<C>, SignError<C>> {
-        let spending_key = self.default_spending_key(&parameters.parameters);
+        let spending_key = self.default_spending_key(parameters);
         Self::build_post_inner(
-            FullParametersRef::<C>::new(&parameters.parameters, self.utxo_accumulator.model()),
+            FullParametersRef::<C>::new(parameters, self.utxo_accumulator.model()),
             proving_context,
             requires_authorization(SENDERS).then_some(&spending_key),
             transfer,
@@ -935,16 +911,12 @@ where
         asset_id: &C::AssetId,
         total: C::AssetValue,
     ) -> Result<([Receiver<C>; PrivateTransferShape::RECEIVERS], Join<C>), SignError<C>> {
-        /* TODO:
-        let keypair = self.accounts.get_default().default_keypair();
         Ok(Join::new(
             parameters,
-            asset_id.with(total),
-            &SpendingKey::new(keypair.spend, keypair.view),
+            &mut self.default_authorization_key(parameters),
+            Asset::<C>::new(asset_id.clone(), total),
             &mut self.rng,
         ))
-        */
-        todo!()
     }
 
     /// Prepares the final pre-senders for the last part of the transaction.
@@ -1019,15 +991,15 @@ where
                 let (receivers, mut join) = self.next_join(
                     parameters,
                     asset_id,
-                    senders.iter().map(|s| s.asset().value.clone()).sum(),
+                    senders.iter().map(|s| s.asset().value).sum(),
                 )?;
-                /*
+                let authorization_proof =
+                    self.authorization_proof_for_default_spending_key(parameters);
                 posts.push(self.build_post(
                     parameters,
                     &proving_context.private_transfer,
-                    PrivateTransfer::build(senders, receivers),
+                    PrivateTransfer::build(authorization_proof, senders, receivers),
                 )?);
-                */
                 join.insert_utxos(parameters, &mut self.utxo_accumulator);
                 joins.push(join.pre_sender);
                 new_zeroes.append(&mut join.zeroes);
@@ -1213,13 +1185,13 @@ where
                     Default::default(),
                 );
                 self.state.build_post(
-                    &self.parameters,
+                    &self.parameters.parameters,
                     &self.parameters.proving_context.private_transfer,
                     PrivateTransfer::build(authorization_proof, senders, [change, receiver]),
                 )?
             }
             _ => self.state.build_post(
-                &self.parameters,
+                &self.parameters.parameters,
                 &self.parameters.proving_context.to_public,
                 ToPublic::build(authorization_proof, senders, [change], asset),
             )?,
@@ -1240,7 +1212,7 @@ where
                     .state
                     .default_receiver(&self.parameters.parameters, asset.clone());
                 Ok(SignResponse::new(vec![self.state.build_post(
-                    &self.parameters,
+                    &self.parameters.parameters,
                     &self.parameters.proving_context.to_private,
                     ToPrivate::build(asset, receiver),
                 )?]))

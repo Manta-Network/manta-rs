@@ -57,7 +57,7 @@ pub trait UtxoType {
 /// Unspent Transaction Output Type
 pub type Utxo<T> = <T as UtxoType>::Utxo;
 
-///
+/// UTXO Independence
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct UtxoIndependence;
 
@@ -83,7 +83,7 @@ pub trait NullifierType {
 /// Nullifier Type
 pub type Nullifier<T> = <T as NullifierType>::Nullifier;
 
-///
+/// Nullifier Independence
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct NullifierIndependence;
 
@@ -99,6 +99,39 @@ pub trait IdentifierType {
 
 /// Identifier Type
 pub type Identifier<T> = <T as IdentifierType>::Identifier;
+
+/// Identified Asset
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "T::Identifier: Clone, T::Asset: Clone"),
+    Copy(bound = "T::Identifier: Copy, T::Asset: Copy"),
+    Debug(bound = "T::Identifier: Debug, T::Asset: Debug"),
+    Default(bound = "T::Identifier: Default, T::Asset: Default"),
+    Eq(bound = "T::Identifier: Eq, T::Asset: Eq"),
+    Hash(bound = "T::Identifier: Hash, T::Asset: Hash"),
+    PartialEq(bound = "T::Identifier: PartialEq, T::Asset: PartialEq")
+)]
+pub struct IdentifiedAsset<T>
+where
+    T: AssetType + IdentifierType + ?Sized,
+{
+    /// Identifier
+    pub identifier: T::Identifier,
+
+    /// Asset
+    pub asset: T::Asset,
+}
+
+impl<T> IdentifiedAsset<T>
+where
+    T: AssetType + IdentifierType + ?Sized,
+{
+    /// Builds a new [`IdentifiedAsset`] from `identifier` and `asset`.
+    #[inline]
+    pub fn new(identifier: T::Identifier, asset: T::Asset) -> Self {
+        Self { identifier, asset }
+    }
+}
 
 /// Address
 pub trait AddressType {
@@ -131,7 +164,7 @@ pub type AssociatedData<T> = <T as AssociatedDataType>::AssociatedData;
 )]
 pub struct FullAsset<T>
 where
-    T: AssetType + AssociatedDataType,
+    T: AssetType + AssociatedDataType + ?Sized,
 {
     /// Asset
     pub asset: T::Asset,
@@ -142,7 +175,7 @@ where
 
 impl<T> FullAsset<T>
 where
-    T: AssetType + AssociatedDataType,
+    T: AssetType + AssociatedDataType + ?Sized,
 {
     /// Builds a new [`FullAsset`] from `asset` and `associated_data`.
     #[inline]
@@ -169,11 +202,17 @@ pub trait DefaultAddress<T>: AddressType {
     fn default_address(&self, base: &T) -> Self::Address;
 }
 
-/// Note Opening
-pub trait NoteOpen: AssetType + IdentifierType + NoteType + UtxoType {
+/// Derive Decryption Key
+pub trait DeriveDecryptionKey: AuthorizationKeyType {
     /// Decryption Key Type
     type DecryptionKey;
 
+    /// Derives the decryption key for notes from `authorization_key`.
+    fn derive(&self, authorization_key: &mut Self::AuthorizationKey) -> Self::DecryptionKey;
+}
+
+/// Note Opening
+pub trait NoteOpen: AssetType + DeriveDecryptionKey + IdentifierType + NoteType + UtxoType {
     /// Tries to open `note` with `decryption_key`, returning a note [`Identifier`] and its stored
     /// [`Asset`].
     ///
@@ -185,6 +224,18 @@ pub trait NoteOpen: AssetType + IdentifierType + NoteType + UtxoType {
         utxo: &Self::Utxo,
         note: Self::Note,
     ) -> Option<(Self::Identifier, Self::Asset)>;
+
+    /// Tries to open `note` with `decryption_key`, returning an [`IdentifiedAsset`].
+    #[inline]
+    fn open_into(
+        &self,
+        decryption_key: &Self::DecryptionKey,
+        utxo: &Self::Utxo,
+        note: Self::Note,
+    ) -> Option<IdentifiedAsset<Self>> {
+        self.open(decryption_key, utxo, note)
+            .map(|(identifier, asset)| IdentifiedAsset::new(identifier, asset))
+    }
 }
 
 /// Query Identifier Value
@@ -252,7 +303,7 @@ pub trait Spend<COM = ()>:
         compiler: &mut COM,
     ) -> (Self::Asset, Self::Nullifier);
 
-    ///
+    /// Asserts that `lhs` and `rhs` are exactly equal.
     fn assert_equal_nullifiers(
         &self,
         lhs: &Self::Nullifier,
@@ -274,15 +325,6 @@ pub trait DeriveSpend: Spend + IdentifierType {
     ) -> (Self::Secret, Self::Utxo, Self::Nullifier)
     where
         R: CryptoRng + RngCore + ?Sized;
-
-    ///
-    fn derive_consistent_nullifier(
-        &self,
-        authorization_key: &mut Self::AuthorizationKey,
-        identifier: &Self::Identifier,
-        asset: &Self::Asset,
-        utxo: &Self::Utxo,
-    ) -> Option<Self::Nullifier>;
 }
 
 /// UTXO Accumulator Model Type

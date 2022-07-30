@@ -106,8 +106,14 @@ pub trait Configuration {
     /// Nullifier Type
     type Nullifier: Independence<NullifierIndependence>;
 
+    /// Identifier Type
+    type Identifier: Clone;
+
     /// Spending Key
     type SpendingKey;
+
+    /// Authorization Randomness
+    type AuthorizationRandomness: Sample;
 
     /// Authorization Signature Randomness
     type AuthorizationSignatureRandomness: Sample;
@@ -119,8 +125,9 @@ pub trait Configuration {
     type SpendSecret: utxo::QueryAsset<Asset = Asset<Self>, Utxo = Self::Utxo>;
 
     /// Parameters Type
-    type Parameters: auth::Generate
+    type Parameters: auth::Derive
         + auth::Verify
+        + auth::RandomnessType<Randomness = Self::AuthorizationRandomness>
         + auth::Randomize<Self::SpendingKey>
         + auth::Randomize<AuthorizationKey<Self>>
         + signature::Sign<
@@ -130,12 +137,13 @@ pub trait Configuration {
         > + signature::Verify<VerifyingKey = AuthorizationKey<Self>, Verification = bool>
         + utxo::AssetType<Asset = Asset<Self>>
         + utxo::AssociatedDataType<AssociatedData = Self::AssociatedData>
-        + utxo::UtxoType<Utxo = Self::Utxo>
-        + utxo::DefaultAddress<Self::SpendingKey>
         + utxo::DefaultAddress<AuthorizationKey<Self>>
-        + utxo::DeriveMint<Secret = Self::MintSecret>
-        + utxo::DeriveSpend<Secret = Self::SpendSecret, Nullifier = Self::Nullifier>
-        + utxo::NoteOpen;
+        + utxo::DeriveMint<Secret = Self::MintSecret, Utxo = Self::Utxo>
+        + utxo::DeriveSpend<
+            Secret = Self::SpendSecret,
+            Nullifier = Self::Nullifier,
+            Identifier = Self::Identifier,
+        > + utxo::NoteOpen<DecryptionKey = AuthorizationKey<Self>>;
 
     /// Authorization Key Type  Variable
     type AuthorizationKeyVar: Variable<Secret, Self::Compiler, Type = AuthorizationKey<Self>>
@@ -338,6 +346,9 @@ pub type Nullifier<C> = utxo::Nullifier<Parameters<C>>;
 
 /// Identifier Type
 pub type Identifier<C> = utxo::Identifier<Parameters<C>>;
+
+/// Identified Asset Type
+pub type IdentifiedAsset<C> = utxo::IdentifiedAsset<Parameters<C>>;
 
 /// Pre-Sender Type
 pub type PreSender<C> = sender::PreSender<Parameters<C>>;
@@ -1588,13 +1599,11 @@ where
             ledger,
         )?;
         if !all_unequal(&self.body.sender_posts, |p, q| {
-            p.nullifier.is_independent(&q.nullifier)
+            p.nullifier.is_related(&q.nullifier)
         }) {
             return Err(TransferPostError::DuplicateSpend);
         }
-        if !all_unequal(&self.body.receiver_posts, |p, q| {
-            p.utxo.is_independent(&q.utxo)
-        }) {
+        if !all_unequal(&self.body.receiver_posts, |p, q| p.utxo.is_related(&q.utxo)) {
             return Err(TransferPostError::DuplicateMint);
         }
         let sender_posting_keys = self

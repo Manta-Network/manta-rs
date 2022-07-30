@@ -246,12 +246,10 @@ pub trait Randomize<T, COM = ()>: RandomnessType {
     fn randomize(&self, value: &T, randomness: &Self::Randomness, compiler: &mut COM) -> T;
 }
 
-/// Authorization Generation
-pub trait Generate: AuthorizationKeyType + RandomnessType + SigningKeyType {
-    /// Generates an authorization for `signing_key`.
-    fn generate<R>(&self, signing_key: &Self::SigningKey, rng: &mut R) -> Authorization<Self>
-    where
-        R: CryptoRng + RngCore + ?Sized;
+/// Authorization Key Derivation
+pub trait Derive: AuthorizationKeyType + SigningKeyType {
+    /// Derives an authorization key from `signing_key`.
+    fn derive(&self, signing_key: &Self::SigningKey) -> Self::AuthorizationKey;
 }
 
 /// Authorization Verification

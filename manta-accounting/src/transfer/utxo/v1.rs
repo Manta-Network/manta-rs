@@ -28,6 +28,7 @@ use manta_crypto::{
     encryption::{self, hybrid::Hybrid, Decrypt, Encrypt, EncryptedMessage},
     rand::{CryptoRng, Rand, RngCore, Sample},
 };
+use manta_util::cmp::Independence;
 
 /// UTXO Version Number
 pub const VERSION: u8 = 1;
@@ -194,7 +195,7 @@ where
     type AssetValue: ConditionalSelect<COM> + Zero<COM, Verification = Self::Bool>;
 
     /// Scalar Type
-    type Scalar: Scalar<COM>;
+    type Scalar: Clone + Scalar<COM>;
 
     /// Group Type
     type Group: Clone
@@ -641,17 +642,6 @@ where
             Nullifier::new(nullifier_commitment, outgoing_note),
         )
     }
-
-    #[inline]
-    fn derive_consistent_nullifier(
-        &self,
-        authorization_key: &mut Self::AuthorizationKey,
-        identifier: &Self::Identifier,
-        asset: &Self::Asset,
-        utxo: &Self::Utxo,
-    ) -> Option<Self::Nullifier> {
-        todo!()
-    }
 }
 
 impl<C, COM> utxo::IdentifierType for Parameters<C, COM>
@@ -662,14 +652,26 @@ where
     type Identifier = Identifier<C, COM>;
 }
 
+impl<C> utxo::DeriveDecryptionKey for Parameters<C>
+where
+    C: Configuration<Bool = bool>,
+{
+    type DecryptionKey = C::Scalar;
+
+    #[inline]
+    fn derive(&self, authorization_key: &mut Self::AuthorizationKey) -> Self::DecryptionKey {
+        authorization_key
+            .viewing_key(&self.viewing_key_derivation_function, &mut ())
+            .clone()
+    }
+}
+
 impl<C> utxo::NoteOpen for Parameters<C>
 where
     C: Configuration<Bool = bool>,
     C::IncomingBaseEncryptionScheme:
         Decrypt<DecryptionKey = C::Group, DecryptedPlaintext = Option<IncomingPlaintext<C>>>,
 {
-    type DecryptionKey = C::Scalar;
-
     #[inline]
     fn open(
         &self,
@@ -808,6 +810,17 @@ where
             public_asset,
             commitment,
         }
+    }
+}
+
+impl<C> Independence<utxo::UtxoIndependence> for Utxo<C>
+where
+    C: Configuration<Bool = bool>,
+{
+    #[inline]
+    fn is_independent(&self, rhs: &Self) -> bool {
+        // TODO: self.neq(rhs)
+        todo!()
     }
 }
 
@@ -999,6 +1012,18 @@ where
         }
     }
 
+    /// Computes the viewing key from `viewing_key_derivation_function`.
+    #[inline]
+    pub fn viewing_key(
+        &mut self,
+        viewing_key_derivation_function: &C::ViewingKeyDerivationFunction,
+        compiler: &mut COM,
+    ) -> &C::Scalar {
+        self.viewing_key.get_or_insert_with(|| {
+            viewing_key_derivation_function.viewing_key(&self.proof_authorization_key, compiler)
+        })
+    }
+
     /// Returns the receiving key over `key_diversifier` for this [`AuthorizationKey`].
     #[inline]
     pub fn receiving_key(
@@ -1008,9 +1033,7 @@ where
         compiler: &mut COM,
     ) -> C::Group {
         key_diversifier.mul(
-            self.viewing_key.get_or_insert_with(|| {
-                viewing_key_derivation_function.viewing_key(&self.proof_authorization_key, compiler)
-            }),
+            self.viewing_key(viewing_key_derivation_function, compiler),
             compiler,
         )
     }
@@ -1273,5 +1296,16 @@ where
             this.commitment.as_known(compiler),
             this.outgoing_note.as_known(compiler),
         )
+    }
+}
+
+impl<C> Independence<utxo::NullifierIndependence> for Nullifier<C>
+where
+    C: Configuration<Bool = bool>,
+{
+    #[inline]
+    fn is_independent(&self, rhs: &Self) -> bool {
+        // TODO: self.commitment.neq(&rhs.commitment)
+        todo!()
     }
 }

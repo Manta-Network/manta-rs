@@ -19,7 +19,6 @@
 use crate::transfer::utxo::{DeriveMint, Identifier, Mint, QueryIdentifier};
 use core::{fmt::Debug, hash::Hash, iter};
 use manta_crypto::{
-    accumulator::{Accumulator, ItemHashFunction},
     constraint::{
         Allocate, Allocator, Constant, Derived, ProofSystemInput, Public, Secret, Var, Variable,
     },
