@@ -94,7 +94,15 @@ pub type AssociatedData<T> = <T as AssociatedDataType>::AssociatedData;
 
 /// Full Asset
 #[derive(derivative::Derivative)]
-#[derivative(Clone(bound = "T::Asset: Clone, T::AssociatedData: Clone"))]
+#[derivative(
+    Clone(bound = "T::Asset: Clone, T::AssociatedData: Clone"),
+    Copy(bound = "T::Asset: Copy, T::AssociatedData: Copy"),
+    Debug(bound = "T::Asset: Debug, T::AssociatedData: Debug"),
+    Default(bound = "T::Asset: Default, T::AssociatedData: Default"),
+    Eq(bound = "T::Asset: Eq, T::AssociatedData: Eq"),
+    Hash(bound = "T::Asset: Hash, T::AssociatedData: Hash"),
+    PartialEq(bound = "T::Asset: PartialEq, T::AssociatedData: PartialEq")
+)]
 pub struct FullAsset<T>
 where
     T: AssetType + AssociatedDataType,
@@ -104,6 +112,29 @@ where
 
     /// Associated Data
     pub associated_data: T::AssociatedData,
+}
+
+impl<T> FullAsset<T>
+where
+    T: AssetType + AssociatedDataType,
+{
+    /// Builds a new [`FullAsset`] from `asset` and `associated_data`.
+    #[inline]
+    pub fn new(asset: T::Asset, associated_data: T::AssociatedData) -> Self {
+        Self {
+            asset,
+            associated_data,
+        }
+    }
+
+    /// Lifts an `asset` into a [`FullAsset`] by attaching the default associated data.
+    #[inline]
+    pub fn from_asset(asset: T::Asset) -> Self
+    where
+        T::AssociatedData: Default,
+    {
+        Self::new(asset, Default::default())
+    }
 }
 
 /// Default Address
