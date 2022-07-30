@@ -19,13 +19,13 @@
 // TODO: Move more of the batching algorithm here to improve library interfaces.
 
 use crate::transfer::{
-    Address, Asset, Configuration, Parameters, PreSender, Receiver, Utxo, UtxoAccumulatorItem,
-    UtxoAccumulatorModel,
+    internal_pair, internal_zero_pair, Asset, AssociatedData, AuthorizationKey, Configuration,
+    Parameters, PreSender, Receiver, UtxoAccumulatorItem, UtxoAccumulatorModel,
 };
 use alloc::vec::Vec;
 use manta_crypto::{
     accumulator::Accumulator,
-    rand::{CryptoRng, Rand, RngCore},
+    rand::{CryptoRng, RngCore},
 };
 use manta_util::into_array_unchecked;
 
@@ -49,27 +49,37 @@ where
     #[inline]
     pub fn new<R, const RECEIVERS: usize>(
         parameters: &Parameters<C>,
-        address: Address<C>,
+        authorization_key: &mut AuthorizationKey<C>,
         asset: Asset<C>,
         rng: &mut R,
     ) -> ([Receiver<C>; RECEIVERS], Self)
     where
+        AssociatedData<C>: Default,
         R: CryptoRng + RngCore + ?Sized,
     {
-        /* TODO:
         let mut receivers = Vec::with_capacity(RECEIVERS);
         let mut zeroes = Vec::with_capacity(RECEIVERS - 1);
-        let (receiver, pre_sender) = spending_key.internal_pair(parameters, rng.gen(), asset);
+        let asset_id = asset.id.clone();
+        let (receiver, pre_sender) = internal_pair::<C, _>(
+            parameters,
+            authorization_key,
+            asset,
+            Default::default(),
+            rng,
+        );
         receivers.push(receiver);
         for _ in 1..RECEIVERS {
-            let (receiver, pre_sender) =
-                spending_key.internal_zero_pair(parameters, rng.gen(), asset.id);
+            let (receiver, pre_sender) = internal_zero_pair::<C, _>(
+                parameters,
+                authorization_key,
+                asset_id.clone(),
+                Default::default(),
+                rng,
+            );
             receivers.push(receiver);
             zeroes.push(pre_sender);
         }
         (into_array_unchecked(receivers), Self { zeroes, pre_sender })
-        */
-        todo!()
     }
 
     /// Inserts UTXOs for each sender in `self` into the `utxo_accumulator` for future proof selection.

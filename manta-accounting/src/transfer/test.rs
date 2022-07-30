@@ -19,8 +19,8 @@
 use crate::{
     asset::{AssetId, AssetValue, AssetValueType},
     transfer::{
-        canonical::ToPrivate, has_public_participants, utxo::Mint, Address, Asset,
-        AuthorizationKey, Configuration, FullParametersRef, Metadata, Parameters, PreSender, Proof,
+        canonical::ToPrivate, has_public_participants, utxo::Mint, Address, Asset, AssociatedData,
+        AuthorizationKey, Configuration, FullParametersRef, Parameters, PreSender, Proof,
         ProofInput, ProofSystemError, ProofSystemPublicParameters, ProvingContext, Receiver,
         Sender, Transfer, TransferPost, Utxo, VerifyingContext,
     },
@@ -432,15 +432,20 @@ pub fn sample_mint<C, R>(
     proving_context: &ProvingContext<C>,
     authorization_key: &mut AuthorizationKey<C>,
     asset: Asset<C>,
-    metadata: Metadata<C>,
+    associated_data: AssociatedData<C>,
     rng: &mut R,
 ) -> Result<(TransferPost<C>, PreSender<C>), ProofSystemError<C>>
 where
     C: Configuration,
     R: CryptoRng + RngCore + ?Sized,
 {
-    let (mint, pre_sender) =
-        ToPrivate::internal_pair(parameters.base, authorization_key, asset, metadata, rng);
+    let (mint, pre_sender) = ToPrivate::internal_pair(
+        parameters.base,
+        authorization_key,
+        asset,
+        associated_data,
+        rng,
+    );
     Ok((
         mint.into_post(parameters, proving_context, None, rng)?
             .unwrap(),

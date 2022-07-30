@@ -16,7 +16,7 @@
 
 //! Transfer Receiver
 
-use crate::transfer::utxo::{Address, DeriveMint, Identifier, Mint, QueryIdentifier};
+use crate::transfer::utxo::{DeriveMint, Identifier, Mint, QueryIdentifier};
 use core::{fmt::Debug, hash::Hash, iter};
 use manta_crypto::{
     accumulator::{Accumulator, ItemHashFunction},
@@ -71,18 +71,18 @@ where
         parameters: &M,
         address: M::Address,
         asset: M::Asset,
-        metadata: M::Metadata,
+        associated_data: M::AssociatedData,
         rng: &mut R,
     ) -> Self
     where
         M: DeriveMint,
         R: CryptoRng + RngCore + ?Sized,
     {
-        let (secret, utxo, note) = parameters.derive(address, asset, metadata, rng);
+        let (secret, utxo, note) = parameters.derive(address, asset, associated_data, rng);
         Self::new(secret, utxo, note)
     }
 
-    ///
+    /// Returns the identifier for `self`.
     #[inline]
     pub fn identifier(&self) -> Identifier<M::Secret>
     where

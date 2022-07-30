@@ -36,9 +36,9 @@ use crate::{
             MultiProvingContext, PrivateTransfer, PrivateTransferShape, Selection, ToPrivate,
             ToPublic, Transaction,
         },
-        requires_authorization, Address, Asset, FullParametersRef, Identifier, Note, Nullifier,
-        Parameters, PreSender, ProofSystemError, ProvingContext, Receiver, Sender, Shape, Transfer,
-        TransferPost, Utxo, UtxoAccumulatorItem, UtxoAccumulatorModel,
+        requires_authorization, Address, Asset, FullParametersRef, Identifier, Metadata, Note,
+        Nullifier, Parameters, PreSender, ProofSystemError, ProvingContext, Receiver, Sender,
+        Shape, Transfer, TransferPost, Utxo, UtxoAccumulatorItem, UtxoAccumulatorModel,
     },
     wallet::ledger::{self, Data},
 };
@@ -477,7 +477,11 @@ pub trait Configuration: transfer::Configuration {
     type Checkpoint: Checkpoint<Self, UtxoAccumulator = Self::UtxoAccumulator>;
 
     /// Account Type
-    type Account: Account<SpendingKey = Self::SpendingKey, Address = Address<Self>>;
+    type Account: Account<
+        SpendingKey = Self::SpendingKey,
+        Address = Address<Self>,
+        Parameters = Self::Parameters,
+    >;
 
     /// Account Map Type
     type AccountMap: AccountMap<Account = LimitAccount<Self::Account>>;
@@ -498,21 +502,11 @@ pub trait Configuration: transfer::Configuration {
 /// Signer Parameters
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(
-        bound = "Parameters<C>: Clone, C::AuthorizationSignatureScheme: Clone, MultiProvingContext<C>: Clone"
-    ),
-    Debug(
-        bound = "Parameters<C>: Debug, C::AuthorizationSignatureScheme: Debug, MultiProvingContext<C>: Debug"
-    ),
-    Eq(
-        bound = "Parameters<C>: Eq, C::AuthorizationSignatureScheme: Eq, MultiProvingContext<C>: Eq"
-    ),
-    Hash(
-        bound = "Parameters<C>: Hash, C::AuthorizationSignatureScheme: Hash, MultiProvingContext<C>: Hash"
-    ),
-    PartialEq(
-        bound = "Parameters<C>: PartialEq, C::AuthorizationSignatureScheme: PartialEq, MultiProvingContext<C>: PartialEq"
-    )
+    Clone(bound = "Parameters<C>: Clone, MultiProvingContext<C>: Clone"),
+    Debug(bound = "Parameters<C>: Debug, MultiProvingContext<C>: Debug"),
+    Eq(bound = "Parameters<C>: Eq, MultiProvingContext<C>: Eq"),
+    Hash(bound = "Parameters<C>: Hash, MultiProvingContext<C>: Hash"),
+    PartialEq(bound = "Parameters<C>: PartialEq, MultiProvingContext<C>: PartialEq")
 )]
 pub struct SignerParameters<C>
 where
@@ -520,9 +514,6 @@ where
 {
     /// Parameters
     pub parameters: Parameters<C>,
-
-    /// Authorization Signature Scheme
-    pub authorization_signature_scheme: C::AuthorizationSignatureScheme,
 
     /// Proving Context
     pub proving_context: MultiProvingContext<C>,
@@ -532,17 +523,11 @@ impl<C> SignerParameters<C>
 where
     C: Configuration,
 {
-    /// Builds a new [`SignerParameters`] from `parameters`, `authorization_signature_scheme`, and
-    /// `proving_context`.
+    /// Builds a new [`SignerParameters`] from `parameters` and `proving_context`.
     #[inline]
-    pub fn new(
-        parameters: Parameters<C>,
-        authorization_signature_scheme: C::AuthorizationSignatureScheme,
-        proving_context: MultiProvingContext<C>,
-    ) -> Self {
+    pub fn new(parameters: Parameters<C>, proving_context: MultiProvingContext<C>) -> Self {
         Self {
             parameters,
-            authorization_signature_scheme,
             proving_context,
         }
     }
@@ -642,20 +627,20 @@ where
 
     /// Returns the default spending key for `self`.
     #[inline]
-    fn default_spending_key(&self) -> C::SpendingKey {
-        self.default_account().spending_key()
+    fn default_spending_key(&self, parameters: &C::Parameters) -> C::SpendingKey {
+        self.default_account().spending_key(parameters)
     }
 
     /// Returns the default address for the default account of `self`.
     #[inline]
-    fn default_address(&mut self) -> Address<C> {
-        self.accounts.get_mut_default().default_address()
+    fn default_address(&mut self, parameters: &C::Parameters) -> Address<C> {
+        self.accounts.get_mut_default().default_address(parameters)
     }
 
     ///
     #[inline]
     fn try_open<'h>(
-        parameters: &Parameters<C>,
+        parameters: &C::Parameters,
         viewing_key: &(),
         note: Note<C>,
     ) -> Option<(Identifier<C>, Asset<C>)> {
@@ -817,7 +802,7 @@ where
         key: Identifier<C>,
         asset: Asset<C>,
     ) -> PreSender<C> {
-        let default_spending_key = self.default_spending_key();
+        let default_spending_key = self.default_spending_key(parameters);
         /*
         PreSender::sample(
             parameters,
@@ -837,14 +822,15 @@ where
         parameters: &Parameters<C>,
         address: Address<C>,
         asset: Asset<C>,
+        metadata: Metadata<C>,
     ) -> Receiver<C> {
-        Receiver::<C>::sample(parameters, address, asset, &mut self.rng)
+        Receiver::<C>::sample(parameters, address, asset, metadata, &mut self.rng)
     }
 
     ///
     #[inline]
     fn default_receiver(&mut self, parameters: &Parameters<C>, asset: Asset<C>) -> Receiver<C> {
-        let default_address = self.default_address();
+        let default_address = self.default_address(parameters);
         self.receiver(parameters, default_address, asset)
     }
 
@@ -873,20 +859,13 @@ where
         const SINKS: usize,
     >(
         parameters: FullParametersRef<C>,
-        authorization_signature_scheme: &C::AuthorizationSignatureScheme,
         proving_context: &ProvingContext<C>,
         spending_key: Option<&C::SpendingKey>,
         transfer: Transfer<C, SOURCES, SENDERS, RECEIVERS, SINKS>,
         rng: &mut C::Rng,
     ) -> Result<TransferPost<C>, SignError<C>> {
         transfer
-            .into_post(
-                authorization_signature_scheme,
-                parameters,
-                proving_context,
-                spending_key,
-                rng,
-            )
+            .into_post(parameters, proving_context, spending_key, rng)
             .map(|p| p.expect("Internally, all transfer posts are constructed correctly."))
             .map_err(SignError::ProofSystemError)
     }
@@ -1087,7 +1066,6 @@ where
     fn new_inner(
         accounts: C::AccountMap,
         parameters: Parameters<C>,
-        authorization_signature_scheme: C::AuthorizationSignatureScheme,
         proving_context: MultiProvingContext<C>,
         utxo_accumulator: C::UtxoAccumulator,
         assets: C::AssetMap,
@@ -1096,7 +1074,6 @@ where
         Self::from_parts(
             SignerParameters {
                 parameters,
-                authorization_signature_scheme,
                 proving_context,
             },
             SignerState::build(accounts, utxo_accumulator, assets, rng),
@@ -1113,7 +1090,6 @@ where
     pub fn new(
         accounts: C::AccountMap,
         parameters: Parameters<C>,
-        authorization_signature_scheme: C::AuthorizationSignatureScheme,
         proving_context: MultiProvingContext<C>,
         utxo_accumulator: C::UtxoAccumulator,
         rng: C::Rng,
@@ -1121,7 +1097,6 @@ where
         Self::new_inner(
             accounts,
             parameters,
-            authorization_signature_scheme,
             proving_context,
             utxo_accumulator,
             Default::default(),

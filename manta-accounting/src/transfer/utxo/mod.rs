@@ -83,14 +83,28 @@ pub trait AddressType {
 /// Address Type
 pub type Address<T> = <T as AddressType>::Address;
 
-/// Metadata
-pub trait MetadataType {
-    /// Metadata Type
-    type Metadata;
+/// Associated Data
+pub trait AssociatedDataType {
+    /// Associated Data Type
+    type AssociatedData;
 }
 
-/// Metadata Type
-pub type Metadata<T> = <T as MetadataType>::Metadata;
+/// Associated Data Type
+pub type AssociatedData<T> = <T as AssociatedDataType>::AssociatedData;
+
+/// Full Asset
+#[derive(derivative::Derivative)]
+#[derivative(Clone(bound = "T::Asset: Clone, T::AssociatedData: Clone"))]
+pub struct FullAsset<T>
+where
+    T: AssetType + AssociatedDataType,
+{
+    /// Asset
+    pub asset: T::Asset,
+
+    /// Associated Data
+    pub associated_data: T::AssociatedData,
+}
 
 /// Default Address
 pub trait DefaultAddress<T>: AddressType {
@@ -139,13 +153,14 @@ pub trait Mint<COM = ()>: AssetType + NoteType + UtxoType {
 }
 
 /// Derive Minting Data
-pub trait DeriveMint: AddressType + Mint + MetadataType {
-    ///
+pub trait DeriveMint: AddressType + AssociatedDataType + Mint {
+    /// Derives the data required to mint to a target `address`, the `asset` to mint and
+    /// `associated_data`.
     fn derive<R>(
         &self,
         address: Self::Address,
         asset: Self::Asset,
-        metadata: Self::Metadata,
+        associated_data: Self::AssociatedData,
         rng: &mut R,
     ) -> (Self::Secret, Self::Utxo, Self::Note)
     where
@@ -194,7 +209,8 @@ pub trait Spend<COM = ()>:
 
 /// Derive Spending Data
 pub trait DeriveSpend: Spend + IdentifierType {
-    ///
+    /// Derives the data required to spend with an `authorization_key`, the `asset` to spend and its
+    /// `identifier`.
     fn derive<R>(
         &self,
         authorization_key: &mut Self::AuthorizationKey,

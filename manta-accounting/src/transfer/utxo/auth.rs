@@ -267,6 +267,17 @@ pub trait Verify: AuthorizationKeyType + RandomnessType + SigningKeyType {
     ) -> bool;
 }
 
+/// Sign Result
+///
+/// This is the return type of the [`sign`] method.
+pub type SignResult<S, E> = Result<
+    (
+        <S as signature::SignatureType>::Signature,
+        <S as signature::MessageType>::Message,
+    ),
+    E,
+>;
+
 /// Signs `message` by first verifiying that the `authorization_proof` was created using
 /// `signing_key` and using it to generate the signing key from `signing_key`.
 #[inline]
@@ -276,7 +287,7 @@ pub fn sign<S, F, E>(
     authorization_proof: AuthorizationProof<S>,
     signing_randomness: &signature::Randomness<S>,
     assign_authorization_key: F,
-) -> Option<Result<(S::Signature, S::Message), E>>
+) -> Option<SignResult<S, E>>
 where
     F: FnOnce(S::AuthorizationKey) -> Result<S::Message, E>,
     S: Verify + Randomize<S::SigningKey> + signature::Sign,

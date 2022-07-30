@@ -34,10 +34,7 @@ use crate::{
     transfer::{
         receiver::{ReceiverLedger, ReceiverPostError},
         sender::{SenderLedger, SenderPostError},
-        utxo::{
-            auth::{self, Generate},
-            DefaultAddress, Mint, Spend,
-        },
+        utxo::{auth, DefaultAddress, Mint, Spend},
     },
 };
 use core::{fmt::Debug, hash::Hash, iter::Sum, ops::AddAssign};
@@ -288,8 +285,8 @@ pub type Asset<C> = asset::Asset<<C as Configuration>::AssetId, <C as Configurat
 pub type AssetVar<C> =
     asset::Asset<<C as Configuration>::AssetIdVar, <C as Configuration>::AssetValueVar>;
 
-/// Metadata Type
-pub type Metadata<C> = utxo::Metadata<Parameters<C>>;
+/// Associated Data Type
+pub type AssociatedData<C> = utxo::AssociatedData<Parameters<C>>;
 
 /// Authorization Key Type
 pub type AuthorizationKey<C> = auth::AuthorizationKey<Parameters<C>>;
@@ -357,7 +354,7 @@ pub fn internal_pair<C, R>(
     parameters: &Parameters<C>,
     authorization_key: &mut AuthorizationKey<C>,
     asset: Asset<C>,
-    metadata: Metadata<C>,
+    associated_data: AssociatedData<C>,
     rng: &mut R,
 ) -> (Receiver<C>, PreSender<C>)
 where
@@ -368,7 +365,7 @@ where
         parameters,
         parameters.default_address(authorization_key),
         asset.clone(),
-        metadata,
+        associated_data,
         rng,
     );
     let pre_sender = PreSender::<C>::sample(
@@ -387,7 +384,7 @@ pub fn internal_zero_pair<C, R>(
     parameters: &Parameters<C>,
     authorization_key: &mut AuthorizationKey<C>,
     asset_id: C::AssetId,
-    metadata: Metadata<C>,
+    associated_data: AssociatedData<C>,
     rng: &mut R,
 ) -> (Receiver<C>, PreSender<C>)
 where
@@ -398,7 +395,7 @@ where
         parameters,
         authorization_key,
         Asset::<C>::zero(asset_id),
-        metadata,
+        associated_data,
         rng,
     )
 }
@@ -627,7 +624,8 @@ where
         ))
     }
 
-    ///
+    /// Converts `self` into its [`TransferPost`] by building the [`Transfer`] validity proof and
+    /// signing the [`TransferPostBody`] payload.
     #[inline]
     pub fn into_post<R>(
         mut self,
@@ -676,7 +674,7 @@ where
                 None,
                 self.into_post_body(parameters, proving_context, rng)?,
             ))),
-            _ => todo!(),
+            _ => Ok(None),
         }
     }
 }

@@ -25,7 +25,7 @@ use manta_crypto::{
         Allocate, Allocator, Assert, AssertEq, BitAnd, BitOr, Bool, ConditionalSelect, Constant,
         Has, PartialEq, Public, Secret, Variable, Zero,
     },
-    encryption::{self, hybrid::Hybrid, Decrypt, Encrypt, EncryptedMessage, RandomnessType},
+    encryption::{self, hybrid::Hybrid, Decrypt, Encrypt, EncryptedMessage},
     rand::{CryptoRng, Rand, RngCore, Sample},
 };
 
@@ -390,11 +390,11 @@ where
     type Asset = Asset<C, COM>;
 }
 
-impl<C> utxo::MetadataType for Parameters<C>
+impl<C> utxo::AssociatedDataType for Parameters<C>
 where
     C: Configuration<Bool = bool>,
 {
-    type Metadata = Visibility;
+    type AssociatedData = Visibility;
 }
 
 impl<C, COM> utxo::AddressType for Parameters<C, COM>
@@ -460,7 +460,7 @@ where
         &self,
         address: Self::Address,
         asset: Self::Asset,
-        metadata: Self::Metadata,
+        associated_data: Self::AssociatedData,
         rng: &mut R,
     ) -> (Self::Secret, Self::Utxo, Self::Note)
     where
@@ -469,7 +469,11 @@ where
         let secret = MintSecret::<C>::new(
             address.receiving_key,
             rng.gen(),
-            IncomingPlaintext::new(rng.gen(), metadata.secret(&asset), address.key_diversifier),
+            IncomingPlaintext::new(
+                rng.gen(),
+                associated_data.secret(&asset),
+                address.key_diversifier,
+            ),
         );
         let utxo_commitment = self.utxo_commitment_scheme.commit(
             &secret.plaintext.utxo_commitment_randomness,
@@ -492,8 +496,8 @@ where
         (
             secret,
             Utxo::new(
-                metadata.is_transparent(),
-                metadata.public(&asset),
+                associated_data.is_transparent(),
+                associated_data.public(&asset),
                 utxo_commitment,
             ),
             incoming_note,
@@ -578,7 +582,7 @@ where
     where
         R: CryptoRng + RngCore + ?Sized,
     {
-        let metadata = if identifier.is_transparent {
+        let associated_data = if identifier.is_transparent {
             Visibility::Transparent
         } else {
             Visibility::Opaque
@@ -587,7 +591,7 @@ where
             rng.gen(),
             IncomingPlaintext::new(
                 identifier.utxo_commitment_randomness,
-                metadata.secret(&asset),
+                associated_data.secret(&asset),
                 identifier.key_diversifier,
             ),
         );
@@ -605,7 +609,7 @@ where
         );
         let utxo = Utxo::<C>::new(
             identifier.is_transparent,
-            metadata.public(&asset),
+            associated_data.public(&asset),
             utxo_commitment,
         );
 
