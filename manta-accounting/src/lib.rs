@@ -35,7 +35,7 @@ extern crate derive_more;
 pub mod asset;
 pub mod key;
 pub mod transfer;
-// TODO: pub mod wallet;
+// pub mod wallet;
 
 #[cfg(feature = "fs")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "fs")))]

@@ -91,20 +91,6 @@ where
         self.secret.query_identifier(&self.utxo)
     }
 
-    /// Returns `true` whenever `self.utxo` and `rhs.utxo` can be inserted in any order into the
-    /// `utxo_accumulator`.
-    #[inline]
-    pub fn is_independent_from<H, A>(&self, rhs: &Self, item_hash: &H, utxo_accumulator: &A) -> bool
-    where
-        H: ItemHashFunction<M::Utxo>,
-        A: Accumulator<Item = H::Item>,
-    {
-        utxo_accumulator.are_independent(
-            &item_hash.item_hash(&self.utxo, &mut ()),
-            &item_hash.item_hash(&rhs.utxo, &mut ()),
-        )
-    }
-
     /// Extends proof public input with `self`.
     #[inline]
     pub fn extend_input<P>(&self, input: &mut P::Input)

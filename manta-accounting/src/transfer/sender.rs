@@ -145,19 +145,6 @@ where
             None
         }
     }
-
-    /// Returns `true` whenever `self.utxo` and `rhs.utxo` can be inserted in any order into the
-    /// `utxo_accumulator`.
-    #[inline]
-    pub fn is_independent_from<A>(&self, rhs: &Self, parameters: &S, utxo_accumulator: &A) -> bool
-    where
-        A: Accumulator<Item = UtxoAccumulatorItem<S>, Model = S::UtxoAccumulatorModel>,
-    {
-        utxo_accumulator.are_independent(
-            &parameters.item_hash(&self.utxo, &mut ()),
-            &parameters.item_hash(&rhs.utxo, &mut ()),
-        )
-    }
 }
 
 /// Sender Proof

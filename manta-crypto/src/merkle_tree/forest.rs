@@ -311,11 +311,6 @@ where
     }
 
     #[inline]
-    fn are_independent(&self, fst: &Self::Item, snd: &Self::Item) -> bool {
-        C::tree_index(fst) != C::tree_index(snd)
-    }
-
-    #[inline]
     fn prove(&self, item: &Self::Item) -> Option<MembershipProof<Self::Model>> {
         let tree = self.forest.get_tree(item);
         Some(MembershipProof::new(

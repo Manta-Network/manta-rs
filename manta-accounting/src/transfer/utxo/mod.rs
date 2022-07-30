@@ -28,6 +28,7 @@ use manta_crypto::{
     eclair::alloc::{Allocate, Constant},
     rand::{CryptoRng, RngCore},
 };
+use manta_util::cmp::IndependenceContext;
 
 pub mod auth;
 pub mod v1;
@@ -56,6 +57,14 @@ pub trait UtxoType {
 /// Unspent Transaction Output Type
 pub type Utxo<T> = <T as UtxoType>::Utxo;
 
+///
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct UtxoIndependence;
+
+impl IndependenceContext for UtxoIndependence {
+    const DEFAULT: bool = false;
+}
+
 /// Note
 pub trait NoteType {
     /// Note Type
@@ -64,6 +73,23 @@ pub trait NoteType {
 
 /// Note Type
 pub type Note<T> = <T as NoteType>::Note;
+
+/// Nullifier
+pub trait NullifierType {
+    /// Nullifier Type
+    type Nullifier;
+}
+
+/// Nullifier Type
+pub type Nullifier<T> = <T as NullifierType>::Nullifier;
+
+///
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct NullifierIndependence;
+
+impl IndependenceContext for NullifierIndependence {
+    const DEFAULT: bool = false;
+}
 
 /// Identifier
 pub trait IdentifierType {
@@ -206,16 +232,13 @@ pub trait QueryAsset: AssetType + UtxoType {
 
 /// UTXO Spending
 pub trait Spend<COM = ()>:
-    ItemHashFunction<Self::Utxo, COM> + AssetType + UtxoType + AuthorizationKeyType
+    ItemHashFunction<Self::Utxo, COM> + AuthorizationKeyType + AssetType + UtxoType + NullifierType
 {
     /// UTXO Accumulator Model Type
     type UtxoAccumulatorModel: accumulator::Model<COM, Item = Self::Item>;
 
     /// Spend Secret Type
     type Secret;
-
-    /// Nullifier Type
-    type Nullifier;
 
     /// Returns the asset and its nullifier inside of `utxo` asserting that `secret` and `utxo` are
     /// well-formed and that `utxo_membership_proof` is a valid proof.
@@ -229,7 +252,7 @@ pub trait Spend<COM = ()>:
         compiler: &mut COM,
     ) -> (Self::Asset, Self::Nullifier);
 
-    /// Asserts that the two nullifiers, `lhs` and `rhs`, are equal.
+    ///
     fn assert_equal_nullifiers(
         &self,
         lhs: &Self::Nullifier,
@@ -251,6 +274,15 @@ pub trait DeriveSpend: Spend + IdentifierType {
     ) -> (Self::Secret, Self::Utxo, Self::Nullifier)
     where
         R: CryptoRng + RngCore + ?Sized;
+
+    ///
+    fn derive_consistent_nullifier(
+        &self,
+        authorization_key: &mut Self::AuthorizationKey,
+        identifier: &Self::Identifier,
+        asset: &Self::Asset,
+        utxo: &Self::Utxo,
+    ) -> Option<Self::Nullifier>;
 }
 
 /// UTXO Accumulator Model Type
@@ -270,9 +302,6 @@ pub type UtxoAccumulatorOutput<S, COM = ()> =
 
 /// UTXO Membership Proof Type
 pub type UtxoMembershipProof<S, COM = ()> = MembershipProof<UtxoAccumulatorModel<S, COM>, COM>;
-
-/// Nullifier Type
-pub type Nullifier<S, COM = ()> = <S as Spend<COM>>::Nullifier;
 
 /// Full Parameters Owned
 ///

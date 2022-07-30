@@ -19,8 +19,8 @@
 // TODO: Move more of the batching algorithm here to improve library interfaces.
 
 use crate::transfer::{
-    internal_pair, internal_zero_pair, Asset, AssociatedData, AuthorizationKey, Configuration,
-    Parameters, PreSender, Receiver, UtxoAccumulatorItem, UtxoAccumulatorModel,
+    internal_pair, internal_zero_pair, Asset, AuthorizationKey, Configuration, Parameters,
+    PreSender, Receiver, UtxoAccumulatorItem, UtxoAccumulatorModel,
 };
 use alloc::vec::Vec;
 use manta_crypto::{
@@ -54,7 +54,6 @@ where
         rng: &mut R,
     ) -> ([Receiver<C>; RECEIVERS], Self)
     where
-        AssociatedData<C>: Default,
         R: CryptoRng + RngCore + ?Sized,
     {
         let mut receivers = Vec::with_capacity(RECEIVERS);

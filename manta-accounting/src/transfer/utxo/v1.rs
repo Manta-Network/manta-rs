@@ -421,6 +421,14 @@ where
     type Utxo = Utxo<C, COM>;
 }
 
+impl<C, COM> utxo::NullifierType for Parameters<C, COM>
+where
+    C: Configuration<COM>,
+    COM: Assert + Has<bool, Type = C::Bool>,
+{
+    type Nullifier = Nullifier<C, COM>;
+}
+
 impl<C, COM> utxo::Mint<COM> for Parameters<C, COM>
 where
     C: Configuration<COM>,
@@ -530,8 +538,6 @@ where
 {
     type UtxoAccumulatorModel = C::UtxoAccumulatorModel;
     type Secret = SpendSecret<C, COM>;
-    type Nullifier = Nullifier<C, COM>;
-
     #[inline]
     fn well_formed_asset(
         &self,
@@ -559,7 +565,7 @@ where
         rhs: &Self::Nullifier,
         compiler: &mut COM,
     ) {
-        compiler.assert_eq(lhs, rhs);
+        compiler.assert_eq(lhs, rhs)
     }
 }
 
@@ -634,6 +640,17 @@ where
             utxo,
             Nullifier::new(nullifier_commitment, outgoing_note),
         )
+    }
+
+    #[inline]
+    fn derive_consistent_nullifier(
+        &self,
+        authorization_key: &mut Self::AuthorizationKey,
+        identifier: &Self::Identifier,
+        asset: &Self::Asset,
+        utxo: &Self::Utxo,
+    ) -> Option<Self::Nullifier> {
+        todo!()
     }
 }
 

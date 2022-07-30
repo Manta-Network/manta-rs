@@ -34,7 +34,7 @@ use crate::{
     transfer::{
         receiver::{ReceiverLedger, ReceiverPostError},
         sender::{SenderLedger, SenderPostError},
-        utxo::{auth, DefaultAddress, Mint, Spend},
+        utxo::{auth, DefaultAddress, Mint, NullifierIndependence, Spend, UtxoIndependence},
     },
 };
 use core::{fmt::Debug, hash::Hash, iter::Sum, ops::AddAssign};
@@ -47,7 +47,10 @@ use manta_crypto::{
     rand::{CryptoRng, Rand, RngCore, Sample},
     signature::{self, Verify},
 };
-use manta_util::vec::{all_unequal, Vec};
+use manta_util::{
+    cmp::Independence,
+    vec::{all_unequal, Vec},
+};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
@@ -94,11 +97,14 @@ pub trait Configuration {
     /// Asset Value Type
     type AssetValue: AddAssign + Clone + Default + PartialOrd + Sum;
 
+    /// Associated Data Type
+    type AssociatedData: Default;
+
     /// Unspent Transaction Output Type
-    type Utxo: PartialEq;
+    type Utxo: Independence<UtxoIndependence>;
 
     /// Nullifier Type
-    type Nullifier: PartialEq;
+    type Nullifier: Independence<NullifierIndependence>;
 
     /// Spending Key
     type SpendingKey;
@@ -109,21 +115,27 @@ pub trait Configuration {
     /// Mint Secret Type
     type MintSecret: utxo::QueryIdentifier<Identifier = Identifier<Self>, Utxo = Self::Utxo>;
 
+    /// Spend Secret Type
+    type SpendSecret: utxo::QueryAsset<Asset = Asset<Self>, Utxo = Self::Utxo>;
+
     /// Parameters Type
     type Parameters: auth::Generate
         + auth::Verify
         + auth::Randomize<Self::SpendingKey>
+        + auth::Randomize<AuthorizationKey<Self>>
         + signature::Sign<
             SigningKey = Self::SpendingKey,
             Randomness = Self::AuthorizationSignatureRandomness,
             Message = TransferPostBody<Self>,
         > + signature::Verify<VerifyingKey = AuthorizationKey<Self>, Verification = bool>
         + utxo::AssetType<Asset = Asset<Self>>
+        + utxo::AssociatedDataType<AssociatedData = Self::AssociatedData>
         + utxo::UtxoType<Utxo = Self::Utxo>
         + utxo::DefaultAddress<Self::SpendingKey>
         + utxo::DefaultAddress<AuthorizationKey<Self>>
         + utxo::DeriveMint<Secret = Self::MintSecret>
-        + utxo::DeriveSpend<Nullifier = Self::Nullifier>;
+        + utxo::DeriveSpend<Secret = Self::SpendSecret, Nullifier = Self::Nullifier>
+        + utxo::NoteOpen;
 
     /// Authorization Key Type  Variable
     type AuthorizationKeyVar: Variable<Secret, Self::Compiler, Type = AuthorizationKey<Self>>
@@ -1575,10 +1587,14 @@ where
             self.body.sinks,
             ledger,
         )?;
-        if !all_unequal(&self.body.sender_posts, |p, q| p.nullifier == q.nullifier) {
+        if !all_unequal(&self.body.sender_posts, |p, q| {
+            p.nullifier.is_independent(&q.nullifier)
+        }) {
             return Err(TransferPostError::DuplicateSpend);
         }
-        if !all_unequal(&self.body.receiver_posts, |p, q| p.utxo == q.utxo) {
+        if !all_unequal(&self.body.receiver_posts, |p, q| {
+            p.utxo.is_independent(&q.utxo)
+        }) {
             return Err(TransferPostError::DuplicateMint);
         }
         let sender_posting_keys = self

@@ -36,9 +36,12 @@ use crate::{
             MultiProvingContext, PrivateTransfer, PrivateTransferShape, Selection, ToPrivate,
             ToPublic, Transaction,
         },
-        requires_authorization, Address, Asset, FullParametersRef, Identifier, Metadata, Note,
-        Nullifier, Parameters, PreSender, ProofSystemError, ProvingContext, Receiver, Sender,
-        Shape, Transfer, TransferPost, Utxo, UtxoAccumulatorItem, UtxoAccumulatorModel,
+        requires_authorization,
+        utxo::{auth::Generate, NoteOpen},
+        Address, Asset, AssociatedData, AuthorizationKey, AuthorizationProof, FullParametersRef,
+        Identifier, Note, Nullifier, Parameters, PreSender, ProofSystemError, ProvingContext,
+        Receiver, Sender, Shape, Transfer, TransferPost, Utxo, UtxoAccumulatorItem,
+        UtxoAccumulatorModel,
     },
     wallet::ledger::{self, Data},
 };
@@ -631,26 +634,28 @@ where
         self.default_account().spending_key(parameters)
     }
 
+    ///
+    #[inline]
+    fn authorization_proof_for_default_spending_key(
+        &mut self,
+        parameters: &C::Parameters,
+    ) -> AuthorizationProof<C> {
+        parameters
+            .generate(&self.default_spending_key(parameters), &mut self.rng)
+            .into_proof(parameters, &mut ())
+    }
+
     /// Returns the default address for the default account of `self`.
     #[inline]
     fn default_address(&mut self, parameters: &C::Parameters) -> Address<C> {
         self.accounts.get_mut_default().default_address(parameters)
     }
 
-    ///
-    #[inline]
-    fn try_open<'h>(
-        parameters: &C::Parameters,
-        viewing_key: &(),
-        note: Note<C>,
-    ) -> Option<(Identifier<C>, Asset<C>)> {
-        todo!()
-    }
-
     /// Inserts the new `utxo`-`note` pair into the `utxo_accumulator` adding the spendable amount
     /// to `assets` if there is no void number to match it.
     #[inline]
-    fn insert_next_item(
+    fn insert_next_item<R>(
+        authorization_key: &mut AuthorizationKey<C>,
         utxo_accumulator: &mut C::UtxoAccumulator,
         assets: &mut C::AssetMap,
         parameters: &Parameters<C>,
@@ -659,7 +664,32 @@ where
         asset: Asset<C>,
         nullifiers: &mut Vec<Nullifier<C>>,
         deposit: &mut Vec<Asset<C>>,
-    ) {
+        rng: &mut R,
+    ) where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        /*
+        if let Some(nullifier) =
+            parameters.derive_consistent_nullifier(authorization_key, &identifier, &asset, &utxo)
+        {
+            todo!()
+        }
+        */
+        /*
+        let (_, computed_utxo, nullifier) =
+            parameters.derive((), identifier.clone(), asset.clone(), rng);
+        if computed_utxo == utxo {
+            if let Some(index) = nullifiers
+                .iter()
+                .position(move |n| n.eq(nullifier, &mut ()))
+            {
+                nullifiers.remove(index);
+            } else {
+                todo!()
+            }
+        }
+        */
+
         /*
         let ViewKeySelection {
             index,
@@ -737,7 +767,8 @@ where
         let mut withdraw = Vec::new();
         let viewing_key = ();
         for (utxo, note) in inserts {
-            if let Some((identifier, asset)) = Self::try_open(parameters, &viewing_key, note) {
+            /*
+            if let Some((identifier, asset)) = parameters.open(&viewing_key, &utxo, note) {
                 Self::insert_next_item(
                     &mut self.utxo_accumulator,
                     &mut self.assets,
@@ -752,6 +783,8 @@ where
                 // FIXME: self.utxo_accumulator.insert_nonprovable(&utxo);
                 todo!()
             }
+            */
+            todo!()
         }
         self.assets.retain(|identifier, assets| {
             /*
@@ -822,16 +855,16 @@ where
         parameters: &Parameters<C>,
         address: Address<C>,
         asset: Asset<C>,
-        metadata: Metadata<C>,
+        associated_data: AssociatedData<C>,
     ) -> Receiver<C> {
-        Receiver::<C>::sample(parameters, address, asset, metadata, &mut self.rng)
+        Receiver::<C>::sample(parameters, address, asset, associated_data, &mut self.rng)
     }
 
     ///
     #[inline]
     fn default_receiver(&mut self, parameters: &Parameters<C>, asset: Asset<C>) -> Receiver<C> {
         let default_address = self.default_address(parameters);
-        self.receiver(parameters, default_address, asset)
+        self.receiver(parameters, default_address, asset, Default::default())
     }
 
     /// Selects the pre-senders which collectively own at least `asset`, returning any change.
@@ -883,10 +916,9 @@ where
         proving_context: &ProvingContext<C>,
         transfer: Transfer<C, SOURCES, SENDERS, RECEIVERS, SINKS>,
     ) -> Result<TransferPost<C>, SignError<C>> {
-        let spending_key = self.default_spending_key();
+        let spending_key = self.default_spending_key(&parameters.parameters);
         Self::build_post_inner(
             FullParametersRef::<C>::new(&parameters.parameters, self.utxo_accumulator.model()),
-            &parameters.authorization_signature_scheme,
             proving_context,
             requires_authorization(SENDERS).then_some(&spending_key),
             transfer,
@@ -1169,30 +1201,28 @@ where
             &self.parameters.parameters,
             Asset::<C>::new(asset.id.clone(), selection.change),
         );
+        let authorization_proof = self
+            .state
+            .authorization_proof_for_default_spending_key(&self.parameters.parameters);
         let final_post = match address {
             Some(address) => {
-                let receiver = self
-                    .state
-                    .receiver(&self.parameters.parameters, address, asset);
-                /*
+                let receiver = self.state.receiver(
+                    &self.parameters.parameters,
+                    address,
+                    asset,
+                    Default::default(),
+                );
                 self.state.build_post(
-                    &self.parameters.parameters,
+                    &self.parameters,
                     &self.parameters.proving_context.private_transfer,
-                    PrivateTransfer::build(senders, [change, receiver]),
+                    PrivateTransfer::build(authorization_proof, senders, [change, receiver]),
                 )?
-                */
-                todo!()
             }
-            _ => {
-                /*
-                    self.state.build_post(
-                    &self.parameters.parameters,
-                    &self.parameters.proving_context.reclaim,
-                    ToPublic::build(senders, [change], asset),
-                )?
-                    */
-                todo!()
-            }
+            _ => self.state.build_post(
+                &self.parameters,
+                &self.parameters.proving_context.to_public,
+                ToPublic::build(authorization_proof, senders, [change], asset),
+            )?,
         };
         posts.push(final_post);
         Ok(SignResponse::new(posts))
@@ -1235,9 +1265,14 @@ where
     pub fn addresses(&mut self, request: AddressRequest) -> Vec<Address<C>> {
         let account = self.state.accounts.get_mut_default();
         match request {
-            AddressRequest::Get { index } => vec![account.address(index.into())],
-            AddressRequest::GetAll => account.iter_observed().collect(),
-            AddressRequest::New { count } => account.iter_new().take(count).collect(),
+            AddressRequest::Get { index } => {
+                vec![account.address(&self.parameters.parameters, index.into())]
+            }
+            AddressRequest::GetAll => account.iter_observed(&self.parameters.parameters).collect(),
+            AddressRequest::New { count } => account
+                .iter_new(&self.parameters.parameters)
+                .take(count)
+                .collect(),
         }
     }
 }

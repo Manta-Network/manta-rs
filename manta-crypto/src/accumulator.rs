@@ -102,15 +102,6 @@ pub trait Accumulator {
     /// `false` if the maximum capacity of the accumulator would be exceeded by inserting `item`.
     fn insert(&mut self, item: &Self::Item) -> bool;
 
-    /// Returns `true` whenever `fst` and `snd` can be inserted in any order into the accumulator.
-    /// This method should return `false`, the worst-case result, in the case that the insertion
-    /// order is unknown or unspecified.
-    #[inline]
-    fn are_independent(&self, fst: &Self::Item, snd: &Self::Item) -> bool {
-        let _ = (fst, snd);
-        false
-    }
-
     /// Returns a membership proof for `item` if it is contained in `self`.
     fn prove(&self, item: &Self::Item) -> Option<MembershipProof<Self::Model>>;
 
@@ -209,102 +200,6 @@ pub trait OptimizedAccumulator: Accumulator {
     fn remove_proof(&mut self, item: &Self::Item) -> bool {
         let _ = item;
         false
-    }
-}
-
-/// Item Hash Accumulator Model
-pub struct ItemHashAccumulatorModel<T, H, A>
-where
-    H: ItemHashFunction<T>,
-    A: Accumulator<Item = H::Item>,
-{
-    /// Item Hash Function
-    item_hash_function: H,
-
-    /// Accumulator
-    accumulator: A,
-
-    /// Type Parameter Marker
-    __: PhantomData<T>,
-}
-
-impl<T, H, A> Types for ItemHashAccumulatorModel<T, H, A>
-where
-    H: ItemHashFunction<T>,
-    A: Accumulator<Item = H::Item>,
-{
-    type Item = T;
-    type Witness = Witness<A>;
-    type Output = Output<A>;
-}
-
-impl<T, H, A> Model for ItemHashAccumulatorModel<T, H, A>
-where
-    H: ItemHashFunction<T>,
-    A: Accumulator<Item = H::Item>,
-{
-    type Verification = <A::Model as Model>::Verification;
-
-    #[inline]
-    fn verify(
-        &self,
-        item: &Self::Item,
-        witness: &Self::Witness,
-        output: &Self::Output,
-        compiler: &mut (),
-    ) -> Self::Verification {
-        self.accumulator.model().verify(
-            &self.item_hash_function.item_hash(item, compiler),
-            witness,
-            output,
-            compiler,
-        )
-    }
-}
-
-/// Item Hash Accumulator
-pub struct ItemHashAccumulator<T, H, A>
-where
-    H: ItemHashFunction<T>,
-    A: Accumulator<Item = H::Item>,
-{
-    /// Item Hash Accumulator Model
-    model: ItemHashAccumulatorModel<T, H, A>,
-}
-
-impl<T, H, A> Accumulator for ItemHashAccumulator<T, H, A>
-where
-    H: ItemHashFunction<T>,
-    A: Accumulator<Item = H::Item>,
-{
-    type Item = T;
-    type Model = ItemHashAccumulatorModel<T, H, A>;
-
-    #[inline]
-    fn model(&self) -> &Self::Model {
-        &self.model
-    }
-
-    #[inline]
-    fn insert(&mut self, item: &Self::Item) -> bool {
-        self.model
-            .accumulator
-            .insert(&self.model.item_hash_function.item_hash(item, &mut ()))
-    }
-
-    #[inline]
-    fn prove(&self, item: &Self::Item) -> Option<MembershipProof<Self::Model>> {
-        self.model
-            .accumulator
-            .prove(&self.model.item_hash_function.item_hash(item, &mut ()))
-            .map(MembershipProof::into)
-    }
-
-    #[inline]
-    fn contains(&self, item: &Self::Item) -> bool {
-        self.model
-            .accumulator
-            .contains(&self.model.item_hash_function.item_hash(item, &mut ()))
     }
 }
 
