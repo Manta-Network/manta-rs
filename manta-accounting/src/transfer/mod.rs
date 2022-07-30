@@ -107,7 +107,7 @@ pub trait Configuration {
     type Nullifier: Independence<NullifierIndependence>;
 
     /// Identifier Type
-    type Identifier: Clone;
+    type Identifier: Clone + Sample;
 
     /// Spending Key
     type SpendingKey;

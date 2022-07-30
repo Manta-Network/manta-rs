@@ -1076,6 +1076,21 @@ where
     }
 }
 
+impl<C> Sample for Identifier<C>
+where
+    C: Configuration<Bool = bool>,
+    UtxoCommitmentRandomness<C>: Sample,
+    C::Group: Sample,
+{
+    #[inline]
+    fn sample<R>(_: (), rng: &mut R) -> Self
+    where
+        R: RngCore + ?Sized,
+    {
+        Self::new(false, rng.gen(), rng.gen())
+    }
+}
+
 /// Spend Secret
 pub struct SpendSecret<C, COM = ()>
 where

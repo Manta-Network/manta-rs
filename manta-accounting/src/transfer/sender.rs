@@ -109,10 +109,17 @@ where
     /// Converts `self` into a [`Sender`] by attaching `proof` to it.
     #[inline]
     pub fn upgrade(self, proof: SenderProof<S>) -> Sender<S> {
+        Self::upgrade_unchecked(self, proof.utxo_membership_proof)
+    }
+
+    /// Converts `self` into a [`Sender`] by attaching `proof` to it without necessarily checking
+    /// that it comes from an accumulator or represents a valid proof.
+    #[inline]
+    pub fn upgrade_unchecked(self, proof: UtxoMembershipProof<S>) -> Sender<S> {
         Sender {
             secret: self.secret,
             utxo: self.utxo,
-            utxo_membership_proof: proof.utxo_membership_proof,
+            utxo_membership_proof: proof,
             nullifier: self.nullifier,
         }
     }

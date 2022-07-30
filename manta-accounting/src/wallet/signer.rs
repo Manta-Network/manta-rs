@@ -958,6 +958,13 @@ where
             return Ok(());
         }
         for _ in 0..needed_fake_zeroes {
+            let _ = self
+                .build_pre_sender(
+                    parameters,
+                    self.rng.gen(),
+                    Asset::<C>::new(asset_id.clone(), Default::default()),
+                )
+                .upgrade_unchecked(Default::default());
             todo!()
         }
         Ok(())
