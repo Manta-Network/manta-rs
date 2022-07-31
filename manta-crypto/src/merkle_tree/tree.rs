@@ -1040,13 +1040,22 @@ where
     }
 }
 
+impl<C, T> accumulator::Types for MerkleTree<C, T>
+where
+    C: Configuration + ?Sized,
+    T: Tree<C>,
+{
+    type Item = Leaf<C>;
+    type Witness = Path<C>;
+    type Output = Root<C>;
+}
+
 impl<C, T> Accumulator for MerkleTree<C, T>
 where
     C: Configuration + ?Sized,
     T: Tree<C> + WithProofs<C>,
     InnerDigest<C>: Clone + PartialEq,
 {
-    type Item = Leaf<C>;
     type Model = Parameters<C>;
 
     #[inline]

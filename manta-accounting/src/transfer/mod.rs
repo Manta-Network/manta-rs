@@ -124,6 +124,12 @@ pub trait Configuration {
     /// Spend Secret Type
     type SpendSecret: utxo::QueryAsset<Asset = Asset<Self>, Utxo = Self::Utxo>;
 
+    /// [`Utxo`] Accumulator Witness Type
+    type UtxoAccumulatorWitness: Default;
+
+    /// [`Utxo`] Accumulator Output Type
+    type UtxoAccumulatorOutput: Default;
+
     /// Parameters Type
     type Parameters: auth::Derive
         + auth::Verify
@@ -140,6 +146,8 @@ pub trait Configuration {
         + utxo::DefaultAddress<AuthorizationKey<Self>>
         + utxo::DeriveMint<Secret = Self::MintSecret, Utxo = Self::Utxo>
         + utxo::DeriveSpend<
+            UtxoAccumulatorWitness = Self::UtxoAccumulatorWitness,
+            UtxoAccumulatorOutput = Self::UtxoAccumulatorOutput,
             Secret = Self::SpendSecret,
             Nullifier = Self::Nullifier,
             Identifier = Self::Identifier,

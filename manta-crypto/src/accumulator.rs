@@ -17,7 +17,7 @@
 //! Dynamic Cryptographic Accumulators
 
 use crate::constraint::{Allocate, Allocator, Constant, Derived, Variable};
-use core::marker::PhantomData;
+use core::{fmt::Debug, hash::Hash};
 
 /// Accumulator Membership Model Types
 pub trait Types {
@@ -30,6 +30,33 @@ pub trait Types {
     /// Output Type
     type Output;
 }
+
+impl<T> Types for &T
+where
+    T: Types + ?Sized,
+{
+    type Item = T::Item;
+    type Witness = T::Witness;
+    type Output = T::Output;
+}
+
+impl<T> Types for &mut T
+where
+    T: Types + ?Sized,
+{
+    type Item = T::Item;
+    type Witness = T::Witness;
+    type Output = T::Output;
+}
+
+/// Accumulator Item Type
+pub type Item<T> = <T as Types>::Item;
+
+/// Accumulator Witness Type
+pub type Witness<T> = <T as Types>::Witness;
+
+/// Accumulator Output Type
+pub type Output<T> = <T as Types>::Output;
 
 /// Accumulator Membership Model
 pub trait Model<COM = ()>: Types {
@@ -80,19 +107,10 @@ pub trait AssertValidVerification<COM = ()>: Model<COM> {
     );
 }
 
-/// Accumulator Witness Type
-pub type Witness<A> = <<A as Accumulator>::Model as Types>::Witness;
-
-/// Accumulator Output Type
-pub type Output<A> = <<A as Accumulator>::Model as Types>::Output;
-
 /// Accumulator
-pub trait Accumulator {
-    /// Item Type
-    type Item: ?Sized;
-
+pub trait Accumulator: Types {
     /// Model Type
-    type Model: Model<Item = Self::Item> + ?Sized;
+    type Model: Model<Item = Self::Item, Witness = Self::Witness, Output = Self::Output> + ?Sized;
 
     /// Returns the model associated with `self`.
     fn model(&self) -> &Self::Model;
@@ -123,7 +141,6 @@ impl<A> Accumulator for &mut A
 where
     A: Accumulator + ?Sized,
 {
-    type Item = A::Item;
     type Model = A::Model;
 
     #[inline]
@@ -138,7 +155,7 @@ where
 
     #[inline]
     fn prove(&self, item: &Self::Item) -> Option<MembershipProof<Self::Model>> {
-        (**self).prove(item)
+        (**self).prove(item).map(MembershipProof::into)
     }
 
     #[inline]
@@ -204,32 +221,35 @@ pub trait OptimizedAccumulator: Accumulator {
 }
 
 /// Accumulator Membership Proof
-pub struct MembershipProof<M, COM = ()>
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "M::Witness: Clone, M::Output: Clone"),
+    Copy(bound = "M::Witness: Copy, M::Output: Copy"),
+    Debug(bound = "M::Witness: Debug, M::Output: Debug"),
+    Default(bound = "M::Witness: Default, M::Output: Default"),
+    Eq(bound = "M::Witness: Eq, M::Output: Eq"),
+    Hash(bound = "M::Witness: Hash, M::Output: Hash"),
+    PartialEq(bound = "M::Witness: PartialEq, M::Output: PartialEq")
+)]
+pub struct MembershipProof<M>
 where
-    M: Model<COM> + ?Sized,
+    M: Types + ?Sized,
 {
     /// Secret Membership Witness
     witness: M::Witness,
 
     /// Accumulator Output
     output: M::Output,
-
-    /// Type Parameter Marker
-    __: PhantomData<COM>,
 }
 
-impl<M, COM> MembershipProof<M, COM>
+impl<M> MembershipProof<M>
 where
-    M: Model<COM> + ?Sized,
+    M: Types + ?Sized,
 {
     /// Builds a new [`MembershipProof`] from `witness` and `output`.
     #[inline]
     pub fn new(witness: M::Witness, output: M::Output) -> Self {
-        Self {
-            witness,
-            output,
-            __: PhantomData,
-        }
+        Self { witness, output }
     }
 
     /// Returns the accumulated output part of `self`, dropping the [`M::Witness`](Types::Witness).
@@ -246,13 +266,16 @@ where
 
     /// Verifies that `item` is stored in a known accumulator using `model`.
     #[inline]
-    pub fn verify(&self, model: &M, item: &M::Item, compiler: &mut COM) -> M::Verification {
+    pub fn verify<COM>(&self, model: &M, item: &M::Item, compiler: &mut COM) -> M::Verification
+    where
+        M: Model<COM>,
+    {
         model.verify(item, &self.witness, &self.output, compiler)
     }
 
     /// Asserts that the verification of the storage of `item` in the known accumulator is valid.
     #[inline]
-    pub fn assert_valid(&self, model: &M, item: &M::Item, compiler: &mut COM)
+    pub fn assert_valid<COM>(&self, model: &M, item: &M::Item, compiler: &mut COM)
     where
         M: AssertValidVerification<COM>,
     {
@@ -266,9 +289,9 @@ where
     /// This function cannot guarantee that the point-wise conversion of the witness and output
     /// preserves the membership proof validity.
     #[inline]
-    pub fn into<N>(self) -> MembershipProof<N, COM>
+    pub fn into<N>(self) -> MembershipProof<N>
     where
-        N: Model<COM> + ?Sized,
+        N: Types + ?Sized,
         M::Witness: Into<N::Witness>,
         M::Output: Into<N::Output>,
     {
@@ -276,7 +299,7 @@ where
     }
 }
 
-impl<M, W, O, COM> Variable<Derived<(W, O)>, COM> for MembershipProof<M, COM>
+impl<M, W, O, COM> Variable<Derived<(W, O)>, COM> for MembershipProof<M>
 where
     M: Model<COM> + Constant<COM>,
     M::Type: Model,

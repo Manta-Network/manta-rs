@@ -285,8 +285,19 @@ pub trait QueryAsset: AssetType + UtxoType {
 pub trait Spend<COM = ()>:
     ItemHashFunction<Self::Utxo, COM> + AuthorizationKeyType + AssetType + UtxoType + NullifierType
 {
+    /// UTXO Accumulator Witness Type
+    type UtxoAccumulatorWitness;
+
+    /// UTXO Accumulator Output Type
+    type UtxoAccumulatorOutput;
+
     /// UTXO Accumulator Model Type
-    type UtxoAccumulatorModel: accumulator::Model<COM, Item = Self::Item>;
+    type UtxoAccumulatorModel: accumulator::Model<
+        COM,
+        Item = Self::Item,
+        Witness = Self::UtxoAccumulatorWitness,
+        Output = Self::UtxoAccumulatorOutput,
+    >;
 
     /// Spend Secret Type
     type Secret;
@@ -343,7 +354,7 @@ pub type UtxoAccumulatorOutput<S, COM = ()> =
     <UtxoAccumulatorModel<S, COM> as accumulator::Types>::Output;
 
 /// UTXO Membership Proof Type
-pub type UtxoMembershipProof<S, COM = ()> = MembershipProof<UtxoAccumulatorModel<S, COM>, COM>;
+pub type UtxoMembershipProof<S, COM = ()> = MembershipProof<UtxoAccumulatorModel<S, COM>>;
 
 /// Full Parameters Owned
 ///

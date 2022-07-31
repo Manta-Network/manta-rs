@@ -63,21 +63,9 @@ pub trait BalanceState<I = AssetId, V = AssetValue>: Default {
 
     /// Withdraws every asset in `assets` from the balance state, returning `false` if it would
     /// overdraw the balance.
-    #[inline]
     fn withdraw_all<A>(&mut self, assets: A) -> bool
     where
-        A: IntoIterator<Item = Asset<I, V>>,
-    {
-        /* TODO:
-        for asset in AssetList::from_iter(assets) {
-            if !self.withdraw(asset) {
-                return false;
-            }
-        }
-        true
-        */
-        todo!()
-    }
+        A: IntoIterator<Item = Asset<I, V>>;
 
     /// Clears the entire balance state.
     fn clear(&mut self);
@@ -102,6 +90,14 @@ where
     #[inline]
     fn withdraw(&mut self, asset: Asset<I, V>) -> bool {
         self.withdraw(&asset)
+    }
+
+    #[inline]
+    fn withdraw_all<A>(&mut self, assets: A) -> bool
+    where
+        A: IntoIterator<Item = Asset<I, V>>,
+    {
+        todo!()
     }
 
     #[inline]
@@ -149,6 +145,14 @@ macro_rules! impl_balance_state_map_body {
             } else {
                 true
             }
+        }
+
+        #[inline]
+        fn withdraw_all<A>(&mut self, assets: A) -> bool
+        where
+            A: IntoIterator<Item = Asset<I, V>>,
+        {
+            todo!()
         }
 
         #[inline]

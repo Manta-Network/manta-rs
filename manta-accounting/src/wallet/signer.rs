@@ -924,15 +924,18 @@ where
     fn prepare_final_pre_senders(
         &mut self,
         parameters: &Parameters<C>,
-        proving_context: &MultiProvingContext<C>,
         asset_id: &C::AssetId,
         mut new_zeroes: Vec<PreSender<C>>,
-        pre_senders: &mut Vec<PreSender<C>>,
-        posts: &mut Vec<TransferPost<C>>,
-    ) -> Result<(), SignError<C>> {
-        let mut needed_zeroes = PrivateTransferShape::SENDERS - pre_senders.len();
+        pre_senders: Vec<PreSender<C>>,
+    ) -> Result<Vec<Sender<C>>, SignError<C>> {
+        let mut senders = pre_senders
+            .into_iter()
+            .map(|s| s.try_upgrade(parameters, &self.utxo_accumulator))
+            .collect::<Option<Vec<_>>>()
+            .expect("Unable to upgrade expected UTXOs.");
+        let mut needed_zeroes = PrivateTransferShape::SENDERS - senders.len();
         if needed_zeroes == 0 {
-            return Ok(());
+            return Ok(senders);
         }
         let zeroes = self.assets.zeroes(needed_zeroes, asset_id);
         needed_zeroes -= zeroes.len();
@@ -942,67 +945,40 @@ where
                 zero,
                 Asset::<C>::new(asset_id.clone(), Default::default()),
             );
-            pre_senders.push(pre_sender);
+            senders.push(
+                pre_sender
+                    .try_upgrade(parameters, &self.utxo_accumulator)
+                    .expect("Unable to upgrade expected UTXOs."),
+            );
         }
         if needed_zeroes == 0 {
-            return Ok(());
+            return Ok(senders);
         }
         let needed_fake_zeroes = needed_zeroes.saturating_sub(new_zeroes.len());
         for _ in 0..needed_zeroes {
             match new_zeroes.pop() {
-                Some(zero) => pre_senders.push(zero),
+                Some(zero) => senders.push(
+                    zero.try_upgrade(parameters, &self.utxo_accumulator)
+                        .expect("Unable to upgrade expected UTXOs."),
+                ),
                 _ => break,
             }
         }
         if needed_fake_zeroes == 0 {
-            return Ok(());
+            return Ok(senders);
         }
         for _ in 0..needed_fake_zeroes {
-            let _ = self
-                .build_pre_sender(
+            let identifier = self.rng.gen();
+            senders.push(
+                self.build_pre_sender(
                     parameters,
-                    self.rng.gen(),
+                    identifier,
                     Asset::<C>::new(asset_id.clone(), Default::default()),
                 )
-                .upgrade_unchecked(Default::default());
-            todo!()
+                .upgrade_unchecked(Default::default()),
+            );
         }
-        Ok(())
-
-        /* FIXME: We need a new algorithm for this:
-         *
-         *
-        let mut needed_zeroes = PrivateTransferShape::SENDERS - pre_senders.len();
-        if needed_zeroes == 0 {
-            return Ok(());
-        }
-        let zeroes = self.assets.zeroes(needed_zeroes, asset_id);
-        needed_zeroes -= zeroes.len();
-        for zero in zeroes {
-            let pre_sender = self.build_pre_sender(parameters, zero, Asset::zero(asset_id))?;
-            pre_senders.push(pre_sender);
-        }
-        if needed_zeroes == 0 {
-            return Ok(());
-        }
-        let needed_mints = needed_zeroes.saturating_sub(new_zeroes.len());
-        for _ in 0..needed_zeroes {
-            match new_zeroes.pop() {
-                Some(zero) => pre_senders.push(zero),
-                _ => break,
-            }
-        }
-        if needed_mints == 0 {
-            return Ok(());
-        }
-        for _ in 0..needed_mints {
-            let (mint, pre_sender) = self.mint_zero(parameters, asset_id)?;
-            posts.push(self.mint_post(parameters, &proving_context.mint, mint)?);
-            pre_sender.insert_utxo(&mut self.utxo_accumulator);
-            pre_senders.push(pre_sender);
-        }
-        Ok(())
-        */
+        Ok(senders)
     }
 
     /// Computes the batched transactions for rebalancing before a final transfer.
@@ -1045,21 +1021,12 @@ where
             joins.append(&mut iter.remainder());
             pre_senders = joins;
         }
-        self.prepare_final_pre_senders(
+        Ok(into_array_unchecked(self.prepare_final_pre_senders(
             parameters,
-            proving_context,
             asset_id,
             new_zeroes,
-            &mut pre_senders,
-            posts,
-        )?;
-        Ok(into_array_unchecked(
-            pre_senders
-                .into_iter()
-                .map(move |s| s.try_upgrade(parameters, &self.utxo_accumulator))
-                .collect::<Option<Vec<_>>>()
-                .expect("Unable to upgrade expected UTXOs."),
-        ))
+            pre_senders,
+        )?))
     }
 }
 

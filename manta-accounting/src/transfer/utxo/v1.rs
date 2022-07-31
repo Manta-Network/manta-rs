@@ -297,7 +297,7 @@ pub type UtxoAccumulatorItem<C, COM = ()> =
 
 /// UTXO Membership Proof
 pub type UtxoMembershipProof<C, COM = ()> =
-    MembershipProof<<C as Configuration<COM>>::UtxoAccumulatorModel, COM>;
+    MembershipProof<<C as Configuration<COM>>::UtxoAccumulatorModel>;
 
 /// Nullifier Commitment
 pub type NullifierCommitment<C, COM = ()> =
@@ -537,8 +537,11 @@ where
     C: Configuration<COM>,
     COM: Assert + Has<bool, Type = C::Bool>,
 {
+    type UtxoAccumulatorWitness = utxo::UtxoAccumulatorWitness<Self, COM>;
+    type UtxoAccumulatorOutput = utxo::UtxoAccumulatorOutput<Self, COM>;
     type UtxoAccumulatorModel = C::UtxoAccumulatorModel;
     type Secret = SpendSecret<C, COM>;
+
     #[inline]
     fn well_formed_asset(
         &self,
