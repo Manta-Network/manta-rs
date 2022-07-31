@@ -61,7 +61,7 @@ pub mod test;
 pub struct Wallet<
     C,
     L,
-    S, /*= signer::Signer<C>*/
+    S = signer::Signer<C>,
     B = BTreeMapBalanceState<<C as Configuration>::AssetId, <C as Configuration>::AssetValue>,
 > where
     C: Configuration,

@@ -389,18 +389,15 @@ where
 }
 
 /// Actor
-pub struct Actor<C, L, S>
+pub struct Actor<C, L, S, B>
 where
     C: Configuration,
     L: Ledger<C>,
     S: signer::Connection<C, Checkpoint = L::Checkpoint>,
+    B: BalanceState<C::AssetId, C::AssetValue>,
 {
-    /*
     /// Wallet
-    pub wallet: Wallet<C, L, S>,
-    */
-    /// FIXME:
-    __FIXME: PhantomData<(C, L, S)>,
+    pub wallet: Wallet<C, L, S, B>,
 
     /// Action Distribution
     pub distribution: ActionDistribution,
@@ -409,23 +406,26 @@ where
     pub lifetime: usize,
 }
 
-impl<C, L, S> Actor<C, L, S>
+impl<C, L, S, B> Actor<C, L, S, B>
 where
     C: Configuration,
     L: Ledger<C>,
     S: signer::Connection<C, Checkpoint = L::Checkpoint>,
+    B: BalanceState<C::AssetId, C::AssetValue>,
 {
-    /*
     /// Builds a new [`Actor`] with `wallet`, `distribution`, and `lifetime`.
     #[inline]
-    pub fn new(wallet: Wallet<C, L, S>, distribution: ActionDistribution, lifetime: usize) -> Self {
+    pub fn new(
+        wallet: Wallet<C, L, S, B>,
+        distribution: ActionDistribution,
+        lifetime: usize,
+    ) -> Self {
         Self {
             wallet,
             distribution,
             lifetime,
         }
     }
-    */
 
     /// Reduces the lifetime of `self` returning `None` if the lifetime is zero.
     #[inline]
@@ -437,7 +437,6 @@ where
     /// Returns the default address for `self`.
     #[inline]
     async fn default_address(&mut self) -> Result<Address<C>, Error<C, L, S>> {
-        /*
         self.wallet
             .addresses(AddressRequest::Get {
                 index: Default::default(),
@@ -445,8 +444,6 @@ where
             .await
             .map_err(Error::SignerConnectionError)
             .map(Vec::take_first)
-        */
-        todo!()
     }
 
     /// Returns the latest public balances from the ledger.
@@ -457,18 +454,14 @@ where
     where
         L: PublicBalanceOracle<C>,
     {
-        /*
         self.wallet.sync().await?;
         Ok(self.wallet.ledger().public_balances().await)
-        */
-        todo!()
     }
 
     ///
     #[inline]
     async fn sync(&mut self) -> Result<(), Error<C, L, S>> {
-        // TODO: self.wallet.sync().await
-        todo!()
+        self.wallet.sync().await
     }
 
     /// Synchronizes with the ledger, attaching the `action` marker for the possible error branch.
@@ -484,15 +477,13 @@ where
         transaction: Transaction<C>,
         metadata: Option<AssetMetadata>,
     ) -> Result<L::Response, Error<C, L, S>> {
-        // TODO: self.wallet.post(transaction, metadata).await
-        todo!()
+        self.wallet.post(transaction, metadata).await
     }
 
     ///
     #[inline]
     async fn addresses(&mut self, request: AddressRequest) -> Result<Vec<Address<C>>, S::Error> {
-        // TODO: self.wallet.addresses(request).await
-        todo!()
+        self.wallet.addresses(request).await
     }
 
     /// Samples a deposit from `self` using `rng` returning `None` if no deposit is possible.
@@ -750,24 +741,26 @@ pub type SharedAddressDatabase<C> = Arc<Mutex<AddressDatabase<C>>>;
 /// Simulation
 #[derive(derivative::Derivative)]
 #[derivative(Default(bound = ""))]
-pub struct Simulation<C, L, S>
+pub struct Simulation<C, L, S, B>
 where
     C: Configuration,
     L: Ledger<C>,
     S: signer::Connection<C, Checkpoint = L::Checkpoint>,
+    B: BalanceState<C::AssetId, C::AssetValue>,
 {
     /// Address Database
     addresses: SharedAddressDatabase<C>,
 
     /// Type Parameter Marker
-    __: PhantomData<(L, S)>,
+    __: PhantomData<(L, S, B)>,
 }
 
-impl<C, L, S> Simulation<C, L, S>
+impl<C, L, S, B> Simulation<C, L, S, B>
 where
     C: Configuration,
     L: Ledger<C>,
     S: signer::Connection<C, Checkpoint = L::Checkpoint>,
+    B: BalanceState<C::AssetId, C::AssetValue>,
     Address<C>: Clone + Eq + Hash,
 {
     /// Builds a new [`Simulation`] with a starting set of public `addresses`.
@@ -790,14 +783,15 @@ where
     }
 }
 
-impl<C, L, S> sim::ActionSimulation for Simulation<C, L, S>
+impl<C, L, S, B> sim::ActionSimulation for Simulation<C, L, S, B>
 where
     C: Configuration,
     L: Ledger<C> + PublicBalanceOracle<C>,
     S: signer::Connection<C, Checkpoint = L::Checkpoint>,
+    B: BalanceState<C::AssetId, C::AssetValue>,
     Address<C>: Clone + Eq + Hash,
 {
-    type Actor = Actor<C, L, S>;
+    type Actor = Actor<C, L, S, B>;
     type Action = MaybeAction<C, L, S>;
     type Event = Event<C, L, S>;
 
@@ -920,16 +914,17 @@ where
     }
 }
 
-/*
 /// Measures the public and secret balances for each wallet, summing them all together.
 #[inline]
-pub async fn measure_balances<'w, C, L, S, I>(wallets: I) -> Result<AssetList, Error<C, L, S>>
+pub async fn measure_balances<'w, C, L, S, B, I>(wallets: I) -> Result<AssetList, Error<C, L, S>>
 where
     C: 'w + Configuration,
     L: 'w + Ledger<C> + PublicBalanceOracle<C>,
     S: 'w + signer::Connection<C, Checkpoint = L::Checkpoint>,
-    I: IntoIterator<Item = &'w mut Wallet<C, L, S>>,
+    B: 'w + BalanceState<C::AssetId, C::AssetValue>,
+    I: IntoIterator<Item = &'w mut Wallet<C, L, S, B>>,
 {
+    /*
     let mut balances = AssetList::new();
     for wallet in wallets {
         wallet.sync().await?;
@@ -942,8 +937,9 @@ where
         );
     }
     Ok(balances)
+    */
+    todo!()
 }
-*/
 
 /// Simulation Configuration
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
@@ -962,7 +958,7 @@ impl Config {
     /// Runs the simulation on the configuration defined in `self`, sending events to the
     /// `event_subscriber`.
     #[inline]
-    pub async fn run<C, L, S, R, GL, GS, F, ES, ESFut>(
+    pub async fn run<C, L, S, B, R, GL, GS, F, ES, ESFut>(
         &self,
         mut ledger: GL,
         mut signer: GS,
@@ -973,17 +969,18 @@ impl Config {
         C: Configuration,
         L: Ledger<C> + PublicBalanceOracle<C>,
         S: signer::Connection<C, Checkpoint = L::Checkpoint>,
+        B: BalanceState<C::AssetId, C::AssetValue>,
         R: CryptoRng + RngCore,
         GL: FnMut(usize) -> L,
         GS: FnMut(usize) -> S,
         F: FnMut() -> R,
-        ES: Copy + FnMut(&sim::Event<sim::ActionSim<Simulation<C, L, S>>>) -> ESFut,
+        ES: Copy + FnMut(&sim::Event<sim::ActionSim<Simulation<C, L, S, B>>>) -> ESFut,
         ESFut: Future<Output = ()>,
         Error<C, L, S>: Debug,
+        Address<C>: Clone + Eq + Hash,
     {
         let action_distribution = ActionDistribution::try_from(self.action_distribution)
             .expect("Unable to sample from action distribution.");
-        /*
         let actors = (0..self.actor_count)
             .map(|i| {
                 Actor::new(
@@ -1005,7 +1002,5 @@ impl Config {
         let final_balances =
             measure_balances(simulator.actors.iter_mut().map(|actor| &mut actor.wallet)).await?;
         Ok(initial_balances == final_balances)
-        */
-        todo!()
     }
 }

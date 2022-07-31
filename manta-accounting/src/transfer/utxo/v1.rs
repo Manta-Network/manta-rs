@@ -189,10 +189,14 @@ where
         + PartialEq<Self::Bool, COM>;
 
     /// Asset Id Type
-    type AssetId: ConditionalSelect<COM> + Zero<COM, Verification = Self::Bool>;
+    type AssetId: ConditionalSelect<COM>
+        + PartialEq<Self::AssetId, COM>
+        + Zero<COM, Verification = Self::Bool>;
 
     /// Asset Value Type
-    type AssetValue: ConditionalSelect<COM> + Zero<COM, Verification = Self::Bool>;
+    type AssetValue: ConditionalSelect<COM>
+        + PartialEq<Self::AssetValue, COM>
+        + Zero<COM, Verification = Self::Bool>;
 
     /// Scalar Type
     type Scalar: Clone + Scalar<COM>;
@@ -816,14 +820,27 @@ where
     }
 }
 
-impl<C> Independence<utxo::UtxoIndependence> for Utxo<C>
+impl<C, COM> PartialEq<Self, COM> for Utxo<C, COM>
 where
-    C: Configuration<Bool = bool>,
+    C: Configuration<COM>,
+    COM: Has<bool, Type = C::Bool>,
 {
     #[inline]
-    fn is_independent(&self, rhs: &Self) -> bool {
-        // TODO: self.neq(rhs)
-        todo!()
+    fn eq(&self, rhs: &Self, compiler: &mut COM) -> Bool<COM> {
+        self.is_transparent
+            .eq(&rhs.is_transparent, compiler)
+            .bitand(self.public_asset.eq(&rhs.public_asset, compiler), compiler)
+            .bitand(self.commitment.eq(&rhs.commitment, compiler), compiler)
+    }
+
+    #[inline]
+    fn assert_equal(&self, rhs: &Self, compiler: &mut COM)
+    where
+        COM: Assert,
+    {
+        compiler.assert_eq(&self.is_transparent, &rhs.is_transparent);
+        compiler.assert_eq(&self.public_asset, &rhs.public_asset);
+        compiler.assert_eq(&self.commitment, &rhs.commitment);
     }
 }
 
@@ -854,6 +871,16 @@ where
             this.public_asset.as_known(compiler),
             this.commitment.as_known(compiler),
         )
+    }
+}
+
+impl<C> Independence<utxo::UtxoIndependence> for Utxo<C>
+where
+    C: Configuration<Bool = bool>,
+{
+    #[inline]
+    fn is_independent(&self, rhs: &Self) -> bool {
+        self.ne(rhs, &mut ())
     }
 }
 
@@ -1323,7 +1350,6 @@ where
 {
     #[inline]
     fn is_independent(&self, rhs: &Self) -> bool {
-        // TODO: self.commitment.neq(&rhs.commitment)
-        todo!()
+        self.commitment.ne(&rhs.commitment, &mut ())
     }
 }

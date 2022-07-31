@@ -38,8 +38,13 @@ use core::{
 };
 use derive_more::{Add, AddAssign, Display, From, Sub, SubAssign, Sum};
 use manta_crypto::{
-    constraint::{
-        Allocate, Allocator, BitAnd, Bool, ConditionalSelect, Has, Secret, Variable, Zero,
+    eclair::{
+        self,
+        alloc::{mode::Secret, Allocate, Allocator, Variable},
+        bool::{Assert, AssertEq, Bool, ConditionalSelect},
+        num::Zero,
+        ops::BitAnd,
+        Has,
     },
     rand::{Rand, RngCore, Sample},
 };
@@ -549,6 +554,30 @@ where
             I::select(bit, &true_value.id, &false_value.id, compiler),
             V::select(bit, &true_value.value, &false_value.value, compiler),
         )
+    }
+}
+
+impl<I, V, COM> eclair::cmp::PartialEq<Self, COM> for Asset<I, V>
+where
+    COM: Has<bool>,
+    Bool<COM>: BitAnd<Bool<COM>, COM, Output = Bool<COM>>,
+    I: eclair::cmp::PartialEq<I, COM>,
+    V: eclair::cmp::PartialEq<V, COM>,
+{
+    #[inline]
+    fn eq(&self, rhs: &Self, compiler: &mut COM) -> Bool<COM> {
+        self.id
+            .eq(&rhs.id, compiler)
+            .bitand(self.value.eq(&rhs.value, compiler), compiler)
+    }
+
+    #[inline]
+    fn assert_equal(&self, rhs: &Self, compiler: &mut COM)
+    where
+        COM: Assert,
+    {
+        compiler.assert_eq(&self.id, &rhs.id);
+        compiler.assert_eq(&self.value, &rhs.value);
     }
 }
 

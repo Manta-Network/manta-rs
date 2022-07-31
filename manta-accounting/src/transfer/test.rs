@@ -22,7 +22,7 @@ use crate::{
         canonical::ToPrivate, has_public_participants, utxo::Mint, Address, Asset, AssociatedData,
         AuthorizationKey, Configuration, FullParametersRef, Parameters, PreSender, Proof,
         ProofInput, ProofSystemError, ProofSystemPublicParameters, ProvingContext, Receiver,
-        Sender, Transfer, TransferPost, Utxo, VerifyingContext,
+        Sender, Transfer, TransferPost, Utxo, UtxoAccumulatorModel, VerifyingContext,
     },
 };
 use alloc::vec::Vec;
@@ -84,7 +84,6 @@ where
 }
 
 /*
-
 /// Parameters Distribution
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
@@ -123,12 +122,13 @@ where
         )
     }
 }
+*/
 
 /// Transfer Distribution
 pub struct TransferDistribution<'p, C, A>
 where
     C: Configuration,
-    A: Accumulator<Item = Utxo<C>, Model = C::UtxoAccumulatorModel>,
+    A: Accumulator<Item = Utxo<C>, Model = UtxoAccumulatorModel<C>>,
 {
     /// Parameters
     pub parameters: &'p Parameters<C>,
@@ -140,7 +140,7 @@ where
 impl<'p, C, A> From<FixedTransferDistribution<'p, C, A>> for TransferDistribution<'p, C, A>
 where
     C: Configuration,
-    A: Accumulator<Item = Utxo<C>, Model = C::UtxoAccumulatorModel>,
+    A: Accumulator<Item = Utxo<C>, Model = UtxoAccumulatorModel<C>>,
 {
     #[inline]
     fn from(distribution: FixedTransferDistribution<'p, C, A>) -> Self {
@@ -157,7 +157,7 @@ where
 pub struct FixedTransferDistribution<'p, C, A>
 where
     C: Configuration,
-    A: Accumulator<Item = Utxo<C>, Model = C::UtxoAccumulatorModel>,
+    A: Accumulator<Item = Utxo<C>, Model = UtxoAccumulatorModel<C>>,
 {
     /// Base Transfer Distribution
     pub base: TransferDistribution<'p, C, A>,
@@ -193,9 +193,10 @@ where
         rng: &mut R,
     ) -> Result<TransferPost<C>, ProofSystemError<C>>
     where
-        A: Accumulator<Item = Utxo<C>, Model = C::UtxoAccumulatorModel>,
+        A: Accumulator<Item = Utxo<C>, Model = UtxoAccumulatorModel<C>>,
         R: CryptoRng + RngCore + ?Sized,
     {
+        /*
         Self::sample(
             TransferDistribution {
                 parameters,
@@ -204,10 +205,12 @@ where
             rng,
         )
         .into_post(
-            FullParameters::new(parameters, utxo_accumulator.model()),
+            FullParametersRef::new(parameters, utxo_accumulator.model()),
             proving_context,
             rng,
         )
+        */
+        todo!()
     }
 
     /// Samples a new [`Transfer`] and builds a correctness proof for it, checking if it was
@@ -220,12 +223,12 @@ where
         rng: &mut R,
     ) -> Result<bool, ProofSystemError<C>>
     where
-        A: Accumulator<Item = Utxo<C>, Model = C::UtxoAccumulatorModel>,
+        A: Accumulator<Item = Utxo<C>, Model = UtxoAccumulatorModel<C>>,
         R: CryptoRng + RngCore + ?Sized,
     {
         let (proving_context, verifying_context) = Self::generate_context(
             public_parameters,
-            FullParameters::new(parameters, utxo_accumulator.model()),
+            FullParametersRef::<C>::new(parameters, utxo_accumulator.model()),
             rng,
         )?;
         Self::sample_and_check_proof_with_context(
@@ -248,18 +251,22 @@ where
         rng: &mut R,
     ) -> Result<bool, ProofSystemError<C>>
     where
-        A: Accumulator<Item = Utxo<C>, Model = C::UtxoAccumulatorModel>,
+        A: Accumulator<Item = Utxo<C>, Model = UtxoAccumulatorModel<C>>,
         R: CryptoRng + RngCore + ?Sized,
     {
+        /*
         let post = Self::sample_post(proving_context, parameters, utxo_accumulator, rng)?;
         C::ProofSystem::verify(
             verifying_context,
             &post.generate_proof_input(),
             &post.validity_proof,
         )
+        */
+        todo!()
     }
 
-    /// Checks if `generate_proof_input` from [`Transfer`] and [`TransferPost`] gives the same [`ProofInput`].
+    /// Checks if `generate_proof_input` from [`Transfer`] and [`TransferPost`] gives the same
+    /// [`ProofInput`].
     #[inline]
     pub fn sample_and_check_generate_proof_input_compatibility<A, R>(
         public_parameters: &ProofSystemPublicParameters<C>,
@@ -268,11 +275,12 @@ where
         rng: &mut R,
     ) -> Result<bool, ProofSystemError<C>>
     where
-        A: Accumulator<Item = Utxo<C>, Model = C::UtxoAccumulatorModel>,
+        A: Accumulator<Item = Utxo<C>, Model = UtxoAccumulatorModel<C>>,
         R: CryptoRng + RngCore + ?Sized,
         ProofInput<C>: PartialEq,
         ProofSystemError<C>: Debug,
     {
+        /*
         let transfer = Self::sample(
             TransferDistribution {
                 parameters,
@@ -286,26 +294,8 @@ where
             == transfer
                 .into_post(full_parameters, &proving_context, rng)?
                 .generate_proof_input())
-    }
-}
-
-impl<C> TransferPost<C>
-where
-    C: Configuration,
-{
-    /// Asserts that `self` contains a valid proof according to the `verifying_context`, returning a
-    /// reference to the proof.
-    #[inline]
-    pub fn assert_valid_proof(&self, verifying_context: &VerifyingContext<C>) -> &Proof<C>
-    where
-        ProofSystemError<C>: Debug,
-    {
-        assert!(
-            self.has_valid_proof(verifying_context)
-                .expect("Unable to verify proof."),
-            "The proof should have been valid."
-        );
-        &self.validity_proof
+        */
+        todo!()
     }
 }
 
@@ -321,9 +311,10 @@ fn sample_senders_and_receivers<C, A, R>(
 ) -> (Vec<Sender<C>>, Vec<Receiver<C>>)
 where
     C: Configuration,
-    A: Accumulator<Item = Utxo<C>, Model = C::UtxoAccumulatorModel>,
+    A: Accumulator<Item = Utxo<C>, Model = UtxoAccumulatorModel<C>>,
     R: RngCore + ?Sized,
 {
+    /*
     (
         senders
             .iter()
@@ -346,6 +337,8 @@ where
             })
             .collect(),
     )
+    */
+    todo!()
 }
 
 impl<
@@ -358,13 +351,14 @@ impl<
     > Sample<TransferDistribution<'_, C, A>> for Transfer<C, SOURCES, SENDERS, RECEIVERS, SINKS>
 where
     C: Configuration,
-    A: Accumulator<Item = Utxo<C>, Model = C::UtxoAccumulatorModel>,
+    A: Accumulator<Item = Utxo<C>, Model = UtxoAccumulatorModel<C>>,
 {
     #[inline]
     fn sample<R>(distribution: TransferDistribution<'_, C, A>, rng: &mut R) -> Self
     where
         R: RngCore + ?Sized,
     {
+        /*
         let asset = Asset::gen(rng);
         let mut input = value_distribution(SOURCES + SENDERS, asset.value, rng);
         let mut output = value_distribution(RECEIVERS + SINKS, asset.value, rng);
@@ -385,6 +379,8 @@ where
             into_array_unchecked(receivers),
             into_array_unchecked(public_output),
         )
+        */
+        todo!()
     }
 }
 
@@ -399,13 +395,14 @@ impl<
     for Transfer<C, SOURCES, SENDERS, RECEIVERS, SINKS>
 where
     C: Configuration,
-    A: Accumulator<Item = Utxo<C>, Model = C::UtxoAccumulatorModel>,
+    A: Accumulator<Item = Utxo<C>, Model = UtxoAccumulatorModel<C>>,
 {
     #[inline]
     fn sample<R>(distribution: FixedTransferDistribution<'_, C, A>, rng: &mut R) -> Self
     where
         R: RngCore + ?Sized,
     {
+        /*
         let (senders, receivers) = sample_senders_and_receivers(
             distribution.base.parameters,
             distribution.asset_id,
@@ -421,9 +418,10 @@ where
             into_array_unchecked(receivers),
             sample_asset_values(distribution.sink_sum, rng),
         )
+        */
+        todo!()
     }
 }
-*/
 
 ///
 #[inline]
