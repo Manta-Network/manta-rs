@@ -22,8 +22,9 @@ use core::marker::PhantomData;
 use manta_crypto::{
     algebra,
     arkworks::{
+        algebra::{affine_point_as_bytes, modulus_is_smaller, serialize_group_element},
         ec::{AffineCurve, ProjectiveCurve},
-        ff::{BigInteger, Field, FpParameters, PrimeField},
+        ff::{BigInteger, Field, PrimeField},
         r1cs_std::{groups::CurveVar, ToBitsGadget},
         relations::ns,
         serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError},
@@ -41,7 +42,7 @@ use manta_crypto::{
 use manta_util::codec;
 
 #[cfg(feature = "serde")]
-use manta_util::serde::{Deserialize, Serialize, Serializer};
+use manta_util::serde::{Deserialize, Serialize};
 
 /// Constraint Field Type
 type ConstraintField<C> = <<C as ProjectiveCurve>::BaseField as Field>::BasePrimeField;
@@ -51,32 +52,6 @@ type Compiler<C> = R1CS<ConstraintField<C>>;
 
 /// Scalar Field Element
 pub type Scalar<C> = Fp<<C as ProjectiveCurve>::ScalarField>;
-
-/// Converts `scalar` to the bit representation of `O`.
-#[inline]
-pub fn convert_bits<T, O>(scalar: T) -> O::BigInt
-where
-    T: BigInteger,
-    O: PrimeField,
-{
-    O::BigInt::from_bits_le(&scalar.to_bits_le())
-}
-
-/// Checks that the modulus of `A` is smaller than that of `B`.
-#[inline]
-pub fn modulus_is_smaller<A, B>() -> bool
-where
-    A: PrimeField,
-    B: PrimeField,
-{
-    let modulus_a = A::Params::MODULUS;
-    let modulus_b = B::Params::MODULUS;
-    if modulus_a.num_bits() <= modulus_b.num_bits() {
-        convert_bits::<_, B>(modulus_a) < modulus_b
-    } else {
-        modulus_a < convert_bits::<_, A>(modulus_b)
-    }
-}
 
 /// Lifts an embedded scalar to an outer scalar.
 ///
@@ -285,30 +260,6 @@ where
     fn try_from(bytes: Vec<u8>) -> Result<Self, Self::Error> {
         CanonicalDeserialize::deserialize(&mut bytes.as_slice()).map(Self)
     }
-}
-
-/// Converts `point` into its canonical byte-representation.
-#[inline]
-pub fn affine_point_as_bytes<C>(point: &C::Affine) -> Vec<u8>
-where
-    C: ProjectiveCurve,
-{
-    let mut buffer = Vec::new();
-    point
-        .serialize(&mut buffer)
-        .expect("Serialization is not allowed to fail.");
-    buffer
-}
-
-/// Uses `serializer` to serialize `point`.
-#[cfg(feature = "serde")]
-#[inline]
-fn serialize_group_element<C, S>(point: &C::Affine, serializer: S) -> Result<S::Ok, S::Error>
-where
-    C: ProjectiveCurve,
-    S: Serializer,
-{
-    serializer.serialize_bytes(&affine_point_as_bytes::<C>(point))
 }
 
 /// Elliptic Curve Scalar Element Variable
