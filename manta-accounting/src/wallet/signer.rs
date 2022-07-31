@@ -56,12 +56,8 @@ use manta_crypto::{
     rand::{CryptoRng, FromEntropy, Rand, RngCore},
 };
 use manta_util::{
-    array_map,
-    cmp::Independence,
-    future::LocalBoxFutureResult,
-    into_array_unchecked,
-    iter::{Finder, IteratorExt},
-    persistence::Rollback,
+    array_map, cmp::Independence, future::LocalBoxFutureResult, into_array_unchecked,
+    iter::IteratorExt, persistence::Rollback,
 };
 
 #[cfg(feature = "serde")]
@@ -642,7 +638,7 @@ where
     ///
     #[inline]
     fn default_authorization_key(&self, parameters: &C::Parameters) -> AuthorizationKey<C> {
-        auth::Derive::derive(parameters, &self.default_spending_key(parameters))
+        auth::Derive::derive(parameters, &self.default_spending_key(parameters), &mut ())
     }
 
     ///

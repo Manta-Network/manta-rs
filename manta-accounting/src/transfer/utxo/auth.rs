@@ -83,6 +83,20 @@ where
         }
     }
 
+    /// Builds an [`Authorization`] by deriving from `signing_key` and `randomness`.
+    #[inline]
+    pub fn from_signing_key<COM>(
+        parameters: &T,
+        signing_key: &T::SigningKey,
+        randomness: T::Randomness,
+        compiler: &mut COM,
+    ) -> Self
+    where
+        T: Derive<COM>,
+    {
+        Self::new(parameters.derive(signing_key, compiler), randomness)
+    }
+
     /// Randomizes `self.authorization_key` using `self.randomness` under the given `parameters`.
     #[inline]
     pub fn randomize<COM>(&self, parameters: &T, compiler: &mut COM) -> T::AuthorizationKey
@@ -166,6 +180,21 @@ where
         }
     }
 
+    /// Builds an [`AuthorizationProof`] by deriving from `signing_key` and `randomness`.
+    #[inline]
+    pub fn from_signing_key<COM>(
+        parameters: &T,
+        signing_key: &T::SigningKey,
+        randomness: T::Randomness,
+        compiler: &mut COM,
+    ) -> Self
+    where
+        T: Derive<COM> + Randomize<T::AuthorizationKey, COM>,
+    {
+        Authorization::from_signing_key(parameters, signing_key, randomness, compiler)
+            .into_proof(parameters, compiler)
+    }
+
     /// Asserts that `self` is a valid [`AuthorizationProof`].
     #[inline]
     pub fn assert_valid<COM>(&self, parameters: &T, compiler: &mut COM)
@@ -202,6 +231,12 @@ where
         P: ProofSystemInput<T::AuthorizationKey>,
     {
         P::extend(input, &self.randomized_authorization_key)
+    }
+
+    /// Returns a mutable reference to the authorization key for `self`.
+    #[inline]
+    pub fn authorization_key(&mut self) -> &mut T::AuthorizationKey {
+        &mut self.authorization.authorization_key
     }
 
     /// Extracts the ledger posting data from `self`.
@@ -246,9 +281,9 @@ pub trait Randomize<T, COM = ()>: RandomnessType {
 }
 
 /// Authorization Key Derivation
-pub trait Derive: AuthorizationKeyType + SigningKeyType {
+pub trait Derive<COM = ()>: AuthorizationKeyType + SigningKeyType {
     /// Derives an authorization key from `signing_key`.
-    fn derive(&self, signing_key: &Self::SigningKey) -> Self::AuthorizationKey;
+    fn derive(&self, signing_key: &Self::SigningKey, compiler: &mut COM) -> Self::AuthorizationKey;
 }
 
 /// Authorization Verification

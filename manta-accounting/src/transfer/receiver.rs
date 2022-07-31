@@ -22,7 +22,7 @@ use manta_crypto::{
     constraint::{
         Allocate, Allocator, Constant, Derived, ProofSystemInput, Public, Secret, Var, Variable,
     },
-    rand::{CryptoRng, RngCore},
+    rand::RngCore,
 };
 
 #[cfg(feature = "serde")]
@@ -75,7 +75,7 @@ where
     ) -> Self
     where
         M: DeriveMint,
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         let (secret, utxo, note) = parameters.derive(address, asset, associated_data, rng);
         Self::new(secret, utxo, note)

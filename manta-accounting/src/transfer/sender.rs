@@ -26,7 +26,7 @@ use manta_crypto::{
         Allocate, Allocator, Const, Constant, Derived, ProofSystemInput, Public, Secret, Var,
         Variable,
     },
-    rand::{CryptoRng, RngCore},
+    rand::RngCore,
 };
 
 #[cfg(feature = "serde")]
@@ -72,7 +72,7 @@ where
     ) -> Self
     where
         S: DeriveSpend,
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         let (secret, utxo, nullifier) =
             parameters.derive(authorization_key, identifier, asset, rng);

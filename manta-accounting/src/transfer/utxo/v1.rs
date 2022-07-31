@@ -26,7 +26,7 @@ use manta_crypto::{
         Has, PartialEq, Public, Secret, Variable, Zero,
     },
     encryption::{self, hybrid::Hybrid, Decrypt, Encrypt, EncryptedMessage},
-    rand::{CryptoRng, Rand, RngCore, Sample},
+    rand::{Rand, RngCore, Sample},
 };
 use manta_util::cmp::Independence;
 
@@ -79,6 +79,20 @@ impl Visibility {
         match self {
             Self::Transparent => value.clone(),
             _ => Default::default(),
+        }
+    }
+}
+
+impl Sample for Visibility {
+    #[inline]
+    fn sample<R>(distribution: (), rng: &mut R) -> Self
+    where
+        R: RngCore + ?Sized,
+    {
+        if bool::sample(distribution, rng) {
+            Self::Opaque
+        } else {
+            Self::Transparent
         }
     }
 }
@@ -477,7 +491,7 @@ where
         rng: &mut R,
     ) -> (Self::Secret, Self::Utxo, Self::Note)
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         let secret = MintSecret::<C>::new(
             address.receiving_key,
@@ -594,7 +608,7 @@ where
         rng: &mut R,
     ) -> (Self::Secret, Self::Utxo, Self::Nullifier)
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         let associated_data = if identifier.is_transparent {
             Visibility::Transparent
@@ -714,6 +728,35 @@ where
 
     /// Receiving Key
     pub receiving_key: C::Group,
+}
+
+impl<C, COM> Address<C, COM>
+where
+    C: Configuration<COM> + ?Sized,
+    COM: Has<bool, Type = C::Bool>,
+{
+    /// Builds a new [`Address`] from `key_diversifier` and `receiving_key`.
+    #[inline]
+    pub fn new(key_diversifier: C::Group, receiving_key: C::Group) -> Self {
+        Self {
+            key_diversifier,
+            receiving_key,
+        }
+    }
+}
+
+impl<C> Sample for Address<C>
+where
+    C: Configuration<Bool = bool> + ?Sized,
+    C::Group: Sample,
+{
+    #[inline]
+    fn sample<R>(_: (), rng: &mut R) -> Self
+    where
+        R: RngCore + ?Sized,
+    {
+        Self::new(rng.gen(), rng.gen())
+    }
 }
 
 /// Incoming Note Plaintext

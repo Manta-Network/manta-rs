@@ -39,7 +39,7 @@ pub trait One<COM = ()> {
 
 /// Within-Bit-Range Assertion
 pub trait AssertWithinBitRange<T, const BITS: usize> {
-    /// Asserts that `value` is smaller than `2^BITS`
+    /// Asserts that `value` is smaller than `2^BITS`.
     fn assert_within_range(&mut self, value: &T);
 }
 

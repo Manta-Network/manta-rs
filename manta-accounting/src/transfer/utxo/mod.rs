@@ -26,7 +26,7 @@ use core::{fmt::Debug, hash::Hash, marker::PhantomData, ops::Deref};
 use manta_crypto::{
     accumulator::{self, ItemHashFunction, MembershipProof},
     eclair::alloc::{Allocate, Constant},
-    rand::{CryptoRng, RngCore},
+    rand::RngCore,
 };
 use manta_util::cmp::IndependenceContext;
 
@@ -272,7 +272,7 @@ pub trait DeriveMint: AddressType + AssociatedDataType + Mint {
         rng: &mut R,
     ) -> (Self::Secret, Self::Utxo, Self::Note)
     where
-        R: CryptoRng + RngCore + ?Sized;
+        R: RngCore + ?Sized;
 }
 
 /// Query Asset Value
@@ -335,7 +335,7 @@ pub trait DeriveSpend: Spend + IdentifierType {
         rng: &mut R,
     ) -> (Self::Secret, Self::Utxo, Self::Nullifier)
     where
-        R: CryptoRng + RngCore + ?Sized;
+        R: RngCore + ?Sized;
 }
 
 /// UTXO Accumulator Model Type

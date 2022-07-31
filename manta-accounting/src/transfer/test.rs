@@ -16,14 +16,12 @@
 
 //! Transfer Protocol Testing Framework
 
-use crate::{
-    asset::{AssetId, AssetValue, AssetValueType},
-    transfer::{
-        canonical::ToPrivate, has_public_participants, utxo::Mint, Address, Asset, AssociatedData,
-        AuthorizationKey, Configuration, FullParametersRef, Parameters, PreSender, Proof,
-        ProofInput, ProofSystemError, ProofSystemPublicParameters, ProvingContext, Receiver,
-        Sender, Transfer, TransferPost, Utxo, UtxoAccumulatorModel, VerifyingContext,
-    },
+use crate::transfer::{
+    canonical::ToPrivate, has_public_participants, requires_authorization, Address, Asset,
+    AssociatedData, AuthorizationKey, AuthorizationProof, Configuration, FullParametersRef,
+    Parameters, PreSender, ProofInput, ProofSystemError, ProofSystemPublicParameters,
+    ProvingContext, Receiver, Sender, Transfer, TransferPost, UtxoAccumulatorItem,
+    UtxoAccumulatorModel, VerifyingContext,
 };
 use alloc::vec::Vec;
 use core::{
@@ -32,7 +30,6 @@ use core::{
 };
 use manta_crypto::{
     accumulator::Accumulator,
-    constraint::ProofSystem,
     rand::{CryptoRng, Rand, RngCore, Sample},
 };
 use manta_util::into_array_unchecked;
@@ -83,64 +80,26 @@ where
     into_array_unchecked(value_distribution(N, total, rng))
 }
 
-/*
-/// Parameters Distribution
-#[derive(derivative::Derivative)]
-#[derivative(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
-pub struct ParametersDistribution<K = (), E = (), U = (), V = ()> {
-    /// Key Agreement Scheme Distribution
-    pub key_agreement_scheme: K,
-
-    /// Note Encryption Scheme Distribution
-    pub note_encryption_scheme: E,
-
-    /// UTXO Commitment Scheme Distribution
-    pub utxo_commitment: U,
-
-    /// Void Number Commitment Scheme Distribution
-    pub void_number_commitment_scheme: V,
-}
-
-impl<K, E, U, V, C> Sample<ParametersDistribution<K, E, U, V>> for Parameters<C>
-where
-    C: Configuration,
-    C::KeyAgreementScheme: Sample<K>,
-    C::NoteEncryptionScheme: Sample<E>,
-    C::UtxoCommitmentScheme: Sample<U>,
-    C::VoidNumberCommitmentScheme: Sample<V>,
-{
-    #[inline]
-    fn sample<R>(distribution: ParametersDistribution<K, E, U, V>, rng: &mut R) -> Self
-    where
-        R: RngCore + ?Sized,
-    {
-        Parameters::new(
-            rng.sample(distribution.key_agreement_scheme),
-            rng.sample(distribution.note_encryption_scheme),
-            rng.sample(distribution.utxo_commitment),
-            rng.sample(distribution.void_number_commitment_scheme),
-        )
-    }
-}
-*/
-
 /// Transfer Distribution
 pub struct TransferDistribution<'p, C, A>
 where
     C: Configuration,
-    A: Accumulator<Item = Utxo<C>, Model = UtxoAccumulatorModel<C>>,
+    A: Accumulator<Item = UtxoAccumulatorItem<C>, Model = UtxoAccumulatorModel<C>>,
 {
     /// Parameters
     pub parameters: &'p Parameters<C>,
 
     /// UTXO Accumulator
     pub utxo_accumulator: &'p mut A,
+
+    /// Authorization Proof
+    pub authorization_proof: Option<AuthorizationProof<C>>,
 }
 
 impl<'p, C, A> From<FixedTransferDistribution<'p, C, A>> for TransferDistribution<'p, C, A>
 where
     C: Configuration,
-    A: Accumulator<Item = Utxo<C>, Model = UtxoAccumulatorModel<C>>,
+    A: Accumulator<Item = UtxoAccumulatorItem<C>, Model = UtxoAccumulatorModel<C>>,
 {
     #[inline]
     fn from(distribution: FixedTransferDistribution<'p, C, A>) -> Self {
@@ -157,25 +116,25 @@ where
 pub struct FixedTransferDistribution<'p, C, A>
 where
     C: Configuration,
-    A: Accumulator<Item = Utxo<C>, Model = UtxoAccumulatorModel<C>>,
+    A: Accumulator<Item = UtxoAccumulatorItem<C>, Model = UtxoAccumulatorModel<C>>,
 {
     /// Base Transfer Distribution
     pub base: TransferDistribution<'p, C, A>,
 
     /// Asset Id for this Transfer
-    pub asset_id: AssetId,
+    pub asset_id: C::AssetId,
 
     /// Source Asset Value Sum
-    pub source_sum: AssetValue,
+    pub source_sum: C::AssetValue,
 
     /// Sender Asset Value Sum
-    pub sender_sum: AssetValue,
+    pub sender_sum: C::AssetValue,
 
     /// Receiver Asset Value Sum
-    pub receiver_sum: AssetValue,
+    pub receiver_sum: C::AssetValue,
 
     /// Sink Asset Value Sum
-    pub sink_sum: AssetValue,
+    pub sink_sum: C::AssetValue,
 }
 
 impl<C, const SOURCES: usize, const SENDERS: usize, const RECEIVERS: usize, const SINKS: usize>
@@ -190,27 +149,42 @@ where
         proving_context: &ProvingContext<C>,
         parameters: &Parameters<C>,
         utxo_accumulator: &mut A,
+        spending_key: Option<&C::SpendingKey>,
         rng: &mut R,
-    ) -> Result<TransferPost<C>, ProofSystemError<C>>
+    ) -> Result<Option<TransferPost<C>>, ProofSystemError<C>>
     where
-        A: Accumulator<Item = Utxo<C>, Model = UtxoAccumulatorModel<C>>,
+        A: Accumulator<Item = UtxoAccumulatorItem<C>, Model = UtxoAccumulatorModel<C>>,
+        for<'s> Self: Sample<TransferDistribution<'s, C, A>>,
         R: CryptoRng + RngCore + ?Sized,
     {
-        /*
+        let (spending_key, authorization_proof) =
+            match (spending_key, requires_authorization(SENDERS)) {
+                (Some(spending_key), true) => (
+                    Some(spending_key),
+                    Some(AuthorizationProof::<C>::from_signing_key(
+                        parameters,
+                        spending_key,
+                        rng.gen(),
+                        &mut (),
+                    )),
+                ),
+                (None, false) => (None, None),
+                _ => unreachable!(""),
+            };
         Self::sample(
             TransferDistribution {
                 parameters,
                 utxo_accumulator,
+                authorization_proof,
             },
             rng,
         )
         .into_post(
-            FullParametersRef::new(parameters, utxo_accumulator.model()),
+            FullParametersRef::<C>::new(parameters, utxo_accumulator.model()),
             proving_context,
+            spending_key,
             rng,
         )
-        */
-        todo!()
     }
 
     /// Samples a new [`Transfer`] and builds a correctness proof for it, checking if it was
@@ -220,10 +194,12 @@ where
         public_parameters: &ProofSystemPublicParameters<C>,
         parameters: &Parameters<C>,
         utxo_accumulator: &mut A,
+        spending_key: Option<&C::SpendingKey>,
         rng: &mut R,
     ) -> Result<bool, ProofSystemError<C>>
     where
-        A: Accumulator<Item = Utxo<C>, Model = UtxoAccumulatorModel<C>>,
+        A: Accumulator<Item = UtxoAccumulatorItem<C>, Model = UtxoAccumulatorModel<C>>,
+        for<'s> Self: Sample<TransferDistribution<'s, C, A>>,
         R: CryptoRng + RngCore + ?Sized,
     {
         let (proving_context, verifying_context) = Self::generate_context(
@@ -236,6 +212,7 @@ where
             &verifying_context,
             parameters,
             utxo_accumulator,
+            spending_key,
             rng,
         )
     }
@@ -248,21 +225,23 @@ where
         verifying_context: &VerifyingContext<C>,
         parameters: &Parameters<C>,
         utxo_accumulator: &mut A,
+        spending_key: Option<&C::SpendingKey>,
         rng: &mut R,
     ) -> Result<bool, ProofSystemError<C>>
     where
-        A: Accumulator<Item = Utxo<C>, Model = UtxoAccumulatorModel<C>>,
+        A: Accumulator<Item = UtxoAccumulatorItem<C>, Model = UtxoAccumulatorModel<C>>,
+        for<'s> Self: Sample<TransferDistribution<'s, C, A>>,
         R: CryptoRng + RngCore + ?Sized,
     {
-        /*
-        let post = Self::sample_post(proving_context, parameters, utxo_accumulator, rng)?;
-        C::ProofSystem::verify(
-            verifying_context,
-            &post.generate_proof_input(),
-            &post.validity_proof,
-        )
-        */
-        todo!()
+        Self::sample_post(
+            proving_context,
+            parameters,
+            utxo_accumulator,
+            spending_key,
+            rng,
+        )?
+        .expect("")
+        .has_valid_proof(verifying_context)
     }
 
     /// Checks if `generate_proof_input` from [`Transfer`] and [`TransferPost`] gives the same
@@ -272,30 +251,45 @@ where
         public_parameters: &ProofSystemPublicParameters<C>,
         parameters: &Parameters<C>,
         utxo_accumulator: &mut A,
+        spending_key: Option<&C::SpendingKey>,
         rng: &mut R,
     ) -> Result<bool, ProofSystemError<C>>
     where
-        A: Accumulator<Item = Utxo<C>, Model = UtxoAccumulatorModel<C>>,
+        A: Accumulator<Item = UtxoAccumulatorItem<C>, Model = UtxoAccumulatorModel<C>>,
+        for<'s> Self: Sample<TransferDistribution<'s, C, A>>,
         R: CryptoRng + RngCore + ?Sized,
         ProofInput<C>: PartialEq,
         ProofSystemError<C>: Debug,
     {
-        /*
+        let (spending_key, authorization_proof) =
+            match (spending_key, requires_authorization(SENDERS)) {
+                (Some(spending_key), true) => (
+                    Some(spending_key),
+                    Some(AuthorizationProof::<C>::from_signing_key(
+                        parameters,
+                        spending_key,
+                        rng.gen(),
+                        &mut (),
+                    )),
+                ),
+                (None, false) => (None, None),
+                _ => unreachable!(""),
+            };
         let transfer = Self::sample(
             TransferDistribution {
                 parameters,
                 utxo_accumulator,
+                authorization_proof,
             },
             rng,
         );
-        let full_parameters = FullParameters::new(parameters, utxo_accumulator.model());
+        let full_parameters = FullParametersRef::<C>::new(parameters, utxo_accumulator.model());
         let (proving_context, _) = Self::generate_context(public_parameters, full_parameters, rng)?;
         Ok(transfer.generate_proof_input()
             == transfer
-                .into_post(full_parameters, &proving_context, rng)?
+                .into_post(full_parameters, &proving_context, spending_key, rng)?
+                .expect("")
                 .generate_proof_input())
-        */
-        todo!()
     }
 }
 
@@ -303,42 +297,57 @@ where
 #[inline]
 fn sample_senders_and_receivers<C, A, R>(
     parameters: &Parameters<C>,
-    asset_id: AssetId,
-    senders: &[AssetValue],
-    receivers: &[AssetValue],
+    mut authorization_key: Option<&mut AuthorizationKey<C>>,
+    asset_id: C::AssetId,
+    senders: Vec<C::AssetValue>,
+    receivers: Vec<C::AssetValue>,
     utxo_accumulator: &mut A,
     rng: &mut R,
 ) -> (Vec<Sender<C>>, Vec<Receiver<C>>)
 where
     C: Configuration,
-    A: Accumulator<Item = Utxo<C>, Model = UtxoAccumulatorModel<C>>,
+    Address<C>: Sample,
+    AssociatedData<C>: Sample,
+    A: Accumulator<Item = UtxoAccumulatorItem<C>, Model = UtxoAccumulatorModel<C>>,
     R: RngCore + ?Sized,
 {
-    /*
-    (
-        senders
-            .iter()
+    let senders = match (
+        authorization_key.take(),
+        requires_authorization(senders.len()),
+    ) {
+        (Some(authorization_key), true) => senders
+            .into_iter()
             .map(|v| {
-                let sender = PreSender::new(parameters, rng.gen(), rng.gen(), asset_id.with(*v));
-                sender.insert_utxo(utxo_accumulator);
-                sender.try_upgrade(utxo_accumulator).unwrap()
+                let pre_sender = PreSender::<C>::sample(
+                    parameters,
+                    authorization_key,
+                    rng.gen(),
+                    Asset::<C>::new(asset_id.clone(), v),
+                    rng,
+                );
+                pre_sender
+                    .insert_and_upgrade(parameters, utxo_accumulator)
+                    .expect("Insertion and upgrading should not fail.")
             })
             .collect(),
+        (None, false) => Vec::new(),
+        _ => unreachable!(""),
+    };
+    (
+        senders,
         receivers
-            .iter()
+            .into_iter()
             .map(|v| {
-                Receiver::new(
+                Receiver::<C>::sample(
                     parameters,
-                    parameters.derive(&rng.gen()),
-                    parameters.derive(&rng.gen()),
                     rng.gen(),
-                    asset_id.with(*v),
+                    Asset::<C>::new(asset_id.clone(), v),
+                    rng.gen(),
+                    rng,
                 )
             })
             .collect(),
     )
-    */
-    todo!()
 }
 
 impl<
@@ -351,36 +360,48 @@ impl<
     > Sample<TransferDistribution<'_, C, A>> for Transfer<C, SOURCES, SENDERS, RECEIVERS, SINKS>
 where
     C: Configuration,
-    A: Accumulator<Item = Utxo<C>, Model = UtxoAccumulatorModel<C>>,
+    C::AssetId: Sample,
+    C::AssetValue: Default + Ord + Sample,
+    for<'v> &'v C::AssetValue: Rem<Output = C::AssetValue> + Sub<Output = C::AssetValue>,
+    Address<C>: Sample,
+    AssociatedData<C>: Sample,
+    A: Accumulator<Item = UtxoAccumulatorItem<C>, Model = UtxoAccumulatorModel<C>>,
 {
     #[inline]
-    fn sample<R>(distribution: TransferDistribution<'_, C, A>, rng: &mut R) -> Self
+    fn sample<R>(mut distribution: TransferDistribution<'_, C, A>, rng: &mut R) -> Self
     where
         R: RngCore + ?Sized,
     {
-        /*
-        let asset = Asset::gen(rng);
-        let mut input = value_distribution(SOURCES + SENDERS, asset.value, rng);
+        let authorization_key = distribution
+            .authorization_proof
+            .as_mut()
+            .map(|k| k.authorization_key());
+        let asset = Asset::<C>::gen(rng);
+        let mut input = value_distribution(SOURCES + SENDERS, asset.value.clone(), rng);
         let mut output = value_distribution(RECEIVERS + SINKS, asset.value, rng);
         let secret_input = input.split_off(SOURCES);
         let public_output = output.split_off(RECEIVERS);
-        let (senders, receivers) = sample_senders_and_receivers(
+        let (senders, receivers) = sample_senders_and_receivers::<C, _, _>(
             distribution.parameters,
-            asset.id,
-            &secret_input,
-            &output,
+            authorization_key,
+            asset.id.clone(),
+            secret_input,
+            output,
             distribution.utxo_accumulator,
             rng,
         );
         Self::new(
+            requires_authorization(SENDERS).then_some(
+                distribution
+                    .authorization_proof
+                    .expect("The authorization proof exists whenever we require authorization."),
+            ),
             has_public_participants(SOURCES, SINKS).then_some(asset.id),
             into_array_unchecked(input),
             into_array_unchecked(senders),
             into_array_unchecked(receivers),
             into_array_unchecked(public_output),
         )
-        */
-        todo!()
     }
 }
 
@@ -395,37 +416,51 @@ impl<
     for Transfer<C, SOURCES, SENDERS, RECEIVERS, SINKS>
 where
     C: Configuration,
-    A: Accumulator<Item = Utxo<C>, Model = UtxoAccumulatorModel<C>>,
+    C::AssetId: Sample,
+    C::AssetValue: Default + Ord + Sample,
+    for<'v> &'v C::AssetValue: Rem<Output = C::AssetValue> + Sub<Output = C::AssetValue>,
+    Address<C>: Sample,
+    AssociatedData<C>: Sample,
+    A: Accumulator<Item = UtxoAccumulatorItem<C>, Model = UtxoAccumulatorModel<C>>,
 {
     #[inline]
-    fn sample<R>(distribution: FixedTransferDistribution<'_, C, A>, rng: &mut R) -> Self
+    fn sample<R>(mut distribution: FixedTransferDistribution<'_, C, A>, rng: &mut R) -> Self
     where
         R: RngCore + ?Sized,
     {
-        /*
-        let (senders, receivers) = sample_senders_and_receivers(
+        let authorization_key = distribution
+            .base
+            .authorization_proof
+            .as_mut()
+            .map(|k| k.authorization_key());
+        let (senders, receivers) = sample_senders_and_receivers::<C, _, _>(
             distribution.base.parameters,
-            distribution.asset_id,
-            &value_distribution(SENDERS, distribution.sender_sum, rng),
-            &value_distribution(RECEIVERS, distribution.receiver_sum, rng),
+            authorization_key,
+            distribution.asset_id.clone(),
+            value_distribution(SENDERS, distribution.sender_sum, rng),
+            value_distribution(RECEIVERS, distribution.receiver_sum, rng),
             distribution.base.utxo_accumulator,
             rng,
         );
         Self::new(
+            requires_authorization(SENDERS).then_some(
+                distribution
+                    .base
+                    .authorization_proof
+                    .expect("The authorization proof exists whenever we require authorization."),
+            ),
             has_public_participants(SOURCES, SINKS).then_some(distribution.asset_id),
             sample_asset_values(distribution.source_sum, rng),
             into_array_unchecked(senders),
             into_array_unchecked(receivers),
             sample_asset_values(distribution.sink_sum, rng),
         )
-        */
-        todo!()
     }
 }
 
 ///
 #[inline]
-pub fn sample_mint<C, R>(
+pub fn sample_to_private<C, R>(
     parameters: FullParametersRef<C>,
     proving_context: &ProvingContext<C>,
     authorization_key: &mut AuthorizationKey<C>,
@@ -437,7 +472,7 @@ where
     C: Configuration,
     R: CryptoRng + RngCore + ?Sized,
 {
-    let (mint, pre_sender) = ToPrivate::internal_pair(
+    let (transaction, pre_sender) = ToPrivate::internal_pair(
         parameters.base,
         authorization_key,
         asset,
@@ -445,8 +480,9 @@ where
         rng,
     );
     Ok((
-        mint.into_post(parameters, proving_context, None, rng)?
-            .unwrap(),
+        transaction
+            .into_post(parameters, proving_context, None, rng)?
+            .expect("The `ToPrivate` transaction does not require authorization."),
         pre_sender,
     ))
 }

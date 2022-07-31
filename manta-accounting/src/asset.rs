@@ -505,7 +505,11 @@ impl<I, V> From<Asset<I, V>> for (I, V) {
     }
 }
 
-impl Sample for Asset {
+impl<I, V> Sample for Asset<I, V>
+where
+    I: Sample,
+    V: Sample,
+{
     #[inline]
     fn sample<R>(_: (), rng: &mut R) -> Self
     where
