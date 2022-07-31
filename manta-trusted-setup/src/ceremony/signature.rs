@@ -97,7 +97,7 @@ where
         public_key: &S::PublicKey,
     ) -> Result<(), CeremonyError> {
         self.message
-            .verify_integrity(domain_tag, &public_key, &self.signature)
+            .verify_integrity(domain_tag, public_key, &self.signature)
     }
 }
 

@@ -13,11 +13,16 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
-//! Waiting queue for the ceremony.
-// use manta_trusted_setup::ceremony::CeremonyError;
 
+//!
+
+extern crate alloc;
+
+use alloc::collections::BTreeMap;
 use ark_ec::{AffineCurve, PairingEngine};
+use ark_serialize::CanonicalSerialize;
 use blake2::Digest;
+use core::future::Future;
 use manta_trusted_setup::{
     ceremony::{
         queue::{Identifier, Priority},
@@ -31,7 +36,6 @@ use manta_trusted_setup::{
 };
 use manta_util::into_array_unchecked;
 use serde::Serialize;
-use std::{collections::BTreeMap, future::Future};
 use tide::{Body, Response, StatusCode};
 
 struct Participant {
@@ -105,6 +109,7 @@ impl manta_trusted_setup::groth16::mpc::Configuration for Config {
         into_array_unchecked(hasher.0.finalize())
     }
 }
+
 type S = Server<
     Groth16Phase2<Config>,
     Participant,
@@ -112,12 +117,14 @@ type S = Server<
     Ed25519,
     2,
 >;
+
 fn init_server() -> S {
     todo!()
 }
 
 #[async_std::main]
 async fn main() -> tide::Result<()> {
+    /*
     let mut api = tide::Server::with_state(init_server());
 
     api.at("/register")
@@ -130,12 +137,21 @@ async fn main() -> tide::Result<()> {
     api.listen("127.0.0.1:8080").await?;
 
     Ok(())
+    */
+    todo!()
 }
+
+///
 pub enum Error {
+    ///
     AlreadyQueued,
+
+    ///
     InvalidSignature,
+
+    ///
     CeremonyError(CeremonyError),
-} // all server errors go into this enum
+}
 
 impl From<Error> for tide::Error {
     #[inline]
@@ -156,7 +172,7 @@ impl From<CeremonyError> for Error {
     }
 }
 
-// Result Type
+/// Result Type
 pub type Result<T, E = Error> = core::result::Result<T, E>;
 
 /// Generates the JSON body for the output of `f`, returning an HTTP reponse.

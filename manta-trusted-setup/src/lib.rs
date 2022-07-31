@@ -22,7 +22,6 @@
 #![forbid(missing_docs)]
 
 extern crate alloc;
-extern crate core;
 
 pub mod ceremony;
 pub mod groth16;

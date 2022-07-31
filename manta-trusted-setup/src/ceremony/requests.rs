@@ -27,8 +27,8 @@ use crate::{
 use core::{fmt::Debug, marker::PhantomData};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Deserialize, Serialize)]
 /// Register Request
+#[derive(Debug, Deserialize, Serialize)]
 pub struct RegisterRequest<P>
 where
     P: Identifier + Priority + signature::HasPublicKey,
@@ -46,13 +46,14 @@ where
 {
     type Signature = <P::PublicKey as signature::Sign<S>>::Signature;
 
+    #[inline]
     fn sign(
         &self,
         domain_tag: &S::DomainTag,
         public_key: &S::PublicKey,
         private_key: &S::PrivateKey,
     ) -> Result<Self::Signature, CeremonyError> {
-        public_key.sign(domain_tag, &public_key, &private_key)
+        public_key.sign(domain_tag, public_key, private_key)
     }
 }
 
@@ -64,6 +65,7 @@ where
 {
     type Signature = <P::PublicKey as signature::Verify<S>>::Signature;
 
+    #[inline]
     fn verify_integrity(
         &self,
         domain_tag: &S::DomainTag,
@@ -74,8 +76,8 @@ where
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
 /// Request to join the contributor queue as `participant`.
+#[derive(Debug, Deserialize, Serialize)]
 pub struct JoinQueueRequest<P>
 where
     P: Identifier + Priority,
@@ -84,8 +86,8 @@ where
     participant: P,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
 /// Signed request to get the MPC state.
+#[derive(Debug, Deserialize, Serialize)]
 pub struct GetMpcRequest<P, V>
 where
     P: Identifier,
@@ -107,6 +109,7 @@ where
 {
     type Signature = <P::PublicKey as signature::Sign<S>>::Signature;
 
+    #[inline]
     fn sign(
         &self,
         domain_tag: &S::DomainTag,
@@ -114,7 +117,7 @@ where
         private_key: &S::PrivateKey,
     ) -> Result<Self::Signature, CeremonyError> {
         // sign the public key
-        public_key.sign(domain_tag, &public_key, &private_key)
+        public_key.sign(domain_tag, public_key, private_key)
     }
 }
 
@@ -151,9 +154,9 @@ where
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
 /// The response to a `GetMpcRequest` is either a queue position or,
 /// if participant is at front of queue, the MPC state.
+#[derive(Debug, Deserialize, Serialize)]
 pub struct GetMpcResponse<V>
 where
     V: mpc::Verify,
@@ -171,6 +174,7 @@ where
     }
 }
 
+/// MPC Response for `GetMpcRequest`
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(
     bound(
@@ -179,7 +183,6 @@ where
     ),
     deny_unknown_fields
 )]
-/// MPC Response for `GetMpcRequest`
 pub enum MpcResponse<V>
 where
     V: mpc::Verify,
@@ -190,8 +193,8 @@ where
     Mpc(V::State),
 }
 
-#[derive(Debug, Deserialize, Serialize)]
 ///
+#[derive(Debug, Deserialize, Serialize)]
 pub struct ContributeRequest<P, V>
 where
     P: Identifier,
@@ -199,8 +202,10 @@ where
 {
     ///
     pub participant: P,
+
     ///
     pub transformed_state: V::State,
+
     ///
     pub proof: V::Proof,
 }
@@ -217,6 +222,8 @@ where
         <V::State as signature::Sign<S>>::Signature,
         <V::Proof as signature::Sign<S>>::Signature,
     );
+
+    #[inline]
     fn sign(
         &self,
         domain_tag: &S::DomainTag,
@@ -243,6 +250,8 @@ where
         <V::State as signature::Verify<S>>::Signature,
         <V::Proof as signature::Verify<S>>::Signature,
     );
+
+    #[inline]
     fn verify_integrity(
         &self,
         domain_tag: &S::DomainTag,

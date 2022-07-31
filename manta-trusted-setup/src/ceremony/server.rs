@@ -35,9 +35,9 @@ use std::{
 };
 use tide::{prelude::*, Body, Request, Response};
 
+/// Server with `V` as trusted setup verifier, `P` as participant, `M` as the map used by registry, `N` as the number of priority levels.
 #[derive(derivative::Derivative)]
 #[derivative(Clone(bound = ""))]
-/// Server with `V` as trusted setup verifier, `P` as participant, `M` as the map used by registry, `N` as the number of priority levels.
 pub struct Server<V, P, M, S, const N: usize>
 where
     V: mpc::Verify,

@@ -77,15 +77,13 @@ where
     ) -> Result<&M::Value, CeremonyError> {
         self.map
             .try_insert_and_get_reference(id, participant)
-            .map_or_else(|| Err(CeremonyError::AlreadyRegistered), |v| Ok(v))
+            .map_or_else(|| Err(CeremonyError::AlreadyRegistered), Ok)
     }
 
     /// Unregister a participant from the registry, using their identifier.
     /// If the participant is not registered, returns [`CeremonyError::NotRegistered`].
     pub fn unregister(&mut self, id: &M::Key) -> Result<M::Value, CeremonyError> {
-        self.map
-            .remove(id)
-            .ok_or_else(|| CeremonyError::NotRegistered)
+        self.map.remove(id).ok_or(CeremonyError::NotRegistered)
     }
 
     /// Get the participant data from the registry using their `id`. Returns `None` if the participant is not registered.

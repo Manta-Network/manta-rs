@@ -14,9 +14,9 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Client and Server Interfaces and Implementations for Manta Trusted Setup Ceremony.
+//! Client and Server Interfaces and Implementations for Manta Trusted Setup Ceremony
 
-use core::fmt::Display;
+use core::fmt::{self, Display};
 
 // pub mod bls_server;
 pub mod coordinator;
@@ -29,7 +29,7 @@ pub mod signature;
 pub mod server;
 
 /// Ceremony Error
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum CeremonyError {
     /// Participant already registered.
     AlreadyRegistered,
@@ -54,7 +54,7 @@ pub enum CeremonyError {
 }
 
 impl Display for CeremonyError {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             CeremonyError::AlreadyRegistered => write!(f, "Already registered"),
             CeremonyError::InvalidContribution => write!(f, "Invalid contribution"),
