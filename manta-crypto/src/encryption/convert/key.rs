@@ -217,7 +217,7 @@ where
     where
         R: Read,
     {
-        Ok(Self::new(E::decode(&mut reader)?))
+        Ok(Self::new(Decode::decode(&mut reader)?))
     }
 }
 

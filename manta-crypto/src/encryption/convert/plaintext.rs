@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Plaintext Conversion Primitives and Adapters
+//! Encryption Scheme Plaintext Conversion Primitives and Adapters
 
 use crate::{
     encryption::{
@@ -226,7 +226,7 @@ where
     where
         R: Read,
     {
-        Ok(Self::new(E::decode(&mut reader)?))
+        Ok(Self::new(Decode::decode(&mut reader)?))
     }
 }
 

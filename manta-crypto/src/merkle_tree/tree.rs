@@ -676,7 +676,7 @@ where
 /// Merkle Tree Root
 pub type Root<C, COM = ()> = InnerDigest<C, COM>;
 
-impl<C> accumulator::Model for Parameters<C>
+impl<C> accumulator::Types for Parameters<C>
 where
     C: Configuration + ?Sized,
     InnerDigest<C>: PartialEq,
@@ -684,6 +684,13 @@ where
     type Item = Leaf<C>;
     type Witness = Path<C>;
     type Output = Root<C>;
+}
+
+impl<C> accumulator::Model for Parameters<C>
+where
+    C: Configuration + ?Sized,
+    InnerDigest<C>: PartialEq,
+{
     type Verification = bool;
 
     #[inline]
@@ -698,7 +705,7 @@ where
     }
 }
 
-impl<C, COM> accumulator::Model<COM> for Parameters<C, COM>
+impl<C, COM> accumulator::Types for Parameters<C, COM>
 where
     C: Configuration<COM> + ?Sized,
     COM: Has<bool>,
@@ -708,6 +715,15 @@ where
     type Item = Leaf<C, COM>;
     type Witness = PathVar<C, COM>;
     type Output = Root<C, COM>;
+}
+
+impl<C, COM> accumulator::Model<COM> for Parameters<C, COM>
+where
+    C: Configuration<COM> + ?Sized,
+    COM: Has<bool> + NonNative,
+    InnerDigest<C, COM>: ConditionalSwap<COM> + constraint::PartialEq<InnerDigest<C, COM>, COM>,
+    LeafDigest<C, COM>: ConditionalSwap<COM>,
+{
     type Verification = Bool<COM>;
 
     #[inline]
@@ -724,8 +740,8 @@ where
 
 impl<C, COM> accumulator::AssertValidVerification<COM> for Parameters<C, COM>
 where
-    COM: AssertEq,
     C: Configuration<COM> + ?Sized,
+    COM: AssertEq + NonNative,
     InnerDigest<C, COM>: ConditionalSwap<COM> + eclair::cmp::PartialEq<InnerDigest<C, COM>, COM>,
     LeafDigest<C, COM>: ConditionalSwap<COM>,
 {
