@@ -5,6 +5,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 ### Added
+- [\#172](https://github.com/Manta-Network/manta-rs/pull/172) Add abstract Phase 2 for Groth16 trusted setup 
 
 ### Changed
 
@@ -99,7 +100,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - [\#50](https://github.com/Manta-Network/manta-rs/pull/50) Remove Trapdoor from Circuit
 
 [Unreleased]: https://github.com/Manta-Network/manta-rs/compare/v0.5.4...HEAD
-[0.5.3]: https://github.com/Manta-Network/manta-rs/releases/tag/v0.5.4
+[0.5.4]: https://github.com/Manta-Network/manta-rs/releases/tag/v0.5.4
 [0.5.3]: https://github.com/Manta-Network/manta-rs/releases/tag/v0.5.3
 [0.5.2]: https://github.com/Manta-Network/manta-rs/releases/tag/v0.5.2
 [0.5.1]: https://github.com/Manta-Network/manta-rs/releases/tag/v0.5.1
