@@ -17,14 +17,19 @@
 //! Arkworks Constraint System and Proof System Implementations
 
 use alloc::vec::Vec;
-use ark_ff::{Field, FpParameters, PrimeField};
-use ark_r1cs_std::{alloc::AllocVar, eq::EqGadget, select::CondSelectGadget, ToBitsGadget};
-use ark_relations::{
-    ns, r1cs as ark_r1cs,
-    r1cs::{ConstraintSynthesizer, ConstraintSystemRef},
-};
 use manta_crypto::{
     algebra,
+    arkworks::{
+        ff::{Field, FpParameters, PrimeField},
+        r1cs_std::{alloc::AllocVar, eq::EqGadget, select::CondSelectGadget, ToBitsGadget},
+        relations::{
+            ns,
+            r1cs::{
+                ConstraintSynthesizer, ConstraintSystem, ConstraintSystemRef, OptimizationGoal,
+                SynthesisMode,
+            },
+        },
+    },
     constraint::measure::{Count, Measure},
     eclair::{
         self,
@@ -33,11 +38,10 @@ use manta_crypto::{
             mode::{Public, Secret},
             Constant, Variable,
         },
-        bool::{Assert, AssertEq, ConditionalSwap},
+        bool::{Assert, ConditionalSwap},
         num::AssertWithinBitRange,
-        ops::Add,
-        Has,
-        measure::{Count, Measure},
+        ops::{Add, BitAnd},
+        Has, NonNative,
     },
     rand::{RngCore, Sample},
 };
@@ -50,8 +54,10 @@ use manta_util::{
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize, Serializer};
 
-pub use ark_r1cs::SynthesisError;
-pub use ark_r1cs_std::{bits::boolean::Boolean, fields::fp::FpVar};
+pub use manta_crypto::arkworks::{
+    r1cs_std::{bits::boolean::Boolean, fields::fp::FpVar},
+    relations::r1cs::SynthesisError,
+};
 
 pub mod codec;
 pub mod pairing;
@@ -283,7 +289,7 @@ where
     F: PrimeField,
 {
     /// Constraint System
-    pub(crate) cs: ark_r1cs::ConstraintSystemRef<F>,
+    pub(crate) cs: ConstraintSystemRef<F>,
 }
 
 impl<F> R1CS<F>
@@ -294,9 +300,9 @@ where
     #[inline]
     pub fn for_contexts() -> Self {
         // FIXME: This might not be the right setup for all proof systems.
-        let cs = ark_r1cs::ConstraintSystem::new_ref();
-        cs.set_optimization_goal(ark_r1cs::OptimizationGoal::Constraints);
-        cs.set_mode(ark_r1cs::SynthesisMode::Setup);
+        let cs = ConstraintSystem::new_ref();
+        cs.set_optimization_goal(OptimizationGoal::Constraints);
+        cs.set_mode(SynthesisMode::Setup);
         Self { cs }
     }
 
@@ -304,8 +310,8 @@ where
     #[inline]
     pub fn for_proofs() -> Self {
         // FIXME: This might not be the right setup for all proof systems.
-        let cs = ark_r1cs::ConstraintSystem::new_ref();
-        cs.set_optimization_goal(ark_r1cs::OptimizationGoal::Constraints);
+        let cs = ConstraintSystem::new_ref();
+        cs.set_optimization_goal(OptimizationGoal::Constraints);
         Self { cs }
     }
 
@@ -604,9 +610,9 @@ where
 mod tests {
     use super::*;
     use ark_bls12_381::Fr;
-    use ark_ff::BigInteger;
     use core::iter::repeat_with;
     use manta_crypto::{
+        arkworks::ff::BigInteger,
         eclair::alloc::Allocate,
         rand::{OsRng, Rand},
     };

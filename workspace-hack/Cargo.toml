@@ -45,7 +45,6 @@ serde_json = { version = "1.0.82", features = ["alloc", "std"] }
 sha2 = { version = "0.9.9", features = ["std"] }
 standback = { version = "0.2.17", default-features = false, features = ["std"] }
 subtle = { version = "2.4.1", default-features = false, features = ["i128"] }
-tracing = { version = "0.1.35", default-features = false, features = ["attributes", "tracing-attributes"] }
 url = { version = "2.2.2", default-features = false, features = ["serde"] }
 web-sys = { version = "0.3.59", default-features = false, features = ["BinaryType", "Blob", "CloseEvent", "DomException", "Event", "EventTarget", "MessageEvent", "WebSocket", "console"] }
 zeroize = { version = "1.5.7", default-features = false, features = ["alloc", "zeroize_derive"] }

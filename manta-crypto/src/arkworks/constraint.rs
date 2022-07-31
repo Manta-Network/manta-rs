@@ -17,6 +17,17 @@
 //! Arkworks Constraint-System Backends
 
 use crate::{
+    arkworks::{
+        ff::{FpParameters, PrimeField},
+        r1cs_std::{alloc::AllocVar, eq::EqGadget, select::CondSelectGadget, ToBitsGadget},
+        relations::{
+            ns,
+            r1cs::{
+                ConstraintSynthesizer, ConstraintSystem, ConstraintSystemRef, OptimizationGoal,
+                SynthesisMode,
+            },
+        },
+    },
     constraint::measure::{Count, Measure},
     eclair::{
         self,
@@ -24,24 +35,17 @@ use crate::{
             mode::{self, Public, Secret},
             Constant, Variable,
         },
-        bool::{Assert, AssertEq, ConditionalSwap},
+        bool::{Assert, ConditionalSwap},
         num::AssertWithinBitRange,
         ops::Add,
         Has,
     },
 };
-use ark_ff::{FpParameters, PrimeField};
-use ark_r1cs_std::{alloc::AllocVar, eq::EqGadget, select::CondSelectGadget, ToBitsGadget};
-use ark_relations::{
-    ns,
-    r1cs::{
-        ConstraintSynthesizer, ConstraintSystem, ConstraintSystemRef, OptimizationGoal,
-        SynthesisMode,
-    },
-};
 
-pub use ark_r1cs_std::{bits::boolean::Boolean, fields::fp::FpVar};
-pub use ark_relations::r1cs::SynthesisError;
+pub use crate::arkworks::{
+    r1cs_std::{bits::boolean::Boolean, fields::fp::FpVar},
+    relations::r1cs::SynthesisError,
+};
 
 /// Synthesis Result
 pub type SynthesisResult<T = ()> = Result<T, SynthesisError>;
@@ -126,13 +130,6 @@ where
         b.enforce_equal(&Boolean::TRUE)
             .expect("Enforcing equality is not allowed to fail.");
     }
-}
-
-impl<F> AssertEq for R1CS<F>
-where
-    F: PrimeField,
-{
-    // TODO: Implement these optimizations.
 }
 
 impl<F, const BITS: usize> AssertWithinBitRange<FpVar<F>, BITS> for R1CS<F>

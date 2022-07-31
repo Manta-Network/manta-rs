@@ -24,8 +24,6 @@ use crate::crypto::{
     poseidon::compat as poseidon,
 };
 use alloc::vec::Vec;
-use ark_ff::ToConstraintField;
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use blake2::{
     digest::{Update, VariableOutput},
     Blake2sVar,
@@ -39,6 +37,10 @@ use manta_accounting::{
 use manta_crypto::{
     accumulator,
     algebra::DiffieHellman,
+    arkworks::{
+        ff::ToConstraintField,
+        serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError},
+    },
     constraint::ProofSystemInput,
     eclair::{
         self,
@@ -69,6 +71,7 @@ use manta_crypto::rand::{Rand, RngCore, Sample};
 
 #[doc(inline)]
 pub use ark_bls12_381 as bls12_381;
+
 #[doc(inline)]
 pub use ark_ed_on_bls12_381 as bls12_381_ed;
 

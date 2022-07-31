@@ -212,7 +212,7 @@ where
 mod test {
     use crate::{config::Poseidon2, crypto::constraint::arkworks::Fp};
     use ark_bls12_381::Fr;
-    use ark_ff::field_new;
+    use manta_crypto::arkworks::_ff::field_new;
     use manta_crypto::rand::{OsRng, Sample};
 
     /// Tests if [`Poseidon2`](crate::config::Poseidon2) matches hardcoded sage outputs.

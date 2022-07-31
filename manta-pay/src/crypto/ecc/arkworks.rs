@@ -18,13 +18,16 @@
 
 use crate::crypto::constraint::arkworks::{self, empty, full, Boolean, Fp, FpVar, R1CS};
 use alloc::vec::Vec;
-use ark_ff::{BigInteger, Field, FpParameters, PrimeField};
-use ark_r1cs_std::ToBitsGadget;
-use ark_relations::ns;
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use core::marker::PhantomData;
 use manta_crypto::{
     algebra,
+    arkworks::{
+        ec::{AffineCurve, ProjectiveCurve},
+        ff::{BigInteger, Field, FpParameters, PrimeField},
+        r1cs_std::{groups::CurveVar, ToBitsGadget},
+        relations::ns,
+        serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError},
+    },
     eclair::{
         self,
         alloc::{
@@ -39,9 +42,6 @@ use manta_util::codec;
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize, Serializer};
-
-pub use ark_ec::{AffineCurve, ProjectiveCurve};
-pub use ark_r1cs_std::groups::CurveVar;
 
 /// Constraint Field Type
 type ConstraintField<C> = <<C as ProjectiveCurve>::BaseField as Field>::BasePrimeField;

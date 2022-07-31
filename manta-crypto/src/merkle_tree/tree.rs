@@ -33,7 +33,7 @@ use crate::{
         self,
         alloc::{Allocate, Constant},
         bool::{AssertEq, Bool, ConditionalSwap},
-        Has,
+        Has, NonNative,
     },
     merkle_tree::{
         fork::{ForkedTree, Trunk},
@@ -708,7 +708,7 @@ where
 impl<C, COM> accumulator::Types for Parameters<C, COM>
 where
     C: Configuration<COM> + ?Sized,
-    COM: Has<bool>,
+    COM: Has<bool> + NonNative,
     InnerDigest<C, COM>: ConditionalSwap<COM> + eclair::cmp::PartialEq<InnerDigest<C, COM>, COM>,
     LeafDigest<C, COM>: ConditionalSwap<COM>,
 {
@@ -721,7 +721,7 @@ impl<C, COM> accumulator::Model<COM> for Parameters<C, COM>
 where
     C: Configuration<COM> + ?Sized,
     COM: Has<bool> + NonNative,
-    InnerDigest<C, COM>: ConditionalSwap<COM> + constraint::PartialEq<InnerDigest<C, COM>, COM>,
+    InnerDigest<C, COM>: ConditionalSwap<COM> + eclair::cmp::PartialEq<InnerDigest<C, COM>, COM>,
     LeafDigest<C, COM>: ConditionalSwap<COM>,
 {
     type Verification = Bool<COM>;
