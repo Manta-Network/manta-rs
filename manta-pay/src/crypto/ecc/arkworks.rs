@@ -22,7 +22,7 @@ use core::marker::PhantomData;
 use manta_crypto::{
     algebra,
     arkworks::{
-        algebra::{affine_point_as_bytes, modulus_is_smaller, serialize_group_element},
+        algebra::{affine_point_as_bytes, modulus_is_smaller},
         ec::{AffineCurve, ProjectiveCurve},
         ff::{BigInteger, Field, PrimeField},
         r1cs_std::{groups::CurveVar, ToBitsGadget},
@@ -42,7 +42,10 @@ use manta_crypto::{
 use manta_util::codec;
 
 #[cfg(feature = "serde")]
-use manta_util::serde::{Deserialize, Serialize};
+use {
+    manta_crypto::arkworks::algebra::serialize_group_element,
+    manta_util::serde::{Deserialize, Serialize},
+};
 
 /// Constraint Field Type
 type ConstraintField<C> = <<C as ProjectiveCurve>::BaseField as Field>::BasePrimeField;
