@@ -497,15 +497,17 @@ where
             Some(assets) => assets,
             _ => return Ok(None),
         };
-        /*
         match rng.select_item(assets) {
-            Some(asset) => Ok(Some({
-                Asset::<C>::new(asset.id, rng.gen_range(Default::default()..asset.value))
-            })),
+            Some(asset) => {
+                /*
+                Ok(Some({
+                    Asset::<C>::new(asset.id, rng.gen_range(Default::default()..asset.value))
+                }))
+                */
+                todo!()
+            }
             _ => Ok(None),
         }
-        */
-        todo!()
     }
 
     /// Samples a withdraw from `self` using `rng` returning `None` if no withdrawal is possible.
@@ -520,13 +522,15 @@ where
         R: RngCore + ?Sized,
     {
         self.sync().await?;
-        /*
-        match rng.select_item(self.wallet.assets()) {
-            Some((id, value)) => Ok(Some(id.sample_up_to(*value, rng))),
+        match rng.select_item(self.wallet.assets().convert_iter()) {
+            Some((id, value)) => {
+                /*
+                Ok(Some(id.sample_up_to(*value, rng)))
+                */
+                todo!()
+            }
             _ => Ok(None),
         }
-        */
-        todo!()
     }
 
     /// Samples an asset balance from the wallet of `self`, labelling the possible error with
