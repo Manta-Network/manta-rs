@@ -32,6 +32,7 @@ use manta_pay::{
 use wasm_bindgen::prelude::wasm_bindgen;
 
 pub mod ecc;
+// pub mod trusted_setup;
 
 /// Context Type
 #[wasm_bindgen]

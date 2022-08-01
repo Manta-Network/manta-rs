@@ -49,3 +49,7 @@ pub mod simulation;
 #[cfg(any(test, feature = "test"))]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
 pub mod test;
+
+#[cfg(all(feature = "groth16", feature = "trusted-setup"))]
+#[cfg_attr(doc_cfg, doc(all(feature = "groth16", feature = "trusted-setup")))]
+pub mod trusted_setup;
