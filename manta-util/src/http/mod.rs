@@ -14,8 +14,12 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Manta Pay Utilities
+//! HTTP Utilities
 
-#[cfg(feature = "scale")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]
-pub mod scale;
+#[cfg(feature = "tide")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "tide")))]
+pub mod tide;
+
+#[cfg(feature = "reqwest")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "reqwest")))]
+pub mod reqwest;
