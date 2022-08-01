@@ -505,6 +505,13 @@ impl<I, V> From<Asset<I, V>> for (I, V) {
     }
 }
 
+impl<'a, I, V> From<&'a Asset<I, V>> for (&'a I, &'a V) {
+    #[inline]
+    fn from(asset: &'a Asset<I, V>) -> Self {
+        (&asset.id, &asset.value)
+    }
+}
+
 impl<I, V> Sample for Asset<I, V>
 where
     I: Sample,

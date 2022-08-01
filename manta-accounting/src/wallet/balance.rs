@@ -23,7 +23,10 @@
 use crate::asset::{Asset, AssetId, AssetList, AssetValue};
 use alloc::collections::btree_map::{BTreeMap, Entry as BTreeMapEntry};
 use core::{hash::Hash, ops::AddAssign};
-use manta_util::num::CheckedSub;
+use manta_util::{
+    iter::{ConvertItemRef, IterRef, RefItem},
+    num::CheckedSub,
+};
 
 #[cfg(feature = "std")]
 use std::{
@@ -32,7 +35,9 @@ use std::{
 };
 
 /// Balance State
-pub trait BalanceState<I = AssetId, V = AssetValue>: Default {
+pub trait BalanceState<I = AssetId, V = AssetValue>:
+    Default + for<'t> IterRef<'t> + for<'t> ConvertItemRef<'t, (&'t I, &'t V), Item = RefItem<'t, Self>>
+{
     /// Returns the current balance associated with this `id`.
     fn balance(&self, id: &I) -> V;
 
@@ -97,7 +102,12 @@ where
     where
         A: IntoIterator<Item = Asset<I, V>>,
     {
-        todo!()
+        for asset in AssetList::from_iter(assets) {
+            if !self.withdraw(&asset) {
+                return false;
+            }
+        }
+        true
     }
 
     #[inline]
@@ -152,7 +162,12 @@ macro_rules! impl_balance_state_map_body {
         where
             A: IntoIterator<Item = Asset<I, V>>,
         {
-            todo!()
+            for asset in AssetList::from_iter(assets) {
+                if !self.withdraw(asset) {
+                    return false;
+                }
+            }
+            true
         }
 
         #[inline]
@@ -183,7 +198,7 @@ pub type HashMapBalanceState<I = AssetId, V = AssetValue, S = RandomState> = Has
 #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
 impl<I, V, S> BalanceState<I, V> for HashMapBalanceState<I, V, S>
 where
-    I: Eq + Hash,
+    I: Eq + Hash + Ord,
     V: AddAssign + Clone + Default + PartialEq,
     for<'v> &'v V: CheckedSub<Output = V>,
     S: BuildHasher + Default,

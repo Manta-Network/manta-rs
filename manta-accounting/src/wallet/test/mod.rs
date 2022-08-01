@@ -21,7 +21,7 @@
 
 use crate::{
     asset::{AssetList, AssetMetadata},
-    transfer::{self, canonical::Transaction, Address, Asset, Configuration, TransferPost},
+    transfer::{canonical::Transaction, Address, Asset, Configuration, TransferPost},
     wallet::{
         ledger,
         signer::{self, AddressRequest, SyncData},
@@ -29,11 +29,11 @@ use crate::{
     },
 };
 use alloc::{boxed::Box, sync::Arc, vec::Vec};
-use core::{fmt::Debug, future::Future, hash::Hash, marker::PhantomData};
+use core::{fmt::Debug, future::Future, hash::Hash, marker::PhantomData, ops::AddAssign};
 use futures::StreamExt;
 use indexmap::IndexSet;
 use manta_crypto::rand::{CryptoRng, Distribution, Rand, RngCore, Sample};
-use manta_util::{future::LocalBoxFuture, vec::VecExt};
+use manta_util::{future::LocalBoxFuture, iter::Iterable, num::CheckedSub, vec::VecExt};
 use parking_lot::Mutex;
 use statrs::{
     distribution::{Categorical, Poisson},
@@ -499,7 +499,9 @@ where
         };
         /*
         match rng.select_item(assets) {
-            Some(asset) => Ok(Some(asset.id.sample_up_to(asset.value, rng))),
+            Some(asset) => Ok(Some({
+                Asset::<C>::new(asset.id, rng.gen_range(Default::default()..asset.value))
+            })),
             _ => Ok(None),
         }
         */
@@ -916,29 +918,32 @@ where
 
 /// Measures the public and secret balances for each wallet, summing them all together.
 #[inline]
-pub async fn measure_balances<'w, C, L, S, B, I>(wallets: I) -> Result<AssetList, Error<C, L, S>>
+pub async fn measure_balances<'w, C, L, S, B, I>(
+    wallets: I,
+) -> Result<AssetList<C::AssetId, C::AssetValue>, Error<C, L, S>>
 where
     C: 'w + Configuration,
     L: 'w + Ledger<C> + PublicBalanceOracle<C>,
     S: 'w + signer::Connection<C, Checkpoint = L::Checkpoint>,
     B: 'w + BalanceState<C::AssetId, C::AssetValue>,
     I: IntoIterator<Item = &'w mut Wallet<C, L, S, B>>,
+
+    C::AssetId: Ord,
+    C::AssetValue: AddAssign,
+    for<'v> &'v C::AssetValue: CheckedSub<Output = C::AssetValue>,
 {
-    /*
-    let mut balances = AssetList::new();
+    let mut balances = AssetList::<C::AssetId, C::AssetValue>::new();
     for wallet in wallets {
         wallet.sync().await?;
-        balances.deposit_all(wallet.ledger().public_balances().await.unwrap());
-        balances.deposit_all(
+        balances.deposit_all(wallet.ledger().public_balances().await.expect(""));
+        balances.deposit_all({
             wallet
                 .assets()
-                .iter()
-                .map(|(id, value)| Asset::new(*id, *value)),
-        );
+                .convert_iter()
+                .map(|item| Asset::<C>::new(item.0.clone(), item.1.clone()))
+        });
     }
     Ok(balances)
-    */
-    todo!()
 }
 
 /// Simulation Configuration
@@ -978,6 +983,10 @@ impl Config {
         ESFut: Future<Output = ()>,
         Error<C, L, S>: Debug,
         Address<C>: Clone + Eq + Hash,
+
+        C::AssetId: Ord,
+        C::AssetValue: AddAssign,
+        for<'v> &'v C::AssetValue: CheckedSub<Output = C::AssetValue>,
     {
         let action_distribution = ActionDistribution::try_from(self.action_distribution)
             .expect("Unable to sample from action distribution.");
