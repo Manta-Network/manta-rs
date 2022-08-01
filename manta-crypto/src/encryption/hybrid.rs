@@ -152,9 +152,7 @@ where
     Copy(bound = "K::PublicKey: Copy, E::Ciphertext: Copy"),
     Debug(bound = "K::PublicKey: Debug, E::Ciphertext: Debug"),
     Default(bound = "K::PublicKey: Default, E::Ciphertext: Default"),
-    Eq(bound = "K::PublicKey: Eq, E::Ciphertext: Eq"),
-    Hash(bound = "K::PublicKey: Hash, E::Ciphertext: Hash"),
-    PartialEq(bound = "K::PublicKey: PartialEq, E::Ciphertext: PartialEq")
+    Hash(bound = "K::PublicKey: Hash, E::Ciphertext: Hash")
 )]
 pub struct Ciphertext<K, E>
 where

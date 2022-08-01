@@ -33,15 +33,22 @@ use core::{
     fmt::Debug,
     hash::Hash,
     iter::{self, FusedIterator, Sum},
-    ops::{Add, AddAssign, Deref, Sub, SubAssign},
+    ops::{Add, AddAssign, Deref, Div, Sub, SubAssign},
     slice,
 };
 use derive_more::{Add, AddAssign, Display, From, Sub, SubAssign, Sum};
 use manta_crypto::{
-    constraint::{Allocate, Allocator, Secret, Variable},
+    eclair::{
+        self,
+        alloc::{mode::Secret, Allocate, Allocator, Variable},
+        bool::{Assert, AssertEq, Bool, ConditionalSelect},
+        num::Zero,
+        ops::BitAnd,
+        Has,
+    },
     rand::{Rand, RngCore, Sample},
 };
-use manta_util::{into_array_unchecked, Array, SizeLimit};
+use manta_util::{into_array_unchecked, num::CheckedSub, Array, SizeLimit};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
@@ -242,6 +249,15 @@ impl AddAssign<AssetValueType> for AssetValue {
     }
 }
 
+impl<'v> CheckedSub for &'v AssetValue {
+    type Output = AssetValue;
+
+    #[inline]
+    fn checked_sub(self, rhs: Self) -> Option<Self::Output> {
+        self.0.checked_sub(rhs.0).map(AssetValue)
+    }
+}
+
 impl From<AssetValue> for [u8; AssetValue::SIZE] {
     #[inline]
     fn from(value: AssetValue) -> Self {
@@ -322,6 +338,38 @@ impl<I, V> Asset<I, V> {
     pub const fn new(id: I, value: V) -> Self {
         Self { id, value }
     }
+
+    /// Builds a new zero [`Asset`] with the given `id`.
+    #[inline]
+    pub fn zero(id: I) -> Self
+    where
+        V: Default,
+    {
+        Self::new(id, Default::default())
+    }
+
+    /// Returns `true` if `self` is a zero [`Asset`] of some asset id.
+    #[inline]
+    pub fn is_zero(&self) -> bool
+    where
+        V: Default + PartialEq,
+    {
+        self.value == Default::default()
+    }
+
+    /// Returns `true` if `self` is an empty [`Asset`], i.e. both the `id` and `value` are zero.
+    #[inline]
+    pub fn is_empty<COM>(&self, compiler: &mut COM) -> Bool<COM>
+    where
+        COM: Has<bool>,
+        I: Zero<COM, Verification = Bool<COM>>,
+        V: Zero<COM, Verification = Bool<COM>>,
+        Bool<COM>: BitAnd<Bool<COM>, COM, Output = Bool<COM>>,
+    {
+        self.id
+            .is_zero(compiler)
+            .bitand(self.value.is_zero(compiler), compiler)
+    }
 }
 
 impl Asset {
@@ -330,18 +378,6 @@ impl Asset {
 
     /// The size of the data in this type in bytes.
     pub const SIZE: usize = (Self::BITS / 8) as usize;
-
-    /// Builds a new zero [`Asset`] with the given `id`.
-    #[inline]
-    pub const fn zero(id: AssetId) -> Self {
-        Self::new(id, AssetValue(0))
-    }
-
-    /// Returns `true` if `self` is a zero [`Asset`] of some [`AssetId`].
-    #[inline]
-    pub const fn is_zero(&self) -> bool {
-        self.value.0 == 0
-    }
 
     /// Checks if the `rhs` asset has the same [`AssetId`].
     #[inline]
@@ -469,7 +505,18 @@ impl<I, V> From<Asset<I, V>> for (I, V) {
     }
 }
 
-impl Sample for Asset {
+impl<'a, I, V> From<&'a Asset<I, V>> for (&'a I, &'a V) {
+    #[inline]
+    fn from(asset: &'a Asset<I, V>) -> Self {
+        (&asset.id, &asset.value)
+    }
+}
+
+impl<I, V> Sample for Asset<I, V>
+where
+    I: Sample,
+    V: Sample,
+{
     #[inline]
     fn sample<R>(_: (), rng: &mut R) -> Self
     where
@@ -506,6 +553,45 @@ where
     }
 }
 
+impl<I, V, COM> ConditionalSelect<COM> for Asset<I, V>
+where
+    COM: Has<bool>,
+    I: ConditionalSelect<COM>,
+    V: ConditionalSelect<COM>,
+{
+    #[inline]
+    fn select(bit: &Bool<COM>, true_value: &Self, false_value: &Self, compiler: &mut COM) -> Self {
+        Self::new(
+            I::select(bit, &true_value.id, &false_value.id, compiler),
+            V::select(bit, &true_value.value, &false_value.value, compiler),
+        )
+    }
+}
+
+impl<I, V, COM> eclair::cmp::PartialEq<Self, COM> for Asset<I, V>
+where
+    COM: Has<bool>,
+    Bool<COM>: BitAnd<Bool<COM>, COM, Output = Bool<COM>>,
+    I: eclair::cmp::PartialEq<I, COM>,
+    V: eclair::cmp::PartialEq<V, COM>,
+{
+    #[inline]
+    fn eq(&self, rhs: &Self, compiler: &mut COM) -> Bool<COM> {
+        self.id
+            .eq(&rhs.id, compiler)
+            .bitand(self.value.eq(&rhs.value, compiler), compiler)
+    }
+
+    #[inline]
+    fn assert_equal(&self, rhs: &Self, compiler: &mut COM)
+    where
+        COM: Assert,
+    {
+        compiler.assert_eq(&self.id, &rhs.id);
+        compiler.assert_eq(&self.value, &rhs.value);
+    }
+}
+
 impl<COM, I, V> Variable<Secret, COM> for Asset<I, V>
 where
     I: Variable<Secret, COM, Type = AssetId>,
@@ -533,16 +619,17 @@ where
     derive(Deserialize, Serialize),
     serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
-#[derive(Clone, Debug, Default, Eq, Hash, PartialEq)]
-pub struct AssetList {
+#[derive(derivative::Derivative)]
+#[derivative(Clone, Debug, Default(bound = ""), Eq, Hash, PartialEq)]
+pub struct AssetList<I = AssetId, V = AssetValue> {
     /// Sorted Asset Vector
     ///
     /// The elements of the vector are sorted by [`AssetId`]. To insert/remove we perform a binary
     /// search on the [`AssetId`] and update the [`AssetValue`] at that location.
-    map: Vec<Asset>,
+    map: Vec<Asset<I, V>>,
 }
 
-impl AssetList {
+impl<I, V> AssetList<I, V> {
     /// Builds a new empty [`AssetList`].
     #[inline]
     pub const fn new() -> Self {
@@ -571,37 +658,65 @@ impl AssetList {
     /// Finds the insertion point for an [`Asset`] with the given `id`, returning `Ok` if there is
     /// an [`Asset`] at that index, or `Err` otherwise.
     #[inline]
-    fn find(&self, id: AssetId) -> Result<usize, usize> {
-        self.map.binary_search_by_key(&id, move |a| a.id)
+    fn find(&self, id: &I) -> Result<usize, usize>
+    where
+        I: Ord,
+    {
+        self.map.binary_search_by(move |a| a.id.cmp(id))
+    }
+
+    ///
+    #[inline]
+    fn get_value(&self, id: &I) -> Option<&V>
+    where
+        I: Ord,
+    {
+        self.find(id).ok().map(move |i| &self.map[i].value)
     }
 
     /// Returns the total value for assets with the given `id`.
     #[inline]
-    pub fn value(&self, id: AssetId) -> AssetValue {
-        self.find(id)
-            .map(move |i| self.map[i].value)
-            .unwrap_or_default()
+    pub fn value(&self, id: &I) -> V
+    where
+        I: Ord,
+        V: Clone + Default,
+    {
+        self.get_value(id).cloned().unwrap_or_default()
     }
 
     /// Returns `true` if `self` contains at least `asset.value` of the asset of kind `asset.id`.
     #[inline]
-    pub fn contains(&self, asset: Asset) -> bool {
-        self.value(asset.id) >= asset.value
+    pub fn contains(&self, asset: &Asset<I, V>) -> bool
+    where
+        I: Ord,
+        V: Default + PartialOrd,
+    {
+        if asset.value == Default::default() {
+            return true;
+        }
+        match self.get_value(&asset.id) {
+            Some(value) => value >= &asset.value,
+            _ => false,
+        }
     }
 
     /// Returns an iterator over the assets in `self`.
     #[inline]
-    pub fn iter(&self) -> slice::Iter<Asset> {
+    pub fn iter(&self) -> slice::Iter<Asset<I, V>> {
         self.map.iter()
     }
 
     /// Inserts `asset` into `self` increasing the [`AssetValue`] at `asset.id`.
     #[inline]
-    pub fn deposit(&mut self, asset: Asset) {
-        if asset.is_zero() {
+    pub fn deposit(&mut self, asset: Asset<I, V>)
+    where
+        I: Ord,
+        V: AddAssign + Default + PartialEq,
+    {
+        if asset.value == Default::default() {
             return;
         }
-        match self.find(asset.id) {
+        match self.find(&asset.id) {
             Ok(index) => self.map[index] += asset.value,
             Err(index) => self.map.insert(index, asset),
         }
@@ -609,8 +724,11 @@ impl AssetList {
 
     /// Sets the value at the `index` to `value` or removes the entry at `index` if `value == 0`.
     #[inline]
-    fn set_or_remove(&mut self, index: usize, value: AssetValue) {
-        if value == 0 {
+    fn set_or_remove(&mut self, index: usize, value: V)
+    where
+        V: Default + PartialEq,
+    {
+        if value == Default::default() {
             self.map.remove(index);
         } else {
             self.map[index].value = value;
@@ -621,12 +739,17 @@ impl AssetList {
     /// `false` if this would overflow. To skip the overflow check, use
     /// [`withdraw_unchecked`](Self::withdraw_unchecked) instead.
     #[inline]
-    pub fn withdraw(&mut self, asset: Asset) -> bool {
-        if asset.is_zero() {
+    pub fn withdraw(&mut self, asset: &Asset<I, V>) -> bool
+    where
+        I: Ord,
+        V: Default + PartialEq,
+        for<'v> &'v V: CheckedSub<Output = V>,
+    {
+        if asset.value == Default::default() {
             return true;
         }
-        if let Ok(index) = self.find(asset.id) {
-            if let Some(value) = self.map[index].value.checked_sub(asset.value) {
+        if let Ok(index) = self.find(&asset.id) {
+            if let Some(value) = self.map[index].value.checked_sub(&asset.value) {
                 self.set_or_remove(index, value);
                 return true;
             }
@@ -641,12 +764,17 @@ impl AssetList {
     /// The method panics if removing `asset` would decrease the value of any entry to below zero.
     /// To catch this condition, use [`withdraw`](Self::withdraw) instead.
     #[inline]
-    pub fn withdraw_unchecked(&mut self, asset: Asset) {
-        if asset.is_zero() {
+    pub fn withdraw_unchecked(&mut self, asset: &Asset<I, V>)
+    where
+        I: Ord,
+        V: Default + PartialEq,
+        for<'v> &'v V: Sub<Output = V>,
+    {
+        if asset.value == Default::default() {
             return;
         }
-        match self.find(asset.id) {
-            Ok(index) => self.set_or_remove(index, self.map[index].value - asset.value),
+        match self.find(&asset.id) {
+            Ok(index) => self.set_or_remove(index, &self.map[index].value - &asset.value),
             _ => panic!("Trying to subtract from an Asset with zero value."),
         }
     }
@@ -655,9 +783,9 @@ impl AssetList {
     #[inline]
     pub fn retain<F>(&mut self, mut f: F)
     where
-        F: FnMut(Asset) -> bool,
+        F: FnMut(&Asset<I, V>) -> bool,
     {
-        self.map.retain(move |asset| f(*asset))
+        self.map.retain(move |asset| f(asset))
     }
 
     /// Removes all assets from `self`.
@@ -669,53 +797,64 @@ impl AssetList {
     /// Removes all assets with the given `id`, returning their total value. This method returns
     /// `None` in the case that `id` is not stored in `self`.
     #[inline]
-    pub fn remove(&mut self, id: AssetId) -> Option<AssetValue> {
-        self.find(id).ok().map(move |i| self.map.remove(i).value)
+    pub fn remove(&mut self, id: I) -> Option<V>
+    where
+        I: Ord,
+    {
+        self.find(&id).ok().map(move |i| self.map.remove(i).value)
     }
 }
 
-impl AsRef<[Asset]> for AssetList {
+impl<I, V> AsRef<[Asset<I, V>]> for AssetList<I, V> {
     #[inline]
-    fn as_ref(&self) -> &[Asset] {
+    fn as_ref(&self) -> &[Asset<I, V>] {
         self.map.as_ref()
     }
 }
 
-impl Borrow<[Asset]> for AssetList {
+impl<I, V> Borrow<[Asset<I, V>]> for AssetList<I, V> {
     #[inline]
-    fn borrow(&self) -> &[Asset] {
+    fn borrow(&self) -> &[Asset<I, V>] {
         self.map.borrow()
     }
 }
 
-impl Deref for AssetList {
-    type Target = [Asset];
+impl<I, V> Deref for AssetList<I, V> {
+    type Target = [Asset<I, V>];
 
     #[inline]
-    fn deref(&self) -> &[Asset] {
+    fn deref(&self) -> &[Asset<I, V>] {
         self.map.deref()
     }
 }
 
-impl From<AssetList> for Vec<Asset> {
+impl<I, V> From<AssetList<I, V>> for Vec<Asset<I, V>> {
     #[inline]
-    fn from(list: AssetList) -> Self {
+    fn from(list: AssetList<I, V>) -> Self {
         list.map
     }
 }
 
-impl From<Vec<Asset>> for AssetList {
+impl<I, V> From<Vec<Asset<I, V>>> for AssetList<I, V>
+where
+    I: Ord,
+    V: AddAssign + Default + PartialEq,
+{
     #[inline]
-    fn from(vector: Vec<Asset>) -> Self {
+    fn from(vector: Vec<Asset<I, V>>) -> Self {
         Self::from_iter(iter::once(vector))
     }
 }
 
-impl FromIterator<(AssetId, AssetValue)> for AssetList {
+impl<I, V> FromIterator<(I, V)> for AssetList<I, V>
+where
+    I: Ord,
+    V: AddAssign + Default + PartialEq,
+{
     #[inline]
-    fn from_iter<I>(iter: I) -> Self
+    fn from_iter<A>(iter: A) -> Self
     where
-        I: IntoIterator<Item = (AssetId, AssetValue)>,
+        A: IntoIterator<Item = (I, V)>,
     {
         iter.into_iter()
             .map(move |(id, value)| Asset::new(id, value))
@@ -723,11 +862,15 @@ impl FromIterator<(AssetId, AssetValue)> for AssetList {
     }
 }
 
-impl FromIterator<Asset> for AssetList {
+impl<I, V> FromIterator<Asset<I, V>> for AssetList<I, V>
+where
+    I: Ord,
+    V: AddAssign + Default + PartialEq,
+{
     #[inline]
-    fn from_iter<I>(iter: I) -> Self
+    fn from_iter<A>(iter: A) -> Self
     where
-        I: IntoIterator<Item = Asset>,
+        A: IntoIterator<Item = Asset<I, V>>,
     {
         let mut list = Self::new();
         iter.into_iter().for_each(|a| list.deposit(a));
@@ -735,21 +878,29 @@ impl FromIterator<Asset> for AssetList {
     }
 }
 
-impl FromIterator<AssetList> for AssetList {
+impl<I, V> FromIterator<AssetList<I, V>> for AssetList<I, V>
+where
+    I: Ord,
+    V: AddAssign + Default + PartialEq,
+{
     #[inline]
-    fn from_iter<I>(iter: I) -> Self
+    fn from_iter<A>(iter: A) -> Self
     where
-        I: IntoIterator<Item = AssetList>,
+        A: IntoIterator<Item = AssetList<I, V>>,
     {
         iter.into_iter().map::<Vec<_>, _>(Into::into).collect()
     }
 }
 
-impl FromIterator<Vec<Asset>> for AssetList {
+impl<I, V> FromIterator<Vec<Asset<I, V>>> for AssetList<I, V>
+where
+    I: Ord,
+    V: AddAssign + Default + PartialEq,
+{
     #[inline]
-    fn from_iter<I>(iter: I) -> Self
+    fn from_iter<A>(iter: A) -> Self
     where
-        I: IntoIterator<Item = Vec<Asset>>,
+        A: IntoIterator<Item = Vec<Asset<I, V>>>,
     {
         let mut list = Self::new();
         for item in iter {
@@ -761,9 +912,9 @@ impl FromIterator<Vec<Asset>> for AssetList {
     }
 }
 
-impl IntoIterator for AssetList {
-    type Item = Asset;
-    type IntoIter = vec::IntoIter<Asset>;
+impl<I, V> IntoIterator for AssetList<I, V> {
+    type Item = Asset<I, V>;
+    type IntoIter = vec::IntoIter<Asset<I, V>>;
 
     #[inline]
     fn into_iter(self) -> Self::IntoIter {
@@ -771,9 +922,9 @@ impl IntoIterator for AssetList {
     }
 }
 
-impl<'a> IntoIterator for &'a AssetList {
-    type Item = &'a Asset;
-    type IntoIter = slice::Iter<'a, Asset>;
+impl<'a, I, V> IntoIterator for &'a AssetList<I, V> {
+    type Item = &'a Asset<I, V>;
+    type IntoIter = slice::Iter<'a, Asset<I, V>>;
 
     #[inline]
     fn into_iter(self) -> Self::IntoIter {
@@ -788,29 +939,29 @@ impl<'a> IntoIterator for &'a AssetList {
 /// # Warning
 ///
 /// It is possible that keys are repeated, as long as the assets associated to them are different.
-pub trait AssetMap: Default {
+pub trait AssetMap<I = AssetId, V = AssetValue>: Default {
     /// Key Type
     ///
     /// Keys are used to access the underlying asset values.
     type Key;
 
     /// Returns the sum of all the assets in `self`.
-    fn assets(&self) -> AssetList;
+    fn assets(&self) -> AssetList<I, V>;
 
     /// Selects asset keys which total up to at least `asset` in value.
-    fn select(&self, asset: Asset) -> Selection<Self>;
+    fn select(&self, asset: &Asset<I, V>) -> Selection<I, V, Self>;
 
     /// Returns at most `n` zero assets with the given `id`.
-    fn zeroes(&self, n: usize, id: AssetId) -> Vec<Self::Key>;
+    fn zeroes(&self, n: usize, id: &I) -> Vec<Self::Key>;
 
     /// Inserts `asset` at the `key` in the map.
-    fn insert(&mut self, key: Self::Key, asset: Asset);
+    fn insert(&mut self, key: Self::Key, asset: Asset<I, V>);
 
     /// Inserts all of the assets in `iter`.
     #[inline]
-    fn insert_all<I>(&mut self, iter: I)
+    fn insert_all<A>(&mut self, iter: A)
     where
-        I: IntoIterator<Item = (Self::Key, Asset)>,
+        A: IntoIterator<Item = (Self::Key, Asset<I, V>)>,
     {
         iter.into_iter()
             .for_each(move |(key, asset)| self.insert(key, asset))
@@ -818,32 +969,35 @@ pub trait AssetMap: Default {
 
     /// Inserts all of the assets in `iter` using a fixed `id`.
     #[inline]
-    fn insert_all_same<I>(&mut self, id: AssetId, iter: I)
+    fn insert_all_same<A>(&mut self, id: I, iter: A)
     where
-        I: IntoIterator<Item = (Self::Key, AssetValue)>,
+        I: Clone,
+        A: IntoIterator<Item = (Self::Key, V)>,
     {
         iter.into_iter()
-            .for_each(move |(key, value)| self.insert(key, id.with(value)));
+            .for_each(move |(key, value)| self.insert(key, Asset::new(id.clone(), value)));
     }
 
     /// Inserts all of the assets in `iter` using a fixed `id` and zero value.
     #[inline]
-    fn insert_zeroes<I>(&mut self, id: AssetId, iter: I)
+    fn insert_zeroes<A>(&mut self, id: I, iter: A)
     where
-        I: IntoIterator<Item = Self::Key>,
+        I: Clone,
+        V: Default,
+        A: IntoIterator<Item = Self::Key>,
     {
         iter.into_iter()
-            .for_each(move |key| self.insert(key, Asset::zero(id)));
+            .for_each(move |key| self.insert(key, Asset::zero(id.clone())));
     }
 
     /// Tries to remove the `key` from the map, returning `true` if the `key` was stored in the
     /// map and removed.
-    fn remove(&mut self, key: Self::Key, asset: Asset) -> bool;
+    fn remove(&mut self, key: Self::Key, asset: Asset<I, V>) -> bool;
 
     /// Removes all the keys in `iter` from the map.
-    fn remove_all<I>(&mut self, iter: I)
+    fn remove_all<A>(&mut self, iter: A)
     where
-        I: IntoIterator<Item = (Self::Key, Asset)>,
+        A: IntoIterator<Item = (Self::Key, Asset<I, V>)>,
     {
         for (key, asset) in iter {
             self.remove(key, asset);
@@ -853,70 +1007,73 @@ pub trait AssetMap: Default {
     /// Retains the elements from `self` that return `true` after applying `f`.
     fn retain<F>(&mut self, f: F)
     where
-        F: FnMut(&Self::Key, &mut Vec<Asset>) -> bool;
+        F: FnMut(&Self::Key, &mut Vec<Asset<I, V>>) -> bool;
 }
 
 /// Implements [`AssetMap`] for map types.
 macro_rules! impl_asset_map_for_maps_body {
-    ($k:ty, $entry:tt) => {
-        type Key = $k;
+    ($K:ty, $I:ty, $V:ty, $entry:tt) => {
+        type Key = $K;
 
         #[inline]
-        fn assets(&self) -> AssetList {
+        fn assets(&self) -> AssetList<$I, $V> {
             self.iter()
-                .flat_map(move |(_, assets)| assets.iter().copied())
+                .flat_map(move |(_, assets)| assets.iter().cloned())
                 .collect()
         }
 
         #[inline]
-        fn select(&self, asset: Asset) -> Selection<Self> {
-            if asset.is_zero() {
+        fn select(&self, asset: &Asset<$I, $V>) -> Selection<$I, $V, Self> {
+            if asset.value == Default::default() {
                 return Selection::default();
             }
-            let mut sum = Asset::zero(asset.id);
+            let mut sum = Asset::<$I, $V>::zero(asset.id.clone());
             let mut values = Vec::new();
-            let mut min_max_asset: Option<($k, AssetValue)> = None;
+            let mut min_max_asset = Option::<(&$K, &$V)>::None;
             let map = self
                 .iter()
                 .map(|(key, assets)| assets.iter().map(move |asset| (key, asset)))
                 .flatten()
                 .filter_map(|(key, item)| {
-                    if !item.is_zero() && item.id == asset.id {
-                        Some((key, item.value))
+                    if item.value != Default::default() && item.id == asset.id {
+                        Some((key, &item.value))
                     } else {
                         None
                     }
                 });
             for (key, value) in map {
-                if value > asset.value {
+                if value > &asset.value {
                     min_max_asset = Some(match min_max_asset.take() {
-                        Some(best) if value >= best.1 => best,
-                        _ => (key.clone(), value),
+                        Some(best) if value >= &best.1 => best,
+                        _ => (key, value),
                     });
-                } else if value == asset.value {
-                    return Selection::new(Default::default(), vec![(key.clone(), value)]);
+                } else if value == &asset.value {
+                    return Selection::new(Default::default(), vec![(key.clone(), value.clone())]);
                 } else {
-                    sum.add_assign(value);
-                    values.push((key.clone(), value));
+                    sum.value.add_assign(value);
+                    values.push((key.clone(), value.clone()));
                 }
             }
             if let Some((best_key, best_value)) = min_max_asset {
-                return Selection::new(best_value - asset.value, vec![(best_key, best_value)]);
+                return Selection::new(
+                    best_value - &asset.value,
+                    vec![(best_key.clone(), best_value.clone())],
+                );
             }
             if sum.value < asset.value {
                 Selection::default()
             } else {
-                Selection::new(sum.value - asset.value, values)
+                Selection::new(&sum.value - &asset.value, values)
             }
         }
 
         #[inline]
-        fn zeroes(&self, n: usize, id: AssetId) -> Vec<Self::Key> {
+        fn zeroes(&self, n: usize, id: &$I) -> Vec<Self::Key> {
             self.iter()
                 .filter_map(move |(key, assets)| {
                     assets
                         .iter()
-                        .any(move |a| a.id == id && a.value == 0)
+                        .any(move |a| &a.id == id && a.value == Default::default())
                         .then(move || key.clone())
                 })
                 .take(n)
@@ -924,7 +1081,7 @@ macro_rules! impl_asset_map_for_maps_body {
         }
 
         #[inline]
-        fn insert(&mut self, key: Self::Key, asset: Asset) {
+        fn insert(&mut self, key: Self::Key, asset: Asset<$I, $V>) {
             match self.entry(key) {
                 $entry::Vacant(entry) => {
                     entry.insert(vec![asset]);
@@ -939,7 +1096,7 @@ macro_rules! impl_asset_map_for_maps_body {
         }
 
         #[inline]
-        fn remove(&mut self, key: Self::Key, asset: Asset) -> bool {
+        fn remove(&mut self, key: Self::Key, asset: Asset<$I, $V>) -> bool {
             if let $entry::Occupied(mut entry) = self.entry(key) {
                 let assets = entry.get_mut();
                 if let Ok(index) = assets.binary_search(&asset) {
@@ -956,7 +1113,7 @@ macro_rules! impl_asset_map_for_maps_body {
         #[inline]
         fn retain<F>(&mut self, mut f: F)
         where
-            F: FnMut(&Self::Key, &mut Vec<Asset>) -> bool,
+            F: FnMut(&Self::Key, &mut Vec<Asset<$I, $V>>) -> bool,
         {
             self.retain(move |key, assets| f(key, assets));
         }
@@ -964,28 +1121,35 @@ macro_rules! impl_asset_map_for_maps_body {
 }
 
 /// B-Tree Map [`AssetMap`] Implementation
-pub type BTreeAssetMap<K> = BTreeMap<K, Vec<Asset>>;
+pub type BTreeAssetMap<K, I = AssetId, V = AssetValue> = BTreeMap<K, Vec<Asset<I, V>>>;
 
-impl<K> AssetMap for BTreeAssetMap<K>
+impl<K, I, V> AssetMap<I, V> for BTreeAssetMap<K, I, V>
 where
     K: Clone + Ord,
+    I: Clone + Ord,
+    V: AddAssign + Clone + Default + Ord + Sub<Output = V> + for<'v> AddAssign<&'v V>,
+    for<'v> &'v V: Sub<Output = V>,
 {
-    impl_asset_map_for_maps_body! { K, BTreeMapEntry }
+    impl_asset_map_for_maps_body! { K, I, V, BTreeMapEntry }
 }
 
 /// Hash Map [`AssetMap`] Implementation
 #[cfg(feature = "std")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
-pub type HashAssetMap<K, S = RandomState> = HashMap<K, Vec<Asset>, S>;
+pub type HashAssetMap<K, I = AssetId, V = AssetValue, S = RandomState> =
+    HashMap<K, Vec<Asset<I, V>>, S>;
 
 #[cfg(feature = "std")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
-impl<K, S> AssetMap for HashAssetMap<K, S>
+impl<K, I, V, S> AssetMap<I, V> for HashAssetMap<K, I, V, S>
 where
     K: Clone + Hash + Eq,
+    I: Clone + Ord,
+    V: AddAssign + Clone + Default + Ord + Sub<Output = V> + for<'v> AddAssign<&'v V>,
+    for<'v> &'v V: Sub<Output = V>,
     S: BuildHasher + Default,
 {
-    impl_asset_map_for_maps_body! { K, HashMapEntry }
+    impl_asset_map_for_maps_body! { K, I, V, HashMapEntry }
 }
 
 /// Asset Selection
@@ -994,31 +1158,31 @@ where
 /// documentation for more.
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "M::Key: Clone"),
-    Debug(bound = "M::Key: Debug"),
-    Default(bound = ""),
-    Eq(bound = "M::Key: Eq"),
-    Hash(bound = "M::Key: Hash"),
-    PartialEq(bound = "M::Key: PartialEq")
+    Clone(bound = "V: Clone, M::Key: Clone"),
+    Debug(bound = "V: Debug, M::Key: Debug"),
+    Default(bound = "V: Default"),
+    Eq(bound = "V: Eq, M::Key: Eq"),
+    Hash(bound = "V: Hash, M::Key: Hash"),
+    PartialEq(bound = "V: PartialEq, M::Key: PartialEq")
 )]
-pub struct Selection<M>
+pub struct Selection<I, V, M>
 where
-    M: AssetMap + ?Sized,
+    M: AssetMap<I, V> + ?Sized,
 {
     /// Change Amount
-    pub change: AssetValue,
+    pub change: V,
 
     /// Asset Value Distribution
-    pub values: Vec<(M::Key, AssetValue)>,
+    pub values: Vec<(M::Key, V)>,
 }
 
-impl<M> Selection<M>
+impl<I, V, M> Selection<I, V, M>
 where
-    M: AssetMap + ?Sized,
+    M: AssetMap<I, V> + ?Sized,
 {
     /// Builds a new [`Selection`] from `change` and `values`.
     #[inline]
-    pub fn new(change: AssetValue, values: Vec<(M::Key, AssetValue)>) -> Self {
+    pub fn new(change: V, values: Vec<(M::Key, V)>) -> Self {
         Self { change, values }
     }
 
@@ -1030,51 +1194,51 @@ where
 
     /// Returns an iterator over [`self.values`](Self::values) by reference.
     #[inline]
-    pub fn iter(&self) -> SelectionIter<M> {
+    pub fn iter(&self) -> SelectionIter<I, V, M> {
         SelectionIter::new(self.values.iter())
     }
 
     /// Returns an iterator over the keys in [`self.values`](Self::values) by reference.
     #[inline]
-    pub fn keys(&self) -> SelectionKeys<M> {
+    pub fn keys(&self) -> SelectionKeys<I, V, M> {
         SelectionKeys::new(self.values.iter().map(move |(key, _)| key))
     }
 }
 
 /// [`SelectionIter`] Iterator Type
-type SelectionIterType<'s, M> = slice::Iter<'s, (<M as AssetMap>::Key, AssetValue)>;
+type SelectionIterType<'s, I, V, M> = slice::Iter<'s, (<M as AssetMap<I, V>>::Key, V)>;
 
 /// Selection Iterator
 ///
 /// This `struct` is created by the [`iter`](Selection::iter) method on [`Selection`].
 /// See its documentation for more.
 #[derive(derivative::Derivative)]
-#[derivative(Clone(bound = ""), Debug(bound = "M::Key: Debug"))]
-pub struct SelectionIter<'s, M>
+#[derivative(Clone(bound = ""), Debug(bound = "V: Debug, M::Key: Debug"))]
+pub struct SelectionIter<'s, I, V, M>
 where
-    M: AssetMap + ?Sized,
+    M: AssetMap<I, V> + ?Sized,
 {
     /// Base Iterator
-    iter: SelectionIterType<'s, M>,
+    iter: SelectionIterType<'s, I, V, M>,
 }
 
-impl<'s, M> SelectionIter<'s, M>
+impl<'s, I, V, M> SelectionIter<'s, I, V, M>
 where
-    M: AssetMap + ?Sized,
+    M: AssetMap<I, V> + ?Sized,
 {
     /// Builds a new [`SelectionIter`] from `iter`.
     #[inline]
-    fn new(iter: SelectionIterType<'s, M>) -> Self {
+    fn new(iter: SelectionIterType<'s, I, V, M>) -> Self {
         Self { iter }
     }
 }
 
 // TODO: Implement all optimized methods/traits.
-impl<'s, M> Iterator for SelectionIter<'s, M>
+impl<'s, I, V, M> Iterator for SelectionIter<'s, I, V, M>
 where
-    M: AssetMap + ?Sized,
+    M: AssetMap<I, V> + ?Sized,
 {
-    type Item = &'s (M::Key, AssetValue);
+    type Item = &'s (M::Key, V);
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
@@ -1087,44 +1251,45 @@ where
     }
 }
 
-impl<'s, M> FusedIterator for SelectionIter<'s, M> where M: AssetMap + ?Sized {}
+impl<'s, I, V, M> FusedIterator for SelectionIter<'s, I, V, M> where M: AssetMap<I, V> + ?Sized {}
 
 /// [`SelectionKeys`] Map Function Type
-type SelectionKeysMapFnType<'s, M> =
-    fn(&'s (<M as AssetMap>::Key, AssetValue)) -> &'s <M as AssetMap>::Key;
+type SelectionKeysMapFnType<'s, I, V, M> =
+    fn(&'s (<M as AssetMap<I, V>>::Key, V)) -> &'s <M as AssetMap<I, V>>::Key;
 
 /// [`SelectionKeys`] Iterator Type
-type SelectionKeysType<'s, M> = iter::Map<SelectionIterType<'s, M>, SelectionKeysMapFnType<'s, M>>;
+type SelectionKeysType<'s, I, V, M> =
+    iter::Map<SelectionIterType<'s, I, V, M>, SelectionKeysMapFnType<'s, I, V, M>>;
 
 /// Selection Keys Iterator
 ///
 /// This `struct` is created by the [`keys`](Selection::keys) method on [`Selection`].
 /// See its documentation for more.
 #[derive(derivative::Derivative)]
-#[derivative(Clone(bound = ""), Debug(bound = "M::Key: Debug"))]
-pub struct SelectionKeys<'s, M>
+#[derivative(Clone(bound = ""), Debug(bound = "V: Debug, M::Key: Debug"))]
+pub struct SelectionKeys<'s, I, V, M>
 where
-    M: AssetMap + ?Sized,
+    M: AssetMap<I, V> + ?Sized,
 {
     /// Base Iterator
-    iter: SelectionKeysType<'s, M>,
+    iter: SelectionKeysType<'s, I, V, M>,
 }
 
-impl<'s, M> SelectionKeys<'s, M>
+impl<'s, I, V, M> SelectionKeys<'s, I, V, M>
 where
-    M: AssetMap + ?Sized,
+    M: AssetMap<I, V> + ?Sized,
 {
     /// Builds a new [`SelectionKeys`] from `iter`.
     #[inline]
-    fn new(iter: SelectionKeysType<'s, M>) -> Self {
+    fn new(iter: SelectionKeysType<'s, I, V, M>) -> Self {
         Self { iter }
     }
 }
 
 // TODO: Implement all optimized methods/traits.
-impl<'s, M> Iterator for SelectionKeys<'s, M>
+impl<'s, I, V, M> Iterator for SelectionKeys<'s, I, V, M>
 where
-    M: AssetMap + ?Sized,
+    M: AssetMap<I, V> + ?Sized,
 {
     type Item = &'s M::Key;
 
@@ -1139,7 +1304,7 @@ where
     }
 }
 
-impl<'s, M> FusedIterator for SelectionKeys<'s, M> where M: AssetMap + ?Sized {}
+impl<'s, I, V, M> FusedIterator for SelectionKeys<'s, I, V, M> where M: AssetMap<I, V> + ?Sized {}
 
 /// Asset Metadata
 #[cfg_attr(
@@ -1159,12 +1324,15 @@ pub struct AssetMetadata {
 impl AssetMetadata {
     /// Returns a string formatting of only the `value` interpreted using `self` as the metadata.
     #[inline]
-    pub fn display_value(&self, value: AssetValue) -> String {
+    pub fn display_value<V>(&self, value: V) -> String
+    where
+        for<'v> &'v V: Div<u128, Output = u128>,
+    {
         // TODO: What if we want more than three `FRACTIONAL_DIGITS`? How do we make this method
         //       more general?
         const FRACTIONAL_DIGITS: u32 = 3;
-        let value_base_units = value.0 / (10u128.pow(self.decimals));
-        let fractional_digits = value.0 / (10u128.pow(self.decimals - FRACTIONAL_DIGITS))
+        let value_base_units = &value / (10u128.pow(self.decimals));
+        let fractional_digits = &value / (10u128.pow(self.decimals - FRACTIONAL_DIGITS))
             % (10u128.pow(FRACTIONAL_DIGITS));
         format!("{}.{:0>3}", value_base_units, fractional_digits)
     }
@@ -1172,46 +1340,66 @@ impl AssetMetadata {
     /// Returns a string formatting of `value` interpreted using `self` as the metadata including
     /// the symbol.
     #[inline]
-    pub fn display(&self, value: AssetValue) -> String {
+    pub fn display<V>(&self, value: V) -> String
+    where
+        for<'v> &'v V: Div<u128, Output = u128>,
+    {
         format!("{} {}", self.display_value(value), self.symbol)
     }
 }
 
+/// Metadata Display
+pub trait MetadataDisplay {
+    /// Returns a string representation of `self` given the asset `metadata`.
+    fn display(&self, metadata: &AssetMetadata) -> String;
+}
+
+impl MetadataDisplay for AssetValue {
+    #[inline]
+    fn display(&self, metadata: &AssetMetadata) -> String {
+        metadata.display(self.0)
+    }
+}
+
 /// Asset Manager
-pub trait AssetManager {
+pub trait AssetManager<I> {
     /// Returns the metadata associated to `id`.
-    fn metadata(&self, id: AssetId) -> Option<&AssetMetadata>;
+    fn metadata(&self, id: &I) -> Option<&AssetMetadata>;
 }
 
 /// Implements [`AssetManager`] for map types.
 macro_rules! impl_asset_manager_for_maps_body {
-    () => {
+    ($I:ident) => {
         #[inline]
-        fn metadata(&self, id: AssetId) -> Option<&AssetMetadata> {
-            self.get(&id)
+        fn metadata(&self, id: &$I) -> Option<&AssetMetadata> {
+            self.get(id)
         }
     };
 }
 
 /// B-Tree Map [`AssetManager`] Implementation
-pub type BTreeAssetManager = BTreeMap<AssetId, AssetMetadata>;
+pub type BTreeAssetManager<I = AssetId> = BTreeMap<I, AssetMetadata>;
 
-impl AssetManager for BTreeAssetManager {
-    impl_asset_manager_for_maps_body! {}
+impl<I> AssetManager<I> for BTreeAssetManager<I>
+where
+    I: Ord,
+{
+    impl_asset_manager_for_maps_body! { I }
 }
 
 /// Hash Map [`AssetManager`] Implementation
 #[cfg(feature = "std")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
-pub type HashAssetManager<S = RandomState> = HashMap<AssetId, AssetMetadata, S>;
+pub type HashAssetManager<I = AssetId, S = RandomState> = HashMap<I, AssetMetadata, S>;
 
 #[cfg(feature = "std")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
-impl<S> AssetManager for HashAssetManager<S>
+impl<I, S> AssetManager<I> for HashAssetManager<I, S>
 where
+    I: Eq + Hash,
     S: BuildHasher + Default,
 {
-    impl_asset_manager_for_maps_body! {}
+    impl_asset_manager_for_maps_body! { I }
 }
 
 /// Testing Suite

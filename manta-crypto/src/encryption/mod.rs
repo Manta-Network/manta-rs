@@ -433,9 +433,7 @@ where
     Copy(bound = "E::Header: Copy, E::Ciphertext: Copy"),
     Debug(bound = "E::Header: Debug, E::Ciphertext: Debug"),
     Default(bound = "E::Header: Default, E::Ciphertext: Default"),
-    Eq(bound = "E::Header: Eq, E::Ciphertext: Eq"),
-    Hash(bound = "E::Header: Hash, E::Ciphertext: Hash"),
-    PartialEq(bound = "E::Header: PartialEq, E::Ciphertext: PartialEq")
+    Hash(bound = "E::Header: Hash, E::Ciphertext: Hash")
 )]
 pub struct EncryptedMessage<E>
 where

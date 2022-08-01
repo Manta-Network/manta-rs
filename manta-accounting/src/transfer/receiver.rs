@@ -16,170 +16,127 @@
 
 //! Transfer Receiver
 
-use crate::{
-    asset::Asset,
-    transfer::{
-        AssetVar, Configuration, EncryptedNote, FullParametersVar, Note, Parameters, ProofInput,
-        PublicKey, PublicKeyVar, SecretKey, SecretKeyVar, Utxo, UtxoVar,
-    },
-};
+use crate::transfer::utxo::{DeriveMint, Identifier, Mint, QueryIdentifier};
 use core::{fmt::Debug, hash::Hash, iter};
 use manta_crypto::{
-    accumulator::Accumulator,
-    constraint::{Allocate, Allocator, AssertEq, Derived, ProofSystemInput, Public, Variable},
-    encryption::{hybrid, Encrypt},
+    constraint::{
+        Allocate, Allocator, Constant, Derived, ProofSystemInput, Public, Secret, Var, Variable,
+    },
+    rand::RngCore,
 };
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
 
 /// Receiver
-pub struct Receiver<C>
+pub struct Receiver<M, COM = ()>
 where
-    C: Configuration,
+    M: Mint<COM>,
 {
-    /// Public Spend Key
-    public_spend_key: PublicKey<C>,
-
-    /// Ephemeral Secret Spend Key
-    ephemeral_secret_key: SecretKey<C>,
-
-    /// Asset
-    asset: Asset,
+    /// Minting Secret
+    secret: M::Secret,
 
     /// Unspent Transaction Output
-    utxo: Utxo<C>,
+    utxo: M::Utxo,
 
-    /// Encrypted Note
-    encrypted_note: EncryptedNote<C>,
+    /// Note
+    note: M::Note,
 }
 
-impl<C> Receiver<C>
+impl<M, COM> Receiver<M, COM>
 where
-    C: Configuration,
+    M: Mint<COM>,
 {
-    /// Build a new [`Receiver`] from `ephemeral_secret_key`, to send `asset` to the owners of
-    /// `public_spend_key` and `public_view_key`.
+    /// Builds a new [`Receiver`] from `secret`, `utxo`, and `note`.
     #[inline]
-    pub fn new(
-        parameters: &Parameters<C>,
-        public_spend_key: PublicKey<C>,
-        public_view_key: PublicKey<C>,
-        ephemeral_secret_key: SecretKey<C>,
-        asset: Asset,
-    ) -> Self {
-        let randomness = hybrid::Randomness::from_key(ephemeral_secret_key);
-        Self {
-            utxo: parameters.utxo(&randomness.ephemeral_secret_key, &public_spend_key, &asset),
-            encrypted_note: parameters.note_encryption_scheme.encrypt_into(
-                &public_view_key,
-                &randomness,
-                (),
-                &Note::new(randomness.ephemeral_secret_key.clone(), asset),
-                &mut (),
-            ),
-            ephemeral_secret_key: randomness.ephemeral_secret_key,
-            public_spend_key,
-            asset,
-        }
+    pub fn new(secret: M::Secret, utxo: M::Utxo, note: M::Note) -> Self {
+        Self { secret, utxo, note }
     }
 
-    /// Returns the ephemeral public key associated to `self`.
+    /// Returns the asset underlying `self`, asserting that `self` is well-formed.
     #[inline]
-    pub fn ephemeral_public_key(&self) -> &PublicKey<C> {
-        self.encrypted_note.ephemeral_public_key()
+    pub fn well_formed_asset(&self, parameters: &M, compiler: &mut COM) -> M::Asset {
+        parameters.well_formed_asset(&self.secret, &self.utxo, &self.note, compiler)
     }
+}
 
-    /// Returns `true` whenever `self.utxo` and `rhs.utxo` can be inserted in any order into the
-    /// `utxo_accumulator`.
+impl<M> Receiver<M>
+where
+    M: Mint,
+{
+    /// Samples a new [`Receiver`] that will control `asset` at the given `address`.
     #[inline]
-    pub fn is_independent_from<A>(&self, rhs: &Self, utxo_accumulator: &A) -> bool
+    pub fn sample<R>(
+        parameters: &M,
+        address: M::Address,
+        asset: M::Asset,
+        associated_data: M::AssociatedData,
+        rng: &mut R,
+    ) -> Self
     where
-        A: Accumulator<Item = Utxo<C>, Model = C::UtxoAccumulatorModel>,
+        M: DeriveMint,
+        R: RngCore + ?Sized,
     {
-        utxo_accumulator.are_independent(&self.utxo, &rhs.utxo)
+        let (secret, utxo, note) = parameters.derive(address, asset, associated_data, rng);
+        Self::new(secret, utxo, note)
     }
 
-    /// Extracts the ledger posting data from `self`.
+    /// Returns the identifier for `self`.
     #[inline]
-    pub fn into_post(self) -> ReceiverPost<C> {
-        ReceiverPost {
-            utxo: self.utxo,
-            encrypted_note: self.encrypted_note,
-        }
+    pub fn identifier(&self) -> Identifier<M::Secret>
+    where
+        M::Secret: QueryIdentifier<Utxo = M::Utxo>,
+    {
+        self.secret.query_identifier(&self.utxo)
     }
 
     /// Extends proof public input with `self`.
     #[inline]
-    pub fn extend_input(&self, input: &mut ProofInput<C>) {
-        C::ProofSystem::extend(input, &self.utxo);
+    pub fn extend_input<P>(&self, input: &mut P::Input)
+    where
+        P: ProofSystemInput<M::Utxo> + ProofSystemInput<M::Note>,
+    {
+        P::extend(input, &self.utxo);
+        P::extend(input, &self.note);
+    }
+
+    /// Extracts the ledger posting data from `self`.
+    #[inline]
+    pub fn into_post(self) -> ReceiverPost<M> {
+        ReceiverPost::new(self.utxo, self.note)
     }
 }
 
-/// Receiver Variable
-pub struct ReceiverVar<C>
+impl<M, COM> Variable<Derived, COM> for Receiver<M, COM>
 where
-    C: Configuration,
+    M: Mint<COM> + Constant<COM>,
+    M::Secret: Variable<Secret, COM>,
+    M::Utxo: Variable<Public, COM>,
+    M::Note: Variable<Public, COM>,
+    M::Type: Mint<
+        Secret = Var<M::Secret, Secret, COM>,
+        Utxo = Var<M::Utxo, Public, COM>,
+        Note = Var<M::Note, Public, COM>,
+    >,
 {
-    /// Ephemeral Secret Spend Key
-    ephemeral_secret_key: SecretKeyVar<C>,
-
-    /// Public Spend Key
-    public_spend_key: PublicKeyVar<C>,
-
-    /// Asset
-    asset: AssetVar<C>,
-
-    /// Unspent Transaction Output
-    utxo: UtxoVar<C>,
-}
-
-impl<C> ReceiverVar<C>
-where
-    C: Configuration,
-{
-    /// Returns the asset for `self`, checking if `self` is well-formed.
-    #[inline]
-    pub fn get_well_formed_asset(
-        self,
-        parameters: &FullParametersVar<C>,
-        compiler: &mut C::Compiler,
-    ) -> AssetVar<C> {
-        let utxo = parameters.utxo(
-            &self.ephemeral_secret_key,
-            &self.public_spend_key,
-            &self.asset,
-            compiler,
-        );
-        compiler.assert_eq(&self.utxo, &utxo);
-        self.asset
-    }
-}
-
-impl<C> Variable<Derived, C::Compiler> for ReceiverVar<C>
-where
-    C: Configuration,
-{
-    type Type = Receiver<C>;
+    type Type = Receiver<M::Type>;
 
     #[inline]
-    fn new_known(this: &Self::Type, compiler: &mut C::Compiler) -> Self {
-        Self {
-            ephemeral_secret_key: this.ephemeral_secret_key.as_known(compiler),
-            public_spend_key: this.public_spend_key.as_known(compiler),
-            asset: this.asset.as_known(compiler),
-            utxo: this.utxo.as_known::<Public, _>(compiler),
-        }
+    fn new_unknown(compiler: &mut COM) -> Self {
+        Self::new(
+            compiler.allocate_unknown(),
+            compiler.allocate_unknown(),
+            compiler.allocate_unknown(),
+        )
     }
 
     #[inline]
-    fn new_unknown(compiler: &mut C::Compiler) -> Self {
-        Self {
-            ephemeral_secret_key: compiler.allocate_unknown(),
-            public_spend_key: compiler.allocate_unknown(),
-            asset: compiler.allocate_unknown(),
-            utxo: compiler.allocate_unknown::<Public, _>(),
-        }
+    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
+        Self::new(
+            this.secret.as_known(compiler),
+            this.utxo.as_known(compiler),
+            this.note.as_known(compiler),
+        )
     }
 }
 
@@ -188,10 +145,15 @@ where
 /// This is the validation trait for ensuring that a particular instance of [`Receiver`] is valid
 /// according to the ledger state. These methods are the minimum required for a ledger which accepts
 /// the [`Receiver`] abstraction.
-pub trait ReceiverLedger<C>
+pub trait ReceiverLedger<M>
 where
-    C: Configuration,
+    M: Mint,
 {
+    /// Super Posting Key
+    ///
+    /// Type that allows super-traits of [`ReceiverLedger`] to customize posting key behavior.
+    type SuperPostingKey: Copy;
+
     /// Valid [`Utxo`] Posting Key
     ///
     /// # Safety
@@ -199,19 +161,16 @@ where
     /// This type must be some wrapper around [`Utxo`] which can only be constructed by this
     /// implementation of [`ReceiverLedger`]. This is to prevent that [`register`](Self::register)
     /// is called before [`is_not_registered`](Self::is_not_registered).
-    type ValidUtxo: AsRef<Utxo<C>>;
-
-    /// Super Posting Key
     ///
-    /// Type that allows super-traits of [`ReceiverLedger`] to customize posting key behavior.
-    type SuperPostingKey: Copy;
+    /// [`Utxo`]: crate::transfer::utxo::UtxoType::Utxo
+    type ValidUtxo: AsRef<M::Utxo>;
 
     /// Checks if the ledger already contains the `utxo` in its set of UTXOs.
     ///
     /// Existence of such a UTXO could indicate a possible double-spend.
-    fn is_not_registered(&self, utxo: Utxo<C>) -> Option<Self::ValidUtxo>;
+    fn is_not_registered(&self, utxo: M::Utxo) -> Option<Self::ValidUtxo>;
 
-    /// Posts the `utxo` and `encrypted_note` to the ledger, registering the asset.
+    /// Posts the `utxo` and `note` to the ledger, registering the asset.
     ///
     /// # Safety
     ///
@@ -221,28 +180,27 @@ where
     /// # Implementation Note
     ///
     /// This method, by default, calls the [`register_all`] method on an iterator of length one
-    /// containing `(utxo, encrypted_note)`. Either [`register`] or [`register_all`] can be
-    /// implemented depending on which is more efficient.
+    /// containing `(utxo, note)`. Either [`register`] or [`register_all`] can be implemented
+    /// depending on which is more efficient.
     ///
     /// [`register`]: Self::register
     /// [`register_all`]: Self::register_all
     #[inline]
     fn register(
         &mut self,
-        utxo: Self::ValidUtxo,
-        encrypted_note: EncryptedNote<C>,
         super_key: &Self::SuperPostingKey,
+        utxo: Self::ValidUtxo,
+        note: M::Note,
     ) {
-        self.register_all(iter::once((utxo, encrypted_note)), super_key)
+        self.register_all(super_key, iter::once((utxo, note)))
     }
 
-    /// Posts all of the [`Utxo`] and [`EncryptedNote`] to the ledger, registering the assets.
+    /// Posts all of the [`Utxo`] and [`Note`] to the ledger, registering the assets.
     ///
     /// # Safety
     ///
-    /// This method can only be called once we check that all the [`Utxo`] and [`EncryptedNote`] are
-    /// not already stored on the ledger. See [`is_not_registered`](Self::is_not_registered) for
-    /// more.
+    /// This method can only be called once we check that all the [`Utxo`] and [`Note`] are not
+    /// already stored on the ledger. See [`is_not_registered`](Self::is_not_registered) for more.
     ///
     /// # Implementation Note
     ///
@@ -250,15 +208,17 @@ where
     /// iterates over `iter` calling [`register`] on each item returned. Either [`register`] or
     /// [`register_all`] can be implemented depending on which is more efficient.
     ///
+    /// [`Utxo`]: crate::transfer::utxo::UtxoType::Utxo
+    /// [`Note`]: crate::transfer::utxo::NoteType::Note
     /// [`register`]: Self::register
     /// [`register_all`]: Self::register_all
     #[inline]
-    fn register_all<I>(&mut self, iter: I, super_key: &Self::SuperPostingKey)
+    fn register_all<I>(&mut self, super_key: &Self::SuperPostingKey, iter: I)
     where
-        I: IntoIterator<Item = (Self::ValidUtxo, EncryptedNote<C>)>,
+        I: IntoIterator<Item = (Self::ValidUtxo, M::Note)>,
     {
-        for (utxo, encrypted_note) in iter {
-            self.register(utxo, encrypted_note, super_key)
+        for (utxo, note) in iter {
+            self.register(super_key, utxo, note)
         }
     }
 }
@@ -292,8 +252,8 @@ pub enum ReceiverPostError {
     derive(Deserialize, Serialize),
     serde(
         bound(
-            deserialize = "Utxo<C>: Deserialize<'de>, EncryptedNote<C>: Deserialize<'de>",
-            serialize = "Utxo<C>: Serialize, EncryptedNote<C>: Serialize",
+            deserialize = "M::Utxo: Deserialize<'de>, M::Note: Deserialize<'de>",
+            serialize = "M::Utxo: Serialize, M::Note: Serialize",
         ),
         crate = "manta_util::serde",
         deny_unknown_fields
@@ -301,100 +261,97 @@ pub enum ReceiverPostError {
 )]
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "Utxo<C>: Clone, EncryptedNote<C>: Clone"),
-    Copy(bound = "Utxo<C>: Copy, EncryptedNote<C>: Copy"),
-    Debug(bound = "Utxo<C>: Debug, EncryptedNote<C>: Debug"),
-    Eq(bound = "Utxo<C>: Eq, EncryptedNote<C>: Eq"),
-    Hash(bound = "Utxo<C>: Hash, EncryptedNote<C>: Hash"),
-    PartialEq(bound = "Utxo<C>: PartialEq, EncryptedNote<C>: PartialEq")
+    Clone(bound = "M::Utxo: Clone, M::Note: Clone"),
+    Copy(bound = "M::Utxo: Copy, M::Note: Copy"),
+    Debug(bound = "M::Utxo: Debug, M::Note: Debug"),
+    Eq(bound = "M::Utxo: Eq, M::Note: Eq"),
+    Hash(bound = "M::Utxo: Hash, M::Note: Hash"),
+    PartialEq(bound = "M::Utxo: PartialEq, M::Note: PartialEq")
 )]
-pub struct ReceiverPost<C>
+pub struct ReceiverPost<M>
 where
-    C: Configuration,
+    M: Mint,
 {
     /// Unspent Transaction Output
-    pub utxo: Utxo<C>,
+    pub utxo: M::Utxo,
 
-    /// Encrypted Note
-    pub encrypted_note: EncryptedNote<C>,
+    /// Note
+    pub note: M::Note,
 }
 
-impl<C> ReceiverPost<C>
+impl<M> ReceiverPost<M>
 where
-    C: Configuration,
+    M: Mint,
 {
-    /// Returns the ephemeral public key associated to `self`.
+    /// Builds a new [`ReceiverPost`] from `utxo` and `note`.
     #[inline]
-    pub fn ephemeral_public_key(&self) -> &PublicKey<C> {
-        self.encrypted_note.ephemeral_public_key()
+    pub fn new(utxo: M::Utxo, note: M::Note) -> Self {
+        Self { utxo, note }
     }
 
     /// Extends proof public input with `self`.
     #[inline]
-    pub fn extend_input(&self, input: &mut ProofInput<C>) {
-        C::ProofSystem::extend(input, &self.utxo);
+    pub fn extend_input<P>(&self, input: &mut P::Input)
+    where
+        P: ProofSystemInput<M::Utxo>,
+    {
+        P::extend(input, &self.utxo);
     }
 
     /// Validates `self` on the receiver `ledger`.
     #[inline]
-    pub fn validate<L>(self, ledger: &L) -> Result<ReceiverPostingKey<C, L>, ReceiverPostError>
+    pub fn validate<L>(self, ledger: &L) -> Result<ReceiverPostingKey<M, L>, ReceiverPostError>
     where
-        L: ReceiverLedger<C>,
+        L: ReceiverLedger<M>,
     {
         Ok(ReceiverPostingKey {
             utxo: ledger
                 .is_not_registered(self.utxo)
                 .ok_or(ReceiverPostError::AssetRegistered)?,
-            encrypted_note: self.encrypted_note,
+            note: self.note,
         })
     }
 }
 
 /// Receiver Posting Key
-pub struct ReceiverPostingKey<C, L>
+pub struct ReceiverPostingKey<M, L>
 where
-    C: Configuration,
-    L: ReceiverLedger<C> + ?Sized,
+    M: Mint,
+    L: ReceiverLedger<M> + ?Sized,
 {
-    /// UTXO Posting Key
+    /// Valid UTXO Posting Key
     utxo: L::ValidUtxo,
 
-    /// Encrypted Note
-    encrypted_note: EncryptedNote<C>,
+    /// Note
+    note: M::Note,
 }
 
-impl<C, L> ReceiverPostingKey<C, L>
+impl<M, L> ReceiverPostingKey<M, L>
 where
-    C: Configuration,
-    L: ReceiverLedger<C> + ?Sized,
+    M: Mint,
+    L: ReceiverLedger<M> + ?Sized,
 {
-    /// Returns the ephemeral public key associated to `self`.
-    #[inline]
-    pub fn ephemeral_public_key(&self) -> &PublicKey<C> {
-        self.encrypted_note.ephemeral_public_key()
-    }
-
     /// Extends proof public input with `self`.
     #[inline]
-    pub fn extend_input(&self, input: &mut ProofInput<C>) {
-        C::ProofSystem::extend(input, self.utxo.as_ref());
+    pub fn extend_input<P>(&self, input: &mut P::Input)
+    where
+        P: ProofSystemInput<M::Utxo>,
+    {
+        P::extend(input, self.utxo.as_ref());
     }
 
     /// Posts `self` to the receiver `ledger`.
     #[inline]
-    pub fn post(self, super_key: &L::SuperPostingKey, ledger: &mut L) {
-        ledger.register(self.utxo, self.encrypted_note, super_key);
+    pub fn post(self, ledger: &mut L, super_key: &L::SuperPostingKey) {
+        ledger.register(super_key, self.utxo, self.note);
     }
 
-    /// Posts all the of the [`ReceiverPostingKey`] in `iter` to the receiver `ledger`.
+    /// Posts all the of the [`ReceiverPostingKey`]s in `iter` to the receiver `ledger`.
     #[inline]
-    pub fn post_all<I>(iter: I, super_key: &L::SuperPostingKey, ledger: &mut L)
+    pub fn post_all<I>(iter: I, ledger: &mut L, super_key: &L::SuperPostingKey)
     where
         I: IntoIterator<Item = Self>,
     {
-        ledger.register_all(
-            iter.into_iter().map(move |k| (k.utxo, k.encrypted_note)),
-            super_key,
-        )
+        ledger.register_all(super_key, iter.into_iter().map(move |k| (k.utxo, k.note)))
     }
 }

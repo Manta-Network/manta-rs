@@ -27,6 +27,8 @@
 //! abstractions inside of compilers, like heap allocation. Allocation only refers to lifting
 //! constants and variables from one compiler to another.
 
+// TODO: How can we have objects that have both `Constant` and `Variable` parts?
+
 use core::marker::PhantomData;
 
 /// Constant Type Alias

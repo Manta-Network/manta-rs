@@ -29,6 +29,7 @@ mod bytes;
 mod macros;
 mod sealed;
 
+pub mod cmp;
 pub mod codec;
 pub mod convert;
 pub mod future;

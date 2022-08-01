@@ -16,6 +16,8 @@
 
 //! Manta Pay Circuit Measurements
 
+/*
+
 use manta_crypto::{
     constraint::{measure::Instrument, Allocate, Allocator, Secret},
     hash::ArrayHashFunction,
@@ -72,3 +74,7 @@ pub fn main() {
 
     println!("{:#?}", instrument.measurements);
 }
+
+*/
+
+fn main() {}
