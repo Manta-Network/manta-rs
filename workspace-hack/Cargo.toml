@@ -15,7 +15,7 @@ publish = false
 ### BEGIN HAKARI SECTION
 [dependencies]
 aes-gcm = { version = "0.9.4", features = ["aes", "alloc"] }
-anyhow = { version = "1.0.58", features = ["std"] }
+anyhow = { version = "1.0.59", features = ["std"] }
 bitflags = { version = "1.3.2" }
 blake3 = { version = "1.3.1", default-features = false, features = ["digest", "std"] }
 byteorder = { version = "1.4.3", features = ["std"] }
@@ -29,7 +29,6 @@ futures-io = { version = "0.3.21", features = ["std"] }
 futures-sink = { version = "0.3.21", default-features = false, features = ["alloc", "std"] }
 futures-task = { version = "0.3.21", default-features = false, features = ["alloc", "std"] }
 futures-util = { version = "0.3.21", features = ["alloc", "async-await", "async-await-macro", "channel", "futures-channel", "futures-io", "futures-macro", "futures-sink", "io", "memchr", "sink", "slab", "std"] }
-generic-array = { version = "0.14.5", default-features = false, features = ["more_lengths"] }
 getrandom = { version = "0.2.7", default-features = false, features = ["js", "js-sys", "std", "wasm-bindgen"] }
 indexmap = { version = "1.9.1", default-features = false, features = ["std"] }
 log = { version = "0.4.17", default-features = false, features = ["kv_unstable", "kv_unstable_std", "std", "value-bag"] }
@@ -50,12 +49,11 @@ web-sys = { version = "0.3.59", default-features = false, features = ["BinaryTyp
 zeroize = { version = "1.5.7", default-features = false, features = ["alloc", "zeroize_derive"] }
 
 [build-dependencies]
-anyhow = { version = "1.0.58", features = ["std"] }
+anyhow = { version = "1.0.59", features = ["std"] }
 blake3 = { version = "1.3.1", default-features = false, features = ["digest", "std"] }
 cc = { version = "1.0.73", default-features = false, features = ["jobserver", "parallel"] }
 crypto-common = { version = "0.1.6", default-features = false, features = ["std"] }
 digest-93f6ce9d446188ac = { package = "digest", version = "0.10.3", features = ["alloc", "block-buffer", "core-api", "mac", "std", "subtle"] }
-generic-array = { version = "0.14.5", default-features = false, features = ["more_lengths"] }
 log = { version = "0.4.17", default-features = false, features = ["kv_unstable", "kv_unstable_std", "std", "value-bag"] }
 num-traits = { version = "0.2.15", features = ["i128", "libm", "std"] }
 serde = { version = "1.0.140", features = ["alloc", "derive", "serde_derive", "std"] }

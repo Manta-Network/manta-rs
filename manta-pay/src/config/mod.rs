@@ -68,6 +68,8 @@ pub use ark_ed_on_bls12_381 as bls12_381_ed;
 
 pub(crate) use bls12_381_ed::EdwardsProjective as Bls12_381_Edwards;
 
+pub mod utxo;
+
 /// Pairing Curve Type
 pub type PairingCurve = Bls12_381;
 

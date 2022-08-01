@@ -51,3 +51,15 @@ pub mod simulation;
 #[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
 pub mod test;
 */
+
+#[doc(inline)]
+pub use manta_accounting;
+
+#[doc(inline)]
+pub use manta_crypto;
+
+#[doc(inline)]
+pub use manta_parameters;
+
+#[doc(inline)]
+pub use manta_util;
