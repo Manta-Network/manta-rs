@@ -541,12 +541,9 @@ where
         R: RngCore + ?Sized,
     {
         self.sync_with(action).await?;
-        /*
         Ok(rng
-            .select_item(self.wallet.assets())
-            .map(|(id, value)| Asset::new(*id, *value)))
-        */
-        todo!()
+            .select_item(self.wallet.assets().convert_iter())
+            .map(|(id, value)| Asset::<C>::new(id.clone(), value.clone())))
     }
 
     /// Samples a [`ToPrivate`] against `self` using `rng`, returning a [`Skip`] if [`ToPrivate`] is
@@ -923,14 +920,13 @@ pub async fn measure_balances<'w, C, L, S, B, I>(
 ) -> Result<AssetList<C::AssetId, C::AssetValue>, Error<C, L, S>>
 where
     C: 'w + Configuration,
+    C::AssetId: Ord,
+    C::AssetValue: AddAssign,
+    for<'v> &'v C::AssetValue: CheckedSub<Output = C::AssetValue>,
     L: 'w + Ledger<C> + PublicBalanceOracle<C>,
     S: 'w + signer::Connection<C, Checkpoint = L::Checkpoint>,
     B: 'w + BalanceState<C::AssetId, C::AssetValue>,
     I: IntoIterator<Item = &'w mut Wallet<C, L, S, B>>,
-
-    C::AssetId: Ord,
-    C::AssetValue: AddAssign,
-    for<'v> &'v C::AssetValue: CheckedSub<Output = C::AssetValue>,
 {
     let mut balances = AssetList::<C::AssetId, C::AssetValue>::new();
     for wallet in wallets {
@@ -940,7 +936,7 @@ where
             wallet
                 .assets()
                 .convert_iter()
-                .map(|item| Asset::<C>::new(item.0.clone(), item.1.clone()))
+                .map(|(id, value)| Asset::<C>::new(id.clone(), value.clone()))
         });
     }
     Ok(balances)
@@ -972,6 +968,9 @@ impl Config {
     ) -> Result<bool, Error<C, L, S>>
     where
         C: Configuration,
+        C::AssetId: Ord,
+        C::AssetValue: AddAssign,
+        for<'v> &'v C::AssetValue: CheckedSub<Output = C::AssetValue>,
         L: Ledger<C> + PublicBalanceOracle<C>,
         S: signer::Connection<C, Checkpoint = L::Checkpoint>,
         B: BalanceState<C::AssetId, C::AssetValue>,
@@ -983,10 +982,6 @@ impl Config {
         ESFut: Future<Output = ()>,
         Error<C, L, S>: Debug,
         Address<C>: Clone + Eq + Hash,
-
-        C::AssetId: Ord,
-        C::AssetValue: AddAssign,
-        for<'v> &'v C::AssetValue: CheckedSub<Output = C::AssetValue>,
     {
         let action_distribution = ActionDistribution::try_from(self.action_distribution)
             .expect("Unable to sample from action distribution.");

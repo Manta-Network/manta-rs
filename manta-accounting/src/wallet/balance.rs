@@ -24,7 +24,7 @@ use crate::asset::{Asset, AssetId, AssetList, AssetValue};
 use alloc::collections::btree_map::{BTreeMap, Entry as BTreeMapEntry};
 use core::{hash::Hash, ops::AddAssign};
 use manta_util::{
-    iter::{ConvertItemRef, IterRef, RefItem},
+    iter::{ConvertItemRef, ExactSizeIterable, RefItem},
     num::CheckedSub,
 };
 
@@ -36,7 +36,7 @@ use std::{
 
 /// Balance State
 pub trait BalanceState<I = AssetId, V = AssetValue>:
-    Default + for<'t> IterRef<'t> + for<'t> ConvertItemRef<'t, (&'t I, &'t V), Item = RefItem<'t, Self>>
+    Default + ExactSizeIterable + for<'t> ConvertItemRef<'t, (&'t I, &'t V), Item = RefItem<'t, Self>>
 {
     /// Returns the current balance associated with this `id`.
     fn balance(&self, id: &I) -> V;
