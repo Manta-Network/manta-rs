@@ -19,7 +19,6 @@
 use crate::{
     config::{Config, TransferPost},
     simulation::ledger::{http::Request, AccountId, Checkpoint},
-    util::http::{self, Error, IntoUrl},
 };
 use manta_accounting::{
     asset::AssetList,
@@ -29,7 +28,10 @@ use manta_accounting::{
         test::PublicBalanceOracle,
     },
 };
-use manta_util::future::{LocalBoxFuture, LocalBoxFutureResult};
+use manta_util::{
+    future::{LocalBoxFuture, LocalBoxFutureResult},
+    http::reqwest::{Error, IntoUrl, KnownUrlClient},
+};
 
 /// HTTP Ledger Client
 pub struct Client {
@@ -37,7 +39,7 @@ pub struct Client {
     account: AccountId,
 
     /// Client Connection
-    client: http::Client,
+    client: KnownUrlClient,
 }
 
 impl Client {
@@ -49,7 +51,7 @@ impl Client {
     {
         Ok(Self {
             account,
-            client: http::Client::new(server_url)?,
+            client: KnownUrlClient::new(server_url)?,
         })
     }
 }
