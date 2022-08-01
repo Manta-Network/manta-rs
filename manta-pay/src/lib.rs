@@ -30,6 +30,7 @@ pub mod util;
 #[cfg_attr(doc_cfg, doc(cfg(feature = "groth16")))]
 pub mod config;
 
+/*
 #[cfg(feature = "bip32")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "bip32")))]
 pub mod key;
@@ -49,3 +50,4 @@ pub mod simulation;
 #[cfg(any(test, feature = "test"))]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
 pub mod test;
+*/

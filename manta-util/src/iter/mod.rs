@@ -176,7 +176,7 @@ pub trait Iterable: for<'i> IterRef<'i> {
         <Self as IterRef<'_>>::iter(self).into_iter()
     }
 
-    ///
+    /// Returns the converting iterator for `self`.
     #[inline]
     fn convert_iter<'t, T>(&'t self) -> ConvertItemRefMap<'t, T, Self>
     where
@@ -188,7 +188,7 @@ pub trait Iterable: for<'i> IterRef<'i> {
 
 impl<T> Iterable for T where T: for<'i> IterRef<'i> + ?Sized {}
 
-///
+/// Exact Size Iterable
 pub trait ExactSizeIterable:
     for<'i> IterRef<'i, IntoIter = <Self as ExactSizeIterRef<'i>>::IntoIter>
     + for<'i> ExactSizeIterRef<'i, Item = RefItem<'i, Self>>

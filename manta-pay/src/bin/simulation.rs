@@ -16,6 +16,8 @@
 
 //! Manta Pay Simulation
 
+/*
+
 use clap::{error::ErrorKind, CommandFactory, Parser};
 use manta_accounting::transfer::canonical::generate_context;
 use manta_crypto::rand::{OsRng, Rand};
@@ -56,3 +58,7 @@ pub fn main() {
             .exit(),
     }
 }
+
+*/
+
+fn main() {}

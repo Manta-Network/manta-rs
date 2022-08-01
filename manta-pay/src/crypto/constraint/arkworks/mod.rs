@@ -28,8 +28,8 @@ use manta_crypto::{
     constraint::{
         self,
         measure::{Count, Measure},
-        mode, Add, Assert, AssertEq, BitAnd, ConditionalSwap, Constant, Has, NonNative, Public,
-        Secret, Variable,
+        mode, Add, Assert, BitAnd, ConditionalSwap, Constant, Has, NonNative, Public, Secret,
+        Variable,
     },
     eclair::num::AssertWithinBitRange,
     rand::{RngCore, Sample},
@@ -330,8 +330,6 @@ where
             .expect("Enforcing equality is not allowed to fail.");
     }
 }
-
-impl<F> AssertEq for R1CS<F> where F: PrimeField {}
 
 impl<F, const BITS: usize> AssertWithinBitRange<FpVar<F>, BITS> for R1CS<F>
 where

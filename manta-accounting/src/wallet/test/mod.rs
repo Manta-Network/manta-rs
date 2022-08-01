@@ -721,7 +721,7 @@ where
     async fn restart(&mut self) -> Result<bool, Error<C, L, S>> {
         self.sync().await?;
         /*
-        let assets = AssetList::from_iter(self.wallet.assets().clone());
+        let assets = AssetList::from_iter(self.wallet.assets().convert_iter().map(|a| a.clone()));
         self.wallet
             .restart()
             .await

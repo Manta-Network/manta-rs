@@ -143,6 +143,8 @@ impl poseidon::arkworks::Specification for PoseidonSpec<4> {
     const SBOX_EXPONENT: u64 = 5;
 }
 
+/*
+
 /// Key Agreement Scheme Type
 pub type KeyAgreementScheme = DiffieHellman<Group>;
 
@@ -737,6 +739,7 @@ pub type NoteEncryptionScheme =
 /// Base Configuration
 pub struct Config;
 
+/* TODO:
 impl transfer::Configuration for Config {
     type SecretKey = SecretKey;
     type PublicKey = PublicKey;
@@ -854,3 +857,6 @@ pub fn receiving_key_from_base58(string: &str) -> Option<ReceivingKey> {
         view: view.to_owned().try_into().ok()?,
     })
 }
+*/
+
+*/

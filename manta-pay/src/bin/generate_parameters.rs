@@ -16,6 +16,8 @@
 
 //! Generate Parameters
 
+/*
+
 // TODO: Deduplicate the per-circuit proving context and verifying context serialization code.
 // TODO: Print some statistics about the parameters and circuits and into a stats file as well.
 
@@ -150,3 +152,7 @@ pub fn main() -> io::Result<()> {
 
     Ok(())
 }
+
+*/
+
+fn main() {}
