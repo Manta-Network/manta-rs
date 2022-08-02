@@ -1,0 +1,143 @@
+// Copyright 2019-2022 Manta Network.
+// This file is part of manta-rs.
+//
+// manta-rs is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// manta-rs is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
+//! Ceremony coordinator.
+
+use crate::{
+    ceremony::{
+        queue::{Identifier, Priority, Queue},
+        registry::{Map, Registry},
+        CeremonyError,
+    },
+    mpc,
+};
+
+/// Coordinator with `V` as trusted setup verifier, `P` as participant, `M` as the map used by registry, `N` as the number of priority levels.
+pub struct Coordinator<V, P, M, const N: usize>
+where
+    V: mpc::Verify,
+    P: Priority + Identifier,
+    M: Map<Key = P::Identifier, Value = P>,
+{
+    state: V::State,
+    challenge: V::Challenge,
+    registry: Registry<M>,
+    queue: Queue<P, N>,
+    mpc_verifier: V,
+}
+
+impl<V, P, M, const N: usize> Coordinator<V, P, M, N>
+where
+    V: mpc::Verify,
+    P: Priority + Identifier,
+    M: Map<Key = P::Identifier, Value = P>,
+{
+    /// Initialize the coordinator with the initial state and challenge.
+    pub fn new(
+        // add internal state
+        mpc_verifier: V,
+        state: V::State,
+        challenge: V::Challenge,
+    ) -> Self {
+        Self {
+            state,
+            challenge,
+            registry: Registry::default(),
+            queue: Queue::default(),
+            mpc_verifier,
+        }
+    }
+
+    /// Get current state and challenge.
+    pub fn state_and_challenge(&self) -> (&V::State, &V::Challenge) {
+        (&self.state, &self.challenge)
+    }
+
+    /// Check if participant is next.
+    pub fn is_next(&self, participant: &P) -> bool {
+        self.queue.is_at_front(participant)
+    }
+
+    /// Update the MPC state and challenge using client's contribution.
+    /// If the contribution is valid, the participant will be removed from the waiting queue, and cannot
+    /// participate in this ceremony again.
+    /// Assumes that signatures on the state and proof have already been checked.
+    pub fn update(
+        &mut self,
+        participant: &P::Identifier,
+        transformed_state: V::State,
+        proof: V::Proof,
+    ) -> Result<(), CeremonyError>
+    where
+        V::State: Default, // TODO: we can use `take_mut` crate to avoid this, but need to think more
+    {
+        // get participant
+        let participant = self
+            .registry
+            .get(participant)
+            .ok_or(CeremonyError::NotRegistered)?;
+
+        // make sure it is participant's turn
+        if !self.queue.is_at_front(participant) {
+            return Err(CeremonyError::NotYourTurn);
+        };
+
+        // verify and update the state and challenge
+        let next_challenge =
+            self.mpc_verifier
+                .challenge(&self.challenge, &self.state, &transformed_state, &proof);
+        let transformed_state = self
+            .mpc_verifier
+            .verify_transform(
+                &next_challenge,
+                core::mem::take(&mut self.state),
+                transformed_state,
+                proof,
+            )
+            .map_err(|_| CeremonyError::TrustedSetupError)?; // TODO: add more error description
+        self.state = transformed_state;
+
+        // remove the participant from the queue but the participant
+        // will noe be removed from the registry, so the participant will not
+        // be able to participate in this ceremony again.
+        self.queue.pop();
+        // println!("MPC state updated");
+        Ok(())
+    }
+
+    /// Register a participant and put them into the waiting queue.
+    pub fn register(&mut self, participant: P) -> Result<(), CeremonyError> {
+        let participant = self
+            .registry
+            .try_register(participant.identifier(), participant)?;
+        self.queue.push(participant);
+        Ok(())
+    }
+
+    /// Get the participant with the given identifier. Returns `None` if not found.
+    pub fn get_participant(&self, identifier: &P::Identifier) -> Option<&P> {
+        self.registry.get(identifier)
+    }
+
+    /// Put the current contributor and move to next one. Return the participant that is skipped.
+    /// The skipped participant needs to be registered again.
+    pub fn skip_current_contributor(&mut self) -> Result<P, CeremonyError> {
+        let participant = self.queue.pop().ok_or(CeremonyError::WaitingQueueEmpty)?;
+        Ok(self
+            .registry
+            .unregister(&participant)
+            .expect("participant in the queue should be registered"))
+    }
+}

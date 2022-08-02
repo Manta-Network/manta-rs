@@ -1,0 +1,68 @@
+// Copyright 2019-2022 Manta Network.
+// This file is part of manta-rs.
+//
+// manta-rs is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// manta-rs is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
+
+//! Client and Server Interfaces and Implementations for Manta Trusted Setup Ceremony
+
+use core::fmt::{self, Display};
+
+// pub mod bls_server;
+pub mod coordinator;
+pub mod queue;
+pub mod registry;
+pub mod requests;
+pub mod signature;
+
+#[cfg(feature = "std")]
+pub mod server;
+
+/// Ceremony Error
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum CeremonyError {
+    /// Participant already registered.
+    AlreadyRegistered,
+
+    /// Invalid Contribution // TODO: derive this error from trusted setup error
+    InvalidContribution,
+
+    /// Invalid Signature
+    InvalidSignature,
+
+    /// Not your turn
+    NotYourTurn,
+
+    /// Not Registered
+    NotRegistered,
+
+    /// Trusted Setup Error
+    TrustedSetupError, // TODO: add more description here
+
+    /// The waiting queue is empty.
+    WaitingQueueEmpty,
+}
+
+impl Display for CeremonyError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CeremonyError::AlreadyRegistered => write!(f, "Already registered"),
+            CeremonyError::InvalidContribution => write!(f, "Invalid contribution"),
+            CeremonyError::InvalidSignature => write!(f, "Invalid signature"),
+            CeremonyError::NotYourTurn => write!(f, "Not your turn"),
+            CeremonyError::NotRegistered => write!(f, "Not registered"),
+            CeremonyError::TrustedSetupError => write!(f, "Trusted Setup Error"),
+            CeremonyError::WaitingQueueEmpty => write!(f, "Waiting queue is empty"),
+        }
+    }
+}
