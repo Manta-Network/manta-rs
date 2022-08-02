@@ -289,6 +289,7 @@ where
         parameters: &Parameters<C>,
         base: &T,
         leaf_digests: Vec<LeafDigest<C>>,
+        marked_leaves: Vec<usize>,
     ) -> Option<Self>
     where
         T: Tree<C>,
@@ -298,7 +299,12 @@ where
         if leaf_digests.len() + base.len() >= capacity::<C, _>() {
             return None;
         }
-        Some(Self::new_unchecked(parameters, base, leaf_digests))
+        Some(Self::new_unchecked(
+            parameters,
+            base,
+            leaf_digests,
+            marked_leaves,
+        ))
     }
 
     /// Builds a new branch off of `base`, extending by `leaf_digests` without checking that
@@ -308,6 +314,7 @@ where
         parameters: &Parameters<C>,
         base: &T,
         leaf_digests: Vec<LeafDigest<C>>,
+        marked_leaves: Vec<usize>,
     ) -> Self
     where
         T: Tree<C>,
@@ -318,6 +325,7 @@ where
             Self::generate_branch_setup(parameters, base);
         let mut partial = Partial::new_unchecked(
             base_leaf_digests,
+            marked_leaves,
             PartialInnerTree::from_current(parameters, base_inner_digest, inner_path),
         );
         let partial_tree_len = partial.len();
@@ -402,6 +410,7 @@ where
             parameters,
             base,
             Self::extract_leaves(self.base_contribution, mem::take(&mut self.data)),
+            Partial::marked_leaves(&self.data).to_vec(),
         );
         *self = new_branch;
         true
@@ -595,7 +604,7 @@ where
         LeafDigest<C>: Clone + Default,
         InnerDigest<C>: Default,
     {
-        let branch = Branch::new_unchecked(parameters, trunk.get(), Default::default());
+        let branch = Branch::new_unchecked(parameters, trunk.get(), Default::default(), Vec::new());
         Self::build(trunk, branch)
     }
 
@@ -606,12 +615,13 @@ where
         parameters: &Parameters<C>,
         trunk: &Trunk<C, T, P>,
         leaf_digests: Vec<LeafDigest<C>>,
+        marked_leaves: Vec<usize>,
     ) -> Option<Self>
     where
         LeafDigest<C>: Clone + Default,
         InnerDigest<C>: Default,
     {
-        let branch = Branch::new(parameters, trunk.get(), leaf_digests)?;
+        let branch = Branch::new(parameters, trunk.get(), leaf_digests, marked_leaves)?;
         Some(Self::build(trunk, branch))
     }
 
@@ -811,7 +821,7 @@ where
         LeafDigest<C>: Clone + Default,
         InnerDigest<C>: Default,
     {
-        let branch = Branch::new_unchecked(parameters, &tree, Default::default());
+        let branch = Branch::new_unchecked(parameters, &tree, Default::default(), Vec::new());
         Self { base: tree, branch }
     }
 
@@ -907,7 +917,7 @@ where
         LeafDigest<C>: Clone + Default,
         InnerDigest<C>: Default,
     {
-        self.branch = Branch::new_unchecked(parameters, &self.base, Default::default());
+        self.branch = Branch::new_unchecked(parameters, &self.base, Default::default(), Vec::new());
     }
 
     /// Merges the fork of the base tree back into the trunk.

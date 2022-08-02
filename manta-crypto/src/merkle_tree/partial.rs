@@ -63,6 +63,9 @@ where
     /// Leaf Digests
     leaf_digests: Vec<LeafDigest<C>>,
 
+    /// Marked for deletion
+    marked_leaves: Vec<usize>,
+
     /// Inner Digests
     inner_digests: PartialInnerTree<C, M>,
 }
@@ -77,10 +80,12 @@ where
     #[inline]
     pub fn new_unchecked(
         leaf_digests: Vec<LeafDigest<C>>,
+        marked_leaves: Vec<usize>,
         inner_digests: PartialInnerTree<C, M>,
     ) -> Self {
         Self {
             leaf_digests,
+            marked_leaves,
             inner_digests,
         }
     }
@@ -95,6 +100,12 @@ where
     #[inline]
     pub fn leaf_digests(&self) -> &[LeafDigest<C>] {
         &self.leaf_digests
+    }
+
+    /// Returns the vector of marked leaves of the Merkle tree.
+    #[inline]
+    pub fn marked_leaves(&self) -> &[usize] {
+        &self.marked_leaves
     }
 
     /// Returns the leaf digests stored in the tree, dropping the rest of the tree data.
@@ -169,6 +180,7 @@ where
     where
         LeafDigest<C>: Clone + Default,
     {
+        // TODO: What happens when the path doesn't exist?
         self.get_leaf_sibling(index).cloned().unwrap_or_default()
     }
 
@@ -364,12 +376,12 @@ where
             if node
                 .sibling()
                 .descendants(level)
-                .iter()
-                .map(|x| x.0 - self.starting_leaf_index())
+                .iter() // TODO: Combine the "maps" and "any"
+                .map(|x| x.0 - self.starting_leaf_index()) // the difference is already done by leaf_digest.
                 .map(|y| self.leaf_digest(y))
                 .any(|z| match z {
                     None => false,
-                    Some(q) => self.contains(q),
+                    Some(q) => self.contains(q), // note to self: is contains necessary?
                 })
             {
                 break;

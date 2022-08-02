@@ -17,6 +17,7 @@
 //! Merkle Tree Node Abstractions
 
 use crate::merkle_tree::{HashConfiguration, InnerDigest, InnerHash, LeafDigest, Parameters};
+use alloc::vec::Vec;
 use core::{
     iter::FusedIterator,
     ops::{Add, Sub},
@@ -161,7 +162,7 @@ impl Default for Parity {
 )]
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub struct Node<Idx = usize>(
-    /// Level-wise Index to a node in a Binary Tree
+    /// Level-wise Index to a node in a Binary Tree, starting at index 0.
     pub Idx,
 );
 
@@ -256,11 +257,9 @@ impl Node {
     }
 
     /// Returns the [`Node`] k-th descendants of this node.
+    #[inline]
     pub fn descendants(&self, k: usize) -> Vec<Self> {
-        let descendant_nodes: Vec<Node> = ((self.0 << k)..((self.0 + 1) << k))
-            .map(|x| Node(x))
-            .collect();
-        descendant_nodes
+        ((self.0 << k)..((self.0 + 1) << k)).map(Self).collect()
     }
 
     /// Returns the parent [`Node`] of this node.
