@@ -17,12 +17,20 @@
 //! Manta-Pay UTXO Model Version 1 Configuration
 
 use crate::{
-    config::{ConstraintField, EmbeddedScalar, Group},
-    crypto::constraint::arkworks::{Boolean, Fp, R1CS},
+    config::{
+        poseidon::{
+            Spec2 as Poseidon2, Spec3 as Poseidon3, Spec4 as Poseidon4, Spec5 as Poseidon5,
+        },
+        ConstraintField, EmbeddedScalar, Group,
+    },
+    crypto::{
+        constraint::arkworks::{Boolean, Fp, R1CS},
+        poseidon::{self, hash::Hasher, ParameterFieldType},
+    },
 };
 use ark_ff::PrimeField;
 use core::marker::PhantomData;
-use manta_crypto::eclair::Has;
+use manta_crypto::{eclair::Has, hash::ArrayHashFunction};
 
 pub use manta_accounting::transfer::utxo::v1 as protocol;
 
@@ -42,7 +50,19 @@ pub type ViewingKey = EmbeddedScalar;
 pub type ReceivingKey = Group;
 
 ///
-pub struct UtxoCommitmentScheme<COM = ()>(PhantomData<COM>);
+pub struct UtxoCommitmentSchemeDomainTag;
+
+impl poseidon::hash::DomainTag<Poseidon5> for UtxoCommitmentSchemeDomainTag {
+    #[inline]
+    fn domain_tag() -> <Poseidon5 as ParameterFieldType>::ParameterField {
+        todo!()
+    }
+}
+
+///
+pub struct UtxoCommitmentScheme<COM = ()>(Hasher<Poseidon5, UtxoCommitmentSchemeDomainTag, 5, COM>)
+where
+    Poseidon5: poseidon::Specification<COM>;
 
 impl protocol::UtxoCommitmentScheme for UtxoCommitmentScheme {
     type AssetId = AssetId;
@@ -60,12 +80,35 @@ impl protocol::UtxoCommitmentScheme for UtxoCommitmentScheme {
         receiving_key: &Self::ReceivingKey,
         compiler: &mut (),
     ) -> Self::Commitment {
+        self.0.hash(
+            [
+                randomness,
+                asset_id,
+                &Fp((*asset_value).into()),
+                &Fp(receiving_key.0.x),
+                &Fp(receiving_key.0.y),
+            ],
+            compiler,
+        )
+    }
+}
+
+///
+pub struct ViewingKeyDerivationFunctionDomainTag;
+
+impl poseidon::hash::DomainTag<Poseidon2> for ViewingKeyDerivationFunctionDomainTag {
+    #[inline]
+    fn domain_tag() -> <Poseidon2 as ParameterFieldType>::ParameterField {
         todo!()
     }
 }
 
 ///
-pub struct ViewingKeyDerivationFunction<COM = ()>(PhantomData<COM>);
+pub struct ViewingKeyDerivationFunction<COM = ()>(
+    Hasher<Poseidon2, ViewingKeyDerivationFunctionDomainTag, 2, COM>,
+)
+where
+    Poseidon2: poseidon::Specification<COM>;
 
 impl protocol::ViewingKeyDerivationFunction for ViewingKeyDerivationFunction {
     type ProofAuthorizationKey = ProofAuthorizationKey;
@@ -75,18 +118,40 @@ impl protocol::ViewingKeyDerivationFunction for ViewingKeyDerivationFunction {
     fn viewing_key(
         &self,
         proof_authorization_key: &Self::ProofAuthorizationKey,
-        _: &mut (),
+        compiler: &mut (),
     ) -> Self::ViewingKey {
+        /* TODO:
+        self.0.hash(
+            [
+                &Fp(proof_authorization_key.0.x),
+                &Fp(proof_authorization_key.0.y),
+            ],
+            compiler,
+        )
+        */
         todo!()
     }
 }
 
 ///
-#[derive(Clone)]
-pub struct IncomingBaseEncryptionScheme<COM = ()>(PhantomData<COM>);
+pub type IncomingBaseEncryptionScheme<COM = ()> = poseidon::encryption::Encryption<Poseidon5, COM>;
 
 ///
-pub struct UtxoAccumulatorItemHash<COM = ()>(PhantomData<COM>);
+pub struct UtxoAccumulatorItemHashDomainTag;
+
+impl poseidon::hash::DomainTag<Poseidon4> for UtxoAccumulatorItemHashDomainTag {
+    #[inline]
+    fn domain_tag() -> <Poseidon3 as ParameterFieldType>::ParameterField {
+        todo!()
+    }
+}
+
+///
+pub struct UtxoAccumulatorItemHash<COM = ()>(
+    Hasher<Poseidon4, UtxoAccumulatorItemHashDomainTag, 4, COM>,
+)
+where
+    Poseidon4: poseidon::Specification<COM>;
 
 impl protocol::UtxoAccumulatorItemHash for UtxoAccumulatorItemHash {
     type Bool = bool;
@@ -104,16 +169,38 @@ impl protocol::UtxoAccumulatorItemHash for UtxoAccumulatorItemHash {
         commitment: &Self::Commitment,
         compiler: &mut (),
     ) -> Self::Item {
+        self.0.hash(
+            [
+                &Fp((*is_transparent).into()),
+                public_asset_id,
+                &Fp((*public_asset_value).into()),
+                commitment,
+            ],
+            compiler,
+        )
+    }
+}
+
+///
+pub struct NullifierCommitmentSchemeDomainTag;
+
+impl poseidon::hash::DomainTag<Poseidon3> for NullifierCommitmentSchemeDomainTag {
+    #[inline]
+    fn domain_tag() -> <Poseidon3 as ParameterFieldType>::ParameterField {
         todo!()
     }
 }
 
 ///
-pub struct NullifierCommitmentScheme<COM = ()>(PhantomData<COM>);
+pub struct NullifierCommitmentScheme<COM = ()>(
+    Hasher<Poseidon3, NullifierCommitmentSchemeDomainTag, 3, COM>,
+)
+where
+    Poseidon3: poseidon::Specification<COM>;
 
 impl protocol::NullifierCommitmentScheme for NullifierCommitmentScheme {
     type ProofAuthorizationKey = ProofAuthorizationKey;
-    type UtxoAccumulatorItem = ();
+    type UtxoAccumulatorItem = Fp<ConstraintField>;
     type Commitment = Fp<ConstraintField>;
 
     #[inline]
@@ -121,15 +208,21 @@ impl protocol::NullifierCommitmentScheme for NullifierCommitmentScheme {
         &self,
         proof_authorization_key: &Self::ProofAuthorizationKey,
         item: &Self::UtxoAccumulatorItem,
-        _: &mut (),
+        compiler: &mut (),
     ) -> Self::Commitment {
-        todo!()
+        self.0.hash(
+            [
+                &Fp(proof_authorization_key.0.x),
+                &Fp(proof_authorization_key.0.y),
+                item,
+            ],
+            compiler,
+        )
     }
 }
 
 ///
-#[derive(Clone)]
-pub struct OutgoingBaseEncryptionScheme<COM = ()>(PhantomData<COM>);
+pub type OutgoingBaseEncryptionScheme<COM = ()> = poseidon::encryption::Encryption<Poseidon2, COM>;
 
 ///
 pub struct Config<COM = ()>(PhantomData<COM>);

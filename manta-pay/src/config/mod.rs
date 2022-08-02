@@ -21,7 +21,6 @@ use crate::crypto::{
     ecc,
     encryption::aes::{self, FixedNonceAesGcm},
     key::Blake2sKdf,
-    poseidon::compat as poseidon,
 };
 use alloc::vec::Vec;
 use ark_ff::ToConstraintField;
@@ -68,6 +67,7 @@ pub use ark_ed_on_bls12_381 as bls12_381_ed;
 
 pub(crate) use bls12_381_ed::EdwardsProjective as Bls12_381_Edwards;
 
+pub mod poseidon;
 pub mod utxo;
 
 /// Pairing Curve Type
@@ -106,6 +106,7 @@ pub type ProofSystem = groth16::Groth16<PairingCurve>;
 /// Proof System Error
 pub type ProofSystemError = groth16::Error;
 
+/* FIXME[remove]:
 /// Poseidon Specification
 pub struct PoseidonSpec<const ARITY: usize>;
 
@@ -144,6 +145,7 @@ impl poseidon::arkworks::Specification for PoseidonSpec<4> {
     const PARTIAL_ROUNDS: usize = 60;
     const SBOX_EXPONENT: u64 = 5;
 }
+*/
 
 /*
 
