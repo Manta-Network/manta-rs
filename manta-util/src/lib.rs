@@ -32,6 +32,7 @@ mod sealed;
 pub mod codec;
 pub mod convert;
 pub mod future;
+pub mod http;
 pub mod iter;
 pub mod num;
 pub mod ops;

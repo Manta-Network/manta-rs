@@ -48,6 +48,7 @@ sha2 = { version = "0.9.9", features = ["std"] }
 signature = { version = "1.5.0", default-features = false, features = ["digest", "digest-preview", "rand-preview", "rand_core"] }
 standback = { version = "0.2.17", default-features = false, features = ["std"] }
 subtle = { version = "2.4.1", default-features = false, features = ["i128"] }
+tide = { version = "0.16.0", default-features = false, features = ["async-h1", "h1-server"] }
 tracing = { version = "0.1.36", default-features = false, features = ["attributes", "tracing-attributes"] }
 url = { version = "2.2.2", default-features = false, features = ["serde"] }
 value-bag = { version = "1.0.0-alpha.9", default-features = false, features = ["error", "std", "sval1_lib"] }
