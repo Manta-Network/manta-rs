@@ -48,7 +48,7 @@ jobs:
       - run: RUSTDOCFLAGS="-D warnings --cfg doc_cfg" cargo +nightly doc --workspace --all-features --no-deps --document-private-items
   lint:
     name: Lint (${{ matrix.os }} + ${{ matrix.channel }})
-    needs: [workspace-hack-check, format, format-cargo-toml, docs]
+    needs: [format, format-cargo-toml, docs]
     strategy:
       fail-fast: false
       matrix:
@@ -68,7 +68,7 @@ jobs:
       - run: cargo hack clippy --workspace --feature-powerset --tests
   test:
     name: Test (${{ matrix.os }} + ${{ matrix.channel }})
-    needs: [workspace-hack-check, format, format-cargo-toml, docs]
+    needs: [format, format-cargo-toml, docs]
     strategy:
       fail-fast: false
       matrix:
@@ -87,7 +87,7 @@ jobs:
       - run: cargo nextest run --workspace --release --all-features
   compile-bench:
     name: Compile Benchmarks (${{ matrix.os }} + ${{ matrix.channel }})
-    needs: [workspace-hack-check, format, format-cargo-toml, docs]
+    needs: [format, format-cargo-toml, docs]
     strategy:
       fail-fast: false
       matrix:

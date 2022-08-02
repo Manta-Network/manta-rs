@@ -14,10 +14,12 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Groth16 Trusted Setup
+//! HTTP Utilities
 
-pub mod kzg;
-pub mod mpc;
+#[cfg(feature = "tide")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "tide")))]
+pub mod tide;
 
-#[cfg(test)]
-pub mod test;
+#[cfg(feature = "reqwest")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "reqwest")))]
+pub mod reqwest;

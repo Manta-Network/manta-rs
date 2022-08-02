@@ -32,6 +32,7 @@ mod sealed;
 pub mod codec;
 pub mod convert;
 pub mod future;
+pub mod http;
 pub mod iter;
 pub mod num;
 pub mod ops;
@@ -59,6 +60,11 @@ pub use serde;
 #[cfg_attr(doc_cfg, doc(cfg(feature = "serde_with")))]
 #[doc(inline)]
 pub use serde_with;
+
+#[cfg(feature = "rayon")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "rayon")))]
+#[doc(inline)]
+pub use rayon;
 
 /// Type Identity Reflection Mechanism
 pub trait IsType {
