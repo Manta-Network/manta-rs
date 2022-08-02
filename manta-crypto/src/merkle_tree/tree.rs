@@ -29,7 +29,12 @@ use crate::{
         self, Accumulator, ConstantCapacityAccumulator, ExactSizeAccumulator, MembershipProof,
         OptimizedAccumulator,
     },
-    constraint::{self, Allocate, AssertEq, Bool, ConditionalSwap, Constant, Has, NonNative},
+    eclair::{
+        self,
+        alloc::{Allocate, Constant},
+        bool::{AssertEq, Bool, ConditionalSwap},
+        Has, NonNative,
+    },
     merkle_tree::{
         fork::{ForkedTree, Trunk},
         inner_tree::InnerMap,
@@ -555,7 +560,8 @@ where
     where
         C: Configuration<COM>,
         COM: Has<bool>,
-        InnerDigest<C, COM>: ConditionalSwap<COM> + constraint::PartialEq<InnerDigest<C, COM>, COM>,
+        InnerDigest<C, COM>:
+            ConditionalSwap<COM> + eclair::cmp::PartialEq<InnerDigest<C, COM>, COM>,
         LeafDigest<C, COM>: ConditionalSwap<COM>,
     {
         path.verify(self, root, leaf, compiler)
@@ -703,7 +709,7 @@ impl<C, COM> accumulator::Types for Parameters<C, COM>
 where
     C: Configuration<COM> + ?Sized,
     COM: Has<bool> + NonNative,
-    InnerDigest<C, COM>: ConditionalSwap<COM> + constraint::PartialEq<InnerDigest<C, COM>, COM>,
+    InnerDigest<C, COM>: ConditionalSwap<COM> + eclair::cmp::PartialEq<InnerDigest<C, COM>, COM>,
     LeafDigest<C, COM>: ConditionalSwap<COM>,
 {
     type Item = Leaf<C, COM>;
@@ -715,7 +721,7 @@ impl<C, COM> accumulator::Model<COM> for Parameters<C, COM>
 where
     C: Configuration<COM> + ?Sized,
     COM: Has<bool> + NonNative,
-    InnerDigest<C, COM>: ConditionalSwap<COM> + constraint::PartialEq<InnerDigest<C, COM>, COM>,
+    InnerDigest<C, COM>: ConditionalSwap<COM> + eclair::cmp::PartialEq<InnerDigest<C, COM>, COM>,
     LeafDigest<C, COM>: ConditionalSwap<COM>,
 {
     type Verification = Bool<COM>;
@@ -736,7 +742,7 @@ impl<C, COM> accumulator::AssertValidVerification<COM> for Parameters<C, COM>
 where
     C: Configuration<COM> + ?Sized,
     COM: AssertEq + NonNative,
-    InnerDigest<C, COM>: ConditionalSwap<COM> + constraint::PartialEq<InnerDigest<C, COM>, COM>,
+    InnerDigest<C, COM>: ConditionalSwap<COM> + eclair::cmp::PartialEq<InnerDigest<C, COM>, COM>,
     LeafDigest<C, COM>: ConditionalSwap<COM>,
 {
     #[inline]

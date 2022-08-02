@@ -80,7 +80,7 @@ mod test {
     use super::*;
     use crate::crypto::constraint::arkworks::Fp;
     use ark_bls12_381::Fr;
-    use ark_ff::field_new;
+    use manta_crypto::arkworks::ff::field_new;
 
     /// Checks if [`GrainLFSR`] is consistent with hardcoded outputs from the `sage` script found at
     /// <https://github.com/Manta-Network/Plonk-Prototype/tree/poseidon_hash_clean> with the

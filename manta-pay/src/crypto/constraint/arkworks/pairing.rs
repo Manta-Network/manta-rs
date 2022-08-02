@@ -20,10 +20,10 @@
 pub mod bls12 {
     use crate::crypto::constraint::arkworks::codec::{HasDeserialization, HasSerialization};
     use alloc::vec::Vec;
-    use ark_ec::models::bls12::{g2, Bls12Parameters};
-    use ark_ff::Fp2;
-    use ark_serialize::{
-        CanonicalDeserialize, CanonicalSerialize, Read, SerializationError, Write,
+    use manta_crypto::arkworks::{
+        ec::models::bls12::{g2, Bls12Parameters},
+        ff::Fp2,
+        serialize::{CanonicalDeserialize, CanonicalSerialize, Read, SerializationError, Write},
     };
 
     /// Line Evaluation Coefficients

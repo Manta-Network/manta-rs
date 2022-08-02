@@ -21,9 +21,15 @@
 //! [`Decrypt`] `trait`s for more.
 
 use crate::{
-    constraint::{
-        self, Allocate, Allocator, Assert, AssertEq, BitAnd, Bool, Constant, Derived, Has, Public,
-        Var, Variable,
+    eclair::{
+        self,
+        alloc::{
+            mode::{Derived, Public},
+            Allocate, Allocator, Constant, Var, Variable,
+        },
+        bool::{Assert, AssertEq, Bool},
+        ops::BitAnd,
+        Has,
     },
     rand::{Rand, RngCore, Sample},
 };
@@ -485,13 +491,13 @@ where
     }
 }
 
-impl<E, COM> constraint::PartialEq<Self, COM> for EncryptedMessage<E>
+impl<E, COM> eclair::cmp::PartialEq<Self, COM> for EncryptedMessage<E>
 where
     E: CiphertextType + HeaderType + ?Sized,
     COM: Has<bool>,
     Bool<COM>: BitAnd<Bool<COM>, COM, Output = Bool<COM>>,
-    E::Ciphertext: constraint::PartialEq<E::Ciphertext, COM>,
-    E::Header: constraint::PartialEq<E::Header, COM>,
+    E::Ciphertext: eclair::cmp::PartialEq<E::Ciphertext, COM>,
+    E::Header: eclair::cmp::PartialEq<E::Header, COM>,
 {
     #[inline]
     fn eq(&self, rhs: &Self, compiler: &mut COM) -> Bool<COM> {
@@ -510,13 +516,13 @@ where
     }
 }
 
-impl<E, COM> constraint::Eq<COM> for EncryptedMessage<E>
+impl<E, COM> eclair::cmp::Eq<COM> for EncryptedMessage<E>
 where
     E: CiphertextType + HeaderType + ?Sized,
     COM: Has<bool>,
     Bool<COM>: BitAnd<Bool<COM>, COM, Output = Bool<COM>>,
-    E::Ciphertext: constraint::Eq<COM>,
-    E::Header: constraint::Eq<COM>,
+    E::Ciphertext: eclair::cmp::Eq<COM>,
+    E::Header: eclair::cmp::Eq<COM>,
 {
 }
 

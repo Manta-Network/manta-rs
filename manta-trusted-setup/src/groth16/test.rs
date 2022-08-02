@@ -22,23 +22,27 @@ use crate::{
         mpc::{self, contribute, initialize, verify_transform, verify_transform_all, Proof, State},
     },
     mpc::{Transcript, Types},
-    pairing::Pairing,
     ratio::test::assert_valid_ratio_proof,
-    util::{BlakeHasher, HasDistribution, KZGBlakeHasher, Sample},
+    util::{BlakeHasher, HasDistribution, KZGBlakeHasher},
 };
 use alloc::vec::Vec;
-use ark_bls12_381::Fr;
-use ark_ec::{AffineCurve, PairingEngine};
-use ark_ff::{field_new, UniformRand};
+use ark_bls12_381::{Bls12_381, Fr, G1Affine, G2Affine};
 use ark_groth16::{Groth16, ProvingKey};
-use ark_r1cs_std::eq::EqGadget;
-use ark_serialize::CanonicalSerialize;
 use ark_snark::SNARK;
 use blake2::Digest;
 use manta_crypto::{
-    constraint::Allocate,
-    eclair::alloc::mode::{Public, Secret},
-    rand::{CryptoRng, OsRng, RngCore},
+    arkworks::{
+        ec::{AffineCurve, PairingEngine},
+        ff::{field_new, UniformRand},
+        pairing::{test::assert_valid_pairing_ratio, Pairing},
+        r1cs_std::eq::EqGadget,
+        serialize::CanonicalSerialize,
+    },
+    eclair::alloc::{
+        mode::{Public, Secret},
+        Allocate,
+    },
+    rand::{CryptoRng, OsRng, RngCore, Sample},
 };
 use manta_pay::crypto::constraint::arkworks::{Fp, FpVar, R1CS};
 use manta_util::into_array_unchecked;
@@ -57,21 +61,21 @@ impl HasDistribution for Test {
 }
 
 impl Pairing for Test {
-    type Scalar = ark_bls12_381::Fr;
-    type G1 = ark_bls12_381::G1Affine;
-    type G1Prepared = <ark_bls12_381::Bls12_381 as PairingEngine>::G1Prepared;
-    type G2 = ark_bls12_381::G2Affine;
-    type G2Prepared = <ark_bls12_381::Bls12_381 as PairingEngine>::G2Prepared;
-    type Pairing = ark_bls12_381::Bls12_381;
+    type Scalar = Fr;
+    type G1 = G1Affine;
+    type G1Prepared = <Bls12_381 as PairingEngine>::G1Prepared;
+    type G2 = G2Affine;
+    type G2Prepared = <Bls12_381 as PairingEngine>::G2Prepared;
+    type Pairing = Bls12_381;
 
     #[inline]
     fn g1_prime_subgroup_generator() -> Self::G1 {
-        ark_bls12_381::G1Affine::prime_subgroup_generator()
+        G1Affine::prime_subgroup_generator()
     }
 
     #[inline]
     fn g2_prime_subgroup_generator() -> Self::G2 {
-        ark_bls12_381::G2Affine::prime_subgroup_generator()
+        G2Affine::prime_subgroup_generator()
     }
 }
 
@@ -215,6 +219,17 @@ where
         )
         .unwrap(),
         "Verify proof should succeed."
+    );
+}
+
+/// Tests if bls13_381 pairing ratio is valid.
+#[test]
+fn has_valid_bls12_381_pairing_ratio() {
+    let mut rng = OsRng;
+    assert_valid_pairing_ratio::<Bls12_381>(
+        G1Affine::gen(&mut rng),
+        G2Affine::gen(&mut rng),
+        Fr::gen(&mut rng),
     );
 }
 

@@ -22,12 +22,14 @@ use crate::crypto::constraint::arkworks::{
     R1CS,
 };
 use alloc::vec::Vec;
-use ark_ec::PairingEngine;
 use ark_groth16::{Groth16 as ArkGroth16, PreparedVerifyingKey, ProvingKey};
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Read, Write};
 use ark_snark::SNARK;
 use core::marker::PhantomData;
 use manta_crypto::{
+    arkworks::{
+        ec::PairingEngine,
+        serialize::{CanonicalDeserialize, CanonicalSerialize, Read, Write},
+    },
     constraint::ProofSystem,
     rand::{CryptoRng, RngCore, SizedRng},
 };

@@ -40,13 +40,9 @@ required-features = ["clap", "groth16", "simulation"]
 # Enable Arkworks Backend
 arkworks = [
     "ark-bls12-381",
-    "ark-ec",
     "ark-ed-on-bls12-381",
-    "ark-ff",
-    "ark-r1cs-std",
-    "ark-relations",
-    "ark-serialize",
     "ark-std",
+    "manta-crypto/arkworks",
 ]
 
 # Enable Download Parameters
@@ -105,13 +101,8 @@ websocket = [
 [dependencies]
 aes-gcm = { version = "0.9.4", default-features = false, features = ["aes", "alloc"] }
 ark-bls12-381 = { version = "0.3.0", optional = true, default-features = false, features = ["curve"] }
-ark-ec = { version = "0.3.0", optional = true, default-features = false }
 ark-ed-on-bls12-381 = { version = "0.3.0", optional = true, default-features = false, features = ["r1cs"] }
-ark-ff = { version = "0.3.0", optional = true, default-features = false }
 ark-groth16 = { version = "0.3.0", optional = true, default-features = false }
-ark-r1cs-std = { version = "0.3.1", optional = true, default-features = false }
-ark-relations = { version = "0.3.0", optional = true, default-features = false }
-ark-serialize = { version = "0.3.0", optional = true, default-features = false, features = ["derive"] }
 ark-snark = { version = "0.3.0", optional = true, default-features = false }
 ark-std = { version = "0.3.0", optional = true, default-features = false }
 bip32 = { version = "0.4.0", optional = true, default-features = false, features = ["bip39", "secp256k1"] }

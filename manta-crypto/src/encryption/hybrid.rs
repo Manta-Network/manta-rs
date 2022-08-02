@@ -21,9 +21,12 @@
 //! encryption scheme inlines this complexity into the encryption interfaces.
 
 use crate::{
-    constraint::{
-        self, Allocate, Allocator, Assert, AssertEq, BitAnd, Bool, Constant, Derived, Has, Var,
-        Variable,
+    eclair::{
+        self,
+        alloc::{mode::Derived, Allocate, Allocator, Constant, Var, Variable},
+        bool::{Assert, AssertEq, Bool},
+        ops::BitAnd,
+        Has,
     },
     encryption::{
         CiphertextType, Decrypt, DecryptedPlaintextType, DecryptionKeyType, Derive, Encrypt,
@@ -199,14 +202,14 @@ where
     }
 }
 
-impl<K, E, COM> constraint::PartialEq<Self, COM> for Ciphertext<K, E>
+impl<K, E, COM> eclair::cmp::PartialEq<Self, COM> for Ciphertext<K, E>
 where
     COM: Has<bool>,
     Bool<COM>: BitAnd<Bool<COM>, COM, Output = Bool<COM>>,
     K: key::agreement::Types,
     E: CiphertextType,
-    K::PublicKey: constraint::PartialEq<K::PublicKey, COM>,
-    E::Ciphertext: constraint::PartialEq<E::Ciphertext, COM>,
+    K::PublicKey: eclair::cmp::PartialEq<K::PublicKey, COM>,
+    E::Ciphertext: eclair::cmp::PartialEq<E::Ciphertext, COM>,
 {
     #[inline]
     fn eq(&self, rhs: &Self, compiler: &mut COM) -> Bool<COM> {

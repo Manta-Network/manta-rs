@@ -32,27 +32,22 @@ rayon = ["manta-util/rayon"]
 std = []
 
 # Testing Frameworks
-test = []
+test = ["manta-crypto/test"]
 
 [dependencies]
-ark-ec = { version = "0.3.0", default-features = false }
-ark-ff = { version = "0.3.0", default-features = false }
 ark-groth16 = { version = "0.3.0", default-features = false }
 ark-poly = { version = "0.3.0", default-features = false }
-ark-relations = { version = "0.3.0", default-features = false }
-ark-serialize = { version = "0.3.0", default-features = false, features = ["derive"] }
 ark-std = { version = "0.3.0", default-features = false }
 blake2 = { version = "0.10.4", default-features = false }
 byteorder = { version = "1.4.3", default-features = false }
 derivative = { version = "2.2.0", default-features = false, features = ["use_core"] }
-manta-crypto = { path = "../manta-crypto", default-features = false, features = ["getrandom"] }
+manta-crypto = { path = "../manta-crypto", default-features = false, features = ["arkworks", "getrandom"] }
 manta-util = { path = "../manta-util", default-features = false }
 rand_chacha = { version = "0.3.1", default-features = false }
 workspace-hack = { version = "0.1.0", path = "../workspace-hack" }
 
 [dev-dependencies]
 ark-bls12-381 = { version = "0.3.0", default-features = false, features = ["curve", "scalar_field"] }
-ark-r1cs-std = { version = "0.3.1", default-features = false }
 ark-snark = { version = "0.3.0", default-features = false }
 manta-pay = { path = "../manta-pay", default-features = false, features = ["groth16"] } # TODO: To be removed
 manta-trusted-setup = { path = ".", default-features = false, features = ["test"] }

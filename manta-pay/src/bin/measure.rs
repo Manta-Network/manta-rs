@@ -17,7 +17,8 @@
 //! Manta Pay Circuit Measurements
 
 use manta_crypto::{
-    constraint::{measure::Instrument, Allocate, Allocator, Secret},
+    constraint::measure::Instrument,
+    eclair::alloc::{mode::Secret, Allocate, Allocator},
     hash::ArrayHashFunction,
     key::agreement::{Agree, Derive},
     rand::{Sample, SeedableRng},

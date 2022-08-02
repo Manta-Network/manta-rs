@@ -26,7 +26,14 @@ use crate::{
 use core::{fmt::Debug, hash::Hash, iter};
 use manta_crypto::{
     accumulator::Accumulator,
-    constraint::{Allocate, Allocator, AssertEq, Derived, ProofSystemInput, Public, Variable},
+    constraint::ProofSystemInput,
+    eclair::{
+        alloc::{
+            mode::{Derived, Public},
+            Allocate, Allocator, Variable,
+        },
+        bool::AssertEq,
+    },
     encryption::{hybrid, Encrypt},
 };
 

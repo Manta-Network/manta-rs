@@ -23,9 +23,13 @@ use crate::crypto::{
         ParameterFieldType,
     },
 };
-use ark_ff::{BigInteger, Field as _, FpParameters, PrimeField};
-use ark_r1cs_std::fields::FieldVar;
-use manta_crypto::constraint::Constant;
+use manta_crypto::{
+    arkworks::{
+        ff::{BigInteger, Field as _, FpParameters, PrimeField},
+        r1cs_std::fields::FieldVar,
+    },
+    eclair::alloc::Constant,
+};
 
 /// Compiler Type.
 type Compiler<S> = R1CS<<S as Specification>::Field>;
