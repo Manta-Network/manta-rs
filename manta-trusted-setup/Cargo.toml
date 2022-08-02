@@ -32,7 +32,7 @@ rayon = ["manta-util/rayon"]
 std = []
 
 # Testing Frameworks
-test = []
+test = ["manta-crypto/test"]
 
 [dependencies]
 ark-groth16 = { version = "0.3.0", default-features = false }
@@ -49,6 +49,5 @@ workspace-hack = { version = "0.1.0", path = "../workspace-hack" }
 [dev-dependencies]
 ark-bls12-381 = { version = "0.3.0", default-features = false, features = ["curve", "scalar_field"] }
 ark-snark = { version = "0.3.0", default-features = false }
-manta-crypto = { path = "../manta-crypto", default-features = false, features = ["test"] }
 manta-pay = { path = "../manta-pay", default-features = false, features = ["groth16"] } # TODO: To be removed
 manta-trusted-setup = { path = ".", default-features = false, features = ["test"] }
