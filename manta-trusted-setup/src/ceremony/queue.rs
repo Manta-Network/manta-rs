@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Waiting Queue Tools
+//! Waiting Queue
 
 use alloc::{collections::VecDeque, vec::Vec};
 use manta_util::{
@@ -43,7 +43,6 @@ pub trait Identifier {
 ///
 /// A mutex is required to safely access the queue.
 pub struct Queue<T, const N: usize>([VecDeque<T::Identifier>; N])
-// TODO: Why not use queue?
 where
     T: Priority + Identifier;
 
@@ -78,14 +77,13 @@ where
     /// Gets the position of `participant`.
     pub fn position(&self, participant: &T) -> Option<usize> {
         let priority = participant.priority();
-        let identifier = participant.identifier();
-        assert!(priority < N, "Shohuld give a valid priority.");
+        assert!(priority < N, "Should give a valid priority.");
         Some(
             (priority + 1..N).map(|p| self.0[p].len()).sum::<usize>()
                 + self.0[priority]
                     .iter()
                     .find_with(&mut Finder::new(0), |count, item| {
-                        if item == &identifier {
+                        if item == &participant.identifier() {
                             Some(*count)
                         } else {
                             *count += 1;
@@ -95,8 +93,7 @@ where
         )
     }
 
-    /// Removes the participant from the queue and returns its identifier.  
-    /// It is required that the priority of participant is the same as when it was added.
+    /// Pops the participant at the front and returns its identifier.
     pub fn pop(&mut self) -> Option<T::Identifier> {
         for priority in (0..N).rev() {
             if let Some(identifier) = self.0[priority].pop_front() {
@@ -106,32 +103,22 @@ where
         None
     }
 
-    /// Return the number of participants in the queue, also refered to as the length.
+    /// Returns the number of participants in the queue.
     pub fn len(&self) -> usize {
         self.0.iter().map(|v| v.len()).sum()
     }
 
-    /// Returns `true` if the queue has no participants.
+    /// Checks whether the queue is empty.
     pub fn is_empty(&self) -> bool {
         self.len() == 0
-    }
-}
-
-impl<T, const N: usize> Default for Queue<T, N>
-where
-    T: Priority + Identifier,
-{
-    fn default() -> Self {
-        Self::new()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ceremony::queue::Queue;
     use alloc::string::{String, ToString};
-    #[derive(Debug, PartialEq)]
+
     struct Item {
         id: String,
         priority: usize,
@@ -153,37 +140,30 @@ mod tests {
     #[test]
     fn test_queue() {
         let mut queue = Queue::<_, 2>::new();
-        let item1 = Item {
-            id: "a".to_string(),
-            priority: 0,
-        };
-        let item2 = Item {
-            id: "b".to_string(),
-            priority: 1,
-        };
-        let item3 = Item {
-            id: "c".to_string(),
-            priority: 0,
-        };
-        let item4 = Item {
-            id: "d".to_string(),
-            priority: 1,
-        };
-        queue.push(&item1);
-        queue.push(&item2);
-        queue.push(&item3);
-        queue.push(&item4);
+        let mut participants = Vec::with_capacity(4);
+        for participant in [("a", 0), ("b", 1), ("c", 0), ("d", 1)] {
+            let item = Item {
+                id: participant.0.to_string(),
+                priority: participant.1,
+            };
+            queue.push(&item);
+            participants.push(item);
+        }
         assert_eq!(queue.len(), 4);
-        assert_eq!(queue.position(&item2), Some(0));
-        assert_eq!(queue.position(&item4), Some(1));
-        assert_eq!(queue.position(&item1), Some(2));
-        assert_eq!(queue.position(&item3), Some(3));
-
+        let expected_order = [
+            &participants[1],
+            &participants[3],
+            &participants[0],
+            &participants[2],
+        ];
+        for i in 0..4 {
+            assert_eq!(queue.position(&expected_order[i]), Some(i));
+        }
         assert_eq!(queue.pop(), Some("b".to_string()));
-        assert!(!queue.is_at_front(&item2));
-        assert!(queue.is_at_front(&item4));
+        assert!(!queue.is_at_front(&participants[1]));
+        assert!(queue.is_at_front(&participants[3]));
         assert_eq!(queue.pop(), Some("d".to_string()));
-        assert!(queue.is_at_front(&item1));
+        assert!(queue.is_at_front(&participants[0]));
         assert_eq!(queue.pop(), Some("a".to_string()));
         assert_eq!(queue.pop(), Some("c".to_string()));
         assert_eq!(queue.pop(), None);

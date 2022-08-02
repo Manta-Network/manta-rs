@@ -24,8 +24,8 @@ is-it-maintained-issue-resolution = { repository = "Manta-Network/manta-rs" }
 is-it-maintained-open-issues = { repository = "Manta-Network/manta-rs" }
 maintenance = { status = "actively-developed" }
 
-[[bin]]
-name = "groth16_phase2_server"
+# [[bin]]
+# name = "groth16_phase2_server"
 
 [features]
 # Rayon Parallelization
@@ -38,7 +38,6 @@ std = []
 test = []
 
 [dependencies]
-ark-bls12-381 = { version = "0.3.0", default-features = false, features = ["curve"] }
 ark-ec = { version = "0.3.0", default-features = false }
 ark-ff = { version = "0.3.0", default-features = false }
 ark-groth16 = { version = "0.3.0", default-features = false }
@@ -46,20 +45,18 @@ ark-poly = { version = "0.3.0", default-features = false }
 ark-relations = { version = "0.3.0", default-features = false }
 ark-serialize = { version = "0.3.0", default-features = false, features = ["derive"] }
 ark-std = { version = "0.3.0", default-features = false }
-async-std = { version = "1.6.0", features = ["attributes", "tokio1"] }
+# async-std = { version = "1.6.0", features = ["attributes", "tokio1"] } // TODO
 blake2 = { version = "0.10.4", default-features = false }
 byteorder = { version = "1.4.3", default-features = false }
 derivative = { version = "2.2.0", default-features = false, features = ["use_core"] }
-ed25519 = { version = "1.5.2", default-features = false }
-ed25519-dalek = { version = "1.0.1", default-features = false, features = ["rand", "u64_backend"] } 
+ed25519-dalek = { version = "1.0.1", default-features = false, features = ["u64_backend"] } 
 manta-crypto = { path = "../manta-crypto", default-features = false, features = ["getrandom"] }
-manta-util = { path = "../manta-util", default-features = false, features = ["alloc", "serde", "serde-array"] }
-parking_lot = "0.12.1"
+manta-util = { path = "../manta-util", default-features = false, features = ["serde-array"] }
 rand_chacha = { version = "0.3.1", default-features = false }
-reqwest = {version = "0.11.11", features = ["json"]}
-serde = { version = "1.0", features = ["derive"] }
-serde_with = { version = "1.14.0", default-features = false, features = ["macros"] }
-tide = { version = "0.14.0", default-features = false }
+# reqwest = {version = "0.11.11", features = ["json"]} // TODO
+serde = { version = "1.0", default-features = false }
+serde_with = { version = "1.14.0", default-features = false }
+# tide = { version = "0.14.0", default-features = false } // TODO
 workspace-hack = { version = "0.1.0", path = "../workspace-hack" }
 
 [dev-dependencies]

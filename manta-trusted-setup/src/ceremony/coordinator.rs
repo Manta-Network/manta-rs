@@ -55,7 +55,7 @@ where
             state,
             challenge,
             registry: Registry::default(),
-            queue: Queue::default(),
+            queue: Queue::new(),
             mpc_verifier,
         }
     }
@@ -106,7 +106,7 @@ where
                 transformed_state,
                 proof,
             )
-            .map_err(|_| CeremonyError::TrustedSetupError)?; // TODO: add more error description
+            .map_err(|_| CeremonyError::InvalidContribution)?;
         self.state = transformed_state;
 
         // remove the participant from the queue but the participant

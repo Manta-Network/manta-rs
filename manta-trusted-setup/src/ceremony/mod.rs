@@ -16,14 +16,13 @@
 
 //! Client and Server Interfaces and Implementations for Manta Trusted Setup Ceremony
 
-use core::fmt::{self, Display};
-
 // pub mod bls_server;
 pub mod coordinator;
 pub mod queue;
 pub mod registry;
 pub mod requests;
 pub mod signature;
+// pub mod server;
 
 #[cfg(feature = "std")]
 pub mod server;
@@ -31,38 +30,21 @@ pub mod server;
 /// Ceremony Error
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum CeremonyError {
-    /// Participant already registered.
+    /// Participant Already Registered Error
     AlreadyRegistered,
 
-    /// Invalid Contribution // TODO: derive this error from trusted setup error
-    InvalidContribution,
-
-    /// Invalid Signature
-    InvalidSignature,
-
-    /// Not your turn
-    NotYourTurn,
-
-    /// Not Registered
+    /// Not Registered Error
     NotRegistered,
 
-    /// Trusted Setup Error
-    TrustedSetupError, // TODO: add more description here
+    /// Invalid Signature Error
+    InvalidSignature,
 
-    /// The waiting queue is empty.
+    /// Not Your Turn Error
+    NotYourTurn,
+
+    /// Empty Waiting Queue Error
     WaitingQueueEmpty,
-}
 
-impl Display for CeremonyError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            CeremonyError::AlreadyRegistered => write!(f, "Already registered"),
-            CeremonyError::InvalidContribution => write!(f, "Invalid contribution"),
-            CeremonyError::InvalidSignature => write!(f, "Invalid signature"),
-            CeremonyError::NotYourTurn => write!(f, "Not your turn"),
-            CeremonyError::NotRegistered => write!(f, "Not registered"),
-            CeremonyError::TrustedSetupError => write!(f, "Trusted Setup Error"),
-            CeremonyError::WaitingQueueEmpty => write!(f, "Waiting queue is empty"),
-        }
-    }
+    /// Invalid Contribution Error
+    InvalidContribution,
 }
