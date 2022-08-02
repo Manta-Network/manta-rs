@@ -51,6 +51,7 @@ where
     T: Priority + Identifier,
 {
     /// Builds a new empty [`Queue`].
+    #[inline]
     pub fn new() -> Self {
         Self(into_array_unchecked(
             (0..N).map(|_| VecDeque::new()).collect::<Vec<_>>(),
@@ -58,6 +59,7 @@ where
     }
 
     /// Pushes a participant to the queue.
+    #[inline]
     pub fn push(&mut self, participant: &T) {
         self.0
             .get_mut(participant.priority())
@@ -66,6 +68,7 @@ where
     }
 
     /// Checks if `participant` is at the front.
+    #[inline]
     pub fn is_at_front(&self, participant: &T) -> bool {
         let priority = participant.priority();
         if (priority + 1..N).any(|p| !self.0[p].is_empty()) {
@@ -75,6 +78,7 @@ where
     }
 
     /// Gets the position of `participant`.
+    #[inline]
     pub fn position(&self, participant: &T) -> Option<usize> {
         let priority = participant.priority();
         assert!(priority < N, "Should give a valid priority.");
@@ -94,6 +98,7 @@ where
     }
 
     /// Pops the participant at the front and returns its identifier.
+    #[inline]
     pub fn pop(&mut self) -> Option<T::Identifier> {
         for priority in (0..N).rev() {
             if let Some(identifier) = self.0[priority].pop_front() {
@@ -104,18 +109,21 @@ where
     }
 
     /// Returns the number of participants in the queue.
+    #[inline]
     pub fn len(&self) -> usize {
         self.0.iter().map(|v| v.len()).sum()
     }
 
     /// Checks whether the queue is empty.
+    #[inline]
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
 }
 
+/// Testing Suite
 #[cfg(test)]
-mod tests {
+mod test {
     use super::*;
     use alloc::string::{String, ToString};
 
@@ -137,8 +145,9 @@ mod tests {
         }
     }
 
+    /// Tests if queue is valid.
     #[test]
-    fn test_queue() {
+    fn queue_is_valid() {
         let mut queue = Queue::<_, 2>::new();
         let mut participants = Vec::with_capacity(4);
         for participant in [("a", 0), ("b", 1), ("c", 0), ("d", 1)] {

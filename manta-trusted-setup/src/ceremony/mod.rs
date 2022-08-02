@@ -24,8 +24,8 @@ pub mod requests;
 pub mod signature;
 // pub mod server;
 
-#[cfg(feature = "std")]
-pub mod server;
+// #[cfg(feature = "std")]
+// pub mod server;
 
 /// Ceremony Error
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]

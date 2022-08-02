@@ -13,34 +13,40 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
-//! Registry for the ceremony.
+
+//! Registry
 
 use crate::ceremony::CeremonyError;
-use alloc::collections::BTreeMap;
+use alloc::collections::{
+    btree_map::Entry::{Occupied, Vacant},
+    BTreeMap,
+};
 
-/// Map used by registry.
+/// Map
 pub trait Map: Default {
-    /// Key of map
+    /// Key Type
     type Key;
-    /// Value of map
+
+    /// Value Type
     type Value;
 
-    /// Try to insert a key into the map and get the reference of the value. If the key already exists,
-    /// return `None`.
-    fn try_insert_and_get_reference(
+    /// Inserts a key into the map and gets a reference of the value. Returns `None`
+    /// if the key already exists.
+    fn insert_and_get_reference(
         &mut self,
         key: Self::Key,
         value: Self::Value,
     ) -> Option<&Self::Value>;
 
-    /// Remove a key from the map. If the key does not exist, return `None`.
+    /// Removes a key from the map and returns `None` if the key does not exist.
     fn remove(&mut self, key: &Self::Key) -> Option<Self::Value>;
 
-    /// Return the value for the specified key. If the key does not exist, return `None`.
+    /// Gets the value for a given `key` and returns `None` if the key does not exist.
     fn get(&self, key: &Self::Key) -> Option<&Self::Value>;
 }
 
-/// Registry for the ceremony.
+/// Registry
+#[derive(Default)]
 pub struct Registry<M>
 where
     M: Map,
@@ -48,127 +54,91 @@ where
     map: M,
 }
 
-impl<M> Default for Registry<M>
-where
-    M: Map,
-{
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl<M> Registry<M>
 where
     M: Map,
 {
-    /// Returns an empty registry.
-    pub fn new() -> Self {
-        Self { map: M::default() }
-    }
-
-    /// Add a participant to the registry, and return its reference in the registry.
-    ///
-    /// # Errors
-    /// If the participant is already registered, returns [`CeremonyError::AlreadyRegistered`].
-    pub fn try_register(
-        &mut self,
-        id: M::Key,
-        participant: M::Value,
-    ) -> Result<&M::Value, CeremonyError> {
+    /// Adds a participant `(id, value)` to the registry, and returns a reference to `value` in the registry.
+    #[inline]
+    pub fn register(&mut self, id: M::Key, value: M::Value) -> Result<&M::Value, CeremonyError> {
         self.map
-            .try_insert_and_get_reference(id, participant)
+            .insert_and_get_reference(id, value)
             .map_or_else(|| Err(CeremonyError::AlreadyRegistered), Ok)
     }
 
-    /// Unregister a participant from the registry, using their identifier.
-    /// If the participant is not registered, returns [`CeremonyError::NotRegistered`].
+    /// Unregisters a participant from the registry.
+    #[inline]
     pub fn unregister(&mut self, id: &M::Key) -> Result<M::Value, CeremonyError> {
         self.map.remove(id).ok_or(CeremonyError::NotRegistered)
     }
 
-    /// Get the participant data from the registry using their `id`. Returns `None` if the participant is not registered.
+    /// Gets the participant value given the `id` and returns `None` if the participant is not registered.
+    #[inline]
     pub fn get(&self, id: &M::Key) -> Option<&M::Value> {
         self.map.get(id)
     }
 }
 
-#[cfg(feature = "std")]
-mod std_impl {
-    use crate::ceremony::registry::Map;
-    use std::{
-        collections::HashMap,
-        hash::{BuildHasher, Hash},
-    };
-
-    impl<K, V, S> Map for HashMap<K, V, S>
-    where
-        K: Eq + Hash,
-        S: BuildHasher + Default,
-    {
-        type Key = K;
-        type Value = V;
-
-        fn try_insert_and_get_reference(&mut self, key: K, value: V) -> Option<&V> {
-            match self.entry(key) {
-                std::collections::hash_map::Entry::Occupied(_) => None,
-                std::collections::hash_map::Entry::Vacant(entry) => Some(entry.insert(value)),
-            }
-        }
-
-        fn remove(&mut self, key: &Self::Key) -> Option<Self::Value> {
-            self.remove(key)
-        }
-
-        fn get(&self, key: &Self::Key) -> Option<&Self::Value> {
-            self.get(key)
-        }
-    }
-}
-
 impl<K, V> Map for BTreeMap<K, V>
 where
-    K: Ord + Clone,
+    K: Ord,
 {
     type Key = K;
     type Value = V;
 
-    fn try_insert_and_get_reference(&mut self, key: K, value: V) -> Option<&V> {
+    #[inline]
+    fn insert_and_get_reference(&mut self, key: K, value: V) -> Option<&V> {
         match self.entry(key) {
-            alloc::collections::btree_map::Entry::Occupied(_) => None,
-            alloc::collections::btree_map::Entry::Vacant(entry) => Some(entry.insert(value)),
+            Occupied(_) => None,
+            Vacant(entry) => Some(entry.insert(value)),
         }
     }
 
+    #[inline]
     fn remove(&mut self, key: &Self::Key) -> Option<Self::Value> {
         self.remove(key)
     }
 
+    #[inline]
     fn get(&self, key: &K) -> Option<&V> {
         self.get(key)
     }
 }
 
+/// Testing Suite
 #[cfg(test)]
-mod tests {
-    use crate::ceremony::{registry::Registry, CeremonyError};
-    use alloc::collections::BTreeMap;
+mod test {
+    use super::*;
 
+    /// Tests if registry is valid.
     #[test]
-    fn duplicate_participant() {
-        let mut registry = Registry::<BTreeMap<_, _>>::new();
+    fn registry_is_valid() {
+        let mut registry = Registry::<BTreeMap<_, _>>::default();
         registry
-            .try_register(1, "alice")
-            .expect("(1, alice) should be inserted");
+            .register(1, "Alice")
+            .expect("(1, Alice) should be inserted.");
         registry
-            .try_register(2, "bob")
-            .expect("(2, bob) should be inserted");
+            .register(2, "Bob")
+            .expect("(2, Bob) should be inserted.");
         registry
-            .try_register(3, "alice")
-            .expect("(3, alice) should be inserted even if value is the same as (1, alice)");
+            .register(3, "Alice")
+            .expect("(3, Alice) should be inserted even if value is the same as (1, Alice).");
         assert_eq!(
-            registry.try_register(2, "charlie"),
+            registry.register(2, "Charlie"),
             Err(CeremonyError::AlreadyRegistered),
-            "duplicate participant should not be inserted"
+            "Duplicated participant should not be inserted."
         );
+        assert_eq!(registry.get(&2), Some(&"Bob"), "Get should succeed.");
+        assert_eq!(
+            registry.unregister(&2),
+            Ok("Bob"),
+            "Unregsiter should succeed."
+        );
+        assert_eq!(
+            registry.unregister(&2),
+            Err(CeremonyError::NotRegistered),
+            "Unregister should failed."
+        );
+        assert_eq!(registry.get(&2), None, "Get should failed.");
     }
 }

@@ -121,7 +121,7 @@ where
     pub fn register(&mut self, participant: P) -> Result<(), CeremonyError> {
         let participant = self
             .registry
-            .try_register(participant.identifier(), participant)?;
+            .register(participant.identifier(), participant)?;
         self.queue.push(participant);
         Ok(())
     }
