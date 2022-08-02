@@ -16,7 +16,10 @@
 
 //! Numeric Types and Traits
 
-use crate::eclair::ops::{Add, AddAssign, Mul, MulAssign};
+use crate::eclair::{
+    alloc::{Allocator, Variable},
+    ops::{Add, AddAssign, Mul, MulAssign},
+};
 use core::{borrow::Borrow, ops::Deref};
 
 /// Additive Identity
@@ -202,3 +205,32 @@ define_uint!(
     U190, 190, U200, 200, U210, 210, U220, 220, U230, 230, U240, 240, U250, 250, U251, 251, U252,
     252, U253, 253, U254, 254, U255, 255, U256, 256,
 );
+
+/// Defines [`Variable`] allocation implementation for [`UnsignedInteger`] whenever it has a native
+/// Rust counterpart.
+macro_rules! define_uint_allocation {
+    ($($type:tt, $bits:expr),* $(,)?) => {
+        $(
+            impl<T, M, COM> Variable<M, COM> for UnsignedInteger<T, $bits>
+            where
+                COM: AssertWithinBitRange<T, $bits>,
+                T: Variable<M, COM>,
+                T::Type: From<$type>,
+            {
+                type Type = $type;
+
+                #[inline]
+                fn new_unknown(compiler: &mut COM) -> Self {
+                    Self::new(compiler.allocate_unknown(), compiler)
+                }
+
+                #[inline]
+                fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
+                    Self::new(compiler.allocate_known(&(*this).into()), compiler)
+                }
+            }
+        )*
+    };
+}
+
+define_uint_allocation!(u8, 8, u16, 16, u32, 32, u64, 64, u128, 128);
