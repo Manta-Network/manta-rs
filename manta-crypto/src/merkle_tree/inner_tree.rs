@@ -845,7 +845,7 @@ where
     M: InnerMap<C>,
     S: SentinelSource<C>,
 {
-    type Item = &'t InnerDigest<C>;
+    type Item = &'t InnerDigest<C>; // Option of this
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {

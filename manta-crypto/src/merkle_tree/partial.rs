@@ -63,6 +63,9 @@ where
     /// Leaf Digests
     leaf_digests: Vec<LeafDigest<C>>,
 
+    /// Marked for deletion
+    marked_leaves: Vec<usize>,
+
     /// Inner Digests
     inner_digests: PartialInnerTree<C, M>,
 }
@@ -77,10 +80,12 @@ where
     #[inline]
     pub fn new_unchecked(
         leaf_digests: Vec<LeafDigest<C>>,
+        marked_leaves: Vec<usize>,
         inner_digests: PartialInnerTree<C, M>,
     ) -> Self {
         Self {
             leaf_digests,
+            marked_leaves,
             inner_digests,
         }
     }
@@ -95,6 +100,12 @@ where
     #[inline]
     pub fn leaf_digests(&self) -> &[LeafDigest<C>] {
         &self.leaf_digests
+    }
+
+    /// Returns the vector of marked leaves of the Merkle tree.
+    #[inline]
+    pub fn marked_leaves(&self) -> &[usize] {
+        &self.marked_leaves
     }
 
     /// Returns the leaf digests stored in the tree, dropping the rest of the tree data.
@@ -120,7 +131,7 @@ where
         self.starting_leaf_node().0
     }
 
-    /// Returns the number of leaves in this tree.
+    /// Returns the number of nodes in this tree.
     #[inline]
     pub fn len(&self) -> usize {
         self.starting_leaf_index() + self.leaf_digests.len()
@@ -169,6 +180,7 @@ where
     where
         LeafDigest<C>: Clone + Default,
     {
+        // TODO: What happens when the path doesn't exist?
         self.get_leaf_sibling(index).cloned().unwrap_or_default()
     }
 
@@ -356,6 +368,29 @@ where
     #[inline]
     fn remove_path(&mut self, index: usize) -> bool {
         // TODO: Implement this optimization.
+        let mut node = Node(self.starting_leaf_index() + index);
+        let height = C::HEIGHT;
+        let mut nodes_to_be_removed: Vec<Node> = Vec::new();
+        for level in 0..height - 1 {
+            nodes_to_be_removed.push(node.sibling());
+            if node
+                .sibling()
+                .descendants(level)
+                .iter() // TODO: Combine the "maps" and "any"
+                .map(|x| x.0 - self.starting_leaf_index()) // the difference is already done by leaf_digest.
+                .map(|y| self.leaf_digest(y))
+                .any(|z| match z {
+                    None => false,
+                    Some(q) => self.contains(q), // note to self: is contains necessary?
+                })
+            {
+                break;
+            } else {
+                node = node.parent();
+            }
+        }
+        // So far: the nodes that can be pruned are computed
+        // TODO: delete the corresponding digests
         let _ = index;
         false
     }
