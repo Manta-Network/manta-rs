@@ -16,7 +16,10 @@
 
 //! Manta-Pay UTXO Model Version 1 Configuration
 
-use crate::crypto::constraint::arkworks::{Boolean, R1CS};
+use crate::{
+    config::{ConstraintField, EmbeddedScalar, Group},
+    crypto::constraint::arkworks::{Boolean, Fp, R1CS},
+};
 use ark_ff::PrimeField;
 use core::marker::PhantomData;
 use manta_crypto::eclair::Has;
@@ -24,23 +27,129 @@ use manta_crypto::eclair::Has;
 pub use manta_accounting::transfer::utxo::v1 as protocol;
 
 ///
+pub type AssetId = Fp<ConstraintField>;
+
+///
+pub type AssetValue = u128;
+
+///
+pub type ProofAuthorizationKey = Group;
+
+///
+pub type ViewingKey = EmbeddedScalar;
+
+///
+pub type ReceivingKey = Group;
+
+///
+pub struct UtxoCommitmentScheme<COM = ()>(PhantomData<COM>);
+
+impl protocol::UtxoCommitmentScheme for UtxoCommitmentScheme {
+    type AssetId = AssetId;
+    type AssetValue = AssetValue;
+    type ReceivingKey = ReceivingKey;
+    type Randomness = Fp<ConstraintField>;
+    type Commitment = Fp<ConstraintField>;
+
+    #[inline]
+    fn commit(
+        &self,
+        randomness: &Self::Randomness,
+        asset_id: &Self::AssetId,
+        asset_value: &Self::AssetValue,
+        receiving_key: &Self::ReceivingKey,
+        compiler: &mut (),
+    ) -> Self::Commitment {
+        todo!()
+    }
+}
+
+///
+pub struct ViewingKeyDerivationFunction<COM = ()>(PhantomData<COM>);
+
+impl protocol::ViewingKeyDerivationFunction for ViewingKeyDerivationFunction {
+    type ProofAuthorizationKey = ProofAuthorizationKey;
+    type ViewingKey = ViewingKey;
+
+    #[inline]
+    fn viewing_key(
+        &self,
+        proof_authorization_key: &Self::ProofAuthorizationKey,
+        _: &mut (),
+    ) -> Self::ViewingKey {
+        todo!()
+    }
+}
+
+///
+#[derive(Clone)]
+pub struct IncomingBaseEncryptionScheme<COM = ()>(PhantomData<COM>);
+
+///
+pub struct UtxoAccumulatorItemHash<COM = ()>(PhantomData<COM>);
+
+impl protocol::UtxoAccumulatorItemHash for UtxoAccumulatorItemHash {
+    type Bool = bool;
+    type AssetId = AssetId;
+    type AssetValue = AssetValue;
+    type Commitment = Fp<ConstraintField>;
+    type Item = Fp<ConstraintField>;
+
+    #[inline]
+    fn hash(
+        &self,
+        is_transparent: &Self::Bool,
+        public_asset_id: &Self::AssetId,
+        public_asset_value: &Self::AssetValue,
+        commitment: &Self::Commitment,
+        compiler: &mut (),
+    ) -> Self::Item {
+        todo!()
+    }
+}
+
+///
+pub struct NullifierCommitmentScheme<COM = ()>(PhantomData<COM>);
+
+impl protocol::NullifierCommitmentScheme for NullifierCommitmentScheme {
+    type ProofAuthorizationKey = ProofAuthorizationKey;
+    type UtxoAccumulatorItem = ();
+    type Commitment = Fp<ConstraintField>;
+
+    #[inline]
+    fn commit(
+        &self,
+        proof_authorization_key: &Self::ProofAuthorizationKey,
+        item: &Self::UtxoAccumulatorItem,
+        _: &mut (),
+    ) -> Self::Commitment {
+        todo!()
+    }
+}
+
+///
+#[derive(Clone)]
+pub struct OutgoingBaseEncryptionScheme<COM = ()>(PhantomData<COM>);
+
+///
 pub struct Config<COM = ()>(PhantomData<COM>);
 
 /* TODO:
 impl protocol::Configuration for Config {
     type Bool = bool;
-    type AssetId = ();
-    type AssetValue = ();
-    type Scalar = ();
-    type Group = ();
-    type UtxoCommitmentScheme = ();
-    type ViewingKeyDerivationFunction = ();
+    type AssetId = AssetId;
+    type AssetValue = AssetValue;
+    type Scalar = EmbeddedScalar;
+    type Group = Group;
+    type UtxoCommitmentScheme = UtxoCommitmentScheme;
+    type ViewingKeyDerivationFunction = ViewingKeyDerivationFunction;
     type IncomingCiphertext = ();
-    type IncomingBaseEncryptionScheme = ();
-    type UtxoAccumulatorItemHash = ();
+    type IncomingBaseEncryptionScheme = IncomingBaseEncryptionScheme;
+    type UtxoAccumulatorItemHash = UtxoAccumulatorItemHash;
     type UtxoAccumulatorModel = ();
+    type NullifierCommitmentScheme = NullifierCommitmentScheme;
     type OutgoingCiphertext = ();
-    type OutgoingBaseEncryptionScheme = ();
+    type OutgoingBaseEncryptionScheme = OutgoingBaseEncryptionScheme;
 }
 */
 

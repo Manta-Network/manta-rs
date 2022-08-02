@@ -25,13 +25,18 @@ use ark_relations::{
 };
 use manta_crypto::{
     algebra,
-    constraint::{
+    constraint::measure::{Count, Measure},
+    eclair::{
         self,
-        measure::{Count, Measure},
-        mode, Add, Assert, BitAnd, ConditionalSwap, Constant, Has, NonNative, Public, Secret,
-        Variable,
+        alloc::{
+            mode::{self, Public, Secret},
+            Constant, Variable,
+        },
+        bool::{Assert, ConditionalSwap},
+        num::AssertWithinBitRange,
+        ops::{Add, BitAnd},
+        Has, NonNative,
     },
-    eclair::num::AssertWithinBitRange,
     rand::{RngCore, Sample},
 };
 use manta_util::{
@@ -175,6 +180,16 @@ where
     #[inline]
     fn type_info() -> scale_info::Type {
         Self::Identity::type_info()
+    }
+}
+
+impl<F> eclair::cmp::PartialEq<Self> for Fp<F>
+where
+    F: Field,
+{
+    #[inline]
+    fn eq(&self, rhs: &Self, _: &mut ()) -> bool {
+        PartialEq::eq(self, rhs)
     }
 }
 
@@ -454,7 +469,7 @@ where
     }
 }
 
-impl<F> constraint::PartialEq<Self, R1CS<F>> for Boolean<F>
+impl<F> eclair::cmp::PartialEq<Self, R1CS<F>> for Boolean<F>
 where
     F: PrimeField,
 {
@@ -543,7 +558,7 @@ where
     }
 }
 
-impl<F> constraint::PartialEq<Self, R1CS<F>> for FpVar<F>
+impl<F> eclair::cmp::PartialEq<Self, R1CS<F>> for FpVar<F>
 where
     F: PrimeField,
 {
@@ -600,7 +615,7 @@ mod tests {
     use ark_ff::BigInteger;
     use core::iter::repeat_with;
     use manta_crypto::{
-        constraint::Allocate,
+        eclair::alloc::Allocate,
         rand::{OsRng, Rand},
     };
 

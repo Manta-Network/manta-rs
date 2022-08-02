@@ -20,10 +20,10 @@
 //! types. In this module, we define the access interfaces needed to simulate the [`bool`] type with
 //! [`Bool`].
 
-use crate::eclair::{cmp::PartialEq, Has};
+use crate::eclair::{cmp::PartialEq, Has, Type};
 
 /// Boolean Type Inside of the Compiler
-pub type Bool<COM = ()> = <COM as Has<bool>>::Type;
+pub type Bool<COM = ()> = Type<COM, bool>;
 
 /// Assertion
 pub trait Assert: Has<bool> {

@@ -19,8 +19,9 @@
 use crate::eclair::{
     bool::{Assert, Bool},
     ops::Not,
-    Has,
+    Has, Type,
 };
+use core::cmp::Ordering;
 
 /// Partial Equivalence Relations
 pub trait PartialEq<Rhs, COM = ()>
@@ -82,4 +83,92 @@ where
 
 /* TODO:
 impl<T> Eq for T where T: cmp::Eq {}
+*/
+
+///
+pub trait PartialOrd<Rhs, COM = ()>: PartialEq<Rhs, COM>
+where
+    Rhs: ?Sized,
+    COM: Has<bool> + Has<Option<Ordering>>,
+{
+    ///
+    fn partial_cmp(&self, other: &Rhs, compiler: &mut COM) -> Type<COM, Option<Ordering>>;
+
+    /* TODO:
+    ///
+    #[inline]
+    fn lt(&self, other: &Rhs, compiler: &mut COM) -> Bool<COM> {
+        todo!()
+    }
+
+    ///
+    fn le(&self, other: &Rhs) -> bool { ... }
+
+    ///
+    fn gt(&self, other: &Rhs) -> bool { ... }
+
+    ///
+    fn ge(&self, other: &Rhs) -> bool { ... }
+    */
+}
+
+/* TODO:
+impl<T, Rhs> PartialOrd<Rhs> for T
+where
+    T: cmp::PartialOrd<Rhs>,
+{
+    #[inline]
+    fn partial_cmp(&self, rhs: &Rhs, _: &mut ()) -> Option<Ordering> {
+        self.partial_cmp(rhs)
+    }
+
+    /*
+    #[inline]
+    fn lt(&self, rhs: &Rhs, _: &mut ()) -> bool {
+        self.lt(rhs)
+    }
+    */
+}
+*/
+
+///
+pub trait Ord<COM = ()>: Eq<COM> + PartialOrd<Self, COM>
+where
+    COM: Has<bool> + Has<Option<Ordering>> + Has<Ordering>,
+{
+    ///
+    fn cmp(&self, other: &Self, compiler: &mut COM) -> Type<COM, Ordering>;
+
+    /* TODO:
+    ///
+    fn max(self, other: Self) -> Self
+    where
+        Self: Sized,
+    { ... }
+
+    ///
+    fn min(self, other: Self) -> Self
+    where
+        Self: Sized,
+    { ... }
+
+    ///
+    fn clamp(self, min: Self, max: Self) -> Self
+    where
+        Self: Sized,
+        Self: PartialOrd,
+    { ... }
+    */
+}
+
+/* TODO:
+impl<T> Ord for T
+where
+    T: cmp::Ord,
+{
+    #[inline]
+    fn cmp(&self, other: &Self, _: &mut ()) -> Ordering {
+        self.cmp(other)
+    }
+}
 */

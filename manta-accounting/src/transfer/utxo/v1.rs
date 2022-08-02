@@ -149,8 +149,11 @@ pub trait UtxoAccumulatorItemHash<COM = ()> {
     /// Boolean Type
     type Bool;
 
-    /// Asset Type
-    type Asset;
+    /// Asset Id Type
+    type AssetId;
+
+    /// Asset Value Type
+    type AssetValue;
 
     /// UTXO Commitment Type
     type Commitment;
@@ -158,11 +161,13 @@ pub trait UtxoAccumulatorItemHash<COM = ()> {
     /// Item Type
     type Item;
 
-    /// Computes the accumulator item by hashing `is_transparent`, `public_asset`, and `commitment`.
+    /// Computes the accumulator item by hashing `is_transparent`, `public_asset_id`,
+    /// `public_asset_value`, and `commitment`.
     fn hash(
         &self,
         is_transparent: &Self::Bool,
-        public_asset: &Self::Asset,
+        public_asset_id: &Self::AssetId,
+        public_asset_value: &Self::AssetValue,
         commitment: &Self::Commitment,
         compiler: &mut COM,
     ) -> Self::Item;
@@ -253,7 +258,8 @@ where
     type UtxoAccumulatorItemHash: UtxoAccumulatorItemHash<
         COM,
         Bool = Self::Bool,
-        Asset = Asset<Self, COM>,
+        AssetId = Self::AssetId,
+        AssetValue = Self::AssetValue,
         Commitment = UtxoCommitment<Self, COM>,
     >;
 
@@ -543,7 +549,8 @@ where
     fn item_hash(&self, utxo: &Utxo<C, COM>, compiler: &mut COM) -> Self::Item {
         self.utxo_accumulator_item_hash.hash(
             &utxo.is_transparent,
-            &utxo.public_asset,
+            &utxo.public_asset.id,
+            &utxo.public_asset.value,
             &utxo.commitment,
             compiler,
         )
