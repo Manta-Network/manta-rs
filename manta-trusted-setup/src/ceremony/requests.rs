@@ -13,7 +13,8 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
-//! Registry for the ceremony.
+
+//! Registry
 
 use crate::{
     ceremony::{
@@ -49,11 +50,11 @@ where
     #[inline]
     fn sign(
         &self,
-        domain_tag: &S::DomainTag,
+        nounce: &S::Nounce,
         public_key: &S::PublicKey,
         private_key: &S::PrivateKey,
     ) -> Result<Self::Signature, CeremonyError> {
-        public_key.sign(domain_tag, public_key, private_key)
+        public_key.sign(nounce, public_key, private_key)
     }
 }
 
@@ -66,13 +67,13 @@ where
     type Signature = <P::PublicKey as signature::Verify<S>>::Signature;
 
     #[inline]
-    fn verify_integrity(
+    fn verify(
         &self,
-        domain_tag: &S::DomainTag,
+        nounce: &S::Nounce,
         public_key: &S::PublicKey,
         signature: &Self::Signature,
     ) -> Result<(), CeremonyError> {
-        public_key.verify_integrity(domain_tag, public_key, signature)
+        public_key.verify(nounce, public_key, signature)
     }
 }
 
@@ -112,12 +113,12 @@ where
     #[inline]
     fn sign(
         &self,
-        domain_tag: &S::DomainTag,
+        nounce: &S::Nounce,
         public_key: &S::PublicKey,
         private_key: &S::PrivateKey,
     ) -> Result<Self::Signature, CeremonyError> {
         // sign the public key
-        public_key.sign(domain_tag, public_key, private_key)
+        public_key.sign(nounce, public_key, private_key)
     }
 }
 
@@ -129,14 +130,14 @@ where
     P::PublicKey: signature::Verify<S>,
 {
     type Signature = <P::PublicKey as signature::Verify<S>>::Signature;
-    fn verify_integrity(
+    fn verify(
         &self,
-        domain_tag: &S::DomainTag,
+        nounce: &S::Nounce,
         public_key: &S::PublicKey,
         signature: &Self::Signature,
     ) -> Result<(), CeremonyError> {
         // verify the public key
-        public_key.verify_integrity(domain_tag, public_key, signature)
+        public_key.verify(nounce, public_key, signature)
     }
 }
 
@@ -226,14 +227,14 @@ where
     #[inline]
     fn sign(
         &self,
-        domain_tag: &S::DomainTag,
+        nounce: &S::Nounce,
         public_key: &S::PublicKey,
         private_key: &S::PrivateKey,
     ) -> Result<Self::Signature, CeremonyError> {
         let state_sig = self
             .transformed_state
-            .sign(domain_tag, public_key, private_key)?;
-        let proof_sig = self.proof.sign(domain_tag, public_key, private_key)?;
+            .sign(nounce, public_key, private_key)?;
+        let proof_sig = self.proof.sign(nounce, public_key, private_key)?;
         Ok((state_sig, proof_sig))
     }
 }
@@ -252,17 +253,16 @@ where
     );
 
     #[inline]
-    fn verify_integrity(
+    fn verify(
         &self,
-        domain_tag: &S::DomainTag,
+        nounce: &S::Nounce,
         public_key: &S::PublicKey,
         signature: &Self::Signature,
     ) -> Result<(), CeremonyError> {
         let (state_sig, proof_sig) = signature;
         self.transformed_state
-            .verify_integrity(domain_tag, public_key, state_sig)?;
-        self.proof
-            .verify_integrity(domain_tag, public_key, proof_sig)?;
+            .verify(nounce, public_key, state_sig)?;
+        self.proof.verify(nounce, public_key, proof_sig)?;
         Ok(())
     }
 }

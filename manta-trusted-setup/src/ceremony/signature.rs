@@ -13,100 +13,102 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
-//! Signature Scheme for trusted setup.
+
+//! Signature Scheme
+
 use crate::ceremony::CeremonyError;
-/// Public Key of participant
+
+/// Public Key
 pub trait HasPublicKey {
-    /// Public Key of participant
+    /// Public Key Type
     type PublicKey;
 
-    /// Returns the public key of the participant.
+    /// Returns the public key.
     fn public_key(&self) -> Self::PublicKey;
 }
 
-/// Signature Scheme types
+/// Signature Scheme
 pub trait SignatureScheme {
-    /// Public Key
+    /// Public Key Type
     type PublicKey;
 
-    /// Private Key
+    /// Private Key Type
     type PrivateKey;
 
-    /// Domain Tag specific to the use case
-    type DomainTag: ?Sized + 'static;
+    /// Nounce Type
+    type Nounce: ?Sized + 'static;
 
-    /// Signature
+    /// Signature Type
     type Signature;
-}
-
-/// Verifiable Message
-pub trait Verify<S>
-where
-    S: SignatureScheme + ?Sized,
-{
-    /// Signature specific to this message
-    type Signature: Sized;
-    /// Verify the integrity of the message
-    fn verify_integrity(
-        &self,
-        domain_tag: &S::DomainTag,
-        public_key: &S::PublicKey,
-        signature: &Self::Signature,
-    ) -> Result<(), CeremonyError>;
 }
 
 /// Signable Message
 pub trait Sign<S>
 where
-    S: SignatureScheme + ?Sized,
+    S: SignatureScheme,
 {
-    /// Signature specific to this message
-    type Signature: Sized;
+    /// Signature Type
+    type Signature;
+
     /// Sign the message
     fn sign(
         &self,
-        domain_tag: &S::DomainTag,
+        nounce: &S::Nounce,
         public_key: &S::PublicKey,
         private_key: &S::PrivateKey,
     ) -> Result<Self::Signature, CeremonyError>;
+}
+
+/// Verify
+pub trait Verify<S>
+where
+    S: SignatureScheme,
+{
+    /// Signature Type
+    type Signature;
+
+    /// Verifies the integrity of the `signature`.
+    fn verify(
+        &self,
+        nounce: &S::Nounce,
+        public_key: &S::PublicKey,
+        signature: &Self::Signature,
+    ) -> Result<(), CeremonyError>;
 }
 
 /// Signed message
 pub struct Signed<T, S>
 where
     T: Verify<S>,
-    S: SignatureScheme + ?Sized,
+    S: SignatureScheme,
 {
     /// Message
     pub message: T,
+
     /// Signature
-    pub signature: <T as Verify<S>>::Signature,
+    pub signature: T::Signature,
 }
 
 impl<T, S> Signed<T, S>
 where
     T: Verify<S>,
-    S: SignatureScheme + ?Sized,
+    S: SignatureScheme,
     T: Sized,
     <T as Verify<S>>::Signature: Sized,
 {
     /// Verify integrity of the message
-    pub fn verify_integrity(
+    pub fn verify(
         &self,
-        domain_tag: &S::DomainTag,
+        nounce: &S::Nounce,
         public_key: &S::PublicKey,
     ) -> Result<(), CeremonyError> {
-        self.message
-            .verify_integrity(domain_tag, public_key, &self.signature)
+        self.message.verify(nounce, public_key, &self.signature)
     }
 }
 
-/// Implementation of Signature Scheme using Ed-Dalek
+/// ED25519 Signature Scheme
 pub mod ed_dalek {
-    use crate::ceremony::{
-        signature::{Sign, SignatureScheme, Verify},
-        CeremonyError,
-    };
+    use super::*;
     use alloc::vec::Vec;
     use ed25519_dalek::{self, Signer, Verifier};
     use manta_util::{
@@ -154,7 +156,7 @@ pub mod ed_dalek {
         type PublicKey = PublicKey;
         type PrivateKey = PrivateKey;
         type Signature = Signature;
-        type DomainTag = [u8];
+        type Nounce = [u8];
     }
 
     /// The signable messages
@@ -171,7 +173,7 @@ pub mod ed_dalek {
 
         fn sign(
             &self,
-            domain_tag: &[u8],
+            nounce: &[u8],
             public_key: &<Ed25519 as SignatureScheme>::PublicKey,
             private_key: &<Ed25519 as SignatureScheme>::PrivateKey,
         ) -> Result<<Ed25519 as SignatureScheme>::Signature, CeremonyError> {
@@ -181,7 +183,7 @@ pub mod ed_dalek {
             )
             .expect("Failed to decode keypair from bytes"); // todo: error handling
 
-            let msg = domain_tag
+            let msg = nounce
                 .iter()
                 .chain(self.0.iter())
                 .copied()
@@ -195,14 +197,14 @@ pub mod ed_dalek {
     impl<'a> Verify<Ed25519> for Message<'a> {
         type Signature = Signature;
 
-        fn verify_integrity(
+        fn verify(
             &self,
-            domain_tag: &[u8],
+            nounce: &[u8],
             public_key: &<Ed25519 as SignatureScheme>::PublicKey,
             signature: &<Ed25519 as SignatureScheme>::Signature,
         ) -> Result<(), CeremonyError> {
             let pub_key = ed25519_dalek::PublicKey::from_bytes(&public_key.0[..]).unwrap(); // todo: error handling
-            let msg = domain_tag
+            let msg = nounce
                 .iter()
                 .chain(self.0.iter())
                 .copied()
@@ -238,7 +240,7 @@ pub mod ed_dalek {
                 <Message as Sign<Ed25519>>::sign(&message, "".as_bytes(), &pub_key, &priv_key)
                     .unwrap();
 
-            assert!(<Message as Verify<Ed25519>>::verify_integrity(
+            assert!(<Message as Verify<Ed25519>>::verify(
                 &message,
                 "".as_bytes(),
                 &pub_key,
