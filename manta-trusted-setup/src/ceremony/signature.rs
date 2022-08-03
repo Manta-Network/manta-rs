@@ -36,7 +36,7 @@ pub trait SignatureScheme {
     type PrivateKey;
 
     /// Nounce Type
-    type Nounce: ?Sized + 'static;
+    type Nounce;
 
     /// Signature Type
     type Signature;
@@ -47,16 +47,13 @@ pub trait Sign<S>
 where
     S: SignatureScheme,
 {
-    /// Signature Type
-    type Signature;
-
     /// Sign the message
     fn sign(
         &self,
         nounce: &S::Nounce,
-        public_key: &S::PublicKey,
+        public_key: &S::PublicKey, // TODO: Signature does not need public key.
         private_key: &S::PrivateKey,
-    ) -> Result<Self::Signature, CeremonyError>;
+    ) -> Result<S::Signature, CeremonyError>;
 }
 
 /// Verify
@@ -64,39 +61,34 @@ pub trait Verify<S>
 where
     S: SignatureScheme,
 {
-    /// Signature Type
-    type Signature;
-
     /// Verifies the integrity of the `signature`.
     fn verify(
         &self,
         nounce: &S::Nounce,
         public_key: &S::PublicKey,
-        signature: &Self::Signature,
+        signature: &S::Signature,
     ) -> Result<(), CeremonyError>;
 }
 
-/// Signed message
-pub struct Signed<T, S>
+/// Signed Message
+pub struct SignedMessage<T, S>
 where
-    T: Verify<S>,
     S: SignatureScheme,
+    T: Verify<S>,
 {
     /// Message
     pub message: T,
 
     /// Signature
-    pub signature: T::Signature,
+    pub signature: S::Signature,
 }
 
-impl<T, S> Signed<T, S>
+impl<T, S> SignedMessage<T, S>
 where
-    T: Verify<S>,
     S: SignatureScheme,
-    T: Sized,
-    <T as Verify<S>>::Signature: Sized,
+    T: Verify<S>,
 {
-    /// Verify integrity of the message
+    /// Verifies the integrity of the message
     pub fn verify(
         &self,
         nounce: &S::Nounce,
@@ -110,45 +102,52 @@ where
 pub mod ed_dalek {
     use super::*;
     use alloc::vec::Vec;
-    use ed25519_dalek::{self, Signer, Verifier};
+    use core::iter;
+    use ed25519_dalek::{Keypair, Signature as ED25519Signature, Signer, Verifier};
     use manta_util::{
         into_array_unchecked,
         serde::{Deserialize, Serialize},
         serde_with::serde_as,
     };
 
-    /// The dalek implementation of `ed25519` signatures.
-    pub struct Ed25519 {}
+    /// ED25519-Dalek Signature
+    pub struct Ed25519;
 
-    /// The public key for signed messages from contributors. This is a wrapper around the
-    /// byte representation of an `ed25519_dalek::PublicKey` type.  The original type does
-    /// not implement `Hash` and so cannot be used as a key in the `Registry`.
+    /// Public Key Type
+    ///
+    /// # Note
+    ///
+    /// A wrapper around the byte representation of an `ed25519_dalek::PublicKey` type. The original
+    /// type does not implement `Hash` and so cannot be used as a key in the `Registry`.
     #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, Ord, PartialOrd)]
     pub struct PublicKey(pub [u8; 32]);
 
-    /// The private key for signed messages from contributors. This is a wrapper around the
-    /// byte representation of an `ed25519_dalek::SecretKey` type. The byte representation
-    /// is used to be consistent with the choice made for `ContributorPublicKey`.
+    /// Private Key Type
+    ///
+    /// # Note
+    ///
+    /// A wrapper around the byte representation of an `ed25519_dalek::SecretKey` type. The byte
+    /// representation is used to be consistent with the choice made for `PublicKey`.
     #[derive(Debug)]
     pub struct PrivateKey(pub [u8; 32]);
 
-    /// The type for message signatures.
-    #[serde_as]
+    /// Signature Type
+    #[serde_as] // TODO: May use other serialize methods
     #[derive(Debug, Serialize, Deserialize, Copy, Clone)]
     pub struct Signature(
         #[serde_as(as = "[_; ed25519_dalek::Signature::BYTE_SIZE]")]
-        [u8; ed25519_dalek::Signature::BYTE_SIZE],
+        [u8; ED25519Signature::BYTE_SIZE],
     );
 
-    impl From<ed25519_dalek::Signature> for Signature {
-        fn from(f: ed25519_dalek::Signature) -> Self {
+    impl From<ED25519Signature> for Signature {
+        fn from(f: ED25519Signature) -> Self {
             Signature(f.to_bytes())
         }
     }
 
-    impl From<Signature> for ed25519_dalek::Signature {
+    impl From<Signature> for ED25519Signature {
         fn from(f: Signature) -> Self {
-            ed25519_dalek::Signature::from_bytes(&f.0).expect("Should never fail")
+            ED25519Signature::from_bytes(&f.0).expect("Should never fail.")
         }
     }
 
@@ -156,11 +155,11 @@ pub mod ed_dalek {
         type PublicKey = PublicKey;
         type PrivateKey = PrivateKey;
         type Signature = Signature;
-        type Nounce = [u8];
+        type Nounce = u8;
     }
 
     /// The signable messages
-    pub struct Message<'a>(&'a [u8]);
+    pub struct Message<'a>(pub &'a [u8]);
 
     impl<'a> From<&'a [u8]> for Message<'a> {
         fn from(s: &'a [u8]) -> Self {
@@ -169,84 +168,75 @@ pub mod ed_dalek {
     }
 
     impl<'a> Sign<Ed25519> for Message<'a> {
-        type Signature = Signature;
-
         fn sign(
             &self,
-            nounce: &[u8],
+            nounce: &<Ed25519 as SignatureScheme>::Nounce,
             public_key: &<Ed25519 as SignatureScheme>::PublicKey,
             private_key: &<Ed25519 as SignatureScheme>::PrivateKey,
         ) -> Result<<Ed25519 as SignatureScheme>::Signature, CeremonyError> {
-            // Read keypair from byte representation of pub/priv keys
-            let keypair = ed25519_dalek::Keypair::from_bytes(
-                &[&private_key.0[..], &public_key.0[..]].concat(),
-            )
-            .expect("Failed to decode keypair from bytes"); // todo: error handling
-
-            let msg = nounce
-                .iter()
-                .chain(self.0.iter())
-                .copied()
-                .collect::<Vec<_>>();
-
-            let sig = keypair.sign(&msg);
-            Ok(Signature(into_array_unchecked(sig)))
+            Ok(Signature(into_array_unchecked(
+                Keypair::from_bytes(&[&private_key.0[..], &public_key.0[..]].concat())
+                    .expect("Should decode keypair from bytes.")
+                    .sign(
+                        &iter::once(nounce)
+                            .chain(self.0.iter())
+                            .copied()
+                            .collect::<Vec<_>>(),
+                    ),
+            )))
         }
     }
 
     impl<'a> Verify<Ed25519> for Message<'a> {
-        type Signature = Signature;
-
         fn verify(
             &self,
-            nounce: &[u8],
+            nounce: &<Ed25519 as SignatureScheme>::Nounce,
             public_key: &<Ed25519 as SignatureScheme>::PublicKey,
             signature: &<Ed25519 as SignatureScheme>::Signature,
         ) -> Result<(), CeremonyError> {
-            let pub_key = ed25519_dalek::PublicKey::from_bytes(&public_key.0[..]).unwrap(); // todo: error handling
-            let msg = nounce
-                .iter()
-                .chain(self.0.iter())
-                .copied()
-                .collect::<Vec<_>>();
-            pub_key
-                .verify(&msg, &((*signature).into()))
+            ed25519_dalek::PublicKey::from_bytes(&public_key.0[..])
+                .expect("Should decode public key from bytes.")
+                .verify(
+                    &iter::once(nounce)
+                        .chain(self.0.iter())
+                        .copied()
+                        .collect::<Vec<_>>(),
+                    &((*signature).into()),
+                )
                 .map_err(|_| CeremonyError::InvalidSignature)
         }
     }
+}
 
-    #[cfg(test)]
-    mod tests {
-        use super::*;
-        /// These were originally generated by the `Keypair::generate` method.
-        pub fn test_keypair() -> (PrivateKey, PublicKey) {
-            (
-                PrivateKey([
-                    149, 167, 173, 208, 224, 206, 37, 70, 87, 169, 157, 198, 120, 32, 151, 88, 25,
-                    10, 12, 215, 80, 124, 187, 129, 183, 96, 103, 11, 191, 255, 33, 105,
-                ]),
-                PublicKey([
-                    104, 148, 44, 244, 61, 116, 39, 8, 68, 216, 6, 24, 232, 68, 239, 203, 198, 2,
-                    138, 148, 242, 73, 122, 3, 19, 236, 195, 133, 136, 137, 146, 108,
-                ]),
-            )
-        }
+/// Testing Suites
+#[cfg(test)]
+mod test {
+    use super::{ed_dalek::*, *};
 
-        #[test]
-        fn signature_test() {
-            let (priv_key, pub_key) = test_keypair();
-            let message = Message(b"Test message");
-            let signature =
-                <Message as Sign<Ed25519>>::sign(&message, "".as_bytes(), &pub_key, &priv_key)
-                    .unwrap();
-
-            assert!(<Message as Verify<Ed25519>>::verify(
-                &message,
-                "".as_bytes(),
-                &pub_key,
-                &signature
-            )
-            .is_ok())
-        }
+    /// Tests if sign and verify a message is correct.
+    #[test]
+    fn sign_and_verify_is_correct() {
+        let private_key = PrivateKey([
+            149, 167, 173, 208, 224, 206, 37, 70, 87, 169, 157, 198, 120, 32, 151, 88, 25, 10, 12,
+            215, 80, 124, 187, 129, 183, 96, 103, 11, 191, 255, 33, 105,
+        ]);
+        let public_key = PublicKey([
+            104, 148, 44, 244, 61, 116, 39, 8, 68, 216, 6, 24, 232, 68, 239, 203, 198, 2, 138, 148,
+            242, 73, 122, 3, 19, 236, 195, 133, 136, 137, 146, 108,
+        ]);
+        let message = Message(b"Test message");
+        let nounce = 1;
+        assert!(
+            message
+                .verify(
+                    &nounce,
+                    &public_key,
+                    &message
+                        .sign(&nounce, &public_key, &private_key)
+                        .expect("Should generate a signature.")
+                )
+                .is_ok(),
+            "Should verify the signature."
+        );
     }
 }
