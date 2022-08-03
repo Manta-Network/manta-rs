@@ -36,7 +36,6 @@ where
     challenge: V::Challenge,
     registry: Registry<M>,
     queue: Queue<P, N>,
-    mpc_verifier: V,
 }
 
 impl<V, P, M, const N: usize> Coordinator<V, P, M, N>
@@ -48,7 +47,6 @@ where
     /// Initialize the coordinator with the initial state and challenge.
     pub fn new(
         // add internal state
-        mpc_verifier: V,
         state: V::State,
         challenge: V::Challenge,
     ) -> Self {
@@ -57,7 +55,6 @@ where
             challenge,
             registry: Registry::default(),
             queue: Queue::new(),
-            mpc_verifier,
         }
     }
 
@@ -101,18 +98,13 @@ where
         };
 
         // verify and update the state and challenge
-        let next_challenge =
-            self.mpc_verifier
-                .challenge(&self.challenge, &self.state, &transformed_state, &proof);
-        let transformed_state = self
-            .mpc_verifier
-            .verify_transform(
-                &next_challenge,
-                core::mem::take(&mut self.state),
-                transformed_state,
-                proof,
-            )
-            .map_err(|_| CeremonyError::InvalidContribution)?;
+        let (_, transformed_state) = V::verify_transform(
+            &self.challenge,
+            core::mem::take(&mut self.state),
+            transformed_state,
+            proof,
+        )
+        .expect("Verify transform on received contribution should succeed.");
         self.state = transformed_state;
 
         // remove the participant from the queue but the participant

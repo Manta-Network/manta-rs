@@ -38,6 +38,7 @@ use std::{
 };
 use tide::{Body, Request, Response};
 
+/// TODO
 pub trait HasNonce<S>
 where
     S: SignatureScheme,
@@ -170,7 +171,7 @@ where
     {
         let args = request.body_json::<T>().await?; // parse json into its args
         into_body(move || async move {
-            f(*request.state().clone(), args).await // pass those args to f, as well as a copy of the State -- rather ArcMutex<State>, hence clonable
+            f(request.state().clone(), args).await // pass those args to f, as well as a copy of the State -- rather ArcMutex<State>, hence clonable
         })
         .await
     }

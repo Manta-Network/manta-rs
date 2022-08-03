@@ -17,6 +17,8 @@
 //! Secure Multi-Party Computation Primitives
 
 use alloc::vec::Vec;
+use core::fmt::Debug;
+use manta_crypto::rand::{CryptoRng, RngCore};
 
 /// Secure Multi-Party Computation Types
 pub trait Types {
@@ -32,63 +34,50 @@ pub trait Types {
 
 /// Contribution
 pub trait Contribute: Types {
-    /// Private Contribution Data
-    type Contribution;
+    /// Hasher Type
+    type Hasher;
 
     /// Computes the next state from `state`, `challenge`, and `contribution`.
-    fn contribute(
-        &self,
-        state: &mut Self::State,
+    fn contribute<R>(
+        hasher: &Self::Hasher,
         challenge: &Self::Challenge,
-        contribution: &Self::Contribution,
-    ) -> Self::Proof;
+        state: &mut Self::State,
+        rng: &mut R,
+    ) -> Option<Self::Proof>
+    where
+        R: CryptoRng + RngCore + ?Sized;
 }
 
 /// Verification
 pub trait Verify: Types {
     /// Verification Error Type
-    type Error;
-
-    /// Computes the challenge associated to `challenge`, `prev`, `next`, and `proof` for the next
-    /// player.
-    fn challenge(
-        &self,
-        challenge: &Self::Challenge,
-        prev: &Self::State,
-        next: &Self::State,
-        proof: &Self::Proof,
-    ) -> Self::Challenge;
+    type Error: Debug;
 
     /// Verifies the transformation from `last` to `next` using the `challenge` and `proof` as
     /// evidence for the correct update of the state. This method returns the `next` state and
     /// the next response.
     fn verify_transform(
-        &self,
         challenge: &Self::Challenge,
         last: Self::State,
         next: Self::State,
         proof: Self::Proof,
-    ) -> Result<Self::State, Self::Error>;
+    ) -> Result<(Self::Challenge, Self::State), Self::Error>;
 
     /// Verifies all contributions in `iter` chaining from an initial `state` and `challenge` returning the
     /// newest [`State`](Types::State) and [`Challenge`](Types::Challenge) if all the contributions
     /// in the chain had valid transitions.
     #[inline]
     fn verify_transform_all<E, I>(
-        &self,
         mut challenge: Self::Challenge,
         mut state: Self::State,
         iter: I,
     ) -> Result<(Self::Challenge, Self::State), Self::Error>
     where
         E: Into<Self::Error>,
-        I: IntoIterator<Item = Result<(Self::State, Self::Proof), E>>,
+        I: IntoIterator<Item = (Self::State, Self::Proof)>,
     {
         for item in iter {
-            let (next, next_proof) = item.map_err(Into::into)?;
-            let next_challenge = self.challenge(&challenge, &state, &next, &next_proof);
-            state = self.verify_transform(&challenge, state, next, next_proof)?;
-            challenge = next_challenge;
+            (challenge, state) = Self::verify_transform(&challenge, state, item.0, item.1)?;
         }
         Ok((challenge, state))
     }

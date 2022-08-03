@@ -18,7 +18,7 @@
 
 use crate::{
     groth16::kzg::{self, Accumulator},
-    mpc::{Types, Verify},
+    mpc::{Contribute, Types, Verify},
     pairing::{Pairing, PairingEngineExt},
     ratio::{HashToGroup, RatioProof},
     util::{batch_into_projective, batch_mul_fixed_scalar, merge_pairs_affine},
@@ -29,7 +29,7 @@ use ark_ff::{Field, PrimeField, UniformRand, Zero};
 use ark_groth16::{ProvingKey, VerifyingKey};
 use ark_poly::{EvaluationDomain, Radix2EvaluationDomain};
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem, SynthesisError};
-use core::clone::Clone;
+use core::{clone::Clone, marker::PhantomData};
 use manta_crypto::rand::{CryptoRng, RngCore};
 
 /// Proving Key Hasher
@@ -347,7 +347,7 @@ pub fn verify_transform_all<C, I>(
     mut challenge: C::Challenge,
     mut state: State<C>,
     iter: I,
-) -> Result<(), Error>
+) -> Result<(C::Challenge, State<C>), Error>
 where
     C: Configuration,
     I: IntoIterator<Item = (State<C>, Proof<C>)>,
@@ -385,24 +385,45 @@ where
     ) {
         return Err(Error::InconsistentLChange);
     }
-    Ok(())
+    Ok((challenge, state))
 }
 
-/// Groth 16 Phase 2
+/// Groth16 Trusted Setup Phase2
 pub struct Groth16Phase2<C>
 where
     C: Configuration,
 {
-    __: core::marker::PhantomData<C>,
+    /// Type Parameter Marker
+    __: PhantomData<C>,
 }
 
 impl<C> Types for Groth16Phase2<C>
 where
     C: Configuration,
 {
-    type Challenge = C::Challenge;
     type State = State<C>;
+    type Challenge = C::Challenge;
     type Proof = Proof<C>;
+}
+
+impl<C> Contribute for Groth16Phase2<C>
+where
+    C: Configuration,
+{
+    type Hasher = C::Hasher;
+
+    #[inline]
+    fn contribute<R>(
+        hasher: &Self::Hasher,
+        challenge: &Self::Challenge,
+        state: &mut Self::State,
+        rng: &mut R,
+    ) -> Option<Self::Proof>
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        contribute(hasher, challenge, state, rng)
+    }
 }
 
 impl<C> Verify for Groth16Phase2<C>
@@ -411,24 +432,26 @@ where
 {
     type Error = Error;
 
-    fn challenge(
-        &self,
-        challenge: &Self::Challenge,
-        prev: &Self::State,
-        next: &Self::State,
-        proof: &Self::Proof,
-    ) -> Self::Challenge {
-        C::challenge(challenge, prev, next, proof)
-    }
-
+    #[inline]
     fn verify_transform(
-        &self,
         challenge: &Self::Challenge,
         last: Self::State,
         next: Self::State,
         proof: Self::Proof,
-    ) -> Result<Self::State, Self::Error> {
-        let (_, transformed_state) = verify_transform::<C>(challenge, last, next, proof)?;
-        Ok(transformed_state)
+    ) -> Result<(Self::Challenge, Self::State), Self::Error> {
+        verify_transform::<C>(challenge, last, next, proof)
+    }
+
+    #[inline]
+    fn verify_transform_all<E, I>(
+        challenge: Self::Challenge,
+        state: Self::State,
+        iter: I,
+    ) -> Result<(Self::Challenge, Self::State), Self::Error>
+    where
+        E: Into<Self::Error>,
+        I: IntoIterator<Item = (Self::State, Self::Proof)>,
+    {
+        verify_transform_all(challenge, state, iter)
     }
 }

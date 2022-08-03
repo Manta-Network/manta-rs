@@ -38,10 +38,6 @@ pub trait Identifier {
 }
 
 /// Queue with `N` priority levels where participants with higher priority level are served first
-///
-/// # Thread Safety
-///
-/// A mutex is required to safely access the queue.
 pub struct Queue<T, const N: usize>([VecDeque<T::Identifier>; N])
 where
     T: Priority + Identifier;
