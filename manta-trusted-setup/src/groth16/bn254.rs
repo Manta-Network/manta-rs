@@ -118,12 +118,88 @@ impl Configuration for PpotBn254 {
 
 pub type Bn254Accumulator = Accumulator<PpotBn254>;
 
-/// Read from a Perpetual Powers of Tau challenge file.
-/// TODO: Not sure this is actually useful. I think we only want to
-/// read portions of that challenge file to construct our own smaller accumulator.
-pub fn read_accumulator_from_ppot_file() -> Bn254Accumulator {
-    todo!()
+/// Configuration for PPoT Phase 1 over Bn254 curve.
+pub struct SmallBn254;
+
+impl Size for SmallBn254 {
+    const G1_POWERS: usize = (Self::G2_POWERS << 1) - 1;
+
+    const G2_POWERS: usize = 1 << 5;
 }
+
+impl Pairing for SmallBn254 {
+    type Scalar = Fr;
+
+    type G1 = G1Affine;
+
+    type G1Prepared = <Bn254 as PairingEngine>::G1Prepared;
+
+    type G2 = G2Affine;
+
+    type G2Prepared = <Bn254 as PairingEngine>::G2Prepared;
+
+    type Pairing = Bn254;
+
+    fn g1_prime_subgroup_generator() -> Self::G1 {
+        G1Affine::prime_subgroup_generator()
+    }
+
+    fn g2_prime_subgroup_generator() -> Self::G2 {
+        G2Affine::prime_subgroup_generator()
+    }
+}
+
+impl Configuration for SmallBn254 {
+    type DomainTag = u8;
+    type Challenge = [u8; 64];
+    type Response = [u8; 64];
+    type HashToGroup = KZGBlakeHasher<Self>;
+
+    const TAU_DOMAIN_TAG: Self::DomainTag = 0;
+    const ALPHA_DOMAIN_TAG: Self::DomainTag = 1;
+    const BETA_DOMAIN_TAG: Self::DomainTag = 2;
+
+    fn hasher(domain_tag: Self::DomainTag) -> Self::HashToGroup {
+        Self::HashToGroup { domain_tag }
+    }
+
+    fn response(
+        state: &Accumulator<Self>,
+        challenge: &Self::Challenge,
+        proof: &Proof<Self>,
+    ) -> Self::Response {
+        let mut hasher = BlakeHasher::default();
+        for item in &state.tau_powers_g1 {
+            item.serialize_uncompressed(&mut hasher).unwrap();
+        }
+        for item in &state.tau_powers_g2 {
+            item.serialize_uncompressed(&mut hasher).unwrap();
+        }
+        for item in &state.alpha_tau_powers_g1 {
+            item.serialize_uncompressed(&mut hasher).unwrap();
+        }
+        for item in &state.beta_tau_powers_g1 {
+            item.serialize_uncompressed(&mut hasher).unwrap();
+        }
+        state.beta_g2.serialize_uncompressed(&mut hasher).unwrap();
+        hasher.0.update(&challenge);
+        proof
+            .tau
+            .serialize(&mut hasher)
+            .expect("Consuming ratio proof of tau failed.");
+        proof
+            .alpha
+            .serialize(&mut hasher)
+            .expect("Consuming ratio proof of alpha failed.");
+        proof
+            .beta
+            .serialize(&mut hasher)
+            .expect("Consuming ratio proof of beta failed.");
+        into_array_unchecked(hasher.0.finalize())
+    }
+}
+
+pub type SmallBn254Accumulator = Accumulator<SmallBn254>;
 
 type BaseFieldG1Type = <<Parameters as BnParameters>::G1Parameters as ModelParameters>::BaseField;
 type BaseFieldG2Type = <<Parameters as BnParameters>::G2Parameters as ModelParameters>::BaseField;
@@ -225,18 +301,7 @@ where
     }
 }
 
-// /// TODO : Generalize from g1
-// #[inline]
-// fn curve_point_checks_g1(g1: &G1Affine) -> Result<(), PointDeserializeError> {
-//     if !g1.is_on_curve() {
-//         return Err(PointDeserializeError::NotOnCurve);
-//     } else if !g1.is_in_correct_subgroup_assuming_on_curve() {
-//         return Err(PointDeserializeError::NotInSubgroup);
-//     }
-//     Ok(())
-// }
-
-/// TODO : Generalize from g1
+/// Checks that the purported GroupAffine element is on-curve and in-subgroup.
 #[inline]
 fn curve_point_checks<P>(g1: &GroupAffine<P>) -> Result<(), PointDeserializeError>
 where
@@ -339,11 +404,30 @@ pub enum ElementType {
     BetaG2,
 }
 
-/// This function is specific to the PPoT Bn254 setup
-pub fn get_size(element: ElementType) -> usize {
-    match element {
-        ElementType::AlphaG1 | ElementType::BetaG1 | ElementType::TauG1 => 64,
-        ElementType::BetaG2 | ElementType::TauG2 => 128,
+impl ElementType {
+    /// This function is specific to the PPoT Bn254 setup
+    pub fn get_size(&self) -> usize {
+        match self.is_g1_type() {
+            true => 64,
+            false => 128,
+        }
+    }
+
+    /// The number of powers of elements of this type in an accumulator.
+    pub fn num_powers<S>(&self) -> usize
+    where
+        S: Size,
+    {
+        match self {
+            ElementType::BetaG2 => 1,
+            ElementType::TauG1 => S::G1_POWERS,
+            _ => S::G2_POWERS,
+        }
+    }
+
+    /// Element is a point on the G1 curve
+    pub fn is_g1_type(&self) -> bool {
+        !matches!(self, ElementType::TauG2 | ElementType::BetaG2)
     }
 }
 
@@ -372,9 +456,8 @@ pub fn get_g1_and_g2_powers(
     let mut g2_powers = Vec::<G2Affine>::new();
     for i in 0..size {
         let position = calculate_mmap_position(i, element_type);
-        let element_size = get_size(element_type);
         let mut reader = readable_map
-            .get(position..position + element_size)
+            .get(position..position + element_type.get_size())
             .expect("cannot read point data from file");
         g1_powers.push(match deserialize_g1_unchecked(&mut reader) {
             Ok(p) => match curve_point_checks(&p) {
@@ -390,9 +473,8 @@ pub fn get_g1_and_g2_powers(
             }
         });
         let position = calculate_mmap_position(i, ElementType::TauG2);
-        let element_size = get_size(ElementType::TauG2);
         let mut reader = readable_map
-            .get(position..position + element_size)
+            .get(position..position + ElementType::get_size(&ElementType::BetaG2))
             .expect("cannot read point data from file");
         g2_powers.push(match deserialize_g2_unchecked(&mut reader) {
             Ok(p) => match curve_point_checks(&p) {
@@ -413,10 +495,106 @@ pub fn get_g1_and_g2_powers(
 
 /// Checks that a vector of G1 elements and vector of G2 elements are incrementing by the
 /// same factor.
-pub fn check_consistent_factor(g1: Vec<G1Affine>, g2: Vec<G2Affine>) -> bool {
+pub fn check_consistent_factor(g1: &Vec<G1Affine>, g2: &Vec<G2Affine>) -> bool {
     let g1_pair = power_pairs(&g1);
     let g2_pair = power_pairs(&g2);
     Bn254::same_ratio(g1_pair, g2_pair)
+}
+
+/// Extracts a subaccumulator of size `required_powers`. Specific to PPoT challenge file.
+pub fn read_subaccumulator<C>(readable_map: Mmap) -> Result<Accumulator<C>, PointDeserializeError>
+where
+    C: Pairing<G1 = G1Affine, G2 = G2Affine> + Size,
+{
+    Ok(Accumulator {
+        tau_powers_g1: read_g1_powers::<C>(ElementType::TauG1)?,
+        tau_powers_g2: read_g2_powers::<C>(ElementType::TauG2)?,
+        alpha_tau_powers_g1: read_g1_powers::<C>(ElementType::AlphaG1)?,
+        beta_tau_powers_g1: read_g1_powers::<C>(ElementType::BetaG1)?,
+        beta_g2: read_g2_powers::<C>(ElementType::BetaG2)?[0],
+    })
+}
+
+/// Reads appropriate number of elements of `element_type` for an accumulator of given `Size` from PPoT challenge file.
+pub fn read_g1_powers<S>(
+    element: ElementType,
+) -> Result<Vec<GroupAffine<<Parameters as BnParameters>::G1Parameters>>, PointDeserializeError>
+where
+    S: Size,
+{
+    let size = element.num_powers::<S>();
+    // Try to load `./challenge` from disk.
+    let reader = OpenOptions::new()
+        .read(true)
+        .open("/Users/thomascnorton/Documents/Manta/trusted-setup/challenge_0072")
+        .expect("unable open `./challenge` in this directory");
+    // Make a memory map
+    let readable_map = unsafe {
+        MmapOptions::new()
+            .map(&reader)
+            .expect("unable to create a memory map for input")
+    };
+
+    let mut powers = Vec::new();
+    let mut start_position = calculate_mmap_position(0, element);
+    let mut end_position = start_position + element.get_size();
+    for _ in 0..size {
+        let mut reader = readable_map
+            .get(start_position..end_position)
+            .expect("cannot read point data from file");
+        if element.is_g1_type() {
+            let point = deserialize_g1_unchecked(&mut reader)?;
+            curve_point_checks(&point)?;
+            powers.push(point);
+        } else {
+            panic!("Expected G1 curve points")
+        }
+        start_position = end_position;
+        end_position += element.get_size();
+    }
+
+    Ok(powers)
+}
+
+/// Reads `size` many elements of `element_type` from PPoT challenge file.
+pub fn read_g2_powers<S>(
+    element: ElementType,
+) -> Result<Vec<GroupAffine<<Parameters as BnParameters>::G2Parameters>>, PointDeserializeError>
+where
+    S: Size,
+{
+    let size = element.num_powers::<S>();
+    // Try to load `./challenge` from disk.
+    let reader = OpenOptions::new()
+        .read(true)
+        .open("/Users/thomascnorton/Documents/Manta/trusted-setup/challenge_0072")
+        .expect("unable open `./challenge` in this directory");
+    // Make a memory map
+    let readable_map = unsafe {
+        MmapOptions::new()
+            .map(&reader)
+            .expect("unable to create a memory map for input")
+    };
+
+    let mut powers = Vec::new();
+    let mut start_position = calculate_mmap_position(0, element);
+    let mut end_position = start_position + element.get_size();
+    for _ in 0..size {
+        let mut reader = readable_map
+            .get(start_position..end_position)
+            .expect("cannot read point data from file");
+        if !element.is_g1_type() {
+            let point = deserialize_g2_unchecked(&mut reader)?;
+            curve_point_checks(&point)?;
+            powers.push(point);
+        } else {
+            panic!("Expected G2 curve points")
+        }
+        start_position = end_position;
+        end_position += element.get_size();
+    }
+
+    Ok(powers)
 }
 
 #[test]
@@ -451,9 +629,38 @@ pub fn read_tau_g1_and_g2_test() {
 pub fn check_consistent_ratios_test() {
     let num_powers = 1 << 8;
     let (g1, g2) = get_g1_and_g2_powers(num_powers, ElementType::TauG1).unwrap();
-    assert!(check_consistent_factor(g1, g2));
+    assert!(check_consistent_factor(&g1, &g2));
     let (g1, g2) = get_g1_and_g2_powers(num_powers, ElementType::AlphaG1).unwrap();
-    assert!(check_consistent_factor(g1, g2));
+    assert!(check_consistent_factor(&g1, &g2));
     let (g1, g2) = get_g1_and_g2_powers(num_powers, ElementType::BetaG1).unwrap();
-    assert!(check_consistent_factor(g1, g2));
+    assert!(check_consistent_factor(&g1, &g2));
+}
+
+#[test]
+pub fn read_subaccumulator_test() {
+    // Try to load `./challenge` from disk.
+    let reader = OpenOptions::new()
+        .read(true)
+        .open("/Users/thomascnorton/Documents/Manta/trusted-setup/challenge_0072")
+        .expect("unable open `./challenge` in this directory");
+    // Make a memory map
+    let readable_map = unsafe {
+        MmapOptions::new()
+            .map(&reader)
+            .expect("unable to create a memory map for input")
+    };
+
+    let acc = read_subaccumulator::<SmallBn254>(readable_map).unwrap();
+    assert!(check_consistent_factor(
+        &acc.tau_powers_g1,
+        &acc.tau_powers_g2
+    ));
+    assert!(check_consistent_factor(
+        &acc.alpha_tau_powers_g1,
+        &acc.tau_powers_g2
+    ));
+    assert!(check_consistent_factor(
+        &acc.beta_tau_powers_g1,
+        &acc.tau_powers_g2
+    ));
 }
