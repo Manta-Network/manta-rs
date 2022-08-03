@@ -57,3 +57,5 @@ ark-r1cs-std = { version = "0.3.1", default-features = false }
 ark-snark = { version = "0.3.0", default-features = false }
 manta-pay = { path = "../manta-pay", default-features = false, features = ["groth16"] } # TODO: To be removed
 manta-trusted-setup = { path = ".", default-features = false, features = ["test"] }
+hex = "0.4.3"
+to-binary = "0.4.0"

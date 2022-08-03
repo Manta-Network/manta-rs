@@ -30,9 +30,8 @@ use ark_ff::{PrimeField, Zero};
 use ark_serialize::CanonicalSerialize;
 use blake2::Digest;
 use core::fmt::{self, Debug};
-use manta_util::into_array_unchecked;
-use std::io::Read;
-use std::fs::OpenOptions;
+use manta_util::{into_array_unchecked};
+use std::{fs::OpenOptions, io::Read};
 
 /// Configuration for PPoT Phase 1 over Bn254 curve.
 pub struct PpotBn254;
@@ -134,7 +133,7 @@ fn deserialize_g1_unchecked<R>(reader: &mut R) -> Result<G1Affine, PointDeserial
 where
     R: Read,
 {
-    let mut copy = [0u8; 96];
+    let mut copy = [0u8; 64];
     let _ = reader.read(&mut copy); // should I deal with the number of bytes read output?
 
     // Check the compression flag
@@ -157,52 +156,52 @@ where
         }
     } else {
         // Check y-coordinate flag
-        if copy[0] & (1 << 5) != 0 {
+        if copy[0] & (1 << 7) != 0 {
             // Since this representation is uncompressed the flag should be set to 0
             return Err(PointDeserializeError::ExtraYCoordinate);
         }
 
-        // Now unset the first three bits
-        copy[0] &= 0x1f;
+        // Now unset the first two bits
+        copy[0] &= 0x3f;
 
         // Now we can deserialize the remaining bytes to field elements
-        let x = BaseFieldG1Type::from_be_bytes_mod_order(&copy[..48]);
-        let y = BaseFieldG1Type::from_be_bytes_mod_order(&copy[48..]);
+        let x = BaseFieldG1Type::from_be_bytes_mod_order(&copy[..32]);
+        let y = BaseFieldG1Type::from_be_bytes_mod_order(&copy[32..]);
 
         Ok(G1Affine::new(x, y, false))
     }
 }
 
 #[inline]
-        fn curve_point_checks_g1(g1: &G1Affine) -> Result<(), PointDeserializeError> {
-            if !g1.is_on_curve() {
-                return Err(PointDeserializeError::NotOnCurve);
-            } else if !g1.is_in_correct_subgroup_assuming_on_curve() {
-                return Err(PointDeserializeError::NotInSubgroup);
-            }
-            Ok(())
-        }
+fn curve_point_checks_g1(g1: &G1Affine) -> Result<(), PointDeserializeError> {
+    if !g1.is_on_curve() {
+        return Err(PointDeserializeError::NotOnCurve);
+    } else if !g1.is_in_correct_subgroup_assuming_on_curve() {
+        return Err(PointDeserializeError::NotInSubgroup);
+    }
+    Ok(())
+}
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
-    pub enum PointDeserializeError {
-        CompressionFlag,
-        ExpectedCompressed,
-        ExpectedUncompressed,
-        PointAtInfinity,
-        ExtraYCoordinate,
-        NotOnCurve,
-        NotInSubgroup,
-    }
+pub enum PointDeserializeError {
+    CompressionFlag,
+    ExpectedCompressed,
+    ExpectedUncompressed,
+    PointAtInfinity,
+    ExtraYCoordinate,
+    NotOnCurve,
+    NotInSubgroup,
+}
 
-    // TODO: What was the below code for ? 
+// TODO: What was the below code for ?
 
-    // impl std::fmt::Display for PointDeserializeError {
-    //     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    //         Debug::fmt(&self, f) // ? Is this an okay thing to do ?
-    //     }
-    // }
+// impl std::fmt::Display for PointDeserializeError {
+//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//         Debug::fmt(&self, f) // ? Is this an okay thing to do ?
+//     }
+// }
 
-    // impl std::error::Error for PointDeserializeError {}
+// impl std::error::Error for PointDeserializeError {}
 
 #[test]
 pub fn dummy_test() {
@@ -213,15 +212,46 @@ pub fn dummy_test() {
 pub fn deserialize_g1_unchecked_test() {
     // Try to load `./challenge` from disk.
     let mut reader = OpenOptions::new()
-                            .read(true)
-                            .open("/Users/thomascnorton/Documents/Manta/trusted-setup/challenge_0072").expect("unable open `./challenge` in this directory");
+        .read(true)
+        .open("/Users/thomascnorton/Documents/Manta/trusted-setup/challenge_0072")
+        .expect("unable open `./challenge` in this directory");
 
     let mut hash_discard = [0u8; 64];
     assert!(64 == Read::read(&mut reader, &mut hash_discard[..]).unwrap());
 
     let point: G1Affine = deserialize_g1_unchecked(&mut reader).unwrap();
-    println!("The first point we get is {:?}", point);
-    println!("The G1 generator is {:?}", G1Affine::prime_subgroup_generator());
-    // assert!(curve_point_checks_g1(&point).is_ok())
-    println!("The curve point check yields {:?}", curve_point_checks_g1(&point));
+    assert_eq!(
+        point.into_projective(),
+        G1Affine::prime_subgroup_generator().into_projective(),
+        "first point should be generator"
+    );
+    assert!(curve_point_checks_g1(&point).is_ok())
+}
+
+#[test]
+pub fn check_consistent_ratios_test() {
+    // Try to load `./challenge` from disk.
+    let mut reader = OpenOptions::new()
+        .read(true)
+        .open("/Users/thomascnorton/Documents/Manta/trusted-setup/challenge_0072")
+        .expect("unable open `./challenge` in this directory");
+
+    let mut hash_discard = [0u8; 64];
+    assert!(64 == Read::read(&mut reader, &mut hash_discard[..]).unwrap());
+
+    let mut tau_g1 = Vec::<G1Affine>::new();
+    for i in 0..(1 << 10) {
+        tau_g1.push(match deserialize_g1_unchecked(&mut reader) {
+            Ok(p) => p,
+            Err(e) => {
+                println!("Error {:?} occured with element {:?}", e, i);
+                panic!()
+            }
+        });
+    }
+
+    for (i, point) in tau_g1.iter().enumerate() {
+        let _ = curve_point_checks_g1(point)
+            .map_err(|e| println!("Error with point {:?} is {:?}", i, e));
+    }
 }
