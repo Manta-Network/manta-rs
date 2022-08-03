@@ -16,205 +16,195 @@
 
 //! Request Tools
 
-// use crate::{
-//     ceremony::{
-//         queue::{Identifier, Priority},
-//         signature::{self, SignatureScheme},
-//         CeremonyError,
-//     },
-//     mpc,
-// };
-// use core::{fmt::Debug, marker::PhantomData};
-// use serde::{Deserialize, Serialize};
+use crate::{
+    ceremony::{
+        queue::{Identifier, Priority},
+        signature::{self, HasPublicKey, SignatureScheme},
+        CeremonyError,
+    },
+    mpc,
+};
+use core::{fmt::Debug, marker::PhantomData};
+use serde::{Deserialize, Serialize};
 
-// /// Register Request
-// #[derive(Debug, Deserialize, Serialize)]
-// pub struct RegisterRequest<P>
-// where
-//     P: Identifier + Priority + signature::HasPublicKey,
-// {
-//     /// The Participant to register
-//     pub participant: P,
-// }
+/// Register Request
+#[derive(Debug, Deserialize, Serialize)]
+pub struct Register<P>
+where
+    P: Identifier + Priority + HasPublicKey,
+{
+    /// Participant Information
+    pub participant: P,
+}
 
-// // TODO: Current SignatureScheme is subject to replay attacks.
-// impl<P, S> signature::Sign<S> for RegisterRequest<P>
-// where
-//     P: Identifier + Priority + signature::HasPublicKey<PublicKey = S::PublicKey>,
-//     S: SignatureScheme,
-//     P::PublicKey: signature::Sign<S>,
-// {
-//     #[inline]
-//     fn sign(
-//         &self,
-//         nounce: &S::Nounce,
-//         public_key: &S::PublicKey,
-//         private_key: &S::PrivateKey,
-//     ) -> Result<S::Signature, CeremonyError> {
-//         public_key.sign(nounce, public_key, private_key)
-//     }
-// }
+// TODO: Current SignatureScheme is subject to replay attacks.
+impl<P, S> signature::Sign<S> for Register<P>
+where
+    S: SignatureScheme,
+    P: Identifier + Priority + HasPublicKey<PublicKey = S::PublicKey>,
+    P::PublicKey: signature::Sign<S>,
+{
+    #[inline]
+    fn sign(
+        &self,
+        nounce: &S::Nounce,
+        public_key: &S::PublicKey,
+        private_key: &S::PrivateKey,
+    ) -> Result<S::Signature, CeremonyError> {
+        public_key.sign(nounce, public_key, private_key)
+    }
+}
 
-// impl<P, S> signature::Verify<S> for RegisterRequest<P>
-// where
-//     P: Identifier + Priority + signature::HasPublicKey<PublicKey = S::PublicKey>,
-//     S: SignatureScheme,
-//     P::PublicKey: signature::Verify<S>,
-// {
-//     #[inline]
-//     fn verify(
-//         &self,
-//         nounce: &S::Nounce,
-//         public_key: &S::PublicKey,
-//         signature: &S::Signature,
-//     ) -> Result<(), CeremonyError> {
-//         public_key.verify(nounce, public_key, signature)
-//     }
-// }
+impl<P, S> signature::Verify<S> for Register<P>
+where
+    S: SignatureScheme,
+    P: Identifier + Priority + HasPublicKey<PublicKey = S::PublicKey>,
+    P::PublicKey: signature::Verify<S>,
+{
+    #[inline]
+    fn verify(
+        &self,
+        nounce: &S::Nounce,
+        public_key: &S::PublicKey,
+        signature: &S::Signature,
+    ) -> Result<(), CeremonyError> {
+        public_key.verify(nounce, public_key, signature)
+    }
+}
 
-// /// Request to join the contributor queue as `participant`.
-// #[derive(Debug, Deserialize, Serialize)]
-// pub struct JoinQueueRequest<P>
-// where
-//     P: Identifier + Priority,
-// {
-//     /// Participant
-//     participant: P,
-// }
+/// Query MPC State with Signature
+#[derive(Debug, Deserialize, Serialize)]
+pub struct QueryMPCState<P, V>
+where
+    P: Identifier,
+    V: mpc::Verify,
+{
+    /// Participant
+    pub participant: P,
 
-// /// Signed request to get the MPC state.
-// #[derive(Debug, Deserialize, Serialize)]
-// pub struct GetMpcRequest<P, V>
-// where
-//     P: Identifier,
-//     V: mpc::Verify,
-// {
-//     /// Participant
-//     pub participant: P,
-//     __: PhantomData<V>,
-// }
+    /// Type Parameter Marker
+    __: PhantomData<V>,
+}
 
-// // TODO: need further discussion: with fixed `domain_tag`, if user leaks the signature during the trusted setup
-// // then someone can mock this `GetMpcRequest` and get the user's position.
-// impl<P, S, V> signature::Sign<S> for GetMpcRequest<P, V>
-// where
-//     P: Identifier + signature::HasPublicKey<PublicKey = S::PublicKey>,
-//     S: SignatureScheme,
-//     V: mpc::Verify,
-//     P::PublicKey: signature::Sign<S>,
-// {
-//     #[inline]
-//     fn sign(
-//         &self,
-//         nounce: &S::Nounce,
-//         public_key: &S::PublicKey,
-//         private_key: &S::PrivateKey,
-//     ) -> Result<S::Signature, CeremonyError> {
-//         // sign the public key
-//         public_key.sign(nounce, public_key, private_key)
-//     }
-// }
+// TODO: need further discussion: with fixed `domain_tag`, if user leaks the signature during the trusted setup
+// then someone can mock this `GetMpcRequest` and get the user's position.
+impl<P, S, V> signature::Sign<S> for QueryMPCState<P, V>
+where
+    P: Identifier + HasPublicKey<PublicKey = S::PublicKey>,
+    S: SignatureScheme,
+    V: mpc::Verify,
+    P::PublicKey: signature::Sign<S>,
+{
+    #[inline]
+    fn sign(
+        &self,
+        nounce: &S::Nounce,
+        public_key: &S::PublicKey,
+        private_key: &S::PrivateKey,
+    ) -> Result<S::Signature, CeremonyError> {
+        public_key.sign(nounce, public_key, private_key)
+    }
+}
 
-// impl<P, S, V> signature::Verify<S> for GetMpcRequest<P, V>
-// where
-//     P: Identifier + signature::HasPublicKey<PublicKey = S::PublicKey>,
-//     S: SignatureScheme,
-//     V: mpc::Verify,
-//     P::PublicKey: signature::Verify<S>,
-// {
-//     fn verify(
-//         &self,
-//         nounce: &S::Nounce,
-//         public_key: &S::PublicKey,
-//         signature: &S::Signature,
-//     ) -> Result<(), CeremonyError> {
-//         // verify the public key
-//         public_key.verify(nounce, public_key, signature)
-//     }
-// }
+impl<P, S, V> signature::Verify<S> for QueryMPCState<P, V>
+where
+    P: Identifier + HasPublicKey<PublicKey = S::PublicKey>,
+    S: SignatureScheme,
+    V: mpc::Verify,
+    P::PublicKey: signature::Verify<S>,
+{
+    fn verify(
+        &self,
+        nounce: &S::Nounce,
+        public_key: &S::PublicKey,
+        signature: &S::Signature,
+    ) -> Result<(), CeremonyError> {
+        public_key.verify(nounce, public_key, signature)
+    }
+}
 
-// impl<P, V> GetMpcRequest<P, V>
-// where
-//     P: Identifier,
-//     V: mpc::Verify,
-// {
-//     /// Creates a new [`GetMpcRequest`] with the given `participant`.
-//     pub fn new(participant: P) -> Self {
-//         Self {
-//             participant,
-//             __: PhantomData,
-//         }
-//     }
-// }
+impl<P, V> QueryMPCState<P, V>
+where
+    P: Identifier,
+    V: mpc::Verify,
+{
+    /// Creates a new [`GetMpcRequest`] with the given `participant`.
+    pub fn new(participant: P) -> Self {
+        Self {
+            participant,
+            __: PhantomData,
+        }
+    }
+}
 
-// /// The response to a `GetMpcRequest` is either a queue position or,
-// /// if participant is at front of queue, the MPC state.
-// #[derive(Debug, Deserialize, Serialize)]
-// pub struct GetMpcResponse<V>
-// where
-//     V: mpc::Verify,
-// {
-//     __: PhantomData<V>, // TODO: Replace this with response: MpcResponse<V>,
-// }
+/// The response to a `QueryMPCState` is either a queue position or,
+/// if participant is at front of queue, the MPC state.
+#[derive(Debug, Deserialize, Serialize)]
+pub struct GetMpcResponse<V>
+where
+    V: mpc::Verify,
+{
+    __: PhantomData<V>, // TODO: Replace this with response: MpcResponse<V>,
+}
 
-// // TODO: delete when GetMpcResponse is fixed
-// impl<V> Default for GetMpcResponse<V>
-// where
-//     V: mpc::Verify,
-// {
-//     fn default() -> Self {
-//         Self { __: PhantomData }
-//     }
-// }
+// TODO: delete when GetMpcResponse is fixed
+impl<V> Default for GetMpcResponse<V>
+where
+    V: mpc::Verify,
+{
+    fn default() -> Self {
+        Self { __: PhantomData }
+    }
+}
 
-// /// MPC Response for `GetMpcRequest`
-// #[derive(Debug, Deserialize, Serialize)]
-// #[serde(
-//     bound(
-//         serialize = r"V::State: Serialize",
-//         deserialize = "V::State: Deserialize<'de>",
-//     ),
-//     deny_unknown_fields
-// )]
-// pub enum MpcResponse<V>
-// where
-//     V: mpc::Verify,
-// {
-//     ///
-//     QueuePosition,
-//     ///
-//     Mpc(V::State),
-// }
+/// MPC Response for `GetMpcRequest`
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(
+    bound(
+        serialize = r"V::State: Serialize",
+        deserialize = "V::State: Deserialize<'de>",
+    ),
+    deny_unknown_fields
+)]
+pub enum MpcResponse<V>
+where
+    V: mpc::Verify,
+{
+    ///
+    QueuePosition,
+    ///
+    Mpc(V::State),
+}
 
-// ///
-// #[derive(Debug, Deserialize, Serialize)]
-// pub struct ContributeRequest<P, V>
-// where
-//     P: Identifier,
-//     V: mpc::Verify,
-// {
-//     ///
-//     pub participant: P,
+///
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ContributeRequest<P, V>
+where
+    P: Identifier,
+    V: mpc::Verify,
+{
+    ///
+    pub participant: P,
 
-//     ///
-//     pub transformed_state: V::State,
+    ///
+    pub transformed_state: V::State,
 
-//     ///
-//     pub proof: V::Proof,
-// }
+    ///
+    pub proof: V::Proof,
+}
 
 // impl<P, S, V> signature::Sign<S> for ContributeRequest<P, V>
 // where
-//     P: Identifier + signature::HasPublicKey<PublicKey = S::PublicKey>,
+//     P: Identifier + HasPublicKey<PublicKey = S::PublicKey>,
 //     S: SignatureScheme,
 //     V: mpc::Verify,
 //     V::State: Clone + signature::Sign<S>,
 //     V::Proof: Clone + signature::Sign<S>,
 // {
-//     type Signature = (
-//         <V::State as signature::Sign<S>>::Signature,
-//         <V::Proof as signature::Sign<S>>::Signature,
-//     );
+//     // type Signature = (
+//     //     <V::State as Sign<S>>::Signature,
+//     //     <V::Proof as Sign<S>>::Signature,
+//     // );
 
 //     #[inline]
 //     fn sign(
@@ -233,16 +223,16 @@
 
 // impl<P, S, V> signature::Verify<S> for ContributeRequest<P, V>
 // where
-//     P: Identifier + signature::HasPublicKey<PublicKey = S::PublicKey>,
+//     P: Identifier + HasPublicKey<PublicKey = S::PublicKey>,
 //     S: SignatureScheme,
 //     V: mpc::Verify,
 //     V::State: Clone + signature::Verify<S>,
 //     V::Proof: Clone + signature::Verify<S>,
 // {
-//     type Signature = (
-//         <V::State as signature::Verify<S>>::Signature,
-//         <V::Proof as signature::Verify<S>>::Signature,
-//     );
+//     // type Signature = (
+//     //     <V::State as signature::Verify<S>>::Signature,
+//     //     <V::Proof as signature::Verify<S>>::Signature,
+//     // );
 
 //     #[inline]
 //     fn verify(
