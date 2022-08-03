@@ -24,13 +24,15 @@ use crate::{
 use ark_bn254::{Bn254, Fr, G1Affine, G2Affine, Parameters};
 use ark_ec::{
     models::{bn::BnParameters, ModelParameters},
-    AffineCurve, PairingEngine,
+    short_weierstrass_jacobian::GroupAffine,
+    AffineCurve, PairingEngine, SWModelParameters,
 };
 use ark_ff::{PrimeField, Zero};
 use ark_serialize::CanonicalSerialize;
 use blake2::Digest;
-use core::fmt::{self, Debug};
-use manta_util::{into_array_unchecked};
+use core::fmt::Debug;
+use manta_util::into_array_unchecked;
+use memmap::{Mmap, MmapOptions};
 use std::{fs::OpenOptions, io::Read};
 
 /// Configuration for PPoT Phase 1 over Bn254 curve.
@@ -172,8 +174,74 @@ where
     }
 }
 
+// Only makes sense for this to be deserialization from uncompressed bytes since
+// deserializing from compressed implies at least doing an on-curve check
 #[inline]
-fn curve_point_checks_g1(g1: &G1Affine) -> Result<(), PointDeserializeError> {
+pub fn deserialize_g2_unchecked<R>(reader: &mut R) -> Result<G2Affine, PointDeserializeError>
+where
+    R: Read,
+{
+    let mut copy = [0u8; 128];
+    let _ = reader.read(&mut copy); // should I deal with the number of bytes read output?
+
+    // Check the compression flag
+    if copy[0] & (1 << 7) != 0 {
+        // If that bit is non-zero then the reader contains a compressed representation
+        return Err(PointDeserializeError::ExpectedUncompressed);
+    }
+
+    // Check the point at infinity flag
+    if copy[0] & (1 << 6) != 0 {
+        // Then this is the point at infinity, so the rest of the serialization
+        // should consist of zeros after we mask away the first two bits.
+        copy[0] &= 0x3f;
+
+        if copy.iter().all(|b| *b == 0) {
+            Ok(G2Affine::zero())
+        } else {
+            // Then there are unexpected bits
+            Err(PointDeserializeError::PointAtInfinity)
+        }
+    } else {
+        // Check y-coordinate flag // TODO : The PPOT code doesn't seem to do this...
+        if copy[0] & (1 << 7) != 0 {
+            // Since this representation is uncompressed the flag should be set to 0
+            return Err(PointDeserializeError::ExtraYCoordinate);
+        }
+
+        // Now unset the first two bits
+        copy[0] &= 0x3f;
+
+        // Now we can deserialize the remaining bytes to field elements
+        let x_c1 = BaseFieldG1Type::from_be_bytes_mod_order(&copy[..32]);
+        let x_c0 = BaseFieldG1Type::from_be_bytes_mod_order(&copy[32..64]);
+        let y_c1 = BaseFieldG1Type::from_be_bytes_mod_order(&copy[64..96]);
+        let y_c0 = BaseFieldG1Type::from_be_bytes_mod_order(&copy[96..128]);
+        // Recall BaseFieldG2 is a quadratic ext'n of BaseFieldG1
+        let x = BaseFieldG2Type::new(x_c0, x_c1);
+        let y = BaseFieldG2Type::new(y_c0, y_c1);
+
+        Ok(G2Affine::new(x, y, false))
+    }
+}
+
+// /// TODO : Generalize from g1
+// #[inline]
+// fn curve_point_checks_g1(g1: &G1Affine) -> Result<(), PointDeserializeError> {
+//     if !g1.is_on_curve() {
+//         return Err(PointDeserializeError::NotOnCurve);
+//     } else if !g1.is_in_correct_subgroup_assuming_on_curve() {
+//         return Err(PointDeserializeError::NotInSubgroup);
+//     }
+//     Ok(())
+// }
+
+/// TODO : Generalize from g1
+#[inline]
+fn curve_point_checks<P>(g1: &GroupAffine<P>) -> Result<(), PointDeserializeError>
+where
+    P: SWModelParameters,
+{
     if !g1.is_on_curve() {
         return Err(PointDeserializeError::NotOnCurve);
     } else if !g1.is_in_correct_subgroup_assuming_on_curve() {
@@ -193,15 +261,91 @@ pub enum PointDeserializeError {
     NotInSubgroup,
 }
 
-// TODO: What was the below code for ?
+/// Calculates position in the mmap of specific parts of accumulator.
+/// TODO : This is currently specialized to PPoT Bn254 setup
+pub fn calculate_mmap_position(index: usize, element_type: ElementType) -> usize {
+    // These are entered by hand from the Bn254 parameters of PPoT
+    const G1_UNCOMPRESSED_BYTE_SIZE: usize = 64;
+    const G2_UNCOMPRESSED_BYTE_SIZE: usize = 128;
+    const REQUIRED_POWER: usize = 28;
+    const TAU_POWERS_LENGTH: usize = 1 << REQUIRED_POWER;
+    const TAU_POWERS_G1_LENGTH: usize = (TAU_POWERS_LENGTH << 1) - 1;
+    const HASH_SIZE: usize = 64;
 
-// impl std::fmt::Display for PointDeserializeError {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         Debug::fmt(&self, f) // ? Is this an okay thing to do ?
-//     }
-// }
+    let g1_size = G1_UNCOMPRESSED_BYTE_SIZE;
+    let g2_size = G2_UNCOMPRESSED_BYTE_SIZE;
+    let required_tau_g1_power = TAU_POWERS_G1_LENGTH;
+    let required_power = TAU_POWERS_LENGTH;
 
-// impl std::error::Error for PointDeserializeError {}
+    let position = match element_type {
+        ElementType::TauG1 => {
+            let mut position = 0;
+            position += g1_size * index;
+            // assert!(index < TAU_POWERS_G1_LENGTH, format!("Index of TauG1 element written must not exceed {:?}, while it's {:?}", TAU_POWERS_G1_LENGTH, index));
+            assert!(index < TAU_POWERS_G1_LENGTH);
+
+            position
+        }
+        ElementType::TauG2 => {
+            let mut position = 0;
+            position += g1_size * required_tau_g1_power;
+            // assert!(index < TAU_POWERS_LENGTH, format!("Index of TauG2 element written must not exceed {}, while it's {}", TAU_POWERS_LENGTH, index));
+            assert!(index < TAU_POWERS_LENGTH);
+            position += g2_size * index;
+
+            position
+        }
+        ElementType::AlphaG1 => {
+            let mut position = 0;
+            position += g1_size * required_tau_g1_power;
+            position += g2_size * required_power;
+            // assert!(index < TAU_POWERS_LENGTH, format!("Index of AlphaG1 element written must not exceed {}, while it's {}", TAU_POWERS_LENGTH, index));
+            assert!(index < TAU_POWERS_LENGTH);
+            position += g1_size * index;
+
+            position
+        }
+        ElementType::BetaG1 => {
+            let mut position = 0;
+            position += g1_size * required_tau_g1_power;
+            position += g2_size * required_power;
+            position += g1_size * required_power;
+            // assert!(index < TAU_POWERS_LENGTH, format!("Index of AlphaG1 element written must not exceed {}, while it's {}", TAU_POWERS_LENGTH, index));
+            assert!(index < TAU_POWERS_LENGTH);
+            position += g1_size * index;
+
+            position
+        }
+        ElementType::BetaG2 => {
+            let mut position = 0;
+            position += g1_size * required_tau_g1_power;
+            position += g2_size * required_power;
+            position += g1_size * required_power;
+            position += g1_size * required_power;
+
+            position
+        }
+    };
+
+    position + HASH_SIZE
+}
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum ElementType {
+    TauG1,
+    TauG2,
+    AlphaG1,
+    BetaG1,
+    BetaG2,
+}
+
+/// This function is specific to the PPoT Bn254 setup
+pub fn get_size(element: ElementType) -> usize {
+    match element {
+        ElementType::AlphaG1 | ElementType::BetaG1 | ElementType::TauG1 => 64,
+        ElementType::BetaG2 | ElementType::TauG2 => 128,
+    }
+}
 
 #[test]
 pub fn dummy_test() {
@@ -225,7 +369,65 @@ pub fn deserialize_g1_unchecked_test() {
         G1Affine::prime_subgroup_generator().into_projective(),
         "first point should be generator"
     );
-    assert!(curve_point_checks_g1(&point).is_ok())
+    assert!(curve_point_checks(&point).is_ok())
+}
+
+#[test]
+pub fn read_tau_g1_and_g2_test() {
+    // Try to load `./challenge` from disk.
+    let reader = OpenOptions::new()
+        .read(true)
+        .open("/Users/thomascnorton/Documents/Manta/trusted-setup/challenge_0072")
+        .expect("unable open `./challenge` in this directory");
+    // Make a memory map
+    let readable_map = unsafe {
+        MmapOptions::new()
+            .map(&reader)
+            .expect("unable to create a memory map for input")
+    };
+
+    // Read some powers from file
+    let num_powers: usize = 1 << 10;
+    let mut tau_g1 = Vec::<G1Affine>::new();
+    let mut tau_g2 = Vec::<G2Affine>::new();
+    for i in 0..num_powers {
+        let position = calculate_mmap_position(i, ElementType::TauG1);
+        let element_size = get_size(ElementType::TauG1);
+        let mut reader = readable_map
+            .get(position..position + element_size)
+            .expect("cannot read point data from file");
+        tau_g1.push(match deserialize_g1_unchecked(&mut reader) {
+            Ok(p) => match curve_point_checks(&p) {
+                Err(e) => {
+                    println!("Error {:?} occured with element {:?}", e, i);
+                    panic!()
+                }
+                _ => p,
+            },
+            Err(e) => {
+                println!("Error {:?} occured with element {:?}", e, i);
+                panic!()
+            }
+        });
+        let position = calculate_mmap_position(i, ElementType::TauG2);
+        let element_size = get_size(ElementType::TauG2);
+        let mut reader = readable_map
+            .get(position..position + element_size)
+            .expect("cannot read point data from file");
+        tau_g2.push(match deserialize_g2_unchecked(&mut reader) {
+            Ok(p) => match curve_point_checks(&p) {
+                Err(e) => {
+                    println!("Error {:?} occured with element {:?}", e, i);
+                    panic!()
+                }
+                _ => p,
+            },
+            Err(e) => {
+                println!("Error {:?} occured with element {:?}", e, i);
+                panic!()
+            }
+        });
+    }
 }
 
 #[test]
@@ -251,7 +453,9 @@ pub fn check_consistent_ratios_test() {
     }
 
     for (i, point) in tau_g1.iter().enumerate() {
-        let _ = curve_point_checks_g1(point)
-            .map_err(|e| println!("Error with point {:?} is {:?}", i, e));
+        let _ =
+            curve_point_checks(point).map_err(|e| println!("Error with point {:?} is {:?}", i, e));
     }
+
+    // TODO : read tau_g2 powers and create pair from each with `power_pairs` and then check ratio
 }
