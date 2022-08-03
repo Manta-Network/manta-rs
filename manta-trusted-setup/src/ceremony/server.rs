@@ -38,7 +38,7 @@ use std::{
 };
 use tide::{Body, Request, Response};
 
-/// TODO
+/// Has Nonce
 pub trait HasNonce<S>
 where
     S: SignatureScheme,
@@ -67,28 +67,28 @@ where
     /// Coordinator
     coordinator: Arc<Mutex<Coordinator<V, P, M, N>>>,
 
-    ///
+    /// Type Parameter Marker
     __: PhantomData<S>,
 }
 
-// Note the implementation is currently not generic over S: SignatureScheme
+// TODO: The implementation is currently not generic over S: SignatureScheme
 impl<V, P, M, S, const N: usize> Server<V, P, M, S, N>
 where
     V: mpc::Verify,
+    S: SignatureScheme,
     P: Clone
         + Priority
         + Identifier
         + signature::HasPublicKey<PublicKey = S::PublicKey>
         + HasNonce<S>,
-    S: SignatureScheme,
     M: Map<Key = P::Identifier, Value = P>,
 {
     /// Verifies the registration request and registers a participant.
     #[inline]
-    pub async fn register_participant<'a>(
+    pub async fn register_participant(
         self,
         request: RegisterRequest<P>,
-        request_signature: &S::Signature,
+        signature: &S::Signature,
     ) -> Result<(), CeremonyError>
     where
         RegisterRequest<P>: Serialize,
@@ -96,12 +96,14 @@ where
         S::verify(
             &request,
             &request.participant.nonce(),
-            &request_signature,
+            &signature,
             &request.participant.public_key(),
         )
         .expect("Verify register request should succeed.");
-        let mut state = self.coordinator.lock().expect("Failed to lock coordinator");
-        state.register(request.participant)
+        self.coordinator
+            .lock()
+            .expect("Failed to lock coordinator")
+            .register(request.participant)
     }
 
     /// Gets MPC States and Challenge
@@ -109,7 +111,7 @@ where
     pub async fn get_state_and_challenge(
         self,
         request: QueryMPCStateRequest<P>,
-        request_signature: &S::Signature,
+        signature: &S::Signature,
     ) -> Result<QueryMPCStateResponse<V>, CeremonyError>
     where
         QueryMPCStateRequest<P>: Serialize,
@@ -117,7 +119,7 @@ where
         S::verify(
             &request,
             &request.participant.nonce(),
-            &request_signature,
+            &signature,
             &request.participant.public_key(),
         )
         .expect("Verify signature of query MPC state should succeed.");
@@ -133,45 +135,55 @@ where
         }
     }
 
-    /// Processes a request to update the MPC state. If successful then participant is removed from queue.
+    /// Processes a request to update the MPC state and remove the participant if successfully updated the state.
     #[inline]
     pub async fn update(
         self,
         request: ContributeRequest<P, V>,
-        request_signature: &S::Signature,
+        signature: &S::Signature,
     ) -> Result<(), CeremonyError>
     where
         ContributeRequest<P, V>: Serialize,
         V::State: Default,
     {
-        // Check signatures
-        let public_key = request.participant.public_key();
-        let nonce = request.participant.nonce();
-        S::verify(&request, &nonce, &request_signature, &public_key)?;
-
-        let mut state = self.coordinator.lock().expect("Failed to lock coordinator");
-        state.update(
-            &request.participant.identifier(),
-            request.state,
-            request.proof,
+        S::verify(
+            &request,
+            &request.participant.nonce(),
+            &signature,
+            &request.participant.public_key(),
         )
+        .expect("Verify signature of contribute request should succeed.");
+        self.coordinator
+            .lock()
+            .expect("Lock coordinator should succeed.")
+            .update(
+                &request.participant.identifier(),
+                request.state,
+                request.proof,
+            )
     }
 
     /// Executes `f` on the incoming `request`.
     #[inline]
     pub async fn execute<T, R, F, Fut>(
-        mut request: Request<Self>, // get json from here
+        mut request: Request<Self>,
         f: F,
     ) -> Result<Response, tide::Error>
     where
-        T: DeserializeOwned, // Request type that would have been received from Client
-        R: Serialize,        // Response
-        F: FnOnce(Self, T) -> Fut, // endpoint must be of this form
-        Fut: Future<Output = Result<R, CeremonyError>>, // R is the type returned by Server, like Attestation
+        T: DeserializeOwned,
+        R: Serialize,
+        F: FnOnce(Self, T) -> Fut,
+        Fut: Future<Output = Result<R, CeremonyError>>,
     {
-        let args = request.body_json::<T>().await?; // parse json into its args
         into_body(move || async move {
-            f(request.state().clone(), args).await // pass those args to f, as well as a copy of the State -- rather ArcMutex<State>, hence clonable
+            f(
+                request.state().clone(),
+                request
+                    .body_json::<T>()
+                    .await
+                    .expect("Read and deserialize should succeed."),
+            )
+            .await
         })
         .await
     }
