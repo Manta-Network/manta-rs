@@ -260,7 +260,7 @@ where
 /// Configuration
 pub trait Configuration: Pairing {
     /// Challenge Type
-    type Challenge;
+    type Challenge: Clone;
 
     /// Hasher Type
     type Hasher: Default + HashToGroup<Self, Self::Challenge>;

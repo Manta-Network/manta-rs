@@ -43,7 +43,7 @@ pub trait SignatureScheme {
     type Signature;
 
     /// Signs a `message` and `nonce` with `(public_key, private_key)`.
-    fn sign<M>(
+    fn sign_bytes<M>(
         message: &M,
         nonce: &Self::Nonce,
         public_key: &Self::PublicKey,
@@ -52,8 +52,26 @@ pub trait SignatureScheme {
     where
         M: ?Sized + AsRef<[u8]>;
 
+    /// Signs a `message` and `nonce` with `(public_key, private_key)`.
+    fn sign<M>(
+        message: M,
+        nonce: &Self::Nonce,
+        public_key: &Self::PublicKey,
+        private_key: &Self::PrivateKey,
+    ) -> Result<Self::Signature, CeremonyError>
+    where
+        M: Serialize,
+    {
+        Self::sign_bytes(
+            &bincode::serialize(&message).expect("Should serialize message."),
+            nonce,
+            public_key,
+            private_key,
+        )
+    }
+
     /// Verifies the `signature` of `message` and `nonce` with `public_key`.
-    fn verify<M>(
+    fn verify_bytes<M>(
         message: &M,
         nonce: &Self::Nonce,
         signature: &Self::Signature,
@@ -61,6 +79,24 @@ pub trait SignatureScheme {
     ) -> Result<(), CeremonyError>
     where
         M: ?Sized + AsRef<[u8]>;
+
+    /// Verifies the `signature` of `message` and `nonce` with `public_key`.
+    fn verify<M>(
+        message: M,
+        nonce: &Self::Nonce,
+        signature: &Self::Signature,
+        public_key: &Self::PublicKey,
+    ) -> Result<(), CeremonyError>
+    where
+        M: Serialize,
+    {
+        Self::verify_bytes(
+            &bincode::serialize(&message).expect("Should serialize message."),
+            nonce,
+            signature,
+            public_key,
+        )
+    }
 }
 
 /// ED25519 Signature Scheme
@@ -122,7 +158,7 @@ pub mod ed_dalek {
         type Nonce = u64;
         type Signature = Signature;
 
-        fn sign<M>(
+        fn sign_bytes<M>(
             message: &M,
             nonce: &Self::Nonce,
             public_key: &Self::PublicKey,
@@ -131,19 +167,18 @@ pub mod ed_dalek {
         where
             M: ?Sized + AsRef<[u8]>,
         {
-            let mut concatenated_message = Vec::new();
-            nonce
-                .serialize_uncompressed(&mut concatenated_message)
-                .expect("Serialize Nonce should not fail. ");
-            concatenated_message.extend_from_slice(message.as_ref());
+            let mut message_concatenated =
+                bincode::serialize(nonce).expect("Serializing nonce should not fail");
+
+            message_concatenated.extend_from_slice(message.as_ref());
             Ok(Signature(into_array_unchecked(
                 Keypair::from_bytes(&[&private_key.0[..], &public_key.0[..]].concat())
                     .expect("Should decode keypair from bytes.")
-                    .sign(&concatenated_message),
+                    .sign(&message_concatenated),
             )))
         }
 
-        fn verify<M>(
+        fn verify_bytes<M>(
             message: &M,
             nonce: &Self::Nonce,
             signature: &Self::Signature,
@@ -183,9 +218,9 @@ mod test {
         ]);
         let message = b"Test message";
         let nounce = 1;
-        let signature = Ed25519::sign(message, &nounce, &public_key, &private_key)
+        let signature = Ed25519::sign_bytes(message, &nounce, &public_key, &private_key)
             .expect("Should sign the message.");
-        Ed25519::verify(message, &nounce, &signature, &public_key)
+        Ed25519::verify_bytes(message, &nounce, &signature, &public_key)
             .expect("Should verify the signature.");
     }
 }

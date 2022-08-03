@@ -45,7 +45,7 @@ ark-poly = { version = "0.3.0", default-features = false }
 ark-relations = { version = "0.3.0", default-features = false }
 ark-serialize = { version = "0.3.0", default-features = false, features = ["derive"] }
 ark-std = { version = "0.3.0", default-features = false }
-# async-std = { version = "1.6.0", features = ["attributes", "tokio1"] } // TODO
+ async-std = { version = "1.6.0", features = ["attributes", "tokio1"] }
 blake2 = { version = "0.10.4", default-features = false }
 byteorder = { version = "1.4.3", default-features = false }
 derivative = { version = "2.2.0", default-features = false, features = ["use_core"] }
@@ -53,10 +53,11 @@ ed25519-dalek = { version = "1.0.1", default-features = false, features = ["u64_
 manta-crypto = { path = "../manta-crypto", default-features = false, features = ["getrandom"] }
 manta-util = { path = "../manta-util", default-features = false, features = ["serde-array"] }
 rand_chacha = { version = "0.3.1", default-features = false }
-# reqwest = {version = "0.11.11", features = ["json"]} // TODO
+ reqwest = {version = "0.11.11", features = ["json"]}
 serde = { version = "1.0", default-features = false }
 serde_with = { version = "1.14.0", default-features = false }
-# tide = { version = "0.14.0", default-features = false } // TODO
+bincode = { version = "1.3", default-features = false }
+ tide = { version = "0.14.0", default-features = false }
 workspace-hack = { version = "0.1.0", path = "../workspace-hack" }
 
 [dev-dependencies]

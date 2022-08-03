@@ -186,8 +186,5 @@
 //     Ok(Body::from_json(&f().await?)?.into())
 // }
 
-
 // TODO
-fn main() {
-
-}
+fn main() {}

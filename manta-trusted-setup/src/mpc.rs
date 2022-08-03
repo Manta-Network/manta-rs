@@ -21,10 +21,10 @@ use alloc::vec::Vec;
 /// Secure Multi-Party Computation Types
 pub trait Types {
     /// State Type
-    type State;
+    type State: Clone;
 
     /// Challenge Type
-    type Challenge;
+    type Challenge: Clone;
 
     /// Contribution Proof Type
     type Proof;

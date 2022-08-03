@@ -36,18 +36,18 @@ indexmap = { version = "1.9.1", default-features = false, features = ["std"] }
 log = { version = "0.4.17", default-features = false, features = ["kv_unstable", "kv_unstable_std", "std", "value-bag"] }
 memchr = { version = "2.5.0", features = ["std"] }
 num-traits = { version = "0.2.15", features = ["i128", "libm", "std"] }
-parking_lot = { version = "0.12.1" }
 ppv-lite86 = { version = "0.2.16", default-features = false, features = ["simd", "std"] }
 rand = { version = "0.8.5", features = ["alloc", "getrandom", "libc", "rand_chacha", "std", "std_rng"] }
 rand_chacha = { version = "0.3.1", default-features = false, features = ["std"] }
 rand_core = { version = "0.6.3", default-features = false, features = ["alloc", "getrandom", "std"] }
 reqwest = { version = "0.11.11", features = ["__tls", "default-tls", "hyper-tls", "json", "native-tls-crate", "serde_json", "tokio-native-tls"] }
-serde = { version = "1.0.141", features = ["alloc", "derive", "serde_derive", "std"] }
+serde = { version = "1.0.142", features = ["alloc", "derive", "serde_derive", "std"] }
 serde_json = { version = "1.0.82", features = ["alloc", "std"] }
 sha2 = { version = "0.9.9", features = ["std"] }
 signature = { version = "1.5.0", default-features = false, features = ["digest", "digest-preview", "rand-preview", "rand_core"] }
 standback = { version = "0.2.17", default-features = false, features = ["std"] }
 subtle = { version = "2.4.1", default-features = false, features = ["i128"] }
+tide = { version = "0.16.0", default-features = false, features = ["async-h1", "h1-server"] }
 tracing = { version = "0.1.36", default-features = false, features = ["attributes", "tracing-attributes"] }
 url = { version = "2.2.2", default-features = false, features = ["serde"] }
 value-bag = { version = "1.0.0-alpha.9", default-features = false, features = ["error", "std", "sval1_lib"] }
@@ -63,7 +63,7 @@ digest-93f6ce9d446188ac = { package = "digest", version = "0.10.3", features = [
 generic-array = { version = "0.14.6", default-features = false, features = ["more_lengths"] }
 log = { version = "0.4.17", default-features = false, features = ["kv_unstable", "kv_unstable_std", "std", "value-bag"] }
 num-traits = { version = "0.2.15", features = ["i128", "libm", "std"] }
-serde = { version = "1.0.141", features = ["alloc", "derive", "serde_derive", "std"] }
+serde = { version = "1.0.142", features = ["alloc", "derive", "serde_derive", "std"] }
 standback = { version = "0.2.17", default-features = false, features = ["std"] }
 subtle = { version = "2.4.1", default-features = false, features = ["i128"] }
 syn = { version = "1.0.98", features = ["clone-impls", "derive", "extra-traits", "fold", "full", "parsing", "printing", "proc-macro", "quote", "visit", "visit-mut"] }

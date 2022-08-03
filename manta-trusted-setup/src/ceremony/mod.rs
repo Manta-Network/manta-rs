@@ -16,16 +16,17 @@
 
 //! Client and Server Interfaces and Implementations for Manta Trusted Setup Ceremony
 
+use core::{fmt, fmt::Display};
+
 // pub mod bls_server;
 pub mod coordinator;
+pub mod message;
 pub mod queue;
 pub mod registry;
-pub mod requests;
 pub mod signature;
-// pub mod server;
 
-// #[cfg(feature = "std")]
-// pub mod server;
+#[cfg(feature = "std")]
+pub mod server;
 
 /// Ceremony Error
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -47,4 +48,17 @@ pub enum CeremonyError {
 
     /// Invalid Contribution Error
     InvalidContribution,
+}
+
+impl Display for CeremonyError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CeremonyError::AlreadyRegistered => write!(f, "Already registered"),
+            CeremonyError::NotRegistered => write!(f, "Not registered"),
+            CeremonyError::InvalidSignature => write!(f, "Invalid signature"),
+            CeremonyError::NotYourTurn => write!(f, "Not your turn"),
+            CeremonyError::WaitingQueueEmpty => write!(f, "Waiting queue is empty"),
+            CeremonyError::InvalidContribution => write!(f, "Invalid contribution"),
+        }
+    }
 }

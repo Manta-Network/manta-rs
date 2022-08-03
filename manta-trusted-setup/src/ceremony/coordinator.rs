@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Ceremony coordinator.
+//! Ceremony Coordinator
 
 use crate::{
     ceremony::{
@@ -69,6 +69,11 @@ where
     /// Check if participant is next.
     pub fn is_next(&self, participant: &P) -> bool {
         self.queue.is_at_front(participant)
+    }
+
+    /// /// Gets the position of `participant`. Return `None` if `participant` is not in the queue.
+    pub fn position(&self, participant: &P) -> Option<usize> {
+        self.queue.position(participant)
     }
 
     /// Update the MPC state and challenge using client's contribution.
