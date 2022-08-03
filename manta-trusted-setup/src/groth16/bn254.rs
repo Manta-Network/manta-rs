@@ -17,7 +17,12 @@
 //! Bn254 Backend for Groth16 Trusted Setup
 
 use crate::{
-    groth16::kzg::{Accumulator, Configuration, Proof, Size},
+    groth16,
+    groth16::{
+        kzg::{Accumulator, Configuration, Proof, Size},
+        mpc::{self, Proof as MpcProof, ProvingKeyHasher, State},
+    },
+    mpc::Types,
     pairing::{Pairing, PairingEngineExt},
     util::{power_pairs, BlakeHasher, KZGBlakeHasher},
 };
@@ -27,10 +32,19 @@ use ark_ec::{
     short_weierstrass_jacobian::GroupAffine,
     AffineCurve, PairingEngine, SWModelParameters,
 };
-use ark_ff::{PrimeField, Zero};
+use ark_ff::{field_new, PrimeField, Zero};
+use ark_groth16::{Groth16, ProvingKey};
+use ark_r1cs_std::eq::EqGadget;
 use ark_serialize::CanonicalSerialize;
+use ark_snark::SNARK;
 use blake2::Digest;
 use core::fmt::Debug;
+use manta_crypto::{
+    constraint::Allocate,
+    eclair::alloc::mode::{Public, Secret},
+    rand::{CryptoRng, OsRng, RngCore},
+};
+use manta_pay::crypto::constraint::arkworks::{Fp, FpVar, R1CS};
 use manta_util::into_array_unchecked;
 use memmap::{Mmap, MmapOptions};
 use std::{fs::OpenOptions, io::Read};
@@ -195,6 +209,52 @@ impl Configuration for SmallBn254 {
             .beta
             .serialize(&mut hasher)
             .expect("Consuming ratio proof of beta failed.");
+        into_array_unchecked(hasher.0.finalize())
+    }
+}
+
+impl Types for SmallBn254 {
+    type State = State<Self>;
+    type Challenge = [u8; 64];
+    type Proof = MpcProof<Self>;
+}
+
+impl<P> ProvingKeyHasher<P> for SmallBn254
+where
+    P: Pairing,
+{
+    type Output = [u8; 64];
+
+    #[inline]
+    fn hash(proving_key: &ProvingKey<P::Pairing>) -> Self::Output {
+        let mut hasher = BlakeHasher::default();
+        proving_key
+            .serialize(&mut hasher)
+            .expect("Hasher is not allowed to fail");
+        into_array_unchecked(hasher.0.finalize())
+    }
+}
+
+impl mpc::Configuration for SmallBn254 {
+    type Challenge = [u8; 64];
+    type Hasher = BlakeHasher;
+
+    #[inline]
+    fn challenge(
+        challenge: &Self::Challenge,
+        prev: &State<Self>,
+        next: &State<Self>,
+        proof: &MpcProof<Self>,
+    ) -> Self::Challenge {
+        let mut hasher = Self::Hasher::default();
+        hasher.0.update(challenge);
+        prev.serialize(&mut hasher)
+            .expect("Consuming the previous state failed.");
+        next.serialize(&mut hasher)
+            .expect("Consuming the current state failed.");
+        proof
+            .serialize(&mut hasher)
+            .expect("Consuming proof failed");
         into_array_unchecked(hasher.0.finalize())
     }
 }
@@ -395,7 +455,7 @@ pub fn calculate_mmap_position(index: usize, element_type: ElementType) -> usize
     position + HASH_SIZE
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum ElementType {
     TauG1,
     TauG2,
@@ -496,13 +556,13 @@ pub fn get_g1_and_g2_powers(
 /// Checks that a vector of G1 elements and vector of G2 elements are incrementing by the
 /// same factor.
 pub fn check_consistent_factor(g1: &Vec<G1Affine>, g2: &Vec<G2Affine>) -> bool {
-    let g1_pair = power_pairs(&g1);
-    let g2_pair = power_pairs(&g2);
+    let g1_pair = power_pairs(g1);
+    let g2_pair = power_pairs(g2);
     Bn254::same_ratio(g1_pair, g2_pair)
 }
 
 /// Extracts a subaccumulator of size `required_powers`. Specific to PPoT challenge file.
-pub fn read_subaccumulator<C>(readable_map: Mmap) -> Result<Accumulator<C>, PointDeserializeError>
+pub fn read_subaccumulator<C>(_readable_map: Mmap) -> Result<Accumulator<C>, PointDeserializeError>
 where
     C: Pairing<G1 = G1Affine, G2 = G2Affine> + Size,
 {
@@ -663,4 +723,88 @@ pub fn read_subaccumulator_test() {
         &acc.beta_tau_powers_g1,
         &acc.tau_powers_g2
     ));
+}
+
+/// Generates a dummy R1CS circuit.
+#[inline]
+fn dummy_circuit(cs: &mut R1CS<Fr>) {
+    let a = Fp(field_new!(Fr, "2")).as_known::<Secret, FpVar<_>>(cs);
+    let b = Fp(field_new!(Fr, "3")).as_known::<Secret, FpVar<_>>(cs);
+    let c = &a * &b;
+    let d = Fp(field_new!(Fr, "6")).as_known::<Public, FpVar<_>>(cs);
+    c.enforce_equal(&d)
+        .expect("enforce_equal is not allowed to fail");
+}
+
+/// Proves and verifies a R1CS circuit with proving key `pk` and a random number generator `rng`.
+#[inline]
+pub fn prove_and_verify_circuit<P, R>(pk: ProvingKey<P>, cs: R1CS<Fr>, mut rng: &mut R)
+where
+    P: PairingEngine<Fr = Fr>,
+    R: CryptoRng + RngCore + ?Sized,
+{
+    assert!(
+        Groth16::verify(
+            &pk.vk,
+            &[field_new!(Fr, "6")],
+            &Groth16::prove(&pk, cs, &mut rng).unwrap()
+        )
+        .unwrap(),
+        "Verify proof should succeed."
+    );
+}
+
+#[test]
+pub fn bn254_end_to_end_test() {
+    use crate::{
+        groth16::mpc::{self, contribute, initialize, verify_transform, verify_transform_all},
+        mpc::Transcript,
+    };
+    // Try to load `./challenge` from disk.
+    let reader = OpenOptions::new()
+        .read(true)
+        .open("/Users/thomascnorton/Documents/Manta/trusted-setup/challenge_0072")
+        .expect("unable open `./challenge` in this directory");
+    // Make a memory map
+    let readable_map = unsafe {
+        MmapOptions::new()
+            .map(&reader)
+            .expect("unable to create a memory map for input")
+    };
+
+    let acc = read_subaccumulator::<SmallBn254>(readable_map).unwrap();
+
+    // A dummy circuit to use
+    let mut rng = OsRng;
+    let mut cs = R1CS::for_contexts();
+    dummy_circuit(&mut cs);
+    let mut state = initialize(acc, cs).unwrap();
+
+    // Contribute and verify
+    let mut transcript = Transcript::<SmallBn254> {
+        initial_challenge: <SmallBn254 as mpc::ProvingKeyHasher<SmallBn254>>::hash(&state),
+        initial_state: state.clone(),
+        rounds: Vec::new(),
+    };
+    let hasher = <SmallBn254 as mpc::Configuration>::Hasher::default();
+    let (mut prev_state, mut proof): (State<SmallBn254>, groth16::mpc::Proof<SmallBn254>);
+    let mut challenge = transcript.initial_challenge;
+    for _ in 0..5 {
+        prev_state = state.clone();
+        proof = contribute::<SmallBn254, _>(&hasher, &challenge, &mut state, &mut rng).unwrap();
+        (challenge, state) = verify_transform(&challenge, prev_state, state, proof.clone())
+            .expect("Verify transform failed");
+        transcript.rounds.push((state.clone(), proof));
+    }
+    verify_transform_all(
+        transcript.initial_challenge,
+        transcript.initial_state,
+        transcript.rounds,
+    )
+    .expect("Verifying all transformations failed.");
+
+    // Check that it works as a proving key
+    let mut cs = R1CS::for_proofs();
+    dummy_circuit(&mut cs);
+    prove_and_verify_circuit(state, cs, &mut rng);
 }
