@@ -18,8 +18,8 @@
 
 use crate::{
     groth16::kzg::{Accumulator, Configuration, Proof, Size},
-    pairing::Pairing,
-    util::{BlakeHasher, KZGBlakeHasher},
+    pairing::{Pairing, PairingEngineExt},
+    util::{power_pairs, BlakeHasher, KZGBlakeHasher},
 };
 use ark_bn254::{Bn254, Fr, G1Affine, G2Affine, Parameters};
 use ark_ec::{
@@ -347,9 +347,76 @@ pub fn get_size(element: ElementType) -> usize {
     }
 }
 
-#[test]
-pub fn dummy_test() {
-    println!("Hello");
+/// Reads some number of powers from tau_g1, alpha_tau_g1, or beta_tau_g1 as well as the same
+/// number from tau_g2.  Checks that all points are on-curve and in-subgroup. Returns as vectors
+pub fn get_g1_and_g2_powers(
+    size: usize,
+    element_type: ElementType,
+) -> Result<(Vec<G1Affine>, Vec<G2Affine>), PointDeserializeError> {
+    if (element_type == ElementType::TauG2) | (element_type == ElementType::BetaG2) {
+        panic!("The element type should be in G1")
+    }
+    // Try to load `./challenge` from disk.
+    let reader = OpenOptions::new()
+        .read(true)
+        .open("/Users/thomascnorton/Documents/Manta/trusted-setup/challenge_0072")
+        .expect("unable open `./challenge` in this directory");
+    // Make a memory map
+    let readable_map = unsafe {
+        MmapOptions::new()
+            .map(&reader)
+            .expect("unable to create a memory map for input")
+    };
+
+    let mut g1_powers = Vec::<G1Affine>::new();
+    let mut g2_powers = Vec::<G2Affine>::new();
+    for i in 0..size {
+        let position = calculate_mmap_position(i, element_type);
+        let element_size = get_size(element_type);
+        let mut reader = readable_map
+            .get(position..position + element_size)
+            .expect("cannot read point data from file");
+        g1_powers.push(match deserialize_g1_unchecked(&mut reader) {
+            Ok(p) => match curve_point_checks(&p) {
+                Err(e) => {
+                    println!("Error {:?} occured with element {:?}", e, i);
+                    return Err(e);
+                }
+                _ => p,
+            },
+            Err(e) => {
+                println!("Error {:?} occured with element {:?}", e, i);
+                return Err(e);
+            }
+        });
+        let position = calculate_mmap_position(i, ElementType::TauG2);
+        let element_size = get_size(ElementType::TauG2);
+        let mut reader = readable_map
+            .get(position..position + element_size)
+            .expect("cannot read point data from file");
+        g2_powers.push(match deserialize_g2_unchecked(&mut reader) {
+            Ok(p) => match curve_point_checks(&p) {
+                Err(e) => {
+                    println!("Error {:?} occured with element {:?}", e, i);
+                    return Err(e);
+                }
+                _ => p,
+            },
+            Err(e) => {
+                println!("Error {:?} occured with element {:?}", e, i);
+                return Err(e);
+            }
+        });
+    }
+    Ok((g1_powers, g2_powers))
+}
+
+/// Checks that a vector of G1 elements and vector of G2 elements are incrementing by the
+/// same factor.
+pub fn check_consistent_factor(g1: Vec<G1Affine>, g2: Vec<G2Affine>) -> bool {
+    let g1_pair = power_pairs(&g1);
+    let g2_pair = power_pairs(&g2);
+    Bn254::same_ratio(g1_pair, g2_pair)
 }
 
 #[test]
@@ -374,88 +441,19 @@ pub fn deserialize_g1_unchecked_test() {
 
 #[test]
 pub fn read_tau_g1_and_g2_test() {
-    // Try to load `./challenge` from disk.
-    let reader = OpenOptions::new()
-        .read(true)
-        .open("/Users/thomascnorton/Documents/Manta/trusted-setup/challenge_0072")
-        .expect("unable open `./challenge` in this directory");
-    // Make a memory map
-    let readable_map = unsafe {
-        MmapOptions::new()
-            .map(&reader)
-            .expect("unable to create a memory map for input")
-    };
-
-    // Read some powers from file
-    let num_powers: usize = 1 << 10;
-    let mut tau_g1 = Vec::<G1Affine>::new();
-    let mut tau_g2 = Vec::<G2Affine>::new();
-    for i in 0..num_powers {
-        let position = calculate_mmap_position(i, ElementType::TauG1);
-        let element_size = get_size(ElementType::TauG1);
-        let mut reader = readable_map
-            .get(position..position + element_size)
-            .expect("cannot read point data from file");
-        tau_g1.push(match deserialize_g1_unchecked(&mut reader) {
-            Ok(p) => match curve_point_checks(&p) {
-                Err(e) => {
-                    println!("Error {:?} occured with element {:?}", e, i);
-                    panic!()
-                }
-                _ => p,
-            },
-            Err(e) => {
-                println!("Error {:?} occured with element {:?}", e, i);
-                panic!()
-            }
-        });
-        let position = calculate_mmap_position(i, ElementType::TauG2);
-        let element_size = get_size(ElementType::TauG2);
-        let mut reader = readable_map
-            .get(position..position + element_size)
-            .expect("cannot read point data from file");
-        tau_g2.push(match deserialize_g2_unchecked(&mut reader) {
-            Ok(p) => match curve_point_checks(&p) {
-                Err(e) => {
-                    println!("Error {:?} occured with element {:?}", e, i);
-                    panic!()
-                }
-                _ => p,
-            },
-            Err(e) => {
-                println!("Error {:?} occured with element {:?}", e, i);
-                panic!()
-            }
-        });
-    }
+    let num_powers = 1 << 8;
+    assert!(get_g1_and_g2_powers(num_powers, ElementType::TauG1).is_ok());
+    assert!(get_g1_and_g2_powers(num_powers, ElementType::AlphaG1).is_ok());
+    assert!(get_g1_and_g2_powers(num_powers, ElementType::BetaG1).is_ok())
 }
 
 #[test]
 pub fn check_consistent_ratios_test() {
-    // Try to load `./challenge` from disk.
-    let mut reader = OpenOptions::new()
-        .read(true)
-        .open("/Users/thomascnorton/Documents/Manta/trusted-setup/challenge_0072")
-        .expect("unable open `./challenge` in this directory");
-
-    let mut hash_discard = [0u8; 64];
-    assert!(64 == Read::read(&mut reader, &mut hash_discard[..]).unwrap());
-
-    let mut tau_g1 = Vec::<G1Affine>::new();
-    for i in 0..(1 << 10) {
-        tau_g1.push(match deserialize_g1_unchecked(&mut reader) {
-            Ok(p) => p,
-            Err(e) => {
-                println!("Error {:?} occured with element {:?}", e, i);
-                panic!()
-            }
-        });
-    }
-
-    for (i, point) in tau_g1.iter().enumerate() {
-        let _ =
-            curve_point_checks(point).map_err(|e| println!("Error with point {:?} is {:?}", i, e));
-    }
-
-    // TODO : read tau_g2 powers and create pair from each with `power_pairs` and then check ratio
+    let num_powers = 1 << 8;
+    let (g1, g2) = get_g1_and_g2_powers(num_powers, ElementType::TauG1).unwrap();
+    assert!(check_consistent_factor(g1, g2));
+    let (g1, g2) = get_g1_and_g2_powers(num_powers, ElementType::AlphaG1).unwrap();
+    assert!(check_consistent_factor(g1, g2));
+    let (g1, g2) = get_g1_and_g2_powers(num_powers, ElementType::BetaG1).unwrap();
+    assert!(check_consistent_factor(g1, g2));
 }
