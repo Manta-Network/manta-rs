@@ -56,11 +56,11 @@ where
 
     /// Pushes a participant to the queue.
     #[inline]
-    pub fn push(&mut self, participant: &T) {
+    pub fn push(&mut self, priority: usize, identifier: T::Identifier) {
         self.0
-            .get_mut(participant.priority())
+            .get_mut(priority)
             .expect("Should give valid priority.")
-            .push_back(participant.identifier());
+            .push_back(identifier);
     }
 
     /// Checks if `participant` is at the front.
@@ -95,10 +95,10 @@ where
 
     /// Pops the participant at the front and returns its identifier.
     #[inline]
-    pub fn pop(&mut self) -> Option<T::Identifier> {
+    pub fn pop(&mut self) -> Option<(usize, T::Identifier)> {
         for priority in (0..N).rev() {
             if let Some(identifier) = self.0[priority].pop_front() {
-                return Some(identifier);
+                return Some((priority, identifier));
             }
         }
         None
@@ -144,14 +144,14 @@ mod test {
     /// Tests if queue is valid.
     #[test]
     fn queue_is_valid() {
-        let mut queue = Queue::<_, 2>::new();
+        let mut queue = Queue::<Item, 2>::new();
         let mut participants = Vec::with_capacity(4);
         for participant in [("a", 0), ("b", 1), ("c", 0), ("d", 1)] {
             let item = Item {
                 id: participant.0.to_string(),
                 priority: participant.1,
             };
-            queue.push(&item);
+            queue.push(item.priority, item.id.clone());
             participants.push(item);
         }
         assert_eq!(queue.len(), 4);
@@ -164,13 +164,13 @@ mod test {
         for i in 0..4 {
             assert_eq!(queue.position(&expected_order[i]), Some(i));
         }
-        assert_eq!(queue.pop(), Some("b".to_string()));
+        assert_eq!(queue.pop().unwrap().1, "b".to_string());
         assert!(!queue.is_at_front(&participants[1]));
         assert!(queue.is_at_front(&participants[3]));
-        assert_eq!(queue.pop(), Some("d".to_string()));
+        assert_eq!(queue.pop().unwrap().1, "d".to_string());
         assert!(queue.is_at_front(&participants[0]));
-        assert_eq!(queue.pop(), Some("a".to_string()));
-        assert_eq!(queue.pop(), Some("c".to_string()));
+        assert_eq!(queue.pop().unwrap().1, "a".to_string());
+        assert_eq!(queue.pop().unwrap().1, "c".to_string());
         assert_eq!(queue.pop(), None);
         assert_eq!(queue.len(), 0);
     }

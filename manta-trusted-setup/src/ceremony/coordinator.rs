@@ -24,17 +24,25 @@ use crate::{
     },
     mpc,
 };
+use core::mem::take;
 
-/// Coordinator with `V` as trusted setup verifier, `P` as participant, `M` as the map used by registry, `N` as the number of priority levels.
+/// Coordinator with `V` as trusted setup verifier, `P` as participant, `M` as the map used by registry, `N` as the number of priority levels
 pub struct Coordinator<V, P, M, const N: usize>
 where
     V: mpc::Verify,
     P: Priority + Identifier,
     M: Map<Key = P::Identifier, Value = P>,
 {
+    /// States
     state: V::State,
+
+    /// Challenge
     challenge: V::Challenge,
+
+    /// Registry of participants
     registry: Registry<M>,
+
+    /// Queue of participants
     queue: Queue<P, N>,
 }
 
@@ -44,12 +52,9 @@ where
     P: Priority + Identifier,
     M: Map<Key = P::Identifier, Value = P>,
 {
-    /// Initialize the coordinator with the initial state and challenge.
-    pub fn new(
-        // add internal state
-        state: V::State,
-        challenge: V::Challenge,
-    ) -> Self {
+    /// Initializes a coordinator with the initial state and challenge.
+    #[inline]
+    pub fn new(state: V::State, challenge: V::Challenge) -> Self {
         Self {
             state,
             challenge,
@@ -58,84 +63,79 @@ where
         }
     }
 
-    /// Get current state and challenge.
+    /// Gets the current state and challenge.
+    #[inline]
     pub fn state_and_challenge(&self) -> (&V::State, &V::Challenge) {
         (&self.state, &self.challenge)
     }
 
-    /// Check if participant is next.
+    /// Checks if the `participant` is the next.
+    #[inline]
     pub fn is_next(&self, participant: &P) -> bool {
         self.queue.is_at_front(participant)
     }
 
-    /// /// Gets the position of `participant`. Return `None` if `participant` is not in the queue.
+    /// Gets the position of `participant` and returns `None` if `participant`
+    /// is not in the queue.
+    #[inline]
     pub fn position(&self, participant: &P) -> Option<usize> {
         self.queue.position(participant)
     }
 
-    /// Update the MPC state and challenge using client's contribution.
-    /// If the contribution is valid, the participant will be removed from the waiting queue, and cannot
-    /// participate in this ceremony again.
-    /// Assumes that signatures on the state and proof have already been checked.
+    /// Updates the MPC state and challenge using client's contribution. If the contribution is valid,
+    /// the participant will be removed from the waiting queue, and cannot participate in this ceremony
+    /// again.
+    #[inline]
     pub fn update(
         &mut self,
         participant: &P::Identifier,
-        transformed_state: V::State,
+        state: V::State,
         proof: V::Proof,
     ) -> Result<(), CeremonyError>
     where
         V::State: Default, // TODO: we can use `take_mut` crate to avoid this, but need to think more
     {
-        // get participant
         let participant = self
             .registry
             .get(participant)
-            .ok_or(CeremonyError::NotRegistered)?;
-
-        // make sure it is participant's turn
+            .ok_or(CeremonyError::NotRegistered)
+            .expect("Get the participant from registry should succeed.");
         if !self.queue.is_at_front(participant) {
             return Err(CeremonyError::NotYourTurn);
         };
-
-        // verify and update the state and challenge
-        let (_, transformed_state) = V::verify_transform(
-            &self.challenge,
-            core::mem::take(&mut self.state),
-            transformed_state,
-            proof,
-        )
-        .expect("Verify transform on received contribution should succeed.");
-        self.state = transformed_state;
-
-        // remove the participant from the queue but the participant
-        // will noe be removed from the registry, so the participant will not
-        // be able to participate in this ceremony again.
+        (_, self.state) = V::verify_transform(&self.challenge, take(&mut self.state), state, proof)
+            .expect("Verify transform on received contribution should succeed.");
         self.queue.pop();
-        // println!("MPC state updated");
         Ok(())
     }
 
-    /// Register a participant and put them into the waiting queue.
+    /// Registers a participant and puts into the waiting queue.
+    #[inline]
     pub fn register(&mut self, participant: P) -> Result<(), CeremonyError> {
         let participant = self
             .registry
-            .register(participant.identifier(), participant)?;
-        self.queue.push(participant);
+            .register(participant.identifier(), participant)
+            .expect("Register a participant should succeed.");
+        self.queue
+            .push(participant.priority(), participant.identifier());
         Ok(())
     }
 
-    /// Get the participant with the given identifier. Returns `None` if not found.
+    /// Gets the participant with the given identifier and returns `None` if not found.
+    #[inline]
     pub fn get_participant(&self, identifier: &P::Identifier) -> Option<&P> {
         self.registry.get(identifier)
     }
 
-    /// Put the current contributor and move to next one. Return the participant that is skipped.
-    /// The skipped participant needs to be registered again.
-    pub fn skip_current_contributor(&mut self) -> Result<P, CeremonyError> {
-        let participant = self.queue.pop().ok_or(CeremonyError::WaitingQueueEmpty)?;
-        Ok(self
-            .registry
-            .unregister(&participant)
-            .expect("participant in the queue should be registered"))
+    /// Pops the current contributor and moves to the back.
+    #[inline]
+    pub fn skip_current_contributor(&mut self) -> Result<(), CeremonyError> {
+        let (priority, identifier) = self
+            .queue
+            .pop()
+            .ok_or(CeremonyError::WaitingQueueEmpty)
+            .expect("Poping the current participant should succeed.");
+        self.queue.push(priority, identifier);
+        Ok(())
     }
 }
