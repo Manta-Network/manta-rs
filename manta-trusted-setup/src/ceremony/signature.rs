@@ -17,6 +17,7 @@
 //! Signature Scheme
 
 use crate::ceremony::CeremonyError;
+use manta_util::serde::Serialize;
 
 /// Public Key
 pub trait HasPublicKey {
@@ -35,74 +36,38 @@ pub trait SignatureScheme {
     /// Private Key Type
     type PrivateKey;
 
-    /// Nounce Type
-    type Nounce;
+    /// Nonce Type
+    type Nonce: Serialize;
 
     /// Signature Type
     type Signature;
-}
 
-/// Signable Message
-pub trait Sign<S>
-where
-    S: SignatureScheme,
-{
-    /// Sign the message
-    fn sign(
-        &self,
-        nounce: &S::Nounce,
-        public_key: &S::PublicKey, // TODO: Signature does not need public key.
-        private_key: &S::PrivateKey,
-    ) -> Result<S::Signature, CeremonyError>;
-}
+    /// Signs a `message` and `nonce` with `(public_key, private_key)`.
+    fn sign<M>(
+        message: &M,
+        nonce: &Self::Nonce,
+        public_key: &Self::PublicKey,
+        private_key: &Self::PrivateKey,
+    ) -> Result<Self::Signature, CeremonyError>
+    where
+        M: ?Sized + AsRef<[u8]>;
 
-/// Verify
-pub trait Verify<S>
-where
-    S: SignatureScheme,
-{
-    /// Verifies the integrity of the `signature`.
-    fn verify(
-        &self,
-        nounce: &S::Nounce,
-        public_key: &S::PublicKey,
-        signature: &S::Signature,
-    ) -> Result<(), CeremonyError>;
-}
-
-/// Signed Message
-pub struct SignedMessage<T, S>
-where
-    S: SignatureScheme,
-    T: Verify<S>,
-{
-    /// Message
-    pub message: T,
-
-    /// Signature
-    pub signature: S::Signature,
-}
-
-impl<T, S> SignedMessage<T, S>
-where
-    S: SignatureScheme,
-    T: Verify<S>,
-{
-    /// Verifies the integrity of the message
-    pub fn verify(
-        &self,
-        nounce: &S::Nounce,
-        public_key: &S::PublicKey,
-    ) -> Result<(), CeremonyError> {
-        self.message.verify(nounce, public_key, &self.signature)
-    }
+    /// Verifies the `signature` of `message` and `nonce` with `public_key`.
+    fn verify<M>(
+        message: &M,
+        nonce: &Self::Nonce,
+        signature: &Self::Signature,
+        public_key: &Self::PublicKey,
+    ) -> Result<(), CeremonyError>
+    where
+        M: ?Sized + AsRef<[u8]>;
 }
 
 /// ED25519 Signature Scheme
 pub mod ed_dalek {
     use super::*;
     use alloc::vec::Vec;
-    use core::iter;
+    use ark_serialize::CanonicalSerialize;
     use ed25519_dalek::{Keypair, Signature as ED25519Signature, Signer, Verifier};
     use manta_util::{
         into_array_unchecked,
@@ -154,55 +119,47 @@ pub mod ed_dalek {
     impl SignatureScheme for Ed25519 {
         type PublicKey = PublicKey;
         type PrivateKey = PrivateKey;
+        type Nonce = u64;
         type Signature = Signature;
-        type Nounce = u8;
-    }
 
-    /// The signable messages
-    pub struct Message<'a>(pub &'a [u8]);
-
-    impl<'a> From<&'a [u8]> for Message<'a> {
-        fn from(s: &'a [u8]) -> Self {
-            Self(s)
-        }
-    }
-
-    impl<'a> Sign<Ed25519> for Message<'a> {
-        fn sign(
-            &self,
-            nounce: &<Ed25519 as SignatureScheme>::Nounce,
-            public_key: &<Ed25519 as SignatureScheme>::PublicKey,
-            private_key: &<Ed25519 as SignatureScheme>::PrivateKey,
-        ) -> Result<<Ed25519 as SignatureScheme>::Signature, CeremonyError> {
+        fn sign<M>(
+            message: &M,
+            nonce: &Self::Nonce,
+            public_key: &Self::PublicKey,
+            private_key: &Self::PrivateKey,
+        ) -> Result<Self::Signature, CeremonyError>
+        where
+            M: ?Sized + AsRef<[u8]>,
+        {
+            let mut concatenated_message = Vec::new();
+            nonce
+                .serialize_uncompressed(&mut concatenated_message)
+                .expect("Serialize Nonce should not fail. ");
+            concatenated_message.extend_from_slice(message.as_ref());
             Ok(Signature(into_array_unchecked(
                 Keypair::from_bytes(&[&private_key.0[..], &public_key.0[..]].concat())
                     .expect("Should decode keypair from bytes.")
-                    .sign(
-                        &iter::once(nounce)
-                            .chain(self.0.iter())
-                            .copied()
-                            .collect::<Vec<_>>(),
-                    ),
+                    .sign(&concatenated_message),
             )))
         }
-    }
 
-    impl<'a> Verify<Ed25519> for Message<'a> {
-        fn verify(
-            &self,
-            nounce: &<Ed25519 as SignatureScheme>::Nounce,
-            public_key: &<Ed25519 as SignatureScheme>::PublicKey,
-            signature: &<Ed25519 as SignatureScheme>::Signature,
-        ) -> Result<(), CeremonyError> {
+        fn verify<M>(
+            message: &M,
+            nonce: &Self::Nonce,
+            signature: &Self::Signature,
+            public_key: &Self::PublicKey,
+        ) -> Result<(), CeremonyError>
+        where
+            M: ?Sized + AsRef<[u8]>,
+        {
+            let mut concatenated_message = Vec::new();
+            nonce
+                .serialize_uncompressed(&mut concatenated_message)
+                .expect("Serialize Nonce should not fail. ");
+            concatenated_message.extend_from_slice(message.as_ref());
             ed25519_dalek::PublicKey::from_bytes(&public_key.0[..])
                 .expect("Should decode public key from bytes.")
-                .verify(
-                    &iter::once(nounce)
-                        .chain(self.0.iter())
-                        .copied()
-                        .collect::<Vec<_>>(),
-                    &((*signature).into()),
-                )
+                .verify(&concatenated_message, &((*signature).into()))
                 .map_err(|_| CeremonyError::InvalidSignature)
         }
     }
@@ -224,19 +181,11 @@ mod test {
             104, 148, 44, 244, 61, 116, 39, 8, 68, 216, 6, 24, 232, 68, 239, 203, 198, 2, 138, 148,
             242, 73, 122, 3, 19, 236, 195, 133, 136, 137, 146, 108,
         ]);
-        let message = Message(b"Test message");
+        let message = b"Test message";
         let nounce = 1;
-        assert!(
-            message
-                .verify(
-                    &nounce,
-                    &public_key,
-                    &message
-                        .sign(&nounce, &public_key, &private_key)
-                        .expect("Should generate a signature.")
-                )
-                .is_ok(),
-            "Should verify the signature."
-        );
+        let signature = Ed25519::sign(message, &nounce, &public_key, &private_key)
+            .expect("Should sign the message.");
+        Ed25519::verify(message, &nounce, &signature, &public_key)
+            .expect("Should verify the signature.");
     }
 }

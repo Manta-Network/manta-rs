@@ -19,7 +19,7 @@
 use crate::{
     ceremony::{
         queue::{Identifier, Priority},
-        signature::{self, HasPublicKey, SignatureScheme},
+        signature::{HasPublicKey, SignatureScheme},
         CeremonyError,
     },
     mpc,
@@ -37,41 +37,6 @@ where
     pub participant: P,
 }
 
-// TODO: Current SignatureScheme is subject to replay attacks.
-impl<P, S> signature::Sign<S> for Register<P>
-where
-    S: SignatureScheme,
-    P: Identifier + Priority + HasPublicKey<PublicKey = S::PublicKey>,
-    P::PublicKey: signature::Sign<S>,
-{
-    #[inline]
-    fn sign(
-        &self,
-        nounce: &S::Nounce,
-        public_key: &S::PublicKey,
-        private_key: &S::PrivateKey,
-    ) -> Result<S::Signature, CeremonyError> {
-        public_key.sign(nounce, public_key, private_key)
-    }
-}
-
-impl<P, S> signature::Verify<S> for Register<P>
-where
-    S: SignatureScheme,
-    P: Identifier + Priority + HasPublicKey<PublicKey = S::PublicKey>,
-    P::PublicKey: signature::Verify<S>,
-{
-    #[inline]
-    fn verify(
-        &self,
-        nounce: &S::Nounce,
-        public_key: &S::PublicKey,
-        signature: &S::Signature,
-    ) -> Result<(), CeremonyError> {
-        public_key.verify(nounce, public_key, signature)
-    }
-}
-
 /// Query MPC State with Signature
 #[derive(Debug, Deserialize, Serialize)]
 pub struct QueryMPCState<P, V>
@@ -84,43 +49,6 @@ where
 
     /// Type Parameter Marker
     __: PhantomData<V>,
-}
-
-// TODO: need further discussion: with fixed `domain_tag`, if user leaks the signature during the trusted setup
-// then someone can mock this `GetMpcRequest` and get the user's position.
-impl<P, S, V> signature::Sign<S> for QueryMPCState<P, V>
-where
-    P: Identifier + HasPublicKey<PublicKey = S::PublicKey>,
-    S: SignatureScheme,
-    V: mpc::Verify,
-    P::PublicKey: signature::Sign<S>,
-{
-    #[inline]
-    fn sign(
-        &self,
-        nounce: &S::Nounce,
-        public_key: &S::PublicKey,
-        private_key: &S::PrivateKey,
-    ) -> Result<S::Signature, CeremonyError> {
-        public_key.sign(nounce, public_key, private_key)
-    }
-}
-
-impl<P, S, V> signature::Verify<S> for QueryMPCState<P, V>
-where
-    P: Identifier + HasPublicKey<PublicKey = S::PublicKey>,
-    S: SignatureScheme,
-    V: mpc::Verify,
-    P::PublicKey: signature::Verify<S>,
-{
-    fn verify(
-        &self,
-        nounce: &S::Nounce,
-        public_key: &S::PublicKey,
-        signature: &S::Signature,
-    ) -> Result<(), CeremonyError> {
-        public_key.verify(nounce, public_key, signature)
-    }
 }
 
 impl<P, V> QueryMPCState<P, V>
@@ -192,59 +120,3 @@ where
     ///
     pub proof: V::Proof,
 }
-
-// impl<P, S, V> signature::Sign<S> for ContributeRequest<P, V>
-// where
-//     P: Identifier + HasPublicKey<PublicKey = S::PublicKey>,
-//     S: SignatureScheme,
-//     V: mpc::Verify,
-//     V::State: Clone + signature::Sign<S>,
-//     V::Proof: Clone + signature::Sign<S>,
-// {
-//     // type Signature = (
-//     //     <V::State as Sign<S>>::Signature,
-//     //     <V::Proof as Sign<S>>::Signature,
-//     // );
-
-//     #[inline]
-//     fn sign(
-//         &self,
-//         nounce: &S::Nounce,
-//         public_key: &S::PublicKey,
-//         private_key: &S::PrivateKey,
-//     ) -> Result<Self::Signature, CeremonyError> {
-//         let state_sig = self
-//             .transformed_state
-//             .sign(nounce, public_key, private_key)?;
-//         let proof_sig = self.proof.sign(nounce, public_key, private_key)?;
-//         Ok((state_sig, proof_sig))
-//     }
-// }
-
-// impl<P, S, V> signature::Verify<S> for ContributeRequest<P, V>
-// where
-//     P: Identifier + HasPublicKey<PublicKey = S::PublicKey>,
-//     S: SignatureScheme,
-//     V: mpc::Verify,
-//     V::State: Clone + signature::Verify<S>,
-//     V::Proof: Clone + signature::Verify<S>,
-// {
-//     // type Signature = (
-//     //     <V::State as signature::Verify<S>>::Signature,
-//     //     <V::Proof as signature::Verify<S>>::Signature,
-//     // );
-
-//     #[inline]
-//     fn verify(
-//         &self,
-//         nounce: &S::Nounce,
-//         public_key: &S::PublicKey,
-//         signature: &Self::Signature,
-//     ) -> Result<(), CeremonyError> {
-//         let (state_sig, proof_sig) = signature;
-//         self.transformed_state
-//             .verify(nounce, public_key, state_sig)?;
-//         self.proof.verify(nounce, public_key, proof_sig)?;
-//         Ok(())
-//     }
-// }
