@@ -204,11 +204,107 @@ impl protocol::ViewingKeyDerivationFunction<Compiler> for ViewingKeyDerivationFu
 }
 
 ///
+pub struct IncomingEncryptionSchemeConverter<COM = ()>(PhantomData<COM>);
+
+impl encryption::HeaderType for IncomingEncryptionSchemeConverter {
+    type Header = encryption::EmptyHeader;
+}
+
+impl encryption::convert::header::Header for IncomingEncryptionSchemeConverter {
+    type TargetHeader = encryption::Header<IncomingPoseidonEncryptionScheme>;
+
+    #[inline]
+    fn as_target(source: &Self::Header, _: &mut ()) -> Self::TargetHeader {
+        let _ = source;
+        vec![]
+    }
+}
+
+impl encryption::EncryptionKeyType for IncomingEncryptionSchemeConverter {
+    type EncryptionKey = Group;
+}
+
+impl encryption::convert::key::Encryption for IncomingEncryptionSchemeConverter {
+    type TargetEncryptionKey = encryption::EncryptionKey<IncomingPoseidonEncryptionScheme>;
+
+    #[inline]
+    fn as_target(source: &Self::EncryptionKey, _: &mut ()) -> Self::TargetEncryptionKey {
+        vec![Fp(source.0.x), Fp(source.0.y)]
+    }
+}
+
+impl encryption::DecryptionKeyType for IncomingEncryptionSchemeConverter {
+    type DecryptionKey = Group;
+}
+
+impl encryption::convert::key::Decryption for IncomingEncryptionSchemeConverter {
+    type TargetDecryptionKey = encryption::DecryptionKey<IncomingPoseidonEncryptionScheme>;
+
+    #[inline]
+    fn as_target(source: &Self::DecryptionKey, _: &mut ()) -> Self::TargetDecryptionKey {
+        vec![Fp(source.0.x), Fp(source.0.y)]
+    }
+}
+
+impl encryption::PlaintextType for IncomingEncryptionSchemeConverter {
+    type Plaintext = protocol::IncomingPlaintext<Config>;
+}
+
+impl encryption::convert::plaintext::Forward for IncomingEncryptionSchemeConverter {
+    type TargetPlaintext = encryption::Plaintext<IncomingPoseidonEncryptionScheme>;
+
+    #[inline]
+    fn as_target(source: &Self::Plaintext, _: &mut ()) -> Self::TargetPlaintext {
+        /*
+        vec![poseidon::encryption::PlaintextBlock(
+            vec![source.id, Fp(source.value.into())].into(),
+        )]
+        */
+        todo!()
+    }
+}
+
+impl encryption::DecryptedPlaintextType for IncomingEncryptionSchemeConverter {
+    type DecryptedPlaintext = Option<<Self as encryption::PlaintextType>::Plaintext>;
+}
+
+impl encryption::convert::plaintext::Reverse for IncomingEncryptionSchemeConverter {
+    type TargetDecryptedPlaintext =
+        encryption::DecryptedPlaintext<IncomingPoseidonEncryptionScheme>;
+
+    #[inline]
+    fn into_source(target: Self::TargetDecryptedPlaintext, _: &mut ()) -> Self::DecryptedPlaintext {
+        if target.0 && target.1.len() == 1 {
+            let block = &target.1[0].0;
+            if block.len() == 5 {
+                /* TODO:
+                Some(Asset::new(block[0], block[1].0.try_into().expect("")))
+                */
+                todo!()
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+}
+
+///
 pub type IncomingPoseidonEncryptionScheme<COM = ()> =
     poseidon::encryption::Duplexer<Poseidon5, COM>;
 
 ///
-pub type IncomingBaseEncryptionScheme<COM = ()> = IncomingPoseidonEncryptionScheme<COM>;
+pub type IncomingBaseEncryptionScheme<COM = ()> = encryption::convert::key::Converter<
+    encryption::convert::header::Converter<
+        encryption::convert::plaintext::Converter<
+            IncomingPoseidonEncryptionScheme<COM>,
+            IncomingEncryptionSchemeConverter,
+        >,
+        IncomingEncryptionSchemeConverter,
+    >,
+    IncomingEncryptionSchemeConverter,
+>;
 
 ///
 pub struct UtxoAccumulatorItemHashDomainTag;
@@ -547,7 +643,6 @@ pub type OutgoingBaseEncryptionScheme<COM = ()> = encryption::convert::key::Conv
 ///
 pub struct Config<COM = ()>(PhantomData<COM>);
 
-/* TODO:
 impl protocol::Configuration for Config {
     type Bool = bool;
     type AssetId = AssetId;
@@ -566,7 +661,6 @@ impl protocol::Configuration for Config {
         <OutgoingBaseEncryptionScheme as encryption::CiphertextType>::Ciphertext;
     type OutgoingBaseEncryptionScheme = OutgoingBaseEncryptionScheme;
 }
-*/
 
 /* TODO:
 impl<F> protocol::Configuration<Compiler> for Config<Compiler>
