@@ -210,6 +210,10 @@ impl encryption::HeaderType for IncomingEncryptionSchemeConverter {
     type Header = encryption::EmptyHeader;
 }
 
+impl encryption::HeaderType for IncomingEncryptionSchemeConverter<Compiler> {
+    type Header = encryption::EmptyHeader<Compiler>;
+}
+
 impl encryption::convert::header::Header for IncomingEncryptionSchemeConverter {
     type TargetHeader = encryption::Header<IncomingPoseidonEncryptionScheme>;
 
@@ -220,8 +224,22 @@ impl encryption::convert::header::Header for IncomingEncryptionSchemeConverter {
     }
 }
 
+impl encryption::convert::header::Header<Compiler> for IncomingEncryptionSchemeConverter<Compiler> {
+    type TargetHeader = encryption::Header<IncomingPoseidonEncryptionScheme<Compiler>>;
+
+    #[inline]
+    fn as_target(source: &Self::Header, _: &mut Compiler) -> Self::TargetHeader {
+        let _ = source;
+        vec![]
+    }
+}
+
 impl encryption::EncryptionKeyType for IncomingEncryptionSchemeConverter {
     type EncryptionKey = Group;
+}
+
+impl encryption::EncryptionKeyType for IncomingEncryptionSchemeConverter<Compiler> {
+    type EncryptionKey = GroupVar;
 }
 
 impl encryption::convert::key::Encryption for IncomingEncryptionSchemeConverter {
@@ -233,8 +251,24 @@ impl encryption::convert::key::Encryption for IncomingEncryptionSchemeConverter 
     }
 }
 
+impl encryption::convert::key::Encryption<Compiler>
+    for IncomingEncryptionSchemeConverter<Compiler>
+{
+    type TargetEncryptionKey =
+        encryption::EncryptionKey<IncomingPoseidonEncryptionScheme<Compiler>>;
+
+    #[inline]
+    fn as_target(source: &Self::EncryptionKey, _: &mut Compiler) -> Self::TargetEncryptionKey {
+        vec![source.0.x.clone(), source.0.y.clone()]
+    }
+}
+
 impl encryption::DecryptionKeyType for IncomingEncryptionSchemeConverter {
     type DecryptionKey = Group;
+}
+
+impl encryption::DecryptionKeyType for IncomingEncryptionSchemeConverter<Compiler> {
+    type DecryptionKey = GroupVar;
 }
 
 impl encryption::convert::key::Decryption for IncomingEncryptionSchemeConverter {
@@ -246,9 +280,27 @@ impl encryption::convert::key::Decryption for IncomingEncryptionSchemeConverter 
     }
 }
 
+impl encryption::convert::key::Decryption<Compiler>
+    for IncomingEncryptionSchemeConverter<Compiler>
+{
+    type TargetDecryptionKey =
+        encryption::DecryptionKey<IncomingPoseidonEncryptionScheme<Compiler>>;
+
+    #[inline]
+    fn as_target(source: &Self::DecryptionKey, _: &mut Compiler) -> Self::TargetDecryptionKey {
+        vec![source.0.x.clone(), source.0.y.clone()]
+    }
+}
+
 impl encryption::PlaintextType for IncomingEncryptionSchemeConverter {
     type Plaintext = protocol::IncomingPlaintext<Config>;
 }
+
+/* TODO:
+impl encryption::PlaintextType for IncomingEncryptionSchemeConverter<Compiler> {
+    type Plaintext = protocol::IncomingPlaintext<Config, Compiler>;
+}
+*/
 
 impl encryption::convert::plaintext::Forward for IncomingEncryptionSchemeConverter {
     type TargetPlaintext = encryption::Plaintext<IncomingPoseidonEncryptionScheme>;
@@ -264,9 +316,33 @@ impl encryption::convert::plaintext::Forward for IncomingEncryptionSchemeConvert
     }
 }
 
+/* TODO:
+impl encryption::convert::plaintext::Forward<Compiler>
+    for IncomingEncryptionSchemeConverter<Compiler>
+{
+    type TargetPlaintext = encryption::Plaintext<IncomingPoseidonEncryptionScheme<Compiler>>;
+
+    #[inline]
+    fn as_target(source: &Self::Plaintext, _: &mut Compiler) -> Self::TargetPlaintext {
+        /*
+        vec![poseidon::encryption::PlaintextBlock(
+            vec![source.id, Fp(source.value.into())].into(),
+        )]
+        */
+        todo!()
+    }
+}
+*/
+
 impl encryption::DecryptedPlaintextType for IncomingEncryptionSchemeConverter {
     type DecryptedPlaintext = Option<<Self as encryption::PlaintextType>::Plaintext>;
 }
+
+/* TODO:
+impl encryption::DecryptedPlaintextType for IncomingEncryptionSchemeConverter<Compiler> {
+    type DecryptedPlaintext = Option<<Self as encryption::PlaintextType>::Plaintext>;
+}
+*/
 
 impl encryption::convert::plaintext::Reverse for IncomingEncryptionSchemeConverter {
     type TargetDecryptedPlaintext =
@@ -289,6 +365,35 @@ impl encryption::convert::plaintext::Reverse for IncomingEncryptionSchemeConvert
         }
     }
 }
+
+/* TODO:
+impl encryption::convert::plaintext::Reverse<Compiler>
+    for IncomingEncryptionSchemeConverter<Compiler>
+{
+    type TargetDecryptedPlaintext =
+        encryption::DecryptedPlaintext<IncomingPoseidonEncryptionScheme<Compiler>>;
+
+    #[inline]
+    fn into_source(
+        target: Self::TargetDecryptedPlaintext,
+        _: &mut Compiler,
+    ) -> Self::DecryptedPlaintext {
+        if target.0 && target.1.len() == 1 {
+            let block = &target.1[0].0;
+            if block.len() == 5 {
+                /* TODO:
+                Some(Asset::new(block[0], block[1].0.try_into().expect("")))
+                */
+                todo!()
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+}
+*/
 
 ///
 pub type IncomingPoseidonEncryptionScheme<COM = ()> =
@@ -547,6 +652,10 @@ impl encryption::HeaderType for OutgoingEncryptionSchemeConverter {
     type Header = encryption::EmptyHeader;
 }
 
+impl encryption::HeaderType for OutgoingEncryptionSchemeConverter<Compiler> {
+    type Header = encryption::EmptyHeader<Compiler>;
+}
+
 impl encryption::convert::header::Header for OutgoingEncryptionSchemeConverter {
     type TargetHeader = encryption::Header<OutgoingPoseidonEncryptionScheme>;
 
@@ -557,8 +666,22 @@ impl encryption::convert::header::Header for OutgoingEncryptionSchemeConverter {
     }
 }
 
+impl encryption::convert::header::Header<Compiler> for OutgoingEncryptionSchemeConverter<Compiler> {
+    type TargetHeader = encryption::Header<OutgoingPoseidonEncryptionScheme<Compiler>>;
+
+    #[inline]
+    fn as_target(source: &Self::Header, _: &mut Compiler) -> Self::TargetHeader {
+        let _ = source;
+        vec![]
+    }
+}
+
 impl encryption::EncryptionKeyType for OutgoingEncryptionSchemeConverter {
     type EncryptionKey = Group;
+}
+
+impl encryption::EncryptionKeyType for OutgoingEncryptionSchemeConverter<Compiler> {
+    type EncryptionKey = GroupVar;
 }
 
 impl encryption::convert::key::Encryption for OutgoingEncryptionSchemeConverter {
@@ -570,8 +693,24 @@ impl encryption::convert::key::Encryption for OutgoingEncryptionSchemeConverter 
     }
 }
 
+impl encryption::convert::key::Encryption<Compiler>
+    for OutgoingEncryptionSchemeConverter<Compiler>
+{
+    type TargetEncryptionKey =
+        encryption::EncryptionKey<OutgoingPoseidonEncryptionScheme<Compiler>>;
+
+    #[inline]
+    fn as_target(source: &Self::EncryptionKey, _: &mut Compiler) -> Self::TargetEncryptionKey {
+        vec![source.0.x.clone(), source.0.y.clone()]
+    }
+}
+
 impl encryption::DecryptionKeyType for OutgoingEncryptionSchemeConverter {
     type DecryptionKey = Group;
+}
+
+impl encryption::DecryptionKeyType for OutgoingEncryptionSchemeConverter<Compiler> {
+    type DecryptionKey = GroupVar;
 }
 
 impl encryption::convert::key::Decryption for OutgoingEncryptionSchemeConverter {
@@ -583,8 +722,24 @@ impl encryption::convert::key::Decryption for OutgoingEncryptionSchemeConverter 
     }
 }
 
+impl encryption::convert::key::Decryption<Compiler>
+    for OutgoingEncryptionSchemeConverter<Compiler>
+{
+    type TargetDecryptionKey =
+        encryption::DecryptionKey<OutgoingPoseidonEncryptionScheme<Compiler>>;
+
+    #[inline]
+    fn as_target(source: &Self::DecryptionKey, _: &mut Compiler) -> Self::TargetDecryptionKey {
+        vec![source.0.x.clone(), source.0.y.clone()]
+    }
+}
+
 impl encryption::PlaintextType for OutgoingEncryptionSchemeConverter {
     type Plaintext = Asset<AssetId, AssetValue>;
+}
+
+impl encryption::PlaintextType for OutgoingEncryptionSchemeConverter<Compiler> {
+    type Plaintext = Asset<AssetIdVar, AssetValueVar>;
 }
 
 impl encryption::convert::plaintext::Forward for OutgoingEncryptionSchemeConverter {
@@ -598,7 +753,24 @@ impl encryption::convert::plaintext::Forward for OutgoingEncryptionSchemeConvert
     }
 }
 
+impl encryption::convert::plaintext::Forward<Compiler>
+    for OutgoingEncryptionSchemeConverter<Compiler>
+{
+    type TargetPlaintext = encryption::Plaintext<OutgoingPoseidonEncryptionScheme<Compiler>>;
+
+    #[inline]
+    fn as_target(source: &Self::Plaintext, _: &mut Compiler) -> Self::TargetPlaintext {
+        vec![poseidon::encryption::PlaintextBlock(
+            vec![source.id.clone(), source.value.as_ref().clone()].into(),
+        )]
+    }
+}
+
 impl encryption::DecryptedPlaintextType for OutgoingEncryptionSchemeConverter {
+    type DecryptedPlaintext = Option<<Self as encryption::PlaintextType>::Plaintext>;
+}
+
+impl encryption::DecryptedPlaintextType for OutgoingEncryptionSchemeConverter<Compiler> {
     type DecryptedPlaintext = Option<<Self as encryption::PlaintextType>::Plaintext>;
 }
 
@@ -623,6 +795,35 @@ impl encryption::convert::plaintext::Reverse for OutgoingEncryptionSchemeConvert
         }
     }
 }
+
+/*
+impl encryption::convert::plaintext::Reverse<Compiler>
+    for OutgoingEncryptionSchemeConverter<Compiler>
+{
+    type TargetDecryptedPlaintext =
+        encryption::DecryptedPlaintext<OutgoingPoseidonEncryptionScheme<Compiler>>;
+
+    #[inline]
+    fn into_source(
+        target: Self::TargetDecryptedPlaintext,
+        _: &mut Compiler,
+    ) -> Self::DecryptedPlaintext {
+        if target.0 && target.1.len() == 1 {
+            let block = &target.1[0].0;
+            if block.len() == 2 {
+                /* TODO:
+                Some(Asset::new(block[0], block[1].0.try_into().expect("")))
+                */
+                todo!()
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+}
+*/
 
 ///
 pub type OutgoingPoseidonEncryptionScheme<COM = ()> =

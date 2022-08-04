@@ -227,17 +227,17 @@ where
     }
 }
 
-impl<F> BlockElement for FpVar<F>
+impl<F> BlockElement<R1CS<F>> for FpVar<F>
 where
     F: PrimeField,
 {
     #[inline]
-    fn add(&self, rhs: &Self, _: &mut ()) -> Self {
+    fn add(&self, rhs: &Self, _: &mut R1CS<F>) -> Self {
         self + rhs
     }
 
     #[inline]
-    fn sub(&self, rhs: &Self, _: &mut ()) -> Self {
+    fn sub(&self, rhs: &Self, _: &mut R1CS<F>) -> Self {
         self - rhs
     }
 }
