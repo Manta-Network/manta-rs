@@ -106,6 +106,41 @@ pub type ProofSystem = groth16::Groth16<PairingCurve>;
 /// Proof System Error
 pub type ProofSystemError = groth16::Error;
 
+///
+pub struct Config;
+
+impl transfer::Configuration for Config {
+    type Compiler = Compiler;
+    type AssetId = utxo::v1::AssetId;
+    type AssetValue = utxo::v1::AssetValue;
+    type AssociatedData = utxo::v1::AssociatedData;
+    type Utxo = utxo::v1::Utxo;
+    type Nullifier = utxo::v1::Nullifier;
+    type Identifier = utxo::v1::Identifier;
+    type SpendingKey = utxo::v1::SpendingKey;
+    type AuthorizationRandomness = utxo::v1::AuthorizationRandomness;
+    type AuthorizationSignatureRandomness = utxo::v1::AuthorizationSignatureRandomness;
+    type MintSecret = utxo::v1::MintSecret;
+    type SpendSecret = utxo::v1::SpendSecret;
+    type UtxoAccumulatorWitness = utxo::v1::UtxoAccumulatorWitness;
+    type UtxoAccumulatorOutput = utxo::v1::UtxoAccumulatorOutput;
+    type Parameters = utxo::v1::Parameters;
+    type AuthorizationKeyVar = utxo::v1::AuthorizationKeyVar;
+    type AuthorizationRandomnessVar = utxo::v1::AuthorizationRandomnessVar;
+    type AssetIdVar = utxo::v1::AssetIdVar;
+    type AssetValueVar = utxo::v1::AssetValueVar;
+    type UtxoVar = utxo::v1::UtxoVar;
+    type NoteVar = utxo::v1::NoteVar;
+    type NullifierVar = utxo::v1::NullifierVar;
+    type UtxoAccumulatorWitnessVar = utxo::v1::UtxoAccumulatorWitnessVar;
+    type UtxoAccumulatorOutputVar = utxo::v1::UtxoAccumulatorOutputVar;
+    type UtxoAccumulatorModelVar = utxo::v1::UtxoAccumulatorModelVar;
+    type MintSecretVar = utxo::v1::MintSecretVar;
+    type SpendSecretVar = utxo::v1::SpendSecretVar;
+    type ParametersVar = utxo::v1::ParametersVar;
+    type ProofSystem = ProofSystem;
+}
+
 /* FIXME[remove]:
 /// Poseidon Specification
 pub struct PoseidonSpec<const ARITY: usize>;
