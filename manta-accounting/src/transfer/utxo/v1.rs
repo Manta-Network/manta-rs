@@ -17,15 +17,21 @@
 //! UTXO Version 1 Protocol
 
 use crate::{asset, transfer::utxo};
-use core::marker::PhantomData;
 use manta_crypto::{
     accumulator::{self, ItemHashFunction, MembershipProof},
     algebra::{security::ComputationalDiffieHellmanHardness, DiffieHellman, Group, Scalar},
-    constraint::{
-        Allocate, Allocator, Assert, AssertEq, BitAnd, BitOr, Bool, ConditionalSelect, Constant,
-        Has, PartialEq, Public, Secret, Variable, Zero,
+    eclair::{
+        alloc::{
+            mode::{Public, Secret},
+            Allocate, Allocator, Constant, Variable,
+        },
+        bool::{Assert, AssertEq, Bool, ConditionalSelect},
+        cmp::PartialEq,
+        num::Zero,
+        ops::{BitAnd, BitOr},
+        Has,
     },
-    encryption::{self, hybrid::Hybrid, Decrypt, Encrypt, EncryptedMessage},
+    encryption::{self, hybrid::Hybrid, Decrypt, EmptyHeader, Encrypt, EncryptedMessage},
     rand::{Rand, RngCore, Sample},
 };
 use manta_util::cmp::Independence;
@@ -249,7 +255,7 @@ where
         + Encrypt<
             COM,
             EncryptionKey = Self::Group,
-            Header = EmptyHeader<Self, COM>,
+            Header = EmptyHeader<COM>,
             Plaintext = IncomingPlaintext<Self, COM>,
             Ciphertext = Self::IncomingCiphertext,
         >;
@@ -285,7 +291,7 @@ where
         + Encrypt<
             COM,
             EncryptionKey = Self::Group,
-            Header = EmptyHeader<Self, COM>,
+            Header = EmptyHeader<COM>,
             Plaintext = Asset<Self, COM>,
             Ciphertext = Self::OutgoingCiphertext,
         >;
@@ -338,33 +344,6 @@ pub type OutgoingRandomness<C, COM = ()> = encryption::Randomness<OutgoingEncryp
 
 /// Outgoing Note
 pub type OutgoingNote<C, COM = ()> = EncryptedMessage<OutgoingEncryptionScheme<C, COM>>;
-
-/// Empty Header
-///
-/// The header is unused for this version of the UTXO protocol.
-#[derive(derivative::Derivative)]
-#[derivative(Default)]
-pub struct EmptyHeader<C, COM = ()>(PhantomData<C>, PhantomData<COM>)
-where
-    C: Configuration<COM> + ?Sized,
-    COM: Has<bool, Type = C::Bool>;
-
-impl<C, COM> PartialEq<Self, COM> for EmptyHeader<C, COM>
-where
-    C: Configuration<COM> + ?Sized,
-    COM: Has<bool, Type = C::Bool>,
-{
-    #[inline]
-    fn eq(&self, rhs: &Self, compiler: &mut COM) -> Bool<COM> {
-        let _ = rhs;
-        C::Bool::new_constant(&true, compiler)
-    }
-
-    #[inline]
-    fn assert_equal(&self, rhs: &Self, compiler: &mut COM) {
-        let _ = (rhs, compiler);
-    }
-}
 
 /// UTXO Model Parameters
 pub struct Parameters<C, COM = ()>

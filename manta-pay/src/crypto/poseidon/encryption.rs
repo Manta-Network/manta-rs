@@ -29,7 +29,7 @@ use manta_util::vec::padded_chunks;
 use manta_util::serde::{Deserialize, Serialize};
 
 /// Encryption Duplexer
-pub type Duplexer<S, COM> = duplex::Duplexer<Permutation<S, COM>, Encryption<S, COM>, COM>;
+pub type Duplexer<S, COM = ()> = duplex::Duplexer<Permutation<S, COM>, Encryption<S, COM>, COM>;
 
 /// Block Element
 pub trait BlockElement<COM = ()> {
@@ -101,7 +101,7 @@ where
     Hash(bound = "S::Field: Hash"),
     PartialEq(bound = "S::Field: PartialEq")
 )]
-pub struct PlaintextBlock<S, COM = ()>(Box<[S::Field]>)
+pub struct PlaintextBlock<S, COM = ()>(pub Box<[S::Field]>)
 where
     S: Specification<COM>;
 
@@ -144,7 +144,7 @@ where
     Hash(bound = "S::Field: Hash"),
     PartialEq(bound = "S::Field: PartialEq")
 )]
-pub struct CiphertextBlock<S, COM = ()>(Box<[S::Field]>)
+pub struct CiphertextBlock<S, COM = ()>(pub Box<[S::Field]>)
 where
     S: Specification<COM>;
 
@@ -187,7 +187,7 @@ where
     Hash(bound = "S::Field: Hash"),
     PartialEq(bound = "S::Field: PartialEq")
 )]
-pub struct Tag<S, COM = ()>(S::Field)
+pub struct Tag<S, COM = ()>(pub S::Field)
 where
     S: Specification<COM>;
 

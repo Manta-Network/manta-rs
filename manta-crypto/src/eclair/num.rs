@@ -31,6 +31,15 @@ pub trait Zero<COM = ()> {
     fn is_zero(&self, compiler: &mut COM) -> Self::Verification;
 }
 
+impl Zero for bool {
+    type Verification = bool;
+
+    #[inline]
+    fn is_zero(&self, _: &mut ()) -> Self::Verification {
+        !(*self)
+    }
+}
+
 /// Multiplicative Identity
 pub trait One<COM = ()> {
     /// Verification Type
@@ -39,6 +48,42 @@ pub trait One<COM = ()> {
     /// Returns a truthy value if `self` is equal to the multiplicative identity.
     fn is_one(&self, compiler: &mut COM) -> Self::Verification;
 }
+
+impl One for bool {
+    type Verification = bool;
+
+    #[inline]
+    fn is_one(&self, _: &mut ()) -> Self::Verification {
+        *self
+    }
+}
+
+/// Defines an implementation for [`Zero`] and [`One`] for integers.
+macro_rules! define_zero_one {
+    ($($type:tt),* $(,)?) => {
+        $(
+            impl Zero for $type {
+                type Verification = bool;
+
+                #[inline]
+                fn is_zero(&self, _: &mut ()) -> Self::Verification {
+                    *self == 0
+                }
+            }
+
+            impl One for $type {
+                type Verification = bool;
+
+                #[inline]
+                fn is_one(&self, _: &mut ()) -> Self::Verification {
+                    *self == 1
+                }
+            }
+        )*
+    }
+}
+
+define_zero_one!(u8, u16, u32, u64, u128, i8, i16, i32, i64, i128);
 
 /// Within-Bit-Range Assertion
 pub trait AssertWithinBitRange<T, const BITS: usize> {

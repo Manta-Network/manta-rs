@@ -32,7 +32,7 @@ use manta_crypto::{
             mode::{self, Public, Secret},
             Constant, Variable,
         },
-        bool::{Assert, ConditionalSwap},
+        bool::{Assert, Bool, ConditionalSelect, ConditionalSwap},
         num::AssertWithinBitRange,
         ops::{Add, BitAnd},
         Has, NonNative,
@@ -190,6 +190,44 @@ where
     #[inline]
     fn eq(&self, rhs: &Self, _: &mut ()) -> bool {
         PartialEq::eq(self, rhs)
+    }
+}
+
+impl<F> eclair::num::Zero for Fp<F>
+where
+    F: Field,
+{
+    type Verification = bool;
+
+    #[inline]
+    fn is_zero(&self, _: &mut ()) -> Self::Verification {
+        self.0.is_zero()
+    }
+}
+
+impl<F> eclair::num::One for Fp<F>
+where
+    F: Field,
+{
+    type Verification = bool;
+
+    #[inline]
+    fn is_one(&self, _: &mut ()) -> Self::Verification {
+        self.0.is_one()
+    }
+}
+
+impl<F> ConditionalSelect for Fp<F>
+where
+    F: Field,
+{
+    #[inline]
+    fn select(bit: &Bool, true_value: &Self, false_value: &Self, _: &mut ()) -> Self {
+        if *bit {
+            *true_value
+        } else {
+            *false_value
+        }
     }
 }
 

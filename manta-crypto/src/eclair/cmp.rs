@@ -21,7 +21,7 @@ use crate::eclair::{
     ops::Not,
     Has, Type,
 };
-use core::cmp::Ordering;
+use core::cmp::{self, Ordering};
 
 /// Partial Equivalence Relations
 pub trait PartialEq<Rhs, COM = ()>
@@ -56,6 +56,30 @@ where
         compiler.assert(&are_equal);
     }
 }
+
+///
+macro_rules! impl_partial_eq {
+    ($($type:tt),* $(,)?) => {
+        $(
+            impl<Rhs> PartialEq<Rhs> for $type
+            where
+                $type: cmp::PartialEq<Rhs>,
+            {
+                #[inline]
+                fn eq(&self, rhs: &Rhs, _: &mut ()) -> bool {
+                    cmp::PartialEq::eq(self, rhs)
+                }
+
+                #[inline]
+                fn ne(&self, rhs: &Rhs, _: &mut ()) -> bool {
+                    cmp::PartialEq::ne(self, rhs)
+                }
+            }
+        )*
+    };
+}
+
+impl_partial_eq!(bool, u8, u16, u32, u64, u128, i8, i16, i32, i64, i128);
 
 /* TODO:
 impl<T, Rhs> PartialEq<Rhs> for T

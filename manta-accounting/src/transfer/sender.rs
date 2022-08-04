@@ -343,7 +343,7 @@ where
     /// implementation of [`SenderLedger`]. This is to prevent that [`spend`] is called before
     /// [`is_unspent`] and [`has_matching_utxo_accumulator_output`].
     ///
-    /// [`Nullifier`]: crate::transfer::utxo::Spend::Nullifier
+    /// [`Nullifier`]: crate::transfer::utxo::NullifierType::Nullifier
     /// [`spend`]: Self::spend
     /// [`is_unspent`]: Self::is_unspent
     /// [`has_matching_utxo_accumulator_output`]: Self::has_matching_utxo_accumulator_output
@@ -403,7 +403,7 @@ where
     /// iterates over `iter` calling [`spend`] on each item returned. Either [`spend`] or
     /// [`spend_all`] can be implemented depending on which is more efficient.
     ///
-    /// [`Nullifier`]: crate::transfer::utxo::Spend::Nullifier
+    /// [`Nullifier`]: crate::transfer::utxo::NullifierType::Nullifier
     /// [`spend`]: Self::spend
     /// [`spend_all`]: Self::spend_all
     #[inline]

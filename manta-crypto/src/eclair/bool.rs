@@ -98,6 +98,26 @@ where
     fn select(bit: &Bool<COM>, true_value: &Self, false_value: &Self, compiler: &mut COM) -> Self;
 }
 
+///
+macro_rules! impl_conditional_select {
+    ($($type:tt),* $(,)?) => {
+        $(
+            impl ConditionalSelect for $type {
+                #[inline]
+                fn select(bit: &Bool, true_value: &Self, false_value: &Self, _: &mut ()) -> Self {
+                    if *bit {
+                        true_value.clone()
+                    } else {
+                        false_value.clone()
+                    }
+                }
+            }
+        )*
+    }
+}
+
+impl_conditional_select!(bool, u8, u16, u32, u64, u128, i8, i16, i32, i64, i128);
+
 /// Conditional Swap
 pub trait ConditionalSwap<COM = ()>: Sized
 where

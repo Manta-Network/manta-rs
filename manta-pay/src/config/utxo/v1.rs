@@ -30,8 +30,10 @@ use crate::{
 };
 use ark_ff::PrimeField;
 use core::marker::PhantomData;
+use manta_accounting::asset::Asset;
 use manta_crypto::{
     eclair::{num::U128, Has},
+    encryption,
     hash::ArrayHashFunction,
     merkle_tree,
 };
@@ -202,7 +204,11 @@ impl protocol::ViewingKeyDerivationFunction<Compiler> for ViewingKeyDerivationFu
 }
 
 ///
-pub type IncomingBaseEncryptionScheme<COM = ()> = poseidon::encryption::Encryption<Poseidon5, COM>;
+pub type IncomingPoseidonEncryptionScheme<COM = ()> =
+    poseidon::encryption::Duplexer<Poseidon5, COM>;
+
+///
+pub type IncomingBaseEncryptionScheme<COM = ()> = IncomingPoseidonEncryptionScheme<COM>;
 
 ///
 pub struct UtxoAccumulatorItemHashDomainTag;
@@ -439,7 +445,104 @@ impl protocol::NullifierCommitmentScheme<Compiler> for NullifierCommitmentScheme
 }
 
 ///
-pub type OutgoingBaseEncryptionScheme<COM = ()> = poseidon::encryption::Encryption<Poseidon2, COM>;
+pub struct OutgoingEncryptionSchemeConverter<COM = ()>(PhantomData<COM>);
+
+impl encryption::HeaderType for OutgoingEncryptionSchemeConverter {
+    type Header = encryption::EmptyHeader;
+}
+
+impl encryption::convert::header::Header for OutgoingEncryptionSchemeConverter {
+    type TargetHeader = encryption::Header<OutgoingPoseidonEncryptionScheme>;
+
+    #[inline]
+    fn as_target(source: &Self::Header, _: &mut ()) -> Self::TargetHeader {
+        let _ = source;
+        vec![]
+    }
+}
+
+impl encryption::EncryptionKeyType for OutgoingEncryptionSchemeConverter {
+    type EncryptionKey = Group;
+}
+
+impl encryption::convert::key::Encryption for OutgoingEncryptionSchemeConverter {
+    type TargetEncryptionKey = encryption::EncryptionKey<OutgoingPoseidonEncryptionScheme>;
+
+    #[inline]
+    fn as_target(source: &Self::EncryptionKey, _: &mut ()) -> Self::TargetEncryptionKey {
+        vec![Fp(source.0.x), Fp(source.0.y)]
+    }
+}
+
+impl encryption::DecryptionKeyType for OutgoingEncryptionSchemeConverter {
+    type DecryptionKey = Group;
+}
+
+impl encryption::convert::key::Decryption for OutgoingEncryptionSchemeConverter {
+    type TargetDecryptionKey = encryption::DecryptionKey<OutgoingPoseidonEncryptionScheme>;
+
+    #[inline]
+    fn as_target(source: &Self::DecryptionKey, _: &mut ()) -> Self::TargetDecryptionKey {
+        vec![Fp(source.0.x), Fp(source.0.y)]
+    }
+}
+
+impl encryption::PlaintextType for OutgoingEncryptionSchemeConverter {
+    type Plaintext = Asset<AssetId, AssetValue>;
+}
+
+impl encryption::convert::plaintext::Forward for OutgoingEncryptionSchemeConverter {
+    type TargetPlaintext = encryption::Plaintext<OutgoingPoseidonEncryptionScheme>;
+
+    #[inline]
+    fn as_target(source: &Self::Plaintext, _: &mut ()) -> Self::TargetPlaintext {
+        vec![poseidon::encryption::PlaintextBlock(
+            vec![source.id, Fp(source.value.into())].into(),
+        )]
+    }
+}
+
+impl encryption::DecryptedPlaintextType for OutgoingEncryptionSchemeConverter {
+    type DecryptedPlaintext = Option<<Self as encryption::PlaintextType>::Plaintext>;
+}
+
+impl encryption::convert::plaintext::Reverse for OutgoingEncryptionSchemeConverter {
+    type TargetDecryptedPlaintext =
+        encryption::DecryptedPlaintext<OutgoingPoseidonEncryptionScheme>;
+
+    #[inline]
+    fn into_source(target: Self::TargetDecryptedPlaintext, _: &mut ()) -> Self::DecryptedPlaintext {
+        if target.0 && target.1.len() == 1 {
+            let block = &target.1[0].0;
+            if block.len() == 2 {
+                /* TODO:
+                Some(Asset::new(block[0], block[1].0.try_into().expect("")))
+                */
+                todo!()
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+}
+
+///
+pub type OutgoingPoseidonEncryptionScheme<COM = ()> =
+    poseidon::encryption::Duplexer<Poseidon2, COM>;
+
+///
+pub type OutgoingBaseEncryptionScheme<COM = ()> = encryption::convert::key::Converter<
+    encryption::convert::header::Converter<
+        encryption::convert::plaintext::Converter<
+            OutgoingPoseidonEncryptionScheme<COM>,
+            OutgoingEncryptionSchemeConverter,
+        >,
+        OutgoingEncryptionSchemeConverter,
+    >,
+    OutgoingEncryptionSchemeConverter,
+>;
 
 ///
 pub struct Config<COM = ()>(PhantomData<COM>);
@@ -453,12 +556,14 @@ impl protocol::Configuration for Config {
     type Group = Group;
     type UtxoCommitmentScheme = UtxoCommitmentScheme;
     type ViewingKeyDerivationFunction = ViewingKeyDerivationFunction;
-    type IncomingCiphertext = ();
+    type IncomingCiphertext =
+        <IncomingBaseEncryptionScheme as encryption::CiphertextType>::Ciphertext;
     type IncomingBaseEncryptionScheme = IncomingBaseEncryptionScheme;
     type UtxoAccumulatorItemHash = UtxoAccumulatorItemHash;
-    type UtxoAccumulatorModel = ();
+    type UtxoAccumulatorModel = UtxoAccumulatorModel;
     type NullifierCommitmentScheme = NullifierCommitmentScheme;
-    type OutgoingCiphertext = ();
+    type OutgoingCiphertext =
+        <OutgoingBaseEncryptionScheme as encryption::CiphertextType>::Ciphertext;
     type OutgoingBaseEncryptionScheme = OutgoingBaseEncryptionScheme;
 }
 */

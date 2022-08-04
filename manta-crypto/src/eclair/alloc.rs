@@ -40,7 +40,7 @@ pub type Const<C, COM> = <C as Constant<COM>>::Type;
 /// _compilation time_. In this case, we take an explicit value of the underlying type and directly
 /// return an allocated value in the `COM` compiler. Contrast this with [`Variable`] types whose
 /// values are not known at _compilation time_ and are only known at _execution time_.
-pub trait Constant<COM>
+pub trait Constant<COM = ()>
 where
     COM: ?Sized,
 {
@@ -49,6 +49,15 @@ where
 
     /// Allocates a new constant from `this` into the `compiler`.
     fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self;
+}
+
+impl Constant for bool {
+    type Type = bool;
+
+    #[inline]
+    fn new_constant(this: &Self::Type, _: &mut ()) -> Self {
+        *this
+    }
 }
 
 impl<COM> Constant<COM> for ()
@@ -92,7 +101,7 @@ pub type Var<V, M, COM> = <V as Variable<M, COM>>::Type;
 /// The tag `M` in the type parameters of this trait refers to the [`Variable`]'s allocation mode.
 /// See the [`mode`] module for more details on why allocation modes are necessary and useful and
 /// how to use them.
-pub trait Variable<M, COM>
+pub trait Variable<M, COM = ()>
 where
     COM: ?Sized,
 {
@@ -155,7 +164,7 @@ where
 ///
 /// See [`Constant`] and [`Variable`] for more details on including a specific variable in the
 /// allocation scheme for a compiler.
-pub trait Allocate<COM>
+pub trait Allocate<COM = ()>
 where
     COM: ?Sized,
 {
