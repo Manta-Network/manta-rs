@@ -863,7 +863,6 @@ impl protocol::Configuration for Config {
     type OutgoingBaseEncryptionScheme = OutgoingBaseEncryptionScheme;
 }
 
-/* TODO:
 impl protocol::Configuration<Compiler> for Config<Compiler> {
     type Bool = Boolean<F>;
     type AssetId = AssetIdVar;
@@ -877,8 +876,8 @@ impl protocol::Configuration<Compiler> for Config<Compiler> {
     type IncomingBaseEncryptionScheme = IncomingBaseEncryptionScheme<Compiler>;
     type UtxoAccumulatorItemHash = UtxoAccumulatorItemHash<Compiler>;
     type UtxoAccumulatorModel = UtxoAccumulatorModelVar;
+    type NullifierCommitmentScheme = NullifierCommitmentScheme<Compiler>;
     type OutgoingCiphertext =
         <OutgoingBaseEncryptionScheme<Compiler> as encryption::CiphertextType>::Ciphertext;
     type OutgoingBaseEncryptionScheme = OutgoingBaseEncryptionScheme<Compiler>;
 }
-*/

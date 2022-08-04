@@ -18,7 +18,10 @@
 
 use crate::eclair::{
     alloc::{Allocator, Variable},
-    ops::{Add, AddAssign, Mul, MulAssign},
+    bool::{Assert, Bool},
+    cmp::PartialEq,
+    ops::{Add, AddAssign, Mul, MulAssign, Not},
+    Has,
 };
 use core::{borrow::Borrow, ops::Deref};
 
@@ -225,6 +228,57 @@ where
     #[inline]
     fn assert_within_range(&mut self, value: &UnsignedInteger<T, BITS>) {
         self.assert_within_range(&value.0)
+    }
+}
+
+impl<T, const BITS: usize, COM> Zero<COM> for UnsignedInteger<T, BITS>
+where
+    T: Zero<COM>,
+{
+    type Verification = T::Verification;
+
+    #[inline]
+    fn is_zero(&self, compiler: &mut COM) -> Self::Verification {
+        self.0.is_zero(compiler)
+    }
+}
+
+impl<T, const BITS: usize, COM> One<COM> for UnsignedInteger<T, BITS>
+where
+    T: One<COM>,
+{
+    type Verification = T::Verification;
+
+    #[inline]
+    fn is_one(&self, compiler: &mut COM) -> Self::Verification {
+        self.0.is_one(compiler)
+    }
+}
+
+impl<T, const BITS: usize, COM> PartialEq<Self, COM> for UnsignedInteger<T, BITS>
+where
+    COM: Has<bool>,
+    T: PartialEq<T, COM>,
+{
+    #[inline]
+    fn eq(&self, rhs: &Self, compiler: &mut COM) -> Bool<COM> {
+        self.0.eq(&rhs.0, compiler)
+    }
+
+    #[inline]
+    fn ne(&self, rhs: &Self, compiler: &mut COM) -> Bool<COM>
+    where
+        Bool<COM>: Not<COM, Output = Bool<COM>>,
+    {
+        self.0.ne(&rhs.0, compiler)
+    }
+
+    #[inline]
+    fn assert_equal(&self, rhs: &Self, compiler: &mut COM)
+    where
+        COM: Assert,
+    {
+        self.0.assert_equal(&rhs.0, compiler)
     }
 }
 

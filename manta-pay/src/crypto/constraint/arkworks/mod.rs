@@ -33,7 +33,7 @@ use manta_crypto::{
             Constant, Variable,
         },
         bool::{Assert, Bool, ConditionalSelect, ConditionalSwap},
-        num::AssertWithinBitRange,
+        num::{AssertWithinBitRange, Zero},
         ops::{Add, BitAnd},
         Has, NonNative,
     },
@@ -642,6 +642,19 @@ where
     fn add(self, rhs: Self, compiler: &mut R1CS<F>) -> Self {
         let _ = compiler;
         self + rhs
+    }
+}
+
+impl<F> Zero<R1CS<F>> for FpVar<F>
+where
+    F: PrimeField,
+{
+    type Verification = Boolean<F>;
+
+    #[inline]
+    fn is_zero(&self, compiler: &mut R1CS<F>) -> Self::Verification {
+        let _ = compiler;
+        self.is_zero()
     }
 }
 
