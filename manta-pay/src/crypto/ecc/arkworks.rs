@@ -26,6 +26,7 @@ use core::marker::PhantomData;
 use manta_crypto::{
     algebra,
     constraint::{self, Allocate, Allocator, Constant, Public, Secret, Variable},
+    eclair,
     key::kdf,
     rand::{RngCore, Sample},
 };
@@ -216,6 +217,16 @@ where
     #[inline]
     fn type_info() -> scale_info::Type {
         Self::Identity::type_info()
+    }
+}
+
+impl<C> eclair::cmp::PartialEq<Self> for Group<C>
+where
+    C: ProjectiveCurve,
+{
+    #[inline]
+    fn eq(&self, rhs: &Self, _: &mut ()) -> bool {
+        PartialEq::eq(self, rhs)
     }
 }
 

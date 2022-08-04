@@ -19,9 +19,12 @@
 use crate::crypto::poseidon::{Permutation, Specification, State};
 use alloc::{boxed::Box, vec::Vec};
 use core::{fmt::Debug, hash::Hash};
-use manta_crypto::permutation::{
-    duplex::{self, Setup, Types, Verify},
-    sponge::{Read, Write},
+use manta_crypto::{
+    eclair::{self, bool::Bool, Has},
+    permutation::{
+        duplex::{self, Setup, Types, Verify},
+        sponge::{Read, Write},
+    },
 };
 use manta_util::vec::padded_chunks;
 
@@ -82,6 +85,18 @@ where
     }
 }
 
+impl<S, COM> eclair::cmp::PartialEq<Self, COM> for SetupBlock<S, COM>
+where
+    COM: Has<bool>,
+    S: Specification<COM>,
+    S::Field: eclair::cmp::PartialEq<S::Field, COM>,
+{
+    #[inline]
+    fn eq(&self, rhs: &Self, compiler: &mut COM) -> Bool<COM> {
+        todo!()
+    }
+}
+
 /// Plaintext Block
 /* TODO:
 #[cfg_attr(
@@ -118,6 +133,18 @@ where
             *elem = elem.add(&self.0[i], compiler);
         }
         CiphertextBlock(state.iter().skip(1).cloned().collect())
+    }
+}
+
+impl<S, COM> eclair::cmp::PartialEq<Self, COM> for PlaintextBlock<S, COM>
+where
+    COM: Has<bool>,
+    S: Specification<COM>,
+    S::Field: eclair::cmp::PartialEq<S::Field, COM>,
+{
+    #[inline]
+    fn eq(&self, rhs: &Self, compiler: &mut COM) -> Bool<COM> {
+        todo!()
     }
 }
 
@@ -164,6 +191,18 @@ where
     }
 }
 
+impl<S, COM> eclair::cmp::PartialEq<Self, COM> for CiphertextBlock<S, COM>
+where
+    COM: Has<bool>,
+    S: Specification<COM>,
+    S::Field: eclair::cmp::PartialEq<S::Field, COM>,
+{
+    #[inline]
+    fn eq(&self, rhs: &Self, compiler: &mut COM) -> Bool<COM> {
+        todo!()
+    }
+}
+
 /// Authentication Tag
 /* TODO:
 #[cfg_attr(
@@ -200,6 +239,18 @@ where
     fn read(state: &State<S, COM>, compiler: &mut COM) -> Self {
         let _ = compiler;
         Self(state.0[1].clone())
+    }
+}
+
+impl<S, COM> eclair::cmp::PartialEq<Self, COM> for Tag<S, COM>
+where
+    COM: Has<bool>,
+    S: Specification<COM>,
+    S::Field: eclair::cmp::PartialEq<S::Field, COM>,
+{
+    #[inline]
+    fn eq(&self, rhs: &Self, compiler: &mut COM) -> Bool<COM> {
+        self.0.eq(&rhs.0, compiler)
     }
 }
 

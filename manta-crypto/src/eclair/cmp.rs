@@ -18,7 +18,7 @@
 
 use crate::eclair::{
     bool::{Assert, Bool},
-    ops::Not,
+    ops::{BitAnd, Not},
     Has, Type,
 };
 use core::cmp::{self, Ordering};
@@ -80,6 +80,18 @@ macro_rules! impl_partial_eq {
 }
 
 impl_partial_eq!(bool, u8, u16, u32, u64, u128, i8, i16, i32, i64, i128);
+
+impl<T, Rhs, COM> PartialEq<Vec<Rhs>, COM> for Vec<T>
+where
+    COM: Has<bool>,
+    Bool<COM>: BitAnd<Bool<COM>, COM, Output = Bool<COM>>,
+    T: PartialEq<Rhs, COM>,
+{
+    #[inline]
+    fn eq(&self, rhs: &Vec<Rhs>, compiler: &mut COM) -> Bool<COM> {
+        todo!()
+    }
+}
 
 /* TODO:
 impl<T, Rhs> PartialEq<Rhs> for T

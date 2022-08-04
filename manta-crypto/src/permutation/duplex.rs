@@ -20,6 +20,12 @@
 //       dropping it on decryption.
 
 use crate::{
+    eclair::{
+        self,
+        bool::{Assert, AssertEq, Bool},
+        ops::BitAnd,
+        Has,
+    },
     encryption::{
         CiphertextType, Decrypt, DecryptedPlaintextType, DecryptionKeyType, Encrypt,
         EncryptionKeyType, HeaderType, PlaintextType, RandomnessType,
@@ -114,6 +120,30 @@ pub struct Ciphertext<T, C> {
 
     /// Ciphertext Message
     pub message: C,
+}
+
+impl<T, C, COM> eclair::cmp::PartialEq<Self, COM> for Ciphertext<T, C>
+where
+    COM: Has<bool>,
+    Bool<COM>: BitAnd<Bool<COM>, COM, Output = Bool<COM>>,
+    T: eclair::cmp::PartialEq<T, COM>,
+    C: eclair::cmp::PartialEq<C, COM>,
+{
+    #[inline]
+    fn eq(&self, rhs: &Self, compiler: &mut COM) -> Bool<COM> {
+        self.tag
+            .eq(&rhs.tag, compiler)
+            .bitand(self.message.eq(&rhs.message, compiler), compiler)
+    }
+
+    #[inline]
+    fn assert_equal(&self, rhs: &Self, compiler: &mut COM)
+    where
+        COM: Assert,
+    {
+        compiler.assert_eq(&self.tag, &rhs.tag);
+        compiler.assert_eq(&self.message, &rhs.message);
+    }
 }
 
 /// Duplex Sponge Authenticated Encryption Scheme
