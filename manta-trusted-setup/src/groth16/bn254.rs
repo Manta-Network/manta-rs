@@ -35,7 +35,7 @@ use ark_ec::{
 use ark_ff::{field_new, PrimeField, Zero};
 use ark_groth16::{Groth16, ProvingKey};
 use ark_r1cs_std::eq::EqGadget;
-use ark_serialize::CanonicalSerialize;
+use ark_serialize::{CanonicalSerialize, CanonicalDeserialize, Read};
 use ark_snark::SNARK;
 use blake2::Digest;
 use core::fmt::Debug;
@@ -47,7 +47,8 @@ use manta_crypto::{
 use manta_pay::crypto::constraint::arkworks::{Fp, FpVar, R1CS};
 use manta_util::into_array_unchecked;
 use memmap::{Mmap, MmapOptions};
-use std::{fs::OpenOptions, io::Read, time::Instant};
+use std::{fs::{File, OpenOptions}, time::Instant};
+
 
 /// Configuration for PPoT Phase 1 over Bn254 curve.
 pub struct PpotBn254;
@@ -736,8 +737,8 @@ fn dummy_circuit(cs: &mut R1CS<Fr>) {
         .expect("enforce_equal is not allowed to fail");
 }
 
-/// Generates our `Reclaim` circuit
-fn reclaim_circuit() -> ProvingKey<Bn254> {
+/// Generates our `Reclaim` circuit with unknown variables
+fn reclaim_circuit() -> R1CS<Fr> {
     use crate::util::Sample;
     use manta_accounting::transfer::Transfer;
     use manta_crypto::{
@@ -755,22 +756,46 @@ fn reclaim_circuit() -> ProvingKey<Bn254> {
 
     // 2. Specialize the final Accumulator to phase 2 parameters, write these to transcript (?)
     let mut rng = ChaCha20Rng::from_seed([0; 32]);
-    // let mut utxo_accumulator = UtxoAccumulator::new(rng.gen());
     let mut utxo_accumulator = UtxoAccumulator::new(rng.gen());
-    // let parameters: manta_pay::crypto::constraint::arkworks::R1CS<ark_ff::Fp256<ark_bn254::FrParameters>> = rng.gen();
     let parameters = rng.gen();
 
-    let cs = Reclaim::unknown_constraints(FullParameters::new(
+    Reclaim::unknown_constraints(FullParameters::new(
         &parameters,
         <MerkleForest<_, _> as Accumulator>::model(&utxo_accumulator),
-    ));
+    ))
+}
+
+/// Generates our `Reclaim` circuit with known variables
+fn reclaim_circuit_known() -> R1CS<Fr> {
+    use crate::util::Sample;
+    use manta_accounting::transfer::Transfer;
+    use manta_accounting::transfer::test::TransferDistribution;
+    use manta_crypto::{
+        accumulator::{Accumulator, Model},
+        merkle_tree::forest::MerkleForest,
+        rand::{Rand, SeedableRng},
+    };
+    use manta_pay::{
+        config::{FullParameters, Reclaim},
+        test::payment::UtxoAccumulator,
+    };
+    use rand_chacha::ChaCha20Rng;
+
+    // 2. Specialize the final Accumulator to phase 2 parameters, write these to transcript (?)
+    let mut rng = ChaCha20Rng::from_seed([0; 32]);
+    let mut utxo_accumulator = UtxoAccumulator::new(rng.gen());
+    // let sample = Reclaim::sample(
+    //     TransferDistribution {
+    //         parameters: &parameters,
+    //         utxo_accumulator: &mut utxo_accumulator,
+    //     },
+    //     &mut rng,
+    // );
+    // let sample = manta_accounting::transfer::Transfer:
+
+    // let parameters = rng.gen();
 
     todo!()
-
-    // type Phase2Parameters = MPCParameters<<SmallBn254 as Configuration>::Pairing>;
-    // let now = Instant::now();
-    // let mut phase2_params = Phase2Parameters::new(cs, current_accumulator.clone()).unwrap();
-    // println!("The `MPCParameters::new` part took {:?}", now.elapsed());
 }
 
 /// Proves and verifies a R1CS circuit with proving key `pk` and a random number generator `rng`.
@@ -816,10 +841,8 @@ pub fn bn254_end_to_end_test() {
 
     println!("Specializing acc. to phase 2");
     let now = Instant::now();
-    // A dummy circuit to use
     let mut rng = OsRng;
-    let mut cs = R1CS::for_contexts();
-    dummy_circuit(&mut cs);
+    let cs = reclaim_circuit();
     let mut state = initialize(acc, cs).unwrap();
     println!("Finished making pk in {:?}", now.elapsed());
 
@@ -852,8 +875,38 @@ pub fn bn254_end_to_end_test() {
     .expect("Verifying all transformations failed.");
     println!("Verified phase 2 contributions in {:?}", now.elapsed());
 
+    // Write pk to file for quicker testing
+    let _f = File::create("phase2_reclaim_pk").unwrap();
+    let mut file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .truncate(true)
+        .open("phase2_reclaim_pk")
+        .expect("unable to create parameter file in this directory");
+    CanonicalSerialize::serialize_uncompressed(&state, &mut file).unwrap();
+
+    // Check that this was written correctly:
+    let mut reader = OpenOptions::new()
+        .read(true)
+        .open("phase2_reclaim_pk")
+        .expect("file not found");
+    let pk: ProvingKey<Bn254> = CanonicalDeserialize::deserialize_uncompressed(&mut reader).unwrap();
+    assert_eq!(pk, state)
+
     // Check that it works as a proving key
-    let mut cs = R1CS::for_proofs();
-    dummy_circuit(&mut cs);
-    prove_and_verify_circuit(state, cs, &mut rng);
+    // let cs = reclaim_circuit();
+    // prove_and_verify_circuit(state, cs, &mut rng);
+
+}
+
+#[test]
+pub fn bn254_pk_read_and_check_time() {
+    println!("Reading pk from file");
+    let now = Instant::now();
+    let mut reader = OpenOptions::new()
+        .read(true)
+        .open("phase2_reclaim_pk")
+        .expect("file not found");
+    let pk: ProvingKey<Bn254> = CanonicalDeserialize::deserialize_uncompressed(&mut reader).unwrap();
+    println!("Read and checked pk in {:?}", now.elapsed());
 }
