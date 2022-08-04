@@ -47,7 +47,7 @@ use manta_crypto::{
 use manta_pay::crypto::constraint::arkworks::{Fp, FpVar, R1CS};
 use manta_util::into_array_unchecked;
 use memmap::{Mmap, MmapOptions};
-use std::{fs::OpenOptions, io::Read};
+use std::{fs::OpenOptions, io::Read, time::Instant};
 
 /// Configuration for PPoT Phase 1 over Bn254 curve.
 pub struct PpotBn254;
@@ -138,7 +138,7 @@ pub struct SmallBn254;
 impl Size for SmallBn254 {
     const G1_POWERS: usize = (Self::G2_POWERS << 1) - 1;
 
-    const G2_POWERS: usize = 1 << 5;
+    const G2_POWERS: usize = 1 << 16;
 }
 
 impl Pairing for SmallBn254 {
@@ -736,6 +736,43 @@ fn dummy_circuit(cs: &mut R1CS<Fr>) {
         .expect("enforce_equal is not allowed to fail");
 }
 
+/// Generates our `Reclaim` circuit
+fn reclaim_circuit() -> ProvingKey<Bn254> {
+    use crate::util::Sample;
+    use manta_accounting::transfer::Transfer;
+    use manta_crypto::{
+        accumulator::{Accumulator, Model},
+        merkle_tree::forest::MerkleForest,
+        rand::{Rand, SeedableRng},
+    };
+    use manta_pay::{
+        config::{FullParameters, Reclaim},
+        test::payment::UtxoAccumulator,
+    };
+    use rand_chacha::ChaCha20Rng;
+
+    // use chacha
+
+    // 2. Specialize the final Accumulator to phase 2 parameters, write these to transcript (?)
+    let mut rng = ChaCha20Rng::from_seed([0; 32]);
+    // let mut utxo_accumulator = UtxoAccumulator::new(rng.gen());
+    let mut utxo_accumulator = UtxoAccumulator::new(rng.gen());
+    // let parameters: manta_pay::crypto::constraint::arkworks::R1CS<ark_ff::Fp256<ark_bn254::FrParameters>> = rng.gen();
+    let parameters = rng.gen();
+
+    let cs = Reclaim::unknown_constraints(FullParameters::new(
+        &parameters,
+        <MerkleForest<_, _> as Accumulator>::model(&utxo_accumulator),
+    ));
+
+    todo!()
+
+    // type Phase2Parameters = MPCParameters<<SmallBn254 as Configuration>::Pairing>;
+    // let now = Instant::now();
+    // let mut phase2_params = Phase2Parameters::new(cs, current_accumulator.clone()).unwrap();
+    // println!("The `MPCParameters::new` part took {:?}", now.elapsed());
+}
+
 /// Proves and verifies a R1CS circuit with proving key `pk` and a random number generator `rng`.
 #[inline]
 pub fn prove_and_verify_circuit<P, R>(pk: ProvingKey<P>, cs: R1CS<Fr>, mut rng: &mut R)
@@ -760,6 +797,8 @@ pub fn bn254_end_to_end_test() {
         groth16::mpc::{self, contribute, initialize, verify_transform, verify_transform_all},
         mpc::Transcript,
     };
+    println!("Reading subaccumulator from file");
+    let now = Instant::now();
     // Try to load `./challenge` from disk.
     let reader = OpenOptions::new()
         .read(true)
@@ -773,13 +812,18 @@ pub fn bn254_end_to_end_test() {
     };
 
     let acc = read_subaccumulator::<SmallBn254>(readable_map).unwrap();
+    println!("Finished reading subacc. in {:?}", now.elapsed());
 
+    println!("Specializing acc. to phase 2");
+    let now = Instant::now();
     // A dummy circuit to use
     let mut rng = OsRng;
     let mut cs = R1CS::for_contexts();
     dummy_circuit(&mut cs);
     let mut state = initialize(acc, cs).unwrap();
+    println!("Finished making pk in {:?}", now.elapsed());
 
+    println!("Contributing to phase 2 params");
     // Contribute and verify
     let mut transcript = Transcript::<SmallBn254> {
         initial_challenge: <SmallBn254 as mpc::ProvingKeyHasher<SmallBn254>>::hash(&state),
@@ -790,18 +834,23 @@ pub fn bn254_end_to_end_test() {
     let (mut prev_state, mut proof): (State<SmallBn254>, groth16::mpc::Proof<SmallBn254>);
     let mut challenge = transcript.initial_challenge;
     for _ in 0..5 {
+        let now = Instant::now();
         prev_state = state.clone();
         proof = contribute::<SmallBn254, _>(&hasher, &challenge, &mut state, &mut rng).unwrap();
         (challenge, state) = verify_transform(&challenge, prev_state, state, proof.clone())
             .expect("Verify transform failed");
         transcript.rounds.push((state.clone(), proof));
+        println!("Performed a contribution in {:?}", now.elapsed());
     }
+    println!("Verifying 5 contributions");
+    let now = Instant::now();
     verify_transform_all(
         transcript.initial_challenge,
         transcript.initial_state,
         transcript.rounds,
     )
     .expect("Verifying all transformations failed.");
+    println!("Verified phase 2 contributions in {:?}", now.elapsed());
 
     // Check that it works as a proving key
     let mut cs = R1CS::for_proofs();

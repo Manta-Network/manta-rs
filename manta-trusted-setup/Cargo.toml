@@ -55,6 +55,7 @@ ark-bls12-381 = { version = "0.3.0", default-features = false, features = ["curv
 ark-bn254 = { version = "0.3.0", default-features = false, features = ["curve", "scalar_field"] }
 ark-r1cs-std = { version = "0.3.1", default-features = false }
 ark-snark = { version = "0.3.0", default-features = false }
-manta-pay = { path = "../manta-pay", default-features = false, features = ["groth16"] } # TODO: To be removed
+manta-pay = { path = "../manta-pay", default-features = false, features = ["groth16", "test"] }
+manta-accounting = { path = "../manta-accounting", default-features = false }
 manta-trusted-setup = { path = ".", default-features = false, features = ["test"] }
 memmap = "0.7.0"
