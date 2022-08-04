@@ -120,7 +120,7 @@ pub mod ed_dalek {
     ///
     /// A wrapper around the byte representation of an `ed25519_dalek::PublicKey` type. The original
     /// type does not implement `Hash` and so cannot be used as a key in the `Registry`.
-    #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, Ord, PartialOrd)]
+    #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
     pub struct PublicKey(pub [u8; 32]);
 
     /// Private Key Type

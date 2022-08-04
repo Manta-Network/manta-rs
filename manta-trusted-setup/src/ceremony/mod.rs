@@ -23,10 +23,8 @@ pub mod coordinator;
 pub mod message;
 pub mod queue;
 pub mod registry;
-pub mod signature;
-
-#[cfg(feature = "std")]
 pub mod server;
+pub mod signature;
 
 /// Ceremony Error
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -48,6 +46,9 @@ pub enum CeremonyError {
 
     /// Invalid Contribution Error
     InvalidContribution,
+
+    /// Invalid Nonce
+    InvalidNonce,
 }
 
 impl Display for CeremonyError {
@@ -59,6 +60,7 @@ impl Display for CeremonyError {
             CeremonyError::NotYourTurn => write!(f, "Not your turn"),
             CeremonyError::WaitingQueueEmpty => write!(f, "Waiting queue is empty"),
             CeremonyError::InvalidContribution => write!(f, "Invalid contribution"),
+            _ => write!(f, "Unknown error"),
         }
     }
 }

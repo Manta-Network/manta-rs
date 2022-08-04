@@ -20,7 +20,7 @@ use crate::{
     ceremony::{
         coordinator::Coordinator,
         message::{
-            ContributeRequest, QueryMPCStateRequest, QueryMPCStateResponse, RegisterRequest,
+            ContributeRequest, QueryMPCStateRequest, QueryMPCStateResponse, RegisterRequest, Signed,
         },
         queue::{Identifier, Priority},
         registry::Map,
@@ -87,12 +87,12 @@ where
     #[inline]
     pub async fn register_participant(
         self,
-        request: RegisterRequest<P>,
-        signature: &S::Signature,
+        request: Signed<RegisterRequest<P>, S::Signature>,
     ) -> Result<(), CeremonyError>
     where
         RegisterRequest<P>: Serialize,
     {
+        let (request, signature) = (request.message, request.signature);
         S::verify(
             &request,
             &request.participant.nonce(),
@@ -110,12 +110,12 @@ where
     #[inline]
     pub async fn get_state_and_challenge(
         self,
-        request: QueryMPCStateRequest<P>,
-        signature: &S::Signature,
+        request: Signed<QueryMPCStateRequest<P>, S::Signature>,
     ) -> Result<QueryMPCStateResponse<V>, CeremonyError>
     where
         QueryMPCStateRequest<P>: Serialize,
     {
+        let (request, signature) = (request.message, request.signature);
         S::verify(
             &request,
             &request.participant.nonce(),
@@ -139,13 +139,13 @@ where
     #[inline]
     pub async fn update(
         self,
-        request: ContributeRequest<P, V>,
-        signature: &S::Signature,
+        request: Signed<ContributeRequest<P, V>, S::Signature>,
     ) -> Result<(), CeremonyError>
     where
         ContributeRequest<P, V>: Serialize,
         V::State: Default,
     {
+        let (request, signature) = (request.message, request.signature);
         S::verify(
             &request,
             &request.participant.nonce(),

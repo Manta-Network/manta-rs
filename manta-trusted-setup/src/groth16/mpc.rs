@@ -31,6 +31,7 @@ use ark_poly::{EvaluationDomain, Radix2EvaluationDomain};
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem, SynthesisError};
 use core::{clone::Clone, marker::PhantomData};
 use manta_crypto::rand::{CryptoRng, RngCore};
+use serde::Serialize;
 
 /// Proving Key Hasher
 pub trait ProvingKeyHasher<P>

@@ -103,8 +103,9 @@ where
         if !self.queue.is_at_front(participant) {
             return Err(CeremonyError::NotYourTurn);
         };
-        (_, self.state) = V::verify_transform(&self.challenge, take(&mut self.state), state, proof)
-            .expect("Verify transform on received contribution should succeed.");
+        self.state = V::verify_transform(&self.challenge, take(&mut self.state), state, proof)
+            .expect("Verify transform on received contribution should succeed.")
+            .1;
         self.queue.pop();
         Ok(())
     }

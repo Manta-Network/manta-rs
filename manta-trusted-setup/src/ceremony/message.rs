@@ -16,7 +16,10 @@
 
 //! Messages
 
-use crate::{ceremony::queue::Identifier, mpc};
+use crate::{
+    ceremony::{queue::Identifier, signature::SignatureScheme},
+    mpc,
+};
 use core::fmt::Debug;
 use serde::{Deserialize, Serialize};
 
@@ -76,4 +79,21 @@ where
 
     /// Proof of contribution
     pub proof: V::Proof,
+}
+
+/// Signed Message
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(
+    bound(
+        serialize = r"T: Serialize, S: Serialize",
+        deserialize = "T: Deserialize<'de>, S: Deserialize<'de>",
+    ),
+    deny_unknown_fields
+)]
+pub struct Signed<T, S> {
+    /// Message
+    pub message: T,
+
+    /// Signature
+    pub signature: S,
 }
