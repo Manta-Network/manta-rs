@@ -296,11 +296,9 @@ impl encryption::PlaintextType for IncomingEncryptionSchemeConverter {
     type Plaintext = protocol::IncomingPlaintext<Config>;
 }
 
-/*
 impl encryption::PlaintextType for IncomingEncryptionSchemeConverter<Compiler> {
-    type Plaintext = protocol::IncomingPlaintext<Config, Compiler>;
+    type Plaintext = protocol::IncomingPlaintext<Config<Compiler>, Compiler>;
 }
-*/
 
 impl encryption::convert::plaintext::Forward for IncomingEncryptionSchemeConverter {
     type TargetPlaintext = encryption::Plaintext<IncomingPoseidonEncryptionScheme>;
@@ -316,7 +314,6 @@ impl encryption::convert::plaintext::Forward for IncomingEncryptionSchemeConvert
     }
 }
 
-/*
 impl encryption::convert::plaintext::Forward<Compiler>
     for IncomingEncryptionSchemeConverter<Compiler>
 {
@@ -332,7 +329,6 @@ impl encryption::convert::plaintext::Forward<Compiler>
         todo!()
     }
 }
-*/
 
 impl encryption::DecryptedPlaintextType for IncomingEncryptionSchemeConverter {
     type DecryptedPlaintext = Option<<Self as encryption::PlaintextType>::Plaintext>;
@@ -866,7 +862,7 @@ impl protocol::Configuration for Config {
 }
 
 impl protocol::Configuration<Compiler> for Config<Compiler> {
-    type Bool = Boolean<F>;
+    type Bool = Boolean<ConstraintField>;
     type AssetId = AssetIdVar;
     type AssetValue = AssetValueVar;
     type Scalar = EmbeddedScalarVar;

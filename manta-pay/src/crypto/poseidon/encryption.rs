@@ -20,13 +20,13 @@ use crate::crypto::poseidon::{Permutation, Specification, State};
 use alloc::{boxed::Box, vec::Vec};
 use core::{fmt::Debug, hash::Hash};
 use manta_crypto::{
-    eclair::{self, bool::Bool, Has},
+    eclair::{self, bool::Bool, num::Zero, Has},
     permutation::{
         duplex::{self, Setup, Types, Verify},
         sponge::{Read, Write},
     },
 };
-use manta_util::vec::padded_chunks;
+use manta_util::vec::padded_chunks_with;
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
@@ -301,7 +301,7 @@ where
 impl<S, COM> Setup<Permutation<S, COM>, COM> for Encryption<S, COM>
 where
     S: Specification<COM>,
-    S::Field: Clone + Default + BlockElement<COM>,
+    S::Field: Clone + BlockElement<COM> + Zero<COM>,
 {
     #[inline]
     fn initialize(&self, compiler: &mut COM) -> State<S, COM> {
@@ -316,9 +316,10 @@ where
         header: &Self::Header,
         compiler: &mut COM,
     ) -> Vec<Self::SetupBlock> {
-        let _ = compiler;
-        let mut blocks = padded_chunks(key.as_slice(), S::WIDTH - 1);
-        blocks.extend(padded_chunks(header.as_slice(), S::WIDTH - 1));
+        let mut blocks = padded_chunks_with(key.as_slice(), S::WIDTH - 1, || Zero::zero(compiler));
+        blocks.extend(padded_chunks_with(header.as_slice(), S::WIDTH - 1, || {
+            Zero::zero(compiler)
+        }));
         blocks
             .into_iter()
             .map(|b| SetupBlock(b.into_boxed_slice()))

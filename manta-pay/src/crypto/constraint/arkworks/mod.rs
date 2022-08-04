@@ -34,7 +34,7 @@ use manta_crypto::{
         },
         bool::{Assert, Bool, ConditionalSelect, ConditionalSwap},
         num::{AssertWithinBitRange, Zero},
-        ops::{Add, BitAnd},
+        ops::{Add, BitAnd, BitOr},
         Has, NonNative,
     },
     rand::{RngCore, Sample},
@@ -200,6 +200,11 @@ where
     type Verification = bool;
 
     #[inline]
+    fn zero(_: &mut ()) -> Self {
+        Self(F::zero())
+    }
+
+    #[inline]
     fn is_zero(&self, _: &mut ()) -> Self::Verification {
         self.0.is_zero()
     }
@@ -210,6 +215,11 @@ where
     F: Field,
 {
     type Verification = bool;
+
+    #[inline]
+    fn one(_: &mut ()) -> Self {
+        Self(F::one())
+    }
 
     #[inline]
     fn is_one(&self, _: &mut ()) -> Self::Verification {
@@ -532,6 +542,19 @@ where
     }
 }
 
+impl<F> BitOr<Self, R1CS<F>> for Boolean<F>
+where
+    F: PrimeField,
+{
+    type Output = Self;
+
+    #[inline]
+    fn bitor(self, rhs: Self, compiler: &mut R1CS<F>) -> Self::Output {
+        let _ = compiler;
+        self.or(&rhs).expect("Bitwise OR is not allowed to fail.")
+    }
+}
+
 impl<F> Constant<R1CS<F>> for FpVar<F>
 where
     F: PrimeField,
@@ -665,6 +688,11 @@ where
     F: PrimeField,
 {
     type Verification = Boolean<F>;
+
+    #[inline]
+    fn zero(compiler: &mut R1CS<F>) -> Self {
+        todo!()
+    }
 
     #[inline]
     fn is_zero(&self, compiler: &mut R1CS<F>) -> Self::Verification {

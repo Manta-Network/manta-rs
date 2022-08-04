@@ -30,12 +30,20 @@ pub trait Zero<COM = ()> {
     /// Verification Type
     type Verification;
 
+    /// Returns the additive identity for `Self`.
+    fn zero(compiler: &mut COM) -> Self;
+
     /// Returns a truthy value if `self` is equal to the additive identity.
     fn is_zero(&self, compiler: &mut COM) -> Self::Verification;
 }
 
 impl Zero for bool {
     type Verification = bool;
+
+    #[inline]
+    fn zero(_: &mut ()) -> Self {
+        false
+    }
 
     #[inline]
     fn is_zero(&self, _: &mut ()) -> Self::Verification {
@@ -48,12 +56,20 @@ pub trait One<COM = ()> {
     /// Verification Type
     type Verification;
 
+    /// Returns the multiplicative identity for `Self`.
+    fn one(compiler: &mut COM) -> Self;
+
     /// Returns a truthy value if `self` is equal to the multiplicative identity.
     fn is_one(&self, compiler: &mut COM) -> Self::Verification;
 }
 
 impl One for bool {
     type Verification = bool;
+
+    #[inline]
+    fn one(_: &mut ()) -> Self {
+        true
+    }
 
     #[inline]
     fn is_one(&self, _: &mut ()) -> Self::Verification {
@@ -69,8 +85,13 @@ macro_rules! define_zero_one {
                 type Verification = bool;
 
                 #[inline]
-                fn is_zero(&self, _: &mut ()) -> Self::Verification {
-                    *self == 0
+                fn zero(_: &mut ()) -> Self {
+                    0
+                }
+
+                #[inline]
+                fn is_zero(&self, compiler: &mut ()) -> Self::Verification {
+                    *self == Self::zero(compiler)
                 }
             }
 
@@ -78,8 +99,13 @@ macro_rules! define_zero_one {
                 type Verification = bool;
 
                 #[inline]
-                fn is_one(&self, _: &mut ()) -> Self::Verification {
-                    *self == 1
+                fn one(_: &mut ()) -> Self {
+                    1
+                }
+
+                #[inline]
+                fn is_one(&self, compiler: &mut ()) -> Self::Verification {
+                    *self == Self::one(compiler)
                 }
             }
         )*
@@ -238,6 +264,11 @@ where
     type Verification = T::Verification;
 
     #[inline]
+    fn zero(compiler: &mut COM) -> Self {
+        Self::new_unchecked(T::zero(compiler))
+    }
+
+    #[inline]
     fn is_zero(&self, compiler: &mut COM) -> Self::Verification {
         self.0.is_zero(compiler)
     }
@@ -248,6 +279,11 @@ where
     T: One<COM>,
 {
     type Verification = T::Verification;
+
+    #[inline]
+    fn one(compiler: &mut COM) -> Self {
+        Self::new_unchecked(T::one(compiler))
+    }
 
     #[inline]
     fn is_one(&self, compiler: &mut COM) -> Self::Verification {
