@@ -618,6 +618,21 @@ where
         .expect("Conditionally selecting from two values is not allowed to fail.")
 }
 
+impl<F> ConditionalSelect<R1CS<F>> for FpVar<F>
+where
+    F: PrimeField,
+{
+    #[inline]
+    fn select(
+        bit: &Boolean<F>,
+        true_value: &Self,
+        false_value: &Self,
+        compiler: &mut R1CS<F>,
+    ) -> Self {
+        conditionally_select(bit, true_value, false_value)
+    }
+}
+
 impl<F> ConditionalSwap<R1CS<F>> for FpVar<F>
 where
     F: PrimeField,
@@ -653,8 +668,11 @@ where
 
     #[inline]
     fn is_zero(&self, compiler: &mut R1CS<F>) -> Self::Verification {
+        /*
         let _ = compiler;
         self.is_zero()
+        */
+        todo!()
     }
 }
 

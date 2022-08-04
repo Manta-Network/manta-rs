@@ -296,7 +296,7 @@ impl encryption::PlaintextType for IncomingEncryptionSchemeConverter {
     type Plaintext = protocol::IncomingPlaintext<Config>;
 }
 
-/* TODO:
+/*
 impl encryption::PlaintextType for IncomingEncryptionSchemeConverter<Compiler> {
     type Plaintext = protocol::IncomingPlaintext<Config, Compiler>;
 }
@@ -316,7 +316,7 @@ impl encryption::convert::plaintext::Forward for IncomingEncryptionSchemeConvert
     }
 }
 
-/* TODO:
+/*
 impl encryption::convert::plaintext::Forward<Compiler>
     for IncomingEncryptionSchemeConverter<Compiler>
 {
@@ -338,7 +338,7 @@ impl encryption::DecryptedPlaintextType for IncomingEncryptionSchemeConverter {
     type DecryptedPlaintext = Option<<Self as encryption::PlaintextType>::Plaintext>;
 }
 
-/* TODO:
+/*
 impl encryption::DecryptedPlaintextType for IncomingEncryptionSchemeConverter<Compiler> {
     type DecryptedPlaintext = Option<<Self as encryption::PlaintextType>::Plaintext>;
 }
@@ -366,7 +366,7 @@ impl encryption::convert::plaintext::Reverse for IncomingEncryptionSchemeConvert
     }
 }
 
-/* TODO:
+/*
 impl encryption::convert::plaintext::Reverse<Compiler>
     for IncomingEncryptionSchemeConverter<Compiler>
 {
@@ -404,11 +404,11 @@ pub type IncomingBaseEncryptionScheme<COM = ()> = encryption::convert::key::Conv
     encryption::convert::header::Converter<
         encryption::convert::plaintext::Converter<
             IncomingPoseidonEncryptionScheme<COM>,
-            IncomingEncryptionSchemeConverter,
+            IncomingEncryptionSchemeConverter<COM>,
         >,
-        IncomingEncryptionSchemeConverter,
+        IncomingEncryptionSchemeConverter<COM>,
     >,
-    IncomingEncryptionSchemeConverter,
+    IncomingEncryptionSchemeConverter<COM>,
 >;
 
 ///
@@ -770,9 +770,11 @@ impl encryption::DecryptedPlaintextType for OutgoingEncryptionSchemeConverter {
     type DecryptedPlaintext = Option<<Self as encryption::PlaintextType>::Plaintext>;
 }
 
+/*
 impl encryption::DecryptedPlaintextType for OutgoingEncryptionSchemeConverter<Compiler> {
     type DecryptedPlaintext = Option<<Self as encryption::PlaintextType>::Plaintext>;
 }
+*/
 
 impl encryption::convert::plaintext::Reverse for OutgoingEncryptionSchemeConverter {
     type TargetDecryptedPlaintext =
@@ -834,11 +836,11 @@ pub type OutgoingBaseEncryptionScheme<COM = ()> = encryption::convert::key::Conv
     encryption::convert::header::Converter<
         encryption::convert::plaintext::Converter<
             OutgoingPoseidonEncryptionScheme<COM>,
-            OutgoingEncryptionSchemeConverter,
+            OutgoingEncryptionSchemeConverter<COM>,
         >,
-        OutgoingEncryptionSchemeConverter,
+        OutgoingEncryptionSchemeConverter<COM>,
     >,
-    OutgoingEncryptionSchemeConverter,
+    OutgoingEncryptionSchemeConverter<COM>,
 >;
 
 ///

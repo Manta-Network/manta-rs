@@ -322,6 +322,8 @@ where
 ///
 /// This type can only be used whenever the embedded scalar field is **smaller** than the
 /// outer scalar field.
+#[derive(derivative::Derivative)]
+#[derivative(Clone(bound = ""))]
 pub struct ScalarVar<C, CV>(pub(crate) FpVar<ConstraintField<C>>, PhantomData<CV>)
 where
     C: ProjectiveCurve,

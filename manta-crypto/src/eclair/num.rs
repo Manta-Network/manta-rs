@@ -18,7 +18,7 @@
 
 use crate::eclair::{
     alloc::{Allocator, Variable},
-    bool::{Assert, Bool},
+    bool::{Assert, Bool, ConditionalSelect, ConditionalSwap},
     cmp::PartialEq,
     ops::{Add, AddAssign, Mul, MulAssign, Not},
     Has,
@@ -279,6 +279,29 @@ where
         COM: Assert,
     {
         self.0.assert_equal(&rhs.0, compiler)
+    }
+}
+
+impl<T, const BITS: usize, COM> ConditionalSelect<COM> for UnsignedInteger<T, BITS>
+where
+    COM: Has<bool>,
+    T: ConditionalSelect<COM>,
+{
+    #[inline]
+    fn select(bit: &Bool<COM>, true_value: &Self, false_value: &Self, compiler: &mut COM) -> Self {
+        Self::new_unchecked(T::select(bit, &true_value.0, &false_value.0, compiler))
+    }
+}
+
+impl<T, const BITS: usize, COM> ConditionalSwap<COM> for UnsignedInteger<T, BITS>
+where
+    COM: Has<bool>,
+    T: ConditionalSwap<COM>,
+{
+    #[inline]
+    fn swap(bit: &Bool<COM>, lhs: &Self, rhs: &Self, compiler: &mut COM) -> (Self, Self) {
+        let (lhs, rhs) = T::swap(bit, &lhs.0, &rhs.0, compiler);
+        (Self::new_unchecked(lhs), Self::new_unchecked(rhs))
     }
 }
 
