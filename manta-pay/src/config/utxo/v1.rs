@@ -663,10 +663,7 @@ impl protocol::Configuration for Config {
 }
 
 /* TODO:
-impl<F> protocol::Configuration<Compiler> for Config<Compiler>
-where
-    F: PrimeField,
-{
+impl protocol::Configuration<Compiler> for Config<Compiler> {
     type Bool = Boolean<F>;
     type AssetId = AssetIdVar;
     type AssetValue = AssetValueVar;
@@ -674,11 +671,13 @@ where
     type Group = GroupVar;
     type UtxoCommitmentScheme = UtxoCommitmentScheme<Compiler>;
     type ViewingKeyDerivationFunction = ViewingKeyDerivationFunction<Compiler>;
-    type IncomingCiphertext = ();
+    type IncomingCiphertext =
+        <IncomingBaseEncryptionScheme<Compiler> as encryption::CiphertextType>::Ciphertext;
     type IncomingBaseEncryptionScheme = IncomingBaseEncryptionScheme<Compiler>;
     type UtxoAccumulatorItemHash = UtxoAccumulatorItemHash<Compiler>;
-    type UtxoAccumulatorModel = ();
-    type OutgoingCiphertext = ();
+    type UtxoAccumulatorModel = UtxoAccumulatorModelVar;
+    type OutgoingCiphertext =
+        <OutgoingBaseEncryptionScheme<Compiler> as encryption::CiphertextType>::Ciphertext;
     type OutgoingBaseEncryptionScheme = OutgoingBaseEncryptionScheme<Compiler>;
 }
 */
