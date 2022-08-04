@@ -23,7 +23,7 @@ use ark_ec::{
     SWModelParameters,
 };
 use ark_ff::{BigInteger, Fp256, PrimeField, UniformRand, Zero};
-use ark_serialize::{CanonicalSerialize, Read, SerializationError, Write};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Read, SerializationError, Write};
 use ark_std::io;
 use blake2::{Blake2b512, Digest as Blake2Digest};
 use byteorder::{BigEndian, ReadBytesExt};
@@ -31,6 +31,7 @@ use core::marker::PhantomData;
 use manta_crypto::rand::{CryptoRng, OsRng, RngCore, SeedableRng};
 use manta_util::{cfg_into_iter, cfg_iter, cfg_iter_mut, cfg_reduce, into_array_unchecked};
 use rand_chacha::ChaCha20Rng;
+use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "rayon")]
 use manta_util::rayon::iter::{IndexedParallelIterator, ParallelIterator};
@@ -485,5 +486,51 @@ where
         R: CryptoRng + RngCore + ?Sized,
     {
         Self::rand(rng)
+    }
+}
+
+/// Store `T` in bytes form.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(bound(serialize = r"", deserialize = "",), deny_unknown_fields)]
+pub struct AsBytes<T> {
+    /// The bytes representation of `T`
+    pub bytes: Vec<u8>,
+    __: PhantomData<T>,
+}
+
+impl<T> AsBytes<T> {
+    /// TODO
+    pub fn new(bytes: Vec<u8>) -> Self {
+        Self {
+            bytes,
+            __: PhantomData,
+        }
+    }
+
+    /// TODO
+    pub fn from_actual(from: T) -> Self
+    where
+        T: CanonicalSerialize,
+    {
+        let mut bytes = Vec::new();
+        from.serialize(&mut bytes).unwrap();
+        Self::new(bytes)
+    }
+
+    /// TODO
+    pub fn to_actual(&self) -> T
+    where
+        T: CanonicalDeserialize,
+    {
+        T::deserialize(&mut &self.bytes[..]).unwrap()
+    }
+}
+
+impl<T> From<T> for AsBytes<T>
+where
+    T: CanonicalSerialize,
+{
+    fn from(t: T) -> Self {
+        Self::from_actual(t)
     }
 }

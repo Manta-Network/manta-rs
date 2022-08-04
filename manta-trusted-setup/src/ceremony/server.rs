@@ -30,6 +30,7 @@ use crate::{
     },
     mpc,
 };
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use serde::{de::DeserializeOwned, Serialize};
 use std::{
     future::Future,
@@ -63,6 +64,9 @@ where
     V: mpc::Verify,
     P: Priority + Identifier + signature::HasPublicKey<PublicKey = S::PublicKey> + HasNonce<S>,
     M: Map<Key = P::Identifier, Value = P>,
+    V::State: CanonicalSerialize + CanonicalDeserialize,
+    V::Challenge: CanonicalSerialize + CanonicalDeserialize,
+    V::Proof: CanonicalSerialize + CanonicalDeserialize,
 {
     /// Coordinator
     coordinator: Arc<Mutex<Coordinator<V, P, M, N>>>,
@@ -71,7 +75,6 @@ where
     __: PhantomData<S>,
 }
 
-// TODO: The implementation is currently not generic over S: SignatureScheme
 impl<V, P, M, S, const N: usize> Server<V, P, M, S, N>
 where
     V: mpc::Verify,
@@ -82,6 +85,9 @@ where
         + signature::HasPublicKey<PublicKey = S::PublicKey>
         + HasNonce<S>,
     M: Map<Key = P::Identifier, Value = P>,
+    V::State: CanonicalSerialize + CanonicalDeserialize,
+    V::Challenge: CanonicalSerialize + CanonicalDeserialize,
+    V::Proof: CanonicalSerialize + CanonicalDeserialize,
 {
     /// Verifies the registration request and registers a participant.
     #[inline]
@@ -126,7 +132,10 @@ where
         let state = self.coordinator.lock().expect("Failed to lock coordinator");
         if state.is_next(&request.participant) {
             let (state, challenge) = state.state_and_challenge();
-            Ok(QueryMPCStateResponse::Mpc(state.clone(), challenge.clone())) // TODO: remove this clone later
+            Ok(QueryMPCStateResponse::Mpc(
+                state.clone().into(),
+                challenge.clone().into(),
+            )) // TODO: remove this clone later
         } else {
             match state.position(&request.participant) {
                 Some(position) => Ok(QueryMPCStateResponse::QueuePosition(position)),
@@ -143,7 +152,6 @@ where
     ) -> Result<(), CeremonyError>
     where
         ContributeRequest<P, V>: Serialize,
-        V::State: Default,
     {
         let (request, signature) = (request.message, request.signature);
         S::verify(
@@ -158,8 +166,8 @@ where
             .expect("Lock coordinator should succeed.")
             .update(
                 &request.participant.identifier(),
-                request.state,
-                request.proof,
+                request.state.to_actual(),
+                request.proof.to_actual(),
             )
     }
 

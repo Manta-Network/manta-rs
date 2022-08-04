@@ -92,7 +92,6 @@ async fn main() -> tide::Result<()> {
 
     api.at("/register")
         .post(|r| Server::execute(r, Server::register_participant));
-    // TODO: implement serialize for `V::State`, `V::Proof`, `V::Challenge`
     api.at("/query")
         .post(|r| Server::execute(r, Server::get_state_and_challenge));
     api.at("/update")

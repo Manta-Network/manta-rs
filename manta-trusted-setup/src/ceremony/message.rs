@@ -19,6 +19,7 @@
 use crate::{
     ceremony::{queue::Identifier, signature::SignatureScheme},
     mpc,
+    util::AsBytes,
 };
 use core::fmt::Debug;
 use serde::{Deserialize, Serialize};
@@ -46,13 +47,7 @@ impl<P> QueryMPCStateRequest<P> {
 
 /// MPC Response for [`QueryMPCStateRequest`]
 #[derive(Debug, Deserialize, Serialize)]
-#[serde(
-    bound(
-        serialize = r"V::State: Serialize, V::Challenge: Serialize",
-        deserialize = "V::State: Deserialize<'de>, V::Challenge: Deserialize<'de>",
-    ),
-    deny_unknown_fields
-)]
+#[serde(bound(serialize = "", deserialize = "",), deny_unknown_fields)]
 pub enum QueryMPCStateResponse<V>
 where
     V: mpc::Verify,
@@ -61,11 +56,15 @@ where
     QueuePosition(usize),
 
     /// MPC State
-    Mpc(V::State, V::Challenge),
+    Mpc(AsBytes<V::State>, AsBytes<V::Challenge>),
 }
 
 /// Contribute Request
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(
+    bound(serialize = "P: Serialize", deserialize = "P: Deserialize<'de>",),
+    deny_unknown_fields
+)]
 pub struct ContributeRequest<P, V>
 where
     P: Identifier,
@@ -75,10 +74,10 @@ where
     pub participant: P,
 
     /// State after Contribution
-    pub state: V::State,
+    pub state: AsBytes<V::State>,
 
     /// Proof of contribution
-    pub proof: V::Proof,
+    pub proof: AsBytes<V::Proof>,
 }
 
 /// Signed Message

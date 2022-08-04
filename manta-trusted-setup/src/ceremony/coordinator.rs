@@ -91,10 +91,7 @@ where
         participant: &P::Identifier,
         state: V::State,
         proof: V::Proof,
-    ) -> Result<(), CeremonyError>
-    where
-        V::State: Default, // TODO: we can use `take_mut` crate to avoid this, but need to think more
-    {
+    ) -> Result<(), CeremonyError> {
         let participant = self
             .registry
             .get(participant)
@@ -103,9 +100,11 @@ where
         if !self.queue.is_at_front(participant) {
             return Err(CeremonyError::NotYourTurn);
         };
-        self.state = V::verify_transform(&self.challenge, take(&mut self.state), state, proof)
-            .expect("Verify transform on received contribution should succeed.")
-            .1;
+        take_mut::take(&mut self.state, |self_state| {
+            V::verify_transform(&self.challenge, self_state, state, proof)
+                .expect("Verify transform on received contribution should succeed.")
+                .1
+        });
         self.queue.pop();
         Ok(())
     }
