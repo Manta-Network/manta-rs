@@ -56,11 +56,11 @@ where
 
     /// Pushes a participant to the queue.
     #[inline]
-    pub fn push(&mut self, priority: usize, identifier: T::Identifier) {
+    pub fn push(&mut self, participant: &T) {
         self.0
-            .get_mut(priority)
+            .get_mut(participant.priority())
             .expect("Should give valid priority.")
-            .push_back(identifier);
+            .push_back(participant.identifier());
     }
 
     /// Checks if `participant` is at the front.
@@ -95,10 +95,10 @@ where
 
     /// Pops the participant at the front and returns its identifier.
     #[inline]
-    pub fn pop(&mut self) -> Option<(usize, T::Identifier)> {
+    pub fn pop(&mut self) -> Option<T::Identifier> {
         for priority in (0..N).rev() {
             if let Some(identifier) = self.0[priority].pop_front() {
-                return Some((priority, identifier));
+                return Some(identifier);
             }
         }
         None
@@ -151,7 +151,7 @@ mod test {
                 id: participant.0.to_string(),
                 priority: participant.1,
             };
-            queue.push(item.priority, item.id.clone());
+            queue.push(&item);
             participants.push(item);
         }
         assert_eq!(queue.len(), 4);

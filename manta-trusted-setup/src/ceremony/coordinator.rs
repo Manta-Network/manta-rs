@@ -116,8 +116,7 @@ where
             .registry
             .register(participant.identifier(), participant)
             .expect("Register a participant should succeed.");
-        self.queue
-            .push(participant.priority(), participant.identifier());
+        self.queue.push(&participant);
         Ok(())
     }
 
@@ -127,15 +126,17 @@ where
         self.registry.get(identifier)
     }
 
-    /// Pops the current contributor and moves to the back.
-    #[inline]
-    pub fn skip_current_contributor(&mut self) -> Result<(), CeremonyError> {
-        let (priority, identifier) = self
-            .queue
-            .pop()
-            .ok_or(CeremonyError::WaitingQueueEmpty)
-            .expect("Poping the current participant should succeed.");
-        self.queue.push(priority, identifier);
-        Ok(())
+    /// Pops the current contributor. Return the participant that is skipped.
+    /// The skipped participant needs to be registered again.
+    // TODO: If we instead move the current contributor to the end of the queue, there are 2 ways:
+    // TODO: 1. Keep the current contributor's priority, but this will halt the trusted setup if this contributor never contribute and has highest priority.
+    // TODO: 2. Lower the current contributor's priority, but this contributor will have to wait a long time when it wants to contribute again.
+    pub fn skip_current_contributor(&mut self) -> Result<P, CeremonyError> {
+        let participant = self.queue.pop().ok_or(CeremonyError::WaitingQueueEmpty)?;
+
+        Ok(self
+            .registry
+            .unregister(&participant)
+            .expect("participant in the queue should be registered"))
     }
 }
