@@ -38,7 +38,7 @@ use core::{
 };
 use derive_more::{Add, AddAssign, Display, From, Sub, SubAssign, Sum};
 use manta_crypto::{
-    constraint::{Allocate, Allocator, Secret, Variable},
+    eclair::alloc::{mode::Secret, Allocate, Allocator, Variable},
     rand::{Rand, RngCore, Sample},
 };
 use manta_util::{into_array_unchecked, Array, SizeLimit};

@@ -1,3 +1,7 @@
 [workspace]
 resolver = "2"
 members = ["manta-*", "workspace-hack"]
+exclude = ["forks/cocoon"]
+
+[patch.crates-io]
+cocoon = { path = "forks/cocoon" }
