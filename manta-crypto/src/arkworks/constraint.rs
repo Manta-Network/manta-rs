@@ -54,7 +54,7 @@ pub type SynthesisResult<T = ()> = Result<T, SynthesisError>;
 ///
 /// # Warning
 ///
-/// This does not work for all variable assignments! For some assignemnts, the variable inherits
+/// This does not work for all variable assignments! For some assignments, the variable inherits
 /// some structure from its input, like its length or number of bits, which are only known at
 /// run-time. For those cases, some mocking is required and this function can not be used directly.
 #[inline]
