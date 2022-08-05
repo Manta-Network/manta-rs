@@ -119,7 +119,7 @@ where
     type ReceivingKey;
 
     /// UTXO Commitment Randomness Type
-    type Randomness;
+    type Randomness: Clone;
 
     /// UTXO Commitment Type
     type Commitment: PartialEq<Self::Commitment, COM>;
@@ -301,8 +301,8 @@ where
 /// UTXO Configuration
 pub trait Configuration: BaseConfiguration<Bool = bool> {
     /// Signature Scheme Type
-    type SignatureScheme: signature::Sign<Message = Vec<u8>>
-        + signature::Verify<Verification = bool>;
+    type SignatureScheme: signature::Sign<SigningKey = Self::Scalar, Message = Vec<u8>>
+        + signature::Verify<VerifyingKey = Self::Group, Verification = bool>;
 }
 
 /// Asset Type
@@ -1056,7 +1056,11 @@ where
 {
     #[inline]
     fn query_identifier(&self, utxo: &Self::Utxo) -> Self::Identifier {
-        todo!()
+        Identifier::new(
+            utxo.is_transparent,
+            self.plaintext.utxo_commitment_randomness.clone(),
+            self.plaintext.key_diversifier.clone(),
+        )
     }
 }
 
@@ -1338,10 +1342,16 @@ where
 impl<C> utxo::QueryAsset for SpendSecret<C>
 where
     C: BaseConfiguration<Bool = bool>,
+    C::AssetId: Clone,
+    C::AssetValue: Clone,
 {
     #[inline]
     fn query_asset(&self, utxo: &Self::Utxo) -> Self::Asset {
-        todo!()
+        if utxo.is_transparent {
+            utxo.public_asset.clone()
+        } else {
+            self.plaintext.asset.clone()
+        }
     }
 }
 
