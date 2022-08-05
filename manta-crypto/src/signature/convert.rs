@@ -17,6 +17,7 @@
 //! Signature Scheme Message Conversion Primitives and Adapters
 
 use crate::{
+    eclair::alloc::Constant,
     rand::{Rand, RngCore, Sample},
     signature::{
         Derive, MessageType, RandomnessType, Sign, SignatureType, SigningKeyType, Verify,
@@ -172,6 +173,19 @@ where
             signature,
             compiler,
         )
+    }
+}
+
+impl<S, C, COM> Constant<COM> for Converter<S, C>
+where
+    S: Constant<COM>,
+    C: Constant<COM>,
+{
+    type Type = Converter<S::Type, C::Type>;
+
+    #[inline]
+    fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
+        Self::new(Constant::new_constant(&this.base, compiler))
     }
 }
 

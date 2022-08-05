@@ -33,6 +33,7 @@ use manta_crypto::{
     },
     encryption::{self, hybrid::Hybrid, Decrypt, EmptyHeader, Encrypt, EncryptedMessage},
     rand::{Rand, RngCore, Sample},
+    signature,
 };
 use manta_util::cmp::Independence;
 
@@ -203,7 +204,7 @@ where
 }
 
 /// UTXO Configuration
-pub trait Configuration<COM = ()>
+pub trait BaseConfiguration<COM = ()>
 where
     COM: Has<bool, Type = Self::Bool>,
 {
@@ -297,22 +298,29 @@ where
         >;
 }
 
+/// UTXO Configuration
+pub trait Configuration: BaseConfiguration<Bool = bool> {
+    /// Signature Scheme Type
+    type SignatureScheme: signature::Sign<Message = Vec<u8>>
+        + signature::Verify<Verification = bool>;
+}
+
 /// Asset Type
 pub type Asset<C, COM = ()> =
-    asset::Asset<<C as Configuration<COM>>::AssetId, <C as Configuration<COM>>::AssetValue>;
+    asset::Asset<<C as BaseConfiguration<COM>>::AssetId, <C as BaseConfiguration<COM>>::AssetValue>;
 
 /// UTXO Commitment
 pub type UtxoCommitment<C, COM = ()> =
-    <<C as Configuration<COM>>::UtxoCommitmentScheme as UtxoCommitmentScheme<COM>>::Commitment;
+    <<C as BaseConfiguration<COM>>::UtxoCommitmentScheme as UtxoCommitmentScheme<COM>>::Commitment;
 
 /// UTXO Commitment Randomness
 pub type UtxoCommitmentRandomness<C, COM = ()> =
-    <<C as Configuration<COM>>::UtxoCommitmentScheme as UtxoCommitmentScheme<COM>>::Randomness;
+    <<C as BaseConfiguration<COM>>::UtxoCommitmentScheme as UtxoCommitmentScheme<COM>>::Randomness;
 
 /// Incoming Encryption Scheme
 pub type IncomingEncryptionScheme<C, COM = ()> = Hybrid<
-    DiffieHellman<<C as Configuration<COM>>::Group, COM>,
-    <C as Configuration<COM>>::IncomingBaseEncryptionScheme,
+    DiffieHellman<<C as BaseConfiguration<COM>>::Group, COM>,
+    <C as BaseConfiguration<COM>>::IncomingBaseEncryptionScheme,
 >;
 
 /// Incoming Randomness
@@ -323,20 +331,20 @@ pub type IncomingNote<C, COM = ()> = EncryptedMessage<IncomingEncryptionScheme<C
 
 /// UTXO Accumulator Item
 pub type UtxoAccumulatorItem<C, COM = ()> =
-    <<C as Configuration<COM>>::UtxoAccumulatorItemHash as UtxoAccumulatorItemHash<COM>>::Item;
+    <<C as BaseConfiguration<COM>>::UtxoAccumulatorItemHash as UtxoAccumulatorItemHash<COM>>::Item;
 
 /// UTXO Membership Proof
 pub type UtxoMembershipProof<C, COM = ()> =
-    MembershipProof<<C as Configuration<COM>>::UtxoAccumulatorModel>;
+    MembershipProof<<C as BaseConfiguration<COM>>::UtxoAccumulatorModel>;
 
 /// Nullifier Commitment
 pub type NullifierCommitment<C, COM = ()> =
-    <<C as Configuration<COM>>::NullifierCommitmentScheme as NullifierCommitmentScheme<COM>>::Commitment;
+    <<C as BaseConfiguration<COM>>::NullifierCommitmentScheme as NullifierCommitmentScheme<COM>>::Commitment;
 
 /// Outgoing Encryption Scheme
 pub type OutgoingEncryptionScheme<C, COM = ()> = Hybrid<
-    DiffieHellman<<C as Configuration<COM>>::Group, COM>,
-    <C as Configuration<COM>>::OutgoingBaseEncryptionScheme,
+    DiffieHellman<<C as BaseConfiguration<COM>>::Group, COM>,
+    <C as BaseConfiguration<COM>>::OutgoingBaseEncryptionScheme,
 >;
 
 /// Outgoing Randomness
@@ -345,10 +353,10 @@ pub type OutgoingRandomness<C, COM = ()> = encryption::Randomness<OutgoingEncryp
 /// Outgoing Note
 pub type OutgoingNote<C, COM = ()> = EncryptedMessage<OutgoingEncryptionScheme<C, COM>>;
 
-/// UTXO Model Parameters
-pub struct Parameters<C, COM = ()>
+/// UTXO Model Base Parameters
+pub struct BaseParameters<C, COM = ()>
 where
-    C: Configuration<COM>,
+    C: BaseConfiguration<COM>,
     COM: Has<bool, Type = C::Bool>,
 {
     /// UTXO Commitment Scheme
@@ -370,72 +378,84 @@ where
     pub outgoing_base_encryption_scheme: C::OutgoingBaseEncryptionScheme,
 }
 
-impl<C, COM> utxo::auth::AuthorizationKeyType for Parameters<C, COM>
+/// UTXO Model Parameters
+pub struct Parameters<C>
 where
-    C: Configuration<COM>,
+    C: Configuration<Bool = bool>,
+{
+    /// Base Parameters
+    pub base: BaseParameters<C>,
+
+    /// Signature Scheme
+    pub signature_scheme: C::SignatureScheme,
+}
+
+impl<C, COM> utxo::auth::AuthorizationKeyType for BaseParameters<C, COM>
+where
+    C: BaseConfiguration<COM>,
     COM: Assert + Has<bool, Type = C::Bool>,
 {
     type AuthorizationKey = AuthorizationKey<C, COM>;
 }
 
-impl<C, COM> utxo::auth::RandomnessType for Parameters<C, COM>
+impl<C, COM> utxo::auth::RandomnessType for BaseParameters<C, COM>
 where
-    C: Configuration<COM>,
+    C: BaseConfiguration<COM>,
     COM: Assert + Has<bool, Type = C::Bool>,
 {
     type Randomness = C::Scalar;
 }
 
-impl<C, COM> utxo::AssetType for Parameters<C, COM>
+impl<C, COM> utxo::AssetType for BaseParameters<C, COM>
 where
-    C: Configuration<COM>,
+    C: BaseConfiguration<COM>,
     COM: Assert + Has<bool, Type = C::Bool>,
 {
     type Asset = Asset<C, COM>;
 }
 
-impl<C> utxo::AssociatedDataType for Parameters<C>
+impl<C> utxo::AssociatedDataType for BaseParameters<C>
 where
-    C: Configuration<Bool = bool>,
+    C: BaseConfiguration<Bool = bool>,
 {
     type AssociatedData = Visibility;
 }
 
-impl<C, COM> utxo::AddressType for Parameters<C, COM>
+impl<C, COM> utxo::AddressType for BaseParameters<C, COM>
 where
-    C: Configuration<COM>,
+    C: BaseConfiguration<COM>,
     COM: Assert + Has<bool, Type = C::Bool>,
 {
     type Address = Address<C, COM>;
 }
 
-impl<C, COM> utxo::NoteType for Parameters<C, COM>
+impl<C, COM> utxo::NoteType for BaseParameters<C, COM>
 where
-    C: Configuration<COM>,
+    C: BaseConfiguration<COM>,
     COM: Assert + Has<bool, Type = C::Bool>,
 {
     type Note = IncomingNote<C, COM>;
 }
 
-impl<C, COM> utxo::UtxoType for Parameters<C, COM>
+impl<C, COM> utxo::UtxoType for BaseParameters<C, COM>
 where
-    C: Configuration<COM>,
+    C: BaseConfiguration<COM>,
     COM: Assert + Has<bool, Type = C::Bool>,
 {
     type Utxo = Utxo<C, COM>;
 }
 
-impl<C, COM> utxo::NullifierType for Parameters<C, COM>
+impl<C, COM> utxo::NullifierType for BaseParameters<C, COM>
 where
-    C: Configuration<COM>,
+    C: BaseConfiguration<COM>,
     COM: Assert + Has<bool, Type = C::Bool>,
 {
     type Nullifier = Nullifier<C, COM>;
 }
 
-impl<C, COM> utxo::Mint<COM> for Parameters<C, COM>
+impl<C, COM> utxo::Mint<COM> for BaseParameters<C, COM>
 where
-    C: Configuration<COM>,
+    C: BaseConfiguration<COM>,
     COM: Assert + Has<bool, Type = C::Bool>,
 {
     type Secret = MintSecret<C, COM>;
@@ -458,9 +478,9 @@ where
     }
 }
 
-impl<C> utxo::DeriveMint for Parameters<C>
+impl<C> utxo::DeriveMint for BaseParameters<C>
 where
-    C: Configuration<Bool = bool>,
+    C: BaseConfiguration<Bool = bool>,
     C::AssetId: Clone + Default,
     C::AssetValue: Clone + Default,
     C::Scalar: Sample,
@@ -517,9 +537,9 @@ where
     }
 }
 
-impl<C, COM> accumulator::ItemHashFunction<Utxo<C, COM>, COM> for Parameters<C, COM>
+impl<C, COM> accumulator::ItemHashFunction<Utxo<C, COM>, COM> for BaseParameters<C, COM>
 where
-    C: Configuration<COM>,
+    C: BaseConfiguration<COM>,
     COM: Assert + Has<bool, Type = C::Bool>,
 {
     type Item = UtxoAccumulatorItem<C, COM>;
@@ -536,9 +556,9 @@ where
     }
 }
 
-impl<C, COM> utxo::Spend<COM> for Parameters<C, COM>
+impl<C, COM> utxo::Spend<COM> for BaseParameters<C, COM>
 where
-    C: Configuration<COM>,
+    C: BaseConfiguration<COM>,
     COM: Assert + Has<bool, Type = C::Bool>,
 {
     type UtxoAccumulatorWitness = utxo::UtxoAccumulatorWitness<Self, COM>;
@@ -577,9 +597,9 @@ where
     }
 }
 
-impl<C> utxo::DeriveSpend for Parameters<C>
+impl<C> utxo::DeriveSpend for BaseParameters<C>
 where
-    C: Configuration<Bool = bool>,
+    C: BaseConfiguration<Bool = bool>,
     C::AssetId: Clone + Default,
     C::AssetValue: Clone + Default,
     C::Scalar: Sample,
@@ -651,17 +671,17 @@ where
     }
 }
 
-impl<C, COM> utxo::IdentifierType for Parameters<C, COM>
+impl<C, COM> utxo::IdentifierType for BaseParameters<C, COM>
 where
-    C: Configuration<COM>,
+    C: BaseConfiguration<COM>,
     COM: Has<bool, Type = C::Bool>,
 {
     type Identifier = Identifier<C, COM>;
 }
 
-impl<C> utxo::DeriveDecryptionKey for Parameters<C>
+impl<C> utxo::DeriveDecryptionKey for BaseParameters<C>
 where
-    C: Configuration<Bool = bool>,
+    C: BaseConfiguration<Bool = bool>,
 {
     type DecryptionKey = C::Scalar;
 
@@ -673,9 +693,9 @@ where
     }
 }
 
-impl<C> utxo::NoteOpen for Parameters<C>
+impl<C> utxo::NoteOpen for BaseParameters<C>
 where
-    C: Configuration<Bool = bool>,
+    C: BaseConfiguration<Bool = bool>,
     C::IncomingBaseEncryptionScheme:
         Decrypt<DecryptionKey = C::Group, DecryptedPlaintext = Option<IncomingPlaintext<C>>>,
 {
@@ -706,7 +726,7 @@ where
 /// Address
 pub struct Address<C, COM = ()>
 where
-    C: Configuration<COM> + ?Sized,
+    C: BaseConfiguration<COM> + ?Sized,
     COM: Has<bool, Type = C::Bool>,
 {
     /// Key Diversifier
@@ -718,7 +738,7 @@ where
 
 impl<C, COM> Address<C, COM>
 where
-    C: Configuration<COM> + ?Sized,
+    C: BaseConfiguration<COM> + ?Sized,
     COM: Has<bool, Type = C::Bool>,
 {
     /// Builds a new [`Address`] from `key_diversifier` and `receiving_key`.
@@ -733,7 +753,7 @@ where
 
 impl<C> Sample for Address<C>
 where
-    C: Configuration<Bool = bool> + ?Sized,
+    C: BaseConfiguration<Bool = bool> + ?Sized,
     C::Group: Sample,
 {
     #[inline]
@@ -748,7 +768,7 @@ where
 /// Incoming Note Plaintext
 pub struct IncomingPlaintext<C, COM = ()>
 where
-    C: Configuration<COM> + ?Sized,
+    C: BaseConfiguration<COM> + ?Sized,
     COM: Has<bool, Type = C::Bool>,
 {
     /// UTXO Commitment Randomness
@@ -763,7 +783,7 @@ where
 
 impl<C, COM> IncomingPlaintext<C, COM>
 where
-    C: Configuration<COM> + ?Sized,
+    C: BaseConfiguration<COM> + ?Sized,
     COM: Has<bool, Type = C::Bool>,
 {
     /// Builds a new [`IncomingPlaintext`] from `utxo_commitment_randomness`, `asset`, and
@@ -784,13 +804,13 @@ where
 
 impl<C, COM> Variable<Secret, COM> for IncomingPlaintext<C, COM>
 where
-    C: Configuration<COM> + Constant<COM> + ?Sized,
+    C: BaseConfiguration<COM> + Constant<COM> + ?Sized,
     COM: Has<bool, Type = C::Bool>,
-    C::Type: Configuration<Bool = bool>,
+    C::Type: BaseConfiguration<Bool = bool>,
     UtxoCommitmentRandomness<C, COM>:
         Variable<Secret, COM, Type = UtxoCommitmentRandomness<C::Type>>,
     Asset<C, COM>: Variable<Secret, COM, Type = Asset<C::Type>>,
-    C::Group: Variable<Secret, COM, Type = <C::Type as Configuration>::Group>,
+    C::Group: Variable<Secret, COM, Type = <C::Type as BaseConfiguration>::Group>,
 {
     type Type = IncomingPlaintext<C::Type>;
 
@@ -816,7 +836,7 @@ where
 /// UTXO
 pub struct Utxo<C, COM = ()>
 where
-    C: Configuration<COM>,
+    C: BaseConfiguration<COM>,
     COM: Has<bool, Type = C::Bool>,
 {
     /// Transparency Flag
@@ -831,7 +851,7 @@ where
 
 impl<C, COM> Utxo<C, COM>
 where
-    C: Configuration<COM>,
+    C: BaseConfiguration<COM>,
     COM: Has<bool, Type = C::Bool>,
 {
     /// Builds a new [`Utxo`] from `is_transparent`, `public_asset`, and `commitment`.
@@ -851,7 +871,7 @@ where
 
 impl<C, COM> PartialEq<Self, COM> for Utxo<C, COM>
 where
-    C: Configuration<COM>,
+    C: BaseConfiguration<COM>,
     COM: Has<bool, Type = C::Bool>,
 {
     #[inline]
@@ -875,10 +895,10 @@ where
 
 impl<C, COM, M> Variable<M, COM> for Utxo<C, COM>
 where
-    C: Configuration<COM> + Constant<COM>,
+    C: BaseConfiguration<COM> + Constant<COM>,
     COM: Has<bool, Type = C::Bool>,
-    C::Type: Configuration<Bool = bool>,
-    C::Bool: Variable<M, COM, Type = <C::Type as Configuration>::Bool>,
+    C::Type: BaseConfiguration<Bool = bool>,
+    C::Bool: Variable<M, COM, Type = <C::Type as BaseConfiguration>::Bool>,
     Asset<C, COM>: Variable<M, COM, Type = Asset<C::Type>>,
     UtxoCommitment<C, COM>: Variable<M, COM, Type = UtxoCommitment<C::Type>>,
 {
@@ -905,7 +925,7 @@ where
 
 impl<C> Independence<utxo::UtxoIndependence> for Utxo<C>
 where
-    C: Configuration<Bool = bool>,
+    C: BaseConfiguration<Bool = bool>,
 {
     #[inline]
     fn is_independent(&self, rhs: &Self) -> bool {
@@ -916,7 +936,7 @@ where
 /// Secret required to Mint a UTXO
 pub struct MintSecret<C, COM = ()>
 where
-    C: Configuration<COM>,
+    C: BaseConfiguration<COM>,
     COM: Has<bool, Type = C::Bool>,
 {
     /// Receiving Key
@@ -931,7 +951,7 @@ where
 
 impl<C, COM> MintSecret<C, COM>
 where
-    C: Configuration<COM>,
+    C: BaseConfiguration<COM>,
     COM: Has<bool, Type = C::Bool>,
 {
     /// Builds a new [`MintSecret`] from `receiving_key`, `incoming_randomness`, and `plaintext`.
@@ -1016,7 +1036,7 @@ where
 
 impl<C, COM> utxo::IdentifierType for MintSecret<C, COM>
 where
-    C: Configuration<COM>,
+    C: BaseConfiguration<COM>,
     COM: Has<bool, Type = C::Bool>,
 {
     type Identifier = Identifier<C, COM>;
@@ -1024,7 +1044,7 @@ where
 
 impl<C, COM> utxo::UtxoType for MintSecret<C, COM>
 where
-    C: Configuration<COM>,
+    C: BaseConfiguration<COM>,
     COM: Has<bool, Type = C::Bool>,
 {
     type Utxo = Utxo<C, COM>;
@@ -1032,7 +1052,7 @@ where
 
 impl<C> utxo::QueryIdentifier for MintSecret<C>
 where
-    C: Configuration<Bool = bool>,
+    C: BaseConfiguration<Bool = bool>,
 {
     #[inline]
     fn query_identifier(&self, utxo: &Self::Utxo) -> Self::Identifier {
@@ -1042,10 +1062,10 @@ where
 
 impl<C, COM> Variable<Secret, COM> for MintSecret<C, COM>
 where
-    C: Configuration<COM> + Constant<COM>,
+    C: BaseConfiguration<COM> + Constant<COM>,
     COM: Has<bool, Type = C::Bool>,
-    C::Type: Configuration<Bool = bool>,
-    C::Group: Variable<Secret, COM, Type = <C::Type as Configuration>::Group>,
+    C::Type: BaseConfiguration<Bool = bool>,
+    C::Group: Variable<Secret, COM, Type = <C::Type as BaseConfiguration>::Group>,
     IncomingRandomness<C, COM>: Variable<Secret, COM, Type = IncomingRandomness<C::Type>>,
     IncomingPlaintext<C, COM>: Variable<Secret, COM, Type = IncomingPlaintext<C::Type>>,
 {
@@ -1073,7 +1093,7 @@ where
 /// Authorization Key
 pub struct AuthorizationKey<C, COM = ()>
 where
-    C: Configuration<COM>,
+    C: BaseConfiguration<COM> + ?Sized,
     COM: Has<bool, Type = C::Bool>,
 {
     /// Proof Authorization Key
@@ -1085,7 +1105,7 @@ where
 
 impl<C, COM> AuthorizationKey<C, COM>
 where
-    C: Configuration<COM>,
+    C: BaseConfiguration<COM> + ?Sized,
     COM: Has<bool, Type = C::Bool>,
 {
     /// Builds a new [`AuthorizationKey`] from `proof_authorization_key`.
@@ -1129,7 +1149,7 @@ where
 #[derivative(Clone(bound = "C::Bool: Clone, UtxoCommitmentRandomness<C, COM>: Clone"))]
 pub struct Identifier<C, COM = ()>
 where
-    C: Configuration<COM>,
+    C: BaseConfiguration<COM>,
     COM: Has<bool, Type = C::Bool>,
 {
     /// Transparency Flag
@@ -1144,7 +1164,7 @@ where
 
 impl<C, COM> Identifier<C, COM>
 where
-    C: Configuration<COM>,
+    C: BaseConfiguration<COM>,
     COM: Has<bool, Type = C::Bool>,
 {
     /// Builds a new [`Identifier`] from `is_transparent`, `utxo_commitment_randomness`, and
@@ -1165,7 +1185,7 @@ where
 
 impl<C> Sample for Identifier<C>
 where
-    C: Configuration<Bool = bool>,
+    C: BaseConfiguration<Bool = bool>,
     UtxoCommitmentRandomness<C>: Sample,
     C::Group: Sample,
 {
@@ -1181,7 +1201,7 @@ where
 /// Spend Secret
 pub struct SpendSecret<C, COM = ()>
 where
-    C: Configuration<COM>,
+    C: BaseConfiguration<COM>,
     COM: Has<bool, Type = C::Bool>,
 {
     /// Outgoing Randomness
@@ -1193,7 +1213,7 @@ where
 
 impl<C, COM> SpendSecret<C, COM>
 where
-    C: Configuration<COM>,
+    C: BaseConfiguration<COM>,
     COM: Has<bool, Type = C::Bool>,
 {
     /// Builds a new [`SpendSecret`] from `outgoing_randomness`, and `plaintext`.
@@ -1253,7 +1273,7 @@ where
     #[inline]
     pub fn well_formed_asset(
         &self,
-        parameters: &Parameters<C, COM>,
+        parameters: &BaseParameters<C, COM>,
         utxo_accumulator_model: &C::UtxoAccumulatorModel,
         authorization_key: &mut AuthorizationKey<C, COM>,
         utxo: &Utxo<C, COM>,
@@ -1301,7 +1321,7 @@ where
 
 impl<C, COM> utxo::AssetType for SpendSecret<C, COM>
 where
-    C: Configuration<COM>,
+    C: BaseConfiguration<COM>,
     COM: Has<bool, Type = C::Bool>,
 {
     type Asset = Asset<C, COM>;
@@ -1309,7 +1329,7 @@ where
 
 impl<C, COM> utxo::UtxoType for SpendSecret<C, COM>
 where
-    C: Configuration<COM>,
+    C: BaseConfiguration<COM>,
     COM: Has<bool, Type = C::Bool>,
 {
     type Utxo = Utxo<C, COM>;
@@ -1317,7 +1337,7 @@ where
 
 impl<C> utxo::QueryAsset for SpendSecret<C>
 where
-    C: Configuration<Bool = bool>,
+    C: BaseConfiguration<Bool = bool>,
 {
     #[inline]
     fn query_asset(&self, utxo: &Self::Utxo) -> Self::Asset {
@@ -1327,8 +1347,8 @@ where
 
 impl<C, COM> Variable<Secret, COM> for SpendSecret<C, COM>
 where
-    C: Configuration<COM> + Constant<COM>,
-    C::Type: Configuration<Bool = bool>,
+    C: BaseConfiguration<COM> + Constant<COM>,
+    C::Type: BaseConfiguration<Bool = bool>,
     COM: Has<bool, Type = C::Bool>,
     OutgoingRandomness<C, COM>: Variable<Secret, COM, Type = OutgoingRandomness<C::Type>>,
     IncomingPlaintext<C, COM>: Variable<Secret, COM, Type = IncomingPlaintext<C::Type>>,
@@ -1352,7 +1372,7 @@ where
 /// Nullifier
 pub struct Nullifier<C, COM = ()>
 where
-    C: Configuration<COM>,
+    C: BaseConfiguration<COM>,
     COM: Has<bool, Type = C::Bool>,
 {
     /// Nullifier Commitment
@@ -1364,7 +1384,7 @@ where
 
 impl<C, COM> Nullifier<C, COM>
 where
-    C: Configuration<COM>,
+    C: BaseConfiguration<COM>,
     COM: Has<bool, Type = C::Bool>,
 {
     /// Builds a new [`Nullifier`] from `commitment` and `outgoing_note`.
@@ -1382,7 +1402,7 @@ where
 
 impl<C, COM> PartialEq<Self, COM> for Nullifier<C, COM>
 where
-    C: Configuration<COM>,
+    C: BaseConfiguration<COM>,
     COM: Has<bool, Type = C::Bool>,
 {
     #[inline]
@@ -1405,8 +1425,8 @@ where
 
 impl<C, COM> Variable<Public, COM> for Nullifier<C, COM>
 where
-    C: Configuration<COM> + Constant<COM>,
-    C::Type: Configuration<Bool = bool>,
+    C: BaseConfiguration<COM> + Constant<COM>,
+    C::Type: BaseConfiguration<Bool = bool>,
     COM: Has<bool, Type = C::Bool>,
     NullifierCommitment<C, COM>: Variable<Public, COM, Type = NullifierCommitment<C::Type>>,
     OutgoingNote<C, COM>: Variable<Public, COM, Type = OutgoingNote<C::Type>>,
@@ -1429,7 +1449,7 @@ where
 
 impl<C> Independence<utxo::NullifierIndependence> for Nullifier<C>
 where
-    C: Configuration<Bool = bool>,
+    C: BaseConfiguration<Bool = bool>,
 {
     #[inline]
     fn is_independent(&self, rhs: &Self) -> bool {

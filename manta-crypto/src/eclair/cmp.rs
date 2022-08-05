@@ -17,6 +17,7 @@
 //! Comparison
 
 use crate::eclair::{
+    alloc::{Allocate, Constant},
     bool::{Assert, Bool},
     ops::{BitAnd, Not},
     Has, Type,
@@ -84,12 +85,20 @@ impl_partial_eq!(bool, u8, u16, u32, u64, u128, i8, i16, i32, i64, i128);
 impl<T, Rhs, COM> PartialEq<Vec<Rhs>, COM> for Vec<T>
 where
     COM: Has<bool>,
-    Bool<COM>: BitAnd<Bool<COM>, COM, Output = Bool<COM>>,
+    Bool<COM>: Constant<COM, Type = bool> + BitAnd<Bool<COM>, COM, Output = Bool<COM>>,
     T: PartialEq<Rhs, COM>,
 {
     #[inline]
     fn eq(&self, rhs: &Vec<Rhs>, compiler: &mut COM) -> Bool<COM> {
-        todo!()
+        if self.len() != rhs.len() {
+            false.as_constant(compiler)
+        } else {
+            let mut are_equal = true.as_constant::<Bool<COM>>(compiler);
+            for (lhs, rhs) in self.iter().zip(rhs) {
+                are_equal = are_equal.bitand(lhs.eq(rhs, compiler), compiler);
+            }
+            are_equal
+        }
     }
 }
 

@@ -33,9 +33,10 @@ use core::marker::PhantomData;
 use manta_accounting::asset::Asset;
 use manta_crypto::{
     eclair::{alloc::Constant, num::U128, Has},
-    encryption,
+    encryption, hash,
     hash::ArrayHashFunction,
     merkle_tree,
+    signature::schnorr::{self, Schnorr},
 };
 
 pub use manta_accounting::transfer::{
@@ -83,7 +84,7 @@ pub type UtxoAccumulatorItemVar = FpVar<ConstraintField>;
 pub type Parameters = protocol::Parameters<Config>;
 
 ///
-pub type ParametersVar = protocol::Parameters<Config<Compiler>, Compiler>;
+pub type ParametersVar = protocol::BaseParameters<Config<Compiler>, Compiler>;
 
 ///
 pub type AssociatedData = utxo::AssociatedData<Parameters>;
@@ -885,6 +886,26 @@ pub type OutgoingBaseEncryptionScheme<COM = ()> = encryption::convert::key::Conv
 >;
 
 ///
+pub struct SchnorrHashFunction;
+
+impl hash::security::PreimageResistance for SchnorrHashFunction {}
+
+impl schnorr::HashFunction<Group> for SchnorrHashFunction {
+    type Message = Vec<u8>;
+
+    #[inline]
+    fn hash(
+        &self,
+        verifying_key: &Group,
+        nonce_point: &Group,
+        message: &Self::Message,
+        _: &mut (),
+    ) -> EmbeddedScalar {
+        todo!()
+    }
+}
+
+///
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Config<COM = ()>(PhantomData<COM>);
@@ -898,7 +919,7 @@ impl<COM> Constant<COM> for Config<COM> {
     }
 }
 
-impl protocol::Configuration for Config {
+impl protocol::BaseConfiguration for Config {
     type Bool = bool;
     type AssetId = AssetId;
     type AssetValue = AssetValue;
@@ -917,7 +938,7 @@ impl protocol::Configuration for Config {
     type OutgoingBaseEncryptionScheme = OutgoingBaseEncryptionScheme;
 }
 
-impl protocol::Configuration<Compiler> for Config<Compiler> {
+impl protocol::BaseConfiguration<Compiler> for Config<Compiler> {
     type Bool = Boolean<ConstraintField>;
     type AssetId = AssetIdVar;
     type AssetValue = AssetValueVar;
@@ -934,4 +955,8 @@ impl protocol::Configuration<Compiler> for Config<Compiler> {
     type OutgoingCiphertext =
         <OutgoingBaseEncryptionScheme<Compiler> as encryption::CiphertextType>::Ciphertext;
     type OutgoingBaseEncryptionScheme = OutgoingBaseEncryptionScheme<Compiler>;
+}
+
+impl protocol::Configuration for Config {
+    type SignatureScheme = Schnorr<Group, SchnorrHashFunction>;
 }

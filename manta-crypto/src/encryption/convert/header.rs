@@ -17,6 +17,7 @@
 //! Encryption Header Conversion Primitives and Adapters
 
 use crate::{
+    eclair::alloc::Constant,
     encryption::{
         CiphertextType, Decrypt, DecryptedPlaintextType, DecryptionKeyType, Derive, Encrypt,
         EncryptionKeyType, HeaderType, PlaintextType, RandomnessType,
@@ -177,6 +178,19 @@ where
             ciphertext,
             compiler,
         )
+    }
+}
+
+impl<E, C, COM> Constant<COM> for Converter<E, C>
+where
+    E: Constant<COM>,
+    C: Constant<COM>,
+{
+    type Type = Converter<E::Type, C::Type>;
+
+    #[inline]
+    fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
+        Self::new(Constant::new_constant(&this.base, compiler))
     }
 }
 
