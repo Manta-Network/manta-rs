@@ -22,9 +22,10 @@ use crate::transfer::utxo::{
 use core::{fmt::Debug, hash::Hash, iter};
 use manta_crypto::{
     accumulator::{self, Accumulator},
-    constraint::{
-        Allocate, Allocator, Const, Constant, Derived, ProofSystemInput, Public, Secret, Var,
-        Variable,
+    constraint::ProofSystemInput,
+    eclair::alloc::{
+        mode::{Derived, Public, Secret},
+        Allocate, Allocator, Const, Constant, Var, Variable,
     },
     rand::RngCore,
 };

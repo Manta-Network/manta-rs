@@ -16,7 +16,7 @@
 
 //! Dynamic Cryptographic Accumulators
 
-use crate::constraint::{Allocate, Allocator, Constant, Derived, Variable};
+use crate::eclair::alloc::{mode::Derived, Allocate, Allocator, Constant, Variable};
 use core::{fmt::Debug, hash::Hash};
 
 /// Accumulator Membership Model Types

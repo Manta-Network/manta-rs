@@ -28,10 +28,10 @@ use crate::{
         poseidon::{self, hash::Hasher, ParameterFieldType},
     },
 };
-use ark_ff::PrimeField;
 use core::marker::PhantomData;
 use manta_accounting::asset::Asset;
 use manta_crypto::{
+    arkworks::ff::PrimeField,
     eclair::{alloc::Constant, num::U128, Has},
     encryption, hash,
     hash::ArrayHashFunction,

@@ -23,8 +23,6 @@ use crate::crypto::{
     key::Blake2sKdf,
 };
 use alloc::vec::Vec;
-use ark_ff::ToConstraintField;
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use blake2::{
     digest::{Update, VariableOutput},
     Blake2sVar,
@@ -38,8 +36,18 @@ use manta_accounting::{
 use manta_crypto::{
     accumulator,
     algebra::DiffieHellman,
-    constraint::{
-        self, Add, Allocate, Allocator, Constant, ProofSystemInput, Public, Secret, Variable,
+    arkworks::{
+        ff::ToConstraintField,
+        serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError},
+    },
+    constraint::ProofSystemInput,
+    eclair::{
+        self,
+        alloc::{
+            mode::{Public, Secret},
+            Allocate, Allocator, Constant, Variable,
+        },
+        ops::Add,
     },
     encryption,
     hash::ArrayHashFunction,
@@ -62,6 +70,7 @@ use manta_crypto::rand::{Rand, RngCore, Sample};
 
 #[doc(inline)]
 pub use ark_bls12_381 as bls12_381;
+
 #[doc(inline)]
 pub use ark_ed_on_bls12_381 as bls12_381_ed;
 
@@ -414,7 +423,7 @@ impl Constant<Compiler> for VoidNumberCommitmentSchemeVar {
 /// Asset ID Variable
 pub struct AssetIdVar(ConstraintFieldVar);
 
-impl constraint::PartialEq<Self, Compiler> for AssetIdVar {
+impl eclair::cmp::PartialEq<Self, Compiler> for AssetIdVar {
     #[inline]
     fn eq(&self, rhs: &Self, compiler: &mut Compiler) -> Boolean<ConstraintField> {
         ConstraintFieldVar::eq(&self.0, &rhs.0, compiler)
@@ -461,7 +470,7 @@ impl Add<Self, Compiler> for AssetValueVar {
     }
 }
 
-impl constraint::PartialEq<Self, Compiler> for AssetValueVar {
+impl eclair::cmp::PartialEq<Self, Compiler> for AssetValueVar {
     #[inline]
     fn eq(&self, rhs: &Self, compiler: &mut Compiler) -> Boolean<ConstraintField> {
         ConstraintFieldVar::eq(&self.0, &rhs.0, compiler)

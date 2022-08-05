@@ -40,9 +40,15 @@ use crate::{
 use core::{fmt::Debug, hash::Hash, iter::Sum, ops::AddAssign};
 use manta_crypto::{
     accumulator,
-    constraint::{
-        self, Add, Allocate, Allocator, Assert, AssertEq, Constant, Derived, ProofSystem,
-        ProofSystemInput, Public, Secret, Variable,
+    constraint::{ProofSystem, ProofSystemInput},
+    eclair::{
+        self,
+        alloc::{
+            mode::{Derived, Public, Secret},
+            Allocate, Allocator, Constant, Variable,
+        },
+        bool::{Assert, AssertEq},
+        ops::Add,
     },
     rand::{CryptoRng, Rand, RngCore, Sample},
     signature::{self, Verify},
@@ -156,7 +162,7 @@ pub trait Configuration {
     /// Authorization Key Type  Variable
     type AuthorizationKeyVar: Variable<Secret, Self::Compiler, Type = AuthorizationKey<Self>>
         + Variable<Public, Self::Compiler, Type = AuthorizationKey<Self>>
-        + constraint::PartialEq<Self::AuthorizationKeyVar, Self::Compiler>;
+        + eclair::cmp::PartialEq<Self::AuthorizationKeyVar, Self::Compiler>;
 
     /// Authorization Randomness Type Variable
     type AuthorizationRandomnessVar: Variable<
@@ -168,13 +174,13 @@ pub trait Configuration {
     /// Asset Id Variable Type
     type AssetIdVar: Variable<Secret, Self::Compiler, Type = Self::AssetId>
         + Variable<Public, Self::Compiler, Type = Self::AssetId>
-        + constraint::PartialEq<Self::AssetIdVar, Self::Compiler>;
+        + eclair::cmp::PartialEq<Self::AssetIdVar, Self::Compiler>;
 
     /// Asset Value Variable Type
     type AssetValueVar: Variable<Secret, Self::Compiler, Type = Self::AssetValue>
         + Variable<Public, Self::Compiler, Type = Self::AssetValue>
         + Add<Self::AssetValueVar, Self::Compiler, Output = Self::AssetValueVar>
-        + constraint::PartialEq<Self::AssetValueVar, Self::Compiler>;
+        + eclair::cmp::PartialEq<Self::AssetValueVar, Self::Compiler>;
 
     /// Unspent Transaction Output Variable Type
     type UtxoVar: Variable<Secret, Self::Compiler, Type = Self::Utxo>

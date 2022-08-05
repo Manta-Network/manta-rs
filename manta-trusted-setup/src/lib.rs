@@ -25,6 +25,5 @@ extern crate alloc;
 
 pub mod groth16;
 pub mod mpc;
-pub mod pairing;
 pub mod ratio;
 pub mod util;

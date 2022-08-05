@@ -1,0 +1,51 @@
+[package]
+name = "cocoon"
+version = "0.3.1"
+description = "A simple protected container with strong encryption and format validation."
+authors = ["Alexander Fadeev <fadeevab.com@gmail.com>"]
+edition = "2018"
+license = "MIT"
+keywords = ["encryption", "storage", "keystore", "parser", "container"]
+categories = ["cryptography", "no-std", "parser-implementations"]
+homepage = "https://github.com/fadeevab/cocoon"
+repository = "https://github.com/fadeevab/cocoon"
+documentation = "https://docs.rs/cocoon"
+readme = "README.md"
+
+[dependencies]
+aes-gcm = "0.9"
+chacha20poly1305 = { version = "0.9", default-features = false }
+hmac = "0.11"
+pbkdf2 = { version = "0.9", default-features = false, features = ["sha2", "hmac"] }
+rand = { version = "0.8", default-features = false, features = ["std_rng"] }
+sha2 = { version = "0.9", default-features = false }
+zeroize = { version = "1", default-features = false }
+
+[dev-dependencies]
+borsh = "0.9"
+
+[features]
+# Enables `std` feature by default.
+default = ["std"]
+
+# Enables all features, including support of simplified Cocoon API, using `rand::thread_rng`,
+# and API related to `std::io`: wrap to writer, unwrap from reader.
+std = ["alloc", "rand/std"]
+
+# Enables `Vec` container. Can be used without `std` crate (in "no std" build).
+alloc = ["chacha20poly1305/alloc"]
+
+# Enables support of Cocoon::from_entropy() which gets random bytes from OsRng.
+getrandom = ["rand/getrandom"]
+
+# To speed up PBKDF2.
+[profile.test]
+opt-level = 3
+
+# To speed up PBKDF2.
+[profile.dev.package.sha2]
+opt-level = 3
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docs_rs"]
