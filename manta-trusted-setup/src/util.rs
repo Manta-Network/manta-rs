@@ -16,19 +16,21 @@
 
 //! Utilities
 
-use crate::{groth16::kzg, pairing::Pairing, ratio::HashToGroup};
+use crate::{groth16::kzg, ratio::HashToGroup};
 use alloc::vec::Vec;
-use ark_ec::{
-    short_weierstrass_jacobian::GroupAffine, wnaf::WnafContext, AffineCurve, ProjectiveCurve,
-    SWModelParameters,
-};
-use ark_ff::{BigInteger, Fp256, PrimeField, UniformRand, Zero};
-use ark_serialize::{CanonicalSerialize, Read, SerializationError, Write};
 use ark_std::io;
 use blake2::{Blake2b512, Digest as Blake2Digest};
 use byteorder::{BigEndian, ReadBytesExt};
 use core::marker::PhantomData;
-use manta_crypto::rand::{CryptoRng, OsRng, RngCore, SeedableRng};
+use manta_crypto::{
+    arkworks::{
+        ec::{wnaf::WnafContext, AffineCurve, ProjectiveCurve},
+        ff::{BigInteger, PrimeField, UniformRand, Zero},
+        pairing::Pairing,
+        serialize::{CanonicalSerialize, Read, SerializationError, Write},
+    },
+    rand::{OsRng, Sample, SeedableRng},
+};
 use manta_util::{cfg_into_iter, cfg_iter, cfg_iter_mut, cfg_reduce, into_array_unchecked};
 use rand_chacha::ChaCha20Rng;
 
@@ -49,8 +51,7 @@ pub trait HasDistribution {
 /// interface for building a serialization over the type `T`. For deserialization see the
 /// [`Deserializer`] `trait`.
 ///
-/// [`CanonicalSerialize`]: ark_serialize::CanonicalSerialize
-/// [`CanonicalDeserialize`]: ark_serialize::CanonicalDeserialize
+/// [`CanonicalDeserialize`]: manta_crypto::arkworks::serialize::CanonicalDeserialize
 pub trait Serializer<T> {
     /// Serializes `item` in uncompressed form to the `writer` without performing any
     /// well-formedness checks.
@@ -84,8 +85,7 @@ pub trait Serializer<T> {
 /// interface for building a deserialization over the type `T`. For serialization see the
 /// [`Serializer`] `trait`.
 ///
-/// [`CanonicalSerialize`]: ark_serialize::CanonicalSerialize
-/// [`CanonicalDeserialize`]: ark_serialize::CanonicalDeserialize
+/// [`CanonicalDeserialize`]: manta_crypto::arkworks::serialize::CanonicalDeserialize
 pub trait Deserializer<T> {
     /// Deserialization Error Type
     type Error: Into<SerializationError>;
@@ -440,50 +440,4 @@ where
         .for_each(|(base, scalar)| {
             base.mul_assign(*scalar);
         })
-}
-
-/// Sampling Trait
-pub trait Sample<D = ()>: Sized {
-    /// Returns a random value of type `Self`, sampled according to the given `distribution`,
-    /// generated from the `rng`.
-    fn sample<R>(distribution: D, rng: &mut R) -> Self
-    where
-        R: CryptoRng + RngCore + ?Sized;
-
-    /// Returns a random value of type `Self`, sampled according to the default distribution of
-    /// type `D`, generated from the `rng`.
-    #[inline]
-    fn gen<R>(rng: &mut R) -> Self
-    where
-        D: Default,
-        R: CryptoRng + RngCore + ?Sized,
-    {
-        Self::sample(Default::default(), rng)
-    }
-}
-
-impl<P> Sample for GroupAffine<P>
-where
-    P: SWModelParameters,
-{
-    #[inline]
-    fn sample<R>(_: (), rng: &mut R) -> Self
-    where
-        R: CryptoRng + RngCore + ?Sized,
-    {
-        <GroupAffine<P> as AffineCurve>::Projective::rand(rng).into_affine()
-    }
-}
-
-impl<P> Sample for Fp256<P>
-where
-    Fp256<P>: UniformRand,
-{
-    #[inline]
-    fn sample<R>(_: (), rng: &mut R) -> Self
-    where
-        R: CryptoRng + RngCore + ?Sized,
-    {
-        Self::rand(rng)
-    }
 }

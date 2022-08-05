@@ -192,7 +192,7 @@ pub mod schnorr {
     use super::*;
     use crate::{
         algebra::{security::DiscreteLogarithmHardness, Group, Scalar},
-        constraint::{Bool, Has, PartialEq},
+        eclair::{bool::Bool, cmp::PartialEq, Has},
         hash::security::PreimageResistance,
     };
     use core::{cmp, fmt::Debug, hash::Hash, marker::PhantomData};

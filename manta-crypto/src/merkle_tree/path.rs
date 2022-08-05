@@ -930,8 +930,11 @@ where
 pub mod constraint {
     use super::*;
     use crate::{
-        constraint::{
-            Allocate, Allocator, Bool, ConditionalSwap, Constant, Has, PartialEq, Secret, Variable,
+        eclair::{
+            alloc::{mode::Secret, Allocate, Allocator, Constant, Variable},
+            bool::{Bool, ConditionalSwap},
+            cmp::PartialEq,
+            Has,
         },
         merkle_tree::path_length,
     };
