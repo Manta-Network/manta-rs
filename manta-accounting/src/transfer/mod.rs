@@ -151,7 +151,7 @@ pub trait Configuration {
             Secret = Self::SpendSecret,
             Nullifier = Self::Nullifier,
             Identifier = Self::Identifier,
-        > + utxo::NoteOpen<DecryptionKey = AuthorizationKey<Self>>;
+        > + utxo::NoteOpen;
 
     /// Authorization Key Type  Variable
     type AuthorizationKeyVar: Variable<Secret, Self::Compiler, Type = AuthorizationKey<Self>>

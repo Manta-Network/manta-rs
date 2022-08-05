@@ -81,6 +81,16 @@ pub struct Fp<F>(
 where
     F: Field;
 
+impl<F> From<u128> for Fp<F>
+where
+    F: Field,
+{
+    #[inline]
+    fn from(value: u128) -> Self {
+        Self(value.into())
+    }
+}
+
 impl<F> Decode for Fp<F>
 where
     F: Field,

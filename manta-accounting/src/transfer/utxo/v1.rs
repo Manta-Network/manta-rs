@@ -1014,6 +1014,32 @@ where
     }
 }
 
+impl<C, COM> utxo::IdentifierType for MintSecret<C, COM>
+where
+    C: Configuration<COM>,
+    COM: Has<bool, Type = C::Bool>,
+{
+    type Identifier = Identifier<C, COM>;
+}
+
+impl<C, COM> utxo::UtxoType for MintSecret<C, COM>
+where
+    C: Configuration<COM>,
+    COM: Has<bool, Type = C::Bool>,
+{
+    type Utxo = Utxo<C, COM>;
+}
+
+impl<C> utxo::QueryIdentifier for MintSecret<C>
+where
+    C: Configuration<Bool = bool>,
+{
+    #[inline]
+    fn query_identifier(&self, utxo: &Self::Utxo) -> Self::Identifier {
+        todo!()
+    }
+}
+
 impl<C, COM> Variable<Secret, COM> for MintSecret<C, COM>
 where
     C: Configuration<COM> + Constant<COM>,
@@ -1099,6 +1125,8 @@ where
 }
 
 /// Identifier
+#[derive(derivative::Derivative)]
+#[derivative(Clone(bound = "C::Bool: Clone, UtxoCommitmentRandomness<C, COM>: Clone"))]
 pub struct Identifier<C, COM = ()>
 where
     C: Configuration<COM>,
@@ -1268,6 +1296,32 @@ where
             compiler,
         );
         (asset, Nullifier::new(nullifier_commitment, outgoing_note))
+    }
+}
+
+impl<C, COM> utxo::AssetType for SpendSecret<C, COM>
+where
+    C: Configuration<COM>,
+    COM: Has<bool, Type = C::Bool>,
+{
+    type Asset = Asset<C, COM>;
+}
+
+impl<C, COM> utxo::UtxoType for SpendSecret<C, COM>
+where
+    C: Configuration<COM>,
+    COM: Has<bool, Type = C::Bool>,
+{
+    type Utxo = Utxo<C, COM>;
+}
+
+impl<C> utxo::QueryAsset for SpendSecret<C>
+where
+    C: Configuration<Bool = bool>,
+{
+    #[inline]
+    fn query_asset(&self, utxo: &Self::Utxo) -> Self::Asset {
+        todo!()
     }
 }
 

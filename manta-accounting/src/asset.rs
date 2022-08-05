@@ -40,7 +40,10 @@ use derive_more::{Add, AddAssign, Display, From, Sub, SubAssign, Sum};
 use manta_crypto::{
     eclair::{
         self,
-        alloc::{mode::Secret, Allocate, Allocator, Variable},
+        alloc::{
+            mode::{Public, Secret},
+            Allocate, Allocator, Variable,
+        },
         bool::{Assert, AssertEq, Bool, ConditionalSelect},
         num::Zero,
         ops::BitAnd,
@@ -596,6 +599,24 @@ impl<COM, I, V> Variable<Secret, COM> for Asset<I, V>
 where
     I: Variable<Secret, COM, Type = AssetId>,
     V: Variable<Secret, COM, Type = AssetValue>,
+{
+    type Type = Asset;
+
+    #[inline]
+    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
+        Self::new(this.id.as_known(compiler), this.value.as_known(compiler))
+    }
+
+    #[inline]
+    fn new_unknown(compiler: &mut COM) -> Self {
+        Self::new(compiler.allocate_unknown(), compiler.allocate_unknown())
+    }
+}
+
+impl<COM, I, V> Variable<Public, COM> for Asset<I, V>
+where
+    I: Variable<Public, COM, Type = AssetId>,
+    V: Variable<Public, COM, Type = AssetValue>,
 {
     type Type = Asset;
 

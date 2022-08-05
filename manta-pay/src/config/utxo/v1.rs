@@ -32,13 +32,16 @@ use ark_ff::PrimeField;
 use core::marker::PhantomData;
 use manta_accounting::asset::Asset;
 use manta_crypto::{
-    eclair::{num::U128, Has},
+    eclair::{alloc::Constant, num::U128, Has},
     encryption,
     hash::ArrayHashFunction,
     merkle_tree,
 };
 
-pub use manta_accounting::transfer::utxo::v1 as protocol;
+pub use manta_accounting::transfer::{
+    self,
+    utxo::{self, v1 as protocol},
+};
 
 ///
 pub type AssetId = Fp<ConstraintField>;
@@ -75,6 +78,48 @@ pub type UtxoAccumulatorItem = Fp<ConstraintField>;
 
 ///
 pub type UtxoAccumulatorItemVar = FpVar<ConstraintField>;
+
+///
+pub type Parameters = protocol::Parameters<Config>;
+
+///
+pub type ParametersVar = protocol::Parameters<Config<Compiler>, Compiler>;
+
+///
+pub type AssociatedData = utxo::AssociatedData<Parameters>;
+
+///
+pub type Utxo = utxo::Utxo<Parameters>;
+
+///
+pub type UtxoVar = utxo::Utxo<ParametersVar>;
+
+///
+pub type Note = utxo::Note<Parameters>;
+
+///
+pub type NoteVar = utxo::Note<ParametersVar>;
+
+///
+pub type Nullifier = utxo::Nullifier<Parameters>;
+
+///
+pub type NullifierVar = utxo::Nullifier<ParametersVar>;
+
+///
+pub type Identifier = utxo::Identifier<Parameters>;
+
+///
+pub type MintSecret = protocol::MintSecret<Config>;
+
+///
+pub type MintSecretVar = protocol::MintSecret<Config<Compiler>, Compiler>;
+
+///
+pub type SpendSecret = protocol::SpendSecret<Config>;
+
+///
+pub type SpendSecretVar = protocol::SpendSecret<Config<Compiler>, Compiler>;
 
 ///
 pub struct UtxoCommitmentSchemeDomainTag;
@@ -840,7 +885,18 @@ pub type OutgoingBaseEncryptionScheme<COM = ()> = encryption::convert::key::Conv
 >;
 
 ///
+#[derive(derivative::Derivative)]
+#[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Config<COM = ()>(PhantomData<COM>);
+
+impl<COM> Constant<COM> for Config<COM> {
+    type Type = Config;
+
+    #[inline]
+    fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
+        Self::default()
+    }
+}
 
 impl protocol::Configuration for Config {
     type Bool = bool;
