@@ -56,11 +56,13 @@ serde = { version = "1.0", default-features = false, features = ["derive"]  }
 serde_with = { version = "1.14.0", default-features = false }
 bincode = { version = "1.3", default-features = false }
 tide = { version = "0.16.0", default-features = false }
-take_mut = "0.2.2" # TODO: review this dependency 
+take_mut = "0.2.2" # TODO: review this dependency
+manta-pay = { path = "../manta-pay", default-features = false, features = ["groth16"] }
+clap = "3.2"
 workspace-hack = { version = "0.1.0", path = "../workspace-hack" }
+
 
 [dev-dependencies]
 ark-r1cs-std = { version = "0.3.1", default-features = false }
 ark-snark = { version = "0.3.0", default-features = false }
-manta-pay = { path = "../manta-pay", default-features = false, features = ["groth16"] } # TODO: To be removed
 manta-trusted-setup = { path = ".", default-features = false, features = ["test"] }

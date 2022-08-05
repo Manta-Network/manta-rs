@@ -16,6 +16,8 @@
 
 //! Groth16 Phase2 Servers
 
+use ark_serialize::CanonicalDeserialize;
+use manta_pay::crypto::constraint::arkworks::R1CS;
 use manta_trusted_setup::{
     ceremony::{
         queue::{Identifier, Priority},
@@ -27,16 +29,21 @@ use manta_trusted_setup::{
         },
         CeremonyError,
     },
-    groth16::{config::Config, mpc::Groth16Phase2},
+    groth16::{
+        config::Config,
+        kzg::Accumulator,
+        mpc,
+        mpc::{initialize, Groth16Phase2},
+    },
+    pairing::Pairing,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use tide::{prelude::*, Request};
 
 /// Participant
 #[derive(Clone, Serialize, Deserialize)]
 struct Participant {
-    pub public_key: ed_dalek::PublicKey,
+    pub public_key: PublicKey,
     pub priority: usize,
     pub nonce: u64,
 }
@@ -63,7 +70,7 @@ impl HasPublicKey for Participant {
     }
 }
 
-impl HasNonce<ed_dalek::Ed25519> for Participant {
+impl HasNonce<Ed25519> for Participant {
     fn nonce(&self) -> u64 {
         self.nonce
     }
@@ -79,16 +86,54 @@ impl HasNonce<ed_dalek::Ed25519> for Participant {
 
 type S = Server<Groth16Phase2<Config>, Participant, BTreeMap<PublicKey, Participant>, Ed25519, 2>;
 
-fn init_server() -> S {
-    // TODO: read phase 1 accumulator from file
-    // TODO: read high-priority participants from file
-    // TODO: initialize registry and coordinator
+struct Options {
+    accumulator_path: String,
+}
+
+impl Options {
+    fn load_from_args() -> Self {
+        let matches = clap::App::new("Groth16 Phase2 Server")
+            .version("0.1.0")
+            .author("Manta Network")
+            .about("Groth16 Phase2 Server")
+            .arg(
+                clap::Arg::new("accumulator_path")
+                    .short('a')
+                    .long("accumulator_path")
+                    .help("Path to the accumulator")
+                    .takes_value(true)
+                    .required(true),
+            );
+        let matches = matches.get_matches();
+        let accumulator_path = matches
+            .value_of("accumulator_path")
+            .expect("parameter accumulator_path is required")
+            .to_string();
+        Options { accumulator_path }
+    }
+}
+
+fn synthesize_constraints(options: &Options) -> R1CS<<Config as Pairing>::Scalar> {
+    let _ = options;
     todo!()
+}
+
+async fn init_server(options: &Options) -> S {
+    let phase1_accumulator_bytes = async_std::fs::read(options.accumulator_path.as_str())
+        .await
+        .expect("failed to read accumulator file");
+    let powers = Accumulator::<Config>::deserialize(&phase1_accumulator_bytes[..])
+        .expect("failed to deserialize accumulator");
+    let constraints = synthesize_constraints(options);
+    let state = initialize(powers, constraints).expect("failed to initialize state");
+    let initial_challenge = <Config as mpc::ProvingKeyHasher<Config>>::hash(&state);
+    S::new(state, initial_challenge.into())
 }
 
 #[async_std::main]
 async fn main() -> tide::Result<()> {
-    let mut api = tide::Server::with_state(init_server());
+    let options = Options::load_from_args();
+    let mut api = tide::Server::with_state(init_server(&options).await);
 
     api.at("/register")
         .post(|r| Server::execute(r, Server::register_participant));
@@ -98,64 +143,4 @@ async fn main() -> tide::Result<()> {
         .post(|r| Server::execute(r, Server::update));
     api.listen("127.0.0.1:8080").await?;
     Ok(())
-
-    /*
-    let mut api = tide::Server::with_state(init_server());
-
-    api.at("/register")
-        .post(|r| Server::execute(r, Server::register_participant));
-    api.at("/get_state_and_challenge")
-        .post(|r| Server::execute(r, Server::get_state_and_challenge));
-    api.at("/update")
-        .post(|r| Server::execute(r, Server::update));
-
-    api.listen("127.0.0.1:8080").await?;
-
-    Ok(())
-    */
 }
-//
-// // ///
-// // pub enum Error {
-// //     ///
-// //     AlreadyQueued,
-//
-// //     ///
-// //     InvalidSignature,
-//
-// //     ///
-// //     CeremonyError(CeremonyError),
-// // }
-//
-// // impl From<Error> for tide::Error {
-// //     #[inline]
-// //     fn from(err: Error) -> tide::Error {
-// //         match err {
-// //             _ => Self::from_str(
-// //                 StatusCode::InternalServerError,
-// //                 "unable to complete request",
-// //             ),
-// //         }
-// //     }
-// // }
-//
-// // impl From<CeremonyError> for Error {
-// //     #[inline]
-// //     fn from(e: CeremonyError) -> Self {
-// //         Self::CeremonyError(e)
-// //     }
-// // }
-//
-// // /// Result Type
-// // pub type Result<T, E = Error> = core::result::Result<T, E>;
-//
-// // /// Generates the JSON body for the output of `f`, returning an HTTP reponse.
-// // #[inline]
-// // async fn into_body<R, F, Fut>(f: F) -> Result<Response, tide::Error>
-// // where
-// //     R: Serialize,
-// //     F: FnOnce() -> Fut,
-// //     Fut: Future<Output = Result<R>>,
-// // {
-// //     Ok(Body::from_json(&f().await?)?.into())
-// // }

@@ -89,6 +89,14 @@ where
     V::Challenge: CanonicalSerialize + CanonicalDeserialize,
     V::Proof: CanonicalSerialize + CanonicalDeserialize,
 {
+    /// Initialize a server with initial state and challenge.
+    pub fn new(state: V::State, challenge: V::Challenge) -> Self {
+        Self {
+            coordinator: Arc::new(Mutex::new(Coordinator::new(state, challenge))),
+            __: PhantomData,
+        }
+    }
+
     /// Verifies the registration request and registers a participant.
     #[inline]
     pub async fn register_participant(
