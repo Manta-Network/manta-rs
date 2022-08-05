@@ -27,7 +27,7 @@ use crate::{
     util::{BlakeHasher, HasDistribution, KZGBlakeHasher, Sample},
 };
 use alloc::vec::Vec;
-use ark_bls12_381::Fr;
+use ark_bn254::{Bn254, Fr, G1Affine, G2Affine};
 use ark_ec::{AffineCurve, PairingEngine};
 use ark_ff::{field_new, UniformRand};
 use ark_groth16::{Groth16, ProvingKey};
@@ -57,21 +57,21 @@ impl HasDistribution for Test {
 }
 
 impl Pairing for Test {
-    type Scalar = ark_bls12_381::Fr;
-    type G1 = ark_bls12_381::G1Affine;
-    type G1Prepared = <ark_bls12_381::Bls12_381 as PairingEngine>::G1Prepared;
-    type G2 = ark_bls12_381::G2Affine;
-    type G2Prepared = <ark_bls12_381::Bls12_381 as PairingEngine>::G2Prepared;
-    type Pairing = ark_bls12_381::Bls12_381;
+    type Scalar = Fr;
+    type G1 = G1Affine;
+    type G1Prepared = <Bn254 as PairingEngine>::G1Prepared;
+    type G2 = G2Affine;
+    type G2Prepared = <Bn254 as PairingEngine>::G2Prepared;
+    type Pairing = Bn254;
 
     #[inline]
     fn g1_prime_subgroup_generator() -> Self::G1 {
-        ark_bls12_381::G1Affine::prime_subgroup_generator()
+        G1Affine::prime_subgroup_generator()
     }
 
     #[inline]
     fn g2_prime_subgroup_generator() -> Self::G2 {
-        ark_bls12_381::G2Affine::prime_subgroup_generator()
+        G2Affine::prime_subgroup_generator()
     }
 }
 
@@ -200,6 +200,14 @@ pub fn dummy_circuit(cs: &mut R1CS<Fr>) {
         .expect("enforce_equal is not allowed to fail");
 }
 
+/// Generates a dummy ProverKey
+#[inline]
+pub fn dummy_prover_key() -> ProvingKey<Bn254> {
+    let mut cs = R1CS::for_contexts();
+    dummy_circuit(&mut cs);
+    initialize(dummy_phase_one_trusted_setup(), cs).unwrap()
+}
+
 /// Proves and verifies a R1CS circuit with proving key `pk` and a random number generator `rng`.
 #[inline]
 pub fn prove_and_verify_circuit<P, R>(pk: ProvingKey<P>, cs: R1CS<Fr>, mut rng: &mut R)
@@ -234,9 +242,7 @@ fn proving_and_verifying_ratio_proof_is_correct() {
 #[test]
 fn trusted_setup_phase_two_is_valid() {
     let mut rng = OsRng;
-    let mut cs = R1CS::for_contexts();
-    dummy_circuit(&mut cs);
-    let mut state = initialize(dummy_phase_one_trusted_setup(), cs).unwrap();
+    let mut state = dummy_prover_key();
     let mut transcript = Transcript::<Test> {
         initial_challenge: <Test as mpc::ProvingKeyHasher<Test>>::hash(&state),
         initial_state: state.clone(),

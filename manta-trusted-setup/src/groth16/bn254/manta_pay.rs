@@ -36,13 +36,15 @@ use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use blake2::Digest;
 use manta_crypto::{
     merkle_tree::forest::MerkleForest,
-    rand::{Rand, SeedableRng, OsRng},
+    rand::{OsRng, Rand, SeedableRng},
 };
 use manta_pay::crypto::constraint::arkworks::R1CS;
 use manta_util::into_array_unchecked;
 use memmap::MmapOptions;
-use std::fs::{File, OpenOptions};
-use std::time::Instant;
+use std::{
+    fs::{File, OpenOptions},
+    time::Instant,
+};
 
 /// Configuration for a Phase1 Ceremony large enough to support MantaPay circuits
 pub struct MantaPaySetupCeremony;
@@ -129,8 +131,7 @@ impl KzgConfiguration for MantaPaySetupCeremony {
 /// for all MantaPay circuits.
 pub type MantaPayAccumulator = Accumulator<MantaPaySetupCeremony>;
 
-impl MpcConfiguration for MantaPaySetupCeremony
-{
+impl MpcConfiguration for MantaPaySetupCeremony {
     type Challenge = [u8; 64];
     type Hasher = BlakeHasher;
 
@@ -154,15 +155,13 @@ impl MpcConfiguration for MantaPaySetupCeremony
     }
 }
 
-impl Types for MantaPaySetupCeremony
-{
+impl Types for MantaPaySetupCeremony {
     type State = MpcState<Self>;
     type Challenge = [u8; 64];
     type Proof = MpcProof<Self>;
 }
 
-impl ProvingKeyHasher<Self> for MantaPaySetupCeremony
-{
+impl ProvingKeyHasher<Self> for MantaPaySetupCeremony {
     type Output = [u8; 64];
 
     #[inline]
@@ -266,17 +265,23 @@ pub fn phase2_contribution_test() {
     // Contribute and verify
     let mut rng = OsRng;
     let mut transcript = Transcript::<MantaPaySetupCeremony> {
-        initial_challenge: <MantaPaySetupCeremony as ProvingKeyHasher<MantaPaySetupCeremony>>::hash(&state),
+        initial_challenge: <MantaPaySetupCeremony as ProvingKeyHasher<MantaPaySetupCeremony>>::hash(
+            &state,
+        ),
         initial_state: state.clone(),
         rounds: Vec::new(),
     };
     let hasher = <MantaPaySetupCeremony as mpc::Configuration>::Hasher::default();
-    let (mut prev_state, mut proof): (MpcState<MantaPaySetupCeremony>, MpcProof<MantaPaySetupCeremony>);
+    let (mut prev_state, mut proof): (
+        MpcState<MantaPaySetupCeremony>,
+        MpcProof<MantaPaySetupCeremony>,
+    );
     let mut challenge = transcript.initial_challenge;
     for _ in 0..5 {
         let now = Instant::now();
         prev_state = state.clone();
-        proof = contribute::<MantaPaySetupCeremony, _>(&hasher, &challenge, &mut state, &mut rng).unwrap();
+        proof = contribute::<MantaPaySetupCeremony, _>(&hasher, &challenge, &mut state, &mut rng)
+            .unwrap();
         (challenge, state) = verify_transform(&challenge, prev_state, state, proof.clone())
             .expect("Verify transform failed");
         transcript.rounds.push((state.clone(), proof));

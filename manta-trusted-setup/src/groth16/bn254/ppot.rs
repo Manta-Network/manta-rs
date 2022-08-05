@@ -37,7 +37,6 @@ use manta_util::into_array_unchecked;
 use memmap::{Mmap, MmapOptions};
 use std::fs::OpenOptions;
 
-
 /// Configuration of the Perpetual Powers of Tau ceremony
 pub struct PpotCeremony;
 
