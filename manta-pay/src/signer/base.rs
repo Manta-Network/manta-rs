@@ -23,8 +23,6 @@ use crate::{
     signer::Checkpoint,
 };
 use alloc::collections::BTreeMap;
-use ark_ec::ProjectiveCurve;
-use ark_ff::PrimeField;
 use core::{cmp, marker::PhantomData, mem};
 use manta_accounting::{
     asset::HashAssetMap,
@@ -35,7 +33,10 @@ use manta_accounting::{
     },
 };
 use manta_crypto::{
-    key::kdf::KeyDerivationFunction, merkle_tree, merkle_tree::forest::Configuration,
+    arkworks::{ec::ProjectiveCurve, ff::PrimeField},
+    key::kdf::KeyDerivationFunction,
+    merkle_tree,
+    merkle_tree::forest::Configuration,
 };
 
 #[cfg(feature = "serde")]

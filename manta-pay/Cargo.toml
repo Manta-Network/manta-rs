@@ -49,6 +49,7 @@ arkworks = [
     "ark-relations",
     "ark-serialize",
     "ark-std",
+    "manta-crypto/arkworks",
 ]
 
 # Enable Download Parameters
@@ -113,9 +114,6 @@ ark-ed-on-bls12-381 = { version = "0.3.0", optional = true, default-features = f
 ark-ed-on-bn254 = { version = "0.3.0", optional = true, default-features = false, features = ["r1cs"] }
 ark-ff = { version = "0.3.0", optional = true, default-features = false }
 ark-groth16 = { version = "0.3.0", optional = true, default-features = false }
-ark-r1cs-std = { version = "0.3.1", optional = true, default-features = false }
-ark-relations = { version = "0.3.0", optional = true, default-features = false }
-ark-serialize = { version = "0.3.0", optional = true, default-features = false, features = ["derive"] }
 ark-snark = { version = "0.3.0", optional = true, default-features = false }
 ark-std = { version = "0.3.0", optional = true, default-features = false }
 bip32 = { version = "0.4.0", optional = true, default-features = false, features = ["bip39", "secp256k1"] }

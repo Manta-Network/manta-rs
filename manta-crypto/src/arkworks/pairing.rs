@@ -16,8 +16,10 @@
 
 //! Pairing
 
-use ark_ec::{AffineCurve, PairingEngine};
-use ark_ff::PrimeField;
+use crate::arkworks::{
+    ec::{AffineCurve, PairingEngine},
+    ff::PrimeField,
+};
 use core::iter;
 
 /// Pairing Configuration
@@ -53,7 +55,7 @@ pub trait Pairing {
 }
 
 /// Pair from a [`PairingEngine`]
-type Pair<P> = (
+pub type Pair<P> = (
     <P as PairingEngine>::G1Prepared,
     <P as PairingEngine>::G2Prepared,
 );
@@ -104,12 +106,12 @@ pub trait PairingEngineExt: PairingEngine {
 
 impl<E> PairingEngineExt for E where E: PairingEngine {}
 
-#[cfg(test)]
-mod test {
-    use crate::{pairing::PairingEngineExt, util::Sample};
-    use ark_bls12_381::{Bls12_381, Fr, G1Affine, G2Affine};
-    use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
-    use manta_crypto::rand::OsRng;
+/// Testing Framework
+#[cfg(feature = "test")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
+pub mod test {
+    use super::*;
+    use crate::arkworks::ec::ProjectiveCurve;
 
     /// Asserts that `g1` and `g1*scalar` are in the same ratio as `g2` and `g2*scalar`.
     #[inline]
@@ -122,16 +124,5 @@ mod test {
             (g1.mul(scalar).into_affine(), g2)
         )
         .is_some());
-    }
-
-    /// Tests if bls13_381 pairing ratio is valid.
-    #[test]
-    fn has_valid_bls12_381_pairing_ratio() {
-        let mut rng = OsRng;
-        assert_valid_pairing_ratio::<Bls12_381>(
-            G1Affine::gen(&mut rng),
-            G2Affine::gen(&mut rng),
-            Fr::gen(&mut rng),
-        );
     }
 }

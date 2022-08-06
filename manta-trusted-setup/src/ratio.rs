@@ -16,11 +16,15 @@
 
 //! Ratio Proofs
 
-use crate::pairing::{Pairing, PairingEngineExt};
-use ark_ec::{AffineCurve, ProjectiveCurve};
-use ark_ff::{PrimeField, UniformRand, Zero};
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Read, SerializationError, Write};
-use manta_crypto::rand::{CryptoRng, RngCore};
+use manta_crypto::{
+    arkworks::{
+        ec::{AffineCurve, ProjectiveCurve},
+        ff::{PrimeField, UniformRand, Zero},
+        pairing::{Pairing, PairingEngineExt},
+        serialize::{CanonicalDeserialize, CanonicalSerialize, Read, SerializationError, Write},
+    },
+    rand::{CryptoRng, RngCore},
+};
 
 /// Hash to Group Trait for Ratio Proof
 pub trait HashToGroup<P, C>
