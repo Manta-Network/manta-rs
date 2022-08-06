@@ -27,8 +27,6 @@ use crate::{
 };
 use alloc::vec::Vec;
 use ark_bn254::{Bn254, Fr, G1Affine, G2Affine};
-use ark_ec::{AffineCurve, PairingEngine};
-use ark_ff::{field_new, UniformRand};
 use ark_groth16::{Groth16, ProvingKey};
 use ark_snark::SNARK;
 use blake2::Digest;
@@ -235,11 +233,12 @@ where
 /// Tests if bls13_381 pairing ratio is valid.
 #[test]
 fn has_valid_bls12_381_pairing_ratio() {
+    use ark_bls12_381::Bls12_381;
     let mut rng = OsRng;
     assert_valid_pairing_ratio::<Bls12_381>(
-        G1Affine::gen(&mut rng),
-        G2Affine::gen(&mut rng),
-        Fr::gen(&mut rng),
+        ark_bls12_381::G1Affine::gen(&mut rng),
+        ark_bls12_381::G2Affine::gen(&mut rng),
+        ark_bls12_381::Fr::gen(&mut rng),
     );
 }
 

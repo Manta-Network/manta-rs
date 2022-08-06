@@ -21,16 +21,18 @@ use crate::{
         bn254::manta_pay::MantaPaySetupCeremony,
         kzg::{Accumulator, Configuration as KzgConfiguration, Proof as KzgProof, Size},
     },
-    pairing::Pairing,
     util::{BlakeHasher, KZGBlakeHasher},
 };
 use ark_bn254::{Bn254, Fr, G1Affine, G2Affine, Parameters};
-use ark_ec::{
-    models::{bn::BnParameters, ModelParameters},
+use manta_crypto::arkworks::{
+    ec::{
+        models::{bn::BnParameters, ModelParameters},
     short_weierstrass_jacobian::GroupAffine,
     AffineCurve, PairingEngine, SWModelParameters,
+    },
+    ff::{PrimeField, Zero},
+    pairing::Pairing,
 };
-use ark_ff::{PrimeField, Zero};
 use ark_serialize::{CanonicalSerialize, Read};
 use blake2::Digest;
 use manta_util::into_array_unchecked;
@@ -432,7 +434,8 @@ where
 /// same factor.
 #[inline]
 fn check_consistent_factor(g1: &Vec<G1Affine>, g2: &Vec<G2Affine>) -> bool {
-    use crate::{pairing::PairingEngineExt, util::power_pairs};
+    use crate::util::power_pairs;
+    use manta_crypto::arkworks::pairing::PairingEngineExt;
 
     let g1_pair = power_pairs(g1);
     let g2_pair = power_pairs(g2);

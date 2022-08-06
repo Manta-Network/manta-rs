@@ -26,11 +26,9 @@ use crate::{
         },
     },
     mpc::Types,
-    pairing::Pairing,
     util::{BlakeHasher, KZGBlakeHasher},
 };
 use ark_bn254::{Bn254, Fr, G1Affine, G2Affine};
-use ark_ec::{AffineCurve, PairingEngine};
 use ark_groth16::ProvingKey;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use blake2::Digest;
@@ -45,6 +43,8 @@ use std::{
     fs::{File, OpenOptions},
     time::Instant,
 };
+use manta_crypto::arkworks::pairing::Pairing;
+use manta_crypto::arkworks::ec::{AffineCurve, PairingEngine};
 
 /// Configuration for a Phase1 Ceremony large enough to support MantaPay circuits
 pub struct MantaPaySetupCeremony;
@@ -250,6 +250,14 @@ pub fn phase2_contribution_test() {
         groth16::mpc::{self, contribute, verify_transform, verify_transform_all},
         mpc::Transcript,
     };
+    use manta_crypto::accumulator::Accumulator;
+    use manta_crypto::rand::Sample;
+    use manta_pay::{
+        config::{FullParameters, Reclaim},
+        test::payment::UtxoAccumulator,
+    };
+    use manta_accounting::transfer::test::TransferDistribution;
+    use rand_chacha::ChaCha20Rng;
 
     println!("Reading ProverKey from file");
     let now = Instant::now();
@@ -258,7 +266,8 @@ pub fn phase2_contribution_test() {
         .open("phase2_reclaim_pk")
         .expect("file not found");
     let mut state: ProvingKey<Bn254> =
-        CanonicalDeserialize::deserialize_uncompressed(&mut reader).unwrap();
+        // CanonicalDeserialize::deserialize_uncompressed(&mut reader).unwrap();
+        CanonicalDeserialize::deserialize_unchecked(&mut reader).unwrap();
     println!("Finished reading ProverKey in {:?}", now.elapsed());
 
     println!("Contributing to phase 2 params");
@@ -296,4 +305,30 @@ pub fn phase2_contribution_test() {
     )
     .expect("Verifying all transformations failed.");
     println!("Verified phase 2 contributions in {:?}", now.elapsed());
+
+    // Generate and verify a proof
+    println!("Generating a proof");
+    let now = Instant::now();
+    let mut rng = ChaCha20Rng::from_seed([0; 32]);
+    let mut utxo_accumulator = UtxoAccumulator::new(rng.gen());
+    let parameters = rng.gen();
+    let sample = Reclaim::sample(
+        TransferDistribution {
+            parameters: &parameters,
+            utxo_accumulator: &mut utxo_accumulator,
+        },
+        &mut rng,
+    );
+    let cs = sample.known_constraints(FullParameters::new(&parameters, utxo_accumulator.model()));
+    let proof =
+        ark_groth16::prover::create_random_proof(cs, &state, &mut rng).unwrap();
+    println!("Took {:?} to generate a proof", now.elapsed());
+
+    let now = Instant::now();
+    let vk = &state.vk;
+    let prepared_vk = ark_groth16::verifier::prepare_verifying_key(vk);
+    let public_inputs = sample.generate_proof_input();
+    let result = ark_groth16::verifier::verify_proof(&prepared_vk, &proof, &public_inputs).unwrap();
+    println!("Took {:?} to verify the proof", now.elapsed());
+    assert!(result);
 }
