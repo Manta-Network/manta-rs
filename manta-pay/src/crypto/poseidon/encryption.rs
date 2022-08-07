@@ -22,7 +22,7 @@ use core::{fmt::Debug, hash::Hash};
 use manta_crypto::{
     eclair::{
         self,
-        alloc::{mode::Public, Allocate, Allocator, Constant, Variable},
+        alloc::{mode::Public, Allocate, Allocator, Constant, Var, Variable},
         bool::Bool,
         num::Zero,
         Has,

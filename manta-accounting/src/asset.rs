@@ -597,37 +597,37 @@ where
 
 impl<COM, I, V> Variable<Secret, COM> for Asset<I, V>
 where
-    I: Variable<Secret, COM, Type = AssetId>,
-    V: Variable<Secret, COM, Type = AssetValue>,
+    I: Variable<Secret, COM>,
+    V: Variable<Secret, COM>,
 {
-    type Type = Asset;
-
-    #[inline]
-    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
-        Self::new(this.id.as_known(compiler), this.value.as_known(compiler))
-    }
+    type Type = Asset<I::Type, V::Type>;
 
     #[inline]
     fn new_unknown(compiler: &mut COM) -> Self {
         Self::new(compiler.allocate_unknown(), compiler.allocate_unknown())
+    }
+
+    #[inline]
+    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
+        Self::new(this.id.as_known(compiler), this.value.as_known(compiler))
     }
 }
 
 impl<COM, I, V> Variable<Public, COM> for Asset<I, V>
 where
-    I: Variable<Public, COM, Type = AssetId>,
-    V: Variable<Public, COM, Type = AssetValue>,
+    I: Variable<Public, COM>,
+    V: Variable<Public, COM>,
 {
-    type Type = Asset;
-
-    #[inline]
-    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
-        Self::new(this.id.as_known(compiler), this.value.as_known(compiler))
-    }
+    type Type = Asset<I::Type, V::Type>;
 
     #[inline]
     fn new_unknown(compiler: &mut COM) -> Self {
         Self::new(compiler.allocate_unknown(), compiler.allocate_unknown())
+    }
+
+    #[inline]
+    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
+        Self::new(this.id.as_known(compiler), this.value.as_known(compiler))
     }
 }
 

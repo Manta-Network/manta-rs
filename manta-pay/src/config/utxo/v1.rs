@@ -57,6 +57,18 @@ pub type AssetValue = u128;
 pub type AssetValueVar = U128<FpVar<ConstraintField>>;
 
 ///
+pub type AuthorizationContext = utxo::auth::AuthorizationContext<Parameters>;
+
+///
+pub type AuthorizationContextVar = utxo::auth::AuthorizationContext<ParametersVar>;
+
+///
+pub type AuthorizationProof = utxo::auth::AuthorizationProof<Parameters>;
+
+///
+pub type AuthorizationProofVar = utxo::auth::AuthorizationProof<ParametersVar>;
+
+///
 pub type ProofAuthorizationKey = Group;
 
 ///
@@ -79,6 +91,12 @@ pub type UtxoAccumulatorItem = Fp<ConstraintField>;
 
 ///
 pub type UtxoAccumulatorItemVar = FpVar<ConstraintField>;
+
+///
+pub type UtxoAccumulatorWitness = utxo::UtxoAccumulatorWitness<Parameters>;
+
+///
+pub type UtxoAccumulatorOutput = utxo::UtxoAccumulatorOutput<Parameters>;
 
 ///
 pub type Parameters = protocol::Parameters<Config>;
@@ -129,6 +147,16 @@ impl poseidon::hash::DomainTag<Poseidon5> for UtxoCommitmentSchemeDomainTag {
     #[inline]
     fn domain_tag() -> <Poseidon5 as ParameterFieldType>::ParameterField {
         todo!()
+    }
+}
+
+impl<COM> Constant<COM> for UtxoCommitmentSchemeDomainTag {
+    type Type = Self;
+
+    #[inline]
+    fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
+        let _ = (this, compiler);
+        Self
     }
 }
 
@@ -196,12 +224,23 @@ impl protocol::UtxoCommitmentScheme<Compiler> for UtxoCommitmentScheme<Compiler>
 }
 
 ///
+#[derive(Default)]
 pub struct ViewingKeyDerivationFunctionDomainTag;
 
 impl poseidon::hash::DomainTag<Poseidon2> for ViewingKeyDerivationFunctionDomainTag {
     #[inline]
     fn domain_tag() -> <Poseidon2 as ParameterFieldType>::ParameterField {
         todo!()
+    }
+}
+
+impl<COM> Constant<COM> for ViewingKeyDerivationFunctionDomainTag {
+    type Type = Self;
+
+    #[inline]
+    fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
+        let _ = (this, compiler);
+        Self
     }
 }
 
@@ -250,6 +289,8 @@ impl protocol::ViewingKeyDerivationFunction<Compiler> for ViewingKeyDerivationFu
 }
 
 ///
+#[derive(derivative::Derivative)]
+#[derivative(Default)]
 pub struct IncomingEncryptionSchemeConverter<COM = ()>(PhantomData<COM>);
 
 impl encryption::HeaderType for IncomingEncryptionSchemeConverter {
@@ -437,6 +478,16 @@ impl encryption::convert::plaintext::Reverse<Compiler>
 }
 */
 
+impl<COM> Constant<COM> for IncomingEncryptionSchemeConverter<COM> {
+    type Type = IncomingEncryptionSchemeConverter;
+
+    #[inline]
+    fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
+        let _ = (this, compiler);
+        Self::default()
+    }
+}
+
 ///
 pub type IncomingPoseidonEncryptionScheme<COM = ()> =
     poseidon::encryption::Duplexer<Poseidon5, COM>;
@@ -460,6 +511,16 @@ impl poseidon::hash::DomainTag<Poseidon4> for UtxoAccumulatorItemHashDomainTag {
     #[inline]
     fn domain_tag() -> <Poseidon3 as ParameterFieldType>::ParameterField {
         todo!()
+    }
+}
+
+impl<COM> Constant<COM> for UtxoAccumulatorItemHashDomainTag {
+    type Type = Self;
+
+    #[inline]
+    fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
+        let _ = (this, compiler);
+        Self
     }
 }
 
@@ -539,6 +600,16 @@ impl poseidon::hash::DomainTag<Poseidon2> for InnerHashDomainTag {
     #[inline]
     fn domain_tag() -> <Poseidon2 as ParameterFieldType>::ParameterField {
         todo!()
+    }
+}
+
+impl<COM> Constant<COM> for InnerHashDomainTag {
+    type Type = Self;
+
+    #[inline]
+    fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
+        let _ = (this, compiler);
+        Self
     }
 }
 
@@ -634,6 +705,16 @@ impl poseidon::hash::DomainTag<Poseidon3> for NullifierCommitmentSchemeDomainTag
     }
 }
 
+impl<COM> Constant<COM> for NullifierCommitmentSchemeDomainTag {
+    type Type = Self;
+
+    #[inline]
+    fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
+        let _ = (this, compiler);
+        Self
+    }
+}
+
 ///
 pub struct NullifierCommitmentScheme<COM = ()>(
     Hasher<Poseidon3, NullifierCommitmentSchemeDomainTag, 3, COM>,
@@ -688,6 +769,8 @@ impl protocol::NullifierCommitmentScheme<Compiler> for NullifierCommitmentScheme
 }
 
 ///
+#[derive(derivative::Derivative)]
+#[derivative(Default)]
 pub struct OutgoingEncryptionSchemeConverter<COM = ()>(PhantomData<COM>);
 
 impl encryption::HeaderType for OutgoingEncryptionSchemeConverter {
@@ -868,6 +951,16 @@ impl encryption::convert::plaintext::Reverse<Compiler>
     }
 }
 */
+
+impl<COM> Constant<COM> for OutgoingEncryptionSchemeConverter<COM> {
+    type Type = OutgoingEncryptionSchemeConverter;
+
+    #[inline]
+    fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
+        let _ = (this, compiler);
+        Self::default()
+    }
+}
 
 ///
 pub type OutgoingPoseidonEncryptionScheme<COM = ()> =
