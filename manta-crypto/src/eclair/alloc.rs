@@ -29,7 +29,8 @@
 
 // TODO: How can we have objects that have both `Constant` and `Variable` parts?
 
-use core::marker::PhantomData;
+use core::{iter, marker::PhantomData};
+use manta_util::into_array_unchecked;
 
 /// Constant Type Alias
 pub type Const<C, COM> = <C as Constant<COM>>::Type;
@@ -82,6 +83,23 @@ where
     fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
         let _ = (this, compiler);
         PhantomData
+    }
+}
+
+impl<T, const N: usize, COM> Constant<COM> for [T; N]
+where
+    COM: ?Sized,
+    T: Constant<COM>,
+{
+    type Type = [T::Type; N];
+
+    #[inline]
+    fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
+        into_array_unchecked(
+            this.iter()
+                .map(|this| this.as_constant(compiler))
+                .collect::<Vec<_>>(),
+        )
     }
 }
 
@@ -178,6 +196,50 @@ where
     fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
         let _ = (this, compiler);
         PhantomData
+    }
+}
+
+impl<T, M, COM> Variable<M, COM> for Box<T>
+where
+    COM: ?Sized,
+    T: Variable<M, COM>,
+{
+    type Type = Box<T::Type>;
+
+    #[inline]
+    fn new_unknown(compiler: &mut COM) -> Self {
+        Self::new(compiler.allocate_unknown())
+    }
+
+    #[inline]
+    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
+        Self::new(T::new_known(this, compiler))
+    }
+}
+
+impl<T, const N: usize, M, COM> Variable<M, COM> for [T; N]
+where
+    COM: ?Sized,
+    T: Variable<M, COM>,
+{
+    type Type = [T::Type; N];
+
+    #[inline]
+    fn new_unknown(compiler: &mut COM) -> Self {
+        into_array_unchecked(
+            iter::repeat_with(|| compiler.allocate_unknown())
+                .take(N)
+                .collect::<Vec<_>>(),
+        )
+    }
+
+    #[inline]
+    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
+        into_array_unchecked(
+            this.iter()
+                .map(|this| this.as_known(compiler))
+                .collect::<Vec<_>>(),
+        )
     }
 }
 
