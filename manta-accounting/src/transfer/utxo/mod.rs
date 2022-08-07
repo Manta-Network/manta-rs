@@ -21,6 +21,7 @@
 //! to select the protocol version. The transfer protocol is built up from a given [`Mint`] and
 //! [`Spend`] implementation.
 
+/*
 use crate::transfer::utxo::auth::AuthorizationKeyType;
 use core::{fmt::Debug, hash::Hash, marker::PhantomData, ops::Deref};
 use manta_crypto::{
@@ -29,8 +30,12 @@ use manta_crypto::{
     rand::RngCore,
 };
 use manta_util::cmp::IndependenceContext;
+*/
 
 pub mod auth;
+
+/*
+
 pub mod v1;
 
 #[doc(inline)]
@@ -463,3 +468,5 @@ where
         self.base
     }
 }
+
+*/

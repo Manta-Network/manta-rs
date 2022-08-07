@@ -84,5 +84,5 @@ impl<T> Has<T> for () {
     type Type = T;
 }
 
-///
+/// Compiler Introspected Type
 pub type Type<COM, T> = <COM as Has<T>>::Type;

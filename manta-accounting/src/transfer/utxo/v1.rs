@@ -648,7 +648,7 @@ where
         );
 
         let nullifier_commitment = self.nullifier_commitment_scheme.commit(
-            &authorization_key.proof_authorization_key,
+            &authorization_key.authorization_key,
             &self.item_hash(&utxo, &mut ()),
             &mut (),
         );
@@ -1100,10 +1100,10 @@ where
     C: BaseConfiguration<COM> + ?Sized,
     COM: Has<bool, Type = C::Bool>,
 {
-    /// Proof Authorization Key
-    proof_authorization_key: C::Group,
+    /// Authorization Key
+    authorization_key: C::Group,
 
-    /// ViewingKey
+    /// Viewing Key
     viewing_key: Option<C::Scalar>,
 }
 
@@ -1112,11 +1112,11 @@ where
     C: BaseConfiguration<COM> + ?Sized,
     COM: Has<bool, Type = C::Bool>,
 {
-    /// Builds a new [`AuthorizationKey`] from `proof_authorization_key`.
+    /// Builds a new [`AuthorizationKey`] from `authorization_key`.
     #[inline]
-    pub fn new(proof_authorization_key: C::Group) -> Self {
+    pub fn new(authorization_key: C::Group) -> Self {
         Self {
-            proof_authorization_key,
+            authorization_key,
             viewing_key: None,
         }
     }
@@ -1129,7 +1129,7 @@ where
         compiler: &mut COM,
     ) -> &C::Scalar {
         self.viewing_key.get_or_insert_with(|| {
-            viewing_key_derivation_function.viewing_key(&self.proof_authorization_key, compiler)
+            viewing_key_derivation_function.viewing_key(&self.authorization_key, compiler)
         })
     }
 
@@ -1310,7 +1310,7 @@ where
         );
         compiler.assert(has_valid_membership);
         let nullifier_commitment = parameters.nullifier_commitment_scheme.commit(
-            &authorization_key.proof_authorization_key,
+            &authorization_key.authorization_key,
             &item,
             compiler,
         );

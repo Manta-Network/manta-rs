@@ -29,6 +29,7 @@
 //! See the [`crate::wallet`] module for more on how this transfer protocol is used in a wallet
 //! protocol for the keeping of accounts for private assets.
 
+/*
 use crate::{
     asset,
     transfer::{
@@ -60,12 +61,15 @@ use manta_util::{
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
+*/
 
-pub mod batch;
-pub mod canonical;
-pub mod receiver;
-pub mod sender;
+// pub mod batch;
+// pub mod canonical;
+// pub mod receiver;
+// pub mod sender;
 pub mod utxo;
+
+/*
 
 #[cfg(feature = "test")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
@@ -140,8 +144,8 @@ pub trait Configuration {
     type Parameters: auth::Derive
         + auth::Verify
         + auth::RandomnessType<Randomness = Self::AuthorizationRandomness>
-        + auth::Randomize<Self::SpendingKey>
-        + auth::Randomize<AuthorizationKey<Self>>
+        + auth::Randomize<Self::SpendingKey, Output = Self::SpendingKey>
+        + auth::Randomize<AuthorizationKey<Self>, Output = AuthorizationKey<Self>>
         + signature::Sign<
             SigningKey = Self::SpendingKey,
             Randomness = Self::AuthorizationSignatureRandomness,
@@ -230,6 +234,7 @@ pub trait Configuration {
             Self::AuthorizationKeyVar,
             Self::Compiler,
             Randomness = Self::AuthorizationRandomnessVar,
+            Output = Self::AuthorizationKeyVar,
         > + utxo::AssetType<Asset = AssetVar<Self>>
         + utxo::UtxoType<Utxo = Self::UtxoVar>
         + Mint<Self::Compiler, Secret = Self::MintSecretVar, Note = Self::NoteVar>
@@ -1799,3 +1804,5 @@ where
         input
     }
 }
+
+*/
