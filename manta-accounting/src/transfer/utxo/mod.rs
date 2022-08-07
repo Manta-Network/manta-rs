@@ -21,8 +21,7 @@
 //! to select the protocol version. The transfer protocol is built up from a given [`Mint`] and
 //! [`Spend`] implementation.
 
-/*
-use crate::transfer::utxo::auth::AuthorizationKeyType;
+use crate::transfer::utxo::auth::AuthorizationContextType;
 use core::{fmt::Debug, hash::Hash, marker::PhantomData, ops::Deref};
 use manta_crypto::{
     accumulator::{self, ItemHashFunction, MembershipProof},
@@ -30,12 +29,10 @@ use manta_crypto::{
     rand::RngCore,
 };
 use manta_util::cmp::IndependenceContext;
-*/
 
 pub mod auth;
 
-/*
-
+/* TODO:
 pub mod v1;
 
 #[doc(inline)]
@@ -43,6 +40,7 @@ pub use v1 as protocol;
 
 /// Current UTXO Protocol Version
 pub const VERSION: u8 = protocol::VERSION;
+*/
 
 /// Asset
 pub trait AssetType {
@@ -208,12 +206,13 @@ pub trait DefaultAddress<T>: AddressType {
 }
 
 /// Derive Decryption Key
-pub trait DeriveDecryptionKey: AuthorizationKeyType {
+pub trait DeriveDecryptionKey: AuthorizationContextType {
     /// Decryption Key Type
     type DecryptionKey;
 
-    /// Derives the decryption key for notes from `authorization_key`.
-    fn derive(&self, authorization_key: &mut Self::AuthorizationKey) -> Self::DecryptionKey;
+    /// Derives the decryption key for notes from `authorization_context`.
+    fn derive(&self, authorization_context: &mut Self::AuthorizationContext)
+        -> Self::DecryptionKey;
 }
 
 /// Note Opening
@@ -288,7 +287,7 @@ pub trait QueryAsset: AssetType + UtxoType {
 
 /// UTXO Spending
 pub trait Spend<COM = ()>:
-    ItemHashFunction<Self::Utxo, COM> + AuthorizationKeyType + AssetType + UtxoType + NullifierType
+    ItemHashFunction<Self::Utxo, COM> + AuthorizationContextType + AssetType + UtxoType + NullifierType
 {
     /// UTXO Accumulator Witness Type
     type UtxoAccumulatorWitness;
@@ -312,7 +311,7 @@ pub trait Spend<COM = ()>:
     fn well_formed_asset(
         &self,
         utxo_accumulator_model: &Self::UtxoAccumulatorModel,
-        authorization_key: &mut Self::AuthorizationKey,
+        authorization_context: &mut Self::AuthorizationContext,
         secret: &Self::Secret,
         utxo: &Self::Utxo,
         utxo_membership_proof: &UtxoMembershipProof<Self, COM>,
@@ -330,11 +329,11 @@ pub trait Spend<COM = ()>:
 
 /// Derive Spending Data
 pub trait DeriveSpend: Spend + IdentifierType {
-    /// Derives the data required to spend with an `authorization_key`, the `asset` to spend and its
-    /// `identifier`.
+    /// Derives the data required to spend with an `authorization_context`, the `asset` to spend and
+    /// its `identifier`.
     fn derive<R>(
         &self,
-        authorization_key: &mut Self::AuthorizationKey,
+        authorization_context: &mut Self::AuthorizationContext,
         identifier: Self::Identifier,
         asset: Self::Asset,
         rng: &mut R,
@@ -468,5 +467,3 @@ where
         self.base
     }
 }
-
-*/

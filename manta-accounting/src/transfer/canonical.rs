@@ -22,7 +22,7 @@ use crate::{
     asset::{self, AssetMap, AssetMetadata, MetadataDisplay},
     transfer::{
         has_public_participants, internal_pair, requires_authorization, Address, Asset,
-        AssociatedData, AuthorizationKey, AuthorizationProof, Configuration, FullParametersRef,
+        AssociatedData, Authorization, AuthorizationContext, Configuration, FullParametersRef,
         Parameters, PreSender, ProofSystemError, ProofSystemPublicParameters, ProvingContext,
         Receiver, Sender, Transfer, TransferPost, VerifyingContext,
     },
@@ -124,11 +124,11 @@ where
         )
     }
 
-    /// Builds a new [`ToPrivate`] and [`PreSender`] pair from `authorization_key` and `asset`.
+    /// Builds a new [`ToPrivate`] and [`PreSender`] pair from `authorization_context` and `asset`.
     #[inline]
     pub fn internal_pair<R>(
         parameters: &Parameters<C>,
-        authorization_key: &mut AuthorizationKey<C>,
+        authorization_context: &mut AuthorizationContext<C>,
         asset: Asset<C>,
         associated_data: AssociatedData<C>,
         rng: &mut R,
@@ -138,7 +138,7 @@ where
     {
         let (receiver, pre_sender) = internal_pair::<C, _>(
             parameters,
-            authorization_key,
+            authorization_context,
             asset.clone(),
             associated_data,
             rng,
@@ -167,11 +167,11 @@ where
     /// Builds a [`PrivateTransfer`] from `senders` and `receivers`.
     #[inline]
     pub fn build(
-        authorization_proof: AuthorizationProof<C>,
+        authorization: Authorization<C>,
         senders: [Sender<C>; PrivateTransferShape::SENDERS],
         receivers: [Receiver<C>; PrivateTransferShape::RECEIVERS],
     ) -> Self {
-        Self::new_unchecked(Some(authorization_proof), None, [], senders, receivers, [])
+        Self::new_unchecked(Some(authorization), None, [], senders, receivers, [])
     }
 }
 
@@ -204,13 +204,13 @@ where
     /// Builds a [`ToPublic`] from `senders`, `receivers`, and `asset`.
     #[inline]
     pub fn build(
-        authorization_proof: AuthorizationProof<C>,
+        authorization: Authorization<C>,
         senders: [Sender<C>; ToPublicShape::SENDERS],
         receivers: [Receiver<C>; ToPublicShape::RECEIVERS],
         asset: Asset<C>,
     ) -> Self {
         Self::new_unchecked(
-            Some(authorization_proof),
+            Some(authorization),
             Some(asset.id),
             [],
             senders,

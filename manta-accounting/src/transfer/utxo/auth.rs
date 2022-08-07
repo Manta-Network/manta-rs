@@ -18,14 +18,7 @@
 
 use core::{fmt::Debug, hash::Hash};
 use manta_crypto::{
-    eclair::{
-        self,
-        alloc::{
-            mode::{Derived, Public, Secret},
-            Allocate, Allocator, Constant, Variable,
-        },
-        bool::AssertEq,
-    },
+    eclair::alloc::{mode::Derived, Allocate, Allocator, Constant, Variable},
     rand::RngCore,
 };
 
@@ -274,21 +267,79 @@ where
 pub fn sign<T, M, R>(
     parameters: &T,
     spending_key: &T::SpendingKey,
-    authorization: &Authorization<T>,
+    authorization: Authorization<T>,
     message: &M,
     rng: &mut R,
-) -> Option<T::Signature>
+) -> Option<AuthorizationSignature<T>>
 where
     T: VerifyAuthorization + DeriveSigningKey + Sign<M>,
     R: RngCore + ?Sized,
 {
     if authorization.verify(parameters, spending_key) {
-        Some(parameters.sign(
-            &parameters.derive(spending_key, &authorization.context, &authorization.proof),
+        Some(AuthorizationSignature::generate(
+            parameters,
+            spending_key,
+            authorization,
             message,
             rng,
         ))
     } else {
         None
+    }
+}
+
+///
+pub struct AuthorizationSignature<T>
+where
+    T: AuthorizationKeyType + SignatureType,
+{
+    ///
+    pub authorization_key: T::AuthorizationKey,
+
+    ///
+    pub signature: T::Signature,
+}
+
+impl<T> AuthorizationSignature<T>
+where
+    T: AuthorizationKeyType + SignatureType,
+{
+    ///
+    #[inline]
+    pub fn new(authorization_key: T::AuthorizationKey, signature: T::Signature) -> Self {
+        Self {
+            authorization_key,
+            signature,
+        }
+    }
+
+    ///
+    #[inline]
+    pub fn generate<M, R>(
+        parameters: &T,
+        spending_key: &T::SpendingKey,
+        authorization: Authorization<T>,
+        message: &M,
+        rng: &mut R,
+    ) -> Self
+    where
+        T: DeriveSigningKey + Sign<M>,
+        R: RngCore + ?Sized,
+    {
+        let signature = parameters.sign(
+            &parameters.derive(spending_key, &authorization.context, &authorization.proof),
+            message,
+            rng,
+        );
+        Self::new(authorization.into_authorization_key(), signature)
+    }
+
+    ///
+    #[inline]
+    pub fn verify<M>(&self, parameters: &T, message: &M) -> bool
+    where
+        T: VerifySignature<M>,
+    {
+        parameters.verify(&self.authorization_key, &self.signature, message)
     }
 }
