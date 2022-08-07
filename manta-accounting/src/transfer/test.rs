@@ -18,9 +18,9 @@
 
 use crate::transfer::{
     canonical::ToPrivate, has_public_participants, requires_authorization, Address, Asset,
-    AssociatedData, AuthorizationKey, AuthorizationProof, Configuration, FullParametersRef,
+    AssociatedData, Authorization, AuthorizationContext, Configuration, FullParametersRef,
     Parameters, PreSender, ProofInput, ProofSystemError, ProofSystemPublicParameters,
-    ProvingContext, Receiver, Sender, Transfer, TransferPost, UtxoAccumulatorItem,
+    ProvingContext, Receiver, Sender, SpendingKey, Transfer, TransferPost, UtxoAccumulatorItem,
     UtxoAccumulatorModel, VerifyingContext,
 };
 use alloc::vec::Vec;
@@ -92,8 +92,50 @@ where
     /// UTXO Accumulator
     pub utxo_accumulator: &'p mut A,
 
-    /// Authorization Proof
-    pub authorization_proof: Option<AuthorizationProof<C>>,
+    /// Authorization
+    pub authorization: Option<Authorization<C>>,
+}
+
+impl<'p, C, A> TransferDistribution<'p, C, A>
+where
+    C: Configuration,
+    A: Accumulator<Item = UtxoAccumulatorItem<C>, Model = UtxoAccumulatorModel<C>>,
+{
+    ///
+    #[inline]
+    pub fn new(
+        parameters: &'p Parameters<C>,
+        utxo_accumulator: &'p mut A,
+        authorization: Option<Authorization<C>>,
+    ) -> Self {
+        Self {
+            parameters,
+            utxo_accumulator,
+            authorization,
+        }
+    }
+
+    ///
+    #[inline]
+    pub fn from_spending_key<R>(
+        parameters: &'p Parameters<C>,
+        utxo_accumulator: &'p mut A,
+        spending_key: &SpendingKey<C>,
+        rng: &mut R,
+    ) -> Self
+    where
+        R: RngCore + ?Sized,
+    {
+        Self::new(
+            parameters,
+            utxo_accumulator,
+            Some(Authorization::<C>::from_spending_key(
+                parameters,
+                spending_key,
+                rng,
+            )),
+        )
+    }
 }
 
 impl<'p, C, A> From<FixedTransferDistribution<'p, C, A>> for TransferDistribution<'p, C, A>
@@ -142,6 +184,36 @@ impl<C, const SOURCES: usize, const SENDERS: usize, const RECEIVERS: usize, cons
 where
     C: Configuration,
 {
+    ///
+    #[inline]
+    fn generate_distribution<'s, 'p, A, R>(
+        parameters: &'p Parameters<C>,
+        utxo_accumulator: &'p mut A,
+        spending_key: Option<&'s SpendingKey<C>>,
+        rng: &mut R,
+    ) -> (Option<&'s SpendingKey<C>>, TransferDistribution<'p, C, A>)
+    where
+        A: Accumulator<Item = UtxoAccumulatorItem<C>, Model = UtxoAccumulatorModel<C>>,
+        R: RngCore + ?Sized,
+    {
+        match (spending_key, requires_authorization(SENDERS)) {
+            (Some(spending_key), true) => (
+                Some(spending_key),
+                TransferDistribution::<C, _>::from_spending_key(
+                    parameters,
+                    utxo_accumulator,
+                    spending_key,
+                    rng,
+                ),
+            ),
+            (None, false) => (
+                None,
+                TransferDistribution::new(parameters, utxo_accumulator, None),
+            ),
+            _ => unreachable!(""),
+        }
+    }
+
     /// Samples a [`TransferPost`] from `parameters` and `utxo_accumulator` using `proving_context`
     /// and `rng`.
     #[inline]
@@ -149,7 +221,7 @@ where
         proving_context: &ProvingContext<C>,
         parameters: &Parameters<C>,
         utxo_accumulator: &mut A,
-        spending_key: Option<&C::SpendingKey>,
+        spending_key: Option<&SpendingKey<C>>,
         rng: &mut R,
     ) -> Result<Option<TransferPost<C>>, ProofSystemError<C>>
     where
@@ -157,29 +229,9 @@ where
         for<'s> Self: Sample<TransferDistribution<'s, C, A>>,
         R: CryptoRng + RngCore + ?Sized,
     {
-        let (spending_key, authorization_proof) =
-            match (spending_key, requires_authorization(SENDERS)) {
-                (Some(spending_key), true) => (
-                    Some(spending_key),
-                    Some(AuthorizationProof::<C>::from_signing_key(
-                        parameters,
-                        spending_key,
-                        rng.gen(),
-                        &mut (),
-                    )),
-                ),
-                (None, false) => (None, None),
-                _ => unreachable!(""),
-            };
-        Self::sample(
-            TransferDistribution {
-                parameters,
-                utxo_accumulator,
-                authorization_proof,
-            },
-            rng,
-        )
-        .into_post(
+        let (spending_key, distribution) =
+            Self::generate_distribution(parameters, utxo_accumulator, spending_key, rng);
+        Self::sample(distribution, rng).into_post(
             FullParametersRef::<C>::new(parameters, utxo_accumulator.model()),
             proving_context,
             spending_key,
@@ -194,7 +246,7 @@ where
         public_parameters: &ProofSystemPublicParameters<C>,
         parameters: &Parameters<C>,
         utxo_accumulator: &mut A,
-        spending_key: Option<&C::SpendingKey>,
+        spending_key: Option<&SpendingKey<C>>,
         rng: &mut R,
     ) -> Result<bool, ProofSystemError<C>>
     where
@@ -225,7 +277,7 @@ where
         verifying_context: &VerifyingContext<C>,
         parameters: &Parameters<C>,
         utxo_accumulator: &mut A,
-        spending_key: Option<&C::SpendingKey>,
+        spending_key: Option<&SpendingKey<C>>,
         rng: &mut R,
     ) -> Result<bool, ProofSystemError<C>>
     where
@@ -251,7 +303,7 @@ where
         public_parameters: &ProofSystemPublicParameters<C>,
         parameters: &Parameters<C>,
         utxo_accumulator: &mut A,
-        spending_key: Option<&C::SpendingKey>,
+        spending_key: Option<&SpendingKey<C>>,
         rng: &mut R,
     ) -> Result<bool, ProofSystemError<C>>
     where
@@ -261,28 +313,9 @@ where
         ProofInput<C>: PartialEq,
         ProofSystemError<C>: Debug,
     {
-        let (spending_key, authorization_proof) =
-            match (spending_key, requires_authorization(SENDERS)) {
-                (Some(spending_key), true) => (
-                    Some(spending_key),
-                    Some(AuthorizationProof::<C>::from_signing_key(
-                        parameters,
-                        spending_key,
-                        rng.gen(),
-                        &mut (),
-                    )),
-                ),
-                (None, false) => (None, None),
-                _ => unreachable!(""),
-            };
-        let transfer = Self::sample(
-            TransferDistribution {
-                parameters,
-                utxo_accumulator,
-                authorization_proof,
-            },
-            rng,
-        );
+        let (spending_key, distribution) =
+            Self::generate_distribution(parameters, utxo_accumulator, spending_key, rng);
+        let transfer = Self::sample(distribution, rng);
         let full_parameters = FullParametersRef::<C>::new(parameters, utxo_accumulator.model());
         let (proving_context, _) = Self::generate_context(public_parameters, full_parameters, rng)?;
         Ok(transfer.generate_proof_input()
@@ -297,7 +330,7 @@ where
 #[inline]
 fn sample_senders_and_receivers<C, A, R>(
     parameters: &Parameters<C>,
-    mut authorization_key: Option<&mut AuthorizationKey<C>>,
+    mut authorization_context: Option<&mut AuthorizationContext<C>>,
     asset_id: C::AssetId,
     senders: Vec<C::AssetValue>,
     receivers: Vec<C::AssetValue>,
@@ -312,15 +345,15 @@ where
     R: RngCore + ?Sized,
 {
     let senders = match (
-        authorization_key.take(),
+        authorization_context.take(),
         requires_authorization(senders.len()),
     ) {
-        (Some(authorization_key), true) => senders
+        (Some(authorization_context), true) => senders
             .into_iter()
             .map(|v| {
                 let pre_sender = PreSender::<C>::sample(
                     parameters,
-                    authorization_key,
+                    authorization_context,
                     rng.gen(),
                     Asset::<C>::new(asset_id.clone(), v),
                     rng,
@@ -372,10 +405,7 @@ where
     where
         R: RngCore + ?Sized,
     {
-        let authorization_key = distribution
-            .authorization_proof
-            .as_mut()
-            .map(|k| k.authorization_key());
+        let authorization_context = distribution.authorization.as_mut().map(|k| &mut k.context);
         let asset = Asset::<C>::gen(rng);
         let mut input = value_distribution(SOURCES + SENDERS, asset.value.clone(), rng);
         let mut output = value_distribution(RECEIVERS + SINKS, asset.value, rng);
@@ -383,7 +413,7 @@ where
         let public_output = output.split_off(RECEIVERS);
         let (senders, receivers) = sample_senders_and_receivers::<C, _, _>(
             distribution.parameters,
-            authorization_key,
+            authorization_context,
             asset.id.clone(),
             secret_input,
             output,
@@ -393,7 +423,7 @@ where
         Self::new(
             requires_authorization(SENDERS).then_some(
                 distribution
-                    .authorization_proof
+                    .authorization
                     .expect("The authorization proof exists whenever we require authorization."),
             ),
             has_public_participants(SOURCES, SINKS).then_some(asset.id),
@@ -428,14 +458,14 @@ where
     where
         R: RngCore + ?Sized,
     {
-        let authorization_key = distribution
+        let authorization_context = distribution
             .base
-            .authorization_proof
+            .authorization
             .as_mut()
-            .map(|k| k.authorization_key());
+            .map(|k| &mut k.context);
         let (senders, receivers) = sample_senders_and_receivers::<C, _, _>(
             distribution.base.parameters,
-            authorization_key,
+            authorization_context,
             distribution.asset_id.clone(),
             value_distribution(SENDERS, distribution.sender_sum, rng),
             value_distribution(RECEIVERS, distribution.receiver_sum, rng),
@@ -446,7 +476,7 @@ where
             requires_authorization(SENDERS).then_some(
                 distribution
                     .base
-                    .authorization_proof
+                    .authorization
                     .expect("The authorization proof exists whenever we require authorization."),
             ),
             has_public_participants(SOURCES, SINKS).then_some(distribution.asset_id),
@@ -463,7 +493,7 @@ where
 pub fn sample_to_private<C, R>(
     parameters: FullParametersRef<C>,
     proving_context: &ProvingContext<C>,
-    authorization_key: &mut AuthorizationKey<C>,
+    authorization_context: &mut AuthorizationContext<C>,
     asset: Asset<C>,
     associated_data: AssociatedData<C>,
     rng: &mut R,
@@ -474,7 +504,7 @@ where
 {
     let (transaction, pre_sender) = ToPrivate::internal_pair(
         parameters.base,
-        authorization_key,
+        authorization_context,
         asset,
         associated_data,
         rng,

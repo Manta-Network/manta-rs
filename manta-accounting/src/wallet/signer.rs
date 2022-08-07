@@ -37,15 +37,11 @@ use crate::{
             ToPublic, Transaction,
         },
         requires_authorization,
-        utxo::{
-            self,
-            auth::{self, Authorization},
-            NoteOpen,
-        },
-        Address, Asset, AssociatedData, AuthorizationKey, AuthorizationProof, FullParametersRef,
+        utxo::{self, auth, NoteOpen},
+        Address, Asset, AssociatedData, Authorization, AuthorizationContext, FullParametersRef,
         IdentifiedAsset, Identifier, Note, Nullifier, Parameters, PreSender, ProofSystemError,
-        ProvingContext, Receiver, Sender, Shape, Transfer, TransferPost, Utxo, UtxoAccumulatorItem,
-        UtxoAccumulatorModel,
+        ProvingContext, Receiver, Sender, Shape, SpendingKey, Transfer, TransferPost, Utxo,
+        UtxoAccumulatorItem, UtxoAccumulatorModel,
     },
     wallet::ledger::{self, Data},
 };
@@ -482,7 +478,7 @@ pub trait Configuration: transfer::Configuration {
 
     /// Account Type
     type Account: Account<
-        SpendingKey = Self::SpendingKey,
+        SpendingKey = SpendingKey<Self>,
         Address = Address<Self>,
         Parameters = Self::Parameters,
     >;
@@ -631,24 +627,27 @@ where
 
     /// Returns the default spending key for `self`.
     #[inline]
-    fn default_spending_key(&self, parameters: &C::Parameters) -> C::SpendingKey {
+    fn default_spending_key(&self, parameters: &C::Parameters) -> SpendingKey<C> {
         self.default_account().spending_key(parameters)
     }
 
     ///
     #[inline]
-    fn default_authorization_key(&self, parameters: &C::Parameters) -> AuthorizationKey<C> {
-        auth::Derive::derive(parameters, &self.default_spending_key(parameters), &mut ())
+    fn default_authorization_context(&self, parameters: &C::Parameters) -> AuthorizationContext<C> {
+        auth::DeriveContext::derive(parameters, &self.default_spending_key(parameters))
     }
 
     ///
     #[inline]
-    fn authorization_proof_for_default_spending_key(
+    fn authorization_for_default_spending_key(
         &mut self,
         parameters: &C::Parameters,
-    ) -> AuthorizationProof<C> {
-        Authorization::new(self.default_authorization_key(parameters), self.rng.gen())
-            .into_proof(parameters, &mut ())
+    ) -> Authorization<C> {
+        Authorization::<C>::from_spending_key(
+            parameters,
+            &self.default_spending_key(parameters),
+            &mut self.rng,
+        )
     }
 
     /// Returns the default address for the default account of `self`.
@@ -660,7 +659,7 @@ where
     ///
     #[inline]
     fn insert_next_item<R>(
-        authorization_key: &mut AuthorizationKey<C>,
+        authorization_context: &mut AuthorizationContext<C>,
         utxo_accumulator: &mut C::UtxoAccumulator,
         assets: &mut C::AssetMap,
         parameters: &Parameters<C>,
@@ -675,7 +674,7 @@ where
         let IdentifiedAsset::<C> { identifier, asset } = identified_asset;
         let (_, computed_utxo, nullifier) = utxo::DeriveSpend::derive(
             parameters,
-            authorization_key,
+            authorization_context,
             identifier.clone(),
             asset.clone(),
             rng,
@@ -702,7 +701,7 @@ where
     /// inserting it into the `withdraw` set if this is the case.
     #[inline]
     fn is_asset_unspent<R>(
-        authorization_key: &mut AuthorizationKey<C>,
+        authorization_context: &mut AuthorizationContext<C>,
         utxo_accumulator: &mut C::UtxoAccumulator,
         parameters: &Parameters<C>,
         identifier: Identifier<C>,
@@ -716,7 +715,7 @@ where
     {
         let (_, utxo, nullifier) = utxo::DeriveSpend::derive(
             parameters,
-            authorization_key,
+            authorization_context,
             identifier,
             asset.clone(),
             rng,
@@ -751,12 +750,13 @@ where
         let nullifier_count = nullifiers.len();
         let mut deposit = Vec::new();
         let mut withdraw = Vec::new();
-        let mut authorization_key = self.default_authorization_key(parameters);
-        let decryption_key = utxo::DeriveDecryptionKey::derive(parameters, &mut authorization_key);
+        let mut authorization_context = self.default_authorization_context(parameters);
+        let decryption_key =
+            utxo::DeriveDecryptionKey::derive(parameters, &mut authorization_context);
         for (utxo, note) in inserts {
             if let Some(identified_asset) = parameters.open_into(&decryption_key, &utxo, note) {
                 Self::insert_next_item(
-                    &mut authorization_key,
+                    &mut authorization_context,
                     &mut self.utxo_accumulator,
                     &mut self.assets,
                     parameters,
@@ -774,7 +774,7 @@ where
         self.assets.retain(|identifier, assets| {
             assets.retain(|asset| {
                 Self::is_asset_unspent(
-                    &mut authorization_key,
+                    &mut authorization_context,
                     &mut self.utxo_accumulator,
                     parameters,
                     identifier.clone(),
@@ -813,7 +813,7 @@ where
     ) -> PreSender<C> {
         PreSender::<C>::sample(
             parameters,
-            &mut self.default_authorization_key(parameters),
+            &mut self.default_authorization_context(parameters),
             identifier,
             asset,
             &mut self.rng,
@@ -865,7 +865,7 @@ where
     >(
         parameters: FullParametersRef<C>,
         proving_context: &ProvingContext<C>,
-        spending_key: Option<&C::SpendingKey>,
+        spending_key: Option<&SpendingKey<C>>,
         transfer: Transfer<C, SOURCES, SENDERS, RECEIVERS, SINKS>,
         rng: &mut C::Rng,
     ) -> Result<TransferPost<C>, SignError<C>> {
@@ -909,7 +909,7 @@ where
     ) -> Result<([Receiver<C>; PrivateTransferShape::RECEIVERS], Join<C>), SignError<C>> {
         Ok(Join::new(
             parameters,
-            &mut self.default_authorization_key(parameters),
+            &mut self.default_authorization_context(parameters),
             Asset::<C>::new(asset_id.clone(), total),
             &mut self.rng,
         ))
@@ -1003,12 +1003,11 @@ where
                     asset_id,
                     senders.iter().map(|s| s.asset().value).sum(),
                 )?;
-                let authorization_proof =
-                    self.authorization_proof_for_default_spending_key(parameters);
+                let authorization = self.authorization_for_default_spending_key(parameters);
                 posts.push(self.build_post(
                     parameters,
                     &proving_context.private_transfer,
-                    PrivateTransfer::build(authorization_proof, senders, receivers),
+                    PrivateTransfer::build(authorization, senders, receivers),
                 )?);
                 join.insert_utxos(parameters, &mut self.utxo_accumulator);
                 joins.push(join.pre_sender);
@@ -1174,9 +1173,9 @@ where
             &self.parameters.parameters,
             Asset::<C>::new(asset.id.clone(), selection.change),
         );
-        let authorization_proof = self
+        let authorization = self
             .state
-            .authorization_proof_for_default_spending_key(&self.parameters.parameters);
+            .authorization_for_default_spending_key(&self.parameters.parameters);
         let final_post = match address {
             Some(address) => {
                 let receiver = self.state.receiver(
@@ -1188,13 +1187,13 @@ where
                 self.state.build_post(
                     &self.parameters.parameters,
                     &self.parameters.proving_context.private_transfer,
-                    PrivateTransfer::build(authorization_proof, senders, [change, receiver]),
+                    PrivateTransfer::build(authorization, senders, [change, receiver]),
                 )?
             }
             _ => self.state.build_post(
                 &self.parameters.parameters,
                 &self.parameters.proving_context.to_public,
-                ToPublic::build(authorization_proof, senders, [change], asset),
+                ToPublic::build(authorization, senders, [change], asset),
             )?,
         };
         posts.push(final_post);

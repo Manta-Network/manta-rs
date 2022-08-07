@@ -76,27 +76,25 @@ pub trait SignatureType {
 /// Signature Type
 pub type Signature<T> = <T as SignatureType>::Signature;
 
-/// Derivation Authorization
-pub trait DeriveAuthorization:
+///
+pub trait DeriveContext: AuthorizationContextType + SpendingKeyType {
+    ///
+    fn derive(&self, spending_key: &Self::SpendingKey) -> Self::AuthorizationContext;
+}
+
+///
+pub trait ProveAuthorization:
     AuthorizationContextType + AuthorizationProofType + SpendingKeyType
 {
     ///
-    fn derive<R>(
+    fn prove<R>(
         &self,
         spending_key: &Self::SpendingKey,
+        authorization_context: &Self::AuthorizationContext,
         rng: &mut R,
-    ) -> (Self::AuthorizationContext, Self::AuthorizationProof)
+    ) -> Self::AuthorizationProof
     where
         R: RngCore + ?Sized;
-
-    ///
-    #[inline]
-    fn derive_into<R>(&self, spending_key: &Self::SpendingKey, rng: &mut R) -> Authorization<Self>
-    where
-        R: RngCore + ?Sized,
-    {
-        Authorization::from_spending_key(self, spending_key, rng)
-    }
 }
 
 ///
@@ -201,10 +199,11 @@ where
     #[inline]
     pub fn from_spending_key<R>(parameters: &T, spending_key: &T::SpendingKey, rng: &mut R) -> Self
     where
-        T: DeriveAuthorization,
+        T: DeriveContext + ProveAuthorization,
         R: RngCore + ?Sized,
     {
-        let (context, proof) = parameters.derive(spending_key, rng);
+        let context = parameters.derive(spending_key);
+        let proof = parameters.prove(spending_key, &context, rng);
         Self::new(context, proof)
     }
 
