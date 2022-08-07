@@ -390,20 +390,12 @@ where
     pub signature_scheme: C::SignatureScheme,
 }
 
-impl<C, COM> utxo::auth::AuthorizationKeyType for BaseParameters<C, COM>
+impl<C, COM> utxo::auth::AuthorizationContextType for BaseParameters<C, COM>
 where
     C: BaseConfiguration<COM>,
     COM: Assert + Has<bool, Type = C::Bool>,
 {
-    type AuthorizationKey = AuthorizationKey<C, COM>;
-}
-
-impl<C, COM> utxo::auth::RandomnessType for BaseParameters<C, COM>
-where
-    C: BaseConfiguration<COM>,
-    COM: Assert + Has<bool, Type = C::Bool>,
-{
-    type Randomness = C::Scalar;
+    type AuthorizationContext = AuthorizationContext<C, COM>;
 }
 
 impl<C, COM> utxo::AssetType for BaseParameters<C, COM>
@@ -570,7 +562,7 @@ where
     fn well_formed_asset(
         &self,
         utxo_accumulator_model: &Self::UtxoAccumulatorModel,
-        authorization_key: &mut Self::AuthorizationKey,
+        authorization_context: &mut Self::AuthorizationContext,
         secret: &Self::Secret,
         utxo: &Self::Utxo,
         utxo_membership_proof: &UtxoMembershipProof<C, COM>,
@@ -579,7 +571,7 @@ where
         secret.well_formed_asset(
             self,
             utxo_accumulator_model,
-            authorization_key,
+            authorization_context,
             utxo,
             utxo_membership_proof,
             compiler,
@@ -608,7 +600,7 @@ where
     #[inline]
     fn derive<R>(
         &self,
-        authorization_key: &mut Self::AuthorizationKey,
+        authorization_context: &mut Self::AuthorizationContext,
         identifier: Self::Identifier,
         asset: Self::Asset,
         rng: &mut R,
@@ -629,7 +621,7 @@ where
                 identifier.key_diversifier,
             ),
         );
-        let receiving_key = authorization_key.receiving_key(
+        let receiving_key = authorization_context.receiving_key(
             &self.viewing_key_derivation_function,
             &secret.plaintext.key_diversifier,
             &mut (),
@@ -646,9 +638,8 @@ where
             associated_data.public(&asset),
             utxo_commitment,
         );
-
         let nullifier_commitment = self.nullifier_commitment_scheme.commit(
-            &authorization_key.authorization_key,
+            &authorization_context.proof_authorization_key,
             &self.item_hash(&utxo, &mut ()),
             &mut (),
         );
@@ -686,8 +677,11 @@ where
     type DecryptionKey = C::Scalar;
 
     #[inline]
-    fn derive(&self, authorization_key: &mut Self::AuthorizationKey) -> Self::DecryptionKey {
-        authorization_key
+    fn derive(
+        &self,
+        authorization_context: &mut Self::AuthorizationContext,
+    ) -> Self::DecryptionKey {
+        authorization_context
             .viewing_key(&self.viewing_key_derivation_function, &mut ())
             .clone()
     }
@@ -1094,29 +1088,29 @@ where
     }
 }
 
-/// Authorization Key
-pub struct AuthorizationKey<C, COM = ()>
+/// Authorization Context
+pub struct AuthorizationContext<C, COM = ()>
 where
     C: BaseConfiguration<COM> + ?Sized,
     COM: Has<bool, Type = C::Bool>,
 {
-    /// Authorization Key
-    authorization_key: C::Group,
+    /// Proof Authorization Key
+    proof_authorization_key: C::Group,
 
     /// Viewing Key
     viewing_key: Option<C::Scalar>,
 }
 
-impl<C, COM> AuthorizationKey<C, COM>
+impl<C, COM> AuthorizationContext<C, COM>
 where
     C: BaseConfiguration<COM> + ?Sized,
     COM: Has<bool, Type = C::Bool>,
 {
-    /// Builds a new [`AuthorizationKey`] from `authorization_key`.
+    /// Builds a new [`AuthorizationContext`] from `proof_authorization_key`.
     #[inline]
-    pub fn new(authorization_key: C::Group) -> Self {
+    pub fn new(proof_authorization_key: C::Group) -> Self {
         Self {
-            authorization_key,
+            proof_authorization_key,
             viewing_key: None,
         }
     }
@@ -1129,11 +1123,11 @@ where
         compiler: &mut COM,
     ) -> &C::Scalar {
         self.viewing_key.get_or_insert_with(|| {
-            viewing_key_derivation_function.viewing_key(&self.authorization_key, compiler)
+            viewing_key_derivation_function.viewing_key(&self.proof_authorization_key, compiler)
         })
     }
 
-    /// Returns the receiving key over `key_diversifier` for this [`AuthorizationKey`].
+    /// Returns the receiving key over `key_diversifier` for `self`.
     #[inline]
     pub fn receiving_key(
         &mut self,
@@ -1279,7 +1273,7 @@ where
         &self,
         parameters: &BaseParameters<C, COM>,
         utxo_accumulator_model: &C::UtxoAccumulatorModel,
-        authorization_key: &mut AuthorizationKey<C, COM>,
+        authorization_context: &mut AuthorizationContext<C, COM>,
         utxo: &Utxo<C, COM>,
         utxo_membership_proof: &UtxoMembershipProof<C, COM>,
         compiler: &mut COM,
@@ -1295,7 +1289,7 @@ where
             &self.plaintext.asset,
             compiler,
         );
-        let receiving_key = authorization_key.receiving_key(
+        let receiving_key = authorization_context.receiving_key(
             &parameters.viewing_key_derivation_function,
             &self.plaintext.key_diversifier,
             compiler,
@@ -1310,7 +1304,7 @@ where
         );
         compiler.assert(has_valid_membership);
         let nullifier_commitment = parameters.nullifier_commitment_scheme.commit(
-            &authorization_key.authorization_key,
+            &authorization_context.proof_authorization_key,
             &item,
             compiler,
         );

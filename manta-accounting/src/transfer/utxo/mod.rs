@@ -31,8 +31,6 @@ use manta_crypto::{
 use manta_util::cmp::IndependenceContext;
 
 pub mod auth;
-
-/* TODO:
 pub mod v1;
 
 #[doc(inline)]
@@ -40,7 +38,6 @@ pub use v1 as protocol;
 
 /// Current UTXO Protocol Version
 pub const VERSION: u8 = protocol::VERSION;
-*/
 
 /// Asset
 pub trait AssetType {
