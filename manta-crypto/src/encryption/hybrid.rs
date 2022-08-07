@@ -21,6 +21,7 @@
 //! encryption scheme inlines this complexity into the encryption interfaces.
 
 use crate::{
+    constraint::{HasInput, Input},
     eclair::{
         self,
         alloc::{
@@ -295,6 +296,19 @@ where
             this.ephemeral_public_key.as_known(compiler),
             this.ciphertext.as_known(compiler),
         )
+    }
+}
+
+impl<K, E, P> Input<P> for Ciphertext<K, E>
+where
+    K: key::agreement::Types,
+    E: CiphertextType,
+    P: HasInput<K::PublicKey> + HasInput<E::Ciphertext> + ?Sized,
+{
+    #[inline]
+    fn extend(&self, input: &mut P::Input) {
+        P::extend(input, &self.ephemeral_public_key);
+        P::extend(input, &self.ciphertext);
     }
 }
 

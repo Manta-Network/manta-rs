@@ -25,6 +25,7 @@ use manta_crypto::{
     algebra::{
         security::ComputationalDiffieHellmanHardness, DiffieHellman, Generator, Group, Scalar,
     },
+    constraint::{Input, ProofSystem},
     eclair::{
         alloc::{
             mode::{Derived, Public, Secret},
@@ -1241,6 +1242,17 @@ where
     }
 }
 
+impl<C, P> Input<P> for Utxo<C>
+where
+    C: BaseConfiguration<Bool = bool>,
+    P: ProofSystem + ?Sized,
+{
+    #[inline]
+    fn extend(&self, input: &mut P::Input) {
+        todo!()
+    }
+}
+
 /// Secret required to Mint a UTXO
 pub struct MintSecret<C, COM = ()>
 where
@@ -1881,5 +1893,16 @@ where
     #[inline]
     fn is_independent(&self, rhs: &Self) -> bool {
         self.commitment.ne(&rhs.commitment, &mut ())
+    }
+}
+
+impl<C, P> Input<P> for Nullifier<C>
+where
+    C: BaseConfiguration<Bool = bool>,
+    P: ProofSystem + ?Sized,
+{
+    #[inline]
+    fn extend(&self, input: &mut P::Input) {
+        todo!()
     }
 }

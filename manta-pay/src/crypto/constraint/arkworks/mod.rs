@@ -17,6 +17,7 @@
 //! Arkworks Constraint System and Proof System Implementations
 
 use alloc::vec::Vec;
+use core::iter::{self, Extend};
 use manta_crypto::{
     algebra,
     arkworks::{
@@ -30,7 +31,10 @@ use manta_crypto::{
             },
         },
     },
-    constraint::measure::{Count, Measure},
+    constraint::{
+        measure::{Count, Measure},
+        Input, ProofSystem,
+    },
     eclair::{
         self,
         alloc::{
@@ -105,6 +109,18 @@ where
     #[inline]
     fn to_field_elements(&self) -> Option<Vec<F>> {
         self.0.to_field_elements()
+    }
+}
+
+impl<F, P> Input<P> for Fp<F>
+where
+    F: Field,
+    P: ProofSystem + ?Sized,
+    P::Input: Extend<F>,
+{
+    #[inline]
+    fn extend(&self, input: &mut P::Input) {
+        input.extend(iter::once(self.0))
     }
 }
 

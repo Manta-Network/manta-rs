@@ -18,7 +18,7 @@
 
 use crate::crypto::constraint::arkworks::{self, empty, full, Boolean, Fp, FpVar, R1CS};
 use alloc::vec::Vec;
-use core::marker::PhantomData;
+use core::{iter::Extend, marker::PhantomData};
 use manta_crypto::{
     algebra,
     arkworks::{
@@ -29,6 +29,7 @@ use manta_crypto::{
         relations::ns,
         serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError},
     },
+    constraint::{Input, ProofSystem},
     eclair::{
         self,
         alloc::{
@@ -102,11 +103,26 @@ where
 impl<C> ToConstraintField<ConstraintField<C>> for Group<C>
 where
     C: ProjectiveCurve,
-    <C as ProjectiveCurve>::Affine: ToConstraintField<ConstraintField<C>>,
+    C::Affine: ToConstraintField<ConstraintField<C>>,
 {
     #[inline]
     fn to_field_elements(&self) -> Option<Vec<ConstraintField<C>>> {
         self.0.to_field_elements()
+    }
+}
+
+impl<C, P> Input<P> for Group<C>
+where
+    C: ProjectiveCurve,
+    C::Affine: ToConstraintField<ConstraintField<C>>,
+    P: ProofSystem + ?Sized,
+    P::Input: Extend<ConstraintField<C>>,
+{
+    #[inline]
+    fn extend(&self, input: &mut P::Input) {
+        if let Some(elements) = self.to_field_elements() {
+            input.extend(elements);
+        }
     }
 }
 

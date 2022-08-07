@@ -22,7 +22,7 @@ use crate::transfer::utxo::{
 use core::{fmt::Debug, hash::Hash, iter};
 use manta_crypto::{
     accumulator::{self, Accumulator},
-    constraint::ProofSystemInput,
+    constraint::{HasInput, Input},
     eclair::alloc::{
         mode::{Derived, Public, Secret},
         Allocate, Allocator, Const, Constant, Var, Variable,
@@ -251,20 +251,22 @@ where
         self.secret.query_asset(&self.utxo)
     }
 
-    /// Extends proof public input with `self`.
-    #[inline]
-    pub fn extend_input<P>(&self, input: &mut P::Input)
-    where
-        P: ProofSystemInput<UtxoAccumulatorOutput<S>> + ProofSystemInput<S::Nullifier>,
-    {
-        P::extend(input, self.utxo_membership_proof.output());
-        P::extend(input, &self.nullifier);
-    }
-
     /// Extracts the ledger posting data from `self`.
     #[inline]
     pub fn into_post(self) -> SenderPost<S> {
         SenderPost::new(self.utxo_membership_proof.into_output(), self.nullifier)
+    }
+}
+
+impl<S, P> Input<P> for Sender<S>
+where
+    S: Spend,
+    P: HasInput<UtxoAccumulatorOutput<S>> + HasInput<S::Nullifier>,
+{
+    #[inline]
+    fn extend(&self, input: &mut P::Input) {
+        P::extend(input, self.utxo_membership_proof.output());
+        P::extend(input, &self.nullifier);
     }
 }
 
@@ -492,16 +494,6 @@ where
         }
     }
 
-    /// Extends proof public input with `self`.
-    #[inline]
-    pub fn extend_input<P>(&self, input: &mut P::Input)
-    where
-        P: ProofSystemInput<UtxoAccumulatorOutput<S>> + ProofSystemInput<S::Nullifier>,
-    {
-        P::extend(input, &self.utxo_accumulator_output);
-        P::extend(input, &self.nullifier);
-    }
-
     /// Validates `self` on the sender `ledger`.
     #[inline]
     pub fn validate<L>(self, ledger: &L) -> Result<SenderPostingKey<S, L>, SenderPostError>
@@ -516,6 +508,18 @@ where
                 .is_unspent(self.nullifier)
                 .ok_or(SenderPostError::AssetSpent)?,
         })
+    }
+}
+
+impl<S, P> Input<P> for SenderPost<S>
+where
+    S: Spend,
+    P: HasInput<UtxoAccumulatorOutput<S>> + HasInput<S::Nullifier>,
+{
+    #[inline]
+    fn extend(&self, input: &mut P::Input) {
+        P::extend(input, &self.utxo_accumulator_output);
+        P::extend(input, &self.nullifier);
     }
 }
 
@@ -537,16 +541,6 @@ where
     S: Spend,
     L: SenderLedger<S> + ?Sized,
 {
-    /// Extends proof public input with `self`.
-    #[inline]
-    pub fn extend_input<P>(&self, input: &mut P::Input)
-    where
-        P: ProofSystemInput<UtxoAccumulatorOutput<S>> + ProofSystemInput<S::Nullifier>,
-    {
-        P::extend(input, self.utxo_accumulator_output.as_ref());
-        P::extend(input, self.nullifier.as_ref());
-    }
-
     /// Posts `self` to the sender `ledger`.
     #[inline]
     pub fn post(self, ledger: &mut L, super_key: &L::SuperPostingKey) {
@@ -564,5 +558,18 @@ where
             iter.into_iter()
                 .map(move |k| (k.utxo_accumulator_output, k.nullifier)),
         )
+    }
+}
+
+impl<S, L, P> Input<P> for SenderPostingKey<S, L>
+where
+    S: Spend,
+    L: SenderLedger<S> + ?Sized,
+    P: HasInput<UtxoAccumulatorOutput<S>> + HasInput<S::Nullifier>,
+{
+    #[inline]
+    fn extend(&self, input: &mut P::Input) {
+        P::extend(input, self.utxo_accumulator_output.as_ref());
+        P::extend(input, self.nullifier.as_ref());
     }
 }

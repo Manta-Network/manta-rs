@@ -40,7 +40,7 @@ use crate::{
 use core::{fmt::Debug, hash::Hash, iter::Sum, ops::AddAssign};
 use manta_crypto::{
     accumulator,
-    constraint::{ProofSystem, ProofSystemInput},
+    constraint::{HasInput, Input, ProofSystem},
     eclair::{
         self,
         alloc::{
@@ -227,13 +227,13 @@ pub trait Configuration {
 
     /// Proof System Type
     type ProofSystem: ProofSystem<Compiler = Self::Compiler>
-        + ProofSystemInput<AuthorizationKey<Self>>
-        + ProofSystemInput<Self::AssetId>
-        + ProofSystemInput<Self::AssetValue>
-        + ProofSystemInput<UtxoAccumulatorOutput<Self>>
-        + ProofSystemInput<Utxo<Self>>
-        + ProofSystemInput<Note<Self>>
-        + ProofSystemInput<Nullifier<Self>>;
+        + HasInput<AuthorizationKey<Self>>
+        + HasInput<Self::AssetId>
+        + HasInput<Self::AssetValue>
+        + HasInput<UtxoAccumulatorOutput<Self>>
+        + HasInput<Utxo<Self>>
+        + HasInput<Note<Self>>
+        + HasInput<Nullifier<Self>>;
 }
 
 /// Compiler Type
@@ -553,24 +553,7 @@ where
     #[inline]
     pub fn generate_proof_input(&self) -> ProofInput<C> {
         let mut input = Default::default();
-        if let Some(authorization) = &self.authorization {
-            C::ProofSystem::extend(&mut input, Field::get(authorization))
-        }
-        if let Some(asset_id) = &self.asset_id {
-            C::ProofSystem::extend(&mut input, asset_id);
-        }
-        self.sources
-            .iter()
-            .for_each(|source| C::ProofSystem::extend(&mut input, source));
-        self.senders
-            .iter()
-            .for_each(|sender| sender.extend_input::<C::ProofSystem>(&mut input));
-        self.receivers
-            .iter()
-            .for_each(|receiver| receiver.extend_input::<C::ProofSystem>(&mut input));
-        self.sinks
-            .iter()
-            .for_each(|sink| C::ProofSystem::extend(&mut input, sink));
+        self.extend(&mut input);
         input
     }
 
@@ -665,6 +648,34 @@ where
             ))),
             _ => Ok(None),
         }
+    }
+}
+
+impl<C, const SOURCES: usize, const SENDERS: usize, const RECEIVERS: usize, const SINKS: usize>
+    Input<C::ProofSystem> for Transfer<C, SOURCES, SENDERS, RECEIVERS, SINKS>
+where
+    C: Configuration,
+{
+    #[inline]
+    fn extend(&self, input: &mut ProofInput<C>) {
+        if let Some(authorization) = &self.authorization {
+            C::ProofSystem::extend(input, Field::get(authorization))
+        }
+        if let Some(asset_id) = &self.asset_id {
+            C::ProofSystem::extend(input, asset_id);
+        }
+        self.sources
+            .iter()
+            .for_each(|source| C::ProofSystem::extend(input, source));
+        self.senders
+            .iter()
+            .for_each(|sender| C::ProofSystem::extend(input, sender));
+        self.receivers
+            .iter()
+            .for_each(|receiver| C::ProofSystem::extend(input, receiver));
+        self.sinks
+            .iter()
+            .for_each(|sink| C::ProofSystem::extend(input, sink));
     }
 }
 
@@ -1308,6 +1319,30 @@ where
     }
 }
 
+impl<C> Input<C::ProofSystem> for TransferPostBody<C>
+where
+    C: Configuration + ?Sized,
+{
+    #[inline]
+    fn extend(&self, input: &mut ProofInput<C>) {
+        if let Some(asset_id) = &self.asset_id {
+            C::ProofSystem::extend(input, asset_id);
+        }
+        self.sources
+            .iter()
+            .for_each(|source| C::ProofSystem::extend(input, source));
+        self.sender_posts
+            .iter()
+            .for_each(|post| C::ProofSystem::extend(input, post));
+        self.receiver_posts
+            .iter()
+            .for_each(|post| C::ProofSystem::extend(input, post));
+        self.sinks
+            .iter()
+            .for_each(|sink| C::ProofSystem::extend(input, sink));
+    }
+}
+
 /// Transfer Post
 #[cfg_attr(
     feature = "serde",
@@ -1367,28 +1402,7 @@ where
     #[inline]
     pub fn generate_proof_input(&self) -> ProofInput<C> {
         let mut input = Default::default();
-        if let Some(authorization_signature) = &self.authorization_signature {
-            C::ProofSystem::extend(&mut input, &authorization_signature.authorization_key);
-        }
-        if let Some(asset_id) = &self.body.asset_id {
-            C::ProofSystem::extend(&mut input, asset_id);
-        }
-        self.body
-            .sources
-            .iter()
-            .for_each(|source| C::ProofSystem::extend(&mut input, source));
-        self.body
-            .sender_posts
-            .iter()
-            .for_each(|post| post.extend_input::<C::ProofSystem>(&mut input));
-        self.body
-            .receiver_posts
-            .iter()
-            .for_each(|post| post.extend_input::<C::ProofSystem>(&mut input));
-        self.body
-            .sinks
-            .iter()
-            .for_each(|sink| C::ProofSystem::extend(&mut input, sink));
+        self.extend(&mut input);
         input
     }
 
@@ -1577,6 +1591,19 @@ where
     }
 }
 
+impl<C> Input<C::ProofSystem> for TransferPost<C>
+where
+    C: Configuration + ?Sized,
+{
+    #[inline]
+    fn extend(&self, input: &mut ProofInput<C>) {
+        if let Some(authorization_signature) = &self.authorization_signature {
+            C::ProofSystem::extend(input, &authorization_signature.authorization_key);
+        }
+        self.body.extend(input);
+    }
+}
+
 /// Transfer Posting Key
 pub struct TransferPostingKey<C, L>
 where
@@ -1680,24 +1707,35 @@ where
     #[inline]
     pub fn generate_proof_input(&self) -> ProofInput<C> {
         let mut input = Default::default();
+        self.extend(&mut input);
+        input
+    }
+}
+
+impl<'k, C, L> Input<C::ProofSystem> for TransferPostingKeyRef<'k, C, L>
+where
+    C: Configuration + ?Sized,
+    L: TransferLedger<C> + ?Sized,
+{
+    #[inline]
+    fn extend(&self, input: &mut ProofInput<C>) {
         if let Some(authorization_key) = &self.authorization_key {
-            C::ProofSystem::extend(&mut input, authorization_key);
+            C::ProofSystem::extend(input, authorization_key);
         }
         if let Some(asset_id) = &self.asset_id {
-            C::ProofSystem::extend(&mut input, asset_id);
+            C::ProofSystem::extend(input, asset_id);
         }
         self.sources
             .iter()
-            .for_each(|source| C::ProofSystem::extend(&mut input, source.as_ref()));
+            .for_each(|source| C::ProofSystem::extend(input, source.as_ref()));
         self.senders
             .iter()
-            .for_each(|post| post.extend_input::<C::ProofSystem>(&mut input));
+            .for_each(|post| C::ProofSystem::extend(input, post));
         self.receivers
             .iter()
-            .for_each(|post| post.extend_input::<C::ProofSystem>(&mut input));
+            .for_each(|post| C::ProofSystem::extend(input, post));
         self.sinks
             .iter()
-            .for_each(|sink| C::ProofSystem::extend(&mut input, sink.as_ref()));
-        input
+            .for_each(|sink| C::ProofSystem::extend(input, sink.as_ref()));
     }
 }

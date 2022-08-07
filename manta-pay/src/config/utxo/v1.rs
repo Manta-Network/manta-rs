@@ -25,7 +25,7 @@ use crate::{
     },
     crypto::{
         constraint::arkworks::{Boolean, Fp, FpVar, R1CS},
-        poseidon::{self, hash::Hasher, ParameterFieldType},
+        poseidon::{self, encryption::BlockArray, hash::Hasher, ParameterFieldType},
     },
 };
 use core::marker::PhantomData;
@@ -888,10 +888,12 @@ impl encryption::convert::plaintext::Forward for OutgoingEncryptionSchemeConvert
 
     #[inline]
     fn as_target(source: &Self::Plaintext, _: &mut ()) -> Self::TargetPlaintext {
-        [poseidon::encryption::PlaintextBlock(
-            vec![source.id, Fp(source.value.into())].into(),
-        )]
-        .into()
+        BlockArray(
+            [poseidon::encryption::PlaintextBlock(
+                vec![source.id, Fp(source.value.into())].into(),
+            )]
+            .into(),
+        )
     }
 }
 
@@ -902,10 +904,12 @@ impl encryption::convert::plaintext::Forward<Compiler>
 
     #[inline]
     fn as_target(source: &Self::Plaintext, _: &mut Compiler) -> Self::TargetPlaintext {
-        [poseidon::encryption::PlaintextBlock(
-            vec![source.id.clone(), source.value.as_ref().clone()].into(),
-        )]
-        .into()
+        BlockArray(
+            [poseidon::encryption::PlaintextBlock(
+                vec![source.id.clone(), source.value.as_ref().clone()].into(),
+            )]
+            .into(),
+        )
     }
 }
 

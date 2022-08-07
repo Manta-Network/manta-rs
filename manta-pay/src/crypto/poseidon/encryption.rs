@@ -18,8 +18,9 @@
 
 use crate::crypto::poseidon::{Permutation, Specification, State};
 use alloc::{boxed::Box, vec::Vec};
-use core::{fmt::Debug, hash::Hash};
+use core::{fmt::Debug, hash::Hash, ops::Deref, slice};
 use manta_crypto::{
+    constraint::{HasInput, Input},
     eclair::{
         self,
         alloc::{
@@ -177,6 +178,19 @@ where
     }
 }
 
+impl<S, P> Input<P> for PlaintextBlock<S>
+where
+    S: Specification,
+    P: HasInput<S::Field> + ?Sized,
+{
+    #[inline]
+    fn extend(&self, input: &mut P::Input) {
+        for element in self.0.iter() {
+            P::extend(input, element);
+        }
+    }
+}
+
 /// Ciphertext Block
 /* TODO:
 #[cfg_attr(
@@ -252,6 +266,85 @@ where
     }
 }
 
+impl<S, P> Input<P> for CiphertextBlock<S>
+where
+    S: Specification,
+    P: HasInput<S::Field> + ?Sized,
+{
+    #[inline]
+    fn extend(&self, input: &mut P::Input) {
+        for element in self.0.iter() {
+            P::extend(input, element);
+        }
+    }
+}
+
+/// Block Array
+pub struct BlockArray<B, const N: usize>(pub BoxArray<B, N>);
+
+impl<B, const N: usize> Deref for BlockArray<B, N> {
+    type Target = BoxArray<B, N>;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<B, const N: usize> FromIterator<B> for BlockArray<B, N> {
+    #[inline]
+    fn from_iter<I>(iter: I) -> Self
+    where
+        I: IntoIterator<Item = B>,
+    {
+        Self(iter.into_iter().collect())
+    }
+}
+
+impl<'b, B, const N: usize> IntoIterator for &'b BlockArray<B, N> {
+    type Item = &'b B;
+    type IntoIter = slice::Iter<'b, B>;
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
+}
+
+impl<B, const N: usize, P> Input<P> for BlockArray<B, N>
+where
+    P: HasInput<B> + ?Sized,
+{
+    #[inline]
+    fn extend(&self, input: &mut P::Input) {
+        for block in &self.0 {
+            P::extend(input, block);
+        }
+    }
+}
+
+impl<B, const N: usize, COM> eclair::cmp::PartialEq<Self, COM> for BlockArray<B, N>
+where
+    COM: Has<Bool>,
+    B: eclair::cmp::PartialEq<B, COM>,
+{
+    #[inline]
+    fn eq(&self, rhs: &Self, compiler: &mut COM) -> Bool<COM> {
+        todo!()
+    }
+
+    #[inline]
+    fn assert_equal(&self, rhs: &Self, compiler: &mut COM) {
+        todo!()
+    }
+}
+
+/// Fixed Plaintext Type
+pub type FixedPlaintext<const N: usize, S, COM = ()> = BlockArray<PlaintextBlock<S, COM>, N>;
+
+/// Fixed Ciphertext Type
+pub type FixedCiphertext<const N: usize, S, COM = ()> = BlockArray<CiphertextBlock<S, COM>, N>;
+
 /// Authentication Tag
 /* TODO:
 #[cfg_attr(
@@ -322,6 +415,17 @@ where
     }
 }
 
+impl<S, P> Input<P> for Tag<S>
+where
+    S: Specification,
+    P: HasInput<S::Field> + ?Sized,
+{
+    #[inline]
+    fn extend(&self, input: &mut P::Input) {
+        P::extend(input, &self.0)
+    }
+}
+
 /// Fixed Encryption Configuration
 /* TODO:
 #[cfg_attr(
@@ -378,9 +482,9 @@ where
     type Header = Vec<S::Field>;
     type SetupBlock = SetupBlock<S, COM>;
     type PlaintextBlock = PlaintextBlock<S, COM>;
-    type Plaintext = BoxArray<Self::PlaintextBlock, N>;
+    type Plaintext = FixedPlaintext<N, S, COM>;
     type CiphertextBlock = CiphertextBlock<S, COM>;
-    type Ciphertext = BoxArray<Self::CiphertextBlock, N>;
+    type Ciphertext = FixedCiphertext<N, S, COM>;
     type Tag = Tag<S, COM>;
 }
 

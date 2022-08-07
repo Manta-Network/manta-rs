@@ -84,12 +84,35 @@ pub trait ProofSystem {
 }
 
 /// Proof System Input
-pub trait ProofSystemInput<T>: ProofSystem
+pub trait Input<P>
+where
+    P: ProofSystem + ?Sized,
+{
+    /// Extends the `input` buffer with data from `self`.
+    fn extend(&self, input: &mut P::Input);
+}
+
+/// Proof System Input Introspection
+///
+/// This `trait` is automatically implemented for all [`T: Input<Self>`](Input) and cannot be
+/// implemented manually.
+pub trait HasInput<T>: ProofSystem
 where
     T: ?Sized,
 {
-    /// Extend the `input` with the `next` element.
-    fn extend(input: &mut Self::Input, next: &T);
+    /// Extends the `input` buffer with data from `value`.
+    fn extend(input: &mut Self::Input, value: &T);
+}
+
+impl<P, T> HasInput<T> for P
+where
+    P: ProofSystem + ?Sized,
+    T: Input<P> + ?Sized,
+{
+    #[inline]
+    fn extend(input: &mut Self::Input, value: &T) {
+        value.extend(input)
+    }
 }
 
 /// Constraint System Measurement

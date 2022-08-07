@@ -37,7 +37,6 @@ use manta_crypto::{
         ff::ToConstraintField,
         serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError},
     },
-    constraint::ProofSystemInput,
     eclair::{
         self,
         alloc::{

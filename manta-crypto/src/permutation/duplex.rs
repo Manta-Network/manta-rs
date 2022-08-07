@@ -20,6 +20,7 @@
 //       dropping it on decryption.
 
 use crate::{
+    constraint::{HasInput, Input},
     eclair::{
         self,
         alloc::{mode::Public, Allocate, Allocator, Constant, Variable},
@@ -177,6 +178,17 @@ where
     #[inline]
     fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
         Self::new(this.tag.as_known(compiler), this.message.as_known(compiler))
+    }
+}
+
+impl<T, C, P> Input<P> for Ciphertext<T, C>
+where
+    P: HasInput<T> + HasInput<C> + ?Sized,
+{
+    #[inline]
+    fn extend(&self, input: &mut P::Input) {
+        P::extend(input, &self.tag);
+        P::extend(input, &self.message);
     }
 }
 

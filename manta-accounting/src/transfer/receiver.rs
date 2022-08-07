@@ -19,7 +19,7 @@
 use crate::transfer::utxo::{DeriveMint, Identifier, Mint, QueryIdentifier};
 use core::{fmt::Debug, hash::Hash, iter};
 use manta_crypto::{
-    constraint::ProofSystemInput,
+    constraint::{HasInput, Input},
     eclair::alloc::{
         mode::{Derived, Public, Secret},
         Allocate, Allocator, Constant, Var, Variable,
@@ -92,20 +92,22 @@ where
         self.secret.query_identifier(&self.utxo)
     }
 
-    /// Extends proof public input with `self`.
-    #[inline]
-    pub fn extend_input<P>(&self, input: &mut P::Input)
-    where
-        P: ProofSystemInput<M::Utxo> + ProofSystemInput<M::Note>,
-    {
-        P::extend(input, &self.utxo);
-        P::extend(input, &self.note);
-    }
-
     /// Extracts the ledger posting data from `self`.
     #[inline]
     pub fn into_post(self) -> ReceiverPost<M> {
         ReceiverPost::new(self.utxo, self.note)
+    }
+}
+
+impl<M, P> Input<P> for Receiver<M>
+where
+    M: Mint,
+    P: HasInput<M::Utxo> + HasInput<M::Note>,
+{
+    #[inline]
+    fn extend(&self, input: &mut P::Input) {
+        P::extend(input, &self.utxo);
+        P::extend(input, &self.note);
     }
 }
 
@@ -291,15 +293,6 @@ where
         Self { utxo, note }
     }
 
-    /// Extends proof public input with `self`.
-    #[inline]
-    pub fn extend_input<P>(&self, input: &mut P::Input)
-    where
-        P: ProofSystemInput<M::Utxo>,
-    {
-        P::extend(input, &self.utxo);
-    }
-
     /// Validates `self` on the receiver `ledger`.
     #[inline]
     pub fn validate<L>(self, ledger: &L) -> Result<ReceiverPostingKey<M, L>, ReceiverPostError>
@@ -312,6 +305,17 @@ where
                 .ok_or(ReceiverPostError::AssetRegistered)?,
             note: self.note,
         })
+    }
+}
+
+impl<M, P> Input<P> for ReceiverPost<M>
+where
+    M: Mint,
+    P: HasInput<M::Utxo>,
+{
+    #[inline]
+    fn extend(&self, input: &mut P::Input) {
+        P::extend(input, &self.utxo);
     }
 }
 
@@ -333,15 +337,6 @@ where
     M: Mint,
     L: ReceiverLedger<M> + ?Sized,
 {
-    /// Extends proof public input with `self`.
-    #[inline]
-    pub fn extend_input<P>(&self, input: &mut P::Input)
-    where
-        P: ProofSystemInput<M::Utxo>,
-    {
-        P::extend(input, self.utxo.as_ref());
-    }
-
     /// Posts `self` to the receiver `ledger`.
     #[inline]
     pub fn post(self, ledger: &mut L, super_key: &L::SuperPostingKey) {
@@ -355,5 +350,17 @@ where
         I: IntoIterator<Item = Self>,
     {
         ledger.register_all(super_key, iter.into_iter().map(move |k| (k.utxo, k.note)))
+    }
+}
+
+impl<M, L, P> Input<P> for ReceiverPostingKey<M, L>
+where
+    M: Mint,
+    L: ReceiverLedger<M> + ?Sized,
+    P: HasInput<M::Utxo>,
+{
+    #[inline]
+    fn extend(&self, input: &mut P::Input) {
+        P::extend(input, self.utxo.as_ref());
     }
 }

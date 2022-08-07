@@ -31,7 +31,7 @@ use manta_crypto::{
         ff::ToConstraintField,
         serialize::{CanonicalDeserialize, CanonicalSerialize, Read, Write},
     },
-    constraint::{ProofSystem, ProofSystemInput},
+    constraint::{Input, ProofSystem},
     rand::{CryptoRng, RngCore, SizedRng},
 };
 use manta_util::codec::{self, DecodeError};
@@ -509,5 +509,15 @@ where
         proof: &Self::Proof,
     ) -> Result<bool, Self::Error> {
         ArkGroth16::verify_with_processed_vk(&context.0, input, &proof.0).map_err(|_| Error)
+    }
+}
+
+impl<E> Input<Groth16<E>> for u128
+where
+    E: PairingEngine,
+{
+    #[inline]
+    fn extend(&self, input: &mut Vec<E::Fr>) {
+        input.push((*self).into())
     }
 }

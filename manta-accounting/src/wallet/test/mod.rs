@@ -568,11 +568,10 @@ where
         }
     }
 
-    /// Samples a [`ToPrivateZero`] against `self` using `rng` to select the [`AssetId`], returning
+    /// Samples a [`ToPrivateZero`] against `self` using `rng` to select the `AssetId`, returning
     /// a [`Skip`] if [`ToPrivateZero`] is impossible.
     ///
     /// [`ToPrivateZero`]: ActionType::ToPrivateZero
-    /// [`AssetId`]: crate::asset::AssetId
     /// [`Skip`]: ActionType::Skip
     #[inline]
     async fn sample_zero_to_private<R>(&mut self, rng: &mut R) -> MaybeAction<C, L, S>
@@ -698,10 +697,9 @@ where
             .unwrap_or(Action::Skip))
     }
 
-    /// Reclaims all of the private balance of a random [`AssetId`] to public balance or [`Skip`] if
+    /// Reclaims all of the private balance of a random `AssetId` to public balance or [`Skip`] if
     /// the private balance is empty.
     ///
-    /// [`AssetId`]: crate::asset::AssetId
     /// [`Skip`]: ActionType::Skip
     #[inline]
     async fn flush_to_public<R>(&mut self, rng: &mut R) -> MaybeAction<C, L, S>

@@ -21,6 +21,7 @@
 //! [`Decrypt`] `trait`s for more.
 
 use crate::{
+    constraint::{HasInput, Input, ProofSystem},
     eclair::{
         self,
         alloc::{
@@ -118,6 +119,16 @@ where
     #[inline]
     fn assert_equal(&self, rhs: &Self, compiler: &mut COM) {
         let _ = (rhs, compiler);
+    }
+}
+
+impl<P> Input<P> for EmptyHeader
+where
+    P: ProofSystem + ?Sized,
+{
+    #[inline]
+    fn extend(&self, input: &mut P::Input) {
+        let _ = input;
     }
 }
 
@@ -578,21 +589,6 @@ where
 {
 }
 
-impl<E, H, C> Sample<(H, C)> for EncryptedMessage<E>
-where
-    E: CiphertextType + HeaderType,
-    E::Header: Sample<H>,
-    E::Ciphertext: Sample<C>,
-{
-    #[inline]
-    fn sample<R>(distribution: (H, C), rng: &mut R) -> Self
-    where
-        R: RngCore + ?Sized,
-    {
-        Self::new(rng.sample(distribution.0), rng.sample(distribution.1))
-    }
-}
-
 impl<E, H, C, COM> Variable<Derived<(H, C)>, COM> for EncryptedMessage<E>
 where
     E: CiphertextType + HeaderType + Constant<COM>,
@@ -638,6 +634,33 @@ where
             this.header.as_known(compiler),
             this.ciphertext.as_known(compiler),
         )
+    }
+}
+
+impl<E, H, C> Sample<(H, C)> for EncryptedMessage<E>
+where
+    E: CiphertextType + HeaderType,
+    E::Header: Sample<H>,
+    E::Ciphertext: Sample<C>,
+{
+    #[inline]
+    fn sample<R>(distribution: (H, C), rng: &mut R) -> Self
+    where
+        R: RngCore + ?Sized,
+    {
+        Self::new(rng.sample(distribution.0), rng.sample(distribution.1))
+    }
+}
+
+impl<E, P> Input<P> for EncryptedMessage<E>
+where
+    E: CiphertextType + HeaderType,
+    P: HasInput<E::Header> + HasInput<E::Ciphertext> + ?Sized,
+{
+    #[inline]
+    fn extend(&self, input: &mut P::Input) {
+        P::extend(input, &self.header);
+        P::extend(input, &self.ciphertext);
     }
 }
 

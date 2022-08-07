@@ -32,11 +32,11 @@ use core::{
     borrow::Borrow,
     fmt::Debug,
     hash::Hash,
-    iter::{self, FusedIterator, Sum},
+    iter::{self, FusedIterator},
     ops::{Add, AddAssign, Deref, Div, Sub, SubAssign},
     slice,
 };
-use derive_more::{Add, AddAssign, Display, From, Sub, SubAssign, Sum};
+use derive_more::{Display, From};
 use manta_crypto::{
     eclair::{
         self,
@@ -51,7 +51,7 @@ use manta_crypto::{
     },
     rand::{Rand, RngCore, Sample},
 };
-use manta_util::{into_array_unchecked, num::CheckedSub, Array, SizeLimit};
+use manta_util::num::CheckedSub;
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
