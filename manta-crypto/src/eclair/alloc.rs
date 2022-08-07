@@ -85,6 +85,32 @@ where
     }
 }
 
+impl<T, COM> Constant<COM> for Vec<T>
+where
+    COM: ?Sized,
+    T: Constant<COM>,
+{
+    type Type = Vec<T::Type>;
+
+    #[inline]
+    fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
+        this.iter().map(|this| this.as_constant(compiler)).collect()
+    }
+}
+
+impl<T, COM> Constant<COM> for Box<[T]>
+where
+    COM: ?Sized,
+    T: Constant<COM>,
+{
+    type Type = Box<[T::Type]>;
+
+    #[inline]
+    fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
+        this.iter().map(|this| this.as_constant(compiler)).collect()
+    }
+}
+
 /// Variable Type Alias
 pub type Var<V, M, COM> = <V as Variable<M, COM>>::Type;
 
@@ -202,7 +228,12 @@ where
     }
 }
 
-impl<COM, T> Allocate<COM> for T where T: ?Sized {}
+impl<COM, T> Allocate<COM> for T
+where
+    COM: ?Sized,
+    T: ?Sized,
+{
+}
 
 /// Allocator Auto-`trait`
 ///

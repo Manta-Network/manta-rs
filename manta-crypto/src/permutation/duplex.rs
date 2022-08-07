@@ -22,6 +22,7 @@
 use crate::{
     eclair::{
         self,
+        alloc::{mode::Public, Allocate, Allocator, Constant, Variable},
         bool::{Assert, AssertEq, Bool},
         ops::BitAnd,
         Has,
@@ -122,6 +123,14 @@ pub struct Ciphertext<T, C> {
     pub message: C,
 }
 
+impl<T, C> Ciphertext<T, C> {
+    /// Builds a new [`Ciphertext`] from `tag` and `message`.
+    #[inline]
+    pub fn new(tag: T, message: C) -> Self {
+        Self { tag, message }
+    }
+}
+
 impl<T, C, COM> eclair::cmp::PartialEq<Self, COM> for Ciphertext<T, C>
 where
     COM: Has<bool>,
@@ -143,6 +152,24 @@ where
     {
         compiler.assert_eq(&self.tag, &rhs.tag);
         compiler.assert_eq(&self.message, &rhs.message);
+    }
+}
+
+impl<T, C, COM> Variable<Public, COM> for Ciphertext<T, C>
+where
+    T: Variable<Public, COM>,
+    C: Variable<Public, COM>,
+{
+    type Type = Ciphertext<T::Type, C::Type>;
+
+    #[inline]
+    fn new_unknown(compiler: &mut COM) -> Self {
+        Self::new(compiler.allocate_unknown(), compiler.allocate_unknown())
+    }
+
+    #[inline]
+    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
+        Self::new(this.tag.as_known(compiler), this.message.as_known(compiler))
     }
 }
 
@@ -231,6 +258,24 @@ where
         let mut state = self.setup(key, header, compiler);
         let plaintext = Sponge::new(&self.permutation, &mut state).absorb_all(ciphertext, compiler);
         (C::Tag::read(&state, compiler), plaintext)
+    }
+}
+
+impl<P, C, COM> Constant<COM> for Duplexer<P, C, COM>
+where
+    P: PseudorandomPermutation<COM> + Constant<COM>,
+    C: Types<P, COM> + Constant<COM>,
+    P::Type: PseudorandomPermutation,
+    C::Type: Types<P::Type>,
+{
+    type Type = Duplexer<P::Type, C::Type>;
+
+    #[inline]
+    fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
+        Self::new(
+            this.permutation.as_constant(compiler),
+            this.configuration.as_constant(compiler),
+        )
     }
 }
 

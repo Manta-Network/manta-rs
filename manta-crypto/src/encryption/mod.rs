@@ -72,6 +72,32 @@ pub type Header<T> = <T as HeaderType>::Header;
 #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct EmptyHeader<COM = ()>(PhantomData<COM>);
 
+impl<COM> Constant<COM> for EmptyHeader<COM> {
+    type Type = EmptyHeader;
+
+    #[inline]
+    fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
+        let _ = (this, compiler);
+        Self::default()
+    }
+}
+
+impl<M, COM> Variable<M, COM> for EmptyHeader<COM> {
+    type Type = EmptyHeader;
+
+    #[inline]
+    fn new_unknown(compiler: &mut COM) -> Self {
+        let _ = compiler;
+        Self::default()
+    }
+
+    #[inline]
+    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
+        let _ = (this, compiler);
+        Self::default()
+    }
+}
+
 impl<COM> eclair::cmp::PartialEq<Self, COM> for EmptyHeader<COM>
 where
     COM: Has<bool>,

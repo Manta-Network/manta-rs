@@ -456,6 +456,22 @@ where
     type Identifier = Identifier<C, COM>;
 }
 
+impl<C, COM> auth::AssertAuthorized<COM> for BaseParameters<C, COM>
+where
+    C: BaseConfiguration<COM>,
+    COM: Assert + Has<bool, Type = C::Bool>,
+{
+    #[inline]
+    fn assert_authorized(
+        &self,
+        authorization_context: &Self::AuthorizationContext,
+        authorization_proof: &Self::AuthorizationProof,
+        compiler: &mut COM,
+    ) {
+        todo!()
+    }
+}
+
 impl<C, COM> utxo::Mint<COM> for BaseParameters<C, COM>
 where
     C: BaseConfiguration<COM>,
@@ -541,6 +557,20 @@ where
     }
 }
 
+impl<C, COM> Constant<COM> for BaseParameters<C, COM>
+where
+    C: BaseConfiguration<COM> + Constant<COM>,
+    COM: Assert + Has<bool, Type = C::Bool>,
+    C::Type: Configuration<Bool = bool>,
+{
+    type Type = Parameters<C::Type>;
+
+    #[inline]
+    fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
+        todo!()
+    }
+}
+
 /// UTXO Model Parameters
 pub struct Parameters<C>
 where
@@ -586,6 +616,13 @@ where
     C: Configuration<Bool = bool>,
 {
     type SigningKey = C::Scalar;
+}
+
+impl<C> auth::SignatureType for Parameters<C>
+where
+    C: Configuration<Bool = bool>,
+{
+    type Signature = signature::Signature<C::SignatureScheme>;
 }
 
 impl<C> utxo::AssetType for Parameters<C>
@@ -707,17 +744,43 @@ where
     }
 }
 
-/* TODO:
-impl<C> auth::Sign<M> for Parameters<C>
+impl<C, M> auth::Sign<M> for Parameters<C>
 where
     C: Configuration<Bool = bool>,
-{}
+{
+    #[inline]
+    fn sign<R>(&self, signing_key: &Self::SigningKey, message: &M, rng: &mut R) -> Self::Signature
+    where
+        R: RngCore + ?Sized,
+    {
+        todo!()
+    }
+}
 
-impl<C> auth::VerifySignature<M> for Parameters<C>
+impl<C, M> auth::VerifySignature<M> for Parameters<C>
 where
     C: Configuration<Bool = bool>,
-{}
-*/
+{
+    #[inline]
+    fn verify(
+        &self,
+        authorization_key: &Self::AuthorizationKey,
+        signature: &Self::Signature,
+        message: &M,
+    ) -> bool {
+        todo!()
+    }
+}
+
+impl<C> utxo::DefaultAddress<AuthorizationContext<C>> for Parameters<C>
+where
+    C: Configuration<Bool = bool>,
+{
+    #[inline]
+    fn default_address(&self, base: &AuthorizationContext<C>) -> Self::Address {
+        todo!()
+    }
+}
 
 impl<C> utxo::Mint for Parameters<C>
 where

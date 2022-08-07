@@ -24,7 +24,7 @@ use manta_crypto::{
     arkworks::{
         algebra::{affine_point_as_bytes, modulus_is_smaller},
         ec::{AffineCurve, ProjectiveCurve},
-        ff::{BigInteger, Field, PrimeField},
+        ff::{BigInteger, Field, PrimeField, ToConstraintField},
         r1cs_std::{groups::CurveVar, ToBitsGadget},
         relations::ns,
         serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError},
@@ -98,6 +98,17 @@ pub struct Group<C>(
 )
 where
     C: ProjectiveCurve;
+
+impl<C> ToConstraintField<ConstraintField<C>> for Group<C>
+where
+    C: ProjectiveCurve,
+    <C as ProjectiveCurve>::Affine: ToConstraintField<ConstraintField<C>>,
+{
+    #[inline]
+    fn to_field_elements(&self) -> Option<Vec<ConstraintField<C>>> {
+        self.0.to_field_elements()
+    }
+}
 
 impl<C> codec::Decode for Group<C>
 where

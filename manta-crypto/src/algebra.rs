@@ -97,7 +97,7 @@ where
     type Group = G;
 
     #[inline]
-    fn generator(&self) -> &G {
+    fn generator(&self) -> &Self::Group {
         &self.generator
     }
 }

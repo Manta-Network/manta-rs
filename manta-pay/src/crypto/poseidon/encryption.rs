@@ -20,7 +20,13 @@ use crate::crypto::poseidon::{Permutation, Specification, State};
 use alloc::{boxed::Box, vec::Vec};
 use core::{fmt::Debug, hash::Hash};
 use manta_crypto::{
-    eclair::{self, bool::Bool, num::Zero, Has},
+    eclair::{
+        self,
+        alloc::{mode::Public, Allocate, Allocator, Constant, Variable},
+        bool::Bool,
+        num::Zero,
+        Has,
+    },
     permutation::{
         duplex::{self, Setup, Types, Verify},
         sponge::{Read, Write},
@@ -254,6 +260,25 @@ where
     }
 }
 
+impl<S, COM> Variable<Public, COM> for Tag<S, COM>
+where
+    S: Specification<COM> + Constant<COM>,
+    S::Field: Variable<Public, COM>,
+    S::Type: Specification<Field = Var<S::Field, Public, COM>>,
+{
+    type Type = Tag<S::Type>;
+
+    #[inline]
+    fn new_unknown(compiler: &mut COM) -> Self {
+        Self(compiler.allocate_unknown())
+    }
+
+    #[inline]
+    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
+        Self(this.0.as_known(compiler))
+    }
+}
+
 /// Encryption Configuration
 /* TODO:
 #[cfg_attr(
@@ -283,6 +308,22 @@ where
 {
     /// Initial State
     pub initial_state: State<S, COM>,
+}
+
+impl<S, COM> Constant<COM> for Encryption<S, COM>
+where
+    S: Specification<COM> + Constant<COM>,
+    S::Type: Specification,
+    State<S, COM>: Constant<COM, Type = State<S::Type>>,
+{
+    type Type = Encryption<S::Type>;
+
+    #[inline]
+    fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
+        Self {
+            initial_state: this.initial_state.as_constant(compiler),
+        }
+    }
 }
 
 impl<S, COM> Types<Permutation<S, COM>, COM> for Encryption<S, COM>

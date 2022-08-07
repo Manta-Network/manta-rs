@@ -20,7 +20,7 @@ use alloc::vec::Vec;
 use manta_crypto::{
     algebra,
     arkworks::{
-        ff::{Field, FpParameters, PrimeField},
+        ff::{Field, FpParameters, PrimeField, ToConstraintField},
         r1cs_std::{alloc::AllocVar, eq::EqGadget, select::CondSelectGadget, ToBitsGadget},
         relations::{
             ns,
@@ -95,6 +95,16 @@ where
     #[inline]
     fn from(value: u128) -> Self {
         Self(value.into())
+    }
+}
+
+impl<F> ToConstraintField<F> for Fp<F>
+where
+    F: PrimeField,
+{
+    #[inline]
+    fn to_field_elements(&self) -> Option<Vec<F>> {
+        self.0.to_field_elements()
     }
 }
 

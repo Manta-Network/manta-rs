@@ -17,6 +17,7 @@
 //! Poseidon Configuration
 
 use crate::{config::ConstraintField, crypto::poseidon};
+use manta_crypto::eclair::alloc::Constant;
 
 /// Poseidon Specification Configuration
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -53,6 +54,16 @@ where
     type Field = ConstraintField;
 
     const SBOX_EXPONENT: u64 = 5;
+}
+
+impl<const ARITY: usize, COM> Constant<COM> for Spec<ARITY> {
+    type Type = Self;
+
+    #[inline]
+    fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
+        let _ = (this, compiler);
+        Self
+    }
 }
 
 ///

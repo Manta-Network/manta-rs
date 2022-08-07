@@ -191,6 +191,20 @@ where
     }
 }
 
+impl<S, COM> Constant<COM> for State<S, COM>
+where
+    S: Specification<COM> + Constant<COM>,
+    S::Field: Constant<COM>,
+    S::Type: Specification<Field = Const<S::Field, COM>>,
+{
+    type Type = State<S::Type>;
+
+    #[inline]
+    fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
+        Self(this.0.as_constant(compiler))
+    }
+}
+
 /// Poseidon Permutation
 #[cfg_attr(
     feature = "serde",

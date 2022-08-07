@@ -209,7 +209,7 @@ where
 pub mod schnorr {
     use super::*;
     use crate::{
-        algebra::{security::DiscreteLogarithmHardness, Group, Scalar},
+        algebra::{security::DiscreteLogarithmHardness, Generator, Group, Scalar},
         eclair::{alloc::Constant, bool::Bool, cmp::PartialEq, Has},
         hash::security::PreimageResistance,
     };
@@ -298,6 +298,19 @@ pub mod schnorr {
                 hash_function,
                 __: PhantomData,
             }
+        }
+    }
+
+    impl<G, H, COM> Generator<COM> for Schnorr<G, H, COM>
+    where
+        G: DiscreteLogarithmHardness + Group<COM>,
+        H: HashFunction<G, COM>,
+    {
+        type Group = G;
+
+        #[inline]
+        fn generator(&self) -> &Self::Group {
+            &self.generator
         }
     }
 

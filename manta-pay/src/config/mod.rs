@@ -147,6 +147,36 @@ impl transfer::Configuration for Config {
     type ProofSystem = ProofSystem;
 }
 
+/*
+impl ProofSystemInput<utxo::v1::Utxo> for ProofSystem {
+    #[inline]
+    fn extend(input: &mut Self::Input, next: &utxo::v1::Utxo) {
+        todo!()
+    }
+}
+*/
+
+impl ProofSystemInput<u128> for ProofSystem {
+    #[inline]
+    fn extend(input: &mut Self::Input, next: &u128) {
+        input.push((*next).into());
+    }
+}
+
+impl ProofSystemInput<Fp<ConstraintField>> for ProofSystem {
+    #[inline]
+    fn extend(input: &mut Self::Input, next: &Fp<ConstraintField>) {
+        input.push(next.0);
+    }
+}
+
+impl ProofSystemInput<Group> for ProofSystem {
+    #[inline]
+    fn extend(input: &mut Self::Input, next: &Group) {
+        input.append(&mut next.0.to_field_elements().unwrap());
+    }
+}
+
 /* FIXME[remove]:
 /// Poseidon Specification
 pub struct PoseidonSpec<const ARITY: usize>;
