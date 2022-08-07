@@ -339,6 +339,23 @@ where
     }
 }
 
+impl<B, const N: usize, M, COM> Variable<M, COM> for BlockArray<B, N>
+where
+    B: Variable<M, COM>,
+{
+    type Type = BlockArray<B::Type, N>;
+
+    #[inline]
+    fn new_unknown(compiler: &mut COM) -> Self {
+        Self(compiler.allocate_unknown())
+    }
+
+    #[inline]
+    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
+        Self(this.0.as_known(compiler))
+    }
+}
+
 /// Fixed Plaintext Type
 pub type FixedPlaintext<const N: usize, S, COM = ()> = BlockArray<PlaintextBlock<S, COM>, N>;
 
