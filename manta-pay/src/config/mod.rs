@@ -154,7 +154,6 @@ impl ProofSystemInput<utxo::v1::Utxo> for ProofSystem {
         todo!()
     }
 }
-*/
 
 impl ProofSystemInput<u128> for ProofSystem {
     #[inline]
@@ -176,6 +175,7 @@ impl ProofSystemInput<Group> for ProofSystem {
         input.append(&mut next.0.to_field_elements().unwrap());
     }
 }
+*/
 
 /* FIXME[remove]:
 /// Poseidon Specification

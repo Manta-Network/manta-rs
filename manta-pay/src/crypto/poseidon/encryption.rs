@@ -22,7 +22,10 @@ use core::{fmt::Debug, hash::Hash};
 use manta_crypto::{
     eclair::{
         self,
-        alloc::{mode::Public, Allocate, Allocator, Constant, Var, Variable},
+        alloc::{
+            mode::{Public, Secret},
+            Allocate, Allocator, Constant, Var, Variable,
+        },
         bool::Bool,
         num::Zero,
         Has,
@@ -32,13 +35,14 @@ use manta_crypto::{
         sponge::{Read, Write},
     },
 };
-use manta_util::vec::padded_chunks_with;
+use manta_util::{vec::padded_chunks_with, BoxArray};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
 
-/// Encryption Duplexer
-pub type Duplexer<S, COM = ()> = duplex::Duplexer<Permutation<S, COM>, Encryption<S, COM>, COM>;
+/// Fixed Encryption Duplexer
+pub type FixedDuplexer<const N: usize, S, COM = ()> =
+    duplex::Duplexer<Permutation<S, COM>, FixedEncryption<N, S, COM>, COM>;
 
 /// Block Element
 pub trait BlockElement<COM = ()> {
@@ -154,6 +158,25 @@ where
     }
 }
 
+impl<S, COM> Variable<Secret, COM> for PlaintextBlock<S, COM>
+where
+    S: Specification<COM> + Constant<COM>,
+    S::Field: Variable<Public, COM>,
+    S::Type: Specification<Field = Var<S::Field, Public, COM>>,
+{
+    type Type = PlaintextBlock<S::Type>;
+
+    #[inline]
+    fn new_unknown(compiler: &mut COM) -> Self {
+        todo!()
+    }
+
+    #[inline]
+    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
+        todo!()
+    }
+}
+
 /// Ciphertext Block
 /* TODO:
 #[cfg_attr(
@@ -205,6 +228,26 @@ where
 {
     #[inline]
     fn eq(&self, rhs: &Self, compiler: &mut COM) -> Bool<COM> {
+        // self.0.eq(&rhs.0, compiler)
+        todo!()
+    }
+}
+
+impl<S, COM> Variable<Public, COM> for CiphertextBlock<S, COM>
+where
+    S: Specification<COM> + Constant<COM>,
+    S::Field: Variable<Public, COM>,
+    S::Type: Specification<Field = Var<S::Field, Public, COM>>,
+{
+    type Type = CiphertextBlock<S::Type>;
+
+    #[inline]
+    fn new_unknown(compiler: &mut COM) -> Self {
+        todo!()
+    }
+
+    #[inline]
+    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
         todo!()
     }
 }
@@ -279,7 +322,7 @@ where
     }
 }
 
-/// Encryption Configuration
+/// Fixed Encryption Configuration
 /* TODO:
 #[cfg_attr(
     feature = "serde",
@@ -302,7 +345,7 @@ where
     Hash(bound = "S::Field: Hash"),
     PartialEq(bound = "S::Field: PartialEq")
 )]
-pub struct Encryption<S, COM = ()>
+pub struct FixedEncryption<const N: usize, S, COM = ()>
 where
     S: Specification<COM>,
 {
@@ -310,13 +353,13 @@ where
     pub initial_state: State<S, COM>,
 }
 
-impl<S, COM> Constant<COM> for Encryption<S, COM>
+impl<const N: usize, S, COM> Constant<COM> for FixedEncryption<N, S, COM>
 where
     S: Specification<COM> + Constant<COM>,
     S::Type: Specification,
     State<S, COM>: Constant<COM, Type = State<S::Type>>,
 {
-    type Type = Encryption<S::Type>;
+    type Type = FixedEncryption<N, S::Type>;
 
     #[inline]
     fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
@@ -326,7 +369,7 @@ where
     }
 }
 
-impl<S, COM> Types<Permutation<S, COM>, COM> for Encryption<S, COM>
+impl<const N: usize, S, COM> Types<Permutation<S, COM>, COM> for FixedEncryption<N, S, COM>
 where
     S: Specification<COM>,
     S::Field: Clone + BlockElement<COM>,
@@ -335,11 +378,13 @@ where
     type Header = Vec<S::Field>;
     type SetupBlock = SetupBlock<S, COM>;
     type PlaintextBlock = PlaintextBlock<S, COM>;
+    type Plaintext = BoxArray<Self::PlaintextBlock, N>;
     type CiphertextBlock = CiphertextBlock<S, COM>;
+    type Ciphertext = BoxArray<Self::CiphertextBlock, N>;
     type Tag = Tag<S, COM>;
 }
 
-impl<S, COM> Setup<Permutation<S, COM>, COM> for Encryption<S, COM>
+impl<const N: usize, S, COM> Setup<Permutation<S, COM>, COM> for FixedEncryption<N, S, COM>
 where
     S: Specification<COM>,
     S::Field: Clone + BlockElement<COM> + Zero<COM>,
@@ -368,7 +413,7 @@ where
     }
 }
 
-impl<S> Verify<Permutation<S>> for Encryption<S>
+impl<const N: usize, S> Verify<Permutation<S>> for FixedEncryption<N, S>
 where
     S: Specification,
     S::Field: Clone + PartialEq + BlockElement,

@@ -27,8 +27,8 @@ use manta_crypto::{
     },
     eclair::{
         alloc::{
-            mode::{Public, Secret},
-            Allocate, Allocator, Constant, Variable,
+            mode::{Derived, Public, Secret},
+            Allocate, Allocator, Constant, Var, Variable,
         },
         bool::{Assert, AssertEq, Bool, ConditionalSelect},
         cmp::PartialEq,
@@ -1467,6 +1467,26 @@ where
     }
 }
 
+impl<C, COM> Variable<Secret, COM> for AuthorizationContext<C, COM>
+where
+    COM: Has<bool, Type = C::Bool>,
+    C: BaseConfiguration<COM> + Constant<COM>,
+    C::Group: Variable<Secret, COM>,
+    C::Type: BaseConfiguration<Bool = bool, Group = Var<C::Group, Secret, COM>>,
+{
+    type Type = AuthorizationContext<C::Type>;
+
+    #[inline]
+    fn new_unknown(compiler: &mut COM) -> Self {
+        Self::new(compiler.allocate_unknown())
+    }
+
+    #[inline]
+    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
+        Self::new(this.proof_authorization_key.as_known(compiler))
+    }
+}
+
 /// Authorization Proof
 pub struct AuthorizationProof<C, COM = ()>
 where
@@ -1514,6 +1534,34 @@ where
     #[inline]
     fn into(self) -> C::Group {
         self.randomized_proof_authorization_key
+    }
+}
+
+impl<C, COM> Variable<Derived, COM> for AuthorizationProof<C, COM>
+where
+    COM: Has<bool, Type = C::Bool>,
+    C: BaseConfiguration<COM> + Constant<COM>,
+    C::Scalar: Variable<Secret, COM>,
+    C::Group: Variable<Public, COM>,
+    C::Type: BaseConfiguration<
+        Bool = bool,
+        Scalar = Var<C::Scalar, Secret, COM>,
+        Group = Var<C::Group, Public, COM>,
+    >,
+{
+    type Type = AuthorizationProof<C::Type>;
+
+    #[inline]
+    fn new_unknown(compiler: &mut COM) -> Self {
+        Self::new(compiler.allocate_unknown(), compiler.allocate_unknown())
+    }
+
+    #[inline]
+    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
+        Self::new(
+            this.randomness.as_known(compiler),
+            this.randomized_proof_authorization_key.as_known(compiler),
+        )
     }
 }
 

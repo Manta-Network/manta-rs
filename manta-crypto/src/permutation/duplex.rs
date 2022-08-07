@@ -38,6 +38,7 @@ use crate::{
 };
 use alloc::vec::Vec;
 use core::marker::PhantomData;
+use manta_util::iter::{BorrowIterator, Iterable};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
@@ -65,8 +66,14 @@ where
     /// Plaintext Block Type
     type PlaintextBlock: Write<P, COM, Output = Self::CiphertextBlock>;
 
+    /// Plaintext Type
+    type Plaintext: FromIterator<Self::PlaintextBlock> + BorrowIterator<Self::PlaintextBlock>;
+
     /// Ciphertext Block Type
     type CiphertextBlock: Write<P, COM, Output = Self::PlaintextBlock>;
+
+    /// Ciphertext Type
+    type Ciphertext: FromIterator<Self::CiphertextBlock> + BorrowIterator<Self::CiphertextBlock>;
 
     /// Authentication Tag Type
     type Tag: Read<P, COM>;
@@ -231,14 +238,15 @@ where
         &self,
         key: &C::Key,
         header: &C::Header,
-        plaintext: &[C::PlaintextBlock],
+        plaintext: &C::Plaintext,
         compiler: &mut COM,
-    ) -> (C::Tag, Vec<C::CiphertextBlock>)
+    ) -> (C::Tag, C::Ciphertext)
     where
         C: Setup<P, COM>,
     {
         let mut state = self.setup(key, header, compiler);
-        let ciphertext = Sponge::new(&self.permutation, &mut state).absorb_all(plaintext, compiler);
+        let ciphertext =
+            Sponge::new(&self.permutation, &mut state).absorb_all(plaintext.iter(), compiler);
         (C::Tag::read(&state, compiler), ciphertext)
     }
 
@@ -249,14 +257,15 @@ where
         &self,
         key: &C::Key,
         header: &C::Header,
-        ciphertext: &[C::CiphertextBlock],
+        ciphertext: &C::Ciphertext,
         compiler: &mut COM,
-    ) -> (C::Tag, Vec<C::PlaintextBlock>)
+    ) -> (C::Tag, C::Plaintext)
     where
         C: Setup<P, COM>,
     {
         let mut state = self.setup(key, header, compiler);
-        let plaintext = Sponge::new(&self.permutation, &mut state).absorb_all(ciphertext, compiler);
+        let plaintext =
+            Sponge::new(&self.permutation, &mut state).absorb_all(ciphertext.iter(), compiler);
         (C::Tag::read(&state, compiler), plaintext)
     }
 }
@@ -292,7 +301,7 @@ where
     P: PseudorandomPermutation<COM>,
     C: Types<P, COM>,
 {
-    type Ciphertext = Ciphertext<C::Tag, Vec<C::CiphertextBlock>>;
+    type Ciphertext = Ciphertext<C::Tag, C::Ciphertext>;
 }
 
 impl<P, C, COM> EncryptionKeyType for Duplexer<P, C, COM>
@@ -316,7 +325,7 @@ where
     P: PseudorandomPermutation<COM>,
     C: Types<P, COM>,
 {
-    type Plaintext = Vec<C::PlaintextBlock>;
+    type Plaintext = C::Plaintext;
 }
 
 impl<P, C, COM> RandomnessType for Duplexer<P, C, COM>
@@ -336,7 +345,7 @@ where
     P: PseudorandomPermutation<COM>,
     C: Verify<P, COM>,
 {
-    type DecryptedPlaintext = (C::Verification, Vec<C::PlaintextBlock>);
+    type DecryptedPlaintext = (C::Verification, C::Plaintext);
 }
 
 impl<P, C, COM> Encrypt<COM> for Duplexer<P, C, COM>

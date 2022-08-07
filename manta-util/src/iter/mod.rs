@@ -226,6 +226,11 @@ where
     type Item = <&'i Self as IntoIterator>::Item;
 }
 
+/// Borrow Iterator
+pub trait BorrowIterator<T>: for<'i> IterRef<'i, Item = &'i T> {}
+
+impl<T, I> BorrowIterator<T> for I where I: for<'i> IterRef<'i, Item = &'i T> {}
+
 /// For-Each Collector
 ///
 /// In the same way that `() : FromIterator<()>` which just calls [`Iterator::for_each`] internally,

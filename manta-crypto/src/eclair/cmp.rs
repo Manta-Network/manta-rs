@@ -18,11 +18,12 @@
 
 use crate::eclair::{
     alloc::{Allocate, Constant},
-    bool::{Assert, Bool},
+    bool::{Assert, AssertEq, Bool},
     ops::{BitAnd, Not},
     Has, Type,
 };
 use core::cmp::{self, Ordering};
+use manta_util::{Array, BoxArray};
 
 /// Partial Equivalence Relations
 pub trait PartialEq<Rhs, COM = ()>
@@ -98,6 +99,73 @@ where
                 are_equal = are_equal.bitand(lhs.eq(rhs, compiler), compiler);
             }
             are_equal
+        }
+    }
+
+    #[inline]
+    fn assert_equal(&self, rhs: &Vec<Rhs>, compiler: &mut COM)
+    where
+        COM: Assert,
+    {
+        if self.len() != rhs.len() {
+            let not_equal = false.as_constant(compiler);
+            compiler.assert(&not_equal);
+        } else {
+            for (lhs, rhs) in self.iter().zip(rhs) {
+                compiler.assert_eq(lhs, rhs);
+            }
+        }
+    }
+}
+
+impl<T, Rhs, const N: usize, COM> PartialEq<Array<Rhs, N>, COM> for Array<T, N>
+where
+    COM: Has<bool>,
+    Bool<COM>: Constant<COM, Type = bool> + BitAnd<Bool<COM>, COM, Output = Bool<COM>>,
+    T: PartialEq<Rhs, COM>,
+{
+    #[inline]
+    fn eq(&self, rhs: &Array<Rhs, N>, compiler: &mut COM) -> Bool<COM> {
+        let mut are_equal = true.as_constant::<Bool<COM>>(compiler);
+        for (lhs, rhs) in self.iter().zip(rhs) {
+            are_equal = are_equal.bitand(lhs.eq(rhs, compiler), compiler);
+        }
+        are_equal
+    }
+
+    #[inline]
+    fn assert_equal(&self, rhs: &Array<Rhs, N>, compiler: &mut COM)
+    where
+        COM: Assert,
+    {
+        for (lhs, rhs) in self.iter().zip(rhs) {
+            compiler.assert_eq(lhs, rhs);
+        }
+    }
+}
+
+impl<T, Rhs, const N: usize, COM> PartialEq<BoxArray<Rhs, N>, COM> for BoxArray<T, N>
+where
+    COM: Has<bool>,
+    Bool<COM>: Constant<COM, Type = bool> + BitAnd<Bool<COM>, COM, Output = Bool<COM>>,
+    T: PartialEq<Rhs, COM>,
+{
+    #[inline]
+    fn eq(&self, rhs: &BoxArray<Rhs, N>, compiler: &mut COM) -> Bool<COM> {
+        let mut are_equal = true.as_constant::<Bool<COM>>(compiler);
+        for (lhs, rhs) in self.iter().zip(rhs) {
+            are_equal = are_equal.bitand(lhs.eq(rhs, compiler), compiler);
+        }
+        are_equal
+    }
+
+    #[inline]
+    fn assert_equal(&self, rhs: &BoxArray<Rhs, N>, compiler: &mut COM)
+    where
+        COM: Assert,
+    {
+        for (lhs, rhs) in self.iter().zip(rhs) {
+            compiler.assert_eq(lhs, rhs);
         }
     }
 }

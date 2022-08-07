@@ -30,7 +30,7 @@
 // TODO: How can we have objects that have both `Constant` and `Variable` parts?
 
 use core::{iter, marker::PhantomData};
-use manta_util::into_array_unchecked;
+use manta_util::{into_array_unchecked, Array, BoxArray};
 
 /// Constant Type Alias
 pub type Const<C, COM> = <C as Constant<COM>>::Type;
@@ -122,6 +122,32 @@ where
     T: Constant<COM>,
 {
     type Type = Box<[T::Type]>;
+
+    #[inline]
+    fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
+        this.iter().map(|this| this.as_constant(compiler)).collect()
+    }
+}
+
+impl<T, const N: usize, COM> Constant<COM> for Array<T, N>
+where
+    COM: ?Sized,
+    T: Constant<COM>,
+{
+    type Type = Array<T::Type, N>;
+
+    #[inline]
+    fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
+        this.iter().map(|this| this.as_constant(compiler)).collect()
+    }
+}
+
+impl<T, const N: usize, COM> Constant<COM> for BoxArray<T, N>
+where
+    COM: ?Sized,
+    T: Constant<COM>,
+{
+    type Type = Array<T::Type, N>;
 
     #[inline]
     fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
@@ -240,6 +266,46 @@ where
                 .map(|this| this.as_known(compiler))
                 .collect::<Vec<_>>(),
         )
+    }
+}
+
+impl<T, const N: usize, M, COM> Variable<M, COM> for Array<T, N>
+where
+    COM: ?Sized,
+    T: Variable<M, COM>,
+{
+    type Type = Array<T::Type, N>;
+
+    #[inline]
+    fn new_unknown(compiler: &mut COM) -> Self {
+        iter::repeat_with(|| compiler.allocate_unknown())
+            .take(N)
+            .collect()
+    }
+
+    #[inline]
+    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
+        this.iter().map(|this| this.as_known(compiler)).collect()
+    }
+}
+
+impl<T, const N: usize, M, COM> Variable<M, COM> for BoxArray<T, N>
+where
+    COM: ?Sized,
+    T: Variable<M, COM>,
+{
+    type Type = BoxArray<T::Type, N>;
+
+    #[inline]
+    fn new_unknown(compiler: &mut COM) -> Self {
+        iter::repeat_with(|| compiler.allocate_unknown())
+            .take(N)
+            .collect()
+    }
+
+    #[inline]
+    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
+        this.iter().map(|this| this.as_known(compiler)).collect()
     }
 }
 

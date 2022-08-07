@@ -96,7 +96,13 @@ pub type UtxoAccumulatorItemVar = FpVar<ConstraintField>;
 pub type UtxoAccumulatorWitness = utxo::UtxoAccumulatorWitness<Parameters>;
 
 ///
+pub type UtxoAccumulatorWitnessVar = utxo::UtxoAccumulatorWitness<ParametersVar, Compiler>;
+
+///
 pub type UtxoAccumulatorOutput = utxo::UtxoAccumulatorOutput<Parameters>;
+
+///
+pub type UtxoAccumulatorOutputVar = utxo::UtxoAccumulatorOutput<ParametersVar, Compiler>;
 
 ///
 pub type Parameters = protocol::Parameters<Config>;
@@ -490,7 +496,7 @@ impl<COM> Constant<COM> for IncomingEncryptionSchemeConverter<COM> {
 
 ///
 pub type IncomingPoseidonEncryptionScheme<COM = ()> =
-    poseidon::encryption::Duplexer<Poseidon5, COM>;
+    poseidon::encryption::FixedDuplexer<1, Poseidon5, COM>;
 
 ///
 pub type IncomingBaseEncryptionScheme<COM = ()> = encryption::convert::key::Converter<
@@ -689,6 +695,16 @@ impl merkle_tree::Configuration<Compiler> for MerkleTreeConfiguration {
     const HEIGHT: usize = 20;
 }
 
+impl<COM> Constant<COM> for MerkleTreeConfiguration {
+    type Type = Self;
+
+    #[inline]
+    fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
+        let _ = (this, compiler);
+        Self
+    }
+}
+
 /// UTXO Accumulator Model
 pub type UtxoAccumulatorModel = merkle_tree::Parameters<MerkleTreeConfiguration>;
 
@@ -872,9 +888,10 @@ impl encryption::convert::plaintext::Forward for OutgoingEncryptionSchemeConvert
 
     #[inline]
     fn as_target(source: &Self::Plaintext, _: &mut ()) -> Self::TargetPlaintext {
-        vec![poseidon::encryption::PlaintextBlock(
+        [poseidon::encryption::PlaintextBlock(
             vec![source.id, Fp(source.value.into())].into(),
         )]
+        .into()
     }
 }
 
@@ -885,9 +902,10 @@ impl encryption::convert::plaintext::Forward<Compiler>
 
     #[inline]
     fn as_target(source: &Self::Plaintext, _: &mut Compiler) -> Self::TargetPlaintext {
-        vec![poseidon::encryption::PlaintextBlock(
+        [poseidon::encryption::PlaintextBlock(
             vec![source.id.clone(), source.value.as_ref().clone()].into(),
         )]
+        .into()
     }
 }
 
@@ -964,7 +982,7 @@ impl<COM> Constant<COM> for OutgoingEncryptionSchemeConverter<COM> {
 
 ///
 pub type OutgoingPoseidonEncryptionScheme<COM = ()> =
-    poseidon::encryption::Duplexer<Poseidon2, COM>;
+    poseidon::encryption::FixedDuplexer<1, Poseidon2, COM>;
 
 ///
 pub type OutgoingBaseEncryptionScheme<COM = ()> = encryption::convert::key::Converter<
