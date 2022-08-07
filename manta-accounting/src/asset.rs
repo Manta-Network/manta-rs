@@ -16,10 +16,10 @@
 
 //! Assets
 //!
-//! This module defines the data structures and canonical encodings of the notion of an "asset".
-//! Assets are defined by an [`AssetId`] field and an [`AssetValue`] field. For describing an
-//! [`Asset`] with a particular [`AssetId`] we use [`AssetMetadata`] to assign a symbol and decimals
-//! for human-readable display purposes.
+//! This module defines the data structures and canonical encodings of a standard notion of "asset".
+//! Assets are defined by an `AssetId` field and an `AssetValue` field. For describing an [`Asset`]
+//! with a particular `AssetId` we use [`AssetMetadata`] to assign a symbol and decimals for
+//! human-readable display purposes.
 
 use alloc::{
     collections::btree_map::{BTreeMap, Entry as BTreeMapEntry},
@@ -62,263 +62,6 @@ use std::{
     hash::BuildHasher,
 };
 
-/// [`AssetId`] Base Type
-pub type AssetIdType = u32;
-
-/// Asset Id Type
-#[cfg_attr(
-    feature = "serde",
-    derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
-)]
-#[derive(Clone, Copy, Debug, Default, Display, Eq, From, Hash, Ord, PartialEq, PartialOrd)]
-#[from(forward)]
-pub struct AssetId(
-    /// [`Asset`] Id
-    pub AssetIdType,
-);
-
-impl AssetId {
-    /// The size of this type in bits.
-    pub const BITS: u32 = AssetIdType::BITS;
-
-    /// The size of this type in bytes.
-    pub const SIZE: usize = (Self::BITS / 8) as usize;
-
-    /// Constructs a new [`Asset`] with `self` as the [`AssetId`] and `value` as the [`AssetValue`].
-    #[inline]
-    pub const fn with(self, value: AssetValue) -> Asset {
-        Asset::new(self, value)
-    }
-
-    /// Constructs a new [`Asset`] with `self` as the [`AssetId`] and `value` as the [`AssetValue`].
-    #[inline]
-    pub const fn value(self, value: AssetValueType) -> Asset {
-        self.with(AssetValue(value))
-    }
-
-    /// Converts a byte array into `self`.
-    #[inline]
-    pub const fn from_bytes(bytes: [u8; Self::SIZE]) -> Self {
-        Self(AssetIdType::from_le_bytes(bytes))
-    }
-
-    /// Converts `self` into a byte array.
-    #[inline]
-    pub const fn into_bytes(self) -> [u8; Self::SIZE] {
-        self.0.to_le_bytes()
-    }
-
-    /// Samples an [`Asset`] by uniformly choosing between zero and `maximum` when selecting coins.
-    #[cfg(feature = "test")]
-    #[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
-    #[inline]
-    pub fn sample_up_to<R>(self, maximum: AssetValue, rng: &mut R) -> Asset
-    where
-        R: RngCore + ?Sized,
-    {
-        self.value(rng.gen_range(0..maximum.0))
-    }
-}
-
-impl From<AssetId> for [u8; AssetId::SIZE] {
-    #[inline]
-    fn from(id: AssetId) -> Self {
-        id.into_bytes()
-    }
-}
-
-impl PartialEq<AssetIdType> for AssetId {
-    #[inline]
-    fn eq(&self, rhs: &AssetIdType) -> bool {
-        self.0 == *rhs
-    }
-}
-
-impl<D> Sample<D> for AssetId
-where
-    AssetIdType: Sample<D>,
-{
-    #[inline]
-    fn sample<R>(distribution: D, rng: &mut R) -> Self
-    where
-        R: RngCore + ?Sized,
-    {
-        Self(rng.sample(distribution))
-    }
-}
-
-impl SizeLimit for AssetId {
-    const SIZE: usize = Self::SIZE;
-}
-
-/// [`AssetValue`] Base Type
-pub type AssetValueType = u128;
-
-/// Asset Value Type
-#[cfg_attr(
-    feature = "serde",
-    derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
-)]
-#[derive(
-    Add,
-    AddAssign,
-    Clone,
-    Copy,
-    Debug,
-    Default,
-    Display,
-    Eq,
-    From,
-    Hash,
-    Ord,
-    PartialEq,
-    PartialOrd,
-    Sub,
-    SubAssign,
-    Sum,
-)]
-#[from(forward)]
-pub struct AssetValue(
-    /// [`Asset`] Value
-    pub AssetValueType,
-);
-
-impl AssetValue {
-    /// The size of this type in bits.
-    pub const BITS: u32 = AssetValueType::BITS;
-
-    /// The size of this type in bytes.
-    pub const SIZE: usize = (Self::BITS / 8) as usize;
-
-    /// Constructs a new [`Asset`] with `self` as the [`AssetValue`] and `id` as the [`AssetId`].
-    #[inline]
-    pub const fn with(self, id: AssetId) -> Asset {
-        Asset::new(id, self)
-    }
-
-    /// Constructs a new [`Asset`] with `self` as the [`AssetValue`] and `id` as the [`AssetId`].
-    #[inline]
-    pub const fn id(self, id: AssetIdType) -> Asset {
-        self.with(AssetId(id))
-    }
-
-    /// Converts a byte array into `self`.
-    #[inline]
-    pub const fn from_bytes(bytes: [u8; Self::SIZE]) -> Self {
-        Self(AssetValueType::from_le_bytes(bytes))
-    }
-
-    /// Converts `self` into a byte array.
-    #[inline]
-    pub const fn into_bytes(self) -> [u8; Self::SIZE] {
-        self.0.to_le_bytes()
-    }
-
-    /// Checked integer addition. Computes `self + rhs`, returning `None` if overflow occurred.
-    #[inline]
-    pub const fn checked_add(self, rhs: Self) -> Option<Self> {
-        match self.0.checked_add(rhs.0) {
-            Some(result) => Some(Self(result)),
-            _ => None,
-        }
-    }
-
-    /// Checked integer subtraction. Computes `self - rhs`, returning `None` if overflow occurred.
-    #[inline]
-    pub const fn checked_sub(self, rhs: Self) -> Option<Self> {
-        match self.0.checked_sub(rhs.0) {
-            Some(result) => Some(Self(result)),
-            _ => None,
-        }
-    }
-}
-
-impl Add<AssetValueType> for AssetValue {
-    type Output = Self;
-
-    #[inline]
-    fn add(mut self, rhs: AssetValueType) -> Self {
-        self.add_assign(rhs);
-        self
-    }
-}
-
-impl AddAssign<AssetValueType> for AssetValue {
-    #[inline]
-    fn add_assign(&mut self, rhs: AssetValueType) {
-        self.0 += rhs;
-    }
-}
-
-impl<'v> CheckedSub for &'v AssetValue {
-    type Output = AssetValue;
-
-    #[inline]
-    fn checked_sub(self, rhs: Self) -> Option<Self::Output> {
-        self.0.checked_sub(rhs.0).map(AssetValue)
-    }
-}
-
-impl From<AssetValue> for [u8; AssetValue::SIZE] {
-    #[inline]
-    fn from(value: AssetValue) -> Self {
-        value.into_bytes()
-    }
-}
-
-impl PartialEq<AssetValueType> for AssetValue {
-    #[inline]
-    fn eq(&self, rhs: &AssetValueType) -> bool {
-        self.0 == *rhs
-    }
-}
-
-impl<D> Sample<D> for AssetValue
-where
-    AssetValueType: Sample<D>,
-{
-    #[inline]
-    fn sample<R>(distribution: D, rng: &mut R) -> Self
-    where
-        R: RngCore + ?Sized,
-    {
-        Self(rng.sample(distribution))
-    }
-}
-
-impl SizeLimit for AssetValue {
-    const SIZE: usize = Self::SIZE;
-}
-
-impl Sub<AssetValueType> for AssetValue {
-    type Output = Self;
-
-    #[inline]
-    fn sub(mut self, rhs: AssetValueType) -> Self {
-        self.sub_assign(rhs);
-        self
-    }
-}
-
-impl SubAssign<AssetValueType> for AssetValue {
-    #[inline]
-    fn sub_assign(&mut self, rhs: AssetValueType) {
-        self.0 -= rhs;
-    }
-}
-
-impl<'a> Sum<&'a AssetValue> for AssetValue {
-    #[inline]
-    fn sum<I>(iter: I) -> Self
-    where
-        I: Iterator<Item = &'a AssetValue>,
-    {
-        iter.copied().sum()
-    }
-}
-
 /// Asset
 #[cfg_attr(
     feature = "serde",
@@ -327,7 +70,7 @@ impl<'a> Sum<&'a AssetValue> for AssetValue {
 )]
 #[derive(Clone, Copy, Debug, Default, Display, From, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[display(fmt = "{{id: {}, value: {}}}", id, value)]
-pub struct Asset<I = AssetId, V = AssetValue> {
+pub struct Asset<I, V> {
     /// Asset Id
     pub id: I,
 
@@ -375,81 +118,6 @@ impl<I, V> Asset<I, V> {
     }
 }
 
-impl Asset {
-    /// The size of the data in this type in bits.
-    pub const BITS: u32 = AssetId::BITS + AssetValue::BITS;
-
-    /// The size of the data in this type in bytes.
-    pub const SIZE: usize = (Self::BITS / 8) as usize;
-
-    /// Checks if the `rhs` asset has the same [`AssetId`].
-    #[inline]
-    pub const fn same_id(&self, rhs: &Self) -> bool {
-        self.id.0 == rhs.id.0
-    }
-
-    /// Converts a byte array into `self`.
-    #[inline]
-    pub fn from_bytes(bytes: [u8; Self::SIZE]) -> Self {
-        Self::new(
-            AssetId::from_bytes(into_array_unchecked(&bytes[..AssetId::SIZE])),
-            AssetValue::from_bytes(into_array_unchecked(&bytes[AssetId::SIZE..])),
-        )
-    }
-
-    /// Converts `self` into a byte array.
-    #[inline]
-    pub fn into_bytes(self) -> [u8; Self::SIZE] {
-        let mut buffer = [0; Self::SIZE];
-        buffer[..AssetId::SIZE].copy_from_slice(&self.id.into_bytes());
-        buffer[AssetId::SIZE..].copy_from_slice(&self.value.into_bytes());
-        buffer
-    }
-
-    /// Returns [`self.value`](Self::value) if the given `id` matches [`self.id`](Self::id).
-    #[inline]
-    pub const fn value_of(&self, id: AssetId) -> Option<AssetValue> {
-        if self.id.0 == id.0 {
-            Some(self.value)
-        } else {
-            None
-        }
-    }
-
-    /// Returns a mutable reference to [`self.value`](Self::value) if the given `id` matches
-    /// [`self.id`](Self::id).
-    #[inline]
-    pub fn value_of_mut(&mut self, id: AssetId) -> Option<&mut AssetValue> {
-        if self.id.0 == id.0 {
-            Some(&mut self.value)
-        } else {
-            None
-        }
-    }
-
-    /// Adds the value of `asset` to `self` if it has the same [`AssetId`].
-    #[inline]
-    pub fn try_add_assign(&mut self, asset: Asset) -> bool {
-        if self.id == asset.id {
-            self.value += asset.value;
-            true
-        } else {
-            false
-        }
-    }
-
-    /// Subtracts the value of `asset` from `self` if it has the same [`AssetId`].
-    #[inline]
-    pub fn try_sub_assign(&mut self, asset: Asset) -> bool {
-        if self.id == asset.id {
-            self.value -= asset.value;
-            true
-        } else {
-            false
-        }
-    }
-}
-
 impl<I, V> Add<V> for Asset<I, V>
 where
     V: AddAssign,
@@ -470,34 +138,6 @@ where
     #[inline]
     fn add_assign(&mut self, rhs: V) {
         self.value += rhs;
-    }
-}
-
-impl From<[u8; Self::SIZE]> for Asset {
-    #[inline]
-    fn from(array: [u8; Self::SIZE]) -> Self {
-        Self::from_bytes(array)
-    }
-}
-
-impl From<Array<u8, { Self::SIZE }>> for Asset {
-    #[inline]
-    fn from(array: Array<u8, { Self::SIZE }>) -> Self {
-        array.0.into()
-    }
-}
-
-impl From<Asset> for [u8; Asset::SIZE] {
-    #[inline]
-    fn from(asset: Asset) -> Self {
-        asset.into_bytes()
-    }
-}
-
-impl From<Asset> for Array<u8, { Asset::SIZE }> {
-    #[inline]
-    fn from(asset: Asset) -> Self {
-        Self(asset.into_bytes())
     }
 }
 
@@ -527,10 +167,6 @@ where
     {
         Self::new(rng.gen(), rng.gen())
     }
-}
-
-impl SizeLimit for Asset {
-    const SIZE: usize = Self::SIZE;
 }
 
 impl<I, V> Sub<V> for Asset<I, V>
@@ -633,8 +269,8 @@ where
 
 /// Asset List
 ///
-/// Stores assets sorted by [`AssetId`] as a flat key-value vector. This type can be relied on to
-/// maintain sorted order for iterating.
+/// Stores assets sorted by `I` as a flat key-value vector. This type can be relied on to maintain
+/// sorted order for iterating.
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
@@ -642,11 +278,11 @@ where
 )]
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Debug, Default(bound = ""), Eq, Hash, PartialEq)]
-pub struct AssetList<I = AssetId, V = AssetValue> {
+pub struct AssetList<I, V> {
     /// Sorted Asset Vector
     ///
-    /// The elements of the vector are sorted by [`AssetId`]. To insert/remove we perform a binary
-    /// search on the [`AssetId`] and update the [`AssetValue`] at that location.
+    /// The elements of the vector are sorted by `I`. To insert/remove we perform a binary search
+    /// on `I` and update `V` at that location.
     map: Vec<Asset<I, V>>,
 }
 
@@ -669,7 +305,7 @@ impl<I, V> AssetList<I, V> {
         self.map.is_empty()
     }
 
-    /// Returns the number of [`AssetId`] that can be inserted into `self` before needing to
+    /// Returns the number of `AssetId`s that can be inserted into `self` before needing to
     /// reallocate.
     #[inline]
     pub fn capacity(&self) -> usize {
@@ -727,7 +363,7 @@ impl<I, V> AssetList<I, V> {
         self.map.iter()
     }
 
-    /// Inserts `asset` into `self` increasing the [`AssetValue`] at `asset.id`.
+    /// Inserts `asset` into `self` increasing the `AssetValue` at `asset.id`.
     #[inline]
     pub fn deposit(&mut self, asset: Asset<I, V>)
     where
@@ -756,7 +392,7 @@ impl<I, V> AssetList<I, V> {
         }
     }
 
-    /// Tries to remove `asset` from `self` decreasing the [`AssetValue`] at `asset.id`, returning
+    /// Tries to remove `asset` from `self` decreasing the `AssetValue` at `asset.id`, returning
     /// `false` if this would overflow. To skip the overflow check, use
     /// [`withdraw_unchecked`](Self::withdraw_unchecked) instead.
     #[inline]
@@ -778,7 +414,7 @@ impl<I, V> AssetList<I, V> {
         false
     }
 
-    /// Removes `asset` from `self` decreasing the [`AssetValue`] at `asset.id`.
+    /// Removes `asset` from `self` decreasing the `AssetValue` at `asset.id`.
     ///
     /// # Panics
     ///
@@ -960,7 +596,7 @@ impl<'a, I, V> IntoIterator for &'a AssetList<I, V> {
 /// # Warning
 ///
 /// It is possible that keys are repeated, as long as the assets associated to them are different.
-pub trait AssetMap<I = AssetId, V = AssetValue>: Default {
+pub trait AssetMap<I, V>: Default {
     /// Key Type
     ///
     /// Keys are used to access the underlying asset values.
@@ -1142,7 +778,7 @@ macro_rules! impl_asset_map_for_maps_body {
 }
 
 /// B-Tree Map [`AssetMap`] Implementation
-pub type BTreeAssetMap<K, I = AssetId, V = AssetValue> = BTreeMap<K, Vec<Asset<I, V>>>;
+pub type BTreeAssetMap<K, I, V> = BTreeMap<K, Vec<Asset<I, V>>>;
 
 impl<K, I, V> AssetMap<I, V> for BTreeAssetMap<K, I, V>
 where
@@ -1157,8 +793,7 @@ where
 /// Hash Map [`AssetMap`] Implementation
 #[cfg(feature = "std")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
-pub type HashAssetMap<K, I = AssetId, V = AssetValue, S = RandomState> =
-    HashMap<K, Vec<Asset<I, V>>, S>;
+pub type HashAssetMap<K, I, V, S = RandomState> = HashMap<K, Vec<Asset<I, V>>, S>;
 
 #[cfg(feature = "std")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
@@ -1375,13 +1010,6 @@ pub trait MetadataDisplay {
     fn display(&self, metadata: &AssetMetadata) -> String;
 }
 
-impl MetadataDisplay for AssetValue {
-    #[inline]
-    fn display(&self, metadata: &AssetMetadata) -> String {
-        metadata.display(self.0)
-    }
-}
-
 /// Asset Manager
 pub trait AssetManager<I> {
     /// Returns the metadata associated to `id`.
@@ -1399,7 +1027,7 @@ macro_rules! impl_asset_manager_for_maps_body {
 }
 
 /// B-Tree Map [`AssetManager`] Implementation
-pub type BTreeAssetManager<I = AssetId> = BTreeMap<I, AssetMetadata>;
+pub type BTreeAssetManager<I> = BTreeMap<I, AssetMetadata>;
 
 impl<I> AssetManager<I> for BTreeAssetManager<I>
 where
@@ -1411,7 +1039,7 @@ where
 /// Hash Map [`AssetManager`] Implementation
 #[cfg(feature = "std")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
-pub type HashAssetManager<I = AssetId, S = RandomState> = HashMap<I, AssetMetadata, S>;
+pub type HashAssetManager<I, S = RandomState> = HashMap<I, AssetMetadata, S>;
 
 #[cfg(feature = "std")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]

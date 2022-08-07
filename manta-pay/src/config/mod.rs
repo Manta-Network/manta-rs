@@ -29,10 +29,7 @@ use blake2::{
 };
 use bls12_381::Bls12_381;
 use bls12_381_ed::constraints::EdwardsVar as Bls12_381_EdwardsVar;
-use manta_accounting::{
-    asset::{Asset, AssetId, AssetValue},
-    transfer,
-};
+use manta_accounting::{asset::Asset, transfer};
 use manta_crypto::{
     accumulator,
     algebra::DiffieHellman,
@@ -118,6 +115,7 @@ pub type ProofSystemError = groth16::Error;
 ///
 pub struct Config;
 
+/*
 impl transfer::Configuration for Config {
     type Compiler = Compiler;
     type AssetId = utxo::v1::AssetId;
@@ -146,6 +144,7 @@ impl transfer::Configuration for Config {
     type ParametersVar = utxo::v1::ParametersVar;
     type ProofSystem = ProofSystem;
 }
+*/
 
 /*
 impl ProofSystemInput<utxo::v1::Utxo> for ProofSystem {

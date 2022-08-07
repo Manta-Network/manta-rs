@@ -20,7 +20,7 @@
 //! protocol. Applications which define balances beyond fungible assets should extend these
 //! abstractions.
 
-use crate::asset::{Asset, AssetId, AssetList, AssetValue};
+use crate::asset::{Asset, AssetList};
 use alloc::collections::btree_map::{BTreeMap, Entry as BTreeMapEntry};
 use core::{hash::Hash, ops::AddAssign};
 use manta_util::{
@@ -35,7 +35,7 @@ use std::{
 };
 
 /// Balance State
-pub trait BalanceState<I = AssetId, V = AssetValue>:
+pub trait BalanceState<I, V>:
     Default + ExactSizeIterable + for<'t> ConvertItemRef<'t, (&'t I, &'t V), Item = RefItem<'t, Self>>
 {
     /// Returns the current balance associated with this `id`.
@@ -178,7 +178,7 @@ macro_rules! impl_balance_state_map_body {
 }
 
 /// B-Tree Map [`BalanceState`] Implementation
-pub type BTreeMapBalanceState<I = AssetId, V = AssetValue> = BTreeMap<I, V>;
+pub type BTreeMapBalanceState<I, V> = BTreeMap<I, V>;
 
 impl<I, V> BalanceState<I, V> for BTreeMapBalanceState<I, V>
 where
@@ -192,7 +192,7 @@ where
 /// Hash Map [`BalanceState`] Implementation
 #[cfg(feature = "std")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
-pub type HashMapBalanceState<I = AssetId, V = AssetValue, S = RandomState> = HashMap<I, V, S>;
+pub type HashMapBalanceState<I, V, S = RandomState> = HashMap<I, V, S>;
 
 #[cfg(feature = "std")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
@@ -206,6 +206,7 @@ where
     impl_balance_state_map_body! { I, V, HashMapEntry }
 }
 
+/* TODO:
 /// Testing Framework
 #[cfg(any(feature = "test", test))]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
@@ -218,9 +219,9 @@ pub mod test {
 
     /// Asserts that a random deposit and withdraw is always valid.
     #[inline]
-    pub fn assert_valid_withdraw<S, R>(state: &mut S, rng: &mut R)
+    pub fn assert_valid_withdraw<I, V, S, R>(state: &mut S, rng: &mut R)
     where
-        S: BalanceState,
+        S: BalanceState<I, V>,
         R: CryptoRng + RngCore + ?Sized,
     {
         let asset = Asset::gen(rng);
@@ -242,9 +243,9 @@ pub mod test {
     /// Asserts that a maximal withdraw that leaves the state with no value should delete its memory
     /// for this process.
     #[inline]
-    pub fn assert_full_withdraw_should_remove_entry<S, R>(rng: &mut R)
+    pub fn assert_full_withdraw_should_remove_entry<I, V, S, R>(rng: &mut R)
     where
-        S: BalanceState,
+        S: BalanceState<I, V>,
         for<'s> &'s S: IntoIterator,
         for<'s> <&'s S as IntoIterator>::IntoIter: ExactSizeIterator,
         R: CryptoRng + RngCore + ?Sized,
@@ -333,3 +334,4 @@ pub mod test {
         assert_full_withdraw_should_remove_entry::<HashMapBalanceState, _>(&mut OsRng);
     }
 }
+*/
