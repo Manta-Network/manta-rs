@@ -21,6 +21,7 @@ use manta_crypto::{
     eclair::alloc::{mode::Derived, Allocate, Allocator, Constant, Variable},
     rand::RngCore,
 };
+use manta_util::convert::Field;
 
 /// Spending Key
 pub trait SpendingKeyType {
@@ -52,7 +53,7 @@ pub type AuthorizationKey<T> = <T as AuthorizationKeyType>::AuthorizationKey;
 /// Authorization Proof
 pub trait AuthorizationProofType: AuthorizationKeyType {
     /// Authorization Proof Type
-    type AuthorizationProof: AsRef<Self::AuthorizationKey> + Into<Self::AuthorizationKey>;
+    type AuthorizationProof: Field<Self::AuthorizationKey>;
 }
 
 /// Authorization Proof Type
@@ -224,17 +225,25 @@ where
     {
         parameters.assert_authorized(&self.context, &self.proof, compiler)
     }
+}
 
-    ///
+impl<T> Field<T::AuthorizationKey> for Authorization<T>
+where
+    T: AuthorizationContextType + AuthorizationProofType + ?Sized,
+{
     #[inline]
-    pub fn authorization_key(&self) -> &T::AuthorizationKey {
-        self.proof.as_ref()
+    fn get(&self) -> &T::AuthorizationKey {
+        Field::get(&self.proof)
     }
 
-    ///
     #[inline]
-    pub fn into_authorization_key(self) -> T::AuthorizationKey {
-        self.proof.into()
+    fn get_mut(&mut self) -> &mut T::AuthorizationKey {
+        Field::get_mut(&mut self.proof)
+    }
+
+    #[inline]
+    fn into(self) -> T::AuthorizationKey {
+        Field::into(self.proof)
     }
 }
 
@@ -330,7 +339,7 @@ where
             message,
             rng,
         );
-        Self::new(authorization.into_authorization_key(), signature)
+        Self::new(Field::into(authorization), signature)
     }
 
     ///

@@ -657,6 +657,7 @@ where
     }
 
     ///
+    #[allow(clippy::too_many_arguments)] // FIXME: Use a better abstraction here.
     #[inline]
     fn insert_next_item<R>(
         authorization_context: &mut AuthorizationContext<C>,
@@ -699,6 +700,7 @@ where
 
     /// Checks if `asset` matches with `nullifier`, removing it from the `utxo_accumulator` and
     /// inserting it into the `withdraw` set if this is the case.
+    #[allow(clippy::too_many_arguments)] // FIXME: Use a better abstraction here.
     #[inline]
     fn is_asset_unspent<R>(
         authorization_context: &mut AuthorizationContext<C>,

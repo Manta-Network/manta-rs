@@ -118,7 +118,6 @@ pub type ProofSystemError = groth16::Error;
 ///
 pub struct Config;
 
-/*
 impl transfer::Configuration for Config {
     type Compiler = Compiler;
     type AssetId = utxo::v1::AssetId;
@@ -127,16 +126,13 @@ impl transfer::Configuration for Config {
     type Utxo = utxo::v1::Utxo;
     type Nullifier = utxo::v1::Nullifier;
     type Identifier = utxo::v1::Identifier;
-    type SpendingKey = EmbeddedScalar;
-    type AuthorizationRandomness = utxo::v1::AuthorizationRandomness;
-    type AuthorizationSignatureRandomness = utxo::v1::AuthorizationSignatureRandomness;
     type MintSecret = utxo::v1::MintSecret;
     type SpendSecret = utxo::v1::SpendSecret;
     type UtxoAccumulatorWitness = utxo::v1::UtxoAccumulatorWitness;
     type UtxoAccumulatorOutput = utxo::v1::UtxoAccumulatorOutput;
     type Parameters = utxo::v1::Parameters;
-    type AuthorizationKeyVar = utxo::v1::AuthorizationKeyVar;
-    type AuthorizationRandomnessVar = utxo::v1::AuthorizationRandomnessVar;
+    type AuthorizationContextVar = utxo::v1::AuthorizationContextVar;
+    type AuthorizationProofVar = utxo::v1::AuthorizationProofVar;
     type AssetIdVar = utxo::v1::AssetIdVar;
     type AssetValueVar = utxo::v1::AssetValueVar;
     type UtxoVar = utxo::v1::UtxoVar;
@@ -150,7 +146,6 @@ impl transfer::Configuration for Config {
     type ParametersVar = utxo::v1::ParametersVar;
     type ProofSystem = ProofSystem;
 }
-*/
 
 /* FIXME[remove]:
 /// Poseidon Specification

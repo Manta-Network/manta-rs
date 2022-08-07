@@ -16,10 +16,15 @@
 
 //! UTXO Version 1 Protocol
 
-use crate::{asset, transfer::utxo};
+use crate::{
+    asset,
+    transfer::utxo::{self, auth},
+};
 use manta_crypto::{
     accumulator::{self, ItemHashFunction, MembershipProof},
-    algebra::{security::ComputationalDiffieHellmanHardness, DiffieHellman, Group, Scalar},
+    algebra::{
+        security::ComputationalDiffieHellmanHardness, DiffieHellman, Generator, Group, Scalar,
+    },
     eclair::{
         alloc::{
             mode::{Public, Secret},
@@ -35,7 +40,7 @@ use manta_crypto::{
     rand::{Rand, RngCore, Sample},
     signature,
 };
-use manta_util::cmp::Independence;
+use manta_util::{cmp::Independence, convert::Field};
 
 /// UTXO Version Number
 pub const VERSION: u8 = 1;
@@ -301,7 +306,8 @@ where
 /// UTXO Configuration
 pub trait Configuration: BaseConfiguration<Bool = bool> {
     /// Signature Scheme Type
-    type SignatureScheme: signature::Sign<SigningKey = Self::Scalar, Message = Vec<u8>>
+    type SignatureScheme: Generator<Group = Self::Group>
+        + signature::Sign<SigningKey = Self::Scalar, Message = Vec<u8>>
         + signature::Verify<VerifyingKey = Self::Group, Verification = bool>;
 }
 
@@ -378,24 +384,28 @@ where
     pub outgoing_base_encryption_scheme: C::OutgoingBaseEncryptionScheme,
 }
 
-/// UTXO Model Parameters
-pub struct Parameters<C>
-where
-    C: Configuration<Bool = bool>,
-{
-    /// Base Parameters
-    pub base: BaseParameters<C>,
-
-    /// Signature Scheme
-    pub signature_scheme: C::SignatureScheme,
-}
-
-impl<C, COM> utxo::auth::AuthorizationContextType for BaseParameters<C, COM>
+impl<C, COM> auth::AuthorizationContextType for BaseParameters<C, COM>
 where
     C: BaseConfiguration<COM>,
     COM: Assert + Has<bool, Type = C::Bool>,
 {
     type AuthorizationContext = AuthorizationContext<C, COM>;
+}
+
+impl<C, COM> auth::AuthorizationKeyType for BaseParameters<C, COM>
+where
+    C: BaseConfiguration<COM>,
+    COM: Assert + Has<bool, Type = C::Bool>,
+{
+    type AuthorizationKey = C::Group;
+}
+
+impl<C, COM> auth::AuthorizationProofType for BaseParameters<C, COM>
+where
+    C: BaseConfiguration<COM>,
+    COM: Assert + Has<bool, Type = C::Bool>,
+{
+    type AuthorizationProof = AuthorizationProof<C, COM>;
 }
 
 impl<C, COM> utxo::AssetType for BaseParameters<C, COM>
@@ -404,13 +414,6 @@ where
     COM: Assert + Has<bool, Type = C::Bool>,
 {
     type Asset = Asset<C, COM>;
-}
-
-impl<C> utxo::AssociatedDataType for BaseParameters<C>
-where
-    C: BaseConfiguration<Bool = bool>,
-{
-    type AssociatedData = Visibility;
 }
 
 impl<C, COM> utxo::AddressType for BaseParameters<C, COM>
@@ -445,6 +448,14 @@ where
     type Nullifier = Nullifier<C, COM>;
 }
 
+impl<C, COM> utxo::IdentifierType for BaseParameters<C, COM>
+where
+    C: BaseConfiguration<COM>,
+    COM: Has<bool, Type = C::Bool>,
+{
+    type Identifier = Identifier<C, COM>;
+}
+
 impl<C, COM> utxo::Mint<COM> for BaseParameters<C, COM>
 where
     C: BaseConfiguration<COM>,
@@ -466,65 +477,6 @@ where
             utxo,
             note,
             compiler,
-        )
-    }
-}
-
-impl<C> utxo::DeriveMint for BaseParameters<C>
-where
-    C: BaseConfiguration<Bool = bool>,
-    C::AssetId: Clone + Default,
-    C::AssetValue: Clone + Default,
-    C::Scalar: Sample,
-    encryption::Randomness<C::IncomingBaseEncryptionScheme>: Sample,
-    UtxoCommitmentRandomness<C>: Sample,
-{
-    #[inline]
-    fn derive<R>(
-        &self,
-        address: Self::Address,
-        asset: Self::Asset,
-        associated_data: Self::AssociatedData,
-        rng: &mut R,
-    ) -> (Self::Secret, Self::Utxo, Self::Note)
-    where
-        R: RngCore + ?Sized,
-    {
-        let secret = MintSecret::<C>::new(
-            address.receiving_key,
-            rng.gen(),
-            IncomingPlaintext::new(
-                rng.gen(),
-                associated_data.secret(&asset),
-                address.key_diversifier,
-            ),
-        );
-        let utxo_commitment = self.utxo_commitment_scheme.commit(
-            &secret.plaintext.utxo_commitment_randomness,
-            &secret.plaintext.asset.id,
-            &secret.plaintext.asset.value,
-            &secret.receiving_key,
-            &mut (),
-        );
-        let incoming_note = Hybrid::new(
-            DiffieHellman::new(secret.plaintext.key_diversifier.clone()),
-            self.incoming_base_encryption_scheme.clone(),
-        )
-        .encrypt_into(
-            &secret.receiving_key,
-            &secret.incoming_randomness,
-            EmptyHeader::default(),
-            &secret.plaintext,
-            &mut (),
-        );
-        (
-            secret,
-            Utxo::new(
-                associated_data.is_transparent(),
-                associated_data.public(&asset),
-                utxo_commitment,
-            ),
-            incoming_note,
         )
     }
 }
@@ -589,9 +541,316 @@ where
     }
 }
 
-impl<C> utxo::DeriveSpend for BaseParameters<C>
+/// UTXO Model Parameters
+pub struct Parameters<C>
 where
-    C: BaseConfiguration<Bool = bool>,
+    C: Configuration<Bool = bool>,
+{
+    /// Base Parameters
+    pub base: BaseParameters<C>,
+
+    /// Signature Scheme
+    pub signature_scheme: C::SignatureScheme,
+}
+
+impl<C> auth::SpendingKeyType for Parameters<C>
+where
+    C: Configuration<Bool = bool>,
+{
+    type SpendingKey = C::Scalar;
+}
+
+impl<C> auth::AuthorizationContextType for Parameters<C>
+where
+    C: Configuration<Bool = bool>,
+{
+    type AuthorizationContext = AuthorizationContext<C>;
+}
+
+impl<C> auth::AuthorizationKeyType for Parameters<C>
+where
+    C: Configuration<Bool = bool>,
+{
+    type AuthorizationKey = C::Group;
+}
+
+impl<C> auth::AuthorizationProofType for Parameters<C>
+where
+    C: Configuration<Bool = bool>,
+{
+    type AuthorizationProof = AuthorizationProof<C>;
+}
+
+impl<C> auth::SigningKeyType for Parameters<C>
+where
+    C: Configuration<Bool = bool>,
+{
+    type SigningKey = C::Scalar;
+}
+
+impl<C> utxo::AssetType for Parameters<C>
+where
+    C: Configuration<Bool = bool>,
+{
+    type Asset = Asset<C>;
+}
+
+impl<C> utxo::AssociatedDataType for Parameters<C>
+where
+    C: Configuration<Bool = bool>,
+{
+    type AssociatedData = Visibility;
+}
+
+impl<C> utxo::AddressType for Parameters<C>
+where
+    C: Configuration<Bool = bool>,
+{
+    type Address = Address<C>;
+}
+
+impl<C> utxo::NoteType for Parameters<C>
+where
+    C: Configuration<Bool = bool>,
+{
+    type Note = IncomingNote<C>;
+}
+
+impl<C> utxo::UtxoType for Parameters<C>
+where
+    C: Configuration<Bool = bool>,
+{
+    type Utxo = Utxo<C>;
+}
+
+impl<C> utxo::NullifierType for Parameters<C>
+where
+    C: Configuration<Bool = bool>,
+{
+    type Nullifier = Nullifier<C>;
+}
+
+impl<C> utxo::IdentifierType for Parameters<C>
+where
+    C: Configuration<Bool = bool>,
+{
+    type Identifier = Identifier<C>;
+}
+
+impl<C> auth::DeriveContext for Parameters<C>
+where
+    C: Configuration<Bool = bool>,
+{
+    #[inline]
+    fn derive(&self, spending_key: &Self::SpendingKey) -> Self::AuthorizationContext {
+        AuthorizationContext::new(self.signature_scheme.generator().mul(spending_key, &mut ()))
+    }
+}
+
+impl<C> auth::ProveAuthorization for Parameters<C>
+where
+    C: Configuration<Bool = bool>,
+    C::Scalar: Sample,
+{
+    #[inline]
+    fn prove<R>(
+        &self,
+        spending_key: &Self::SpendingKey,
+        authorization_context: &Self::AuthorizationContext,
+        rng: &mut R,
+    ) -> Self::AuthorizationProof
+    where
+        R: RngCore + ?Sized,
+    {
+        let _ = spending_key;
+        let randomness = rng.gen();
+        let randomized_proof_authorization_key = authorization_context
+            .proof_authorization_key
+            .mul(&randomness, &mut ());
+        AuthorizationProof::new(randomness, randomized_proof_authorization_key)
+    }
+}
+
+impl<C> auth::VerifyAuthorization for Parameters<C>
+where
+    C: Configuration<Bool = bool>,
+    C::Group: core::cmp::PartialEq,
+{
+    #[inline]
+    fn verify(
+        &self,
+        spending_key: &Self::SpendingKey,
+        authorization_context: &Self::AuthorizationContext,
+        authorization_proof: &Self::AuthorizationProof,
+    ) -> bool {
+        (authorization_context == &auth::DeriveContext::derive(self, spending_key))
+            && (authorization_proof.randomized_proof_authorization_key
+                == authorization_context
+                    .proof_authorization_key
+                    .mul(&authorization_proof.randomness, &mut ()))
+    }
+}
+
+impl<C> auth::DeriveSigningKey for Parameters<C>
+where
+    C: Configuration<Bool = bool>,
+{
+    #[inline]
+    fn derive(
+        &self,
+        spending_key: &Self::SpendingKey,
+        authorization_context: &Self::AuthorizationContext,
+        authorization_proof: &Self::AuthorizationProof,
+    ) -> Self::SigningKey {
+        let _ = authorization_context;
+        spending_key.mul(&authorization_proof.randomness, &mut ())
+    }
+}
+
+/* TODO:
+impl<C> auth::Sign<M> for Parameters<C>
+where
+    C: Configuration<Bool = bool>,
+{}
+
+impl<C> auth::VerifySignature<M> for Parameters<C>
+where
+    C: Configuration<Bool = bool>,
+{}
+*/
+
+impl<C> utxo::Mint for Parameters<C>
+where
+    C: Configuration<Bool = bool>,
+{
+    type Secret = MintSecret<C>;
+
+    #[inline]
+    fn well_formed_asset(
+        &self,
+        secret: &Self::Secret,
+        utxo: &Self::Utxo,
+        note: &Self::Note,
+        compiler: &mut (),
+    ) -> Self::Asset {
+        self.base.well_formed_asset(secret, utxo, note, compiler)
+    }
+}
+
+impl<C> utxo::DeriveMint for Parameters<C>
+where
+    C: Configuration<Bool = bool>,
+    C::AssetId: Clone + Default,
+    C::AssetValue: Clone + Default,
+    C::Scalar: Sample,
+    encryption::Randomness<C::IncomingBaseEncryptionScheme>: Sample,
+    UtxoCommitmentRandomness<C>: Sample,
+{
+    #[inline]
+    fn derive<R>(
+        &self,
+        address: Self::Address,
+        asset: Self::Asset,
+        associated_data: Self::AssociatedData,
+        rng: &mut R,
+    ) -> (Self::Secret, Self::Utxo, Self::Note)
+    where
+        R: RngCore + ?Sized,
+    {
+        let secret = MintSecret::<C>::new(
+            address.receiving_key,
+            rng.gen(),
+            IncomingPlaintext::new(
+                rng.gen(),
+                associated_data.secret(&asset),
+                address.key_diversifier,
+            ),
+        );
+        let utxo_commitment = self.base.utxo_commitment_scheme.commit(
+            &secret.plaintext.utxo_commitment_randomness,
+            &secret.plaintext.asset.id,
+            &secret.plaintext.asset.value,
+            &secret.receiving_key,
+            &mut (),
+        );
+        let incoming_note = Hybrid::new(
+            DiffieHellman::new(secret.plaintext.key_diversifier.clone()),
+            self.base.incoming_base_encryption_scheme.clone(),
+        )
+        .encrypt_into(
+            &secret.receiving_key,
+            &secret.incoming_randomness,
+            EmptyHeader::default(),
+            &secret.plaintext,
+            &mut (),
+        );
+        (
+            secret,
+            Utxo::new(
+                associated_data.is_transparent(),
+                associated_data.public(&asset),
+                utxo_commitment,
+            ),
+            incoming_note,
+        )
+    }
+}
+
+impl<C> accumulator::ItemHashFunction<Utxo<C>> for Parameters<C>
+where
+    C: Configuration<Bool = bool>,
+{
+    type Item = UtxoAccumulatorItem<C>;
+
+    #[inline]
+    fn item_hash(&self, utxo: &Utxo<C>, compiler: &mut ()) -> Self::Item {
+        self.base.item_hash(utxo, compiler)
+    }
+}
+
+impl<C> utxo::Spend for Parameters<C>
+where
+    C: Configuration<Bool = bool>,
+{
+    type UtxoAccumulatorWitness = utxo::UtxoAccumulatorWitness<Self>;
+    type UtxoAccumulatorOutput = utxo::UtxoAccumulatorOutput<Self>;
+    type UtxoAccumulatorModel = C::UtxoAccumulatorModel;
+    type Secret = SpendSecret<C>;
+
+    #[inline]
+    fn well_formed_asset(
+        &self,
+        utxo_accumulator_model: &Self::UtxoAccumulatorModel,
+        authorization_context: &mut Self::AuthorizationContext,
+        secret: &Self::Secret,
+        utxo: &Self::Utxo,
+        utxo_membership_proof: &UtxoMembershipProof<C>,
+        compiler: &mut (),
+    ) -> (Self::Asset, Self::Nullifier) {
+        self.base.well_formed_asset(
+            utxo_accumulator_model,
+            authorization_context,
+            secret,
+            utxo,
+            utxo_membership_proof,
+            compiler,
+        )
+    }
+
+    #[inline]
+    fn assert_equal_nullifiers(
+        &self,
+        lhs: &Self::Nullifier,
+        rhs: &Self::Nullifier,
+        compiler: &mut (),
+    ) {
+        self.base.assert_equal_nullifiers(lhs, rhs, compiler)
+    }
+}
+
+impl<C> utxo::DeriveSpend for Parameters<C>
+where
+    C: Configuration<Bool = bool>,
     C::AssetId: Clone + Default,
     C::AssetValue: Clone + Default,
     C::Scalar: Sample,
@@ -622,11 +881,11 @@ where
             ),
         );
         let receiving_key = authorization_context.receiving_key(
-            &self.viewing_key_derivation_function,
+            &self.base.viewing_key_derivation_function,
             &secret.plaintext.key_diversifier,
             &mut (),
         );
-        let utxo_commitment = self.utxo_commitment_scheme.commit(
+        let utxo_commitment = self.base.utxo_commitment_scheme.commit(
             &secret.plaintext.utxo_commitment_randomness,
             &secret.plaintext.asset.id,
             &secret.plaintext.asset.value,
@@ -638,14 +897,14 @@ where
             associated_data.public(&asset),
             utxo_commitment,
         );
-        let nullifier_commitment = self.nullifier_commitment_scheme.commit(
+        let nullifier_commitment = self.base.nullifier_commitment_scheme.commit(
             &authorization_context.proof_authorization_key,
             &self.item_hash(&utxo, &mut ()),
             &mut (),
         );
         let outgoing_note = Hybrid::new(
             DiffieHellman::new(secret.plaintext.key_diversifier.clone()),
-            self.outgoing_base_encryption_scheme.clone(),
+            self.base.outgoing_base_encryption_scheme.clone(),
         )
         .encrypt_into(
             &receiving_key,
@@ -662,17 +921,9 @@ where
     }
 }
 
-impl<C, COM> utxo::IdentifierType for BaseParameters<C, COM>
+impl<C> utxo::DeriveDecryptionKey for Parameters<C>
 where
-    C: BaseConfiguration<COM>,
-    COM: Has<bool, Type = C::Bool>,
-{
-    type Identifier = Identifier<C, COM>;
-}
-
-impl<C> utxo::DeriveDecryptionKey for BaseParameters<C>
-where
-    C: BaseConfiguration<Bool = bool>,
+    C: Configuration<Bool = bool>,
 {
     type DecryptionKey = C::Scalar;
 
@@ -682,14 +933,14 @@ where
         authorization_context: &mut Self::AuthorizationContext,
     ) -> Self::DecryptionKey {
         authorization_context
-            .viewing_key(&self.viewing_key_derivation_function, &mut ())
+            .viewing_key(&self.base.viewing_key_derivation_function, &mut ())
             .clone()
     }
 }
 
-impl<C> utxo::NoteOpen for BaseParameters<C>
+impl<C> utxo::NoteOpen for Parameters<C>
 where
-    C: BaseConfiguration<Bool = bool>,
+    C: Configuration<Bool = bool>,
     C::IncomingBaseEncryptionScheme:
         Decrypt<DecryptionKey = C::Group, DecryptedPlaintext = Option<IncomingPlaintext<C>>>,
 {
@@ -700,7 +951,7 @@ where
         utxo: &Self::Utxo,
         note: Self::Note,
     ) -> Option<(Self::Identifier, Self::Asset)> {
-        let plaintext = self.incoming_base_encryption_scheme.decrypt(
+        let plaintext = self.base.incoming_base_encryption_scheme.decrypt(
             &note.ephemeral_public_key().mul(decryption_key, &mut ()),
             &EmptyHeader::default(),
             &note.ciphertext.ciphertext,
@@ -1139,6 +1390,67 @@ where
             self.viewing_key(viewing_key_derivation_function, compiler),
             compiler,
         )
+    }
+}
+
+impl<C> core::cmp::PartialEq for AuthorizationContext<C>
+where
+    C: BaseConfiguration<Bool = bool>,
+    C::Group: core::cmp::PartialEq,
+{
+    #[inline]
+    fn eq(&self, rhs: &Self) -> bool {
+        self.proof_authorization_key == rhs.proof_authorization_key
+    }
+}
+
+/// Authorization Proof
+pub struct AuthorizationProof<C, COM = ()>
+where
+    C: BaseConfiguration<COM> + ?Sized,
+    COM: Has<bool, Type = C::Bool>,
+{
+    /// Randomness
+    randomness: C::Scalar,
+
+    /// Randomized Proof Authorization Key
+    randomized_proof_authorization_key: C::Group,
+}
+
+impl<C, COM> AuthorizationProof<C, COM>
+where
+    C: BaseConfiguration<COM> + ?Sized,
+    COM: Has<bool, Type = C::Bool>,
+{
+    /// Builds a new [`AuthorizationProof`] from `randomness` and
+    /// `randomized_proof_authorization_key`.
+    #[inline]
+    pub fn new(randomness: C::Scalar, randomized_proof_authorization_key: C::Group) -> Self {
+        Self {
+            randomness,
+            randomized_proof_authorization_key,
+        }
+    }
+}
+
+impl<C, COM> Field<C::Group> for AuthorizationProof<C, COM>
+where
+    C: BaseConfiguration<COM> + ?Sized,
+    COM: Has<bool, Type = C::Bool>,
+{
+    #[inline]
+    fn get(&self) -> &C::Group {
+        &self.randomized_proof_authorization_key
+    }
+
+    #[inline]
+    fn get_mut(&mut self) -> &mut C::Group {
+        &mut self.randomized_proof_authorization_key
+    }
+
+    #[inline]
+    fn into(self) -> C::Group {
+        self.randomized_proof_authorization_key
     }
 }
 

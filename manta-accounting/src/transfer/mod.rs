@@ -54,6 +54,7 @@ use manta_crypto::{
 };
 use manta_util::{
     cmp::Independence,
+    convert::Field,
     vec::{all_unequal, Vec},
 };
 
@@ -553,7 +554,7 @@ where
     pub fn generate_proof_input(&self) -> ProofInput<C> {
         let mut input = Default::default();
         if let Some(authorization) = &self.authorization {
-            C::ProofSystem::extend(&mut input, authorization.authorization_key())
+            C::ProofSystem::extend(&mut input, Field::get(authorization))
         }
         if let Some(asset_id) = &self.asset_id {
             C::ProofSystem::extend(&mut input, asset_id);
