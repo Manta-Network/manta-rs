@@ -38,7 +38,11 @@ use manta_crypto::{
     },
     rand::{Rand, RngCore, Sample},
 };
-use manta_util::{vec::padded_chunks_with, BoxArray};
+use manta_util::{
+    codec::{self, Encode},
+    vec::padded_chunks_with,
+    BoxArray,
+};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
@@ -202,6 +206,20 @@ where
     }
 }
 
+impl<S> Encode for PlaintextBlock<S>
+where
+    S: Specification,
+    S::Field: Encode,
+{
+    #[inline]
+    fn encode<W>(&self, writer: W) -> Result<(), W::Error>
+    where
+        W: codec::Write,
+    {
+        self.0.encode(writer)
+    }
+}
+
 impl<S, P> Input<P> for PlaintextBlock<S>
 where
     S: Specification,
@@ -302,6 +320,20 @@ where
     }
 }
 
+impl<S> Encode for CiphertextBlock<S>
+where
+    S: Specification,
+    S::Field: Encode,
+{
+    #[inline]
+    fn encode<W>(&self, writer: W) -> Result<(), W::Error>
+    where
+        W: codec::Write,
+    {
+        self.0.encode(writer)
+    }
+}
+
 impl<S, P> Input<P> for CiphertextBlock<S>
 where
     S: Specification,
@@ -352,6 +384,19 @@ impl<'b, B, const N: usize> IntoIterator for &'b BlockArray<B, N> {
     #[inline]
     fn into_iter(self) -> Self::IntoIter {
         self.0.iter()
+    }
+}
+
+impl<B, const N: usize> Encode for BlockArray<B, N>
+where
+    B: Encode,
+{
+    #[inline]
+    fn encode<W>(&self, writer: W) -> Result<(), W::Error>
+    where
+        W: codec::Write,
+    {
+        self.0.encode(writer)
     }
 }
 
@@ -477,6 +522,20 @@ where
     #[inline]
     fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
         Self(this.0.as_known(compiler))
+    }
+}
+
+impl<S> Encode for Tag<S>
+where
+    S: Specification,
+    S::Field: Encode,
+{
+    #[inline]
+    fn encode<W>(&self, writer: W) -> Result<(), W::Error>
+    where
+        W: codec::Write,
+    {
+        self.0.encode(writer)
     }
 }
 

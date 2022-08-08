@@ -139,6 +139,19 @@ where
     }
 }
 
+impl<E> codec::Encode for Proof<E>
+where
+    E: PairingEngine,
+{
+    #[inline]
+    fn encode<W>(&self, writer: W) -> Result<(), W::Error>
+    where
+        W: codec::Write,
+    {
+        proof_as_bytes(&self.0).encode(writer)
+    }
+}
+
 impl<E> TryFrom<Vec<u8>> for Proof<E>
 where
     E: PairingEngine,
