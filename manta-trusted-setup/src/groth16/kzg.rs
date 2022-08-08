@@ -247,9 +247,12 @@ where
     }
 }
 
+
+use crate::util::{G1Type, G2Type};
+
 impl<C> CanonicalSerialize for Proof<C>
 where
-    C: Pairing + Serializer<C::G1> + Serializer<C::G2>,
+    C: Pairing + Serializer<C::G1, G1Type> + Serializer<C::G2, G2Type>,
 {
     #[inline]
     fn serialize<W>(&self, mut writer: W) -> Result<(), SerializationError>
@@ -314,7 +317,7 @@ where
 
 impl<C> CanonicalDeserialize for Proof<C>
 where
-    C: Deserializer<C::G1> + Deserializer<C::G2> + Pairing,
+    C: Deserializer<C::G1, G1Type> + Deserializer<C::G2, G2Type> + Pairing,
 {
     #[inline]
     fn deserialize<R>(mut reader: R) -> Result<Self, SerializationError>
@@ -496,7 +499,7 @@ where
 
 impl<C> CanonicalSerialize for Accumulator<C>
 where
-    C: Pairing + Size + Serializer<C::G1> + Serializer<C::G2>,
+    C: Pairing + Size + Serializer<C::G1, G1Type> + Serializer<C::G2, G2Type>,
 {
     #[inline]
     fn serialize<W>(&self, mut writer: W) -> Result<(), SerializationError>
@@ -577,9 +580,9 @@ where
 
 impl<C> CanonicalDeserialize for Accumulator<C>
 where
-    C: Deserializer<C::G1> + Deserializer<C::G2> + Pairing + Size,
-    <C as Deserializer<C::G1>>::Error: Send,
-    <C as Deserializer<C::G2>>::Error: Send,
+    C: Deserializer<C::G1, G1Type> + Deserializer<C::G2, G2Type> + Pairing + Size,
+    <C as Deserializer<C::G1, G1Type>>::Error: Send,
+    <C as Deserializer<C::G2, G2Type>>::Error: Send,
 {
     #[inline]
     fn deserialize<R>(mut reader: R) -> Result<Self, SerializationError>

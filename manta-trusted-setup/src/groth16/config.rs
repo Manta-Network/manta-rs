@@ -28,6 +28,7 @@ use crate::{
 };
 use ark_bls12_381::{G1Affine, G2Affine};
 use ark_groth16::ProvingKey;
+use ark_r1cs_std::fields::fp::FpVar;
 use ark_std::io::{Read, Write};
 use bincode::Options;
 use blake2::Digest;
@@ -35,10 +36,11 @@ use manta_crypto::{
     arkworks::{
         ec::{AffineCurve, PairingEngine},
         pairing::Pairing,
-        serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError},
+        serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError}, ff::field_new,
     },
-    rand::Sample,
+    rand::Sample, eclair::alloc::{Allocate, mode::{Secret, Public}},
 };
+use manta_pay::crypto::constraint::arkworks::Fp;
 use manta_util::into_array_unchecked;
 
 /// Configuration for the Groth16 Phase2 Server.
@@ -73,7 +75,10 @@ impl Size for Config {
     const G2_POWERS: usize = 1 << 3;
 }
 
-impl<T> Deserializer<T> for Config
+// TODO
+// pub struct ConfigDeserialize;
+
+impl<T, TMarker> Deserializer<T, TMarker> for Config // TODO: TMarker
 where
     T: CanonicalDeserialize,
 {
@@ -247,4 +252,18 @@ impl Types for Config {
     type State = State<Config>;
     type Challenge = [u8; 64];
     type Proof = Proof<Config>;
+}
+
+use manta_crypto::arkworks::constraint::R1CS;
+use ark_bls12_381::Fr;
+// TO Be removed
+/// Generates a dummy R1CS circuit.
+#[inline]
+pub fn dummy_circuit(cs: &mut R1CS<Fr>) {
+    let a = Fp(field_new!(Fr, "2")).as_known::<Secret, FpVar<_>>(cs);
+    let b = Fp(field_new!(Fr, "3")).as_known::<Secret, FpVar<_>>(cs);
+    let c = &a * &b;
+    let d = Fp(field_new!(Fr, "6")).as_known::<Public, FpVar<_>>(cs);
+    c.enforce_equal(&d)
+        .expect("enforce_equal is not allowed to fail");
 }

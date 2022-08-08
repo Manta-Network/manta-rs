@@ -212,6 +212,7 @@ pub async fn contribute() -> Result<(), ()> {
     let network_client = reqwest::Client::new();
 
     loop {
+        // TODO: Handle nonce
         let query_mpc_state_request = trusted_setup_client.query_mpc_state();
         let query_mpc_state_response = network_client
             .post("http://localhost:8080/query") // TODO: Change HTTP path

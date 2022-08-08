@@ -24,11 +24,8 @@ use byteorder::{BigEndian, ReadBytesExt};
 use core::marker::PhantomData;
 use manta_crypto::{
     arkworks::{
-        ec::{
-            short_weierstrass_jacobian::GroupAffine, wnaf::WnafContext, AffineCurve,
-            ProjectiveCurve, SWModelParameters,
-        },
-        ff::{BigInteger, Fp256, PrimeField, UniformRand, Zero},
+        ec::{wnaf::WnafContext, AffineCurve, ProjectiveCurve},
+        ff::{BigInteger, PrimeField, UniformRand, Zero},
         pairing::Pairing,
         serialize::{CanonicalDeserialize, CanonicalSerialize, Read, SerializationError, Write},
     },
@@ -47,6 +44,12 @@ pub trait HasDistribution {
     type Distribution: Default;
 }
 
+/// TODO
+pub struct G1Type;
+
+/// TODO
+pub struct G2Type;
+
 /// Custom Serialization Adapter
 ///
 /// In the majority of cases we can just use [`CanonicalSerialize`] and [`CanonicalDeserialize`] to
@@ -56,7 +59,7 @@ pub trait HasDistribution {
 /// [`Deserializer`] `trait`.
 ///
 /// [`CanonicalDeserialize`]: manta_crypto::arkworks::serialize::CanonicalDeserialize
-pub trait Serializer<T> {
+pub trait Serializer<T, M> {
     /// Serializes `item` in uncompressed form to the `writer` without performing any
     /// well-formedness checks.
     fn serialize_unchecked<W>(item: &T, writer: &mut W) -> Result<(), io::Error>
@@ -90,7 +93,7 @@ pub trait Serializer<T> {
 /// [`Serializer`] `trait`.
 ///
 /// [`CanonicalDeserialize`]: manta_crypto::arkworks::serialize::CanonicalDeserialize
-pub trait Deserializer<T> {
+pub trait Deserializer<T, M> {
     /// Deserialization Error Type
     type Error: Into<SerializationError>;
 
@@ -176,9 +179,9 @@ pub struct NonZero<D>(PhantomData<D>);
 impl<D> NonZero<D> {
     /// Checks if `item` is zero, returning [`NonZeroError::IsZero`] if so.
     #[inline]
-    fn is_zero<T>(item: &T) -> Result<(), NonZeroError<D::Error>>
+    fn is_zero<T, TMarker>(item: &T) -> Result<(), NonZeroError<D::Error>>
     where
-        D: Deserializer<T>,
+        D: Deserializer<T, TMarker>, // TODO
         T: Zero,
     {
         if item.is_zero() {
@@ -188,9 +191,9 @@ impl<D> NonZero<D> {
     }
 }
 
-impl<T, D> Deserializer<T> for NonZero<D>
+impl<T, TMarker, D> Deserializer<T, TMarker> for NonZero<D>
 where
-    D: Deserializer<T>,
+    D: Deserializer<T, TMarker>,
     T: Zero,
 {
     type Error = NonZeroError<D::Error>;
