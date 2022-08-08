@@ -103,7 +103,7 @@ where
 impl<M, P> Input<P> for Receiver<M>
 where
     M: Mint,
-    P: HasInput<M::Utxo> + HasInput<M::Note>,
+    P: HasInput<M::Utxo> + HasInput<M::Note> + ?Sized,
 {
     #[inline]
     fn extend(&self, input: &mut P::Input) {
@@ -329,11 +329,12 @@ where
 impl<M, P> Input<P> for ReceiverPost<M>
 where
     M: Mint,
-    P: HasInput<M::Utxo>,
+    P: HasInput<M::Utxo> + HasInput<M::Note> + ?Sized,
 {
     #[inline]
     fn extend(&self, input: &mut P::Input) {
         P::extend(input, &self.utxo);
+        P::extend(input, &self.note);
     }
 }
 
@@ -375,10 +376,11 @@ impl<M, L, P> Input<P> for ReceiverPostingKey<M, L>
 where
     M: Mint,
     L: ReceiverLedger<M> + ?Sized,
-    P: HasInput<M::Utxo>,
+    P: HasInput<M::Utxo> + HasInput<M::Note> + ?Sized,
 {
     #[inline]
     fn extend(&self, input: &mut P::Input) {
         P::extend(input, self.utxo.as_ref());
+        P::extend(input, &self.note);
     }
 }

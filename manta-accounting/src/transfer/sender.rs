@@ -262,7 +262,7 @@ where
 impl<S, P> Input<P> for Sender<S>
 where
     S: Spend,
-    P: HasInput<UtxoAccumulatorOutput<S>> + HasInput<S::Nullifier>,
+    P: HasInput<UtxoAccumulatorOutput<S>> + HasInput<S::Nullifier> + ?Sized,
 {
     #[inline]
     fn extend(&self, input: &mut P::Input) {
@@ -532,7 +532,7 @@ where
 impl<S, P> Input<P> for SenderPost<S>
 where
     S: Spend,
-    P: HasInput<UtxoAccumulatorOutput<S>> + HasInput<S::Nullifier>,
+    P: HasInput<UtxoAccumulatorOutput<S>> + HasInput<S::Nullifier> + ?Sized,
 {
     #[inline]
     fn extend(&self, input: &mut P::Input) {
@@ -583,7 +583,7 @@ impl<S, L, P> Input<P> for SenderPostingKey<S, L>
 where
     S: Spend,
     L: SenderLedger<S> + ?Sized,
-    P: HasInput<UtxoAccumulatorOutput<S>> + HasInput<S::Nullifier>,
+    P: HasInput<UtxoAccumulatorOutput<S>> + HasInput<S::Nullifier> + ?Sized,
 {
     #[inline]
     fn extend(&self, input: &mut P::Input) {

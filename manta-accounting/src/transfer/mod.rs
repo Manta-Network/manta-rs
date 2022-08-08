@@ -594,6 +594,31 @@ where
     }
 
     /// Converts `self` into its [`TransferPostBody`] by building the [`Transfer`] validity proof.
+    #[allow(clippy::type_complexity)] // FIXME: Use a better abstraction here.
+    #[inline]
+    fn into_post_body_with_authorization<R>(
+        self,
+        parameters: FullParametersRef<C>,
+        proving_context: &ProvingContext<C>,
+        rng: &mut R,
+    ) -> Result<(TransferPostBody<C>, Option<Authorization<C>>), ProofSystemError<C>>
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        Ok((
+            TransferPostBody::build(
+                C::ProofSystem::prove(proving_context, self.known_constraints(parameters), rng)?,
+                self.asset_id,
+                self.sources,
+                self.senders,
+                self.receivers,
+                self.sinks,
+            ),
+            self.authorization,
+        ))
+    }
+
+    /// Converts `self` into its [`TransferPostBody`] by building the [`Transfer`] validity proof.
     #[inline]
     pub fn into_post_body<R>(
         self,
@@ -604,21 +629,16 @@ where
     where
         R: CryptoRng + RngCore + ?Sized,
     {
-        Ok(TransferPostBody::build(
-            C::ProofSystem::prove(proving_context, self.known_constraints(parameters), rng)?,
-            self.asset_id,
-            self.sources,
-            self.senders,
-            self.receivers,
-            self.sinks,
-        ))
+        Ok(self
+            .into_post_body_with_authorization(parameters, proving_context, rng)?
+            .0)
     }
 
     /// Converts `self` into its [`TransferPost`] by building the [`Transfer`] validity proof and
     /// signing the [`TransferPostBody`] payload.
     #[inline]
     pub fn into_post<R>(
-        mut self,
+        self,
         parameters: FullParametersRef<C>,
         proving_context: &ProvingContext<C>,
         spending_key: Option<&SpendingKey<C>>,
@@ -629,12 +649,19 @@ where
     {
         match (
             requires_authorization(SENDERS),
-            self.authorization.take(),
+            self.authorization.is_some(),
             spending_key,
         ) {
-            (true, Some(authorization), Some(spending_key)) => {
-                let body = self.into_post_body(parameters, proving_context, rng)?;
-                match auth::sign(parameters.base, spending_key, authorization, &body, rng) {
+            (true, true, Some(spending_key)) => {
+                let (body, authorization) =
+                    self.into_post_body_with_authorization(parameters, proving_context, rng)?;
+                match auth::sign(
+                    parameters.base,
+                    spending_key,
+                    authorization.expect("It is known to be `Some` from the check above."),
+                    &body,
+                    rng,
+                ) {
                     Some(authorization_signature) => Ok(Some(TransferPost::new_unchecked(
                         Some(authorization_signature),
                         body,
@@ -642,7 +669,7 @@ where
                     _ => Ok(None),
                 }
             }
-            (false, None, None) => Ok(Some(TransferPost::new_unchecked(
+            (false, false, None) => Ok(Some(TransferPost::new_unchecked(
                 None,
                 self.into_post_body(parameters, proving_context, rng)?,
             ))),

@@ -310,7 +310,7 @@ where
         A: Accumulator<Item = UtxoAccumulatorItem<C>, Model = UtxoAccumulatorModel<C>>,
         for<'s> Self: Sample<TransferDistribution<'s, C, A>>,
         R: CryptoRng + RngCore + ?Sized,
-        ProofInput<C>: PartialEq,
+        ProofInput<C>: PartialEq + Debug,
         ProofSystemError<C>: Debug,
     {
         let (spending_key, distribution) =
@@ -321,7 +321,7 @@ where
         Ok(transfer.generate_proof_input()
             == transfer
                 .into_post(full_parameters, &proving_context, spending_key, rng)?
-                .expect("")
+                .expect("TransferPost should have been constructed correctly.")
                 .generate_proof_input())
     }
 }
@@ -421,11 +421,11 @@ where
             rng,
         );
         Self::new(
-            requires_authorization(SENDERS).then_some(
+            requires_authorization(SENDERS).then(|| {
                 distribution
                     .authorization
-                    .expect("The authorization proof exists whenever we require authorization."),
-            ),
+                    .expect("The authorization exists whenever we require authorization.")
+            }),
             has_public_participants(SOURCES, SINKS).then_some(asset.id),
             into_array_unchecked(input),
             into_array_unchecked(senders),
@@ -473,12 +473,12 @@ where
             rng,
         );
         Self::new(
-            requires_authorization(SENDERS).then_some(
+            requires_authorization(SENDERS).then(|| {
                 distribution
                     .base
                     .authorization
-                    .expect("The authorization proof exists whenever we require authorization."),
-            ),
+                    .expect("The authorization proof exists whenever we require authorization.")
+            }),
             has_public_participants(SOURCES, SINKS).then_some(distribution.asset_id),
             sample_asset_values(distribution.source_sum, rng),
             into_array_unchecked(senders),
