@@ -118,6 +118,41 @@ where
     }
 }
 
+impl<T, Rhs, COM> PartialEq<Box<[Rhs]>, COM> for Box<[T]>
+where
+    COM: Has<bool>,
+    Bool<COM>: Constant<COM, Type = bool> + BitAnd<Bool<COM>, COM, Output = Bool<COM>>,
+    T: PartialEq<Rhs, COM>,
+{
+    #[inline]
+    fn eq(&self, rhs: &Box<[Rhs]>, compiler: &mut COM) -> Bool<COM> {
+        if self.len() != rhs.len() {
+            false.as_constant(compiler)
+        } else {
+            let mut are_equal = true.as_constant::<Bool<COM>>(compiler);
+            for (lhs, rhs) in self.iter().zip(rhs.iter()) {
+                are_equal = are_equal.bitand(lhs.eq(rhs, compiler), compiler);
+            }
+            are_equal
+        }
+    }
+
+    #[inline]
+    fn assert_equal(&self, rhs: &Box<[Rhs]>, compiler: &mut COM)
+    where
+        COM: Assert,
+    {
+        if self.len() != rhs.len() {
+            let not_equal = false.as_constant(compiler);
+            compiler.assert(&not_equal);
+        } else {
+            for (lhs, rhs) in self.iter().zip(rhs.iter()) {
+                compiler.assert_eq(lhs, rhs);
+            }
+        }
+    }
+}
+
 impl<T, Rhs, const N: usize, COM> PartialEq<Array<Rhs, N>, COM> for Array<T, N>
 where
     COM: Has<bool>,

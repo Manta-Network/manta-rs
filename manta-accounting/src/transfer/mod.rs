@@ -56,6 +56,7 @@ use manta_util::{
     cmp::Independence,
     convert::Field,
     vec::{all_unequal, Vec},
+    AsBytes,
 };
 
 #[cfg(feature = "serde")]
@@ -1318,6 +1319,16 @@ where
     }
 }
 
+impl<C> AsBytes for TransferPostBody<C>
+where
+    C: Configuration + ?Sized,
+{
+    #[inline]
+    fn as_bytes(&self) -> Vec<u8> {
+        todo!()
+    }
+}
+
 impl<C> Input<C::ProofSystem> for TransferPostBody<C>
 where
     C: Configuration + ?Sized,
@@ -1588,6 +1599,16 @@ where
         self.validate(parameters, ledger, source_accounts, sink_accounts)?
             .post(ledger, super_key)
             .map_err(TransferPostError::UpdateError)
+    }
+}
+
+impl<C> AsBytes for TransferPost<C>
+where
+    C: Configuration + ?Sized,
+{
+    #[inline]
+    fn as_bytes(&self) -> Vec<u8> {
+        todo!()
     }
 }
 

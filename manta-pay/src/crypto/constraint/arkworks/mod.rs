@@ -695,6 +695,7 @@ where
         false_value: &Self,
         compiler: &mut R1CS<F>,
     ) -> Self {
+        let _ = compiler;
         conditionally_select(bit, true_value, false_value)
     }
 }
@@ -734,16 +735,15 @@ where
 
     #[inline]
     fn zero(compiler: &mut R1CS<F>) -> Self {
-        todo!()
+        let _ = compiler;
+        FpVar::Constant(F::zero())
     }
 
     #[inline]
     fn is_zero(&self, compiler: &mut R1CS<F>) -> Self::Verification {
-        /*
         let _ = compiler;
-        self.is_zero()
-        */
-        todo!()
+        self.is_eq(&FpVar::Constant(F::zero()))
+            .expect("Comparison with zero is not allowed to fail.")
     }
 }
 

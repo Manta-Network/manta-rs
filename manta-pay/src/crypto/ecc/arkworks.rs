@@ -37,10 +37,9 @@ use manta_crypto::{
             Allocate, Allocator, Constant, Variable,
         },
     },
-    key::kdf,
     rand::{RngCore, Sample},
 };
-use manta_util::codec;
+use manta_util::{codec, AsBytes};
 
 #[cfg(feature = "serde")]
 use {
@@ -95,7 +94,7 @@ pub struct Group<C>(
         feature = "serde",
         serde(serialize_with = "serialize_group_element::<C, _>")
     )]
-    pub(crate) C::Affine,
+    pub C::Affine,
 )
 where
     C: ProjectiveCurve;
@@ -240,7 +239,7 @@ where
     }
 }
 
-impl<C> kdf::AsBytes for Group<C>
+impl<C> AsBytes for Group<C>
 where
     C: ProjectiveCurve,
 {
@@ -322,7 +321,7 @@ where
 {
     /// Builds a new [`ScalarVar`] from a given `scalar`.
     #[inline]
-    fn new(scalar: FpVar<ConstraintField<C>>) -> Self {
+    pub fn new(scalar: FpVar<ConstraintField<C>>) -> Self {
         Self(scalar, PhantomData)
     }
 }

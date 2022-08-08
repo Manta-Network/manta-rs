@@ -40,9 +40,9 @@ use manta_crypto::{
     },
     encryption::{self, hybrid::Hybrid, Decrypt, EmptyHeader, Encrypt, EncryptedMessage},
     rand::{Rand, RngCore, Sample},
-    signature,
+    signature::{self, Sign, Verify},
 };
-use manta_util::{cmp::Independence, convert::Field};
+use manta_util::{cmp::Independence, convert::Field, AsBytes};
 
 /// UTXO Version Number
 pub const VERSION: u8 = 1;
@@ -307,10 +307,16 @@ where
 
 /// UTXO Configuration
 pub trait Configuration: BaseConfiguration<Bool = bool> {
+    /// Signature Scheme Randomness
+    type SignatureSchemeRandomness: Sample;
+
     /// Signature Scheme Type
     type SignatureScheme: Generator<Group = Self::Group>
-        + signature::Sign<SigningKey = Self::Scalar, Message = Vec<u8>>
-        + signature::Verify<VerifyingKey = Self::Group, Verification = bool>;
+        + signature::Sign<
+            SigningKey = Self::Scalar,
+            Randomness = Self::SignatureSchemeRandomness,
+            Message = Vec<u8>,
+        > + signature::Verify<VerifyingKey = Self::Group, Verification = bool>;
 }
 
 /// Asset Type
@@ -815,19 +821,22 @@ where
 impl<C, M> auth::Sign<M> for Parameters<C>
 where
     C: Configuration<Bool = bool>,
+    M: AsBytes,
 {
     #[inline]
     fn sign<R>(&self, signing_key: &Self::SigningKey, message: &M, rng: &mut R) -> Self::Signature
     where
         R: RngCore + ?Sized,
     {
-        todo!()
+        self.signature_scheme
+            .sign(signing_key, &rng.gen(), &message.as_bytes(), &mut ())
     }
 }
 
 impl<C, M> auth::VerifySignature<M> for Parameters<C>
 where
     C: Configuration<Bool = bool>,
+    M: AsBytes,
 {
     #[inline]
     fn verify(
@@ -836,7 +845,8 @@ where
         signature: &Self::Signature,
         message: &M,
     ) -> bool {
-        todo!()
+        self.signature_scheme
+            .verify(authorization_key, &message.as_bytes(), signature, &mut ())
     }
 }
 

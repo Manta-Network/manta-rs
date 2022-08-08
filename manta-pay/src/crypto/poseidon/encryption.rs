@@ -18,7 +18,7 @@
 
 use crate::crypto::poseidon::{Permutation, Specification, State};
 use alloc::{boxed::Box, vec::Vec};
-use core::{fmt::Debug, hash::Hash, ops::Deref, slice};
+use core::{fmt::Debug, hash::Hash, iter, ops::Deref, slice};
 use manta_crypto::{
     constraint::{HasInput, Input},
     eclair::{
@@ -27,8 +27,9 @@ use manta_crypto::{
             mode::{Public, Secret},
             Allocate, Allocator, Constant, Var, Variable,
         },
-        bool::Bool,
+        bool::{Assert, Bool},
         num::Zero,
+        ops::BitAnd,
         Has,
     },
     permutation::{
@@ -100,12 +101,21 @@ where
 impl<S, COM> eclair::cmp::PartialEq<Self, COM> for SetupBlock<S, COM>
 where
     COM: Has<bool>,
+    Bool<COM>: Constant<COM, Type = bool> + BitAnd<Bool<COM>, COM, Output = Bool<COM>>,
     S: Specification<COM>,
     S::Field: eclair::cmp::PartialEq<S::Field, COM>,
 {
     #[inline]
     fn eq(&self, rhs: &Self, compiler: &mut COM) -> Bool<COM> {
-        todo!()
+        self.0.eq(&rhs.0, compiler)
+    }
+
+    #[inline]
+    fn assert_equal(&self, rhs: &Self, compiler: &mut COM)
+    where
+        COM: Assert,
+    {
+        self.0.assert_equal(&rhs.0, compiler)
     }
 }
 
@@ -151,12 +161,21 @@ where
 impl<S, COM> eclair::cmp::PartialEq<Self, COM> for PlaintextBlock<S, COM>
 where
     COM: Has<bool>,
+    Bool<COM>: Constant<COM, Type = bool> + BitAnd<Bool<COM>, COM, Output = Bool<COM>>,
     S: Specification<COM>,
     S::Field: eclair::cmp::PartialEq<S::Field, COM>,
 {
     #[inline]
     fn eq(&self, rhs: &Self, compiler: &mut COM) -> Bool<COM> {
-        todo!()
+        self.0.eq(&rhs.0, compiler)
+    }
+
+    #[inline]
+    fn assert_equal(&self, rhs: &Self, compiler: &mut COM)
+    where
+        COM: Assert,
+    {
+        self.0.assert_equal(&rhs.0, compiler)
     }
 }
 
@@ -170,12 +189,16 @@ where
 
     #[inline]
     fn new_unknown(compiler: &mut COM) -> Self {
-        todo!()
+        Self(
+            iter::repeat_with(|| compiler.allocate_unknown())
+                .take(S::WIDTH - 1)
+                .collect(),
+        )
     }
 
     #[inline]
     fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
-        todo!()
+        Self(this.0.iter().map(|this| this.as_known(compiler)).collect())
     }
 }
 
@@ -238,13 +261,21 @@ where
 impl<S, COM> eclair::cmp::PartialEq<Self, COM> for CiphertextBlock<S, COM>
 where
     COM: Has<bool>,
+    Bool<COM>: Constant<COM, Type = bool> + BitAnd<Bool<COM>, COM, Output = Bool<COM>>,
     S: Specification<COM>,
     S::Field: eclair::cmp::PartialEq<S::Field, COM>,
 {
     #[inline]
     fn eq(&self, rhs: &Self, compiler: &mut COM) -> Bool<COM> {
-        // self.0.eq(&rhs.0, compiler)
-        todo!()
+        self.0.eq(&rhs.0, compiler)
+    }
+
+    #[inline]
+    fn assert_equal(&self, rhs: &Self, compiler: &mut COM)
+    where
+        COM: Assert,
+    {
+        self.0.assert_equal(&rhs.0, compiler)
     }
 }
 
@@ -258,12 +289,16 @@ where
 
     #[inline]
     fn new_unknown(compiler: &mut COM) -> Self {
-        todo!()
+        Self(
+            iter::repeat_with(|| compiler.allocate_unknown())
+                .take(S::WIDTH - 1)
+                .collect(),
+        )
     }
 
     #[inline]
     fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
-        todo!()
+        Self(this.0.iter().map(|this| this.as_known(compiler)).collect())
     }
 }
 
@@ -334,17 +369,21 @@ where
 
 impl<B, const N: usize, COM> eclair::cmp::PartialEq<Self, COM> for BlockArray<B, N>
 where
-    COM: Has<Bool>,
+    COM: Has<bool>,
+    Bool<COM>: Constant<COM, Type = bool> + BitAnd<Bool<COM>, COM, Output = Bool<COM>>,
     B: eclair::cmp::PartialEq<B, COM>,
 {
     #[inline]
     fn eq(&self, rhs: &Self, compiler: &mut COM) -> Bool<COM> {
-        todo!()
+        self.0.eq(&rhs.0, compiler)
     }
 
     #[inline]
-    fn assert_equal(&self, rhs: &Self, compiler: &mut COM) {
-        todo!()
+    fn assert_equal(&self, rhs: &Self, compiler: &mut COM)
+    where
+        COM: Assert,
+    {
+        self.0.assert_equal(&rhs.0, compiler)
     }
 }
 

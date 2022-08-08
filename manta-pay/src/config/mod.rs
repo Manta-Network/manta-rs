@@ -47,10 +47,7 @@ use manta_crypto::{
     },
     encryption,
     hash::ArrayHashFunction,
-    key::{
-        self,
-        kdf::{AsBytes, KeyDerivationFunction},
-    },
+    key::{self, kdf::KeyDerivationFunction},
     merkle_tree,
 };
 use manta_util::{
@@ -82,16 +79,25 @@ pub type PairingCurve = Bls12_381;
 pub type EmbeddedScalarField = bls12_381_ed::Fr;
 
 /// Embedded Scalar Type
-pub type EmbeddedScalar = ecc::arkworks::Scalar<Bls12_381_Edwards>;
+pub type EmbeddedScalar = ecc::arkworks::Scalar<GroupCurve>;
 
 /// Embedded Scalar Variable Type
-pub type EmbeddedScalarVar = ecc::arkworks::ScalarVar<Bls12_381_Edwards, Bls12_381_EdwardsVar>;
+pub type EmbeddedScalarVar = ecc::arkworks::ScalarVar<GroupCurve, GroupCurveVar>;
+
+/// Embedded Group Curve Type
+pub type GroupCurve = Bls12_381_Edwards;
+
+/// Embedded Group Curve Type
+pub type GroupCurveAffine = bls12_381_ed::EdwardsAffine;
+
+/// Embedded Group Curve Variable Type
+pub type GroupCurveVar = Bls12_381_EdwardsVar;
 
 /// Embedded Group Type
-pub type Group = ecc::arkworks::Group<Bls12_381_Edwards>;
+pub type Group = ecc::arkworks::Group<GroupCurve>;
 
 /// Embedded Group Variable Type
-pub type GroupVar = ecc::arkworks::GroupVar<Bls12_381_Edwards, Bls12_381_EdwardsVar>;
+pub type GroupVar = ecc::arkworks::GroupVar<GroupCurve, GroupCurveVar>;
 
 /// Constraint Field
 pub type ConstraintField = bls12_381::Fr;

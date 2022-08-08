@@ -24,7 +24,7 @@ use core::{fmt::Debug, hash::Hash, iter, marker::PhantomData, mem, slice};
 use manta_crypto::{
     eclair::alloc::{Allocate, Const, Constant},
     permutation::PseudorandomPermutation,
-    rand::{RngCore, Sample},
+    rand::{Rand, RngCore, Sample},
 };
 use manta_util::codec::{Decode, DecodeError, Encode, Read, Write};
 
@@ -216,7 +216,11 @@ where
     where
         R: RngCore + ?Sized,
     {
-        todo!()
+        Self(
+            iter::repeat_with(|| rng.sample(distribution.clone()))
+                .take(S::WIDTH)
+                .collect(),
+        )
     }
 }
 

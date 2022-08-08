@@ -14,15 +14,24 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Arkworks Backend
+//! Arkworks Finite Field Backend
 
-pub use ark_ec as ec;
-pub use ark_r1cs_std as r1cs_std;
-pub use ark_relations as relations;
-pub use ark_serialize as serialize;
+use manta_util::into_array_unchecked;
 
-pub mod algebra;
-pub mod constraint;
-pub mod ff;
-pub mod pairing;
-pub mod rand;
+#[doc(inline)]
+pub use ark_ff::*;
+
+/// Tries to convert a field element `x` into a `u128` integer.
+#[inline]
+pub fn try_into_u128<F>(x: F) -> Option<u128>
+where
+    F: PrimeField,
+{
+    if x < F::from(2u8).pow([128, 0, 0, 0]) {
+        let mut bytes = x.into_repr().to_bytes_le();
+        bytes.truncate(16);
+        Some(u128::from_le_bytes(into_array_unchecked(bytes)))
+    } else {
+        None
+    }
+}

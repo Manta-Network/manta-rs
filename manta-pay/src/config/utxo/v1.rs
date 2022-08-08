@@ -21,21 +21,27 @@ use crate::{
         poseidon::{
             Spec2 as Poseidon2, Spec3 as Poseidon3, Spec4 as Poseidon4, Spec5 as Poseidon5,
         },
-        Compiler, ConstraintField, EmbeddedScalar, EmbeddedScalarVar, Group, GroupVar,
+        Compiler, ConstraintField, EmbeddedScalar, EmbeddedScalarField, EmbeddedScalarVar, Group,
+        GroupCurve, GroupCurveAffine, GroupVar,
     },
     crypto::{
         constraint::arkworks::{Boolean, Fp, FpVar, R1CS},
+        ecc::arkworks::{self, ScalarVar},
         poseidon::{self, encryption::BlockArray, hash::Hasher, ParameterFieldType},
     },
 };
 use blake2::{
     digest::{Update, VariableOutput},
-    Blake2sVar,
+    Blake2s256, Blake2sVar, Digest,
 };
 use core::marker::PhantomData;
 use manta_accounting::asset::Asset;
 use manta_crypto::{
-    arkworks::{ff::PrimeField, serialize::CanonicalSerialize},
+    arkworks::{
+        algebra::affine_point_as_bytes,
+        ff::{try_into_u128, PrimeField, ToBytes},
+        serialize::CanonicalSerialize,
+    },
     eclair::{
         alloc::{Allocate, Constant},
         num::U128,
@@ -164,7 +170,7 @@ pub struct UtxoCommitmentSchemeDomainTag;
 impl poseidon::hash::DomainTag<Poseidon5> for UtxoCommitmentSchemeDomainTag {
     #[inline]
     fn domain_tag() -> <Poseidon5 as ParameterFieldType>::ParameterField {
-        todo!()
+        Fp(0u8.into()) // FIXME: Use a real domain tag
     }
 }
 
@@ -267,7 +273,7 @@ pub struct ViewingKeyDerivationFunctionDomainTag;
 impl poseidon::hash::DomainTag<Poseidon2> for ViewingKeyDerivationFunctionDomainTag {
     #[inline]
     fn domain_tag() -> <Poseidon2 as ParameterFieldType>::ParameterField {
-        todo!()
+        Fp(0u8.into()) // FIXME: Use a real domain tag
     }
 }
 
@@ -317,16 +323,21 @@ impl protocol::ViewingKeyDerivationFunction for ViewingKeyDerivationFunction {
         proof_authorization_key: &Self::ProofAuthorizationKey,
         compiler: &mut (),
     ) -> Self::ViewingKey {
-        /* TODO:
-        self.0.hash(
-            [
-                &Fp(proof_authorization_key.0.x),
-                &Fp(proof_authorization_key.0.y),
-            ],
-            compiler,
-        )
-        */
-        todo!()
+        let mut bytes = Vec::with_capacity(32);
+        (self
+            .0
+            .hash(
+                [
+                    &Fp(proof_authorization_key.0.x),
+                    &Fp(proof_authorization_key.0.y),
+                ],
+                compiler,
+            )
+            .0)
+            .0
+            .write(&mut bytes)
+            .expect("Writing to a vector never fails.");
+        Fp(EmbeddedScalarField::from_le_bytes_mod_order(&bytes))
     }
 }
 
@@ -340,7 +351,10 @@ impl protocol::ViewingKeyDerivationFunction<Compiler> for ViewingKeyDerivationFu
         proof_authorization_key: &Self::ProofAuthorizationKey,
         compiler: &mut Compiler,
     ) -> Self::ViewingKey {
-        todo!()
+        ScalarVar::new(self.0.hash(
+            [&proof_authorization_key.0.x, &proof_authorization_key.0.y],
+            compiler,
+        ))
     }
 }
 
@@ -448,12 +462,19 @@ impl encryption::convert::plaintext::Forward for IncomingEncryptionSchemeConvert
 
     #[inline]
     fn as_target(source: &Self::Plaintext, _: &mut ()) -> Self::TargetPlaintext {
-        /*
-        vec![poseidon::encryption::PlaintextBlock(
-            vec![source.id, Fp(source.value.into())].into(),
-        )]
-        */
-        todo!()
+        BlockArray(
+            [poseidon::encryption::PlaintextBlock(
+                vec![
+                    source.utxo_commitment_randomness,
+                    source.asset.id,
+                    Fp(source.asset.value.into()),
+                    Fp(source.key_diversifier.0.x),
+                    Fp(source.key_diversifier.0.y),
+                ]
+                .into(),
+            )]
+            .into(),
+        )
     }
 }
 
@@ -464,24 +485,25 @@ impl encryption::convert::plaintext::Forward<Compiler>
 
     #[inline]
     fn as_target(source: &Self::Plaintext, _: &mut Compiler) -> Self::TargetPlaintext {
-        /*
-        vec![poseidon::encryption::PlaintextBlock(
-            vec![source.id, Fp(source.value.into())].into(),
-        )]
-        */
-        todo!()
+        BlockArray(
+            [poseidon::encryption::PlaintextBlock(
+                vec![
+                    source.utxo_commitment_randomness.clone(),
+                    source.asset.id.clone(),
+                    source.asset.value.as_ref().clone(),
+                    source.key_diversifier.0.x.clone(),
+                    source.key_diversifier.0.y.clone(),
+                ]
+                .into(),
+            )]
+            .into(),
+        )
     }
 }
 
 impl encryption::DecryptedPlaintextType for IncomingEncryptionSchemeConverter {
     type DecryptedPlaintext = Option<<Self as encryption::PlaintextType>::Plaintext>;
 }
-
-/*
-impl encryption::DecryptedPlaintextType for IncomingEncryptionSchemeConverter<Compiler> {
-    type DecryptedPlaintext = Option<<Self as encryption::PlaintextType>::Plaintext>;
-}
-*/
 
 impl encryption::convert::plaintext::Reverse for IncomingEncryptionSchemeConverter {
     type TargetDecryptedPlaintext =
@@ -492,10 +514,11 @@ impl encryption::convert::plaintext::Reverse for IncomingEncryptionSchemeConvert
         if target.0 && target.1.len() == 1 {
             let block = &target.1[0].0;
             if block.len() == 5 {
-                /* TODO:
-                Some(Asset::new(block[0], block[1].0.try_into().expect("")))
-                */
-                todo!()
+                Some(protocol::IncomingPlaintext::new(
+                    Fp(block[0].0),
+                    Asset::new(Fp(block[1].0), try_into_u128(block[2].0)?),
+                    arkworks::Group(GroupCurveAffine::new(block[3].0, block[4].0)),
+                ))
             } else {
                 None
             }
@@ -504,35 +527,6 @@ impl encryption::convert::plaintext::Reverse for IncomingEncryptionSchemeConvert
         }
     }
 }
-
-/*
-impl encryption::convert::plaintext::Reverse<Compiler>
-    for IncomingEncryptionSchemeConverter<Compiler>
-{
-    type TargetDecryptedPlaintext =
-        encryption::DecryptedPlaintext<IncomingPoseidonEncryptionScheme<Compiler>>;
-
-    #[inline]
-    fn into_source(
-        target: Self::TargetDecryptedPlaintext,
-        _: &mut Compiler,
-    ) -> Self::DecryptedPlaintext {
-        if target.0 && target.1.len() == 1 {
-            let block = &target.1[0].0;
-            if block.len() == 5 {
-                /* TODO:
-                Some(Asset::new(block[0], block[1].0.try_into().expect("")))
-                */
-                todo!()
-            } else {
-                None
-            }
-        } else {
-            None
-        }
-    }
-}
-*/
 
 impl<COM> Constant<COM> for IncomingEncryptionSchemeConverter<COM> {
     type Type = IncomingEncryptionSchemeConverter;
@@ -566,7 +560,7 @@ pub struct UtxoAccumulatorItemHashDomainTag;
 impl poseidon::hash::DomainTag<Poseidon4> for UtxoAccumulatorItemHashDomainTag {
     #[inline]
     fn domain_tag() -> <Poseidon3 as ParameterFieldType>::ParameterField {
-        todo!()
+        Fp(0u8.into()) // FIXME: Use a real domain tag
     }
 }
 
@@ -674,7 +668,7 @@ pub struct InnerHashDomainTag;
 impl poseidon::hash::DomainTag<Poseidon2> for InnerHashDomainTag {
     #[inline]
     fn domain_tag() -> <Poseidon2 as ParameterFieldType>::ParameterField {
-        todo!()
+        Fp(0u8.into()) // FIXME: Use a real domain tag
     }
 }
 
@@ -838,7 +832,7 @@ pub struct NullifierCommitmentSchemeDomainTag;
 impl poseidon::hash::DomainTag<Poseidon3> for NullifierCommitmentSchemeDomainTag {
     #[inline]
     fn domain_tag() -> <Poseidon3 as ParameterFieldType>::ParameterField {
-        todo!()
+        Fp(0u8.into()) // FIXME: Use a real domain tag
     }
 }
 
@@ -1057,12 +1051,6 @@ impl encryption::DecryptedPlaintextType for OutgoingEncryptionSchemeConverter {
     type DecryptedPlaintext = Option<<Self as encryption::PlaintextType>::Plaintext>;
 }
 
-/*
-impl encryption::DecryptedPlaintextType for OutgoingEncryptionSchemeConverter<Compiler> {
-    type DecryptedPlaintext = Option<<Self as encryption::PlaintextType>::Plaintext>;
-}
-*/
-
 impl encryption::convert::plaintext::Reverse for OutgoingEncryptionSchemeConverter {
     type TargetDecryptedPlaintext =
         encryption::DecryptedPlaintext<OutgoingPoseidonEncryptionScheme>;
@@ -1072,10 +1060,7 @@ impl encryption::convert::plaintext::Reverse for OutgoingEncryptionSchemeConvert
         if target.0 && target.1.len() == 1 {
             let block = &target.1[0].0;
             if block.len() == 2 {
-                /* TODO:
-                Some(Asset::new(block[0], block[1].0.try_into().expect("")))
-                */
-                todo!()
+                Some(Asset::new(block[0], try_into_u128(block[1].0)?))
             } else {
                 None
             }
@@ -1084,35 +1069,6 @@ impl encryption::convert::plaintext::Reverse for OutgoingEncryptionSchemeConvert
         }
     }
 }
-
-/*
-impl encryption::convert::plaintext::Reverse<Compiler>
-    for OutgoingEncryptionSchemeConverter<Compiler>
-{
-    type TargetDecryptedPlaintext =
-        encryption::DecryptedPlaintext<OutgoingPoseidonEncryptionScheme<Compiler>>;
-
-    #[inline]
-    fn into_source(
-        target: Self::TargetDecryptedPlaintext,
-        _: &mut Compiler,
-    ) -> Self::DecryptedPlaintext {
-        if target.0 && target.1.len() == 1 {
-            let block = &target.1[0].0;
-            if block.len() == 2 {
-                /* TODO:
-                Some(Asset::new(block[0], block[1].0.try_into().expect("")))
-                */
-                todo!()
-            } else {
-                None
-            }
-        } else {
-            None
-        }
-    }
-}
-*/
 
 impl<COM> Constant<COM> for OutgoingEncryptionSchemeConverter<COM> {
     type Type = OutgoingEncryptionSchemeConverter;
@@ -1156,7 +1112,19 @@ impl schnorr::HashFunction<Group> for SchnorrHashFunction {
         message: &Self::Message,
         _: &mut (),
     ) -> EmbeddedScalar {
-        todo!()
+        let mut hasher = Blake2s256::new();
+        Digest::update(&mut hasher, b"domain tag"); // FIXME: Use specific domain tag
+        Digest::update(
+            &mut hasher,
+            affine_point_as_bytes::<GroupCurve>(&verifying_key.0),
+        );
+        Digest::update(
+            &mut hasher,
+            affine_point_as_bytes::<GroupCurve>(&nonce_point.0),
+        );
+        Digest::update(&mut hasher, message);
+        let bytes: [u8; 32] = hasher.finalize().into();
+        Fp(EmbeddedScalarField::from_le_bytes_mod_order(&bytes))
     }
 }
 
@@ -1166,7 +1134,7 @@ impl Sample for SchnorrHashFunction {
     where
         R: RngCore + ?Sized,
     {
-        let _ = distribution;
+        let _ = (distribution, rng);
         Self
     }
 }
@@ -1181,6 +1149,7 @@ impl<COM> Constant<COM> for Config<COM> {
 
     #[inline]
     fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
+        let _ = (this, compiler);
         Self::default()
     }
 }
@@ -1224,5 +1193,6 @@ impl protocol::BaseConfiguration<Compiler> for Config<Compiler> {
 }
 
 impl protocol::Configuration for Config {
+    type SignatureSchemeRandomness = EmbeddedScalar;
     type SignatureScheme = Schnorr<Group, SchnorrHashFunction>;
 }
