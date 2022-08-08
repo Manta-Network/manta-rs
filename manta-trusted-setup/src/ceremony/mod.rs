@@ -25,6 +25,7 @@ pub mod queue;
 pub mod registry;
 pub mod server;
 pub mod signature;
+pub mod client;
 
 /// Ceremony Error
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]

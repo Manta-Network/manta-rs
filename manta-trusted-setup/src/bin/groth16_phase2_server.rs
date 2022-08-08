@@ -82,6 +82,11 @@ impl HasNonce<Ed25519> for Participant {
         self.nonce = nonce;
         Ok(())
     }
+
+    fn increase_nonce(&mut self) -> Result<(), CeremonyError> {
+        self.nonce += 1;
+        Ok(())
+    }
 }
 
 type S = Server<Groth16Phase2<Config>, Participant, BTreeMap<PublicKey, Participant>, Ed25519, 2>;

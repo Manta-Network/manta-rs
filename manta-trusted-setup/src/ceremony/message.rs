@@ -25,24 +25,17 @@ use core::fmt::Debug;
 use serde::{Deserialize, Serialize};
 
 /// Register Request
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct RegisterRequest<P> {
     /// Participant
     pub participant: P,
 }
 
 /// Query MPC State Request
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct QueryMPCStateRequest<P> {
     /// Participant
     pub participant: P,
-}
-
-impl<P> QueryMPCStateRequest<P> {
-    /// Creates a new [`GetMpcRequest`] with the given `participant`.
-    pub fn new(participant: P) -> Self {
-        Self { participant }
-    }
 }
 
 /// MPC Response for [`QueryMPCStateRequest`]

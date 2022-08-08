@@ -53,6 +53,11 @@ where
     ///
     /// Returns `CeremonyError::InvalidNonce` if the nonce is smaller or equal to previous nonce.
     fn update_nonce(&mut self, nonce: S::Nonce) -> Result<(), CeremonyError>;
+
+    /// TODO: since we only increase nonce by 1 for each time, we can have this helper function
+    /// so we do not additionally require traits on nonce such as it can be increased by
+    /// a u64 number of usize number.
+    fn increase_nonce(&mut self) -> Result<(), CeremonyError>;
 }
 
 /// Server with `V` as trusted setup verifier, `P` as participant, `M` as the map used by registry, `N` as the number of priority levels.
