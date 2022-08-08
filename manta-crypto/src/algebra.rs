@@ -48,6 +48,23 @@ pub trait Group<COM = ()> {
     fn mul(&self, scalar: &Self::Scalar, compiler: &mut COM) -> Self;
 }
 
+/// Fixed Base Scalar Multiplication using precomputed base points
+pub trait FixedBaseScalarMul<COM = ()>: Group<COM> {
+    /// Fixed Base Point
+    type Base;
+
+    /// Multiply `precomputed_bases[0]` by `scalar` using precomputed base points,
+    /// where `precomputed_bases` are precomputed power-of-two multiples of the fixed base.  
+    fn fixed_base_scalar_mul<'a, I>(
+        precomputed_bases: I,
+        scalar: &Self::Scalar,
+        compiler: &mut COM,
+    ) -> Self
+    where
+        I: IntoIterator<Item = &'a Self::Base>,
+        Self::Base: 'a;
+}
+
 /// Diffie-Hellman Key Agreement Scheme
 #[cfg_attr(
     feature = "serde",

@@ -41,6 +41,7 @@ use manta_crypto::{
 };
 use manta_util::codec;
 
+use manta_crypto::algebra::FixedBaseScalarMul;
 #[cfg(feature = "serde")]
 use {
     manta_crypto::arkworks::algebra::serialize_group_element,
@@ -517,13 +518,47 @@ where
     }
 }
 
+impl<C, CV> FixedBaseScalarMul<Compiler<C>> for GroupVar<C, CV>
+where
+    C: ProjectiveCurve,
+    CV: CurveVar<C, ConstraintField<C>>,
+{
+    type Base = C;
+
+    fn fixed_base_scalar_mul<'a, I>(
+        precomputed_bases: I,
+        scalar: &Self::Scalar,
+        compiler: &mut Compiler<C>,
+    ) -> Self
+    where
+        I: IntoIterator<Item = &'a Self::Base>,
+        Self::Base: 'a,
+    {
+        let _ = compiler;
+        let mut result = CV::zero();
+        let scalar_bits = scalar
+            .0
+            .to_bits_le()
+            .expect("Bit decomposition is not allowed to fail.");
+        for (bit, base) in scalar_bits.into_iter().zip(precomputed_bases.into_iter()) {
+            result = bit
+                .select(&(result.clone() + *base), &result)
+                .expect("Conditional select is not allowed to fail. ");
+        }
+        Self::new(result)
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
     use crate::config::Bls12_381_Edwards;
     use manta_crypto::{
-        arkworks::r1cs_std::groups::curves::twisted_edwards::AffineVar,
-        constraint::measure::Measure, rand::OsRng,
+        algebra::Group,
+        arkworks::{ec::group::Group as _, r1cs_std::groups::curves::twisted_edwards::AffineVar},
+        constraint::measure::Measure,
+        eclair::bool::AssertEq,
+        rand::OsRng,
     };
 
     /// Constraint Field Type
@@ -536,20 +571,32 @@ mod test {
     pub type Scalar<C> = Fp<<C as ProjectiveCurve>::ScalarField>;
 
     #[test]
-    fn check_constraints() {
+    fn fixed_base_mul() {
         let mut cs = Compiler::<Bls12_381_Edwards>::for_proofs();
-        let group = Group(Bls12_381_Edwards::gen(&mut OsRng).into_affine());
-        let group_var =
-            group.as_known::<Secret, GroupVar<Bls12_381_Edwards, AffineVar<_, _>>>(&mut cs);
         let scalar = Scalar::<Bls12_381_Edwards>::gen(&mut OsRng);
+        let base = Bls12_381_Edwards::prime_subgroup_generator();
+        let mut curr = base;
+        let mut precomputed_table = Vec::new();
+        for _ in 0..256 {
+            precomputed_table.push(curr);
+            curr = curr + curr;
+        }
+        let base_var = Group(base.into_affine())
+            .as_known::<Secret, GroupVar<Bls12_381_Edwards, AffineVar<_, _>>>(&mut cs);
         let scalar_var =
             scalar.as_known::<Secret, ScalarVar<Bls12_381_Edwards, AffineVar<_, _>>>(&mut cs);
-        let scalar_bits = scalar_var.0.to_bits_le().unwrap();
-        println!("{:?}", scalar_bits.len());
-        let bit_decomposition = cs.constraint_count();
-        let _ = group_var.0.scalar_mul_le(scalar_bits.iter());
-        let scalar_mul_constraints = cs.constraint_count() - bit_decomposition;
-        println!("num_constraints bit_decomposition: {:?}", bit_decomposition);
-        println!("num_constraints scalar_mul: {:?}", scalar_mul_constraints);
+
+        let ctr1 = cs.constraint_count();
+        let expected = base_var.mul(&scalar_var, &mut cs);
+        let ctr2 = cs.constraint_count();
+        let actual =
+            GroupVar::fixed_base_scalar_mul(precomputed_table.iter(), &scalar_var, &mut cs);
+        let ctr3 = cs.constraint_count();
+
+        cs.assert_eq(&expected, &actual);
+        assert!(cs.is_satisfied());
+
+        println!("variable base mul constraint: {:?}", ctr2 - ctr1);
+        println!("fixed base mul constraint: {:?}", ctr3 - ctr2);
     }
 }
