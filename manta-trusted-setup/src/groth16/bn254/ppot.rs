@@ -24,20 +24,20 @@ use crate::{
     util::{BlakeHasher, KZGBlakeHasher},
 };
 use ark_bn254::{Bn254, Fr, G1Affine, G2Affine, Parameters};
+use ark_serialize::{CanonicalSerialize, Read};
+use blake2::Digest;
 use manta_crypto::arkworks::{
     ec::{
         models::{bn::BnParameters, ModelParameters},
-    short_weierstrass_jacobian::GroupAffine,
-    AffineCurve, PairingEngine, SWModelParameters,
+        short_weierstrass_jacobian::GroupAffine,
+        AffineCurve, PairingEngine, SWModelParameters,
     },
     ff::{PrimeField, Zero},
     pairing::Pairing,
 };
-use ark_serialize::{CanonicalSerialize, Read};
-use blake2::Digest;
 use manta_util::into_array_unchecked;
 use memmap::{Mmap, MmapOptions};
-use std::fs::OpenOptions;
+use std::fs::{File, OpenOptions};
 
 /// Configuration of the Perpetual Powers of Tau ceremony
 pub struct PpotCeremony;
@@ -474,4 +474,21 @@ pub fn read_subaccumulator_test() {
         &acc.beta_tau_powers_g1,
         &acc.tau_powers_g2
     ));
+
+    // Write the subaccumulator to file
+    let _f = File::create("../manta-parameters/data/ppot/round72_19powers.lfs").unwrap();
+    let mut file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .truncate(true)
+        .open("../manta-parameters/data/ppot/round72_19powers.lfs")
+        .expect("unable to create parameter file in this directory");
+    CanonicalSerialize::serialize_uncompressed(&acc, &mut file).unwrap();
+}
+
+#[test]
+fn read_accumulator_from_lfs() {
+    // let directory = tempfile::tempdir().expect("msg");
+    // manta_parameters::ppot::Round72Powers19::download(&directory.path().join("accumulator.lfs"))
+    //     .expect("Unable to download PRIVATE_TRANSFER proving context.");
 }

@@ -30,9 +30,13 @@ use crate::{
 };
 use ark_bn254::{Bn254, Fr, G1Affine, G2Affine};
 use ark_groth16::ProvingKey;
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError, Read, Write};
 use blake2::Digest;
 use manta_crypto::{
+    arkworks::{
+        ec::{AffineCurve, PairingEngine},
+        pairing::Pairing,
+    },
     merkle_tree::forest::MerkleForest,
     rand::{OsRng, Rand, SeedableRng},
 };
@@ -43,16 +47,14 @@ use std::{
     fs::{File, OpenOptions},
     time::Instant,
 };
-use manta_crypto::arkworks::pairing::Pairing;
-use manta_crypto::arkworks::ec::{AffineCurve, PairingEngine};
-
 /// Configuration for a Phase1 Ceremony large enough to support MantaPay circuits
+#[derive(CanonicalDeserialize, CanonicalSerialize)]
 pub struct MantaPaySetupCeremony;
 
 impl Size for MantaPaySetupCeremony {
     const G1_POWERS: usize = (Self::G2_POWERS << 1) - 1;
 
-    const G2_POWERS: usize = 1 << 16;
+    const G2_POWERS: usize = 1 << 19;
 }
 
 impl Pairing for MantaPaySetupCeremony {
@@ -250,13 +252,12 @@ pub fn phase2_contribution_test() {
         groth16::mpc::{self, contribute, verify_transform, verify_transform_all},
         mpc::Transcript,
     };
-    use manta_crypto::accumulator::Accumulator;
-    use manta_crypto::rand::Sample;
+    use manta_accounting::transfer::test::TransferDistribution;
+    use manta_crypto::{accumulator::Accumulator, rand::Sample};
     use manta_pay::{
         config::{FullParameters, Reclaim},
         test::payment::UtxoAccumulator,
     };
-    use manta_accounting::transfer::test::TransferDistribution;
     use rand_chacha::ChaCha20Rng;
 
     println!("Reading ProverKey from file");
@@ -320,8 +321,7 @@ pub fn phase2_contribution_test() {
         &mut rng,
     );
     let cs = sample.known_constraints(FullParameters::new(&parameters, utxo_accumulator.model()));
-    let proof =
-        ark_groth16::prover::create_random_proof(cs, &state, &mut rng).unwrap();
+    let proof = ark_groth16::prover::create_random_proof(cs, &state, &mut rng).unwrap();
     println!("Took {:?} to generate a proof", now.elapsed());
 
     let now = Instant::now();

@@ -232,13 +232,12 @@ where
 
 /// Tests if bls13_381 pairing ratio is valid.
 #[test]
-fn has_valid_bls12_381_pairing_ratio() {
-    use ark_bls12_381::Bls12_381;
+fn has_valid_bn254_pairing_ratio() {
     let mut rng = OsRng;
-    assert_valid_pairing_ratio::<Bls12_381>(
-        ark_bls12_381::G1Affine::gen(&mut rng),
-        ark_bls12_381::G2Affine::gen(&mut rng),
-        ark_bls12_381::Fr::gen(&mut rng),
+    assert_valid_pairing_ratio::<Bn254>(
+        G1Affine::gen(&mut rng),
+        G2Affine::gen(&mut rng),
+        Fr::gen(&mut rng),
     );
 }
 

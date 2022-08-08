@@ -129,7 +129,7 @@ fn main() -> Result<()> {
                     Some("lfs") => compile_lfs(path, &out_dir, &checksums)?,
                     _ => bail!("Unsupported data file extension."),
                 },
-                _ => bail!("All data files must have an extension."),
+                _ => bail!("All data files must have an extension: {:?}", path),
             }
         }
     }
