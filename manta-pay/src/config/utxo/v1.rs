@@ -189,7 +189,7 @@ impl Sample for UtxoCommitmentScheme {
     where
         R: RngCore + ?Sized,
     {
-        todo!()
+        Self(rng.sample(distribution))
     }
 }
 
@@ -294,7 +294,7 @@ impl Sample for ViewingKeyDerivationFunction {
     where
         R: RngCore + ?Sized,
     {
-        todo!()
+        Self(rng.sample(distribution))
     }
 }
 
@@ -593,7 +593,7 @@ impl Sample for UtxoAccumulatorItemHash {
     where
         R: RngCore + ?Sized,
     {
-        todo!()
+        Self(rng.sample(distribution))
     }
 }
 
@@ -865,7 +865,7 @@ impl Sample for NullifierCommitmentScheme {
     where
         R: RngCore + ?Sized,
     {
-        todo!()
+        Self(rng.sample(distribution))
     }
 }
 
@@ -1166,7 +1166,8 @@ impl Sample for SchnorrHashFunction {
     where
         R: RngCore + ?Sized,
     {
-        todo!()
+        let _ = distribution;
+        Self
     }
 }
 
