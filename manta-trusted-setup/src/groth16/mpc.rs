@@ -24,14 +24,21 @@ use crate::{
     util::{batch_into_projective, batch_mul_fixed_scalar, merge_pairs_affine},
 };
 use alloc::{vec, vec::Vec};
-use ark_ec::{AffineCurve, ProjectiveCurve};
-use ark_ff::{Field, PrimeField, UniformRand, Zero};
 use ark_groth16::{ProvingKey, VerifyingKey};
 use ark_poly::{EvaluationDomain, Radix2EvaluationDomain};
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem, SynthesisError};
 use core::{clone::Clone, marker::PhantomData};
 use manta_crypto::rand::{CryptoRng, RngCore};
 use serde::Serialize;
+use core::clone::Clone;
+use manta_crypto::{
+    arkworks::{
+        ec::{AffineCurve, ProjectiveCurve},
+        ff::{Field, PrimeField, UniformRand, Zero},
+        pairing::{Pairing, PairingEngineExt},
+        relations::r1cs::{ConstraintSynthesizer, ConstraintSystem, SynthesisError},
+    },
+    rand::{CryptoRng, RngCore},
 
 /// Proving Key Hasher
 pub trait ProvingKeyHasher<P>

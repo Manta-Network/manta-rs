@@ -24,18 +24,6 @@
 
 use crate::rand::{CryptoRng, RngCore};
 
-pub use crate::eclair::{
-    alloc::{
-        mode::{self, Derived, Public, Secret},
-        Allocate, Allocator, Const, Constant, Var, Variable,
-    },
-    bool::{Assert, AssertEq, Bool, ConditionalSelect, ConditionalSwap},
-    cmp::{Eq, PartialEq},
-    num::Zero,
-    ops::{Add, BitAnd, BitOr, Not, Sub},
-    Has, Native, NonNative,
-};
-
 /// Proof System
 pub trait ProofSystem {
     /// Context Compiler
@@ -106,7 +94,7 @@ where
 
 /// Constraint System Measurement
 pub mod measure {
-    use super::mode::{Constant, Public, Secret};
+    use crate::eclair::alloc::mode::{Constant, Public, Secret};
     use alloc::{fmt::Display, format, string::String, vec::Vec};
     use core::{
         fmt::Debug,
