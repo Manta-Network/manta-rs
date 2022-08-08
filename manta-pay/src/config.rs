@@ -28,9 +28,7 @@ use blake2::{
     digest::{Update, VariableOutput},
     Blake2sVar,
 };
-// use bls12_381::Bls12_381;
 use ark_bn254::Bn254;
-// use bls12_381_ed::constraints::EdwardsVar as Bls12_381_EdwardsVar;
 use ark_ed_on_bn254::constraints::EdwardsVar as Bn254_EdwardsVar;
 use manta_accounting::{
     asset::{Asset, AssetId, AssetValue},
