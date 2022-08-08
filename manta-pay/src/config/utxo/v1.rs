@@ -28,14 +28,19 @@ use crate::{
         poseidon::{self, encryption::BlockArray, hash::Hasher, ParameterFieldType},
     },
 };
+use blake2::{
+    digest::{Update, VariableOutput},
+    Blake2sVar,
+};
 use core::marker::PhantomData;
 use manta_accounting::asset::Asset;
 use manta_crypto::{
-    arkworks::ff::PrimeField,
+    arkworks::{ff::PrimeField, serialize::CanonicalSerialize},
     eclair::{alloc::Constant, num::U128, Has},
     encryption, hash,
     hash::ArrayHashFunction,
     merkle_tree,
+    rand::{Rand, RngCore, Sample},
     signature::schnorr::{self, Schnorr},
 };
 
@@ -171,6 +176,16 @@ pub struct UtxoCommitmentScheme<COM = ()>(Hasher<Poseidon5, UtxoCommitmentScheme
 where
     Poseidon5: poseidon::Specification<COM>;
 
+impl Sample for UtxoCommitmentScheme {
+    #[inline]
+    fn sample<R>(distribution: (), rng: &mut R) -> Self
+    where
+        R: RngCore + ?Sized,
+    {
+        todo!()
+    }
+}
+
 impl protocol::UtxoCommitmentScheme for UtxoCommitmentScheme {
     type AssetId = AssetId;
     type AssetValue = AssetValue;
@@ -256,6 +271,16 @@ pub struct ViewingKeyDerivationFunction<COM = ()>(
 )
 where
     Poseidon2: poseidon::Specification<COM>;
+
+impl Sample for ViewingKeyDerivationFunction {
+    #[inline]
+    fn sample<R>(distribution: (), rng: &mut R) -> Self
+    where
+        R: RngCore + ?Sized,
+    {
+        todo!()
+    }
+}
 
 impl protocol::ViewingKeyDerivationFunction for ViewingKeyDerivationFunction {
     type ProofAuthorizationKey = ProofAuthorizationKey;
@@ -537,6 +562,16 @@ pub struct UtxoAccumulatorItemHash<COM = ()>(
 where
     Poseidon4: poseidon::Specification<COM>;
 
+impl Sample for UtxoAccumulatorItemHash {
+    #[inline]
+    fn sample<R>(distribution: (), rng: &mut R) -> Self
+    where
+        R: RngCore + ?Sized,
+    {
+        todo!()
+    }
+}
+
 impl protocol::UtxoAccumulatorItemHash for UtxoAccumulatorItemHash {
     type Bool = bool;
     type AssetId = AssetId;
@@ -677,6 +712,11 @@ impl merkle_tree::InnerHash<Compiler> for InnerHash<Compiler> {
 /// Merkle Tree Configuration
 pub struct MerkleTreeConfiguration;
 
+impl MerkleTreeConfiguration {
+    /// Width of the Merkle Forest
+    pub const FOREST_WIDTH: usize = 256;
+}
+
 impl merkle_tree::HashConfiguration for MerkleTreeConfiguration {
     type LeafHash = LeafHash;
     type InnerHash = InnerHash;
@@ -711,6 +751,53 @@ pub type UtxoAccumulatorModel = merkle_tree::Parameters<MerkleTreeConfiguration>
 /// UTXO Accumulator Model Variable
 pub type UtxoAccumulatorModelVar = merkle_tree::Parameters<MerkleTreeConfiguration, Compiler>;
 
+impl merkle_tree::forest::Configuration for MerkleTreeConfiguration {
+    type Index = u8;
+
+    #[inline]
+    fn tree_index(leaf: &merkle_tree::Leaf<Self>) -> Self::Index {
+        let mut hasher = Blake2sVar::new(1).unwrap();
+        let mut buffer = Vec::new();
+        leaf.0
+            .serialize_unchecked(&mut buffer)
+            .expect("Serializing is not allowed to fail.");
+        hasher.update(&buffer);
+        let mut result = [0];
+        hasher
+            .finalize_variable(&mut result)
+            .expect("Hashing is not allowed to fail.");
+        result[0]
+    }
+}
+
+#[cfg(any(feature = "test", test))]
+impl merkle_tree::test::HashParameterSampling for MerkleTreeConfiguration {
+    type LeafHashParameterDistribution = ();
+    type InnerHashParameterDistribution = ();
+
+    #[inline]
+    fn sample_leaf_hash_parameters<R>(
+        distribution: Self::LeafHashParameterDistribution,
+        rng: &mut R,
+    ) -> merkle_tree::LeafHashParameters<Self>
+    where
+        R: RngCore + ?Sized,
+    {
+        let _ = (distribution, rng);
+    }
+
+    #[inline]
+    fn sample_inner_hash_parameters<R>(
+        distribution: Self::InnerHashParameterDistribution,
+        rng: &mut R,
+    ) -> merkle_tree::InnerHashParameters<Self>
+    where
+        R: RngCore + ?Sized,
+    {
+        rng.sample(distribution)
+    }
+}
+
 ///
 pub struct NullifierCommitmentSchemeDomainTag;
 
@@ -737,6 +824,16 @@ pub struct NullifierCommitmentScheme<COM = ()>(
 )
 where
     Poseidon3: poseidon::Specification<COM>;
+
+impl Sample for NullifierCommitmentScheme {
+    #[inline]
+    fn sample<R>(distribution: (), rng: &mut R) -> Self
+    where
+        R: RngCore + ?Sized,
+    {
+        todo!()
+    }
+}
 
 impl protocol::NullifierCommitmentScheme for NullifierCommitmentScheme {
     type ProofAuthorizationKey = ProofAuthorizationKey;
@@ -1016,6 +1113,16 @@ impl schnorr::HashFunction<Group> for SchnorrHashFunction {
         message: &Self::Message,
         _: &mut (),
     ) -> EmbeddedScalar {
+        todo!()
+    }
+}
+
+impl Sample for SchnorrHashFunction {
+    #[inline]
+    fn sample<R>(distribution: (), rng: &mut R) -> Self
+    where
+        R: RngCore + ?Sized,
+    {
         todo!()
     }
 }

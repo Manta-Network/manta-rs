@@ -35,6 +35,7 @@ use manta_crypto::{
         duplex::{self, Setup, Types, Verify},
         sponge::{Read, Write},
     },
+    rand::{Rand, RngCore, Sample},
 };
 use manta_util::{vec::padded_chunks_with, BoxArray};
 
@@ -280,6 +281,14 @@ where
 }
 
 /// Block Array
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "B: Clone"),
+    Debug(bound = "B: Debug"),
+    Eq(bound = "B: Eq"),
+    Hash(bound = "B: Hash"),
+    PartialEq(bound = "B: PartialEq")
+)]
 pub struct BlockArray<B, const N: usize>(pub BoxArray<B, N>);
 
 impl<B, const N: usize> Deref for BlockArray<B, N> {
@@ -486,6 +495,22 @@ where
     fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
         Self {
             initial_state: this.initial_state.as_constant(compiler),
+        }
+    }
+}
+
+impl<const N: usize, S, D> Sample<D> for FixedEncryption<N, S>
+where
+    S: Specification,
+    State<S>: Sample<D>,
+{
+    #[inline]
+    fn sample<R>(distribution: D, rng: &mut R) -> Self
+    where
+        R: RngCore + ?Sized,
+    {
+        Self {
+            initial_state: rng.sample(distribution),
         }
     }
 }

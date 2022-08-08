@@ -205,6 +205,21 @@ where
     }
 }
 
+impl<S, D> Sample<D> for State<S>
+where
+    S: Specification,
+    S::Field: Sample<D>,
+    D: Clone,
+{
+    #[inline]
+    fn sample<R>(distribution: D, rng: &mut R) -> Self
+    where
+        R: RngCore + ?Sized,
+    {
+        todo!()
+    }
+}
+
 /// Poseidon Permutation
 #[cfg_attr(
     feature = "serde",
@@ -470,13 +485,13 @@ where
     }
 }
 
-impl<D, S, COM> Sample<D> for Permutation<S, COM>
+impl<S> Sample for Permutation<S>
 where
-    S: Specification<COM>,
+    S: Specification,
     S::ParameterField: Field + FieldGeneration,
 {
     #[inline]
-    fn sample<R>(distribution: D, rng: &mut R) -> Self
+    fn sample<R>(distribution: (), rng: &mut R) -> Self
     where
         R: RngCore + ?Sized,
     {

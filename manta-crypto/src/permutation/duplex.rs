@@ -36,6 +36,7 @@ use crate::{
         sponge::{Read, Sponge, Write},
         PseudorandomPermutation,
     },
+    rand::{Rand, RngCore, Sample},
 };
 use alloc::vec::Vec;
 use core::marker::PhantomData;
@@ -297,6 +298,20 @@ where
             this.permutation.as_constant(compiler),
             this.configuration.as_constant(compiler),
         )
+    }
+}
+
+impl<P, C, DP, DC> Sample<(DP, DC)> for Duplexer<P, C>
+where
+    P: PseudorandomPermutation + Sample<DP>,
+    C: Types<P> + Sample<DC>,
+{
+    #[inline]
+    fn sample<R>(distribution: (DP, DC), rng: &mut R) -> Self
+    where
+        R: RngCore + ?Sized,
+    {
+        Self::new(rng.sample(distribution.0), rng.sample(distribution.1))
     }
 }
 

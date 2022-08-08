@@ -20,6 +20,7 @@ use crate::{
     asset,
     transfer::utxo::{self, auth},
 };
+use core::fmt::Debug;
 use manta_crypto::{
     accumulator::{self, ItemHashFunction, MembershipProof},
     algebra::{
@@ -572,6 +573,33 @@ where
     }
 }
 
+impl<C, DUCS, DIBES, DVKDF, DUAIH, DNCS, DOBES> Sample<(DUCS, DIBES, DVKDF, DUAIH, DNCS, DOBES)>
+    for BaseParameters<C>
+where
+    C: BaseConfiguration<Bool = bool>,
+    C::UtxoCommitmentScheme: Sample<DUCS>,
+    C::IncomingBaseEncryptionScheme: Sample<DIBES>,
+    C::ViewingKeyDerivationFunction: Sample<DVKDF>,
+    C::UtxoAccumulatorItemHash: Sample<DUAIH>,
+    C::NullifierCommitmentScheme: Sample<DNCS>,
+    C::OutgoingBaseEncryptionScheme: Sample<DOBES>,
+{
+    #[inline]
+    fn sample<R>(distribution: (DUCS, DIBES, DVKDF, DUAIH, DNCS, DOBES), rng: &mut R) -> Self
+    where
+        R: RngCore + ?Sized,
+    {
+        Self {
+            utxo_commitment_scheme: rng.sample(distribution.0),
+            incoming_base_encryption_scheme: rng.sample(distribution.1),
+            viewing_key_derivation_function: rng.sample(distribution.2),
+            utxo_accumulator_item_hash: rng.sample(distribution.3),
+            nullifier_commitment_scheme: rng.sample(distribution.4),
+            outgoing_base_encryption_scheme: rng.sample(distribution.5),
+        }
+    }
+}
+
 /// UTXO Model Parameters
 pub struct Parameters<C>
 where
@@ -1032,6 +1060,24 @@ where
     }
 }
 
+impl<C, DBP, DSS> Sample<(DBP, DSS)> for Parameters<C>
+where
+    C: Configuration<Bool = bool>,
+    BaseParameters<C>: Sample<DBP>,
+    C::SignatureScheme: Sample<DSS>,
+{
+    #[inline]
+    fn sample<R>(distribution: (DBP, DSS), rng: &mut R) -> Self
+    where
+        R: RngCore + ?Sized,
+    {
+        Self {
+            base: rng.sample(distribution.0),
+            signature_scheme: rng.sample(distribution.1),
+        }
+    }
+}
+
 /// Address
 pub struct Address<C, COM = ()>
 where
@@ -1143,6 +1189,8 @@ where
 }
 
 /// UTXO
+#[derive(derivative::Derivative)]
+#[derivative(Debug(bound = "C::Bool: Debug, Asset<C, COM>: Debug, UtxoCommitment<C, COM>: Debug"))]
 pub struct Utxo<C, COM = ()>
 where
     C: BaseConfiguration<COM>,
@@ -1809,6 +1857,8 @@ where
 }
 
 /// Nullifier
+#[derive(derivative::Derivative)]
+#[derivative(Debug(bound = "NullifierCommitment<C, COM>: Debug, OutgoingNote<C, COM>: Debug"))]
 pub struct Nullifier<C, COM = ()>
 where
     C: BaseConfiguration<COM>,

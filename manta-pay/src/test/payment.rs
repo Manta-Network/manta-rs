@@ -17,13 +17,10 @@
 //! Prove and Verify Functions for Benchmark and Test Purposes
 
 use crate::config::{
-    self, FullParameters, MerkleTreeConfiguration, Mint, MultiProvingContext, Parameters,
-    PrivateTransfer, ProvingContext, Reclaim, UtxoAccumulatorModel,
+    self, utxo, utxo::v1::UtxoAccumulatorModel, FullParametersRef, MultiProvingContext, Parameters,
+    PrivateTransfer, ProvingContext, ToPrivate, ToPublic,
 };
-use manta_accounting::{
-    asset::{Asset, AssetId},
-    transfer::SpendingKey,
-};
+use manta_accounting::transfer::SpendingKey;
 use manta_crypto::{
     accumulator::Accumulator,
     merkle_tree::{forest::TreeArrayMerkleForest, full::Full},
@@ -31,8 +28,13 @@ use manta_crypto::{
 };
 
 /// UTXO Accumulator for Building Test Circuits
-pub type UtxoAccumulator =
-    TreeArrayMerkleForest<MerkleTreeConfiguration, Full<MerkleTreeConfiguration>, 256>;
+pub type UtxoAccumulator = TreeArrayMerkleForest<
+    utxo::v1::MerkleTreeConfiguration,
+    Full<utxo::v1::MerkleTreeConfiguration>,
+    256,
+>;
+
+/*
 
 /// Generates a proof for a [`Mint`] transaction.
 #[inline]
@@ -142,3 +144,5 @@ where
     )
     .expect("Unable to build RECLAIM proof.")
 }
+
+*/

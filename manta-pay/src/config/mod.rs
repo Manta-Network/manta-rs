@@ -143,18 +143,11 @@ impl transfer::Configuration for Config {
     type ProofSystem = ProofSystem;
 }
 
-/* FIXME[remove]:
 /// Transfer Parameters
 pub type Parameters = transfer::Parameters<Config>;
 
 /// Full Transfer Parameters
-pub type FullParameters<'p> = transfer::FullParameters<'p, Config>;
-
-/// Note Type
-pub type Note = transfer::Note<Config>;
-
-/// Encrypted Note Type
-pub type EncryptedNote = transfer::EncryptedNote<Config>;
+pub type FullParametersRef<'p> = transfer::FullParametersRef<'p, Config>;
 
 /// Sender Type
 pub type Sender = transfer::Sender<Config>;
@@ -171,14 +164,14 @@ pub type ReceiverPost = transfer::ReceiverPost<Config>;
 /// Transfer Post Type
 pub type TransferPost = transfer::TransferPost<Config>;
 
-/// Mint Transfer Type
-pub type Mint = transfer::canonical::Mint<Config>;
+/// To-Private Transfer Type
+pub type ToPrivate = transfer::canonical::ToPrivate<Config>;
 
 /// Private Transfer Type
 pub type PrivateTransfer = transfer::canonical::PrivateTransfer<Config>;
 
-/// Reclaim Transfer Type
-pub type Reclaim = transfer::canonical::Reclaim<Config>;
+/// To-Public Transfer Type
+pub type ToPublic = transfer::canonical::ToPublic<Config>;
 
 /// Proving Context Type
 pub type ProvingContext = transfer::ProvingContext<Config>;
@@ -198,9 +191,7 @@ pub type Transaction = transfer::canonical::Transaction<Config>;
 /// Spending Key Type
 pub type SpendingKey = transfer::SpendingKey<Config>;
 
-/// Receiving Key Type
-pub type ReceivingKey = transfer::ReceivingKey<Config>;
-
+/*
 /// Converts a [`ReceivingKey`] into a base58-encoded string.
 #[cfg(feature = "bs58")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "bs58")))]
@@ -230,6 +221,4 @@ pub fn receiving_key_from_base58(string: &str) -> Option<ReceivingKey> {
         view: view.to_owned().try_into().ok()?,
     })
 }
-*/
-
 */

@@ -1422,7 +1422,7 @@ where
     /// Asserts that `self` has a valid proof. See [`has_valid_proof`](Self::has_valid_proof) for
     /// more.
     #[inline]
-    pub fn assert_valid_proof(&self, verifying_context: &VerifyingContext<C>)
+    pub fn assert_valid_proof(&self, verifying_context: &VerifyingContext<C>) -> &Proof<C>
     where
         Self: Debug,
         ProofSystemError<C>: Debug,
@@ -1433,6 +1433,7 @@ where
             "Invalid TransferPost: {:?}.",
             self,
         );
+        &self.body.validity_proof
     }
 
     /// Verifies that the authorization signature for `self` is valid under the `parameters`.

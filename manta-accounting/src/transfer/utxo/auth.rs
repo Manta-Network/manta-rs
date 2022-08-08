@@ -296,15 +296,25 @@ where
     }
 }
 
-///
+/// Authorization Signature
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "T::AuthorizationKey: Clone, T::Signature: Clone"),
+    Copy(bound = "T::AuthorizationKey: Copy, T::Signature: Copy"),
+    Debug(bound = "T::AuthorizationKey: Debug, T::Signature: Debug"),
+    Default(bound = "T::AuthorizationKey: Default, T::Signature: Default"),
+    Eq(bound = "T::AuthorizationKey: Eq, T::Signature: Eq"),
+    Hash(bound = "T::AuthorizationKey: Hash, T::Signature: Hash"),
+    PartialEq(bound = "T::AuthorizationKey: PartialEq, T::Signature: PartialEq")
+)]
 pub struct AuthorizationSignature<T>
 where
     T: AuthorizationKeyType + SignatureType,
 {
-    ///
+    /// Authorization Key
     pub authorization_key: T::AuthorizationKey,
 
-    ///
+    /// Signature
     pub signature: T::Signature,
 }
 

@@ -212,6 +212,7 @@ pub mod schnorr {
         algebra::{security::DiscreteLogarithmHardness, Generator, Group, Scalar},
         eclair::{alloc::Constant, bool::Bool, cmp::PartialEq, Has},
         hash::security::PreimageResistance,
+        rand::{Rand, RngCore, Sample},
     };
     use core::{cmp, fmt::Debug, hash::Hash, marker::PhantomData};
 
@@ -311,6 +312,20 @@ pub mod schnorr {
         #[inline]
         fn generator(&self) -> &Self::Group {
             &self.generator
+        }
+    }
+
+    impl<G, H, DG, DH> Sample<(DG, DH)> for Schnorr<G, H>
+    where
+        G: DiscreteLogarithmHardness + Group + Sample<DG>,
+        H: HashFunction<G> + Sample<DH>,
+    {
+        #[inline]
+        fn sample<R>(distribution: (DG, DH), rng: &mut R) -> Self
+        where
+            R: RngCore + ?Sized,
+        {
+            Self::new(rng.sample(distribution.0), rng.sample(distribution.1))
         }
     }
 

@@ -17,7 +17,7 @@
 //! Manta Pay Transfer Testing
 
 use crate::{
-    config::{FullParameters, Mint, PrivateTransfer, Proof, ProofSystem, Reclaim},
+    config::{FullParametersRef, PrivateTransfer, Proof, ProofSystem, ToPrivate, ToPublic},
     test::payment::UtxoAccumulator,
     util::scale::{assert_valid_codec, assert_valid_io_codec},
 };
@@ -28,46 +28,47 @@ use manta_crypto::{
 };
 use std::io::Cursor;
 
-/// Tests the generation of proving/verifying contexts for [`Mint`].
+/// Tests the generation of proving/verifying contexts for [`ToPrivate`].
 #[test]
-fn sample_mint_context() {
+fn sample_to_private_context() {
     let mut rng = OsRng;
-    let cs = Mint::unknown_constraints(FullParameters::new(&rng.gen(), &rng.gen()));
-    println!("Mint: {:?}", cs.measure());
-    ProofSystem::compile(&(), cs, &mut rng).expect("Unable to generate Mint context.");
+    let cs = ToPrivate::unknown_constraints(FullParametersRef::new(&rng.gen(), &rng.gen()));
+    println!("ToPrivate: {:?}", cs.measure());
+    ProofSystem::compile(&(), cs, &mut rng).expect("Unable to generate ToPrivate context.");
 }
 
 /// Tests the generation of proving/verifying contexts for [`PrivateTransfer`].
 #[test]
 fn sample_private_transfer_context() {
     let mut rng = OsRng;
-    let cs = PrivateTransfer::unknown_constraints(FullParameters::new(&rng.gen(), &rng.gen()));
+    let cs = PrivateTransfer::unknown_constraints(FullParametersRef::new(&rng.gen(), &rng.gen()));
     println!("PrivateTransfer: {:?}", cs.measure());
     ProofSystem::compile(&(), cs, &mut rng).expect("Unable to generate PrivateTransfer context.");
 }
 
-/// Tests the generation of proving/verifying contexts for [`Reclaim`].
+/// Tests the generation of proving/verifying contexts for [`ToPublic`].
 #[test]
-fn sample_reclaim_context() {
+fn sample_to_public_context() {
     let mut rng = OsRng;
-    let cs = Reclaim::unknown_constraints(FullParameters::new(&rng.gen(), &rng.gen()));
-    println!("Reclaim: {:?}", cs.measure());
-    ProofSystem::compile(&(), cs, &mut rng).expect("Unable to generate Reclaim context.");
+    let cs = ToPublic::unknown_constraints(FullParametersRef::new(&rng.gen(), &rng.gen()));
+    println!("ToPublic: {:?}", cs.measure());
+    ProofSystem::compile(&(), cs, &mut rng).expect("Unable to generate ToPublic context.");
 }
 
-/// Tests the generation of a [`Mint`].
+/// Tests the generation of a [`ToPrivate`].
 #[test]
-fn mint() {
+fn to_private() {
     let mut rng = OsRng;
     assert!(
-        Mint::sample_and_check_proof(
+        ToPrivate::sample_and_check_proof(
             &(),
             &rng.gen(),
             &mut UtxoAccumulator::new(rng.gen()),
+            None,
             &mut rng
         )
-        .expect("Random Mint should have successfully produced a proof."),
-        "The Mint proof should have been valid."
+        .expect("Random ToPrivate should have successfully produced a proof."),
+        "The ToPrivate proof should have been valid."
     );
 }
 
@@ -80,6 +81,7 @@ fn private_transfer() {
             &(),
             &rng.gen(),
             &mut UtxoAccumulator::new(rng.gen()),
+            Some(&rng.gen()),
             &mut rng
         )
         .expect("Random PrivateTransfer should have successfully produced a proof."),
@@ -87,61 +89,80 @@ fn private_transfer() {
     );
 }
 
-/// Tests the generation of a [`Reclaim`].
+/// Tests the generation of a [`ToPublic`].
 #[test]
-fn reclaim() {
+fn to_public() {
     let mut rng = OsRng;
     assert!(
-        Reclaim::sample_and_check_proof(
+        ToPublic::sample_and_check_proof(
             &(),
             &rng.gen(),
             &mut UtxoAccumulator::new(rng.gen()),
+            Some(&rng.gen()),
             &mut rng
         )
-        .expect("Random Reclaim should have successfully produced a proof."),
-        "The Reclaim proof should have been valid."
+        .expect("Random ToPublic should have successfully produced a proof."),
+        "The ToPublic proof should have been valid."
     );
 }
 
-/// Tests that `generate_proof_input` from [`Transfer`] and [`TransferPost`] gives the same [`ProofInput`].
+/// Tests that `generate_proof_input` from [`Transfer`] and [`TransferPost`] gives the same
+/// [`ProofInput`] for [`ToPrivate`].
 #[test]
-fn generate_proof_input_is_compatibile() {
+fn to_private_generate_proof_input_is_compatibile() {
     let mut rng = OsRng;
     assert!(
         matches!(
-            Mint::sample_and_check_generate_proof_input_compatibility(
+            ToPrivate::sample_and_check_generate_proof_input_compatibility(
                 &(),
                 &rng.gen(),
                 &mut UtxoAccumulator::new(rng.gen()),
+                None,
                 &mut rng
             ),
             Ok(true),
         ),
-        "For a random Mint, `generate_proof_input` from `Transfer` and `TransferPost` should have given the same `ProofInput`."
+        "For a random ToPrivate, `generate_proof_input` from `Transfer` and `TransferPost` should have given the same `ProofInput`."
     );
+}
+
+/// Tests that `generate_proof_input` from [`Transfer`] and [`TransferPost`] gives the same
+/// [`ProofInput`] for [`PrivateTransfer`].
+#[test]
+fn private_transfer_generate_proof_input_is_compatibile() {
+    let mut rng = OsRng;
     assert!(
         matches!(
             PrivateTransfer::sample_and_check_generate_proof_input_compatibility(
                 &(),
                 &rng.gen(),
                 &mut UtxoAccumulator::new(rng.gen()),
+                Some(&rng.gen()),
                 &mut rng
             ),
             Ok(true),
         ),
         "For a random PrivateTransfer, `generate_proof_input` from `Transfer` and `TransferPost` should have given the same `ProofInput`."
     );
+}
+
+/// Tests that `generate_proof_input` from [`Transfer`] and [`TransferPost`] gives the same
+/// [`ProofInput`] for [`ToPublic`].
+#[test]
+fn to_public_generate_proof_input_is_compatibile() {
+    let mut rng = OsRng;
     assert!(
         matches!(
-            Reclaim::sample_and_check_generate_proof_input_compatibility(
+            ToPublic::sample_and_check_generate_proof_input_compatibility(
                 &(),
                 &rng.gen(),
                 &mut UtxoAccumulator::new(rng.gen()),
+                Some(&rng.gen()),
                 &mut rng
             ),
             Ok(true),
         ),
-        "For a random Reclaim, `generate_proof_input` from `Transfer` and `TransferPost` should have given the same `ProofInput`."
+        "For a random ToPublic, `generate_proof_input` from `Transfer` and `TransferPost` should have given the same `ProofInput`."
     );
 }
 
@@ -157,25 +178,27 @@ fn assert_valid_proof_codec(proof: &Proof) {
     );
 }
 
-/// Tests the SCALE encoding and decoding of a [`Mint`] proof.
+/// Tests the SCALE encoding and decoding of a [`ToPrivate`] proof.
 #[test]
-fn mint_proof_scale_codec() {
+fn to_private_proof_scale_codec() {
     let mut rng = OsRng;
     let parameters = rng.gen();
     let mut utxo_accumulator = UtxoAccumulator::new(rng.gen());
-    let (proving_context, verifying_context) = Mint::generate_context(
+    let (proving_context, verifying_context) = ToPrivate::generate_context(
         &(),
-        FullParameters::new(&parameters, utxo_accumulator.model()),
+        FullParametersRef::new(&parameters, utxo_accumulator.model()),
         &mut rng,
     )
     .expect("Unable to create proving and verifying contexts.");
-    let post = Mint::sample_post(
+    let post = ToPrivate::sample_post(
         &proving_context,
         &parameters,
         &mut utxo_accumulator,
+        None,
         &mut rng,
     )
-    .expect("Random Mint should have produced a proof.");
+    .expect("Random ToPrivate should have produced a proof.")
+    .expect("Correct shape should have been used.");
     assert_valid_proof_codec(post.assert_valid_proof(&verifying_context));
 }
 
@@ -187,7 +210,7 @@ fn private_transfer_proof_scale_codec() {
     let mut utxo_accumulator = UtxoAccumulator::new(rng.gen());
     let (proving_context, verifying_context) = PrivateTransfer::generate_context(
         &(),
-        FullParameters::new(&parameters, utxo_accumulator.model()),
+        FullParametersRef::new(&parameters, utxo_accumulator.model()),
         &mut rng,
     )
     .expect("Unable to create proving and verifying contexts.");
@@ -195,30 +218,34 @@ fn private_transfer_proof_scale_codec() {
         &proving_context,
         &parameters,
         &mut utxo_accumulator,
+        Some(&rng.gen()),
         &mut rng,
     )
-    .expect("Random PrivateTransfer should have produced a proof.");
+    .expect("Random PrivateTransfer should have produced a proof.")
+    .expect("Correct shape should have been used.");
     assert_valid_proof_codec(post.assert_valid_proof(&verifying_context));
 }
 
-/// Tests the SCALE encoding and decoding of a [`Mint`] proof.
+/// Tests the SCALE encoding and decoding of a [`ToPublic`] proof.
 #[test]
-fn reclaim_proof_scale_codec() {
+fn to_public_proof_scale_codec() {
     let mut rng = OsRng;
     let parameters = rng.gen();
     let mut utxo_accumulator = UtxoAccumulator::new(rng.gen());
-    let (proving_context, verifying_context) = Reclaim::generate_context(
+    let (proving_context, verifying_context) = ToPublic::generate_context(
         &(),
-        FullParameters::new(&parameters, utxo_accumulator.model()),
+        FullParametersRef::new(&parameters, utxo_accumulator.model()),
         &mut rng,
     )
     .expect("Unable to create proving and verifying contexts.");
-    let post = Reclaim::sample_post(
+    let post = ToPublic::sample_post(
         &proving_context,
         &parameters,
         &mut utxo_accumulator,
+        Some(&rng.gen()),
         &mut rng,
     )
-    .expect("Random Reclaim should have produced a proof.");
+    .expect("Random ToPublic should have produced a proof.")
+    .expect("Correct shape should have been used.");
     assert_valid_proof_codec(post.assert_valid_proof(&verifying_context));
 }

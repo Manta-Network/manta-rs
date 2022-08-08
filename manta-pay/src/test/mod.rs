@@ -23,8 +23,10 @@
 // #[cfg_attr(doc_cfg, doc(cfg(feature = "simulation")))]
 // pub mod simulation;
 
+/* TODO:
 #[cfg(test)]
 pub mod compatibility;
+*/
 
 #[cfg(test)]
 pub mod transfer;

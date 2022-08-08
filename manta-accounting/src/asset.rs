@@ -1050,33 +1050,3 @@ where
 {
     impl_asset_manager_for_maps_body! { I }
 }
-
-/// Testing Suite
-#[cfg(test)]
-mod test {
-    use super::*;
-    use manta_crypto::rand::OsRng;
-
-    /// Tests asset conversion into and from bytes.
-    #[test]
-    fn asset_into_and_from_bytes() {
-        let mut rng = OsRng;
-        let asset = Asset::gen(&mut rng);
-        assert_eq!(asset, Asset::from_bytes(asset.into_bytes()));
-        let mut asset_bytes = [0; Asset::SIZE];
-        rng.fill_bytes(&mut asset_bytes);
-        assert_eq!(asset_bytes, Asset::from_bytes(asset_bytes).into_bytes());
-    }
-
-    /// Tests asset arithmetic.
-    #[test]
-    fn asset_arithmetic() {
-        let mut rng = OsRng;
-        let mut asset = Asset::zero(rng.gen());
-        let value = rng.gen();
-        let _ = asset + value;
-        asset += value;
-        let _ = asset - value;
-        asset -= value;
-    }
-}
