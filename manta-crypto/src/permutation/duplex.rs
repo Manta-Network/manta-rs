@@ -20,7 +20,7 @@
 //       dropping it on decryption.
 
 use crate::{
-    constraint::{HasInput, Input},
+    constraint::{measure::print_measurement, HasInput, Input},
     eclair::{
         self,
         alloc::{mode::Public, Allocate, Allocator, Constant, Variable},
@@ -398,6 +398,7 @@ impl<P, C, COM> Encrypt<COM> for Duplexer<P, C, COM>
 where
     P: PseudorandomPermutation<COM>,
     C: Setup<P, COM>,
+    COM: crate::constraint::measure::Measure,
 {
     #[inline]
     fn encrypt(
@@ -409,7 +410,11 @@ where
         compiler: &mut COM,
     ) -> Self::Ciphertext {
         let _ = randomness;
-        let (tag, ciphertext) = self.duplex_encryption(encryption_key, header, plaintext, compiler);
+        let (tag, ciphertext) = print_measurement(
+            "DUPLEX ENCRYPTION",
+            |compiler| self.duplex_encryption(encryption_key, header, plaintext, compiler),
+            compiler,
+        );
         Ciphertext {
             tag,
             message: ciphertext,

@@ -25,7 +25,7 @@ use crate::{
         GroupCurve, GroupCurveAffine, GroupVar,
     },
     crypto::{
-        constraint::arkworks::{Boolean, Fp, FpVar, R1CS},
+        constraint::arkworks::{Boolean, Fp, FpVar},
         ecc::arkworks::{self, ScalarVar},
         poseidon::{self, encryption::BlockArray, hash::Hasher, ParameterFieldType},
     },
@@ -42,10 +42,10 @@ use manta_crypto::{
         ff::{try_into_u128, PrimeField, ToBytes},
         serialize::CanonicalSerialize,
     },
+    constraint::measure::{print_measurement, Measure},
     eclair::{
         alloc::{Allocate, Constant},
         num::U128,
-        Has,
     },
     encryption, hash,
     hash::ArrayHashFunction,
@@ -253,14 +253,20 @@ impl protocol::UtxoCommitmentScheme<Compiler> for UtxoCommitmentScheme<Compiler>
         receiving_key: &Self::ReceivingKey,
         compiler: &mut Compiler,
     ) -> Self::Commitment {
-        self.0.hash(
-            [
-                randomness,
-                asset_id,
-                asset_value.as_ref(),
-                &receiving_key.0.x,
-                &receiving_key.0.y,
-            ],
+        print_measurement(
+            "UTXO COMMITMENT SCHEME",
+            |compiler| {
+                self.0.hash(
+                    [
+                        randomness,
+                        asset_id,
+                        asset_value.as_ref(),
+                        &receiving_key.0.x,
+                        &receiving_key.0.y,
+                    ],
+                    compiler,
+                )
+            },
             compiler,
         )
     }
@@ -323,8 +329,13 @@ impl protocol::ViewingKeyDerivationFunction for ViewingKeyDerivationFunction {
         proof_authorization_key: &Self::ProofAuthorizationKey,
         compiler: &mut (),
     ) -> Self::ViewingKey {
-        let mut bytes = Vec::with_capacity(32);
-        (self
+        use manta_crypto::arkworks::{
+            ec::{AffineCurve, ProjectiveCurve},
+            ff::{BigInteger, BigInteger256, FpParameters},
+        };
+        use num_bigint::BigUint;
+
+        let viewing_key = self
             .0
             .hash(
                 [
@@ -333,11 +344,64 @@ impl protocol::ViewingKeyDerivationFunction for ViewingKeyDerivationFunction {
                 ],
                 compiler,
             )
-            .0)
-            .0
-            .write(&mut bytes)
-            .expect("Writing to a vector never fails.");
-        Fp(EmbeddedScalarField::from_le_bytes_mod_order(&bytes))
+            .0;
+        // println!("BEFORE: {:?}\n", viewing_key);
+
+        let bytes = viewing_key.0.to_bytes_le();
+        /*
+        for byte in &bytes {
+            print!("{:b}", byte);
+        }
+
+        let mut resconstructed_data = BigInteger256::default();
+        resconstructed_data
+            .read_le(&mut bytes.as_slice())
+            .expect("");
+        let resconstructed = Fp(ConstraintField::new(resconstructed_data));
+        println!("\nRECONSTRUCTED: {:?}\n", resconstructed,);
+        */
+
+        let mut resconstructed_data2 = BigInteger256::default();
+        resconstructed_data2
+            .read_le(&mut BigUint::from_bytes_le(&bytes).to_bytes_le().as_slice())
+            .expect("");
+        let resconstructed2 = Fp(ConstraintField::new(resconstructed_data2));
+        /*
+        println!("\nRECONSTRUCTED2: {:?}\n", resconstructed2,);
+
+        println!(
+            "\nBEFORE MUL: {:?}\n",
+            GroupCurveAffine::prime_subgroup_generator()
+                .into_projective()
+                .mul(viewing_key.0)
+                .into_affine()
+        );
+
+        let modulus = BigUint::from_bytes_be(
+            &<EmbeddedScalarField as PrimeField>::Params::MODULUS.to_bytes_be(),
+        );
+        let mut resconstructed_data3 = BigInteger256::default();
+        resconstructed_data3
+            .read_le(
+                &mut BigUint::from_bytes_le(&bytes)
+                    .modpow(&(1u8).into(), &modulus)
+                    .to_bytes_le()
+                    .as_slice(),
+            )
+            .expect("");
+        */
+        let result = Fp(EmbeddedScalarField::new(resconstructed_data2));
+        /*
+        println!("AFTER: {:?}\n", result);
+        println!(
+            "AFTER MUL: {:?}\n",
+            GroupCurveAffine::prime_subgroup_generator()
+                .into_projective()
+                .mul(result.0 .0)
+                .into_affine()
+        );
+        */
+        result
     }
 }
 
@@ -351,10 +415,36 @@ impl protocol::ViewingKeyDerivationFunction<Compiler> for ViewingKeyDerivationFu
         proof_authorization_key: &Self::ProofAuthorizationKey,
         compiler: &mut Compiler,
     ) -> Self::ViewingKey {
-        ScalarVar::new(self.0.hash(
-            [&proof_authorization_key.0.x, &proof_authorization_key.0.y],
+        use manta_crypto::arkworks::{
+            ec::{AffineCurve, ProjectiveCurve},
+            r1cs_std::R1CSVar,
+        };
+        let result = print_measurement(
+            "VIEWING KEY DERIVATION FUNCTION",
+            |compiler| {
+                ScalarVar::new(self.0.hash(
+                    [&proof_authorization_key.0.x, &proof_authorization_key.0.y],
+                    compiler,
+                ))
+            },
             compiler,
-        ))
+        );
+        /*
+        match <FpVar<_> as R1CSVar<ConstraintField>>::value(&result.0) {
+            Ok(value) => {
+                println!("CIRCUIT: {:?}\n", value);
+                println!(
+                    "CIRCUIT MUL: {:?}\n",
+                    GroupCurveAffine::prime_subgroup_generator()
+                        .into_projective()
+                        .mul(value.0)
+                        .into_affine()
+                );
+            }
+            _ => {}
+        }
+        */
+        result
     }
 }
 
@@ -644,13 +734,19 @@ impl protocol::UtxoAccumulatorItemHash<Compiler> for UtxoAccumulatorItemHash<Com
         commitment: &Self::Commitment,
         compiler: &mut Compiler,
     ) -> Self::Item {
-        self.0.hash(
-            [
-                &(is_transparent.clone()).into(),
-                public_asset_id,
-                public_asset_value.as_ref(),
-                commitment,
-            ],
+        print_measurement(
+            "UTXO ACCUMULATOR ITEM HASH",
+            |compiler| {
+                self.0.hash(
+                    [
+                        &(is_transparent.clone()).into(),
+                        public_asset_id,
+                        public_asset_value.as_ref(),
+                        commitment,
+                    ],
+                    compiler,
+                )
+            },
             compiler,
         )
     }
@@ -723,7 +819,11 @@ impl merkle_tree::InnerHash<Compiler> for InnerHash<Compiler> {
         rhs: &Self::Output,
         compiler: &mut Compiler,
     ) -> Self::Output {
-        parameters.hash([lhs, rhs], compiler)
+        print_measurement(
+            "INNER HASH",
+            |compiler| parameters.hash([lhs, rhs], compiler),
+            compiler,
+        )
     }
 
     #[inline]
@@ -733,7 +833,11 @@ impl merkle_tree::InnerHash<Compiler> for InnerHash<Compiler> {
         rhs: &Self::LeafDigest,
         compiler: &mut Compiler,
     ) -> Self::Output {
-        parameters.hash([lhs, rhs], compiler)
+        print_measurement(
+            "INNER HASH",
+            |compiler| parameters.hash([lhs, rhs], compiler),
+            compiler,
+        )
     }
 }
 
@@ -907,12 +1011,18 @@ impl protocol::NullifierCommitmentScheme<Compiler> for NullifierCommitmentScheme
         item: &Self::UtxoAccumulatorItem,
         compiler: &mut Compiler,
     ) -> Self::Commitment {
-        self.0.hash(
-            [
-                &proof_authorization_key.0.x,
-                &proof_authorization_key.0.y,
-                item,
-            ],
+        print_measurement(
+            "NULLIFIER COMMITMENT SCHEME",
+            |compiler| {
+                self.0.hash(
+                    [
+                        &proof_authorization_key.0.x,
+                        &proof_authorization_key.0.y,
+                        item,
+                    ],
+                    compiler,
+                )
+            },
             compiler,
         )
     }

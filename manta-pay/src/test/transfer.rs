@@ -106,6 +106,8 @@ fn to_public() {
     );
 }
 
+/* IGNORE:
+
 /// Tests that `generate_proof_input` from [`Transfer`] and [`TransferPost`] gives the same
 /// [`ProofInput`] for [`ToPrivate`].
 #[test]
@@ -165,6 +167,10 @@ fn to_public_generate_proof_input_is_compatibile() {
         "For a random ToPublic, `generate_proof_input` from `Transfer` and `TransferPost` should have given the same `ProofInput`."
     );
 }
+
+*/
+
+/* TODO:
 
 /// Asserts that `proof` can be SCALE encoded and decoded with at least [`Vec`], [`Cursor`], and
 /// [`File`](std::fs::File).
@@ -249,3 +255,5 @@ fn to_public_proof_scale_codec() {
     .expect("Correct shape should have been used.");
     assert_valid_proof_codec(post.assert_valid_proof(&verifying_context));
 }
+
+*/

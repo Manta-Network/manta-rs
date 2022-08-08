@@ -137,6 +137,8 @@ pub mod measure {
         }
     }
 
+    impl<M> Count<M> for () {}
+
     /// Constraint System Measurement
     pub trait Measure: Count<Constant> + Count<Public> + Count<Secret> {
         /// Returns the number of constraints stored in `self`.
@@ -174,6 +176,13 @@ pub mod measure {
             let mut measurement = Default::default();
             self.after(&mut measurement, f);
             measurement
+        }
+    }
+
+    impl Measure for () {
+        #[inline]
+        fn constraint_count(&self) -> usize {
+            0
         }
     }
 
@@ -263,6 +272,27 @@ pub mod measure {
                 (None, rhs) => self.secret_variable_count = rhs,
             }
         }
+    }
+
+    /// Prints the measurement of the call to `f` with the given `label`.
+    #[inline]
+    pub fn print_measurement<COM, D, F, T>(label: D, f: F, compiler: &mut COM) -> T
+    where
+        COM: Measure,
+        D: Display,
+        F: FnOnce(&mut COM) -> T,
+    {
+        let before = compiler.measure();
+        let value = f(compiler);
+        println!(
+            "{}: {:?}",
+            label,
+            compiler
+                .measure()
+                .checked_sub(before)
+                .expect("Measurements should increase when adding more constraints.")
+        );
+        value
     }
 
     /// Measurement Instrument

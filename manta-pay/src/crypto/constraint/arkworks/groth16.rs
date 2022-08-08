@@ -19,7 +19,7 @@
 use crate::crypto::constraint::arkworks::{
     self,
     codec::{HasDeserialization, HasSerialization, SerializationError},
-    Fp, R1CS,
+    R1CS,
 };
 use alloc::vec::Vec;
 use ark_groth16::{Groth16 as ArkGroth16, PreparedVerifyingKey, ProvingKey};
@@ -28,7 +28,6 @@ use core::marker::PhantomData;
 use manta_crypto::{
     arkworks::{
         ec::PairingEngine,
-        ff::ToConstraintField,
         serialize::{CanonicalDeserialize, CanonicalSerialize, Read, Write},
     },
     constraint::{Input, ProofSystem},

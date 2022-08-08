@@ -184,7 +184,8 @@ impl<C, const SOURCES: usize, const SENDERS: usize, const RECEIVERS: usize, cons
 where
     C: Configuration,
 {
-    ///
+    /// Generates a new [`TransferDistribution`] from `parameters`, `utxo_accumulator`, and
+    /// `spending_key`.
     #[inline]
     fn generate_distribution<'s, 'p, A, R>(
         parameters: &'p Parameters<C>,
@@ -210,7 +211,7 @@ where
                 None,
                 TransferDistribution::new(parameters, utxo_accumulator, None),
             ),
-            _ => unreachable!(""),
+            _ => unreachable!("Authorization shape mismatch."),
         }
     }
 
@@ -326,7 +327,7 @@ where
     }
 }
 
-/// Samples a set of senders and receivers.
+/// Samples a set of [`Sender`]s and [`Receiver`]s.
 #[inline]
 fn sample_senders_and_receivers<C, A, R>(
     parameters: &Parameters<C>,

@@ -17,49 +17,15 @@
 //! Manta-Pay Configuration
 
 use crate::crypto::{
-    constraint::arkworks::{field_element_as_bytes, groth16, Boolean, Fp, FpVar, R1CS},
+    constraint::arkworks::{groth16, FpVar, R1CS},
     ecc,
-    encryption::aes::{self, FixedNonceAesGcm},
-    key::Blake2sKdf,
-};
-use alloc::vec::Vec;
-use blake2::{
-    digest::{Update, VariableOutput},
-    Blake2sVar,
 };
 use bls12_381::Bls12_381;
 use bls12_381_ed::constraints::EdwardsVar as Bls12_381_EdwardsVar;
-use manta_accounting::{asset::Asset, transfer};
-use manta_crypto::{
-    accumulator,
-    algebra::DiffieHellman,
-    arkworks::{
-        ff::ToConstraintField,
-        serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError},
-    },
-    eclair::{
-        self,
-        alloc::{
-            mode::{Public, Secret},
-            Allocate, Allocator, Constant, Variable,
-        },
-        ops::Add,
-    },
-    encryption,
-    hash::ArrayHashFunction,
-    key::{self, kdf::KeyDerivationFunction},
-    merkle_tree,
-};
-use manta_util::{
-    codec::{Decode, DecodeError, Encode, Read, Write},
-    into_array_unchecked, Array, SizeLimit,
-};
+use manta_accounting::transfer;
 
 #[cfg(feature = "bs58")]
 use alloc::string::String;
-
-#[cfg(any(feature = "test", test))]
-use manta_crypto::rand::{Rand, RngCore, Sample};
 
 #[doc(inline)]
 pub use ark_bls12_381 as bls12_381;
