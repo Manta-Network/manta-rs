@@ -494,6 +494,7 @@ pub fn sample_to_private<C, R>(
     parameters: FullParametersRef<C>,
     proving_context: &ProvingContext<C>,
     authorization_context: &mut AuthorizationContext<C>,
+    address: Address<C>,
     asset: Asset<C>,
     associated_data: AssociatedData<C>,
     rng: &mut R,
@@ -505,6 +506,7 @@ where
     let (transaction, pre_sender) = ToPrivate::internal_pair(
         parameters.base,
         authorization_context,
+        address,
         asset,
         associated_data,
         rng,

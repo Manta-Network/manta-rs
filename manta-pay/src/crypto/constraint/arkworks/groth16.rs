@@ -512,6 +512,16 @@ where
     }
 }
 
+impl<E> Input<Groth16<E>> for bool
+where
+    E: PairingEngine,
+{
+    #[inline]
+    fn extend(&self, input: &mut Vec<E::Fr>) {
+        input.push((*self).into())
+    }
+}
+
 impl<E> Input<Groth16<E>> for u128
 where
     E: PairingEngine,

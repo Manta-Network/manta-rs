@@ -26,11 +26,11 @@ use manta_crypto::{
     algebra::{
         security::ComputationalDiffieHellmanHardness, DiffieHellman, Generator, Group, Scalar,
     },
-    constraint::{Input, ProofSystem},
+    constraint::{HasInput, Input},
     eclair::{
         alloc::{
             mode::{Derived, Public, Secret},
-            Allocate, Allocator, Constant, Var, Variable,
+            Allocate, Allocator, Const, Constant, Var, Variable,
         },
         bool::{Assert, AssertEq, Bool, ConditionalSelect},
         cmp::PartialEq,
@@ -470,7 +470,13 @@ where
         authorization_proof: &Self::AuthorizationProof,
         compiler: &mut COM,
     ) {
-        todo!()
+        let randomized_proof_authorization_key = authorization_context
+            .proof_authorization_key
+            .mul(&authorization_proof.randomness, compiler);
+        compiler.assert_eq(
+            &randomized_proof_authorization_key,
+            &authorization_proof.randomized_proof_authorization_key,
+        );
     }
 }
 
@@ -561,15 +567,48 @@ where
 
 impl<C, COM> Constant<COM> for BaseParameters<C, COM>
 where
-    C: BaseConfiguration<COM> + Constant<COM>,
     COM: Assert + Has<bool, Type = C::Bool>,
-    C::Type: Configuration<Bool = bool>,
+    C: BaseConfiguration<COM> + Constant<COM>,
+    C::Type: Configuration<
+        Bool = bool,
+        UtxoCommitmentScheme = Const<C::UtxoCommitmentScheme, COM>,
+        IncomingBaseEncryptionScheme = Const<C::IncomingBaseEncryptionScheme, COM>,
+        ViewingKeyDerivationFunction = Const<C::ViewingKeyDerivationFunction, COM>,
+        UtxoAccumulatorItemHash = Const<C::UtxoAccumulatorItemHash, COM>,
+        NullifierCommitmentScheme = Const<C::NullifierCommitmentScheme, COM>,
+        OutgoingBaseEncryptionScheme = Const<C::OutgoingBaseEncryptionScheme, COM>,
+    >,
+    C::UtxoCommitmentScheme: Constant<COM>,
+    C::IncomingBaseEncryptionScheme: Constant<COM>,
+    C::ViewingKeyDerivationFunction: Constant<COM>,
+    C::UtxoAccumulatorItemHash: Constant<COM>,
+    C::NullifierCommitmentScheme: Constant<COM>,
+    C::OutgoingBaseEncryptionScheme: Constant<COM>,
 {
     type Type = Parameters<C::Type>;
 
     #[inline]
     fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
-        todo!()
+        Self {
+            utxo_commitment_scheme: this.base.utxo_commitment_scheme.as_constant(compiler),
+            incoming_base_encryption_scheme: this
+                .base
+                .incoming_base_encryption_scheme
+                .as_constant(compiler),
+            viewing_key_derivation_function: this
+                .base
+                .viewing_key_derivation_function
+                .as_constant(compiler),
+            utxo_accumulator_item_hash: this.base.utxo_accumulator_item_hash.as_constant(compiler),
+            nullifier_commitment_scheme: this
+                .base
+                .nullifier_commitment_scheme
+                .as_constant(compiler),
+            outgoing_base_encryption_scheme: this
+                .base
+                .outgoing_base_encryption_scheme
+                .as_constant(compiler),
+        }
     }
 }
 
@@ -797,16 +836,6 @@ where
         signature: &Self::Signature,
         message: &M,
     ) -> bool {
-        todo!()
-    }
-}
-
-impl<C> utxo::DefaultAddress<AuthorizationContext<C>> for Parameters<C>
-where
-    C: Configuration<Bool = bool>,
-{
-    #[inline]
-    fn default_address(&self, base: &AuthorizationContext<C>) -> Self::Address {
         todo!()
     }
 }
@@ -1079,6 +1108,8 @@ where
 }
 
 /// Address
+#[derive(derivative::Derivative)]
+#[derivative(Clone(bound = "C::Group: Clone"))]
 pub struct Address<C, COM = ()>
 where
     C: BaseConfiguration<COM> + ?Sized,
@@ -1293,11 +1324,13 @@ where
 impl<C, P> Input<P> for Utxo<C>
 where
     C: BaseConfiguration<Bool = bool>,
-    P: ProofSystem + ?Sized,
+    P: HasInput<C::Bool> + HasInput<Asset<C>> + HasInput<UtxoCommitment<C>> + ?Sized,
 {
     #[inline]
     fn extend(&self, input: &mut P::Input) {
-        todo!()
+        P::extend(input, &self.is_transparent);
+        P::extend(input, &self.public_asset);
+        P::extend(input, &self.commitment);
     }
 }
 
@@ -1949,10 +1982,11 @@ where
 impl<C, P> Input<P> for Nullifier<C>
 where
     C: BaseConfiguration<Bool = bool>,
-    P: ProofSystem + ?Sized,
+    P: HasInput<NullifierCommitment<C>> + HasInput<OutgoingNote<C>> + ?Sized,
 {
     #[inline]
     fn extend(&self, input: &mut P::Input) {
-        todo!()
+        P::extend(input, &self.commitment);
+        P::extend(input, &self.outgoing_note);
     }
 }

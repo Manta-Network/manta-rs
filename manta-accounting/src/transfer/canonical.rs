@@ -129,6 +129,7 @@ where
     pub fn internal_pair<R>(
         parameters: &Parameters<C>,
         authorization_context: &mut AuthorizationContext<C>,
+        address: Address<C>,
         asset: Asset<C>,
         associated_data: AssociatedData<C>,
         rng: &mut R,
@@ -139,6 +140,7 @@ where
         let (receiver, pre_sender) = internal_pair::<C, _>(
             parameters,
             authorization_context,
+            address,
             asset.clone(),
             associated_data,
             rng,

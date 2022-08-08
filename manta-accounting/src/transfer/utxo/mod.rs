@@ -196,12 +196,6 @@ where
     }
 }
 
-/// Default Address
-pub trait DefaultAddress<T>: AddressType {
-    /// Constructs the default receiving address given the `base` secret.
-    fn default_address(&self, base: &T) -> Self::Address;
-}
-
 /// Derive Decryption Key
 pub trait DeriveDecryptionKey: AuthorizationContextType {
     /// Decryption Key Type

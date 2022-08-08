@@ -34,7 +34,7 @@ use crate::{
     transfer::{
         receiver::{ReceiverLedger, ReceiverPostError},
         sender::{SenderLedger, SenderPostError},
-        utxo::{auth, DefaultAddress, Mint, NullifierIndependence, Spend, UtxoIndependence},
+        utxo::{auth, Mint, NullifierIndependence, Spend, UtxoIndependence},
     },
 };
 use core::{fmt::Debug, hash::Hash, iter::Sum, ops::AddAssign};
@@ -115,6 +115,9 @@ pub trait Configuration {
     /// Identifier Type
     type Identifier: Clone + Sample;
 
+    /// Address Type
+    type Address: Clone;
+
     /// Mint Secret Type
     type MintSecret: utxo::QueryIdentifier<Identifier = Identifier<Self>, Utxo = Self::Utxo>;
 
@@ -136,8 +139,7 @@ pub trait Configuration {
         + auth::VerifySignature<TransferPostBody<Self>>
         + utxo::AssetType<Asset = Asset<Self>>
         + utxo::AssociatedDataType<AssociatedData = Self::AssociatedData>
-        + utxo::DefaultAddress<AuthorizationContext<Self>>
-        + utxo::DeriveMint<Secret = Self::MintSecret, Utxo = Self::Utxo>
+        + utxo::DeriveMint<Secret = Self::MintSecret, Utxo = Self::Utxo, Address = Self::Address>
         + utxo::DeriveSpend<
             UtxoAccumulatorWitness = Self::UtxoAccumulatorWitness,
             UtxoAccumulatorOutput = Self::UtxoAccumulatorOutput,
@@ -374,6 +376,7 @@ pub type ReceiverPost<C> = receiver::ReceiverPost<Parameters<C>>;
 pub fn internal_pair<C, R>(
     parameters: &Parameters<C>,
     authorization_context: &mut AuthorizationContext<C>,
+    address: Address<C>,
     asset: Asset<C>,
     associated_data: AssociatedData<C>,
     rng: &mut R,
@@ -382,13 +385,7 @@ where
     C: Configuration,
     R: CryptoRng + RngCore + ?Sized,
 {
-    let receiver = Receiver::<C>::sample(
-        parameters,
-        parameters.default_address(authorization_context),
-        asset.clone(),
-        associated_data,
-        rng,
-    );
+    let receiver = Receiver::<C>::sample(parameters, address, asset.clone(), associated_data, rng);
     let pre_sender = PreSender::<C>::sample(
         parameters,
         authorization_context,
@@ -405,6 +402,7 @@ where
 pub fn internal_zero_pair<C, R>(
     parameters: &Parameters<C>,
     authorization_context: &mut AuthorizationContext<C>,
+    address: Address<C>,
     asset_id: C::AssetId,
     associated_data: AssociatedData<C>,
     rng: &mut R,
@@ -416,6 +414,7 @@ where
     internal_pair::<C, R>(
         parameters,
         authorization_context,
+        address,
         Asset::<C>::zero(asset_id),
         associated_data,
         rng,

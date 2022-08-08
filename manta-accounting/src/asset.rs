@@ -38,6 +38,7 @@ use core::{
 };
 use derive_more::{Display, From};
 use manta_crypto::{
+    constraint::{HasInput, Input},
     eclair::{
         self,
         alloc::{
@@ -264,6 +265,17 @@ where
     #[inline]
     fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
         Self::new(this.id.as_known(compiler), this.value.as_known(compiler))
+    }
+}
+
+impl<I, V, P> Input<P> for Asset<I, V>
+where
+    P: HasInput<I> + HasInput<V> + ?Sized,
+{
+    #[inline]
+    fn extend(&self, input: &mut P::Input) {
+        P::extend(input, &self.id);
+        P::extend(input, &self.value);
     }
 }
 

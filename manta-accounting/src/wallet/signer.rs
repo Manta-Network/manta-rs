@@ -912,6 +912,7 @@ where
         Ok(Join::new(
             parameters,
             &mut self.default_authorization_context(parameters),
+            self.default_address(parameters),
             Asset::<C>::new(asset_id.clone(), total),
             &mut self.rng,
         ))

@@ -19,8 +19,8 @@
 // TODO: Move more of the batching algorithm here to improve library interfaces.
 
 use crate::transfer::{
-    internal_pair, internal_zero_pair, Asset, AuthorizationContext, Configuration, Parameters,
-    PreSender, Receiver, UtxoAccumulatorItem, UtxoAccumulatorModel,
+    internal_pair, internal_zero_pair, Address, Asset, AuthorizationContext, Configuration,
+    Parameters, PreSender, Receiver, UtxoAccumulatorItem, UtxoAccumulatorModel,
 };
 use alloc::vec::Vec;
 use manta_crypto::{
@@ -50,6 +50,7 @@ where
     pub fn new<R, const RECEIVERS: usize>(
         parameters: &Parameters<C>,
         authorization_context: &mut AuthorizationContext<C>,
+        address: Address<C>,
         asset: Asset<C>,
         rng: &mut R,
     ) -> ([Receiver<C>; RECEIVERS], Self)
@@ -62,6 +63,7 @@ where
         let (receiver, pre_sender) = internal_pair::<C, _>(
             parameters,
             authorization_context,
+            address.clone(),
             asset,
             Default::default(),
             rng,
@@ -71,6 +73,7 @@ where
             let (receiver, pre_sender) = internal_zero_pair::<C, _>(
                 parameters,
                 authorization_context,
+                address.clone(),
                 asset_id.clone(),
                 Default::default(),
                 rng,

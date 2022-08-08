@@ -209,10 +209,7 @@ where
 
     /* TODO:
     ///
-    #[inline]
-    fn lt(&self, other: &Rhs, compiler: &mut COM) -> Bool<COM> {
-        todo!()
-    }
+    fn lt(&self, other: &Rhs, compiler: &mut COM) -> Bool<COM> { ... }
 
     ///
     fn le(&self, other: &Rhs) -> bool { ... }

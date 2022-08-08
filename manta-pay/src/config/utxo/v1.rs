@@ -36,7 +36,11 @@ use core::marker::PhantomData;
 use manta_accounting::asset::Asset;
 use manta_crypto::{
     arkworks::{ff::PrimeField, serialize::CanonicalSerialize},
-    eclair::{alloc::Constant, num::U128, Has},
+    eclair::{
+        alloc::{Allocate, Constant},
+        num::U128,
+        Has,
+    },
     encryption, hash,
     hash::ArrayHashFunction,
     merkle_tree,
@@ -140,6 +144,9 @@ pub type NullifierVar = utxo::Nullifier<ParametersVar>;
 pub type Identifier = utxo::Identifier<Parameters>;
 
 ///
+pub type Address = utxo::Address<Parameters>;
+
+///
 pub type MintSecret = protocol::MintSecret<Config>;
 
 ///
@@ -183,6 +190,15 @@ impl Sample for UtxoCommitmentScheme {
         R: RngCore + ?Sized,
     {
         todo!()
+    }
+}
+
+impl Constant<Compiler> for UtxoCommitmentScheme<Compiler> {
+    type Type = UtxoCommitmentScheme;
+
+    #[inline]
+    fn new_constant(this: &Self::Type, compiler: &mut Compiler) -> Self {
+        Self(this.0.as_constant(compiler))
     }
 }
 
@@ -279,6 +295,15 @@ impl Sample for ViewingKeyDerivationFunction {
         R: RngCore + ?Sized,
     {
         todo!()
+    }
+}
+
+impl Constant<Compiler> for ViewingKeyDerivationFunction<Compiler> {
+    type Type = ViewingKeyDerivationFunction;
+
+    #[inline]
+    fn new_constant(this: &Self::Type, compiler: &mut Compiler) -> Self {
+        Self(this.0.as_constant(compiler))
     }
 }
 
@@ -572,6 +597,15 @@ impl Sample for UtxoAccumulatorItemHash {
     }
 }
 
+impl Constant<Compiler> for UtxoAccumulatorItemHash<Compiler> {
+    type Type = UtxoAccumulatorItemHash;
+
+    #[inline]
+    fn new_constant(this: &Self::Type, compiler: &mut Compiler) -> Self {
+        Self(this.0.as_constant(compiler))
+    }
+}
+
 impl protocol::UtxoAccumulatorItemHash for UtxoAccumulatorItemHash {
     type Bool = bool;
     type AssetId = AssetId;
@@ -832,6 +866,15 @@ impl Sample for NullifierCommitmentScheme {
         R: RngCore + ?Sized,
     {
         todo!()
+    }
+}
+
+impl Constant<Compiler> for NullifierCommitmentScheme<Compiler> {
+    type Type = NullifierCommitmentScheme;
+
+    #[inline]
+    fn new_constant(this: &Self::Type, compiler: &mut Compiler) -> Self {
+        Self(this.0.as_constant(compiler))
     }
 }
 
