@@ -16,13 +16,12 @@
 
 //! Utility functions for Perpetual Powers of Tau
 
-use crate::util::Serializer;
 use crate::{
     groth16::{
         bn254::manta_pay::MantaPaySetupCeremony,
         kzg::{Accumulator, Configuration as KzgConfiguration, Proof as KzgProof, Size},
     },
-    util::{BlakeHasher, KZGBlakeHasher},
+    util::{BlakeHasher, KZGBlakeHasher, Serializer},
 };
 use ark_bn254::{Bn254, Fr, G1Affine, G2Affine, Parameters};
 use ark_serialize::{CanonicalSerialize, Read};
@@ -125,7 +124,7 @@ impl KzgConfiguration for PpotCeremony {
 //     fn serialize_unchecked<W>(item: &<Self as Pairing>::G1, writer: &mut W) -> Result<(), std::io::Error>
 //     where
 //         W: ark_serialize::Write {
-            // TODO : How do you distinguish between G1 and G2? They both have type sw_jacobian::GroupAffine<P>
+// TODO : How do you distinguish between G1 and G2? They both have type sw_jacobian::GroupAffine<P>
 //         todo!()
 //     }
 

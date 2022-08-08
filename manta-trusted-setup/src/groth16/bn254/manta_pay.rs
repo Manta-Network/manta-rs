@@ -16,7 +16,6 @@
 
 //! Bn254 Backend for MantaPay Groth16 Trusted Setup
 
-use crate::util::Serializer;
 use crate::{
     groth16::{
         bn254::ppot,
@@ -27,16 +26,15 @@ use crate::{
         },
     },
     mpc::Types,
-    util::{BlakeHasher, KZGBlakeHasher},
+    util::{BlakeHasher, KZGBlakeHasher, Serializer},
 };
 use ark_bn254::{Bn254, Fr, G1Affine, G2Affine};
 use ark_groth16::ProvingKey;
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError, Read, Write};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Read, SerializationError, Write};
 use blake2::Digest;
-use manta_crypto::arkworks::ec::{short_weierstrass_jacobian, SWModelParameters};
 use manta_crypto::{
     arkworks::{
-        ec::{AffineCurve, PairingEngine},
+        ec::{short_weierstrass_jacobian, AffineCurve, PairingEngine, SWModelParameters},
         pairing::Pairing,
     },
     merkle_tree::forest::MerkleForest,
@@ -178,7 +176,7 @@ impl ProvingKeyHasher<Self> for MantaPaySetupCeremony {
     }
 }
 
-// impl<P> Serializer<short_weierstrass_jacobian::GroupAffine<P>> for MantaPaySetupCeremony 
+// impl<P> Serializer<short_weierstrass_jacobian::GroupAffine<P>> for MantaPaySetupCeremony
 // where P: SWModelParameters {
 //     fn serialize_unchecked<W>(item: &short_weierstrass_jacobian::GroupAffine<P>, writer: &mut W) -> Result<(), std::io::Error>
 //     where
