@@ -24,12 +24,12 @@ use crate::crypto::{
     poseidon::compat as poseidon,
 };
 use alloc::vec::Vec;
+use ark_bn254::Bn254;
+use ark_ed_on_bn254::constraints::EdwardsVar as Bn254_EdwardsVar;
 use blake2::{
     digest::{Update, VariableOutput},
     Blake2sVar,
 };
-use ark_bn254::Bn254;
-use ark_ed_on_bn254::constraints::EdwardsVar as Bn254_EdwardsVar;
 use manta_accounting::{
     asset::{Asset, AssetId, AssetValue},
     transfer,

@@ -19,20 +19,24 @@
 use crate::{
     groth16::{
         bn254::manta_pay::MantaPaySetupCeremony,
-        kzg::{Accumulator, Configuration as KzgConfiguration, Proof as KzgProof, Size},
+        kzg::{
+            Accumulator, Configuration as KzgConfiguration, G1Marker, G2Marker, Proof as KzgProof,
+            Size,
+        },
     },
-    util::{BlakeHasher, KZGBlakeHasher, Serializer},
+    util::{BlakeHasher, Deserializer, KZGBlakeHasher, Serializer},
 };
 use ark_bn254::{Bn254, Fr, G1Affine, G2Affine, Parameters};
-use ark_serialize::{CanonicalSerialize, Read};
+use ark_serialize::{CanonicalSerialize, Read, SerializationError, Write};
 use blake2::Digest;
+use core::fmt;
 use manta_crypto::arkworks::{
     ec::{
         models::{bn::BnParameters, ModelParameters},
         short_weierstrass_jacobian::GroupAffine,
         AffineCurve, PairingEngine, SWModelParameters,
     },
-    ff::{PrimeField, Zero},
+    ff::{PrimeField, ToBytes, Zero},
     pairing::Pairing,
 };
 use manta_util::into_array_unchecked;
@@ -120,34 +124,355 @@ impl KzgConfiguration for PpotCeremony {
     }
 }
 
-// impl Serializer<<Self as Pairing>::G1> for PpotCeremony {
-//     fn serialize_unchecked<W>(item: &<Self as Pairing>::G1, writer: &mut W) -> Result<(), std::io::Error>
-//     where
-//         W: ark_serialize::Write {
-// TODO : How do you distinguish between G1 and G2? They both have type sw_jacobian::GroupAffine<P>
-//         todo!()
-//     }
+impl Deserializer<G1Affine, G1Marker> for PpotCeremony {
+    type Error = PointDeserializeError;
 
-//     fn serialize_uncompressed<W>(item: &<Self as Pairing>::G1, writer: &mut W) -> Result<(), std::io::Error>
-//     where
-//         W: ark_serialize::Write {
-//         todo!()
-//     }
+    fn deserialize_unchecked<R>(reader: &mut R) -> Result<G1Affine, Self::Error>
+    where
+        R: Read,
+    {
+        let mut copy = [0u8; 64];
+        let _ = reader.read(&mut copy); // should I deal with the number of bytes read output?
 
-//     fn uncompressed_size(item: &<Self as Pairing>::G1) -> usize {
-//         todo!()
-//     }
+        // Check the compression flag
+        if copy[0] & (1 << 7) != 0 {
+            // If that bit is non-zero then the reader contains a compressed representation
+            return Err(PointDeserializeError::ExpectedUncompressed);
+        }
 
-//     fn serialize_compressed<W>(item: &<Self as Pairing>::G1, writer: &mut W) -> Result<(), std::io::Error>
-//     where
-//         W: ark_serialize::Write {
-//         todo!()
-//     }
+        // Check the point at infinity flag
+        if copy[0] & (1 << 6) != 0 {
+            // Then this is the point at infinity, so the rest of the serialization
+            // should consist of zeros after we mask away the first two bits.
+            copy[0] &= 0x3f;
 
-//     fn compressed_size(item: &<Self as Pairing>::G1) -> usize {
-//         todo!()
-//     }
-// }
+            if copy.iter().all(|b| *b == 0) {
+                Ok(G1Affine::zero())
+            } else {
+                // Then there are unexpected bits
+                Err(PointDeserializeError::PointAtInfinity)
+            }
+        } else {
+            // Check y-coordinate flag
+            if copy[0] & (1 << 7) != 0 {
+                // Since this representation is uncompressed the flag should be set to 0
+                return Err(PointDeserializeError::ExtraYCoordinate);
+            }
+
+            // Now unset the first two bits
+            copy[0] &= 0x3f;
+
+            // Now we can deserialize the remaining bytes to field elements
+            let x = BaseFieldG1Type::from_be_bytes_mod_order(&copy[..32]);
+            let y = BaseFieldG1Type::from_be_bytes_mod_order(&copy[32..]);
+
+            Ok(G1Affine::new(x, y, false))
+        }
+    }
+
+    fn check(g: &G1Affine) -> Result<(), Self::Error> {
+        if !g.is_on_curve() {
+            return Err(PointDeserializeError::NotOnCurve);
+        } else if !g.is_in_correct_subgroup_assuming_on_curve() {
+            return Err(PointDeserializeError::NotInSubgroup);
+        }
+        Ok(())
+    }
+
+    fn deserialize_compressed<R>(reader: &mut R) -> Result<G1Affine, Self::Error>
+    where
+        R: Read,
+    {
+        let mut copy = [0u8; 32];
+        let _ = reader.read(&mut copy);
+
+        if copy[0] & (1 << 6) != 0 {
+            // This is the point at infinity, which means that if we mask away
+            // the first two bits, the entire representation should consist
+            // of zeroes.
+            copy[0] &= 0x3f;
+
+            if copy.iter().all(|b| *b == 0) {
+                Ok(G1Affine::zero())
+            } else {
+                Err(PointDeserializeError::PointAtInfinity)
+            }
+        } else {
+            // Determine if the intended y coordinate must be greater
+            // lexicographically.
+            let greatest = copy[0] & (1 << 7) != 0;
+            if greatest {
+                println!("This one was > ");
+            } else {
+                println!("This one was <");
+            }
+
+            // Unset the two most significant bits.
+            copy[0] &= 0x3f;
+
+            // Now we can deserialize the remaining bytes to get x-coordinate
+            let x = BaseFieldG1Type::from_be_bytes_mod_order(&copy[..]);
+            // Using `get_point_from_x` performs the on-curve check for us
+            let point = G1Affine::get_point_from_x(x, greatest).ok_or(Self::Error::NotOnCurve)?;
+
+            // Check that the point is in subgroup
+            if !G1Affine::is_in_correct_subgroup_assuming_on_curve(&point) {
+                return Err(Self::Error::NotInSubgroup);
+            }
+            Ok(point)
+        }
+    }
+}
+
+impl Deserializer<G2Affine, G2Marker> for PpotCeremony {
+    type Error = PointDeserializeError;
+
+    fn deserialize_unchecked<R>(reader: &mut R) -> Result<G2Affine, Self::Error>
+    where
+        R: Read,
+    {
+        let mut copy = [0u8; 128];
+        let _ = reader.read(&mut copy); // should I deal with the number of bytes read output?
+
+        // Check the compression flag
+        if copy[0] & (1 << 7) != 0 {
+            // If that bit is non-zero then the reader contains a compressed representation
+            return Err(PointDeserializeError::ExpectedUncompressed);
+        }
+
+        // Check the point at infinity flag
+        if copy[0] & (1 << 6) != 0 {
+            // Then this is the point at infinity, so the rest of the serialization
+            // should consist of zeros after we mask away the first two bits.
+            copy[0] &= 0x3f;
+
+            if copy.iter().all(|b| *b == 0) {
+                Ok(G2Affine::zero())
+            } else {
+                // Then there are unexpected bits
+                Err(PointDeserializeError::PointAtInfinity)
+            }
+        } else {
+            // Check y-coordinate flag // TODO : The PPOT code doesn't seem to do this...
+            if copy[0] & (1 << 7) != 0 {
+                // Since this representation is uncompressed the flag should be set to 0
+                return Err(PointDeserializeError::ExtraYCoordinate);
+            }
+
+            // Now unset the first two bits
+            copy[0] &= 0x3f;
+
+            // Now we can deserialize the remaining bytes to field elements
+            let x_c1 = BaseFieldG1Type::from_be_bytes_mod_order(&copy[..32]);
+            let x_c0 = BaseFieldG1Type::from_be_bytes_mod_order(&copy[32..64]);
+            let y_c1 = BaseFieldG1Type::from_be_bytes_mod_order(&copy[64..96]);
+            let y_c0 = BaseFieldG1Type::from_be_bytes_mod_order(&copy[96..128]);
+            // Recall BaseFieldG2 is a quadratic ext'n of BaseFieldG1
+            let x = BaseFieldG2Type::new(x_c0, x_c1);
+            let y = BaseFieldG2Type::new(y_c0, y_c1);
+
+            Ok(G2Affine::new(x, y, false))
+        }
+    }
+
+    fn check(g: &G2Affine) -> Result<(), Self::Error> {
+        if !g.is_on_curve() {
+            return Err(PointDeserializeError::NotOnCurve);
+        } else if !g.is_in_correct_subgroup_assuming_on_curve() {
+            return Err(PointDeserializeError::NotInSubgroup);
+        }
+        Ok(())
+    }
+
+    fn deserialize_compressed<R>(reader: &mut R) -> Result<G2Affine, Self::Error>
+    where
+        R: Read,
+    {
+        let mut copy = [0u8; 64];
+        let _ = reader.read(&mut copy);
+
+        if copy[0] & (1 << 6) != 0 {
+            // This is the point at infinity, which means that if we mask away
+            // the first two bits, the entire representation should consist
+            // of zeroes.
+            copy[0] &= 0x3f;
+
+            if copy.iter().all(|b| *b == 0) {
+                Ok(G2Affine::zero())
+            } else {
+                Err(PointDeserializeError::PointAtInfinity)
+            }
+        } else {
+            // Determine if the intended y coordinate must be greater
+            // lexicographically.
+            let greatest = copy[0] & (1 << 7) != 0;
+
+            // Unset the two most significant bits.
+            copy[0] &= 0x3f;
+
+            // Now we can deserialize the remaining bytes to get x-coordinate
+            let x_c1 = BaseFieldG1Type::from_be_bytes_mod_order(&copy[..32]);
+            let x_c0 = BaseFieldG1Type::from_be_bytes_mod_order(&copy[32..]);
+
+            let x = BaseFieldG2Type::new(x_c0, x_c1);
+            // Using `get_point_from_x` performs the on-curve check for us
+            let point = G2Affine::get_point_from_x(x, greatest).ok_or(Self::Error::NotOnCurve)?;
+
+            // Check that the point is in subgroup
+            if !G2Affine::is_in_correct_subgroup_assuming_on_curve(&point) {
+                return Err(Self::Error::NotInSubgroup);
+            }
+            Ok(point)
+        }
+    }
+}
+
+impl Serializer<G1Affine, G1Marker> for PpotCeremony {
+    fn serialize_unchecked<W>(point: &G1Affine, writer: &mut W) -> Result<(), std::io::Error>
+    where
+        W: Write,
+    {
+        let mut res = [0u8; 32];
+
+        if point.is_zero() {
+            // Encode point at infinity
+            // Final result will be reversed, so this is like modifying first byte
+            res[31] |= 1 << 6;
+        } else {
+            let mut temp_writer = &mut res[..];
+
+            // Write x coordinate
+            point.x.write(&mut temp_writer)?;
+
+            // Check whether y-coordinate is lexicographically greatest
+            // Final result will be reversed, so this is like modifying first byte
+            let negy = -point.y;
+            if point.y > negy {
+                println!("This one was >");
+                res[31] |= 1 << 7;
+            }
+            // debug
+            else {
+                println!("This one was <");
+            }
+        }
+
+        res.reverse();
+
+        writer.write_all(&res)?;
+
+        Ok(())
+    }
+
+    fn serialize_uncompressed<W>(point: &G1Affine, writer: &mut W) -> Result<(), std::io::Error>
+    where
+        W: ark_serialize::Write,
+    {
+        let mut res = [0u8; 64];
+
+        if point.is_zero() {
+            res[63] |= 1 << 6;
+        } else {
+            let mut temp_writer = &mut res[..];
+            point.y.write(&mut temp_writer)?;
+            point.x.write(&mut temp_writer)?;
+        }
+
+        res.reverse();
+        writer.write_all(&res)?;
+        Ok(())
+    }
+
+    fn uncompressed_size(_item: &G1Affine) -> usize {
+        64
+    }
+
+    fn serialize_compressed<W>(item: &G1Affine, writer: &mut W) -> Result<(), std::io::Error>
+    where
+        W: ark_serialize::Write,
+    {
+        Self::serialize_unchecked(item, writer)
+    }
+
+    fn compressed_size(_item: &G1Affine) -> usize {
+        32
+    }
+}
+
+impl Serializer<G2Affine, G2Marker> for PpotCeremony {
+    fn serialize_unchecked<W>(point: &G2Affine, writer: &mut W) -> Result<(), std::io::Error>
+    where
+        W: Write,
+    {
+        let mut res = [0u8; 64];
+
+        if point.is_zero() {
+            // Encode point at infinity
+            // Final result will be reversed, so this is like modifying first byte
+            res[63] |= 1 << 6;
+        } else {
+            let mut temp_writer = &mut res[..];
+
+            // Write x coordinate
+            point.x.c0.write(&mut temp_writer)?;
+            point.x.c1.write(&mut temp_writer)?;
+
+            // Check whether y-coordinate is lexicographically greatest
+            // Final result will be reversed, so this is like modifying first byte
+            let negy = -point.y;
+            if point.y > negy {
+                println!("This one was >");
+                res[63] |= 1 << 7;
+            }
+            // debug
+            else {
+                println!("This one was <");
+            }
+        }
+
+        res.reverse();
+
+        writer.write_all(&res)?;
+
+        Ok(())
+    }
+
+    fn serialize_uncompressed<W>(point: &G2Affine, writer: &mut W) -> Result<(), std::io::Error>
+    where
+        W: Write,
+    {
+        let mut res = [0u8; 128];
+
+        if point.is_zero() {
+            res[127] |= 1 << 6;
+        } else {
+            let mut temp_writer = &mut res[..];
+            point.y.c0.write(&mut temp_writer)?;
+            point.y.c1.write(&mut temp_writer)?;
+            point.x.c0.write(&mut temp_writer)?;
+            point.x.c1.write(&mut temp_writer)?;
+        }
+
+        res.reverse();
+        writer.write_all(&res)?;
+        Ok(())
+    }
+
+    fn uncompressed_size(_item: &G2Affine) -> usize {
+        128
+    }
+
+    fn serialize_compressed<W>(item: &G2Affine, writer: &mut W) -> Result<(), std::io::Error>
+    where
+        W: Write,
+    {
+        Self::serialize_unchecked(item, writer)
+    }
+
+    fn compressed_size(_item: &G2Affine) -> usize {
+        64
+    }
+}
 
 /// Accumulator of the PPoT ceremony
 pub type PpotAccumulator = Accumulator<PpotCeremony>;
@@ -275,6 +600,20 @@ pub enum PointDeserializeError {
     ExtraYCoordinate,
     NotOnCurve,
     NotInSubgroup,
+}
+
+impl std::fmt::Display for PointDeserializeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Debug::fmt(&self, f) // ? Is this an okay thing to do ?
+    }
+}
+
+impl std::error::Error for PointDeserializeError {}
+
+impl From<PointDeserializeError> for SerializationError {
+    fn from(e: PointDeserializeError) -> Self {
+        std::io::Error::new(std::io::ErrorKind::Other, e).into()
+    }
 }
 
 /// Calculates position in the mmap of specific parts of accumulator.
@@ -522,4 +861,147 @@ fn read_accumulator_from_lfs() {
     // let directory = tempfile::tempdir().expect("msg");
     // manta_parameters::ppot::Round72Powers19::download(&directory.path().join("accumulator.lfs"))
     //     .expect("Unable to download PRIVATE_TRANSFER proving context.");
+}
+
+#[test]
+fn deserialization_test() {
+    use manta_crypto::{
+        arkworks::ec::ProjectiveCurve,
+        rand::{Sample, SeedableRng},
+    };
+    use rand_chacha::ChaCha20Rng;
+
+    // Generate random points from each curve
+    const N: usize = 100; // number of samples
+    let mut rng = ChaCha20Rng::from_seed([0; 32]);
+    let g1: Vec<G1Affine> = (0..N)
+        .into_iter()
+        .map(|_| <G1Affine as AffineCurve>::Projective::gen(&mut rng).into_affine())
+        .collect();
+    let g2: Vec<G2Affine> = (0..N)
+        .into_iter()
+        .map(|_| <G2Affine as AffineCurve>::Projective::gen(&mut rng).into_affine())
+        .collect();
+
+    // First Compressed serialization
+    let mut file = Vec::<u8>::new();
+    g1.iter().for_each(|g| {
+        <PpotCeremony as Serializer<G1Affine, G1Marker>>::serialize_unchecked(g, &mut file).unwrap()
+    });
+    assert_eq!(
+        file.len(),
+        N * <PpotCeremony as Serializer::<G1Affine, G1Marker>>::compressed_size(&g1[0])
+    );
+
+    let mut g1_deser = Vec::<G1Affine>::new();
+
+    println!("Deserializing now ");
+
+    for i in 0..N {
+        let start = i * <PpotCeremony as Serializer<G1Affine, G1Marker>>::compressed_size(&g1[0]);
+        let end =
+            (i + 1) * <PpotCeremony as Serializer<G1Affine, G1Marker>>::compressed_size(&g1[0]);
+        let mut temp = &file[start..end];
+        match <PpotCeremony as Deserializer<G1Affine, G1Marker>>::deserialize_compressed(&mut temp)
+        {
+            Ok(point) => g1_deser.push(point),
+            Err(e) => {
+                println!("Error {:?} occurred on point {:?}", e, i);
+            }
+        }
+    }
+    assert_eq!(g1, g1_deser);
+
+    // Now uncompressed serialization
+    let mut file = Vec::<u8>::new();
+    g1.iter().for_each(|g| {
+        <PpotCeremony as Serializer<G1Affine, G1Marker>>::serialize_uncompressed(g, &mut file)
+            .unwrap()
+    });
+    assert_eq!(
+        file.len(),
+        N * <PpotCeremony as Serializer::<G1Affine, G1Marker>>::uncompressed_size(&g1[0])
+    );
+
+    let mut g1_deser = Vec::<G1Affine>::new();
+
+    println!("Deserializing now ");
+
+    for i in 0..N {
+        let start = i * <PpotCeremony as Serializer<G1Affine, G1Marker>>::uncompressed_size(&g1[0]);
+        let end =
+            (i + 1) * <PpotCeremony as Serializer<G1Affine, G1Marker>>::uncompressed_size(&g1[0]);
+        let mut temp = &file[start..end];
+        match <PpotCeremony as Deserializer<G1Affine, G1Marker>>::deserialize_uncompressed(
+            &mut temp,
+        ) {
+            Ok(point) => g1_deser.push(point),
+            Err(e) => {
+                println!("Error {:?} occurred on point {:?}", e, i);
+            }
+        }
+    }
+    assert_eq!(g1, g1_deser);
+
+    // REPEAT
+
+    // First Compressed serialization
+    let mut file = Vec::<u8>::new();
+    g2.iter().for_each(|g| {
+        <PpotCeremony as Serializer<G2Affine, G2Marker>>::serialize_unchecked(g, &mut file).unwrap()
+    });
+    assert_eq!(
+        file.len(),
+        N * <PpotCeremony as Serializer::<G2Affine, G2Marker>>::compressed_size(&g2[0])
+    );
+
+    let mut g2_deser = Vec::<G2Affine>::new();
+
+    println!("Deserializing now ");
+
+    for i in 0..N {
+        let start = i * <PpotCeremony as Serializer<G2Affine, G2Marker>>::compressed_size(&g2[0]);
+        let end =
+            (i + 1) * <PpotCeremony as Serializer<G2Affine, G2Marker>>::compressed_size(&g2[0]);
+        let mut temp = &file[start..end];
+        match <PpotCeremony as Deserializer<G2Affine, G2Marker>>::deserialize_compressed(&mut temp)
+        {
+            Ok(point) => g2_deser.push(point),
+            Err(e) => {
+                println!("Error {:?} occurred on point {:?}", e, i);
+            }
+        }
+    }
+    assert_eq!(g2, g2_deser);
+
+    // Now uncompressed serialization
+    let mut file = Vec::<u8>::new();
+    g2.iter().for_each(|g| {
+        <PpotCeremony as Serializer<G2Affine, G2Marker>>::serialize_uncompressed(g, &mut file)
+            .unwrap()
+    });
+    assert_eq!(
+        file.len(),
+        N * <PpotCeremony as Serializer::<G2Affine, G2Marker>>::uncompressed_size(&g2[0])
+    );
+
+    let mut g2_deser = Vec::<G2Affine>::new();
+
+    println!("Deserializing now ");
+
+    for i in 0..N {
+        let start = i * <PpotCeremony as Serializer<G2Affine, G2Marker>>::uncompressed_size(&g2[0]);
+        let end =
+            (i + 1) * <PpotCeremony as Serializer<G2Affine, G2Marker>>::uncompressed_size(&g2[0]);
+        let mut temp = &file[start..end];
+        match <PpotCeremony as Deserializer<G2Affine, G2Marker>>::deserialize_uncompressed(
+            &mut temp,
+        ) {
+            Ok(point) => g2_deser.push(point),
+            Err(e) => {
+                println!("Error {:?} occurred on point {:?}", e, i);
+            }
+        }
+    }
+    assert_eq!(g2, g2_deser);
 }

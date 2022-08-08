@@ -26,7 +26,7 @@ use crate::{
         },
     },
     mpc::Types,
-    util::{BlakeHasher, KZGBlakeHasher, Serializer},
+    util::{BlakeHasher, Deserializer, KZGBlakeHasher, Serializer},
 };
 use ark_bn254::{Bn254, Fr, G1Affine, G2Affine};
 use ark_groth16::ProvingKey;
@@ -176,34 +176,76 @@ impl ProvingKeyHasher<Self> for MantaPaySetupCeremony {
     }
 }
 
-// impl<P> Serializer<short_weierstrass_jacobian::GroupAffine<P>> for MantaPaySetupCeremony
-// where P: SWModelParameters {
-//     fn serialize_unchecked<W>(item: &short_weierstrass_jacobian::GroupAffine<P>, writer: &mut W) -> Result<(), std::io::Error>
-//     where
-//         W: Write {
-//         CanonicalSerialize::serialize_unchecked(item, writer).into() // TODO: How to convert to std::io::Error ?
-//     }
+impl<P> Serializer<short_weierstrass_jacobian::GroupAffine<P>> for MantaPaySetupCeremony
+where
+    P: SWModelParameters,
+{
+    fn serialize_unchecked<W>(
+        item: &short_weierstrass_jacobian::GroupAffine<P>,
+        writer: &mut W,
+    ) -> Result<(), std::io::Error>
+    where
+        W: Write,
+    {
+        CanonicalSerialize::serialize_unchecked(item, writer)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+    }
 
-//     fn serialize_uncompressed<W>(item: &short_weierstrass_jacobian::GroupAffine<P>, writer: &mut W) -> Result<(), std::io::Error>
-//     where
-//         W: Write {
-//         todo!()
-//     }
+    fn serialize_uncompressed<W>(
+        item: &short_weierstrass_jacobian::GroupAffine<P>,
+        writer: &mut W,
+    ) -> Result<(), std::io::Error>
+    where
+        W: Write,
+    {
+        CanonicalSerialize::serialize_uncompressed(item, writer)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+    }
 
-//     fn uncompressed_size(item: &short_weierstrass_jacobian::GroupAffine<P>) -> usize {
-//         todo!()
-//     }
+    fn uncompressed_size(item: &short_weierstrass_jacobian::GroupAffine<P>) -> usize {
+        CanonicalSerialize::uncompressed_size(item)
+    }
 
-//     fn serialize_compressed<W>(item: &short_weierstrass_jacobian::GroupAffine<P>, writer: &mut W) -> Result<(), std::io::Error>
-//     where
-//         W: Write {
-//         todo!()
-//     }
+    fn serialize_compressed<W>(
+        item: &short_weierstrass_jacobian::GroupAffine<P>,
+        writer: &mut W,
+    ) -> Result<(), std::io::Error>
+    where
+        W: Write,
+    {
+        CanonicalSerialize::serialize(item, writer)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+    }
 
-//     fn compressed_size(item: &short_weierstrass_jacobian::GroupAffine<P>) -> usize {
-//         todo!()
-//     }
-// }
+    fn compressed_size(item: &short_weierstrass_jacobian::GroupAffine<P>) -> usize {
+        CanonicalSerialize::serialized_size(item)
+    }
+}
+
+impl<P> Deserializer<short_weierstrass_jacobian::GroupAffine<P>> for MantaPaySetupCeremony
+where
+    P: SWModelParameters,
+{
+    type Error = SerializationError;
+
+    fn deserialize_unchecked<R>(
+        reader: &mut R,
+    ) -> Result<short_weierstrass_jacobian::GroupAffine<P>, Self::Error>
+    where
+        R: Read,
+    {
+        CanonicalDeserialize::deserialize_unchecked(reader)
+    }
+
+    fn deserialize_compressed<R>(
+        reader: &mut R,
+    ) -> Result<short_weierstrass_jacobian::GroupAffine<P>, Self::Error>
+    where
+        R: Read,
+    {
+        CanonicalDeserialize::deserialize_uncompressed(reader)
+    }
+}
 
 /// Generates our `Reclaim` circuit with unknown variables
 pub fn reclaim_circuit() -> R1CS<Fr> {
@@ -213,8 +255,6 @@ pub fn reclaim_circuit() -> R1CS<Fr> {
         test::payment::UtxoAccumulator,
     };
     use rand_chacha::ChaCha20Rng;
-
-    // use chacha
 
     // 2. Specialize the final Accumulator to phase 2 parameters, write these to transcript (?)
     let mut rng = ChaCha20Rng::from_seed([0; 32]);
@@ -270,7 +310,7 @@ pub fn generate_reclaim_pk_test() {
         .open("phase2_reclaim_pk")
         .expect("file not found");
     let pk_read: ProvingKey<Bn254> =
-        CanonicalDeserialize::deserialize_uncompressed(&mut reader).unwrap();
+        CanonicalDeserialize::deserialize_unchecked(&mut reader).unwrap();
     assert_eq!(pk, pk_read)
 }
 

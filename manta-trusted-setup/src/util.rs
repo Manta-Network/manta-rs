@@ -52,7 +52,7 @@ pub trait HasDistribution {
 /// [`Deserializer`] `trait`.
 ///
 /// [`CanonicalDeserialize`]: manta_crypto::arkworks::serialize::CanonicalDeserialize
-pub trait Serializer<T> {
+pub trait Serializer<T, M = ()> {
     /// Serializes `item` in uncompressed form to the `writer` without performing any
     /// well-formedness checks.
     fn serialize_unchecked<W>(item: &T, writer: &mut W) -> Result<(), io::Error>
@@ -86,7 +86,7 @@ pub trait Serializer<T> {
 /// [`Serializer`] `trait`.
 ///
 /// [`CanonicalDeserialize`]: manta_crypto::arkworks::serialize::CanonicalDeserialize
-pub trait Deserializer<T> {
+pub trait Deserializer<T, M = ()> {
     /// Deserialization Error Type
     type Error: Into<SerializationError>;
 

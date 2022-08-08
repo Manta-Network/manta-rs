@@ -35,6 +35,12 @@ use manta_util::{cfg_iter_mut, from_variant};
 #[cfg(feature = "rayon")]
 use manta_util::rayon::iter::{IndexedParallelIterator, ParallelIterator};
 
+/// Marker for de/serialization when G1 and G2 have different encodings
+pub struct G1Marker;
+
+/// Marker for de/serialization when G1 and G2 have different encodings
+pub struct G2Marker;
+
 /// KZG Trusted Setup Size
 pub trait Size {
     /// Number of G1 Powers to Produce
