@@ -52,7 +52,10 @@ use manta_crypto::{
     },
     rand::{Rand, RngCore, Sample},
 };
-use manta_util::num::CheckedSub;
+use manta_util::{
+    codec::{Encode, Write},
+    num::CheckedSub,
+};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
@@ -265,6 +268,22 @@ where
     #[inline]
     fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
         Self::new(this.id.as_known(compiler), this.value.as_known(compiler))
+    }
+}
+
+impl<I, V> Encode for Asset<I, V>
+where
+    I: Encode,
+    V: Encode,
+{
+    #[inline]
+    fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
+    where
+        W: Write,
+    {
+        self.id.encode(&mut writer)?;
+        self.value.encode(&mut writer)?;
+        Ok(())
     }
 }
 

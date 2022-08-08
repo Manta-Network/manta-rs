@@ -35,6 +35,7 @@ use crate::{
     rand::{Rand, RngCore, Sample},
 };
 use core::{fmt::Debug, hash::Hash, marker::PhantomData};
+use manta_util::codec::{Encode, Write};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
@@ -119,6 +120,17 @@ where
     #[inline]
     fn assert_equal(&self, rhs: &Self, compiler: &mut COM) {
         let _ = (rhs, compiler);
+    }
+}
+
+impl Encode for EmptyHeader {
+    #[inline]
+    fn encode<W>(&self, writer: W) -> Result<(), W::Error>
+    where
+        W: Write,
+    {
+        let _ = writer;
+        Ok(())
     }
 }
 
@@ -649,6 +661,23 @@ where
         R: RngCore + ?Sized,
     {
         Self::new(rng.sample(distribution.0), rng.sample(distribution.1))
+    }
+}
+
+impl<E> Encode for EncryptedMessage<E>
+where
+    E: CiphertextType + HeaderType,
+    E::Header: Encode,
+    E::Ciphertext: Encode,
+{
+    #[inline]
+    fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
+    where
+        W: Write,
+    {
+        self.header.encode(&mut writer)?;
+        self.ciphertext.encode(&mut writer)?;
+        Ok(())
     }
 }
 

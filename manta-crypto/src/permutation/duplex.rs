@@ -40,7 +40,10 @@ use crate::{
 };
 use alloc::vec::Vec;
 use core::marker::PhantomData;
-use manta_util::iter::{BorrowIterator, Iterable};
+use manta_util::{
+    codec::{self, Encode},
+    iter::{BorrowIterator, Iterable},
+};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
@@ -179,6 +182,22 @@ where
     #[inline]
     fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
         Self::new(this.tag.as_known(compiler), this.message.as_known(compiler))
+    }
+}
+
+impl<T, C> Encode for Ciphertext<T, C>
+where
+    T: Encode,
+    C: Encode,
+{
+    #[inline]
+    fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
+    where
+        W: codec::Write,
+    {
+        self.tag.encode(&mut writer)?;
+        self.message.encode(&mut writer)?;
+        Ok(())
     }
 }
 

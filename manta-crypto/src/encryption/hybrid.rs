@@ -299,6 +299,24 @@ where
     }
 }
 
+impl<K, E> Encode for Ciphertext<K, E>
+where
+    K: key::agreement::Types,
+    K::PublicKey: Encode,
+    E: CiphertextType,
+    E::Ciphertext: Encode,
+{
+    #[inline]
+    fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
+    where
+        W: Write,
+    {
+        self.ephemeral_public_key.encode(&mut writer)?;
+        self.ciphertext.encode(&mut writer)?;
+        Ok(())
+    }
+}
+
 impl<K, E, P> Input<P> for Ciphertext<K, E>
 where
     K: key::agreement::Types,

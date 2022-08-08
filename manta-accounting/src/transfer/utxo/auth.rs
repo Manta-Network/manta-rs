@@ -21,7 +21,10 @@ use manta_crypto::{
     eclair::alloc::{mode::Derived, Allocate, Allocator, Constant, Variable},
     rand::RngCore,
 };
-use manta_util::convert::Field;
+use manta_util::{
+    codec::{Encode, Write},
+    convert::Field,
+};
 
 /// Spending Key
 pub trait SpendingKeyType {
@@ -359,5 +362,22 @@ where
         T: VerifySignature<M>,
     {
         parameters.verify(&self.authorization_key, &self.signature, message)
+    }
+}
+
+impl<T> Encode for AuthorizationSignature<T>
+where
+    T: AuthorizationKeyType + SignatureType,
+    T::AuthorizationKey: Encode,
+    T::Signature: Encode,
+{
+    #[inline]
+    fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
+    where
+        W: Write,
+    {
+        self.authorization_key.encode(&mut writer)?;
+        self.signature.encode(&mut writer)?;
+        Ok(())
     }
 }

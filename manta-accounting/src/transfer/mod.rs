@@ -54,9 +54,9 @@ use manta_crypto::{
 };
 use manta_util::{
     cmp::Independence,
+    codec::{Encode, Write},
     convert::Field,
     vec::{all_unequal, Vec},
-    AsBytes,
 };
 
 #[cfg(feature = "serde")]
@@ -1319,13 +1319,27 @@ where
     }
 }
 
-impl<C> AsBytes for TransferPostBody<C>
+impl<C> Encode for TransferPostBody<C>
 where
     C: Configuration + ?Sized,
+    C::AssetId: Encode,
+    C::AssetValue: Encode,
+    SenderPost<C>: Encode,
+    ReceiverPost<C>: Encode,
+    Proof<C>: Encode,
 {
     #[inline]
-    fn as_bytes(&self) -> Vec<u8> {
-        todo!()
+    fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
+    where
+        W: Write,
+    {
+        self.asset_id.encode(&mut writer)?;
+        self.sources.encode(&mut writer)?;
+        self.sender_posts.encode(&mut writer)?;
+        self.receiver_posts.encode(&mut writer)?;
+        self.sinks.encode(&mut writer)?;
+        self.validity_proof.encode(&mut writer)?;
+        Ok(())
     }
 }
 
@@ -1602,13 +1616,20 @@ where
     }
 }
 
-impl<C> AsBytes for TransferPost<C>
+impl<C> Encode for TransferPost<C>
 where
     C: Configuration + ?Sized,
+    AuthorizationSignature<C>: Encode,
+    TransferPostBody<C>: Encode,
 {
     #[inline]
-    fn as_bytes(&self) -> Vec<u8> {
-        todo!()
+    fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
+    where
+        W: Write,
+    {
+        self.authorization_signature.encode(&mut writer)?;
+        self.body.encode(&mut writer)?;
+        Ok(())
     }
 }
 

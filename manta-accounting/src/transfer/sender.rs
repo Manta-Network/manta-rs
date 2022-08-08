@@ -29,6 +29,7 @@ use manta_crypto::{
     },
     rand::RngCore,
 };
+use manta_util::codec::{Encode, Write};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
@@ -508,6 +509,23 @@ where
                 .is_unspent(self.nullifier)
                 .ok_or(SenderPostError::AssetSpent)?,
         })
+    }
+}
+
+impl<S> Encode for SenderPost<S>
+where
+    S: Spend,
+    UtxoAccumulatorOutput<S>: Encode,
+    S::Nullifier: Encode,
+{
+    #[inline]
+    fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
+    where
+        W: Write,
+    {
+        self.utxo_accumulator_output.encode(&mut writer)?;
+        self.nullifier.encode(&mut writer)?;
+        Ok(())
     }
 }
 

@@ -42,7 +42,11 @@ use manta_crypto::{
     rand::{Rand, RngCore, Sample},
     signature::{self, Sign, Verify},
 };
-use manta_util::{cmp::Independence, convert::Field, AsBytes};
+use manta_util::{
+    cmp::Independence,
+    codec::{Encode, Write},
+    convert::Field,
+};
 
 /// UTXO Version Number
 pub const VERSION: u8 = 1;
@@ -821,7 +825,7 @@ where
 impl<C, M> auth::Sign<M> for Parameters<C>
 where
     C: Configuration<Bool = bool>,
-    M: AsBytes,
+    M: Encode,
 {
     #[inline]
     fn sign<R>(&self, signing_key: &Self::SigningKey, message: &M, rng: &mut R) -> Self::Signature
@@ -829,14 +833,14 @@ where
         R: RngCore + ?Sized,
     {
         self.signature_scheme
-            .sign(signing_key, &rng.gen(), &message.as_bytes(), &mut ())
+            .sign(signing_key, &rng.gen(), &message.to_vec(), &mut ())
     }
 }
 
 impl<C, M> auth::VerifySignature<M> for Parameters<C>
 where
     C: Configuration<Bool = bool>,
-    M: AsBytes,
+    M: Encode,
 {
     #[inline]
     fn verify(
@@ -846,7 +850,7 @@ where
         message: &M,
     ) -> bool {
         self.signature_scheme
-            .verify(authorization_key, &message.as_bytes(), signature, &mut ())
+            .verify(authorization_key, &message.to_vec(), signature, &mut ())
     }
 }
 
@@ -1328,6 +1332,25 @@ where
     #[inline]
     fn is_independent(&self, rhs: &Self) -> bool {
         self.ne(rhs, &mut ())
+    }
+}
+
+impl<C> Encode for Utxo<C>
+where
+    C: BaseConfiguration<Bool = bool>,
+    C::AssetId: Encode,
+    C::AssetValue: Encode,
+    UtxoCommitment<C>: Encode,
+{
+    #[inline]
+    fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
+    where
+        W: Write,
+    {
+        self.is_transparent.encode(&mut writer)?;
+        self.public_asset.encode(&mut writer)?;
+        self.commitment.encode(&mut writer)?;
+        Ok(())
     }
 }
 
@@ -1986,6 +2009,23 @@ where
     #[inline]
     fn is_independent(&self, rhs: &Self) -> bool {
         self.commitment.ne(&rhs.commitment, &mut ())
+    }
+}
+
+impl<C> Encode for Nullifier<C>
+where
+    C: BaseConfiguration<Bool = bool>,
+    NullifierCommitment<C>: Encode,
+    OutgoingNote<C>: Encode,
+{
+    #[inline]
+    fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
+    where
+        W: Write,
+    {
+        self.commitment.encode(&mut writer)?;
+        self.outgoing_note.encode(&mut writer)?;
+        Ok(())
     }
 }
 

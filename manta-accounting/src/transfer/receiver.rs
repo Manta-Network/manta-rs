@@ -26,6 +26,7 @@ use manta_crypto::{
     },
     rand::RngCore,
 };
+use manta_util::codec::{Encode, Write};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
@@ -305,6 +306,23 @@ where
                 .ok_or(ReceiverPostError::AssetRegistered)?,
             note: self.note,
         })
+    }
+}
+
+impl<M> Encode for ReceiverPost<M>
+where
+    M: Mint,
+    M::Utxo: Encode,
+    M::Note: Encode,
+{
+    #[inline]
+    fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
+    where
+        W: Write,
+    {
+        self.utxo.encode(&mut writer)?;
+        self.note.encode(&mut writer)?;
+        Ok(())
     }
 }
 
