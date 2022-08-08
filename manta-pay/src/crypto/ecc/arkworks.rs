@@ -516,3 +516,40 @@ where
         )
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::config::Bls12_381_Edwards;
+    use manta_crypto::{
+        arkworks::r1cs_std::groups::curves::twisted_edwards::AffineVar,
+        constraint::measure::Measure, rand::OsRng,
+    };
+
+    /// Constraint Field Type
+    type ConstraintField<C> = <<C as ProjectiveCurve>::BaseField as Field>::BasePrimeField;
+
+    /// Compiler Type
+    type Compiler<C> = R1CS<ConstraintField<C>>;
+
+    /// Scalar Field Element
+    pub type Scalar<C> = Fp<<C as ProjectiveCurve>::ScalarField>;
+
+    #[test]
+    fn check_constraints() {
+        let mut cs = Compiler::<Bls12_381_Edwards>::for_proofs();
+        let group = Group(Bls12_381_Edwards::gen(&mut OsRng).into_affine());
+        let group_var =
+            group.as_known::<Secret, GroupVar<Bls12_381_Edwards, AffineVar<_, _>>>(&mut cs);
+        let scalar = Scalar::<Bls12_381_Edwards>::gen(&mut OsRng);
+        let scalar_var =
+            scalar.as_known::<Secret, ScalarVar<Bls12_381_Edwards, AffineVar<_, _>>>(&mut cs);
+        let scalar_bits = scalar_var.0.to_bits_le().unwrap();
+        println!("{:?}", scalar_bits.len());
+        let bit_decomposition = cs.constraint_count();
+        let _ = group_var.0.scalar_mul_le(scalar_bits.iter());
+        let scalar_mul_constraints = cs.constraint_count() - bit_decomposition;
+        println!("num_constraints bit_decomposition: {:?}", bit_decomposition);
+        println!("num_constraints scalar_mul: {:?}", scalar_mul_constraints);
+    }
+}
