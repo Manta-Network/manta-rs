@@ -16,6 +16,7 @@
 
 //! Utility functions for Perpetual Powers of Tau
 
+use crate::util::Serializer;
 use crate::{
     groth16::{
         bn254::manta_pay::MantaPaySetupCeremony,
@@ -119,6 +120,35 @@ impl KzgConfiguration for PpotCeremony {
         into_array_unchecked(hasher.0.finalize())
     }
 }
+
+// impl Serializer<<Self as Pairing>::G1> for PpotCeremony {
+//     fn serialize_unchecked<W>(item: &<Self as Pairing>::G1, writer: &mut W) -> Result<(), std::io::Error>
+//     where
+//         W: ark_serialize::Write {
+            // TODO : How do you distinguish between G1 and G2? They both have type sw_jacobian::GroupAffine<P>
+//         todo!()
+//     }
+
+//     fn serialize_uncompressed<W>(item: &<Self as Pairing>::G1, writer: &mut W) -> Result<(), std::io::Error>
+//     where
+//         W: ark_serialize::Write {
+//         todo!()
+//     }
+
+//     fn uncompressed_size(item: &<Self as Pairing>::G1) -> usize {
+//         todo!()
+//     }
+
+//     fn serialize_compressed<W>(item: &<Self as Pairing>::G1, writer: &mut W) -> Result<(), std::io::Error>
+//     where
+//         W: ark_serialize::Write {
+//         todo!()
+//     }
+
+//     fn compressed_size(item: &<Self as Pairing>::G1) -> usize {
+//         todo!()
+//     }
+// }
 
 /// Accumulator of the PPoT ceremony
 pub type PpotAccumulator = Accumulator<PpotCeremony>;
@@ -476,18 +506,20 @@ pub fn read_subaccumulator_test() {
     ));
 
     // Write the subaccumulator to file
-    let _f = File::create("../manta-parameters/data/ppot/round72_19powers.lfs").unwrap();
+    let _f = File::create("../manta-parameters/data/ppot/round72powers19.lfs").unwrap();
     let mut file = OpenOptions::new()
         .read(true)
         .write(true)
         .truncate(true)
-        .open("../manta-parameters/data/ppot/round72_19powers.lfs")
+        .open("../manta-parameters/data/ppot/round72powers19.lfs")
         .expect("unable to create parameter file in this directory");
     CanonicalSerialize::serialize_uncompressed(&acc, &mut file).unwrap();
 }
 
 #[test]
 fn read_accumulator_from_lfs() {
+    // TODO: This won't work until the file is part of `main` for manta-parameters
+
     // let directory = tempfile::tempdir().expect("msg");
     // manta_parameters::ppot::Round72Powers19::download(&directory.path().join("accumulator.lfs"))
     //     .expect("Unable to download PRIVATE_TRANSFER proving context.");

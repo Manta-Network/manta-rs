@@ -41,6 +41,7 @@ workspace-hack = { version = "0.1.0", path = "../workspace-hack" }
 git2 = { version = "0.15.0", default-features = false }
 hex = { version = "0.4.3", default-features = false, features = ["std"] }
 manta-parameters = { path = ".", default-features = false, features = ["download"] }
+tempfile = { version = "3.3.0", default-features = false }
 walkdir = { version = "2.3.2", default-features = false }
 
 [build-dependencies]

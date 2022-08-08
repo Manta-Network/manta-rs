@@ -16,6 +16,7 @@
 
 //! Bn254 Backend for MantaPay Groth16 Trusted Setup
 
+use crate::util::Serializer;
 use crate::{
     groth16::{
         bn254::ppot,
@@ -32,6 +33,7 @@ use ark_bn254::{Bn254, Fr, G1Affine, G2Affine};
 use ark_groth16::ProvingKey;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError, Read, Write};
 use blake2::Digest;
+use manta_crypto::arkworks::ec::{short_weierstrass_jacobian, SWModelParameters};
 use manta_crypto::{
     arkworks::{
         ec::{AffineCurve, PairingEngine},
@@ -175,6 +177,35 @@ impl ProvingKeyHasher<Self> for MantaPaySetupCeremony {
         into_array_unchecked(hasher.0.finalize())
     }
 }
+
+// impl<P> Serializer<short_weierstrass_jacobian::GroupAffine<P>> for MantaPaySetupCeremony 
+// where P: SWModelParameters {
+//     fn serialize_unchecked<W>(item: &short_weierstrass_jacobian::GroupAffine<P>, writer: &mut W) -> Result<(), std::io::Error>
+//     where
+//         W: Write {
+//         CanonicalSerialize::serialize_unchecked(item, writer).into() // TODO: How to convert to std::io::Error ?
+//     }
+
+//     fn serialize_uncompressed<W>(item: &short_weierstrass_jacobian::GroupAffine<P>, writer: &mut W) -> Result<(), std::io::Error>
+//     where
+//         W: Write {
+//         todo!()
+//     }
+
+//     fn uncompressed_size(item: &short_weierstrass_jacobian::GroupAffine<P>) -> usize {
+//         todo!()
+//     }
+
+//     fn serialize_compressed<W>(item: &short_weierstrass_jacobian::GroupAffine<P>, writer: &mut W) -> Result<(), std::io::Error>
+//     where
+//         W: Write {
+//         todo!()
+//     }
+
+//     fn compressed_size(item: &short_weierstrass_jacobian::GroupAffine<P>) -> usize {
+//         todo!()
+//     }
+// }
 
 /// Generates our `Reclaim` circuit with unknown variables
 pub fn reclaim_circuit() -> R1CS<Fr> {
