@@ -18,22 +18,19 @@
 
 use crate::{groth16::kzg, ratio::HashToGroup};
 use alloc::vec::Vec;
-use ark_ec::{
-    short_weierstrass_jacobian::GroupAffine, wnaf::WnafContext, AffineCurve, ProjectiveCurve,
-    SWModelParameters,
-};
-use ark_ff::{BigInteger, Fp256, PrimeField, UniformRand, Zero};
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Read, SerializationError, Write};
 use ark_std::io;
 use blake2::{Blake2b512, Digest as Blake2Digest};
 use byteorder::{BigEndian, ReadBytesExt};
 use core::marker::PhantomData;
 use manta_crypto::{
     arkworks::{
-        ec::{wnaf::WnafContext, AffineCurve, ProjectiveCurve},
-        ff::{BigInteger, PrimeField, UniformRand, Zero},
+        ec::{
+            short_weierstrass_jacobian::GroupAffine, wnaf::WnafContext, AffineCurve,
+            ProjectiveCurve, SWModelParameters,
+        },
+        ff::{BigInteger, Fp256, PrimeField, UniformRand, Zero},
         pairing::Pairing,
-        serialize::{CanonicalSerialize, Read, SerializationError, Write},
+        serialize::{CanonicalDeserialize, CanonicalSerialize, Read, SerializationError, Write},
     },
     rand::{OsRng, Sample, SeedableRng},
 };

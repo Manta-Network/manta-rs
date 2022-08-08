@@ -57,7 +57,6 @@ manta-pay = { path = "../manta-pay", default-features = false, features = ["grot
 clap = "3.2"
 workspace-hack = { version = "0.1.0", path = "../workspace-hack" }
 
-
 [dev-dependencies]
 ark-r1cs-std = { version = "0.3.1", default-features = false }
 ark-bls12-381 = { version = "0.3.0", default-features = false, features = ["curve", "scalar_field"] }

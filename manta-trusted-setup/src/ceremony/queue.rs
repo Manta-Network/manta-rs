@@ -164,13 +164,13 @@ mod test {
         for i in 0..4 {
             assert_eq!(queue.position(&expected_order[i]), Some(i));
         }
-        assert_eq!(queue.pop().unwrap().1, "b".to_string());
+        assert_eq!(queue.pop().unwrap(), "b".to_string());
         assert!(!queue.is_at_front(&participants[1]));
         assert!(queue.is_at_front(&participants[3]));
-        assert_eq!(queue.pop().unwrap().1, "d".to_string());
+        assert_eq!(queue.pop().unwrap(), "d".to_string());
         assert!(queue.is_at_front(&participants[0]));
-        assert_eq!(queue.pop().unwrap().1, "a".to_string());
-        assert_eq!(queue.pop().unwrap().1, "c".to_string());
+        assert_eq!(queue.pop().unwrap(), "a".to_string());
+        assert_eq!(queue.pop().unwrap(), "c".to_string());
         assert_eq!(queue.pop(), None);
         assert_eq!(queue.len(), 0);
     }

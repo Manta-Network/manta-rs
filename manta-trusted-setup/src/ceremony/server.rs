@@ -30,7 +30,7 @@ use crate::{
     },
     mpc,
 };
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+use manta_crypto::arkworks::serialize::{CanonicalDeserialize, CanonicalSerialize};
 use serde::{de::DeserializeOwned, Serialize};
 use std::{
     future::Future,

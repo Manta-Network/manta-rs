@@ -23,17 +23,22 @@ use crate::{
         mpc::{Configuration, Proof, ProvingKeyHasher, State},
     },
     mpc::Types,
-    pairing::Pairing,
     ratio::HashToGroup,
-    util::{BlakeHasher, Deserializer, HasDistribution, KZGBlakeHasher, Sample},
+    util::{BlakeHasher, Deserializer, HasDistribution, KZGBlakeHasher},
 };
 use ark_bls12_381::{G1Affine, G2Affine};
-use ark_ec::{AffineCurve, PairingEngine};
 use ark_groth16::ProvingKey;
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use ark_std::io::{Read, Write};
 use bincode::Options;
 use blake2::Digest;
+use manta_crypto::{
+    arkworks::{
+        ec::{AffineCurve, PairingEngine},
+        pairing::Pairing,
+        serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError},
+    },
+    rand::Sample,
+};
 use manta_util::into_array_unchecked;
 
 /// Configuration for the Groth16 Phase2 Server.

@@ -16,7 +16,8 @@
 
 //! Groth16 Phase2 Servers
 
-use ark_serialize::CanonicalDeserialize;
+use manta_crypto::arkworks::serialize::CanonicalDeserialize;
+use manta_crypto::arkworks::pairing::Pairing;
 use manta_pay::crypto::constraint::arkworks::R1CS;
 use manta_trusted_setup::{
     ceremony::{
@@ -35,7 +36,6 @@ use manta_trusted_setup::{
         mpc,
         mpc::{initialize, Groth16Phase2},
     },
-    pairing::Pairing,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;

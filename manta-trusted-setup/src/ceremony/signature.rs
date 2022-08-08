@@ -103,7 +103,7 @@ pub trait SignatureScheme {
 pub mod ed_dalek {
     use super::*;
     use alloc::vec::Vec;
-    use ark_serialize::CanonicalSerialize;
+    use manta_crypto::arkworks::serialize::CanonicalSerialize;
     use ed25519_dalek::{Keypair, Signature as ED25519Signature, Signer, Verifier};
     use manta_util::{
         into_array_unchecked,

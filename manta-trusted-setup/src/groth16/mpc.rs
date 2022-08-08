@@ -19,18 +19,13 @@
 use crate::{
     groth16::kzg::{self, Accumulator},
     mpc::{Contribute, Types, Verify},
-    pairing::{Pairing, PairingEngineExt},
     ratio::{HashToGroup, RatioProof},
     util::{batch_into_projective, batch_mul_fixed_scalar, merge_pairs_affine},
 };
 use alloc::{vec, vec::Vec};
 use ark_groth16::{ProvingKey, VerifyingKey};
 use ark_poly::{EvaluationDomain, Radix2EvaluationDomain};
-use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystem, SynthesisError};
 use core::{clone::Clone, marker::PhantomData};
-use manta_crypto::rand::{CryptoRng, RngCore};
-use serde::Serialize;
-use core::clone::Clone;
 use manta_crypto::{
     arkworks::{
         ec::{AffineCurve, ProjectiveCurve},
@@ -39,6 +34,7 @@ use manta_crypto::{
         relations::r1cs::{ConstraintSynthesizer, ConstraintSystem, SynthesisError},
     },
     rand::{CryptoRng, RngCore},
+};
 
 /// Proving Key Hasher
 pub trait ProvingKeyHasher<P>
