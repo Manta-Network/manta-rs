@@ -53,7 +53,7 @@ where
 }
 
 /// Contribute Request
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(
     bound(serialize = "P: Serialize", deserialize = "P: Deserialize<'de>",),
     deny_unknown_fields
@@ -72,6 +72,16 @@ where
     /// Proof of contribution
     pub proof: AsBytes<V::Proof>,
 }
+
+// TODO
+/// Contribute Response
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ContributeResponse
+{
+    /// TODO
+    pub contribute_success: bool,
+}
+
 
 /// Signed Message
 #[derive(Debug, Deserialize, Serialize)]

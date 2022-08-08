@@ -219,6 +219,14 @@ impl Configuration for Config {
     }
 }
 
+// TODO: To be cleaned
+impl Config {
+    /// TODO
+    pub fn generate_hasher() -> <Config as Configuration>::Hasher {
+        BlakeHasher::default()
+    }
+}
+
 impl<P> ProvingKeyHasher<P> for Config
 where
     P: Pairing,

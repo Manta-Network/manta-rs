@@ -42,7 +42,9 @@ ark-bls12-381 = { version = "0.3.0", default-features = false, features = ["curv
 async-std = { version = "1.6.0", features = ["attributes", "tokio1"] }
 blake2 = { version = "0.10.4", default-features = false }
 byteorder = { version = "1.4.3", default-features = false }
+clap = { version = "3.2.16", default-features = false, features = ["color", "derive", "std", "suggestions", "unicode", "wrap_help"] }
 derivative = { version = "2.2.0", default-features = false, features = ["use_core"] }
+dialoguer = { version = "0.10.2" }
 ed25519-dalek = { version = "1.0.1", default-features = false, features = ["u64_backend"] } 
 manta-crypto = { path = "../manta-crypto", default-features = false, features = ["arkworks", "getrandom"] }
 manta-util = { path = "../manta-util", default-features = false, features = ["serde-array"] }
@@ -51,10 +53,10 @@ reqwest = {version = "0.11.11", features = ["json"]}
 serde = { version = "1.0", default-features = false, features = ["derive"]  }
 serde_with = { version = "1.14.0", default-features = false }
 bincode = { version = "1.3", default-features = false }
-tide = { version = "0.16.0", default-features = false }
 take_mut = "0.2.2" # TODO: review this dependency
+tide = { version = "0.16.0", default-features = false }
+tokio = { version = "1.20.1", default-features = false, features = ["rt-multi-thread"] }
 manta-pay = { path = "../manta-pay", default-features = false, features = ["groth16"] }
-clap = "3.2"
 workspace-hack = { version = "0.1.0", path = "../workspace-hack" }
 
 [dev-dependencies]

@@ -393,6 +393,7 @@ where
 }
 
 /// Groth16 Trusted Setup Phase2
+#[derive(Clone)]
 pub struct Groth16Phase2<C>
 where
     C: Configuration,
