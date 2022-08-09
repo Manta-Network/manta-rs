@@ -16,37 +16,25 @@
 
 //! Generate Dummy Phase One Parameters
 
-use std::time::Instant;
-
 use ark_bls12_381::Fr;
+use ark_groth16::{Groth16, ProvingKey};
+use ark_snark::SNARK;
+use async_std::{fs::File, prelude::*};
+use blake2::Digest;
 use manta_crypto::{
     accumulator::Accumulator,
     arkworks::{
-        ec::{
-            short_weierstrass_jacobian::GroupAffine, wnaf::WnafContext, AffineCurve, PairingEngine,
-            ProjectiveCurve, SWModelParameters,
-        },
+        ec::{AffineCurve, PairingEngine},
         ff::field_new,
-        pairing::{Pair, Pairing},
-        r1cs_std::eq::EqGadget,
+        pairing::Pairing,
         serialize::{CanonicalDeserialize, CanonicalSerialize},
     },
-    eclair::alloc::Allocate, constraint::measure::Measure,
+    constraint::measure::Measure,
+    rand::{CryptoRng, OsRng, RngCore, Sample},
 };
-use manta_util::{cfg_into_iter, cfg_iter, cfg_iter_mut, cfg_reduce, into_array_unchecked};
-
-use ark_groth16::{Groth16, ProvingKey};
-use ark_snark::SNARK;
-use blake2::Digest;
-use manta_crypto::{
-    // constraint::Allocate,
-    eclair::alloc::mode::{Public, Secret},
-    rand::{CryptoRng, OsRng, RngCore, Sample, SeedableRng},
-};
-
 use manta_pay::{
     config::{FullParameters, Reclaim},
-    crypto::constraint::arkworks::{Fp, FpVar, R1CS},
+    crypto::constraint::arkworks::R1CS,
     test::payment::UtxoAccumulator,
 };
 use manta_trusted_setup::{
@@ -57,6 +45,8 @@ use manta_trusted_setup::{
     mpc::{Transcript, Types},
     util::{BlakeHasher, HasDistribution, KZGBlakeHasher, Serializer},
 };
+use manta_util::into_array_unchecked;
+use std::time::Instant;
 
 /// Test MPC
 #[derive(Clone, Default)]
@@ -346,10 +336,6 @@ where
     );
 }
 
-use async_std::fs;
-use async_std::{fs::File, prelude::*};
-
-
 // cargo run --release --package manta-trusted-setup --bin generate_phase_one_dummy_parameters --nocapture
 
 // /// TODO
@@ -390,7 +376,6 @@ use async_std::{fs::File, prelude::*};
 //     .expect("Verifying all transformations failed.");
 // }
 
-
 #[async_std::main]
 async fn main() {
     let mut rng = OsRng;
@@ -429,8 +414,8 @@ async fn main() {
     let hasher = <Test as mpc::Configuration>::Hasher::default();
     let (mut prev_state, mut proof);
     let mut challenge = transcript.initial_challenge;
-    let NUM = 5;
-    for _ in 0..NUM {
+    let num = 5;
+    for _ in 0..num {
         prev_state = state.clone();
         let now = Instant::now();
         proof = contribute(&hasher, &challenge, &mut state, &mut rng).unwrap();
@@ -456,7 +441,7 @@ async fn main() {
     .expect("Verifying all transformations failed.");
     println!(
         "Given {} contributions, verify transform all for Phase 2 parameters takes {:?}",
-        NUM,
+        num,
         now.elapsed()
     );
 }

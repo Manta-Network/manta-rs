@@ -24,12 +24,10 @@ use crate::{
     },
     mpc::Types,
     ratio::HashToGroup,
-    util::{BlakeHasher, Deserializer, HasDistribution, KZGBlakeHasher, G1Type, G2Type},
+    util::{BlakeHasher, Deserializer, G1Type, G2Type, HasDistribution, KZGBlakeHasher},
 };
-use ark_bls12_381::{G1Affine, G2Affine};
 use ark_groth16::ProvingKey;
 use ark_std::io::{Read, Write};
-use bincode::Options;
 use blake2::Digest;
 use manta_crypto::{
     arkworks::{
@@ -313,4 +311,3 @@ impl Deserializer<<Config as Pairing>::G2, G2Type> for Config {
         <Config as Pairing>::G2::deserialize_uncompressed(reader).map_err(|_| error.into())
     }
 }
-

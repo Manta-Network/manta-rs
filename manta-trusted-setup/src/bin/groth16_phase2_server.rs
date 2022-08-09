@@ -17,10 +17,7 @@
 //! Trusted Setup Ceremony Server
 
 use ark_bls12_381::Fr;
-use manta_crypto::{
-    arkworks::{pairing::Pairing, serialize::CanonicalDeserialize},
-    rand::Sample,
-};
+use manta_crypto::{arkworks::pairing::Pairing, rand::Sample};
 use manta_pay::crypto::constraint::arkworks::R1CS;
 use manta_trusted_setup::{
     ceremony::{
@@ -29,7 +26,7 @@ use manta_trusted_setup::{
         signature::{
             ed_dalek,
             ed_dalek::{Ed25519, PublicKey},
-            HasPublicKey, SignatureScheme,
+            HasPublicKey,
         },
         CeremonyError,
     },
@@ -39,7 +36,6 @@ use manta_trusted_setup::{
         mpc,
         mpc::{initialize, Groth16Phase2},
     },
-    util::{G1Type, G2Type},
 };
 use rand_chacha::rand_core::OsRng;
 use serde::{Deserialize, Serialize};
@@ -142,10 +138,6 @@ fn synthesize_constraints(// phase_one_parameters: &PhaseOneParameters,
     cs
 }
 
-use async_std::{fs, fs::File, prelude::*};
-
-use manta_trusted_setup::util::Deserializer;
-
 // TODO: To be replaced with production circuit.
 /// Conducts a dummy phase one trusted setup.
 #[inline]
@@ -172,6 +164,7 @@ async fn init_server(options: &PhaseOneParameters) -> S {
     // let dummy_phase_one_parameter = fs::read("/home/boyuan/manta/code/manta-rs/manta-trusted-setup/dummy_phase_one_parameter.data").await.unwrap();
     // let powers =
     //     CanonicalDeserialize::deserialize(dummy_phase_one_parameter.as_slice()).unwrap();
+    let _ = options;
     let powers = dummy_phase_one_trusted_setup(); // TODO: To be replaced with disk file
     let constraints = synthesize_constraints();
     let state =
@@ -195,7 +188,8 @@ async fn init_server(options: &PhaseOneParameters) -> S {
         .coordinator
         .lock()
         .expect("Failed to lock coordinator")
-        .register(dummy_participant).expect("Register dummy participant should succeed.");
+        .register(dummy_participant)
+        .expect("Register dummy participant should succeed.");
     server
 }
 

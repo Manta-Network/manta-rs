@@ -19,35 +19,24 @@
 extern crate alloc;
 
 use alloc::string::String;
-use blake2::Blake2b512;
 use clap::{Error, Parser, Subcommand};
 use dialoguer::{theme::ColorfulTheme, Input};
-use ed25519_dalek::Keypair;
-use manta_crypto::arkworks::{pairing::Pairing, serialize::CanonicalDeserialize};
-use manta_pay::crypto::constraint::arkworks::R1CS;
 use manta_trusted_setup::{
     ceremony::{
         client::Client,
         message::{ContributeResponse, QueryMPCStateResponse},
         queue::{Identifier, Priority},
-        server::{HasNonce, Server},
+        server::HasNonce,
         signature::{
             ed_dalek::{self, Ed25519, PrivateKey, PublicKey},
             HasPublicKey, SignatureScheme,
         },
         CeremonyError,
     },
-    groth16::{
-        config::Config,
-        kzg::{Accumulator, Configuration},
-        mpc,
-        mpc::{initialize, Groth16Phase2},
-    },
-    mpc::Contribute,
-    util::BlakeHasher,
+    groth16::{config::Config, mpc::Groth16Phase2},
 };
 use serde::{Deserialize, Serialize};
-use std::{collections::BTreeMap, thread, time::Duration};
+use std::{thread, time::Duration};
 
 ///
 pub type Result<T = (), E = Error> = core::result::Result<T, E>;
@@ -108,12 +97,14 @@ pub fn register() -> Result<(), ()> {
 
     // Generate sk,pk from seed
     let (sk, pk) = ((), ());
+    let _ = sk;
 
     // Read in twitter account name
     let twitter: String = Input::with_theme(&ColorfulTheme::default())
         .with_prompt("Your twitter account")
         .interact_text()
         .expect("");
+    let _ = twitter;  // TODO
 
     // Sign message with `sk` (the message has to include the twitter account).
     let signature = ();
@@ -204,14 +195,13 @@ fn init_participant() -> Participant {
     }
 }
 
-use ed25519_dalek::Signature;
-
 fn init_key_pair<S>(seed: String) -> (S::PrivateKey, S::PublicKey)
 where
     S: SignatureScheme<PrivateKey = ed_dalek::PrivateKey, PublicKey = ed_dalek::PublicKey>,
 {
-    // TODO. Hardcode a seed for temporary testing.
-    // let keypair: Keypair = Keypair::generate(&mut seed);
+    let _ = seed; // TODO: Use seed to generate key pair
+                  // TODO. Hardcode a seed for temporary testing.
+                  // let keypair: Keypair = Keypair::generate(&mut seed);
     let private_key = PrivateKey([
         149, 167, 173, 208, 224, 206, 37, 70, 87, 169, 157, 198, 120, 32, 151, 88, 25, 10, 12, 215,
         80, 124, 187, 129, 183, 96, 103, 11, 191, 255, 33, 105,
@@ -230,7 +220,7 @@ pub async fn contribute() -> Result<(), ()> {
     // TODO: In every message, return the nonce of the specific user.
     let seed: String = Input::with_theme(&ColorfulTheme::default())
         .with_prompt("Seed")
-        .validate_with(move |input: &String| -> Result<(), &str> {
+        .validate_with(move |_: &String| -> Result<(), &str> {
             // Check that it is a valid seed phrase and return `Err("error message")` if not
             // todo!()
             Ok(()) // TODO
@@ -308,5 +298,7 @@ pub async fn contribute() -> Result<(), ()> {
 }
 
 fn main() {
-    Arguments::parse().run(); // TODO: When should we stop?
+    Arguments::parse()
+        .run()
+        .expect("Client should run successfully."); // TODO: When should we stop?
 }

@@ -24,7 +24,6 @@ use crate::{
     },
     mpc,
 };
-use core::mem::take;
 
 /// Coordinator with `V` as trusted setup verifier, `P` as participant, `M` as the map used by registry, `N` as the number of priority levels
 pub struct Coordinator<V, P, M, const N: usize>

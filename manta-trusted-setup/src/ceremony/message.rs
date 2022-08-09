@@ -16,11 +16,7 @@
 
 //! Messages
 
-use crate::{
-    ceremony::{queue::Identifier, signature::SignatureScheme},
-    mpc,
-    util::AsBytes,
-};
+use crate::{ceremony::queue::Identifier, mpc, util::AsBytes};
 use core::fmt::Debug;
 use serde::{Deserialize, Serialize};
 
@@ -51,7 +47,7 @@ where
     /// MPC State
     Mpc(AsBytes<V::State>, AsBytes<V::Challenge>),
 
-    /// 
+    ///
     NotRegistered,
 
     ///

@@ -19,7 +19,6 @@
 use alloc::vec::Vec;
 use core::fmt::Debug;
 use manta_crypto::rand::{CryptoRng, RngCore};
-use serde::{de::DeserializeOwned, Serialize};
 
 /// Secure Multi-Party Computation Types
 pub trait Types {
