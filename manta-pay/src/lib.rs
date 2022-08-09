@@ -22,7 +22,6 @@
 #![forbid(missing_docs)]
 
 extern crate alloc;
-extern crate core;
 
 pub mod crypto;
 pub mod util;

@@ -554,8 +554,13 @@ mod test {
     use super::*;
     use crate::config::Bls12_381_Edwards;
     use manta_crypto::{
-        algebra::Group, arkworks::r1cs_std::groups::curves::twisted_edwards::AffineVar,
-        constraint::measure::Measure, eclair::bool::AssertEq, rand::OsRng,
+        algebra::Group,
+        arkworks::{
+            algebra::precomputed_bases, r1cs_std::groups::curves::twisted_edwards::AffineVar,
+        },
+        constraint::measure::Measure,
+        eclair::bool::AssertEq,
+        rand::OsRng,
     };
 
     /// Constraint Field Type
@@ -572,8 +577,7 @@ mod test {
         let mut cs = Compiler::<Bls12_381_Edwards>::for_proofs();
         let scalar = Scalar::<Bls12_381_Edwards>::gen(&mut OsRng);
         let base = Bls12_381_Edwards::prime_subgroup_generator();
-        let precomputed_table =
-            core::iter::successors(Some(base), |base| Some(*base + *base)).take(256);
+        let precomputed_table = precomputed_bases::<Bls12_381_Edwards>();
 
         let base_var = Group(base.into_affine())
             .as_known::<Secret, GroupVar<Bls12_381_Edwards, AffineVar<_, _>>>(&mut cs);
@@ -589,10 +593,7 @@ mod test {
         cs.assert_eq(&expected, &actual);
         assert!(cs.is_satisfied());
 
-        #[cfg(feature = "std")]
-        {
-            println!("variable base mul constraint: {:?}", ctr2 - ctr1);
-            println!("fixed base mul constraint: {:?}", ctr3 - ctr2);
-        }
+        println!("variable base mul constraint: {:?}", ctr2 - ctr1);
+        println!("fixed base mul constraint: {:?}", ctr3 - ctr2);
     }
 }

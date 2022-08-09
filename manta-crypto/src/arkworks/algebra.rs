@@ -104,3 +104,24 @@ where
         Self(scalar, PhantomData)
     }
 }
+
+/// Returns the power-of-two table of size `powers` such that entry at index `i` is `base * 2^i`.
+#[inline]
+pub fn precomputed_bases_custom<C>(base: C, powers: usize) -> impl Iterator<Item = C>
+where
+    C: ProjectiveCurve,
+{
+    core::iter::successors(Some(base), |base| Some(*base + *base)).take(powers)
+}
+
+/// Returns the power-of-two table of whose size is modulus bits of [`ConstraintField<C>`] such that entry at index `i` is [`C::prime_subgroup_generator()`] `* 2^i`.
+#[inline]
+pub fn precomputed_bases<C>() -> impl Iterator<Item = C>
+where
+    C: ProjectiveCurve,
+{
+    precomputed_bases_custom(
+        C::prime_subgroup_generator(),
+        <ConstraintField<C> as PrimeField>::size_in_bits(),
+    )
+}
