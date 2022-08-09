@@ -16,6 +16,7 @@
 
 //! Trusted Setup Ceremony Server
 
+use ark_bls12_381::Fr;
 use manta_crypto::arkworks::{pairing::Pairing, serialize::CanonicalDeserialize};
 use manta_pay::crypto::constraint::arkworks::R1CS;
 use manta_trusted_setup::{
@@ -30,12 +31,13 @@ use manta_trusted_setup::{
         CeremonyError,
     },
     groth16::{
-        config::Config,
+        config::{Config, dummy_circuit},
         kzg::Accumulator,
         mpc,
         mpc::{initialize, Groth16Phase2},
-    },
+    }, util::{G1Type, G2Type},
 };
+use rand_chacha::rand_core::OsRng;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -99,7 +101,7 @@ impl HasNonce<Ed25519> for Participant {
     }
 }
 
-type S = Server<Groth16Phase2<Config>, Participant, BTreeMap<PublicKey, Participant>, Ed25519, 2>;
+type S = Server<Groth16Phase2<Config>, Participant, BTreeMap<String, Participant>, Ed25519, 2>;
 
 ///
 pub struct PhaseOneParameters {
@@ -130,35 +132,66 @@ impl PhaseOneParameters {
 }
 
 fn synthesize_constraints(
-    phase_one_parameters: &PhaseOneParameters,
+    // phase_one_parameters: &PhaseOneParameters,
 ) -> R1CS<<Config as Pairing>::Scalar> {
-    let _ = phase_one_parameters;
-    todo!()
+    let mut cs = R1CS::for_contexts();
+    dummy_circuit(&mut cs); // TO be changed
+    cs
 }
 
-// async fn init_server(options: &PhaseOneParameters) -> S {
-//     let phase1_accumulator_bytes = async_std::fs::read(options.accumulator_path.as_str())
-//         .await
-//         .expect("failed to read accumulator file");
-//     let powers = Accumulator::<Config>::deserialize(&phase1_accumulator_bytes[..])
-//         .expect("failed to deserialize accumulator");
-//     let constraints = synthesize_constraints(options);
-//     let state = initialize(powers, constraints).expect("failed to initialize state");
-//     let initial_challenge = <Config as mpc::ProvingKeyHasher<Config>>::hash(&state);
-//     S::new(state, initial_challenge.into())
-// }
+use async_std::fs;
+use async_std::{fs::File, prelude::*};
+
+use manta_trusted_setup::util::Deserializer;
+
+async fn init_server(options: &PhaseOneParameters) -> S {
+    // let phase1_accumulator_bytes = async_std::fs::read(options.phase_one_parameter_path.as_str())
+    //     .await
+    //     .expect("failed to read accumulator file");
+    // let powers = CanonicalDeserialize::deserialize(phase1_accumulator_bytes.as_slice()).unwrap();
+    let dummy_phase_one_parameter = fs::read("/home/boyuan/manta/code/manta-rs/manta-trusted-setup/dummy_phase_one_parameter.data").await.unwrap();
+    let powers =
+        CanonicalDeserialize::deserialize(dummy_phase_one_parameter.as_slice()).unwrap();
+    let constraints = synthesize_constraints();
+    let state = initialize::<Config, R1CS<Fr>>(powers, constraints).expect("failed to initialize state");
+    let initial_challenge = <Config as mpc::ProvingKeyHasher<Config>>::hash(&state);
+    S::new(state, initial_challenge.into())
+}
 
 #[async_std::main]
 async fn main() -> tide::Result<()> {
     let options = PhaseOneParameters::load_from_args();
-    // let mut api = tide::Server::with_state(init_server(&options).await);
-
-    // api.at("/register")
-    //     .post(|r| Server::execute(r, Server::register_participant));
-    // api.at("/query")
-    //     .post(|r| Server::execute(r, Server::get_state_and_challenge));
-    // api.at("/update")
-    //     .post(|r| Server::execute(r, Server::update));
-    // api.listen("127.0.0.1:8080").await?;
+    let mut api = tide::Server::with_state(init_server(&options).await);
+    api.at("/").get(|_| async { Ok("Hello, world!") });
+    api.at("/register")
+        .post(|r| Server::execute(r, Server::register_participant));
+    api.at("/query")
+        .post(|r| Server::execute(r, Server::get_state_and_challenge));
+    api.at("/update")
+        .post(|r| Server::execute(r, Server::update));
+    api.listen("127.0.0.1:8080").await?;
     Ok(())
 }
+
+// cargo run --release --package manta-trusted-setup --bin groth16_phase2_server -- --accumulator_path xxx
+
+
+
+// cs.constraint_count(): 17706
+// Finished trusted setup phase one takes 286.423455189s
+
+// Wrote phase one parameters to disk. Took 221.491831ms
+
+// Initialize Phase 2 parameters takes 895.588149647s
+
+// On client side, contribute Phase 2 parameters takes 10.574934047s
+// On server side, verify transform for Phase 2 parameters takes 23.006557103s
+// On client side, contribute Phase 2 parameters takes 11.101973456s
+// On server side, verify transform for Phase 2 parameters takes 23.046081274s
+// On client side, contribute Phase 2 parameters takes 10.418395032s
+// On server side, verify transform for Phase 2 parameters takes 23.041631704s
+// On client side, contribute Phase 2 parameters takes 10.510215602s
+// On server side, verify transform for Phase 2 parameters takes 22.873919112s
+// On client side, contribute Phase 2 parameters takes 10.300151345s
+// On server side, verify transform for Phase 2 parameters takes 22.742186574s
+// Given 5 contributions, verify transform all for Phase 2 parameters takes 22.963527386s

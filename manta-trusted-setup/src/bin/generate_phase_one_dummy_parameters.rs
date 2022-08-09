@@ -347,45 +347,49 @@ where
 }
 
 use async_std::fs;
-
-/// TODO
-// #[async_std::main]
-pub async fn test() {
-    let mut rng = OsRng;
-    let utxo_accumulator = UtxoAccumulator::new(manta_crypto::rand::Rand::gen(&mut rng));
-    let parameters = manta_crypto::rand::Rand::gen(&mut rng);
-    let now = Instant::now();
-    let cs =
-        Reclaim::unknown_constraints(FullParameters::new(&parameters, utxo_accumulator.model()));
-    let dummy_phase_one_parameter = fs::read("dummy_phase_one_parameter.data").await.unwrap();
-    let dummy_phase_one_parameter =
-        CanonicalDeserialize::deserialize(dummy_phase_one_parameter.as_slice()).unwrap();
-    let mut state = initialize::<Test, R1CS<Fr>>(dummy_phase_one_parameter, cs).unwrap();
-    let mut transcript = Transcript::<Test> {
-        initial_challenge: <Test as mpc::ProvingKeyHasher<Test>>::hash(&state),
-        initial_state: state.clone(),
-        rounds: Vec::new(),
-    };
-    let hasher = <Test as mpc::Configuration>::Hasher::default();
-    let (mut prev_state, mut proof);
-    let mut challenge = transcript.initial_challenge;
-    let NUM = 5;
-    for _ in 0..NUM {
-        prev_state = state.clone();
-        proof = contribute(&hasher, &challenge, &mut state, &mut rng).unwrap();
-        (challenge, state) = verify_transform(&challenge, prev_state, state, proof.clone())
-            .expect("Verify transform failed");
-        transcript.rounds.push((state.clone(), proof));
-    }
-    verify_transform_all(
-        transcript.initial_challenge,
-        transcript.initial_state,
-        transcript.rounds,
-    )
-    .expect("Verifying all transformations failed.");
-}
-
 use async_std::{fs::File, prelude::*};
+
+
+// cargo run --release --package manta-trusted-setup --bin generate_phase_one_dummy_parameters --nocapture
+
+// /// TODO
+// #[async_std::main]
+// pub async fn main() {
+//     let mut rng = OsRng;
+//     let utxo_accumulator = UtxoAccumulator::new(manta_crypto::rand::Rand::gen(&mut rng));
+//     let parameters = manta_crypto::rand::Rand::gen(&mut rng);
+//     let now = Instant::now();
+//     let cs =
+//         Reclaim::unknown_constraints(FullParameters::new(&parameters, utxo_accumulator.model()));
+//     let dummy_phase_one_parameter = fs::read("/home/boyuan/manta/code/manta-rs/manta-trusted-setup/dummy_phase_one_parameter.data").await.unwrap();
+//     let dummy_phase_one_parameter =
+//         CanonicalDeserialize::deserialize(dummy_phase_one_parameter.as_slice()).unwrap();
+//     println!("Successfully read & deserialize data");
+//     let mut state = initialize::<Test, R1CS<Fr>>(dummy_phase_one_parameter, cs).unwrap();
+//     let mut transcript = Transcript::<Test> {
+//         initial_challenge: <Test as mpc::ProvingKeyHasher<Test>>::hash(&state),
+//         initial_state: state.clone(),
+//         rounds: Vec::new(),
+//     };
+//     let hasher = <Test as mpc::Configuration>::Hasher::default();
+//     let (mut prev_state, mut proof);
+//     let mut challenge = transcript.initial_challenge;
+//     let NUM = 5;
+//     for _ in 0..NUM {
+//         prev_state = state.clone();
+//         proof = contribute(&hasher, &challenge, &mut state, &mut rng).unwrap();
+//         (challenge, state) = verify_transform(&challenge, prev_state, state, proof.clone())
+//             .expect("Verify transform failed");
+//         transcript.rounds.push((state.clone(), proof));
+//     }
+//     verify_transform_all(
+//         transcript.initial_challenge,
+//         transcript.initial_state,
+//         transcript.rounds,
+//     )
+//     .expect("Verifying all transformations failed.");
+// }
+
 
 #[async_std::main]
 async fn main() {

@@ -24,23 +24,28 @@ use crate::{
     },
     mpc::Types,
     ratio::HashToGroup,
-    util::{BlakeHasher, Deserializer, HasDistribution, KZGBlakeHasher},
+    util::{BlakeHasher, Deserializer, HasDistribution, KZGBlakeHasher, G1Type, G2Type},
 };
 use ark_bls12_381::{G1Affine, G2Affine};
 use ark_groth16::ProvingKey;
-use ark_r1cs_std::fields::fp::FpVar;
 use ark_std::io::{Read, Write};
 use bincode::Options;
 use blake2::Digest;
 use manta_crypto::{
     arkworks::{
         ec::{AffineCurve, PairingEngine},
+        ff::field_new,
         pairing::Pairing,
-        serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError}, ff::field_new,
+        r1cs_std::{fields::fp::FpVar, prelude::EqGadget},
+        serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError},
     },
-    rand::Sample, eclair::alloc::{Allocate, mode::{Secret, Public}},
+    eclair::alloc::{
+        mode::{Public, Secret},
+        Allocate,
+    },
+    rand::Sample,
 };
-use manta_pay::crypto::constraint::arkworks::Fp;
+use manta_pay::crypto::constraint::arkworks::{Fp, R1CS};
 use manta_util::into_array_unchecked;
 
 /// Configuration for the Groth16 Phase2 Server.
@@ -78,26 +83,27 @@ impl Size for Config {
 // TODO
 // pub struct ConfigDeserialize;
 
-impl<T, TMarker> Deserializer<T, TMarker> for Config // TODO: TMarker
-where
-    T: CanonicalDeserialize,
-{
-    type Error = SerializationError;
+// impl<T, TMarker> Deserializer<T, TMarker> for Config
+// // TODO: TMarker
+// where
+//     T: CanonicalDeserialize,
+// {
+//     type Error = SerializationError;
 
-    fn deserialize_unchecked<R>(reader: &mut R) -> Result<T, Self::Error>
-    where
-        R: Read,
-    {
-        <T as CanonicalDeserialize>::deserialize_unchecked(reader)
-    }
+//     fn deserialize_unchecked<R>(reader: &mut R) -> Result<T, Self::Error>
+//     where
+//         R: Read,
+//     {
+//         <T as CanonicalDeserialize>::deserialize_unchecked(reader)
+//     }
 
-    fn deserialize_compressed<R>(reader: &mut R) -> Result<T, Self::Error>
-    where
-        R: Read,
-    {
-        <T as CanonicalDeserialize>::deserialize(reader)
-    }
-}
+//     fn deserialize_compressed<R>(reader: &mut R) -> Result<T, Self::Error>
+//     where
+//         R: Read,
+//     {
+//         <T as CanonicalDeserialize>::deserialize(reader)
+//     }
+// }
 
 impl kzg::Configuration for Config {
     type DomainTag = u8;
@@ -254,8 +260,8 @@ impl Types for Config {
     type Proof = Proof<Config>;
 }
 
-use manta_crypto::arkworks::constraint::R1CS;
 use ark_bls12_381::Fr;
+
 // TO Be removed
 /// Generates a dummy R1CS circuit.
 #[inline]
@@ -267,3 +273,44 @@ pub fn dummy_circuit(cs: &mut R1CS<Fr>) {
     c.enforce_equal(&d)
         .expect("enforce_equal is not allowed to fail");
 }
+
+impl Deserializer<<Config as Pairing>::G1, G1Type> for Config {
+    type Error = ark_std::io::Error; // TODO
+
+    fn deserialize_unchecked<R>(reader: &mut R) -> Result<<Config as Pairing>::G1, Self::Error>
+    where
+        R: ark_std::io::Read,
+    {
+        let error = ark_std::io::ErrorKind::Other; // TODO
+        <Config as Pairing>::G1::deserialize_unchecked(reader).map_err(|_| error.into())
+    }
+
+    fn deserialize_compressed<R>(reader: &mut R) -> Result<<Config as Pairing>::G1, Self::Error>
+    where
+        R: ark_std::io::Read,
+    {
+        let error = ark_std::io::ErrorKind::Other; // TODO
+        <Config as Pairing>::G1::deserialize_uncompressed(reader).map_err(|_| error.into())
+    }
+}
+
+impl Deserializer<<Config as Pairing>::G2, G2Type> for Config {
+    type Error = ark_std::io::Error; // TODO
+
+    fn deserialize_unchecked<R>(reader: &mut R) -> Result<<Config as Pairing>::G2, Self::Error>
+    where
+        R: ark_std::io::Read,
+    {
+        let error = ark_std::io::ErrorKind::Other; // TODO
+        <Config as Pairing>::G2::deserialize_unchecked(reader).map_err(|_| error.into())
+    }
+
+    fn deserialize_compressed<R>(reader: &mut R) -> Result<<Config as Pairing>::G2, Self::Error>
+    where
+        R: ark_std::io::Read,
+    {
+        let error = ark_std::io::ErrorKind::Other; // TODO
+        <Config as Pairing>::G2::deserialize_uncompressed(reader).map_err(|_| error.into())
+    }
+}
+
