@@ -22,6 +22,7 @@ use alloc::string::String;
 use blake2::Blake2b512;
 use clap::{Error, Parser, Subcommand};
 use dialoguer::{theme::ColorfulTheme, Input};
+use ed25519_dalek::Keypair;
 use manta_crypto::arkworks::{pairing::Pairing, serialize::CanonicalDeserialize};
 use manta_pay::crypto::constraint::arkworks::R1CS;
 use manta_trusted_setup::{
@@ -31,7 +32,7 @@ use manta_trusted_setup::{
         queue::{Identifier, Priority},
         server::{HasNonce, Server},
         signature::{
-            ed_dalek,
+            ed_dalek::{self, PrivateKey},
             ed_dalek::{Ed25519, PublicKey},
             HasPublicKey, SignatureScheme,
         },
@@ -77,8 +78,10 @@ impl Arguments {
         match self.command {
             Command::Register => register().map_err(|_| todo!()),
             Command::Contribute => {
-                match tokio::runtime::Builder::new_multi_thread()
+                match tokio::runtime::Builder::new_multi_thread() // TODO
                     .worker_threads(4)
+                    .enable_io()
+                    .enable_time()
                     .build()
                 {
                     Ok(runtime) => runtime
@@ -128,9 +131,20 @@ pub fn register() -> Result<(), ()> {
 /// Participant
 #[derive(Clone, Serialize, Deserialize)]
 struct Participant {
+    /// Public Key
     pub public_key: PublicKey,
+
+    /// Identifier
+    pub identifier: String,
+
+    /// Priority
     pub priority: usize,
+
+    /// Nonce
     pub nonce: u64,
+
+    /// Boolean on whether this participant has contributed
+    pub contributed: bool,
 }
 
 impl Priority for Participant {
@@ -140,10 +154,10 @@ impl Priority for Participant {
 }
 
 impl Identifier for Participant {
-    type Identifier = ed_dalek::PublicKey;
+    type Identifier = String;
 
     fn identifier(&self) -> Self::Identifier {
-        self.public_key
+        self.identifier.clone() // TODO
     }
 }
 
@@ -177,14 +191,36 @@ impl HasNonce<Ed25519> for Participant {
 type C = Client<Ed25519, Participant>;
 
 fn init_participant() -> Participant {
-    todo!()
+    // TODO: Only have temporary code here for testing.
+    let public_key = PublicKey([
+        104, 148, 44, 244, 61, 116, 39, 8, 68, 216, 6, 24, 232, 68, 239, 203, 198, 2, 138, 148,
+        242, 73, 122, 3, 19, 236, 195, 133, 136, 137, 146, 108,
+    ]);
+    Participant {
+        public_key,
+        identifier: "happy".to_string(),
+        priority: 0,
+        nonce: 0,
+        contributed: false,
+    }
 }
+
+use ed25519_dalek::Signature;
 
 fn init_key_pair<S>(seed: String) -> (S::PrivateKey, S::PublicKey)
 where
-    S: SignatureScheme,
-{
-    todo!()
+    S: SignatureScheme<PrivateKey = ed_dalek::PrivateKey, PublicKey = ed_dalek::PublicKey>,
+{ // TODO. Hardcode a seed for temporary testing.
+    // let keypair: Keypair = Keypair::generate(&mut seed);
+    let private_key = PrivateKey([
+        149, 167, 173, 208, 224, 206, 37, 70, 87, 169, 157, 198, 120, 32, 151, 88, 25, 10, 12,
+        215, 80, 124, 187, 129, 183, 96, 103, 11, 191, 255, 33, 105,
+    ]);
+    let public_key = PublicKey([
+        104, 148, 44, 244, 61, 116, 39, 8, 68, 216, 6, 24, 232, 68, 239, 203, 198, 2, 138, 148,
+        242, 73, 122, 3, 19, 236, 195, 133, 136, 137, 146, 108,
+    ]);
+    (private_key, public_key)
 }
 
 /// Run `reqwest` contribution client, takes seed as input.
@@ -257,12 +293,12 @@ pub async fn contribute() -> Result<(), ()> {
             .await
             .unwrap(); // TODO: Error handling here if response status is bad.
         // TODO: Need to handle the case if contribute failed due to network reason or other reasons.
-        println!("Contribute succeed!");
+        println!("Contribute succeed: {:?}", parsed_contribute_response);
         break;
     }
     Ok(())
 }
 
 fn main() {
-    Arguments::parse().run();
+    Arguments::parse().run(); // TODO: When should we stop?
 }

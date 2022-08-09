@@ -17,7 +17,10 @@
 //! Trusted Setup Ceremony Server
 
 use ark_bls12_381::Fr;
-use manta_crypto::arkworks::{pairing::Pairing, serialize::CanonicalDeserialize};
+use manta_crypto::{
+    arkworks::{pairing::Pairing, serialize::CanonicalDeserialize},
+    rand::Sample,
+};
 use manta_pay::crypto::constraint::arkworks::R1CS;
 use manta_trusted_setup::{
     ceremony::{
@@ -31,11 +34,12 @@ use manta_trusted_setup::{
         CeremonyError,
     },
     groth16::{
-        config::{Config, dummy_circuit},
-        kzg::Accumulator,
+        config::{dummy_circuit, Config},
+        kzg::{Accumulator, Contribution},
         mpc,
         mpc::{initialize, Groth16Phase2},
-    }, util::{G1Type, G2Type},
+    },
+    util::{G1Type, G2Type},
 };
 use rand_chacha::rand_core::OsRng;
 use serde::{Deserialize, Serialize};
@@ -131,31 +135,68 @@ impl PhaseOneParameters {
     }
 }
 
-fn synthesize_constraints(
-    // phase_one_parameters: &PhaseOneParameters,
+fn synthesize_constraints(// phase_one_parameters: &PhaseOneParameters,
 ) -> R1CS<<Config as Pairing>::Scalar> {
     let mut cs = R1CS::for_contexts();
     dummy_circuit(&mut cs); // TO be changed
     cs
 }
 
-use async_std::fs;
-use async_std::{fs::File, prelude::*};
+use async_std::{fs, fs::File, prelude::*};
 
 use manta_trusted_setup::util::Deserializer;
 
+// TODO: To be replaced with production circuit.
+/// Conducts a dummy phase one trusted setup.
+#[inline]
+pub fn dummy_phase_one_trusted_setup() -> Accumulator<Config> {
+    let mut rng = OsRng;
+    let accumulator = Accumulator::default();
+    let challenge = [0; 64];
+    let contribution = Contribution::gen(&mut rng);
+    let proof = contribution
+        .proof(&challenge, &mut rng)
+        .expect("The contribution proof should have been generated correctly.");
+    let mut next_accumulator = accumulator.clone();
+    next_accumulator.update(&contribution);
+    Accumulator::verify_transform(accumulator, next_accumulator, challenge, proof)
+        .expect("Accumulator should have been generated correctly.")
+}
+
+// TO be updated
 async fn init_server(options: &PhaseOneParameters) -> S {
     // let phase1_accumulator_bytes = async_std::fs::read(options.phase_one_parameter_path.as_str())
     //     .await
     //     .expect("failed to read accumulator file");
     // let powers = CanonicalDeserialize::deserialize(phase1_accumulator_bytes.as_slice()).unwrap();
-    let dummy_phase_one_parameter = fs::read("/home/boyuan/manta/code/manta-rs/manta-trusted-setup/dummy_phase_one_parameter.data").await.unwrap();
-    let powers =
-        CanonicalDeserialize::deserialize(dummy_phase_one_parameter.as_slice()).unwrap();
+    // let dummy_phase_one_parameter = fs::read("/home/boyuan/manta/code/manta-rs/manta-trusted-setup/dummy_phase_one_parameter.data").await.unwrap();
+    // let powers =
+    //     CanonicalDeserialize::deserialize(dummy_phase_one_parameter.as_slice()).unwrap();
+    let powers = dummy_phase_one_trusted_setup(); // TODO: To be replaced with disk file
     let constraints = synthesize_constraints();
-    let state = initialize::<Config, R1CS<Fr>>(powers, constraints).expect("failed to initialize state");
+    let state =
+        initialize::<Config, R1CS<Fr>>(powers, constraints).expect("failed to initialize state");
     let initial_challenge = <Config as mpc::ProvingKeyHasher<Config>>::hash(&state);
-    S::new(state, initial_challenge.into())
+    let server = S::new(state, initial_challenge.into());
+
+    // TODO: Only have temporary code here for testing.
+    let dummy_public_key = PublicKey([
+        104, 148, 44, 244, 61, 116, 39, 8, 68, 216, 6, 24, 232, 68, 239, 203, 198, 2, 138, 148,
+        242, 73, 122, 3, 19, 236, 195, 133, 136, 137, 146, 108,
+    ]);
+    let dummy_participant = Participant {
+        public_key: dummy_public_key,
+        identifier: "happy".to_string(),
+        priority: 0,
+        nonce: 0,
+        contributed: false,
+    };
+    server
+        .coordinator
+        .lock()
+        .expect("Failed to lock coordinator")
+        .register(dummy_participant).expect("Register dummy participant should succeed.");
+    server
 }
 
 #[async_std::main]
@@ -174,8 +215,6 @@ async fn main() -> tide::Result<()> {
 }
 
 // cargo run --release --package manta-trusted-setup --bin groth16_phase2_server -- --accumulator_path xxx
-
-
 
 // cs.constraint_count(): 17706
 // Finished trusted setup phase one takes 286.423455189s

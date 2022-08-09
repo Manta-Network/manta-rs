@@ -39,6 +39,8 @@ use std::{
 };
 use tide::{Body, Request, Response};
 
+use super::message::ContributeResponse;
+
 /// Has Nonce
 pub trait HasNonce<S>
 where
@@ -74,7 +76,7 @@ where
     V::Proof: CanonicalSerialize + CanonicalDeserialize,
 {
     /// Coordinator
-    coordinator: Arc<Mutex<Coordinator<V, P, M, N>>>,
+    pub coordinator: Arc<Mutex<Coordinator<V, P, M, N>>>, // TODO: Make this private
 
     /// Type Parameter Marker
     __: PhantomData<S>,
@@ -124,7 +126,7 @@ where
             .expect("Failed to lock coordinator")
             .register(request.participant)
     }
-
+    
     /// Gets MPC States and Challenge
     #[inline]
     pub async fn get_state_and_challenge(
@@ -145,14 +147,21 @@ where
         let state = self.coordinator.lock().expect("Failed to lock coordinator");
         if state.is_next(&request.participant) {
             let (state, challenge) = state.state_and_challenge();
+            println!("get_state_and_challenge. Will respond.");
             Ok(QueryMPCStateResponse::Mpc(
                 state.clone().into(),
                 challenge.clone().into(),
             )) // TODO: remove this clone later
         } else {
             match state.position(&request.participant) {
-                Some(position) => Ok(QueryMPCStateResponse::QueuePosition(position)),
-                None => Err(CeremonyError::NotRegistered),
+                Some(position) => {
+                    println!("Need to wait more time.");
+                    Ok(QueryMPCStateResponse::QueuePosition(position))
+                }
+                None => {
+                    println!("Not Registered");
+                    Err(CeremonyError::NotRegistered) // TODO: Should tell participant that you have not registerd
+                }
             }
         }
     }
@@ -162,7 +171,7 @@ where
     pub async fn update(
         self,
         request: Signed<ContributeRequest<P, V>, S::Signature>,
-    ) -> Result<(), CeremonyError>
+    ) -> Result<ContributeResponse, CeremonyError>
     where
         ContributeRequest<P, V>: Serialize,
     {
@@ -181,7 +190,10 @@ where
                 &request.participant.identifier(),
                 request.state.to_actual(),
                 request.proof.to_actual(),
-            )
+            )?;
+        Ok(ContributeResponse {
+            contribute_success: true,
+        })
     }
 
     /// Executes `f` on the incoming `request`.
