@@ -1083,7 +1083,7 @@ impl<C> utxo::NoteOpen for Parameters<C>
 where
     C: Configuration<Bool = bool>,
     C::IncomingBaseEncryptionScheme:
-        Decrypt<DecryptionKey = C::Scalar, DecryptedPlaintext = Option<IncomingPlaintext<C>>>,
+        Decrypt<DecryptionKey = C::Group, DecryptedPlaintext = Option<IncomingPlaintext<C>>>,
 {
     #[inline]
     fn open(

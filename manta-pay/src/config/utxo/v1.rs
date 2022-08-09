@@ -558,8 +558,7 @@ impl encryption::convert::plaintext::Forward for IncomingEncryptionSchemeConvert
                     source.utxo_commitment_randomness,
                     source.asset.id,
                     Fp(source.asset.value.into()),
-                    Fp(source.key_diversifier.0.x),
-                    Fp(source.key_diversifier.0.y),
+                    arkworks::lift_embedded_scalar::<GroupCurve>(&source.key_diversifier),
                 ]
                 .into(),
             )]
@@ -581,8 +580,7 @@ impl encryption::convert::plaintext::Forward<Compiler>
                     source.utxo_commitment_randomness.clone(),
                     source.asset.id.clone(),
                     source.asset.value.as_ref().clone(),
-                    source.key_diversifier.0.x.clone(),
-                    source.key_diversifier.0.y.clone(),
+                    source.key_diversifier.0.clone(),
                 ]
                 .into(),
             )]
@@ -603,12 +601,15 @@ impl encryption::convert::plaintext::Reverse for IncomingEncryptionSchemeConvert
     fn into_source(target: Self::TargetDecryptedPlaintext, _: &mut ()) -> Self::DecryptedPlaintext {
         if target.0 && target.1.len() == 1 {
             let block = &target.1[0].0;
-            if block.len() == 5 {
+            if block.len() == 4 {
+                /* TODO:
                 Some(protocol::IncomingPlaintext::new(
                     Fp(block[0].0),
                     Asset::new(Fp(block[1].0), try_into_u128(block[2].0)?),
-                    arkworks::Group(GroupCurveAffine::new(block[3].0, block[4].0)),
+                    Fp(block[3].0),
                 ))
+                */
+                todo!()
             } else {
                 None
             }
@@ -630,7 +631,7 @@ impl<COM> Constant<COM> for IncomingEncryptionSchemeConverter<COM> {
 
 ///
 pub type IncomingPoseidonEncryptionScheme<COM = ()> =
-    poseidon::encryption::FixedDuplexer<1, Poseidon5, COM>;
+    poseidon::encryption::FixedDuplexer<1, Poseidon4, COM>;
 
 ///
 pub type IncomingBaseEncryptionScheme<COM = ()> = encryption::convert::key::Converter<
@@ -649,7 +650,7 @@ pub struct UtxoAccumulatorItemHashDomainTag;
 
 impl poseidon::hash::DomainTag<Poseidon4> for UtxoAccumulatorItemHashDomainTag {
     #[inline]
-    fn domain_tag() -> <Poseidon3 as ParameterFieldType>::ParameterField {
+    fn domain_tag() -> <Poseidon4 as ParameterFieldType>::ParameterField {
         Fp(0u8.into()) // FIXME: Use a real domain tag
     }
 }
