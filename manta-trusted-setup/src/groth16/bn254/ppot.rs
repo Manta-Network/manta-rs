@@ -28,6 +28,7 @@ use crate::{
 };
 use ark_bn254::{Bn254, Fr, G1Affine, G2Affine, Parameters};
 use ark_serialize::{CanonicalSerialize, Read, SerializationError, Write};
+use ark_std::io;
 use blake2::Digest;
 use core::fmt;
 use manta_crypto::arkworks::{
@@ -42,8 +43,6 @@ use manta_crypto::arkworks::{
 use manta_util::{into_array_unchecked, vec::Vec};
 use memmap::{Mmap, MmapOptions};
 use std::fs::{File, OpenOptions};
-use ark_std::io;
-
 
 /// Configuration of the Perpetual Powers of Tau ceremony
 pub struct PpotCeremony;
