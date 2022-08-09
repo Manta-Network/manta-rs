@@ -29,6 +29,7 @@
 
 // TODO: How can we have objects that have both `Constant` and `Variable` parts?
 
+use alloc::{boxed::Box, vec::Vec};
 use core::{iter, marker::PhantomData};
 use manta_util::{into_array_unchecked, Array, BoxArray};
 

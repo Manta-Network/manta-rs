@@ -20,7 +20,7 @@
 //       dropping it on decryption.
 
 use crate::{
-    constraint::{measure::print_measurement, HasInput, Input},
+    constraint::{HasInput, Input},
     eclair::{
         self,
         alloc::{mode::Public, Allocate, Allocator, Constant, Variable},
@@ -410,11 +410,7 @@ where
         compiler: &mut COM,
     ) -> Self::Ciphertext {
         let _ = randomness;
-        let (tag, ciphertext) = print_measurement(
-            "DUPLEX ENCRYPTION",
-            |compiler| self.duplex_encryption(encryption_key, header, plaintext, compiler),
-            compiler,
-        );
+        let (tag, ciphertext) = self.duplex_encryption(encryption_key, header, plaintext, compiler);
         Ciphertext {
             tag,
             message: ciphertext,
