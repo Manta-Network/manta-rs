@@ -39,9 +39,11 @@ use manta_crypto::arkworks::{
     ff::{PrimeField, ToBytes, Zero},
     pairing::Pairing,
 };
-use manta_util::into_array_unchecked;
+use manta_util::{into_array_unchecked, vec::Vec};
 use memmap::{Mmap, MmapOptions};
 use std::fs::{File, OpenOptions};
+use ark_std::io;
+
 
 /// Configuration of the Perpetual Powers of Tau ceremony
 pub struct PpotCeremony;
@@ -328,7 +330,7 @@ impl Deserializer<G2Affine, G2Marker> for PpotCeremony {
 }
 
 impl Serializer<G1Affine, G1Marker> for PpotCeremony {
-    fn serialize_unchecked<W>(point: &G1Affine, writer: &mut W) -> Result<(), std::io::Error>
+    fn serialize_unchecked<W>(point: &G1Affine, writer: &mut W) -> Result<(), io::Error>
     where
         W: Write,
     {
@@ -364,7 +366,7 @@ impl Serializer<G1Affine, G1Marker> for PpotCeremony {
         Ok(())
     }
 
-    fn serialize_uncompressed<W>(point: &G1Affine, writer: &mut W) -> Result<(), std::io::Error>
+    fn serialize_uncompressed<W>(point: &G1Affine, writer: &mut W) -> Result<(), io::Error>
     where
         W: ark_serialize::Write,
     {
@@ -387,7 +389,7 @@ impl Serializer<G1Affine, G1Marker> for PpotCeremony {
         64
     }
 
-    fn serialize_compressed<W>(item: &G1Affine, writer: &mut W) -> Result<(), std::io::Error>
+    fn serialize_compressed<W>(item: &G1Affine, writer: &mut W) -> Result<(), io::Error>
     where
         W: ark_serialize::Write,
     {
@@ -400,7 +402,7 @@ impl Serializer<G1Affine, G1Marker> for PpotCeremony {
 }
 
 impl Serializer<G2Affine, G2Marker> for PpotCeremony {
-    fn serialize_unchecked<W>(point: &G2Affine, writer: &mut W) -> Result<(), std::io::Error>
+    fn serialize_unchecked<W>(point: &G2Affine, writer: &mut W) -> Result<(), io::Error>
     where
         W: Write,
     {
@@ -437,7 +439,7 @@ impl Serializer<G2Affine, G2Marker> for PpotCeremony {
         Ok(())
     }
 
-    fn serialize_uncompressed<W>(point: &G2Affine, writer: &mut W) -> Result<(), std::io::Error>
+    fn serialize_uncompressed<W>(point: &G2Affine, writer: &mut W) -> Result<(), io::Error>
     where
         W: Write,
     {
@@ -462,7 +464,7 @@ impl Serializer<G2Affine, G2Marker> for PpotCeremony {
         128
     }
 
-    fn serialize_compressed<W>(item: &G2Affine, writer: &mut W) -> Result<(), std::io::Error>
+    fn serialize_compressed<W>(item: &G2Affine, writer: &mut W) -> Result<(), io::Error>
     where
         W: Write,
     {
@@ -612,7 +614,7 @@ impl std::error::Error for PointDeserializeError {}
 
 impl From<PointDeserializeError> for SerializationError {
     fn from(e: PointDeserializeError) -> Self {
-        std::io::Error::new(std::io::ErrorKind::Other, e).into()
+        io::Error::new(io::ErrorKind::Other, e).into()
     }
 }
 

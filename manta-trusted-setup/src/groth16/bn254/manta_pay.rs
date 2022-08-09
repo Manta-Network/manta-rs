@@ -41,12 +41,14 @@ use manta_crypto::{
     rand::{OsRng, Rand, SeedableRng},
 };
 use manta_pay::crypto::constraint::arkworks::R1CS;
-use manta_util::into_array_unchecked;
+use manta_util::{into_array_unchecked, vec::Vec};
 use memmap::MmapOptions;
 use std::{
     fs::{File, OpenOptions},
     time::Instant,
 };
+use ark_std::io;
+
 /// Configuration for a Phase1 Ceremony large enough to support MantaPay circuits
 #[derive(CanonicalDeserialize, CanonicalSerialize)]
 pub struct MantaPaySetupCeremony;
@@ -183,23 +185,23 @@ where
     fn serialize_unchecked<W>(
         item: &short_weierstrass_jacobian::GroupAffine<P>,
         writer: &mut W,
-    ) -> Result<(), std::io::Error>
+    ) -> Result<(), io::Error>
     where
         W: Write,
     {
         CanonicalSerialize::serialize_unchecked(item, writer)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
     }
 
     fn serialize_uncompressed<W>(
         item: &short_weierstrass_jacobian::GroupAffine<P>,
         writer: &mut W,
-    ) -> Result<(), std::io::Error>
+    ) -> Result<(), io::Error>
     where
         W: Write,
     {
         CanonicalSerialize::serialize_uncompressed(item, writer)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
     }
 
     fn uncompressed_size(item: &short_weierstrass_jacobian::GroupAffine<P>) -> usize {
@@ -209,12 +211,12 @@ where
     fn serialize_compressed<W>(
         item: &short_weierstrass_jacobian::GroupAffine<P>,
         writer: &mut W,
-    ) -> Result<(), std::io::Error>
+    ) -> Result<(), io::Error>
     where
         W: Write,
     {
         CanonicalSerialize::serialize(item, writer)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
     }
 
     fn compressed_size(item: &short_weierstrass_jacobian::GroupAffine<P>) -> usize {
@@ -267,11 +269,6 @@ pub fn reclaim_circuit() -> R1CS<Fr> {
     ))
 }
 
-/// Generates our `Reclaim` circuit with known variables
-pub fn reclaim_circuit_known() -> R1CS<Fr> {
-    todo!()
-}
-
 /// Produces a ProvingKey for the MantaPay `Reclaim` circuit
 pub fn generate_reclaim_pk() -> ProvingKey<Bn254> {
     let reader = OpenOptions::new()
@@ -286,8 +283,38 @@ pub fn generate_reclaim_pk() -> ProvingKey<Bn254> {
     };
 
     let accumulator = ppot::read_subaccumulator::<MantaPaySetupCeremony>(&readable_map).unwrap();
-    let cs = reclaim_circuit();
-    initialize(accumulator, cs).unwrap()
+    let (cs_unknown, _, _) = generate_reclaim_constraints_and_public_inputs();
+    initialize(accumulator, cs_unknown).unwrap()
+}
+
+/// Produces constraint synthesizers for the `Reclaim` circuit with unknown and
+/// known witness and returns public input vector for this sample.
+pub fn generate_reclaim_constraints_and_public_inputs() -> (R1CS<Fr>, R1CS<Fr>, Vec<Fr>) {
+    use manta_accounting::transfer::test::TransferDistribution;
+    use manta_crypto::{accumulator::Accumulator, rand::Sample};
+    use manta_pay::{
+        config::{FullParameters, Reclaim},
+        test::payment::UtxoAccumulator,
+    };
+    use rand_chacha::ChaCha20Rng;
+
+    let mut rng = ChaCha20Rng::from_seed([0; 32]);
+    let mut utxo_accumulator = UtxoAccumulator::new(rng.gen());
+    let parameters = rng.gen();
+    let sample = Reclaim::sample(
+        TransferDistribution {
+            parameters: &parameters,
+            utxo_accumulator: &mut utxo_accumulator,
+        },
+        &mut rng,
+    );
+    let cs_known =
+        sample.known_constraints(FullParameters::new(&parameters, utxo_accumulator.model()));
+    let cs_unknown = Reclaim::unknown_constraints(FullParameters::new(
+        &parameters,
+        <MerkleForest<_, _> as Accumulator>::model(&utxo_accumulator),
+    ));
+    (cs_unknown, cs_known, sample.generate_proof_input())
 }
 
 /// This takes about 1 hour to complete (with 1 << 16 powers)
@@ -321,13 +348,6 @@ pub fn phase2_contribution_test() {
         groth16::mpc::{self, contribute, verify_transform, verify_transform_all},
         mpc::Transcript,
     };
-    use manta_accounting::transfer::test::TransferDistribution;
-    use manta_crypto::{accumulator::Accumulator, rand::Sample};
-    use manta_pay::{
-        config::{FullParameters, Reclaim},
-        test::payment::UtxoAccumulator,
-    };
-    use rand_chacha::ChaCha20Rng;
 
     println!("Reading ProverKey from file");
     let now = Instant::now();
@@ -379,24 +399,13 @@ pub fn phase2_contribution_test() {
     // Generate and verify a proof
     println!("Generating a proof");
     let now = Instant::now();
-    let mut rng = ChaCha20Rng::from_seed([0; 32]);
-    let mut utxo_accumulator = UtxoAccumulator::new(rng.gen());
-    let parameters = rng.gen();
-    let sample = Reclaim::sample(
-        TransferDistribution {
-            parameters: &parameters,
-            utxo_accumulator: &mut utxo_accumulator,
-        },
-        &mut rng,
-    );
-    let cs = sample.known_constraints(FullParameters::new(&parameters, utxo_accumulator.model()));
+    let (_, cs, public_inputs) = generate_reclaim_constraints_and_public_inputs();
     let proof = ark_groth16::prover::create_random_proof(cs, &state, &mut rng).unwrap();
     println!("Took {:?} to generate a proof", now.elapsed());
 
     let now = Instant::now();
     let vk = &state.vk;
     let prepared_vk = ark_groth16::verifier::prepare_verifying_key(vk);
-    let public_inputs = sample.generate_proof_input();
     let result = ark_groth16::verifier::verify_proof(&prepared_vk, &proof, &public_inputs).unwrap();
     println!("Took {:?} to verify the proof", now.elapsed());
     assert!(result);
