@@ -18,7 +18,7 @@
 
 use crate::crypto::constraint::arkworks::{self, empty, full, Boolean, Fp, FpVar, R1CS};
 use alloc::vec::Vec;
-use core::marker::PhantomData;
+use core::{borrow::Borrow, marker::PhantomData};
 use manta_crypto::{
     algebra,
     arkworks::{
@@ -525,14 +525,14 @@ where
 {
     type Base = C;
 
-    fn fixed_base_scalar_mul<'a, I>(
+    fn fixed_base_scalar_mul<I, T>(
         precomputed_bases: I,
         scalar: &Self::Scalar,
         compiler: &mut Compiler<C>,
     ) -> Self
     where
-        I: IntoIterator<Item = &'a Self::Base>,
-        Self::Base: 'a,
+        I: IntoIterator<Item = T>,
+        T: Borrow<Self::Base>,
     {
         let _ = compiler;
         let mut result = CV::zero();
@@ -542,7 +542,7 @@ where
             .expect("Bit decomposition is not allowed to fail.");
         for (bit, base) in scalar_bits.into_iter().zip(precomputed_bases.into_iter()) {
             result = bit
-                .select(&(result.clone() + *base), &result)
+                .select(&(result.clone() + *base.borrow()), &result)
                 .expect("Conditional select is not allowed to fail. ");
         }
         Self::new(result)
@@ -572,12 +572,9 @@ mod test {
         let mut cs = Compiler::<Bls12_381_Edwards>::for_proofs();
         let scalar = Scalar::<Bls12_381_Edwards>::gen(&mut OsRng);
         let base = Bls12_381_Edwards::prime_subgroup_generator();
-        let mut curr = base;
-        let mut precomputed_table = Vec::new();
-        for _ in 0..256 {
-            precomputed_table.push(curr);
-            curr = curr + curr;
-        }
+        let precomputed_table =
+            core::iter::successors(Some(base), |base| Some(*base + *base)).take(256);
+
         let base_var = Group(base.into_affine())
             .as_known::<Secret, GroupVar<Bls12_381_Edwards, AffineVar<_, _>>>(&mut cs);
         let scalar_var =
@@ -586,8 +583,7 @@ mod test {
         let ctr1 = cs.constraint_count();
         let expected = base_var.mul(&scalar_var, &mut cs);
         let ctr2 = cs.constraint_count();
-        let actual =
-            GroupVar::fixed_base_scalar_mul(precomputed_table.iter(), &scalar_var, &mut cs);
+        let actual = GroupVar::fixed_base_scalar_mul(precomputed_table, &scalar_var, &mut cs);
         let ctr3 = cs.constraint_count();
 
         cs.assert_eq(&expected, &actual);

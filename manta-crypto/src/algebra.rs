@@ -21,7 +21,7 @@ use crate::{
     key,
     rand::{RngCore, Sample},
 };
-use core::marker::PhantomData;
+use core::{borrow::Borrow, marker::PhantomData};
 use manta_util::codec::{Decode, DecodeError, Encode, Read, Write};
 
 #[cfg(feature = "serde")]
@@ -55,14 +55,14 @@ pub trait FixedBaseScalarMul<COM = ()>: Group<COM> {
 
     /// Multiply `precomputed_bases[0]` by `scalar` using precomputed base points,
     /// where `precomputed_bases` are precomputed power-of-two multiples of the fixed base.  
-    fn fixed_base_scalar_mul<'a, I>(
+    fn fixed_base_scalar_mul<I, T>(
         precomputed_bases: I,
         scalar: &Self::Scalar,
         compiler: &mut COM,
     ) -> Self
     where
-        I: IntoIterator<Item = &'a Self::Base>,
-        Self::Base: 'a;
+        I: IntoIterator<Item = T>,
+        T: Borrow<Self::Base>;
 }
 
 /// Diffie-Hellman Key Agreement Scheme
