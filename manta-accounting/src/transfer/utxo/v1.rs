@@ -892,6 +892,7 @@ where
     where
         R: RngCore + ?Sized,
     {
+        /* TODO:
         let secret = MintSecret::<C>::new(
             address.receiving_key,
             rng.gen(),
@@ -928,6 +929,8 @@ where
             ),
             incoming_note,
         )
+        */
+        todo!()
     }
 }
 
@@ -1002,6 +1005,7 @@ where
     where
         R: RngCore + ?Sized,
     {
+        /* TODO:
         let associated_data = if identifier.is_transparent {
             Visibility::Transparent
         } else {
@@ -1053,6 +1057,8 @@ where
             utxo,
             Nullifier::new(nullifier_commitment, outgoing_note),
         )
+        */
+        todo!()
     }
 }
 
@@ -1077,7 +1083,7 @@ impl<C> utxo::NoteOpen for Parameters<C>
 where
     C: Configuration<Bool = bool>,
     C::IncomingBaseEncryptionScheme:
-        Decrypt<DecryptionKey = C::Group, DecryptedPlaintext = Option<IncomingPlaintext<C>>>,
+        Decrypt<DecryptionKey = C::Scalar, DecryptedPlaintext = Option<IncomingPlaintext<C>>>,
 {
     #[inline]
     fn open(
@@ -1086,6 +1092,7 @@ where
         utxo: &Self::Utxo,
         note: Self::Note,
     ) -> Option<(Self::Identifier, Self::Asset)> {
+        /* TODO:
         let plaintext = self.base.incoming_base_encryption_scheme.decrypt(
             &note.ephemeral_public_key().mul(decryption_key, &mut ()),
             &EmptyHeader::default(),
@@ -1100,6 +1107,8 @@ where
             ),
             plaintext.asset,
         ))
+        */
+        todo!()
     }
 }
 
@@ -1123,14 +1132,14 @@ where
 
 /// Address
 #[derive(derivative::Derivative)]
-#[derivative(Clone(bound = "C::Group: Clone"))]
+#[derivative(Clone(bound = "C::Scalar: Clone, C::Group: Clone"))]
 pub struct Address<C, COM = ()>
 where
     C: BaseConfiguration<COM> + ?Sized,
     COM: Has<bool, Type = C::Bool>,
 {
     /// Key Diversifier
-    pub key_diversifier: C::Group,
+    pub key_diversifier: C::Scalar,
 
     /// Receiving Key
     pub receiving_key: C::Group,
@@ -1143,7 +1152,7 @@ where
 {
     /// Builds a new [`Address`] from `key_diversifier` and `receiving_key`.
     #[inline]
-    pub fn new(key_diversifier: C::Group, receiving_key: C::Group) -> Self {
+    pub fn new(key_diversifier: C::Scalar, receiving_key: C::Group) -> Self {
         Self {
             key_diversifier,
             receiving_key,
@@ -1154,6 +1163,7 @@ where
 impl<C> Sample for Address<C>
 where
     C: BaseConfiguration<Bool = bool> + ?Sized,
+    C::Scalar: Sample,
     C::Group: Sample,
 {
     #[inline]
@@ -1178,7 +1188,7 @@ where
     pub asset: Asset<C, COM>,
 
     /// Key Diversifier
-    pub key_diversifier: C::Group,
+    pub key_diversifier: C::Scalar,
 }
 
 impl<C, COM> IncomingPlaintext<C, COM>
@@ -1192,7 +1202,7 @@ where
     pub fn new(
         utxo_commitment_randomness: UtxoCommitmentRandomness<C, COM>,
         asset: Asset<C, COM>,
-        key_diversifier: C::Group,
+        key_diversifier: C::Scalar,
     ) -> Self {
         Self {
             utxo_commitment_randomness,
@@ -1210,7 +1220,7 @@ where
     UtxoCommitmentRandomness<C, COM>:
         Variable<Secret, COM, Type = UtxoCommitmentRandomness<C::Type>>,
     Asset<C, COM>: Variable<Secret, COM, Type = Asset<C::Type>>,
-    C::Group: Variable<Secret, COM, Type = <C::Type as BaseConfiguration>::Group>,
+    C::Scalar: Variable<Secret, COM, Type = <C::Type as BaseConfiguration>::Scalar>,
 {
     type Type = IncomingPlaintext<C::Type>;
 
@@ -1425,6 +1435,7 @@ where
         encryption_scheme: &C::IncomingBaseEncryptionScheme,
         compiler: &mut COM,
     ) -> IncomingNote<C, COM> {
+        /* TODO:
         Hybrid::new(
             DiffieHellman::new(self.plaintext.key_diversifier.clone()),
             encryption_scheme.clone(),
@@ -1436,6 +1447,8 @@ where
             &self.plaintext,
             compiler,
         )
+        */
+        todo!()
     }
 
     /// Returns the representative [`Asset`] from `self` and its public-form `utxo` asserting that
@@ -1572,13 +1585,16 @@ where
     pub fn receiving_key(
         &mut self,
         viewing_key_derivation_function: &C::ViewingKeyDerivationFunction,
-        key_diversifier: &C::Group,
+        key_diversifier: &C::Scalar,
         compiler: &mut COM,
     ) -> C::Group {
+        /* TODO:
         key_diversifier.mul(
             self.viewing_key(viewing_key_derivation_function, compiler),
             compiler,
         )
+        */
+        todo!()
     }
 }
 
@@ -1706,7 +1722,7 @@ where
     pub utxo_commitment_randomness: UtxoCommitmentRandomness<C, COM>,
 
     /// Key Diversifier
-    pub key_diversifier: C::Group,
+    pub key_diversifier: C::Scalar,
 }
 
 impl<C, COM> Identifier<C, COM>
@@ -1720,7 +1736,7 @@ where
     pub fn new(
         is_transparent: C::Bool,
         utxo_commitment_randomness: UtxoCommitmentRandomness<C, COM>,
-        key_diversifier: C::Group,
+        key_diversifier: C::Scalar,
     ) -> Self {
         Self {
             is_transparent,
@@ -1734,13 +1750,14 @@ impl<C> Sample for Identifier<C>
 where
     C: BaseConfiguration<Bool = bool>,
     UtxoCommitmentRandomness<C>: Sample,
-    C::Group: Sample,
+    C::Scalar: Sample,
 {
     #[inline]
     fn sample<R>(_: (), rng: &mut R) -> Self
     where
         R: RngCore + ?Sized,
     {
+        // FIXME: Should we sample the transparency flag.
         Self::new(false, rng.gen(), rng.gen())
     }
 }
@@ -1802,6 +1819,7 @@ where
         receiving_key: &C::Group,
         compiler: &mut COM,
     ) -> OutgoingNote<C, COM> {
+        /* TODO:
         Hybrid::new(
             DiffieHellman::new(self.plaintext.key_diversifier.clone()),
             outgoing_base_encryption_scheme.clone(),
@@ -1813,6 +1831,8 @@ where
             &self.plaintext.asset,
             compiler,
         )
+        */
+        todo!()
     }
 
     /// Returns the representative [`Asset`] from `self` and its public-form `utxo` asserting that
@@ -1830,6 +1850,7 @@ where
     where
         COM: AssertEq,
     {
+        /* TODO:
         let is_transparent = self.plaintext.asset.is_empty(compiler);
         compiler.assert_eq(&utxo.is_transparent, &is_transparent);
         let asset = Asset::<C, _>::select(
@@ -1863,6 +1884,8 @@ where
             compiler,
         );
         (asset, Nullifier::new(nullifier_commitment, outgoing_note))
+        */
+        todo!()
     }
 }
 
