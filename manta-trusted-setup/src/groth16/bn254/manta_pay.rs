@@ -50,7 +50,7 @@ use std::{
 };
 
 /// Configuration for a Phase1 Ceremony large enough to support MantaPay circuits
-#[derive(CanonicalDeserialize, CanonicalSerialize)]
+#[derive(CanonicalDeserialize, CanonicalSerialize, Debug, PartialEq, Eq)]
 pub struct MantaPaySetupCeremony;
 
 impl Size for MantaPaySetupCeremony {
@@ -282,7 +282,9 @@ pub fn generate_reclaim_pk() -> ProvingKey<Bn254> {
             .expect("unable to create a memory map for input")
     };
 
-    let accumulator = ppot::read_subaccumulator::<MantaPaySetupCeremony>(&readable_map).unwrap();
+    let accumulator =
+        ppot::read_subaccumulator::<MantaPaySetupCeremony>(&readable_map, ppot::Compressed::No)
+            .unwrap();
     let (cs_unknown, _, _) = generate_reclaim_constraints_and_public_inputs();
     initialize(accumulator, cs_unknown).unwrap()
 }

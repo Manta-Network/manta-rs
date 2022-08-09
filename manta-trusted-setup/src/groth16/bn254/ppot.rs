@@ -24,6 +24,7 @@ use crate::{
             Size,
         },
     },
+    ratio::RatioProof,
     util::{BlakeHasher, Deserializer, KZGBlakeHasher, Serializer},
 };
 use ark_bn254::{Bn254, Fr, G1Affine, G2Affine, Parameters};
@@ -40,9 +41,12 @@ use manta_crypto::arkworks::{
     ff::{PrimeField, ToBytes, Zero},
     pairing::Pairing,
 };
-use manta_util::{into_array_unchecked, vec::Vec};
+use manta_util::{cfg_iter, into_array_unchecked, rayon::prelude::ParallelIterator, vec::Vec};
 use memmap::{Mmap, MmapOptions};
-use std::fs::{File, OpenOptions};
+use std::{
+    fs::{File, OpenOptions},
+    time::Instant,
+};
 
 /// Configuration of the Perpetual Powers of Tau ceremony
 pub struct PpotCeremony;
@@ -180,6 +184,8 @@ impl Deserializer<G1Affine, G1Marker> for PpotCeremony {
         Ok(())
     }
 
+    /// Note that in this case the method is unchecked! This is because it is more
+    /// efficient to do the in-subgroup check in parallel later.
     fn deserialize_compressed<R>(reader: &mut R) -> Result<G1Affine, Self::Error>
     where
         R: Read,
@@ -202,11 +208,6 @@ impl Deserializer<G1Affine, G1Marker> for PpotCeremony {
             // Determine if the intended y coordinate must be greater
             // lexicographically.
             let greatest = copy[0] & (1 << 7) != 0;
-            if greatest {
-                println!("This one was > ");
-            } else {
-                println!("This one was <");
-            }
 
             // Unset the two most significant bits.
             copy[0] &= 0x3f;
@@ -215,11 +216,6 @@ impl Deserializer<G1Affine, G1Marker> for PpotCeremony {
             let x = BaseFieldG1Type::from_be_bytes_mod_order(&copy[..]);
             // Using `get_point_from_x` performs the on-curve check for us
             let point = G1Affine::get_point_from_x(x, greatest).ok_or(Self::Error::NotOnCurve)?;
-
-            // Check that the point is in subgroup
-            if !G1Affine::is_in_correct_subgroup_assuming_on_curve(&point) {
-                return Err(Self::Error::NotInSubgroup);
-            }
             Ok(point)
         }
     }
@@ -285,6 +281,8 @@ impl Deserializer<G2Affine, G2Marker> for PpotCeremony {
         Ok(())
     }
 
+    /// Note that in this case the method is unchecked! This is because it is more
+    /// efficient to do the in-subgroup check in parallel later.
     fn deserialize_compressed<R>(reader: &mut R) -> Result<G2Affine, Self::Error>
     where
         R: Read,
@@ -318,11 +316,6 @@ impl Deserializer<G2Affine, G2Marker> for PpotCeremony {
             let x = BaseFieldG2Type::new(x_c0, x_c1);
             // Using `get_point_from_x` performs the on-curve check for us
             let point = G2Affine::get_point_from_x(x, greatest).ok_or(Self::Error::NotOnCurve)?;
-
-            // Check that the point is in subgroup
-            if !G2Affine::is_in_correct_subgroup_assuming_on_curve(&point) {
-                return Err(Self::Error::NotInSubgroup);
-            }
             Ok(point)
         }
     }
@@ -349,12 +342,7 @@ impl Serializer<G1Affine, G1Marker> for PpotCeremony {
             // Final result will be reversed, so this is like modifying first byte
             let negy = -point.y;
             if point.y > negy {
-                println!("This one was >");
                 res[31] |= 1 << 7;
-            }
-            // debug
-            else {
-                println!("This one was <");
             }
         }
 
@@ -422,12 +410,7 @@ impl Serializer<G2Affine, G2Marker> for PpotCeremony {
             // Final result will be reversed, so this is like modifying first byte
             let negy = -point.y;
             if point.y > negy {
-                println!("This one was >");
                 res[63] |= 1 << 7;
-            }
-            // debug
-            else {
-                println!("This one was <");
             }
         }
 
@@ -481,103 +464,6 @@ pub type PpotAccumulator = Accumulator<PpotCeremony>;
 type BaseFieldG1Type = <<Parameters as BnParameters>::G1Parameters as ModelParameters>::BaseField;
 type BaseFieldG2Type = <<Parameters as BnParameters>::G2Parameters as ModelParameters>::BaseField;
 
-// Only makes sense for this to be deserialization from uncompressed bytes since
-// deserializing from compressed implies at least doing an on-curve check
-#[inline]
-fn deserialize_g1_unchecked<R>(reader: &mut R) -> Result<G1Affine, PointDeserializeError>
-where
-    R: Read,
-{
-    let mut copy = [0u8; 64];
-    let _ = reader.read(&mut copy); // should I deal with the number of bytes read output?
-
-    // Check the compression flag
-    if copy[0] & (1 << 7) != 0 {
-        // If that bit is non-zero then the reader contains a compressed representation
-        return Err(PointDeserializeError::ExpectedUncompressed);
-    }
-
-    // Check the point at infinity flag
-    if copy[0] & (1 << 6) != 0 {
-        // Then this is the point at infinity, so the rest of the serialization
-        // should consist of zeros after we mask away the first two bits.
-        copy[0] &= 0x3f;
-
-        if copy.iter().all(|b| *b == 0) {
-            Ok(G1Affine::zero())
-        } else {
-            // Then there are unexpected bits
-            Err(PointDeserializeError::PointAtInfinity)
-        }
-    } else {
-        // Check y-coordinate flag
-        if copy[0] & (1 << 7) != 0 {
-            // Since this representation is uncompressed the flag should be set to 0
-            return Err(PointDeserializeError::ExtraYCoordinate);
-        }
-
-        // Now unset the first two bits
-        copy[0] &= 0x3f;
-
-        // Now we can deserialize the remaining bytes to field elements
-        let x = BaseFieldG1Type::from_be_bytes_mod_order(&copy[..32]);
-        let y = BaseFieldG1Type::from_be_bytes_mod_order(&copy[32..]);
-
-        Ok(G1Affine::new(x, y, false))
-    }
-}
-
-// Only makes sense for this to be deserialization from uncompressed bytes since
-// deserializing from compressed implies at least doing an on-curve check
-#[inline]
-fn deserialize_g2_unchecked<R>(reader: &mut R) -> Result<G2Affine, PointDeserializeError>
-where
-    R: Read,
-{
-    let mut copy = [0u8; 128];
-    let _ = reader.read(&mut copy); // should I deal with the number of bytes read output?
-
-    // Check the compression flag
-    if copy[0] & (1 << 7) != 0 {
-        // If that bit is non-zero then the reader contains a compressed representation
-        return Err(PointDeserializeError::ExpectedUncompressed);
-    }
-
-    // Check the point at infinity flag
-    if copy[0] & (1 << 6) != 0 {
-        // Then this is the point at infinity, so the rest of the serialization
-        // should consist of zeros after we mask away the first two bits.
-        copy[0] &= 0x3f;
-
-        if copy.iter().all(|b| *b == 0) {
-            Ok(G2Affine::zero())
-        } else {
-            // Then there are unexpected bits
-            Err(PointDeserializeError::PointAtInfinity)
-        }
-    } else {
-        // Check y-coordinate flag // TODO : The PPOT code doesn't seem to do this...
-        if copy[0] & (1 << 7) != 0 {
-            // Since this representation is uncompressed the flag should be set to 0
-            return Err(PointDeserializeError::ExtraYCoordinate);
-        }
-
-        // Now unset the first two bits
-        copy[0] &= 0x3f;
-
-        // Now we can deserialize the remaining bytes to field elements
-        let x_c1 = BaseFieldG1Type::from_be_bytes_mod_order(&copy[..32]);
-        let x_c0 = BaseFieldG1Type::from_be_bytes_mod_order(&copy[32..64]);
-        let y_c1 = BaseFieldG1Type::from_be_bytes_mod_order(&copy[64..96]);
-        let y_c0 = BaseFieldG1Type::from_be_bytes_mod_order(&copy[96..128]);
-        // Recall BaseFieldG2 is a quadratic ext'n of BaseFieldG1
-        let x = BaseFieldG2Type::new(x_c0, x_c1);
-        let y = BaseFieldG2Type::new(y_c0, y_c1);
-
-        Ok(G2Affine::new(x, y, false))
-    }
-}
-
 /// Checks that the purported GroupAffine element is on-curve and in-subgroup.
 #[inline]
 fn curve_point_checks<P>(g1: &GroupAffine<P>) -> Result<(), PointDeserializeError>
@@ -617,19 +503,36 @@ impl From<PointDeserializeError> for SerializationError {
     }
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+pub enum Compressed {
+    No,
+    Yes,
+}
+
 /// Calculates position in the mmap of specific parts of accumulator.
-/// TODO : This is currently specialized to PPoT Bn254 setup
-fn calculate_mmap_position(index: usize, element_type: ElementType) -> usize {
+/// This is currently specialized to PPoT Bn254 challenge/response files.
+/// In particular, it assumes the file has a 64-byte hash as its header.
+#[inline]
+fn calculate_mmap_position(
+    index: usize,
+    element_type: ElementType,
+    compression: Compressed,
+) -> usize {
     // These are entered by hand from the Bn254 parameters of PPoT
     const G1_UNCOMPRESSED_BYTE_SIZE: usize = 64;
     const G2_UNCOMPRESSED_BYTE_SIZE: usize = 128;
+    const G1_COMPRESSED_BYTE_SIZE: usize = 32;
+    const G2_COMPRESSED_BYTE_SIZE: usize = 64;
     const REQUIRED_POWER: usize = 28;
     const TAU_POWERS_LENGTH: usize = 1 << REQUIRED_POWER;
     const TAU_POWERS_G1_LENGTH: usize = (TAU_POWERS_LENGTH << 1) - 1;
     const HASH_SIZE: usize = 64;
 
-    let g1_size = G1_UNCOMPRESSED_BYTE_SIZE;
-    let g2_size = G2_UNCOMPRESSED_BYTE_SIZE;
+    let (g1_size, g2_size) = match compression {
+        Compressed::No => (G1_UNCOMPRESSED_BYTE_SIZE, G2_UNCOMPRESSED_BYTE_SIZE),
+        Compressed::Yes => (G1_COMPRESSED_BYTE_SIZE, G2_COMPRESSED_BYTE_SIZE),
+    };
+
     let required_tau_g1_power = TAU_POWERS_G1_LENGTH;
     let required_power = TAU_POWERS_LENGTH;
 
@@ -697,10 +600,22 @@ pub enum ElementType {
 
 impl ElementType {
     /// This function is specific to the PPoT Bn254 setup
-    fn get_size(&self) -> usize {
-        match self.is_g1_type() {
-            true => 64,
-            false => 128,
+    fn get_size(&self, compression: Compressed) -> usize {
+        match compression {
+            Compressed::No => {
+                if self.is_g1_type() {
+                    64
+                } else {
+                    128
+                }
+            }
+            Compressed::Yes => {
+                if self.is_g1_type() {
+                    32
+                } else {
+                    64
+                }
+            }
         }
     }
 
@@ -722,34 +637,93 @@ impl ElementType {
     }
 }
 
+// /// Reads appropriate number of elements of `element_type` for an accumulator of given `Size` from PPoT challenge file.
+// /// The generic type`G` ought to be either G1 or G2 of the Bn254 pairing.
+// #[inline]
+// pub fn read_powers<G, S>(
+//     readable_map: &Mmap,
+//     element: ElementType,
+//     compression: Compressed,
+// ) -> Result<Vec<G>, <G as Deserializer<G>>::Error>
+// where
+//     S: Size,
+//     G: AffineCurve + Deserializer<G> {
+//         let size = element.num_powers::<S>();
+//         let mut powers = Vec::<G>::new();
+//         let mut start_position = calculate_mmap_position(0, element, compression);
+//         let mut end_position = start_position + element.get_size(compression);
+//         for _ in 0..size {
+//             let mut reader = readable_map
+//                 .get(start_position..end_position)
+//                 .expect("cannot read point data from file");
+//             if element.is_g1_type() {
+//                 let point: G = match compression {
+//                     Compressed::No => <G as Deserializer<G>>::deserialize_uncompressed(&mut reader)?,
+//                     Compressed::Yes => <G as Deserializer<G>>::deserialize_compressed(&mut reader)?
+//                 };
+//                 // curve_point_checks(&point)?;
+//                 <G as Deserializer<G>>::check(&point)?;
+//                 powers.push(point);
+//             } else {
+//                 panic!("Expected G1 curve points")
+//             }
+//             start_position = end_position;
+//             end_position += element.get_size(compression);
+//         }
+
+//         Ok(powers)
+//     }
+
 /// Reads appropriate number of elements of `element_type` for an accumulator of given `Size` from PPoT challenge file.
 #[inline]
 pub fn read_g1_powers<S>(
     readable_map: &Mmap,
     element: ElementType,
-) -> Result<Vec<GroupAffine<<Parameters as BnParameters>::G1Parameters>>, PointDeserializeError>
+    compression: Compressed,
+) -> Result<Vec<G1Affine>, PointDeserializeError>
 where
     S: Size,
 {
     let size = element.num_powers::<S>();
     let mut powers = Vec::new();
-    let mut start_position = calculate_mmap_position(0, element);
-    let mut end_position = start_position + element.get_size();
+    let mut start_position = calculate_mmap_position(0, element, compression);
+    let mut end_position = start_position + element.get_size(compression);
     for _ in 0..size {
         let mut reader = readable_map
             .get(start_position..end_position)
             .expect("cannot read point data from file");
+
         if element.is_g1_type() {
-            let point = deserialize_g1_unchecked(&mut reader)?;
-            curve_point_checks(&point)?;
+            let point = match compression {
+                Compressed::No => {
+                    <PpotCeremony as Deserializer<G1Affine, G1Marker>>::deserialize_unchecked(
+                        &mut reader,
+                    )?
+                }
+                Compressed::Yes => {
+                    <PpotCeremony as Deserializer<G1Affine, G1Marker>>::deserialize_compressed(
+                        &mut reader,
+                    )?
+                }
+            };
+            // point will be checked below
             powers.push(point);
         } else {
             panic!("Expected G1 curve points")
         }
         start_position = end_position;
-        end_position += element.get_size();
+        end_position += element.get_size(compression);
     }
 
+    // Do curve point checks in parallel
+    match compression {
+        Compressed::No => cfg_iter!(powers).for_each(|g| curve_point_checks(g).unwrap()),
+        Compressed::Yes => cfg_iter!(powers).for_each(|g| {
+            if !g.is_in_correct_subgroup_assuming_on_curve() {
+                panic!() // This should actually just return the NotInSubgroup error
+            }
+        }),
+    }
     Ok(powers)
 }
 
@@ -758,44 +732,127 @@ where
 pub fn read_g2_powers<S>(
     readable_map: &Mmap,
     element: ElementType,
+    compression: Compressed,
 ) -> Result<Vec<GroupAffine<<Parameters as BnParameters>::G2Parameters>>, PointDeserializeError>
 where
     S: Size,
 {
     let size = element.num_powers::<S>();
     let mut powers = Vec::new();
-    let mut start_position = calculate_mmap_position(0, element);
-    let mut end_position = start_position + element.get_size();
+    let mut start_position = calculate_mmap_position(0, element, compression);
+    let mut end_position = start_position + element.get_size(compression);
     for _ in 0..size {
         let mut reader = readable_map
             .get(start_position..end_position)
             .expect("cannot read point data from file");
         if !element.is_g1_type() {
-            let point = deserialize_g2_unchecked(&mut reader)?;
-            curve_point_checks(&point)?;
+            let point = match compression {
+                Compressed::No => {
+                    <PpotCeremony as Deserializer<G2Affine, G2Marker>>::deserialize_unchecked(
+                        &mut reader,
+                    )?
+                }
+                Compressed::Yes => {
+                    <PpotCeremony as Deserializer<G2Affine, G2Marker>>::deserialize_compressed(
+                        &mut reader,
+                    )?
+                }
+            };
+            // point will be checked below
             powers.push(point);
         } else {
             panic!("Expected G2 curve points")
         }
         start_position = end_position;
-        end_position += element.get_size();
+        end_position += element.get_size(compression);
+    }
+    // Do curve point checks in parallel
+    match compression {
+        Compressed::No => cfg_iter!(powers).for_each(|g| curve_point_checks(g).unwrap()),
+        Compressed::Yes => cfg_iter!(powers).for_each(|g| {
+            if !g.is_in_correct_subgroup_assuming_on_curve() {
+                panic!() // This should actually just return the NotInSubgroup error
+            }
+        }),
     }
 
     Ok(powers)
 }
 
+/// Reads the proof of correct KZG contribution
+pub fn read_kzg_proof(
+    readable_map: &Mmap,
+) -> Result<KzgProof<PpotCeremony>, PointDeserializeError> {
+    // NB: This is specific to the compressed PPoT transcript called `response`, since only it contains this proof.
+    let position = 64
+        + (PpotCeremony::G1_POWERS + 2 * PpotCeremony::G2_POWERS) * 32
+        + (PpotCeremony::G2_POWERS + 1) * 64;
+    // let position = calculate_mmap_position(index, element_type, compression) // TODO : Use calc_mmap
+    println!("Trying to access position {:?}", position);
+    let mut reader = readable_map
+        .get(position..position + 6 * 32 + 3 * 64) // The end of the file should have the Proof
+        .expect("cannot read point data from file");
+
+    // Deserialize in original PPoT order:
+    let tau_g1 =
+        <PpotCeremony as Deserializer<G1Affine, G1Marker>>::deserialize_compressed(&mut reader)?;
+    curve_point_checks(&tau_g1)?;
+    let tau_g1_tau =
+        <PpotCeremony as Deserializer<G1Affine, G1Marker>>::deserialize_compressed(&mut reader)?;
+    curve_point_checks(&tau_g1_tau)?;
+    let alpha_tau_g1 =
+        <PpotCeremony as Deserializer<G1Affine, G1Marker>>::deserialize_compressed(&mut reader)?;
+    curve_point_checks(&alpha_tau_g1)?;
+    let alpha_tau_g1_alpha =
+        <PpotCeremony as Deserializer<G1Affine, G1Marker>>::deserialize_compressed(&mut reader)?;
+    curve_point_checks(&alpha_tau_g1_alpha)?;
+    let beta_tau_g1 =
+        <PpotCeremony as Deserializer<G1Affine, G1Marker>>::deserialize_compressed(&mut reader)?;
+    curve_point_checks(&beta_tau_g1)?;
+    let beta_tau_g1_beta =
+        <PpotCeremony as Deserializer<G1Affine, G1Marker>>::deserialize_compressed(&mut reader)?;
+    curve_point_checks(&beta_tau_g1_beta)?;
+    let tau_g2 =
+        <PpotCeremony as Deserializer<G2Affine, G2Marker>>::deserialize_compressed(&mut reader)?;
+    curve_point_checks(&tau_g2)?;
+    let alpha_g2 =
+        <PpotCeremony as Deserializer<G2Affine, G2Marker>>::deserialize_compressed(&mut reader)?;
+    curve_point_checks(&alpha_g2)?;
+    let beta_g2 =
+        <PpotCeremony as Deserializer<G2Affine, G2Marker>>::deserialize_compressed(&mut reader)?;
+    curve_point_checks(&beta_g2)?;
+
+    Ok(KzgProof {
+        tau: RatioProof {
+            ratio: (tau_g1, tau_g1_tau),
+            matching_point: tau_g2,
+        },
+        alpha: RatioProof {
+            ratio: (alpha_tau_g1, alpha_tau_g1_alpha),
+            matching_point: alpha_g2,
+        },
+        beta: RatioProof {
+            ratio: (beta_tau_g1, beta_tau_g1_beta),
+            matching_point: beta_g2,
+        },
+    })
+}
+
 /// Extracts a subaccumulator of size `required_powers`. Specific to PPoT challenge file.
 #[inline]
-pub fn read_subaccumulator<C>(readable_map: &Mmap) -> Result<Accumulator<C>, PointDeserializeError>
+pub fn read_subaccumulator<C>(
+    readable_map: &Mmap,
+    compression: Compressed,
+) -> Result<Accumulator<C>, PointDeserializeError>
 where
     C: Pairing<G1 = G1Affine, G2 = G2Affine> + Size,
 {
     Ok(Accumulator {
-        tau_powers_g1: read_g1_powers::<C>(readable_map, ElementType::TauG1)?,
-        tau_powers_g2: read_g2_powers::<C>(readable_map, ElementType::TauG2)?,
-        alpha_tau_powers_g1: read_g1_powers::<C>(readable_map, ElementType::AlphaG1)?,
-        beta_tau_powers_g1: read_g1_powers::<C>(readable_map, ElementType::BetaG1)?,
-        beta_g2: read_g2_powers::<C>(readable_map, ElementType::BetaG2)?[0],
+        tau_powers_g1: read_g1_powers::<C>(readable_map, ElementType::TauG1, compression)?,
+        tau_powers_g2: read_g2_powers::<C>(readable_map, ElementType::TauG2, compression)?,
+        alpha_tau_powers_g1: read_g1_powers::<C>(readable_map, ElementType::AlphaG1, compression)?,
+        beta_tau_powers_g1: read_g1_powers::<C>(readable_map, ElementType::BetaG1, compression)?,
+        beta_g2: read_g2_powers::<C>(readable_map, ElementType::BetaG2, compression)?[0],
     })
 }
 
@@ -830,7 +887,7 @@ pub fn read_subaccumulator_test() {
 
     // These check that vectors of G1 elements and the vector `tau_powers_g2`
     // are incrementing by the same (unknown) factor `tau`.
-    let acc = read_subaccumulator::<MantaPaySetupCeremony>(&readable_map).unwrap();
+    let acc = read_subaccumulator::<MantaPaySetupCeremony>(&readable_map, Compressed::No).unwrap();
     assert!(check_consistent_factor(
         &acc.tau_powers_g1,
         &acc.tau_powers_g2
@@ -853,6 +910,46 @@ pub fn read_subaccumulator_test() {
         .open("../manta-parameters/data/ppot/round72powers19.lfs")
         .expect("unable to create parameter file in this directory");
     CanonicalSerialize::serialize_uncompressed(&acc, &mut file).unwrap();
+}
+
+/// Compares the accumulators stored in response_0071 and challenge_0072
+#[test]
+pub fn compare_response_challenge_accumulators_test() {
+    // Try to load `./challenge` from disk.
+    println!("Reading accumulator from challenge file");
+    let now = Instant::now();
+    let reader = OpenOptions::new()
+        .read(true)
+        .open("/Users/thomascnorton/Documents/Manta/trusted-setup/challenge_0072")
+        .expect("unable open `./challenge` in this directory");
+    // Make a memory map
+    let challenge_map = unsafe {
+        MmapOptions::new()
+            .map(&reader)
+            .expect("unable to create a memory map for input")
+    };
+    let challenge_acc =
+        read_subaccumulator::<MantaPaySetupCeremony>(&challenge_map, Compressed::No).unwrap();
+    println!("Read uncompressed accumulator in {:?}", now.elapsed());
+
+    // Try to load `./response` from disk.
+    println!("Reading accumulator from response file");
+    let now = Instant::now();
+    let reader = OpenOptions::new()
+        .read(true)
+        .open("/Users/thomascnorton/Documents/Manta/trusted-setup/response_0071")
+        .expect("unable open `./response` in this directory");
+    // Make a memory map
+    let response_map = unsafe {
+        MmapOptions::new()
+            .map(&reader)
+            .expect("unable to create a memory map for input")
+    };
+    let response_acc =
+        read_subaccumulator::<MantaPaySetupCeremony>(&response_map, Compressed::Yes).unwrap();
+    println!("Read compressed accumulator in {:?}", now.elapsed());
+
+    assert_eq!(challenge_acc, response_acc)
 }
 
 #[test]
