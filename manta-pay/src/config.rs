@@ -41,7 +41,7 @@ use manta_crypto::{
         ff::ToConstraintField,
         serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError},
     },
-    constraint::ProofSystemInput,
+    constraint::Input,
     eclair::{
         self,
         alloc::{
@@ -52,15 +52,12 @@ use manta_crypto::{
     },
     encryption,
     hash::ArrayHashFunction,
-    key::{
-        self,
-        kdf::{AsBytes, KeyDerivationFunction},
-    },
+    key::{self, kdf::KeyDerivationFunction},
     merkle_tree,
 };
 use manta_util::{
     codec::{Decode, DecodeError, Encode, Read, Write},
-    into_array_unchecked, Array, SizeLimit,
+    into_array_unchecked, Array, AsBytes, SizeLimit,
 };
 
 #[cfg(feature = "bs58")]
@@ -633,31 +630,31 @@ impl Constant<Compiler> for MerkleTreeConfigurationVar {
     }
 }
 
-impl ProofSystemInput<AssetId> for ProofSystem {
+impl Input<ProofSystem> for AssetId {
     #[inline]
-    fn extend(input: &mut Self::Input, next: &AssetId) {
-        input.push(next.0.into());
+    fn extend(&self, input: &mut Vec<ConstraintField>) {
+        input.push(self.0.into());
     }
 }
 
-impl ProofSystemInput<AssetValue> for ProofSystem {
+impl Input<ProofSystem> for AssetValue {
     #[inline]
-    fn extend(input: &mut Self::Input, next: &AssetValue) {
-        input.push(next.0.into());
+    fn extend(&self, input: &mut Vec<ConstraintField>) {
+        input.push(self.0.into());
     }
 }
 
-impl ProofSystemInput<Fp<ConstraintField>> for ProofSystem {
+impl Input<ProofSystem> for Fp<ConstraintField> {
     #[inline]
-    fn extend(input: &mut Self::Input, next: &Fp<ConstraintField>) {
-        input.push(next.0);
+    fn extend(&self, input: &mut Vec<ConstraintField>) {
+        input.push(self.0);
     }
 }
 
-impl ProofSystemInput<Group> for ProofSystem {
+impl Input<ProofSystem> for Group {
     #[inline]
-    fn extend(input: &mut Self::Input, next: &Group) {
-        input.append(&mut next.0.to_field_elements().unwrap());
+    fn extend(&self, input: &mut Vec<ConstraintField>) {
+        input.append(&mut self.0.to_field_elements().unwrap());
     }
 }
 

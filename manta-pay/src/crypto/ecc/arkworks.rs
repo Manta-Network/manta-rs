@@ -36,10 +36,9 @@ use manta_crypto::{
             Allocate, Allocator, Constant, Variable,
         },
     },
-    key::kdf,
     rand::{RngCore, Sample},
 };
-use manta_util::codec;
+use manta_util::{codec, AsBytes};
 
 #[cfg(feature = "serde")]
 use {
@@ -203,7 +202,7 @@ where
     }
 }
 
-impl<C> kdf::AsBytes for Group<C>
+impl<C> AsBytes for Group<C>
 where
     C: ProjectiveCurve,
 {

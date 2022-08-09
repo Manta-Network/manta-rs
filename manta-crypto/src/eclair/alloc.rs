@@ -27,6 +27,7 @@
 //! abstractions inside of compilers, like heap allocation. Allocation only refers to lifting
 //! constants and variables from one compiler to another.
 
+use alloc::{boxed::Box, vec::Vec};
 use core::{iter, marker::PhantomData};
 use manta_util::{into_array_unchecked, Array, BoxArray};
 

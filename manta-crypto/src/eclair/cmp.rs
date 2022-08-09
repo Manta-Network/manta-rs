@@ -22,6 +22,7 @@ use crate::eclair::{
     ops::{BitAnd, Not},
     Has, Type,
 };
+use alloc::{boxed::Box, vec::Vec};
 use core::cmp::{self, Ordering};
 use manta_util::{Array, BoxArray};
 

@@ -275,6 +275,8 @@ pub mod measure {
     }
 
     /// Prints the measurement of the call to `f` with the given `label`.
+    #[cfg(feature = "std")]
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
     #[inline]
     pub fn print_measurement<COM, D, F, T>(label: D, f: F, compiler: &mut COM) -> T
     where
