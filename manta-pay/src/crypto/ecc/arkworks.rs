@@ -554,11 +554,8 @@ mod test {
     use super::*;
     use crate::config::Bls12_381_Edwards;
     use manta_crypto::{
-        algebra::Group,
-        arkworks::{ec::group::Group as _, r1cs_std::groups::curves::twisted_edwards::AffineVar},
-        constraint::measure::Measure,
-        eclair::bool::AssertEq,
-        rand::OsRng,
+        algebra::Group, arkworks::r1cs_std::groups::curves::twisted_edwards::AffineVar,
+        constraint::measure::Measure, eclair::bool::AssertEq, rand::OsRng,
     };
 
     /// Constraint Field Type
@@ -596,7 +593,10 @@ mod test {
         cs.assert_eq(&expected, &actual);
         assert!(cs.is_satisfied());
 
-        println!("variable base mul constraint: {:?}", ctr2 - ctr1);
-        println!("fixed base mul constraint: {:?}", ctr3 - ctr2);
+        #[cfg(feature = "std")]
+        {
+            println!("variable base mul constraint: {:?}", ctr2 - ctr1);
+            println!("fixed base mul constraint: {:?}", ctr3 - ctr2);
+        }
     }
 }
