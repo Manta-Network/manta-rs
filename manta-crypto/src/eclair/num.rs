@@ -17,7 +17,7 @@
 //! Numeric Types and Traits
 
 use crate::eclair::{
-    alloc::{mode::Secret, Allocate, Allocator, Var, Variable},
+    alloc::{Allocator, Variable},
     bool::{Assert, Bool, ConditionalSelect, ConditionalSwap},
     cmp::PartialEq,
     ops::{Add, AddAssign, Mul, MulAssign, Not},
