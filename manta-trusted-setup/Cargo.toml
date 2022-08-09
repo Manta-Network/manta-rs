@@ -41,6 +41,7 @@ ark-std = { version = "0.3.0", default-features = false }
 ark-bls12-381 = { version = "0.3.0", default-features = false, features = ["curve", "scalar_field"] }
 async-std = { version = "1.6.0", features = ["attributes", "tokio1"] }
 blake2 = { version = "0.10.4", default-features = false }
+bs58 = {version = "0.4", default-features = false, features = ["alloc"]}
 byteorder = { version = "1.4.3", default-features = false }
 clap = { version = "3.2.16", default-features = false, features = ["color", "derive", "std", "suggestions", "unicode", "wrap_help"] }
 derivative = { version = "2.2.0", default-features = false, features = ["use_core"] }

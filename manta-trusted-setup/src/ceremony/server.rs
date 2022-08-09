@@ -16,30 +16,24 @@
 
 //! Asynchronous server for trusted setup.
 
-use crate::{
-    ceremony::{
-        coordinator::Coordinator,
-        message::{
-            ContributeRequest, QueryMPCStateRequest, QueryMPCStateResponse, RegisterRequest, Signed,
-        },
-        queue::{Identifier, Priority},
-        registry::Map,
-        signature,
-        signature::SignatureScheme,
-        CeremonyError,
+use crate::ceremony::{
+    config::{CeremonyConfig, Challenge, ParticipantIdentifier, Proof, State},
+    coordinator::Coordinator,
+    message::{
+        ContributeRequest, EnqueueRequest, QueryMPCStateRequest, QueryMPCStateResponse, Signed,
     },
-    mpc,
+    queue::Identifier,
+    registry::Registry,
+    signature::{HasPublicKey, SignatureScheme},
+    CeremonyError,
 };
 use manta_crypto::arkworks::serialize::{CanonicalDeserialize, CanonicalSerialize};
 use serde::{de::DeserializeOwned, Serialize};
 use std::{
     future::Future,
-    marker::PhantomData,
     sync::{Arc, Mutex},
 };
-use tide::{Body, Request, Response};
-
-use super::message::ContributeResponse;
+use tide::{Body, Request, Response, StatusCode};
 
 /// Has Nonce
 pub trait HasNonce<S>
@@ -49,119 +43,112 @@ where
     /// Returns the nonce of `self` as a participant.
     fn nonce(&self) -> S::Nonce;
 
-    /// Updates the nonce of `self` as a participant.
-    ///
-    /// # Error
-    ///
-    /// Returns `CeremonyError::InvalidNonce` if the nonce is smaller or equal to previous nonce.
-    fn update_nonce(&mut self, nonce: S::Nonce) -> Result<(), CeremonyError>;
-
     /// TODO: since we only increase nonce by 1 for each time, we can have this helper function
     /// so we do not additionally require traits on nonce such as it can be increased by
     /// a u64 number of usize number.
-    fn increase_nonce(&mut self) -> Result<(), CeremonyError>;
+    fn update_nonce(&mut self);
 }
 
 /// Server with `V` as trusted setup verifier, `P` as participant, `M` as the map used by registry, `N` as the number of priority levels.
 #[derive(derivative::Derivative)]
 #[derivative(Clone(bound = ""))]
-pub struct Server<V, P, M, S, const N: usize>
+pub struct Server<C, const N: usize>
 where
-    S: SignatureScheme,
-    V: mpc::Verify,
-    P: Priority + Identifier + signature::HasPublicKey<PublicKey = S::PublicKey> + HasNonce<S>,
-    M: Map<Key = P::Identifier, Value = P>,
-    V::State: CanonicalSerialize + CanonicalDeserialize,
-    V::Challenge: CanonicalSerialize + CanonicalDeserialize,
-    V::Proof: CanonicalSerialize + CanonicalDeserialize,
+    C: CeremonyConfig,
+    State<C>: CanonicalSerialize + CanonicalDeserialize,
+    Challenge<C>: CanonicalSerialize + CanonicalDeserialize,
+    Proof<C>: CanonicalSerialize + CanonicalDeserialize,
 {
     /// Coordinator
-    pub coordinator: Arc<Mutex<Coordinator<V, P, M, N>>>, // TODO: Make this private
-
-    /// Type Parameter Marker
-    __: PhantomData<S>,
+    pub coordinator: Arc<Mutex<Coordinator<C, N>>>, // TODO: Make this private
 }
 
-impl<V, P, M, S, const N: usize> Server<V, P, M, S, N>
+impl<C, const N: usize> Server<C, N>
 where
-    V: mpc::Verify,
-    S: SignatureScheme,
-    P: Clone
-        + Priority
-        + Identifier
-        + signature::HasPublicKey<PublicKey = S::PublicKey>
-        + HasNonce<S>,
-    M: Map<Key = P::Identifier, Value = P>,
-    V::State: CanonicalSerialize + CanonicalDeserialize,
-    V::Challenge: CanonicalSerialize + CanonicalDeserialize,
-    V::Proof: CanonicalSerialize + CanonicalDeserialize,
+    C: CeremonyConfig,
+    State<C>: CanonicalSerialize + CanonicalDeserialize,
+    Challenge<C>: CanonicalSerialize + CanonicalDeserialize,
+    Proof<C>: CanonicalSerialize + CanonicalDeserialize,
 {
     /// Initialize a server with initial state and challenge.
-    pub fn new(state: V::State, challenge: V::Challenge) -> Self {
+    pub fn new(
+        state: State<C>,
+        challenge: Challenge<C>,
+        registry: Registry<ParticipantIdentifier<C>, C::Participant>,
+    ) -> Self {
         Self {
-            coordinator: Arc::new(Mutex::new(Coordinator::new(state, challenge))),
-            __: PhantomData,
+            coordinator: Arc::new(Mutex::new(Coordinator::new(state, challenge, registry))),
         }
     }
 
     /// Verifies the registration request and registers a participant.
     #[inline]
-    pub async fn register_participant(
+    pub async fn enqueue_participant(
         self,
-        request: Signed<RegisterRequest<P>, S::Signature>,
-    ) -> Result<(), CeremonyError>
+        request: Signed<EnqueueRequest<C>, C>,
+    ) -> Result<(), CeremonyError<C>>
     where
-        RegisterRequest<P>: Serialize,
+        ParticipantIdentifier<C>: Serialize,
     {
-        let (request, signature) = (request.message, request.signature);
-        S::verify(
-            &request,
-            &request.participant.nonce(),
-            &signature,
-            &request.participant.public_key(),
+        let mut coordinator = self.coordinator.lock().unwrap();
+        let participant = match coordinator.get_participant(&request.message.identifier) {
+            Some(participant) => participant,
+            None => return Err(CeremonyError::NotRegistered),
+        };
+        if participant.nonce() != request.nonce {
+            return Err(CeremonyError::NonceNotInSync(participant.nonce()));
+        }
+        C::SignatureScheme::verify(
+            &request.message.identifier,
+            &request.nonce,
+            &request.signature,
+            &participant.public_key(),
         )
-        .expect("Verify register request should succeed.");
-        self.coordinator
-            .lock()
-            .expect("Failed to lock coordinator")
-            .register(request.participant)
+        .map_err(|_| CeremonyError::BadRequest)?; // TODO
+        let identifier = participant.identifier();
+        coordinator.enqueue_participant(&identifier)
     }
 
     /// Gets MPC States and Challenge
     #[inline]
     pub async fn get_state_and_challenge(
         self,
-        request: Signed<QueryMPCStateRequest<P>, S::Signature>,
-    ) -> Result<QueryMPCStateResponse<V>, CeremonyError>
+        request: Signed<QueryMPCStateRequest<C>, C>,
+    ) -> Result<QueryMPCStateResponse<C>, CeremonyError<C>>
     where
-        QueryMPCStateRequest<P>: Serialize,
+        ParticipantIdentifier<C>: Serialize,
     {
-        let (request, signature) = (request.message, request.signature);
-        S::verify(
-            &request,
-            &request.participant.nonce(),
-            &signature,
-            &request.participant.public_key(),
+        // TODO: duplicate code
+        let coordinator = self.coordinator.lock().unwrap();
+        let participant = match coordinator.get_participant(&request.message.identifier) {
+            Some(participant) => participant,
+            None => return Err(CeremonyError::NotRegistered),
+        };
+        if participant.nonce() != request.nonce {
+            return Err(CeremonyError::NonceNotInSync(participant.nonce()));
+        }
+        C::SignatureScheme::verify(
+            &request.message.identifier,
+            &participant.nonce(),
+            &request.signature,
+            &participant.public_key(),
         )
         .expect("Verify signature of query MPC state should succeed.");
-        let state = self.coordinator.lock().expect("Failed to lock coordinator");
-        if state.is_next(&request.participant) {
-            let (state, challenge) = state.state_and_challenge();
+        if coordinator.is_next(&participant) {
+            let (state, challenge) = coordinator.state_and_challenge();
             println!("get_state_and_challenge. Will respond.");
             Ok(QueryMPCStateResponse::Mpc(
                 state.clone().into(),
                 challenge.clone().into(),
             )) // TODO: remove this clone later
         } else {
-            match state.position(&request.participant) {
+            match coordinator.position(&participant) {
                 Some(position) => {
-                    println!("Need to wait more time.");
+                    // println!("Need to wait more time.");
                     Ok(QueryMPCStateResponse::QueuePosition(position))
                 }
                 None => {
-                    println!("Not Registered");
-                    Ok(QueryMPCStateResponse::NotRegistered)
-                    // Err(CeremonyError::NotRegistered) // TODO: Should tell participant that you have not registerd
+                    unreachable!("Participant should be always in the queue here")
                 }
             }
         }
@@ -171,33 +158,41 @@ where
     #[inline]
     pub async fn update(
         self,
-        request: Signed<ContributeRequest<P, V>, S::Signature>,
-    ) -> Result<ContributeResponse, CeremonyError>
+        request: Signed<ContributeRequest<C>, C>,
+    ) -> Result<(), CeremonyError<C>>
     where
-        ContributeRequest<P, V>: Serialize,
+        ContributeRequest<C>: Serialize,
     {
-        let (request, signature) = (request.message, request.signature);
-        match S::verify(
-            &request,
-            &request.participant.nonce(),
-            &signature,
-            &request.participant.public_key(),
-        ) {
-            Ok(()) => {}
-            Err(_) => return Ok(ContributeResponse::ContributionFailure),
-        }
-        match self
-            .coordinator
-            .lock()
-            .expect("Lock coordinator should succeed.")
-            .update(
-                &request.participant.identifier(),
-                request.state.to_actual(),
-                request.proof.to_actual(),
-            ) {
-            Ok(()) => return Ok(ContributeResponse::ContributionSuccess),
-            Err(_) => return Ok(ContributeResponse::ContributionFailure),
+        // TODO: duplicate code
+        let mut coordinator = self.coordinator.lock().unwrap();
+        let participant = match coordinator.get_participant(&request.message.identifier) {
+            Some(participant) => participant,
+            None => return Err(CeremonyError::NotRegistered),
         };
+        if participant.nonce() != request.nonce {
+            return Err(CeremonyError::NonceNotInSync(participant.nonce()));
+        }
+        C::SignatureScheme::verify(
+            &request.message,
+            &participant.nonce(),
+            &request.signature,
+            &participant.public_key(),
+        )
+        .map_err(|_| CeremonyError::BadRequest)?; // TODO
+        let identifier = participant.identifier();
+        coordinator.update(
+            &identifier,
+            request
+                .message
+                .state
+                .to_actual()
+                .map_err(|_| CeremonyError::BadRequest)?,
+            request
+                .message
+                .proof
+                .to_actual()
+                .map_err(|_| CeremonyError::BadRequest)?,
+        )
     }
 
     /// Executes `f` on the incoming `request`.
@@ -210,9 +205,9 @@ where
         T: DeserializeOwned,
         R: Serialize,
         F: FnOnce(Self, T) -> Fut,
-        Fut: Future<Output = Result<R, CeremonyError>>,
+        Fut: Future<Output = Result<R, CeremonyError<C>>>,
     {
-        into_body(move || async move {
+        into_body::<C, _, _, _>(move || async move {
             f(
                 request.state().clone(),
                 request
@@ -228,11 +223,18 @@ where
 
 /// Generates the JSON body for the output of `f`, returning an HTTP reponse.
 #[inline]
-pub async fn into_body<R, F, Fut>(f: F) -> Result<Response, tide::Error>
+pub async fn into_body<C, R, F, Fut>(f: F) -> Result<Response, tide::Error>
 where
+    C: CeremonyConfig,
     R: Serialize,
     F: FnOnce() -> Fut,
-    Fut: Future<Output = Result<R, CeremonyError>>,
+    Fut: Future<Output = Result<R, CeremonyError<C>>>,
 {
-    Ok(Body::from_json(&f().await.map_err(tide::Error::from_display)?)?.into())
+    let result = f().await;
+
+    if matches!(&result, Err(CeremonyError::<C>::BadRequest)) {
+        return Err(tide::Error::from_str(StatusCode::BadRequest, "Bad Request"));
+    }
+
+    Ok(Body::from_json(&result)?.into())
 }

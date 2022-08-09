@@ -16,16 +16,15 @@
 
 //! Signature Scheme
 
-use crate::ceremony::CeremonyError;
 use manta_util::serde::Serialize;
 
 /// Public Key
-pub trait HasPublicKey {
-    /// Public Key Type
-    type PublicKey;
-
+pub trait HasPublicKey<S>
+where
+    S: SignatureScheme,
+{
     /// Returns the public key.
-    fn public_key(&self) -> Self::PublicKey;
+    fn public_key(&self) -> S::PublicKey;
 }
 
 /// Signature Scheme
@@ -37,7 +36,7 @@ pub trait SignatureScheme {
     type PrivateKey;
 
     /// Nonce Type
-    type Nonce: Serialize;
+    type Nonce: Serialize + PartialEq;
 
     /// Signature Type
     type Signature;
@@ -48,7 +47,7 @@ pub trait SignatureScheme {
         nonce: &Self::Nonce,
         public_key: &Self::PublicKey,
         private_key: &Self::PrivateKey,
-    ) -> Result<Self::Signature, CeremonyError>
+    ) -> Result<Self::Signature, ()>
     where
         M: ?Sized + AsRef<[u8]>;
 
@@ -58,7 +57,7 @@ pub trait SignatureScheme {
         nonce: &Self::Nonce,
         public_key: &Self::PublicKey,
         private_key: &Self::PrivateKey,
-    ) -> Result<Self::Signature, CeremonyError>
+    ) -> Result<Self::Signature, ()>
     where
         M: Serialize,
     {
@@ -76,7 +75,7 @@ pub trait SignatureScheme {
         nonce: &Self::Nonce,
         signature: &Self::Signature,
         public_key: &Self::PublicKey,
-    ) -> Result<(), CeremonyError>
+    ) -> Result<(), ()>
     where
         M: ?Sized + AsRef<[u8]>;
 
@@ -86,7 +85,7 @@ pub trait SignatureScheme {
         nonce: &Self::Nonce,
         signature: &Self::Signature,
         public_key: &Self::PublicKey,
-    ) -> Result<(), CeremonyError>
+    ) -> Result<(), ()>
     where
         M: Serialize,
     {
@@ -103,8 +102,8 @@ pub trait SignatureScheme {
 pub mod ed_dalek {
     use super::*;
     use alloc::vec::Vec;
-    use manta_crypto::arkworks::serialize::CanonicalSerialize;
     use ed25519_dalek::{Keypair, Signature as ED25519Signature, Signer, Verifier};
+    use manta_crypto::arkworks::serialize::CanonicalSerialize;
     use manta_util::{
         into_array_unchecked,
         serde::{Deserialize, Serialize},
@@ -129,7 +128,7 @@ pub mod ed_dalek {
     ///
     /// A wrapper around the byte representation of an `ed25519_dalek::SecretKey` type. The byte
     /// representation is used to be consistent with the choice made for `PublicKey`.
-    #[derive(Debug)]
+    #[derive(Debug, Serialize, Deserialize, Clone, Copy)]
     pub struct PrivateKey(pub [u8; 32]);
 
     /// Signature Type
@@ -163,7 +162,7 @@ pub mod ed_dalek {
             nonce: &Self::Nonce,
             public_key: &Self::PublicKey,
             private_key: &Self::PrivateKey,
-        ) -> Result<Self::Signature, CeremonyError>
+        ) -> Result<Self::Signature, ()>
         where
             M: ?Sized + AsRef<[u8]>,
         {
@@ -183,7 +182,7 @@ pub mod ed_dalek {
             nonce: &Self::Nonce,
             signature: &Self::Signature,
             public_key: &Self::PublicKey,
-        ) -> Result<(), CeremonyError>
+        ) -> Result<(), ()>
         where
             M: ?Sized + AsRef<[u8]>,
         {
@@ -195,7 +194,7 @@ pub mod ed_dalek {
             ed25519_dalek::PublicKey::from_bytes(&public_key.0[..])
                 .expect("Should decode public key from bytes.")
                 .verify(&concatenated_message, &((*signature).into()))
-                .map_err(|_| CeremonyError::InvalidSignature)
+                .map_err(drop)
         }
     }
 }

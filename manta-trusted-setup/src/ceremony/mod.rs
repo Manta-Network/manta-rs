@@ -16,52 +16,41 @@
 
 //! Client and Server Interfaces and Implementations for Manta Trusted Setup Ceremony
 
-use core::{fmt, fmt::Display};
+use crate::ceremony::config::{CeremonyConfig, Nonce};
+use serde::{Deserialize, Serialize};
 
 // pub mod bls_server;
+pub mod client;
+pub mod config;
 pub mod coordinator;
 pub mod message;
 pub mod queue;
 pub mod registry;
 pub mod server;
 pub mod signature;
-pub mod client;
 
 /// Ceremony Error
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum CeremonyError {
-    /// Participant Already Registered Error
-    AlreadyRegistered,
+///
+/// # Note
+/// All errors here are visible to users.
+#[derive(PartialEq, Serialize, Deserialize)]
+#[serde(
+    bound(
+        serialize = "Nonce<C>: Serialize",
+        deserialize = "Nonce<C>: Deserialize<'de>",
+    ),
+    deny_unknown_fields
+)]
+pub enum CeremonyError<C>
+where
+    C: CeremonyConfig,
+{
+    /// Malformed request that should not come from official client
+    BadRequest,
 
-    /// Not Registered Error
+    /// Nonce not in sync, and client needs to update the nonce
+    NonceNotInSync(Nonce<C>),
+
+    /// Not Registered
     NotRegistered,
-
-    /// Invalid Signature Error
-    InvalidSignature,
-
-    /// Not Your Turn Error
-    NotYourTurn,
-
-    /// Empty Waiting Queue Error
-    WaitingQueueEmpty,
-
-    /// Invalid Contribution Error
-    InvalidContribution,
-
-    /// Invalid Nonce
-    InvalidNonce,
-}
-
-impl Display for CeremonyError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            CeremonyError::AlreadyRegistered => write!(f, "Already registered"),
-            CeremonyError::NotRegistered => write!(f, "Not registered"),
-            CeremonyError::InvalidSignature => write!(f, "Invalid signature"),
-            CeremonyError::NotYourTurn => write!(f, "Not your turn"),
-            CeremonyError::WaitingQueueEmpty => write!(f, "Waiting queue is empty"),
-            CeremonyError::InvalidContribution => write!(f, "Invalid contribution"),
-            _ => write!(f, "Unknown error"),
-        }
-    }
 }

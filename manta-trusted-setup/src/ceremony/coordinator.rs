@@ -18,66 +18,67 @@
 
 use crate::{
     ceremony::{
-        queue::{Identifier, Priority, Queue},
-        registry::{Map, Registry},
+        config::{CeremonyConfig, Challenge, ParticipantIdentifier, Proof, State},
+        queue::{Identifier, Queue},
+        registry::Registry,
         CeremonyError,
     },
-    mpc,
+    mpc::Verify,
 };
 
 /// Coordinator with `V` as trusted setup verifier, `P` as participant, `M` as the map used by registry, `N` as the number of priority levels
-pub struct Coordinator<V, P, M, const N: usize>
+pub struct Coordinator<C, const N: usize>
 where
-    V: mpc::Verify,
-    P: Priority + Identifier,
-    M: Map<Key = P::Identifier, Value = P>,
+    C: CeremonyConfig,
 {
     /// States
-    state: V::State,
+    state: State<C>,
 
     /// Challenge
-    challenge: V::Challenge,
+    challenge: Challenge<C>,
 
     /// Registry of participants
-    registry: Registry<M>,
+    registry: Registry<ParticipantIdentifier<C>, C::Participant>,
 
     /// Queue of participants
-    queue: Queue<P, N>,
+    queue: Queue<C::Participant, N>,
 }
 
-impl<V, P, M, const N: usize> Coordinator<V, P, M, N>
+impl<C, const N: usize> Coordinator<C, N>
 where
-    V: mpc::Verify,
-    P: Priority + Identifier,
-    M: Map<Key = P::Identifier, Value = P>,
+    C: CeremonyConfig,
 {
     /// Initializes a coordinator with the initial state and challenge.
     #[inline]
-    pub fn new(state: V::State, challenge: V::Challenge) -> Self {
+    pub fn new(
+        state: State<C>,
+        challenge: Challenge<C>,
+        loaded_registry: Registry<ParticipantIdentifier<C>, C::Participant>,
+    ) -> Self {
         Self {
             state,
             challenge,
-            registry: Registry::default(),
+            registry: loaded_registry,
             queue: Queue::new(),
         }
     }
 
     /// Gets the current state and challenge.
     #[inline]
-    pub fn state_and_challenge(&self) -> (&V::State, &V::Challenge) {
+    pub fn state_and_challenge(&self) -> (&State<C>, &Challenge<C>) {
         (&self.state, &self.challenge)
     }
 
     /// Checks if the `participant` is the next.
     #[inline]
-    pub fn is_next(&self, participant: &P) -> bool {
+    pub fn is_next(&self, participant: &C::Participant) -> bool {
         self.queue.is_at_front(participant)
     }
 
     /// Gets the position of `participant` and returns `None` if `participant`
     /// is not in the queue.
     #[inline]
-    pub fn position(&self, participant: &P) -> Option<usize> {
+    pub fn position(&self, participant: &C::Participant) -> Option<usize> {
         self.queue.position(participant)
     }
 
@@ -87,20 +88,19 @@ where
     #[inline]
     pub fn update(
         &mut self,
-        participant: &P::Identifier,
-        state: V::State,
-        proof: V::Proof,
-    ) -> Result<(), CeremonyError> {
+        participant: &ParticipantIdentifier<C>,
+        state: State<C>,
+        proof: Proof<C>,
+    ) -> Result<(), CeremonyError<C>> {
         let participant = self
             .registry
             .get(participant)
-            .ok_or(CeremonyError::NotRegistered)
-            .expect("Get the participant from registry should succeed.");
+            .ok_or(CeremonyError::<C>::NotRegistered)?;
         if !self.queue.is_at_front(participant) {
-            return Err(CeremonyError::NotYourTurn);
+            return Err(CeremonyError::<C>::BadRequest);
         };
         take_mut::take(&mut self.state, |self_state| {
-            V::verify_transform(&self.challenge, self_state, state, proof)
+            C::Setup::verify_transform(&self.challenge, self_state, state, proof)
                 .expect("Verify transform on received contribution should succeed.")
                 .1
         });
@@ -108,34 +108,43 @@ where
         Ok(())
     }
 
-    /// Registers a participant and puts into the waiting queue.
+    /// TODO
     #[inline]
-    pub fn register(&mut self, participant: P) -> Result<(), CeremonyError> {
-        let participant = self
-            .registry
-            .register(participant.identifier(), participant)
-            .expect("Register a participant should succeed.");
-        self.queue.push(&participant);
-        Ok(())
+    pub fn enqueue_participant(
+        &mut self,
+        participant: &ParticipantIdentifier<C>,
+    ) -> Result<(), CeremonyError<C>> {
+        let participant = self.registry.get(&participant);
+        match participant {
+            Some(participant) => {
+                if matches!(self.queue.position(&participant), None) {
+                    if self.registry.has_contributed(&participant.identifier()) {
+                        return Err(CeremonyError::BadRequest); // TODO
+                    }
+                    self.queue.push(participant);
+                    Ok(())
+                } else {
+                    return Err(CeremonyError::BadRequest); // TODO
+                }
+            }
+            None => Err(CeremonyError::BadRequest), // TODO
+        }
     }
 
     /// Gets the participant with the given identifier and returns `None` if not found.
     #[inline]
-    pub fn get_participant(&self, identifier: &P::Identifier) -> Option<&P> {
+    pub fn get_participant(
+        &self,
+        identifier: &ParticipantIdentifier<C>,
+    ) -> Option<&C::Participant> {
         self.registry.get(identifier)
     }
 
-    /// Pops the current contributor. Return the participant that is skipped.
+    /// Pops the current contributor. Return the participant identifier that is skipped.
     /// The skipped participant needs to be registered again.
-    // TODO: If we instead move the current contributor to the end of the queue, there are 2 ways:
-    // TODO: 1. Keep the current contributor's priority, but this will halt the trusted setup if this contributor never contribute and has highest priority.
-    // TODO: 2. Lower the current contributor's priority, but this contributor will have to wait a long time when it wants to contribute again.
-    pub fn skip_current_contributor(&mut self) -> Result<P, CeremonyError> {
-        let participant = self.queue.pop().ok_or(CeremonyError::WaitingQueueEmpty)?;
-
-        Ok(self
-            .registry
-            .unregister(&participant)
-            .expect("participant in the queue should be registered"))
+    pub fn skip_current_contributor(
+        &mut self,
+    ) -> Result<ParticipantIdentifier<C>, CeremonyError<C>> {
+        self.queue.pop().ok_or(CeremonyError::BadRequest)
     }
 }

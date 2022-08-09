@@ -18,135 +18,120 @@
 
 use crate::{
     ceremony::{
-        message::{ContributeRequest, QueryMPCStateRequest, RegisterRequest, Signed},
-        queue::{Identifier, Priority},
+        config::{CeremonyConfig, Challenge, Hasher, PrivateKey, Proof, PublicKey, State},
+        message::{ContributeRequest, EnqueueRequest, QueryMPCStateRequest, Signed},
         server::HasNonce,
         signature,
         signature::SignatureScheme,
     },
-    mpc,
-    mpc::Types,
     util::AsBytes,
 };
 use manta_crypto::arkworks::serialize::CanonicalSerialize;
-use manta_util::serde::Serialize;
-use rand_chacha::rand_core::OsRng;
-use std::marker::PhantomData;
 
 /// Client
-pub struct Client<S, P>
+pub struct Client<C>
 where
-    S: SignatureScheme,
-    P: Priority + Identifier + signature::HasPublicKey<PublicKey = S::PublicKey> + HasNonce<S>,
+    C: CeremonyConfig,
 {
     ///
-    participant: P,
+    participant: C::Participant,
 
     ///
-    key_pair: (S::PrivateKey, S::PublicKey),
-
-    /// Type Parameter Marker
-    __: PhantomData<S>,
+    key_pair: (PrivateKey<C>, PublicKey<C>),
 }
 
-impl<S, P> Client<S, P>
+impl<C> Client<C>
 where
-    S: SignatureScheme,
-    P: Priority
-        + Identifier
-        + signature::HasPublicKey<PublicKey = S::PublicKey>
-        + HasNonce<S>
-        + Serialize,
+    C: CeremonyConfig,
 {
     ///
-    pub fn new(participant: P, key_pair: (S::PrivateKey, S::PublicKey)) -> Self {
+    pub fn new(participant: C::Participant, key_pair: (PrivateKey<C>, PublicKey<C>)) -> Self {
         Self {
             participant,
             key_pair,
-            __: PhantomData,
         }
     }
 
     ///
-    pub fn register(&mut self) -> Signed<RegisterRequest<P>, S::Signature>
+    pub fn enqueue(&mut self) -> Signed<EnqueueRequest<C>, C>
     where
-        P: Clone,
+        C::Participant: Clone,
     {
-        self.participant
-            .increase_nonce()
-            .expect("Increasing nonce should succeed");
-        let message = RegisterRequest {
-            participant: self.participant.clone(),
-        };
-        Signed {
-            message: message.clone(),
-            signature: S::sign(
-                message,
-                &self.participant.nonce(),
-                &self.key_pair.1,
-                &self.key_pair.0,
-            )
-            .expect("Signing should succeed."),
-        }
+        // self.participant
+        //     .increase_nonce()
+        //     .expect("Increasing nonce should succeed");
+        // let message = RegisterRequest {
+        //     participant: self.participant.clone(),
+        // };
+        // Signed {
+        //     message: message.clone(),
+        //     signature: S::sign(
+        //         message,
+        //         &self.participant.nonce(),
+        //         &self.key_pair.1,
+        //         &self.key_pair.0,
+        //     )
+        //     .expect("Signing should succeed."),
+        // }
+        todo!()
     }
 
     ///
-    pub fn query_mpc_state(&mut self) -> Signed<QueryMPCStateRequest<P>, S::Signature>
+    pub fn query_mpc_state(&mut self) -> Signed<QueryMPCStateRequest<C>, C>
     where
-        P: Clone,
+        C::Participant: Clone,
     {
-        self.participant
-            .increase_nonce()
-            .expect("Increasing nonce should succeed");
-        let message = QueryMPCStateRequest {
-            participant: self.participant.clone(),
-        };
-        Signed {
-            message: message.clone(),
-            signature: S::sign(
-                message,
-                &self.participant.nonce(),
-                &self.key_pair.1,
-                &self.key_pair.0,
-            )
-            .expect("Signing should succeed."),
-        }
+        // self.participant
+        //     .update_nonce()
+        //     .expect("Increasing nonce should succeed");
+        // let message = QueryMPCStateRequest {
+        //     participant: self.participant.clone(),
+        // };
+        // Signed {
+        //     message: message.clone(),
+        //     signature: S::sign(
+        //         message,
+        //         &self.participant.nonce(),
+        //         &self.key_pair.1,
+        //         &self.key_pair.0,
+        //     )
+        //     .expect("Signing should succeed."),
+        // }
+        todo!()
     }
 
     ///
-    pub fn contribute<V>(
+    pub fn contribute(
         &mut self,
-        hasher: &V::Hasher,
-        challenge: &V::Challenge,
-        mut state: V::State,
-    ) -> Signed<ContributeRequest<P, V>, S::Signature>
+        hasher: &Hasher<C>,
+        challenge: &Challenge<C>,
+        mut state: State<C>,
+    ) -> Signed<ContributeRequest<C>, C>
     where
-        P: Clone,
-        V: Types + mpc::Verify + mpc::Contribute,
-        V::State: CanonicalSerialize,
-        V::Proof: CanonicalSerialize,
-        ContributeRequest<P, V>: Clone,
+        C::Participant: Clone,
+        State<C>: CanonicalSerialize,
+        Proof<C>: CanonicalSerialize,
+        ContributeRequest<C>: Clone,
     {
-        self.participant
-            .increase_nonce()
-            .expect("Increasing nonce should succeed");
-        let mut rng = OsRng;
-        let proof = V::contribute(hasher, challenge, &mut state, &mut rng)
-            .expect("Contribute should succeed.");
-        let message: ContributeRequest<P, V> = ContributeRequest {
-            participant: self.participant.clone(),
-            state: AsBytes::from_actual(state),
-            proof: AsBytes::from_actual(proof),
-        };
-        Signed {
-            message: message.clone(),
-            signature: S::sign(
-                message,
-                &self.participant.nonce(),
-                &self.key_pair.1,
-                &self.key_pair.0,
-            )
-            .expect("Signing should succeed."),
-        }
+        // todo: update nonce
+        // let mut rng = OsRng;
+        // let proof = V::contribute(hasher, challenge, &mut state, &mut rng)
+        //     .expect("Contribute should succeed.");
+        // let message: ContributeRequest<P, V> = ContributeRequest {
+        //     participant: self.participant.clone(),
+        //     state: AsBytes::from_actual(state),
+        //     proof: AsBytes::from_actual(proof),
+        // };
+        // Signed {
+        //     message: message.clone(),
+        //     signature: S::sign(
+        //         message,
+        //         &self.participant.nonce(),
+        //         &self.key_pair.1,
+        //         &self.key_pair.0,
+        //     )
+        //     .expect("Signing should succeed."),
+        // }
+        todo!()
     }
 }

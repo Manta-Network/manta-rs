@@ -16,94 +16,101 @@
 
 //! Messages
 
-use crate::{ceremony::queue::Identifier, mpc, util::AsBytes};
-use core::fmt::Debug;
+use crate::{
+    ceremony::config::{
+        CeremonyConfig, Challenge, Nonce, ParticipantIdentifier, Proof, PublicKey, Signature, State,
+    },
+    util::AsBytes,
+};
 use serde::{Deserialize, Serialize};
 
 /// Register Request
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct RegisterRequest<P> {
+#[derive(Deserialize, Serialize)]
+#[serde(bound(
+    serialize = "ParticipantIdentifier<C>: Serialize, PublicKey<C>: Serialize",
+    deserialize = "ParticipantIdentifier<C>: Deserialize<'de>, PublicKey<C>: Deserialize<'de>"
+))]
+pub struct EnqueueRequest<C>
+where
+    C: CeremonyConfig,
+{
     /// Participant
-    pub participant: P,
+    pub identifier: ParticipantIdentifier<C>,
+    /// Public Key
+    pub public_key: PublicKey<C>,
 }
 
 /// Query MPC State Request
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct QueryMPCStateRequest<P> {
+#[derive(Deserialize, Serialize)]
+#[serde(bound(
+    serialize = "ParticipantIdentifier<C>: Serialize, PublicKey<C>: Serialize",
+    deserialize = "ParticipantIdentifier<C>: Deserialize<'de>, PublicKey<C>: Deserialize<'de>"
+))]
+pub struct QueryMPCStateRequest<C>
+where
+    C: CeremonyConfig,
+{
     /// Participant
-    pub participant: P,
+    pub identifier: ParticipantIdentifier<C>,
+    /// Public Key
+    pub public_key: PublicKey<C>,
 }
 
 /// MPC Response for [`QueryMPCStateRequest`]
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(bound(serialize = "", deserialize = "",), deny_unknown_fields)]
-pub enum QueryMPCStateResponse<V>
+pub enum QueryMPCStateResponse<C>
 where
-    V: mpc::Verify,
+    C: CeremonyConfig,
 {
     /// Queue Position
     QueuePosition(usize),
 
     /// MPC State
-    Mpc(AsBytes<V::State>, AsBytes<V::Challenge>),
-
-    ///
-    NotRegistered,
-
-    ///
-    HaveContributed,
+    Mpc(AsBytes<State<C>>, AsBytes<Challenge<C>>),
 }
 
 /// Contribute Request
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(
-    bound(serialize = "P: Serialize", deserialize = "P: Deserialize<'de>",),
-    deny_unknown_fields
-)]
-pub struct ContributeRequest<P, V>
+#[derive(Serialize, Deserialize)]
+#[serde(bound(
+    serialize = "ParticipantIdentifier<C>: Serialize, PublicKey<C>: Serialize",
+    deserialize = "ParticipantIdentifier<C>: Deserialize<'de>, PublicKey<C>: Deserialize<'de>"
+))]
+pub struct ContributeRequest<C>
 where
-    P: Identifier,
-    V: mpc::Verify,
+    C: CeremonyConfig,
 {
     /// Participant
-    pub participant: P,
+    pub identifier: ParticipantIdentifier<C>,
+    /// Public Key
+    pub public_key: PublicKey<C>,
 
     /// State after Contribution
-    pub state: AsBytes<V::State>,
+    pub state: AsBytes<State<C>>,
 
     /// Proof of contribution
-    pub proof: AsBytes<V::Proof>,
-}
-
-/// Contribute Response
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum ContributeResponse {
-    /// Contribution Success
-    ContributionSuccess,
-
-    /// Contribution Failure
-    ContributionFailure, // TODO: Provide more details on the failure.
-
-    /// Have Contributed Before
-    ContributedBefore,
-
-    /// Not Registered Yet
-    NotRegistered,
+    pub proof: AsBytes<Proof<C>>,
 }
 
 /// Signed Message
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(
     bound(
-        serialize = r"T: Serialize, S: Serialize",
-        deserialize = "T: Deserialize<'de>, S: Deserialize<'de>",
+        serialize = r"T: Serialize, Signature<C>: Serialize, Nonce<C>: Serialize",
+        deserialize = "T: Deserialize<'de>, Signature<C>: Deserialize<'de>, Nonce<C>: Deserialize<'de>",
     ),
     deny_unknown_fields
 )]
-pub struct Signed<T, S> {
+pub struct Signed<T, C>
+where
+    C: CeremonyConfig,
+{
     /// Message
     pub message: T,
 
     /// Signature
-    pub signature: S,
+    pub signature: Signature<C>,
+
+    /// Nonce
+    pub nonce: Nonce<C>,
 }

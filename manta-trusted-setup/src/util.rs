@@ -478,11 +478,11 @@ impl<T> AsBytes<T> {
     }
 
     /// TODO
-    pub fn to_actual(&self) -> T
+    pub fn to_actual(&self) -> Result<T, ()>
     where
         T: CanonicalDeserialize,
     {
-        T::deserialize(&mut &self.bytes[..]).unwrap()
+        T::deserialize(&mut &self.bytes[..]).map_err(|_| ())
     }
 }
 
