@@ -41,12 +41,14 @@ use manta_crypto::arkworks::{
     ff::{PrimeField, ToBytes, Zero},
     pairing::Pairing,
 };
-use manta_util::{cfg_iter, into_array_unchecked, rayon::prelude::ParallelIterator, vec::Vec};
+use manta_util::{cfg_iter, into_array_unchecked, vec::Vec};
 use memmap::{Mmap, MmapOptions};
-use std::{
-    fs::{File, OpenOptions},
-    time::Instant,
-};
+use ark_std::fs::{File, OpenOptions};
+use ark_std::time::Instant;
+use ark_std::println;
+
+#[cfg(feature = "rayon")]
+use manta_util::rayon::prelude::ParallelIterator;
 
 /// Configuration of the Perpetual Powers of Tau ceremony
 pub struct PpotCeremony;
@@ -489,13 +491,13 @@ pub enum PointDeserializeError {
     NotInSubgroup,
 }
 
-impl std::fmt::Display for PointDeserializeError {
+impl alloc::fmt::Display for PointDeserializeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Debug::fmt(&self, f) // ? Is this an okay thing to do ?
     }
 }
 
-impl std::error::Error for PointDeserializeError {}
+impl ark_std::error::Error for PointDeserializeError {}
 
 impl From<PointDeserializeError> for SerializationError {
     fn from(e: PointDeserializeError) -> Self {
@@ -913,6 +915,7 @@ pub fn read_subaccumulator_test() {
 }
 
 /// Compares the accumulators stored in response_0071 and challenge_0072
+/// Takes about 7 mins to read uncompressed, then about 14 to read compressed when 1 << 19 powers
 #[test]
 pub fn compare_response_challenge_accumulators_test() {
     // Try to load `./challenge` from disk.

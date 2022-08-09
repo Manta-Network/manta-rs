@@ -31,7 +31,11 @@ use crate::{
 use ark_bn254::{Bn254, Fr, G1Affine, G2Affine};
 use ark_groth16::ProvingKey;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Read, SerializationError, Write};
-use ark_std::io;
+use ark_std::{
+    fs::{File, OpenOptions},
+    io, println,
+    time::Instant,
+};
 use blake2::Digest;
 use manta_crypto::{
     arkworks::{
@@ -44,10 +48,6 @@ use manta_crypto::{
 use manta_pay::crypto::constraint::arkworks::R1CS;
 use manta_util::{into_array_unchecked, vec::Vec};
 use memmap::MmapOptions;
-use std::{
-    fs::{File, OpenOptions},
-    time::Instant,
-};
 
 /// Configuration for a Phase1 Ceremony large enough to support MantaPay circuits
 #[derive(CanonicalDeserialize, CanonicalSerialize, Debug, PartialEq, Eq)]
