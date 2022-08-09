@@ -16,6 +16,15 @@
 
 //! Utilities for Manipulating Bytes
 
+#[cfg(feature = "alloc")]
+use alloc::vec::Vec;
+
+/// Counts the number of bytes required to encode a number with the given number of `bits`.
+#[inline]
+pub const fn byte_count(bits: u32) -> u32 {
+    (bits / 8) + (((bits % 8) != 0) as u32)
+}
+
 /// Size Limit
 pub trait SizeLimit {
     /// Maximum Number of Bytes Required to Represent [`Self`]
@@ -90,8 +99,10 @@ impl<const N: usize> IntoBytes<N> for [u8; N] {
     }
 }
 
-/// Counts the number of bytes required to encode a number with the given number of `bits`.
-#[inline]
-pub const fn byte_count(bits: u32) -> u32 {
-    (bits / 8) + (((bits % 8) != 0) as u32)
+/// Byte Vector Conversion
+#[cfg(feature = "alloc")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
+pub trait AsBytes {
+    /// Returns an owned byte representation of `self`.
+    fn as_bytes(&self) -> Vec<u8>;
 }

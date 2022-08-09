@@ -34,6 +34,8 @@
 //!
 //! See the [`correctness`](test::correctness) test for more.
 
+pub mod convert;
+
 /// Signing Key
 pub trait SigningKeyType {
     /// Signing Key Type
@@ -46,6 +48,9 @@ where
 {
     type SigningKey = T::SigningKey;
 }
+
+/// Signing Key Type
+pub type SigningKey<T> = <T as SigningKeyType>::SigningKey;
 
 /// Verifying Key
 pub trait VerifyingKeyType {
@@ -60,6 +65,9 @@ where
     type VerifyingKey = T::VerifyingKey;
 }
 
+/// Verifying Key Type
+pub type VerifyingKey<T> = <T as VerifyingKeyType>::VerifyingKey;
+
 /// Message
 pub trait MessageType {
     /// Message Type
@@ -72,6 +80,9 @@ where
 {
     type Message = T::Message;
 }
+
+/// Message Type
+pub type Message<T> = <T as MessageType>::Message;
 
 /// Signature
 pub trait SignatureType {
@@ -86,6 +97,9 @@ where
     type Signature = T::Signature;
 }
 
+/// Signature Type
+pub type Signature<T> = <T as SignatureType>::Signature;
+
 /// Randomness
 pub trait RandomnessType {
     /// Randomness Type
@@ -98,6 +112,9 @@ where
 {
     type Randomness = T::Randomness;
 }
+
+/// Randomness Type
+pub type Randomness<T> = <T as RandomnessType>::Randomness;
 
 /// Signature Verifying Key Derivation Function
 pub trait Derive<COM = ()>: SigningKeyType + VerifyingKeyType {
@@ -176,6 +193,7 @@ where
 {
     type Verification = V::Verification;
 
+    #[inline]
     fn verify(
         &self,
         verifying_key: &Self::VerifyingKey,
@@ -191,9 +209,10 @@ where
 pub mod schnorr {
     use super::*;
     use crate::{
-        algebra::{security::DiscreteLogarithmHardness, Group, Scalar},
-        eclair::{bool::Bool, cmp::PartialEq, Has},
+        algebra::{security::DiscreteLogarithmHardness, Generator, Group, Scalar},
+        eclair::{alloc::Constant, bool::Bool, cmp::PartialEq, Has},
         hash::security::PreimageResistance,
+        rand::{Rand, RngCore, Sample},
     };
     use core::{cmp, fmt::Debug, hash::Hash, marker::PhantomData};
 
@@ -265,6 +284,49 @@ pub mod schnorr {
 
         /// Type Parameter Marker
         __: PhantomData<COM>,
+    }
+
+    impl<G, H, COM> Schnorr<G, H, COM>
+    where
+        G: DiscreteLogarithmHardness + Group<COM>,
+        H: HashFunction<G, COM>,
+    {
+        /// Builds a new [`Schnorr`] signature scheme over `generator` and `hash_function`.
+        #[inline]
+        pub fn new(generator: G, hash_function: H) -> Self {
+            Self {
+                generator,
+                hash_function,
+                __: PhantomData,
+            }
+        }
+    }
+
+    impl<G, H, COM> Generator<COM> for Schnorr<G, H, COM>
+    where
+        G: DiscreteLogarithmHardness + Group<COM>,
+        H: HashFunction<G, COM>,
+    {
+        type Group = G;
+
+        #[inline]
+        fn generator(&self) -> &Self::Group {
+            &self.generator
+        }
+    }
+
+    impl<G, H, DG, DH> Sample<(DG, DH)> for Schnorr<G, H>
+    where
+        G: DiscreteLogarithmHardness + Group + Sample<DG>,
+        H: HashFunction<G> + Sample<DH>,
+    {
+        #[inline]
+        fn sample<R>(distribution: (DG, DH), rng: &mut R) -> Self
+        where
+            R: RngCore + ?Sized,
+        {
+            Self::new(rng.sample(distribution.0), rng.sample(distribution.1))
+        }
     }
 
     impl<G, H, COM> SigningKeyType for Schnorr<G, H, COM>
@@ -352,9 +414,9 @@ pub mod schnorr {
 
     impl<G, H, COM> Verify<COM> for Schnorr<G, H, COM>
     where
+        COM: Has<bool>,
         G: DiscreteLogarithmHardness + Group<COM> + PartialEq<G, COM>,
         H: HashFunction<G, COM>,
-        COM: Has<bool>,
     {
         type Verification = Bool<COM>;
 
@@ -381,6 +443,24 @@ pub mod schnorr {
                     compiler,
                 ),
                 compiler,
+            )
+        }
+    }
+
+    impl<G, H, COM> Constant<COM> for Schnorr<G, H, COM>
+    where
+        G: Constant<COM> + DiscreteLogarithmHardness + Group<COM>,
+        G::Type: DiscreteLogarithmHardness + Group,
+        H: Constant<COM> + HashFunction<G, COM>,
+        H::Type: HashFunction<G::Type>,
+    {
+        type Type = Schnorr<G::Type, H::Type>;
+
+        #[inline]
+        fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
+            Self::new(
+                G::new_constant(&this.generator, compiler),
+                H::new_constant(&this.hash_function, compiler),
             )
         }
     }

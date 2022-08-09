@@ -48,6 +48,15 @@ pub trait Group<COM = ()> {
     fn mul(&self, scalar: &Self::Scalar, compiler: &mut COM) -> Self;
 }
 
+/// Group Generator
+pub trait Generator<COM = ()> {
+    /// Group Type
+    type Group: Group<COM>;
+
+    /// Returns a generator of the [`Group`](Self::Group) type.
+    fn generator(&self) -> &Self::Group;
+}
+
 /// Diffie-Hellman Key Agreement Scheme
 #[cfg_attr(
     feature = "serde",
@@ -78,6 +87,18 @@ impl<G, COM> DiffieHellman<G, COM> {
     #[inline]
     pub fn into_inner(self) -> G {
         self.generator
+    }
+}
+
+impl<G, COM> Generator<COM> for DiffieHellman<G, COM>
+where
+    G: Group<COM>,
+{
+    type Group = G;
+
+    #[inline]
+    fn generator(&self) -> &Self::Group {
+        &self.generator
     }
 }
 

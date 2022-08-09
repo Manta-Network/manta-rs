@@ -16,7 +16,7 @@
 
 //! Iteration Utilities
 
-use crate::IsType;
+use core::iter::Map;
 
 #[cfg(feature = "serde")]
 use crate::serde::{Deserialize, Serialize};
@@ -113,17 +113,123 @@ impl<I> IteratorExt for I where I: Iterator {}
 
 /// Borrowing Iterator Trait
 pub trait IterRef<'i, I = &'i Self> {
+    /// Borrowed Item Type
+    type Item;
+
+    /// Iterator Type
+    type IntoIter: Iterator<Item = Self::Item>;
+
     /// Borrowing Iterator Type
-    type Iterator: IntoIterator + IsType<Type = I>;
+    type Iter: IntoIterator<Item = Self::Item, IntoIter = Self::IntoIter>;
+
+    /// Converts `this` into the iterator type.
+    fn iter(this: I) -> Self::Iter;
+}
+
+impl<'i, I> IterRef<'i> for I
+where
+    I: ?Sized,
+    for<'t> &'t Self: IntoIterator,
+{
+    type Item = <&'i Self as IntoIterator>::Item;
+    type IntoIter = <&'i Self as IntoIterator>::IntoIter;
+    type Iter = &'i Self;
+
+    #[inline]
+    fn iter(this: &'i Self) -> Self::Iter {
+        this
+    }
+}
+
+/// Item Type for [`IterRef`]
+pub type RefItem<'t, T> = <T as IterRef<'t, &'t T>>::Item;
+
+/// Borrowing Iterator Type for [`IterRef`]
+pub type RefIter<'t, T> = <T as IterRef<'t, &'t T>>::Iter;
+
+/// Exact Size Iteration Type
+pub trait ExactSizeIterRef<'i, I = &'i Self> {
+    /// Item Type
+    type Item;
+
+    /// Iterator Type
+    type IntoIter: ExactSizeIterator<Item = Self::Item>;
+}
+
+impl<'i, I> ExactSizeIterRef<'i> for I
+where
+    for<'t> &'t Self: IntoIterator,
+    <&'i Self as IntoIterator>::IntoIter: ExactSizeIterator,
+{
+    type Item = <&'i Self as IntoIterator>::Item;
+    type IntoIter = <&'i Self as IntoIterator>::IntoIter;
 }
 
 /// Iterable Type
 ///
 /// This `trait` is implemented for any type that has a borrowing [`IntoIterator`] implementation
 /// for any reference of that type.
-pub trait Iterable: for<'i> IterRef<'i> {}
+pub trait Iterable: for<'i> IterRef<'i> {
+    /// Returns the iterator for `self`.
+    #[inline]
+    fn iter(&self) -> <RefIter<Self> as IntoIterator>::IntoIter {
+        <Self as IterRef<'_>>::iter(self).into_iter()
+    }
+
+    /// Returns the converting iterator for `self`.
+    #[inline]
+    fn convert_iter<'t, T>(&'t self) -> ConvertItemRefMap<'t, T, Self>
+    where
+        Self: ConvertItemRef<'t, T, Item = RefItem<'t, Self>>,
+    {
+        self.iter().map(|item| Self::convert_item(item))
+    }
+}
 
 impl<T> Iterable for T where T: for<'i> IterRef<'i> + ?Sized {}
+
+/// Exact Size Iterable
+pub trait ExactSizeIterable:
+    for<'i> IterRef<'i, IntoIter = <Self as ExactSizeIterRef<'i>>::IntoIter>
+    + for<'i> ExactSizeIterRef<'i, Item = RefItem<'i, Self>>
+{
+}
+
+impl<I> ExactSizeIterable for I where
+    I: for<'i> IterRef<'i, IntoIter = <Self as ExactSizeIterRef<'i>>::IntoIter>
+        + for<'i> ExactSizeIterRef<'i, Item = RefItem<'i, Self>>
+{
+}
+
+/// [`ConvertItemRef`] Map Type
+pub type ConvertItemRefMap<'t, T, I> =
+    Map<<RefIter<'t, I> as IntoIterator>::IntoIter, fn(RefItem<'t, I>) -> T>;
+
+/// Item Type Converter
+pub trait ConvertItemRef<'i, T, I = &'i Self> {
+    /// Item Type
+    type Item: Into<T>;
+
+    /// Converts `item` into an element of type `T`.
+    #[inline]
+    fn convert_item(item: Self::Item) -> T {
+        item.into()
+    }
+}
+
+impl<'i, T, I> ConvertItemRef<'i, T> for I
+where
+    I: ?Sized,
+    for<'t> &'t Self: IntoIterator,
+    <&'i Self as IntoIterator>::Item: Into<T>,
+{
+    type Item = <&'i Self as IntoIterator>::Item;
+}
+
+/// Borrow Iterator
+pub trait BorrowIterator<T>: for<'i> IterRef<'i, Item = &'i T> {}
+
+impl<T, I> BorrowIterator<T> for I where I: for<'i> IterRef<'i, Item = &'i T> {}
 
 /// For-Each Collector
 ///
