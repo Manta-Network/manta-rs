@@ -32,8 +32,7 @@ use manta_trusted_setup::{
         queue::{Identifier, Priority},
         server::{HasNonce, Server},
         signature::{
-            ed_dalek::{self, PrivateKey},
-            ed_dalek::{Ed25519, PublicKey},
+            ed_dalek::{self, Ed25519, PrivateKey, PublicKey},
             HasPublicKey, SignatureScheme,
         },
         CeremonyError,
@@ -210,11 +209,12 @@ use ed25519_dalek::Signature;
 fn init_key_pair<S>(seed: String) -> (S::PrivateKey, S::PublicKey)
 where
     S: SignatureScheme<PrivateKey = ed_dalek::PrivateKey, PublicKey = ed_dalek::PublicKey>,
-{ // TODO. Hardcode a seed for temporary testing.
+{
+    // TODO. Hardcode a seed for temporary testing.
     // let keypair: Keypair = Keypair::generate(&mut seed);
     let private_key = PrivateKey([
-        149, 167, 173, 208, 224, 206, 37, 70, 87, 169, 157, 198, 120, 32, 151, 88, 25, 10, 12,
-        215, 80, 124, 187, 129, 183, 96, 103, 11, 191, 255, 33, 105,
+        149, 167, 173, 208, 224, 206, 37, 70, 87, 169, 157, 198, 120, 32, 151, 88, 25, 10, 12, 215,
+        80, 124, 187, 129, 183, 96, 103, 11, 191, 255, 33, 105,
     ]);
     let public_key = PublicKey([
         104, 148, 44, 244, 61, 116, 39, 8, 68, 216, 6, 24, 232, 68, 239, 203, 198, 2, 138, 148,
@@ -273,9 +273,17 @@ pub async fn contribute() -> Result<(), ()> {
                 (state.to_actual(), challenge.to_actual())
             }
             QueryMPCStateResponse::QueuePosition(t) => {
-                println!("Your current position is {}", t);
+                println!("Your current position is {}.", t);
                 thread::sleep(Duration::from_millis(300000));
                 continue;
+            }
+            QueryMPCStateResponse::NotRegistered => {
+                println!("You have not registered.");
+                return Ok(());
+            }
+            QueryMPCStateResponse::HaveContributed => {
+                println!("You have contributed.");
+                return Ok(());
             }
         };
         let h = Config::generate_hasher();
@@ -292,7 +300,7 @@ pub async fn contribute() -> Result<(), ()> {
             .json::<ContributeResponse>()
             .await
             .unwrap(); // TODO: Error handling here if response status is bad.
-        // TODO: Need to handle the case if contribute failed due to network reason or other reasons.
+                       // TODO: Need to handle the case if contribute failed due to network reason or other reasons.
         println!("Contribute succeed: {:?}", parsed_contribute_response);
         break;
     }

@@ -50,6 +50,12 @@ where
 
     /// MPC State
     Mpc(AsBytes<V::State>, AsBytes<V::Challenge>),
+
+    /// 
+    NotRegistered,
+
+    ///
+    HaveContributed,
 }
 
 /// Contribute Request
@@ -73,15 +79,21 @@ where
     pub proof: AsBytes<V::Proof>,
 }
 
-// TODO
 /// Contribute Response
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ContributeResponse
-{
-    /// TODO
-    pub contribute_success: bool,
-}
+pub enum ContributeResponse {
+    /// Contribution Success
+    ContributionSuccess,
 
+    /// Contribution Failure
+    ContributionFailure, // TODO: Provide more details on the failure.
+
+    /// Have Contributed Before
+    ContributedBefore,
+
+    /// Not Registered Yet
+    NotRegistered,
+}
 
 /// Signed Message
 #[derive(Debug, Deserialize, Serialize)]

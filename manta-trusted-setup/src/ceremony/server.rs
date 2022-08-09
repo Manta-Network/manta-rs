@@ -126,7 +126,7 @@ where
             .expect("Failed to lock coordinator")
             .register(request.participant)
     }
-    
+
     /// Gets MPC States and Challenge
     #[inline]
     pub async fn get_state_and_challenge(
@@ -160,7 +160,8 @@ where
                 }
                 None => {
                     println!("Not Registered");
-                    Err(CeremonyError::NotRegistered) // TODO: Should tell participant that you have not registerd
+                    Ok(QueryMPCStateResponse::NotRegistered)
+                    // Err(CeremonyError::NotRegistered) // TODO: Should tell participant that you have not registerd
                 }
             }
         }
@@ -176,24 +177,27 @@ where
         ContributeRequest<P, V>: Serialize,
     {
         let (request, signature) = (request.message, request.signature);
-        S::verify(
+        match S::verify(
             &request,
             &request.participant.nonce(),
             &signature,
             &request.participant.public_key(),
-        )
-        .expect("Verify signature of contribute request should succeed.");
-        self.coordinator
+        ) {
+            Ok(()) => {}
+            Err(_) => return Ok(ContributeResponse::ContributionFailure),
+        }
+        match self
+            .coordinator
             .lock()
             .expect("Lock coordinator should succeed.")
             .update(
                 &request.participant.identifier(),
                 request.state.to_actual(),
                 request.proof.to_actual(),
-            )?;
-        Ok(ContributeResponse {
-            contribute_success: true,
-        })
+            ) {
+            Ok(()) => return Ok(ContributeResponse::ContributionSuccess),
+            Err(_) => return Ok(ContributeResponse::ContributionFailure),
+        };
     }
 
     /// Executes `f` on the incoming `request`.
