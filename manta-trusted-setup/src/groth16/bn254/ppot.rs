@@ -29,7 +29,11 @@ use crate::{
 };
 use ark_bn254::{Bn254, Fr, G1Affine, G2Affine, Parameters};
 use ark_serialize::{CanonicalSerialize, Read, SerializationError, Write};
-use ark_std::io;
+use ark_std::{
+    fs::{File, OpenOptions},
+    io, println,
+    time::Instant,
+};
 use blake2::Digest;
 use core::fmt;
 use manta_crypto::arkworks::{
@@ -43,9 +47,6 @@ use manta_crypto::arkworks::{
 };
 use manta_util::{cfg_iter, into_array_unchecked, vec::Vec};
 use memmap::{Mmap, MmapOptions};
-use ark_std::fs::{File, OpenOptions};
-use ark_std::time::Instant;
-use ark_std::println;
 
 #[cfg(feature = "rayon")]
 use manta_util::rayon::prelude::ParallelIterator;
