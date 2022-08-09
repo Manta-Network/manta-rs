@@ -114,7 +114,7 @@ where
     core::iter::successors(Some(base), |base| Some(*base + *base)).take(powers)
 }
 
-/// Returns the power-of-two table of whose size is modulus bits of [`ConstraintField<C>`] such that entry at index `i` is [`C::prime_subgroup_generator()`] `* 2^i`.
+/// Returns the power-of-two table of whose size is modulus bits of the constraint field of `C` such that entry at index `i` is `C::prime_subgroup_generator() * 2^i`.
 #[inline]
 pub fn precomputed_bases<C>() -> impl Iterator<Item = C>
 where
