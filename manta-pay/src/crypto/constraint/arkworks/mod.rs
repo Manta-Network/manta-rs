@@ -17,10 +17,11 @@
 //! Arkworks Constraint System and Proof System Implementations
 
 use alloc::vec::Vec;
+use core::iter::{self, Extend};
 use manta_crypto::{
     algebra,
     arkworks::{
-        ff::{Field, FpParameters, PrimeField},
+        ff::{Field, FpParameters, PrimeField, ToConstraintField},
         r1cs_std::{alloc::AllocVar, eq::EqGadget, select::CondSelectGadget, ToBitsGadget},
         relations::{
             ns,
@@ -30,17 +31,19 @@ use manta_crypto::{
             },
         },
     },
-    constraint::measure::{Count, Measure},
+    constraint::{
+        measure::{Count, Measure},
+        Input, ProofSystem,
+    },
     eclair::{
         self,
         alloc::{
-            mode,
-            mode::{Public, Secret},
+            mode::{self, Public, Secret},
             Constant, Variable,
         },
-        bool::{Assert, ConditionalSwap},
-        num::AssertWithinBitRange,
-        ops::{Add, BitAnd},
+        bool::{Assert, Bool, ConditionalSelect, ConditionalSwap},
+        num::{AssertWithinBitRange, Zero},
+        ops::{Add, BitAnd, BitOr},
         Has, NonNative,
     },
     rand::{RngCore, Sample},
@@ -88,6 +91,38 @@ pub struct Fp<F>(
 )
 where
     F: Field;
+
+impl<F> From<u128> for Fp<F>
+where
+    F: Field,
+{
+    #[inline]
+    fn from(value: u128) -> Self {
+        Self(value.into())
+    }
+}
+
+impl<F> ToConstraintField<F> for Fp<F>
+where
+    F: PrimeField,
+{
+    #[inline]
+    fn to_field_elements(&self) -> Option<Vec<F>> {
+        self.0.to_field_elements()
+    }
+}
+
+impl<F, P> Input<P> for Fp<F>
+where
+    F: Field,
+    P: ProofSystem + ?Sized,
+    P::Input: Extend<F>,
+{
+    #[inline]
+    fn extend(&self, input: &mut P::Input) {
+        input.extend(iter::once(self.0))
+    }
+}
 
 impl<F> Decode for Fp<F>
 where
@@ -188,6 +223,64 @@ where
     #[inline]
     fn type_info() -> scale_info::Type {
         Self::Identity::type_info()
+    }
+}
+
+impl<F> eclair::cmp::PartialEq<Self> for Fp<F>
+where
+    F: Field,
+{
+    #[inline]
+    fn eq(&self, rhs: &Self, _: &mut ()) -> bool {
+        PartialEq::eq(self, rhs)
+    }
+}
+
+impl<F> eclair::num::Zero for Fp<F>
+where
+    F: Field,
+{
+    type Verification = bool;
+
+    #[inline]
+    fn zero(_: &mut ()) -> Self {
+        Self(F::zero())
+    }
+
+    #[inline]
+    fn is_zero(&self, _: &mut ()) -> Self::Verification {
+        self.0.is_zero()
+    }
+}
+
+impl<F> eclair::num::One for Fp<F>
+where
+    F: Field,
+{
+    type Verification = bool;
+
+    #[inline]
+    fn one(_: &mut ()) -> Self {
+        Self(F::one())
+    }
+
+    #[inline]
+    fn is_one(&self, _: &mut ()) -> Self::Verification {
+        self.0.is_one()
+    }
+}
+
+impl<F> ConditionalSelect for Fp<F>
+where
+    F: Field,
+{
+    #[inline]
+    fn select(bit: &Bool, true_value: &Self, false_value: &Self, _: &mut ()) -> Self {
+        if *bit {
+            *true_value
+        } else {
+            *false_value
+        }
     }
 }
 
@@ -492,6 +585,19 @@ where
     }
 }
 
+impl<F> BitOr<Self, R1CS<F>> for Boolean<F>
+where
+    F: PrimeField,
+{
+    type Output = Self;
+
+    #[inline]
+    fn bitor(self, rhs: Self, compiler: &mut R1CS<F>) -> Self::Output {
+        let _ = compiler;
+        self.or(&rhs).expect("Bitwise OR is not allowed to fail.")
+    }
+}
+
 impl<F> Constant<R1CS<F>> for FpVar<F>
 where
     F: PrimeField,
@@ -578,6 +684,22 @@ where
         .expect("Conditionally selecting from two values is not allowed to fail.")
 }
 
+impl<F> ConditionalSelect<R1CS<F>> for FpVar<F>
+where
+    F: PrimeField,
+{
+    #[inline]
+    fn select(
+        bit: &Boolean<F>,
+        true_value: &Self,
+        false_value: &Self,
+        compiler: &mut R1CS<F>,
+    ) -> Self {
+        let _ = compiler;
+        conditionally_select(bit, true_value, false_value)
+    }
+}
+
 impl<F> ConditionalSwap<R1CS<F>> for FpVar<F>
 where
     F: PrimeField,
@@ -602,6 +724,26 @@ where
     fn add(self, rhs: Self, compiler: &mut R1CS<F>) -> Self {
         let _ = compiler;
         self + rhs
+    }
+}
+
+impl<F> Zero<R1CS<F>> for FpVar<F>
+where
+    F: PrimeField,
+{
+    type Verification = Boolean<F>;
+
+    #[inline]
+    fn zero(compiler: &mut R1CS<F>) -> Self {
+        let _ = compiler;
+        FpVar::Constant(F::zero())
+    }
+
+    #[inline]
+    fn is_zero(&self, compiler: &mut R1CS<F>) -> Self::Verification {
+        let _ = compiler;
+        self.is_eq(&FpVar::Constant(F::zero()))
+            .expect("Comparison with zero is not allowed to fail.")
     }
 }
 

@@ -20,10 +20,10 @@ use crate::eclair::{
     alloc::{Allocate, Constant},
     bool::{Assert, AssertEq, Bool},
     ops::{BitAnd, Not},
-    Has, Type,
+    Has,
 };
 use alloc::{boxed::Box, vec::Vec};
-use core::cmp::{self, Ordering};
+use core::cmp;
 use manta_util::{Array, BoxArray};
 
 /// Partial Equivalence Relations

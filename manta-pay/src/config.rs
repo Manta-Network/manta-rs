@@ -644,13 +644,6 @@ impl Input<ProofSystem> for AssetValue {
     }
 }
 
-impl Input<ProofSystem> for Fp<ConstraintField> {
-    #[inline]
-    fn extend(&self, input: &mut Vec<ConstraintField>) {
-        input.push(self.0);
-    }
-}
-
 impl Input<ProofSystem> for Group {
     #[inline]
     fn extend(&self, input: &mut Vec<ConstraintField>) {
