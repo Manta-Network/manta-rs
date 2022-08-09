@@ -21,9 +21,13 @@
 //! encryption scheme inlines this complexity into the encryption interfaces.
 
 use crate::{
+    constraint::{HasInput, Input},
     eclair::{
         self,
-        alloc::{mode::Derived, Allocate, Allocator, Constant, Var, Variable},
+        alloc::{
+            mode::{Derived, Public, Secret},
+            Allocate, Allocator, Constant, Var, Variable,
+        },
         bool::{Assert, AssertEq, Bool},
         ops::BitAnd,
         Has,
@@ -118,6 +122,28 @@ where
     }
 }
 
+impl<K, E, COM> Variable<Secret, COM> for Randomness<K, E>
+where
+    K: key::agreement::Types + Constant<COM>,
+    E: RandomnessType + Constant<COM>,
+    K::SecretKey: Variable<Secret, COM>,
+    E::Randomness: Variable<Secret, COM>,
+    K::Type: key::agreement::Types<SecretKey = Var<K::SecretKey, Secret, COM>>,
+    E::Type: RandomnessType<Randomness = Var<E::Randomness, Secret, COM>>,
+{
+    type Type = Randomness<K::Type, E::Type>;
+
+    #[inline]
+    fn new_unknown(compiler: &mut COM) -> Self {
+        Variable::<Derived<(Secret, Secret)>, COM>::new_unknown(compiler)
+    }
+
+    #[inline]
+    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
+        Variable::<Derived<(Secret, Secret)>, COM>::new_known(this, compiler)
+    }
+}
+
 impl<K, E, S, R, COM> Variable<Derived<(S, R)>, COM> for Randomness<K, E>
 where
     K: key::agreement::Types + Constant<COM>,
@@ -155,9 +181,7 @@ where
     Copy(bound = "K::PublicKey: Copy, E::Ciphertext: Copy"),
     Debug(bound = "K::PublicKey: Debug, E::Ciphertext: Debug"),
     Default(bound = "K::PublicKey: Default, E::Ciphertext: Default"),
-    Eq(bound = "K::PublicKey: Eq, E::Ciphertext: Eq"),
-    Hash(bound = "K::PublicKey: Hash, E::Ciphertext: Hash"),
-    PartialEq(bound = "K::PublicKey: PartialEq, E::Ciphertext: PartialEq")
+    Hash(bound = "K::PublicKey: Hash, E::Ciphertext: Hash")
 )]
 pub struct Ciphertext<K, E>
 where
@@ -228,6 +252,28 @@ where
     }
 }
 
+impl<K, E, COM> Variable<Public, COM> for Ciphertext<K, E>
+where
+    K: key::agreement::Types + Constant<COM>,
+    E: CiphertextType + Constant<COM>,
+    K::PublicKey: Variable<Public, COM>,
+    E::Ciphertext: Variable<Public, COM>,
+    K::Type: key::agreement::Types<PublicKey = Var<K::PublicKey, Public, COM>>,
+    E::Type: CiphertextType<Ciphertext = Var<E::Ciphertext, Public, COM>>,
+{
+    type Type = Ciphertext<K::Type, E::Type>;
+
+    #[inline]
+    fn new_unknown(compiler: &mut COM) -> Self {
+        Variable::<Derived<(Public, Public)>, COM>::new_unknown(compiler)
+    }
+
+    #[inline]
+    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
+        Variable::<Derived<(Public, Public)>, COM>::new_known(this, compiler)
+    }
+}
+
 impl<K, E, P, C, COM> Variable<Derived<(P, C)>, COM> for Ciphertext<K, E>
 where
     K: key::agreement::Types + Constant<COM>,
@@ -250,6 +296,37 @@ where
             this.ephemeral_public_key.as_known(compiler),
             this.ciphertext.as_known(compiler),
         )
+    }
+}
+
+impl<K, E> Encode for Ciphertext<K, E>
+where
+    K: key::agreement::Types,
+    K::PublicKey: Encode,
+    E: CiphertextType,
+    E::Ciphertext: Encode,
+{
+    #[inline]
+    fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
+    where
+        W: Write,
+    {
+        self.ephemeral_public_key.encode(&mut writer)?;
+        self.ciphertext.encode(&mut writer)?;
+        Ok(())
+    }
+}
+
+impl<K, E, P> Input<P> for Ciphertext<K, E>
+where
+    K: key::agreement::Types,
+    E: CiphertextType,
+    P: HasInput<K::PublicKey> + HasInput<E::Ciphertext> + ?Sized,
+{
+    #[inline]
+    fn extend(&self, input: &mut P::Input) {
+        P::extend(input, &self.ephemeral_public_key);
+        P::extend(input, &self.ciphertext);
     }
 }
 

@@ -20,6 +20,14 @@
 //       dropping it on decryption.
 
 use crate::{
+    constraint::{HasInput, Input},
+    eclair::{
+        self,
+        alloc::{mode::Public, Allocate, Allocator, Constant, Variable},
+        bool::{Assert, AssertEq, Bool},
+        ops::BitAnd,
+        Has,
+    },
     encryption::{
         CiphertextType, Decrypt, DecryptedPlaintextType, DecryptionKeyType, Encrypt,
         EncryptionKeyType, HeaderType, PlaintextType, RandomnessType,
@@ -28,9 +36,14 @@ use crate::{
         sponge::{Read, Sponge, Write},
         PseudorandomPermutation,
     },
+    rand::{Rand, RngCore, Sample},
 };
 use alloc::vec::Vec;
 use core::marker::PhantomData;
+use manta_util::{
+    codec::{self, Encode},
+    iter::{BorrowIterator, Iterable},
+};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
@@ -58,8 +71,14 @@ where
     /// Plaintext Block Type
     type PlaintextBlock: Write<P, COM, Output = Self::CiphertextBlock>;
 
+    /// Plaintext Type
+    type Plaintext: FromIterator<Self::PlaintextBlock> + BorrowIterator<Self::PlaintextBlock>;
+
     /// Ciphertext Block Type
     type CiphertextBlock: Write<P, COM, Output = Self::PlaintextBlock>;
+
+    /// Ciphertext Type
+    type Ciphertext: FromIterator<Self::CiphertextBlock> + BorrowIterator<Self::CiphertextBlock>;
 
     /// Authentication Tag Type
     type Tag: Read<P, COM>;
@@ -114,6 +133,83 @@ pub struct Ciphertext<T, C> {
 
     /// Ciphertext Message
     pub message: C,
+}
+
+impl<T, C> Ciphertext<T, C> {
+    /// Builds a new [`Ciphertext`] from `tag` and `message`.
+    #[inline]
+    pub fn new(tag: T, message: C) -> Self {
+        Self { tag, message }
+    }
+}
+
+impl<T, C, COM> eclair::cmp::PartialEq<Self, COM> for Ciphertext<T, C>
+where
+    COM: Has<bool>,
+    Bool<COM>: BitAnd<Bool<COM>, COM, Output = Bool<COM>>,
+    T: eclair::cmp::PartialEq<T, COM>,
+    C: eclair::cmp::PartialEq<C, COM>,
+{
+    #[inline]
+    fn eq(&self, rhs: &Self, compiler: &mut COM) -> Bool<COM> {
+        self.tag
+            .eq(&rhs.tag, compiler)
+            .bitand(self.message.eq(&rhs.message, compiler), compiler)
+    }
+
+    #[inline]
+    fn assert_equal(&self, rhs: &Self, compiler: &mut COM)
+    where
+        COM: Assert,
+    {
+        compiler.assert_eq(&self.tag, &rhs.tag);
+        compiler.assert_eq(&self.message, &rhs.message);
+    }
+}
+
+impl<T, C, COM> Variable<Public, COM> for Ciphertext<T, C>
+where
+    T: Variable<Public, COM>,
+    C: Variable<Public, COM>,
+{
+    type Type = Ciphertext<T::Type, C::Type>;
+
+    #[inline]
+    fn new_unknown(compiler: &mut COM) -> Self {
+        Self::new(compiler.allocate_unknown(), compiler.allocate_unknown())
+    }
+
+    #[inline]
+    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
+        Self::new(this.tag.as_known(compiler), this.message.as_known(compiler))
+    }
+}
+
+impl<T, C> Encode for Ciphertext<T, C>
+where
+    T: Encode,
+    C: Encode,
+{
+    #[inline]
+    fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
+    where
+        W: codec::Write,
+    {
+        self.tag.encode(&mut writer)?;
+        self.message.encode(&mut writer)?;
+        Ok(())
+    }
+}
+
+impl<T, C, P> Input<P> for Ciphertext<T, C>
+where
+    P: HasInput<T> + HasInput<C> + ?Sized,
+{
+    #[inline]
+    fn extend(&self, input: &mut P::Input) {
+        P::extend(input, &self.tag);
+        P::extend(input, &self.message);
+    }
 }
 
 /// Duplex Sponge Authenticated Encryption Scheme
@@ -174,14 +270,15 @@ where
         &self,
         key: &C::Key,
         header: &C::Header,
-        plaintext: &[C::PlaintextBlock],
+        plaintext: &C::Plaintext,
         compiler: &mut COM,
-    ) -> (C::Tag, Vec<C::CiphertextBlock>)
+    ) -> (C::Tag, C::Ciphertext)
     where
         C: Setup<P, COM>,
     {
         let mut state = self.setup(key, header, compiler);
-        let ciphertext = Sponge::new(&self.permutation, &mut state).absorb_all(plaintext, compiler);
+        let ciphertext =
+            Sponge::new(&self.permutation, &mut state).absorb_all(plaintext.iter(), compiler);
         (C::Tag::read(&state, compiler), ciphertext)
     }
 
@@ -192,15 +289,48 @@ where
         &self,
         key: &C::Key,
         header: &C::Header,
-        ciphertext: &[C::CiphertextBlock],
+        ciphertext: &C::Ciphertext,
         compiler: &mut COM,
-    ) -> (C::Tag, Vec<C::PlaintextBlock>)
+    ) -> (C::Tag, C::Plaintext)
     where
         C: Setup<P, COM>,
     {
         let mut state = self.setup(key, header, compiler);
-        let plaintext = Sponge::new(&self.permutation, &mut state).absorb_all(ciphertext, compiler);
+        let plaintext =
+            Sponge::new(&self.permutation, &mut state).absorb_all(ciphertext.iter(), compiler);
         (C::Tag::read(&state, compiler), plaintext)
+    }
+}
+
+impl<P, C, COM> Constant<COM> for Duplexer<P, C, COM>
+where
+    P: PseudorandomPermutation<COM> + Constant<COM>,
+    C: Types<P, COM> + Constant<COM>,
+    P::Type: PseudorandomPermutation,
+    C::Type: Types<P::Type>,
+{
+    type Type = Duplexer<P::Type, C::Type>;
+
+    #[inline]
+    fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
+        Self::new(
+            this.permutation.as_constant(compiler),
+            this.configuration.as_constant(compiler),
+        )
+    }
+}
+
+impl<P, C, DP, DC> Sample<(DP, DC)> for Duplexer<P, C>
+where
+    P: PseudorandomPermutation + Sample<DP>,
+    C: Types<P> + Sample<DC>,
+{
+    #[inline]
+    fn sample<R>(distribution: (DP, DC), rng: &mut R) -> Self
+    where
+        R: RngCore + ?Sized,
+    {
+        Self::new(rng.sample(distribution.0), rng.sample(distribution.1))
     }
 }
 
@@ -217,7 +347,7 @@ where
     P: PseudorandomPermutation<COM>,
     C: Types<P, COM>,
 {
-    type Ciphertext = Ciphertext<C::Tag, Vec<C::CiphertextBlock>>;
+    type Ciphertext = Ciphertext<C::Tag, C::Ciphertext>;
 }
 
 impl<P, C, COM> EncryptionKeyType for Duplexer<P, C, COM>
@@ -241,7 +371,7 @@ where
     P: PseudorandomPermutation<COM>,
     C: Types<P, COM>,
 {
-    type Plaintext = Vec<C::PlaintextBlock>;
+    type Plaintext = C::Plaintext;
 }
 
 impl<P, C, COM> RandomnessType for Duplexer<P, C, COM>
@@ -261,7 +391,7 @@ where
     P: PseudorandomPermutation<COM>,
     C: Verify<P, COM>,
 {
-    type DecryptedPlaintext = (C::Verification, Vec<C::PlaintextBlock>);
+    type DecryptedPlaintext = (C::Verification, C::Plaintext);
 }
 
 impl<P, C, COM> Encrypt<COM> for Duplexer<P, C, COM>

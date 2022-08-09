@@ -21,6 +21,7 @@
 //! [`Decrypt`] `trait`s for more.
 
 use crate::{
+    constraint::{HasInput, Input, ProofSystem},
     eclair::{
         self,
         alloc::{
@@ -33,7 +34,8 @@ use crate::{
     },
     rand::{Rand, RngCore, Sample},
 };
-use core::{fmt::Debug, hash::Hash};
+use core::{fmt::Debug, hash::Hash, marker::PhantomData};
+use manta_util::codec::{Encode, Write};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
@@ -66,6 +68,81 @@ where
 
 /// Header Type
 pub type Header<T> = <T as HeaderType>::Header;
+
+/// Empty Header
+#[derive(derivative::Derivative)]
+#[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct EmptyHeader<COM = ()>(PhantomData<COM>);
+
+impl<COM> Constant<COM> for EmptyHeader<COM> {
+    type Type = EmptyHeader;
+
+    #[inline]
+    fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
+        let _ = (this, compiler);
+        Self::default()
+    }
+}
+
+impl<M, COM> Variable<M, COM> for EmptyHeader<COM> {
+    type Type = EmptyHeader;
+
+    #[inline]
+    fn new_unknown(compiler: &mut COM) -> Self {
+        let _ = compiler;
+        Self::default()
+    }
+
+    #[inline]
+    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
+        let _ = (this, compiler);
+        Self::default()
+    }
+}
+
+impl<COM> eclair::cmp::PartialEq<Self, COM> for EmptyHeader<COM>
+where
+    COM: Has<bool>,
+    Bool<COM>: Constant<COM, Type = bool>,
+{
+    #[inline]
+    fn eq(&self, rhs: &Self, compiler: &mut COM) -> Bool<COM> {
+        let _ = rhs;
+        Bool::<COM>::new_constant(&true, compiler)
+    }
+
+    #[inline]
+    fn ne(&self, rhs: &Self, compiler: &mut COM) -> Bool<COM> {
+        let _ = rhs;
+        Bool::<COM>::new_constant(&false, compiler)
+    }
+
+    #[inline]
+    fn assert_equal(&self, rhs: &Self, compiler: &mut COM) {
+        let _ = (rhs, compiler);
+    }
+}
+
+impl Encode for EmptyHeader {
+    #[inline]
+    fn encode<W>(&self, writer: W) -> Result<(), W::Error>
+    where
+        W: Write,
+    {
+        let _ = writer;
+        Ok(())
+    }
+}
+
+impl<P> Input<P> for EmptyHeader
+where
+    P: ProofSystem + ?Sized,
+{
+    #[inline]
+    fn extend(&self, input: &mut P::Input) {
+        let _ = input;
+    }
+}
 
 /// Ciphertext
 ///
@@ -439,9 +516,7 @@ where
     Copy(bound = "E::Header: Copy, E::Ciphertext: Copy"),
     Debug(bound = "E::Header: Debug, E::Ciphertext: Debug"),
     Default(bound = "E::Header: Default, E::Ciphertext: Default"),
-    Eq(bound = "E::Header: Eq, E::Ciphertext: Eq"),
-    Hash(bound = "E::Header: Hash, E::Ciphertext: Hash"),
-    PartialEq(bound = "E::Header: PartialEq, E::Ciphertext: PartialEq")
+    Hash(bound = "E::Header: Hash, E::Ciphertext: Hash")
 )]
 pub struct EncryptedMessage<E>
 where
@@ -526,21 +601,6 @@ where
 {
 }
 
-impl<E, H, C> Sample<(H, C)> for EncryptedMessage<E>
-where
-    E: CiphertextType + HeaderType,
-    E::Header: Sample<H>,
-    E::Ciphertext: Sample<C>,
-{
-    #[inline]
-    fn sample<R>(distribution: (H, C), rng: &mut R) -> Self
-    where
-        R: RngCore + ?Sized,
-    {
-        Self::new(rng.sample(distribution.0), rng.sample(distribution.1))
-    }
-}
-
 impl<E, H, C, COM> Variable<Derived<(H, C)>, COM> for EncryptedMessage<E>
 where
     E: CiphertextType + HeaderType + Constant<COM>,
@@ -577,15 +637,56 @@ where
 
     #[inline]
     fn new_unknown(compiler: &mut COM) -> Self {
-        Self::new(compiler.allocate_unknown(), compiler.allocate_unknown())
+        Variable::<Derived<(Public, Public)>, _>::new_unknown(compiler)
     }
 
     #[inline]
     fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
-        Self::new(
-            this.header.as_known(compiler),
-            this.ciphertext.as_known(compiler),
-        )
+        Variable::<Derived<(Public, Public)>, _>::new_known(this, compiler)
+    }
+}
+
+impl<E, H, C> Sample<(H, C)> for EncryptedMessage<E>
+where
+    E: CiphertextType + HeaderType,
+    E::Header: Sample<H>,
+    E::Ciphertext: Sample<C>,
+{
+    #[inline]
+    fn sample<R>(distribution: (H, C), rng: &mut R) -> Self
+    where
+        R: RngCore + ?Sized,
+    {
+        Self::new(rng.sample(distribution.0), rng.sample(distribution.1))
+    }
+}
+
+impl<E> Encode for EncryptedMessage<E>
+where
+    E: CiphertextType + HeaderType,
+    E::Header: Encode,
+    E::Ciphertext: Encode,
+{
+    #[inline]
+    fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
+    where
+        W: Write,
+    {
+        self.header.encode(&mut writer)?;
+        self.ciphertext.encode(&mut writer)?;
+        Ok(())
+    }
+}
+
+impl<E, P> Input<P> for EncryptedMessage<E>
+where
+    E: CiphertextType + HeaderType,
+    P: HasInput<E::Header> + HasInput<E::Ciphertext> + ?Sized,
+{
+    #[inline]
+    fn extend(&self, input: &mut P::Input) {
+        P::extend(input, &self.header);
+        P::extend(input, &self.ciphertext);
     }
 }
 
