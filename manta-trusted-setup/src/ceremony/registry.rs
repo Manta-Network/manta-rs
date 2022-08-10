@@ -41,6 +41,12 @@ where
         self.map.get(id)
     }
 
+    /// Gets the mutable reference of participant value given the `id` and returns `None` if the participant is not registered.
+    #[inline]
+    pub fn get_mut(&mut self, id: &K) -> Option<&mut V> {
+        self.map.get_mut(id)
+    }
+
     /// Checks if `id` has contributed.
     #[inline]
     pub fn has_contributed(&self, id: &K) -> bool {

@@ -65,12 +65,17 @@ where
 
     /// Checks if `participant` is at the front.
     #[inline]
-    pub fn is_at_front(&self, participant: &T) -> bool {
-        let priority = participant.priority();
-        if (priority + 1..N).any(|p| !self.0[p].is_empty()) {
+    pub fn is_at_front(&self, participant: &T::Identifier) -> bool {
+        for priority in (0..N).rev() {
+            if self.0[priority].is_empty() {
+                continue;
+            }
+            if self.0[priority].front() == Some(participant) {
+                return true;
+            }
             return false;
         }
-        self.0[priority].front() == Some(&participant.identifier())
+        false
     }
 
     /// Gets the position of `participant`.
@@ -164,11 +169,13 @@ mod test {
         for i in 0..4 {
             assert_eq!(queue.position(&expected_order[i]), Some(i));
         }
+
+        assert!(queue.is_at_front(&participants[1].id));
         assert_eq!(queue.pop().unwrap(), "b".to_string());
-        assert!(!queue.is_at_front(&participants[1]));
-        assert!(queue.is_at_front(&participants[3]));
+        assert!(!queue.is_at_front(&participants[1].id));
+        assert!(queue.is_at_front(&participants[3].id));
         assert_eq!(queue.pop().unwrap(), "d".to_string());
-        assert!(queue.is_at_front(&participants[0]));
+        assert!(queue.is_at_front(&participants[0].id));
         assert_eq!(queue.pop().unwrap(), "a".to_string());
         assert_eq!(queue.pop().unwrap(), "c".to_string());
         assert_eq!(queue.pop(), None);

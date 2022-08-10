@@ -83,17 +83,17 @@ where
 
     /// Preprocessed a request by checking nonce and verifying signature.
     #[inline]
-    pub fn preprocess_request<T>(&self, request: &Signed<T, C>) -> Result<(), CeremonyError<C>>
+    pub fn preprocess_request<T>(
+        &self,
+        coordinator: &mut Coordinator<C, N>,
+        request: &Signed<T, C>,
+    ) -> Result<(), CeremonyError<C>>
     where
         ParticipantIdentifier<C>: Serialize,
     {
-        let coordinator = self
-            .coordinator
-            .lock()
-            .expect("Locking the coordinator should succeed.");
-        let participant = match coordinator.get_participant(&request.identifier) {
+        let participant = match coordinator.get_participant_mut(&request.identifier) {
             Some(participant) => participant,
-            None => return Err(CeremonyError::NotRegistered), // TODO: Not sure if this Err(...) will be sent back to client binary.
+            None => return Err(CeremonyError::NotRegistered),
         };
         if participant.nonce() != request.nonce {
             return Err(CeremonyError::NonceNotInSync(participant.nonce()));
@@ -104,7 +104,9 @@ where
             &request.signature,
             &participant.public_key(),
         )
-        .map_err(|_| CeremonyError::BadRequest)?; // TODO
+        .map_err(|_| CeremonyError::BadRequest)?;
+        // request is valid, so increment nonce by 1
+        participant.update_nonce();
         Ok(())
     }
 
@@ -117,11 +119,12 @@ where
     where
         ParticipantIdentifier<C>: Serialize,
     {
-        self.preprocess_request(&request)?;
         let mut coordinator = self
             .coordinator
             .lock()
             .expect("Locking the coordinator should succeed.");
+        self.preprocess_request(&mut *coordinator, &request)?;
+
         coordinator.enqueue_participant(&request.identifier)?;
         Ok(())
     }
@@ -135,17 +138,15 @@ where
     where
         ParticipantIdentifier<C>: Serialize,
     {
-        // TODO: duplicate code
-        self.preprocess_request(&request)?;
-        let coordinator = self
+        let mut coordinator = self
             .coordinator
             .lock()
             .expect("Locking the coordinator should succeed.");
-        let participant = match coordinator.get_participant(&request.identifier) {
-            Some(participant) => participant,
-            None => return Err(CeremonyError::NotRegistered), // TODO: Not sure if this Err(...) will be sent back to client binary.
-        };
-        if coordinator.is_next(&participant) {
+        self.preprocess_request(&mut *coordinator, &request)?;
+        let participant = coordinator
+            .get_participant(&request.identifier)
+            .expect("Participant existence is checked in `process_request`.");
+        if coordinator.is_next(&request.identifier) {
             let (state, challenge) = coordinator.state_and_challenge();
             println!("get_state_and_challenge. Will respond.");
             Ok(QueryMPCStateResponse::Mpc(
@@ -175,11 +176,11 @@ where
         ContributeRequest<C>: Serialize,
         ParticipantIdentifier<C>: Serialize,
     {
-        self.preprocess_request(&request)?;
         let mut coordinator = self
             .coordinator
             .lock()
             .expect("Locking the coordinator should succeed.");
+        self.preprocess_request(&mut *coordinator, &request)?;
         coordinator.update(
             &request.identifier,
             request

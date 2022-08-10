@@ -18,7 +18,7 @@
 
 use crate::{
     ceremony::config::{
-        CeremonyConfig, Challenge, Nonce, ParticipantIdentifier, Proof, PublicKey, Signature, State,
+        CeremonyConfig, Challenge, Nonce, ParticipantIdentifier, Proof, Signature, State,
     },
     util::AsBytes,
 };

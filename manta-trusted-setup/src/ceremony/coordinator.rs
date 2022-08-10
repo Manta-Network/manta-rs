@@ -71,7 +71,7 @@ where
 
     /// Checks if the `participant` is the next.
     #[inline]
-    pub fn is_next(&self, participant: &C::Participant) -> bool {
+    pub fn is_next(&self, participant: &ParticipantIdentifier<C>) -> bool {
         self.queue.is_at_front(participant)
     }
 
@@ -92,10 +92,6 @@ where
         state: State<C>,
         proof: Proof<C>,
     ) -> Result<(), CeremonyError<C>> {
-        let participant = self
-            .registry
-            .get(participant)
-            .ok_or(CeremonyError::<C>::NotRegistered)?;
         if !self.queue.is_at_front(participant) {
             return Err(CeremonyError::<C>::BadRequest); // TODO: Why use BadRequest instead of NotYourTurn?
         };
@@ -139,6 +135,15 @@ where
         identifier: &ParticipantIdentifier<C>,
     ) -> Option<&C::Participant> {
         self.registry.get(identifier)
+    }
+
+    /// Gets the mutable reference of participant with the given identifier and returns `None` if not found.
+    #[inline]
+    pub fn get_participant_mut(
+        &mut self,
+        identifier: &ParticipantIdentifier<C>,
+    ) -> Option<&mut C::Participant> {
+        self.registry.get_mut(identifier)
     }
 
     /// Pops the current contributor and returns the participant identifier that is skipped.
