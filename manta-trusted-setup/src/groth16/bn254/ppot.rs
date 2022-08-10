@@ -957,15 +957,6 @@ pub fn compare_response_challenge_accumulators_test() {
 }
 
 #[test]
-fn read_accumulator_from_lfs() {
-    // TODO: This won't work until the file is part of `main` for manta-parameters
-
-    // let directory = tempfile::tempdir().expect("msg");
-    // manta_parameters::ppot::Round72Powers19::download(&directory.path().join("accumulator.lfs"))
-    //     .expect("Unable to download PRIVATE_TRANSFER proving context.");
-}
-
-#[test]
 fn deserialization_test() {
     use manta_crypto::{
         arkworks::ec::ProjectiveCurve,

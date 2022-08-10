@@ -71,6 +71,7 @@ use manta_crypto::rand::{Rand, RngCore, Sample};
 
 #[doc(inline)]
 pub use ark_bls12_381 as bls12_381;
+
 #[doc(inline)]
 pub use ark_ed_on_bls12_381 as bls12_381_ed;
 

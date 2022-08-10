@@ -30,7 +30,8 @@ use manta_crypto::{
     },
     rand::{CryptoRng, RngCore, Sample},
 };
-use manta_util::{cfg_iter_mut, from_variant};
+use manta_util::{cfg_iter_mut, cfg_iter, from_variant};
+use manta_util::vec::VecExt;
 
 #[cfg(feature = "rayon")]
 use manta_util::rayon::iter::{IndexedParallelIterator, ParallelIterator};
@@ -390,7 +391,7 @@ where
 }
 
 /// Contribution Accumulator
-#[derive(CanonicalDeserialize, CanonicalSerialize, Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct Accumulator<C>
 where
     C: Pairing + Size + ?Sized,
@@ -500,171 +501,171 @@ where
     }
 }
 
-// impl<C> CanonicalSerialize for Accumulator<C>
-// where
-//     C: Pairing + Size + Serializer<C::G1> + Serializer<C::G2>,
-// {
-//     #[inline]
-//     fn serialize<W>(&self, mut writer: W) -> Result<(), SerializationError>
-//     where
-//         W: Write,
-//     {
-//         for elem in &self.tau_powers_g1 {
-//             C::serialize_compressed(elem, &mut writer)?;
-//         }
-//         for elem in &self.tau_powers_g2 {
-//             C::serialize_compressed(elem, &mut writer)?;
-//         }
-//         for elem in &self.alpha_tau_powers_g1 {
-//             C::serialize_compressed(elem, &mut writer)?;
-//         }
-//         for elem in &self.beta_tau_powers_g1 {
-//             C::serialize_compressed(elem, &mut writer)?;
-//         }
-//         C::serialize_compressed(&self.beta_g2, &mut writer)?;
-//         Ok(())
-//     }
+impl<C> CanonicalSerialize for Accumulator<C>
+where
+    C: Pairing + Size + Serializer<C::G1> + Serializer<C::G2>,
+{
+    #[inline]
+    fn serialize<W>(&self, mut writer: W) -> Result<(), SerializationError>
+    where
+        W: Write,
+    {
+        for elem in &self.tau_powers_g1 {
+            C::serialize_compressed(elem, &mut writer)?;
+        }
+        for elem in &self.tau_powers_g2 {
+            C::serialize_compressed(elem, &mut writer)?;
+        }
+        for elem in &self.alpha_tau_powers_g1 {
+            C::serialize_compressed(elem, &mut writer)?;
+        }
+        for elem in &self.beta_tau_powers_g1 {
+            C::serialize_compressed(elem, &mut writer)?;
+        }
+        C::serialize_compressed(&self.beta_g2, &mut writer)?;
+        Ok(())
+    }
 
-//     #[inline]
-//     fn serialized_size(&self) -> usize {
-//         cfg_iter!(self.tau_powers_g1)
-//             .map(C::compressed_size)
-//             .sum::<usize>()
-//             + cfg_iter!(self.tau_powers_g2)
-//                 .map(C::compressed_size)
-//                 .sum::<usize>()
-//             + cfg_iter!(&self.alpha_tau_powers_g1)
-//                 .map(C::compressed_size)
-//                 .sum::<usize>()
-//             + cfg_iter!(&self.beta_tau_powers_g1)
-//                 .map(C::compressed_size)
-//                 .sum::<usize>()
-//             + C::compressed_size(&self.beta_g2)
-//     }
+    #[inline]
+    fn serialized_size(&self) -> usize {
+        cfg_iter!(self.tau_powers_g1)
+            .map(C::compressed_size)
+            .sum::<usize>()
+            + cfg_iter!(self.tau_powers_g2)
+                .map(C::compressed_size)
+                .sum::<usize>()
+            + cfg_iter!(&self.alpha_tau_powers_g1)
+                .map(C::compressed_size)
+                .sum::<usize>()
+            + cfg_iter!(&self.beta_tau_powers_g1)
+                .map(C::compressed_size)
+                .sum::<usize>()
+            + C::compressed_size(&self.beta_g2)
+    }
 
-//     #[inline]
-//     fn serialize_uncompressed<W>(&self, mut writer: W) -> Result<(), SerializationError>
-//     where
-//         W: Write,
-//     {
-//         for elem in &self.tau_powers_g1 {
-//             C::serialize_uncompressed(elem, &mut writer)?;
-//         }
-//         for elem in &self.tau_powers_g2 {
-//             C::serialize_uncompressed(elem, &mut writer)?;
-//         }
-//         for elem in &self.alpha_tau_powers_g1 {
-//             C::serialize_uncompressed(elem, &mut writer)?;
-//         }
-//         for elem in &self.beta_tau_powers_g1 {
-//             C::serialize_uncompressed(elem, &mut writer)?;
-//         }
-//         C::serialize_uncompressed(&self.beta_g2, &mut writer)?;
-//         Ok(())
-//     }
+    #[inline]
+    fn serialize_uncompressed<W>(&self, mut writer: W) -> Result<(), SerializationError>
+    where
+        W: Write,
+    {
+        for elem in &self.tau_powers_g1 {
+            C::serialize_uncompressed(elem, &mut writer)?;
+        }
+        for elem in &self.tau_powers_g2 {
+            C::serialize_uncompressed(elem, &mut writer)?;
+        }
+        for elem in &self.alpha_tau_powers_g1 {
+            C::serialize_uncompressed(elem, &mut writer)?;
+        }
+        for elem in &self.beta_tau_powers_g1 {
+            C::serialize_uncompressed(elem, &mut writer)?;
+        }
+        C::serialize_uncompressed(&self.beta_g2, &mut writer)?;
+        Ok(())
+    }
 
-//     #[inline]
-//     fn uncompressed_size(&self) -> usize {
-//         cfg_iter!(self.tau_powers_g1)
-//             .map(C::uncompressed_size)
-//             .sum::<usize>()
-//             + cfg_iter!(self.tau_powers_g2)
-//                 .map(C::uncompressed_size)
-//                 .sum::<usize>()
-//             + cfg_iter!(&self.alpha_tau_powers_g1)
-//                 .map(C::uncompressed_size)
-//                 .sum::<usize>()
-//             + cfg_iter!(&self.beta_tau_powers_g1)
-//                 .map(C::uncompressed_size)
-//                 .sum::<usize>()
-//             + C::uncompressed_size(&self.beta_g2)
-//     }
-// }
+    #[inline]
+    fn uncompressed_size(&self) -> usize {
+        cfg_iter!(self.tau_powers_g1)
+            .map(C::uncompressed_size)
+            .sum::<usize>()
+            + cfg_iter!(self.tau_powers_g2)
+                .map(C::uncompressed_size)
+                .sum::<usize>()
+            + cfg_iter!(&self.alpha_tau_powers_g1)
+                .map(C::uncompressed_size)
+                .sum::<usize>()
+            + cfg_iter!(&self.beta_tau_powers_g1)
+                .map(C::uncompressed_size)
+                .sum::<usize>()
+            + C::uncompressed_size(&self.beta_g2)
+    }
+}
 
-// impl<C> CanonicalDeserialize for Accumulator<C>
-// where
-//     C: Deserializer<C::G1> + Deserializer<C::G2> + Pairing + Size,
-//     <C as Deserializer<C::G1>>::Error: Send,
-//     <C as Deserializer<C::G2>>::Error: Send,
-// {
-//     #[inline]
-//     fn deserialize<R>(mut reader: R) -> Result<Self, SerializationError>
-//     where
-//         R: Read,
-//     {
-//         let mut tau_powers_g1 = Vec::with_capacity(C::G1_POWERS);
-//         for _ in 0..C::G1_POWERS {
-//             tau_powers_g1.push(C::deserialize_compressed(&mut reader).map_err(Into::into)?);
-//         }
-//         let mut tau_powers_g2 = Vec::with_capacity(C::G2_POWERS);
-//         for _ in 0..C::G2_POWERS {
-//             tau_powers_g2.push(C::deserialize_compressed(&mut reader).map_err(Into::into)?);
-//         }
-//         let mut alpha_tau_powers_g1 = Vec::with_capacity(C::G2_POWERS);
-//         for _ in 0..C::G2_POWERS {
-//             alpha_tau_powers_g1.push(C::deserialize_compressed(&mut reader).map_err(Into::into)?);
-//         }
-//         let mut beta_tau_powers_g1 = Vec::with_capacity(C::G2_POWERS);
-//         for _ in 0..C::G2_POWERS {
-//             beta_tau_powers_g1.push(C::deserialize_compressed(&mut reader).map_err(Into::into)?);
-//         }
-//         Ok(Self {
-//             tau_powers_g1,
-//             tau_powers_g2,
-//             alpha_tau_powers_g1,
-//             beta_tau_powers_g1,
-//             beta_g2: C::deserialize_compressed(&mut reader).map_err(Into::into)?,
-//         })
-//     }
+impl<C> CanonicalDeserialize for Accumulator<C>
+where
+    C: Deserializer<C::G1> + Deserializer<C::G2> + Pairing + Size,
+    <C as Deserializer<C::G1>>::Error: Send,
+    <C as Deserializer<C::G2>>::Error: Send,
+{
+    #[inline]
+    fn deserialize<R>(mut reader: R) -> Result<Self, SerializationError>
+    where
+        R: Read,
+    {
+        let mut tau_powers_g1 = Vec::with_capacity(C::G1_POWERS);
+        for _ in 0..C::G1_POWERS {
+            tau_powers_g1.push(C::deserialize_compressed(&mut reader).map_err(Into::into)?);
+        }
+        let mut tau_powers_g2 = Vec::with_capacity(C::G2_POWERS);
+        for _ in 0..C::G2_POWERS {
+            tau_powers_g2.push(C::deserialize_compressed(&mut reader).map_err(Into::into)?);
+        }
+        let mut alpha_tau_powers_g1 = Vec::with_capacity(C::G2_POWERS);
+        for _ in 0..C::G2_POWERS {
+            alpha_tau_powers_g1.push(C::deserialize_compressed(&mut reader).map_err(Into::into)?);
+        }
+        let mut beta_tau_powers_g1 = Vec::with_capacity(C::G2_POWERS);
+        for _ in 0..C::G2_POWERS {
+            beta_tau_powers_g1.push(C::deserialize_compressed(&mut reader).map_err(Into::into)?);
+        }
+        Ok(Self {
+            tau_powers_g1,
+            tau_powers_g2,
+            alpha_tau_powers_g1,
+            beta_tau_powers_g1,
+            beta_g2: C::deserialize_compressed(&mut reader).map_err(Into::into)?,
+        })
+    }
 
-//     #[inline]
-//     fn deserialize_uncompressed<R>(reader: R) -> Result<Self, SerializationError>
-//     where
-//         R: Read,
-//     {
-//         let accumulator = Self::deserialize_unchecked(reader)?;
-//         cfg_iter!(accumulator.tau_powers_g1)
-//             .try_for_each(C::check)
-//             .map_err(Into::into)?;
-//         cfg_iter!(accumulator.tau_powers_g2)
-//             .try_for_each(C::check)
-//             .map_err(Into::into)?;
-//         cfg_iter!(accumulator.alpha_tau_powers_g1)
-//             .try_for_each(C::check)
-//             .map_err(Into::into)?;
-//         cfg_iter!(accumulator.beta_tau_powers_g1)
-//             .try_for_each(C::check)
-//             .map_err(Into::into)?;
-//         C::check(&accumulator.beta_g2).map_err(Into::into)?;
-//         Ok(accumulator)
-//     }
+    #[inline]
+    fn deserialize_uncompressed<R>(reader: R) -> Result<Self, SerializationError>
+    where
+        R: Read,
+    {
+        let accumulator = Self::deserialize_unchecked(reader)?;
+        cfg_iter!(accumulator.tau_powers_g1)
+            .try_for_each(C::check)
+            .map_err(Into::into)?;
+        cfg_iter!(accumulator.tau_powers_g2)
+            .try_for_each(C::check)
+            .map_err(Into::into)?;
+        cfg_iter!(accumulator.alpha_tau_powers_g1)
+            .try_for_each(C::check)
+            .map_err(Into::into)?;
+        cfg_iter!(accumulator.beta_tau_powers_g1)
+            .try_for_each(C::check)
+            .map_err(Into::into)?;
+        C::check(&accumulator.beta_g2).map_err(Into::into)?;
+        Ok(accumulator)
+    }
 
-//     #[inline]
-//     fn deserialize_unchecked<R>(mut reader: R) -> Result<Self, SerializationError>
-//     where
-//         R: Read,
-//     {
-//         Ok(Self {
-//             tau_powers_g1: Vec::try_allocate_with(C::G1_POWERS, |_| {
-//                 C::deserialize_unchecked(&mut reader)
-//             })
-//             .map_err(Into::into)?,
-//             tau_powers_g2: Vec::try_allocate_with(C::G2_POWERS, |_| {
-//                 C::deserialize_unchecked(&mut reader)
-//             })
-//             .map_err(Into::into)?,
-//             alpha_tau_powers_g1: Vec::try_allocate_with(C::G2_POWERS, |_| {
-//                 C::deserialize_unchecked(&mut reader)
-//             })
-//             .map_err(Into::into)?,
-//             beta_tau_powers_g1: Vec::try_allocate_with(C::G2_POWERS, |_| {
-//                 C::deserialize_unchecked(&mut reader)
-//             })
-//             .map_err(Into::into)?,
-//             beta_g2: C::deserialize_unchecked(&mut reader).map_err(Into::into)?,
-//         })
-//     }
-// }
+    #[inline]
+    fn deserialize_unchecked<R>(mut reader: R) -> Result<Self, SerializationError>
+    where
+        R: Read,
+    {
+        Ok(Self {
+            tau_powers_g1: Vec::try_allocate_with(C::G1_POWERS, |_| {
+                C::deserialize_unchecked(&mut reader)
+            })
+            .map_err(Into::into)?,
+            tau_powers_g2: Vec::try_allocate_with(C::G2_POWERS, |_| {
+                C::deserialize_unchecked(&mut reader)
+            })
+            .map_err(Into::into)?,
+            alpha_tau_powers_g1: Vec::try_allocate_with(C::G2_POWERS, |_| {
+                C::deserialize_unchecked(&mut reader)
+            })
+            .map_err(Into::into)?,
+            beta_tau_powers_g1: Vec::try_allocate_with(C::G2_POWERS, |_| {
+                C::deserialize_unchecked(&mut reader)
+            })
+            .map_err(Into::into)?,
+            beta_g2: C::deserialize_unchecked(&mut reader).map_err(Into::into)?,
+        })
+    }
+}
 
 impl<C> Default for Accumulator<C>
 where
