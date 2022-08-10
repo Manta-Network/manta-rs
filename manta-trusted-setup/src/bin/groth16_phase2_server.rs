@@ -22,6 +22,7 @@ use manta_pay::crypto::constraint::arkworks::R1CS;
 use manta_trusted_setup::{
     ceremony::{
         queue::{Identifier, Priority},
+        registry::Registry,
         server::{HasNonce, Server},
         signature::{
             ed_dalek,
@@ -31,6 +32,7 @@ use manta_trusted_setup::{
         CeremonyError,
     },
     groth16::{
+        ceremony::Participant,
         config::{dummy_circuit, Config},
         kzg::{Accumulator, Contribution},
         mpc,
@@ -41,67 +43,7 @@ use rand_chacha::rand_core::OsRng;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-/// Participant
-#[derive(Clone, Serialize, Deserialize)]
-struct Participant {
-    /// Public Key
-    pub public_key: PublicKey,
-
-    /// Identifier
-    pub identifier: String,
-
-    /// Priority
-    pub priority: usize,
-
-    /// Nonce
-    pub nonce: u64,
-
-    /// Boolean on whether this participant has contributed
-    pub contributed: bool,
-}
-
-impl Priority for Participant {
-    fn priority(&self) -> usize {
-        self.priority
-    }
-}
-
-impl Identifier for Participant {
-    type Identifier = String;
-
-    fn identifier(&self) -> Self::Identifier {
-        self.identifier.clone() // TODO
-    }
-}
-
-impl HasPublicKey for Participant {
-    type PublicKey = ed_dalek::PublicKey;
-
-    fn public_key(&self) -> Self::PublicKey {
-        self.public_key
-    }
-}
-
-impl HasNonce<Ed25519> for Participant {
-    fn nonce(&self) -> u64 {
-        self.nonce
-    }
-
-    fn update_nonce(&mut self, nonce: u64) -> Result<(), CeremonyError> {
-        if self.nonce >= nonce {
-            return Err(CeremonyError::InvalidNonce);
-        }
-        self.nonce = nonce;
-        Ok(())
-    }
-
-    fn increase_nonce(&mut self) -> Result<(), CeremonyError> {
-        self.nonce += 1;
-        Ok(())
-    }
-}
-
-type S = Server<Groth16Phase2<Config>, Participant, BTreeMap<String, Participant>, Ed25519, 2>;
+type S = Server<Groth16Phase2<Config>, Participant, Ed25519, 2>;
 
 ///
 pub struct PhaseOneParameters {
@@ -155,42 +97,20 @@ pub fn dummy_phase_one_trusted_setup() -> Accumulator<Config> {
         .expect("Accumulator should have been generated correctly.")
 }
 
+fn load_registry() -> Registry<<Participant as Identifier>::Identifier, Participant> {
+    todo!()
+}
+
 // TO be updated
 async fn init_server(options: &PhaseOneParameters) -> S {
-    // let phase1_accumulator_bytes = async_std::fs::read(options.phase_one_parameter_path.as_str())
-    //     .await
-    //     .expect("failed to read accumulator file");
-    // let powers = CanonicalDeserialize::deserialize(phase1_accumulator_bytes.as_slice()).unwrap();
-    // let dummy_phase_one_parameter = fs::read("/home/boyuan/manta/code/manta-rs/manta-trusted-setup/dummy_phase_one_parameter.data").await.unwrap();
-    // let powers =
-    //     CanonicalDeserialize::deserialize(dummy_phase_one_parameter.as_slice()).unwrap();
     let _ = options;
     let powers = dummy_phase_one_trusted_setup(); // TODO: To be replaced with disk file
     let constraints = synthesize_constraints();
     let state =
         initialize::<Config, R1CS<Fr>>(powers, constraints).expect("failed to initialize state");
     let initial_challenge = <Config as mpc::ProvingKeyHasher<Config>>::hash(&state);
-    let server = S::new(state, initial_challenge.into());
-
-    // TODO: Only have temporary code here for testing.
-    let dummy_public_key = PublicKey([
-        104, 148, 44, 244, 61, 116, 39, 8, 68, 216, 6, 24, 232, 68, 239, 203, 198, 2, 138, 148,
-        242, 73, 122, 3, 19, 236, 195, 133, 136, 137, 146, 108,
-    ]);
-    let dummy_participant = Participant {
-        public_key: dummy_public_key,
-        identifier: "happy".to_string(),
-        priority: 0,
-        nonce: 0,
-        contributed: false,
-    };
-    server
-        .coordinator
-        .lock()
-        .expect("Failed to lock coordinator")
-        .register(dummy_participant)
-        .expect("Register dummy participant should succeed.");
-    server
+    let registry = load_registry();
+    S::new(state, initial_challenge.into(), registry)
 }
 
 #[async_std::main]
@@ -198,13 +118,13 @@ async fn main() -> tide::Result<()> {
     let options = PhaseOneParameters::load_from_args();
     let mut api = tide::Server::with_state(init_server(&options).await);
     api.at("/").get(|_| async { Ok("Hello, world!") });
-    api.at("/register")
-        .post(|r| Server::execute(r, Server::register_participant));
+    api.at("/enqueue")
+        .post(|r| Server::execute(r, Server::enqueue_participant));
     api.at("/query")
         .post(|r| Server::execute(r, Server::get_state_and_challenge));
     api.at("/update")
         .post(|r| Server::execute(r, Server::update));
-    api.listen("127.0.0.1:8080").await?;
+    api.listen("127.0.0.1:8080").await?; // TODO: use TLS
     Ok(())
 }
 

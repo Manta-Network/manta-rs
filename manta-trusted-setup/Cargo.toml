@@ -44,6 +44,7 @@ blake2 = { version = "0.10.4", default-features = false }
 bs58 = {version = "0.4", default-features = false, features = ["alloc"]}
 byteorder = { version = "1.4.3", default-features = false }
 clap = { version = "3.2.16", default-features = false, features = ["color", "derive", "std", "suggestions", "unicode", "wrap_help"] }
+colored = { version = "2.0.0" }
 derivative = { version = "2.2.0", default-features = false, features = ["use_core"] }
 dialoguer = { version = "0.10.2" }
 ed25519-dalek = { version = "1.0.1", default-features = false, features = ["u64_backend"] } 

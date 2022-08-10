@@ -19,13 +19,17 @@
 extern crate alloc;
 
 use alloc::string::String;
-use clap::{Error, Parser, Subcommand};
+use clap::{Parser, Subcommand};
+use colored::Colorize;
+use core::fmt::{Display, Formatter};
 use dialoguer::{theme::ColorfulTheme, Input};
+use ed25519_dalek::SecretKey;
+use manta_crypto::rand::{OsRng, RngCore};
 use manta_trusted_setup::{
     ceremony::{
         client::Client,
         message::{ContributeResponse, QueryMPCStateResponse},
-        queue::{Identifier, Priority},
+        queue::Priority,
         server::HasNonce,
         signature::{
             ed_dalek::{self, Ed25519, PrivateKey, PublicKey},
@@ -33,13 +37,35 @@ use manta_trusted_setup::{
         },
         CeremonyError,
     },
-    groth16::{config::Config, mpc::Groth16Phase2},
+    groth16::{ceremony::Participant, config::Config, mpc::Groth16Phase2},
 };
 use serde::{Deserialize, Serialize};
 use std::{thread, time::Duration};
 
-///
-pub type Result<T = (), E = Error> = core::result::Result<T, E>;
+#[derive(Clone, Debug)]
+enum Error {
+    InvalidSecret,
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Error::InvalidSecret => {
+                write!(f, "Your {} is invalid. Please try again", "secret".italic())
+            }
+        }
+    }
+}
+
+fn handle_error<T>(result: Result<T, Error>) -> T {
+    match result {
+        Ok(x) => x,
+        Err(e) => {
+            println!("{}: {}", "error".red().bold(), e);
+            std::process::exit(1);
+        }
+    }
+}
 
 /// Command
 #[derive(Debug, Subcommand)]
@@ -62,9 +88,12 @@ pub struct Arguments {
 impl Arguments {
     ///
     #[inline]
-    pub fn run(self) -> Result {
+    pub fn run(self) -> Result<(), Error> {
         match self.command {
-            Command::Register => register().map_err(|_| todo!()),
+            Command::Register => {
+                register();
+                Ok(())
+            }
             Command::Contribute => {
                 match tokio::runtime::Builder::new_multi_thread() // TODO
                     .worker_threads(4)
@@ -85,159 +114,106 @@ impl Arguments {
     }
 }
 
-/// Sample random seed and generate public key, printing both to stdout. Then, takes twitter account
-/// from stdin (dialoguer crate) and generates payload for registration form.
+/// Sample random seed and generate public key, printing both to stdout.
 #[inline]
-pub fn register() -> Result<(), ()> {
-    // Generate seed
-    let seed = ();
-
-    // Print seed
-    println!("SEED: {:?}", seed);
-
-    // Generate sk,pk from seed
-    let (sk, pk) = ((), ());
-    let _ = sk;
-
+pub fn register() {
     // Read in twitter account name
-    let twitter: String = Input::with_theme(&ColorfulTheme::default())
+    let twitter_account: String = Input::with_theme(&ColorfulTheme::default())
         .with_prompt("Your twitter account")
         .interact_text()
         .expect("");
-    let _ = twitter;  // TODO
 
-    // Sign message with `sk` (the message has to include the twitter account).
-    let signature = ();
+    // Generate sk,pk from entropy
+    let mut rng = OsRng;
+    let mut secret_key_bytes = [0u8; ed25519_dalek::SECRET_KEY_LENGTH];
+    rng.fill_bytes(&mut secret_key_bytes);
+    let sk = PrivateKey(secret_key_bytes);
+    let pk = PublicKey(
+        ed25519_dalek::PublicKey::from(
+            &SecretKey::from_bytes(&secret_key_bytes).expect("`from_bytes` should succeed"),
+        )
+        .to_bytes(),
+    );
 
-    // Print out pk
-    println!("Public Key: {:?}", pk);
+    let pk_serialized = bincode::serialize(&pk).expect("Serializing public key should succeed");
+    let pk_str = bs58::encode(pk_serialized).into_string();
+    let keypair_serialized =
+        bincode::serialize(&(pk, sk)).expect("Serializing keypair should succeed"); // TODO: Will the user be stupid and send the seed to google form?
+    let keypair_str = bs58::encode(keypair_serialized).into_string();
 
-    // Print out signature
-    println!("Signature: {:?}", signature);
+    let signature = ed_dalek::Ed25519::sign(
+        format!("manta-trusted-setup-twitter:{}", twitter_account),
+        &0,
+        &pk,
+        &sk,
+    )
+    .expect("Signing should succeed");
+    let signature_serialized =
+        bincode::serialize(&signature).expect("Serializing signature should succeed.");
+    let signature_str = bs58::encode(signature_serialized).into_string();
 
-    Ok(()) // TODO: This goes into google form
-}
+    println!(
+        "Your {}: \nCopy the following text to \"Twitter\" Section in Google Form:\n {}\n\n\n\n",
+        "Twitter Account".italic(),
+        twitter_account.blue(),
+    );
 
-/// Participant
-#[derive(Clone, Serialize, Deserialize)]
-struct Participant {
-    /// Public Key
-    pub public_key: PublicKey,
+    println!(
+        "Your {}: \nCopy the following text to \"Public Key\" Section in Google Form:\n {}\n\n\n\n",
+        "Public Key".italic(),
+        pk_str.blue(),
+    );
 
-    /// Identifier
-    pub identifier: String,
+    println!(
+        "Your {}: \nCopy the following text to \"Signature\" Section in Google Form: \n {}\n\n\n\n",
+        "Signature".italic(),
+        signature_str.blue()
+    );
 
-    /// Priority
-    pub priority: usize,
-
-    /// Nonce
-    pub nonce: u64,
-
-    /// Boolean on whether this participant has contributed
-    pub contributed: bool,
-}
-
-impl Priority for Participant {
-    fn priority(&self) -> usize {
-        self.priority
-    }
-}
-
-impl Identifier for Participant {
-    type Identifier = String;
-
-    fn identifier(&self) -> Self::Identifier {
-        self.identifier.clone() // TODO
-    }
-}
-
-impl HasPublicKey for Participant {
-    type PublicKey = ed_dalek::PublicKey;
-
-    fn public_key(&self) -> Self::PublicKey {
-        self.public_key
-    }
-}
-
-impl HasNonce<Ed25519> for Participant {
-    fn nonce(&self) -> u64 {
-        self.nonce
-    }
-
-    fn update_nonce(&mut self, nonce: u64) -> Result<(), CeremonyError> {
-        if self.nonce >= nonce {
-            return Err(CeremonyError::InvalidNonce);
-        }
-        self.nonce = nonce;
-        Ok(())
-    }
-
-    fn increase_nonce(&mut self) -> Result<(), CeremonyError> {
-        self.nonce += 1;
-        Ok(())
-    }
+    println!(
+        "Your {}: \nThe following text stores your secret for trusted setup.\
+         Save the following text somewhere safe. \n DO NOT share this to anyone else!\
+          Please discard this data after the trusted setup ceremony.\n {}",
+        "Secret".italic(),
+        keypair_str.red(),
+    );
 }
 
 type C = Client<Ed25519, Participant>;
 
-fn init_participant() -> Participant {
-    // TODO: Only have temporary code here for testing.
-    let public_key = PublicKey([
-        104, 148, 44, 244, 61, 116, 39, 8, 68, 216, 6, 24, 232, 68, 239, 203, 198, 2, 138, 148,
-        242, 73, 122, 3, 19, 236, 195, 133, 136, 137, 146, 108,
-    ]);
-    Participant {
-        public_key,
-        identifier: "happy".to_string(),
-        priority: 0,
-        nonce: 0,
-        contributed: false,
-    }
-}
-
-fn init_key_pair<S>(seed: String) -> (S::PrivateKey, S::PublicKey)
-where
-    S: SignatureScheme<PrivateKey = ed_dalek::PrivateKey, PublicKey = ed_dalek::PublicKey>,
-{
-    let _ = seed; // TODO: Use seed to generate key pair
-                  // TODO. Hardcode a seed for temporary testing.
-                  // let keypair: Keypair = Keypair::generate(&mut seed);
-    let private_key = PrivateKey([
-        149, 167, 173, 208, 224, 206, 37, 70, 87, 169, 157, 198, 120, 32, 151, 88, 25, 10, 12, 215,
-        80, 124, 187, 129, 183, 96, 103, 11, 191, 255, 33, 105,
-    ]);
-    let public_key = PublicKey([
-        104, 148, 44, 244, 61, 116, 39, 8, 68, 216, 6, 24, 232, 68, 239, 203, 198, 2, 138, 148,
-        242, 73, 122, 3, 19, 236, 195, 133, 136, 137, 146, 108,
-    ]);
-    (private_key, public_key)
+/// Prompt key pair from user
+fn prompt_key_pair() -> Result<(PrivateKey, PublicKey), Error> {
+    println!(
+        "Please enter your {} that you get when you registered yourself using this tool.",
+        "Secret".italic()
+    );
+    let secret_str: String = Input::with_theme(&ColorfulTheme::default())
+        .with_prompt("Your Secret")
+        .interact_text()
+        .expect("Please enter your secret received during `Register`.");
+    let secret_bytes = bs58::decode(&secret_str)
+        .into_vec()
+        .map_err(|_| Error::InvalidSecret)?;
+    bincode::deserialize(&secret_bytes).map_err(|_| Error::InvalidSecret)
 }
 
 /// Run `reqwest` contribution client, takes seed as input.
 #[inline]
-pub async fn contribute() -> Result<(), ()> {
+pub async fn contribute() -> Result<(), Error> {
     // Note: seed is the same as the one used during registration.
-    // TODO: In every message, return the nonce of the specific user.
-    let seed: String = Input::with_theme(&ColorfulTheme::default())
-        .with_prompt("Seed")
-        .validate_with(move |_: &String| -> Result<(), &str> {
-            // Check that it is a valid seed phrase and return `Err("error message")` if not
-            // todo!()
-            Ok(()) // TODO
-        })
-        .interact_text()
-        .expect("");
 
     // Generate sk, pk from seed
-    let key_pair = init_key_pair::<Ed25519>(seed); // TODO
+    let key_pair = prompt_key_pair()?;
 
     // Run ceremony client
-    let participant = init_participant();
+    let participant = init_participant(); // TODO： Replace with
     let mut trusted_setup_client = C::new(participant, key_pair);
 
     let network_client = reqwest::Client::new();
 
     loop {
+        // TODO: Add Enqueue. May receive several:
+
         // TODO: Handle nonce
         let query_mpc_state_request = trusted_setup_client.query_mpc_state();
         let query_mpc_state_response = network_client
@@ -298,7 +274,5 @@ pub async fn contribute() -> Result<(), ()> {
 }
 
 fn main() {
-    Arguments::parse()
-        .run()
-        .expect("Client should run successfully."); // TODO: When should we stop?
+    handle_error(Arguments::parse().run()); // TODO: When should we stop?
 }
