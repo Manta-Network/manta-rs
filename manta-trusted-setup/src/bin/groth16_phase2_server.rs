@@ -17,33 +17,28 @@
 //! Trusted Setup Ceremony Server
 
 use ark_bls12_381::Fr;
-use manta_crypto::{arkworks::pairing::Pairing, rand::Sample};
+use manta_crypto::{
+    arkworks::pairing::Pairing,
+    rand::{OsRng, Sample},
+};
 use manta_pay::crypto::constraint::arkworks::R1CS;
 use manta_trusted_setup::{
     ceremony::{
-        queue::{Identifier, Priority},
+        config::{g16_bls12::Groth16Bls12, CeremonyConfig, ParticipantIdentifier},
         registry::Registry,
-        server::{HasNonce, Server},
-        signature::{
-            ed_dalek,
-            ed_dalek::{Ed25519, PublicKey},
-            HasPublicKey,
-        },
-        CeremonyError,
+        server::Server,
     },
     groth16::{
-        ceremony::Participant,
-        config::{dummy_circuit, Config},
+        config::dummy_circuit,
         kzg::{Accumulator, Contribution},
         mpc,
-        mpc::{initialize, Groth16Phase2},
+        mpc::initialize,
     },
 };
-use rand_chacha::rand_core::OsRng;
-use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
 
-type S = Server<Groth16Phase2<Config>, Participant, Ed25519, 2>;
+type C = Groth16Bls12;
+type Config = manta_trusted_setup::groth16::config::Config;
+type S = Server<C, 2>;
 
 ///
 pub struct PhaseOneParameters {
@@ -52,20 +47,21 @@ pub struct PhaseOneParameters {
 
 impl PhaseOneParameters {
     fn load_from_args() -> Self {
+        let matches = clap::App::new("Trusted Setup Ceremony Server")
+            .version("0.1.0")
+            .author("Manta Network")
+            .about("Trusted Setup Ceremony Server")
+            .arg(
+                clap::Arg::new("accumulator_path")
+                    .short('a')
+                    .long("accumulator_path")
+                    .help("Path to the accumulator")
+                    .takes_value(true)
+                    .required(true),
+            )
+            .get_matches();
         PhaseOneParameters {
-            phase_one_parameter_path: clap::App::new("Trusted Setup Ceremony Server")
-                .version("0.1.0")
-                .author("Manta Network")
-                .about("Trusted Setup Ceremony Server")
-                .arg(
-                    clap::Arg::new("accumulator_path")
-                        .short('a')
-                        .long("accumulator_path")
-                        .help("Path to the accumulator")
-                        .takes_value(true)
-                        .required(true),
-                )
-                .get_matches()
+            phase_one_parameter_path: matches
                 .value_of("accumulator_path")
                 .expect("parameter accumulator_path is required")
                 .to_string(),
@@ -97,7 +93,7 @@ pub fn dummy_phase_one_trusted_setup() -> Accumulator<Config> {
         .expect("Accumulator should have been generated correctly.")
 }
 
-fn load_registry() -> Registry<<Participant as Identifier>::Identifier, Participant> {
+fn load_registry() -> Registry<ParticipantIdentifier<C>, <C as CeremonyConfig>::Participant> {
     todo!()
 }
 
@@ -119,11 +115,10 @@ async fn main() -> tide::Result<()> {
     let mut api = tide::Server::with_state(init_server(&options).await);
     api.at("/").get(|_| async { Ok("Hello, world!") });
     api.at("/enqueue")
-        .post(|r| Server::execute(r, Server::enqueue_participant));
+        .post(|r| S::execute(r, Server::enqueue_participant));
     api.at("/query")
-        .post(|r| Server::execute(r, Server::get_state_and_challenge));
-    api.at("/update")
-        .post(|r| Server::execute(r, Server::update));
+        .post(|r| S::execute(r, Server::get_state_and_challenge));
+    api.at("/update").post(|r| S::execute(r, Server::update));
     api.listen("127.0.0.1:8080").await?; // TODO: use TLS
     Ok(())
 }
