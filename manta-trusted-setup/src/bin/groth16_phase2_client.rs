@@ -16,43 +16,28 @@
 
 // //! Trusted Setup Ceremony Client
 
-// extern crate alloc;
+extern crate alloc;
 
-// use alloc::string::String;
+use alloc::string::String;
 use clap::{Parser, Subcommand};
-// use colored::Colorize;
-// use core::fmt::{Display, Formatter};
-// use dialoguer::{theme::ColorfulTheme, Input};
-// use ed25519_dalek::SecretKey;
-// use manta_crypto::rand::{OsRng, RngCore};
-// use manta_trusted_setup::{
-//     ceremony::{
-//         client::Client,
-//         message::{ContributeResponse, QueryMPCStateResponse},
-//         queue::Priority,
-//         server::HasNonce,
-//         signature::{
-//             ed_dalek::{self, Ed25519, PrivateKey, PublicKey},
-//             HasPublicKey, SignatureScheme,
-//         },
-//         CeremonyError,
-//     },
-//     groth16::{ceremony::Participant, config::Config, mpc::Groth16Phase2},
-// };
-// use serde::{Deserialize, Serialize};
-// use std::{thread, time::Duration};
-
 use colored::Colorize;
+use core::fmt::{Display, Formatter};
 use dialoguer::{theme::ColorfulTheme, Input};
-use ed25519_dalek::SecretKey;
 use manta_crypto::rand::{OsRng, RngCore};
-use manta_trusted_setup::ceremony::{
-    config::{g16_bls12_381::Groth16BLS12381, Nonce, PrivateKey, PublicKey},
-    signature::{ed_dalek, SignatureScheme},
-    CeremonyError,
+use manta_trusted_setup::{
+    ceremony::{
+        config::{PrivateKey, PublicKey},
+        message::{QueryMPCStateRequest, QueryMPCStateResponse},
+        server::HasNonce,
+        signature::{ed_dalek, SignatureScheme},
+        CeremonyError,
+    },
+    groth16::mpc::Groth16Phase2,
 };
-use serde::{de::DeserializeOwned, Serialize};
-use std::fmt::{Display, Formatter};
+use serde::Serialize;
+
+use manta_trusted_setup::ceremony::config::{g16_bls12_381::Groth16BLS12381, Nonce};
+use serde::de::DeserializeOwned;
 
 type C = Groth16BLS12381;
 type Config = manta_trusted_setup::groth16::config::Config;
@@ -146,97 +131,86 @@ pub struct Arguments {
     pub command: Command,
 }
 
-impl Arguments {
-    ///
-    #[inline]
-    pub fn run(self) -> Result<(), Error> {
-        match self.command {
-            Command::Register => {
-                todo!()
-            }
-            Command::Contribute => {
-                match tokio::runtime::Builder::new_multi_thread() // TODO
-                    .worker_threads(4)
-                    .enable_io()
-                    .enable_time()
-                    .build()
-                {
-                    Ok(runtime) => runtime.block_on(async { todo!() }).map_err(|_| todo!()),
-                    Err(err) => Err(Error::UnexpectedError(format!("{}", err))),
-                }
-            }
-        }
-    }
-}
+// impl Arguments {
+//     ///
+//     #[inline]
+//     pub fn run(self) -> Result<(), Error> {
+//         match self.command {
+//             Command::Register => {
+//                 todo!()
+//             }
+//             Command::Contribute => {
+//                 match tokio::runtime::Builder::new_multi_thread() // TODO
+//                     .worker_threads(4)
+//                     .enable_io()
+//                     .enable_time()
+//                     .build()
+//                 {
+//                     Ok(runtime) => runtime.block_on(async { todo!() }).map_err(|_| todo!()),
+//                     Err(err) => Err(Error::UnexpectedError(format!("{}", err))),
+//                 }
+//             }
+//         }
+//     }
+// }
 
-/// Sample random seed and generate public key, printing both to stdout.
+/// Registers a participant.
 #[inline]
 pub fn register() {
-    // Read in twitter account name
     let twitter_account: String = Input::with_theme(&ColorfulTheme::default())
         .with_prompt("Your twitter account")
         .interact_text()
         .expect("");
-
-    // Generate sk,pk from entropy
-    let mut rng = OsRng;
     let mut secret_key_bytes = [0u8; ed25519_dalek::SECRET_KEY_LENGTH];
-    rng.fill_bytes(&mut secret_key_bytes);
-    let sk = ed25519_dalek::SecretKey::from_bytes(&secret_key_bytes);
-    let pk = ed_dalek::PublicKey(
-        ed25519_dalek::PublicKey::from(
-            &SecretKey::from_bytes(&secret_key_bytes).expect("`from_bytes` should succeed"),
-        )
-        .to_bytes(),
-    );
-
-    let pk_serialized = bincode::serialize(&pk).expect("Serializing public key should succeed");
-    let pk_str = bs58::encode(pk_serialized).into_string();
-    let keypair_serialized =
-        bincode::serialize(&(pk, sk)).expect("Serializing keypair should succeed"); // TODO: Will the user be stupid and send the seed to google form?
-    let keypair_str = bs58::encode(keypair_serialized).into_string();
-
-    let signature = ed_dalek::Ed25519::sign(
-        format!("manta-trusted-setup-twitter:{}", twitter_account),
-        &0,
-        &pk,
-        &sk,
-    )
-    .expect("Signing should succeed");
-    let signature_serialized =
-        bincode::serialize(&signature).expect("Serializing signature should succeed.");
-    let signature_str = bs58::encode(signature_serialized).into_string();
-
+    OsRng.fill_bytes(&mut secret_key_bytes);
+    let sk = ed25519_dalek::SecretKey::from_bytes(&secret_key_bytes)
+        .expect("`from_bytes` should succeed for SecretKey.");
+    let pk = ed_dalek::PublicKey(ed25519_dalek::PublicKey::from(&sk).to_bytes());
+    let sk = ed_dalek::PrivateKey(sk.to_bytes());
     println!(
         "Your {}: \nCopy the following text to \"Twitter\" Section in Google Form:\n {}\n\n\n\n",
         "Twitter Account".italic(),
         twitter_account.blue(),
     );
-
     println!(
         "Your {}: \nCopy the following text to \"Public Key\" Section in Google Form:\n {}\n\n\n\n",
         "Public Key".italic(),
-        pk_str.blue(),
+        bs58::encode(bincode::serialize(&pk).expect("Serializing public key should succeed"))
+            .into_string()
+            .blue(),
     );
-
     println!(
         "Your {}: \nCopy the following text to \"Signature\" Section in Google Form: \n {}\n\n\n\n",
         "Signature".italic(),
-        signature_str.blue()
+        bs58::encode(
+            bincode::serialize(
+                &ed_dalek::Ed25519::sign(
+                    format!("manta-trusted-setup-twitter:{}", twitter_account),
+                    &0,
+                    &pk,
+                    &sk,
+                )
+                .expect("Signing should succeed"),
+            )
+            .expect("Serializing signature should succeed."),
+        )
+        .into_string()
+        .blue()
     );
-
     println!(
         "Your {}: \nThe following text stores your secret for trusted setup.\
          Save the following text somewhere safe. \n DO NOT share this to anyone else!\
           Please discard this data after the trusted setup ceremony.\n {}",
         "Secret".italic(),
-        keypair_str.red(),
+        bs58::encode(bincode::serialize(&(pk, sk)).expect("Serializing keypair should succeed"))
+            .into_string()
+            .red(),
     );
 }
 
 type Client = manta_trusted_setup::ceremony::client::Client<C>;
 
-/// Client Client Info from stdin
+/// Prompts the client information.
 fn prompt_client_info() -> Result<(PrivateKey<C>, PublicKey<C>), Error> {
     println!(
         "Please enter your {} that you get when you registered yourself using this tool.",
@@ -290,23 +264,21 @@ async fn get_nonce(
 
 /// Run `reqwest` contribution client, takes seed as input.
 #[inline]
-pub async fn contribute() -> Result<(), Error> {
-    // Note: seed is the same as the one used during registration.
-
-    // Generate sk, pk from seed
+async fn contribute() -> Result<(), Error> {
     let network_client = reqwest::Client::new();
     let (sk, pk) = prompt_client_info()?;
     let nonce = get_nonce(pk, &network_client).await?;
     let mut trusted_setup_client = Client::new(pk, pk, nonce, sk);
-
     loop {
-        let enqueue_request = trusted_setup_client
-            .enqueue()
-            .map_err(|_| Error::UnableToGenerateRequest("enqueue"))?;
-
-        let enqueue_response =
-            send_request::<_, ()>(&network_client, Endpoint::Enqueue, enqueue_request).await?;
-        match enqueue_response {
+        match send_request::<_, ()>(
+            &network_client,
+            Endpoint::Enqueue,
+            trusted_setup_client
+                .enqueue()
+                .map_err(|_| Error::UnableToGenerateRequest("enqueue"))?,
+        )
+        .await?
+        {
             Err(CeremonyError::NotRegistered) => return Err(Error::NotRegistered),
             Err(CeremonyError::NonceNotInSync(nonce)) => {
                 trusted_setup_client.set_nonce(nonce);
@@ -319,27 +291,17 @@ pub async fn contribute() -> Result<(), Error> {
             }
             Ok(_) => {}
         }
+        let query_mpc_state_response = send_request::<_, QueryMPCStateRequest>(
+            &network_client,
+            Endpoint::Query,
+            trusted_setup_client.query_mpc_state(),
+        )
+        .await?;
+        // let (state, challenge) = match query_mpc_state_response {
+        //     Ok(_) => todo!(),
+        //     Err(_) => todo!(),
+        // };
 
-        // // TODO: Handle nonce
-        // let query_mpc_state_request = trusted_setup_client.query_mpc_state();
-        // let query_mpc_state_response = network_client
-        //     .post(Endpoint::Query.into())
-        //     .json(&query_mpc_state_request)
-        //     .send()
-        //     .await
-        //     .unwrap();
-        // // let parsed_query_mpc_state_response = match query_mpc_state_response.status() {
-        // //     reqwest::StatusCode::OK => {
-        // //         query_mpc_state_response.json::<QueryMPCStateResponse<Groth16Phase2<Config>>>().await.unwrap();
-        // //     }
-        // //     other => {
-        // //         panic!("Uh No! Something unexpected happend: {:?}", other);
-        // //     }
-        // // };
-        // let parsed_query_mpc_state_response = query_mpc_state_response
-        //     .json::<QueryMPCStateResponse<Groth16Phase2<Config>>>()
-        //     .await
-        //     .unwrap(); // TODO: Error handling here if response status is bad.
         // let (state, challenge) = match parsed_query_mpc_state_response {
         //     QueryMPCStateResponse::Mpc(state, challenge) => {
         //         (state.to_actual(), challenge.to_actual())
@@ -380,8 +342,8 @@ pub async fn contribute() -> Result<(), Error> {
 }
 
 fn main() {
-    handle_error(Arguments::parse().run()); // TODO: When should we stop?
+    // handle_error(Arguments::parse().run()); // TODO: When should we stop?
 }
 
-// cargo --bin xxx -- contribute
-// cargo --bin xxx -- register
+// // cargo --bin xxx -- contribute
+// // cargo --bin xxx -- register
