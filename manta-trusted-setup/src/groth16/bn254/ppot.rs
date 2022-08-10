@@ -862,7 +862,7 @@ where
 /// Checks that a vector of G1 elements and vector of G2 elements are incrementing by the
 /// same factor.
 #[inline]
-fn check_consistent_factor(g1: &Vec<G1Affine>, g2: &Vec<G2Affine>) -> bool {
+fn check_consistent_factor(g1: &[G1Affine], g2: &[G2Affine]) -> bool {
     use crate::util::power_pairs;
     use manta_crypto::arkworks::pairing::PairingEngineExt;
 
