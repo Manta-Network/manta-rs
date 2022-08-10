@@ -18,10 +18,9 @@
 
 use crate::{
     groth16::{
-        bn254::ppot,
         kzg::{Accumulator, Configuration as KzgConfiguration, Proof as KzgProof, Size},
         mpc::{
-            initialize, Configuration as MpcConfiguration, Proof as MpcProof, ProvingKeyHasher,
+            Configuration as MpcConfiguration, Proof as MpcProof, ProvingKeyHasher,
             State as MpcState,
         },
     },
@@ -31,23 +30,13 @@ use crate::{
 use ark_bn254::{Bn254, Fr, G1Affine, G2Affine};
 use ark_groth16::ProvingKey;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Read, SerializationError, Write};
-use ark_std::{
-    fs::{File, OpenOptions},
-    io, println,
-    time::Instant,
-};
+use ark_std::io;
 use blake2::Digest;
-use manta_crypto::{
-    arkworks::{
-        ec::{short_weierstrass_jacobian, AffineCurve, PairingEngine, SWModelParameters},
-        pairing::Pairing,
-    },
-    merkle_tree::forest::MerkleForest,
-    rand::{OsRng, Rand, SeedableRng},
+use manta_crypto::arkworks::{
+    ec::{short_weierstrass_jacobian, AffineCurve, PairingEngine, SWModelParameters},
+    pairing::Pairing,
 };
-use manta_pay::crypto::constraint::arkworks::R1CS;
-use manta_util::{into_array_unchecked, vec::Vec};
-use memmap::MmapOptions;
+use manta_util::into_array_unchecked;
 
 /// Configuration for a Phase1 Ceremony large enough to support MantaPay circuits
 #[derive(CanonicalDeserialize, CanonicalSerialize, Debug, PartialEq, Eq)]
@@ -247,168 +236,4 @@ where
     {
         CanonicalDeserialize::deserialize_uncompressed(reader)
     }
-}
-
-/// Generates our `Reclaim` circuit with unknown variables
-pub fn reclaim_circuit() -> R1CS<Fr> {
-    use manta_crypto::accumulator::Accumulator;
-    use manta_pay::{
-        config::{FullParameters, Reclaim},
-        test::payment::UtxoAccumulator,
-    };
-    use rand_chacha::ChaCha20Rng;
-
-    // 2. Specialize the final Accumulator to phase 2 parameters, write these to transcript (?)
-    let mut rng = ChaCha20Rng::from_seed([0; 32]);
-    let utxo_accumulator = UtxoAccumulator::new(rng.gen());
-    let parameters = rng.gen();
-
-    Reclaim::unknown_constraints(FullParameters::new(
-        &parameters,
-        <MerkleForest<_, _> as Accumulator>::model(&utxo_accumulator),
-    ))
-}
-
-/// Produces a ProvingKey for the MantaPay `Reclaim` circuit
-pub fn generate_reclaim_pk() -> ProvingKey<Bn254> {
-    let reader = OpenOptions::new()
-        .read(true)
-        .open("/Users/thomascnorton/Documents/Manta/trusted-setup/challenge_0072")
-        .expect("unable open `./challenge` in this directory");
-    // Make a memory map
-    let readable_map = unsafe {
-        MmapOptions::new()
-            .map(&reader)
-            .expect("unable to create a memory map for input")
-    };
-
-    let accumulator =
-        ppot::read_subaccumulator::<MantaPaySetupCeremony>(&readable_map, ppot::Compressed::No)
-            .unwrap();
-    let (cs_unknown, _, _) = generate_reclaim_constraints_and_public_inputs();
-    initialize(accumulator, cs_unknown).unwrap()
-}
-
-/// Produces constraint synthesizers for the `Reclaim` circuit with unknown and
-/// known witness and returns public input vector for this sample.
-pub fn generate_reclaim_constraints_and_public_inputs() -> (R1CS<Fr>, R1CS<Fr>, Vec<Fr>) {
-    use manta_accounting::transfer::test::TransferDistribution;
-    use manta_crypto::{accumulator::Accumulator, rand::Sample};
-    use manta_pay::{
-        config::{FullParameters, Reclaim},
-        test::payment::UtxoAccumulator,
-    };
-    use rand_chacha::ChaCha20Rng;
-
-    let mut rng = ChaCha20Rng::from_seed([0; 32]);
-    let mut utxo_accumulator = UtxoAccumulator::new(rng.gen());
-    let parameters = rng.gen();
-    let sample = Reclaim::sample(
-        TransferDistribution {
-            parameters: &parameters,
-            utxo_accumulator: &mut utxo_accumulator,
-        },
-        &mut rng,
-    );
-    let cs_known =
-        sample.known_constraints(FullParameters::new(&parameters, utxo_accumulator.model()));
-    let cs_unknown = Reclaim::unknown_constraints(FullParameters::new(
-        &parameters,
-        <MerkleForest<_, _> as Accumulator>::model(&utxo_accumulator),
-    ));
-    (cs_unknown, cs_known, sample.generate_proof_input())
-}
-
-/// This takes about 1 hour to complete (with 1 << 16 powers)
-#[test]
-pub fn generate_reclaim_pk_test() {
-    let pk = generate_reclaim_pk();
-    // Write to file for quick access later
-    let _f = File::create("phase2_reclaim_pk").unwrap();
-    let mut file = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .truncate(true)
-        .open("phase2_reclaim_pk")
-        .expect("unable to create parameter file in this directory");
-    CanonicalSerialize::serialize_uncompressed(&pk, &mut file).unwrap();
-
-    // Check that this was written correctly:
-    let mut reader = OpenOptions::new()
-        .read(true)
-        .open("phase2_reclaim_pk")
-        .expect("file not found");
-    let pk_read: ProvingKey<Bn254> =
-        CanonicalDeserialize::deserialize_unchecked(&mut reader).unwrap();
-    assert_eq!(pk, pk_read)
-}
-
-/// Takes about 5 minutes to run
-#[test]
-pub fn phase2_contribution_test() {
-    use crate::{
-        groth16::mpc::{self, contribute, verify_transform, verify_transform_all},
-        mpc::Transcript,
-    };
-
-    println!("Reading ProverKey from file");
-    let now = Instant::now();
-    let mut reader = OpenOptions::new()
-        .read(true)
-        .open("phase2_reclaim_pk")
-        .expect("file not found");
-    let mut state: ProvingKey<Bn254> =
-        // CanonicalDeserialize::deserialize_uncompressed(&mut reader).unwrap();
-        CanonicalDeserialize::deserialize_unchecked(&mut reader).unwrap();
-    println!("Finished reading ProverKey in {:?}", now.elapsed());
-
-    println!("Contributing to phase 2 params");
-    // Contribute and verify
-    let mut rng = OsRng;
-    let mut transcript = Transcript::<MantaPaySetupCeremony> {
-        initial_challenge: <MantaPaySetupCeremony as ProvingKeyHasher<MantaPaySetupCeremony>>::hash(
-            &state,
-        ),
-        initial_state: state.clone(),
-        rounds: Vec::new(),
-    };
-    let hasher = <MantaPaySetupCeremony as mpc::Configuration>::Hasher::default();
-    let (mut prev_state, mut proof): (
-        MpcState<MantaPaySetupCeremony>,
-        MpcProof<MantaPaySetupCeremony>,
-    );
-    let mut challenge = transcript.initial_challenge;
-    for _ in 0..5 {
-        let now = Instant::now();
-        prev_state = state.clone();
-        proof = contribute::<MantaPaySetupCeremony, _>(&hasher, &challenge, &mut state, &mut rng)
-            .unwrap();
-        (challenge, state) = verify_transform(&challenge, prev_state, state, proof.clone())
-            .expect("Verify transform failed");
-        transcript.rounds.push((state.clone(), proof));
-        println!("Performed a contribution in {:?}", now.elapsed());
-    }
-    println!("Verifying 5 contributions");
-    let now = Instant::now();
-    verify_transform_all(
-        transcript.initial_challenge,
-        transcript.initial_state,
-        transcript.rounds,
-    )
-    .expect("Verifying all transformations failed.");
-    println!("Verified phase 2 contributions in {:?}", now.elapsed());
-
-    // Generate and verify a proof
-    println!("Generating a proof");
-    let now = Instant::now();
-    let (_, cs, public_inputs) = generate_reclaim_constraints_and_public_inputs();
-    let proof = ark_groth16::prover::create_random_proof(cs, &state, &mut rng).unwrap();
-    println!("Took {:?} to generate a proof", now.elapsed());
-
-    let now = Instant::now();
-    let vk = &state.vk;
-    let prepared_vk = ark_groth16::verifier::prepare_verifying_key(vk);
-    let result = ark_groth16::verifier::verify_proof(&prepared_vk, &proof, &public_inputs).unwrap();
-    println!("Took {:?} to verify the proof", now.elapsed());
-    assert!(result);
 }
