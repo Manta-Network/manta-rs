@@ -22,7 +22,10 @@ use crate::{
     rand::{RngCore, Sample},
 };
 use core::{borrow::Borrow, marker::PhantomData};
-use manta_util::codec::{Decode, DecodeError, Encode, Read, Write};
+use manta_util::{
+    codec::{Decode, DecodeError, Encode, Read, Write},
+    into_array_unchecked,
+};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
@@ -55,14 +58,44 @@ pub trait FixedBaseScalarMul<COM = ()>: Group<COM> {
 
     /// Multiply `precomputed_bases[0]` by `scalar` using precomputed base points,
     /// where `precomputed_bases` are precomputed power-of-two multiples of the fixed base.  
-    fn fixed_base_scalar_mul<I, T>(
+    fn fixed_base_scalar_mul<I>(
         precomputed_bases: I,
         scalar: &Self::Scalar,
         compiler: &mut COM,
     ) -> Self
     where
-        I: IntoIterator<Item = T>,
-        T: Borrow<Self::Base>;
+        I: IntoIterator,
+        I::Item: Borrow<Self::Base>;
+}
+
+/// Precomputed power-of-two Base for fixed-base scalar multiplication. Entry at index `i` is `base * 2^i`.
+pub struct PrecomputedBaseTable<G, const N: usize> {
+    table: [G; N],
+}
+
+impl<G, const N: usize> IntoIterator for PrecomputedBaseTable<G, N> {
+    type Item = G;
+    type IntoIter = core::array::IntoIter<G, N>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.table.into_iter()
+    }
+}
+
+impl<G, const N: usize> PrecomputedBaseTable<G, N> {
+    #[inline]
+    /// Builds a new [`PrecomputedBaseTable`] from a given `base`, such that `table[i] = base * 2^i`.
+    pub fn from_base<COM>(base: G, compiler: &mut COM) -> Self
+    where
+        G: Group<COM>,
+    {
+        let table = into_array_unchecked(
+            core::iter::successors(Some(base), |base| Some(base.add(base, compiler)))
+                .take(N)
+                .collect::<Vec<_>>(),
+        );
+        Self { table }
+    }
 }
 
 /// Diffie-Hellman Key Agreement Scheme

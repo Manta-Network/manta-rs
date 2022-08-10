@@ -105,23 +105,10 @@ where
     }
 }
 
-/// Returns the power-of-two table of size `powers` such that entry at index `i` is `base * 2^i`.
-#[inline]
-pub fn precomputed_bases_custom<C>(base: C, powers: usize) -> impl Iterator<Item = C>
+/// Returns the modulus bits of scalar field of a given curve `C`.
+pub const fn scalar_bits<C>() -> usize
 where
     C: ProjectiveCurve,
 {
-    core::iter::successors(Some(base), |base| Some(*base + *base)).take(powers)
-}
-
-/// Returns the power-of-two table of whose size is modulus bits of the constraint field of `C` such that entry at index `i` is `C::prime_subgroup_generator() * 2^i`.
-#[inline]
-pub fn precomputed_bases<C>() -> impl Iterator<Item = C>
-where
-    C: ProjectiveCurve,
-{
-    precomputed_bases_custom(
-        C::prime_subgroup_generator(),
-        <ConstraintField<C> as PrimeField>::size_in_bits(),
-    )
+    <<C as ProjectiveCurve>::ScalarField as PrimeField>::Params::MODULUS_BITS as usize
 }

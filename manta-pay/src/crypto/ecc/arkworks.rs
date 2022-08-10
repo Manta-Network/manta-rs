@@ -523,16 +523,16 @@ where
     C: ProjectiveCurve,
     CV: CurveVar<C, ConstraintField<C>>,
 {
-    type Base = C;
+    type Base = Group<C>;
 
-    fn fixed_base_scalar_mul<I, T>(
+    fn fixed_base_scalar_mul<I>(
         precomputed_bases: I,
         scalar: &Self::Scalar,
         compiler: &mut Compiler<C>,
     ) -> Self
     where
-        I: IntoIterator<Item = T>,
-        T: Borrow<Self::Base>,
+        I: IntoIterator,
+        I::Item: Borrow<Self::Base>,
     {
         let _ = compiler;
         let mut result = CV::zero();
@@ -542,7 +542,7 @@ where
             .expect("Bit decomposition is not allowed to fail.");
         for (bit, base) in scalar_bits.into_iter().zip(precomputed_bases.into_iter()) {
             result = bit
-                .select(&(result.clone() + *base.borrow()), &result)
+                .select(&(result.clone() + base.borrow().0.into()), &result)
                 .expect("Conditional select is not allowed to fail. ");
         }
         Self::new(result)
@@ -554,33 +554,23 @@ mod test {
     use super::*;
     use crate::config::Bls12_381_Edwards;
     use manta_crypto::{
-        algebra::Group,
-        arkworks::{
-            algebra::precomputed_bases, r1cs_std::groups::curves::twisted_edwards::AffineVar,
-        },
+        algebra::{Group as _, PrecomputedBaseTable},
+        arkworks::{algebra::scalar_bits, r1cs_std::groups::curves::twisted_edwards::AffineVar},
         constraint::measure::Measure,
         eclair::bool::AssertEq,
         rand::OsRng,
     };
 
-    /// Constraint Field Type
-    type ConstraintField<C> = <<C as ProjectiveCurve>::BaseField as Field>::BasePrimeField;
-
-    /// Compiler Type
-    type Compiler<C> = R1CS<ConstraintField<C>>;
-
-    /// Scalar Field Element
-    pub type Scalar<C> = Fp<<C as ProjectiveCurve>::ScalarField>;
-
     #[test]
     fn fixed_base_mul() {
         let mut cs = Compiler::<Bls12_381_Edwards>::for_proofs();
         let scalar = Scalar::<Bls12_381_Edwards>::gen(&mut OsRng);
-        let base = Bls12_381_Edwards::prime_subgroup_generator();
-        let precomputed_table = precomputed_bases::<Bls12_381_Edwards>();
+        let base = Group::<Bls12_381_Edwards>::sample((), &mut OsRng);
+        const SCALAR_BITS: usize = scalar_bits::<Bls12_381_Edwards>();
+        let precomputed_table = PrecomputedBaseTable::<_, SCALAR_BITS>::from_base(base, &mut ());
 
-        let base_var = Group(base.into_affine())
-            .as_known::<Secret, GroupVar<Bls12_381_Edwards, AffineVar<_, _>>>(&mut cs);
+        let base_var =
+            base.as_known::<Secret, GroupVar<Bls12_381_Edwards, AffineVar<_, _>>>(&mut cs);
         let scalar_var =
             scalar.as_known::<Secret, ScalarVar<Bls12_381_Edwards, AffineVar<_, _>>>(&mut cs);
 
