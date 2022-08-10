@@ -32,6 +32,7 @@ pub mod signature;
 /// Ceremony Error
 ///
 /// # Note
+/// 
 /// All errors here are visible to users.
 #[derive(PartialEq, Serialize, Deserialize)]
 #[serde(

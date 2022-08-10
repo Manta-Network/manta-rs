@@ -24,37 +24,13 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 
-/// Register Request
+/// Enqueue Request
 #[derive(Deserialize, Serialize)]
-#[serde(bound(
-    serialize = "ParticipantIdentifier<C>: Serialize, PublicKey<C>: Serialize",
-    deserialize = "ParticipantIdentifier<C>: Deserialize<'de>, PublicKey<C>: Deserialize<'de>"
-))]
-pub struct EnqueueRequest<C>
-where
-    C: CeremonyConfig,
-{
-    /// Participant
-    pub identifier: ParticipantIdentifier<C>,
-    /// Public Key
-    pub public_key: PublicKey<C>,
-}
+pub struct EnqueueRequest;
 
 /// Query MPC State Request
 #[derive(Deserialize, Serialize)]
-#[serde(bound(
-    serialize = "ParticipantIdentifier<C>: Serialize, PublicKey<C>: Serialize",
-    deserialize = "ParticipantIdentifier<C>: Deserialize<'de>, PublicKey<C>: Deserialize<'de>"
-))]
-pub struct QueryMPCStateRequest<C>
-where
-    C: CeremonyConfig,
-{
-    /// Participant
-    pub identifier: ParticipantIdentifier<C>,
-    /// Public Key
-    pub public_key: PublicKey<C>,
-}
+pub struct QueryMPCStateRequest;
 
 /// MPC Response for [`QueryMPCStateRequest`]
 #[derive(Deserialize, Serialize)]
@@ -73,17 +49,15 @@ where
 /// Contribute Request
 #[derive(Serialize, Deserialize)]
 #[serde(bound(
-    serialize = "ParticipantIdentifier<C>: Serialize, PublicKey<C>: Serialize",
-    deserialize = "ParticipantIdentifier<C>: Deserialize<'de>, PublicKey<C>: Deserialize<'de>"
+    serialize = "ParticipantIdentifier<C>: Serialize",
+    deserialize = "ParticipantIdentifier<C>: Deserialize<'de>"
 ))]
 pub struct ContributeRequest<C>
 where
     C: CeremonyConfig,
 {
     /// Participant
-    pub identifier: ParticipantIdentifier<C>,
-    /// Public Key
-    pub public_key: PublicKey<C>,
+    pub identifier: ParticipantIdentifier<C>, // TODO: To be removed
 
     /// State after Contribution
     pub state: AsBytes<State<C>>,
@@ -96,8 +70,8 @@ where
 #[derive(Deserialize, Serialize)]
 #[serde(
     bound(
-        serialize = r"T: Serialize, Signature<C>: Serialize, Nonce<C>: Serialize",
-        deserialize = "T: Deserialize<'de>, Signature<C>: Deserialize<'de>, Nonce<C>: Deserialize<'de>",
+        serialize = r"T: Serialize, Signature<C>: Serialize, Nonce<C>: Serialize, ParticipantIdentifier<C>: Serialize",
+        deserialize = "T: Deserialize<'de>, Signature<C>: Deserialize<'de>, Nonce<C>: Deserialize<'de>, ParticipantIdentifier<C>: Deserialize<'de>",
     ),
     deny_unknown_fields
 )]
@@ -105,12 +79,15 @@ pub struct Signed<T, C>
 where
     C: CeremonyConfig,
 {
+    /// Participant
+    pub identifier: ParticipantIdentifier<C>,
+
     /// Message
     pub message: T,
 
-    /// Signature
-    pub signature: Signature<C>,
-
     /// Nonce
     pub nonce: Nonce<C>,
+
+    /// Signature
+    pub signature: Signature<C>,
 }

@@ -31,7 +31,7 @@ pub trait Priority {
 /// Identifier
 pub trait Identifier {
     /// Identifier Type
-    type Identifier: PartialEq + Ord;
+    type Identifier: Ord;
 
     /// Gets the identifier.
     fn identifier(&self) -> Self::Identifier;

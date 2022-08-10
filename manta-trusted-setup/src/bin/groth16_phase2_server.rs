@@ -24,7 +24,7 @@ use manta_crypto::{
 use manta_pay::crypto::constraint::arkworks::R1CS;
 use manta_trusted_setup::{
     ceremony::{
-        config::{g16_bls12::Groth16Bls12, CeremonyConfig, ParticipantIdentifier},
+        config::{g16_bls12_381::Groth16BLS12381, CeremonyConfig, ParticipantIdentifier},
         registry::Registry,
         server::Server,
     },
@@ -36,7 +36,7 @@ use manta_trusted_setup::{
     },
 };
 
-type C = Groth16Bls12;
+type C = Groth16BLS12381;
 type Config = manta_trusted_setup::groth16::config::Config;
 type S = Server<C, 2>;
 

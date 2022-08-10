@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Asynchronous server for trusted setup.
+//! Asynchronous Server for Trusted Setup
 
 use crate::ceremony::{
     config::{CeremonyConfig, Challenge, ParticipantIdentifier, Proof, State},
@@ -49,7 +49,7 @@ where
     fn update_nonce(&mut self);
 }
 
-/// Server with `V` as trusted setup verifier, `P` as participant, `M` as the map used by registry, `N` as the number of priority levels.
+/// Server
 #[derive(derivative::Derivative)]
 #[derivative(Clone(bound = ""))]
 pub struct Server<C, const N: usize>
@@ -60,7 +60,7 @@ where
     Proof<C>: CanonicalSerialize + CanonicalDeserialize,
 {
     /// Coordinator
-    pub coordinator: Arc<Mutex<Coordinator<C, N>>>, // TODO: Make this private
+    coordinator: Arc<Mutex<Coordinator<C, N>>>,
 }
 
 impl<C, const N: usize> Server<C, N>
@@ -70,7 +70,7 @@ where
     Challenge<C>: CanonicalSerialize + CanonicalDeserialize,
     Proof<C>: CanonicalSerialize + CanonicalDeserialize,
 {
-    /// Initialize a server with initial state and challenge.
+    /// Builds a [`Server`] with initial `state`, `challenge`, and a loaded `registry`.
     pub fn new(
         state: State<C>,
         challenge: Challenge<C>,
@@ -81,59 +81,70 @@ where
         }
     }
 
-    /// Verifies the registration request and registers a participant.
+    /// Preprocessed a request by checking nonce and verifying signature.
     #[inline]
-    pub async fn enqueue_participant(
-        self,
-        request: Signed<EnqueueRequest<C>, C>,
-    ) -> Result<(), CeremonyError<C>>
+    pub fn preprocess_request<T>(&self, request: &Signed<T, C>) -> Result<(), CeremonyError<C>>
     where
         ParticipantIdentifier<C>: Serialize,
     {
-        let mut coordinator = self.coordinator.lock().unwrap();
-        let participant = match coordinator.get_participant(&request.message.identifier) {
+        let coordinator = self
+            .coordinator
+            .lock()
+            .expect("Locking the coordinator should succeed.");
+        let participant = match coordinator.get_participant(&request.identifier) {
             Some(participant) => participant,
-            None => return Err(CeremonyError::NotRegistered),
+            None => return Err(CeremonyError::NotRegistered), // TODO: Not sure if this Err(...) will be sent back to client binary.
         };
         if participant.nonce() != request.nonce {
             return Err(CeremonyError::NonceNotInSync(participant.nonce()));
         }
         C::SignatureScheme::verify(
-            &request.message.identifier,
+            &request.identifier,
             &request.nonce,
             &request.signature,
             &participant.public_key(),
         )
         .map_err(|_| CeremonyError::BadRequest)?; // TODO
-        let identifier = participant.identifier();
-        coordinator.enqueue_participant(&identifier)
+        Ok(())
+    }
+
+    /// Verifies the enqueue request and enqueues a participant.
+    #[inline]
+    pub async fn enqueue_participant(
+        self,
+        request: Signed<EnqueueRequest, C>,
+    ) -> Result<(), CeremonyError<C>>
+    where
+        ParticipantIdentifier<C>: Serialize,
+    {
+        self.preprocess_request(&request)?;
+        let mut coordinator = self
+            .coordinator
+            .lock()
+            .expect("Locking the coordinator should succeed.");
+        coordinator.enqueue_participant(&request.identifier)?;
+        Ok(())
     }
 
     /// Gets MPC States and Challenge
     #[inline]
     pub async fn get_state_and_challenge(
         self,
-        request: Signed<QueryMPCStateRequest<C>, C>,
+        request: Signed<QueryMPCStateRequest, C>,
     ) -> Result<QueryMPCStateResponse<C>, CeremonyError<C>>
     where
         ParticipantIdentifier<C>: Serialize,
     {
         // TODO: duplicate code
-        let coordinator = self.coordinator.lock().unwrap();
-        let participant = match coordinator.get_participant(&request.message.identifier) {
+        self.preprocess_request(&request)?;
+        let coordinator = self
+            .coordinator
+            .lock()
+            .expect("Locking the coordinator should succeed.");
+        let participant = match coordinator.get_participant(&request.identifier) {
             Some(participant) => participant,
-            None => return Err(CeremonyError::NotRegistered),
+            None => return Err(CeremonyError::NotRegistered), // TODO: Not sure if this Err(...) will be sent back to client binary.
         };
-        if participant.nonce() != request.nonce {
-            return Err(CeremonyError::NonceNotInSync(participant.nonce()));
-        }
-        C::SignatureScheme::verify(
-            &request.message.identifier,
-            &participant.nonce(),
-            &request.signature,
-            &participant.public_key(),
-        )
-        .expect("Verify signature of query MPC state should succeed.");
         if coordinator.is_next(&participant) {
             let (state, challenge) = coordinator.state_and_challenge();
             println!("get_state_and_challenge. Will respond.");
@@ -162,26 +173,15 @@ where
     ) -> Result<(), CeremonyError<C>>
     where
         ContributeRequest<C>: Serialize,
+        ParticipantIdentifier<C>: Serialize,
     {
-        // TODO: duplicate code
-        let mut coordinator = self.coordinator.lock().unwrap();
-        let participant = match coordinator.get_participant(&request.message.identifier) {
-            Some(participant) => participant,
-            None => return Err(CeremonyError::NotRegistered),
-        };
-        if participant.nonce() != request.nonce {
-            return Err(CeremonyError::NonceNotInSync(participant.nonce()));
-        }
-        C::SignatureScheme::verify(
-            &request.message,
-            &participant.nonce(),
-            &request.signature,
-            &participant.public_key(),
-        )
-        .map_err(|_| CeremonyError::BadRequest)?; // TODO
-        let identifier = participant.identifier();
+        self.preprocess_request(&request)?;
+        let mut coordinator = self
+            .coordinator
+            .lock()
+            .expect("Locking the coordinator should succeed.");
         coordinator.update(
-            &identifier,
+            &request.identifier,
             request
                 .message
                 .state

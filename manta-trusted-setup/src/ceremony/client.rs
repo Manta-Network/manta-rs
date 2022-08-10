@@ -16,15 +16,9 @@
 
 //! Asynchronous client for trusted setup.
 
-use crate::{
-    ceremony::{
-        config::{CeremonyConfig, Challenge, Hasher, PrivateKey, Proof, PublicKey, State},
-        message::{ContributeRequest, EnqueueRequest, QueryMPCStateRequest, Signed},
-        server::HasNonce,
-        signature,
-        signature::SignatureScheme,
-    },
-    util::AsBytes,
+use crate::ceremony::{
+    config::{CeremonyConfig, Challenge, Hasher, PrivateKey, Proof, State},
+    message::{ContributeRequest, EnqueueRequest, QueryMPCStateRequest, Signed},
 };
 use manta_crypto::arkworks::serialize::CanonicalSerialize;
 
@@ -33,27 +27,27 @@ pub struct Client<C>
 where
     C: CeremonyConfig,
 {
-    ///
+    /// Participant data that are public
     participant: C::Participant,
 
-    ///
-    key_pair: (PrivateKey<C>, PublicKey<C>),
+    /// Private Key
+    private_key: PrivateKey<C>,
 }
 
 impl<C> Client<C>
 where
     C: CeremonyConfig,
 {
-    ///
-    pub fn new(participant: C::Participant, key_pair: (PrivateKey<C>, PublicKey<C>)) -> Self {
+    /// Builds a new [`Client`] with `participant` and `private_key`.
+    pub fn new(participant: C::Participant, private_key: PrivateKey<C>) -> Self {
         Self {
             participant,
-            key_pair,
+            private_key,
         }
     }
 
-    ///
-    pub fn enqueue(&mut self) -> Signed<EnqueueRequest<C>, C>
+    /// Enqueues a participant into queue on the server.
+    pub fn enqueue(&mut self) -> Signed<EnqueueRequest, C>
     where
         C::Participant: Clone,
     {
@@ -76,8 +70,8 @@ where
         todo!()
     }
 
-    ///
-    pub fn query_mpc_state(&mut self) -> Signed<QueryMPCStateRequest<C>, C>
+    /// Queries the MPC state of a participant.
+    pub fn query_mpc_state(&mut self) -> Signed<QueryMPCStateRequest, C>
     where
         C::Participant: Clone,
     {
@@ -100,7 +94,7 @@ where
         todo!()
     }
 
-    ///
+    /// Contributes to the state on the server.
     pub fn contribute(
         &mut self,
         hasher: &Hasher<C>,

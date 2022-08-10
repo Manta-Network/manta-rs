@@ -22,15 +22,18 @@ use alloc::collections::{BTreeMap, BTreeSet};
 #[derive(Default)]
 pub struct Registry<K, V>
 where
-    K: PartialEq + Ord,
+    K: Ord,
 {
+    /// Map from key `K` to value `V`
     map: BTreeMap<K, V>,
+
+    /// Set of participants that have contributed
     contributed_participants: BTreeSet<K>,
 }
 
 impl<K, V> Registry<K, V>
 where
-    K: PartialEq + Ord,
+    K: Ord,
 {
     /// Gets the participant value given the `id` and returns `None` if the participant is not registered.
     #[inline]
@@ -38,8 +41,8 @@ where
         self.map.get(id)
     }
 
+    /// Checks if `id` has contributed.
     #[inline]
-    /// TODO
     pub fn has_contributed(&self, id: &K) -> bool {
         self.contributed_participants.contains(id)
     }

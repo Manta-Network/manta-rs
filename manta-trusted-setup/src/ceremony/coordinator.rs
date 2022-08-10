@@ -26,12 +26,12 @@ use crate::{
     mpc::Verify,
 };
 
-/// Coordinator with `V` as trusted setup verifier, `P` as participant, `M` as the map used by registry, `N` as the number of priority levels
+/// Coordinator with `C` as CeremonyConfig and `N` as the number of priority levels
 pub struct Coordinator<C, const N: usize>
 where
     C: CeremonyConfig,
 {
-    /// States
+    /// State
     state: State<C>,
 
     /// Challenge
@@ -97,7 +97,7 @@ where
             .get(participant)
             .ok_or(CeremonyError::<C>::NotRegistered)?;
         if !self.queue.is_at_front(participant) {
-            return Err(CeremonyError::<C>::BadRequest);
+            return Err(CeremonyError::<C>::BadRequest); // TODO: Why use BadRequest instead of NotYourTurn?
         };
         take_mut::take(&mut self.state, |self_state| {
             C::Setup::verify_transform(&self.challenge, self_state, state, proof)
@@ -108,26 +108,27 @@ where
         Ok(())
     }
 
-    /// TODO
+    /// Enqueues a participant into the queue on the server if the participant has registered and has not contributed.
     #[inline]
     pub fn enqueue_participant(
         &mut self,
-        participant: &ParticipantIdentifier<C>,
+        participant_id: &ParticipantIdentifier<C>,
     ) -> Result<(), CeremonyError<C>> {
-        let participant = self.registry.get(&participant);
+        // TODO: Enqueue successfully should return a succeed message and an updated nonce.
+        let participant = self.registry.get(&participant_id);
         match participant {
             Some(participant) => {
                 if matches!(self.queue.position(&participant), None) {
                     if self.registry.has_contributed(&participant.identifier()) {
-                        return Err(CeremonyError::BadRequest); // TODO
+                        return Err(CeremonyError::BadRequest); // TODO: You have contributed.
                     }
                     self.queue.push(participant);
                     Ok(())
                 } else {
-                    return Err(CeremonyError::BadRequest); // TODO
+                    return Err(CeremonyError::BadRequest); // TODO: You are already in queue.
                 }
             }
-            None => Err(CeremonyError::BadRequest), // TODO
+            None => Err(CeremonyError::NotRegistered), // TODO: You have not registered.
         }
     }
 
@@ -140,8 +141,7 @@ where
         self.registry.get(identifier)
     }
 
-    /// Pops the current contributor. Return the participant identifier that is skipped.
-    /// The skipped participant needs to be registered again.
+    /// Pops the current contributor and returns the participant identifier that is skipped.
     pub fn skip_current_contributor(
         &mut self,
     ) -> Result<ParticipantIdentifier<C>, CeremonyError<C>> {

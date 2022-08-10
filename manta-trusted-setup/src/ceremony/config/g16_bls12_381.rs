@@ -33,9 +33,9 @@ use manta_crypto::rand::{OsRng, Rand};
 use serde::{Deserialize, Serialize};
 
 /// Groth16 Bls12
-pub struct Groth16Bls12;
+pub struct Groth16BLS12381;
 
-impl CeremonyConfig for Groth16Bls12 {
+impl CeremonyConfig for Groth16BLS12381 {
     type Setup = Groth16Phase2<groth16::config::Config>;
     type SignatureScheme = Ed25519;
     type Participant = Participant;
@@ -44,10 +44,11 @@ impl CeremonyConfig for Groth16Bls12 {
 /// Priority
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum UserPriority {
-    /// Normal Priority
-    Normal,
     /// High Priority
     High,
+
+    /// Normal Priority
+    Normal,
 }
 
 /// Participant
@@ -70,15 +71,13 @@ pub struct Participant {
 }
 
 impl Participant {
-    ///
+    /// Builds a new [`Participant`] from `public_key`, `twitter`, and `priority`.
     pub fn new(public_key: EdPublicKey, twitter: &str, priority: UserPriority) -> Self {
-        let mut rng = OsRng;
-        let nonce = rng.gen();
         Self {
             public_key,
             twitter: twitter.to_string(),
             priority,
-            nonce,
+            nonce: OsRng.gen(),
             contributed: false,
         }
     }
