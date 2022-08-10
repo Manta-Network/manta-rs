@@ -17,23 +17,15 @@
 //! Utility functions for Perpetual Powers of Tau
 
 use crate::{
-    groth16::{
-        bn254::manta_pay::MantaPaySetupCeremony,
-        kzg::{
-            Accumulator, Configuration as KzgConfiguration, G1Marker, G2Marker, Proof as KzgProof,
-            Size,
-        },
+    groth16::kzg::{
+        Accumulator, Configuration as KzgConfiguration, G1Marker, G2Marker, Proof as KzgProof, Size,
     },
     ratio::RatioProof,
     util::{BlakeHasher, Deserializer, KZGBlakeHasher, Serializer},
 };
 use ark_bn254::{Bn254, Fr, G1Affine, G2Affine, Parameters};
 use ark_serialize::{CanonicalSerialize, Read, SerializationError, Write};
-use ark_std::{
-    fs::{File, OpenOptions},
-    io, println,
-    time::Instant,
-};
+use ark_std::{io, println};
 use blake2::Digest;
 use core::fmt;
 use manta_crypto::arkworks::{
@@ -46,7 +38,7 @@ use manta_crypto::arkworks::{
     pairing::Pairing,
 };
 use manta_util::{cfg_iter, into_array_unchecked, vec::Vec};
-use memmap::{Mmap, MmapOptions};
+use memmap::Mmap;
 
 #[cfg(feature = "rayon")]
 use manta_util::rayon::prelude::ParallelIterator;
@@ -857,103 +849,6 @@ where
         beta_tau_powers_g1: read_g1_powers::<C>(readable_map, ElementType::BetaG1, compression)?,
         beta_g2: read_g2_powers::<C>(readable_map, ElementType::BetaG2, compression)?[0],
     })
-}
-
-/// Checks that a vector of G1 elements and vector of G2 elements are incrementing by the
-/// same factor.
-#[inline]
-fn check_consistent_factor(g1: &[G1Affine], g2: &[G2Affine]) -> bool {
-    use crate::util::power_pairs;
-    use manta_crypto::arkworks::pairing::PairingEngineExt;
-
-    let g1_pair = power_pairs(g1);
-    let g2_pair = power_pairs(g2);
-    Bn254::same_ratio(g1_pair, g2_pair)
-}
-
-/// Reads a subaccumulator from the PPoT file and does some basic
-/// sanity checks on the powers. For MantaPay circuit (size 1 << 16)
-/// this takes about 10 mins.
-#[test]
-pub fn read_subaccumulator_test() {
-    // Try to load `./challenge` from disk.
-    let reader = OpenOptions::new()
-        .read(true)
-        .open("/Users/thomascnorton/Documents/Manta/trusted-setup/challenge_0072")
-        .expect("unable open `./challenge` in this directory");
-    // Make a memory map
-    let readable_map = unsafe {
-        MmapOptions::new()
-            .map(&reader)
-            .expect("unable to create a memory map for input")
-    };
-
-    // These check that vectors of G1 elements and the vector `tau_powers_g2`
-    // are incrementing by the same (unknown) factor `tau`.
-    let acc = read_subaccumulator::<MantaPaySetupCeremony>(&readable_map, Compressed::No).unwrap();
-    assert!(check_consistent_factor(
-        &acc.tau_powers_g1,
-        &acc.tau_powers_g2
-    ));
-    assert!(check_consistent_factor(
-        &acc.alpha_tau_powers_g1,
-        &acc.tau_powers_g2
-    ));
-    assert!(check_consistent_factor(
-        &acc.beta_tau_powers_g1,
-        &acc.tau_powers_g2
-    ));
-
-    // Write the subaccumulator to file
-    let _f = File::create("../manta-parameters/data/ppot/round72powers19.lfs").unwrap();
-    let mut file = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .truncate(true)
-        .open("../manta-parameters/data/ppot/round72powers19.lfs")
-        .expect("unable to create parameter file in this directory");
-    CanonicalSerialize::serialize_uncompressed(&acc, &mut file).unwrap();
-}
-
-/// Compares the accumulators stored in response_0071 and challenge_0072
-/// Takes about 7 mins to read uncompressed, then about 14 to read compressed when 1 << 19 powers
-#[test]
-pub fn compare_response_challenge_accumulators_test() {
-    // Try to load `./challenge` from disk.
-    println!("Reading accumulator from challenge file");
-    let now = Instant::now();
-    let reader = OpenOptions::new()
-        .read(true)
-        .open("/Users/thomascnorton/Documents/Manta/trusted-setup/challenge_0072")
-        .expect("unable open `./challenge` in this directory");
-    // Make a memory map
-    let challenge_map = unsafe {
-        MmapOptions::new()
-            .map(&reader)
-            .expect("unable to create a memory map for input")
-    };
-    let challenge_acc =
-        read_subaccumulator::<MantaPaySetupCeremony>(&challenge_map, Compressed::No).unwrap();
-    println!("Read uncompressed accumulator in {:?}", now.elapsed());
-
-    // Try to load `./response` from disk.
-    println!("Reading accumulator from response file");
-    let now = Instant::now();
-    let reader = OpenOptions::new()
-        .read(true)
-        .open("/Users/thomascnorton/Documents/Manta/trusted-setup/response_0071")
-        .expect("unable open `./response` in this directory");
-    // Make a memory map
-    let response_map = unsafe {
-        MmapOptions::new()
-            .map(&reader)
-            .expect("unable to create a memory map for input")
-    };
-    let response_acc =
-        read_subaccumulator::<MantaPaySetupCeremony>(&response_map, Compressed::Yes).unwrap();
-    println!("Read compressed accumulator in {:?}", now.elapsed());
-
-    assert_eq!(challenge_acc, response_acc)
 }
 
 #[test]
