@@ -30,8 +30,7 @@ use manta_crypto::{
     },
     rand::{CryptoRng, RngCore, Sample},
 };
-use manta_util::{cfg_iter_mut, cfg_iter, from_variant};
-use manta_util::vec::VecExt;
+use manta_util::{cfg_iter, cfg_iter_mut, from_variant, vec::VecExt};
 
 #[cfg(feature = "rayon")]
 use manta_util::rayon::iter::{IndexedParallelIterator, ParallelIterator};
