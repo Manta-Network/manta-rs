@@ -113,7 +113,7 @@ async fn init_server(options: &PhaseOneParameters) -> S {
 async fn main() -> tide::Result<()> {
     let options = PhaseOneParameters::load_from_args();
     let mut api = tide::Server::with_state(init_server(&options).await);
-    api.at("/").get(|_| async { Ok("Hello, world!") });
+    api.at("/").get(|_| async { Ok("Hello, world!") }); // TODO: Remove this line. Currently we only use this line for testing network setup.
     api.at("/enqueue")
         .post(|r| S::execute(r, Server::enqueue_participant));
     api.at("/query")
