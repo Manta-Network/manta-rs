@@ -21,6 +21,7 @@ use crate::{
     key,
     rand::{RngCore, Sample},
 };
+use alloc::vec::Vec;
 use core::{borrow::Borrow, marker::PhantomData};
 use manta_util::{
     codec::{Decode, DecodeError, Encode, Read, Write},
