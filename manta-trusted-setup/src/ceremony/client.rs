@@ -16,19 +16,32 @@
 
 //! Asynchronous client for trusted setup.
 
-use crate::ceremony::{
-    config::{CeremonyConfig, Challenge, Hasher, PrivateKey, Proof, State},
-    message::{ContributeRequest, EnqueueRequest, QueryMPCStateRequest, Signed},
+use crate::{
+    ceremony::{
+        config::{
+            CeremonyConfig, Challenge, Hasher, Nonce, ParticipantIdentifier, PrivateKey, Proof,
+            PublicKey, State,
+        },
+        message::{ContributeRequest, EnqueueRequest, QueryMPCStateRequest, Signed},
+    },
+    mpc::Contribute,
+    util::AsBytes,
 };
-use manta_crypto::arkworks::serialize::CanonicalSerialize;
+use manta_crypto::{arkworks::serialize::CanonicalSerialize, rand::OsRng};
 
 /// Client
 pub struct Client<C>
 where
     C: CeremonyConfig,
 {
-    /// Participant data that are public
-    participant: C::Participant,
+    /// Public Key
+    public_key: PublicKey<C>,
+
+    /// Identifier
+    identifier: ParticipantIdentifier<C>,
+
+    /// Current Nonce
+    nonce: Nonce<C>,
 
     /// Private Key
     private_key: PrivateKey<C>,
@@ -39,59 +52,46 @@ where
     C: CeremonyConfig,
 {
     /// Builds a new [`Client`] with `participant` and `private_key`.
-    pub fn new(participant: C::Participant, private_key: PrivateKey<C>) -> Self {
+    pub fn new(
+        public_key: PublicKey<C>,
+        identifier: ParticipantIdentifier<C>,
+        nonce: Nonce<C>,
+        private_key: PrivateKey<C>,
+    ) -> Self {
         Self {
-            participant,
+            public_key,
+            identifier,
+            nonce,
             private_key,
         }
     }
 
-    /// Enqueues a participant into queue on the server.
-    pub fn enqueue(&mut self) -> Signed<EnqueueRequest, C>
+    /// Generates a request to enqueue this client into the queue on the server.
+    pub fn enqueue(&mut self) -> Result<Signed<EnqueueRequest, C>, ()>
     where
         C::Participant: Clone,
     {
-        // self.participant
-        //     .increase_nonce()
-        //     .expect("Increasing nonce should succeed");
-        // let message = RegisterRequest {
-        //     participant: self.participant.clone(),
-        // };
-        // Signed {
-        //     message: message.clone(),
-        //     signature: S::sign(
-        //         message,
-        //         &self.participant.nonce(),
-        //         &self.key_pair.1,
-        //         &self.key_pair.0,
-        //     )
-        //     .expect("Signing should succeed."),
-        // }
-        todo!()
+        Signed::new(
+            EnqueueRequest,
+            self.identifier.clone(),
+            &mut self.nonce,
+            &self.public_key,
+            &self.private_key,
+        )
     }
 
     /// Queries the MPC state of a participant.
-    pub fn query_mpc_state(&mut self) -> Signed<QueryMPCStateRequest, C>
+    pub fn query_mpc_state(&mut self) -> Result<Signed<QueryMPCStateRequest, C>, ()>
     where
         C::Participant: Clone,
     {
-        // self.participant
-        //     .update_nonce()
-        //     .expect("Increasing nonce should succeed");
-        // let message = QueryMPCStateRequest {
-        //     participant: self.participant.clone(),
-        // };
-        // Signed {
-        //     message: message.clone(),
-        //     signature: S::sign(
-        //         message,
-        //         &self.participant.nonce(),
-        //         &self.key_pair.1,
-        //         &self.key_pair.0,
-        //     )
-        //     .expect("Signing should succeed."),
-        // }
-        todo!()
+        Signed::new(
+            QueryMPCStateRequest,
+            self.identifier.clone(),
+            &mut self.nonce,
+            &self.public_key,
+            &self.private_key,
+        )
     }
 
     /// Contributes to the state on the server.
@@ -100,32 +100,30 @@ where
         hasher: &Hasher<C>,
         challenge: &Challenge<C>,
         mut state: State<C>,
-    ) -> Signed<ContributeRequest<C>, C>
+    ) -> Result<Signed<ContributeRequest<C>, C>, ()>
     where
         C::Participant: Clone,
         State<C>: CanonicalSerialize,
         Proof<C>: CanonicalSerialize,
         ContributeRequest<C>: Clone,
     {
-        // todo: update nonce
-        // let mut rng = OsRng;
-        // let proof = V::contribute(hasher, challenge, &mut state, &mut rng)
-        //     .expect("Contribute should succeed.");
-        // let message: ContributeRequest<P, V> = ContributeRequest {
-        //     participant: self.participant.clone(),
-        //     state: AsBytes::from_actual(state),
-        //     proof: AsBytes::from_actual(proof),
-        // };
-        // Signed {
-        //     message: message.clone(),
-        //     signature: S::sign(
-        //         message,
-        //         &self.participant.nonce(),
-        //         &self.key_pair.1,
-        //         &self.key_pair.0,
-        //     )
-        //     .expect("Signing should succeed."),
-        // }
-        todo!()
+        let mut rng = OsRng;
+        let proof = C::Setup::contribute(hasher, challenge, &mut state, &mut rng).ok_or(())?;
+        let message = ContributeRequest::<C> {
+            state: AsBytes::from_actual(state),
+            proof: AsBytes::from_actual(proof),
+        };
+        Signed::new(
+            message,
+            self.identifier.clone(),
+            &mut self.nonce,
+            &self.public_key,
+            &self.private_key,
+        )
+    }
+
+    /// Set Nonce for the client.
+    pub fn set_nonce(&mut self, nonce: Nonce<C>) {
+        self.nonce = nonce;
     }
 }

@@ -27,6 +27,12 @@ where
     fn public_key(&self) -> S::PublicKey;
 }
 
+/// Nonce
+pub trait Nonce: Serialize + PartialEq + Clone {
+    /// Increment the current nonce by one.
+    fn increment(&mut self);
+}
+
 /// Signature Scheme
 pub trait SignatureScheme {
     /// Public Key Type
@@ -36,7 +42,7 @@ pub trait SignatureScheme {
     type PrivateKey;
 
     /// Nonce Type
-    type Nonce: Serialize + PartialEq;
+    type Nonce: Nonce;
 
     /// Signature Type
     type Signature;
@@ -148,6 +154,12 @@ pub mod ed_dalek {
     impl From<Signature> for ED25519Signature {
         fn from(f: Signature) -> Self {
             ED25519Signature::from_bytes(&f.0).expect("Should never fail.")
+        }
+    }
+
+    impl Nonce for u64 {
+        fn increment(&mut self) {
+            *self = self.wrapping_add(1);
         }
     }
 

@@ -17,14 +17,14 @@
 //! Asynchronous Server for Trusted Setup
 
 use crate::ceremony::{
-    config::{CeremonyConfig, Challenge, ParticipantIdentifier, Proof, State},
+    config::{CeremonyConfig, Challenge, Nonce, ParticipantIdentifier, Proof, State},
     coordinator::Coordinator,
     message::{
         ContributeRequest, EnqueueRequest, QueryMPCStateRequest, QueryMPCStateResponse, Signed,
     },
-    queue::Identifier,
+    queue::HasIdentifier,
     registry::Registry,
-    signature::{HasPublicKey, SignatureScheme},
+    signature::{HasPublicKey, Nonce as _, SignatureScheme},
     CeremonyError,
 };
 use manta_crypto::arkworks::serialize::{CanonicalDeserialize, CanonicalSerialize};
@@ -43,10 +43,8 @@ where
     /// Returns the nonce of `self` as a participant.
     fn nonce(&self) -> S::Nonce;
 
-    /// TODO: since we only increase nonce by 1 for each time, we can have this helper function
-    /// so we do not additionally require traits on nonce such as it can be increased by
-    /// a u64 number of usize number.
-    fn update_nonce(&mut self);
+    /// Set nonce
+    fn set_nonce(&mut self, nonce: S::Nonce);
 }
 
 /// Server
@@ -95,6 +93,7 @@ where
             Some(participant) => participant,
             None => return Err(CeremonyError::NotRegistered),
         };
+        let mut nonce = participant.nonce();
         if participant.nonce() != request.nonce {
             return Err(CeremonyError::NonceNotInSync(participant.nonce()));
         }
@@ -106,7 +105,8 @@ where
         )
         .map_err(|_| CeremonyError::BadRequest)?;
         // request is valid, so increment nonce by 1
-        participant.update_nonce();
+        nonce.increment();
+        participant.set_nonce(nonce);
         Ok(())
     }
 
@@ -194,6 +194,26 @@ where
                 .to_actual()
                 .map_err(|_| CeremonyError::BadRequest)?,
         )
+    }
+
+    /// Get the current nonce of the participant.
+    #[inline]
+    pub async fn get_nonce(
+        self,
+        request: ParticipantIdentifier<C>,
+    ) -> Result<Nonce<C>, CeremonyError<C>>
+    where
+        ContributeRequest<C>: Serialize,
+        ParticipantIdentifier<C>: Serialize,
+    {
+        let coordinator = self
+            .coordinator
+            .lock()
+            .expect("Locking the coordinator should succeed.");
+        let participant = coordinator
+            .get_participant(&request)
+            .ok_or(CeremonyError::NotRegistered)?;
+        Ok(participant.nonce())
     }
 
     /// Executes `f` on the incoming `request`.

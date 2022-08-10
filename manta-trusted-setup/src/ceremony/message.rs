@@ -17,8 +17,12 @@
 //! Messages
 
 use crate::{
-    ceremony::config::{
-        CeremonyConfig, Challenge, Nonce, ParticipantIdentifier, Proof, Signature, State,
+    ceremony::{
+        config::{
+            CeremonyConfig, Challenge, Nonce, ParticipantIdentifier, PrivateKey, Proof, PublicKey,
+            Signature, State,
+        },
+        signature::{Nonce as _, SignatureScheme},
     },
     util::AsBytes,
 };
@@ -48,17 +52,11 @@ where
 
 /// Contribute Request
 #[derive(Serialize, Deserialize)]
-#[serde(bound(
-    serialize = "ParticipantIdentifier<C>: Serialize",
-    deserialize = "ParticipantIdentifier<C>: Deserialize<'de>"
-))]
+#[serde(bound(serialize = r"", deserialize = r"",), deny_unknown_fields)]
 pub struct ContributeRequest<C>
 where
     C: CeremonyConfig,
 {
-    /// Participant
-    pub identifier: ParticipantIdentifier<C>, // TODO: To be removed
-
     /// State after Contribution
     pub state: AsBytes<State<C>>,
 
@@ -71,7 +69,7 @@ where
 #[serde(
     bound(
         serialize = r"T: Serialize, Signature<C>: Serialize, Nonce<C>: Serialize, ParticipantIdentifier<C>: Serialize",
-        deserialize = "T: Deserialize<'de>, Signature<C>: Deserialize<'de>, Nonce<C>: Deserialize<'de>, ParticipantIdentifier<C>: Deserialize<'de>",
+        deserialize = r"T: Deserialize<'de>, Signature<C>: Deserialize<'de>, Nonce<C>: Deserialize<'de>, ParticipantIdentifier<C>: Deserialize<'de>",
     ),
     deny_unknown_fields
 )]
@@ -90,4 +88,31 @@ where
 
     /// Signature
     pub signature: Signature<C>,
+}
+
+impl<T, C> Signed<T, C>
+where
+    C: CeremonyConfig,
+{
+    /// Generate a signed message using user's identifier, nonce, and key pair, and increment nonce by 1.
+    pub fn new(
+        message: T,
+        identifier: ParticipantIdentifier<C>,
+        nonce: &mut Nonce<C>,
+        public_key: &PublicKey<C>,
+        private_key: &PrivateKey<C>,
+    ) -> Result<Self, ()>
+    where
+        T: Serialize,
+    {
+        let signature = C::SignatureScheme::sign(&message, &nonce, public_key, private_key)?;
+        let message = Signed {
+            message,
+            identifier,
+            nonce: nonce.clone(),
+            signature,
+        };
+        nonce.increment();
+        Ok(message)
+    }
 }

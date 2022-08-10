@@ -19,7 +19,7 @@
 use crate::{
     ceremony::{
         config::CeremonyConfig,
-        queue::{Identifier, Priority},
+        queue::{HasIdentifier, Priority},
         server::HasNonce,
         signature::{
             ed_dalek::{Ed25519, PublicKey as EdPublicKey},
@@ -92,7 +92,7 @@ impl Priority for Participant {
     }
 }
 
-impl Identifier for Participant {
+impl HasIdentifier for Participant {
     type Identifier = EdPublicKey;
 
     fn identifier(&self) -> Self::Identifier {
@@ -111,7 +111,7 @@ impl HasNonce<Ed25519> for Participant {
         self.nonce
     }
 
-    fn update_nonce(&mut self) {
-        self.nonce = self.nonce.wrapping_add(1);
+    fn set_nonce(&mut self, nonce: u64) {
+        self.nonce = nonce;
     }
 }

@@ -29,9 +29,9 @@ pub trait Priority {
 }
 
 /// Identifier
-pub trait Identifier {
+pub trait HasIdentifier {
     /// Identifier Type
-    type Identifier: Ord;
+    type Identifier: Ord + Clone;
 
     /// Gets the identifier.
     fn identifier(&self) -> Self::Identifier;
@@ -40,11 +40,11 @@ pub trait Identifier {
 /// Queue with `N` priority levels where participants with higher priority level are served first
 pub struct Queue<T, const N: usize>([VecDeque<T::Identifier>; N])
 where
-    T: Priority + Identifier;
+    T: Priority + HasIdentifier;
 
 impl<T, const N: usize> Queue<T, N>
 where
-    T: Priority + Identifier,
+    T: Priority + HasIdentifier,
 {
     /// Builds a new empty [`Queue`].
     #[inline]
@@ -139,7 +139,7 @@ mod test {
         }
     }
 
-    impl Identifier for Item {
+    impl HasIdentifier for Item {
         type Identifier = String;
         fn identifier(&self) -> Self::Identifier {
             self.id.clone()

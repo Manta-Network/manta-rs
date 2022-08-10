@@ -17,6 +17,7 @@
 //! Client and Server Interfaces and Implementations for Manta Trusted Setup Ceremony
 
 use crate::ceremony::config::{CeremonyConfig, Nonce};
+use derivative::Derivative;
 use serde::{Deserialize, Serialize};
 
 // pub mod bls_server;
@@ -32,9 +33,10 @@ pub mod signature;
 /// Ceremony Error
 ///
 /// # Note
-/// 
+///
 /// All errors here are visible to users.
-#[derive(PartialEq, Serialize, Deserialize)]
+#[derive(PartialEq, Serialize, Deserialize, Derivative)]
+#[derivative(Debug(bound="Nonce<C>: core::fmt::Debug"))]
 #[serde(
     bound(
         serialize = "Nonce<C>: Serialize",

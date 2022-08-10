@@ -119,6 +119,7 @@ async fn main() -> tide::Result<()> {
     api.at("/query")
         .post(|r| S::execute(r, Server::get_state_and_challenge));
     api.at("/update").post(|r| S::execute(r, Server::update));
+    api.at("/nonce").post(|r| S::execute(r, Server::get_nonce));
     api.listen("127.0.0.1:8080").await?; // TODO: use TLS
     Ok(())
 }

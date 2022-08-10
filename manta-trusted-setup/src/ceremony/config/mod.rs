@@ -18,7 +18,7 @@
 
 use crate::{
     ceremony::{
-        queue::{Identifier, Priority},
+        queue::{HasIdentifier, Priority},
         server::HasNonce,
         signature,
         signature::SignatureScheme,
@@ -35,10 +35,10 @@ pub trait CeremonyConfig {
 
     /// Signature Scheme
     type SignatureScheme: SignatureScheme;
-    
+
     /// Participant
     type Participant: Priority
-        + Identifier
+        + HasIdentifier
         + signature::HasPublicKey<Self::SignatureScheme>
         + HasNonce<Self::SignatureScheme>;
 }
@@ -68,4 +68,5 @@ pub type Signature<C> = <<C as CeremonyConfig>::SignatureScheme as SignatureSche
 pub type PrivateKey<C> = <<C as CeremonyConfig>::SignatureScheme as SignatureScheme>::PrivateKey;
 
 /// Participant Identifier
-pub type ParticipantIdentifier<C> = <<C as CeremonyConfig>::Participant as Identifier>::Identifier;
+pub type ParticipantIdentifier<C> =
+    <<C as CeremonyConfig>::Participant as HasIdentifier>::Identifier;

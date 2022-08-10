@@ -19,7 +19,7 @@
 use crate::{
     ceremony::{
         config::{CeremonyConfig, Challenge, ParticipantIdentifier, Proof, State},
-        queue::{Identifier, Queue},
+        queue::{HasIdentifier, Queue},
         registry::Registry,
         CeremonyError,
     },
