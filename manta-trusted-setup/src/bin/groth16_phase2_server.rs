@@ -31,7 +31,7 @@ use manta_trusted_setup::{
         },
         registry::Registry,
         server::Server,
-        signature::ed_dalek,
+        signature::{ed_dalek, SignatureScheme},
     },
     groth16::{
         config::dummy_circuit,
@@ -40,7 +40,7 @@ use manta_trusted_setup::{
         mpc::initialize,
     },
 };
-use std::{collections::BTreeMap, fs::File};
+use std::{collections::BTreeMap, fs::File, process::exit};
 
 type C = Groth16BLS12381;
 type Config = manta_trusted_setup::groth16::config::Config;
@@ -103,26 +103,42 @@ pub fn dummy_phase_one_trusted_setup() -> Accumulator<Config> {
 }
 
 fn load_registry() -> Registry<ParticipantIdentifier<C>, <C as CeremonyConfig>::Participant> {
-    let file = File::open(REGISTRY).expect("Registry file should exist.");
-    let mut rdr = csv::Reader::from_reader(file);
     let mut map = BTreeMap::new();
-    for record in rdr.records() {
+    for record in
+        csv::Reader::from_reader(File::open(REGISTRY).expect("Registry file should exist."))
+            .records()
+    {
         let result = record.expect("Read csv should succeed.");
-        let High = "High";
-        let Normal = "Normal";
-        let signature = result[3].to_string(); // TODO: To be checked
-        let participant = Participant {
-            twitter: result[0].to_string(),
-            priority: match result[1].to_string() {
-                High => UserPriority::High,
-                Normal => UserPriority::Normal,
-            },
-            public_key: bincode::deserialize::<ed_dalek::PublicKey>(
-                &bs58::decode(result[2].to_string())
+        let twitter = result[0].to_string();
+        let public_key = bincode::deserialize::<ed_dalek::PublicKey>(
+            &bs58::decode(result[2].to_string())
+                .into_vec()
+                .expect("Decode public key should succeed."),
+        )
+        .expect("Deserialize public key should succeed.");
+        ed_dalek::Ed25519::verify(
+            format!("manta-trusted-setup-twitter:{}", twitter),
+            &0,
+            &bincode::deserialize::<ed_dalek::Signature>(
+                &bs58::decode(result[3].to_string())
                     .into_vec()
-                    .expect("Decode public key should succeed."),
+                    .expect("Decode signature should succeed."),
             )
-            .expect("Deserialize public key should succed."),
+            .expect("Deserialize signature should succeed."),
+            &public_key,
+        )
+        .expect("Verifying signature should succeed.");
+        let participant = Participant {
+            twitter,
+            priority: match result[1].to_string().parse::<i32>().unwrap() {
+                1 => UserPriority::High,
+                0 => UserPriority::Normal,
+                _ => {
+                    println!("Invalid priority: {:?}", result);
+                    exit(1)
+                }
+            },
+            public_key,
             nonce: OsRng.gen(),
             contributed: false,
         };
