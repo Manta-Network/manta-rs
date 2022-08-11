@@ -20,11 +20,15 @@
 //       some of it, to reduce potential duplication?
 // TODO: We should probably move `InnerNode` and its related `struct`s to `merkle_tree::node`.
 
-use crate::{merkle_tree::{
-    path::{CurrentInnerPath, InnerPath},
-    path_length, Configuration, InnerDigest, Node, Parameters, Parity,
-}, eclair::bool::Bool};
+use crate::{
+    eclair::bool::Bool,
+    merkle_tree::{
+        path::{CurrentInnerPath, InnerPath},
+        path_length, Configuration, InnerDigest, Node, Parameters, Parity,
+    },
+};
 use alloc::collections::btree_map;
+use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash, iter::FusedIterator, marker::PhantomData, ops::Index};
 
 #[cfg(feature = "serde")]
@@ -101,8 +105,12 @@ impl InnerNode {
 
     /// Returns the k-th descendants [`InnerNode`] of this inner node
     #[inline]
-    pub fn descendants(&self, k:usize) -> Vec<Self> {
-        self.index.descendants(k).iter().map(|a| Self::new(self.depth, *a)).collect()
+    pub fn descendants(&self, k: usize) -> Vec<Self> {
+        self.index
+            .descendants(k)
+            .iter()
+            .map(|a| Self::new(self.depth, *a))
+            .collect()
     }
 
     /// Converts `self` into its parent, if the parent exists, returning the parent [`InnerNode`].
@@ -245,7 +253,6 @@ where
     fn delete(&mut self, _inner_node: InnerNode) -> Bool {
         false
     }
-
 }
 
 impl<C, M> InnerMap<C> for &mut M

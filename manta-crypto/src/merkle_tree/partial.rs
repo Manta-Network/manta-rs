@@ -20,7 +20,7 @@
 
 use crate::merkle_tree::{
     capacity,
-    inner_tree::{BTreeMap, InnerMap, PartialInnerTree, InnerNode},
+    inner_tree::{BTreeMap, InnerMap, InnerNode, PartialInnerTree},
     Configuration, CurrentPath, InnerDigest, Leaf, LeafDigest, MerkleTree, Node, Parameters, Path,
     PathError, Root, Tree, WithProofs,
 };
@@ -372,7 +372,9 @@ where
             let height = C::HEIGHT;
             let mut inner_node = match InnerNode::from_leaf::<C>(Node::parent(&Node(index))) {
                 Some(q) => q,
-                None => {return true;}
+                None => {
+                    return true;
+                }
             };
             for level in 1..height - 1 {
                 self.inner_digests.delete(inner_node.sibling());
@@ -382,14 +384,18 @@ where
                     .iter()
                     .all(|x| self.marked_leaves.contains(&x.0))
                 {
-                    if let Some(parent) = inner_node.parent() {inner_node = parent;} else {return true;}
+                    if let Some(parent) = inner_node.parent() {
+                        inner_node = parent;
+                    } else {
+                        return true;
+                    }
                 } else {
                     return true;
                 }
             }
-            return true;}
-        else {
-            return false;
+            true
+        } else {
+            false
         }
     }
 }
