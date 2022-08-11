@@ -27,8 +27,8 @@ use crate::{
         path_length, Configuration, InnerDigest, Node, Parameters, Parity,
     },
 };
-use alloc::collections::btree_map;
-use alloc::vec::Vec;
+
+use alloc::{collections::btree_map, vec::Vec};
 use core::{fmt::Debug, hash::Hash, iter::FusedIterator, marker::PhantomData, ops::Index};
 
 #[cfg(feature = "serde")]
