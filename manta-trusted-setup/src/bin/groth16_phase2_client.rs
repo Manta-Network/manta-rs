@@ -21,31 +21,29 @@ extern crate alloc;
 use alloc::string::String;
 use clap::{Parser, Subcommand};
 use colored::Colorize;
-use core::fmt::{Display, Formatter};
+use core::{
+    fmt::{Display, Formatter},
+    time::Duration,
+};
 use dialoguer::{theme::ColorfulTheme, Input};
 use manta_crypto::rand::{OsRng, RngCore};
-use manta_trusted_setup::{
-    ceremony::{
-        config::{PrivateKey, PublicKey},
-        message::{QueryMPCStateRequest, QueryMPCStateResponse},
-        server::HasNonce,
-        signature::{ed_dalek, SignatureScheme},
-        CeremonyError,
-    },
-    groth16::mpc::Groth16Phase2,
+use manta_trusted_setup::ceremony::{
+    config::{g16_bls12_381::Groth16BLS12381, Nonce, PrivateKey, PublicKey},
+    message::QueryMPCStateResponse,
+    signature::{ed_dalek, SignatureScheme},
+    CeremonyError,
 };
-use serde::Serialize;
+use serde::{de::DeserializeOwned, Serialize};
+use std::thread;
 
-use manta_trusted_setup::ceremony::config::{g16_bls12_381::Groth16BLS12381, Nonce};
-use serde::de::DeserializeOwned;
-
-type C = Groth16BLS12381;
-type Config = manta_trusted_setup::groth16::config::Config;
+pub type C = Groth16BLS12381;
+pub type Config = manta_trusted_setup::groth16::config::Config;
+pub type Client = manta_trusted_setup::ceremony::client::Client<C>;
 
 const SERVER_ADDR: &str = "http://localhost:8080";
 
 #[derive(Debug, Copy, Clone)]
-enum Endpoint {
+pub enum Endpoint {
     Enqueue,
     Query,
     Update,
@@ -65,7 +63,7 @@ impl From<Endpoint> for String {
 }
 
 #[derive(Clone, Debug)]
-enum Error {
+pub enum Error {
     InvalidSecret,
     UnableToGenerateRequest(&'static str),
     MissingConfigFile,
@@ -76,6 +74,7 @@ enum Error {
 }
 
 impl Display for Error {
+    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         match self {
             Error::InvalidSecret => {
@@ -103,7 +102,9 @@ impl Display for Error {
     }
 }
 
-fn handle_error<T>(result: Result<T, Error>) -> T {
+/// Handles errors.
+#[inline]
+pub fn handle_error<T>(result: Result<T, Error>) -> T {
     match result {
         Ok(x) => x,
         Err(e) => {
@@ -123,36 +124,37 @@ pub enum Command {
     Contribute,
 }
 
-/// Trusted Setup Contributor
+/// Command Line Arguments
 #[derive(Debug, Parser)]
 pub struct Arguments {
     /// Command
     #[clap(subcommand)]
-    pub command: Command,
+    command: Command,
 }
 
-// impl Arguments {
-//     ///
-//     #[inline]
-//     pub fn run(self) -> Result<(), Error> {
-//         match self.command {
-//             Command::Register => {
-//                 todo!()
-//             }
-//             Command::Contribute => {
-//                 match tokio::runtime::Builder::new_multi_thread() // TODO
-//                     .worker_threads(4)
-//                     .enable_io()
-//                     .enable_time()
-//                     .build()
-//                 {
-//                     Ok(runtime) => runtime.block_on(async { todo!() }).map_err(|_| todo!()),
-//                     Err(err) => Err(Error::UnexpectedError(format!("{}", err))),
-//                 }
-//             }
-//         }
-//     }
-// }
+impl Arguments {
+    /// Takes command line arguments and executes the corresponding operations.
+    #[inline]
+    pub fn run(self) -> Result<(), Error> {
+        match self.command {
+            Command::Register => {
+                register();
+                Ok(())
+            }
+            Command::Contribute => {
+                match tokio::runtime::Builder::new_multi_thread() // TODO
+                    .worker_threads(4)
+                    .enable_io()
+                    .enable_time()
+                    .build()
+                {
+                    Ok(runtime) => runtime.block_on(async { contribute().await }),
+                    Err(err) => Err(Error::UnexpectedError(format!("{}", err))),
+                }
+            }
+        }
+    }
+}
 
 /// Registers a participant.
 #[inline]
@@ -208,10 +210,9 @@ pub fn register() {
     );
 }
 
-type Client = manta_trusted_setup::ceremony::client::Client<C>;
-
 /// Prompts the client information.
-fn prompt_client_info() -> Result<(PrivateKey<C>, PublicKey<C>), Error> {
+#[inline]
+pub fn prompt_client_info() -> Result<(PrivateKey<C>, PublicKey<C>), Error> {
     println!(
         "Please enter your {} that you get when you registered yourself using this tool.",
         "Secret".italic()
@@ -223,11 +224,12 @@ fn prompt_client_info() -> Result<(PrivateKey<C>, PublicKey<C>), Error> {
     let secret_bytes = bs58::decode(&secret_str)
         .into_vec()
         .map_err(|_| Error::InvalidSecret)?;
-
     bincode::deserialize(&secret_bytes).map_err(|_| Error::InvalidSecret)
 }
 
-async fn send_request<T, R>(
+/// Sends requests thourgh network.
+#[inline]
+pub async fn send_request<T, R>(
     network_client: &reqwest::Client,
     endpoint: Endpoint,
     request: T,
@@ -247,8 +249,9 @@ where
         .map_err(|e| Error::UnexpectedError(format!("{}", e)))
 }
 
-/// Get nonce from server
-async fn get_nonce(
+/// Gets nonce from server.
+#[inline]
+pub async fn get_nonce(
     identity: PublicKey<C>,
     network_client: &reqwest::Client,
 ) -> Result<Nonce<C>, Error> {
@@ -262,9 +265,9 @@ async fn get_nonce(
     }
 }
 
-/// Run `reqwest` contribution client, takes seed as input.
+/// Contributes to the server.
 #[inline]
-async fn contribute() -> Result<(), Error> {
+pub async fn contribute() -> Result<(), Error> {
     let network_client = reqwest::Client::new();
     let (sk, pk) = prompt_client_info()?;
     let nonce = get_nonce(pk, &network_client).await?;
@@ -286,64 +289,78 @@ async fn contribute() -> Result<(), Error> {
             }
             Err(CeremonyError::BadRequest) => {
                 return Err(Error::UnexpectedError(
-                    "unexpected error when enqueueing".to_string(),
+                    "unexpected error when enqueueing since finding a bad request.".to_string(),
                 ))
             }
             Ok(_) => {}
         }
-        let query_mpc_state_response = send_request::<_, QueryMPCStateRequest>(
+        let (state, challenge) = match send_request::<_, QueryMPCStateResponse<C>>(
             &network_client,
             Endpoint::Query,
-            trusted_setup_client.query_mpc_state(),
+            trusted_setup_client
+                .query_mpc_state()
+                .map_err(|_| Error::UnableToGenerateRequest("query mpc state"))?,
         )
-        .await?;
-        // let (state, challenge) = match query_mpc_state_response {
-        //     Ok(_) => todo!(),
-        //     Err(_) => todo!(),
-        // };
-
-        // let (state, challenge) = match parsed_query_mpc_state_response {
-        //     QueryMPCStateResponse::Mpc(state, challenge) => {
-        //         (state.to_actual(), challenge.to_actual())
-        //     }
-        //     QueryMPCStateResponse::QueuePosition(t) => {
-        //         println!("Your current position is {}.", t);
-        //         thread::sleep(Duration::from_millis(300000));
-        //         continue;
-        //     }
-        //     QueryMPCStateResponse::NotRegistered => {
-        //         println!("You have not registered.");
-        //         return Ok(());
-        //     }
-        //     QueryMPCStateResponse::HaveContributed => {
-        //         println!("You have contributed.");
-        //         return Ok(());
-        //     }
-        // };
-        // let h = Config::generate_hasher();
-        // // <Config as mpc::Configuration>::Hasher;
-        // let contribute_request =
-        //     trusted_setup_client.contribute::<Groth16Phase2<Config>>(&h, &challenge, state);
-        // let contribute_response = network_client
-        //     .post("http://localhost:8080/update") // TODO: Change HTTP path
-        //     .json(&contribute_request)
-        //     .send()
-        //     .await
-        //     .unwrap();
-        // let parsed_contribute_response = contribute_response
-        //     .json::<ContributeResponse>()
-        //     .await
-        //     .unwrap(); // TODO: Error handling here if response status is bad.
-        //                // TODO: Need to handle the case if contribute failed due to network reason or other reasons.
-        // println!("Contribute succeed: {:?}", parsed_contribute_response);
-        // break;
+        .await?
+        {
+            Err(CeremonyError::NotRegistered) => return Err(Error::NotRegistered),
+            Err(CeremonyError::NonceNotInSync(_)) => {
+                return Err(Error::UnexpectedError(
+                    "unexpected error when query mpc state. Nonce should have been synced."
+                        .to_string(),
+                ))
+            }
+            Err(CeremonyError::BadRequest) => {
+                return Err(Error::UnexpectedError(
+                    "unexpected error when query mpc state since finding a bad request."
+                        .to_string(),
+                ))
+            }
+            Ok(message) => match message {
+                QueryMPCStateResponse::QueuePosition(position) => {
+                    println!("Your current position is {}.", position);
+                    thread::sleep(Duration::from_millis(10000));
+                    continue;
+                }
+                QueryMPCStateResponse::Mpc(state, challenge) => (
+                    state.to_actual().expect("`to_actual` should succeed."),
+                    challenge.to_actual().expect("`to_actual` should succeed."),
+                ),
+            },
+        };
+        match send_request::<_, ()>(
+            &network_client,
+            Endpoint::Update,
+            trusted_setup_client
+                .contribute(&Config::generate_hasher(), &challenge, state)
+                .map_err(|_| Error::UnableToGenerateRequest("contribute"))?,
+        )
+        .await?
+        {
+            Err(CeremonyError::NotRegistered) => {
+                return Err(Error::UnexpectedError(
+                    "unexpected error when contribute. Should have registered.".to_string(),
+                ))
+            }
+            Err(CeremonyError::NonceNotInSync(_)) => {
+                return Err(Error::UnexpectedError(
+                    "unexpected error when contribute. Nonce should have been synced.".to_string(),
+                ))
+            }
+            Err(CeremonyError::BadRequest) => {
+                return Err(Error::UnexpectedError(
+                    "unexpected error when contribute since finding a bad request.".to_string(),
+                ))
+            }
+            Ok(_) => {
+                println!("Contribute succeeded!");
+                break;
+            }
+        }
     }
     Ok(())
 }
 
 fn main() {
-    // handle_error(Arguments::parse().run()); // TODO: When should we stop?
+    handle_error(Arguments::parse().run());
 }
-
-// // cargo --bin xxx -- contribute
-// // cargo --bin xxx -- register

@@ -105,7 +105,6 @@ where
         C::Participant: Clone,
         State<C>: CanonicalSerialize,
         Proof<C>: CanonicalSerialize,
-        ContributeRequest<C>: Clone,
     {
         let mut rng = OsRng;
         let proof = C::Setup::contribute(hasher, challenge, &mut state, &mut rng).ok_or(())?;

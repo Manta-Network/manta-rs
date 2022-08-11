@@ -22,7 +22,6 @@ use crate::ceremony::{
     message::{
         ContributeRequest, EnqueueRequest, QueryMPCStateRequest, QueryMPCStateResponse, Signed,
     },
-    queue::HasIdentifier,
     registry::Registry,
     signature::{HasPublicKey, Nonce as _, SignatureScheme},
     CeremonyError,
