@@ -17,16 +17,21 @@
 //! Trusted Setup Ceremony Server
 
 use ark_bls12_381::Fr;
+use csv::{Reader, StringRecord};
 use manta_crypto::{
     arkworks::pairing::Pairing,
-    rand::{OsRng, Sample},
+    rand::{OsRng, Rand, Sample},
 };
 use manta_pay::crypto::constraint::arkworks::R1CS;
 use manta_trusted_setup::{
     ceremony::{
-        config::{g16_bls12_381::Groth16BLS12381, CeremonyConfig, ParticipantIdentifier},
+        config::{
+            g16_bls12_381::{Groth16BLS12381, Participant, UserPriority},
+            CeremonyConfig, ParticipantIdentifier,
+        },
         registry::Registry,
         server::Server,
+        signature::ed_dalek,
     },
     groth16::{
         config::dummy_circuit,
@@ -35,10 +40,14 @@ use manta_trusted_setup::{
         mpc::initialize,
     },
 };
+use std::{collections::BTreeMap, fs::File};
 
 type C = Groth16BLS12381;
 type Config = manta_trusted_setup::groth16::config::Config;
 type S = Server<C, 2>;
+
+/// Registry File Path
+pub const REGISTRY: &str = "dummy_register.csv";
 
 ///
 pub struct PhaseOneParameters {
@@ -94,7 +103,32 @@ pub fn dummy_phase_one_trusted_setup() -> Accumulator<Config> {
 }
 
 fn load_registry() -> Registry<ParticipantIdentifier<C>, <C as CeremonyConfig>::Participant> {
-    todo!()
+    let file = File::open(REGISTRY).expect("Registry file should exist.");
+    let mut rdr = csv::Reader::from_reader(file);
+    let mut map = BTreeMap::new();
+    for record in rdr.records() {
+        let result = record.expect("Read csv should succeed.");
+        let High = "High";
+        let Normal = "Normal";
+        let signature = result[3].to_string(); // TODO: To be checked
+        let participant = Participant {
+            twitter: result[0].to_string(),
+            priority: match result[1].to_string() {
+                High => UserPriority::High,
+                Normal => UserPriority::Normal,
+            },
+            public_key: bincode::deserialize::<ed_dalek::PublicKey>(
+                &bs58::decode(result[2].to_string())
+                    .into_vec()
+                    .expect("Decode public key should succeed."),
+            )
+            .expect("Deserialize public key should succed."),
+            nonce: OsRng.gen(),
+            contributed: false,
+        };
+        map.insert(participant.public_key, participant);
+    }
+    Registry::new(map)
 }
 
 // TO be updated

@@ -35,6 +35,24 @@ impl<K, V> Registry<K, V>
 where
     K: Ord,
 {
+    /// Builds a new [`Register`].
+    #[inline]
+    pub fn new(map: BTreeMap<K, V>) -> Self {
+        Self {
+            map,
+            contributed_participants: BTreeSet::new(),
+        }
+    }
+
+    /// Inserts a `(key, value)` pair into registry.
+    #[inline]
+    pub fn insert(&mut self, key: K, value: V) -> Result<(), &'static str>{
+        match self.map.insert(key, value) {
+            None => {Ok(())},
+            Some(_) => {Err("Invalid insertion into registry.")}
+        }
+    }
+
     /// Gets the participant value given the `id` and returns `None` if the participant is not registered.
     #[inline]
     pub fn get(&self, id: &K) -> Option<&V> {

@@ -170,19 +170,19 @@ pub fn register() {
     let pk = ed_dalek::PublicKey(ed25519_dalek::PublicKey::from(&sk).to_bytes());
     let sk = ed_dalek::PrivateKey(sk.to_bytes());
     println!(
-        "Your {}: \nCopy the following text to \"Twitter\" Section in Google Form:\n {}\n\n\n\n",
+        "Your {}: \nCopy the following text to \"Twitter\" Section in Google Sheet:\n {}\n",
         "Twitter Account".italic(),
         twitter_account.blue(),
     );
     println!(
-        "Your {}: \nCopy the following text to \"Public Key\" Section in Google Form:\n {}\n\n\n\n",
+        "Your {}: \nCopy the following text to \"Public Key\" Section in Google Sheet:\n {}\n",
         "Public Key".italic(),
         bs58::encode(bincode::serialize(&pk).expect("Serializing public key should succeed"))
             .into_string()
             .blue(),
     );
     println!(
-        "Your {}: \nCopy the following text to \"Signature\" Section in Google Form: \n {}\n\n\n\n",
+        "Your {}: \nCopy the following text to \"Signature\" Section in Google Sheet: \n {}\n",
         "Signature".italic(),
         bs58::encode(
             bincode::serialize(
@@ -200,9 +200,9 @@ pub fn register() {
         .blue()
     );
     println!(
-        "Your {}: \nThe following text stores your secret for trusted setup.\
-         Save the following text somewhere safe. \n DO NOT share this to anyone else!\
-          Please discard this data after the trusted setup ceremony.\n {}",
+        "Your {}: \nThe following text stores your secret for trusted setup. \
+         Save the following text somewhere safe. \n DO NOT share this to anyone else! \
+         Please discard this data after the trusted setup ceremony.\n {}",
         "Secret".italic(),
         bs58::encode(bincode::serialize(&(pk, sk)).expect("Serializing keypair should succeed"))
             .into_string()
