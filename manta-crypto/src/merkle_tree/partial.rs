@@ -368,6 +368,7 @@ where
     #[inline]
     fn remove_path(&mut self, index: usize) -> bool {
         // TODO: Implement this optimization.
+        self.marked_leaves.push(index);
         let mut node = Node(self.starting_leaf_index() + index);
         let height = C::HEIGHT;
         let mut nodes_to_be_removed: Vec<Node> = Vec::new();
