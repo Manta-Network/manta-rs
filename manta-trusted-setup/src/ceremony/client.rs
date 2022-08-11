@@ -29,6 +29,10 @@ use crate::{
 };
 use manta_crypto::{arkworks::serialize::CanonicalSerialize, rand::OsRng};
 
+use super::signature::SignatureScheme;
+
+// TODO: have better response when a user is not at the front of the queue.
+
 /// Client
 pub struct Client<C>
 where
@@ -70,6 +74,8 @@ where
     pub fn enqueue(&mut self) -> Result<Signed<EnqueueRequest, C>, ()>
     where
         C::Participant: Clone,
+        <<C as CeremonyConfig>::SignatureScheme as SignatureScheme>::PublicKey:
+            std::fmt::Debug, // TODO: Remove
     {
         Signed::new(
             EnqueueRequest,
@@ -84,6 +90,8 @@ where
     pub fn query_mpc_state(&mut self) -> Result<Signed<QueryMPCStateRequest, C>, ()>
     where
         C::Participant: Clone,
+        <<C as CeremonyConfig>::SignatureScheme as SignatureScheme>::PublicKey:
+            std::fmt::Debug, // TODO: Remove
     {
         Signed::new(
             QueryMPCStateRequest,
@@ -105,6 +113,8 @@ where
         C::Participant: Clone,
         State<C>: CanonicalSerialize,
         Proof<C>: CanonicalSerialize,
+        <<C as CeremonyConfig>::SignatureScheme as SignatureScheme>::PublicKey:
+            std::fmt::Debug, // TODO: Remove
     {
         let mut rng = OsRng;
         let proof = C::Setup::contribute(hasher, challenge, &mut state, &mut rng).ok_or(())?;

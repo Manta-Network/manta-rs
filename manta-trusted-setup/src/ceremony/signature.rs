@@ -53,7 +53,7 @@ pub trait SignatureScheme {
         nonce: &Self::Nonce,
         public_key: &Self::PublicKey,
         private_key: &Self::PrivateKey,
-    ) -> Result<Self::Signature, ()>
+    ) -> Result<Self::Signature, ()> // TODO: Change to ceremony error
     where
         M: ?Sized + AsRef<[u8]>;
 
@@ -63,7 +63,7 @@ pub trait SignatureScheme {
         nonce: &Self::Nonce,
         public_key: &Self::PublicKey,
         private_key: &Self::PrivateKey,
-    ) -> Result<Self::Signature, ()>
+    ) -> Result<Self::Signature, ()> // TODO: Change to ceremony error
     where
         M: Serialize,
     {
@@ -81,7 +81,7 @@ pub trait SignatureScheme {
         nonce: &Self::Nonce,
         signature: &Self::Signature,
         public_key: &Self::PublicKey,
-    ) -> Result<(), ()>
+    ) -> Result<(), ()> // TODO: Change to ceremony error
     where
         M: ?Sized + AsRef<[u8]>;
 
@@ -91,7 +91,7 @@ pub trait SignatureScheme {
         nonce: &Self::Nonce,
         signature: &Self::Signature,
         public_key: &Self::PublicKey,
-    ) -> Result<(), ()>
+    ) -> Result<(), ()> // TODO: Change to ceremony error
     where
         M: Serialize,
     {
@@ -107,9 +107,7 @@ pub trait SignatureScheme {
 /// ED25519 Signature Scheme
 pub mod ed_dalek {
     use super::*;
-    use alloc::vec::Vec;
     use ed25519_dalek::{Keypair, Signature as ED25519Signature, Signer, Verifier};
-    use manta_crypto::arkworks::serialize::CanonicalSerialize;
     use manta_util::{
         into_array_unchecked,
         serde::{Deserialize, Serialize},
@@ -180,7 +178,6 @@ pub mod ed_dalek {
         {
             let mut message_concatenated =
                 bincode::serialize(nonce).expect("Serializing nonce should not fail");
-
             message_concatenated.extend_from_slice(message.as_ref());
             Ok(Signature(into_array_unchecked(
                 Keypair::from_bytes(&[&private_key.0[..], &public_key.0[..]].concat())
@@ -198,15 +195,13 @@ pub mod ed_dalek {
         where
             M: ?Sized + AsRef<[u8]>,
         {
-            let mut concatenated_message = Vec::new();
-            nonce
-                .serialize_uncompressed(&mut concatenated_message)
-                .expect("Serialize Nonce should not fail. ");
-            concatenated_message.extend_from_slice(message.as_ref());
-            ed25519_dalek::PublicKey::from_bytes(&public_key.0[..])
+            let mut message_concatenated =
+                bincode::serialize(nonce).expect("Serializing nonce should not fail.");
+            message_concatenated.extend_from_slice(message.as_ref());
+            let verify_result = ed25519_dalek::PublicKey::from_bytes(&public_key.0[..])
                 .expect("Should decode public key from bytes.")
-                .verify(&concatenated_message, &((*signature).into()))
-                .map_err(drop)
+                .verify(&message_concatenated, &((*signature).into()));
+            verify_result.map_err(drop)
         }
     }
 }

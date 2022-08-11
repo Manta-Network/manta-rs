@@ -147,7 +147,7 @@ where
     }
 
     /// Pops the current contributor and returns the participant identifier that is skipped.
-    pub fn skip_current_contributor(
+    pub fn skip_current_contributor(  // TODO: When should we use that?
         &mut self,
     ) -> Result<ParticipantIdentifier<C>, CeremonyError<C>> {
         self.queue.pop().ok_or(CeremonyError::BadRequest)

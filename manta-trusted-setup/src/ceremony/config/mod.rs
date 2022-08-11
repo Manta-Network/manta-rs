@@ -19,7 +19,7 @@
 use crate::{
     ceremony::{
         queue::{HasIdentifier, Priority},
-        server::HasNonce,
+        server::{HasContributed, HasNonce},
         signature,
         signature::SignatureScheme,
     },
@@ -40,6 +40,7 @@ pub trait CeremonyConfig {
     type Participant: Priority
         + HasIdentifier
         + signature::HasPublicKey<Self::SignatureScheme>
+        + HasContributed
         + HasNonce<Self::SignatureScheme>;
 }
 

@@ -46,6 +46,15 @@ where
     fn set_nonce(&mut self, nonce: S::Nonce);
 }
 
+/// Has Contributed
+pub trait HasContributed {
+    /// Checks if the participant has contributed.
+    fn has_contributed(&self) -> bool;
+
+    /// Sets the participant as contributed.
+    fn set_contributed(&mut self);
+}
+
 /// Server
 #[derive(derivative::Derivative)]
 #[derivative(Clone(bound = ""))]
@@ -78,7 +87,7 @@ where
         }
     }
 
-    /// Preprocessed a request by checking nonce and verifying signature.
+    /// Preprocesses a request by checking nonce and verifying signature.
     #[inline]
     pub fn preprocess_request<T>(
         &self,
@@ -86,7 +95,7 @@ where
         request: &Signed<T, C>,
     ) -> Result<(), CeremonyError<C>>
     where
-        ParticipantIdentifier<C>: Serialize,
+        T: Serialize,
     {
         let participant = match coordinator.get_participant_mut(&request.identifier) {
             Some(participant) => participant,
@@ -97,13 +106,12 @@ where
             return Err(CeremonyError::NonceNotInSync(participant.nonce()));
         }
         C::SignatureScheme::verify(
-            &request.identifier,
+            &request.message,
             &request.nonce,
             &request.signature,
             &participant.public_key(),
         )
         .map_err(|_| CeremonyError::BadRequest)?;
-        // request is valid, so increment nonce by 1
         nonce.increment();
         participant.set_nonce(nonce);
         Ok(())
@@ -123,7 +131,6 @@ where
             .lock()
             .expect("Locking the coordinator should succeed.");
         self.preprocess_request(&mut *coordinator, &request)?;
-
         coordinator.enqueue_participant(&request.identifier)?;
         Ok(())
     }
@@ -147,17 +154,13 @@ where
             .expect("Participant existence is checked in `process_request`.");
         if coordinator.is_next(&request.identifier) {
             let (state, challenge) = coordinator.state_and_challenge();
-            println!("get_state_and_challenge. Will respond.");
             Ok(QueryMPCStateResponse::Mpc(
                 state.clone().into(),
                 challenge.clone().into(),
             )) // TODO: remove this clone later
         } else {
             match coordinator.position(&participant) {
-                Some(position) => {
-                    // println!("Need to wait more time.");
-                    Ok(QueryMPCStateResponse::QueuePosition(position))
-                }
+                Some(position) => Ok(QueryMPCStateResponse::QueuePosition(position)),
                 None => {
                     unreachable!("Participant should be always in the queue here")
                 }
@@ -179,7 +182,22 @@ where
             .coordinator
             .lock()
             .expect("Locking the coordinator should succeed.");
+        println!("Enter update.");
         self.preprocess_request(&mut *coordinator, &request)?;
+        println!("In update, preprocessed request.");
+        match coordinator.get_participant(&request.identifier) {
+            Some(participant) => {
+                if participant.has_contributed() {
+                    println!("In update, participant has contributed.");
+                    return Err(CeremonyError::<C>::BadRequest); // TODO. Should tell client that you have contributed successfully before.
+                }
+            }
+            None => {
+                println!("In update, participant does not exist in registry.");
+                return Err(CeremonyError::<C>::BadRequest); // TODO
+            }
+        }
+        println!("After get participant.");
         coordinator.update(
             &request.identifier,
             request
@@ -192,10 +210,19 @@ where
                 .proof
                 .to_actual()
                 .map_err(|_| CeremonyError::BadRequest)?,
-        )
+        )?; // TODO: What would happen if the server goes down after this update and before `set_contributed`?
+        println!("Update successfully!");
+        coordinator
+            .get_participant_mut(&request.identifier)
+            .expect("Geting participant should succeed.")
+            .set_contributed();
+        println!("Set the contributor as contributed!");
+        coordinator.skip_current_contributor()?; // TODO: A known issue with pop
+        println!("Skipped the current contributor!");
+        Ok(())
     }
 
-    /// Get the current nonce of the participant.
+    /// Gets the current nonce of the participant.
     #[inline]
     pub async fn get_nonce(
         self,

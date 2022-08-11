@@ -90,11 +90,13 @@ where
     pub signature: Signature<C>,
 }
 
+use core::fmt::Debug;
+
 impl<T, C> Signed<T, C>
 where
     C: CeremonyConfig,
 {
-    /// Generate a signed message using user's identifier, nonce, and key pair, and increment nonce by 1.
+    /// Generates a signed message using user's identifier, nonce, and key pair, and increment nonce by 1.
     pub fn new(
         message: T,
         identifier: ParticipantIdentifier<C>,
@@ -104,6 +106,7 @@ where
     ) -> Result<Self, ()>
     where
         T: Serialize,
+        PublicKey<C>: Debug, // TODO: Remove
     {
         let signature = C::SignatureScheme::sign(&message, &nonce, public_key, private_key)?;
         let message = Signed {

@@ -212,7 +212,7 @@ pub fn register() {
 
 /// Prompts the client information.
 #[inline]
-pub fn prompt_client_info() -> Result<(PrivateKey<C>, PublicKey<C>), Error> {
+pub fn prompt_client_info() -> Result<(PublicKey<C>, PrivateKey<C>), Error> {
     println!(
         "Please enter your {} that you get when you registered yourself using this tool.",
         "Secret".italic()
@@ -243,10 +243,10 @@ where
         .json(&request)
         .send()
         .await
-        .map_err(|e| Error::NetworkError(format!("{}", e)))?
+        .map_err(|e| Error::NetworkError(format!("Network Error. {}", e)))?
         .json::<Result<R, CeremonyError<C>>>()
         .await
-        .map_err(|e| Error::UnexpectedError(format!("{}", e)))
+        .map_err(|e| Error::UnexpectedError(format!("Reach unexpected error: {}", e)))
 }
 
 /// Gets nonce from server.
@@ -269,7 +269,7 @@ pub async fn get_nonce(
 #[inline]
 pub async fn contribute() -> Result<(), Error> {
     let network_client = reqwest::Client::new();
-    let (sk, pk) = prompt_client_info()?;
+    let (pk, sk) = prompt_client_info()?;
     let nonce = get_nonce(pk, &network_client).await?;
     let mut trusted_setup_client = Client::new(pk, pk, nonce, sk);
     loop {
