@@ -20,10 +20,10 @@
 //       some of it, to reduce potential duplication?
 // TODO: We should probably move `InnerNode` and its related `struct`s to `merkle_tree::node`.
 
-use crate::merkle_tree::{
+use crate::{merkle_tree::{
     path::{CurrentInnerPath, InnerPath},
     path_length, Configuration, InnerDigest, Node, Parameters, Parity,
-};
+}, eclair::bool::Bool};
 use alloc::collections::btree_map;
 use core::{fmt::Debug, hash::Hash, iter::FusedIterator, marker::PhantomData, ops::Index};
 
@@ -97,6 +97,12 @@ impl InnerNode {
             Some(depth) => Some(Self::new(depth, self.index.parent())),
             _ => None,
         }
+    }
+
+    /// Returns the k-th descendants [`InnerNode`] of this inner node
+    #[inline]
+    pub fn descendants(&self, k:usize) -> Vec<Self> {
+        self.index.descendants(k).iter().map(|a| Self::new(self.depth, *a)).collect()
     }
 
     /// Converts `self` into its parent, if the parent exists, returning the parent [`InnerNode`].
@@ -234,6 +240,12 @@ where
         self.set(rhs_index, rhs_digest);
         digest
     }
+
+    /// Deletes the digest at 'InnerNode'
+    fn delete(&mut self, _inner_node: InnerNode) -> Bool {
+        false
+    }
+
 }
 
 impl<C, M> InnerMap<C> for &mut M
@@ -756,6 +768,11 @@ where
     #[inline]
     pub fn insert(&mut self, parameters: &Parameters<C>, leaf_index: Node, base: InnerDigest<C>) {
         self.inner_tree.insert(parameters, leaf_index, base);
+    }
+
+    /// Deletes the inner digest at 'InnerNode'
+    pub fn delete(&mut self, inner_node: InnerNode) {
+        self.inner_tree.map.delete(inner_node);
     }
 
     /// Computes the inner path of the leaf given by `leaf_index` without checking if

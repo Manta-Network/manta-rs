@@ -20,7 +20,7 @@
 
 use crate::merkle_tree::{
     capacity,
-    inner_tree::{BTreeMap, InnerMap, PartialInnerTree},
+    inner_tree::{BTreeMap, InnerMap, PartialInnerTree, InnerNode},
     Configuration, CurrentPath, InnerDigest, Leaf, LeafDigest, MerkleTree, Node, Parameters, Path,
     PathError, Root, Tree, WithProofs,
 };
@@ -367,32 +367,29 @@ where
 
     #[inline]
     fn remove_path(&mut self, index: usize) -> bool {
-        // TODO: Implement this optimization.
         self.marked_leaves.push(index);
-        let mut node = Node(self.starting_leaf_index() + index);
-        let height = C::HEIGHT;
-        let mut nodes_to_be_removed: Vec<Node> = Vec::new();
-        for level in 0..height - 1 {
-            nodes_to_be_removed.push(node.sibling());
-            if node
-                .sibling()
-                .descendants(level)
-                .iter() // TODO: Combine the "maps" and "any"
-                .map(|x| x.0 - self.starting_leaf_index()) // the difference is already done by leaf_digest.
-                .map(|y| self.leaf_digest(y))
-                .any(|z| match z {
-                    None => false,
-                    Some(q) => self.contains(q), // note to self: is contains necessary?
-                })
-            {
-                break;
-            } else {
-                node = node.parent();
+        if self.marked_leaves.contains(&Node(index).sibling().0) {
+            let height = C::HEIGHT;
+            let mut inner_node = match InnerNode::from_leaf::<C>(Node::parent(&Node(index))) {
+                Some(q) => q,
+                None => {return true;}
+            };
+            for level in 1..height - 1 {
+                self.inner_digests.delete(inner_node.sibling());
+                if Node::from(inner_node)
+                    .sibling()
+                    .descendants(level)
+                    .iter()
+                    .all(|x| self.marked_leaves.contains(&x.0))
+                {
+                    if let Some(parent) = inner_node.parent() {inner_node = parent;} else {return true;}
+                } else {
+                    return true;
+                }
             }
+            return true;}
+        else {
+            return false;
         }
-        // So far: the nodes that can be pruned are computed
-        // TODO: delete the corresponding digests
-        let _ = index;
-        false
     }
 }
