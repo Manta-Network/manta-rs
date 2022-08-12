@@ -27,34 +27,34 @@ use manta_util::codec::{Decode, DecodeError, Encode, Read, Write};
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
 
-/// Ring of Scalars
-pub trait Scalar<COM = ()> {
-    /// Adds `rhs` to `self` in the ring.
+/// Group
+pub trait Group<COM = ()> {
+    /// Adds `self` to `rhs` in the group.
     fn add(&self, rhs: &Self, compiler: &mut COM) -> Self;
+}
 
+/// Ring
+pub trait Ring<COM = ()>: Group<COM> {
     /// Multiplies `self` by `rhs` in the ring.
     fn mul(&self, rhs: &Self, compiler: &mut COM) -> Self;
 }
 
-/// Group
-pub trait Group<COM = ()> {
+/// Cyclic Group
+pub trait CyclicGroup<COM = ()>: Group<COM> {
     /// Ring of Scalars
-    type Scalar: Scalar<COM>;
-
-    /// Adds `rhs` to `self` in the group.
-    fn add(&self, rhs: &Self, compiler: &mut COM) -> Self;
+    type Scalar: Ring<COM>;
 
     /// Multiplies `self` by `scalar` in the group.
-    fn mul(&self, scalar: &Self::Scalar, compiler: &mut COM) -> Self;
+    fn scalar_mul(&self, scalar: &Self::Scalar, compiler: &mut COM) -> Self;
 }
 
-/// Group Generator
-pub trait Generator<COM = ()> {
-    /// Group Type
-    type Group: Group<COM>;
-
+/// Group Generator Reflection
+pub trait HasGenerator<G, COM = ()>
+where
+    G: CyclicGroup<COM>,
+{
     /// Returns a generator of the [`Group`](Self::Group) type.
-    fn generator(&self) -> &Self::Group;
+    fn generator(&self) -> &G;
 }
 
 /// Diffie-Hellman Key Agreement Scheme
@@ -90,14 +90,12 @@ impl<G, COM> DiffieHellman<G, COM> {
     }
 }
 
-impl<G, COM> Generator<COM> for DiffieHellman<G, COM>
+impl<G, COM> HasGenerator<G, COM> for DiffieHellman<G, COM>
 where
-    G: Group<COM>,
+    G: CyclicGroup<COM>,
 {
-    type Group = G;
-
     #[inline]
-    fn generator(&self) -> &Self::Group {
+    fn generator(&self) -> &G {
         &self.generator
     }
 }
@@ -116,7 +114,7 @@ where
 
 impl<G, COM> key::agreement::Types for DiffieHellman<G, COM>
 where
-    G: Group<COM> + security::ComputationalDiffieHellmanHardness,
+    G: CyclicGroup<COM> + security::ComputationalDiffieHellmanHardness,
 {
     type SecretKey = G::Scalar;
     type PublicKey = G;
@@ -125,17 +123,17 @@ where
 
 impl<G, COM> key::agreement::Derive<COM> for DiffieHellman<G, COM>
 where
-    G: Group<COM> + security::ComputationalDiffieHellmanHardness,
+    G: CyclicGroup<COM> + security::ComputationalDiffieHellmanHardness,
 {
     #[inline]
     fn derive(&self, secret_key: &Self::SecretKey, compiler: &mut COM) -> Self::PublicKey {
-        self.generator.mul(secret_key, compiler)
+        self.generator.scalar_mul(secret_key, compiler)
     }
 }
 
 impl<G, COM> key::agreement::Agree<COM> for DiffieHellman<G, COM>
 where
-    G: Group<COM> + security::ComputationalDiffieHellmanHardness,
+    G: CyclicGroup<COM> + security::ComputationalDiffieHellmanHardness,
 {
     #[inline]
     fn agree(
@@ -144,7 +142,7 @@ where
         secret_key: &Self::SecretKey,
         compiler: &mut COM,
     ) -> Self::SharedSecret {
-        public_key.mul(secret_key, compiler)
+        public_key.scalar_mul(secret_key, compiler)
     }
 }
 

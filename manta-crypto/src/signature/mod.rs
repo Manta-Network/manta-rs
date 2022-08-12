@@ -209,7 +209,7 @@ where
 pub mod schnorr {
     use super::*;
     use crate::{
-        algebra::{security::DiscreteLogarithmHardness, Generator, Group, Scalar},
+        algebra::{security::DiscreteLogarithmHardness, CyclicGroup, Group, HasGenerator, Ring},
         eclair::{alloc::Constant, bool::Bool, cmp::PartialEq, Has},
         hash::security::PreimageResistance,
         rand::{Rand, RngCore, Sample},
@@ -219,13 +219,13 @@ pub mod schnorr {
     /// Schnorr Signature Hash Function
     pub trait HashFunction<G, COM = ()>: PreimageResistance
     where
-        G: DiscreteLogarithmHardness + Group<COM>,
+        G: CyclicGroup<COM> + DiscreteLogarithmHardness,
     {
         /// Message Type
         type Message;
 
         /// Hashes `message` along with `verifying_key` and `nonce_point` into a
-        /// [`Scalar`](Group::Scalar).
+        /// [`Scalar`](CyclicGroup::Scalar).
         fn hash(
             &self,
             verifying_key: &G,
@@ -247,7 +247,7 @@ pub mod schnorr {
     )]
     pub struct Signature<G, COM = ()>
     where
-        G: DiscreteLogarithmHardness + Group<COM>,
+        G: CyclicGroup<COM> + DiscreteLogarithmHardness,
     {
         /// Scalar
         ///
@@ -273,7 +273,7 @@ pub mod schnorr {
     )]
     pub struct Schnorr<G, H, COM = ()>
     where
-        G: DiscreteLogarithmHardness + Group<COM>,
+        G: CyclicGroup<COM> + DiscreteLogarithmHardness,
         H: HashFunction<G, COM>,
     {
         /// Schnorr Group Generator
@@ -288,7 +288,7 @@ pub mod schnorr {
 
     impl<G, H, COM> Schnorr<G, H, COM>
     where
-        G: DiscreteLogarithmHardness + Group<COM>,
+        G: CyclicGroup<COM> + DiscreteLogarithmHardness,
         H: HashFunction<G, COM>,
     {
         /// Builds a new [`Schnorr`] signature scheme over `generator` and `hash_function`.
@@ -302,22 +302,20 @@ pub mod schnorr {
         }
     }
 
-    impl<G, H, COM> Generator<COM> for Schnorr<G, H, COM>
+    impl<G, H, COM> HasGenerator<G, COM> for Schnorr<G, H, COM>
     where
-        G: DiscreteLogarithmHardness + Group<COM>,
+        G: CyclicGroup<COM> + DiscreteLogarithmHardness,
         H: HashFunction<G, COM>,
     {
-        type Group = G;
-
         #[inline]
-        fn generator(&self) -> &Self::Group {
+        fn generator(&self) -> &G {
             &self.generator
         }
     }
 
     impl<G, H, DG, DH> Sample<(DG, DH)> for Schnorr<G, H>
     where
-        G: DiscreteLogarithmHardness + Group + Sample<DG>,
+        G: CyclicGroup + DiscreteLogarithmHardness + Sample<DG>,
         H: HashFunction<G> + Sample<DH>,
     {
         #[inline]
@@ -331,7 +329,7 @@ pub mod schnorr {
 
     impl<G, H, COM> SigningKeyType for Schnorr<G, H, COM>
     where
-        G: DiscreteLogarithmHardness + Group<COM>,
+        G: CyclicGroup<COM> + DiscreteLogarithmHardness,
         H: HashFunction<G, COM>,
     {
         type SigningKey = G::Scalar;
@@ -339,7 +337,7 @@ pub mod schnorr {
 
     impl<G, H, COM> VerifyingKeyType for Schnorr<G, H, COM>
     where
-        G: DiscreteLogarithmHardness + Group<COM>,
+        G: CyclicGroup<COM> + DiscreteLogarithmHardness,
         H: HashFunction<G, COM>,
     {
         type VerifyingKey = G;
@@ -347,7 +345,7 @@ pub mod schnorr {
 
     impl<G, H, COM> MessageType for Schnorr<G, H, COM>
     where
-        G: DiscreteLogarithmHardness + Group<COM>,
+        G: CyclicGroup<COM> + DiscreteLogarithmHardness,
         H: HashFunction<G, COM>,
     {
         type Message = H::Message;
@@ -355,7 +353,7 @@ pub mod schnorr {
 
     impl<G, H, COM> SignatureType for Schnorr<G, H, COM>
     where
-        G: DiscreteLogarithmHardness + Group<COM>,
+        G: CyclicGroup<COM> + DiscreteLogarithmHardness,
         H: HashFunction<G, COM>,
     {
         type Signature = Signature<G, COM>;
@@ -363,7 +361,7 @@ pub mod schnorr {
 
     impl<G, H, COM> RandomnessType for Schnorr<G, H, COM>
     where
-        G: DiscreteLogarithmHardness + Group<COM>,
+        G: CyclicGroup<COM> + DiscreteLogarithmHardness,
         H: HashFunction<G, COM>,
     {
         type Randomness = G::Scalar;
@@ -371,18 +369,18 @@ pub mod schnorr {
 
     impl<G, H, COM> Derive<COM> for Schnorr<G, H, COM>
     where
-        G: DiscreteLogarithmHardness + Group<COM>,
+        G: CyclicGroup<COM> + DiscreteLogarithmHardness,
         H: HashFunction<G, COM>,
     {
         #[inline]
         fn derive(&self, signing_key: &Self::SigningKey, compiler: &mut COM) -> Self::VerifyingKey {
-            self.generator.mul(signing_key, compiler)
+            self.generator.scalar_mul(signing_key, compiler)
         }
     }
 
     impl<G, H, COM> Sign<COM> for Schnorr<G, H, COM>
     where
-        G: DiscreteLogarithmHardness + Group<COM>,
+        G: CyclicGroup<COM> + DiscreteLogarithmHardness,
         H: HashFunction<G, COM>,
     {
         #[inline]
@@ -393,12 +391,12 @@ pub mod schnorr {
             message: &Self::Message,
             compiler: &mut COM,
         ) -> Self::Signature {
-            let nonce_point = self.generator.mul(randomness, compiler);
+            let nonce_point = self.generator.scalar_mul(randomness, compiler);
             Signature {
                 scalar: randomness.add(
                     &signing_key.mul(
                         &self.hash_function.hash(
-                            &self.generator.mul(signing_key, compiler),
+                            &self.generator.scalar_mul(signing_key, compiler),
                             &nonce_point,
                             message,
                             compiler,
@@ -415,7 +413,7 @@ pub mod schnorr {
     impl<G, H, COM> Verify<COM> for Schnorr<G, H, COM>
     where
         COM: Has<bool>,
-        G: DiscreteLogarithmHardness + Group<COM> + PartialEq<G, COM>,
+        G: CyclicGroup<COM> + DiscreteLogarithmHardness + PartialEq<G, COM>,
         H: HashFunction<G, COM>,
     {
         type Verification = Bool<COM>;
@@ -432,9 +430,9 @@ pub mod schnorr {
                 scalar,
                 nonce_point,
             } = signature;
-            self.generator.mul(scalar, compiler).eq(
+            self.generator.scalar_mul(scalar, compiler).eq(
                 &nonce_point.add(
-                    &verifying_key.mul(
+                    &verifying_key.scalar_mul(
                         &self
                             .hash_function
                             .hash(verifying_key, nonce_point, message, compiler),
@@ -449,8 +447,8 @@ pub mod schnorr {
 
     impl<G, H, COM> Constant<COM> for Schnorr<G, H, COM>
     where
-        G: Constant<COM> + DiscreteLogarithmHardness + Group<COM>,
-        G::Type: DiscreteLogarithmHardness + Group,
+        G: Constant<COM> + CyclicGroup<COM> + DiscreteLogarithmHardness,
+        G::Type: CyclicGroup + DiscreteLogarithmHardness,
         H: Constant<COM> + HashFunction<G, COM>,
         H::Type: HashFunction<G::Type>,
     {

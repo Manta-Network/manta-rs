@@ -37,6 +37,7 @@ use blake2::{
 use core::marker::PhantomData;
 use manta_accounting::asset::Asset;
 use manta_crypto::{
+    algebra::HasGenerator,
     arkworks::{
         algebra::affine_point_as_bytes,
         ff::{try_into_u128, PrimeField, ToBytes},
@@ -163,6 +164,35 @@ pub type SpendSecret = protocol::SpendSecret<Config>;
 
 ///
 pub type SpendSecretVar = protocol::SpendSecret<Config<Compiler>, Compiler>;
+
+///
+pub struct GroupGenerator(Group);
+
+impl HasGenerator<Group> for GroupGenerator {
+    #[inline]
+    fn generator(&self) -> &Group {
+        &self.0
+    }
+}
+
+///
+pub struct GroupGeneratorVar(GroupVar);
+
+impl HasGenerator<GroupVar, Compiler> for GroupGeneratorVar {
+    #[inline]
+    fn generator(&self) -> &GroupVar {
+        &self.0
+    }
+}
+
+impl Constant<Compiler> for GroupGeneratorVar {
+    type Type = GroupGenerator;
+
+    #[inline]
+    fn new_constant(this: &Self::Type, compiler: &mut Compiler) -> Self {
+        Self(this.0.as_constant(compiler))
+    }
+}
 
 ///
 pub struct UtxoCommitmentSchemeDomainTag;
@@ -558,7 +588,6 @@ impl encryption::convert::plaintext::Forward for IncomingEncryptionSchemeConvert
                     source.utxo_commitment_randomness,
                     source.asset.id,
                     Fp(source.asset.value.into()),
-                    arkworks::lift_embedded_scalar::<GroupCurve>(&source.key_diversifier),
                 ]
                 .into(),
             )]
@@ -580,7 +609,6 @@ impl encryption::convert::plaintext::Forward<Compiler>
                     source.utxo_commitment_randomness.clone(),
                     source.asset.id.clone(),
                     source.asset.value.as_ref().clone(),
-                    source.key_diversifier.0.clone(),
                 ]
                 .into(),
             )]
@@ -601,7 +629,7 @@ impl encryption::convert::plaintext::Reverse for IncomingEncryptionSchemeConvert
     fn into_source(target: Self::TargetDecryptedPlaintext, _: &mut ()) -> Self::DecryptedPlaintext {
         if target.0 && target.1.len() == 1 {
             let block = &target.1[0].0;
-            if block.len() == 4 {
+            if block.len() == 3 {
                 /* TODO:
                 Some(protocol::IncomingPlaintext::new(
                     Fp(block[0].0),
@@ -631,7 +659,7 @@ impl<COM> Constant<COM> for IncomingEncryptionSchemeConverter<COM> {
 
 ///
 pub type IncomingPoseidonEncryptionScheme<COM = ()> =
-    poseidon::encryption::FixedDuplexer<1, Poseidon4, COM>;
+    poseidon::encryption::FixedDuplexer<1, Poseidon3, COM>;
 
 ///
 pub type IncomingBaseEncryptionScheme<COM = ()> = encryption::convert::key::Converter<
@@ -1208,6 +1236,7 @@ pub type OutgoingBaseEncryptionScheme<COM = ()> = encryption::convert::key::Conv
 >;
 
 ///
+#[derive(Clone)]
 pub struct SchnorrHashFunction;
 
 impl hash::security::PreimageResistance for SchnorrHashFunction {}
@@ -1271,6 +1300,7 @@ impl protocol::BaseConfiguration for Config {
     type AssetValue = AssetValue;
     type Scalar = EmbeddedScalar;
     type Group = Group;
+    type GroupGenerator = GroupGenerator;
     type UtxoCommitmentScheme = UtxoCommitmentScheme;
     type ViewingKeyDerivationFunction = ViewingKeyDerivationFunction;
     type IncomingCiphertext =
@@ -1290,6 +1320,7 @@ impl protocol::BaseConfiguration<Compiler> for Config<Compiler> {
     type AssetValue = AssetValueVar;
     type Scalar = EmbeddedScalarVar;
     type Group = GroupVar;
+    type GroupGenerator = GroupGeneratorVar;
     type UtxoCommitmentScheme = UtxoCommitmentScheme<Compiler>;
     type ViewingKeyDerivationFunction = ViewingKeyDerivationFunction<Compiler>;
     type IncomingCiphertext =
@@ -1304,6 +1335,5 @@ impl protocol::BaseConfiguration<Compiler> for Config<Compiler> {
 }
 
 impl protocol::Configuration for Config {
-    type SignatureSchemeRandomness = EmbeddedScalar;
-    type SignatureScheme = Schnorr<Group, SchnorrHashFunction>;
+    type SchnorrHashFunction = SchnorrHashFunction;
 }

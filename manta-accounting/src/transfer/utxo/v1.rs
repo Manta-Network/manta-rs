@@ -24,7 +24,8 @@ use core::fmt::Debug;
 use manta_crypto::{
     accumulator::{self, ItemHashFunction, MembershipProof},
     algebra::{
-        security::ComputationalDiffieHellmanHardness, DiffieHellman, Generator, Group, Scalar,
+        security::ComputationalDiffieHellmanHardness, CyclicGroup, DiffieHellman, HasGenerator,
+        Ring,
     },
     constraint::{HasInput, Input},
     eclair::{
@@ -40,7 +41,7 @@ use manta_crypto::{
     },
     encryption::{self, hybrid::Hybrid, Decrypt, EmptyHeader, Encrypt, EncryptedMessage},
     rand::{Rand, RngCore, Sample},
-    signature::{self, Sign, Verify},
+    signature::{self, schnorr, Sign, Verify},
 };
 use manta_util::{
     cmp::Independence,
@@ -236,13 +237,16 @@ where
         + Zero<COM, Verification = Self::Bool>;
 
     /// Scalar Type
-    type Scalar: Clone + Scalar<COM>;
+    type Scalar: Clone + Ring<COM>;
 
     /// Group Type
     type Group: Clone
         + ComputationalDiffieHellmanHardness
-        + Group<COM, Scalar = Self::Scalar>
+        + CyclicGroup<COM, Scalar = Self::Scalar>
         + PartialEq<Self::Group, COM>;
+
+    /// Group Generator
+    type GroupGenerator: HasGenerator<Self::Group, COM>;
 
     /// UTXO Commitment Scheme
     type UtxoCommitmentScheme: UtxoCommitmentScheme<
@@ -311,16 +315,8 @@ where
 
 /// UTXO Configuration
 pub trait Configuration: BaseConfiguration<Bool = bool> {
-    /// Signature Scheme Randomness
-    type SignatureSchemeRandomness: Sample;
-
-    /// Signature Scheme Type
-    type SignatureScheme: Generator<Group = Self::Group>
-        + signature::Sign<
-            SigningKey = Self::Scalar,
-            Randomness = Self::SignatureSchemeRandomness,
-            Message = Vec<u8>,
-        > + signature::Verify<VerifyingKey = Self::Group, Verification = bool>;
+    /// Schnorr Hash Function
+    type SchnorrHashFunction: Clone + schnorr::HashFunction<Self::Group, Message = Vec<u8>>;
 }
 
 /// Asset Type
@@ -371,12 +367,19 @@ pub type OutgoingRandomness<C, COM = ()> = encryption::Randomness<OutgoingEncryp
 /// Outgoing Note
 pub type OutgoingNote<C, COM = ()> = EncryptedMessage<OutgoingEncryptionScheme<C, COM>>;
 
+/// Signature Scheme
+pub type SignatureScheme<C> =
+    schnorr::Schnorr<<C as BaseConfiguration>::Group, <C as Configuration>::SchnorrHashFunction>;
+
 /// UTXO Model Base Parameters
 pub struct BaseParameters<C, COM = ()>
 where
     C: BaseConfiguration<COM>,
     COM: Has<bool, Type = C::Bool>,
 {
+    /// Group Generator
+    pub group_generator: C::GroupGenerator,
+
     /// UTXO Commitment Scheme
     pub utxo_commitment_scheme: C::UtxoCommitmentScheme,
 
@@ -482,7 +485,7 @@ where
     ) {
         let randomized_proof_authorization_key = authorization_context
             .proof_authorization_key
-            .mul(&authorization_proof.randomness, compiler);
+            .scalar_mul(&authorization_proof.randomness, compiler);
         compiler.assert_eq(
             &randomized_proof_authorization_key,
             &authorization_proof.randomized_proof_authorization_key,
@@ -506,6 +509,7 @@ where
         compiler: &mut COM,
     ) -> Self::Asset {
         secret.well_formed_asset(
+            self.group_generator.generator(),
             &self.utxo_commitment_scheme,
             &self.incoming_base_encryption_scheme,
             utxo,
@@ -581,6 +585,7 @@ where
     C: BaseConfiguration<COM> + Constant<COM>,
     C::Type: Configuration<
         Bool = bool,
+        GroupGenerator = Const<C::GroupGenerator, COM>,
         UtxoCommitmentScheme = Const<C::UtxoCommitmentScheme, COM>,
         IncomingBaseEncryptionScheme = Const<C::IncomingBaseEncryptionScheme, COM>,
         ViewingKeyDerivationFunction = Const<C::ViewingKeyDerivationFunction, COM>,
@@ -588,6 +593,7 @@ where
         NullifierCommitmentScheme = Const<C::NullifierCommitmentScheme, COM>,
         OutgoingBaseEncryptionScheme = Const<C::OutgoingBaseEncryptionScheme, COM>,
     >,
+    C::GroupGenerator: Constant<COM>,
     C::UtxoCommitmentScheme: Constant<COM>,
     C::IncomingBaseEncryptionScheme: Constant<COM>,
     C::ViewingKeyDerivationFunction: Constant<COM>,
@@ -600,6 +606,7 @@ where
     #[inline]
     fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
         Self {
+            group_generator: this.base.group_generator.as_constant(compiler),
             utxo_commitment_scheme: this.base.utxo_commitment_scheme.as_constant(compiler),
             incoming_base_encryption_scheme: this
                 .base
@@ -622,10 +629,11 @@ where
     }
 }
 
-impl<C, DUCS, DIBES, DVKDF, DUAIH, DNCS, DOBES> Sample<(DUCS, DIBES, DVKDF, DUAIH, DNCS, DOBES)>
-    for BaseParameters<C>
+impl<C, DGG, DUCS, DIBES, DVKDF, DUAIH, DNCS, DOBES>
+    Sample<(DGG, DUCS, DIBES, DVKDF, DUAIH, DNCS, DOBES)> for BaseParameters<C>
 where
     C: BaseConfiguration<Bool = bool>,
+    C::GroupGenerator: Sample<DGG>,
     C::UtxoCommitmentScheme: Sample<DUCS>,
     C::IncomingBaseEncryptionScheme: Sample<DIBES>,
     C::ViewingKeyDerivationFunction: Sample<DVKDF>,
@@ -634,17 +642,18 @@ where
     C::OutgoingBaseEncryptionScheme: Sample<DOBES>,
 {
     #[inline]
-    fn sample<R>(distribution: (DUCS, DIBES, DVKDF, DUAIH, DNCS, DOBES), rng: &mut R) -> Self
+    fn sample<R>(distribution: (DGG, DUCS, DIBES, DVKDF, DUAIH, DNCS, DOBES), rng: &mut R) -> Self
     where
         R: RngCore + ?Sized,
     {
         Self {
-            utxo_commitment_scheme: rng.sample(distribution.0),
-            incoming_base_encryption_scheme: rng.sample(distribution.1),
-            viewing_key_derivation_function: rng.sample(distribution.2),
-            utxo_accumulator_item_hash: rng.sample(distribution.3),
-            nullifier_commitment_scheme: rng.sample(distribution.4),
-            outgoing_base_encryption_scheme: rng.sample(distribution.5),
+            group_generator: rng.sample(distribution.0),
+            utxo_commitment_scheme: rng.sample(distribution.1),
+            incoming_base_encryption_scheme: rng.sample(distribution.2),
+            viewing_key_derivation_function: rng.sample(distribution.3),
+            utxo_accumulator_item_hash: rng.sample(distribution.4),
+            nullifier_commitment_scheme: rng.sample(distribution.5),
+            outgoing_base_encryption_scheme: rng.sample(distribution.6),
         }
     }
 }
@@ -657,8 +666,8 @@ where
     /// Base Parameters
     pub base: BaseParameters<C>,
 
-    /// Signature Scheme
-    pub signature_scheme: C::SignatureScheme,
+    /// Schnorr Hash Function
+    pub schnorr_hash_function: C::SchnorrHashFunction,
 }
 
 impl<C> auth::SpendingKeyType for Parameters<C>
@@ -700,7 +709,7 @@ impl<C> auth::SignatureType for Parameters<C>
 where
     C: Configuration<Bool = bool>,
 {
-    type Signature = signature::Signature<C::SignatureScheme>;
+    type Signature = signature::Signature<SignatureScheme<C>>;
 }
 
 impl<C> utxo::AssetType for Parameters<C>
@@ -758,7 +767,12 @@ where
 {
     #[inline]
     fn derive(&self, spending_key: &Self::SpendingKey) -> Self::AuthorizationContext {
-        AuthorizationContext::new(self.signature_scheme.generator().mul(spending_key, &mut ()))
+        AuthorizationContext::new(
+            self.base
+                .group_generator
+                .generator()
+                .scalar_mul(spending_key, &mut ()),
+        )
     }
 }
 
@@ -781,7 +795,7 @@ where
         let randomness = rng.gen();
         let randomized_proof_authorization_key = authorization_context
             .proof_authorization_key
-            .mul(&randomness, &mut ());
+            .scalar_mul(&randomness, &mut ());
         AuthorizationProof::new(randomness, randomized_proof_authorization_key)
     }
 }
@@ -802,7 +816,7 @@ where
             && (authorization_proof.randomized_proof_authorization_key
                 == authorization_context
                     .proof_authorization_key
-                    .mul(&authorization_proof.randomness, &mut ()))
+                    .scalar_mul(&authorization_proof.randomness, &mut ()))
     }
 }
 
@@ -825,6 +839,7 @@ where
 impl<C, M> auth::Sign<M> for Parameters<C>
 where
     C: Configuration<Bool = bool>,
+    C::Scalar: Sample,
     M: Encode,
 {
     #[inline]
@@ -832,8 +847,11 @@ where
     where
         R: RngCore + ?Sized,
     {
-        self.signature_scheme
-            .sign(signing_key, &rng.gen(), &message.to_vec(), &mut ())
+        SignatureScheme::<C>::new(
+            self.base.group_generator.generator().clone(),
+            self.schnorr_hash_function.clone(),
+        )
+        .sign(signing_key, &rng.gen(), &message.to_vec(), &mut ())
     }
 }
 
@@ -849,8 +867,11 @@ where
         signature: &Self::Signature,
         message: &M,
     ) -> bool {
-        self.signature_scheme
-            .verify(authorization_key, &message.to_vec(), signature, &mut ())
+        SignatureScheme::<C>::new(
+            self.base.group_generator.generator().clone(),
+            self.schnorr_hash_function.clone(),
+        )
+        .verify(authorization_key, &message.to_vec(), signature, &mut ())
     }
 }
 
@@ -892,15 +913,10 @@ where
     where
         R: RngCore + ?Sized,
     {
-        /* TODO:
         let secret = MintSecret::<C>::new(
             address.receiving_key,
             rng.gen(),
-            IncomingPlaintext::new(
-                rng.gen(),
-                associated_data.secret(&asset),
-                address.key_diversifier,
-            ),
+            IncomingPlaintext::new(rng.gen(), associated_data.secret(&asset)),
         );
         let utxo_commitment = self.base.utxo_commitment_scheme.commit(
             &secret.plaintext.utxo_commitment_randomness,
@@ -910,7 +926,7 @@ where
             &mut (),
         );
         let incoming_note = Hybrid::new(
-            DiffieHellman::new(secret.plaintext.key_diversifier.clone()),
+            DiffieHellman::new(self.base.group_generator.generator().clone()),
             self.base.incoming_base_encryption_scheme.clone(),
         )
         .encrypt_into(
@@ -929,8 +945,6 @@ where
             ),
             incoming_note,
         )
-        */
-        todo!()
     }
 }
 
@@ -1005,7 +1019,6 @@ where
     where
         R: RngCore + ?Sized,
     {
-        /* TODO:
         let associated_data = if identifier.is_transparent {
             Visibility::Transparent
         } else {
@@ -1016,19 +1029,18 @@ where
             IncomingPlaintext::new(
                 identifier.utxo_commitment_randomness,
                 associated_data.secret(&asset),
-                identifier.key_diversifier,
             ),
         );
         let receiving_key = authorization_context.receiving_key(
+            self.base.group_generator.generator(),
             &self.base.viewing_key_derivation_function,
-            &secret.plaintext.key_diversifier,
             &mut (),
         );
         let utxo_commitment = self.base.utxo_commitment_scheme.commit(
             &secret.plaintext.utxo_commitment_randomness,
             &secret.plaintext.asset.id,
             &secret.plaintext.asset.value,
-            &receiving_key,
+            receiving_key,
             &mut (),
         );
         let utxo = Utxo::<C>::new(
@@ -1036,20 +1048,20 @@ where
             associated_data.public(&asset),
             utxo_commitment,
         );
-        let nullifier_commitment = self.base.nullifier_commitment_scheme.commit(
-            &authorization_context.proof_authorization_key,
-            &self.item_hash(&utxo, &mut ()),
-            &mut (),
-        );
         let outgoing_note = Hybrid::new(
-            DiffieHellman::new(secret.plaintext.key_diversifier.clone()),
+            DiffieHellman::new(self.base.group_generator.generator().clone()),
             self.base.outgoing_base_encryption_scheme.clone(),
         )
         .encrypt_into(
-            &receiving_key,
+            receiving_key,
             &secret.outgoing_randomness,
             EmptyHeader::default(),
             &secret.plaintext.asset,
+            &mut (),
+        );
+        let nullifier_commitment = self.base.nullifier_commitment_scheme.commit(
+            &authorization_context.proof_authorization_key,
+            &self.item_hash(&utxo, &mut ()),
             &mut (),
         );
         (
@@ -1057,8 +1069,6 @@ where
             utxo,
             Nullifier::new(nullifier_commitment, outgoing_note),
         )
-        */
-        todo!()
     }
 }
 
@@ -1092,40 +1102,35 @@ where
         utxo: &Self::Utxo,
         note: Self::Note,
     ) -> Option<(Self::Identifier, Self::Asset)> {
-        /* TODO:
         let plaintext = self.base.incoming_base_encryption_scheme.decrypt(
-            &note.ephemeral_public_key().mul(decryption_key, &mut ()),
+            &note
+                .ephemeral_public_key()
+                .scalar_mul(decryption_key, &mut ()),
             &EmptyHeader::default(),
             &note.ciphertext.ciphertext,
             &mut (),
         )?;
         Some((
-            Identifier::new(
-                utxo.is_transparent,
-                plaintext.utxo_commitment_randomness,
-                plaintext.key_diversifier,
-            ),
+            Identifier::new(utxo.is_transparent, plaintext.utxo_commitment_randomness),
             plaintext.asset,
         ))
-        */
-        todo!()
     }
 }
 
-impl<C, DBP, DSS> Sample<(DBP, DSS)> for Parameters<C>
+impl<C, DBP, DSHF> Sample<(DBP, DSHF)> for Parameters<C>
 where
     C: Configuration<Bool = bool>,
     BaseParameters<C>: Sample<DBP>,
-    C::SignatureScheme: Sample<DSS>,
+    C::SchnorrHashFunction: Sample<DSHF>,
 {
     #[inline]
-    fn sample<R>(distribution: (DBP, DSS), rng: &mut R) -> Self
+    fn sample<R>(distribution: (DBP, DSHF), rng: &mut R) -> Self
     where
         R: RngCore + ?Sized,
     {
         Self {
             base: rng.sample(distribution.0),
-            signature_scheme: rng.sample(distribution.1),
+            schnorr_hash_function: rng.sample(distribution.1),
         }
     }
 }
@@ -1138,9 +1143,6 @@ where
     C: BaseConfiguration<COM> + ?Sized,
     COM: Has<bool, Type = C::Bool>,
 {
-    /// Key Diversifier
-    pub key_diversifier: C::Scalar,
-
     /// Receiving Key
     pub receiving_key: C::Group,
 }
@@ -1150,20 +1152,16 @@ where
     C: BaseConfiguration<COM> + ?Sized,
     COM: Has<bool, Type = C::Bool>,
 {
-    /// Builds a new [`Address`] from `key_diversifier` and `receiving_key`.
+    /// Builds a new [`Address`] from `receiving_key`.
     #[inline]
-    pub fn new(key_diversifier: C::Scalar, receiving_key: C::Group) -> Self {
-        Self {
-            key_diversifier,
-            receiving_key,
-        }
+    pub fn new(receiving_key: C::Group) -> Self {
+        Self { receiving_key }
     }
 }
 
 impl<C> Sample for Address<C>
 where
     C: BaseConfiguration<Bool = bool> + ?Sized,
-    C::Scalar: Sample,
     C::Group: Sample,
 {
     #[inline]
@@ -1171,7 +1169,7 @@ where
     where
         R: RngCore + ?Sized,
     {
-        Self::new(rng.gen(), rng.gen())
+        Self::new(rng.gen())
     }
 }
 
@@ -1186,9 +1184,6 @@ where
 
     /// Secret Asset
     pub asset: Asset<C, COM>,
-
-    /// Key Diversifier
-    pub key_diversifier: C::Scalar,
 }
 
 impl<C, COM> IncomingPlaintext<C, COM>
@@ -1196,18 +1191,15 @@ where
     C: BaseConfiguration<COM> + ?Sized,
     COM: Has<bool, Type = C::Bool>,
 {
-    /// Builds a new [`IncomingPlaintext`] from `utxo_commitment_randomness`, `asset`, and
-    /// `key_diversifier`.
+    /// Builds a new [`IncomingPlaintext`] from `utxo_commitment_randomness`, and `asset`.
     #[inline]
     pub fn new(
         utxo_commitment_randomness: UtxoCommitmentRandomness<C, COM>,
         asset: Asset<C, COM>,
-        key_diversifier: C::Scalar,
     ) -> Self {
         Self {
             utxo_commitment_randomness,
             asset,
-            key_diversifier,
         }
     }
 }
@@ -1226,11 +1218,7 @@ where
 
     #[inline]
     fn new_unknown(compiler: &mut COM) -> Self {
-        Self::new(
-            compiler.allocate_unknown(),
-            compiler.allocate_unknown(),
-            compiler.allocate_unknown(),
-        )
+        Self::new(compiler.allocate_unknown(), compiler.allocate_unknown())
     }
 
     #[inline]
@@ -1238,7 +1226,6 @@ where
         Self::new(
             this.utxo_commitment_randomness.as_known(compiler),
             this.asset.as_known(compiler),
-            this.key_diversifier.as_known(compiler),
         )
     }
 }
@@ -1432,12 +1419,12 @@ where
     #[inline]
     pub fn incoming_note(
         &self,
+        group_generator: &C::Group,
         encryption_scheme: &C::IncomingBaseEncryptionScheme,
         compiler: &mut COM,
     ) -> IncomingNote<C, COM> {
-        /* TODO:
         Hybrid::new(
-            DiffieHellman::new(self.plaintext.key_diversifier.clone()),
+            DiffieHellman::new(group_generator.clone()),
             encryption_scheme.clone(),
         )
         .encrypt_into(
@@ -1447,8 +1434,6 @@ where
             &self.plaintext,
             compiler,
         )
-        */
-        todo!()
     }
 
     /// Returns the representative [`Asset`] from `self` and its public-form `utxo` asserting that
@@ -1456,6 +1441,7 @@ where
     #[inline]
     pub fn well_formed_asset(
         &self,
+        group_generator: &C::Group,
         utxo_commitment_scheme: &C::UtxoCommitmentScheme,
         encryption_scheme: &C::IncomingBaseEncryptionScheme,
         utxo: &Utxo<C, COM>,
@@ -1475,7 +1461,7 @@ where
         );
         let utxo_commitment = self.utxo_commitment(utxo_commitment_scheme, compiler);
         compiler.assert_eq(&utxo.commitment, &utxo_commitment);
-        let incoming_note = self.incoming_note(encryption_scheme, compiler);
+        let incoming_note = self.incoming_note(group_generator, encryption_scheme, compiler);
         compiler.assert_eq(note, &incoming_note);
         asset
     }
@@ -1506,7 +1492,6 @@ where
         Identifier::new(
             utxo.is_transparent,
             self.plaintext.utxo_commitment_randomness.clone(),
-            self.plaintext.key_diversifier.clone(),
         )
     }
 }
@@ -1552,6 +1537,9 @@ where
 
     /// Viewing Key
     viewing_key: Option<C::Scalar>,
+
+    /// Receiving Key
+    receiving_key: Option<C::Group>,
 }
 
 impl<C, COM> AuthorizationContext<C, COM>
@@ -1565,7 +1553,21 @@ where
         Self {
             proof_authorization_key,
             viewing_key: None,
+            receiving_key: None,
         }
+    }
+
+    ///
+    #[inline]
+    fn compute_viewing_key<'s>(
+        viewing_key: &'s mut Option<C::Scalar>,
+        proof_authorization_key: &'s C::Group,
+        viewing_key_derivation_function: &C::ViewingKeyDerivationFunction,
+        compiler: &mut COM,
+    ) -> &'s C::Scalar {
+        viewing_key.get_or_insert_with(|| {
+            viewing_key_derivation_function.viewing_key(proof_authorization_key, compiler)
+        })
     }
 
     /// Computes the viewing key from `viewing_key_derivation_function`.
@@ -1575,26 +1577,33 @@ where
         viewing_key_derivation_function: &C::ViewingKeyDerivationFunction,
         compiler: &mut COM,
     ) -> &C::Scalar {
-        self.viewing_key.get_or_insert_with(|| {
-            viewing_key_derivation_function.viewing_key(&self.proof_authorization_key, compiler)
-        })
+        Self::compute_viewing_key(
+            &mut self.viewing_key,
+            &self.proof_authorization_key,
+            viewing_key_derivation_function,
+            compiler,
+        )
     }
 
-    /// Returns the receiving key over `key_diversifier` for `self`.
+    /// Returns the receiving key.
     #[inline]
     pub fn receiving_key(
         &mut self,
+        group_generator: &C::Group,
         viewing_key_derivation_function: &C::ViewingKeyDerivationFunction,
-        key_diversifier: &C::Scalar,
         compiler: &mut COM,
-    ) -> C::Group {
-        /* TODO:
-        key_diversifier.mul(
-            self.viewing_key(viewing_key_derivation_function, compiler),
-            compiler,
-        )
-        */
-        todo!()
+    ) -> &C::Group {
+        self.receiving_key.get_or_insert_with(|| {
+            group_generator.scalar_mul(
+                Self::compute_viewing_key(
+                    &mut self.viewing_key,
+                    &self.proof_authorization_key,
+                    viewing_key_derivation_function,
+                    compiler,
+                ),
+                compiler,
+            )
+        })
     }
 }
 
@@ -1720,9 +1729,6 @@ where
 
     /// UTXO Commitment Randomness
     pub utxo_commitment_randomness: UtxoCommitmentRandomness<C, COM>,
-
-    /// Key Diversifier
-    pub key_diversifier: C::Scalar,
 }
 
 impl<C, COM> Identifier<C, COM>
@@ -1730,18 +1736,15 @@ where
     C: BaseConfiguration<COM>,
     COM: Has<bool, Type = C::Bool>,
 {
-    /// Builds a new [`Identifier`] from `is_transparent`, `utxo_commitment_randomness`, and
-    /// `key_diversifier`.
+    /// Builds a new [`Identifier`] from `is_transparent` and `utxo_commitment_randomness`.
     #[inline]
     pub fn new(
         is_transparent: C::Bool,
         utxo_commitment_randomness: UtxoCommitmentRandomness<C, COM>,
-        key_diversifier: C::Scalar,
     ) -> Self {
         Self {
             is_transparent,
             utxo_commitment_randomness,
-            key_diversifier,
         }
     }
 }
@@ -1750,7 +1753,6 @@ impl<C> Sample for Identifier<C>
 where
     C: BaseConfiguration<Bool = bool>,
     UtxoCommitmentRandomness<C>: Sample,
-    C::Scalar: Sample,
 {
     #[inline]
     fn sample<R>(_: (), rng: &mut R) -> Self
@@ -1758,7 +1760,7 @@ where
         R: RngCore + ?Sized,
     {
         // FIXME: Should we sample the transparency flag.
-        Self::new(false, rng.gen(), rng.gen())
+        Self::new(false, rng.gen())
     }
 }
 
@@ -1815,13 +1817,13 @@ where
     #[inline]
     pub fn outgoing_note(
         &self,
+        group_generator: &C::Group,
         outgoing_base_encryption_scheme: &C::OutgoingBaseEncryptionScheme,
         receiving_key: &C::Group,
         compiler: &mut COM,
     ) -> OutgoingNote<C, COM> {
-        /* TODO:
         Hybrid::new(
-            DiffieHellman::new(self.plaintext.key_diversifier.clone()),
+            DiffieHellman::new(group_generator.clone()),
             outgoing_base_encryption_scheme.clone(),
         )
         .encrypt_into(
@@ -1831,8 +1833,6 @@ where
             &self.plaintext.asset,
             compiler,
         )
-        */
-        todo!()
     }
 
     /// Returns the representative [`Asset`] from `self` and its public-form `utxo` asserting that
@@ -1850,7 +1850,6 @@ where
     where
         COM: AssertEq,
     {
-        /* TODO:
         let is_transparent = self.plaintext.asset.is_empty(compiler);
         compiler.assert_eq(&utxo.is_transparent, &is_transparent);
         let asset = Asset::<C, _>::select(
@@ -1860,13 +1859,19 @@ where
             compiler,
         );
         let receiving_key = authorization_context.receiving_key(
+            parameters.group_generator.generator(),
             &parameters.viewing_key_derivation_function,
-            &self.plaintext.key_diversifier,
             compiler,
         );
         let utxo_commitment =
-            self.utxo_commitment(&parameters.utxo_commitment_scheme, &receiving_key, compiler);
+            self.utxo_commitment(&parameters.utxo_commitment_scheme, receiving_key, compiler);
         compiler.assert_eq(&utxo.commitment, &utxo_commitment);
+        let outgoing_note = self.outgoing_note(
+            parameters.group_generator.generator(),
+            &parameters.outgoing_base_encryption_scheme,
+            receiving_key,
+            compiler,
+        );
         let item = parameters.item_hash(utxo, compiler);
         let has_valid_membership = &asset.value.is_zero(compiler).bitor(
             utxo_membership_proof.verify(utxo_accumulator_model, &item, compiler),
@@ -1878,14 +1883,7 @@ where
             &item,
             compiler,
         );
-        let outgoing_note = self.outgoing_note(
-            &parameters.outgoing_base_encryption_scheme,
-            &receiving_key,
-            compiler,
-        );
         (asset, Nullifier::new(nullifier_commitment, outgoing_note))
-        */
-        todo!()
     }
 }
 
