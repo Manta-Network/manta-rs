@@ -32,7 +32,7 @@ use std::{
     future::Future,
     sync::{Arc, Mutex},
 };
-use tide::{Body, Request, Response, StatusCode};
+use tide::{convert::json, Body, Request, Response, StatusCode};
 
 /// Has Nonce
 pub trait HasNonce<S>
@@ -189,7 +189,7 @@ where
             Some(participant) => {
                 if participant.has_contributed() {
                     println!("In update, participant has contributed.");
-                    return Err(CeremonyError::<C>::BadRequest); // TODO. Should tell client that you have contributed successfully before.
+                    return Err(CeremonyError::<C>::AlreadyContributed); // TODO. Should tell client that you have contributed successfully before.
                 }
             }
             None => {
@@ -276,10 +276,6 @@ where
     Fut: Future<Output = Result<R, CeremonyError<C>>>,
 {
     let result = f().await;
-
-    if matches!(&result, Err(CeremonyError::<C>::BadRequest)) {
-        return Err(tide::Error::from_str(StatusCode::BadRequest, "Bad Request"));
-    }
 
     Ok(Body::from_json(&result)?.into())
 }

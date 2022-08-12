@@ -67,6 +67,7 @@ pub enum Error {
     InvalidSecret,
     UnableToGenerateRequest(&'static str),
     NotRegistered,
+    AlreadyContributed,
     UnexpectedError(String),
     NetworkError(String),
 }
@@ -89,6 +90,9 @@ impl Display for Error {
             }
             Error::NetworkError(msg) => {
                 write!(f, "Network Error: {}", msg)
+            }
+            Error::AlreadyContributed => {
+                write!(f, "You have already contributed. ")
             }
         }
     }
@@ -238,7 +242,7 @@ where
         .map_err(|e| Error::NetworkError(format!("Network Error. {}", e)))?
         .json::<Result<R, CeremonyError<C>>>()
         .await
-        .map_err(|e| Error::UnexpectedError(format!("Unexpected error: {}", e)))
+        .map_err(|e| Error::UnexpectedError(format!("JSON deserialization error: {}", e)))
 }
 
 /// Gets nonce from server.
@@ -284,6 +288,7 @@ pub async fn contribute() -> Result<(), Error> {
                     "unexpected error when enqueueing since finding a bad request.".to_string(),
                 ))
             }
+            Err(CeremonyError::AlreadyContributed) => return Err(Error::AlreadyContributed),
             Ok(_) => {}
         }
         let (state, challenge) = match send_request::<_, QueryMPCStateResponse<C>>(
@@ -308,6 +313,7 @@ pub async fn contribute() -> Result<(), Error> {
                         .to_string(),
                 ))
             }
+            Err(CeremonyError::AlreadyContributed) => return Err(Error::AlreadyContributed),
             Ok(message) => match message {
                 QueryMPCStateResponse::QueuePosition(position) => {
                     println!("Your current position is {}.", position);
@@ -344,6 +350,7 @@ pub async fn contribute() -> Result<(), Error> {
                     "unexpected error when contribute since finding a bad request.".to_string(),
                 ))
             }
+            Err(CeremonyError::AlreadyContributed) => return Err(Error::AlreadyContributed),
             Ok(_) => {
                 println!("Contribute succeeded!");
                 break;

@@ -56,4 +56,7 @@ where
 
     /// Not Registered
     NotRegistered,
+
+    /// Already Contributed
+    AlreadyContributed,
 }
