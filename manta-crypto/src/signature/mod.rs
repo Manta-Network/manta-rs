@@ -209,51 +209,68 @@ where
 pub mod schnorr {
     use super::*;
     use crate::{
-        algebra::{security::DiscreteLogarithmHardness, Generator, Group, Scalar},
-        eclair::{alloc::Constant, bool::Bool, cmp::PartialEq, Has},
+        algebra::{
+            security::DiscreteLogarithmHardness, Group as _, HasGenerator, Ring, ScalarMul,
+            ScalarMulGroup,
+        },
+        eclair::{
+            alloc::{Const, Constant},
+            bool::Bool,
+            cmp::PartialEq,
+            Has,
+        },
         hash::security::PreimageResistance,
         rand::{Rand, RngCore, Sample},
     };
     use core::{cmp, fmt::Debug, hash::Hash, marker::PhantomData};
 
     /// Schnorr Signature Hash Function
-    pub trait HashFunction<G, COM = ()>: PreimageResistance
-    where
-        G: DiscreteLogarithmHardness + Group<COM>,
-    {
+    pub trait HashFunction<COM = ()>: PreimageResistance {
+        /// Scalar Type
+        type Scalar: Ring<COM>;
+
+        /// Group Type
+        type Group: ScalarMulGroup<Self::Scalar, COM> + DiscreteLogarithmHardness;
+
         /// Message Type
         type Message;
 
-        /// Hashes `message` along with `verifying_key` and `nonce_point` into a
-        /// [`Scalar`](Group::Scalar).
+        /// Hashes `message` along with `verifying_key` and `nonce_point` into a scalar of type
+        /// [`Scalar`](Self::Scalar.
         fn hash(
             &self,
-            verifying_key: &G,
-            nonce_point: &G,
+            verifying_key: &Self::Group,
+            nonce_point: &Self::Group,
             message: &Self::Message,
             compiler: &mut COM,
-        ) -> G::Scalar;
+        ) -> Self::Scalar;
     }
+
+    /// Scalar Type
+    pub type Scalar<H, COM = ()> = <H as HashFunction<COM>>::Scalar;
+
+    /// Group Type
+    pub type Group<H, COM = ()> = <H as HashFunction<COM>>::Group;
+
+    /// Message Type
+    pub type Message<H, COM = ()> = <H as HashFunction<COM>>::Message;
 
     /// Schnorr Signature
     #[derive(derivative::Derivative)]
     #[derivative(
-        Clone(bound = "G::Scalar: Clone, G: Clone"),
-        Copy(bound = "G::Scalar: Copy, G: Copy"),
-        Debug(bound = "G::Scalar: Debug, G: Debug"),
-        Eq(bound = "G::Scalar: Eq, G: Eq"),
-        Hash(bound = "G::Scalar: Hash, G: Hash"),
-        PartialEq(bound = "G::Scalar: cmp::PartialEq, G: cmp::PartialEq")
+        Clone(bound = "S: Clone, G: Clone"),
+        Copy(bound = "S: Copy, G: Copy"),
+        Debug(bound = "S: Debug, G: Debug"),
+        Eq(bound = "S: Eq, G: Eq"),
+        Hash(bound = "S: Hash, G: Hash"),
+        PartialEq(bound = "S: cmp::PartialEq, G: cmp::PartialEq")
     )]
-    pub struct Signature<G, COM = ()>
-    where
-        G: DiscreteLogarithmHardness + Group<COM>,
-    {
+    pub struct Signature<S, G> {
         /// Scalar
         ///
         /// This scalar is the hash output multiplied by the secret key, blinded by the nonce
         /// factor.
-        pub scalar: G::Scalar,
+        pub scalar: S,
 
         /// Nonce Point
         ///
@@ -264,64 +281,59 @@ pub mod schnorr {
     /// Schnorr Signature Scheme
     #[derive(derivative::Derivative)]
     #[derivative(
-        Clone(bound = "G: Clone, H: Clone"),
-        Copy(bound = "G: Copy, H: Copy"),
-        Debug(bound = "G: Debug, H: Debug"),
-        Eq(bound = "G: Eq, H: Eq"),
-        Hash(bound = "G: Hash, H: Hash"),
-        PartialEq(bound = "G: cmp::PartialEq, H: cmp::PartialEq")
+        Clone(bound = "H:Clone, H::Group: Clone"),
+        Copy(bound = "H: Copy, H::Group: Copy"),
+        Debug(bound = "H: Debug, H::Group: Debug"),
+        Eq(bound = "H: Eq, H::Group: Eq"),
+        Hash(bound = "H: Hash, H::Group: Hash"),
+        PartialEq(bound = "H: cmp::PartialEq, H::Group: cmp::PartialEq")
     )]
-    pub struct Schnorr<G, H, COM = ()>
+    pub struct Schnorr<H, COM = ()>
     where
-        G: DiscreteLogarithmHardness + Group<COM>,
-        H: HashFunction<G, COM>,
+        H: HashFunction<COM>,
     {
-        /// Schnorr Group Generator
-        pub generator: G,
-
         /// Schnorr Hash Function
         pub hash_function: H,
+
+        /// Schnorr Group Generator
+        pub generator: H::Group,
 
         /// Type Parameter Marker
         __: PhantomData<COM>,
     }
 
-    impl<G, H, COM> Schnorr<G, H, COM>
+    impl<H, COM> Schnorr<H, COM>
     where
-        G: DiscreteLogarithmHardness + Group<COM>,
-        H: HashFunction<G, COM>,
+        H: HashFunction<COM>,
     {
-        /// Builds a new [`Schnorr`] signature scheme over `generator` and `hash_function`.
+        /// Builds a new [`Schnorr`] signature scheme over `hash_function` and `generator`.
         #[inline]
-        pub fn new(generator: G, hash_function: H) -> Self {
+        pub fn new(hash_function: H, generator: H::Group) -> Self {
             Self {
-                generator,
                 hash_function,
+                generator,
                 __: PhantomData,
             }
         }
     }
 
-    impl<G, H, COM> Generator<COM> for Schnorr<G, H, COM>
+    impl<H, COM> HasGenerator<H::Group, COM> for Schnorr<H, COM>
     where
-        G: DiscreteLogarithmHardness + Group<COM>,
-        H: HashFunction<G, COM>,
+        H: HashFunction<COM>,
     {
-        type Group = G;
-
         #[inline]
-        fn generator(&self) -> &Self::Group {
+        fn generator(&self) -> &H::Group {
             &self.generator
         }
     }
 
-    impl<G, H, DG, DH> Sample<(DG, DH)> for Schnorr<G, H>
+    impl<H, DG, DH> Sample<(DH, DG)> for Schnorr<H>
     where
-        G: DiscreteLogarithmHardness + Group + Sample<DG>,
-        H: HashFunction<G> + Sample<DH>,
+        H: HashFunction + Sample<DH>,
+        H::Group: Sample<DG>,
     {
         #[inline]
-        fn sample<R>(distribution: (DG, DH), rng: &mut R) -> Self
+        fn sample<R>(distribution: (DH, DG), rng: &mut R) -> Self
         where
             R: RngCore + ?Sized,
         {
@@ -329,61 +341,54 @@ pub mod schnorr {
         }
     }
 
-    impl<G, H, COM> SigningKeyType for Schnorr<G, H, COM>
+    impl<H, COM> SigningKeyType for Schnorr<H, COM>
     where
-        G: DiscreteLogarithmHardness + Group<COM>,
-        H: HashFunction<G, COM>,
+        H: HashFunction<COM>,
     {
-        type SigningKey = G::Scalar;
+        type SigningKey = H::Scalar;
     }
 
-    impl<G, H, COM> VerifyingKeyType for Schnorr<G, H, COM>
+    impl<H, COM> VerifyingKeyType for Schnorr<H, COM>
     where
-        G: DiscreteLogarithmHardness + Group<COM>,
-        H: HashFunction<G, COM>,
+        H: HashFunction<COM>,
     {
-        type VerifyingKey = G;
+        type VerifyingKey = H::Group;
     }
 
-    impl<G, H, COM> MessageType for Schnorr<G, H, COM>
+    impl<H, COM> MessageType for Schnorr<H, COM>
     where
-        G: DiscreteLogarithmHardness + Group<COM>,
-        H: HashFunction<G, COM>,
+        H: HashFunction<COM>,
     {
         type Message = H::Message;
     }
 
-    impl<G, H, COM> SignatureType for Schnorr<G, H, COM>
+    impl<H, COM> SignatureType for Schnorr<H, COM>
     where
-        G: DiscreteLogarithmHardness + Group<COM>,
-        H: HashFunction<G, COM>,
+        H: HashFunction<COM>,
     {
-        type Signature = Signature<G, COM>;
+        type Signature = Signature<H::Scalar, H::Group>;
     }
 
-    impl<G, H, COM> RandomnessType for Schnorr<G, H, COM>
+    impl<H, COM> RandomnessType for Schnorr<H, COM>
     where
-        G: DiscreteLogarithmHardness + Group<COM>,
-        H: HashFunction<G, COM>,
+        H: HashFunction<COM>,
     {
-        type Randomness = G::Scalar;
+        type Randomness = H::Scalar;
     }
 
-    impl<G, H, COM> Derive<COM> for Schnorr<G, H, COM>
+    impl<H, COM> Derive<COM> for Schnorr<H, COM>
     where
-        G: DiscreteLogarithmHardness + Group<COM>,
-        H: HashFunction<G, COM>,
+        H: HashFunction<COM>,
     {
         #[inline]
         fn derive(&self, signing_key: &Self::SigningKey, compiler: &mut COM) -> Self::VerifyingKey {
-            self.generator.mul(signing_key, compiler)
+            self.generator.scalar_mul(signing_key, compiler)
         }
     }
 
-    impl<G, H, COM> Sign<COM> for Schnorr<G, H, COM>
+    impl<H, COM> Sign<COM> for Schnorr<H, COM>
     where
-        G: DiscreteLogarithmHardness + Group<COM>,
-        H: HashFunction<G, COM>,
+        H: HashFunction<COM>,
     {
         #[inline]
         fn sign(
@@ -393,12 +398,12 @@ pub mod schnorr {
             message: &Self::Message,
             compiler: &mut COM,
         ) -> Self::Signature {
-            let nonce_point = self.generator.mul(randomness, compiler);
+            let nonce_point = self.generator.scalar_mul(randomness, compiler);
             Signature {
                 scalar: randomness.add(
                     &signing_key.mul(
                         &self.hash_function.hash(
-                            &self.generator.mul(signing_key, compiler),
+                            &self.generator.scalar_mul(signing_key, compiler),
                             &nonce_point,
                             message,
                             compiler,
@@ -412,11 +417,11 @@ pub mod schnorr {
         }
     }
 
-    impl<G, H, COM> Verify<COM> for Schnorr<G, H, COM>
+    impl<H, COM> Verify<COM> for Schnorr<H, COM>
     where
         COM: Has<bool>,
-        G: DiscreteLogarithmHardness + Group<COM> + PartialEq<G, COM>,
-        H: HashFunction<G, COM>,
+        H: HashFunction<COM>,
+        H::Group: PartialEq<H::Group, COM>,
     {
         type Verification = Bool<COM>;
 
@@ -432,9 +437,9 @@ pub mod schnorr {
                 scalar,
                 nonce_point,
             } = signature;
-            self.generator.mul(scalar, compiler).eq(
+            self.generator.scalar_mul(scalar, compiler).eq(
                 &nonce_point.add(
-                    &verifying_key.mul(
+                    &verifying_key.scalar_mul(
                         &self
                             .hash_function
                             .hash(verifying_key, nonce_point, message, compiler),
@@ -447,20 +452,20 @@ pub mod schnorr {
         }
     }
 
-    impl<G, H, COM> Constant<COM> for Schnorr<G, H, COM>
+    impl<H, COM> Constant<COM> for Schnorr<H, COM>
     where
-        G: Constant<COM> + DiscreteLogarithmHardness + Group<COM>,
-        G::Type: DiscreteLogarithmHardness + Group,
-        H: Constant<COM> + HashFunction<G, COM>,
-        H::Type: HashFunction<G::Type>,
+        H: Constant<COM> + HashFunction<COM>,
+        H::Type: HashFunction<Group = Const<H::Group, COM>>,
+        H::Group: Constant<COM>,
+        Const<H::Group, COM>: ScalarMulGroup<H::Scalar> + DiscreteLogarithmHardness,
     {
-        type Type = Schnorr<G::Type, H::Type>;
+        type Type = Schnorr<H::Type>;
 
         #[inline]
         fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
             Self::new(
-                G::new_constant(&this.generator, compiler),
                 H::new_constant(&this.hash_function, compiler),
+                H::Group::new_constant(&this.generator, compiler),
             )
         }
     }

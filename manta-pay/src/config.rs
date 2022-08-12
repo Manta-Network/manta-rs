@@ -150,7 +150,7 @@ impl poseidon::arkworks::Specification for PoseidonSpec<4> {
 }
 
 /// Key Agreement Scheme Type
-pub type KeyAgreementScheme = DiffieHellman<Group>;
+pub type KeyAgreementScheme = DiffieHellman<EmbeddedScalar, Group>;
 
 /// Secret Key Type
 pub type SecretKey = <KeyAgreementScheme as key::agreement::Types>::SecretKey;
@@ -162,7 +162,7 @@ pub type PublicKey = <KeyAgreementScheme as key::agreement::Types>::PublicKey;
 pub type SharedSecret = <KeyAgreementScheme as key::agreement::Types>::SharedSecret;
 
 /// Key Agreement Scheme Variable Type
-pub type KeyAgreementSchemeVar = DiffieHellman<GroupVar, Compiler>;
+pub type KeyAgreementSchemeVar = DiffieHellman<EmbeddedScalarVar, GroupVar>;
 
 /// Secret Key Variable Type
 pub type SecretKeyVar = <KeyAgreementSchemeVar as key::agreement::Types>::SecretKey;

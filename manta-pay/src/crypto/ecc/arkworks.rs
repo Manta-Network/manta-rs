@@ -216,15 +216,18 @@ impl<C> algebra::Group for Group<C>
 where
     C: ProjectiveCurve,
 {
-    type Scalar = Scalar<C>;
-
     #[inline]
     fn add(&self, rhs: &Self, _: &mut ()) -> Self {
         Self(self.0 + rhs.0)
     }
+}
 
+impl<C> algebra::ScalarMul<Scalar<C>> for Group<C>
+where
+    C: ProjectiveCurve,
+{
     #[inline]
-    fn mul(&self, scalar: &Self::Scalar, _: &mut ()) -> Self {
+    fn scalar_mul(&self, scalar: &Scalar<C>, _: &mut ()) -> Self {
         Self(self.0.mul(scalar.0.into_repr()).into())
     }
 }
@@ -287,7 +290,7 @@ where
     }
 }
 
-impl<C, CV> algebra::Scalar<Compiler<C>> for ScalarVar<C, CV>
+impl<C, CV> algebra::Group<Compiler<C>> for ScalarVar<C, CV>
 where
     C: ProjectiveCurve,
     CV: CurveVar<C, ConstraintField<C>>,
@@ -297,7 +300,13 @@ where
         let _ = compiler;
         Self::new(&self.0 + &rhs.0)
     }
+}
 
+impl<C, CV> algebra::Ring<Compiler<C>> for ScalarVar<C, CV>
+where
+    C: ProjectiveCurve,
+    CV: CurveVar<C, ConstraintField<C>>,
+{
     #[inline]
     fn mul(&self, rhs: &Self, compiler: &mut Compiler<C>) -> Self {
         let _ = compiler;
@@ -379,8 +388,6 @@ where
     C: ProjectiveCurve,
     CV: CurveVar<C, ConstraintField<C>>,
 {
-    type Scalar = ScalarVar<C, CV>;
-
     #[inline]
     fn add(&self, rhs: &Self, compiler: &mut Compiler<C>) -> Self {
         let _ = compiler;
@@ -388,9 +395,15 @@ where
         result += &rhs.0;
         Self::new(result)
     }
+}
 
+impl<C, CV> algebra::ScalarMul<ScalarVar<C, CV>, Compiler<C>> for GroupVar<C, CV>
+where
+    C: ProjectiveCurve,
+    CV: CurveVar<C, ConstraintField<C>>,
+{
     #[inline]
-    fn mul(&self, scalar: &Self::Scalar, compiler: &mut Compiler<C>) -> Self {
+    fn scalar_mul(&self, scalar: &ScalarVar<C, CV>, compiler: &mut Compiler<C>) -> Self {
         let _ = compiler;
         Self::new(
             self.0

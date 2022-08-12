@@ -297,7 +297,7 @@ where
     }
 }
 
-impl<F> algebra::Scalar for Fp<F>
+impl<F> algebra::Group for Fp<F>
 where
     F: Field,
 {
@@ -305,7 +305,12 @@ where
     fn add(&self, rhs: &Self, _: &mut ()) -> Self {
         Self(self.0 + rhs.0)
     }
+}
 
+impl<F> algebra::Ring for Fp<F>
+where
+    F: Field,
+{
     #[inline]
     fn mul(&self, rhs: &Self, _: &mut ()) -> Self {
         Self(self.0 * rhs.0)
