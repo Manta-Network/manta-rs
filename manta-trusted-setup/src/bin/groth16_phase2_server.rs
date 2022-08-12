@@ -60,12 +60,26 @@ impl PhaseOneParameters {
             .author("Manta Network")
             .about("Trusted Setup Ceremony Server")
             .arg(
+                clap::Arg::new("mode")
+                    .help("The mode for the server, can be either 'create' or 'recover'")
+                    .takes_value(true)
+                    .required(true),
+            )
+            .arg(
                 clap::Arg::new("accumulator_path")
                     .short('a')
                     .long("accumulator_path")
                     .help("Path to the accumulator")
                     .takes_value(true)
-                    .required(true),
+                    .required_if_eq("mode", "create"),
+            )
+            .arg(
+                clap::Arg::new("backup_file")
+                    .short('b')
+                    .long("backup_file")
+                    .help("Path to the backup file")
+                    .takes_value(true)
+                    .required_if_eq("mode", "recover"),
             )
             .get_matches();
         PhaseOneParameters {

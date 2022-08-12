@@ -20,7 +20,8 @@ use crate::{
     ceremony::{
         config::CeremonyConfig,
         queue::{HasIdentifier, Priority},
-        server::{HasNonce, HasContributed},
+        registry::HasContributed,
+        server::HasNonce,
         signature::{
             ed_dalek::{Ed25519, PublicKey as EdPublicKey},
             HasPublicKey,

@@ -16,19 +16,30 @@
 
 //! Registry
 
-use alloc::collections::{BTreeMap, BTreeSet};
+use alloc::collections::BTreeMap;
+use serde::{Deserialize, Serialize};
+
+/// Has Contributed
+pub trait HasContributed {
+    /// Checks if the participant has contributed.
+    fn has_contributed(&self) -> bool;
+
+    /// Sets the participant as contributed.
+    fn set_contributed(&mut self);
+}
 
 /// Registry
-#[derive(Default)]
+#[derive(Default, Serialize, Deserialize)]
+#[serde(bound(
+    serialize = "K: Serialize, V: Serialize",
+    deserialize = "K: Deserialize<'de>, V: Deserialize<'de>"
+))]
 pub struct Registry<K, V>
 where
     K: Ord,
 {
     /// Map from key `K` to value `V`
     map: BTreeMap<K, V>,
-
-    /// Set of participants that have contributed
-    contributed_participants: BTreeSet<K>,
 }
 
 impl<K, V> Registry<K, V>
@@ -38,18 +49,15 @@ where
     /// Builds a new [`Register`].
     #[inline]
     pub fn new(map: BTreeMap<K, V>) -> Self {
-        Self {
-            map,
-            contributed_participants: BTreeSet::new(),
-        }
+        Self { map }
     }
 
     /// Inserts a `(key, value)` pair into registry.
     #[inline]
-    pub fn insert(&mut self, key: K, value: V) -> Result<(), &'static str>{
+    pub fn insert(&mut self, key: K, value: V) -> Result<(), &'static str> {
         match self.map.insert(key, value) {
-            None => {Ok(())},
-            Some(_) => {Err("Invalid insertion into registry.")}
+            None => Ok(()),
+            Some(_) => Err("Invalid insertion into registry."),
         }
     }
 
@@ -67,7 +75,13 @@ where
 
     /// Checks if `id` has contributed.
     #[inline]
-    pub fn has_contributed(&self, id: &K) -> bool {
-        self.contributed_participants.contains(id)
+    pub fn has_contributed(&self, id: &K) -> bool
+    where
+        V: HasContributed,
+    {
+        self.map
+            .get(id)
+            .map(|v| v.has_contributed())
+            .unwrap_or(false)
     }
 }

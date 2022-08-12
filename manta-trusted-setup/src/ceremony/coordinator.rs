@@ -25,12 +25,24 @@ use crate::{
     },
     mpc::Verify,
 };
+use serde::{Deserialize, Serialize};
 
 /// Coordinator with `C` as CeremonyConfig and `N` as the number of priority levels
+#[derive(Serialize, Deserialize)]
+#[serde(bound(
+    serialize = "Proof<C>: Serialize, C::Participant: Serialize, State<C>: Serialize, Challenge<C>: Serialize, ParticipantIdentifier<C>: Serialize",
+    deserialize = "Proof<C>: Deserialize<'de>, C::Participant: Deserialize<'de>, State<C>: Deserialize<'de>, Challenge<C>: Deserialize<'de>, ParticipantIdentifier<C>: Deserialize<'de>"
+))]
 pub struct Coordinator<C, const N: usize>
 where
     C: CeremonyConfig,
 {
+    num_contributions: usize,
+
+    latest_proof: Option<Proof<C>>,
+
+    latest_contributor: Option<C::Participant>,
+
     /// State
     state: State<C>,
 
@@ -41,6 +53,7 @@ where
     registry: Registry<ParticipantIdentifier<C>, C::Participant>,
 
     /// Queue of participants
+    #[serde(skip)] // when recovering, use an empty queue
     queue: Queue<C::Participant, N>,
 }
 
@@ -51,11 +64,17 @@ where
     /// Initializes a coordinator with the initial state and challenge.
     #[inline]
     pub fn new(
+        num_contributions: usize,
+        latest_proof: Option<Proof<C>>,
+        latest_contributor: Option<C::Participant>,
         state: State<C>,
         challenge: Challenge<C>,
         loaded_registry: Registry<ParticipantIdentifier<C>, C::Participant>,
     ) -> Self {
         Self {
+            num_contributions,
+            latest_proof,
+            latest_contributor,
             state,
             challenge,
             registry: loaded_registry,
@@ -147,7 +166,8 @@ where
     }
 
     /// Pops the current contributor and returns the participant identifier that is skipped.
-    pub fn skip_current_contributor(  // TODO: When should we use that?
+    pub fn skip_current_contributor(
+        // TODO: When should we use that?
         &mut self,
     ) -> Result<ParticipantIdentifier<C>, CeremonyError<C>> {
         self.queue.pop().ok_or(CeremonyError::BadRequest)

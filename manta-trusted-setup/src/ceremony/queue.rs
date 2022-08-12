@@ -42,6 +42,16 @@ pub struct Queue<T, const N: usize>([VecDeque<T::Identifier>; N])
 where
     T: Priority + HasIdentifier;
 
+impl<T, const N: usize> Default for Queue<T, N>
+where
+    T: Priority + HasIdentifier,
+{
+    #[inline]
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<T, const N: usize> Queue<T, N>
 where
     T: Priority + HasIdentifier,

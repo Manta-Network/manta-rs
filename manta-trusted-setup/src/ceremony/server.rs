@@ -22,7 +22,7 @@ use crate::ceremony::{
     message::{
         ContributeRequest, EnqueueRequest, QueryMPCStateRequest, QueryMPCStateResponse, Signed,
     },
-    registry::Registry,
+    registry::{HasContributed, Registry},
     signature::{HasPublicKey, Nonce as _, SignatureScheme},
     CeremonyError,
 };
@@ -32,7 +32,7 @@ use std::{
     future::Future,
     sync::{Arc, Mutex},
 };
-use tide::{convert::json, Body, Request, Response, StatusCode};
+use tide::{Body, Request, Response};
 
 /// Has Nonce
 pub trait HasNonce<S>
@@ -46,14 +46,20 @@ where
     fn set_nonce(&mut self, nonce: S::Nonce);
 }
 
-/// Has Contributed
-pub trait HasContributed {
-    /// Checks if the participant has contributed.
-    fn has_contributed(&self) -> bool;
-
-    /// Sets the participant as contributed.
-    fn set_contributed(&mut self);
-}
+// pub struct Log<C, const N: usize>
+// where
+//     C: CeremonyConfig,
+//     State<C>: CanonicalSerialize + CanonicalDeserialize,
+//     Challenge<C>: CanonicalSerialize + CanonicalDeserialize,
+//     Proof<C>: CanonicalSerialize + CanonicalDeserialize,
+// {
+//     position: usize,
+//     participant: Participant,
+//     /// State after Contribution
+//     state: AsBytes<State<C>>,
+//     /// Proof of contribution
+//     proof: AsBytes<Proof<C>>,
+// }
 
 /// Server
 #[derive(derivative::Derivative)]
@@ -83,7 +89,9 @@ where
         registry: Registry<ParticipantIdentifier<C>, C::Participant>,
     ) -> Self {
         Self {
-            coordinator: Arc::new(Mutex::new(Coordinator::new(state, challenge, registry))),
+            coordinator: Arc::new(Mutex::new(Coordinator::new(
+                0, None, None, state, challenge, registry,
+            ))),
         }
     }
 
@@ -216,6 +224,7 @@ where
             .get_participant_mut(&request.identifier)
             .expect("Geting participant should succeed.")
             .set_contributed();
+
         println!("Set the contributor as contributed!");
         Ok(())
     }

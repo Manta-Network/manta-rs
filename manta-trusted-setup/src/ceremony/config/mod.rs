@@ -19,7 +19,8 @@
 use crate::{
     ceremony::{
         queue::{HasIdentifier, Priority},
-        server::{HasContributed, HasNonce},
+        registry::HasContributed,
+        server::HasNonce,
         signature,
         signature::SignatureScheme,
     },
