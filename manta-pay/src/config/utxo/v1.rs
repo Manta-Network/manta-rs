@@ -175,6 +175,16 @@ impl HasGenerator<Group> for GroupGenerator {
     }
 }
 
+impl Sample for GroupGenerator {
+    #[inline]
+    fn sample<R>(_: (), rng: &mut R) -> Self
+    where
+        R: RngCore + ?Sized,
+    {
+        Self(rng.gen())
+    }
+}
+
 ///
 pub struct GroupGeneratorVar(GroupVar);
 
