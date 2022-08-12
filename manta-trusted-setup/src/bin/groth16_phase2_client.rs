@@ -66,8 +66,6 @@ impl From<Endpoint> for String {
 pub enum Error {
     InvalidSecret,
     UnableToGenerateRequest(&'static str),
-    MissingConfigFile,
-    InvalidConfigFile,
     NotRegistered,
     UnexpectedError(String),
     NetworkError(String),
@@ -85,12 +83,6 @@ impl Display for Error {
             }
             Error::UnexpectedError(msg) => {
                 write!(f, "Unexpected Error: {}", msg)
-            }
-            Error::MissingConfigFile => {
-                write!(f, "Missing config file trusted_setup_config.toml")
-            }
-            Error::InvalidConfigFile => {
-                write!(f, "Invalid config file trusted_setup_config.toml")
             }
             Error::NotRegistered => {
                 write!(f, "You have not registered yet. ")
@@ -246,7 +238,7 @@ where
         .map_err(|e| Error::NetworkError(format!("Network Error. {}", e)))?
         .json::<Result<R, CeremonyError<C>>>()
         .await
-        .map_err(|e| Error::UnexpectedError(format!("Reach unexpected error: {}", e)))
+        .map_err(|e| Error::UnexpectedError(format!("Unexpected error: {}", e)))
 }
 
 /// Gets nonce from server.

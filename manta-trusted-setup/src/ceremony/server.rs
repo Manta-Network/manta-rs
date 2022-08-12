@@ -217,8 +217,6 @@ where
             .expect("Geting participant should succeed.")
             .set_contributed();
         println!("Set the contributor as contributed!");
-        coordinator.skip_current_contributor()?; // TODO: A known issue with pop
-        println!("Skipped the current contributor!");
         Ok(())
     }
 
