@@ -32,7 +32,7 @@ use std::{
     fs::File,
     future::Future,
     io::{BufReader, BufWriter, Write},
-    path::Path,
+    path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
 use tide::{Body, Request, Response};
@@ -76,6 +76,9 @@ where
 {
     /// Coordinator
     coordinator: Arc<Mutex<Coordinator<C, N>>>,
+
+    /// path to recovery directory
+    recovery_path: String,
 }
 
 impl<C, const N: usize> Server<C, N>
@@ -91,11 +94,13 @@ where
         state: State<C>,
         challenge: Challenge<C>,
         registry: Registry<ParticipantIdentifier<C>, C::Participant>,
+        recovery_path: String,
     ) -> Self {
         Self {
             coordinator: Arc::new(Mutex::new(Coordinator::new(
                 0, None, None, state, challenge, registry,
             ))),
+            recovery_path,
         }
     }
 
@@ -229,6 +234,9 @@ where
             .expect("Geting participant should succeed.")
             .set_contributed();
 
+        // save the state
+        Self::log_to_file(&coordinator, &self.recovery_path);
+
         println!("Set the contributor as contributed!");
         Ok(())
     }
@@ -250,6 +258,7 @@ where
         let participant = coordinator
             .get_participant(&request)
             .ok_or(CeremonyError::NotRegistered)?;
+        // TODO: checksum
         Ok(participant.nonce())
     }
 
@@ -264,21 +273,24 @@ where
         let mut writer = BufWriter::new(file);
         bincode::serialize_into(&mut writer, coordinator)
             .expect("Unable to serialize coordinator.");
+        // TODO: checksum
         writer.flush().expect("Unable to flush writer.");
     }
 
     /// Recovers from a disk file.
     #[inline]
-    pub fn recover_from_file<P: AsRef<Path>>(file_path: P) -> Self
+    pub fn recover_from_file(recovery_file_path: String, recovery_dir_path: String) -> Self
     where
         Coordinator<C, N>: DeserializeOwned,
     {
+        let file_path = recovery_file_path.as_ref();
         let file = File::open(file_path).expect("Unable to open file.");
         let reader = BufReader::new(file);
         Self {
             coordinator: Arc::new(Mutex::new(
                 bincode::deserialize_from(reader).expect("Unable to deserialize coordinator."),
             )),
+            recovery_path: recovery_dir_path,
         }
     }
 

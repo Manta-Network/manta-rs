@@ -39,7 +39,7 @@ use manta_trusted_setup::{
         mpc::initialize,
     },
 };
-use std::{collections::BTreeMap, fs::File, process::exit};
+use std::{collections::BTreeMap, fs::File, path::Path, process::exit};
 
 type C = Groth16BLS12381;
 type Config = manta_trusted_setup::groth16::config::Config;
@@ -48,13 +48,23 @@ type S = Server<C, 2>;
 /// Registry File Path
 pub const REGISTRY: &str = "dummy_register.csv"; // TODO: Replace with real registry
 
-///
-pub struct PhaseOneParameters {
-    phase_one_parameter_path: String,
+/// Server Options
+pub enum ServerOptions {
+    /// Creates a new server.
+    Create {
+        accumulator_path: String,
+        registry_path: String,
+        recovery_dir_path: String,
+    },
+    /// Recovers a server from disk.
+    Recover {
+        recovery_path: String,
+        recovery_dir_path: String,
+    },
 }
 
-impl PhaseOneParameters {
-    fn load_from_args() -> Self {
+impl ServerOptions {
+    pub fn load_from_args() -> Self {
         let matches = clap::App::new("Trusted Setup Ceremony Server")
             .version("0.1.0")
             .author("Manta Network")
@@ -66,27 +76,62 @@ impl PhaseOneParameters {
                     .required(true),
             )
             .arg(
-                clap::Arg::new("accumulator_path")
+                clap::Arg::new("accumulator")
                     .short('a')
-                    .long("accumulator_path")
+                    .long("accumulator")
                     .help("Path to the accumulator")
                     .takes_value(true)
                     .required_if_eq("mode", "create"),
             )
             .arg(
-                clap::Arg::new("backup_file")
+                clap::Arg::new("registry")
+                    .short('r')
+                    .long("registry")
+                    .help("Path to the registry")
+                    .takes_value(true)
+                    .required_if_eq("mode", "create"),
+            )
+            .arg(
+                clap::Arg::new("backup")
                     .short('b')
-                    .long("backup_file")
+                    .long("backup")
                     .help("Path to the backup file")
                     .takes_value(true)
                     .required_if_eq("mode", "recover"),
             )
+            .arg(
+                clap::Arg::new("backup_dir")
+                    .short('d')
+                    .long("backup_dir")
+                    .help("Path to the backup directory")
+                    .takes_value(true)
+                    .required(true),
+            )
             .get_matches();
-        PhaseOneParameters {
-            phase_one_parameter_path: matches
-                .value_of("accumulator_path")
-                .expect("parameter accumulator_path is required")
-                .to_string(),
+
+        let mode = matches.value_of("mode").unwrap();
+        match mode {
+            "create" => {
+                let accumulator_path = matches.value_of("accumulator").unwrap().to_string();
+                let registry_path = matches.value_of("registry").unwrap().to_string();
+                let recovery_dir_path = matches.value_of("backup_dir").unwrap().to_string();
+                ServerOptions::Create {
+                    accumulator_path,
+                    registry_path,
+                    recovery_dir_path,
+                }
+            }
+            "recover" => {
+                let recovery_path = matches.value_of("backup").unwrap().to_string();
+                let recovery_dir_path = matches.value_of("backup_dir").unwrap().to_string();
+                ServerOptions::Recover {
+                    recovery_path,
+                    recovery_dir_path,
+                }
+            }
+            _ => {
+                panic!("Invalid mode: {}", mode); // TODO: better error message (like client)
+            }
         }
     }
 }
@@ -115,10 +160,15 @@ pub fn dummy_phase_one_trusted_setup() -> Accumulator<Config> {
         .expect("Accumulator should have been generated correctly.")
 }
 
-fn load_registry() -> Registry<ParticipantIdentifier<C>, <C as CeremonyConfig>::Participant> {
+fn load_registry<P>(
+    registry_path: P,
+) -> Registry<ParticipantIdentifier<C>, <C as CeremonyConfig>::Participant>
+where
+    P: AsRef<Path>,
+{
     let mut map = BTreeMap::new();
     for record in
-        csv::Reader::from_reader(File::open(REGISTRY).expect("Registry file should exist."))
+        csv::Reader::from_reader(File::open(registry_path).expect("Registry file should exist."))
             .records()
     {
         let result = record.expect("Read csv should succeed.");
@@ -143,7 +193,7 @@ fn load_registry() -> Registry<ParticipantIdentifier<C>, <C as CeremonyConfig>::
         .expect("Verifying signature should succeed.");
         let participant = Participant {
             twitter,
-            priority: match result[1].to_string().parse::<i32>().unwrap() {
+            priority: match result[1].to_string().parse::<u32>().unwrap() {
                 1 => UserPriority::High,
                 0 => UserPriority::Normal,
                 _ => {
@@ -161,21 +211,32 @@ fn load_registry() -> Registry<ParticipantIdentifier<C>, <C as CeremonyConfig>::
 }
 
 // TO be updated
-async fn init_server(options: &PhaseOneParameters) -> S {
-    let _ = options;
+fn init_server(accumulator_path: String, registry_path: String, recovery_dir_path: String) -> S {
+    let _ = accumulator_path; // TODO
     let powers = dummy_phase_one_trusted_setup(); // TODO: To be replaced with disk file
     let constraints = synthesize_constraints();
     let state =
         initialize::<Config, R1CS<Fr>>(powers, constraints).expect("failed to initialize state");
     let initial_challenge = <Config as mpc::ProvingKeyHasher<Config>>::hash(&state);
-    let registry = load_registry();
-    S::new(state, initial_challenge.into(), registry)
+    let registry = load_registry(registry_path);
+    S::new(state, initial_challenge.into(), registry, recovery_dir_path)
 }
 
 #[async_std::main]
 async fn main() -> tide::Result<()> {
-    let options = PhaseOneParameters::load_from_args();
-    let mut api = tide::Server::with_state(init_server(&options).await);
+    let options = ServerOptions::load_from_args();
+    let server = match options {
+        ServerOptions::Create {
+            accumulator_path,
+            registry_path,
+            recovery_dir_path,
+        } => init_server(accumulator_path, registry_path, recovery_dir_path),
+        ServerOptions::Recover {
+            recovery_path,
+            recovery_dir_path,
+        } => S::recover_from_file(recovery_path, recovery_dir_path),
+    };
+    let mut api = tide::Server::with_state(server);
     api.at("/enqueue")
         .post(|r| S::execute(r, Server::enqueue_participant));
     api.at("/query")
