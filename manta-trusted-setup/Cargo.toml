@@ -60,6 +60,8 @@ serde_json = {version = "1.0", default-features = false, features = ["alloc"]}
 take_mut = "0.2.2" # TODO: review this dependency
 tide = { version = "0.16.0", default-features = false }
 tokio = { version = "1.20.1", default-features = false, features = ["rt-multi-thread"] }
+tracing = {version = "0.1", default-features = false}
+tracing-subscriber = {version = "0.3", default-features = false, features = ["alloc", "fmt", "std", "ansi"]}
 manta-pay = { path = "../manta-pay", default-features = false, features = ["groth16", "test"] } # TODO
 workspace-hack = { version = "0.1.0", path = "../workspace-hack" }
 ark-snark = { version = "0.3.0", default-features = false } #TODO

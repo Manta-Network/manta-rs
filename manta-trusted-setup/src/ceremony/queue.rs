@@ -112,7 +112,6 @@ where
     #[inline]
     pub fn pop(&mut self) -> Option<T::Identifier> {
         for priority in (0..N).rev() {
-            println!("In pop(). Checked priority: {:?}", priority);
             if let Some(identifier) = self.0[priority].pop_front() {
                 return Some(identifier);
             }

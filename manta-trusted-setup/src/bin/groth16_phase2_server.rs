@@ -40,6 +40,7 @@ use manta_trusted_setup::{
     },
 };
 use std::{collections::BTreeMap, fs::File, path::Path, process::exit};
+use tracing::error;
 
 type C = Groth16BLS12381;
 type Config = manta_trusted_setup::groth16::config::Config;
@@ -197,7 +198,7 @@ where
                 1 => UserPriority::High,
                 0 => UserPriority::Normal,
                 _ => {
-                    println!("Invalid priority: {:?}", result);
+                    error!("Invalid priority: {:?}", result);
                     exit(1)
                 }
             },
@@ -224,6 +225,7 @@ fn init_server(accumulator_path: String, registry_path: String, recovery_dir_pat
 
 #[async_std::main]
 async fn main() -> tide::Result<()> {
+    tracing_subscriber::fmt().pretty().init();
     let options = ServerOptions::load_from_args();
     let server = match options {
         ServerOptions::Create {

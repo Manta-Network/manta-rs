@@ -31,11 +31,12 @@ use serde::{de::DeserializeOwned, Serialize};
 use std::{
     fs::File,
     future::Future,
-    io::{BufReader, BufWriter, Write},
-    path::{Path, PathBuf},
+    io::{BufReader, BufWriter, Read, Write},
+    path::Path,
     sync::{Arc, Mutex},
 };
 use tide::{Body, Request, Response};
+use tracing::info;
 
 /// Has Nonce
 pub trait HasNonce<S>
@@ -186,6 +187,7 @@ where
     }
 
     /// Processes a request to update the MPC state and remove the participant if successfully updated the state.
+    /// If update succeeds, save the current coordinator to disk.
     #[inline]
     pub async fn update(
         self,
@@ -194,27 +196,26 @@ where
     where
         ContributeRequest<C>: Serialize,
         ParticipantIdentifier<C>: Serialize,
+        C::Participant: Serialize,
     {
         let mut coordinator = self
             .coordinator
             .lock()
             .expect("Locking the coordinator should succeed.");
-        println!("Enter update.");
+
         self.preprocess_request(&mut *coordinator, &request)?;
-        println!("In update, preprocessed request.");
+
         match coordinator.get_participant(&request.identifier) {
             Some(participant) => {
                 if participant.has_contributed() {
-                    println!("In update, participant has contributed.");
                     return Err(CeremonyError::<C>::AlreadyContributed); // TODO. Should tell client that you have contributed successfully before.
                 }
             }
             None => {
-                println!("In update, participant does not exist in registry.");
                 return Err(CeremonyError::<C>::BadRequest); // TODO
             }
         }
-        println!("After get participant.");
+
         coordinator.update(
             &request.identifier,
             request
@@ -228,7 +229,6 @@ where
                 .to_actual()
                 .map_err(|_| CeremonyError::BadRequest)?,
         )?; // TODO: What would happen if the server goes down after this update and before `set_contributed`?
-        println!("Update successfully!");
         coordinator
             .get_participant_mut(&request.identifier)
             .expect("Geting participant should succeed.")
@@ -236,8 +236,6 @@ where
 
         // save the state
         Self::log_to_file(&coordinator, &self.recovery_path);
-
-        println!("Set the contributor as contributed!");
         Ok(())
     }
 
@@ -266,30 +264,74 @@ where
     #[inline]
     pub fn log_to_file<P: AsRef<Path>>(coordinator: &Coordinator<C, N>, log_dir: P)
     where
-        Coordinator<C, N>: Serialize,
+        Proof<C>: CanonicalSerialize,
+        State<C>: CanonicalSerialize,
+        Challenge<C>: CanonicalSerialize,
+        ParticipantIdentifier<C>: Serialize,
+        C::Participant: Serialize,
     {
         let path = format!("log_{}", coordinator.num_contributions());
-        let file = File::create(log_dir.as_ref().join(path)).expect("Unable to create file.");
-        let mut writer = BufWriter::new(file);
-        bincode::serialize_into(&mut writer, coordinator)
-            .expect("Unable to serialize coordinator.");
-        // TODO: checksum
-        writer.flush().expect("Unable to flush writer.");
+
+        let mut writer = Vec::new();
+        bincode::serialize_into(&mut writer, &coordinator.num_contributions)
+            .expect("Serialize should succeed");
+        coordinator
+            .proof
+            .serialize(&mut writer)
+            .expect("Serialize should succeed");
+        bincode::serialize_into(&mut writer, &coordinator.latest_contributor)
+            .expect("Serialize should succeed.");
+        coordinator
+            .state
+            .serialize(&mut writer)
+            .expect("Serialize should succeed.");
+        coordinator
+            .challenge
+            .serialize(&mut writer)
+            .expect("Serialize should succeed.");
+        bincode::serialize_into(&mut writer, &coordinator.registry)
+            .expect("Serialize should succeed.");
+
+        let mut file = File::create(log_dir.as_ref().join(&path)).expect("Unable to create file.");
+        file.write_all(&writer).expect("Unable to write to file.");
+        file.flush().expect("Unable to flush file.");
+        info!("Saved coordinator to {}", path);
     }
 
     /// Recovers from a disk file.
     #[inline]
     pub fn recover_from_file(recovery_file_path: String, recovery_dir_path: String) -> Self
     where
-        Coordinator<C, N>: DeserializeOwned,
+        Proof<C>: CanonicalDeserialize,
+        State<C>: CanonicalDeserialize,
+        Challenge<C>: CanonicalDeserialize,
+        ParticipantIdentifier<C>: DeserializeOwned,
+        C::Participant: DeserializeOwned,
     {
-        let file_path = recovery_file_path.as_ref();
-        let file = File::open(file_path).expect("Unable to open file.");
-        let reader = BufReader::new(file);
+        let mut file = File::open(recovery_file_path).expect("Unable to open file.");
+        let mut buf = Vec::new();
+        file.read_to_end(&mut buf).expect("Unable to read file.");
+        let mut reader = &buf[..];
+        let num_contributions =
+            bincode::deserialize_from(&mut reader).expect("Deserialize should succeed.");
+        let proof =
+            CanonicalDeserialize::deserialize(&mut reader).expect("Deserialize should succeed.");
+        let latest_contributor =
+            bincode::deserialize_from(&mut reader).expect("Deserialize should succeed.");
+        let state =
+            CanonicalDeserialize::deserialize(&mut reader).expect("Deserialize should succeed.");
+        let challenge =
+            CanonicalDeserialize::deserialize(&mut reader).expect("Deserialize should succeed.");
+        let registry = bincode::deserialize_from(&mut reader).expect("Deserialize should succeed.");
         Self {
-            coordinator: Arc::new(Mutex::new(
-                bincode::deserialize_from(reader).expect("Unable to deserialize coordinator."),
-            )),
+            coordinator: Arc::new(Mutex::new(Coordinator::new(
+                num_contributions,
+                proof,
+                latest_contributor,
+                state,
+                challenge,
+                registry,
+            ))),
             recovery_path: recovery_dir_path,
         }
     }

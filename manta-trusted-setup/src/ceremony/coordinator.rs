@@ -25,39 +25,34 @@ use crate::{
     },
     mpc::Verify,
 };
+
 use serde::{Deserialize, Serialize};
 
 /// Coordinator with `C` as CeremonyConfig and `N` as the number of priority levels
-#[derive(Serialize, Deserialize)]
-#[serde(bound(
-    serialize = "Proof<C>: Serialize, C::Participant: Serialize, State<C>: Serialize, Challenge<C>: Serialize, ParticipantIdentifier<C>: Serialize",
-    deserialize = "Proof<C>: Deserialize<'de>, C::Participant: Deserialize<'de>, State<C>: Deserialize<'de>, Challenge<C>: Deserialize<'de>, ParticipantIdentifier<C>: Deserialize<'de>"
-))]
 pub struct Coordinator<C, const N: usize>
 where
     C: CeremonyConfig,
 {
     /// Number of Contributions
-    num_contributions: usize,
+    pub(crate) num_contributions: usize,
 
     /// Proof
-    proof: Option<Proof<C>>,
+    pub(crate) proof: Option<Proof<C>>,
 
     /// Latest Participant that Has Contributed
-    latest_contributor: Option<C::Participant>,
+    pub(crate) latest_contributor: Option<C::Participant>,
 
     /// State
-    state: State<C>,
+    pub(crate) state: State<C>,
 
     /// Challenge
-    challenge: Challenge<C>,
+    pub(crate) challenge: Challenge<C>,
 
     /// Registry of participants
-    registry: Registry<ParticipantIdentifier<C>, C::Participant>,
+    pub(crate) registry: Registry<ParticipantIdentifier<C>, C::Participant>,
 
     /// Queue of participants
-    #[serde(skip)] // when recovering, use an empty queue
-    queue: Queue<C::Participant, N>,
+    pub(crate) queue: Queue<C::Participant, N>,
 }
 
 impl<C, const N: usize> Coordinator<C, N>
@@ -72,7 +67,7 @@ where
         latest_contributor: Option<C::Participant>,
         state: State<C>,
         challenge: Challenge<C>,
-        loaded_registry: Registry<ParticipantIdentifier<C>, C::Participant>,
+        registry: Registry<ParticipantIdentifier<C>, C::Participant>,
     ) -> Self {
         Self {
             num_contributions,
@@ -80,7 +75,7 @@ where
             latest_contributor,
             state,
             challenge,
-            registry: loaded_registry,
+            registry,
             queue: Queue::new(),
         }
     }

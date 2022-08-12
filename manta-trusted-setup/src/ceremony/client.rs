@@ -74,8 +74,7 @@ where
     pub fn enqueue(&mut self) -> Result<Signed<EnqueueRequest, C>, ()>
     where
         C::Participant: Clone,
-        <<C as CeremonyConfig>::SignatureScheme as SignatureScheme>::PublicKey:
-            std::fmt::Debug, // TODO: Remove
+        <<C as CeremonyConfig>::SignatureScheme as SignatureScheme>::PublicKey: std::fmt::Debug, // TODO: Remove
     {
         Signed::new(
             EnqueueRequest,
@@ -90,8 +89,7 @@ where
     pub fn query_mpc_state(&mut self) -> Result<Signed<QueryMPCStateRequest, C>, ()>
     where
         C::Participant: Clone,
-        <<C as CeremonyConfig>::SignatureScheme as SignatureScheme>::PublicKey:
-            std::fmt::Debug, // TODO: Remove
+        <<C as CeremonyConfig>::SignatureScheme as SignatureScheme>::PublicKey: std::fmt::Debug, // TODO: Remove
     {
         Signed::new(
             QueryMPCStateRequest,
@@ -113,8 +111,7 @@ where
         C::Participant: Clone,
         State<C>: CanonicalSerialize,
         Proof<C>: CanonicalSerialize,
-        <<C as CeremonyConfig>::SignatureScheme as SignatureScheme>::PublicKey:
-            std::fmt::Debug, // TODO: Remove
+        <<C as CeremonyConfig>::SignatureScheme as SignatureScheme>::PublicKey: std::fmt::Debug,
     {
         let mut rng = OsRng;
         let proof = C::Setup::contribute(hasher, challenge, &mut state, &mut rng).ok_or(())?;
