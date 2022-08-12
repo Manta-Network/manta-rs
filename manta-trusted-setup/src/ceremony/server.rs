@@ -29,7 +29,10 @@ use crate::ceremony::{
 use manta_crypto::arkworks::serialize::{CanonicalDeserialize, CanonicalSerialize};
 use serde::{de::DeserializeOwned, Serialize};
 use std::{
+    fs::File,
     future::Future,
+    io::{BufReader, BufWriter, Write},
+    path::Path,
     sync::{Arc, Mutex},
 };
 use tide::{Body, Request, Response};
@@ -83,6 +86,7 @@ where
     Proof<C>: CanonicalSerialize + CanonicalDeserialize,
 {
     /// Builds a [`Server`] with initial `state`, `challenge`, and a loaded `registry`.
+    #[inline]
     pub fn new(
         state: State<C>,
         challenge: Challenge<C>,
@@ -249,6 +253,35 @@ where
         Ok(participant.nonce())
     }
 
+    /// Generates log and saves to a disk file.
+    #[inline]
+    pub fn log_to_file<P: AsRef<Path>>(coordinator: &Coordinator<C, N>, log_dir: P)
+    where
+        Coordinator<C, N>: Serialize,
+    {
+        let path = format!("log_{}", coordinator.num_contributions());
+        let file = File::create(log_dir.as_ref().join(path)).expect("Unable to create file.");
+        let mut writer = BufWriter::new(file);
+        bincode::serialize_into(&mut writer, coordinator)
+            .expect("Unable to serialize coordinator.");
+        writer.flush().expect("Unable to flush writer.");
+    }
+
+    /// Recovers from a disk file.
+    #[inline]
+    pub fn recover_from_file<P: AsRef<Path>>(file_path: P) -> Self
+    where
+        Coordinator<C, N>: DeserializeOwned,
+    {
+        let file = File::open(file_path).expect("Unable to open file.");
+        let reader = BufReader::new(file);
+        Self {
+            coordinator: Arc::new(Mutex::new(
+                bincode::deserialize_from(reader).expect("Unable to deserialize coordinator."),
+            )),
+        }
+    }
+
     /// Executes `f` on the incoming `request`.
     #[inline]
     pub async fn execute<T, R, F, Fut>(
@@ -285,6 +318,5 @@ where
     Fut: Future<Output = Result<R, CeremonyError<C>>>,
 {
     let result = f().await;
-
     Ok(Body::from_json(&result)?.into())
 }

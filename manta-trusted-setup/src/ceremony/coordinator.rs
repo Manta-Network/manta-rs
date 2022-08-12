@@ -37,10 +37,13 @@ pub struct Coordinator<C, const N: usize>
 where
     C: CeremonyConfig,
 {
+    /// Number of Contributions
     num_contributions: usize,
 
-    latest_proof: Option<Proof<C>>,
+    /// Proof
+    proof: Option<Proof<C>>,
 
+    /// Latest Participant that Has Contributed
     latest_contributor: Option<C::Participant>,
 
     /// State
@@ -65,7 +68,7 @@ where
     #[inline]
     pub fn new(
         num_contributions: usize,
-        latest_proof: Option<Proof<C>>,
+        proof: Option<Proof<C>>,
         latest_contributor: Option<C::Participant>,
         state: State<C>,
         challenge: Challenge<C>,
@@ -73,7 +76,7 @@ where
     ) -> Self {
         Self {
             num_contributions,
-            latest_proof,
+            proof,
             latest_contributor,
             state,
             challenge,
@@ -171,5 +174,11 @@ where
         &mut self,
     ) -> Result<ParticipantIdentifier<C>, CeremonyError<C>> {
         self.queue.pop().ok_or(CeremonyError::BadRequest)
+    }
+
+    /// Get number of contributions
+    #[inline]
+    pub fn num_contributions(&self) -> usize {
+        self.num_contributions
     }
 }
