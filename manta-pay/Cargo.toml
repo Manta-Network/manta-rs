@@ -29,10 +29,6 @@ name = "generate_parameters"
 required-features = ["groth16", "manta-util/std", "test"]
 
 [[bin]]
-name = "measure"
-required-features = ["groth16", "manta-crypto/getrandom", "test"]
-
-[[bin]]
 name = "simulation"
 required-features = ["clap", "groth16", "simulation"]
 

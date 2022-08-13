@@ -35,7 +35,6 @@ pub type UtxoAccumulator = TreeArrayMerkleForest<
 >;
 
 /*
-
 /// Generates a proof for a [`Mint`] transaction.
 #[inline]
 pub fn prove_mint<R>(
@@ -50,13 +49,15 @@ where
 {
     Mint::from_spending_key(parameters, &SpendingKey::gen(rng), asset, rng)
         .into_post(
-            FullParameters::new(parameters, utxo_accumulator_model),
+            FullParametersRef::new(parameters, utxo_accumulator_model),
             proving_context,
             rng,
         )
         .expect("Unable to build MINT proof.")
 }
+*/
 
+/*
 /// Samples a [`Mint`] spender.
 ///
 /// The spender is used in the [`prove_private_transfer`] and [`prove_reclaim`] functions for
@@ -107,7 +108,7 @@ where
         ],
     )
     .into_post(
-        FullParameters::new(parameters, utxo_accumulator.model()),
+        FullParametersRef::new(parameters, utxo_accumulator.model()),
         &proving_context.private_transfer,
         rng,
     )
@@ -138,7 +139,7 @@ where
         asset_0,
     )
     .into_post(
-        FullParameters::new(parameters, utxo_accumulator.model()),
+        FullParametersRef::new(parameters, utxo_accumulator.model()),
         &proving_context.reclaim,
         rng,
     )

@@ -299,6 +299,12 @@ pub type UtxoAccumulatorOutput<C> = utxo::UtxoAccumulatorOutput<Parameters<C>>;
 /// Address Type
 pub type Address<C> = utxo::Address<Parameters<C>>;
 
+/// Asset Id Type
+pub type AssetId<C> = <C as Configuration>::AssetId;
+
+/// Asset Value Type
+pub type AssetValue<C> = <C as Configuration>::AssetValue;
+
 /// Asset Type
 pub type Asset<C> = asset::Asset<<C as Configuration>::AssetId, <C as Configuration>::AssetValue>;
 

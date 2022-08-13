@@ -22,11 +22,11 @@ use crate::{
             Spec2 as Poseidon2, Spec3 as Poseidon3, Spec4 as Poseidon4, Spec5 as Poseidon5,
         },
         Compiler, ConstraintField, EmbeddedScalar, EmbeddedScalarField, EmbeddedScalarVar, Group,
-        GroupCurve, GroupCurveAffine, GroupVar,
+        GroupCurve, GroupVar,
     },
     crypto::{
         constraint::arkworks::{rem_mod_prime, Boolean, Fp, FpVar, PrimeModulus},
-        ecc::arkworks::{self, ScalarVar},
+        ecc::arkworks::ScalarVar,
         poseidon::{self, encryption::BlockArray, hash::Hasher, ParameterFieldType},
     },
 };
@@ -40,10 +40,10 @@ use manta_crypto::{
     algebra::HasGenerator,
     arkworks::{
         algebra::affine_point_as_bytes,
-        ff::{try_into_u128, PrimeField, ToBytes},
+        ff::{try_into_u128, PrimeField},
         serialize::CanonicalSerialize,
     },
-    constraint::measure::{print_measurement, Measure},
+    constraint::measure::print_measurement,
     eclair::{
         alloc::{Allocate, Constant},
         num::U128,
@@ -53,7 +53,7 @@ use manta_crypto::{
     hash::ArrayHashFunction,
     merkle_tree,
     rand::{Rand, RngCore, Sample},
-    signature::schnorr::{self, Schnorr},
+    signature::schnorr,
 };
 
 pub use manta_accounting::transfer::{
@@ -370,87 +370,17 @@ impl protocol::ViewingKeyDerivationFunction for ViewingKeyDerivationFunction {
         proof_authorization_key: &Self::ProofAuthorizationKey,
         compiler: &mut (),
     ) -> Self::ViewingKey {
-        /*
-        use manta_crypto::arkworks::{
-            ec::{AffineCurve, ProjectiveCurve},
-            ff::{BigInteger, BigInteger256, FpParameters},
-        };
-        use num_bigint::BigUint;
-        */
-        let viewing_key = self
-            .0
-            .hash(
-                [
-                    &Fp(proof_authorization_key.0.x),
-                    &Fp(proof_authorization_key.0.y),
-                ],
-                compiler,
-            )
-            .0;
         Fp(rem_mod_prime::<ConstraintField, EmbeddedScalarField>(
-            viewing_key,
+            self.0
+                .hash(
+                    [
+                        &Fp(proof_authorization_key.0.x),
+                        &Fp(proof_authorization_key.0.y),
+                    ],
+                    compiler,
+                )
+                .0,
         ))
-
-        /*
-
-        // println!("BEFORE: {:?}\n", viewing_key);
-
-        let bytes = viewing_key.0.to_bytes_le();
-        /*
-        for byte in &bytes {
-            print!("{:b}", byte);
-        }
-
-        let mut resconstructed_data = BigInteger256::default();
-        resconstructed_data
-            .read_le(&mut bytes.as_slice())
-            .expect("");
-        let resconstructed = Fp(ConstraintField::new(resconstructed_data));
-        println!("\nRECONSTRUCTED: {:?}\n", resconstructed,);
-        */
-
-        let mut resconstructed_data2 = BigInteger256::default();
-        resconstructed_data2
-            .read_le(&mut BigUint::from_bytes_le(&bytes).to_bytes_le().as_slice())
-            .expect("");
-        let resconstructed2 = Fp(ConstraintField::new(resconstructed_data2));
-        /*
-        println!("\nRECONSTRUCTED2: {:?}\n", resconstructed2,);
-
-        println!(
-            "\nBEFORE MUL: {:?}\n",
-            GroupCurveAffine::prime_subgroup_generator()
-                .into_projective()
-                .mul(viewing_key.0)
-                .into_affine()
-        );
-
-        let modulus = BigUint::from_bytes_be(
-            &<EmbeddedScalarField as PrimeField>::Params::MODULUS.to_bytes_be(),
-        );
-        let mut resconstructed_data3 = BigInteger256::default();
-        resconstructed_data3
-            .read_le(
-                &mut BigUint::from_bytes_le(&bytes)
-                    .modpow(&(1u8).into(), &modulus)
-                    .to_bytes_le()
-                    .as_slice(),
-            )
-            .expect("");
-        */
-        let result = Fp(EmbeddedScalarField::new(resconstructed_data2));
-        /*
-        println!("AFTER: {:?}\n", result);
-        println!(
-            "AFTER MUL: {:?}\n",
-            GroupCurveAffine::prime_subgroup_generator()
-                .into_projective()
-                .mul(result.0 .0)
-                .into_affine()
-        );
-        */
-        result
-        */
     }
 }
 
@@ -464,10 +394,6 @@ impl protocol::ViewingKeyDerivationFunction<Compiler> for ViewingKeyDerivationFu
         proof_authorization_key: &Self::ProofAuthorizationKey,
         compiler: &mut Compiler,
     ) -> Self::ViewingKey {
-        use manta_crypto::arkworks::{
-            ec::{AffineCurve, ProjectiveCurve},
-            r1cs_std::R1CSVar,
-        };
         print_measurement(
             "VIEWING KEY DERIVATION FUNCTION",
             |compiler| {
@@ -637,14 +563,10 @@ impl encryption::convert::plaintext::Reverse for IncomingEncryptionSchemeConvert
         if target.0 && target.1.len() == 1 {
             let block = &target.1[0].0;
             if block.len() == 3 {
-                /* TODO:
                 Some(protocol::IncomingPlaintext::new(
                     Fp(block[0].0),
                     Asset::new(Fp(block[1].0), try_into_u128(block[2].0)?),
-                    Fp(block[3].0),
                 ))
-                */
-                todo!()
             } else {
                 None
             }

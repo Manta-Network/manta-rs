@@ -23,6 +23,7 @@ use crate::crypto::{
 use bls12_381::Bls12_381;
 use bls12_381_ed::constraints::EdwardsVar as Bls12_381_EdwardsVar;
 use manta_accounting::transfer;
+use manta_util::codec::Encode;
 
 #[cfg(feature = "bs58")]
 use alloc::string::String;
@@ -83,7 +84,7 @@ pub type ProofSystem = groth16::Groth16<PairingCurve>;
 /// Proof System Error
 pub type ProofSystemError = groth16::Error;
 
-///
+/// Transfer Configuration
 pub struct Config;
 
 impl transfer::Configuration for Config {
@@ -121,6 +122,15 @@ pub type Parameters = transfer::Parameters<Config>;
 
 /// Full Transfer Parameters
 pub type FullParametersRef<'p> = transfer::FullParametersRef<'p, Config>;
+
+/// Asset Id Type
+pub type AssetId = transfer::AssetId<Config>;
+
+/// Asset Value Type
+pub type AssetValue = transfer::AssetValue<Config>;
+
+/// Asset Type
+pub type Asset = transfer::Asset<Config>;
 
 /// Sender Type
 pub type Sender = transfer::Sender<Config>;
@@ -164,34 +174,32 @@ pub type Transaction = transfer::canonical::Transaction<Config>;
 /// Spending Key Type
 pub type SpendingKey = transfer::SpendingKey<Config>;
 
-/*
-/// Converts a [`ReceivingKey`] into a base58-encoded string.
+/// Address Type
+pub type Address = transfer::Address<Config>;
+
+/// Converts an [`Address`] into a base58-encoded string.
 #[cfg(feature = "bs58")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "bs58")))]
 #[inline]
-pub fn receiving_key_to_base58(receiving_key: &ReceivingKey) -> String {
+pub fn address_to_base58(address: &Address) -> String {
     let mut bytes = Vec::new();
-    receiving_key
-        .spend
-        .encode(&mut bytes)
-        .expect("Encoding is not allowed to fail.");
-    receiving_key
-        .view
+    address
+        .receiving_key
         .encode(&mut bytes)
         .expect("Encoding is not allowed to fail.");
     bs58::encode(bytes).into_string()
 }
 
-/// Converts a base58-encoded string into a [`ReceivingKey`].
+/// Converts a base58-encoded string into an [`Address`].
 #[cfg(feature = "bs58")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "bs58")))]
 #[inline]
-pub fn receiving_key_from_base58(string: &str) -> Option<ReceivingKey> {
-    let bytes = bs58::decode(string.as_bytes()).into_vec().ok()?;
-    let (spend, view) = bytes.split_at(bytes.len() / 2);
-    Some(ReceivingKey {
-        spend: spend.to_owned().try_into().ok()?,
-        view: view.to_owned().try_into().ok()?,
-    })
+pub fn address_from_base58(string: &str) -> Option<Address> {
+    Some(Address::new(
+        bs58::decode(string.as_bytes())
+            .into_vec()
+            .ok()?
+            .try_into()
+            .ok()?,
+    ))
 }
-*/

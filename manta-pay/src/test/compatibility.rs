@@ -15,6 +15,7 @@
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
 //! Manta Pay UTXO Binary Compatibility
+//!
 //! Checks if the current circuit implementation is compatible with precomputed parameters.
 
 use crate::{

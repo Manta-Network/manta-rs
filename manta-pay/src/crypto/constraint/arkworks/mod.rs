@@ -59,7 +59,6 @@ use manta_util::{
     codec::{Decode, DecodeError, Encode, Read, Write},
     SizeLimit,
 };
-use num_bigint::BigUint;
 use num_integer::Integer;
 
 #[cfg(feature = "serde")]
