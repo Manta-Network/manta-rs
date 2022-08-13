@@ -17,133 +17,150 @@
 //! Prove and Verify Functions for Benchmark and Test Purposes
 
 use crate::config::{
-    self, utxo, utxo::v1::UtxoAccumulatorModel, FullParametersRef, MultiProvingContext, Parameters,
-    PrivateTransfer, ProvingContext, ToPrivate, ToPublic,
+    self, utxo::v1::UtxoAccumulatorModel, Asset, AssetId, AuthorizationContext, FullParametersRef,
+    Parameters, PrivateTransfer, ProvingContext, Receiver, Sender, ToPrivate, ToPublic,
+    TransferPost,
 };
-use manta_accounting::transfer::SpendingKey;
-use manta_crypto::{
-    accumulator::Accumulator,
-    merkle_tree::{forest::TreeArrayMerkleForest, full::Full},
-    rand::{CryptoRng, Rand, RngCore, Sample},
-};
+use manta_accounting::transfer::{self, test::value_distribution, Authorization};
+use manta_crypto::rand::{CryptoRng, Rand, RngCore, Sample};
 
-/// UTXO Accumulator for Building Test Circuits
-pub type UtxoAccumulator = TreeArrayMerkleForest<
-    utxo::v1::MerkleTreeConfiguration,
-    Full<utxo::v1::MerkleTreeConfiguration>,
-    256,
->;
-
-/*
-/// Generates a proof for a [`Mint`] transaction.
-#[inline]
-pub fn prove_mint<R>(
-    proving_context: &ProvingContext,
-    parameters: &Parameters,
-    utxo_accumulator_model: &UtxoAccumulatorModel,
-    asset: Asset,
-    rng: &mut R,
-) -> config::TransferPost
-where
-    R: CryptoRng + RngCore + ?Sized,
-{
-    Mint::from_spending_key(parameters, &SpendingKey::gen(rng), asset, rng)
-        .into_post(
-            FullParametersRef::new(parameters, utxo_accumulator_model),
-            proving_context,
-            rng,
-        )
-        .expect("Unable to build MINT proof.")
-}
-*/
-
-/*
 /// Samples a [`Mint`] spender.
 ///
 /// The spender is used in the [`prove_private_transfer`] and [`prove_reclaim`] functions for
 /// benchmarking. Note that the [`Mint`] proof is not returned since it is not used when proving a
 /// [`PrivateTransfer`] or [`Reclaim`].
 #[inline]
-pub fn sample_mint_spender<R>(
+pub fn internal_pair<R>(
     parameters: &Parameters,
-    utxo_accumulator: &mut UtxoAccumulator,
+    authorization_context: &mut AuthorizationContext,
     asset: Asset,
     rng: &mut R,
-) -> (config::SpendingKey, config::Sender)
+) -> (Receiver, Sender)
 where
     R: CryptoRng + RngCore + ?Sized,
 {
-    let spending_key = SpendingKey::new(rng.gen(), rng.gen());
-    let (_, pre_sender) = Mint::internal_pair(parameters, &spending_key, asset, rng);
-    let sender = pre_sender
-        .insert_and_upgrade(utxo_accumulator)
-        .expect("Just inserted so this should not fail.");
-    (spending_key, sender)
-}
-
-/// Generates a proof for a [`PrivateTransfer`] transaction.
-#[inline]
-pub fn prove_private_transfer<R>(
-    proving_context: &MultiProvingContext,
-    parameters: &Parameters,
-    utxo_accumulator_model: &UtxoAccumulatorModel,
-    rng: &mut R,
-) -> config::TransferPost
-where
-    R: CryptoRng + RngCore + ?Sized,
-{
-    let asset_id = AssetId(rng.gen());
-    let asset_0 = asset_id.value(10_000);
-    let asset_1 = asset_id.value(20_000);
-    let mut utxo_accumulator = UtxoAccumulator::new(utxo_accumulator_model.clone());
-    let (spending_key_0, sender_0) =
-        sample_mint_spender(parameters, &mut utxo_accumulator, asset_0, rng);
-    let (spending_key_1, sender_1) =
-        sample_mint_spender(parameters, &mut utxo_accumulator, asset_1, rng);
-    PrivateTransfer::build(
-        [sender_0, sender_1],
-        [
-            spending_key_0.receiver(parameters, rng.gen(), asset_1),
-            spending_key_1.receiver(parameters, rng.gen(), asset_0),
-        ],
-    )
-    .into_post(
-        FullParametersRef::new(parameters, utxo_accumulator.model()),
-        &proving_context.private_transfer,
+    let (receiver, pre_sender) = transfer::internal_pair::<config::Config, _>(
+        parameters,
+        authorization_context,
+        rng.gen(),
+        asset,
+        Default::default(),
         rng,
-    )
-    .expect("Unable to build PRIVATE_TRANSFER proof.")
+    );
+    (receiver, pre_sender.assign_default_proof_unchecked())
 }
 
-/// Generates a proof for a [`Reclaim`] transaction.
-#[inline]
-pub fn prove_reclaim<R>(
-    proving_context: &MultiProvingContext,
-    parameters: &Parameters,
-    utxo_accumulator_model: &UtxoAccumulatorModel,
-    rng: &mut R,
-) -> config::TransferPost
-where
-    R: CryptoRng + RngCore + ?Sized,
-{
-    let asset_id = AssetId(rng.gen());
-    let asset_0 = asset_id.value(10_000);
-    let asset_1 = asset_id.value(20_000);
-    let mut utxo_accumulator = UtxoAccumulator::new(utxo_accumulator_model.clone());
-    let (spending_key_0, sender_0) =
-        sample_mint_spender(parameters, &mut utxo_accumulator, asset_0, rng);
-    let (_, sender_1) = sample_mint_spender(parameters, &mut utxo_accumulator, asset_1, rng);
-    Reclaim::build(
-        [sender_0, sender_1],
-        [spending_key_0.receiver(parameters, rng.gen(), asset_1)],
-        asset_0,
-    )
-    .into_post(
-        FullParametersRef::new(parameters, utxo_accumulator.model()),
-        &proving_context.reclaim,
-        rng,
-    )
-    .expect("Unable to build RECLAIM proof.")
+/// Utility Module for [`ToPrivate`]
+pub mod to_private {
+    use super::*;
+
+    /// Generates a proof for a [`ToPrivate`] transaction.
+    #[inline]
+    pub fn prove<R>(
+        proving_context: &ProvingContext,
+        parameters: &Parameters,
+        utxo_accumulator_model: &UtxoAccumulatorModel,
+        rng: &mut R,
+    ) -> TransferPost
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        ToPrivate::from_address(parameters, rng.gen(), rng.gen(), Default::default(), rng)
+            .into_post(
+                FullParametersRef::new(parameters, utxo_accumulator_model),
+                proving_context,
+                None,
+                rng,
+            )
+            .expect("")
+            .expect("")
+    }
 }
 
-*/
+/// Utility Module for [`PrivateTransfer`]
+pub mod private_transfer {
+    use super::*;
+
+    /// Generates a proof for a [`PrivateTransfer`] transaction.
+    #[inline]
+    pub fn prove<R>(
+        proving_context: &ProvingContext,
+        parameters: &Parameters,
+        utxo_accumulator_model: &UtxoAccumulatorModel,
+        rng: &mut R,
+    ) -> TransferPost
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        let asset_id = AssetId::gen(rng);
+        let values = value_distribution(2, rng.gen(), rng);
+        let spending_key = rng.gen();
+        let mut authorization =
+            Authorization::<config::Config>::from_spending_key(parameters, &spending_key, rng);
+        let (receiver_0, sender_0) = internal_pair(
+            parameters,
+            &mut authorization.context,
+            Asset::new(asset_id, values[0]),
+            rng,
+        );
+        let (receiver_1, sender_1) = internal_pair(
+            parameters,
+            &mut authorization.context,
+            Asset::new(asset_id, values[1]),
+            rng,
+        );
+        PrivateTransfer::build(
+            authorization,
+            [sender_0, sender_1],
+            [receiver_1, receiver_0],
+        )
+        .into_post(
+            FullParametersRef::new(parameters, utxo_accumulator_model),
+            proving_context,
+            Some(&spending_key),
+            rng,
+        )
+        .expect("Unable to build PRIVATE_TRANSFER proof.")
+        .expect("")
+    }
+}
+
+/// Utility Module for [`ToPublic`]
+pub mod to_public {
+    use super::*;
+
+    /// Generates a proof for a [`ToPublic`] transaction.
+    #[inline]
+    pub fn prove<R>(
+        proving_context: &ProvingContext,
+        parameters: &Parameters,
+        utxo_accumulator_model: &UtxoAccumulatorModel,
+        rng: &mut R,
+    ) -> TransferPost
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        let asset_id = AssetId::gen(rng);
+        let values = value_distribution(2, rng.gen(), rng);
+        let asset_0 = Asset::new(asset_id, values[0]);
+        let spending_key = rng.gen();
+        let mut authorization =
+            Authorization::<config::Config>::from_spending_key(parameters, &spending_key, rng);
+        let (_, sender_0) = internal_pair(parameters, &mut authorization.context, asset_0, rng);
+        let (receiver_1, sender_1) = internal_pair(
+            parameters,
+            &mut authorization.context,
+            Asset::new(asset_id, values[1]),
+            rng,
+        );
+        ToPublic::build(authorization, [sender_0, sender_1], [receiver_1], asset_0)
+            .into_post(
+                FullParametersRef::new(parameters, utxo_accumulator_model),
+                proving_context,
+                Some(&spending_key),
+                rng,
+            )
+            .expect("Unable to build TO_PUBLIC proof.")
+            .expect("")
+    }
+}

@@ -398,7 +398,6 @@ impl<P, C, COM> Encrypt<COM> for Duplexer<P, C, COM>
 where
     P: PseudorandomPermutation<COM>,
     C: Setup<P, COM>,
-    COM: crate::constraint::measure::Measure,
 {
     #[inline]
     fn encrypt(
@@ -410,11 +409,14 @@ where
         compiler: &mut COM,
     ) -> Self::Ciphertext {
         let _ = randomness;
+        /* FIXME:
         let (tag, ciphertext) = crate::constraint::measure::print_measurement(
             "DUPLEX ENCRYPT",
             |compiler| self.duplex_encryption(encryption_key, header, plaintext, compiler),
             compiler,
         );
+        */
+        let (tag, ciphertext) = self.duplex_encryption(encryption_key, header, plaintext, compiler);
         Ciphertext {
             tag,
             message: ciphertext,

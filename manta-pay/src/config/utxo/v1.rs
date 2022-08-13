@@ -30,11 +30,12 @@ use crate::{
         poseidon::{self, encryption::BlockArray, hash::Hasher, ParameterFieldType},
     },
 };
+use alloc::{vec, vec::Vec};
 use blake2::{
     digest::{Update, VariableOutput},
     Blake2s256, Blake2sVar, Digest,
 };
-use core::marker::PhantomData;
+use core::{fmt::Debug, marker::PhantomData};
 use manta_accounting::asset::Asset;
 use manta_crypto::{
     algebra::HasGenerator,
@@ -43,7 +44,6 @@ use manta_crypto::{
         ff::{try_into_u128, PrimeField},
         serialize::CanonicalSerialize,
     },
-    constraint::measure::print_measurement,
     eclair::{
         alloc::{Allocate, Constant},
         num::U128,
@@ -167,6 +167,7 @@ pub type SpendSecret = protocol::SpendSecret<Config>;
 pub type SpendSecretVar = protocol::SpendSecret<Config<Compiler>, Compiler>;
 
 ///
+#[derive(Clone, Debug)]
 pub struct GroupGenerator(Group);
 
 impl HasGenerator<Group> for GroupGenerator {
@@ -206,6 +207,7 @@ impl Constant<Compiler> for GroupGeneratorVar {
 }
 
 ///
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct UtxoCommitmentSchemeDomainTag;
 
 impl poseidon::hash::DomainTag<Poseidon5> for UtxoCommitmentSchemeDomainTag {
@@ -226,7 +228,15 @@ impl<COM> Constant<COM> for UtxoCommitmentSchemeDomainTag {
 }
 
 ///
-pub struct UtxoCommitmentScheme<COM = ()>(Hasher<Poseidon5, UtxoCommitmentSchemeDomainTag, 5, COM>)
+type UtxoCommitmentSchemeType<COM = ()> = Hasher<Poseidon5, UtxoCommitmentSchemeDomainTag, 5, COM>;
+
+///
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "UtxoCommitmentSchemeType<COM>: Clone"),
+    Debug(bound = "UtxoCommitmentSchemeType<COM>: Debug")
+)]
+pub struct UtxoCommitmentScheme<COM = ()>(UtxoCommitmentSchemeType<COM>)
 where
     Poseidon5: poseidon::Specification<COM>;
 
@@ -294,27 +304,31 @@ impl protocol::UtxoCommitmentScheme<Compiler> for UtxoCommitmentScheme<Compiler>
         receiving_key: &Self::ReceivingKey,
         compiler: &mut Compiler,
     ) -> Self::Commitment {
+        /*
         print_measurement(
             "UTXO COMMITMENT SCHEME",
             |compiler| {
-                self.0.hash(
-                    [
-                        randomness,
-                        asset_id,
-                        asset_value.as_ref(),
-                        &receiving_key.0.x,
-                        &receiving_key.0.y,
-                    ],
-                    compiler,
-                )
+        */
+        self.0.hash(
+            [
+                randomness,
+                asset_id,
+                asset_value.as_ref(),
+                &receiving_key.0.x,
+                &receiving_key.0.y,
+            ],
+            compiler,
+        )
+        /*
             },
             compiler,
         )
+        */
     }
 }
 
 ///
-#[derive(Default)]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct ViewingKeyDerivationFunctionDomainTag;
 
 impl poseidon::hash::DomainTag<Poseidon2> for ViewingKeyDerivationFunctionDomainTag {
@@ -335,9 +349,16 @@ impl<COM> Constant<COM> for ViewingKeyDerivationFunctionDomainTag {
 }
 
 ///
-pub struct ViewingKeyDerivationFunction<COM = ()>(
-    Hasher<Poseidon2, ViewingKeyDerivationFunctionDomainTag, 2, COM>,
-)
+type ViewingKeyDerivationFunctionType<COM = ()> =
+    Hasher<Poseidon2, ViewingKeyDerivationFunctionDomainTag, 2, COM>;
+
+///
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "ViewingKeyDerivationFunctionType<COM>: Clone"),
+    Debug(bound = "ViewingKeyDerivationFunctionType<COM>: Debug")
+)]
+pub struct ViewingKeyDerivationFunction<COM = ()>(ViewingKeyDerivationFunctionType<COM>)
 where
     Poseidon2: poseidon::Specification<COM>;
 
@@ -394,20 +415,24 @@ impl protocol::ViewingKeyDerivationFunction<Compiler> for ViewingKeyDerivationFu
         proof_authorization_key: &Self::ProofAuthorizationKey,
         compiler: &mut Compiler,
     ) -> Self::ViewingKey {
+        /*
         print_measurement(
             "VIEWING KEY DERIVATION FUNCTION",
             |compiler| {
-                ScalarVar::new(
-                    self.0
-                        .hash(
-                            [&proof_authorization_key.0.x, &proof_authorization_key.0.y],
-                            compiler,
-                        )
-                        .rem(PrimeModulus::<EmbeddedScalarField>::default(), compiler),
+        */
+        ScalarVar::new(
+            self.0
+                .hash(
+                    [&proof_authorization_key.0.x, &proof_authorization_key.0.y],
+                    compiler,
                 )
+                .rem(PrimeModulus::<EmbeddedScalarField>::default(), compiler),
+        )
+        /*
             },
             compiler,
         )
+        */
     }
 }
 
@@ -603,6 +628,7 @@ pub type IncomingBaseEncryptionScheme<COM = ()> = encryption::convert::key::Conv
 >;
 
 ///
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct UtxoAccumulatorItemHashDomainTag;
 
 impl poseidon::hash::DomainTag<Poseidon4> for UtxoAccumulatorItemHashDomainTag {
@@ -623,9 +649,16 @@ impl<COM> Constant<COM> for UtxoAccumulatorItemHashDomainTag {
 }
 
 ///
-pub struct UtxoAccumulatorItemHash<COM = ()>(
-    Hasher<Poseidon4, UtxoAccumulatorItemHashDomainTag, 4, COM>,
-)
+type UtxoAccumulatorItemHashType<COM = ()> =
+    Hasher<Poseidon4, UtxoAccumulatorItemHashDomainTag, 4, COM>;
+
+///
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "UtxoAccumulatorItemHashType<COM>: Clone"),
+    Debug(bound = "UtxoAccumulatorItemHashType<COM>: Debug")
+)]
+pub struct UtxoAccumulatorItemHash<COM = ()>(UtxoAccumulatorItemHashType<COM>)
 where
     Poseidon4: poseidon::Specification<COM>;
 
@@ -692,21 +725,25 @@ impl protocol::UtxoAccumulatorItemHash<Compiler> for UtxoAccumulatorItemHash<Com
         commitment: &Self::Commitment,
         compiler: &mut Compiler,
     ) -> Self::Item {
+        /*
         print_measurement(
             "UTXO ACCUMULATOR ITEM HASH",
             |compiler| {
-                self.0.hash(
-                    [
-                        &(is_transparent.clone()).into(),
-                        public_asset_id,
-                        public_asset_value.as_ref(),
-                        commitment,
-                    ],
-                    compiler,
-                )
+        */
+        self.0.hash(
+            [
+                &(is_transparent.clone()).into(),
+                public_asset_id,
+                public_asset_value.as_ref(),
+                commitment,
+            ],
+            compiler,
+        )
+        /*
             },
             compiler,
         )
+        */
     }
 }
 
@@ -717,6 +754,7 @@ pub type LeafHash = merkle_tree::IdentityLeafHash<UtxoAccumulatorItem>;
 pub type LeafHashVar = merkle_tree::IdentityLeafHash<UtxoAccumulatorItemVar, Compiler>;
 
 ///
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct InnerHashDomainTag;
 
 impl poseidon::hash::DomainTag<Poseidon2> for InnerHashDomainTag {
@@ -737,6 +775,8 @@ impl<COM> Constant<COM> for InnerHashDomainTag {
 }
 
 /// Inner Hash Configuration
+#[derive(derivative::Derivative)]
+#[derivative(Clone, Debug)]
 pub struct InnerHash<COM = ()>(PhantomData<COM>);
 
 impl merkle_tree::InnerHash for InnerHash {
@@ -777,11 +817,17 @@ impl merkle_tree::InnerHash<Compiler> for InnerHash<Compiler> {
         rhs: &Self::Output,
         compiler: &mut Compiler,
     ) -> Self::Output {
+        /*
         print_measurement(
             "INNER HASH",
-            |compiler| parameters.hash([lhs, rhs], compiler),
+            |compiler| {
+        */
+        parameters.hash([lhs, rhs], compiler)
+        /*
+            },
             compiler,
         )
+        */
     }
 
     #[inline]
@@ -791,15 +837,22 @@ impl merkle_tree::InnerHash<Compiler> for InnerHash<Compiler> {
         rhs: &Self::LeafDigest,
         compiler: &mut Compiler,
     ) -> Self::Output {
+        /*
         print_measurement(
             "INNER HASH",
-            |compiler| parameters.hash([lhs, rhs], compiler),
+            |compiler| {
+        */
+        parameters.hash([lhs, rhs], compiler)
+        /*
+            },
             compiler,
         )
+        */
     }
 }
 
 /// Merkle Tree Configuration
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct MerkleTreeConfiguration;
 
 impl MerkleTreeConfiguration {
@@ -889,6 +942,7 @@ impl merkle_tree::test::HashParameterSampling for MerkleTreeConfiguration {
 }
 
 ///
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct NullifierCommitmentSchemeDomainTag;
 
 impl poseidon::hash::DomainTag<Poseidon3> for NullifierCommitmentSchemeDomainTag {
@@ -909,9 +963,16 @@ impl<COM> Constant<COM> for NullifierCommitmentSchemeDomainTag {
 }
 
 ///
-pub struct NullifierCommitmentScheme<COM = ()>(
-    Hasher<Poseidon3, NullifierCommitmentSchemeDomainTag, 3, COM>,
-)
+type NullifierCommitmentSchemeType<COM = ()> =
+    Hasher<Poseidon3, NullifierCommitmentSchemeDomainTag, 3, COM>;
+
+///
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "NullifierCommitmentSchemeType<COM>: Clone"),
+    Debug(bound = "NullifierCommitmentSchemeType<COM>: Debug")
+)]
+pub struct NullifierCommitmentScheme<COM = ()>(NullifierCommitmentSchemeType<COM>)
 where
     Poseidon3: poseidon::Specification<COM>;
 
@@ -969,20 +1030,24 @@ impl protocol::NullifierCommitmentScheme<Compiler> for NullifierCommitmentScheme
         item: &Self::UtxoAccumulatorItem,
         compiler: &mut Compiler,
     ) -> Self::Commitment {
+        /*
         print_measurement(
             "NULLIFIER COMMITMENT SCHEME",
             |compiler| {
-                self.0.hash(
-                    [
-                        &proof_authorization_key.0.x,
-                        &proof_authorization_key.0.y,
-                        item,
-                    ],
-                    compiler,
-                )
+        */
+        self.0.hash(
+            [
+                &proof_authorization_key.0.x,
+                &proof_authorization_key.0.y,
+                item,
+            ],
+            compiler,
+        )
+        /*
             },
             compiler,
         )
+        */
     }
 }
 
@@ -1165,7 +1230,7 @@ pub type OutgoingBaseEncryptionScheme<COM = ()> = encryption::convert::key::Conv
 >;
 
 ///
-#[derive(Clone)]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct SchnorrHashFunction;
 
 impl hash::security::PreimageResistance for SchnorrHashFunction {}

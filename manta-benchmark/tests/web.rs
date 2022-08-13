@@ -14,17 +14,22 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-use manta_benchmark::{prove_mint, prove_private_transfer, prove_reclaim, Context, Proof};
+//! WASM Transfer Benchmarks
+
+use manta_benchmark::transfer::{self, Context, TransferPost};
 use wasm_bindgen_test::{wasm_bindgen_test, wasm_bindgen_test_configure};
 use web_sys::console;
 
 wasm_bindgen_test_configure!(run_in_browser);
 
-static REPEAT: usize = 3;
+/// Number of Repeated Measurements to take
+pub static REPEAT: usize = 3;
 
+///
+#[inline]
 fn bench<F>(mut f: F, operation: &str)
 where
-    F: FnMut(&Context) -> Proof,
+    F: FnMut(&Context) -> TransferPost,
 {
     let context = Context::new();
     let start_time = instant::Instant::now();
@@ -42,17 +47,20 @@ where
     );
 }
 
+///
 #[wasm_bindgen_test]
-fn bench_prove_mint() {
-    bench(prove_mint, "Prove Mint");
+fn bench_prove_to_private() {
+    bench(transfer::prove_to_private, "Prove `ToPrivate`");
 }
 
+///
 #[wasm_bindgen_test]
 fn bench_prove_private_transfer() {
-    bench(prove_private_transfer, "Prove Private Transfer");
+    bench(transfer::prove_private_transfer, "Prove `PrivateTransfer`");
 }
 
+///
 #[wasm_bindgen_test]
-fn bench_prove_reclaim() {
-    bench(prove_reclaim, "Prove Reclaim");
+fn bench_prove_to_public() {
+    bench(transfer::prove_to_public, "Prove `ToPublic`");
 }

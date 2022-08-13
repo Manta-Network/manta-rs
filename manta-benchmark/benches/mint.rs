@@ -21,35 +21,33 @@ use manta_accounting::transfer::test::assert_valid_proof;
 use manta_crypto::rand::{OsRng, Rand};
 use manta_pay::{parameters, test::payment::prove_mint};
 
+#[inline]
 fn prove(c: &mut Criterion) {
     let mut group = c.benchmark_group("bench");
-    let (proving_context, _verifying_context, parameters, utxo_accumulator_model) =
-        parameters::generate().unwrap();
+    let (proving_context, _, parameters, utxo_accumulator_model) = parameters::generate().unwrap();
     let mut rng = OsRng;
     group.bench_function("mint prove", |b| {
-        let asset = black_box(rng.gen());
         b.iter(|| {
             prove_mint(
-                &proving_context.mint,
+                &proving_context,
                 &parameters,
                 &utxo_accumulator_model,
-                asset,
                 &mut rng,
             );
         })
     });
 }
 
+#[inline]
 fn verify(c: &mut Criterion) {
     let mut group = c.benchmark_group("bench");
     let (proving_context, verifying_context, parameters, utxo_accumulator_model) =
         parameters::generate().unwrap();
     let mut rng = OsRng;
     let mint = black_box(prove_mint(
-        &proving_context.mint,
+        &proving_context,
         &parameters,
         &utxo_accumulator_model,
-        rng.gen(),
         &mut rng,
     ));
     group.bench_function("mint verify", |b| {

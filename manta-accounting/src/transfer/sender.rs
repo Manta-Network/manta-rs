@@ -126,6 +126,16 @@ where
         }
     }
 
+    /// Converts `self` into a [`Sender`] by attaching a default [`UtxoMembershipProof`] to it which
+    /// in general should not be a valid proof.
+    #[inline]
+    pub fn assign_default_proof_unchecked(self) -> Sender<S>
+    where
+        UtxoMembershipProof<S>: Default,
+    {
+        self.upgrade_unchecked(Default::default())
+    }
+
     /// Tries to convert `self` into a [`Sender`] by getting a proof from `utxo_accumulator`.
     #[inline]
     pub fn try_upgrade<A>(self, parameters: &S, utxo_accumulator: &A) -> Option<Sender<S>>
@@ -378,7 +388,7 @@ where
     ///
     /// # Implementation Note
     ///
-    /// This method, by defualt, calls the [`spend_all`] method on an iterator of length one
+    /// This method, by default, calls the [`spend_all`] method on an iterator of length one
     /// containing `(utxo_accumulator_output, nullifier)`. Either [`spend`] or [`spend_all`] can be
     /// implemented depending on which is more efficient.
     ///

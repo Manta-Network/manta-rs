@@ -23,10 +23,9 @@ use crate::crypto::{
 use bls12_381::Bls12_381;
 use bls12_381_ed::constraints::EdwardsVar as Bls12_381_EdwardsVar;
 use manta_accounting::transfer;
-use manta_util::codec::Encode;
 
 #[cfg(feature = "bs58")]
-use alloc::string::String;
+use {alloc::string::String, manta_util::codec::Encode};
 
 #[doc(inline)]
 pub use ark_bls12_381 as bls12_381;
@@ -120,8 +119,17 @@ impl transfer::Configuration for Config {
 /// Transfer Parameters
 pub type Parameters = transfer::Parameters<Config>;
 
+/// UTXO Accumulator Model Type
+pub type UtxoAccumulatorModel = transfer::UtxoAccumulatorModel<Config>;
+
 /// Full Transfer Parameters
 pub type FullParametersRef<'p> = transfer::FullParametersRef<'p, Config>;
+
+/// Authorization Context Type
+pub type AuthorizationContext = transfer::AuthorizationContext<Config>;
+
+/// Authorization Type
+pub type Authorization = transfer::Authorization<Config>;
 
 /// Asset Id Type
 pub type AssetId = transfer::AssetId<Config>;

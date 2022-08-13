@@ -29,7 +29,7 @@ use manta_crypto::{
         relations::ns,
         serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError},
     },
-    constraint::{measure::print_measurement, Input, ProofSystem},
+    constraint::{Input, ProofSystem},
     eclair::{
         self,
         alloc::{
@@ -447,24 +447,28 @@ where
 
     #[inline]
     fn scalar_mul(&self, scalar: &Self::Scalar, compiler: &mut Compiler<C>) -> Self {
+        /*
         print_measurement(
             "SCALAR MULTIPLY",
             |compiler| {
-                let _ = compiler;
-                Self::new(
-                    self.0
-                        .scalar_mul_le(
-                            scalar
-                                .0
-                                .to_bits_le()
-                                .expect("Bit decomposition is not allowed to fail.")
-                                .iter(),
-                        )
-                        .expect("Scalar multiplication is not allowed to fail."),
+        */
+        let _ = compiler;
+        Self::new(
+            self.0
+                .scalar_mul_le(
+                    scalar
+                        .0
+                        .to_bits_le()
+                        .expect("Bit decomposition is not allowed to fail.")
+                        .iter(),
                 )
+                .expect("Scalar multiplication is not allowed to fail."),
+        )
+        /*
             },
             compiler,
         )
+        */
     }
 }
 

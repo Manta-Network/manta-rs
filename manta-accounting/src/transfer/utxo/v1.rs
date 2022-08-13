@@ -20,7 +20,8 @@ use crate::{
     asset,
     transfer::utxo::{self, auth},
 };
-use core::fmt::Debug;
+use alloc::vec::Vec;
+use core::{cmp, fmt::Debug, hash::Hash};
 use manta_crypto::{
     accumulator::{self, ItemHashFunction, MembershipProof},
     algebra::{
@@ -372,6 +373,27 @@ pub type SignatureScheme<C> =
     schnorr::Schnorr<<C as BaseConfiguration>::Group, <C as Configuration>::SchnorrHashFunction>;
 
 /// UTXO Model Base Parameters
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = r"
+        C::GroupGenerator: Clone,
+        C::UtxoCommitmentScheme: Clone,
+        C::IncomingBaseEncryptionScheme: Clone,
+        C::ViewingKeyDerivationFunction: Clone,
+        C::UtxoAccumulatorItemHash: Clone,
+        C::NullifierCommitmentScheme: Clone,
+        C::OutgoingBaseEncryptionScheme: Clone,
+    "),
+    Debug(bound = r"
+        C::GroupGenerator: Debug,
+        C::UtxoCommitmentScheme: Debug,
+        C::IncomingBaseEncryptionScheme: Debug,
+        C::ViewingKeyDerivationFunction: Debug,
+        C::UtxoAccumulatorItemHash: Debug,
+        C::NullifierCommitmentScheme: Debug,
+        C::OutgoingBaseEncryptionScheme: Debug,
+    ")
+)]
 pub struct BaseParameters<C, COM = ()>
 where
     C: BaseConfiguration<COM>,
@@ -659,6 +681,16 @@ where
 }
 
 /// UTXO Model Parameters
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "BaseParameters<C>: Clone, C::SchnorrHashFunction: Clone"),
+    Copy(bound = "BaseParameters<C>: Copy, C::SchnorrHashFunction: Copy"),
+    Debug(bound = "BaseParameters<C>: Debug, C::SchnorrHashFunction: Debug"),
+    Default(bound = "BaseParameters<C>: Default, C::SchnorrHashFunction: Default"),
+    Eq(bound = "BaseParameters<C>: Eq, C::SchnorrHashFunction: Eq"),
+    Hash(bound = "BaseParameters<C>: Hash, C::SchnorrHashFunction: Hash"),
+    PartialEq(bound = "BaseParameters<C>: cmp::PartialEq, C::SchnorrHashFunction: cmp::PartialEq")
+)]
 pub struct Parameters<C>
 where
     C: Configuration<Bool = bool>,
