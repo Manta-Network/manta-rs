@@ -25,7 +25,7 @@ use crate::{
         GroupCurve, GroupCurveAffine, GroupVar,
     },
     crypto::{
-        constraint::arkworks::{Boolean, Fp, FpVar},
+        constraint::arkworks::{rem_mod_prime, Boolean, Fp, FpVar, PrimeModulus},
         ecc::arkworks::{self, ScalarVar},
         poseidon::{self, encryption::BlockArray, hash::Hasher, ParameterFieldType},
     },
@@ -47,6 +47,7 @@ use manta_crypto::{
     eclair::{
         alloc::{Allocate, Constant},
         num::U128,
+        ops::Rem,
     },
     encryption, hash,
     hash::ArrayHashFunction,
@@ -369,12 +370,13 @@ impl protocol::ViewingKeyDerivationFunction for ViewingKeyDerivationFunction {
         proof_authorization_key: &Self::ProofAuthorizationKey,
         compiler: &mut (),
     ) -> Self::ViewingKey {
+        /*
         use manta_crypto::arkworks::{
             ec::{AffineCurve, ProjectiveCurve},
             ff::{BigInteger, BigInteger256, FpParameters},
         };
         use num_bigint::BigUint;
-
+        */
         let viewing_key = self
             .0
             .hash(
@@ -385,6 +387,12 @@ impl protocol::ViewingKeyDerivationFunction for ViewingKeyDerivationFunction {
                 compiler,
             )
             .0;
+        Fp(rem_mod_prime::<ConstraintField, EmbeddedScalarField>(
+            viewing_key,
+        ))
+
+        /*
+
         // println!("BEFORE: {:?}\n", viewing_key);
 
         let bytes = viewing_key.0.to_bytes_le();
@@ -442,6 +450,7 @@ impl protocol::ViewingKeyDerivationFunction for ViewingKeyDerivationFunction {
         );
         */
         result
+        */
     }
 }
 
@@ -459,32 +468,20 @@ impl protocol::ViewingKeyDerivationFunction<Compiler> for ViewingKeyDerivationFu
             ec::{AffineCurve, ProjectiveCurve},
             r1cs_std::R1CSVar,
         };
-        let result = print_measurement(
+        print_measurement(
             "VIEWING KEY DERIVATION FUNCTION",
             |compiler| {
-                ScalarVar::new(self.0.hash(
-                    [&proof_authorization_key.0.x, &proof_authorization_key.0.y],
-                    compiler,
-                ))
+                ScalarVar::new(
+                    self.0
+                        .hash(
+                            [&proof_authorization_key.0.x, &proof_authorization_key.0.y],
+                            compiler,
+                        )
+                        .rem(PrimeModulus::<EmbeddedScalarField>::default(), compiler),
+                )
             },
             compiler,
-        );
-        /*
-        match <FpVar<_> as R1CSVar<ConstraintField>>::value(&result.0) {
-            Ok(value) => {
-                println!("CIRCUIT: {:?}\n", value);
-                println!(
-                    "CIRCUIT MUL: {:?}\n",
-                    GroupCurveAffine::prime_subgroup_generator()
-                        .into_projective()
-                        .mul(value.0)
-                        .into_affine()
-                );
-            }
-            _ => {}
-        }
-        */
-        result
+        )
     }
 }
 
