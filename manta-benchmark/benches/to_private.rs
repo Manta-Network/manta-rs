@@ -14,46 +14,46 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Reclaim Benchmarks
+//! To-Private Benchmarks
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use manta_accounting::transfer::test::assert_valid_proof;
 use manta_crypto::rand::OsRng;
-use manta_pay::{parameters, test::payment::prove_reclaim};
+use manta_pay::{parameters, test::payment};
 
+#[inline]
 fn prove(c: &mut Criterion) {
     let mut group = c.benchmark_group("bench");
-    let mut rng = OsRng;
-    let (proving_context, _, parameters, utxo_accumulator_model) = parameters::generate().unwrap();
-    group.bench_function("reclaim prove", |b| {
+    let (proving_context, _, parameters, utxo_accumulator_model) =
+        parameters::generate().expect("");
+    group.bench_function("to-private prove", |b| {
         b.iter(|| {
-            prove_reclaim(
-                &proving_context,
+            payment::to_private::prove(
+                &proving_context.to_private,
                 &parameters,
                 &utxo_accumulator_model,
-                &mut rng,
+                &mut OsRng,
             );
         })
     });
 }
 
+#[inline]
 fn verify(c: &mut Criterion) {
     let mut group = c.benchmark_group("bench");
-    let mut rng = OsRng;
     let (proving_context, verifying_context, parameters, utxo_accumulator_model) =
-        parameters::generate().unwrap();
-    let reclaim = black_box(prove_reclaim(
-        &proving_context,
+        parameters::generate().expect("");
+    let post = black_box(payment::to_private::prove(
+        &proving_context.to_private,
         &parameters,
         &utxo_accumulator_model,
-        &mut rng,
+        &mut OsRng,
     ));
-    group.bench_function("reclaim verify", |b| {
+    group.bench_function("to-private verify", |b| {
         b.iter(|| {
-            assert_valid_proof(&verifying_context.reclaim, &reclaim);
+            post.assert_valid_proof(&verifying_context.to_private);
         })
     });
 }
 
-criterion_group!(reclaim, prove, verify);
-criterion_main!(reclaim);
+criterion_group!(to_private, prove, verify);
+criterion_main!(to_private);

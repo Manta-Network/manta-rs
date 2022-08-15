@@ -17,40 +17,40 @@
 //! Private Transfer Benchmarks
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use manta_accounting::transfer::test::assert_valid_proof;
 use manta_crypto::rand::OsRng;
-use manta_pay::{parameters, test::payment::prove_private_transfer};
+use manta_pay::{parameters, test::payment};
 
+#[inline]
 fn prove(c: &mut Criterion) {
     let mut group = c.benchmark_group("bench");
-    let mut rng = OsRng;
-    let (proving_context, _, parameters, utxo_accumulator_model) = parameters::generate().unwrap();
-    group.bench_function("private transfer prove", |b| {
+    let (proving_context, _, parameters, utxo_accumulator_model) =
+        parameters::generate().expect("");
+    group.bench_function("private-transfer prove", |b| {
         b.iter(|| {
-            prove_private_transfer(
-                &proving_context,
+            payment::private_transfer::prove(
+                &proving_context.private_transfer,
                 &parameters,
                 &utxo_accumulator_model,
-                &mut rng,
+                &mut OsRng,
             );
         })
     });
 }
 
+#[inline]
 fn verify(c: &mut Criterion) {
     let mut group = c.benchmark_group("bench");
-    let mut rng = OsRng;
     let (proving_context, verifying_context, parameters, utxo_accumulator_model) =
-        parameters::generate().unwrap();
-    let private_transfer = black_box(prove_private_transfer(
-        &proving_context,
+        parameters::generate().expect("");
+    let post = black_box(payment::private_transfer::prove(
+        &proving_context.private_transfer,
         &parameters,
         &utxo_accumulator_model,
-        &mut rng,
+        &mut OsRng,
     ));
-    group.bench_function("private transfer verify", |b| {
+    group.bench_function("private-transfer verify", |b| {
         b.iter(|| {
-            assert_valid_proof(&verifying_context.private_transfer, &private_transfer);
+            post.assert_valid_proof(&verifying_context.private_transfer);
         })
     });
 }

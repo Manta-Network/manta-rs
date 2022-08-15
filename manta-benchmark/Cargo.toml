@@ -32,7 +32,7 @@ name = "ecc"
 harness = false
 
 [[bench]]
-name = "mint"
+name = "to_private"
 harness = false
 
 [[bench]]
@@ -40,7 +40,7 @@ name = "private_transfer"
 harness = false
 
 [[bench]]
-name = "reclaim"
+name = "to_public"
 harness = false
 
 [dependencies]

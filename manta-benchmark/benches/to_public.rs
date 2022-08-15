@@ -14,25 +14,24 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Mint Benchmarks
+//! To-Public Benchmarks
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use manta_accounting::transfer::test::assert_valid_proof;
-use manta_crypto::rand::{OsRng, Rand};
-use manta_pay::{parameters, test::payment::prove_mint};
+use manta_crypto::rand::OsRng;
+use manta_pay::{parameters, test::payment};
 
 #[inline]
 fn prove(c: &mut Criterion) {
     let mut group = c.benchmark_group("bench");
-    let (proving_context, _, parameters, utxo_accumulator_model) = parameters::generate().unwrap();
-    let mut rng = OsRng;
-    group.bench_function("mint prove", |b| {
+    let (proving_context, _, parameters, utxo_accumulator_model) =
+        parameters::generate().expect("");
+    group.bench_function("to-public prove", |b| {
         b.iter(|| {
-            prove_mint(
-                &proving_context,
+            payment::to_public::prove(
+                &proving_context.to_public,
                 &parameters,
                 &utxo_accumulator_model,
-                &mut rng,
+                &mut OsRng,
             );
         })
     });
@@ -42,20 +41,19 @@ fn prove(c: &mut Criterion) {
 fn verify(c: &mut Criterion) {
     let mut group = c.benchmark_group("bench");
     let (proving_context, verifying_context, parameters, utxo_accumulator_model) =
-        parameters::generate().unwrap();
-    let mut rng = OsRng;
-    let mint = black_box(prove_mint(
-        &proving_context,
+        parameters::generate().expect("");
+    let post = black_box(payment::to_public::prove(
+        &proving_context.to_public,
         &parameters,
         &utxo_accumulator_model,
-        &mut rng,
+        &mut OsRng,
     ));
-    group.bench_function("mint verify", |b| {
+    group.bench_function("to-public verify", |b| {
         b.iter(|| {
-            assert_valid_proof(&verifying_context.mint, &mint);
+            post.assert_valid_proof(&verifying_context.to_public);
         })
     });
 }
 
-criterion_group!(mint, prove, verify);
-criterion_main!(mint);
+criterion_group!(to_public, prove, verify);
+criterion_main!(to_public);
