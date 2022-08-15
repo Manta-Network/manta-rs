@@ -64,19 +64,19 @@ pub use manta_accounting::transfer::{
     utxo::{self, v1 as protocol},
 };
 
-///
+/// Asset Id Type
 pub type AssetId = Fp<ConstraintField>;
 
-///
+/// Asset Id Variable Type
 pub type AssetIdVar = FpVar<ConstraintField>;
 
-///
+/// Asset Value Type
 pub type AssetValue = u128;
 
-///
+/// Asset Value Variable Type
 pub type AssetValueVar = U128<FpVar<ConstraintField>>;
 
-///
+/// Authorization Context Type
 pub type AuthorizationContext = utxo::auth::AuthorizationContext<Parameters>;
 
 ///
@@ -169,7 +169,7 @@ pub type SpendSecret = protocol::SpendSecret<Config>;
 ///
 pub type SpendSecretVar = protocol::SpendSecret<Config<Compiler>, Compiler>;
 
-///
+/// Embedded Group Generator
 #[derive(Clone, Debug)]
 pub struct GroupGenerator(Group);
 
@@ -264,6 +264,28 @@ type UtxoCommitmentSchemeType<COM = ()> = Hasher<Poseidon5, UtxoCommitmentScheme
 pub struct UtxoCommitmentScheme<COM = ()>(UtxoCommitmentSchemeType<COM>)
 where
     Poseidon5: poseidon::Specification<COM>;
+
+impl Encode for UtxoCommitmentScheme {
+    #[inline]
+    fn encode<W>(&self, writer: W) -> Result<(), W::Error>
+    where
+        W: Write,
+    {
+        self.0.encode(writer)
+    }
+}
+
+impl Decode for UtxoCommitmentScheme {
+    type Error = <Fp<ConstraintField> as Decode>::Error;
+
+    #[inline]
+    fn decode<R>(reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
+    where
+        R: Read,
+    {
+        Ok(Self(Decode::decode(reader)?))
+    }
+}
 
 impl Sample for UtxoCommitmentScheme {
     #[inline]
@@ -386,6 +408,28 @@ type ViewingKeyDerivationFunctionType<COM = ()> =
 pub struct ViewingKeyDerivationFunction<COM = ()>(ViewingKeyDerivationFunctionType<COM>)
 where
     Poseidon2: poseidon::Specification<COM>;
+
+impl Encode for ViewingKeyDerivationFunction {
+    #[inline]
+    fn encode<W>(&self, writer: W) -> Result<(), W::Error>
+    where
+        W: Write,
+    {
+        self.0.encode(writer)
+    }
+}
+
+impl Decode for ViewingKeyDerivationFunction {
+    type Error = <Fp<ConstraintField> as Decode>::Error;
+
+    #[inline]
+    fn decode<R>(reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
+    where
+        R: Read,
+    {
+        Ok(Self(Decode::decode(reader)?))
+    }
+}
 
 impl Sample for ViewingKeyDerivationFunction {
     #[inline]
@@ -686,6 +730,28 @@ type UtxoAccumulatorItemHashType<COM = ()> =
 pub struct UtxoAccumulatorItemHash<COM = ()>(UtxoAccumulatorItemHashType<COM>)
 where
     Poseidon4: poseidon::Specification<COM>;
+
+impl Encode for UtxoAccumulatorItemHash {
+    #[inline]
+    fn encode<W>(&self, writer: W) -> Result<(), W::Error>
+    where
+        W: Write,
+    {
+        self.0.encode(writer)
+    }
+}
+
+impl Decode for UtxoAccumulatorItemHash {
+    type Error = <Fp<ConstraintField> as Decode>::Error;
+
+    #[inline]
+    fn decode<R>(reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
+    where
+        R: Read,
+    {
+        Ok(Self(Decode::decode(reader)?))
+    }
+}
 
 impl Sample for UtxoAccumulatorItemHash {
     #[inline]
@@ -1001,6 +1067,28 @@ pub struct NullifierCommitmentScheme<COM = ()>(NullifierCommitmentSchemeType<COM
 where
     Poseidon3: poseidon::Specification<COM>;
 
+impl Encode for NullifierCommitmentScheme {
+    #[inline]
+    fn encode<W>(&self, writer: W) -> Result<(), W::Error>
+    where
+        W: Write,
+    {
+        self.0.encode(writer)
+    }
+}
+
+impl Decode for NullifierCommitmentScheme {
+    type Error = <Fp<ConstraintField> as Decode>::Error;
+
+    #[inline]
+    fn decode<R>(reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
+    where
+        R: Read,
+    {
+        Ok(Self(Decode::decode(reader)?))
+    }
+}
+
 impl Sample for NullifierCommitmentScheme {
     #[inline]
     fn sample<R>(distribution: (), rng: &mut R) -> Self
@@ -1284,6 +1372,30 @@ impl schnorr::HashFunction<Group> for SchnorrHashFunction {
         Digest::update(&mut hasher, message);
         let bytes: [u8; 32] = hasher.finalize().into();
         Fp(EmbeddedScalarField::from_le_bytes_mod_order(&bytes))
+    }
+}
+
+impl Encode for SchnorrHashFunction {
+    #[inline]
+    fn encode<W>(&self, writer: W) -> Result<(), W::Error>
+    where
+        W: Write,
+    {
+        let _ = writer;
+        Ok(())
+    }
+}
+
+impl Decode for SchnorrHashFunction {
+    type Error = ();
+
+    #[inline]
+    fn decode<R>(reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
+    where
+        R: Read,
+    {
+        let _ = reader;
+        Ok(Self)
     }
 }
 

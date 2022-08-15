@@ -75,7 +75,6 @@ pub fn main() -> io::Result<()> {
         ))
         .unwrap();
 
-    /*
     utxo_commitment_scheme
         .encode(IoWriter(
             OpenOptions::new()
@@ -84,7 +83,6 @@ pub fn main() -> io::Result<()> {
                 .open(parameters_dir.join("utxo-commitment-scheme.dat"))?,
         ))
         .unwrap();
-    */
 
     /*
     incoming_base_encryption_scheme
@@ -94,15 +92,12 @@ pub fn main() -> io::Result<()> {
         .unwrap();
     */
 
-    /*
     viewing_key_derivation_function
         .encode(IoWriter(OpenOptions::new().create(true).write(true).open(
             parameters_dir.join("viewing-key-derivation-function.dat"),
         )?))
         .unwrap();
-    */
 
-    /*
     utxo_accumulator_item_hash
         .encode(IoWriter(
             OpenOptions::new()
@@ -111,9 +106,7 @@ pub fn main() -> io::Result<()> {
                 .open(parameters_dir.join("utxo-accumulator-item-hash.dat"))?,
         ))
         .unwrap();
-    */
 
-    /*
     nullifier_commitment_scheme
         .encode(IoWriter(
             OpenOptions::new()
@@ -122,7 +115,6 @@ pub fn main() -> io::Result<()> {
                 .open(parameters_dir.join("nullifier-commitment-scheme.dat"))?,
         ))
         .unwrap();
-    */
 
     /*
     outgoing_base_encryption_scheme
@@ -132,13 +124,23 @@ pub fn main() -> io::Result<()> {
         .unwrap();
     */
 
-    /*
     schnorr_hash_function
-        .encode(IoWriter(OpenOptions::new().create(true).write(true).open(
-            parameters_dir.join("schnorr-hash-function.dat"),
-        )?))
+        .encode(IoWriter(
+            OpenOptions::new()
+                .create(true)
+                .write(true)
+                .open(parameters_dir.join("schnorr-hash-function.dat"))?,
+        ))
         .unwrap();
-    */
+
+    utxo_accumulator_model
+        .encode(IoWriter(
+            OpenOptions::new()
+                .create(true)
+                .write(true)
+                .open(parameters_dir.join("utxo-accumulator-model.dat"))?,
+        ))
+        .unwrap();
 
     let proving_context_dir = target_dir.join("proving");
     fs::create_dir_all(&proving_context_dir)?;
