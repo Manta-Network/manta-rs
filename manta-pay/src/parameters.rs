@@ -17,16 +17,20 @@
 //! Generate Parameters and Proving/Verifying Contexts
 
 use crate::config::{
-    FullParametersRef, MultiProvingContext, MultiVerifyingContext, Parameters, PrivateTransfer,
-    ProofSystemError, ToPrivate, ToPublic, UtxoAccumulatorModel, VerifyingContext,
+    utxo::v1::protocol::BaseParameters, FullParametersRef, MultiProvingContext,
+    MultiVerifyingContext, Parameters, PrivateTransfer, ProofSystemError, ToPrivate, ToPublic,
+    UtxoAccumulatorModel, VerifyingContext,
 };
+use core::fmt::Debug;
 use manta_crypto::rand::{Rand, SeedableRng};
+use manta_parameters::Get;
 use manta_util::codec::Decode;
 use rand_chacha::ChaCha20Rng;
 
 #[cfg(feature = "std")]
 use {
     crate::config::ProvingContext,
+    manta_parameters::Download,
     manta_util::codec::IoReader,
     std::{fs::File, path::Path},
 };
@@ -225,29 +229,33 @@ pub fn load_to_public_verifying_context() -> VerifyingContext {
     .expect("Unable to decode ToPublic verifying context.")
 }
 
+/// Load a [`Get`] object into an object of type `T`.
+#[inline]
+fn load_get_object<G, T>() -> T
+where
+    G: Get,
+    T: Decode,
+    T::Error: Debug,
+{
+    Decode::decode(G::get().expect("Mismatch of checksum.")).expect("Unable to decode object.")
+}
+
 /// Loads the transfer [`Parameters`] from [`manta_parameters`].
 #[inline]
 pub fn load_transfer_parameters() -> Parameters {
-    /*
+    use manta_parameters::pay::testnet::parameters::*;
     Parameters {
-        note_encryption_scheme: NoteEncryptionScheme::decode(
-            manta_parameters::pay::testnet::parameters::NoteEncryptionScheme::get()
-                .expect("Checksum did not match."),
-        )
-        .expect("Unable to decode NOTE_ENCRYPTION_SCHEME parameters."),
-        utxo_commitment: UtxoCommitmentScheme::decode(
-            manta_parameters::pay::testnet::parameters::UtxoCommitmentScheme::get()
-                .expect("Checksum did not match."),
-        )
-        .expect("Unable to decode UTXO_COMMITMENT_SCHEME parameters."),
-        void_number_commitment: VoidNumberCommitmentScheme::decode(
-            manta_parameters::pay::testnet::parameters::VoidNumberCommitmentScheme::get()
-                .expect("Checksum did not match."),
-        )
-        .expect("Unable to decode VOID_NUMBER_COMMITMENT_SCHEME parameters."),
+        base: BaseParameters {
+            group_generator: load_get_object::<GroupGenerator, _>(),
+            utxo_commitment_scheme: load_get_object::<UtxoCommitmentScheme, _>(),
+            incoming_base_encryption_scheme: load_get_object::<IncomingBaseEncryptionScheme, _>(),
+            viewing_key_derivation_function: load_get_object::<ViewingKeyDerivationFunction, _>(),
+            utxo_accumulator_item_hash: load_get_object::<UtxoAccumulatorItemHash, _>(),
+            nullifier_commitment_scheme: load_get_object::<NullifierCommitmentScheme, _>(),
+            outgoing_base_encryption_scheme: load_get_object::<OutgoingBaseEncryptionScheme, _>(),
+        },
+        schnorr_hash_function: load_get_object::<SchnorrHashFunction, _>(),
     }
-    */
-    todo!()
 }
 
 /// Loads the [`UtxoAccumulatorModel`] from [`manta_parameters`].

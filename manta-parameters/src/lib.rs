@@ -24,8 +24,71 @@
 #[cfg(feature = "std")]
 extern crate std;
 
+#[cfg(feature = "std")]
+use std::{fs, io, path::Path};
+
 #[cfg(feature = "download")]
-use {anyhow::Result, std::path::Path};
+use anyhow::Result;
+
+/// Git Utilities
+#[cfg(feature = "git")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "git")))]
+pub mod git {
+    use super::*;
+    use core::fmt;
+    use std::{borrow::ToOwned, error, string::String};
+
+    #[doc(inline)]
+    pub use git2::*;
+
+    /// Errors for the [`current_branch`] Function
+    #[derive(Debug, PartialEq)]
+    pub enum CurrentBranchError {
+        /// Current Git HEAD reference is not at a branch
+        NotBranch,
+
+        /// Unable to generate shorthand for the branch name
+        MissingShorthand,
+
+        /// Git Error
+        Git(Error),
+    }
+
+    impl From<Error> for CurrentBranchError {
+        #[inline]
+        fn from(err: Error) -> Self {
+            Self::Git(err)
+        }
+    }
+
+    impl fmt::Display for CurrentBranchError {
+        #[inline]
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            match self {
+                Self::NotBranch => write!(f, "CurrentBranchError: Not a Branch"),
+                Self::MissingShorthand => write!(f, "Current Branch Error: Missing Shorthand"),
+                Self::Git(err) => write!(f, "Current Branch Error: Git Error: {}", err),
+            }
+        }
+    }
+
+    impl error::Error for CurrentBranchError {}
+
+    /// Returns the name of the current branch of this crate as a Git repository.
+    #[inline]
+    pub fn current_branch() -> Result<String, CurrentBranchError> {
+        let repo = Repository::discover(".")?;
+        let head = repo.head()?;
+        if head.is_branch() {
+            Ok(head
+                .shorthand()
+                .ok_or(CurrentBranchError::MissingShorthand)?
+                .to_owned())
+        } else {
+            Err(CurrentBranchError::NotBranch)
+        }
+    }
+}
 
 /// GitHub Data File Downloading
 #[cfg(feature = "download")]
@@ -50,6 +113,7 @@ pub mod github {
     pub const DEFAULT_BRANCH: &str = "main";
 
     /// Returns the Git-LFS URL for GitHub content at the given `branch` and `data_path`.
+    #[inline]
     pub fn lfs_url(branch: &str, data_path: &str) -> String {
         std::format!(
             "https://media.githubusercontent.com/media/{ORGANIZATION}/{REPO}/{branch}/{CRATE}/{data_path}"
@@ -116,11 +180,58 @@ pub fn verify(data: &[u8], checksum: &[u8; 32]) -> bool {
 #[cfg(feature = "std")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
 #[inline]
-pub fn verify_file<P>(path: P, checksum: &[u8; 32]) -> std::io::Result<bool>
+pub fn verify_file<P>(path: P, checksum: &[u8; 32]) -> io::Result<bool>
 where
-    P: AsRef<std::path::Path>,
+    P: AsRef<Path>,
 {
-    Ok(verify(&std::fs::read(path)?, checksum))
+    Ok(verify(&fs::read(path)?, checksum))
+}
+
+/// Fixed Checksum
+pub trait HasChecksum {
+    /// Data Checksum for the Type
+    const CHECKSUM: &'static [u8; 32];
+
+    /// Verifies that `data` is compatible with [`CHECKSUM`](Self::CHECKSUM).
+    #[inline]
+    fn verify_data(data: &[u8]) -> bool {
+        verify(data, Self::CHECKSUM)
+    }
+
+    /// Verifies that the data in the file located at `path` is compatible with
+    /// [`CHECKSUM`](Self::CHECKSUM).
+    #[cfg(feature = "std")]
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
+    #[inline]
+    fn verify_file<P>(path: P) -> io::Result<bool>
+    where
+        P: AsRef<Path>,
+    {
+        verify_file(path, Self::CHECKSUM)
+    }
+}
+
+/// Local Data
+pub trait Get: HasChecksum {
+    /// Binary Data Payload
+    const DATA: &'static [u8];
+
+    /// Verifies that [`DATA`](Self::DATA) is compatible with [`CHECKSUM`](HasChecksum::CHECKSUM).
+    #[inline]
+    fn verify() -> bool {
+        Self::verify_data(Self::DATA)
+    }
+
+    /// Reads [`DATA`](Self::DATA), making sure that the [`CHECKSUM`](HasChecksum::CHECKSUM) is
+    /// compatible with [`verify`](Self::verify).
+    #[inline]
+    fn get() -> Option<&'static [u8]> {
+        if Self::verify() {
+            Some(Self::DATA)
+        } else {
+            None
+        }
+    }
 }
 
 /// Defines a data marker type loading its raw data and checksum from disk.
@@ -130,33 +241,42 @@ macro_rules! define_dat {
         #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
         pub struct $name;
 
-        impl $name {
-            #[doc = $doc]
-            #[doc = "Data Bytes"]
-            pub const DATA: &'static [u8] = include_bytes!(concat!(env!("OUT_DIR"), $path, ".dat"));
+        impl $crate::HasChecksum for $name {
+            const CHECKSUM: &'static [u8; 32] =
+                include_bytes!(concat!(env!("OUT_DIR"), "/data/", $path, ".checksum"));
+        }
 
-            #[doc = $doc]
-            #[doc = "Data Checksum"]
-            pub const CHECKSUM: &'static [u8; 32] =
-                include_bytes!(concat!(env!("OUT_DIR"), $path, ".checksum"));
-
-            /// Verifies that [`Self::DATA`] is consistent against [`Self::CHECKSUM`].
-            #[inline]
-            pub fn verify() -> bool {
-                crate::verify(Self::DATA, Self::CHECKSUM)
-            }
-
-            /// Gets the underlying binary data after verifying against [`Self::CHECKSUM`].
-            #[inline]
-            pub fn get() -> Option<&'static [u8]> {
-                if Self::verify() {
-                    Some(Self::DATA)
-                } else {
-                    None
-                }
-            }
+        impl $crate::Get for $name {
+            const DATA: &'static [u8] =
+                include_bytes!(concat!(env!("OUT_DIR"), "/data/", $path, ".dat"));
         }
     };
+}
+
+/// Nonlocal Download-able Data
+#[cfg(feature = "download")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "download")))]
+pub trait Download: HasChecksum {
+    /// Downlaods the data for this type from GitHub. This method automatically verifies the
+    /// checksum while downloading. See [`github::download`] for more.
+    fn download<P>(path: P) -> Result<()>
+    where
+        P: AsRef<Path>;
+
+    /// Checks if the data for this type at the given `path` matches the [`CHECKSUM`] and if not,
+    /// then it downloads it from GitHub. This method automatically verifies the checksum while
+    /// downloading. See [`github::download`] for more.
+    ///
+    /// [`CHECKSUM`]: HasChecksum::CHECKSUM
+    fn download_if_invalid<P>(path: P) -> Result<()>
+    where
+        P: AsRef<Path>,
+    {
+        match verify_file(&path, Self::CHECKSUM) {
+            Ok(true) => Ok(()),
+            _ => Self::download(path),
+        }
+    }
 }
 
 /// Defines a data marker type for download-required data from GitHub LFS and checksum from disk.
@@ -166,47 +286,25 @@ macro_rules! define_lfs {
         #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
         pub struct $name;
 
-        impl $name {
-            #[doc = $doc]
-            #[doc = "Data Checksum"]
-            pub const CHECKSUM: &'static [u8; 32] =
-                include_bytes!(concat!(env!("OUT_DIR"), $path, ".checksum"));
+        impl $crate::HasChecksum for $name {
+            const CHECKSUM: &'static [u8; 32] =
+                include_bytes!(concat!(env!("OUT_DIR"), "/data/", $path, ".checksum"));
+        }
 
-            #[doc = "Downloads the data for the"]
-            #[doc = $doc]
-            #[doc = r"from GitHub. This method automatically verifies the checksum when downloading.
-                      See [`github::download`](crate::github::download) for more."]
-            #[cfg(feature = "download")]
-            #[cfg_attr(doc_cfg, doc(cfg(feature = "download")))]
+        #[cfg(feature = "download")]
+        #[cfg_attr(doc_cfg, doc(cfg(feature = "download")))]
+        impl $crate::Download for $name {
             #[inline]
-            pub fn download<P>(path: P) -> anyhow::Result<()>
+            fn download<P>(path: P) -> $crate::Result<()>
             where
-                P: AsRef<std::path::Path>,
+                P: AsRef<$crate::Path>,
             {
                 $crate::github::download(
                     $crate::github::DEFAULT_BRANCH,
-                    concat!($path, ".lfs"),
+                    concat!("/data/", $path, ".lfs"),
                     path,
-                    Self::CHECKSUM,
+                    <Self as $crate::HasChecksum>::CHECKSUM,
                 )
-            }
-
-            #[doc = "Checks if the data for the"]
-            #[doc = $doc]
-            #[doc = r"matches the checksum and if not downloads it from GitHub. This method
-                      automatically verifies the checksum when downloading.
-                      See [`github::download`](crate::github::download) for more."]
-            #[cfg(feature = "download")]
-            #[cfg_attr(doc_cfg, doc(cfg(feature = "download")))]
-            #[inline]
-            pub fn download_if_invalid<P>(path: P) -> anyhow::Result<()>
-            where
-                P: AsRef<std::path::Path>,
-            {
-                match $crate::verify_file(&path, Self::CHECKSUM) {
-                    Ok(true) => Ok(()),
-                    _ => Self::download(path),
-                }
             }
         }
     };
@@ -219,24 +317,49 @@ pub mod pay {
         /// Parameters
         pub mod parameters {
             define_dat!(
-                NoteEncryptionScheme,
-                "Note Encryption Scheme Parameters",
-                "/data/pay/testnet/parameters/note-encryption-scheme",
+                GroupGenerator,
+                "Group Generator",
+                "pay/testnet/parameters/group-generator",
             );
             define_dat!(
                 UtxoCommitmentScheme,
                 "UTXO Commitment Scheme Parameters",
-                "/data/pay/testnet/parameters/utxo-commitment-scheme",
+                "pay/testnet/parameters/utxo-commitment-scheme",
             );
             define_dat!(
-                VoidNumberCommitmentScheme,
-                "Void Number Commitment Scheme Parameters",
-                "/data/pay/testnet/parameters/void-number-commitment-scheme",
+                IncomingBaseEncryptionScheme,
+                "Incoming Base Encryption Scheme Parameters",
+                "pay/testnet/parameters/incoming-base-encryption-scheme",
+            );
+            define_dat!(
+                ViewingKeyDerivationFunction,
+                "Viewing Key Derivation Function Parameters",
+                "pay/testnet/parameters/viewing-key-derivation-function",
+            );
+            define_dat!(
+                UtxoAccumulatorItemHash,
+                "UTXO Accumulator Item Hash Parameters",
+                "pay/testnet/parameters/utxo-accumulator-item-hash",
+            );
+            define_dat!(
+                NullifierCommitmentScheme,
+                "Nullifier Commitment Scheme Parameters",
+                "pay/testnet/parameters/nullifier-commitment-scheme",
+            );
+            define_dat!(
+                OutgoingBaseEncryptionScheme,
+                "Outgoing Base Encryption Scheme Parameters",
+                "pay/testnet/parameters/outgoing-base-encryption-scheme",
+            );
+            define_dat!(
+                SchnorrHashFunction,
+                "Schnorr Hash Function Parameters",
+                "pay/testnet/parameters/schnorr-hash-function",
             );
             define_dat!(
                 UtxoAccumulatorModel,
-                "UTXO Accumulator Model",
-                "/data/pay/testnet/parameters/utxo-accumulator-model",
+                "UTXO Accumulator Model Parameters",
+                "pay/testnet/parameters/utxo-accumulator-model",
             );
         }
 
@@ -245,17 +368,17 @@ pub mod pay {
             define_lfs!(
                 ToPrivate,
                 "ToPrivate Proving Context",
-                "/data/pay/testnet/proving/to-private",
+                "pay/testnet/proving/to-private",
             );
             define_lfs!(
                 PrivateTransfer,
                 "Private Transfer Proving Context",
-                "/data/pay/testnet/proving/private-transfer",
+                "pay/testnet/proving/private-transfer",
             );
             define_lfs!(
                 ToPublic,
                 "ToPublic Proving Context",
-                "/data/pay/testnet/proving/to-public",
+                "pay/testnet/proving/to-public",
             );
         }
 
@@ -264,17 +387,17 @@ pub mod pay {
             define_dat!(
                 ToPrivate,
                 "ToPrivate Verifying Context",
-                "/data/pay/testnet/verifying/to-private"
+                "pay/testnet/verifying/to-private"
             );
             define_dat!(
                 PrivateTransfer,
                 "Private Transfer Verifying Context",
-                "/data/pay/testnet/verifying/private-transfer"
+                "pay/testnet/verifying/private-transfer"
             );
             define_dat!(
                 ToPublic,
                 "ToPublic Verifying Context",
-                "/data/pay/testnet/verifying/to-public"
+                "pay/testnet/verifying/to-public"
             );
         }
     }
@@ -284,17 +407,14 @@ pub mod pay {
 #[cfg(test)]
 mod test {
     use super::*;
-    use anyhow::{anyhow, bail, Result};
-    use git2::Repository;
+    use anyhow::{anyhow, bail};
     use hex::FromHex;
     use std::{
-        borrow::ToOwned,
         collections::HashMap,
-        fs::{self, File, OpenOptions},
+        fs::{File, OpenOptions},
         io::{BufRead, BufReader, Read},
         path::PathBuf,
         println,
-        string::String,
     };
 
     /// Checks if two files `lhs` and `rhs` have equal content.
@@ -344,7 +464,7 @@ mod test {
 
     /// Gets the checksum from the `checksums` map for `path` returning an error if it was not found.
     #[inline]
-    fn get_checksum<P>(checksums: &ChecksumMap, path: P) -> Result<Checksum>
+    fn get_checksum<P>(checksums: &ChecksumMap, path: P) -> Result<&Checksum>
     where
         P: AsRef<Path>,
     {
@@ -352,30 +472,14 @@ mod test {
         checksums
             .get(path)
             .ok_or_else(|| anyhow!("Unable to get checksum for path: {:?}", path))
-            .map(move |c| *c)
-    }
-
-    /// Returns the name of the current branch of this crate as a Git repository.
-    #[inline]
-    fn get_current_branch() -> Result<String> {
-        let repo = Repository::discover(".")?;
-        let head = repo.head()?;
-        if head.is_branch() {
-            Ok(head
-                .shorthand()
-                .ok_or_else(|| anyhow!("Unable to generate shorthand for branch name."))?
-                .to_owned())
-        } else {
-            bail!("Current Git HEAD reference is not at a branch.")
-        }
     }
 
     /// Downloads all data from GitHub and checks if they are the same as the data known locally to
     /// this Rust crate.
-    #[ignore] // NOTE: Adds `ignore` such that CI does NOT run this test while still allowing developers to test.
+    #[ignore] // NOTE: We use this so that CI doesn't run this test while still allowing developers to test.
     #[test]
     fn download_all_data() -> Result<()> {
-        let current_branch = get_current_branch()?;
+        let current_branch = super::git::current_branch()?;
         let directory = tempfile::tempdir()?;
         println!("[INFO] Temporary Directory: {:?}", directory);
         let checksums = parse_checkfile("data.checkfile")?;
@@ -391,12 +495,14 @@ mod test {
                     &current_branch,
                     path.to_str().unwrap(),
                     &target,
-                    &get_checksum(&checksums, path)?,
+                    get_checksum(&checksums, path)?,
                 )?;
-                assert!(equal_files(
-                    &mut File::open(path)?,
-                    &mut File::open(target)?
-                )?);
+                assert!(
+                    equal_files(&mut File::open(path)?, &mut File::open(&target)?)?,
+                    "The files at {:?} and {:?} are not equal.",
+                    path,
+                    target
+                );
             }
         }
         Ok(())

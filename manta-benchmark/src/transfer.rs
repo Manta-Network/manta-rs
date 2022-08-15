@@ -19,6 +19,7 @@
 use manta_crypto::rand::OsRng;
 use manta_pay::{
     config::{self, MultiProvingContext, MultiVerifyingContext, Parameters, UtxoAccumulatorModel},
+    parameters,
     test::payment,
 };
 use wasm_bindgen::prelude::wasm_bindgen;
@@ -46,7 +47,6 @@ impl Context {
     #[inline]
     #[wasm_bindgen(constructor)]
     pub fn new() -> Self {
-        /* TODO:
         let (proving_context, verifying_context, parameters, utxo_accumulator_model) =
             parameters::generate().expect("Unable to generate default parameters.");
         Self {
@@ -55,8 +55,6 @@ impl Context {
             parameters,
             utxo_accumulator_model,
         }
-        */
-        todo!()
     }
 }
 
