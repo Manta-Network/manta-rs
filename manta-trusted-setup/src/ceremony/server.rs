@@ -46,24 +46,9 @@ where
     /// Returns the nonce of `self` as a participant.
     fn nonce(&self) -> S::Nonce;
 
-    /// Set nonce
+    /// Sets nonce
     fn set_nonce(&mut self, nonce: S::Nonce);
 }
-
-// pub struct Log<C, const N: usize>
-// where
-//     C: CeremonyConfig,
-//     State<C>: CanonicalSerialize + CanonicalDeserialize,
-//     Challenge<C>: CanonicalSerialize + CanonicalDeserialize,
-//     Proof<C>: CanonicalSerialize + CanonicalDeserialize,
-// {
-//     position: usize,
-//     participant: Participant,
-//     /// State after Contribution
-//     state: AsBytes<State<C>>,
-//     /// Proof of contribution
-//     proof: AsBytes<Proof<C>>,
-// }
 
 /// Server
 #[derive(derivative::Derivative)]
@@ -260,6 +245,7 @@ where
         coordinator.num_contributions += 1;
         // TODO: checksum
         Self::log_to_file(&coordinator, &self.recovery_path);
+        println!("{} participants have contributed: ", coordinator.num_contributions);
         Ok(())
     }
 
