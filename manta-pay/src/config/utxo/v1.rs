@@ -25,9 +25,7 @@ use crate::{
         GroupCurve, GroupVar,
     },
     crypto::{
-        constraint::arkworks::{
-            codec::SerializationError, rem_mod_prime, Boolean, Fp, FpVar, PrimeModulus,
-        },
+        constraint::arkworks::{codec::SerializationError, rem_mod_prime, Boolean, Fp, FpVar},
         ecc::arkworks::ScalarVar,
         poseidon::{self, encryption::BlockArray, hash::Hasher, ParameterFieldType},
     },
@@ -49,7 +47,6 @@ use manta_crypto::{
     eclair::{
         alloc::{Allocate, Constant},
         num::U128,
-        ops::Rem,
     },
     encryption, hash,
     hash::ArrayHashFunction,
@@ -79,16 +76,16 @@ pub type AssetValueVar = U128<FpVar<ConstraintField>>;
 /// Authorization Context Type
 pub type AuthorizationContext = utxo::auth::AuthorizationContext<Parameters>;
 
-///
+/// Authorization Context Variable Type
 pub type AuthorizationContextVar = utxo::auth::AuthorizationContext<ParametersVar>;
 
-///
+/// Authorization Proof Type
 pub type AuthorizationProof = utxo::auth::AuthorizationProof<Parameters>;
 
-///
+/// Authorization Proof Variable Type
 pub type AuthorizationProofVar = utxo::auth::AuthorizationProof<ParametersVar>;
 
-///
+/// Proof Authorization Key Type
 pub type ProofAuthorizationKey = Group;
 
 ///
@@ -489,14 +486,10 @@ impl protocol::ViewingKeyDerivationFunction<Compiler> for ViewingKeyDerivationFu
             "VIEWING KEY DERIVATION FUNCTION",
             |compiler| {
         */
-        ScalarVar::new(
-            self.0
-                .hash(
-                    [&proof_authorization_key.0.x, &proof_authorization_key.0.y],
-                    compiler,
-                )
-                .rem(PrimeModulus::<EmbeddedScalarField>::default(), compiler),
-        )
+        ScalarVar::new(self.0.hash(
+            [&proof_authorization_key.0.x, &proof_authorization_key.0.y],
+            compiler,
+        ))
         /*
             },
             compiler,

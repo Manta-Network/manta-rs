@@ -36,7 +36,7 @@ use crate::{
         CiphertextType, Decrypt, DecryptedPlaintextType, DecryptionKeyType, Derive, Encrypt,
         EncryptedMessage, EncryptionKeyType, HeaderType, PlaintextType, RandomnessType,
     },
-    key,
+    key::agreement::{self, PublicKeyType, SecretKeyType},
     rand::{Rand, RngCore, Sample},
 };
 use core::{fmt::Debug, hash::Hash};
@@ -46,10 +46,10 @@ use manta_util::codec::{Decode, DecodeError, Encode, Read, Write};
 use manta_util::serde::{Deserialize, Serialize};
 
 /// Encryption Key
-pub type EncryptionKey<K> = <K as key::agreement::Types>::PublicKey;
+pub type EncryptionKey<K> = <K as PublicKeyType>::PublicKey;
 
 /// Decryption Key
-pub type DecryptionKey<K> = <K as key::agreement::Types>::SecretKey;
+pub type DecryptionKey<K> = <K as SecretKeyType>::SecretKey;
 
 /// Encryption Randomness
 #[cfg_attr(
@@ -69,7 +69,7 @@ pub type DecryptionKey<K> = <K as key::agreement::Types>::SecretKey;
 )]
 pub struct Randomness<K, E>
 where
-    K: key::agreement::Types,
+    K: SecretKeyType,
     E: RandomnessType,
 {
     /// Ephemeral Secret Key
@@ -81,7 +81,7 @@ where
 
 impl<K, E> Randomness<K, E>
 where
-    K: key::agreement::Types,
+    K: SecretKeyType,
     E: RandomnessType,
 {
     /// Builds a new [`Randomness`] from `ephemeral_secret_key` and `randomness`.
@@ -108,7 +108,7 @@ where
 
 impl<K, E, DS, DR> Sample<(DS, DR)> for Randomness<K, E>
 where
-    K: key::agreement::Types,
+    K: SecretKeyType,
     E: RandomnessType,
     K::SecretKey: Sample<DS>,
     E::Randomness: Sample<DR>,
@@ -124,11 +124,11 @@ where
 
 impl<K, E, COM> Variable<Secret, COM> for Randomness<K, E>
 where
-    K: key::agreement::Types + Constant<COM>,
+    K: SecretKeyType + Constant<COM>,
     E: RandomnessType + Constant<COM>,
     K::SecretKey: Variable<Secret, COM>,
     E::Randomness: Variable<Secret, COM>,
-    K::Type: key::agreement::Types<SecretKey = Var<K::SecretKey, Secret, COM>>,
+    K::Type: SecretKeyType<SecretKey = Var<K::SecretKey, Secret, COM>>,
     E::Type: RandomnessType<Randomness = Var<E::Randomness, Secret, COM>>,
 {
     type Type = Randomness<K::Type, E::Type>;
@@ -146,11 +146,11 @@ where
 
 impl<K, E, S, R, COM> Variable<Derived<(S, R)>, COM> for Randomness<K, E>
 where
-    K: key::agreement::Types + Constant<COM>,
+    K: SecretKeyType + Constant<COM>,
     E: RandomnessType + Constant<COM>,
     K::SecretKey: Variable<S, COM>,
     E::Randomness: Variable<R, COM>,
-    K::Type: key::agreement::Types<SecretKey = Var<K::SecretKey, S, COM>>,
+    K::Type: SecretKeyType<SecretKey = Var<K::SecretKey, S, COM>>,
     E::Type: RandomnessType<Randomness = Var<E::Randomness, R, COM>>,
 {
     type Type = Randomness<K::Type, E::Type>;
@@ -185,7 +185,7 @@ where
 )]
 pub struct Ciphertext<K, E>
 where
-    K: key::agreement::Types,
+    K: PublicKeyType,
     E: CiphertextType,
 {
     /// Ephemeral Public Key
@@ -197,7 +197,7 @@ where
 
 impl<K, E> Ciphertext<K, E>
 where
-    K: key::agreement::Types,
+    K: PublicKeyType,
     E: CiphertextType,
 {
     /// Builds a new [`Ciphertext`] from `ephemeral_public_key` and `ciphertext`.
@@ -212,7 +212,7 @@ where
 
 impl<K, E, DP, DC> Sample<(DP, DC)> for Ciphertext<K, E>
 where
-    K: key::agreement::Types,
+    K: PublicKeyType,
     E: CiphertextType,
     K::PublicKey: Sample<DP>,
     E::Ciphertext: Sample<DC>,
@@ -230,7 +230,7 @@ impl<K, E, COM> eclair::cmp::PartialEq<Self, COM> for Ciphertext<K, E>
 where
     COM: Has<bool>,
     Bool<COM>: BitAnd<Bool<COM>, COM, Output = Bool<COM>>,
-    K: key::agreement::Types,
+    K: PublicKeyType,
     E: CiphertextType,
     K::PublicKey: eclair::cmp::PartialEq<K::PublicKey, COM>,
     E::Ciphertext: eclair::cmp::PartialEq<E::Ciphertext, COM>,
@@ -254,11 +254,11 @@ where
 
 impl<K, E, COM> Variable<Public, COM> for Ciphertext<K, E>
 where
-    K: key::agreement::Types + Constant<COM>,
+    K: PublicKeyType + Constant<COM>,
     E: CiphertextType + Constant<COM>,
     K::PublicKey: Variable<Public, COM>,
     E::Ciphertext: Variable<Public, COM>,
-    K::Type: key::agreement::Types<PublicKey = Var<K::PublicKey, Public, COM>>,
+    K::Type: PublicKeyType<PublicKey = Var<K::PublicKey, Public, COM>>,
     E::Type: CiphertextType<Ciphertext = Var<E::Ciphertext, Public, COM>>,
 {
     type Type = Ciphertext<K::Type, E::Type>;
@@ -276,11 +276,11 @@ where
 
 impl<K, E, P, C, COM> Variable<Derived<(P, C)>, COM> for Ciphertext<K, E>
 where
-    K: key::agreement::Types + Constant<COM>,
+    K: PublicKeyType + Constant<COM>,
     E: CiphertextType + Constant<COM>,
     K::PublicKey: Variable<P, COM>,
     E::Ciphertext: Variable<C, COM>,
-    K::Type: key::agreement::Types<PublicKey = Var<K::PublicKey, P, COM>>,
+    K::Type: PublicKeyType<PublicKey = Var<K::PublicKey, P, COM>>,
     E::Type: CiphertextType<Ciphertext = Var<E::Ciphertext, C, COM>>,
 {
     type Type = Ciphertext<K::Type, E::Type>;
@@ -301,7 +301,7 @@ where
 
 impl<K, E> Encode for Ciphertext<K, E>
 where
-    K: key::agreement::Types,
+    K: PublicKeyType,
     K::PublicKey: Encode,
     E: CiphertextType,
     E::Ciphertext: Encode,
@@ -319,7 +319,7 @@ where
 
 impl<K, E, P> Input<P> for Ciphertext<K, E>
 where
-    K: key::agreement::Types,
+    K: PublicKeyType,
     E: CiphertextType,
     P: HasInput<K::PublicKey> + HasInput<E::Ciphertext> + ?Sized,
 {
@@ -359,7 +359,7 @@ impl<K, E> Hybrid<K, E> {
 
 impl<K, E> EncryptedMessage<Hybrid<K, E>>
 where
-    K: key::agreement::Types,
+    K: PublicKeyType,
     E: CiphertextType + HeaderType,
 {
     /// Returns the ephemeral public key associated to `self`, stored in its ciphertext.
@@ -378,7 +378,7 @@ where
 
 impl<K, E> CiphertextType for Hybrid<K, E>
 where
-    K: key::agreement::Types,
+    K: PublicKeyType,
     E: CiphertextType,
 {
     type Ciphertext = Ciphertext<K, E>;
@@ -386,14 +386,14 @@ where
 
 impl<K, E> EncryptionKeyType for Hybrid<K, E>
 where
-    K: key::agreement::Types,
+    K: PublicKeyType,
 {
     type EncryptionKey = EncryptionKey<K>;
 }
 
 impl<K, E> DecryptionKeyType for Hybrid<K, E>
 where
-    K: key::agreement::Types,
+    K: SecretKeyType,
 {
     type DecryptionKey = DecryptionKey<K>;
 }
@@ -407,7 +407,7 @@ where
 
 impl<K, E> RandomnessType for Hybrid<K, E>
 where
-    K: key::agreement::Types,
+    K: SecretKeyType,
     E: RandomnessType,
 {
     type Randomness = Randomness<K, E>;
@@ -422,7 +422,7 @@ where
 
 impl<K, E, COM> Derive<COM> for Hybrid<K, E>
 where
-    K: key::agreement::Derive<COM>,
+    K: agreement::Derive<COM>,
 {
     #[inline]
     fn derive(
@@ -436,7 +436,7 @@ where
 
 impl<K, E, COM> Encrypt<COM> for Hybrid<K, E>
 where
-    K: key::agreement::Derive<COM> + key::agreement::Agree<COM>,
+    K: agreement::Derive<COM> + agreement::Agree<COM>,
     E: Encrypt<COM, EncryptionKey = K::SharedSecret>,
 {
     #[inline]
@@ -469,7 +469,7 @@ where
 
 impl<K, E, COM> Decrypt<COM> for Hybrid<K, E>
 where
-    K: key::agreement::Agree<COM>,
+    K: agreement::Agree<COM>,
     E: Decrypt<COM, DecryptionKey = K::SharedSecret>,
 {
     #[inline]

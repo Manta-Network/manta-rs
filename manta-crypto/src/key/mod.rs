@@ -14,8 +14,6 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Manta Pay Cryptographic Primitives Implementations
+//! Cryptographic Key Primitives
 
-pub mod constraint;
-pub mod ecc;
-pub mod poseidon;
+pub mod agreement;

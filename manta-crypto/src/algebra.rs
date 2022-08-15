@@ -112,12 +112,24 @@ where
     }
 }
 
-impl<G, COM> key::agreement::Types for DiffieHellman<G, COM>
+impl<G, COM> key::agreement::SecretKeyType for DiffieHellman<G, COM>
 where
     G: CyclicGroup<COM> + security::ComputationalDiffieHellmanHardness,
 {
     type SecretKey = G::Scalar;
+}
+
+impl<G, COM> key::agreement::PublicKeyType for DiffieHellman<G, COM>
+where
+    G: CyclicGroup<COM> + security::ComputationalDiffieHellmanHardness,
+{
     type PublicKey = G;
+}
+
+impl<G, COM> key::agreement::SharedSecretType for DiffieHellman<G, COM>
+where
+    G: CyclicGroup<COM> + security::ComputationalDiffieHellmanHardness,
+{
     type SharedSecret = G;
 }
 
