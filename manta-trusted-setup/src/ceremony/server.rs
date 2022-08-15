@@ -76,7 +76,7 @@ where
     Proof<C>: CanonicalSerialize + CanonicalDeserialize,
 {
     /// Coordinator
-    coordinator: Arc<Mutex<Coordinator<C, N>>>,
+    coordinator: Arc<Mutex<Coordinator<C, N, 3>>>,
 
     /// path to recovery directory
     recovery_path: String,
@@ -92,8 +92,8 @@ where
     /// Builds a [`Server`] with initial `state`, `challenge`, and a loaded `registry`.
     #[inline]
     pub fn new(
-        state: State<C>,
-        challenge: Challenge<C>,
+        state: [State<C>; 3],
+        challenge: [Challenge<C>; 3],
         registry: Registry<ParticipantIdentifier<C>, C::Participant>,
         recovery_path: String,
     ) -> Self {
@@ -109,7 +109,7 @@ where
     #[inline]
     pub fn preprocess_request<T>(
         &self,
-        coordinator: &mut Coordinator<C, N>,
+        coordinator: &mut Coordinator<C, N, 3>,
         request: &Signed<T, C>,
     ) -> Result<(), CeremonyError<C>>
     where
@@ -173,8 +173,13 @@ where
         if coordinator.is_next(&request.identifier) {
             let (state, challenge) = coordinator.state_and_challenge();
             Ok(QueryMPCStateResponse::Mpc(
-                state.clone().into(),
-                challenge.clone().into(),
+                // TODO: To make more generic
+                state[0].clone().into(),
+                challenge[0].clone().into(),
+                state[1].clone().into(),
+                challenge[1].clone().into(),
+                state[2].clone().into(),
+                challenge[2].clone().into(),
             )) // TODO: remove this clone later
         } else {
             match coordinator.position(&participant) {
@@ -202,9 +207,7 @@ where
             .coordinator
             .lock()
             .expect("Locking the coordinator should succeed.");
-
         self.preprocess_request(&mut *coordinator, &request)?;
-
         match coordinator.get_participant(&request.identifier) {
             Some(participant) => {
                 if participant.has_contributed() {
@@ -215,26 +218,47 @@ where
                 return Err(CeremonyError::<C>::BadRequest); // TODO
             }
         }
-
-        coordinator.update(
-            &request.identifier,
+        let state = [
             request
                 .message
-                .state
+                .state0
                 .to_actual()
                 .map_err(|_| CeremonyError::BadRequest)?,
             request
                 .message
-                .proof
+                .state1
                 .to_actual()
                 .map_err(|_| CeremonyError::BadRequest)?,
-        )?; // TODO: What would happen if the server goes down after this update and before `set_contributed`?
+            request
+                .message
+                .state2
+                .to_actual()
+                .map_err(|_| CeremonyError::BadRequest)?,
+        ];
+        let proof = [
+            request
+                .message
+                .proof0
+                .to_actual()
+                .map_err(|_| CeremonyError::BadRequest)?,
+            request
+                .message
+                .proof1
+                .to_actual()
+                .map_err(|_| CeremonyError::BadRequest)?,
+            request
+                .message
+                .proof2
+                .to_actual()
+                .map_err(|_| CeremonyError::BadRequest)?,
+        ];
+        coordinator.update(&request.identifier, state, proof)?;
         coordinator
             .get_participant_mut(&request.identifier)
             .expect("Geting participant should succeed.")
             .set_contributed();
         coordinator.num_contributions += 1;
-        // save the state
+        // TODO: checksum
         Self::log_to_file(&coordinator, &self.recovery_path);
         Ok(())
     }
@@ -249,20 +273,18 @@ where
         ContributeRequest<C>: Serialize,
         ParticipantIdentifier<C>: Serialize,
     {
-        let coordinator = self
+        Ok(self
             .coordinator
             .lock()
-            .expect("Locking the coordinator should succeed.");
-        let participant = coordinator
+            .expect("Locking the coordinator should succeed.")
             .get_participant(&request)
-            .ok_or(CeremonyError::NotRegistered)?;
-        // TODO: checksum
-        Ok(participant.nonce())
+            .ok_or(CeremonyError::NotRegistered)?
+            .nonce())
     }
 
     /// Generates log and saves to a disk file.
     #[inline]
-    pub fn log_to_file<P: AsRef<Path>>(coordinator: &Coordinator<C, N>, log_dir: P)
+    pub fn log_to_file<P: AsRef<Path>>(coordinator: &Coordinator<C, N, 3>, log_dir: P)
     where
         Proof<C>: CanonicalSerialize,
         State<C>: CanonicalSerialize,
@@ -316,9 +338,17 @@ where
             CanonicalDeserialize::deserialize(&mut reader).expect("Deserialize should succeed.");
         let latest_contributor =
             bincode::deserialize_from(&mut reader).expect("Deserialize should succeed.");
-        let state =
+        let state0 =
             CanonicalDeserialize::deserialize(&mut reader).expect("Deserialize should succeed.");
-        let challenge =
+        let challenge0 =
+            CanonicalDeserialize::deserialize(&mut reader).expect("Deserialize should succeed.");
+        let state1 =
+            CanonicalDeserialize::deserialize(&mut reader).expect("Deserialize should succeed.");
+        let challenge1 =
+            CanonicalDeserialize::deserialize(&mut reader).expect("Deserialize should succeed.");
+        let state2 =
+            CanonicalDeserialize::deserialize(&mut reader).expect("Deserialize should succeed.");
+        let challenge2 =
             CanonicalDeserialize::deserialize(&mut reader).expect("Deserialize should succeed.");
         let registry = bincode::deserialize_from(&mut reader).expect("Deserialize should succeed.");
         Self {
@@ -326,8 +356,8 @@ where
                 num_contributions,
                 proof,
                 latest_contributor,
-                state,
-                challenge,
+                [state0, state1, state2],
+                [challenge0, challenge1, challenge2],
                 registry,
             ))),
             recovery_path: recovery_dir_path,

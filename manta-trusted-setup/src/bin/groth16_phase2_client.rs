@@ -291,46 +291,62 @@ pub async fn contribute() -> Result<(), Error> {
             Err(CeremonyError::AlreadyContributed) => return Err(Error::AlreadyContributed),
             Ok(_) => {}
         }
-        let (state, challenge) = match send_request::<_, QueryMPCStateResponse<C>>(
-            &network_client,
-            Endpoint::Query,
-            trusted_setup_client
-                .query_mpc_state()
-                .map_err(|_| Error::UnableToGenerateRequest("query mpc state"))?,
-        )
-        .await?
-        {
-            Err(CeremonyError::NotRegistered) => return Err(Error::NotRegistered),
-            Err(CeremonyError::NonceNotInSync(_)) => {
-                return Err(Error::UnexpectedError(
-                    "unexpected error when query mpc state. Nonce should have been synced."
-                        .to_string(),
-                ))
-            }
-            Err(CeremonyError::BadRequest) => {
-                return Err(Error::UnexpectedError(
-                    "unexpected error when query mpc state since finding a bad request."
-                        .to_string(),
-                ))
-            }
-            Err(CeremonyError::AlreadyContributed) => return Err(Error::AlreadyContributed),
-            Ok(message) => match message {
-                QueryMPCStateResponse::QueuePosition(position) => {
-                    println!("Your current position is {}.", position);
-                    thread::sleep(Duration::from_millis(10000));
-                    continue;
+        let (state0, challenge0, state1, challenge1, state2, challenge2) =
+            match send_request::<_, QueryMPCStateResponse<C>>(
+                &network_client,
+                Endpoint::Query,
+                trusted_setup_client
+                    .query_mpc_state()
+                    .map_err(|_| Error::UnableToGenerateRequest("query mpc state"))?,
+            )
+            .await?
+            {
+                Err(CeremonyError::NotRegistered) => return Err(Error::NotRegistered),
+                Err(CeremonyError::NonceNotInSync(_)) => {
+                    return Err(Error::UnexpectedError(
+                        "unexpected error when query mpc state. Nonce should have been synced."
+                            .to_string(),
+                    ))
                 }
-                QueryMPCStateResponse::Mpc(state, challenge) => (
-                    state.to_actual().expect("`to_actual` should succeed."),
-                    challenge.to_actual().expect("`to_actual` should succeed."),
-                ),
-            },
-        };
+                Err(CeremonyError::BadRequest) => {
+                    return Err(Error::UnexpectedError(
+                        "unexpected error when query mpc state since finding a bad request."
+                            .to_string(),
+                    ))
+                }
+                Err(CeremonyError::AlreadyContributed) => return Err(Error::AlreadyContributed),
+                Ok(message) => match message {
+                    QueryMPCStateResponse::QueuePosition(position) => {
+                        println!("Your current position is {}.", position);
+                        thread::sleep(Duration::from_millis(10000));
+                        continue;
+                    }
+                    QueryMPCStateResponse::Mpc(
+                        state0,
+                        challenge0,
+                        state1,
+                        challenge1,
+                        state2,
+                        challenge2,
+                    ) => (
+                        state0.to_actual().expect("`to_actual` should succeed."),
+                        challenge0.to_actual().expect("`to_actual` should succeed."),
+                        state1.to_actual().expect("`to_actual` should succeed."),
+                        challenge1.to_actual().expect("`to_actual` should succeed."),
+                        state2.to_actual().expect("`to_actual` should succeed."),
+                        challenge2.to_actual().expect("`to_actual` should succeed."),
+                    ),
+                },
+            };
         match send_request::<_, ()>(
             &network_client,
             Endpoint::Update,
             trusted_setup_client
-                .contribute(&Config::generate_hasher(), &challenge, state)
+                .contribute(
+                    &Config::generate_hasher(),
+                    &[challenge0, challenge1, challenge2],
+                    [state0, state1, state2],
+                )
                 .map_err(|_| Error::UnableToGenerateRequest("contribute"))?,
         )
         .await?

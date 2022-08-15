@@ -104,8 +104,8 @@ where
     pub fn contribute(
         &mut self,
         hasher: &Hasher<C>,
-        challenge: &Challenge<C>,
-        mut state: State<C>,
+        challenge: &[Challenge<C>; 3],
+        mut state: [State<C>; 3],
     ) -> Result<Signed<ContributeRequest<C>, C>, ()>
     where
         C::Participant: Clone,
@@ -114,10 +114,19 @@ where
         <<C as CeremonyConfig>::SignatureScheme as SignatureScheme>::PublicKey: std::fmt::Debug,
     {
         let mut rng = OsRng;
-        let proof = C::Setup::contribute(hasher, challenge, &mut state, &mut rng).ok_or(())?;
+        let proof0 =
+            C::Setup::contribute(hasher, &challenge[0], &mut state[0], &mut rng).ok_or(())?;
+        let proof1 =
+            C::Setup::contribute(hasher, &challenge[1], &mut state[1], &mut rng).ok_or(())?;
+        let proof2 =
+            C::Setup::contribute(hasher, &challenge[2], &mut state[2], &mut rng).ok_or(())?;
         let message = ContributeRequest::<C> {
-            state: AsBytes::from_actual(state),
-            proof: AsBytes::from_actual(proof),
+            state0: AsBytes::from_actual(state[0].clone()),
+            proof0: AsBytes::from_actual(proof0),
+            state1: AsBytes::from_actual(state[1].clone()),
+            proof1: AsBytes::from_actual(proof1),
+            state2: AsBytes::from_actual(state[2].clone()),
+            proof2: AsBytes::from_actual(proof2),
         };
         Signed::new(
             message,

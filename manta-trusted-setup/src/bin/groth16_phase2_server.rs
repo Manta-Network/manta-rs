@@ -32,11 +32,7 @@ use manta_trusted_setup::{
         server::Server,
         signature::{ed_dalek, SignatureScheme},
     },
-    groth16::{
-        config::dummy_circuit,
-        mpc,
-        mpc::initialize,
-    },
+    groth16::{config::dummy_circuit, kzg::Accumulator, mpc, mpc::initialize},
 };
 use std::{collections::BTreeMap, fs::File, io::Read, path::Path, process::exit};
 use tracing::error;
@@ -195,21 +191,29 @@ where
 
 // TO be updated
 fn init_server(accumulator_path: String, registry_path: String, recovery_dir_path: String) -> S {
-    let _ = accumulator_path; // TODO
-    let mut file = File::open("dummy_phase_one_parameter.data")
-        .expect("Opening phase one parameter file should succeed.");
+    let mut file =
+        File::open(accumulator_path).expect("Opening phase one parameter file should succeed.");
     let mut buf = Vec::new();
     file.read_to_end(&mut buf)
         .expect("Reading phase one parameter should succeed.");
     let mut reader = &buf[..];
-    let powers = CanonicalDeserialize::deserialize(&mut reader)
+    let powers: Accumulator<Config> = CanonicalDeserialize::deserialize(&mut reader)
         .expect("Deserialize phase one parameter should succeed.");
-    let constraints = synthesize_constraints();
-    let state =
-        initialize::<Config, R1CS<Fr>>(powers, constraints).expect("failed to initialize state");
-    let initial_challenge = <Config as mpc::ProvingKeyHasher<Config>>::hash(&state);
-    let registry = load_registry(registry_path);
-    S::new(state, initial_challenge.into(), registry, recovery_dir_path)
+    let state0 = initialize::<Config, R1CS<Fr>>(powers.clone(), synthesize_constraints())
+        .expect("failed to initialize state");
+    let challenge0 = <Config as mpc::ProvingKeyHasher<Config>>::hash(&state0).into();
+    let state1 = initialize::<Config, R1CS<Fr>>(powers.clone(), synthesize_constraints())
+        .expect("failed to initialize state");
+    let challenge1 = <Config as mpc::ProvingKeyHasher<Config>>::hash(&state1).into();
+    let state2 = initialize::<Config, R1CS<Fr>>(powers, synthesize_constraints())
+        .expect("failed to initialize state");
+    let challenge2 = <Config as mpc::ProvingKeyHasher<Config>>::hash(&state2).into();
+    S::new(
+        [state0, state1, state2],
+        [challenge0, challenge1, challenge2],
+        load_registry(registry_path),
+        recovery_dir_path,
+    )
 }
 
 #[async_std::main]
@@ -238,7 +242,7 @@ async fn main() -> tide::Result<()> {
     Ok(())
 }
 
-// cargo run --release --package manta-trusted-setup --bin groth16_phase2_server -- --backup_dir . --accumulator xxx --registry dummy_register.csv create
+// cargo run --release --package manta-trusted-setup --bin groth16_phase2_server -- --backup_dir . --accumulator dummy_phase_one_parameter.data --registry dummy_register.csv create
 
 // cs.constraint_count(): 17706
 // Finished trusted setup phase one takes 286.423455189s

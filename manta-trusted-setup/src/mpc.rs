@@ -29,7 +29,7 @@ pub trait Types {
     type Challenge: Clone;
 
     /// Contribution Proof Type
-    type Proof;
+    type Proof: Clone;
 }
 
 /// Contribution

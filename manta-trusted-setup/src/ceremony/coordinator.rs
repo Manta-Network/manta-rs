@@ -26,8 +26,8 @@ use crate::{
     mpc::Verify,
 };
 
-/// Coordinator with `C` as CeremonyConfig and `N` as the number of priority levels
-pub struct Coordinator<C, const N: usize>
+/// Coordinator with `C` as CeremonyConfig, `N` as the number of priority levels, and `M` as the number of circuits
+pub struct Coordinator<C, const N: usize, const M: usize>
 where
     C: CeremonyConfig,
 {
@@ -41,10 +41,10 @@ where
     pub(crate) latest_contributor: Option<C::Participant>,
 
     /// State
-    pub(crate) state: State<C>,
+    pub(crate) state: [State<C>; M],
 
     /// Challenge
-    pub(crate) challenge: Challenge<C>,
+    pub(crate) challenge: [Challenge<C>; M],
 
     /// Registry of participants
     pub(crate) registry: Registry<ParticipantIdentifier<C>, C::Participant>,
@@ -53,7 +53,7 @@ where
     pub(crate) queue: Queue<C::Participant, N>,
 }
 
-impl<C, const N: usize> Coordinator<C, N>
+impl<C, const N: usize, const M: usize> Coordinator<C, N, M>
 where
     C: CeremonyConfig,
 {
@@ -63,8 +63,8 @@ where
         num_contributions: usize,
         proof: Option<Proof<C>>,
         latest_contributor: Option<C::Participant>,
-        state: State<C>,
-        challenge: Challenge<C>,
+        state: [State<C>; M],
+        challenge: [Challenge<C>; M],
         registry: Registry<ParticipantIdentifier<C>, C::Participant>,
     ) -> Self {
         Self {
@@ -80,7 +80,7 @@ where
 
     /// Gets the current state and challenge.
     #[inline]
-    pub fn state_and_challenge(&self) -> (&State<C>, &Challenge<C>) {
+    pub fn state_and_challenge(&self) -> (&[State<C>; M], &[Challenge<C>; M]) {
         (&self.state, &self.challenge)
     }
 
@@ -104,17 +104,19 @@ where
     pub fn update(
         &mut self,
         participant: &ParticipantIdentifier<C>,
-        state: State<C>,
-        proof: Proof<C>,
+        state: [State<C>; M],
+        proof: [Proof<C>; M],
     ) -> Result<(), CeremonyError<C>> {
         if !self.queue.is_at_front(participant) {
             return Err(CeremonyError::<C>::BadRequest); // TODO: Why use BadRequest instead of NotYourTurn?
         };
-        take_mut::take(&mut self.state, |self_state| {
-            C::Setup::verify_transform(&self.challenge, self_state, state, proof)
-                .expect("Verify transform on received contribution should succeed.")
-                .1
-        });
+        for i in 0..M {
+            take_mut::take(&mut self.state[i], |self_state| {
+                C::Setup::verify_transform(&self.challenge[i], self_state, state[i].clone(), proof[i].clone())
+                    .expect("Verify transform on received contribution should succeed.")
+                    .1
+            });
+        }
         self.queue.pop();
         Ok(())
     }

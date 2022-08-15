@@ -47,7 +47,14 @@ where
     QueuePosition(usize),
 
     /// MPC State
-    Mpc(AsBytes<State<C>>, AsBytes<Challenge<C>>),
+    Mpc(
+        AsBytes<State<C>>,
+        AsBytes<Challenge<C>>,
+        AsBytes<State<C>>,
+        AsBytes<Challenge<C>>,
+        AsBytes<State<C>>,
+        AsBytes<Challenge<C>>,
+    ), // TODO: Find a better way
 }
 
 /// Contribute Request
@@ -58,10 +65,22 @@ where
     C: CeremonyConfig,
 {
     /// State after Contribution
-    pub state: AsBytes<State<C>>,
+    pub state0: AsBytes<State<C>>,
 
     /// Proof of contribution
-    pub proof: AsBytes<Proof<C>>,
+    pub proof0: AsBytes<Proof<C>>,
+
+    /// State after Contribution
+    pub state1: AsBytes<State<C>>,
+
+    /// Proof of contribution
+    pub proof1: AsBytes<Proof<C>>,
+
+    /// State after Contribution
+    pub state2: AsBytes<State<C>>,
+
+    /// Proof of contribution
+    pub proof2: AsBytes<Proof<C>>,
 }
 
 /// Signed Message
