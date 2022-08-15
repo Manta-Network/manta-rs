@@ -26,8 +26,6 @@ use crate::{
     mpc::Verify,
 };
 
-use serde::{Deserialize, Serialize};
-
 /// Coordinator with `C` as CeremonyConfig and `N` as the number of priority levels
 pub struct Coordinator<C, const N: usize>
 where

@@ -31,7 +31,7 @@ use serde::{de::DeserializeOwned, Serialize};
 use std::{
     fs::File,
     future::Future,
-    io::{BufReader, BufWriter, Read, Write},
+    io::{Read, Write},
     path::Path,
     sync::{Arc, Mutex},
 };
@@ -233,7 +233,7 @@ where
             .get_participant_mut(&request.identifier)
             .expect("Geting participant should succeed.")
             .set_contributed();
-
+        coordinator.num_contributions += 1;
         // save the state
         Self::log_to_file(&coordinator, &self.recovery_path);
         Ok(())
@@ -271,7 +271,6 @@ where
         C::Participant: Serialize,
     {
         let path = format!("log_{}", coordinator.num_contributions());
-
         let mut writer = Vec::new();
         bincode::serialize_into(&mut writer, &coordinator.num_contributions)
             .expect("Serialize should succeed");
@@ -291,7 +290,6 @@ where
             .expect("Serialize should succeed.");
         bincode::serialize_into(&mut writer, &coordinator.registry)
             .expect("Serialize should succeed.");
-
         let mut file = File::create(log_dir.as_ref().join(&path)).expect("Unable to create file.");
         file.write_all(&writer).expect("Unable to write to file.");
         file.flush().expect("Unable to flush file.");

@@ -363,3 +363,5 @@ pub async fn contribute() -> Result<(), Error> {
 fn main() {
     handle_error(Arguments::parse().run());
 }
+
+// cargo run --package manta-trusted-setup --bin groth16_phase2_client -- contribute

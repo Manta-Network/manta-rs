@@ -24,7 +24,9 @@ use crate::{
     },
     mpc::Types,
     ratio::HashToGroup,
-    util::{BlakeHasher, Deserializer, G1Type, G2Type, HasDistribution, KZGBlakeHasher},
+    util::{
+        BlakeHasher, Deserializer, G1Type, G2Type, HasDistribution, KZGBlakeHasher, Serializer,
+    },
 };
 use ark_groth16::ProvingKey;
 use ark_std::io::{Read, Write};
@@ -77,31 +79,6 @@ impl Size for Config {
     const G1_POWERS: usize = (Self::G2_POWERS << 1) - 1;
     const G2_POWERS: usize = 1 << 3;
 }
-
-// TODO
-// pub struct ConfigDeserialize;
-
-// impl<T, TMarker> Deserializer<T, TMarker> for Config
-// // TODO: TMarker
-// where
-//     T: CanonicalDeserialize,
-// {
-//     type Error = SerializationError;
-
-//     fn deserialize_unchecked<R>(reader: &mut R) -> Result<T, Self::Error>
-//     where
-//         R: Read,
-//     {
-//         <T as CanonicalDeserialize>::deserialize_unchecked(reader)
-//     }
-
-//     fn deserialize_compressed<R>(reader: &mut R) -> Result<T, Self::Error>
-//     where
-//         R: Read,
-//     {
-//         <T as CanonicalDeserialize>::deserialize(reader)
-//     }
-// }
 
 impl kzg::Configuration for Config {
     type DomainTag = u8;
@@ -272,42 +249,128 @@ pub fn dummy_circuit(cs: &mut R1CS<Fr>) {
         .expect("enforce_equal is not allowed to fail");
 }
 
+impl Serializer<<Config as Pairing>::G1, G1Type> for Config {
+    fn serialize_unchecked<W>(
+        item: &<Config as Pairing>::G1,
+        writer: &mut W,
+    ) -> Result<(), ark_std::io::Error>
+    where
+        W: Write,
+    {
+        item.serialize_unchecked(writer)
+            .map_err(|_| ark_std::io::ErrorKind::Other.into())
+    }
+
+    fn serialize_uncompressed<W>(
+        item: &<Config as Pairing>::G1,
+        writer: &mut W,
+    ) -> Result<(), ark_std::io::Error>
+    where
+        W: Write,
+    {
+        item.serialize_uncompressed(writer)
+            .map_err(|_| ark_std::io::ErrorKind::Other.into())
+    }
+
+    fn uncompressed_size(item: &<Config as Pairing>::G1) -> usize {
+        item.uncompressed_size()
+    }
+
+    fn serialize_compressed<W>(
+        item: &<Config as Pairing>::G1,
+        writer: &mut W,
+    ) -> Result<(), ark_std::io::Error>
+    where
+        W: Write,
+    {
+        item.serialize_uncompressed(writer)
+            .map_err(|_| ark_std::io::ErrorKind::Other.into())
+    }
+
+    fn compressed_size(item: &<Config as Pairing>::G1) -> usize {
+        item.uncompressed_size()
+    }
+}
+
+impl Serializer<<Config as Pairing>::G2, G2Type> for Config {
+    fn serialize_unchecked<W>(
+        item: &<Config as Pairing>::G2,
+        writer: &mut W,
+    ) -> Result<(), ark_std::io::Error>
+    where
+        W: Write,
+    {
+        item.serialize_unchecked(writer)
+            .map_err(|_| ark_std::io::ErrorKind::Other.into())
+    }
+
+    fn serialize_uncompressed<W>(
+        item: &<Config as Pairing>::G2,
+        writer: &mut W,
+    ) -> Result<(), ark_std::io::Error>
+    where
+        W: Write,
+    {
+        item.serialize_uncompressed(writer)
+            .map_err(|_| ark_std::io::ErrorKind::Other.into())
+    }
+
+    fn uncompressed_size(item: &<Config as Pairing>::G2) -> usize {
+        item.uncompressed_size()
+    }
+
+    fn serialize_compressed<W>(
+        item: &<Config as Pairing>::G2,
+        writer: &mut W,
+    ) -> Result<(), ark_std::io::Error>
+    where
+        W: Write,
+    {
+        item.serialize_uncompressed(writer)
+            .map_err(|_| ark_std::io::ErrorKind::Other.into())
+    }
+
+    fn compressed_size(item: &<Config as Pairing>::G2) -> usize {
+        item.uncompressed_size()
+    }
+}
+
 impl Deserializer<<Config as Pairing>::G1, G1Type> for Config {
-    type Error = ark_std::io::Error; // TODO
+    type Error = ark_std::io::Error;
 
     fn deserialize_unchecked<R>(reader: &mut R) -> Result<<Config as Pairing>::G1, Self::Error>
     where
-        R: ark_std::io::Read,
+        R: Read,
     {
-        let error = ark_std::io::ErrorKind::Other; // TODO
-        <Config as Pairing>::G1::deserialize_unchecked(reader).map_err(|_| error.into())
+        CanonicalDeserialize::deserialize_unchecked(reader)
+            .map_err(|_| ark_std::io::ErrorKind::Other.into())
     }
 
     fn deserialize_compressed<R>(reader: &mut R) -> Result<<Config as Pairing>::G1, Self::Error>
     where
-        R: ark_std::io::Read,
+        R: Read,
     {
-        let error = ark_std::io::ErrorKind::Other; // TODO
-        <Config as Pairing>::G1::deserialize_uncompressed(reader).map_err(|_| error.into())
+        CanonicalDeserialize::deserialize_uncompressed(reader)
+            .map_err(|_| ark_std::io::ErrorKind::Other.into())
     }
 }
 
 impl Deserializer<<Config as Pairing>::G2, G2Type> for Config {
-    type Error = ark_std::io::Error; // TODO
+    type Error = ark_std::io::Error;
 
     fn deserialize_unchecked<R>(reader: &mut R) -> Result<<Config as Pairing>::G2, Self::Error>
     where
-        R: ark_std::io::Read,
+        R: Read,
     {
-        let error = ark_std::io::ErrorKind::Other; // TODO
-        <Config as Pairing>::G2::deserialize_unchecked(reader).map_err(|_| error.into())
+        CanonicalDeserialize::deserialize_unchecked(reader)
+            .map_err(|_| ark_std::io::ErrorKind::Other.into())
     }
 
     fn deserialize_compressed<R>(reader: &mut R) -> Result<<Config as Pairing>::G2, Self::Error>
     where
-        R: ark_std::io::Read,
+        R: Read,
     {
-        let error = ark_std::io::ErrorKind::Other; // TODO
-        <Config as Pairing>::G2::deserialize_uncompressed(reader).map_err(|_| error.into())
+        CanonicalDeserialize::deserialize_uncompressed(reader)
+            .map_err(|_| ark_std::io::ErrorKind::Other.into())
     }
 }

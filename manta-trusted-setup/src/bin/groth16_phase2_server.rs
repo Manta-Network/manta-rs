@@ -18,8 +18,8 @@
 
 use ark_bls12_381::Fr;
 use manta_crypto::{
-    arkworks::pairing::Pairing,
-    rand::{OsRng, Rand, Sample},
+    arkworks::{pairing::Pairing, serialize::CanonicalDeserialize},
+    rand::{OsRng, Rand},
 };
 use manta_pay::crypto::constraint::arkworks::R1CS;
 use manta_trusted_setup::{
@@ -34,12 +34,11 @@ use manta_trusted_setup::{
     },
     groth16::{
         config::dummy_circuit,
-        kzg::{Accumulator, Contribution},
         mpc,
         mpc::initialize,
     },
 };
-use std::{collections::BTreeMap, fs::File, path::Path, process::exit};
+use std::{collections::BTreeMap, fs::File, io::Read, path::Path, process::exit};
 use tracing::error;
 
 type C = Groth16BLS12381;
@@ -144,23 +143,6 @@ fn synthesize_constraints(// phase_one_parameters: &PhaseOneParameters,
     cs
 }
 
-// TODO: To be replaced with production circuit.
-/// Conducts a dummy phase one trusted setup.
-#[inline]
-pub fn dummy_phase_one_trusted_setup() -> Accumulator<Config> {
-    let mut rng = OsRng;
-    let accumulator = Accumulator::default();
-    let challenge = [0; 64];
-    let contribution = Contribution::gen(&mut rng);
-    let proof = contribution
-        .proof(&challenge, &mut rng)
-        .expect("The contribution proof should have been generated correctly.");
-    let mut next_accumulator = accumulator.clone();
-    next_accumulator.update(&contribution);
-    Accumulator::verify_transform(accumulator, next_accumulator, challenge, proof)
-        .expect("Accumulator should have been generated correctly.")
-}
-
 fn load_registry<P>(
     registry_path: P,
 ) -> Registry<ParticipantIdentifier<C>, <C as CeremonyConfig>::Participant>
@@ -214,7 +196,14 @@ where
 // TO be updated
 fn init_server(accumulator_path: String, registry_path: String, recovery_dir_path: String) -> S {
     let _ = accumulator_path; // TODO
-    let powers = dummy_phase_one_trusted_setup(); // TODO: To be replaced with disk file
+    let mut file = File::open("dummy_phase_one_parameter.data")
+        .expect("Opening phase one parameter file should succeed.");
+    let mut buf = Vec::new();
+    file.read_to_end(&mut buf)
+        .expect("Reading phase one parameter should succeed.");
+    let mut reader = &buf[..];
+    let powers = CanonicalDeserialize::deserialize(&mut reader)
+        .expect("Deserialize phase one parameter should succeed.");
     let constraints = synthesize_constraints();
     let state =
         initialize::<Config, R1CS<Fr>>(powers, constraints).expect("failed to initialize state");
@@ -249,7 +238,7 @@ async fn main() -> tide::Result<()> {
     Ok(())
 }
 
-// cargo run --release --package manta-trusted-setup --bin groth16_phase2_server -- --accumulator_path xxx
+// cargo run --release --package manta-trusted-setup --bin groth16_phase2_server -- --backup_dir . --accumulator xxx --registry dummy_register.csv create
 
 // cs.constraint_count(): 17706
 // Finished trusted setup phase one takes 286.423455189s
