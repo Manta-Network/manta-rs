@@ -25,7 +25,9 @@ use crate::{
         GroupCurve, GroupVar,
     },
     crypto::{
-        constraint::arkworks::{rem_mod_prime, Boolean, Fp, FpVar, PrimeModulus},
+        constraint::arkworks::{
+            codec::SerializationError, rem_mod_prime, Boolean, Fp, FpVar, PrimeModulus,
+        },
         ecc::arkworks::ScalarVar,
         poseidon::{self, encryption::BlockArray, hash::Hasher, ParameterFieldType},
     },
@@ -55,6 +57,7 @@ use manta_crypto::{
     rand::{Rand, RngCore, Sample},
     signature::schnorr,
 };
+use manta_util::codec::{Decode, DecodeError, Encode, Read, Write};
 
 pub use manta_accounting::transfer::{
     self,
@@ -174,6 +177,28 @@ impl HasGenerator<Group> for GroupGenerator {
     #[inline]
     fn generator(&self) -> &Group {
         &self.0
+    }
+}
+
+impl Encode for GroupGenerator {
+    #[inline]
+    fn encode<W>(&self, writer: W) -> Result<(), W::Error>
+    where
+        W: Write,
+    {
+        self.0.encode(writer)
+    }
+}
+
+impl Decode for GroupGenerator {
+    type Error = SerializationError;
+
+    #[inline]
+    fn decode<R>(reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
+    where
+        R: Read,
+    {
+        Ok(Self(Decode::decode(reader)?))
     }
 }
 

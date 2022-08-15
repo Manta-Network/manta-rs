@@ -16,12 +16,13 @@
 
 //! Generate Parameters
 
-/*
-
 // TODO: Deduplicate the per-circuit proving context and verifying context serialization code.
 // TODO: Print some statistics about the parameters and circuits and into a stats file as well.
 
-use manta_pay::{config::Parameters, parameters};
+use manta_pay::{
+    config::{utxo::v1::protocol::BaseParameters, Parameters},
+    parameters,
+};
 use manta_util::codec::{Encode, IoWriter};
 use std::{
     env,
@@ -46,25 +47,34 @@ pub fn main() -> io::Result<()> {
     fs::create_dir_all(&target_dir)?;
 
     let (proving_context, verifying_context, parameters, utxo_accumulator_model) =
-        parameters::generate().unwrap();
+        parameters::generate().expect("Unable to generate parameters.");
 
     let Parameters {
-        note_encryption_scheme,
-        utxo_commitment,
-        void_number_commitment,
+        base:
+            BaseParameters {
+                group_generator,
+                utxo_commitment_scheme,
+                incoming_base_encryption_scheme,
+                viewing_key_derivation_function,
+                utxo_accumulator_item_hash,
+                nullifier_commitment_scheme,
+                outgoing_base_encryption_scheme,
+            },
+        schnorr_hash_function,
     } = &parameters;
 
     let parameters_dir = target_dir.join("parameters");
     fs::create_dir_all(&parameters_dir)?;
 
-    note_encryption_scheme
+    group_generator
         .encode(IoWriter(
             OpenOptions::new()
                 .create(true)
                 .write(true)
-                .open(parameters_dir.join("note-encryption-scheme.dat"))?,
+                .open(parameters_dir.join("group-generator.dat"))?,
         ))
         .unwrap();
+    /*
     utxo_commitment
         .encode(IoWriter(
             OpenOptions::new()
@@ -151,8 +161,7 @@ pub fn main() -> io::Result<()> {
         .unwrap();
 
     Ok(())
+
+    */
+    todo!()
 }
-
-*/
-
-fn main() {}

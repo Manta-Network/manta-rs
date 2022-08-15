@@ -243,9 +243,9 @@ pub mod pay {
         /// Zero-Knowledge Proof System Proving Data
         pub mod proving {
             define_lfs!(
-                Mint,
-                "Mint Proving Context",
-                "/data/pay/testnet/proving/mint",
+                ToPrivate,
+                "ToPrivate Proving Context",
+                "/data/pay/testnet/proving/to-private",
             );
             define_lfs!(
                 PrivateTransfer,
@@ -253,18 +253,18 @@ pub mod pay {
                 "/data/pay/testnet/proving/private-transfer",
             );
             define_lfs!(
-                Reclaim,
-                "Reclaim Proving Context",
-                "/data/pay/testnet/proving/reclaim",
+                ToPublic,
+                "ToPublic Proving Context",
+                "/data/pay/testnet/proving/to-public",
             );
         }
 
         /// Zero-Knowledge Proof System Verifying Data
         pub mod verifying {
             define_dat!(
-                Mint,
-                "Mint Verifying Context",
-                "/data/pay/testnet/verifying/mint"
+                ToPrivate,
+                "ToPrivate Verifying Context",
+                "/data/pay/testnet/verifying/to-private"
             );
             define_dat!(
                 PrivateTransfer,
@@ -272,9 +272,9 @@ pub mod pay {
                 "/data/pay/testnet/verifying/private-transfer"
             );
             define_dat!(
-                Reclaim,
-                "Reclaim Verifying Context",
-                "/data/pay/testnet/verifying/reclaim"
+                ToPublic,
+                "ToPublic Verifying Context",
+                "/data/pay/testnet/verifying/to-public"
             );
         }
     }
