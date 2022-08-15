@@ -39,7 +39,7 @@ use manta_crypto::{
     rand::{Rand, RngCore, Sample},
 };
 use manta_util::{
-    codec::{self, Encode},
+    codec::{self, Decode, DecodeError, Encode},
     vec::padded_chunks_with,
     BoxArray,
 };
@@ -588,6 +588,38 @@ where
         Self {
             initial_state: this.initial_state.as_constant(compiler),
         }
+    }
+}
+
+impl<const N: usize, S> Decode for FixedEncryption<N, S>
+where
+    S: Specification,
+    State<S>: Decode,
+{
+    type Error = <State<S> as Decode>::Error;
+
+    #[inline]
+    fn decode<R>(reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
+    where
+        R: codec::Read,
+    {
+        Ok(Self {
+            initial_state: Decode::decode(reader)?,
+        })
+    }
+}
+
+impl<const N: usize, S> Encode for FixedEncryption<N, S>
+where
+    S: Specification,
+    State<S>: Encode,
+{
+    #[inline]
+    fn encode<W>(&self, writer: W) -> Result<(), W::Error>
+    where
+        W: codec::Write,
+    {
+        self.initial_state.encode(writer)
     }
 }
 

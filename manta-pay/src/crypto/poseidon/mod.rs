@@ -205,6 +205,36 @@ where
     }
 }
 
+impl<S> Decode for State<S>
+where
+    S: Specification,
+    S::Field: Decode,
+{
+    type Error = Option<<S::Field as Decode>::Error>;
+
+    #[inline]
+    fn decode<R>(reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
+    where
+        R: Read,
+    {
+        Ok(Self(Decode::decode(reader)?))
+    }
+}
+
+impl<S> Encode for State<S>
+where
+    S: Specification,
+    S::Field: Encode,
+{
+    #[inline]
+    fn encode<W>(&self, writer: W) -> Result<(), W::Error>
+    where
+        W: Write,
+    {
+        self.0.encode(writer)
+    }
+}
+
 impl<S, D> Sample<D> for State<S>
 where
     S: Specification,

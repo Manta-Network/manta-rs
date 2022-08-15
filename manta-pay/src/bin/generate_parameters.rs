@@ -114,13 +114,11 @@ pub fn main() -> io::Result<()> {
         ))
         .unwrap();
 
-    /*
     outgoing_base_encryption_scheme
         .encode(IoWriter(OpenOptions::new().create(true).write(true).open(
             parameters_dir.join("outgoing-base-encryption-scheme.dat"),
         )?))
         .unwrap();
-    */
 
     schnorr_hash_function
         .encode(IoWriter(
