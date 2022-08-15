@@ -74,8 +74,9 @@ pub fn main() -> io::Result<()> {
                 .open(parameters_dir.join("group-generator.dat"))?,
         ))
         .unwrap();
+
     /*
-    utxo_commitment
+    utxo_commitment_scheme
         .encode(IoWriter(
             OpenOptions::new()
                 .create(true)
@@ -83,19 +84,61 @@ pub fn main() -> io::Result<()> {
                 .open(parameters_dir.join("utxo-commitment-scheme.dat"))?,
         ))
         .unwrap();
-    void_number_commitment
+    */
+
+    /*
+    incoming_base_encryption_scheme
         .encode(IoWriter(OpenOptions::new().create(true).write(true).open(
-            parameters_dir.join("void-number-commitment-scheme.dat"),
+            parameters_dir.join("incoming-base-encryption-scheme.dat"),
         )?))
         .unwrap();
-    utxo_accumulator_model
+    */
+
+    /*
+    viewing_key_derivation_function
+        .encode(IoWriter(OpenOptions::new().create(true).write(true).open(
+            parameters_dir.join("viewing-key-derivation-function.dat"),
+        )?))
+        .unwrap();
+    */
+
+    /*
+    utxo_accumulator_item_hash
         .encode(IoWriter(
             OpenOptions::new()
                 .create(true)
                 .write(true)
-                .open(parameters_dir.join("utxo-accumulator-model.dat"))?,
+                .open(parameters_dir.join("utxo-accumulator-item-hash.dat"))?,
         ))
         .unwrap();
+    */
+
+    /*
+    nullifier_commitment_scheme
+        .encode(IoWriter(
+            OpenOptions::new()
+                .create(true)
+                .write(true)
+                .open(parameters_dir.join("nullifier-commitment-scheme.dat"))?,
+        ))
+        .unwrap();
+    */
+
+    /*
+    outgoing_base_encryption_scheme
+        .encode(IoWriter(OpenOptions::new().create(true).write(true).open(
+            parameters_dir.join("outgoing-base-encryption-scheme.dat"),
+        )?))
+        .unwrap();
+    */
+
+    /*
+    schnorr_hash_function
+        .encode(IoWriter(OpenOptions::new().create(true).write(true).open(
+            parameters_dir.join("schnorr-hash-function.dat"),
+        )?))
+        .unwrap();
+    */
 
     let proving_context_dir = target_dir.join("proving");
     fs::create_dir_all(&proving_context_dir)?;
@@ -104,21 +147,21 @@ pub fn main() -> io::Result<()> {
     fs::create_dir_all(&verifying_context_dir)?;
 
     proving_context
-        .mint
+        .to_private
         .encode(IoWriter(
             OpenOptions::new()
                 .create(true)
                 .write(true)
-                .open(proving_context_dir.join("mint.lfs"))?,
+                .open(proving_context_dir.join("to-private.lfs"))?,
         ))
         .unwrap();
     verifying_context
-        .mint
+        .to_private
         .encode(IoWriter(
             OpenOptions::new()
                 .create(true)
                 .write(true)
-                .open(verifying_context_dir.join("mint.dat"))?,
+                .open(verifying_context_dir.join("to-private.dat"))?,
         ))
         .unwrap();
 
@@ -142,26 +185,23 @@ pub fn main() -> io::Result<()> {
         .unwrap();
 
     proving_context
-        .reclaim
+        .to_public
         .encode(IoWriter(
             OpenOptions::new()
                 .create(true)
                 .write(true)
-                .open(proving_context_dir.join("reclaim.lfs"))?,
+                .open(proving_context_dir.join("to-public.lfs"))?,
         ))
         .unwrap();
     verifying_context
-        .reclaim
+        .to_public
         .encode(IoWriter(
             OpenOptions::new()
                 .create(true)
                 .write(true)
-                .open(verifying_context_dir.join("reclaim.dat"))?,
+                .open(verifying_context_dir.join("to-public.dat"))?,
         ))
         .unwrap();
 
     Ok(())
-
-    */
-    todo!()
 }
