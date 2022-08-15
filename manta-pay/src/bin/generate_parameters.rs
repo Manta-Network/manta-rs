@@ -84,13 +84,11 @@ pub fn main() -> io::Result<()> {
         ))
         .unwrap();
 
-    /*
     incoming_base_encryption_scheme
         .encode(IoWriter(OpenOptions::new().create(true).write(true).open(
             parameters_dir.join("incoming-base-encryption-scheme.dat"),
         )?))
         .unwrap();
-    */
 
     viewing_key_derivation_function
         .encode(IoWriter(OpenOptions::new().create(true).write(true).open(
