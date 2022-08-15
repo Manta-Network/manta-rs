@@ -18,10 +18,13 @@
 
 use ark_bls12_381::Fr;
 use manta_crypto::{
-    arkworks::{pairing::Pairing, serialize::CanonicalDeserialize},
+    arkworks::serialize::CanonicalDeserialize,
     rand::{OsRng, Rand},
 };
-use manta_pay::crypto::constraint::arkworks::R1CS;
+use manta_pay::{
+    config::{FullParameters, Mint, PrivateTransfer, Reclaim},
+    crypto::constraint::arkworks::R1CS,
+};
 use manta_trusted_setup::{
     ceremony::{
         config::{
@@ -34,7 +37,7 @@ use manta_trusted_setup::{
     },
     groth16::{config::dummy_circuit, kzg::Accumulator, mpc, mpc::initialize},
 };
-use std::{collections::BTreeMap, fs::File, io::Read, path::Path, process::exit};
+use std::{collections::BTreeMap, fs::File, io::Read, path::Path, process::exit, time::Instant};
 use tracing::error;
 
 type C = Groth16BLS12381;
@@ -132,12 +135,12 @@ impl ServerOptions {
     }
 }
 
-fn synthesize_constraints(// phase_one_parameters: &PhaseOneParameters,
-) -> R1CS<<Config as Pairing>::Scalar> {
-    let mut cs = R1CS::for_contexts();
-    dummy_circuit(&mut cs); // TO be changed
-    cs
-}
+// fn synthesize_constraints(// phase_one_parameters: &PhaseOneParameters,
+// ) -> R1CS<<Config as Pairing>::Scalar> {
+//     let mut cs = R1CS::for_contexts();
+//     dummy_circuit(&mut cs); // TO be changed
+//     cs
+// }
 
 fn load_registry<P>(
     registry_path: P,
@@ -191,6 +194,7 @@ where
 
 // TO be updated
 fn init_server(accumulator_path: String, registry_path: String, recovery_dir_path: String) -> S {
+    let now = Instant::now();
     let mut file =
         File::open(accumulator_path).expect("Opening phase one parameter file should succeed.");
     let mut buf = Vec::new();
@@ -199,15 +203,43 @@ fn init_server(accumulator_path: String, registry_path: String, recovery_dir_pat
     let mut reader = &buf[..];
     let powers: Accumulator<Config> = CanonicalDeserialize::deserialize(&mut reader)
         .expect("Deserialize phase one parameter should succeed.");
-    let state0 = initialize::<Config, R1CS<Fr>>(powers.clone(), synthesize_constraints())
+    println!(
+        "Loading & Deserializing Phase 1 parameters takes {:?}\n",
+        now.elapsed()
+    );
+
+    let now = Instant::now();
+    let mut rng = OsRng;
+    let mint_cs = Mint::unknown_constraints(FullParameters::new(&rng.gen(), &rng.gen())); // TODO: Check constants in FullParameters
+    let state0 = initialize::<Config, R1CS<Fr>>(powers.clone(), mint_cs)
         .expect("failed to initialize state");
     let challenge0 = <Config as mpc::ProvingKeyHasher<Config>>::hash(&state0).into();
-    let state1 = initialize::<Config, R1CS<Fr>>(powers.clone(), synthesize_constraints())
+    println!(
+        "Building mint state and challenge takes {:?}\n",
+        now.elapsed()
+    );
+
+    let now = Instant::now();
+    let private_transfer_cs =
+        PrivateTransfer::unknown_constraints(FullParameters::new(&rng.gen(), &rng.gen())); // TODO: Check constants in FullParameters
+    let state1 = initialize::<Config, R1CS<Fr>>(powers.clone(), private_transfer_cs)
         .expect("failed to initialize state");
     let challenge1 = <Config as mpc::ProvingKeyHasher<Config>>::hash(&state1).into();
-    let state2 = initialize::<Config, R1CS<Fr>>(powers, synthesize_constraints())
-        .expect("failed to initialize state");
+    println!(
+        "Building private transfer state and challenge takes {:?}\n",
+        now.elapsed()
+    );
+
+    let now = Instant::now();
+    let reclaim = Reclaim::unknown_constraints(FullParameters::new(&rng.gen(), &rng.gen())); // TODO: Check constants in FullParameters
+    let state2 =
+        initialize::<Config, R1CS<Fr>>(powers, reclaim).expect("failed to initialize state");
     let challenge2 = <Config as mpc::ProvingKeyHasher<Config>>::hash(&state2).into();
+    println!(
+        "Building reclaim state and challenge takes {:?}\n",
+        now.elapsed()
+    );
+
     S::new(
         [state0, state1, state2],
         [challenge0, challenge1, challenge2],
@@ -231,6 +263,7 @@ async fn main() -> tide::Result<()> {
             recovery_dir_path,
         } => S::recover_from_file(recovery_path, recovery_dir_path),
     };
+    println!("Network starts to run!");
     let mut api = tide::Server::with_state(server);
     api.at("/enqueue")
         .post(|r| S::execute(r, Server::enqueue_participant));

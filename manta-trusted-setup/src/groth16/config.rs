@@ -28,6 +28,7 @@ use crate::{
         BlakeHasher, Deserializer, G1Type, G2Type, HasDistribution, KZGBlakeHasher, Serializer,
     },
 };
+use ark_bls12_381::Fr;
 use ark_groth16::ProvingKey;
 use ark_std::io::{Read, Write};
 use blake2::Digest;
@@ -77,7 +78,7 @@ impl Pairing for Config {
 
 impl Size for Config {
     const G1_POWERS: usize = (Self::G2_POWERS << 1) - 1;
-    const G2_POWERS: usize = 1 << 3;
+    const G2_POWERS: usize = 1 << 17;
 }
 
 impl kzg::Configuration for Config {
@@ -234,8 +235,6 @@ impl Types for Config {
     type Challenge = [u8; 64];
     type Proof = Proof<Config>;
 }
-
-use ark_bls12_381::Fr;
 
 // TO Be removed
 /// Generates a dummy R1CS circuit.
