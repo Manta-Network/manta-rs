@@ -249,8 +249,8 @@ where
         digest
     }
 
-    /// Deletes the digest at 'InnerNode'
-    fn delete(&mut self, _inner_node: InnerNode) -> Bool {
+    /// Removes the inner digest stored at 'index'
+    fn remove(&mut self, _index: usize) -> Bool {
         false
     }
 }
@@ -777,9 +777,9 @@ where
         self.inner_tree.insert(parameters, leaf_index, base);
     }
 
-    /// Deletes the inner digest at 'InnerNode'
-    pub fn delete(&mut self, inner_node: InnerNode) {
-        self.inner_tree.map.delete(inner_node);
+    /// Removes the inner digest at 'InnerNode'
+    pub fn remove(&mut self, index: usize) -> bool {
+        self.inner_tree.map.remove(index)
     }
 
     /// Computes the inner path of the leaf given by `leaf_index` without checking if

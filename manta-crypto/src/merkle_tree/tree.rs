@@ -51,6 +51,8 @@ use manta_util::{
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
 
+use super::partial::LeafMap;
+
 /// Merkle Tree Leaf Hash
 pub trait LeafHash<COM = ()> {
     /// Leaf Type
@@ -1129,13 +1131,14 @@ where
     }
 }
 
-impl<C, T, M> Rollback for MerkleTree<C, ForkedTree<C, T, M>>
+impl<C, T, M, L> Rollback for MerkleTree<C, ForkedTree<C, T, M, L>>
 where
     C: Configuration + ?Sized,
     T: Tree<C>,
     M: Default + InnerMap<C>,
-    LeafDigest<C>: Clone + Default,
+    LeafDigest<C>: Copy + Default,
     InnerDigest<C>: Clone + Default + PartialEq,
+    L: LeafMap<C> + Default,
 {
     #[inline]
     fn rollback(&mut self) {

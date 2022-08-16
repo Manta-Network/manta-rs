@@ -27,8 +27,255 @@ use crate::merkle_tree::{
 use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash};
 
+#[cfg(feature = "std")]
+use std::collections::hash_map::HashMap;
+
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
+
+/// LeafMap
+pub trait LeafMap<C>
+where
+    C: Configuration + ?Sized,
+    LeafDigest<C>: Copy,
+{
+    /// Returns the number of stored leaves
+    fn len(&self) -> usize;
+
+    /// Returns the leaf digest stored at 'index'
+    fn get(&self, index: usize) -> Option<&LeafDigest<C>>;
+
+    /// Returns the current (i.e. rightmost) leaf
+    fn current_leaf(&self) -> Option<&LeafDigest<C>>;
+
+    /// Returns the index at which 'leaf_digest' is stored. Default implementation always returns 'None',
+    /// non-trivial implementations require [`LeafDigest<C>`] to implement the [`PartialEq`] trait.
+    fn position(&self, _leaf_digest: &LeafDigest<C>) -> Option<usize> {
+        None
+    }
+
+    /// Pushes a leaf digest to the right-most position
+    fn push(&mut self, leaf_digest: LeafDigest<C>);
+
+    /// Marks the leaf digest at 'index' for removal
+    fn mark(&mut self, index: usize);
+
+    /// Checks whether the leaf digest at 'index' is marked for removal. Returns 'None' if there
+    /// is no leaf digest stored at 'index'
+    fn is_marked(&self, index: usize) -> Option<bool>;
+
+    /// Checks whether a leaf digest is either already deleted or marked for removal
+    #[inline]
+    fn is_marked_or_removed(&self, index: usize) -> bool {
+        match self.is_marked(index) {
+            None => true,
+            Some(is_marked) => is_marked,
+        }
+    }
+
+    /// Removes the leaf digest stored at 'index'. Fails when trying to remove the current leaf.
+    fn remove(&mut self, index: usize) -> bool;
+
+    /// Generates a LeafMap from a 'Vec<LeafDigest>'
+    fn from_vec(leaf_digests: Vec<LeafDigest<C>>) -> Self;
+
+    /// Returns a vector with all leaf digests
+    #[inline]
+    fn leaf_digests(&self) -> Vec<LeafDigest<C>> {
+        (0..self.len())
+            .map(|x| self.get(x))
+            .filter(|x| match x {
+                None => false,
+                Some(_) => true,
+            })
+            .map(|x| *x.unwrap())
+            .collect()
+    }
+    /// Returns a slice with all marked leaf digests
+    #[inline]
+    fn marked_leaf_digests(&self) -> Vec<LeafDigest<C>> {
+        (0..self.len())
+            .filter(|&index| match self.is_marked(index) {
+                None => false,
+                Some(b) => b,
+            })
+            .map(|x| *(self.get(x).unwrap()))
+            .collect()
+    }
+}
+
+impl<C, L> LeafMap<C> for &mut L
+where
+    C: Configuration + ?Sized,
+    L: LeafMap<C>,
+    LeafDigest<C>: Copy,
+{
+    fn len(&self) -> usize {
+        (**self).len()
+    }
+
+    fn get(&self, index: usize) -> Option<&LeafDigest<C>> {
+        (**self).get(index)
+    }
+
+    fn current_leaf(&self) -> Option<&LeafDigest<C>> {
+        (**self).current_leaf()
+    }
+
+    fn position(&self, leaf_digest: &LeafDigest<C>) -> Option<usize> {
+        (**self).position(leaf_digest)
+    }
+
+    fn push(&mut self, leaf_digest: LeafDigest<C>) {
+        (**self).push(leaf_digest)
+    }
+
+    fn from_vec(leaf_digests: Vec<LeafDigest<C>>) -> Self {
+        let mut tmp = L::from_vec(leaf_digests);
+        todo!()
+    }
+
+    fn mark(&mut self, index: usize) {
+        (**self).mark(index)
+    }
+
+    fn is_marked(&self, index: usize) -> Option<bool> {
+        (**self).is_marked(index)
+    }
+
+    fn remove(&mut self, index: usize) -> bool {
+        (**self).remove(index)
+    }
+}
+
+/// Vector of leaf digests with markings
+pub struct LeafVec<C>
+where
+    C: Configuration + ?Sized,
+    LeafDigest<C>: Copy,
+{
+    vec: Vec<(bool, LeafDigest<C>)>,
+}
+
+impl<C> LeafMap<C> for LeafVec<C>
+where
+    C: Configuration + ?Sized,
+    LeafDigest<C>: Copy + PartialEq,
+{
+    fn len(&self) -> usize {
+        self.vec.len()
+    }
+
+    fn get(&self, index: usize) -> Option<&LeafDigest<C>> {
+        let leaf_digest = &self.vec.get(index)?.1;
+        Some(&leaf_digest)
+    }
+
+    fn current_leaf(&self) -> Option<&LeafDigest<C>> {
+        self.get(self.len() - 1)
+    }
+
+    fn position(&self, leaf_digest: &LeafDigest<C>) -> Option<usize> {
+        self.vec.iter().position(|(_, l)| l == leaf_digest)
+    }
+
+    fn push(&mut self, leaf_digest: LeafDigest<C>) {
+        self.vec.push((false, leaf_digest));
+    }
+
+    fn from_vec(leaf_digests: Vec<LeafDigest<C>>) -> Self {
+        Self {
+            vec: leaf_digests
+                .iter()
+                .map(|&x| (false, x))
+                .collect::<Vec<(bool, LeafDigest<C>)>>(),
+        }
+    }
+
+    fn mark(&mut self, index: usize) {
+        self.vec.get_mut(index).map(|(b, _)| *b = true);
+    }
+
+    fn is_marked(&self, index: usize) -> Option<bool> {
+        let mark = self.vec.get(index)?.0;
+        Some(mark)
+    }
+
+    /// LeafVec does not implement leaf removal
+    fn remove(&mut self, _index: usize) -> bool {
+        false
+    }
+}
+#[cfg(feature = "std")]
+/// Hash map of leaf digests.
+pub struct LeafHashMap<C>
+where
+    C: Configuration + ?Sized,
+    LeafDigest<C>: Copy,
+{
+    map: HashMap<usize, (bool, LeafDigest<C>)>,
+    last_index: usize,
+}
+
+#[cfg(feature = "std")]
+impl<C> LeafMap<C> for LeafHashMap<C>
+where
+    C: Configuration + ?Sized,
+    LeafDigest<C>: PartialEq + Copy,
+{
+    fn len(&self) -> usize {
+        self.map.len()
+    }
+
+    fn get(&self, index: usize) -> Option<&LeafDigest<C>> {
+        let leaf_digest = &self.map.get(&index)?.1;
+        Some(&leaf_digest)
+    }
+
+    fn current_leaf(&self) -> Option<&LeafDigest<C>> {
+        self.get(self.last_index)
+    }
+
+    fn position(&self, leaf_digest: &LeafDigest<C>) -> Option<usize> {
+        self.map.iter().position(|(_, (_, l))| l == leaf_digest)
+    }
+
+    fn push(&mut self, leaf_digest: LeafDigest<C>) {
+        self.map.insert(self.last_index, (false, leaf_digest));
+        if self.len() > 0 {
+            self.last_index += 1;
+        }
+    }
+
+    fn from_vec(leaf_digests: Vec<LeafDigest<C>>) -> Self {
+        Self {
+            map: leaf_digests
+                .iter()
+                .map(|&x| (false, x))
+                .enumerate()
+                .collect::<HashMap<usize, (bool, LeafDigest<C>)>>(),
+            last_index: leaf_digests.len() - 1,
+        }
+    }
+
+    fn mark(&mut self, index: usize) {
+        self.map.get_mut(&index).map(|(b, _)| *b = true);
+    }
+
+    fn is_marked(&self, index: usize) -> Option<bool> {
+        let mark = self.map.get(&index)?.0;
+        Some(mark)
+    }
+
+    fn remove(&mut self, index: usize) -> bool {
+        if index >= self.last_index {
+            false
+        } else {
+            self.map.remove(&index);
+            true
+        }
+    }
+}
 
 /// Partial Merkle Tree Type
 pub type PartialMerkleTree<C, M = BTreeMap<C>> = MerkleTree<C, Partial<C, M>>;
@@ -48,44 +295,40 @@ pub type PartialMerkleTree<C, M = BTreeMap<C>> = MerkleTree<C, Partial<C, M>>;
 )]
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "LeafDigest<C>: Clone, InnerDigest<C>: Clone, M: Clone"),
-    Debug(bound = "LeafDigest<C>: Debug, InnerDigest<C>: Debug, M: Debug"),
-    Default(bound = "LeafDigest<C>: Default, InnerDigest<C>: Default, M: Default"),
-    Eq(bound = "LeafDigest<C>: Eq, InnerDigest<C>: Eq, M: Eq"),
-    Hash(bound = "LeafDigest<C>: Hash, InnerDigest<C>: Hash, M: Hash"),
-    PartialEq(bound = "LeafDigest<C>: PartialEq, InnerDigest<C>: PartialEq, M: PartialEq")
+    Clone(bound = "LeafDigest<C>: Clone, InnerDigest<C>: Clone, M: Clone, L:Clone"),
+    Debug(bound = "LeafDigest<C>: Debug, InnerDigest<C>: Debug, M: Debug, L:Debug"),
+    Default(bound = "LeafDigest<C>: Default, InnerDigest<C>: Default, M: Default, L:Default"),
+    Eq(bound = "LeafDigest<C>: Eq, InnerDigest<C>: Eq, M: Eq, L:Eq"),
+    Hash(bound = "LeafDigest<C>: Hash, InnerDigest<C>: Hash, M: Hash, L:Hash"),
+    PartialEq(bound = "InnerDigest<C>: PartialEq, M: PartialEq, L:PartialEq")
 )]
-pub struct Partial<C, M = BTreeMap<C>>
+pub struct Partial<C, M = BTreeMap<C>, L = LeafVec<C>>
 where
     C: Configuration + ?Sized,
     M: InnerMap<C>,
+    L: LeafMap<C> + Default,
+    LeafDigest<C>: Default + Copy,
 {
     /// Leaf Digests
-    leaf_digests: Vec<LeafDigest<C>>,
-
-    /// Marked for deletion
-    marked_leaves: Vec<usize>,
+    leaf_digests: L,
 
     /// Inner Digests
     inner_digests: PartialInnerTree<C, M>,
 }
 
-impl<C, M> Partial<C, M>
+impl<C, M, L> Partial<C, M, L>
 where
     C: Configuration + ?Sized,
     M: InnerMap<C>,
+    L: LeafMap<C> + Default,
+    LeafDigest<C>: Copy + Default,
 {
     /// Builds a new [`Partial`] without checking that `leaf_digests` and `inner_digests` form a
     /// consistent merkle tree.
     #[inline]
-    pub fn new_unchecked(
-        leaf_digests: Vec<LeafDigest<C>>,
-        marked_leaves: Vec<usize>,
-        inner_digests: PartialInnerTree<C, M>,
-    ) -> Self {
+    pub fn new_unchecked(leaf_digests: L, inner_digests: PartialInnerTree<C, M>) -> Self {
         Self {
             leaf_digests,
-            marked_leaves,
             inner_digests,
         }
     }
@@ -98,14 +341,14 @@ where
     /// this slice will not be the same as indexing into a slice from a full tree. For all other
     /// indexing, use the full indexing scheme.
     #[inline]
-    pub fn leaf_digests(&self) -> &[LeafDigest<C>] {
-        &self.leaf_digests
+    pub fn leaf_digests(&self) -> Vec<LeafDigest<C>> {
+        self.leaf_digests.leaf_digests()
     }
 
-    /// Returns the vector of marked leaves of the Merkle tree.
+    /// Returns the marked leaves of the Merkle tree.
     #[inline]
-    pub fn marked_leaves(&self) -> &[usize] {
-        &self.marked_leaves
+    pub fn marked_leaves(&self) -> Vec<LeafDigest<C>> {
+        self.leaf_digests.marked_leaf_digests()
     }
 
     /// Returns the leaf digests stored in the tree, dropping the rest of the tree data.
@@ -116,7 +359,7 @@ where
     /// vector.
     #[inline]
     pub fn into_leaves(self) -> Vec<LeafDigest<C>> {
-        self.leaf_digests
+        self.leaf_digests.leaf_digests().to_vec()
     }
 
     /// Returns the starting leaf [`Node`] for this tree.
@@ -157,14 +400,8 @@ where
 
     /// Returns the position of `leaf_digest` in the tree.
     #[inline]
-    pub fn position(&self, leaf_digest: &LeafDigest<C>) -> Option<usize>
-    where
-        LeafDigest<C>: PartialEq,
-    {
-        self.leaf_digests
-            .iter()
-            .position(move |d| d == leaf_digest)
-            .map(move |i| i + self.starting_leaf_index())
+    pub fn position(&self, leaf_digest: &LeafDigest<C>) -> Option<usize> {
+        self.leaf_digests.position(leaf_digest)
     }
 
     /// Returns the sibling leaf node to `index`.
@@ -187,7 +424,7 @@ where
     /// Returns the current (right-most) leaf of the tree.
     #[inline]
     pub fn current_leaf(&self) -> Option<&LeafDigest<C>> {
-        self.leaf_digests.last()
+        self.leaf_digests.current_leaf()
     }
 
     /// Returns the current (right-most) path of the tree.
@@ -280,11 +517,12 @@ where
     }
 }
 
-impl<C, M> Tree<C> for Partial<C, M>
+impl<C, M, L> Tree<C> for Partial<C, M, L>
 where
     C: Configuration + ?Sized,
     M: InnerMap<C> + Default,
-    LeafDigest<C>: Clone + Default,
+    L: LeafMap<C> + Default,
+    LeafDigest<C>: Copy + Default,
     InnerDigest<C>: Clone + Default + PartialEq,
 {
     #[inline]
@@ -323,11 +561,12 @@ where
     }
 }
 
-impl<C, M> WithProofs<C> for Partial<C, M>
+impl<C, M, L> WithProofs<C> for Partial<C, M, L>
 where
     C: Configuration + ?Sized,
     M: Default + InnerMap<C>,
-    LeafDigest<C>: Clone + Default + PartialEq,
+    L: LeafMap<C> + Default,
+    LeafDigest<C>: Copy + Default,
     InnerDigest<C>: Clone + Default + PartialEq,
 {
     #[inline]
@@ -367,8 +606,13 @@ where
 
     #[inline]
     fn remove_path(&mut self, index: usize) -> bool {
-        self.marked_leaves.push(index);
-        if self.marked_leaves.contains(&Node(index).sibling().0) {
+        self.leaf_digests.mark(index);
+        if self
+            .leaf_digests
+            .is_marked_or_removed(Node(index).sibling().0)
+        {
+            self.leaf_digests.remove(index);
+            self.leaf_digests.remove(Node(index).sibling().0);
             let height = C::HEIGHT;
             let mut inner_node = match InnerNode::from_leaf::<C>(Node::parent(&Node(index))) {
                 Some(q) => q,
@@ -377,12 +621,12 @@ where
                 }
             };
             for level in 1..height - 1 {
-                self.inner_digests.delete(inner_node.sibling());
+                self.inner_digests.remove(inner_node.sibling().map_index());
                 if Node::from(inner_node)
                     .sibling()
                     .descendants(level)
                     .iter()
-                    .all(|x| self.marked_leaves.contains(&x.0))
+                    .all(|x| self.leaf_digests.is_marked_or_removed(x.0))
                 {
                     if let Some(parent) = inner_node.parent() {
                         inner_node = parent;

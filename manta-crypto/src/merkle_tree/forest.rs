@@ -41,6 +41,8 @@ use manta_util::{persistence::Rollback, BoxArray};
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
 
+use super::partial::LeafMap;
+
 /// Merkle Forest Configuration
 pub trait Configuration: tree::Configuration {
     /// Tree Index Type
@@ -620,14 +622,16 @@ where
     }
 }
 
-impl<C, T, M, const N: usize> Rollback for MerkleForest<C, TreeArray<C, ForkedTree<C, T, M>, N>>
+impl<C, T, M, L, const N: usize> Rollback
+    for MerkleForest<C, TreeArray<C, ForkedTree<C, T, M, L>, N>>
 where
     C: Configuration + ?Sized,
     C::Index: FixedIndex<N>,
     T: Tree<C>,
     M: Default + InnerMap<C>,
-    LeafDigest<C>: Clone + Default,
+    LeafDigest<C>: Copy + Default,
     InnerDigest<C>: Clone + Default + PartialEq,
+    L: LeafMap<C> + Default,
 {
     #[inline]
     fn rollback(&mut self) {
