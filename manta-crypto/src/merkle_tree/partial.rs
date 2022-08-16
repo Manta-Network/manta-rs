@@ -37,7 +37,6 @@ use manta_util::serde::{Deserialize, Serialize};
 pub trait LeafMap<C>
 where
     C: Configuration + ?Sized,
-    LeafDigest<C>: Copy,
 {
     /// Returns the number of stored leaves
     fn len(&self) -> usize;
@@ -81,25 +80,29 @@ where
 
     /// Returns a vector with all leaf digests
     #[inline]
-    fn leaf_digests(&self) -> Vec<LeafDigest<C>> {
-        (0..self.len())
+    fn leaf_digests(&self) -> Vec<LeafDigest<C>>
+    where LeafDigest<C>: Clone,
+    {
+     (0..self.len())
             .map(|x| self.get(x))
             .filter(|x| match x {
                 None => false,
                 Some(_) => true,
             })
-            .map(|x| *x.unwrap())
+            .map(|x| x.unwrap().clone())
             .collect()
     }
-    /// Returns a slice with all marked leaf digests
+    /// Returns a vector with all marked leaf digests
     #[inline]
-    fn marked_leaf_digests(&self) -> Vec<LeafDigest<C>> {
+    fn marked_leaf_digests(&self) -> Vec<LeafDigest<C>>
+    where LeafDigest<C>: Clone, 
+     {
         (0..self.len())
             .filter(|&index| match self.is_marked(index) {
                 None => false,
                 Some(b) => b,
             })
-            .map(|x| *(self.get(x).unwrap()))
+            .map(|x| self.get(x).unwrap().clone())
             .collect()
     }
 }
@@ -108,7 +111,6 @@ impl<C, L> LeafMap<C> for &mut L
 where
     C: Configuration + ?Sized,
     L: LeafMap<C>,
-    LeafDigest<C>: Copy,
 {
     fn len(&self) -> usize {
         (**self).len()
@@ -152,7 +154,6 @@ where
 pub struct LeafVec<C>
 where
     C: Configuration + ?Sized,
-    LeafDigest<C>: Copy,
 {
     vec: Vec<(bool, LeafDigest<C>)>,
 }
@@ -160,7 +161,7 @@ where
 impl<C> LeafMap<C> for LeafVec<C>
 where
     C: Configuration + ?Sized,
-    LeafDigest<C>: Copy + PartialEq,
+    LeafDigest<C>: PartialEq + Clone, 
 {
     fn len(&self) -> usize {
         self.vec.len()
@@ -187,7 +188,7 @@ where
         Self {
             vec: leaf_digests
                 .iter()
-                .map(|&x| (false, x))
+                .map(|x| (false, x.clone()))
                 .collect::<Vec<(bool, LeafDigest<C>)>>(),
         }
     }
@@ -211,7 +212,6 @@ where
 pub struct LeafHashMap<C>
 where
     C: Configuration + ?Sized,
-    LeafDigest<C>: Copy,
 {
     map: HashMap<usize, (bool, LeafDigest<C>)>,
     last_index: usize,
@@ -221,7 +221,7 @@ where
 impl<C> LeafMap<C> for LeafHashMap<C>
 where
     C: Configuration + ?Sized,
-    LeafDigest<C>: PartialEq + Copy,
+    LeafDigest<C>: PartialEq + Clone, 
 {
     fn len(&self) -> usize {
         self.map.len()
@@ -251,7 +251,7 @@ where
         Self {
             map: leaf_digests
                 .iter()
-                .map(|&x| (false, x))
+                .map(|x| (false, x.clone()))
                 .enumerate()
                 .collect::<HashMap<usize, (bool, LeafDigest<C>)>>(),
             last_index: leaf_digests.len() - 1,
@@ -306,8 +306,7 @@ pub struct Partial<C, M = BTreeMap<C>, L = LeafVec<C>>
 where
     C: Configuration + ?Sized,
     M: InnerMap<C>,
-    L: LeafMap<C> + Default,
-    LeafDigest<C>: Default + Copy,
+    L: LeafMap<C>,
 {
     /// Leaf Digests
     leaf_digests: L,
@@ -320,8 +319,7 @@ impl<C, M, L> Partial<C, M, L>
 where
     C: Configuration + ?Sized,
     M: InnerMap<C>,
-    L: LeafMap<C> + Default,
-    LeafDigest<C>: Copy + Default,
+    L: LeafMap<C>,
 {
     /// Builds a new [`Partial`] without checking that `leaf_digests` and `inner_digests` form a
     /// consistent merkle tree.
@@ -341,13 +339,17 @@ where
     /// this slice will not be the same as indexing into a slice from a full tree. For all other
     /// indexing, use the full indexing scheme.
     #[inline]
-    pub fn leaf_digests(&self) -> Vec<LeafDigest<C>> {
+    pub fn leaf_digests(&self) -> Vec<LeafDigest<C>>
+    where LeafDigest<C>: Clone, 
+    {
         self.leaf_digests.leaf_digests()
     }
 
     /// Returns the marked leaves of the Merkle tree.
     #[inline]
-    pub fn marked_leaves(&self) -> Vec<LeafDigest<C>> {
+    pub fn marked_leaves(&self) -> Vec<LeafDigest<C>>
+    where LeafDigest<C>: Clone, 
+    {
         self.leaf_digests.marked_leaf_digests()
     }
 
@@ -358,7 +360,10 @@ where
     /// See the note at [`leaf_digests`](Self::leaf_digests) for more information on indexing this
     /// vector.
     #[inline]
-    pub fn into_leaves(self) -> Vec<LeafDigest<C>> {
+    pub fn into_leaves(self) -> Vec<LeafDigest<C>> 
+    where
+    LeafDigest<C>: Clone,
+    {
         self.leaf_digests.leaf_digests().to_vec()
     }
 
@@ -521,8 +526,8 @@ impl<C, M, L> Tree<C> for Partial<C, M, L>
 where
     C: Configuration + ?Sized,
     M: InnerMap<C> + Default,
-    L: LeafMap<C> + Default,
-    LeafDigest<C>: Copy + Default,
+    L: LeafMap<C> + Default, 
+    LeafDigest<C>: Clone + Default, 
     InnerDigest<C>: Clone + Default + PartialEq,
 {
     #[inline]
@@ -565,8 +570,8 @@ impl<C, M, L> WithProofs<C> for Partial<C, M, L>
 where
     C: Configuration + ?Sized,
     M: Default + InnerMap<C>,
-    L: LeafMap<C> + Default,
-    LeafDigest<C>: Copy + Default,
+    L: LeafMap<C>, 
+    LeafDigest<C>: Clone + Default, 
     InnerDigest<C>: Clone + Default + PartialEq,
 {
     #[inline]

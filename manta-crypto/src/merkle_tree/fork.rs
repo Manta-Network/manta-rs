@@ -86,7 +86,7 @@ where
     pub fn fork<M, L>(&self, parameters: &Parameters<C>) -> Fork<C, T, P, M, L>
     where
         M: Default + InnerMap<C>,
-        LeafDigest<C>: Copy + Default,
+        LeafDigest<C>: Default + Clone,
         InnerDigest<C>: Default,
         L: LeafMap<C> + Default,
     {
@@ -99,7 +99,7 @@ where
     pub fn attach<M, L>(&self, parameters: &Parameters<C>, fork: &mut Fork<C, T, P, M, L>) -> bool
     where
         M: Default + InnerMap<C>,
-        LeafDigest<C>: Copy + Default,
+        LeafDigest<C>: Default + Clone, 
         InnerDigest<C>: Default,
         L: LeafMap<C> + Default,
     {
@@ -126,7 +126,7 @@ where
     ) -> Result<(), Fork<C, T, P, M, L>>
     where
         M: Default + InnerMap<C>,
-        LeafDigest<C>: Default + Copy,
+        LeafDigest<C>: Default + Clone, 
         L: LeafMap<C> + Default,
     {
         match fork.get_attached_base(self) {
@@ -148,7 +148,7 @@ where
         branch: Branch<C, M, L>,
     ) where
         M: InnerMap<C> + Default,
-        LeafDigest<C>: Default + Copy,
+        LeafDigest<C>: Default + Clone, 
         L: LeafMap<C> + Default,
     {
         self.base = Some(fork_base);
@@ -277,7 +277,7 @@ where
     C: Configuration + ?Sized,
     M: Default + InnerMap<C>,
     L: LeafMap<C> + Default,
-    LeafDigest<C>: Copy + Default,
+    LeafDigest<C>: Default,
 {
     /// Base Tree Contribution
     base_contribution: BaseContribution,
@@ -291,7 +291,7 @@ where
     C: Configuration + ?Sized,
     M: Default + InnerMap<C>,
     L: LeafMap<C> + Default,
-    LeafDigest<C>: Copy + Default,
+    LeafDigest<C>: Default,
 {
     /// Builds a new branch off of `base`, extending by `leaf_digests`.
     #[inline]
@@ -314,7 +314,7 @@ where
     fn new_unchecked<T>(parameters: &Parameters<C>, base: &T, leaf_digests: L) -> Self
     where
         T: Tree<C>,
-        LeafDigest<C>: Default + Copy,
+        LeafDigest<C>: Default + Clone,
         InnerDigest<C>: Default,
         L: LeafMap<C> + Default,
     {
@@ -326,7 +326,7 @@ where
         );
         let partial_tree_len = partial.len();
         for (i, digest) in leaf_digests.leaf_digests().into_iter().enumerate() {
-            partial.push_leaf_digest(parameters, Node(partial_tree_len + i), digest);
+            partial.push_leaf_digest(parameters, Node(partial_tree_len + i), digest.clone());
         }
         Self {
             base_contribution,
@@ -380,7 +380,7 @@ where
         data: Partial<C, M, L>,
     ) -> Vec<LeafDigest<C>>
     where
-        LeafDigest<C>: Default + Clone,
+        LeafDigest<C>: Default + Clone, 
         L: LeafMap<C>,
     {
         let mut leaf_digests = data.into_leaves();
@@ -393,7 +393,7 @@ where
     fn try_rebase<T>(&mut self, parameters: &Parameters<C>, base: &T) -> bool
     where
         T: Tree<C>,
-        LeafDigest<C>: Copy + Default,
+        LeafDigest<C>: Default + Clone, 
         InnerDigest<C>: Default,
         L: LeafMap<C> + Default,
     {
@@ -544,7 +544,7 @@ where
     fn merge<T>(self, parameters: &Parameters<C>, base: &mut T)
     where
         T: Tree<C>,
-        LeafDigest<C>: Default,
+        LeafDigest<C>: Default + Clone, 
     {
         assert!(
             base.extend_digests(
@@ -572,7 +572,7 @@ where
     P: PointerFamily<T>,
     M: Default + InnerMap<C>,
     L: LeafMap<C> + Default,
-    LeafDigest<C>: Copy + Default,
+    LeafDigest<C>: Default,
 {
     /// Base Merkle Tree
     base: P::Weak,
@@ -588,7 +588,7 @@ where
     P: PointerFamily<T>,
     M: Default + InnerMap<C>,
     L: LeafMap<C> + Default,
-    LeafDigest<C>: Copy + Default,
+    LeafDigest<C>: Default,
 {
     /// Builds a new [`Fork`] off of `trunk` with the given `base_contribution` and `branch`.
     #[inline]
@@ -603,7 +603,7 @@ where
     #[inline]
     pub fn new(parameters: &Parameters<C>, trunk: &Trunk<C, T, P>) -> Self
     where
-        LeafDigest<C>: Copy + Default,
+        LeafDigest<C>: Default + Clone,
         InnerDigest<C>: Default,
     {
         let branch = Branch::new_unchecked(parameters, trunk.get(), Default::default());
@@ -619,7 +619,7 @@ where
         leaf_digests: L,
     ) -> Option<Self>
     where
-        LeafDigest<C>: Copy + Default,
+        LeafDigest<C>: Default + Clone, 
         InnerDigest<C>: Default,
         L: LeafMap<C>,
     {
@@ -632,7 +632,7 @@ where
     #[inline]
     pub fn attach(&mut self, parameters: &Parameters<C>, trunk: &Trunk<C, T, P>) -> bool
     where
-        LeafDigest<C>: Copy + Default,
+        LeafDigest<C>: Default + Clone, 
         InnerDigest<C>: Default,
     {
         if !self.branch.try_rebase(parameters, trunk.get()) {
@@ -802,7 +802,7 @@ where
     T: Tree<C>,
     M: Default + InnerMap<C>,
     L: LeafMap<C> + Default,
-    LeafDigest<C>: Default + Copy,
+    LeafDigest<C>: Default,
 {
     /// Base Tree
     base: T,
@@ -817,7 +817,7 @@ where
     T: Tree<C>,
     M: Default + InnerMap<C>,
     L: LeafMap<C> + Default,
-    LeafDigest<C>: Default + Copy,
+    LeafDigest<C>: Default, 
 {
     /// Builds a new [`ForkedTree`] for `tree`.
     #[inline]
@@ -941,7 +941,7 @@ where
     C: Configuration + ?Sized,
     T: Tree<C>,
     M: Default + InnerMap<C>,
-    LeafDigest<C>: Copy + Default,
+    LeafDigest<C>: Default + Clone,
     InnerDigest<C>: Clone + Default + PartialEq,
     L: LeafMap<C> + Default,
 {
@@ -985,7 +985,7 @@ where
     C: Configuration + ?Sized,
     T: Tree<C> + WithProofs<C>,
     M: Default + InnerMap<C>,
-    LeafDigest<C>: Copy + Default,
+    LeafDigest<C>: Default + Clone,
     InnerDigest<C>: Clone + Default,
     L: LeafMap<C> + Default,
 {
