@@ -119,6 +119,9 @@ impl transfer::Configuration for Config {
 /// Transfer Parameters
 pub type Parameters = transfer::Parameters<Config>;
 
+/// UTXO Accumulator Output Type
+pub type UtxoAccumulatorOutput = transfer::UtxoAccumulatorOutput<Config>;
+
 /// UTXO Accumulator Model Type
 pub type UtxoAccumulatorModel = transfer::UtxoAccumulatorModel<Config>;
 
