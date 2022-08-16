@@ -32,6 +32,22 @@ where
 /// Secret Key Type
 pub type SecretKey<T> = <T as SecretKeyType>::SecretKey;
 
+/// Ephemeral Secret Key
+pub trait EphemeralSecretKeyType {
+    /// Ephemeral Secret Key Type
+    type EphemeralSecretKey;
+}
+
+impl<T> EphemeralSecretKeyType for &T
+where
+    T: EphemeralSecretKeyType,
+{
+    type EphemeralSecretKey = T::EphemeralSecretKey;
+}
+
+/// Ephemeral Secret Key Type
+pub type EphemeralSecretKey<T> = <T as EphemeralSecretKeyType>::EphemeralSecretKey;
+
 /// Public Key
 pub trait PublicKeyType {
     /// Public Key Type
@@ -47,6 +63,22 @@ where
 
 /// Public Key Type
 pub type PublicKey<T> = <T as PublicKeyType>::PublicKey;
+
+/// Ephemeral Public Key
+pub trait EphemeralPublicKeyType {
+    /// Ephemeral Public Key Type
+    type EphemeralPublicKey;
+}
+
+impl<T> EphemeralPublicKeyType for &T
+where
+    T: EphemeralPublicKeyType,
+{
+    type EphemeralPublicKey = T::EphemeralPublicKey;
+}
+
+/// Ephemeral Public Key Type
+pub type EphemeralPublicKey<T> = <T as EphemeralPublicKeyType>::EphemeralPublicKey;
 
 /// Shared Secret
 pub trait SharedSecretType {
@@ -80,6 +112,60 @@ where
     }
 }
 
+/// Ephemeral Public Key Derivation
+pub trait DeriveEphemeral<COM = ()>: EphemeralPublicKeyType + EphemeralSecretKeyType {
+    /// Derives a [`EphemeralPublicKey`](EphemeralPublicKeyType::EphemeralPublicKey) from
+    /// `ephemeral_secret_key`.
+    fn derive_ephemeral(
+        &self,
+        ephemeral_secret_key: &Self::EphemeralSecretKey,
+        compiler: &mut COM,
+    ) -> Self::EphemeralPublicKey;
+}
+
+impl<K, COM> DeriveEphemeral<COM> for &K
+where
+    K: DeriveEphemeral<COM>,
+{
+    #[inline]
+    fn derive_ephemeral(
+        &self,
+        ephemeral_secret_key: &Self::EphemeralSecretKey,
+        compiler: &mut COM,
+    ) -> Self::EphemeralPublicKey {
+        (*self).derive_ephemeral(ephemeral_secret_key, compiler)
+    }
+}
+
+/// Key Agreement Secret Generation
+pub trait GenerateSecret<COM = ()>:
+    EphemeralSecretKeyType + PublicKeyType + SharedSecretType
+{
+    /// Performs the agreement protocol on `public_key` and `ephemeral_secret_key` to arrive at the
+    /// [`SharedSecret`](SharedSecretType::SharedSecret).
+    fn generate_secret(
+        &self,
+        public_key: &Self::PublicKey,
+        ephemeral_secret_key: &Self::EphemeralSecretKey,
+        compiler: &mut COM,
+    ) -> Self::SharedSecret;
+}
+
+impl<K, COM> GenerateSecret<COM> for &K
+where
+    K: GenerateSecret<COM>,
+{
+    #[inline]
+    fn generate_secret(
+        &self,
+        public_key: &Self::PublicKey,
+        ephemeral_secret_key: &Self::EphemeralSecretKey,
+        compiler: &mut COM,
+    ) -> Self::SharedSecret {
+        (*self).generate_secret(public_key, ephemeral_secret_key, compiler)
+    }
+}
+
 /// Key Agreement
 pub trait Agree<COM = ()>: PublicKeyType + SecretKeyType + SharedSecretType {
     /// Performs the agreement protocol on `public_key` and `secret_key` to arrive at the
@@ -104,6 +190,35 @@ where
         compiler: &mut COM,
     ) -> Self::SharedSecret {
         (*self).agree(public_key, secret_key, compiler)
+    }
+}
+
+/// Key Agreement Secret Reconstruction
+pub trait ReconstructSecret<COM = ()>:
+    EphemeralPublicKeyType + SecretKeyType + SharedSecretType
+{
+    /// Performs the agreement protocol on `ephemeral_public_key` and `secret_key` to arrive at the
+    /// [`SharedSecret`](SharedSecretType::SharedSecret).
+    fn reconstruct_secret(
+        &self,
+        ephemeral_public_key: &Self::EphemeralPublicKey,
+        secret_key: &Self::SecretKey,
+        compiler: &mut COM,
+    ) -> Self::SharedSecret;
+}
+
+impl<K, COM> ReconstructSecret<COM> for &K
+where
+    K: ReconstructSecret<COM>,
+{
+    #[inline]
+    fn reconstruct_secret(
+        &self,
+        ephemeral_public_key: &Self::EphemeralPublicKey,
+        secret_key: &Self::SecretKey,
+        compiler: &mut COM,
+    ) -> Self::SharedSecret {
+        (*self).reconstruct_secret(ephemeral_public_key, secret_key, compiler)
     }
 }
 

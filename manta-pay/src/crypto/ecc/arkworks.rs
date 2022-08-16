@@ -25,7 +25,7 @@ use manta_crypto::{
         algebra::{affine_point_as_bytes, modulus_is_smaller},
         ec::{AffineCurve, ProjectiveCurve},
         ff::{BigInteger, Field, PrimeField, ToConstraintField},
-        r1cs_std::{groups::CurveVar, ToBitsGadget},
+        r1cs_std::{eq::EqGadget, groups::CurveVar, ToBitsGadget},
         relations::ns,
         serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError},
     },
@@ -352,6 +352,20 @@ where
     fn mul(&self, rhs: &Self, compiler: &mut Compiler<C>) -> Self {
         let _ = compiler;
         Self::new(&self.0 * &rhs.0)
+    }
+}
+
+impl<C, CV> eclair::cmp::PartialEq<Self, Compiler<C>> for ScalarVar<C, CV>
+where
+    C: ProjectiveCurve,
+    CV: CurveVar<C, ConstraintField<C>>,
+{
+    #[inline]
+    fn eq(&self, rhs: &Self, compiler: &mut Compiler<C>) -> Boolean<ConstraintField<C>> {
+        let _ = compiler;
+        self.0
+            .is_eq(&rhs.0)
+            .expect("Equality checking is not allowed to fail.")
     }
 }
 
