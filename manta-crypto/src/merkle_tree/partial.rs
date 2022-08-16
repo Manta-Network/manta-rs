@@ -213,7 +213,7 @@ where
 
     fn get(&self, index: usize) -> Option<&LeafDigest<C>> {
         let leaf_digest = &self.map.get(&index)?.1;
-        Some(&leaf_digest)
+        Some(leaf_digest)
     }
 
     fn current_index(&self) -> usize {
@@ -243,7 +243,9 @@ where
     }
 
     fn mark(&mut self, index: usize) {
-        self.map.get_mut(&index).map(|(b, _)| *b = true);
+        if let Some((b, _)) = self.map.get_mut(&index) {
+            *b = true
+        };
     }
 
     fn is_marked(&self, index: usize) -> Option<bool> {
