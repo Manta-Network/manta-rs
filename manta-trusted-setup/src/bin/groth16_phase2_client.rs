@@ -21,20 +21,16 @@ extern crate alloc;
 use alloc::string::String;
 use clap::{Parser, Subcommand};
 use colored::Colorize; // TODO: Try https://docs.rs/console/latest/console/
-use core::{
-    fmt::{Display, Formatter},
-    time::Duration,
-};
+use core::fmt::{Display, Formatter};
 use dialoguer::{theme::ColorfulTheme, Input};
 use manta_crypto::rand::{OsRng, RngCore};
 use manta_trusted_setup::ceremony::{
     config::{g16_bls12_381::Groth16BLS12381, Nonce, PrivateKey, PublicKey},
-    message::QueryMPCStateResponse,
+    message::QueryResponse,
     signature::{ed_dalek, SignatureScheme},
     CeremonyError,
 };
 use serde::{de::DeserializeOwned, Serialize};
-use std::thread;
 
 pub type C = Groth16BLS12381;
 pub type Config = manta_trusted_setup::groth16::config::Config;
@@ -44,7 +40,6 @@ const SERVER_ADDR: &str = "http://localhost:8080";
 
 #[derive(Debug, Copy, Clone)]
 pub enum Endpoint {
-    Enqueue,
     Query,
     Update,
     Nonce,
@@ -53,7 +48,6 @@ pub enum Endpoint {
 impl From<Endpoint> for String {
     fn from(endpoint: Endpoint) -> String {
         let operation = match endpoint {
-            Endpoint::Enqueue => "enqueue",
             Endpoint::Query => "query",
             Endpoint::Update => "update",
             Endpoint::Nonce => "nonce",
@@ -287,76 +281,61 @@ pub async fn contribute() -> Result<(), Error> {
     let nonce = get_nonce(pk, &network_client).await?;
     let mut trusted_setup_client = Client::new(pk, pk, nonce, sk);
     loop {
-        // TODO: Merge `Enqueue` and `query_mpc_state` to 1 request
-        match send_request::<_, ()>(
+        let (state0, challenge0, state1, challenge1, state2, challenge2) = match send_request::<
+            _,
+            QueryResponse<C>,
+        >(
             &network_client,
-            Endpoint::Enqueue,
+            Endpoint::Query,
             trusted_setup_client
-                .enqueue()
-                .map_err(|_| Error::UnableToGenerateRequest("enqueue"))?,
+                .query()
+                .map_err(|_| Error::UnableToGenerateRequest("Queries the server state."))?,
         )
         .await?
         {
             Err(CeremonyError::NotRegistered) => return Err(Error::NotRegistered),
-            Err(CeremonyError::NonceNotInSync(nonce)) => {
-                trusted_setup_client.set_nonce(nonce);
-                continue;
+            Err(CeremonyError::NonceNotInSync(_)) => {
+                return Err(Error::UnexpectedError(
+                    "unexpected error when query mpc state. Nonce should have been synced."
+                        .to_string(),
+                ))
             }
             Err(CeremonyError::BadRequest) => {
                 return Err(Error::UnexpectedError(
-                    "unexpected error when enqueueing since finding a bad request.".to_string(),
+                    "unexpected error when query mpc state since finding a bad request."
+                        .to_string(),
                 ))
             }
             Err(CeremonyError::AlreadyContributed) => return Err(Error::AlreadyContributed),
-            Ok(_) => {}
-        }
-        let (state0, challenge0, state1, challenge1, state2, challenge2) =
-            match send_request::<_, QueryMPCStateResponse<C>>(
-                &network_client,
-                Endpoint::Query,
-                trusted_setup_client
-                    .query_mpc_state()
-                    .map_err(|_| Error::UnableToGenerateRequest("query mpc state"))?,
-            )
-            .await?
-            {
-                Err(CeremonyError::NotRegistered) => return Err(Error::NotRegistered),
-                Err(CeremonyError::NonceNotInSync(_)) => {
-                    return Err(Error::UnexpectedError(
-                        "unexpected error when query mpc state. Nonce should have been synced."
-                            .to_string(),
-                    ))
+            Ok(message) => match message {
+                QueryResponse::QueuePosition(position) => {
+                    println!("Your current position is {}.", position);
+                    // TODO: Add progress bar update
+                    continue;
                 }
-                Err(CeremonyError::BadRequest) => {
-                    return Err(Error::UnexpectedError(
-                        "unexpected error when query mpc state since finding a bad request."
-                            .to_string(),
-                    ))
-                }
-                Err(CeremonyError::AlreadyContributed) => return Err(Error::AlreadyContributed),
-                Ok(message) => match message {
-                    QueryMPCStateResponse::QueuePosition(position) => {
-                        println!("Your current position is {}.", position);
-                        // TODO: Add progress bar update
-                        continue;
-                    }
-                    QueryMPCStateResponse::Mpc(
-                        state0,
-                        challenge0,
-                        state1,
-                        challenge1,
-                        state2,
-                        challenge2,
-                    ) => (
-                        state0.to_actual().expect("`to_actual` should succeed."), // TODO: DO not use expect.
-                        challenge0.to_actual().expect("`to_actual` should succeed."),
-                        state1.to_actual().expect("`to_actual` should succeed."),
-                        challenge1.to_actual().expect("`to_actual` should succeed."),
-                        state2.to_actual().expect("`to_actual` should succeed."),
-                        challenge2.to_actual().expect("`to_actual` should succeed."),
-                    ),
-                },
-            };
+                QueryResponse::Mpc(state0, challenge0, state1, challenge1, state2, challenge2) => (
+                    state0.to_actual().map_err(|_| {
+                        Error::UnexpectedError("Received state cannot be parsed.".to_string())
+                    })?,
+                    challenge0.to_actual().map_err(|_| {
+                        Error::UnexpectedError("Received challenge cannot be parsed.".to_string())
+                    })?,
+                    state1.to_actual().map_err(|_| {
+                        Error::UnexpectedError("Received state cannot be parsed.".to_string())
+                    })?,
+                    challenge1.to_actual().map_err(|_| {
+                        Error::UnexpectedError("Received challenge cannot be parsed.".to_string())
+                    })?,
+                    state2.to_actual().map_err(|_| {
+                        Error::UnexpectedError("Received state cannot be parsed.".to_string())
+                    })?,
+                    challenge2.to_actual().map_err(|_| {
+                        Error::UnexpectedError("Received challenge cannot be parsed.".to_string())
+                    })?,
+                ),
+            },
+        };
+        println!("Finished querying server state.");
         match send_request::<_, ()>(
             &network_client,
             Endpoint::Update,
@@ -398,5 +377,3 @@ pub async fn contribute() -> Result<(), Error> {
 fn main() {
     handle_error(Arguments::parse().run());
 }
-
-// cargo run --package manta-trusted-setup --bin groth16_phase2_client -- contribute

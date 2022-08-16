@@ -150,6 +150,19 @@ where
         }
     }
 
+    /// Checks if the participant is in queue. Returning `CeremonyError::NotRegistered`
+    /// if the `participant_id` is not in the registry.
+    #[inline]
+    pub fn is_in_queue(
+        &self,
+        participant_id: &ParticipantIdentifier<C>,
+    ) -> Result<bool, CeremonyError<C>> {
+        match self.registry.get(participant_id) {
+            Some(participant) => Ok(!matches!(self.queue.position(participant), None)),
+            None => Err(CeremonyError::NotRegistered), // TODO: You have not registered.
+        }
+    }
+
     /// Gets the participant with the given identifier and returns `None` if not found.
     #[inline]
     pub fn get_participant(

@@ -88,7 +88,8 @@ where
         false
     }
 
-    /// Gets the position of `participant`.
+    /// Returns the position of `participant` if `participent` is in the queue.
+    /// Reutrns `None` if not.
     #[inline]
     pub fn position(&self, participant: &T) -> Option<usize> {
         let priority = participant.priority();

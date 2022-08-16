@@ -19,9 +19,7 @@
 use crate::ceremony::{
     config::{CeremonyConfig, Challenge, Nonce, ParticipantIdentifier, Proof, State},
     coordinator::Coordinator,
-    message::{
-        ContributeRequest, EnqueueRequest, QueryMPCStateRequest, QueryMPCStateResponse, Signed,
-    },
+    message::{ContributeRequest, QueryRequest, QueryResponse, Signed},
     registry::{HasContributed, Registry},
     signature::{HasPublicKey, Nonce as _, SignatureScheme},
     CeremonyError,
@@ -46,7 +44,7 @@ where
     /// Returns the nonce of `self` as a participant.
     fn nonce(&self) -> S::Nonce;
 
-    /// Sets nonce
+    /// Sets nonce.
     fn set_nonce(&mut self, nonce: S::Nonce);
 }
 
@@ -63,7 +61,7 @@ where
     /// Coordinator
     coordinator: Arc<Mutex<Coordinator<C, N, 3>>>,
 
-    /// path to recovery directory
+    /// Recovery Directory Path
     recovery_path: String,
 }
 
@@ -74,7 +72,7 @@ where
     Challenge<C>: CanonicalSerialize + CanonicalDeserialize,
     Proof<C>: CanonicalSerialize + CanonicalDeserialize,
 {
-    /// Builds a [`Server`] with initial `state`, `challenge`, and a loaded `registry`.
+    /// Builds a [`Server`] with initial `state`, `challenge`, a loaded `registry`, and a `recovery_path`.
     #[inline]
     pub fn new(
         state: [State<C>; 3],
@@ -120,12 +118,12 @@ where
         Ok(())
     }
 
-    /// Verifies the enqueue request and enqueues a participant.
+    /// Queries the server state.
     #[inline]
-    pub async fn enqueue_participant(
+    pub async fn query(
         self,
-        request: Signed<EnqueueRequest, C>,
-    ) -> Result<(), CeremonyError<C>>
+        request: Signed<QueryRequest, C>,
+    ) -> Result<QueryResponse<C>, CeremonyError<C>>
     where
         ParticipantIdentifier<C>: Serialize,
     {
@@ -134,30 +132,12 @@ where
             .lock()
             .expect("Locking the coordinator should succeed.");
         self.preprocess_request(&mut *coordinator, &request)?;
-        coordinator.enqueue_participant(&request.identifier)?;
-        Ok(())
-    }
-
-    /// Gets MPC States and Challenge
-    #[inline]
-    pub async fn get_state_and_challenge(
-        self,
-        request: Signed<QueryMPCStateRequest, C>,
-    ) -> Result<QueryMPCStateResponse<C>, CeremonyError<C>>
-    where
-        ParticipantIdentifier<C>: Serialize,
-    {
-        let mut coordinator = self
-            .coordinator
-            .lock()
-            .expect("Locking the coordinator should succeed.");
-        self.preprocess_request(&mut *coordinator, &request)?;
-        let participant = coordinator
-            .get_participant(&request.identifier)
-            .expect("Participant existence is checked in `process_request`.");
+        if !coordinator.is_in_queue(&request.identifier)? {
+            coordinator.enqueue_participant(&request.identifier)?;
+        }
         if coordinator.is_next(&request.identifier) {
             let (state, challenge) = coordinator.state_and_challenge();
-            Ok(QueryMPCStateResponse::Mpc(
+            Ok(QueryResponse::Mpc(
                 // TODO: To make more generic
                 state[0].clone().into(),
                 challenge[0].clone().into(),
@@ -167,12 +147,15 @@ where
                 challenge[2].clone().into(),
             )) // TODO: remove this clone later
         } else {
-            match coordinator.position(participant) {
-                Some(position) => Ok(QueryMPCStateResponse::QueuePosition(position)),
-                None => {
-                    unreachable!("Participant should be always in the queue here")
-                }
-            }
+            Ok(QueryResponse::QueuePosition(
+                coordinator
+                    .position(
+                        coordinator
+                            .get_participant(&request.identifier)
+                            .expect("Participant existence is checked in `process_request`."),
+                    )
+                    .expect("Participant should be always in the queue here"),
+            ))
         }
     }
 
@@ -246,7 +229,7 @@ where
         // TODO: checksum
         Self::log_to_file(&coordinator, &self.recovery_path);
         println!(
-            "{} participants have contributed: ",
+            "{} participants have contributed",
             coordinator.num_contributions
         );
         Ok(())

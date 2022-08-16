@@ -16,14 +16,9 @@
 
 //! Trusted Setup Ceremony Server
 
-use ark_bls12_381::Fr;
 use manta_crypto::{
     arkworks::serialize::CanonicalDeserialize,
     rand::{OsRng, Rand},
-};
-use manta_pay::{
-    config::{FullParameters, Mint, PrivateTransfer, Reclaim},
-    crypto::constraint::arkworks::R1CS,
 };
 use manta_trusted_setup::{
     ceremony::{
@@ -35,13 +30,11 @@ use manta_trusted_setup::{
         server::Server,
         signature::{ed_dalek, SignatureScheme},
     },
-    groth16::{config::dummy_circuit, kzg::Accumulator, mpc, mpc::initialize},
 };
 use std::{collections::BTreeMap, fs::File, io::Read, path::Path, process::exit, time::Instant};
 use tracing::error;
 
 type C = Groth16BLS12381;
-type Config = manta_trusted_setup::groth16::config::Config;
 type S = Server<C, 2>;
 
 /// Server Options
@@ -132,13 +125,6 @@ impl ServerOptions {
     }
 }
 
-// fn synthesize_constraints(// phase_one_parameters: &PhaseOneParameters,
-// ) -> R1CS<<Config as Pairing>::Scalar> {
-//     let mut cs = R1CS::for_contexts();
-//     dummy_circuit(&mut cs); // TO be changed
-//     cs
-// }
-
 fn load_registry<P>(
     registry_path: P,
 ) -> Registry<ParticipantIdentifier<C>, <C as CeremonyConfig>::Participant>
@@ -222,8 +208,8 @@ where
     )
 }
 
-// TO be updated
-fn init_server(
+/// Initiates a server.
+pub fn init_server(
     preprocessed_parameter_path: String,
     registry_path: String,
     recovery_dir_path: String,
@@ -254,10 +240,8 @@ async fn main() -> tide::Result<()> {
     };
     println!("Network starts to run!");
     let mut api = tide::Server::with_state(server);
-    api.at("/enqueue")
-        .post(|r| S::execute(r, Server::enqueue_participant));
     api.at("/query")
-        .post(|r| S::execute(r, Server::get_state_and_challenge));
+        .post(|r| S::execute(r, Server::query));
     api.at("/update").post(|r| S::execute(r, Server::update));
     api.at("/nonce").post(|r| S::execute(r, Server::get_nonce));
     api.listen("127.0.0.1:8080").await?; // TODO: use TLS

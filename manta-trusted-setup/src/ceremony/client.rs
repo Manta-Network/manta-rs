@@ -22,7 +22,7 @@ use crate::{
             CeremonyConfig, Challenge, Hasher, Nonce, ParticipantIdentifier, PrivateKey, Proof,
             PublicKey, State,
         },
-        message::{ContributeRequest, EnqueueRequest, QueryMPCStateRequest, Signed},
+        message::{ContributeRequest, QueryRequest, Signed},
     },
     mpc::Contribute,
     util::AsBytes,
@@ -70,29 +70,14 @@ where
         }
     }
 
-    /// Generates a request to enqueue this client into the queue on the server.
-    pub fn enqueue(&mut self) -> Result<Signed<EnqueueRequest, C>, ()>
+    /// Queries the server state.
+    pub fn query(&mut self) -> Result<Signed<QueryRequest, C>, ()>
     where
         C::Participant: Clone,
         <<C as CeremonyConfig>::SignatureScheme as SignatureScheme>::PublicKey: std::fmt::Debug, // TODO: Remove
     {
         Signed::new(
-            EnqueueRequest,
-            self.identifier.clone(),
-            &mut self.nonce,
-            &self.public_key,
-            &self.private_key,
-        )
-    }
-
-    /// Queries the MPC state of a participant.
-    pub fn query_mpc_state(&mut self) -> Result<Signed<QueryMPCStateRequest, C>, ()>
-    where
-        C::Participant: Clone,
-        <<C as CeremonyConfig>::SignatureScheme as SignatureScheme>::PublicKey: std::fmt::Debug, // TODO: Remove
-    {
-        Signed::new(
-            QueryMPCStateRequest,
+            QueryRequest,
             self.identifier.clone(),
             &mut self.nonce,
             &self.public_key,
@@ -113,13 +98,17 @@ where
         Proof<C>: CanonicalSerialize,
         <<C as CeremonyConfig>::SignatureScheme as SignatureScheme>::PublicKey: std::fmt::Debug,
     {
+        println!("Start to contribute");
         let mut rng = OsRng;
         let proof0 =
             C::Setup::contribute(hasher, &challenge[0], &mut state[0], &mut rng).ok_or(())?;
+        println!("Contributed proof0");
         let proof1 =
             C::Setup::contribute(hasher, &challenge[1], &mut state[1], &mut rng).ok_or(())?;
+        println!("Contributed proof1");
         let proof2 =
             C::Setup::contribute(hasher, &challenge[2], &mut state[2], &mut rng).ok_or(())?;
+        println!("Contributed proof2");
         let message = ContributeRequest::<C> {
             state0: AsBytes::from_actual(state[0].clone()),
             proof0: AsBytes::from_actual(proof0),

@@ -28,18 +28,14 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 
-/// Enqueue Request
+/// Query Request
 #[derive(Deserialize, Serialize)]
-pub struct EnqueueRequest;
+pub struct QueryRequest;
 
-/// Query MPC State Request
-#[derive(Deserialize, Serialize)]
-pub struct QueryMPCStateRequest;
-
-/// MPC Response for [`QueryMPCStateRequest`]
+/// Response for [`QueryRequest`]
 #[derive(Deserialize, Serialize)]
 #[serde(bound(serialize = "", deserialize = "",), deny_unknown_fields)]
-pub enum QueryMPCStateResponse<C>
+pub enum QueryResponse<C>
 where
     C: CeremonyConfig,
 {
@@ -109,8 +105,6 @@ where
     pub signature: Signature<C>,
 }
 
-use core::fmt::Debug;
-
 impl<T, C> Signed<T, C>
 where
     C: CeremonyConfig,
@@ -125,7 +119,6 @@ where
     ) -> Result<Self, ()>
     where
         T: Serialize,
-        PublicKey<C>: Debug, // TODO: Remove
     {
         let signature = C::SignatureScheme::sign(&message, nonce, public_key, private_key)?;
         let message = Signed {
