@@ -146,6 +146,9 @@ pub type Asset = transfer::Asset<Config>;
 /// Unspent Transaction Output Type
 pub type Utxo = transfer::Utxo<Config>;
 
+/// Note Type
+pub type Note = transfer::Note<Config>;
+
 /// Nullifier Type
 pub type Nullifier = transfer::Nullifier<Config>;
 
