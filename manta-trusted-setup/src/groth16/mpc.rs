@@ -135,6 +135,27 @@ pub fn specialize_to_phase_2<G1, G2>(
         );
 }
 
+/// Adds dummy `z_i * 0 = 0` constraint for each public input `z_i`.  This ensures
+/// non-malleability of Groth16 proofs even if some public inputs are otherwise unconstrained.
+#[inline]
+pub fn dummy_constraints<G>(
+    a: &mut [G],
+    ext: &mut [G],
+    tau_lagrange: &[G],
+    beta_tau_lagrange: &[G],
+    num_constraints: usize,
+    num_public_inputs: usize,
+) where
+    G: Copy,
+{
+    let start = 0;
+    let end = num_public_inputs;
+    a[start..end]
+        .copy_from_slice(&tau_lagrange[(start + num_constraints)..(end + num_constraints)]);
+    ext[start..end]
+        .copy_from_slice(&beta_tau_lagrange[(start + num_constraints)..(end + num_constraints)]);
+}
+
 /// Checks that the parameters which are not changed by contributions are the same.
 #[inline]
 pub fn check_invariants<P>(prev: &State<P>, next: &State<P>) -> Result<(), Error>
@@ -214,14 +235,15 @@ where
     let mut b_g1 = vec![C::G1::zero().into_projective(); num_witnesses];
     let mut b_g2 = vec![C::G2::zero().into_projective(); num_witnesses];
     let mut ext = vec![C::G1::zero().into_projective(); num_witnesses];
-    {
-        let start = 0;
-        let end = num_instance_variables;
-        a_g1[start..end]
-            .copy_from_slice(&tau_lagrange_g1[(start + num_constraints)..(end + num_constraints)]);
-        ext[start..end]
-            .copy_from_slice(&beta_lagrange_g1[(start + num_constraints)..(end + num_constraints)]);
-    }
+
+    dummy_constraints(
+        &mut a_g1,
+        &mut ext,
+        &tau_lagrange_g1,
+        &beta_lagrange_g1,
+        num_constraints,
+        num_instance_variables,
+    );
     specialize_to_phase_2(
         &tau_lagrange_g1,
         &tau_lagrange_g2,
