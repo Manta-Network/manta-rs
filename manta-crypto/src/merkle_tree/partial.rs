@@ -114,6 +114,15 @@ where
     }
 }
 
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "LeafDigest<C>: Clone"),
+    Debug(bound = "LeafDigest<C>: Debug"),
+    Default(bound = "LeafDigest<C>: Default"),
+    Eq(bound = "LeafDigest<C>: Eq"),
+    Hash(bound = "LeafDigest<C>: Hash"),
+    PartialEq(bound = "LeafDigest<C>: PartialEq")
+)]
 /// Vector of leaf digests with markings
 pub struct LeafVec<C>
 where
@@ -173,6 +182,15 @@ where
         false
     }
 }
+
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "LeafDigest<C>: Clone"),
+    Debug(bound = "LeafDigest<C>: Debug"),
+    Default(bound = "LeafDigest<C>: Default"),
+    Eq(bound = "LeafDigest<C>: Eq"),
+    PartialEq(bound = "LeafDigest<C>: PartialEq")
+)]
 #[cfg(feature = "std")]
 /// Hash map of leaf digests.
 pub struct LeafHashMap<C>
