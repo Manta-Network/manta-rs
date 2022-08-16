@@ -39,9 +39,6 @@ use std::{
 type C = Groth16BLS12381;
 type Config = manta_trusted_setup::groth16::config::Config;
 
-const ACCUMULATOR: &str = "dummy_phase_one_parameter.data";
-const PREPARED: &str = "prepared_phase_two_parameter.data";
-
 /// TO be updated
 pub fn prepare_phase_two_parameters(accumulator_path: String, prepared_path: String) {
     let now = Instant::now();
@@ -58,21 +55,36 @@ pub fn prepare_phase_two_parameters(accumulator_path: String, prepared_path: Str
         now.elapsed()
     );
     let mut rng = OsRng;
+    let now = Instant::now();
     let state0 = initialize::<Config, R1CS<Fr>>(
         powers.clone(),
         Mint::unknown_constraints(FullParameters::new(&rng.gen(), &rng.gen())), // TODO: Check constants in FullParameters
     )
     .expect("failed to initialize state");
+    println!(
+        "Preparing Phase 2 parameters for Mint circuit takes {:?}\n",
+        now.elapsed()
+    );
+    let now = Instant::now();
     let state1 = initialize::<Config, R1CS<Fr>>(
         powers.clone(),
         PrivateTransfer::unknown_constraints(FullParameters::new(&rng.gen(), &rng.gen())), // TODO: Check constants in FullParameters
     )
     .expect("failed to initialize state");
+    println!(
+        "Preparing Phase 2 parameters for Private Transfer circuit takes {:?}\n",
+        now.elapsed()
+    );
+    let now = Instant::now();
     let state2 = initialize::<Config, R1CS<Fr>>(
         powers,
         Reclaim::unknown_constraints(FullParameters::new(&rng.gen(), &rng.gen())), // TODO: Check constants in FullParameters
     )
     .expect("failed to initialize state");
+    println!(
+        "Preparing Phase 2 parameters for Reclaim circuit takes {:?}\n",
+        now.elapsed()
+    );
     let states = [state0, state1, state2];
     let challenges: [Challenge<C>; 3] = states
         .iter()
@@ -116,7 +128,8 @@ pub fn load_from_file<P>(path: P) -> ([State<C>; 3], [Challenge<C>; 3])
 where
     P: AsRef<Path>,
 {
-    let mut file = File::create(path).expect("Open file should succeed.");
+    let now = Instant::now();
+    let mut file = File::open(path).expect("Open file should succeed.");
     let mut buf = Vec::new();
     file.read_to_end(&mut buf)
         .expect("Reading data should succeed.");
@@ -133,15 +146,57 @@ where
         CanonicalDeserialize::deserialize(&mut reader).expect("Deserialize should succeed.");
     let challenge2 =
         CanonicalDeserialize::deserialize(&mut reader).expect("Deserialize should succeed.");
+    println!(
+        "Deserializing Preprocessed Phase 2 parameters takes {:?}\n",
+        now.elapsed()
+    );
     (
         [state0, state1, state2],
         [challenge0, challenge1, challenge2], // TODO: Make this more elegant.
     )
 }
 
-fn main() {
-    prepare_phase_two_parameters(ACCUMULATOR.into(), PREPARED.into());
-    load_from_file(PREPARED);
+/// TODO
+pub struct DataPath {
+    pub accumulator_path: String,
+    pub prepared_parameter_path: String,
 }
 
-// cargo run --release --package manta-trusted-setup --bin prepare_phase_two_parameters
+impl DataPath {
+    pub fn load_from_args() -> Self {
+        let matches = clap::App::new("Prepare Phase Two Parameters")
+            .version("0.1.0")
+            .author("Manta Network")
+            .about("Preparing Phase One Parameters for Phase Two")
+            .arg(
+                clap::Arg::new("accumulator")
+                    .short('a')
+                    .long("accumulator")
+                    .help("Path to the accumulator")
+                    .takes_value(true)
+                    .required(true),
+            )
+            .arg(
+                clap::Arg::new("prepared_parameter")
+                    .short('p')
+                    .long("prepared_parameter")
+                    .help("Path to storing the prepared phase two parameres")
+                    .takes_value(true)
+                    .required(true),
+            )
+            .get_matches();
+        Self {
+            accumulator_path: matches.value_of("accumulator").unwrap().into(),
+            prepared_parameter_path: matches.value_of("prepared_parameter").unwrap().into(),
+        }
+    }
+}
+
+fn main() {
+    let data_path = DataPath::load_from_args();
+    prepare_phase_two_parameters(
+        data_path.accumulator_path,
+        data_path.prepared_parameter_path.clone(),
+    );
+    load_from_file(data_path.prepared_parameter_path);
+}

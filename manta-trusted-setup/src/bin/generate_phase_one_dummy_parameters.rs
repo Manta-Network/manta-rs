@@ -16,13 +16,12 @@
 
 // //! Generates Dummy Phase One Parameters
 
-use std::{fs::File, io::Write};
-
 use manta_crypto::{
     arkworks::serialize::CanonicalSerialize,
     rand::{OsRng, Sample},
 };
 use manta_trusted_setup::groth16::kzg::{Accumulator, Contribution};
+use std::{fs::File, io::Write};
 
 type Config = manta_trusted_setup::groth16::config::Config;
 

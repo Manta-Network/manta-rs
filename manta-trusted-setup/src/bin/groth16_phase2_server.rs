@@ -44,9 +44,6 @@ type C = Groth16BLS12381;
 type Config = manta_trusted_setup::groth16::config::Config;
 type S = Server<C, 2>;
 
-/// Registry File Path
-pub const REGISTRY: &str = "dummy_register.csv"; // TODO: Replace with real registry
-
 /// Server Options
 pub enum ServerOptions {
     /// Creates a new server.
