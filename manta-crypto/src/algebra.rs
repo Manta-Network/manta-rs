@@ -191,52 +191,62 @@ where
 /// Security Assumptions
 ///
 /// The following outlines some standard security assumptions for cryptographic protocols built on
-/// [`Group`] types. These security properties can be attached to instances of [`Group`] which we
-/// assume to have these hardness properties.
+/// types that implement [`ScalarMul`] for some set of scalars. These security properties can be
+/// attached to instances of [`ScalarMul`] which we assume to have these hardness properties.
 pub mod security {
     /// Discrete Logarithm Hardness Assumption
     ///
-    /// For a [`Group`](super::Group) `G`, it should be infeasible to find a procedure `f` that
-    /// makes this function return `true`:
+    /// For a type `G`, it should be infeasible to find a procedure `f` that makes this function
+    /// return `true`:
     ///
     /// ```text
-    /// fn solve<F>(g: G, y: G, f: F) -> bool
+    /// fn solve<G, S, F>(g: G, y: S, f: F) -> bool
     /// where
-    ///     F: FnOnce(G, G) -> G::Scalar,
+    ///     G: ScalarMul<S>,
+    ///     F: FnOnce(G, G) -> S,
     /// {
-    ///     y == g.mul(f(g, y))
+    ///     y == g.scalar_mul(f(g, y))
     /// }
     /// ```
     pub trait DiscreteLogarithmHardness {}
 
     /// Computational Diffie-Hellman Hardness Assumption
     ///
-    /// For a [`Group`](super::Group) `G`, it should be infeasible to find a procedure `f` that
-    /// makes this function return `true`:
+    /// For a type `G`, it should be infeasible to find a procedure `f` that makes this function
+    /// return `true`:
     ///
     /// ```text
-    /// fn solve<F>(g: G, a: G::Scalar, b: G::Scalar, f: F) -> bool
+    /// fn solve<G, S, F>(g: G, a: S, b: S, f: F) -> bool
     /// where
+    ///     G: ScalarMul<S>,
+    ///     S: Ring,
     ///     F: FnOnce(G, G, G) -> G,
     /// {
-    ///     f(g, g.mul(a), g.mul(b)) == g.mul(a.mul(b))
+    ///     f(g, g.scalar_mul(a), g.scalar_mul(b)) == g.scalar_mul(a.mul(b))
     /// }
     /// ```
     pub trait ComputationalDiffieHellmanHardness: DiscreteLogarithmHardness {}
 
     /// Decisional Diffie-Hellman Hardness Assumption
     ///
-    /// For a [`Group`](super::Group) `G`, it should be infeasible to distinguish the probability
-    /// distributions over the following two functions when [`G::Scalar](super::Group::Scalar)
-    /// inputs are sampled uniformly from their domain (and `g` the generator is fixed):
+    /// For a type `G`, it should be infeasible to distinguish the probability distributions over
+    /// the following two functions when scalar inputs are sampled uniformly from their domain (and
+    /// `g` the generator is fixed):
     ///
     /// ```text
-    /// fn dh_triple(g: G, a: G::Scalar, b: G::Scalar) -> (G, G, G) {
-    ///     (g.mul(a), g.mul(b), g.mul(a.mul(b)))
+    /// fn dh_triple<G, S>(g: G, a: S, b: S) -> (G, G, G)
+    /// where
+    ///     G: ScalarMul<S>,
+    ///     S: Ring,
+    /// {
+    ///     (g.scalar_mul(a), g.scalar_mul(b), g.scalar_mul(a.mul(b)))
     /// }
     ///
-    /// fn random_triple(g: G, a: G::Scalar, b: G::Scalar, c: G::Scalar) -> (G, G, G) {
-    ///     (g.mul(a), g.mul(b), g.mul(c))
+    /// fn random_triple<G, S>(g: G, a: S, b: S, c: S) -> (G, G, G)
+    /// where
+    ///     G: ScalarMul<S>,
+    /// {
+    ///     (g.scalar_mul(a), g.scalar_mul(b), g.scalar_mul(c))
     /// }
     /// ```
     pub trait DecisionalDiffieHellmanHardness: ComputationalDiffieHellmanHardness {}
