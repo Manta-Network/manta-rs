@@ -255,11 +255,13 @@ impl Default for BaseContribution {
                 LeafDigest<C>: Deserialize<'de>,
                 InnerDigest<C>: Deserialize<'de>,
                 M: Deserialize<'de>,
+                L: Deserialize<'de>,
             ",
             serialize = r"
                 LeafDigest<C>: Serialize,
                 InnerDigest<C>: Serialize,
                 M: Serialize,
+                L: Serialize,
             ",
         ),
         crate = "manta_util::serde",
