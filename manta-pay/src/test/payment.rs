@@ -24,11 +24,7 @@ use crate::config::{
 use manta_accounting::transfer::{self, test::value_distribution, Authorization};
 use manta_crypto::rand::{CryptoRng, Rand, RngCore, Sample};
 
-/// Samples a [`Mint`] spender.
-///
-/// The spender is used in the [`prove_private_transfer`] and [`prove_reclaim`] functions for
-/// benchmarking. Note that the [`Mint`] proof is not returned since it is not used when proving a
-/// [`PrivateTransfer`] or [`Reclaim`].
+/// Builds a new internal pair for use in [`private_transfer::prove`] and [`to_public::prove`].
 #[inline]
 pub fn internal_pair<R>(
     parameters: &Parameters,
