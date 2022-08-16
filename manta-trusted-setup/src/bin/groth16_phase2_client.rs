@@ -20,7 +20,7 @@ extern crate alloc;
 
 use alloc::string::String;
 use clap::{Parser, Subcommand};
-use colored::Colorize;
+use colored::Colorize; // TODO: Try https://docs.rs/console/latest/console/
 use core::{
     fmt::{Display, Formatter},
     time::Duration,
@@ -159,6 +159,16 @@ pub fn register() {
         .with_prompt("Your twitter account")
         .interact_text()
         .expect("");
+    // TODO: Use https://docs.rs/tiny-bip39/1.0.0/bip39/
+    //     /// get the phrase
+    // let phrase: &str = mnemonic.phrase();
+    // println!("phrase: {}", phrase);
+
+    // /// get the HD wallet seed
+    // let seed = Seed::new(&mnemonic, "");
+
+    // // get the HD wallet seed as raw bytes
+    // let seed_bytes: &[u8] = seed.as_bytes();
     let mut secret_key_bytes = [0u8; ed25519_dalek::SECRET_KEY_LENGTH];
     OsRng.fill_bytes(&mut secret_key_bytes);
     let sk = ed25519_dalek::SecretKey::from_bytes(&secret_key_bytes)
@@ -213,10 +223,18 @@ pub fn prompt_client_info() -> Result<(PublicKey<C>, PrivateKey<C>), Error> {
         "Please enter your {} that you get when you registered yourself using this tool.",
         "Secret".italic()
     );
+    // TODO
+    // Take mnemonic as secret and verify it.
+    // https://docs.rs/tiny-bip39/1.0.0/bip39/struct.Mnemonic.html#method.validate
     let secret_str: String = Input::with_theme(&ColorfulTheme::default())
         .with_prompt("Your Secret")
         .interact_text()
         .expect("Please enter your secret received during `Register`.");
+    // https://docs.rs/dialoguer/latest/dialoguer/struct.Input.html#method.validate_with
+    // .validate_with(move |input: &String| -> Result<(), &str> {
+    //     // Check that it is a valid seed phrase and return `Err("error message")` if not
+    //     todo!()
+    // })
     let secret_bytes = bs58::decode(&secret_str)
         .into_vec()
         .map_err(|_| Error::InvalidSecret)?;
@@ -265,10 +283,11 @@ pub async fn get_nonce(
 #[inline]
 pub async fn contribute() -> Result<(), Error> {
     let network_client = reqwest::Client::new();
-    let (pk, sk) = prompt_client_info()?;
+    let (pk, sk) = prompt_client_info()?; //
     let nonce = get_nonce(pk, &network_client).await?;
     let mut trusted_setup_client = Client::new(pk, pk, nonce, sk);
     loop {
+        // TODO: Merge `Enqueue` and `query_mpc_state` to 1 request
         match send_request::<_, ()>(
             &network_client,
             Endpoint::Enqueue,
@@ -318,7 +337,7 @@ pub async fn contribute() -> Result<(), Error> {
                 Ok(message) => match message {
                     QueryMPCStateResponse::QueuePosition(position) => {
                         println!("Your current position is {}.", position);
-                        thread::sleep(Duration::from_millis(10000));
+                        // TODO: Add progress bar update
                         continue;
                     }
                     QueryMPCStateResponse::Mpc(
@@ -329,7 +348,7 @@ pub async fn contribute() -> Result<(), Error> {
                         state2,
                         challenge2,
                     ) => (
-                        state0.to_actual().expect("`to_actual` should succeed."),
+                        state0.to_actual().expect("`to_actual` should succeed."), // TODO: DO not use expect.
                         challenge0.to_actual().expect("`to_actual` should succeed."),
                         state1.to_actual().expect("`to_actual` should succeed."),
                         challenge1.to_actual().expect("`to_actual` should succeed."),

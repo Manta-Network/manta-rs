@@ -84,3 +84,23 @@ We provide a `dummy_register.csv` containing $10$ participants whose secrets are
 | Henry |  3knV55xzYApJK6Zq6h2yfMJG3rjs2Ds3sUEwtRoRy7SyEa3mWUi8dih9tMS4FMejCkkxyAn15WQQnJP6XEKGVFvD |
 | Iris | 5o8Hc9HqecVzYkfzdQnQUTkm8g858tbaoaWApSKSkw4eWSRJkm12xjtRgaqDbaXYHxNWFUB1MsWNm7914QEjRmdY |
 | Jordan |  3LT9QCLXxhE3pdYqDwHJxMgYPSatHSagnnDYKb7acJyrrQysBp2hX9HFjhUYJYg4c5NnUDqRonZKCsa9ay3FyYfL |
+
+TODO:
+1. Benchmark the contribution time and server time
+2. Time limit for each contribution.
+3. Progress bar for client binary: https://docs.rs/indicatif/latest/indicatif/
+4. Use Monics for secret: https://docs.rs/tiny-bip39/1.0.0/bip39/. Valid the secret in https://docs.rs/dialoguer/latest/dialoguer/struct.Input.html#method.validate_with
+5. Write a test to print out the register function: a) write a local test for printing register info; 2) run with cargo nextest locally see if color exists.
+6. List of supported os.
+7. Failure recovery issue
+8. Test what would happen if there are 5 client requests at the same time.
+9. Structure server argument similar to https://github.com/Manta-Network/cli/blob/feat/add-wallet/src/signer.rs.
+10. Use a vector for client/server messages; use a metadata for innitial client request to receive 
+Client & Server need some way to validate the number of circuit and the size of the state. 
+11. Add a checksum for all saving to disk file. Use manta-parameter infra. Use Blake3 as a hash function.
+12. Fast Phase1 -> Phase2: separate binary for each circuit.
+13. Use manta_pay::parameters to load the correct ones instead of sampling them
+
+
+[First]
+14. Add a review on PR153 about the trait: fixed base vs variable base

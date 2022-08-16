@@ -65,7 +65,7 @@ where
     C: CeremonyConfig,
 {
     /// State after Contribution
-    pub state0: AsBytes<State<C>>,
+    pub state0: AsBytes<State<C>>, // TODO: Use a vector
 
     /// Proof of contribution
     pub proof0: AsBytes<Proof<C>>,
