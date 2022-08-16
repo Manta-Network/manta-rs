@@ -35,7 +35,7 @@ where
     pub(crate) num_contributions: usize,
 
     /// Proof
-    pub(crate) proof: Option<Proof<C>>,
+    pub(crate) proof: Option<[Proof<C>; M]>,
 
     /// Latest Participant that Has Contributed
     pub(crate) latest_contributor: Option<C::Participant>,
@@ -61,7 +61,7 @@ where
     #[inline]
     pub fn new(
         num_contributions: usize,
-        proof: Option<Proof<C>>,
+        proof: Option<[Proof<C>; M]>,
         latest_contributor: Option<C::Participant>,
         state: [State<C>; M],
         challenge: [Challenge<C>; M],
@@ -122,7 +122,8 @@ where
                 .1
             });
         }
-        self.queue.pop();
+        self.proof = Some(proof);
+        self.queue.pop().expect("One participant should have just contributed.");
         Ok(())
     }
 

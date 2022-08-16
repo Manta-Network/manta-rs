@@ -81,10 +81,10 @@ impl ServerOptions {
                     .required_if_eq("mode", "create"),
             )
             .arg(
-                clap::Arg::new("backup")
+                clap::Arg::new("recovery")
                     .short('b')
-                    .long("backup")
-                    .help("Path to the backup file")
+                    .long("recovery")
+                    .help("Path to the recovery file")
                     .takes_value(true)
                     .required_if_eq("mode", "recover"),
             )
@@ -111,7 +111,7 @@ impl ServerOptions {
                 }
             }
             "recover" => {
-                let recovery_path = matches.value_of("backup").unwrap().to_string();
+                let recovery_path = matches.value_of("recovery").unwrap().to_string();
                 let recovery_dir_path = matches.value_of("backup_dir").unwrap().to_string();
                 ServerOptions::Recover {
                     recovery_path,

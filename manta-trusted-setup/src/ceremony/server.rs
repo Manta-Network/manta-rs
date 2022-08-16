@@ -229,7 +229,7 @@ where
         // TODO: checksum
         Self::log_to_file(&coordinator, &self.recovery_path);
         println!(
-            "{} participants have contributed",
+            "{} participants have contributed.",
             coordinator.num_contributions
         );
         Ok(())
@@ -268,18 +268,39 @@ where
         let mut writer = Vec::new();
         bincode::serialize_into(&mut writer, &coordinator.num_contributions)
             .expect("Serialize should succeed");
-        coordinator
+        let proof = coordinator
             .proof
+            .clone()
+            .expect("Coordinator should have non-empty proof.");
+        proof[0]
+            .serialize(&mut writer)
+            .expect("Serialize should succeed");
+        proof[1]
+            .serialize(&mut writer)
+            .expect("Serialize should succeed");
+        proof[2]
             .serialize(&mut writer)
             .expect("Serialize should succeed");
         bincode::serialize_into(&mut writer, &coordinator.latest_contributor)
             .expect("Serialize should succeed.");
-        coordinator
-            .state
+        let state = coordinator.state.clone();
+        state[0]
             .serialize(&mut writer)
             .expect("Serialize should succeed.");
-        coordinator
-            .challenge
+        state[1]
+            .serialize(&mut writer)
+            .expect("Serialize should succeed.");
+        state[2]
+            .serialize(&mut writer)
+            .expect("Serialize should succeed.");
+        let challenge = coordinator.challenge.clone();
+        challenge[0]
+            .serialize(&mut writer)
+            .expect("Serialize should succeed.");
+        challenge[1]
+            .serialize(&mut writer)
+            .expect("Serialize should succeed.");
+        challenge[2]
             .serialize(&mut writer)
             .expect("Serialize should succeed.");
         bincode::serialize_into(&mut writer, &coordinator.registry)
@@ -300,25 +321,31 @@ where
         ParticipantIdentifier<C>: DeserializeOwned,
         C::Participant: DeserializeOwned,
     {
+        // cargo run --release --package manta-trusted-setup --bin groth16_phase2_server -- --backup_dir . --recovery log_1 recover
         let mut file = File::open(recovery_file_path).expect("Unable to open file.");
         let mut buf = Vec::new();
         file.read_to_end(&mut buf).expect("Unable to read file.");
         let mut reader = &buf[..];
         let num_contributions =
             bincode::deserialize_from(&mut reader).expect("Deserialize should succeed.");
-        let proof =
+        let proof0: Proof<C> =
             CanonicalDeserialize::deserialize(&mut reader).expect("Deserialize should succeed.");
+        let proof1: Proof<C> =
+            CanonicalDeserialize::deserialize(&mut reader).expect("Deserialize should succeed.");
+        let proof2: Proof<C> =
+            CanonicalDeserialize::deserialize(&mut reader).expect("Deserialize should succeed.");
+        let proof = [proof0, proof1, proof2];
         let latest_contributor =
             bincode::deserialize_from(&mut reader).expect("Deserialize should succeed.");
         let state0 =
             CanonicalDeserialize::deserialize(&mut reader).expect("Deserialize should succeed.");
-        let challenge0 =
-            CanonicalDeserialize::deserialize(&mut reader).expect("Deserialize should succeed.");
         let state1 =
             CanonicalDeserialize::deserialize(&mut reader).expect("Deserialize should succeed.");
-        let challenge1 =
-            CanonicalDeserialize::deserialize(&mut reader).expect("Deserialize should succeed.");
         let state2 =
+            CanonicalDeserialize::deserialize(&mut reader).expect("Deserialize should succeed.");
+        let challenge0 =
+            CanonicalDeserialize::deserialize(&mut reader).expect("Deserialize should succeed.");
+        let challenge1 =
             CanonicalDeserialize::deserialize(&mut reader).expect("Deserialize should succeed.");
         let challenge2 =
             CanonicalDeserialize::deserialize(&mut reader).expect("Deserialize should succeed.");
@@ -326,7 +353,7 @@ where
         Self {
             coordinator: Arc::new(Mutex::new(Coordinator::new(
                 num_contributions,
-                proof,
+                Some(proof),
                 latest_contributor,
                 [state0, state1, state2],
                 [challenge0, challenge1, challenge2],

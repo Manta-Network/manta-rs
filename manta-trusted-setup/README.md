@@ -5,20 +5,27 @@
 To crate a new server use the following command: 
 
 ```sh
-cargo run --release --package manta-trusted-setup --bin groth16_phase2_server -- --backup_dir . --accumulator path_to_phase_one_parameter --registry path_to_registry create
+cargo run --release --package manta-trusted-setup --bin groth16_phase2_server -- --backup_dir path_to_backup_directory --preprocessed_parameters path_to_preprocessed_parameters --registry path_to_registry create
 ```
 
 Arguments are:
 
 * `--backup_dir`: path to a directory for backing up each contribution
-* `--accumulator`: path to a file for phase one parameters
+* `--preprocessed_parameters`: path to a file for preprocessed phase one parameters
 * `--registry`: path to a file for a registry of all participants
-
-TODO: Use prepared parameters
 
 ## Server Recovery
 
-TODO: Add documents
+To recover a server use the following command:
+
+```sh
+cargo run --release --package manta-trusted-setup --bin groth16_phase2_server -- --backup_dir path_to_backup_directory --recovery path_to_recovery_file recover
+```
+
+Arguments are:
+
+* `--backup_dir`: path to a directory for backing up each contribution
+* `--recovery`: path to a file for recovery
 
 ## Client Register
 
