@@ -143,6 +143,12 @@ pub type Note = utxo::Note<Parameters>;
 pub type NoteVar = utxo::Note<ParametersVar>;
 
 ///
+pub type IncomingNote = protocol::IncomingNote<Config>;
+
+///
+pub type OutgoingNote = protocol::OutgoingNote<Config>;
+
+///
 pub type Nullifier = utxo::Nullifier<Parameters>;
 
 ///

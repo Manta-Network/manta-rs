@@ -140,6 +140,12 @@ pub type AssetValue = transfer::AssetValue<Config>;
 /// Asset Type
 pub type Asset = transfer::Asset<Config>;
 
+/// Unspent Transaction Output Type
+pub type Utxo = transfer::Utxo<Config>;
+
+/// Nullifier Type
+pub type Nullifier = transfer::Nullifier<Config>;
+
 /// Sender Type
 pub type Sender = transfer::Sender<Config>;
 
