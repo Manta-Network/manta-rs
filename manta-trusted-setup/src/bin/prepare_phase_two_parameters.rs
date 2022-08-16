@@ -76,7 +76,7 @@ pub fn prepare_phase_two_parameters(accumulator_path: String, prepared_path: Str
     let states = [state0, state1, state2];
     let challenges: [Challenge<C>; 3] = states
         .iter()
-        .map(|state| <Config as mpc::ProvingKeyHasher<Config>>::hash(&state).into())
+        .map(|state| <Config as mpc::ProvingKeyHasher<Config>>::hash(state).into())
         .collect::<Vec<Challenge<C>>>()
         .try_into()
         .expect("Should produce an array of length 3.");

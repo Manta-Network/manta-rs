@@ -167,7 +167,7 @@ where
                 challenge[2].clone().into(),
             )) // TODO: remove this clone later
         } else {
-            match coordinator.position(&participant) {
+            match coordinator.position(participant) {
                 Some(position) => Ok(QueryMPCStateResponse::QueuePosition(position)),
                 None => {
                     unreachable!("Participant should be always in the queue here")
@@ -245,7 +245,10 @@ where
         coordinator.num_contributions += 1;
         // TODO: checksum
         Self::log_to_file(&coordinator, &self.recovery_path);
-        println!("{} participants have contributed: ", coordinator.num_contributions);
+        println!(
+            "{} participants have contributed: ",
+            coordinator.num_contributions
+        );
         Ok(())
     }
 

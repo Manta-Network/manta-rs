@@ -36,7 +36,7 @@ pub mod signature;
 ///
 /// All errors here are visible to users.
 #[derive(PartialEq, Serialize, Deserialize, Derivative)]
-#[derivative(Debug(bound="Nonce<C>: core::fmt::Debug"))]
+#[derivative(Debug(bound = "Nonce<C>: core::fmt::Debug"))]
 #[serde(
     bound(
         serialize = "Nonce<C>: Serialize",

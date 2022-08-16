@@ -112,9 +112,14 @@ where
         };
         for i in 0..M {
             take_mut::take(&mut self.state[i], |self_state| {
-                C::Setup::verify_transform(&self.challenge[i], self_state, state[i].clone(), proof[i].clone())
-                    .expect("Verify transform on received contribution should succeed.")
-                    .1
+                C::Setup::verify_transform(
+                    &self.challenge[i],
+                    self_state,
+                    state[i].clone(),
+                    proof[i].clone(),
+                )
+                .expect("Verify transform on received contribution should succeed.")
+                .1
             });
         }
         self.queue.pop();
@@ -128,17 +133,17 @@ where
         participant_id: &ParticipantIdentifier<C>,
     ) -> Result<(), CeremonyError<C>> {
         // TODO: Enqueue successfully should return a succeed message and an updated nonce.
-        let participant = self.registry.get(&participant_id);
+        let participant = self.registry.get(participant_id);
         match participant {
             Some(participant) => {
-                if matches!(self.queue.position(&participant), None) {
+                if matches!(self.queue.position(participant), None) {
                     if self.registry.has_contributed(&participant.identifier()) {
                         return Err(CeremonyError::BadRequest); // TODO: You have contributed.
                     }
                     self.queue.push(participant);
                     Ok(())
                 } else {
-                    return Err(CeremonyError::BadRequest); // TODO: You are already in queue.
+                    Err(CeremonyError::BadRequest) // TODO: You are already in queue.
                 }
             }
             None => Err(CeremonyError::NotRegistered), // TODO: You have not registered.

@@ -127,7 +127,7 @@ where
         T: Serialize,
         PublicKey<C>: Debug, // TODO: Remove
     {
-        let signature = C::SignatureScheme::sign(&message, &nonce, public_key, private_key)?;
+        let signature = C::SignatureScheme::sign(&message, nonce, public_key, private_key)?;
         let message = Signed {
             message,
             identifier,

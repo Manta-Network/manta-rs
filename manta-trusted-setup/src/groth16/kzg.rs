@@ -247,7 +247,6 @@ where
     }
 }
 
-
 use crate::util::{G1Type, G2Type};
 
 impl<C> CanonicalSerialize for Proof<C>

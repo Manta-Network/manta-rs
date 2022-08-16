@@ -46,7 +46,7 @@ impl<K, V> Registry<K, V>
 where
     K: Ord,
 {
-    /// Builds a new [`Register`].
+    /// Builds a new [`Registry`].
     #[inline]
     pub fn new(map: BTreeMap<K, V>) -> Self {
         Self { map }

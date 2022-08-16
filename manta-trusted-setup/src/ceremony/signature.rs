@@ -53,7 +53,8 @@ pub trait SignatureScheme {
         nonce: &Self::Nonce,
         public_key: &Self::PublicKey,
         private_key: &Self::PrivateKey,
-    ) -> Result<Self::Signature, ()> // TODO: Change to ceremony error
+    ) -> Result<Self::Signature, ()>
+    // TODO: Change to ceremony error
     where
         M: ?Sized + AsRef<[u8]>;
 
@@ -63,7 +64,8 @@ pub trait SignatureScheme {
         nonce: &Self::Nonce,
         public_key: &Self::PublicKey,
         private_key: &Self::PrivateKey,
-    ) -> Result<Self::Signature, ()> // TODO: Change to ceremony error
+    ) -> Result<Self::Signature, ()>
+    // TODO: Change to ceremony error
     where
         M: Serialize,
     {
@@ -81,7 +83,8 @@ pub trait SignatureScheme {
         nonce: &Self::Nonce,
         signature: &Self::Signature,
         public_key: &Self::PublicKey,
-    ) -> Result<(), ()> // TODO: Change to ceremony error
+    ) -> Result<(), ()>
+    // TODO: Change to ceremony error
     where
         M: ?Sized + AsRef<[u8]>;
 
@@ -91,7 +94,8 @@ pub trait SignatureScheme {
         nonce: &Self::Nonce,
         signature: &Self::Signature,
         public_key: &Self::PublicKey,
-    ) -> Result<(), ()> // TODO: Change to ceremony error
+    ) -> Result<(), ()>
+    // TODO: Change to ceremony error
     where
         M: Serialize,
     {
