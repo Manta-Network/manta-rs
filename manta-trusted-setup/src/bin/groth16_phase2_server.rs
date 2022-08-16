@@ -29,7 +29,7 @@ use manta_trusted_setup::{
     ceremony::{
         config::{
             g16_bls12_381::{Groth16BLS12381, Participant, UserPriority},
-            CeremonyConfig, ParticipantIdentifier,
+            CeremonyConfig, Challenge, ParticipantIdentifier, State,
         },
         registry::Registry,
         server::Server,
@@ -48,7 +48,7 @@ type S = Server<C, 2>;
 pub enum ServerOptions {
     /// Creates a new server.
     Create {
-        accumulator_path: String,
+        preprocessed_parameter_path: String,
         registry_path: String,
         recovery_dir_path: String,
     },
@@ -72,10 +72,10 @@ impl ServerOptions {
                     .required(true),
             )
             .arg(
-                clap::Arg::new("accumulator")
-                    .short('a')
-                    .long("accumulator")
-                    .help("Path to the accumulator")
+                clap::Arg::new("parameters")
+                    .short('p')
+                    .long("preprocessed_parameters")
+                    .help("Path to the preprocessed parameters")
                     .takes_value(true)
                     .required_if_eq("mode", "create"),
             )
@@ -108,11 +108,11 @@ impl ServerOptions {
         let mode = matches.value_of("mode").unwrap();
         match mode {
             "create" => {
-                let accumulator_path = matches.value_of("accumulator").unwrap().to_string();
+                let preprocessed_parameter_path = matches.value_of("parameters").unwrap().to_string();
                 let registry_path = matches.value_of("registry").unwrap().to_string();
                 let recovery_dir_path = matches.value_of("backup_dir").unwrap().to_string();
                 ServerOptions::Create {
-                    accumulator_path,
+                    preprocessed_parameter_path,
                     registry_path,
                     recovery_dir_path,
                 }
@@ -189,57 +189,49 @@ where
     Registry::new(map)
 }
 
-// TO be updated
-fn init_server(accumulator_path: String, registry_path: String, recovery_dir_path: String) -> S {
+/// TODO
+pub fn load_from_file<P>(path: P) -> ([State<C>; 3], [Challenge<C>; 3])
+where
+    P: AsRef<Path>,
+{
     let now = Instant::now();
-    let mut file =
-        File::open(accumulator_path).expect("Opening phase one parameter file should succeed.");
+    let mut file = File::open(path).expect("Open file should succeed.");
     let mut buf = Vec::new();
     file.read_to_end(&mut buf)
-        .expect("Reading phase one parameter should succeed.");
+        .expect("Reading data should succeed.");
     let mut reader = &buf[..];
-    let powers: Accumulator<Config> = CanonicalDeserialize::deserialize(&mut reader)
-        .expect("Deserialize phase one parameter should succeed.");
-    println!(
-        "Loading & Deserializing Phase 1 parameters takes {:?}\n",
-        now.elapsed()
-    );
-
-    let now = Instant::now();
-    let mut rng = OsRng;
-    let mint_cs = Mint::unknown_constraints(FullParameters::new(&rng.gen(), &rng.gen())); // TODO: Check constants in FullParameters
-    let state0 = initialize::<Config, R1CS<Fr>>(powers.clone(), mint_cs)
-        .expect("failed to initialize state");
-    let challenge0 = <Config as mpc::ProvingKeyHasher<Config>>::hash(&state0).into();
-    println!(
-        "Building mint state and challenge takes {:?}\n",
-        now.elapsed()
-    );
-
-    let now = Instant::now();
-    let private_transfer_cs =
-        PrivateTransfer::unknown_constraints(FullParameters::new(&rng.gen(), &rng.gen())); // TODO: Check constants in FullParameters
-    let state1 = initialize::<Config, R1CS<Fr>>(powers.clone(), private_transfer_cs)
-        .expect("failed to initialize state");
-    let challenge1 = <Config as mpc::ProvingKeyHasher<Config>>::hash(&state1).into();
-    println!(
-        "Building private transfer state and challenge takes {:?}\n",
-        now.elapsed()
-    );
-
-    let now = Instant::now();
-    let reclaim = Reclaim::unknown_constraints(FullParameters::new(&rng.gen(), &rng.gen())); // TODO: Check constants in FullParameters
+    let state0 =
+        CanonicalDeserialize::deserialize(&mut reader).expect("Deserialize should succeed.");
+    let state1 =
+        CanonicalDeserialize::deserialize(&mut reader).expect("Deserialize should succeed.");
     let state2 =
-        initialize::<Config, R1CS<Fr>>(powers, reclaim).expect("failed to initialize state");
-    let challenge2 = <Config as mpc::ProvingKeyHasher<Config>>::hash(&state2).into();
+        CanonicalDeserialize::deserialize(&mut reader).expect("Deserialize should succeed.");
+    let challenge0 =
+        CanonicalDeserialize::deserialize(&mut reader).expect("Deserialize should succeed.");
+    let challenge1 =
+        CanonicalDeserialize::deserialize(&mut reader).expect("Deserialize should succeed.");
+    let challenge2 =
+        CanonicalDeserialize::deserialize(&mut reader).expect("Deserialize should succeed.");
     println!(
-        "Building reclaim state and challenge takes {:?}\n",
+        "Deserializing Preprocessed Phase 2 parameters takes {:?}\n",
         now.elapsed()
     );
-
-    S::new(
+    (
         [state0, state1, state2],
-        [challenge0, challenge1, challenge2],
+        [challenge0, challenge1, challenge2], // TODO: Make this more elegant.
+    )
+}
+
+// TO be updated
+fn init_server(
+    preprocessed_parameter_path: String,
+    registry_path: String,
+    recovery_dir_path: String,
+) -> S {
+    let (states, challenges) = load_from_file(preprocessed_parameter_path);
+    S::new(
+        states,
+        challenges,
         load_registry(registry_path),
         recovery_dir_path,
     )
@@ -251,10 +243,10 @@ async fn main() -> tide::Result<()> {
     let options = ServerOptions::load_from_args();
     let server = match options {
         ServerOptions::Create {
-            accumulator_path,
+            preprocessed_parameter_path,
             registry_path,
             recovery_dir_path,
-        } => init_server(accumulator_path, registry_path, recovery_dir_path),
+        } => init_server(preprocessed_parameter_path, registry_path, recovery_dir_path),
         ServerOptions::Recover {
             recovery_path,
             recovery_dir_path,
@@ -271,24 +263,3 @@ async fn main() -> tide::Result<()> {
     api.listen("127.0.0.1:8080").await?; // TODO: use TLS
     Ok(())
 }
-
-// cargo run --release --package manta-trusted-setup --bin groth16_phase2_server -- --backup_dir . --accumulator dummy_phase_one_parameter.data --registry dummy_register.csv create
-
-// cs.constraint_count(): 17706
-// Finished trusted setup phase one takes 286.423455189s
-
-// Wrote phase one parameters to disk. Took 221.491831ms
-
-// Initialize Phase 2 parameters takes 895.588149647s
-
-// On client side, contribute Phase 2 parameters takes 10.574934047s
-// On server side, verify transform for Phase 2 parameters takes 23.006557103s
-// On client side, contribute Phase 2 parameters takes 11.101973456s
-// On server side, verify transform for Phase 2 parameters takes 23.046081274s
-// On client side, contribute Phase 2 parameters takes 10.418395032s
-// On server side, verify transform for Phase 2 parameters takes 23.041631704s
-// On client side, contribute Phase 2 parameters takes 10.510215602s
-// On server side, verify transform for Phase 2 parameters takes 22.873919112s
-// On client side, contribute Phase 2 parameters takes 10.300151345s
-// On server side, verify transform for Phase 2 parameters takes 22.742186574s
-// Given 5 contributions, verify transform all for Phase 2 parameters takes 22.963527386s

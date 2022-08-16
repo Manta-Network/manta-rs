@@ -61,13 +61,13 @@ For a local test, please use the following command:
 cargo run --release --package manta-trusted-setup --bin generate_phase_one_dummy_parameters
 
 # Takes ~0.5 hour.
-# cargo run --release --package manta-trusted-setup --bin prepare_phase_two_parameters -- --accumulator dummy_phase_one_parameter.data --prepared_parameter prepared_phase_two_parameter.data
+cargo run --release --package manta-trusted-setup --bin prepare_phase_two_parameters -- --accumulator dummy_phase_one_parameter.data --prepared_parameter prepared_phase_two_parameter.data
 
-# Takes ~??.
-cargo run --release --package manta-trusted-setup --bin groth16_phase2_server -- --backup_dir . --accumulator dummy_phase_one_parameter.data --registry dummy_register.csv create
+# Takes ~1 minute to load preprocessed parameters.
+cargo run --release --package manta-trusted-setup --bin groth16_phase2_server -- --backup_dir . --preprocessed_parameters prepared_phase_two_parameter.data --registry dummy_register.csv create
 
-# Takes ~??.
-cargo run --package manta-trusted-setup --bin groth16_phase2_client -- contribute
+# Takes ~3 minutes to contribute.
+cargo run --release --package manta-trusted-setup --bin groth16_phase2_client -- contribute
 ```
 
 We provide a `dummy_register.csv` containing $10$ participants whose secrets are:
