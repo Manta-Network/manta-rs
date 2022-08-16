@@ -269,6 +269,12 @@ impl Node {
         Self(self.0 >> 1)
     }
 
+    /// Returns the [`Node`] k-th ancestor of this node.
+    #[inline]
+    pub fn ancestor(&self, k: usize) -> Self {
+        Self(self.0 >> k)
+    }
+
     /// Converts `self` into its parent, returning the parent [`Node`].
     #[inline]
     #[must_use]

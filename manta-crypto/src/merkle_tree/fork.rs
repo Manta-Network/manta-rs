@@ -442,7 +442,7 @@ where
 
     /// Returns the current (right-most) path of the branch.
     #[inline]
-    pub fn current_path(&self) -> CurrentPath<C>
+    pub fn current_path(&self) -> Result<CurrentPath<C>, PathError>
     where
         LeafDigest<C>: Clone + Default,
         InnerDigest<C>: Clone + Default + PartialEq,
@@ -466,7 +466,10 @@ where
         let base_index = Node(index);
         let base_path = base.path(parameters, base_index.0)?;
         let fork_index = self.data.starting_leaf_node();
-        let mut fork_path = self.data.path_unchecked(fork_index.0);
+        let mut fork_path = match self.data.path_unchecked(fork_index.0) {
+            Ok(fork_path) => fork_path,
+            Err(e) => return Err(e),
+        };
         if !Node::are_siblings(&base_index, &fork_index) {
             let matching_index = base_index
                 .parents()
@@ -508,7 +511,7 @@ where
         if index < self.data.starting_leaf_index() {
             modified_path(self)
         } else {
-            Ok(self.data.path_unchecked(index))
+            self.data.path_unchecked(index)
         }
     }
 
@@ -711,7 +714,7 @@ where
 
     /// Returns the current (right-most) path of the tree.
     #[inline]
-    pub fn current_path(&self) -> CurrentPath<C>
+    pub fn current_path(&self) -> Result<CurrentPath<C>, PathError>
     where
         LeafDigest<C>: Clone + Default,
         InnerDigest<C>: Clone + Default + PartialEq,
@@ -871,7 +874,7 @@ where
 
     /// Returns the current (right-most) path of the forked tree.
     #[inline]
-    pub fn current_path(&self) -> CurrentPath<C>
+    pub fn current_path(&self) -> Result<CurrentPath<C>, PathError>
     where
         LeafDigest<C>: Clone + Default,
         InnerDigest<C>: Clone + Default + PartialEq,
@@ -967,7 +970,10 @@ where
     #[inline]
     fn current_path(&self, parameters: &Parameters<C>) -> CurrentPath<C> {
         let _ = parameters;
-        self.current_path()
+        match self.current_path() {
+            Ok(current_path) => current_path,
+            _ => Default::default(),
+        }
     }
 
     #[inline]

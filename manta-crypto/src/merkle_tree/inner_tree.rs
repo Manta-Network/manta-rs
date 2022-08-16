@@ -37,6 +37,8 @@ use manta_util::serde::{Deserialize, Serialize};
 #[cfg(feature = "std")]
 use std::{collections::hash_map, hash::BuildHasher};
 
+use super::PathError;
+
 /// Inner Tree Node
 #[cfg_attr(
     feature = "serde",
@@ -109,8 +111,16 @@ impl InnerNode {
         self.index
             .descendants(k)
             .iter()
-            .map(|a| Self::new(self.depth, *a))
+            .map(|a| Self::new(self.depth + k, *a))
             .collect()
+    }
+
+    /// Returns the k-th ancestor [`InnerNode`] of this inner node
+    #[inline]
+    pub fn ancestor(&self, k: usize) -> Option<Self> {
+        self.depth
+            .checked_sub(k)
+            .map(|depth| Self::new(depth, self.index.ancestor(k)))
     }
 
     /// Converts `self` into its parent, if the parent exists, returning the parent [`InnerNode`].
@@ -777,7 +787,7 @@ where
         self.inner_tree.insert(parameters, leaf_index, base);
     }
 
-    /// Removes the inner digest at 'InnerNode'
+    /// Removes the inner digest at 'index'
     pub fn remove(&mut self, index: usize) -> bool {
         self.inner_tree.map.remove(index)
     }
@@ -792,11 +802,26 @@ where
     /// Returns the path at `leaf_index` without checking if `leaf_index` is later than the
     /// starting index of this tree.
     #[inline]
-    pub fn path_unchecked(&self, leaf_index: Node) -> InnerPath<C>
+    pub fn path_unchecked(&self, leaf_index: Node) -> Result<InnerPath<C>, PathError>
     where
         InnerDigest<C>: Clone,
     {
-        self.inner_tree.path(leaf_index)
+        match (1..C::HEIGHT)
+            .map(|level| {
+                self.get(
+                    InnerNode::new(0, leaf_index)
+                        .ancestor(level)
+                        .expect("ancestor call cannot fail within height bounds"),
+                )
+            })
+            .collect::<Option<Vec<&InnerDigest<C>>>>()
+        {
+            None => Err(PathError::MissingPath),
+            Some(vec) => Ok(InnerPath::new(
+                leaf_index,
+                vec.iter().map(|&x| x.clone()).collect(),
+            )),
+        }
     }
 }
 
@@ -809,8 +834,14 @@ where
     /// Returns the path at `leaf_index`, assuming that `leaf_index` is the right-most index,
     /// so that the return value is a valid [`CurrentInnerPath`].
     #[inline]
-    pub fn current_path_unchecked(&self, leaf_index: Node) -> CurrentInnerPath<C> {
-        self.inner_tree.current_path_unchecked(leaf_index)
+    pub fn current_path_unchecked(
+        &self,
+        leaf_index: Node,
+    ) -> Result<CurrentInnerPath<C>, PathError> {
+        match self.path_unchecked(leaf_index) {
+            Ok(inner_path) => Ok(CurrentInnerPath::new(leaf_index, inner_path.path)),
+            Err(e) => Err(e),
+        }
     }
 }
 

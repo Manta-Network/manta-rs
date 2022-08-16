@@ -390,6 +390,12 @@ pub enum PathError {
         /// Length of the tree
         length: usize,
     },
+
+    /// Given index is smaller than the starting leaf index
+    IndexTooSmall {
+        /// Starting leaf index of the (partial) tree
+        starting_index: usize,
+    },
 }
 
 /// Merkle Tree Membership Proof Mixin

@@ -50,7 +50,13 @@ where
     fn get(&self, index: usize) -> Option<&LeafDigest<C>>;
 
     /// Returns the current (i.e. rightmost) leaf
-    fn current_leaf(&self) -> Option<&LeafDigest<C>>;
+    #[inline]
+    fn current_leaf(&self) -> Option<&LeafDigest<C>> {
+        self.get(self.current_index())
+    }
+
+    /// Returns the current index
+    fn current_index(&self) -> usize;
 
     /// Returns the index at which 'leaf_digest' is stored. Default implementation always returns 'None',
     /// non-trivial implementations require [`LeafDigest<C>`] to implement the [`PartialEq`] trait.
@@ -130,8 +136,8 @@ where
         Some(leaf_digest)
     }
 
-    fn current_leaf(&self) -> Option<&LeafDigest<C>> {
-        self.get(self.len() - 1)
+    fn current_index(&self) -> usize {
+        self.len() - 1
     }
 
     fn position(&self, leaf_digest: &LeafDigest<C>) -> Option<usize> {
@@ -192,8 +198,8 @@ where
         Some(&leaf_digest)
     }
 
-    fn current_leaf(&self) -> Option<&LeafDigest<C>> {
-        self.get(self.last_index)
+    fn current_index(&self) -> usize {
+        self.last_index
     }
 
     fn position(&self, leaf_digest: &LeafDigest<C>) -> Option<usize> {
@@ -246,8 +252,8 @@ pub type PartialMerkleTree<C, M = BTreeMap<C>> = MerkleTree<C, Partial<C, M>>;
     derive(Deserialize, Serialize),
     serde(
         bound(
-            deserialize = "LeafDigest<C>: Deserialize<'de>, InnerDigest<C>: Deserialize<'de>, M: Deserialize<'de>",
-            serialize = "LeafDigest<C>: Serialize, InnerDigest<C>: Serialize, M: Serialize"
+            deserialize = "LeafDigest<C>: Deserialize<'de>, InnerDigest<C>: Deserialize<'de>, M: Deserialize<'de>, L: Deserialize<'de>",
+            serialize = "LeafDigest<C>: Serialize, InnerDigest<C>: Serialize, M: Serialize, L:Serialize"
         ),
         crate = "manta_util::serde",
         deny_unknown_fields
@@ -326,7 +332,7 @@ where
     where
         LeafDigest<C>: Clone,
     {
-        self.leaf_digests.leaf_digests().to_vec()
+        self.leaf_digests.leaf_digests()
     }
 
     /// Returns the starting leaf [`Node`] for this tree.
@@ -380,12 +386,11 @@ where
 
     /// Returns an owned sibling leaf node to `index`.
     #[inline]
-    pub fn get_owned_leaf_sibling(&self, index: Node) -> LeafDigest<C>
+    pub fn get_owned_leaf_sibling(&self, index: Node) -> Option<LeafDigest<C>>
     where
         LeafDigest<C>: Clone + Default,
     {
-        // TODO: What happens when the path doesn't exist?
-        self.get_leaf_sibling(index).cloned().unwrap_or_default()
+        self.get_leaf_sibling(index).cloned()
     }
 
     /// Returns the current (right-most) leaf of the tree.
@@ -394,41 +399,65 @@ where
         self.leaf_digests.current_leaf()
     }
 
+    /// Returns the current index of the tree.
+    #[inline]
+    pub fn current_index(&self) -> usize {
+        self.leaf_digests.current_index()
+    }
+
     /// Returns the current (right-most) path of the tree.
     #[inline]
-    pub fn current_path(&self) -> CurrentPath<C>
+    pub fn current_path(&self) -> Result<CurrentPath<C>, PathError>
     where
         LeafDigest<C>: Clone + Default,
         InnerDigest<C>: Clone + PartialEq,
     {
         let length = self.len();
         if length == 0 {
-            return Default::default();
+            return Ok(Default::default());
         }
         let leaf_index = Node(length - 1);
-        CurrentPath::from_inner(
+        let leaf_sibling = match (
+            self.leaf_digest(length - 1),
             self.get_owned_leaf_sibling(leaf_index),
-            self.inner_digests.current_path_unchecked(leaf_index),
-        )
+        ) {
+            (None, _) => return Err(PathError::MissingPath),
+            (_, None) => return Err(PathError::MissingPath),
+            (Some(_), Some(leaf_sibling)) => leaf_sibling,
+        };
+        if let Ok(inner_path) = self.inner_digests.current_path_unchecked(leaf_index) {
+            Ok(CurrentPath::from_inner(leaf_sibling, inner_path))
+        } else {
+            Err(PathError::MissingPath)
+        }
     }
 
     /// Returns the path at `index` without bounds-checking on the index.
     #[inline]
-    pub fn path_unchecked(&self, index: usize) -> Path<C>
+    pub fn path_unchecked(&self, index: usize) -> Result<Path<C>, PathError>
     where
         LeafDigest<C>: Clone + Default,
         InnerDigest<C>: Clone,
     {
         let leaf_index = Node(index);
-        Path::from_inner(
+        let leaf_sibling = match (
+            self.leaf_digest(index),
             self.get_owned_leaf_sibling(leaf_index),
-            self.inner_digests.path_unchecked(leaf_index),
-        )
+        ) {
+            (None, _) => return Err(PathError::MissingPath),
+            (_, None) => return Err(PathError::MissingPath),
+            (Some(_), Some(leaf_sibling)) => leaf_sibling,
+        };
+        if let Ok(inner_path) = self.inner_digests.path_unchecked(leaf_index) {
+            Ok(Path::from_inner(leaf_sibling, inner_path))
+        } else {
+            Err(PathError::MissingPath)
+        }
     }
 
     /// Appends a `leaf_digest` with index given by `leaf_index` into the tree.
     #[inline]
-    pub fn push_leaf_digest(
+    pub fn push_provable_leaf_digest(
         &mut self,
         parameters: &Parameters<C>,
         leaf_index: Node,
@@ -449,7 +478,36 @@ where
         self.leaf_digests.push(leaf_digest);
     }
 
+    /// Appends a `leaf_digest` with index given by `leaf_index` into the tree and then removes
+    /// its proof.
+    #[inline]
+    pub fn push_leaf_digest(
+        &mut self,
+        parameters: &Parameters<C>,
+        leaf_index: Node,
+        leaf_digest: LeafDigest<C>,
+    ) where
+        LeafDigest<C>: Default,
+    {
+        self.push_provable_leaf_digest(parameters, leaf_index, leaf_digest);
+        self.leaf_digests.remove(leaf_index.0);
+    }
+
     /// Appends a `leaf` to the tree using `parameters`.
+    #[inline]
+    pub fn push_provable(&mut self, parameters: &Parameters<C>, leaf: &Leaf<C>) -> bool
+    where
+        LeafDigest<C>: Default,
+    {
+        let len = self.len();
+        if len >= capacity::<C, _>() {
+            return false;
+        }
+        self.push_provable_leaf_digest(parameters, Node(len), parameters.digest(leaf));
+        true
+    }
+
+    /// Appends a `leaf` to the tree using `parameters` and then it removes its proof.
     #[inline]
     pub fn push(&mut self, parameters: &Parameters<C>, leaf: &Leaf<C>) -> bool
     where
@@ -465,6 +523,25 @@ where
 
     /// Appends `leaf_digest` to the tree using `parameters`.
     #[inline]
+    pub fn maybe_push_provable_digest<F>(
+        &mut self,
+        parameters: &Parameters<C>,
+        leaf_digest: F,
+    ) -> Option<bool>
+    where
+        F: FnOnce() -> Option<LeafDigest<C>>,
+        LeafDigest<C>: Default,
+    {
+        let len = self.len();
+        if len >= capacity::<C, _>() {
+            return Some(false);
+        }
+        self.push_provable_leaf_digest(parameters, Node(len), leaf_digest()?);
+        Some(true)
+    }
+
+    /// Appends `leaf_digest` to the tree using `parameters` and then it removes its proof.
+    #[inline]
     pub fn maybe_push_digest<F>(
         &mut self,
         parameters: &Parameters<C>,
@@ -474,7 +551,6 @@ where
         F: FnOnce() -> Option<LeafDigest<C>>,
         LeafDigest<C>: Default,
     {
-        // TODO: Push without keeping unnecessary proof.
         let len = self.len();
         if len >= capacity::<C, _>() {
             return Some(false);
@@ -516,7 +592,10 @@ where
     #[inline]
     fn current_path(&self, parameters: &Parameters<C>) -> CurrentPath<C> {
         let _ = parameters;
-        self.current_path()
+        match self.current_path() {
+            Ok(current_path) => current_path,
+            Err(_) => Default::default(),
+        }
     }
 
     #[inline]
@@ -555,20 +634,22 @@ where
     where
         F: FnOnce() -> Option<LeafDigest<C>>,
     {
-        self.maybe_push_digest(parameters, leaf_digest)
+        self.maybe_push_provable_digest(parameters, leaf_digest)
     }
 
     #[inline]
     fn path(&self, parameters: &Parameters<C>, index: usize) -> Result<Path<C>, PathError> {
         let _ = parameters;
-        let length = self.len();
-        if index > 0 && index >= length {
-            return Err(PathError::IndexTooLarge { length });
+        let last_index = self.current_index();
+        if index > 0 && index > last_index {
+            return Err(PathError::IndexTooLarge { length: last_index });
         }
         if index < self.starting_leaf_index() {
-            return Err(PathError::MissingPath);
+            return Err(PathError::IndexTooSmall {
+                starting_index: self.starting_leaf_index(),
+            });
         }
-        Ok(self.path_unchecked(index))
+        self.path_unchecked(index)
     }
 
     #[inline]
@@ -578,7 +659,10 @@ where
             .leaf_digests
             .is_marked_or_removed(Node(index).sibling().0)
         {
-            self.leaf_digests.remove(index);
+            if index != self.current_index() {
+                // The current leaf cannot be removed!
+                self.leaf_digests.remove(index);
+            }
             self.leaf_digests.remove(Node(index).sibling().0);
             let height = C::HEIGHT;
             let mut inner_node = match InnerNode::from_leaf::<C>(Node::parent(&Node(index))) {
