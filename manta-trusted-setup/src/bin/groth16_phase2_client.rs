@@ -153,6 +153,10 @@ pub fn register() {
         .with_prompt("Your twitter account")
         .interact_text()
         .expect("");
+    let email: String = Input::with_theme(&ColorfulTheme::default())
+        .with_prompt("Your email")
+        .interact_text()
+        .expect("");
     // TODO: Use https://docs.rs/tiny-bip39/1.0.0/bip39/
     //     /// get the phrase
     // let phrase: &str = mnemonic.phrase();
@@ -175,6 +179,11 @@ pub fn register() {
         twitter_account.blue(),
     );
     println!(
+        "Your {}: \nCopy the following text to \"Email\" Section in Google Sheet:\n {}\n",
+        "Email".italic(),
+        email.blue(),
+    );
+    println!(
         "Your {}: \nCopy the following text to \"Public Key\" Section in Google Sheet:\n {}\n",
         "Public Key".italic(),
         bs58::encode(bincode::serialize(&pk).expect("Serializing public key should succeed"))
@@ -187,7 +196,7 @@ pub fn register() {
         bs58::encode(
             bincode::serialize(
                 &ed_dalek::Ed25519::sign(
-                    format!("manta-trusted-setup-twitter:{}", twitter_account),
+                    format!("manta-trusted-setup-twitter:{}, manta-trusted-setup-email:{}", twitter_account, email),
                     &0,
                     &pk,
                     &sk,

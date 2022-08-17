@@ -138,17 +138,18 @@ where
     {
         let result = record.expect("Read csv should succeed.");
         let twitter = result[0].to_string();
+        let email = result[1].to_string();
         let public_key = bincode::deserialize::<ed_dalek::PublicKey>(
-            &bs58::decode(result[2].to_string())
+            &bs58::decode(result[3].to_string())
                 .into_vec()
                 .expect("Decode public key should succeed."),
         )
         .expect("Deserialize public key should succeed.");
         ed_dalek::Ed25519::verify(
-            format!("manta-trusted-setup-twitter:{}", twitter),
+            format!("manta-trusted-setup-twitter:{}, manta-trusted-setup-email:{}", twitter, email),
             &0,
             &bincode::deserialize::<ed_dalek::Signature>(
-                &bs58::decode(result[3].to_string())
+                &bs58::decode(result[4].to_string())
                     .into_vec()
                     .expect("Decode signature should succeed."),
             )
@@ -158,7 +159,7 @@ where
         .expect("Verifying signature should succeed.");
         let participant = Participant {
             twitter,
-            priority: match result[1].to_string().parse::<u32>().unwrap() {
+            priority: match result[2].to_string().parse::<u32>().unwrap() {
                 1 => UserPriority::High,
                 0 => UserPriority::Normal,
                 _ => {
@@ -214,11 +215,12 @@ pub fn init_server(
     registry_path: String,
     recovery_dir_path: String,
 ) -> S {
+    let registry = load_registry(registry_path);
     let (states, challenges) = load_from_file(preprocessed_parameter_path);
     S::new(
         states,
         challenges,
-        load_registry(registry_path),
+        registry,
         recovery_dir_path,
     )
 }
@@ -240,10 +242,10 @@ async fn main() -> tide::Result<()> {
     };
     println!("Network starts to run!");
     let mut api = tide::Server::with_state(server);
+    api.at("/nonce").post(|r| S::execute(r, Server::get_nonce));
     api.at("/query")
         .post(|r| S::execute(r, Server::query));
     api.at("/update").post(|r| S::execute(r, Server::update));
-    api.at("/nonce").post(|r| S::execute(r, Server::get_nonce));
     api.listen("127.0.0.1:8080").await?; // TODO: use TLS
     Ok(())
 }
