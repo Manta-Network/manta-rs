@@ -79,13 +79,8 @@ We provide a `dummy_register.csv` containing $10$ participants whose secrets are
 
 | Name | Secret |
 | --- | --- |
-| Alice | 3crn189hhBziv9X6YvmPLnvZeyfj2EzSKTqNXLsVwdMBq7LFLts8xcKri6Gka5yyo4ra8qoKVhmKcstbhEXBD9ZM |
-| Bob | 4W3ieMwX83qwBpcBTuLq97NhKDccLTNW2feEuB3r9LgUb7aSJejHUMQse7GJXoGfBp8kK8StwxN7siYobbiys73a |
-| Charlie | 4zfXyHkrwiQaxMhvsdzVTfGkXqNA61NayVLGLgVNAcG4RqAF7csMNWwzGbfhvXPcsFtbx6vbSsMRT34UNXbFc7DL  |
-| David | 2tgdpuVVsb4aN6pKLVTmyT5KHNukWGHpLKXDuPN4kuuzzCK2qRExq1hkgV2skNrseqhCPLfwrEhXPdPToJ6dwzKj |
-| Evan | 4WyfmSP9ct4dr7iPiXJTzoDvg8LXPJsueJp1u9D6oP3kXKMdRBqX7KEBVkkiD8L8MgRjs5zFefbeV61CX6RrrkSF |
-| Felix | 2wm2Yd46gCxBVefpB6bTFer3qKTLbNGgnNuC49Q1evuebzjbaptwD2AmkiLwvc2BtaSDA9NDZUBDCjkx9w3ZKxXi |
-| Gavin | 5ec5PB6qg1RsnjxfS9QeneJJuQfJZkgjMu7nhAyCt1i3xCgSYYizoB6Dp1rnYJp5wmWFw2kHM8GmgsZL8oK93Ntg |
-| Henry | 5QrmKpm89vGHQYX9g7ABV82Uok6MjMbBvJ5CyFmTvqaMsoYQ6R84PPMXDRTJLfuiSFankboRu17dDs2VdBWECCon |
-| Iris | L9wX1qtZ8QUgScPqC4xbv7dn1knz4TddcGj43HMiUkZVGSDYwCMsFQvyhR9YHTBoTq3CCW4xt4zUy6ZG7SkYoig |
-| Jordan | 2xiFiWQotgsMdAKqynKhEqQg7RcLxDfXsHR7fe3J5hTQ7yk7Gsq8LGLE2bb12rvFyth98ZVWfNyz9WsFRPQkQWL3 |
+| Alice |  mouse earn flame bicycle column arena two nothing stairs confirm peasant table |
+| Bob |  cupboard comfort fun pistol drink enroll laundry pluck silver tape clinic moon |
+| Charlie |  evil insane fragile fog acid laugh target subway soft pattern edit monkey |
+| David |  gauge update very gorilla stove shell index little custom manage shrug reflect |
+| Evan |  worry indoor ready slogan trick eyebrow adult engine pupil feed series toe |

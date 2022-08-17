@@ -19,12 +19,12 @@
 extern crate alloc;
 
 use alloc::string::String;
+use bip39::{Language, Mnemonic, MnemonicType, Seed};
 use clap::{Parser, Subcommand};
 use colored::Colorize; // TODO: Try https://docs.rs/console/latest/console/
-use indicatif::ProgressBar;
 use core::fmt::{Display, Formatter};
 use dialoguer::{theme::ColorfulTheme, Input};
-use manta_crypto::rand::{OsRng, RngCore};
+use indicatif::ProgressBar;
 use manta_trusted_setup::ceremony::{
     config::{g16_bls12_381::Groth16BLS12381, Nonce, PrivateKey, PublicKey},
     message::QueryResponse,
@@ -158,19 +158,11 @@ pub fn register() {
         .with_prompt("Your email")
         .interact_text()
         .expect("");
-    // TODO: Use https://docs.rs/tiny-bip39/1.0.0/bip39/
-    //     /// get the phrase
-    // let phrase: &str = mnemonic.phrase();
-    // println!("phrase: {}", phrase);
-
-    // /// get the HD wallet seed
-    // let seed = Seed::new(&mnemonic, "");
-
-    // // get the HD wallet seed as raw bytes
-    // let seed_bytes: &[u8] = seed.as_bytes();
-    let mut secret_key_bytes = [0u8; ed25519_dalek::SECRET_KEY_LENGTH];
-    OsRng.fill_bytes(&mut secret_key_bytes);
-    let sk = ed25519_dalek::SecretKey::from_bytes(&secret_key_bytes)
+    let mnemonic = Mnemonic::new(MnemonicType::Words12, Language::English);
+    let seed = Seed::new(&mnemonic, "manta-trusted-setup");
+    let seed_bytes = seed.as_bytes();
+    assert!(ed25519_dalek::SECRET_KEY_LENGTH <= seed_bytes.len(), "Secret key length of ed25519 should be smaller than length of seed bytes from mnemonic phrases.");
+    let sk = ed25519_dalek::SecretKey::from_bytes(&seed_bytes[0..ed25519_dalek::SECRET_KEY_LENGTH])
         .expect("`from_bytes` should succeed for SecretKey.");
     let pk = ed_dalek::PublicKey(ed25519_dalek::PublicKey::from(&sk).to_bytes());
     let sk = ed_dalek::PrivateKey(sk.to_bytes());
@@ -197,7 +189,10 @@ pub fn register() {
         bs58::encode(
             bincode::serialize(
                 &ed_dalek::Ed25519::sign(
-                    format!("manta-trusted-setup-twitter:{}, manta-trusted-setup-email:{}", twitter_account, email),
+                    format!(
+                        "manta-trusted-setup-twitter:{}, manta-trusted-setup-email:{}",
+                        twitter_account, email
+                    ),
                     &0,
                     &pk,
                     &sk,
@@ -214,9 +209,7 @@ pub fn register() {
          Save the following text somewhere safe. \n DO NOT share this to anyone else! \
          Please discard this data after the trusted setup ceremony.\n {}",
         "Secret".italic(),
-        bs58::encode(bincode::serialize(&(pk, sk)).expect("Serializing keypair should succeed"))
-            .into_string()
-            .red(),
+        mnemonic.phrase().red(),
     );
 }
 
@@ -227,22 +220,27 @@ pub fn prompt_client_info() -> Result<(PublicKey<C>, PrivateKey<C>), Error> {
         "Please enter your {} that you get when you registered yourself using this tool.",
         "Secret".italic()
     );
-    // TODO
-    // Take mnemonic as secret and verify it.
-    // https://docs.rs/tiny-bip39/1.0.0/bip39/struct.Mnemonic.html#method.validate
     let secret_str: String = Input::with_theme(&ColorfulTheme::default())
         .with_prompt("Your Secret")
+        .validate_with(|input: &String| -> Result<(), &str> {
+            if Mnemonic::validate(&input, Language::English).is_ok() {
+                Ok(())
+            } else {
+                Err("This is not a valid secret.")
+            }
+        })
         .interact_text()
         .expect("Please enter your secret received during `Register`.");
-    // https://docs.rs/dialoguer/latest/dialoguer/struct.Input.html#method.validate_with
-    // .validate_with(move |input: &String| -> Result<(), &str> {
-    //     // Check that it is a valid seed phrase and return `Err("error message")` if not
-    //     todo!()
-    // })
-    let secret_bytes = bs58::decode(&secret_str)
-        .into_vec()
-        .map_err(|_| Error::InvalidSecret)?;
-    bincode::deserialize(&secret_bytes).map_err(|_| Error::InvalidSecret)
+    let mnemonic = Mnemonic::from_phrase(secret_str.as_str(), Language::English)
+        .expect("Should produce a mnemonic from the secret.");
+    let seed = Seed::new(&mnemonic, "manta-trusted-setup");
+    let seed_bytes = seed.as_bytes();
+    assert!(ed25519_dalek::SECRET_KEY_LENGTH <= seed_bytes.len(), "Secret key length of ed25519 should be smaller than length of seed bytes from mnemonic phrases.");
+    let sk = ed25519_dalek::SecretKey::from_bytes(&seed_bytes[0..ed25519_dalek::SECRET_KEY_LENGTH])
+        .expect("`from_bytes` should succeed for SecretKey.");
+    let pk = ed_dalek::PublicKey(ed25519_dalek::PublicKey::from(&sk).to_bytes());
+    let sk = ed_dalek::PrivateKey(sk.to_bytes());
+    Ok((pk, sk))
 }
 
 /// Sends requests thourgh network.
@@ -287,7 +285,7 @@ pub async fn get_nonce(
 #[inline]
 pub async fn contribute() -> Result<(), Error> {
     let network_client = reqwest::Client::new();
-    let (pk, sk) = prompt_client_info()?; //
+    let (pk, sk) = prompt_client_info()?;
     let nonce = get_nonce(pk, &network_client).await?;
     let mut trusted_setup_client = Client::new(pk, pk, nonce, sk);
     loop {
