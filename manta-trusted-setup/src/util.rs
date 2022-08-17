@@ -139,6 +139,12 @@ pub trait Deserializer<T, M = ()> {
         R: Read;
 }
 
+/// Conversion from [`SerializationError`] to `io::Error`
+#[inline]
+pub fn from_serialization_error(err: SerializationError) -> io::Error {
+    io::Error::new(io::ErrorKind::Other, err)
+}
+
 /// Deserialization Error for [`NonZero`]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum NonZeroError<E> {

@@ -48,21 +48,15 @@ pub struct PpotCeremony;
 
 impl Size for PpotCeremony {
     const G1_POWERS: usize = (Self::G2_POWERS << 1) - 1;
-
     const G2_POWERS: usize = 1 << 28;
 }
 
 impl Pairing for PpotCeremony {
     type Scalar = Fr;
-
     type G1 = G1Affine;
-
     type G1Prepared = <Bn254 as PairingEngine>::G1Prepared;
-
     type G2 = G2Affine;
-
     type G2Prepared = <Bn254 as PairingEngine>::G2Prepared;
-
     type Pairing = Bn254;
 
     fn g1_prime_subgroup_generator() -> Self::G1 {

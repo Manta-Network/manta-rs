@@ -16,9 +16,8 @@
 
 //! Bn254 Backend for MantaPay Groth16 Trusted Setup
 
-/// Configuration for MantaPay circuits
 #[cfg(test)]
 pub mod manta_pay;
-/// Utilities to use the accumulator of the Perpetual Powers of Tau ceremony
+
 #[cfg(test)]
 pub mod ppot;

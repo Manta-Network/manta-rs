@@ -25,7 +25,7 @@ use crate::{
         },
     },
     mpc::Types,
-    util::{BlakeHasher, Deserializer, KZGBlakeHasher, Serializer},
+    util::{from_serialization_error, BlakeHasher, Deserializer, KZGBlakeHasher, Serializer},
 };
 use ark_bn254::{Bn254, Fr, G1Affine, G2Affine};
 use ark_groth16::ProvingKey;
@@ -44,7 +44,6 @@ pub struct MantaPaySetupCeremony;
 
 impl Size for MantaPaySetupCeremony {
     const G1_POWERS: usize = (Self::G2_POWERS << 1) - 1;
-
     const G2_POWERS: usize = 1 << 19;
 }
 
@@ -55,7 +54,7 @@ impl Pairing for MantaPaySetupCeremony {
     type G2 = G2Affine;
     type G2Prepared = <Self::Pairing as PairingEngine>::G2Prepared;
     type Pairing = Bn254;
-    
+
     #[inline]
     fn g1_prime_subgroup_generator() -> Self::G1 {
         G1Affine::prime_subgroup_generator()
@@ -168,6 +167,7 @@ impl<P> Serializer<short_weierstrass_jacobian::GroupAffine<P>> for MantaPaySetup
 where
     P: SWModelParameters,
 {
+    #[inline]
     fn serialize_unchecked<W>(
         item: &short_weierstrass_jacobian::GroupAffine<P>,
         writer: &mut W,
@@ -179,6 +179,7 @@ where
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
     }
 
+    #[inline]
     fn serialize_uncompressed<W>(
         item: &short_weierstrass_jacobian::GroupAffine<P>,
         writer: &mut W,
@@ -186,14 +187,15 @@ where
     where
         W: Write,
     {
-        CanonicalSerialize::serialize_uncompressed(item, writer)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+        CanonicalSerialize::serialize_uncompressed(item, writer).map_err(from_serialization_error)
     }
 
+    #[inline]
     fn uncompressed_size(item: &short_weierstrass_jacobian::GroupAffine<P>) -> usize {
         CanonicalSerialize::uncompressed_size(item)
     }
 
+    #[inline]
     fn serialize_compressed<W>(
         item: &short_weierstrass_jacobian::GroupAffine<P>,
         writer: &mut W,
@@ -201,10 +203,10 @@ where
     where
         W: Write,
     {
-        CanonicalSerialize::serialize(item, writer)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+        CanonicalSerialize::serialize(item, writer).map_err(from_serialization_error)
     }
 
+    #[inline]
     fn compressed_size(item: &short_weierstrass_jacobian::GroupAffine<P>) -> usize {
         CanonicalSerialize::serialized_size(item)
     }
@@ -216,6 +218,7 @@ where
 {
     type Error = SerializationError;
 
+    #[inline]
     fn deserialize_unchecked<R>(
         reader: &mut R,
     ) -> Result<short_weierstrass_jacobian::GroupAffine<P>, Self::Error>
@@ -225,6 +228,7 @@ where
         CanonicalDeserialize::deserialize_unchecked(reader)
     }
 
+    #[inline]
     fn deserialize_compressed<R>(
         reader: &mut R,
     ) -> Result<short_weierstrass_jacobian::GroupAffine<P>, Self::Error>

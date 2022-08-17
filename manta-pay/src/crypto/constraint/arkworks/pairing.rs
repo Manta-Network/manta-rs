@@ -180,9 +180,9 @@ pub mod bls12 {
 pub mod bn254 {
     use crate::crypto::constraint::arkworks::codec::{HasDeserialization, HasSerialization};
     use alloc::vec::Vec;
-    use ark_ec::models::bn::{g2, BnParameters};
-    use ark_ff::Fp2;
-    use ark_serialize::{
+    use manta_crypto::arkworks::ec::models::bn::{g2, BnParameters};
+    use manta_crypto::arkworks::ff::Fp2;
+    use manta_crypto::arkworks::serialize::{
         CanonicalDeserialize, CanonicalSerialize, Read, SerializationError, Write,
     };
 

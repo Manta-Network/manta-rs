@@ -63,9 +63,9 @@ impl HasDistribution for Test {
 impl Pairing for Test {
     type Scalar = Fr;
     type G1 = G1Affine;
-    type G1Prepared = <Bn254 as PairingEngine>::G1Prepared;
+    type G1Prepared = <Self::Pairing as PairingEngine>::G1Prepared;
     type G2 = G2Affine;
-    type G2Prepared = <Bn254 as PairingEngine>::G2Prepared;
+    type G2Prepared = <Self::Pairing as PairingEngine>::G2Prepared;
     type Pairing = Bn254;
 
     #[inline]

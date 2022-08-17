@@ -138,7 +138,7 @@ pub fn specialize_to_phase_2<G1, G2>(
 /// Adds dummy `z_i * 0 = 0` constraint for each public input `z_i`.  This ensures
 /// non-malleability of Groth16 proofs even if some public inputs are otherwise unconstrained.
 #[inline]
-pub fn dummy_constraints<G>(
+pub fn add_dummy_constraints<G>(
     a: &mut [G],
     ext: &mut [G],
     tau_lagrange: &[G],
@@ -236,7 +236,7 @@ where
     let mut b_g2 = vec![C::G2::zero().into_projective(); num_witnesses];
     let mut ext = vec![C::G1::zero().into_projective(); num_witnesses];
 
-    dummy_constraints(
+    add_dummy_constraints(
         &mut a_g1,
         &mut ext,
         &tau_lagrange_g1,
