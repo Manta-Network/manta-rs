@@ -280,3 +280,5 @@ pub mod kdf {
         }
     }
 }
+
+// TODO: Testing framework for key-agreement scheme
