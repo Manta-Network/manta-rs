@@ -468,7 +468,7 @@ where
             (_, None) => return Err(PathError::MissingPath),
             (Some(_), Some(leaf_sibling)) => leaf_sibling,
         };
-        if let Ok(inner_path) = self.inner_digests.path_unchecked(leaf_index) {
+        if let Some(inner_path) = self.inner_digests.path_unchecked(leaf_index) {
             Ok(Path::from_inner(leaf_sibling, inner_path))
         } else {
             Err(PathError::MissingPath)
@@ -665,9 +665,7 @@ where
             return Err(PathError::IndexTooLarge { length: last_index });
         }
         if index < self.starting_leaf_index() {
-            return Err(PathError::IndexTooSmall {
-                starting_index: self.starting_leaf_index(),
-            });
+            return Err(PathError::MissingPath);
         }
         self.path_unchecked(index)
     }

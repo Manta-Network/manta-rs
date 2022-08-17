@@ -25,6 +25,7 @@ use crate::{
     merkle_tree::{
         path::{CurrentInnerPath, InnerPath},
         path_length, Configuration, InnerDigest, Node, Parameters, Parity,
+        tree::PathError,
     },
 };
 
@@ -36,8 +37,6 @@ use manta_util::serde::{Deserialize, Serialize};
 
 #[cfg(feature = "std")]
 use std::{collections::hash_map, hash::BuildHasher};
-
-use super::PathError;
 
 /// Inner Tree Node
 #[cfg_attr(
@@ -319,7 +318,7 @@ impl<C, S> InnerMap<C> for HashMap<C, S>
 // TODO: Implement remove
 where
     C: Configuration + ?Sized,
-    S: Default + BuildHasher,
+    S: BuildHasher + Default,
 {
     #[inline]
     fn get(&self, index: usize) -> Option<&InnerDigest<C>> {
@@ -813,28 +812,17 @@ where
     /// Returns the path at `leaf_index` without checking if `leaf_index` is later than the
     /// starting index of this tree.
     #[inline]
-    pub fn path_unchecked(&self, leaf_index: Node) -> Result<InnerPath<C>, PathError>
+    pub fn path_unchecked(&self, leaf_index: Node) -> Option<InnerPath<C>>
     where
         InnerDigest<C>: Clone,
     {
-        match (1..C::HEIGHT)
-            .map(|level| {
-                self.get(
-                    InnerNode::new(0, leaf_index)
-                        .ancestor(level)
-                        .expect("ancestor call cannot fail within height bounds"),
-                )
-            })
-            .collect::<Option<Vec<&InnerDigest<C>>>>()
-        {
-            None => Err(PathError::MissingPath),
-            Some(vec) => Ok(InnerPath::new(
-                leaf_index,
-                vec.iter().map(|&x| x.clone()).collect(),
-            )),
+        Some(InnerPath::new(leaf_index, (1..C::HEIGHT)
+        .map(|level| 
+            self.get(InnerNode::new(0, leaf_index).ancestor(level).expect("Querying the ancestor does not fail within height bounds."))
+        )
+        .collect::<Option<Vec<&InnerDigest<C>>>>()?.iter().map(|&x| x.clone()).collect()))
         }
     }
-}
 
 impl<C, M> PartialInnerTree<C, M, Sentinel<C>>
 where
@@ -850,8 +838,8 @@ where
         leaf_index: Node,
     ) -> Result<CurrentInnerPath<C>, PathError> {
         match self.path_unchecked(leaf_index) {
-            Ok(inner_path) => Ok(CurrentInnerPath::new(leaf_index, inner_path.path)),
-            Err(e) => Err(e),
+            Some(inner_path) => Ok(CurrentInnerPath::new(leaf_index, inner_path.path)),
+            None => Err(PathError::MissingPath),
         }
     }
 }
@@ -911,7 +899,7 @@ where
     M: InnerMap<C>,
     S: SentinelSource<C>,
 {
-    type Item = &'t InnerDigest<C>; // Option of this
+    type Item = &'t InnerDigest<C>;
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
