@@ -226,8 +226,10 @@ impl<C> algebra::ScalarMul<Scalar<C>> for Group<C>
 where
     C: ProjectiveCurve,
 {
+    type Output = Self;
+
     #[inline]
-    fn scalar_mul(&self, scalar: &Scalar<C>, _: &mut ()) -> Self {
+    fn scalar_mul(&self, scalar: &Scalar<C>, _: &mut ()) -> Self::Output {
         Self(self.0.mul(scalar.0.into_repr()).into())
     }
 }
@@ -402,8 +404,10 @@ where
     C: ProjectiveCurve,
     CV: CurveVar<C, ConstraintField<C>>,
 {
+    type Output = Self;
+
     #[inline]
-    fn scalar_mul(&self, scalar: &ScalarVar<C, CV>, compiler: &mut Compiler<C>) -> Self {
+    fn scalar_mul(&self, scalar: &ScalarVar<C, CV>, compiler: &mut Compiler<C>) -> Self::Output {
         let _ = compiler;
         Self::new(
             self.0

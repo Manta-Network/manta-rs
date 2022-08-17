@@ -41,8 +41,11 @@ pub trait Ring<COM = ()>: Group<COM> {
 
 /// Scalar Multiplication
 pub trait ScalarMul<S, COM = ()> {
+    /// Output Type
+    type Output;
+
     /// Multiplies `self` by `scalar` in the group.
-    fn scalar_mul(&self, scalar: &S, compiler: &mut COM) -> Self;
+    fn scalar_mul(&self, scalar: &S, compiler: &mut COM) -> Self::Output;
 }
 
 /// Group with a Scalar Multiplication
@@ -55,8 +58,11 @@ pub trait HasGenerator<G, COM = ()>
 where
     G: Group<COM>,
 {
+    /// Generator Type
+    type Generator;
+
     /// Returns a generator of `G`.
-    fn generator(&self) -> &G;
+    fn generator(&self) -> &Self::Generator;
 }
 
 /// Diffie-Hellman Key Agreement Scheme
@@ -67,18 +73,18 @@ where
 )]
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct DiffieHellman<S, G> {
+pub struct DiffieHellman<S, G, GEN = G> {
     /// Group Generator
-    pub generator: G,
+    pub generator: GEN,
 
     /// Type Parameter Marker
-    __: PhantomData<S>,
+    __: PhantomData<(S, G)>,
 }
 
-impl<S, G> DiffieHellman<S, G> {
+impl<S, G, GEN> DiffieHellman<S, G, GEN> {
     /// Builds a new [`DiffieHellman`] key agreement scheme from the given `generator`.
     #[inline]
-    pub fn new(generator: G) -> Self {
+    pub fn new(generator: GEN) -> Self {
         Self {
             generator,
             __: PhantomData,
@@ -87,43 +93,46 @@ impl<S, G> DiffieHellman<S, G> {
 
     /// Converts `self` into the group generator.
     #[inline]
-    pub fn into_inner(self) -> G {
+    pub fn into_inner(self) -> GEN {
         self.generator
     }
 }
 
-impl<S, G, COM> HasGenerator<G, COM> for DiffieHellman<S, G>
+impl<S, G, GEN, COM> HasGenerator<G, COM> for DiffieHellman<S, G, GEN>
 where
     G: Group<COM>,
 {
+    type Generator = GEN;
+
     #[inline]
-    fn generator(&self) -> &G {
+    fn generator(&self) -> &Self::Generator {
         &self.generator
     }
 }
 
-impl<S, G, COM> Constant<COM> for DiffieHellman<S, G>
+impl<S, G, GEN, COM> Constant<COM> for DiffieHellman<S, G, GEN>
 where
     S: Constant<COM>,
     G: Constant<COM>,
+    GEN: Constant<COM>,
 {
-    type Type = DiffieHellman<S::Type, G::Type>;
+    type Type = DiffieHellman<S::Type, G::Type, GEN::Type>;
 
     #[inline]
     fn new_constant(value: &Self::Type, compiler: &mut COM) -> Self {
-        Self::new(G::new_constant(&value.generator, compiler))
+        Self::new(Constant::new_constant(&value.generator, compiler))
     }
 }
 
-impl<S, G> key::agreement::Types for DiffieHellman<S, G> {
+impl<S, G, GEN> key::agreement::Types for DiffieHellman<S, G, GEN> {
     type SecretKey = S;
     type PublicKey = G;
     type SharedSecret = G;
 }
 
-impl<S, G, COM> key::agreement::Derive<COM> for DiffieHellman<S, G>
+impl<S, G, GEN, COM> key::agreement::Derive<COM> for DiffieHellman<S, G, GEN>
 where
-    G: ScalarMul<S, COM> + security::ComputationalDiffieHellmanHardness,
+    GEN: ScalarMul<S, COM, Output = G> + security::ComputationalDiffieHellmanHardness,
 {
     #[inline]
     fn derive(&self, secret_key: &Self::SecretKey, compiler: &mut COM) -> Self::PublicKey {
@@ -131,9 +140,9 @@ where
     }
 }
 
-impl<S, G, COM> key::agreement::Agree<COM> for DiffieHellman<S, G>
+impl<S, G, GEN, COM> key::agreement::Agree<COM> for DiffieHellman<S, G, GEN>
 where
-    G: ScalarMul<S, COM> + security::ComputationalDiffieHellmanHardness,
+    G: ScalarMul<S, COM, Output = G> + security::ComputationalDiffieHellmanHardness,
 {
     #[inline]
     fn agree(
@@ -146,11 +155,11 @@ where
     }
 }
 
-impl<S, G> Decode for DiffieHellman<S, G>
+impl<S, G, GEN> Decode for DiffieHellman<S, G, GEN>
 where
-    G: Decode,
+    GEN: Decode,
 {
-    type Error = G::Error;
+    type Error = GEN::Error;
 
     #[inline]
     fn decode<R>(mut reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
@@ -161,9 +170,9 @@ where
     }
 }
 
-impl<S, G> Encode for DiffieHellman<S, G>
+impl<S, G, GEN> Encode for DiffieHellman<S, G, GEN>
 where
-    G: Encode,
+    GEN: Encode,
 {
     #[inline]
     fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
@@ -175,9 +184,9 @@ where
     }
 }
 
-impl<S, G, D> Sample<D> for DiffieHellman<S, G>
+impl<S, G, GEN, D> Sample<D> for DiffieHellman<S, G, GEN>
 where
-    G: Sample<D>,
+    GEN: Sample<D>,
 {
     #[inline]
     fn sample<R>(distribution: D, rng: &mut R) -> Self

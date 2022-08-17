@@ -230,7 +230,8 @@ pub mod schnorr {
         type Scalar: Ring<COM>;
 
         /// Group Type
-        type Group: ScalarMulGroup<Self::Scalar, COM> + DiscreteLogarithmHardness;
+        type Group: ScalarMulGroup<Self::Scalar, COM, Output = Self::Group>
+            + DiscreteLogarithmHardness;
 
         /// Message Type
         type Message;
@@ -321,8 +322,10 @@ pub mod schnorr {
     where
         H: HashFunction<COM>,
     {
+        type Generator = H::Group;
+
         #[inline]
-        fn generator(&self) -> &H::Group {
+        fn generator(&self) -> &Self::Generator {
             &self.generator
         }
     }
