@@ -24,8 +24,9 @@ use crate::{
     eclair::bool::Bool,
     merkle_tree::{
         path::{CurrentInnerPath, InnerPath},
-        path_length, Configuration, InnerDigest, Node, Parameters, Parity,
+        path_length,
         tree::PathError,
+        Configuration, InnerDigest, Node, Parameters, Parity,
     },
 };
 
@@ -816,13 +817,23 @@ where
     where
         InnerDigest<C>: Clone,
     {
-        Some(InnerPath::new(leaf_index, (1..C::HEIGHT)
-        .map(|level| 
-            self.get(InnerNode::new(0, leaf_index).ancestor(level).expect("Querying the ancestor does not fail within height bounds."))
-        )
-        .collect::<Option<Vec<&InnerDigest<C>>>>()?.iter().map(|&x| x.clone()).collect()))
-        }
+        Some(InnerPath::new(
+            leaf_index,
+            (1..C::HEIGHT)
+                .map(|level| {
+                    self.get(
+                        InnerNode::new(0, leaf_index)
+                            .ancestor(level)
+                            .expect("Querying the ancestor does not fail within height bounds."),
+                    )
+                })
+                .collect::<Option<Vec<&InnerDigest<C>>>>()?
+                .iter()
+                .map(|&x| x.clone())
+                .collect(),
+        ))
     }
+}
 
 impl<C, M> PartialInnerTree<C, M, Sentinel<C>>
 where
