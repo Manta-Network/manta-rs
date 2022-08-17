@@ -29,7 +29,6 @@ use crate::{
         Configuration, InnerDigest, Node, Parameters, Parity,
     },
 };
-
 use alloc::{collections::btree_map, vec::Vec};
 use core::{fmt::Debug, hash::Hash, iter::FusedIterator, marker::PhantomData, ops::Index};
 
