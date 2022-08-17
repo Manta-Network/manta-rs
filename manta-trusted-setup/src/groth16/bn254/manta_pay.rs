@@ -50,21 +50,18 @@ impl Size for MantaPaySetupCeremony {
 
 impl Pairing for MantaPaySetupCeremony {
     type Scalar = Fr;
-
     type G1 = G1Affine;
-
-    type G1Prepared = <Bn254 as PairingEngine>::G1Prepared;
-
+    type G1Prepared = <Self::Pairing as PairingEngine>::G1Prepared;
     type G2 = G2Affine;
-
-    type G2Prepared = <Bn254 as PairingEngine>::G2Prepared;
-
+    type G2Prepared = <Self::Pairing as PairingEngine>::G2Prepared;
     type Pairing = Bn254;
-
+    
+    #[inline]
     fn g1_prime_subgroup_generator() -> Self::G1 {
         G1Affine::prime_subgroup_generator()
     }
 
+    #[inline]
     fn g2_prime_subgroup_generator() -> Self::G2 {
         G2Affine::prime_subgroup_generator()
     }
