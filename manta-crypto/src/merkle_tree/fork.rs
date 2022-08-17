@@ -19,7 +19,7 @@
 use crate::merkle_tree::{
     capacity,
     inner_tree::{BTreeMap, InnerMap, PartialInnerTree},
-    partial::Partial,
+    partial::{LeafMap, LeafVec, Partial},
     path::{CurrentInnerPath, InnerPath},
     Configuration, CurrentPath, InnerDigest, Leaf, LeafDigest, Node, Parameters, Parity, Path,
     PathError, Root, Tree, WithProofs,
@@ -30,8 +30,6 @@ use manta_util::pointer::{self, PointerFamily};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
-
-use super::partial::{LeafMap, LeafVec};
 
 /// Fork-able Merkle Tree:
 #[derive(derivative::Derivative)]
@@ -86,9 +84,9 @@ where
     pub fn fork<M, L>(&self, parameters: &Parameters<C>) -> Fork<C, T, P, M, L>
     where
         M: Default + InnerMap<C>,
-        LeafDigest<C>: Default + Clone,
+        LeafDigest<C>: Clone + Default,
         InnerDigest<C>: Default,
-        L: LeafMap<C> + Default,
+        L: Default + LeafMap<C>,
     {
         Fork::new(parameters, self)
     }
@@ -99,7 +97,7 @@ where
     pub fn attach<M, L>(&self, parameters: &Parameters<C>, fork: &mut Fork<C, T, P, M, L>) -> bool
     where
         M: Default + InnerMap<C>,
-        LeafDigest<C>: Default + Clone,
+        LeafDigest<C>: Clone + Default,
         InnerDigest<C>: Default,
         L: LeafMap<C> + Default,
     {
@@ -126,7 +124,7 @@ where
     ) -> Result<(), Fork<C, T, P, M, L>>
     where
         M: Default + InnerMap<C>,
-        LeafDigest<C>: Default + Clone,
+        LeafDigest<C>: Clone + Default,
         L: LeafMap<C> + Default,
     {
         match fork.get_attached_base(self) {
@@ -148,7 +146,7 @@ where
         branch: Branch<C, M, L>,
     ) where
         M: InnerMap<C> + Default,
-        LeafDigest<C>: Default + Clone,
+        LeafDigest<C>: Clone + Default,
         L: LeafMap<C> + Default,
     {
         self.base = Some(fork_base);
@@ -270,9 +268,9 @@ impl Default for BaseContribution {
 )]
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "LeafDigest<C>: Clone, InnerDigest<C>: Clone, M: Clone, L:Clone"),
-    Debug(bound = "LeafDigest<C>: Debug, InnerDigest<C>: Debug, M: Debug, L:Debug"),
-    Default(bound = "LeafDigest<C>: Default, InnerDigest<C>: Default, L:Default")
+    Clone(bound = "LeafDigest<C>: Clone, InnerDigest<C>: Clone, M: Clone, L: Clone"),
+    Debug(bound = "LeafDigest<C>: Debug, InnerDigest<C>: Debug, M: Debug, L: Debug"),
+    Default(bound = "LeafDigest<C>: Default, InnerDigest<C>: Default, L: Default")
 )]
 struct Branch<C, M = BTreeMap<C>, L = LeafVec<C>>
 where
@@ -314,7 +312,7 @@ where
     fn new_unchecked<T>(parameters: &Parameters<C>, base: &T, leaf_digests: L) -> Self
     where
         T: Tree<C>,
-        LeafDigest<C>: Default + Clone,
+        LeafDigest<C>: Clone + Default,
         InnerDigest<C>: Default,
         L: Default,
     {
@@ -393,7 +391,7 @@ where
     fn try_rebase<T>(&mut self, parameters: &Parameters<C>, base: &T) -> bool
     where
         T: Tree<C>,
-        LeafDigest<C>: Default + Clone,
+        LeafDigest<C>: Clone + Default,
         InnerDigest<C>: Default,
         L: Default,
     {
@@ -468,10 +466,7 @@ where
         let base_index = Node(index);
         let base_path = base.path(parameters, base_index.0)?;
         let fork_index = self.data.starting_leaf_node();
-        let mut fork_path = match self.data.path_unchecked(fork_index.0) {
-            Ok(fork_path) => fork_path,
-            Err(e) => return Err(e),
-        };
+        let mut fork_path = self.data.path_unchecked(fork_index.0)?;
         if !Node::are_siblings(&base_index, &fork_index) {
             let matching_index = base_index
                 .parents()
@@ -564,9 +559,9 @@ where
 #[derive(derivative::Derivative)]
 #[derivative(
     Debug(
-        bound = "P::Weak: Debug, LeafDigest<C>: Debug, InnerDigest<C>: Debug, M: Debug, L:Debug"
+        bound = "P::Weak: Debug, LeafDigest<C>: Debug, InnerDigest<C>: Debug, M: Debug, L: Debug"
     ),
-    Default(bound = "LeafDigest<C>: Default, InnerDigest<C>: Default, L:Default")
+    Default(bound = "LeafDigest<C>: Default, InnerDigest<C>: Default, L: Default")
 )]
 pub struct Fork<C, T, P = pointer::SingleThreaded, M = BTreeMap<C>, L = LeafVec<C>>
 where
@@ -604,7 +599,7 @@ where
     #[inline]
     pub fn new(parameters: &Parameters<C>, trunk: &Trunk<C, T, P>) -> Self
     where
-        LeafDigest<C>: Default + Clone,
+        LeafDigest<C>: Clone + Default,
         InnerDigest<C>: Default,
         L: Default,
     {
@@ -621,7 +616,7 @@ where
         leaf_digests: L,
     ) -> Option<Self>
     where
-        LeafDigest<C>: Default + Clone,
+        LeafDigest<C>: Clone + Default,
         InnerDigest<C>: Default,
         L: Default,
     {
@@ -634,7 +629,7 @@ where
     #[inline]
     pub fn attach(&mut self, parameters: &Parameters<C>, trunk: &Trunk<C, T, P>) -> bool
     where
-        LeafDigest<C>: Default + Clone,
+        LeafDigest<C>: Clone + Default,
         InnerDigest<C>: Default,
         L: Default,
     {
@@ -798,8 +793,8 @@ where
 )]
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "T: Clone, LeafDigest<C>: Clone, InnerDigest<C>: Clone, M: Clone, L:Clone"),
-    Debug(bound = "T: Debug, LeafDigest<C>: Debug, InnerDigest<C>: Debug, M: Debug, L:Debug")
+    Clone(bound = "T: Clone, LeafDigest<C>: Clone, InnerDigest<C>: Clone, M: Clone, L: Clone"),
+    Debug(bound = "T: Debug, LeafDigest<C>: Debug, InnerDigest<C>: Debug, M: Debug, L: Debug")
 )]
 pub struct ForkedTree<C, T, M = BTreeMap<C>, L = LeafVec<C>>
 where
@@ -947,7 +942,7 @@ where
     C: Configuration + ?Sized,
     T: Tree<C>,
     M: Default + InnerMap<C>,
-    LeafDigest<C>: Default + Clone,
+    LeafDigest<C>: Clone + Default,
     InnerDigest<C>: Clone + Default + PartialEq,
     L: LeafMap<C> + Default,
 {
@@ -974,10 +969,7 @@ where
     #[inline]
     fn current_path(&self, parameters: &Parameters<C>) -> CurrentPath<C> {
         let _ = parameters;
-        match self.current_path() {
-            Ok(current_path) => current_path,
-            _ => Default::default(),
-        }
+        self.current_path().unwrap_or_default()
     }
 
     #[inline]
@@ -994,7 +986,7 @@ where
     C: Configuration + ?Sized,
     T: Tree<C> + WithProofs<C>,
     M: Default + InnerMap<C>,
-    LeafDigest<C>: Default + Clone,
+    LeafDigest<C>: Clone + Default,
     InnerDigest<C>: Clone + Default,
     L: LeafMap<C>,
 {

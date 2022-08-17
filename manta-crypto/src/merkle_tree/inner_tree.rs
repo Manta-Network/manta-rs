@@ -259,8 +259,16 @@ where
         digest
     }
 
-    /// Removes the inner digest stored at 'index'
-    fn remove(&mut self, _index: usize) -> Bool {
+    /// Removes the inner digest stored at 'index'.
+    ///
+    /// # Implementation Note
+    ///
+    /// By default, this method does nothing and returns `false`. Implementations of this method may
+    /// fail arbitrarily, and should only successfully remove a node if the implementation is
+    /// efficient enough. Space and time tradeoffs should be studied to determine the usefulness of
+    /// this method.
+    fn remove(&mut self, index: usize) -> Bool {
+        let _ = index;
         false
     }
 }
@@ -285,6 +293,7 @@ where
 pub type BTreeMap<C> = btree_map::BTreeMap<usize, InnerDigest<C>>;
 
 impl<C> InnerMap<C> for BTreeMap<C>
+// TODO: Implement remove
 where
     C: Configuration + ?Sized,
 {
@@ -307,6 +316,7 @@ pub type HashMap<C, S = hash_map::RandomState> = hash_map::HashMap<usize, InnerD
 #[cfg(feature = "std")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
 impl<C, S> InnerMap<C> for HashMap<C, S>
+// TODO: Implement remove
 where
     C: Configuration + ?Sized,
     S: Default + BuildHasher,
@@ -788,6 +798,7 @@ where
     }
 
     /// Removes the inner digest at 'index'
+    #[inline]
     pub fn remove(&mut self, index: usize) -> bool {
         self.inner_tree.map.remove(index)
     }

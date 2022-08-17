@@ -27,11 +27,11 @@ use crate::merkle_tree::{
 use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash};
 
-#[cfg(feature = "std")]
-use std::collections::hash_map::HashMap;
-
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
+
+#[cfg(feature = "std")]
+use std::collections::hash_map::HashMap;
 
 /// LeafMap
 pub trait LeafMap<C>
@@ -114,6 +114,7 @@ where
     }
 }
 
+/// Vector of leaf digests with markings
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "LeafDigest<C>: Clone"),
@@ -123,7 +124,6 @@ where
     Hash(bound = "LeafDigest<C>: Hash"),
     PartialEq(bound = "LeafDigest<C>: PartialEq")
 )]
-/// Vector of leaf digests with markings
 pub struct LeafVec<C>
 where
     C: Configuration + ?Sized,
@@ -134,7 +134,7 @@ where
 impl<C> LeafMap<C> for LeafVec<C>
 where
     C: Configuration + ?Sized,
-    LeafDigest<C>: PartialEq + Clone,
+    LeafDigest<C>: Clone + PartialEq,
 {
     fn len(&self) -> usize {
         self.vec.len()
@@ -183,6 +183,7 @@ where
     }
 }
 
+/// Hash map of leaf digests.
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "LeafDigest<C>: Clone"),
@@ -192,7 +193,6 @@ where
     PartialEq(bound = "LeafDigest<C>: PartialEq")
 )]
 #[cfg(feature = "std")]
-/// Hash map of leaf digests.
 pub struct LeafHashMap<C>
 where
     C: Configuration + ?Sized,
@@ -205,7 +205,7 @@ where
 impl<C> LeafMap<C> for LeafHashMap<C>
 where
     C: Configuration + ?Sized,
-    LeafDigest<C>: PartialEq + Clone,
+    LeafDigest<C>: Clone + PartialEq,
 {
     fn len(&self) -> usize {
         self.map.len()
@@ -273,7 +273,7 @@ pub type PartialMerkleTree<C, M = BTreeMap<C>> = MerkleTree<C, Partial<C, M>>;
     serde(
         bound(
             deserialize = "LeafDigest<C>: Deserialize<'de>, InnerDigest<C>: Deserialize<'de>, M: Deserialize<'de>, L: Deserialize<'de>",
-            serialize = "LeafDigest<C>: Serialize, InnerDigest<C>: Serialize, M: Serialize, L:Serialize"
+            serialize = "LeafDigest<C>: Serialize, InnerDigest<C>: Serialize, M: Serialize, L: Serialize"
         ),
         crate = "manta_util::serde",
         deny_unknown_fields
@@ -281,12 +281,12 @@ pub type PartialMerkleTree<C, M = BTreeMap<C>> = MerkleTree<C, Partial<C, M>>;
 )]
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "LeafDigest<C>: Clone, InnerDigest<C>: Clone, M: Clone, L:Clone"),
-    Debug(bound = "LeafDigest<C>: Debug, InnerDigest<C>: Debug, M: Debug, L:Debug"),
-    Default(bound = "LeafDigest<C>: Default, InnerDigest<C>: Default, M: Default, L:Default"),
-    Eq(bound = "LeafDigest<C>: Eq, InnerDigest<C>: Eq, M: Eq, L:Eq"),
-    Hash(bound = "LeafDigest<C>: Hash, InnerDigest<C>: Hash, M: Hash, L:Hash"),
-    PartialEq(bound = "InnerDigest<C>: PartialEq, M: PartialEq, L:PartialEq")
+    Clone(bound = "LeafDigest<C>: Clone, InnerDigest<C>: Clone, M: Clone, L: Clone"),
+    Debug(bound = "LeafDigest<C>: Debug, InnerDigest<C>: Debug, M: Debug, L: Debug"),
+    Default(bound = "LeafDigest<C>: Default, InnerDigest<C>: Default, M: Default, L: Default"),
+    Eq(bound = "LeafDigest<C>: Eq, InnerDigest<C>: Eq, M: Eq, L: Eq"),
+    Hash(bound = "LeafDigest<C>: Hash, InnerDigest<C>: Hash, M: Hash, L: Hash"),
+    PartialEq(bound = "InnerDigest<C>: PartialEq, M: PartialEq, L: PartialEq")
 )]
 pub struct Partial<C, M = BTreeMap<C>, L = LeafVec<C>>
 where

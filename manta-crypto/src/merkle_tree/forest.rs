@@ -30,6 +30,7 @@ use crate::{
     merkle_tree::{
         fork::ForkedTree,
         inner_tree::InnerMap,
+        partial::LeafMap,
         tree::{self, Leaf, Parameters, Tree},
         InnerDigest, LeafDigest, WithProofs,
     },
@@ -40,8 +41,6 @@ use manta_util::{persistence::Rollback, BoxArray};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
-
-use super::partial::LeafMap;
 
 /// Merkle Forest Configuration
 pub trait Configuration: tree::Configuration {
@@ -629,9 +628,9 @@ where
     C::Index: FixedIndex<N>,
     T: Tree<C>,
     M: Default + InnerMap<C>,
-    LeafDigest<C>: Copy + Default,
+    LeafDigest<C>: Clone + Default,
     InnerDigest<C>: Clone + Default + PartialEq,
-    L: LeafMap<C> + Default,
+    L: Default + LeafMap<C>,
 {
     #[inline]
     fn rollback(&mut self) {
