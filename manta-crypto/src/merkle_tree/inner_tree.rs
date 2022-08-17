@@ -293,7 +293,6 @@ where
 pub type BTreeMap<C> = btree_map::BTreeMap<usize, InnerDigest<C>>;
 
 impl<C> InnerMap<C> for BTreeMap<C>
-// TODO: Implement remove
 where
     C: Configuration + ?Sized,
 {
@@ -306,6 +305,12 @@ where
     fn set(&mut self, index: usize, inner_digest: InnerDigest<C>) {
         self.insert(index, inner_digest);
     }
+
+    #[inline]
+    fn remove(&mut self, index: usize) -> bool {
+        self.remove(&index);
+        true
+    }
 }
 
 /// Hash Map [`InnerTree`] Backend
@@ -316,7 +321,6 @@ pub type HashMap<C, S = hash_map::RandomState> = hash_map::HashMap<usize, InnerD
 #[cfg(feature = "std")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
 impl<C, S> InnerMap<C> for HashMap<C, S>
-// TODO: Implement remove
 where
     C: Configuration + ?Sized,
     S: BuildHasher + Default,
@@ -329,6 +333,12 @@ where
     #[inline]
     fn set(&mut self, index: usize, inner_digest: InnerDigest<C>) {
         self.insert(index, inner_digest);
+    }
+
+    #[inline]
+    fn remove(&mut self, index: usize) -> bool {
+        self.remove(&index);
+        true
     }
 }
 
