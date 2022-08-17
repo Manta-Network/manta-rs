@@ -60,6 +60,8 @@ pub use manta_accounting;
 #[doc(inline)]
 pub use manta_crypto;
 
+#[cfg(any(test, feature = "manta-parameters"))]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "manta-parameters")))]
 #[doc(inline)]
 pub use manta_parameters;
 
