@@ -21,6 +21,7 @@ extern crate alloc;
 use alloc::string::String;
 use clap::{Parser, Subcommand};
 use colored::Colorize; // TODO: Try https://docs.rs/console/latest/console/
+use indicatif::ProgressBar;
 use core::fmt::{Display, Formatter};
 use dialoguer::{theme::ColorfulTheme, Input};
 use manta_crypto::rand::{OsRng, RngCore};
@@ -319,7 +320,6 @@ pub async fn contribute() -> Result<(), Error> {
             Ok(message) => match message {
                 QueryResponse::QueuePosition(position) => {
                     println!("Your current position is {}.", position);
-                    // TODO: Add progress bar update
                     continue;
                 }
                 QueryResponse::Mpc(state0, challenge0, state1, challenge1, state2, challenge2) => (
@@ -344,7 +344,8 @@ pub async fn contribute() -> Result<(), Error> {
                 ),
             },
         };
-        println!("Finished querying server state.");
+        println!("It's YOUR turn to contribute!");
+        let bar = ProgressBar::new(5);
         match send_request::<_, ()>(
             &network_client,
             Endpoint::Update,
@@ -353,6 +354,7 @@ pub async fn contribute() -> Result<(), Error> {
                     &Config::generate_hasher(),
                     &[challenge0, challenge1, challenge2],
                     [state0, state1, state2],
+                    &bar,
                 )
                 .map_err(|_| Error::UnableToGenerateRequest("contribute"))?,
         )
@@ -375,6 +377,7 @@ pub async fn contribute() -> Result<(), Error> {
             }
             Err(CeremonyError::AlreadyContributed) => return Err(Error::AlreadyContributed),
             Ok(_) => {
+                bar.inc(1);
                 println!("Contribute succeeded!");
                 break;
             }

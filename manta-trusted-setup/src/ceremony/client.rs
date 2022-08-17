@@ -23,13 +23,13 @@ use crate::{
             PublicKey, State,
         },
         message::{ContributeRequest, QueryRequest, Signed},
+        signature::SignatureScheme,
     },
     mpc::Contribute,
     util::AsBytes,
 };
+use indicatif::ProgressBar;
 use manta_crypto::{arkworks::serialize::CanonicalSerialize, rand::OsRng};
-
-use super::signature::SignatureScheme;
 
 // TODO: have better response when a user is not at the front of the queue.
 
@@ -91,6 +91,7 @@ where
         hasher: &Hasher<C>,
         challenge: &[Challenge<C>; 3],
         mut state: [State<C>; 3],
+        bar: &ProgressBar,
     ) -> Result<Signed<ContributeRequest<C>, C>, ()>
     where
         C::Participant: Clone,
@@ -98,25 +99,23 @@ where
         Proof<C>: CanonicalSerialize,
         <<C as CeremonyConfig>::SignatureScheme as SignatureScheme>::PublicKey: std::fmt::Debug,
     {
-        println!("Start to contribute");
         let mut rng = OsRng;
-        let proof0 =
-            C::Setup::contribute(hasher, &challenge[0], &mut state[0], &mut rng).ok_or(())?;
-        println!("Contributed proof0");
-        let proof1 =
-            C::Setup::contribute(hasher, &challenge[1], &mut state[1], &mut rng).ok_or(())?;
-        println!("Contributed proof1");
-        let proof2 =
-            C::Setup::contribute(hasher, &challenge[2], &mut state[2], &mut rng).ok_or(())?;
-        println!("Contributed proof2");
+        let mut proofs = Vec::new();
+        for i in 0..3 {
+            proofs.push(
+                C::Setup::contribute(hasher, &challenge[i], &mut state[i], &mut rng).ok_or(())?,
+            );
+            bar.inc(1);
+        }
         let message = ContributeRequest::<C> {
             state0: AsBytes::from_actual(state[0].clone()),
-            proof0: AsBytes::from_actual(proof0),
+            proof0: AsBytes::from_actual(proofs[0].clone()),
             state1: AsBytes::from_actual(state[1].clone()),
-            proof1: AsBytes::from_actual(proof1),
+            proof1: AsBytes::from_actual(proofs[1].clone()),
             state2: AsBytes::from_actual(state[2].clone()),
-            proof2: AsBytes::from_actual(proof2),
+            proof2: AsBytes::from_actual(proofs[2].clone()),
         };
+        bar.inc(1);
         Signed::new(
             message,
             self.identifier.clone(),

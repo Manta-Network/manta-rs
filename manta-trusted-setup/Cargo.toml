@@ -50,7 +50,8 @@ colored = { version = "2.0.0" }
 csv = { version = "1.1" }
 derivative = { version = "2.2.0", default-features = false, features = ["use_core"] }
 dialoguer = { version = "0.10.2" }
-ed25519-dalek = { version = "1.0.1", default-features = false, features = ["u64_backend"] } 
+ed25519-dalek = { version = "1.0.1", default-features = false, features = ["u64_backend"] }
+indicatif = { version = "0.17.0", default-features = false }
 manta-crypto = { path = "../manta-crypto", default-features = false, features = ["arkworks", "getrandom"] }
 manta-pay = { path = "../manta-pay", default-features = false, features = ["groth16", "test"] } # TODO
 manta-util = { path = "../manta-util", default-features = false, features = ["serde-array"] }
