@@ -5,13 +5,12 @@
 To crate a new server use the following command: 
 
 ```sh
-cargo run --release --package manta-trusted-setup --bin groth16_phase2_server -- --backup_dir path_to_backup_directory --preprocessed_parameters path_to_preprocessed_parameters --registry path_to_registry create
+cargo run --release --package manta-trusted-setup --bin groth16_phase2_server -- --backup_dir path_to_backup_directory --registry path_to_registry create
 ```
 
 Arguments are:
 
 * `--backup_dir`: path to a directory for backing up each contribution
-* `--preprocessed_parameters`: path to a file for preprocessed phase one parameters
 * `--registry`: path to a file for a registry of all participants
 
 ## Server Recovery
@@ -51,13 +50,12 @@ This would ask you for the `secret` that you received during *client register*.
 ## Preparing Phase1 Parameters for Phase2
 
 ```sh
-cargo run --release --package manta-trusted-setup --bin prepare_phase_two_parameters -- --accumulator path_to_phase_one_parameter --prepared_parameter path_to_prepared_phase_two_parameter
+cargo run --release --package manta-trusted-setup --bin prepare_phase_two_parameters -- --accumulator path_to_phase_one_parameter
 ```
 
 Arguments are:
 
 * `--accumulator`: path to a file for phase one parameters
-* `--prepared_parameter`: path to a file for storing the prepared phase two parameres
 
 ## Local Test
 
@@ -68,10 +66,10 @@ For a local test, please use the following command:
 cargo run --release --package manta-trusted-setup --bin generate_phase_one_dummy_parameters
 
 # Takes ~0.5 hour.
-cargo run --release --package manta-trusted-setup --bin prepare_phase_two_parameters -- --accumulator dummy_phase_one_parameter.data --prepared_parameter prepared_phase_two_parameter.data
+cargo run --release --package manta-trusted-setup --bin prepare_phase_two_parameters -- --accumulator dummy_phase_one_parameter.data
 
 # Takes ~1 minute to load preprocessed parameters.
-cargo run --release --package manta-trusted-setup --bin groth16_phase2_server -- --backup_dir . --preprocessed_parameters prepared_phase_two_parameter.data --registry dummy_register.csv create
+cargo run --release --package manta-trusted-setup --bin groth16_phase2_server -- --backup_dir . --registry dummy_register.csv create
 
 # Takes ~3 minutes to contribute.
 cargo run --release --package manta-trusted-setup --bin groth16_phase2_client -- contribute

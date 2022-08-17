@@ -16,22 +16,18 @@
 
 //! Trusted Setup Ceremony Server
 
-use manta_crypto::{
-    arkworks::serialize::CanonicalDeserialize,
-    rand::{OsRng, Rand},
-};
-use manta_trusted_setup::{
-    ceremony::{
-        config::{
-            g16_bls12_381::{Groth16BLS12381, Participant, UserPriority},
-            CeremonyConfig, Challenge, ParticipantIdentifier, State,
-        },
-        registry::Registry,
-        server::Server,
-        signature::{ed_dalek, SignatureScheme},
+use manta_crypto::rand::{OsRng, Rand};
+use manta_trusted_setup::ceremony::{
+    config::{
+        g16_bls12_381::{Groth16BLS12381, Participant, UserPriority},
+        CeremonyConfig, ParticipantIdentifier,
     },
+    registry::Registry,
+    server::Server,
+    signature::{ed_dalek, SignatureScheme},
+    util::load_from_file,
 };
-use std::{collections::BTreeMap, fs::File, io::Read, path::Path, process::exit, time::Instant};
+use std::{collections::BTreeMap, fs::File, path::Path, process::exit};
 use tracing::error;
 
 type C = Groth16BLS12381;
@@ -41,7 +37,6 @@ type S = Server<C, 2>;
 pub enum ServerOptions {
     /// Creates a new server.
     Create {
-        preprocessed_parameter_path: String,
         registry_path: String,
         recovery_dir_path: String,
     },
@@ -63,14 +58,6 @@ impl ServerOptions {
                     .help("The mode for the server, can be either 'create' or 'recover'")
                     .takes_value(true)
                     .required(true),
-            )
-            .arg(
-                clap::Arg::new("parameters")
-                    .short('p')
-                    .long("preprocessed_parameters")
-                    .help("Path to the preprocessed parameters")
-                    .takes_value(true)
-                    .required_if_eq("mode", "create"),
             )
             .arg(
                 clap::Arg::new("registry")
@@ -101,11 +88,9 @@ impl ServerOptions {
         let mode = matches.value_of("mode").unwrap();
         match mode {
             "create" => {
-                let preprocessed_parameter_path = matches.value_of("parameters").unwrap().to_string();
                 let registry_path = matches.value_of("registry").unwrap().to_string();
                 let recovery_dir_path = matches.value_of("backup_dir").unwrap().to_string();
                 ServerOptions::Create {
-                    preprocessed_parameter_path,
                     registry_path,
                     recovery_dir_path,
                 }
@@ -146,7 +131,10 @@ where
         )
         .expect("Deserialize public key should succeed.");
         ed_dalek::Ed25519::verify(
-            format!("manta-trusted-setup-twitter:{}, manta-trusted-setup-email:{}", twitter, email),
+            format!(
+                "manta-trusted-setup-twitter:{}, manta-trusted-setup-email:{}",
+                twitter, email
+            ),
             &0,
             &bincode::deserialize::<ed_dalek::Signature>(
                 &bs58::decode(result[4].to_string())
@@ -176,50 +164,15 @@ where
     Registry::new(map)
 }
 
-/// TODO
-pub fn load_from_file<P>(path: P) -> ([State<C>; 3], [Challenge<C>; 3])
-where
-    P: AsRef<Path>,
-{
-    let now = Instant::now();
-    let mut file = File::open(path).expect("Open file should succeed.");
-    let mut buf = Vec::new();
-    file.read_to_end(&mut buf)
-        .expect("Reading data should succeed.");
-    let mut reader = &buf[..];
-    let state0 =
-        CanonicalDeserialize::deserialize(&mut reader).expect("Deserialize should succeed.");
-    let state1 =
-        CanonicalDeserialize::deserialize(&mut reader).expect("Deserialize should succeed.");
-    let state2 =
-        CanonicalDeserialize::deserialize(&mut reader).expect("Deserialize should succeed.");
-    let challenge0 =
-        CanonicalDeserialize::deserialize(&mut reader).expect("Deserialize should succeed.");
-    let challenge1 =
-        CanonicalDeserialize::deserialize(&mut reader).expect("Deserialize should succeed.");
-    let challenge2 =
-        CanonicalDeserialize::deserialize(&mut reader).expect("Deserialize should succeed.");
-    println!(
-        "Deserializing Preprocessed Phase 2 parameters takes {:?}\n",
-        now.elapsed()
-    );
-    (
-        [state0, state1, state2],
-        [challenge0, challenge1, challenge2], // TODO: Make this more elegant.
-    )
-}
-
 /// Initiates a server.
-pub fn init_server(
-    preprocessed_parameter_path: String,
-    registry_path: String,
-    recovery_dir_path: String,
-) -> S {
+pub fn init_server(registry_path: String, recovery_dir_path: String) -> S {
     let registry = load_registry(registry_path);
-    let (states, challenges) = load_from_file(preprocessed_parameter_path);
+    let (state0, challenge0) = load_from_file::<C, _>(&"prepared_mint.data");
+    let (state1, challenge1) = load_from_file::<C, _>(&"prepared_private_transfer.data");
+    let (state2, challenge2) = load_from_file::<C, _>(&"prepared_reclaim.data");
     S::new(
-        states,
-        challenges,
+        [state0, state1, state2],
+        [challenge0, challenge1, challenge2],
         registry,
         recovery_dir_path,
     )
@@ -231,10 +184,9 @@ async fn main() -> tide::Result<()> {
     let options = ServerOptions::load_from_args();
     let server = match options {
         ServerOptions::Create {
-            preprocessed_parameter_path,
             registry_path,
             recovery_dir_path,
-        } => init_server(preprocessed_parameter_path, registry_path, recovery_dir_path),
+        } => init_server(registry_path, recovery_dir_path),
         ServerOptions::Recover {
             recovery_path,
             recovery_dir_path,
@@ -243,8 +195,7 @@ async fn main() -> tide::Result<()> {
     println!("Network starts to run!");
     let mut api = tide::Server::with_state(server);
     api.at("/nonce").post(|r| S::execute(r, Server::get_nonce));
-    api.at("/query")
-        .post(|r| S::execute(r, Server::query));
+    api.at("/query").post(|r| S::execute(r, Server::query));
     api.at("/update").post(|r| S::execute(r, Server::update));
     api.listen("127.0.0.1:8080").await?; // TODO: use TLS
     Ok(())

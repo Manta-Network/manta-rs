@@ -20,7 +20,6 @@ use crate::ceremony::config::{CeremonyConfig, Nonce};
 use derivative::Derivative;
 use serde::{Deserialize, Serialize};
 
-// pub mod bls_server;
 pub mod client;
 pub mod config;
 pub mod coordinator;
@@ -29,6 +28,7 @@ pub mod queue;
 pub mod registry;
 pub mod server;
 pub mod signature;
+pub mod util;
 
 /// Ceremony Error
 ///
