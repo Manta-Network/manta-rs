@@ -17,13 +17,11 @@
 //! Trusted Setup Phase Two Parameters Preparation
 
 use ark_bls12_381::Fr;
-use manta_crypto::{
-    arkworks::serialize::{CanonicalDeserialize, CanonicalSerialize},
-    rand::{OsRng, Rand},
-};
+use manta_crypto::arkworks::serialize::{CanonicalDeserialize, CanonicalSerialize};
 use manta_pay::{
     config::{FullParameters, Mint, PrivateTransfer, Reclaim},
     crypto::constraint::arkworks::R1CS,
+    parameters::{load_transfer_parameters, load_utxo_accumulator_model},
 };
 use manta_trusted_setup::{
     ceremony::config::{g16_bls12_381::Groth16BLS12381, Challenge, State},
@@ -54,11 +52,15 @@ pub fn prepare_phase_two_parameters(accumulator_path: String, prepared_path: Str
         "Loading & Deserializing Phase 1 parameters takes {:?}\n",
         now.elapsed()
     );
-    let mut rng = OsRng;
+    let transfer_parameters = load_transfer_parameters();
+    let utxo_accumulator_model = load_utxo_accumulator_model();
     let now = Instant::now();
     let state0 = initialize::<Config, R1CS<Fr>>(
         powers.clone(),
-        Mint::unknown_constraints(FullParameters::new(&rng.gen(), &rng.gen())), // TODO: Check constants in FullParameters
+        Mint::unknown_constraints(FullParameters::new(
+            &transfer_parameters,
+            &utxo_accumulator_model,
+        )),
     )
     .expect("failed to initialize state");
     println!(
@@ -68,7 +70,10 @@ pub fn prepare_phase_two_parameters(accumulator_path: String, prepared_path: Str
     let now = Instant::now();
     let state1 = initialize::<Config, R1CS<Fr>>(
         powers.clone(),
-        PrivateTransfer::unknown_constraints(FullParameters::new(&rng.gen(), &rng.gen())), // TODO: Check constants in FullParameters
+        PrivateTransfer::unknown_constraints(FullParameters::new(
+            &transfer_parameters,
+            &utxo_accumulator_model,
+        )),
     )
     .expect("failed to initialize state");
     println!(
@@ -78,7 +83,10 @@ pub fn prepare_phase_two_parameters(accumulator_path: String, prepared_path: Str
     let now = Instant::now();
     let state2 = initialize::<Config, R1CS<Fr>>(
         powers,
-        Reclaim::unknown_constraints(FullParameters::new(&rng.gen(), &rng.gen())), // TODO: Check constants in FullParameters
+        Reclaim::unknown_constraints(FullParameters::new(
+            &transfer_parameters,
+            &utxo_accumulator_model,
+        )),
     )
     .expect("failed to initialize state");
     println!(
