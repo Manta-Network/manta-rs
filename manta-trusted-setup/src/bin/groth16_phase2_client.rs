@@ -19,7 +19,7 @@
 extern crate alloc;
 
 use alloc::string::String;
-use bip39::{Language, Mnemonic, MnemonicType, Seed};
+use bip39::{Language, Mnemonic, Seed};
 use clap::{Parser, Subcommand};
 use colored::Colorize; // TODO: Try https://docs.rs/console/latest/console/
 use core::fmt::{Display, Formatter};
@@ -28,8 +28,8 @@ use indicatif::ProgressBar;
 use manta_trusted_setup::ceremony::{
     config::{g16_bls12_381::Groth16BLS12381, Nonce, PrivateKey, PublicKey},
     message::QueryResponse,
-    signature::{ed_dalek, SignatureScheme},
-    CeremonyError,
+    signature::{ed_dalek},
+    CeremonyError, util::register,
 };
 use serde::{de::DeserializeOwned, Serialize};
 
@@ -129,7 +129,15 @@ impl Arguments {
     pub fn run(self) -> Result<(), Error> {
         match self.command {
             Command::Register => {
-                register();
+                let twitter_account = Input::with_theme(&ColorfulTheme::default())
+                    .with_prompt("Your twitter account")
+                    .interact_text()
+                    .expect("");
+                let email = Input::with_theme(&ColorfulTheme::default())
+                    .with_prompt("Your email")
+                    .interact_text()
+                    .expect("");
+                register(twitter_account, email);
                 Ok(())
             }
             Command::Contribute => {
@@ -145,72 +153,6 @@ impl Arguments {
             }
         }
     }
-}
-
-/// Registers a participant.
-#[inline]
-pub fn register() {
-    let twitter_account: String = Input::with_theme(&ColorfulTheme::default())
-        .with_prompt("Your twitter account")
-        .interact_text()
-        .expect("");
-    let email: String = Input::with_theme(&ColorfulTheme::default())
-        .with_prompt("Your email")
-        .interact_text()
-        .expect("");
-    let mnemonic = Mnemonic::new(MnemonicType::Words12, Language::English);
-    let seed = Seed::new(&mnemonic, "manta-trusted-setup");
-    let seed_bytes = seed.as_bytes();
-    assert!(ed25519_dalek::SECRET_KEY_LENGTH <= seed_bytes.len(), "Secret key length of ed25519 should be smaller than length of seed bytes from mnemonic phrases.");
-    let sk = ed25519_dalek::SecretKey::from_bytes(&seed_bytes[0..ed25519_dalek::SECRET_KEY_LENGTH])
-        .expect("`from_bytes` should succeed for SecretKey.");
-    let pk = ed_dalek::PublicKey(ed25519_dalek::PublicKey::from(&sk).to_bytes());
-    let sk = ed_dalek::PrivateKey(sk.to_bytes());
-    println!(
-        "Your {}: \nCopy the following text to \"Twitter\" Section in Google Sheet:\n {}\n",
-        "Twitter Account".italic(),
-        twitter_account.blue(),
-    );
-    println!(
-        "Your {}: \nCopy the following text to \"Email\" Section in Google Sheet:\n {}\n",
-        "Email".italic(),
-        email.blue(),
-    );
-    println!(
-        "Your {}: \nCopy the following text to \"Public Key\" Section in Google Sheet:\n {}\n",
-        "Public Key".italic(),
-        bs58::encode(bincode::serialize(&pk).expect("Serializing public key should succeed"))
-            .into_string()
-            .blue(),
-    );
-    println!(
-        "Your {}: \nCopy the following text to \"Signature\" Section in Google Sheet: \n {}\n",
-        "Signature".italic(),
-        bs58::encode(
-            bincode::serialize(
-                &ed_dalek::Ed25519::sign(
-                    format!(
-                        "manta-trusted-setup-twitter:{}, manta-trusted-setup-email:{}",
-                        twitter_account, email
-                    ),
-                    &0,
-                    &pk,
-                    &sk,
-                )
-                .expect("Signing should succeed"),
-            )
-            .expect("Serializing signature should succeed."),
-        )
-        .into_string()
-        .blue()
-    );
-    println!(
-        "Your {}: \nThe following text stores your secret for trusted setup. \
-         Save the following text somewhere safe. \n DO NOT share this to anyone else! \
-         Please discard this data after the trusted setup ceremony.\n {}",
-        "Secret".italic(),
-        mnemonic.phrase().red(),
-    );
 }
 
 /// Prompts the client information.
