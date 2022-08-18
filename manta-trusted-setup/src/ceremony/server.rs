@@ -20,7 +20,9 @@ use crate::{
     ceremony::{
         config::{CeremonyConfig, Challenge, Nonce, ParticipantIdentifier, Proof, State},
         coordinator::Coordinator,
-        message::{ContributeRequest, QueryRequest, QueryResponse, Signed},
+        message::{
+            ContributeRequest, QueryRequest, QueryResponse, ServerSize, Signed, SizeRequest,
+        },
         registry::{HasContributed, Registry},
         signature::{HasPublicKey, Nonce as _, SignatureScheme},
         CeremonyError,
@@ -83,10 +85,11 @@ where
         challenge: [Challenge<C>; 3],
         registry: Registry<ParticipantIdentifier<C>, C::Participant>,
         recovery_path: String,
+        size: ServerSize,
     ) -> Self {
         Self {
             coordinator: Arc::new(Mutex::new(Coordinator::new(
-                0, None, None, state, challenge, registry,
+                0, None, None, state, challenge, registry, size,
             ))),
             recovery_path,
         }
@@ -120,6 +123,17 @@ where
         nonce.increment();
         participant.set_nonce(nonce);
         Ok(())
+    }
+
+    /// Queries the server state size.
+    #[inline]
+    pub async fn get_state_size(self, _: SizeRequest) -> Result<ServerSize, CeremonyError<C>> {
+        Ok(self
+            .coordinator
+            .lock()
+            .expect("Locking the coordinator should succeed.")
+            .size
+            .clone())
     }
 
     /// Queries the server state.
@@ -278,6 +292,7 @@ where
             .expect("Serialize should succeed.");
         bincode::serialize_into(&mut writer, &coordinator.registry)
             .expect("Serialize should succeed.");
+        bincode::serialize_into(&mut writer, &coordinator.size).expect("Serialize should succeed.");
         let mut file = File::create(log_dir.as_ref().join(&path)).expect("Unable to create file.");
         file.write_all(&writer).expect("Unable to write to file.");
         file.flush().expect("Unable to flush file.");
@@ -323,6 +338,7 @@ where
         let challenge2 =
             CanonicalDeserialize::deserialize(&mut reader).expect("Deserialize should succeed.");
         let registry = bincode::deserialize_from(&mut reader).expect("Deserialize should succeed.");
+        let size = bincode::deserialize_from(&mut reader).expect("Deserialize should succeed.");
         Self {
             coordinator: Arc::new(Mutex::new(Coordinator::new(
                 num_contributions,
@@ -331,6 +347,7 @@ where
                 [state0, state1, state2],
                 [challenge0, challenge1, challenge2],
                 registry,
+                size,
             ))),
             recovery_path: recovery_dir_path,
         }

@@ -27,9 +27,9 @@ use dialoguer::{theme::ColorfulTheme, Input};
 use indicatif::ProgressBar;
 use manta_trusted_setup::ceremony::{
     config::{g16_bls12_381::Groth16BLS12381, Nonce, PrivateKey, PublicKey},
-    message::QueryResponse,
+    message::{QueryResponse, ServerSize, SizeRequest},
     signature::ed_dalek,
-    util::register,
+    util::{register, check_state_size},
     CeremonyError,
 };
 use serde::{de::DeserializeOwned, Serialize};
@@ -45,6 +45,7 @@ pub enum Endpoint {
     Query,
     Update,
     Nonce,
+    Size,
 }
 
 impl From<Endpoint> for String {
@@ -53,6 +54,7 @@ impl From<Endpoint> for String {
             Endpoint::Query => "query",
             Endpoint::Update => "update",
             Endpoint::Nonce => "nonce",
+            Endpoint::Size => "size",
         };
         format!("{}/{}", SERVER_ADDR, operation)
     }
@@ -224,11 +226,24 @@ pub async fn get_nonce(
     }
 }
 
+/// Gets state size from server.
+#[inline]
+pub async fn get_state_size(network_client: &reqwest::Client) -> Result<ServerSize, Error> {
+    let response =
+        send_request::<_, ServerSize>(network_client, Endpoint::Nonce, SizeRequest).await?;
+    match response {
+        Ok(size) => Ok(size),
+        Err(CeremonyError::NotRegistered) => Err(Error::NotRegistered),
+        Err(e) => Err(Error::UnexpectedError(format!("{:?}", e))),
+    }
+}
+
 /// Contributes to the server.
 #[inline]
 pub async fn contribute() -> Result<(), Error> {
     let network_client = reqwest::Client::new();
     let (pk, sk) = prompt_client_info()?;
+    let size = get_state_size(&network_client).await?;
     let nonce = get_nonce(pk, &network_client).await?;
     let mut trusted_setup_client = Client::new(pk, pk, nonce, sk);
     loop {
@@ -260,9 +275,18 @@ pub async fn contribute() -> Result<(), Error> {
                     println!("Your current position is {}.", position);
                     continue;
                 }
-                QueryResponse::Mpc(mpc_state) => mpc_state.to_actual().map_err(|_| {
-                    Error::UnexpectedError("Received mpc state cannot be parsed.".to_string())
-                })?,
+                QueryResponse::Mpc(mpc_state) => {
+                    let mpc_state = mpc_state.to_actual().map_err(|_| {
+                        Error::UnexpectedError("Received mpc state cannot be parsed.".to_string())
+                    })?;
+                    if !check_state_size(&mpc_state.state, &size) {
+                        return Err(Error::UnexpectedError(
+                            "Received mpc state size is not correct."
+                                .to_string(),
+                        ))
+                    }
+                    mpc_state
+                }
             },
         };
         println!("It's YOUR turn to contribute!");

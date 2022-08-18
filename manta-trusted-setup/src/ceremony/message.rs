@@ -20,11 +20,28 @@ use crate::{
     ceremony::{
         config::{CeremonyConfig, Nonce, ParticipantIdentifier, PrivateKey, PublicKey, Signature},
         signature::{Nonce as _, SignatureScheme},
-        util::{ContributeState, MPCState},
+        util::{ContributeState, MPCState, StateSize},
     },
     util::AsBytes,
 };
 use serde::{Deserialize, Serialize};
+
+/// Request for State Sizes
+#[derive(Deserialize, Serialize)]
+pub struct SizeRequest;
+
+/// Response for State Sizes
+#[derive(Clone, Deserialize, Serialize)]
+pub struct ServerSize {
+    /// Mint State Size
+    pub mint: StateSize,
+
+    /// Private Transfer State Size
+    pub private_transfer: StateSize,
+
+    /// Reclaim State Size
+    pub reclaim: StateSize,
+}
 
 /// Query Request
 #[derive(Deserialize, Serialize)]

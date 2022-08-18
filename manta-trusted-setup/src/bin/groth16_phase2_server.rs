@@ -23,10 +23,11 @@ use manta_trusted_setup::ceremony::{
         g16_bls12_381::{Groth16BLS12381, Participant, UserPriority},
         CeremonyConfig, ParticipantIdentifier,
     },
+    message::ServerSize,
     registry::Registry,
     server::Server,
     signature::{ed_dalek, SignatureScheme},
-    util::{load_from_file, MPCState},
+    util::{load_from_file, MPCState, StateSize},
 };
 use std::{collections::BTreeMap, fs::File, path::Path, process::exit};
 use tracing::error;
@@ -75,6 +76,7 @@ impl Arguments {
         println!("Network starts to run!");
         let mut api = tide::Server::with_state(server);
         api.at("/nonce").post(|r| S::execute(r, Server::get_nonce));
+        api.at("/size").post(|r| S::execute(r, Server::get_state_size));
         api.at("/query").post(|r| S::execute(r, Server::query));
         api.at("/update").post(|r| S::execute(r, Server::update));
         api.listen("127.0.0.1:8080")
@@ -140,10 +142,31 @@ where
 /// Initiates a server.
 pub fn init_server(registry_path: String, recovery_dir_path: String) -> S {
     let registry = load_registry(registry_path);
-    let mpc_state0 = load_from_file::<MPCState<Groth16BLS12381, 1>, _>(&"prepared_mint.data");
+    let mpc_state0 = load_from_file::<MPCState<Groth16BLS12381, 1>, _>(&"data/prepared_mint.data");
     let mpc_state1 =
-        load_from_file::<MPCState<Groth16BLS12381, 1>, _>(&"prepared_private_transfer.data");
-    let mpc_state2 = load_from_file::<MPCState<Groth16BLS12381, 1>, _>(&"prepared_reclaim.data");
+        load_from_file::<MPCState<Groth16BLS12381, 1>, _>(&"data/prepared_private_transfer.data");
+    let mpc_state2 =
+        load_from_file::<MPCState<Groth16BLS12381, 1>, _>(&"data/prepared_reclaim.data");
+    let size = ServerSize {
+        mint: StateSize {
+            gamma_abc_g1: mpc_state0.state[0].vk.gamma_abc_g1.len(),
+            a_b_g1_b_g2_query: mpc_state0.state[0].a_query.len(),
+            h_query: mpc_state0.state[0].h_query.len(),
+            l_query: mpc_state0.state[0].l_query.len(),
+        },
+        private_transfer: StateSize {
+            gamma_abc_g1: mpc_state1.state[0].vk.gamma_abc_g1.len(),
+            a_b_g1_b_g2_query: mpc_state1.state[0].a_query.len(),
+            h_query: mpc_state1.state[0].h_query.len(),
+            l_query: mpc_state1.state[0].l_query.len(),
+        },
+        reclaim: StateSize {
+            gamma_abc_g1: mpc_state2.state[0].vk.gamma_abc_g1.len(),
+            a_b_g1_b_g2_query: mpc_state2.state[0].a_query.len(),
+            h_query: mpc_state2.state[0].h_query.len(),
+            l_query: mpc_state2.state[0].l_query.len(),
+        },
+    };
     S::new(
         [
             mpc_state0.state[0].clone(),
@@ -157,6 +180,7 @@ pub fn init_server(registry_path: String, recovery_dir_path: String) -> S {
         ],
         registry,
         recovery_dir_path,
+        size,
     )
 }
 

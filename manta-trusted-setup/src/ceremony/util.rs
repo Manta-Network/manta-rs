@@ -20,7 +20,8 @@ extern crate alloc;
 
 use crate::{
     ceremony::{
-        config::{g16_bls12_381::Groth16BLS12381, CeremonyConfig, Challenge, State},
+        config::{g16_bls12_381::Groth16BLS12381, CeremonyConfig, Challenge, Proof, State},
+        message::ServerSize,
         signature::{ed_dalek, SignatureScheme},
     },
     groth16::{
@@ -43,6 +44,7 @@ use manta_pay::{
     crypto::constraint::arkworks::{codec::SerializationError, R1CS},
     parameters::{load_transfer_parameters, load_utxo_accumulator_model},
 };
+use serde::{Deserialize, Serialize};
 use std::{
     fmt::Debug,
     fs::File,
@@ -50,8 +52,6 @@ use std::{
     path::Path,
     time::Instant,
 };
-
-use super::config::Proof;
 
 /// Logs `data` to a disk file at `path`.
 #[inline]
@@ -73,7 +73,7 @@ where
 #[inline]
 pub fn load_from_file<T, P>(path: P) -> T
 where
-    P: AsRef<Path>,
+    P: AsRef<Path> + Debug,
     T: CanonicalDeserialize,
 {
     let mut file = File::open(path).expect("Opening file should succeed.");
@@ -384,6 +384,44 @@ pub fn register(twitter_account: String, email: String) {
         "Secret".italic(),
         mnemonic.phrase().red(),
     );
+}
+
+/// State Size
+#[derive(Clone, Deserialize, Serialize)]
+pub struct StateSize {
+    /// Size of gamma_abc_g1 in verifying key
+    pub gamma_abc_g1: usize,
+
+    /// Size of a_query, b_g1_query, and b_g2_query which are equal
+    pub a_b_g1_b_g2_query: usize,
+
+    /// Size of h_query
+    pub h_query: usize,
+
+    /// Size of l_query
+    pub l_query: usize,
+}
+
+/// Checks `states` has the same size as `size`.
+pub fn check_state_size(states: &[State<Groth16BLS12381>; 3], size: &ServerSize) -> bool {
+    (states[0].vk.gamma_abc_g1.len() == size.mint.gamma_abc_g1)
+        || (states[0].a_query.len() == size.mint.a_b_g1_b_g2_query)
+        || (states[0].b_g1_query.len() == size.mint.a_b_g1_b_g2_query)
+        || (states[0].b_g2_query.len() == size.mint.a_b_g1_b_g2_query)
+        || (states[0].h_query.len() == size.mint.h_query)
+        || (states[0].l_query.len() == size.mint.l_query)
+        || (states[1].vk.gamma_abc_g1.len() == size.private_transfer.gamma_abc_g1)
+        || (states[1].a_query.len() == size.private_transfer.a_b_g1_b_g2_query)
+        || (states[1].b_g1_query.len() == size.private_transfer.a_b_g1_b_g2_query)
+        || (states[1].b_g2_query.len() == size.private_transfer.a_b_g1_b_g2_query)
+        || (states[1].h_query.len() == size.private_transfer.h_query)
+        || (states[1].l_query.len() == size.private_transfer.l_query)
+        || (states[2].vk.gamma_abc_g1.len() == size.reclaim.gamma_abc_g1)
+        || (states[2].a_query.len() == size.reclaim.a_b_g1_b_g2_query)
+        || (states[2].b_g1_query.len() == size.reclaim.a_b_g1_b_g2_query)
+        || (states[2].b_g2_query.len() == size.reclaim.a_b_g1_b_g2_query)
+        || (states[2].h_query.len() == size.reclaim.h_query)
+        || (states[2].l_query.len() == size.reclaim.l_query)
 }
 
 /// Testing Suite

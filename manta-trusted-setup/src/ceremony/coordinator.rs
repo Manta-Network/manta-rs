@@ -19,6 +19,7 @@
 use crate::{
     ceremony::{
         config::{CeremonyConfig, Challenge, ParticipantIdentifier, Proof, State},
+        message::ServerSize,
         queue::{HasIdentifier, Queue},
         registry::Registry,
         util::MPCState,
@@ -52,6 +53,9 @@ where
 
     /// Queue of participants
     pub(crate) queue: Queue<C::Participant, N>,
+
+    /// Size of state
+    pub size: ServerSize,
 }
 
 impl<C, const N: usize, const M: usize> Coordinator<C, N, M>
@@ -67,6 +71,7 @@ where
         state: [State<C>; M],
         challenge: [Challenge<C>; M],
         registry: Registry<ParticipantIdentifier<C>, C::Participant>,
+        size: ServerSize,
     ) -> Self {
         Self {
             num_contributions,
@@ -76,6 +81,7 @@ where
             challenge,
             registry,
             queue: Queue::new(),
+            size,
         }
     }
 
