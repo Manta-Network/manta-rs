@@ -51,6 +51,8 @@ use std::{
     time::Instant,
 };
 
+use super::config::Proof;
+
 /// Logs `data` to a disk file at `path`.
 #[inline]
 pub fn log_to_file<T, P>(path: &P, data: T)
@@ -168,6 +170,77 @@ where
             challenge: challenge
                 .try_into()
                 .expect("MPC State should contain N elements."),
+        })
+    }
+}
+
+/// Contribute States
+pub struct ContributeState<C, const N: usize>
+where
+    C: CeremonyConfig,
+{
+    /// State
+    pub state: [State<C>; N],
+
+    /// Proof
+    pub proof: [Proof<C>; N],
+}
+
+impl<C, const N: usize> CanonicalSerialize for ContributeState<C, N>
+where
+    C: CeremonyConfig,
+    State<C>: CanonicalSerialize,
+    Proof<C>: CanonicalSerialize,
+{
+    fn serialize<W>(&self, mut writer: W) -> Result<(), SerializationError>
+    where
+        W: ark_std::io::Write,
+    {
+        self.state
+            .serialize(&mut writer)
+            .expect("Serializing states should succeed.");
+        self.proof
+            .serialize(&mut writer)
+            .expect("Serializing states should succeed.");
+        Ok(())
+    }
+
+    fn serialized_size(&self) -> usize {
+        self.state.serialized_size() + self.proof.serialized_size()
+    }
+}
+
+impl<C, const N: usize> CanonicalDeserialize for ContributeState<C, N>
+where
+    C: CeremonyConfig,
+    State<C>: CanonicalDeserialize + Debug,
+    Proof<C>: CanonicalDeserialize + Debug,
+{
+    fn deserialize<R>(mut reader: R) -> Result<Self, SerializationError>
+    where
+        R: ark_std::io::Read,
+    {
+        let mut state = Vec::new();
+        for _ in 0..N {
+            state.push(
+                CanonicalDeserialize::deserialize(&mut reader)
+                    .expect("Deserialize should succeed."),
+            );
+        }
+        let mut proof = Vec::new();
+        for _ in 0..N {
+            proof.push(
+                CanonicalDeserialize::deserialize(&mut reader)
+                    .expect("Deserialize should succeed."),
+            );
+        }
+        Ok(Self {
+            state: state
+                .try_into()
+                .expect("Contribute State should contain N elements."),
+            proof: proof
+                .try_into()
+                .expect("Contribute State should contain N elements."),
         })
     }
 }

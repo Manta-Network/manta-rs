@@ -30,6 +30,7 @@ use crate::{
 use manta_crypto::arkworks::serialize::{CanonicalDeserialize, CanonicalSerialize};
 use serde::{de::DeserializeOwned, Serialize};
 use std::{
+    fmt::Debug,
     fs::File,
     future::Future,
     io::{Read, Write},
@@ -160,12 +161,14 @@ where
     #[inline]
     pub async fn update(
         self,
-        request: Signed<ContributeRequest<C>, C>,
+        request: Signed<ContributeRequest<C, 3>, C>,
     ) -> Result<(), CeremonyError<C>>
     where
-        ContributeRequest<C>: Serialize,
+        ContributeRequest<C, 3>: Serialize,
         ParticipantIdentifier<C>: Serialize,
         C::Participant: Serialize,
+        State<C>: Debug,
+        Proof<C>: Debug,
     {
         let mut coordinator = self
             .coordinator
@@ -182,41 +185,16 @@ where
                 return Err(CeremonyError::<C>::BadRequest); // TODO
             }
         }
-        let state = [
-            request
-                .message
-                .state0
-                .to_actual()
-                .map_err(|_| CeremonyError::BadRequest)?,
-            request
-                .message
-                .state1
-                .to_actual()
-                .map_err(|_| CeremonyError::BadRequest)?,
-            request
-                .message
-                .state2
-                .to_actual()
-                .map_err(|_| CeremonyError::BadRequest)?,
-        ];
-        let proof = [
-            request
-                .message
-                .proof0
-                .to_actual()
-                .map_err(|_| CeremonyError::BadRequest)?,
-            request
-                .message
-                .proof1
-                .to_actual()
-                .map_err(|_| CeremonyError::BadRequest)?,
-            request
-                .message
-                .proof2
-                .to_actual()
-                .map_err(|_| CeremonyError::BadRequest)?,
-        ];
-        coordinator.update(&request.identifier, state, proof)?;
+        let contribute_state = request
+            .message
+            .contribute_state
+            .to_actual()
+            .map_err(|_| CeremonyError::BadRequest)?;
+        coordinator.update(
+            &request.identifier,
+            contribute_state.state,
+            contribute_state.proof,
+        )?;
         coordinator
             .get_participant_mut(&request.identifier)
             .expect("Geting participant should succeed.")
@@ -238,7 +216,6 @@ where
         request: ParticipantIdentifier<C>,
     ) -> Result<Nonce<C>, CeremonyError<C>>
     where
-        ContributeRequest<C>: Serialize,
         ParticipantIdentifier<C>: Serialize,
     {
         Ok(self

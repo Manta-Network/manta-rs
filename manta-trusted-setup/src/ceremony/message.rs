@@ -18,12 +18,9 @@
 
 use crate::{
     ceremony::{
-        config::{
-            CeremonyConfig, Nonce, ParticipantIdentifier, PrivateKey, Proof, PublicKey,
-            Signature, State,
-        },
+        config::{CeremonyConfig, Nonce, ParticipantIdentifier, PrivateKey, PublicKey, Signature},
         signature::{Nonce as _, SignatureScheme},
-        util::MPCState,
+        util::{ContributeState, MPCState},
     },
     util::AsBytes,
 };
@@ -50,27 +47,12 @@ where
 /// Contribute Request
 #[derive(Serialize, Deserialize)]
 #[serde(bound(serialize = r"", deserialize = r"",), deny_unknown_fields)]
-pub struct ContributeRequest<C>
+pub struct ContributeRequest<C, const N: usize>
 where
     C: CeremonyConfig,
 {
-    /// State after Contribution
-    pub state0: AsBytes<State<C>>, // TODO: Use a vector
-
-    /// Proof of contribution
-    pub proof0: AsBytes<Proof<C>>,
-
-    /// State after Contribution
-    pub state1: AsBytes<State<C>>,
-
-    /// Proof of contribution
-    pub proof1: AsBytes<Proof<C>>,
-
-    /// State after Contribution
-    pub state2: AsBytes<State<C>>,
-
-    /// Proof of contribution
-    pub proof2: AsBytes<Proof<C>>,
+    /// Contribute state including state and proof
+    pub contribute_state: AsBytes<ContributeState<C, N>>,
 }
 
 /// Signed Message

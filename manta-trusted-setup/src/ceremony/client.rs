@@ -24,10 +24,12 @@ use crate::{
         },
         message::{ContributeRequest, QueryRequest, Signed},
         signature::SignatureScheme,
+        util::ContributeState,
     },
     mpc::Contribute,
     util::AsBytes,
 };
+use core::fmt::Debug;
 use indicatif::ProgressBar;
 use manta_crypto::{arkworks::serialize::CanonicalSerialize, rand::OsRng};
 
@@ -92,11 +94,11 @@ where
         challenge: &[Challenge<C>; 3],
         mut state: [State<C>; 3],
         bar: &ProgressBar,
-    ) -> Result<Signed<ContributeRequest<C>, C>, ()>
+    ) -> Result<Signed<ContributeRequest<C, 3>, C>, ()>
     where
         C::Participant: Clone,
         State<C>: CanonicalSerialize,
-        Proof<C>: CanonicalSerialize,
+        Proof<C>: CanonicalSerialize + Debug,
         <<C as CeremonyConfig>::SignatureScheme as SignatureScheme>::PublicKey: std::fmt::Debug,
     {
         let mut rng = OsRng;
@@ -107,13 +109,13 @@ where
             );
             bar.inc(1);
         }
-        let message = ContributeRequest::<C> {
-            state0: AsBytes::from_actual(state[0].clone()),
-            proof0: AsBytes::from_actual(proofs[0].clone()),
-            state1: AsBytes::from_actual(state[1].clone()),
-            proof1: AsBytes::from_actual(proofs[1].clone()),
-            state2: AsBytes::from_actual(state[2].clone()),
-            proof2: AsBytes::from_actual(proofs[2].clone()),
+        let message = ContributeRequest::<C, 3> {
+            contribute_state: AsBytes::from_actual(ContributeState::<C, 3> {
+                state,
+                proof: proofs
+                    .try_into()
+                    .expect("Should have exactly three proofs."),
+            }),
         };
         bar.inc(1);
         Signed::new(
