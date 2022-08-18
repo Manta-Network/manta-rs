@@ -17,6 +17,7 @@
 //! Trusted Setup Phase Two Parameters Preparation
 
 use ark_bls12_381::Fr;
+use clap::Parser;
 use manta_crypto::arkworks::serialize::CanonicalDeserialize;
 use manta_pay::{
     config::{FullParameters, Mint, PrivateTransfer, Reclaim},
@@ -91,36 +92,23 @@ pub fn prepare_parameters(powers: Accumulator<Config>, cs: R1CS<Fr>, name: &str)
     );
 }
 
-/// Data Path
-pub struct DataPath {
+/// CLI
+#[derive(Debug, Parser)]
+pub struct Arguments {
+    /// Accumulator Path
     pub accumulator_path: String,
 }
 
-impl DataPath {
-    pub fn load_from_args() -> Self {
-        let matches = clap::App::new("Prepare Phase Two Parameters")
-            .version("0.1.0")
-            .author("Manta Network")
-            .about("Preparing Phase One Parameters for Phase Two")
-            .arg(
-                clap::Arg::new("accumulator")
-                    .short('a')
-                    .long("accumulator")
-                    .help("Path to the accumulator")
-                    .takes_value(true)
-                    .required(true),
-            )
-            .get_matches();
-        Self {
-            accumulator_path: matches.value_of("accumulator").unwrap().into(),
-        }
+impl Arguments {
+    /// Runs a server
+    pub fn run(self) {
+        prepare_phase_two_parameters(self.accumulator_path);
+        load_from_file::<C, _>(&"prepared_mint.data");
+        load_from_file::<C, _>(&"prepared_private_transfer.data");
+        load_from_file::<C, _>(&"prepared_reclaim.data");
     }
 }
 
 fn main() {
-    let data_path = DataPath::load_from_args();
-    prepare_phase_two_parameters(data_path.accumulator_path);
-    load_from_file::<C, _>(&"prepared_mint.data");
-    load_from_file::<C, _>(&"prepared_private_transfer.data");
-    load_from_file::<C, _>(&"prepared_reclaim.data");
+    Arguments::parse().run();
 }

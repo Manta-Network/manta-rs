@@ -16,6 +16,7 @@
 
 //! Trusted Setup Ceremony Server
 
+use clap::{Parser, Subcommand};
 use manta_crypto::rand::{OsRng, Rand};
 use manta_trusted_setup::ceremony::{
     config::{
@@ -33,13 +34,15 @@ use tracing::error;
 type C = Groth16BLS12381;
 type S = Server<C, 2>;
 
-/// Server Options
-pub enum ServerOptions {
+/// Command
+#[derive(Debug, Subcommand)]
+pub enum Command {
     /// Creates a new server.
     Create {
         registry_path: String,
         recovery_dir_path: String,
     },
+
     /// Recovers a server from disk.
     Recover {
         recovery_path: String,
@@ -47,66 +50,36 @@ pub enum ServerOptions {
     },
 }
 
-impl ServerOptions {
-    pub fn load_from_args() -> Self {
-        let matches = clap::App::new("Trusted Setup Ceremony Server")
-            .version("0.1.0")
-            .author("Manta Network")
-            .about("Trusted Setup Ceremony Server")
-            .arg(
-                clap::Arg::new("mode")
-                    .help("The mode for the server, can be either 'create' or 'recover'")
-                    .takes_value(true)
-                    .required(true),
-            )
-            .arg(
-                clap::Arg::new("registry")
-                    .short('r')
-                    .long("registry")
-                    .help("Path to the registry")
-                    .takes_value(true)
-                    .required_if_eq("mode", "create"),
-            )
-            .arg(
-                clap::Arg::new("recovery")
-                    .short('b')
-                    .long("recovery")
-                    .help("Path to the recovery file")
-                    .takes_value(true)
-                    .required_if_eq("mode", "recover"),
-            )
-            .arg(
-                clap::Arg::new("backup_dir")
-                    .short('d')
-                    .long("backup_dir")
-                    .help("Path to the backup directory")
-                    .takes_value(true)
-                    .required(true),
-            )
-            .get_matches();
+/// Server CLI
+#[derive(Debug, Parser)]
+pub struct Arguments {
+    /// Server Command
+    #[clap(subcommand)]
+    pub command: Command,
+}
 
-        let mode = matches.value_of("mode").unwrap();
-        match mode {
-            "create" => {
-                let registry_path = matches.value_of("registry").unwrap().to_string();
-                let recovery_dir_path = matches.value_of("backup_dir").unwrap().to_string();
-                ServerOptions::Create {
-                    registry_path,
-                    recovery_dir_path,
-                }
-            }
-            "recover" => {
-                let recovery_path = matches.value_of("recovery").unwrap().to_string();
-                let recovery_dir_path = matches.value_of("backup_dir").unwrap().to_string();
-                ServerOptions::Recover {
-                    recovery_path,
-                    recovery_dir_path,
-                }
-            }
-            _ => {
-                panic!("Invalid mode: {}", mode); // TODO: better error message (like client)
-            }
-        }
+impl Arguments {
+    /// Runs a server.
+    #[inline]
+    pub async fn run(self) {
+        let server = match self.command {
+            Command::Create {
+                registry_path,
+                recovery_dir_path,
+            } => init_server(registry_path, recovery_dir_path),
+            Command::Recover {
+                recovery_path,
+                recovery_dir_path,
+            } => S::recover_from_file(recovery_path, recovery_dir_path),
+        };
+        println!("Network starts to run!");
+        let mut api = tide::Server::with_state(server);
+        api.at("/nonce").post(|r| S::execute(r, Server::get_nonce));
+        api.at("/query").post(|r| S::execute(r, Server::query));
+        api.at("/update").post(|r| S::execute(r, Server::update));
+        api.listen("127.0.0.1:8080")
+            .await
+            .expect("Should create a listener."); // TODO: use TLS
     }
 }
 
@@ -180,23 +153,6 @@ pub fn init_server(registry_path: String, recovery_dir_path: String) -> S {
 
 #[async_std::main]
 async fn main() -> tide::Result<()> {
-    tracing_subscriber::fmt().pretty().init();
-    let options = ServerOptions::load_from_args();
-    let server = match options {
-        ServerOptions::Create {
-            registry_path,
-            recovery_dir_path,
-        } => init_server(registry_path, recovery_dir_path),
-        ServerOptions::Recover {
-            recovery_path,
-            recovery_dir_path,
-        } => S::recover_from_file(recovery_path, recovery_dir_path),
-    };
-    println!("Network starts to run!");
-    let mut api = tide::Server::with_state(server);
-    api.at("/nonce").post(|r| S::execute(r, Server::get_nonce));
-    api.at("/query").post(|r| S::execute(r, Server::query));
-    api.at("/update").post(|r| S::execute(r, Server::update));
-    api.listen("127.0.0.1:8080").await?; // TODO: use TLS
+    Arguments::parse().run().await;
     Ok(())
 }
