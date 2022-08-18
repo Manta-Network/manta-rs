@@ -110,7 +110,7 @@ def print_round_constants(round_constants, n, field):
 
 def print_round_constants_arkff(round_constants):
     print("Round constants for ark-ff:")
-    print("vec![" + ",".join(["field_new!(Fr, {})".format(int(entry)) for entry in round_constants]) + "]")
+    print("vec![" + ",".join(['Fp(field_new!(Fr, "{}"))'.format(int(entry)) for entry in round_constants]) + "]")
 
 def create_mds_p(n, t):
     M = matrix(F, t, t)

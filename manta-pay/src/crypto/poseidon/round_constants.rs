@@ -83,7 +83,7 @@ mod test {
     use manta_crypto::arkworks::ff::field_new;
 
     /// Checks if [`GrainLFSR`] is consistent with hardcoded outputs from the `sage` script found at
-    /// <https://github.com/Manta-Network/Plonk-Prototype/tree/poseidon_hash_clean> with the
+    /// <https://github.com/Manta-Network/manta-rs/manta-pay/src/poseidon/parameters_hardcoded_test/> with the
     /// following parameters:
     ///
     /// ```shell
@@ -91,20 +91,10 @@ mod test {
     /// ```
     #[test]
     fn grain_lfsr_is_consistent() {
+        let test_cases = include!("parameters_hardcoded_test/lfsr_values");
         let mut lfsr = generate_lfsr(255, 3, 8, 55);
-        assert_eq!(
-            sample_field_element::<Fp<Fr>, _>(&mut lfsr),
-            Fp(field_new!(
-                Fr,
-                "41764196652518280402801918994067134807238124178723763855975902025540297174931"
-            ))
-        );
-        assert_eq!(
-            sample_field_element::<Fp<Fr>, _>(&mut lfsr),
-            Fp(field_new!(
-                Fr,
-                "12678502092746318913289523392430826887011664085277767208266352862540971998250"
-            ))
-        );
+        for &x in test_cases.iter() {
+            assert_eq!(sample_field_element::<Fp<Fr>, _>(&mut lfsr), x);
+        }
     }
 }
