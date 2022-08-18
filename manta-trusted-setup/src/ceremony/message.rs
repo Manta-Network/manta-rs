@@ -19,10 +19,11 @@
 use crate::{
     ceremony::{
         config::{
-            CeremonyConfig, Challenge, Nonce, ParticipantIdentifier, PrivateKey, Proof, PublicKey,
+            CeremonyConfig, Nonce, ParticipantIdentifier, PrivateKey, Proof, PublicKey,
             Signature, State,
         },
         signature::{Nonce as _, SignatureScheme},
+        util::MPCState,
     },
     util::AsBytes,
 };
@@ -43,14 +44,7 @@ where
     QueuePosition(usize),
 
     /// MPC State
-    Mpc(
-        AsBytes<State<C>>,
-        AsBytes<Challenge<C>>,
-        AsBytes<State<C>>,
-        AsBytes<Challenge<C>>,
-        AsBytes<State<C>>,
-        AsBytes<Challenge<C>>,
-    ), // TODO: Find a better way
+    Mpc(AsBytes<MPCState<C, 3>>),
 }
 
 /// Contribute Request

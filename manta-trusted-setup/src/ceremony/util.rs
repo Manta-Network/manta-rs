@@ -20,10 +20,7 @@ extern crate alloc;
 
 use crate::{
     ceremony::{
-        config::{
-            g16_bls12_381::Groth16BLS12381, CeremonyConfig, Challenge,
-            State,
-        },
+        config::{g16_bls12_381::Groth16BLS12381, CeremonyConfig, Challenge, State},
         signature::{ed_dalek, SignatureScheme},
     },
     groth16::{
@@ -47,6 +44,7 @@ use manta_pay::{
     parameters::{load_transfer_parameters, load_utxo_accumulator_model},
 };
 use std::{
+    fmt::Debug,
     fs::File,
     io::{Read, Write},
     path::Path,
@@ -101,18 +99,18 @@ pub fn dummy_phase_one_trusted_setup() -> Accumulator<Config> {
 }
 
 /// MPC States
-pub struct MPCState<C>
+pub struct MPCState<C, const N: usize>
 where
     C: CeremonyConfig,
 {
     /// State
-    pub state: State<C>,
+    pub state: [State<C>; N],
 
     /// Challenge
-    pub challenge: Challenge<C>,
+    pub challenge: [Challenge<C>; N],
 }
 
-impl<C> CanonicalSerialize for MPCState<C>
+impl<C, const N: usize> CanonicalSerialize for MPCState<C, N>
 where
     C: CeremonyConfig,
     State<C>: CanonicalSerialize,
@@ -138,22 +136,38 @@ where
     }
 }
 
-impl<C> CanonicalDeserialize for MPCState<C>
+impl<C, const N: usize> CanonicalDeserialize for MPCState<C, N>
 where
     C: CeremonyConfig,
-    State<C>: CanonicalDeserialize,
-    Challenge<C>: CanonicalDeserialize,
+    State<C>: CanonicalDeserialize + Debug,
+    Challenge<C>: CanonicalDeserialize + Debug,
 {
     #[inline]
     fn deserialize<R>(mut reader: R) -> Result<Self, SerializationError>
     where
         R: ark_std::io::Read,
     {
+        let mut state = Vec::new();
+        for _ in 0..N {
+            state.push(
+                CanonicalDeserialize::deserialize(&mut reader)
+                    .expect("Deserialize should succeed."),
+            );
+        }
+        let mut challenge = Vec::new();
+        for _ in 0..N {
+            challenge.push(
+                CanonicalDeserialize::deserialize(&mut reader)
+                    .expect("Deserialize should succeed."),
+            );
+        }
         Ok(Self {
-            state: CanonicalDeserialize::deserialize(&mut reader)
-                .expect("Deserialize should succeed."),
-            challenge: CanonicalDeserialize::deserialize(&mut reader)
-                .expect("Deserialize should succeed."),
+            state: state
+                .try_into()
+                .expect("MPC State should contain N elements."),
+            challenge: challenge
+                .try_into()
+                .expect("MPC State should contain N elements."),
         })
     }
 }
@@ -193,9 +207,9 @@ pub fn prepare_parameters(powers: Accumulator<Config>, cs: R1CS<Fr>, name: &str)
     let now = Instant::now();
     let state = initialize::<Config, R1CS<Fr>>(powers, cs).expect("failed to initialize state");
     let challenge = <Config as mpc::ProvingKeyHasher<Config>>::hash(&state);
-    let mpc_state: MPCState<Groth16BLS12381> = MPCState {
-        state,
-        challenge: challenge.into(),
+    let mpc_state: MPCState<Groth16BLS12381, 1> = MPCState {
+        state: [state],
+        challenge: [challenge.into()],
     };
     log_to_file(&format!("prepared_{}.data", name), mpc_state);
     println!(

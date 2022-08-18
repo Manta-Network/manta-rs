@@ -16,13 +16,16 @@
 
 //! Asynchronous Server for Trusted Setup
 
-use crate::ceremony::{
-    config::{CeremonyConfig, Challenge, Nonce, ParticipantIdentifier, Proof, State},
-    coordinator::Coordinator,
-    message::{ContributeRequest, QueryRequest, QueryResponse, Signed},
-    registry::{HasContributed, Registry},
-    signature::{HasPublicKey, Nonce as _, SignatureScheme},
-    CeremonyError,
+use crate::{
+    ceremony::{
+        config::{CeremonyConfig, Challenge, Nonce, ParticipantIdentifier, Proof, State},
+        coordinator::Coordinator,
+        message::{ContributeRequest, QueryRequest, QueryResponse, Signed},
+        registry::{HasContributed, Registry},
+        signature::{HasPublicKey, Nonce as _, SignatureScheme},
+        CeremonyError,
+    },
+    util::AsBytes,
 };
 use manta_crypto::arkworks::serialize::{CanonicalDeserialize, CanonicalSerialize};
 use serde::{de::DeserializeOwned, Serialize};
@@ -136,16 +139,9 @@ where
             coordinator.enqueue_participant(&request.identifier)?;
         }
         if coordinator.is_next(&request.identifier) {
-            let (state, challenge) = coordinator.state_and_challenge();
-            Ok(QueryResponse::Mpc(
-                // TODO: To make more generic
-                state[0].clone().into(),
-                challenge[0].clone().into(),
-                state[1].clone().into(),
-                challenge[1].clone().into(),
-                state[2].clone().into(),
-                challenge[2].clone().into(),
-            )) // TODO: remove this clone later
+            Ok(QueryResponse::Mpc(AsBytes::from_actual(
+                coordinator.state_and_challenge(),
+            )))
         } else {
             Ok(QueryResponse::QueuePosition(
                 coordinator

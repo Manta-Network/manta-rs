@@ -140,16 +140,20 @@ where
 /// Initiates a server.
 pub fn init_server(registry_path: String, recovery_dir_path: String) -> S {
     let registry = load_registry(registry_path);
-    let mpc_state0 = load_from_file::<MPCState<Groth16BLS12381>, _>(&"prepared_mint.data");
+    let mpc_state0 = load_from_file::<MPCState<Groth16BLS12381, 1>, _>(&"prepared_mint.data");
     let mpc_state1 =
-        load_from_file::<MPCState<Groth16BLS12381>, _>(&"prepared_private_transfer.data");
-    let mpc_state2 = load_from_file::<MPCState<Groth16BLS12381>, _>(&"prepared_reclaim.data");
+        load_from_file::<MPCState<Groth16BLS12381, 1>, _>(&"prepared_private_transfer.data");
+    let mpc_state2 = load_from_file::<MPCState<Groth16BLS12381, 1>, _>(&"prepared_reclaim.data");
     S::new(
-        [mpc_state0.state, mpc_state1.state, mpc_state2.state],
         [
-            mpc_state0.challenge,
-            mpc_state1.challenge,
-            mpc_state2.challenge,
+            mpc_state0.state[0].clone(),
+            mpc_state1.state[0].clone(),
+            mpc_state2.state[0].clone(),
+        ],
+        [
+            mpc_state0.challenge[0].clone(),
+            mpc_state1.challenge[0].clone(),
+            mpc_state2.challenge[0].clone(),
         ],
         registry,
         recovery_dir_path,

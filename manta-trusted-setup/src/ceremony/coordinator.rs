@@ -21,6 +21,7 @@ use crate::{
         config::{CeremonyConfig, Challenge, ParticipantIdentifier, Proof, State},
         queue::{HasIdentifier, Queue},
         registry::Registry,
+        util::MPCState,
         CeremonyError,
     },
     mpc::Verify,
@@ -80,8 +81,15 @@ where
 
     /// Gets the current state and challenge.
     #[inline]
-    pub fn state_and_challenge(&self) -> (&[State<C>; M], &[Challenge<C>; M]) {
-        (&self.state, &self.challenge)
+    pub fn state_and_challenge(&self) -> MPCState<C, M>
+    where
+        State<C>: Clone,
+        Challenge<C>: Clone,
+    {
+        MPCState {
+            state: self.state.clone(),
+            challenge: self.challenge.clone(),
+        }
     }
 
     /// Checks if the `participant` is the next.
@@ -123,7 +131,9 @@ where
             });
         }
         self.proof = Some(proof);
-        self.queue.pop().expect("One participant should have just contributed.");
+        self.queue
+            .pop()
+            .expect("One participant should have just contributed.");
         Ok(())
     }
 

@@ -28,8 +28,9 @@ use indicatif::ProgressBar;
 use manta_trusted_setup::ceremony::{
     config::{g16_bls12_381::Groth16BLS12381, Nonce, PrivateKey, PublicKey},
     message::QueryResponse,
-    signature::{ed_dalek},
-    CeremonyError, util::register,
+    signature::ed_dalek,
+    util::register,
+    CeremonyError,
 };
 use serde::{de::DeserializeOwned, Serialize};
 
@@ -231,10 +232,7 @@ pub async fn contribute() -> Result<(), Error> {
     let nonce = get_nonce(pk, &network_client).await?;
     let mut trusted_setup_client = Client::new(pk, pk, nonce, sk);
     loop {
-        let (state0, challenge0, state1, challenge1, state2, challenge2) = match send_request::<
-            _,
-            QueryResponse<C>,
-        >(
+        let mpc_state = match send_request::<_, QueryResponse<C>>(
             &network_client,
             Endpoint::Query,
             trusted_setup_client
@@ -262,26 +260,9 @@ pub async fn contribute() -> Result<(), Error> {
                     println!("Your current position is {}.", position);
                     continue;
                 }
-                QueryResponse::Mpc(state0, challenge0, state1, challenge1, state2, challenge2) => (
-                    state0.to_actual().map_err(|_| {
-                        Error::UnexpectedError("Received state cannot be parsed.".to_string())
-                    })?,
-                    challenge0.to_actual().map_err(|_| {
-                        Error::UnexpectedError("Received challenge cannot be parsed.".to_string())
-                    })?,
-                    state1.to_actual().map_err(|_| {
-                        Error::UnexpectedError("Received state cannot be parsed.".to_string())
-                    })?,
-                    challenge1.to_actual().map_err(|_| {
-                        Error::UnexpectedError("Received challenge cannot be parsed.".to_string())
-                    })?,
-                    state2.to_actual().map_err(|_| {
-                        Error::UnexpectedError("Received state cannot be parsed.".to_string())
-                    })?,
-                    challenge2.to_actual().map_err(|_| {
-                        Error::UnexpectedError("Received challenge cannot be parsed.".to_string())
-                    })?,
-                ),
+                QueryResponse::Mpc(mpc_state) => mpc_state.to_actual().map_err(|_| {
+                    Error::UnexpectedError("Received mpc state cannot be parsed.".to_string())
+                })?,
             },
         };
         println!("It's YOUR turn to contribute!");
@@ -292,8 +273,8 @@ pub async fn contribute() -> Result<(), Error> {
             trusted_setup_client
                 .contribute(
                     &Config::generate_hasher(),
-                    &[challenge0, challenge1, challenge2],
-                    [state0, state1, state2],
+                    &mpc_state.challenge,
+                    mpc_state.state,
                     &bar,
                 )
                 .map_err(|_| Error::UnableToGenerateRequest("contribute"))?,

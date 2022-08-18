@@ -33,9 +33,9 @@ impl Arguments {
     /// Runs a server
     pub fn run(self) {
         prepare_phase_two_parameters(self.accumulator_path);
-        load_from_file::<MPCState<Groth16BLS12381>, _>(&"prepared_mint.data");
-        load_from_file::<MPCState<Groth16BLS12381>, _>(&"prepared_private_transfer.data");
-        load_from_file::<MPCState<Groth16BLS12381>, _>(&"prepared_reclaim.data");
+        load_from_file::<MPCState<Groth16BLS12381, 1>, _>(&"prepared_mint.data");
+        load_from_file::<MPCState<Groth16BLS12381, 1>, _>(&"prepared_private_transfer.data");
+        load_from_file::<MPCState<Groth16BLS12381, 1>, _>(&"prepared_reclaim.data");
     }
 }
 
