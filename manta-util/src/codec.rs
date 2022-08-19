@@ -597,17 +597,6 @@ impl Encode for bool {
     }
 }
 
-impl Encode for u8 {
-    #[inline]
-    fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
-    where
-        W: Write,
-    {
-        writer.write_ref(&[*self])?;
-        Ok(())
-    }
-}
-
 /// Defines an [`Encode`] implemention for the given integer type `$type`.
 macro_rules! encode_int {
     ($($type:tt),* $(,)?) => {
@@ -626,7 +615,7 @@ macro_rules! encode_int {
     }
 }
 
-encode_int!(u16, i16, u32, i32, u64, i64, u128, i128);
+encode_int!(u8, i8, u16, i16, u32, i32, u64, i64, u128, i128);
 
 impl<T> Encode for [T]
 where

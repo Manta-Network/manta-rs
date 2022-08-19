@@ -125,7 +125,7 @@ where
 impl<K, E, COM> Variable<Secret, COM> for Randomness<K, E>
 where
     K: key::agreement::Types + Constant<COM>,
-    E: RandomnessType + Constant<COM>,
+    E: Constant<COM> + RandomnessType,
     K::SecretKey: Variable<Secret, COM>,
     E::Randomness: Variable<Secret, COM>,
     K::Type: key::agreement::Types<SecretKey = Var<K::SecretKey, Secret, COM>>,

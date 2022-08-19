@@ -278,11 +278,11 @@ pub mod measure {
     #[cfg(feature = "std")]
     #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
     #[inline]
-    pub fn print_measurement<COM, D, F, T>(label: D, f: F, compiler: &mut COM) -> T
+    pub fn print_measurement<D, F, T, COM>(label: D, f: F, compiler: &mut COM) -> T
     where
-        COM: Measure,
         D: Display,
         F: FnOnce(&mut COM) -> T,
+        COM: Measure,
     {
         let before = compiler.measure();
         let value = f(compiler);
