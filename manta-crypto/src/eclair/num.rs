@@ -115,6 +115,12 @@ macro_rules! define_zero_one {
 define_zero_one!(u8, u16, u32, u64, u128, i8, i16, i32, i64, i128);
 
 /// Within-Bit-Range Assertion
+///
+/// # Restrictions
+///
+/// This `trait` assumes that `BITS > 0` and does not currently support `BITS = 0`. In this case
+/// we would have an assertion that `x < 2^0 = 1` which is just that `x = 0` in most systems. For
+/// this usecase, the [`Zero`] `trait` should be considered instead.
 pub trait AssertWithinBitRange<T, const BITS: usize> {
     /// Asserts that `value` is smaller than `2^BITS`.
     fn assert_within_range(&mut self, value: &T);
