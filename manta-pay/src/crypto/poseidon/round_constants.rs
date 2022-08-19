@@ -82,13 +82,7 @@ mod test {
     use ark_bls12_381::Fr;
     use manta_crypto::arkworks::ff::field_new;
 
-    /// Checks if [`GrainLFSR`] is consistent with hardcoded outputs from the `sage` script found at
-    /// <https://github.com/Manta-Network/manta-rs/manta-pay/src/poseidon/parameters_hardcoded_test/> with the
-    /// following parameters:
-    ///
-    /// ```shell
-    /// sage generate_parameters_grain_deterministic.sage 1 0 255 3 8 55 0x73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001
-    /// ```
+    /// Checks if [`GrainLFSR`] matches hardcoded sage outputs.
     #[test]
     fn grain_lfsr_is_consistent() {
         let test_cases = include!("parameters_hardcoded_test/lfsr_values");

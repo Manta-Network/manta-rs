@@ -7,7 +7,6 @@ from sage.rings.polynomial.polynomial_gf2x import GF2X_BuildIrred_list
 # GF(p), alpha=3, N = 1536, n = 64, t = 24, R_F = 8, R_P = 42: sage generate_parameters_grain.sage 1 0 64 24 8 42 0xfffffffffffffeff
 # GF(p), alpha=5, N = 1524, n = 254, t = 6, R_F = 8, R_P = 60: sage generate_parameters_grain.sage 1 0 254 6 8 60 0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001
 # GF(p), x^(-1), N = 1518, n = 253, t = 6, R_F = 8, R_P = 60: sage generate_parameters_grain.sage 1 1 253 6 8 60 0x1000000000000000000000000000000014def9dea2f79cd65812631a5cf5d3ed
-
 # GF(p), alpha=5, N = 765, n = 255, t = 3, R_F = 8, R_P = 57: sage generate_parameters_grain.sage 1 0 255 3 8 57 0x73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001
 # GF(p), alpha=5, N = 1275, n = 255, t = 5, R_F = 8, R_P = 60: sage generate_parameters_grain.sage 1 0 255 5 8 60 0x73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001
 # GF(p), alpha=5, N = 762, n = 254, t = 3, R_F = 8, R_P = 57: sage generate_parameters_grain.sage 1 0 254 3 8 57 0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001
@@ -120,7 +119,6 @@ def create_mds_p(n, t):
         flag = True
         # Tom's Note: TODO
         rand_list = [F(i) for i in range(0, 2*t)]
-
         xs = rand_list[:t]
         ys = rand_list[t:]
         # xs = [F(ele) for ele in range(0, t)]
@@ -166,8 +164,7 @@ def subspace_times_matrix(subspace, M, NUM_CELLS):
     new_basis = []
     for vec in subspace_basis:
         new_basis.append(M * vec)
-    new_subspace = V.subspace(new_basis)
-    return new_subspace
+    return V.subspace(new_basis)
 
 # Returns True if the matrix is considered secure, False otherwise
 def algorithm_1(M, NUM_CELLS):
@@ -214,7 +211,6 @@ def algorithm_1(M, NUM_CELLS):
 def algorithm_2(M, NUM_CELLS):
     t = NUM_CELLS
     s = 1
-
     V = VectorSpace(F, t)
     trail = [None, None]
     test_next = False
@@ -245,23 +241,20 @@ def algorithm_2(M, NUM_CELLS):
         if test_next == True:
             continue
         return [False, [IS, I_s]]
-
     return [True, None]
 
 # Returns True if the matrix is considered secure, False otherwise
 def algorithm_3(M, NUM_CELLS):
     t = NUM_CELLS
     s = 1
-
     V = VectorSpace(F, t)
-
     l = 4*t
     for r in range(2, l+1):
         next_r = False
         res_alg_2 = algorithm_2(M^r, t)
         if res_alg_2[0] == False:
             return [False, None]
-
+            
         # if res_alg_2[1] == None:
         #     continue
         # IS = res_alg_2[1][0]
@@ -287,7 +280,6 @@ def algorithm_3(M, NUM_CELLS):
         # if next_r == True:
         #     continue
         # return [False, [IS, I_j, r]]
-
     return [True, None]
 
 def generate_matrix(FIELD, FIELD_SIZE, NUM_CELLS):
@@ -342,6 +334,5 @@ print_round_constants_arkff(round_constants)
 
 # Matrix
 linear_layer = generate_matrix(FIELD, FIELD_SIZE, NUM_CELLS)
-
 print_linear_layer(linear_layer, FIELD_SIZE, NUM_CELLS)
 print_linear_layer_arkff(linear_layer,  NUM_CELLS)
