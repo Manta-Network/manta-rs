@@ -85,15 +85,15 @@ where
     /// Removes the leaf digest stored at 'index'. Fails when trying to remove the current leaf.
     fn remove(&mut self, index: usize) -> bool;
 
-    /// Generates a LeafMap from a 'Vec<LeafDigest>'
+    /// Generates a LeafMap from a 'Vec<LeafDigest>'.
     fn from_vec(leaf_digests: Vec<LeafDigest<C>>) -> Self;
 
-    /// Returns a vector with all leaf digests
+    /// Returns a vector with all leaf digests.
     #[inline]
     fn leaf_digests(&self) -> Vec<&LeafDigest<C>> {
         (0..self.len()).filter_map(|x| self.get(x)).collect()
     }
-    /// Returns a vector with all marked leaf digests
+    /// Returns a vector with all marked leaf digests.
     #[inline]
     fn marked_leaf_digests(&self) -> Vec<&LeafDigest<C>> {
         (0..self.len())
@@ -103,7 +103,7 @@ where
     }
 }
 
-/// Vector of leaf digests with markings
+/// Leaf Vector
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "LeafDigest<C>: Clone"),
@@ -117,6 +117,7 @@ pub struct LeafVec<C>
 where
     C: Configuration + ?Sized,
 {
+    /// Vector of leaf digests with markings
     vec: Vec<(bool, LeafDigest<C>)>,
 }
 
@@ -181,7 +182,7 @@ where
     }
 }
 
-/// Hash map of leaf digests
+/// Leaf Hash
 #[cfg(feature = "std")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
 #[derive(derivative::Derivative)]
@@ -196,7 +197,7 @@ pub struct LeafHashMap<C>
 where
     C: Configuration + ?Sized,
 {
-    /// HashMap
+    /// Hash map of marked leaf digests
     map: HashMap<usize, (bool, LeafDigest<C>)>,
 
     /// Last index
