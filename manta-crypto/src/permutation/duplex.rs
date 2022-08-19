@@ -308,3 +308,43 @@ where
         )
     }
 }
+
+/// Testing Framework
+#[cfg(feature = "test")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
+pub mod test {
+    use super::*;
+
+    /// Tests if duplex encryption of `plaintext` using `encryption_key` and `randomness` returns the
+    /// original `plaintext` on decryption using `decryption_key`. The `assert_same` function is
+    /// used to assert that the two plaintexts are the same.
+    #[inline]
+    #[allow(clippy::too_many_arguments)]
+    pub fn correctness<P, C, F, COM>(
+        duplexer: &Duplexer<P, C, COM>,
+        encryption_key: &<Duplexer<P, C, COM> as EncryptionKeyType>::EncryptionKey,
+        decryption_key: &<Duplexer<P, C, COM> as DecryptionKeyType>::DecryptionKey,
+        randomness: &<Duplexer<P, C, COM> as RandomnessType>::Randomness,
+        header: &<Duplexer<P, C, COM> as HeaderType>::Header,
+        plaintext: &<Duplexer<P, C, COM> as PlaintextType>::Plaintext,
+        compiler: &mut COM,
+        assert_same: F,
+    ) where
+        P: PseudorandomPermutation<COM>,
+        C: Setup<P, COM> + Verify<P, COM>,
+        F: FnOnce(
+            &<Duplexer<P, C, COM> as PlaintextType>::Plaintext,
+            &<Duplexer<P, C, COM> as DecryptedPlaintextType>::DecryptedPlaintext,
+        ),
+    {
+        assert_same(
+            plaintext,
+            &duplexer.decrypt(
+                decryption_key,
+                header,
+                &duplexer.encrypt(encryption_key, randomness, header, plaintext, compiler),
+                compiler,
+            ),
+        )
+    }
+}
