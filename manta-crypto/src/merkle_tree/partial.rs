@@ -90,28 +90,15 @@ where
 
     /// Returns a vector with all leaf digests
     #[inline]
-    fn leaf_digests(&self) -> Vec<LeafDigest<C>>
-    where
-        LeafDigest<C>: Clone,
-    {
-        (0..self.len())
-            .map(|x| self.get(x))
-            .filter(|x| match x {
-                None => false,
-                Some(_) => true,
-            })
-            .map(|x| x.unwrap().clone())
-            .collect()
+    fn leaf_digests(&self) -> Vec<&LeafDigest<C>> {
+        (0..self.len()).filter_map(|x| self.get(x)).collect()
     }
     /// Returns a vector with all marked leaf digests
     #[inline]
-    fn marked_leaf_digests(&self) -> Vec<LeafDigest<C>>
-    where
-        LeafDigest<C>: Clone,
-    {
+    fn marked_leaf_digests(&self) -> Vec<&LeafDigest<C>> {
         (0..self.len())
             .filter(|&index| self.is_marked(index).unwrap_or(false))
-            .map(|x| self.get(x).unwrap().clone())
+            .map(|x| self.get(x).unwrap())
             .collect()
     }
 }
@@ -341,19 +328,13 @@ where
     /// this slice will not be the same as indexing into a slice from a full tree. For all other
     /// indexing, use the full indexing scheme.
     #[inline]
-    pub fn leaf_digests(&self) -> Vec<LeafDigest<C>>
-    where
-        LeafDigest<C>: Clone,
-    {
+    pub fn leaf_digests(&self) -> Vec<&LeafDigest<C>> {
         self.leaf_digests.leaf_digests()
     }
 
     /// Returns the marked leaves of the Merkle tree.
     #[inline]
-    pub fn marked_leaves(&self) -> Vec<LeafDigest<C>>
-    where
-        LeafDigest<C>: Clone,
-    {
+    pub fn marked_leaves(&self) -> Vec<&LeafDigest<C>> {
         self.leaf_digests.marked_leaf_digests()
     }
 
@@ -368,7 +349,11 @@ where
     where
         LeafDigest<C>: Clone,
     {
-        self.leaf_digests.leaf_digests()
+        self.leaf_digests
+            .leaf_digests()
+            .iter()
+            .map(|&x| x.clone())
+            .collect()
     }
 
     /// Returns the starting leaf [`Node`] for this tree.
