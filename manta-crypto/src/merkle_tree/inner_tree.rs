@@ -24,9 +24,7 @@ use crate::{
     eclair::bool::Bool,
     merkle_tree::{
         path::{CurrentInnerPath, InnerPath},
-        path_length,
-        tree::PathError,
-        Configuration, InnerDigest, Node, Parameters, Parity,
+        path_length, Configuration, InnerDigest, Node, Parameters, Parity,
     },
 };
 use alloc::{collections::btree_map, vec::Vec};
@@ -837,8 +835,8 @@ where
                     )
                 })
                 .collect::<Option<Vec<&InnerDigest<C>>>>()?
-                .iter()
-                .map(|&x| x.clone())
+                .into_iter()
+                .cloned()
                 .collect(),
         ))
     }
@@ -853,14 +851,11 @@ where
     /// Returns the path at `leaf_index`, assuming that `leaf_index` is the right-most index,
     /// so that the return value is a valid [`CurrentInnerPath`].
     #[inline]
-    pub fn current_path_unchecked(
-        &self,
-        leaf_index: Node,
-    ) -> Result<CurrentInnerPath<C>, PathError> {
-        match self.path_unchecked(leaf_index) {
-            Some(inner_path) => Ok(CurrentInnerPath::new(leaf_index, inner_path.path)),
-            None => Err(PathError::MissingPath),
-        }
+    pub fn current_path_unchecked(&self, leaf_index: Node) -> Option<CurrentInnerPath<C>> {
+        Some(CurrentInnerPath::new(
+            leaf_index,
+            self.path_unchecked(leaf_index)?.path,
+        ))
     }
 }
 

@@ -38,6 +38,7 @@ use crate::{
     merkle_tree::{
         fork::{ForkedTree, Trunk},
         inner_tree::InnerMap,
+        partial::LeafMap,
         path::{constraint::PathVar, CurrentPath, Path},
     },
 };
@@ -50,8 +51,6 @@ use manta_util::{
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
-
-use super::partial::LeafMap;
 
 /// Merkle Tree Leaf Hash
 pub trait LeafHash<COM = ()> {
@@ -1136,9 +1135,9 @@ where
     C: Configuration + ?Sized,
     T: Tree<C>,
     M: Default + InnerMap<C>,
-    LeafDigest<C>: Copy + Default,
+    LeafDigest<C>: Clone + Default,
     InnerDigest<C>: Clone + Default + PartialEq,
-    L: LeafMap<C> + Default,
+    L: Default + LeafMap<C>,
 {
     #[inline]
     fn rollback(&mut self) {

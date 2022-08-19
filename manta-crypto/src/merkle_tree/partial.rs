@@ -38,43 +38,45 @@ pub trait LeafMap<C>
 where
     C: Configuration + ?Sized,
 {
-    /// Returns the number of stored leaves
+    /// Returns the number of stored leaves.
     fn len(&self) -> usize;
 
-    /// Checks whether the LeafMap is empty
+    /// Checks whether the LeafMap is empty.
+    #[inline]
     fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
-    /// Returns the leaf digest stored at 'index'
+    /// Returns the leaf digest stored at 'index'.
     fn get(&self, index: usize) -> Option<&LeafDigest<C>>;
 
-    /// Returns the current (i.e. rightmost) leaf
+    /// Returns the current (i.e. rightmost) leaf.
     #[inline]
     fn current_leaf(&self) -> Option<&LeafDigest<C>> {
         self.get(self.current_index())
     }
 
-    /// Returns the current index
+    /// Returns the current index.
     fn current_index(&self) -> usize;
 
     /// Returns the index at which 'leaf_digest' is stored. Default implementation always returns 'None',
     /// non-trivial implementations require [`LeafDigest<C>`] to implement the [`PartialEq`] trait.
+    #[inline]
     fn position(&self, _leaf_digest: &LeafDigest<C>) -> Option<usize> {
         None
     }
 
-    /// Pushes a leaf digest to the right-most position
+    /// Pushes a leaf digest to the right-most position.
     fn push(&mut self, leaf_digest: LeafDigest<C>);
 
-    /// Marks the leaf digest at 'index' for removal
+    /// Marks the leaf digest at 'index' for removal.
     fn mark(&mut self, index: usize);
 
     /// Checks whether the leaf digest at 'index' is marked for removal. Returns 'None' if there
-    /// is no leaf digest stored at 'index'
+    /// is no leaf digest stored at 'index'.
     fn is_marked(&self, index: usize) -> Option<bool>;
 
-    /// Checks whether a leaf digest is either already deleted or marked for removal
+    /// Checks whether a leaf digest is either already deleted or marked for removal.
     #[inline]
     fn is_marked_or_removed(&self, index: usize) -> bool {
         self.is_marked(index).unwrap_or(true)
@@ -136,27 +138,33 @@ where
     C: Configuration + ?Sized,
     LeafDigest<C>: Clone + PartialEq,
 {
+    #[inline]
     fn len(&self) -> usize {
         self.vec.len()
     }
 
+    #[inline]
     fn get(&self, index: usize) -> Option<&LeafDigest<C>> {
         let leaf_digest = &self.vec.get(index)?.1;
         Some(leaf_digest)
     }
 
+    #[inline]
     fn current_index(&self) -> usize {
         self.len() - 1
     }
 
+    #[inline]
     fn position(&self, leaf_digest: &LeafDigest<C>) -> Option<usize> {
         self.vec.iter().position(|(_, l)| l == leaf_digest)
     }
 
+    #[inline]
     fn push(&mut self, leaf_digest: LeafDigest<C>) {
         self.vec.push((false, leaf_digest));
     }
 
+    #[inline]
     fn from_vec(leaf_digests: Vec<LeafDigest<C>>) -> Self {
         Self {
             vec: leaf_digests
@@ -166,24 +174,29 @@ where
         }
     }
 
+    #[inline]
     fn mark(&mut self, index: usize) {
         if let Some((b, _)) = self.vec.get_mut(index) {
             *b = true
         };
     }
 
+    #[inline]
     fn is_marked(&self, index: usize) -> Option<bool> {
         let mark = self.vec.get(index)?.0;
         Some(mark)
     }
 
-    /// LeafVec does not implement leaf removal
-    fn remove(&mut self, _index: usize) -> bool {
+    #[inline]
+    fn remove(&mut self, index: usize) -> bool {
+        let _ = index;
         false
     }
 }
 
-/// Hash map of leaf digests.
+/// Hash map of leaf digests
+#[cfg(feature = "std")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "LeafDigest<C>: Clone"),
@@ -192,16 +205,19 @@ where
     Eq(bound = "LeafDigest<C>: Eq"),
     PartialEq(bound = "LeafDigest<C>: PartialEq")
 )]
-#[cfg(feature = "std")]
 pub struct LeafHashMap<C>
 where
     C: Configuration + ?Sized,
 {
+    /// HashMap
     map: HashMap<usize, (bool, LeafDigest<C>)>,
+
+    /// Last index
     last_index: usize,
 }
 
 #[cfg(feature = "std")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
 impl<C> LeafMap<C> for LeafHashMap<C>
 where
     C: Configuration + ?Sized,
@@ -272,8 +288,8 @@ pub type PartialMerkleTree<C, M = BTreeMap<C>> = MerkleTree<C, Partial<C, M>>;
     derive(Deserialize, Serialize),
     serde(
         bound(
-            deserialize = "LeafDigest<C>: Deserialize<'de>, InnerDigest<C>: Deserialize<'de>, M: Deserialize<'de>, L: Deserialize<'de>",
-            serialize = "LeafDigest<C>: Serialize, InnerDigest<C>: Serialize, M: Serialize, L: Serialize"
+            deserialize = "InnerDigest<C>: Deserialize<'de>, M: Deserialize<'de>, L: Deserialize<'de>",
+            serialize = "InnerDigest<C>: Serialize, M: Serialize, L: Serialize"
         ),
         crate = "manta_util::serde",
         deny_unknown_fields
@@ -281,11 +297,11 @@ pub type PartialMerkleTree<C, M = BTreeMap<C>> = MerkleTree<C, Partial<C, M>>;
 )]
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "LeafDigest<C>: Clone, InnerDigest<C>: Clone, M: Clone, L: Clone"),
-    Debug(bound = "LeafDigest<C>: Debug, InnerDigest<C>: Debug, M: Debug, L: Debug"),
-    Default(bound = "LeafDigest<C>: Default, InnerDigest<C>: Default, M: Default, L: Default"),
-    Eq(bound = "LeafDigest<C>: Eq, InnerDigest<C>: Eq, M: Eq, L: Eq"),
-    Hash(bound = "LeafDigest<C>: Hash, InnerDigest<C>: Hash, M: Hash, L: Hash"),
+    Clone(bound = "InnerDigest<C>: Clone, M: Clone, L: Clone"),
+    Debug(bound = "InnerDigest<C>: Debug, M: Debug, L: Debug"),
+    Default(bound = "InnerDigest<C>: Default, M: Default, L: Default"),
+    Eq(bound = "InnerDigest<C>: Eq, M: Eq, L: Eq"),
+    Hash(bound = "InnerDigest<C>: Hash, M: Hash, L: Hash"),
     PartialEq(bound = "InnerDigest<C>: PartialEq, M: PartialEq, L: PartialEq")
 )]
 pub struct Partial<C, M = BTreeMap<C>, L = LeafVec<C>>
@@ -445,7 +461,7 @@ where
             (_, None) => return Err(PathError::MissingPath),
             (Some(_), Some(leaf_sibling)) => leaf_sibling,
         };
-        if let Ok(inner_path) = self.inner_digests.current_path_unchecked(leaf_index) {
+        if let Some(inner_path) = self.inner_digests.current_path_unchecked(leaf_index) {
             Ok(CurrentPath::from_inner(leaf_sibling, inner_path))
         } else {
             Err(PathError::MissingPath)
@@ -612,10 +628,7 @@ where
     #[inline]
     fn current_path(&self, parameters: &Parameters<C>) -> CurrentPath<C> {
         let _ = parameters;
-        match self.current_path() {
-            Ok(current_path) => current_path,
-            Err(_) => Default::default(),
-        }
+        self.current_path().unwrap_or_default()
     }
 
     #[inline]
