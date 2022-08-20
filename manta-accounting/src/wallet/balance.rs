@@ -22,7 +22,7 @@
 
 use crate::asset::{Asset, AssetList};
 use alloc::collections::btree_map::{BTreeMap, Entry as BTreeMapEntry};
-use core::{hash::Hash, ops::AddAssign};
+use core::ops::AddAssign;
 use manta_util::{
     iter::{ConvertItemRef, ExactSizeIterable, RefItem},
     num::CheckedSub,
@@ -32,6 +32,7 @@ use manta_util::{
 use std::{
     collections::hash_map::{Entry as HashMapEntry, HashMap, RandomState},
     hash::BuildHasher,
+    hash::Hash,
 };
 
 /// Balance State
