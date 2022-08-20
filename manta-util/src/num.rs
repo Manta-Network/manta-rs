@@ -67,3 +67,15 @@ pub trait CheckedSub<Rhs = Self> {
     /// Checked integer subtraction. Computes `self - rhs`, returning `None` if overflow occurred.
     fn checked_sub(self, rhs: Rhs) -> Option<Self::Output>;
 }
+
+/// Checked Increment
+pub trait CheckedIncrement {
+    /// Increments `self` returning `None` if it would overflow.
+    fn checked_increment(self) -> Option<Self>;
+}
+
+/// Checked Decrement
+pub trait CheckedDecrement {
+    /// Decrements `self` returning `None` if it would underflow.
+    fn checked_decrement(self) -> Option<Self>;
+}
