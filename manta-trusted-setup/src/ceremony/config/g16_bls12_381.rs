@@ -18,42 +18,34 @@
 
 use crate::{
     ceremony::{
-        config::CeremonyConfig,
+        config::{config, CeremonyConfig},
         queue::{HasIdentifier, Priority},
         registry::HasContributed,
-        server::HasNonce,
         signature::{
             ed_dalek::{Ed25519, PublicKey as EdPublicKey},
-            HasPublicKey,
+            HasNonce, HasPublicKey,
         },
+        state::UserPriority,
     },
-    groth16,
     groth16::mpc::Groth16Phase2,
 };
-use manta_crypto::rand::{OsRng, Rand};
-use serde::{Deserialize, Serialize};
+use manta_crypto::{
+    arkworks::serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError},
+    rand::{OsRng, Rand},
+};
+use std::io::{Read, Write};
 
 /// Groth16 Bls12
 pub struct Groth16BLS12381;
 
 impl CeremonyConfig for Groth16BLS12381 {
-    type Setup = Groth16Phase2<groth16::config::Config>;
+    type Setup = Groth16Phase2<config::Config>;
     type SignatureScheme = Ed25519;
     type Participant = Participant;
 }
 
-/// Priority
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub enum UserPriority {
-    /// High Priority
-    High,
-
-    /// Normal Priority
-    Normal,
-}
-
 /// Participant
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, CanonicalDeserialize, CanonicalSerialize)]
 pub struct Participant {
     /// Public Key
     pub public_key: EdPublicKey,

@@ -23,17 +23,17 @@ use crate::{
             PublicKey, State,
         },
         message::{ContributeRequest, QueryRequest, Signed},
-        signature::SignatureScheme,
-        util::ContributeState,
+        signature::{ed_dalek, SignatureScheme},
+        state::ContributeState,
     },
     mpc::Contribute,
     util::AsBytes,
 };
+use bip39::{Language, Mnemonic, MnemonicType, Seed};
+use colored::Colorize;
 use core::fmt::Debug;
 use indicatif::ProgressBar;
 use manta_crypto::{arkworks::serialize::CanonicalSerialize, rand::OsRng};
-
-// TODO: have better response when a user is not at the front of the queue.
 
 /// Client
 pub struct Client<C>
@@ -130,5 +130,78 @@ where
     /// Set Nonce for the client.
     pub fn set_nonce(&mut self, nonce: Nonce<C>) {
         self.nonce = nonce;
+    }
+}
+
+/// Registers a participant.
+#[inline]
+pub fn register(twitter_account: String, email: String) {
+    let mnemonic = Mnemonic::new(MnemonicType::Words12, Language::English);
+    let seed = Seed::new(&mnemonic, "manta-trusted-setup");
+    let seed_bytes = seed.as_bytes();
+    assert!(ed25519_dalek::SECRET_KEY_LENGTH <= seed_bytes.len(), "Secret key length of ed25519 should be smaller than length of seed bytes from mnemonic phrases.");
+    let sk = ed25519_dalek::SecretKey::from_bytes(&seed_bytes[0..ed25519_dalek::SECRET_KEY_LENGTH])
+        .expect("`from_bytes` should succeed for SecretKey.");
+    let pk = ed_dalek::PublicKey(ed25519_dalek::PublicKey::from(&sk).to_bytes().into());
+    let sk = ed_dalek::PrivateKey(sk.to_bytes().into());
+    println!(
+        "Your {}: \nCopy the following text to \"Twitter\" Section in Google Sheet:\n {}\n",
+        "Twitter Account".italic(),
+        twitter_account.blue(),
+    );
+    println!(
+        "Your {}: \nCopy the following text to \"Email\" Section in Google Sheet:\n {}\n",
+        "Email".italic(),
+        email.blue(),
+    );
+    println!(
+        "Your {}: \nCopy the following text to \"Public Key\" Section in Google Sheet:\n {}\n",
+        "Public Key".italic(),
+        bs58::encode(AsBytes::from_actual(pk).bytes)
+            .into_string()
+            .blue(),
+    );
+    println!(
+        "Your {}: \nCopy the following text to \"Signature\" Section in Google Sheet: \n {}\n",
+        "Signature".italic(),
+        bs58::encode(
+            AsBytes::from_actual(
+                ed_dalek::Ed25519::sign(
+                    format!(
+                        "manta-trusted-setup-twitter:{}, manta-trusted-setup-email:{}",
+                        twitter_account, email
+                    ),
+                    &0,
+                    &pk,
+                    &sk,
+                )
+                .expect("Signing should succeed")
+            )
+            .bytes
+        )
+        .into_string()
+        .blue()
+    );
+    println!(
+        "Your {}: \nThe following text stores your secret for trusted setup. \
+         Save the following text somewhere safe. \n DO NOT share this to anyone else! \
+         Please discard this data after the trusted setup ceremony.\n {}",
+        "Secret".italic(),
+        mnemonic.phrase().red(),
+    );
+}
+
+/// Testing Suite
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    /// Tests if register is visually correct.
+    #[test]
+    fn register_is_visually_correct() {
+        register(
+            "Mantalorian".to_string(),
+            "mantalorian@manta.network".to_string(),
+        );
     }
 }

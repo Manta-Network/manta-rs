@@ -21,6 +21,6 @@ use manta_trusted_setup::ceremony::util::{dummy_phase_one_trusted_setup, log_to_
 fn main() {
     log_to_file(
         &"dummy_phase_one_parameter.data",
-        dummy_phase_one_trusted_setup(),
+        &dummy_phase_one_trusted_setup(),
     );
 }

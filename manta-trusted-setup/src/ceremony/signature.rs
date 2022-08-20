@@ -16,7 +16,7 @@
 
 //! Signature Scheme
 
-use manta_util::serde::Serialize;
+use serde::Serialize;
 
 /// Public Key
 pub trait HasPublicKey<S>
@@ -28,9 +28,21 @@ where
 }
 
 /// Nonce
-pub trait Nonce: Serialize + PartialEq + Clone {
+pub trait Nonce: PartialEq + Clone {
     /// Increment the current nonce by one.
     fn increment(&mut self);
+}
+
+/// Has Nonce
+pub trait HasNonce<S>
+where
+    S: SignatureScheme,
+{
+    /// Returns the nonce of `self` as a participant.
+    fn nonce(&self) -> S::Nonce;
+
+    /// Sets nonce.
+    fn set_nonce(&mut self, nonce: S::Nonce);
 }
 
 /// Signature Scheme
@@ -42,7 +54,7 @@ pub trait SignatureScheme {
     type PrivateKey;
 
     /// Nonce Type
-    type Nonce: Nonce;
+    type Nonce: Nonce + Serialize;
 
     /// Signature Type
     type Signature;
@@ -70,7 +82,9 @@ pub trait SignatureScheme {
         M: Serialize,
     {
         Self::sign_bytes(
-            &bincode::serialize(&message).expect("Should serialize message."),
+            &serde_json::to_string(&message)
+                .expect("Serializing message should succeed.")
+                .as_bytes(),
             nonce,
             public_key,
             private_key,
@@ -100,7 +114,9 @@ pub trait SignatureScheme {
         M: Serialize,
     {
         Self::verify_bytes(
-            &bincode::serialize(&message).expect("Should serialize message."),
+            &serde_json::to_string(&message)
+                .expect("Serializing message should succeed.")
+                .as_bytes(),
             nonce,
             signature,
             public_key,
@@ -111,12 +127,13 @@ pub trait SignatureScheme {
 /// ED25519 Signature Scheme
 pub mod ed_dalek {
     use super::*;
+    use crate::ceremony::state::U8Array;
     use ed25519_dalek::{Keypair, Signature as ED25519Signature, Signer, Verifier};
-    use manta_util::{
-        into_array_unchecked,
-        serde::{Deserialize, Serialize},
-        serde_with::serde_as,
+    use manta_crypto::arkworks::serialize::{
+        CanonicalDeserialize, CanonicalSerialize, SerializationError,
     };
+    use manta_util::into_array_unchecked;
+    use std::io::{Read, Write};
 
     /// ED25519-Dalek Signature
     pub struct Ed25519;
@@ -127,8 +144,27 @@ pub mod ed_dalek {
     ///
     /// A wrapper around the byte representation of an `ed25519_dalek::PublicKey` type. The original
     /// type does not implement `Hash` and so cannot be used as a key in the `Registry`.
-    #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
-    pub struct PublicKey(pub [u8; 32]);
+    #[derive(
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        PartialEq,
+        Ord,
+        PartialOrd,
+        CanonicalDeserialize,
+        CanonicalSerialize,
+    )]
+    pub struct PublicKey(pub U8Array<32>);
+
+    impl PublicKey {
+        /// Returns raw bytes.
+        #[inline]
+        pub fn raw_bytes(&self) -> [u8; 32] {
+            self.0 .0
+        }
+    }
 
     /// Private Key Type
     ///
@@ -136,28 +172,100 @@ pub mod ed_dalek {
     ///
     /// A wrapper around the byte representation of an `ed25519_dalek::SecretKey` type. The byte
     /// representation is used to be consistent with the choice made for `PublicKey`.
-    #[derive(Debug, Serialize, Deserialize, Clone, Copy)]
-    pub struct PrivateKey(pub [u8; 32]);
+    #[derive(Debug, Clone, Copy, CanonicalDeserialize, CanonicalSerialize)]
+    pub struct PrivateKey(pub U8Array<32>);
+
+    impl PrivateKey {
+        /// Returns raw bytes.
+        #[inline]
+        pub fn raw_bytes(&self) -> [u8; 32] {
+            self.0 .0
+        }
+    }
+
+    // impl Serialize for PrivateKey {
+    //     #[inline]
+    //     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    //     where
+    //         S: serde::Serializer,
+    //     {
+    //         let mut s = serializer.serialize_struct("PrivateKey", 1)?;
+    //         s.serialize_field("U8Array", &self.0.0)?;
+    //         s.end()
+    //     }
+    // }
 
     /// Signature Type
-    #[serde_as] // TODO: May use other serialize methods
-    #[derive(Debug, Serialize, Deserialize, Copy, Clone)]
-    pub struct Signature(
-        #[serde_as(as = "[_; ed25519_dalek::Signature::BYTE_SIZE]")]
-        [u8; ED25519Signature::BYTE_SIZE],
-    );
+    #[derive(Debug, Copy, Clone, CanonicalDeserialize, CanonicalSerialize)]
+    pub struct Signature(U8Array<64>);
+
+    impl Signature {
+        /// Returns raw bytes.
+        #[inline]
+        pub fn raw_bytes(&self) -> [u8; 64] {
+            self.0 .0
+        }
+    }
 
     impl From<ED25519Signature> for Signature {
         fn from(f: ED25519Signature) -> Self {
-            Signature(f.to_bytes())
+            Signature(f.to_bytes().into())
         }
     }
 
     impl From<Signature> for ED25519Signature {
         fn from(f: Signature) -> Self {
-            ED25519Signature::from_bytes(&f.0).expect("Should never fail.")
+            ED25519Signature::from_bytes(&f.0 .0).expect("Should never fail.")
         }
     }
+
+    // impl Serialize for Signature {
+    //     #[inline]
+    //     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    //     where
+    //         S: serde::Serializer,
+    //     {
+    //         let mut s = serializer.serialize_struct("Signature", 1)?;
+    //         s.serialize_field("U8Array", &self.0)?;
+    //         s.end()
+    //     }
+    // }
+
+    // impl Serialize for U8Array<32> {
+    //     #[inline]
+    //     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    //     where
+    //         S: serde::Serializer,
+    //     {
+    //         let mut s = serializer.serialize_struct("U8Array", 1)?;
+    //         s.serialize_field("first_half", &self.0[0..32])?;
+    //         s.serialize_field("second_half", &self.0[32..64])?;
+    //         s.end()
+    //     }
+    // }
+
+    // impl<'de> Deserialize<'de> for U8Array<32> {
+    //     #[inline]
+    //     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    //     where
+    //         D: serde::Deserializer<'de>,
+    //     {
+    //         todo!()
+    //     }
+    // }
+
+    // impl Serialize for U8Array<64> {
+    //     #[inline]
+    //     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    //     where
+    //         S: serde::Serializer,
+    //     {
+    //         let mut s = serializer.serialize_struct("U8Array", 1)?;
+    //         s.serialize_field("first_half", &self.0[0..32])?;
+    //         s.serialize_field("second_half", &self.0[32..64])?;
+    //         s.end()
+    //     }
+    // }
 
     impl Nonce for u64 {
         fn increment(&mut self) {
@@ -180,14 +288,20 @@ pub mod ed_dalek {
         where
             M: ?Sized + AsRef<[u8]>,
         {
-            let mut message_concatenated =
-                bincode::serialize(nonce).expect("Serializing nonce should not fail");
+            let mut message_concatenated = Vec::new();
+            CanonicalSerialize::serialize(nonce, &mut message_concatenated)
+                .expect("Serializing u64 should succeed.");
             message_concatenated.extend_from_slice(message.as_ref());
-            Ok(Signature(into_array_unchecked(
-                Keypair::from_bytes(&[&private_key.0[..], &public_key.0[..]].concat())
+            Ok(Signature(
+                into_array_unchecked(
+                    Keypair::from_bytes(
+                        &[private_key.raw_bytes(), public_key.raw_bytes()].concat(),
+                    )
                     .expect("Should decode keypair from bytes.")
                     .sign(&message_concatenated),
-            )))
+                )
+                .into(),
+            ))
         }
 
         fn verify_bytes<M>(
@@ -199,13 +313,14 @@ pub mod ed_dalek {
         where
             M: ?Sized + AsRef<[u8]>,
         {
-            let mut message_concatenated =
-                bincode::serialize(nonce).expect("Serializing nonce should not fail.");
+            let mut message_concatenated = Vec::new();
+            CanonicalSerialize::serialize(nonce, &mut message_concatenated)
+                .expect("Serializing u64 should succeed.");
             message_concatenated.extend_from_slice(message.as_ref());
-            let verify_result = ed25519_dalek::PublicKey::from_bytes(&public_key.0[..])
+            ed25519_dalek::PublicKey::from_bytes(&public_key.raw_bytes())
                 .expect("Should decode public key from bytes.")
-                .verify(&message_concatenated, &((*signature).into()));
-            verify_result.map_err(drop)
+                .verify(&message_concatenated, &((*signature).into()))
+                .map_err(drop)
         }
     }
 }
@@ -218,14 +333,20 @@ mod test {
     /// Tests if sign and verify a message is correct.
     #[test]
     fn sign_and_verify_is_correct() {
-        let private_key = PrivateKey([
-            149, 167, 173, 208, 224, 206, 37, 70, 87, 169, 157, 198, 120, 32, 151, 88, 25, 10, 12,
-            215, 80, 124, 187, 129, 183, 96, 103, 11, 191, 255, 33, 105,
-        ]);
-        let public_key = PublicKey([
-            104, 148, 44, 244, 61, 116, 39, 8, 68, 216, 6, 24, 232, 68, 239, 203, 198, 2, 138, 148,
-            242, 73, 122, 3, 19, 236, 195, 133, 136, 137, 146, 108,
-        ]);
+        let private_key = PrivateKey(
+            [
+                149, 167, 173, 208, 224, 206, 37, 70, 87, 169, 157, 198, 120, 32, 151, 88, 25, 10,
+                12, 215, 80, 124, 187, 129, 183, 96, 103, 11, 191, 255, 33, 105,
+            ]
+            .into(),
+        );
+        let public_key = PublicKey(
+            [
+                104, 148, 44, 244, 61, 116, 39, 8, 68, 216, 6, 24, 232, 68, 239, 203, 198, 2, 138,
+                148, 242, 73, 122, 3, 19, 236, 195, 133, 136, 137, 146, 108,
+            ]
+            .into(),
+        );
         let message = b"Test message";
         let nounce = 1;
         let signature = Ed25519::sign_bytes(message, &nounce, &public_key, &private_key)

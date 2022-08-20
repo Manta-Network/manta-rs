@@ -20,13 +20,14 @@ use crate::{
     ceremony::{
         queue::{HasIdentifier, Priority},
         registry::HasContributed,
-        server::HasNonce,
-        signature,
-        signature::SignatureScheme,
+        signature::{self, SignatureScheme},
+        state::ServerSize,
     },
     mpc,
 };
+use g16_bls12_381::Groth16BLS12381;
 
+pub mod config;
 pub mod g16_bls12_381;
 
 /// Trustred Setup Ceremony Config
@@ -42,7 +43,7 @@ pub trait CeremonyConfig {
         + HasIdentifier
         + signature::HasPublicKey<Self::SignatureScheme>
         + HasContributed
-        + HasNonce<Self::SignatureScheme>;
+        + signature::HasNonce<Self::SignatureScheme>;
 }
 
 /// State
@@ -72,3 +73,25 @@ pub type PrivateKey<C> = <<C as CeremonyConfig>::SignatureScheme as SignatureSch
 /// Participant Identifier
 pub type ParticipantIdentifier<C> =
     <<C as CeremonyConfig>::Participant as HasIdentifier>::Identifier;
+
+/// Checks `states` has the same size as `size`.
+pub fn check_state_size(states: &[State<Groth16BLS12381>; 3], size: &ServerSize) -> bool {
+    (states[0].vk.gamma_abc_g1.len() == size.mint.gamma_abc_g1)
+        || (states[0].a_query.len() == size.mint.a_b_g1_b_g2_query)
+        || (states[0].b_g1_query.len() == size.mint.a_b_g1_b_g2_query)
+        || (states[0].b_g2_query.len() == size.mint.a_b_g1_b_g2_query)
+        || (states[0].h_query.len() == size.mint.h_query)
+        || (states[0].l_query.len() == size.mint.l_query)
+        || (states[1].vk.gamma_abc_g1.len() == size.private_transfer.gamma_abc_g1)
+        || (states[1].a_query.len() == size.private_transfer.a_b_g1_b_g2_query)
+        || (states[1].b_g1_query.len() == size.private_transfer.a_b_g1_b_g2_query)
+        || (states[1].b_g2_query.len() == size.private_transfer.a_b_g1_b_g2_query)
+        || (states[1].h_query.len() == size.private_transfer.h_query)
+        || (states[1].l_query.len() == size.private_transfer.l_query)
+        || (states[2].vk.gamma_abc_g1.len() == size.reclaim.gamma_abc_g1)
+        || (states[2].a_query.len() == size.reclaim.a_b_g1_b_g2_query)
+        || (states[2].b_g1_query.len() == size.reclaim.a_b_g1_b_g2_query)
+        || (states[2].b_g2_query.len() == size.reclaim.a_b_g1_b_g2_query)
+        || (states[2].h_query.len() == size.reclaim.h_query)
+        || (states[2].l_query.len() == size.reclaim.l_query)
+}

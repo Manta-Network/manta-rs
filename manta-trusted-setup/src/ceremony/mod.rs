@@ -16,10 +16,6 @@
 
 //! Client and Server Interfaces and Implementations for Manta Trusted Setup Ceremony
 
-use crate::ceremony::config::{CeremonyConfig, Nonce};
-use derivative::Derivative;
-use serde::{Deserialize, Serialize};
-
 pub mod client;
 pub mod config;
 pub mod coordinator;
@@ -29,34 +25,4 @@ pub mod registry;
 pub mod server;
 pub mod signature;
 pub mod util;
-
-/// Ceremony Error
-///
-/// # Note
-///
-/// All errors here are visible to users.
-#[derive(PartialEq, Serialize, Deserialize, Derivative)]
-#[derivative(Debug(bound = "Nonce<C>: core::fmt::Debug"))]
-#[serde(
-    bound(
-        serialize = "Nonce<C>: Serialize",
-        deserialize = "Nonce<C>: Deserialize<'de>",
-    ),
-    deny_unknown_fields
-)]
-pub enum CeremonyError<C>
-where
-    C: CeremonyConfig,
-{
-    /// Malformed request that should not come from official client
-    BadRequest,
-
-    /// Nonce not in sync, and client needs to update the nonce
-    NonceNotInSync(Nonce<C>),
-
-    /// Not Registered
-    NotRegistered,
-
-    /// Already Contributed
-    AlreadyContributed,
-}
+pub mod state;

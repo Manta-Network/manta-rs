@@ -18,14 +18,18 @@
 
 use crate::{
     ceremony::{
-        config::{CeremonyConfig, Challenge, Nonce, ParticipantIdentifier, Proof, State},
+        config::{
+            g16_bls12_381::Groth16BLS12381, CeremonyConfig, Challenge, Nonce,
+            ParticipantIdentifier, Proof, State,
+        },
         coordinator::Coordinator,
         message::{
-            ContributeRequest, QueryRequest, QueryResponse, ServerSize, Signed, SizeRequest,
+            CeremonyError, ContributeRequest, QueryRequest, QueryResponse, Signed, SizeRequest,
         },
-        registry::{HasContributed, Registry},
-        signature::{HasPublicKey, Nonce as _, SignatureScheme},
-        CeremonyError,
+        registry::{load_registry, HasContributed, Registry},
+        signature::{HasNonce, HasPublicKey, Nonce as _, SignatureScheme},
+        state::{MPCState, ServerSize, StateSize},
+        util::{load_from_file, log_to_file},
     },
     util::AsBytes,
 };
@@ -33,26 +37,11 @@ use manta_crypto::arkworks::serialize::{CanonicalDeserialize, CanonicalSerialize
 use serde::{de::DeserializeOwned, Serialize};
 use std::{
     fmt::Debug,
-    fs::File,
     future::Future,
-    io::{Read, Write},
-    path::Path,
+    ops::Deref,
     sync::{Arc, Mutex},
 };
 use tide::{Body, Request, Response};
-use tracing::info;
-
-/// Has Nonce
-pub trait HasNonce<S>
-where
-    S: SignatureScheme,
-{
-    /// Returns the nonce of `self` as a participant.
-    fn nonce(&self) -> S::Nonce;
-
-    /// Sets nonce.
-    fn set_nonce(&mut self, nonce: S::Nonce);
-}
 
 /// Server
 #[derive(derivative::Derivative)]
@@ -60,9 +49,6 @@ where
 pub struct Server<C, const N: usize>
 where
     C: CeremonyConfig,
-    State<C>: CanonicalSerialize + CanonicalDeserialize,
-    Challenge<C>: CanonicalSerialize + CanonicalDeserialize,
-    Proof<C>: CanonicalSerialize + CanonicalDeserialize,
 {
     /// Coordinator
     coordinator: Arc<Mutex<Coordinator<C, N, 3>>>,
@@ -74,9 +60,6 @@ where
 impl<C, const N: usize> Server<C, N>
 where
     C: CeremonyConfig,
-    State<C>: CanonicalSerialize + CanonicalDeserialize,
-    Challenge<C>: CanonicalSerialize + CanonicalDeserialize,
-    Proof<C>: CanonicalSerialize + CanonicalDeserialize,
 {
     /// Builds a [`Server`] with initial `state`, `challenge`, a loaded `registry`, and a `recovery_path`.
     #[inline]
@@ -144,6 +127,8 @@ where
     ) -> Result<QueryResponse<C>, CeremonyError<C>>
     where
         ParticipantIdentifier<C>: Serialize,
+        State<C>: CanonicalSerialize + CanonicalDeserialize,
+        Challenge<C>: CanonicalSerialize + CanonicalDeserialize,
     {
         let mut coordinator = self
             .coordinator
@@ -178,11 +163,11 @@ where
         request: Signed<ContributeRequest<C, 3>, C>,
     ) -> Result<(), CeremonyError<C>>
     where
-        ContributeRequest<C, 3>: Serialize,
-        ParticipantIdentifier<C>: Serialize,
-        C::Participant: Serialize,
-        State<C>: Debug,
-        Proof<C>: Debug,
+        C::Participant: CanonicalSerialize,
+        State<C>: Debug + CanonicalDeserialize + CanonicalSerialize,
+        Proof<C>: Debug + CanonicalDeserialize + CanonicalSerialize,
+        ParticipantIdentifier<C>: CanonicalSerialize,
+        Challenge<C>: CanonicalSerialize,
     {
         let mut coordinator = self
             .coordinator
@@ -215,7 +200,7 @@ where
             .set_contributed();
         coordinator.num_contributions += 1;
         // TODO: checksum
-        Self::log_to_file(&coordinator, &self.recovery_path);
+        log_to_file(&self.recovery_path, coordinator.deref());
         println!(
             "{} participants have contributed.",
             coordinator.num_contributions
@@ -228,10 +213,7 @@ where
     pub async fn get_nonce(
         self,
         request: ParticipantIdentifier<C>,
-    ) -> Result<Nonce<C>, CeremonyError<C>>
-    where
-        ParticipantIdentifier<C>: Serialize,
-    {
+    ) -> Result<Nonce<C>, CeremonyError<C>> {
         Ok(self
             .coordinator
             .lock()
@@ -239,118 +221,6 @@ where
             .get_participant(&request)
             .ok_or(CeremonyError::NotRegistered)?
             .nonce())
-    }
-
-    /// Generates log and saves to a disk file.
-    #[inline]
-    pub fn log_to_file<P: AsRef<Path>>(coordinator: &Coordinator<C, N, 3>, log_dir: P)
-    where
-        Proof<C>: CanonicalSerialize,
-        State<C>: CanonicalSerialize,
-        Challenge<C>: CanonicalSerialize,
-        ParticipantIdentifier<C>: Serialize,
-        C::Participant: Serialize,
-    {
-        let path = format!("log_{}", coordinator.num_contributions());
-        let mut writer = Vec::new();
-        bincode::serialize_into(&mut writer, &coordinator.num_contributions)
-            .expect("Serialize should succeed");
-        let proof = coordinator
-            .proof
-            .clone()
-            .expect("Coordinator should have non-empty proof.");
-        proof[0]
-            .serialize(&mut writer)
-            .expect("Serialize should succeed");
-        proof[1]
-            .serialize(&mut writer)
-            .expect("Serialize should succeed");
-        proof[2]
-            .serialize(&mut writer)
-            .expect("Serialize should succeed");
-        bincode::serialize_into(&mut writer, &coordinator.latest_contributor)
-            .expect("Serialize should succeed.");
-        let state = coordinator.state.clone();
-        state[0]
-            .serialize(&mut writer)
-            .expect("Serialize should succeed.");
-        state[1]
-            .serialize(&mut writer)
-            .expect("Serialize should succeed.");
-        state[2]
-            .serialize(&mut writer)
-            .expect("Serialize should succeed.");
-        let challenge = coordinator.challenge.clone();
-        challenge[0]
-            .serialize(&mut writer)
-            .expect("Serialize should succeed.");
-        challenge[1]
-            .serialize(&mut writer)
-            .expect("Serialize should succeed.");
-        challenge[2]
-            .serialize(&mut writer)
-            .expect("Serialize should succeed.");
-        bincode::serialize_into(&mut writer, &coordinator.registry)
-            .expect("Serialize should succeed.");
-        bincode::serialize_into(&mut writer, &coordinator.size).expect("Serialize should succeed.");
-        let mut file = File::create(log_dir.as_ref().join(&path)).expect("Unable to create file.");
-        file.write_all(&writer).expect("Unable to write to file.");
-        file.flush().expect("Unable to flush file.");
-        info!("Saved coordinator to {}", path);
-    }
-
-    /// Recovers from a disk file.
-    #[inline]
-    pub fn recover_from_file(recovery_file_path: String, recovery_dir_path: String) -> Self
-    where
-        Proof<C>: CanonicalDeserialize,
-        State<C>: CanonicalDeserialize,
-        Challenge<C>: CanonicalDeserialize,
-        ParticipantIdentifier<C>: DeserializeOwned,
-        C::Participant: DeserializeOwned,
-    {
-        // cargo run --release --package manta-trusted-setup --bin groth16_phase2_server -- --backup_dir . --recovery log_1 recover
-        let mut file = File::open(recovery_file_path).expect("Unable to open file.");
-        let mut buf = Vec::new();
-        file.read_to_end(&mut buf).expect("Unable to read file.");
-        let mut reader = &buf[..];
-        let num_contributions =
-            bincode::deserialize_from(&mut reader).expect("Deserialize should succeed.");
-        let proof0: Proof<C> =
-            CanonicalDeserialize::deserialize(&mut reader).expect("Deserialize should succeed.");
-        let proof1: Proof<C> =
-            CanonicalDeserialize::deserialize(&mut reader).expect("Deserialize should succeed.");
-        let proof2: Proof<C> =
-            CanonicalDeserialize::deserialize(&mut reader).expect("Deserialize should succeed.");
-        let proof = [proof0, proof1, proof2];
-        let latest_contributor =
-            bincode::deserialize_from(&mut reader).expect("Deserialize should succeed.");
-        let state0 =
-            CanonicalDeserialize::deserialize(&mut reader).expect("Deserialize should succeed.");
-        let state1 =
-            CanonicalDeserialize::deserialize(&mut reader).expect("Deserialize should succeed.");
-        let state2 =
-            CanonicalDeserialize::deserialize(&mut reader).expect("Deserialize should succeed.");
-        let challenge0 =
-            CanonicalDeserialize::deserialize(&mut reader).expect("Deserialize should succeed.");
-        let challenge1 =
-            CanonicalDeserialize::deserialize(&mut reader).expect("Deserialize should succeed.");
-        let challenge2 =
-            CanonicalDeserialize::deserialize(&mut reader).expect("Deserialize should succeed.");
-        let registry = bincode::deserialize_from(&mut reader).expect("Deserialize should succeed.");
-        let size = bincode::deserialize_from(&mut reader).expect("Deserialize should succeed.");
-        Self {
-            coordinator: Arc::new(Mutex::new(Coordinator::new(
-                num_contributions,
-                Some(proof),
-                latest_contributor,
-                [state0, state1, state2],
-                [challenge0, challenge1, challenge2],
-                registry,
-                size,
-            ))),
-            recovery_path: recovery_dir_path,
-        }
     }
 
     /// Executes `f` on the incoming `request`.
@@ -377,6 +247,22 @@ where
         })
         .await
     }
+
+    /// Recovers from a disk file at `recovery` and use `backup` as the backup directory.
+    #[inline]
+    pub fn recover(recovery: String, backup: String) -> Self
+    where
+        Proof<C>: CanonicalDeserialize + Debug,
+        State<C>: CanonicalDeserialize + Debug,
+        Challenge<C>: CanonicalDeserialize + Debug,
+        ParticipantIdentifier<C>: CanonicalDeserialize,
+        C::Participant: CanonicalDeserialize,
+    {
+        Self {
+            coordinator: Arc::new(Mutex::new(load_from_file(recovery))),
+            recovery_path: backup,
+        }
+    }
 }
 
 /// Generates the JSON body for the output of `f`, returning an HTTP reponse.
@@ -390,4 +276,49 @@ where
 {
     let result = f().await;
     Ok(Body::from_json(&result)?.into())
+}
+
+/// Initiates a server.
+pub fn init_server(registry_path: String, recovery_dir_path: String) -> Server<Groth16BLS12381, 2> {
+    let registry = load_registry::<Groth16BLS12381, _>(registry_path);
+    let mpc_state0 = load_from_file::<MPCState<Groth16BLS12381, 1>, _>(&"data/prepared_mint.data");
+    let mpc_state1 =
+        load_from_file::<MPCState<Groth16BLS12381, 1>, _>(&"data/prepared_private_transfer.data");
+    let mpc_state2 =
+        load_from_file::<MPCState<Groth16BLS12381, 1>, _>(&"data/prepared_reclaim.data");
+    let size = ServerSize {
+        mint: StateSize {
+            gamma_abc_g1: mpc_state0.state[0].vk.gamma_abc_g1.len(),
+            a_b_g1_b_g2_query: mpc_state0.state[0].a_query.len(),
+            h_query: mpc_state0.state[0].h_query.len(),
+            l_query: mpc_state0.state[0].l_query.len(),
+        },
+        private_transfer: StateSize {
+            gamma_abc_g1: mpc_state1.state[0].vk.gamma_abc_g1.len(),
+            a_b_g1_b_g2_query: mpc_state1.state[0].a_query.len(),
+            h_query: mpc_state1.state[0].h_query.len(),
+            l_query: mpc_state1.state[0].l_query.len(),
+        },
+        reclaim: StateSize {
+            gamma_abc_g1: mpc_state2.state[0].vk.gamma_abc_g1.len(),
+            a_b_g1_b_g2_query: mpc_state2.state[0].a_query.len(),
+            h_query: mpc_state2.state[0].h_query.len(),
+            l_query: mpc_state2.state[0].l_query.len(),
+        },
+    };
+    Server::<Groth16BLS12381, 2>::new(
+        [
+            mpc_state0.state[0].clone(),
+            mpc_state1.state[0].clone(),
+            mpc_state2.state[0].clone(),
+        ],
+        [
+            mpc_state0.challenge[0].clone(),
+            mpc_state1.challenge[0].clone(),
+            mpc_state2.challenge[0].clone(),
+        ],
+        registry,
+        recovery_dir_path,
+        size,
+    )
 }

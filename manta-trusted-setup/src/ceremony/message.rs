@@ -14,34 +14,23 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Messages
+//! Messages through Network
 
 use crate::{
     ceremony::{
         config::{CeremonyConfig, Nonce, ParticipantIdentifier, PrivateKey, PublicKey, Signature},
         signature::{Nonce as _, SignatureScheme},
-        util::{ContributeState, MPCState, StateSize},
+        state::{ContributeState, MPCState},
     },
     util::AsBytes,
 };
+use derivative::Derivative;
 use serde::{Deserialize, Serialize};
 
 /// Request for State Sizes
 #[derive(Deserialize, Serialize)]
 pub struct SizeRequest;
 
-/// Response for State Sizes
-#[derive(Clone, Deserialize, Serialize)]
-pub struct ServerSize {
-    /// Mint State Size
-    pub mint: StateSize,
-
-    /// Private Transfer State Size
-    pub private_transfer: StateSize,
-
-    /// Reclaim State Size
-    pub reclaim: StateSize,
-}
 
 /// Query Request
 #[derive(Deserialize, Serialize)]
@@ -123,4 +112,35 @@ where
         nonce.increment();
         Ok(message)
     }
+}
+
+/// Ceremony Error
+///
+/// # Note
+///
+/// All errors here are visible to users.
+#[derive(PartialEq, Serialize, Deserialize, Derivative)]
+#[derivative(Debug(bound = "Nonce<C>: core::fmt::Debug"))]
+#[serde(
+    bound(
+        serialize = "Nonce<C>: Serialize",
+        deserialize = "Nonce<C>: Deserialize<'de>",
+    ),
+    deny_unknown_fields
+)]
+pub enum CeremonyError<C>
+where
+    C: CeremonyConfig,
+{
+    /// Malformed request that should not come from official client
+    BadRequest,
+
+    /// Nonce not in sync, and client needs to update the nonce
+    NonceNotInSync(Nonce<C>),
+
+    /// Not Registered
+    NotRegistered,
+
+    /// Already Contributed
+    AlreadyContributed,
 }

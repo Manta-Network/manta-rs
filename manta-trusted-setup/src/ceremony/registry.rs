@@ -16,8 +16,25 @@
 
 //! Registry
 
+use crate::{
+    ceremony::{
+        config::{g16_bls12_381::Participant, CeremonyConfig, ParticipantIdentifier},
+        signature::{ed_dalek, SignatureScheme},
+        state::UserPriority,
+    },
+    util::AsBytes,
+};
 use alloc::collections::BTreeMap;
-use serde::{Deserialize, Serialize};
+use manta_crypto::{
+    arkworks::serialize::{CanonicalDeserialize, CanonicalSerialize},
+    rand::{OsRng, Rand},
+};
+use manta_pay::crypto::constraint::arkworks::codec::SerializationError;
+use std::{
+    fs::File,
+    io::{Read, Write},
+    path::Path,
+};
 
 /// Has Contributed
 pub trait HasContributed {
@@ -29,11 +46,6 @@ pub trait HasContributed {
 }
 
 /// Registry
-#[derive(Default, Serialize, Deserialize)]
-#[serde(bound(
-    serialize = "K: Serialize, V: Serialize",
-    deserialize = "K: Deserialize<'de>, V: Deserialize<'de>"
-))]
 pub struct Registry<K, V>
 where
     K: Ord,
@@ -84,4 +96,92 @@ where
             .map(|v| v.has_contributed())
             .unwrap_or(false)
     }
+}
+
+impl<K, V> CanonicalSerialize for Registry<K, V>
+where
+    K: Ord + CanonicalSerialize,
+    V: CanonicalSerialize,
+{
+    fn serialize<W>(&self, mut writer: W) -> Result<(), SerializationError>
+    where
+        W: Write,
+    {
+        self.map
+            .serialize(&mut writer)
+            .expect("Serializing should succeed");
+        Ok(())
+    }
+
+    fn serialized_size(&self) -> usize {
+        self.map.serialized_size()
+    }
+}
+
+impl<K, V> CanonicalDeserialize for Registry<K, V>
+where
+    K: Ord + CanonicalDeserialize,
+    V: CanonicalDeserialize,
+{
+    fn deserialize<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
+        Ok(Self {
+            map: CanonicalDeserialize::deserialize(&mut reader)
+                .expect("Deserializing should succeed."),
+        })
+    }
+}
+
+/// Loads registry from a disk file at `registry`.
+pub fn load_registry<C, P>(
+    registry: P,
+) -> Registry<ed_dalek::PublicKey, <C as CeremonyConfig>::Participant>
+where
+    P: AsRef<Path>,
+    C: CeremonyConfig<Participant = Participant>,
+{
+    let mut map = BTreeMap::new();
+    for record in
+        csv::Reader::from_reader(File::open(registry).expect("Registry file should exist."))
+            .records()
+    {
+        let result = record.expect("Read csv should succeed.");
+        let twitter = result[0].to_string();
+        let email = result[1].to_string();
+        let public_key: ed_dalek::PublicKey = AsBytes::new(
+            bs58::decode(result[3].to_string())
+                .into_vec()
+                .expect("Decode public key should succeed."),
+        )
+        .to_actual()
+        .expect("Converting to a public key should succeed.");
+        let signature: ed_dalek::Signature = AsBytes::new(
+            bs58::decode(result[4].to_string())
+                .into_vec()
+                .expect("Decode signature should succeed."),
+        )
+        .to_actual()
+        .expect("Converting to a signature should succeed.");
+        ed_dalek::Ed25519::verify(
+            format!(
+                "manta-trusted-setup-twitter:{}, manta-trusted-setup-email:{}",
+                twitter, email
+            ),
+            &0,
+            &signature,
+            &public_key,
+        )
+        .expect("Verifying signature should succeed.");
+        let participant = Participant {
+            twitter,
+            priority: match result[2].to_string().parse::<bool>().unwrap() {
+                true => UserPriority::High,
+                false => UserPriority::Normal,
+            },
+            public_key,
+            nonce: OsRng.gen(),
+            contributed: false,
+        };
+        map.insert(participant.public_key, participant);
+    }
+    Registry::new(map)
 }

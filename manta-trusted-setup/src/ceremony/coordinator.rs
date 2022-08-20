@@ -19,14 +19,18 @@
 use crate::{
     ceremony::{
         config::{CeremonyConfig, Challenge, ParticipantIdentifier, Proof, State},
-        message::ServerSize,
+        message::CeremonyError,
         queue::{HasIdentifier, Queue},
         registry::Registry,
-        util::MPCState,
-        CeremonyError,
+        state::{MPCState, ServerSize},
     },
     mpc::Verify,
 };
+use core::fmt::Debug;
+use manta_crypto::arkworks::serialize::{
+    CanonicalDeserialize, CanonicalSerialize, SerializationError,
+};
+use std::io::{Read, Write};
 
 /// Coordinator with `C` as CeremonyConfig, `N` as the number of priority levels, and `M` as the number of circuits
 pub struct Coordinator<C, const N: usize, const M: usize>
@@ -34,25 +38,25 @@ where
     C: CeremonyConfig,
 {
     /// Number of Contributions
-    pub(crate) num_contributions: usize,
+    pub num_contributions: usize,
 
     /// Proof
-    pub(crate) proof: Option<[Proof<C>; M]>,
+    pub proof: Option<[Proof<C>; M]>,
 
     /// Latest Participant that Has Contributed
-    pub(crate) latest_contributor: Option<C::Participant>,
+    pub latest_contributor: Option<C::Participant>,
 
     /// State
-    pub(crate) state: [State<C>; M],
+    pub state: [State<C>; M],
 
     /// Challenge
-    pub(crate) challenge: [Challenge<C>; M],
+    pub challenge: [Challenge<C>; M],
 
     /// Registry of participants
-    pub(crate) registry: Registry<ParticipantIdentifier<C>, C::Participant>,
+    pub registry: Registry<ParticipantIdentifier<C>, C::Participant>,
 
     /// Queue of participants
-    pub(crate) queue: Queue<C::Participant, N>,
+    pub queue: Queue<C::Participant, N>,
 
     /// Size of state
     pub size: ServerSize,
@@ -210,5 +214,115 @@ where
     #[inline]
     pub fn num_contributions(&self) -> usize {
         self.num_contributions
+    }
+}
+
+impl<C, const N: usize, const M: usize> CanonicalSerialize for Coordinator<C, N, M>
+where
+    C: CeremonyConfig,
+    Proof<C>: CanonicalSerialize,
+    State<C>: CanonicalSerialize,
+    Challenge<C>: CanonicalSerialize,
+    ParticipantIdentifier<C>: CanonicalSerialize,
+    C::Participant: CanonicalSerialize,
+{
+    fn serialize<W>(&self, mut writer: W) -> Result<(), SerializationError>
+    where
+        W: Write,
+    {
+        self.num_contributions
+            .serialize(&mut writer)
+            .expect("Serialize should succeed");
+        self.proof
+            .as_ref()
+            .expect("Proof should exit.")
+            .serialize(&mut writer)
+            .expect("Serialize should succeed");
+        self.latest_contributor
+            .serialize(&mut writer)
+            .expect("Serialize should succeed");
+        self.state
+            .serialize(&mut writer)
+            .expect("Serialize should succeed");
+        self.challenge
+            .serialize(&mut writer)
+            .expect("Serialize should succeed.");
+        self.registry
+            .serialize(&mut writer)
+            .expect("Serialize should succeed.");
+        self.size
+            .serialize(&mut writer)
+            .expect("Serialize should succeed.");
+        Ok(())
+    }
+
+    fn serialized_size(&self) -> usize {
+        self.num_contributions.serialized_size()
+            + self
+                .proof
+                .as_ref()
+                .expect("Proof should exit.")
+                .serialized_size()
+            + self.latest_contributor.serialized_size()
+            + self.state.serialized_size()
+            + self.challenge.serialized_size()
+            + self.registry.serialized_size()
+            + self.size.serialized_size()
+    }
+}
+
+impl<C, const N: usize, const M: usize> CanonicalDeserialize for Coordinator<C, N, M>
+where
+    C: CeremonyConfig,
+    Proof<C>: CanonicalDeserialize + Debug,
+    State<C>: CanonicalDeserialize + Debug,
+    Challenge<C>: CanonicalDeserialize + Debug,
+    ParticipantIdentifier<C>: CanonicalDeserialize,
+    C::Participant: CanonicalDeserialize,
+{
+    fn deserialize<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
+        let num_contributions =
+            CanonicalDeserialize::deserialize(&mut reader).expect("Deserializing should succeed.");
+        let mut proofs = Vec::new();
+        for _ in 0..M {
+            let proof: Proof<C> = CanonicalDeserialize::deserialize(&mut reader)
+                .expect("Deserializing should succeed.");
+            proofs.push(proof);
+        }
+        let latest_contributor: C::Participant =
+            CanonicalDeserialize::deserialize(&mut reader).expect("Deserializing should succeed.");
+        let mut states = Vec::new();
+        for _ in 0..M {
+            let state: State<C> = CanonicalDeserialize::deserialize(&mut reader)
+                .expect("Deserializing should succeed.");
+            states.push(state);
+        }
+        let mut challenges = Vec::new();
+        for _ in 0..M {
+            let challenge: Challenge<C> = CanonicalDeserialize::deserialize(&mut reader)
+                .expect("Deserializing should succeed.");
+            challenges.push(challenge);
+        }
+
+        Ok(Self {
+            num_contributions,
+            proof: Some(
+                proofs
+                    .try_into()
+                    .expect("Converting to fixed-size array should succeed."),
+            ),
+            latest_contributor: Some(latest_contributor),
+            state: states
+                .try_into()
+                .expect("Converting to fixed-size array should succeed."),
+            challenge: challenges
+                .try_into()
+                .expect("Converting to fixed-size array should succeed."),
+            registry: CanonicalDeserialize::deserialize(&mut reader)
+                .expect("Deserializing should succeed."),
+            queue: Queue::<C::Participant, N>::new(),
+            size: CanonicalDeserialize::deserialize(&mut reader)
+                .expect("Deserializing should succeed."),
+        })
     }
 }
