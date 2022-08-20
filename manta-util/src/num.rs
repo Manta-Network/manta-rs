@@ -69,13 +69,13 @@ pub trait CheckedSub<Rhs = Self> {
 }
 
 /// Checked Increment
-pub trait CheckedIncrement {
+pub trait CheckedIncrement: Sized {
     /// Increments `self` returning `None` if it would overflow.
     fn checked_increment(self) -> Option<Self>;
 }
 
 /// Checked Decrement
-pub trait CheckedDecrement {
+pub trait CheckedDecrement: Sized {
     /// Decrements `self` returning `None` if it would underflow.
     fn checked_decrement(self) -> Option<Self>;
 }
