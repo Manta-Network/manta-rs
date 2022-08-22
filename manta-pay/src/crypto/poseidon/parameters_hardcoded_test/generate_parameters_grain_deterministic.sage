@@ -3,15 +3,6 @@
 # Remark: This script contains functionality for GF(2^n), but currently works only over GF(p)! A few small adaptations are needed for GF(2^n).
 from sage.rings.polynomial.polynomial_gf2x import GF2X_BuildIrred_list
 
-# Note that R_P is increased to the closest multiple of t
-# GF(p), alpha=3, N = 1536, n = 64, t = 24, R_F = 8, R_P = 42: sage generate_parameters_grain.sage 1 0 64 24 8 42 0xfffffffffffffeff
-# GF(p), alpha=5, N = 1524, n = 254, t = 6, R_F = 8, R_P = 60: sage generate_parameters_grain.sage 1 0 254 6 8 60 0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001
-# GF(p), x^(-1), N = 1518, n = 253, t = 6, R_F = 8, R_P = 60: sage generate_parameters_grain.sage 1 1 253 6 8 60 0x1000000000000000000000000000000014def9dea2f79cd65812631a5cf5d3ed
-# GF(p), alpha=5, N = 765, n = 255, t = 3, R_F = 8, R_P = 57: sage generate_parameters_grain.sage 1 0 255 3 8 57 0x73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001
-# GF(p), alpha=5, N = 1275, n = 255, t = 5, R_F = 8, R_P = 60: sage generate_parameters_grain.sage 1 0 255 5 8 60 0x73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001
-# GF(p), alpha=5, N = 762, n = 254, t = 3, R_F = 8, R_P = 57: sage generate_parameters_grain.sage 1 0 254 3 8 57 0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001
-# GF(p), alpha=5, N = 1270, n = 254, t = 5, R_F = 8, R_P = 60: sage generate_parameters_grain.sage 1 0 254 5 8 60 0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001
-
 if len(sys.argv) < 7:
     print("Usage: <script> <field> <s_box> <field_size> <num_cells> <R_F> <R_P> (<prime_number_hex>)")
     print("field = 1 for GF(p)")
@@ -43,7 +34,6 @@ def grain_sr_generator():
         new_bit = bit_sequence[62] ^^ bit_sequence[51] ^^ bit_sequence[38] ^^ bit_sequence[23] ^^ bit_sequence[13] ^^ bit_sequence[0]
         bit_sequence.pop(0)
         bit_sequence.append(new_bit)
-
     while True:
         new_bit = bit_sequence[62] ^^ bit_sequence[51] ^^ bit_sequence[38] ^^ bit_sequence[23] ^^ bit_sequence[13] ^^ bit_sequence[0]
         bit_sequence.pop(0)
@@ -63,7 +53,6 @@ grain_gen = grain_sr_generator()
 
 def grain_random_bits(num_bits):
     random_bits = [next(grain_gen) for i in range(0, num_bits)]
-    # random_bits.reverse() ## Remove comment to start from least significant bit
     random_int = int("".join(str(i) for i in random_bits), 2)
     return random_int
 
@@ -83,7 +72,6 @@ def init_generator(field, sbox, n, t, R_F, R_P):
 def generate_constants(field, n, t, R_F, R_P, prime_number):
     round_constants = []
     num_constants = (R_F + R_P) * t
-
     if field == 0:
         for i in range(0, num_constants):
             random_int = grain_random_bits(n)
@@ -92,14 +80,12 @@ def generate_constants(field, n, t, R_F, R_P, prime_number):
         for i in range(0, num_constants):
             random_int = grain_random_bits(n)
             while random_int >= prime_number:
-                # print("[Info] Round constant is not in prime field! Taking next one.")
                 random_int = grain_random_bits(n)
             round_constants.append(random_int)
     return round_constants
 
 def print_round_constants(round_constants, n, field):
     print("Number of round constants:", len(round_constants))
-
     if field == 0:
         print("Round constants for GF(2^n):")
     elif field == 1:
@@ -121,8 +107,6 @@ def create_mds_p(n, t):
         rand_list = [F(i) for i in range(0, 2*t)]
         xs = rand_list[:t]
         ys = rand_list[t:]
-        # xs = [F(ele) for ele in range(0, t)]
-        # ys = [F(ele) for ele in range(t, 2*t)]
         for i in range(0, t):
             for j in range(0, t):
                 if (flag == False) or ((xs[i] + ys[j]) == 0):
@@ -154,7 +138,6 @@ def generate_vectorspace(round_num, M, M_round, NUM_CELLS):
         for vec in r_k.basis():
             extended_basis_vectors.append(vector([0]*s + list(vec)))
         S = V.subspace(extended_basis_vectors)
-
         return S
 
 def subspace_times_matrix(subspace, M, NUM_CELLS):
@@ -254,32 +237,6 @@ def algorithm_3(M, NUM_CELLS):
         res_alg_2 = algorithm_2(M^r, t)
         if res_alg_2[0] == False:
             return [False, None]
-            
-        # if res_alg_2[1] == None:
-        #     continue
-        # IS = res_alg_2[1][0]
-        # I_s = res_alg_2[1][1]
-        # for j in range(1, r):
-        #     IS = subspace_times_matrix(IS, M, t)
-        #     I_j = []
-        #     for i in range(0, s):
-        #         new_basis = []
-        #         for k in range(0, t):
-        #             if k != i:
-        #                 new_basis.append(V.basis()[k])
-        #         iota_space = V.subspace(new_basis)
-        #         if IS.intersection(iota_space) != iota_space:
-        #             single_iota_space = V.subspace([V.basis()[i]])
-        #             if IS.intersection(single_iota_space) == single_iota_space:
-        #                 I_j.append(i)
-        #             else:
-        #                 next_r = True
-        #                 break
-        #     if next_r == True:
-        #         break
-        # if next_r == True:
-        #     continue
-        # return [False, [IS, I_j, r]]
     return [True, None]
 
 def generate_matrix(FIELD, FIELD_SIZE, NUM_CELLS):

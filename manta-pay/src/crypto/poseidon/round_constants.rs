@@ -87,7 +87,7 @@ mod test {
     fn grain_lfsr_is_consistent() {
         let test_cases = include!("parameters_hardcoded_test/lfsr_values");
         let mut lfsr = generate_lfsr(255, 3, 8, 55);
-        for &x in test_cases.iter() {
+        for x in test_cases {
             assert_eq!(sample_field_element::<Fp<Fr>, _>(&mut lfsr), x);
         }
     }
