@@ -47,4 +47,42 @@ mod test {
             },
         );
     }
+
+    /// Checks that trying to decrypt a ciphertext under an invalid key returns `None`.
+    #[test]
+    fn invalid_key_symmetric_check() {
+        let mut rng = OsRng;
+        let encryption_key = rng.gen();
+        let invalid_decryption_key = rng.gen();
+        encryption::test::correctness::<NoteSymmetricEncryptionScheme, _>(
+            &rng.gen(),
+            &encryption_key,
+            &invalid_decryption_key,
+            &(),
+            &(),
+            &rng.gen(),
+            |_, decrypted_plaintext| {
+                assert!(decrypted_plaintext.is_none());
+            },
+        );
+    }
+
+    /*
+    // TODO: Make this work. Problem: Ciphertext does not implement Sample.
+    /// Checks that randomly generated ciphertexts are always invalid.
+    #[test]
+    fn invalid_ciphertext_symmetric_check() {
+        let mut rng = OsRng;
+        let decryption_key = rng.gen();
+        encryption::test::ciphertext_check::<NoteSymmetricEncryptionScheme, _>(
+            &rng.gen(),
+            &decryption_key,
+            &(),
+            &rng.gen(),
+            |decrypted_plaintext| {
+                assert!(decrypted_plaintext.is_none());
+            },
+        );
+    }
+    */
 }
