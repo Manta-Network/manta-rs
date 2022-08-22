@@ -39,6 +39,7 @@ use std::{
     fmt::Debug,
     future::Future,
     ops::Deref,
+    path::Path,
     sync::{Arc, Mutex},
 };
 use tide::{Body, Request, Response};
@@ -200,7 +201,11 @@ where
             .set_contributed();
         coordinator.num_contributions += 1;
         // TODO: checksum
-        log_to_file(&self.recovery_path, coordinator.deref());
+        log_to_file(
+            &Path::new(&self.recovery_path)
+                .join(format!("log{}.data", coordinator.num_contributions)),
+            coordinator.deref(),
+        );
         println!(
             "{} participants have contributed.",
             coordinator.num_contributions

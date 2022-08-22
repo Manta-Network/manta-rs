@@ -47,12 +47,14 @@ where
     where
         W: ark_std::io::Write,
     {
-        self.state
-            .serialize(&mut writer)
-            .expect("Serializing states should succeed.");
-        self.challenge
-            .serialize(&mut writer)
-            .expect("Serializing challenges should succeed.");
+        for item in &self.state {
+            item.serialize(&mut writer)
+                .expect("Serializing states should succeed.");
+        }
+        for item in &self.challenge {
+            item.serialize(&mut writer)
+                .expect("Serializing challenges should succeed.");
+        }
         Ok(())
     }
 
@@ -73,18 +75,18 @@ where
     where
         R: ark_std::io::Read,
     {
-        let mut state = Vec::new();
+        let mut state = Vec::with_capacity(N);
         for _ in 0..N {
             state.push(
                 CanonicalDeserialize::deserialize(&mut reader)
-                    .expect("Deserialize should succeed."),
+                    .expect("Deserialize state should succeed."),
             );
         }
-        let mut challenge = Vec::new();
+        let mut challenge = Vec::with_capacity(N);
         for _ in 0..N {
             challenge.push(
                 CanonicalDeserialize::deserialize(&mut reader)
-                    .expect("Deserialize should succeed."),
+                    .expect("Deserialize challenge should succeed."),
             );
         }
         Ok(Self {
@@ -120,12 +122,14 @@ where
     where
         W: ark_std::io::Write,
     {
-        self.state
-            .serialize(&mut writer)
-            .expect("Serializing states should succeed.");
-        self.proof
-            .serialize(&mut writer)
-            .expect("Serializing states should succeed.");
+        for item in &self.state {
+            item.serialize(&mut writer)
+                .expect("Serializing states should succeed.");
+        }
+        for item in &self.proof {
+            item.serialize(&mut writer)
+                .expect("Serializing proofs should succeed.");
+        }
         Ok(())
     }
 
@@ -144,14 +148,14 @@ where
     where
         R: ark_std::io::Read,
     {
-        let mut state = Vec::new();
+        let mut state = Vec::with_capacity(N);
         for _ in 0..N {
             state.push(
                 CanonicalDeserialize::deserialize(&mut reader)
                     .expect("Deserialize should succeed."),
             );
         }
-        let mut proof = Vec::new();
+        let mut proof = Vec::with_capacity(N);
         for _ in 0..N {
             proof.push(
                 CanonicalDeserialize::deserialize(&mut reader)
@@ -191,7 +195,7 @@ impl<const N: usize> CanonicalSerialize for U8Array<N> {
 
 impl<const N: usize> CanonicalDeserialize for U8Array<N> {
     fn deserialize<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
-        let mut res = Vec::new();
+        let mut res = Vec::with_capacity(N);
         for _ in 0..N {
             res.push(
                 CanonicalDeserialize::deserialize(&mut reader)

@@ -158,8 +158,9 @@ pub async fn get_nonce(
 /// Gets state size from server.
 #[inline]
 pub async fn get_state_size(network_client: &reqwest::Client) -> Result<ServerSize, Error> {
+    let size_request = SizeRequest;
     let response =
-        send_request::<_, ServerSize>(network_client, Endpoint::Nonce, SizeRequest).await?;
+        send_request::<_, ServerSize>(network_client, Endpoint::Size, size_request).await?;
     match response {
         Ok(size) => Ok(size),
         Err(CeremonyError::NotRegistered) => Err(Error::NotRegistered),
@@ -176,6 +177,7 @@ pub async fn contribute() -> Result<(), Error> {
     let nonce = get_nonce(pk, &network_client).await?;
     let mut trusted_setup_client = Client::new(pk, pk, nonce, sk);
     loop {
+        println!("Contacting Server...");
         let mpc_state = match send_request::<_, QueryResponse<C>>(
             &network_client,
             Endpoint::Query,
@@ -201,7 +203,7 @@ pub async fn contribute() -> Result<(), Error> {
             Err(CeremonyError::AlreadyContributed) => return Err(Error::AlreadyContributed),
             Ok(message) => match message {
                 QueryResponse::QueuePosition(position) => {
-                    println!("Your current position is {}.", position);
+                    println!("Your current position is {}.\n", position);
                     continue;
                 }
                 QueryResponse::Mpc(mpc_state) => {

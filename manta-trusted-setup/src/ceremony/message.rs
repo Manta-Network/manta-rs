@@ -31,7 +31,6 @@ use serde::{Deserialize, Serialize};
 #[derive(Deserialize, Serialize)]
 pub struct SizeRequest;
 
-
 /// Query Request
 #[derive(Deserialize, Serialize)]
 pub struct QueryRequest;
