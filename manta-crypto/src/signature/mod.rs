@@ -237,7 +237,7 @@ pub mod schnorr {
         type Message;
 
         /// Hashes `message` along with `verifying_key` and `nonce_point` into a scalar of type
-        /// [`Scalar`](Self::Scalar.
+        /// [`Scalar`](Self::Scalar).
         fn hash(
             &self,
             verifying_key: &Self::Group,
