@@ -693,7 +693,6 @@ where
                 if Node::from(inner_node)
                     .sibling()
                     .descendants(level)
-                    .iter()
                     .all(|x| self.leaf_digests.is_marked_or_removed(x.0))
                 {
                     if let Some(parent) = inner_node.parent() {

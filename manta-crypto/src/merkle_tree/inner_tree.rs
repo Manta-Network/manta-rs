@@ -23,12 +23,19 @@
 use crate::{
     eclair::bool::Bool,
     merkle_tree::{
+        node,
         path::{CurrentInnerPath, InnerPath},
         path_length, Configuration, InnerDigest, Node, Parameters, Parity,
     },
 };
 use alloc::{collections::btree_map, vec::Vec};
-use core::{fmt::Debug, hash::Hash, iter::FusedIterator, marker::PhantomData, ops::Index};
+use core::{
+    fmt::Debug,
+    hash::Hash,
+    iter::{FusedIterator, Map},
+    marker::PhantomData,
+    ops::Index,
+};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
@@ -102,17 +109,22 @@ impl InnerNode {
         }
     }
 
-    /// Returns the k-th descendants [`InnerNode`] of this inner node
+    /// Generates a closure which creates an [`InnerNode`] from a [`Node`].
     #[inline]
-    pub fn descendants(&self, k: usize) -> Vec<Self> {
-        self.index
-            .descendants(k)
-            .iter()
-            .map(|a| Self::new(self.depth + k, *a))
-            .collect()
+    fn closure_generator(self, k: usize) -> impl Fn(Node) -> InnerNode {
+        move |node| Self::new(self.depth + k, node)
     }
 
-    /// Returns the k-th ancestor [`InnerNode`] of this inner node
+    /// Returns an iterator over the k-th descendants [`InnerNode`] of this inner node.
+    #[inline]
+    pub fn descendants(
+        &self,
+        k: usize,
+    ) -> Map<node::DescendantsIterator, impl Fn(Node) -> InnerNode> {
+        self.index.descendants(k).map(self.closure_generator(k))
+    }
+
+    /// Returns the k-th ancestor [`InnerNode`] of this inner node.
     #[inline]
     pub fn ancestor(&self, k: usize) -> Option<Self> {
         self.depth

@@ -17,10 +17,9 @@
 //! Merkle Tree Node Abstractions
 
 use crate::merkle_tree::{HashConfiguration, InnerDigest, InnerHash, LeafDigest, Parameters};
-use alloc::vec::Vec;
 use core::{
-    iter::FusedIterator,
-    ops::{Add, Sub},
+    iter::{FusedIterator, Map},
+    ops::{Add, Range, Sub},
 };
 
 #[cfg(feature = "serde")]
@@ -166,6 +165,9 @@ pub struct Node<Idx = usize>(
     pub Idx,
 );
 
+/// Descendants iterator type
+pub type DescendantsIterator<Idx = usize> = Map<Range<Idx>, fn(Idx) -> Node<Idx>>;
+
 impl Node {
     /// Returns the [`Parity`] of this node.
     #[inline]
@@ -256,10 +258,10 @@ impl Node {
         (left_child, Self(left_child.0 + 1))
     }
 
-    /// Returns the [`Node`] k-th descendants of this node.
+    /// Returns an iterator over the [`Node`] k-th descendants of this node.
     #[inline]
-    pub fn descendants(&self, k: usize) -> Vec<Self> {
-        ((self.0 << k)..((self.0 + 1) << k)).map(Self).collect()
+    pub fn descendants(&self, k: usize) -> DescendantsIterator {
+        ((self.0 << k)..((self.0 + 1) << k)).map(Self)
     }
 
     /// Returns the parent [`Node`] of this node.
