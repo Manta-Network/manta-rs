@@ -29,12 +29,12 @@ use crate::{
     util::{from_serialization_error, BlakeHasher, Deserializer, Serializer},
 };
 use ark_groth16::ProvingKey;
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Read, SerializationError, Write};
 use ark_std::io;
 use blake2::Digest;
 use manta_crypto::arkworks::{
     ec::{short_weierstrass_jacobian, SWModelParameters},
     pairing::Pairing,
+    serialize::{CanonicalDeserialize, CanonicalSerialize, Read, SerializationError, Write},
 };
 use manta_util::into_array_unchecked;
 

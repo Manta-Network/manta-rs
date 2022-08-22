@@ -24,7 +24,6 @@ use crate::{
     util::{BlakeHasher, Deserializer, KZGBlakeHasher, Serializer},
 };
 use ark_bn254::{Bn254, Fr, G1Affine, G2Affine, Parameters};
-use ark_serialize::{CanonicalSerialize, Read, SerializationError, Write};
 use ark_std::{io, println};
 use blake2::Digest;
 use core::{fmt, marker::PhantomData};
@@ -36,6 +35,7 @@ use manta_crypto::arkworks::{
     },
     ff::{PrimeField, ToBytes, Zero},
     pairing::Pairing,
+    serialize::{CanonicalSerialize, Read, SerializationError, Write},
 };
 use manta_util::{cfg_iter, into_array_unchecked, vec::Vec};
 use memmap::Mmap;
@@ -406,7 +406,7 @@ impl Serializer<G1Affine, G1Marker> for PpotSerializer {
 
     fn serialize_uncompressed<W>(point: &G1Affine, writer: &mut W) -> Result<(), io::Error>
     where
-        W: ark_serialize::Write,
+        W: Write,
     {
         let mut res = [0u8; 64];
 
@@ -429,7 +429,7 @@ impl Serializer<G1Affine, G1Marker> for PpotSerializer {
 
     fn serialize_compressed<W>(item: &G1Affine, writer: &mut W) -> Result<(), io::Error>
     where
-        W: ark_serialize::Write,
+        W: Write,
     {
         Self::serialize_unchecked(item, writer)
     }
@@ -691,43 +691,6 @@ impl ElementType {
         !matches!(self, ElementType::TauG2 | ElementType::BetaG2)
     }
 }
-
-// /// Reads appropriate number of elements of `element_type` for an accumulator of given `Size` from PPoT challenge file.
-// /// The generic type`G` ought to be either G1 or G2 of the Bn254 pairing.
-// #[inline]
-// pub fn read_powers<G, S>(
-//     readable_map: &Mmap,
-//     element: ElementType,
-//     compression: Compressed,
-// ) -> Result<Vec<G>, <G as Deserializer<G>>::Error>
-// where
-//     S: Size,
-//     G: AffineCurve + Deserializer<G> {
-//         let size = element.num_powers::<S>();
-//         let mut powers = Vec::<G>::new();
-//         let mut start_position = calculate_mmap_position(0, element, compression);
-//         let mut end_position = start_position + element.get_size(compression);
-//         for _ in 0..size {
-//             let mut reader = readable_map
-//                 .get(start_position..end_position)
-//                 .expect("cannot read point data from file");
-//             if element.is_g1_type() {
-//                 let point: G = match compression {
-//                     Compressed::No => <G as Deserializer<G>>::deserialize_uncompressed(&mut reader)?,
-//                     Compressed::Yes => <G as Deserializer<G>>::deserialize_compressed(&mut reader)?
-//                 };
-//                 // curve_point_checks(&point)?;
-//                 <G as Deserializer<G>>::check(&point)?;
-//                 powers.push(point);
-//             } else {
-//                 panic!("Expected G1 curve points")
-//             }
-//             start_position = end_position;
-//             end_position += element.get_size(compression);
-//         }
-
-//         Ok(powers)
-//     }
 
 /// Reads appropriate number of elements of `element_type` for an accumulator of given `Size` from PPoT challenge file.
 #[inline]
