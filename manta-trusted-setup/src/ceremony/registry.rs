@@ -18,7 +18,7 @@
 
 use crate::{
     ceremony::{
-        config::{g16_bls12_381::Participant, CeremonyConfig, ParticipantIdentifier},
+        config::{g16_bls12_381::Participant, CeremonyConfig},
         signature::{ed_dalek, SignatureScheme},
         state::UserPriority,
     },

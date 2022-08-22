@@ -21,6 +21,7 @@ use core::fmt::Debug;
 use manta_crypto::arkworks::serialize::{
     CanonicalDeserialize, CanonicalSerialize, SerializationError,
 };
+use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
 
 /// MPC States
@@ -169,14 +170,14 @@ where
 }
 
 /// Array of u8 with fixed size `N`
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, Ord, PartialOrd)]
-pub struct U8Array<const N: usize>(pub [u8; N]);
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
+pub struct U8Array<const N: usize>(#[serde(with = "serde_arrays")] pub [u8; N]);
 
 impl<const N: usize> CanonicalSerialize for U8Array<N> {
     #[inline]
     fn serialize<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {
         for num in self.0 {
-            num.serialize(&mut writer)
+            CanonicalSerialize::serialize(&num, &mut writer)
                 .expect("Serializing u8 should succeed.");
         }
         Ok(())
@@ -262,7 +263,7 @@ impl CanonicalDeserialize for UserPriority {
 }
 
 /// Response for State Sizes
-#[derive(Clone, CanonicalDeserialize, CanonicalSerialize)]
+#[derive(Clone, CanonicalDeserialize, CanonicalSerialize, Serialize, Deserialize)]
 pub struct ServerSize {
     /// Mint State Size
     pub mint: StateSize,
@@ -275,7 +276,7 @@ pub struct ServerSize {
 }
 
 /// State Size
-#[derive(Clone, CanonicalDeserialize, CanonicalSerialize)]
+#[derive(Clone, CanonicalDeserialize, CanonicalSerialize, Serialize, Deserialize)]
 pub struct StateSize {
     /// Size of gamma_abc_g1 in verifying key
     pub gamma_abc_g1: usize,

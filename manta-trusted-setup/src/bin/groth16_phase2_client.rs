@@ -1,20 +1,20 @@
-// // Copyright 2019-2022 Manta Network.
-// // This file is part of manta-rs.
-// //
-// // manta-rs is free software: you can redistribute it and/or modify
-// // it under the terms of the GNU General Public License as published by
-// // the Free Software Foundation, either version 3 of the License, or
-// // (at your option) any later version.
-// //
-// // manta-rs is distributed in the hope that it will be useful,
-// // but WITHOUT ANY WARRANTY; without even the implied warranty of
-// // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// // GNU General Public License for more details.
-// //
-// // You should have received a copy of the GNU General Public License
-// // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
+// Copyright 2019-2022 Manta Network.
+// This file is part of manta-rs.
+//
+// manta-rs is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// manta-rs is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-// //! Trusted Setup Ceremony Client
+//! Trusted Setup Ceremony Client
 
 extern crate alloc;
 
@@ -22,91 +22,20 @@ use alloc::string::String;
 use bip39::{Language, Mnemonic, Seed};
 use clap::{Parser, Subcommand};
 use colored::Colorize; // TODO: Try https://docs.rs/console/latest/console/
-use core::fmt::{Display, Formatter};
 use dialoguer::{theme::ColorfulTheme, Input};
 use indicatif::ProgressBar;
 use manta_trusted_setup::ceremony::{
-    config::{g16_bls12_381::Groth16BLS12381, Nonce, PrivateKey, PublicKey},
-    message::{QueryResponse, ServerSize, SizeRequest},
+    client::{register, Endpoint, Error, handle_error},
+    config::{check_state_size, g16_bls12_381::Groth16BLS12381, Nonce, PrivateKey, PublicKey},
+    message::{CeremonyError, QueryResponse, SizeRequest},
     signature::ed_dalek,
-    util::{register, check_state_size},
-    CeremonyError,
+    state::ServerSize,
 };
 use serde::{de::DeserializeOwned, Serialize};
 
 pub type C = Groth16BLS12381;
-pub type Config = manta_trusted_setup::groth16::config::Config;
+pub type Config = manta_trusted_setup::ceremony::config::config::Config;
 pub type Client = manta_trusted_setup::ceremony::client::Client<C>;
-
-const SERVER_ADDR: &str = "http://localhost:8080";
-
-#[derive(Debug, Copy, Clone)]
-pub enum Endpoint {
-    Query,
-    Update,
-    Nonce,
-    Size,
-}
-
-impl From<Endpoint> for String {
-    fn from(endpoint: Endpoint) -> String {
-        let operation = match endpoint {
-            Endpoint::Query => "query",
-            Endpoint::Update => "update",
-            Endpoint::Nonce => "nonce",
-            Endpoint::Size => "size",
-        };
-        format!("{}/{}", SERVER_ADDR, operation)
-    }
-}
-
-#[derive(Clone, Debug)]
-pub enum Error {
-    InvalidSecret,
-    UnableToGenerateRequest(&'static str),
-    NotRegistered,
-    AlreadyContributed,
-    UnexpectedError(String),
-    NetworkError(String),
-}
-
-impl Display for Error {
-    #[inline]
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        match self {
-            Error::InvalidSecret => {
-                write!(f, "Your {} is invalid. Please try again", "secret".italic())
-            }
-            Error::UnableToGenerateRequest(msg) => {
-                write!(f, "Unable to generate request: {}", msg)
-            }
-            Error::UnexpectedError(msg) => {
-                write!(f, "Unexpected Error: {}", msg)
-            }
-            Error::NotRegistered => {
-                write!(f, "You have not registered yet. ")
-            }
-            Error::NetworkError(msg) => {
-                write!(f, "Network Error: {}", msg)
-            }
-            Error::AlreadyContributed => {
-                write!(f, "You have already contributed. ")
-            }
-        }
-    }
-}
-
-/// Handles errors.
-#[inline]
-pub fn handle_error<T>(result: Result<T, Error>) -> T {
-    match result {
-        Ok(x) => x,
-        Err(e) => {
-            println!("{}: {}", "error".red().bold(), e);
-            std::process::exit(1);
-        }
-    }
-}
 
 /// Command
 #[derive(Debug, Subcommand)]
@@ -183,8 +112,8 @@ pub fn prompt_client_info() -> Result<(PublicKey<C>, PrivateKey<C>), Error> {
     assert!(ed25519_dalek::SECRET_KEY_LENGTH <= seed_bytes.len(), "Secret key length of ed25519 should be smaller than length of seed bytes from mnemonic phrases.");
     let sk = ed25519_dalek::SecretKey::from_bytes(&seed_bytes[0..ed25519_dalek::SECRET_KEY_LENGTH])
         .expect("`from_bytes` should succeed for SecretKey.");
-    let pk = ed_dalek::PublicKey(ed25519_dalek::PublicKey::from(&sk).to_bytes());
-    let sk = ed_dalek::PrivateKey(sk.to_bytes());
+    let pk = ed_dalek::PublicKey(ed25519_dalek::PublicKey::from(&sk).to_bytes().into());
+    let sk = ed_dalek::PrivateKey(sk.to_bytes().into());
     Ok((pk, sk))
 }
 
@@ -281,9 +210,8 @@ pub async fn contribute() -> Result<(), Error> {
                     })?;
                     if !check_state_size(&mpc_state.state, &size) {
                         return Err(Error::UnexpectedError(
-                            "Received mpc state size is not correct."
-                                .to_string(),
-                        ))
+                            "Received mpc state size is not correct.".to_string(),
+                        ));
                     }
                     mpc_state
                 }

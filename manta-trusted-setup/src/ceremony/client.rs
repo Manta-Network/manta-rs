@@ -191,6 +191,98 @@ pub fn register(twitter_account: String, email: String) {
     );
 }
 
+/// Endpoint
+#[derive(Debug, Copy, Clone)]
+pub enum Endpoint {
+    /// Query Server States
+    Query,
+
+    /// Update Server States
+    Update,
+
+    /// Nonce
+    Nonce,
+
+    /// Server Size
+    Size,
+}
+
+const SERVER_ADDR: &str = "http://localhost:8080";
+
+impl From<Endpoint> for String {
+    fn from(endpoint: Endpoint) -> String {
+        let operation = match endpoint {
+            Endpoint::Query => "query",
+            Endpoint::Update => "update",
+            Endpoint::Nonce => "nonce",
+            Endpoint::Size => "size",
+        };
+        format!("{}/{}", SERVER_ADDR, operation)
+    }
+}
+
+/// TODO
+#[derive(Clone, Debug)]
+pub enum Error {
+    ///
+    InvalidSecret,
+
+    ///
+    UnableToGenerateRequest(&'static str),
+
+    ///
+    NotRegistered,
+
+    ///
+    AlreadyContributed,
+
+    ///
+    UnexpectedError(String),
+
+    ///
+    NetworkError(String),
+}
+
+use core::fmt::{Display, Formatter};
+
+impl Display for Error {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Error::InvalidSecret => {
+                write!(f, "Your {} is invalid. Please try again", "secret".italic())
+            }
+            Error::UnableToGenerateRequest(msg) => {
+                write!(f, "Unable to generate request: {}", msg)
+            }
+            Error::UnexpectedError(msg) => {
+                write!(f, "Unexpected Error: {}", msg)
+            }
+            Error::NotRegistered => {
+                write!(f, "You have not registered yet. ")
+            }
+            Error::NetworkError(msg) => {
+                write!(f, "Network Error: {}", msg)
+            }
+            Error::AlreadyContributed => {
+                write!(f, "You have already contributed. ")
+            }
+        }
+    }
+}
+
+/// Handles errors.
+#[inline]
+pub fn handle_error<T>(result: Result<T, Error>) -> T {
+    match result {
+        Ok(x) => x,
+        Err(e) => {
+            println!("{}: {}", "error".red().bold(), e);
+            std::process::exit(1);
+        }
+    }
+}
+
 /// Testing Suite
 #[cfg(test)]
 mod test {

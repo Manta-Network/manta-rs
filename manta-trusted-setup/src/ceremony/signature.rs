@@ -133,6 +133,7 @@ pub mod ed_dalek {
         CanonicalDeserialize, CanonicalSerialize, SerializationError,
     };
     use manta_util::into_array_unchecked;
+    use serde::Deserialize;
     use std::io::{Read, Write};
 
     /// ED25519-Dalek Signature
@@ -155,6 +156,8 @@ pub mod ed_dalek {
         PartialOrd,
         CanonicalDeserialize,
         CanonicalSerialize,
+        Serialize,
+        Deserialize,
     )]
     pub struct PublicKey(pub U8Array<32>);
 
@@ -183,20 +186,10 @@ pub mod ed_dalek {
         }
     }
 
-    // impl Serialize for PrivateKey {
-    //     #[inline]
-    //     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    //     where
-    //         S: serde::Serializer,
-    //     {
-    //         let mut s = serializer.serialize_struct("PrivateKey", 1)?;
-    //         s.serialize_field("U8Array", &self.0.0)?;
-    //         s.end()
-    //     }
-    // }
-
     /// Signature Type
-    #[derive(Debug, Copy, Clone, CanonicalDeserialize, CanonicalSerialize)]
+    #[derive(
+        Debug, Copy, Clone, CanonicalDeserialize, CanonicalSerialize, Serialize, Deserialize,
+    )]
     pub struct Signature(U8Array<64>);
 
     impl Signature {
