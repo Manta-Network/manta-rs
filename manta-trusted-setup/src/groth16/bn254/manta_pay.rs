@@ -18,103 +18,30 @@
 
 use crate::{
     groth16::{
-        kzg::{Accumulator, Configuration as KzgConfiguration, Proof as KzgProof, Size},
+        bn254::ppot::PerpetualPowersOfTauCeremony,
+        kzg::Accumulator,
         mpc::{
             Configuration as MpcConfiguration, Proof as MpcProof, ProvingKeyHasher,
             State as MpcState,
         },
     },
     mpc::Types,
-    util::{from_serialization_error, BlakeHasher, Deserializer, KZGBlakeHasher, Serializer},
+    util::{from_serialization_error, BlakeHasher, Deserializer, Serializer},
 };
-use ark_bn254::{Bn254, Fr, G1Affine, G2Affine};
 use ark_groth16::ProvingKey;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Read, SerializationError, Write};
 use ark_std::io;
 use blake2::Digest;
 use manta_crypto::arkworks::{
-    ec::{short_weierstrass_jacobian, AffineCurve, PairingEngine, SWModelParameters},
+    ec::{short_weierstrass_jacobian, SWModelParameters},
     pairing::Pairing,
 };
 use manta_util::into_array_unchecked;
 
+const MANTA_PAY_POWERS: usize = 1 << 19;
 /// Configuration for a Phase1 Ceremony large enough to support MantaPay circuits
-#[derive(CanonicalDeserialize, CanonicalSerialize, Debug, PartialEq, Eq)]
-pub struct MantaPaySetupCeremony;
-
-impl Size for MantaPaySetupCeremony {
-    const G1_POWERS: usize = (Self::G2_POWERS << 1) - 1;
-    const G2_POWERS: usize = 1 << 19;
-}
-
-impl Pairing for MantaPaySetupCeremony {
-    type Scalar = Fr;
-    type G1 = G1Affine;
-    type G1Prepared = <Self::Pairing as PairingEngine>::G1Prepared;
-    type G2 = G2Affine;
-    type G2Prepared = <Self::Pairing as PairingEngine>::G2Prepared;
-    type Pairing = Bn254;
-
-    #[inline]
-    fn g1_prime_subgroup_generator() -> Self::G1 {
-        G1Affine::prime_subgroup_generator()
-    }
-
-    #[inline]
-    fn g2_prime_subgroup_generator() -> Self::G2 {
-        G2Affine::prime_subgroup_generator()
-    }
-}
-
-impl KzgConfiguration for MantaPaySetupCeremony {
-    type DomainTag = u8;
-    type Challenge = [u8; 64];
-    type Response = [u8; 64];
-    type HashToGroup = KZGBlakeHasher<Self>;
-
-    const TAU_DOMAIN_TAG: Self::DomainTag = 0;
-    const ALPHA_DOMAIN_TAG: Self::DomainTag = 1;
-    const BETA_DOMAIN_TAG: Self::DomainTag = 2;
-
-    fn hasher(domain_tag: Self::DomainTag) -> Self::HashToGroup {
-        Self::HashToGroup { domain_tag }
-    }
-
-    fn response(
-        state: &Accumulator<Self>,
-        challenge: &Self::Challenge,
-        proof: &KzgProof<Self>,
-    ) -> Self::Response {
-        let mut hasher = BlakeHasher::default();
-        for item in &state.tau_powers_g1 {
-            item.serialize_uncompressed(&mut hasher).unwrap();
-        }
-        for item in &state.tau_powers_g2 {
-            item.serialize_uncompressed(&mut hasher).unwrap();
-        }
-        for item in &state.alpha_tau_powers_g1 {
-            item.serialize_uncompressed(&mut hasher).unwrap();
-        }
-        for item in &state.beta_tau_powers_g1 {
-            item.serialize_uncompressed(&mut hasher).unwrap();
-        }
-        state.beta_g2.serialize_uncompressed(&mut hasher).unwrap();
-        hasher.0.update(&challenge);
-        proof
-            .tau
-            .serialize(&mut hasher)
-            .expect("Consuming ratio proof of tau failed.");
-        proof
-            .alpha
-            .serialize(&mut hasher)
-            .expect("Consuming ratio proof of alpha failed.");
-        proof
-            .beta
-            .serialize(&mut hasher)
-            .expect("Consuming ratio proof of beta failed.");
-        into_array_unchecked(hasher.0.finalize())
-    }
-}
+pub type MantaPaySetupCeremony =
+    PerpetualPowersOfTauCeremony<ArkworksSerialization, MANTA_PAY_POWERS>;
 
 /// An accumulator for phase 1 parameters whose size is sufficient
 /// for all MantaPay circuits.
@@ -163,7 +90,11 @@ impl ProvingKeyHasher<Self> for MantaPaySetupCeremony {
     }
 }
 
-impl<P> Serializer<short_weierstrass_jacobian::GroupAffine<P>> for MantaPaySetupCeremony
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// Arkworks Canonical(De)Serialize
+pub struct ArkworksSerialization {}
+
+impl<P> Serializer<short_weierstrass_jacobian::GroupAffine<P>> for ArkworksSerialization
 where
     P: SWModelParameters,
 {
@@ -212,7 +143,7 @@ where
     }
 }
 
-impl<P> Deserializer<short_weierstrass_jacobian::GroupAffine<P>> for MantaPaySetupCeremony
+impl<P> Deserializer<short_weierstrass_jacobian::GroupAffine<P>> for ArkworksSerialization
 where
     P: SWModelParameters,
 {

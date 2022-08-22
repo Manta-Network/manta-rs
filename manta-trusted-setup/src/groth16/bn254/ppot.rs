@@ -27,7 +27,7 @@ use ark_bn254::{Bn254, Fr, G1Affine, G2Affine, Parameters};
 use ark_serialize::{CanonicalSerialize, Read, SerializationError, Write};
 use ark_std::{io, println};
 use blake2::Digest;
-use core::fmt;
+use core::{fmt, marker::PhantomData};
 use manta_crypto::arkworks::{
     ec::{
         models::{bn::BnParameters, ModelParameters},
@@ -43,15 +43,18 @@ use memmap::Mmap;
 #[cfg(feature = "rayon")]
 use manta_util::rayon::prelude::ParallelIterator;
 
+#[derive(Debug, PartialEq, Eq)]
 /// Configuration of the Perpetual Powers of Tau ceremony
-pub struct PpotCeremony;
-
-impl Size for PpotCeremony {
-    const G1_POWERS: usize = (Self::G2_POWERS << 1) - 1;
-    const G2_POWERS: usize = 1 << 28;
+pub struct PerpetualPowersOfTauCeremony<S, const POWERS: usize> {
+    __: PhantomData<S>,
 }
 
-impl Pairing for PpotCeremony {
+impl<S, const POWERS: usize> Size for PerpetualPowersOfTauCeremony<S, POWERS> {
+    const G1_POWERS: usize = (Self::G2_POWERS << 1) - 1;
+    const G2_POWERS: usize = POWERS;
+}
+
+impl<S, const POWERS: usize> Pairing for PerpetualPowersOfTauCeremony<S, POWERS> {
     type Scalar = Fr;
     type G1 = G1Affine;
     type G1Prepared = <Bn254 as PairingEngine>::G1Prepared;
@@ -68,7 +71,7 @@ impl Pairing for PpotCeremony {
     }
 }
 
-impl KzgConfiguration for PpotCeremony {
+impl<S, const POWERS: usize> KzgConfiguration for PerpetualPowersOfTauCeremony<S, POWERS> {
     type DomainTag = u8;
     type Challenge = [u8; 64];
     type Response = [u8; 64];
@@ -118,7 +121,66 @@ impl KzgConfiguration for PpotCeremony {
     }
 }
 
-impl Deserializer<G1Affine, G1Marker> for PpotCeremony {
+impl<T, M, S, const POWERS: usize> Deserializer<T, M> for PerpetualPowersOfTauCeremony<S, POWERS>
+where
+    S: Deserializer<T, M>,
+{
+    type Error = S::Error;
+
+    fn deserialize_unchecked<R>(reader: &mut R) -> Result<T, Self::Error>
+    where
+        R: Read,
+    {
+        S::deserialize_unchecked(reader)
+    }
+
+    fn deserialize_compressed<R>(reader: &mut R) -> Result<T, Self::Error>
+    where
+        R: Read,
+    {
+        S::deserialize_compressed(reader)
+    }
+}
+
+impl<M, T, S, const POWERS: usize> Serializer<T, M> for PerpetualPowersOfTauCeremony<S, POWERS>
+where
+    S: Serializer<T, M>,
+{
+    fn serialize_unchecked<W>(item: &T, writer: &mut W) -> Result<(), io::Error>
+    where
+        W: Write,
+    {
+        S::serialize_unchecked(item, writer)
+    }
+
+    fn serialize_uncompressed<W>(item: &T, writer: &mut W) -> Result<(), io::Error>
+    where
+        W: Write,
+    {
+        S::serialize_uncompressed(item, writer)
+    }
+
+    fn uncompressed_size(item: &T) -> usize {
+        S::uncompressed_size(item)
+    }
+
+    fn serialize_compressed<W>(item: &T, writer: &mut W) -> Result<(), io::Error>
+    where
+        W: Write,
+    {
+        S::serialize_compressed(item, writer)
+    }
+
+    fn compressed_size(item: &T) -> usize {
+        S::compressed_size(item)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// (De)Serialization used in the original PPoT ceremony
+pub struct PpotSerializer {}
+
+impl Deserializer<G1Affine, G1Marker> for PpotSerializer {
     type Error = PointDeserializeError;
 
     fn deserialize_unchecked<R>(reader: &mut R) -> Result<G1Affine, Self::Error>
@@ -126,7 +188,7 @@ impl Deserializer<G1Affine, G1Marker> for PpotCeremony {
         R: Read,
     {
         let mut copy = [0u8; 64];
-        let _ = reader.read(&mut copy); // should I deal with the number of bytes read output?
+        let _ = reader.read(&mut copy);
 
         // Check the compression flag
         if copy[0] & (1 << 7) != 0 {
@@ -210,7 +272,7 @@ impl Deserializer<G1Affine, G1Marker> for PpotCeremony {
     }
 }
 
-impl Deserializer<G2Affine, G2Marker> for PpotCeremony {
+impl Deserializer<G2Affine, G2Marker> for PpotSerializer {
     type Error = PointDeserializeError;
 
     fn deserialize_unchecked<R>(reader: &mut R) -> Result<G2Affine, Self::Error>
@@ -310,7 +372,7 @@ impl Deserializer<G2Affine, G2Marker> for PpotCeremony {
     }
 }
 
-impl Serializer<G1Affine, G1Marker> for PpotCeremony {
+impl Serializer<G1Affine, G1Marker> for PpotSerializer {
     fn serialize_unchecked<W>(point: &G1Affine, writer: &mut W) -> Result<(), io::Error>
     where
         W: Write,
@@ -377,7 +439,7 @@ impl Serializer<G1Affine, G1Marker> for PpotCeremony {
     }
 }
 
-impl Serializer<G2Affine, G2Marker> for PpotCeremony {
+impl Serializer<G2Affine, G2Marker> for PpotSerializer {
     fn serialize_unchecked<W>(point: &G2Affine, writer: &mut W) -> Result<(), io::Error>
     where
         W: Write,
@@ -447,6 +509,10 @@ impl Serializer<G2Affine, G2Marker> for PpotCeremony {
     }
 }
 
+/// Number of powers used in the original PPoT
+const PPOT_POWERS: usize = 1 << 28;
+/// Type of the original ceremony
+pub type PpotCeremony = PerpetualPowersOfTauCeremony<PpotSerializer, PPOT_POWERS>;
 /// Accumulator of the PPoT ceremony
 pub type PpotAccumulator = Accumulator<PpotCeremony>;
 
