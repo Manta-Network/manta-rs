@@ -31,7 +31,7 @@ use crate::{
 };
 use bip39::{Language, Mnemonic, MnemonicType, Seed};
 use colored::Colorize;
-use core::fmt::Debug;
+use core::fmt::{Debug, Display, Formatter};
 use indicatif::ProgressBar;
 use manta_crypto::{arkworks::serialize::CanonicalSerialize, rand::OsRng};
 
@@ -243,8 +243,6 @@ pub enum Error {
     NetworkError(String),
 }
 
-use core::fmt::{Display, Formatter};
-
 impl Display for Error {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
@@ -295,5 +293,63 @@ mod test {
             "Mantalorian".to_string(),
             "mantalorian@manta.network".to_string(),
         );
+    }
+
+    /// Tests if sign and verify are compatible with serialization.
+    #[test]
+    fn signature_and_serialization_is_compatible() {
+        let mnemonic = Mnemonic::new(MnemonicType::Words12, Language::English);
+        let seed = Seed::new(&mnemonic, "manta-trusted-setup");
+        let seed_bytes = seed.as_bytes();
+        assert!(ed25519_dalek::SECRET_KEY_LENGTH <= seed_bytes.len(), "Secret key length of ed25519 should be smaller than length of seed bytes from mnemonic phrases.");
+        let sk =
+            ed25519_dalek::SecretKey::from_bytes(&seed_bytes[0..ed25519_dalek::SECRET_KEY_LENGTH])
+                .expect("`from_bytes` should succeed for SecretKey.");
+        let pk = ed_dalek::PublicKey(ed25519_dalek::PublicKey::from(&sk).to_bytes().into());
+        let sk = ed_dalek::PrivateKey(sk.to_bytes().into());
+        let twitter_account = "mantalorian";
+        let email = "mantalorian@manta.network";
+        let pk_string = bs58::encode(AsBytes::from_actual(pk).bytes).into_string();
+        let signature_string = bs58::encode(
+            AsBytes::from_actual(
+                ed_dalek::Ed25519::sign(
+                    format!(
+                        "manta-trusted-setup-twitter:{}, manta-trusted-setup-email:{}",
+                        twitter_account, email
+                    ),
+                    &0,
+                    &pk,
+                    &sk,
+                )
+                .expect("Signing should succeed"),
+            )
+            .bytes,
+        )
+        .into_string();
+
+        let public_key: ed_dalek::PublicKey = AsBytes::new(
+            bs58::decode(pk_string)
+                .into_vec()
+                .expect("Decode public key should succeed."),
+        )
+        .to_actual()
+        .expect("Converting to a public key should succeed.");
+        let signature: ed_dalek::Signature = AsBytes::new(
+            bs58::decode(signature_string)
+                .into_vec()
+                .expect("Decode signature should succeed."),
+        )
+        .to_actual()
+        .expect("Converting to a signature should succeed.");
+        ed_dalek::Ed25519::verify(
+            format!(
+                "manta-trusted-setup-twitter:{}, manta-trusted-setup-email:{}",
+                twitter_account, email
+            ),
+            &0,
+            &signature,
+            &public_key,
+        )
+        .expect("Verifying signature should succeed.");
     }
 }
