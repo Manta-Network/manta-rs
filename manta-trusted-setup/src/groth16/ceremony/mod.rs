@@ -20,6 +20,7 @@ use crate::mpc;
 
 pub mod client;
 pub mod coordinator;
+pub mod registry;
 pub mod server;
 pub mod signature;
 

@@ -18,51 +18,36 @@
 
 use crate::{
     groth16::{
-        ceremony::{Ceremony, Participant},
+        ceremony::{registry::Registry, Ceremony, Participant},
         mpc::StateSize,
     },
     mpc::{Challenge, Proof, State},
 };
 use manta_util::{collections::vec_deque::MultiVecDeque, Array, BoxArray};
 
-///
-pub trait Registry<K, V> {
-    ///
-    fn register(&mut self, key: K, value: V) -> bool;
-
-    ///
-    fn get(&self, key: &K) -> Option<&V>;
-
-    ///
-    fn get_mut(&mut self, key: &K) -> Option<&mut V>;
-
-    ///
-    fn has_contributed(&self, key: &K) -> bool;
-}
-
-///
+/// Proof Array Type
 pub type ProofArray<C, const N: usize> = BoxArray<Proof<C>, N>;
 
-///
+/// State Array Type
 pub type StateArray<C, const N: usize> = BoxArray<State<C>, N>;
 
-///
+/// Challenge Array Type
 pub type ChallengeArray<C, const N: usize> = BoxArray<Challenge<C>, N>;
 
-///
+/// Participant Queue Type
 pub type Queue<C, const LEVEL_COUNT: usize> =
     MultiVecDeque<<C as Ceremony>::Identifier, LEVEL_COUNT>;
 
-///
+/// Ceremony Coordinator
 pub struct Coordinator<C, R, const CIRCUIT_COUNT: usize, const LEVEL_COUNT: usize>
 where
     C: Ceremony,
     R: Registry<C::Identifier, C::Participant>,
 {
-    ///
+    /// Participant Registry
     registry: R,
 
-    ///
+    /// Participant Queue
     queue: Queue<C, LEVEL_COUNT>,
 
     /// State
@@ -71,7 +56,9 @@ where
     /// Challenge
     challenge: ChallengeArray<C, CIRCUIT_COUNT>,
 
+    /// Latest Contributor
     ///
+    /// This participant was the last one to perform a successful contribution to the ceremony.
     latest_contributor: Option<C::Participant>,
 
     /// Latest Proof
@@ -80,7 +67,7 @@ where
     /// Current Round Number
     round: usize,
 
-    ///
+    /// State Sizes
     size: Array<StateSize, CIRCUIT_COUNT>,
 }
 
