@@ -18,15 +18,15 @@
 
 use crate::{
     groth16::{
-        bn254::ppot::PerpetualPowersOfTauCeremony,
         kzg::Accumulator,
         mpc::{
             Configuration as MpcConfiguration, Proof as MpcProof, ProvingKeyHasher,
             State as MpcState,
         },
+        test::bn254::ppot::PerpetualPowersOfTauCeremony,
     },
     mpc::Types,
-    util::{from_serialization_error, BlakeHasher, Deserializer, Serializer},
+    util::{from_error, BlakeHasher, Deserializer, Serializer},
 };
 use ark_groth16::ProvingKey;
 use ark_std::io;
@@ -106,8 +106,7 @@ where
     where
         W: Write,
     {
-        CanonicalSerialize::serialize_unchecked(item, writer)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+        CanonicalSerialize::serialize_unchecked(item, writer).map_err(from_error)
     }
 
     #[inline]
@@ -118,7 +117,7 @@ where
     where
         W: Write,
     {
-        CanonicalSerialize::serialize_uncompressed(item, writer).map_err(from_serialization_error)
+        CanonicalSerialize::serialize_uncompressed(item, writer).map_err(from_error)
     }
 
     #[inline]
@@ -134,7 +133,7 @@ where
     where
         W: Write,
     {
-        CanonicalSerialize::serialize(item, writer).map_err(from_serialization_error)
+        CanonicalSerialize::serialize(item, writer).map_err(from_error)
     }
 
     #[inline]

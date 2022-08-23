@@ -18,7 +18,7 @@
 
 use crate::{
     groth16::kzg::{
-        Accumulator, Configuration as KzgConfiguration, G1Marker, G2Marker, Proof as KzgProof, Size,
+        Accumulator, Configuration as KzgConfiguration, Proof as KzgProof, Size, G1, G2,
     },
     ratio::RatioProof,
     util::{BlakeHasher, Deserializer, KZGBlakeHasher, Serializer},
@@ -180,7 +180,7 @@ where
 /// (De)Serialization used in the original PPoT ceremony
 pub struct PpotSerializer {}
 
-impl Deserializer<G1Affine, G1Marker> for PpotSerializer {
+impl Deserializer<G1Affine, G1> for PpotSerializer {
     type Error = PointDeserializeError;
 
     fn deserialize_unchecked<R>(reader: &mut R) -> Result<G1Affine, Self::Error>
@@ -272,7 +272,7 @@ impl Deserializer<G1Affine, G1Marker> for PpotSerializer {
     }
 }
 
-impl Deserializer<G2Affine, G2Marker> for PpotSerializer {
+impl Deserializer<G2Affine, G2> for PpotSerializer {
     type Error = PointDeserializeError;
 
     fn deserialize_unchecked<R>(reader: &mut R) -> Result<G2Affine, Self::Error>
@@ -372,7 +372,7 @@ impl Deserializer<G2Affine, G2Marker> for PpotSerializer {
     }
 }
 
-impl Serializer<G1Affine, G1Marker> for PpotSerializer {
+impl Serializer<G1Affine, G1> for PpotSerializer {
     fn serialize_unchecked<W>(point: &G1Affine, writer: &mut W) -> Result<(), io::Error>
     where
         W: Write,
@@ -439,7 +439,7 @@ impl Serializer<G1Affine, G1Marker> for PpotSerializer {
     }
 }
 
-impl Serializer<G2Affine, G2Marker> for PpotSerializer {
+impl Serializer<G2Affine, G2> for PpotSerializer {
     fn serialize_unchecked<W>(point: &G2Affine, writer: &mut W) -> Result<(), io::Error>
     where
         W: Write,
@@ -714,12 +714,12 @@ where
         if element.is_g1_type() {
             let point = match compression {
                 Compressed::No => {
-                    <PpotCeremony as Deserializer<G1Affine, G1Marker>>::deserialize_unchecked(
+                    <PpotCeremony as Deserializer<G1Affine, G1>>::deserialize_unchecked(
                         &mut reader,
                     )?
                 }
                 Compressed::Yes => {
-                    <PpotCeremony as Deserializer<G1Affine, G1Marker>>::deserialize_compressed(
+                    <PpotCeremony as Deserializer<G1Affine, G1>>::deserialize_compressed(
                         &mut reader,
                     )?
                 }
@@ -766,12 +766,12 @@ where
         if !element.is_g1_type() {
             let point = match compression {
                 Compressed::No => {
-                    <PpotCeremony as Deserializer<G2Affine, G2Marker>>::deserialize_unchecked(
+                    <PpotCeremony as Deserializer<G2Affine, G2>>::deserialize_unchecked(
                         &mut reader,
                     )?
                 }
                 Compressed::Yes => {
-                    <PpotCeremony as Deserializer<G2Affine, G2Marker>>::deserialize_compressed(
+                    <PpotCeremony as Deserializer<G2Affine, G2>>::deserialize_compressed(
                         &mut reader,
                     )?
                 }
@@ -812,32 +812,30 @@ pub fn read_kzg_proof(
         .expect("cannot read point data from file");
 
     // Deserialize in original PPoT order:
-    let tau_g1 =
-        <PpotCeremony as Deserializer<G1Affine, G1Marker>>::deserialize_compressed(&mut reader)?;
+    let tau_g1 = <PpotCeremony as Deserializer<G1Affine, G1>>::deserialize_compressed(&mut reader)?;
     curve_point_checks(&tau_g1)?;
     let tau_g1_tau =
-        <PpotCeremony as Deserializer<G1Affine, G1Marker>>::deserialize_compressed(&mut reader)?;
+        <PpotCeremony as Deserializer<G1Affine, G1>>::deserialize_compressed(&mut reader)?;
     curve_point_checks(&tau_g1_tau)?;
     let alpha_tau_g1 =
-        <PpotCeremony as Deserializer<G1Affine, G1Marker>>::deserialize_compressed(&mut reader)?;
+        <PpotCeremony as Deserializer<G1Affine, G1>>::deserialize_compressed(&mut reader)?;
     curve_point_checks(&alpha_tau_g1)?;
     let alpha_tau_g1_alpha =
-        <PpotCeremony as Deserializer<G1Affine, G1Marker>>::deserialize_compressed(&mut reader)?;
+        <PpotCeremony as Deserializer<G1Affine, G1>>::deserialize_compressed(&mut reader)?;
     curve_point_checks(&alpha_tau_g1_alpha)?;
     let beta_tau_g1 =
-        <PpotCeremony as Deserializer<G1Affine, G1Marker>>::deserialize_compressed(&mut reader)?;
+        <PpotCeremony as Deserializer<G1Affine, G1>>::deserialize_compressed(&mut reader)?;
     curve_point_checks(&beta_tau_g1)?;
     let beta_tau_g1_beta =
-        <PpotCeremony as Deserializer<G1Affine, G1Marker>>::deserialize_compressed(&mut reader)?;
+        <PpotCeremony as Deserializer<G1Affine, G1>>::deserialize_compressed(&mut reader)?;
     curve_point_checks(&beta_tau_g1_beta)?;
-    let tau_g2 =
-        <PpotCeremony as Deserializer<G2Affine, G2Marker>>::deserialize_compressed(&mut reader)?;
+    let tau_g2 = <PpotCeremony as Deserializer<G2Affine, G2>>::deserialize_compressed(&mut reader)?;
     curve_point_checks(&tau_g2)?;
     let alpha_g2 =
-        <PpotCeremony as Deserializer<G2Affine, G2Marker>>::deserialize_compressed(&mut reader)?;
+        <PpotCeremony as Deserializer<G2Affine, G2>>::deserialize_compressed(&mut reader)?;
     curve_point_checks(&alpha_g2)?;
     let beta_g2 =
-        <PpotCeremony as Deserializer<G2Affine, G2Marker>>::deserialize_compressed(&mut reader)?;
+        <PpotCeremony as Deserializer<G2Affine, G2>>::deserialize_compressed(&mut reader)?;
     curve_point_checks(&beta_g2)?;
 
     Ok(KzgProof {
@@ -892,9 +890,9 @@ fn check_consistent_factor(g1: &[G1Affine], g2: &[G2Affine]) -> bool {
 #[ignore] // NOTE: Adds `ignore` such that CI does NOT run this test while still allowing developers to test.
 #[test]
 pub fn read_subaccumulator_test() {
-    use crate::groth16::bn254::manta_pay::MantaPaySetupCeremony;
-    use ark_std::fs::{File, OpenOptions};
+    use crate::groth16::test::bn254::manta_pay::MantaPaySetupCeremony;
     use memmap::MmapOptions;
+    use std::fs::{File, OpenOptions};
 
     // Try to load `./challenge` from disk.
     let reader = OpenOptions::new()
@@ -940,9 +938,9 @@ pub fn read_subaccumulator_test() {
 #[ignore] // NOTE: Adds `ignore` such that CI does NOT run this test while still allowing developers to test.
 #[test]
 pub fn compare_response_challenge_accumulators_test() {
-    use crate::groth16::bn254::manta_pay::MantaPaySetupCeremony;
-    use ark_std::{fs::OpenOptions, time::Instant};
+    use crate::groth16::test::bn254::manta_pay::MantaPaySetupCeremony;
     use memmap::MmapOptions;
+    use std::{fs::OpenOptions, time::Instant};
 
     // Try to load `./challenge` from disk.
     println!("Reading accumulator from challenge file");
@@ -1004,11 +1002,11 @@ fn deserialization_test() {
     // First Compressed serialization
     let mut file = Vec::<u8>::new();
     g1.iter().for_each(|g| {
-        <PpotCeremony as Serializer<G1Affine, G1Marker>>::serialize_unchecked(g, &mut file).unwrap()
+        <PpotCeremony as Serializer<G1Affine, G1>>::serialize_unchecked(g, &mut file).unwrap()
     });
     assert_eq!(
         file.len(),
-        N * <PpotCeremony as Serializer::<G1Affine, G1Marker>>::compressed_size(&g1[0])
+        N * <PpotCeremony as Serializer::<G1Affine, G1>>::compressed_size(&g1[0])
     );
 
     let mut g1_deser = Vec::<G1Affine>::new();
@@ -1016,12 +1014,10 @@ fn deserialization_test() {
     println!("Deserializing now ");
 
     for i in 0..N {
-        let start = i * <PpotCeremony as Serializer<G1Affine, G1Marker>>::compressed_size(&g1[0]);
-        let end =
-            (i + 1) * <PpotCeremony as Serializer<G1Affine, G1Marker>>::compressed_size(&g1[0]);
+        let start = i * <PpotCeremony as Serializer<G1Affine, G1>>::compressed_size(&g1[0]);
+        let end = (i + 1) * <PpotCeremony as Serializer<G1Affine, G1>>::compressed_size(&g1[0]);
         let mut temp = &file[start..end];
-        match <PpotCeremony as Deserializer<G1Affine, G1Marker>>::deserialize_compressed(&mut temp)
-        {
+        match <PpotCeremony as Deserializer<G1Affine, G1>>::deserialize_compressed(&mut temp) {
             Ok(point) => g1_deser.push(point),
             Err(e) => {
                 println!("Error {:?} occurred on point {:?}", e, i);
@@ -1033,12 +1029,11 @@ fn deserialization_test() {
     // Now uncompressed serialization
     let mut file = Vec::<u8>::new();
     g1.iter().for_each(|g| {
-        <PpotCeremony as Serializer<G1Affine, G1Marker>>::serialize_uncompressed(g, &mut file)
-            .unwrap()
+        <PpotCeremony as Serializer<G1Affine, G1>>::serialize_uncompressed(g, &mut file).unwrap()
     });
     assert_eq!(
         file.len(),
-        N * <PpotCeremony as Serializer::<G1Affine, G1Marker>>::uncompressed_size(&g1[0])
+        N * <PpotCeremony as Serializer::<G1Affine, G1>>::uncompressed_size(&g1[0])
     );
 
     let mut g1_deser = Vec::<G1Affine>::new();
@@ -1046,13 +1041,10 @@ fn deserialization_test() {
     println!("Deserializing now ");
 
     for i in 0..N {
-        let start = i * <PpotCeremony as Serializer<G1Affine, G1Marker>>::uncompressed_size(&g1[0]);
-        let end =
-            (i + 1) * <PpotCeremony as Serializer<G1Affine, G1Marker>>::uncompressed_size(&g1[0]);
+        let start = i * <PpotCeremony as Serializer<G1Affine, G1>>::uncompressed_size(&g1[0]);
+        let end = (i + 1) * <PpotCeremony as Serializer<G1Affine, G1>>::uncompressed_size(&g1[0]);
         let mut temp = &file[start..end];
-        match <PpotCeremony as Deserializer<G1Affine, G1Marker>>::deserialize_uncompressed(
-            &mut temp,
-        ) {
+        match <PpotCeremony as Deserializer<G1Affine, G1>>::deserialize_uncompressed(&mut temp) {
             Ok(point) => g1_deser.push(point),
             Err(e) => {
                 println!("Error {:?} occurred on point {:?}", e, i);
@@ -1066,11 +1058,11 @@ fn deserialization_test() {
     // First Compressed serialization
     let mut file = Vec::<u8>::new();
     g2.iter().for_each(|g| {
-        <PpotCeremony as Serializer<G2Affine, G2Marker>>::serialize_unchecked(g, &mut file).unwrap()
+        <PpotCeremony as Serializer<G2Affine, G2>>::serialize_unchecked(g, &mut file).unwrap()
     });
     assert_eq!(
         file.len(),
-        N * <PpotCeremony as Serializer::<G2Affine, G2Marker>>::compressed_size(&g2[0])
+        N * <PpotCeremony as Serializer::<G2Affine, G2>>::compressed_size(&g2[0])
     );
 
     let mut g2_deser = Vec::<G2Affine>::new();
@@ -1078,12 +1070,10 @@ fn deserialization_test() {
     println!("Deserializing now ");
 
     for i in 0..N {
-        let start = i * <PpotCeremony as Serializer<G2Affine, G2Marker>>::compressed_size(&g2[0]);
-        let end =
-            (i + 1) * <PpotCeremony as Serializer<G2Affine, G2Marker>>::compressed_size(&g2[0]);
+        let start = i * <PpotCeremony as Serializer<G2Affine, G2>>::compressed_size(&g2[0]);
+        let end = (i + 1) * <PpotCeremony as Serializer<G2Affine, G2>>::compressed_size(&g2[0]);
         let mut temp = &file[start..end];
-        match <PpotCeremony as Deserializer<G2Affine, G2Marker>>::deserialize_compressed(&mut temp)
-        {
+        match <PpotCeremony as Deserializer<G2Affine, G2>>::deserialize_compressed(&mut temp) {
             Ok(point) => g2_deser.push(point),
             Err(e) => {
                 println!("Error {:?} occurred on point {:?}", e, i);
@@ -1095,12 +1085,11 @@ fn deserialization_test() {
     // Now uncompressed serialization
     let mut file = Vec::<u8>::new();
     g2.iter().for_each(|g| {
-        <PpotCeremony as Serializer<G2Affine, G2Marker>>::serialize_uncompressed(g, &mut file)
-            .unwrap()
+        <PpotCeremony as Serializer<G2Affine, G2>>::serialize_uncompressed(g, &mut file).unwrap()
     });
     assert_eq!(
         file.len(),
-        N * <PpotCeremony as Serializer::<G2Affine, G2Marker>>::uncompressed_size(&g2[0])
+        N * <PpotCeremony as Serializer::<G2Affine, G2>>::uncompressed_size(&g2[0])
     );
 
     let mut g2_deser = Vec::<G2Affine>::new();
@@ -1108,13 +1097,10 @@ fn deserialization_test() {
     println!("Deserializing now ");
 
     for i in 0..N {
-        let start = i * <PpotCeremony as Serializer<G2Affine, G2Marker>>::uncompressed_size(&g2[0]);
-        let end =
-            (i + 1) * <PpotCeremony as Serializer<G2Affine, G2Marker>>::uncompressed_size(&g2[0]);
+        let start = i * <PpotCeremony as Serializer<G2Affine, G2>>::uncompressed_size(&g2[0]);
+        let end = (i + 1) * <PpotCeremony as Serializer<G2Affine, G2>>::uncompressed_size(&g2[0]);
         let mut temp = &file[start..end];
-        match <PpotCeremony as Deserializer<G2Affine, G2Marker>>::deserialize_uncompressed(
-            &mut temp,
-        ) {
+        match <PpotCeremony as Deserializer<G2Affine, G2>>::deserialize_uncompressed(&mut temp) {
             Ok(point) => g2_deser.push(point),
             Err(e) => {
                 println!("Error {:?} occurred on point {:?}", e, i);
