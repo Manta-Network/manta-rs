@@ -892,18 +892,6 @@ where
     })
 }
 
-/// Checks that a vector of G1 elements and vector of G2 elements are incrementing by the
-/// same factor.
-#[inline]
-fn check_consistent_factor(g1: &[G1Affine], g2: &[G2Affine]) -> bool {
-    use crate::util::power_pairs;
-    use manta_crypto::arkworks::pairing::PairingEngineExt;
-
-    let g1_pair = power_pairs(g1);
-    let g2_pair = power_pairs(g2);
-    Bn254::same_ratio(g1_pair, g2_pair)
-}
-
 /// Compares the accumulators stored in response_0071 and challenge_0072
 /// Takes about 7 mins to read uncompressed, then about 14 to read compressed when 1 << 19 powers
 #[ignore] // NOTE: Adds `ignore` such that CI does NOT run this test while still allowing developers to test.
