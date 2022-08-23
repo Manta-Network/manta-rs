@@ -59,4 +59,5 @@ rand_core = { version = "0.6.3", default-features = false }
 workspace-hack = { version = "0.1.0", path = "../workspace-hack" }
 
 [dev-dependencies]
-rand = "0.8.4"
+ark-bn254 = { version = "0.3.0", default-features = false, features = ["scalar_field"] }
+manta-crypto = { path = ".", default-features = false, features = ["getrandom"] }

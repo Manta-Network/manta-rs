@@ -27,25 +27,42 @@ use manta_util::codec::{Decode, DecodeError, Encode, Read, Write};
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
 
-/// Ring of Scalars
-pub trait Scalar<COM = ()> {
-    /// Adds `rhs` to `self` in the ring.
+/// Group
+pub trait Group<COM = ()> {
+    /// Adds `rhs` to `self` in the group.
     fn add(&self, rhs: &Self, compiler: &mut COM) -> Self;
+}
 
+/// Ring
+pub trait Ring<COM = ()>: Group<COM> {
     /// Multiplies `self` by `rhs` in the ring.
     fn mul(&self, rhs: &Self, compiler: &mut COM) -> Self;
 }
 
-/// Group
-pub trait Group<COM = ()> {
-    /// Ring of Scalars
-    type Scalar: Scalar<COM>;
-
-    /// Adds `rhs` to `self` in the group.
-    fn add(&self, rhs: &Self, compiler: &mut COM) -> Self;
+/// Scalar Multiplication
+pub trait ScalarMul<S, COM = ()> {
+    /// Output Type
+    type Output;
 
     /// Multiplies `self` by `scalar` in the group.
-    fn mul(&self, scalar: &Self::Scalar, compiler: &mut COM) -> Self;
+    fn scalar_mul(&self, scalar: &S, compiler: &mut COM) -> Self::Output;
+}
+
+/// Group with a Scalar Multiplication
+pub trait ScalarMulGroup<S, COM = ()>: Group<COM> + ScalarMul<S, COM> {}
+
+impl<G, S, COM> ScalarMulGroup<S, COM> for G where G: Group<COM> + ScalarMul<S, COM> {}
+
+/// Group Generator
+pub trait HasGenerator<G, COM = ()>
+where
+    G: Group<COM>,
+{
+    /// Generator Type
+    type Generator;
+
+    /// Returns a generator of `G`.
+    fn generator(&self) -> &Self::Generator;
 }
 
 /// Diffie-Hellman Key Agreement Scheme
@@ -56,18 +73,18 @@ pub trait Group<COM = ()> {
 )]
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct DiffieHellman<G, COM = ()> {
+pub struct DiffieHellman<S, G, GEN = G> {
     /// Group Generator
-    pub generator: G,
+    pub generator: GEN,
 
     /// Type Parameter Marker
-    __: PhantomData<COM>,
+    __: PhantomData<(S, G)>,
 }
 
-impl<G, COM> DiffieHellman<G, COM> {
+impl<S, G, GEN> DiffieHellman<S, G, GEN> {
     /// Builds a new [`DiffieHellman`] key agreement scheme from the given `generator`.
     #[inline]
-    pub fn new(generator: G) -> Self {
+    pub fn new(generator: GEN) -> Self {
         Self {
             generator,
             __: PhantomData,
@@ -76,45 +93,56 @@ impl<G, COM> DiffieHellman<G, COM> {
 
     /// Converts `self` into the group generator.
     #[inline]
-    pub fn into_inner(self) -> G {
+    pub fn into_inner(self) -> GEN {
         self.generator
     }
 }
 
-impl<G, COM> Constant<COM> for DiffieHellman<G, COM>
+impl<S, G, GEN, COM> HasGenerator<G, COM> for DiffieHellman<S, G, GEN>
 where
-    G: Constant<COM>,
+    G: Group<COM>,
 {
-    type Type = DiffieHellman<G::Type>;
+    type Generator = GEN;
 
     #[inline]
-    fn new_constant(value: &Self::Type, compiler: &mut COM) -> Self {
-        Self::new(G::new_constant(&value.generator, compiler))
+    fn generator(&self) -> &Self::Generator {
+        &self.generator
     }
 }
 
-impl<G, COM> key::agreement::Types for DiffieHellman<G, COM>
+impl<S, G, GEN, COM> Constant<COM> for DiffieHellman<S, G, GEN>
 where
-    G: Group<COM> + security::ComputationalDiffieHellmanHardness,
+    S: Constant<COM>,
+    G: Constant<COM>,
+    GEN: Constant<COM>,
 {
-    type SecretKey = G::Scalar;
+    type Type = DiffieHellman<S::Type, G::Type, GEN::Type>;
+
+    #[inline]
+    fn new_constant(value: &Self::Type, compiler: &mut COM) -> Self {
+        Self::new(Constant::new_constant(&value.generator, compiler))
+    }
+}
+
+impl<S, G, GEN> key::agreement::Types for DiffieHellman<S, G, GEN> {
+    type SecretKey = S;
     type PublicKey = G;
     type SharedSecret = G;
 }
 
-impl<G, COM> key::agreement::Derive<COM> for DiffieHellman<G, COM>
+impl<S, G, GEN, COM> key::agreement::Derive<COM> for DiffieHellman<S, G, GEN>
 where
-    G: Group<COM> + security::ComputationalDiffieHellmanHardness,
+    GEN: ScalarMul<S, COM, Output = G> + security::ComputationalDiffieHellmanHardness,
 {
     #[inline]
     fn derive(&self, secret_key: &Self::SecretKey, compiler: &mut COM) -> Self::PublicKey {
-        self.generator.mul(secret_key, compiler)
+        self.generator.scalar_mul(secret_key, compiler)
     }
 }
 
-impl<G, COM> key::agreement::Agree<COM> for DiffieHellman<G, COM>
+impl<S, G, GEN, COM> key::agreement::Agree<COM> for DiffieHellman<S, G, GEN>
 where
-    G: Group<COM> + security::ComputationalDiffieHellmanHardness,
+    G: ScalarMul<S, COM, Output = G> + security::ComputationalDiffieHellmanHardness,
 {
     #[inline]
     fn agree(
@@ -123,15 +151,15 @@ where
         secret_key: &Self::SecretKey,
         compiler: &mut COM,
     ) -> Self::SharedSecret {
-        public_key.mul(secret_key, compiler)
+        public_key.scalar_mul(secret_key, compiler)
     }
 }
 
-impl<G, COM> Decode for DiffieHellman<G, COM>
+impl<S, G, GEN> Decode for DiffieHellman<S, G, GEN>
 where
-    G: Decode,
+    GEN: Decode,
 {
-    type Error = G::Error;
+    type Error = GEN::Error;
 
     #[inline]
     fn decode<R>(mut reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
@@ -142,9 +170,9 @@ where
     }
 }
 
-impl<G, COM> Encode for DiffieHellman<G, COM>
+impl<S, G, GEN> Encode for DiffieHellman<S, G, GEN>
 where
-    G: Encode,
+    GEN: Encode,
 {
     #[inline]
     fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
@@ -156,9 +184,9 @@ where
     }
 }
 
-impl<D, G> Sample<D> for DiffieHellman<G>
+impl<S, G, GEN, D> Sample<D> for DiffieHellman<S, G, GEN>
 where
-    G: Sample<D>,
+    GEN: Sample<D>,
 {
     #[inline]
     fn sample<R>(distribution: D, rng: &mut R) -> Self
@@ -172,52 +200,62 @@ where
 /// Security Assumptions
 ///
 /// The following outlines some standard security assumptions for cryptographic protocols built on
-/// [`Group`] types. These security properties can be attached to instances of [`Group`] which we
-/// assume to have these hardness properties.
+/// types that implement [`ScalarMul`] for some set of scalars. These security properties can be
+/// attached to instances of [`ScalarMul`] which we assume to have these hardness properties.
 pub mod security {
     /// Discrete Logarithm Hardness Assumption
     ///
-    /// For a [`Group`](super::Group) `G`, it should be infeasible to find a procedure `f` that
-    /// makes this function return `true`:
+    /// For a type `G`, it should be infeasible to find a procedure `f` that makes this function
+    /// return `true`:
     ///
     /// ```text
-    /// fn solve<F>(g: G, y: G, f: F) -> bool
+    /// fn solve<G, S, F>(g: G, y: S, f: F) -> bool
     /// where
-    ///     F: FnOnce(G, G) -> G::Scalar,
+    ///     G: ScalarMul<S>,
+    ///     F: FnOnce(G, G) -> S,
     /// {
-    ///     y == g.mul(f(g, y))
+    ///     y == g.scalar_mul(f(g, y))
     /// }
     /// ```
     pub trait DiscreteLogarithmHardness {}
 
     /// Computational Diffie-Hellman Hardness Assumption
     ///
-    /// For a [`Group`](super::Group) `G`, it should be infeasible to find a procedure `f` that
-    /// makes this function return `true`:
+    /// For a type `G`, it should be infeasible to find a procedure `f` that makes this function
+    /// return `true`:
     ///
     /// ```text
-    /// fn solve<F>(g: G, a: G::Scalar, b: G::Scalar, f: F) -> bool
+    /// fn solve<G, S, F>(g: G, a: S, b: S, f: F) -> bool
     /// where
+    ///     G: ScalarMul<S>,
+    ///     S: Ring,
     ///     F: FnOnce(G, G, G) -> G,
     /// {
-    ///     f(g, g.mul(a), g.mul(b)) == g.mul(a.mul(b))
+    ///     f(g, g.scalar_mul(a), g.scalar_mul(b)) == g.scalar_mul(a.mul(b))
     /// }
     /// ```
     pub trait ComputationalDiffieHellmanHardness: DiscreteLogarithmHardness {}
 
     /// Decisional Diffie-Hellman Hardness Assumption
     ///
-    /// For a [`Group`](super::Group) `G`, it should be infeasible to distinguish the probability
-    /// distributions over the following two functions when [`G::Scalar](super::Group::Scalar)
-    /// inputs are sampled uniformly from their domain (and `g` the generator is fixed):
+    /// For a type `G`, it should be infeasible to distinguish the probability distributions over
+    /// the following two functions when scalar inputs are sampled uniformly from their domain (and
+    /// `g` the generator is fixed):
     ///
     /// ```text
-    /// fn dh_triple(g: G, a: G::Scalar, b: G::Scalar) -> (G, G, G) {
-    ///     (g.mul(a), g.mul(b), g.mul(a.mul(b)))
+    /// fn dh_triple<G, S>(g: G, a: S, b: S) -> (G, G, G)
+    /// where
+    ///     G: ScalarMul<S>,
+    ///     S: Ring,
+    /// {
+    ///     (g.scalar_mul(a), g.scalar_mul(b), g.scalar_mul(a.mul(b)))
     /// }
     ///
-    /// fn random_triple(g: G, a: G::Scalar, b: G::Scalar, c: G::Scalar) -> (G, G, G) {
-    ///     (g.mul(a), g.mul(b), g.mul(c))
+    /// fn random_triple<G, S>(g: G, a: S, b: S, c: S) -> (G, G, G)
+    /// where
+    ///     G: ScalarMul<S>,
+    /// {
+    ///     (g.scalar_mul(a), g.scalar_mul(b), g.scalar_mul(c))
     /// }
     /// ```
     pub trait DecisionalDiffieHellmanHardness: ComputationalDiffieHellmanHardness {}
