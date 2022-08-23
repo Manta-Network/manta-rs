@@ -104,3 +104,11 @@ where
         Self(scalar, PhantomData)
     }
 }
+
+/// Returns the modulus bits of scalar field of a given curve `C`.
+pub const fn scalar_bits<C>() -> usize
+where
+    C: ProjectiveCurve,
+{
+    <<C as ProjectiveCurve>::ScalarField as PrimeField>::Params::MODULUS_BITS as usize
+}
