@@ -76,11 +76,7 @@ pub trait FixedBaseScalarMul<S, COM = ()>: Group<COM> {
 
     /// Multiplies `precomputed_bases[0]` by `scalar` using precomputed base points,
     /// where `precomputed_bases` are precomputed power-of-two multiples of the fixed base.
-    fn fixed_base_scalar_mul<I>(
-        precomputed_bases: I,
-        scalar: &S,
-        compiler: &mut COM,
-    ) -> Self
+    fn fixed_base_scalar_mul<I>(precomputed_bases: I, scalar: &S, compiler: &mut COM) -> Self
     where
         I: IntoIterator,
         I::Item: Borrow<Self::Base>;
