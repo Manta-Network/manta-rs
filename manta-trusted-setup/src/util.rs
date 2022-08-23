@@ -17,8 +17,11 @@
 //! Utilities
 
 use crate::{groth16::kzg, ratio::HashToGroup};
-use alloc::vec::Vec;
-use ark_std::io;
+use alloc::{boxed::Box, vec::Vec};
+use ark_std::{
+    error,
+    io::{self, ErrorKind},
+};
 use blake2::{Blake2b512, Digest as Blake2Digest};
 use byteorder::{BigEndian, ReadBytesExt};
 use core::marker::PhantomData;
@@ -139,10 +142,13 @@ pub trait Deserializer<T, M = ()> {
         R: Read;
 }
 
-/// Conversion from [`SerializationError`] to `io::Error`
+/// Converts `err` into an [`io::Error`] with the [`ErrorKind::Other`] variant.
 #[inline]
-pub fn from_serialization_error(err: SerializationError) -> io::Error {
-    io::Error::new(io::ErrorKind::Other, err)
+pub fn from_error<E>(err: E) -> io::Error
+where
+    E: Into<Box<dyn error::Error + Send + Sync>>,
+{
+    io::Error::new(ErrorKind::Other, err)
 }
 
 /// Deserialization Error for [`NonZero`]
@@ -162,10 +168,7 @@ where
     #[inline]
     fn from(err: NonZeroError<E>) -> Self {
         match err {
-            NonZeroError::IsZero => SerializationError::IoError(io::Error::new(
-                io::ErrorKind::Other,
-                "Value was expected to be non-zero but instead had value zero.",
-            )),
+            NonZeroError::IsZero => from_error("Value was expected to be non-zero.").into(),
             NonZeroError::Error(err) => err.into(),
         }
     }
