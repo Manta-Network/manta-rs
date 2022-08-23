@@ -27,10 +27,6 @@ use crate::{
 use derivative::Derivative;
 use serde::{Deserialize, Serialize};
 
-/// Request for State Sizes
-#[derive(Deserialize, Serialize)]
-pub struct SizeRequest;
-
 /// Query Request
 #[derive(Deserialize, Serialize)]
 pub struct QueryRequest;

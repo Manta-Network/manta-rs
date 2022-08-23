@@ -23,9 +23,7 @@ use crate::{
             ParticipantIdentifier, Proof, State,
         },
         coordinator::Coordinator,
-        message::{
-            CeremonyError, ContributeRequest, QueryRequest, QueryResponse, Signed, SizeRequest,
-        },
+        message::{CeremonyError, ContributeRequest, QueryRequest, QueryResponse, Signed},
         registry::{load_registry, HasContributed, Registry},
         signature::{HasNonce, HasPublicKey, Nonce as _, SignatureScheme},
         state::{MPCState, ServerSize, StateSize},
@@ -109,15 +107,23 @@ where
         Ok(())
     }
 
-    /// Queries the server state size.
+    /// Gets the server state size and the current nonce of the participant.
     #[inline]
-    pub async fn get_state_size(self, _: SizeRequest) -> Result<ServerSize, CeremonyError<C>> {
-        Ok(self
+    pub async fn start(
+        self,
+        request: ParticipantIdentifier<C>,
+    ) -> Result<(ServerSize, Nonce<C>), CeremonyError<C>> {
+        let coordinator = self
             .coordinator
             .lock()
-            .expect("Locking the coordinator should succeed.")
-            .size
-            .clone())
+            .expect("Locking the coordinator should succeed.");
+        Ok((
+            coordinator.size.clone(),
+            coordinator
+                .get_participant(&request)
+                .ok_or(CeremonyError::NotRegistered)?
+                .nonce(),
+        ))
     }
 
     /// Queries the server state.
@@ -212,21 +218,6 @@ where
             coordinator.num_contributions
         );
         Ok(())
-    }
-
-    /// Gets the current nonce of the participant.
-    #[inline]
-    pub async fn get_nonce(
-        self,
-        request: ParticipantIdentifier<C>,
-    ) -> Result<Nonce<C>, CeremonyError<C>> {
-        Ok(self
-            .coordinator
-            .lock()
-            .expect("Locking the coordinator should succeed.")
-            .get_participant(&request)
-            .ok_or(CeremonyError::NotRegistered)?
-            .nonce())
     }
 
     /// Executes `f` on the incoming `request`.

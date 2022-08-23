@@ -64,9 +64,7 @@ impl Arguments {
         };
         println!("Network starts to run!");
         let mut api = tide::Server::with_state(server);
-        api.at("/nonce").post(|r| S::execute(r, Server::get_nonce));
-        api.at("/size") // TODO: Start: Return both size and nonce.
-            .post(|r| S::execute(r, Server::get_state_size));
+        api.at("/start").post(|r| S::execute(r, Server::start));
         api.at("/query").post(|r| S::execute(r, Server::query));
         api.at("/update").post(|r| S::execute(r, Server::update));
         api.listen("127.0.0.1:8080")

@@ -25,9 +25,9 @@ use colored::Colorize; // TODO: Try https://docs.rs/console/latest/console/
 use dialoguer::{theme::ColorfulTheme, Input};
 use indicatif::ProgressBar;
 use manta_trusted_setup::ceremony::{
-    client::{register, Endpoint, Error, handle_error},
+    client::{handle_error, register, Endpoint, Error},
     config::{check_state_size, g16_bls12_381::Groth16BLS12381, Nonce, PrivateKey, PublicKey},
-    message::{CeremonyError, QueryResponse, SizeRequest},
+    message::{CeremonyError, QueryResponse},
     signature::ed_dalek,
     state::ServerSize,
 };
@@ -152,30 +152,17 @@ where
         .map_err(|e| Error::UnexpectedError(format!("JSON deserialization error: {}", e)))
 }
 
-/// Gets nonce from server.
-#[inline]
-pub async fn get_nonce(
-    identity: PublicKey<C>,
-    network_client: &reqwest::Client,
-) -> Result<Nonce<C>, Error> {
-    let get_nonce_request = identity;
-    let response =
-        send_request::<_, Nonce<C>>(network_client, Endpoint::Nonce, get_nonce_request).await?;
-    match response {
-        Ok(nonce) => Ok(nonce),
-        Err(CeremonyError::NotRegistered) => Err(Error::NotRegistered),
-        Err(e) => Err(Error::UnexpectedError(format!("{:?}", e))),
-    }
-}
-
 /// Gets state size from server.
 #[inline]
-pub async fn get_state_size(network_client: &reqwest::Client) -> Result<ServerSize, Error> {
-    let size_request = SizeRequest;
+pub async fn get_start_meta_data(
+    identity: PublicKey<C>,
+    network_client: &reqwest::Client,
+) -> Result<(ServerSize, Nonce<C>), Error> {
     let response =
-        send_request::<_, ServerSize>(network_client, Endpoint::Size, size_request).await?;
+        send_request::<_, (ServerSize, Nonce<C>)>(network_client, Endpoint::Start, identity)
+            .await?;
     match response {
-        Ok(size) => Ok(size),
+        Ok((server_size, nonce)) => Ok((server_size, nonce)),
         Err(CeremonyError::NotRegistered) => Err(Error::NotRegistered),
         Err(e) => Err(Error::UnexpectedError(format!("{:?}", e))),
     }
@@ -186,8 +173,7 @@ pub async fn get_state_size(network_client: &reqwest::Client) -> Result<ServerSi
 pub async fn contribute() -> Result<(), Error> {
     let network_client = reqwest::Client::new();
     let (pk, sk) = prompt_client_info()?;
-    let size = get_state_size(&network_client).await?;
-    let nonce = get_nonce(pk, &network_client).await?;
+    let (size, nonce) = get_start_meta_data(pk, &network_client).await?;
     let mut trusted_setup_client = Client::new(pk, pk, nonce, sk);
     loop {
         println!("Contacting Server... (ETC: 2 minutes)");

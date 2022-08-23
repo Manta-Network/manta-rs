@@ -200,11 +200,8 @@ pub enum Endpoint {
     /// Update Server States
     Update,
 
-    /// Nonce
-    Nonce,
-
-    /// Server Size
-    Size,
+    /// Start Meta Data
+    Start,
 }
 
 const SERVER_ADDR: &str = "http://localhost:8080";
@@ -214,8 +211,7 @@ impl From<Endpoint> for String {
         let operation = match endpoint {
             Endpoint::Query => "query",
             Endpoint::Update => "update",
-            Endpoint::Nonce => "nonce",
-            Endpoint::Size => "size",
+            Endpoint::Start => "start",
         };
         format!("{}/{}", SERVER_ADDR, operation)
     }
