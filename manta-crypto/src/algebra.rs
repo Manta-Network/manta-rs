@@ -113,7 +113,6 @@ impl<G, const N: usize> PrecomputedBaseTable<G, N> {
     }
 }
 
-
 /// Non adjacent form (NAF)
 pub trait HasNAF<COM = ()> {
     /// Returns `self`'s NAF as a vector of signed integers.
@@ -121,17 +120,16 @@ pub trait HasNAF<COM = ()> {
 }
 
 /// Window Method for Point Multiplication
-pub struct Window<S, G, COM> 
-where 
-G: ScalarMulGroup<S, COM, Output = G>,
+pub struct Window<S, G, COM>
+where
+    G: ScalarMulGroup<S, COM, Output = G>,
 {
     /// Multiplication Table
     table: Vec<G>,
 
     /// Type Marker Parameter
-    __: PhantomData<(S, COM)>
+    __: PhantomData<(S, COM)>,
 }
-
 
 impl<S, G, COM> Window<S, G, COM>
 where
@@ -212,7 +210,6 @@ where
         Some(result)
     }
 }
-
 
 /// Diffie-Hellman Key Agreement Scheme
 #[cfg_attr(
