@@ -16,6 +16,8 @@
 
 //! Pairing Engine Utilities
 
+/// Generates the [`G2Prepared`] and [`G2PreparedRef`] structures for serialization compatibility
+/// with arkworks canonical serialization.
 macro_rules! pairing_impl {
     ($params:ident) => {
         /// Line Evaluation Coefficients
@@ -169,7 +171,7 @@ macro_rules! pairing_impl {
     };
 }
 
-/// BLS-12 Utilities
+/// BLS12 Utilities
 pub mod bls12 {
     use crate::crypto::constraint::arkworks::codec::{HasDeserialization, HasSerialization};
     use alloc::vec::Vec;
