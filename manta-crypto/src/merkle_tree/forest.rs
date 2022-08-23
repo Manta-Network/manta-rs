@@ -24,13 +24,14 @@
 
 use crate::{
     accumulator::{
-        Accumulator, ConstantCapacityAccumulator, ExactSizeAccumulator, MembershipProof,
+        self, Accumulator, ConstantCapacityAccumulator, ExactSizeAccumulator, MembershipProof,
         OptimizedAccumulator,
     },
     merkle_tree::{
         fork::ForkedTree,
         inner_tree::InnerMap,
-        tree::{self, Leaf, Parameters, Tree},
+        path::Path,
+        tree::{self, Leaf, Parameters, Root, Tree},
         InnerDigest, LeafDigest, WithProofs,
     },
 };
@@ -288,6 +289,16 @@ where
     }
 }
 
+impl<C, F> accumulator::Types for MerkleForest<C, F>
+where
+    C: Configuration + ?Sized,
+    F: Forest<C>,
+{
+    type Item = Leaf<C>;
+    type Witness = Path<C>;
+    type Output = Root<C>;
+}
+
 impl<C, F> Accumulator for MerkleForest<C, F>
 where
     C: Configuration + ?Sized,
@@ -295,7 +306,6 @@ where
     F::Tree: WithProofs<C>,
     InnerDigest<C>: Clone + PartialEq,
 {
-    type Item = Leaf<C>;
     type Model = Parameters<C>;
 
     #[inline]
@@ -308,11 +318,6 @@ where
         self.forest
             .get_tree_mut(item)
             .push_provable(&self.parameters, item)
-    }
-
-    #[inline]
-    fn are_independent(&self, fst: &Self::Item, snd: &Self::Item) -> bool {
-        C::tree_index(fst) != C::tree_index(snd)
     }
 
     #[inline]
