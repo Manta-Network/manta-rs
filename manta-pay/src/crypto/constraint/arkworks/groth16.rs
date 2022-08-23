@@ -30,7 +30,7 @@ use manta_crypto::{
         ec::PairingEngine,
         serialize::{CanonicalDeserialize, CanonicalSerialize, Read, Write},
     },
-    constraint::ProofSystem,
+    constraint::{Input, ProofSystem},
     rand::{CryptoRng, RngCore, SizedRng},
 };
 use manta_util::codec::{self, DecodeError};
@@ -135,6 +135,19 @@ where
     #[inline]
     fn type_info() -> scale_info::Type {
         Self::Identity::type_info()
+    }
+}
+
+impl<E> codec::Encode for Proof<E>
+where
+    E: PairingEngine,
+{
+    #[inline]
+    fn encode<W>(&self, writer: W) -> Result<(), W::Error>
+    where
+        W: codec::Write,
+    {
+        proof_as_bytes(&self.0).encode(writer)
     }
 }
 
@@ -508,5 +521,25 @@ where
         proof: &Self::Proof,
     ) -> Result<bool, Self::Error> {
         ArkGroth16::verify_with_processed_vk(&context.0, input, &proof.0).map_err(|_| Error)
+    }
+}
+
+impl<E> Input<Groth16<E>> for bool
+where
+    E: PairingEngine,
+{
+    #[inline]
+    fn extend(&self, input: &mut Vec<E::Fr>) {
+        input.push((*self).into());
+    }
+}
+
+impl<E> Input<Groth16<E>> for u128
+where
+    E: PairingEngine,
+{
+    #[inline]
+    fn extend(&self, input: &mut Vec<E::Fr>) {
+        input.push((*self).into());
     }
 }

@@ -38,3 +38,21 @@ pub fn never_err<T>(result: Result<T, Never>) -> T {
         Err(err) => never(err),
     }
 }
+
+/// Structure Field
+pub trait Field<T> {
+    /// Returns a shared reference to the field value.
+    fn get(&self) -> &T;
+
+    /// Returns a mutable reference to the field value.
+    fn get_mut(&mut self) -> &mut T;
+
+    /// Converts `self` into the field value, dropping the rest of the structure.
+    fn into(self) -> T;
+}
+
+/// Enumeration Variant
+pub trait Variant<T> {
+    /// Constructs the value of the enumeration of the given `variant`.
+    fn from(variant: T) -> Self;
+}
