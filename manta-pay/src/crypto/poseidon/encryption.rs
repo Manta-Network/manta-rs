@@ -18,18 +18,38 @@
 
 use crate::crypto::poseidon::{Permutation, Specification, State};
 use alloc::{boxed::Box, vec::Vec};
-use core::{fmt::Debug, hash::Hash};
-use manta_crypto::permutation::{
-    duplex::{self, Setup, Types, Verify},
-    sponge::{Read, Write},
+use core::{fmt::Debug, hash::Hash, iter, ops::Deref, slice};
+use manta_crypto::{
+    constraint::{HasInput, Input},
+    eclair::{
+        self,
+        alloc::{
+            mode::{Public, Secret},
+            Allocate, Allocator, Constant, Var, Variable,
+        },
+        bool::{Assert, Bool},
+        num::Zero,
+        ops::BitAnd,
+        Has,
+    },
+    permutation::{
+        duplex::{self, Setup, Types, Verify},
+        sponge::{Read, Write},
+    },
+    rand::{Rand, RngCore, Sample},
 };
-use manta_util::vec::padded_chunks;
+use manta_util::{
+    codec::{self, Encode},
+    vec::padded_chunks_with,
+    BoxArray,
+};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
 
-/// Encryption Duplexer
-pub type Duplexer<S, COM> = duplex::Duplexer<Permutation<S, COM>, Encryption<S, COM>, COM>;
+/// Fixed Encryption Duplexer
+pub type FixedDuplexer<const N: usize, S, COM = ()> =
+    duplex::Duplexer<Permutation<S, COM>, FixedEncryption<N, S, COM>, COM>;
 
 /// Block Element
 pub trait BlockElement<COM = ()> {
@@ -80,19 +100,38 @@ where
     }
 }
 
+impl<S, COM> eclair::cmp::PartialEq<Self, COM> for SetupBlock<S, COM>
+where
+    COM: Has<bool>,
+    Bool<COM>: Constant<COM, Type = bool> + BitAnd<Bool<COM>, COM, Output = Bool<COM>>,
+    S: Specification<COM>,
+    S::Field: eclair::cmp::PartialEq<S::Field, COM>,
+{
+    #[inline]
+    fn eq(&self, rhs: &Self, compiler: &mut COM) -> Bool<COM> {
+        self.0.eq(&rhs.0, compiler)
+    }
+
+    #[inline]
+    fn assert_equal(&self, rhs: &Self, compiler: &mut COM)
+    where
+        COM: Assert,
+    {
+        self.0.assert_equal(&rhs.0, compiler)
+    }
+}
+
 /// Plaintext Block
+/* TODO:
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(
-        bound(
-            deserialize = "S::Field: Deserialize<'de>",
-            serialize = "S::Field: Serialize"
-        ),
-        crate = "manta_util::serde",
-        deny_unknown_fields
-    )
+    serde(bound(
+        deserialize = "S::Field: Deserialize<'de>",
+        serialize = "S::Field: Serialize"
+    ),)
 )]
+*/
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "S::Field: Clone"),
@@ -101,7 +140,7 @@ where
     Hash(bound = "S::Field: Hash"),
     PartialEq(bound = "S::Field: PartialEq")
 )]
-pub struct PlaintextBlock<S, COM = ()>(Box<[S::Field]>)
+pub struct PlaintextBlock<S, COM = ()>(pub Box<[S::Field]>)
 where
     S: Specification<COM>;
 
@@ -121,7 +160,79 @@ where
     }
 }
 
+impl<S, COM> eclair::cmp::PartialEq<Self, COM> for PlaintextBlock<S, COM>
+where
+    COM: Has<bool>,
+    Bool<COM>: Constant<COM, Type = bool> + BitAnd<Bool<COM>, COM, Output = Bool<COM>>,
+    S: Specification<COM>,
+    S::Field: eclair::cmp::PartialEq<S::Field, COM>,
+{
+    #[inline]
+    fn eq(&self, rhs: &Self, compiler: &mut COM) -> Bool<COM> {
+        self.0.eq(&rhs.0, compiler)
+    }
+
+    #[inline]
+    fn assert_equal(&self, rhs: &Self, compiler: &mut COM)
+    where
+        COM: Assert,
+    {
+        self.0.assert_equal(&rhs.0, compiler)
+    }
+}
+
+impl<S, COM> Variable<Secret, COM> for PlaintextBlock<S, COM>
+where
+    S: Specification<COM> + Constant<COM>,
+    S::Field: Variable<Public, COM>,
+    S::Type: Specification<Field = Var<S::Field, Public, COM>>,
+{
+    type Type = PlaintextBlock<S::Type>;
+
+    #[inline]
+    fn new_unknown(compiler: &mut COM) -> Self {
+        Self(
+            iter::repeat_with(|| compiler.allocate_unknown())
+                .take(S::WIDTH - 1)
+                .collect(),
+        )
+    }
+
+    #[inline]
+    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
+        Self(this.0.iter().map(|this| this.as_known(compiler)).collect())
+    }
+}
+
+impl<S> Encode for PlaintextBlock<S>
+where
+    S: Specification,
+    S::Field: Encode,
+{
+    #[inline]
+    fn encode<W>(&self, writer: W) -> Result<(), W::Error>
+    where
+        W: codec::Write,
+    {
+        self.0.encode(writer)
+    }
+}
+
+impl<S, P> Input<P> for PlaintextBlock<S>
+where
+    S: Specification,
+    P: HasInput<S::Field> + ?Sized,
+{
+    #[inline]
+    fn extend(&self, input: &mut P::Input) {
+        for element in self.0.iter() {
+            P::extend(input, element);
+        }
+    }
+}
+
 /// Ciphertext Block
+/* TODO:
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
@@ -134,6 +245,7 @@ where
         deny_unknown_fields
     )
 )]
+*/
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "S::Field: Clone"),
@@ -142,7 +254,7 @@ where
     Hash(bound = "S::Field: Hash"),
     PartialEq(bound = "S::Field: PartialEq")
 )]
-pub struct CiphertextBlock<S, COM = ()>(Box<[S::Field]>)
+pub struct CiphertextBlock<S, COM = ()>(pub Box<[S::Field]>)
 where
     S: Specification<COM>;
 
@@ -162,7 +274,187 @@ where
     }
 }
 
+impl<S, COM> eclair::cmp::PartialEq<Self, COM> for CiphertextBlock<S, COM>
+where
+    COM: Has<bool>,
+    Bool<COM>: Constant<COM, Type = bool> + BitAnd<Bool<COM>, COM, Output = Bool<COM>>,
+    S: Specification<COM>,
+    S::Field: eclair::cmp::PartialEq<S::Field, COM>,
+{
+    #[inline]
+    fn eq(&self, rhs: &Self, compiler: &mut COM) -> Bool<COM> {
+        self.0.eq(&rhs.0, compiler)
+    }
+
+    #[inline]
+    fn assert_equal(&self, rhs: &Self, compiler: &mut COM)
+    where
+        COM: Assert,
+    {
+        self.0.assert_equal(&rhs.0, compiler)
+    }
+}
+
+impl<S, COM> Variable<Public, COM> for CiphertextBlock<S, COM>
+where
+    S: Specification<COM> + Constant<COM>,
+    S::Field: Variable<Public, COM>,
+    S::Type: Specification<Field = Var<S::Field, Public, COM>>,
+{
+    type Type = CiphertextBlock<S::Type>;
+
+    #[inline]
+    fn new_unknown(compiler: &mut COM) -> Self {
+        Self(
+            iter::repeat_with(|| compiler.allocate_unknown())
+                .take(S::WIDTH - 1)
+                .collect(),
+        )
+    }
+
+    #[inline]
+    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
+        Self(this.0.iter().map(|this| this.as_known(compiler)).collect())
+    }
+}
+
+impl<S> Encode for CiphertextBlock<S>
+where
+    S: Specification,
+    S::Field: Encode,
+{
+    #[inline]
+    fn encode<W>(&self, writer: W) -> Result<(), W::Error>
+    where
+        W: codec::Write,
+    {
+        self.0.encode(writer)
+    }
+}
+
+impl<S, P> Input<P> for CiphertextBlock<S>
+where
+    S: Specification,
+    P: HasInput<S::Field> + ?Sized,
+{
+    #[inline]
+    fn extend(&self, input: &mut P::Input) {
+        for element in self.0.iter() {
+            P::extend(input, element);
+        }
+    }
+}
+
+/// Block Array
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "B: Clone"),
+    Debug(bound = "B: Debug"),
+    Eq(bound = "B: Eq"),
+    Hash(bound = "B: Hash"),
+    PartialEq(bound = "B: PartialEq")
+)]
+pub struct BlockArray<B, const N: usize>(pub BoxArray<B, N>);
+
+impl<B, const N: usize> Deref for BlockArray<B, N> {
+    type Target = BoxArray<B, N>;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<B, const N: usize> FromIterator<B> for BlockArray<B, N> {
+    #[inline]
+    fn from_iter<I>(iter: I) -> Self
+    where
+        I: IntoIterator<Item = B>,
+    {
+        Self(iter.into_iter().collect())
+    }
+}
+
+impl<'b, B, const N: usize> IntoIterator for &'b BlockArray<B, N> {
+    type Item = &'b B;
+    type IntoIter = slice::Iter<'b, B>;
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
+}
+
+impl<B, const N: usize> Encode for BlockArray<B, N>
+where
+    B: Encode,
+{
+    #[inline]
+    fn encode<W>(&self, writer: W) -> Result<(), W::Error>
+    where
+        W: codec::Write,
+    {
+        self.0.encode(writer)
+    }
+}
+
+impl<B, const N: usize, P> Input<P> for BlockArray<B, N>
+where
+    P: HasInput<B> + ?Sized,
+{
+    #[inline]
+    fn extend(&self, input: &mut P::Input) {
+        for block in &self.0 {
+            P::extend(input, block);
+        }
+    }
+}
+
+impl<B, const N: usize, COM> eclair::cmp::PartialEq<Self, COM> for BlockArray<B, N>
+where
+    COM: Has<bool>,
+    Bool<COM>: Constant<COM, Type = bool> + BitAnd<Bool<COM>, COM, Output = Bool<COM>>,
+    B: eclair::cmp::PartialEq<B, COM>,
+{
+    #[inline]
+    fn eq(&self, rhs: &Self, compiler: &mut COM) -> Bool<COM> {
+        self.0.eq(&rhs.0, compiler)
+    }
+
+    #[inline]
+    fn assert_equal(&self, rhs: &Self, compiler: &mut COM)
+    where
+        COM: Assert,
+    {
+        self.0.assert_equal(&rhs.0, compiler)
+    }
+}
+
+impl<B, const N: usize, M, COM> Variable<M, COM> for BlockArray<B, N>
+where
+    B: Variable<M, COM>,
+{
+    type Type = BlockArray<B::Type, N>;
+
+    #[inline]
+    fn new_unknown(compiler: &mut COM) -> Self {
+        Self(compiler.allocate_unknown())
+    }
+
+    #[inline]
+    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
+        Self(this.0.as_known(compiler))
+    }
+}
+
+/// Fixed Plaintext Type
+pub type FixedPlaintext<const N: usize, S, COM = ()> = BlockArray<PlaintextBlock<S, COM>, N>;
+
+/// Fixed Ciphertext Type
+pub type FixedCiphertext<const N: usize, S, COM = ()> = BlockArray<CiphertextBlock<S, COM>, N>;
+
 /// Authentication Tag
+/* TODO:
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
@@ -175,6 +467,7 @@ where
         deny_unknown_fields
     )
 )]
+*/
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "S::Field: Clone"),
@@ -183,7 +476,7 @@ where
     Hash(bound = "S::Field: Hash"),
     PartialEq(bound = "S::Field: PartialEq")
 )]
-pub struct Tag<S, COM = ()>(S::Field)
+pub struct Tag<S, COM = ()>(pub S::Field)
 where
     S: Specification<COM>;
 
@@ -199,7 +492,64 @@ where
     }
 }
 
-/// Encryption Configuration
+impl<S, COM> eclair::cmp::PartialEq<Self, COM> for Tag<S, COM>
+where
+    COM: Has<bool>,
+    S: Specification<COM>,
+    S::Field: eclair::cmp::PartialEq<S::Field, COM>,
+{
+    #[inline]
+    fn eq(&self, rhs: &Self, compiler: &mut COM) -> Bool<COM> {
+        self.0.eq(&rhs.0, compiler)
+    }
+}
+
+impl<S, COM> Variable<Public, COM> for Tag<S, COM>
+where
+    S: Specification<COM> + Constant<COM>,
+    S::Field: Variable<Public, COM>,
+    S::Type: Specification<Field = Var<S::Field, Public, COM>>,
+{
+    type Type = Tag<S::Type>;
+
+    #[inline]
+    fn new_unknown(compiler: &mut COM) -> Self {
+        Self(compiler.allocate_unknown())
+    }
+
+    #[inline]
+    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
+        Self(this.0.as_known(compiler))
+    }
+}
+
+impl<S> Encode for Tag<S>
+where
+    S: Specification,
+    S::Field: Encode,
+{
+    #[inline]
+    fn encode<W>(&self, writer: W) -> Result<(), W::Error>
+    where
+        W: codec::Write,
+    {
+        self.0.encode(writer)
+    }
+}
+
+impl<S, P> Input<P> for Tag<S>
+where
+    S: Specification,
+    P: HasInput<S::Field> + ?Sized,
+{
+    #[inline]
+    fn extend(&self, input: &mut P::Input) {
+        P::extend(input, &self.0)
+    }
+}
+
+/// Fixed Encryption Configuration
+/* TODO:
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
@@ -212,6 +562,7 @@ where
         deny_unknown_fields
     )
 )]
+*/
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "S::Field: Clone"),
@@ -220,7 +571,7 @@ where
     Hash(bound = "S::Field: Hash"),
     PartialEq(bound = "S::Field: PartialEq")
 )]
-pub struct Encryption<S, COM = ()>
+pub struct FixedEncryption<const N: usize, S, COM = ()>
 where
     S: Specification<COM>,
 {
@@ -228,7 +579,39 @@ where
     pub initial_state: State<S, COM>,
 }
 
-impl<S, COM> Types<Permutation<S, COM>, COM> for Encryption<S, COM>
+impl<const N: usize, S, COM> Constant<COM> for FixedEncryption<N, S, COM>
+where
+    S: Specification<COM> + Constant<COM>,
+    S::Type: Specification,
+    State<S, COM>: Constant<COM, Type = State<S::Type>>,
+{
+    type Type = FixedEncryption<N, S::Type>;
+
+    #[inline]
+    fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
+        Self {
+            initial_state: this.initial_state.as_constant(compiler),
+        }
+    }
+}
+
+impl<const N: usize, S, D> Sample<D> for FixedEncryption<N, S>
+where
+    S: Specification,
+    State<S>: Sample<D>,
+{
+    #[inline]
+    fn sample<R>(distribution: D, rng: &mut R) -> Self
+    where
+        R: RngCore + ?Sized,
+    {
+        Self {
+            initial_state: rng.sample(distribution),
+        }
+    }
+}
+
+impl<const N: usize, S, COM> Types<Permutation<S, COM>, COM> for FixedEncryption<N, S, COM>
 where
     S: Specification<COM>,
     S::Field: Clone + BlockElement<COM>,
@@ -237,14 +620,16 @@ where
     type Header = Vec<S::Field>;
     type SetupBlock = SetupBlock<S, COM>;
     type PlaintextBlock = PlaintextBlock<S, COM>;
+    type Plaintext = FixedPlaintext<N, S, COM>;
     type CiphertextBlock = CiphertextBlock<S, COM>;
+    type Ciphertext = FixedCiphertext<N, S, COM>;
     type Tag = Tag<S, COM>;
 }
 
-impl<S, COM> Setup<Permutation<S, COM>, COM> for Encryption<S, COM>
+impl<const N: usize, S, COM> Setup<Permutation<S, COM>, COM> for FixedEncryption<N, S, COM>
 where
     S: Specification<COM>,
-    S::Field: Clone + Default + BlockElement<COM>,
+    S::Field: Clone + BlockElement<COM> + Zero<COM>,
 {
     #[inline]
     fn initialize(&self, compiler: &mut COM) -> State<S, COM> {
@@ -259,9 +644,10 @@ where
         header: &Self::Header,
         compiler: &mut COM,
     ) -> Vec<Self::SetupBlock> {
-        let _ = compiler;
-        let mut blocks = padded_chunks(key.as_slice(), S::WIDTH - 1);
-        blocks.extend(padded_chunks(header.as_slice(), S::WIDTH - 1));
+        let mut blocks = padded_chunks_with(key.as_slice(), S::WIDTH - 1, || Zero::zero(compiler));
+        blocks.extend(padded_chunks_with(header.as_slice(), S::WIDTH - 1, || {
+            Zero::zero(compiler)
+        }));
         blocks
             .into_iter()
             .map(|b| SetupBlock(b.into_boxed_slice()))
@@ -269,7 +655,7 @@ where
     }
 }
 
-impl<S> Verify<Permutation<S>> for Encryption<S>
+impl<const N: usize, S> Verify<Permutation<S>> for FixedEncryption<N, S>
 where
     S: Specification,
     S::Field: Clone + PartialEq + BlockElement,

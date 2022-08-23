@@ -27,7 +27,7 @@ use crate::{
 use core::{fmt::Debug, hash::Hash, iter};
 use manta_crypto::{
     accumulator::Accumulator,
-    constraint::ProofSystemInput,
+    constraint::HasInput,
     eclair::{
         alloc::{mode::Derived, Allocate, Allocator, Variable},
         bool::AssertEq,
@@ -142,16 +142,6 @@ where
             None
         }
     }
-
-    /// Returns `true` whenever `self.utxo` and `rhs.utxo` can be inserted in any order into the
-    /// `utxo_accumulator`.
-    #[inline]
-    pub fn is_independent_from<A>(&self, rhs: &Self, utxo_accumulator: &A) -> bool
-    where
-        A: Accumulator<Item = Utxo<C>, Model = C::UtxoAccumulatorModel>,
-    {
-        utxo_accumulator.are_independent(&self.utxo, &rhs.utxo)
-    }
 }
 
 /// Sender Proof
@@ -209,16 +199,6 @@ where
     #[inline]
     pub fn asset_value(&self) -> AssetValue {
         self.asset.value
-    }
-
-    /// Returns `true` whenever `self.utxo` and `rhs.utxo` can be inserted in any order into the
-    /// `utxo_accumulator`.
-    #[inline]
-    pub fn is_independent_from<A>(&self, rhs: &Self, utxo_accumulator: &A) -> bool
-    where
-        A: Accumulator<Item = Utxo<C>, Model = C::UtxoAccumulatorModel>,
-    {
-        utxo_accumulator.are_independent(&self.utxo, &rhs.utxo)
     }
 
     /// Reverts `self` back into a [`PreSender`].
