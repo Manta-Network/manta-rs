@@ -186,6 +186,8 @@ pub type SpendSecretVar = protocol::SpendSecret<Config<Compiler>, Compiler>;
 pub struct GroupGenerator(Group);
 
 impl HasGenerator<Group> for GroupGenerator {
+    type Generator = Group;
+
     #[inline]
     fn generator(&self) -> &Group {
         &self.0
@@ -228,6 +230,8 @@ impl Sample for GroupGenerator {
 pub struct GroupGeneratorVar(GroupVar);
 
 impl HasGenerator<GroupVar, Compiler> for GroupGeneratorVar {
+    type Generator = GroupVar;
+
     #[inline]
     fn generator(&self) -> &GroupVar {
         &self.0
@@ -1356,7 +1360,9 @@ pub struct SchnorrHashFunction;
 
 impl hash::security::PreimageResistance for SchnorrHashFunction {}
 
-impl schnorr::HashFunction<Group> for SchnorrHashFunction {
+impl schnorr::HashFunction for SchnorrHashFunction {
+    type Scalar = EmbeddedScalar;
+    type Group = Group;
     type Message = Vec<u8>;
 
     #[inline]

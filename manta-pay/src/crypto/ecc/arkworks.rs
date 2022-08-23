@@ -18,8 +18,7 @@
 
 use crate::crypto::constraint::arkworks::{self, empty, full, Boolean, Fp, FpVar, R1CS};
 use alloc::vec::Vec;
-use core::{iter::Extend, marker::PhantomData};
-use core::{borrow::Borrow, marker::PhantomData};
+use core::{borrow::Borrow, iter::Extend, marker::PhantomData};
 use manta_crypto::{
     algebra,
     algebra::FixedBaseScalarMul,

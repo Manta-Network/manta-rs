@@ -25,8 +25,8 @@ use core::{cmp, fmt::Debug, hash::Hash};
 use manta_crypto::{
     accumulator::{self, ItemHashFunction, MembershipProof},
     algebra::{
-        security::ComputationalDiffieHellmanHardness, CyclicGroup, DiffieHellman, HasGenerator,
-        KnownScalarDiffieHellman, Ring,
+        security::ComputationalDiffieHellmanHardness, HasGenerator, KnownScalarDiffieHellman, Ring,
+        ScalarMul, ScalarMulGroup, StandardDiffieHellman,
     },
     constraint::{HasInput, Input},
     eclair::{
@@ -243,11 +243,11 @@ where
     /// Group Type
     type Group: Clone
         + ComputationalDiffieHellmanHardness
-        + CyclicGroup<COM, Scalar = Self::Scalar>
+        + ScalarMulGroup<Self::Scalar, COM, Output = Self::Group>
         + PartialEq<Self::Group, COM>;
 
     /// Group Generator
-    type GroupGenerator: HasGenerator<Self::Group, COM>;
+    type GroupGenerator: HasGenerator<Self::Group, COM, Generator = Self::Group>;
 
     /// UTXO Commitment Scheme
     type UtxoCommitmentScheme: UtxoCommitmentScheme<
@@ -317,7 +317,8 @@ where
 /// UTXO Configuration
 pub trait Configuration: BaseConfiguration<Bool = bool> {
     /// Schnorr Hash Function
-    type SchnorrHashFunction: Clone + schnorr::HashFunction<Self::Group, Message = Vec<u8>>;
+    type SchnorrHashFunction: Clone
+        + schnorr::HashFunction<Scalar = Self::Scalar, Group = Self::Group, Message = Vec<u8>>;
 }
 
 /// Asset Type
@@ -334,7 +335,10 @@ pub type UtxoCommitmentRandomness<C, COM = ()> =
 
 /// Incoming Encryption Scheme
 pub type IncomingEncryptionScheme<C, COM = ()> = Hybrid<
-    DiffieHellman<<C as BaseConfiguration<COM>>::Group, COM>,
+    StandardDiffieHellman<
+        <C as BaseConfiguration<COM>>::Scalar,
+        <C as BaseConfiguration<COM>>::Group,
+    >,
     <C as BaseConfiguration<COM>>::IncomingBaseEncryptionScheme,
 >;
 
@@ -358,7 +362,10 @@ pub type NullifierCommitment<C, COM = ()> =
 
 /// Outgoing Encryption Scheme
 pub type OutgoingEncryptionScheme<C, COM = ()> = Hybrid<
-    KnownScalarDiffieHellman<<C as BaseConfiguration<COM>>::Group, COM>,
+    KnownScalarDiffieHellman<
+        <C as BaseConfiguration<COM>>::Scalar,
+        <C as BaseConfiguration<COM>>::Group,
+    >,
     <C as BaseConfiguration<COM>>::OutgoingBaseEncryptionScheme,
 >;
 
@@ -369,8 +376,7 @@ pub type OutgoingRandomness<C, COM = ()> = encryption::Randomness<OutgoingEncryp
 pub type OutgoingNote<C, COM = ()> = EncryptedMessage<OutgoingEncryptionScheme<C, COM>>;
 
 /// Signature Scheme
-pub type SignatureScheme<C> =
-    schnorr::Schnorr<<C as BaseConfiguration>::Group, <C as Configuration>::SchnorrHashFunction>;
+pub type SignatureScheme<C> = schnorr::Schnorr<<C as Configuration>::SchnorrHashFunction>;
 
 /// UTXO Model Base Parameters
 #[derive(derivative::Derivative)]
@@ -880,8 +886,8 @@ where
         R: RngCore + ?Sized,
     {
         SignatureScheme::<C>::new(
-            self.base.group_generator.generator().clone(),
             self.schnorr_hash_function.clone(),
+            self.base.group_generator.generator().clone(),
         )
         .sign(signing_key, &rng.gen(), &message.to_vec(), &mut ())
     }
@@ -900,8 +906,8 @@ where
         message: &M,
     ) -> bool {
         SignatureScheme::<C>::new(
-            self.base.group_generator.generator().clone(),
             self.schnorr_hash_function.clone(),
+            self.base.group_generator.generator().clone(),
         )
         .verify(authorization_key, &message.to_vec(), signature, &mut ())
     }
@@ -958,7 +964,7 @@ where
             &mut (),
         );
         let incoming_note = Hybrid::new(
-            DiffieHellman::new(self.base.group_generator.generator().clone()),
+            StandardDiffieHellman::new(self.base.group_generator.generator().clone()),
             self.base.incoming_base_encryption_scheme.clone(),
         )
         .encrypt_into(
@@ -1458,7 +1464,7 @@ where
         compiler: &mut COM,
     ) -> IncomingNote<C, COM> {
         Hybrid::new(
-            DiffieHellman::new(group_generator.clone()),
+            StandardDiffieHellman::new(group_generator.clone()),
             encryption_scheme.clone(),
         )
         .encrypt_into(
