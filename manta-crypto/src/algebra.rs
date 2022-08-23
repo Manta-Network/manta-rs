@@ -21,8 +21,12 @@ use crate::{
     key,
     rand::{RngCore, Sample},
 };
-use core::marker::PhantomData;
-use manta_util::codec::{Decode, DecodeError, Encode, Read, Write};
+use alloc::vec::Vec;
+use core::{borrow::Borrow, marker::PhantomData};
+use manta_util::{
+    codec::{Decode, DecodeError, Encode, Read, Write},
+    into_array_unchecked,
+};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
@@ -63,6 +67,50 @@ where
 
     /// Returns a generator of `G`.
     fn generator(&self) -> &Self::Generator;
+}
+
+/// Fixed Base Scalar Multiplication using precomputed base points
+pub trait FixedBaseScalarMul<S, COM = ()>: Group<COM> {
+    /// Fixed Base Point
+    type Base;
+
+    /// Multiplies `precomputed_bases[0]` by `scalar` using precomputed base points,
+    /// where `precomputed_bases` are precomputed power-of-two multiples of the fixed base.
+    fn fixed_base_scalar_mul<I>(precomputed_bases: I, scalar: &S, compiler: &mut COM) -> Self
+    where
+        I: IntoIterator,
+        I::Item: Borrow<Self::Base>;
+}
+
+/// Precomputed power-of-two Bases for fixed-base scalar multiplication with entry at index `i` as `base * 2^i`
+pub struct PrecomputedBaseTable<G, const N: usize> {
+    table: [G; N],
+}
+
+impl<G, const N: usize> IntoIterator for PrecomputedBaseTable<G, N> {
+    type Item = G;
+    type IntoIter = core::array::IntoIter<G, N>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.table.into_iter()
+    }
+}
+
+impl<G, const N: usize> PrecomputedBaseTable<G, N> {
+    /// Builds a new [`PrecomputedBaseTable`] from a given `base`, such that `table[i] = base * 2^i`.
+    #[inline]
+    pub fn from_base<COM>(base: G, compiler: &mut COM) -> Self
+    where
+        G: Group<COM>,
+    {
+        Self {
+            table: into_array_unchecked(
+                core::iter::successors(Some(base), |base| Some(base.add(base, compiler)))
+                    .take(N)
+                    .collect::<Vec<_>>(),
+            ),
+        }
+    }
 }
 
 /// Diffie-Hellman Key Agreement Scheme
