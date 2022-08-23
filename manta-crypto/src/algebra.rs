@@ -70,15 +70,15 @@ where
 }
 
 /// Fixed Base Scalar Multiplication using precomputed base points
-pub trait FixedBaseScalarMul<COM = ()>: Group<COM> {
+pub trait FixedBaseScalarMul<S, COM = ()>: Group<COM> {
     /// Fixed Base Point
     type Base;
 
-    /// Multiply `precomputed_bases[0]` by `scalar` using precomputed base points,
-    /// where `precomputed_bases` are precomputed power-of-two multiples of the fixed base.  
+    /// Multiplies `precomputed_bases[0]` by `scalar` using precomputed base points,
+    /// where `precomputed_bases` are precomputed power-of-two multiples of the fixed base.
     fn fixed_base_scalar_mul<I>(
         precomputed_bases: I,
-        scalar: &Self::Scalar,
+        scalar: &S,
         compiler: &mut COM,
     ) -> Self
     where
@@ -86,7 +86,7 @@ pub trait FixedBaseScalarMul<COM = ()>: Group<COM> {
         I::Item: Borrow<Self::Base>;
 }
 
-/// Precomputed power-of-two Base for fixed-base scalar multiplication. Entry at index `i` is `base * 2^i`.
+/// Precomputed power-of-two Bases for fixed-base scalar multiplication with entry at index `i` as `base * 2^i`
 pub struct PrecomputedBaseTable<G, const N: usize> {
     table: [G; N],
 }
@@ -101,18 +101,19 @@ impl<G, const N: usize> IntoIterator for PrecomputedBaseTable<G, N> {
 }
 
 impl<G, const N: usize> PrecomputedBaseTable<G, N> {
-    #[inline]
     /// Builds a new [`PrecomputedBaseTable`] from a given `base`, such that `table[i] = base * 2^i`.
+    #[inline]
     pub fn from_base<COM>(base: G, compiler: &mut COM) -> Self
     where
         G: Group<COM>,
     {
-        let table = into_array_unchecked(
-            core::iter::successors(Some(base), |base| Some(base.add(base, compiler)))
-                .take(N)
-                .collect::<Vec<_>>(),
-        );
-        Self { table }
+        Self {
+            table: into_array_unchecked(
+                core::iter::successors(Some(base), |base| Some(base.add(base, compiler)))
+                    .take(N)
+                    .collect::<Vec<_>>(),
+            ),
+        }
     }
 }
 

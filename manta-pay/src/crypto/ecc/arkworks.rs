@@ -21,6 +21,7 @@ use alloc::vec::Vec;
 use core::{borrow::Borrow, marker::PhantomData};
 use manta_crypto::{
     algebra,
+    algebra::FixedBaseScalarMul,
     arkworks::{
         algebra::{affine_point_as_bytes, modulus_is_smaller},
         ec::{AffineCurve, ProjectiveCurve},
@@ -40,7 +41,6 @@ use manta_crypto::{
 };
 use manta_util::{codec, AsBytes};
 
-use manta_crypto::algebra::FixedBaseScalarMul;
 #[cfg(feature = "serde")]
 use {
     manta_crypto::arkworks::algebra::serialize_group_element,
@@ -534,16 +534,17 @@ where
     }
 }
 
-impl<C, CV> FixedBaseScalarMul<Compiler<C>> for GroupVar<C, CV>
+impl<C, CV> FixedBaseScalarMul<ScalarVar<C, CV>, Compiler<C>> for GroupVar<C, CV>
 where
     C: ProjectiveCurve,
     CV: CurveVar<C, ConstraintField<C>>,
 {
     type Base = Group<C>;
 
+    #[inline]
     fn fixed_base_scalar_mul<I>(
         precomputed_bases: I,
-        scalar: &Self::Scalar,
+        scalar: &ScalarVar<C, CV>,
         compiler: &mut Compiler<C>,
     ) -> Self
     where
@@ -570,7 +571,7 @@ mod test {
     use super::*;
     use crate::config::Bls12_381_Edwards;
     use manta_crypto::{
-        algebra::{Group as _, PrecomputedBaseTable},
+        algebra::{PrecomputedBaseTable, ScalarMul},
         arkworks::{algebra::scalar_bits, r1cs_std::groups::curves::twisted_edwards::AffineVar},
         constraint::measure::Measure,
         eclair::bool::AssertEq,
@@ -584,21 +585,17 @@ mod test {
         let base = Group::<Bls12_381_Edwards>::sample((), &mut OsRng);
         const SCALAR_BITS: usize = scalar_bits::<Bls12_381_Edwards>();
         let precomputed_table = PrecomputedBaseTable::<_, SCALAR_BITS>::from_base(base, &mut ());
-
         let base_var =
             base.as_known::<Secret, GroupVar<Bls12_381_Edwards, AffineVar<_, _>>>(&mut cs);
         let scalar_var =
             scalar.as_known::<Secret, ScalarVar<Bls12_381_Edwards, AffineVar<_, _>>>(&mut cs);
-
         let ctr1 = cs.constraint_count();
-        let expected = base_var.mul(&scalar_var, &mut cs);
+        let expected = base_var.scalar_mul(&scalar_var, &mut cs);
         let ctr2 = cs.constraint_count();
         let actual = GroupVar::fixed_base_scalar_mul(precomputed_table, &scalar_var, &mut cs);
         let ctr3 = cs.constraint_count();
-
         cs.assert_eq(&expected, &actual);
         assert!(cs.is_satisfied());
-
         println!("variable base mul constraint: {:?}", ctr2 - ctr1);
         println!("fixed base mul constraint: {:?}", ctr3 - ctr2);
     }
