@@ -223,6 +223,27 @@ pub trait Sample<D = ()>: Sized {
     }
 }
 
+impl<T, D> Sample<D> for PhantomData<T> {
+    #[inline]
+    fn sample<R>(distribution: D, rng: &mut R) -> Self
+    where
+        R: RngCore + ?Sized,
+    {
+        let _ = (distribution, rng);
+        Self
+    }
+}
+
+impl<D> Sample<D> for () {
+    #[inline]
+    fn sample<R>(distribution: D, rng: &mut R) -> Self
+    where
+        R: RngCore + ?Sized,
+    {
+        let _ = (distribution, rng);
+    }
+}
+
 impl Sample for bool {
     #[inline]
     fn sample<R>(_: (), rng: &mut R) -> Self

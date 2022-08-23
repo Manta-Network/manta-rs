@@ -27,7 +27,9 @@
 //! abstractions inside of compilers, like heap allocation. Allocation only refers to lifting
 //! constants and variables from one compiler to another.
 
-use core::marker::PhantomData;
+use alloc::{boxed::Box, vec::Vec};
+use core::{iter, marker::PhantomData};
+use manta_util::{into_array_unchecked, Array, BoxArray};
 
 /// Constant Type Alias
 pub type Const<C, COM> = <C as Constant<COM>>::Type;
@@ -38,7 +40,7 @@ pub type Const<C, COM> = <C as Constant<COM>>::Type;
 /// _compilation time_. In this case, we take an explicit value of the underlying type and directly
 /// return an allocated value in the `COM` compiler. Contrast this with [`Variable`] types whose
 /// values are not known at _compilation time_ and are only known at _execution time_.
-pub trait Constant<COM>
+pub trait Constant<COM = ()>
 where
     COM: ?Sized,
 {
@@ -47,6 +49,15 @@ where
 
     /// Allocates a new constant from `this` into the `compiler`.
     fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self;
+}
+
+impl Constant for bool {
+    type Type = bool;
+
+    #[inline]
+    fn new_constant(this: &Self::Type, _: &mut ()) -> Self {
+        *this
+    }
 }
 
 impl<COM> Constant<COM> for ()
@@ -74,6 +85,75 @@ where
     }
 }
 
+impl<T, const N: usize, COM> Constant<COM> for [T; N]
+where
+    COM: ?Sized,
+    T: Constant<COM>,
+{
+    type Type = [T::Type; N];
+
+    #[inline]
+    fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
+        into_array_unchecked(
+            this.iter()
+                .map(|this| this.as_constant(compiler))
+                .collect::<Vec<_>>(),
+        )
+    }
+}
+
+impl<T, COM> Constant<COM> for Vec<T>
+where
+    COM: ?Sized,
+    T: Constant<COM>,
+{
+    type Type = Vec<T::Type>;
+
+    #[inline]
+    fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
+        this.iter().map(|this| this.as_constant(compiler)).collect()
+    }
+}
+
+impl<T, COM> Constant<COM> for Box<[T]>
+where
+    COM: ?Sized,
+    T: Constant<COM>,
+{
+    type Type = Box<[T::Type]>;
+
+    #[inline]
+    fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
+        this.iter().map(|this| this.as_constant(compiler)).collect()
+    }
+}
+
+impl<T, const N: usize, COM> Constant<COM> for Array<T, N>
+where
+    COM: ?Sized,
+    T: Constant<COM>,
+{
+    type Type = Array<T::Type, N>;
+
+    #[inline]
+    fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
+        this.iter().map(|this| this.as_constant(compiler)).collect()
+    }
+}
+
+impl<T, const N: usize, COM> Constant<COM> for BoxArray<T, N>
+where
+    COM: ?Sized,
+    T: Constant<COM>,
+{
+    type Type = Array<T::Type, N>;
+
+    #[inline]
+    fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
+        this.iter().map(|this| this.as_constant(compiler)).collect()
+    }
+}
+
 /// Variable Type Alias
 pub type Var<V, M, COM> = <V as Variable<M, COM>>::Type;
 
@@ -90,7 +170,7 @@ pub type Var<V, M, COM> = <V as Variable<M, COM>>::Type;
 /// The tag `M` in the type parameters of this trait refers to the [`Variable`]'s allocation mode.
 /// See the [`mode`] module for more details on why allocation modes are necessary and useful and
 /// how to use them.
-pub trait Variable<M, COM>
+pub trait Variable<M, COM = ()>
 where
     COM: ?Sized,
 {
@@ -144,6 +224,90 @@ where
     }
 }
 
+impl<T, M, COM> Variable<M, COM> for Box<T>
+where
+    COM: ?Sized,
+    T: Variable<M, COM>,
+{
+    type Type = Box<T::Type>;
+
+    #[inline]
+    fn new_unknown(compiler: &mut COM) -> Self {
+        Self::new(compiler.allocate_unknown())
+    }
+
+    #[inline]
+    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
+        Self::new(T::new_known(this, compiler))
+    }
+}
+
+impl<T, const N: usize, M, COM> Variable<M, COM> for [T; N]
+where
+    COM: ?Sized,
+    T: Variable<M, COM>,
+{
+    type Type = [T::Type; N];
+
+    #[inline]
+    fn new_unknown(compiler: &mut COM) -> Self {
+        into_array_unchecked(
+            iter::repeat_with(|| compiler.allocate_unknown())
+                .take(N)
+                .collect::<Vec<_>>(),
+        )
+    }
+
+    #[inline]
+    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
+        into_array_unchecked(
+            this.iter()
+                .map(|this| this.as_known(compiler))
+                .collect::<Vec<_>>(),
+        )
+    }
+}
+
+impl<T, const N: usize, M, COM> Variable<M, COM> for Array<T, N>
+where
+    COM: ?Sized,
+    T: Variable<M, COM>,
+{
+    type Type = Array<T::Type, N>;
+
+    #[inline]
+    fn new_unknown(compiler: &mut COM) -> Self {
+        iter::repeat_with(|| compiler.allocate_unknown())
+            .take(N)
+            .collect()
+    }
+
+    #[inline]
+    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
+        this.iter().map(|this| this.as_known(compiler)).collect()
+    }
+}
+
+impl<T, const N: usize, M, COM> Variable<M, COM> for BoxArray<T, N>
+where
+    COM: ?Sized,
+    T: Variable<M, COM>,
+{
+    type Type = BoxArray<T::Type, N>;
+
+    #[inline]
+    fn new_unknown(compiler: &mut COM) -> Self {
+        iter::repeat_with(|| compiler.allocate_unknown())
+            .take(N)
+            .collect()
+    }
+
+    #[inline]
+    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
+        this.iter().map(|this| this.as_known(compiler)).collect()
+    }
+}
+
 /// Allocation Auto-`trait`
 ///
 /// Allocation schemes are built up from the individual variables which can be allocated into a
@@ -153,7 +317,7 @@ where
 ///
 /// See [`Constant`] and [`Variable`] for more details on including a specific variable in the
 /// allocation scheme for a compiler.
-pub trait Allocate<COM>
+pub trait Allocate<COM = ()>
 where
     COM: ?Sized,
 {
@@ -191,7 +355,12 @@ where
     }
 }
 
-impl<COM, T> Allocate<COM> for T where T: ?Sized {}
+impl<COM, T> Allocate<COM> for T
+where
+    COM: ?Sized,
+    T: ?Sized,
+{
+}
 
 /// Allocator Auto-`trait`
 ///

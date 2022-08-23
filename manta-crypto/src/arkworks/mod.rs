@@ -17,12 +17,12 @@
 //! Arkworks Backend
 
 pub use ark_ec as ec;
-pub use ark_ff as ff;
 pub use ark_r1cs_std as r1cs_std;
 pub use ark_relations as relations;
 pub use ark_serialize as serialize;
 
 pub mod algebra;
 pub mod constraint;
+pub mod ff;
 pub mod pairing;
 pub mod rand;

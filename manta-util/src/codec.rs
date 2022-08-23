@@ -21,7 +21,7 @@
 use core::{convert::Infallible, fmt::Debug, hash::Hash, marker::PhantomData};
 
 #[cfg(feature = "alloc")]
-use {crate::into_array_unchecked, alloc::vec::Vec};
+use crate::{into_array_unchecked, vec::Vec};
 
 /// Implements [`Decode`] and [`Encode`] for a type with no data that implements [`Default`].
 #[macro_export]
@@ -587,49 +587,35 @@ impl<T> Encode for PhantomData<T> {
     }
 }
 
-impl Encode for u8 {
+impl Encode for bool {
     #[inline]
-    fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
+    fn encode<W>(&self, writer: W) -> Result<(), W::Error>
     where
         W: Write,
     {
-        writer.write_ref(&[*self])?;
-        Ok(())
+        (*self as u8).encode(writer)
     }
 }
 
-impl Encode for u16 {
-    #[inline]
-    fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
-    where
-        W: Write,
-    {
-        writer.write_ref(&self.to_le_bytes())?;
-        Ok(())
+/// Defines an [`Encode`] implemention for the given integer type `$type`.
+macro_rules! encode_int {
+    ($($type:tt),* $(,)?) => {
+        $(
+            impl Encode for $type {
+                #[inline]
+                fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
+                where
+                    W: Write,
+                {
+                    writer.write_ref(&self.to_le_bytes())?;
+                    Ok(())
+                }
+            }
+        )*
     }
 }
 
-impl Encode for u32 {
-    #[inline]
-    fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
-    where
-        W: Write,
-    {
-        writer.write_ref(&self.to_le_bytes())?;
-        Ok(())
-    }
-}
-
-impl Encode for u64 {
-    #[inline]
-    fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
-    where
-        W: Write,
-    {
-        writer.write_ref(&self.to_le_bytes())?;
-        Ok(())
-    }
-}
+encode_int!(u8, i8, u16, i16, u32, i32, u64, i64, u128, i128);
 
 impl<T> Encode for [T]
 where
@@ -657,6 +643,25 @@ where
     where
         W: Write,
     {
+        for item in self {
+            item.encode(&mut writer)?;
+        }
+        Ok(())
+    }
+}
+
+#[cfg(feature = "alloc")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
+impl<T> Encode for Vec<T>
+where
+    T: Encode,
+{
+    #[inline]
+    fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
+    where
+        W: Write,
+    {
+        (self.len() as u64).encode(&mut writer)?;
         for item in self {
             item.encode(&mut writer)?;
         }

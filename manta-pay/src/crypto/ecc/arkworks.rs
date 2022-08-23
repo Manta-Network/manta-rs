@@ -36,10 +36,9 @@ use manta_crypto::{
             Allocate, Allocator, Constant, Variable,
         },
     },
-    key::kdf,
     rand::{RngCore, Sample},
 };
-use manta_util::codec;
+use manta_util::{codec, AsBytes};
 
 use manta_crypto::algebra::FixedBaseScalarMul;
 #[cfg(feature = "serde")]
@@ -204,7 +203,7 @@ where
     }
 }
 
-impl<C> kdf::AsBytes for Group<C>
+impl<C> AsBytes for Group<C>
 where
     C: ProjectiveCurve,
 {
@@ -218,15 +217,20 @@ impl<C> algebra::Group for Group<C>
 where
     C: ProjectiveCurve,
 {
-    type Scalar = Scalar<C>;
-
     #[inline]
     fn add(&self, rhs: &Self, _: &mut ()) -> Self {
         Self(self.0 + rhs.0)
     }
+}
+
+impl<C> algebra::ScalarMul<Scalar<C>> for Group<C>
+where
+    C: ProjectiveCurve,
+{
+    type Output = Self;
 
     #[inline]
-    fn mul(&self, scalar: &Self::Scalar, _: &mut ()) -> Self {
+    fn scalar_mul(&self, scalar: &Scalar<C>, _: &mut ()) -> Self::Output {
         Self(self.0.mul(scalar.0.into_repr()).into())
     }
 }
@@ -289,7 +293,7 @@ where
     }
 }
 
-impl<C, CV> algebra::Scalar<Compiler<C>> for ScalarVar<C, CV>
+impl<C, CV> algebra::Group<Compiler<C>> for ScalarVar<C, CV>
 where
     C: ProjectiveCurve,
     CV: CurveVar<C, ConstraintField<C>>,
@@ -299,7 +303,13 @@ where
         let _ = compiler;
         Self::new(&self.0 + &rhs.0)
     }
+}
 
+impl<C, CV> algebra::Ring<Compiler<C>> for ScalarVar<C, CV>
+where
+    C: ProjectiveCurve,
+    CV: CurveVar<C, ConstraintField<C>>,
+{
     #[inline]
     fn mul(&self, rhs: &Self, compiler: &mut Compiler<C>) -> Self {
         let _ = compiler;
@@ -381,8 +391,6 @@ where
     C: ProjectiveCurve,
     CV: CurveVar<C, ConstraintField<C>>,
 {
-    type Scalar = ScalarVar<C, CV>;
-
     #[inline]
     fn add(&self, rhs: &Self, compiler: &mut Compiler<C>) -> Self {
         let _ = compiler;
@@ -390,9 +398,17 @@ where
         result += &rhs.0;
         Self::new(result)
     }
+}
+
+impl<C, CV> algebra::ScalarMul<ScalarVar<C, CV>, Compiler<C>> for GroupVar<C, CV>
+where
+    C: ProjectiveCurve,
+    CV: CurveVar<C, ConstraintField<C>>,
+{
+    type Output = Self;
 
     #[inline]
-    fn mul(&self, scalar: &Self::Scalar, compiler: &mut Compiler<C>) -> Self {
+    fn scalar_mul(&self, scalar: &ScalarVar<C, CV>, compiler: &mut Compiler<C>) -> Self::Output {
         let _ = compiler;
         Self::new(
             self.0
