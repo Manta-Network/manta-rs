@@ -52,7 +52,7 @@ pub trait HasDistribution {
 /// [`Deserializer`] `trait`.
 ///
 /// [`CanonicalDeserialize`]: manta_crypto::arkworks::serialize::CanonicalDeserialize
-pub trait Serializer<T> {
+pub trait Serializer<T, M = ()> {
     /// Serializes `item` in uncompressed form to the `writer` without performing any
     /// well-formedness checks.
     fn serialize_unchecked<W>(item: &T, writer: &mut W) -> Result<(), io::Error>
@@ -86,7 +86,7 @@ pub trait Serializer<T> {
 /// [`Serializer`] `trait`.
 ///
 /// [`CanonicalDeserialize`]: manta_crypto::arkworks::serialize::CanonicalDeserialize
-pub trait Deserializer<T> {
+pub trait Deserializer<T, M = ()> {
     /// Deserialization Error Type
     type Error: Into<SerializationError>;
 
@@ -172,9 +172,9 @@ pub struct NonZero<D>(PhantomData<D>);
 impl<D> NonZero<D> {
     /// Checks if `item` is zero, returning [`NonZeroError::IsZero`] if so.
     #[inline]
-    fn is_zero<T>(item: &T) -> Result<(), NonZeroError<D::Error>>
+    fn is_zero<T, M>(item: &T) -> Result<(), NonZeroError<D::Error>>
     where
-        D: Deserializer<T>,
+        D: Deserializer<T, M>,
         T: Zero,
     {
         if item.is_zero() {
@@ -184,9 +184,9 @@ impl<D> NonZero<D> {
     }
 }
 
-impl<T, D> Deserializer<T> for NonZero<D>
+impl<T, M, D> Deserializer<T, M> for NonZero<D>
 where
-    D: Deserializer<T>,
+    D: Deserializer<T, M>,
     T: Zero,
 {
     type Error = NonZeroError<D::Error>;
