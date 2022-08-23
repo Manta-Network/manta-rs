@@ -16,8 +16,5 @@
 
 //! Bn254 Backend for MantaPay Groth16 Trusted Setup
 
-#[cfg(test)]
 pub mod manta_pay;
-
-#[cfg(test)]
 pub mod ppot;
