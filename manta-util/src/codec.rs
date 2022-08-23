@@ -592,23 +592,11 @@ impl<T> Encode for PhantomData<T> {
 
 impl Encode for bool {
     #[inline]
-    fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
+    fn encode<W>(&self, writer: W) -> Result<(), W::Error>
     where
         W: Write,
     {
-        writer.write_ref(&[*self as u8])?;
-        Ok(())
-    }
-}
-
-impl Encode for u8 {
-    #[inline]
-    fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
-    where
-        W: Write,
-    {
-        writer.write_ref(&[*self])?;
-        Ok(())
+        (*self as u8).encode(writer)
     }
 }
 
@@ -630,7 +618,7 @@ macro_rules! encode_int {
     }
 }
 
-encode_int!(u16, i16, u32, i32, u64, i64, u128, i128);
+encode_int!(u8, i8, u16, i16, u32, i32, u64, i64, u128, i128);
 
 impl<T> Encode for [T]
 where

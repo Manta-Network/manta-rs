@@ -259,14 +259,14 @@ where
     }
 }
 
-impl<C> algebra::CyclicGroup for Group<C>
+impl<C> algebra::ScalarMul<Scalar<C>> for Group<C>
 where
     C: ProjectiveCurve,
 {
-    type Scalar = Scalar<C>;
+    type Output = Self;
 
     #[inline]
-    fn scalar_mul(&self, scalar: &Self::Scalar, _: &mut ()) -> Self {
+    fn scalar_mul(&self, scalar: &Scalar<C>, _: &mut ()) -> Self::Output {
         Self(self.0.into_projective().mul(scalar.0.into_repr()).into())
     }
 }
@@ -452,15 +452,15 @@ where
     }
 }
 
-impl<C, CV> algebra::CyclicGroup<Compiler<C>> for GroupVar<C, CV>
+impl<C, CV> algebra::ScalarMul<ScalarVar<C, CV>, Compiler<C>> for GroupVar<C, CV>
 where
     C: ProjectiveCurve,
     CV: CurveVar<C, ConstraintField<C>>,
 {
-    type Scalar = ScalarVar<C, CV>;
+    type Output = Self;
 
     #[inline]
-    fn scalar_mul(&self, scalar: &Self::Scalar, compiler: &mut Compiler<C>) -> Self {
+    fn scalar_mul(&self, scalar: &ScalarVar<C, CV>, compiler: &mut Compiler<C>) -> Self {
         /*
         print_measurement(
             "SCALAR MULTIPLY",

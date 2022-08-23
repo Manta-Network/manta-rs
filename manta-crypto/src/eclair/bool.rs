@@ -98,7 +98,7 @@ where
     fn select(bit: &Bool<COM>, true_value: &Self, false_value: &Self, compiler: &mut COM) -> Self;
 }
 
-///
+/// Implements [`ConditionalSelect`] for the given `$type`.
 macro_rules! impl_conditional_select {
     ($($type:tt),* $(,)?) => {
         $(

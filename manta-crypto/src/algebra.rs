@@ -39,23 +39,55 @@ pub trait Ring<COM = ()>: Group<COM> {
     fn mul(&self, rhs: &Self, compiler: &mut COM) -> Self;
 }
 
-/// Cyclic Group
-pub trait CyclicGroup<COM = ()>: Group<COM> {
-    /// Ring of Scalars
-    type Scalar: Ring<COM>;
+/// Scalar Multiplication
+pub trait ScalarMul<S, COM = ()> {
+    /// Output Type
+    type Output;
 
     /// Multiplies `self` by `scalar` in the group.
-    fn scalar_mul(&self, scalar: &Self::Scalar, compiler: &mut COM) -> Self;
+    fn scalar_mul(&self, scalar: &S, compiler: &mut COM) -> Self::Output;
 }
 
-/// Group Generator Reflection
+/// Group with a Scalar Multiplication
+pub trait ScalarMulGroup<S, COM = ()>: Group<COM> + ScalarMul<S, COM> {}
+
+impl<G, S, COM> ScalarMulGroup<S, COM> for G where G: Group<COM> + ScalarMul<S, COM> {}
+
+/// Group Generator
 pub trait HasGenerator<G, COM = ()>
 where
-    G: CyclicGroup<COM>,
+    G: Group<COM>,
 {
-    /// Returns a generator of the [`CyclicGroup`] type.
-    fn generator(&self) -> &G;
+    /// Generator Type
+    type Generator;
+
+    /// Returns a generator of `G`.
+    fn generator(&self) -> &Self::Generator;
 }
+
+/// Diffie-Hellmann Standard Mode
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct Standard;
+
+/// Standard Diffie-Hellman Key Agreement Scheme
+pub type StandardDiffieHellman<S, G, GEN = G> = DiffieHellman<S, G, GEN, Standard>;
+
+/// Diffie-Hellmann Known-Scalar Mode
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct KnownScalar;
+
+/// Known-Scalar Diffie-Hellman Key Agreement Scheme
+pub type KnownScalarDiffieHellman<S, G, GEN = G> = DiffieHellman<S, G, GEN, KnownScalar>;
 
 /// Diffie-Hellman Key Agreement Scheme
 #[cfg_attr(
@@ -65,18 +97,18 @@ where
 )]
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct DiffieHellman<G, COM = ()> {
+pub struct DiffieHellman<S, G, GEN = G, M = Standard> {
     /// Group Generator
-    pub generator: G,
+    pub generator: GEN,
 
     /// Type Parameter Marker
-    __: PhantomData<COM>,
+    __: PhantomData<(S, G, M)>,
 }
 
-impl<G, COM> DiffieHellman<G, COM> {
+impl<S, G, GEN, M> DiffieHellman<S, G, GEN, M> {
     /// Builds a new [`DiffieHellman`] key agreement scheme from the given `generator`.
     #[inline]
-    pub fn new(generator: G) -> Self {
+    pub fn new(generator: GEN) -> Self {
         Self {
             generator,
             __: PhantomData,
@@ -85,71 +117,102 @@ impl<G, COM> DiffieHellman<G, COM> {
 
     /// Converts `self` into the group generator.
     #[inline]
-    pub fn into_inner(self) -> G {
+    pub fn into_inner(self) -> GEN {
         self.generator
     }
 }
 
-impl<G, COM> HasGenerator<G, COM> for DiffieHellman<G, COM>
+impl<S, G, GEN, M, COM> Constant<COM> for DiffieHellman<S, G, GEN, M>
 where
-    G: CyclicGroup<COM>,
+    S: Constant<COM>,
+    G: Constant<COM>,
+    GEN: Constant<COM>,
+{
+    type Type = DiffieHellman<S::Type, G::Type, GEN::Type, M>;
+
+    #[inline]
+    fn new_constant(value: &Self::Type, compiler: &mut COM) -> Self {
+        Self::new(Constant::new_constant(&value.generator, compiler))
+    }
+}
+
+impl<S, G, GEN, M> Decode for DiffieHellman<S, G, GEN, M>
+where
+    GEN: Decode,
+{
+    type Error = GEN::Error;
+
+    #[inline]
+    fn decode<R>(mut reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
+    where
+        R: Read,
+    {
+        Ok(Self::new(Decode::decode(&mut reader)?))
+    }
+}
+
+impl<S, G, GEN, M> Encode for DiffieHellman<S, G, GEN, M>
+where
+    GEN: Encode,
 {
     #[inline]
-    fn generator(&self) -> &G {
+    fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
+    where
+        W: Write,
+    {
+        self.generator.encode(&mut writer)?;
+        Ok(())
+    }
+}
+
+impl<S, G, GEN, M, D> Sample<D> for DiffieHellman<S, G, GEN, M>
+where
+    GEN: Sample<D>,
+{
+    #[inline]
+    fn sample<R>(distribution: D, rng: &mut R) -> Self
+    where
+        R: RngCore + ?Sized,
+    {
+        Self::new(Sample::sample(distribution, rng))
+    }
+}
+
+impl<S, G, GEN, M, COM> HasGenerator<G, COM> for DiffieHellman<S, G, GEN, M>
+where
+    G: Group<COM>,
+{
+    type Generator = GEN;
+
+    #[inline]
+    fn generator(&self) -> &Self::Generator {
         &self.generator
     }
 }
 
-impl<G, COM> Constant<COM> for DiffieHellman<G, COM>
-where
-    G: Constant<COM>,
-{
-    type Type = DiffieHellman<G::Type>;
-
-    #[inline]
-    fn new_constant(value: &Self::Type, compiler: &mut COM) -> Self {
-        Self::new(G::new_constant(&value.generator, compiler))
-    }
+impl<S, G, GEN> key::agreement::SecretKeyType for StandardDiffieHellman<S, G, GEN> {
+    type SecretKey = S;
 }
 
-impl<G, COM> key::agreement::SecretKeyType for DiffieHellman<G, COM>
-where
-    G: CyclicGroup<COM> + security::ComputationalDiffieHellmanHardness,
-{
-    type SecretKey = G::Scalar;
+impl<S, G, GEN> key::agreement::EphemeralSecretKeyType for StandardDiffieHellman<S, G, GEN> {
+    type EphemeralSecretKey = S;
 }
 
-impl<G, COM> key::agreement::EphemeralSecretKeyType for DiffieHellman<G, COM>
-where
-    G: CyclicGroup<COM> + security::ComputationalDiffieHellmanHardness,
-{
-    type EphemeralSecretKey = G::Scalar;
-}
-
-impl<G, COM> key::agreement::PublicKeyType for DiffieHellman<G, COM>
-where
-    G: CyclicGroup<COM> + security::ComputationalDiffieHellmanHardness,
-{
+impl<S, G, GEN> key::agreement::PublicKeyType for StandardDiffieHellman<S, G, GEN> {
     type PublicKey = G;
 }
 
-impl<G, COM> key::agreement::EphemeralPublicKeyType for DiffieHellman<G, COM>
-where
-    G: CyclicGroup<COM> + security::ComputationalDiffieHellmanHardness,
-{
+impl<S, G, GEN> key::agreement::EphemeralPublicKeyType for StandardDiffieHellman<S, G, GEN> {
     type EphemeralPublicKey = G;
 }
 
-impl<G, COM> key::agreement::SharedSecretType for DiffieHellman<G, COM>
-where
-    G: CyclicGroup<COM> + security::ComputationalDiffieHellmanHardness,
-{
+impl<S, G, GEN> key::agreement::SharedSecretType for DiffieHellman<S, G, GEN, Standard> {
     type SharedSecret = G;
 }
 
-impl<G, COM> key::agreement::Derive<COM> for DiffieHellman<G, COM>
+impl<S, G, GEN, COM> key::agreement::Derive<COM> for StandardDiffieHellman<S, G, GEN>
 where
-    G: CyclicGroup<COM> + security::ComputationalDiffieHellmanHardness,
+    GEN: ScalarMul<S, COM, Output = G> + security::ComputationalDiffieHellmanHardness,
 {
     #[inline]
     fn derive(&self, secret_key: &Self::SecretKey, compiler: &mut COM) -> Self::PublicKey {
@@ -157,9 +220,9 @@ where
     }
 }
 
-impl<G, COM> key::agreement::DeriveEphemeral<COM> for DiffieHellman<G, COM>
+impl<S, G, GEN, COM> key::agreement::DeriveEphemeral<COM> for StandardDiffieHellman<S, G, GEN>
 where
-    G: CyclicGroup<COM> + security::ComputationalDiffieHellmanHardness,
+    GEN: ScalarMul<S, COM, Output = G> + security::ComputationalDiffieHellmanHardness,
 {
     #[inline]
     fn derive_ephemeral(
@@ -171,9 +234,9 @@ where
     }
 }
 
-impl<G, COM> key::agreement::GenerateSecret<COM> for DiffieHellman<G, COM>
+impl<S, G, GEN, COM> key::agreement::GenerateSecret<COM> for StandardDiffieHellman<S, G, GEN>
 where
-    G: CyclicGroup<COM> + security::ComputationalDiffieHellmanHardness,
+    G: ScalarMul<S, COM, Output = G> + security::ComputationalDiffieHellmanHardness,
 {
     #[inline]
     fn generate_secret(
@@ -186,9 +249,9 @@ where
     }
 }
 
-impl<G, COM> key::agreement::Agree<COM> for DiffieHellman<G, COM>
+impl<S, G, GEN, COM> key::agreement::Agree<COM> for StandardDiffieHellman<S, G, GEN>
 where
-    G: CyclicGroup<COM> + security::ComputationalDiffieHellmanHardness,
+    G: ScalarMul<S, COM, Output = G> + security::ComputationalDiffieHellmanHardness,
 {
     #[inline]
     fn agree(
@@ -201,9 +264,9 @@ where
     }
 }
 
-impl<G, COM> key::agreement::ReconstructSecret<COM> for DiffieHellman<G, COM>
+impl<S, G, GEN, COM> key::agreement::ReconstructSecret<COM> for StandardDiffieHellman<S, G, GEN>
 where
-    G: CyclicGroup<COM> + security::ComputationalDiffieHellmanHardness,
+    G: ScalarMul<S, COM, Output = G> + security::ComputationalDiffieHellmanHardness,
 {
     #[inline]
     fn reconstruct_secret(
@@ -216,142 +279,29 @@ where
     }
 }
 
-impl<G, COM> Decode for DiffieHellman<G, COM>
-where
-    G: Decode,
-{
-    type Error = G::Error;
-
-    #[inline]
-    fn decode<R>(mut reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
-    where
-        R: Read,
-    {
-        Ok(Self::new(Decode::decode(&mut reader)?))
-    }
+impl<S, G, GEN> key::agreement::SecretKeyType for KnownScalarDiffieHellman<S, G, GEN> {
+    type SecretKey = S;
 }
 
-impl<G, COM> Encode for DiffieHellman<G, COM>
-where
-    G: Encode,
-{
-    #[inline]
-    fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
-    where
-        W: Write,
-    {
-        self.generator.encode(&mut writer)?;
-        Ok(())
-    }
+impl<S, G, GEN> key::agreement::EphemeralSecretKeyType for KnownScalarDiffieHellman<S, G, GEN> {
+    type EphemeralSecretKey = S;
 }
 
-impl<D, G> Sample<D> for DiffieHellman<G>
-where
-    G: Sample<D>,
-{
-    #[inline]
-    fn sample<R>(distribution: D, rng: &mut R) -> Self
-    where
-        R: RngCore + ?Sized,
-    {
-        Self::new(Sample::sample(distribution, rng))
-    }
+impl<S, G, GEN> key::agreement::PublicKeyType for KnownScalarDiffieHellman<S, G, GEN> {
+    type PublicKey = S;
 }
 
-/// Diffie-Hellman Key Agreement Scheme with Known Scalar Public Keys
-#[cfg_attr(
-    feature = "serde",
-    derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
-)]
-#[derive(derivative::Derivative)]
-#[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct KnownScalarDiffieHellman<G, COM = ()> {
-    /// Group Generator
-    pub generator: G,
-
-    /// Type Parameter Marker
-    __: PhantomData<COM>,
-}
-
-impl<G, COM> KnownScalarDiffieHellman<G, COM> {
-    /// Builds a new [`KnownScalarDiffieHellman`] key agreement scheme from the given `generator`.
-    #[inline]
-    pub fn new(generator: G) -> Self {
-        Self {
-            generator,
-            __: PhantomData,
-        }
-    }
-
-    /// Converts `self` into the group generator.
-    #[inline]
-    pub fn into_inner(self) -> G {
-        self.generator
-    }
-}
-
-impl<G, COM> HasGenerator<G, COM> for KnownScalarDiffieHellman<G, COM>
-where
-    G: CyclicGroup<COM>,
-{
-    #[inline]
-    fn generator(&self) -> &G {
-        &self.generator
-    }
-}
-
-impl<G, COM> Constant<COM> for KnownScalarDiffieHellman<G, COM>
-where
-    G: Constant<COM>,
-{
-    type Type = KnownScalarDiffieHellman<G::Type>;
-
-    #[inline]
-    fn new_constant(value: &Self::Type, compiler: &mut COM) -> Self {
-        Self::new(G::new_constant(&value.generator, compiler))
-    }
-}
-
-impl<G, COM> key::agreement::SecretKeyType for KnownScalarDiffieHellman<G, COM>
-where
-    G: CyclicGroup<COM> + security::ComputationalDiffieHellmanHardness,
-{
-    type SecretKey = G::Scalar;
-}
-
-impl<G, COM> key::agreement::EphemeralSecretKeyType for KnownScalarDiffieHellman<G, COM>
-where
-    G: CyclicGroup<COM> + security::ComputationalDiffieHellmanHardness,
-{
-    type EphemeralSecretKey = G::Scalar;
-}
-
-impl<G, COM> key::agreement::PublicKeyType for KnownScalarDiffieHellman<G, COM>
-where
-    G: CyclicGroup<COM> + security::ComputationalDiffieHellmanHardness,
-{
-    type PublicKey = G::Scalar;
-}
-
-impl<G, COM> key::agreement::EphemeralPublicKeyType for KnownScalarDiffieHellman<G, COM>
-where
-    G: CyclicGroup<COM> + security::ComputationalDiffieHellmanHardness,
-{
+impl<S, G, GEN> key::agreement::EphemeralPublicKeyType for KnownScalarDiffieHellman<S, G, GEN> {
     type EphemeralPublicKey = G;
 }
 
-impl<G, COM> key::agreement::SharedSecretType for KnownScalarDiffieHellman<G, COM>
-where
-    G: CyclicGroup<COM> + security::ComputationalDiffieHellmanHardness,
-{
+impl<S, G, GEN> key::agreement::SharedSecretType for KnownScalarDiffieHellman<S, G, GEN> {
     type SharedSecret = G;
 }
 
-impl<G, COM> key::agreement::Derive<COM> for KnownScalarDiffieHellman<G, COM>
+impl<S, G, GEN, COM> key::agreement::Derive<COM> for KnownScalarDiffieHellman<S, G, GEN>
 where
-    G: CyclicGroup<COM> + security::ComputationalDiffieHellmanHardness,
-    G::Scalar: Clone,
+    S: Clone,
 {
     #[inline]
     fn derive(&self, secret_key: &Self::SecretKey, compiler: &mut COM) -> Self::PublicKey {
@@ -360,9 +310,9 @@ where
     }
 }
 
-impl<G, COM> key::agreement::DeriveEphemeral<COM> for KnownScalarDiffieHellman<G, COM>
+impl<S, G, GEN, COM> key::agreement::DeriveEphemeral<COM> for KnownScalarDiffieHellman<S, G, GEN>
 where
-    G: CyclicGroup<COM> + security::ComputationalDiffieHellmanHardness,
+    GEN: ScalarMul<S, COM, Output = G> + security::ComputationalDiffieHellmanHardness,
 {
     #[inline]
     fn derive_ephemeral(
@@ -374,9 +324,10 @@ where
     }
 }
 
-impl<G, COM> key::agreement::GenerateSecret<COM> for KnownScalarDiffieHellman<G, COM>
+impl<S, G, GEN, COM> key::agreement::GenerateSecret<COM> for KnownScalarDiffieHellman<S, G, GEN>
 where
-    G: CyclicGroup<COM> + security::ComputationalDiffieHellmanHardness,
+    GEN: ScalarMul<S, COM, Output = G> + security::ComputationalDiffieHellmanHardness,
+    S: Ring<COM>,
 {
     #[inline]
     fn generate_secret(
@@ -390,9 +341,10 @@ where
     }
 }
 
-impl<G, COM> key::agreement::Agree<COM> for KnownScalarDiffieHellman<G, COM>
+impl<S, G, GEN, COM> key::agreement::Agree<COM> for KnownScalarDiffieHellman<S, G, GEN>
 where
-    G: CyclicGroup<COM> + security::ComputationalDiffieHellmanHardness,
+    GEN: ScalarMul<S, COM, Output = G> + security::ComputationalDiffieHellmanHardness,
+    S: Ring<COM>,
 {
     #[inline]
     fn agree(
@@ -406,9 +358,9 @@ where
     }
 }
 
-impl<G, COM> key::agreement::ReconstructSecret<COM> for KnownScalarDiffieHellman<G, COM>
+impl<S, G, GEN, COM> key::agreement::ReconstructSecret<COM> for KnownScalarDiffieHellman<S, G, GEN>
 where
-    G: CyclicGroup<COM> + security::ComputationalDiffieHellmanHardness,
+    G: ScalarMul<S, COM, Output = G> + security::ComputationalDiffieHellmanHardness,
 {
     #[inline]
     fn reconstruct_secret(
@@ -421,97 +373,65 @@ where
     }
 }
 
-impl<G, COM> Decode for KnownScalarDiffieHellman<G, COM>
-where
-    G: Decode,
-{
-    type Error = G::Error;
-
-    #[inline]
-    fn decode<R>(mut reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
-    where
-        R: Read,
-    {
-        Ok(Self::new(Decode::decode(&mut reader)?))
-    }
-}
-
-impl<G, COM> Encode for KnownScalarDiffieHellman<G, COM>
-where
-    G: Encode,
-{
-    #[inline]
-    fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
-    where
-        W: Write,
-    {
-        self.generator.encode(&mut writer)?;
-        Ok(())
-    }
-}
-
-impl<D, G> Sample<D> for KnownScalarDiffieHellman<G>
-where
-    G: Sample<D>,
-{
-    #[inline]
-    fn sample<R>(distribution: D, rng: &mut R) -> Self
-    where
-        R: RngCore + ?Sized,
-    {
-        Self::new(Sample::sample(distribution, rng))
-    }
-}
-
 /// Security Assumptions
 ///
 /// The following outlines some standard security assumptions for cryptographic protocols built on
-/// [`Group`] types. These security properties can be attached to instances of [`Group`] which we
-/// assume to have these hardness properties.
+/// types that implement [`ScalarMul`] for some set of scalars. These security properties can be
+/// attached to instances of [`ScalarMul`] which we assume to have these hardness properties.
 pub mod security {
     /// Discrete Logarithm Hardness Assumption
     ///
-    /// For a [`Group`](super::Group) `G`, it should be infeasible to find a procedure `f` that
-    /// makes this function return `true`:
+    /// For a type `G`, it should be infeasible to find a procedure `f` that makes this function
+    /// return `true`:
     ///
     /// ```text
-    /// fn solve<F>(g: G, y: G, f: F) -> bool
+    /// fn solve<G, S, F>(g: G, y: S, f: F) -> bool
     /// where
-    ///     F: FnOnce(G, G) -> G::Scalar,
+    ///     G: ScalarMul<S>,
+    ///     F: FnOnce(G, G) -> S,
     /// {
-    ///     y == g.mul(f(g, y))
+    ///     y == g.scalar_mul(f(g, y))
     /// }
     /// ```
     pub trait DiscreteLogarithmHardness {}
 
     /// Computational Diffie-Hellman Hardness Assumption
     ///
-    /// For a [`Group`](super::Group) `G`, it should be infeasible to find a procedure `f` that
-    /// makes this function return `true`:
+    /// For a type `G`, it should be infeasible to find a procedure `f` that makes this function
+    /// return `true`:
     ///
     /// ```text
-    /// fn solve<F>(g: G, a: G::Scalar, b: G::Scalar, f: F) -> bool
+    /// fn solve<G, S, F>(g: G, a: S, b: S, f: F) -> bool
     /// where
+    ///     G: ScalarMul<S>,
+    ///     S: Ring,
     ///     F: FnOnce(G, G, G) -> G,
     /// {
-    ///     f(g, g.mul(a), g.mul(b)) == g.mul(a.mul(b))
+    ///     f(g, g.scalar_mul(a), g.scalar_mul(b)) == g.scalar_mul(a.mul(b))
     /// }
     /// ```
     pub trait ComputationalDiffieHellmanHardness: DiscreteLogarithmHardness {}
 
     /// Decisional Diffie-Hellman Hardness Assumption
     ///
-    /// For a [`Group`](super::Group) `G`, it should be infeasible to distinguish the probability
-    /// distributions over the following two functions when [`G::Scalar](super::Group::Scalar)
-    /// inputs are sampled uniformly from their domain (and `g` the generator is fixed):
+    /// For a type `G`, it should be infeasible to distinguish the probability distributions over
+    /// the following two functions when scalar inputs are sampled uniformly from their domain (and
+    /// `g` the generator is fixed):
     ///
     /// ```text
-    /// fn dh_triple(g: G, a: G::Scalar, b: G::Scalar) -> (G, G, G) {
-    ///     (g.mul(a), g.mul(b), g.mul(a.mul(b)))
+    /// fn dh_triple<G, S>(g: G, a: S, b: S) -> (G, G, G)
+    /// where
+    ///     G: ScalarMul<S>,
+    ///     S: Ring,
+    /// {
+    ///     (g.scalar_mul(a), g.scalar_mul(b), g.scalar_mul(a.mul(b)))
     /// }
     ///
-    /// fn random_triple(g: G, a: G::Scalar, b: G::Scalar, c: G::Scalar) -> (G, G, G) {
-    ///     (g.mul(a), g.mul(b), g.mul(c))
+    /// fn random_triple<G, S>(g: G, a: S, b: S, c: S) -> (G, G, G)
+    /// where
+    ///     G: ScalarMul<S>,
+    /// {
+    ///     (g.scalar_mul(a), g.scalar_mul(b), g.scalar_mul(c))
     /// }
     /// ```
     pub trait DecisionalDiffieHellmanHardness: ComputationalDiffieHellmanHardness {}

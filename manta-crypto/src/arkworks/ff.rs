@@ -58,6 +58,7 @@ field_try_into! {
 mod test {
     use super::*;
     use crate::rand::{OsRng, Rand, RngCore, Sample};
+    use alloc::vec::Vec;
     use core::fmt::Debug;
 
     /// Asserts that a single conversion of `value` specified by `convert` is correct.

@@ -60,7 +60,7 @@ where
     }
 }
 
-/// Implements [`PartialEq`] for `$type`.
+/// Implements [`PartialEq`] for the given `$type`.
 macro_rules! impl_partial_eq {
     ($($type:tt),* $(,)?) => {
         $(

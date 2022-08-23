@@ -60,3 +60,4 @@ workspace-hack = { version = "0.1.0", path = "../workspace-hack" }
 
 [dev-dependencies]
 ark-bn254 = { version = "0.3.0", default-features = false, features = ["scalar_field"] }
+manta-crypto = { path = ".", default-features = false, features = ["getrandom"] }

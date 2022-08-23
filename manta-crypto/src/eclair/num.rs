@@ -17,7 +17,7 @@
 //! Numeric Types and Traits
 
 use crate::eclair::{
-    alloc::{mode::Secret, Allocate, Allocator, Var, Variable},
+    alloc::{Allocator, Variable},
     bool::{Assert, Bool, ConditionalSelect, ConditionalSwap},
     cmp::PartialEq,
     ops::{Add, AddAssign, Mul, MulAssign, Not},
@@ -115,6 +115,12 @@ macro_rules! define_zero_one {
 define_zero_one!(u8, u16, u32, u64, u128, i8, i16, i32, i64, i128);
 
 /// Within-Bit-Range Assertion
+///
+/// # Restrictions
+///
+/// This `trait` assumes that `BITS > 0` and does not currently support `BITS = 0`. In this case
+/// we would have an assertion that `x < 2^0 = 1` which is just that `x = 0` in most systems. For
+/// this usecase, the [`Zero`] `trait` should be considered instead.
 pub trait AssertWithinBitRange<T, const BITS: usize> {
     /// Asserts that `value` is smaller than `2^BITS`.
     fn assert_within_range(&mut self, value: &T);
@@ -392,92 +398,3 @@ macro_rules! define_uint_allocation {
 }
 
 define_uint_allocation!(u8, 8, u16, 16, u32, 32, u64, 64, u128, 128);
-
-/// Reduction
-pub trait Reduce<COM = ()> {
-    /// Reduction Proof
-    type Proof;
-
-    /// Reduction Target
-    type Target;
-
-    ///
-    fn assert_reduction(&self, proof: &Self::Proof, target: &Self::Target, compiler: &mut COM);
-}
-
-///
-pub struct Reduction<T, COM = ()>
-where
-    T: Reduce<COM>,
-{
-    ///
-    value: T,
-
-    ///
-    proof: T::Proof,
-
-    ///
-    target: T::Target,
-}
-
-impl<T, COM> Reduction<T, COM>
-where
-    T: Reduce<COM>,
-{
-    ///
-    #[inline]
-    fn new_unchecked(value: T, proof: T::Proof, target: T::Target) -> Self {
-        Self {
-            value,
-            proof,
-            target,
-        }
-    }
-
-    ///
-    #[inline]
-    pub fn new(value: T, proof: T::Proof, target: T::Target, compiler: &mut COM) -> Self {
-        value.assert_reduction(&proof, &target, compiler);
-        Self::new_unchecked(value, proof, target)
-    }
-}
-
-impl<T, COM> AsRef<T::Target> for Reduction<T, COM>
-where
-    T: Reduce<COM>,
-{
-    #[inline]
-    fn as_ref(&self) -> &T::Target {
-        &self.target
-    }
-}
-
-impl<T, COM> Variable<Secret, COM> for Reduction<T, COM>
-where
-    T: Reduce<COM> + Variable<Secret, COM>,
-    T::Proof: Variable<Secret, COM>,
-    T::Target: Variable<Secret, COM>,
-    T::Type: Reduce<Proof = Var<T::Proof, Secret, COM>, Target = Var<T::Target, Secret, COM>>,
-{
-    type Type = Reduction<T::Type>;
-
-    #[inline]
-    fn new_unknown(compiler: &mut COM) -> Self {
-        Self::new(
-            compiler.allocate_unknown(),
-            compiler.allocate_unknown(),
-            compiler.allocate_unknown(),
-            compiler,
-        )
-    }
-
-    #[inline]
-    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
-        Self::new(
-            this.value.as_known(compiler),
-            this.proof.as_known(compiler),
-            this.target.as_known(compiler),
-            compiler,
-        )
-    }
-}

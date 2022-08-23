@@ -530,7 +530,7 @@ where
 {
     #[inline]
     fn extend(&self, input: &mut Vec<E::Fr>) {
-        input.push((*self).into())
+        input.push((*self).into());
     }
 }
 
@@ -540,6 +540,6 @@ where
 {
     #[inline]
     fn extend(&self, input: &mut Vec<E::Fr>) {
-        input.push((*self).into())
+        input.push((*self).into());
     }
 }

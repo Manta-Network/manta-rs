@@ -301,7 +301,7 @@ where
 
 impl<M, W, O, COM> Variable<Derived<(W, O)>, COM> for MembershipProof<M>
 where
-    M: Model<COM> + Constant<COM>,
+    M: Constant<COM> + Model<COM>,
     M::Type: Model,
     M::Witness: Variable<W, COM, Type = <M::Type as Types>::Witness>,
     M::Output: Variable<O, COM, Type = <M::Type as Types>::Output>,

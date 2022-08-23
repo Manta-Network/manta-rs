@@ -369,7 +369,7 @@ where
 impl<P, C, DP, DC> Sample<(DP, DC)> for Duplexer<P, C>
 where
     P: PseudorandomPermutation + Sample<DP>,
-    C: Types<P> + Sample<DC>,
+    C: Sample<DC> + Types<P>,
 {
     #[inline]
     fn sample<R>(distribution: (DP, DC), rng: &mut R) -> Self

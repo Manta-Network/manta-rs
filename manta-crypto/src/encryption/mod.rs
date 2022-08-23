@@ -637,15 +637,12 @@ where
 
     #[inline]
     fn new_unknown(compiler: &mut COM) -> Self {
-        Self::new(compiler.allocate_unknown(), compiler.allocate_unknown())
+        Variable::<Derived<(Public, Public)>, _>::new_unknown(compiler)
     }
 
     #[inline]
     fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
-        Self::new(
-            this.header.as_known(compiler),
-            this.ciphertext.as_known(compiler),
-        )
+        Variable::<Derived<(Public, Public)>, _>::new_known(this, compiler)
     }
 }
 
