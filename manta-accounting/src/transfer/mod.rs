@@ -34,7 +34,7 @@ use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash, marker::PhantomData, ops::Deref};
 use manta_crypto::{
     accumulator::{self, AssertValidVerification, MembershipProof, Model},
-    constraint::{ProofSystem, ProofSystemInput},
+    constraint::{HasInput, ProofSystem},
     eclair::{
         self,
         alloc::{
@@ -236,12 +236,12 @@ pub trait Configuration {
 
     /// Proof System Type
     type ProofSystem: ProofSystem<Compiler = Self::Compiler>
-        + ProofSystemInput<AssetId>
-        + ProofSystemInput<AssetValue>
-        + ProofSystemInput<UtxoAccumulatorOutput<Self>>
-        + ProofSystemInput<Utxo<Self>>
-        + ProofSystemInput<VoidNumber<Self>>
-        + ProofSystemInput<PublicKey<Self>>;
+        + HasInput<AssetId>
+        + HasInput<AssetValue>
+        + HasInput<UtxoAccumulatorOutput<Self>>
+        + HasInput<Utxo<Self>>
+        + HasInput<VoidNumber<Self>>
+        + HasInput<PublicKey<Self>>;
 
     /// Note Base Encryption Scheme Type
     type NoteEncryptionScheme: encryption::Encrypt<
@@ -297,8 +297,7 @@ pub type UtxoAccumulatorOutput<C> =
 pub type UtxoMembershipProof<C> = MembershipProof<<C as Configuration>::UtxoAccumulatorModel>;
 
 /// UTXO Membership Proof Variable Type
-pub type UtxoMembershipProofVar<C> =
-    MembershipProof<<C as Configuration>::UtxoAccumulatorModelVar, Compiler<C>>;
+pub type UtxoMembershipProofVar<C> = MembershipProof<<C as Configuration>::UtxoAccumulatorModelVar>;
 
 /// Encrypted Note Type
 pub type EncryptedNote<C> = EncryptedMessage<

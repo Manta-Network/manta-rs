@@ -20,10 +20,10 @@
 //! types. In this module, we define the access interfaces needed to simulate the [`bool`] type with
 //! [`Bool`].
 
-use crate::eclair::{cmp::PartialEq, Has};
+use crate::eclair::{cmp::PartialEq, Has, Type};
 
 /// Boolean Type Inside of the Compiler
-pub type Bool<COM = ()> = <COM as Has<bool>>::Type;
+pub type Bool<COM = ()> = Type<COM, bool>;
 
 /// Assertion
 pub trait Assert: Has<bool> {
@@ -39,6 +39,13 @@ pub trait Assert: Has<bool> {
         I: IntoIterator<Item = &'b Bool<Self>>,
     {
         iter.into_iter().for_each(move |b| self.assert(b));
+    }
+}
+
+impl Assert for () {
+    #[inline]
+    fn assert(&mut self, bit: &bool) {
+        assert!(bit)
     }
 }
 
@@ -90,6 +97,26 @@ where
     /// Selects `true_value` when `bit == true` and `false_value` when `bit == false`.
     fn select(bit: &Bool<COM>, true_value: &Self, false_value: &Self, compiler: &mut COM) -> Self;
 }
+
+/// Implements [`ConditionalSelect`] for the given `$type`.
+macro_rules! impl_conditional_select {
+    ($($type:tt),* $(,)?) => {
+        $(
+            impl ConditionalSelect for $type {
+                #[inline]
+                fn select(bit: &Bool, true_value: &Self, false_value: &Self, _: &mut ()) -> Self {
+                    if *bit {
+                        true_value.clone()
+                    } else {
+                        false_value.clone()
+                    }
+                }
+            }
+        )*
+    }
+}
+
+impl_conditional_select!(bool, u8, u16, u32, u64, u128, i8, i16, i32, i64, i128);
 
 /// Conditional Swap
 pub trait ConditionalSwap<COM = ()>: Sized
