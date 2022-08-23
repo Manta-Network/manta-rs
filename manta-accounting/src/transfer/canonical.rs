@@ -24,7 +24,8 @@ use crate::{
         has_public_participants, internal_pair, requires_authorization, Address, Asset,
         AssociatedData, Authorization, AuthorizationContext, Configuration, FullParametersRef,
         Parameters, PreSender, ProofSystemError, ProofSystemPublicParameters, ProvingContext,
-        Receiver, Sender, Transfer, TransferPost, VerifyingContext,
+        Receiver, Sender, Transfer, TransferLedger, TransferPost, TransferPostingKeyRef,
+        VerifyingContext,
     },
 };
 use alloc::{string::String, vec::Vec};
@@ -310,6 +311,23 @@ impl TransferShape {
             post.body.sender_posts.len(),
             post.body.receiver_posts.len(),
             post.body.sinks.len(),
+        )
+    }
+
+    /// Selects the [`TransferShape`] from `posting_key`.
+    #[inline]
+    pub fn from_posting_key_ref<C, L>(posting_key: &TransferPostingKeyRef<C, L>) -> Option<Self>
+    where
+        C: Configuration,
+        L: TransferLedger<C>,
+    {
+        Self::select(
+            posting_key.authorization_key.is_some(),
+            posting_key.asset_id.is_some(),
+            posting_key.sources.len(),
+            posting_key.senders.len(),
+            posting_key.receivers.len(),
+            posting_key.sinks.len(),
         )
     }
 }
