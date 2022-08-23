@@ -170,6 +170,7 @@ where
         ParticipantIdentifier<C>: CanonicalSerialize,
         Challenge<C>: CanonicalSerialize,
     {
+        // TODO: Check if this guy is in the front of the queue.
         let mut coordinator = self
             .coordinator
             .lock()
@@ -203,7 +204,7 @@ where
         // TODO: checksum
         log_to_file(
             &Path::new(&self.recovery_path)
-                .join(format!("log{}.data", coordinator.num_contributions)),
+                .join(format!("transcript{}.data", coordinator.num_contributions)),
             coordinator.deref(),
         );
         println!(

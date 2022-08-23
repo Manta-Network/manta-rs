@@ -33,6 +33,18 @@ use manta_trusted_setup::ceremony::{
 };
 use serde::{de::DeserializeOwned, Serialize};
 
+/// Welcome Message
+pub const TITLE: &str = r"
+__  __             _          _______             _           _    _____      _               
+|  \/  |           | |        |__   __|           | |         | |  / ____|    | |              
+| \  / | __ _ _ __ | |_ __ _     | |_ __ _   _ ___| |_ ___  __| | | (___   ___| |_ _   _ _ __  
+| |\/| |/ _` | '_ \| __/ _` |    | | '__| | | / __| __/ _ \/ _` |  \___ \ / _ | __| | | | '_ \ 
+| |  | | (_| | | | | || (_| |    | | |  | |_| \__ | ||  __| (_| |  ____) |  __| |_| |_| | |_) |
+|_|  |_|\__,_|_| |_|\__\__,_|    |_|_|   \__,_|___/\__\___|\__,_| |_____/ \___|\__|\__,_| .__/ 
+                                                                                        | |    
+                                                                                        |_|    
+";
+
 pub type C = Groth16BLS12381;
 pub type Config = manta_trusted_setup::ceremony::config::config::Config;
 pub type Client = manta_trusted_setup::ceremony::client::Client<C>;
@@ -59,6 +71,7 @@ impl Arguments {
     /// Takes command line arguments and executes the corresponding operations.
     #[inline]
     pub fn run(self) -> Result<(), Error> {
+        println!("{}", TITLE);
         match self.command {
             Command::Register => {
                 let twitter_account = Input::with_theme(&ColorfulTheme::default())

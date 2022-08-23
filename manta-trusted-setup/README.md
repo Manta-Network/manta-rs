@@ -64,7 +64,7 @@ cargo run --release --package manta-trusted-setup --bin prepare_phase_two_parame
 # Takes ~1 minute to load preprocessed parameters.
 cargo run --release --package manta-trusted-setup --bin groth16_phase2_server -- create data/dummy_register.csv data
 
-# Takes ~3 minutes to contribute.
+# Takes ~3.5 minutes to contribute.
 cargo run --release --package manta-trusted-setup --bin groth16_phase2_client -- contribute
 ```
 
