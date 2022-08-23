@@ -178,9 +178,9 @@ pub struct NonZero<D>(PhantomData<D>);
 impl<D> NonZero<D> {
     /// Checks if `item` is zero, returning [`NonZeroError::IsZero`] if so.
     #[inline]
-    fn is_zero<T>(item: &T) -> Result<(), NonZeroError<D::Error>>
+    fn is_zero<T, M>(item: &T) -> Result<(), NonZeroError<D::Error>>
     where
-        D: Deserializer<T>,
+        D: Deserializer<T, M>,
         T: Zero,
     {
         if item.is_zero() {
@@ -190,9 +190,9 @@ impl<D> NonZero<D> {
     }
 }
 
-impl<T, D> Deserializer<T> for NonZero<D>
+impl<T, M, D> Deserializer<T, M> for NonZero<D>
 where
-    D: Deserializer<T>,
+    D: Deserializer<T, M>,
     T: Zero,
 {
     type Error = NonZeroError<D::Error>;

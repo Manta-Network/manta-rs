@@ -35,11 +35,13 @@ use manta_util::{cfg_iter, cfg_iter_mut, from_variant, vec::VecExt};
 #[cfg(feature = "rayon")]
 use manta_util::rayon::iter::{IndexedParallelIterator, ParallelIterator};
 
-/// Marker for de/serialization when G1 and G2 have different encodings
-pub struct G1Marker;
+/// G1 Marker Type
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct G1;
 
-/// Marker for de/serialization when G1 and G2 have different encodings
-pub struct G2Marker;
+/// G2 Marker Type
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct G2;
 
 /// KZG Trusted Setup Size
 pub trait Size {
@@ -255,7 +257,7 @@ where
 
 impl<C> CanonicalSerialize for Proof<C>
 where
-    C: Pairing + Serializer<C::G1> + Serializer<C::G2>,
+    C: Pairing + Serializer<C::G1, G1> + Serializer<C::G2, G2>,
 {
     #[inline]
     fn serialize<W>(&self, mut writer: W) -> Result<(), SerializationError>
@@ -320,7 +322,7 @@ where
 
 impl<C> CanonicalDeserialize for Proof<C>
 where
-    C: Deserializer<C::G1> + Deserializer<C::G2> + Pairing,
+    C: Deserializer<C::G1, G1> + Deserializer<C::G2, G2> + Pairing,
 {
     #[inline]
     fn deserialize<R>(mut reader: R) -> Result<Self, SerializationError>
@@ -502,7 +504,7 @@ where
 
 impl<C> CanonicalSerialize for Accumulator<C>
 where
-    C: Pairing + Size + Serializer<C::G1> + Serializer<C::G2>,
+    C: Pairing + Size + Serializer<C::G1, G1> + Serializer<C::G2, G2>,
 {
     #[inline]
     fn serialize<W>(&self, mut writer: W) -> Result<(), SerializationError>
@@ -583,9 +585,9 @@ where
 
 impl<C> CanonicalDeserialize for Accumulator<C>
 where
-    C: Deserializer<C::G1> + Deserializer<C::G2> + Pairing + Size,
-    <C as Deserializer<C::G1>>::Error: Send,
-    <C as Deserializer<C::G2>>::Error: Send,
+    C: Deserializer<C::G1, G1> + Deserializer<C::G2, G2> + Pairing + Size,
+    <C as Deserializer<C::G1, G1>>::Error: Send,
+    <C as Deserializer<C::G2, G2>>::Error: Send,
 {
     #[inline]
     fn deserialize<R>(mut reader: R) -> Result<Self, SerializationError>
