@@ -190,7 +190,7 @@ pub async fn contribute() -> Result<(), Error> {
     let nonce = get_nonce(pk, &network_client).await?;
     let mut trusted_setup_client = Client::new(pk, pk, nonce, sk);
     loop {
-        println!("Contacting Server...");
+        println!("Contacting Server... (ETC: 2 minutes)");
         let mpc_state = match send_request::<_, QueryResponse<C>>(
             &network_client,
             Endpoint::Query,
@@ -232,7 +232,7 @@ pub async fn contribute() -> Result<(), Error> {
                 }
             },
         };
-        println!("It's YOUR turn to contribute!");
+        println!("It's YOUR turn to contribute! Contributing... (ETC: 3 minutes)");
         let bar = ProgressBar::new(5);
         match send_request::<_, ()>(
             &network_client,

@@ -30,7 +30,13 @@ use core::fmt::Debug;
 use manta_crypto::arkworks::serialize::{
     CanonicalDeserialize, CanonicalSerialize, SerializationError,
 };
-use std::io::{Read, Write};
+use std::{
+    io::{Read, Write},
+    time::Instant,
+};
+
+/// Time limit for a participant at the front of the queue to contribute with unit as second
+const TIME_LIMIT: u64 = 360;
 
 /// Coordinator with `C` as CeremonyConfig, `N` as the number of priority levels, and `M` as the number of circuits
 pub struct Coordinator<C, const N: usize, const M: usize>
@@ -57,6 +63,9 @@ where
 
     /// Queue of participants
     pub queue: Queue<C::Participant, N>,
+
+    /// Lastest time when a new participant reaches the front of the queue
+    pub time: Option<Instant>,
 
     /// Size of state
     pub size: ServerSize,
@@ -86,7 +95,30 @@ where
             registry,
             queue: Queue::new(),
             size,
+            time: None,
         }
+    }
+
+    /// Pops the participant at the front of the queue if this participant has timed out.
+    #[inline]
+    pub fn pop_timed_out_participant(&mut self) {
+        self.time.map(|time| {
+            let elapsed_time = time.elapsed().as_secs();
+            if elapsed_time > TIME_LIMIT {
+                self.queue.pop();
+                if self.queue.is_empty() {
+                    self.time = None;
+                } else {
+                    self.set_time();
+                }
+            }
+        });
+    }
+
+    /// Sets time.
+    #[inline]
+    pub fn set_time(&mut self) {
+        self.time = Some(Instant::now());
     }
 
     /// Gets the current state and challenge.
@@ -125,6 +157,7 @@ where
         state: [State<C>; M],
         proof: [Proof<C>; M],
     ) -> Result<(), CeremonyError<C>> {
+        self.pop_timed_out_participant();
         if !self.queue.is_at_front(participant) {
             return Err(CeremonyError::<C>::BadRequest); // TODO: Why use BadRequest instead of NotYourTurn?
         };
@@ -162,6 +195,9 @@ where
                         return Err(CeremonyError::BadRequest); // TODO: You have contributed.
                     }
                     self.queue.push(participant);
+                    if self.time == None {
+                        self.set_time();
+                    }
                     Ok(())
                 } else {
                     Err(CeremonyError::BadRequest) // TODO: You are already in queue.
@@ -203,6 +239,7 @@ where
     }
 
     /// Pops the current contributor and returns the participant identifier that is skipped.
+    #[inline]
     pub fn skip_current_contributor(
         // TODO: When should we use that?
         &mut self,
@@ -226,6 +263,7 @@ where
     ParticipantIdentifier<C>: CanonicalSerialize,
     C::Participant: CanonicalSerialize,
 {
+    #[inline]
     fn serialize<W>(&self, mut writer: W) -> Result<(), SerializationError>
     where
         W: Write,
@@ -256,6 +294,7 @@ where
         Ok(())
     }
 
+    #[inline]
     fn serialized_size(&self) -> usize {
         self.num_contributions.serialized_size()
             + self
@@ -280,6 +319,7 @@ where
     ParticipantIdentifier<C>: CanonicalDeserialize,
     C::Participant: CanonicalDeserialize,
 {
+    #[inline]
     fn deserialize<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
         let num_contributions =
             CanonicalDeserialize::deserialize(&mut reader).expect("Deserializing should succeed.");
@@ -303,7 +343,6 @@ where
                 .expect("Deserializing should succeed.");
             challenges.push(challenge);
         }
-
         Ok(Self {
             num_contributions,
             proof: Some(
@@ -323,6 +362,7 @@ where
             queue: Queue::<C::Participant, N>::new(),
             size: CanonicalDeserialize::deserialize(&mut reader)
                 .expect("Deserializing should succeed."),
+            time: None,
         })
     }
 }
