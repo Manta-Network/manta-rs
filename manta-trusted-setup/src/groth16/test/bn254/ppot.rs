@@ -899,7 +899,7 @@ where
 pub fn compare_response_challenge_accumulators_test() {
     use crate::groth16::test::bn254::manta_pay::MantaPaySetupCeremony;
     use memmap::MmapOptions;
-    use std::{fs::OpenOptions, time::Instant};
+    use ark_std::{fs::OpenOptions, time::Instant};
 
     // Try to load `./challenge` from disk.
     println!("Reading accumulator from challenge file");
