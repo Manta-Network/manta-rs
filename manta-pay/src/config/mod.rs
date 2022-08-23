@@ -164,6 +164,9 @@ pub type Receiver = transfer::Receiver<Config>;
 /// Receiver Post Type
 pub type ReceiverPost = transfer::ReceiverPost<Config>;
 
+/// Transfer Post Body Type
+pub type TransferPostBody = transfer::TransferPostBody<Config>;
+
 /// Transfer Post Type
 pub type TransferPost = transfer::TransferPost<Config>;
 
