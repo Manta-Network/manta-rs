@@ -25,8 +25,9 @@ use core::{cmp, fmt::Debug, hash::Hash};
 use manta_crypto::{
     accumulator::{self, ItemHashFunction, MembershipProof},
     algebra::{
-        security::ComputationalDiffieHellmanHardness, HasGenerator, KnownScalarDiffieHellman, Ring,
-        ScalarMul, ScalarMulGroup, StandardDiffieHellman,
+        diffie_hellman::{KnownScalarDiffieHellman, StandardDiffieHellman},
+        security::ComputationalDiffieHellmanHardness,
+        HasGenerator, Ring, ScalarMul, ScalarMulGroup,
     },
     constraint::{HasInput, Input},
     eclair::{
