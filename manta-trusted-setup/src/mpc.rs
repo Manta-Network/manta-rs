@@ -18,23 +18,77 @@
 
 use alloc::vec::Vec;
 
-/// Secure Multi-Party Computation Types
-pub trait Types {
+/// State
+pub trait StateType {
     /// State Type
     type State;
+}
 
+impl<T> StateType for &T
+where
+    T: StateType,
+{
+    type State = T::State;
+}
+
+/// State Type
+pub type State<T> = <T as StateType>::State;
+
+/// Challenge
+pub trait ChallengeType {
     /// Challenge Type
     type Challenge;
+}
 
-    /// Contribution Proof Type
+impl<T> ChallengeType for &T
+where
+    T: ChallengeType,
+{
+    type Challenge = T::Challenge;
+}
+
+/// Challenge Type
+pub type Challenge<T> = <T as ChallengeType>::Challenge;
+
+/// Proof
+pub trait ProofType {
+    /// Proof Type
     type Proof;
 }
 
-/// Contribution
-pub trait Contribute: Types {
-    /// Private Contribution Data
-    type Contribution;
+impl<T> ProofType for &T
+where
+    T: ProofType,
+{
+    type Proof = T::Proof;
+}
 
+/// Proof Type
+pub type Proof<T> = <T as ProofType>::Proof;
+
+/// Contribution
+pub trait ContributionType {
+    /// Contribution Type
+    type Contribution;
+}
+
+impl<T> ContributionType for &T
+where
+    T: ContributionType,
+{
+    type Contribution = T::Contribution;
+}
+
+/// Contribution Type
+pub type Contribution<T> = <T as ContributionType>::Contribution;
+
+/// Secure Multi-Party Computation Types
+pub trait Types: ChallengeType + ContributionType + ProofType + StateType {}
+
+impl<T> Types for T where T: ChallengeType + ContributionType + ProofType + StateType {}
+
+/// Contribution
+pub trait Contribute: ChallengeType + ContributionType + ProofType + StateType {
     /// Computes the next state from `state`, `challenge`, and `contribution`.
     fn contribute(
         &self,
@@ -45,7 +99,7 @@ pub trait Contribute: Types {
 }
 
 /// Verification
-pub trait Verify: Types {
+pub trait Verify: ChallengeType + ProofType + StateType {
     /// Verification Error Type
     type Error;
 
@@ -97,7 +151,7 @@ pub trait Verify: Types {
 /// MPC Transcript
 pub struct Transcript<T>
 where
-    T: Types,
+    T: ChallengeType + StateType + ProofType,
 {
     /// Initial Challenge
     pub initial_challenge: T::Challenge,

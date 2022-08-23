@@ -56,16 +56,20 @@ pub type Proof<P> = RatioProof<P>;
 /// MPC State Size
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub struct StateSize {
-    /// Size of `gamma_abc_g1` in the verifying key
+    /// Size of `gamma_abc_g1` in the [`VerifyingKey`]
     pub gamma_abc_g1: usize,
 
-    /// Size of the `a_query`
+    /// Size of the `a_query` in the [`ProvingKey`]
+    ///
+    /// # Note
+    ///
+    /// This is also the size of the `b_g1_query` and the `b_g2_query`.
     pub a_query: usize,
 
-    /// Size of the `h_query`
+    /// Size of the `h_query` in the [`ProvingKey`]
     pub h_query: usize,
 
-    /// Size of the `l_query`
+    /// Size of the `l_query` in the [`ProvingKey`]
     pub l_query: usize,
 }
 
@@ -93,6 +97,8 @@ impl StateSize {
     {
         self.gamma_abc_g1 == proving_key.vk.gamma_abc_g1.len()
             && self.a_query == proving_key.a_query.len()
+            && self.a_query == proving_key.b_g1_query.len()
+            && self.a_query == proving_key.b_g2_query.len()
             && self.h_query == proving_key.h_query.len()
             && self.l_query == proving_key.l_query.len()
     }

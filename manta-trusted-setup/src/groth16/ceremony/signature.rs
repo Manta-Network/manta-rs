@@ -14,11 +14,20 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Groth16 Trusted Setup
+//! Groth16 Trusted Setup Ceremony Signatures
 
-pub mod ceremony;
-pub mod kzg;
-pub mod mpc;
+use manta_crypto::signature;
 
-#[cfg(test)]
-pub mod test;
+/// Nonce
+pub trait Nonce: Clone + PartialEq {
+    /// Increment the current nonce by one unit.
+    fn increment(&mut self);
+}
+
+/// Signature Scheme
+pub trait SignatureScheme<T>:
+    signature::MessageType<Message = (Self::Nonce, T)> + signature::Sign + signature::Verify
+{
+    /// Message Nonce
+    type Nonce: Nonce;
+}
