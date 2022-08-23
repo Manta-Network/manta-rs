@@ -91,6 +91,9 @@ pub type AuthorizationProof = utxo::auth::AuthorizationProof<Parameters>;
 /// Authorization Proof Variable Type
 pub type AuthorizationProofVar = utxo::auth::AuthorizationProof<ParametersVar>;
 
+/// Authorization Signature Type
+pub type AuthorizationSignature = utxo::auth::AuthorizationSignature<Parameters>;
+
 /// Proof Authorization Key Type
 pub type ProofAuthorizationKey = Group;
 
