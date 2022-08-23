@@ -126,6 +126,12 @@ where
 {
     type Error = S::Error;
 
+    #[inline]
+    fn check(item: &T) -> Result<(), Self::Error> {
+        S::check(item)
+    }
+
+    #[inline]
     fn deserialize_unchecked<R>(reader: &mut R) -> Result<T, Self::Error>
     where
         R: Read,
@@ -133,6 +139,15 @@ where
         S::deserialize_unchecked(reader)
     }
 
+    #[inline]
+    fn deserialize_uncompressed<R>(reader: &mut R) -> Result<T, Self::Error>
+    where
+        R: Read,
+    {
+        S::deserialize_uncompressed(reader)
+    }
+
+    #[inline]
     fn deserialize_compressed<R>(reader: &mut R) -> Result<T, Self::Error>
     where
         R: Read,
@@ -145,6 +160,7 @@ impl<M, T, S, const POWERS: usize> Serializer<T, M> for PerpetualPowersOfTauCere
 where
     S: Serializer<T, M>,
 {
+    #[inline]
     fn serialize_unchecked<W>(item: &T, writer: &mut W) -> Result<(), io::Error>
     where
         W: Write,
@@ -152,6 +168,7 @@ where
         S::serialize_unchecked(item, writer)
     }
 
+    #[inline]
     fn serialize_uncompressed<W>(item: &T, writer: &mut W) -> Result<(), io::Error>
     where
         W: Write,
@@ -159,10 +176,12 @@ where
         S::serialize_uncompressed(item, writer)
     }
 
+    #[inline]
     fn uncompressed_size(item: &T) -> usize {
         S::uncompressed_size(item)
     }
 
+    #[inline]
     fn serialize_compressed<W>(item: &T, writer: &mut W) -> Result<(), io::Error>
     where
         W: Write,
@@ -170,14 +189,16 @@ where
         S::serialize_compressed(item, writer)
     }
 
+    #[inline]
     fn compressed_size(item: &T) -> usize {
         S::compressed_size(item)
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 /// (De)Serialization used in the original PPoT ceremony
-pub struct PpotSerializer {}
+#[derive(derivative::Derivative)]
+#[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct PpotSerializer;
 
 impl Deserializer<G1Affine, G1> for PpotSerializer {
     type Error = PointDeserializeError;
@@ -881,55 +902,6 @@ fn check_consistent_factor(g1: &[G1Affine], g2: &[G2Affine]) -> bool {
     let g1_pair = power_pairs(g1);
     let g2_pair = power_pairs(g2);
     Bn254::same_ratio(g1_pair, g2_pair)
-}
-
-/// Reads a subaccumulator from the PPoT file and does some basic
-/// sanity checks on the powers. For MantaPay circuit (size 1 << 16)
-/// this takes about 10 mins.
-#[ignore] // NOTE: Adds `ignore` such that CI does NOT run this test while still allowing developers to test.
-#[test]
-pub fn read_subaccumulator_test() {
-    use crate::groth16::test::bn254::manta_pay::MantaPaySetupCeremony;
-    use memmap::MmapOptions;
-    use std::fs::{File, OpenOptions};
-
-    // Try to load `./challenge` from disk.
-    let reader = OpenOptions::new()
-        .read(true)
-        .open("/Users/thomascnorton/Documents/Manta/trusted-setup/challenge_0072")
-        .expect("unable open `./challenge` in this directory");
-    // Make a memory map
-    let readable_map = unsafe {
-        MmapOptions::new()
-            .map(&reader)
-            .expect("unable to create a memory map for input")
-    };
-
-    // These check that vectors of G1 elements and the vector `tau_powers_g2`
-    // are incrementing by the same (unknown) factor `tau`.
-    let acc = read_subaccumulator::<MantaPaySetupCeremony>(&readable_map, Compressed::No).unwrap();
-    assert!(check_consistent_factor(
-        &acc.tau_powers_g1,
-        &acc.tau_powers_g2
-    ));
-    assert!(check_consistent_factor(
-        &acc.alpha_tau_powers_g1,
-        &acc.tau_powers_g2
-    ));
-    assert!(check_consistent_factor(
-        &acc.beta_tau_powers_g1,
-        &acc.tau_powers_g2
-    ));
-
-    // Write the subaccumulator to file
-    let _f = File::create("../manta-parameters/data/ppot/round72powers19.lfs").unwrap();
-    let mut file = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .truncate(true)
-        .open("../manta-parameters/data/ppot/round72powers19.lfs")
-        .expect("unable to create parameter file in this directory");
-    CanonicalSerialize::serialize_uncompressed(&acc, &mut file).unwrap();
 }
 
 /// Compares the accumulators stored in response_0071 and challenge_0072

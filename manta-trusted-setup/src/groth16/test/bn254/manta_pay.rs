@@ -90,9 +90,10 @@ impl ProvingKeyHasher<Self> for MantaPaySetupCeremony {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 /// Arkworks Canonical(De)Serialize
-pub struct ArkworksSerialization {}
+#[derive(derivative::Derivative)]
+#[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct ArkworksSerialization;
 
 impl<P> Serializer<short_weierstrass_jacobian::GroupAffine<P>> for ArkworksSerialization
 where
