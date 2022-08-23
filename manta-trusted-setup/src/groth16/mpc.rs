@@ -24,7 +24,6 @@ use crate::{
 use alloc::{vec, vec::Vec};
 use ark_groth16::{ProvingKey, VerifyingKey};
 use ark_poly::{EvaluationDomain, Radix2EvaluationDomain};
-use core::clone::Clone;
 use manta_crypto::{
     arkworks::{
         ec::{AffineCurve, ProjectiveCurve},
@@ -88,8 +87,8 @@ pub enum Error {
 /// doing `eval_poly` in parallel on all four kinds of commitments that phase2 params require
 /// (`a_g1`, `b_g1`, `b_g2`, `extra`) where `extra` is the cross term that we (may wish to) compute
 /// separately for public/private inputs.
+#[allow(clippy::too_many_arguments)] // FIXME: Simplify this in the future.
 #[inline]
-#[allow(clippy::too_many_arguments)]
 pub fn specialize_to_phase_2<G1, G2>(
     tau_basis_g1: &[G1],
     tau_basis_g2: &[G2],
@@ -135,8 +134,8 @@ pub fn specialize_to_phase_2<G1, G2>(
         );
 }
 
-/// Adds dummy `z_i * 0 = 0` constraint for each public input `z_i`.  This ensures
-/// non-malleability of Groth16 proofs even if some public inputs are otherwise unconstrained.
+/// Adds dummy `z_i * 0 = 0` constraint for each public input `z_i`.  This ensures non-malleability
+/// of Groth16 proofs even if some public inputs are otherwise unconstrained.
 #[inline]
 pub fn add_dummy_constraints<G>(
     a: &mut [G],
@@ -146,14 +145,11 @@ pub fn add_dummy_constraints<G>(
     num_constraints: usize,
     num_public_inputs: usize,
 ) where
-    G: Copy,
+    G: Clone,
 {
-    let start = 0;
-    let end = num_public_inputs;
-    a[start..end]
-        .copy_from_slice(&tau_lagrange[(start + num_constraints)..(end + num_constraints)]);
-    ext[start..end]
-        .copy_from_slice(&beta_tau_lagrange[(start + num_constraints)..(end + num_constraints)]);
+    let total = num_public_inputs + num_constraints;
+    a[0..num_public_inputs].clone_from_slice(&tau_lagrange[num_constraints..total]);
+    ext[0..num_public_inputs].clone_from_slice(&beta_tau_lagrange[num_constraints..total]);
 }
 
 /// Checks that the parameters which are not changed by contributions are the same.
@@ -209,14 +205,9 @@ where
     constraints.finalize();
     let num_constraints = constraints.num_constraints();
     let num_instance_variables = constraints.num_instance_variables();
-    let domain = match Radix2EvaluationDomain::new(num_constraints + num_instance_variables) {
-        Some(domain) => domain,
-        None => return Err(Error::TooManyConstraints),
-    };
-    let constraint_matrices = match constraints.to_matrices() {
-        Some(matrices) => matrices,
-        None => return Err(Error::MissingCSMatrices),
-    };
+    let domain = Radix2EvaluationDomain::new(num_constraints + num_instance_variables)
+        .ok_or(Error::TooManyConstraints)?;
+    let constraint_matrices = constraints.to_matrices().ok_or(Error::MissingCSMatrices)?;
     let beta_g1 = powers.beta_tau_powers_g1[0];
     let degree = domain.size as usize;
     let mut h_query = Vec::with_capacity(degree - 1);
@@ -235,7 +226,6 @@ where
     let mut b_g1 = vec![C::G1::zero().into_projective(); num_witnesses];
     let mut b_g2 = vec![C::G2::zero().into_projective(); num_witnesses];
     let mut ext = vec![C::G1::zero().into_projective(); num_witnesses];
-
     add_dummy_constraints(
         &mut a_g1,
         &mut ext,
@@ -263,15 +253,14 @@ where
     let ext = ProjectiveCurve::batch_normalization_into_affine(&ext);
     let public_cross_terms = Vec::from(&ext[..constraint_matrices.num_instance_variables]);
     let private_cross_terms = Vec::from(&ext[constraint_matrices.num_instance_variables..]);
-    let vk = VerifyingKey {
-        alpha_g1: powers.alpha_tau_powers_g1[0],
-        beta_g2: powers.beta_g2,
-        gamma_g2: C::g2_prime_subgroup_generator(),
-        delta_g2: C::g2_prime_subgroup_generator(),
-        gamma_abc_g1: public_cross_terms,
-    };
     Ok(ProvingKey {
-        vk,
+        vk: VerifyingKey {
+            alpha_g1: powers.alpha_tau_powers_g1[0],
+            beta_g2: powers.beta_g2,
+            gamma_g2: C::g2_prime_subgroup_generator(),
+            delta_g2: C::g2_prime_subgroup_generator(),
+            gamma_abc_g1: public_cross_terms,
+        },
         beta_g1,
         delta_g1: C::g1_prime_subgroup_generator(),
         a_query,
@@ -313,10 +302,7 @@ where
     R: CryptoRng + RngCore + ?Sized,
 {
     let delta = C::Scalar::rand(rng);
-    let delta_inverse = match delta.inverse() {
-        Some(delta_inverse) => delta_inverse,
-        _ => return None,
-    };
+    let delta_inverse = delta.inverse()?;
     batch_mul_fixed_scalar(&mut state.l_query, delta_inverse);
     batch_mul_fixed_scalar(&mut state.h_query, delta_inverse);
     state.delta_g1 = state.delta_g1.mul(delta).into_affine();
