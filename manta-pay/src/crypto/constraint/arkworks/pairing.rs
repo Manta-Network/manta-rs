@@ -16,7 +16,7 @@
 
 //! Pairing Engine Utilities
 
-/// Generates the [`G2Prepared`] and [`G2PreparedRef`] structures for serialization compatibility
+/// Generates the `G2Prepared` and `G2PreparedRef` structures for serialization compatibility
 /// with arkworks canonical serialization.
 macro_rules! pairing_impl {
     ($params:ident) => {
