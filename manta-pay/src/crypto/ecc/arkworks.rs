@@ -578,8 +578,9 @@ mod test {
         rand::OsRng,
     };
 
+    /// Checks if the fixed base multiplcation is correct.
     #[test]
-    fn fixed_base_mul() {
+    fn fixed_base_mul_is_correct() {
         let mut cs = Compiler::<Bls12_381_Edwards>::for_proofs();
         let scalar = Scalar::<Bls12_381_Edwards>::gen(&mut OsRng);
         let base = Group::<Bls12_381_Edwards>::sample((), &mut OsRng);
