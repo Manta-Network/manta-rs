@@ -17,7 +17,7 @@
 //! Algebraic Constructions
 
 use crate::{
-    eclair::alloc::Constant,
+    eclair::{alloc::Constant, num::Zero, ops::Neg},
     key,
     rand::{RngCore, Sample},
 };
@@ -112,6 +112,107 @@ impl<G, const N: usize> PrecomputedBaseTable<G, N> {
         }
     }
 }
+
+
+/// Non adjacent form (NAF)
+pub trait HasNAF<COM = ()> {
+    /// Returns `self`'s NAF as a vector of signed integers.
+    fn wnaf(&self, window_size: usize, compiler: &mut COM) -> Option<Vec<i64>>;
+}
+
+/// Window Method for Point Multiplication
+pub struct Window<S, G, COM> 
+where 
+G: ScalarMulGroup<S, COM, Output = G>,
+{
+    /// Multiplication Table
+    table: Vec<G>,
+
+    /// Type Marker Parameter
+    __: PhantomData<(S, COM)>
+}
+
+
+impl<S, G, COM> Window<S, G, COM>
+where
+    G: ScalarMulGroup<S, COM, Output = G>,
+{
+    /// Creates a new `Window` from a table without checking its correctness.
+    pub fn new_unchecked(table: Vec<G>) -> Self {
+        Self {
+            table,
+            __: PhantomData,
+        }
+    }
+
+    /// Creates a new `Window`.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if `window_size` is less than `1`.
+    #[inline]
+    pub fn new(window_size: usize, point: G, compiler: &mut COM) -> Self
+    where
+        G: Clone + Zero<COM>,
+    {
+        assert!(window_size > 0, "Window size must be at least 1.");
+        let mut table: Vec<G> = Vec::new();
+        let mut current_element = G::zero(compiler);
+        for _ in 0..2 ^ (window_size) {
+            table.push(current_element.clone());
+            current_element = current_element.add(&point, compiler);
+        }
+        Self::new_unchecked(table)
+    }
+
+    /// Returns the window size.
+    pub fn window_size(&self) -> usize {
+        (self.table.len() as f32).log2() as usize
+    }
+
+    /// Returns the multiplication table.
+    pub fn table(&self) -> &[G] {
+        &self.table
+    }
+
+    /// Multiplies a point in G by `scalar` using `Window`. Returns `None` if the table is too small.
+    pub fn scalar_mul(&self, scalar: &S, compiler: &mut COM) -> Option<G>
+    where
+        G: Clone + Neg<COM, Output = G> + Zero<COM>,
+        S: HasNAF<COM>,
+    {
+        if 1 << (self.window_size() - 1) > self.table.len() {
+            return None;
+        }
+        // TODO: Wnaf the scalar.
+        let scalar_wnaf = scalar.wnaf(self.window_size(), compiler).unwrap();
+
+        let mut result = G::zero(compiler);
+
+        let mut found_non_zero = false;
+
+        for n in scalar_wnaf.iter().rev() {
+            if found_non_zero {
+                result = result.add(&result, compiler);
+            }
+
+            if *n != 0 {
+                found_non_zero = true;
+
+                if *n > 0 {
+                    result = result.add(&self.table[(n / 2) as usize], compiler);
+                } else {
+                    result = result.add(
+                        &self.table[((-n) / 2) as usize].clone().neg(compiler),
+                        compiler,
+                    );
+                }
+            }
+        }
+        Some(result)
+    }
+}
+
 
 /// Diffie-Hellman Key Agreement Scheme
 #[cfg_attr(
