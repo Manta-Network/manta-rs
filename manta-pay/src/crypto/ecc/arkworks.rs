@@ -19,8 +19,10 @@
 use crate::crypto::constraint::arkworks::{self, empty, full, Boolean, Fp, FpVar, R1CS};
 use alloc::vec::Vec;
 use core::{iter::Extend, marker::PhantomData};
+use core::{borrow::Borrow, marker::PhantomData};
 use manta_crypto::{
     algebra,
+    algebra::FixedBaseScalarMul,
     arkworks::{
         algebra::{affine_point_as_bytes, modulus_is_smaller},
         ec::{AffineCurve, ProjectiveCurve},
@@ -593,5 +595,74 @@ where
             )
             .expect("Variable allocation is not allowed to fail."),
         )
+    }
+}
+
+impl<C, CV> FixedBaseScalarMul<ScalarVar<C, CV>, Compiler<C>> for GroupVar<C, CV>
+where
+    C: ProjectiveCurve,
+    CV: CurveVar<C, ConstraintField<C>>,
+{
+    type Base = Group<C>;
+
+    #[inline]
+    fn fixed_base_scalar_mul<I>(
+        precomputed_bases: I,
+        scalar: &ScalarVar<C, CV>,
+        compiler: &mut Compiler<C>,
+    ) -> Self
+    where
+        I: IntoIterator,
+        I::Item: Borrow<Self::Base>,
+    {
+        let _ = compiler;
+        let mut result = CV::zero();
+        let scalar_bits = scalar
+            .0
+            .to_bits_le()
+            .expect("Bit decomposition is not allowed to fail.");
+        for (bit, base) in scalar_bits.into_iter().zip(precomputed_bases.into_iter()) {
+            result = bit
+                .select(&(result.clone() + base.borrow().0.into()), &result)
+                .expect("Conditional select is not allowed to fail. ");
+        }
+        Self::new(result)
+    }
+}
+
+/// Testing Suite
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::config::Bls12_381_Edwards;
+    use manta_crypto::{
+        algebra::{PrecomputedBaseTable, ScalarMul},
+        arkworks::{algebra::scalar_bits, r1cs_std::groups::curves::twisted_edwards::AffineVar},
+        constraint::measure::Measure,
+        eclair::bool::AssertEq,
+        rand::OsRng,
+    };
+
+    /// Checks if the fixed base multiplcation is correct.
+    #[test]
+    fn fixed_base_mul_is_correct() {
+        let mut cs = Compiler::<Bls12_381_Edwards>::for_proofs();
+        let scalar = Scalar::<Bls12_381_Edwards>::gen(&mut OsRng);
+        let base = Group::<Bls12_381_Edwards>::sample((), &mut OsRng);
+        const SCALAR_BITS: usize = scalar_bits::<Bls12_381_Edwards>();
+        let precomputed_table = PrecomputedBaseTable::<_, SCALAR_BITS>::from_base(base, &mut ());
+        let base_var =
+            base.as_known::<Secret, GroupVar<Bls12_381_Edwards, AffineVar<_, _>>>(&mut cs);
+        let scalar_var =
+            scalar.as_known::<Secret, ScalarVar<Bls12_381_Edwards, AffineVar<_, _>>>(&mut cs);
+        let ctr1 = cs.constraint_count();
+        let expected = base_var.scalar_mul(&scalar_var, &mut cs);
+        let ctr2 = cs.constraint_count();
+        let actual = GroupVar::fixed_base_scalar_mul(precomputed_table, &scalar_var, &mut cs);
+        let ctr3 = cs.constraint_count();
+        cs.assert_eq(&expected, &actual);
+        assert!(cs.is_satisfied());
+        println!("variable base mul constraint: {:?}", ctr2 - ctr1);
+        println!("fixed base mul constraint: {:?}", ctr3 - ctr2);
     }
 }
