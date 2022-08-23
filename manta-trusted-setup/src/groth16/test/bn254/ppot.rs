@@ -43,11 +43,10 @@ use memmap::Mmap;
 #[cfg(feature = "rayon")]
 use manta_util::rayon::prelude::ParallelIterator;
 
-#[derive(Debug, PartialEq, Eq)]
-/// Configuration of the Perpetual Powers of Tau ceremony
-pub struct PerpetualPowersOfTauCeremony<S, const POWERS: usize> {
-    __: PhantomData<S>,
-}
+/// Configuration of the Perpetual Powers of Tau Ceremony
+#[derive(derivative::Derivative)]
+#[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct PerpetualPowersOfTauCeremony<S, const POWERS: usize>(PhantomData<S>);
 
 impl<S, const POWERS: usize> Size for PerpetualPowersOfTauCeremony<S, POWERS> {
     const G1_POWERS: usize = (Self::G2_POWERS << 1) - 1;
