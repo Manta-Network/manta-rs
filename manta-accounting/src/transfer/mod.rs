@@ -995,7 +995,7 @@ where
     where
         I: Iterator<Item = (Self::AccountId, C::AssetValue)>;
 
-    /// Checks that the transfer `proof` is valid.
+    /// Checks that the transfer proof stored in `posting_key` is valid.
     fn is_valid(
         &self,
         posting_key: TransferPostingKeyRef<C, Self>,
@@ -1315,8 +1315,8 @@ where
     /// Sinks
     pub sinks: Vec<C::AssetValue>,
 
-    /// Validity Proof
-    pub validity_proof: Proof<C>,
+    /// Proof
+    pub proof: Proof<C>,
 }
 
 impl<C> TransferPostBody<C>
@@ -1331,7 +1331,7 @@ where
         const RECEIVERS: usize,
         const SINKS: usize,
     >(
-        validity_proof: Proof<C>,
+        proof: Proof<C>,
         asset_id: Option<C::AssetId>,
         sources: [C::AssetValue; SOURCES],
         senders: [Sender<C>; SENDERS],
@@ -1347,7 +1347,7 @@ where
                 .map(Receiver::<C>::into_post)
                 .collect(),
             sinks: sinks.into(),
-            validity_proof,
+            proof,
         }
     }
 }
@@ -1371,7 +1371,7 @@ where
         self.sender_posts.encode(&mut writer)?;
         self.receiver_posts.encode(&mut writer)?;
         self.sinks.encode(&mut writer)?;
-        self.validity_proof.encode(&mut writer)?;
+        self.proof.encode(&mut writer)?;
         Ok(())
     }
 }
@@ -1472,7 +1472,7 @@ where
         C::ProofSystem::verify(
             verifying_context,
             &self.generate_proof_input(),
-            &self.body.validity_proof,
+            &self.body.proof,
         )
     }
 
@@ -1490,7 +1490,7 @@ where
             "Invalid TransferPost: {:?}.",
             self,
         );
-        &self.body.validity_proof
+        &self.body.proof
     }
 
     /// Verifies that the authorization signature for `self` is valid under the `parameters`.
@@ -1606,16 +1606,16 @@ where
             .into_iter()
             .map(move |r| r.validate(ledger))
             .collect::<Result<Vec<_>, _>>()?;
-        let (validity_proof, event) = match ledger.is_valid(TransferPostingKeyRef {
+        let (proof, event) = match ledger.is_valid(TransferPostingKeyRef {
             authorization_key: &self.authorization_signature.map(|s| s.authorization_key),
             asset_id: &self.body.asset_id,
             sources: &source_posting_keys,
             senders: &sender_posting_keys,
             receivers: &receiver_posting_keys,
             sinks: &sink_posting_keys,
-            proof: self.body.validity_proof,
+            proof: self.body.proof,
         }) {
-            Some((validity_proof, event)) => (validity_proof, event),
+            Some((proof, event)) => (proof, event),
             _ => return Err(TransferPostError::InvalidProof),
         };
         Ok(TransferPostingKey {
@@ -1624,7 +1624,7 @@ where
             sender_posting_keys,
             receiver_posting_keys,
             sink_posting_keys,
-            validity_proof,
+            proof,
             event,
         })
     }
@@ -1700,8 +1700,8 @@ where
     /// Sink Posting Keys
     sink_posting_keys: Vec<SinkPostingKey<C, L>>,
 
-    /// Validity Proof Posting Key
-    validity_proof: L::ValidProof,
+    /// Proof Posting Key
+    proof: L::ValidProof,
 
     /// Ledger Event
     event: L::Event,
@@ -1725,7 +1725,7 @@ where
         ledger: &mut L,
         super_key: &TransferLedgerSuperPostingKey<C, L>,
     ) -> Result<L::Event, L::UpdateError> {
-        let proof = self.validity_proof;
+        let proof = self.proof;
         SenderPostingKey::<C, _>::post_all(self.sender_posting_keys, ledger, &(proof, *super_key));
         ReceiverPostingKey::<C, _>::post_all(
             self.receiver_posting_keys,
@@ -1784,6 +1784,15 @@ where
         let mut input = Default::default();
         self.extend(&mut input);
         input
+    }
+
+    /// Verifies the validity proof of `self` according to the `verifying_context`.
+    #[inline]
+    pub fn has_valid_proof(
+        &self,
+        verifying_context: &VerifyingContext<C>,
+    ) -> Result<bool, ProofSystemError<C>> {
+        C::ProofSystem::verify(verifying_context, &self.generate_proof_input(), &self.proof)
     }
 }
 
