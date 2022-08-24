@@ -119,10 +119,6 @@ where
                 C::Setup::contribute(hasher, &challenge[i], &mut state[i], &mut rng).ok_or(())?,
             );
         }
-        println!(
-            "{} Sending Contribution to Server...",
-            style("[8/9]").bold().dim(),
-        );
         let message = ContributeRequest::<C, 3> {
             contribute_state: AsBytes::from_actual(ContributeState::<C, 3> {
                 state,
@@ -133,7 +129,7 @@ where
         };
         println!(
             "{} Waiting for Confirmation from Server...",
-            style("[9/9]").bold().dim(),
+            style("[8/9]").bold().dim(),
         );
         Signed::new(
             message,

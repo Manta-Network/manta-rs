@@ -175,14 +175,13 @@ pub async fn contribute() -> Result<(), Error> {
     let network_client = reqwest::Client::new();
     let (pk, sk) = prompt_client_info()?;
     println!(
-        "{} Querying Server for Meta Data...",
+        "{} Contacting Server for Meta Data...",
         style("[1/9]").bold().dim()
     );
     let (size, nonce) = get_start_meta_data(pk, &network_client).await?;
     let mut trusted_setup_client = Client::new(pk, pk, nonce, sk);
     loop {
-        print!("\r"); // TODO: This line does not work.
-        println!("{} Waiting in Queue...", style("[2/9]").bold().dim(),);
+        println!("\r{} Waiting in Queue...", style("[2/9]").bold().dim(),);
         let mpc_state = match send_request::<_, QueryResponse<C>>(
             &network_client,
             Endpoint::Query,
@@ -208,17 +207,21 @@ pub async fn contribute() -> Result<(), Error> {
             Err(CeremonyError::AlreadyContributed) => return Err(Error::AlreadyContributed),
             Ok(message) => match message {
                 QueryResponse::QueuePosition(position) => {
-                    print!("\r"); // TODO: This line does not work.
+                    // print!("\r"); // TODO: This line does not work.
                     println!(
-                        "{} Waiting in Queue... Your current position is {}.",
+                        "\r{} Waiting in Queue... There are {} people ahead of you. Estimated Waiting Time: {} minutes.",
                         style("[2/9]").bold().dim(),
-                        style(position).bold().blue(),
+                        style(position).bold().red(),
+                        style(5*position).bold().blue(),
                     );
                     thread::sleep(time::Duration::from_secs(10));
                     continue;
                 }
                 QueryResponse::Mpc(mpc_state) => {
-                    println!("{} Querying Server States...", style("[3/9]").bold().dim(),);
+                    println!(
+                        "{} Downloading Ceremony States...",
+                        style("[3/9]").bold().dim(),
+                    );
                     // TODO: Add a progress bar here
                     let mpc_state = mpc_state.to_actual().map_err(|_| {
                         Error::UnexpectedError("Received mpc state cannot be parsed.".to_string())
@@ -233,7 +236,7 @@ pub async fn contribute() -> Result<(), Error> {
             },
         };
         println!(
-            "{} It's YOUR Turn to Contribute! Contributing to Three Circuits...",
+            "{} Starting contribution to 3 Circuits...",
             style("[4/9]").bold().dim(),
         );
         // let bar = ProgressBar::new(5);
@@ -269,7 +272,10 @@ pub async fn contribute() -> Result<(), Error> {
             Err(CeremonyError::AlreadyContributed) => return Err(Error::AlreadyContributed),
             Ok(_) => {
                 // bar.inc(1);
-                println!("Congratulations! You have successfully contributed to Manta Trusted Setup Ceremony!");
+                println!(
+                    "{} Congratulations! You have successfully contributed to Manta Trusted Setup Ceremony!...",
+                    style("[9/9]").bold().dim(),
+                );
                 break;
             }
         }
