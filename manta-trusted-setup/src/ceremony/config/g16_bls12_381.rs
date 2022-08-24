@@ -83,6 +83,10 @@ impl Priority for Participant {
             UserPriority::High => 1,
         }
     }
+
+    fn reduce_priority(&mut self) {
+        self.priority = UserPriority::Normal;
+    }
 }
 
 impl HasIdentifier for Participant {

@@ -20,7 +20,7 @@ use crate::{
     ceremony::{
         config::{CeremonyConfig, Challenge, ParticipantIdentifier, Proof, State},
         message::CeremonyError,
-        queue::{HasIdentifier, Queue},
+        queue::{HasIdentifier, Priority, Queue},
         registry::Registry,
         state::{MPCState, ServerSize},
     },
@@ -105,8 +105,10 @@ where
         self.time.map(|time| {
             let elapsed_time = time.elapsed();
             if elapsed_time > TIME_LIMIT {
-                println!("Pop out a time out participant");
-                self.queue.pop();
+                self.registry
+                    .get_mut(&self.queue.pop().expect("Should be non-empty."))
+                    .expect("Participant should exist.")
+                    .reduce_priority();
                 if self.queue.is_empty() {
                     self.time = None;
                 } else {

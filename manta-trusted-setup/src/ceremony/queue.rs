@@ -26,6 +26,9 @@ use manta_util::{
 pub trait Priority {
     /// Gets the priority value.
     fn priority(&self) -> usize;
+
+    /// Reduces the priority.
+    fn reduce_priority(&mut self);
 }
 
 /// Identifier
@@ -147,6 +150,10 @@ mod test {
     impl Priority for Item {
         fn priority(&self) -> usize {
             self.priority
+        }
+
+        fn reduce_priority(&mut self) {
+            self.priority = self.priority.saturating_sub(1);
         }
     }
 
