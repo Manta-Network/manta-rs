@@ -26,7 +26,7 @@ use crate::{
     },
     mpc::Verify,
 };
-use core::fmt::Debug;
+use core::{fmt::Debug, time::Duration};
 use manta_crypto::arkworks::serialize::{
     CanonicalDeserialize, CanonicalSerialize, SerializationError,
 };
@@ -36,7 +36,7 @@ use std::{
 };
 
 /// Time limit for a participant at the front of the queue to contribute with unit as second
-const TIME_LIMIT: u64 = 360;
+const TIME_LIMIT: Duration = Duration::from_secs(360);
 
 /// Coordinator with `C` as CeremonyConfig, `N` as the number of priority levels, and `M` as the number of circuits
 pub struct Coordinator<C, const N: usize, const M: usize>
@@ -103,8 +103,9 @@ where
     #[inline]
     pub fn pop_timed_out_participant(&mut self) {
         self.time.map(|time| {
-            let elapsed_time = time.elapsed().as_secs();
+            let elapsed_time = time.elapsed();
             if elapsed_time > TIME_LIMIT {
+                println!("Pop out a time out participant");
                 self.queue.pop();
                 if self.queue.is_empty() {
                     self.time = None;
@@ -177,6 +178,7 @@ where
         self.queue
             .pop()
             .expect("One participant should have just contributed.");
+        self.set_time();
         Ok(())
     }
 

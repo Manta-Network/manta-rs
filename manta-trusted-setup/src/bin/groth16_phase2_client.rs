@@ -32,6 +32,7 @@ use manta_trusted_setup::ceremony::{
     state::ServerSize,
 };
 use serde::{de::DeserializeOwned, Serialize};
+use std::{thread, time::{self, Duration}};
 
 /// Welcome Message
 pub const TITLE: &str = r"
@@ -176,7 +177,7 @@ pub async fn contribute() -> Result<(), Error> {
     let (size, nonce) = get_start_meta_data(pk, &network_client).await?;
     let mut trusted_setup_client = Client::new(pk, pk, nonce, sk);
     loop {
-        println!("Contacting Server... (ETC: 2 minutes)");
+        println!("Contacting Server... (ETA: 2 minutes)");
         let mpc_state = match send_request::<_, QueryResponse<C>>(
             &network_client,
             Endpoint::Query,
@@ -203,6 +204,7 @@ pub async fn contribute() -> Result<(), Error> {
             Ok(message) => match message {
                 QueryResponse::QueuePosition(position) => {
                     println!("Your current position is {}.\n", position);
+                    thread::sleep(time::Duration::from_secs(10));
                     continue;
                 }
                 QueryResponse::Mpc(mpc_state) => {
@@ -218,8 +220,9 @@ pub async fn contribute() -> Result<(), Error> {
                 }
             },
         };
-        println!("It's YOUR turn to contribute! Contributing... (ETC: 3 minutes)");
+        println!("It's YOUR turn to contribute! Contributing... (ETA: 3 minutes)");
         let bar = ProgressBar::new(5);
+        bar.enable_steady_tick(Duration::from_secs(1));
         match send_request::<_, ()>(
             &network_client,
             Endpoint::Update,
