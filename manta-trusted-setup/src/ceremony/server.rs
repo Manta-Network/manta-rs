@@ -174,7 +174,6 @@ where
         ParticipantIdentifier<C>: CanonicalSerialize,
         Challenge<C>: CanonicalSerialize,
     {
-        // TODO: Check if this guy is in the front of the queue.
         let mut coordinator = self
             .coordinator
             .lock()
@@ -183,11 +182,11 @@ where
         match coordinator.get_participant(&request.identifier) {
             Some(participant) => {
                 if participant.has_contributed() {
-                    return Err(CeremonyError::<C>::AlreadyContributed); // TODO. Should tell client that you have contributed successfully before.
+                    return Err(CeremonyError::<C>::AlreadyContributed);
                 }
             }
             None => {
-                return Err(CeremonyError::<C>::BadRequest); // TODO
+                return Err(CeremonyError::<C>::NotRegistered);
             }
         }
         let contribute_state = request
@@ -205,7 +204,6 @@ where
             .expect("Geting participant should succeed.")
             .set_contributed();
         coordinator.num_contributions += 1;
-        // TODO: checksum
         log_to_file(
             &Path::new(&self.recovery_path)
                 .join(format!("transcript{}.data", coordinator.num_contributions)),

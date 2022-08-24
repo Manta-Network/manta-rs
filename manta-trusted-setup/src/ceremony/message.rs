@@ -139,4 +139,7 @@ where
 
     /// Already Contributed
     AlreadyContributed,
+
+    /// Not Your Turn
+    NotYourTurn,
 }

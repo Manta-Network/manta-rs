@@ -195,17 +195,23 @@ pub async fn contribute() -> Result<(), Error> {
             Err(CeremonyError::NotRegistered) => return Err(Error::NotRegistered),
             Err(CeremonyError::NonceNotInSync(_)) => {
                 return Err(Error::UnexpectedError(
-                    "unexpected error when query mpc state. Nonce should have been synced."
+                    "Unexpected error when query mpc state. Nonce should have been synced."
                         .to_string(),
                 ))
             }
             Err(CeremonyError::BadRequest) => {
                 return Err(Error::UnexpectedError(
-                    "unexpected error when query mpc state since finding a bad request."
+                    "Unexpected error when query mpc state since finding a bad request."
                         .to_string(),
                 ))
             }
             Err(CeremonyError::AlreadyContributed) => return Err(Error::AlreadyContributed),
+            Err(CeremonyError::NotYourTurn) => {
+                return Err(Error::UnexpectedError(
+                    "Unexpected error when query mpc state. Should not receive NotYourTurn message."
+                        .to_string(),
+                ));
+            }
             Ok(message) => match message {
                 QueryResponse::QueuePosition(position) => {
                     term.clear_last_lines(1)
@@ -244,8 +250,6 @@ pub async fn contribute() -> Result<(), Error> {
             "{} Starting contribution to 3 Circuits...",
             style("[4/9]").bold().dim(),
         );
-        // let bar = ProgressBar::new(5);
-        // bar.enable_steady_tick(Duration::from_secs(1));
         match send_request::<_, ()>(
             &network_client,
             Endpoint::Update,
@@ -273,6 +277,13 @@ pub async fn contribute() -> Result<(), Error> {
                 return Err(Error::UnexpectedError(
                     "unexpected error when contribute since finding a bad request.".to_string(),
                 ))
+            }
+            Err(CeremonyError::NotYourTurn) => {
+                println!(
+                    "{} Lag behind server. Contacting Server again...",
+                    style("[8/9]").bold().dim(),
+                );
+                continue;
             }
             Err(CeremonyError::AlreadyContributed) => return Err(Error::AlreadyContributed),
             Ok(_) => {

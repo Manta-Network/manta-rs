@@ -160,7 +160,7 @@ where
     ) -> Result<(), CeremonyError<C>> {
         self.pop_timed_out_participant();
         if !self.queue.is_at_front(participant) {
-            return Err(CeremonyError::<C>::BadRequest); // TODO: Why use BadRequest instead of NotYourTurn?
+            return Err(CeremonyError::<C>::NotYourTurn);
         };
         for i in 0..M {
             take_mut::take(&mut self.state[i], |self_state| {
