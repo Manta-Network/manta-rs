@@ -41,19 +41,19 @@ pub trait Group<COM = ()>: Sized {
     /// Adds `rhs` to `self` in the group.
     fn add(&self, rhs: &Self, compiler: &mut COM) -> Self;
 
-    /// adsdjn
+    /// Adds `rhs` to `self` in the group.
     fn add_assign(&mut self, rhs: &Self, compiler: &mut COM) -> &mut Self {
         *self = self.add(rhs, compiler);
         self
     }
 
-    ///jdfj
+    /// Doubles `self` in the group.
     fn double_assign(&mut self, compiler: &mut COM) -> &mut Self {
         *self = self.add(self, compiler);
         self
     }
 
-    ///
+    /// Doubles `self` `k` times in the group.
     fn repeated_double_assign(&mut self, k: usize, compiler: &mut COM) -> &mut Self {
         for _ in 0..k {
             self.double_assign(compiler);
@@ -145,7 +145,7 @@ pub struct Window<G> {
 }
 
 impl<G> Window<G> {
-    /// Creates a new `Window` from a table without checking its correctness.
+    /// Creates a new `Window` from `table` without checking its correctness.
     pub fn new_unchecked(table: Vec<G>) -> Self {
         Self { table }
     }
@@ -180,12 +180,12 @@ impl<G> Window<G> {
         &self.table
     }
 
-    /// Returns the table
+    /// Returns the multiplication table, dropping `Window`.
     pub fn into_inner(self) -> Vec<G> {
         self.table
     }
 
-    ///jjfd
+    /// Doubles `result` `window_size` and then adds the elemnent from `table` corresponding to `chunk`.
     fn scalar_mul_round<COM>(
         window_size: usize,
         table: &[G],
@@ -203,7 +203,7 @@ impl<G> Window<G> {
             .add_assign(&selected_element, compiler);
     }
 
-    /// Multiplies a point in G by `scalar` using `Window`. Returns `None` if the table is too small.
+    /// Multiplies a point in G by `scalar` using `Window`.
     pub fn scalar_mul<'b, B, COM>(&self, bits: B, compiler: &mut COM) -> G
     where
         Bool<COM>: 'b,
