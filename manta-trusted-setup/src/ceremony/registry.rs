@@ -103,6 +103,7 @@ where
     K: Ord + CanonicalSerialize,
     V: CanonicalSerialize,
 {
+    #[inline]
     fn serialize<W>(&self, mut writer: W) -> Result<(), SerializationError>
     where
         W: Write,
@@ -123,6 +124,7 @@ where
     K: Ord + CanonicalDeserialize,
     V: CanonicalDeserialize,
 {
+    #[inline]
     fn deserialize<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
         Ok(Self {
             map: CanonicalDeserialize::deserialize(&mut reader)
@@ -132,6 +134,7 @@ where
 }
 
 /// Loads registry from a disk file at `registry`.
+#[inline]
 pub fn load_registry<C, P>(
     registry: P,
 ) -> Registry<ed_dalek::PublicKey, <C as CeremonyConfig>::Participant>
@@ -178,7 +181,7 @@ where
                 false => UserPriority::Normal,
             },
             public_key,
-            nonce: OsRng.gen(),
+            nonce: OsRng.gen::<_, u16>() as u64,
             contributed: false,
         };
         map.insert(participant.public_key, participant);

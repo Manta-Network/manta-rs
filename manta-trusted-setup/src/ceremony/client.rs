@@ -62,6 +62,7 @@ where
     C: CeremonyConfig,
 {
     /// Builds a new [`Client`] with `participant` and `private_key`.
+    #[inline]
     pub fn new(
         public_key: PublicKey<C>,
         identifier: ParticipantIdentifier<C>,
@@ -77,6 +78,7 @@ where
     }
 
     /// Queries the server state.
+    #[inline]
     pub fn query(&mut self) -> Result<Signed<QueryRequest, C>, ()>
     where
         C::Participant: Clone,
@@ -92,6 +94,7 @@ where
     }
 
     /// Contributes to the state on the server.
+    #[inline]
     pub fn contribute(
         &mut self,
         hasher: &Hasher<C>,
@@ -138,11 +141,6 @@ where
             &self.public_key,
             &self.private_key,
         )
-    }
-
-    /// Set Nonce for the client.
-    pub fn set_nonce(&mut self, nonce: Nonce<C>) {
-        self.nonce = nonce;
     }
 }
 
@@ -220,6 +218,7 @@ pub enum Endpoint {
 const SERVER_ADDR: &str = "http://localhost:8080";
 
 impl From<Endpoint> for String {
+    #[inline]
     fn from(endpoint: Endpoint) -> String {
         let operation = match endpoint {
             Endpoint::Query => "query",

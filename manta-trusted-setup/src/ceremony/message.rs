@@ -87,6 +87,7 @@ where
     C: CeremonyConfig,
 {
     /// Generates a signed message using user's identifier, nonce, and key pair, and increment nonce by 1.
+    #[inline]
     pub fn new(
         message: T,
         identifier: ParticipantIdentifier<C>,

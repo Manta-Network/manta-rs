@@ -29,8 +29,32 @@ where
 
 /// Nonce
 pub trait Nonce: PartialEq + Clone {
-    /// Increment the current nonce by one.
+    /// Increments the current nonce by one.
     fn increment(&mut self);
+
+    /// Checks if the current nonce is valid
+    fn is_valid(&self) -> bool;
+}
+
+impl Nonce for u64 {
+    #[inline]
+    fn increment(&mut self) {
+        *self = self.saturating_add(1);
+    }
+
+    #[inline]
+    fn is_valid(&self) -> bool {
+        *self != Self::MAX
+    }
+}
+
+/// Checks if two nonces `current`and `user_nonce` are both valid and equal to each other.
+#[inline]
+pub fn check_nonce<N>(current: &N, user_nonce: &N) -> bool
+where
+    N: Nonce,
+{
+    current.is_valid() && user_nonce.is_valid() && current == user_nonce
 }
 
 /// Has Nonce
@@ -40,9 +64,6 @@ where
 {
     /// Returns the nonce of `self` as a participant.
     fn nonce(&self) -> S::Nonce;
-
-    /// Sets nonce.
-    fn set_nonce(&mut self, nonce: S::Nonce);
 }
 
 /// Signature Scheme
@@ -71,6 +92,7 @@ pub trait SignatureScheme {
         M: ?Sized + AsRef<[u8]>;
 
     /// Signs a `message` and `nonce` with `(public_key, private_key)`.
+    #[inline]
     fn sign<M>(
         message: M,
         nonce: &Self::Nonce,
@@ -103,6 +125,7 @@ pub trait SignatureScheme {
         M: ?Sized + AsRef<[u8]>;
 
     /// Verifies the `signature` of `message` and `nonce` with `public_key`.
+    #[inline]
     fn verify<M>(
         message: M,
         nonce: &Self::Nonce,
@@ -201,68 +224,16 @@ pub mod ed_dalek {
     }
 
     impl From<ED25519Signature> for Signature {
+        #[inline]
         fn from(f: ED25519Signature) -> Self {
             Signature(f.to_bytes().into())
         }
     }
 
     impl From<Signature> for ED25519Signature {
+        #[inline]
         fn from(f: Signature) -> Self {
             ED25519Signature::from_bytes(&f.0 .0).expect("Should never fail.")
-        }
-    }
-
-    // impl Serialize for Signature {
-    //     #[inline]
-    //     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    //     where
-    //         S: serde::Serializer,
-    //     {
-    //         let mut s = serializer.serialize_struct("Signature", 1)?;
-    //         s.serialize_field("U8Array", &self.0)?;
-    //         s.end()
-    //     }
-    // }
-
-    // impl Serialize for U8Array<32> {
-    //     #[inline]
-    //     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    //     where
-    //         S: serde::Serializer,
-    //     {
-    //         let mut s = serializer.serialize_struct("U8Array", 1)?;
-    //         s.serialize_field("first_half", &self.0[0..32])?;
-    //         s.serialize_field("second_half", &self.0[32..64])?;
-    //         s.end()
-    //     }
-    // }
-
-    // impl<'de> Deserialize<'de> for U8Array<32> {
-    //     #[inline]
-    //     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    //     where
-    //         D: serde::Deserializer<'de>,
-    //     {
-    //         todo!()
-    //     }
-    // }
-
-    // impl Serialize for U8Array<64> {
-    //     #[inline]
-    //     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    //     where
-    //         S: serde::Serializer,
-    //     {
-    //         let mut s = serializer.serialize_struct("U8Array", 1)?;
-    //         s.serialize_field("first_half", &self.0[0..32])?;
-    //         s.serialize_field("second_half", &self.0[32..64])?;
-    //         s.end()
-    //     }
-    // }
-
-    impl Nonce for u64 {
-        fn increment(&mut self) {
-            *self = self.wrapping_add(1);
         }
     }
 
@@ -272,6 +243,7 @@ pub mod ed_dalek {
         type Nonce = u64;
         type Signature = Signature;
 
+        #[inline]
         fn sign_bytes<M>(
             message: &M,
             nonce: &Self::Nonce,
@@ -297,6 +269,7 @@ pub mod ed_dalek {
             ))
         }
 
+        #[inline]
         fn verify_bytes<M>(
             message: &M,
             nonce: &Self::Nonce,

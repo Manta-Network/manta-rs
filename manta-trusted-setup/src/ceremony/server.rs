@@ -25,7 +25,7 @@ use crate::{
         coordinator::Coordinator,
         message::{CeremonyError, ContributeRequest, QueryRequest, QueryResponse, Signed},
         registry::{load_registry, HasContributed, Registry},
-        signature::{HasNonce, HasPublicKey, Nonce as _, SignatureScheme},
+        signature::{check_nonce, HasNonce, HasPublicKey, Nonce as _, SignatureScheme},
         state::{MPCState, ServerSize, StateSize},
         util::{load_from_file, log_to_file},
     },
@@ -91,8 +91,7 @@ where
             Some(participant) => participant,
             None => return Err(CeremonyError::NotRegistered),
         };
-        let mut nonce = participant.nonce();
-        if participant.nonce() != request.nonce {
+        if !check_nonce(&participant.nonce(), &request.nonce) {
             return Err(CeremonyError::NonceNotInSync(participant.nonce()));
         }
         C::SignatureScheme::verify(
@@ -102,8 +101,7 @@ where
             &participant.public_key(),
         )
         .map_err(|_| CeremonyError::BadRequest)?;
-        nonce.increment();
-        participant.set_nonce(nonce);
+        participant.nonce().increment();
         Ok(())
     }
 
@@ -276,6 +274,7 @@ where
 }
 
 /// Initiates a server.
+#[inline]
 pub fn init_server(registry_path: String, recovery_dir_path: String) -> Server<Groth16BLS12381, 2> {
     let registry = load_registry::<Groth16BLS12381, _>(registry_path);
     let mpc_state0 = load_from_file::<MPCState<Groth16BLS12381, 1>, _>(&"data/prepared_mint.data");

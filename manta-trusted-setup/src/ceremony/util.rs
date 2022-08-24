@@ -79,37 +79,8 @@ where
     CanonicalDeserialize::deserialize(&mut reader).expect("Deserialize should succeed.")
 }
 
-// /// Prepares phase one parameter `powers` for phase two parameters of circuit `cs` with `name`.
-// pub fn prepare_parameters<C, S, T>(powers: Accumulator<T>, cs: S, name: &str)
-// where
-//     C: CeremonyConfig,
-//     T: kzg::Configuration + mpc::ProvingKeyHasher<T>,
-//     S: ConstraintSynthesizer<T::Scalar>,
-//     State<C>: CanonicalDeserialize,
-//     Challenge<C>: CanonicalDeserialize,
-// {
-//     let now = Instant::now();
-//     let state = initialize::<T, S>(powers, cs).expect("Failed to initialize state");
-//     let challenge = <T as mpc::ProvingKeyHasher<T>>::hash(&state);
-//     let mpc_state = MPCState::<C> {
-//         state,
-//         challenge: challenge.into(),
-//     };
-//     // log_to_file(
-//     //     &format!("prepared_{}.data", name),
-//     //     MPCState::<C> {
-//     //         state,
-//     //         challenge: challenge.into(),
-//     //     },
-//     // );
-//     println!(
-//         "Preparing Phase 2 parameters for {} circuit takes {:?}\n",
-//         name,
-//         now.elapsed()
-//     );
-// } // TODO： Make it generic
-
 /// Prepares phase one parameters ready to use in trusted setup for phase two parameters.
+#[inline]
 pub fn prepare_phase_two_parameters(accumulator_path: String) {
     let now = Instant::now();
     let powers = load_from_file::<Accumulator<_>, _>(accumulator_path);
@@ -146,6 +117,7 @@ pub fn prepare_phase_two_parameters(accumulator_path: String) {
 }
 
 /// Prepares phase one parameter `powers` for phase two parameters of circuit `cs` with `name`.
+#[inline]
 pub fn prepare_parameters(powers: Accumulator<Config>, cs: R1CS<Fr>, name: &str) {
     let now = Instant::now();
     let state = initialize::<Config, R1CS<Fr>>(powers, cs).expect("failed to initialize state");

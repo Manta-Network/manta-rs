@@ -118,6 +118,7 @@ where
     State<C>: CanonicalSerialize,
     Proof<C>: CanonicalSerialize,
 {
+    #[inline]
     fn serialize<W>(&self, mut writer: W) -> Result<(), SerializationError>
     where
         W: ark_std::io::Write,
@@ -133,6 +134,7 @@ where
         Ok(())
     }
 
+    #[inline]
     fn serialized_size(&self) -> usize {
         self.state.serialized_size() + self.proof.serialized_size()
     }
@@ -144,6 +146,7 @@ where
     State<C>: CanonicalDeserialize + Debug,
     Proof<C>: CanonicalDeserialize + Debug,
 {
+    #[inline]
     fn deserialize<R>(mut reader: R) -> Result<Self, SerializationError>
     where
         R: ark_std::io::Read,
@@ -194,6 +197,7 @@ impl<const N: usize> CanonicalSerialize for U8Array<N> {
 }
 
 impl<const N: usize> CanonicalDeserialize for U8Array<N> {
+    #[inline]
     fn deserialize<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
         let mut res = Vec::with_capacity(N);
         for _ in 0..N {
@@ -210,12 +214,14 @@ impl<const N: usize> CanonicalDeserialize for U8Array<N> {
 }
 
 impl<const N: usize> From<U8Array<N>> for [u8; N] {
+    #[inline]
     fn from(f: U8Array<N>) -> Self {
         f.0
     }
 }
 
 impl<const N: usize> From<[u8; N]> for U8Array<N> {
+    #[inline]
     fn from(f: [u8; N]) -> Self {
         U8Array(f)
     }
@@ -232,6 +238,7 @@ pub enum UserPriority {
 }
 
 impl CanonicalSerialize for UserPriority {
+    #[inline]
     fn serialize<W>(&self, mut writer: W) -> Result<(), SerializationError>
     where
         W: std::io::Write,
@@ -245,12 +252,14 @@ impl CanonicalSerialize for UserPriority {
         Ok(())
     }
 
+    #[inline]
     fn serialized_size(&self) -> usize {
         core::mem::size_of::<bool>()
     }
 }
 
 impl CanonicalDeserialize for UserPriority {
+    #[inline]
     fn deserialize<R>(mut reader: R) -> Result<Self, SerializationError>
     where
         R: std::io::Read,
