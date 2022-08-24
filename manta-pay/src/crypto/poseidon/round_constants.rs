@@ -80,31 +80,15 @@ mod test {
     use super::*;
     use crate::crypto::constraint::arkworks::Fp;
     use ark_bls12_381::Fr;
-    use ark_ff::field_new;
+    use manta_crypto::arkworks::ff::field_new;
 
-    /// Checks if [`GrainLFSR`] is consistent with hardcoded outputs from the `sage` script found at
-    /// <https://github.com/Manta-Network/Plonk-Prototype/tree/poseidon_hash_clean> with the
-    /// following parameters:
-    ///
-    /// ```shell
-    /// sage generate_parameters_grain_deterministic.sage 1 0 255 3 8 55 0x73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001
-    /// ```
+    /// Checks if [`GrainLFSR`] matches hardcoded sage outputs.
     #[test]
     fn grain_lfsr_is_consistent() {
+        let test_cases = include!("parameters_hardcoded_test/lfsr_values");
         let mut lfsr = generate_lfsr(255, 3, 8, 55);
-        assert_eq!(
-            sample_field_element::<Fp<Fr>, _>(&mut lfsr),
-            Fp(field_new!(
-                Fr,
-                "41764196652518280402801918994067134807238124178723763855975902025540297174931"
-            ))
-        );
-        assert_eq!(
-            sample_field_element::<Fp<Fr>, _>(&mut lfsr),
-            Fp(field_new!(
-                Fr,
-                "12678502092746318913289523392430826887011664085277767208266352862540971998250"
-            ))
-        );
+        for x in test_cases {
+            assert_eq!(sample_field_element::<Fp<Fr>, _>(&mut lfsr), x);
+        }
     }
 }

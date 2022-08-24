@@ -266,8 +266,10 @@ mod test {
     use super::*;
     use crate::crypto::{constraint::arkworks::Fp, poseidon::matrix::Matrix};
     use ark_bls12_381::Fr;
-    use ark_ff::{field_new, UniformRand};
-    use manta_crypto::rand::OsRng;
+    use manta_crypto::{
+        arkworks::ff::{field_new, UniformRand},
+        rand::OsRng,
+    };
 
     /// Checks if creating mds matrices is correct.
     #[test]

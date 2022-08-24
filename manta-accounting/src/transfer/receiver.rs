@@ -25,8 +25,14 @@ use crate::{
 };
 use core::{fmt::Debug, hash::Hash, iter};
 use manta_crypto::{
-    accumulator::Accumulator,
-    constraint::{Allocate, Allocator, AssertEq, Derived, ProofSystemInput, Public, Variable},
+    constraint::HasInput,
+    eclair::{
+        alloc::{
+            mode::{Derived, Public},
+            Allocate, Allocator, Variable,
+        },
+        bool::AssertEq,
+    },
     encryption::{hybrid, Encrypt},
 };
 
@@ -88,16 +94,6 @@ where
     #[inline]
     pub fn ephemeral_public_key(&self) -> &PublicKey<C> {
         self.encrypted_note.ephemeral_public_key()
-    }
-
-    /// Returns `true` whenever `self.utxo` and `rhs.utxo` can be inserted in any order into the
-    /// `utxo_accumulator`.
-    #[inline]
-    pub fn is_independent_from<A>(&self, rhs: &Self, utxo_accumulator: &A) -> bool
-    where
-        A: Accumulator<Item = Utxo<C>, Model = C::UtxoAccumulatorModel>,
-    {
-        utxo_accumulator.are_independent(&self.utxo, &rhs.utxo)
     }
 
     /// Extracts the ledger posting data from `self`.

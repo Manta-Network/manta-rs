@@ -21,11 +21,9 @@ use crate::crypto::{
     ecc,
     encryption::aes::{self, FixedNonceAesGcm},
     key::Blake2sKdf,
-    poseidon::{self, arkworks::TwoPowerMinusOneDomainTag, hash::Hasher},
+    poseidon::compat as poseidon,
 };
 use alloc::vec::Vec;
-use ark_ff::ToConstraintField;
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use blake2::{
     digest::{Update, VariableOutput},
     Blake2sVar,
@@ -39,20 +37,27 @@ use manta_accounting::{
 use manta_crypto::{
     accumulator,
     algebra::DiffieHellman,
-    constraint::{
-        self, Add, Allocate, Allocator, Constant, ProofSystemInput, Public, Secret, Variable,
+    arkworks::{
+        ff::ToConstraintField,
+        serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError},
+    },
+    constraint::Input,
+    eclair::{
+        self,
+        alloc::{
+            mode::{Public, Secret},
+            Allocate, Allocator, Constant, Variable,
+        },
+        ops::Add,
     },
     encryption,
     hash::ArrayHashFunction,
-    key::{
-        self,
-        kdf::{AsBytes, KeyDerivationFunction},
-    },
+    key::{self, kdf::KeyDerivationFunction},
     merkle_tree,
 };
 use manta_util::{
     codec::{Decode, DecodeError, Encode, Read, Write},
-    into_array_unchecked, Array, SizeLimit,
+    into_array_unchecked, Array, AsBytes, SizeLimit,
 };
 
 #[cfg(feature = "bs58")]
@@ -63,6 +68,7 @@ use manta_crypto::rand::{Rand, RngCore, Sample};
 
 #[doc(inline)]
 pub use ark_bls12_381 as bls12_381;
+
 #[doc(inline)]
 pub use ark_ed_on_bls12_381 as bls12_381_ed;
 
@@ -118,41 +124,33 @@ impl<COM, const ARITY: usize> Constant<COM> for PoseidonSpec<ARITY> {
 }
 
 /// Poseidon-2 Hash Parameters
-pub type Poseidon2 = Hasher<PoseidonSpec<2>, TwoPowerMinusOneDomainTag, 2>;
+pub type Poseidon2 = poseidon::Hasher<PoseidonSpec<2>, 2>;
 
 /// Poseidon-2 Hash Parameters Variable
-pub type Poseidon2Var = Hasher<PoseidonSpec<2>, TwoPowerMinusOneDomainTag, 2, Compiler>;
-
-impl poseidon::Constants for PoseidonSpec<2> {
-    const WIDTH: usize = 3;
-    const FULL_ROUNDS: usize = 8;
-    const PARTIAL_ROUNDS: usize = 55;
-}
+pub type Poseidon2Var = poseidon::Hasher<PoseidonSpec<2>, 2, Compiler>;
 
 impl poseidon::arkworks::Specification for PoseidonSpec<2> {
     type Field = ConstraintField;
+    const FULL_ROUNDS: usize = 8;
+    const PARTIAL_ROUNDS: usize = 57;
     const SBOX_EXPONENT: u64 = 5;
 }
 
 /// Poseidon-4 Hash Parameters
-pub type Poseidon4 = Hasher<PoseidonSpec<4>, TwoPowerMinusOneDomainTag, 4>;
+pub type Poseidon4 = poseidon::Hasher<PoseidonSpec<4>, 4>;
 
 /// Poseidon-4 Hash Parameters Variable
-pub type Poseidon4Var = Hasher<PoseidonSpec<4>, TwoPowerMinusOneDomainTag, 4, Compiler>;
-
-impl poseidon::Constants for PoseidonSpec<4> {
-    const WIDTH: usize = 5;
-    const FULL_ROUNDS: usize = 8;
-    const PARTIAL_ROUNDS: usize = 56;
-}
+pub type Poseidon4Var = poseidon::Hasher<PoseidonSpec<4>, 4, Compiler>;
 
 impl poseidon::arkworks::Specification for PoseidonSpec<4> {
     type Field = ConstraintField;
+    const FULL_ROUNDS: usize = 8;
+    const PARTIAL_ROUNDS: usize = 60;
     const SBOX_EXPONENT: u64 = 5;
 }
 
 /// Key Agreement Scheme Type
-pub type KeyAgreementScheme = DiffieHellman<Group>;
+pub type KeyAgreementScheme = DiffieHellman<EmbeddedScalar, Group>;
 
 /// Secret Key Type
 pub type SecretKey = <KeyAgreementScheme as key::agreement::Types>::SecretKey;
@@ -164,7 +162,7 @@ pub type PublicKey = <KeyAgreementScheme as key::agreement::Types>::PublicKey;
 pub type SharedSecret = <KeyAgreementScheme as key::agreement::Types>::SharedSecret;
 
 /// Key Agreement Scheme Variable Type
-pub type KeyAgreementSchemeVar = DiffieHellman<GroupVar, Compiler>;
+pub type KeyAgreementSchemeVar = DiffieHellman<EmbeddedScalarVar, GroupVar>;
 
 /// Secret Key Variable Type
 pub type SecretKeyVar = <KeyAgreementSchemeVar as key::agreement::Types>::SecretKey;
@@ -379,7 +377,7 @@ impl Constant<Compiler> for VoidNumberCommitmentSchemeVar {
 /// Asset ID Variable
 pub struct AssetIdVar(ConstraintFieldVar);
 
-impl constraint::PartialEq<Self, Compiler> for AssetIdVar {
+impl eclair::cmp::PartialEq<Self, Compiler> for AssetIdVar {
     #[inline]
     fn eq(&self, rhs: &Self, compiler: &mut Compiler) -> Boolean<ConstraintField> {
         ConstraintFieldVar::eq(&self.0, &rhs.0, compiler)
@@ -426,7 +424,7 @@ impl Add<Self, Compiler> for AssetValueVar {
     }
 }
 
-impl constraint::PartialEq<Self, Compiler> for AssetValueVar {
+impl eclair::cmp::PartialEq<Self, Compiler> for AssetValueVar {
     #[inline]
     fn eq(&self, rhs: &Self, compiler: &mut Compiler) -> Boolean<ConstraintField> {
         ConstraintFieldVar::eq(&self.0, &rhs.0, compiler)
@@ -632,31 +630,24 @@ impl Constant<Compiler> for MerkleTreeConfigurationVar {
     }
 }
 
-impl ProofSystemInput<AssetId> for ProofSystem {
+impl Input<ProofSystem> for AssetId {
     #[inline]
-    fn extend(input: &mut Self::Input, next: &AssetId) {
-        input.push(next.0.into());
+    fn extend(&self, input: &mut Vec<ConstraintField>) {
+        input.push(self.0.into());
     }
 }
 
-impl ProofSystemInput<AssetValue> for ProofSystem {
+impl Input<ProofSystem> for AssetValue {
     #[inline]
-    fn extend(input: &mut Self::Input, next: &AssetValue) {
-        input.push(next.0.into());
+    fn extend(&self, input: &mut Vec<ConstraintField>) {
+        input.push(self.0.into());
     }
 }
 
-impl ProofSystemInput<Fp<ConstraintField>> for ProofSystem {
+impl Input<ProofSystem> for Group {
     #[inline]
-    fn extend(input: &mut Self::Input, next: &Fp<ConstraintField>) {
-        input.push(next.0);
-    }
-}
-
-impl ProofSystemInput<Group> for ProofSystem {
-    #[inline]
-    fn extend(input: &mut Self::Input, next: &Group) {
-        input.append(&mut next.0.to_field_elements().unwrap());
+    fn extend(&self, input: &mut Vec<ConstraintField>) {
+        input.append(&mut self.0.to_field_elements().unwrap());
     }
 }
 
@@ -766,10 +757,8 @@ impl transfer::Configuration for Config {
         >>::VoidNumber;
     type VoidNumberCommitmentSchemeVar = VoidNumberCommitmentSchemeVar;
     type UtxoAccumulatorModel = UtxoAccumulatorModel;
-    type UtxoAccumulatorWitnessVar =
-        <Self::UtxoAccumulatorModelVar as accumulator::Model<Self::Compiler>>::Witness;
-    type UtxoAccumulatorOutputVar =
-        <Self::UtxoAccumulatorModelVar as accumulator::Model<Self::Compiler>>::Output;
+    type UtxoAccumulatorWitnessVar = <Self::UtxoAccumulatorModelVar as accumulator::Types>::Witness;
+    type UtxoAccumulatorOutputVar = <Self::UtxoAccumulatorModelVar as accumulator::Types>::Output;
     type UtxoAccumulatorModelVar = merkle_tree::Parameters<MerkleTreeConfigurationVar, Compiler>;
     type AssetIdVar = AssetIdVar;
     type AssetValueVar = AssetValueVar;

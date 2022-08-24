@@ -14,44 +14,40 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! HTTP Utilities
+//! Reqwest HTTP Client Utilities
 
-use manta_util::serde::{de::DeserializeOwned, Serialize};
+use crate::serde::{de::DeserializeOwned, Serialize};
 
-pub use reqwest::{Error, IntoUrl, Method, Response, Url};
+#[doc(inline)]
+pub use reqwest::*;
 
 /// Asynchronous HTTP Client
 ///
 /// This client is a wrapper around [`reqwest::Client`] with a known server URL.
-pub struct Client {
+pub struct KnownUrlClient {
     /// Server URL
     pub server_url: Url,
 
     /// Base HTTP Client
-    pub client: reqwest::Client,
+    pub client: Client,
 }
 
-impl Client {
-    /// Builds a new HTTP [`Client`] that connects to `server_url`.
+impl KnownUrlClient {
+    /// Builds a new HTTP [`KnownUrlClient`] that connects to `server_url`.
     #[inline]
-    pub fn new<U>(server_url: U) -> Result<Self, Error>
+    pub fn new<U>(server_url: U) -> Result<Self>
     where
         U: IntoUrl,
     {
         Ok(Self {
-            client: reqwest::Client::builder().build()?,
+            client: Client::builder().build()?,
             server_url: server_url.into_url()?,
         })
     }
 
     /// Sends a new request asynchronously of type `command` with query string `request`.
     #[inline]
-    pub async fn request<T, R>(
-        &self,
-        method: Method,
-        command: &str,
-        request: &T,
-    ) -> Result<R, Error>
+    pub async fn request<T, R>(&self, method: Method, command: &str, request: &T) -> Result<R>
     where
         T: Serialize,
         R: DeserializeOwned,
@@ -85,7 +81,7 @@ impl Client {
 
     /// Sends a POST request of type `command` with query string `request`.
     #[inline]
-    pub async fn post<T, R>(&self, command: &str, request: &T) -> Result<R, Error>
+    pub async fn post<T, R>(&self, command: &str, request: &T) -> Result<R>
     where
         T: Serialize,
         R: DeserializeOwned,

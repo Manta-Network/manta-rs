@@ -1,6 +1,6 @@
 [package]
 name = "manta-util"
-version = "0.5.3"
+version = "0.5.4"
 edition = "2021"
 authors = ["Manta Network <contact@manta.network>"]
 readme = "README.md"
@@ -38,8 +38,10 @@ serde-array = ["serde", "serde_with"]
 std = ["alloc"]
 
 [dependencies]
-crossbeam-channel = { version = "0.5.4", optional = true, default-features = false }
+crossbeam-channel = { version = "0.5.6", optional = true, default-features = false }
 rayon = { version = "1.5.3", optional = true, default-features = false }
-serde = { version = "1.0.139", optional = true, default-features = false, features = ["derive"] }
+reqwest = { version = "0.11.11", optional = true, default-features = false, features = ["json"] }
+serde = { version = "1.0.144", optional = true, default-features = false, features = ["derive"] }
 serde_with = { version = "1.14.0", optional = true, default-features = false, features = ["macros"] }
+tide = { version = "0.16.0", optional = true, default-features = false }
 workspace-hack = { version = "0.1.0", path = "../workspace-hack" }

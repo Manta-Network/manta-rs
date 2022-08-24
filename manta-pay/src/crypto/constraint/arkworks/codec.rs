@@ -19,7 +19,9 @@
 use ark_std::io::{self, Error, ErrorKind};
 use manta_util::codec::{Read, ReadExactError, Write};
 
-pub use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
+pub use manta_crypto::arkworks::serialize::{
+    CanonicalDeserialize, CanonicalSerialize, SerializationError,
+};
 
 /// Scale-Codec Input as Reader Wrapper
 #[cfg(feature = "scale")]

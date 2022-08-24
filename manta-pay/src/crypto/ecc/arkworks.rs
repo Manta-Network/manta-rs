@@ -18,24 +18,34 @@
 
 use crate::crypto::constraint::arkworks::{self, empty, full, Boolean, Fp, FpVar, R1CS};
 use alloc::vec::Vec;
-use ark_ff::{BigInteger, Field, FpParameters, PrimeField};
-use ark_r1cs_std::ToBitsGadget;
-use ark_relations::ns;
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
-use core::marker::PhantomData;
+use core::{borrow::Borrow, marker::PhantomData};
 use manta_crypto::{
     algebra,
-    constraint::{self, Allocate, Allocator, Constant, Public, Secret, Variable},
-    key::kdf,
+    algebra::FixedBaseScalarMul,
+    arkworks::{
+        algebra::{affine_point_as_bytes, modulus_is_smaller},
+        ec::{AffineCurve, ProjectiveCurve},
+        ff::{BigInteger, Field, PrimeField},
+        r1cs_std::{groups::CurveVar, ToBitsGadget},
+        relations::ns,
+        serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError},
+    },
+    eclair::{
+        self,
+        alloc::{
+            mode::{Public, Secret},
+            Allocate, Allocator, Constant, Variable,
+        },
+    },
     rand::{RngCore, Sample},
 };
-use manta_util::codec;
+use manta_util::{codec, AsBytes};
 
 #[cfg(feature = "serde")]
-use manta_util::serde::{Deserialize, Serialize, Serializer};
-
-pub use ark_ec::{AffineCurve, ProjectiveCurve};
-pub use ark_r1cs_std::groups::CurveVar;
+use {
+    manta_crypto::arkworks::algebra::serialize_group_element,
+    manta_util::serde::{Deserialize, Serialize},
+};
 
 /// Constraint Field Type
 type ConstraintField<C> = <<C as ProjectiveCurve>::BaseField as Field>::BasePrimeField;
@@ -45,32 +55,6 @@ type Compiler<C> = R1CS<ConstraintField<C>>;
 
 /// Scalar Field Element
 pub type Scalar<C> = Fp<<C as ProjectiveCurve>::ScalarField>;
-
-/// Converts `scalar` to the bit representation of `O`.
-#[inline]
-pub fn convert_bits<T, O>(scalar: T) -> O::BigInt
-where
-    T: BigInteger,
-    O: PrimeField,
-{
-    O::BigInt::from_bits_le(&scalar.to_bits_le())
-}
-
-/// Checks that the modulus of `A` is smaller than that of `B`.
-#[inline]
-pub fn modulus_is_smaller<A, B>() -> bool
-where
-    A: PrimeField,
-    B: PrimeField,
-{
-    let modulus_a = A::Params::MODULUS;
-    let modulus_b = B::Params::MODULUS;
-    if modulus_a.num_bits() <= modulus_b.num_bits() {
-        convert_bits::<_, B>(modulus_a) < modulus_b
-    } else {
-        modulus_a < convert_bits::<_, A>(modulus_b)
-    }
-}
 
 /// Lifts an embedded scalar to an outer scalar.
 ///
@@ -219,7 +203,7 @@ where
     }
 }
 
-impl<C> kdf::AsBytes for Group<C>
+impl<C> AsBytes for Group<C>
 where
     C: ProjectiveCurve,
 {
@@ -233,15 +217,20 @@ impl<C> algebra::Group for Group<C>
 where
     C: ProjectiveCurve,
 {
-    type Scalar = Scalar<C>;
-
     #[inline]
     fn add(&self, rhs: &Self, _: &mut ()) -> Self {
         Self(self.0 + rhs.0)
     }
+}
+
+impl<C> algebra::ScalarMul<Scalar<C>> for Group<C>
+where
+    C: ProjectiveCurve,
+{
+    type Output = Self;
 
     #[inline]
-    fn mul(&self, scalar: &Self::Scalar, _: &mut ()) -> Self {
+    fn scalar_mul(&self, scalar: &Scalar<C>, _: &mut ()) -> Self::Output {
         Self(self.0.mul(scalar.0.into_repr()).into())
     }
 }
@@ -281,30 +270,6 @@ where
     }
 }
 
-/// Converts `point` into its canonical byte-representation.
-#[inline]
-pub fn affine_point_as_bytes<C>(point: &C::Affine) -> Vec<u8>
-where
-    C: ProjectiveCurve,
-{
-    let mut buffer = Vec::new();
-    point
-        .serialize(&mut buffer)
-        .expect("Serialization is not allowed to fail.");
-    buffer
-}
-
-/// Uses `serializer` to serialize `point`.
-#[cfg(feature = "serde")]
-#[inline]
-fn serialize_group_element<C, S>(point: &C::Affine, serializer: S) -> Result<S::Ok, S::Error>
-where
-    C: ProjectiveCurve,
-    S: Serializer,
-{
-    serializer.serialize_bytes(&affine_point_as_bytes::<C>(point))
-}
-
 /// Elliptic Curve Scalar Element Variable
 ///
 /// # Safety
@@ -328,7 +293,7 @@ where
     }
 }
 
-impl<C, CV> algebra::Scalar<Compiler<C>> for ScalarVar<C, CV>
+impl<C, CV> algebra::Group<Compiler<C>> for ScalarVar<C, CV>
 where
     C: ProjectiveCurve,
     CV: CurveVar<C, ConstraintField<C>>,
@@ -338,7 +303,13 @@ where
         let _ = compiler;
         Self::new(&self.0 + &rhs.0)
     }
+}
 
+impl<C, CV> algebra::Ring<Compiler<C>> for ScalarVar<C, CV>
+where
+    C: ProjectiveCurve,
+    CV: CurveVar<C, ConstraintField<C>>,
+{
     #[inline]
     fn mul(&self, rhs: &Self, compiler: &mut Compiler<C>) -> Self {
         let _ = compiler;
@@ -420,8 +391,6 @@ where
     C: ProjectiveCurve,
     CV: CurveVar<C, ConstraintField<C>>,
 {
-    type Scalar = ScalarVar<C, CV>;
-
     #[inline]
     fn add(&self, rhs: &Self, compiler: &mut Compiler<C>) -> Self {
         let _ = compiler;
@@ -429,9 +398,17 @@ where
         result += &rhs.0;
         Self::new(result)
     }
+}
+
+impl<C, CV> algebra::ScalarMul<ScalarVar<C, CV>, Compiler<C>> for GroupVar<C, CV>
+where
+    C: ProjectiveCurve,
+    CV: CurveVar<C, ConstraintField<C>>,
+{
+    type Output = Self;
 
     #[inline]
-    fn mul(&self, scalar: &Self::Scalar, compiler: &mut Compiler<C>) -> Self {
+    fn scalar_mul(&self, scalar: &ScalarVar<C, CV>, compiler: &mut Compiler<C>) -> Self::Output {
         let _ = compiler;
         Self::new(
             self.0
@@ -467,7 +444,7 @@ where
 {
 }
 
-impl<C, CV> constraint::PartialEq<Self, Compiler<C>> for GroupVar<C, CV>
+impl<C, CV> eclair::cmp::PartialEq<Self, Compiler<C>> for GroupVar<C, CV>
 where
     C: ProjectiveCurve,
     CV: CurveVar<C, ConstraintField<C>>,
@@ -554,5 +531,74 @@ where
             )
             .expect("Variable allocation is not allowed to fail."),
         )
+    }
+}
+
+impl<C, CV> FixedBaseScalarMul<ScalarVar<C, CV>, Compiler<C>> for GroupVar<C, CV>
+where
+    C: ProjectiveCurve,
+    CV: CurveVar<C, ConstraintField<C>>,
+{
+    type Base = Group<C>;
+
+    #[inline]
+    fn fixed_base_scalar_mul<I>(
+        precomputed_bases: I,
+        scalar: &ScalarVar<C, CV>,
+        compiler: &mut Compiler<C>,
+    ) -> Self
+    where
+        I: IntoIterator,
+        I::Item: Borrow<Self::Base>,
+    {
+        let _ = compiler;
+        let mut result = CV::zero();
+        let scalar_bits = scalar
+            .0
+            .to_bits_le()
+            .expect("Bit decomposition is not allowed to fail.");
+        for (bit, base) in scalar_bits.into_iter().zip(precomputed_bases.into_iter()) {
+            result = bit
+                .select(&(result.clone() + base.borrow().0.into()), &result)
+                .expect("Conditional select is not allowed to fail. ");
+        }
+        Self::new(result)
+    }
+}
+
+/// Testing Suite
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::config::Bls12_381_Edwards;
+    use manta_crypto::{
+        algebra::{PrecomputedBaseTable, ScalarMul},
+        arkworks::{algebra::scalar_bits, r1cs_std::groups::curves::twisted_edwards::AffineVar},
+        constraint::measure::Measure,
+        eclair::bool::AssertEq,
+        rand::OsRng,
+    };
+
+    /// Checks if the fixed base multiplcation is correct.
+    #[test]
+    fn fixed_base_mul_is_correct() {
+        let mut cs = Compiler::<Bls12_381_Edwards>::for_proofs();
+        let scalar = Scalar::<Bls12_381_Edwards>::gen(&mut OsRng);
+        let base = Group::<Bls12_381_Edwards>::sample((), &mut OsRng);
+        const SCALAR_BITS: usize = scalar_bits::<Bls12_381_Edwards>();
+        let precomputed_table = PrecomputedBaseTable::<_, SCALAR_BITS>::from_base(base, &mut ());
+        let base_var =
+            base.as_known::<Secret, GroupVar<Bls12_381_Edwards, AffineVar<_, _>>>(&mut cs);
+        let scalar_var =
+            scalar.as_known::<Secret, ScalarVar<Bls12_381_Edwards, AffineVar<_, _>>>(&mut cs);
+        let ctr1 = cs.constraint_count();
+        let expected = base_var.scalar_mul(&scalar_var, &mut cs);
+        let ctr2 = cs.constraint_count();
+        let actual = GroupVar::fixed_base_scalar_mul(precomputed_table, &scalar_var, &mut cs);
+        let ctr3 = cs.constraint_count();
+        cs.assert_eq(&expected, &actual);
+        assert!(cs.is_satisfied());
+        println!("variable base mul constraint: {:?}", ctr2 - ctr1);
+        println!("fixed base mul constraint: {:?}", ctr3 - ctr2);
     }
 }

@@ -17,20 +17,35 @@
 //! Arkworks Constraint System and Proof System Implementations
 
 use alloc::vec::Vec;
-use ark_ff::{Field, FpParameters, PrimeField};
-use ark_r1cs_std::{alloc::AllocVar, eq::EqGadget, select::CondSelectGadget, ToBitsGadget};
-use ark_relations::{
-    ns, r1cs as ark_r1cs,
-    r1cs::{ConstraintSynthesizer, ConstraintSystemRef},
-};
+use core::iter::{self, Extend};
 use manta_crypto::{
     algebra,
-    constraint::{
-        self,
-        measure::{Count, Measure},
-        mode, Add, Assert, AssertEq, ConditionalSwap, Constant, Has, Public, Secret, Variable,
+    arkworks::{
+        ff::{Field, FpParameters, PrimeField, ToConstraintField},
+        r1cs_std::{alloc::AllocVar, eq::EqGadget, select::CondSelectGadget, ToBitsGadget},
+        relations::{
+            ns,
+            r1cs::{
+                ConstraintSynthesizer, ConstraintSystem, ConstraintSystemRef, OptimizationGoal,
+                SynthesisMode,
+            },
+        },
     },
-    eclair::num::AssertWithinBitRange,
+    constraint::{
+        measure::{Count, Measure},
+        Input, ProofSystem,
+    },
+    eclair::{
+        self,
+        alloc::{
+            mode::{self, Public, Secret},
+            Constant, Variable,
+        },
+        bool::{Assert, Bool, ConditionalSelect, ConditionalSwap},
+        num::{AssertWithinBitRange, Zero},
+        ops::{Add, BitAnd, BitOr},
+        Has, NonNative,
+    },
     rand::{RngCore, Sample},
 };
 use manta_util::{
@@ -42,8 +57,10 @@ use manta_util::{
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize, Serializer};
 
-pub use ark_r1cs::SynthesisError;
-pub use ark_r1cs_std::{bits::boolean::Boolean, fields::fp::FpVar};
+pub use manta_crypto::arkworks::{
+    r1cs_std::{bits::boolean::Boolean, fields::fp::FpVar},
+    relations::r1cs::SynthesisError,
+};
 
 pub mod codec;
 pub mod pairing;
@@ -74,6 +91,38 @@ pub struct Fp<F>(
 )
 where
     F: Field;
+
+impl<F> From<u128> for Fp<F>
+where
+    F: Field,
+{
+    #[inline]
+    fn from(value: u128) -> Self {
+        Self(value.into())
+    }
+}
+
+impl<F> ToConstraintField<F> for Fp<F>
+where
+    F: PrimeField,
+{
+    #[inline]
+    fn to_field_elements(&self) -> Option<Vec<F>> {
+        self.0.to_field_elements()
+    }
+}
+
+impl<F, P> Input<P> for Fp<F>
+where
+    F: Field,
+    P: ProofSystem + ?Sized,
+    P::Input: Extend<F>,
+{
+    #[inline]
+    fn extend(&self, input: &mut P::Input) {
+        input.extend(iter::once(self.0))
+    }
+}
 
 impl<F> Decode for Fp<F>
 where
@@ -177,6 +226,64 @@ where
     }
 }
 
+impl<F> eclair::cmp::PartialEq<Self> for Fp<F>
+where
+    F: Field,
+{
+    #[inline]
+    fn eq(&self, rhs: &Self, _: &mut ()) -> bool {
+        PartialEq::eq(self, rhs)
+    }
+}
+
+impl<F> eclair::num::Zero for Fp<F>
+where
+    F: Field,
+{
+    type Verification = bool;
+
+    #[inline]
+    fn zero(_: &mut ()) -> Self {
+        Self(F::zero())
+    }
+
+    #[inline]
+    fn is_zero(&self, _: &mut ()) -> Self::Verification {
+        self.0.is_zero()
+    }
+}
+
+impl<F> eclair::num::One for Fp<F>
+where
+    F: Field,
+{
+    type Verification = bool;
+
+    #[inline]
+    fn one(_: &mut ()) -> Self {
+        Self(F::one())
+    }
+
+    #[inline]
+    fn is_one(&self, _: &mut ()) -> Self::Verification {
+        self.0.is_one()
+    }
+}
+
+impl<F> ConditionalSelect for Fp<F>
+where
+    F: Field,
+{
+    #[inline]
+    fn select(bit: &Bool, true_value: &Self, false_value: &Self, _: &mut ()) -> Self {
+        if *bit {
+            *true_value
+        } else {
+            *false_value
+        }
+    }
+}
+
 impl<F> Sample for Fp<F>
 where
     F: Field,
@@ -190,7 +297,7 @@ where
     }
 }
 
-impl<F> algebra::Scalar for Fp<F>
+impl<F> algebra::Group for Fp<F>
 where
     F: Field,
 {
@@ -198,7 +305,12 @@ where
     fn add(&self, rhs: &Self, _: &mut ()) -> Self {
         Self(self.0 + rhs.0)
     }
+}
 
+impl<F> algebra::Ring for Fp<F>
+where
+    F: Field,
+{
     #[inline]
     fn mul(&self, rhs: &Self, _: &mut ()) -> Self {
         Self(self.0 * rhs.0)
@@ -275,7 +387,7 @@ where
     F: PrimeField,
 {
     /// Constraint System
-    pub(crate) cs: ark_r1cs::ConstraintSystemRef<F>,
+    pub(crate) cs: ConstraintSystemRef<F>,
 }
 
 impl<F> R1CS<F>
@@ -286,9 +398,9 @@ where
     #[inline]
     pub fn for_contexts() -> Self {
         // FIXME: This might not be the right setup for all proof systems.
-        let cs = ark_r1cs::ConstraintSystem::new_ref();
-        cs.set_optimization_goal(ark_r1cs::OptimizationGoal::Constraints);
-        cs.set_mode(ark_r1cs::SynthesisMode::Setup);
+        let cs = ConstraintSystem::new_ref();
+        cs.set_optimization_goal(OptimizationGoal::Constraints);
+        cs.set_mode(SynthesisMode::Setup);
         Self { cs }
     }
 
@@ -296,8 +408,8 @@ where
     #[inline]
     pub fn for_proofs() -> Self {
         // FIXME: This might not be the right setup for all proof systems.
-        let cs = ark_r1cs::ConstraintSystem::new_ref();
-        cs.set_optimization_goal(ark_r1cs::OptimizationGoal::Constraints);
+        let cs = ConstraintSystem::new_ref();
+        cs.set_optimization_goal(OptimizationGoal::Constraints);
         Self { cs }
     }
 
@@ -309,6 +421,8 @@ where
             .expect("is_satisfied is not allowed to fail")
     }
 }
+
+impl<F> NonNative for R1CS<F> where F: PrimeField {}
 
 impl<F> Has<bool> for R1CS<F>
 where
@@ -326,13 +440,6 @@ where
         b.enforce_equal(&Boolean::TRUE)
             .expect("Enforcing equality is not allowed to fail.");
     }
-}
-
-impl<F> AssertEq for R1CS<F>
-where
-    F: PrimeField,
-{
-    // TODO: Implement these optimizations.
 }
 
 impl<F, const BITS: usize> AssertWithinBitRange<FpVar<F>, BITS> for R1CS<F>
@@ -458,7 +565,7 @@ where
     }
 }
 
-impl<F> constraint::PartialEq<Self, R1CS<F>> for Boolean<F>
+impl<F> eclair::cmp::PartialEq<Self, R1CS<F>> for Boolean<F>
 where
     F: PrimeField,
 {
@@ -467,6 +574,32 @@ where
         let _ = compiler;
         self.is_eq(rhs)
             .expect("Equality checking is not allowed to fail.")
+    }
+}
+
+impl<F> BitAnd<Self, R1CS<F>> for Boolean<F>
+where
+    F: PrimeField,
+{
+    type Output = Self;
+
+    #[inline]
+    fn bitand(self, rhs: Self, compiler: &mut R1CS<F>) -> Self::Output {
+        let _ = compiler;
+        self.and(&rhs).expect("Bitwise AND is not allowed to fail.")
+    }
+}
+
+impl<F> BitOr<Self, R1CS<F>> for Boolean<F>
+where
+    F: PrimeField,
+{
+    type Output = Self;
+
+    #[inline]
+    fn bitor(self, rhs: Self, compiler: &mut R1CS<F>) -> Self::Output {
+        let _ = compiler;
+        self.or(&rhs).expect("Bitwise OR is not allowed to fail.")
     }
 }
 
@@ -534,7 +667,7 @@ where
     }
 }
 
-impl<F> constraint::PartialEq<Self, R1CS<F>> for FpVar<F>
+impl<F> eclair::cmp::PartialEq<Self, R1CS<F>> for FpVar<F>
 where
     F: PrimeField,
 {
@@ -554,6 +687,22 @@ where
 {
     FpVar::conditionally_select(bit, lhs, rhs)
         .expect("Conditionally selecting from two values is not allowed to fail.")
+}
+
+impl<F> ConditionalSelect<R1CS<F>> for FpVar<F>
+where
+    F: PrimeField,
+{
+    #[inline]
+    fn select(
+        bit: &Boolean<F>,
+        true_value: &Self,
+        false_value: &Self,
+        compiler: &mut R1CS<F>,
+    ) -> Self {
+        let _ = compiler;
+        conditionally_select(bit, true_value, false_value)
+    }
 }
 
 impl<F> ConditionalSwap<R1CS<F>> for FpVar<F>
@@ -583,15 +732,35 @@ where
     }
 }
 
+impl<F> Zero<R1CS<F>> for FpVar<F>
+where
+    F: PrimeField,
+{
+    type Verification = Boolean<F>;
+
+    #[inline]
+    fn zero(compiler: &mut R1CS<F>) -> Self {
+        let _ = compiler;
+        FpVar::Constant(F::zero())
+    }
+
+    #[inline]
+    fn is_zero(&self, compiler: &mut R1CS<F>) -> Self::Verification {
+        let _ = compiler;
+        self.is_eq(&FpVar::Constant(F::zero()))
+            .expect("Comparison with zero is not allowed to fail.")
+    }
+}
+
 /// Testing Suite
 #[cfg(test)]
 mod tests {
     use super::*;
     use ark_bls12_381::Fr;
-    use ark_ff::BigInteger;
     use core::iter::repeat_with;
     use manta_crypto::{
-        constraint::Allocate,
+        arkworks::ff::BigInteger,
+        eclair::alloc::Allocate,
         rand::{OsRng, Rand},
     };
 

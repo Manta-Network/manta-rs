@@ -5,18 +5,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 ### Added
-- [\#131](https://github.com/Manta-Network/manta-rs/pull/131) Add abstract Phase 1 for Groth16 trusted setup
+- [\#206](https://github.com/Manta-Network/manta-rs/pull/206) Move Poseidon sage script to test the hardcoded round constant values. 
+- [\#172](https://github.com/Manta-Network/manta-rs/pull/172) Add abstract Phase 2 for Groth16 trusted setup 
+- [\#196](https://github.com/Manta-Network/manta-rs/pull/172) Add fixed base scalar multiplication using precomputed bases
+- [\#197](https://github.com/Manta-Network/manta-rs/pull/197) Add ECLAIR utilities for next circuit upgrade
 
 ### Changed
+- [\#180](https://github.com/Manta-Network/manta-rs/pull/180) Start moving to new `arkworks` backend for `manta-crypto`
+- [\#191](https://github.com/Manta-Network/manta-rs/pull/191) Move HTTP Utilities to `manta-util`
 
 ### Deprecated
 
 ### Removed
-- [\#168](https://github.com/Manta-Network/manta-rs/pull/168) Remove old Poseidon hash
 
 ### Fixed
+- [\#212](https://github.com/Manta-Network/manta-rs/pull/212) Reduce the number of checks when computing `is_identity` and `is_symmetric` on matrices
 
 ### Security
+
+## [0.5.4] - 2022-07-28
+### Added
+- [\#131](https://github.com/Manta-Network/manta-rs/pull/131) Add abstract Phase 1 for Groth16 trusted setup
+- [\#176](https://github.com/Manta-Network/manta-rs/pull/176) Add ECLAIR utilities for the new circuits
+- [\#175](https://github.com/Manta-Network/manta-rs/pull/175) Add more documentation around `cargo-hakari`
 
 ## [0.5.3] - 2022-07-08
 ### Added
@@ -94,7 +105,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Security
 - [\#50](https://github.com/Manta-Network/manta-rs/pull/50) Remove Trapdoor from Circuit
 
-[Unreleased]: https://github.com/Manta-Network/manta-rs/compare/v0.5.3...HEAD
+[Unreleased]: https://github.com/Manta-Network/manta-rs/compare/v0.5.4...HEAD
+[0.5.4]: https://github.com/Manta-Network/manta-rs/releases/tag/v0.5.4
 [0.5.3]: https://github.com/Manta-Network/manta-rs/releases/tag/v0.5.3
 [0.5.2]: https://github.com/Manta-Network/manta-rs/releases/tag/v0.5.2
 [0.5.1]: https://github.com/Manta-Network/manta-rs/releases/tag/v0.5.1

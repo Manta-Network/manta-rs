@@ -22,7 +22,7 @@ use crate::crypto::poseidon::{
 use alloc::{boxed::Box, vec::Vec};
 use core::{fmt::Debug, hash::Hash, iter, marker::PhantomData, mem, slice};
 use manta_crypto::{
-    constraint::{Allocate, Const, Constant},
+    eclair::alloc::{Allocate, Const, Constant},
     permutation::PseudorandomPermutation,
     rand::{RngCore, Sample},
 };
@@ -31,6 +31,7 @@ use manta_util::codec::{Decode, DecodeError, Encode, Read, Write};
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
 
+pub mod compat;
 pub mod constants;
 pub mod encryption;
 pub mod hash;

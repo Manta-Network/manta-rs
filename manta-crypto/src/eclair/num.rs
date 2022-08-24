@@ -16,12 +16,113 @@
 
 //! Numeric Types and Traits
 
-use crate::eclair::ops::{Add, AddAssign, Mul, MulAssign};
+use crate::eclair::{
+    alloc::{Allocator, Variable},
+    bool::{Assert, Bool, ConditionalSelect, ConditionalSwap},
+    cmp::PartialEq,
+    ops::{Add, AddAssign, Mul, MulAssign, Not},
+    Has,
+};
 use core::{borrow::Borrow, ops::Deref};
 
+/// Additive Identity
+pub trait Zero<COM = ()> {
+    /// Verification Type
+    type Verification;
+
+    /// Returns the additive identity for `Self`.
+    fn zero(compiler: &mut COM) -> Self;
+
+    /// Returns a truthy value if `self` is equal to the additive identity.
+    fn is_zero(&self, compiler: &mut COM) -> Self::Verification;
+}
+
+impl Zero for bool {
+    type Verification = bool;
+
+    #[inline]
+    fn zero(_: &mut ()) -> Self {
+        false
+    }
+
+    #[inline]
+    fn is_zero(&self, _: &mut ()) -> Self::Verification {
+        !(*self)
+    }
+}
+
+/// Multiplicative Identity
+pub trait One<COM = ()> {
+    /// Verification Type
+    type Verification;
+
+    /// Returns the multiplicative identity for `Self`.
+    fn one(compiler: &mut COM) -> Self;
+
+    /// Returns a truthy value if `self` is equal to the multiplicative identity.
+    fn is_one(&self, compiler: &mut COM) -> Self::Verification;
+}
+
+impl One for bool {
+    type Verification = bool;
+
+    #[inline]
+    fn one(_: &mut ()) -> Self {
+        true
+    }
+
+    #[inline]
+    fn is_one(&self, _: &mut ()) -> Self::Verification {
+        *self
+    }
+}
+
+/// Defines an implementation for [`Zero`] and [`One`] for integers.
+macro_rules! define_zero_one {
+    ($($type:tt),* $(,)?) => {
+        $(
+            impl Zero for $type {
+                type Verification = bool;
+
+                #[inline]
+                fn zero(_: &mut ()) -> Self {
+                    0
+                }
+
+                #[inline]
+                fn is_zero(&self, compiler: &mut ()) -> Self::Verification {
+                    *self == Self::zero(compiler)
+                }
+            }
+
+            impl One for $type {
+                type Verification = bool;
+
+                #[inline]
+                fn one(_: &mut ()) -> Self {
+                    1
+                }
+
+                #[inline]
+                fn is_one(&self, compiler: &mut ()) -> Self::Verification {
+                    *self == Self::one(compiler)
+                }
+            }
+        )*
+    }
+}
+
+define_zero_one!(u8, u16, u32, u64, u128, i8, i16, i32, i64, i128);
+
 /// Within-Bit-Range Assertion
+///
+/// # Restrictions
+///
+/// This `trait` assumes that `BITS > 0` and does not currently support `BITS = 0`. In this case
+/// we would have an assertion that `x < 2^0 = 1` which is just that `x = 0` in most systems. For
+/// this usecase, the [`Zero`] `trait` should be considered instead.
 pub trait AssertWithinBitRange<T, const BITS: usize> {
-    /// Asserts that `value` is smaller than `2^BITS`
+    /// Asserts that `value` is smaller than `2^BITS`.
     fn assert_within_range(&mut self, value: &T);
 }
 
@@ -162,6 +263,90 @@ where
     }
 }
 
+impl<T, const BITS: usize, COM> Zero<COM> for UnsignedInteger<T, BITS>
+where
+    T: Zero<COM>,
+{
+    type Verification = T::Verification;
+
+    #[inline]
+    fn zero(compiler: &mut COM) -> Self {
+        Self::new_unchecked(T::zero(compiler))
+    }
+
+    #[inline]
+    fn is_zero(&self, compiler: &mut COM) -> Self::Verification {
+        self.0.is_zero(compiler)
+    }
+}
+
+impl<T, const BITS: usize, COM> One<COM> for UnsignedInteger<T, BITS>
+where
+    T: One<COM>,
+{
+    type Verification = T::Verification;
+
+    #[inline]
+    fn one(compiler: &mut COM) -> Self {
+        Self::new_unchecked(T::one(compiler))
+    }
+
+    #[inline]
+    fn is_one(&self, compiler: &mut COM) -> Self::Verification {
+        self.0.is_one(compiler)
+    }
+}
+
+impl<T, const BITS: usize, COM> PartialEq<Self, COM> for UnsignedInteger<T, BITS>
+where
+    COM: Has<bool>,
+    T: PartialEq<T, COM>,
+{
+    #[inline]
+    fn eq(&self, rhs: &Self, compiler: &mut COM) -> Bool<COM> {
+        self.0.eq(&rhs.0, compiler)
+    }
+
+    #[inline]
+    fn ne(&self, rhs: &Self, compiler: &mut COM) -> Bool<COM>
+    where
+        Bool<COM>: Not<COM, Output = Bool<COM>>,
+    {
+        self.0.ne(&rhs.0, compiler)
+    }
+
+    #[inline]
+    fn assert_equal(&self, rhs: &Self, compiler: &mut COM)
+    where
+        COM: Assert,
+    {
+        self.0.assert_equal(&rhs.0, compiler)
+    }
+}
+
+impl<T, const BITS: usize, COM> ConditionalSelect<COM> for UnsignedInteger<T, BITS>
+where
+    COM: Has<bool>,
+    T: ConditionalSelect<COM>,
+{
+    #[inline]
+    fn select(bit: &Bool<COM>, true_value: &Self, false_value: &Self, compiler: &mut COM) -> Self {
+        Self::new_unchecked(T::select(bit, &true_value.0, &false_value.0, compiler))
+    }
+}
+
+impl<T, const BITS: usize, COM> ConditionalSwap<COM> for UnsignedInteger<T, BITS>
+where
+    COM: Has<bool>,
+    T: ConditionalSwap<COM>,
+{
+    #[inline]
+    fn swap(bit: &Bool<COM>, lhs: &Self, rhs: &Self, compiler: &mut COM) -> (Self, Self) {
+        let (lhs, rhs) = T::swap(bit, &lhs.0, &rhs.0, compiler);
+        (Self::new_unchecked(lhs), Self::new_unchecked(rhs))
+    }
+}
+
 /// Defines [`UnsignedInteger`] types for the given number of `$bits`.
 macro_rules! define_uint {
     ($($name:ident, $bits:expr),* $(,)?) => {
@@ -184,3 +369,32 @@ define_uint!(
     U190, 190, U200, 200, U210, 210, U220, 220, U230, 230, U240, 240, U250, 250, U251, 251, U252,
     252, U253, 253, U254, 254, U255, 255, U256, 256,
 );
+
+/// Defines [`Variable`] allocation implementation for [`UnsignedInteger`] whenever it has a native
+/// Rust counterpart.
+macro_rules! define_uint_allocation {
+    ($($type:tt, $bits:expr),* $(,)?) => {
+        $(
+            impl<T, M, COM> Variable<M, COM> for UnsignedInteger<T, $bits>
+            where
+                COM: AssertWithinBitRange<T, $bits>,
+                T: Variable<M, COM>,
+                T::Type: From<$type>,
+            {
+                type Type = $type;
+
+                #[inline]
+                fn new_unknown(compiler: &mut COM) -> Self {
+                    Self::new(compiler.allocate_unknown(), compiler)
+                }
+
+                #[inline]
+                fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
+                    Self::new(compiler.allocate_known(&(*this).into()), compiler)
+                }
+            }
+        )*
+    };
+}
+
+define_uint_allocation!(u8, 8, u16, 16, u32, 32, u64, 64, u128, 128);

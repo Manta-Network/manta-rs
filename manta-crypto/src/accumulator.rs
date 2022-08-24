@@ -16,8 +16,11 @@
 
 //! Dynamic Cryptographic Accumulators
 
-/// Accumulator Membership Model
-pub trait Model<COM = ()> {
+use crate::eclair::alloc::{mode::Derived, Allocate, Allocator, Constant, Variable};
+use core::{fmt::Debug, hash::Hash};
+
+/// Accumulator Membership Model Types
+pub trait Types {
     /// Item Type
     type Item: ?Sized;
 
@@ -26,7 +29,37 @@ pub trait Model<COM = ()> {
 
     /// Output Type
     type Output;
+}
 
+impl<T> Types for &T
+where
+    T: Types + ?Sized,
+{
+    type Item = T::Item;
+    type Witness = T::Witness;
+    type Output = T::Output;
+}
+
+impl<T> Types for &mut T
+where
+    T: Types + ?Sized,
+{
+    type Item = T::Item;
+    type Witness = T::Witness;
+    type Output = T::Output;
+}
+
+/// Accumulator Item Type
+pub type Item<T> = <T as Types>::Item;
+
+/// Accumulator Witness Type
+pub type Witness<T> = <T as Types>::Witness;
+
+/// Accumulator Output Type
+pub type Output<T> = <T as Types>::Output;
+
+/// Accumulator Membership Model
+pub trait Model<COM = ()>: Types {
     /// Verification Type
     ///
     /// Typically this is either [`bool`], a [`Result`] type, or a circuit boolean variable.
@@ -41,6 +74,16 @@ pub trait Model<COM = ()> {
         output: &Self::Output,
         compiler: &mut COM,
     ) -> Self::Verification;
+}
+
+/// Accumulator Item Hash Function
+pub trait ItemHashFunction<T, COM = ()> {
+    /// Item Type
+    type Item;
+
+    /// Converts `value` into an [`Item`](Self::Item) that is compatible with the relevant
+    /// accumulator.
+    fn item_hash(&self, value: &T, compiler: &mut COM) -> Self::Item;
 }
 
 /// Accumulator Membership Model Validity Assertion
@@ -64,16 +107,10 @@ pub trait AssertValidVerification<COM = ()>: Model<COM> {
     );
 }
 
-/// Accumulator Output Type
-pub type Output<A> = <<A as Accumulator>::Model as Model>::Output;
-
 /// Accumulator
-pub trait Accumulator {
-    /// Item Type
-    type Item: ?Sized;
-
+pub trait Accumulator: Types {
     /// Model Type
-    type Model: Model<Item = Self::Item> + ?Sized;
+    type Model: Model<Item = Self::Item, Witness = Self::Witness, Output = Self::Output> + ?Sized;
 
     /// Returns the model associated with `self`.
     fn model(&self) -> &Self::Model;
@@ -82,15 +119,6 @@ pub trait Accumulator {
     /// membership proof for `item` with a call to [`prove`](Self::prove). This method returns
     /// `false` if the maximum capacity of the accumulator would be exceeded by inserting `item`.
     fn insert(&mut self, item: &Self::Item) -> bool;
-
-    /// Returns `true` whenever `fst` and `snd` can be inserted in any order into the accumulator.
-    /// This method should return `false`, the worst-case result, in the case that the insertion
-    /// order is unknown or unspecified.
-    #[inline]
-    fn are_independent(&self, fst: &Self::Item, snd: &Self::Item) -> bool {
-        let _ = (fst, snd);
-        false
-    }
 
     /// Returns a membership proof for `item` if it is contained in `self`.
     fn prove(&self, item: &Self::Item) -> Option<MembershipProof<Self::Model>>;
@@ -113,7 +141,6 @@ impl<A> Accumulator for &mut A
 where
     A: Accumulator + ?Sized,
 {
-    type Item = A::Item;
     type Model = A::Model;
 
     #[inline]
@@ -194,9 +221,19 @@ pub trait OptimizedAccumulator: Accumulator {
 }
 
 /// Accumulator Membership Proof
-pub struct MembershipProof<M, COM = ()>
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "M::Witness: Clone, M::Output: Clone"),
+    Copy(bound = "M::Witness: Copy, M::Output: Copy"),
+    Debug(bound = "M::Witness: Debug, M::Output: Debug"),
+    Default(bound = "M::Witness: Default, M::Output: Default"),
+    Eq(bound = "M::Witness: Eq, M::Output: Eq"),
+    Hash(bound = "M::Witness: Hash, M::Output: Hash"),
+    PartialEq(bound = "M::Witness: PartialEq, M::Output: PartialEq")
+)]
+pub struct MembershipProof<M>
 where
-    M: Model<COM> + ?Sized,
+    M: Types + ?Sized,
 {
     /// Secret Membership Witness
     witness: M::Witness,
@@ -205,9 +242,9 @@ where
     output: M::Output,
 }
 
-impl<M, COM> MembershipProof<M, COM>
+impl<M> MembershipProof<M>
 where
-    M: Model<COM> + ?Sized,
+    M: Types + ?Sized,
 {
     /// Builds a new [`MembershipProof`] from `witness` and `output`.
     #[inline]
@@ -215,7 +252,7 @@ where
         Self { witness, output }
     }
 
-    /// Returns the accumulated output part of `self`, dropping the [`M::Witness`](Model::Witness).
+    /// Returns the accumulated output part of `self`, dropping the [`M::Witness`](Types::Witness).
     #[inline]
     pub fn into_output(self) -> M::Output {
         self.output
@@ -229,83 +266,59 @@ where
 
     /// Verifies that `item` is stored in a known accumulator using `model`.
     #[inline]
-    pub fn verify(&self, model: &M, item: &M::Item, compiler: &mut COM) -> M::Verification {
+    pub fn verify<COM>(&self, model: &M, item: &M::Item, compiler: &mut COM) -> M::Verification
+    where
+        M: Model<COM>,
+    {
         model.verify(item, &self.witness, &self.output, compiler)
     }
 
     /// Asserts that the verification of the storage of `item` in the known accumulator is valid.
     #[inline]
-    pub fn assert_valid(&self, model: &M, item: &M::Item, compiler: &mut COM)
+    pub fn assert_valid<COM>(&self, model: &M, item: &M::Item, compiler: &mut COM)
     where
         M: AssertValidVerification<COM>,
     {
         model.assert_valid(item, &self.witness, &self.output, compiler)
     }
+
+    /// Converts `self` from the `M` accumulator model to the `N` accumulator model.
+    ///
+    /// # Validity
+    ///
+    /// This function cannot guarantee that the point-wise conversion of the witness and output
+    /// preserves the membership proof validity.
+    #[inline]
+    pub fn into<N>(self) -> MembershipProof<N>
+    where
+        N: Types + ?Sized,
+        M::Witness: Into<N::Witness>,
+        M::Output: Into<N::Output>,
+    {
+        MembershipProof::new(self.witness.into(), self.output.into())
+    }
 }
 
-/// Constraint System Gadgets
-pub mod constraint {
-    use super::*;
-    use crate::constraint::{Allocate, Allocator, Constant, Derived, Variable};
-    use core::marker::PhantomData;
+impl<M, W, O, COM> Variable<Derived<(W, O)>, COM> for MembershipProof<M>
+where
+    M: Constant<COM> + Model<COM>,
+    M::Type: Model,
+    M::Witness: Variable<W, COM, Type = <M::Type as Types>::Witness>,
+    M::Output: Variable<O, COM, Type = <M::Type as Types>::Output>,
+{
+    type Type = MembershipProof<M::Type>;
 
-    /// Membership Proof Allocation Mode Entry
-    #[derive(derivative::Derivative)]
-    #[derivative(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
-    pub struct MembershipProofModeEntry<WitnessMode, OutputMode> {
-        /// Secret Witness Allocation Mode
-        pub witness: WitnessMode,
-
-        /// Accumulated Value Allocation Mode
-        pub output: OutputMode,
+    #[inline]
+    fn new_unknown(compiler: &mut COM) -> Self {
+        Self::new(compiler.allocate_unknown(), compiler.allocate_unknown())
     }
 
-    impl<WitnessMode, OutputMode> MembershipProofModeEntry<WitnessMode, OutputMode> {
-        /// Builds a new [`MembershipProofModeEntry`] from a witness` mode and an `output` mode.
-        #[inline]
-        pub fn new(witness: WitnessMode, output: OutputMode) -> Self {
-            Self { witness, output }
-        }
-    }
-
-    impl<WitnessMode, OutputMode> From<Derived> for MembershipProofModeEntry<WitnessMode, OutputMode>
-    where
-        WitnessMode: From<Derived>,
-        OutputMode: From<Derived>,
-    {
-        #[inline]
-        fn from(d: Derived) -> Self {
-            Self::new(d.into(), d.into())
-        }
-    }
-
-    /// Membership Proof Allocation Mode
-    #[derive(derivative::Derivative)]
-    #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-    pub struct MembershipProofMode<WitnessMode, OutputMode>(PhantomData<(WitnessMode, OutputMode)>);
-
-    impl<M, WitnessMode, OutputMode, COM>
-        Variable<MembershipProofMode<WitnessMode, OutputMode>, COM> for MembershipProof<M, COM>
-    where
-        M: Model<COM> + Constant<COM>,
-        M::Type: Model,
-        M::Witness: Variable<WitnessMode, COM, Type = <M::Type as Model>::Witness>,
-        M::Output: Variable<OutputMode, COM, Type = <M::Type as Model>::Output>,
-    {
-        type Type = MembershipProof<M::Type>;
-
-        #[inline]
-        fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
-            Self::new(
-                this.witness.as_known(compiler),
-                this.output.as_known(compiler),
-            )
-        }
-
-        #[inline]
-        fn new_unknown(compiler: &mut COM) -> Self {
-            Self::new(compiler.allocate_unknown(), compiler.allocate_unknown())
-        }
+    #[inline]
+    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
+        Self::new(
+            this.witness.as_known(compiler),
+            this.output.as_known(compiler),
+        )
     }
 }
 
