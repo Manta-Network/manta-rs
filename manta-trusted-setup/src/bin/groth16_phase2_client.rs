@@ -19,14 +19,15 @@
 extern crate alloc;
 
 use alloc::string::String;
-use bip39::{Language, Mnemonic, Seed};
 use clap::{Parser, Subcommand};
-use colored::Colorize; // TODO: Try https://docs.rs/console/latest/console/
 use console::{style, Term};
 use dialoguer::{theme::ColorfulTheme, Input};
 use manta_trusted_setup::ceremony::{
-    client::{handle_error, register, Endpoint, Error},
-    config::{check_state_size, g16_bls12_381::Groth16BLS12381, Nonce, PrivateKey, PublicKey},
+    client::{handle_error, prompt_client_info, register, Client, Endpoint, Error},
+    config::{
+        check_state_size, config::Config, g16_bls12_381::Groth16BLS12381, Nonce, PrivateKey,
+        PublicKey,
+    },
     message::{CeremonyError, QueryResponse},
     signature::ed_dalek,
     state::ServerSize,
@@ -45,10 +46,6 @@ pub const TITLE: &str = r"
                                                                                         | |    
                                                                                         |_|    
 ";
-
-pub type C = Groth16BLS12381;
-pub type Config = manta_trusted_setup::ceremony::config::config::Config;
-pub type Client = manta_trusted_setup::ceremony::client::Client<C>;
 
 /// Command
 #[derive(Debug, Subcommand)]
@@ -103,26 +100,9 @@ impl Arguments {
 
 /// Prompts the client information.
 #[inline]
-pub fn prompt_client_info() -> Result<(PublicKey<C>, PrivateKey<C>), Error> {
-    println!(
-        "Please enter your {} that you get when you registered yourself using this tool.",
-        "Secret".italic()
-    );
-    let secret_str: String = Input::with_theme(&ColorfulTheme::default())
-        .with_prompt("Your Secret")
-        .validate_with(|input: &String| -> Result<(), &str> {
-            if Mnemonic::validate(&input, Language::English).is_ok() {
-                Ok(())
-            } else {
-                Err("This is not a valid secret.")
-            }
-        })
-        .interact_text()
-        .expect("Please enter your secret received during `Register`.");
-    let mnemonic = Mnemonic::from_phrase(secret_str.as_str(), Language::English)
-        .expect("Should produce a mnemonic from the secret.");
-    let seed = Seed::new(&mnemonic, "manta-trusted-setup");
-    let seed_bytes = seed.as_bytes();
+pub fn get_client_keys() -> Result<(PublicKey<Groth16BLS12381>, PrivateKey<Groth16BLS12381>), Error>
+{
+    let seed_bytes = prompt_client_info();
     assert!(ed25519_dalek::SECRET_KEY_LENGTH <= seed_bytes.len(), "Secret key length of ed25519 should be smaller than length of seed bytes from mnemonic phrases.");
     let sk = ed25519_dalek::SecretKey::from_bytes(&seed_bytes[0..ed25519_dalek::SECRET_KEY_LENGTH])
         .expect("`from_bytes` should succeed for SecretKey.");
@@ -131,13 +111,13 @@ pub fn prompt_client_info() -> Result<(PublicKey<C>, PrivateKey<C>), Error> {
     Ok((pk, sk))
 }
 
-/// Sends requests thourgh network.
+/// Sends requests thourgh network. TODO: something similar in manta-util
 #[inline]
 pub async fn send_request<T, R>(
     network_client: &reqwest::Client,
     endpoint: Endpoint,
     request: T,
-) -> Result<Result<R, CeremonyError<C>>, Error>
+) -> Result<Result<R, CeremonyError<Groth16BLS12381>>, Error>
 where
     T: Serialize,
     R: DeserializeOwned,
@@ -148,7 +128,7 @@ where
         .send()
         .await
         .map_err(|e| Error::NetworkError(format!("Network Error. {}", e)))?
-        .json::<Result<R, CeremonyError<C>>>()
+        .json::<Result<R, CeremonyError<Groth16BLS12381>>>()
         .await
         .map_err(|e| Error::UnexpectedError(format!("JSON deserialization error: {}", e)))
 }
@@ -156,12 +136,15 @@ where
 /// Gets state size from server.
 #[inline]
 pub async fn get_start_meta_data(
-    identity: PublicKey<C>,
+    identity: PublicKey<Groth16BLS12381>,
     network_client: &reqwest::Client,
-) -> Result<(ServerSize, Nonce<C>), Error> {
-    let response =
-        send_request::<_, (ServerSize, Nonce<C>)>(network_client, Endpoint::Start, identity)
-            .await?;
+) -> Result<(ServerSize, Nonce<Groth16BLS12381>), Error> {
+    let response = send_request::<_, (ServerSize, Nonce<Groth16BLS12381>)>(
+        network_client,
+        Endpoint::Start,
+        identity,
+    )
+    .await?;
     match response {
         Ok((server_size, nonce)) => Ok((server_size, nonce)),
         Err(CeremonyError::NotRegistered) => Err(Error::NotRegistered),
@@ -173,17 +156,17 @@ pub async fn get_start_meta_data(
 #[inline]
 pub async fn contribute() -> Result<(), Error> {
     let network_client = reqwest::Client::new();
-    let (pk, sk) = prompt_client_info()?;
+    let (pk, sk) = get_client_keys()?;
     println!(
         "{} Contacting Server for Meta Data...",
         style("[1/9]").bold().dim()
     );
     let term = Term::stdout();
     let (size, nonce) = get_start_meta_data(pk, &network_client).await?;
-    let mut trusted_setup_client = Client::new(pk, pk, nonce, sk);
+    let mut trusted_setup_client = Client::<Groth16BLS12381>::new(pk, pk, nonce, sk);
     println!("{} Waiting in Queue...", style("[2/9]").bold().dim(),);
     loop {
-        let mpc_state = match send_request::<_, QueryResponse<C>>(
+        let mpc_state = match send_request::<_, QueryResponse<Groth16BLS12381>>(
             &network_client,
             Endpoint::Query,
             trusted_setup_client

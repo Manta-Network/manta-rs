@@ -36,6 +36,7 @@ use core::{
     fmt::{Debug, Display, Formatter},
     time::Duration,
 };
+use dialoguer::{theme::ColorfulTheme, Input};
 use indicatif::ProgressBar;
 use manta_crypto::{arkworks::serialize::CanonicalSerialize, rand::OsRng};
 
@@ -288,6 +289,36 @@ pub fn handle_error<T>(result: Result<T, Error>) -> T {
             std::process::exit(1);
         }
     }
+}
+
+/// Prompts the client information.
+#[inline]
+pub fn prompt_client_info() -> Vec<u8> {
+    println!(
+        "Please enter your {} that you get when you registered yourself using this tool.",
+        "Secret".italic()
+    );
+    Seed::new(
+        &Mnemonic::from_phrase(
+            Input::with_theme(&ColorfulTheme::default())
+                .with_prompt("Your Secret")
+                .validate_with(|input: &String| -> Result<(), &str> {
+                    if Mnemonic::validate(&input, Language::English).is_ok() {
+                        Ok(())
+                    } else {
+                        Err("This is not a valid secret.")
+                    }
+                })
+                .interact_text()
+                .expect("Please enter your secret received during `Register`.")
+                .as_str(),
+            Language::English,
+        )
+        .expect("Should produce a mnemonic from the secret."),
+        "manta-trusted-setup",
+    )
+    .as_bytes()
+    .to_vec()
 }
 
 /// Testing Suite

@@ -28,25 +28,17 @@ use crate::{
         BlakeHasher, Deserializer, G1Type, G2Type, HasDistribution, KZGBlakeHasher, Serializer,
     },
 };
-use ark_bls12_381::Fr;
 use ark_groth16::ProvingKey;
 use ark_std::io::{Read, Write};
 use blake2::Digest;
 use manta_crypto::{
     arkworks::{
         ec::{AffineCurve, PairingEngine},
-        ff::field_new,
         pairing::Pairing,
-        r1cs_std::{fields::fp::FpVar, prelude::EqGadget},
         serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError},
-    },
-    eclair::alloc::{
-        mode::{Public, Secret},
-        Allocate,
     },
     rand::Sample,
 };
-use manta_pay::crypto::constraint::arkworks::{Fp, R1CS};
 use manta_util::into_array_unchecked;
 
 /// Configuration for the Groth16 Phase2 Server.
@@ -234,18 +226,6 @@ impl Types for Config {
     type State = State<Config>;
     type Challenge = [u8; 64];
     type Proof = Proof<Config>;
-}
-
-// TO Be removed
-/// Generates a dummy R1CS circuit.
-#[inline]
-pub fn dummy_circuit(cs: &mut R1CS<Fr>) {
-    let a = Fp(field_new!(Fr, "2")).as_known::<Secret, FpVar<_>>(cs);
-    let b = Fp(field_new!(Fr, "3")).as_known::<Secret, FpVar<_>>(cs);
-    let c = &a * &b;
-    let d = Fp(field_new!(Fr, "6")).as_known::<Public, FpVar<_>>(cs);
-    c.enforce_equal(&d)
-        .expect("enforce_equal is not allowed to fail");
 }
 
 impl Serializer<<Config as Pairing>::G1, G1Type> for Config {
