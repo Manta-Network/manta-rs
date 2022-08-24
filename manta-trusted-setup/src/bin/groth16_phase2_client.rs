@@ -22,7 +22,7 @@ use alloc::string::String;
 use bip39::{Language, Mnemonic, Seed};
 use clap::{Parser, Subcommand};
 use colored::Colorize; // TODO: Try https://docs.rs/console/latest/console/
-use console::style;
+use console::{style, Term};
 use dialoguer::{theme::ColorfulTheme, Input};
 use manta_trusted_setup::ceremony::{
     client::{handle_error, register, Endpoint, Error},
@@ -36,7 +36,7 @@ use std::{thread, time};
 
 /// Welcome Message
 pub const TITLE: &str = r"
-__  __             _          _______             _           _    _____      _               
+ __  __             _          _______             _           _    _____      _               
 |  \/  |           | |        |__   __|           | |         | |  / ____|    | |              
 | \  / | __ _ _ __ | |_ __ _     | |_ __ _   _ ___| |_ ___  __| | | (___   ___| |_ _   _ _ __  
 | |\/| |/ _` | '_ \| __/ _` |    | | '__| | | / __| __/ _ \/ _` |  \___ \ / _ | __| | | | '_ \ 
@@ -178,10 +178,11 @@ pub async fn contribute() -> Result<(), Error> {
         "{} Contacting Server for Meta Data...",
         style("[1/9]").bold().dim()
     );
+    let term = Term::stdout();
     let (size, nonce) = get_start_meta_data(pk, &network_client).await?;
     let mut trusted_setup_client = Client::new(pk, pk, nonce, sk);
+    println!("{} Waiting in Queue...", style("[2/9]").bold().dim(),);
     loop {
-        println!("\r{} Waiting in Queue...", style("[2/9]").bold().dim(),);
         let mpc_state = match send_request::<_, QueryResponse<C>>(
             &network_client,
             Endpoint::Query,
@@ -207,9 +208,10 @@ pub async fn contribute() -> Result<(), Error> {
             Err(CeremonyError::AlreadyContributed) => return Err(Error::AlreadyContributed),
             Ok(message) => match message {
                 QueryResponse::QueuePosition(position) => {
-                    // print!("\r"); // TODO: This line does not work.
+                    term.clear_last_lines(1)
+                        .expect("Clear last lines should succeed.");
                     println!(
-                        "\r{} Waiting in Queue... There are {} people ahead of you. Estimated Waiting Time: {} minutes.",
+                        "{} Waiting in Queue... There are {} people ahead of you. Estimated Waiting Time: {} minutes.",
                         style("[2/9]").bold().dim(),
                         style(position).bold().red(),
                         style(5*position).bold().blue(),
