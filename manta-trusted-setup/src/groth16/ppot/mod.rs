@@ -16,7 +16,7 @@
 
 //! Bn254 Backend for MantaPay Groth16 Trusted Setup
 
+pub mod hashing;
 pub mod kzg;
 pub mod mpc;
-pub mod ppot_hashing;
 pub mod serialization;

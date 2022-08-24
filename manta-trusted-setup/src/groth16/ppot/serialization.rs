@@ -18,13 +18,12 @@
 
 use crate::{
     groth16::{
-        bn254::kzg::PpotCeremony,
         kzg::{Accumulator, Proof, Size, G1, G2},
+        ppot::kzg::PpotCeremony,
     },
-    ratio::RatioProof,
     util::{from_error, Deserializer, Serializer},
 };
-
+use alloc::vec::Vec;
 use ark_bn254::{G1Affine, G2Affine, Parameters};
 use ark_std::io;
 use core::fmt;
@@ -519,15 +518,15 @@ fn calculate_mmap_position(
 /// The types of curve points in a Groth16 KZG accumulator
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum ElementType {
-    ///
+    /// Tau G1
     TauG1,
-    ///
+    /// Tau G2
     TauG2,
-    ///
+    /// Alpha G1
     AlphaG1,
-    ///
+    /// Beta G1
     BetaG1,
-    ///
+    /// Beta G2
     BetaG2,
 }
 
@@ -676,49 +675,16 @@ where
 }
 
 /// Reads the proof of correct KZG contribution
-pub fn read_kzg_proof(readable_map: &Mmap) -> Result<Proof<PpotCeremony>, PointDeserializeError> {
+pub fn read_kzg_proof(readable_map: &Mmap) -> Result<Proof<PpotCeremony>, SerializationError> {
     // NB: This is specific to the compressed PPoT transcript called `response`, since only it contains this proof.
     let position = 64
         + (PpotCeremony::G1_POWERS + 2 * PpotCeremony::G2_POWERS) * 32
         + (PpotCeremony::G2_POWERS + 1) * 64;
-    let mut reader = readable_map
+    let reader = readable_map
         .get(position..position + 6 * 64 + 3 * 128) // The end of the file should have the Proof
         .expect("cannot read point data from file");
 
-    // Deserialize in original PPoT order:
-    let tau_g1 =
-        <PpotCeremony as Deserializer<G1Affine, G1>>::deserialize_uncompressed(&mut reader)?;
-    let tau_g1_tau =
-        <PpotCeremony as Deserializer<G1Affine, G1>>::deserialize_uncompressed(&mut reader)?;
-    let alpha_tau_g1 =
-        <PpotCeremony as Deserializer<G1Affine, G1>>::deserialize_uncompressed(&mut reader)?;
-    let alpha_tau_g1_alpha =
-        <PpotCeremony as Deserializer<G1Affine, G1>>::deserialize_uncompressed(&mut reader)?;
-    let beta_tau_g1 =
-        <PpotCeremony as Deserializer<G1Affine, G1>>::deserialize_uncompressed(&mut reader)?;
-    let beta_tau_g1_beta =
-        <PpotCeremony as Deserializer<G1Affine, G1>>::deserialize_uncompressed(&mut reader)?;
-    let tau_g2 =
-        <PpotCeremony as Deserializer<G2Affine, G2>>::deserialize_uncompressed(&mut reader)?;
-    let alpha_g2 =
-        <PpotCeremony as Deserializer<G2Affine, G2>>::deserialize_uncompressed(&mut reader)?;
-    let beta_g2 =
-        <PpotCeremony as Deserializer<G2Affine, G2>>::deserialize_uncompressed(&mut reader)?;
-
-    Ok(Proof {
-        tau: RatioProof {
-            ratio: (tau_g1, tau_g1_tau),
-            matching_point: tau_g2,
-        },
-        alpha: RatioProof {
-            ratio: (alpha_tau_g1, alpha_tau_g1_alpha),
-            matching_point: alpha_g2,
-        },
-        beta: RatioProof {
-            ratio: (beta_tau_g1, beta_tau_g1_beta),
-            matching_point: beta_g2,
-        },
-    })
+    <Proof<_> as CanonicalDeserialize>::deserialize_uncompressed(reader)
 }
 
 /// Extracts a subaccumulator of size `required_powers`. Specific to PPoT challenge file.
@@ -953,7 +919,7 @@ mod tests {
     #[ignore] // NOTE: Adds `ignore` such that CI does NOT run this test while still allowing developers to test.
     #[test]
     pub fn compare_response_challenge_accumulators_test() {
-        use crate::groth16::bn254::kzg::PerpetualPowersOfTauCeremony;
+        use crate::groth16::ppot::kzg::PerpetualPowersOfTauCeremony;
         use ark_std::{fs::OpenOptions, time::Instant};
         use memmap::MmapOptions;
 

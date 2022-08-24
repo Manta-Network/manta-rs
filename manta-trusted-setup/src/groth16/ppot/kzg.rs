@@ -18,12 +18,11 @@
 
 use crate::{
     groth16::{
-        bn254::{ppot_hashing::PpotHasher, serialization::PpotSerializer},
         kzg::{Accumulator, Configuration, Proof, Size, G1},
+        ppot::{hashing::PpotHasher, serialization::PpotSerializer},
     },
     util::{BlakeHasher, Deserializer, Serializer},
 };
-
 use ark_bn254::{Bn254, Fr, G1Affine, G2Affine};
 use ark_std::io;
 use blake2::Digest;

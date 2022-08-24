@@ -25,8 +25,8 @@ is-it-maintained-open-issues = { repository = "Manta-Network/manta-rs" }
 maintenance = { status = "actively-developed" }
 
 [features]
-# Bn254 Curve
-bn = ["ark-bn254", "memmap"]
+# Perpetual Powers of Tau Ceremony
+ppot = ["ark-bn254", "memmap"]
 
 # Rayon Parallelization
 rayon = ["manta-util/rayon"]

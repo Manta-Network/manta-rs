@@ -17,7 +17,7 @@
 //! Utilities to match hashing to G2 curve used in Perpetual Powers of Tau Ceremony
 
 use crate::{
-    groth16::{bn254::kzg::PerpetualPowersOfTauCeremony, kzg::G1},
+    groth16::{kzg::G1, ppot::kzg::PerpetualPowersOfTauCeremony},
     ratio::HashToGroup,
     util::{hash_to_group, BlakeHasher, Serializer},
 };
@@ -146,11 +146,11 @@ impl Sample<PpotDistribution> for bool {
 mod tests {
     use super::*;
     use crate::groth16::{
-        bn254::{
+        kzg::{Accumulator, Proof},
+        ppot::{
             kzg::PpotCeremony,
             serialization::{read_kzg_proof, read_subaccumulator, Compressed, PpotSerializer},
         },
-        kzg::{Accumulator, Proof},
     };
 
     const POWERS: usize = 1 << 5;

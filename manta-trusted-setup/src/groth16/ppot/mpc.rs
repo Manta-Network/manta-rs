@@ -18,13 +18,12 @@
 
 use crate::{
     groth16::{
-        bn254::kzg::PerpetualPowersOfTauCeremony,
         mpc::{Configuration, Proof, ProvingKeyHasher, State},
+        ppot::kzg::PerpetualPowersOfTauCeremony,
     },
     mpc::Types,
     util::BlakeHasher,
 };
-
 use ark_groth16::ProvingKey;
 use blake2::Digest;
 use manta_crypto::arkworks::{pairing::Pairing, serialize::CanonicalSerialize};
