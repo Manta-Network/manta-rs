@@ -47,8 +47,6 @@ use manta_crypto::{
 use manta_pay::crypto::constraint::arkworks::{Fp, FpVar, R1CS};
 use manta_util::into_array_unchecked;
 
-pub mod bn254;
-
 /// Test MPC
 #[derive(Clone, Default)]
 pub struct Test;
