@@ -18,11 +18,11 @@
 
 use crate::{
     groth16::{
-        bn254::kzg::PerpetualPowersOfTauCeremony,
+        bn254::kzg::PpotCeremony,
         kzg::{Accumulator, Proof, Size, G1, G2},
     },
     ratio::RatioProof,
-    util::{Deserializer, Serializer},
+    util::{from_error, Deserializer, Serializer},
 };
 
 use ark_bn254::{G1Affine, G2Affine, Parameters};
@@ -35,7 +35,7 @@ use manta_crypto::arkworks::{
     },
     ff::{PrimeField, ToBytes, Zero},
     pairing::Pairing,
-    serialize::{Read, SerializationError, Write},
+    serialize::{CanonicalDeserialize, CanonicalSerialize, Read, SerializationError, Write},
 };
 use manta_util::cfg_iter;
 use memmap::Mmap;
@@ -570,11 +570,6 @@ impl ElementType {
     }
 }
 
-/// Number of powers used in the original PPoT
-const PPOT_POWERS: usize = 1 << 28;
-/// Type of the original ceremony
-pub type PpotCeremony = PerpetualPowersOfTauCeremony<PpotSerializer, PPOT_POWERS>;
-
 /// Reads appropriate number of elements of `element_type` for an accumulator of given `Size` from PPoT challenge file.
 #[inline]
 pub fn read_g1_powers<S>(
@@ -744,6 +739,73 @@ where
     })
 }
 
+/// Arkworks Canonical(De)Serialize
+#[derive(derivative::Derivative)]
+#[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct ArkworksSerialization;
+
+impl<P> Serializer<GroupAffine<P>> for ArkworksSerialization
+where
+    P: SWModelParameters,
+{
+    #[inline]
+    fn serialize_unchecked<W>(item: &GroupAffine<P>, writer: &mut W) -> Result<(), io::Error>
+    where
+        W: Write,
+    {
+        CanonicalSerialize::serialize_unchecked(item, writer).map_err(from_error)
+    }
+
+    #[inline]
+    fn serialize_uncompressed<W>(item: &GroupAffine<P>, writer: &mut W) -> Result<(), io::Error>
+    where
+        W: Write,
+    {
+        CanonicalSerialize::serialize_uncompressed(item, writer).map_err(from_error)
+    }
+
+    #[inline]
+    fn uncompressed_size(item: &GroupAffine<P>) -> usize {
+        CanonicalSerialize::uncompressed_size(item)
+    }
+
+    #[inline]
+    fn serialize_compressed<W>(item: &GroupAffine<P>, writer: &mut W) -> Result<(), io::Error>
+    where
+        W: Write,
+    {
+        CanonicalSerialize::serialize(item, writer).map_err(from_error)
+    }
+
+    #[inline]
+    fn compressed_size(item: &GroupAffine<P>) -> usize {
+        CanonicalSerialize::serialized_size(item)
+    }
+}
+
+impl<P> Deserializer<GroupAffine<P>> for ArkworksSerialization
+where
+    P: SWModelParameters,
+{
+    type Error = SerializationError;
+
+    #[inline]
+    fn deserialize_unchecked<R>(reader: &mut R) -> Result<GroupAffine<P>, Self::Error>
+    where
+        R: Read,
+    {
+        CanonicalDeserialize::deserialize_unchecked(reader)
+    }
+
+    #[inline]
+    fn deserialize_compressed<R>(reader: &mut R) -> Result<GroupAffine<P>, Self::Error>
+    where
+        R: Read,
+    {
+        CanonicalDeserialize::deserialize_uncompressed(reader)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -891,6 +953,7 @@ mod tests {
     #[ignore] // NOTE: Adds `ignore` such that CI does NOT run this test while still allowing developers to test.
     #[test]
     pub fn compare_response_challenge_accumulators_test() {
+        use crate::groth16::bn254::kzg::PerpetualPowersOfTauCeremony;
         use ark_std::{fs::OpenOptions, time::Instant};
         use memmap::MmapOptions;
 

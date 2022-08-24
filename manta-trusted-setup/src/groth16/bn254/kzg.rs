@@ -18,7 +18,7 @@
 
 use crate::{
     groth16::{
-        bn254::ppot_hashing::PpotHasher,
+        bn254::{ppot_hashing::PpotHasher, serialization::PpotSerializer},
         kzg::{Accumulator, Configuration, Proof, Size, G1},
     },
     util::{BlakeHasher, Deserializer, Serializer},
@@ -189,3 +189,8 @@ where
         S::compressed_size(item)
     }
 }
+
+/// Number of powers used in the original PPoT
+const PPOT_POWERS: usize = 1 << 28;
+/// Type of the original ceremony
+pub type PpotCeremony = PerpetualPowersOfTauCeremony<PpotSerializer, PPOT_POWERS>;

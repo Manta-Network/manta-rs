@@ -146,8 +146,9 @@ impl Sample<PpotDistribution> for bool {
 mod tests {
     use super::*;
     use crate::groth16::{
-        bn254::serialization::{
-            read_kzg_proof, read_subaccumulator, Compressed, PpotCeremony, PpotSerializer,
+        bn254::{
+            kzg::PpotCeremony,
+            serialization::{read_kzg_proof, read_subaccumulator, Compressed, PpotSerializer},
         },
         kzg::{Accumulator, Proof},
     };
