@@ -164,13 +164,14 @@ impl<G> Window<G> {
     #[inline]
     pub fn new<COM>(window_size: usize, point: G, compiler: &mut COM) -> Self
     where
-        G: Group<COM> + Zero<COM>,
+        G: Clone + Group<COM> + Zero<COM>,
     {
         assert!(window_size > 0, "Window size must be at least 1.");
         let table_length = 2usize.pow(window_size as u32);
         let mut table = Vec::with_capacity(table_length);
         table.push(G::zero(compiler));
-        for _ in 1..table_length {
+        table.push(point.clone());
+        for _ in 2..table_length {
             table.push(table.last().unwrap().add(&point, compiler));
         }
         Self::new_unchecked(table)
@@ -443,7 +444,7 @@ pub mod test {
     /// Tests if windowed scalar multiplication of the bit decomposition of `scalar` with `point` returns the
     /// product `scalar` * `point`
     #[inline]
-    pub fn window_multiplication_correctness<S, G, F, B, COM>(
+    pub fn window_correctness<S, G, F, B, COM>(
         window_size: usize,
         scalar: &S,
         point: G,

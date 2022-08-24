@@ -16,9 +16,10 @@
 
 //! Arkworks Elliptic Curve Primitives
 
-use crate::crypto::constraint::arkworks::{self, empty, full, Boolean, Fp, FpVar, R1CS};
+use crate::crypto::constraint::arkworks::{
+    self, conditionally_select, empty, full, Boolean, Fp, FpVar, R1CS,
+};
 use alloc::vec::Vec;
-use ark_ff;
 use core::{borrow::Borrow, marker::PhantomData};
 use manta_crypto::{
     algebra,
@@ -26,7 +27,7 @@ use manta_crypto::{
     arkworks::{
         algebra::{affine_point_as_bytes, modulus_is_smaller},
         ec::{AffineCurve, ProjectiveCurve},
-        ff::{BigInteger, Field, PrimeField},
+        ff::{BigInteger, Field, PrimeField, Zero as _},
         r1cs_std::{groups::CurveVar, ToBitsGadget},
         relations::ns,
         serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError},
@@ -309,12 +310,13 @@ where
     #[inline]
     fn zero(compiler: &mut ()) -> Self {
         let _ = compiler;
-        Self(<C::Affine as ark_ff::Zero>::zero())
+        Self(C::Affine::zero())
     }
 
     #[inline]
     fn is_zero(&self, compiler: &mut ()) -> Self::Verification {
-        *self == Self::zero(compiler)
+        let _ = compiler;
+        C::Affine::is_zero(&self.0)
     }
 }
 
@@ -446,6 +448,13 @@ where
         result += &rhs.0;
         Self::new(result)
     }
+
+    #[inline]
+    fn double_assign(&mut self, compiler: &mut Compiler<C>) -> &mut Self {
+        let _ = compiler;
+        self.0.double_in_place().expect("ugh");
+        self
+    }
 }
 
 impl<C, CV> algebra::ScalarMul<ScalarVar<C, CV>, Compiler<C>> for GroupVar<C, CV>
@@ -503,6 +512,45 @@ where
         self.0
             .is_eq(&rhs.0)
             .expect("Equality checking is not allowed to fail.")
+    }
+}
+
+impl<C, CV> ConditionalSelect<Compiler<C>> for GroupVar<C, CV>
+where
+    C: ProjectiveCurve,
+    CV: CurveVar<C, ConstraintField<C>>,
+{
+    #[inline]
+    fn select(
+        bit: &Bool<Compiler<C>>,
+        true_value: &Self,
+        false_value: &Self,
+        compiler: &mut Compiler<C>,
+    ) -> Self {
+        let _ = compiler;
+        Self::new(conditionally_select(bit, &true_value.0, &false_value.0))
+    }
+}
+
+impl<C, CV> Zero<Compiler<C>> for GroupVar<C, CV>
+where
+    C: ProjectiveCurve,
+    CV: CurveVar<C, ConstraintField<C>>,
+{
+    type Verification = Bool<Compiler<C>>;
+
+    #[inline]
+    fn zero(compiler: &mut Compiler<C>) -> Self {
+        let _ = compiler;
+        Self::new(CV::zero())
+    }
+
+    #[inline]
+    fn is_zero(&self, compiler: &mut Compiler<C>) -> Self::Verification {
+        let _ = compiler;
+        self.0
+            .is_zero()
+            .expect("Comparison with zero is not allowed to fail.")
     }
 }
 
@@ -620,7 +668,7 @@ mod test {
     use super::*;
     use crate::config::Bls12_381_Edwards;
     use manta_crypto::{
-        algebra::{test::window_multiplication_correctness, PrecomputedBaseTable, ScalarMul},
+        algebra::{test::window_correctness, PrecomputedBaseTable, ScalarMul},
         arkworks::{algebra::scalar_bits, r1cs_std::groups::curves::twisted_edwards::AffineVar},
         constraint::measure::Measure,
         eclair::bool::AssertEq,
@@ -650,10 +698,10 @@ mod test {
         println!("fixed base mul constraint: {:?}", ctr3 - ctr2);
     }
 
-    /// Checks if the windowed multiplcation is correct.
+    /// Checks if the windowed multiplication is correct in the native compiler.
     #[test]
     fn windowed_mul_is_correct() {
-        window_multiplication_correctness(
+        window_correctness(
             4,
             &Scalar::<Bls12_381_Edwards>::gen(&mut OsRng),
             Group::<Bls12_381_Edwards>::gen(&mut OsRng),
