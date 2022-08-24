@@ -220,6 +220,9 @@ pub async fn contribute() -> Result<(), Error> {
                     continue;
                 }
                 QueryResponse::Mpc(mpc_state) => {
+                    term.clear_last_lines(1)
+                        .expect("Clear last lines should succeed.");
+                    println!("{} Waiting in Queue...", style("[2/9]").bold().dim(),);
                     println!(
                         "{} Downloading Ceremony States...",
                         style("[3/9]").bold().dim(),
@@ -273,7 +276,12 @@ pub async fn contribute() -> Result<(), Error> {
             }
             Err(CeremonyError::AlreadyContributed) => return Err(Error::AlreadyContributed),
             Ok(_) => {
-                // bar.inc(1);
+                term.clear_last_lines(1)
+                    .expect("Clear last lines should succeed.");
+                println!(
+                    "{} Waiting for Confirmation from Server...",
+                    style("[8/9]").bold().dim(),
+                );
                 println!(
                     "{} Congratulations! You have successfully contributed to Manta Trusted Setup Ceremony!...",
                     style("[9/9]").bold().dim(),

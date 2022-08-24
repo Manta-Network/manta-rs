@@ -131,8 +131,9 @@ where
             }),
         };
         println!(
-            "{} Waiting for Confirmation from Server...",
+            "{} Waiting for Confirmation from Server... Estimated Waiting Time: {} minutes.",
             style("[8/9]").bold().dim(),
+            style("3").bold().blue(),
         );
         Signed::new(
             message,
@@ -334,7 +335,6 @@ mod test {
             .bytes,
         )
         .into_string();
-
         let public_key: ed_dalek::PublicKey = AsBytes::new(
             bs58::decode(pk_string)
                 .into_vec()
