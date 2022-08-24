@@ -103,6 +103,10 @@ impl HasNonce<Ed25519> for Participant {
     fn nonce(&self) -> u64 {
         self.nonce
     }
+
+    fn set_nonce(&mut self, nonce: u64) {
+        self.nonce = nonce;
+    }
 }
 
 impl HasContributed for Participant {

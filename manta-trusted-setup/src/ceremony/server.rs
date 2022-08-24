@@ -91,9 +91,9 @@ where
             Some(participant) => participant,
             None => return Err(CeremonyError::NotRegistered),
         };
-        // if !check_nonce(&participant.nonce(), &request.nonce) {
-        //     return Err(CeremonyError::NonceNotInSync(participant.nonce()));
-        // }
+        if !check_nonce(&participant.nonce(), &request.nonce) {
+            return Err(CeremonyError::NonceNotInSync(participant.nonce()));
+        }
         C::SignatureScheme::verify(
             &request.message,
             &request.nonce,
@@ -101,7 +101,7 @@ where
             &participant.public_key(),
         )
         .map_err(|_| CeremonyError::BadRequest)?;
-        participant.nonce().increment();
+        participant.set_nonce(participant.nonce().increment());
         Ok(())
     }
 

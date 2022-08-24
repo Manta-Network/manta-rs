@@ -30,7 +30,7 @@ where
 /// Nonce
 pub trait Nonce: PartialEq + Clone {
     /// Increments the current nonce by one.
-    fn increment(&mut self);
+    fn increment(&mut self) -> Self;
 
     /// Checks if the current nonce is valid
     fn is_valid(&self) -> bool;
@@ -38,8 +38,9 @@ pub trait Nonce: PartialEq + Clone {
 
 impl Nonce for u64 {
     #[inline]
-    fn increment(&mut self) {
+    fn increment(&mut self) -> Self {
         *self = self.saturating_add(1);
+        *self
     }
 
     #[inline]
@@ -64,6 +65,9 @@ where
 {
     /// Returns the nonce of `self` as a participant.
     fn nonce(&self) -> S::Nonce;
+
+    /// Sets nonce.
+    fn set_nonce(&mut self, nonce: S::Nonce);
 }
 
 /// Signature Scheme
