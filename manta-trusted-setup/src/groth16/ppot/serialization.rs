@@ -382,25 +382,23 @@ impl Serializer<G2Affine, G2> for PpotSerializer {
 /// Errors for deserialization from the encoding used in PPoT ceremony.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum PointDeserializeError {
-    ///
-    CompressionFlag,
-    ///
+    /// Expected a compressed representation but compression flag was `0`
     ExpectedCompressed,
-    ///
+    /// Expected an uncompressed representation but compression flag was `1`
     ExpectedUncompressed,
-    ///
+    /// Point at infinity flag is `1` but there are unexpected bits
     PointAtInfinity,
-    ///
+    /// A Y-coordinate was specified in a compressed representation
     ExtraYCoordinate,
-    ///
+    /// The decoded coordinates do not satisfy the curve equation
     NotOnCurve,
-    ///
+    /// The decoded curve point is not in the subgroup
     NotInSubgroup,
 }
 
 impl alloc::fmt::Display for PointDeserializeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Debug::fmt(&self, f) // ? Is this an okay thing to do ?
+        fmt::Debug::fmt(&self, f)
     }
 }
 
@@ -429,9 +427,9 @@ where
 /// Compression of PPoT transcript curve points
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum Compressed {
-    ///
+    /// Uncompressed representation
     No,
-    ///
+    /// Compressed representation
     Yes,
 }
 
@@ -444,7 +442,7 @@ fn calculate_mmap_position(
     element_type: ElementType,
     compression: Compressed,
 ) -> usize {
-    // These are entered by hand from the Bn254 parameters of PPoT
+    // These correspond to the serialization of Bn254 curve points used in PPoT
     const G1_UNCOMPRESSED_BYTE_SIZE: usize = 64;
     const G2_UNCOMPRESSED_BYTE_SIZE: usize = 128;
     const G1_COMPRESSED_BYTE_SIZE: usize = 32;
@@ -466,7 +464,6 @@ fn calculate_mmap_position(
         ElementType::TauG1 => {
             let mut position = 0;
             position += g1_size * index;
-            // assert!(index < TAU_POWERS_G1_LENGTH, format!("Index of TauG1 element written must not exceed {:?}, while it's {:?}", TAU_POWERS_G1_LENGTH, index));
             assert!(index < TAU_POWERS_G1_LENGTH);
 
             position
@@ -474,7 +471,6 @@ fn calculate_mmap_position(
         ElementType::TauG2 => {
             let mut position = 0;
             position += g1_size * required_tau_g1_power;
-            // assert!(index < TAU_POWERS_LENGTH, format!("Index of TauG2 element written must not exceed {}, while it's {}", TAU_POWERS_LENGTH, index));
             assert!(index < TAU_POWERS_LENGTH);
             position += g2_size * index;
 
@@ -484,7 +480,6 @@ fn calculate_mmap_position(
             let mut position = 0;
             position += g1_size * required_tau_g1_power;
             position += g2_size * required_power;
-            // assert!(index < TAU_POWERS_LENGTH, format!("Index of AlphaG1 element written must not exceed {}, while it's {}", TAU_POWERS_LENGTH, index));
             assert!(index < TAU_POWERS_LENGTH);
             position += g1_size * index;
 
@@ -495,7 +490,6 @@ fn calculate_mmap_position(
             position += g1_size * required_tau_g1_power;
             position += g2_size * required_power;
             position += g1_size * required_power;
-            // assert!(index < TAU_POWERS_LENGTH, format!("Index of AlphaG1 element written must not exceed {}, while it's {}", TAU_POWERS_LENGTH, index));
             assert!(index < TAU_POWERS_LENGTH);
             position += g1_size * index;
 
@@ -531,7 +525,8 @@ pub enum ElementType {
 }
 
 impl ElementType {
-    /// This function is specific to the PPoT Bn254 setup
+    /// Returns the size of a given type of point with the specified compression.
+    /// This function is specific to the PPoT Bn254 serialization.
     fn get_size(&self, compression: Compressed) -> usize {
         match compression {
             Compressed::No => {
@@ -675,13 +670,15 @@ where
 }
 
 /// Reads the proof of correct KZG contribution
+/// This is specific to the compressed PPoT transcript called `response`, 
+/// since only it contains this proof.
+#[inline]
 pub fn read_kzg_proof(readable_map: &Mmap) -> Result<Proof<PpotCeremony>, SerializationError> {
-    // NB: This is specific to the compressed PPoT transcript called `response`, since only it contains this proof.
     let position = 64
         + (PpotCeremony::G1_POWERS + 2 * PpotCeremony::G2_POWERS) * 32
         + (PpotCeremony::G2_POWERS + 1) * 64;
     let reader = readable_map
-        .get(position..position + 6 * 64 + 3 * 128) // The end of the file should have the Proof
+        .get(position..position + 6 * 64 + 3 * 128)
         .expect("cannot read point data from file");
 
     <Proof<_> as CanonicalDeserialize>::deserialize_uncompressed(reader)

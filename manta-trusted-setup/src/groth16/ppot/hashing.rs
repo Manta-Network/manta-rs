@@ -34,7 +34,7 @@ use manta_util::into_array_unchecked;
 
 /// The G2 hasher used in the PPoT ceremony
 pub struct PpotHasher {
-    ///
+    /// Domain separation for tau, alpha, beta
     pub domain_tag: u8,
 }
 
@@ -53,7 +53,6 @@ where
         <PerpetualPowersOfTauCeremony<S, POWERS> as Serializer<G1Affine, G1>>::serialize_uncompressed(ratio.1, &mut hasher)
             .unwrap();
         hash_to_group::<_, PpotDistribution, 64>(into_array_unchecked(hasher.0.finalize()))
-        // TODO : Why can't i change 64 to N ?
     }
 }
 
@@ -94,7 +93,6 @@ impl Sample<PpotDistribution> for Fq {
 
             // Mask away the unused bits at the beginning.
             tmp.as_mut()[3] &= 0xffffffffffffffff >> ark_bn254::FqParameters::REPR_SHAVE_BITS;
-            // TODO: This might need to be tweaked
             if tmp < ark_bn254::FqParameters::MODULUS {
                 return Fp256::new(tmp);
             }
@@ -157,6 +155,8 @@ mod tests {
     /// Configuration for a Phase1 Ceremony large enough to support MantaPay circuits
     pub type SubCeremony = PerpetualPowersOfTauCeremony<PpotSerializer, POWERS>;
 
+    /// Checks a transition between challenge files.  Note that the appropriate challenge
+    /// and reponse files must belong to `manta-parameters`.
     #[ignore] // NOTE: Adds `ignore` such that CI does NOT run this test while still allowing developers to test.
     #[test]
     fn verify_one_transition_test() {
@@ -168,9 +168,8 @@ mod tests {
         let now = Instant::now();
         let reader = OpenOptions::new()
             .read(true)
-            .open("/Users/thomascnorton/Documents/Manta/trusted-setup/challenge_0071")
+            .open("../manta-parameters/data/ppot/challenge_0071.lfs") // TODO: This path doesn't work
             .expect("unable open `./challenge` in this directory");
-        // Make a memory map
         let challenge_map = unsafe {
             MmapOptions::new()
                 .map(&reader)
@@ -185,9 +184,8 @@ mod tests {
         let now = Instant::now();
         let reader = OpenOptions::new()
             .read(true)
-            .open("/Users/thomascnorton/Documents/Manta/trusted-setup/challenge_0072")
+            .open("../manta-parameters/data/ppot/challenge_0072.lfs")
             .expect("unable open `./challenge` in this directory");
-        // Make a memory map
         let challenge_map = unsafe {
             MmapOptions::new()
                 .map(&reader)
@@ -197,13 +195,12 @@ mod tests {
             read_subaccumulator::<SubCeremony>(&challenge_map, Compressed::No).unwrap();
         println!("Read uncompressed accumulator in {:?}", now.elapsed());
 
-        // Try to load `./response` from disk.
+        // Load `response` file
         println!("Reading accumulator from response file");
         let reader = OpenOptions::new()
             .read(true)
-            .open("/Users/thomascnorton/Documents/Manta/trusted-setup/response_0071")
+            .open("../manta-parameters/data/ppot/response_0071.lfs")
             .expect("unable open `./response` in this directory");
-        // Make a memory map
         let response = unsafe {
             MmapOptions::new()
                 .map(&reader)

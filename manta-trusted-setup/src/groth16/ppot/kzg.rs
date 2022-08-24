@@ -52,10 +52,12 @@ impl<S, const POWERS: usize> Pairing for PerpetualPowersOfTauCeremony<S, POWERS>
     type G2Prepared = <Bn254 as PairingEngine>::G2Prepared;
     type Pairing = Bn254;
 
+    #[inline]
     fn g1_prime_subgroup_generator() -> Self::G1 {
         G1Affine::prime_subgroup_generator()
     }
 
+    #[inline]
     fn g2_prime_subgroup_generator() -> Self::G2 {
         G2Affine::prime_subgroup_generator()
     }
@@ -74,10 +76,12 @@ where
     const ALPHA_DOMAIN_TAG: Self::DomainTag = 1;
     const BETA_DOMAIN_TAG: Self::DomainTag = 2;
 
+    #[inline]
     fn hasher(domain_tag: Self::DomainTag) -> Self::HashToGroup {
         Self::HashToGroup { domain_tag }
     }
-
+    
+    #[inline]
     fn response(
         state: &Accumulator<Self>,
         challenge: &Self::Challenge,
