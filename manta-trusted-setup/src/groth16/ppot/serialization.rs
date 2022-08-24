@@ -670,7 +670,7 @@ where
 }
 
 /// Reads the proof of correct KZG contribution
-/// This is specific to the compressed PPoT transcript called `response`, 
+/// This is specific to the compressed PPoT transcript called `response`,
 /// since only it contains this proof.
 #[inline]
 pub fn read_kzg_proof(readable_map: &Mmap) -> Result<Proof<PpotCeremony>, SerializationError> {
