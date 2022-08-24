@@ -828,7 +828,6 @@ pub fn read_kzg_proof(
     let position = 64
         + (PpotCeremony::G1_POWERS + 2 * PpotCeremony::G2_POWERS) * 32
         + (PpotCeremony::G2_POWERS + 1) * 64;
-    // let position = calculate_mmap_position(index, element_type, compression) // TODO : Use calc_mmap
     let mut reader = readable_map
         .get(position..position + 6 * 64 + 3 * 128) // The end of the file should have the Proof
         .expect("cannot read point data from file");
@@ -1124,18 +1123,6 @@ fn verify_one_transition_test() {
             .expect("Cannot read hash from header of response file"),
     );
     let proof: KzgProof<PpotCeremony> = read_kzg_proof(&response).unwrap();
-
-    println!("The challenge is \n ");
-    for line in challenge_hash.chunks(16) {
-        print!("\t");
-        for section in line.chunks(4) {
-            for b in section {
-                print!("{:02x}", b);
-            }
-            print!(" ");
-        }
-        println!("");
-    }
 
     let _prev = Accumulator::<MantaPaySetupCeremony>::verify_transform(
         prev_accumulator,
