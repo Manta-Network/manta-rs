@@ -20,10 +20,9 @@
 //! types. In this module, we define the access interfaces needed to simulate the [`bool`] type with
 //! [`Bool`].
 
+use crate::eclair::{cmp::PartialEq, Has, Type};
 use alloc::vec::Vec;
 use manta_util::{iter::IteratorExt, vec::VecExt};
-
-use crate::eclair::{cmp::PartialEq, Has, Type};
 
 /// Boolean Type Inside of the Compiler
 pub type Bool<COM = ()> = Type<COM, bool>;
@@ -100,7 +99,7 @@ where
     /// Selects `true_value` when `bit == true` and `false_value` when `bit == false`.
     fn select(bit: &Bool<COM>, true_value: &Self, false_value: &Self, compiler: &mut COM) -> Self;
 
-    /// Selects an element from `table` by repeated iteration of `select` over `bits`. 
+    /// Selects an element from `table` by repeated iteration of `select` over `bits`.
     /// The `bits` are ordered from most significant to least significant, forming unsigned integers in binary representation
     /// which are understood as the `table` indices.
     #[inline]
@@ -115,7 +114,11 @@ where
     {
         let mut table = table.into_iter();
         let mut bits = bits.into_iter();
-        assert_eq!(table.len(), bits.len().pow(2), "Table length must equal 2^(number of bits).");
+        assert_eq!(
+            table.len(),
+            2usize.pow(bits.len() as u32),
+            "Table length must equal 2^(number of bits)."
+        );
         if let Some(first_bit) = bits.next() {
             let mut table = table
                 .chunk_by()
@@ -130,7 +133,10 @@ where
             }
             table.take_first()
         } else {
-            table.next().expect("Table of length 1 always has one element.").clone()
+            table
+                .next()
+                .expect("Table of length 1 always has one element.")
+                .clone()
         }
     }
 }

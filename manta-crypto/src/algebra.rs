@@ -42,18 +42,21 @@ pub trait Group<COM = ()>: Sized {
     fn add(&self, rhs: &Self, compiler: &mut COM) -> Self;
 
     /// Adds `rhs` to `self` in the group.
+    #[inline]
     fn add_assign(&mut self, rhs: &Self, compiler: &mut COM) -> &mut Self {
         *self = self.add(rhs, compiler);
         self
     }
 
     /// Doubles `self` in the group.
+    #[inline]
     fn double_assign(&mut self, compiler: &mut COM) -> &mut Self {
         *self = self.add(self, compiler);
         self
     }
 
     /// Doubles `self` `k` times in the group.
+    #[inline]
     fn repeated_double_assign(&mut self, k: usize, compiler: &mut COM) -> &mut Self {
         for _ in 0..k {
             self.double_assign(compiler);
@@ -146,6 +149,7 @@ pub struct Window<G> {
 
 impl<G> Window<G> {
     /// Creates a new `Window` from `table` without checking its correctness.
+    #[inline]
     pub fn new_unchecked(table: Vec<G>) -> Self {
         Self { table }
     }
@@ -158,10 +162,10 @@ impl<G> Window<G> {
     #[inline]
     pub fn new<COM>(window_size: usize, point: G, compiler: &mut COM) -> Self
     where
-        G: Zero<COM> + Group<COM>,
+        G: Group<COM> + Zero<COM>,
     {
         assert!(window_size > 0, "Window size must be at least 1.");
-        let table_length = window_size.pow(2);
+        let table_length = 2usize.pow(window_size as u32);
         let mut table = Vec::with_capacity(table_length);
         table.push(G::zero(compiler));
         for _ in 1..table_length {
@@ -171,21 +175,25 @@ impl<G> Window<G> {
     }
 
     /// Returns the window size.
+    #[inline]
     pub fn window_size(&self) -> usize {
         (self.table.len() as f32).log2() as usize
     }
 
     /// Returns the multiplication table.
+    #[inline]
     pub fn table(&self) -> &[G] {
         &self.table
     }
 
     /// Returns the multiplication table, dropping `Window`.
+    #[inline]
     pub fn into_inner(self) -> Vec<G> {
         self.table
     }
 
     /// Doubles `result` `window_size` and then adds the elemnent from `table` corresponding to `chunk`.
+    #[inline]
     fn scalar_mul_round<COM>(
         window_size: usize,
         table: &[G],
@@ -193,7 +201,7 @@ impl<G> Window<G> {
         result: &mut G,
         compiler: &mut COM,
     ) where
-        G: ConditionalSelect<COM> + Clone + Group<COM>,
+        G: Clone + ConditionalSelect<COM> + Group<COM>,
         COM: Has<bool>,
     {
         let chunk = chunk.iter().copied().rev();
@@ -204,14 +212,15 @@ impl<G> Window<G> {
     }
 
     /// Multiplies a point in G by `scalar` using `Window`.
+    #[inline]
     pub fn scalar_mul<'b, B, COM>(&self, bits: B, compiler: &mut COM) -> G
     where
         Bool<COM>: 'b,
         B: IntoIterator<Item = &'b Bool<COM>>,
         COM: Has<bool>,
-        G: ConditionalSelect<COM> + Clone + Zero<COM> + Group<COM>,
+        G: Clone + ConditionalSelect<COM> + Group<COM> + Zero<COM>,
     {
-        let bit_vector = bits.into_iter().collect::<Vec<_>>(); //TODO: Switch to chunking iterator.
+        let bit_vector = bits.into_iter().collect::<Vec<_>>(); // TODO: Switch to chunking iterator.
         let window_size = self.window_size();
         let mut result = G::zero(compiler);
         let mut iter_chunks = bit_vector.chunks_exact(window_size);
@@ -220,7 +229,7 @@ impl<G> Window<G> {
         }
         let remainder = iter_chunks.remainder();
         let last_window_size = remainder.len();
-        let subtable = &self.table[0..last_window_size.pow(2)];
+        let subtable = &self.table[0..2usize.pow(last_window_size as u32)];
         Self::scalar_mul_round(last_window_size, subtable, remainder, &mut result, compiler);
         result
     }
@@ -432,21 +441,26 @@ pub mod test {
     /// Tests if windowed scalar multiplication of the bit decomposition of `scalar` with `point` returns the
     /// product `scalar` * `point`
     #[inline]
-    pub fn window_multiplication_correctness<'b, S, G, COM>(scalar: S, point: G, compiler: &mut COM)
-    where
+    pub fn window_multiplication_correctness<S, G, F, B, COM>(
+        window_size: usize,
+        scalar: &S,
+        point: G,
+        bit_conversion: F,
+        compiler: &mut COM,
+    ) where
         G: ScalarMulGroup<S, COM, Output = G>
-            + Zero<COM>
             + Clone
             + ConditionalSelect<COM>
-            + PartialEq<G, COM>,
+            + PartialEq<G, COM>
+            + Zero<COM>,
+        F: FnOnce(&S, &mut COM) -> B,
+        B: IntoIterator<Item = Bool<COM>>,
         COM: Assert,
-        Bool<COM>: 'b,
-        S: IntoIterator<Item = &'b Bool<COM>>,
     {
-        let product = point.scalar_mul(&scalar, compiler);
-        const WINDOW_SIZE: usize = 4;
-        let window = Window::new(WINDOW_SIZE, point, compiler);
-        let windowed_product = window.scalar_mul(scalar, compiler);
+        let product = point.scalar_mul(scalar, compiler);
+        let window = Window::new(window_size, point, compiler);
+        let bits = Vec::from_iter(bit_conversion(scalar, compiler)); // TODO: use iter instead of Vec.
+        let windowed_product = window.scalar_mul(&bits, compiler);
         product.assert_equal(&windowed_product, compiler);
     }
 }

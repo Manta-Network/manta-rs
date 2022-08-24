@@ -18,6 +18,7 @@
 
 use crate::crypto::constraint::arkworks::{self, empty, full, Boolean, Fp, FpVar, R1CS};
 use alloc::vec::Vec;
+use ark_std;
 use core::{borrow::Borrow, marker::PhantomData};
 use manta_crypto::{
     algebra,
@@ -36,6 +37,9 @@ use manta_crypto::{
             mode::{Public, Secret},
             Allocate, Allocator, Constant, Variable,
         },
+        bool::{Bool, ConditionalSelect},
+        cmp,
+        num::Zero,
     },
     rand::{RngCore, Sample},
 };
@@ -267,6 +271,50 @@ where
     #[inline]
     fn try_from(bytes: Vec<u8>) -> Result<Self, Self::Error> {
         CanonicalDeserialize::deserialize(&mut bytes.as_slice()).map(Self)
+    }
+}
+
+impl<C> ConditionalSelect for Group<C>
+where
+    C: ProjectiveCurve,
+{
+    #[inline]
+    fn select(bit: &Bool<()>, true_value: &Self, false_value: &Self, compiler: &mut ()) -> Self {
+        let _ = compiler;
+        if *bit {
+            *true_value
+        } else {
+            *false_value
+        }
+    }
+}
+
+impl<C> cmp::PartialEq<Self> for Group<C>
+where
+    C: ProjectiveCurve,
+{
+    #[inline]
+    fn eq(&self, rhs: &Self, compiler: &mut ()) -> Bool<()> {
+        let _ = compiler;
+        self == rhs
+    }
+}
+
+impl<C> Zero for Group<C>
+where
+    C: ProjectiveCurve,
+{
+    type Verification = bool;
+
+    #[inline]
+    fn zero(compiler: &mut ()) -> Self {
+        let _ = compiler;
+        Group(<C::Affine as ark_std::Zero>::zero())
+    }
+
+    #[inline]
+    fn is_zero(&self, compiler: &mut ()) -> Self::Verification {
+        *self == Self::zero(compiler)
     }
 }
 
@@ -572,7 +620,7 @@ mod test {
     use super::*;
     use crate::config::Bls12_381_Edwards;
     use manta_crypto::{
-        algebra::{PrecomputedBaseTable, ScalarMul},
+        algebra::{test::window_multiplication_correctness, PrecomputedBaseTable, ScalarMul},
         arkworks::{algebra::scalar_bits, r1cs_std::groups::curves::twisted_edwards::AffineVar},
         constraint::measure::Measure,
         eclair::bool::AssertEq,
@@ -601,30 +649,20 @@ mod test {
         println!("variable base mul constraint: {:?}", ctr2 - ctr1);
         println!("fixed base mul constraint: {:?}", ctr3 - ctr2);
     }
-    /*
-        /// Checks if the windowed multiplcation is correct.
-        #[test]
-        fn windowed_mul_is_correct() {
-            let mut compiler = Compiler::<Bls12_381_Edwards>::for_proofs();
-            let scalar = Scalar::<Bls12_381_Edwards>::gen(&mut OsRng);
-            let base = Group::<Bls12_381_Edwards>::sample((), &mut OsRng);
-            const SCALAR_BITS: usize = scalar_bits::<Bls12_381_Edwards>();
-            const WINDOW_SIZE: usize = 4;
-            let window = Window::new(WINDOW_SIZE, base, compiler);
-            let precomputed_table = PrecomputedBaseTable::<_, SCALAR_BITS>::from_base(base, &mut ());
-            let base_var =
-                base.as_known::<Secret, GroupVar<Bls12_381_Edwards, AffineVar<_, _>>>(&mut compiler);
-            let scalar_var =
-                scalar.as_known::<Secret, ScalarVar<Bls12_381_Edwards, AffineVar<_, _>>>(&mut compiler);
-            let ctr1 = compiler.constraint_count();
-            let expected = base_var.scalar_mul(&scalar_var, &mut compiler);
-            let ctr2 = compiler.constraint_count();
-            let actual = GroupVar::fixed_base_scalar_mul(precomputed_table, &scalar_var, &mut compiler);
-            let ctr3 = compiler.constraint_count();
-            compiler.assert_eq(&expected, &actual);
-            assert!(compiler.is_satisfied());
-            println!("variable base mul constraint: {:?}", ctr2 - ctr1);
-            println!("fixed base mul constraint: {:?}", ctr3 - ctr2);
-        }
-    */
+
+    /// Checks if the windowed multiplcation is correct.
+    #[test]
+    fn windowed_mul_is_correct() {
+        let compiler = &mut ();
+        let scalar = Scalar::<Bls12_381_Edwards>::gen(&mut OsRng);
+        let point = Group::<Bls12_381_Edwards>::sample((), &mut OsRng);
+        const WINDOW_SIZE: usize = 4;
+        window_multiplication_correctness(
+            WINDOW_SIZE,
+            &scalar,
+            point,
+            |scalar, _| scalar.0.into_repr().to_bits_be(),
+            compiler,
+        );
+    }
 }
