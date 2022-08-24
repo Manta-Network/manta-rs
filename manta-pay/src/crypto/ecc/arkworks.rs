@@ -18,7 +18,7 @@
 
 use crate::crypto::constraint::arkworks::{self, empty, full, Boolean, Fp, FpVar, R1CS};
 use alloc::vec::Vec;
-use ark_std;
+use ark_ff;
 use core::{borrow::Borrow, marker::PhantomData};
 use manta_crypto::{
     algebra,
@@ -309,7 +309,7 @@ where
     #[inline]
     fn zero(compiler: &mut ()) -> Self {
         let _ = compiler;
-        Group(<C::Affine as ark_std::Zero>::zero())
+        Self(<C::Affine as ark_ff::Zero>::zero())
     }
 
     #[inline]
@@ -656,9 +656,8 @@ mod test {
         let compiler = &mut ();
         let scalar = Scalar::<Bls12_381_Edwards>::gen(&mut OsRng);
         let point = Group::<Bls12_381_Edwards>::sample((), &mut OsRng);
-        const WINDOW_SIZE: usize = 4;
         window_multiplication_correctness(
-            WINDOW_SIZE,
+            4,
             &scalar,
             point,
             |scalar, _| scalar.0.into_repr().to_bits_be(),

@@ -141,24 +141,26 @@ impl<G, const N: usize> PrecomputedBaseTable<G, N> {
     }
 }
 
-/// Window Method for Point Multiplication
+/// Group Element Table for Windowed Point Multiplication
+#[derive(Clone, Debug, Default, Eq, Hash, PartialEq)]
 pub struct Window<G> {
     /// Multiplication Table
     table: Vec<G>,
 }
 
 impl<G> Window<G> {
-    /// Creates a new `Window` from `table` without checking its correctness.
+    /// Creates a new [`Window`] from `table` without checking its correctness.
     #[inline]
     pub fn new_unchecked(table: Vec<G>) -> Self {
         Self { table }
     }
 
-    /// Creates a new `Window`.
+    /// Creates a new [`Window`] table by repeatedly adding `point` to itself to
+    /// support a table with windowed multiplication with `window_size`.
     ///
     /// # Panics
     ///
-    /// This function panics if `window_size` is less than `1`.
+    /// This method panics if `window_size` is less than `1`.
     #[inline]
     pub fn new<COM>(window_size: usize, point: G, compiler: &mut COM) -> Self
     where
@@ -177,22 +179,22 @@ impl<G> Window<G> {
     /// Returns the window size.
     #[inline]
     pub fn window_size(&self) -> usize {
-        (self.table.len() as f32).log2() as usize
+        self.table.len().trailing_zeros() as usize
     }
 
-    /// Returns the multiplication table.
+    /// Returns a shared reference to the multiplication table.
     #[inline]
     pub fn table(&self) -> &[G] {
         &self.table
     }
 
-    /// Returns the multiplication table, dropping `Window`.
+    /// Returns the multiplication table, dropping `self`.
     #[inline]
     pub fn into_inner(self) -> Vec<G> {
         self.table
     }
 
-    /// Doubles `result` `window_size` and then adds the elemnent from `table` corresponding to `chunk`.
+    /// Doubles `result`, `window_size`-many times and then adds the element from `table` corresponding to `chunk`.
     #[inline]
     fn scalar_mul_round<COM>(
         window_size: usize,
@@ -211,7 +213,7 @@ impl<G> Window<G> {
             .add_assign(&selected_element, compiler);
     }
 
-    /// Multiplies a point in G by `scalar` using `Window`.
+    /// Multiplies a point in G by `scalar` using `self` as the window table.
     #[inline]
     pub fn scalar_mul<'b, B, COM>(&self, bits: B, compiler: &mut COM) -> G
     where
@@ -448,10 +450,10 @@ pub mod test {
         bit_conversion: F,
         compiler: &mut COM,
     ) where
-        G: ScalarMulGroup<S, COM, Output = G>
-            + Clone
+        G: Clone
             + ConditionalSelect<COM>
             + PartialEq<G, COM>
+            + ScalarMulGroup<S, COM, Output = G>
             + Zero<COM>,
         F: FnOnce(&S, &mut COM) -> B,
         B: IntoIterator<Item = Bool<COM>>,
