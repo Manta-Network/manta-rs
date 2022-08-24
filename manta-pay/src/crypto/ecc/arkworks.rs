@@ -653,15 +653,12 @@ mod test {
     /// Checks if the windowed multiplcation is correct.
     #[test]
     fn windowed_mul_is_correct() {
-        let compiler = &mut ();
-        let scalar = Scalar::<Bls12_381_Edwards>::gen(&mut OsRng);
-        let point = Group::<Bls12_381_Edwards>::sample((), &mut OsRng);
         window_multiplication_correctness(
             4,
-            &scalar,
-            point,
+            &Scalar::<Bls12_381_Edwards>::gen(&mut OsRng),
+            Group::<Bls12_381_Edwards>::gen(&mut OsRng),
             |scalar, _| scalar.0.into_repr().to_bits_be(),
-            compiler,
+            &mut (),
         );
     }
 }
