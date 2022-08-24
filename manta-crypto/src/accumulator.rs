@@ -155,7 +155,7 @@ where
 
     #[inline]
     fn prove(&self, item: &Self::Item) -> Option<MembershipProof<Self::Model>> {
-        (**self).prove(item).map(MembershipProof::into)
+        (**self).prove(item)
     }
 
     #[inline]
