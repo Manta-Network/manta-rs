@@ -308,3 +308,44 @@ pub mod security {
     /// ```
     pub trait DecisionalDiffieHellmanHardness: ComputationalDiffieHellmanHardness {}
 }
+
+/// Testing Framework
+#[cfg(feature = "test")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
+pub mod test {
+    use super::*;
+    use crate::eclair::num::Zero;
+
+    /// Tests if `G` is associative.
+    #[inline]
+    pub fn group_associativity<G, F, COM>(
+        g1: &G,
+        g2: &G,
+        g3: &G,
+        assert_same: F,
+        compiler: &mut COM,
+    ) where
+        G: Group<COM>,
+        F: FnOnce(&G, &G, & mut COM),
+    {
+        assert_same(
+            &g1.add(&g2, compiler).add(&g3, compiler),
+            &g1.add(&g2.add(g3, compiler), compiler),
+            compiler
+        )
+    }
+
+    /// Tests if `G::zero()` is the identity element.
+    #[inline]
+    pub fn zero_is_identity<G, F, COM>(g: &G, assert_same: F, compiler: &mut COM)
+    where 
+    G: Group<COM> + Zero<COM>,
+    F: FnOnce(&G, &G, &mut COM),
+    {
+        assert_same(
+            &g, 
+            &g.add(&G::zero(compiler), compiler),
+            compiler
+        )
+    }
+}
