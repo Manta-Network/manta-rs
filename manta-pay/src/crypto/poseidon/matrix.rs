@@ -24,7 +24,9 @@ use core::{
 };
 use manta_util::vec::{Vec, VecExt};
 
-/// Allocates a matrix of shape `(num_rows, num_columns)` where `allocate_row` generates default values.
+/// Allocates a matrix of shape `(num_rows, num_columns)` where `allocate_row` generates default
+/// values.
+#[inline]
 pub fn allocate_matrix<T, F>(
     num_rows: usize,
     num_columns: usize,
@@ -37,6 +39,7 @@ where
 }
 
 /// Allocates a square matrix of shape `(size, size)` where `allocate_row` generates default values.
+#[inline]
 pub fn allocate_square_matrix<T, F>(size: usize, allocate_row: F) -> Vec<Vec<T>>
 where
     F: FnMut(usize) -> Vec<T>,
@@ -87,7 +90,9 @@ impl<F> Matrix<F>
 where
     F: Field,
 {
-    /// Constructs a non-empty [`Matrix`] returning `None` if `v` is empty or has the wrong shape for a matrix.
+    /// Constructs a non-empty [`Matrix`] returning `None` if `v` is empty or has the wrong shape
+    /// for a matrix.
+    #[inline]
     pub fn new(v: Vec<Vec<F>>) -> Option<Self> {
         if v.is_empty() {
             return None;
@@ -105,21 +110,25 @@ where
     }
 
     /// Builds a new [`Matrix`] without checking `v` is a valid matrix.
+    #[inline]
     pub fn new_unchecked(v: Vec<Vec<F>>) -> Self {
         Self(v)
     }
 
     /// Returns an iterator over a specific column.
+    #[inline]
     pub fn column(&self, column: usize) -> impl Iterator<Item = &'_ F> {
         self.0.iter().map(move |row| &row[column])
     }
 
     /// Checks if the matrix is square.
+    #[inline]
     pub fn is_square(&self) -> bool {
         self.num_rows() == self.num_columns()
     }
 
     /// Checks if the matrix is an identity matrix.
+    #[inline]
     pub fn is_identity(&self) -> bool
     where
         F: PartialEq,
@@ -127,9 +136,9 @@ where
         if !self.is_square() {
             return false;
         }
-        for i in 0..self.num_rows() {
-            for j in 0..self.num_columns() {
-                if !F::eq(&self.0[i][j], &kronecker_delta(i, j)) {
+        for (i, element) in self.0.iter().enumerate() {
+            for (j, inner_element) in element.iter().enumerate() {
+                if *inner_element != kronecker_delta(i, j) {
                     return false;
                 }
             }
@@ -138,6 +147,7 @@ where
     }
 
     /// Checks if the matrix is symmetric.
+    #[inline]
     pub fn is_symmetric(&self) -> bool
     where
         F: PartialEq,
@@ -145,9 +155,9 @@ where
         if self.num_rows() != self.num_columns() {
             return false;
         }
-        for i in 0..self.num_rows() {
-            for j in 0..self.num_columns() {
-                if !F::eq(&self.0[i][j], &self.0[j][i]) {
+        for (i, element) in self.0.iter().enumerate() {
+            for (j, inner_element) in element.iter().enumerate().skip(i + 1) {
+                if inner_element != &self.0[j][i] {
                     return false;
                 }
             }
@@ -156,21 +166,25 @@ where
     }
 
     /// Returns an iterator over rows.
+    #[inline]
     pub fn rows(&self) -> slice::Iter<Vec<F>> {
         self.0.iter()
     }
 
     /// Returns the number of rows.
+    #[inline]
     pub fn num_rows(&self) -> usize {
         self.0.len()
     }
 
     /// Returns the number of columns.
+    #[inline]
     pub fn num_columns(&self) -> usize {
         self.0[0].len()
     }
 
     /// Multiplies matrix `self` with column vector `vec` on the-right hand side.
+    #[inline]
     pub fn mul_col_vec(&self, v: &[F]) -> Option<Vec<F>> {
         if self.num_rows() != v.len() {
             return None;
@@ -187,6 +201,7 @@ where
     }
 
     /// Multiplies matrix `self` with row vector `vec` on the left-hand side.
+    #[inline]
     pub fn mul_row_vec_at_left(&self, v: &[F]) -> Option<Vec<F>> {
         if self.num_rows() != v.len() {
             return None;
@@ -208,6 +223,7 @@ impl<F> From<SquareMatrix<F>> for Matrix<F>
 where
     F: Field,
 {
+    #[inline]
     fn from(matrix: SquareMatrix<F>) -> Self {
         matrix.0
     }
@@ -219,6 +235,7 @@ where
 {
     type Output = Vec<F>;
 
+    #[inline]
     fn index(&self, index: usize) -> &Self::Output {
         &self.0[index]
     }
@@ -228,6 +245,7 @@ impl<F> IndexMut<usize> for Matrix<F>
 where
     F: Field,
 {
+    #[inline]
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         &mut self.0[index]
     }
@@ -239,6 +257,7 @@ where
 {
     type Scalar = F;
 
+    #[inline]
     fn eliminate(&self, column: usize, shadow: &mut Self) -> Option<Self>
     where
         Self::Scalar: Clone + PartialEq,
@@ -269,6 +288,7 @@ where
         Some(Self(result))
     }
 
+    #[inline]
     fn identity(n: usize) -> Self {
         let mut identity_matrix = allocate_square_matrix(n, |n| Vec::allocate_with(n, F::zero));
         for (i, row) in identity_matrix.iter_mut().enumerate() {
@@ -277,6 +297,7 @@ where
         Self(identity_matrix)
     }
 
+    #[inline]
     fn to_row_major(self) -> Vec<F> {
         let mut row_major_repr = Vec::with_capacity(self.num_rows() * self.num_columns());
         for mut row in self.0 {
@@ -285,6 +306,7 @@ where
         row_major_repr
     }
 
+    #[inline]
     fn matmul(&self, other: &Self) -> Option<Self>
     where
         Self::Scalar: Clone,
@@ -305,6 +327,7 @@ where
         ))
     }
 
+    #[inline]
     fn mul_by_scalar(&self, scalar: F) -> Self {
         Self(
             self.0
@@ -314,6 +337,7 @@ where
         )
     }
 
+    #[inline]
     fn transpose(self) -> Self {
         let mut transposed_matrix =
             allocate_matrix(self.num_columns(), self.num_rows(), Vec::with_capacity);
@@ -330,6 +354,7 @@ impl<F> PartialEq<SquareMatrix<F>> for Matrix<F>
 where
     F: Field + PartialEq,
 {
+    #[inline]
     fn eq(&self, other: &SquareMatrix<F>) -> bool {
         self.eq(&other.0)
     }
@@ -345,17 +370,21 @@ impl<F> SquareMatrix<F>
 where
     F: Field,
 {
-    /// Returns a new [`SquareMatrix`] representation of `m` if it returns `true` to [`is_square`](Matrix::is_square).
+    /// Returns a new [`SquareMatrix`] representation of `m` if it returns `true` to
+    /// [`is_square`](Matrix::is_square).
+    #[inline]
     pub fn new(m: Matrix<F>) -> Option<Self> {
-        m.is_square().then(|| Self(m))
+        m.is_square().then_some(Self::new_unchecked(m))
     }
 
     /// Builds a new [`SquareMatrix`] without checking whether `m` is a valid square matrix.
+    #[inline]
     pub fn new_unchecked(m: Matrix<F>) -> Self {
         Self(m)
     }
 
     /// Returns the inversion of a matrix.
+    #[inline]
     pub fn inverse(&self) -> Option<Self>
     where
         F: Clone + PartialEq,
@@ -367,6 +396,7 @@ where
     }
 
     /// Checks if the matrix is invertible.
+    #[inline]
     pub fn is_invertible(&self) -> bool
     where
         F: Clone + PartialEq,
@@ -375,6 +405,7 @@ where
     }
 
     /// Generates the `(i, j)` minor matrix by removing the `i`th row and `j`th column of `self`.
+    #[inline]
     pub fn minor(&self, i: usize, j: usize) -> Option<Self>
     where
         F: Clone,
@@ -401,8 +432,9 @@ where
         )))
     }
 
-    /// Reduces an upper triangular matrix `self.0` to an identity matrix.
-    /// Applies the same computation on `shadow` matrix as `self.0`.
+    /// Reduces an upper triangular matrix `self.0` to an identity matrix. This function applies the
+    /// same computation on `shadow` matrix as `self.0`.
+    #[inline]
     fn reduce_to_identity(&self, shadow: &mut Self) -> Option<Self>
     where
         F: Clone,
@@ -434,6 +466,7 @@ where
     }
 
     /// Generates the upper triangular matrix such that `self[i][j]` = 0 for all `j`>`i`.
+    #[inline]
     fn upper_triangular(&self, shadow: &mut Self) -> Option<Self>
     where
         F: Clone + PartialEq,
@@ -459,6 +492,7 @@ impl<F> AsRef<Matrix<F>> for SquareMatrix<F>
 where
     F: Field,
 {
+    #[inline]
     fn as_ref(&self) -> &Matrix<F> {
         &self.0
     }
@@ -470,6 +504,7 @@ where
 {
     type Target = Matrix<F>;
 
+    #[inline]
     fn deref(&self) -> &Self::Target {
         &self.0
     }
@@ -479,6 +514,7 @@ impl<F> PartialEq<Matrix<F>> for SquareMatrix<F>
 where
     F: Field + PartialEq,
 {
+    #[inline]
     fn eq(&self, other: &Matrix<F>) -> bool {
         self.0.eq(other)
     }
@@ -490,6 +526,7 @@ where
 {
     type Scalar = F;
 
+    #[inline]
     fn eliminate(&self, column: usize, shadow: &mut Self) -> Option<Self>
     where
         Self::Scalar: Clone + PartialEq,
@@ -497,10 +534,12 @@ where
         self.0.eliminate(column, &mut shadow.0).map(Self)
     }
 
+    #[inline]
     fn identity(n: usize) -> Self {
         Self(Matrix::identity(n))
     }
 
+    #[inline]
     fn matmul(&self, other: &Self) -> Option<Self>
     where
         Self::Scalar: Clone,
@@ -508,20 +547,24 @@ where
         self.0.matmul(&other.0).map(Self)
     }
 
+    #[inline]
     fn mul_by_scalar(&self, scalar: Self::Scalar) -> Self {
         Self(self.0.mul_by_scalar(scalar))
     }
 
+    #[inline]
     fn to_row_major(self) -> Vec<F> {
         self.0.to_row_major()
     }
 
+    #[inline]
     fn transpose(self) -> Self {
         Self(self.0.transpose())
     }
 }
 
 /// Computes the inner product of vector `a` and `b`.
+#[inline]
 pub fn inner_product<F>(a: &[F], b: &[F]) -> F
 where
     F: Field,
@@ -532,6 +575,7 @@ where
 }
 
 /// Adds two vectors elementwise (i.e., `out[i] = a[i] + b[i]`).
+#[inline]
 pub fn vec_add<F>(a: &[F], b: &[F]) -> Vec<F>
 where
     F: Field,
@@ -540,6 +584,7 @@ where
 }
 
 /// Subtracts two vectors elementwise (i.e., `out[i] = a[i] - b[i]`).
+#[inline]
 pub fn vec_sub<F>(a: &[F], b: &[F]) -> Vec<F>
 where
     F: Field,
@@ -548,6 +593,7 @@ where
 }
 
 /// Multiplies a vector `v` with `scalar` elementwise (i.e., `out[i] = scalar * v[i]`).
+#[inline]
 pub fn scalar_vec_mul<F>(scalar: &F, v: &[F]) -> Vec<F>
 where
     F: Field,
@@ -556,6 +602,7 @@ where
 }
 
 /// Eliminates `row` with `factor` multiplied by the `pivot`.
+#[inline]
 fn eliminate_row<F>(row: &[F], factor: &F, pivot: &[F]) -> Vec<F>
 where
     F: Field,
@@ -564,6 +611,7 @@ where
 }
 
 /// Returns the kronecker delta of `i` and `j`.
+#[inline]
 pub fn kronecker_delta<F>(i: usize, j: usize) -> F
 where
     F: Field,

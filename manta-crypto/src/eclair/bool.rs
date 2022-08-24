@@ -20,10 +20,10 @@
 //! types. In this module, we define the access interfaces needed to simulate the [`bool`] type with
 //! [`Bool`].
 
-use crate::eclair::{cmp::PartialEq, Has};
+use crate::eclair::{cmp::PartialEq, Has, Type};
 
 /// Boolean Type Inside of the Compiler
-pub type Bool<COM = ()> = <COM as Has<bool>>::Type;
+pub type Bool<COM = ()> = Type<COM, bool>;
 
 /// Assertion
 pub trait Assert: Has<bool> {
@@ -42,15 +42,12 @@ pub trait Assert: Has<bool> {
     }
 }
 
-/* FIXME: We cannot implement this yet.
 impl Assert for () {
     #[inline]
-    fn assert(&mut self, bit: &Bool<Self>) {
-        // TODO: Use `dbg!` macro here to get more info, but add a feature-flag for this.
-        assert!(bit);
+    fn assert(&mut self, bit: &bool) {
+        assert!(bit)
     }
 }
-*/
 
 /// Equality Assertion
 pub trait AssertEq: Assert {
@@ -60,8 +57,7 @@ pub trait AssertEq: Assert {
     where
         T: PartialEq<Rhs, Self>,
     {
-        let are_equal = lhs.eq(rhs, self);
-        self.assert(&are_equal);
+        T::assert_equal(lhs, rhs, self);
     }
 
     /// Asserts that all the elements in `iter` are equal to some `base` element.
@@ -91,49 +87,39 @@ pub trait AssertEq: Assert {
     }
 }
 
+impl<COM> AssertEq for COM where COM: Assert {}
+
 /// Conditional Selection
-pub trait ConditionalSelect<COM>: Sized
+pub trait ConditionalSelect<COM = ()>: Sized
 where
     COM: Has<bool> + ?Sized,
 {
-    /// Selects the result of `true_value` when `bit == true` and the result of `false_value` when
-    /// `bit == false`.
-    fn select_from<T, F>(
-        bit: &Bool<COM>,
-        true_value: T,
-        false_value: F,
-        compiler: &mut COM,
-    ) -> Self
-    where
-        T: FnOnce() -> Self,
-        F: FnOnce() -> Self;
-
     /// Selects `true_value` when `bit == true` and `false_value` when `bit == false`.
-    #[inline]
-    fn select(bit: &Bool<COM>, true_value: Self, false_value: Self, compiler: &mut COM) -> Self {
-        Self::select_from(bit, || true_value, || false_value, compiler)
+    fn select(bit: &Bool<COM>, true_value: &Self, false_value: &Self, compiler: &mut COM) -> Self;
+}
+
+/// Implements [`ConditionalSelect`] for the given `$type`.
+macro_rules! impl_conditional_select {
+    ($($type:tt),* $(,)?) => {
+        $(
+            impl ConditionalSelect for $type {
+                #[inline]
+                fn select(bit: &Bool, true_value: &Self, false_value: &Self, _: &mut ()) -> Self {
+                    if *bit {
+                        true_value.clone()
+                    } else {
+                        false_value.clone()
+                    }
+                }
+            }
+        )*
     }
 }
 
-/* FIXME: We cannot implement this yet.
-impl<V> ConditionalSelect for V {
-    #[inline]
-    fn select_from<T, F>(bit: &bool, true_value: T, false_value: F, _: &mut ()) -> Self
-    where
-        T: FnOnce() -> Self,
-        F: FnOnce() -> Self,
-    {
-        if *bit {
-            true_value()
-        } else {
-            false_value()
-        }
-    }
-}
-*/
+impl_conditional_select!(bool, u8, u16, u32, u64, u128, i8, i16, i32, i64, i128);
 
 /// Conditional Swap
-pub trait ConditionalSwap<COM>: Sized
+pub trait ConditionalSwap<COM = ()>: Sized
 where
     COM: Has<bool> + ?Sized,
 {
@@ -141,16 +127,3 @@ where
     /// false`.
     fn swap(bit: &Bool<COM>, lhs: &Self, rhs: &Self, compiler: &mut COM) -> (Self, Self);
 }
-
-/* FIXME: We cannot implement this yet.
-impl<V> ConditionalSwap for V {
-    #[inline]
-    fn swap(bit: &bool, lhs: Self, rhs: Self, _: &mut ()) -> (Self, Self) {
-        if *bit {
-            (rhs, lhs)
-        } else {
-            (lhs, rhs)
-        }
-    }
-}
-*/

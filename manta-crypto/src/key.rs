@@ -117,9 +117,11 @@ pub mod agreement {
 /// Key Derivation Functions
 pub mod kdf {
     use crate::rand::{RngCore, Sample};
-    use alloc::vec::Vec;
     use core::marker::PhantomData;
-    use manta_util::codec::{Decode, DecodeError, Encode, Read, Write};
+    use manta_util::{
+        codec::{Decode, DecodeError, Encode, Read, Write},
+        AsBytes,
+    };
 
     #[cfg(feature = "serde")]
     use manta_util::serde::{Deserialize, Serialize};
@@ -175,12 +177,6 @@ pub mod kdf {
         }
     }
 
-    /// Byte Conversion Trait
-    pub trait AsBytes {
-        /// Returns an owned byte representation of `self`.
-        fn as_bytes(&self) -> Vec<u8>;
-    }
-
     /// From Byte Vector Adapter
     #[cfg_attr(
         feature = "serde",
@@ -231,7 +227,7 @@ pub mod kdf {
             R: Read,
         {
             Ok(Self::new(
-                F::decode(&mut reader).map_err(|err| err.map_decode(|_| ()))?,
+                Decode::decode(&mut reader).map_err(|err| err.map_decode(|_| ()))?,
             ))
         }
     }

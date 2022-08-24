@@ -123,14 +123,14 @@ impl Constants {
         }
     }
 
-    /// Converts a [`Specification`] marked with `ARITY` into [`Constants`].
+    /// Converts a [`Specification`] into [`Constants`].
     #[inline]
-    pub fn from_specification<S, const ARITY: usize>() -> Self
+    pub fn from_specification<S>() -> Self
     where
         S: Specification,
     {
         Self {
-            width: ARITY + 1,
+            width: S::WIDTH,
             full_rounds: S::FULL_ROUNDS,
             partial_rounds: S::PARTIAL_ROUNDS,
         }
@@ -319,18 +319,20 @@ mod test {
         }
     }
 
+    /* After upgrading to new Poseidon, we have to enable these tests.
+    // TODO: After upgrading to new Poseidon, we have to enable these tests.
+    // use crate::config::PoseidonSpec;
     /// Tests if the specifications match the known constant values.
     #[test]
     fn specifications_match_known_values() {
-        /* TODO: After upgrading to new Poseidon, we have to enable these tests.
         assert_eq!(
             Constants::from_arity(2),
-            Constants::from_specification::<PoseidonSpec<2>, 2>()
+            Constants::from_specification::<PoseidonSpec<2>>()
         );
         assert_eq!(
             Constants::from_arity(4),
-            Constants::from_specification::<PoseidonSpec<4>, 4>()
+            Constants::from_specification::<PoseidonSpec<4>>()
         );
-        */
     }
+    */
 }

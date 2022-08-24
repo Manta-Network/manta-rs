@@ -16,20 +16,24 @@
 
 //! KZG Trusted Setup for Groth16
 
-use crate::util::{
-    power_pairs, scalar_mul, CanonicalDeserialize, CanonicalSerialize, Deserializer,
-    HasDistribution, NonZero, One, PairingEngineExt, Read, Sample, SerializationError, Serializer,
-    Write, Zero,
+use crate::{
+    ratio::{HashToGroup, RatioProof},
+    util::{power_pairs, scalar_mul, Deserializer, NonZero, Serializer},
 };
 use alloc::{vec, vec::Vec};
-use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
-use ark_ff::{PrimeField, UniformRand};
 use core::{iter, ops::Mul};
-use manta_crypto::rand::{CryptoRng, Rand, RngCore};
+use manta_crypto::{
+    arkworks::{
+        ff::{One, UniformRand},
+        pairing::{Pairing, PairingEngineExt},
+        serialize::{CanonicalDeserialize, CanonicalSerialize, Read, SerializationError, Write},
+    },
+    rand::{CryptoRng, RngCore, Sample},
+};
 use manta_util::{cfg_iter, cfg_iter_mut, from_variant, vec::VecExt};
 
 #[cfg(feature = "rayon")]
-use rayon::iter::{IndexedParallelIterator, ParallelIterator};
+use manta_util::rayon::iter::{IndexedParallelIterator, ParallelIterator};
 
 /// KZG Trusted Setup Size
 pub trait Size {
@@ -44,42 +48,6 @@ pub trait Size {
     const G2_POWERS: usize;
 }
 
-/// Pairing Configuration
-pub trait Pairing: HasDistribution {
-    /// Underlying Scalar Field
-    type Scalar: PrimeField;
-
-    /// First Group of the Pairing
-    type G1: AffineCurve<ScalarField = Self::Scalar>
-        + Into<Self::G1Prepared>
-        + Sample<Self::Distribution>;
-
-    /// First Group Pairing-Prepared Point
-    type G1Prepared;
-
-    /// Second Group of the Pairing
-    type G2: AffineCurve<ScalarField = Self::Scalar>
-        + Into<Self::G2Prepared>
-        + Sample<Self::Distribution>;
-
-    /// Second Group Pairing-Prepared Point
-    type G2Prepared;
-
-    /// Pairing Engine Type
-    type Pairing: PairingEngine<
-        G1Affine = Self::G1,
-        G2Affine = Self::G2,
-        G1Prepared = Self::G1Prepared,
-        G2Prepared = Self::G2Prepared,
-    >;
-
-    /// Returns the base G1 generator for this configuration.
-    fn g1_prime_subgroup_generator() -> Self::G1;
-
-    /// Returns the base G2 generator for this configuration.
-    fn g2_prime_subgroup_generator() -> Self::G2;
-}
-
 /// Trusted Setup Configuration
 pub trait Configuration: Pairing + Size {
     /// Domain Tag
@@ -91,21 +59,20 @@ pub trait Configuration: Pairing + Size {
     /// Response Type
     type Response;
 
-    /// Tau Domain Tag for [`hash_to_g2`](Self::hash_to_g2)
+    /// Hash To Group Type
+    type HashToGroup: HashToGroup<Self, Self::Challenge>;
+
+    /// Tau Domain Tag Type
     const TAU_DOMAIN_TAG: Self::DomainTag;
 
-    /// Alpha Domain Tag for [`hash_to_g2`](Self::hash_to_g2)
+    /// Alpha Domain Tag Type
     const ALPHA_DOMAIN_TAG: Self::DomainTag;
 
-    /// Beta Domain Tag for [`hash_to_g2`](Self::hash_to_g2)
+    /// Beta Domain Tag Type
     const BETA_DOMAIN_TAG: Self::DomainTag;
 
-    /// Computes the challenge G2 point from `domain_tag`, `challenge`, and `ratio`.
-    fn hash_to_g2(
-        domain_tag: Self::DomainTag,
-        challenge: &Self::Challenge,
-        ratio: (&Self::G1, &Self::G1),
-    ) -> Self::G2;
+    /// Generates a [`HashToGroup`](Self::HashToGroup) instance paramterized by `domain_tag`.
+    fn hasher(domain_tag: Self::DomainTag) -> Self::HashToGroup;
 
     /// Computes the challenge response from `state`, `challenge`, and `proof`.
     fn response(
@@ -190,9 +157,9 @@ where
         R: CryptoRng + RngCore + ?Sized,
     {
         Some(Proof {
-            tau: RatioProof::build(C::TAU_DOMAIN_TAG, challenge, &self.tau, rng)?,
-            alpha: RatioProof::build(C::ALPHA_DOMAIN_TAG, challenge, &self.alpha, rng)?,
-            beta: RatioProof::build(C::BETA_DOMAIN_TAG, challenge, &self.beta, rng)?,
+            tau: RatioProof::prove(&C::hasher(C::TAU_DOMAIN_TAG), challenge, &self.tau, rng)?,
+            alpha: RatioProof::prove(&C::hasher(C::ALPHA_DOMAIN_TAG), challenge, &self.alpha, rng)?,
+            beta: RatioProof::prove(&C::hasher(C::BETA_DOMAIN_TAG), challenge, &self.beta, rng)?,
         })
     }
 }
@@ -211,88 +178,6 @@ where
             alpha: C::Scalar::rand(rng),
             beta: C::Scalar::rand(rng),
         }
-    }
-}
-
-/// Pairing Ratio Proof of Knowledge
-#[derive(derivative::Derivative)]
-#[derivative(Clone, Debug, Default, Eq, Hash, PartialEq)]
-pub struct RatioProof<C>
-where
-    C: Pairing + ?Sized,
-{
-    /// Ratio in G1
-    pub ratio: (C::G1, C::G1),
-
-    /// Matching Point in G2
-    pub matching_point: C::G2,
-}
-
-impl<C> RatioProof<C>
-where
-    C: Pairing,
-{
-    /// Builds a [`RatioProof`] for `scalar` against `challenge`.
-    #[inline]
-    pub fn build<R>(
-        domain_tag: C::DomainTag,
-        challenge: &C::Challenge,
-        scalar: &C::Scalar,
-        rng: &mut R,
-    ) -> Option<Self>
-    where
-        C: Configuration,
-        R: CryptoRng + RngCore + ?Sized,
-    {
-        let g1_point = rng.gen::<_, C::G1>();
-        if g1_point.is_zero() {
-            return None;
-        }
-        let scaled_g1_point = g1_point.mul(*scalar).into_affine();
-        if scaled_g1_point.is_zero() {
-            return None;
-        }
-        let ratio = (g1_point, scaled_g1_point);
-        let g2_point = C::hash_to_g2(domain_tag, challenge, (&ratio.0, &ratio.1));
-        if g2_point.is_zero() {
-            return None;
-        }
-        let scaled_g2_point = g2_point.mul(*scalar).into_affine();
-        if scaled_g2_point.is_zero() {
-            return None;
-        }
-        Some(Self {
-            ratio,
-            matching_point: scaled_g2_point,
-        })
-    }
-
-    /// Computes the challenge point that corresponds with the given `challenge`.
-    #[inline]
-    pub fn challenge_point(&self, domain_tag: C::DomainTag, challenge: &C::Challenge) -> C::G2
-    where
-        C: Configuration,
-    {
-        C::hash_to_g2(domain_tag, challenge, (&self.ratio.0, &self.ratio.1))
-    }
-
-    /// Verifies that `self` is a valid ratio proof-of-knowledge, returning the G2 ratio of the
-    /// underlying scalar.
-    #[inline]
-    pub fn verify(
-        self,
-        domain_tag: C::DomainTag,
-        challenge: &C::Challenge,
-    ) -> Option<(C::G2Prepared, C::G2Prepared)>
-    where
-        C: Configuration,
-    {
-        let challenge_point = self.challenge_point(domain_tag, challenge);
-        let ((_, matching_point), (_, challenge_point)) = C::Pairing::same(
-            (self.ratio.0, self.matching_point),
-            (self.ratio.1, challenge_point),
-        )?;
-        Some((matching_point, challenge_point))
     }
 }
 
@@ -345,16 +230,19 @@ where
         Ok(KnowledgeProofCertificate {
             tau: self
                 .tau
-                .verify(C::TAU_DOMAIN_TAG, challenge)
-                .ok_or(KnowledgeError::TauKnowledgeProof)?,
+                .verify(&C::hasher(C::TAU_DOMAIN_TAG), challenge)
+                .ok_or(KnowledgeError::TauKnowledgeProof)?
+                .1,
             alpha: self
                 .alpha
-                .verify(C::ALPHA_DOMAIN_TAG, challenge)
-                .ok_or(KnowledgeError::AlphaKnowledgeProof)?,
+                .verify(&C::hasher(C::ALPHA_DOMAIN_TAG), challenge)
+                .ok_or(KnowledgeError::AlphaKnowledgeProof)?
+                .1,
             beta: self
                 .beta
-                .verify(C::BETA_DOMAIN_TAG, challenge)
-                .ok_or(KnowledgeError::BetaKnowledgeProof)?,
+                .verify(&C::hasher(C::BETA_DOMAIN_TAG), challenge)
+                .ok_or(KnowledgeError::BetaKnowledgeProof)?
+                .1,
         })
     }
 }
@@ -502,19 +390,19 @@ where
     C: Pairing + Size + ?Sized,
 {
     /// Vector of Tau Powers in G1 of size [`G1_POWERS`](Size::G1_POWERS)
-    tau_powers_g1: Vec<C::G1>,
+    pub tau_powers_g1: Vec<C::G1>,
 
     /// Vector of Tau Powers in G2 of size [`G2_POWERS`](Size::G2_POWERS)
-    tau_powers_g2: Vec<C::G2>,
+    pub tau_powers_g2: Vec<C::G2>,
 
     /// Vector of Alpha Multiplied by Tau Powers in G1 of size [`G2_POWERS`](Size::G2_POWERS)
-    alpha_tau_powers_g1: Vec<C::G1>,
+    pub alpha_tau_powers_g1: Vec<C::G1>,
 
     /// Vector of Beta Multiplied by Tau Powers in G1 of size [`G2_POWERS`](Size::G2_POWERS)
-    beta_tau_powers_g1: Vec<C::G1>,
+    pub beta_tau_powers_g1: Vec<C::G1>,
 
     /// Beta in G2
-    beta_g2: C::G2,
+    pub beta_g2: C::G2,
 }
 
 impl<C> Accumulator<C>

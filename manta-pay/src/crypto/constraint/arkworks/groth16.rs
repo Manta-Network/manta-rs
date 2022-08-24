@@ -22,13 +22,15 @@ use crate::crypto::constraint::arkworks::{
     R1CS,
 };
 use alloc::vec::Vec;
-use ark_ec::PairingEngine;
 use ark_groth16::{Groth16 as ArkGroth16, PreparedVerifyingKey, ProvingKey};
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Read, Write};
 use ark_snark::SNARK;
 use core::marker::PhantomData;
 use manta_crypto::{
-    constraint::ProofSystem,
+    arkworks::{
+        ec::PairingEngine,
+        serialize::{CanonicalDeserialize, CanonicalSerialize, Read, Write},
+    },
+    constraint::{Input, ProofSystem},
     rand::{CryptoRng, RngCore, SizedRng},
 };
 use manta_util::codec::{self, DecodeError};
@@ -133,6 +135,19 @@ where
     #[inline]
     fn type_info() -> scale_info::Type {
         Self::Identity::type_info()
+    }
+}
+
+impl<E> codec::Encode for Proof<E>
+where
+    E: PairingEngine,
+{
+    #[inline]
+    fn encode<W>(&self, writer: W) -> Result<(), W::Error>
+    where
+        W: codec::Write,
+    {
+        proof_as_bytes(&self.0).encode(writer)
     }
 }
 
@@ -252,9 +267,9 @@ where
         } = &self.0;
         vk.serialize(&mut writer)?;
         alpha_g1_beta_g2.serialize(&mut writer)?;
-        <E::G2Prepared as HasSerialization>::Serialize::from(gamma_g2_neg_pc)
+        <E::G2Prepared as HasSerialization<'_>>::Serialize::from(gamma_g2_neg_pc)
             .serialize(&mut writer)?;
-        <E::G2Prepared as HasSerialization>::Serialize::from(delta_g2_neg_pc)
+        <E::G2Prepared as HasSerialization<'_>>::Serialize::from(delta_g2_neg_pc)
             .serialize(&mut writer)?;
         Ok(())
     }
@@ -269,9 +284,9 @@ where
         } = &self.0;
         vk.serialized_size()
             + alpha_g1_beta_g2.serialized_size()
-            + <E::G2Prepared as HasSerialization>::Serialize::from(gamma_g2_neg_pc)
+            + <E::G2Prepared as HasSerialization<'_>>::Serialize::from(gamma_g2_neg_pc)
                 .serialized_size()
-            + <E::G2Prepared as HasSerialization>::Serialize::from(delta_g2_neg_pc)
+            + <E::G2Prepared as HasSerialization<'_>>::Serialize::from(delta_g2_neg_pc)
                 .serialized_size()
     }
 
@@ -288,9 +303,9 @@ where
         } = &self.0;
         vk.serialize_uncompressed(&mut writer)?;
         alpha_g1_beta_g2.serialize_uncompressed(&mut writer)?;
-        <E::G2Prepared as HasSerialization>::Serialize::from(gamma_g2_neg_pc)
+        <E::G2Prepared as HasSerialization<'_>>::Serialize::from(gamma_g2_neg_pc)
             .serialize_uncompressed(&mut writer)?;
-        <E::G2Prepared as HasSerialization>::Serialize::from(delta_g2_neg_pc)
+        <E::G2Prepared as HasSerialization<'_>>::Serialize::from(delta_g2_neg_pc)
             .serialize_uncompressed(&mut writer)?;
         Ok(())
     }
@@ -308,9 +323,9 @@ where
         } = &self.0;
         vk.serialize_unchecked(&mut writer)?;
         alpha_g1_beta_g2.serialize_unchecked(&mut writer)?;
-        <E::G2Prepared as HasSerialization>::Serialize::from(gamma_g2_neg_pc)
+        <E::G2Prepared as HasSerialization<'_>>::Serialize::from(gamma_g2_neg_pc)
             .serialize_unchecked(&mut writer)?;
-        <E::G2Prepared as HasSerialization>::Serialize::from(delta_g2_neg_pc)
+        <E::G2Prepared as HasSerialization<'_>>::Serialize::from(delta_g2_neg_pc)
             .serialize_unchecked(&mut writer)?;
         Ok(())
     }
@@ -325,9 +340,9 @@ where
         } = &self.0;
         vk.uncompressed_size()
             + alpha_g1_beta_g2.uncompressed_size()
-            + <E::G2Prepared as HasSerialization>::Serialize::from(gamma_g2_neg_pc)
+            + <E::G2Prepared as HasSerialization<'_>>::Serialize::from(gamma_g2_neg_pc)
                 .uncompressed_size()
-            + <E::G2Prepared as HasSerialization>::Serialize::from(delta_g2_neg_pc)
+            + <E::G2Prepared as HasSerialization<'_>>::Serialize::from(delta_g2_neg_pc)
                 .uncompressed_size()
     }
 }
@@ -506,5 +521,25 @@ where
         proof: &Self::Proof,
     ) -> Result<bool, Self::Error> {
         ArkGroth16::verify_with_processed_vk(&context.0, input, &proof.0).map_err(|_| Error)
+    }
+}
+
+impl<E> Input<Groth16<E>> for bool
+where
+    E: PairingEngine,
+{
+    #[inline]
+    fn extend(&self, input: &mut Vec<E::Fr>) {
+        input.push((*self).into());
+    }
+}
+
+impl<E> Input<Groth16<E>> for u128
+where
+    E: PairingEngine,
+{
+    #[inline]
+    fn extend(&self, input: &mut Vec<E::Fr>) {
+        input.push((*self).into());
     }
 }

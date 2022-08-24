@@ -22,20 +22,22 @@ use crate::{
         Checkpoint, ReceivingKeyRequest, SignError, SignRequest, SignResponse, SyncError,
         SyncRequest, SyncResponse,
     },
-    util::http::{self, IntoUrl},
 };
 use alloc::{boxed::Box, vec::Vec};
 use manta_accounting::wallet::{self, signer};
-use manta_util::future::LocalBoxFutureResult;
+use manta_util::{
+    future::LocalBoxFutureResult,
+    http::reqwest::{self, IntoUrl, KnownUrlClient},
+};
 
 #[doc(inline)]
-pub use http::Error;
+pub use reqwest::Error;
 
 /// Wallet Associated to [`Client`]
 pub type Wallet<L> = wallet::Wallet<Config, L, Client>;
 
 /// HTTP Signer Client
-pub struct Client(http::Client);
+pub struct Client(KnownUrlClient);
 
 impl Client {
     /// Builds a new HTTP [`Client`] that connects to `server_url`.
@@ -44,7 +46,7 @@ impl Client {
     where
         U: IntoUrl,
     {
-        Ok(Self(http::Client::new(server_url)?))
+        Ok(Self(KnownUrlClient::new(server_url)?))
     }
 }
 

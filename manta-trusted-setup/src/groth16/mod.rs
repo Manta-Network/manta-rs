@@ -17,3 +17,7 @@
 //! Groth16 Trusted Setup
 
 pub mod kzg;
+pub mod mpc;
+
+#[cfg(test)]
+pub mod test;

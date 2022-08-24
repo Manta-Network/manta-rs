@@ -24,8 +24,6 @@ use crate::crypto::{
     poseidon::compat as poseidon,
 };
 use alloc::vec::Vec;
-use ark_ff::ToConstraintField;
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use blake2::{
     digest::{Update, VariableOutput},
     Blake2sVar,
@@ -39,20 +37,27 @@ use manta_accounting::{
 use manta_crypto::{
     accumulator,
     algebra::DiffieHellman,
-    constraint::{
-        self, Add, Allocate, Allocator, Constant, ProofSystemInput, Public, Secret, Variable,
+    arkworks::{
+        ff::ToConstraintField,
+        serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError},
+    },
+    constraint::Input,
+    eclair::{
+        self,
+        alloc::{
+            mode::{Public, Secret},
+            Allocate, Allocator, Constant, Variable,
+        },
+        ops::Add,
     },
     encryption,
     hash::ArrayHashFunction,
-    key::{
-        self,
-        kdf::{AsBytes, KeyDerivationFunction},
-    },
+    key::{self, kdf::KeyDerivationFunction},
     merkle_tree,
 };
 use manta_util::{
     codec::{Decode, DecodeError, Encode, Read, Write},
-    into_array_unchecked, Array, SizeLimit,
+    into_array_unchecked, Array, AsBytes, SizeLimit,
 };
 
 #[cfg(feature = "bs58")]
@@ -63,6 +68,7 @@ use manta_crypto::rand::{Rand, RngCore, Sample};
 
 #[doc(inline)]
 pub use ark_bls12_381 as bls12_381;
+
 #[doc(inline)]
 pub use ark_ed_on_bls12_381 as bls12_381_ed;
 
@@ -107,6 +113,16 @@ pub type ProofSystemError = groth16::Error;
 /// Poseidon Specification
 pub struct PoseidonSpec<const ARITY: usize>;
 
+impl<COM, const ARITY: usize> Constant<COM> for PoseidonSpec<ARITY> {
+    type Type = Self;
+
+    #[inline]
+    fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
+        let _ = (this, compiler);
+        Self
+    }
+}
+
 /// Poseidon-2 Hash Parameters
 pub type Poseidon2 = poseidon::Hasher<PoseidonSpec<2>, 2>;
 
@@ -134,7 +150,7 @@ impl poseidon::arkworks::Specification for PoseidonSpec<4> {
 }
 
 /// Key Agreement Scheme Type
-pub type KeyAgreementScheme = DiffieHellman<Group>;
+pub type KeyAgreementScheme = DiffieHellman<EmbeddedScalar, Group>;
 
 /// Secret Key Type
 pub type SecretKey = <KeyAgreementScheme as key::agreement::Types>::SecretKey;
@@ -146,7 +162,7 @@ pub type PublicKey = <KeyAgreementScheme as key::agreement::Types>::PublicKey;
 pub type SharedSecret = <KeyAgreementScheme as key::agreement::Types>::SharedSecret;
 
 /// Key Agreement Scheme Variable Type
-pub type KeyAgreementSchemeVar = DiffieHellman<GroupVar, Compiler>;
+pub type KeyAgreementSchemeVar = DiffieHellman<EmbeddedScalarVar, GroupVar>;
 
 /// Secret Key Variable Type
 pub type SecretKeyVar = <KeyAgreementSchemeVar as key::agreement::Types>::SecretKey;
@@ -361,7 +377,7 @@ impl Constant<Compiler> for VoidNumberCommitmentSchemeVar {
 /// Asset ID Variable
 pub struct AssetIdVar(ConstraintFieldVar);
 
-impl constraint::PartialEq<Self, Compiler> for AssetIdVar {
+impl eclair::cmp::PartialEq<Self, Compiler> for AssetIdVar {
     #[inline]
     fn eq(&self, rhs: &Self, compiler: &mut Compiler) -> Boolean<ConstraintField> {
         ConstraintFieldVar::eq(&self.0, &rhs.0, compiler)
@@ -408,7 +424,7 @@ impl Add<Self, Compiler> for AssetValueVar {
     }
 }
 
-impl constraint::PartialEq<Self, Compiler> for AssetValueVar {
+impl eclair::cmp::PartialEq<Self, Compiler> for AssetValueVar {
     #[inline]
     fn eq(&self, rhs: &Self, compiler: &mut Compiler) -> Boolean<ConstraintField> {
         ConstraintFieldVar::eq(&self.0, &rhs.0, compiler)
@@ -614,31 +630,24 @@ impl Constant<Compiler> for MerkleTreeConfigurationVar {
     }
 }
 
-impl ProofSystemInput<AssetId> for ProofSystem {
+impl Input<ProofSystem> for AssetId {
     #[inline]
-    fn extend(input: &mut Self::Input, next: &AssetId) {
-        input.push(next.0.into());
+    fn extend(&self, input: &mut Vec<ConstraintField>) {
+        input.push(self.0.into());
     }
 }
 
-impl ProofSystemInput<AssetValue> for ProofSystem {
+impl Input<ProofSystem> for AssetValue {
     #[inline]
-    fn extend(input: &mut Self::Input, next: &AssetValue) {
-        input.push(next.0.into());
+    fn extend(&self, input: &mut Vec<ConstraintField>) {
+        input.push(self.0.into());
     }
 }
 
-impl ProofSystemInput<Fp<ConstraintField>> for ProofSystem {
+impl Input<ProofSystem> for Group {
     #[inline]
-    fn extend(input: &mut Self::Input, next: &Fp<ConstraintField>) {
-        input.push(next.0);
-    }
-}
-
-impl ProofSystemInput<Group> for ProofSystem {
-    #[inline]
-    fn extend(input: &mut Self::Input, next: &Group) {
-        input.append(&mut next.0.to_field_elements().unwrap());
+    fn extend(&self, input: &mut Vec<ConstraintField>) {
+        input.append(&mut self.0.to_field_elements().unwrap());
     }
 }
 
@@ -748,10 +757,8 @@ impl transfer::Configuration for Config {
         >>::VoidNumber;
     type VoidNumberCommitmentSchemeVar = VoidNumberCommitmentSchemeVar;
     type UtxoAccumulatorModel = UtxoAccumulatorModel;
-    type UtxoAccumulatorWitnessVar =
-        <Self::UtxoAccumulatorModelVar as accumulator::Model<Self::Compiler>>::Witness;
-    type UtxoAccumulatorOutputVar =
-        <Self::UtxoAccumulatorModelVar as accumulator::Model<Self::Compiler>>::Output;
+    type UtxoAccumulatorWitnessVar = <Self::UtxoAccumulatorModelVar as accumulator::Types>::Witness;
+    type UtxoAccumulatorOutputVar = <Self::UtxoAccumulatorModelVar as accumulator::Types>::Output;
     type UtxoAccumulatorModelVar = merkle_tree::Parameters<MerkleTreeConfigurationVar, Compiler>;
     type AssetIdVar = AssetIdVar;
     type AssetValueVar = AssetValueVar;

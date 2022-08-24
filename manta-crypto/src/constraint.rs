@@ -24,17 +24,6 @@
 
 use crate::rand::{CryptoRng, RngCore};
 
-pub use crate::eclair::{
-    alloc::{
-        mode::{self, Derived, Public, Secret},
-        Allocate, Allocator, Const, Constant, Var, Variable,
-    },
-    bool::{Assert, AssertEq, Bool, ConditionalSelect, ConditionalSwap},
-    cmp::{Eq, PartialEq},
-    ops::{Add, Not, Sub},
-    Has, Native,
-};
-
 /// Proof System
 pub trait ProofSystem {
     /// Context Compiler
@@ -95,17 +84,40 @@ pub trait ProofSystem {
 }
 
 /// Proof System Input
-pub trait ProofSystemInput<T>: ProofSystem
+pub trait Input<P>
+where
+    P: ProofSystem + ?Sized,
+{
+    /// Extends the `input` buffer with data from `self`.
+    fn extend(&self, input: &mut P::Input);
+}
+
+/// Proof System Input Introspection
+///
+/// This `trait` is automatically implemented for all [`T: Input<Self>`](Input) and cannot be
+/// implemented manually.
+pub trait HasInput<T>: ProofSystem
 where
     T: ?Sized,
 {
-    /// Extend the `input` with the `next` element.
-    fn extend(input: &mut Self::Input, next: &T);
+    /// Extends the `input` buffer with data from `value`.
+    fn extend(input: &mut Self::Input, value: &T);
+}
+
+impl<P, T> HasInput<T> for P
+where
+    P: ProofSystem + ?Sized,
+    T: Input<P> + ?Sized,
+{
+    #[inline]
+    fn extend(input: &mut Self::Input, value: &T) {
+        value.extend(input)
+    }
 }
 
 /// Constraint System Measurement
 pub mod measure {
-    use super::mode::{Constant, Public, Secret};
+    use crate::eclair::alloc::mode::{Constant, Public, Secret};
     use alloc::{fmt::Display, format, string::String, vec::Vec};
     use core::{
         fmt::Debug,
@@ -124,6 +136,8 @@ pub mod measure {
             None
         }
     }
+
+    impl<M> Count<M> for () {}
 
     /// Constraint System Measurement
     pub trait Measure: Count<Constant> + Count<Public> + Count<Secret> {
@@ -162,6 +176,13 @@ pub mod measure {
             let mut measurement = Default::default();
             self.after(&mut measurement, f);
             measurement
+        }
+    }
+
+    impl Measure for () {
+        #[inline]
+        fn constraint_count(&self) -> usize {
+            0
         }
     }
 
@@ -251,6 +272,29 @@ pub mod measure {
                 (None, rhs) => self.secret_variable_count = rhs,
             }
         }
+    }
+
+    /// Prints the measurement of the call to `f` with the given `label`.
+    #[cfg(feature = "std")]
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
+    #[inline]
+    pub fn print_measurement<D, F, T, COM>(label: D, f: F, compiler: &mut COM) -> T
+    where
+        D: Display,
+        F: FnOnce(&mut COM) -> T,
+        COM: Measure,
+    {
+        let before = compiler.measure();
+        let value = f(compiler);
+        println!(
+            "{}: {:?}",
+            label,
+            compiler
+                .measure()
+                .checked_sub(before)
+                .expect("Measurements should increase when adding more constraints.")
+        );
+        value
     }
 
     /// Measurement Instrument

@@ -14,14 +14,15 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Poseidon Hash Implementation
+//! Poseidon Permutation Implementation
 
 use crate::crypto::poseidon::{
     matrix::MatrixOperations, mds::MdsMatrices, round_constants::generate_round_constants,
 };
 use alloc::{boxed::Box, vec::Vec};
-use core::{fmt::Debug, hash::Hash, iter, mem, slice};
+use core::{fmt::Debug, hash::Hash, iter, marker::PhantomData, mem, slice};
 use manta_crypto::{
+    eclair::alloc::{Allocate, Const, Constant},
     permutation::PseudorandomPermutation,
     rand::{RngCore, Sample},
 };
@@ -88,27 +89,33 @@ pub trait FieldGeneration {
         Self: Sized;
 }
 
-/// Poseidon Permutation Specification
-pub trait Specification<COM = ()> {
-    /// Field Type used for Permutation State
-    type Field;
-
-    /// Field Type used for Constant Parameters
-    type ParameterField;
-
+/// Poseidon Constants
+pub trait Constants {
     /// Width of the Permutation
     ///
     /// This number is the total number `t` of field elements in the state which is `F^t`.
     const WIDTH: usize;
-
-    /// Number of Partial Rounds
-    const PARTIAL_ROUNDS: usize;
 
     /// Number of Full Rounds
     ///
     /// The total number of full rounds in the Poseidon permutation, including the first set of full
     /// rounds and then the second set after the partial rounds.
     const FULL_ROUNDS: usize;
+
+    /// Number of Partial Rounds
+    const PARTIAL_ROUNDS: usize;
+}
+
+/// Parameter Field Type
+pub trait ParameterFieldType {
+    /// Field Type used for Constant Parameters
+    type ParameterField;
+}
+
+/// Poseidon Permutation Specification
+pub trait Specification<COM = ()>: Constants + ParameterFieldType {
+    /// Field Type used for Permutation State
+    type Field;
 
     /// Adds two field elements together.
     fn add(lhs: &Self::Field, rhs: &Self::Field, compiler: &mut COM) -> Self::Field;
@@ -214,6 +221,9 @@ where
 
     /// MDS Matrix
     mds_matrix: Box<[S::ParameterField]>,
+
+    /// Type Parameter Marker
+    __: PhantomData<COM>,
 }
 
 impl<S, COM> Permutation<S, COM>
@@ -227,7 +237,7 @@ where
     /// [`HALF_FULL_ROUNDS`]-many full rounds at the end.
     ///
     /// [`HALF_FULL_ROUNDS`]: Self::HALF_FULL_ROUNDS
-    /// [`PARTIAL_ROUNDS`]: Specification::PARTIAL_ROUNDS
+    /// [`PARTIAL_ROUNDS`]: Constants::PARTIAL_ROUNDS
     pub const HALF_FULL_ROUNDS: usize = S::FULL_ROUNDS / 2;
 
     /// Total Number of Rounds
@@ -273,6 +283,7 @@ where
         Self {
             additive_round_keys,
             mds_matrix,
+            __: PhantomData,
         }
     }
 
@@ -366,6 +377,29 @@ where
     }
 }
 
+impl<S, COM> Constant<COM> for Permutation<S, COM>
+where
+    S: Specification<COM> + Constant<COM>,
+    S::Type: Specification<ParameterField = Const<S::ParameterField, COM>>,
+    S::ParameterField: Constant<COM>,
+{
+    type Type = Permutation<S::Type>;
+
+    #[inline]
+    fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
+        Self::new_unchecked(
+            this.additive_round_keys
+                .iter()
+                .map(|e| e.as_constant(compiler))
+                .collect(),
+            this.mds_matrix
+                .iter()
+                .map(|e| e.as_constant(compiler))
+                .collect(),
+        )
+    }
+}
+
 impl<S, COM> Decode for Permutation<S, COM>
 where
     S: Specification<COM>,
@@ -424,9 +458,8 @@ where
 
 impl<D, S, COM> Sample<D> for Permutation<S, COM>
 where
-    D: Clone,
     S: Specification<COM>,
-    S::ParameterField: Field + FieldGeneration + PartialEq + Sample<D>,
+    S::ParameterField: Field + FieldGeneration,
 {
     #[inline]
     fn sample<R>(distribution: D, rng: &mut R) -> Self
@@ -434,16 +467,12 @@ where
         R: RngCore + ?Sized,
     {
         let _ = (distribution, rng);
-        Self {
-            additive_round_keys: generate_round_constants(
-                S::WIDTH,
-                S::FULL_ROUNDS,
-                S::PARTIAL_ROUNDS,
-            )
-            .into_boxed_slice(),
-            mds_matrix: MdsMatrices::generate_mds(S::WIDTH)
+        Self::new_unchecked(
+            generate_round_constants(S::WIDTH, S::FULL_ROUNDS, S::PARTIAL_ROUNDS)
+                .into_boxed_slice(),
+            MdsMatrices::generate_mds(S::WIDTH)
                 .to_row_major()
                 .into_boxed_slice(),
-        }
+        )
     }
 }
