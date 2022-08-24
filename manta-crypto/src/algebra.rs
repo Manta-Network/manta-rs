@@ -329,7 +329,7 @@ pub mod test {
         F: FnOnce(&G, &G, &mut COM),
     {
         assert_same(
-            &g1.add(&g2, compiler).add(&g3, compiler),
+            &g1.add(g2, compiler).add(g3, compiler),
             &g1.add(&g2.add(g3, compiler), compiler),
             compiler,
         )
@@ -342,7 +342,7 @@ pub mod test {
         G: Group<COM>,
         F: FnOnce(&G, &G, &mut COM),
     {
-        assert_same(&g1.add(&g2, compiler), &g2.add(&g1, compiler), compiler)
+        assert_same(&g1.add(g2, compiler), &g2.add(g1, compiler), compiler)
     }
 
     /// Tests if `G::zero()` is the identity element.
@@ -352,7 +352,7 @@ pub mod test {
         G: Group<COM> + Zero<COM>,
         F: FnOnce(&G, &G, &mut COM),
     {
-        assert_same(&g, &g.add(&G::zero(compiler), compiler), compiler)
+        assert_same(g, &g.add(&G::zero(compiler), compiler), compiler)
     }
 
     /// Tests if the group `R` is associative.
@@ -363,7 +363,7 @@ pub mod test {
         F: FnOnce(&R, &R, &mut COM),
     {
         assert_same(
-            &r1.mul(&r2, compiler).mul(&r3, compiler),
+            &r1.mul(r2, compiler).mul(r3, compiler),
             &r1.mul(&r2.mul(r3, compiler), compiler),
             compiler,
         )
@@ -376,7 +376,7 @@ pub mod test {
         R: Ring<COM>,
         F: FnOnce(&R, &R, &mut COM),
     {
-        assert_same(&r1.mul(&r2, compiler), &r2.mul(&r1, compiler), compiler)
+        assert_same(&r1.mul(r2, compiler), &r2.mul(r1, compiler), compiler)
     }
 
     /// Tests if the ring `R` satisfies the distributive property.
@@ -392,8 +392,8 @@ pub mod test {
         F: FnOnce(&R, &R, &mut COM),
     {
         assert_same(
-            &r1.mul(&r2.add(&r3, compiler), compiler),
-            &r1.mul(&r2, compiler).add(&r1.mul(&r3, compiler), compiler),
+            &r1.mul(&r2.add(r3, compiler), compiler),
+            &r1.mul(r2, compiler).add(&r1.mul(r3, compiler), compiler),
             compiler,
         )
     }
@@ -405,6 +405,6 @@ pub mod test {
         R: Ring<COM> + One<COM>,
         F: FnOnce(&R, &R, &mut COM),
     {
-        assert_same(&r, &r.mul(&R::one(compiler), compiler), compiler)
+        assert_same(r, &r.mul(&R::one(compiler), compiler), compiler)
     }
 }

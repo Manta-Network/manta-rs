@@ -26,6 +26,7 @@ mod test {
         encryption,
         rand::{OsRng, Rand},
     };
+    use manta_util::Array;
 
     /// Tests if symmetric encryption of [`Note`] decrypts properly.
     #[test]
@@ -67,22 +68,20 @@ mod test {
         );
     }
 
-    /*
-    // TODO: Make this work. Problem: Ciphertext does not implement Sample.
     /// Checks that randomly generated ciphertexts are always invalid.
     #[test]
     fn invalid_ciphertext_symmetric_check() {
         let mut rng = OsRng;
         let decryption_key = rng.gen();
+        let ciphertext: [u8; 68usize] = rng.gen();
         encryption::test::ciphertext_check::<NoteSymmetricEncryptionScheme, _>(
             &rng.gen(),
             &decryption_key,
             &(),
-            &rng.gen(),
+            &Array(ciphertext),
             |decrypted_plaintext| {
                 assert!(decrypted_plaintext.is_none());
             },
         );
     }
-    */
 }
