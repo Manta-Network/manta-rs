@@ -16,13 +16,16 @@
 
 //! Arkwprks Elliptic Curve Implementation
 
+use crate::alloc::string::ToString;
 use crate::arkworks::ff::PrimeField;
 use models::short_weierstrass_jacobian;
 use models::twisted_edwards_extended;
 use models::SWModelParameters;
 use models::TEModelParameters;
+use num_bigint::BigInt;
 use num_bigint::Sign;
-use num_bigint::{BigInt, BigUint};
+
+
 
 #[doc(inline)]
 pub use ark_ec::*;
@@ -109,61 +112,28 @@ where
 
     ///
     #[inline]
-    pub fn scalar_mul(&self, point: &C, scalar: &C::ScalarField) -> C {
-        let (k1, k2) = glv_decompose_scalar::<&C>(&scalar, self.base_v1, self.base_v2);
+    pub fn scalar_mul(&self, point: &C, scalar: &C::ScalarField) -> C
+    where
+        C: AffineCurveExt,
+    {
+        let (k1, k2) = glv_decompose_scalar(scalar, self.base_v1.clone(), self.base_v2.clone());
 
-    let mut P1 = C::zero();
-    let mut P2 = C::zero();
+        let (k1_sign, k1) = k1.into_parts();
+        let k1_scalar = C::ScalarField::from_le_bytes_mod_order(&k1.to_bytes_le());
 
-    let P1 = match k1.sign() {
-        Sign::Minus => {
-            let k1_unsigned: BigUint = BigInt::to_biguint(&-k1).unwrap();
-            let k1_scalar = C::ScalarField::from_le_bytes_mod_order(&k1_unsigned.to_bytes_le());
-            -point.mul(*&k1_scalar.into_repr())
-        },
-        _ => {
-            let k1_unsigned: BigUint = BigInt::to_biguint(&k1).unwrap();
-            let k1_scalar = C::ScalarField::from_le_bytes_mod_order(&k1_unsigned.to_bytes_le());
-            point.mul(*&k1_scalar.into_repr())
-        }
-    };
-    let P2 = match k2.sign() {
-        Sign::Minus => {
-            let k2_unsigned: BigUint = BigInt::to_biguint(&-k2).unwrap();
-            let k2_scalar = C::ScalarField::from_le_bytes_mod_order(&k2_unsigned.to_bytes_le());
-            -glv_endomorphism::<C>(point, &self.beta).mul(*&k2_scalar.into_repr())
-        },
-        _ => {
-            let k1_unsigned: BigUint = BigInt::to_biguint(&k1).unwrap();
-            let k1_scalar = C::ScalarField::from_le_bytes_mod_order(&k1_unsigned.to_bytes_le());
-            point.mul(*&k1_scalar.into_repr())
-        }
-    };
+        let p1 = match k1_sign {
+            Sign::Minus => -point.mul(k1_scalar.into_repr()),
+            _ => point.mul(k1_scalar.into_repr()),
+        };
 
-    // if Sign::Minus == k1.sign() {
-    //     let k1_unsigned: BigUint = BigInt::to_biguint(&-(&decomposition[0])).unwrap();
-    //     let k1_scalar = C::ScalarField::from_le_bytes_mod_order(&k1_unsigned.to_bytes_le());
-    //     P1 = -point.mul(&k1_scalar.into_repr());
-    // } else {
-    //     let k1_unsigned: BigUint = BigInt::to_biguint(&decomposition[0]).unwrap();
-    //     let k1_scalar = C::ScalarField::from_le_bytes_mod_order(&k1_unsigned.to_bytes_le());
-    //     P1 = point.mul(&k1_scalar.into_repr());
-    // }
+        let (k2_sign, k2) = k2.into_parts();
+        let k2_scalar = C::ScalarField::from_le_bytes_mod_order(&k2.to_bytes_le());
 
-    // if Sign::Minus == decomposition[1].sign() {
-    //     let k2_unsigned: BigUint = BigInt::to_biguint(&-(&decomposition[1])).unwrap();
-    //     let k2_scalar = C::ScalarField::from_le_bytes_mod_order(&k2_unsigned.to_bytes_le());
-    //     let p_affine= point.into_affine();
-    //     let p_affine_x = AffineCurveExt::x(&p_affine);
-    //     //P2 = -endomorphism::<C,F>(point, beta_raw).mul(&k2_scalar.into_repr());
-    // } else {
-    //     let k2_unsigned: BigUint = BigInt::to_biguint(&decomposition[1]).unwrap();
-    //     let k2_scalar = C::ScalarField::from_le_bytes_mod_order(&k2_unsigned.to_bytes_le());
-    //     //P2 = endomorphism::<C>(point, beta_raw).mul(&k2_scalar.into_repr());
-    // }
-    let answer = P1 + P2;
-    answer
-        todo!()
+        let p2 = match k2_sign {
+            Sign::Minus => -glv_endomorphism(point, &self.beta).mul(k2_scalar.into_repr()),
+            _ => glv_endomorphism(point, &self.beta).mul(k2_scalar.into_repr()),
+        };
+        (p1 + p2).into_affine()
     }
 }
 
@@ -177,11 +147,11 @@ where
     // NOTE: We first find rational solutions to `(k,0) = q1v + q2u`
     //       We can re-write this problem as a matrix `A(q1,q2) = (k,0)`
     //       so that `(q1,q2) = A^-1(k,0)`.
-    let k = BigInt::from_biguint(Sign::Plus, k.into());
-    let det = (v.0 * u.1) - (v.1 * u.0);
-    let q1 = (u.1 * k) / det;
-    let q2 = (-v.1 * k) / det;
-    let k1 = k - q1 * v.0 - q2 * u.0;
+    let k: BigInt = k.into_repr().to_string().parse().unwrap();
+    let det = (v.0.clone() * u.1.clone()) - (v.1.clone() * u.0.clone());
+    let q1 = (u.1.clone() * k.clone()) / det.clone();
+    let q2 = (-v.1.clone() * k.clone()) / det;
+    let k1 = k - q1.clone() * v.0 - q2.clone() * u.0;
     let k2 = 0 - q1 * v.1 - q2 * u.1;
     (k1, k2)
 }
@@ -195,54 +165,36 @@ where
     C::from_xy_unchecked(*point.x() * beta, *point.y())
 }
 
-///
-#[inline]
-pub fn mul_glv<C>(scalar: &C::ScalarField, point: &C) -> C
-//, parameters: &GLVParameters) -> C
-where
-    C: ProjectiveCurve,
-{
-    let beta_raw: BigUint = "2203960485148121921418603742825762020974279258880205651966".parse().unwrap();
-    // NOTE: First generate basis vectors u and v
-    let v1: BigInt = "9931322734385697763".parse().unwrap();
-    let v2: BigInt = "-147946756881789319000765030803803410728".parse().unwrap();
-    let mut v: Vec<BigInt> = Vec::new();
-    v.push(v1);
-    v.push(v2);
+/// Testing Suite
+#[cfg(test)]
+mod test {
+    use core::str::FromStr;
+    use super::*;
+    use crate::arkworks::ff::UniformRand;
+    use crate::arkworks::ff::{Field, PrimeField};
+    use crate::rand::OsRng;
 
-    // NOTE: Components for second basis vector u:
-    let u1: BigInt = "147946756881789319010696353538189108491".parse().unwrap();
-    let u2: BigInt = "9931322734385697763".parse().unwrap();
-    let mut u: Vec<BigInt> = Vec::new();
-    u.push(u1);
-    u.push(u2);
-
-    let decomposition = decompose_scalar::<C>(&scalar, v, u);
-
-    // NOTE: Check sign for k1
-    let mut P1 = C::zero();
-    let mut P2 = C::zero().into_affine();
-    if Sign::Minus == decomposition[0].sign() {
-        let k1_unsigned: BigUint = BigInt::to_biguint(&-(&decomposition[0])).unwrap();
-        let k1_scalar = C::ScalarField::from_le_bytes_mod_order(&k1_unsigned.to_bytes_le());
-        P1 = -point.mul(&k1_scalar.into_repr());
-    } else {
-        let k1_unsigned: BigUint = BigInt::to_biguint(&decomposition[0]).unwrap();
-        let k1_scalar = C::ScalarField::from_le_bytes_mod_order(&k1_unsigned.to_bytes_le());
-        P1 = point.mul(&k1_scalar.into_repr());
+    pub fn glv_is_correct<C>()
+    where
+        C: AffineCurveExt,
+    {
+        let mut rng = OsRng;
+        let scalar = C::ScalarField::rand(&mut rng);
+        let point = C::rand(&mut rng);
+        assert_eq!(
+            point.mul(&scalar.into_repr()),
+            GLVParameters::<C>{
+            lambda: C::ScalarField::from_le_bytes_mod_order(&"228988810152649578064853576960394133503".parse().unwrap().to_bytes_le()),
+            beta: C::BaseField::from_random_bytes(&"4002409555221667392624310435006688643935503118305586438271171395842971157480381377015405980053539358417135540939436".parse().unwrap().to_bytes_le()).unwrap(),
+            base_v1: (BigInt::from_str("1").unwrap(), BigInt::from_str("228988810152649578064853576960394133504").unwrap()),
+            base_v2: ("228988810152649578064853576960394133503".parse().unwrap(),"-1".parse().unwrap())
+            }.scalar_mul(&point, &scalar),
+            "GLV should produce the same results as Arkworks scalar multiplication."
+        );
     }
-    //Check sign for k2
-    if Sign::Minus == decomposition[1].sign() {
-        let k2_unsigned: BigUint = BigInt::to_biguint(&-(&decomposition[1])).unwrap();
-        let k2_scalar = C::ScalarField::from_le_bytes_mod_order(&k2_unsigned.to_bytes_le());
-        let p_affine= point.into_affine();
-        let p_affine_x = AffineCurveExt::x(&p_affine);
-        //P2 = -endomorphism::<C,F>(point, beta_raw).mul(&k2_scalar.into_repr());
-    } else {
-        let k2_unsigned: BigUint = BigInt::to_biguint(&decomposition[1]).unwrap();
-        let k2_scalar = C::ScalarField::from_le_bytes_mod_order(&k2_unsigned.to_bytes_le());
-        //P2 = endomorphism::<C>(point, beta_raw).mul(&k2_scalar.into_repr());
+
+    #[test]
+    fn glv_matches_arkworks_scalar_mul() {
+        glv_is_correct::<ark_bls12_381::G1Affine>();
     }
-    let answer = P1 + P2;
-    answer
 }
