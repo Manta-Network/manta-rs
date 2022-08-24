@@ -20,22 +20,25 @@ use crate::{
     groth16::kzg::{
         Accumulator, Configuration as KzgConfiguration, Proof as KzgProof, Size, G1, G2,
     },
-    ratio::RatioProof,
-    util::{BlakeHasher, Deserializer, KZGBlakeHasher, Serializer},
+    ratio::{HashToGroup, RatioProof},
+    util::{hash_to_group, BlakeHasher, Deserializer, Serializer},
 };
-use ark_bn254::{Bn254, Fr, G1Affine, G2Affine, Parameters};
+use ark_bn254::{Bn254, Fq, Fq2, Fr, G1Affine, G2Affine, Parameters};
 use ark_std::{io, println};
 use blake2::Digest;
 use core::{fmt, marker::PhantomData};
-use manta_crypto::arkworks::{
-    ec::{
-        models::{bn::BnParameters, ModelParameters},
-        short_weierstrass_jacobian::GroupAffine,
-        AffineCurve, PairingEngine, SWModelParameters,
+use manta_crypto::{
+    arkworks::{
+        ec::{
+            models::{bn::BnParameters, ModelParameters},
+            short_weierstrass_jacobian::GroupAffine,
+            AffineCurve, PairingEngine, ProjectiveCurve, SWModelParameters,
+        },
+        ff::{BigInteger256, Fp256, FpParameters, PrimeField, ToBytes, Zero},
+        pairing::Pairing,
+        serialize::{CanonicalSerialize, Read, SerializationError, Write},
     },
-    ff::{PrimeField, ToBytes, Zero},
-    pairing::Pairing,
-    serialize::{CanonicalSerialize, Read, SerializationError, Write},
+    rand::{RngCore, Sample},
 };
 use manta_util::{cfg_iter, into_array_unchecked, vec::Vec};
 use memmap::Mmap;
@@ -74,7 +77,7 @@ impl<S, const POWERS: usize> KzgConfiguration for PerpetualPowersOfTauCeremony<S
     type DomainTag = u8;
     type Challenge = [u8; 64];
     type Response = [u8; 64];
-    type HashToGroup = KZGBlakeHasher<Self>;
+    type HashToGroup = PpotHasher;
 
     const TAU_DOMAIN_TAG: Self::DomainTag = 0;
     const ALPHA_DOMAIN_TAG: Self::DomainTag = 1;
@@ -826,37 +829,29 @@ pub fn read_kzg_proof(
         + (PpotCeremony::G1_POWERS + 2 * PpotCeremony::G2_POWERS) * 32
         + (PpotCeremony::G2_POWERS + 1) * 64;
     // let position = calculate_mmap_position(index, element_type, compression) // TODO : Use calc_mmap
-    println!("Trying to access position {:?}", position);
     let mut reader = readable_map
-        .get(position..position + 6 * 32 + 3 * 64) // The end of the file should have the Proof
+        .get(position..position + 6 * 64 + 3 * 128) // The end of the file should have the Proof
         .expect("cannot read point data from file");
 
     // Deserialize in original PPoT order:
-    let tau_g1 = <PpotCeremony as Deserializer<G1Affine, G1>>::deserialize_compressed(&mut reader)?;
-    curve_point_checks(&tau_g1)?;
+    let tau_g1 =
+        <PpotCeremony as Deserializer<G1Affine, G1>>::deserialize_uncompressed(&mut reader)?;
     let tau_g1_tau =
-        <PpotCeremony as Deserializer<G1Affine, G1>>::deserialize_compressed(&mut reader)?;
-    curve_point_checks(&tau_g1_tau)?;
+        <PpotCeremony as Deserializer<G1Affine, G1>>::deserialize_uncompressed(&mut reader)?;
     let alpha_tau_g1 =
-        <PpotCeremony as Deserializer<G1Affine, G1>>::deserialize_compressed(&mut reader)?;
-    curve_point_checks(&alpha_tau_g1)?;
+        <PpotCeremony as Deserializer<G1Affine, G1>>::deserialize_uncompressed(&mut reader)?;
     let alpha_tau_g1_alpha =
-        <PpotCeremony as Deserializer<G1Affine, G1>>::deserialize_compressed(&mut reader)?;
-    curve_point_checks(&alpha_tau_g1_alpha)?;
+        <PpotCeremony as Deserializer<G1Affine, G1>>::deserialize_uncompressed(&mut reader)?;
     let beta_tau_g1 =
-        <PpotCeremony as Deserializer<G1Affine, G1>>::deserialize_compressed(&mut reader)?;
-    curve_point_checks(&beta_tau_g1)?;
+        <PpotCeremony as Deserializer<G1Affine, G1>>::deserialize_uncompressed(&mut reader)?;
     let beta_tau_g1_beta =
-        <PpotCeremony as Deserializer<G1Affine, G1>>::deserialize_compressed(&mut reader)?;
-    curve_point_checks(&beta_tau_g1_beta)?;
-    let tau_g2 = <PpotCeremony as Deserializer<G2Affine, G2>>::deserialize_compressed(&mut reader)?;
-    curve_point_checks(&tau_g2)?;
+        <PpotCeremony as Deserializer<G1Affine, G1>>::deserialize_uncompressed(&mut reader)?;
+    let tau_g2 =
+        <PpotCeremony as Deserializer<G2Affine, G2>>::deserialize_uncompressed(&mut reader)?;
     let alpha_g2 =
-        <PpotCeremony as Deserializer<G2Affine, G2>>::deserialize_compressed(&mut reader)?;
-    curve_point_checks(&alpha_g2)?;
+        <PpotCeremony as Deserializer<G2Affine, G2>>::deserialize_uncompressed(&mut reader)?;
     let beta_g2 =
-        <PpotCeremony as Deserializer<G2Affine, G2>>::deserialize_compressed(&mut reader)?;
-    curve_point_checks(&beta_g2)?;
+        <PpotCeremony as Deserializer<G2Affine, G2>>::deserialize_uncompressed(&mut reader)?;
 
     Ok(KzgProof {
         tau: RatioProof {
@@ -1067,4 +1062,193 @@ fn deserialization_test() {
         }
     }
     assert_eq!(g2, g2_deser);
+}
+
+#[ignore] // NOTE: Adds `ignore` such that CI does NOT run this test while still allowing developers to test.
+#[test]
+fn verify_one_transition_test() {
+    use crate::groth16::test::bn254::manta_pay::MantaPaySetupCeremony;
+    use ark_std::{fs::OpenOptions, time::Instant};
+    use memmap::MmapOptions;
+
+    // Read first accumulator
+    println!("Reading accumulator from challenge file");
+    let now = Instant::now();
+    let reader = OpenOptions::new()
+        .read(true)
+        .open("/Users/thomascnorton/Documents/Manta/trusted-setup/challenge_0071")
+        .expect("unable open `./challenge` in this directory");
+    // Make a memory map
+    let challenge_map = unsafe {
+        MmapOptions::new()
+            .map(&reader)
+            .expect("unable to create a memory map for input")
+    };
+    let prev_accumulator =
+        read_subaccumulator::<MantaPaySetupCeremony>(&challenge_map, Compressed::No).unwrap();
+    println!("Read uncompressed accumulator in {:?}", now.elapsed());
+
+    // Read second accumulator
+    println!("Reading accumulator from challenge file");
+    let now = Instant::now();
+    let reader = OpenOptions::new()
+        .read(true)
+        .open("/Users/thomascnorton/Documents/Manta/trusted-setup/challenge_0072")
+        .expect("unable open `./challenge` in this directory");
+    // Make a memory map
+    let challenge_map = unsafe {
+        MmapOptions::new()
+            .map(&reader)
+            .expect("unable to create a memory map for input")
+    };
+    let next_accumulator =
+        read_subaccumulator::<MantaPaySetupCeremony>(&challenge_map, Compressed::No).unwrap();
+    println!("Read uncompressed accumulator in {:?}", now.elapsed());
+
+    // Try to load `./response` from disk.
+    println!("Reading accumulator from response file");
+    let reader = OpenOptions::new()
+        .read(true)
+        .open("/Users/thomascnorton/Documents/Manta/trusted-setup/response_0071")
+        .expect("unable open `./response` in this directory");
+    // Make a memory map
+    let response = unsafe {
+        MmapOptions::new()
+            .map(&reader)
+            .expect("unable to create a memory map for input")
+    };
+
+    let challenge_hash: [u8; 64] = into_array_unchecked(
+        response
+            .get(0..64)
+            .expect("Cannot read hash from header of response file"),
+    );
+    let proof: KzgProof<PpotCeremony> = read_kzg_proof(&response).unwrap();
+
+    println!("The challenge is \n ");
+    for line in challenge_hash.chunks(16) {
+        print!("\t");
+        for section in line.chunks(4) {
+            for b in section {
+                print!("{:02x}", b);
+            }
+            print!(" ");
+        }
+        println!("");
+    }
+
+    let _prev = Accumulator::<MantaPaySetupCeremony>::verify_transform(
+        prev_accumulator,
+        next_accumulator,
+        challenge_hash,
+        proof.cast_to_subceremony(),
+    )
+    .unwrap();
+}
+
+/// The G2 hasher used in the PPoT ceremony
+pub struct PpotHasher {
+    pub domain_tag: u8,
+}
+
+impl<S, const POWERS: usize, const N: usize>
+    HashToGroup<PerpetualPowersOfTauCeremony<S, POWERS>, [u8; N]> for PpotHasher
+{
+    #[inline]
+    fn hash(&self, challenge: &[u8; N], ratio: (&G1Affine, &G1Affine)) -> G2Affine {
+        let mut hasher = BlakeHasher::default();
+        hasher.0.update(&[self.domain_tag]);
+        hasher.0.update(challenge);
+        <PpotCeremony as Serializer<G1Affine, G1>>::serialize_uncompressed(ratio.0, &mut hasher)
+            .unwrap();
+        <PpotCeremony as Serializer<G1Affine, G1>>::serialize_uncompressed(ratio.1, &mut hasher)
+            .unwrap();
+        hash_to_group::<_, PpotDistribution, 64>(into_array_unchecked(hasher.0.finalize()))
+        // TODO : Why can't i change 64 to N ?
+    }
+}
+
+/// A distribution to replicate random sampling as it was done
+/// during the Ppot ceremony, which used `rand v. 0.4`.
+#[derive(Copy, Clone, Default)]
+pub struct PpotDistribution;
+
+impl<P> Sample<PpotDistribution> for GroupAffine<P>
+where
+    P: SWModelParameters,
+    P::BaseField: Sample<PpotDistribution>,
+{
+    fn sample<R>(distribution: PpotDistribution, rng: &mut R) -> Self
+    where
+        R: RngCore + ?Sized,
+    {
+        loop {
+            let x = P::BaseField::sample(distribution, rng);
+            let greatest = bool::sample(distribution, rng);
+            if let Some(p) = Self::get_point_from_x(x, greatest) {
+                let p = p.scale_by_cofactor();
+                if !p.is_zero() {
+                    return p.into_affine();
+                }
+            }
+        }
+    }
+}
+
+impl Sample<PpotDistribution> for Fq {
+    fn sample<R>(distribution: PpotDistribution, rng: &mut R) -> Self
+    where
+        R: RngCore + ?Sized,
+    {
+        loop {
+            let mut tmp = BigInteger256::sample(distribution, rng);
+
+            // Mask away the unused bits at the beginning.
+            tmp.as_mut()[3] &= 0xffffffffffffffff >> ark_bn254::FqParameters::REPR_SHAVE_BITS;
+            // TODO: This might need to be tweaked
+            if tmp < ark_bn254::FqParameters::MODULUS {
+                return Fp256::new(tmp);
+            }
+        }
+    }
+}
+impl Sample<PpotDistribution> for Fq2 {
+    fn sample<R>(distribution: PpotDistribution, rng: &mut R) -> Self
+    where
+        R: RngCore + ?Sized,
+    {
+        Self::new(Fq::sample(distribution, rng), Fq::sample(distribution, rng))
+    }
+}
+
+impl Sample<PpotDistribution> for BigInteger256 {
+    fn sample<R>(distribution: PpotDistribution, rng: &mut R) -> Self
+    where
+        R: RngCore + ?Sized,
+    {
+        BigInteger256([
+            u64::sample(distribution, rng),
+            u64::sample(distribution, rng),
+            u64::sample(distribution, rng),
+            u64::sample(distribution, rng),
+        ])
+    }
+}
+
+impl Sample<PpotDistribution> for u64 {
+    fn sample<R>(_: PpotDistribution, rng: &mut R) -> Self
+    where
+        R: RngCore + ?Sized,
+    {
+        ((rng.next_u32() as u64) << 32) | (rng.next_u32() as u64)
+    }
+}
+
+impl Sample<PpotDistribution> for bool {
+    fn sample<R>(_: PpotDistribution, rng: &mut R) -> Self
+    where
+        R: RngCore + ?Sized,
+    {
+        (rng.next_u32() as u8) & 1 == 1
+    }
 }

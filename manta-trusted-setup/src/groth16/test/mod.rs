@@ -237,8 +237,8 @@ where
 fn has_valid_bn254_pairing_ratio() {
     let mut rng = OsRng;
     assert_valid_pairing_ratio::<Bn254>(
-        G1Affine::gen(&mut rng),
-        G2Affine::gen(&mut rng),
+        <G1Affine as Sample<()>>::gen(&mut rng),
+        <G2Affine as Sample<()>>::gen(&mut rng),
         Fr::gen(&mut rng),
     );
 }

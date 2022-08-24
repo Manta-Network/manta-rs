@@ -253,6 +253,29 @@ where
                 .1,
         })
     }
+
+    /// Reinterpret a proof from a KZG ceremony as a proof
+    /// for a sub-ceremony.
+    #[inline]
+    pub fn cast_to_subceremony<D>(self) -> Proof<D>
+    where
+        D: Pairing<G1 = <C as Pairing>::G1, G2 = <C as Pairing>::G2>,
+    {
+        Proof {
+            tau: RatioProof {
+                ratio: self.tau.ratio,
+                matching_point: self.tau.matching_point,
+            },
+            alpha: RatioProof {
+                ratio: self.alpha.ratio,
+                matching_point: self.alpha.matching_point,
+            },
+            beta: RatioProof {
+                ratio: self.beta.ratio,
+                matching_point: self.beta.matching_point,
+            },
+        }
+    }
 }
 
 impl<C> CanonicalSerialize for Proof<C>
