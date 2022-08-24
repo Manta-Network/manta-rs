@@ -14,11 +14,9 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Groth16 Trusted Setup
+//! Bn254 Backend for MantaPay Groth16 Trusted Setup
 
-pub mod bn254;
 pub mod kzg;
 pub mod mpc;
-
-#[cfg(test)]
-pub mod test;
+pub mod ppot_hashing;
+pub mod serialization;

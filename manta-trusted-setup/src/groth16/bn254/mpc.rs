@@ -14,11 +14,4 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Groth16 Trusted Setup
-
-pub mod bn254;
-pub mod kzg;
-pub mod mpc;
-
-#[cfg(test)]
-pub mod test;
+//! Groth16 MPC (Phase 2) for Bn254 Backend
