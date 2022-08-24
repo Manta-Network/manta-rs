@@ -22,8 +22,8 @@ use alloc::string::String;
 use bip39::{Language, Mnemonic, Seed};
 use clap::{Parser, Subcommand};
 use colored::Colorize; // TODO: Try https://docs.rs/console/latest/console/
+use console::style;
 use dialoguer::{theme::ColorfulTheme, Input};
-use indicatif::ProgressBar;
 use manta_trusted_setup::ceremony::{
     client::{handle_error, register, Endpoint, Error},
     config::{check_state_size, g16_bls12_381::Groth16BLS12381, Nonce, PrivateKey, PublicKey},
@@ -32,7 +32,7 @@ use manta_trusted_setup::ceremony::{
     state::ServerSize,
 };
 use serde::{de::DeserializeOwned, Serialize};
-use std::{thread, time::{self, Duration}};
+use std::{thread, time};
 
 /// Welcome Message
 pub const TITLE: &str = r"
@@ -174,10 +174,15 @@ pub async fn get_start_meta_data(
 pub async fn contribute() -> Result<(), Error> {
     let network_client = reqwest::Client::new();
     let (pk, sk) = prompt_client_info()?;
+    println!(
+        "{} Querying Server for Meta Data...",
+        style("[1/9]").bold().dim()
+    );
     let (size, nonce) = get_start_meta_data(pk, &network_client).await?;
     let mut trusted_setup_client = Client::new(pk, pk, nonce, sk);
     loop {
-        println!("Contacting Server... (ETA: 2 minutes)");
+        print!("\r"); // TODO: This line does not work.
+        println!("{} Waiting in Queue...", style("[2/9]").bold().dim(),);
         let mpc_state = match send_request::<_, QueryResponse<C>>(
             &network_client,
             Endpoint::Query,
@@ -203,11 +208,18 @@ pub async fn contribute() -> Result<(), Error> {
             Err(CeremonyError::AlreadyContributed) => return Err(Error::AlreadyContributed),
             Ok(message) => match message {
                 QueryResponse::QueuePosition(position) => {
-                    println!("Your current position is {}.\n", position);
+                    print!("\r"); // TODO: This line does not work.
+                    println!(
+                        "{} Waiting in Queue... Your current position is {}.",
+                        style("[2/9]").bold().dim(),
+                        style(position).bold().blue(),
+                    );
                     thread::sleep(time::Duration::from_secs(10));
                     continue;
                 }
                 QueryResponse::Mpc(mpc_state) => {
+                    println!("{} Querying Server States...", style("[3/9]").bold().dim(),);
+                    // TODO: Add a progress bar here
                     let mpc_state = mpc_state.to_actual().map_err(|_| {
                         Error::UnexpectedError("Received mpc state cannot be parsed.".to_string())
                     })?;
@@ -220,9 +232,12 @@ pub async fn contribute() -> Result<(), Error> {
                 }
             },
         };
-        println!("It's YOUR turn to contribute! Contributing... (ETA: 3 minutes)");
-        let bar = ProgressBar::new(5);
-        bar.enable_steady_tick(Duration::from_secs(1));
+        println!(
+            "{} It's YOUR Turn to Contribute! Contributing to Three Circuits...",
+            style("[4/9]").bold().dim(),
+        );
+        // let bar = ProgressBar::new(5);
+        // bar.enable_steady_tick(Duration::from_secs(1));
         match send_request::<_, ()>(
             &network_client,
             Endpoint::Update,
@@ -231,7 +246,6 @@ pub async fn contribute() -> Result<(), Error> {
                     &Config::generate_hasher(),
                     &mpc_state.challenge,
                     mpc_state.state,
-                    &bar,
                 )
                 .map_err(|_| Error::UnableToGenerateRequest("contribute"))?,
         )
@@ -254,8 +268,8 @@ pub async fn contribute() -> Result<(), Error> {
             }
             Err(CeremonyError::AlreadyContributed) => return Err(Error::AlreadyContributed),
             Ok(_) => {
-                bar.inc(1);
-                println!("Contribute succeeded!");
+                // bar.inc(1);
+                println!("Congratulations! You have successfully contributed to Manta Trusted Setup Ceremony!");
                 break;
             }
         }

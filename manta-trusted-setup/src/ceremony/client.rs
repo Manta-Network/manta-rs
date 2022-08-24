@@ -31,7 +31,11 @@ use crate::{
 };
 use bip39::{Language, Mnemonic, MnemonicType, Seed};
 use colored::Colorize;
-use core::fmt::{Debug, Display, Formatter};
+use console::style;
+use core::{
+    fmt::{Debug, Display, Formatter},
+    time::Duration,
+};
 use indicatif::ProgressBar;
 use manta_crypto::{arkworks::serialize::CanonicalSerialize, rand::OsRng};
 
@@ -93,7 +97,6 @@ where
         hasher: &Hasher<C>,
         challenge: &[Challenge<C>; 3],
         mut state: [State<C>; 3],
-        bar: &ProgressBar,
     ) -> Result<Signed<ContributeRequest<C, 3>, C>, ()>
     where
         C::Participant: Clone,
@@ -101,14 +104,25 @@ where
         Proof<C>: CanonicalSerialize + Debug,
         <<C as CeremonyConfig>::SignatureScheme as SignatureScheme>::PublicKey: std::fmt::Debug,
     {
+        let circuit_name = ["ToPrivate", "PrivateTransfer", "ToPublic"];
         let mut rng = OsRng;
         let mut proofs = Vec::new();
         for i in 0..3 {
+            println!(
+                "{} Contributing to {} Circuits...",
+                style(format!("[{}/9]", i + 5)).bold().dim(),
+                circuit_name[i],
+            );
+            let bar = ProgressBar::new(5);
+            bar.enable_steady_tick(Duration::from_secs(1));
             proofs.push(
                 C::Setup::contribute(hasher, &challenge[i], &mut state[i], &mut rng).ok_or(())?,
             );
-            bar.inc(1);
         }
+        println!(
+            "{} Sending Contribution to Server...",
+            style("[8/9]").bold().dim(),
+        );
         let message = ContributeRequest::<C, 3> {
             contribute_state: AsBytes::from_actual(ContributeState::<C, 3> {
                 state,
@@ -117,7 +131,10 @@ where
                     .expect("Should have exactly three proofs."),
             }),
         };
-        bar.inc(1);
+        println!(
+            "{} Waiting for Confirmation from Server...",
+            style("[9/9]").bold().dim(),
+        );
         Signed::new(
             message,
             self.identifier.clone(),
