@@ -17,7 +17,12 @@
 //! Algebraic Constructions
 
 use crate::{
-    eclair::{alloc::Constant, num::Zero, ops::Neg},
+    eclair::{
+        alloc::Constant,
+        bool::{Bool, ConditionalSelect},
+        num::Zero,
+        Has,
+    },
     key,
     rand::{RngCore, Sample},
 };
@@ -32,9 +37,29 @@ use manta_util::{
 use manta_util::serde::{Deserialize, Serialize};
 
 /// Group
-pub trait Group<COM = ()> {
+pub trait Group<COM = ()>: Sized {
     /// Adds `rhs` to `self` in the group.
     fn add(&self, rhs: &Self, compiler: &mut COM) -> Self;
+
+    /// adsdjn
+    fn add_assign(&mut self, rhs: &Self, compiler: &mut COM) -> &mut Self {
+        *self = self.add(rhs, compiler);
+        self
+    }
+
+    ///jdfj
+    fn double_assign(&mut self, compiler: &mut COM) -> &mut Self {
+        *self = self.add(self, compiler);
+        self
+    }
+
+    ///
+    fn repeated_double_assign(&mut self, k: usize, compiler: &mut COM) -> &mut Self {
+        for _ in 0..k {
+            self.double_assign(compiler);
+        }
+        self
+    }
 }
 
 /// Ring
@@ -113,34 +138,16 @@ impl<G, const N: usize> PrecomputedBaseTable<G, N> {
     }
 }
 
-/// Non adjacent form (NAF)
-pub trait HasNAF<COM = ()> {
-    /// Returns `self`'s NAF as a vector of signed integers.
-    fn wnaf(&self, window_size: usize, compiler: &mut COM) -> Option<Vec<i64>>;
-}
-
 /// Window Method for Point Multiplication
-pub struct Window<S, G, COM>
-where
-    G: ScalarMulGroup<S, COM, Output = G>,
-{
+pub struct Window<G> {
     /// Multiplication Table
     table: Vec<G>,
-
-    /// Type Marker Parameter
-    __: PhantomData<(S, COM)>,
 }
 
-impl<S, G, COM> Window<S, G, COM>
-where
-    G: ScalarMulGroup<S, COM, Output = G>,
-{
+impl<G> Window<G> {
     /// Creates a new `Window` from a table without checking its correctness.
     pub fn new_unchecked(table: Vec<G>) -> Self {
-        Self {
-            table,
-            __: PhantomData,
-        }
+        Self { table }
     }
 
     /// Creates a new `Window`.
@@ -149,16 +156,16 @@ where
     ///
     /// This function panics if `window_size` is less than `1`.
     #[inline]
-    pub fn new(window_size: usize, point: G, compiler: &mut COM) -> Self
+    pub fn new<COM>(window_size: usize, point: G, compiler: &mut COM) -> Self
     where
-        G: Clone + Zero<COM>,
+        G: Zero<COM> + Group<COM>,
     {
         assert!(window_size > 0, "Window size must be at least 1.");
-        let mut table: Vec<G> = Vec::new();
-        let mut current_element = G::zero(compiler);
-        for _ in 0..2 ^ (window_size) {
-            table.push(current_element.clone());
-            current_element = current_element.add(&point, compiler);
+        let table_length = window_size.pow(2);
+        let mut table = Vec::with_capacity(table_length);
+        table.push(G::zero(compiler));
+        for _ in 1..table_length {
+            table.push(table.last().unwrap().add(&point, compiler));
         }
         Self::new_unchecked(table)
     }
@@ -173,41 +180,49 @@ where
         &self.table
     }
 
-    /// Multiplies a point in G by `scalar` using `Window`. Returns `None` if the table is too small.
-    pub fn scalar_mul(&self, scalar: &S, compiler: &mut COM) -> Option<G>
-    where
-        G: Clone + Neg<COM, Output = G> + Zero<COM>,
-        S: HasNAF<COM>,
+    /// Returns the table
+    pub fn into_inner(self) -> Vec<G> {
+        self.table
+    }
+
+    ///jjfd
+    fn scalar_mul_round<COM>(
+        window_size: usize,
+        table: &[G],
+        chunk: &[&Bool<COM>],
+        result: &mut G,
+        compiler: &mut COM,
+    ) where
+        G: ConditionalSelect<COM> + Clone + Group<COM>,
+        COM: Has<bool>,
     {
-        if 1 << (self.window_size() - 1) > self.table.len() {
-            return None;
-        }
-        // TODO: Wnaf the scalar.
-        let scalar_wnaf = scalar.wnaf(self.window_size(), compiler).unwrap();
+        let chunk = chunk.iter().copied().rev();
+        let selected_element = G::select_from_table(chunk, table, compiler);
+        result
+            .repeated_double_assign(window_size, compiler)
+            .add_assign(&selected_element, compiler);
+    }
 
+    /// Multiplies a point in G by `scalar` using `Window`. Returns `None` if the table is too small.
+    pub fn scalar_mul<'b, B, COM>(&self, bits: B, compiler: &mut COM) -> G
+    where
+        Bool<COM>: 'b,
+        B: IntoIterator<Item = &'b Bool<COM>>,
+        COM: Has<bool>,
+        G: ConditionalSelect<COM> + Clone + Zero<COM> + Group<COM>,
+    {
+        let bit_vector = bits.into_iter().collect::<Vec<_>>(); //TODO: Switch to chunking iterator.
+        let window_size = self.window_size();
         let mut result = G::zero(compiler);
-
-        let mut found_non_zero = false;
-
-        for n in scalar_wnaf.iter().rev() {
-            if found_non_zero {
-                result = result.add(&result, compiler);
-            }
-
-            if *n != 0 {
-                found_non_zero = true;
-
-                if *n > 0 {
-                    result = result.add(&self.table[(n / 2) as usize], compiler);
-                } else {
-                    result = result.add(
-                        &self.table[((-n) / 2) as usize].clone().neg(compiler),
-                        compiler,
-                    );
-                }
-            }
+        let mut iter_chunks = bit_vector.chunks_exact(window_size);
+        for chunk in &mut iter_chunks {
+            Self::scalar_mul_round(window_size, &self.table, chunk, &mut result, compiler);
         }
-        Some(result)
+        let remainder = iter_chunks.remainder();
+        let last_window_size = remainder.len();
+        let subtable = &self.table[0..last_window_size.pow(2)];
+        Self::scalar_mul_round(last_window_size, subtable, remainder, &mut result, compiler);
+        result
     }
 }
 
@@ -405,4 +420,33 @@ pub mod security {
     /// }
     /// ```
     pub trait DecisionalDiffieHellmanHardness: ComputationalDiffieHellmanHardness {}
+}
+
+/// Testing Framework
+#[cfg(feature = "test")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
+pub mod test {
+    use super::*;
+    use crate::eclair::{bool::Assert, cmp::PartialEq};
+
+    /// Tests if windowed scalar multiplication of the bit decomposition of `scalar` with `point` returns the
+    /// product `scalar` * `point`
+    #[inline]
+    pub fn window_multiplication_correctness<'b, S, G, COM>(scalar: S, point: G, compiler: &mut COM)
+    where
+        G: ScalarMulGroup<S, COM, Output = G>
+            + Zero<COM>
+            + Clone
+            + ConditionalSelect<COM>
+            + PartialEq<G, COM>,
+        COM: Assert,
+        Bool<COM>: 'b,
+        S: IntoIterator<Item = &'b Bool<COM>>,
+    {
+        let product = point.scalar_mul(&scalar, compiler);
+        const WINDOW_SIZE: usize = 4;
+        let window = Window::new(WINDOW_SIZE, point, compiler);
+        let windowed_product = window.scalar_mul(scalar, compiler);
+        product.assert_equal(&windowed_product, compiler);
+    }
 }

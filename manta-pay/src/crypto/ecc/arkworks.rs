@@ -601,4 +601,30 @@ mod test {
         println!("variable base mul constraint: {:?}", ctr2 - ctr1);
         println!("fixed base mul constraint: {:?}", ctr3 - ctr2);
     }
+    /*
+        /// Checks if the windowed multiplcation is correct.
+        #[test]
+        fn windowed_mul_is_correct() {
+            let mut compiler = Compiler::<Bls12_381_Edwards>::for_proofs();
+            let scalar = Scalar::<Bls12_381_Edwards>::gen(&mut OsRng);
+            let base = Group::<Bls12_381_Edwards>::sample((), &mut OsRng);
+            const SCALAR_BITS: usize = scalar_bits::<Bls12_381_Edwards>();
+            const WINDOW_SIZE: usize = 4;
+            let window = Window::new(WINDOW_SIZE, base, compiler);
+            let precomputed_table = PrecomputedBaseTable::<_, SCALAR_BITS>::from_base(base, &mut ());
+            let base_var =
+                base.as_known::<Secret, GroupVar<Bls12_381_Edwards, AffineVar<_, _>>>(&mut compiler);
+            let scalar_var =
+                scalar.as_known::<Secret, ScalarVar<Bls12_381_Edwards, AffineVar<_, _>>>(&mut compiler);
+            let ctr1 = compiler.constraint_count();
+            let expected = base_var.scalar_mul(&scalar_var, &mut compiler);
+            let ctr2 = compiler.constraint_count();
+            let actual = GroupVar::fixed_base_scalar_mul(precomputed_table, &scalar_var, &mut compiler);
+            let ctr3 = compiler.constraint_count();
+            compiler.assert_eq(&expected, &actual);
+            assert!(compiler.is_satisfied());
+            println!("variable base mul constraint: {:?}", ctr2 - ctr1);
+            println!("fixed base mul constraint: {:?}", ctr3 - ctr2);
+        }
+    */
 }

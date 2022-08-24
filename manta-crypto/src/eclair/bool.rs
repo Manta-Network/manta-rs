@@ -20,6 +20,9 @@
 //! types. In this module, we define the access interfaces needed to simulate the [`bool`] type with
 //! [`Bool`].
 
+use alloc::vec::Vec;
+use manta_util::{iter::IteratorExt, vec::VecExt};
+
 use crate::eclair::{cmp::PartialEq, Has, Type};
 
 /// Boolean Type Inside of the Compiler
@@ -96,6 +99,38 @@ where
 {
     /// Selects `true_value` when `bit == true` and `false_value` when `bit == false`.
     fn select(bit: &Bool<COM>, true_value: &Self, false_value: &Self, compiler: &mut COM) -> Self;
+
+    /// ugh. Bit order comment.
+    #[inline]
+    fn select_from_table<'s, B, T>(bits: B, table: T, compiler: &mut COM) -> Self
+    where
+        Self: 's + Clone,
+        Bool<COM>: 's,
+        B: IntoIterator<Item = &'s Bool<COM>>,
+        B::IntoIter: ExactSizeIterator,
+        T: IntoIterator<Item = &'s Self>,
+        T::IntoIter: ExactSizeIterator,
+    {
+        let mut table = table.into_iter();
+        let mut bits = bits.into_iter();
+        assert_eq!(table.len(), bits.len().pow(2), "description");
+        if let Some(first_bit) = bits.next() {
+            let mut table = table
+                .chunk_by()
+                .map(|[x, y]| Self::select(first_bit, y, x, compiler))
+                .collect::<Vec<_>>();
+            for bit in bits {
+                table = table
+                    .into_iter()
+                    .chunk_by()
+                    .map(|[x, y]| Self::select(bit, &y, &x, compiler))
+                    .collect();
+            }
+            table.take_first()
+        } else {
+            table.next().expect("description").clone()
+        }
+    }
 }
 
 /// Implements [`ConditionalSelect`] for the given `$type`.
