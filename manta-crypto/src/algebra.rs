@@ -161,6 +161,14 @@ impl<G> Window<G> {
     /// # Panics
     ///
     /// This method panics if `window_size` is less than `1`.
+    /// 
+    /// # Implementation Note
+    /// 
+    /// Windowed multiplication consists of P/n rounds, where P is the number of bits
+    /// of a group element and n is the window size. Creating the table costs `2^n - 2`
+    /// additions in the group, and each round involves `2^n - 1` table look-ups, 
+    /// `n` doublings and 1 addition. In R1CS, the number of constraints becomes
+    /// `6(2^n-2) + P/n [2(2^n-1) + 5n + 6]`, making the optimal window size `n=2`.
     #[inline]
     pub fn new<COM>(window_size: usize, point: G, compiler: &mut COM) -> Self
     where
