@@ -21,7 +21,7 @@ use core::fmt::Debug;
 use manta_crypto::arkworks::serialize::{
     CanonicalDeserialize, CanonicalSerialize, SerializationError,
 };
-use serde::{Deserialize, Serialize};
+use manta_util::serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
 
 /// MPC States
@@ -178,6 +178,7 @@ where
 
 /// Array of u8 with fixed size `N`
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
+#[serde(crate = "manta_util::serde")]
 pub struct U8Array<const N: usize>(#[serde(with = "serde_arrays")] pub [u8; N]);
 
 impl<const N: usize> CanonicalSerialize for U8Array<N> {
@@ -206,10 +207,9 @@ impl<const N: usize> CanonicalDeserialize for U8Array<N> {
                     .expect("Deserializing u8 should succeed."),
             );
         }
-        Ok(Self(
-            res.try_into()
-                .expect(&format!("Should converting into [u8; {}].", N)),
-        ))
+        Ok(Self(res.try_into().unwrap_or_else(|_| {
+            panic!("Should have converted into [u8; {}].", N)
+        })))
     }
 }
 
@@ -277,6 +277,7 @@ impl CanonicalDeserialize for UserPriority {
 
 /// Response for State Sizes
 #[derive(Clone, CanonicalDeserialize, CanonicalSerialize, Serialize, Deserialize)]
+#[serde(crate = "manta_util::serde", deny_unknown_fields)]
 pub struct ServerSize {
     /// Mint State Size
     pub mint: StateSize,
@@ -290,6 +291,7 @@ pub struct ServerSize {
 
 /// State Size
 #[derive(Clone, CanonicalDeserialize, CanonicalSerialize, Serialize, Deserialize)]
+#[serde(crate = "manta_util::serde", deny_unknown_fields)]
 pub struct StateSize {
     /// Size of gamma_abc_g1 in verifying key
     pub gamma_abc_g1: usize,

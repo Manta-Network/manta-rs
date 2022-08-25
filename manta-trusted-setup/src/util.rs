@@ -31,9 +31,11 @@ use manta_crypto::{
     },
     rand::{OsRng, Sample, SeedableRng},
 };
-use manta_util::{cfg_into_iter, cfg_iter, cfg_iter_mut, cfg_reduce, into_array_unchecked};
+use manta_util::{
+    cfg_into_iter, cfg_iter, cfg_iter_mut, cfg_reduce, into_array_unchecked,
+    serde::{Deserialize, Serialize},
+};
 use rand_chacha::ChaCha20Rng;
-use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "rayon")]
 use manta_util::rayon::iter::{IndexedParallelIterator, ParallelIterator};
@@ -451,7 +453,11 @@ where
 
 /// Store `T` in bytes form.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(bound(serialize = r"", deserialize = "",), deny_unknown_fields)]
+#[serde(
+    bound(serialize = r"", deserialize = "",),
+    crate = "manta_util::serde",
+    deny_unknown_fields
+)]
 pub struct AsBytes<T> {
     /// The bytes representation of `T`
     pub bytes: Vec<u8>,

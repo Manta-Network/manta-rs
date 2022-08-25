@@ -25,15 +25,20 @@ use crate::{
     util::AsBytes,
 };
 use derivative::Derivative;
-use serde::{Deserialize, Serialize};
+use manta_util::serde::{Deserialize, Serialize};
 
 /// Query Request
 #[derive(Deserialize, Serialize)]
+#[serde(crate = "manta_util::serde", deny_unknown_fields)]
 pub struct QueryRequest;
 
 /// Response for [`QueryRequest`]
 #[derive(Deserialize, Serialize)]
-#[serde(bound(serialize = "", deserialize = "",), deny_unknown_fields)]
+#[serde(
+    bound(serialize = "", deserialize = ""),
+    crate = "manta_util::serde",
+    deny_unknown_fields
+)]
 pub enum QueryResponse<C>
 where
     C: CeremonyConfig,
@@ -47,7 +52,11 @@ where
 
 /// Contribute Request
 #[derive(Serialize, Deserialize)]
-#[serde(bound(serialize = r"", deserialize = r"",), deny_unknown_fields)]
+#[serde(
+    bound(serialize = "", deserialize = ""),
+    crate = "manta_util::serde",
+    deny_unknown_fields
+)]
 pub struct ContributeRequest<C, const N: usize>
 where
     C: CeremonyConfig,
@@ -60,9 +69,20 @@ where
 #[derive(Deserialize, Serialize)]
 #[serde(
     bound(
-        serialize = r"T: Serialize, Signature<C>: Serialize, Nonce<C>: Serialize, ParticipantIdentifier<C>: Serialize",
-        deserialize = r"T: Deserialize<'de>, Signature<C>: Deserialize<'de>, Nonce<C>: Deserialize<'de>, ParticipantIdentifier<C>: Deserialize<'de>",
+        serialize = r"
+            T: Serialize,
+            Signature<C>: Serialize,
+            Nonce<C>: Serialize,
+            ParticipantIdentifier<C>: Serialize
+        ",
+        deserialize = r"
+            T: Deserialize<'de>,
+            Signature<C>: Deserialize<'de>,
+            Nonce<C>: Deserialize<'de>,
+            ParticipantIdentifier<C>: Deserialize<'de>
+        ",
     ),
+    crate = "manta_util::serde",
     deny_unknown_fields
 )]
 pub struct Signed<T, C>
@@ -122,6 +142,7 @@ where
         serialize = "Nonce<C>: Serialize",
         deserialize = "Nonce<C>: Deserialize<'de>",
     ),
+    crate = "manta_util::serde",
     deny_unknown_fields
 )]
 pub enum CeremonyError<C>
@@ -142,4 +163,7 @@ where
 
     /// Not Your Turn
     NotYourTurn,
+
+    /// Timed-out
+    Timeout,
 }

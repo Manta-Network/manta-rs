@@ -14,12 +14,13 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! HTTP Utilities
+//! Temporal quantification.
 
-#[cfg(all(feature = "serde", feature = "tide"))]
-#[cfg_attr(doc_cfg, doc(cfg(all(feature = "serde", feature = "tide"))))]
-pub mod tide;
+pub use core::time::*;
 
-#[cfg(feature = "reqwest")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "reqwest")))]
-pub mod reqwest;
+#[cfg(feature = "std")]
+pub use std::time::*;
+
+#[cfg(feature = "std")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
+pub mod lock;

@@ -31,16 +31,15 @@ use crate::{
     },
     util::AsBytes,
 };
+use alloc::sync::Arc;
+use core::{fmt::Debug, future::Future, ops::Deref};
 use manta_crypto::arkworks::serialize::{CanonicalDeserialize, CanonicalSerialize};
-use serde::{de::DeserializeOwned, Serialize};
-use std::{
-    fmt::Debug,
-    future::Future,
-    ops::Deref,
-    path::Path,
-    sync::{Arc, Mutex},
+use manta_util::{
+    http::tide::{self, Body, Request, Response},
+    serde::{de::DeserializeOwned, Serialize},
 };
-use tide::{Body, Request, Response};
+use parking_lot::Mutex;
+use std::path::Path;
 
 /// Server
 #[derive(derivative::Derivative)]
@@ -79,20 +78,25 @@ where
 
     /// Preprocesses a request by checking nonce and verifying signature.
     #[inline]
-    pub fn preprocess_request<T>(
-        &self,
-        coordinator: &mut Coordinator<C, N, 3>,
+    fn preprocess_request<T>(
+        registry: &mut Registry<ParticipantIdentifier<C>, C::Participant>,
         request: &Signed<T, C>,
     ) -> Result<(), CeremonyError<C>>
     where
         T: Serialize,
     {
-        let participant = match coordinator.get_participant_mut(&request.identifier) {
-            Some(participant) => participant,
+        let participant = match registry.get_mut(&request.identifier) {
+            Some(participant) => {
+                if participant.has_contributed() {
+                    return Err(CeremonyError::AlreadyContributed);
+                }
+                participant
+            }
             None => return Err(CeremonyError::NotRegistered),
         };
-        if !check_nonce(&participant.nonce(), &request.nonce) {
-            return Err(CeremonyError::NonceNotInSync(participant.nonce()));
+        let participant_nonce = participant.nonce();
+        if !check_nonce(&participant_nonce, &request.nonce) {
+            return Err(CeremonyError::NonceNotInSync(participant_nonce));
         }
         C::SignatureScheme::verify(
             &request.message,
@@ -101,7 +105,7 @@ where
             &participant.public_key(),
         )
         .map_err(|_| CeremonyError::BadRequest)?;
-        participant.set_nonce(participant.nonce().increment());
+        participant.set_nonce(participant_nonce.increment());
         Ok(())
     }
 
@@ -111,10 +115,7 @@ where
         self,
         request: ParticipantIdentifier<C>,
     ) -> Result<(ServerSize, Nonce<C>), CeremonyError<C>> {
-        let coordinator = self
-            .coordinator
-            .lock()
-            .expect("Locking the coordinator should succeed.");
+        let coordinator = self.coordinator.lock();
         Ok((
             coordinator.size.clone(),
             coordinator
@@ -135,11 +136,8 @@ where
         State<C>: CanonicalSerialize + CanonicalDeserialize,
         Challenge<C>: CanonicalSerialize + CanonicalDeserialize,
     {
-        let mut coordinator = self
-            .coordinator
-            .lock()
-            .expect("Locking the coordinator should succeed.");
-        self.preprocess_request(&mut *coordinator, &request)?;
+        let mut coordinator = self.coordinator.lock();
+        Self::preprocess_request(&mut coordinator.registry, &request)?;
         if !coordinator.is_in_queue(&request.identifier)? {
             coordinator.enqueue_participant(&request.identifier)?;
         }
@@ -174,21 +172,8 @@ where
         ParticipantIdentifier<C>: CanonicalSerialize,
         Challenge<C>: CanonicalSerialize,
     {
-        let mut coordinator = self
-            .coordinator
-            .lock()
-            .expect("Locking the coordinator should succeed.");
-        self.preprocess_request(&mut *coordinator, &request)?;
-        match coordinator.get_participant(&request.identifier) {
-            Some(participant) => {
-                if participant.has_contributed() {
-                    return Err(CeremonyError::<C>::AlreadyContributed);
-                }
-            }
-            None => {
-                return Err(CeremonyError::<C>::NotRegistered);
-            }
-        }
+        let mut coordinator = self.coordinator.lock();
+        Self::preprocess_request(&mut coordinator.registry, &request)?;
         let contribute_state = request
             .message
             .contribute_state
@@ -307,9 +292,9 @@ pub fn init_server(registry_path: String, recovery_dir_path: String) -> Server<G
             mpc_state2.state[0].clone(),
         ],
         [
-            mpc_state0.challenge[0].clone(),
-            mpc_state1.challenge[0].clone(),
-            mpc_state2.challenge[0].clone(),
+            mpc_state0.challenge[0],
+            mpc_state1.challenge[0],
+            mpc_state2.challenge[0],
         ],
         registry,
         recovery_dir_path,

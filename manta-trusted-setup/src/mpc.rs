@@ -58,9 +58,9 @@ pub trait Verify: Types {
     /// the next response.
     fn verify_transform(
         challenge: &Self::Challenge,
-        last: Self::State,
+        last: &Self::State,
         next: Self::State,
-        proof: Self::Proof,
+        proof: &Self::Proof,
     ) -> Result<(Self::Challenge, Self::State), Self::Error>;
 
     /// Verifies all contributions in `iter` chaining from an initial `state` and `challenge` returning the
@@ -77,7 +77,7 @@ pub trait Verify: Types {
         I: IntoIterator<Item = (Self::State, Self::Proof)>,
     {
         for item in iter {
-            (challenge, state) = Self::verify_transform(&challenge, state, item.0, item.1)?;
+            (challenge, state) = Self::verify_transform(&challenge, &state, item.0, &item.1)?;
         }
         Ok((challenge, state))
     }

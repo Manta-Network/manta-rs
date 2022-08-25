@@ -303,11 +303,8 @@ pub fn prompt_client_info() -> Vec<u8> {
             Input::with_theme(&ColorfulTheme::default())
                 .with_prompt("Your Secret")
                 .validate_with(|input: &String| -> Result<(), &str> {
-                    if Mnemonic::validate(&input, Language::English).is_ok() {
-                        Ok(())
-                    } else {
-                        Err("This is not a valid secret.")
-                    }
+                    Mnemonic::validate(input, Language::English)
+                        .map_err(|_| "This is not a valid secret.")
                 })
                 .interact_text()
                 .expect("Please enter your secret received during `Register`.")

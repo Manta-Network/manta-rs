@@ -21,6 +21,7 @@ extern crate alloc;
 use alloc::string::String;
 use clap::{Parser, Subcommand};
 use console::{style, Term};
+use core::time::Duration;
 use dialoguer::{theme::ColorfulTheme, Input};
 use manta_trusted_setup::ceremony::{
     client::{handle_error, prompt_client_info, register, Client, Endpoint, Error},
@@ -32,19 +33,22 @@ use manta_trusted_setup::ceremony::{
     signature::ed_dalek,
     state::ServerSize,
 };
-use serde::{de::DeserializeOwned, Serialize};
-use std::{thread, time};
+use manta_util::{
+    http::reqwest,
+    serde::{de::DeserializeOwned, Serialize},
+};
+use std::thread;
 
 /// Welcome Message
 pub const TITLE: &str = r"
- __  __             _          _______             _           _    _____      _               
-|  \/  |           | |        |__   __|           | |         | |  / ____|    | |              
-| \  / | __ _ _ __ | |_ __ _     | |_ __ _   _ ___| |_ ___  __| | | (___   ___| |_ _   _ _ __  
-| |\/| |/ _` | '_ \| __/ _` |    | | '__| | | / __| __/ _ \/ _` |  \___ \ / _ | __| | | | '_ \ 
+ __  __             _          _______             _           _    _____      _
+|  \/  |           | |        |__   __|           | |         | |  / ____|    | |
+| \  / | __ _ _ __ | |_ __ _     | |_ __ _   _ ___| |_ ___  __| | | (___   ___| |_ _   _ _ __
+| |\/| |/ _` | '_ \| __/ _` |    | | '__| | | / __| __/ _ \/ _` |  \___ \ / _ | __| | | | '_ \
 | |  | | (_| | | | | || (_| |    | | |  | |_| \__ | ||  __| (_| |  ____) |  __| |_| |_| | |_) |
-|_|  |_|\__,_|_| |_|\__\__,_|    |_|_|   \__,_|___/\__\___|\__,_| |_____/ \___|\__|\__,_| .__/ 
-                                                                                        | |    
-                                                                                        |_|    
+|_|  |_|\__,_|_| |_|\__\__,_|    |_|_|   \__,_|___/\__\___|\__,_| |_____/ \___|\__|\__,_| .__/
+                                                                                        | |
+                                                                                        |_|
 ";
 
 /// Command
@@ -175,6 +179,7 @@ pub async fn contribute() -> Result<(), Error> {
         )
         .await?
         {
+            Err(CeremonyError::Timeout) => todo!(),
             Err(CeremonyError::NotRegistered) => return Err(Error::NotRegistered),
             Err(CeremonyError::NonceNotInSync(_)) => {
                 return Err(Error::UnexpectedError(
@@ -205,7 +210,7 @@ pub async fn contribute() -> Result<(), Error> {
                         style(position).bold().red(),
                         style(5*position).bold().blue(),
                     );
-                    thread::sleep(time::Duration::from_secs(10));
+                    thread::sleep(Duration::from_secs(10));
                     continue;
                 }
                 QueryResponse::Mpc(mpc_state) => {
@@ -246,6 +251,7 @@ pub async fn contribute() -> Result<(), Error> {
         )
         .await?
         {
+            Err(CeremonyError::Timeout) => todo!(),
             Err(CeremonyError::NotRegistered) => {
                 return Err(Error::UnexpectedError(
                     "unexpected error when contribute. Should have registered.".to_string(),

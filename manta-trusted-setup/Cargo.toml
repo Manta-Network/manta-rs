@@ -42,7 +42,7 @@ ark-snark = { version = "0.3.0", default-features = false } #TODO
 ark-std = { version = "0.3.0", default-features = false, features = ["std"] }
 async-std = { version = "1.6.0", features = ["attributes", "tokio1"] }
 blake2 = { version = "0.10.4", default-features = false }
-bs58 = {version = "0.4", default-features = false, features = ["alloc"]}
+bs58 = { version = "0.4", default-features = false, features = ["alloc"] }
 byteorder = { version = "1.4.3", default-features = false }
 clap = { version = "3.2.16", default-features = false, features = ["color", "derive", "std", "suggestions", "unicode", "wrap_help"] }
 colored = { version = "2.0.0" }
@@ -54,19 +54,17 @@ ed25519-dalek = { version = "1.0.1", default-features = false, features = ["u64_
 indicatif = { version = "0.17.0", default-features = false }
 manta-crypto = { path = "../manta-crypto", default-features = false, features = ["arkworks", "getrandom"] }
 manta-pay = { path = "../manta-pay", default-features = false, features = ["groth16", "test"] } # TODO
-manta-util = { path = "../manta-util", default-features = false, features = ["serde-array"] }
+manta-util = { path = "../manta-util", default-features = false, features = ["reqwest", "serde", "serde-array", "std", "tide"] }
+parking_lot = { version = "0.12.1", default-features = false }
 rand_chacha = { version = "0.3.1", default-features = false }
-reqwest = {version = "0.11.11", features = ["json"]}
-serde = { version = "1.0", default-features = false, features = ["derive"]  }
-serde_arrays = "0.1.0"
-serde_json = {version = "1.0", default-features = false, features = ["alloc"]}
+serde_arrays = { version = "0.1.0", default-features = false }
+serde_json = { version = "1.0", default-features = false, features = ["alloc"] }
 serde_with = { version = "1.14.0", default-features = false }
 take_mut = "0.2.2" # TODO: review this dependency
-tide = { version = "0.16.0", default-features = false }
 tiny-bip39 = { version = "1.0.0", default-features = false } 
 tokio = { version = "1.20.1", default-features = false, features = ["rt-multi-thread"] }
-tracing = {version = "0.1", default-features = false}
-tracing-subscriber = {version = "0.3", default-features = false, features = ["alloc", "fmt", "std", "ansi"]}
+tracing = { version = "0.1", default-features = false }
+tracing-subscriber = { version = "0.3", default-features = false, features = ["alloc", "fmt", "std", "ansi"] }
 workspace-hack = { version = "0.1.0", path = "../workspace-hack" }
 
 [dev-dependencies]

@@ -16,7 +16,7 @@
 
 //! Signature Scheme
 
-use serde::Serialize;
+use manta_util::serde::Serialize;
 
 /// Public Key
 pub trait HasPublicKey<S>
@@ -28,9 +28,9 @@ where
 }
 
 /// Nonce
-pub trait Nonce: PartialEq + Clone {
+pub trait Nonce: Clone + PartialEq {
     /// Increments the current nonce by one.
-    fn increment(&mut self) -> Self;
+    fn increment(&self) -> Self;
 
     /// Checks if the current nonce is valid
     fn is_valid(&self) -> bool;
@@ -38,9 +38,8 @@ pub trait Nonce: PartialEq + Clone {
 
 impl Nonce for u64 {
     #[inline]
-    fn increment(&mut self) -> Self {
-        *self = self.saturating_add(1);
-        *self
+    fn increment(&self) -> Self {
+        self.saturating_add(1)
     }
 
     #[inline]
@@ -159,8 +158,7 @@ pub mod ed_dalek {
     use manta_crypto::arkworks::serialize::{
         CanonicalDeserialize, CanonicalSerialize, SerializationError,
     };
-    use manta_util::into_array_unchecked;
-    use serde::Deserialize;
+    use manta_util::{into_array_unchecked, serde::Deserialize};
     use std::io::{Read, Write};
 
     /// ED25519-Dalek Signature
@@ -186,6 +184,7 @@ pub mod ed_dalek {
         Serialize,
         Deserialize,
     )]
+    #[serde(crate = "manta_util::serde", deny_unknown_fields)]
     pub struct PublicKey(pub U8Array<32>);
 
     impl PublicKey {
@@ -217,6 +216,7 @@ pub mod ed_dalek {
     #[derive(
         Debug, Copy, Clone, CanonicalDeserialize, CanonicalSerialize, Serialize, Deserialize,
     )]
+    #[serde(crate = "manta_util::serde", deny_unknown_fields)]
     pub struct Signature(U8Array<64>);
 
     impl Signature {

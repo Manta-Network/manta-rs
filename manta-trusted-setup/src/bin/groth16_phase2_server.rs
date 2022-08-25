@@ -21,6 +21,7 @@ use manta_trusted_setup::ceremony::{
     config::g16_bls12_381::Groth16BLS12381,
     server::{init_server, Server},
 };
+use manta_util::http::tide;
 
 type S = Server<Groth16BLS12381, 2>;
 
@@ -74,7 +75,6 @@ impl Arguments {
 }
 
 #[async_std::main]
-async fn main() -> tide::Result<()> {
+async fn main() {
     Arguments::parse().run().await;
-    Ok(())
 }

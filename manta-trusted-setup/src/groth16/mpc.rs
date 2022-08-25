@@ -307,16 +307,17 @@ where
 #[inline]
 pub fn verify_transform<C>(
     challenge: &C::Challenge,
-    prev: State<C>,
+    prev: &State<C>,
     next: State<C>,
-    proof: Proof<C>,
+    proof: &Proof<C>,
 ) -> Result<(C::Challenge, State<C>), Error>
 where
     C: Configuration,
 {
-    check_invariants::<C>(&prev, &next)?;
-    let next_challenge = C::challenge(challenge, &prev, &next, &proof);
+    check_invariants::<C>(prev, &next)?;
+    let next_challenge = C::challenge(challenge, prev, &next, proof);
     let ((ratio_0, ratio_1), _) = proof
+        .clone()
         .verify(&C::Hasher::default(), challenge)
         .ok_or(Error::InvalidRatioProof)?;
     if !C::Pairing::same_ratio((ratio_0, ratio_1), (prev.vk.delta_g2, next.vk.delta_g2)) {
@@ -360,6 +361,7 @@ where
     for (next_state, next_proof) in iter {
         let next_challenge = C::challenge(&challenge, &state, &next_state, &next_proof);
         let ((ratio_0, ratio_1), _) = next_proof
+            .clone()
             .verify(&C::Hasher::default(), &challenge)
             .ok_or(Error::InvalidRatioProof)?;
         if !C::Pairing::same_ratio(
@@ -440,11 +442,11 @@ where
     #[inline]
     fn verify_transform(
         challenge: &Self::Challenge,
-        last: Self::State,
+        last: &Self::State,
         next: Self::State,
-        proof: Self::Proof,
+        proof: &Self::Proof,
     ) -> Result<(Self::Challenge, Self::State), Self::Error> {
-        verify_transform::<C>(challenge, last, next, proof)
+        verify_transform(challenge, last, next, proof)
     }
 
     #[inline]
