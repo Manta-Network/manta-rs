@@ -377,4 +377,44 @@ pub mod test {
             }
         }
     }
+
+    /// Asserts that `contains` returns `None` for `OptimizedAccumulator` after applying `remove_proof`.
+    #[inline]
+    pub fn assert_proof_removal<A>(accumulator: &mut A, item: &A::Item)
+    where
+        A: OptimizedAccumulator,
+        A::Model: Model<Verification = bool>,
+    {
+        assert!(
+            accumulator.insert(item),
+            "Item could not be inserted into the accumulator."
+        );
+        assert!(
+            accumulator.contains(item),
+            "Item was supposed to be contained in the accumulator after insertion."
+        );
+        assert!(
+            accumulator.remove_proof(item),
+            "Accumulator could not remove proof for item."
+        );
+        assert!(
+            !accumulator.contains(item),
+            "Proof was not successfully removed."
+        );
+    }
+
+    /// Asserts that `contains` returns `None` for `OptimizedAccumulator` after applying inserting
+    /// `item` using `insert_nonprovable`.
+    #[inline]
+    pub fn assert_nonprovable<A>(accumulator: &mut A, item: &A::Item)
+    where
+        A: OptimizedAccumulator,
+        A::Model: Model<Verification = bool>,
+    {
+        assert!(
+            accumulator.insert_nonprovable(item),
+            "Item could not be inserted into the accumulator."
+        );
+        assert!(!accumulator.contains(item), "Item was inserted with proof.");
+    }
 }

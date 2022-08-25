@@ -493,7 +493,6 @@ pub mod test {
     where
         S: Derive<COM> + Sign<COM> + Verify<COM>,
     {
-        // Shouldn't we use the assert! macro here?
         scheme.verify(
             &scheme.derive(signing_key, compiler),
             message,
