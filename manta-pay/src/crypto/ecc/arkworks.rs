@@ -452,7 +452,9 @@ where
     #[inline]
     fn double_assign(&mut self, compiler: &mut Compiler<C>) -> &mut Self {
         let _ = compiler;
-        self.0.double_in_place().expect("ugh");
+        self.0
+            .double_in_place()
+            .expect("Doubling is not allowed to fail.");
         self
     }
 }
