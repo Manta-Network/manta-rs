@@ -58,6 +58,17 @@ where
         let are_equal = self.eq(rhs, compiler);
         compiler.assert(&are_equal);
     }
+
+    /// Asserts that `self` and `rhs` are not equal.
+    #[inline]
+    fn assert_ne(&self, rhs: &Rhs, compiler: &mut COM)
+    where
+        COM: Assert,
+        Bool<COM>: Not<COM, Output = Bool<COM>>,
+    {
+        let are_not_equal = self.ne(rhs, compiler);
+        compiler.assert(&are_not_equal);
+    }
 }
 
 /// Implements [`PartialEq`] for the given `$type`.
