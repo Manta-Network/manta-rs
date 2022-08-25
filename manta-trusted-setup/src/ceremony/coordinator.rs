@@ -19,24 +19,47 @@
 use crate::{
     ceremony::{
         config::{CeremonyConfig, Challenge, ParticipantIdentifier, Proof, State},
-        message::CeremonyError,
-        queue::{HasIdentifier, Priority, Queue},
+        message::{CeremonyError, MPCState, ServerSize},
+        participant::{HasIdentifier, Priority},
+        queue::Queue,
         registry::Registry,
-        state::{MPCState, ServerSize},
     },
     mpc::Verify,
+    util::AsBytes,
 };
-use core::{fmt::Debug, mem, time::Duration};
-use manta_crypto::arkworks::serialize::{
-    CanonicalDeserialize, CanonicalSerialize, SerializationError,
+use core::{mem, time::Duration};
+use manta_crypto::arkworks::serialize::{CanonicalDeserialize, CanonicalSerialize};
+use manta_util::{
+    serde::{Deserialize, Serialize},
+    time::lock::Timed,
+    Array,
 };
-use manta_util::time::lock::Timed;
-use std::io::{Read, Write};
 
 /// Time limit for a participant at the front of the queue to contribute with unit as second
 pub const TIME_LIMIT: Duration = Duration::from_secs(360);
 
 /// Coordinator with `C` as CeremonyConfig, `N` as the number of priority levels, and `M` as the number of circuits
+#[derive(Deserialize, Serialize)]
+#[serde(
+    bound(
+        serialize = "
+                    C::Participant: Serialize, 
+                    ParticipantIdentifier<C>: Serialize,
+                    State<C>: CanonicalSerialize, 
+                    Challenge<C>: CanonicalSerialize,
+                    Proof<C>: CanonicalSerialize
+        ",
+        deserialize = "
+                    C::Participant: Deserialize<'de>, 
+                    ParticipantIdentifier<C>: Deserialize<'de>,
+                    State<C>: CanonicalDeserialize, 
+                    Challenge<C>: CanonicalDeserialize,
+                    Proof<C>: CanonicalDeserialize,
+        ",
+    ),
+    crate = "manta_util::serde",
+    deny_unknown_fields
+)]
 pub struct Coordinator<C, const N: usize, const M: usize>
 where
     C: CeremonyConfig,
@@ -45,24 +68,26 @@ where
     pub num_contributions: usize,
 
     /// Proof
-    pub proof: Option<[Proof<C>; M]>,
+    pub proof: Option<Array<AsBytes<Proof<C>>, M>>,
 
     /// Latest Participant that Has Contributed
     pub latest_contributor: Option<C::Participant>,
 
     /// State
-    pub state: [State<C>; M],
+    pub state: Array<AsBytes<State<C>>, M>,
 
     /// Challenge
-    pub challenge: [Challenge<C>; M],
+    pub challenge: Array<AsBytes<Challenge<C>>, M>,
 
     /// Registry of participants
     pub registry: Registry<ParticipantIdentifier<C>, C::Participant>,
 
     /// Queue of participants
+    #[serde(skip)]
     pub queue: Queue<C::Participant, N>,
 
     /// Participant Lock
+    #[serde(skip)]
     pub lock: Timed<Option<ParticipantIdentifier<C>>>,
 
     /// Size of state
@@ -77,10 +102,10 @@ where
     #[inline]
     pub fn new(
         num_contributions: usize,
-        proof: Option<[Proof<C>; M]>,
+        proof: Option<Array<AsBytes<Proof<C>>, M>>,
         latest_contributor: Option<C::Participant>,
-        state: [State<C>; M],
-        challenge: [Challenge<C>; M],
+        state: Array<AsBytes<State<C>>, M>,
+        challenge: Array<AsBytes<Challenge<C>>, M>,
         registry: Registry<ParticipantIdentifier<C>, C::Participant>,
         size: ServerSize,
     ) -> Self {
@@ -127,7 +152,7 @@ where
     /// contained value to the new front of the queue. The previous participant in the lock is
     /// returned.
     #[inline]
-    fn update_expired_lock(&mut self) -> Option<ParticipantIdentifier<C>> {
+    pub fn update_expired_lock(&mut self) -> Option<ParticipantIdentifier<C>> {
         self.lock.mutate(|p| {
             if let Some(identifier) = p {
                 if let Some(participant) = self.registry.get_mut(identifier) {
@@ -140,7 +165,7 @@ where
 
     /// Checks the lock update errors for the [`Coordinator::update`] method.
     #[inline]
-    fn check_lock_update_errors(
+    pub fn check_lock_update_errors(
         has_expired: bool,
         lhs: &Option<ParticipantIdentifier<C>>,
         rhs: &ParticipantIdentifier<C>,
@@ -159,19 +184,34 @@ where
     pub fn update(
         &mut self,
         participant: &ParticipantIdentifier<C>,
-        state: [State<C>; M],
-        proof: [Proof<C>; M],
-    ) -> Result<(), CeremonyError<C>> {
+        state: Array<AsBytes<State<C>>, M>,
+        proof: Array<AsBytes<Proof<C>>, M>,
+    ) -> Result<(), CeremonyError<C>>
+    where
+        Challenge<C>: CanonicalDeserialize,
+        State<C>: CanonicalDeserialize + CanonicalSerialize,
+        Proof<C>: CanonicalDeserialize,
+    {
         if self.lock.has_expired(TIME_LIMIT) {
             Self::check_lock_update_errors(true, &self.update_expired_lock(), participant)?;
         } else {
             Self::check_lock_update_errors(false, self.lock.get(), participant)?;
         }
         for (i, (state, proof)) in state.into_iter().zip(proof.iter()).enumerate() {
-            self.state[i] =
-                C::Setup::verify_transform(&self.challenge[i], &self.state[i], state, proof)
-                    .map_err(|_| CeremonyError::BadRequest)?
-                    .1;
+            self.state[i] = AsBytes::from_actual(
+                C::Setup::verify_transform(
+                    &self.challenge[i]
+                        .to_actual()
+                        .expect("To actual should succeed."),
+                    &self.state[i]
+                        .to_actual()
+                        .expect("To actual should succeed."),
+                    state.to_actual().expect("To actual should succeed."),
+                    &proof.to_actual().expect("To actual should succeed."),
+                )
+                .map_err(|_| CeremonyError::BadRequest)?
+                .1,
+            );
         }
         self.proof = Some(proof);
         self.lock.set(self.queue.pop());
@@ -237,131 +277,9 @@ where
         self.registry.get_mut(identifier)
     }
 
-    /// Pops the current contributor and returns the participant identifier that is skipped.
-    #[inline]
-    pub fn skip_current_contributor(
-        // TODO: When should we use that?
-        &mut self,
-    ) -> Result<ParticipantIdentifier<C>, CeremonyError<C>> {
-        self.queue.pop().ok_or(CeremonyError::BadRequest)
-    }
-
     /// Get number of contributions
     #[inline]
     pub fn num_contributions(&self) -> usize {
         self.num_contributions
-    }
-}
-
-impl<C, const N: usize, const M: usize> CanonicalSerialize for Coordinator<C, N, M>
-where
-    C: CeremonyConfig,
-    Proof<C>: CanonicalSerialize,
-    State<C>: CanonicalSerialize,
-    Challenge<C>: CanonicalSerialize,
-    ParticipantIdentifier<C>: CanonicalSerialize,
-    C::Participant: CanonicalSerialize,
-{
-    #[inline]
-    fn serialize<W>(&self, mut writer: W) -> Result<(), SerializationError>
-    where
-        W: Write,
-    {
-        self.num_contributions
-            .serialize(&mut writer)
-            .expect("Serialize should succeed");
-        self.proof
-            .as_ref()
-            .expect("Proof should exit.")
-            .serialize(&mut writer)
-            .expect("Serialize should succeed");
-        self.latest_contributor
-            .serialize(&mut writer)
-            .expect("Serialize should succeed");
-        self.state
-            .serialize(&mut writer)
-            .expect("Serialize should succeed");
-        self.challenge
-            .serialize(&mut writer)
-            .expect("Serialize should succeed.");
-        self.registry
-            .serialize(&mut writer)
-            .expect("Serialize should succeed.");
-        self.size
-            .serialize(&mut writer)
-            .expect("Serialize should succeed.");
-        Ok(())
-    }
-
-    #[inline]
-    fn serialized_size(&self) -> usize {
-        self.num_contributions.serialized_size()
-            + self
-                .proof
-                .as_ref()
-                .expect("Proof should exit.")
-                .serialized_size()
-            + self.latest_contributor.serialized_size()
-            + self.state.serialized_size()
-            + self.challenge.serialized_size()
-            + self.registry.serialized_size()
-            + self.size.serialized_size()
-    }
-}
-
-impl<C, const N: usize, const M: usize> CanonicalDeserialize for Coordinator<C, N, M>
-where
-    C: CeremonyConfig,
-    Proof<C>: CanonicalDeserialize + Debug,
-    State<C>: CanonicalDeserialize + Debug,
-    Challenge<C>: CanonicalDeserialize + Debug,
-    ParticipantIdentifier<C>: CanonicalDeserialize,
-    C::Participant: CanonicalDeserialize,
-{
-    #[inline]
-    fn deserialize<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
-        let num_contributions =
-            CanonicalDeserialize::deserialize(&mut reader).expect("Deserializing should succeed.");
-        let mut proofs = Vec::new();
-        for _ in 0..M {
-            let proof: Proof<C> = CanonicalDeserialize::deserialize(&mut reader)
-                .expect("Deserializing should succeed.");
-            proofs.push(proof);
-        }
-        let latest_contributor: C::Participant =
-            CanonicalDeserialize::deserialize(&mut reader).expect("Deserializing should succeed.");
-        let mut states = Vec::new();
-        for _ in 0..M {
-            let state: State<C> = CanonicalDeserialize::deserialize(&mut reader)
-                .expect("Deserializing should succeed.");
-            states.push(state);
-        }
-        let mut challenges = Vec::new();
-        for _ in 0..M {
-            let challenge: Challenge<C> = CanonicalDeserialize::deserialize(&mut reader)
-                .expect("Deserializing should succeed.");
-            challenges.push(challenge);
-        }
-        Ok(Self {
-            num_contributions,
-            proof: Some(
-                proofs
-                    .try_into()
-                    .expect("Converting to fixed-size array should succeed."),
-            ),
-            latest_contributor: Some(latest_contributor),
-            state: states
-                .try_into()
-                .expect("Converting to fixed-size array should succeed."),
-            challenge: challenges
-                .try_into()
-                .expect("Converting to fixed-size array should succeed."),
-            registry: CanonicalDeserialize::deserialize(&mut reader)
-                .expect("Deserializing should succeed."),
-            queue: Queue::<C::Participant, N>::new(),
-            size: CanonicalDeserialize::deserialize(&mut reader)
-                .expect("Deserializing should succeed."),
-            lock: Timed::default(),
-        })
     }
 }

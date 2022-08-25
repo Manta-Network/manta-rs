@@ -16,8 +16,7 @@
 
 //! Signature Scheme
 
-use manta_crypto::signature::{self, RandomnessType};
-use manta_util::serde::Serialize;
+use manta_crypto::signature;
 
 /// Nonce
 pub trait Nonce: Clone + PartialEq {
@@ -89,15 +88,12 @@ pub mod ed_dalek {
     use super::*;
     use ed25519_dalek::{Keypair, PublicKey, SecretKey, Signature, Signer, Verifier};
     use manta_crypto::{
-        arkworks::serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError},
-        eclair::alloc::mode::Public,
         signature::{
-            RandomnessType, Sign, SignatureType, SigningKeyType, Verify, VerifyingKey,
+            RandomnessType, Sign, SignatureType, SigningKeyType, Verify,
             VerifyingKeyType,
         },
     };
-    use manta_util::{into_array_unchecked, serde::Deserialize, Array};
-    use std::io::{Read, Write};
+    use manta_util::Array;
 
     /// ED25519-Dalek Signature
     pub struct Ed25519;
@@ -134,8 +130,11 @@ pub mod ed_dalek {
         ) -> Self::Signature {
             let _ = (randomness, compiler);
             let mut message_concatenated = Vec::new();
-            CanonicalSerialize::serialize(&message.0, &mut message_concatenated)
-                .expect("Serializing u64 should succeed.");
+            message_concatenated.extend_from_slice(
+                serde_json::to_string(&message.0)
+                    .expect("Serializing nonce should succeed.")
+                    .as_ref(),
+            );
             message_concatenated.extend_from_slice(message.1.as_ref());
             let secret_key: SecretKey =
                 SecretKey::from_bytes(&signing_key.0).expect("Should give secret key.");
@@ -161,8 +160,11 @@ pub mod ed_dalek {
             _: &mut (),
         ) -> Self::Verification {
             let mut message_concatenated = Vec::new();
-            CanonicalSerialize::serialize(&message.0, &mut message_concatenated)
-                .expect("Serializing u64 should succeed.");
+            message_concatenated.extend_from_slice(
+                serde_json::to_string(&message.0)
+                    .expect("Serializing nonce should succeed.")
+                    .as_ref(),
+            );
             message_concatenated.extend_from_slice(message.1.as_ref());
             PublicKey::from_bytes(&verifying_key.0)
                 .expect("Should decode public key from bytes.")

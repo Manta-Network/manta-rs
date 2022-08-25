@@ -16,29 +16,12 @@
 
 //! Waiting Queue
 
+use crate::ceremony::participant::{HasIdentifier, Priority};
 use alloc::{collections::VecDeque, vec::Vec};
 use manta_util::{
     into_array_unchecked,
     iter::{Finder, IteratorExt},
 };
-
-/// Priority
-pub trait Priority {
-    /// Gets the priority value.
-    fn priority(&self) -> usize;
-
-    /// Reduces the priority.
-    fn reduce_priority(&mut self);
-}
-
-/// Identifier
-pub trait HasIdentifier {
-    /// Identifier Type
-    type Identifier: Ord + Clone;
-
-    /// Gets the identifier.
-    fn identifier(&self) -> Self::Identifier;
-}
 
 /// Queue with `N` priority levels where participants with higher priority level are served first
 pub struct Queue<T, const N: usize>([VecDeque<T::Identifier>; N])

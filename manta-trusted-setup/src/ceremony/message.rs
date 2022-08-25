@@ -18,15 +18,23 @@
 
 use crate::{
     ceremony::{
-        config::{CeremonyConfig, Nonce, ParticipantIdentifier, PrivateKey, Signature},
+        config::{
+            CeremonyConfig, Challenge, Nonce, ParticipantIdentifier, PrivateKey, Proof, Signature,
+            State,
+        },
         signature::{Nonce as _, SignatureScheme},
-        state::{ContributeState, MPCState},
     },
     util::AsBytes,
 };
 use derivative::Derivative;
-use manta_crypto::signature::Sign;
-use manta_util::serde::{Deserialize, Serialize};
+use manta_crypto::{
+    arkworks::serialize::{CanonicalDeserialize, CanonicalSerialize},
+    signature::Sign,
+};
+use manta_util::{
+    serde::{Deserialize, Serialize},
+    Array,
+};
 
 /// Query Request
 #[derive(Deserialize, Serialize)]
@@ -36,11 +44,14 @@ pub struct QueryRequest;
 /// Response for [`QueryRequest`]
 #[derive(Deserialize, Serialize)]
 #[serde(
-    bound(serialize = "", deserialize = ""),
+    bound(
+        serialize = "MPCState<C, N>: Serialize",
+        deserialize = "MPCState<C, N>: Deserialize<'de>"
+    ),
     crate = "manta_util::serde",
     deny_unknown_fields
 )]
-pub enum QueryResponse<C>
+pub enum QueryResponse<C, const N: usize>
 where
     C: CeremonyConfig,
 {
@@ -48,13 +59,16 @@ where
     QueuePosition(usize),
 
     /// MPC State
-    Mpc(AsBytes<MPCState<C, 3>>),
+    Mpc(MPCState<C, N>),
 }
 
 /// Contribute Request
 #[derive(Serialize, Deserialize)]
 #[serde(
-    bound(serialize = "", deserialize = ""),
+    bound(
+        serialize = "ContributeState<C, N>: Serialize",
+        deserialize = "ContributeState<C, N>: Deserialize<'de>"
+    ),
     crate = "manta_util::serde",
     deny_unknown_fields
 )]
@@ -63,7 +77,7 @@ where
     C: CeremonyConfig,
 {
     /// Contribute state including state and proof
-    pub contribute_state: AsBytes<ContributeState<C, N>>,
+    pub contribute_state: ContributeState<C, N>,
 }
 
 /// Signed Message
@@ -167,4 +181,70 @@ where
 
     /// Timed-out
     Timeout,
+}
+
+/// MPC States
+#[derive(Deserialize, Serialize)]
+#[serde(
+    bound(
+        serialize = "State<C>: CanonicalSerialize, Challenge<C>: CanonicalSerialize",
+        deserialize = "State<C>: CanonicalDeserialize, Challenge<C>: CanonicalDeserialize"
+    ),
+    crate = "manta_util::serde",
+    deny_unknown_fields
+)]
+pub struct MPCState<C, const N: usize>
+where
+    C: CeremonyConfig,
+{
+    /// State
+    pub state: Array<AsBytes<State<C>>, N>,
+
+    /// Challenge
+    pub challenge: Array<AsBytes<Challenge<C>>, N>,
+}
+
+/// Contribute States
+#[derive(Deserialize, Serialize)]
+#[serde(crate = "manta_util::serde", deny_unknown_fields)]
+pub struct ContributeState<C, const N: usize>
+where
+    C: CeremonyConfig,
+{
+    /// State
+    pub state: Array<AsBytes<State<C>>, N>,
+
+    /// Proof
+    pub proof: Array<AsBytes<Proof<C>>, N>,
+}
+
+/// Response for State Sizes
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(crate = "manta_util::serde", deny_unknown_fields)]
+pub struct ServerSize {
+    /// Mint State Size
+    pub mint: StateSize,
+
+    /// Private Transfer State Size
+    pub private_transfer: StateSize,
+
+    /// Reclaim State Size
+    pub reclaim: StateSize,
+}
+
+/// State Size
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(crate = "manta_util::serde", deny_unknown_fields)]
+pub struct StateSize {
+    /// Size of gamma_abc_g1 in verifying key
+    pub gamma_abc_g1: usize,
+
+    /// Size of a_query, b_g1_query, and b_g2_query which are equal
+    pub a_b_g1_b_g2_query: usize,
+
+    /// Size of h_query
+    pub h_query: usize,
+
+    /// Size of l_query
+    pub l_query: usize,
 }

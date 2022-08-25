@@ -16,13 +16,20 @@
 
 //! Registry
 
-use crate::ceremony::util::HasContributed;
+use crate::ceremony::participant::HasContributed;
 use alloc::collections::BTreeMap;
-use manta_crypto::arkworks::serialize::{CanonicalDeserialize, CanonicalSerialize};
-use manta_pay::crypto::constraint::arkworks::codec::SerializationError;
-use std::io::{Read, Write};
+use manta_util::serde::{Deserialize, Serialize};
 
 /// Registry
+#[derive(Deserialize, Serialize)]
+#[serde(
+    bound(
+        serialize = "K: Serialize, V: Serialize,",
+        deserialize = "K: Deserialize<'de>, V: Deserialize<'de>"
+    ),
+    crate = "manta_util::serde",
+    deny_unknown_fields
+)]
 pub struct Registry<K, V>
 where
     K: Ord,
@@ -72,40 +79,5 @@ where
             .get(id)
             .map(|v| v.has_contributed())
             .unwrap_or(false)
-    }
-}
-
-impl<K, V> CanonicalSerialize for Registry<K, V>
-where
-    K: Ord + CanonicalSerialize,
-    V: CanonicalSerialize,
-{
-    #[inline]
-    fn serialize<W>(&self, mut writer: W) -> Result<(), SerializationError>
-    where
-        W: Write,
-    {
-        self.map
-            .serialize(&mut writer)
-            .expect("Serializing should succeed");
-        Ok(())
-    }
-
-    fn serialized_size(&self) -> usize {
-        self.map.serialized_size()
-    }
-}
-
-impl<K, V> CanonicalDeserialize for Registry<K, V>
-where
-    K: Ord + CanonicalDeserialize,
-    V: CanonicalDeserialize,
-{
-    #[inline]
-    fn deserialize<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
-        Ok(Self {
-            map: CanonicalDeserialize::deserialize(&mut reader)
-                .expect("Deserializing should succeed."),
-        })
     }
 }

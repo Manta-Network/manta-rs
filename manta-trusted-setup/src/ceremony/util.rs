@@ -19,66 +19,44 @@
 extern crate alloc;
 
 use crate::{
-    ceremony::{config::CeremonyConfig, state::MPCState},
+    ceremony::{config::CeremonyConfig, message::MPCState},
     groth16::{
-        kzg::{self, Accumulator, Contribution, Size},
+        kzg::{self, Accumulator, Size},
         mpc::{self, initialize, Groth16Phase2},
     },
-    util::{Deserializer, G1Type, G2Type, Serializer},
+    util::AsBytes,
 };
-use alloc::string::String;
-use ark_bls12_381::Fr;
-use manta_crypto::{
-    arkworks::{
-        pairing::Pairing,
-        relations::r1cs::ConstraintSynthesizer,
-        serialize::{CanonicalDeserialize, CanonicalSerialize},
-    },
-    permutation::duplex::Setup,
-    rand::{OsRng, Sample},
+use manta_crypto::arkworks::{
+    pairing::Pairing, relations::r1cs::ConstraintSynthesizer, serialize::CanonicalSerialize,
 };
-use manta_pay::{
-    config::{FullParameters, Mint, PrivateTransfer, Reclaim},
-    crypto::constraint::arkworks::R1CS,
-    parameters::{load_transfer_parameters, load_utxo_accumulator_model},
+use manta_util::{
+    serde::{de::DeserializeOwned, Serialize},
+    Array,
 };
-use std::{
-    fmt::Debug,
-    fs::File,
-    io::{Read, Write},
-    path::Path,
-    time::Instant,
-};
+use std::{fmt::Debug, fs::File, io::Write, path::Path, time::Instant};
 
 /// Logs `data` to a disk file at `path`.
 #[inline]
 pub fn log_to_file<T, P>(path: &P, data: &T)
 where
     P: AsRef<Path>,
-    T: CanonicalSerialize,
+    T: Serialize,
 {
-    let mut writer = Vec::new();
-    data.serialize(&mut writer)
-        .expect("Serializing states should succeed.");
     let mut file = File::create(path).expect("Open file should succeed.");
-    file.write_all(&writer)
+    serde_json::to_writer(&mut file, &data)
         .expect("Writing phase one parameters to disk should succeed.");
     file.flush().expect("Flushing file should succeed.");
 }
 
 /// Loads `data` from a disk file at `path`.
 #[inline]
-pub fn load_from_file<T, P>(path: P) -> T
+pub fn load_from_file<'de, T, P>(path: P) -> T
 where
     P: AsRef<Path> + Debug,
-    T: CanonicalDeserialize,
+    T: DeserializeOwned,
 {
     let mut file = File::open(path).expect("Opening file should succeed.");
-    let mut buf = Vec::new();
-    file.read_to_end(&mut buf)
-        .expect("Reading data should succeed.");
-    let mut reader = &buf[..];
-    CanonicalDeserialize::deserialize(&mut reader).expect("Deserialize should succeed.")
+    serde_json::from_reader(&mut file).expect("Reading and deserializing data should succeed.")
 }
 
 /// Prepares phase one parameter `powers` for phase two parameters of circuit `cs` with `name`.
@@ -95,8 +73,8 @@ where
     let state = initialize::<C, S>(powers, cs).expect("failed to initialize state");
     let challenge = <C as mpc::ProvingKeyHasher<C>>::hash(&state);
     let mpc_state: MPCState<D, 1> = MPCState {
-        state: [state],
-        challenge: [challenge.into()],
+        state: Array::from_unchecked([AsBytes::from_actual(state)]),
+        challenge: Array::from_unchecked([AsBytes::from_actual(challenge.into())]),
     };
     log_to_file(&format!("prepared_{}.data", name), &mpc_state);
     println!(
@@ -104,13 +82,4 @@ where
         name,
         now.elapsed()
     );
-}
-
-/// Has Contributed
-pub trait HasContributed {
-    /// Checks if the participant has contributed.
-    fn has_contributed(&self) -> bool;
-
-    /// Sets the participant as contributed.
-    fn set_contributed(&mut self);
 }
