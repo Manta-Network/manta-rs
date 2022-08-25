@@ -204,33 +204,6 @@ pub fn register(twitter_account: String, email: String) {
     );
 }
 
-/// Endpoint
-#[derive(Debug, Copy, Clone)]
-pub enum Endpoint {
-    /// Query Server States
-    Query,
-
-    /// Update Server States
-    Update,
-
-    /// Start Meta Data
-    Start,
-}
-
-const SERVER_ADDR: &str = "http://localhost:8080";
-
-impl From<Endpoint> for String {
-    #[inline]
-    fn from(endpoint: Endpoint) -> String {
-        let operation = match endpoint {
-            Endpoint::Query => "query",
-            Endpoint::Update => "update",
-            Endpoint::Start => "start",
-        };
-        format!("{}/{}", SERVER_ADDR, operation)
-    }
-}
-
 /// TODO
 #[derive(Clone, Debug)]
 pub enum Error {

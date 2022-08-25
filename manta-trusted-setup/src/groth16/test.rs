@@ -263,7 +263,7 @@ fn trusted_setup_phase_two_is_valid() {
     for _ in 0..5 {
         prev_state = state.clone();
         proof = contribute(&hasher, &challenge, &mut state, &mut rng).unwrap();
-        (challenge, state) = verify_transform(&challenge, prev_state, state, proof.clone())
+        (challenge, state) = verify_transform(&challenge, &prev_state, state, &proof.clone())
             .expect("Verify transform failed");
         transcript.rounds.push((state.clone(), proof));
     }

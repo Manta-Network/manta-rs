@@ -18,13 +18,12 @@
 
 extern crate alloc;
 
-use alloc::string::String;
 use clap::{Parser, Subcommand};
 use console::{style, Term};
 use core::time::Duration;
 use dialoguer::{theme::ColorfulTheme, Input};
 use manta_trusted_setup::ceremony::{
-    client::{handle_error, prompt_client_info, register, Client, Endpoint, Error},
+    client::{handle_error, prompt_client_info, register, Client, Error},
     config::{
         check_state_size, config::Config, g16_bls12_381::Groth16BLS12381, Nonce, PrivateKey,
         PublicKey,
@@ -33,10 +32,7 @@ use manta_trusted_setup::ceremony::{
     signature::ed_dalek,
     state::ServerSize,
 };
-use manta_util::{
-    http::reqwest,
-    serde::{de::DeserializeOwned, Serialize},
-};
+use manta_util::http::reqwest::KnownUrlClient;
 use std::thread;
 
 /// Welcome Message
@@ -115,41 +111,22 @@ pub fn get_client_keys() -> Result<(PublicKey<Groth16BLS12381>, PrivateKey<Groth
     Ok((pk, sk))
 }
 
-/// Sends requests thourgh network. TODO: something similar in manta-util
-#[inline]
-pub async fn send_request<T, R>(
-    network_client: &reqwest::Client,
-    endpoint: Endpoint,
-    request: T,
-) -> Result<Result<R, CeremonyError<Groth16BLS12381>>, Error>
-where
-    T: Serialize,
-    R: DeserializeOwned,
-{
-    network_client
-        .post(String::from(endpoint))
-        .json(&request)
-        .send()
-        .await
-        .map_err(|e| Error::NetworkError(format!("Network Error. {}", e)))?
-        .json::<Result<R, CeremonyError<Groth16BLS12381>>>()
-        .await
-        .map_err(|e| Error::UnexpectedError(format!("JSON deserialization error: {}", e)))
-}
-
 /// Gets state size from server.
 #[inline]
 pub async fn get_start_meta_data(
     identity: PublicKey<Groth16BLS12381>,
-    network_client: &reqwest::Client,
+    network_client: &KnownUrlClient,
 ) -> Result<(ServerSize, Nonce<Groth16BLS12381>), Error> {
-    let response = send_request::<_, (ServerSize, Nonce<Groth16BLS12381>)>(
-        network_client,
-        Endpoint::Start,
-        identity,
-    )
-    .await?;
-    match response {
+    match network_client
+        .post::<_, Result<(ServerSize, Nonce<Groth16BLS12381>), CeremonyError<Groth16BLS12381>>>(
+            "start", &identity,
+        )
+        .await
+        .map_err(|_| {
+            return Error::NetworkError(
+                "Should have received starting meta data from server".to_string(),
+            );
+        })? {
         Ok((server_size, nonce)) => Ok((server_size, nonce)),
         Err(CeremonyError::NotRegistered) => Err(Error::NotRegistered),
         Err(e) => Err(Error::UnexpectedError(format!("{:?}", e))),
@@ -159,7 +136,7 @@ pub async fn get_start_meta_data(
 /// Contributes to the server.
 #[inline]
 pub async fn contribute() -> Result<(), Error> {
-    let network_client = reqwest::Client::new();
+    let network_client = KnownUrlClient::new("http://localhost:8080").expect("Should succeed.");
     let (pk, sk) = get_client_keys()?;
     println!(
         "{} Contacting Server for Meta Data...",
@@ -170,15 +147,19 @@ pub async fn contribute() -> Result<(), Error> {
     let mut trusted_setup_client = Client::<Groth16BLS12381>::new(pk, pk, nonce, sk);
     println!("{} Waiting in Queue...", style("[2/9]").bold().dim(),);
     loop {
-        let mpc_state = match send_request::<_, QueryResponse<Groth16BLS12381>>(
-            &network_client,
-            Endpoint::Query,
-            trusted_setup_client
-                .query()
-                .map_err(|_| Error::UnableToGenerateRequest("Queries the server state."))?,
-        )
-        .await?
-        {
+        let mpc_state = match network_client
+            .post::<_, Result<QueryResponse<Groth16BLS12381>, CeremonyError<Groth16BLS12381>>>(
+                "query",
+                &trusted_setup_client
+                    .query()
+                    .map_err(|_| Error::UnableToGenerateRequest("Queries the server state."))?,
+            )
+            .await
+            .map_err(|_| {
+                return Error::NetworkError(
+                    "Should have received starting meta data from server".to_string(),
+                );
+            })? {
             Err(CeremonyError::Timeout) => todo!(),
             Err(CeremonyError::NotRegistered) => return Err(Error::NotRegistered),
             Err(CeremonyError::NonceNotInSync(_)) => {
@@ -196,20 +177,20 @@ pub async fn contribute() -> Result<(), Error> {
             Err(CeremonyError::AlreadyContributed) => return Err(Error::AlreadyContributed),
             Err(CeremonyError::NotYourTurn) => {
                 return Err(Error::UnexpectedError(
-                    "Unexpected error when query mpc state. Should not receive NotYourTurn message."
-                        .to_string(),
-                ));
+                        "Unexpected error when query mpc state. Should not receive NotYourTurn message."
+                            .to_string(),
+                    ));
             }
             Ok(message) => match message {
                 QueryResponse::QueuePosition(position) => {
                     term.clear_last_lines(1)
                         .expect("Clear last lines should succeed.");
                     println!(
-                        "{} Waiting in Queue... There are {} people ahead of you. Estimated Waiting Time: {} minutes.",
-                        style("[2/9]").bold().dim(),
-                        style(position).bold().red(),
-                        style(5*position).bold().blue(),
-                    );
+                            "{} Waiting in Queue... There are {} people ahead of you. Estimated Waiting Time: {} minutes.",
+                            style("[2/9]").bold().dim(),
+                            style(position).bold().red(),
+                            style(5*position).bold().blue(),
+                        );
                     thread::sleep(Duration::from_secs(10));
                     continue;
                 }
@@ -238,20 +219,25 @@ pub async fn contribute() -> Result<(), Error> {
             "{} Starting contribution to 3 Circuits...",
             style("[4/9]").bold().dim(),
         );
-        match send_request::<_, ()>(
-            &network_client,
-            Endpoint::Update,
-            trusted_setup_client
-                .contribute(
-                    &Config::generate_hasher(),
-                    &mpc_state.challenge,
-                    mpc_state.state,
-                )
-                .map_err(|_| Error::UnableToGenerateRequest("contribute"))?,
-        )
-        .await?
-        {
+        match network_client
+            .post::<_, Result<(), CeremonyError<Groth16BLS12381>>>(
+                "update",
+                &trusted_setup_client
+                    .contribute(
+                        &Config::generate_hasher(),
+                        &mpc_state.challenge,
+                        mpc_state.state,
+                    )
+                    .map_err(|_| Error::UnableToGenerateRequest("contribute"))?,
+            )
+            .await
+            .map_err(|_| {
+                return Error::NetworkError(
+                    "Should have received starting meta data from server".to_string(),
+                );
+            })? {
             Err(CeremonyError::Timeout) => todo!(),
+
             Err(CeremonyError::NotRegistered) => {
                 return Err(Error::UnexpectedError(
                     "unexpected error when contribute. Should have registered.".to_string(),
@@ -283,9 +269,9 @@ pub async fn contribute() -> Result<(), Error> {
                     style("[8/9]").bold().dim(),
                 );
                 println!(
-                    "{} Congratulations! You have successfully contributed to Manta Trusted Setup Ceremony!...",
-                    style("[9/9]").bold().dim(),
-                );
+                        "{} Congratulations! You have successfully contributed to Manta Trusted Setup Ceremony!...",
+                        style("[9/9]").bold().dim(),
+                    );
                 break;
             }
         }

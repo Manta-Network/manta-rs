@@ -69,6 +69,7 @@ where
     fn set_nonce(&mut self, nonce: S::Nonce);
 }
 
+// TODO: Replace this one with manta-crypto
 /// Signature Scheme
 pub trait SignatureScheme {
     /// Public Key Type
