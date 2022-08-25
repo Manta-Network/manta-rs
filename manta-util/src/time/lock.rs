@@ -77,7 +77,7 @@ impl<T> Timed<T> {
         self.instant = Instant::now();
     }
 
-    ///
+    /// Sets the internal value to `value` returning the old value.
     #[inline]
     pub fn set(&mut self, value: T) -> T {
         self.mutate(move |t| mem::replace(t, value))
@@ -104,7 +104,8 @@ impl<T> Timed<T> {
         result
     }
 
-    ///
+    /// Mutates the internal value using `f` if the amount of time since the last modification to
+    /// `self` was longer than `timeout`.
     #[inline]
     pub fn mutate_if_expired<F, R>(&mut self, timeout: Duration, f: F) -> Option<R>
     where
@@ -117,13 +118,15 @@ impl<T> Timed<T> {
         }
     }
 
-    ///
+    /// Sets the internal value to `value` if the amount of time since the last modification to
+    /// `self` was longer than `timeout`.
     #[inline]
     pub fn set_if_expired(&mut self, timeout: Duration, value: T) -> Option<T> {
         self.set_with_if_expired(timeout, move || value)
     }
 
-    ///
+    /// Sets the internal value using `value` if the amount of time since the last modification to
+    /// `self` was longer than `timeout`.
     #[inline]
     pub fn set_with_if_expired<F>(&mut self, timeout: Duration, value: F) -> Option<T>
     where
@@ -142,21 +145,6 @@ impl<T> Timed<T> {
     #[inline]
     pub fn into_pair(self) -> (T, Instant) {
         (self.value, self.instant)
-    }
-}
-
-impl<T> Timed<Option<T>> {
-    ///
-    #[inline]
-    pub fn replace_if_expired<F, R>(&mut self, timeout: Duration, value: T) -> Option<T> {
-        self.mutate_if_expired(timeout, move |t| t.replace(value))
-            .flatten()
-    }
-
-    ///
-    #[inline]
-    pub fn take_if_expired<F, R>(&mut self, timeout: Duration) -> Option<T> {
-        self.mutate_if_expired(timeout, Option::take).flatten()
     }
 }
 
@@ -206,114 +194,3 @@ impl<T> From<Timed<T>> for (T, Instant) {
         timed.into_pair()
     }
 }
-
-/*
-
-/// Time Lock
-#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
-pub struct TimeLock<T>(Option<Timed<T>>);
-
-impl<T> TimeLock<T> {
-    ///
-    #[inline]
-    pub fn new(value: T) -> Self {
-        Self::from_timed(Timed::new(value))
-    }
-
-    /// Converts a `timed` object into a time-locked object.
-    #[inline]
-    pub const fn from_timed(timed: Timed<T>) -> Self {
-        Self(Some(timed))
-    }
-
-    ///
-    #[inline]
-    pub const fn new_unchecked(value: T, instant: Instant) -> Self {
-        Self::from_timed(Timed::new_unchecked(value, instant))
-    }
-
-    /// Returns `true` if the time-lock is empty.
-    #[inline]
-    pub const fn is_empty(&self) -> bool {
-        self.0.is_some()
-    }
-
-    /// Returns a shared reference to the underlying value inside `self`.
-    #[inline]
-    pub const fn get(&self) -> Option<&T> {
-        match &self.0 {
-            Some(timed) => Some(timed.get()),
-            _ => None,
-        }
-    }
-
-    /// Returns a shared reference to the underlying [`Timed`] value.
-    #[inline]
-    pub const fn as_timed(&self) -> Option<&Timed<T>> {
-        self.0.as_ref()
-    }
-
-    /// Returns the last [`Instant`] that `self` was modified when it was time-locked.
-    #[inline]
-    pub const fn maybe_modified_at(&self) -> Option<Instant> {
-        match &self.0 {
-            Some(timed) => Some(timed.modified_at()),
-            _ => None,
-        }
-    }
-
-    ///
-    #[inline]
-    pub fn read_timed<F, R>(&self, f: F) -> Option<R>
-    where
-        F: FnOnce(&T, Instant) -> R,
-    {
-        self.0.as_ref().map(|timed| f(&timed.value, timed.instant))
-    }
-
-    ///
-    #[inline]
-    pub fn set(&mut self, value: T) -> Option<T> {
-        self.0.replace(Timed::new(value)).map(Timed::into_inner)
-    }
-
-    ///
-    #[inline]
-    pub fn set_if_empty(&mut self, value: T) -> Option<T> {
-        if self.is_empty() {
-            self.set(value)
-        } else {
-            None
-        }
-    }
-
-    ///
-    #[inline]
-    pub fn take_if_expired(&mut self, timeout: Duration) -> Option<T> {
-        match &self.0 {
-            Some(lock) if lock.has_expired(timeout) => self.0.take().map(Timed::into_inner),
-            _ => None,
-        }
-    }
-
-    ///
-    #[inline]
-    pub fn mutate_if_expired<F, R>(&mut self, timeout: Duration, f: F) -> Option<R>
-    where
-        F: FnOnce(&mut T) -> R,
-    {
-        match &mut self.0 {
-            Some(lock) if lock.has_expired(timeout) => Some(lock.mutate(f)),
-            _ => None,
-        }
-    }
-}
-
-impl<T> From<Timed<T>> for TimeLock<T> {
-    #[inline]
-    fn from(timed: Timed<T>) -> Self {
-        Self::from_timed(timed)
-    }
-}
-
-*/
