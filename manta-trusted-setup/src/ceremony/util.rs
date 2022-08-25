@@ -19,20 +19,22 @@
 extern crate alloc;
 
 use crate::{
-    ceremony::{
-        config::{config::Config, g16_bls12_381::Groth16BLS12381},
-        state::MPCState,
-    },
+    ceremony::{config::CeremonyConfig, state::MPCState},
     groth16::{
-        kzg::{Accumulator, Contribution},
-        mpc,
-        mpc::initialize,
+        kzg::{self, Accumulator, Contribution, Size},
+        mpc::{self, initialize, Groth16Phase2},
     },
+    util::{Deserializer, G1Type, G2Type, Serializer},
 };
 use alloc::string::String;
 use ark_bls12_381::Fr;
 use manta_crypto::{
-    arkworks::serialize::{CanonicalDeserialize, CanonicalSerialize},
+    arkworks::{
+        pairing::Pairing,
+        relations::r1cs::ConstraintSynthesizer,
+        serialize::{CanonicalDeserialize, CanonicalSerialize},
+    },
+    permutation::duplex::Setup,
     rand::{OsRng, Sample},
 };
 use manta_pay::{
@@ -79,50 +81,20 @@ where
     CanonicalDeserialize::deserialize(&mut reader).expect("Deserialize should succeed.")
 }
 
-/// Prepares phase one parameters ready to use in trusted setup for phase two parameters.
-#[inline]
-pub fn prepare_phase_two_parameters(accumulator_path: String) {
-    let now = Instant::now();
-    let powers = load_from_file::<Accumulator<_>, _>(accumulator_path);
-    println!(
-        "Loading & Deserializing Phase 1 parameters takes {:?}\n",
-        now.elapsed()
-    );
-    let transfer_parameters = load_transfer_parameters();
-    let utxo_accumulator_model = load_utxo_accumulator_model();
-    prepare_parameters(
-        powers.clone(),
-        Mint::unknown_constraints(FullParameters::new(
-            &transfer_parameters,
-            &utxo_accumulator_model,
-        )),
-        "mint",
-    );
-    prepare_parameters(
-        powers.clone(),
-        PrivateTransfer::unknown_constraints(FullParameters::new(
-            &transfer_parameters,
-            &utxo_accumulator_model,
-        )),
-        "private_transfer",
-    );
-    prepare_parameters(
-        powers,
-        Reclaim::unknown_constraints(FullParameters::new(
-            &transfer_parameters,
-            &utxo_accumulator_model,
-        )),
-        "reclaim",
-    );
-}
-
 /// Prepares phase one parameter `powers` for phase two parameters of circuit `cs` with `name`.
 #[inline]
-pub fn prepare_parameters(powers: Accumulator<Config>, cs: R1CS<Fr>, name: &str) {
+pub fn prepare_parameters<C, D, S>(powers: Accumulator<C>, cs: S, name: &str)
+where
+    C: Pairing + Size + kzg::Configuration + mpc::ProvingKeyHasher<C> + mpc::Configuration,
+    S: ConstraintSynthesizer<C::Scalar>,
+    D: CeremonyConfig<Setup = Groth16Phase2<C>>,
+    <C as mpc::Configuration>::Challenge:
+        From<<C as mpc::ProvingKeyHasher<C>>::Output> + CanonicalSerialize,
+{
     let now = Instant::now();
-    let state = initialize::<Config, R1CS<Fr>>(powers, cs).expect("failed to initialize state");
-    let challenge = <Config as mpc::ProvingKeyHasher<Config>>::hash(&state);
-    let mpc_state: MPCState<Groth16BLS12381, 1> = MPCState {
+    let state = initialize::<C, S>(powers, cs).expect("failed to initialize state");
+    let challenge = <C as mpc::ProvingKeyHasher<C>>::hash(&state);
+    let mpc_state: MPCState<D, 1> = MPCState {
         state: [state],
         challenge: [challenge.into()],
     };
@@ -134,18 +106,11 @@ pub fn prepare_parameters(powers: Accumulator<Config>, cs: R1CS<Fr>, name: &str)
     );
 }
 
-/// Conducts a dummy phase one trusted setup.
-#[inline]
-pub fn dummy_phase_one_trusted_setup() -> Accumulator<Config> {
-    let mut rng = OsRng;
-    let accumulator = Accumulator::default();
-    let challenge = [0; 64];
-    let contribution = Contribution::gen(&mut rng);
-    let proof = contribution
-        .proof(&challenge, &mut rng)
-        .expect("The contribution proof should have been generated correctly.");
-    let mut next_accumulator = accumulator.clone();
-    next_accumulator.update(&contribution);
-    Accumulator::verify_transform(accumulator, next_accumulator, challenge, proof)
-        .expect("Accumulator should have been generated correctly.")
+/// Has Contributed
+pub trait HasContributed {
+    /// Checks if the participant has contributed.
+    fn has_contributed(&self) -> bool;
+
+    /// Sets the participant as contributed.
+    fn set_contributed(&mut self);
 }

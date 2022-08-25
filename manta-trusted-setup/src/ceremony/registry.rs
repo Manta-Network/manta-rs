@@ -16,34 +16,11 @@
 
 //! Registry
 
-use crate::{
-    ceremony::{
-        config::{g16_bls12_381::Participant, CeremonyConfig},
-        signature::{ed_dalek, SignatureScheme},
-        state::UserPriority,
-    },
-    util::AsBytes,
-};
+use crate::ceremony::util::HasContributed;
 use alloc::collections::BTreeMap;
-use manta_crypto::{
-    arkworks::serialize::{CanonicalDeserialize, CanonicalSerialize},
-    rand::{OsRng, Rand},
-};
+use manta_crypto::arkworks::serialize::{CanonicalDeserialize, CanonicalSerialize};
 use manta_pay::crypto::constraint::arkworks::codec::SerializationError;
-use std::{
-    fs::File,
-    io::{Read, Write},
-    path::Path,
-};
-
-/// Has Contributed
-pub trait HasContributed {
-    /// Checks if the participant has contributed.
-    fn has_contributed(&self) -> bool;
-
-    /// Sets the participant as contributed.
-    fn set_contributed(&mut self);
-}
+use std::io::{Read, Write};
 
 /// Registry
 pub struct Registry<K, V>
@@ -131,60 +108,4 @@ where
                 .expect("Deserializing should succeed."),
         })
     }
-}
-
-/// Loads registry from a disk file at `registry`.
-#[inline]
-pub fn load_registry<C, P>(
-    registry: P,
-) -> Registry<ed_dalek::PublicKey, <C as CeremonyConfig>::Participant>
-where
-    P: AsRef<Path>,
-    C: CeremonyConfig<Participant = Participant>,
-{
-    let mut map = BTreeMap::new();
-    for record in
-        csv::Reader::from_reader(File::open(registry).expect("Registry file should exist."))
-            .records()
-    {
-        let result = record.expect("Read csv should succeed.");
-        let twitter = result[0].to_string();
-        let email = result[1].to_string();
-        let public_key: ed_dalek::PublicKey = AsBytes::new(
-            bs58::decode(result[3].to_string())
-                .into_vec()
-                .expect("Decode public key should succeed."),
-        )
-        .to_actual()
-        .expect("Converting to a public key should succeed.");
-        let signature: ed_dalek::Signature = AsBytes::new(
-            bs58::decode(result[4].to_string())
-                .into_vec()
-                .expect("Decode signature should succeed."),
-        )
-        .to_actual()
-        .expect("Converting to a signature should succeed.");
-        ed_dalek::Ed25519::verify(
-            format!(
-                "manta-trusted-setup-twitter:{}, manta-trusted-setup-email:{}",
-                twitter, email
-            ),
-            &0,
-            &signature,
-            &public_key,
-        )
-        .expect("Verifying signature should succeed.");
-        let participant = Participant {
-            twitter,
-            priority: match result[2].to_string().parse::<bool>().unwrap() {
-                true => UserPriority::High,
-                false => UserPriority::Normal,
-            },
-            public_key,
-            nonce: OsRng.gen::<_, u16>() as u64,
-            contributed: false,
-        };
-        map.insert(participant.public_key, participant);
-    }
-    Registry::new(map)
 }

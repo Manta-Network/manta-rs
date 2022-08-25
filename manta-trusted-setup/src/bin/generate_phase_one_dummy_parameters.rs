@@ -16,7 +16,9 @@
 
 //! Generates Dummy Phase One Parameters
 
-use manta_trusted_setup::ceremony::util::{dummy_phase_one_trusted_setup, log_to_file};
+use manta_trusted_setup::ceremony::{
+    config::g16_bls12_381::dummy_phase_one_trusted_setup, util::log_to_file,
+};
 
 fn main() {
     log_to_file(

@@ -16,16 +16,8 @@
 
 //! Signature Scheme
 
+use manta_crypto::signature::{self, RandomnessType};
 use manta_util::serde::Serialize;
-
-/// Public Key
-pub trait HasPublicKey<S>
-where
-    S: SignatureScheme,
-{
-    /// Returns the public key.
-    fn public_key(&self) -> S::PublicKey;
-}
 
 /// Nonce
 pub trait Nonce: Clone + PartialEq {
@@ -57,10 +49,24 @@ where
     current.is_valid() && user_nonce.is_valid() && current == user_nonce
 }
 
+/// Signature Scheme
+pub trait SignatureScheme<T>:
+    signature::MessageType<Message = (Self::Nonce, T)> + signature::Sign + signature::Verify
+{
+    /// Message Nonce
+    type Nonce: Nonce;
+
+    /// Builds a new Signer.
+    fn new() -> Self;
+
+    /// Generates randomness.
+    fn gen_randomness(&self) -> Self::Randomness;
+}
+
 /// Has Nonce
-pub trait HasNonce<S>
+pub trait HasNonce<S, T>
 where
-    S: SignatureScheme,
+    S: SignatureScheme<T>,
 {
     /// Returns the nonce of `self` as a participant.
     fn nonce(&self) -> S::Nonce;
@@ -69,229 +75,115 @@ where
     fn set_nonce(&mut self, nonce: S::Nonce);
 }
 
-// TODO: Replace this one with manta-crypto
-/// Signature Scheme
-pub trait SignatureScheme {
-    /// Public Key Type
-    type PublicKey;
-
-    /// Private Key Type
-    type PrivateKey;
-
-    /// Nonce Type
-    type Nonce: Nonce + Serialize;
-
-    /// Signature Type
-    type Signature;
-
-    /// Signs a `message` and `nonce` with `(public_key, private_key)`.
-    fn sign_bytes<M>(
-        message: &M,
-        nonce: &Self::Nonce,
-        public_key: &Self::PublicKey,
-        private_key: &Self::PrivateKey,
-    ) -> Result<Self::Signature, ()>
-    // TODO: Change to ceremony error
-    where
-        M: ?Sized + AsRef<[u8]>;
-
-    /// Signs a `message` and `nonce` with `(public_key, private_key)`.
-    #[inline]
-    fn sign<M>(
-        message: M,
-        nonce: &Self::Nonce,
-        public_key: &Self::PublicKey,
-        private_key: &Self::PrivateKey,
-    ) -> Result<Self::Signature, ()>
-    // TODO: Change to ceremony error
-    where
-        M: Serialize,
-    {
-        Self::sign_bytes(
-            &serde_json::to_string(&message)
-                .expect("Serializing message should succeed.")
-                .as_bytes(),
-            nonce,
-            public_key,
-            private_key,
-        )
-    }
-
-    /// Verifies the `signature` of `message` and `nonce` with `public_key`.
-    fn verify_bytes<M>(
-        message: &M,
-        nonce: &Self::Nonce,
-        signature: &Self::Signature,
-        public_key: &Self::PublicKey,
-    ) -> Result<(), ()>
-    // TODO: Change to ceremony error
-    where
-        M: ?Sized + AsRef<[u8]>;
-
-    /// Verifies the `signature` of `message` and `nonce` with `public_key`.
-    #[inline]
-    fn verify<M>(
-        message: M,
-        nonce: &Self::Nonce,
-        signature: &Self::Signature,
-        public_key: &Self::PublicKey,
-    ) -> Result<(), ()>
-    // TODO: Change to ceremony error
-    where
-        M: Serialize,
-    {
-        Self::verify_bytes(
-            &serde_json::to_string(&message)
-                .expect("Serializing message should succeed.")
-                .as_bytes(),
-            nonce,
-            signature,
-            public_key,
-        )
-    }
+/// Public Key
+pub trait HasPublicKey<S, T>
+where
+    S: SignatureScheme<T>,
+{
+    /// Returns the public key.
+    fn public_key(&self) -> S::VerifyingKey;
 }
 
 /// ED25519 Signature Scheme
 pub mod ed_dalek {
     use super::*;
-    use crate::ceremony::state::U8Array;
-    use ed25519_dalek::{Keypair, Signature as ED25519Signature, Signer, Verifier};
-    use manta_crypto::arkworks::serialize::{
-        CanonicalDeserialize, CanonicalSerialize, SerializationError,
+    use ed25519_dalek::{Keypair, PublicKey, SecretKey, Signature, Signer, Verifier};
+    use manta_crypto::{
+        arkworks::serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError},
+        eclair::alloc::mode::Public,
+        signature::{
+            RandomnessType, Sign, SignatureType, SigningKeyType, Verify, VerifyingKey,
+            VerifyingKeyType,
+        },
     };
-    use manta_util::{into_array_unchecked, serde::Deserialize};
+    use manta_util::{into_array_unchecked, serde::Deserialize, Array};
     use std::io::{Read, Write};
 
     /// ED25519-Dalek Signature
     pub struct Ed25519;
 
-    /// Public Key Type
-    ///
-    /// # Note
-    ///
-    /// A wrapper around the byte representation of an `ed25519_dalek::PublicKey` type. The original
-    /// type does not implement `Hash` and so cannot be used as a key in the `Registry`.
-    #[derive(
-        Clone,
-        Copy,
-        Debug,
-        Eq,
-        Hash,
-        PartialEq,
-        Ord,
-        PartialOrd,
-        CanonicalDeserialize,
-        CanonicalSerialize,
-        Serialize,
-        Deserialize,
-    )]
-    #[serde(crate = "manta_util::serde", deny_unknown_fields)]
-    pub struct PublicKey(pub U8Array<32>);
-
-    impl PublicKey {
-        /// Returns raw bytes.
-        #[inline]
-        pub fn raw_bytes(&self) -> [u8; 32] {
-            self.0 .0
-        }
+    impl signature::MessageType for Ed25519 {
+        type Message = (u64, Vec<u8>);
     }
 
-    /// Private Key Type
-    ///
-    /// # Note
-    ///
-    /// A wrapper around the byte representation of an `ed25519_dalek::SecretKey` type. The byte
-    /// representation is used to be consistent with the choice made for `PublicKey`.
-    #[derive(Debug, Clone, Copy, CanonicalDeserialize, CanonicalSerialize)]
-    pub struct PrivateKey(pub U8Array<32>);
-
-    impl PrivateKey {
-        /// Returns raw bytes.
-        #[inline]
-        pub fn raw_bytes(&self) -> [u8; 32] {
-            self.0 .0
-        }
+    impl RandomnessType for Ed25519 {
+        // # Note
+        // `ed25519_dalet` provides randomness so we set it as empty here.
+        type Randomness = ();
     }
 
-    /// Signature Type
-    #[derive(
-        Debug, Copy, Clone, CanonicalDeserialize, CanonicalSerialize, Serialize, Deserialize,
-    )]
-    #[serde(crate = "manta_util::serde", deny_unknown_fields)]
-    pub struct Signature(U8Array<64>);
-
-    impl Signature {
-        /// Returns raw bytes.
-        #[inline]
-        pub fn raw_bytes(&self) -> [u8; 64] {
-            self.0 .0
-        }
+    impl SignatureType for Ed25519 {
+        type Signature = Array<u8, 64>;
     }
 
-    impl From<ED25519Signature> for Signature {
-        #[inline]
-        fn from(f: ED25519Signature) -> Self {
-            Signature(f.to_bytes().into())
-        }
+    impl SigningKeyType for Ed25519 {
+        type SigningKey = Array<u8, 32>;
     }
 
-    impl From<Signature> for ED25519Signature {
-        #[inline]
-        fn from(f: Signature) -> Self {
-            ED25519Signature::from_bytes(&f.0 .0).expect("Should never fail.")
-        }
+    impl VerifyingKeyType for Ed25519 {
+        type VerifyingKey = Array<u8, 32>;
     }
 
-    impl SignatureScheme for Ed25519 {
-        type PublicKey = PublicKey;
-        type PrivateKey = PrivateKey;
-        type Nonce = u64;
-        type Signature = Signature;
-
-        #[inline]
-        fn sign_bytes<M>(
-            message: &M,
-            nonce: &Self::Nonce,
-            public_key: &Self::PublicKey,
-            private_key: &Self::PrivateKey,
-        ) -> Result<Self::Signature, ()>
-        where
-            M: ?Sized + AsRef<[u8]>,
-        {
+    impl Sign for Ed25519 {
+        fn sign(
+            &self,
+            signing_key: &Self::SigningKey,
+            randomness: &Self::Randomness,
+            message: &Self::Message,
+            compiler: &mut (),
+        ) -> Self::Signature {
+            let _ = (randomness, compiler);
             let mut message_concatenated = Vec::new();
-            CanonicalSerialize::serialize(nonce, &mut message_concatenated)
+            CanonicalSerialize::serialize(&message.0, &mut message_concatenated)
                 .expect("Serializing u64 should succeed.");
-            message_concatenated.extend_from_slice(message.as_ref());
-            Ok(Signature(
-                into_array_unchecked(
-                    Keypair::from_bytes(
-                        &[private_key.raw_bytes(), public_key.raw_bytes()].concat(),
-                    )
-                    .expect("Should decode keypair from bytes.")
-                    .sign(&message_concatenated),
-                )
-                .into(),
-            ))
+            message_concatenated.extend_from_slice(message.1.as_ref());
+            let secret_key: SecretKey =
+                SecretKey::from_bytes(&signing_key.0).expect("Should give secret key.");
+            let public_key: PublicKey = (&secret_key).into();
+            Array::from_unchecked(
+                Keypair {
+                    secret: secret_key,
+                    public: public_key,
+                }
+                .sign(&message_concatenated),
+            )
         }
+    }
 
-        #[inline]
-        fn verify_bytes<M>(
-            message: &M,
-            nonce: &Self::Nonce,
+    impl Verify for Ed25519 {
+        type Verification = Result<(), ()>;
+
+        fn verify(
+            &self,
+            verifying_key: &Self::VerifyingKey,
+            message: &Self::Message,
             signature: &Self::Signature,
-            public_key: &Self::PublicKey,
-        ) -> Result<(), ()>
-        where
-            M: ?Sized + AsRef<[u8]>,
-        {
+            _: &mut (),
+        ) -> Self::Verification {
             let mut message_concatenated = Vec::new();
-            CanonicalSerialize::serialize(nonce, &mut message_concatenated)
+            CanonicalSerialize::serialize(&message.0, &mut message_concatenated)
                 .expect("Serializing u64 should succeed.");
-            message_concatenated.extend_from_slice(message.as_ref());
-            ed25519_dalek::PublicKey::from_bytes(&public_key.raw_bytes())
+            message_concatenated.extend_from_slice(message.1.as_ref());
+            PublicKey::from_bytes(&verifying_key.0)
                 .expect("Should decode public key from bytes.")
-                .verify(&message_concatenated, &((*signature).into()))
+                .verify(
+                    &message_concatenated,
+                    &Signature::from_bytes(&signature.0).expect("Should never fail."),
+                )
                 .map_err(drop)
+        }
+    }
+
+    impl SignatureScheme<Vec<u8>> for Ed25519 {
+        type Nonce = u64;
+
+        #[inline]
+        fn new() -> Self {
+            Ed25519
+        }
+
+        fn gen_randomness(&self) -> Self::Randomness {
+            ()
         }
     }
 }
@@ -299,30 +191,32 @@ pub mod ed_dalek {
 /// Testing Suites
 #[cfg(test)]
 mod test {
-    use super::{ed_dalek::*, *};
+    use super::ed_dalek::*;
+    use manta_crypto::signature::{Sign, Verify};
+    use manta_util::Array;
 
     /// Tests if sign and verify a message is correct.
     #[test]
     fn sign_and_verify_is_correct() {
-        let private_key = PrivateKey(
-            [
-                149, 167, 173, 208, 224, 206, 37, 70, 87, 169, 157, 198, 120, 32, 151, 88, 25, 10,
-                12, 215, 80, 124, 187, 129, 183, 96, 103, 11, 191, 255, 33, 105,
-            ]
-            .into(),
-        );
-        let public_key = PublicKey(
-            [
-                104, 148, 44, 244, 61, 116, 39, 8, 68, 216, 6, 24, 232, 68, 239, 203, 198, 2, 138,
-                148, 242, 73, 122, 3, 19, 236, 195, 133, 136, 137, 146, 108,
-            ]
-            .into(),
-        );
+        let signing_key = Array::<u8, 32>::from_unchecked([
+            149, 167, 173, 208, 224, 206, 37, 70, 87, 169, 157, 198, 120, 32, 151, 88, 25, 10, 12,
+            215, 80, 124, 187, 129, 183, 96, 103, 11, 191, 255, 33, 105,
+        ]);
+        let verifying_key = Array::<u8, 32>::from_unchecked([
+            104, 148, 44, 244, 61, 116, 39, 8, 68, 216, 6, 24, 232, 68, 239, 203, 198, 2, 138, 148,
+            242, 73, 122, 3, 19, 236, 195, 133, 136, 137, 146, 108,
+        ]);
         let message = b"Test message";
-        let nounce = 1;
-        let signature = Ed25519::sign_bytes(message, &nounce, &public_key, &private_key)
-            .expect("Should sign the message.");
-        Ed25519::verify_bytes(message, &nounce, &signature, &public_key)
+        let nonce = 1;
+        let signer = Ed25519;
+        let signature = signer.sign(&signing_key, &(), &(nonce, message.to_vec()), &mut ());
+        signer
+            .verify(
+                &verifying_key,
+                &(nonce, message.to_vec()),
+                &signature,
+                &mut (),
+            )
             .expect("Should verify the signature.");
     }
 }

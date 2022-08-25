@@ -18,13 +18,14 @@
 
 use crate::{
     ceremony::{
-        config::{CeremonyConfig, Nonce, ParticipantIdentifier, PrivateKey, PublicKey, Signature},
+        config::{CeremonyConfig, Nonce, ParticipantIdentifier, PrivateKey, Signature},
         signature::{Nonce as _, SignatureScheme},
         state::{ContributeState, MPCState},
     },
     util::AsBytes,
 };
 use derivative::Derivative;
+use manta_crypto::signature::Sign;
 use manta_util::serde::{Deserialize, Serialize};
 
 /// Query Request
@@ -70,13 +71,11 @@ where
 #[serde(
     bound(
         serialize = r"
-            T: Serialize,
             Signature<C>: Serialize,
             Nonce<C>: Serialize,
             ParticipantIdentifier<C>: Serialize
         ",
         deserialize = r"
-            T: Deserialize<'de>,
             Signature<C>: Deserialize<'de>,
             Nonce<C>: Deserialize<'de>,
             ParticipantIdentifier<C>: Deserialize<'de>
@@ -85,7 +84,7 @@ where
     crate = "manta_util::serde",
     deny_unknown_fields
 )]
-pub struct Signed<T, C>
+pub struct Signed<C>
 where
     C: CeremonyConfig,
 {
@@ -93,7 +92,7 @@ where
     pub identifier: ParticipantIdentifier<C>,
 
     /// Message
-    pub message: T,
+    pub message: Vec<u8>,
 
     /// Nonce
     pub nonce: Nonce<C>,
@@ -102,23 +101,25 @@ where
     pub signature: Signature<C>,
 }
 
-impl<T, C> Signed<T, C>
+impl<C> Signed<C>
 where
     C: CeremonyConfig,
 {
     /// Generates a signed message using user's identifier, nonce, and key pair, and increment nonce by 1.
     #[inline]
     pub fn new(
-        message: T,
+        message: Vec<u8>,
         identifier: ParticipantIdentifier<C>,
         nonce: &mut Nonce<C>,
-        public_key: &PublicKey<C>,
         private_key: &PrivateKey<C>,
-    ) -> Result<Self, ()>
-    where
-        T: Serialize,
-    {
-        let signature = C::SignatureScheme::sign(&message, nonce, public_key, private_key)?;
+    ) -> Result<Self, ()> {
+        let signer = C::SignatureScheme::new();
+        let signature = signer.sign(
+            &private_key,
+            &signer.gen_randomness(),
+            &(nonce.clone(), message.clone()),
+            &mut (),
+        );
         let message = Signed {
             message,
             identifier,

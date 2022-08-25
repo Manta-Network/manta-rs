@@ -19,15 +19,19 @@
 use crate::{
     ceremony::{
         queue::{HasIdentifier, Priority},
-        registry::HasContributed,
-        signature::{self, SignatureScheme},
-        state::ServerSize,
+        signature::{self, HasNonce, HasPublicKey, SignatureScheme},
+        state::UserPriority,
+        util::HasContributed,
     },
     mpc,
 };
-use g16_bls12_381::Groth16BLS12381;
+use manta_crypto::{
+    arkworks::serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError},
+    rand::{OsRng, Rand},
+    signature::{SignatureType, SigningKeyType, VerifyingKeyType},
+};
+use std::io::{Read, Write};
 
-pub mod config;
 pub mod g16_bls12_381;
 
 /// Trustred Setup Ceremony Config
@@ -36,14 +40,14 @@ pub trait CeremonyConfig {
     type Setup: mpc::Verify + mpc::Contribute;
 
     /// Signature Scheme
-    type SignatureScheme: SignatureScheme;
+    type SignatureScheme: SignatureScheme<Vec<u8>>;
 
     /// Participant
     type Participant: Priority
         + HasIdentifier
-        + signature::HasPublicKey<Self::SignatureScheme>
+        + signature::HasPublicKey<Self::SignatureScheme, Vec<u8>>
         + HasContributed
-        + signature::HasNonce<Self::SignatureScheme>;
+        + signature::HasNonce<Self::SignatureScheme, Vec<u8>>;
 }
 
 /// State
@@ -59,39 +63,133 @@ pub type Hasher<C> = <<C as CeremonyConfig>::Setup as mpc::Contribute>::Hasher;
 pub type Proof<C> = <<C as CeremonyConfig>::Setup as mpc::Types>::Proof;
 
 /// Nonce
-pub type Nonce<C> = <<C as CeremonyConfig>::SignatureScheme as SignatureScheme>::Nonce;
+pub type Nonce<C> = <<C as CeremonyConfig>::SignatureScheme as SignatureScheme<Vec<u8>>>::Nonce;
 
 /// Public Key
-pub type PublicKey<C> = <<C as CeremonyConfig>::SignatureScheme as SignatureScheme>::PublicKey;
+pub type PublicKey<C> = <<C as CeremonyConfig>::SignatureScheme as VerifyingKeyType>::VerifyingKey;
 
 /// Signature
-pub type Signature<C> = <<C as CeremonyConfig>::SignatureScheme as SignatureScheme>::Signature;
+pub type Signature<C> = <<C as CeremonyConfig>::SignatureScheme as SignatureType>::Signature;
 
 /// Private Key
-pub type PrivateKey<C> = <<C as CeremonyConfig>::SignatureScheme as SignatureScheme>::PrivateKey;
+pub type PrivateKey<C> = <<C as CeremonyConfig>::SignatureScheme as SigningKeyType>::SigningKey;
 
 /// Participant Identifier
 pub type ParticipantIdentifier<C> =
     <<C as CeremonyConfig>::Participant as HasIdentifier>::Identifier;
 
-/// Checks `states` has the same size as `size`.
-pub fn check_state_size(states: &[State<Groth16BLS12381>; 3], size: &ServerSize) -> bool {
-    (states[0].vk.gamma_abc_g1.len() == size.mint.gamma_abc_g1)
-        || (states[0].a_query.len() == size.mint.a_b_g1_b_g2_query)
-        || (states[0].b_g1_query.len() == size.mint.a_b_g1_b_g2_query)
-        || (states[0].b_g2_query.len() == size.mint.a_b_g1_b_g2_query)
-        || (states[0].h_query.len() == size.mint.h_query)
-        || (states[0].l_query.len() == size.mint.l_query)
-        || (states[1].vk.gamma_abc_g1.len() == size.private_transfer.gamma_abc_g1)
-        || (states[1].a_query.len() == size.private_transfer.a_b_g1_b_g2_query)
-        || (states[1].b_g1_query.len() == size.private_transfer.a_b_g1_b_g2_query)
-        || (states[1].b_g2_query.len() == size.private_transfer.a_b_g1_b_g2_query)
-        || (states[1].h_query.len() == size.private_transfer.h_query)
-        || (states[1].l_query.len() == size.private_transfer.l_query)
-        || (states[2].vk.gamma_abc_g1.len() == size.reclaim.gamma_abc_g1)
-        || (states[2].a_query.len() == size.reclaim.a_b_g1_b_g2_query)
-        || (states[2].b_g1_query.len() == size.reclaim.a_b_g1_b_g2_query)
-        || (states[2].b_g2_query.len() == size.reclaim.a_b_g1_b_g2_query)
-        || (states[2].h_query.len() == size.reclaim.h_query)
-        || (states[2].l_query.len() == size.reclaim.l_query)
+/// Participant
+#[derive(Clone, CanonicalDeserialize, CanonicalSerialize)]
+pub struct Participant<S>
+where
+    S: SignatureScheme<Vec<u8>, Nonce = u64>,
+    S::VerifyingKey: CanonicalDeserialize + CanonicalSerialize,
+{
+    /// Public Key
+    pub public_key: S::VerifyingKey,
+
+    /// Twitter Account
+    pub twitter: String,
+
+    /// Priority
+    pub priority: UserPriority,
+
+    /// Nonce
+    pub nonce: u64,
+
+    /// Boolean on whether this participant has contributed
+    pub contributed: bool,
+}
+
+impl<S> Participant<S>
+where
+    S: SignatureScheme<Vec<u8>, Nonce = u64>,
+    S::VerifyingKey: CanonicalDeserialize + CanonicalSerialize,
+{
+    /// Builds a new [`Participant`] from `public_key`, `twitter`, and `priority`.
+    #[inline]
+    pub fn new(public_key: S::VerifyingKey, twitter: &str, priority: UserPriority) -> Self {
+        Self {
+            public_key,
+            twitter: twitter.to_string(),
+            priority,
+            nonce: OsRng.gen(),
+            contributed: false,
+        }
+    }
+}
+
+impl<S> Priority for Participant<S>
+where
+    S: SignatureScheme<Vec<u8>, Nonce = u64>,
+    S::VerifyingKey: CanonicalDeserialize + CanonicalSerialize,
+{
+    #[inline]
+    fn priority(&self) -> usize {
+        match self.priority {
+            UserPriority::Normal => 0,
+            UserPriority::High => 1,
+        }
+    }
+
+    #[inline]
+    fn reduce_priority(&mut self) {
+        self.priority = UserPriority::Normal;
+    }
+}
+
+impl<S> HasIdentifier for Participant<S>
+where
+    S: SignatureScheme<Vec<u8>, Nonce = u64>,
+    S::VerifyingKey: CanonicalDeserialize + CanonicalSerialize + Clone + Ord,
+{
+    type Identifier = S::VerifyingKey;
+
+    #[inline]
+    fn identifier(&self) -> Self::Identifier {
+        self.public_key.clone()
+    }
+}
+
+impl<S> HasPublicKey<S, Vec<u8>> for Participant<S>
+where
+    S: SignatureScheme<Vec<u8>, Nonce = u64>,
+    S::VerifyingKey: CanonicalDeserialize + CanonicalSerialize + Clone,
+{
+    #[inline]
+    fn public_key(&self) -> S::VerifyingKey {
+        self.public_key.clone()
+    }
+}
+
+impl<S> HasNonce<S, Vec<u8>> for Participant<S>
+where
+    S: SignatureScheme<Vec<u8>, Nonce = u64>,
+    S::VerifyingKey: CanonicalDeserialize + CanonicalSerialize,
+{
+    #[inline]
+    fn nonce(&self) -> S::Nonce {
+        self.nonce
+    }
+
+    #[inline]
+    fn set_nonce(&mut self, nonce: S::Nonce) {
+        self.nonce = nonce;
+    }
+}
+
+impl<S> HasContributed for Participant<S>
+where
+    S: SignatureScheme<Vec<u8>, Nonce = u64>,
+    S::VerifyingKey: CanonicalDeserialize + CanonicalSerialize,
+{
+    #[inline]
+    fn has_contributed(&self) -> bool {
+        self.contributed
+    }
+
+    #[inline]
+    fn set_contributed(&mut self) {
+        self.contributed = true;
+    }
 }

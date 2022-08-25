@@ -176,57 +176,6 @@ where
     }
 }
 
-/// Array of u8 with fixed size `N`
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
-#[serde(crate = "manta_util::serde")]
-pub struct U8Array<const N: usize>(#[serde(with = "serde_arrays")] pub [u8; N]);
-
-impl<const N: usize> CanonicalSerialize for U8Array<N> {
-    #[inline]
-    fn serialize<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {
-        for num in self.0 {
-            CanonicalSerialize::serialize(&num, &mut writer)
-                .expect("Serializing u8 should succeed.");
-        }
-        Ok(())
-    }
-
-    #[inline]
-    fn serialized_size(&self) -> usize {
-        self.0[0].serialized_size() * self.0.len()
-    }
-}
-
-impl<const N: usize> CanonicalDeserialize for U8Array<N> {
-    #[inline]
-    fn deserialize<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
-        let mut res = Vec::with_capacity(N);
-        for _ in 0..N {
-            res.push(
-                CanonicalDeserialize::deserialize(&mut reader)
-                    .expect("Deserializing u8 should succeed."),
-            );
-        }
-        Ok(Self(res.try_into().unwrap_or_else(|_| {
-            panic!("Should have converted into [u8; {}].", N)
-        })))
-    }
-}
-
-impl<const N: usize> From<U8Array<N>> for [u8; N] {
-    #[inline]
-    fn from(f: U8Array<N>) -> Self {
-        f.0
-    }
-}
-
-impl<const N: usize> From<[u8; N]> for U8Array<N> {
-    #[inline]
-    fn from(f: [u8; N]) -> Self {
-        U8Array(f)
-    }
-}
-
 /// Priority
 #[derive(Debug, Clone, Copy)]
 pub enum UserPriority {
