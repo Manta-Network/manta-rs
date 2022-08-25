@@ -35,7 +35,7 @@ serde-alloc = ["alloc", "serde/alloc"]
 serde-array = ["serde", "serde_with"]
 
 # Standard Library
-std = ["alloc"]
+std = ["alloc", "crossbeam-channel?/std", "serde?/std"]
 
 [dependencies]
 crossbeam-channel = { version = "0.5.6", optional = true, default-features = false }
