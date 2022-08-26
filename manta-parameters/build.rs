@@ -184,6 +184,7 @@ fn main() -> Result<()> {
                 Some(extension) => match extension.to_str() {
                     Some("dat") => compile_dat(path, &out_dir, &checksums)?,
                     Some("lfs") => compile_lfs(path, &out_dir, &checksums)?,
+                    Some("md") => {}
                     _ => bail!("Unsupported data file extension: {}.", path.display()),
                 },
                 _ => bail!("All data files must have an extension: {}.", path.display()),
