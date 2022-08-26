@@ -14,36 +14,6 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Groth16 Trusted Setup Ceremony
+//! Dalek Cryptography Backend
 
-use crate::mpc;
-
-pub mod client;
-pub mod coordinator;
-pub mod registry;
-pub mod server;
-
-#[cfg(all(feature = "bincode", feature = "serde"))]
-#[cfg_attr(doc_cfg, doc(cfg(all(feature = "bincode", feature = "serde"))))]
-pub mod signature;
-
-///
-pub trait Participant {
-    ///
-    type Identifier;
-
-    ///
-    fn id(&self) -> &Self::Identifier;
-
-    ///
-    fn level(&self) -> usize;
-}
-
-///
-pub trait Ceremony: mpc::Types {
-    ///
-    type Identifier: Clone + PartialEq;
-
-    ///
-    type Participant: Participant<Identifier = Self::Identifier>;
-}
+pub mod ed25519;

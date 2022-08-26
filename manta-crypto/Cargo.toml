@@ -34,14 +34,23 @@ arkworks = [
     "ark-serialize",
 ]
 
+# Dalek Cryptography Backend
+dalek = [
+    "ed25519-dalek",
+]
+
 # Enable `getrandom` Entropy Source
 getrandom = ["rand_core/getrandom"]
 
-# Serde
-serde = ["manta-util/serde-alloc", "manta-util/serde-array"]
+# Serde Serialization
+serde = [
+    "manta-util/serde-alloc",
+    "manta-util/serde-array",
+    "rand_chacha?/serde1"
+]
 
 # Standard Library
-std = ["manta-util/std"]
+std = ["manta-util/std", "rand_chacha?/std"]
 
 # Testing Frameworks
 test = []
@@ -53,8 +62,10 @@ ark-r1cs-std = { version = "0.3.1", optional = true, default-features = false }
 ark-relations = { version = "0.3.0", optional = true, default-features = false }
 ark-serialize = { version = "0.3.0", optional = true, default-features = false }
 derivative = { version = "2.2.0", default-features = false, features = ["use_core"] }
+ed25519-dalek = { version = "1.0.1", optional = true, default-features = false, features = ["u64_backend"] }
 manta-util = { path = "../manta-util", default-features = false, features = ["alloc"] }
 rand = { version = "0.8.4", optional = true, default-features = false, features = ["alloc"] }
+rand_chacha = { version = "0.3.1", optional = true, default-features = false }
 rand_core = { version = "0.6.3", default-features = false }
 workspace-hack = { version = "0.1.0", path = "../workspace-hack" }
 

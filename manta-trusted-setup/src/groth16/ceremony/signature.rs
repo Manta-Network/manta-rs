@@ -17,17 +17,133 @@
 //! Groth16 Trusted Setup Ceremony Signatures
 
 use manta_crypto::signature;
+use manta_util::{serde::Serialize, AsBytes};
 
 /// Nonce
-pub trait Nonce: Clone + PartialEq {
-    /// Increment the current nonce by one unit.
-    fn increment(&mut self);
+pub trait Nonce: PartialEq {
+    /// Increments the current nonce by one.
+    fn increment(&self) -> Self;
+
+    /// Checks if the current nonce is valid.
+    fn is_valid(&self) -> bool;
+}
+
+impl Nonce for u64 {
+    #[inline]
+    fn increment(&self) -> Self {
+        self.saturating_add(1)
+    }
+
+    #[inline]
+    fn is_valid(&self) -> bool {
+        *self != Self::MAX
+    }
+}
+
+/// Checks if the two nonces, `current` and `user_nonce`, are both valid and equal to each other.
+#[inline]
+pub fn check_nonce<N>(current: &N, user_nonce: &N) -> bool
+where
+    N: Nonce,
+{
+    current.is_valid() && user_nonce.is_valid() && current == user_nonce
+}
+
+/// Message with Nonce
+#[derive(Clone, Debug, Default, Eq, Hash, PartialEq)]
+pub struct Message<N> {
+    /// Nonce
+    pub nonce: N,
+
+    /// Encoded Message
+    pub encoded_message: Vec<u8>,
+}
+
+impl<N> AsBytes for Message<N>
+where
+    N: AsBytes,
+{
+    #[inline]
+    fn as_bytes(&self) -> Vec<u8> {
+        let mut bytes = self.nonce.as_bytes();
+        bytes.append(&mut self.encoded_message.clone());
+        bytes
+    }
 }
 
 /// Signature Scheme
-pub trait SignatureScheme<T>:
-    signature::MessageType<Message = (Self::Nonce, T)> + signature::Sign + signature::Verify
+pub trait SignatureScheme:
+    Default
+    + signature::Sign<Message = Message<Self::Nonce>, Randomness = ()>
+    + signature::Verify<Verification = Result<(), Self::Error>>
 {
     /// Message Nonce
     type Nonce: Nonce;
+
+    /// Verification Error Type
+    type Error;
+}
+
+/// Signs the `message` with the `nonce` attached using the `signing_key`.
+#[inline]
+pub fn sign<T, S>(
+    signing_key: &S::SigningKey,
+    nonce: S::Nonce,
+    message: &T,
+) -> Result<S::Signature, bincode::Error>
+where
+    T: Serialize,
+    S: SignatureScheme,
+{
+    Ok(S::default().sign(
+        signing_key,
+        &(),
+        &Message {
+            nonce,
+            encoded_message: bincode::serialize(message)?,
+        },
+        &mut (),
+    ))
+}
+
+/// Verification Error
+#[derive(Debug)]
+pub enum VerificationError<E> {
+    /// Serialization
+    Serialization(bincode::Error),
+
+    /// Base Verification Error Type
+    Error(E),
+}
+
+impl<E> From<bincode::Error> for VerificationError<E> {
+    #[inline]
+    fn from(err: bincode::Error) -> Self {
+        Self::Serialization(err)
+    }
+}
+
+/// Verifies the `signature` of `message` with `nonce` attached using `verifying_key`.
+#[inline]
+pub fn verify<T, S>(
+    verifying_key: &S::VerifyingKey,
+    nonce: S::Nonce,
+    message: &T,
+    signature: &S::Signature,
+) -> Result<(), VerificationError<S::Error>>
+where
+    T: Serialize,
+    S: SignatureScheme,
+{
+    S::default()
+        .verify(
+            verifying_key,
+            &Message {
+                nonce,
+                encoded_message: bincode::serialize(message)?,
+            },
+            signature,
+            &mut (),
+        )
+        .map_err(VerificationError::Error)
 }
