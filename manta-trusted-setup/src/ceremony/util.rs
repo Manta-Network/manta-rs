@@ -72,7 +72,7 @@ where
     let now = Instant::now();
     let state = initialize::<C, S>(powers, cs).expect("failed to initialize state");
     let challenge = <C as mpc::ProvingKeyHasher<C>>::hash(&state);
-    let mpc_state: MPCState<D, 1> = MPCState {
+    let mpc_state = MPCState::<D, 1> {
         state: Array::from_unchecked([AsBytes::from_actual(state)]),
         challenge: Array::from_unchecked([AsBytes::from_actual(challenge.into())]),
     };

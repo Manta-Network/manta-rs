@@ -111,27 +111,28 @@
 //     Ok((pk, sk))
 // }
 
-// /// Gets state size from server.
-// #[inline]
-// pub async fn get_start_meta_data(
-//     identity: PublicKey<Groth16BLS12381>,
-//     network_client: &KnownUrlClient,
-// ) -> Result<(ServerSize, Nonce<Groth16BLS12381>), Error> {
-//     match network_client
-//         .post::<_, Result<(ServerSize, Nonce<Groth16BLS12381>), CeremonyError<Groth16BLS12381>>>(
-//             "start", &identity,
-//         )
-//         .await
-//         .map_err(|_| {
-//             return Error::NetworkError(
-//                 "Should have received starting meta data from server".to_string(),
-//             );
-//         })? {
-//         Ok((server_size, nonce)) => Ok((server_size, nonce)),
-//         Err(CeremonyError::NotRegistered) => Err(Error::NotRegistered),
-//         Err(e) => Err(Error::UnexpectedError(format!("{:?}", e))),
-//     }
-// }
+    // /// Gets state size from server.
+    // #[inline]
+    // pub async fn get_start_meta_data(
+    //     identity: PublicKey<C>,
+    //     network_client: &KnownUrlClient,
+    // ) -> Result<(ServerSize, Nonce<Groth16BLS12381>), Error> {
+    //     match network_client
+    //         .post::<_, Result<(ServerSize, Nonce<Groth16BLS12381>), CeremonyError<Groth16BLS12381>>>(
+    //             "start", &identity,
+    //         )
+    //         .await
+    //         .map_err(|_| {
+    //             return Error::NetworkError(
+    //                 "Should have received starting meta data from server".to_string(),
+    //             );
+    //         })? {
+    //         Ok((server_size, nonce)) => Ok((server_size, nonce)),
+    //         Err(CeremonyError::NotRegistered) => Err(Error::NotRegistered),
+    //         Err(e) => Err(Error::UnexpectedError(format!("{:?}", e))),
+    //     }
+    // }
+
 
 // /// Contributes to the server.
 // #[inline]

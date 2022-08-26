@@ -16,7 +16,8 @@
 
 //! Signature Scheme
 
-use manta_crypto::signature;
+use manta_crypto::signature::{self, SigningKeyType};
+use manta_util::serde::Serialize;
 
 /// Nonce
 pub trait Nonce: Clone + PartialEq {
@@ -50,7 +51,9 @@ where
 
 /// Signature Scheme
 pub trait SignatureScheme<T>:
-    signature::MessageType<Message = (Self::Nonce, T)> + signature::Sign + signature::Verify
+    signature::MessageType<Message = (Self::Nonce, T)>
+    + signature::Sign
+    + signature::Verify<Verification = Result<(), ()>>
 {
     /// Message Nonce
     type Nonce: Nonce;
@@ -86,11 +89,11 @@ where
 /// ED25519 Signature Scheme
 pub mod ed_dalek {
     use super::*;
-    use ed25519_dalek::{Keypair, PublicKey, SecretKey, Signature, Signer, Verifier};
+    use ed25519_dalek::{Keypair, PublicKey, Signature, Signer, Verifier};
     use manta_crypto::signature::{
         RandomnessType, Sign, SignatureType, SigningKeyType, Verify, VerifyingKeyType,
     };
-    use manta_util::Array;
+    use manta_util::{serde::Serialize, Array};
 
     /// ED25519-Dalek Signature
     pub struct Ed25519;
@@ -118,6 +121,7 @@ pub mod ed_dalek {
     }
 
     impl Sign for Ed25519 {
+        #[inline]
         fn sign(
             &self,
             signing_key: &Self::SigningKey,
@@ -126,29 +130,19 @@ pub mod ed_dalek {
             compiler: &mut (),
         ) -> Self::Signature {
             let _ = (randomness, compiler);
-            let mut message_concatenated = Vec::new();
-            message_concatenated.extend_from_slice(
-                serde_json::to_string(&message.0)
-                    .expect("Serializing nonce should succeed.")
-                    .as_ref(),
-            );
-            message_concatenated.extend_from_slice(message.1.as_ref());
-            let secret_key: SecretKey =
-                SecretKey::from_bytes(&signing_key.0).expect("Should give secret key.");
-            let public_key: PublicKey = (&secret_key).into();
-            Array::from_unchecked(
-                Keypair {
-                    secret: secret_key,
-                    public: public_key,
-                }
-                .sign(&message_concatenated),
-            )
+            let mut writer = Vec::new();
+            serde_json::to_writer(&mut writer, &message.0)
+                .expect("Serializing nonce should succeed.");
+            writer.extend_from_slice(message.1.as_ref());
+            let (secret, public) = Self::to_dalek_key(signing_key);
+            Array::from_unchecked(Keypair { secret, public }.sign(&writer))
         }
     }
 
     impl Verify for Ed25519 {
         type Verification = Result<(), ()>;
 
+        #[inline]
         fn verify(
             &self,
             verifying_key: &Self::VerifyingKey,
@@ -156,17 +150,14 @@ pub mod ed_dalek {
             signature: &Self::Signature,
             _: &mut (),
         ) -> Self::Verification {
-            let mut message_concatenated = Vec::new();
-            message_concatenated.extend_from_slice(
-                serde_json::to_string(&message.0)
-                    .expect("Serializing nonce should succeed.")
-                    .as_ref(),
-            );
-            message_concatenated.extend_from_slice(message.1.as_ref());
+            let mut writer = Vec::new();
+            serde_json::to_writer(&mut writer, &message.0)
+                .expect("Serializing nonce should succeed.");
+            writer.extend_from_slice(message.1.as_ref());
             PublicKey::from_bytes(&verifying_key.0)
                 .expect("Should decode public key from bytes.")
                 .verify(
-                    &message_concatenated,
+                    &writer,
                     &Signature::from_bytes(&signature.0).expect("Should never fail."),
                 )
                 .map_err(drop)
@@ -181,6 +172,7 @@ pub mod ed_dalek {
             Ed25519
         }
 
+        #[inline]
         fn gen_randomness(&self) -> Self::Randomness {
             ()
         }
@@ -207,7 +199,7 @@ pub mod ed_dalek {
         /// Converts Ed25519 signing key to `ed25519_dalek` key pair.
         #[inline]
         pub fn to_dalek_key(
-            signing_key: <Self as SigningKeyType>::SigningKey,
+            signing_key: &<Self as SigningKeyType>::SigningKey,
         ) -> (ed25519_dalek::SecretKey, ed25519_dalek::PublicKey) {
             let sk = ed25519_dalek::SecretKey::from_bytes(&signing_key.0)
                 .expect("`from_bytes` should succeed for SecretKey.");
@@ -232,10 +224,51 @@ pub mod ed_dalek {
     }
 }
 
+/// Signs a `(nonce, message)` with `signing_key`.
+#[inline]
+pub fn sign<T, S>(
+    message: &T,
+    nonce: S::Nonce,
+    signing_key: &S::SigningKey,
+) -> S::Signature
+where
+    T: Serialize,
+    S: SignatureScheme<Vec<u8>>
+{
+    let signer = S::new();
+    let mut writer = Vec::new();
+    serde_json::to_writer(&mut writer, &message).expect("Serialization should succeed.");
+    signer.sign(
+        signing_key,
+        &signer.gen_randomness(),
+        &(nonce, writer),
+        &mut (),
+    )
+}
+
+/// Verifies the signature of `(nonce, message)` with `verifying_key`.
+#[inline]
+pub fn verify<T, S>(
+    message: &T,
+    nonce: S::Nonce,
+    verifying_key: &S::VerifyingKey,
+    signature: &S::Signature,
+) -> Result<(), ()>
+where
+    T: Serialize,
+    S: SignatureScheme<Vec<u8>>
+{
+    let signer = S::new();
+    let mut writer = Vec::new();
+    serde_json::to_writer(&mut writer, &message).expect("Serialization should succeed.");
+    signer.verify(verifying_key, &(nonce, writer), signature, &mut ())
+}
+
 /// Testing Suites
 #[cfg(test)]
 mod test {
-    use super::ed_dalek::*;
+    use super::{ed_dalek::*, *};
+    use bip39::{Language, Mnemonic, MnemonicType, Seed};
     use manta_crypto::signature::{Sign, Verify};
     use manta_util::Array;
 
@@ -279,10 +312,57 @@ mod test {
         let ed25519_key_pair = Ed25519::generate_keys(&seed_bytes);
         assert_eq!(ed25519_key_pair.0, expected_signing_key);
         assert_eq!(ed25519_key_pair.1, expected_verifying_key);
-        let dalek_key_pair = Ed25519::to_dalek_key(expected_signing_key);
+        let dalek_key_pair = Ed25519::to_dalek_key(&expected_signing_key);
         assert_eq!(
             Ed25519::from_dalek_key(dalek_key_pair.0, dalek_key_pair.1),
             (expected_signing_key, expected_verifying_key)
         );
+    }
+
+    /// Tests if sign and verify are compatible with serialization.
+    #[test]
+    fn signature_and_serialization_is_compatible() {
+        let twitter_account = "mantalorian";
+        let email = "mantalorian@manta.network";
+        let mnemonic = Mnemonic::new(MnemonicType::Words12, Language::English);
+        let seed = Seed::new(&mnemonic, "manta-trusted-setup");
+        let (sk, pk) = Ed25519::generate_keys(seed.as_bytes());
+        let pk_string = bs58::encode(pk).into_string();
+        let signer = Ed25519;
+        let signature = signer.sign(
+            &sk,
+            &signer.gen_randomness(),
+            &(
+                0,
+                format!(
+                    "manta-trusted-setup-twitter:{}, manta-trusted-setup-email:{}",
+                    twitter_account, email
+                )
+                .as_bytes()
+                .into(),
+            ),
+            &mut (),
+        );
+        let signature_string = bs58::encode(signature).into_string();
+        let public_key: Array<u8, 32> =
+            Array::from_unchecked(bs58::decode(pk_string).into_vec().unwrap());
+        let signature: Array<u8, 64> =
+            Array::from_unchecked(bs58::decode(signature_string).into_vec().unwrap());
+        signer
+            .verify(
+                &public_key,
+                &(
+                    0,
+                    format!(
+                        "manta-trusted-setup-twitter:{}, manta-trusted-setup-email:{}",
+                        twitter_account, email
+                    )
+                    .as_bytes()
+                    .into(),
+                ),
+                &signature,
+                &mut (),
+            )
+            .expect("Verifying signature should succeed.");
     }
 }

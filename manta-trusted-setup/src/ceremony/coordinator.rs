@@ -43,18 +43,18 @@ pub const TIME_LIMIT: Duration = Duration::from_secs(360);
 #[serde(
     bound(
         serialize = "
-                    C::Participant: Serialize, 
-                    ParticipantIdentifier<C>: Serialize,
-                    State<C>: CanonicalSerialize, 
-                    Challenge<C>: CanonicalSerialize,
-                    Proof<C>: CanonicalSerialize
+            Proof<C>: CanonicalSerialize,
+            C::Participant: Serialize, 
+            State<C>: CanonicalSerialize, 
+            Challenge<C>: CanonicalSerialize,
+            ParticipantIdentifier<C>: Serialize,
         ",
         deserialize = "
-                    C::Participant: Deserialize<'de>, 
-                    ParticipantIdentifier<C>: Deserialize<'de>,
-                    State<C>: CanonicalDeserialize, 
-                    Challenge<C>: CanonicalDeserialize,
-                    Proof<C>: CanonicalDeserialize,
+            Proof<C>: CanonicalDeserialize,
+            C::Participant: Deserialize<'de>, 
+            State<C>: CanonicalDeserialize, 
+            Challenge<C>: CanonicalDeserialize,
+            ParticipantIdentifier<C>: Deserialize<'de>,
         ",
     ),
     crate = "manta_util::serde",
@@ -117,7 +117,7 @@ where
             challenge,
             registry,
             size,
-            queue: Queue::new(),
+            queue: Queue::default(),
             lock: Timed::default(),
         }
     }
