@@ -54,6 +54,7 @@ workspace-hack = { version = "0.1.0", path = "../workspace-hack" }
 
 [dev-dependencies]
 ark-bls12-381 = { version = "0.3.0", default-features = false, features = ["curve", "scalar_field"] }
+ark-bn254 = { version = "0.3.0", default-features = false, features = ["curve", "scalar_field"] }
 ark-r1cs-std = { version = "0.3.1", default-features = false }
 ark-snark = { version = "0.3.0", default-features = false }
 manta-accounting = { path = "../manta-accounting", default-features = false }
