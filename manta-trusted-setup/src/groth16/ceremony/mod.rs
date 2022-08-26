@@ -18,32 +18,33 @@
 
 use crate::mpc;
 
-pub mod client;
-pub mod coordinator;
 pub mod registry;
-pub mod server;
+
+#[cfg(feature = "std")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
+pub mod coordinator;
 
 #[cfg(all(feature = "bincode", feature = "serde"))]
 #[cfg_attr(doc_cfg, doc(cfg(all(feature = "bincode", feature = "serde"))))]
 pub mod signature;
 
-///
+/// Participant
 pub trait Participant {
-    ///
+    /// Participant Identifier Type
     type Identifier;
 
-    ///
+    /// Returns the [`Identifier`](Self::Identifier) for `self`.
     fn id(&self) -> &Self::Identifier;
 
-    ///
+    /// Returns the priority level for `self`.
     fn level(&self) -> usize;
 }
 
-///
+/// Ceremony Configuration
 pub trait Ceremony: mpc::Types {
-    ///
+    /// Participant Identifier Type
     type Identifier: Clone + PartialEq;
 
-    ///
+    /// Participant Type
     type Participant: Participant<Identifier = Self::Identifier>;
 }

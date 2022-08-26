@@ -32,7 +32,7 @@ rayon = ["manta-util/rayon"]
 serde = ["manta-util/serde"]
 
 # Standard Library
-std = []
+std = ["manta-util/std"]
 
 # Testing Frameworks
 test = ["manta-crypto/test"]

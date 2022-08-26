@@ -27,7 +27,7 @@ use manta_util::AsBytes;
 
 pub use ed25519_dalek::*;
 
-///
+/// Converts `bytes` into a [`SecretKey`].
 #[inline]
 pub fn secret_key_from_bytes(bytes: [u8; SECRET_KEY_LENGTH]) -> SecretKey {
     match SecretKey::from_bytes(&bytes) {
@@ -53,7 +53,7 @@ pub fn keypair(secret_key: &SecretKey) -> Keypair {
     }
 }
 
-///
+/// Generates a [`SecretKey`] from `rng`.
 #[inline]
 pub fn generate_secret_key<R>(rng: &mut R) -> SecretKey
 where
@@ -62,7 +62,7 @@ where
     secret_key_from_bytes(rng.gen())
 }
 
-///
+/// Generates a [`Keypair`] from `rng`.
 #[inline]
 pub fn generate_keypair<R>(rng: &mut R) -> Keypair
 where
