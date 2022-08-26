@@ -150,6 +150,7 @@ mod tests {
             serialization::{read_kzg_proof, read_subaccumulator, Compressed, PpotSerializer},
         },
     };
+    use ark_std::println;
 
     const POWERS: usize = 1 << 5;
     /// Configuration for a Phase1 Ceremony large enough to support MantaPay circuits
