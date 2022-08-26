@@ -18,14 +18,13 @@
 
 use crate::alloc::string::ToString;
 use crate::arkworks::ff::PrimeField;
+use ark_ff::BigInteger;
 use models::short_weierstrass_jacobian;
 use models::twisted_edwards_extended;
 use models::SWModelParameters;
 use models::TEModelParameters;
-use num_bigint::BigInt;
+use num_bigint::{BigInt,BigUint};
 use num_bigint::Sign;
-
-
 
 #[doc(inline)]
 pub use ark_ec::*;
@@ -62,25 +61,26 @@ where
     }
 }
 
-impl<P> AffineCurveExt for twisted_edwards_extended::GroupAffine<P>
-where
-    P: TEModelParameters,
-{
-    #[inline]
-    fn x(&self) -> &Self::BaseField {
-        &self.x
-    }
+// impl<P> AffineCurveExt for twisted_edwards_extended::GroupAffine<P>
+// where
+//     P: TEModelParameters,
+// {
+//     #[inline]
+//     fn x(&self) -> &Self::BaseField {
+//         &self.x
+//     }
 
-    #[inline]
-    fn y(&self) -> &Self::BaseField {
-        &self.y
-    }
+//     #[inline]
+//     fn y(&self) -> &Self::BaseField {
+//         &self.y
+//     }
+// }
 
-    #[inline]
-    fn from_xy_unchecked(x: Self::BaseField, y: Self::BaseField) -> Self {
-        Self::new(x, y)
-    }
-}
+//     #[inline]
+//     fn from_xy_unchecked(x: Self::BaseField, y: Self::BaseField) -> Self {
+//         Self::new(x, y)
+//     }
+
 
 ///
 pub struct GLVParameters<C>
@@ -147,7 +147,7 @@ where
     // NOTE: We first find rational solutions to `(k,0) = q1v + q2u`
     //       We can re-write this problem as a matrix `A(q1,q2) = (k,0)`
     //       so that `(q1,q2) = A^-1(k,0)`.
-    let k: BigInt = k.into_repr().to_string().parse().unwrap();
+    let k: BigInt = BigInt::from_bytes_be(Sign::Plus, &k.into_repr().to_bytes_be());
     let det = (v.0.clone() * u.1.clone()) - (v.1.clone() * u.0.clone());
     let q1 = (u.1.clone() * k.clone()) / det.clone();
     let q2 = (-v.1.clone() * k.clone()) / det;
@@ -169,6 +169,9 @@ where
 #[cfg(test)]
 mod test {
     use core::str::FromStr;
+    use ark_ff::biginteger;
+    use rand::distributions::Standard;
+    use rand::prelude::Distribution;
     use super::*;
     use crate::arkworks::ff::UniformRand;
     use crate::arkworks::ff::{Field, PrimeField};
@@ -176,19 +179,19 @@ mod test {
 
     pub fn glv_is_correct<C>()
     where
-        C: AffineCurveExt,
+        C: AffineCurveExt
     {
         let mut rng = OsRng;
         let scalar = C::ScalarField::rand(&mut rng);
-        let point = C::rand(&mut rng);
+        let point = C::Projective::rand(&mut rng);
         assert_eq!(
-            point.mul(&scalar.into_repr()),
+            point.mul(scalar.into_repr()).into_affine(),
             GLVParameters::<C>{
-            lambda: C::ScalarField::from_le_bytes_mod_order(&"228988810152649578064853576960394133503".parse().unwrap().to_bytes_le()),
-            beta: C::BaseField::from_random_bytes(&"4002409555221667392624310435006688643935503118305586438271171395842971157480381377015405980053539358417135540939436".parse().unwrap().to_bytes_le()).unwrap(),
+            lambda: C::ScalarField::from_le_bytes_mod_order(&"228988810152649578064853576960394133503".parse::<BigUint>().unwrap().to_bytes_le()),
+            beta: C::BaseField::from_random_bytes(&"4002409555221667392624310435006688643935503118305586438271171395842971157480381377015405980053539358417135540939436".parse::<BigUint>().unwrap().to_bytes_le()).unwrap(),
             base_v1: (BigInt::from_str("1").unwrap(), BigInt::from_str("228988810152649578064853576960394133504").unwrap()),
             base_v2: ("228988810152649578064853576960394133503".parse().unwrap(),"-1".parse().unwrap())
-            }.scalar_mul(&point, &scalar),
+            }.scalar_mul(&point.into_affine(), &scalar),
             "GLV should produce the same results as Arkworks scalar multiplication."
         );
     }
