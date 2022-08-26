@@ -91,7 +91,7 @@ where
     pub lock: Timed<Option<ParticipantIdentifier<C>>>,
 
     /// Size of state
-    pub size: ServerSize,
+    pub size: ServerSize<M>,
 }
 
 impl<C, const N: usize, const M: usize> Coordinator<C, N, M>
@@ -107,7 +107,7 @@ where
         state: Array<AsBytes<State<C>>, M>,
         challenge: Array<AsBytes<Challenge<C>>, M>,
         registry: Registry<ParticipantIdentifier<C>, C::Participant>,
-        size: ServerSize,
+        size: ServerSize<M>,
     ) -> Self {
         Self {
             num_contributions,

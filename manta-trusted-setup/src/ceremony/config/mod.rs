@@ -25,7 +25,7 @@ use crate::{
 };
 use manta_crypto::signature::{SignatureType, SigningKeyType, VerifyingKeyType};
 
-// pub mod g16_bls12_381;
+pub mod g16_bls12_381;
 
 /// Trustred Setup Ceremony Config
 pub trait CeremonyConfig {

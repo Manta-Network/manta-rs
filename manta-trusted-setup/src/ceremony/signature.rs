@@ -16,7 +16,7 @@
 
 //! Signature Scheme
 
-use manta_crypto::signature::{self, SigningKeyType};
+use manta_crypto::signature;
 use manta_util::serde::Serialize;
 
 /// Nonce
@@ -51,10 +51,12 @@ where
 
 /// Signature Scheme
 pub trait SignatureScheme<T>:
-    signature::MessageType<Message = (Self::Nonce, T)>
-    + signature::Sign
-    + signature::Verify<Verification = Result<(), ()>>
+    signature::Sign<Randomness = (), Message = (Self::Nonce, T)>
+    + signature::Verify<Verification = Result<(), Self::Error>>
 {
+    /// Error
+    type Error;
+
     /// Message Nonce
     type Nonce: Nonce;
 
@@ -93,7 +95,7 @@ pub mod ed_dalek {
     use manta_crypto::signature::{
         RandomnessType, Sign, SignatureType, SigningKeyType, Verify, VerifyingKeyType,
     };
-    use manta_util::{serde::Serialize, Array};
+    use manta_util::Array;
 
     /// ED25519-Dalek Signature
     pub struct Ed25519;
@@ -165,6 +167,8 @@ pub mod ed_dalek {
     }
 
     impl SignatureScheme<Vec<u8>> for Ed25519 {
+        type Error = ();
+
         type Nonce = u64;
 
         #[inline]
@@ -226,24 +230,15 @@ pub mod ed_dalek {
 
 /// Signs a `(nonce, message)` with `signing_key`.
 #[inline]
-pub fn sign<T, S>(
-    message: &T,
-    nonce: S::Nonce,
-    signing_key: &S::SigningKey,
-) -> S::Signature
+pub fn sign<T, S>(message: &T, nonce: S::Nonce, signing_key: &S::SigningKey) -> S::Signature
 where
     T: Serialize,
-    S: SignatureScheme<Vec<u8>>
+    S: SignatureScheme<Vec<u8>>,
 {
     let signer = S::new();
     let mut writer = Vec::new();
     serde_json::to_writer(&mut writer, &message).expect("Serialization should succeed.");
-    signer.sign(
-        signing_key,
-        &signer.gen_randomness(),
-        &(nonce, writer),
-        &mut (),
-    )
+    signer.sign(signing_key, &(), &(nonce, writer), &mut ())
 }
 
 /// Verifies the signature of `(nonce, message)` with `verifying_key`.
@@ -253,10 +248,10 @@ pub fn verify<T, S>(
     nonce: S::Nonce,
     verifying_key: &S::VerifyingKey,
     signature: &S::Signature,
-) -> Result<(), ()>
+) -> Result<(), S::Error>
 where
     T: Serialize,
-    S: SignatureScheme<Vec<u8>>
+    S: SignatureScheme<Vec<u8>>,
 {
     let signer = S::new();
     let mut writer = Vec::new();

@@ -22,15 +22,12 @@ use crate::{
             CeremonyConfig, Challenge, Nonce, ParticipantIdentifier, PrivateKey, Proof, Signature,
             State,
         },
-        signature::{Nonce as _, SignatureScheme},
+        signature::Nonce as _,
     },
     util::AsBytes,
 };
 use derivative::Derivative;
-use manta_crypto::{
-    arkworks::serialize::{CanonicalDeserialize, CanonicalSerialize},
-    signature::Sign,
-};
+use manta_crypto::arkworks::serialize::{CanonicalDeserialize, CanonicalSerialize};
 use manta_util::{
     serde::{Deserialize, Serialize},
     Array,
@@ -229,16 +226,7 @@ where
 /// Response for State Sizes
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(crate = "manta_util::serde", deny_unknown_fields)]
-pub struct ServerSize {
-    /// Mint State Size
-    pub mint: StateSize,
-
-    /// Private Transfer State Size
-    pub private_transfer: StateSize,
-
-    /// Reclaim State Size
-    pub reclaim: StateSize,
-}
+pub struct ServerSize<const CIRCUIT_COUNT: usize>(pub Array<StateSize, CIRCUIT_COUNT>);
 
 /// State Size
 #[derive(Clone, Serialize, Deserialize)]

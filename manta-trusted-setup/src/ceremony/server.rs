@@ -18,7 +18,7 @@
 
 use super::{
     message::ServerSize,
-    participant::HasContributed,
+    participant::{HasContributed, Participant, UserPriority},
     signature::{ed_dalek::Ed25519, verify},
 };
 use crate::{
@@ -32,11 +32,11 @@ use crate::{
     },
     util::AsBytes,
 };
-use alloc::sync::Arc;
+use alloc::{collections::BTreeMap, sync::Arc};
 use core::{fmt::Debug, future::Future, ops::Deref};
 use manta_crypto::{
     arkworks::serialize::{CanonicalDeserialize, CanonicalSerialize},
-    signature::Verify,
+    rand::{OsRng, Rand},
 };
 use manta_util::{
     http::tide::{self, Body, Request, Response},
@@ -44,7 +44,7 @@ use manta_util::{
     Array,
 };
 use parking_lot::Mutex;
-use std::path::Path;
+use std::{fs::File, path::Path};
 
 /// Server
 #[derive(derivative::Derivative)]
@@ -71,7 +71,7 @@ where
         challenge: Array<AsBytes<Challenge<C>>, CIRCUIT_COUNT>,
         registry: Registry<ParticipantIdentifier<C>, C::Participant>,
         recovery_path: String,
-        size: ServerSize,
+        size: ServerSize<CIRCUIT_COUNT>,
     ) -> Self {
         Self {
             coordinator: Arc::new(Mutex::new(Coordinator::new(
@@ -119,7 +119,7 @@ where
     pub async fn start(
         self,
         request: ParticipantIdentifier<C>,
-    ) -> Result<(ServerSize, Nonce<C>), CeremonyError<C>> {
+    ) -> Result<(ServerSize<CIRCUIT_COUNT>, Nonce<C>), CeremonyError<C>> {
         let coordinator = self.coordinator.lock();
         Ok((
             coordinator.size.clone(),
@@ -200,103 +200,110 @@ where
         Ok(())
     }
 
-    //     /// Executes `f` on the incoming `request`.
-    //     #[inline]
-    //     pub async fn execute<T, R, F, Fut>(
-    //         mut request: Request<Self>,
-    //         f: F,
-    //     ) -> Result<Response, tide::Error>
-    //     where
-    //         T: DeserializeOwned,
-    //         R: Serialize,
-    //         F: FnOnce(Self, T) -> Fut,
-    //         Fut: Future<Output = Result<R, CeremonyError<C>>>,
-    //     {
-    //         into_body::<C, _, _, _>(move || async move {
-    //             f(
-    //                 request.state().clone(),
-    //                 request
-    //                     .body_json::<T>()
-    //                     .await
-    //                     .expect("Read and deserialize should succeed."),
-    //             )
-    //             .await
-    //         })
-    //         .await
-    //     }
-
-    //     /// Recovers from a disk file at `recovery` and use `backup` as the backup directory.
-    //     #[inline]
-    //     pub fn recover(recovery: String, backup: String) -> Self
-    //     where
-    //         Proof<C>: CanonicalDeserialize + Debug,
-    //         State<C>: CanonicalDeserialize + Debug,
-    //         Challenge<C>: CanonicalDeserialize + Debug,
-    //         ParticipantIdentifier<C>: CanonicalDeserialize,
-    //         C::Participant: CanonicalDeserialize,
-    //     {
-    //         Self {
-    //             coordinator: Arc::new(Mutex::new(load_from_file(recovery))),
-    //             recovery_path: backup,
-    //         }
-    //     }
+    /// Executes `f` on the incoming `request`.
+    #[inline]
+    pub async fn execute<T, R, F, Fut>(
+        mut request: Request<Self>,
+        f: F,
+    ) -> Result<Response, tide::Error>
+    where
+        T: DeserializeOwned,
+        R: Serialize,
+        F: FnOnce(Self, T) -> Fut,
+        <C::SignatureScheme as SignatureScheme<Vec<u8>>>::Nonce: Serialize,
+        Fut: Future<Output = Result<R, CeremonyError<C>>>,
+    {
+        into_body::<C, _, _, _>(move || async move {
+            f(
+                request.state().clone(),
+                request
+                    .body_json::<T>()
+                    .await
+                    .expect("Read and deserialize should succeed."),
+            )
+            .await
+        })
+        .await
+    }
 }
 
-// /// Generates the JSON body for the output of `f`, returning an HTTP reponse.
-// #[inline]
-// pub async fn into_body<C, R, F, Fut>(f: F) -> Result<Response, tide::Error>
-// where
-//     C: CeremonyConfig,
-//     R: Serialize,
-//     F: FnOnce() -> Fut,
-//     Fut: Future<Output = Result<R, CeremonyError<C>>>,
-// {
-//     let result = f().await;
-//     Ok(Body::from_json(&result)?.into())
-// }
+/// Recovers from a disk file at `recovery` and use `backup` as the backup directory.
+#[inline]
+pub fn recover<C, const CIRCUIT_COUNT: usize, const LEVEL_COUNT: usize>(
+    recovery: String,
+    backup: String,
+) -> Server<C, LEVEL_COUNT, CIRCUIT_COUNT>
+where
+    C: CeremonyConfig,
+    Proof<C>: CanonicalDeserialize + Debug,
+    C::Participant: DeserializeOwned,
+    State<C>: CanonicalDeserialize + Debug,
+    Challenge<C>: CanonicalDeserialize + Debug,
+    ParticipantIdentifier<C>: DeserializeOwned,
+{
+    Server {
+        coordinator: Arc::new(Mutex::new(load_from_file(recovery))),
+        recovery_path: backup,
+    }
+}
 
-// /// Initiates a server.
-// #[inline]
-// pub fn init_server(registry_path: String, recovery_dir_path: String) -> Server<Groth16BLS12381, 2> {
-//     let registry = load_registry::<Groth16BLS12381, _>(registry_path);
-//     let mpc_state0 = load_from_file::<MPCState<Groth16BLS12381, 1>, _>(&"data/prepared_mint.data");
-//     let mpc_state1 =
-//         load_from_file::<MPCState<Groth16BLS12381, 1>, _>(&"data/prepared_private_transfer.data");
-//     let mpc_state2 =
-//         load_from_file::<MPCState<Groth16BLS12381, 1>, _>(&"data/prepared_reclaim.data");
-//     let size = ServerSize {
-//         mint: StateSize {
-//             gamma_abc_g1: mpc_state0.state[0].vk.gamma_abc_g1.len(),
-//             a_b_g1_b_g2_query: mpc_state0.state[0].a_query.len(),
-//             h_query: mpc_state0.state[0].h_query.len(),
-//             l_query: mpc_state0.state[0].l_query.len(),
-//         },
-//         private_transfer: StateSize {
-//             gamma_abc_g1: mpc_state1.state[0].vk.gamma_abc_g1.len(),
-//             a_b_g1_b_g2_query: mpc_state1.state[0].a_query.len(),
-//             h_query: mpc_state1.state[0].h_query.len(),
-//             l_query: mpc_state1.state[0].l_query.len(),
-//         },
-//         reclaim: StateSize {
-//             gamma_abc_g1: mpc_state2.state[0].vk.gamma_abc_g1.len(),
-//             a_b_g1_b_g2_query: mpc_state2.state[0].a_query.len(),
-//             h_query: mpc_state2.state[0].h_query.len(),
-//             l_query: mpc_state2.state[0].l_query.len(),
-//         },
-//     };
-//     Server::<Groth16BLS12381, 2>::new(
-//         [
-//             mpc_state0.state[0].clone(),
-//             mpc_state1.state[0].clone(),
-//             mpc_state2.state[0].clone(),
-//         ],
-//         [
-//             mpc_state0.challenge[0],
-//             mpc_state1.challenge[0],
-//             mpc_state2.challenge[0],
-//         ],
-//         registry,
-//         recovery_dir_path,
-//         size,
-//     )
-// }
+/// Generates the JSON body for the output of `f`, returning an HTTP reponse.
+#[inline]
+pub async fn into_body<C, R, F, Fut>(f: F) -> Result<Response, tide::Error>
+where
+    C: CeremonyConfig,
+    <C::SignatureScheme as SignatureScheme<Vec<u8>>>::Nonce: Serialize,
+    R: Serialize,
+    F: FnOnce() -> Fut,
+    Fut: Future<Output = Result<R, CeremonyError<C>>>,
+{
+    Ok(Body::from_json(&f().await)?.into())
+}
+
+/// Loads registry from a disk file at `registry`.
+#[inline]
+pub fn load_registry<C, P, S>(
+    registry_file: P,
+) -> Registry<S::VerifyingKey, <C as CeremonyConfig>::Participant>
+where
+    P: AsRef<Path>,
+    C: CeremonyConfig<Participant = Participant<S>>,
+    S: SignatureScheme<Vec<u8>, Nonce = u64, VerifyingKey = Array<u8, 32>>,
+    S::VerifyingKey: Ord + CanonicalDeserialize + CanonicalSerialize,
+{
+    let mut map = BTreeMap::new();
+    for record in
+        csv::Reader::from_reader(File::open(registry_file).expect("Registry file should exist."))
+            .records()
+    {
+        let result = record.expect("Read csv should succeed.");
+        let twitter = result[0].to_string();
+        let email = result[1].to_string();
+        let public_key: Array<u8, 32> =
+            Array::from_unchecked(bs58::decode(result[3].to_string()).into_vec().unwrap());
+        let signature: Array<u8, 64> =
+            Array::from_unchecked(bs58::decode(result[4].to_string()).into_vec().unwrap());
+        verify::<_, Ed25519>(
+            &format!(
+                "manta-trusted-setup-twitter:{}, manta-trusted-setup-email:{}",
+                twitter, email
+            ),
+            0,
+            &public_key,
+            &signature,
+        )
+        .expect("Verifying signature should succeed.");
+        let participant = Participant {
+            twitter,
+            priority: match result[2].to_string().parse::<bool>().unwrap() {
+                true => UserPriority::High,
+                false => UserPriority::Normal,
+            },
+            public_key,
+            nonce: OsRng.gen::<_, u16>() as u64,
+            contributed: false,
+        };
+        map.insert(participant.public_key, participant);
+    }
+    Registry::new(map)
+}

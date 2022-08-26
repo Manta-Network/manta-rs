@@ -16,17 +16,14 @@
 
 //! Generates Dummy Phase One Parameters
 
-// use manta_trusted_setup::ceremony::{
-//     config::g16_bls12_381::dummy_phase_one_trusted_setup, util::log_to_file,
-// };
-
-// fn main() {
-//     log_to_file(
-//         &"data/dummy_phase_one_parameter.data",
-//         &dummy_phase_one_trusted_setup(),
-//     );
-// }
+use manta_trusted_setup::{
+    ceremony::{config::g16_bls12_381::dummy_phase_one_trusted_setup, util::log_to_file},
+    util::AsBytes,
+};
 
 fn main() {
-    
+    log_to_file(
+        &"data/dummy_phase_one_parameter.data",
+        &AsBytes::from_actual(dummy_phase_one_trusted_setup()),
+    );
 }

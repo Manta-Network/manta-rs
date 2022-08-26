@@ -39,8 +39,8 @@ use std::{fmt::Debug, fs::File, io::Write, path::Path, time::Instant};
 #[inline]
 pub fn log_to_file<T, P>(path: &P, data: &T)
 where
-    P: AsRef<Path>,
     T: Serialize,
+    P: AsRef<Path>,
 {
     let mut file = File::create(path).expect("Open file should succeed.");
     serde_json::to_writer(&mut file, &data)
@@ -50,7 +50,7 @@ where
 
 /// Loads `data` from a disk file at `path`.
 #[inline]
-pub fn load_from_file<'de, T, P>(path: P) -> T
+pub fn load_from_file<T, P>(path: P) -> T
 where
     P: AsRef<Path> + Debug,
     T: DeserializeOwned,
