@@ -16,28 +16,25 @@
 
 //! Arkwprks Elliptic Curve Implementation
 
-use crate::alloc::string::ToString;
-use crate::arkworks::ff::PrimeField;
+use crate::arkworks::{
+    ec::{
+        models::{short_weierstrass_jacobian, SWModelParameters},
+        AffineCurve, ProjectiveCurve,
+    },
+    ff::PrimeField,
+};
 use ark_ff::BigInteger;
-use models::short_weierstrass_jacobian;
-use models::twisted_edwards_extended;
-use models::SWModelParameters;
-use models::TEModelParameters;
-use num_bigint::{BigInt,BigUint};
-use num_bigint::Sign;
+use num_bigint::{BigInt, Sign};
 
-#[doc(inline)]
-pub use ark_ec::*;
-
-///
+/// Affine Curve Extension
 pub trait AffineCurveExt: AffineCurve {
-    ///
+    /// Gets `x` coordinate.
     fn x(&self) -> &Self::BaseField;
 
-    ///
+    /// Gets `y` coordinate.
     fn y(&self) -> &Self::BaseField;
 
-    ///
+    /// Builds [`Self`] from `x` and `y`.
     fn from_xy_unchecked(x: Self::BaseField, y: Self::BaseField) -> Self;
 }
 
@@ -61,28 +58,30 @@ where
     }
 }
 
-// impl<P> AffineCurveExt for twisted_edwards_extended::GroupAffine<P>
-// where
-//     P: TEModelParameters,
-// {
-//     #[inline]
-//     fn x(&self) -> &Self::BaseField {
-//         &self.x
-//     }
+/// Basis Vectors
+pub struct Basis(pub ((BigInt, BigInt), (BigInt, BigInt)));
 
-//     #[inline]
-//     fn y(&self) -> &Self::BaseField {
-//         &self.y
-//     }
-// }
+/// Given a scalar `k` and basis vectors `v` and `u` finds integer scalars `k1` and `k2`,
+/// so that `(k, 0)` is close to `k1v + k2u`
+/// TODO: Check the bit length of BitInt v.s. BaseField or ScalarField. See if there is any overflow issue.
+#[inline]
+pub fn decompose_scalar<F>(k: &F, v: (BigInt, BigInt), u: (BigInt, BigInt)) -> (BigInt, BigInt)
+where
+    F: PrimeField,
+{
+    // NOTE: We first find rational solutions to `(k,0) = q1v + q2u`
+    //       We can re-write this problem as a matrix `A(q1,q2) = (k,0)`
+    //       so that `(q1,q2) = A^-1(k,0)`.
+    let k: BigInt = BigInt::from_bytes_be(Sign::Plus, &k.into_repr().to_bytes_be());
+    let det = (v.0.clone() * u.1.clone()) - (v.1.clone() * u.0.clone());
+    let q1 = (u.1.clone() * k.clone()) / det.clone();
+    let q2 = (-v.1.clone() * k.clone()) / det;
+    let k1 = k - q1.clone() * v.0 - q2.clone() * u.0;
+    let k2 = 0 - q1 * v.1 - q2 * u.1;
+    (k1, k2)
+}
 
-//     #[inline]
-//     fn from_xy_unchecked(x: Self::BaseField, y: Self::BaseField) -> Self {
-//         Self::new(x, y)
-//     }
-
-
-///
+/// GLV Parameters
 pub struct GLVParameters<C>
 where
     C: AffineCurve,
@@ -116,44 +115,21 @@ where
     where
         C: AffineCurveExt,
     {
-        let (k1, k2) = glv_decompose_scalar(scalar, self.base_v1.clone(), self.base_v2.clone());
-
+        let (k1, k2) = decompose_scalar(scalar, self.base_v1.clone(), self.base_v2.clone());
         let (k1_sign, k1) = k1.into_parts();
         let k1_scalar = C::ScalarField::from_le_bytes_mod_order(&k1.to_bytes_le());
-
         let p1 = match k1_sign {
             Sign::Minus => -point.mul(k1_scalar.into_repr()),
             _ => point.mul(k1_scalar.into_repr()),
         };
-
         let (k2_sign, k2) = k2.into_parts();
         let k2_scalar = C::ScalarField::from_le_bytes_mod_order(&k2.to_bytes_le());
-
         let p2 = match k2_sign {
             Sign::Minus => -glv_endomorphism(point, &self.beta).mul(k2_scalar.into_repr()),
             _ => glv_endomorphism(point, &self.beta).mul(k2_scalar.into_repr()),
         };
         (p1 + p2).into_affine()
     }
-}
-
-/// Given a scalar `k` and basis vectors `v` and `u` finds integer scalars `z1` and `z2`,
-/// so that `(k, 0)` is close to `z1v + z2u`
-#[inline]
-pub fn glv_decompose_scalar<F>(k: &F, v: (BigInt, BigInt), u: (BigInt, BigInt)) -> (BigInt, BigInt)
-where
-    F: PrimeField,
-{
-    // NOTE: We first find rational solutions to `(k,0) = q1v + q2u`
-    //       We can re-write this problem as a matrix `A(q1,q2) = (k,0)`
-    //       so that `(q1,q2) = A^-1(k,0)`.
-    let k: BigInt = BigInt::from_bytes_be(Sign::Plus, &k.into_repr().to_bytes_be());
-    let det = (v.0.clone() * u.1.clone()) - (v.1.clone() * u.0.clone());
-    let q1 = (u.1.clone() * k.clone()) / det.clone();
-    let q2 = (-v.1.clone() * k.clone()) / det;
-    let k1 = k - q1.clone() * v.0 - q2.clone() * u.0;
-    let k2 = 0 - q1 * v.1 - q2 * u.1;
-    (k1, k2)
 }
 
 ///
@@ -168,18 +144,17 @@ where
 /// Testing Suite
 #[cfg(test)]
 mod test {
-    use core::str::FromStr;
-    use ark_ff::biginteger;
-    use rand::distributions::Standard;
-    use rand::prelude::Distribution;
     use super::*;
-    use crate::arkworks::ff::UniformRand;
-    use crate::arkworks::ff::{Field, PrimeField};
-    use crate::rand::OsRng;
+    use crate::{
+        arkworks::ff::{Field, PrimeField, UniformRand},
+        rand::OsRng,
+    };
+    use core::str::FromStr;
+    use num_bigint::BigUint;
 
     pub fn glv_is_correct<C>()
     where
-        C: AffineCurveExt
+        C: AffineCurveExt,
     {
         let mut rng = OsRng;
         let scalar = C::ScalarField::rand(&mut rng);
