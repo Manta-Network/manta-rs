@@ -80,7 +80,7 @@ where
 #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Ed25519<M>(PhantomData<M>);
 
-impl<M> signature::MessageType for Ed25519<M> {
+impl<M> MessageType for Ed25519<M> {
     type Message = M;
 }
 
