@@ -1280,13 +1280,13 @@ where
     COM: Has<bool, Type = C::Bool>,
 {
     /// Transparency Flag
-    is_transparent: C::Bool,
+    pub is_transparent: C::Bool,
 
     /// Public Asset Data
-    public_asset: Asset<C, COM>,
+    pub public_asset: Asset<C, COM>,
 
     /// UTXO Commitment
-    commitment: UtxoCommitment<C, COM>,
+    pub commitment: UtxoCommitment<C, COM>,
 }
 
 impl<C, COM> Utxo<C, COM>
