@@ -773,7 +773,7 @@ where
 mod tests {
     use super::*;
     use ark_std::println;
-    
+
     /// Checks that serializing then deserializing randomly sampled curve points
     /// is identity.
     #[test]
