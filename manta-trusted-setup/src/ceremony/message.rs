@@ -206,7 +206,14 @@ where
 
 /// Contribute States
 #[derive(Deserialize, Serialize)]
-#[serde(crate = "manta_util::serde", deny_unknown_fields)]
+#[serde(
+    bound(
+        serialize = "State<C>: CanonicalSerialize, Proof<C>: CanonicalSerialize",
+        deserialize = "State<C>: CanonicalDeserialize, Proof<C>: CanonicalDeserialize"
+    ),
+    crate = "manta_util::serde",
+    deny_unknown_fields
+)]
 pub struct ContributeState<C, const N: usize>
 where
     C: CeremonyConfig,

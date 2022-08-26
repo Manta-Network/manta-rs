@@ -87,11 +87,8 @@ where
 pub mod ed_dalek {
     use super::*;
     use ed25519_dalek::{Keypair, PublicKey, SecretKey, Signature, Signer, Verifier};
-    use manta_crypto::{
-        signature::{
-            RandomnessType, Sign, SignatureType, SigningKeyType, Verify,
-            VerifyingKeyType,
-        },
+    use manta_crypto::signature::{
+        RandomnessType, Sign, SignatureType, SigningKeyType, Verify, VerifyingKeyType,
     };
     use manta_util::Array;
 
@@ -188,6 +185,51 @@ pub mod ed_dalek {
             ()
         }
     }
+
+    impl Ed25519 {
+        /// Generates Ed25519 key pair.
+        #[inline]
+        pub fn generate_keys(
+            seed_bytes: &[u8],
+        ) -> (
+            <Self as SigningKeyType>::SigningKey,
+            <Self as VerifyingKeyType>::VerifyingKey,
+        ) {
+            assert!(ed25519_dalek::SECRET_KEY_LENGTH <= seed_bytes.len(), "Secret key length of ed25519 should be smaller than length of seed bytes from mnemonic phrases.");
+            let sk = ed25519_dalek::SecretKey::from_bytes(
+                &seed_bytes[0..ed25519_dalek::SECRET_KEY_LENGTH],
+            )
+            .expect("`from_bytes` should succeed for SecretKey.");
+            let pk: ed25519_dalek::PublicKey = (&sk).into();
+            Self::from_dalek_key(sk, pk)
+        }
+
+        /// Converts Ed25519 signing key to `ed25519_dalek` key pair.
+        #[inline]
+        pub fn to_dalek_key(
+            signing_key: <Self as SigningKeyType>::SigningKey,
+        ) -> (ed25519_dalek::SecretKey, ed25519_dalek::PublicKey) {
+            let sk = ed25519_dalek::SecretKey::from_bytes(&signing_key.0)
+                .expect("`from_bytes` should succeed for SecretKey.");
+            let pk: ed25519_dalek::PublicKey = (&sk).into();
+            (sk, pk)
+        }
+
+        /// Converts `ed25519_dalek` key pair to Ed25519 key pair.
+        #[inline]
+        pub fn from_dalek_key(
+            secret_key: ed25519_dalek::SecretKey,
+            public_key: ed25519_dalek::PublicKey,
+        ) -> (
+            <Self as SigningKeyType>::SigningKey,
+            <Self as VerifyingKeyType>::VerifyingKey,
+        ) {
+            (
+                Array::from_unchecked(secret_key.to_bytes()),
+                Array::from_unchecked(public_key.to_bytes()),
+            )
+        }
+    }
 }
 
 /// Testing Suites
@@ -220,5 +262,27 @@ mod test {
                 &mut (),
             )
             .expect("Should verify the signature.");
+    }
+
+    /// Key conversion is correct.
+    #[test]
+    fn key_conversion_is_correct() {
+        let seed_bytes = [
+            149, 167, 173, 208, 224, 206, 37, 70, 87, 169, 157, 198, 120, 32, 151, 88, 25, 10, 12,
+            215, 80, 124, 187, 129, 183, 96, 103, 11, 191, 255, 33, 105,
+        ];
+        let expected_signing_key = Array::<u8, 32>::from_unchecked(seed_bytes);
+        let expected_verifying_key = Array::<u8, 32>::from_unchecked([
+            104, 148, 44, 244, 61, 116, 39, 8, 68, 216, 6, 24, 232, 68, 239, 203, 198, 2, 138, 148,
+            242, 73, 122, 3, 19, 236, 195, 133, 136, 137, 146, 108,
+        ]);
+        let ed25519_key_pair = Ed25519::generate_keys(&seed_bytes);
+        assert_eq!(ed25519_key_pair.0, expected_signing_key);
+        assert_eq!(ed25519_key_pair.1, expected_verifying_key);
+        let dalek_key_pair = Ed25519::to_dalek_key(expected_signing_key);
+        assert_eq!(
+            Ed25519::from_dalek_key(dalek_key_pair.0, dalek_key_pair.1),
+            (expected_signing_key, expected_verifying_key)
+        );
     }
 }

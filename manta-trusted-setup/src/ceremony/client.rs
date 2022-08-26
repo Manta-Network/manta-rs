@@ -23,8 +23,7 @@ use crate::{
             PublicKey, State,
         },
         message::{ContributeRequest, QueryRequest, Signed},
-        signature::{ed_dalek, SignatureScheme},
-        state::ContributeState,
+        signature::{ed_dalek::Ed25519, SignatureScheme},
     },
     mpc::Contribute,
     util::AsBytes,
@@ -38,7 +37,14 @@ use core::{
 };
 use dialoguer::{theme::ColorfulTheme, Input};
 use indicatif::ProgressBar;
-use manta_crypto::{arkworks::serialize::CanonicalSerialize, rand::OsRng};
+use manta_crypto::{
+    arkworks::serialize::{CanonicalDeserialize, CanonicalSerialize},
+    rand::OsRng,
+    signature::Sign,
+};
+use manta_util::Array;
+
+use super::message::ContributeState;
 
 /// Client
 pub struct Client<C>
@@ -80,16 +86,16 @@ where
 
     /// Queries the server state.
     #[inline]
-    pub fn query(&mut self) -> Result<Signed<QueryRequest, C>, ()>
+    pub fn query(&mut self) -> Result<Signed<C>, ()>
     where
         C::Participant: Clone,
-        <<C as CeremonyConfig>::SignatureScheme as SignatureScheme>::PublicKey: std::fmt::Debug, // TODO: Remove
     {
+        let mut writer = Vec::new();
+        serde_json::to_writer(&mut writer, &QueryRequest).expect("Serialization should succeed.");
         Signed::new(
-            QueryRequest,
+            writer,
             self.identifier.clone(),
             &mut self.nonce,
-            &self.public_key,
             &self.private_key,
         )
     }
@@ -99,14 +105,14 @@ where
     pub fn contribute(
         &mut self,
         hasher: &Hasher<C>,
-        challenge: &[Challenge<C>; 3],
-        mut state: [State<C>; 3],
-    ) -> Result<Signed<ContributeRequest<C, 3>, C>, ()>
+        challenge: &Array<AsBytes<Challenge<C>>, 3>,
+        mut state: Array<AsBytes<State<C>>, 3>,
+    ) -> Result<Signed<C>, ()>
     where
         C::Participant: Clone,
-        State<C>: CanonicalSerialize,
-        Proof<C>: CanonicalSerialize + Debug,
-        <<C as CeremonyConfig>::SignatureScheme as SignatureScheme>::PublicKey: std::fmt::Debug,
+        State<C>: CanonicalDeserialize + CanonicalSerialize,
+        Proof<C>: CanonicalSerialize,
+        Challenge<C>: CanonicalDeserialize,
     {
         let circuit_name = ["ToPrivate", "PrivateTransfer", "ToPublic"];
         let mut rng = OsRng;
@@ -119,28 +125,32 @@ where
             );
             let bar = ProgressBar::new(5);
             bar.enable_steady_tick(Duration::from_secs(1));
-            proofs.push(
-                C::Setup::contribute(hasher, &challenge[i], &mut state[i], &mut rng).ok_or(())?,
+            let cur_challenge =
+                AsBytes::to_actual(&challenge[i]).expect("To_actual should succeed.");
+            let mut cur_state = AsBytes::to_actual(&state[i]).expect("To_actual should succeed.");
+            let proof = AsBytes::from_actual(
+                C::Setup::contribute(hasher, &cur_challenge, &mut cur_state, &mut rng).ok_or(())?,
             );
+            proofs.push(proof);
+            state[i] = AsBytes::from_actual(cur_state);
         }
         let message = ContributeRequest::<C, 3> {
-            contribute_state: AsBytes::from_actual(ContributeState::<C, 3> {
+            contribute_state: ContributeState::<C, 3> {
                 state,
-                proof: proofs
-                    .try_into()
-                    .expect("Should have exactly three proofs."),
-            }),
+                proof: Array::from_unchecked(proofs),
+            },
         };
+        let mut writer = Vec::new();
+        serde_json::to_writer(&mut writer, &message).expect("Serialization should succeed.");
         println!(
             "{} Waiting for Confirmation from Server... Estimated Waiting Time: {} minutes.",
             style("[8/9]").bold().dim(),
             style("3").bold().blue(),
         );
         Signed::new(
-            message,
+            writer,
             self.identifier.clone(),
             &mut self.nonce,
-            &self.public_key,
             &self.private_key,
         )
     }
@@ -149,14 +159,6 @@ where
 /// Registers a participant.
 #[inline]
 pub fn register(twitter_account: String, email: String) {
-    let mnemonic = Mnemonic::new(MnemonicType::Words12, Language::English);
-    let seed = Seed::new(&mnemonic, "manta-trusted-setup");
-    let seed_bytes = seed.as_bytes();
-    assert!(ed25519_dalek::SECRET_KEY_LENGTH <= seed_bytes.len(), "Secret key length of ed25519 should be smaller than length of seed bytes from mnemonic phrases.");
-    let sk = ed25519_dalek::SecretKey::from_bytes(&seed_bytes[0..ed25519_dalek::SECRET_KEY_LENGTH])
-        .expect("`from_bytes` should succeed for SecretKey.");
-    let pk = ed_dalek::PublicKey(ed25519_dalek::PublicKey::from(&sk).to_bytes().into());
-    let sk = ed_dalek::PrivateKey(sk.to_bytes().into());
     println!(
         "Your {}: \nCopy the following text to \"Twitter\" Section in Google Sheet:\n {}\n",
         "Twitter Account".italic(),
@@ -167,33 +169,33 @@ pub fn register(twitter_account: String, email: String) {
         "Email".italic(),
         email.blue(),
     );
+    let mnemonic = Mnemonic::new(MnemonicType::Words12, Language::English);
+    let seed = Seed::new(&mnemonic, "manta-trusted-setup");
+    let (sk, pk) = Ed25519::generate_keys(seed.as_bytes());
     println!(
         "Your {}: \nCopy the following text to \"Public Key\" Section in Google Sheet:\n {}\n",
         "Public Key".italic(),
-        bs58::encode(AsBytes::from_actual(pk).bytes)
-            .into_string()
-            .blue(),
+        bs58::encode(pk).into_string().blue(),
+    );
+    let signer = Ed25519;
+    let signature = signer.sign(
+        &sk,
+        &signer.gen_randomness(),
+        &(
+            0,
+            format!(
+                "manta-trusted-setup-twitter:{}, manta-trusted-setup-email:{}",
+                twitter_account, email
+            )
+            .as_bytes()
+            .into(),
+        ),
+        &mut (),
     );
     println!(
         "Your {}: \nCopy the following text to \"Signature\" Section in Google Sheet: \n {}\n",
         "Signature".italic(),
-        bs58::encode(
-            AsBytes::from_actual(
-                ed_dalek::Ed25519::sign(
-                    format!(
-                        "manta-trusted-setup-twitter:{}, manta-trusted-setup-email:{}",
-                        twitter_account, email
-                    ),
-                    &0,
-                    &pk,
-                    &sk,
-                )
-                .expect("Signing should succeed")
-            )
-            .bytes
-        )
-        .into_string()
-        .blue()
+        bs58::encode(signature).into_string().blue()
     );
     println!(
         "Your {}: \nThe following text stores your secret for trusted setup. \
@@ -295,6 +297,7 @@ pub fn prompt_client_info() -> Vec<u8> {
 #[cfg(test)]
 mod test {
     use super::*;
+    use manta_crypto::signature::Verify;
 
     /// Tests if register is visually correct.
     #[test]
@@ -308,57 +311,105 @@ mod test {
     /// Tests if sign and verify are compatible with serialization.
     #[test]
     fn signature_and_serialization_is_compatible() {
-        let mnemonic = Mnemonic::new(MnemonicType::Words12, Language::English);
-        let seed = Seed::new(&mnemonic, "manta-trusted-setup");
-        let seed_bytes = seed.as_bytes();
-        assert!(ed25519_dalek::SECRET_KEY_LENGTH <= seed_bytes.len(), "Secret key length of ed25519 should be smaller than length of seed bytes from mnemonic phrases.");
-        let sk =
-            ed25519_dalek::SecretKey::from_bytes(&seed_bytes[0..ed25519_dalek::SECRET_KEY_LENGTH])
-                .expect("`from_bytes` should succeed for SecretKey.");
-        let pk = ed_dalek::PublicKey(ed25519_dalek::PublicKey::from(&sk).to_bytes().into());
-        let sk = ed_dalek::PrivateKey(sk.to_bytes().into());
         let twitter_account = "mantalorian";
         let email = "mantalorian@manta.network";
-        let pk_string = bs58::encode(AsBytes::from_actual(pk).bytes).into_string();
-        let signature_string = bs58::encode(
-            AsBytes::from_actual(
-                ed_dalek::Ed25519::sign(
+        let mnemonic = Mnemonic::new(MnemonicType::Words12, Language::English);
+        let seed = Seed::new(&mnemonic, "manta-trusted-setup");
+        let (sk, pk) = Ed25519::generate_keys(seed.as_bytes());
+        let pk_string = bs58::encode(pk).into_string();
+        let signer = Ed25519;
+        let signature = signer.sign(
+            &sk,
+            &signer.gen_randomness(),
+            &(
+                0,
+                format!(
+                    "manta-trusted-setup-twitter:{}, manta-trusted-setup-email:{}",
+                    twitter_account, email
+                )
+                .as_bytes()
+                .into(),
+            ),
+            &mut (),
+        );
+        let signature_string = bs58::encode(signature).into_string();
+        let public_key: Array<u8, 32> =
+            Array::from_unchecked(bs58::decode(pk_string).into_vec().unwrap());
+        let signature: Array<u8, 64> =
+            Array::from_unchecked(bs58::decode(signature_string).into_vec().unwrap());
+        signer
+            .verify(
+                &public_key,
+                &(
+                    0,
                     format!(
                         "manta-trusted-setup-twitter:{}, manta-trusted-setup-email:{}",
                         twitter_account, email
-                    ),
-                    &0,
-                    &pk,
-                    &sk,
-                )
-                .expect("Signing should succeed"),
+                    )
+                    .as_bytes()
+                    .into(),
+                ),
+                &signature,
+                &mut (),
             )
-            .bytes,
-        )
-        .into_string();
-        let public_key: ed_dalek::PublicKey = AsBytes::new(
-            bs58::decode(pk_string)
-                .into_vec()
-                .expect("Decode public key should succeed."),
-        )
-        .to_actual()
-        .expect("Converting to a public key should succeed.");
-        let signature: ed_dalek::Signature = AsBytes::new(
-            bs58::decode(signature_string)
-                .into_vec()
-                .expect("Decode signature should succeed."),
-        )
-        .to_actual()
-        .expect("Converting to a signature should succeed.");
-        ed_dalek::Ed25519::verify(
-            format!(
-                "manta-trusted-setup-twitter:{}, manta-trusted-setup-email:{}",
-                twitter_account, email
-            ),
-            &0,
-            &signature,
-            &public_key,
-        )
-        .expect("Verifying signature should succeed.");
+            .expect("Verifying signature should succeed.");
     }
 }
+
+// /// Loads registry from a disk file at `registry`.
+// #[inline]
+// pub fn load_registry<C, P, S>(
+//     registry_file: P,
+// ) -> Registry<S::VerifyingKey, <C as CeremonyConfig>::Participant>
+// where
+//     P: AsRef<Path>,
+//     C: CeremonyConfig<Participant = Participant<S>>,
+//     S: SignatureScheme<Vec<u8>, Nonce = u64>,
+//     S::VerifyingKey: Ord + CanonicalDeserialize + CanonicalSerialize,
+// {
+//     let mut map = BTreeMap::new();
+//     for record in
+//         csv::Reader::from_reader(File::open(registry_file).expect("Registry file should exist."))
+//             .records()
+//     {
+//         let result = record.expect("Read csv should succeed.");
+//         let twitter = result[0].to_string();
+//         let email = result[1].to_string();
+//         // let public_key: ed_dalek::PublicKey = AsBytes::new(
+//         //     bs58::decode(result[3].to_string())
+//         //         .into_vec()
+//         //         .expect("Decode public key should succeed."),
+//         // )
+//         // .to_actual()
+//         // .expect("Converting to a public key should succeed.");
+//     //     let signature: ed_dalek::Signature = AsBytes::new(
+//     //         bs58::decode(result[4].to_string())
+//     //             .into_vec()
+//     //             .expect("Decode signature should succeed."),
+//     //     )
+//     //     .to_actual()
+//     //     .expect("Converting to a signature should succeed.");
+//     //     ed_dalek::Ed25519::verify(
+//     //         format!(
+//     //             "manta-trusted-setup-twitter:{}, manta-trusted-setup-email:{}",
+//     //             twitter, email
+//     //         ),
+//     //         &0,
+//     //         &signature,
+//     //         &public_key,
+//     //     )
+//     //     .expect("Verifying signature should succeed.");
+//     //     let participant = Participant {
+//     //         twitter,
+//     //         priority: match result[2].to_string().parse::<bool>().unwrap() {
+//     //             true => UserPriority::High,
+//     //             false => UserPriority::Normal,
+//     //         },
+//     //         public_key,
+//     //         nonce: OsRng.gen::<_, u16>() as u64,
+//     //         contributed: false,
+//     //     };
+//     //     map.insert(participant.public_key, participant);
+//     }
+//     Registry::new(map)
+// }
