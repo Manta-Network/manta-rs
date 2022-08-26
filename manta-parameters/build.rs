@@ -19,12 +19,13 @@
 use anyhow::{anyhow, bail, ensure, Result};
 use hex::FromHex;
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     env,
     fs::{self, OpenOptions},
     io::{BufRead, BufReader},
     path::{Path, PathBuf},
 };
+use walkdir::{DirEntry, WalkDir};
 
 /// Returns the parent of `path` which should exist relative to `OUT_DIR`.
 #[inline]
@@ -112,24 +113,81 @@ fn compile_lfs(source: &Path, out_dir: &Path, checksums: &ChecksumMap) -> Result
     write_checksum(out_dir.join(source), get_checksum(checksums, source)?)
 }
 
+/// Checks that the filename in `entry` returns `true` when running `predicate`.
+#[inline]
+fn matches_predicate<P>(entry: &DirEntry, predicate: P) -> bool
+where
+    P: FnOnce(&str) -> bool,
+{
+    entry.file_name().to_str().map(predicate).unwrap_or(false)
+}
+
+/// Returns `true` when `entry` points to a hidden file.
+#[inline]
+fn is_hidden(entry: &DirEntry) -> bool {
+    matches_predicate(entry, |s| s.starts_with('.'))
+}
+
+/// Ignore Table
+type IgnoreTable = HashSet<PathBuf>;
+
+/// Builds the [`IgnoreTable`] for paths under `root`.
+#[inline]
+fn build_ignore_table<P>(root: P) -> Result<IgnoreTable>
+where
+    P: AsRef<Path>,
+{
+    let mut ignore_table = IgnoreTable::new();
+    for entry in WalkDir::new(root) {
+        let entry = entry?;
+        let path = entry.path();
+        if !path.is_dir() && path.file_name().expect("") == ".gitignore" {
+            ignore_table.insert(
+                path.parent()
+                    .expect("The parent directory should exist.")
+                    .to_owned(),
+            );
+        }
+    }
+    Ok(ignore_table)
+}
+
+/// Returns `true` if `path` is ignored by the corresponding entry in the `ignore_table`.
+#[inline]
+fn should_ignore(path: &Path, ignore_table: &IgnoreTable) -> Result<bool> {
+    let parent = path.parent().expect("The parent directory should exist.");
+    if ignore_table.contains(parent) {
+        gitignore::File::new(&parent.join(".gitignore"))
+            .map_err(|e| anyhow!("Unable to parse `.gitignore` file: {:?}", e))?
+            .is_excluded(path)
+            .map_err(|e| anyhow!("Error while ignoring the file: {}: {:?}", path.display(), e))
+    } else {
+        Ok(false)
+    }
+}
+
 /// Loads all the files from `data` into the `OUT_DIR` directory for inclusion into the library.
 #[inline]
 fn main() -> Result<()> {
     println!("cargo:rerun-if-changed=data");
     let out_dir = PathBuf::from(env::var_os("OUT_DIR").unwrap());
-    println!("out_dir: {:?}", out_dir);
     let checksums = parse_checkfile("data.checkfile")?;
-    for file in walkdir::WalkDir::new("data") {
-        let file = file?;
-        let path = file.path();
-        if !path.is_dir() {
+    let ignore_table = build_ignore_table("data")?;
+    for entry in WalkDir::new("data")
+        .into_iter()
+        .filter_entry(|e| !is_hidden(e))
+    {
+        let entry = entry?;
+        let path = entry.path();
+        if !path.is_dir() && !should_ignore(path, &ignore_table)? {
             match path.extension() {
                 Some(extension) => match extension.to_str() {
                     Some("dat") => compile_dat(path, &out_dir, &checksums)?,
                     Some("lfs") => compile_lfs(path, &out_dir, &checksums)?,
-                    _ => bail!("Unsupported data file extension."),
+                    Some("md") => {}
+                    _ => bail!("Unsupported data file extension: {}.", path.display()),
                 },
-                _ => bail!("All data files must have an extension."),
+                _ => bail!("All data files must have an extension: {}.", path.display()),
             }
         }
     }
