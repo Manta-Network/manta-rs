@@ -1273,7 +1273,10 @@ where
 
 /// UTXO
 #[derive(derivative::Derivative)]
-#[derivative(Debug(bound = "C::Bool: Debug, Asset<C, COM>: Debug, UtxoCommitment<C, COM>: Debug"))]
+#[derivative(
+    Clone(bound = "C::Bool: Clone, Asset<C, COM>: Clone, UtxoCommitment<C, COM>: Clone"),
+    Debug(bound = "C::Bool: Debug, Asset<C, COM>: Debug, UtxoCommitment<C, COM>: Debug")
+)]
 pub struct Utxo<C, COM = ()>
 where
     C: BaseConfiguration<COM>,
