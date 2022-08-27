@@ -19,38 +19,47 @@
 use crate::{
     ceremony::{
         config::{
-            CeremonyConfig, Challenge, Hasher, Nonce, ParticipantIdentifier, PrivateKey, Proof,
-            PublicKey, State,
+            g16_bls12_381::Groth16BLS12381, CeremonyConfig, Challenge, Hasher, Nonce,
+            ParticipantIdentifier, PrivateKey, Proof, PublicKey, State,
         },
-        message::{ContributeRequest, ContributeState, QueryRequest, Signed},
-        participant::{Participant, UserPriority},
-        registry::Registry,
-        signature::{ed_dalek::Ed25519, sign, verify, SignatureScheme},
+        message::{
+            CeremonyError, ContributeRequest, ContributeState, QueryRequest, QueryResponse,
+            ServerSize, Signed,
+        },
+        participant::HasIdentifier,
+        signature::{ed_dalek::Ed25519, sign},
+        util::check_state_size,
     },
-    mpc::Contribute,
+    mpc::{Contribute, Types},
     util::AsBytes,
 };
-use alloc::collections::BTreeMap;
+use ark_groth16::ProvingKey;
 use bip39::{Language, Mnemonic, MnemonicType, Seed};
 use colored::Colorize;
-use console::style;
+use console::{style, Term};
 use core::fmt::{Debug, Display, Formatter};
 use dialoguer::{theme::ColorfulTheme, Input};
 use manta_crypto::{
-    arkworks::serialize::{CanonicalDeserialize, CanonicalSerialize},
-    rand::{OsRng, Rand},
+    arkworks::{
+        ec::PairingEngine,
+        pairing::Pairing,
+        serialize::{CanonicalDeserialize, CanonicalSerialize},
+    },
+    rand::OsRng,
+    signature::{SigningKeyType, VerifyingKeyType},
 };
-use manta_util::Array;
-use std::{fs::File, path::Path};
+use manta_util::{
+    http::reqwest::KnownUrlClient,
+    serde::{de::DeserializeOwned, Serialize},
+    Array,
+};
+use std::{thread, time::Duration};
 
 /// Client
 pub struct Client<C, const CIRCUIT_COUNT: usize>
 where
     C: CeremonyConfig,
 {
-    /// Public Key
-    public_key: PublicKey<C>,
-
     /// Identifier
     identifier: ParticipantIdentifier<C>,
 
@@ -68,13 +77,11 @@ where
     /// Builds a new [`Client`] with `participant` and `private_key`.
     #[inline]
     pub fn new(
-        public_key: PublicKey<C>,
         identifier: ParticipantIdentifier<C>,
         nonce: Nonce<C>,
         private_key: PrivateKey<C>,
     ) -> Self {
         Self {
-            public_key,
             identifier,
             nonce,
             private_key,
@@ -189,25 +196,25 @@ pub fn register(twitter_account: String, email: String) {
     );
 }
 
-/// TODO
+/// Client Error
 #[derive(Clone, Debug)]
 pub enum Error {
-    ///
+    /// Invalid Secret
     InvalidSecret,
 
-    ///
+    /// Unable to Generate Request
     UnableToGenerateRequest(&'static str),
 
-    ///
+    /// Not Registered
     NotRegistered,
 
-    ///
+    /// User Already Contributed
     AlreadyContributed,
 
-    ///
+    /// Unexpected Error
     UnexpectedError(String),
 
-    ///
+    /// Network Error
     NetworkError(String),
 }
 
@@ -276,52 +283,213 @@ pub fn prompt_client_info() -> Vec<u8> {
     .to_vec()
 }
 
-/// Loads registry from a disk file at `registry`.
+/// Prompts the client information.
 #[inline]
-pub fn load_registry<C, P, S>(
-    registry_file: P,
-) -> Registry<S::VerifyingKey, <C as CeremonyConfig>::Participant>
+pub fn get_client_keys() -> Result<
+    (
+        <Ed25519 as SigningKeyType>::SigningKey,
+        <Ed25519 as VerifyingKeyType>::VerifyingKey,
+    ),
+    Error,
+> {
+    let seed_bytes = prompt_client_info();
+    Ok(Ed25519::generate_keys(&seed_bytes))
+}
+
+/// Gets state size from server.
+#[inline]
+pub async fn get_start_meta_data<C, const CIRCUIT_COUNT: usize>(
+    identity: ParticipantIdentifier<C>,
+    network_client: &KnownUrlClient,
+) -> Result<(ServerSize<CIRCUIT_COUNT>, Nonce<C>), Error>
 where
-    P: AsRef<Path>,
-    C: CeremonyConfig<Participant = Participant<S>>,
-    S: SignatureScheme<Vec<u8>, Nonce = u64, VerifyingKey = Array<u8, 32>>,
-    S::VerifyingKey: Ord + CanonicalDeserialize + CanonicalSerialize,
+    C: CeremonyConfig,
+    ParticipantIdentifier<C>: Serialize,
+    Nonce<C>: DeserializeOwned + Debug,
 {
-    let mut map = BTreeMap::new();
-    for record in
-        csv::Reader::from_reader(File::open(registry_file).expect("Registry file should exist."))
-            .records()
-    {
-        let result = record.expect("Read csv should succeed.");
-        let twitter = result[0].to_string();
-        let email = result[1].to_string();
-        let public_key: Array<u8, 32> =
-            Array::from_unchecked(bs58::decode(result[3].to_string()).into_vec().unwrap());
-        let signature: Array<u8, 64> =
-            Array::from_unchecked(bs58::decode(result[4].to_string()).into_vec().unwrap());
-        verify::<_, Ed25519>(
-            &format!(
-                "manta-trusted-setup-twitter:{}, manta-trusted-setup-email:{}",
-                twitter, email
-            ),
-            0,
-            &public_key,
-            &signature,
+    match network_client
+        .post::<_, Result<(ServerSize<CIRCUIT_COUNT>, Nonce<C>), CeremonyError<C>>>(
+            "start", &identity,
         )
-        .expect("Verifying signature should succeed.");
-        let participant = Participant {
-            twitter,
-            priority: match result[2].to_string().parse::<bool>().unwrap() {
-                true => UserPriority::High,
-                false => UserPriority::Normal,
-            },
-            public_key,
-            nonce: OsRng.gen::<_, u16>() as u64,
-            contributed: false,
-        };
-        map.insert(participant.public_key, participant);
+        .await
+        .map_err(|_| {
+            return Error::NetworkError(
+                "Should have received starting meta data from server".to_string(),
+            );
+        })? {
+        Ok((server_size, nonce)) => Ok((server_size, nonce)),
+        Err(CeremonyError::NotRegistered) => Err(Error::NotRegistered),
+        Err(e) => Err(Error::UnexpectedError(format!("{:?}", e))),
     }
-    Registry::new(map)
+}
+
+/// Contributes to the server.
+#[inline]
+pub async fn contribute<C, E, P, const CIRCUIT_COUNT: usize>() -> Result<(), Error>
+where // TODO: Clean traits here
+    C: CeremonyConfig<SignatureScheme = Ed25519>,
+    C::Participant: HasIdentifier<Identifier = PublicKey<C>> + Clone,
+    E: PairingEngine,
+    P: Pairing<Pairing = E>,
+    ParticipantIdentifier<C>: Serialize,
+    Nonce<C>: DeserializeOwned + Debug,
+    State<C>: CanonicalDeserialize,
+    Challenge<C>: CanonicalDeserialize,
+    Proof<C>: CanonicalSerialize,
+    <C as CeremonyConfig>::Setup: Types<State = ProvingKey<E>>,
+{
+    let network_client = KnownUrlClient::new("http://localhost:8080").expect("Should succeed.");
+    let (pk, sk) = get_client_keys()?;
+    println!(
+        "{} Contacting Server for Meta Data...",
+        style("[1/9]").bold().dim()
+    );
+    let term = Term::stdout();
+    let (size, nonce) = get_start_meta_data::<C, CIRCUIT_COUNT>(pk, &network_client).await?;
+    let mut trusted_setup_client = Client::<C, CIRCUIT_COUNT>::new(pk, nonce, sk);
+    println!("{} Waiting in Queue...", style("[2/9]").bold().dim(),);
+    loop {
+        let mpc_state = match network_client
+            .post::<_, Result<QueryResponse<C, CIRCUIT_COUNT>, CeremonyError<C>>>(
+                "query",
+                &trusted_setup_client
+                    .query()
+                    .map_err(|_| Error::UnableToGenerateRequest("Queries the server state."))?,
+            )
+            .await
+            .map_err(|_| {
+                return Error::NetworkError(
+                    "Should have received starting meta data from server".to_string(),
+                );
+            })? {
+            Err(CeremonyError::Timeout) => {
+                term.clear_last_lines(1)
+                    .expect("Clear last lines should succeed.");
+                println!(
+                    "{} You have timed out. Waiting in Queue again...",
+                    style("[2/9]").bold().dim(),
+                );
+                continue;
+            }
+            Err(CeremonyError::NotRegistered) => return Err(Error::NotRegistered),
+            Err(CeremonyError::NonceNotInSync(_)) => {
+                return Err(Error::UnexpectedError(
+                    "Unexpected error when query mpc state. Nonce should have been synced."
+                        .to_string(),
+                ))
+            }
+            Err(CeremonyError::BadRequest) => {
+                return Err(Error::UnexpectedError(
+                    "Unexpected error when query mpc state since finding a bad request."
+                        .to_string(),
+                ))
+            }
+            Err(CeremonyError::AlreadyContributed) => return Err(Error::AlreadyContributed),
+            Err(CeremonyError::NotYourTurn) => {
+                return Err(Error::UnexpectedError(
+                        "Unexpected error when query mpc state. Should not receive NotYourTurn message."
+                            .to_string(),
+                    ));
+            }
+            Ok(message) => match message {
+                QueryResponse::QueuePosition(position) => {
+                    term.clear_last_lines(1)
+                        .expect("Clear last lines should succeed.");
+                    println!(
+                            "{} Waiting in Queue... There are {} people ahead of you. Estimated Waiting Time: {} minutes.",
+                            style("[2/9]").bold().dim(),
+                            style(position).bold().red(),
+                            style(5*position).bold().blue(),
+                        );
+                    thread::sleep(Duration::from_secs(10));
+                    continue;
+                }
+                QueryResponse::Mpc(mpc_state) => {
+                    term.clear_last_lines(1)
+                        .expect("Clear last lines should succeed.");
+                    println!("{} Waiting in Queue...", style("[2/9]").bold().dim(),);
+                    println!(
+                        "{} Downloading Ceremony States...",
+                        style("[3/9]").bold().dim(),
+                    );
+                    if !check_state_size::<P, CIRCUIT_COUNT>(&mpc_state.state, &size) {
+                        return Err(Error::UnexpectedError(
+                            "Received mpc state size is not correct.".to_string(),
+                        ));
+                    }
+                    mpc_state
+                }
+            },
+        };
+        println!(
+            "{} Starting contribution to 3 Circuits...",
+            style("[4/9]").bold().dim(),
+        );
+        match network_client
+            .post::<_, Result<(), CeremonyError<Groth16BLS12381>>>(
+                "update",
+                &trusted_setup_client
+                    .contribute(
+                        &Hasher::<C>::default(),
+                        &mpc_state.challenge,
+                        mpc_state.state,
+                    )
+                    .map_err(|_| Error::UnableToGenerateRequest("contribute"))?,
+            )
+            .await
+            .map_err(|_| {
+                return Error::NetworkError(
+                    "Should have received starting meta data from server".to_string(),
+                );
+            })? {
+            Err(CeremonyError::Timeout) => {
+                term.clear_last_lines(1)
+                    .expect("Clear last lines should succeed.");
+                println!(
+                    "{} You have timed out. Waiting in Queue again...",
+                    style("[2/9]").bold().dim(),
+                );
+                continue;
+            }
+            Err(CeremonyError::NotRegistered) => {
+                return Err(Error::UnexpectedError(
+                    "unexpected error when contribute. Should have registered.".to_string(),
+                ))
+            }
+            Err(CeremonyError::NonceNotInSync(_)) => {
+                return Err(Error::UnexpectedError(
+                    "unexpected error when contribute. Nonce should have been synced.".to_string(),
+                ))
+            }
+            Err(CeremonyError::BadRequest) => {
+                return Err(Error::UnexpectedError(
+                    "unexpected error when contribute since finding a bad request.".to_string(),
+                ))
+            }
+            Err(CeremonyError::NotYourTurn) => {
+                println!(
+                    "{} Lag behind server. Contacting Server again...",
+                    style("[8/9]").bold().dim(),
+                );
+                continue;
+            }
+            Err(CeremonyError::AlreadyContributed) => return Err(Error::AlreadyContributed),
+            Ok(_) => {
+                term.clear_last_lines(1)
+                    .expect("Clear last lines should succeed.");
+                println!(
+                    "{} Waiting for Confirmation from Server...",
+                    style("[8/9]").bold().dim(),
+                );
+                println!(
+                            "{} Congratulations! You have successfully contributed to Manta Trusted Setup Ceremony!...",
+                            style("[9/9]").bold().dim(),
+                        );
+                break;
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Testing Suite

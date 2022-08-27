@@ -19,26 +19,22 @@
 use crate::{
     ceremony::{
         config::CeremonyConfig,
-        signature::ed_dalek::Ed25519,
-        // registry::HasContributed,
-        // signature::{
-        //     ed_dalek::{Ed25519, PublicKey as EdPublicKey},
-        //     HasNonce, HasPublicKey,
-        // },
-        // state::UserPriority,
+        message::{MPCState, ServerSize, StateSize},
+        participant::Participant,
+        server::{load_registry, Server},
+        signature::{ed_dalek::Ed25519, SignatureScheme},
+        util::{load_from_file, prepare_parameters},
     },
-    groth16::mpc::Groth16Phase2,
-};
-use crate::{
     groth16::{
         kzg,
         kzg::{Accumulator, Contribution, Size},
-        mpc::{Configuration, Proof, ProvingKeyHasher, State},
+        mpc::{Configuration, Groth16Phase2, Proof, ProvingKeyHasher, State},
     },
     mpc::Types,
     ratio::HashToGroup,
     util::{
-        BlakeHasher, Deserializer, G1Type, G2Type, HasDistribution, KZGBlakeHasher, Serializer,
+        AsBytes, BlakeHasher, Deserializer, G1Type, G2Type, HasDistribution, KZGBlakeHasher,
+        Serializer,
     },
 };
 use ark_groth16::ProvingKey;
@@ -49,12 +45,17 @@ use manta_crypto::{
         pairing::Pairing,
         serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError},
     },
-    rand::{OsRng, Rand, Sample},
+    rand::{OsRng, Sample},
 };
-use manta_util::into_array_unchecked;
-use std::io::{Read, Write};
-
-use super::Participant;
+use manta_pay::{
+    config::{FullParameters, Mint, PrivateTransfer, Reclaim},
+    parameters::{load_transfer_parameters, load_utxo_accumulator_model},
+};
+use manta_util::{into_array_unchecked, Array};
+use std::{
+    io::{Read, Write},
+    time::Instant,
+};
 
 /// Configuration for the Groth16 Phase2 Server.
 #[derive(Clone, Default)]
@@ -243,6 +244,15 @@ impl Types for Config {
     type Proof = Proof<Config>;
 }
 
+/// Groth16 Bls12
+pub struct Groth16BLS12381;
+
+impl CeremonyConfig for Groth16BLS12381 {
+    type Setup = Groth16Phase2<Config>;
+    type SignatureScheme = Ed25519;
+    type Participant = Participant<Ed25519>;
+}
+
 impl Serializer<<Config as Pairing>::G1, G1Type> for Config {
     fn serialize_unchecked<W>(
         item: &<Config as Pairing>::G1,
@@ -385,70 +395,144 @@ pub fn dummy_phase_one_trusted_setup() -> Accumulator<Config> {
         .expect("Accumulator should have been generated correctly.")
 }
 
-/// Groth16 Bls12
-pub struct Groth16BLS12381;
+/// Prepares phase one parameters ready to use in trusted setup for phase two parameters.
+#[inline]
+pub fn prepare_phase_two_parameters(accumulator_path: String) {
+    let now = Instant::now();
+    let powers: AsBytes<Accumulator<Config>> = load_from_file(accumulator_path);
+    let powers: Accumulator<Config> = powers.to_actual().expect("Deserialize should succeed.");
+    println!(
+        "Loading & Deserializing Phase 1 parameters takes {:?}\n",
+        now.elapsed()
+    );
+    let transfer_parameters = load_transfer_parameters();
+    let utxo_accumulator_model = load_utxo_accumulator_model();
+    prepare_parameters::<_, Groth16BLS12381, _>(
+        powers.clone(),
+        Mint::unknown_constraints(FullParameters::new(
+            &transfer_parameters,
+            &utxo_accumulator_model,
+        )),
+        "mint",
+    );
+    prepare_parameters::<_, Groth16BLS12381, _>(
+        powers.clone(),
+        PrivateTransfer::unknown_constraints(FullParameters::new(
+            &transfer_parameters,
+            &utxo_accumulator_model,
+        )),
+        "private_transfer",
+    );
+    prepare_parameters::<_, Groth16BLS12381, _>(
+        powers,
+        Reclaim::unknown_constraints(FullParameters::new(
+            &transfer_parameters,
+            &utxo_accumulator_model,
+        )),
+        "reclaim",
+    );
+}
 
-// impl CeremonyConfig for Groth16BLS12381 {
-//     type Setup = Groth16Phase2<Config>;
-//     type SignatureScheme = Ed25519;
-//     type Participant = Participant<Ed25519>;
-// }
-
-// /// Checks `states` has the same size as `size`.
-// pub fn check_state_size(states: &[State<Groth16BLS12381>; 3], size: &ServerSize) -> bool {
-//     (states[0].vk.gamma_abc_g1.len() == size.mint.gamma_abc_g1)
-//         || (states[0].a_query.len() == size.mint.a_b_g1_b_g2_query)
-//         || (states[0].b_g1_query.len() == size.mint.a_b_g1_b_g2_query)
-//         || (states[0].b_g2_query.len() == size.mint.a_b_g1_b_g2_query)
-//         || (states[0].h_query.len() == size.mint.h_query)
-//         || (states[0].l_query.len() == size.mint.l_query)
-//         || (states[1].vk.gamma_abc_g1.len() == size.private_transfer.gamma_abc_g1)
-//         || (states[1].a_query.len() == size.private_transfer.a_b_g1_b_g2_query)
-//         || (states[1].b_g1_query.len() == size.private_transfer.a_b_g1_b_g2_query)
-//         || (states[1].b_g2_query.len() == size.private_transfer.a_b_g1_b_g2_query)
-//         || (states[1].h_query.len() == size.private_transfer.h_query)
-//         || (states[1].l_query.len() == size.private_transfer.l_query)
-//         || (states[2].vk.gamma_abc_g1.len() == size.reclaim.gamma_abc_g1)
-//         || (states[2].a_query.len() == size.reclaim.a_b_g1_b_g2_query)
-//         || (states[2].b_g1_query.len() == size.reclaim.a_b_g1_b_g2_query)
-//         || (states[2].b_g2_query.len() == size.reclaim.a_b_g1_b_g2_query)
-//         || (states[2].h_query.len() == size.reclaim.h_query)
-//         || (states[2].l_query.len() == size.reclaim.l_query)
-// }
-
-// /// Prepares phase one parameters ready to use in trusted setup for phase two parameters.
-// #[inline]
-// pub fn prepare_phase_two_parameters(accumulator_path: String) {
-//     let now = Instant::now();
-//     let powers = load_from_file::<Accumulator<_>, _>(accumulator_path);
-//     println!(
-//         "Loading & Deserializing Phase 1 parameters takes {:?}\n",
-//         now.elapsed()
-//     );
-//     let transfer_parameters = load_transfer_parameters();
-//     let utxo_accumulator_model = load_utxo_accumulator_model();
-//     prepare_parameters(
-//         powers.clone(),
-//         Mint::unknown_constraints(FullParameters::new(
-//             &transfer_parameters,
-//             &utxo_accumulator_model,
-//         )),
-//         "mint",
-//     );
-//     prepare_parameters(
-//         powers.clone(),
-//         PrivateTransfer::unknown_constraints(FullParameters::new(
-//             &transfer_parameters,
-//             &utxo_accumulator_model,
-//         )),
-//         "private_transfer",
-//     );
-//     prepare_parameters(
-//         powers,
-//         Reclaim::unknown_constraints(FullParameters::new(
-//             &transfer_parameters,
-//             &utxo_accumulator_model,
-//         )),
-//         "reclaim",
-//     );
-// }
+/// Initiates a server.
+#[inline]
+pub fn init_server<P, C, S, const LEVEL_COUNT: usize>(
+    registry_path: String,
+    recovery_dir_path: String,
+) -> Server<C, LEVEL_COUNT, 3>
+where
+    P: Pairing,
+    C: CeremonyConfig<Participant = Participant<S>, Setup = Groth16Phase2<Config>>,
+    S: SignatureScheme<Vec<u8>, Nonce = u64, VerifyingKey = Array<u8, 32>>,
+    S::VerifyingKey: Ord + CanonicalDeserialize + CanonicalSerialize,
+{
+    let registry = load_registry::<C, _, S>(registry_path);
+    let mpc_state0 = load_from_file::<MPCState<C, 1>, _>(&"data/prepared_mint.data");
+    let mpc_state1 = load_from_file::<MPCState<C, 1>, _>(&"data/prepared_private_transfer.data");
+    let mpc_state2 = load_from_file::<MPCState<C, 1>, _>(&"data/prepared_reclaim.data");
+    let size = ServerSize(Array::from_unchecked([
+        StateSize {
+            gamma_abc_g1: mpc_state0.state[0]
+                .to_actual()
+                .expect("Deserialize should succeed")
+                .vk
+                .gamma_abc_g1
+                .len(),
+            a_b_g1_b_g2_query: mpc_state0.state[0]
+                .to_actual()
+                .expect("Deserialize should succeed")
+                .a_query
+                .len(),
+            h_query: mpc_state0.state[0]
+                .to_actual()
+                .expect("Deserialize should succeed")
+                .h_query
+                .len(),
+            l_query: mpc_state0.state[0]
+                .to_actual()
+                .expect("Deserialize should succeed")
+                .l_query
+                .len(),
+        },
+        StateSize {
+            gamma_abc_g1: mpc_state1.state[0]
+                .to_actual()
+                .expect("Deserialize should succeed")
+                .vk
+                .gamma_abc_g1
+                .len(),
+            a_b_g1_b_g2_query: mpc_state1.state[0]
+                .to_actual()
+                .expect("Deserialize should succeed")
+                .a_query
+                .len(),
+            h_query: mpc_state1.state[0]
+                .to_actual()
+                .expect("Deserialize should succeed")
+                .h_query
+                .len(),
+            l_query: mpc_state1.state[0]
+                .to_actual()
+                .expect("Deserialize should succeed")
+                .l_query
+                .len(),
+        },
+        StateSize {
+            gamma_abc_g1: mpc_state2.state[0]
+                .to_actual()
+                .expect("Deserialize should succeed")
+                .vk
+                .gamma_abc_g1
+                .len(),
+            a_b_g1_b_g2_query: mpc_state2.state[0]
+                .to_actual()
+                .expect("Deserialize should succeed")
+                .a_query
+                .len(),
+            h_query: mpc_state2.state[0]
+                .to_actual()
+                .expect("Deserialize should succeed")
+                .h_query
+                .len(),
+            l_query: mpc_state2.state[0]
+                .to_actual()
+                .expect("Deserialize should succeed")
+                .l_query
+                .len(),
+        },
+    ]));
+    Server::<C, LEVEL_COUNT, 3>::new(
+        Array::from_unchecked([
+            mpc_state0.state[0].clone(),
+            mpc_state1.state[0].clone(),
+            mpc_state2.state[0].clone(),
+        ]),
+        Array::from_unchecked([
+            mpc_state0.challenge[0].clone(),
+            mpc_state1.challenge[0].clone(),
+            mpc_state2.challenge[0].clone(),
+        ]),
+        registry,
+        recovery_dir_path,
+        size,
+    )
+}

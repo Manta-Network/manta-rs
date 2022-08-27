@@ -35,7 +35,7 @@ pub trait Types {
 /// Contribution
 pub trait Contribute: Types {
     /// Hasher Type
-    type Hasher;
+    type Hasher: Default;
 
     /// Computes the next state from `state`, `challenge`, and `contribution`.
     fn contribute<R>(

@@ -19,10 +19,13 @@
 extern crate alloc;
 
 use crate::{
-    ceremony::{config::CeremonyConfig, message::MPCState},
+    ceremony::{
+        config::CeremonyConfig,
+        message::{MPCState, ServerSize},
+    },
     groth16::{
         kzg::{self, Accumulator, Size},
-        mpc::{self, initialize, Groth16Phase2},
+        mpc::{self, initialize, Groth16Phase2, State},
     },
     util::AsBytes,
 };
@@ -82,4 +85,26 @@ where
         name,
         now.elapsed()
     );
+}
+
+/// Checks `states` has the same size as `size`.
+pub fn check_state_size<P, const CIRCUIT_COUNT: usize>(
+    states: &Array<AsBytes<State<P>>, CIRCUIT_COUNT>,
+    size: &ServerSize<CIRCUIT_COUNT>,
+) -> bool
+where
+    P: Pairing,
+{
+    let mut validity = true;
+    for i in 0..CIRCUIT_COUNT {
+        let state = states[i].to_actual().expect("Deserialize should succeed.");
+        validity = validity
+            || (state.vk.gamma_abc_g1.len() == size.0[i].gamma_abc_g1)
+            || (state.a_query.len() == size.0[i].a_b_g1_b_g2_query)
+            || (state.b_g1_query.len() == size.0[i].a_b_g1_b_g2_query)
+            || (state.b_g2_query.len() == size.0[i].a_b_g1_b_g2_query)
+            || (state.h_query.len() == size.0[i].h_query)
+            || (state.l_query.len() == size.0[i].l_query);
+    }
+    validity
 }

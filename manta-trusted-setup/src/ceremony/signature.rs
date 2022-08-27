@@ -98,6 +98,7 @@ pub mod ed_dalek {
     use manta_util::Array;
 
     /// ED25519-Dalek Signature
+    #[derive(Clone)]
     pub struct Ed25519;
 
     impl signature::MessageType for Ed25519 {
