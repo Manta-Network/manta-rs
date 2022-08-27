@@ -19,7 +19,7 @@
 use crate::{
     rand::{CryptoRng, Rand, RngCore},
     signature::{
-        self, RandomnessType, Sign, SignatureType, SigningKeyType, Verify, VerifyingKeyType,
+        MessageType, RandomnessType, Sign, SignatureType, SigningKeyType, Verify, VerifyingKeyType,
     },
 };
 use core::marker::PhantomData;
