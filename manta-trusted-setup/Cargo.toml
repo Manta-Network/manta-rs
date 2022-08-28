@@ -29,7 +29,11 @@ maintenance = { status = "actively-developed" }
 rayon = ["manta-util/rayon"]
 
 # Serde Serialization
-serde = ["manta-util/serde"]
+serde = [
+    "manta-util/serde",
+    "manta-util/serde-alloc",
+    "manta-util/serde-array"
+]
 
 # Standard Library
 std = ["manta-util/std"]
@@ -47,7 +51,6 @@ byteorder = { version = "1.4.3", default-features = false }
 derivative = { version = "2.2.0", default-features = false, features = ["use_core"] }
 manta-crypto = { path = "../manta-crypto", default-features = false, features = ["arkworks", "getrandom", "rand_chacha"] }
 manta-util = { path = "../manta-util", default-features = false }
-workspace-hack = { version = "0.1.0", path = "../workspace-hack" }
 
 [dev-dependencies]
 ark-bls12-381 = { version = "0.3.0", default-features = false, features = ["curve", "scalar_field"] }

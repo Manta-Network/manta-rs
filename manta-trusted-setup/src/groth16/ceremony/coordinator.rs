@@ -23,7 +23,12 @@ use crate::{
     },
     mpc::{Challenge, Proof, State},
 };
-use manta_util::{collections::vec_deque::MultiVecDeque, time::lock::Timed, Array, BoxArray};
+use manta_util::{
+    collections::vec_deque::MultiVecDeque,
+    serde::{Deserialize, Serialize},
+    time::lock::Timed,
+    Array, BoxArray,
+};
 
 /// Proof Array Type
 pub type ProofArray<C, const N: usize> = BoxArray<Proof<C>, N>;
@@ -39,6 +44,31 @@ pub type Queue<C, const LEVEL_COUNT: usize> =
     MultiVecDeque<<C as Ceremony>::Identifier, LEVEL_COUNT>;
 
 /// Ceremony Coordinator
+#[derive(Deserialize, Serialize)]
+#[serde(
+    bound(
+        deserialize = r"
+            R: Deserialize<'de>,
+            Queue<C, LEVEL_COUNT>: Deserialize<'de>,
+            C::Identifier: Deserialize<'de>,
+            State<C>: Deserialize<'de>,
+            Challenge<C>: Deserialize<'de>,
+            Proof<C>: Deserialize<'de>,
+            C::Participant: Deserialize<'de>,
+        ",
+        serialize = r"
+            R: Serialize,
+            Queue<C, LEVEL_COUNT>: Serialize,
+            C::Identifier: Serialize,
+            State<C>: Serialize,
+            Challenge<C>: Serialize,
+            Proof<C>: Serialize,
+            C::Participant: Serialize,
+        "
+    ),
+    crate = "manta_util::serde",
+    deny_unknown_fields
+)]
 pub struct Coordinator<C, R, const CIRCUIT_COUNT: usize, const LEVEL_COUNT: usize>
 where
     C: Ceremony,

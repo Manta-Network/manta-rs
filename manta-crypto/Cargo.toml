@@ -67,7 +67,6 @@ manta-util = { path = "../manta-util", default-features = false, features = ["al
 rand = { version = "0.8.4", optional = true, default-features = false, features = ["alloc"] }
 rand_chacha = { version = "0.3.1", optional = true, default-features = false }
 rand_core = { version = "0.6.3", default-features = false }
-workspace-hack = { version = "0.1.0", path = "../workspace-hack" }
 
 [dev-dependencies]
 ark-bn254 = { version = "0.3.0", default-features = false, features = ["scalar_field"] }

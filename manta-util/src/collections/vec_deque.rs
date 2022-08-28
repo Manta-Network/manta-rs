@@ -46,13 +46,13 @@ impl<T, const N: usize> MultiVecDeque<T, N> {
 
     /// Returns a shared reference to the [`VecDeque`] at the given `level`.
     #[inline]
-    pub fn level(&self, level: usize) -> &VecDeque<T> {
+    pub fn at_level(&self, level: usize) -> &VecDeque<T> {
         &self.0[level]
     }
 
     /// Returns a mutable reference to the [`VecDeque`] at the given `level`.
     #[inline]
-    pub fn level_mut(&mut self, level: usize) -> &mut VecDeque<T> {
+    pub fn at_level_mut(&mut self, level: usize) -> &mut VecDeque<T> {
         &mut self.0[level]
     }
 
@@ -154,7 +154,7 @@ impl<T, const N: usize> MultiVecDeque<T, N> {
     ///
     /// # Note
     ///
-    /// This method is an alias for `self.level(level).push_back(item)`.
+    /// This method is an alias for `self.at_level_mut(level).push_back(item)`.
     #[inline]
     pub fn push_back_at(&mut self, level: usize, item: T) {
         self.0[level].push_back(item)

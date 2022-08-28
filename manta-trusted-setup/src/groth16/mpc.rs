@@ -35,6 +35,9 @@ use manta_crypto::{
     rand::{CryptoRng, RngCore},
 };
 
+#[cfg(feature = "serde")]
+use manta_util::serde::{Deserialize, Serialize};
+
 /// Proving Key Hasher
 pub trait ProvingKeyHasher<P>
 where
@@ -54,6 +57,11 @@ pub type State<P> = ProvingKey<<P as Pairing>::Pairing>;
 pub type Proof<P> = RatioProof<P>;
 
 /// MPC State Size
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub struct StateSize {
     /// Size of `gamma_abc_g1` in the [`VerifyingKey`]

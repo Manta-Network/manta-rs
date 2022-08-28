@@ -19,13 +19,22 @@
 use crate::time::{Duration, Instant};
 use core::{mem, ops::Deref};
 
+#[cfg(feature = "serde")]
+use crate::serde::{Deserialize, Serialize};
+
 /// Timed Data
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "crate::serde", deny_unknown_fields)
+)]
 #[derive(Copy, Debug, Eq, Hash, PartialEq)]
 pub struct Timed<T> {
     /// Value
     value: T,
 
     /// Instant
+    #[cfg_attr(feature = "serde", serde(skip, default = "Instant::now"))]
     instant: Instant,
 }
 

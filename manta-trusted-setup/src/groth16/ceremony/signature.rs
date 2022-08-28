@@ -66,7 +66,7 @@ where
     #[inline]
     fn as_bytes(&self) -> Vec<u8> {
         let mut bytes = self.nonce.as_bytes();
-        bytes.append(&mut self.encoded_message.clone());
+        bytes.extend_from_slice(&self.encoded_message);
         bytes
     }
 }
