@@ -37,9 +37,9 @@ pub trait Participant {
     fn id(&self) -> &Self::Identifier;
 
     /// Returns the priority level for `self`.
-    /// 
+    ///
     /// # Note
-    /// 
+    ///
     /// Lower level indicates a higher priority.
     fn level(&self) -> usize;
 }

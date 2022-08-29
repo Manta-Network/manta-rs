@@ -117,9 +117,9 @@ impl<T, const N: usize> MultiVecDeque<T, N> {
     /// Returns `true` if `item` is at the front of the deque using `eq` to compare elements of type
     /// `T`.
     #[inline]
-    pub fn is_front_with<F>(&self, item: &T, mut eq: F) -> bool
+    pub fn is_front_with<F>(&self, item: &T, eq: F) -> bool
     where
-        F: FnMut(&T, &T) -> bool,
+        F: FnOnce(&T, &T) -> bool,
     {
         if let Some(front) = self.front() {
             eq(front, item)
