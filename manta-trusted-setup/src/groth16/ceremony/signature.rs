@@ -16,6 +16,7 @@
 
 //! Groth16 Trusted Setup Ceremony Signatures
 
+use alloc::vec::Vec;
 use manta_crypto::signature;
 use manta_util::{serde::Serialize, AsBytes};
 
@@ -90,7 +91,7 @@ pub fn sign<T, S>(
     signing_key: &S::SigningKey,
     nonce: S::Nonce,
     message: &T,
-) -> Result<S::Signature, bincode::Error>
+) -> Result<S::Signature, serde_json::Error>
 where
     T: Serialize,
     S: SignatureScheme,
@@ -100,7 +101,7 @@ where
         &(),
         &Message {
             nonce,
-            encoded_message: bincode::serialize(message)?,
+            encoded_message: serde_json::to_vec(message)?,
         },
         &mut (),
     ))
@@ -110,15 +111,15 @@ where
 #[derive(Debug)]
 pub enum VerificationError<E> {
     /// Serialization
-    Serialization(bincode::Error),
+    Serialization(serde_json::Error),
 
     /// Base Verification Error Type
     Error(E),
 }
 
-impl<E> From<bincode::Error> for VerificationError<E> {
+impl<E> From<serde_json::Error> for VerificationError<E> {
     #[inline]
-    fn from(err: bincode::Error) -> Self {
+    fn from(err: serde_json::Error) -> Self {
         Self::Serialization(err)
     }
 }
@@ -140,7 +141,7 @@ where
             verifying_key,
             &Message {
                 nonce,
-                encoded_message: bincode::serialize(message)?,
+                encoded_message: serde_json::to_vec(message)?,
             },
             signature,
             &mut (),
