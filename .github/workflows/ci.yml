@@ -52,6 +52,11 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - run: rustup update ${{ matrix.channel }} && rustup default ${{ matrix.channel }} && rustup component add clippy
+      - run: cargo install hakari
+      - run: cargo hakari init workspace-hack --yes
+      - run: cargo hakari generate
+      - run: cargo hakari manage-deps --yes
+      - run: cargo hakari verify
       - run: cargo install cargo-hack
       - run: cargo hack clippy --workspace --feature-powerset
       - run: cargo hack clippy --workspace --feature-powerset --bins

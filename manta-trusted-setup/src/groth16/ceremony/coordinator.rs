@@ -23,12 +23,10 @@ use crate::{
     },
     mpc::{Challenge, Proof, State},
 };
-use manta_util::{
-    collections::vec_deque::MultiVecDeque,
-    serde::{Deserialize, Serialize},
-    time::lock::Timed,
-    Array, BoxArray,
-};
+use manta_util::{collections::vec_deque::MultiVecDeque, time::lock::Timed, Array, BoxArray};
+
+#[cfg(feature = "serde")]
+use manta_util::serde::{Deserialize, Serialize};
 
 /// Proof Array Type
 pub type ProofArray<C, const N: usize> = BoxArray<Proof<C>, N>;
@@ -44,10 +42,12 @@ pub type Queue<C, const LEVEL_COUNT: usize> =
     MultiVecDeque<<C as Ceremony>::Identifier, LEVEL_COUNT>;
 
 /// Ceremony Coordinator
-#[derive(Deserialize, Serialize)]
-#[serde(
-    bound(
-        deserialize = r"
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = r"
             R: Deserialize<'de>,
             Queue<C, LEVEL_COUNT>: Deserialize<'de>,
             C::Identifier: Deserialize<'de>,
@@ -56,7 +56,7 @@ pub type Queue<C, const LEVEL_COUNT: usize> =
             Proof<C>: Deserialize<'de>,
             C::Participant: Deserialize<'de>,
         ",
-        serialize = r"
+            serialize = r"
             R: Serialize,
             Queue<C, LEVEL_COUNT>: Serialize,
             C::Identifier: Serialize,
@@ -65,9 +65,10 @@ pub type Queue<C, const LEVEL_COUNT: usize> =
             Proof<C>: Serialize,
             C::Participant: Serialize,
         "
-    ),
-    crate = "manta_util::serde",
-    deny_unknown_fields
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
 )]
 pub struct Coordinator<C, R, const CIRCUIT_COUNT: usize, const LEVEL_COUNT: usize>
 where
@@ -75,33 +76,33 @@ where
     R: Registry<C::Identifier, C::Participant>,
 {
     /// Participant Registry
-    registry: R,
+    pub registry: R,
 
     /// Participant Queue
-    queue: Queue<C, LEVEL_COUNT>,
+    pub queue: Queue<C, LEVEL_COUNT>,
 
     /// Participant Lock
-    participant_lock: Timed<Option<C::Identifier>>,
+    pub participant_lock: Timed<Option<C::Identifier>>,
 
     /// State
-    state: StateArray<C, CIRCUIT_COUNT>,
+    pub state: StateArray<C, CIRCUIT_COUNT>,
 
     /// Challenge
-    challenge: ChallengeArray<C, CIRCUIT_COUNT>,
+    pub challenge: ChallengeArray<C, CIRCUIT_COUNT>,
 
     /// Latest Contributor
     ///
     /// This participant was the last one to perform a successful contribution to the ceremony.
-    latest_contributor: Option<C::Participant>,
+    pub latest_contributor: Option<C::Participant>,
 
     /// Latest Proof
-    latest_proof: Option<ProofArray<C, CIRCUIT_COUNT>>,
+    pub latest_proof: Option<ProofArray<C, CIRCUIT_COUNT>>,
 
     /// State Sizes
-    size: Array<StateSize, CIRCUIT_COUNT>,
+    pub size: Array<StateSize, CIRCUIT_COUNT>,
 
     /// Current Round Number
-    round: usize,
+    pub round: usize,
 }
 
 impl<C, R, const CIRCUIT_COUNT: usize, const LEVEL_COUNT: usize>
