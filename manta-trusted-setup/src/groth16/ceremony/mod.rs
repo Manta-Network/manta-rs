@@ -24,8 +24,8 @@ pub mod registry;
 #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
 pub mod coordinator;
 
-#[cfg(all(feature = "serde_json", feature = "serde"))]
-#[cfg_attr(doc_cfg, doc(cfg(all(feature = "serde_json", feature = "serde"))))]
+#[cfg(all(feature = "bincode", feature = "serde"))]
+#[cfg_attr(doc_cfg, doc(cfg(all(feature = "bincode", feature = "serde"))))]
 pub mod signature;
 
 /// Participant
@@ -37,6 +37,10 @@ pub trait Participant {
     fn id(&self) -> &Self::Identifier;
 
     /// Returns the priority level for `self`.
+    /// 
+    /// # Note
+    /// 
+    /// Lower level indicates a higher priority.
     fn level(&self) -> usize;
 }
 

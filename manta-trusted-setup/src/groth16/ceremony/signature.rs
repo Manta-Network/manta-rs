@@ -91,7 +91,7 @@ pub fn sign<T, S>(
     signing_key: &S::SigningKey,
     nonce: S::Nonce,
     message: &T,
-) -> Result<S::Signature, serde_json::Error>
+) -> Result<S::Signature, bincode::Error>
 where
     T: Serialize,
     S: SignatureScheme,
@@ -101,7 +101,7 @@ where
         &(),
         &Message {
             nonce,
-            encoded_message: serde_json::to_vec(message)?,
+            encoded_message: bincode::serialize(message)?,
         },
         &mut (),
     ))
@@ -111,15 +111,15 @@ where
 #[derive(Debug)]
 pub enum VerificationError<E> {
     /// Serialization
-    Serialization(serde_json::Error),
+    Serialization(bincode::Error),
 
     /// Base Verification Error Type
     Error(E),
 }
 
-impl<E> From<serde_json::Error> for VerificationError<E> {
+impl<E> From<bincode::Error> for VerificationError<E> {
     #[inline]
-    fn from(err: serde_json::Error) -> Self {
+    fn from(err: bincode::Error) -> Self {
         Self::Serialization(err)
     }
 }
@@ -141,7 +141,7 @@ where
             verifying_key,
             &Message {
                 nonce,
-                encoded_message: serde_json::to_vec(message)?,
+                encoded_message: bincode::serialize(message)?,
             },
             signature,
             &mut (),
