@@ -25,8 +25,7 @@ use core::{cmp, fmt::Debug, hash::Hash};
 use manta_crypto::{
     accumulator::{self, ItemHashFunction, MembershipProof},
     algebra::{
-        diffie_hellman::{KnownScalarDiffieHellman, StandardDiffieHellman},
-        security::ComputationalDiffieHellmanHardness,
+        diffie_hellman::StandardDiffieHellman, security::ComputationalDiffieHellmanHardness,
         HasGenerator, Ring, ScalarMul, ScalarMulGroup,
     },
     constraint::{HasInput, Input},
@@ -239,7 +238,7 @@ where
         + Zero<COM, Verification = Self::Bool>;
 
     /// Scalar Type
-    type Scalar: Clone + PartialEq<Self::Scalar, COM> + Ring<COM>;
+    type Scalar: Clone + PartialEq<Self::Scalar, COM>;
 
     /// Group Type
     type Group: Clone
@@ -363,7 +362,7 @@ pub type NullifierCommitment<C, COM = ()> =
 
 /// Outgoing Encryption Scheme
 pub type OutgoingEncryptionScheme<C, COM = ()> = Hybrid<
-    KnownScalarDiffieHellman<
+    StandardDiffieHellman<
         <C as BaseConfiguration<COM>>::Scalar,
         <C as BaseConfiguration<COM>>::Group,
     >,
@@ -862,6 +861,7 @@ where
 impl<C> auth::DeriveSigningKey for Parameters<C>
 where
     C: Configuration<Bool = bool>,
+    C::Scalar: Ring,
 {
     #[inline]
     fn derive(
@@ -1087,14 +1087,12 @@ where
             associated_data.public(&asset),
             utxo_commitment,
         );
-        let viewing_key =
-            authorization_context.viewing_key(&self.base.viewing_key_derivation_function, &mut ());
         let outgoing_note = Hybrid::new(
-            KnownScalarDiffieHellman::new(self.base.group_generator.generator().clone()),
+            StandardDiffieHellman::new(self.base.group_generator.generator().clone()),
             self.base.outgoing_base_encryption_scheme.clone(),
         )
         .encrypt_into(
-            viewing_key,
+            receiving_key,
             &secret.outgoing_randomness,
             EmptyHeader::default(),
             &secret.plaintext.asset,
@@ -1863,15 +1861,15 @@ where
         &self,
         group_generator: &C::Group,
         outgoing_base_encryption_scheme: &C::OutgoingBaseEncryptionScheme,
-        viewing_key: &C::Scalar,
+        receiving_key: &C::Group,
         compiler: &mut COM,
     ) -> OutgoingNote<C, COM> {
         Hybrid::new(
-            KnownScalarDiffieHellman::new(group_generator.clone()),
+            StandardDiffieHellman::new(group_generator.clone()),
             outgoing_base_encryption_scheme.clone(),
         )
         .encrypt_into(
-            viewing_key,
+            receiving_key,
             &self.outgoing_randomness,
             EmptyHeader::default(),
             &self.plaintext.asset,
@@ -1910,12 +1908,15 @@ where
         let utxo_commitment =
             self.utxo_commitment(&parameters.utxo_commitment_scheme, receiving_key, compiler);
         compiler.assert_eq(&utxo.commitment, &utxo_commitment);
-        let viewing_key = authorization_context
-            .viewing_key(&parameters.viewing_key_derivation_function, compiler);
+        let receiving_key = authorization_context.receiving_key(
+            parameters.group_generator.generator(),
+            &parameters.viewing_key_derivation_function,
+            compiler,
+        );
         let outgoing_note = self.outgoing_note(
             parameters.group_generator.generator(),
             &parameters.outgoing_base_encryption_scheme,
-            viewing_key,
+            receiving_key,
             compiler,
         );
         let item = parameters.item_hash(utxo, compiler);

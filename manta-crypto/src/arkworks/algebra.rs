@@ -31,6 +31,15 @@ use manta_util::serde::Serializer;
 /// Constraint Field Type
 type ConstraintField<C> = <<C as ProjectiveCurve>::BaseField as Field>::BasePrimeField;
 
+/// Returns the modulus bits of scalar field of a given curve `C`.
+#[inline]
+pub const fn scalar_bits<C>() -> usize
+where
+    C: ProjectiveCurve,
+{
+    <<C as ProjectiveCurve>::ScalarField as PrimeField>::Params::MODULUS_BITS as usize
+}
+
 /// Converts `scalar` to the bit representation of `O`.
 #[inline]
 pub fn convert_bits<T, O>(scalar: T) -> O::BigInt
@@ -88,7 +97,9 @@ where
 ///
 /// This type can only be used whenever the embedded scalar field is **smaller** than the
 /// outer scalar field.
-pub struct ScalarVar<C, CV>(pub(crate) FpVar<ConstraintField<C>>, PhantomData<CV>)
+#[derive(derivative::Derivative)]
+#[derivative(Clone(bound = ""))]
+pub struct ScalarVar<C, CV>(FpVar<ConstraintField<C>>, PhantomData<CV>)
 where
     C: ProjectiveCurve,
     CV: CurveVar<C, ConstraintField<C>>;
@@ -105,10 +116,13 @@ where
     }
 }
 
-/// Returns the modulus bits of scalar field of a given curve `C`.
-pub const fn scalar_bits<C>() -> usize
+impl<C, CV> AsRef<FpVar<ConstraintField<C>>> for ScalarVar<C, CV>
 where
     C: ProjectiveCurve,
+    CV: CurveVar<C, ConstraintField<C>>,
 {
-    <<C as ProjectiveCurve>::ScalarField as PrimeField>::Params::MODULUS_BITS as usize
+    #[inline]
+    fn as_ref(&self) -> &FpVar<ConstraintField<C>> {
+        &self.0
+    }
 }

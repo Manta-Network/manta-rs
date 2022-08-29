@@ -39,7 +39,7 @@ use manta_crypto::{
     },
     constraint::{
         measure::{Count, Measure},
-        Input, ProofSystem,
+        Input, ProofSystem, Satisfied,
     },
     eclair::{
         self,
@@ -394,7 +394,7 @@ where
     F: PrimeField,
 {
     /// Constraint System
-    pub(crate) cs: ConstraintSystemRef<F>,
+    cs: ConstraintSystemRef<F>,
 }
 
 impl<F> R1CS<F>
@@ -419,10 +419,24 @@ where
         cs.set_optimization_goal(OptimizationGoal::Constraints);
         Self { cs }
     }
+}
 
-    /// Check if all constraints are satisfied.
+impl<F> AsRef<ConstraintSystemRef<F>> for R1CS<F>
+where
+    F: PrimeField,
+{
     #[inline]
-    pub fn is_satisfied(&self) -> bool {
+    fn as_ref(&self) -> &ConstraintSystemRef<F> {
+        &self.cs
+    }
+}
+
+impl<F> Satisfied for R1CS<F>
+where
+    F: PrimeField,
+{
+    #[inline]
+    fn is_satisfied(&self) -> bool {
         self.cs
             .is_satisfied()
             .expect("is_satisfied is not allowed to fail")
@@ -813,8 +827,8 @@ where
 #[inline]
 pub fn div_rem_mod_prime<F, R>(value: F) -> (F, R::BigInt)
 where
-    R: PrimeField,
     F: PrimeField,
+    R: PrimeField,
 {
     let modulus = <R::Params as FpParameters>::MODULUS;
     let (quotient, remainder) = value.into_repr().into().div_rem(&modulus.into());
@@ -835,8 +849,8 @@ where
 #[inline]
 pub fn rem_mod_prime<F, R>(value: F) -> R
 where
-    R: PrimeField,
     F: PrimeField,
+    R: PrimeField,
 {
     R::from_repr(div_rem_mod_prime::<F, R>(value).1)
         .expect("This element is guaranteed to be within the modulus.")

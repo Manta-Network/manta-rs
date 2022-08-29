@@ -41,7 +41,15 @@ getrandom = ["rand_core/getrandom"]
 serde = ["manta-util/serde-alloc", "manta-util/serde-array"]
 
 # Standard Library
-std = ["manta-util/std"]
+std = [
+    "ark-ec?/std",
+    "ark-ff?/std",
+    "ark-r1cs-std?/std",
+    "ark-relations?/std",
+    "ark-serialize?/std",
+    "manta-util/std",
+    "rand?/std",
+]
 
 # Testing Frameworks
 test = []

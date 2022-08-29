@@ -227,19 +227,56 @@ where
 #[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
 pub mod test {
     use super::*;
-    use core::fmt::Debug;
+    use crate::{
+        constraint::Satisfied,
+        eclair::{
+            bool::{Assert, AssertEq},
+            cmp::PartialEq,
+        },
+    };
 
     /// Tests if the `agreement` property is satisfied for `K`.
     #[inline]
-    pub fn agreement<K>(scheme: &K, lhs: &K::SecretKey, rhs: &K::SecretKey)
+    pub fn agreement<K, COM>(scheme: &K, lhs: &K::SecretKey, rhs: &K::SecretKey, compiler: &mut COM)
     where
-        K: Agree + Derive,
-        K::SharedSecret: Debug + PartialEq,
+        COM: Assert + Satisfied,
+        K: Agree<COM> + Derive<COM>,
+        K::SharedSecret: PartialEq<K::SharedSecret, COM>,
     {
-        assert_eq!(
-            scheme.agree(&scheme.derive(rhs, &mut ()), lhs, &mut ()),
-            scheme.agree(&scheme.derive(lhs, &mut ()), rhs, &mut ()),
-            "Key agreement schemes should satisfy the agreement property."
-        )
+        let fst = scheme.agree(&scheme.derive(rhs, compiler), lhs, compiler);
+        let snd = scheme.agree(&scheme.derive(lhs, compiler), rhs, compiler);
+        compiler.assert_eq(&fst, &snd);
+        /*
+        assert!(
+            compiler.is_satisfied(),
+            "Compiler does not have all its constraints satisfied."
+        );
+        */
+    }
+
+    /// Tests if the `agreement` property with ephemeral keys is satisfied for `K`.
+    #[inline]
+    pub fn agreement_ephemeral<K, COM>(
+        scheme: &K,
+        secret_key: &K::SecretKey,
+        ephemeral_secret_key: &K::EphemeralSecretKey,
+        compiler: &mut COM,
+    ) where
+        COM: Assert + Satisfied,
+        K: Derive<COM> + DeriveEphemeral<COM> + GenerateSecret<COM> + ReconstructSecret<COM>,
+        K::SharedSecret: PartialEq<K::SharedSecret, COM>,
+    {
+        let public_key = scheme.derive(secret_key, compiler);
+        let ephemeral_public_key = scheme.derive_ephemeral(ephemeral_secret_key, compiler);
+        let generated_secret = scheme.generate_secret(&public_key, ephemeral_secret_key, compiler);
+        let reconstructed_secret =
+            scheme.reconstruct_secret(&ephemeral_public_key, secret_key, compiler);
+        compiler.assert_eq(&generated_secret, &reconstructed_secret);
+        /*
+        assert!(
+            compiler.is_satisfied(),
+            "Compiler does not have all its constraints satisfied."
+        );
+        */
     }
 }

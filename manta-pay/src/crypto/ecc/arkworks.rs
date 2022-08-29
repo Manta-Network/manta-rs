@@ -16,14 +16,13 @@
 
 //! Arkworks Elliptic Curve Primitives
 
-use crate::crypto::constraint::arkworks::{self, empty, full, Boolean, Fp, FpVar, R1CS};
+use crate::crypto::constraint::arkworks::{self, empty, full, Boolean, Fp, R1CS};
 use alloc::vec::Vec;
 use core::{borrow::Borrow, iter::Extend, marker::PhantomData};
 use manta_crypto::{
-    algebra,
-    algebra::FixedBaseScalarMul,
+    algebra::{self, FixedBaseScalarMul},
     arkworks::{
-        algebra::{affine_point_as_bytes, modulus_is_smaller},
+        algebra::{affine_point_as_bytes, modulus_is_smaller, ScalarVar},
         ec::{AffineCurve, ProjectiveCurve},
         ff::{BigInteger, Field, PrimeField, ToConstraintField},
         r1cs_std::{eq::EqGadget, groups::CurveVar, ToBitsGadget},
@@ -307,6 +306,7 @@ where
     }
 }
 
+/*
 /// Elliptic Curve Scalar Element Variable
 ///
 /// # Safety
@@ -331,6 +331,7 @@ where
         Self(scalar, PhantomData)
     }
 }
+*/
 
 impl<C, CV> algebra::Group<Compiler<C>> for ScalarVar<C, CV>
 where
@@ -340,19 +341,7 @@ where
     #[inline]
     fn add(&self, rhs: &Self, compiler: &mut Compiler<C>) -> Self {
         let _ = compiler;
-        Self::new(&self.0 + &rhs.0)
-    }
-}
-
-impl<C, CV> algebra::Ring<Compiler<C>> for ScalarVar<C, CV>
-where
-    C: ProjectiveCurve,
-    CV: CurveVar<C, ConstraintField<C>>,
-{
-    #[inline]
-    fn mul(&self, rhs: &Self, compiler: &mut Compiler<C>) -> Self {
-        let _ = compiler;
-        Self::new(&self.0 * &rhs.0)
+        Self::new(self.as_ref() + rhs.as_ref())
     }
 }
 
@@ -364,8 +353,8 @@ where
     #[inline]
     fn eq(&self, rhs: &Self, compiler: &mut Compiler<C>) -> Boolean<ConstraintField<C>> {
         let _ = compiler;
-        self.0
-            .is_eq(&rhs.0)
+        self.as_ref()
+            .is_eq(rhs.as_ref())
             .expect("Equality checking is not allowed to fail.")
     }
 }
@@ -472,7 +461,7 @@ where
             self.0
                 .scalar_mul_le(
                     scalar
-                        .0
+                        .as_ref()
                         .to_bits_le()
                         .expect("Bit decomposition is not allowed to fail.")
                         .iter(),
@@ -531,8 +520,11 @@ where
     #[inline]
     fn new_constant(this: &Self::Type, compiler: &mut Compiler<C>) -> Self {
         Self::new(
-            CV::new_constant(ns!(compiler.cs, "embedded curve point constant"), this.0)
-                .expect("Variable allocation is not allowed to fail."),
+            CV::new_constant(
+                ns!(compiler.as_ref(), "embedded curve point constant"),
+                this.0,
+            )
+            .expect("Variable allocation is not allowed to fail."),
         )
     }
 }
@@ -548,7 +540,7 @@ where
     fn new_known(this: &Self::Type, compiler: &mut Compiler<C>) -> Self {
         Self::new(
             CV::new_input(
-                ns!(compiler.cs, "embedded curve point public input"),
+                ns!(compiler.as_ref(), "embedded curve point public input"),
                 full(this.0),
             )
             .expect("Variable allocation is not allowed to fail."),
@@ -559,7 +551,7 @@ where
     fn new_unknown(compiler: &mut Compiler<C>) -> Self {
         Self::new(
             CV::new_input(
-                ns!(compiler.cs, "embedded curve point public input"),
+                ns!(compiler.as_ref(), "embedded curve point public input"),
                 empty::<C>,
             )
             .expect("Variable allocation is not allowed to fail."),
@@ -578,7 +570,7 @@ where
     fn new_known(this: &Self::Type, compiler: &mut Compiler<C>) -> Self {
         Self::new(
             CV::new_witness(
-                ns!(compiler.cs, "embedded curve point secret witness"),
+                ns!(compiler.as_ref(), "embedded curve point secret witness"),
                 full(this.0),
             )
             .expect("Variable allocation is not allowed to fail."),
@@ -589,7 +581,7 @@ where
     fn new_unknown(compiler: &mut Compiler<C>) -> Self {
         Self::new(
             CV::new_witness(
-                ns!(compiler.cs, "embedded curve point secret witness"),
+                ns!(compiler.as_ref(), "embedded curve point secret witness"),
                 empty::<C>,
             )
             .expect("Variable allocation is not allowed to fail."),
@@ -617,7 +609,7 @@ where
         let _ = compiler;
         let mut result = CV::zero();
         let scalar_bits = scalar
-            .0
+            .as_ref()
             .to_bits_le()
             .expect("Bit decomposition is not allowed to fail.");
         for (bit, base) in scalar_bits.into_iter().zip(precomputed_bases.into_iter()) {
@@ -637,7 +629,7 @@ mod test {
     use manta_crypto::{
         algebra::{PrecomputedBaseTable, ScalarMul},
         arkworks::{algebra::scalar_bits, r1cs_std::groups::curves::twisted_edwards::AffineVar},
-        constraint::measure::Measure,
+        constraint::{measure::Measure, Satisfied},
         eclair::bool::AssertEq,
         rand::OsRng,
     };
@@ -647,7 +639,7 @@ mod test {
     fn fixed_base_mul_is_correct() {
         let mut cs = Compiler::<Bls12_381_Edwards>::for_proofs();
         let scalar = Scalar::<Bls12_381_Edwards>::gen(&mut OsRng);
-        let base = Group::<Bls12_381_Edwards>::sample((), &mut OsRng);
+        let base = Group::<Bls12_381_Edwards>::gen(&mut OsRng);
         const SCALAR_BITS: usize = scalar_bits::<Bls12_381_Edwards>();
         let precomputed_table = PrecomputedBaseTable::<_, SCALAR_BITS>::from_base(base, &mut ());
         let base_var =

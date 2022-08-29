@@ -23,6 +23,7 @@ use crate::crypto::{
 use bls12_381::Bls12_381;
 use bls12_381_ed::constraints::EdwardsVar as Bls12_381_EdwardsVar;
 use manta_accounting::transfer;
+use manta_crypto::arkworks::algebra::ScalarVar;
 
 #[cfg(feature = "bs58")]
 use {alloc::string::String, manta_util::codec::Encode};
@@ -48,7 +49,7 @@ pub type EmbeddedScalarField = bls12_381_ed::Fr;
 pub type EmbeddedScalar = ecc::arkworks::Scalar<GroupCurve>;
 
 /// Embedded Scalar Variable Type
-pub type EmbeddedScalarVar = ecc::arkworks::ScalarVar<GroupCurve, GroupCurveVar>;
+pub type EmbeddedScalarVar = ScalarVar<GroupCurve, GroupCurveVar>;
 
 /// Embedded Group Curve Type
 pub type GroupCurve = Bls12_381_Edwards;

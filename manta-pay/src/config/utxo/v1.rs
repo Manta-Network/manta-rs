@@ -26,7 +26,6 @@ use crate::{
     },
     crypto::{
         constraint::arkworks::{codec::SerializationError, rem_mod_prime, Boolean, Fp, FpVar},
-        ecc::arkworks::ScalarVar,
         poseidon::{self, encryption::BlockArray, hash::Hasher, ParameterFieldType},
     },
 };
@@ -40,7 +39,7 @@ use manta_accounting::{asset::Asset, wallet::ledger};
 use manta_crypto::{
     algebra::HasGenerator,
     arkworks::{
-        algebra::affine_point_as_bytes,
+        algebra::{affine_point_as_bytes, ScalarVar},
         ff::{try_into_u128, PrimeField},
         serialize::CanonicalSerialize,
     },
