@@ -44,13 +44,13 @@ where
     S: Serializer<G1Affine, G1>,
 {
     #[inline]
-    fn hash(&self, challenge: &[u8; N], ratio: (&G1Affine, &G1Affine)) -> G2Affine {
+    fn hash(&self, challenge: &[u8; N], pair: (&G1Affine, &G1Affine)) -> G2Affine {
         let mut hasher = BlakeHasher::default();
         hasher.0.update(&[self.domain_tag]);
         hasher.0.update(challenge);
-        <PerpetualPowersOfTauCeremony<S, POWERS> as Serializer<G1Affine, G1>>::serialize_uncompressed(ratio.0, &mut hasher)
+        <PerpetualPowersOfTauCeremony<S, POWERS> as Serializer<G1Affine, G1>>::serialize_uncompressed(pair.0, &mut hasher)
             .unwrap();
-        <PerpetualPowersOfTauCeremony<S, POWERS> as Serializer<G1Affine, G1>>::serialize_uncompressed(ratio.1, &mut hasher)
+        <PerpetualPowersOfTauCeremony<S, POWERS> as Serializer<G1Affine, G1>>::serialize_uncompressed(pair.1, &mut hasher)
             .unwrap();
         hash_to_group::<_, PpotDistribution, 64>(into_array_unchecked(hasher.0.finalize()))
     }

@@ -623,7 +623,7 @@ pub fn read_g2_powers<S>(
     readable_map: &Mmap,
     element: ElementType,
     compression: Compressed,
-) -> Result<Vec<GroupAffine<<Parameters as BnParameters>::G2Parameters>>, PointDeserializeError>
+) -> Result<Vec<G2Affine>, PointDeserializeError>
 where
     S: Size,
 {
@@ -684,7 +684,7 @@ pub fn read_kzg_proof(readable_map: &Mmap) -> Result<Proof<PpotCeremony>, Serial
     <Proof<_> as CanonicalDeserialize>::deserialize_uncompressed(reader)
 }
 
-/// Extracts a subaccumulator of size `required_powers`. Specific to PPoT challenge file.
+/// Extracts a subaccumulator of size specified by `C`. Specific to PPoT challenge file.
 #[inline]
 pub fn read_subaccumulator<C>(
     readable_map: &Mmap,
