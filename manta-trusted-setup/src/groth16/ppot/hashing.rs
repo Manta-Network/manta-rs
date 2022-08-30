@@ -141,7 +141,6 @@ impl Sample<PpotDistribution> for bool {
     }
 }
 
-#[cfg(feature = "std")]
 #[cfg(test)]
 mod tests {
     use super::*;
