@@ -20,7 +20,7 @@ use crate::{groth16::kzg, ratio::HashToGroup};
 use alloc::vec::Vec;
 use ark_std::io;
 use blake2::{Blake2b512, Digest as Blake2Digest};
-use byteorder::{BigEndian, ReadBytesExt};
+use byteorder::{BigEndian, ByteOrder};
 use core::marker::PhantomData;
 use manta_crypto::{
     arkworks::{
@@ -29,10 +29,9 @@ use manta_crypto::{
         pairing::Pairing,
         serialize::{CanonicalSerialize, Read, SerializationError, Write},
     },
-    rand::{OsRng, Sample, SeedableRng},
+    rand::{ChaCha20Rng, OsRng, Sample, SeedableRng},
 };
 use manta_util::{cfg_into_iter, cfg_iter, cfg_iter_mut, cfg_reduce, into_array_unchecked};
-use rand_chacha::ChaCha20Rng;
 
 #[cfg(feature = "rayon")]
 use manta_util::rayon::iter::{IndexedParallelIterator, ParallelIterator};
@@ -52,7 +51,7 @@ pub trait HasDistribution {
 /// [`Deserializer`] `trait`.
 ///
 /// [`CanonicalDeserialize`]: manta_crypto::arkworks::serialize::CanonicalDeserialize
-pub trait Serializer<T> {
+pub trait Serializer<T, M = ()> {
     /// Serializes `item` in uncompressed form to the `writer` without performing any
     /// well-formedness checks.
     fn serialize_unchecked<W>(item: &T, writer: &mut W) -> Result<(), io::Error>
@@ -86,7 +85,7 @@ pub trait Serializer<T> {
 /// [`Serializer`] `trait`.
 ///
 /// [`CanonicalDeserialize`]: manta_crypto::arkworks::serialize::CanonicalDeserialize
-pub trait Deserializer<T> {
+pub trait Deserializer<T, M = ()> {
     /// Deserialization Error Type
     type Error: Into<SerializationError>;
 
@@ -172,9 +171,9 @@ pub struct NonZero<D>(PhantomData<D>);
 impl<D> NonZero<D> {
     /// Checks if `item` is zero, returning [`NonZeroError::IsZero`] if so.
     #[inline]
-    fn is_zero<T>(item: &T) -> Result<(), NonZeroError<D::Error>>
+    fn is_zero<T, M>(item: &T) -> Result<(), NonZeroError<D::Error>>
     where
-        D: Deserializer<T>,
+        D: Deserializer<T, M>,
         T: Zero,
     {
         if item.is_zero() {
@@ -184,9 +183,9 @@ impl<D> NonZero<D> {
     }
 }
 
-impl<T, D> Deserializer<T> for NonZero<D>
+impl<T, M, D> Deserializer<T, M> for NonZero<D>
 where
-    D: Deserializer<T>,
+    D: Deserializer<T, M>,
     T: Zero,
 {
     type Error = NonZeroError<D::Error>;
@@ -404,13 +403,9 @@ where
     D: Default,
 {
     assert!(N >= 32, "Needs at least 32 bytes to seed ChaCha20.");
-    let mut digest = digest.as_slice();
     let mut seed = Vec::with_capacity(32);
-    for _ in 0..8 {
-        let word = digest
-            .read_u32::<BigEndian>()
-            .expect("This is always possible since we have enough bytes to begin with.");
-        seed.extend(word.to_le_bytes());
+    for i in 0..8 {
+        seed.extend(BigEndian::read_u32(&digest[4 * i..4 * (i + 1)]).to_le_bytes());
     }
     G::gen(&mut ChaCha20Rng::from_seed(into_array_unchecked(seed)))
 }
