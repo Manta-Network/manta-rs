@@ -16,12 +16,12 @@
 
 //! Groth16 MPC (Phase 2) for Bn254 Backend
 
-use crate::mpc::{StateType, ChallengeType, ProofType, ContributionType};
 use crate::{
     groth16::{
         mpc::{Configuration, Proof, ProvingKeyHasher, State},
         ppot::kzg::PerpetualPowersOfTauCeremony,
     },
+    mpc::{ChallengeType, ContributionType, ProofType, StateType},
     util::BlakeHasher,
 };
 use ark_groth16::ProvingKey;

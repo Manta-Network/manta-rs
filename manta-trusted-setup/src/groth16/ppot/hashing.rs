@@ -162,8 +162,8 @@ mod tests {
     #[ignore] // NOTE: Adds `ignore` such that CI does NOT run this test while still allowing developers to test.
     #[test]
     fn verify_one_transition_test() {
-        use std::{fs::OpenOptions, time::Instant};
         use memmap::MmapOptions;
+        use std::{fs::OpenOptions, time::Instant};
 
         // Read first accumulator
         println!("Reading accumulator from challenge file");

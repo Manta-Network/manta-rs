@@ -918,8 +918,8 @@ mod tests {
     #[test]
     pub fn compare_response_challenge_accumulators_test() {
         use crate::groth16::ppot::kzg::PerpetualPowersOfTauCeremony;
-        use std::{fs::OpenOptions, time::Instant};
         use memmap::MmapOptions;
+        use std::{fs::OpenOptions, time::Instant};
 
         const POWERS: usize = 1 << 5;
         /// Configuration for a Phase1 Ceremony large enough to support MantaPay circuits
