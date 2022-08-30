@@ -16,7 +16,7 @@
 
 //! Groth16 Trusted Setup Ceremony
 
-use crate::mpc;
+use crate::{groth16::ceremony::signature::SignatureScheme, mpc};
 
 pub mod registry;
 
@@ -24,6 +24,8 @@ pub mod registry;
 #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
 pub mod coordinator;
 
+pub mod client;
+pub mod server;
 #[cfg(all(feature = "bincode", feature = "serde"))]
 #[cfg_attr(doc_cfg, doc(cfg(all(feature = "bincode", feature = "serde"))))]
 pub mod signature;
@@ -51,4 +53,7 @@ pub trait Ceremony: mpc::Types {
 
     /// Participant Type
     type Participant: Participant<Identifier = Self::Identifier>;
+
+    /// Signature Scheme
+    type SignatureScheme: SignatureScheme;
 }
