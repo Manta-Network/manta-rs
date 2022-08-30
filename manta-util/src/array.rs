@@ -25,7 +25,10 @@ use core::{
 };
 
 #[cfg(feature = "alloc")]
-use alloc::{boxed::Box, vec::Vec};
+use {
+    crate::vec::{Vec, VecExt},
+    alloc::boxed::Box,
+};
 
 #[cfg(feature = "serde-array")]
 use crate::serde::{Deserialize, Serialize};
@@ -379,8 +382,6 @@ impl<T, const N: usize> BoxArray<T, N> {
 
     /// Performs the [`TryInto`] conversion from `vec` into a boxed array without checking if the
     /// conversion succeeded. See [`into_boxed_array_unchecked`] for more.
-    #[cfg(feature = "alloc")]
-    #[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
     #[inline]
     pub fn from_vec(vec: Vec<T>) -> Self {
         Self::from_unchecked(vec.into_boxed_slice())
@@ -389,3 +390,14 @@ impl<T, const N: usize> BoxArray<T, N> {
 
 #[cfg(feature = "alloc")]
 impl_array_traits!(BoxArray);
+
+#[cfg(feature = "alloc")]
+impl<T, const N: usize> Default for BoxArray<T, N>
+where
+    T: Default,
+{
+    #[inline]
+    fn default() -> Self {
+        Self::from_vec(Vec::allocate_with(N, T::default))
+    }
+}
