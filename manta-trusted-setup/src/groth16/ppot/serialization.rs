@@ -37,7 +37,6 @@ use manta_crypto::arkworks::{
     serialize::{CanonicalDeserialize, CanonicalSerialize, Read, SerializationError, Write},
 };
 use manta_util::cfg_iter;
-use memmap::Mmap;
 
 #[cfg(feature = "rayon")]
 use manta_util::rayon::prelude::ParallelIterator;
@@ -394,6 +393,8 @@ pub enum PointDeserializeError {
     NotOnCurve,
     /// The decoded curve point is not in the subgroup
     NotInSubgroup,
+    /// Another curve was expected
+    WrongCurve,
 }
 
 impl alloc::fmt::Display for PointDeserializeError {
@@ -567,7 +568,7 @@ impl ElementType {
 /// Reads appropriate number of elements of `element_type` for an accumulator of given `Size` from PPoT challenge file.
 #[inline]
 pub fn read_g1_powers<S>(
-    readable_map: &Mmap,
+    reader: &[u8],
     element: ElementType,
     compression: Compressed,
 ) -> Result<Vec<G1Affine>, PointDeserializeError>
@@ -579,9 +580,7 @@ where
     let mut start_position = calculate_mmap_position(0, element, compression);
     let mut end_position = start_position + element.get_size(compression);
     for _ in 0..size {
-        let mut reader = readable_map
-            .get(start_position..end_position)
-            .expect("cannot read point data from file");
+        let mut reader = &reader[start_position..end_position];
 
         if element.is_g1_type() {
             let point = match compression {
@@ -599,7 +598,7 @@ where
             // point will be checked below
             powers.push(point);
         } else {
-            panic!("Expected G1 curve points")
+            return Err(PointDeserializeError::WrongCurve);
         }
         start_position = end_position;
         end_position += element.get_size(compression);
@@ -610,7 +609,8 @@ where
         Compressed::No => cfg_iter!(powers).for_each(|g| curve_point_checks(g).unwrap()),
         Compressed::Yes => cfg_iter!(powers).for_each(|g| {
             if !g.is_in_correct_subgroup_assuming_on_curve() {
-                panic!() // This should actually just return the NotInSubgroup error
+                panic!("One of the G1 points is not in correct subgroup")
+                // return Err(PointDeserializeError::NotInSubgroup)
             }
         }),
     }
@@ -620,7 +620,7 @@ where
 /// Reads `size` many elements of `element_type` from PPoT challenge file.
 #[inline]
 pub fn read_g2_powers<S>(
-    readable_map: &Mmap,
+    reader: &[u8],
     element: ElementType,
     compression: Compressed,
 ) -> Result<Vec<G2Affine>, PointDeserializeError>
@@ -632,9 +632,8 @@ where
     let mut start_position = calculate_mmap_position(0, element, compression);
     let mut end_position = start_position + element.get_size(compression);
     for _ in 0..size {
-        let mut reader = readable_map
-            .get(start_position..end_position)
-            .expect("cannot read point data from file");
+        let mut reader = &reader[start_position..end_position];
+
         if !element.is_g1_type() {
             let point = match compression {
                 Compressed::No => {
@@ -651,7 +650,7 @@ where
             // point will be checked below
             powers.push(point);
         } else {
-            panic!("Expected G2 curve points")
+            return Err(PointDeserializeError::WrongCurve);
         }
         start_position = end_position;
         end_position += element.get_size(compression);
@@ -661,7 +660,8 @@ where
         Compressed::No => cfg_iter!(powers).for_each(|g| curve_point_checks(g).unwrap()),
         Compressed::Yes => cfg_iter!(powers).for_each(|g| {
             if !g.is_in_correct_subgroup_assuming_on_curve() {
-                panic!() // This should actually just return the NotInSubgroup error
+                panic!("One of the G1 points is not in correct subgroup")
+                // return Err(PointDeserializeError::NotInSubgroup)
             }
         }),
     }
@@ -673,32 +673,29 @@ where
 /// This is specific to the compressed PPoT transcript called `response`,
 /// since only it contains this proof.
 #[inline]
-pub fn read_kzg_proof(readable_map: &Mmap) -> Result<Proof<PpotCeremony>, SerializationError> {
+pub fn read_kzg_proof(reader: &[u8]) -> Result<Proof<PpotCeremony>, SerializationError> {
     let position = 64
         + (PpotCeremony::G1_POWERS + 2 * PpotCeremony::G2_POWERS) * 32
         + (PpotCeremony::G2_POWERS + 1) * 64;
-    let reader = readable_map
-        .get(position..position + 6 * 64 + 3 * 128)
-        .expect("cannot read point data from file");
 
-    <Proof<_> as CanonicalDeserialize>::deserialize_uncompressed(reader)
+    Proof::deserialize_uncompressed(&reader[position..position + 6 * 64 + 3 * 128])
 }
 
 /// Extracts a subaccumulator of size specified by `C`. Specific to PPoT challenge file.
 #[inline]
 pub fn read_subaccumulator<C>(
-    readable_map: &Mmap,
+    reader: &[u8],
     compression: Compressed,
 ) -> Result<Accumulator<C>, PointDeserializeError>
 where
     C: Pairing<G1 = G1Affine, G2 = G2Affine> + Size,
 {
     Ok(Accumulator {
-        tau_powers_g1: read_g1_powers::<C>(readable_map, ElementType::TauG1, compression)?,
-        tau_powers_g2: read_g2_powers::<C>(readable_map, ElementType::TauG2, compression)?,
-        alpha_tau_powers_g1: read_g1_powers::<C>(readable_map, ElementType::AlphaG1, compression)?,
-        beta_tau_powers_g1: read_g1_powers::<C>(readable_map, ElementType::BetaG1, compression)?,
-        beta_g2: read_g2_powers::<C>(readable_map, ElementType::BetaG2, compression)?[0],
+        tau_powers_g1: read_g1_powers::<C>(reader, ElementType::TauG1, compression)?,
+        tau_powers_g2: read_g2_powers::<C>(reader, ElementType::TauG2, compression)?,
+        alpha_tau_powers_g1: read_g1_powers::<C>(reader, ElementType::AlphaG1, compression)?,
+        beta_tau_powers_g1: read_g1_powers::<C>(reader, ElementType::BetaG1, compression)?,
+        beta_g2: read_g2_powers::<C>(reader, ElementType::BetaG2, compression)?[0],
     })
 }
 
