@@ -34,6 +34,11 @@
 //!
 //! See the [`correctness`](test::correctness) test for more.
 
+use core::{fmt::Debug, hash::Hash};
+
+#[cfg(feature = "serde")]
+use manta_util::serde::{Deserialize, Serialize};
+
 pub mod convert;
 
 /// Signing Key
@@ -115,6 +120,62 @@ where
 
 /// Randomness Type
 pub type Randomness<T> = <T as RandomnessType>::Randomness;
+
+/// Signed Message
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "T::Signature: Clone, T::Message: Clone"),
+    Copy(bound = "T::Signature: Copy, T::Message: Copy"),
+    Debug(bound = "T::Signature: Debug, T::Message: Debug"),
+    Default(bound = "T::Signature: Default, T::Message: Default"),
+    Eq(bound = "T::Signature: Eq, T::Message: Eq"),
+    Hash(bound = "T::Signature: Hash, T::Message: Hash"),
+    PartialEq(bound = "T::Signature: PartialEq, T::Message: PartialEq")
+)]
+pub struct SignedMessage<T>
+where
+    T: MessageType + SignatureType,
+{
+    /// Signature
+    pub signature: T::Signature,
+
+    /// Message
+    pub message: T::Message,
+}
+
+impl<T> SignedMessage<T>
+where
+    T: MessageType + SignatureType,
+{
+    /// Generates a new [`SignedMessage`] by signing `message` with `signing_key`.
+    #[inline]
+    pub fn new<COM>(
+        parameters: &T,
+        signing_key: &T::SigningKey,
+        randomness: &T::Randomness,
+        message: T::Message,
+        compiler: &mut COM,
+    ) -> Self
+    where
+        T: Sign<COM>,
+    {
+        Self::new_unchecked(
+            parameters.sign(signing_key, randomness, &message, compiler),
+            message,
+        )
+    }
+
+    /// Builds a new [`SignedMessage`] without checking that `signature` is valid over `message`.
+    #[inline]
+    pub fn new_unchecked(signature: T::Signature, message: T::Message) -> Self {
+        Self { signature, message }
+    }
+}
 
 /// Signature Verifying Key Derivation Function
 pub trait Derive<COM = ()>: SigningKeyType + VerifyingKeyType {

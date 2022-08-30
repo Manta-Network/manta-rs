@@ -1,5 +1,0 @@
-dep-format-version = "2"
-exact-versions = true
-hakari-package = "workspace-hack"
-platforms = []
-resolver = "2"

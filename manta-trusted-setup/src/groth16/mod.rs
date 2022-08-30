@@ -16,6 +16,7 @@
 
 //! Groth16 Trusted Setup
 
+pub mod ceremony;
 pub mod kzg;
 pub mod mpc;
 

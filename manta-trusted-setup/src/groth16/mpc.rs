@@ -27,13 +27,16 @@ use ark_poly::{EvaluationDomain, Radix2EvaluationDomain};
 use core::clone::Clone;
 use manta_crypto::{
     arkworks::{
-        ec::{AffineCurve, ProjectiveCurve},
+        ec::{AffineCurve, PairingEngine, ProjectiveCurve},
         ff::{Field, PrimeField, UniformRand, Zero},
         pairing::{Pairing, PairingEngineExt},
         relations::r1cs::{ConstraintSynthesizer, ConstraintSystem, SynthesisError},
     },
     rand::{CryptoRng, RngCore},
 };
+
+#[cfg(feature = "serde")]
+use manta_util::serde::{Deserialize, Serialize};
 
 /// Proving Key Hasher
 pub trait ProvingKeyHasher<P>
@@ -52,6 +55,62 @@ pub type State<P> = ProvingKey<<P as Pairing>::Pairing>;
 
 /// MPC Proof
 pub type Proof<P> = RatioProof<P>;
+
+/// MPC State Size
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub struct StateSize {
+    /// Size of `gamma_abc_g1` in the [`VerifyingKey`]
+    pub gamma_abc_g1: usize,
+
+    /// Size of the `a_query` in the [`ProvingKey`]
+    ///
+    /// # Note
+    ///
+    /// This is also the size of the `b_g1_query` and the `b_g2_query`.
+    pub a_query: usize,
+
+    /// Size of the `h_query` in the [`ProvingKey`]
+    pub h_query: usize,
+
+    /// Size of the `l_query` in the [`ProvingKey`]
+    pub l_query: usize,
+}
+
+impl StateSize {
+    /// Builds a [`StateSize`] from `proving_key` by measuring the lengths of the vectors in
+    /// `proving_key`.
+    #[inline]
+    pub fn from_proving_key<E>(proving_key: &ProvingKey<E>) -> Self
+    where
+        E: PairingEngine,
+    {
+        Self {
+            gamma_abc_g1: proving_key.vk.gamma_abc_g1.len(),
+            a_query: proving_key.a_query.len(),
+            h_query: proving_key.h_query.len(),
+            l_query: proving_key.l_query.len(),
+        }
+    }
+
+    /// Returns `true` if the lengths of the vectors in `proving_key` match `self`.
+    #[inline]
+    pub fn matches<E>(&self, proving_key: &ProvingKey<E>) -> bool
+    where
+        E: PairingEngine,
+    {
+        self.gamma_abc_g1 == proving_key.vk.gamma_abc_g1.len()
+            && self.a_query == proving_key.a_query.len()
+            && self.a_query == proving_key.b_g1_query.len()
+            && self.a_query == proving_key.b_g2_query.len()
+            && self.h_query == proving_key.h_query.len()
+            && self.l_query == proving_key.l_query.len()
+    }
+}
 
 /// MPC Error
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
