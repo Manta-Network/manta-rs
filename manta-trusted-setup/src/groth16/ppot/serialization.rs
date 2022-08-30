@@ -769,10 +769,10 @@ where
     }
 }
 
+#[cfg(feature = "std")]
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ark_std::println;
 
     /// Checks that serializing then deserializing randomly sampled curve points
     /// is identity.
@@ -918,7 +918,7 @@ mod tests {
     #[test]
     pub fn compare_response_challenge_accumulators_test() {
         use crate::groth16::ppot::kzg::PerpetualPowersOfTauCeremony;
-        use ark_std::{fs::OpenOptions, time::Instant};
+        use std::{fs::OpenOptions, time::Instant};
         use memmap::MmapOptions;
 
         const POWERS: usize = 1 << 5;

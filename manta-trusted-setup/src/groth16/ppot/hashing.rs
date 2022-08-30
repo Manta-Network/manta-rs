@@ -140,6 +140,7 @@ impl Sample<PpotDistribution> for bool {
     }
 }
 
+#[cfg(feature = "std")]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -150,7 +151,7 @@ mod tests {
             serialization::{read_kzg_proof, read_subaccumulator, Compressed, PpotSerializer},
         },
     };
-    use ark_std::println;
+    // use ark_std::println;
 
     const POWERS: usize = 1 << 5;
     /// Configuration for a Phase1 Ceremony large enough to support MantaPay circuits
@@ -161,7 +162,7 @@ mod tests {
     #[ignore] // NOTE: Adds `ignore` such that CI does NOT run this test while still allowing developers to test.
     #[test]
     fn verify_one_transition_test() {
-        use ark_std::{fs::OpenOptions, time::Instant};
+        use std::{fs::OpenOptions, time::Instant};
         use memmap::MmapOptions;
 
         // Read first accumulator

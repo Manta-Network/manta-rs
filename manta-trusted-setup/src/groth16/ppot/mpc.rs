@@ -16,12 +16,12 @@
 
 //! Groth16 MPC (Phase 2) for Bn254 Backend
 
+use crate::mpc::{StateType, ChallengeType, ProofType, ContributionType};
 use crate::{
     groth16::{
         mpc::{Configuration, Proof, ProvingKeyHasher, State},
         ppot::kzg::PerpetualPowersOfTauCeremony,
     },
-    mpc::Types,
     util::BlakeHasher,
 };
 use ark_groth16::ProvingKey;
@@ -53,10 +53,20 @@ impl<S, const POWERS: usize> Configuration for PerpetualPowersOfTauCeremony<S, P
     }
 }
 
-impl<S, const POWERS: usize> Types for PerpetualPowersOfTauCeremony<S, POWERS> {
+impl<S, const POWERS: usize> StateType for PerpetualPowersOfTauCeremony<S, POWERS> {
     type State = State<Self>;
+}
+
+impl<S, const POWERS: usize> ChallengeType for PerpetualPowersOfTauCeremony<S, POWERS> {
     type Challenge = [u8; 64];
+}
+
+impl<S, const POWERS: usize> ProofType for PerpetualPowersOfTauCeremony<S, POWERS> {
     type Proof = Proof<Self>;
+}
+
+impl<S, const POWERS: usize> ContributionType for PerpetualPowersOfTauCeremony<S, POWERS> {
+    type Contribution = <Self as Pairing>::Scalar;
 }
 
 impl<S, const POWERS: usize> ProvingKeyHasher<Self> for PerpetualPowersOfTauCeremony<S, POWERS> {
