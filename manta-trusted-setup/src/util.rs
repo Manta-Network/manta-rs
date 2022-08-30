@@ -31,10 +31,9 @@ use manta_crypto::{
         pairing::Pairing,
         serialize::{CanonicalSerialize, Read, SerializationError, Write},
     },
-    rand::{OsRng, Sample, SeedableRng},
+    rand::{ChaCha20Rng, OsRng, Sample, SeedableRng},
 };
 use manta_util::{cfg_into_iter, cfg_iter, cfg_iter_mut, cfg_reduce, into_array_unchecked};
-use rand_chacha::ChaCha20Rng;
 
 #[cfg(feature = "rayon")]
 use manta_util::rayon::iter::{IndexedParallelIterator, ParallelIterator};

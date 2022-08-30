@@ -27,6 +27,10 @@ use manta_util::serde::{Deserialize, Serialize};
 
 pub use rand_core::{block, CryptoRng, Error, RngCore, SeedableRng};
 
+#[cfg(feature = "rand_chacha")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "rand_chacha")))]
+pub use rand_chacha::*;
+
 #[cfg(feature = "getrandom")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "getrandom")))]
 #[doc(inline)]

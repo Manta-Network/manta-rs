@@ -16,6 +16,7 @@
 
 //! Reqwest HTTP Client Utilities
 
+#[cfg(feature = "serde")]
 use crate::serde::{de::DeserializeOwned, Serialize};
 
 #[doc(inline)]
@@ -46,6 +47,8 @@ impl KnownUrlClient {
     }
 
     /// Sends a new request asynchronously of type `command` with query string `request`.
+    #[cfg(feature = "serde")]
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "serde")))]
     #[inline]
     pub async fn request<T, R>(&self, method: Method, command: &str, request: &T) -> Result<R>
     where
@@ -70,6 +73,8 @@ impl KnownUrlClient {
     //       implementations should use POST for all methods.
     //
     // /// Sends a GET request of type `command` with query string `request`.
+    // #[cfg(feature = "serde")]
+    // #[cfg_attr(doc_cfg, doc(cfg(feature = "serde")))]
     // #[inline]
     // pub async fn get<T, R>(&self, command: &str, request: &T) -> Result<R, Error>
     // where
@@ -80,6 +85,8 @@ impl KnownUrlClient {
     // }
 
     /// Sends a POST request of type `command` with query string `request`.
+    #[cfg(feature = "serde")]
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "serde")))]
     #[inline]
     pub async fn post<T, R>(&self, command: &str, request: &T) -> Result<R>
     where

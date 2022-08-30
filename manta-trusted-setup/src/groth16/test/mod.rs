@@ -21,7 +21,7 @@ use crate::{
         kzg::{self, Accumulator, Configuration, Contribution, Size},
         mpc::{self, contribute, initialize, verify_transform, verify_transform_all, Proof, State},
     },
-    mpc::{Transcript, Types},
+    mpc::{ChallengeType, ProofType, StateType, Transcript},
     ratio::test::assert_valid_ratio_proof,
     util::{BlakeHasher, HasDistribution, KZGBlakeHasher},
 };
@@ -171,9 +171,15 @@ where
     }
 }
 
-impl Types for Test {
+impl StateType for Test {
     type State = State<Test>;
+}
+
+impl ChallengeType for Test {
     type Challenge = [u8; 64];
+}
+
+impl ProofType for Test {
     type Proof = Proof<Test>;
 }
 
