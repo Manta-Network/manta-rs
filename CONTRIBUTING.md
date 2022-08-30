@@ -49,11 +49,7 @@ We use pull-request templates to standardize the PR process. See the [`PULL_REQU
 
 ### CI Pipeline
 
-When writing a new PR, the Continuous Integration (CI) system will trigger linting and tests to run on every commit. See the [`.github/workflows/ci.yml`](./.github/workflows/ci.yml) for more detail on this workflow and see the [`workspace-hack`](./workspace-hack/) directory for dependency upgrade issues.
-
-#### Updating the Dependency List
-
-When a dependency on `Cargo.toml` needs to be updated, the CI for a PR will fail because `cargo hakari generate --diff` will return with error code `1`. In this case, the `cargo hakari generate` command should be run on a local machine and the updates pushed to the relevant development branch. Be sure to install `cargo-hakari` with `cargo install cargo-hakari`, just as in the [CI workflow](./../.github/workflows/ci.yml).
+When writing a new PR, the Continuous Integration (CI) system will trigger linting and tests to run on every commit. See the [`.github/workflows/ci.yml`](./.github/workflows/ci.yml) for more detail on this workflow.
 
 ## Style Guide
 
