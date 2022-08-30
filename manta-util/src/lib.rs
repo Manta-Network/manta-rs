@@ -39,6 +39,7 @@ pub mod num;
 pub mod ops;
 pub mod persistence;
 pub mod pointer;
+pub mod time;
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]

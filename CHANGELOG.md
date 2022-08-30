@@ -5,7 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 ### Added
-- [\#190] (https://github.com/Manta-Network/manta-rs/pull/190) Implement Merkle tree pruning algorithm
+- [\#190](https://github.com/Manta-Network/manta-rs/pull/190) Implement Merkle tree pruning algorithm
+- [\#213](https://github.com/Manta-Network/manta-rs/pull/197) Add Ceremony Utilities
 - [\#206](https://github.com/Manta-Network/manta-rs/pull/206) Move Poseidon sage script to test the hardcoded round constant values. 
 - [\#172](https://github.com/Manta-Network/manta-rs/pull/172) Add abstract Phase 2 for Groth16 trusted setup 
 - [\#196](https://github.com/Manta-Network/manta-rs/pull/172) Add fixed base scalar multiplication using precomputed bases

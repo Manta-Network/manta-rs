@@ -14,33 +14,13 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Cryptographic Primitives Library
+//! Temporal quantification.
 
-#![cfg_attr(not(feature = "std"), no_std)]
-#![cfg_attr(doc_cfg, feature(doc_cfg))]
-#![forbid(rustdoc::broken_intra_doc_links)]
-#![forbid(missing_docs)]
+pub use core::time::*;
 
-extern crate alloc;
+#[cfg(feature = "std")]
+pub use std::time::*;
 
-pub mod accumulator;
-pub mod algebra;
-pub mod commitment;
-pub mod constraint;
-pub mod eclair;
-pub mod encryption;
-pub mod hash;
-pub mod key;
-pub mod merkle_tree;
-pub mod password;
-pub mod permutation;
-pub mod rand;
-pub mod signature;
-
-#[cfg(feature = "arkworks")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "arkworks")))]
-pub mod arkworks;
-
-#[cfg(feature = "dalek")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "dalek")))]
-pub mod dalek;
+#[cfg(feature = "std")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
+pub mod lock;
