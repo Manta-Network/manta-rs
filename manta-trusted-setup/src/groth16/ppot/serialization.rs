@@ -780,9 +780,8 @@ mod tests {
     fn deserialization_test() {
         use manta_crypto::{
             arkworks::ec::{AffineCurve, ProjectiveCurve},
-            rand::{Sample, SeedableRng},
+            rand::{ChaCha20Rng, Sample, SeedableRng},
         };
-        use rand_chacha::ChaCha20Rng;
 
         // Generate random points from each curve
         const N: usize = 100; // number of samples

@@ -415,7 +415,9 @@ where
     let mut seed = Vec::<u8>::with_capacity(32);
     for _ in 0..8 {
         let mut buffer = [0u8; 4];
-        let _ = digest.read(&mut buffer).unwrap();
+        let _ = digest
+            .read(&mut buffer)
+            .expect("Reading into a slice never fails.");
         seed.extend(buffer.iter().rev());
     }
     G::gen(&mut ChaCha20Rng::from_seed(into_array_unchecked(seed)))

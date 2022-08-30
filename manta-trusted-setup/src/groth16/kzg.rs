@@ -259,7 +259,7 @@ where
     #[inline]
     pub fn cast_to_subceremony<D>(self) -> Proof<D>
     where
-        D: Pairing<G1 = <C as Pairing>::G1, G2 = <C as Pairing>::G2>,
+        D: Pairing<G1 = C::G1, G2 = C::G2>,
     {
         Proof {
             tau: RatioProof {

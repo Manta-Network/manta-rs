@@ -33,6 +33,7 @@ use manta_crypto::{
 use manta_util::into_array_unchecked;
 
 /// The G2 hasher used in the PPoT ceremony
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct PpotHasher {
     /// Domain separation for tau, alpha, beta
     pub domain_tag: u8,
@@ -58,7 +59,7 @@ where
 
 /// A distribution to replicate random sampling as it was done
 /// during the Ppot ceremony, which used `rand v. 0.4`.
-#[derive(Copy, Clone, Default)]
+#[derive(Copy, Clone, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct PpotDistribution;
 
 impl<P> Sample<PpotDistribution> for GroupAffine<P>
@@ -151,7 +152,6 @@ mod tests {
             serialization::{read_kzg_proof, read_subaccumulator, Compressed, PpotSerializer},
         },
     };
-    // use ark_std::println;
 
     const POWERS: usize = 1 << 5;
     /// Configuration for a Phase1 Ceremony large enough to support MantaPay circuits
