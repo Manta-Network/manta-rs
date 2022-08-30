@@ -17,12 +17,16 @@
 //! Selection Iterator
 
 use alloc::vec::Vec;
-use crossbeam_channel::{self as channel, Receiver, Select, Sender};
+use crossbeam_channel::{Receiver, Select};
 
 #[cfg(feature = "rayon")]
-use rayon::Scope;
+use {
+    crossbeam_channel::{self as channel, Sender},
+    rayon::Scope,
+};
 
 /// Selection Task
+#[cfg(feature = "rayon")]
 struct Task<I>
 where
     I: Iterator,
@@ -37,6 +41,7 @@ where
     queue: Sender<Self>,
 }
 
+#[cfg(feature = "rayon")]
 impl<I> Task<I>
 where
     I: Iterator,
