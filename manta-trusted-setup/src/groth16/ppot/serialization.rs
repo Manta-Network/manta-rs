@@ -607,12 +607,13 @@ where
     // Do curve point checks in parallel
     match compression {
         Compressed::No => cfg_iter!(powers).for_each(|g| curve_point_checks(g).unwrap()),
-        Compressed::Yes => cfg_iter!(powers).for_each(|g| {
+        Compressed::Yes => cfg_iter!(powers).try_for_each(|g| {
             if !g.is_in_correct_subgroup_assuming_on_curve() {
-                panic!("One of the G1 points is not in correct subgroup")
-                // return Err(PointDeserializeError::NotInSubgroup)
+                Err(PointDeserializeError::NotInSubgroup)
+            } else {
+                Ok(())
             }
-        }),
+        })?,
     }
     Ok(powers)
 }
@@ -658,12 +659,13 @@ where
     // Do curve point checks in parallel
     match compression {
         Compressed::No => cfg_iter!(powers).for_each(|g| curve_point_checks(g).unwrap()),
-        Compressed::Yes => cfg_iter!(powers).for_each(|g| {
+        Compressed::Yes => cfg_iter!(powers).try_for_each(|g| {
             if !g.is_in_correct_subgroup_assuming_on_curve() {
-                panic!("One of the G1 points is not in correct subgroup")
-                // return Err(PointDeserializeError::NotInSubgroup)
+                Err(PointDeserializeError::NotInSubgroup)
+            } else {
+                Ok(())
             }
-        }),
+        })?,
     }
 
     Ok(powers)
