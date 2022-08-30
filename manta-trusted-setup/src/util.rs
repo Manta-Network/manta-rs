@@ -23,7 +23,6 @@ use ark_std::{
     io::{self, ErrorKind},
 };
 use blake2::{Blake2b512, Digest as Blake2Digest};
-use byteorder::{BigEndian, ReadBytesExt};
 use core::marker::PhantomData;
 use manta_crypto::{
     arkworks::{
@@ -414,12 +413,11 @@ where
 {
     assert!(N >= 32, "Needs at least 32 bytes to seed ChaCha20.");
     let mut digest = digest.as_slice();
-    let mut seed = Vec::with_capacity(32);
+    let mut seed = Vec::<u8>::with_capacity(32);
     for _ in 0..8 {
-        let word = digest
-            .read_u32::<BigEndian>()
-            .expect("This is always possible since we have enough bytes to begin with.");
-        seed.extend(word.to_le_bytes());
+        let mut buffer = [0u8; 4];
+        let _ = digest.read(&mut buffer).unwrap();
+        seed.extend(buffer.iter().rev());
     }
     G::gen(&mut ChaCha20Rng::from_seed(into_array_unchecked(seed)))
 }

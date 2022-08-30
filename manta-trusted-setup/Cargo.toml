@@ -44,7 +44,6 @@ ark-poly = { version = "0.3.0", default-features = false }
 ark-relations = { version = "0.3.0", default-features = false }
 ark-std = { version = "0.3.0", default-features = false }
 blake2 = { version = "0.10.4", default-features = false }
-byteorder = { version = "1.4.3", default-features = false }
 derivative = { version = "2.2.0", default-features = false, features = ["use_core"] }
 manta-crypto = { path = "../manta-crypto", default-features = false, features = ["arkworks", "getrandom"] }
 manta-util = { path = "../manta-util", default-features = false }
