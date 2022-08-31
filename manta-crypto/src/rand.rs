@@ -530,3 +530,27 @@ pub trait Rand: RngCore {
 }
 
 impl<R> Rand for R where R: RngCore + ?Sized {}
+
+/// Fuzzing trait
+pub trait Fuzzing<COM = ()> {
+    /// Modifies one bit of `self` at random.
+    fn fuzzing(& mut self);
+}
+
+impl<C> Fuzzing for Vec<C>
+where
+C: Fuzzing,
+{
+    fn fuzzing(& mut self){
+        let mut rng = OsRng; 
+        let position = rng.gen_range(0..self.len());
+        self[position].fuzzing();   
+    }
+}
+
+impl Fuzzing for bool
+{
+    fn fuzzing(& mut self) {
+        *self ^= true;
+    }
+}
