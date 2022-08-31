@@ -18,7 +18,6 @@
 
 use crate::{
     groth16::kzg::{self, Accumulator},
-    ratio::{HashToGroup, RatioProof},
     util::{batch_into_projective, batch_mul_fixed_scalar, merge_pairs_affine},
 };
 use alloc::{vec, vec::Vec};
@@ -30,6 +29,7 @@ use manta_crypto::{
         ec::{AffineCurve, PairingEngine, ProjectiveCurve},
         ff::{Field, PrimeField, UniformRand, Zero},
         pairing::{Pairing, PairingEngineExt},
+        ratio::{HashToGroup, RatioProof},
         relations::r1cs::{ConstraintSynthesizer, ConstraintSystem, SynthesisError},
     },
     rand::{CryptoRng, RngCore},
