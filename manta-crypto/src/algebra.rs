@@ -240,7 +240,7 @@ impl<G> Window<G> {
         }
         let remainder = iter_chunks.remainder();
         let last_window_size = remainder.len();
-        let subtable = &self.table[0..2usize.pow(last_window_size as u32)];
+        let subtable = &self.table[0..1 << last_window_size];
         Self::scalar_mul_round(last_window_size, subtable, remainder, &mut result, compiler);
         result
     }

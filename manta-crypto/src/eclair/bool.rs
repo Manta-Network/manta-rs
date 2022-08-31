@@ -116,7 +116,7 @@ where
         let mut bits = bits.into_iter();
         assert_eq!(
             table.len(),
-            2usize.pow(bits.len() as u32),
+            1 << bits.len(),
             "Table length must equal 2^(number of bits)."
         );
         if let Some(first_bit) = bits.next() {
