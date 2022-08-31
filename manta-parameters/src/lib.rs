@@ -212,6 +212,15 @@ macro_rules! define_lfs {
     };
 }
 
+/// Perpetual Powers of Tau Accumulators
+pub mod ppot {
+    define_lfs!(
+        Round72Powers19,
+        "Accumulator with 1 << 19 powers, Bn",
+        "/data/ppot/round72powers19",
+    );
+}
+
 /// Concrete Parameters for Manta Pay
 pub mod pay {
     /// Testnet Data
