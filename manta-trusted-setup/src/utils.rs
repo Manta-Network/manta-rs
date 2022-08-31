@@ -14,17 +14,21 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Trusted Setup
+//! Groth16 Trusted Setup Utilities
 
-#![cfg_attr(not(feature = "std"), no_std)]
-#![cfg_attr(doc_cfg, feature(doc_cfg))]
-#![forbid(rustdoc::broken_intra_doc_links)]
-#![forbid(missing_docs)]
+use std::marker::PhantomData;
 
-extern crate alloc;
+use manta_util::serde::{Deserialize, Serialize};
 
-pub mod groth16;
-pub mod mpc;
-pub mod ratio;
-pub mod util;
-mod utils;
+/// Store `T` in bytes form.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(
+    bound(serialize = r"", deserialize = "",),
+    crate = "manta_util::serde",
+    deny_unknown_fields
+)]
+pub struct BytesRepr<T> {
+    /// The bytes representation of `T`
+    pub bytes: Vec<u8>,
+    __: PhantomData<T>,
+}

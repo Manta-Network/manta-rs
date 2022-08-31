@@ -19,19 +19,21 @@
 use crate::groth16::{
     ceremony::{
         coordinator::{ChallengeArray, Coordinator, StateArray},
+        message::Signed,
         registry::Registry,
-        Ceremony,
+        signature::{check_nonce, verify, Nonce as _},
+        Ceremony, Nonce, Participant,
     },
     mpc::StateSize,
+    CeremonyError,
 };
 use manta_util::Array;
 use std::sync::{Arc, Mutex};
-use manta_crypto::signature::{MessageType, SignatureType, SignedMessage};
 
 pub struct Server<C, R, const LEVEL_COUNT: usize, const CIRCUIT_COUNT: usize>
 where
     C: Ceremony,
-    R: Registry<C::Identifier, C::Participant>,
+    R: Registry<C::Identifier, C::Participant, Nonce<C>>,
 {
     /// Coordinator
     coordinator: Arc<Mutex<Coordinator<C, R, CIRCUIT_COUNT, LEVEL_COUNT>>>,
@@ -44,7 +46,7 @@ impl<C, R, const LEVEL_COUNT: usize, const CIRCUIT_COUNT: usize>
     Server<C, R, LEVEL_COUNT, CIRCUIT_COUNT>
 where
     C: Ceremony,
-    R: Registry<C::Identifier, C::Participant>,
+    R: Registry<C::Identifier, C::Participant, Nonce<C>>,
 {
     /// Builds a ['Server`] with initial `state`, `challenge`, a loaded `registry`, and a `recovery_path`.
     #[inline]
@@ -72,12 +74,38 @@ where
         }
     }
 
-    /// Processes a request by checking nonce and verifying signature.
+    /// Preprocess a request by checking nonce and verifying signature.
     #[inline]
     pub fn process_request<T>(
         registry: &mut R,
-        request: &SignedMessage<T>
-    ) where T: MessageType + SignatureType{
-        let participant = match registry.get_mut(&request.)
+        request: &Signed<T, C>,
+    ) -> Result<(), CeremonyError<C>> {
+        if registry.has_contributed(&request.identifier) {
+            return Err(CeremonyError::AlreadyContributed);
+        }
+
+        let participant_nonce = registry
+            .get_nonce(&request.identifier)
+            .ok_or_else(|| CeremonyError::NotRegistered)?;
+
+        if !check_nonce(&participant_nonce, &request.nonce) {
+            return Err(CeremonyError::NonceNotInSync(participant_nonce));
+        };
+
+        let participant = match registry.get(&request.identifier) {
+            Some(participant) => participant,
+            None => unreachable!("participant registration has been checked"),
+        };
+
+        verify(
+            participant.verifying_key(),
+            participant_nonce,
+            &request.message,
+            &request.signature,
+        )
+        .map_err(|_| CeremonyError::BadRequest)?;
+
+        registry.set_nonce(&request.identifier, participant_nonce.increment());
+        Ok(())
     }
 }

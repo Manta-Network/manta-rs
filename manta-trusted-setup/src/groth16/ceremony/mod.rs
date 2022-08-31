@@ -16,7 +16,8 @@
 
 //! Groth16 Trusted Setup Ceremony
 
-use crate::{groth16::ceremony::signature::SignatureScheme, mpc};
+use crate::{groth16::ceremony::signature::SignatureScheme, mpc, mpc::ProofType};
+use manta_crypto::signature::{SignatureType, SigningKeyType, VerifyingKeyType};
 
 pub mod registry;
 
@@ -25,6 +26,7 @@ pub mod registry;
 pub mod coordinator;
 
 pub mod client;
+pub mod message;
 pub mod server;
 #[cfg(all(feature = "bincode", feature = "serde"))]
 #[cfg_attr(doc_cfg, doc(cfg(all(feature = "bincode", feature = "serde"))))]
@@ -34,9 +36,14 @@ pub mod signature;
 pub trait Participant {
     /// Participant Identifier Type
     type Identifier;
+    /// Participant Verifying Key Type
+    type VerifyingKey;
 
     /// Returns the [`Identifier`](Self::Identifier) for `self`.
     fn id(&self) -> &Self::Identifier;
+
+    /// Returns the [`VerifyingKey`](Self::VerifyingKey) for `self`.
+    fn verifying_key(&self) -> &Self::VerifyingKey;
 
     /// Returns the priority level for `self`.
     ///
@@ -57,3 +64,9 @@ pub trait Ceremony: mpc::Types {
     /// Signature Scheme
     type SignatureScheme: SignatureScheme;
 }
+
+pub type Nonce<C> = <<C as Ceremony>::SignatureScheme as SignatureScheme>::Nonce;
+pub type Signature<C> = <<C as Ceremony>::SignatureScheme as SignatureType>::Signature;
+pub type SigningKey<C> = <<C as Ceremony>::SignatureScheme as SigningKeyType>::SigningKey;
+pub type VerifyingKey<C> = <<C as Ceremony>::SignatureScheme as VerifyingKeyType>::VerifyingKey;
+pub type Proof<C> = <C as ProofType>::Proof;
