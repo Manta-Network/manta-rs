@@ -16,7 +16,7 @@
 
 //! Utilities
 
-use crate::{groth16::kzg, ratio::HashToGroup};
+use crate::groth16::kzg;
 use alloc::vec::Vec;
 use ark_std::io;
 use blake2::{Blake2b512, Digest as Blake2Digest};
@@ -27,6 +27,7 @@ use manta_crypto::{
         ec::{wnaf::WnafContext, AffineCurve, ProjectiveCurve},
         ff::{BigInteger, PrimeField, UniformRand, Zero},
         pairing::Pairing,
+        ratio::HashToGroup,
         serialize::{CanonicalSerialize, Read, SerializationError, Write},
     },
     rand::{ChaCha20Rng, OsRng, Sample, SeedableRng},
