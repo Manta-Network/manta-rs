@@ -229,3 +229,44 @@ mod test {
     }
 }
 */
+
+/// Testing Suite
+#[cfg(test)]
+mod test {
+    use crate::{
+        config::{Bls12_381_Edwards, Poseidon2},
+        crypto::{constraint::arkworks::Fp, ecc},
+    };
+    use ark_bls12_381::FrParameters;
+    use ark_ed_on_bls12_381::FrParameters as SpendingKey;
+    use manta_crypto::{
+        arkworks::ff::Fp256,
+        hash::ArrayHashFunction,
+        rand::{OsRng, Rand},
+    };
+
+    /// Tests Poseidon with arity 2 as a `Hasher` for collision resistance.
+    #[test]
+    fn poseidon2_collision_resistance() {
+        const NUMBER_OF_TRIES: usize = 5000; // Note: this is expected to break from 2^(128) due to the birthday attack.
+        let mut rng = OsRng;
+        let compiler = &mut ();
+        let poseidon2: Poseidon2 = rng.gen();
+        let mut image_vector: Vec<Fp<Fp256<FrParameters>>> = Vec::with_capacity(NUMBER_OF_TRIES);
+        let (keys, utxos): (
+            [Fp<Fp256<SpendingKey>>; NUMBER_OF_TRIES],
+            [Fp<Fp256<FrParameters>>; NUMBER_OF_TRIES],
+        ) = (rng.gen(), rng.gen());
+        for i in 0..NUMBER_OF_TRIES {
+            let image = poseidon2.hash(
+                [
+                    &ecc::arkworks::lift_embedded_scalar::<Bls12_381_Edwards>(&keys[i]),
+                    &utxos[i],
+                ],
+                compiler,
+            );
+            assert!(!image_vector.iter().any(|x| *x == image));
+            image_vector.push(image);
+        }
+    }
+}

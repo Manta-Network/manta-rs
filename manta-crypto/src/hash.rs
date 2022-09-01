@@ -186,47 +186,27 @@ pub mod security {
 #[cfg(feature = "test")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
 pub mod test {
-    use super::{
-        security::{PreimageResistance, SecondPreimageResistance},
-        *,
-    };
+    use super::*;
     use crate::eclair::{
         bool::{AssertEq, Bool},
         cmp::PartialEq,
-        ops::{BitOr, Not},
+        ops::Not,
     };
 
     /// Preimage resistance test. Asserts that `y` is not the image of `x` under `hash`.
     #[inline]
-    pub fn is_not_preimage<H, F, COM>(
-        hash: H,
-        x: &H::Input,
+    pub fn is_not_preimage<const ARITY: usize, H, COM>(
+        hash: &H,
+        x: [&H::Input; ARITY],
         y: &H::Output,
-        assert_different: F,
         compiler: &mut COM,
     ) where
-        H: HashFunction<COM> + PreimageResistance,
-        F: FnOnce(&H::Output, &H::Output, &mut COM),
-    {
-        let image = &hash.hash(x, compiler);
-        assert_different(image, y, compiler)
-    }
-
-    /// Second preimage/Collision resistance test. Asserts that different `x_1` and `x_2` don't have the same image under `hash`.
-    #[inline]
-    pub fn is_not_collision<H, F, COM>(hash: H, x_1: &H::Input, x_2: &H::Input, compiler: &mut COM)
-    where
-        H: HashFunction<COM> + SecondPreimageResistance,
-        H::Input: PartialEq<H::Input, COM>,
+        H: ArrayHashFunction<ARITY, COM>,
         H::Output: PartialEq<H::Output, COM>,
         COM: AssertEq,
-        Bool<COM>: BitOr<Bool<COM>, COM, Output = Bool<COM>> + Not<COM, Output = Bool<COM>>,
+        Bool<COM>: Not<COM, Output = Bool<COM>>,
     {
-        let bool_1 = x_1.eq(x_2, compiler);
-        let y_1 = &hash.hash(x_1, compiler);
-        let y_2 = &hash.hash(x_2, compiler);
-        let bool_2 = y_1.ne(y_2, compiler);
-        let bool = bool_1.bitor(bool_2, compiler);
-        compiler.assert(&bool)
+        let image = hash.hash(x, compiler);
+        compiler.assert_ne(&image, y);
     }
 }
