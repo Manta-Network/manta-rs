@@ -21,11 +21,11 @@ use crate::{
     test::payment::UtxoAccumulator,
     util::scale::{assert_valid_codec, assert_valid_io_codec},
 };
-use manta_accounting::transfer::{test::assert_valid_proof_with_input, Configuration};
+use manta_accounting::transfer::{test::assert_valid_proof, Configuration};
 use manta_crypto::{
     accumulator::Accumulator,
     constraint::{measure::Measure, test::fuzz_public_input, ProofSystem as _},
-    rand::{fuzz_field_elements, OsRng, Rand},
+    rand::{fuzz_field_elements, random_field_elements, OsRng, Rand},
 };
 use std::io::Cursor;
 
@@ -168,14 +168,7 @@ fn mint_proof_validity() {
     .expect("Random Mint should have produced a proof.");
     let public_input = post.generate_proof_input();
     let proof = &post.validity_proof;
-    let random_public_input = Mint::sample_input(
-        &proving_context,
-        &parameters,
-        &mut utxo_accumulator,
-        &mut rng,
-    )
-    .expect("Random Mint should have produced a proof.");
-    assert_valid_proof_with_input(&verifying_context, &post, &public_input, true);
+    assert_valid_proof(&verifying_context, &post);
     fuzz_public_input::<<Config as Configuration>::ProofSystem, _, OsRng>(
         &verifying_context,
         &public_input,
@@ -183,7 +176,13 @@ fn mint_proof_validity() {
         fuzz_field_elements,
         &mut rng,
     );
-    assert_valid_proof_with_input(&verifying_context, &post, &random_public_input, false);
+    fuzz_public_input::<<Config as Configuration>::ProofSystem, _, OsRng>(
+        &verifying_context,
+        &public_input,
+        proof,
+        random_field_elements,
+        &mut rng,
+    );
 }
 
 /// Tests a [`PrivateTransfer`] proof is valid verified against the right public input and invalid
@@ -208,14 +207,7 @@ fn private_transfer_proof_validity() {
     .expect("Random Mint should have produced a proof.");
     let public_input = post.generate_proof_input();
     let proof = &post.validity_proof;
-    let random_public_input = PrivateTransfer::sample_input(
-        &proving_context,
-        &parameters,
-        &mut utxo_accumulator,
-        &mut rng,
-    )
-    .expect("Random Mint should have produced a proof.");
-    assert_valid_proof_with_input(&verifying_context, &post, &public_input, true);
+    assert_valid_proof(&verifying_context, &post);
     fuzz_public_input::<<Config as Configuration>::ProofSystem, _, OsRng>(
         &verifying_context,
         &public_input,
@@ -223,7 +215,13 @@ fn private_transfer_proof_validity() {
         fuzz_field_elements,
         &mut rng,
     );
-    assert_valid_proof_with_input(&verifying_context, &post, &random_public_input, false);
+    fuzz_public_input::<<Config as Configuration>::ProofSystem, _, OsRng>(
+        &verifying_context,
+        &public_input,
+        proof,
+        random_field_elements,
+        &mut rng,
+    );
 }
 
 /// Tests a [`Reclaim`] proof is valid verified against the right public input and invalid
@@ -248,14 +246,7 @@ fn reclaim_proof_validity() {
     .expect("Random Mint should have produced a proof.");
     let public_input = post.generate_proof_input();
     let proof = &post.validity_proof;
-    let random_public_input = Reclaim::sample_input(
-        &proving_context,
-        &parameters,
-        &mut utxo_accumulator,
-        &mut rng,
-    )
-    .expect("Random Mint should have produced a proof.");
-    assert_valid_proof_with_input(&verifying_context, &post, &public_input, true);
+    assert_valid_proof(&verifying_context, &post);
     fuzz_public_input::<<Config as Configuration>::ProofSystem, _, OsRng>(
         &verifying_context,
         &public_input,
@@ -263,7 +254,13 @@ fn reclaim_proof_validity() {
         fuzz_field_elements,
         &mut rng,
     );
-    assert_valid_proof_with_input(&verifying_context, &post, &random_public_input, false);
+    fuzz_public_input::<<Config as Configuration>::ProofSystem, _, OsRng>(
+        &verifying_context,
+        &public_input,
+        proof,
+        random_field_elements,
+        &mut rng,
+    );
 }
 
 /// Asserts that `proof` can be SCALE encoded and decoded with at least [`Vec`], [`Cursor`], and

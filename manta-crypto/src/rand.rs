@@ -593,6 +593,16 @@ where
         .collect()
 }
 
+/// Generates a vector of the same length as `field_elements` completely at random.
+#[inline]
+pub fn random_field_elements<P, R>(field_elements: &Vec<P>, rng: &mut R) -> Vec<P>
+where
+    P: PrimeField + Sample,
+    R: CryptoRng + RngCore + ?Sized,
+{
+    field_elements.iter().map(|_| rng.gen::<_, P>()).collect()
+}
+
 /// Fuzz Trait
 pub trait Fuzz {
     /// Changes one bit of the element at random.
