@@ -269,5 +269,4 @@ mod test {
             image_vector.push(image);
         }
     }
-    // Fake change.
 }
