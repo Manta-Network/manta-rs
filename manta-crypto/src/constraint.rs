@@ -364,3 +364,30 @@ pub mod measure {
         }
     }
 }
+/// Testing Framework
+#[cfg(feature = "test")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
+pub mod test {
+    use super::*;
+    use core::fmt::Debug;
+
+    /// Checks that attempting to verify `proof` against fuzzed inputs fails.
+    #[inline]
+    pub fn fuzz_public_input<P, F, R>(
+        context: &P::VerifyingContext,
+        input: &P::Input,
+        proof: &P::Proof,
+        mut fuzzer: F,
+        rng: &mut R,
+    ) where
+        R: CryptoRng + RngCore + ?Sized,
+        P: ProofSystem,
+        P::Error: Debug,
+        F: FnMut(&P::Input, &mut R) -> P::Input,
+    {
+        assert!(
+            !P::verify(context, &fuzzer(input, rng), proof).expect("Unable to verify proof."),
+            "Proof remained valid after fuzzing."
+        );
+    }
+}

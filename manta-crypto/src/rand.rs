@@ -533,41 +533,64 @@ pub trait Rand: RngCore {
 impl<R> Rand for R where R: RngCore + ?Sized {}
 
 /// Changes one bit of `bits` at random.
-pub fn fuzz_bits(bits: &mut Vec<bool>) {
-    let mut rng = OsRng;
+#[inline]
+pub fn fuzz_bits<R>(bits: &Vec<bool>, rng: &mut R) -> Vec<bool>
+where
+    R: CryptoRng + RngCore + ?Sized,
+{
     let position = rng.gen_range(0..bits.len());
-    bits[position] ^= true;
+    bits.iter()
+        .enumerate()
+        .map(|(index, bool)| {
+            if index == position {
+                *bool ^ true
+            } else {
+                *bool
+            }
+        })
+        .collect()
 }
 
 /// Changes one bit of `big_integer` at random.
-pub fn fuzz_big_integer<B>(big_integer: &mut B)
+#[inline]
+pub fn fuzz_big_integer<B, R>(big_integer: &B, rng: &mut R) -> B
 where
     B: BigInteger,
+    R: CryptoRng + RngCore + ?Sized,
 {
-    let mut bits = big_integer.to_bits_be();
-    fuzz_bits(&mut bits);
-    *big_integer = B::from_bits_be(&bits);
+    B::from_bits_be(&fuzz_bits(&big_integer.to_bits_be(), rng))
 }
 
 /// Changes one bit of `field_element` at random.
-pub fn fuzz_field_element<P>(field_element: &mut P)
+#[inline]
+pub fn fuzz_field_element<P, R>(field_element: &P, rng: &mut R) -> P
 where
     P: PrimeField,
+    R: CryptoRng + RngCore + ?Sized,
 {
-    let mut big_integer = field_element.into_repr();
-    fuzz_big_integer(&mut big_integer);
-    *field_element = P::from_repr(big_integer)
+    P::from_repr(fuzz_big_integer(&field_element.into_repr(), rng))
         .expect("Computing the field element from a big integer is not supposed to fail.")
 }
 
 /// Changes one bit of one of the field elements contained in `vec_ff` at random.
-pub fn fuzz_field_elements<P>(field_elements: &mut Vec<P>)
+#[inline]
+pub fn fuzz_field_elements<P, R>(field_elements: &Vec<P>, rng: &mut R) -> Vec<P>
 where
     P: PrimeField,
+    R: CryptoRng + RngCore + ?Sized,
 {
-    let mut rng = OsRng;
     let position = rng.gen_range(0..field_elements.len());
-    fuzz_field_element(&mut field_elements[position]);
+    field_elements
+        .iter()
+        .enumerate()
+        .map(|(index, element)| {
+            if index == position {
+                fuzz_field_element(element, rng)
+            } else {
+                *element
+            }
+        })
+        .collect()
 }
 
 /// Fuzz Trait

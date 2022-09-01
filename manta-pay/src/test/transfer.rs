@@ -17,14 +17,14 @@
 //! Manta Pay Transfer Testing
 
 use crate::{
-    config::{FullParameters, Mint, PrivateTransfer, Proof, ProofSystem, Reclaim},
+    config::{Config, FullParameters, Mint, PrivateTransfer, Proof, ProofSystem, Reclaim},
     test::payment::UtxoAccumulator,
     util::scale::{assert_valid_codec, assert_valid_io_codec},
 };
-use manta_accounting::transfer::test::assert_valid_proof_with_input;
+use manta_accounting::transfer::{test::assert_valid_proof_with_input, Configuration};
 use manta_crypto::{
     accumulator::Accumulator,
-    constraint::{measure::Measure, ProofSystem as _},
+    constraint::{measure::Measure, test::fuzz_public_input, ProofSystem as _},
     rand::{fuzz_field_elements, OsRng, Rand},
 };
 use std::io::Cursor;
@@ -166,7 +166,8 @@ fn mint_proof_validity() {
         &mut rng,
     )
     .expect("Random Mint should have produced a proof.");
-    let mut public_input = post.generate_proof_input();
+    let public_input = post.generate_proof_input();
+    let proof = &post.validity_proof;
     let random_public_input = Mint::sample_input(
         &proving_context,
         &parameters,
@@ -175,8 +176,13 @@ fn mint_proof_validity() {
     )
     .expect("Random Mint should have produced a proof.");
     assert_valid_proof_with_input(&verifying_context, &post, &public_input, true);
-    fuzz_field_elements(&mut public_input);
-    assert_valid_proof_with_input(&verifying_context, &post, &public_input, false);
+    fuzz_public_input::<<Config as Configuration>::ProofSystem, _, OsRng>(
+        &verifying_context,
+        &public_input,
+        proof,
+        fuzz_field_elements,
+        &mut rng,
+    );
     assert_valid_proof_with_input(&verifying_context, &post, &random_public_input, false);
 }
 
@@ -200,7 +206,8 @@ fn private_transfer_proof_validity() {
         &mut rng,
     )
     .expect("Random Mint should have produced a proof.");
-    let mut public_input = post.generate_proof_input();
+    let public_input = post.generate_proof_input();
+    let proof = &post.validity_proof;
     let random_public_input = PrivateTransfer::sample_input(
         &proving_context,
         &parameters,
@@ -209,8 +216,13 @@ fn private_transfer_proof_validity() {
     )
     .expect("Random Mint should have produced a proof.");
     assert_valid_proof_with_input(&verifying_context, &post, &public_input, true);
-    fuzz_field_elements(&mut public_input);
-    assert_valid_proof_with_input(&verifying_context, &post, &public_input, false);
+    fuzz_public_input::<<Config as Configuration>::ProofSystem, _, OsRng>(
+        &verifying_context,
+        &public_input,
+        proof,
+        fuzz_field_elements,
+        &mut rng,
+    );
     assert_valid_proof_with_input(&verifying_context, &post, &random_public_input, false);
 }
 
@@ -234,7 +246,8 @@ fn reclaim_proof_validity() {
         &mut rng,
     )
     .expect("Random Mint should have produced a proof.");
-    let mut public_input = post.generate_proof_input();
+    let public_input = post.generate_proof_input();
+    let proof = &post.validity_proof;
     let random_public_input = Reclaim::sample_input(
         &proving_context,
         &parameters,
@@ -243,8 +256,13 @@ fn reclaim_proof_validity() {
     )
     .expect("Random Mint should have produced a proof.");
     assert_valid_proof_with_input(&verifying_context, &post, &public_input, true);
-    fuzz_field_elements(&mut public_input);
-    assert_valid_proof_with_input(&verifying_context, &post, &public_input, false);
+    fuzz_public_input::<<Config as Configuration>::ProofSystem, _, OsRng>(
+        &verifying_context,
+        &public_input,
+        proof,
+        fuzz_field_elements,
+        &mut rng,
+    );
     assert_valid_proof_with_input(&verifying_context, &post, &random_public_input, false);
 }
 
