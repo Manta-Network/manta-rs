@@ -21,10 +21,11 @@ use crate::{
     test::payment::UtxoAccumulator,
     util::scale::{assert_valid_codec, assert_valid_io_codec},
 };
+use manta_accounting::transfer::test::assert_valid_proof_with_input;
 use manta_crypto::{
     accumulator::Accumulator,
     constraint::{measure::Measure, ProofSystem as _},
-    rand::{OsRng, Rand},
+    rand::{fuzz_field_elements, OsRng, Rand},
 };
 use std::io::Cursor;
 
@@ -145,6 +146,108 @@ fn generate_proof_input_is_compatibile() {
     );
 }
 
+/// Tests a [`Mint`] proof is valid verified against the right public input and invalid
+/// when the public input has been fuzzed or randomly generated.
+#[test]
+fn mint_proof_validity() {
+    let mut rng = OsRng;
+    let parameters = rng.gen();
+    let mut utxo_accumulator = UtxoAccumulator::new(rng.gen());
+    let (proving_context, verifying_context) = Mint::generate_context(
+        &(),
+        FullParameters::new(&parameters, utxo_accumulator.model()),
+        &mut rng,
+    )
+    .expect("Unable to create proving and verifying contexts.");
+    let post = Mint::sample_post(
+        &proving_context,
+        &parameters,
+        &mut utxo_accumulator,
+        &mut rng,
+    )
+    .expect("Random Mint should have produced a proof.");
+    let mut public_input = post.generate_proof_input();
+    let random_public_input = Mint::sample_input(
+        &proving_context,
+        &parameters,
+        &mut utxo_accumulator,
+        &mut rng,
+    )
+    .expect("Random Mint should have produced a proof.");
+    assert_valid_proof_with_input(&verifying_context, &post, &public_input, true);
+    fuzz_field_elements(&mut public_input);
+    assert_valid_proof_with_input(&verifying_context, &post, &public_input, false);
+    assert_valid_proof_with_input(&verifying_context, &post, &random_public_input, false);
+}
+
+/// Tests a [`PrivateTransfer`] proof is valid verified against the right public input and invalid
+/// when the public input has been fuzzed or randomly generated.
+#[test]
+fn private_transfer_proof_validity() {
+    let mut rng = OsRng;
+    let parameters = rng.gen();
+    let mut utxo_accumulator = UtxoAccumulator::new(rng.gen());
+    let (proving_context, verifying_context) = PrivateTransfer::generate_context(
+        &(),
+        FullParameters::new(&parameters, utxo_accumulator.model()),
+        &mut rng,
+    )
+    .expect("Unable to create proving and verifying contexts.");
+    let post = PrivateTransfer::sample_post(
+        &proving_context,
+        &parameters,
+        &mut utxo_accumulator,
+        &mut rng,
+    )
+    .expect("Random Mint should have produced a proof.");
+    let mut public_input = post.generate_proof_input();
+    let random_public_input = PrivateTransfer::sample_input(
+        &proving_context,
+        &parameters,
+        &mut utxo_accumulator,
+        &mut rng,
+    )
+    .expect("Random Mint should have produced a proof.");
+    assert_valid_proof_with_input(&verifying_context, &post, &public_input, true);
+    fuzz_field_elements(&mut public_input);
+    assert_valid_proof_with_input(&verifying_context, &post, &public_input, false);
+    assert_valid_proof_with_input(&verifying_context, &post, &random_public_input, false);
+}
+
+/// Tests a [`Reclaim`] proof is valid verified against the right public input and invalid
+/// when the public input has been fuzzed or randomly generated.
+#[test]
+fn reclaim_proof_validity() {
+    let mut rng = OsRng;
+    let parameters = rng.gen();
+    let mut utxo_accumulator = UtxoAccumulator::new(rng.gen());
+    let (proving_context, verifying_context) = Reclaim::generate_context(
+        &(),
+        FullParameters::new(&parameters, utxo_accumulator.model()),
+        &mut rng,
+    )
+    .expect("Unable to create proving and verifying contexts.");
+    let post = Reclaim::sample_post(
+        &proving_context,
+        &parameters,
+        &mut utxo_accumulator,
+        &mut rng,
+    )
+    .expect("Random Mint should have produced a proof.");
+    let mut public_input = post.generate_proof_input();
+    let random_public_input = Reclaim::sample_input(
+        &proving_context,
+        &parameters,
+        &mut utxo_accumulator,
+        &mut rng,
+    )
+    .expect("Random Mint should have produced a proof.");
+    assert_valid_proof_with_input(&verifying_context, &post, &public_input, true);
+    fuzz_field_elements(&mut public_input);
+    assert_valid_proof_with_input(&verifying_context, &post, &public_input, false);
+    assert_valid_proof_with_input(&verifying_context, &post, &random_public_input, false);
+}
+
 /// Asserts that `proof` can be SCALE encoded and decoded with at least [`Vec`], [`Cursor`], and
 /// [`File`](std::fs::File).
 #[inline]
@@ -201,7 +304,7 @@ fn private_transfer_proof_scale_codec() {
     assert_valid_proof_codec(post.assert_valid_proof(&verifying_context));
 }
 
-/// Tests the SCALE encoding and decoding of a [`Mint`] proof.
+/// Tests the SCALE encoding and decoding of a [`Reclaim`] proof.
 #[test]
 fn reclaim_proof_scale_codec() {
     let mut rng = OsRng;

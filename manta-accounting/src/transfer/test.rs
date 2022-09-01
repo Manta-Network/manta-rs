@@ -202,6 +202,25 @@ where
         )
     }
 
+    /// Samples a [`ProofInput`] from `parameters` and `utxo_accumulator` using `proving_context`
+    /// and `rng`.
+    #[inline]
+    pub fn sample_input<A, R>(
+        proving_context: &ProvingContext<C>,
+        parameters: &Parameters<C>,
+        utxo_accumulator: &mut A,
+        rng: &mut R,
+    ) -> Result<ProofInput<C>, ProofSystemError<C>>
+    where
+        A: Accumulator<Item = Utxo<C>, Model = C::UtxoAccumulatorModel>,
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        Ok(
+            Self::sample_post(proving_context, parameters, utxo_accumulator, rng)?
+                .generate_proof_input(),
+        )
+    }
+
     /// Samples a new [`Transfer`] and builds a correctness proof for it, checking if it was
     /// validated.
     #[inline]
@@ -454,5 +473,27 @@ where
         .expect("Unable to verify proof."),
         "Invalid proof: {:?}.",
         post,
+    );
+}
+
+/// Asserts that `post` represents a `Transfer` with `expected` validity verifying against `verifying_context` and a custom `public_input`.
+#[inline]
+pub fn assert_valid_proof_with_input<C>(
+    verifying_context: &VerifyingContext<C>,
+    post: &TransferPost<C>,
+    public_input: &ProofInput<C>,
+    expected: bool,
+) where
+    C: Configuration,
+    <C::ProofSystem as ProofSystem>::Error: Debug,
+    TransferPost<C>: Debug,
+{
+    assert!(
+        !C::ProofSystem::verify(verifying_context, public_input, &post.validity_proof,)
+            .expect("Unable to verify proof.")
+            ^ expected,
+        "Proof expected to be {} was {}",
+        if expected { "valid" } else { "invalid" },
+        if expected { "invalid" } else { "valid" }
     );
 }

@@ -543,23 +543,3 @@ where
         input.push((*self).into());
     }
 }
-
-/// Testing Suite
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    /// Tests that `proof` generated from `public_input` cannot be verified
-    /// against random `public_input`.
-    #[test]
-    fn fuzzing_test_random() {
-        todo!()
-    }
-
-    /// Tests that `proof` generated from `public_input` cannot be verified
-    /// against a `public_input` with a bit changed at random.
-    #[test]
-    fn fuzzing_test_one_bit() {
-        todo!();
-    }
-}

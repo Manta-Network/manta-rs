@@ -18,6 +18,7 @@
 
 // TODO: Add a `Sample` derive trait.
 
+use crate::arkworks::ff::{BigInteger, PrimeField};
 use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash, iter::repeat, marker::PhantomData};
 use manta_util::into_array_unchecked;
@@ -530,3 +531,51 @@ pub trait Rand: RngCore {
 }
 
 impl<R> Rand for R where R: RngCore + ?Sized {}
+
+/// Changes one bit of `bits` at random.
+pub fn fuzz_bits(bits: &mut Vec<bool>) {
+    let mut rng = OsRng;
+    let position = rng.gen_range(0..bits.len());
+    bits[position] ^= true;
+}
+
+/// Changes one bit of `big_integer` at random.
+pub fn fuzz_big_integer<B>(big_integer: &mut B)
+where
+    B: BigInteger,
+{
+    let mut bits = big_integer.to_bits_be();
+    fuzz_bits(&mut bits);
+    *big_integer = B::from_bits_be(&bits);
+}
+
+/// Changes one bit of `field_element` at random.
+pub fn fuzz_field_element<P>(field_element: &mut P)
+where
+    P: PrimeField,
+{
+    let mut big_integer = field_element.into_repr();
+    fuzz_big_integer(&mut big_integer);
+    *field_element = P::from_repr(big_integer)
+        .expect("Computing the field element from a big integer is not supposed to fail.")
+}
+
+/// Changes one bit of one of the field elements contained in `vec_ff` at random.
+pub fn fuzz_field_elements<P>(field_elements: &mut Vec<P>)
+where
+    P: PrimeField,
+{
+    let mut rng = OsRng;
+    let position = rng.gen_range(0..field_elements.len());
+    fuzz_field_element(&mut field_elements[position]);
+}
+
+/// Fuzz Trait
+pub trait Fuzz {
+    /// Changes one bit of the element at random.
+    fn fuzz(&mut self);
+}
+
+// TODO: Everything above should be implementations of the same trait Fuzz.
+// I'm running into trouble when I try to implement it for the types above because of the
+// "upstream" rust error.
