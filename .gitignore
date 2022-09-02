@@ -1,2 +1,6 @@
 /target
 Cargo.lock
+prepared_mint.data
+prepared_private_transfer.data
+prepared_reclaim.data
+data/dummy_phase_one_parameter.data
