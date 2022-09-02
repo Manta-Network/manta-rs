@@ -18,7 +18,6 @@
 
 // TODO: Add a `Sample` derive trait.
 
-use crate::arkworks::ff::{BigInteger, PrimeField};
 use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash, iter::repeat, marker::PhantomData};
 use manta_util::into_array_unchecked;
@@ -532,83 +531,91 @@ pub trait Rand: RngCore {
 
 impl<R> Rand for R where R: RngCore + ?Sized {}
 
-/// Changes one bit of `bits` at random.
-#[inline]
-pub fn fuzz_bits<R>(bits: &Vec<bool>, rng: &mut R) -> Vec<bool>
-where
-    R: CryptoRng + RngCore + ?Sized,
-{
-    let position = rng.gen_range(0..bits.len());
-    bits.iter()
-        .enumerate()
-        .map(|(index, bool)| {
-            if index == position {
-                *bool ^ true
-            } else {
-                *bool
-            }
-        })
-        .collect()
-}
+/// Fuzzing module
+pub mod fuzz {
 
-/// Changes one bit of `big_integer` at random.
-#[inline]
-pub fn fuzz_big_integer<B, R>(big_integer: &B, rng: &mut R) -> B
-where
-    B: BigInteger,
-    R: CryptoRng + RngCore + ?Sized,
-{
-    B::from_bits_be(&fuzz_bits(&big_integer.to_bits_be(), rng))
-}
+    use super::*;
 
-/// Changes one bit of `field_element` at random.
-#[inline]
-pub fn fuzz_field_element<P, R>(field_element: &P, rng: &mut R) -> P
-where
-    P: PrimeField,
-    R: CryptoRng + RngCore + ?Sized,
-{
-    P::from_repr(fuzz_big_integer(&field_element.into_repr(), rng))
-        .expect("Computing the field element from a big integer is not supposed to fail.")
-}
+    #[cfg(feature = "arkworks")]
+    use crate::arkworks::ff::{BigInteger, PrimeField};
 
-/// Changes one bit of one of the field elements contained in `vec_ff` at random.
-#[inline]
-pub fn fuzz_field_elements<P, R>(field_elements: &Vec<P>, rng: &mut R) -> Vec<P>
-where
-    P: PrimeField,
-    R: CryptoRng + RngCore + ?Sized,
-{
-    let position = rng.gen_range(0..field_elements.len());
-    field_elements
-        .iter()
-        .enumerate()
-        .map(|(index, element)| {
-            if index == position {
-                fuzz_field_element(element, rng)
-            } else {
-                *element
-            }
-        })
-        .collect()
-}
+    /// Fuzz Trait
+    pub trait Fuzz<M = ()> {
+        /// Changes one bit of `self` at random.
+        fn fuzz<R>(&self, rng: &mut R) -> Self
+        where
+            R: RngCore + ?Sized;
+    }
 
-/// Generates a vector of the same length as `field_elements` completely at random.
-#[inline]
-pub fn random_field_elements<P, R>(field_elements: &Vec<P>, rng: &mut R) -> Vec<P>
-where
-    P: PrimeField + Sample,
-    R: CryptoRng + RngCore + ?Sized,
-{
-    field_elements.iter().map(|_| rng.gen::<_, P>()).collect()
-}
+    impl Fuzz for bool {
+        #[inline]
+        fn fuzz<R>(&self, rng: &mut R) -> Self
+        where
+            R: RngCore + ?Sized,
+        {
+            let _ = rng;
+            self ^ true
+        }
+    }
 
-/// Fuzz Trait
-pub trait Fuzz {
-    /// Changes one bit of the element at random.
-    fn fuzz(&mut self);
-}
+    #[cfg(feature = "rand")]
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "rand")))]
+    impl<M, T> Fuzz<Vec<M>> for Vec<T>
+    where
+        T: Clone + Fuzz<M>,
+    {
+        #[inline]
+        fn fuzz<R>(&self, rng: &mut R) -> Self
+        where
+            R: RngCore + ?Sized,
+        {
+            let position = rng.gen_range(0..self.len());
+            let mut fuzzed_self = self.clone();
+            fuzzed_self[position] = self[position].fuzz(rng);
+            fuzzed_self
+        }
+    }
 
-// TODO: Everything above should be implementations of the same trait Fuzz.
-// I'm running into trouble when I try to implement it for the types above because of the
-// "upstream" rust error.
+    /// BigInteger Marker Type
+    #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    pub struct BigIntegerMarker;
+
+    #[cfg(feature = "arkworks")]
+    #[cfg(feature = "rand")]
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "arkworks")))]
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "rand")))]
+    impl<B> Fuzz<BigIntegerMarker> for B
+    where
+        B: BigInteger,
+    {
+        #[inline]
+        fn fuzz<R>(&self, rng: &mut R) -> Self
+        where
+            R: RngCore + ?Sized,
+        {
+            B::from_bits_be(&self.to_bits_be().fuzz(rng))
+        }
+    }
+
+    /// Prime Field Marker Type
+    #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    pub struct PrimeFieldMarker;
+
+    #[cfg(feature = "arkworks")]
+    #[cfg(feature = "rand")]
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "arkworks")))]
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "rand")))]
+    impl<P> Fuzz<PrimeFieldMarker> for P
+    where
+        P: PrimeField,
+    {
+        #[inline]
+        fn fuzz<R>(&self, rng: &mut R) -> Self
+        where
+            R: RngCore + ?Sized,
+        {
+            P::from_repr(self.into_repr().fuzz(rng))
+                .expect("Computing the field element from a big integer is not supposed to fail.")
+        }
+    }
+}

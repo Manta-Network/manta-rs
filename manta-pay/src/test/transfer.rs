@@ -25,7 +25,7 @@ use manta_accounting::transfer::{test::assert_valid_proof, Configuration};
 use manta_crypto::{
     accumulator::Accumulator,
     constraint::{measure::Measure, test::fuzz_public_input, ProofSystem as _},
-    rand::{fuzz_field_elements, random_field_elements, OsRng, Rand},
+    rand::{fuzz::Fuzz, OsRng, Rand},
 };
 use std::io::Cursor;
 
@@ -173,14 +173,14 @@ fn mint_proof_validity() {
         &verifying_context,
         &public_input,
         proof,
-        fuzz_field_elements,
+        |element, random| element.fuzz(random),
         &mut rng,
     );
     fuzz_public_input::<<Config as Configuration>::ProofSystem, _, OsRng>(
         &verifying_context,
         &public_input,
         proof,
-        random_field_elements,
+        |field_elements, random| field_elements.iter().map(|_| random.gen()).collect(),
         &mut rng,
     );
 }
@@ -212,14 +212,14 @@ fn private_transfer_proof_validity() {
         &verifying_context,
         &public_input,
         proof,
-        fuzz_field_elements,
+        |element, random| element.fuzz(random),
         &mut rng,
     );
     fuzz_public_input::<<Config as Configuration>::ProofSystem, _, OsRng>(
         &verifying_context,
         &public_input,
         proof,
-        random_field_elements,
+        |field_elements, random| field_elements.iter().map(|_| random.gen()).collect(),
         &mut rng,
     );
 }
@@ -251,14 +251,14 @@ fn reclaim_proof_validity() {
         &verifying_context,
         &public_input,
         proof,
-        fuzz_field_elements,
+        |element, random| element.fuzz(random),
         &mut rng,
     );
     fuzz_public_input::<<Config as Configuration>::ProofSystem, _, OsRng>(
         &verifying_context,
         &public_input,
         proof,
-        random_field_elements,
+        |field_elements, random| field_elements.iter().map(|_| random.gen()).collect(),
         &mut rng,
     );
 }
