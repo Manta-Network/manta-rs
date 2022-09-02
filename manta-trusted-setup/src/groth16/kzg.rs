@@ -16,16 +16,14 @@
 
 //! KZG Trusted Setup for Groth16
 
-use crate::{
-    ratio::{HashToGroup, RatioProof},
-    util::{power_pairs, scalar_mul, Deserializer, NonZero, Serializer},
-};
+use crate::util::{power_pairs, scalar_mul, Deserializer, NonZero, Serializer};
 use alloc::{vec, vec::Vec};
 use core::{iter, ops::Mul};
 use manta_crypto::{
     arkworks::{
         ff::{One, UniformRand},
         pairing::{Pairing, PairingEngineExt},
+        ratio::{HashToGroup, RatioProof},
         serialize::{CanonicalDeserialize, CanonicalSerialize, Read, SerializationError, Write},
     },
     rand::{CryptoRng, RngCore, Sample},
