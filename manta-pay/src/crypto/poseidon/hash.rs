@@ -234,34 +234,41 @@ mod test {
 #[cfg(test)]
 mod test {
     use crate::{
-        config::{Bls12_381_Edwards, Poseidon2},
-        crypto::{constraint::arkworks::Fp, ecc},
+        config::{Poseidon2, Poseidon4},
+        crypto::constraint::arkworks::Fp,
     };
     use ark_bls12_381::FrParameters;
-    use ark_ed_on_bls12_381::FrParameters as SpendingKey;
     use manta_crypto::{
         arkworks::ff::Fp256,
         hash::ArrayHashFunction,
         rand::{OsRng, Rand},
     };
 
+    /// Field Element Type
+    type FieldElement = Fp<Fp256<FrParameters>>;
+
+    /// Number of randomly generated input tuples for the collision resistance tests
+    /// 
+    /// # Note
+    /// 
+    /// The following tests are expected to break at the 2^128 mark due to 
+    /// the birthday attack
+    const NUMBER_OF_TRIES: usize = 10000;
+
     /// Tests Poseidon with arity 2 as a `Hasher` for collision resistance.
     #[test]
     fn poseidon2_collision_resistance() {
-        const NUMBER_OF_TRIES: usize = 5000; // Note: this is expected to break from 2^(128) due to the birthday attack.
         let mut rng = OsRng;
         let compiler = &mut ();
         let poseidon2: Poseidon2 = rng.gen();
-        let mut image_vector: Vec<Fp<Fp256<FrParameters>>> = Vec::with_capacity(NUMBER_OF_TRIES);
-        let (keys, utxos): (
-            [Fp<Fp256<SpendingKey>>; NUMBER_OF_TRIES],
-            [Fp<Fp256<FrParameters>>; NUMBER_OF_TRIES],
-        ) = (rng.gen(), rng.gen());
-        for i in 0..NUMBER_OF_TRIES {
+        let mut image_vector: Vec<FieldElement> = Vec::with_capacity(NUMBER_OF_TRIES);
+        for _ in 0..NUMBER_OF_TRIES {
+            let input_1 = rng.gen::<_, FieldElement>();
+            let input_2 = rng.gen::<_, FieldElement>();
             let image = poseidon2.hash(
                 [
-                    &ecc::arkworks::lift_embedded_scalar::<Bls12_381_Edwards>(&keys[i]),
-                    &utxos[i],
+                    &input_1,
+                    &input_2,
                 ],
                 compiler,
             );
@@ -269,4 +276,30 @@ mod test {
             image_vector.push(image);
         }
     }
+
+     /// Tests Poseidon with arity 4 as a `Hasher` for collision resistance.
+     #[test]
+     fn poseidon4_collision_resistance() {
+         let mut rng = OsRng;
+         let compiler = &mut ();
+         let poseidon4: Poseidon4 = rng.gen();
+         let mut image_vector: Vec<FieldElement> = Vec::with_capacity(NUMBER_OF_TRIES);
+         for _ in 0..NUMBER_OF_TRIES {
+             let input_1 = rng.gen::<_, FieldElement>();
+             let input_2 = rng.gen::<_, FieldElement>();
+             let input_3 = rng.gen::<_, FieldElement>();
+             let input_4 = rng.gen::<_, FieldElement>();
+             let image = poseidon4.hash(
+                 [
+                     &input_1,
+                     &input_2,
+                     &input_3,
+                     &input_4,
+                 ],
+                 compiler,
+             );
+             assert!(!image_vector.iter().any(|x| *x == image));
+             image_vector.push(image);
+         }
+     }
 }
