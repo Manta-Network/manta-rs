@@ -16,17 +16,20 @@
 
 //! Utilities
 
-use crate::{groth16::kzg, ratio::HashToGroup};
-use alloc::vec::Vec;
-use ark_std::io;
+use crate::groth16::kzg;
+use alloc::{boxed::Box, vec::Vec};
+use ark_std::{
+    error,
+    io::{self, ErrorKind},
+};
 use blake2::{Blake2b512, Digest as Blake2Digest};
-use byteorder::{BigEndian, ByteOrder};
 use core::marker::PhantomData;
 use manta_crypto::{
     arkworks::{
         ec::{wnaf::WnafContext, AffineCurve, ProjectiveCurve},
         ff::{BigInteger, PrimeField, UniformRand, Zero},
         pairing::Pairing,
+        ratio::HashToGroup,
         serialize::{CanonicalSerialize, Read, SerializationError, Write},
     },
     rand::{ChaCha20Rng, OsRng, Sample, SeedableRng},
@@ -138,6 +141,15 @@ pub trait Deserializer<T, M = ()> {
         R: Read;
 }
 
+/// Converts `err` into an [`io::Error`] with the [`ErrorKind::Other`] variant.
+#[inline]
+pub fn from_error<E>(err: E) -> io::Error
+where
+    E: Into<Box<dyn error::Error + Send + Sync>>,
+{
+    io::Error::new(ErrorKind::Other, err)
+}
+
 /// Deserialization Error for [`NonZero`]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum NonZeroError<E> {
@@ -155,10 +167,7 @@ where
     #[inline]
     fn from(err: NonZeroError<E>) -> Self {
         match err {
-            NonZeroError::IsZero => SerializationError::IoError(io::Error::new(
-                io::ErrorKind::Other,
-                "Value was expected to be non-zero but instead had value zero.",
-            )),
+            NonZeroError::IsZero => from_error("Value was expected to be non-zero.").into(),
             NonZeroError::Error(err) => err.into(),
         }
     }
@@ -403,9 +412,14 @@ where
     D: Default,
 {
     assert!(N >= 32, "Needs at least 32 bytes to seed ChaCha20.");
-    let mut seed = Vec::with_capacity(32);
-    for i in 0..8 {
-        seed.extend(BigEndian::read_u32(&digest[4 * i..4 * (i + 1)]).to_le_bytes());
+    let mut digest = digest.as_slice();
+    let mut seed = Vec::<u8>::with_capacity(32);
+    for _ in 0..8 {
+        let mut buffer = [0u8; 4];
+        let _ = digest
+            .read(&mut buffer)
+            .expect("Reading into a slice never fails.");
+        seed.extend(buffer.iter().rev());
     }
     G::gen(&mut ChaCha20Rng::from_seed(into_array_unchecked(seed)))
 }

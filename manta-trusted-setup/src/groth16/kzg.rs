@@ -16,16 +16,14 @@
 
 //! KZG Trusted Setup for Groth16
 
-use crate::{
-    ratio::{HashToGroup, RatioProof},
-    util::{power_pairs, scalar_mul, Deserializer, NonZero, Serializer},
-};
+use crate::util::{power_pairs, scalar_mul, Deserializer, NonZero, Serializer};
 use alloc::{vec, vec::Vec};
 use core::{iter, ops::Mul};
 use manta_crypto::{
     arkworks::{
         ff::{One, UniformRand},
         pairing::{Pairing, PairingEngineExt},
+        ratio::{HashToGroup, RatioProof},
         serialize::{CanonicalDeserialize, CanonicalSerialize, Read, SerializationError, Write},
     },
     rand::{CryptoRng, RngCore, Sample},
@@ -252,6 +250,29 @@ where
                 .ok_or(KnowledgeError::BetaKnowledgeProof)?
                 .1,
         })
+    }
+
+    /// Reinterpret a proof from a KZG ceremony as a proof
+    /// for a sub-ceremony.
+    #[inline]
+    pub fn cast_to_subceremony<D>(self) -> Proof<D>
+    where
+        D: Pairing<G1 = C::G1, G2 = C::G2>,
+    {
+        Proof {
+            tau: RatioProof {
+                ratio: self.tau.ratio,
+                matching_point: self.tau.matching_point,
+            },
+            alpha: RatioProof {
+                ratio: self.alpha.ratio,
+                matching_point: self.alpha.matching_point,
+            },
+            beta: RatioProof {
+                ratio: self.beta.ratio,
+                matching_point: self.beta.matching_point,
+            },
+        }
     }
 }
 
