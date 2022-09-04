@@ -25,6 +25,7 @@ use crate::{
 };
 use manta_util::{collections::vec_deque::MultiVecDeque, time::lock::Timed, Array, BoxArray};
 
+use crate::groth16::ceremony::Nonce;
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
 
@@ -73,7 +74,7 @@ pub type Queue<C, const LEVEL_COUNT: usize> =
 pub struct Coordinator<C, R, const CIRCUIT_COUNT: usize, const LEVEL_COUNT: usize>
 where
     C: Ceremony,
-    R: Registry<C::Identifier, C::Participant>,
+    R: Registry<C::Identifier, C::Participant, Nonce<C>>,
 {
     /// Participant Registry
     pub registry: R,
@@ -109,7 +110,7 @@ impl<C, R, const CIRCUIT_COUNT: usize, const LEVEL_COUNT: usize>
     Coordinator<C, R, CIRCUIT_COUNT, LEVEL_COUNT>
 where
     C: Ceremony,
-    R: Registry<C::Identifier, C::Participant>,
+    R: Registry<C::Identifier, C::Participant, Nonce<C>>,
 {
     /// Returns the current round number.
     #[inline]
@@ -140,5 +141,11 @@ where
     pub fn insert_participant(&mut self, participant: &C::Participant) {
         self.queue
             .push_back_at(participant.level(), participant.id().clone());
+    }
+
+    ///
+    #[inline]
+    pub fn nonce(&self, id: &C::Identifier) -> Option<Nonce<C>> {
+        self.registry.get_nonce(id)
     }
 }

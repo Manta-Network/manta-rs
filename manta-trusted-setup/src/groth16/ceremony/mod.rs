@@ -16,6 +16,7 @@
 
 //! Groth16 Trusted Setup Ceremony
 
+use manta_crypto::arkworks::pairing::Pairing;
 use crate::{groth16::ceremony::signature::SignatureScheme, mpc, mpc::ProofType};
 use manta_crypto::signature::{SignatureType, SigningKeyType, VerifyingKeyType};
 
@@ -55,6 +56,8 @@ pub trait Participant {
 
 /// Ceremony Configuration
 pub trait Ceremony: mpc::Types {
+    type Pairing: Pairing;
+    
     /// Participant Identifier Type
     type Identifier: Clone + PartialEq;
 

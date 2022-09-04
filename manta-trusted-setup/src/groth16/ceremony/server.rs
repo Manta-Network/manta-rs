@@ -16,18 +16,22 @@
 
 //! Trusted Setup Server
 
-use crate::groth16::{
-    ceremony::{
-        coordinator::{ChallengeArray, Coordinator, StateArray},
-        message::Signed,
-        registry::Registry,
-        signature::{check_nonce, verify, Nonce as _},
-        Ceremony, Nonce, Participant,
+use crate::{
+    groth16::{
+        ceremony::{
+            coordinator::{ChallengeArray, Coordinator, StateArray},
+            message::{QueryRequest, QueryResponse, ServerSize, Signed},
+            registry::Registry,
+            signature::{check_nonce, verify, Nonce as _},
+            Ceremony, Nonce, Participant,
+        },
+        mpc::{State, StateSize},
+        CeremonyError,
     },
-    mpc::StateSize,
-    CeremonyError,
+    mpc::Challenge,
 };
-use manta_util::Array;
+use manta_crypto::arkworks::serialize::{CanonicalDeserialize, CanonicalSerialize};
+use manta_util::{serde::Serialize, Array};
 use std::sync::{Arc, Mutex};
 
 pub struct Server<C, R, const LEVEL_COUNT: usize, const CIRCUIT_COUNT: usize>
@@ -76,10 +80,13 @@ where
 
     /// Preprocess a request by checking nonce and verifying signature.
     #[inline]
-    pub fn process_request<T>(
+    pub fn preprocess_request<T>(
         registry: &mut R,
         request: &Signed<T, C>,
-    ) -> Result<(), CeremonyError<C>> {
+    ) -> Result<(), CeremonyError<C>>
+    where
+        T: Serialize,
+    {
         if registry.has_contributed(&request.identifier) {
             return Err(CeremonyError::AlreadyContributed);
         }
@@ -107,5 +114,54 @@ where
 
         registry.set_nonce(&request.identifier, participant_nonce.increment());
         Ok(())
+    }
+
+    /// Gets the server state size and the current nonce of the participant.
+    #[inline]
+    pub async fn start(
+        self,
+        request: C::Identifier,
+    ) -> Result<(ServerSize<CIRCUIT_COUNT>, Nonce<C>), CeremonyError<C>> {
+        let coordinator = self
+            .coordinator
+            .lock()
+            .expect("acquiring a lock is not allowed to fail");
+        Ok((
+            coordinator.size.clone().into(),
+            coordinator
+                .nonce(&request)
+                .ok_or_else(|| CeremonyError::NotRegistered)?,
+        ))
+    }
+
+    /// Queries the server state
+    #[inline]
+    pub async fn query(
+        self,
+        request: Signed<QueryRequest, C>,
+    ) -> Result<QueryResponse<C, CIRCUIT_COUNT>, CeremonyError<C>>
+    where
+        C::Identifier: Serialize,
+        State<C::Pairing>: CanonicalSerialize + CanonicalDeserialize,
+        Challenge<C>: CanonicalSerialize + CanonicalDeserialize,
+    {
+        let mut coordinator = self.coordinator.lock();
+        Self::preprocess_request(&mut coordinator.registry, &request)?;
+        if !coordinator.is_in_queue(&request.identifier)? {
+            coordinator.enqueue_participant(&request.identifier)?;
+        }
+        if coordinator.is_next(&request.identifier) {
+            Ok(QueryResponse::Mpc(coordinator.state_and_challenge()))
+        } else {
+            Ok(QueryResponse::QueuePosition(
+                coordinator
+                    .position(
+                        coordinator
+                            .get_participant(&request.identifier)
+                            .expect("Participant existence is checked in `process_request`."),
+                    )
+                    .expect("Participant should be always in the queue here"),
+            ))
+        }
     }
 }

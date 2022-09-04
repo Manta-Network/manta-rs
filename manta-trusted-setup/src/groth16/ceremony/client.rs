@@ -16,20 +16,20 @@
 
 //! Trusted Setup Client
 
-use crate::groth16::ceremony::{signature::Nonce, Ceremony, Participant};
-use manta_crypto::dalek::ed25519::Ed25519;
-
-/// Client
-pub struct Client<C, const CIRCUIT_COUNT: usize>
-where
-    C: Ceremony,
-{
-    /// Identifier
-    Identifier: C::Identifier,
-
-    /// Current Nonce
-    nonce: u64,
-
-    /// Private Key
-    private_key: Ed25519,
-}
+// use crate::groth16::ceremony::{signature::Nonce, Ceremony, Participant};
+// use manta_crypto::dalek::ed25519::Ed25519;
+//
+// /// Client
+// pub struct Client<C, const CIRCUIT_COUNT: usize>
+// where
+//     C: Ceremony,
+// {
+//     /// Identifier
+//     Identifier: C::Identifier,
+//
+//     /// Current Nonce
+//     nonce: u64,
+//
+//     /// Private Key
+//     private_key: Ed25519,
+// }

@@ -185,8 +185,8 @@ where
 #[derive(Deserialize, Serialize)]
 #[serde(
     bound(
-        serialize = "State<C>: CanonicalSerialize, Challenge<C>: CanonicalSerialize",
-        deserialize = "State<C>: CanonicalDeserialize, Challenge<C>: CanonicalDeserialize"
+        serialize = "State<C::Pairing>: CanonicalSerialize, Challenge<C>: CanonicalSerialize",
+        deserialize = "State<C::Pairing>: CanonicalDeserialize, Challenge<C>: CanonicalDeserialize"
     ),
     crate = "manta_util::serde",
     deny_unknown_fields
@@ -196,7 +196,7 @@ where
     C: Ceremony,
 {
     /// State
-    pub state: Array<BytesRepr<State<C>>, N>,
+    pub state: Array<BytesRepr<State<C::Pairing>>, N>,
 
     /// Challenge
     pub challenge: Array<BytesRepr<Challenge<C>>, N>,
@@ -208,8 +208,8 @@ where
 #[derive(Deserialize, Serialize)]
 #[serde(
     bound(
-        serialize = "State<C>: CanonicalSerialize, Proof<C>: CanonicalSerialize",
-        deserialize = "State<C>: CanonicalDeserialize, Proof<C>: CanonicalDeserialize"
+        serialize = "State<C::Pairing>: CanonicalSerialize, Proof<C>: CanonicalSerialize",
+        deserialize = "State<C::Pairing>: CanonicalDeserialize, Proof<C>: CanonicalDeserialize"
     ),
     crate = "manta_util::serde",
     deny_unknown_fields
@@ -219,7 +219,7 @@ where
     C: Ceremony,
 {
     /// State
-    pub state: Array<BytesRepr<State<C>>, CIRCUIT_COUNT>,
+    pub state: Array<BytesRepr<State<C::Pairing>>, CIRCUIT_COUNT>,
 
     /// Proof
     pub proof: Array<BytesRepr<Proof<C>>, CIRCUIT_COUNT>,
@@ -230,19 +230,13 @@ where
 #[serde(crate = "manta_util::serde", deny_unknown_fields)]
 pub struct ServerSize<const CIRCUIT_COUNT: usize>(pub Array<StateSize, CIRCUIT_COUNT>);
 
-/// State Size
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(crate = "manta_util::serde", deny_unknown_fields)]
-pub struct StateSize {
-    /// Size of gamma_abc_g1 in verifying key
-    pub gamma_abc_g1: usize,
-
-    /// Size of a_query, b_g1_query, and b_g2_query which are equal
-    pub a_b_g1_b_g2_query: usize,
-
-    /// Size of h_query
-    pub h_query: usize,
-
-    /// Size of l_query
-    pub l_query: usize,
+impl<const CIRCUIT_COUNT: usize> From<Array<StateSize, CIRCUIT_COUNT>>
+    for ServerSize<CIRCUIT_COUNT>
+{
+    fn from(inner: Array<StateSize, CIRCUIT_COUNT>) -> Self {
+        ServerSize(inner)
+    }
 }
+
+/// State Size
+pub type StateSize = crate::groth16::mpc::StateSize;
