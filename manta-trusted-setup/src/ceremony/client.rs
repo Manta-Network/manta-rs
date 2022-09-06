@@ -339,7 +339,7 @@ where // TODO: Clean traits here
     <C as CeremonyConfig>::Setup: Types<State = ProvingKey<E>>,
 {
     let network_client = KnownUrlClient::new("http://localhost:8080").expect("Should succeed.");
-    let (pk, sk) = get_client_keys()?;
+    let (sk, pk) = get_client_keys()?;
     println!(
         "{} Contacting Server for Meta Data...",
         style("[1/9]").bold().dim()

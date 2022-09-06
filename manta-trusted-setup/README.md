@@ -72,8 +72,8 @@ We provide a `dummy_register.csv` containing $5$ participants whose secrets are:
 
 | Name | Secret |
 | --- | --- |
-| Alice | theory traffic reject rain virus solution seat tip nuclear symptom dry number |
-| Bob | hollow sting riot invest patrol clock roof render still lock struggle salt |
-| Charlie | boat fence mansion budget negative thumb spoon enlist grow extra badge banana |
-| David | gown enroll caution desk swift soon scorpion ridge odor what near express |
-| Evan | square grace retreat stick still learn fold polar sugar axis isolate polar |
+| Alice |  excess fatal derive street fetch display nose vicious stadium fiction unfair timber |
+| Bob |  minor scout energy convince cat kite travel gauge use casual earn bronze |
+| Charlie |  expect edit beef load portion dentist sausage farm goddess borrow stick hip |
+| David | amused divide senior oven resource police funny actual duty cool credit feel |
+| Evan | more bag frown area fatigue nest soap salon case diagram movie coral |

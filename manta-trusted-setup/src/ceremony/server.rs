@@ -292,7 +292,7 @@ where
             &public_key,
             &signature,
         )
-        .expect("Verifying signature should succeed.");
+        .expect("Should verify the signature.");
         let participant = Participant {
             twitter,
             priority: match result[2].to_string().parse::<bool>().unwrap() {

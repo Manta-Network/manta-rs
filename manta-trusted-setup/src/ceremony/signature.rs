@@ -291,6 +291,9 @@ mod test {
                 &mut (),
             )
             .expect("Should verify the signature.");
+        let signature = sign::<_, Ed25519>(message, 0, &signing_key);
+        verify::<_, Ed25519>(message, 0, &verifying_key, &signature)
+            .expect("Should verify the signature.");
     }
 
     /// Key conversion is correct.
