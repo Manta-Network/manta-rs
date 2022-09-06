@@ -170,7 +170,7 @@ fn validity_check_with_fuzzing<C, R, A, M>(
 {
     let public_input = post.generate_proof_input();
     let proof = &post.validity_proof;
-    assert_valid_proof(verifying_context, &post);
+    assert_valid_proof(verifying_context, post);
     fuzz_public_input::<<C as Configuration>::ProofSystem, _>(
         verifying_context,
         &public_input,
