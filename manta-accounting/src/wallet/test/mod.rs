@@ -32,7 +32,7 @@ use alloc::{boxed::Box, sync::Arc, vec::Vec};
 use core::{fmt::Debug, future::Future, hash::Hash, marker::PhantomData, ops::AddAssign};
 use futures::StreamExt;
 use indexmap::IndexSet;
-use manta_crypto::rand::{CryptoRng, Distribution, Rand, RngCore, Sample};
+use manta_crypto::rand::{CryptoRng, Distribution, Rand, RngCore, Sample, SampleUniform};
 use manta_util::{future::LocalBoxFuture, iter::Iterable, num::CheckedSub, vec::VecExt};
 use parking_lot::Mutex;
 use statrs::{
@@ -490,6 +490,7 @@ where
     #[inline]
     async fn sample_deposit<R>(&mut self, rng: &mut R) -> Result<Option<Asset<C>>, Error<C, L, S>>
     where
+        C::AssetValue: SampleUniform,
         L: PublicBalanceOracle<C>,
         R: RngCore + ?Sized,
     {
@@ -498,14 +499,10 @@ where
             _ => return Ok(None),
         };
         match rng.select_item(assets) {
-            Some(asset) => {
-                /*
-                Ok(Some({
-                    Asset::<C>::new(asset.id, rng.gen_range(Default::default()..asset.value))
-                }))
-                */
-                todo!()
-            }
+            Some(asset) => Ok(Some(Asset::<C>::new(
+                asset.id,
+                rng.gen_range(Default::default()..asset.value),
+            ))),
             _ => Ok(None),
         }
     }
@@ -519,16 +516,15 @@ where
     #[inline]
     async fn sample_withdraw<R>(&mut self, rng: &mut R) -> Result<Option<Asset<C>>, Error<C, L, S>>
     where
+        C::AssetValue: SampleUniform,
         R: RngCore + ?Sized,
     {
         self.sync().await?;
         match rng.select_item(self.wallet.assets().convert_iter()) {
-            Some((id, value)) => {
-                /*
-                Ok(Some(id.sample_up_to(*value, rng)))
-                */
-                todo!()
-            }
+            Some((id, value)) => Ok(Some(Asset::<C>::new(
+                id.clone(),
+                rng.gen_range(Default::default()..value.clone()),
+            ))),
             _ => Ok(None),
         }
     }
@@ -558,6 +554,7 @@ where
     #[inline]
     async fn sample_to_private<R>(&mut self, rng: &mut R) -> MaybeAction<C, L, S>
     where
+        C::AssetValue: SampleUniform,
         L: PublicBalanceOracle<C>,
         R: RngCore + ?Sized,
     {
@@ -603,6 +600,7 @@ where
         address: A,
     ) -> MaybeAction<C, L, S>
     where
+        C::AssetValue: SampleUniform,
         L: PublicBalanceOracle<C>,
         R: RngCore + ?Sized,
         A: FnOnce(&mut R) -> Result<Option<Address<C>>, Error<C, L, S>>,
@@ -670,6 +668,7 @@ where
     #[inline]
     async fn sample_to_public<R>(&mut self, rng: &mut R) -> MaybeAction<C, L, S>
     where
+        C::AssetValue: SampleUniform,
         L: PublicBalanceOracle<C>,
         R: RngCore + ?Sized,
     {
@@ -787,6 +786,7 @@ where
 impl<C, L, S, B> sim::ActionSimulation for Simulation<C, L, S, B>
 where
     C: Configuration,
+    C::AssetValue: SampleUniform,
     L: Ledger<C> + PublicBalanceOracle<C>,
     S: signer::Connection<C, Checkpoint = L::Checkpoint>,
     B: BalanceState<C::AssetId, C::AssetValue>,
@@ -971,7 +971,7 @@ impl Config {
     where
         C: Configuration,
         C::AssetId: Ord,
-        C::AssetValue: AddAssign,
+        C::AssetValue: AddAssign + SampleUniform,
         for<'v> &'v C::AssetValue: CheckedSub<Output = C::AssetValue>,
         L: Ledger<C> + PublicBalanceOracle<C>,
         S: signer::Connection<C, Checkpoint = L::Checkpoint>,
