@@ -108,3 +108,18 @@ where
     }
     validity
 }
+
+/// Testing Suites
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    /// Tests if log and loading data is correct.
+    #[test]
+    fn log_load_file_is_correct() {
+        let data = "Testing data".to_string();
+        log_to_file(&"data/test_transcript.data", &data);
+        let loaded_data: String = load_from_file(&"data/test_transcript.data");
+        assert_eq!(data, loaded_data);
+    }
+}

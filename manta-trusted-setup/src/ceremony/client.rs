@@ -27,7 +27,7 @@ use crate::{
             ServerSize, Signed,
         },
         participant::HasIdentifier,
-        signature::{ed_dalek::Ed25519, sign},
+        signature::{ed_dalek::Ed25519, sign, Nonce as _},
         util::check_state_size,
     },
     mpc::{Contribute, Types},
@@ -94,12 +94,14 @@ where
     where
         C::Participant: Clone,
     {
-        Signed::new(
+        let signed_message = Signed::new(
             QueryRequest,
             self.identifier.clone(),
             &mut self.nonce,
             &self.private_key,
-        )
+        );
+        self.nonce = self.nonce.increment();
+        signed_message
     }
 
     /// Contributes to the state on the server.
@@ -139,7 +141,7 @@ where
             style("[8/9]").bold().dim(),
             style("3").bold().blue(),
         );
-        Signed::new(
+        let signed_message = Signed::new(
             ContributeRequest {
                 contribute_state: ContributeState {
                     state,
@@ -149,7 +151,9 @@ where
             self.identifier.clone(),
             &mut self.nonce,
             &self.private_key,
-        )
+        );
+        self.nonce = self.nonce.increment();
+        signed_message
     }
 }
 
