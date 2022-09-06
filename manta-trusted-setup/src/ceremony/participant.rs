@@ -63,7 +63,7 @@ pub trait HasIdentifier {
 }
 
 /// Participant
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(
     bound(
         serialize = "S::VerifyingKey: Serialize, UserPriority: Serialize",

@@ -20,6 +20,7 @@ use super::{
     message::ServerSize,
     participant::{HasContributed, Participant, UserPriority},
     signature::{ed_dalek::Ed25519, verify},
+    util::load_from_file_bincode,
 };
 use crate::{
     ceremony::{
@@ -28,7 +29,7 @@ use crate::{
         message::{CeremonyError, ContributeRequest, QueryRequest, QueryResponse, Signed},
         registry::Registry,
         signature::{check_nonce, HasNonce, HasPublicKey, Nonce as _, SignatureScheme},
-        util::{load_from_file, log_to_file},
+        util::log_to_file,
     },
     util::AsBytes,
 };
@@ -242,7 +243,7 @@ where
     ParticipantIdentifier<C>: DeserializeOwned,
 {
     Server {
-        coordinator: Arc::new(Mutex::new(load_from_file(recovery))),
+        coordinator: Arc::new(Mutex::new(load_from_file_bincode(recovery))),
         recovery_path: backup,
     }
 }
@@ -306,4 +307,43 @@ where
         map.insert(participant.public_key, participant);
     }
     Registry::new(map)
+}
+
+/// Testing Suites
+#[cfg(test)]
+mod test {
+    use super::load_registry;
+    use crate::ceremony::{
+        config::g16_bls12_381::{init_server, Config, Groth16BLS12381},
+        signature::ed_dalek::Ed25519,
+        util::log_to_file,
+    };
+    use std::{ops::Deref, path::Path};
+
+    #[test]
+    #[ignore]
+    fn log_and_load_server_is_correct() {
+        let server = init_server::<Config, Groth16BLS12381, _, 2>(
+            "data/dummy_register.csv".to_string(),
+            "data".to_string(),
+        );
+        let coordinator = server.coordinator.lock();
+        log_to_file(
+            &Path::new(&server.recovery_path)
+                .join(format!("transcript{}.data", coordinator.num_contributions)),
+            &coordinator.deref(),
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn log_and_load_registry_is_correct() {
+        let registry =
+            load_registry::<Groth16BLS12381, _, Ed25519>("data/dummy_register.csv".to_string());
+        println!("registry: {:?}", registry);
+        log_to_file(
+            &Path::new("data").join(format!("transcript{}.data", 0)),
+            &registry,
+        );
+    }
 }

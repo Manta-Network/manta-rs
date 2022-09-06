@@ -36,7 +36,7 @@ use manta_util::{
     serde::{de::DeserializeOwned, Serialize},
     Array,
 };
-use std::{fmt::Debug, fs::File, io::Write, path::Path, time::Instant};
+use std::{fmt::Debug, fs::File, io::{Write, Read}, path::Path, time::Instant};
 
 /// Logs `data` to a disk file at `path`.
 #[inline]
@@ -46,9 +46,24 @@ where
     P: AsRef<Path>,
 {
     let mut file = File::create(path).expect("Open file should succeed.");
-    serde_json::to_writer(&mut file, &data)
+    let encoded = bincode::serialize(data).expect("");
+    file.write_all(&encoded)
         .expect("Writing phase one parameters to disk should succeed.");
     file.flush().expect("Flushing file should succeed.");
+}
+
+/// Loads `data` from a disk file at `path`.
+#[inline]
+pub fn load_from_file_bincode<T, P>(path: P) -> T
+where
+    P: AsRef<Path> + Debug,
+    T: DeserializeOwned,
+{
+    let mut file = File::open(path).expect("Opening file should succeed.");
+    let mut buf = Vec::new();
+    file.read_to_end(&mut buf)
+        .expect("Reading data should succeed.");
+    bincode::deserialize(&buf[..]).unwrap()
 }
 
 /// Loads `data` from a disk file at `path`.
@@ -119,7 +134,7 @@ mod test {
     fn log_load_file_is_correct() {
         let data = "Testing data".to_string();
         log_to_file(&"data/test_transcript.data", &data);
-        let loaded_data: String = load_from_file(&"data/test_transcript.data");
+        let loaded_data: String = load_from_file_bincode(&"data/test_transcript.data");
         assert_eq!(data, loaded_data);
     }
 }

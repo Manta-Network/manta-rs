@@ -21,7 +21,7 @@ use alloc::collections::BTreeMap;
 use manta_util::serde::{Deserialize, Serialize};
 
 /// Registry
-#[derive(Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(
     bound(
         serialize = "K: Serialize, V: Serialize,",

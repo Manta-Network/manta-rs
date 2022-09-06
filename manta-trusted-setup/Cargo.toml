@@ -24,9 +24,6 @@ is-it-maintained-issue-resolution = { repository = "Manta-Network/manta-rs" }
 is-it-maintained-open-issues = { repository = "Manta-Network/manta-rs" }
 maintenance = { status = "actively-developed" }
 
-# [[bin]]
-# name = "groth16_phase2_server"
-
 [features]
 # Rayon Parallelization
 rayon = ["manta-util/rayon"]
@@ -42,6 +39,7 @@ ark-snark = { version = "0.3.0", default-features = false } #TODO
 ark-std = { version = "0.3.0", default-features = false, features = ["std"] }
 async-std = { version = "1.6.0", features = ["attributes", "tokio1"] }
 blake2 = { version = "0.10.4", default-features = false }
+bincode = { version = "1.3.3", default-features = false }
 bs58 = { version = "0.4", default-features = false, features = ["alloc"] }
 byteorder = { version = "1.4.3", default-features = false }
 clap = { version = "3.2.16", default-features = false, features = ["color", "derive", "std", "suggestions", "unicode", "wrap_help"] }
