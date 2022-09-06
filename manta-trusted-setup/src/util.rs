@@ -395,7 +395,7 @@ where
     #[inline]
     fn hash(&self, challenge: &[u8; N], ratio: (&P::G1, &P::G1)) -> P::G2 {
         let mut hasher = BlakeHasher::default();
-        hasher.0.update(&[self.domain_tag]);
+        hasher.0.update([self.domain_tag]);
         hasher.0.update(challenge);
         ratio.0.serialize(&mut hasher).unwrap();
         ratio.1.serialize(&mut hasher).unwrap();
