@@ -18,22 +18,71 @@
 
 use crate::{
     groth16::{
-        ceremony::{signature::Nonce as _, Ceremony, Nonce, Proof, Signature, SigningKey},
-        mpc::State,
+        ceremony::{signature::sign, Ceremony, CeremonyError, Nonce, Proof, Signature, SigningKey},
+        mpc::{State, StateSize},
     },
     mpc::Challenge,
-    utils::BytesRepr,
 };
-use derivative::Derivative;
 use manta_crypto::arkworks::serialize::{CanonicalDeserialize, CanonicalSerialize};
 use manta_util::{
-    serde,
-    serde::{Deserialize, Deserializer, Serialize, Serializer},
-    Array,
+    serde::{Deserialize, Serialize},
+    Array, BytesRepr,
 };
-use std::marker::PhantomData;
 
-use super::signature::sign;
+/// MPC States
+#[derive(Deserialize, Serialize)]
+#[serde(
+    bound(
+        serialize = "State<C::Pairing>: CanonicalSerialize, Challenge<C>: CanonicalSerialize",
+        deserialize = "State<C::Pairing>: CanonicalDeserialize, Challenge<C>: CanonicalDeserialize"
+    ),
+    crate = "manta_util::serde",
+    deny_unknown_fields
+)]
+pub struct MPCState<C, const N: usize>
+where
+    C: Ceremony,
+{
+    /// State
+    pub state: Array<BytesRepr<State<C::Pairing>>, N>,
+
+    /// Challenge
+    pub challenge: Array<BytesRepr<Challenge<C>>, N>,
+}
+
+/// Contribute States
+#[derive(Deserialize, Serialize)]
+#[serde(
+    bound(
+        serialize = "State<C::Pairing>: CanonicalSerialize, Proof<C>: CanonicalSerialize",
+        deserialize = "State<C::Pairing>: CanonicalDeserialize, Proof<C>: CanonicalDeserialize"
+    ),
+    crate = "manta_util::serde",
+    deny_unknown_fields
+)]
+pub struct ContributeState<C, const CIRCUIT_COUNT: usize>
+where
+    C: Ceremony,
+{
+    /// State
+    pub state: Array<BytesRepr<State<C::Pairing>>, CIRCUIT_COUNT>,
+
+    /// Proof
+    pub proof: Array<BytesRepr<Proof<C>>, CIRCUIT_COUNT>,
+}
+
+/// Response for State Sizes
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(crate = "manta_util::serde", deny_unknown_fields)]
+pub struct ServerSize<const CIRCUIT_COUNT: usize>(pub Array<StateSize, CIRCUIT_COUNT>);
+
+impl<const CIRCUIT_COUNT: usize> From<Array<StateSize, CIRCUIT_COUNT>>
+    for ServerSize<CIRCUIT_COUNT>
+{
+    fn from(inner: Array<StateSize, CIRCUIT_COUNT>) -> Self {
+        ServerSize(inner)
+    }
+}
 
 /// Query Request
 #[derive(Deserialize, Serialize)]
@@ -103,9 +152,6 @@ pub struct Signed<T, C>
 where
     C: Ceremony,
 {
-    /// Participant
-    pub identifier: C::Identifier,
-
     /// Message
     pub message: T,
 
@@ -114,129 +160,37 @@ where
 
     /// Signature
     pub signature: Signature<C>,
+
+    /// Participant Identifier
+    pub identifier: C::Identifier,
 }
 
 impl<T, C> Signed<T, C>
 where
     C: Ceremony,
 {
-    /// Generates a signed message using user's identifier, nonce, and key pair, and increment nonce by 1.
+    /// Generates a signed message with `signing_key` on `message` and `nonce`.
     #[inline]
     pub fn new(
         message: T,
-        identifier: C::Identifier,
-        nonce: &mut Nonce<C>,
+        nonce: &Nonce<C>,
         signing_key: &SigningKey<C>,
-    ) -> Result<Self, ()>
+        identifier: C::Identifier,
+    ) -> Result<Self, CeremonyError<C>>
     where
         T: Serialize,
+        Nonce<C>: Clone,
     {
-        let signature = sign::<_, C::SignatureScheme>(&message, nonce.clone(), signing_key)?;
+        let signature = match sign::<_, C::SignatureScheme>(signing_key, nonce.clone(), &message) {
+            Ok(signature) => signature,
+            Err(_) => return Err(CeremonyError::<C>::BadRequest),
+        };
         let message = Signed {
             message,
-            identifier,
             nonce: nonce.clone(),
             signature,
+            identifier,
         };
-        nonce.increment();
         Ok(message)
     }
 }
-
-/// Ceremony Error
-///
-/// # Note
-///
-/// All errors here are visible to users.
-#[derive(PartialEq, Serialize, Deserialize, Derivative)]
-#[derivative(Debug(bound = "Nonce<C>: core::fmt::Debug"))]
-#[serde(
-    bound(
-        serialize = "Nonce<C>: Serialize",
-        deserialize = "Nonce<C>: Deserialize<'de>",
-    ),
-    crate = "manta_util::serde",
-    deny_unknown_fields
-)]
-pub enum CeremonyError<C>
-where
-    C: Ceremony,
-{
-    /// Malformed request that should not come from official client
-    BadRequest,
-
-    /// Nonce not in sync, and client needs to update the nonce
-    NonceNotInSync(Nonce<C>),
-
-    /// Not Registered
-    NotRegistered,
-
-    /// Already Contributed
-    AlreadyContributed,
-
-    /// Not Your Turn
-    NotYourTurn,
-
-    /// Timed-out
-    Timeout,
-}
-
-/// MPC States
-#[derive(Deserialize, Serialize)]
-#[serde(
-    bound(
-        serialize = "State<C::Pairing>: CanonicalSerialize, Challenge<C>: CanonicalSerialize",
-        deserialize = "State<C::Pairing>: CanonicalDeserialize, Challenge<C>: CanonicalDeserialize"
-    ),
-    crate = "manta_util::serde",
-    deny_unknown_fields
-)]
-pub struct MPCState<C, const N: usize>
-where
-    C: Ceremony,
-{
-    /// State
-    pub state: Array<BytesRepr<State<C::Pairing>>, N>,
-
-    /// Challenge
-    pub challenge: Array<BytesRepr<Challenge<C>>, N>,
-
-    __: PhantomData<C>,
-}
-
-/// Contribute States
-#[derive(Deserialize, Serialize)]
-#[serde(
-    bound(
-        serialize = "State<C::Pairing>: CanonicalSerialize, Proof<C>: CanonicalSerialize",
-        deserialize = "State<C::Pairing>: CanonicalDeserialize, Proof<C>: CanonicalDeserialize"
-    ),
-    crate = "manta_util::serde",
-    deny_unknown_fields
-)]
-pub struct ContributeState<C, const CIRCUIT_COUNT: usize>
-where
-    C: Ceremony,
-{
-    /// State
-    pub state: Array<BytesRepr<State<C::Pairing>>, CIRCUIT_COUNT>,
-
-    /// Proof
-    pub proof: Array<BytesRepr<Proof<C>>, CIRCUIT_COUNT>,
-}
-
-/// Response for State Sizes
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(crate = "manta_util::serde", deny_unknown_fields)]
-pub struct ServerSize<const CIRCUIT_COUNT: usize>(pub Array<StateSize, CIRCUIT_COUNT>);
-
-impl<const CIRCUIT_COUNT: usize> From<Array<StateSize, CIRCUIT_COUNT>>
-    for ServerSize<CIRCUIT_COUNT>
-{
-    fn from(inner: Array<StateSize, CIRCUIT_COUNT>) -> Self {
-        ServerSize(inner)
-    }
-}
-
-/// State Size
-pub type StateSize = crate::groth16::mpc::StateSize;

@@ -20,7 +20,6 @@ use alloc::vec::Vec;
 use manta_crypto::{
     dalek::ed25519::{Ed25519, SignatureError},
     signature,
-    signature::{Sign, Verify},
 };
 use manta_util::{serde::Serialize, AsBytes};
 
@@ -153,11 +152,11 @@ where
         .map_err(VerificationError::Error)
 }
 
-// impl<N> SignatureScheme for Ed25519<Message<N>>
-// where
-//     N: Nonce + Default,
-// {
-//     type Nonce = N;
-//
-//     type Error = SignatureError;
-// }
+impl<N> SignatureScheme for Ed25519<Message<N>>
+where
+    N: AsBytes + Default + Nonce,
+{
+    type Nonce = N;
+
+    type Error = SignatureError;
+}

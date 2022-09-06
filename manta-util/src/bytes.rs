@@ -16,6 +16,8 @@
 
 //! Utilities for Manipulating Bytes
 
+use core::marker::PhantomData;
+
 #[cfg(feature = "alloc")]
 use alloc::vec::Vec;
 
@@ -105,4 +107,19 @@ impl<const N: usize> IntoBytes<N> for [u8; N] {
 pub trait AsBytes {
     /// Returns an owned byte representation of `self`.
     fn as_bytes(&self) -> Vec<u8>;
+}
+
+#[cfg(feature = "serde")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "serde")))]
+/// Store `T` in bytes form.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(
+    bound(serialize = r"", deserialize = "",),
+    crate = "crate::serde",
+    deny_unknown_fields
+)]
+pub struct BytesRepr<T> {
+    /// The bytes representation of `T`
+    pub bytes: Vec<u8>,
+    __: PhantomData<T>,
 }

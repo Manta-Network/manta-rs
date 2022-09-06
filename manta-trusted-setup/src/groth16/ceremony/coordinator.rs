@@ -14,18 +14,17 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Groth16 Trusted Setup Ceremony Coordinator
+//! Coordinator
 
 use crate::{
     groth16::{
-        ceremony::{registry::Registry, Ceremony, Participant},
+        ceremony::{registry::Registry, Ceremony, Nonce, Participant},
         mpc::StateSize,
     },
     mpc::{Challenge, Proof, State},
 };
 use manta_util::{collections::vec_deque::MultiVecDeque, time::lock::Timed, Array, BoxArray};
 
-use crate::groth16::ceremony::Nonce;
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
 
@@ -48,24 +47,20 @@ pub type Queue<C, const LEVEL_COUNT: usize> =
     derive(Deserialize, Serialize),
     serde(
         bound(
-            deserialize = r"
-            R: Deserialize<'de>,
-            Queue<C, LEVEL_COUNT>: Deserialize<'de>,
-            C::Identifier: Deserialize<'de>,
-            State<C>: Deserialize<'de>,
-            Challenge<C>: Deserialize<'de>,
-            Proof<C>: Deserialize<'de>,
-            C::Participant: Deserialize<'de>,
-        ",
             serialize = r"
-            R: Serialize,
-            Queue<C, LEVEL_COUNT>: Serialize,
-            C::Identifier: Serialize,
-            State<C>: Serialize,
-            Challenge<C>: Serialize,
-            Proof<C>: Serialize,
-            C::Participant: Serialize,
-        "
+                R: Serialize,
+                State<C>: Serialize,
+                Challenge<C>: Serialize,
+                Proof<C>: Serialize,
+                C::Participant: Serialize,
+            ",
+            deserialize = r"
+                R: Deserialize<'de>,
+                State<C>: Deserialize<'de>,
+                Challenge<C>: Deserialize<'de>,
+                Proof<C>: Deserialize<'de>,
+                C::Participant: Deserialize<'de>,
+            "
         ),
         crate = "manta_util::serde",
         deny_unknown_fields
@@ -74,16 +69,10 @@ pub type Queue<C, const LEVEL_COUNT: usize> =
 pub struct Coordinator<C, R, const CIRCUIT_COUNT: usize, const LEVEL_COUNT: usize>
 where
     C: Ceremony,
-    R: Registry<C::Identifier, C::Participant, Nonce<C>>,
+    R: Registry<C::Identifier, C::Participant>,
 {
     /// Participant Registry
     pub registry: R,
-
-    /// Participant Queue
-    pub queue: Queue<C, LEVEL_COUNT>,
-
-    /// Participant Lock
-    pub participant_lock: Timed<Option<C::Identifier>>,
 
     /// State
     pub state: StateArray<C, CIRCUIT_COUNT>,
@@ -104,20 +93,22 @@ where
 
     /// Current Round Number
     pub round: usize,
+
+    /// Participant Queue
+    #[serde(skip)]
+    pub queue: Queue<C, LEVEL_COUNT>,
+
+    /// Participant Lock
+    #[serde(skip)]
+    pub participant_lock: Timed<Option<C::Identifier>>,
 }
 
 impl<C, R, const CIRCUIT_COUNT: usize, const LEVEL_COUNT: usize>
     Coordinator<C, R, CIRCUIT_COUNT, LEVEL_COUNT>
 where
     C: Ceremony,
-    R: Registry<C::Identifier, C::Participant, Nonce<C>>,
+    R: Registry<C::Identifier, C::Participant>,
 {
-    /// Returns the current round number.
-    #[inline]
-    pub fn round(&self) -> usize {
-        self.round
-    }
-
     /// Returns a shared reference to the participant data for `id` from the registry.
     #[inline]
     pub fn participant(&self, id: &C::Identifier) -> Option<&C::Participant> {
@@ -143,9 +134,9 @@ where
             .push_back_at(participant.level(), participant.id().clone());
     }
 
-    ///
+    /// Gets nonce of a participant with `id`.
     #[inline]
     pub fn nonce(&self, id: &C::Identifier) -> Option<Nonce<C>> {
-        self.registry.get_nonce(id)
+        Some(self.registry.get(id)?.get_nonce())
     }
 }

@@ -53,8 +53,8 @@ ark-std = { version = "0.3.0", default-features = false }
 bincode = { version = "1.3.3", optional = true, default-features = false }
 blake2 = { version = "0.10.4", default-features = false }
 derivative = { version = "2.2.0", default-features = false, features = ["use_core"] }
-manta-crypto = { path = "../manta-crypto", default-features = false, features = ["arkworks", "getrandom", "rand_chacha"] }
-manta-util = { path = "../manta-util", default-features = false }
+manta-crypto = { path = "../manta-crypto", default-features = false, features = ["arkworks", "getrandom", "rand_chacha", "dalek"] }
+manta-util = { path = "../manta-util", default-features = false, features = ["serde"] }
 
 [dev-dependencies]
 ark-bls12-381 = { version = "0.3.0", default-features = false, features = ["curve", "scalar_field"] }

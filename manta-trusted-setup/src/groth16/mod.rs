@@ -16,9 +16,12 @@
 
 //! Groth16 Trusted Setup
 
-pub mod ceremony;
 pub mod kzg;
 pub mod mpc;
+
+#[cfg(all(feature = "bincode", feature = "serde"))]
+#[cfg_attr(doc_cfg, doc(cfg(all(feature = "bincode", feature = "serde"))))]
+pub mod ceremony;
 
 #[cfg(feature = "ppot")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "ppot")))]
@@ -26,45 +29,3 @@ pub mod ppot;
 
 #[cfg(test)]
 pub mod test;
-
-use derivative::Derivative;
-use manta_util::serde::{Serialize, Deserialize};
-use crate::groth16::ceremony::{Ceremony, Nonce};
-
-/// Ceremony Error
-///
-/// # Note
-///
-/// All errors here are visible to users.
-#[derive(PartialEq, Serialize, Deserialize, Derivative)]
-#[derivative(Debug(bound = "Nonce<C>: core::fmt::Debug"))]
-#[serde(
-bound(
-serialize = "Nonce<C>: Serialize",
-deserialize = "Nonce<C>: Deserialize<'de>",
-),
-crate = "manta_util::serde",
-deny_unknown_fields
-)]
-pub enum CeremonyError<C>
-    where
-        C: Ceremony,
-{
-    /// Malformed request that should not come from official client
-    BadRequest,
-
-    /// Nonce not in sync, and client needs to update the nonce
-    NonceNotInSync(Nonce<C>),
-
-    /// Not Registered
-    NotRegistered,
-
-    /// Already Contributed
-    AlreadyContributed,
-
-    /// Not Your Turn
-    NotYourTurn,
-
-    /// Timed-out
-    Timeout,
-}
