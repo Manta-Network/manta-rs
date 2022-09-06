@@ -533,7 +533,6 @@ impl<R> Rand for R where R: RngCore + ?Sized {}
 
 /// Fuzzing module
 pub mod fuzz {
-
     use super::*;
 
     #[cfg(feature = "arkworks")]
@@ -580,10 +579,8 @@ pub mod fuzz {
     #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
     pub struct BigIntegerMarker;
 
-    #[cfg(feature = "arkworks")]
-    #[cfg(feature = "rand")]
-    #[cfg_attr(doc_cfg, doc(cfg(feature = "arkworks")))]
-    #[cfg_attr(doc_cfg, doc(cfg(feature = "rand")))]
+    #[cfg(all(feature = "arkworks", feature = "rand"))]
+    #[cfg_attr(doc_cfg, doc(cfg(all(feature = "arkworks", feature = "rand"))))]
     impl<B> Fuzz<BigIntegerMarker> for B
     where
         B: BigInteger,
@@ -601,10 +598,8 @@ pub mod fuzz {
     #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
     pub struct PrimeFieldMarker;
 
-    #[cfg(feature = "arkworks")]
-    #[cfg(feature = "rand")]
-    #[cfg_attr(doc_cfg, doc(cfg(feature = "arkworks")))]
-    #[cfg_attr(doc_cfg, doc(cfg(feature = "rand")))]
+    #[cfg(all(feature = "arkworks", feature = "rand"))]
+    #[cfg_attr(doc_cfg, doc(cfg(all(feature = "arkworks", feature = "rand"))))]
     impl<P> Fuzz<PrimeFieldMarker> for P
     where
         P: PrimeField,

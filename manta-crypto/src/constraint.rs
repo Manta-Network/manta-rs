@@ -373,20 +373,18 @@ pub mod test {
 
     /// Checks that attempting to verify `proof` against fuzzed inputs fails.
     #[inline]
-    pub fn fuzz_public_input<P, F, R>(
+    pub fn fuzz_public_input<P, F>(
         context: &P::VerifyingContext,
         input: &P::Input,
         proof: &P::Proof,
         mut fuzzer: F,
-        rng: &mut R,
     ) where
-        R: CryptoRng + RngCore + ?Sized,
         P: ProofSystem,
         P::Error: Debug,
-        F: FnMut(&P::Input, &mut R) -> P::Input,
+        F: FnMut(&P::Input) -> P::Input,
     {
         assert!(
-            !P::verify(context, &fuzzer(input, rng), proof).expect("Unable to verify proof."),
+            !P::verify(context, &fuzzer(input), proof).expect("Unable to verify proof."),
             "Proof remained valid after fuzzing."
         );
     }

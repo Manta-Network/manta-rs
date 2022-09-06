@@ -17,13 +17,19 @@
 //! Manta Pay Transfer Testing
 
 use crate::{
-    config::{Config, FullParameters, Mint, PrivateTransfer, Proof, ProofSystem, Reclaim},
+    config::{
+        Config, FullParameters, Mint, PrivateTransfer, Proof, ProofSystem, Reclaim, TransferPost,
+    },
+    crypto::constraint::arkworks::groth16::VerifyingContext,
     test::payment::UtxoAccumulator,
     util::scale::{assert_valid_codec, assert_valid_io_codec},
 };
+use ark_bls12_381::Parameters;
+use ark_std::rand::RngCore;
 use manta_accounting::transfer::{test::assert_valid_proof, Configuration};
 use manta_crypto::{
     accumulator::Accumulator,
+    arkworks::ec::bls12::Bls12,
     constraint::{measure::Measure, test::fuzz_public_input, ProofSystem as _},
     rand::{fuzz::Fuzz, OsRng, Rand},
 };
@@ -146,6 +152,33 @@ fn generate_proof_input_is_compatibile() {
     );
 }
 
+/// Checks that a [`TransferPost`] is valid, and that its proof cannot be verified when tested against a fuzzed
+/// or randomized `public_input`.
+#[inline]
+fn validity_check_with_fuzzing<R>(
+    verifying_context: &VerifyingContext<Bls12<Parameters>>,
+    post: &TransferPost,
+    rng: &mut R,
+) where
+    R: RngCore + ?Sized,
+{
+    let public_input = post.generate_proof_input();
+    let proof = &post.validity_proof;
+    assert_valid_proof(verifying_context, &post);
+    fuzz_public_input::<<Config as Configuration>::ProofSystem, _>(
+        verifying_context,
+        &public_input,
+        proof,
+        |element| element.fuzz(rng),
+    );
+    fuzz_public_input::<<Config as Configuration>::ProofSystem, _>(
+        verifying_context,
+        &public_input,
+        proof,
+        |field_elements| field_elements.iter().map(|_| rng.gen()).collect(),
+    );
+}
+
 /// Tests a [`Mint`] proof is valid verified against the right public input and invalid
 /// when the public input has been fuzzed or randomly generated.
 #[test]
@@ -166,23 +199,7 @@ fn mint_proof_validity() {
         &mut rng,
     )
     .expect("Random Mint should have produced a proof.");
-    let public_input = post.generate_proof_input();
-    let proof = &post.validity_proof;
-    assert_valid_proof(&verifying_context, &post);
-    fuzz_public_input::<<Config as Configuration>::ProofSystem, _, OsRng>(
-        &verifying_context,
-        &public_input,
-        proof,
-        |element, random| element.fuzz(random),
-        &mut rng,
-    );
-    fuzz_public_input::<<Config as Configuration>::ProofSystem, _, OsRng>(
-        &verifying_context,
-        &public_input,
-        proof,
-        |field_elements, random| field_elements.iter().map(|_| random.gen()).collect(),
-        &mut rng,
-    );
+    validity_check_with_fuzzing(&verifying_context, &post, &mut rng);
 }
 
 /// Tests a [`PrivateTransfer`] proof is valid verified against the right public input and invalid
@@ -204,24 +221,8 @@ fn private_transfer_proof_validity() {
         &mut utxo_accumulator,
         &mut rng,
     )
-    .expect("Random Mint should have produced a proof.");
-    let public_input = post.generate_proof_input();
-    let proof = &post.validity_proof;
-    assert_valid_proof(&verifying_context, &post);
-    fuzz_public_input::<<Config as Configuration>::ProofSystem, _, OsRng>(
-        &verifying_context,
-        &public_input,
-        proof,
-        |element, random| element.fuzz(random),
-        &mut rng,
-    );
-    fuzz_public_input::<<Config as Configuration>::ProofSystem, _, OsRng>(
-        &verifying_context,
-        &public_input,
-        proof,
-        |field_elements, random| field_elements.iter().map(|_| random.gen()).collect(),
-        &mut rng,
-    );
+    .expect("Random Private Transfer should have produced a proof.");
+    validity_check_with_fuzzing(&verifying_context, &post, &mut rng);
 }
 
 /// Tests a [`Reclaim`] proof is valid verified against the right public input and invalid
@@ -243,24 +244,8 @@ fn reclaim_proof_validity() {
         &mut utxo_accumulator,
         &mut rng,
     )
-    .expect("Random Mint should have produced a proof.");
-    let public_input = post.generate_proof_input();
-    let proof = &post.validity_proof;
-    assert_valid_proof(&verifying_context, &post);
-    fuzz_public_input::<<Config as Configuration>::ProofSystem, _, OsRng>(
-        &verifying_context,
-        &public_input,
-        proof,
-        |element, random| element.fuzz(random),
-        &mut rng,
-    );
-    fuzz_public_input::<<Config as Configuration>::ProofSystem, _, OsRng>(
-        &verifying_context,
-        &public_input,
-        proof,
-        |field_elements, random| field_elements.iter().map(|_| random.gen()).collect(),
-        &mut rng,
-    );
+    .expect("Random Reclaim should have produced a proof.");
+    validity_check_with_fuzzing(&verifying_context, &post, &mut rng);
 }
 
 /// Asserts that `proof` can be SCALE encoded and decoded with at least [`Vec`], [`Cursor`], and
