@@ -17,21 +17,19 @@
 //! Manta Pay Transfer Testing
 
 use crate::{
-    config::{
-        Config, FullParameters, Mint, PrivateTransfer, Proof, ProofSystem, Reclaim, TransferPost,
-    },
-    crypto::constraint::arkworks::groth16::VerifyingContext,
+    config::{FullParameters, Mint, PrivateTransfer, Proof, ProofSystem, Reclaim},
     test::payment::UtxoAccumulator,
     util::scale::{assert_valid_codec, assert_valid_io_codec},
 };
-use ark_bls12_381::Parameters;
 use ark_std::rand::RngCore;
-use manta_accounting::transfer::{test::assert_valid_proof, Configuration};
+use core::fmt::Debug;
+use manta_accounting::transfer::{
+    test::assert_valid_proof, Configuration, ProofSystemError, TransferPost, VerifyingContext,
+};
 use manta_crypto::{
     accumulator::Accumulator,
-    arkworks::ec::bls12::Bls12,
-    constraint::{measure::Measure, test::fuzz_public_input, ProofSystem as _},
-    rand::{fuzz::Fuzz, OsRng, Rand},
+    constraint::{self, measure::Measure, test::fuzz_public_input},
+    rand::{fuzz::Fuzz, OsRng, Rand, Sample},
 };
 use std::io::Cursor;
 
@@ -41,7 +39,8 @@ fn sample_mint_context() {
     let mut rng = OsRng;
     let cs = Mint::unknown_constraints(FullParameters::new(&rng.gen(), &rng.gen()));
     println!("Mint: {:?}", cs.measure());
-    ProofSystem::compile(&(), cs, &mut rng).expect("Unable to generate Mint context.");
+    <ProofSystem as constraint::ProofSystem>::compile(&(), cs, &mut rng)
+        .expect("Unable to generate Mint context.");
 }
 
 /// Tests the generation of proving/verifying contexts for [`PrivateTransfer`].
@@ -50,7 +49,8 @@ fn sample_private_transfer_context() {
     let mut rng = OsRng;
     let cs = PrivateTransfer::unknown_constraints(FullParameters::new(&rng.gen(), &rng.gen()));
     println!("PrivateTransfer: {:?}", cs.measure());
-    ProofSystem::compile(&(), cs, &mut rng).expect("Unable to generate PrivateTransfer context.");
+    <ProofSystem as constraint::ProofSystem>::compile(&(), cs, &mut rng)
+        .expect("Unable to generate PrivateTransfer context.");
 }
 
 /// Tests the generation of proving/verifying contexts for [`Reclaim`].
@@ -59,7 +59,8 @@ fn sample_reclaim_context() {
     let mut rng = OsRng;
     let cs = Reclaim::unknown_constraints(FullParameters::new(&rng.gen(), &rng.gen()));
     println!("Reclaim: {:?}", cs.measure());
-    ProofSystem::compile(&(), cs, &mut rng).expect("Unable to generate Reclaim context.");
+    <ProofSystem as constraint::ProofSystem>::compile(&(), cs, &mut rng)
+        .expect("Unable to generate Reclaim context.");
 }
 
 /// Tests the generation of a [`Mint`].
@@ -155,27 +156,32 @@ fn generate_proof_input_is_compatibile() {
 /// Checks that a [`TransferPost`] is valid, and that its proof cannot be verified when tested against a fuzzed
 /// or randomized `public_input`.
 #[inline]
-fn validity_check_with_fuzzing<R>(
-    verifying_context: &VerifyingContext<Bls12<Parameters>>,
-    post: &TransferPost,
+fn validity_check_with_fuzzing<C, R, A, M>(
+    verifying_context: &VerifyingContext<C>,
+    post: &TransferPost<C>,
     rng: &mut R,
 ) where
+    A: Clone + Sample + Fuzz<M>,
+    C: Configuration,
+    C::ProofSystem: constraint::ProofSystem<Input = Vec<A>>,
+    ProofSystemError<C>: Debug,
     R: RngCore + ?Sized,
+    TransferPost<C>: Debug,
 {
     let public_input = post.generate_proof_input();
     let proof = &post.validity_proof;
     assert_valid_proof(verifying_context, &post);
-    fuzz_public_input::<<Config as Configuration>::ProofSystem, _>(
+    fuzz_public_input::<<C as Configuration>::ProofSystem, _>(
         verifying_context,
         &public_input,
         proof,
-        |element| element.fuzz(rng),
+        |input| input.fuzz(rng),
     );
-    fuzz_public_input::<<Config as Configuration>::ProofSystem, _>(
+    fuzz_public_input::<<C as Configuration>::ProofSystem, _>(
         verifying_context,
         &public_input,
         proof,
-        |field_elements| field_elements.iter().map(|_| rng.gen()).collect(),
+        |input| (0..input.len()).map(|_| rng.gen()).collect(),
     );
 }
 

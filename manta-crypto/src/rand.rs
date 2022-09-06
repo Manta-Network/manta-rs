@@ -532,6 +532,8 @@ pub trait Rand: RngCore {
 impl<R> Rand for R where R: RngCore + ?Sized {}
 
 /// Fuzzing module
+#[cfg(feature = "test")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
 pub mod fuzz {
     use super::*;
 
