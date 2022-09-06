@@ -443,7 +443,7 @@ where
     P: Pairing,
     C: CeremonyConfig<Participant = Participant<S>, Setup = Groth16Phase2<Config>>,
     S: SignatureScheme<Vec<u8>, Nonce = u64, VerifyingKey = Array<u8, 32>>,
-    S::VerifyingKey: Ord + CanonicalDeserialize + CanonicalSerialize,
+    S::VerifyingKey: Ord,
 {
     let registry = load_registry::<C, _, S>(registry_path);
     let mpc_state0 = load_from_file::<MPCState<C, 1>, _>(&"data/prepared_mint.data");

@@ -269,7 +269,7 @@ where
     P: AsRef<Path>,
     C: CeremonyConfig<Participant = Participant<S>>,
     S: SignatureScheme<Vec<u8>, Nonce = u64, VerifyingKey = Array<u8, 32>>,
-    S::VerifyingKey: Ord + CanonicalDeserialize + CanonicalSerialize,
+    S::VerifyingKey: Ord,
 {
     let mut map = BTreeMap::new();
     for record in
