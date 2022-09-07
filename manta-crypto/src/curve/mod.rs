@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Elliptic Curves 
+//! Elliptic Curves
 
 #[cfg(feature = "bls12")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "bls12")))]
