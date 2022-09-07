@@ -18,10 +18,7 @@
 
 use crate::crypto::{
     constraint::arkworks::{Fp, FpVar, R1CS},
-    poseidon::{
-        self, encryption::BlockElement, hash::DomainTag, Constants, Field, FieldGeneration,
-        ParameterFieldType,
-    },
+    poseidon::{self, hash::DomainTag, Constants, Field, FieldGeneration, ParameterFieldType},
 };
 use manta_crypto::{
     arkworks::{
@@ -29,6 +26,7 @@ use manta_crypto::{
         r1cs_std::fields::FieldVar,
     },
     eclair::alloc::Constant,
+    poseidon::encryption::BlockElement,
 };
 
 /// Compiler Type.
@@ -228,21 +226,6 @@ where
     #[inline]
     fn sub(&self, rhs: &Self, _: &mut ()) -> Self {
         Self(self.0 - rhs.0)
-    }
-}
-
-impl<F> BlockElement for FpVar<F>
-where
-    F: PrimeField,
-{
-    #[inline]
-    fn add(&self, rhs: &Self, _: &mut ()) -> Self {
-        self + rhs
-    }
-
-    #[inline]
-    fn sub(&self, rhs: &Self, _: &mut ()) -> Self {
-        self - rhs
     }
 }
 

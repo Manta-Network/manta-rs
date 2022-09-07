@@ -17,6 +17,7 @@
 //! Poseidon Encryption Implementation
 
 use crate::{
+    arkworks::{constraint::FpVar, ff::PrimeField},
     constraint::{HasInput, Input},
     eclair::{
         self,
@@ -58,6 +59,21 @@ pub trait BlockElement<COM = ()> {
 
     /// Subtracts `rhs` from `self`.
     fn sub(&self, rhs: &Self, compiler: &mut COM) -> Self;
+}
+
+impl<F> BlockElement for FpVar<F>
+where
+    F: PrimeField,
+{
+    #[inline]
+    fn add(&self, rhs: &Self, _: &mut ()) -> Self {
+        self + rhs
+    }
+
+    #[inline]
+    fn sub(&self, rhs: &Self, _: &mut ()) -> Self {
+        self - rhs
+    }
 }
 
 /// Setup Block

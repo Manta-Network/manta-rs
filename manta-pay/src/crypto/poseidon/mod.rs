@@ -32,8 +32,8 @@ use manta_util::codec::{Decode, DecodeError, Encode, Read, Write};
 use manta_util::serde::{Deserialize, Serialize};
 
 pub mod compat;
-pub mod constants;
-pub mod encryption;
+// pub mod constants;
+// pub mod encryption;
 pub mod hash;
 pub mod lfsr;
 pub mod matrix;
