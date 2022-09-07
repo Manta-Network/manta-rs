@@ -18,28 +18,22 @@
 
 use crate::{
     groth16::{
-        ceremony::{registry::Registry, Ceremony, Nonce, Participant},
-        mpc::StateSize,
+        ceremony::{
+            message::{MPCState, Signed},
+            registry::Registry,
+            serde::{deserialize_array, serialize_array},
+            signature::{check_nonce, verify},
+            Ceremony, CeremonyError, Participant, Queue, UserPriority,
+        },
+        mpc::{Proof, State, StateSize},
     },
-    mpc::{Challenge, Proof, State},
+    mpc::Challenge,
 };
-use manta_util::{collections::vec_deque::MultiVecDeque, time::lock::Timed, Array, BoxArray};
+use manta_crypto::arkworks::serialize::{CanonicalDeserialize, CanonicalSerialize};
+use manta_util::{time::lock::Timed, Array, BoxArray};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
-
-/// Proof Array Type
-pub type ProofArray<C, const N: usize> = BoxArray<Proof<C>, N>;
-
-/// State Array Type
-pub type StateArray<C, const N: usize> = BoxArray<State<C>, N>;
-
-/// Challenge Array Type
-pub type ChallengeArray<C, const N: usize> = BoxArray<Challenge<C>, N>;
-
-/// Participant Queue Type
-pub type Queue<C, const LEVEL_COUNT: usize> =
-    MultiVecDeque<<C as Ceremony>::Identifier, LEVEL_COUNT>;
 
 /// Ceremony Coordinator
 #[cfg_attr(
@@ -49,17 +43,17 @@ pub type Queue<C, const LEVEL_COUNT: usize> =
         bound(
             serialize = r"
                 R: Serialize,
-                State<C>: Serialize,
                 Challenge<C>: Serialize,
-                Proof<C>: Serialize,
                 C::Participant: Serialize,
+                State<C::Pairing>: CanonicalSerialize,
+                Proof<C::Pairing>: Serialize,
             ",
             deserialize = r"
                 R: Deserialize<'de>,
-                State<C>: Deserialize<'de>,
                 Challenge<C>: Deserialize<'de>,
-                Proof<C>: Deserialize<'de>,
                 C::Participant: Deserialize<'de>,
+                State<C::Pairing>: CanonicalDeserialize,
+                Proof<C::Pairing>: Deserialize<'de>,
             "
         ),
         crate = "manta_util::serde",
@@ -72,35 +66,49 @@ where
     R: Registry<C::Identifier, C::Participant>,
 {
     /// Participant Registry
-    pub registry: R,
+    registry: R,
 
     /// State
-    pub state: StateArray<C, CIRCUIT_COUNT>,
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "serialize_array::<State<C::Pairing>, _, CIRCUIT_COUNT>",
+            deserialize_with = "deserialize_array::<'de, _, State<C::Pairing>, CIRCUIT_COUNT>"
+        )
+    )]
+    state: BoxArray<State<C::Pairing>, CIRCUIT_COUNT>,
 
     /// Challenge
-    pub challenge: ChallengeArray<C, CIRCUIT_COUNT>,
+    challenge: BoxArray<Challenge<C>, CIRCUIT_COUNT>,
 
     /// Latest Contributor
     ///
     /// This participant was the last one to perform a successful contribution to the ceremony.
-    pub latest_contributor: Option<C::Participant>,
+    latest_contributor: Option<C::Participant>,
 
     /// Latest Proof
-    pub latest_proof: Option<ProofArray<C, CIRCUIT_COUNT>>,
+    // #[cfg_attr(
+    //     feature = "serde",
+    //     serde(
+    //         serialize_with = "serialize_array::<Proof<C::Pairing>, _, CIRCUIT_COUNT>",
+    //         deserialize_with = "deserialize_array::<'de, _, Proof<C::Pairing>, CIRCUIT_COUNT>"
+    //     )
+    // )]
+    latest_proof: Option<BoxArray<Proof<C::Pairing>, CIRCUIT_COUNT>>, // TODO: Implement serialize
 
     /// State Sizes
-    pub size: Array<StateSize, CIRCUIT_COUNT>,
+    size: Array<StateSize, CIRCUIT_COUNT>,
 
     /// Current Round Number
-    pub round: usize,
+    round: usize,
 
     /// Participant Queue
     #[serde(skip)]
-    pub queue: Queue<C, LEVEL_COUNT>,
+    queue: Queue<C, LEVEL_COUNT>,
 
     /// Participant Lock
     #[serde(skip)]
-    pub participant_lock: Timed<Option<C::Identifier>>,
+    participant_lock: Timed<Option<C::Identifier>>,
 }
 
 impl<C, R, const CIRCUIT_COUNT: usize, const LEVEL_COUNT: usize>
@@ -109,6 +117,45 @@ where
     C: Ceremony,
     R: Registry<C::Identifier, C::Participant>,
 {
+    /// Builds a new [`Coordinator`].
+    #[inline]
+    pub fn new(
+        registry: R,
+        state: BoxArray<State<C::Pairing>, CIRCUIT_COUNT>,
+        challenge: BoxArray<Challenge<C>, CIRCUIT_COUNT>,
+        size: Array<StateSize, CIRCUIT_COUNT>,
+    ) -> Self {
+        Self {
+            registry,
+            state,
+            challenge,
+            latest_contributor: None,
+            latest_proof: None,
+            size,
+            round: 0,
+            queue: Default::default(),
+            participant_lock: Default::default(),
+        }
+    }
+
+    /// Returns the current round number.
+    #[inline]
+    pub fn round(&self) -> usize {
+        self.round
+    }
+
+    /// Returns the state size.
+    #[inline]
+    pub fn size(&self) -> &Array<StateSize, CIRCUIT_COUNT> {
+        &self.size
+    }
+
+    /// Returns the registry.
+    #[inline]
+    pub fn registry(&self) -> &R {
+        &self.registry
+    }
+
     /// Returns a shared reference to the participant data for `id` from the registry.
     #[inline]
     pub fn participant(&self, id: &C::Identifier) -> Option<&C::Participant> {
@@ -121,22 +168,51 @@ where
         self.registry.get_mut(id)
     }
 
-    /// Returns the current position for a `participant` in the queue.
-    #[inline]
-    pub fn position(&self, participant: &C::Participant) -> Option<usize> {
-        self.queue.position(participant.level(), participant.id())
+    ///
+    pub fn queue_mut(&mut self) -> &mut Queue<C, LEVEL_COUNT> {
+        &mut self.queue
     }
 
-    /// Inserts `participant` into the queue.
+    /// Gets the current state and challenge.
     #[inline]
-    pub fn insert_participant(&mut self, participant: &C::Participant) {
-        self.queue
-            .push_back_at(participant.level(), participant.id().clone());
+    pub fn state_and_challenge(&self) -> MPCState<C, CIRCUIT_COUNT>
+    where
+        Challenge<C>: Clone,
+    {
+        MPCState {
+            state: self.state.clone(),
+            challenge: self.challenge.clone(),
+        }
     }
 
-    /// Gets nonce of a participant with `id`.
+    /// Preprocesses a request by checking nonce and verifying signature.
     #[inline]
-    pub fn nonce(&self, id: &C::Identifier) -> Option<Nonce<C>> {
-        Some(self.registry.get(id)?.get_nonce())
+    pub fn preprocess_request<T>(
+        &mut self,
+        request: &Signed<T, C>,
+    ) -> Result<UserPriority, CeremonyError<C>>
+    where
+        T: Serialize,
+    {
+        if self.registry.has_contributed(&request.identifier) {
+            return Err(CeremonyError::AlreadyContributed);
+        }
+        let participant = self
+            .registry
+            .get_mut(&request.identifier)
+            .ok_or_else(|| CeremonyError::NotRegistered)?;
+        let participant_nonce = participant.get_nonce();
+        if !check_nonce(&participant_nonce, &request.nonce) {
+            return Err(CeremonyError::NonceNotInSync(participant_nonce));
+        };
+        verify::<T, C::SignatureScheme>(
+            participant.verifying_key(),
+            participant_nonce,
+            &request.message,
+            &request.signature,
+        )
+        .map_err(|_| CeremonyError::BadRequest)?;
+        participant.increment_nonce();
+        Ok(participant.level())
     }
 }

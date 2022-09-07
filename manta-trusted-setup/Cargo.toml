@@ -55,6 +55,7 @@ blake2 = { version = "0.10.4", default-features = false }
 derivative = { version = "2.2.0", default-features = false, features = ["use_core"] }
 manta-crypto = { path = "../manta-crypto", default-features = false, features = ["arkworks", "getrandom", "rand_chacha", "dalek"] }
 manta-util = { path = "../manta-util", default-features = false }
+parking_lot = { version = "0.12.1", default-features = false }
 
 [dev-dependencies]
 ark-bls12-381 = { version = "0.3.0", default-features = false, features = ["curve", "scalar_field"] }

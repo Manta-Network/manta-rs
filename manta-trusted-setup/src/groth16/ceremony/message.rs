@@ -27,17 +27,18 @@ use crate::{
     },
     mpc::Challenge,
 };
+use manta_crypto::arkworks::serialize::{CanonicalDeserialize, CanonicalSerialize};
 use manta_util::{
     serde::{Deserialize, Serialize},
-    Array,
+    Array, BoxArray,
 };
 
 /// MPC States
 #[derive(Serialize, Deserialize)]
 #[serde(
     bound(
-        serialize = "Challenge<C>: Serialize",
-        deserialize = "Challenge<C>: Deserialize<'de>",
+        serialize = "Challenge<C>: Serialize, State<C::Pairing>: CanonicalSerialize,",
+        deserialize = "Challenge<C>: Deserialize<'de>, State<C::Pairing>: CanonicalDeserialize,",
     ),
     crate = "manta_util::serde",
     deny_unknown_fields
@@ -54,14 +55,14 @@ where
             deserialize_with = "deserialize_array::<'de, _, State<C::Pairing>, CIRCUIT_COUNT>"
         )
     )]
-    pub state: Array<State<C::Pairing>, CIRCUIT_COUNT>,
+    pub state: BoxArray<State<C::Pairing>, CIRCUIT_COUNT>,
 
     /// Challenge
-    pub challenge: Array<Challenge<C>, CIRCUIT_COUNT>,
+    pub challenge: BoxArray<Challenge<C>, CIRCUIT_COUNT>,
 }
 
 /// Contribute States
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 #[serde(
     bound(serialize = "", deserialize = ""),
     crate = "manta_util::serde",
@@ -79,7 +80,7 @@ where
             deserialize_with = "deserialize_array::<'de, _, State<C::Pairing>, CIRCUIT_COUNT>"
         )
     )]
-    pub state: Array<State<C::Pairing>, CIRCUIT_COUNT>,
+    pub state: BoxArray<State<C::Pairing>, CIRCUIT_COUNT>,
 
     /// Proof
     #[cfg_attr(
@@ -89,7 +90,7 @@ where
             deserialize_with = "deserialize_array::<'de, _, Proof<C::Pairing>, CIRCUIT_COUNT>"
         )
     )]
-    pub proof: Array<Proof<C::Pairing>, CIRCUIT_COUNT>,
+    pub proof: BoxArray<Proof<C::Pairing>, CIRCUIT_COUNT>,
 }
 
 /// Response for State Sizes

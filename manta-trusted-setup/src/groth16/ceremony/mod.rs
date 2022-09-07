@@ -16,18 +16,21 @@
 
 //! Groth16 Trusted Setup Ceremony
 
-use crate::{groth16::ceremony::signature::SignatureScheme, mpc};
+use crate::{groth16::ceremony::signature::SignatureScheme, mpc::Types};
 use derivative::Derivative;
 use manta_crypto::{
     arkworks::pairing::Pairing,
     signature::{SignatureType, SigningKeyType, VerifyingKeyType},
 };
-use manta_util::serde::{Deserialize, Serialize};
+use manta_util::{
+    collections::vec_deque::MultiVecDeque,
+    serde::{Deserialize, Serialize},
+};
 
 // pub mod client;
 pub mod message;
 pub mod registry;
-// pub mod server;
+pub mod server;
 pub mod signature;
 
 #[cfg(feature = "serde")]
@@ -49,6 +52,10 @@ pub type SigningKey<C> = <<C as Ceremony>::SignatureScheme as SigningKeyType>::S
 
 /// Verifying Key
 pub type VerifyingKey<C> = <<C as Ceremony>::SignatureScheme as VerifyingKeyType>::VerifyingKey;
+
+/// Participant Queue Type
+pub type Queue<C, const LEVEL_COUNT: usize> =
+    MultiVecDeque<<C as Ceremony>::Identifier, LEVEL_COUNT>;
 
 /// Participant
 pub trait Participant {
@@ -72,7 +79,7 @@ pub trait Participant {
     /// # Note
     ///
     /// Lower level indicates a higher priority.
-    fn level(&self) -> usize;
+    fn level(&self) -> UserPriority;
 
     /// Returns nonce for `self`.
     fn get_nonce(&self) -> Self::Nonce;
@@ -82,7 +89,7 @@ pub trait Participant {
 }
 
 /// Ceremony Configuration
-pub trait Ceremony: mpc::Types {
+pub trait Ceremony: Types {
     /// Pairing Type
     type Pairing: Pairing;
 
@@ -136,4 +143,41 @@ where
 
     /// Timed-out
     Timeout,
+
+    /// Unexpected Server Error
+    Unexpected,
+}
+
+/// Priority
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(
+    bound(deserialize = "", serialize = ""),
+    crate = "manta_util::serde",
+    deny_unknown_fields
+)]
+pub enum UserPriority {
+    /// High Priority
+    High,
+
+    /// Normal Priority
+    Normal,
+}
+
+impl From<usize> for UserPriority {
+    fn from(priority: usize) -> Self {
+        match priority {
+            0 => Self::High,
+            1 => Self::Normal,
+            _ => unimplemented!(),
+        }
+    }
+}
+
+impl From<UserPriority> for usize {
+    fn from(priority: UserPriority) -> Self {
+        match priority {
+            UserPriority::High => 0,
+            UserPriority::Normal => 1,
+        }
+    }
 }

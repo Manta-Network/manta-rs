@@ -19,7 +19,7 @@
 use manta_crypto::arkworks::serialize::{CanonicalDeserialize, CanonicalSerialize};
 use manta_util::{
     serde::{Deserialize, Deserializer, Serialize, Serializer},
-    Array,
+    BoxArray,
 };
 
 /// Uses `serializer` to serialize `data` that implements `CanonicalSerialize`.
@@ -48,7 +48,7 @@ where
 ///
 #[inline]
 pub fn serialize_array<T, S, const N: usize>(
-    data: &Array<T, N>,
+    data: &BoxArray<T, N>,
     serializer: S,
 ) -> Result<S::Ok, S::Error>
 where
@@ -66,7 +66,7 @@ where
 #[inline]
 pub fn deserialize_array<'de, D, T, const N: usize>(
     deserializer: D,
-) -> Result<Array<T, N>, D::Error>
+) -> Result<BoxArray<T, N>, D::Error>
 where
     D: Deserializer<'de>,
     T: CanonicalDeserialize,
@@ -80,7 +80,7 @@ where
                 .expect("Deserialize should succeed."),
         )
     }
-    Ok(Array::from_vec(data))
+    Ok(BoxArray::from_vec(data))
 }
 
 // /// Testing Suites

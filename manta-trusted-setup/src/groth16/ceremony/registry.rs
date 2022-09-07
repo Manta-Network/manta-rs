@@ -16,6 +16,8 @@
 
 //! Groth16 Trusted Setup Ceremony Registry
 
+use crate::groth16::ceremony::Participant;
+
 /// Participant Registry
 pub trait Registry<I, P> {
     /// Registers the `participant` into `self` returning `false` if the `participant` is already
@@ -31,4 +33,12 @@ pub trait Registry<I, P> {
     /// Returns `true` if the participant with the given `id` has already contributed to the
     /// ceremony.
     fn has_contributed(&self, id: &I) -> bool;
+
+    /// Gets nonce of a participant with `id`.
+    fn nonce(&self, id: &I) -> Option<P::Nonce>
+    where
+        P: Participant,
+    {
+        Some(self.get(id)?.get_nonce())
+    }
 }
