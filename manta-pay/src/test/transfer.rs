@@ -28,7 +28,7 @@ use manta_accounting::transfer::{
 };
 use manta_crypto::{
     accumulator::Accumulator,
-    constraint::{self, measure::Measure, test::fuzz_public_input},
+    constraint::{self, measure::Measure, test::fuzz_public_input, ProofSystem as _},
     rand::{fuzz::Fuzz, OsRng, Rand, Sample},
 };
 use std::io::Cursor;
@@ -39,8 +39,7 @@ fn sample_mint_context() {
     let mut rng = OsRng;
     let cs = Mint::unknown_constraints(FullParameters::new(&rng.gen(), &rng.gen()));
     println!("Mint: {:?}", cs.measure());
-    <ProofSystem as constraint::ProofSystem>::compile(&(), cs, &mut rng)
-        .expect("Unable to generate Mint context.");
+    ProofSystem::compile(&(), cs, &mut rng).expect("Unable to generate Mint context.");
 }
 
 /// Tests the generation of proving/verifying contexts for [`PrivateTransfer`].
@@ -49,8 +48,7 @@ fn sample_private_transfer_context() {
     let mut rng = OsRng;
     let cs = PrivateTransfer::unknown_constraints(FullParameters::new(&rng.gen(), &rng.gen()));
     println!("PrivateTransfer: {:?}", cs.measure());
-    <ProofSystem as constraint::ProofSystem>::compile(&(), cs, &mut rng)
-        .expect("Unable to generate PrivateTransfer context.");
+    ProofSystem::compile(&(), cs, &mut rng).expect("Unable to generate PrivateTransfer context.");
 }
 
 /// Tests the generation of proving/verifying contexts for [`Reclaim`].
@@ -59,8 +57,7 @@ fn sample_reclaim_context() {
     let mut rng = OsRng;
     let cs = Reclaim::unknown_constraints(FullParameters::new(&rng.gen(), &rng.gen()));
     println!("Reclaim: {:?}", cs.measure());
-    <ProofSystem as constraint::ProofSystem>::compile(&(), cs, &mut rng)
-        .expect("Unable to generate Reclaim context.");
+    ProofSystem::compile(&(), cs, &mut rng).expect("Unable to generate Reclaim context.");
 }
 
 /// Tests the generation of a [`Mint`].
@@ -171,18 +168,12 @@ fn validity_check_with_fuzzing<C, R, A, M>(
     let public_input = post.generate_proof_input();
     let proof = &post.validity_proof;
     assert_valid_proof(verifying_context, post);
-    fuzz_public_input::<<C as Configuration>::ProofSystem, _>(
-        verifying_context,
-        &public_input,
-        proof,
-        |input| input.fuzz(rng),
-    );
-    fuzz_public_input::<<C as Configuration>::ProofSystem, _>(
-        verifying_context,
-        &public_input,
-        proof,
-        |input| (0..input.len()).map(|_| rng.gen()).collect(),
-    );
+    fuzz_public_input::<C::ProofSystem, _>(verifying_context, &public_input, proof, |input| {
+        input.fuzz(rng)
+    });
+    fuzz_public_input::<C::ProofSystem, _>(verifying_context, &public_input, proof, |input| {
+        (0..input.len()).map(|_| rng.gen()).collect()
+    });
 }
 
 /// Tests a [`Mint`] proof is valid verified against the right public input and invalid
