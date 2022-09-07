@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Arkwprks Elliptic Curve Implementation
+//! Arkworks Elliptic Curve Implementation
 
 use crate::arkworks::{
     ec::{
