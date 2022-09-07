@@ -34,6 +34,7 @@ pub mod key;
 pub mod merkle_tree;
 pub mod password;
 pub mod permutation;
+pub mod poseidon;
 pub mod rand;
 pub mod signature;
 
