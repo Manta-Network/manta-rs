@@ -26,3 +26,4 @@ pub mod constraint;
 pub mod ff;
 pub mod pairing;
 pub mod rand;
+pub mod ratio;
