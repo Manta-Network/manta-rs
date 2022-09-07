@@ -22,7 +22,9 @@ use manta_crypto::{
     algebra,
     arkworks::{
         ff::{Field, FpParameters, PrimeField, ToConstraintField},
-        r1cs_std::{alloc::AllocVar, eq::EqGadget, select::CondSelectGadget, ToBitsGadget},
+        r1cs_std::{
+            alloc::AllocVar, eq::EqGadget, fields::FieldVar, select::CondSelectGadget, ToBitsGadget,
+        },
         relations::{
             ns,
             r1cs::{
@@ -681,11 +683,12 @@ where
 
 /// Conditionally select from `lhs` and `rhs` depending on the value of `bit`.
 #[inline]
-fn conditionally_select<F>(bit: &Boolean<F>, lhs: &FpVar<F>, rhs: &FpVar<F>) -> FpVar<F>
+pub fn conditionally_select<F, T>(bit: &Boolean<F>, lhs: &T, rhs: &T) -> T
 where
     F: PrimeField,
+    T: CondSelectGadget<F>,
 {
-    FpVar::conditionally_select(bit, lhs, rhs)
+    CondSelectGadget::conditionally_select(bit, lhs, rhs)
         .expect("Conditionally selecting from two values is not allowed to fail.")
 }
 
@@ -741,14 +744,13 @@ where
     #[inline]
     fn zero(compiler: &mut R1CS<F>) -> Self {
         let _ = compiler;
-        FpVar::Constant(F::zero())
+        FieldVar::zero()
     }
 
     #[inline]
     fn is_zero(&self, compiler: &mut R1CS<F>) -> Self::Verification {
         let _ = compiler;
-        self.is_eq(&FpVar::Constant(F::zero()))
-            .expect("Comparison with zero is not allowed to fail.")
+        FieldVar::is_zero(self).expect("Comparison with zero is not allowed to fail.")
     }
 }
 
@@ -817,7 +819,7 @@ mod tests {
         R: RngCore + ?Sized,
         F: PrimeField,
     {
-        let bound = Fp(F::from(2u64).pow(&[BITS as u64]));
+        let bound = Fp(F::from(2u64).pow([BITS as u64]));
         check_assert_within_range::<_, BITS>(Fp(F::zero()), true);
         check_assert_within_range::<_, BITS>(Fp(bound.0 - F::one()), true);
         check_assert_within_range::<_, BITS>(bound, false);
