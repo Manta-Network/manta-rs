@@ -100,8 +100,8 @@ where
     fn select(bit: &Bool<COM>, true_value: &Self, false_value: &Self, compiler: &mut COM) -> Self;
 
     /// Selects an element from `table` by repeated iteration of `select` over `bits`.
-    /// The `bits` are ordered from most significant to least significant, forming unsigned integers in binary representation
-    /// which are understood as the `table` indices.
+    /// The `bits` are ordered from most significant to least significant, forming unsigned
+    /// integers in binary representation which are understood as the `table` indices.
     #[inline]
     fn select_from_table<'s, B, T>(bits: B, table: T, compiler: &mut COM) -> Self
     where

@@ -41,21 +41,21 @@ pub trait Group<COM = ()>: Sized {
     /// Adds `rhs` to `self` in the group.
     fn add(&self, rhs: &Self, compiler: &mut COM) -> Self;
 
-    /// Adds `rhs` to `self` in the group.
+    /// Adds `rhs` to `self` in the group and assigns the result to `self`.
     #[inline]
     fn add_assign(&mut self, rhs: &Self, compiler: &mut COM) -> &mut Self {
         *self = self.add(rhs, compiler);
         self
     }
 
-    /// Doubles `self` in the group.
+    /// Doubles `self` in the group and assigns the result to `self`.
     #[inline]
     fn double_assign(&mut self, compiler: &mut COM) -> &mut Self {
         *self = self.add(self, compiler);
         self
     }
 
-    /// Doubles `self` `k` times in the group.
+    /// Doubles `self` `k` times in the group and assigns the result to `self`.
     #[inline]
     fn repeated_double_assign(&mut self, k: usize, compiler: &mut COM) -> &mut Self {
         for _ in 0..k {
@@ -223,6 +223,11 @@ impl<G> Window<G> {
     }
 
     /// Multiplies a point in G by `scalar` using `self` as the window table.
+    ///
+    /// # Implementation Note
+    ///
+    /// For `scalar_mul` to be compatible with `ConditionalSelect::select_from_table` and `Window::new`,
+    /// `bits` must be in the big-endian representation.
     #[inline]
     pub fn scalar_mul<'b, B, COM>(&self, bits: B, compiler: &mut COM) -> G
     where
