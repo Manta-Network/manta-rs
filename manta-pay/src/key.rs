@@ -222,7 +222,7 @@ where
     #[inline]
     fn derive(&self, account: AccountIndex, kind: Kind, index: KeyIndex) -> Self::SecretKey {
         SecretKey::derive_from_path(
-            &self.seed,
+            self.seed,
             &path_string::<C>(account, kind, index)
                 .parse()
                 .expect("Path string is valid by construction."),

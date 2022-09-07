@@ -402,7 +402,7 @@ where
         InnerDigest<C>: 'i,
         I: IntoIterator<Item = &'i InnerDigest<C>>,
     {
-        let mut iter = iter.into_iter().peekable();
+        let mut iter = iter.into_iter();
         (depth..path_length::<C, _>()).fold(base, move |acc, _| {
             Self::fold_fn(parameters, index.into_parent(), &acc, default, || {
                 iter.next().unwrap()
