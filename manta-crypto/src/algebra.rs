@@ -167,7 +167,7 @@ impl<G> Window<G> {
     /// Windowed multiplication consists of `B/n` rounds, where `B` is the number of
     /// bits of a group element and `n` is the window size. Creating the table costs
     /// `2^n - 2` additions in the group, and each round involves `1` table look-up,
-    /// `n` doublings and `1` addition. Asymptotically, the optimal window size is 
+    /// `n` doublings and `1` addition. Asymptotically, the optimal window size is
     /// `n = 2`.
     #[inline]
     pub fn new<COM>(window_size: usize, point: G, compiler: &mut COM) -> Self
