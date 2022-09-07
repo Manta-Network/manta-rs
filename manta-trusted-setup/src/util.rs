@@ -16,23 +16,25 @@
 
 //! Utilities
 
-use crate::{groth16::kzg, ratio::HashToGroup};
-use alloc::vec::Vec;
-use ark_std::io;
+use crate::groth16::kzg;
+use alloc::{boxed::Box, vec::Vec};
+use ark_std::{
+    error,
+    io::{self, ErrorKind},
+};
 use blake2::{Blake2b512, Digest as Blake2Digest};
-use byteorder::{BigEndian, ReadBytesExt};
 use core::marker::PhantomData;
 use manta_crypto::{
     arkworks::{
         ec::{wnaf::WnafContext, AffineCurve, ProjectiveCurve},
         ff::{BigInteger, PrimeField, UniformRand, Zero},
         pairing::Pairing,
+        ratio::HashToGroup,
         serialize::{CanonicalSerialize, Read, SerializationError, Write},
     },
-    rand::{OsRng, Sample, SeedableRng},
+    rand::{ChaCha20Rng, OsRng, Sample, SeedableRng},
 };
 use manta_util::{cfg_into_iter, cfg_iter, cfg_iter_mut, cfg_reduce, into_array_unchecked};
-use rand_chacha::ChaCha20Rng;
 
 #[cfg(feature = "rayon")]
 use manta_util::rayon::iter::{IndexedParallelIterator, ParallelIterator};
@@ -52,7 +54,7 @@ pub trait HasDistribution {
 /// [`Deserializer`] `trait`.
 ///
 /// [`CanonicalDeserialize`]: manta_crypto::arkworks::serialize::CanonicalDeserialize
-pub trait Serializer<T> {
+pub trait Serializer<T, M = ()> {
     /// Serializes `item` in uncompressed form to the `writer` without performing any
     /// well-formedness checks.
     fn serialize_unchecked<W>(item: &T, writer: &mut W) -> Result<(), io::Error>
@@ -86,7 +88,7 @@ pub trait Serializer<T> {
 /// [`Serializer`] `trait`.
 ///
 /// [`CanonicalDeserialize`]: manta_crypto::arkworks::serialize::CanonicalDeserialize
-pub trait Deserializer<T> {
+pub trait Deserializer<T, M = ()> {
     /// Deserialization Error Type
     type Error: Into<SerializationError>;
 
@@ -139,6 +141,15 @@ pub trait Deserializer<T> {
         R: Read;
 }
 
+/// Converts `err` into an [`io::Error`] with the [`ErrorKind::Other`] variant.
+#[inline]
+pub fn from_error<E>(err: E) -> io::Error
+where
+    E: Into<Box<dyn error::Error + Send + Sync>>,
+{
+    io::Error::new(ErrorKind::Other, err)
+}
+
 /// Deserialization Error for [`NonZero`]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum NonZeroError<E> {
@@ -156,10 +167,7 @@ where
     #[inline]
     fn from(err: NonZeroError<E>) -> Self {
         match err {
-            NonZeroError::IsZero => SerializationError::IoError(io::Error::new(
-                io::ErrorKind::Other,
-                "Value was expected to be non-zero but instead had value zero.",
-            )),
+            NonZeroError::IsZero => from_error("Value was expected to be non-zero.").into(),
             NonZeroError::Error(err) => err.into(),
         }
     }
@@ -172,9 +180,9 @@ pub struct NonZero<D>(PhantomData<D>);
 impl<D> NonZero<D> {
     /// Checks if `item` is zero, returning [`NonZeroError::IsZero`] if so.
     #[inline]
-    fn is_zero<T>(item: &T) -> Result<(), NonZeroError<D::Error>>
+    fn is_zero<T, M>(item: &T) -> Result<(), NonZeroError<D::Error>>
     where
-        D: Deserializer<T>,
+        D: Deserializer<T, M>,
         T: Zero,
     {
         if item.is_zero() {
@@ -184,9 +192,9 @@ impl<D> NonZero<D> {
     }
 }
 
-impl<T, D> Deserializer<T> for NonZero<D>
+impl<T, M, D> Deserializer<T, M> for NonZero<D>
 where
-    D: Deserializer<T>,
+    D: Deserializer<T, M>,
     T: Zero,
 {
     type Error = NonZeroError<D::Error>;
@@ -387,7 +395,7 @@ where
     #[inline]
     fn hash(&self, challenge: &[u8; N], ratio: (&P::G1, &P::G1)) -> P::G2 {
         let mut hasher = BlakeHasher::default();
-        hasher.0.update(&[self.domain_tag]);
+        hasher.0.update([self.domain_tag]);
         hasher.0.update(challenge);
         ratio.0.serialize(&mut hasher).unwrap();
         ratio.1.serialize(&mut hasher).unwrap();
@@ -405,12 +413,13 @@ where
 {
     assert!(N >= 32, "Needs at least 32 bytes to seed ChaCha20.");
     let mut digest = digest.as_slice();
-    let mut seed = Vec::with_capacity(32);
+    let mut seed = Vec::<u8>::with_capacity(32);
     for _ in 0..8 {
-        let word = digest
-            .read_u32::<BigEndian>()
-            .expect("This is always possible since we have enough bytes to begin with.");
-        seed.extend(word.to_le_bytes());
+        let mut buffer = [0u8; 4];
+        let _ = digest
+            .read(&mut buffer)
+            .expect("Reading into a slice never fails.");
+        seed.extend(buffer.iter().rev());
     }
     G::gen(&mut ChaCha20Rng::from_seed(into_array_unchecked(seed)))
 }

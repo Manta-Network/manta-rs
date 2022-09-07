@@ -16,8 +16,13 @@
 
 //! Groth16 Trusted Setup
 
+pub mod ceremony;
 pub mod kzg;
 pub mod mpc;
+
+#[cfg(feature = "ppot")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "ppot")))]
+pub mod ppot;
 
 #[cfg(test)]
 pub mod test;

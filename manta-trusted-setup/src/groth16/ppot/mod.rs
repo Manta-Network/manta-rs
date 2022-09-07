@@ -14,33 +14,9 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Cryptographic Primitives Library
+//! Bn254 Backend for MantaPay Groth16 Trusted Setup
 
-#![cfg_attr(not(feature = "std"), no_std)]
-#![cfg_attr(doc_cfg, feature(doc_cfg))]
-#![forbid(rustdoc::broken_intra_doc_links)]
-#![forbid(missing_docs)]
-
-extern crate alloc;
-
-pub mod accumulator;
-pub mod algebra;
-pub mod commitment;
-pub mod constraint;
-pub mod eclair;
-pub mod encryption;
-pub mod hash;
-pub mod key;
-pub mod merkle_tree;
-pub mod password;
-pub mod permutation;
-pub mod rand;
-pub mod signature;
-
-#[cfg(feature = "arkworks")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "arkworks")))]
-pub mod arkworks;
-
-#[cfg(feature = "dalek")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "dalek")))]
-pub mod dalek;
+pub mod hashing;
+pub mod kzg;
+pub mod mpc;
+pub mod serialization;

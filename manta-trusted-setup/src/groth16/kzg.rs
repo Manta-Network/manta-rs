@@ -16,16 +16,14 @@
 
 //! KZG Trusted Setup for Groth16
 
-use crate::{
-    ratio::{HashToGroup, RatioProof},
-    util::{power_pairs, scalar_mul, Deserializer, NonZero, Serializer},
-};
+use crate::util::{power_pairs, scalar_mul, Deserializer, NonZero, Serializer};
 use alloc::{vec, vec::Vec};
 use core::{iter, ops::Mul};
 use manta_crypto::{
     arkworks::{
         ff::{One, UniformRand},
         pairing::{Pairing, PairingEngineExt},
+        ratio::{HashToGroup, RatioProof},
         serialize::{CanonicalDeserialize, CanonicalSerialize, Read, SerializationError, Write},
     },
     rand::{CryptoRng, RngCore, Sample},
@@ -34,6 +32,14 @@ use manta_util::{cfg_iter, cfg_iter_mut, from_variant, vec::VecExt};
 
 #[cfg(feature = "rayon")]
 use manta_util::rayon::iter::{IndexedParallelIterator, ParallelIterator};
+
+/// G1 Marker Type
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct G1;
+
+/// G2 Marker Type
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct G2;
 
 /// KZG Trusted Setup Size
 pub trait Size {
@@ -245,11 +251,34 @@ where
                 .1,
         })
     }
+
+    /// Reinterpret a proof from a KZG ceremony as a proof
+    /// for a sub-ceremony.
+    #[inline]
+    pub fn cast_to_subceremony<D>(self) -> Proof<D>
+    where
+        D: Pairing<G1 = C::G1, G2 = C::G2>,
+    {
+        Proof {
+            tau: RatioProof {
+                ratio: self.tau.ratio,
+                matching_point: self.tau.matching_point,
+            },
+            alpha: RatioProof {
+                ratio: self.alpha.ratio,
+                matching_point: self.alpha.matching_point,
+            },
+            beta: RatioProof {
+                ratio: self.beta.ratio,
+                matching_point: self.beta.matching_point,
+            },
+        }
+    }
 }
 
 impl<C> CanonicalSerialize for Proof<C>
 where
-    C: Pairing + Serializer<C::G1> + Serializer<C::G2>,
+    C: Pairing + Serializer<C::G1, G1> + Serializer<C::G2, G2>,
 {
     #[inline]
     fn serialize<W>(&self, mut writer: W) -> Result<(), SerializationError>
@@ -314,7 +343,7 @@ where
 
 impl<C> CanonicalDeserialize for Proof<C>
 where
-    C: Deserializer<C::G1> + Deserializer<C::G2> + Pairing,
+    C: Deserializer<C::G1, G1> + Deserializer<C::G2, G2> + Pairing,
 {
     #[inline]
     fn deserialize<R>(mut reader: R) -> Result<Self, SerializationError>
@@ -496,7 +525,7 @@ where
 
 impl<C> CanonicalSerialize for Accumulator<C>
 where
-    C: Pairing + Size + Serializer<C::G1> + Serializer<C::G2>,
+    C: Pairing + Size + Serializer<C::G1, G1> + Serializer<C::G2, G2>,
 {
     #[inline]
     fn serialize<W>(&self, mut writer: W) -> Result<(), SerializationError>
@@ -577,9 +606,9 @@ where
 
 impl<C> CanonicalDeserialize for Accumulator<C>
 where
-    C: Deserializer<C::G1> + Deserializer<C::G2> + Pairing + Size,
-    <C as Deserializer<C::G1>>::Error: Send,
-    <C as Deserializer<C::G2>>::Error: Send,
+    C: Deserializer<C::G1, G1> + Deserializer<C::G2, G2> + Pairing + Size,
+    <C as Deserializer<C::G1, G1>>::Error: Send,
+    <C as Deserializer<C::G2, G2>>::Error: Send,
 {
     #[inline]
     fn deserialize<R>(mut reader: R) -> Result<Self, SerializationError>

@@ -16,8 +16,8 @@
 
 //! HTTP Utilities
 
-#[cfg(feature = "tide")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "tide")))]
+#[cfg(all(feature = "serde", feature = "tide"))]
+#[cfg_attr(doc_cfg, doc(cfg(all(feature = "serde", feature = "tide"))))]
 pub mod tide;
 
 #[cfg(feature = "reqwest")]

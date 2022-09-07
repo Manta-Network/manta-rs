@@ -27,11 +27,8 @@ pub mod finder;
 #[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
 pub mod chunk_by;
 
-#[cfg(all(feature = "alloc", feature = "crossbeam-channel"))]
-#[cfg_attr(
-    doc_cfg,
-    doc(cfg(all(feature = "alloc", feature = "crossbeam-channel")))
-)]
+#[cfg(all(feature = "std", feature = "crossbeam-channel"))]
+#[cfg_attr(doc_cfg, doc(cfg(all(feature = "std", feature = "crossbeam-channel"))))]
 pub mod select_all;
 
 pub use finder::Finder;
@@ -40,11 +37,8 @@ pub use finder::Finder;
 #[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
 pub use chunk_by::ChunkBy;
 
-#[cfg(all(feature = "alloc", feature = "crossbeam-channel"))]
-#[cfg_attr(
-    doc_cfg,
-    doc(cfg(all(feature = "alloc", feature = "crossbeam-channel")))
-)]
+#[cfg(all(feature = "std", feature = "crossbeam-channel"))]
+#[cfg_attr(doc_cfg, doc(cfg(all(feature = "std", feature = "crossbeam-channel"))))]
 pub use select_all::SelectAll;
 
 /// Iterator Extensions
@@ -78,10 +72,10 @@ pub trait IteratorExt: Iterator {
     }
 
     /// Selects items from each iterator in `self` in parallel.
-    #[cfg(all(feature = "alloc", feature = "crossbeam-channel", feature = "rayon"))]
+    #[cfg(all(feature = "std", feature = "crossbeam-channel", feature = "rayon"))]
     #[cfg_attr(
         doc_cfg,
-        doc(cfg(all(feature = "alloc", feature = "crossbeam-channel", feature = "rayon")))
+        doc(cfg(all(feature = "std", feature = "crossbeam-channel", feature = "rayon")))
     )]
     #[inline]
     fn select_all<'s, I>(self, scope: &rayon::Scope<'s>) -> SelectAll<I::Item>

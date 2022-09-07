@@ -130,7 +130,6 @@ tempfile = { version = "3.3.0", optional = true, default-features = false }
 tide = { version = "0.16.0", optional = true, default-features = false, features = ["h1-server"] }
 tokio = { version = "1.21.0", optional = true, default-features = false }
 tokio-tungstenite = { version = "0.17.2", optional = true, default-features = false, features = ["native-tls"] }
-workspace-hack = { version = "0.1.0", path = "../workspace-hack" }
 ws_stream_wasm = { version = "0.7.3", optional = true, default-features = false }
 
 [dev-dependencies]
