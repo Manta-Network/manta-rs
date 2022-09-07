@@ -38,7 +38,7 @@ pub mod hash;
 pub mod lfsr;
 pub mod matrix;
 pub mod mds;
-pub mod preprocessing;
+// pub mod preprocessing;
 pub mod round_constants;
 
 #[cfg(feature = "arkworks")]
