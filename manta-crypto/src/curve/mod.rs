@@ -14,34 +14,12 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Cryptographic Primitives Library
+//! Elliptic Curves 
 
-#![cfg_attr(not(feature = "std"), no_std)]
-#![cfg_attr(doc_cfg, feature(doc_cfg))]
-#![forbid(rustdoc::broken_intra_doc_links)]
-#![forbid(missing_docs)]
+#[cfg(feature = "bls12")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "bls12")))]
+pub mod bls12_381;
 
-extern crate alloc;
-
-pub mod accumulator;
-pub mod algebra;
-pub mod commitment;
-pub mod constraint;
-pub mod curve;
-pub mod eclair;
-pub mod encryption;
-pub mod hash;
-pub mod key;
-pub mod merkle_tree;
-pub mod password;
-pub mod permutation;
-pub mod rand;
-pub mod signature;
-
-#[cfg(feature = "arkworks")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "arkworks")))]
-pub mod arkworks;
-
-#[cfg(feature = "dalek")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "dalek")))]
-pub mod dalek;
+#[cfg(feature = "bn254")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "bn254")))]
+pub mod bn254;
