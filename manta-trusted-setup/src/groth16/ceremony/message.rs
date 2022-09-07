@@ -18,7 +18,11 @@
 
 use crate::{
     groth16::{
-        ceremony::{signature::sign, Ceremony, CeremonyError, Nonce, Proof, Signature, SigningKey},
+        ceremony::{
+            serde::{deserialize_arkworks, serialize_arkworks},
+            signature::sign,
+            Ceremony, CeremonyError, Nonce, Proof, Signature, SigningKey,
+        },
         mpc::{State, StateSize},
     },
     mpc::Challenge,
@@ -26,16 +30,13 @@ use crate::{
 use manta_crypto::arkworks::serialize::{CanonicalDeserialize, CanonicalSerialize};
 use manta_util::{
     serde::{Deserialize, Serialize},
-    Array, BytesRepr,
+    Array,
 };
 
 /// MPC States
-#[derive(Deserialize, Serialize)]
+#[derive(Serialize, Deserialize)]
 #[serde(
-    bound(
-        serialize = "State<C::Pairing>: CanonicalSerialize, Challenge<C>: CanonicalSerialize",
-        deserialize = "State<C::Pairing>: CanonicalDeserialize, Challenge<C>: CanonicalDeserialize"
-    ),
+    bound(serialize = "", deserialize = ""),
     crate = "manta_util::serde",
     deny_unknown_fields
 )]
@@ -44,153 +45,157 @@ where
     C: Ceremony,
 {
     /// State
-    pub state: Array<BytesRepr<State<C::Pairing>>, N>,
+    #[cfg_attr(
+        feature = "serde",
+        serde(serialize_with = "serialize_arkworks::<State<C::Pairing>, _>")
+    )]
+    pub state: Array<State<C::Pairing>, N>,
 
-    /// Challenge
-    pub challenge: Array<BytesRepr<Challenge<C>>, N>,
+    // /// Challenge
+    // pub challenge: Array<Challenge<C>, N>,
 }
 
-/// Contribute States
-#[derive(Deserialize, Serialize)]
-#[serde(
-    bound(
-        serialize = "State<C::Pairing>: CanonicalSerialize, Proof<C>: CanonicalSerialize",
-        deserialize = "State<C::Pairing>: CanonicalDeserialize, Proof<C>: CanonicalDeserialize"
-    ),
-    crate = "manta_util::serde",
-    deny_unknown_fields
-)]
-pub struct ContributeState<C, const CIRCUIT_COUNT: usize>
-where
-    C: Ceremony,
-{
-    /// State
-    pub state: Array<BytesRepr<State<C::Pairing>>, CIRCUIT_COUNT>,
+// /// Contribute States
+// #[derive(Deserialize, Serialize)]
+// #[serde(
+//     bound(
+//         serialize = "State<C::Pairing>: CanonicalSerialize, Proof<C>: CanonicalSerialize",
+//         deserialize = "State<C::Pairing>: CanonicalDeserialize, Proof<C>: CanonicalDeserialize"
+//     ),
+//     crate = "manta_util::serde",
+//     deny_unknown_fields
+// )]
+// pub struct ContributeState<C, const CIRCUIT_COUNT: usize>
+// where
+//     C: Ceremony,
+// {
+//     /// State
+//     pub state: Array<State<C::Pairing>, CIRCUIT_COUNT>,
 
-    /// Proof
-    pub proof: Array<BytesRepr<Proof<C>>, CIRCUIT_COUNT>,
-}
+//     /// Proof
+//     pub proof: Array<Proof<C>, CIRCUIT_COUNT>,
+// }
 
-/// Response for State Sizes
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(crate = "manta_util::serde", deny_unknown_fields)]
-pub struct ServerSize<const CIRCUIT_COUNT: usize>(pub Array<StateSize, CIRCUIT_COUNT>);
+// /// Response for State Sizes
+// #[derive(Clone, Serialize, Deserialize)]
+// #[serde(crate = "manta_util::serde", deny_unknown_fields)]
+// pub struct ServerSize<const CIRCUIT_COUNT: usize>(pub Array<StateSize, CIRCUIT_COUNT>);
 
-impl<const CIRCUIT_COUNT: usize> From<Array<StateSize, CIRCUIT_COUNT>>
-    for ServerSize<CIRCUIT_COUNT>
-{
-    fn from(inner: Array<StateSize, CIRCUIT_COUNT>) -> Self {
-        ServerSize(inner)
-    }
-}
+// impl<const CIRCUIT_COUNT: usize> From<Array<StateSize, CIRCUIT_COUNT>>
+//     for ServerSize<CIRCUIT_COUNT>
+// {
+//     fn from(inner: Array<StateSize, CIRCUIT_COUNT>) -> Self {
+//         ServerSize(inner)
+//     }
+// }
 
-/// Query Request
-#[derive(Deserialize, Serialize)]
-#[serde(crate = "manta_util::serde", deny_unknown_fields)]
-pub struct QueryRequest;
+// /// Query Request
+// #[derive(Deserialize, Serialize)]
+// #[serde(crate = "manta_util::serde", deny_unknown_fields)]
+// pub struct QueryRequest;
 
-/// Response for [`QueryRequest`]
-#[derive(Deserialize, Serialize)]
-#[serde(
-    bound(
-        serialize = "MPCState<C, CIRCUIT_COUNT>: Serialize",
-        deserialize = "MPCState<C, CIRCUIT_COUNT>: Deserialize<'de>"
-    ),
-    crate = "manta_util::serde",
-    deny_unknown_fields
-)]
-pub enum QueryResponse<C, const CIRCUIT_COUNT: usize>
-where
-    C: Ceremony,
-{
-    /// Queue Position
-    QueuePosition(usize),
+// /// Response for [`QueryRequest`]
+// #[derive(Deserialize, Serialize)]
+// #[serde(
+//     bound(
+//         serialize = "MPCState<C, CIRCUIT_COUNT>: Serialize",
+//         deserialize = "MPCState<C, CIRCUIT_COUNT>: Deserialize<'de>"
+//     ),
+//     crate = "manta_util::serde",
+//     deny_unknown_fields
+// )]
+// pub enum QueryResponse<C, const CIRCUIT_COUNT: usize>
+// where
+//     C: Ceremony,
+// {
+//     /// Queue Position
+//     QueuePosition(usize),
 
-    /// MPC State
-    Mpc(MPCState<C, CIRCUIT_COUNT>),
-}
+//     /// MPC State
+//     Mpc(MPCState<C, CIRCUIT_COUNT>),
+// }
 
-/// Contribute Request
-#[derive(Serialize, Deserialize)]
-#[serde(
-    bound(
-        serialize = "ContributeState<C, CIRCUIT_COUNT>: Serialize",
-        deserialize = "ContributeState<C, CIRCUIT_COUNT>: Deserialize<'de>"
-    ),
-    crate = "manta_util::serde",
-    deny_unknown_fields
-)]
-pub struct ContributeRequest<C, const CIRCUIT_COUNT: usize>
-where
-    C: Ceremony,
-{
-    /// Contribute state including state and proof
-    pub contribute_state: ContributeState<C, CIRCUIT_COUNT>,
-}
+// /// Contribute Request
+// #[derive(Serialize, Deserialize)]
+// #[serde(
+//     bound(
+//         serialize = "ContributeState<C, CIRCUIT_COUNT>: Serialize",
+//         deserialize = "ContributeState<C, CIRCUIT_COUNT>: Deserialize<'de>"
+//     ),
+//     crate = "manta_util::serde",
+//     deny_unknown_fields
+// )]
+// pub struct ContributeRequest<C, const CIRCUIT_COUNT: usize>
+// where
+//     C: Ceremony,
+// {
+//     /// Contribute state including state and proof
+//     pub contribute_state: ContributeState<C, CIRCUIT_COUNT>,
+// }
 
-/// Signed Message
-#[derive(Deserialize, Serialize)]
-#[serde(
-    bound(
-        serialize = r"
-            C::Identifier: Serialize,
-            T: Serialize,
-            Nonce<C>: Serialize,
-            Signature<C>: Serialize,
-        ",
-        deserialize = r"
-            C::Identifier: Deserialize<'de>,
-            T: Deserialize<'de>,
-            Nonce<C>: Deserialize<'de>,
-            Signature<C>: Deserialize<'de>,
-        ",
-    ),
-    crate = "manta_util::serde",
-    deny_unknown_fields
-)]
-pub struct Signed<T, C>
-where
-    C: Ceremony,
-{
-    /// Message
-    pub message: T,
+// /// Signed Message
+// #[derive(Deserialize, Serialize)]
+// #[serde(
+//     bound(
+//         serialize = r"
+//             C::Identifier: Serialize,
+//             T: Serialize,
+//             Nonce<C>: Serialize,
+//             Signature<C>: Serialize,
+//         ",
+//         deserialize = r"
+//             C::Identifier: Deserialize<'de>,
+//             T: Deserialize<'de>,
+//             Nonce<C>: Deserialize<'de>,
+//             Signature<C>: Deserialize<'de>,
+//         ",
+//     ),
+//     crate = "manta_util::serde",
+//     deny_unknown_fields
+// )]
+// pub struct Signed<T, C>
+// where
+//     C: Ceremony,
+// {
+//     /// Message
+//     pub message: T,
 
-    /// Nonce
-    pub nonce: Nonce<C>,
+//     /// Nonce
+//     pub nonce: Nonce<C>,
 
-    /// Signature
-    pub signature: Signature<C>,
+//     /// Signature
+//     pub signature: Signature<C>,
 
-    /// Participant Identifier
-    pub identifier: C::Identifier,
-}
+//     /// Participant Identifier
+//     pub identifier: C::Identifier,
+// }
 
-impl<T, C> Signed<T, C>
-where
-    C: Ceremony,
-{
-    /// Generates a signed message with `signing_key` on `message` and `nonce`.
-    #[inline]
-    pub fn new(
-        message: T,
-        nonce: &Nonce<C>,
-        signing_key: &SigningKey<C>,
-        identifier: C::Identifier,
-    ) -> Result<Self, CeremonyError<C>>
-    where
-        T: Serialize,
-        Nonce<C>: Clone,
-    {
-        let signature = match sign::<_, C::SignatureScheme>(signing_key, nonce.clone(), &message) {
-            Ok(signature) => signature,
-            Err(_) => return Err(CeremonyError::<C>::BadRequest),
-        };
-        let message = Signed {
-            message,
-            nonce: nonce.clone(),
-            signature,
-            identifier,
-        };
-        Ok(message)
-    }
-}
+// impl<T, C> Signed<T, C>
+// where
+//     C: Ceremony,
+// {
+//     /// Generates a signed message with `signing_key` on `message` and `nonce`.
+//     #[inline]
+//     pub fn new(
+//         message: T,
+//         nonce: &Nonce<C>,
+//         signing_key: &SigningKey<C>,
+//         identifier: C::Identifier,
+//     ) -> Result<Self, CeremonyError<C>>
+//     where
+//         T: Serialize,
+//         Nonce<C>: Clone,
+//     {
+//         let signature = match sign::<_, C::SignatureScheme>(signing_key, nonce.clone(), &message) {
+//             Ok(signature) => signature,
+//             Err(_) => return Err(CeremonyError::<C>::BadRequest),
+//         };
+//         let message = Signed {
+//             message,
+//             nonce: nonce.clone(),
+//             signature,
+//             identifier,
+//         };
+//         Ok(message)
+//     }
+// }
