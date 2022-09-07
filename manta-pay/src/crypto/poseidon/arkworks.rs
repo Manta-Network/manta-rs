@@ -148,7 +148,7 @@ where
 
     #[inline]
     fn apply_sbox(point: &mut Self::Field, _: &mut ()) {
-        point.0 = point.0.pow(&[Self::SBOX_EXPONENT, 0, 0, 0]);
+        point.0 = point.0.pow([Self::SBOX_EXPONENT, 0, 0, 0]);
     }
 
     #[inline]
@@ -204,7 +204,7 @@ where
     #[inline]
     fn apply_sbox(point: &mut Self::Field, _: &mut Compiler<S>) {
         *point = point
-            .pow_by_constant(&[Self::SBOX_EXPONENT])
+            .pow_by_constant([Self::SBOX_EXPONENT])
             .expect("Exponentiation is not allowed to fail.");
     }
 
