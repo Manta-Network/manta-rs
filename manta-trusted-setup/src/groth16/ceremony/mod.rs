@@ -16,7 +16,7 @@
 
 //! Groth16 Trusted Setup Ceremony
 
-use crate::{groth16::ceremony::signature::SignatureScheme, mpc, mpc::ProofType};
+use crate::{groth16::ceremony::signature::SignatureScheme, mpc};
 use derivative::Derivative;
 use manta_crypto::{
     arkworks::pairing::Pairing,
@@ -49,9 +49,6 @@ pub type SigningKey<C> = <<C as Ceremony>::SignatureScheme as SigningKeyType>::S
 
 /// Verifying Key
 pub type VerifyingKey<C> = <<C as Ceremony>::SignatureScheme as VerifyingKeyType>::VerifyingKey;
-
-/// Proof
-pub type Proof<C> = <C as ProofType>::Proof;
 
 /// Participant
 pub trait Participant {

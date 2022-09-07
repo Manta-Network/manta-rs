@@ -24,7 +24,7 @@ use manta_util::{
 
 /// Uses `serializer` to serialize `data` that implements `CanonicalSerialize`.
 #[inline]
-pub fn serialize_arkworks<T, S>(data: &T, serializer: S) -> Result<S::Ok, S::Error>
+pub fn serialize_element<T, S>(data: &T, serializer: S) -> Result<S::Ok, S::Error>
 where
     T: CanonicalSerialize,
     S: Serializer,
@@ -36,7 +36,7 @@ where
 
 /// Uses `deserializer` to deserialize into data with type `T` that implements `CanonicalDeserialize`.
 #[inline]
-pub fn deserialize_arkworks<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+pub fn deserialize_element<'de, D, T>(deserializer: D) -> Result<T, D::Error>
 where
     D: Deserializer<'de>,
     T: CanonicalDeserialize,
@@ -71,13 +71,49 @@ where
     D: Deserializer<'de>,
     T: CanonicalDeserialize,
 {
-    let mut bytes: Vec<u8> = Deserialize::deserialize(deserializer)?;
+    let bytes: Vec<u8> = Deserialize::deserialize(deserializer)?;
+    let bytes = bytes.as_slice();
     let mut data = Vec::with_capacity(N);
     for _ in 0..N {
         data.push(
-            CanonicalDeserialize::deserialize(bytes.as_slice()) // TODO: Issue here
+            CanonicalDeserialize::deserialize(bytes) // TODO: Issue here
                 .expect("Deserialize should succeed."),
         )
     }
     Ok(Array::from_vec(data))
 }
+
+// /// Testing Suites
+// TODO: Check if serde works correctly.
+// #[cfg(test)]
+// mod test {
+//     use super::*;
+//     use ark_bls12_381::Bls12_381;
+//     use ark_groth16::{ProvingKey, VerifyingKey};
+//     use manta_crypto::{
+//         arkworks::ec::PairingEngine,
+//         rand::{OsRng, Rand},
+//     };
+
+//     /// Samples a dummy verifying key `vk`.
+//     fn sample_dummy_vk<R>(rng: &mut R) -> VerifyingKey<Bls12_381>
+//     where
+//         R: Rand,
+//     {
+//         VerifyingKey {
+//             alpha_g1: rng.gen(),
+//             beta_g2: rng.gen(),
+//             gamma_g2: rng.gen(),
+//             delta_g2: rng.gen(),
+//             gamma_abc_g1: vec![rng.gen()],
+//         }
+//     }
+
+//     #[test]
+//     fn serde_element_is_correct() {
+//         let mut rng = OsRng;
+//         let dummy_vk = sample_dummy_vk(&mut rng);
+//         let mut serialized_data = Vec::new();
+//         serialize_element(&dummy_vk, &mut serialized_data);
+//     }
+// }
