@@ -452,7 +452,11 @@ pub mod security {
 #[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
 pub mod test {
     use super::*;
-    use crate::eclair::{bool::Assert, cmp::PartialEq, num::{One, Zero}};
+    use crate::eclair::{
+        bool::Assert,
+        cmp::PartialEq,
+        num::{One, Zero},
+    };
 
     /// Tests if the group `G` is associative.
     #[inline]
@@ -543,7 +547,8 @@ pub mod test {
         R: Ring<COM> + One<COM>,
         F: FnOnce(&R, &R, &mut COM),
     {
-        assert_same(r, &r.mul(&R::one(compiler), compiler), compiler)}
+        assert_same(r, &r.mul(&R::one(compiler), compiler), compiler)
+    }
 
     /// Tests if windowed scalar multiplication of the bit decomposition of `scalar` with `point` returns the
     /// product `scalar` * `point`

@@ -20,11 +20,9 @@
 //! types. In this module, we define the access interfaces needed to simulate the [`bool`] type with
 //! [`Bool`].
 
-
 use crate::eclair::{cmp::PartialEq, ops::Not, Has, Type};
 use alloc::vec::Vec;
 use manta_util::{iter::IteratorExt, vec::VecExt};
-
 
 /// Boolean Type Inside of the Compiler
 pub type Bool<COM = ()> = Type<COM, bool>;
