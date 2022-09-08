@@ -20,6 +20,9 @@ use crate::groth16::ceremony::Participant;
 
 /// Participant Registry
 pub trait Registry<I, P> {
+    /// Builds a new [`Registry`].
+    fn new() -> Self;
+
     /// Registers the `participant` into `self` returning `false` if the `participant` is already
     /// registered or their registration would conflict with another existing participant.
     fn register(&mut self, participant: P) -> bool;

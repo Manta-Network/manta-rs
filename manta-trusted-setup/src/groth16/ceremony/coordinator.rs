@@ -28,7 +28,7 @@ use crate::groth16::{
 };
 use core::{mem, time::Duration};
 use manta_crypto::arkworks::serialize::{CanonicalDeserialize, CanonicalSerialize};
-use manta_util::{time::lock::Timed, Array, BoxArray};
+use manta_util::{time::lock::Timed, BoxArray};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
@@ -97,7 +97,7 @@ where
     latest_proof: Option<BoxArray<Proof<C::Configuration>, CIRCUIT_COUNT>>, // TODO: Implement serialize
 
     /// State Sizes
-    size: Array<StateSize, CIRCUIT_COUNT>,
+    size: BoxArray<StateSize, CIRCUIT_COUNT>,
 
     /// Current Round Number
     round: usize,
@@ -123,7 +123,7 @@ where
         registry: R,
         state: BoxArray<State<C::Configuration>, CIRCUIT_COUNT>,
         challenge: BoxArray<Challenge<C>, CIRCUIT_COUNT>,
-        size: Array<StateSize, CIRCUIT_COUNT>,
+        size: BoxArray<StateSize, CIRCUIT_COUNT>,
     ) -> Self {
         Self {
             registry,
@@ -152,7 +152,7 @@ where
 
     /// Returns the state size.
     #[inline]
-    pub fn size(&self) -> &Array<StateSize, CIRCUIT_COUNT> {
+    pub fn size(&self) -> &BoxArray<StateSize, CIRCUIT_COUNT> {
         &self.size
     }
 

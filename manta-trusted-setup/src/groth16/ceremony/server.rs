@@ -21,16 +21,21 @@ use crate::groth16::{
         coordinator::Coordinator,
         message::{ContributeRequest, QueryRequest, QueryResponse, ServerSize, Signed},
         registry::Registry,
-        util::log_to_file,
-        Ceremony, CeremonyError, Challenge, Nonce, Participant,
+        signature::{verify, Message, SignatureScheme},
+        util::{load_from_file, log_to_file},
+        Ceremony, CeremonyError, Challenge, Nonce, Participant, VerifyingKey,
     },
     mpc::{State, StateSize},
 };
 use alloc::sync::Arc;
-use core::ops::Deref;
-use manta_util::{serde::Serialize, Array, BoxArray};
+use core::{future::Future, ops::Deref};
+use manta_crypto::dalek::ed25519::Ed25519;
+use manta_util::{
+    serde::{de::DeserializeOwned, Serialize},
+    BoxArray,
+};
 use parking_lot::Mutex;
-use std::path::Path;
+use std::{fs::File, path::Path};
 
 /// Server
 pub struct Server<C, R, const LEVEL_COUNT: usize, const CIRCUIT_COUNT: usize>
@@ -58,7 +63,7 @@ where
         challenge: BoxArray<Challenge<C>, CIRCUIT_COUNT>,
         registry: R,
         recovery_path: String,
-        size: Array<StateSize, CIRCUIT_COUNT>,
+        size: BoxArray<StateSize, CIRCUIT_COUNT>,
     ) -> Self {
         let coordinator = Coordinator::new(registry, state, challenge, size);
         Self {
@@ -134,4 +139,116 @@ where
         println!("{} participants have contributed.", coordinator.round());
         Ok(())
     }
+}
+
+// #[cfg(all(feature = "serde", feature = "tide"))]
+// #[cfg_attr(doc_cfg, doc(cfg(all(feature = "serde", feature = "tide"))))]
+// pub mod network {
+//     use super::*;
+//     use core::future::Future;
+//     use manta_util::http::tide::{self, Body, Request, Response};
+
+//     /// Generates the JSON body for the output of `f`, returning an HTTP reponse.
+//     #[inline]
+//     pub async fn into_body<C, R, F, Fut>(f: F) -> Result<Response, tide::Error>
+//     where
+//         F: FnOnce() -> Fut,
+//         Fut: Future<Output = Result<R, CeremonyError<C>>>,
+//         C: Ceremony,
+//     {
+//         Ok(Body::from_json(&f().await)?.into())
+//     }
+
+//     /// Executes `f` on the incoming `request`.
+//     #[inline]
+//     pub async fn execute<C, T, R, F, Fut>(
+//         mut request: Request<Self>,
+//         f: F,
+//     ) -> Result<Response, tide::Error>
+//     where
+//         C: Ceremony,
+//         T: DeserializeOwned,
+//         R: Serialize,
+//         F: FnOnce(Self, T) -> Fut,
+//         <C::SignatureScheme as SignatureScheme<Vec<u8>>>::Nonce: Serialize,
+//         Fut: Future<Output = Result<R, CeremonyError<C>>>,
+//     {
+//         into_body::<C, _, _, _>(move || async move {
+//             f(
+//                 request.state().clone(),
+//                 request
+//                     .body_json::<T>()
+//                     .await
+//                     .expect("Read and deserialize should succeed."),
+//             )
+//             .await
+//         })
+//         .await
+//     }
+// }
+
+/// Recovers from a disk file at `recovery` and use `backup` as the backup directory.
+#[inline]
+pub fn recover<C, R, const CIRCUIT_COUNT: usize, const LEVEL_COUNT: usize>(
+    recovery: String,
+    backup: String,
+) -> Server<C, R, LEVEL_COUNT, CIRCUIT_COUNT>
+where
+    C: Ceremony,
+    R: Registry<C::Identifier, C::Participant>,
+    Coordinator<C, R, CIRCUIT_COUNT, LEVEL_COUNT>: DeserializeOwned,
+{
+    Server {
+        coordinator: Arc::new(Mutex::new(load_from_file(recovery))),
+        recovery_path: backup,
+    }
+}
+
+/// Loads registry from a disk file at `registry`.
+#[inline]
+pub fn load_registry<C, P, S, R>(registry_file: P) -> R
+where
+    C: Ceremony,
+    C::SignatureScheme: SignatureScheme<Nonce = u64>,
+    P: AsRef<Path>,
+    R: Registry<VerifyingKey<C>, C::Participant>,
+    // C: CeremonyConfig<Participant = Participant<S>>,
+    // S: SignatureScheme<Vec<u8>, Nonce = u64, VerifyingKey = Array<u8, 32>>,
+    // S::VerifyingKey: Ord,
+{
+    let mut registry = R::new();
+    for record in
+        csv::Reader::from_reader(File::open(registry_file).expect("Registry file should exist."))
+            .records()
+    {
+        let result = record.expect("Read csv should succeed.");
+        let twitter = result[0].to_string();
+        let email = result[1].to_string();
+        let verifying_key: BoxArray<u8, 32> =
+            BoxArray::from_vec(bs58::decode(result[3].to_string()).into_vec().unwrap());
+        let signature: BoxArray<u8, 64> =
+            BoxArray::from_vec(bs58::decode(result[4].to_string()).into_vec().unwrap());
+        // verify::<_, Ed25519<Message<Nonce<C>>>>(
+        //     &verifying_key,
+        //     0,
+        //     &format!(
+        //         "manta-trusted-setup-twitter:{}, manta-trusted-setup-email:{}",
+        //         twitter, email
+        //     ),
+        //     &signature,
+        // )
+        // .expect("Should verify the signature.");
+        //     let participant = Participant {
+        //         twitter,
+        //         priority: match result[2].to_string().parse::<bool>().unwrap() {
+        //             true => UserPriority::High,
+        //             false => UserPriority::Normal,
+        //         },
+        //         public_key,
+        //         nonce: OsRng.gen::<_, u16>() as u64,
+        //         contributed: false,
+        //     };
+        //     registry.insert(participant.public_key, participant);
+    }
+    registry
 }

@@ -93,12 +93,12 @@ where
 /// Response for State Sizes
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(crate = "manta_util::serde", deny_unknown_fields)]
-pub struct ServerSize<const CIRCUIT_COUNT: usize>(pub Array<StateSize, CIRCUIT_COUNT>);
+pub struct ServerSize<const CIRCUIT_COUNT: usize>(pub BoxArray<StateSize, CIRCUIT_COUNT>);
 
-impl<const CIRCUIT_COUNT: usize> From<Array<StateSize, CIRCUIT_COUNT>>
+impl<const CIRCUIT_COUNT: usize> From<BoxArray<StateSize, CIRCUIT_COUNT>>
     for ServerSize<CIRCUIT_COUNT>
 {
-    fn from(inner: Array<StateSize, CIRCUIT_COUNT>) -> Self {
+    fn from(inner: BoxArray<StateSize, CIRCUIT_COUNT>) -> Self {
         ServerSize(inner)
     }
 }
