@@ -35,17 +35,15 @@ arkworks = [
 ]
 
 # Bls12-381 Curve
-bls12 = [
+bls12_381 = [
     "ark-bls12-381",
-    "ark-ec",
-    "ark-ff",
+    "arkworks"
 ]
 
 # Bn254 Curve
 bn254 = [
     "ark-bn254",
-    "ark-ec",
-    "ark-ff",
+    "arkworks"
 ]
 
 # Dalek Cryptography Backend

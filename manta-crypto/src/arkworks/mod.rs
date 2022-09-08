@@ -27,3 +27,11 @@ pub mod ff;
 pub mod pairing;
 pub mod rand;
 pub mod ratio;
+
+#[cfg(feature = "bls12_381")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "bls12_381")))]
+pub mod bls12_381;
+
+#[cfg(feature = "bn254")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "bn254")))]
+pub mod bn254;
