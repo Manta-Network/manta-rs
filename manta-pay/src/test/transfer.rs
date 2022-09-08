@@ -28,7 +28,7 @@ use manta_accounting::transfer::{
 };
 use manta_crypto::{
     accumulator::Accumulator,
-    constraint::{self, measure::Measure, test::fuzz_public_input, ProofSystem as _},
+    constraint::{self, measure::Measure, test::verify_fuzz_public_input, ProofSystem as _},
     rand::{fuzz::Fuzz, OsRng, Rand, Sample},
 };
 use std::io::Cursor;
@@ -168,12 +168,18 @@ fn validity_check_with_fuzzing<C, R, A, M>(
     let public_input = post.generate_proof_input();
     let proof = &post.validity_proof;
     assert_valid_proof(verifying_context, post);
-    fuzz_public_input::<C::ProofSystem, _>(verifying_context, &public_input, proof, |input| {
-        input.fuzz(rng)
-    });
-    fuzz_public_input::<C::ProofSystem, _>(verifying_context, &public_input, proof, |input| {
-        (0..input.len()).map(|_| rng.gen()).collect()
-    });
+    verify_fuzz_public_input::<C::ProofSystem, _>(
+        verifying_context,
+        &public_input,
+        proof,
+        |input| input.fuzz(rng),
+    );
+    verify_fuzz_public_input::<C::ProofSystem, _>(
+        verifying_context,
+        &public_input,
+        proof,
+        |input| (0..input.len()).map(|_| rng.gen()).collect(),
+    );
 }
 
 /// Tests a [`Mint`] proof is valid verified against the right public input and invalid

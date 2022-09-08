@@ -364,6 +364,7 @@ pub mod measure {
         }
     }
 }
+
 /// Testing Framework
 #[cfg(feature = "test")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
@@ -373,7 +374,7 @@ pub mod test {
 
     /// Checks that attempting to verify `proof` against fuzzed inputs fails.
     #[inline]
-    pub fn fuzz_public_input<P, F>(
+    pub fn verify_fuzz_public_input<P, F>(
         context: &P::VerifyingContext,
         input: &P::Input,
         proof: &P::Proof,
