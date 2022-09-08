@@ -106,3 +106,11 @@ pub trait AsBytes {
     /// Returns an owned byte representation of `self`.
     fn as_bytes(&self) -> Vec<u8>;
 }
+
+#[cfg(feature = "bincode")]
+impl AsBytes for u64 {
+    #[inline]
+    fn as_bytes(&self) -> Vec<u8> {
+        bincode::serialize(self).unwrap()
+    }
+}

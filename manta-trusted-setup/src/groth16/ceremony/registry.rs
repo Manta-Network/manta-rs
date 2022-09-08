@@ -23,9 +23,9 @@ pub trait Registry<I, P> {
     /// Builds a new [`Registry`].
     fn new() -> Self;
 
-    /// Registers the `participant` into `self` returning `false` if the `participant` is already
+    /// Registers the `id` and `participant` into `self` returning `false` if the `participant` is already
     /// registered or their registration would conflict with another existing participant.
-    fn register(&mut self, participant: P) -> bool;
+    fn register(&mut self, id: &I, participant: P) -> bool;
 
     /// Returns a shared reference to the participant with the given `id` if they are registered.
     fn get(&self, id: &I) -> Option<&P>;

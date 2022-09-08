@@ -28,8 +28,8 @@ use crate::groth16::{
     mpc::{State, StateSize},
 };
 use alloc::sync::Arc;
-use core::{future::Future, ops::Deref};
-use manta_crypto::dalek::ed25519::Ed25519;
+use core::{convert::TryInto, ops::Deref};
+use manta_crypto::dalek::ed25519::{self, Ed25519};
 use manta_util::{
     serde::{de::DeserializeOwned, Serialize},
     BoxArray,
@@ -187,11 +187,11 @@ where
 //     }
 // }
 
-/// Recovers from a disk file at `recovery` and use `backup` as the backup directory.
+/// Recovers from a disk file at `recovery` and use `recovery_path` as the backup directory.
 #[inline]
 pub fn recover<C, R, const CIRCUIT_COUNT: usize, const LEVEL_COUNT: usize>(
     recovery: String,
-    backup: String,
+    recovery_path: String,
 ) -> Server<C, R, LEVEL_COUNT, CIRCUIT_COUNT>
 where
     C: Ceremony,
@@ -200,7 +200,7 @@ where
 {
     Server {
         coordinator: Arc::new(Mutex::new(load_from_file(recovery))),
-        recovery_path: backup,
+        recovery_path,
     }
 }
 
@@ -208,13 +208,13 @@ where
 #[inline]
 pub fn load_registry<C, P, S, R>(registry_file: P) -> R
 where
-    C: Ceremony,
-    C::SignatureScheme: SignatureScheme<Nonce = u64>,
+    C: Ceremony<SignatureScheme = S>,
+    S: SignatureScheme<Nonce = u64>,
     P: AsRef<Path>,
     R: Registry<VerifyingKey<C>, C::Participant>,
     // C: CeremonyConfig<Participant = Participant<S>>,
-    // S: SignatureScheme<Vec<u8>, Nonce = u64, VerifyingKey = Array<u8, 32>>,
     // S::VerifyingKey: Ord,
+    // C::SignatureScheme: SignatureScheme<Nonce = u64>,
 {
     let mut registry = R::new();
     for record in
@@ -224,31 +224,41 @@ where
         let result = record.expect("Read csv should succeed.");
         let twitter = result[0].to_string();
         let email = result[1].to_string();
-        let verifying_key: BoxArray<u8, 32> =
-            BoxArray::from_vec(bs58::decode(result[3].to_string()).into_vec().unwrap());
-        let signature: BoxArray<u8, 64> =
-            BoxArray::from_vec(bs58::decode(result[4].to_string()).into_vec().unwrap());
-        // verify::<_, Ed25519<Message<Nonce<C>>>>(
-        //     &verifying_key,
-        //     0,
-        //     &format!(
-        //         "manta-trusted-setup-twitter:{}, manta-trusted-setup-email:{}",
-        //         twitter, email
-        //     ),
-        //     &signature,
-        // )
-        // .expect("Should verify the signature.");
-        //     let participant = Participant {
-        //         twitter,
-        //         priority: match result[2].to_string().parse::<bool>().unwrap() {
-        //             true => UserPriority::High,
-        //             false => UserPriority::Normal,
-        //         },
-        //         public_key,
-        //         nonce: OsRng.gen::<_, u16>() as u64,
-        //         contributed: false,
-        //     };
-        //     registry.insert(participant.public_key, participant);
+        let verifying_key: ed25519::PublicKey = ed25519::public_key_from_bytes(
+            bs58::decode(result[3].to_string())
+                .into_vec()
+                .expect("Should convert into a vector")
+                .try_into()
+                .expect("Should give an array"),
+        );
+        let signature: ed25519::Signature = ed25519::signature_from_bytes(
+            bs58::decode(result[4].to_string())
+                .into_vec()
+                .expect("Should convert into a vector")
+                .try_into()
+                .expect("Should give an array"),
+        );
+        verify::<_, Ed25519<Message<Nonce<C>>>>(
+            &verifying_key,
+            0,
+            &format!(
+                "manta-trusted-setup-twitter:{}, manta-trusted-setup-email:{}",
+                twitter, email
+            ),
+            &signature,
+        )
+        .expect("Should verify the signature.");
+        // let participant = Participant {
+        //     twitter,
+        //     priority: match result[2].to_string().parse::<bool>().unwrap() {
+        //         true => UserPriority::High,
+        //         false => UserPriority::Normal,
+        //     },
+        //     public_key,
+        //     nonce: OsRng.gen::<_, u16>() as u64,
+        //     contributed: false,
+        // };
+        // registry.register(participant.public_key, participant);
     }
     registry
 }

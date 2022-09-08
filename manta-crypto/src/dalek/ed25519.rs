@@ -38,6 +38,28 @@ pub fn secret_key_from_bytes(bytes: [u8; SECRET_KEY_LENGTH]) -> SecretKey {
     }
 }
 
+/// Converts `bytes` into a [`PublicKey`].
+#[inline]
+pub fn public_key_from_bytes(bytes: [u8; PUBLIC_KEY_LENGTH]) -> PublicKey {
+    match PublicKey::from_bytes(&bytes) {
+        Ok(public_key) => public_key,
+        _ => {
+            unreachable!("We are guaranteed the correct number of bytes from `PUBLIC_KEY_LENGTH`.")
+        }
+    }
+}
+
+/// Converts `bytes` into [`Signature`].
+#[inline]
+pub fn signature_from_bytes(bytes: [u8; SIGNATURE_LENGTH]) -> Signature {
+    match Signature::from_bytes(&bytes) {
+        Ok(signature) => signature,
+        _ => {
+            unreachable!("We are guaranteed the correct number of bytes from `PUBLIC_KEY_LENGTH`.")
+        }
+    }
+}
+
 /// Clones the `secret_key` by serializing and then deserializing.
 #[inline]
 pub fn clone_secret_key(secret_key: &SecretKey) -> SecretKey {

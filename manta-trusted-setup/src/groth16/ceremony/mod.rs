@@ -69,6 +69,11 @@ pub trait Participant {
     /// Nonce
     type Nonce;
 
+    // /// Builds a new [`Participant`].
+    // fn new(
+
+    // ) -> Self;
+
     /// Returns the [`Identifier`](Self::Identifier) for `self`.
     fn id(&self) -> &Self::Identifier;
 

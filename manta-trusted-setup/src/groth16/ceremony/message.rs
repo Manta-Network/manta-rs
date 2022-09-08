@@ -27,7 +27,7 @@ use crate::groth16::{
 use manta_crypto::arkworks::serialize::{CanonicalDeserialize, CanonicalSerialize};
 use manta_util::{
     serde::{Deserialize, Serialize},
-    Array, BoxArray,
+    BoxArray,
 };
 
 /// MPC States
