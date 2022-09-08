@@ -40,6 +40,8 @@ required-features = ["clap", "groth16", "simulation"]
 # Enable Arkworks Backend
 arkworks = [
     "ark-std",
+    "manta-crypto/ark-bls12-381",
+    "manta-crypto/ark-ed-on-bls12-381",
     "manta-crypto/arkworks",
 ]
 
