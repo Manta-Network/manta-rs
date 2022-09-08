@@ -114,7 +114,7 @@ impl kzg::Configuration for Test {
             item.serialize_uncompressed(&mut hasher).unwrap();
         }
         state.beta_g2.serialize_uncompressed(&mut hasher).unwrap();
-        hasher.0.update(&challenge);
+        hasher.0.update(challenge);
         proof
             .tau
             .serialize(&mut hasher)
