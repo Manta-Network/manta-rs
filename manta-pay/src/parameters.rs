@@ -231,7 +231,7 @@ pub fn load_to_public_verifying_context() -> VerifyingContext {
 
 /// Load a [`Get`] object into an object of type `T`.
 #[inline]
-fn load_get_object<G, T>() -> T
+pub fn load_get_object<G, T>() -> T
 where
     G: Get,
     T: Decode,

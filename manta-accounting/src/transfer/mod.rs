@@ -555,6 +555,29 @@ where
         }
     }
 
+    /// Constructs an [`Asset`] against the `asset_id` of `self` and `value`.
+    #[inline]
+    fn construct_asset(&self, value: &C::AssetValue) -> Asset<C> {
+        Asset::<C>::new(
+            self.asset_id
+                .clone()
+                .expect("The asset id exists by construction."),
+            value.clone(),
+        )
+    }
+
+    /// Returns the `k`-th source in the transfer.
+    #[inline]
+    pub fn source(&self, k: usize) -> Option<Asset<C>> {
+        self.sources.get(k).map(|value| self.construct_asset(value))
+    }
+
+    /// Returns the `k`-th sink in the transfer.
+    #[inline]
+    pub fn sink(&self, k: usize) -> Option<Asset<C>> {
+        self.sinks.get(k).map(|value| self.construct_asset(value))
+    }
+
     /// Generates the public input for the [`Transfer`] validation proof.
     #[inline]
     pub fn generate_proof_input(&self) -> ProofInput<C> {
@@ -1350,6 +1373,29 @@ where
             proof,
         }
     }
+
+    /// Constructs an [`Asset`] against the `asset_id` of `self` and `value`.
+    #[inline]
+    fn construct_asset(&self, value: &C::AssetValue) -> Asset<C> {
+        Asset::<C>::new(
+            self.asset_id
+                .clone()
+                .expect("The asset id exists by construction."),
+            value.clone(),
+        )
+    }
+
+    /// Returns the `k`-th source in the transfer.
+    #[inline]
+    pub fn source(&self, k: usize) -> Option<Asset<C>> {
+        self.sources.get(k).map(|value| self.construct_asset(value))
+    }
+
+    /// Returns the `k`-th sink in the transfer.
+    #[inline]
+    pub fn sink(&self, k: usize) -> Option<Asset<C>> {
+        self.sinks.get(k).map(|value| self.construct_asset(value))
+    }
 }
 
 impl<C> Encode for TransferPostBody<C>
@@ -1453,6 +1499,18 @@ where
             authorization_signature,
             body,
         }
+    }
+
+    /// Returns the `k`-th source in the transfer.
+    #[inline]
+    pub fn source(&self, k: usize) -> Option<Asset<C>> {
+        self.body.source(k)
+    }
+
+    /// Returns the `k`-th sink in the transfer.
+    #[inline]
+    pub fn sink(&self, k: usize) -> Option<Asset<C>> {
+        self.body.sink(k)
     }
 
     /// Generates the public input for the [`Transfer`] validation proof.
