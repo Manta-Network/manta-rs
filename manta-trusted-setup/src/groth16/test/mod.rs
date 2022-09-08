@@ -31,8 +31,9 @@ use ark_snark::SNARK;
 use blake2::Digest;
 use manta_crypto::{
     arkworks::{
+        constraint::R1CS,
         ec::{AffineCurve, PairingEngine},
-        ff::{field_new, UniformRand},
+        ff::{field_new, Fp, UniformRand},
         pairing::{test::assert_valid_pairing_ratio, Pairing},
         r1cs_std::eq::EqGadget,
         ratio::test::assert_valid_ratio_proof,
@@ -44,7 +45,7 @@ use manta_crypto::{
     },
     rand::{CryptoRng, OsRng, RngCore, Sample},
 };
-use manta_pay::crypto::constraint::arkworks::{Fp, FpVar, R1CS};
+use manta_pay::crypto::constraint::arkworks::FpVar;
 use manta_util::into_array_unchecked;
 
 /// Test MPC

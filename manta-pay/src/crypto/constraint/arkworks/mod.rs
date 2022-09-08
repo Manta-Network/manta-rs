@@ -458,7 +458,7 @@ mod tests {
     use manta_crypto::{
         arkworks::ff::BigInteger,
         eclair::alloc::Allocate,
-        rand::{OsRng, Rand},
+        rand::{OsRng, Rand, RngCore},
     };
 
     /// Checks if `assert_within_range` passes when `should_pass` is `true` and fails when
