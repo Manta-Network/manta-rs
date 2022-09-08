@@ -21,7 +21,7 @@ use core::iter::{self, Extend};
 use manta_crypto::{
     algebra,
     arkworks::{
-        ff::{Field, FpParameters, PrimeField, ToConstraintField},
+        ff::{Field, Fp, FpParameters, PrimeField, ToConstraintField},
         r1cs_std::{
             alloc::AllocVar, eq::EqGadget, fields::FieldVar, select::CondSelectGadget, ToBitsGadget,
         },

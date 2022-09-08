@@ -17,7 +17,7 @@
 //! Manta-Pay Configuration
 
 use crate::crypto::{
-    constraint::arkworks::{field_element_as_bytes, groth16, Boolean, Fp, FpVar, R1CS},
+    constraint::arkworks::{groth16, Boolean, FpVar, R1CS},
     ecc,
     encryption::aes::{self, FixedNonceAesGcm},
     key::Blake2sKdf,
@@ -38,7 +38,7 @@ use manta_crypto::{
     accumulator,
     algebra::DiffieHellman,
     arkworks::{
-        ff::ToConstraintField,
+        ff::{field_element_as_bytes, Fp, ToConstraintField},
         serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError},
     },
     constraint::Input,
