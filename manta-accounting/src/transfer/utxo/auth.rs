@@ -83,7 +83,7 @@ pub type Signature<T> = <T as SignatureType>::Signature;
 ///
 pub trait DeriveContext: AuthorizationContextType + SpendingKeyType {
     ///
-    fn derive(&self, spending_key: &Self::SpendingKey) -> Self::AuthorizationContext;
+    fn derive_context(&self, spending_key: &Self::SpendingKey) -> Self::AuthorizationContext;
 }
 
 ///
@@ -140,7 +140,7 @@ pub trait DeriveSigningKey:
     AuthorizationContextType + AuthorizationProofType + SigningKeyType + SpendingKeyType
 {
     ///
-    fn derive(
+    fn derive_signing_key(
         &self,
         spending_key: &Self::SpendingKey,
         authorization_context: &Self::AuthorizationContext,
@@ -206,7 +206,7 @@ where
         T: DeriveContext + ProveAuthorization,
         R: RngCore + ?Sized,
     {
-        let context = parameters.derive(spending_key);
+        let context = parameters.derive_context(spending_key);
         let proof = parameters.prove(spending_key, &context, rng);
         Self::new(context, proof)
     }
@@ -350,7 +350,11 @@ where
         R: RngCore + ?Sized,
     {
         let signature = parameters.sign(
-            &parameters.derive(spending_key, &authorization.context, &authorization.proof),
+            &parameters.derive_signing_key(
+                spending_key,
+                &authorization.context,
+                &authorization.proof,
+            ),
             message,
             rng,
         );

@@ -142,6 +142,12 @@ pub trait AddressType {
 /// Address Type
 pub type Address<T> = <T as AddressType>::Address;
 
+///
+pub trait DeriveAddress<T>: AddressType {
+    ///
+    fn derive_address(&self, key: &T) -> Self::Address;
+}
+
 /// Associated Data
 pub trait AssociatedDataType {
     /// Associated Data Type
@@ -202,8 +208,10 @@ pub trait DeriveDecryptionKey: AuthorizationContextType {
     type DecryptionKey;
 
     /// Derives the decryption key for notes from `authorization_context`.
-    fn derive(&self, authorization_context: &mut Self::AuthorizationContext)
-        -> Self::DecryptionKey;
+    fn derive_decryption_key(
+        &self,
+        authorization_context: &mut Self::AuthorizationContext,
+    ) -> Self::DecryptionKey;
 }
 
 /// Note Opening
@@ -259,7 +267,7 @@ pub trait Mint<COM = ()>: AssetType + NoteType + UtxoType {
 pub trait DeriveMint: AddressType + AssociatedDataType + Mint {
     /// Derives the data required to mint to a target `address`, the `asset` to mint and
     /// `associated_data`.
-    fn derive<R>(
+    fn derive_mint<R>(
         &self,
         address: Self::Address,
         asset: Self::Asset,
@@ -322,7 +330,7 @@ pub trait Spend<COM = ()>:
 pub trait DeriveSpend: Spend + IdentifierType {
     /// Derives the data required to spend with an `authorization_context`, the `asset` to spend and
     /// its `identifier`.
-    fn derive<R>(
+    fn derive_spend<R>(
         &self,
         authorization_context: &mut Self::AuthorizationContext,
         identifier: Self::Identifier,

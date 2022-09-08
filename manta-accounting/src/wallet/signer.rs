@@ -37,7 +37,7 @@ use crate::{
             ToPublic, Transaction,
         },
         requires_authorization,
-        utxo::{self, auth, NoteOpen},
+        utxo::{auth::DeriveContext, DeriveDecryptionKey, DeriveSpend, NoteOpen},
         Address, Asset, AssociatedData, Authorization, AuthorizationContext, FullParametersRef,
         IdentifiedAsset, Identifier, Note, Nullifier, Parameters, PreSender, ProofSystemError,
         ProvingContext, Receiver, Sender, Shape, SpendingKey, Transfer, TransferPost, Utxo,
@@ -634,7 +634,7 @@ where
     ///
     #[inline]
     fn default_authorization_context(&self, parameters: &C::Parameters) -> AuthorizationContext<C> {
-        auth::DeriveContext::derive(parameters, &self.default_spending_key(parameters))
+        parameters.derive_context(&self.default_spending_key(parameters))
     }
 
     ///
@@ -673,8 +673,7 @@ where
         R: CryptoRng + RngCore + ?Sized,
     {
         let IdentifiedAsset::<C> { identifier, asset } = identified_asset;
-        let (_, computed_utxo, nullifier) = utxo::DeriveSpend::derive(
-            parameters,
+        let (_, computed_utxo, nullifier) = parameters.derive_spend(
             authorization_context,
             identifier.clone(),
             asset.clone(),
@@ -715,13 +714,8 @@ where
     where
         R: CryptoRng + RngCore + ?Sized,
     {
-        let (_, utxo, nullifier) = utxo::DeriveSpend::derive(
-            parameters,
-            authorization_context,
-            identifier,
-            asset.clone(),
-            rng,
-        );
+        let (_, utxo, nullifier) =
+            parameters.derive_spend(authorization_context, identifier, asset.clone(), rng);
         if let Some(index) = nullifiers
             .iter()
             .position(move |n| n.is_related(&nullifier))
@@ -753,8 +747,7 @@ where
         let mut deposit = Vec::new();
         let mut withdraw = Vec::new();
         let mut authorization_context = self.default_authorization_context(parameters);
-        let decryption_key =
-            utxo::DeriveDecryptionKey::derive(parameters, &mut authorization_context);
+        let decryption_key = parameters.derive_decryption_key(&mut authorization_context);
         for (utxo, note) in inserts {
             if let Some(identified_asset) = parameters.open_into(&decryption_key, &utxo, note) {
                 Self::insert_next_item(

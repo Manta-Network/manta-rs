@@ -18,7 +18,10 @@
 
 use crate::{
     asset,
-    transfer::utxo::{self, auth},
+    transfer::utxo::{
+        self,
+        auth::{self, DeriveContext, SpendingKey},
+    },
 };
 use alloc::vec::Vec;
 use core::{cmp, fmt::Debug, hash::Hash};
@@ -804,7 +807,7 @@ where
     C: Configuration<Bool = bool>,
 {
     #[inline]
-    fn derive(&self, spending_key: &Self::SpendingKey) -> Self::AuthorizationContext {
+    fn derive_context(&self, spending_key: &Self::SpendingKey) -> Self::AuthorizationContext {
         AuthorizationContext::new(
             self.base
                 .group_generator
@@ -850,7 +853,7 @@ where
         authorization_context: &Self::AuthorizationContext,
         authorization_proof: &Self::AuthorizationProof,
     ) -> bool {
-        (authorization_context == &auth::DeriveContext::derive(self, spending_key))
+        (authorization_context == &self.derive_context(spending_key))
             && (authorization_proof.randomized_proof_authorization_key
                 == authorization_context
                     .proof_authorization_key
@@ -864,7 +867,7 @@ where
     C::Scalar: Ring,
 {
     #[inline]
-    fn derive(
+    fn derive_signing_key(
         &self,
         spending_key: &Self::SpendingKey,
         authorization_context: &Self::AuthorizationContext,
@@ -914,6 +917,25 @@ where
     }
 }
 
+impl<C> utxo::DeriveAddress<SpendingKey<Self>> for Parameters<C>
+where
+    C: Configuration<Bool = bool>,
+{
+    #[inline]
+    fn derive_address(&self, key: &SpendingKey<Self>) -> Self::Address {
+        let generator = self.base.group_generator.generator();
+        Address::new(
+            generator.scalar_mul(
+                &self
+                    .base
+                    .viewing_key_derivation_function
+                    .viewing_key(&generator.scalar_mul(key, &mut ()), &mut ()),
+                &mut (),
+            ),
+        )
+    }
+}
+
 impl<C> utxo::Mint for Parameters<C>
 where
     C: Configuration<Bool = bool>,
@@ -942,7 +964,7 @@ where
     UtxoCommitmentRandomness<C>: Sample,
 {
     #[inline]
-    fn derive<R>(
+    fn derive_mint<R>(
         &self,
         address: Self::Address,
         asset: Self::Asset,
@@ -1048,7 +1070,7 @@ where
     encryption::Randomness<C::OutgoingBaseEncryptionScheme>: Sample,
 {
     #[inline]
-    fn derive<R>(
+    fn derive_spend<R>(
         &self,
         authorization_context: &mut Self::AuthorizationContext,
         identifier: Self::Identifier,
@@ -1118,7 +1140,7 @@ where
     type DecryptionKey = C::Scalar;
 
     #[inline]
-    fn derive(
+    fn derive_decryption_key(
         &self,
         authorization_context: &mut Self::AuthorizationContext,
     ) -> Self::DecryptionKey {
@@ -1176,7 +1198,11 @@ where
 
 /// Address
 #[derive(derivative::Derivative)]
-#[derivative(Clone(bound = "C::Scalar: Clone, C::Group: Clone"))]
+#[derivative(
+    Clone(bound = "C::Scalar: Clone, C::Group: Clone"),
+    Copy(bound = "C::Scalar: Copy, C::Group: Copy"),
+    Debug(bound = "C::Scalar: Debug, C::Group: Debug")
+)]
 pub struct Address<C, COM = ()>
 where
     C: BaseConfiguration<COM> + ?Sized,

@@ -80,7 +80,7 @@ where
         M: DeriveMint,
         R: RngCore + ?Sized,
     {
-        let (secret, utxo, note) = parameters.derive(address, asset, associated_data, rng);
+        let (secret, utxo, note) = parameters.derive_mint(address, asset, associated_data, rng);
         Self::new(secret, utxo, note)
     }
 

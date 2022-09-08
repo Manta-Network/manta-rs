@@ -23,7 +23,7 @@ use crate::config::{
     Parameters, PrivateTransfer, ProvingContext, Receiver, Sender, ToPrivate, ToPublic,
     TransferPost,
 };
-use manta_accounting::transfer::{self, test::value_distribution};
+use manta_accounting::transfer::{self, test::value_distribution, utxo::DeriveAddress};
 use manta_crypto::{
     accumulator::Accumulator,
     merkle_tree::{forest::TreeArrayMerkleForest, full::Full},
@@ -101,48 +101,72 @@ pub mod private_transfer {
     {
         let asset_id = AssetId::gen(rng);
         let values = value_distribution(2, rng.gen(), rng);
+        let asset_0 = Asset::new(asset_id, values[0]);
+        let asset_1 = Asset::new(asset_id, values[1]);
+
         let spending_key = rng.gen();
+        let address = parameters.derive_address(&spending_key);
         let mut authorization = Authorization::from_spending_key(parameters, &spending_key, rng);
 
         let (to_private_0, pre_sender_0) = ToPrivate::internal_pair(
             parameters,
             &mut authorization.context,
-            rng.gen(), // FIXME:
-            Asset::new(asset_id, values[0]),
+            address,
+            asset_0,
             Default::default(),
             rng,
         );
-        let sender_0 = pre_sender_0.insert_and_upgrade(parameters, utxo_accumulator);
-        let receiver_0 = (); // FIXME:
+        let to_private_0 = to_private_0
+            .into_post(
+                FullParametersRef::new(parameters, utxo_accumulator.model()),
+                &proving_context.to_private,
+                None,
+                rng,
+            )
+            .expect("Unable to build TO_PRIVATE proof.")
+            .expect("Did not match transfer shape.");
+        let sender_0 = pre_sender_0
+            .insert_and_upgrade(parameters, utxo_accumulator)
+            .expect("");
+        let receiver_0 = Receiver::sample(parameters, address, asset_1, Default::default(), rng);
 
         let (to_private_1, pre_sender_1) = ToPrivate::internal_pair(
             parameters,
             &mut authorization.context,
-            rng.gen(), // FIXME:
-            Asset::new(asset_id, values[1]),
+            address,
+            asset_1,
             Default::default(),
             rng,
         );
-        let sender_1 = pre_sender_1.insert_and_upgrade(parameters, utxo_accumulator);
-        let receiver_1 = (); // FIXME:
+        let to_private_1 = to_private_1
+            .into_post(
+                FullParametersRef::new(parameters, utxo_accumulator.model()),
+                &proving_context.to_private,
+                None,
+                rng,
+            )
+            .expect("Unable to build TO_PRIVATE proof.")
+            .expect("Did not match transfer shape.");
+        let sender_1 = pre_sender_1
+            .insert_and_upgrade(parameters, utxo_accumulator)
+            .expect("");
+        let receiver_1 = Receiver::sample(parameters, address, asset_0, Default::default(), rng);
 
-        /*
         let private_transfer = PrivateTransfer::build(
             authorization,
             [sender_0, sender_1],
             [receiver_1, receiver_0],
         )
         .into_post(
-            FullParametersRef::new(parameters, utxo_accumulator_model),
+            FullParametersRef::new(parameters, utxo_accumulator.model()),
             &proving_context.private_transfer,
             Some(&spending_key),
             rng,
         )
         .expect("Unable to build PRIVATE_TRANSFER proof.")
-        .expect("");
-        */
+        .expect("Did not match transfer shape.");
 
-        todo!()
+        ([to_private_0, to_private_1], private_transfer)
     }
 
     /// Generates a proof for a [`PrivateTransfer`] transaction.

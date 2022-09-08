@@ -77,7 +77,7 @@ where
         R: RngCore + ?Sized,
     {
         let (secret, utxo, nullifier) =
-            parameters.derive(authorization_context, identifier, asset, rng);
+            parameters.derive_spend(authorization_context, identifier, asset, rng);
         Self::new(secret, utxo, nullifier)
     }
 
