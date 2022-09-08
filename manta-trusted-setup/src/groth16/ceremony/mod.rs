@@ -16,12 +16,9 @@
 
 //! Groth16 Trusted Setup Ceremony
 
-use crate::{groth16::ceremony::signature::SignatureScheme, mpc::Types};
+use crate::groth16::{ceremony::signature::SignatureScheme, mpc::Configuration};
 use derivative::Derivative;
-use manta_crypto::{
-    arkworks::pairing::Pairing,
-    signature::{SignatureType, SigningKeyType, VerifyingKeyType},
-};
+use manta_crypto::signature::{SignatureType, SigningKeyType, VerifyingKeyType};
 use manta_util::{
     collections::vec_deque::MultiVecDeque,
     serde::{Deserialize, Serialize},
@@ -32,6 +29,7 @@ pub mod message;
 pub mod registry;
 pub mod server;
 pub mod signature;
+pub mod util;
 
 #[cfg(feature = "serde")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "serde")))]
@@ -52,6 +50,9 @@ pub type SigningKey<C> = <<C as Ceremony>::SignatureScheme as SigningKeyType>::S
 
 /// Verifying Key
 pub type VerifyingKey<C> = <<C as Ceremony>::SignatureScheme as VerifyingKeyType>::VerifyingKey;
+
+/// Challenge Type
+pub type Challenge<C> = <<C as Ceremony>::Configuration as Configuration>::Challenge;
 
 /// Participant Queue Type
 pub type Queue<C, const LEVEL_COUNT: usize> =
@@ -86,13 +87,16 @@ pub trait Participant {
 
     /// Set nonce of current participant
     fn increment_nonce(&mut self);
+
+    /// Reduces the priority.
+    fn reduce_priority(&mut self);
+
+    /// Sets contributed.
+    fn set_contributed(&mut self);
 }
 
 /// Ceremony Configuration
-pub trait Ceremony: Types {
-    /// Pairing Type
-    type Pairing: Pairing;
-
+pub trait Ceremony {
     /// Participant Identifier Type
     type Identifier: Clone + PartialEq;
 
@@ -105,6 +109,9 @@ pub trait Ceremony: Types {
 
     /// Signature Scheme
     type SignatureScheme: SignatureScheme;
+
+    /// Configuration
+    type Configuration: Configuration;
 }
 
 /// Ceremony Error

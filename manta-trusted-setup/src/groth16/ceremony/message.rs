@@ -16,16 +16,13 @@
 
 //! Messages through Network
 
-use crate::{
-    groth16::{
-        ceremony::{
-            serde::{deserialize_array, serialize_array},
-            signature::sign,
-            Ceremony, CeremonyError, Nonce, Signature, SigningKey,
-        },
-        mpc::{Proof, State, StateSize},
+use crate::groth16::{
+    ceremony::{
+        serde::{deserialize_array, serialize_array},
+        signature::sign,
+        Ceremony, CeremonyError, Challenge, Nonce, Signature, SigningKey,
     },
-    mpc::Challenge,
+    mpc::{Proof, State, StateSize},
 };
 use manta_crypto::arkworks::serialize::{CanonicalDeserialize, CanonicalSerialize};
 use manta_util::{
@@ -37,8 +34,8 @@ use manta_util::{
 #[derive(Serialize, Deserialize)]
 #[serde(
     bound(
-        serialize = "Challenge<C>: Serialize, State<C::Pairing>: CanonicalSerialize,",
-        deserialize = "Challenge<C>: Deserialize<'de>, State<C::Pairing>: CanonicalDeserialize,",
+        serialize = "Challenge<C>: Serialize, State<C::Configuration>: CanonicalSerialize,",
+        deserialize = "Challenge<C>: Deserialize<'de>, State<C::Configuration>: CanonicalDeserialize,",
     ),
     crate = "manta_util::serde",
     deny_unknown_fields
@@ -51,11 +48,11 @@ where
     #[cfg_attr(
         feature = "serde",
         serde(
-            serialize_with = "serialize_array::<State<C::Pairing>, _, CIRCUIT_COUNT>",
-            deserialize_with = "deserialize_array::<'de, _, State<C::Pairing>, CIRCUIT_COUNT>"
+            serialize_with = "serialize_array::<State<C::Configuration>, _, CIRCUIT_COUNT>",
+            deserialize_with = "deserialize_array::<'de, _, State<C::Configuration>, CIRCUIT_COUNT>"
         )
     )]
-    pub state: BoxArray<State<C::Pairing>, CIRCUIT_COUNT>,
+    pub state: BoxArray<State<C::Configuration>, CIRCUIT_COUNT>,
 
     /// Challenge
     pub challenge: BoxArray<Challenge<C>, CIRCUIT_COUNT>,
@@ -76,21 +73,21 @@ where
     #[cfg_attr(
         feature = "serde",
         serde(
-            serialize_with = "serialize_array::<State<C::Pairing>, _, CIRCUIT_COUNT>",
-            deserialize_with = "deserialize_array::<'de, _, State<C::Pairing>, CIRCUIT_COUNT>"
+            serialize_with = "serialize_array::<State<C::Configuration>, _, CIRCUIT_COUNT>",
+            deserialize_with = "deserialize_array::<'de, _, State<C::Configuration>, CIRCUIT_COUNT>"
         )
     )]
-    pub state: BoxArray<State<C::Pairing>, CIRCUIT_COUNT>,
+    pub state: BoxArray<State<C::Configuration>, CIRCUIT_COUNT>,
 
     /// Proof
     #[cfg_attr(
         feature = "serde",
         serde(
-            serialize_with = "serialize_array::<Proof<C::Pairing>, _, CIRCUIT_COUNT>",
-            deserialize_with = "deserialize_array::<'de, _, Proof<C::Pairing>, CIRCUIT_COUNT>"
+            serialize_with = "serialize_array::<Proof<C::Configuration>, _, CIRCUIT_COUNT>",
+            deserialize_with = "deserialize_array::<'de, _, Proof<C::Configuration>, CIRCUIT_COUNT>"
         )
     )]
-    pub proof: BoxArray<Proof<C::Pairing>, CIRCUIT_COUNT>,
+    pub proof: BoxArray<Proof<C::Configuration>, CIRCUIT_COUNT>,
 }
 
 /// Response for State Sizes

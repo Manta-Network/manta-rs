@@ -37,6 +37,12 @@ use manta_crypto::{
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
 
+/// MPC State
+pub type State<P> = ProvingKey<<P as Pairing>::Pairing>;
+
+/// MPC Proof
+pub type Proof<P> = RatioProof<P>;
+
 /// Proving Key Hasher
 pub trait ProvingKeyHasher<P>
 where
@@ -48,12 +54,6 @@ where
     /// Hashes the Groth16 `proving_key` state.
     fn hash(proving_key: &ProvingKey<P::Pairing>) -> Self::Output;
 }
-
-/// MPC State
-pub type State<P> = ProvingKey<<P as Pairing>::Pairing>;
-
-/// MPC Proof
-pub type Proof<P> = RatioProof<P>;
 
 /// MPC State Size
 #[cfg_attr(
@@ -373,7 +373,7 @@ where
 #[inline]
 pub fn verify_transform<C>(
     challenge: &C::Challenge,
-    prev: State<C>,
+    prev: &State<C>,
     next: State<C>,
     proof: Proof<C>,
 ) -> Result<(C::Challenge, State<C>), Error>

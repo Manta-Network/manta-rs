@@ -16,24 +16,25 @@
 
 //! Coordinator
 
-use crate::{
-    groth16::{
-        ceremony::{
-            message::{MPCState, Signed},
-            registry::Registry,
-            serde::{deserialize_array, serialize_array},
-            signature::{check_nonce, verify},
-            Ceremony, CeremonyError, Participant, Queue, UserPriority,
-        },
-        mpc::{Proof, State, StateSize},
+use crate::groth16::{
+    ceremony::{
+        message::{MPCState, Signed},
+        registry::Registry,
+        serde::{deserialize_array, serialize_array},
+        signature::{check_nonce, verify},
+        Ceremony, CeremonyError, Challenge, Participant, Queue, UserPriority,
     },
-    mpc::Challenge,
+    mpc::{verify_transform, Proof, State, StateSize},
 };
+use core::{mem, time::Duration};
 use manta_crypto::arkworks::serialize::{CanonicalDeserialize, CanonicalSerialize};
 use manta_util::{time::lock::Timed, Array, BoxArray};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
+
+/// Time limit for a participant at the front of the queue to contribute with unit as second
+pub const TIME_LIMIT: Duration = Duration::from_secs(360);
 
 /// Ceremony Coordinator
 #[cfg_attr(
@@ -45,15 +46,13 @@ use manta_util::serde::{Deserialize, Serialize};
                 R: Serialize,
                 Challenge<C>: Serialize,
                 C::Participant: Serialize,
-                State<C::Pairing>: CanonicalSerialize,
-                Proof<C::Pairing>: Serialize,
+                State<C::Configuration>: CanonicalSerialize,
             ",
             deserialize = r"
                 R: Deserialize<'de>,
                 Challenge<C>: Deserialize<'de>,
                 C::Participant: Deserialize<'de>,
-                State<C::Pairing>: CanonicalDeserialize,
-                Proof<C::Pairing>: Deserialize<'de>,
+                State<C::Configuration>: CanonicalDeserialize,
             "
         ),
         crate = "manta_util::serde",
@@ -72,11 +71,11 @@ where
     #[cfg_attr(
         feature = "serde",
         serde(
-            serialize_with = "serialize_array::<State<C::Pairing>, _, CIRCUIT_COUNT>",
-            deserialize_with = "deserialize_array::<'de, _, State<C::Pairing>, CIRCUIT_COUNT>"
+            serialize_with = "serialize_array::<State<C::Configuration>, _, CIRCUIT_COUNT>",
+            deserialize_with = "deserialize_array::<'de, _, State<C::Configuration>, CIRCUIT_COUNT>"
         )
     )]
-    state: BoxArray<State<C::Pairing>, CIRCUIT_COUNT>,
+    state: BoxArray<State<C::Configuration>, CIRCUIT_COUNT>,
 
     /// Challenge
     challenge: BoxArray<Challenge<C>, CIRCUIT_COUNT>,
@@ -90,11 +89,12 @@ where
     // #[cfg_attr(
     //     feature = "serde",
     //     serde(
-    //         serialize_with = "serialize_array::<Proof<C::Pairing>, _, CIRCUIT_COUNT>",
-    //         deserialize_with = "deserialize_array::<'de, _, Proof<C::Pairing>, CIRCUIT_COUNT>"
+    //         serialize_with = "serialize_array::<Proof<C::Configuration>, _, CIRCUIT_COUNT>",
+    //         deserialize_with = "deserialize_array::<'de, _, Proof<C::Configuration>, CIRCUIT_COUNT>"
     //     )
     // )]
-    latest_proof: Option<BoxArray<Proof<C::Pairing>, CIRCUIT_COUNT>>, // TODO: Implement serialize
+    #[serde(skip)] //TODO
+    latest_proof: Option<BoxArray<Proof<C::Configuration>, CIRCUIT_COUNT>>, // TODO: Implement serialize
 
     /// State Sizes
     size: Array<StateSize, CIRCUIT_COUNT>,
@@ -121,7 +121,7 @@ where
     #[inline]
     pub fn new(
         registry: R,
-        state: BoxArray<State<C::Pairing>, CIRCUIT_COUNT>,
+        state: BoxArray<State<C::Configuration>, CIRCUIT_COUNT>,
         challenge: BoxArray<Challenge<C>, CIRCUIT_COUNT>,
         size: Array<StateSize, CIRCUIT_COUNT>,
     ) -> Self {
@@ -142,6 +142,12 @@ where
     #[inline]
     pub fn round(&self) -> usize {
         self.round
+    }
+
+    /// Increments the round number.
+    #[inline]
+    pub fn increment_round(&mut self) {
+        self.round += 1;
     }
 
     /// Returns the state size.
@@ -214,5 +220,59 @@ where
         .map_err(|_| CeremonyError::BadRequest)?;
         participant.increment_nonce();
         Ok(participant.level())
+    }
+
+    /// Checks the lock update errors for the [`Coordinator::update`] method.
+    #[inline]
+    pub fn check_lock_update_errors(
+        has_expired: bool,
+        lhs: &Option<C::Identifier>,
+        rhs: &C::Identifier,
+    ) -> Result<(), CeremonyError<C>> {
+        match lhs {
+            Some(lhs) if lhs == rhs && has_expired => Err(CeremonyError::Timeout),
+            Some(lhs) if lhs != rhs => Err(CeremonyError::NotYourTurn),
+            _ => Ok(()),
+        }
+    }
+
+    /// Updates the expired lock by reducing the priority of it's participant and setting it's
+    /// contained value to the new front of the queue. The previous participant in the lock is
+    /// returned.
+    #[inline]
+    pub fn update_expired_lock(&mut self) -> Option<C::Identifier> {
+        self.participant_lock.mutate(|p| {
+            if let Some(identifier) = p {
+                if let Some(participant) = self.registry.get_mut(identifier) {
+                    participant.reduce_priority();
+                }
+            }
+            mem::replace(p, self.queue.pop_front())
+        })
+    }
+
+    /// Updates the MPC state and challenge using client's contribution. If the contribution is
+    /// valid, the participant will be removed from the waiting queue, and cannot participate in
+    /// this ceremony again.
+    #[inline]
+    pub fn update(
+        &mut self,
+        participant: &C::Identifier,
+        state: BoxArray<State<C::Configuration>, CIRCUIT_COUNT>,
+        proof: BoxArray<Proof<C::Configuration>, CIRCUIT_COUNT>,
+    ) -> Result<(), CeremonyError<C>> {
+        if self.participant_lock.has_expired(TIME_LIMIT) {
+            Self::check_lock_update_errors(true, &self.update_expired_lock(), participant)?;
+        } else {
+            Self::check_lock_update_errors(false, self.participant_lock.get(), participant)?;
+        }
+        for (i, (state, proof)) in state.into_iter().zip(proof.clone().into_iter()).enumerate() {
+            self.state[i] = verify_transform(&self.challenge[i], &self.state[i], state, proof)
+                .map_err(|_| CeremonyError::BadRequest)?
+                .1
+        }
+        self.latest_proof = Some(proof);
+        self.participant_lock.set(self.queue.pop_front());
+        Ok(())
     }
 }

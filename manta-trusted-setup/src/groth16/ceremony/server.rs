@@ -16,21 +16,21 @@
 
 //! Trusted Setup Server
 
-use crate::{
-    groth16::{
-        ceremony::{
-            coordinator::Coordinator,
-            message::{QueryRequest, QueryResponse, ServerSize, Signed},
-            registry::Registry,
-            Ceremony, CeremonyError, Nonce,
-        },
-        mpc::{State, StateSize},
+use crate::groth16::{
+    ceremony::{
+        coordinator::Coordinator,
+        message::{ContributeRequest, QueryRequest, QueryResponse, ServerSize, Signed},
+        registry::Registry,
+        util::log_to_file,
+        Ceremony, CeremonyError, Challenge, Nonce, Participant,
     },
-    mpc::Challenge,
+    mpc::{State, StateSize},
 };
 use alloc::sync::Arc;
-use manta_util::{Array, BoxArray};
+use core::ops::Deref;
+use manta_util::{serde::Serialize, Array, BoxArray};
 use parking_lot::Mutex;
+use std::path::Path;
 
 /// Server
 pub struct Server<C, R, const LEVEL_COUNT: usize, const CIRCUIT_COUNT: usize>
@@ -54,7 +54,7 @@ where
     /// Builds a ['Server`] with initial `state`, `challenge`, a loaded `registry`, and a `recovery_path`.
     #[inline]
     pub fn new(
-        state: BoxArray<State<C::Pairing>, CIRCUIT_COUNT>,
+        state: BoxArray<State<C::Configuration>, CIRCUIT_COUNT>,
         challenge: BoxArray<Challenge<C>, CIRCUIT_COUNT>,
         registry: R,
         recovery_path: String,
@@ -102,5 +102,36 @@ where
         } else {
             Ok(QueryResponse::QueuePosition(position))
         }
+    }
+
+    /// Processes a request to update the MPC state and remove the participant if successfully updated the state.
+    /// If update succeeds, save the current coordinator to disk.
+    #[inline]
+    pub async fn update(
+        self,
+        request: Signed<ContributeRequest<C, CIRCUIT_COUNT>, C>,
+    ) -> Result<(), CeremonyError<C>>
+    where
+        Coordinator<C, R, CIRCUIT_COUNT, LEVEL_COUNT>: Serialize,
+    {
+        let mut coordinator = self.coordinator.lock();
+        coordinator.preprocess_request(&request)?;
+        let contribute_state = request.message.contribute_state;
+        coordinator.update(
+            &request.identifier,
+            contribute_state.state,
+            contribute_state.proof,
+        )?;
+        coordinator
+            .participant_mut(&request.identifier)
+            .expect("Geting participant should succeed.")
+            .set_contributed();
+        coordinator.increment_round();
+        log_to_file(
+            &Path::new(&self.recovery_path).join(format!("transcript{}.data", coordinator.round())),
+            &coordinator.deref(),
+        );
+        println!("{} participants have contributed.", coordinator.round());
+        Ok(())
     }
 }
