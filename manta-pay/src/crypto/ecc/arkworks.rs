@@ -566,39 +566,115 @@ where
     }
 }
 
+// /// Testing Suite
+// #[cfg(test)]
+// mod test {
+//     use super::*;
+//     use crate::config::Bls12_381_Edwards;
+//     use manta_crypto::{
+//         algebra::{PrecomputedBaseTable, ScalarMul},
+//         arkworks::{algebra::scalar_bits, r1cs_std::groups::curves::twisted_edwards::AffineVar},
+//         constraint::measure::Measure,
+//         eclair::bool::AssertEq,
+//         rand::OsRng,
+//     };
+
+//     /// Checks if the fixed base multiplcation is correct.
+//     #[test]
+//     fn fixed_base_mul_is_correct() {
+//         let mut cs = Compiler::<Bls12_381_Edwards>::for_proofs();
+//         let scalar = Scalar::<Bls12_381_Edwards>::gen(&mut OsRng);
+//         let base = Group::<Bls12_381_Edwards>::sample((), &mut OsRng);
+//         const SCALAR_BITS: usize = scalar_bits::<Bls12_381_Edwards>();
+//         let precomputed_table = PrecomputedBaseTable::<_, SCALAR_BITS>::from_base(base, &mut ());
+//         let base_var =
+//             base.as_known::<Secret, GroupVar<Bls12_381_Edwards, AffineVar<_, _>>>(&mut cs);
+//         let scalar_var =
+//             scalar.as_known::<Secret, ScalarVar<Bls12_381_Edwards, AffineVar<_, _>>>(&mut cs);
+//         let ctr1 = cs.constraint_count();
+//         let expected = base_var.scalar_mul(&scalar_var, &mut cs);
+//         let ctr2 = cs.constraint_count();
+//         let actual = GroupVar::fixed_base_scalar_mul(precomputed_table, &scalar_var, &mut cs);
+//         let ctr3 = cs.constraint_count();
+//         cs.assert_eq(&expected, &actual);
+//         assert!(cs.is_satisfied());
+//         println!("variable base mul constraint: {:?}", ctr2 - ctr1);
+//         println!("fixed base mul constraint: {:?}", ctr3 - ctr2);
+//     }
+// }
+
 /// Testing Suite
 #[cfg(test)]
 mod test {
-    use super::*;
-    use crate::config::Bls12_381_Edwards;
+    use core::str::FromStr;
     use manta_crypto::{
-        algebra::{PrecomputedBaseTable, ScalarMul},
-        arkworks::{algebra::scalar_bits, r1cs_std::groups::curves::twisted_edwards::AffineVar},
-        constraint::measure::Measure,
-        eclair::bool::AssertEq,
+        arkworks::{
+            ec::{AffineCurve, ProjectiveCurve},
+            ff::{Field, UniformRand},
+            glv::GLVParameters,
+        },
         rand::OsRng,
     };
+    use num_bigint::{BigInt, BigUint};
+    pub type BN = ark_bn254::G1Affine;
+    pub type BLS = ark_bls12_381::G1Affine;
 
-    /// Checks if the fixed base multiplcation is correct.
     #[test]
-    fn fixed_base_mul_is_correct() {
-        let mut cs = Compiler::<Bls12_381_Edwards>::for_proofs();
-        let scalar = Scalar::<Bls12_381_Edwards>::gen(&mut OsRng);
-        let base = Group::<Bls12_381_Edwards>::sample((), &mut OsRng);
-        const SCALAR_BITS: usize = scalar_bits::<Bls12_381_Edwards>();
-        let precomputed_table = PrecomputedBaseTable::<_, SCALAR_BITS>::from_base(base, &mut ());
-        let base_var =
-            base.as_known::<Secret, GroupVar<Bls12_381_Edwards, AffineVar<_, _>>>(&mut cs);
-        let scalar_var =
-            scalar.as_known::<Secret, ScalarVar<Bls12_381_Edwards, AffineVar<_, _>>>(&mut cs);
-        let ctr1 = cs.constraint_count();
-        let expected = base_var.scalar_mul(&scalar_var, &mut cs);
-        let ctr2 = cs.constraint_count();
-        let actual = GroupVar::fixed_base_scalar_mul(precomputed_table, &scalar_var, &mut cs);
-        let ctr3 = cs.constraint_count();
-        cs.assert_eq(&expected, &actual);
-        assert!(cs.is_satisfied());
-        println!("variable base mul constraint: {:?}", ctr2 - ctr1);
-        println!("fixed base mul constraint: {:?}", ctr3 - ctr2);
+    pub fn glv_bls_is_correct() {
+        let mut rng = OsRng;
+        let scalar = <BLS as AffineCurve>::ScalarField::rand(&mut rng);
+        let point = <BLS as AffineCurve>::Projective::rand(&mut rng).into_affine();
+        let bls_values = include!("precomputed_bls_values/bls_values");
+        let beta = <BLS as AffineCurve>::BaseField::from_random_bytes(
+            &bls_values.0.parse::<BigUint>().unwrap().to_bytes_le(),
+        )
+        .unwrap();
+        let base_v1 = (
+            BigInt::from_str(bls_values.1).unwrap(),
+            BigInt::from_str(bls_values.2).unwrap(),
+        );
+        let base_v2 = (
+            BigInt::from_str(bls_values.3).unwrap(),
+            BigInt::from_str(bls_values.4).unwrap(),
+        );
+        let glv = GLVParameters::new_unchecked(beta, base_v1, base_v2);
+        println!(
+            "lhs = {}\n rhs = {}",
+            glv.scalar_mul(&point, &scalar),
+            point.mul(scalar).into_affine()
+        );
+        assert_eq!(
+            glv.scalar_mul(&point, &scalar),
+            point.mul(scalar).into_affine()
+        );
+    }
+    #[test]
+    pub fn glv_bn_is_correct() {
+        let mut rng = OsRng;
+        let scalar = <BN as AffineCurve>::ScalarField::rand(&mut rng);
+        let point = <BN as AffineCurve>::Projective::rand(&mut rng).into_affine();
+        let bn_values = include!("precomputed_bn_values/bn_values");
+        let beta = <BN as AffineCurve>::BaseField::from_random_bytes(
+            &bn_values.0.parse::<BigUint>().unwrap().to_bytes_le(),
+        )
+        .unwrap();
+        let base_v1 = (
+            BigInt::from_str(bn_values.1).unwrap(),
+            BigInt::from_str(bn_values.2).unwrap(),
+        );
+        let base_v2 = (
+            BigInt::from_str(bn_values.3).unwrap(),
+            BigInt::from_str(bn_values.4).unwrap(),
+        );
+        let glv = GLVParameters::new_unchecked(beta, base_v1, base_v2);
+        println!(
+            "lhs = {}\n rhs = {}",
+            glv.scalar_mul(&point, &scalar),
+            point.mul(scalar).into_affine()
+        );
+        assert_eq!(
+            glv.scalar_mul(&point, &scalar),
+            point.mul(scalar).into_affine()
+        );
     }
 }
