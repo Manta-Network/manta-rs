@@ -1,4 +1,4 @@
-# BN254 parameters taken from https://neuromancer.sk/std/bn/bn254.
+# BN254 parameters taken from https://github.com/ethereum/py_pairing/blob/master/py_ecc/bn128/bn128_curve.py.
 
 p = 21888242871839275222246405745257275088696311157297823662689037894645226208583
 K = GF(p)
