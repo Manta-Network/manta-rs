@@ -674,9 +674,9 @@ mod test {
         algebra::{test::window_correctness, PrecomputedBaseTable, ScalarMul},
         arkworks::{
             algebra::scalar_bits,
-            ec::{AffineCurve, ProjectiveCurve},
+            ec::ProjectiveCurve,
             ff::{Field, UniformRand},
-            glv::GLVParameters,
+            glv::{AffineCurveExt, GLVParameters},
             r1cs_std::groups::curves::twisted_edwards::AffineVar,
         },
         constraint::measure::Measure,
@@ -684,6 +684,10 @@ mod test {
         rand::OsRng,
     };
     use num_bigint::{BigInt, BigUint};
+    use std::{
+        fs::File,
+        io::{BufRead, BufReader},
+    };
 
     /// Checks if the fixed base multiplcation is correct.
     #[test]
@@ -711,62 +715,59 @@ mod test {
     pub type BN = ark_bn254::G1Affine;
     pub type BLS = ark_bls12_381::G1Affine;
 
-    #[test]
-    pub fn glv_bls_is_correct() {
-        let mut rng = OsRng;
-        let scalar = <BLS as AffineCurve>::ScalarField::rand(&mut rng);
-        let point = <BLS as AffineCurve>::Projective::rand(&mut rng).into_affine();
-        let bls_values = include!("precomputed_bls_values/bls_values");
-        let beta = <BLS as AffineCurve>::BaseField::from_random_bytes(
-            &bls_values.0.parse::<BigUint>().unwrap().to_bytes_le(),
+    /// Checks that the GLV implementation on the curve `C` with the parameters given in `file`
+    /// is correct.
+    #[inline]
+    fn glv_is_correct<C, R>(file_path: &str, rng: &mut R)
+    where
+        C: AffineCurveExt,
+        R: RngCore + ?Sized,
+    {
+        let file = File::open(file_path).expect("Could not open file.");
+        let reader = BufReader::new(file);
+        let mut glv_strings: Vec<String> = Vec::with_capacity(5);
+        for parameter in reader.lines() {
+            glv_strings.push(parameter.unwrap());
+        }
+        let glv_parameters: Vec<&str> = glv_strings.iter().map(|s| &s[..]).collect();
+        let scalar = C::ScalarField::rand(rng);
+        let point = C::Projective::rand(rng).into_affine();
+        let beta = C::BaseField::from_random_bytes(
+            &glv_parameters[0].parse::<BigUint>().unwrap().to_bytes_le(),
         )
         .unwrap();
         let base_v1 = (
-            BigInt::from_str(bls_values.1).unwrap(),
-            BigInt::from_str(bls_values.2).unwrap(),
+            BigInt::from_str(glv_parameters[1]).unwrap(),
+            BigInt::from_str(glv_parameters[2]).unwrap(),
         );
         let base_v2 = (
-            BigInt::from_str(bls_values.3).unwrap(),
-            BigInt::from_str(bls_values.4).unwrap(),
+            BigInt::from_str(glv_parameters[3]).unwrap(),
+            BigInt::from_str(glv_parameters[4]).unwrap(),
         );
-        let glv = GLVParameters::new_unchecked(beta, base_v1, base_v2);
-        println!(
-            "lhs = {}\n rhs = {}",
-            glv.scalar_mul(&point, &scalar),
-            point.mul(scalar).into_affine()
-        );
+        let glv = GLVParameters::<C>::new_unchecked(beta, base_v1, base_v2);
         assert_eq!(
             glv.scalar_mul(&point, &scalar),
             point.mul(scalar).into_affine()
         );
     }
+
+    /// Checks the implementation of GLV for BLS is correct.
+    #[test]
+    pub fn glv_bls_is_correct() {
+        let mut rng = OsRng;
+        glv_is_correct::<BLS, _>(
+            "../manta-pay/src/crypto/ecc/precomputed_glv_values/bls_values",
+            &mut rng,
+        )
+    }
+
+    /// Checks the implementation of GLV for BN is correct.
     #[test]
     pub fn glv_bn_is_correct() {
         let mut rng = OsRng;
-        let scalar = <BN as AffineCurve>::ScalarField::rand(&mut rng);
-        let point = <BN as AffineCurve>::Projective::rand(&mut rng).into_affine();
-        let bn_values = include!("precomputed_bn_values/bn_values");
-        let beta = <BN as AffineCurve>::BaseField::from_random_bytes(
-            &bn_values.0.parse::<BigUint>().unwrap().to_bytes_le(),
-        )
-        .unwrap();
-        let base_v1 = (
-            BigInt::from_str(bn_values.1).unwrap(),
-            BigInt::from_str(bn_values.2).unwrap(),
-        );
-        let base_v2 = (
-            BigInt::from_str(bn_values.3).unwrap(),
-            BigInt::from_str(bn_values.4).unwrap(),
-        );
-        let glv = GLVParameters::new_unchecked(beta, base_v1, base_v2);
-        println!(
-            "lhs = {}\n rhs = {}",
-            glv.scalar_mul(&point, &scalar),
-            point.mul(scalar).into_affine()
-        );
-        assert_eq!(
-            glv.scalar_mul(&point, &scalar),
-            point.mul(scalar).into_affine()
+        glv_is_correct::<BN, _>(
+            "../manta-pay/src/crypto/ecc/precomputed_glv_values/bn_values",
+            &mut rng,
         );
     }
 
